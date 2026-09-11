@@ -115,11 +115,17 @@ class Handler(BaseHTTPRequestHandler):
         m = None
         if path == "/api/tasks":
             return self._api_create_task()
-        m = re.match(r"^/api/tasks/([^/]+)/(archive|delete)$", path)
+        m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry)$", path)
         if m:
             if m.group(2) == "archive":
                 body = self._body()
                 ok, err = store.archive_task(m.group(1), bool(body.get("archived", True)))
+            elif m.group(2) == "retry":
+                ok, err, run = store.retry_task(m.group(1))
+                if not ok:
+                    return self._json(400, {"error": err})
+                jobs.enqueue({"kind": "orchestration", "run_id": run["id"], "task_id": m.group(1)})
+                return self._json(200, {"ok": True, "run_id": run["id"]})
             else:
                 ok, err = store.delete_task(m.group(1))
             return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})

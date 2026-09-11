@@ -29,6 +29,12 @@ function runKindTag(k) {
   return k === "mgmt" ? '<span class="tag">管理</span>' : '<span class="tag">编排</span>';
 }
 
+/* catalog 里 model 可能是字符串，也可能是 {default:...} 之类的对象 */
+function fmtModel(m) {
+  if (m == null || m === "") return "";
+  return typeof m === "object" ? JSON.stringify(m) : String(m);
+}
+
 /* 极简 Markdown 渲染（标题/加粗/行内码/列表/表格/代码块） */
 function md2html(md) {
   const lines = String(md || "").split(/\r?\n/);
@@ -76,6 +82,7 @@ async function poll() {
       api("/api/state"), api("/api/catalog"), api("/api/models")]);
     S.state = state; S.catalog = cat.catalog;
     S.providers = models.providers; S.bindings = models.bindings;
+    S.modelCatalog = models.catalog || [];
     $("conn").textContent = "已连接";
     $("conn").className = "conn ok";
     render();
@@ -96,12 +103,27 @@ function render() {
 }
 
 /* ---------------------------------------------------------- 模型接入 */
+/* 顶栏右上角胶囊：显示 Codex CLI 当前绑定的供应商 / 模型 */
+function renderModelPill() {
+  const el = $("model-pill-text");
+  if (!el) return;
+  const provs = S.providers || [], bindings = S.bindings || {};
+  const b = bindings["codex-cli"] || bindings["claude-code"] || {};
+  const p = provs.find((x) => x.id === b.provider_id);
+  if (!p) { el.textContent = "模型未绑定"; return; }
+  const name = p.name.replace(/^\[[^\]]+\]\s*/, "");  // 去掉 "[CC] " 之类前缀
+  const model = b.model || p.model || "";
+  el.textContent = model ? name + " · " + model : name;
+}
+
 function renderModels() {
+  renderGallery();
   const box = $("provider-list"), bbox = $("binding-list");
   if (!box) return;
   const sig = JSON.stringify([S.providers, S.bindings]);
   if (sig === S.modelsSig) return;  // 数据没变不重绘，避免清掉正在输入的内容
   S.modelsSig = sig;
+  renderModelPill();
   const provs = S.providers || [];
   box.innerHTML = provs.length ? provs.map((p) => providerCard(p)).join("")
     : '<div class="empty">暂无供应商——点「从 CCSwitch 导入」一键带入。</div>';
@@ -121,6 +143,101 @@ function renderModels() {
       (b.difficulty_routing ? " checked" : "") + '> 按难度自动选模型（简单/困难）</label>' +
       '<button class="ghost small" onclick="saveBinding(\'' + id + '\')">保存</button></div></div>';
   }).join("");
+}
+
+/* ---------------------------------------------------------- 模型画廊 */
+function renderGallery() {
+  const grid = $("gal-grid");
+  if (!grid) return;
+  const cat = S.modelCatalog || [];
+  const gal = S.gal || (S.gal = { q: "", provs: {}, protos: {}, state: "all" });
+  const provCount = {}, protoCount = {};
+  for (const c of cat) {
+    if (!c.name) continue;
+    provCount[c.provider_name] = (provCount[c.provider_name] || 0) + 1;
+    protoCount[c.protocol] = (protoCount[c.protocol] || 0) + 1;
+  }
+  const sideBox = $("gal-provs"), protoBox = $("gal-protocols");
+  if (sideBox) {
+    const galSide = document.querySelector(".gal-side");
+    if (galSide) galSide.classList.toggle("hidden", !Object.keys(provCount).length);
+    sideBox.innerHTML = Object.keys(provCount).sort().map((n) =>
+      '<label><input type="checkbox" data-galprov="' + esc(n) + '"' +
+      (gal.provs[n] === false ? "" : " checked") + "> " + esc(n) +
+      '<span class="cnt">' + provCount[n] + "</span></label>").join("") || '<span class="hint">无</span>';
+    protoBox.innerHTML = Object.keys(protoCount).sort().map((n) =>
+      '<label><input type="checkbox" data-galproto="' + esc(n) + '"' +
+      (gal.protos[n] === false ? "" : " checked") + "> " + esc(n) +
+      '<span class="cnt">' + protoCount[n] + "</span></label>").join("") || '<span class="hint">无</span>';
+    if (!S.galBound) {
+      S.galBound = true;
+      sideBox.addEventListener("change", (e) => {
+        const n = e.target.dataset && e.target.dataset.galprov;
+        if (n) { gal.provs[n] = e.target.checked; renderGallery(); }
+      });
+      protoBox.addEventListener("change", (e) => {
+        const n = e.target.dataset && e.target.dataset.galproto;
+        if (n) { gal.protos[n] = e.target.checked; renderGallery(); }
+      });
+    }
+  }
+  const q = gal.q.trim().toLowerCase();
+  const rows = cat.filter((c) => {
+    if (!c.name) return false;
+    if (gal.provs[c.provider_name] === false) return false;
+    if (gal.protos[c.protocol] === false) return false;
+    if (gal.state === "enabled" && !c.enabled) return false;
+    if (gal.state === "disabled" && c.enabled) return false;
+    if (q && c.name.toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+  $("gal-count").textContent = rows.length ? "· " + rows.length + " 个模型" : "";
+  grid.innerHTML = rows.length ? rows.map((c) => modelCard(c)).join("")
+    : '<div class="empty">没有匹配的模型——点「从 CCSwitch 导入」后自动拉取各供应商模型列表。</div>';
+}
+
+function modelCard(c) {
+  const price = (c.price_in != null && c.price_out != null)
+    ? '<span class="mprice">¥' + esc(c.price_in) + "/1M · ¥" + esc(c.price_out) + "/1M</span>" : "";
+  const pname = (c.provider_name || "").replace("[CC] ", "");
+  return '<div class="mcard' + (c.enabled ? "" : " off") + '">' +
+    '<div class="mhead"><span class="mname" title="' + esc(c.name) + '">' + esc(c.name) + "</span>" +
+    '<span class="mprio">#' + c.priority + "</span></div>" +
+    '<div class="mtags"><span class="tag">' + esc(pname) + "</span>" +
+    '<span class="tag">' + esc(c.protocol) + "</span>" + price + "</div>" +
+    '<div class="mops">' +
+    '<button class="ghost small" onclick="modelOp(\'' + esc(c.provider_id) + '\', \'' + esc(c.name) + '\', \'up\')" title="优先级上移">▲</button>' +
+    '<button class="ghost small" onclick="modelOp(\'' + esc(c.provider_id) + '\', \'' + esc(c.name) + '\', \'down\')" title="优先级下移">▼</button>' +
+    '<label class="toggle"><input type="checkbox" ' + (c.enabled ? "checked" : "") +
+    ' onchange="modelOp(\'' + esc(c.provider_id) + '\', \'' + esc(c.name) + '\', this.checked ? \'enable\' : \'disable\')"> 启用</label>' +
+    "</div></div>";
+}
+
+async function modelOp(pid, name, op) {
+  try {
+    await api("/api/models/model-op", { method: "POST",
+      body: JSON.stringify({ provider_id: pid, name, op }) });
+  } catch (e) { alert("操作失败：" + e.message); }
+  poll();
+}
+
+async function refreshAllModels() {
+  const btn = $("btn-refresh-models");
+  btn.disabled = true; btn.textContent = "刷新中…";
+  try {
+    const r = await api("/api/models/refresh-all", { method: "POST" });
+    btn.textContent = r.message || "刷新中…";
+  } catch (e) { alert("刷新失败：" + e.message); }
+  setTimeout(() => { btn.disabled = false; btn.textContent = "刷新全部模型"; }, 1500);
+  setTimeout(poll, 2500); setTimeout(poll, 8000);
+}
+
+async function refreshProviderModels(id) {
+  try {
+    const r = await api("/api/models/refresh", { method: "POST", body: JSON.stringify({ id }) });
+    if (!r.ok && r.message) alert("获取失败：" + r.message);
+  } catch (e) { alert("获取失败：" + e.message); }
+  poll();
 }
 
 function providerCard(p) {
@@ -354,6 +471,8 @@ function bindCtxMenus() {
     if (runId) items.push({ label: "打开详情", fn: () => sideOpenRun(runId) });
     if (taskId) {
       items.push("-");
+      const st = det.dataset.status || "";
+      if (st === "failed" || st === "cancelled") items.push({ label: "↻ 重试任务", fn: () => retryTask(taskId) });
       items.push({ label: archivedTaskIds().has(taskId) ? "取消归档" : "归档", fn: () => archiveTask(taskId, !archivedTaskIds().has(taskId)) });
       items.push({ label: "删除任务", danger: true, fn: () => deleteTask(taskId) });
     } else if (runId) {
@@ -378,6 +497,15 @@ function bindCtxMenus() {
   window.addEventListener("blur", closeCtxMenu);
   window.addEventListener("scroll", closeCtxMenu, true);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeCtxMenu(); });
+}
+
+async function retryTask(id) {
+  try {
+    const r = await api("/api/tasks/" + encodeURIComponent(id) + "/retry", { method: "POST" });
+    switchTab("runs");
+    openRun(r.run_id);
+  } catch (e) { alert("重试失败：" + e.message); return; }
+  poll();
 }
 
 /* ---------------------------------------------------------- 运行列表 */
@@ -428,7 +556,7 @@ function renderSideTasks() {
     const more = g.steps.length > 8
       ? '<div class="stepx" onclick="sideOpenRun(\'' + esc(g.runIds[0]) + '\')"><span class="ssum">… 共 ' + g.steps.length + " 步，点击查看全部</span></div>" : "";
     const empty = items ? "" : '<div class="stepx" onclick="sideOpenRun(\'' + esc(g.runIds[0]) + '\')"><span class="ssum">暂无步骤，点击查看</span></div>';
-    return '<details class="stask" data-key="' + esc(g.key) + '" data-task="' + esc(g.taskId || "") + '" data-run="' + esc(g.runIds[0] || "") + '"' + (isOpen ? " open" : "") + "><summary>" +
+    return '<details class="stask" data-key="' + esc(g.key) + '" data-task="' + esc(g.taskId || "") + '" data-run="' + esc(g.runIds[0] || "") + '" data-status="' + esc(g.status || "") + '"' + (isOpen ? " open" : "") + "><summary>" +
       '<span class="dot ' + esc(g.status) + '"></span><span class="t">' + esc(g.title) + "</span></summary>" + items + more + empty + "</details>";
   }).join("") : '<div class="side-empty">暂无任务</div>';
 }
@@ -446,7 +574,7 @@ async function deleteRun(id) {
 
 async function openRun(id) {
   S.detailRunId = id;
-  document.querySelector("#page-runs .panel:first-child").classList.add("hidden");
+  document.querySelector("#sub-runs .panel:first-child").classList.add("hidden");
   $("run-detail").classList.remove("hidden");
   renderRunDetail();
 }
@@ -454,7 +582,7 @@ async function openRun(id) {
 function closeRun() {
   S.detailRunId = null;
   $("run-detail").classList.add("hidden");
-  document.querySelector("#page-runs .panel:first-child").classList.remove("hidden");
+  document.querySelector("#sub-runs .panel:first-child").classList.remove("hidden");
 }
 
 async function renderRunDetail() {
@@ -471,6 +599,8 @@ async function renderRunDetail() {
   const active = run.status === "queued" || run.status === "running";
   $("btn-cancel").classList.toggle("hidden", !active);
   $("btn-delete").classList.toggle("hidden", active);
+  $("btn-retry").classList.toggle("hidden", !(run.task_id && (run.status === "failed" || run.status === "cancelled")));
+  S.lastRun = run;
   $("rd-meta").innerHTML =
     '<span class="stat">创建 <b>' + esc(run.created_at) + "</b></span>" +
     '<span class="stat">成本 <b>$' + Number(run.cost_usd || 0).toFixed(3) + "</b></span>" +
@@ -570,9 +700,9 @@ function card(c) {
     : '<span class="tag">仅管理</span>';
   const modelBox = c.config_writable
     ? '<div class="field"><label>默认模型（写入配置文件）</label><div class="input-row">' +
-      '<input id="model-' + esc(c.id) + '" value="' + esc(c.model || "") + '" placeholder="如 sonnet / gpt-5.5">' +
+      '<input id="model-' + esc(c.id) + '" value="' + esc(fmtModel(c.model)) + '" placeholder="如 sonnet / gpt-5.5">' +
       '<button class="ghost small" onclick="saveModel(\'' + esc(c.id) + '\')">保存</button></div></div>'
-    : (c.model ? '<div class="facts">模型：<b>' + esc(c.model) + "</b></div>" : "");
+    : (c.model ? '<div class="facts">模型：<b>' + esc(fmtModel(c.model)) + "</b></div>" : "");
   const orchModel = c.orch_kind
     ? '<div class="field"><label>编排调用模型</label><div class="input-row">' +
       '<input id="orchmodel-' + esc(c.id) + '" value="' + esc(c.orch_model || "") + '" placeholder="如 gpt-5.5，留空用默认">' +
@@ -588,7 +718,7 @@ function card(c) {
     '<div class="head"><span class="name">' + esc(c.name) + "</span>" +
     (c.installed ? statusChip("done") : '<span class="tag">未安装</span>') + "</div>" +
     '<div class="note">' + esc(c.note || "") + "</div>" +
-    '<div class="facts">版本 <b>' + esc(c.version || "-") + "</b>　模型 <b>" + esc(c.model || "-") + "</b>" +
+    '<div class="facts">版本 <b>' + esc(c.version || "-") + "</b>　模型 <b>" + esc(fmtModel(c.model) || "-") + "</b>" +
     ((c.detail || c.config_path) ? "<br>" + esc(c.detail || c.config_path) : "") + "</div>" +
     '<div class="ops">' + orchBox + ops + "</div>" + modelBox + orchModel + "</div>";
 }
@@ -625,11 +755,13 @@ async function mgmt(id, op) {
 const TAB_TITLES = { tasks: "任务", runs: "运行记录", agents: "智能体管理", models: "模型接入" };
 
 function switchTab(name) {
+  // 所有导航都收进「设置」页：name 是设置页里的子标签（tasks/runs/agents/models）
   S.tab = name;
-  document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-  document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-" + name));
+  document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-settings"));
+  document.querySelectorAll(".subtab").forEach((b) => b.classList.toggle("active", b.dataset.sub === name));
+  document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-" + name));
   const title = $("page-title");
-  if (title) title.textContent = TAB_TITLES[name] || "";
+  if (title) title.textContent = TAB_TITLES[name] || "设置";
   if (name === "runs" && !S.detailRunId) closeRun();
 }
 
@@ -637,6 +769,7 @@ window.openRun = openRun;
 window.closeRun = closeRun;
 window.archiveTask = archiveTask;
 window.deleteTask = deleteTask;
+window.retryTask = retryTask;
 window.toggleLog = toggleLog;
 window.cancelRun = cancelRun;
 window.deleteRun = deleteRun;
@@ -650,11 +783,17 @@ window.delProvider = delProvider;
 window.addProvider = addProvider;
 window.importCCSwitch = importCCSwitch;
 window.saveBinding = saveBinding;
+window.modelOp = modelOp;
+window.refreshAllModels = refreshAllModels;
+window.refreshProviderModels = refreshProviderModels;
 
 document.addEventListener("DOMContentLoaded", () => {
-  document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+  document.querySelectorAll(".subtab").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.sub)));
+  $("btn-settings").addEventListener("click", () => switchTab(S.tab || "tasks"));
+  $("model-pill").addEventListener("click", () => switchTab("models"));
   $("btn-back").addEventListener("click", closeRun);
   $("btn-cancel").addEventListener("click", cancelRun);
+  $("btn-retry").addEventListener("click", () => { const r = S.lastRun; if (r && r.task_id) retryTask(r.task_id); });
   $("btn-delete").addEventListener("click", () => { if (S.detailRunId) deleteRun(S.detailRunId); });
   $("btn-theme").addEventListener("click", toggleTheme);
   $("btn-menu").addEventListener("click", () => document.body.classList.toggle("side-collapsed"));
@@ -686,6 +825,15 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("btn-import-ccswitch").addEventListener("click", importCCSwitch);
   $("btn-add-provider").addEventListener("click", addProvider);
+  $("btn-refresh-models").addEventListener("click", refreshAllModels);
+  $("gal-search").addEventListener("input", () => {
+    (S.gal || (S.gal = { q: "", provs: {}, protos: {}, state: "all" })).q = $("gal-search").value;
+    renderGallery();
+  });
+  $("gal-state").addEventListener("change", () => {
+    (S.gal || (S.gal = { q: "", provs: {}, protos: {}, state: "all" })).state = $("gal-state").value;
+    renderGallery();
+  });
   $("btn-reset-catalog").addEventListener("click", async () => {
     if (!confirm("恢复内置默认 catalog？你对该文件的修改将丢失。")) return;
     await api("/api/catalog/reset", { method: "POST" }); poll();

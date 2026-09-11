@@ -135,6 +135,98 @@ class TestCodexProviderArgs(BaseTest):
         R.run_process = orig
 
 
+class TestModelPriorityRouting(BaseTest):
+    def runTest(self):
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({"name": "P1", "protocol": "openai",
+                                  "base_url": "https://p1.test/v1", "api_key": FAKE_KEY})
+        pid = modelhub.providers()[0]["id"]
+        # 直接写入模型列表（模拟拉取结果）：强弱顺序已排好
+        data = modelhub._load()
+        for p in data["providers"]:
+            if p["id"] == pid:
+                p["models"] = [
+                    {"name": "gpt-x-pro", "enabled": True, "priority": 1},
+                    {"name": "gpt-x", "enabled": True, "priority": 2},
+                    {"name": "gpt-x-mini", "enabled": True, "priority": 3},
+                    {"name": "gpt-x-old", "enabled": False, "priority": 4},
+                ]
+        modelhub._save(data)
+        modelhub.set_binding("codex-cli", provider_id=pid, difficulty_routing=True)
+        r_hard = modelhub.resolve_binding("codex-cli", "hard")
+        self.assertEqual(r_hard["model"], "gpt-x-pro")            # 困难 → 优先级第 1
+        self.assertEqual(r_hard["model_fallbacks"][:2], ["gpt-x", "gpt-x-mini"])  # 降级链跳过停用项
+        r_easy = modelhub.resolve_binding("codex-cli", "easy")
+        self.assertEqual(r_easy["model"], "gpt-x-mini")           # 简单 → 末位（最省）
+        r_default = modelhub.resolve_binding("codex-cli", "default")
+        self.assertEqual(r_default["model"], "gpt-x-pro")
+        # bind_agent 透传降级链
+        agent = {"id": "codex-cli", "kind": "codex", "mode": "real", "command": "codex"}
+        b = modelhub.bind_agent(agent, "hard")
+        self.assertEqual(b["model_fallbacks"][0], "gpt-x")
+
+        # 启停与调序
+        self.assertIsNone(modelhub.model_op(pid, "gpt-x-pro", "disable"))
+        r2 = modelhub.resolve_binding("codex-cli", "hard")
+        self.assertEqual(r2["model"], "gpt-x")                    # 停用后第一名顶上
+        self.assertIsNone(modelhub.model_op(pid, "gpt-x-pro", "enable"))
+        self.assertIsNone(modelhub.model_op(pid, "gpt-x-mini", "up"))
+        ms = {m["name"]: m["priority"] for m in modelhub.providers()[0]["models"]}
+        self.assertLess(ms["gpt-x-mini"], ms["gpt-x"])            # mini 上移一位
+
+
+class TestAutoPriorityOrder(BaseTest):
+    def runTest(self):
+        from app.core import modelhub
+        names = ["gpt-x-mini", "gpt-x-pro", "claude-y-flash", "claude-y-opus", "z-8b"]
+        scored = sorted(names, key=lambda n: -modelhub._auto_priority(n))
+        self.assertEqual(scored[0], "claude-y-opus")              # opus 最强
+        self.assertIn(scored[-1], ("gpt-x-mini", "claude-y-flash", "z-8b"))  # lite 系垫底
+        self.assertLess(modelhub._auto_priority("gpt-x-mini"),
+                        modelhub._auto_priority("gpt-x-pro"))
+
+
+class TestRunnerModelFallback(BaseTest):
+    def runTest(self):
+        import app.core.runner as R
+        calls = []
+
+        def fake(argv=None, **kw):
+            calls.append(list(argv))
+            # 第一次调用（主模型）返回 503 瞬态错误；第二次（降级模型）成功
+            if "-m" in argv and argv[argv.index("-m") + 1] == "model-a":
+                return {"ok": False, "exit_code": 1, "stdout": "",
+                        "stderr": "unexpected status 503 Service Unavailable",
+                        "duration": 0, "cancelled": False, "timed_out": False}
+            return {"ok": True, "exit_code": 0,
+                    "stdout": '{"type":"result","is_error":false,"result":"done","total_cost_usd":0,"usage":{}}',
+                    "stderr": "", "duration": 0, "cancelled": False, "timed_out": False}
+
+        orig = R.run_process
+        R.run_process = fake
+        agent = {"id": "codex-cli", "kind": "codex", "mode": "real", "command": "codex",
+                 "model": "model-a", "model_fallbacks": ["model-b", "model-c"]}
+        res = R.run_agent(agent, "hi", readonly=True)
+        R.run_process = fake and orig
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["model"], "model-b")                 # 降级到了下一个模型
+        self.assertEqual(len(calls), 2)                           # 只多试了一次
+        # 非瞬态错误不降级
+        calls.clear()
+
+        def fake2(argv=None, **kw):
+            calls.append(argv)
+            return {"ok": False, "exit_code": 1, "stdout": "",
+                    "stderr": "Error: 401 unauthorized", "duration": 0,
+                    "cancelled": False, "timed_out": False}
+        R.run_process = fake2
+        res2 = R.run_agent(agent, "hi", readonly=True)
+        R.run_process = orig
+        self.assertFalse(res2["ok"])
+        self.assertEqual(len(calls), 1)                           # 401 不换模型
+
+
 class TestDifficulty(BaseTest):
     def runTest(self):
         from app.core import modelhub

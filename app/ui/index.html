@@ -14,19 +14,12 @@
   <aside id="sidebar">
     <div class="brand">🎼 Tutti<span class="sub">多智能体编排台 · All agents, one score.</span></div>
     <button id="btn-new-task" class="new-task">＋ 新任务</button>
-    <nav class="side-nav">
-      <button class="tab active" data-tab="tasks"><span class="ico">✦</span>任务</button>
-      <button class="tab" data-tab="runs"><span class="ico">≡</span>运行记录</button>
-      <button class="tab" data-tab="agents"><span class="ico">⚙</span>智能体管理</button>
-      <button class="tab" data-tab="models"><span class="ico">⚡</span>模型接入</button>
-    </nav>
     <div class="side-section tasks">
       <div class="side-label">任务</div>
       <div id="side-tasks" class="side-tasks"></div>
     </div>
     <div class="side-foot">
-      <button id="btn-theme" class="ghost">🌙 夜间</button>
-      <div id="conn" class="conn">连接中…</div>
+      <button id="btn-settings">⚙ 设置</button>
     </div>
   </aside>
 
@@ -35,11 +28,27 @@
     <header class="topbar">
       <button id="btn-menu" class="icon-btn" title="收起 / 展开侧栏">☰</button>
       <div id="page-title" class="page-title">任务</div>
+      <div class="top-actions">
+        <button id="model-pill" class="pill" title="当前 Codex CLI 绑定的供应商与模型 · 点击前往模型接入页">
+          <span class="pill-ico">⚙</span><span id="model-pill-text">模型未绑定</span>
+        </button>
+        <span class="q-mark" title="这里显示 Codex CLI 当前绑定的供应商 / 模型；在「模型接入」页可更改绑定，运行时按强弱优先级自动选模型。">?</span>
+        <button id="btn-theme" class="pill">🌙 夜间</button>
+        <div id="conn" class="conn">连接中…</div>
+      </div>
     </header>
 
     <main>
-    <!-- ================= 任务 ================= -->
-    <section id="page-tasks" class="page">
+    <!-- ================= 设置页（任务 / 运行记录 / 智能体管理 / 模型接入） ================= -->
+    <section id="page-settings" class="page">
+      <div class="subtabs">
+        <button class="subtab active" data-sub="tasks">✦ 任务</button>
+        <button class="subtab" data-sub="runs">≡ 运行记录</button>
+        <button class="subtab" data-sub="agents">⚙ 智能体管理</button>
+        <button class="subtab" data-sub="models">⚡ 模型接入</button>
+      </div>
+
+      <div id="sub-tasks" class="subpage">
       <div class="panel wide composer">
         <h2 class="hero">要完成什么？</h2>
         <p class="hint hero-sub">一句话目标即可 —— Tutti 自动拆解、智能路由、执行、验证并跨厂商评审。</p>
@@ -115,10 +124,10 @@
         </div>
         <div id="task-list" class="list"></div>
       </div>
-    </section>
+      </div>
 
-    <!-- ================= 运行 ================= -->
-    <section id="page-runs" class="page hidden">
+      <!-- 运行记录 -->
+      <div id="sub-runs" class="subpage hidden">
       <div class="panel wide">
         <div class="panel-head"><h2>运行记录</h2></div>
         <div id="run-list" class="list"></div>
@@ -129,6 +138,7 @@
           <h2 id="rd-title"></h2>
           <span id="rd-status" class="chip"></span>
           <button id="btn-cancel" class="danger hidden">取消运行</button>
+          <button id="btn-retry" class="primary hidden">↻ 重试任务</button>
           <button id="btn-delete" class="danger">删除记录</button>
         </div>
         <div id="rd-meta" class="stats"></div>
@@ -138,10 +148,10 @@
         <h3 class="sec-title">报告</h3>
         <div id="rd-report" class="report"></div>
       </div>
-    </section>
+      </div>
 
-    <!-- ================= 智能体管理 ================= -->
-    <section id="page-agents" class="page hidden">
+      <!-- 智能体管理 -->
+      <div id="sub-agents" class="subpage hidden">
       <div class="panel wide">
         <div class="panel-head">
           <h2>智能体目录</h2>
@@ -158,23 +168,42 @@
         <h3 class="sec-title">内置演示</h3>
         <div id="ag-mocks" class="cards"></div>
       </div>
-    </section>
+      </div>
 
-    <!-- ================= 模型接入 ================= -->
-    <section id="page-models" class="page hidden">
+      <!-- 模型接入 -->
+      <div id="sub-models" class="subpage hidden">
       <div class="panel wide">
-        <div class="panel-head">
-          <h2>模型供应商</h2>
-          <div class="actions">
+        <div class="gal-top">
+          <h2 style="margin:0">模型画廊 <span id="gal-count" class="hint"></span></h2>
+          <div class="gal-actions">
+            <input id="gal-search" placeholder="搜索模型…" style="width:180px">
+            <select id="gal-state">
+              <option value="all">全部状态</option>
+              <option value="enabled">已启用</option>
+              <option value="disabled">已停用</option>
+            </select>
             <button id="btn-import-ccswitch" class="primary">从 CCSwitch 导入</button>
-            <button id="btn-add-provider" class="ghost">＋ 手动添加</button>
+            <button id="btn-refresh-models" class="ghost">刷新全部模型</button>
+            <button id="btn-add-provider" class="ghost">＋ 供应商</button>
           </div>
         </div>
-        <p class="hint">密钥只保存在本机 <code>data/models.json</code>，列表中脱敏显示。按 CLI 绑定后，编排调用会注入对应供应商（不改写 CLI 全局配置）。</p>
+        <p class="hint">导入后自动拉取各供应商可用模型并按强弱排优先级；可手动调序（▲▼）与启停。运行时按优先级选模型，渠道故障自动降级到下一个。密钥只存本机 <code>data/models.json</code>。</p>
+        <div class="gal-body">
+          <aside class="gal-side">
+            <h4>供应商</h4>
+            <div id="gal-provs"></div>
+            <h4>协议</h4>
+            <div id="gal-protocols"></div>
+          </aside>
+          <div class="gal-grid" id="gal-grid"></div>
+        </div>
+
+        <h3 class="sec-title">供应商配置</h3>
         <div id="provider-list" class="cards"></div>
 
         <h3 class="sec-title">CLI 绑定 · 指定哪个 CLI 用哪个供应商/模型</h3>
         <div id="binding-list" class="cards"></div>
+      </div>
       </div>
     </section>
     </main>

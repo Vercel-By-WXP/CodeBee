@@ -178,6 +178,55 @@ class TestTaskArchiveDelete(BaseTest):
         self.assertFalse(ok)
 
 
+class TestTaskRetry(BaseTest):
+    def runTest(self):
+        from app.core import store
+        wd = str(self.workdir)
+        t = store.create_task({"type": "code", "goal": "重试我", "workdir": wd})
+        r1 = store.create_run("orchestration", t["title"], task_id=t["id"])
+        store.update_run(r1["id"], status="running")
+        ok, err, _ = store.retry_task(t["id"])
+        self.assertFalse(ok)                      # 运行中不能重试
+        store.update_run(r1["id"], status="failed")
+        # 终态回填：run 失败时任务状态同步为 failed（归档不再误报"运行中"）
+        self.assertEqual(store.get_task(t["id"])["status"], "failed")
+        ok, err, r2 = store.retry_task(t["id"])
+        self.assertTrue(ok, err)
+        self.assertEqual(r2["task_id"], t["id"])
+        self.assertEqual(store.get_task(t["id"])["status"], "queued")
+        ok, _ = store.archive_task(t["id"], True)
+        self.assertFalse(ok)                      # 重试产生的活跃运行挡住归档
+        store.update_run(r2["id"], status="done")
+        self.assertEqual(store.get_task(t["id"])["status"], "done")
+        # load_all 回填历史遗留：run 终态而任务停在 queued
+        t3 = store.create_task({"type": "code", "goal": "遗留", "workdir": wd})
+        r3 = store.create_run("orchestration", t3["title"], task_id=t3["id"])
+        store.update_run(r3["id"], status="failed")
+        store._TASKS[t3["id"]]["status"] = "queued"
+        store.load_all()
+        self.assertEqual(store.get_task(t3["id"])["status"], "failed")
+        # 非法 ID
+        ok, _, _ = store.retry_task("../escape")
+        self.assertFalse(ok)
+        # 重启恢复：磁盘上停留在 queued/running 的运行判为中断（failed），任务状态随之回填
+        t4 = store.create_task({"type": "code", "goal": "断点", "workdir": wd})
+        r4 = store.create_run("orchestration", t4["title"], task_id=t4["id"])
+        store._RUNS[r4["id"]]["status"] = "running"
+        store._save_json(self._paths.RUNS_DIR / r4["id"] / "run.json", store._RUNS[r4["id"]])
+        store._RUNS.clear()
+        store._TASKS.clear()
+        store.load_all()
+        self.assertEqual(store.get_run(r4["id"])["status"], "failed")
+        self.assertEqual(store.get_task(t4["id"])["status"], "failed")
+        # 卡在 queued 却从未有运行（创建中断）→ 标记失败，可重试
+        t5 = store.create_task({"type": "code", "goal": "创建中断", "workdir": wd})
+        store._TASKS[t5["id"]]["status"] = "queued"
+        store.load_all()
+        self.assertEqual(store.get_task(t5["id"])["status"], "failed")
+        ok, err, r5 = store.retry_task(t5["id"])
+        self.assertTrue(ok, err)
+
+
 if __name__ == "__main__":
     import unittest as _u
     _u.main()

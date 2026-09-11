@@ -513,6 +513,102 @@ def models_view():
     return rows
 
 
+def reorder_models(provider_id, ordered_names):
+    """按给定名称顺序重设优先级（列表中未出现的模型排在最后，保持相对顺序）。"""
+    with _LOCK:
+        data = _load()
+        prov = next((p for p in data.get("providers", []) if p.get("id") == provider_id), None)
+        if not prov:
+            return "供应商不存在"
+        models = prov.get("models") or []
+        by_name = {m.get("name"): m for m in models}
+        if not by_name:
+            return "该供应商还没有模型列表，请先获取"
+        prio, i = {}, 1
+        for n in ordered_names or []:
+            if n in by_name and n not in prio:
+                prio[n] = i
+                i += 1
+        for m in models:
+            if m.get("name") not in prio:
+                prio[m["name"]] = i
+                i += 1
+        for m in models:
+            m["priority"] = prio[m["name"]]
+        _save(data)
+        return None
+
+
+def _post_json_http(url, headers, body, allow_private, timeout=20):
+    """带 SSRF 防护的 POST。返回 (status, json_obj|None, err)。"""
+    import urllib.parse
+    p = urllib.parse.urlsplit(url)
+    if p.scheme not in ("http", "https"):
+        return 0, None, "协议必须是 http/https"
+    host_info = _validate_host(url, allow_private)
+    if host_info is None:
+        return 0, None, host_info[1]
+    try:
+        req = urllib.request.Request(url, method="POST",
+                                     headers=dict(headers, **{"Content-Type": "application/json"}),
+                                     data=json.dumps(body).encode("utf-8"))
+        with urllib.request.build_opener(_NoRedirect).open(req, timeout=timeout) as resp:
+            raw = resp.read(1024 * 1024)
+        return resp.status, json.loads(raw.decode("utf-8", "replace")), ""
+    except Exception as e:
+        return 0, None, repr(e)[:300]
+
+
+def test_provider(provider_id):
+    """供应商连通性测试：GET /models 并测延迟。返回 {ok, latency_ms, count, error}。"""
+    import time as _t
+    with _LOCK:
+        prov = next((p for p in providers() if p.get("id") == provider_id), None)
+    if not prov:
+        return {"ok": False, "error": "供应商不存在"}
+    t0 = _t.time()
+    names, err = _fetch_models_http(prov.get("base_url"), prov.get("api_key") or "",
+                                    prov.get("protocol"), bool(prov.get("allow_private")))
+    latency = int((_t.time() - t0) * 1000)
+    if names is None:
+        return {"ok": False, "latency_ms": latency, "error": err}
+    return {"ok": True, "latency_ms": latency, "count": len(names), "error": ""}
+
+
+def test_model(provider_id, model_name):
+    """单模型连通性测试：发一条 1 token 的最小对话。返回 {ok, latency_ms, error}。"""
+    import time as _t
+    import urllib.parse
+    with _LOCK:
+        prov = next((p for p in providers() if p.get("id") == provider_id), None)
+    if not prov or not prov.get("api_key"):
+        return {"ok": False, "error": "供应商不存在或未配置密钥"}
+    base = prov["base_url"].rstrip("/")
+    path = "/messages" if prov["protocol"] == "anthropic" else "/chat/completions"
+    url = (base + path) if base.endswith("/v1") else (base + "/v1" + path)
+    t0 = _t.time()
+    if prov["protocol"] == "anthropic":
+        headers = {"x-api-key": prov["api_key"], "anthropic-version": "2023-06-01"}
+        body = {"model": model_name, "max_tokens": 1,
+                "messages": [{"role": "user", "content": "ping"}]}
+    else:
+        headers = {"Authorization": "Bearer " + prov["api_key"]}
+        body = {"model": model_name, "max_tokens": 1,
+                "messages": [{"role": "user", "content": "ping"}]}
+    status, data, err = _post_json_http(url, headers, body, bool(prov.get("allow_private")))
+    latency = int((_t.time() - t0) * 1000)
+    if status == 0:
+        return {"ok": False, "latency_ms": latency, "error": err}
+    if 200 <= status < 300:
+        return {"ok": True, "latency_ms": latency, "error": ""}
+    msg = ""
+    if isinstance(data, dict):
+        e = data.get("error")
+        msg = e.get("message", "") if isinstance(e, dict) else str(e)
+    return {"ok": False, "latency_ms": latency,
+            "error": "HTTP %s %s" % (status, str(msg)[:160])}
+
+
 def classify_difficulty(goal, verify_command):
     """难度启发式（规划器 LLM 判定优先，这里只做退化）。"""
     text = goal or ""

@@ -157,9 +157,29 @@ def load_all():
             try:
                 r = json.loads(p.read_text(encoding="utf-8"))
                 r.pop("cancel_event", None)
+                # 队列不跨进程持久化：磁盘上仍是 queued/running 的运行必是上次进程中断的残骸
+                if r.get("status") in ("queued", "running"):
+                    r["status"] = "failed"
+                    r["error"] = r.get("error") or "服务重启中断，可重试"
+                    _save_json(p, r)
                 _RUNS[r["id"]] = r
             except Exception:
                 pass
+        # 回填历史遗留：运行已终态而任务仍停在 created/queued/running 的脏状态
+        for t in _TASKS.values():
+            if t.get("status") not in ("created", "queued", "running"):
+                continue
+            runs = [r for r in _RUNS.values() if r.get("task_id") == t["id"]]
+            if not runs:
+                # 卡在排队却从未有运行：创建流程被中断，标记失败允许重试
+                t["status"] = "failed"
+                t["error"] = "没有运行记录（创建可能被中断），可重试"
+                _save_json(paths.TASKS_DIR / (t["id"] + ".json"), t)
+                continue
+            latest = max(runs, key=lambda r: r["id"])
+            if latest.get("status") in ("done", "failed", "cancelled"):
+                t["status"] = latest["status"]
+                _save_json(paths.TASKS_DIR / (t["id"] + ".json"), t)
 
 
 # ---------------------------------------------------------------- 运行（含管理操作）
@@ -202,6 +222,14 @@ def update_run(run_id, **fields):
             return None
         run.update(fields)
         _save_json(paths.RUNS_DIR / run_id / "run.json", run)
+        # 终态回填：运行结束（成功/失败/取消）时同步任务状态，否则任务永远停在 queued
+        st = fields.get("status")
+        if st in ("done", "failed", "cancelled"):
+            tid = run.get("task_id")
+            task = _TASKS.get(tid) if tid else None
+            if task:
+                task["status"] = st
+                _save_json(paths.TASKS_DIR / (tid + ".json"), task)
         return run
 
 
@@ -267,6 +295,23 @@ def delete_task(task_id):
         shutil.rmtree(paths.RUNS_DIR / rid, ignore_errors=True)
     (paths.TASKS_DIR / (task_id + ".json")).unlink(missing_ok=True)
     return True, ""
+
+
+def retry_task(task_id):
+    """手动重试：为失败/已取消的任务再创建一次新运行。返回 (ok, 错误, run)。"""
+    if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)):
+        return False, "非法的任务 ID", None
+    with LOCK:
+        task = _TASKS.get(task_id)
+        if not task:
+            return False, "任务不存在", None
+        for r in _RUNS.values():
+            if r.get("task_id") == task_id and r.get("status") in ("queued", "running"):
+                return False, "任务仍在运行中，不能重试", None
+        run = create_run("orchestration", task.get("title") or task_id, task_id=task_id)
+        task["status"] = "queued"
+        _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
+    return True, "", run
 
 
 def add_step(run_id, role, agent_id, agent_label, note=""):

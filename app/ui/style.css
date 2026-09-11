@@ -73,15 +73,13 @@ body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-righ
   border-radius: 10px; padding: 9px 12px; font-size: 14px; cursor: pointer; margin-bottom: 8px;
 }
 .new-task:hover { background: var(--panel2); }
-.side-nav { display: flex; flex-direction: column; gap: 2px; }
-.side-nav .tab {
-  display: flex; align-items: center; gap: 10px; text-align: left;
+.side-foot { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+#btn-settings {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
   background: none; border: none; color: var(--muted); padding: 8px 10px;
-  border-radius: 8px; cursor: pointer; font-size: 13.5px; width: 100%;
+  border-radius: 8px; cursor: pointer; font-size: 13.5px; font-family: inherit;
 }
-.side-nav .tab .ico { width: 18px; text-align: center; opacity: .9; }
-.side-nav .tab:hover { color: var(--text); background: var(--panel2); }
-.side-nav .tab.active { color: var(--text); background: var(--panel2); font-weight: 600; }
+#btn-settings:hover { color: var(--text); background: var(--panel2); }
 .side-section { display: flex; flex-direction: column; min-height: 0; flex: 1; margin-top: 14px; }
 .side-section.tasks { flex: 1; }
 .side-label { color: var(--muted); font-size: 11px; padding: 0 10px 6px; letter-spacing: .05em; }
@@ -125,8 +123,6 @@ body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-righ
 .dot.failed { background: var(--bad); }
 .dot.cancelled { background: var(--warn); }
 @keyframes pulse { 50% { opacity: .35; } }
-.side-foot { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
-.side-foot .ghost { width: 100%; }
 
 /* ---------------- 顶栏 ---------------- */
 .topbar {
@@ -140,6 +136,42 @@ body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-righ
   width: 32px; height: 32px; border-radius: 8px; cursor: pointer; line-height: 1;
 }
 .icon-btn:hover { background: var(--panel2); color: var(--text); }
+
+/* 顶栏右上角：当前模型胶囊 + 主题 + 连接状态 */
+.top-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 280px;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 999px; padding: 5px 14px; font-size: 12.5px; cursor: pointer;
+  white-space: nowrap; font-family: inherit;
+  transition: border-color .15s, background-color .15s;
+}
+.pill:hover { border-color: var(--border-strong); }
+.pill > span { overflow: hidden; text-overflow: ellipsis; }
+.pill .pill-ico { flex: none; opacity: .85; }
+#model-pill { font-family: var(--mono); }
+.q-mark {
+  width: 18px; height: 18px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-strong); color: var(--muted);
+  font-size: 11px; line-height: 1; cursor: help; user-select: none;
+}
+.top-actions .conn { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.top-actions .conn::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.top-actions .conn.ok::before { background: var(--ok); }
+.top-actions .conn.bad::before { background: var(--bad); }
+
+/* 设置页子标签：任务 / 运行记录 / 智能体管理 / 模型接入 */
+.subtabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.subtab {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: none; border: 1px solid transparent; color: var(--muted);
+  padding: 6px 14px; border-radius: 999px; cursor: pointer; font-size: 13px;
+  font-family: inherit; transition: background-color .15s, color .15s, border-color .15s;
+}
+.subtab:hover { color: var(--text); background: var(--panel2); }
+.subtab.active { color: var(--text); background: var(--panel2); border-color: var(--border-strong); font-weight: 600; }
+.subpage { display: flex; flex-direction: column; gap: 20px; }
 
 /* ---------------- 主栏 ---------------- */
 main { flex: 1; overflow-y: auto; padding: 28px 32px 96px; }
@@ -367,3 +399,31 @@ button.small { padding: 4px 10px; font-size: 12px; }
   .step { display: flex; flex-wrap: wrap; gap: 6px 10px; }
   .step .n { width: 24px; height: 24px; }
 }
+
+/* ---- 模型画廊 ---- */
+.gal-top {
+  display: flex; flex-direction: column; align-items: stretch; gap: 12px;
+  margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+}
+.gal-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.gal-actions input, .gal-actions select { width: auto; }
+.gal-body { display: grid; grid-template-columns: 190px 1fr; gap: 14px; align-items: start; }
+.gal-side { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; position: sticky; top: 64px; }
+.gal-side h4 { margin: 8px 0 6px; font-size: 12px; color: var(--muted); }
+.gal-side h4:first-child { margin-top: 0; }
+.gal-side label { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 4px; cursor: pointer; color: var(--text); }
+.gal-side label .cnt { margin-left: auto; color: var(--muted); }
+.gal-side input { width: auto; accent-color: var(--accent); }
+.gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.gal-grid .empty { grid-column: 1 / -1; }
+.mcard { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.mcard.off { opacity: .5; }
+.mcard .mhead { display: flex; align-items: center; gap: 8px; }
+.mcard .mname { font-family: var(--mono); font-size: 13px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcard .mprio { font-family: var(--mono); font-size: 11px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; color: var(--accent); }
+.mcard .mtags { display: flex; flex-wrap: wrap; gap: 4px; }
+.mcard .mprice { font-size: 11px; color: var(--muted); }
+.mcard .mops { display: flex; gap: 4px; align-items: center; }
+.mcard .mops button { padding: 1px 8px; font-size: 12px; }
+.mcard .mops .toggle { margin-left: auto; }
+@media (max-width: 900px) { .gal-body { grid-template-columns: 1fr; } .gal-side { position: static; } }
