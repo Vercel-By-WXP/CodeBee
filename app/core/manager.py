@@ -243,7 +243,7 @@ def catalog_view():
         orch_enabled = bool(pref.get("enabled", e.get("default_enabled", False))) if e.get("orch") else False
         view.append({
             "id": e["id"], "name": e.get("name", e["id"]), "note": e.get("note", ""),
-            "group": e.get("cli_group", "installable"),
+            "group": "installed" if det.get("installed") else "installable",
             "installed": det.get("installed", False),
             "detail": det.get("detail", ""),
             "version": version_of(e),
