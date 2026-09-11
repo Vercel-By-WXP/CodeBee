@@ -252,6 +252,47 @@ def delete_run(run_id):
     return True, ""
 
 
+def delete_runs(run_ids):
+    """批量删除运行记录。跳过排队中/运行中的记录。
+
+    返回 (删除数, 跳过数, 错误信息)：非法 ID 与运行中的记录都计入跳过，
+    合法且已结束的记录照常删除，不因个别非法 ID 整体失败。
+    """
+    if not isinstance(run_ids, (list, tuple)):
+        return 0, 0, "ids 必须是数组"
+    deleted, skipped, bad = 0, 0, 0
+    for run_id in run_ids:
+        rid = str(run_id)
+        if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", rid):
+            bad += 1
+            continue
+        with LOCK:
+            run = _RUNS.get(rid)
+            if not run or run.get("status") in ("queued", "running"):
+                skipped += 1
+                continue
+            del _RUNS[rid]
+        shutil.rmtree(paths.RUNS_DIR / rid, ignore_errors=True)
+        deleted += 1
+    return deleted, skipped, ("有 %d 条非法记录 ID" % bad) if bad else ""
+
+
+def clear_runs():
+    """一键清除全部运行记录（跳过排队中/运行中的）。返回 (删除数, 跳过数)。"""
+    with LOCK:
+        targets, skipped = [], 0
+        for rid, r in _RUNS.items():
+            if r.get("status") in ("queued", "running"):
+                skipped += 1
+            else:
+                targets.append(rid)
+        for rid in targets:
+            del _RUNS[rid]
+    for rid in targets:
+        shutil.rmtree(paths.RUNS_DIR / rid, ignore_errors=True)
+    return len(targets), skipped
+
+
 def archive_task(task_id, archived=True):
     """归档/取消归档：归档后从默认列表与侧栏隐藏，数据保留，可随时恢复。"""
     if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)):

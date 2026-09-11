@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
-"""编排注册表：catalog（装了什么）× 用户偏好（启用谁、用什么模型）→ 可编排智能体。
+"""编排注册表：catalog（装了什么）× 用户偏好（启用谁）→ 可编排智能体。
 
 data/orchestration.json 结构：
-  {"codex-cli": {"enabled": true, "model": "gpt-5.5"}, ...}
+  {"codex-cli": {"enabled": true}, ...}
+
+运行时用哪个模型（含主模型/降级备选链、供应商注入、难度路由）统一在
+「CLI 绑定」页配置，存 modelhub 的 data/models.json bindings。
 """
 from __future__ import annotations
 
@@ -33,14 +36,16 @@ def save_enabled(state):
             json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def set_preference(agent_id, enabled=None, model=None):
+def set_preference(agent_id, enabled=None, model=None, models=None):
+    """目前只管「参与编排」开关；model/models 是旧参数，静默忽略
+    （模型链已并入 modelhub bindings，保留签名兼容旧调用方）。"""
     with _LOCK:
         state = load_enabled()
         pref = state.get(agent_id) or {}
+        pref.pop("model", None)
+        pref.pop("models", None)   # 顺手清掉历史遗留字段
         if enabled is not None:
             pref["enabled"] = bool(enabled)
-        if model is not None:
-            pref["model"] = (model or "").strip() or None
         state[agent_id] = pref
         save_enabled(state)
         return pref
@@ -66,7 +71,6 @@ def effective_agents(catalog_entries, detected):
             "kind": orch.get("kind", "generic"),
             "command": orch.get("command") or (entry.get("detect") or {}).get("cli") or entry["id"],
             "mode": "real",
-            "model": pref.get("model") or None,
             "env": orch.get("env") or {},
             "argv_template": orch.get("argv_template"),
         })

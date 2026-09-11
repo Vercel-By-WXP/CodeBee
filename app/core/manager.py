@@ -230,6 +230,154 @@ def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
             "error": "" if res["ok"] else (res["stderr"][-800:] or "退出码 %s" % res["exit_code"])}
 
 
+# ---------------------------------------------------------------- 版本检查
+
+_UPDATE_CACHE = {}   # agent_id → (ts, {current, latest, updatable, note})
+UPDATE_TTL = 600
+
+
+def _npm_pkg_name(cmd):
+    """从 npm 安装命令里取包名（支持 @scope/name@latest）。
+
+    跳过包名之前的 flag：`npm install -g --ignore-scripts @scope/pkg` 必须取到
+    @scope/pkg，否则「检查更新」会拿 flag 当包名去查 registry。
+    """
+    m = re.search(r"npm\s+(?:install|i)\s+(.+)$", cmd or "")
+    if not m:
+        return None
+    for tok in m.group(1).split():
+        if tok.startswith("-"):
+            continue
+        if tok.startswith("@"):
+            m2 = re.match(r"(@[^/]+/[^@]+)", tok)
+            return m2.group(1) if m2 else None
+        return tok.split("@")[0]
+    return None
+
+
+def _ver_tuple(s):
+    return [int(x) for x in re.findall(r"\d+", str(s or ""))[:4]]
+
+
+def check_update(entry, force=False):
+    """检查是否有新版本可用。npm 走 npm view；winget 走 winget upgrade 列表；
+    其他渠道标记为不支持。结果缓存 10 分钟。"""
+    eid = entry["id"]
+    if not force:
+        cached = _UPDATE_CACHE.get(eid)
+        if cached and time.time() - cached[0] < UPDATE_TTL:
+            return cached[1]
+    current = version_of(entry)
+    cur_num = ".".join(str(x) for x in _ver_tuple(current)) or "-"
+    result = {"current": current, "latest": None, "updatable": None, "note": ""}
+
+    cmd = entry.get("install") or entry.get("upgrade") or ""
+    pkg = _npm_pkg_name(cmd)
+    if pkg:
+        r = runner.run_process(argv=["cmd", "/c", "npm", "view", pkg, "version"], timeout=90)
+        latest = ""
+        if r["ok"]:
+            for line in (r["stdout"] or "").splitlines():
+                line = line.strip()
+                if line and re.match(r"^\d", line):
+                    latest = line
+        if not latest:
+            result["note"] = "查询 npm 失败（网络或 registry 问题）：" + (r["stderr"] or "")[-200:]
+        else:
+            result["latest"] = latest
+            result["updatable"] = bool(_ver_tuple(latest) > _ver_tuple(cur_num))
+            if not result["updatable"]:
+                result["note"] = "已是最新版本"
+    elif "winget" in cmd:
+        m = re.search(r"--id\s+([A-Za-z0-9._-]+)", cmd)
+        wid = m.group(1) if m else None
+        if not wid:
+            result["note"] = "无法从命令中解析 winget 包 ID"
+        else:
+            r = runner.run_process(argv=["cmd", "/c", "winget", "upgrade"], timeout=180)
+            if not r["ok"]:
+                result["note"] = "winget upgrade 查询失败：" + (r["stderr"] or "")[-200:]
+            else:
+                hit = [l for l in (r["stdout"] or "").splitlines() if wid.lower() in l.lower()]
+                result["updatable"] = bool(hit)
+                if hit:
+                    result["latest"] = "（winget 有可用更新）"
+                else:
+                    result["latest"] = cur_num
+                    result["note"] = "已是最新版本"
+    else:
+        result["note"] = "该渠道暂不支持自动检查更新，可直接点升级尝试"
+
+    with _LOCK:
+        _UPDATE_CACHE[eid] = (time.time(), result)
+    return result
+
+
+# 「进入智能体目录页自动检查更新」的后台任务状态
+_UPDATE_CHECK = {"running": False, "total": 0, "done": 0}
+
+
+def updates_checking():
+    with _LOCK:
+        return bool(_UPDATE_CHECK["running"])
+
+
+def update_info(entry):
+    """单个 CLI 的更新检查结果（供管理页卡片展示）。没查过时为 unknown。"""
+    with _LOCK:
+        cached = _UPDATE_CACHE.get(entry["id"])
+    if not cached:
+        return {"status": "unknown", "latest": None, "updatable": None,
+                "note": "", "checked_at": ""}
+    res = cached[1] or {}
+    up = res.get("updatable")
+    status = "updatable" if up is True else ("current" if up is False else "unsupported")
+    return {"status": status, "latest": res.get("latest"), "updatable": up,
+            "note": res.get("note") or "",
+            "checked_at": time.strftime("%H:%M", time.localtime(cached[0]))}
+
+
+def _checkable_entries():
+    """已安装且配了 install/upgrade 的条目——只有这些才谈得上「是否有新版本」。"""
+    detected = detect_all()
+    out = []
+    for e in catalog.load():
+        det = (detected or {}).get(e["id"]) or {}
+        if det.get("installed") and (e.get("upgrade") or e.get("install")):
+            out.append(e)
+    return out
+
+
+def check_updates_async(force=False):
+    """后台逐个检查已安装 CLI 的远端最新版本，返回本次要检查的条目数。
+
+    进入「智能体目录」页时自动触发。单条结果复用 check_update 的 10 分钟缓存，
+    所以反复进出页面几乎不产生额外子进程/网络开销；已在跑时不重复起线程。
+    """
+    with _LOCK:
+        if _UPDATE_CHECK["running"]:
+            return 0
+        entries = _checkable_entries()
+        _UPDATE_CHECK.update(running=True, total=len(entries), done=0)
+
+    def _worker():
+        try:
+            for e in entries:
+                try:
+                    check_update(e, force=force)
+                except Exception:
+                    pass
+                finally:
+                    with _LOCK:
+                        _UPDATE_CHECK["done"] += 1
+        finally:
+            with _LOCK:
+                _UPDATE_CHECK["running"] = False
+
+    threading.Thread(target=_worker, name="catalog-update-check", daemon=True).start()
+    return len(entries)
+
+
 def catalog_view():
     """管理页数据：catalog + 检测 + 版本 + 模型 + 编排启用状态。"""
     from . import registry
@@ -252,7 +400,7 @@ def catalog_view():
             "model": read_model(e),
             "orch_kind": (e.get("orch") or {}).get("kind"),
             "orch_enabled": orch_enabled,
-            "orch_model": pref.get("model") or "",
+            "update": update_info(e),
             "has_install": bool(e.get("install")),
             "has_upgrade": bool(e.get("upgrade")),
         })

@@ -12,14 +12,30 @@
 
   <!-- ================= 侧栏 ================= -->
   <aside id="sidebar">
-    <div class="brand">🎼 Tutti<span class="sub">多智能体编排台 · All agents, one score.</span></div>
-    <button id="btn-new-task" class="new-task">＋ 新任务</button>
-    <div class="side-section tasks">
-      <div class="side-label">任务</div>
-      <div id="side-tasks" class="side-tasks"></div>
+    <!-- 常规视图：任务树 -->
+    <div class="side-main">
+      <div class="brand">🎼 Tutti<span class="sub">多智能体编排台 · All agents, one score.</span></div>
+      <button id="btn-new-task" class="new-task">＋ 新任务</button>
+      <div class="side-section tasks">
+        <div class="side-label">任务</div>
+        <div id="side-tasks" class="side-tasks"></div>
+      </div>
+      <div class="side-foot">
+        <button id="btn-settings">⚙ 设置</button>
+      </div>
     </div>
-    <div class="side-foot">
-      <button id="btn-settings">⚙ 设置</button>
+    <!-- 设置视图：左栏整体变成设置导航 -->
+    <div class="side-settings">
+      <button id="btn-set-back" class="set-back">← 返回 Tutti</button>
+      <div class="set-group">编排</div>
+      <button class="set-item active" data-sub="tasks">✦ 任务</button>
+      <button class="set-item" data-sub="runs">≡ 运行记录</button>
+      <div class="set-group">配置</div>
+      <button class="set-item" data-sub="agents">⚙ 智能体管理</button>
+      <button class="set-item" data-sub="models">◈ 模型接入</button>
+      <button class="set-item" data-sub="bindings">🔗 CLI 绑定</button>
+      <div class="set-group">远程</div>
+      <button id="btn-phone" class="set-item" data-sub="__phone">📱 手机连接</button>
     </div>
   </aside>
 
@@ -29,25 +45,19 @@
       <button id="btn-menu" class="icon-btn" title="收起 / 展开侧栏">☰</button>
       <div id="page-title" class="page-title">任务</div>
       <div class="top-actions">
-        <button id="model-pill" class="pill" title="当前 Codex CLI 绑定的供应商与模型 · 点击前往模型接入页">
+        <button id="ctrl-pill" class="pill ctrl hidden" onclick="ctrlClick()" title="多端控制权：同一时刻只有一台设备能操作；空闲时执行任意操作会自动接管">🔓 控制空闲</button>
+        <button id="model-pill" class="pill" title="当前 Codex CLI 绑定的供应商与模型 · 点击前往 CLI 绑定页">
           <span class="pill-ico">⚙</span><span id="model-pill-text">模型未绑定</span>
         </button>
-        <span class="q-mark" title="这里显示 Codex CLI 当前绑定的供应商 / 模型；在「模型接入」页可更改绑定，运行时按强弱优先级自动选模型。">?</span>
+        <span class="q-mark" title="这里显示 Codex CLI 当前绑定的供应商 / 模型；在「CLI 绑定」页可更改（供应商 + 模型链 + 难度路由），运行时模型链优先、其余按供应商配置自动选。">?</span>
         <button id="btn-theme" class="pill">🌙 夜间</button>
         <div id="conn" class="conn">连接中…</div>
       </div>
     </header>
 
     <main>
-    <!-- ================= 设置页（任务 / 运行记录 / 智能体管理 / 模型接入） ================= -->
+    <!-- ================= 设置页（导航在左栏，内容为居中窄栏） ================= -->
     <section id="page-settings" class="page">
-      <div class="subtabs">
-        <button class="subtab active" data-sub="tasks">✦ 任务</button>
-        <button class="subtab" data-sub="runs">≡ 运行记录</button>
-        <button class="subtab" data-sub="agents">⚙ 智能体管理</button>
-        <button class="subtab" data-sub="models">⚡ 模型接入</button>
-      </div>
-
       <div id="sub-tasks" class="subpage">
       <div class="panel wide composer">
         <h2 class="hero">要完成什么？</h2>
@@ -129,7 +139,12 @@
       <!-- 运行记录 -->
       <div id="sub-runs" class="subpage hidden">
       <div class="panel wide">
-        <div class="panel-head"><h2>运行记录</h2></div>
+        <div class="panel-head">
+          <h2>运行记录</h2>
+          <div class="actions">
+            <button id="btn-clear-runs" class="danger small" onclick="clearRuns()" title="删除全部已结束的运行记录（运行中的会保留）">全部清除</button>
+          </div>
+        </div>
         <div id="run-list" class="list"></div>
       </div>
       <div id="run-detail" class="panel wide hidden">
@@ -160,7 +175,7 @@
             <button id="btn-reset-catalog" class="ghost">恢复默认 catalog</button>
           </div>
         </div>
-        <p class="hint">启用「参与编排」后，该智能体会出现在任务表单与评审组中。安装命令不明的条目可直接编辑 <code>data/catalog.json</code> 后点重新加载。</p>
+        <p class="hint">启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 CLI 自己的配置文件（Tutti 之外也生效），Tutti 编排运行时用哪个供应商 / 模型请到「CLI 绑定」页配置。安装命令不明的条目可直接编辑 <code>data/catalog.json</code> 后点重新加载。</p>
         <h3 class="sec-title">已安装</h3>
         <div id="ag-installed" class="cards"></div>
         <h3 class="sec-title">可安装</h3>
@@ -173,44 +188,64 @@
       <!-- 模型接入 -->
       <div id="sub-models" class="subpage hidden">
       <div class="panel wide">
-        <div class="gal-top">
-          <h2 style="margin:0">模型画廊 <span id="gal-count" class="hint"></span></h2>
-          <div class="gal-actions">
-            <input id="gal-search" placeholder="搜索模型…" style="width:180px">
-            <select id="gal-state">
-              <option value="all">全部状态</option>
-              <option value="enabled">已启用</option>
-              <option value="disabled">已停用</option>
-            </select>
-            <button id="btn-import-ccswitch" class="primary">从 CCSwitch 导入</button>
-            <button id="btn-refresh-models" class="ghost">刷新全部模型</button>
-            <button id="btn-add-provider" class="ghost">＋ 供应商</button>
-          </div>
-        </div>
-        <p class="hint">导入后自动拉取各供应商可用模型并按强弱排优先级；可手动调序（▲▼）与启停。运行时按优先级选模型，渠道故障自动降级到下一个。密钥只存本机 <code>data/models.json</code>。</p>
-        <div class="gal-body">
-          <aside class="gal-side">
-            <h4>供应商</h4>
-            <div id="gal-provs"></div>
-            <h4>协议</h4>
-            <div id="gal-protocols"></div>
+        <div class="prov-layout">
+          <aside class="prov-side">
+            <div class="prov-side-head">
+              <span>供应商</span>
+              <span class="prov-side-ops">
+                <button id="btn-refresh-models" class="ghost small" title="全部重新拉取模型列表">⟳</button>
+                <button id="btn-import" class="ghost small" title="从本机各 AI 工具导入供应商">导入</button>
+                <button id="btn-add-provider" class="ghost small" title="手动添加供应商">＋</button>
+              </span>
+            </div>
+            <input id="prov-search" class="side-search" type="search" placeholder="搜索供应商…" autocomplete="off">
+            <div id="prov-list"></div>
           </aside>
-          <div class="gal-grid" id="gal-grid"></div>
+          <div class="prov-detail" id="prov-detail"></div>
         </div>
-
-        <h3 class="sec-title">供应商配置</h3>
-        <div id="provider-list" class="cards"></div>
-
-        <h3 class="sec-title">CLI 绑定 · 指定哪个 CLI 用哪个供应商/模型</h3>
-        <div id="binding-list" class="cards"></div>
       </div>
+      </div>
+
+      <!-- CLI 绑定 -->
+      <div id="sub-bindings" class="subpage hidden">
+        <div class="panel wide">
+          <div class="panel-head"><h2>CLI 绑定</h2></div>
+          <p class="hint">Tutti 编排运行时的模型都在这里配：绑定供应商会注入其 API key 与地址；「模型链」第 1 个是主模型、其余按顺序降级，链空则按供应商默认 / 难度自动选。不绑供应商、只选模型链 = 只传 -m 参数，沿用 CLI 自身凭据。只影响 Tutti 发起的调用，不改写 CLI 全局配置（要改默认模型请到「智能体管理」页）。</p>
+          <div id="binding-list" class="cards"></div>
+        </div>
       </div>
     </section>
     </main>
   </div>
 </div>
 
+<!-- 访问令牌门：仅远程（非本机）访问且令牌缺失/错误时显示 -->
+<div id="token-gate" class="token-gate hidden">
+  <div class="gate-card">
+    <div class="gate-brand">🎼 Tutti</div>
+    <p class="gate-hint">这台设备第一次连接，请输入访问令牌<br><span>（电脑上启动 Tutti 时控制台会显示，形如 http://192.168.x.x:8765/?token=xxxxxxxx）</span></p>
+    <input id="gate-token" type="password" placeholder="访问令牌" autocomplete="off">
+    <button id="gate-go" class="primary" onclick="submitToken()">进入</button>
+    <p id="gate-err" class="msg"></p>
+  </div>
+</div>
+
 <div id="ctx-menu" class="ctx-menu hidden"></div>
+
+<!-- 通用弹框（导入供应商 / 添加供应商） -->
+<div id="modal" class="modal-wrap hidden">
+  <div class="modal-mask" onclick="closeModal()"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-head">
+      <span id="modal-title"></span>
+      <button class="icon-btn" onclick="closeModal()" title="关闭">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<script src="qrcode.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

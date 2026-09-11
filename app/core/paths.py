@@ -2,12 +2,14 @@
 """路径与目录约定。"""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]  # E:\GoOut\MultiAgentOrchestration
 APP_DIR = ROOT / "app"
 UI_DIR = APP_DIR / "ui"
-DATA_DIR = ROOT / "data"
+# TUTTI_DATA：测试/多实例时把数据目录整体指到别处（必须在任何模块使用前设置）
+DATA_DIR = Path(os.environ.get("TUTTI_DATA") or (ROOT / "data"))
 TASKS_DIR = DATA_DIR / "tasks"
 RUNS_DIR = DATA_DIR / "runs"
 CATALOG_FILE = DATA_DIR / "catalog.json"

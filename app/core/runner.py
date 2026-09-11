@@ -243,6 +243,25 @@ def _transient_error(err):
     return any(k in err for k in _TRANSIENT)
 
 
+def _resolve_attempts(agent):
+    """把 agent 的模型配置展开为逐次尝试列表。
+
+    优先用跨厂商链 call_chain（每条自带 env / codex_provider，来自不同供应商）；
+    无链时退回 model + model_fallbacks（同一 CLI 进程内换 -m）。
+    """
+    chain = agent.get("call_chain") or []
+    if chain:
+        return [{"model": (e.get("model") or "").strip() or None,
+                 "env": dict(e.get("env") or {}),
+                 "own_cp": "codex_provider" in e,
+                 "codex_provider": e.get("codex_provider")} for e in chain]
+    base_model = agent.get("model")
+    fb = [m for m in (agent.get("model_fallbacks") or []) if m and m != base_model]
+    models_to_try = ([base_model] if base_model else []) + fb
+    return [{"model": m or None, "env": {}, "own_cp": False, "codex_provider": None}
+            for m in (models_to_try or [None])[:3]]
+
+
 def _build_call(agent, kind, sid, readonly, model, prompt):
     """构建一次 CLI 调用的 (argv, stdin_text, prompt)。model 可为 None=CLI 默认。"""
     env = {}
@@ -309,30 +328,37 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     {ok, text, json, cost_usd, tokens, error, raw}。
     agent 来自 registry.effective_agents()；resume 为已有会话 id
     （codex: exec resume；claude: --resume），仅真实智能体生效。
+
+    模型尝试顺序来自 _resolve_attempts：跨厂商链（每条独立 env）或
+    主模型 + 降级备选；瞬态错误才换下一条，取消/超时/解析失败不降级。
     """
     kind = agent.get("kind", "generic")
-    env = dict(agent.get("env") or {})
+    base_env = dict(agent.get("env") or {})
     if kind == "claude":
         bash = find_git_bash()
         if bash:
-            env.setdefault("CLAUDE_CODE_GIT_BASH_PATH", bash)
-        env.setdefault("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "16000")
+            base_env.setdefault("CLAUDE_CODE_GIT_BASH_PATH", bash)
+        base_env.setdefault("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "16000")
     sid = (resume or "").strip() if agent.get("mode") == "real" else ""
 
-    # 模型降级链：主模型 + 优先级备选（最多 3 个），瞬态错误自动换下一个
-    base_model = agent.get("model")
-    fb = [m for m in (agent.get("model_fallbacks") or []) if m and m != base_model]
-    models_to_try = ([base_model] if base_model else []) + fb
-    models_to_try = (models_to_try or [None])[:3]
-
+    attempts = _resolve_attempts(agent)
     out = None
-    for mi, model in enumerate(models_to_try):
-        argv, stdin_text, prompt_eff = _build_call(agent, kind, sid, readonly, model, prompt)
+    for ai, att in enumerate(attempts):
+        env = dict(base_env)
+        env.update(att["env"])
+        eff_agent = dict(agent)
+        eff_agent["env"] = env
+        if att["own_cp"]:
+            eff_agent["codex_provider"] = att["codex_provider"]
+        elif "codex_provider" in eff_agent:
+            del eff_agent["codex_provider"]  # 链内条目未注入供应商时不沿用 agent 级覆盖
         for attempt in range(2):  # claude 偶发空响应（0 token）自动重试一次
+            argv, stdin_text, prompt_eff = _build_call(eff_agent, kind, sid, readonly,
+                                                       att["model"], prompt)
             res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
                               timeout=timeout, cancel_event=cancel_event, log_path=log_path)
             out = {"ok": res["ok"], "text": "", "json": None, "cost_usd": 0.0,
-                   "tokens": 0, "error": "", "raw": res, "kind": kind, "model": model}
+                   "tokens": 0, "error": "", "raw": res, "kind": kind, "model": att["model"]}
             if not res["ok"]:
                 out["error"] = (("超时" if res["timed_out"] else "取消" if res["cancelled"]
                                  else "退出码 %s" % res["exit_code"])
@@ -360,11 +386,11 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             else:
                 out["text"] = res["stdout"].strip()
             break
-        if out["ok"] or mi == len(models_to_try) - 1:
+        if out["ok"] or ai == len(attempts) - 1:
             return out
         if not _transient_error(out.get("error")):
             return out  # 非瞬态（取消/超时/解析失败）不降级
-        # 瞬态错误 → 换下一个候选模型
+        # 瞬态错误 → 换下一条（可能是另一个厂商的模型）
     return out
 
 

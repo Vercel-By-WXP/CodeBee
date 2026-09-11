@@ -227,6 +227,80 @@ class TestTaskRetry(BaseTest):
         self.assertTrue(ok, err)
 
 
+class TestRunBatchDelete(BaseTest):
+    def runTest(self):
+        from app.core import paths, store
+
+        def mk(title, status):
+            r = store.create_run("mgmt", title)
+            (paths.RUNS_DIR / r["id"] / "steps").mkdir(parents=True, exist_ok=True)
+            (paths.RUNS_DIR / r["id"] / "steps" / "01-x.log").write_text("log", encoding="utf-8")
+            store.update_run(r["id"], status=status)
+            return r
+
+        done1, done2 = mk("a", "done"), mk("b", "failed")
+        running, queued = mk("c", "running"), mk("d", "queued")
+
+        # 批量删除：终态删除，运行中/排队中与不存在的 ID 计入跳过
+        n, skipped, err = store.delete_runs(
+            [done1["id"], done2["id"], running["id"], queued["id"], "r-nope-1"])
+        self.assertEqual(n, 2)
+        self.assertEqual(skipped, 3)
+        self.assertEqual(err, "")
+        self.assertIsNone(store.get_run(done1["id"]))
+        self.assertFalse((paths.RUNS_DIR / done1["id"]).exists())   # 磁盘目录一并清除
+        self.assertIsNone(store.get_run(done2["id"]))
+        self.assertIsNotNone(store.get_run(running["id"]))
+        self.assertIsNotNone(store.get_run(queued["id"]))
+
+        # 非法 ID 只计数不中断，同批合法记录照常删除
+        r3 = mk("e", "cancelled")
+        n, skipped, err = store.delete_runs([r3["id"], "../evil", "a/b"])
+        self.assertEqual(n, 1)
+        self.assertEqual(skipped, 0)
+        self.assertIn("非法", err)
+
+        # ids 非数组
+        n, skipped, err = store.delete_runs("oops")
+        self.assertEqual((n, skipped), (0, 0))
+        self.assertIn("数组", err)
+
+        # 一键清除：终态全清，活跃记录保留
+        r4 = mk("f", "done")
+        n, skipped = store.clear_runs()
+        self.assertEqual(n, 1)        # 此时仅剩 r4 可清
+        self.assertEqual(skipped, 2)  # running + queued
+        self.assertIsNone(store.get_run(r4["id"]))
+        self.assertIsNotNone(store.get_run(running["id"]))
+        self.assertIsNotNone(store.get_run(queued["id"]))
+
+
+class TestNpmPkgName(BaseTest):
+    def runTest(self):
+        from app.core import manager
+
+        # 常规：包名紧跟 -g
+        self.assertEqual(manager._npm_pkg_name("npm install -g @openai/codex"),
+                         "@openai/codex")
+        # 带版本号：去掉 @latest
+        self.assertEqual(
+            manager._npm_pkg_name("npm install -g @qwen-code/qwen-code@latest"),
+            "@qwen-code/qwen-code")
+        # 包名前有 flag（Pi 的官方写法）：不能把 --ignore-scripts 当成包名
+        self.assertEqual(
+            manager._npm_pkg_name(
+                "npm install -g --ignore-scripts @earendil-works/pi-coding-agent"),
+            "@earendil-works/pi-coding-agent")
+        self.assertEqual(
+            manager._npm_pkg_name(
+                "npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest"),
+            "@earendil-works/pi-coding-agent")
+        # 非 npm 命令不误判
+        self.assertIsNone(manager._npm_pkg_name("winget install -e --id xAI.GrokBuild"))
+        self.assertIsNone(manager._npm_pkg_name("mimo upgrade"))
+        self.assertIsNone(manager._npm_pkg_name(None))
+
+
 if __name__ == "__main__":
     import unittest as _u
     _u.main()

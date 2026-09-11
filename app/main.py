@@ -9,16 +9,19 @@ import argparse
 import json
 import re
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
-from core import catalog, jobs, manager, registry, store
+from core import catalog, jobs, manager, registry, remote, store
 from core import paths
 
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
         ".ico": "image/x-icon"}
+
+PORT = 8765  # main() 启动时更新；/api/connect 组装扫码地址用
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -53,22 +56,74 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return {}
 
+    # ------------------------------------------------------------ 远程访问
+    def _authed(self):
+        q = parse_qs(urlparse(self.path).query)
+        return remote.request_authed(self.client_address[0],
+                                     (q.get("token") or [""])[0],
+                                     self.headers.get("X-Tutti-Token") or "")
+
+    def _client_id(self):
+        cid = (self.headers.get("X-Tutti-Client") or "").strip()
+        if not cid:  # EventSource 带不了自定义头，身份从 query 兜底
+            cid = (parse_qs(urlparse(self.path).query).get("client") or [""])[0].strip()
+        if cid:
+            return cid[:64]
+        # 无头请求（curl/旧脚本）：本机统一算"本机"，远程各自匿名且无持久身份
+        return "local" if self.client_address[0] in ("127.0.0.1", "::1") else ""
+
+    def _client_name(self):
+        name = (self.headers.get("X-Tutti-Name") or "").strip()
+        if not name:
+            name = (parse_qs(urlparse(self.path).query).get("name") or [""])[0].strip()
+        if name:
+            try:
+                name = unquote(name)  # 前端对非 ASCII 设备名做了 encodeURIComponent
+            except Exception:
+                pass
+            return name[:24]
+        return "本机" if self._client_id() == "local" else "其他设备"
+
+    def _deny_control(self):
+        ok, view = remote.acquire(self._client_id(), self._client_name())
+        if ok:
+            return None
+        return self._json(423, {
+            "error": "「%s」正在控制，请先在右上角接管控制权" % view.get("holder", "其他设备"),
+            "control": view})
+
     # ------------------------------------------------------------ 路由
     def do_GET(self):
         path = urlparse(self.path).path
         m = None
+        # 静态页不设防（无敏感信息）：远程裸地址打开时由前端令牌门引导输入
         if path in ("/", "/index.html"):
             return self._static("index.html")
         if path.startswith("/api/"):
+            if not self._authed():
+                return self._json(401, {"error": "需要访问令牌（启动 Tutti 时控制台会显示）"})
             if path == "/api/state":
-                return self._api_state()
+                return self._json(200, _state_payload(self._client_id()))
+            if path == "/api/events":
+                return self._api_events()
+            if path == "/api/control":
+                return self._json(200, {"control": remote.control_view(self._client_id())})
+            if path == "/api/connect":
+                # 供设置页「手机连接」弹框生成二维码；远程打开需令牌，天然受保护
+                return self._json(200, {"urls": remote.build_connect_urls(PORT),
+                                        "port": PORT})
             if path == "/api/models":
                 from core import modelhub
                 return self._json(200, {"providers": modelhub.provider_view(),
                                         "bindings": modelhub.bindings(),
-                                        "catalog": modelhub.models_view()})
+                                        "catalog": modelhub.models_view(),
+                                        "source_names": modelhub.source_names()})
+            if path == "/api/models/sources":
+                from core import modelhub
+                return self._json(200, {"sources": modelhub.sources()})
             if path == "/api/catalog":
-                return self._json(200, {"catalog": manager.catalog_view()})
+                return self._json(200, {"catalog": manager.catalog_view(),
+                                        "checking": manager.updates_checking()})
             if path == "/api/sessions":
                 from core import sessions
                 return self._json(200, {"sessions": sessions.scan(
@@ -95,13 +150,14 @@ class Handler(BaseHTTPRequestHandler):
                                   "text/markdown; charset=utf-8")
             m = re.match(r"^/api/runs/([^/]+)/log$", path)
             if m:
-                q = urlparse(self.path).query
-                rel = (q.split("step=")[-1] if "step=" in q else "").replace("/", "\\")
+                # step 由前端 encodeURIComponent 编码（"steps/x.log" → "steps%2Fx.log"），
+                # 必须解码后再拼路径，否则永远找不到日志文件。read_step_log 内部已防目录穿越。
+                rel = (parse_qs(urlparse(self.path).query).get("step") or [""])[0]
+                rel = rel.replace("\\", "/").lstrip("/")
                 run = store.get_run(m.group(1))
                 if not run:
                     return self._json(404, {"error": "not found"})
-                rel_norm = rel.replace("\\", "/")
-                text = store.read_step_log(m.group(1), rel_norm)
+                text = store.read_step_log(m.group(1), rel)
                 return self._json(200, {"log": text})
             return self._json(404, {"error": "unknown api"})
         # 静态文件
@@ -113,6 +169,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         m = None
+        if not self._authed():
+            return self._json(401, {"error": "需要访问令牌（启动 Tutti 时控制台会显示）"})
+        if path == "/api/control":
+            return self._api_control()
+        if path == "/api/control/heartbeat":
+            ok, view = remote.heartbeat(self._client_id())
+            return self._json(200, {"ok": ok, "control": view})
+        # 写操作需要控制权：空闲自动接管；他人持有时 423，由前端引导抢夺
+        deny = self._deny_control()
+        if deny:
+            return deny
         if path == "/api/tasks":
             return self._api_create_task()
         m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry)$", path)
@@ -137,6 +204,14 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             ok, err = store.delete_run(m.group(1))
             return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
+        if path == "/api/runs/delete":
+            n, skipped, err = store.delete_runs(self._body().get("ids") or [])
+            if err and not n:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True, "count": n, "skipped": skipped, "message": err})
+        if path == "/api/runs/clear":
+            n, skipped = store.clear_runs()
+            return self._json(200, {"ok": True, "count": n, "skipped": skipped})
         if path == "/api/orchestration":
             return self._api_set_preference()
         if path == "/api/catalog/reset":
@@ -147,16 +222,35 @@ class Handler(BaseHTTPRequestHandler):
             catalog.load(force=True)
             manager.detect_all(force=True)
             return self._json(200, {"ok": True})
-        m = re.match(r"^/api/models/provider/delete$", path)
-        if m:
+        if path == "/api/catalog/check-updates":
+            # 进入智能体目录页时前端自动调用；后台逐条查远端版本，立即返回
+            force = bool(self._body().get("force"))
+            n = manager.check_updates_async(force=force)
+            return self._json(200, {"ok": True, "count": n,
+                                    "checking": manager.updates_checking()})
+        if path == "/api/models/provider/delete":
             from core import modelhub
             body = self._body()
-            modelhub.delete_provider(body.get("id") or "")
-            return self._json(200, {"ok": True})
+            n, err = modelhub.providers_op([body.get("id") or ""], "delete")
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True, "count": n})
+        if path == "/api/models/provider-op":
+            from core import modelhub
+            body = self._body()
+            n, err = modelhub.providers_op(body.get("ids") or [], body.get("op") or "")
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True, "count": n})
         if path == "/api/models/provider":
             from core import modelhub
             err = modelhub.upsert_provider(self._body())
             return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
+        if path == "/api/models/import":
+            from core import modelhub
+            body = self._body()
+            ids = body.get("sources")
+            res = modelhub.import_sources(ids if isinstance(ids, list) else None)
+            if res["imported"]:
+                modelhub.refresh_all_async()  # 导入后自动拉取各供应商可用模型
+                res["message"] += "；正在后台获取模型列表…"
+            return self._json(200, dict(res, ok=res["imported"] > 0))
         if path == "/api/models/import-ccswitch":
             from core import modelhub
             n, msg = modelhub.import_ccswitch()
@@ -176,15 +270,36 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/models/model-op":
             from core import modelhub
             body = self._body()
-            err = modelhub.model_op(body.get("provider_id") or "",
-                                    body.get("name") or "", body.get("op") or "")
+            pid = body.get("provider_id") or ""
+            op = body.get("op") or ""
+            names = body.get("names")
+            if names is not None:                     # 批量：names 数组
+                n, err = modelhub.model_ops(pid, names, op)
+                return self._json(400, {"error": err}) if err else self._json(
+                    200, {"ok": True, "count": n})
+            err = modelhub.model_op(pid, body.get("name") or "", op)
             return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
+        if path == "/api/models/reorder":
+            from core import modelhub
+            body = self._body()
+            err = modelhub.reorder_models(body.get("provider_id") or "",
+                                          body.get("names") or [])
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
+        if path == "/api/models/test-provider":
+            from core import modelhub
+            return self._json(200, modelhub.test_provider(self._body().get("id") or ""))
+        if path == "/api/models/test-model":
+            from core import modelhub
+            body = self._body()
+            return self._json(200, modelhub.test_model(body.get("provider_id") or "",
+                                                       body.get("name") or ""))
         if path == "/api/models/binding":
             from core import modelhub
             body = self._body()
             b = modelhub.set_binding(body.get("agent_id") or "",
                                      provider_id=body.get("provider_id"),
                                      model=body.get("model"),
+                                     models=body.get("models"),
                                      difficulty_routing=body.get("difficulty_routing"))
             return self._json(200, {"ok": True, "binding": b})
         m = re.match(r"^/api/catalog/([^/]+)/(install|upgrade|smoke)$", path)
@@ -198,6 +313,12 @@ class Handler(BaseHTTPRequestHandler):
                                    entry_id=entry["id"], op=op)
             jobs.enqueue({"kind": "mgmt", "run_id": run["id"], "entry_id": entry["id"], "op": op})
             return self._json(200, {"run_id": run["id"]})
+        m = re.match(r"^/api/catalog/([^/]+)/check-update$", path)
+        if m:
+            entry = catalog.by_id(m.group(1))
+            if not entry:
+                return self._json(404, {"error": "catalog 中无此条目"})
+            return self._json(200, manager.check_update(entry))
         m = re.match(r"^/api/catalog/([^/]+)/model$", path)
         if m:
             entry = catalog.by_id(m.group(1))
@@ -209,14 +330,43 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(404, {"error": "unknown api"})
 
     # ------------------------------------------------------------ 业务
-    def _api_state(self):
-        agents = registry.effective_agents(catalog.load(), manager.detect_all())
-        return self._json(200, {
-            "agents": agents,
-            "tasks": store.list_tasks(30, archived=False),
-            "archived_tasks": store.list_tasks(30, archived=True),
-            "runs": store.list_runs(40),
-        })
+    def _api_control(self):
+        body = self._body()
+        action = body.get("action") or ""
+        if action == "acquire":
+            ok, view = remote.acquire(self._client_id(), self._client_name(),
+                                      force=bool(body.get("force")))
+            if not ok:
+                return self._json(423, {"error": "「%s」正在控制" % view.get("holder", "其他设备"),
+                                        "control": view})
+            return self._json(200, {"ok": True, "control": view})
+        if action == "release":
+            return self._json(200, {"ok": True, "control": remote.release(self._client_id())})
+        return self._json(400, {"error": "action 必须是 acquire 或 release"})
+
+    def _api_events(self):
+        """SSE：状态（含控制权）变化即推送，前端省掉 2s 轮询。"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        cid = self._client_id()
+        last = ""
+        n = 0
+        try:
+            while True:
+                payload = json.dumps(_state_payload(cid), ensure_ascii=False)
+                if payload != last:
+                    self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
+                    self.wfile.flush()
+                    last = payload
+                n += 1
+                if n % 20 == 0:  # ~16s 一次注释行：探活兼防中间层断开空闲连接
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                time.sleep(0.8)
+        except Exception:
+            pass  # 客户端断开是常态，线程随进程退出
 
     def _api_create_task(self):
         body = self._body()
@@ -234,8 +384,8 @@ class Handler(BaseHTTPRequestHandler):
         agent_id = body.get("agent_id")
         if not agent_id:
             return self._json(400, {"error": "agent_id 必填"})
-        pref = registry.set_preference(agent_id, enabled=body.get("enabled"),
-                                       model=body.get("model"))
+        # 模型链已并入「CLI 绑定」（modelhub bindings），这里只管参与编排开关
+        pref = registry.set_preference(agent_id, enabled=body.get("enabled"))
         return self._json(200, {"ok": True, "preference": pref})
 
     # ------------------------------------------------------------ 静态
@@ -247,8 +397,25 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, p.read_bytes(), MIME.get(suffix, "application/octet-stream"))
 
 
+def _state_payload(client_id=""):
+    agents = registry.effective_agents(catalog.load(), manager.detect_all())
+    ctrl = remote.control_view(client_id)
+    if ctrl.get("mode") == "held":
+        # 倒计时按 10s 桶化：否则每秒 -1 都会让 SSE 判定"状态变了"而全量推送
+        ctrl["expires_in"] = max(10, (ctrl["expires_in"] // 10) * 10)
+    return {
+        "agents": agents,
+        "tasks": store.list_tasks(30, archived=False),
+        "archived_tasks": store.list_tasks(30, archived=True),
+        "runs": store.list_runs(40),
+        "control": ctrl,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="Tutti 多智能体编排台")
+    parser.add_argument("--host", default="0.0.0.0",
+                        help="监听地址；0.0.0.0 允许手机/局域网访问（默认），127.0.0.1 仅本机")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
@@ -256,13 +423,27 @@ def main():
     paths.ensure_dirs()
     catalog.load()
     store.load_all()
+    from core import modelhub
+    modelhub.migrate_orch_models()  # 旧「编排模型」偏好并入 CLI 绑定（幂等，带备份）
     jobs.start_worker()
+    tok = remote.token()
 
-    httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    url = "http://127.0.0.1:%d" % args.port
-    print("[Tutti] http://127.0.0.1:%d  （Ctrl+C 退出）" % args.port)
+    global PORT
+    PORT = args.port
+    httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+    print("[Tutti] 本机     http://127.0.0.1:%d" % args.port)
+    if args.host != "127.0.0.1":
+        lan = remote.lan_ip()
+        if lan:
+            print("[Tutti] 局域网   http://%s:%d/?token=%s   ← 手机同一 WiFi 直接打开" % (lan, args.port, tok))
+        ts = remote.tailscale_ip()
+        if ts:
+            print("[Tutti] Tailscale http://%s:%d/?token=%s   ← 外网随时随地访问" % (ts, args.port, tok))
+        else:
+            print("[Tutti] （未检测到 Tailscale；安装后重启本服务即可获得外网地址）")
+        print("[Tutti] 远程访问受令牌保护；手机打开一次带 token 的地址后会记住。")
     if not args.no_browser:
-        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        threading.Timer(1.0, lambda: webbrowser.open("http://127.0.0.1:%d" % args.port)).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
