@@ -139,6 +139,45 @@ class TestMocksDeterministic(BaseTest):
         self.assertTrue(r2["scores"]["情节"] >= 7.0)    # 第 2 轮达标
 
 
+class TestTaskArchiveDelete(BaseTest):
+    def runTest(self):
+        from app.core import store
+        wd = str(self.workdir)
+        t1 = store.create_task({"type": "code", "goal": "任务一", "workdir": wd})
+        t2 = store.create_task({"type": "novel", "goal": "任务二", "workdir": wd})
+        r1 = store.create_run("orchestration", t1["title"], task_id=t1["id"])
+        r2 = store.create_run("orchestration", t2["title"], task_id=t2["id"])
+        store.update_run(r1["id"], status="done")   # 新建运行默认 queued，不可删
+        store.update_run(r2["id"], status="done")
+
+        # 归档：默认列表隐藏、归档列表可见、可恢复
+        ok, err = store.archive_task(t1["id"], True)
+        self.assertTrue(ok, err)
+        self.assertEqual([t["id"] for t in store.list_tasks(archived=False)], [t2["id"]])
+        self.assertEqual([t["id"] for t in store.list_tasks(archived=True)], [t1["id"]])
+        ok, _ = store.archive_task(t1["id"], False)
+        self.assertTrue(ok)
+        self.assertEqual(len(store.list_tasks(archived=False)), 2)
+
+        # 删除：任务 + 关联运行（内存与磁盘目录）一并清除
+        ok, err = store.delete_task(t2["id"])
+        self.assertTrue(ok, err)
+        self.assertIsNone(store.get_task(t2["id"]))
+        self.assertIsNone(store.get_run(r2["id"]))
+        self.assertFalse((self._paths.RUNS_DIR / r2["id"]).exists())
+        self.assertEqual([r["id"] for r in store.list_runs(10)], [r1["id"]])
+
+        # 防护：运行中的任务不能删除/归档；非法 ID 拒绝
+        store.update_run(r1["id"], status="running")
+        ok, err = store.delete_task(t1["id"])
+        self.assertFalse(ok)
+        self.assertIn("取消", err)
+        ok, _ = store.archive_task(t1["id"], True)
+        self.assertFalse(ok)
+        ok, _ = store.delete_task("../escape")
+        self.assertFalse(ok)
+
+
 if __name__ == "__main__":
     import unittest as _u
     _u.main()

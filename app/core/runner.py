@@ -228,19 +228,26 @@ def _codex_provider_args(cp):
             "-c", 'model_providers.%s.wire_api="%s"' % (name, cp.get("wire_api", "responses"))]
 
 
-def run_agent(agent, prompt, workdir=None, readonly=True,
-              timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None):
-    """执行一次智能体调用，返回统一结构
-    {ok, text, json, cost_usd, tokens, error, raw}。
-    agent 来自 registry.effective_agents()；resume 为已有会话 id
-    （codex: exec resume；claude: --resume），仅真实智能体生效。
-    """
-    kind = agent.get("kind", "generic")
-    env = dict(agent.get("env") or {})
+def _model_flag(kind, model):
+    if kind in ("codex", "qwen"):
+        return ["-m", model]
+    return ["--model", model]  # claude / opencode / aider
+
+
+_TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
+              "unavailable", "overloaded", "rate limit", "timeout", "timed out")
+
+
+def _transient_error(err):
+    err = (err or "").lower()
+    return any(k in err for k in _TRANSIENT)
+
+
+def _build_call(agent, kind, sid, readonly, model, prompt):
+    """构建一次 CLI 调用的 (argv, stdin_text, prompt)。model 可为 None=CLI 默认。"""
+    env = {}
     argv = None
     stdin_text = None
-    sid = (resume or "").strip() if agent.get("mode") == "real" else ""
-
     if kind == "codex":
         cp = agent.get("codex_provider")
         if sid:
@@ -248,8 +255,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             argv = resolve_command(agent["command"]) + [
                 "exec", "resume", sid, "-",
                 "--skip-git-repo-check", "--json"]
-            if agent.get("model"):
-                argv += ["-m", agent["model"]]
+            if model:
+                argv += ["-m", model]
             argv += (["-c", 'sandbox_mode="read-only"'] if readonly else ["--full-auto"])
             if cp:
                 argv += _codex_provider_args(cp)
@@ -257,8 +264,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             argv = resolve_command(agent["command"]) + [
                 "exec", "--skip-git-repo-check", "--json",
                 "-s", "read-only" if readonly else "workspace-write"]
-            if agent.get("model"):
-                argv += ["-m", agent["model"]]
+            if model:
+                argv += ["-m", model]
             if cp:
                 argv += _codex_provider_args(cp)
         stdin_text = prompt
@@ -266,12 +273,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         argv = resolve_command(agent["command"]) + ["-p", "--output-format", "json"]
         if sid:
             argv += ["--resume", sid]
-        if agent.get("model"):
-            argv += ["--model", agent["model"]]
-        bash = find_git_bash()
-        if bash:
-            env.setdefault("CLAUDE_CODE_GIT_BASH_PATH", bash)
-        env.setdefault("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "16000")
+        if model:
+            argv += ["--model", model]
         if readonly:
             # 实测本机自定义网关在 -p 模式下工具续接会丢最终结果（用工具必空）。
             # 评审/规划所需的上下文已内嵌在提示词中，显式禁用工具最稳。
@@ -281,56 +284,87 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         stdin_text = prompt
     elif kind == "opencode":
         argv = resolve_command(agent["command"]) + ["run"]
-        if agent.get("model"):
-            argv += ["--model", agent["model"]]
+        if model:
+            argv += ["--model", model]
         stdin_text = prompt  # 版本差异待装后验证
     elif kind == "qwen":  # gemini-cli 系：无参数且 stdin 有内容时读 stdin
         argv = resolve_command(agent["command"])
-        if agent.get("model"):
-            argv += ["-m", agent["model"]]
+        if model:
+            argv += ["-m", model]
         stdin_text = prompt
     elif kind == "aider":
         argv = resolve_command(agent["command"]) + [
             "--yes-always", "--no-auto-commits", "--no-check-update", "--message", prompt]
-        if agent.get("model"):
-            argv += ["--model", agent["model"]]
+        if model:
+            argv += ["--model", model]
     else:  # generic：模板把 {prompt} 嵌进参数（注意 cmd 行长度限制）
         tmpl = agent.get("argv_template") or ["-p", "{prompt}"]
         argv = resolve_command(agent["command"]) + [str(a).replace("{prompt}", prompt) for a in tmpl]
+    return argv, stdin_text, prompt
+
+
+def run_agent(agent, prompt, workdir=None, readonly=True,
+              timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None):
+    """执行一次智能体调用，返回统一结构
+    {ok, text, json, cost_usd, tokens, error, raw}。
+    agent 来自 registry.effective_agents()；resume 为已有会话 id
+    （codex: exec resume；claude: --resume），仅真实智能体生效。
+    """
+    kind = agent.get("kind", "generic")
+    env = dict(agent.get("env") or {})
+    if kind == "claude":
+        bash = find_git_bash()
+        if bash:
+            env.setdefault("CLAUDE_CODE_GIT_BASH_PATH", bash)
+        env.setdefault("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "16000")
+    sid = (resume or "").strip() if agent.get("mode") == "real" else ""
+
+    # 模型降级链：主模型 + 优先级备选（最多 3 个），瞬态错误自动换下一个
+    base_model = agent.get("model")
+    fb = [m for m in (agent.get("model_fallbacks") or []) if m and m != base_model]
+    models_to_try = ([base_model] if base_model else []) + fb
+    models_to_try = (models_to_try or [None])[:3]
 
     out = None
-    for attempt in range(2):  # claude 偶发空响应（0 token）自动重试一次
-        res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
-                          timeout=timeout, cancel_event=cancel_event, log_path=log_path)
-        out = {"ok": res["ok"], "text": "", "json": None, "cost_usd": 0.0,
-               "tokens": 0, "error": "", "raw": res, "kind": kind}
-        if not res["ok"]:
-            out["error"] = (("超时" if res["timed_out"] else "取消" if res["cancelled"]
-                             else "退出码 %s" % res["exit_code"])
-                            + ("；stderr: " + res["stderr"][-500:] if res["stderr"] else ""))
+    for mi, model in enumerate(models_to_try):
+        argv, stdin_text, prompt_eff = _build_call(agent, kind, sid, readonly, model, prompt)
+        for attempt in range(2):  # claude 偶发空响应（0 token）自动重试一次
+            res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
+                              timeout=timeout, cancel_event=cancel_event, log_path=log_path)
+            out = {"ok": res["ok"], "text": "", "json": None, "cost_usd": 0.0,
+                   "tokens": 0, "error": "", "raw": res, "kind": kind, "model": model}
+            if not res["ok"]:
+                out["error"] = (("超时" if res["timed_out"] else "取消" if res["cancelled"]
+                                 else "退出码 %s" % res["exit_code"])
+                                + ("；stderr: " + res["stderr"][-500:] if res["stderr"] else ""))
+                break
+            if kind == "codex":
+                out["text"], out["tokens"] = _parse_codex_jsonl(res["stdout"])
+                if not out["text"]:  # 事件流解析失败时退化为取 stdout 尾部
+                    out["text"] = res["stdout"][-2000:]
+            elif kind == "claude":
+                parsed = _parse_claude_json(res["stdout"])
+                if parsed is None:
+                    out["ok"] = False
+                    out["error"] = "claude 输出无法解析为 JSON；stdout 尾部: " + res["stdout"][-500:]
+                    break
+                out["text"] = parsed["text"]
+                out["cost_usd"] = parsed["cost_usd"]
+                out["tokens"] = parsed["tokens"]
+                if parsed["is_error"]:
+                    out["ok"] = False
+                    out["error"] = "claude 返回 is_error: " + parsed["text"][:500]
+                    break
+                if not out["text"] and attempt == 0:
+                    continue  # 空响应，同模型重试
+            else:
+                out["text"] = res["stdout"].strip()
+            break
+        if out["ok"] or mi == len(models_to_try) - 1:
             return out
-        if kind == "codex":
-            out["text"], out["tokens"] = _parse_codex_jsonl(res["stdout"])
-            if not out["text"]:  # 事件流解析失败时退化为取 stdout 尾部
-                out["text"] = res["stdout"][-2000:]
-        elif kind == "claude":
-            parsed = _parse_claude_json(res["stdout"])
-            if parsed is None:
-                out["ok"] = False
-                out["error"] = "claude 输出无法解析为 JSON；stdout 尾部: " + res["stdout"][-500:]
-                return out
-            out["text"] = parsed["text"]
-            out["cost_usd"] = parsed["cost_usd"]
-            out["tokens"] = parsed["tokens"]
-            if parsed["is_error"]:
-                out["ok"] = False
-                out["error"] = "claude 返回 is_error: " + parsed["text"][:500]
-                return out
-            if not out["text"] and attempt == 0:
-                continue  # 空响应，重试
-        else:
-            out["text"] = res["stdout"].strip()
-        return out
+        if not _transient_error(out.get("error")):
+            return out  # 非瞬态（取消/超时/解析失败）不降级
+        # 瞬态错误 → 换下一个候选模型
     return out
 
 

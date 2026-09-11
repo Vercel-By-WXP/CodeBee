@@ -114,6 +114,14 @@ class Handler(BaseHTTPRequestHandler):
         m = None
         if path == "/api/tasks":
             return self._api_create_task()
+        m = re.match(r"^/api/tasks/([^/]+)/(archive|delete)$", path)
+        if m:
+            if m.group(2) == "archive":
+                body = self._body()
+                ok, err = store.archive_task(m.group(1), bool(body.get("archived", True)))
+            else:
+                ok, err = store.delete_task(m.group(1))
+            return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
         m = re.match(r"^/api/runs/([^/]+)/cancel$", path)
         if m:
             ok = jobs.cancel(m.group(1))
@@ -180,7 +188,8 @@ class Handler(BaseHTTPRequestHandler):
         agents = registry.effective_agents(catalog.load(), manager.detect_all())
         return self._json(200, {
             "agents": agents,
-            "tasks": store.list_tasks(30),
+            "tasks": store.list_tasks(30, archived=False),
+            "archived_tasks": store.list_tasks(30, archived=True),
             "runs": store.list_runs(40),
         })
 

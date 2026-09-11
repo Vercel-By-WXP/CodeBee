@@ -130,10 +130,19 @@ def get_task(task_id):
     return None
 
 
-def list_tasks(limit=100):
+def list_tasks(limit=100, archived=None):
+    """archived=None 返回全部；False 仅未归档；True 仅已归档。按 id（含时间戳）倒序。"""
     with LOCK:
         ids = sorted(_TASKS.keys(), reverse=True)
-        return [_TASKS[i] for i in ids[:limit]]
+        out = []
+        for i in ids:
+            t = _TASKS[i]
+            if archived is not None and bool(t.get("archived")) != archived:
+                continue
+            out.append(t)
+            if len(out) >= limit:
+                break
+        return out
 
 
 def load_all():
@@ -212,6 +221,51 @@ def delete_run(run_id):
             return False, "运行中的记录不能删除，请先取消"
         del _RUNS[run_id]
     shutil.rmtree(paths.RUNS_DIR / run_id, ignore_errors=True)
+    return True, ""
+
+
+def archive_task(task_id, archived=True):
+    """归档/取消归档：归档后从默认列表与侧栏隐藏，数据保留，可随时恢复。"""
+    if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)):
+        return False, "非法的任务 ID"
+    with LOCK:
+        task = _TASKS.get(task_id)
+        if not task:
+            return False, "任务不存在"
+        if archived:
+            if task.get("status") in ("queued", "running"):
+                return False, "运行中的任务不能归档，请先取消"
+            for r in _RUNS.values():
+                if r.get("task_id") == task_id and r.get("status") in ("queued", "running"):
+                    return False, "有运行中的记录，请先取消"
+        task["archived"] = bool(archived)
+        _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
+    return True, ""
+
+
+def delete_task(task_id):
+    """删除任务及其全部运行记录（含日志与报告目录）。返回 (ok, 错误信息)。"""
+    if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)):
+        return False, "非法的任务 ID"
+    with LOCK:
+        task = _TASKS.get(task_id)
+        if not task:
+            return False, "任务不存在"
+        if task.get("status") in ("queued", "running"):
+            return False, "运行中的任务不能删除，请先取消"
+        run_ids = []
+        for rid, r in _RUNS.items():
+            if r.get("task_id") != task_id:
+                continue
+            if r.get("status") in ("queued", "running"):
+                return False, "有运行中的记录，请先取消"
+            run_ids.append(rid)
+        del _TASKS[task_id]
+        for rid in run_ids:
+            _RUNS.pop(rid, None)
+    for rid in run_ids:
+        shutil.rmtree(paths.RUNS_DIR / rid, ignore_errors=True)
+    (paths.TASKS_DIR / (task_id + ".json")).unlink(missing_ok=True)
     return True, ""
 
 

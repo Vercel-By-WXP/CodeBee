@@ -16,13 +16,24 @@ data/models.json 结构：
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
+import socket
 import sqlite3
 import threading
+import time
+import urllib.request
 
 from . import paths
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """禁用重定向：SSRF 防护的一部分。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "models.json"

@@ -2,7 +2,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", tab: "tasks", detailRunId: null, pollTimer: null };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: localStorage.getItem("orch.showArchived") === "1" };
 
 /* ---------------------------------------------------------- 工具 */
 async function api(path, opts) {
@@ -270,12 +270,39 @@ async function loadSessions() {
 
 function renderTaskList() {
   const tasks = (S.state && S.state.tasks) || [];
-  $("task-list").innerHTML = tasks.length ? tasks.map((t) =>
+  const archived = S.showArchived ? ((S.state && S.state.archived_tasks) || []) : [];
+  const row = (t) =>
     '<div class="item"><div class="t"><span class="name">' + esc(t.title) + "</span>" +
     '<span class="tag">' + (t.type === "code" ? "代码" : "小说") + "</span>" +
-    '<span class="time">' + esc(t.created_at) + "</span></div>" +
-    '<div class="desc">' + esc(t.goal) + "</div></div>"
-  ).join("") : '<div class="hint">暂无任务</div>';
+    (t.archived ? '<span class="tag">已归档</span>' : "") +
+    '<span class="time">' + esc(t.created_at) + "</span>" +
+    (t.archived
+      ? '<button class="ghost small" onclick="archiveTask(\'' + esc(t.id) + '\', false)">取消归档</button>'
+      : '<button class="ghost small" onclick="archiveTask(\'' + esc(t.id) + '\', true)">归档</button>') +
+    '<button class="danger small" onclick="deleteTask(\'' + esc(t.id) + '\')">删除</button></div>' +
+    '<div class="desc">' + esc(t.goal) + "</div></div>";
+  let html = tasks.length ? tasks.map((t) => row(t)).join("") : '<div class="hint">暂无任务</div>';
+  if (S.showArchived) {
+    html += "<h3>已归档</h3>" + (archived.length ? archived.map((t) => row(t)).join("") : '<div class="hint">没有已归档任务</div>');
+  }
+  $("task-list").innerHTML = html;
+}
+
+async function archiveTask(id, archived) {
+  try {
+    await api("/api/tasks/" + encodeURIComponent(id) + "/archive",
+      { method: "POST", body: JSON.stringify({ archived: !!archived }) });
+  } catch (e) { alert("操作失败：" + e.message); }
+  poll();
+}
+
+async function deleteTask(id) {
+  if (!confirm("删除该任务及其全部运行记录（含日志与报告）？不可恢复。")) return;
+  try {
+    await api("/api/tasks/" + encodeURIComponent(id) + "/delete", { method: "POST" });
+  } catch (e) { alert("删除失败：" + e.message); return; }
+  if (S.detailRunId) closeRun();
+  poll();
 }
 
 /* ---------------------------------------------------------- 运行列表 */
@@ -297,12 +324,14 @@ function renderSideTasks() {
   const box = $("side-tasks");
   if (!box) return;
   const runs = ((S.state && S.state.runs) || []).slice(0, 40);
-  const sig = JSON.stringify([runs.map((r) => [r.id, r.status, (r.steps || []).length]), S.detailRunId]);
+  const archivedIds = new Set((((S.state || {}).archived_tasks) || []).map((t) => t.id));
+  const sig = JSON.stringify([runs.map((r) => [r.id, r.status, (r.steps || []).length]), S.detailRunId, archivedIds.size]);
   if (sig === S.sideSig && box.children.length) return;
   S.sideSig = sig;
   const openKeys = new Set(Array.from(box.querySelectorAll("details.stask[open]")).map((d) => d.dataset.key));
   const groups = [], byKey = {};
   for (const r of runs) {
+    if (r.task_id && archivedIds.has(r.task_id)) continue;  // 已归档任务不上侧栏
     const key = r.task_id || r.id;
     if (!byKey[key]) {
       byKey[key] = { key, title: r.title || r.id, status: r.status, active: false, runIds: [], steps: [] };
@@ -529,6 +558,8 @@ function switchTab(name) {
 
 window.openRun = openRun;
 window.closeRun = closeRun;
+window.archiveTask = archiveTask;
+window.deleteTask = deleteTask;
 window.toggleLog = toggleLog;
 window.cancelRun = cancelRun;
 window.deleteRun = deleteRun;
@@ -554,6 +585,12 @@ document.addEventListener("DOMContentLoaded", () => {
   if (window.innerWidth < 900) document.body.classList.add("side-collapsed");
   applyTheme();
   $("btn-create").addEventListener("click", createTask);
+  $("chk-archived").addEventListener("change", () => {
+    S.showArchived = $("chk-archived").checked;
+    localStorage.setItem("orch.showArchived", S.showArchived ? "1" : "0");
+    renderTaskList();
+  });
+  $("chk-archived").checked = S.showArchived;
   $("f-resume-agent").addEventListener("change", loadSessions);
   $("f-workdir").value = localStorage.getItem("orch.workdir") || "";
   $("f-type").addEventListener("change", () => {
