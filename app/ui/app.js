@@ -104,7 +104,7 @@ function renderModels() {
   S.modelsSig = sig;
   const provs = S.providers || [];
   box.innerHTML = provs.length ? provs.map((p) => providerCard(p)).join("")
-    : '<div class="hint">暂无供应商——点「从 CCSwitch 导入」一键带入。</div>';
+    : '<div class="empty">暂无供应商——点「从 CCSwitch 导入」一键带入。</div>';
   const bindings = S.bindings || {};
   const targets = [["claude-code", "Claude Code"], ["codex-cli", "Codex CLI"]];
   bbox.innerHTML = targets.map(([id, label]) => {
@@ -113,26 +113,32 @@ function renderModels() {
       '<option value="' + esc(p.id) + '"' + (b.provider_id === p.id ? " selected" : "") + ">" +
       esc(p.name) + "（" + esc(p.protocol) + "）</option>").join("");
     return '<div class="card"><div class="head"><span class="name">' + esc(label) + '</span></div>' +
-      '<div class="model-row"><select id="bindprov-' + id + '">' + opts + '</select>' +
-      '<button class="ghost small" onclick="saveBinding(\'' + id + '\')">保存</button></div>' +
-      '<div class="model-row"><input id="bindmodel-' + id + '" placeholder="模型覆盖（可空=用供应商默认）" value="' + esc(b.model || "") + '">' +
+      '<div class="fields grid">' +
+      '<div class="field"><label>供应商</label><select id="bindprov-' + id + '">' + opts + '</select></div>' +
+      '<div class="field"><label>模型覆盖</label><input id="bindmodel-' + id + '" placeholder="留空=用供应商默认" value="' + esc(b.model || "") + '"></div>' +
       '</div>' +
-      '<div class="ops" style="margin-top:8px"><label class="toggle"><input type="checkbox" id="binddiff-' + id + '"' +
-      (b.difficulty_routing ? " checked" : "") + '> 按难度自动选模型（简单/困难）</label></div></div>';
+      '<div class="ops"><label class="toggle"><input type="checkbox" id="binddiff-' + id + '"' +
+      (b.difficulty_routing ? " checked" : "") + '> 按难度自动选模型（简单/困难）</label>' +
+      '<button class="ghost small" onclick="saveBinding(\'' + id + '\')">保存</button></div></div>';
   }).join("");
 }
 
 function providerCard(p) {
+  const fld = (id, label, val, ph, full) =>
+    '<div class="field' + (full ? " full" : "") + '"><label>' + label + '</label>' +
+    '<input id="' + id + '" value="' + esc(val) + '" placeholder="' + esc(ph) + '"></div>';
   return '<div class="card" id="pcard-' + esc(p.id) + '">' +
     '<div class="head"><span class="name">' + esc(p.name) + '</span><span class="tag">' + esc(p.protocol) + "</span>" +
     (p.source === "ccswitch" ? '<span class="tag">CCSwitch</span>' : "") + "</div>" +
-    '<div class="model-row"><input id="pname-' + esc(p.id) + '" value="' + esc(p.name) + '" placeholder="名称"></div>' +
-    '<div class="model-row"><input id="purl-' + esc(p.id) + '" value="' + esc(p.base_url) + '" placeholder="base_url"></div>' +
-    '<div class="model-row"><input id="pkey-' + esc(p.id) + '" value="" placeholder="密钥（' + esc(p.api_key || "未设置") + '，留空=不改）"></div>' +
-    '<div class="model-row"><input id="pmodel-' + esc(p.id) + '" value="' + esc(p.model || "") + '" placeholder="默认模型"></div>' +
-    '<div class="model-row"><input id="peasy-' + esc(p.id) + '" value="' + esc(p.model_easy || "") + '" placeholder="简单任务模型（难度路由）"></div>' +
-    '<div class="model-row"><input id="phard-' + esc(p.id) + '" value="' + esc(p.model_hard || "") + '" placeholder="困难任务模型（难度路由）"></div>' +
-    '<div class="ops" style="margin-top:8px"><button class="ghost small" onclick="saveProvider(\'' + esc(p.id) + '\')">保存</button>' +
+    '<div class="fields grid">' +
+    fld("pname-" + p.id, "名称", p.name, "名称") +
+    fld("pmodel-" + p.id, "默认模型", p.model || "", "默认模型") +
+    fld("purl-" + p.id, "API 地址", p.base_url, "base_url", true) +
+    fld("pkey-" + p.id, "密钥", "", "（" + (p.api_key || "未设置") + "，留空=不改）", true) +
+    fld("peasy-" + p.id, "简单任务模型", p.model_easy || "", "难度路由 · 简单") +
+    fld("phard-" + p.id, "困难任务模型", p.model_hard || "", "难度路由 · 困难") +
+    "</div>" +
+    '<div class="ops"><button class="ghost small" onclick="saveProvider(\'' + esc(p.id) + '\')">保存</button>' +
     '<button class="danger small" onclick="delProvider(\'' + esc(p.id) + '\')">删除</button></div></div>';
 }
 
@@ -272,7 +278,7 @@ function renderTaskList() {
   const tasks = (S.state && S.state.tasks) || [];
   const archived = S.showArchived ? ((S.state && S.state.archived_tasks) || []) : [];
   const row = (t) =>
-    '<div class="item"><div class="t"><span class="name">' + esc(t.title) + "</span>" +
+    '<div class="item" data-task-id="' + esc(t.id) + '"><div class="t"><span class="name">' + esc(t.title) + "</span>" +
     '<span class="tag">' + (t.type === "code" ? "代码" : "小说") + "</span>" +
     (t.archived ? '<span class="tag">已归档</span>' : "") +
     '<span class="time">' + esc(t.created_at) + "</span>" +
@@ -281,9 +287,9 @@ function renderTaskList() {
       : '<button class="ghost small" onclick="archiveTask(\'' + esc(t.id) + '\', true)">归档</button>') +
     '<button class="danger small" onclick="deleteTask(\'' + esc(t.id) + '\')">删除</button></div>' +
     '<div class="desc">' + esc(t.goal) + "</div></div>";
-  let html = tasks.length ? tasks.map((t) => row(t)).join("") : '<div class="hint">暂无任务</div>';
+  let html = tasks.length ? tasks.map((t) => row(t)).join("") : '<div class="empty">暂无任务——在上面输入一句话目标开始。</div>';
   if (S.showArchived) {
-    html += "<h3>已归档</h3>" + (archived.length ? archived.map((t) => row(t)).join("") : '<div class="hint">没有已归档任务</div>');
+    html += '<h3 class="sec-title">已归档</h3>' + (archived.length ? archived.map((t) => row(t)).join("") : '<div class="empty">没有已归档任务</div>');
   }
   $("task-list").innerHTML = html;
 }
@@ -305,6 +311,75 @@ async function deleteTask(id) {
   poll();
 }
 
+/* ---------------------------------------------------------- 右键菜单（归档/删除） */
+function archivedTaskIds() {
+  return new Set((((S.state || {}).archived_tasks) || []).map((t) => t.id));
+}
+
+let ctxItems = [];
+
+function openCtxMenu(x, y, items) {
+  const menu = $("ctx-menu");
+  if (!menu) return;
+  ctxItems = items;
+  menu.innerHTML = items.map((it, i) => it === "-"
+    ? '<div class="ctx-sep"></div>'
+    : '<div class="ctx-item' + (it.danger ? " danger" : "") + '" data-i="' + i + '">' + esc(it.label) + "</div>").join("");
+  menu.classList.remove("hidden");
+  const r = menu.getBoundingClientRect();
+  menu.style.left = Math.max(4, Math.min(x, window.innerWidth - r.width - 8)) + "px";
+  menu.style.top = Math.max(4, Math.min(y, window.innerHeight - r.height - 8)) + "px";
+  menu.onclick = (e) => {
+    const el = e.target.closest(".ctx-item");
+    if (!el) return;
+    const it = ctxItems[+el.dataset.i];
+    closeCtxMenu();
+    if (it && it.fn) it.fn();
+  };
+}
+
+function closeCtxMenu() {
+  const menu = $("ctx-menu");
+  if (menu) menu.classList.add("hidden");
+}
+
+function bindCtxMenus() {
+  // 侧栏任务树：右键任务 → 详情/归档/删除；管理类运行 → 详情/删除记录
+  $("side-tasks").addEventListener("contextmenu", (e) => {
+    const det = e.target.closest("details.stask");
+    if (!det) return;
+    e.preventDefault();
+    const taskId = det.dataset.task || "", runId = det.dataset.run || "";
+    const items = [];
+    if (runId) items.push({ label: "打开详情", fn: () => sideOpenRun(runId) });
+    if (taskId) {
+      items.push("-");
+      items.push({ label: archivedTaskIds().has(taskId) ? "取消归档" : "归档", fn: () => archiveTask(taskId, !archivedTaskIds().has(taskId)) });
+      items.push({ label: "删除任务", danger: true, fn: () => deleteTask(taskId) });
+    } else if (runId) {
+      items.push("-");
+      items.push({ label: "删除记录", danger: true, fn: () => deleteRun(runId) });
+    }
+    openCtxMenu(e.clientX, e.clientY, items);
+  });
+  // 最近任务列表：右键 → 归档/删除
+  $("task-list").addEventListener("contextmenu", (e) => {
+    const item = e.target.closest(".item");
+    if (!item || !item.dataset.taskId) return;
+    e.preventDefault();
+    const id = item.dataset.taskId;
+    const isArch = archivedTaskIds().has(id);
+    openCtxMenu(e.clientX, e.clientY, [
+      { label: isArch ? "取消归档" : "归档", fn: () => archiveTask(id, !isArch) },
+      { label: "删除任务", danger: true, fn: () => deleteTask(id) },
+    ]);
+  });
+  document.addEventListener("click", closeCtxMenu, true);
+  window.addEventListener("blur", closeCtxMenu);
+  window.addEventListener("scroll", closeCtxMenu, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeCtxMenu(); });
+}
+
 /* ---------------------------------------------------------- 运行列表 */
 function renderRunList() {
   if (S.detailRunId) return;
@@ -316,7 +391,7 @@ function renderRunList() {
     '<span class="time">' + esc(r.created_at) + "</span>" +
     '<button class="danger small" title="删除该记录" onclick="event.stopPropagation(); deleteRun(\'' + esc(r.id) + '\')">删除</button></div>' +
     '<div class="desc">' + esc(r.summary || r.error || (r.steps ? r.steps.length + " 个步骤" : "")) + "</div></div>"
-  ).join("") : '<div class="hint">暂无运行记录</div>';
+  ).join("") : '<div class="empty">暂无运行记录</div>';
 }
 
 /* 侧栏「任务」树：任务 → 各 CLI 步骤，点击步骤在右侧打开运行详情 */
@@ -324,7 +399,7 @@ function renderSideTasks() {
   const box = $("side-tasks");
   if (!box) return;
   const runs = ((S.state && S.state.runs) || []).slice(0, 40);
-  const archivedIds = new Set((((S.state || {}).archived_tasks) || []).map((t) => t.id));
+  const archivedIds = archivedTaskIds();
   const sig = JSON.stringify([runs.map((r) => [r.id, r.status, (r.steps || []).length]), S.detailRunId, archivedIds.size]);
   if (sig === S.sideSig && box.children.length) return;
   S.sideSig = sig;
@@ -334,7 +409,7 @@ function renderSideTasks() {
     if (r.task_id && archivedIds.has(r.task_id)) continue;  // 已归档任务不上侧栏
     const key = r.task_id || r.id;
     if (!byKey[key]) {
-      byKey[key] = { key, title: r.title || r.id, status: r.status, active: false, runIds: [], steps: [] };
+      byKey[key] = { key, taskId: r.task_id || "", title: r.title || r.id, status: r.status, active: false, runIds: [], steps: [] };
       groups.push(byKey[key]);
     }
     const g = byKey[key];
@@ -353,7 +428,7 @@ function renderSideTasks() {
     const more = g.steps.length > 8
       ? '<div class="stepx" onclick="sideOpenRun(\'' + esc(g.runIds[0]) + '\')"><span class="ssum">… 共 ' + g.steps.length + " 步，点击查看全部</span></div>" : "";
     const empty = items ? "" : '<div class="stepx" onclick="sideOpenRun(\'' + esc(g.runIds[0]) + '\')"><span class="ssum">暂无步骤，点击查看</span></div>';
-    return '<details class="stask" data-key="' + esc(g.key) + '"' + (isOpen ? " open" : "") + "><summary>" +
+    return '<details class="stask" data-key="' + esc(g.key) + '" data-task="' + esc(g.taskId || "") + '" data-run="' + esc(g.runIds[0] || "") + '"' + (isOpen ? " open" : "") + "><summary>" +
       '<span class="dot ' + esc(g.status) + '"></span><span class="t">' + esc(g.title) + "</span></summary>" + items + more + empty + "</details>";
   }).join("") : '<div class="side-empty">暂无任务</div>';
 }
@@ -397,11 +472,11 @@ async function renderRunDetail() {
   $("btn-cancel").classList.toggle("hidden", !active);
   $("btn-delete").classList.toggle("hidden", active);
   $("rd-meta").innerHTML =
-    "创建 " + esc(run.created_at) +
-    "　成本 $" + Number(run.cost_usd || 0).toFixed(3) +
-    "　tokens " + (run.tokens || 0) +
-    (run.mode ? "　模式 " + (run.mode === "auto" ? "智能" : "手动") : "") +
-    (run.error ? '　<span style="color:var(--bad)">' + esc(run.error.slice(0, 200)) + "</span>" : "");
+    '<span class="stat">创建 <b>' + esc(run.created_at) + "</b></span>" +
+    '<span class="stat">成本 <b>$' + Number(run.cost_usd || 0).toFixed(3) + "</b></span>" +
+    '<span class="stat">tokens <b>' + (run.tokens || 0) + "</b></span>" +
+    (run.mode ? '<span class="stat">模式 <b>' + (run.mode === "auto" ? "智能" : "手动") + "</b></span>" : "") +
+    (run.error ? '<span class="stat err">' + esc(run.error.slice(0, 200)) + "</span>" : "");
   renderPlan(run);
   $("rd-steps").innerHTML = (run.steps || []).map((s) =>
     '<div class="step" onclick="toggleLog(\'' + esc(run.id) + "', '" + esc(s.log) + '\')" title="' + esc(s.note || "") + '">' +
@@ -411,7 +486,7 @@ async function renderRunDetail() {
     '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
     '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
     statusChip(s.status) + "</div>"
-  ).join("") || '<div class="hint">尚无步骤</div>';
+  ).join("") || '<div class="empty">尚无步骤</div>';
   // 报告
   if (run.status === "done" || run.report) {
     const md = await fetch("/api/runs/" + encodeURIComponent(id) + "/report").then((r) => r.text());
@@ -429,13 +504,13 @@ function renderPlan(run) {
   if (!plan || !plan.steps || !plan.steps.length) { box.classList.add("hidden"); return; }
   const route = run.route || {};
   const routeHtml = Object.keys(route).length
-    ? '<div class="meta" style="margin-top:8px">路由依据：' +
+    ? '<div class="route">路由依据：' +
       Object.keys(route).map((k) => "<b>" + esc(k) + "</b> " + esc(route[k])).join("　|　") + "</div>"
     : "";
   box.classList.remove("hidden");
-  box.innerHTML = "<h3 style='margin-top:0'>编排计划 <span class='tag'>来源 " + esc(plan.source || "?") + "</span></h3>" +
+  box.innerHTML = '<h3 class="sec-title">编排计划 <span class="tag">来源 ' + esc(plan.source || "?") + "</span></h3>" +
     '<div class="steps">' + plan.steps.map((s, i) =>
-      '<div class="step" style="cursor:default"><span class="n">' + String(i + 1).padStart(2, "0") + "</span>" +
+      '<div class="step plan"><span class="n">' + String(i + 1).padStart(2, "0") + "</span>" +
       '<span class="role">' + esc(s.title || "") + "</span>" +
       '<span class="sum">' + esc(s.detail || "") + "</span></div>").join("") + "</div>" + routeHtml;
 }
@@ -494,12 +569,14 @@ function card(c) {
       ' onchange="toggleOrch(\'' + esc(c.id) + '\', this.checked)"> 参与编排</label>'
     : '<span class="tag">仅管理</span>';
   const modelBox = c.config_writable
-    ? '<div class="model-row"><input id="model-' + esc(c.id) + '" placeholder="默认模型（写入配置文件）" value="' + esc(c.model || "") + '">' +
-      '<button class="ghost small" onclick="saveModel(\'' + esc(c.id) + '\')">保存</button></div>'
+    ? '<div class="field"><label>默认模型（写入配置文件）</label><div class="input-row">' +
+      '<input id="model-' + esc(c.id) + '" value="' + esc(c.model || "") + '" placeholder="如 sonnet / gpt-5.5">' +
+      '<button class="ghost small" onclick="saveModel(\'' + esc(c.id) + '\')">保存</button></div></div>'
     : (c.model ? '<div class="facts">模型：<b>' + esc(c.model) + "</b></div>" : "");
   const orchModel = c.orch_kind
-    ? '<div class="model-row"><input id="orchmodel-' + esc(c.id) + '" placeholder="编排调用模型（如 gpt-5.5，留空用默认）" value="' + esc(c.orch_model || "") + '">' +
-      '<button class="ghost small" onclick="saveOrchModel(\'' + esc(c.id) + '\')">应用</button></div>'
+    ? '<div class="field"><label>编排调用模型</label><div class="input-row">' +
+      '<input id="orchmodel-' + esc(c.id) + '" value="' + esc(c.orch_model || "") + '" placeholder="如 gpt-5.5，留空用默认">' +
+      '<button class="ghost small" onclick="saveOrchModel(\'' + esc(c.id) + '\')">应用</button></div></div>'
     : "";
   const ops = [
     c.installed && c.orch_kind ? '<button class="ghost small" onclick="mgmt(\'' + esc(c.id) + '\', \'smoke\')">冒烟测试</button>' : "",
@@ -511,8 +588,8 @@ function card(c) {
     '<div class="head"><span class="name">' + esc(c.name) + "</span>" +
     (c.installed ? statusChip("done") : '<span class="tag">未安装</span>') + "</div>" +
     '<div class="note">' + esc(c.note || "") + "</div>" +
-    '<div class="facts">版本 <b>' + esc(c.version || "-") + "</b>　" +
-    "模型 <b>" + esc(c.model || "-") + "</b><br>" + esc(c.detail || c.config_path || "") + "</div>" +
+    '<div class="facts">版本 <b>' + esc(c.version || "-") + "</b>　模型 <b>" + esc(c.model || "-") + "</b>" +
+    ((c.detail || c.config_path) ? "<br>" + esc(c.detail || c.config_path) : "") + "</div>" +
     '<div class="ops">' + orchBox + ops + "</div>" + modelBox + orchModel + "</div>";
 }
 
@@ -582,6 +659,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-theme").addEventListener("click", toggleTheme);
   $("btn-menu").addEventListener("click", () => document.body.classList.toggle("side-collapsed"));
   $("btn-new-task").addEventListener("click", () => switchTab("tasks"));
+  bindCtxMenus();
   if (window.innerWidth < 900) document.body.classList.add("side-collapsed");
   applyTheme();
   $("btn-create").addEventListener("click", createTask);

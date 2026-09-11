@@ -65,7 +65,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/models":
                 from core import modelhub
                 return self._json(200, {"providers": modelhub.provider_view(),
-                                        "bindings": modelhub.bindings()})
+                                        "bindings": modelhub.bindings(),
+                                        "catalog": modelhub.models_view()})
             if path == "/api/catalog":
                 return self._json(200, {"catalog": manager.catalog_view()})
             if path == "/api/sessions":
@@ -153,7 +154,25 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/models/import-ccswitch":
             from core import modelhub
             n, msg = modelhub.import_ccswitch()
+            if n:
+                modelhub.refresh_all_async()  # 导入后自动拉取各供应商可用模型
+                msg += "；正在后台获取模型列表…"
             return self._json(200, {"ok": n > 0, "imported": n, "message": msg})
+        if path == "/api/models/refresh":
+            from core import modelhub
+            n, err = modelhub.refresh_models(self._body().get("id") or "")
+            return self._json(200, {"ok": bool(n), "count": n, "message": err})
+        if path == "/api/models/refresh-all":
+            from core import modelhub
+            n = modelhub.refresh_all_async()
+            return self._json(200, {"ok": True, "count": n,
+                                    "message": "后台刷新 %d 个供应商…" % n})
+        if path == "/api/models/model-op":
+            from core import modelhub
+            body = self._body()
+            err = modelhub.model_op(body.get("provider_id") or "",
+                                    body.get("name") or "", body.get("op") or "")
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
         if path == "/api/models/binding":
             from core import modelhub
             body = self._body()

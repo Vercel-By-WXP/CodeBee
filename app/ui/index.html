@@ -44,54 +44,66 @@
         <h2 class="hero">要完成什么？</h2>
         <p class="hint hero-sub">一句话目标即可 —— Tutti 自动拆解、智能路由、执行、验证并跨厂商评审。</p>
         <div class="form">
-          <div class="row">
-            <label>类型</label>
-            <select id="f-type">
-              <option value="code">代码（实现 → 验证 → 评审）</option>
-              <option value="novel">小说（草稿 → 多轮评审 → 发布门禁）</option>
-            </select>
+          <div class="grid-2">
+            <div class="field">
+              <label>类型</label>
+              <select id="f-type">
+                <option value="code">代码（实现 → 验证 → 评审）</option>
+                <option value="novel">小说（草稿 → 多轮评审 → 发布门禁）</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>继续会话</label>
+              <select id="f-resume-agent">
+                <option value="">不沿用（全新开始）</option>
+                <option value="codex-cli">Codex CLI 的会话</option>
+                <option value="claude-code">Claude Code 的会话</option>
+              </select>
+            </div>
           </div>
-          <div class="row"><label>目标</label><textarea id="f-goal" rows="3" placeholder="要完成什么，一句话即可" required></textarea></div>
-          <div class="row"><label>工作目录</label><input id="f-workdir" placeholder="绝对路径，例 E:\GoOut\my-project"></div>
-          <div class="row">
-            <label>继续会话</label>
-            <select id="f-resume-agent">
-              <option value="">不沿用（全新开始）</option>
-              <option value="codex-cli">Codex CLI 的会话</option>
-              <option value="claude-code">Claude Code 的会话</option>
-            </select>
-          </div>
-          <div class="row hidden" id="row-resume-session">
+          <div class="field"><label>目标</label><textarea id="f-goal" rows="3" placeholder="要完成什么，一句话即可" required></textarea></div>
+          <div class="field"><label>工作目录</label><input id="f-workdir" placeholder="绝对路径，例 E:\GoOut\my-project"></div>
+          <div class="field hidden" id="row-resume-session">
             <label>选择会话</label>
             <select id="f-resume-session"><option>（加载中…）</option></select>
           </div>
-          <div class="row"><label></label><button id="btn-create" class="primary">创建并运行 ↑</button>
-            <span id="create-msg" class="msg"></span></div>
+          <div class="form-actions">
+            <button id="btn-create" class="primary">创建并运行 ↑</button>
+            <span id="create-msg" class="msg"></span>
+          </div>
 
           <details id="f-advanced">
             <summary>高级选项（默认全智能，无需改动）</summary>
-            <div class="row"><label>上下文</label><textarea id="f-context" rows="2" placeholder="背景信息、约束、相关文件（可空）"></textarea></div>
-            <div class="row">
-              <label>编排模式</label>
-              <select id="f-mode">
-                <option value="auto">智能（推荐）：自动拆解 + 智能路由 + 失败自动修复/换将</option>
-                <option value="manual">手动：自行指定实现者与评审组</option>
-              </select>
-            </div>
-            <div class="row"><label>任务标题</label><input id="f-title" placeholder="可空，自动取目标首行"></div>
+            <div class="adv-body">
+              <div class="field"><label>上下文</label><textarea id="f-context" rows="2" placeholder="背景信息、约束、相关文件（可空）"></textarea></div>
+              <div class="grid-2">
+                <div class="field">
+                  <label>编排模式</label>
+                  <select id="f-mode">
+                    <option value="auto">智能（推荐）：自动拆解 + 智能路由 + 失败自动修复/换将</option>
+                    <option value="manual">手动：自行指定实现者与评审组</option>
+                  </select>
+                </div>
+                <div class="field"><label>任务标题</label><input id="f-title" placeholder="可空，自动取目标首行"></div>
+              </div>
 
-            <div id="f-code-only">
-              <div class="row"><label>验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）"></div>
-            </div>
-            <div id="f-novel-only" class="hidden">
-              <div class="row"><label>稿件文件</label><input id="f-manuscript" value="manuscript.md" placeholder="工作目录内的文件名"></div>
-              <div class="row"><label>评审轮数</label><input id="f-rounds" type="number" value="2" min="1" max="5"></div>
-              <div class="row"><label>发布阈值</label><input id="f-threshold" type="number" value="7.0" min="1" max="10" step="0.5"></div>
-            </div>
+              <div id="f-code-only">
+                <div class="field"><label>验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）"></div>
+              </div>
+              <div id="f-novel-only" class="hidden">
+                <div class="grid-3">
+                  <div class="field"><label>稿件文件</label><input id="f-manuscript" value="manuscript.md" placeholder="工作目录内的文件名"></div>
+                  <div class="field"><label>评审轮数</label><input id="f-rounds" type="number" value="2" min="1" max="5"></div>
+                  <div class="field"><label>发布阈值</label><input id="f-threshold" type="number" value="7.0" min="1" max="10" step="0.5"></div>
+                </div>
+              </div>
 
-            <div id="f-manual-only" class="hidden">
-              <div class="row"><label>实现者</label><select id="f-impl"></select></div>
-              <div id="critic-box" class="row"><label>评审组</label><div id="f-critics" class="chips"></div></div>
+              <div id="f-manual-only" class="hidden">
+                <div class="grid-2">
+                  <div class="field"><label>实现者</label><select id="f-impl"></select></div>
+                  <div class="field" id="critic-box"><label>评审组</label><div id="f-critics" class="chips"></div></div>
+                </div>
+              </div>
             </div>
           </details>
         </div>
@@ -108,7 +120,7 @@
     <!-- ================= 运行 ================= -->
     <section id="page-runs" class="page hidden">
       <div class="panel wide">
-        <h2>运行记录</h2>
+        <div class="panel-head"><h2>运行记录</h2></div>
         <div id="run-list" class="list"></div>
       </div>
       <div id="run-detail" class="panel wide hidden">
@@ -119,11 +131,11 @@
           <button id="btn-cancel" class="danger hidden">取消运行</button>
           <button id="btn-delete" class="danger">删除记录</button>
         </div>
-        <div id="rd-meta" class="meta"></div>
+        <div id="rd-meta" class="stats"></div>
         <div id="rd-plan" class="hidden"></div>
         <div id="rd-steps" class="steps"></div>
         <div id="rd-log" class="logbox hidden"><pre id="rd-log-text"></pre></div>
-        <h3>报告</h3>
+        <h3 class="sec-title">报告</h3>
         <div id="rd-report" class="report"></div>
       </div>
     </section>
@@ -133,17 +145,17 @@
       <div class="panel wide">
         <div class="panel-head">
           <h2>智能体目录</h2>
-          <div>
+          <div class="actions">
             <button id="btn-reload-catalog" class="ghost">重新加载 catalog</button>
             <button id="btn-reset-catalog" class="ghost">恢复默认 catalog</button>
           </div>
         </div>
         <p class="hint">启用「参与编排」后，该智能体会出现在任务表单与评审组中。安装命令不明的条目可直接编辑 <code>data/catalog.json</code> 后点重新加载。</p>
-        <h3>已安装</h3>
+        <h3 class="sec-title">已安装</h3>
         <div id="ag-installed" class="cards"></div>
-        <h3>可安装</h3>
+        <h3 class="sec-title">可安装</h3>
         <div id="ag-installable" class="cards"></div>
-        <h3>内置演示</h3>
+        <h3 class="sec-title">内置演示</h3>
         <div id="ag-mocks" class="cards"></div>
       </div>
     </section>
@@ -153,7 +165,7 @@
       <div class="panel wide">
         <div class="panel-head">
           <h2>模型供应商</h2>
-          <div>
+          <div class="actions">
             <button id="btn-import-ccswitch" class="primary">从 CCSwitch 导入</button>
             <button id="btn-add-provider" class="ghost">＋ 手动添加</button>
           </div>
@@ -161,7 +173,7 @@
         <p class="hint">密钥只保存在本机 <code>data/models.json</code>，列表中脱敏显示。按 CLI 绑定后，编排调用会注入对应供应商（不改写 CLI 全局配置）。</p>
         <div id="provider-list" class="cards"></div>
 
-        <h3>CLI 绑定（指定哪个 CLI 用哪个供应商/模型）</h3>
+        <h3 class="sec-title">CLI 绑定 · 指定哪个 CLI 用哪个供应商/模型</h3>
         <div id="binding-list" class="cards"></div>
       </div>
     </section>
@@ -169,6 +181,7 @@
   </div>
 </div>
 
+<div id="ctx-menu" class="ctx-menu hidden"></div>
 <script src="app.js"></script>
 </body>
 </html>
