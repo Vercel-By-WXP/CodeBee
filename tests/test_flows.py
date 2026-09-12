@@ -13,7 +13,7 @@ from base import BaseTest
 
 
 class TestFlows(BaseTest):
-    def runTest(self):
+    def test_flows_crud_and_task(self):
         from app.core import flows, store
         flows._FILE = self.data_dir / "flows.json"
 
@@ -171,6 +171,56 @@ class TestSettingsAndConcurrency(BaseTest):
             time.sleep(0.3)
         self.assertLessEqual(jobs.workers_info()["alive"], 1)
         jobs.configure(3)   # 恢复，避免影响其他测试
+
+
+class TestSerialPipeline(BaseTest):
+    """连载模式端到端（mock）：大纲 → 逐章起草/评审/修订 → 全局评审 → 合并成书。"""
+
+    def test_serial_e2e(self):
+        from app.core import pipeline, store
+        pipeline._agents = self.mock_agents
+        task = store.create_task({
+            "type": "serial_novel", "title": "连载测试", "mode": "auto",
+            "goal": "写一部短篇连载", "workdir": str(self.workdir),
+            "serial": {"chapters": 3, "words_per_chapter": 1200},
+            "threshold": 7.0,
+        })
+        self.assertEqual(task["serial"], {"chapters": 3, "words_per_chapter": 1200})
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        pipeline.execute_run(run["id"])
+        run = store.get_run(run["id"])
+        self.assertEqual(run["status"], "done", run.get("error"))
+        v = run["verdict"]
+        self.assertTrue(v["serial"])
+        self.assertEqual(v["chapters_used"], 3)
+        self.assertTrue(v["publishable"], v)
+        self.assertTrue(v["global_pass"])
+        # 三章文件 + 合并稿件都落盘
+        for i in (1, 2, 3):
+            self.assertTrue((self.workdir / ("chapter-%02d.md" % i)).is_file())
+        ms = (self.workdir / "manuscript.md")
+        self.assertTrue(ms.is_file())
+        self.assertIn("# ", ms.read_text(encoding="utf-8"))
+        # 步骤覆盖：outline + 每章 draft/critique + global + merge
+        roles = [s["role"] for s in run["steps"]]
+        self.assertEqual(roles[0], "outline")
+        for i in (1, 2, 3):
+            self.assertIn("draft-c%d" % i, roles)
+            self.assertIn("critique-c%d" % i, roles)
+        self.assertIn("global-critique", roles)
+        self.assertIn("merge", roles)
+        # mock 确定性：第 1 轮评审不达标触发修订（至少一章走了 revise）
+        self.assertTrue(any(r.startswith("revise-c") for r in roles), roles)
+        # 报告包含各章得分表
+        report = (run["id"] and (self._paths.RUNS_DIR / run["id"] / "report.md").read_text(encoding="utf-8"))
+        self.assertIn("各章得分", report)
+
+    def test_serial_validation_bounds(self):
+        from app.core import store
+        t = store.create_task({"type": "serial_novel", "goal": "g", "workdir": str(self.workdir),
+                               "serial": {"chapters": 99, "words_per_chapter": 100}})
+        self.assertEqual(t["serial"]["chapters"], 20)      # 上限钳制
+        self.assertEqual(t["serial"]["words_per_chapter"], 500)
 
 
 if __name__ == "__main__":

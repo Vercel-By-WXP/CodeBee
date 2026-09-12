@@ -57,13 +57,102 @@ def token() -> str:
 # 安全性：Cloudflare 边缘强制注入/覆盖 CF-Connecting-IP，外部无法伪造透传；
 # 而能直连本机端口的攻击者伪造转发头只会让自己从"本机豁免"变成"必须带令牌"。
 _TRUST_PROXY = False
-PUBLIC_URL = ""  # --public-url：扫码弹框优先展示的公网地址
+PUBLIC_URL = ""  # --public-url / 快速隧道：扫码弹框优先展示的公网地址
+PUBLIC_URL_KIND = ""  # quick（trycloudflare 临时，重启变）| fixed（自有域名）
 
 
 def set_trusted_proxy(on: bool, public_url: str = ""):
     global _TRUST_PROXY, PUBLIC_URL
     _TRUST_PROXY = bool(on)
-    PUBLIC_URL = str(public_url or "").rstrip("/")
+    if public_url:
+        PUBLIC_URL = str(public_url).rstrip("/")
+
+
+# ---------------------------------------------------------------- 快速隧道（trycloudflare）
+# 安装即公网：本机装了 cloudflared 就自动开一条 Cloudflare 快速隧道，
+# 拿到随机 *.trycloudflare.com 地址——零账号、零域名、零配置。
+# 安全强绑定：开隧道必然同时开启 trusted-proxy（否则回源 loopback 豁免=裸奔）。
+# 代价：每次重启地址会变（手机重新扫码即可）；要固定域名见 README 公网章节。
+_QUICK_PROC = None  # cloudflared 子进程，随主服务退出
+
+
+def cloudflared_exe() -> str:
+    import os
+    exe = shutil.which("cloudflared")
+    if exe:
+        return exe
+    guess = os.path.join(os.environ.get("ProgramFiles(x86)", ""), "cloudflared", "cloudflared.exe")
+    return guess if os.path.isfile(guess) else ""
+
+
+def has_local_creds() -> bool:
+    """~/.cloudflared 下有隧道凭据（用户已玩过 named tunnel）。
+
+    实测（2026-09）：本机存在凭据时 cloudflared 会把 quick tunnel 降级为
+    named 模式运行，随机域名恒 404；此时应走固定域名路径而不是 quick。
+    """
+    import os
+    d = os.path.join(os.path.expanduser("~"), ".cloudflared")
+    try:
+        return any(f.endswith(".json") for f in os.listdir(d))
+    except Exception:
+        return False
+
+
+def start_quick_tunnel(port: int, on_url) -> bool:
+    """后台起快速隧道，解析到随机 URL 后回调 on_url(url)（如在主线程打印+推送）。
+
+    返回 False 表示没装 cloudflared 或启动失败，调用方给出提示。
+    """
+    global _QUICK_PROC
+    exe = cloudflared_exe()
+    if not exe or not port:
+        return False
+    import subprocess
+    flags = 0x08000000 if hasattr(subprocess, "CREATE_NO_WINDOW") else 0  # CREATE_NO_WINDOW
+    try:
+        _QUICK_PROC = subprocess.Popen(
+            [exe, "tunnel", "--url", "http://localhost:%d" % port, "--no-autoupdate"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            creationflags=flags, text=True, encoding="utf-8", errors="replace")
+    except Exception:
+        _QUICK_PROC = None
+        return False
+    import threading
+
+    def _watch():
+        global PUBLIC_URL, PUBLIC_URL_KIND
+        deadline = time.time() + 25
+        found = False
+        try:
+            for line in _QUICK_PROC.stdout:
+                if not found:
+                    m = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line or "")
+                    if m:
+                        set_trusted_proxy(True)  # 公网暴露 ⇆ 强制反代感知，防回源豁免
+                        PUBLIC_URL = m.group(0)
+                        PUBLIC_URL_KIND = "quick"
+                        on_url(PUBLIC_URL)
+                        found = True
+                        # 不 break：必须继续消费日志，否则 cloudflared 写满管道
+                        # 缓冲后会整体阻塞，边缘连接注册无法完成（实测 530）
+                if time.time() > deadline and not found:
+                    break
+        except Exception:
+            pass
+
+    threading.Thread(target=_watch, daemon=True).start()
+    return True
+
+
+def stop_quick_tunnel():
+    global _QUICK_PROC
+    if _QUICK_PROC:
+        try:
+            _QUICK_PROC.terminate()
+        except Exception:
+            pass
+        _QUICK_PROC = None
 
 
 def effective_ip(socket_ip: str, forwarded: str) -> str:
@@ -200,8 +289,9 @@ def build_connect_urls(port: int) -> list:
     """手机扫码可用的连接地址，按优先级排序：公网域名 > Tailscale > 局域网。"""
     urls = []
     if PUBLIC_URL:
-        urls.append({"label": "公网 · 任何网络",
-                     "url": "%s/?token=%s" % (PUBLIC_URL, token())})
+        label = ("公网 · 任何网络（重启会变，连不上重新扫码）" if PUBLIC_URL_KIND == "quick"
+                 else "公网 · 任何网络")
+        urls.append({"label": label, "url": "%s/?token=%s" % (PUBLIC_URL, token())})
     ts = tailscale_ip()
     if ts:
         urls.append({"label": "Tailscale · 外网随时随地",

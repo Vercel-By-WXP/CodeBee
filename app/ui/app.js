@@ -45,6 +45,11 @@ function onTypeChange() {
     if (flow.threshold) $("f-threshold").value = flow.threshold;
     const saved = ($("f-rubric").value || "").trim();
     if (!saved && flow.rubric) $("f-rubric").value = flow.rubric.join(", ");
+    // 连载参数预填（用户可改/可清空 = 单稿件模式）
+    if (flow.serial) {
+      if (!$("f-chapters").value) $("f-chapters").value = flow.serial.chapters || "";
+      if (!$("f-words-per-ch").value) $("f-words-per-ch").value = flow.serial.words_per_chapter || "";
+    }
   }
   renderImplSelects();
 }
@@ -1139,6 +1144,11 @@ async function createTask() {
     payload.threshold = parseFloat($("f-threshold").value) || 7.0;
     const rubric = $("f-rubric").value.trim();
     if (rubric) payload.rubric = rubric.split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
+    const ch = parseInt($("f-chapters").value, 10);
+    if (ch >= 2) payload.serial = {
+      chapters: ch,
+      words_per_chapter: parseInt($("f-words-per-ch").value, 10) || 2500,
+    };
     const critics = Array.from($("f-critics").querySelectorAll("input:checked")).map((i) => i.value);
     if (critics.length) payload.critics = critics;
   }
@@ -1982,6 +1992,10 @@ function flowForm(fid) {
     "</div>" +
     '<div class="field"><label>起草提示词（可选，占位符 __FILE__ __GOAL__ __CONTEXT__）</label><textarea id="fl-draft" rows="3" placeholder="留空 = 用内置通用模板">' + esc(f && f.draft_prompt ? f.draft_prompt : "") + "</textarea></div>" +
     '<div class="field"><label>评审提示词（可选，占位符 __DIMKEYS__ __MANUSCRIPT__）</label><textarea id="fl-critique" rows="3" placeholder="留空 = 用内置通用模板">' + esc(f && f.critique_prompt ? f.critique_prompt : "") + "</textarea></div>" +
+    '<div class="grid-2">' +
+    '<div class="field"><label>连载模式：默认章节数（空 = 单稿件）</label><input id="fl-chapters" type="number" min="2" max="20" value="' + (f && f.serial ? f.serial.chapters : "") + '" placeholder="例：8"></div>' +
+    '<div class="field"><label>每章约字数</label><input id="fl-words-per-ch" type="number" min="500" max="8000" step="100" value="' + (f && f.serial ? f.serial.words_per_chapter : "") + '" placeholder="例：2500"></div>' +
+    "</div>" +
     "</div>";
   openModal(f ? "编辑流程：" + esc(f.name) : "新建自定义流程",
     '<div class="form">' +
@@ -2009,6 +2023,11 @@ async function saveFlow() {
     payload.rubric = $("fl-rubric").value.split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
     payload.draft_prompt = $("fl-draft").value.trim();
     payload.critique_prompt = $("fl-critique").value.trim();
+    const ch = parseInt($("fl-chapters").value, 10);
+    if (ch >= 2) payload.serial = {
+      chapters: ch,
+      words_per_chapter: parseInt($("fl-words-per-ch").value, 10) || 2500,
+    };
   }
   try {
     await api("/api/flows", { method: "POST", body: JSON.stringify(payload) });

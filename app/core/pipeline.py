@@ -663,6 +663,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         means = {}
         for rnd in (1, 2):
             text = _read_chapter(workdir, i)
+            cj_by_agent = {}
             for agent in critics:
                 role = "critique-c%d" % i
                 if agent.get("mode") == "mock":
@@ -682,15 +683,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     if not isinstance(cj, dict) or not isinstance(cj.get("scores"), dict):
                         cj = {"scores": {}, "issues": [],
                               "summary": "评审输出无法解析：%s" % (res.get("text") or "")[:150]}
+                cj_by_agent[agent["id"]] = cj
                 issues_all.extend({"chapter": i, **it} for it in (cj.get("issues") or [])[:6])
                 _check_cancel(ev)
             vals = {}
             for d in dims:
-                xs = []
-                for a in critics:
-                    sc = _last_critique_scores(run_id, role_prefix="critique-c%d" % i, agent_id=a["id"])
-                    if sc and d in sc:
-                        xs.append(float(sc[d]))
+                xs = [float(cj["scores"].get(d, 0)) for cj in cj_by_agent.values()
+                      if isinstance(cj.get("scores"), dict) and d in cj["scores"]]
                 vals[d] = round(sum(xs) / len(xs), 1) if xs else 0.0
             means = vals
             passed = bool(means) and all(v >= threshold_ch for v in means.values())
@@ -704,8 +703,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             crit_lines += ["- [%s] %s" % (x.get("dim", "?"), str(x.get("note", ""))[:140])
                            for x in majors]
             if impl.get("mode") == "mock":
+                step, log_abs = store.add_step(run_id, "revise-c%d" % i, impl["id"],
+                                               impl.get("label"))
                 _write_chapter(workdir, i, mocks.draft_manuscript(
                     {"title": ch["title"], "goal": task["goal"]}, 2))
+                time.sleep(0.15)
+                store.finish_step(run_id, step["n"], "done",
+                                  summary="（mock）已按评审意见修订第 %d 章" % i, duration_s=0.15)
             else:
                 prompt = (SERIAL_REVISE_PROMPT
                           .replace("__I__", str(i)).replace("__FILE__", ch_file)
@@ -809,13 +813,6 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                      summary="连载任务%s（%d 章约 %d 字，综合 %.1f）" % (
                          "达标" if publishable else "未达标", n, total_words, overall),
                      ended_at=_now())
-
-
-def _last_critique_scores(run_id, role_prefix, agent_id):
-    """取该 run 中指定角色+智能体最近一次 critique 步骤的评分（从摘要里拿不到，直接读不到 JSON，
-    这里退化为读 run.steps 中该角色最后一次的 summary 前缀均分不可行——改为由调用方维护。
-    保留接口以兼容历史调用。"""
-    return None
 
 
 def _run_content_review(run, task, agents, ev, stats, mode):
@@ -1039,7 +1036,31 @@ def execute_run(run_id):
         if engine == "code":
             _run_code(run, task, agents, ev, stats, mode)
         else:
-            _run_content_review(run, task, agents, ev, stats, mode)
+            route = {}
+            resume_ctx = _valid_resume(task, agents)
+            difficulty = task.get("difficulty") or (
+                "hard" if (task.get("threshold") or 7.0) >= 8.5 else
+                "easy" if (task.get("threshold") or 7.0) <= 6 else "default")
+            # 路由（与单稿件评审一致的规则）
+            if resume_ctx is not None:
+                impl = resume_ctx["agent"]
+                route["author"] = resume_ctx["note"]
+            elif mode == "manual":
+                impl, _ = _pick_implementer(agents, task.get("implementer"))
+                critics = _pick_critics_manual(agents, task)
+            else:
+                impl, route["author"] = router.pick(agents, "implement", task["type"], stats)
+                critics, route["critics"] = router.pick_critics(agents, task["type"], stats)
+            if impl is None:
+                store.update_run(run_id, status="failed", error="没有可用智能体", ended_at=_now())
+                return
+            if resume_ctx is not None and mode == "auto":
+                critics, route["critics"] = router.pick_critics(agents, task["type"], stats)
+            if task.get("serial"):
+                _run_serial_review(run, task, agents, ev, stats, mode,
+                                   critics, impl, route, resume_ctx, difficulty)
+            else:
+                _run_content_review(run, task, agents, ev, stats, mode)
     except Cancelled:
         store.update_run(run_id, status="cancelled", ended_at=_now())
     except Exception as e:

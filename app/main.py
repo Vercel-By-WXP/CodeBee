@@ -484,7 +484,10 @@ def main():
                         help="服务跑在 Cloudflare Tunnel/frp 等反代后面时开启："
                              "带转发头的回源请求必须带令牌，防止本机回源被当成 127.0.0.1 豁免")
     parser.add_argument("--public-url", default="",
-                        help="公网地址（如 https://tutti.example.com），扫码弹框优先展示")
+                        help="固定公网地址（如 https://tutti.example.com），扫码弹框优先展示")
+    parser.add_argument("--no-public-tunnel", action="store_true",
+                        help="不自动开 Cloudflare 快速隧道（默认：检测到 cloudflared 就自动开，"
+                             "获得随机 *.trycloudflare.com 公网地址，重启会变）")
     args = parser.parse_args()
 
     paths.ensure_dirs()
@@ -495,6 +498,7 @@ def main():
     modelhub.migrate_chains()       # 旧单供应商模型链升级为跨厂商 chain（幂等，带备份）
     jobs.start_worker()
     tok = remote.token()
+    import atexit
     import os as _os
     remote.set_trusted_proxy(args.trusted_proxy or _os.environ.get("TUTTI_TRUST_PROXY") == "1",
                              args.public_url)
@@ -502,10 +506,28 @@ def main():
     global PORT
     PORT = args.port
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+
+    def _announce_public(url):
+        print("[Tutti] 公网     %s/?token=%s" % (url, tok))
+        print("[Tutti]          ← 任何网络可访问；临时地址重启会变，手机重新扫码即可。"
+              "\n[Tutti]          要固定域名：cloudflared tunnel login 后参考 README 公网章节。")
+        store.bump_state()  # 扫码弹框下次打开即可拿到公网地址
+
     print("[Tutti] 本机     http://127.0.0.1:%d" % args.port)
     if remote.PUBLIC_URL:
         print("[Tutti] 公网     %s/?token=%s   ← 任何网络可访问（反代回源已强制校验令牌）"
               % (remote.PUBLIC_URL, tok))
+    elif not args.no_public_tunnel and args.host != "127.0.0.1":
+        if remote.has_local_creds():
+            print("[Tutti] （检测到已有 Cloudflare 隧道凭据：临时隧道在此类机器上不可用，"
+                  "请用 --public-url 配固定域名，或 start-public.bat）")
+        elif remote.start_quick_tunnel(args.port, _announce_public):
+            print("[Tutti] 正在建立 Cloudflare 快速隧道（公网地址几秒后打印；"
+                  "若打不开说明当前网络不支持，可改用固定域名或 Tailscale）…")
+        else:
+            print("[Tutti] （未检测到 cloudflared，跳过公网隧道；"
+                  "winget install Cloudflare.cloudflared 后重启即可获得公网地址）")
+    atexit.register(remote.stop_quick_tunnel)
     if args.host != "127.0.0.1":
         lan = remote.lan_ip()
         if lan:

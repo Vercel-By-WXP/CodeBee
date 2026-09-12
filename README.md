@@ -64,6 +64,19 @@ start-public.bat
   （零信任，给子域名再加一层邮箱验证码/SSO，免费档 50 用户）。
 - Cloudflare 免费版即可，无需公网 IP、无需备案（走 CF 海外边缘节点）、不开任何入站端口。
 
+### 公网访问（零配置临时隧道）
+
+装了 [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+（`winget install Cloudflare.cloudflared`）后，**默认启动即自动建立 Cloudflare 临时隧道**：
+控制台打印一个随机的 `https://xxx.trycloudflare.com` 公网地址，出门扫码即用，
+不需要账号、域名和任何配置。每次重启地址会变（手机重新扫码即可）。
+
+- 已有 Cloudflare 隧道凭据的机器（`~/.cloudflared` 下有 `*.json`）不会自动起临时隧道
+  （此类机器上临时隧道不可用），请走上面的固定域名路径。
+- 局限：临时隧道不保证可用性与速度（官方定位测试用途），部分网络环境可能打不开；
+  要稳定请用固定域名。`--no-public-tunnel` 可彻底关闭该行为。
+- 打开即自动强制 `--trusted-proxy`：公网暴露 ⇆ 反代回源令牌校验，二者永不分离。
+
 ## 极简输入 + 会话延续
 
 主表单只有 3 项：**类型、目标（一句话）、工作目录**（自动记住上次填写）。

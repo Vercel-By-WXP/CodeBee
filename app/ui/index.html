@@ -117,11 +117,15 @@
               </div>
               <div id="f-review-only" class="hidden">
                 <div class="grid-3">
-                  <div class="field"><label>稿件文件</label><input id="f-manuscript" value="manuscript.md" placeholder="工作目录内的文件名"></div>
+                  <div class="field"><label>稿件文件（合并稿）</label><input id="f-manuscript" value="manuscript.md" placeholder="工作目录内的文件名"></div>
                   <div class="field"><label>评审轮数</label><input id="f-rounds" type="number" value="2" min="1" max="5"></div>
-                  <div class="field"><label>发布阈值</label><input id="f-threshold" type="number" value="7.0" min="1" max="10" step="0.5"></div>
+                  <div class="field"><label>发布阈值（全书）</label><input id="f-threshold" type="number" value="7.0" min="1" max="10" step="0.5"></div>
                 </div>
                 <div class="field"><label>评审维度（逗号分隔，可自定义）</label><input id="f-rubric" placeholder="例：情节, 人物, 文笔"></div>
+                <div class="grid-2">
+                  <div class="field"><label>连载模式：章节数（空 = 单稿件一次成文）</label><input id="f-chapters" type="number" min="2" max="20" placeholder="例：8（逐章起草+评审+修订）"></div>
+                  <div class="field"><label>每章约字数</label><input id="f-words-per-ch" type="number" min="500" max="8000" step="100" placeholder="例：2500"></div>
+                </div>
               </div>
 
               <div id="f-manual-only" class="hidden">
