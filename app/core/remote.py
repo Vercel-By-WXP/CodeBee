@@ -49,10 +49,37 @@ def token() -> str:
         return _TOKEN
 
 
-def request_authed(client_ip: str, query_token: str, header_token: str) -> bool:
-    """本机豁免；远程请求必须带正确令牌。"""
-    if client_ip in ("127.0.0.1", "::1"):
-        return True
+# ---------------------------------------------------------------- 反向代理感知
+# Cloudflare Tunnel / frp 等都从本机回源：若不感知代理，公网请求一律被当成
+# 127.0.0.1 而豁免令牌——等于把控制台裸奔到公网。--trusted-proxy / TUTTI_TRUST_PROXY
+# 开启后：带转发头（CF-Connecting-IP / X-Forwarded-For）的请求视为经代理进来的
+# 远程请求，必须带令牌；不带转发头的 loopback 仍是真本机（浏览器直接开 localhost）。
+# 安全性：Cloudflare 边缘强制注入/覆盖 CF-Connecting-IP，外部无法伪造透传；
+# 而能直连本机端口的攻击者伪造转发头只会让自己从"本机豁免"变成"必须带令牌"。
+_TRUST_PROXY = False
+PUBLIC_URL = ""  # --public-url：扫码弹框优先展示的公网地址
+
+
+def set_trusted_proxy(on: bool, public_url: str = ""):
+    global _TRUST_PROXY, PUBLIC_URL
+    _TRUST_PROXY = bool(on)
+    PUBLIC_URL = str(public_url or "").rstrip("/")
+
+
+def effective_ip(socket_ip: str, forwarded: str) -> str:
+    """信任代理时从转发头取真实客户端 IP（第一跳），否则用 socket 地址。"""
+    if _TRUST_PROXY and forwarded:
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
+    return socket_ip
+
+
+def request_authed(client_ip: str, forwarded: str, query_token: str, header_token: str) -> bool:
+    """本机豁免；远程（或经代理回源）请求必须带正确令牌。"""
+    loopback = client_ip in ("127.0.0.1", "::1")
+    if loopback and not (_TRUST_PROXY and forwarded):
+        return True  # 真本机（trust_proxy 下不带转发头的 loopback 也算）
     tok = token()
     if not tok:
         return True
@@ -170,8 +197,11 @@ def _tailscale_ip_once() -> str:
 
 
 def build_connect_urls(port: int) -> list:
-    """手机扫码可用的连接地址，按优先级排序（Tailscale 可外网，优先展示）。"""
+    """手机扫码可用的连接地址，按优先级排序：公网域名 > Tailscale > 局域网。"""
     urls = []
+    if PUBLIC_URL:
+        urls.append({"label": "公网 · 任何网络",
+                     "url": "%s/?token=%s" % (PUBLIC_URL, token())})
     ts = tailscale_ip()
     if ts:
         urls.append({"label": "Tailscale · 外网随时随地",

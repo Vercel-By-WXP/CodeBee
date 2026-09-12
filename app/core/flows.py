@@ -32,6 +32,13 @@ BUILTIN_FLOWS = [
      "threshold": 7.0, "rounds": 2,
      "goal_hint": "写什么（题材 / 篇幅 / 风格）",
      "note": "起草 → 多维评审 → 修订循环 → 发布门禁"},
+    {"id": "serial_novel", "name": "连载小说", "icon": "📚", "engine": "review", "builtin": True,
+     "manuscript": "manuscript.md",
+     "rubric": ["情节", "人物", "文笔", "节奏", "吸引力"],
+     "threshold": 7.0, "rounds": 2,
+     "serial": {"chapters": 8, "words_per_chapter": 2500},
+     "goal_hint": "题材/受众/卖点 + 总字数（例：2 万字都市女频，可签约平台）",
+     "note": "大纲 → 逐章起草 → 每章多维评审修订 → 全局一致性评审 → 合并"},
     {"id": "doc", "name": "文档", "icon": "📝", "engine": "review", "builtin": True,
      "manuscript": "document.md",
      "rubric": ["准确性", "结构清晰", "表达流畅", "实用价值"],
@@ -129,6 +136,14 @@ def upsert_flow(payload):
             v = str(payload.get(key) or "").strip()
             if v:
                 flow[key] = v[:4000]
+        serial = payload.get("serial")
+        if isinstance(serial, dict) and serial.get("chapters"):
+            try:
+                ch = max(2, min(20, int(serial.get("chapters"))))
+                wpc = max(500, min(8000, int(serial.get("words_per_chapter") or 2500)))
+                flow["serial"] = {"chapters": ch, "words_per_chapter": wpc}
+            except Exception:
+                pass
     with _LOCK:
         flows = [f for f in (_custom() or []) if isinstance(f, dict) and f.get("id") != fid]
         flows.append(flow)

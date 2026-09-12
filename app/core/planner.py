@@ -38,6 +38,83 @@ __GOAL__
 ## 背景与上下文
 __CONTEXT__"""
 
+SERIAL_OUTLINE_PROMPT = """你是网文主编，熟悉签约平台（番茄/七猫/起点）的过稿标准。
+请为下面的小说目标设计一份连载大纲：共 __N__ 章，每章约 __W__ 字。
+只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
+{"book_title": "书名", "chapters": [{"title": "章节标题", "beats": "本章剧情要点（50-120字：事件/冲突/推进）", "hook": "章末钩子（一句话）"}]}
+硬性要求：
+- 第 1-3 章是黄金三章：第 1 章开篇即冲突+人设立住，第 3 章末留大钩子；
+- 每章有明确冲突与剧情推进，禁止水字数的日常流水账；
+- 结局必须闭环（完本感），主角有成长弧光；
+- 题材健康，无违规内容，符合平台签约调性。
+
+## 小说目标
+__GOAL__
+
+## 背景与上下文
+__CONTEXT__"""
+
+
+def _norm_chapters(data, n):
+    """规范化连载大纲输出；不合规返回 None。"""
+    if not isinstance(data, dict):
+        return None
+    chs = data.get("chapters")
+    if not isinstance(chs, list) or not chs:
+        return None
+    out = []
+    for c in chs[:n]:
+        if not isinstance(c, dict):
+            continue
+        title = str(c.get("title") or "").strip()
+        beats = str(c.get("beats") or "").strip()
+        if not title:
+            continue
+        out.append({"title": title[:60], "beats": beats[:500],
+                    "hook": str(c.get("hook") or "").strip()[:200]})
+    if len(out) < max(2, n // 2):   # 至少给出半数章的大纲，否则视为失败
+        return None
+    while len(out) < n:             # 缺的章补模板位
+        out.append({"title": "第 %d 章" % (len(out) + 1), "beats": "按全书目标推进剧情",
+                    "hook": ""})
+    return {"book_title": str(data.get("book_title") or "").strip()[:40], "chapters": out[:n]}
+
+
+def make_serial_outline(task, author_agent=None, workdir=None, ev=None):
+    """连载大纲：编排者 API 优先 → 作者 CLI → 模板。返回 {book_title, chapters:[{title,beats,hook}]}。"""
+    serial = task.get("serial") or {}
+    n = int(serial.get("chapters") or 8)
+    wpc = int(serial.get("words_per_chapter") or 2500)
+    prompt = (SERIAL_OUTLINE_PROMPT.replace("__N__", str(n)).replace("__W__", str(wpc))
+              .replace("__GOAL__", task["goal"])
+              .replace("__CONTEXT__", task.get("context") or "（无）"))
+
+    orch = _orchestrator()
+    if orch:
+        prov, model = orch
+        res = modelhub.chat(prov["id"], model, prompt)
+        data = runner.extract_json(res.get("text") or "") if res["ok"] else None
+        outline = _norm_chapters(data, n)
+        if outline:
+            outline["source"] = "编排者(%s · %s)" % (prov.get("name", prov["id"]), model)
+            return outline
+
+    if author_agent and author_agent.get("mode") == "real":
+        res = runner.run_agent(modelhub.bind_agent(author_agent), prompt,
+                               workdir=workdir or task.get("workdir"), readonly=True,
+                               timeout=300, cancel_event=ev)
+        outline = _norm_chapters(runner.extract_json(res.get("text") or ""), n)
+        if outline:
+            outline["source"] = "llm(%s)" % author_agent["id"]
+            return outline
+    elif author_agent and author_agent.get("mode") == "mock":
+        # mock：确定性模板大纲
+        pass
+
+    chapters = [{"title": "第 %d 章" % i, "beats": "按全书目标推进剧情，保持冲突与钩子",
+                 "hook": ""} for i in range(1, n + 1)]
+    return {"book_title": "", "chapters": chapters, "source": "template"}
+
 
 def _norm_subtasks(data):
     """规范化 LLM 计划输出；不合规返回 None。"""

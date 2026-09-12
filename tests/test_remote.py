@@ -34,12 +34,12 @@ class TokenTest(unittest.TestCase):
 
     def test_loopback_exempt_remote_needs_token(self):
         tok = remote.token()
-        self.assertTrue(remote.request_authed("127.0.0.1", "", ""))
-        self.assertTrue(remote.request_authed("::1", "", ""))
-        self.assertFalse(remote.request_authed("192.168.3.9", "", ""))
-        self.assertFalse(remote.request_authed("192.168.3.9", "wrong", ""))
-        self.assertTrue(remote.request_authed("192.168.3.9", tok, ""))
-        self.assertTrue(remote.request_authed("192.168.3.9", "", tok))
+        self.assertTrue(remote.request_authed("127.0.0.1", "", "", ""))
+        self.assertTrue(remote.request_authed("::1", "", "", ""))
+        self.assertFalse(remote.request_authed("192.168.3.9", "", "", ""))
+        self.assertFalse(remote.request_authed("192.168.3.9", "", "wrong", ""))
+        self.assertTrue(remote.request_authed("192.168.3.9", "", tok, ""))
+        self.assertTrue(remote.request_authed("192.168.3.9", "", "", tok))
 
 
 class ControlLockTest(unittest.TestCase):
@@ -102,6 +102,54 @@ class ControlLockTest(unittest.TestCase):
         ok, _ = remote.acquire("", "")  # 无身份请求：自动补 anon id
         self.assertTrue(ok)
         self.assertTrue(remote._CTRL["client_id"].startswith("anon-"))
+
+
+class TrustedProxyTest(unittest.TestCase):
+    def setUp(self):
+        remote.set_trusted_proxy(False, "")
+
+    def tearDown(self):
+        remote.set_trusted_proxy(False, "")
+
+    def test_loopback_exempt_without_proxy(self):
+        self.assertTrue(remote.request_authed("127.0.0.1", "", "", ""))
+
+    def test_tunnel_loopback_needs_token(self):
+        """核心安全用例：隧道从 127.0.0.1 回源，带转发头时不得豁免。"""
+        remote.set_trusted_proxy(True, "")
+        tok = remote.token()
+        self.assertFalse(remote.request_authed("127.0.0.1", "1.2.3.4", "", ""))
+        self.assertTrue(remote.request_authed("127.0.0.1", "1.2.3.4", tok, ""))
+        self.assertTrue(remote.request_authed("127.0.0.1", "1.2.3.4", "", tok))
+
+    def test_real_localhost_still_exempt_with_proxy(self):
+        """trust_proxy 下不带转发头的 loopback 仍是真本机。"""
+        remote.set_trusted_proxy(True, "")
+        self.assertTrue(remote.request_authed("127.0.0.1", "", "", ""))
+
+    def test_forge_forwarded_header_fails_closed(self):
+        """局域网攻击者伪造转发头：只会让自己从豁免变成必须带令牌。"""
+        remote.set_trusted_proxy(True, "")
+        tok = remote.token()
+        # 直连本机端口的攻击者来自局域网 IP，本就非豁免——伪造头也拿不到豁免
+        self.assertFalse(remote.request_authed("192.168.3.9", "127.0.0.1", "", ""))
+        self.assertTrue(remote.request_authed("192.168.3.9", "127.0.0.1", tok, ""))
+
+    def test_effective_ip_first_hop(self):
+        remote.set_trusted_proxy(True, "")
+        self.assertEqual(remote.effective_ip("127.0.0.1", "1.2.3.4, 10.0.0.1"), "1.2.3.4")
+        self.assertEqual(remote.effective_ip("127.0.0.1", ""), "127.0.0.1")
+        remote.set_trusted_proxy(False, "")
+        self.assertEqual(remote.effective_ip("127.0.0.1", "1.2.3.4"), "127.0.0.1")
+
+    def test_public_url_in_connect_urls_first(self):
+        remote.set_trusted_proxy(True, "https://tutti.example.com")
+        try:
+            urls = remote.build_connect_urls(8765)
+            self.assertEqual(urls[0]["label"], "公网 · 任何网络")
+            self.assertEqual(urls[0]["url"], "https://tutti.example.com/?token=" + remote.token())
+        finally:
+            remote.set_trusted_proxy(True, "")
 
 
 class ConnectUrlsTest(unittest.TestCase):

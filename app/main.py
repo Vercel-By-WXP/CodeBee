@@ -58,9 +58,17 @@ class Handler(BaseHTTPRequestHandler):
             return {}
 
     # ------------------------------------------------------------ 远程访问
+    def _forwarded_ip(self):
+        """经代理进来的真实客户端 IP：X-Forwarded-For 首跳，缺省 CF-Connecting-IP。"""
+        fw = self.headers.get("X-Forwarded-For") or ""
+        if not fw:
+            fw = self.headers.get("CF-Connecting-IP") or ""
+        return remote.effective_ip(self.client_address[0], fw), fw
+
     def _authed(self):
         q = parse_qs(urlparse(self.path).query)
-        return remote.request_authed(self.client_address[0],
+        ip, fw = self._forwarded_ip()
+        return remote.request_authed(ip, fw,
                                      (q.get("token") or [""])[0],
                                      self.headers.get("X-Tutti-Token") or "")
 
@@ -70,8 +78,9 @@ class Handler(BaseHTTPRequestHandler):
             cid = (parse_qs(urlparse(self.path).query).get("client") or [""])[0].strip()
         if cid:
             return cid[:64]
-        # 无头请求（curl/旧脚本）：本机统一算"本机"，远程各自匿名且无持久身份
-        return "local" if self.client_address[0] in ("127.0.0.1", "::1") else ""
+        # 无头请求（curl/旧脚本）：真本机统一算"本机"，远程各自匿名且无持久身份
+        ip, fw = self._forwarded_ip()
+        return "local" if (ip in ("127.0.0.1", "::1") and not fw) else ""
 
     def _client_name(self):
         name = (self.headers.get("X-Tutti-Name") or "").strip()
@@ -399,6 +408,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")  # 防 nginx/隧道缓冲 SSE
         self.end_headers()
         cid = self._client_id()
         ver = store.state_version()
@@ -470,6 +480,11 @@ def main():
                         help="监听地址；0.0.0.0 允许手机/局域网访问（默认），127.0.0.1 仅本机")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--trusted-proxy", action="store_true",
+                        help="服务跑在 Cloudflare Tunnel/frp 等反代后面时开启："
+                             "带转发头的回源请求必须带令牌，防止本机回源被当成 127.0.0.1 豁免")
+    parser.add_argument("--public-url", default="",
+                        help="公网地址（如 https://tutti.example.com），扫码弹框优先展示")
     args = parser.parse_args()
 
     paths.ensure_dirs()
@@ -480,11 +495,17 @@ def main():
     modelhub.migrate_chains()       # 旧单供应商模型链升级为跨厂商 chain（幂等，带备份）
     jobs.start_worker()
     tok = remote.token()
+    import os as _os
+    remote.set_trusted_proxy(args.trusted_proxy or _os.environ.get("TUTTI_TRUST_PROXY") == "1",
+                             args.public_url)
 
     global PORT
     PORT = args.port
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     print("[Tutti] 本机     http://127.0.0.1:%d" % args.port)
+    if remote.PUBLIC_URL:
+        print("[Tutti] 公网     %s/?token=%s   ← 任何网络可访问（反代回源已强制校验令牌）"
+              % (remote.PUBLIC_URL, tok))
     if args.host != "127.0.0.1":
         lan = remote.lan_ip()
         if lan:
@@ -492,7 +513,7 @@ def main():
         ts = remote.tailscale_ip()
         if ts:
             print("[Tutti] Tailscale http://%s:%d/?token=%s   ← 外网随时随地访问" % (ts, args.port, tok))
-        else:
+        elif not remote.PUBLIC_URL:
             print("[Tutti] （未检测到 Tailscale；安装后重启本服务即可获得外网地址）")
         print("[Tutti] 远程访问受令牌保护；手机打开一次带 token 的地址后会记住。")
     if not args.no_browser:

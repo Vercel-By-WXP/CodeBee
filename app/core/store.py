@@ -125,6 +125,17 @@ def create_task(payload):
         for key in ("draft_prompt", "critique_prompt"):  # 自定义流程的提示词覆盖
             if flow.get(key):
                 task[key] = flow[key]
+        # 连载模式：逐章起草/评审/修订（任务级 serial 覆盖流程默认）
+        serial = payload.get("serial") if isinstance(payload.get("serial"), dict) else flow.get("serial")
+        if isinstance(serial, dict) and serial.get("chapters"):
+            try:
+                task["serial"] = {
+                    "chapters": max(2, min(20, int(serial["chapters"]))),
+                    "words_per_chapter": max(500, min(8000,
+                                                      int(serial.get("words_per_chapter") or 2500))),
+                }
+            except Exception:
+                pass
     critics = payload.get("critics")
     if isinstance(critics, list) and critics:
         task["critics"] = [str(c) for c in critics]

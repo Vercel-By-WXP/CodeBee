@@ -41,6 +41,29 @@ python app\main.py --port 8765
   重启 Tutti 后控制台会打印 Tailscale 地址，无需端口映射，流量端到端加密。
 - 只想本机使用：`python app\main.py --host 127.0.0.1`。
 
+### 公网访问（自己的域名 + Cloudflare Tunnel）
+
+有一台电脑常开时，可把 Tutti 暴露到公网（示例域名换成自己的）：
+
+```bat
+:: 一次性配置：cloudflared 登录后创建隧道并绑定子域名
+cloudflared tunnel login
+cloudflared tunnel create tutti
+cloudflared tunnel route dns --overwrite-dns <隧道UUID> tutti.你的域名.com
+
+:: 之后日常启动（服务 + 隧道一键起）：
+start-public.bat
+```
+
+- **`--trusted-proxy` 必须开启**：隧道都从本机（127.0.0.1）回源，不感知代理的话
+  公网请求会被当成"本机"而豁免令牌，等于把控制台裸奔到公网。开启后带转发头
+  （Cloudflare 强制注入 `CF-Connecting-IP`）的回源请求一律强制校验令牌，
+  真本机（不带转发头的 loopback）不受影响。
+- `--public-url` 让「手机连接」弹框的二维码直接给公网地址，出门扫码即用。
+- 公网暴露面 = 8 位访问令牌。想更强可叠加 [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/)
+  （零信任，给子域名再加一层邮箱验证码/SSO，免费档 50 用户）。
+- Cloudflare 免费版即可，无需公网 IP、无需备案（走 CF 海外边缘节点）、不开任何入站端口。
+
 ## 极简输入 + 会话延续
 
 主表单只有 3 项：**类型、目标（一句话）、工作目录**（自动记住上次填写）。
