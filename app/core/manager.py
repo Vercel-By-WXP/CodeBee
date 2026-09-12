@@ -21,7 +21,7 @@ CREATE_NO_WINDOW = 0x08000000
 VERSION_TTL = 300  # 版本缓存 5 分钟
 
 _LOCK = threading.RLock()
-_STATE = {"detected": {}, "versions": {}, "detect_ts": 0.0}
+_STATE = {"detected": {}, "versions": {}, "detect_ts": 0.0, "detect_ev": None}
 
 
 def _expand(p):
@@ -62,18 +62,37 @@ def detect_entry(entry):
 
 
 def detect_all(force=False):
+    """检测全部条目。检测（慢磁盘 IO）在锁外跑：shutil.which/isfile 在
+    Windows 上遇到断链的 PATH 项可能卡数秒，持锁会把所有并发请求堵死
+    （曾导致 SSE 多连接时服务假死）。等待方有界等待 30s 后拿旧结果。
+    """
     with _LOCK:
         if not force and _STATE["detected"] and time.time() - _STATE["detect_ts"] < 60:
             return _STATE["detected"]
+        ev = _STATE["detect_ev"]
+        lead = ev is None  # 我是本次检测的执行者
+        if lead:
+            ev = _STATE["detect_ev"] = threading.Event()
+    if not lead:
+        ev.wait(30)  # 检测完成或超时；两种情况都拿当前最新快照
+        with _LOCK:
+            return dict(_STATE["detected"])
+    try:
         detected = {}
         for entry in catalog.load():
             try:
                 detected[entry["id"]] = detect_entry(entry)
             except Exception as e:
                 detected[entry["id"]] = {"installed": False, "detail": "检测出错: %r" % e}
-        _STATE["detected"] = detected
-        _STATE["detect_ts"] = time.time()
-        return detected
+        if detected:
+            with _LOCK:
+                _STATE["detected"] = detected
+    finally:
+        with _LOCK:
+            _STATE["detect_ts"] = time.time()
+            _STATE["detect_ev"] = None
+        ev.set()
+    return detected
 
 
 def _uwp_version(package_dir):

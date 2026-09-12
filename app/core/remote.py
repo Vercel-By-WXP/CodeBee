@@ -75,14 +75,18 @@ def _live_ctrl():
 
 
 def control_view(client_id: str = "") -> dict:
-    """对外的控制权状态：free / held（mine 标记是否是请求方自己持有）。"""
+    """对外的控制权状态：free / held（mine 标记是否是请求方自己持有）。
+
+    expires_in 按 10s 桶化：SSE 靠对比该 dict 判断"控制权是否变了"，
+    精确到秒的倒计时会造成每秒一次假变化 → 全量推送。
+    """
     with _CTRL_LOCK:
         c = _live_ctrl()
         if not c["client_id"]:
             return {"mode": "free", "mine": False}
         return {"mode": "held", "mine": bool(client_id) and c["client_id"] == client_id,
                 "holder": c["name"] or "其他设备",
-                "expires_in": max(0, int(c["expires_at"] - time.time()))}
+                "expires_in": max(10, int(c["expires_at"] - time.time()) // 10 * 10)}
 
 
 def acquire(client_id: str, name: str, force: bool = False):

@@ -23,6 +23,32 @@ LOCK = threading.RLock()
 _TASKS = {}
 _RUNS = {}
 
+# ---------------------------------------------------------------- 状态版本（SSE 事件驱动）
+# 任何落盘写都算状态变化：SSE 连接等版本号变化才构建/推送全量状态，
+# 空闲时连接零开销（此前每连接每 0.8s 盲构建全量 payload，多端并发会放大成假死）
+_VER_CV = threading.Condition()
+_STATE_VER = 1
+
+
+def bump_state():
+    global _STATE_VER
+    with _VER_CV:
+        _STATE_VER += 1
+        _VER_CV.notify_all()
+
+
+def state_version():
+    return _STATE_VER
+
+
+def wait_state_change(last_ver, timeout):
+    """阻塞直到版本号超过 last_ver 或超时。返回当前版本号。"""
+    with _VER_CV:
+        if _STATE_VER != last_ver:
+            return _STATE_VER
+        _VER_CV.wait(timeout)
+        return _STATE_VER
+
 
 def _new_id(prefix):
     return "%s-%s-%04d" % (prefix, time.strftime("%Y%m%d-%H%M%S"), secrets.randbelow(10000))
@@ -35,10 +61,16 @@ def _safe_name(s):
 # ---------------------------------------------------------------- 任务
 
 def create_task(payload):
-    """校验并创建任务。payload 至少含 type/title/goal/workdir。"""
-    ttype = payload.get("type")
-    if ttype not in ("code", "novel"):
-        raise ValueError("type 必须是 code 或 novel")
+    """校验并创建任务。payload 至少含 type/goal/workdir。
+
+    type 必须是 flows.py 里的有效流程 ID；流程参数（引擎/维度/阈值/轮数/产出
+    文件/提示词覆盖）在创建时固化到任务上，之后修改流程定义不影响已建任务。
+    """
+    from . import flows as flows_mod
+    flow = flows_mod.get_flow(payload.get("type"))
+    if flow is None:
+        raise ValueError("未知任务类型：%s（可选：%s）"
+                         % (payload.get("type"), "、".join(f["id"] for f in flows_mod.list_flows())))
     title = (payload.get("title") or "").strip()
     goal = (payload.get("goal") or "").strip()
     workdir = (payload.get("workdir") or "").strip()
@@ -59,7 +91,8 @@ def create_task(payload):
     if difficulty not in ("auto", "easy", "hard", "default"):
         difficulty = "auto"
     task = {
-        "id": _new_id("t"), "type": ttype, "title": title, "goal": goal,
+        "id": _new_id("t"), "type": flow["id"], "engine": flow["engine"],
+        "title": title, "goal": goal,
         "context": (payload.get("context") or "").strip(),
         "workdir": str(wd),
         "mode": mode,
@@ -68,24 +101,30 @@ def create_task(payload):
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "status": "created",
     }
-    if ttype == "code":
+    if flow["engine"] == "code":
         task["verify_command"] = (payload.get("verify_command") or "").strip()
     else:
-        ms = (payload.get("manuscript") or "manuscript.md").strip()
+        ms = (payload.get("manuscript") or flow.get("manuscript") or "manuscript.md").strip()
         ms = re.sub(r"[\\/]", "_", ms)  # 只允许工作目录内的相对文件名
         ms = re.sub(r"\.{2,}", "_", ms).lstrip(".")  # 顺带清掉残留的 ..
         task["manuscript"] = ms
         try:
-            task["rounds"] = max(1, min(5, int(payload.get("rounds") or 2)))
+            task["rounds"] = max(1, min(5, int(payload.get("rounds") or flow.get("rounds") or 2)))
         except Exception:
             task["rounds"] = 2
         try:
-            task["threshold"] = max(1.0, min(10.0, float(payload.get("threshold") or 7.0)))
+            task["threshold"] = max(1.0, min(10.0,
+                                             float(payload.get("threshold") or flow.get("threshold") or 7.0)))
         except Exception:
             task["threshold"] = 7.0
         dims = payload.get("rubric")
+        if not (isinstance(dims, list) and dims):
+            dims = flow.get("rubric")
         if isinstance(dims, list) and dims:
             task["rubric"] = [str(d).strip() for d in dims if str(d).strip()][:8]
+        for key in ("draft_prompt", "critique_prompt"):  # 自定义流程的提示词覆盖
+            if flow.get(key):
+                task[key] = flow[key]
     critics = payload.get("critics")
     if isinstance(critics, list) and critics:
         task["critics"] = [str(c) for c in critics]
@@ -105,6 +144,7 @@ def _save_json(path, data):
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(path)
+    bump_state()
 
 
 def update_task_status(task_id, status):
@@ -249,6 +289,7 @@ def delete_run(run_id):
             return False, "运行中的记录不能删除，请先取消"
         del _RUNS[run_id]
     shutil.rmtree(paths.RUNS_DIR / run_id, ignore_errors=True)
+    bump_state()
     return True, ""
 
 
@@ -274,6 +315,8 @@ def delete_runs(run_ids):
             del _RUNS[rid]
         shutil.rmtree(paths.RUNS_DIR / rid, ignore_errors=True)
         deleted += 1
+    if deleted:
+        bump_state()
     return deleted, skipped, ("有 %d 条非法记录 ID" % bad) if bad else ""
 
 
@@ -290,6 +333,7 @@ def clear_runs():
             del _RUNS[rid]
     for rid in targets:
         shutil.rmtree(paths.RUNS_DIR / rid, ignore_errors=True)
+    bump_state()
     return len(targets), skipped
 
 
@@ -335,6 +379,7 @@ def delete_task(task_id):
     for rid in run_ids:
         shutil.rmtree(paths.RUNS_DIR / rid, ignore_errors=True)
     (paths.TASKS_DIR / (task_id + ".json")).unlink(missing_ok=True)
+    bump_state()
     return True, ""
 
 
@@ -407,6 +452,7 @@ def write_report(run_id, markdown):
         run = _RUNS.get(run_id)
         if run:
             run["report"] = "report.md"
+    bump_state()
     return p
 
 

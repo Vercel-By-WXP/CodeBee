@@ -1,0 +1,178 @@
+# -*- coding: utf-8 -*-
+"""任务流程（类型）注册表 + 运行设置 + 并发执行测试。
+
+覆盖：内置 6 类、自定义流程 CRUD（内置不可改删）、create_task 固化流程参数、
+自定义 review 流程跑通 mock 全流程、并发 worker 池多任务互不打扰、缩容。
+"""
+from __future__ import annotations
+
+import threading
+import time
+
+from base import BaseTest
+
+
+class TestFlows(BaseTest):
+    def runTest(self):
+        from app.core import flows, store
+        flows._FILE = self.data_dir / "flows.json"
+
+        # 1) 内置流程：code + 多个 review 类，字段完整
+        ids = [f["id"] for f in flows.list_flows()]
+        for expect in ("code", "novel", "doc", "translation", "research", "speech"):
+            self.assertIn(expect, ids)
+        novel = flows.get_flow("novel")
+        self.assertEqual(novel["engine"], "review")
+        self.assertIn("情节", novel["rubric"])
+
+        # 2) 自定义流程 upsert：合法创建 / 校验拒绝
+        flow, err = flows.upsert_flow({
+            "id": "podcast", "name": "播客脚本", "icon": "🎙", "engine": "review",
+            "manuscript": "script.md",
+            "rubric": ["选题", "结构", "口语化", "钩子"],
+            "threshold": 7.5, "rounds": 3,
+            "note": "单集脚本产出",
+        })
+        self.assertIsNone(err, err)
+        self.assertFalse(flow["builtin"])
+        self.assertEqual(flows.get_flow("podcast")["threshold"], 7.5)
+        self.assertTrue(flows.upsert_flow({"id": "x!", "name": "坏 id", "engine": "review",
+                                           "rubric": ["a"]})[1])
+        # 自定义 id 再次 upsert = 原地更新（合法）
+        upd, err = flows.upsert_flow({"id": "podcast", "name": "播客脚本V2", "engine": "review",
+                                      "rubric": ["选题", "结构"]})
+        self.assertIsNone(err, err)
+        self.assertEqual(upd["name"], "播客脚本V2")
+        # 内置 id 冒充新增：拒绝
+        self.assertTrue(flows.upsert_flow({"id": "novel", "name": "冒充内置",
+                                           "engine": "review", "rubric": ["a"]})[1])
+        self.assertTrue(flows.delete_flow("novel"))          # 内置不可删
+        self.assertIsNone(flows.delete_flow("podcast"))      # 自定义可删
+        self.assertIsNone(flows.get_flow("podcast"))
+
+        # 3) create_task：未知类型拒绝；自定义 flow 参数固化到任务
+        flow, _ = flows.upsert_flow({
+            "id": "podcast", "name": "播客脚本", "engine": "review",
+            "manuscript": "script.md", "rubric": ["选题", "结构"],
+            "threshold": 7.5, "rounds": 3})
+        t = store.create_task({"type": "podcast", "goal": "做一期关于并发的播客脚本",
+                               "workdir": str(self.workdir)})
+        self.assertEqual(t["engine"], "review")
+        self.assertEqual(t["manuscript"], "script.md")
+        self.assertEqual(t["rubric"], ["选题", "结构"])
+        self.assertEqual(t["threshold"], 7.5)
+        self.assertEqual(t["rounds"], 3)
+        try:
+            store.create_task({"type": "nope", "goal": "g", "workdir": str(self.workdir)})
+            self.fail("未知类型应被拒绝")
+        except ValueError:
+            pass
+        # 任务级覆盖优先于 flow 默认
+        t2 = store.create_task({"type": "podcast", "goal": "g", "workdir": str(self.workdir),
+                                "threshold": 9.0, "manuscript": "override.md"})
+        self.assertEqual(t2["threshold"], 9.0)
+        self.assertEqual(t2["manuscript"], "override.md")
+
+    def test_builtin_code_task_still_works(self):
+        from app.core import store
+        t = store.create_task({"type": "code", "goal": "g", "workdir": str(self.workdir),
+                               "verify_command": "exit 0"})
+        self.assertEqual(t["engine"], "code")
+        self.assertEqual(t["verify_command"], "exit 0")
+
+
+class TestCustomFlowPipeline(BaseTest):
+    """自定义 review 流程端到端（mock 智能体）：起草→评审→门禁，产出落盘。"""
+
+    def runTest(self):
+        from app.core import flows, pipeline, store
+        flows._FILE = self.data_dir / "flows.json"
+        flow, err = flows.upsert_flow({
+            "id": "podcast", "name": "播客脚本", "engine": "review",
+            "manuscript": "script.md", "rubric": ["选题", "结构"],
+            "threshold": 6.0, "rounds": 2})
+        self.assertIsNone(err, err)
+        pipeline._agents = self.mock_agents
+        task = store.create_task({"type": "podcast", "title": "并发主题",
+                                  "goal": "聊多线程", "workdir": str(self.workdir),
+                                  "mode": "auto"})
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        pipeline.execute_run(run["id"])
+        run = store.get_run(run["id"])
+        self.assertEqual(run["status"], "done", run.get("error"))
+        v = run["verdict"]
+        self.assertEqual(v["engine"], "review")
+        self.assertEqual(v["type"], "podcast")
+        self.assertTrue((self.workdir / "script.md").is_file())
+        roles = [s["role"] for s in run["steps"]]
+        self.assertTrue(any(r.startswith("draft") for r in roles))
+        self.assertTrue(any(r.startswith("critique") for r in roles))
+
+
+class TestSettingsAndConcurrency(BaseTest):
+    def runTest(self):
+        from app.core import jobs, settings
+        settings._FILE = self.data_dir / "settings.json"
+
+        # 1) 设置读写与边界校验
+        self.assertEqual(settings.load()["max_concurrent_jobs"], 3)
+        view, err = settings.save({"max_concurrent_jobs": 5})
+        self.assertIsNone(err)
+        self.assertEqual(view["max_concurrent_jobs"], 5)
+        _, err = settings.save({"max_concurrent_jobs": 99})
+        self.assertTrue(err)
+        _, err = settings.save({"max_concurrent_jobs": "abc"})
+        self.assertTrue(err)
+
+        # 2) 并发执行：3 个任务同时跑、互不打扰（用事件栅栏验证重叠）
+        jobs.configure(3)
+        jobs.start_worker()
+        from app.core import pipeline
+        lock = threading.Lock()
+        state = {"in_flight": 0, "peak": 0, "ran": []}
+        orig = pipeline.execute_run
+
+        def fake_execute(run_id):
+            with lock:
+                state["in_flight"] += 1
+                state["peak"] = max(state["peak"], state["in_flight"])
+                state["ran"].append(run_id)
+            time.sleep(0.6)   # 模拟一次真实编排调用
+            with lock:
+                state["in_flight"] -= 1
+
+        pipeline.execute_run = fake_execute
+        try:
+            for i in range(3):
+                jobs.enqueue({"kind": "orchestration", "run_id": "r-conc-%d" % i})
+            deadline = time.time() + 15
+            while time.time() < deadline:
+                with lock:
+                    if len(state["ran"]) == 3 and state["in_flight"] == 0:
+                        break
+                time.sleep(0.1)
+        finally:
+            pipeline.execute_run = orig
+        self.assertEqual(len(state["ran"]), 3)
+        self.assertEqual(state["peak"], 3, "3 个任务必须同时在跑（峰值并发=3）")
+
+        # 3) run 之间互不干扰：CANCELS 按 run_id 隔离
+        ev1 = jobs.cancel_event_for("r-x")
+        ev2 = jobs.cancel_event_for("r-y")
+        ev1.set()
+        self.assertFalse(ev2.is_set())
+
+        # 4) 缩容：目标并发调小后，空闲的多余线程在检查点退出
+        jobs.configure(1)
+        deadline = time.time() + 12   # worker 空转检查点 5s 一次
+        while time.time() < deadline:
+            if jobs.workers_info()["alive"] <= 1:
+                break
+            time.sleep(0.3)
+        self.assertLessEqual(jobs.workers_info()["alive"], 1)
+        jobs.configure(3)   # 恢复，避免影响其他测试
+
+
+if __name__ == "__main__":
+    import unittest as _u
+    _u.main()

@@ -636,12 +636,17 @@ def _clean_chain(chain):
 
 
 def _sync_chain_refs(b):
-    """chain 是唯一真源：重建 models / model 兼容冗余与主供应商字段。"""
+    """chain 是唯一真源：重建 models / model 兼容冗余与主供应商字段。
+
+    链空时保留既有 provider_id——主供应商是用户显式绑定的，不因模型链
+    清空而丢失（此后按该供应商默认/难度模型解析）。
+    """
     chain = b.get("chain") or []
     b["models"] = [c["model"] for c in chain]
     b["model"] = b["models"][0] if b["models"] else ""
-    pid = next((c["provider_id"] for c in chain if c.get("provider_id")), "")
-    b["provider_id"] = pid
+    pid = next((c["provider_id"] for c in chain if c.get("provider_id")), None)
+    if pid is not None:
+        b["provider_id"] = pid
 
 
 def _binding_chain(b):
@@ -1536,8 +1541,7 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
         model = prov.get("model") or ""
     if not model and names:
         model = names[0] if (not routing or difficulty != "easy") else names[-1]
-    if not model and not names:
-        return None
+    # model 可为空：仅注入供应商凭据，不指定模型（用网关默认）
     fallbacks = [n for n in names if n != model][:MAX_BIND_MODELS - 1]
     head = _chain_entry_env(prov, model)
     out = {"model": model, "env": head["env"], "provider": prov,

@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """规划器：把用户目标自动拆解为有序子任务。
 
-代码任务：由最强可用智能体产出 JSON 计划（≤4 个子任务），解析失败或
-手动模式退化为单步模板——计划永远可执行，不阻塞任务。
-小说任务：模板计划（大纲→起草→评审→修订→终稿），作者/评审组由路由决定。
+优先用「编排中枢」直连 API 的编排者模型（统一规划/管理）；未配置或调用
+失败时回落到最强可用 CLI 智能体；再失败退化为单步模板——计划永远可执行，
+不阻塞任务。review 类引擎可让编排者产出写作大纲，拼进起草提示词。
 """
 from __future__ import annotations
 
 import json
 
-from . import runner
+from . import modelhub, runner
 
 MAX_SUBTASKS = 4
 
@@ -27,6 +27,16 @@ __CONTEXT__
 
 ## 验收命令（最终必须通过）
 __VERIFY__"""
+
+REVIEW_OUTLINE_PROMPT = """你是内容主编。请为下面的创作任务拟一份写作大纲（要点列表，3-8 条），
+只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
+{"outline": ["要点1", "要点2", ...]}
+
+## 创作任务
+__GOAL__
+
+## 背景与上下文
+__CONTEXT__"""
 
 
 def _norm_subtasks(data):
@@ -48,8 +58,26 @@ def _norm_subtasks(data):
     return steps or None
 
 
+def _plan_difficulty(data):
+    d = str((data or {}).get("difficulty") or "").lower()
+    return d if d in ("easy", "hard") else None
+
+
+def _orchestrator():
+    """编排者可用时返回 (provider, model)，否则 None。"""
+    try:
+        return modelhub.resolve_orchestrator()
+    except Exception:
+        return None
+
+
 def make_code_plan(task, planner_agent, workdir, ev=None, resume=None):
-    """代码任务计划：LLM 拆解 → 失败退化为单步模板。"""
+    """代码任务计划：编排者 API 优先 → CLI 智能体 → 单步模板。"""
+    orch = _orchestrator()
+    if orch:
+        plan = _orch_code_plan(task, orch[0], orch[1])
+        if plan:
+            return plan
     if planner_agent is None:
         return _fallback_code_plan(task, "（无可用智能体）")
     if planner_agent.get("mode") == "mock":
@@ -60,23 +88,54 @@ def make_code_plan(task, planner_agent, workdir, ev=None, resume=None):
               .replace("__VERIFY__", task.get("verify_command") or "（未配置）"))
     res = runner.run_agent(planner_agent, prompt, workdir=workdir, readonly=True,
                            timeout=300, cancel_event=ev, resume=resume)
-    steps = _norm_subtasks(runner.extract_json(res.get("text") or ""))
+    data = runner.extract_json(res.get("text") or "")
+    steps = _norm_subtasks(data)
     if steps:
-        diff = None
-        try:
-            raw = runner.extract_json(res.get("text") or "") or {}
-            d = str(raw.get("difficulty") or "").lower()
-            diff = d if d in ("easy", "hard") else None
-        except Exception:
-            diff = None
         return {"source": "llm(%s)" % planner_agent["id"], "steps": steps,
-                "difficulty": diff}
+                "difficulty": _plan_difficulty(data)}
     return _fallback_code_plan(task, "LLM 计划解析失败，退化为单步模板")
 
 
 def _fallback_code_plan(task, note):
     return {"source": "template", "note": note,
             "steps": [{"title": "实现任务", "detail": task["goal"]}]}
+
+
+def _orch_code_plan(task, prov, model):
+    res = modelhub.chat(prov["id"], model,
+                        (CODE_PLAN_PROMPT.replace("__N__", str(MAX_SUBTASKS))
+                         .replace("__GOAL__", task["goal"])
+                         .replace("__CONTEXT__", task.get("context") or "（无）")
+                         .replace("__VERIFY__", task.get("verify_command") or "（未配置）")))
+    if not res["ok"]:
+        return None
+    data = runner.extract_json(res.get("text") or "")
+    steps = _norm_subtasks(data)
+    if not steps:
+        return None
+    return {"source": "编排者(%s · %s)" % (prov.get("name", prov["id"]), model),
+            "steps": steps, "difficulty": _plan_difficulty(data)}
+
+
+def make_review_outline(task):
+    """review 类任务：编排者产出写作大纲（失败返回 None，起草退回无大纲）。"""
+    orch = _orchestrator()
+    if not orch:
+        return None
+    prov, model = orch
+    res = modelhub.chat(prov["id"], model,
+                        (REVIEW_OUTLINE_PROMPT
+                         .replace("__GOAL__", task["goal"])
+                         .replace("__CONTEXT__", task.get("context") or "（无）")))
+    if not res["ok"]:
+        return None
+    data = runner.extract_json(res.get("text") or "")
+    outline = data.get("outline") if isinstance(data, dict) else None
+    if not isinstance(outline, list):
+        return None
+    items = [str(x).strip()[:120] for x in outline if str(x).strip()][:8]
+    return {"source": "编排者(%s · %s)" % (prov.get("name", prov["id"]), model),
+            "items": items} if items else None
 
 
 def make_novel_plan(task, author, critics):

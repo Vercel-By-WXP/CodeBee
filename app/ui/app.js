@@ -2,7 +2,52 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: localStorage.getItem("orch.showArchived") === "1", selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: localStorage.getItem("orch.showArchived") === "1", selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, orchSig: "", settings: null };
+
+/* ---------------------------------------------------------- 任务类型（流程） */
+async function loadFlows() {
+  try {
+    const r = await api("/api/flows");
+    S.flows = r.flows || [];
+  } catch (e) { S.flows = []; }
+  renderTypeOptions();
+}
+
+function flowById(id) {
+  return (S.flows || []).find((f) => f.id === id) || null;
+}
+
+function renderTypeOptions() {
+  const sel = $("f-type");
+  if (!sel || !S.flows) return;
+  const prev = sel.value;
+  sel.innerHTML = (S.flows || []).map((f) => {
+    const desc = f.engine === "code" ? "实现 → 验证 → 评审" : "起草 → 多维评审 → 门禁";
+    return '<option value="' + esc(f.id) + '">' + esc(f.icon || "") + " " + esc(f.name) + "（" + desc + (f.builtin ? "" : " · 自定义") + "）</option>";
+  }).join("");
+  if (prev && flowById(prev)) sel.value = prev;
+  onTypeChange();
+}
+
+/* 切换类型：按引擎显隐表单区、带出流程默认值 */
+function onTypeChange() {
+  const flow = flowById($("f-type").value);
+  const engine = flow ? flow.engine : "code";
+  const isReview = engine === "review";
+  const codeOnly = $("f-code-only"), reviewOnly = $("f-review-only");
+  if (codeOnly) codeOnly.classList.toggle("hidden", isReview);
+  if (reviewOnly) reviewOnly.classList.toggle("hidden", !isReview);
+  const goal = $("f-goal");
+  if (goal && flow && flow.goal_hint) goal.placeholder = flow.goal_hint;
+  if (isReview && flow) {
+    if (flow.manuscript) $("f-manuscript").value = flow.manuscript;
+    if (flow.rounds) $("f-rounds").value = flow.rounds;
+    if (flow.threshold) $("f-threshold").value = flow.threshold;
+    const saved = ($("f-rubric").value || "").trim();
+    if (!saved && flow.rubric) $("f-rubric").value = flow.rubric.join(", ");
+  }
+  renderImplSelects();
+}
 
 /* ---------------------------------------------------------- 本机身份与鉴权 */
 function clientId() {
@@ -1031,9 +1076,10 @@ async function saveBinding(id) {
   try {
     await api("/api/models/binding", { method: "POST", body: JSON.stringify({
       agent_id: id, provider_id: $("bindprov-" + id).value,
-      models: st.models, difficulty_routing: $("binddiff-" + id).checked }) });
+      chain: st.chain.map((c) => ({ provider_id: c.p, model: c.m })),
+      difficulty_routing: $("binddiff-" + id).checked }) });
     st.dirty = false;
-    st.key = st.models.join("\u0001");
+    st.key = chainKey(st.chain);
   } catch (e) {
     alert("保存失败：" + e.message);
     return;
@@ -1051,7 +1097,7 @@ function renderImplSelects() {
   if (prev && agents.some((a) => a.id === prev)) sel.value = prev;
 
   const box = $("critic-box");
-  if ($("f-type").value === "novel") {
+  if (flowById($("f-type").value)?.engine === "review") {
     box.classList.remove("hidden");
     const saved = new Set(Array.from($("f-critics").querySelectorAll("input:checked")).map((i) => i.value));
     $("f-critics").innerHTML = agents.map((a) =>
@@ -1085,12 +1131,14 @@ async function createTask() {
     const opt = $("f-resume-session").selectedOptions[0];
     payload.resume = { agent: resumeAgent, session: sid, preview: opt ? opt.textContent : "" };
   }
-  if (payload.type === "code") {
+  if (flowById(payload.type)?.engine === "code") {
     payload.verify_command = $("f-verify").value.trim();
   } else {
     payload.manuscript = $("f-manuscript").value.trim() || "manuscript.md";
     payload.rounds = parseInt($("f-rounds").value, 10) || 2;
     payload.threshold = parseFloat($("f-threshold").value) || 7.0;
+    const rubric = $("f-rubric").value.trim();
+    if (rubric) payload.rubric = rubric.split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
     const critics = Array.from($("f-critics").querySelectorAll("input:checked")).map((i) => i.value);
     if (critics.length) payload.critics = critics;
   }
@@ -1130,7 +1178,7 @@ function renderTaskList() {
   const archived = S.showArchived ? ((S.state && S.state.archived_tasks) || []) : [];
   const row = (t) =>
     '<div class="item" data-task-id="' + esc(t.id) + '"><div class="t"><span class="name">' + esc(t.title) + "</span>" +
-    '<span class="tag">' + (t.type === "code" ? "代码" : "小说") + "</span>" +
+    '<span class="tag">' + esc((flowById(t.type) || {}).name || t.type) + "</span>" +
     (t.archived ? '<span class="tag">已归档</span>' : "") +
     '<span class="time">' + esc(t.created_at) + "</span>" +
     (t.archived
@@ -1539,20 +1587,31 @@ async function autoCheckUpdates() {
 }
 
 /* 运行时模型链（CLI 绑定页）：本地草稿态，点「保存」才写盘 */
+function provName(pid) {
+  const p = (S.providers || []).find((x) => x.id === pid);
+  return p ? (p.name || pid) : "";
+}
+
 function bindChain(b) {
-  if (b.models && b.models.length) return b.models.slice();
-  return b.model ? [b.model] : [];
+  if (b.chain && b.chain.length) return b.chain.map((c) => ({ p: c.provider_id || "", m: c.model || "" }));
+  const pid = b.provider_id || "";
+  const names = (b.models && b.models.length) ? b.models : (b.model ? [b.model] : []);
+  return names.map((m) => ({ p: pid, m }));
+}
+
+function chainKey(chain) {
+  return (chain || []).map((c) => c.p + "\u0002" + c.m).join("\u0001");
 }
 
 function bindSelById(id) {
   S.bindSel = S.bindSel || {};
   const server = bindChain((S.bindings || {})[id] || {});
-  const key = server.join("\u0001");
+  const key = chainKey(server);
   let st = S.bindSel[id];
   if (!st) {
-    st = S.bindSel[id] = { open: false, models: server, dirty: false, key };
+    st = S.bindSel[id] = { open: false, chain: server, dirty: false, key };
   } else if (!st.dirty && st.key !== key) {
-    st.models = server;   // 别处改了配置 → 同步；本地有未保存改动时不覆盖
+    st.chain = server;   // 别处改了配置 → 同步；本地有未保存改动时不覆盖
     st.key = key;
   }
   return st;
@@ -1562,23 +1621,25 @@ function bindRepaint() { S.bindSig = null; renderBindings(); }
 
 function bindModelBox(c, provId) {
   const st = bindSelById(c.id);
-  const chips = st.models.length
-    ? st.models.map((m, i) =>
-        '<span class="ochip' + (i === 0 ? " primary" : "") + '">' +
-        "<b>" + (i === 0 ? "主" : "备") + "</b>" + esc(m) +
-        (i > 0 ? '<button class="mini" data-m="' + esc(m) +
-                '" title="设为主模型" onclick="bindPromote(\'' + esc(c.id) + '\', this)">↑</button>' : "") +
-        '<button class="mini" data-m="' + esc(m) +
-          '" title="移除" onclick="bindRemove(\'' + esc(c.id) + '\', this)">×</button>' +
-        "</span>").join("")
+  const chips = st.chain.length
+    ? st.chain.map((c2, i) => {
+        const pname = c2.p ? provName(c2.p) : "CLI 默认凭据";
+        return '<span class="ochip' + (i === 0 ? " primary" : "") + '">' +
+          "<b>" + (i === 0 ? "主" : "备") + "</b>" + esc(pname) + " · " + esc(c2.m) +
+          (i > 0 ? '<button class="mini" data-m="' + esc(c2.m) + '" data-p="' + esc(c2.p) +
+                  '" title="设为主模型" onclick="bindPromote(\'' + esc(c.id) + '\', this)">↑</button>' : "") +
+          '<button class="mini" data-m="' + esc(c2.m) + '" data-p="' + esc(c2.p) +
+            '" title="移除" onclick="bindRemove(\'' + esc(c.id) + '\', this)">×</button>' +
+          "</span>";
+      }).join("")
     : '<span class="hint">未设置' + (provId ? "（按供应商/难度自动解析）" : "（用 CLI 默认模型）") + "</span>";
-  return '<div class="field"><label>运行时模型链（最多 ' + MAX_ORCH_MODELS + " 个）</label>" +
+  return '<div class="field"><label>运行时模型链（跨厂商，最多 ' + MAX_ORCH_MODELS + " 条）</label>" +
     '<div class="orch-row">' + chips +
     '<button class="ghost small" onclick="bindToggle(\'' + esc(c.id) + '\')">' +
     (st.open ? "收起" : "＋ 添加") + "</button>" +
     (st.dirty ? ' <span class="hint">有未保存改动</span>' : "") +
     "</div>" +
-    (st.models.length ? '<div class="hint">已选模型链：链先生效，「按难度自动选模型」被忽略。</div>' : "") +
+    (st.chain.length ? '<div class="hint">链先生效（覆盖「按难度自动选模型」）；主模型瞬态失败自动降级到下一条——可以是另一家厂商。</div>' : "") +
     (st.open ? bindPanel(c) : "") + "</div>";
 }
 
@@ -1589,13 +1650,16 @@ function bindPanel(c) {
     return '<div class="ohint">还没有可用模型——先到「模型接入」页导入供应商并获取模型列表。</div>';
   }
   return '<div class="opanel">' +
-    '<div class="ohint">勾选该 CLI 编排运行时的模型；第 1 个是主模型，其余按顺序作降级备选。绑定供应商时链里的模型应属于该供应商；不绑定时模型名会原样传给 CLI。</div>' +
+    '<div class="ohint">勾选该 CLI 编排运行时的模型（可跨供应商混选）：第 1 条是主模型，其余按顺序作降级备选，每条自带该供应商的凭据注入。</div>' +
     groups.map((g) =>
-      '<div class="ogroup"><div class="ogname">' + esc(g.name) + "</div>" +
-      g.models.map((m) =>
-        '<label class="oitem"><input type="checkbox" value="' + esc(m) + '"' +
-        (st.models.includes(m) ? " checked" : "") +
-        " onchange=\"bindPick('" + esc(c.id) + "', this, this.checked)\">" + esc(m) + "</label>").join("") +
+      '<div class="ogroup"><div class="ogname">' + esc(g.name) +
+      ' <span class="tag">注入该厂商凭据</span></div>' +
+      g.models.map((m) => {
+        const has = st.chain.some((x) => x.p === g.id && x.m === m);
+        return '<label class="oitem"><input type="checkbox" value="' + esc(m) + '" data-p="' + esc(g.id) + '"' +
+          (has ? " checked" : "") +
+          " onchange=\"bindPick('" + esc(c.id) + "', this, this.checked)\">" + esc(m) + "</label>";
+      }).join("") +
       "</div>").join("") + "</div>";
 }
 
@@ -1606,32 +1670,34 @@ function bindToggle(id) {
 }
 
 function bindPick(id, el, on) {
-  const st = bindSelById(id), model = el.value, i = st.models.indexOf(model);
+  const st = bindSelById(id), model = el.value, pid = el.dataset.p || "";
+  const i = st.chain.findIndex((x) => x.p === pid && x.m === model);
   if (on && i < 0) {
-    if (st.models.length >= MAX_ORCH_MODELS) {
-      alert("最多选 " + MAX_ORCH_MODELS + " 个模型（1 个主模型 + " +
+    if (st.chain.length >= MAX_ORCH_MODELS) {
+      alert("最多选 " + MAX_ORCH_MODELS + " 条（1 个主模型 + " +
             (MAX_ORCH_MODELS - 1) + " 个降级备选）。");
       bindRepaint();
       return;
     }
-    st.models.push(model);
+    st.chain.push({ p: pid, m: model });
   } else if (!on && i >= 0) {
-    st.models.splice(i, 1);
+    st.chain.splice(i, 1);
   }
   st.dirty = true;
   bindRepaint();
 }
 
 function bindRemove(id, el) {
-  const st = bindSelById(id);
-  st.models = st.models.filter((m) => m !== el.dataset.m);
+  const st = bindSelById(id), m = el.dataset.m, p = el.dataset.p || "";
+  st.chain = st.chain.filter((x) => !(x.p === p && x.m === m));
   st.dirty = true;
   bindRepaint();
 }
 
 function bindPromote(id, el) {
-  const st = bindSelById(id), m = el.dataset.m;
-  st.models = [m].concat(st.models.filter((x) => x !== m));
+  const st = bindSelById(id), m = el.dataset.m, p = el.dataset.p || "";
+  const hit = st.chain.find((x) => x.p === p && x.m === m);
+  if (hit) st.chain = [hit].concat(st.chain.filter((x) => x !== hit));
   st.dirty = true;
   bindRepaint();
 }
@@ -1874,8 +1940,189 @@ async function checkUpdate(agentId) {
   S.catSig = null; renderCatalog();
 }
 
+/* ---------------------------------------------------------- 自定义流程管理 */
+function openFlowsManager() {
+  const flows = S.flows || [];
+  const rows = flows.map((f) =>
+    '<div class="item"><div class="t"><span class="name">' + esc(f.icon || "") + " " + esc(f.name) +
+    '</span><span class="tag">' + esc(f.id) + "</span>" +
+    '<span class="tag">' + (f.engine === "code" ? "代码引擎" : "评审引擎") + "</span>" +
+    (f.builtin ? '<span class="tag ok">内置</span>' : "") +
+    (!f.builtin ? '<button class="ghost small" onclick="flowForm(\'' + esc(f.id) + '\')">编辑</button>' +
+      '<button class="danger small" onclick="deleteFlow(\'' + esc(f.id) + '\')">删除</button>' : "") +
+    '</div><div class="desc">' + esc(f.note || "") +
+    (f.rubric ? "　维度：" + esc(f.rubric.join(" / ")) : "") + "</div></div>").join("");
+  const body = '<div class="list">' + rows + "</div>" +
+    '<button class="primary" style="margin-top:10px" onclick="flowForm()">＋ 新建自定义流程</button>';
+  openModal("🧩 任务类型管理", body, "");
+}
+
+/* 新建/编辑流程表单弹框；fid 空 = 新建 */
+function flowForm(fid) {
+  const f = fid ? flowById(fid) : null;
+  const engineSel =
+    '<div class="grid-2">' +
+    '<div class="field"><label>流程 ID（小写字母开头）</label><input id="fl-id" value="' + esc(f ? f.id : "") + '"' + (f ? " disabled" : "") + ' placeholder="例：podcast-script"></div>' +
+    '<div class="field"><label>名称</label><input id="fl-name" value="' + esc(f ? f.name : "") + '" placeholder="例：播客脚本"></div>' +
+    "</div>" +
+    '<div class="grid-2">' +
+    '<div class="field"><label>图标</label><input id="fl-icon" value="' + esc(f ? (f.icon || "") : "") + '" maxlength="4" placeholder="✨"></div>' +
+    '<div class="field"><label>引擎</label><select id="fl-engine"' + (f ? " disabled" : "") + '>' +
+    '<option value="review"' + (!f || f.engine === "review" ? " selected" : "") + '>评审引擎（起草 → 多维评审 → 修订 → 门禁）</option>' +
+    '<option value="code"' + (f && f.engine === "code" ? " selected" : "") + '>代码引擎（实现 → 验证 → 评审 → 修复）</option>' +
+    "</select></div></div>" +
+    '<div id="fl-review-fields">' +
+    '<div class="grid-2">' +
+    '<div class="field"><label>产出文件名</label><input id="fl-manuscript" value="' + esc(f ? (f.manuscript || "") : "") + '" placeholder="例：script.md"></div>' +
+    '<div class="field"><label>发布阈值（1-10）</label><input id="fl-threshold" type="number" step="0.5" min="1" max="10" value="' + (f ? (f.threshold || 7) : 7) + '"></div>' +
+    "</div>" +
+    '<div class="grid-2">' +
+    '<div class="field"><label>评审轮数（1-5）</label><input id="fl-rounds" type="number" min="1" max="5" value="' + (f ? (f.rounds || 2) : 2) + '"></div>' +
+    '<div class="field"><label>评审维度（逗号分隔）</label><input id="fl-rubric" value="' + esc(f && f.rubric ? f.rubric.join(", ") : "") + '" placeholder="例：结构, 内容, 表达"></div>' +
+    "</div>" +
+    '<div class="field"><label>起草提示词（可选，占位符 __FILE__ __GOAL__ __CONTEXT__）</label><textarea id="fl-draft" rows="3" placeholder="留空 = 用内置通用模板">' + esc(f && f.draft_prompt ? f.draft_prompt : "") + "</textarea></div>" +
+    '<div class="field"><label>评审提示词（可选，占位符 __DIMKEYS__ __MANUSCRIPT__）</label><textarea id="fl-critique" rows="3" placeholder="留空 = 用内置通用模板">' + esc(f && f.critique_prompt ? f.critique_prompt : "") + "</textarea></div>" +
+    "</div>";
+  openModal(f ? "编辑流程：" + esc(f.name) : "新建自定义流程",
+    '<div class="form">' +
+    '<div class="field"><label>一句话说明（显示在流程列表）</label><input id="fl-note" value="' + esc(f ? (f.note || "") : "") + '" placeholder="例：技术播客单集脚本产出"></div>' +
+    engineSel + "</div>", "");
+  const foot = $("modal-foot");
+  if (foot) foot.innerHTML = '<button class="primary" onclick="saveFlow()">保存</button>' +
+    '<button class="ghost" onclick="closeModal()">取消</button>';
+  const eng = $("fl-engine");
+  if (eng) eng.addEventListener("change", () => {
+    $("fl-review-fields").classList.toggle("hidden", eng.value !== "review");
+  });
+}
+
+async function saveFlow() {
+  const payload = {
+    id: $("fl-id").value.trim(), name: $("fl-name").value.trim(),
+    icon: $("fl-icon").value.trim() || "✨", engine: $("fl-engine").value,
+    note: $("fl-note").value.trim(),
+  };
+  if (payload.engine === "review") {
+    payload.manuscript = $("fl-manuscript").value.trim();
+    payload.threshold = parseFloat($("fl-threshold").value) || 7;
+    payload.rounds = parseInt($("fl-rounds").value, 10) || 2;
+    payload.rubric = $("fl-rubric").value.split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
+    payload.draft_prompt = $("fl-draft").value.trim();
+    payload.critique_prompt = $("fl-critique").value.trim();
+  }
+  try {
+    await api("/api/flows", { method: "POST", body: JSON.stringify(payload) });
+  } catch (e) { alert("保存失败：" + e.message); return; }
+  closeModal();
+  await loadFlows();
+  openFlowsManager();
+  toast("流程已保存");
+}
+
+async function deleteFlow(fid) {
+  if (!confirm("删除自定义流程「" + fid + "」？已有任务不受影响。")) return;
+  try { await api("/api/flows/" + encodeURIComponent(fid) + "/delete", { method: "POST" }); }
+  catch (e) { alert("删除失败：" + e.message); return; }
+  await loadFlows();
+  openFlowsManager();
+  toast("已删除");
+}
+
+/* ---------------------------------------------------------- 编排中枢（编排者 + 并发设置） */
+async function loadOrchestrator() {
+  try {
+    const r = await api("/api/orchestrator");
+    S.orch = r.orchestrator || null;
+  } catch (e) { S.orch = null; }
+  renderOrch();
+}
+
+async function loadSettings() {
+  try {
+    S.settings = await api("/api/settings");
+    const inp = $("set-workers");
+    if (inp && S.settings) inp.value = S.settings.max_concurrent_jobs;
+  } catch (e) { /* 忽略 */ }
+}
+
+/* 编排者供应商下拉：三种协议都支持直连（含 google），不限于可注入 CLI 的 */
+function orchProvs() {
+  return (S.providers || []).filter((p) => p.api_key && p.enabled !== false);
+}
+
+function renderOrch() {
+  const box = $("orch-config");
+  if (!box || !S.orch) return;
+  const provs = orchProvs();
+  const sig = JSON.stringify([S.orch, provs.map((p) => p.id)]);
+  if (sig === S.orchSig) return;
+  S.orchSig = sig;
+  const sel = provs.find((p) => p.id === S.orch.provider_id) || null;
+  const opts = '<option value="">（不使用编排者）</option>' + provs.map((p) =>
+    '<option value="' + esc(p.id) + '"' + (S.orch.provider_id === p.id ? " selected" : "") + ">" +
+    esc(p.name) + "（" + esc(p.protocol) + "）</option>").join("");
+  const modelOpts = (sel ? (sel.models || []).filter((m) => !m.hidden && m.enabled !== false)
+      .sort((a, b) => (a.priority || 0) - (b.priority || 0)).map((m) => m.name) : []);
+  const curModel = S.orch.model || (sel ? sel.model : "") || "";
+  const allOpts = Array.from(new Set([curModel].concat(modelOpts).filter(Boolean)));
+  box.innerHTML =
+    '<div class="grid-2">' +
+    '<div class="field"><label>编排者供应商</label><select id="orch-prov">' + opts + "</select></div>" +
+    '<div class="field"><label>编排者模型</label><select id="orch-model">' +
+    '<option value="">（用供应商默认模型）</option>' +
+    allOpts.map((m) => '<option value="' + esc(m) + '"' + (m === curModel ? " selected" : "") + ">" + esc(m) + "</option>").join("") +
+    "</select></div></div>" +
+    '<div class="ops"><label class="toggle"><input type="checkbox" id="orch-enabled"' +
+    (S.orch.enabled ? " checked" : "") + "> 启用编排者（规划 / 难度判定 / 写作大纲）</label>" +
+    '<button class="ghost small" onclick="saveOrchestrator()">保存</button>' +
+    '<button class="ghost small" onclick="testOrchestrator()">测试连通</button>' +
+    '<span id="orch-test" class="msg"></span></div>' +
+    (S.orch.enabled && !S.orch.ready ? '<p class="hint warn">当前配置不生效：请检查供应商密钥、启停状态与模型选择。</p>' : "");
+  $("orch-prov").addEventListener("change", () => { S.orchSig = null; renderOrch(); });
+}
+
+async function saveOrchestrator() {
+  try {
+    const r = await api("/api/orchestrator", { method: "POST", body: JSON.stringify({
+      provider_id: $("orch-prov").value,
+      model: $("orch-model").value,
+      enabled: $("orch-enabled").checked }) });
+    S.orch = r.orchestrator;
+    S.orchSig = null;
+    renderOrch();
+    toast("编排者配置已保存");
+  } catch (e) { alert("保存失败：" + e.message); }
+}
+
+async function testOrchestrator() {
+  const el = $("orch-test");
+  if (!el) return;
+  el.textContent = "测试中…"; el.className = "msg";
+  try {
+    const r = await api("/api/orchestrator/test", { method: "POST" });
+    el.className = "msg " + (r.ok ? "ok" : "err");
+    el.textContent = r.ok ? ("✓ " + r.provider + " · " + r.model + " 回应正常") : ("✗ " + (r.error || "失败"));
+  } catch (e) {
+    el.className = "msg err"; el.textContent = "✗ " + e.message;
+  }
+}
+
+async function saveSettings() {
+  const msg = $("settings-msg");
+  try {
+    const r = await api("/api/settings", { method: "POST", body: JSON.stringify({
+      max_concurrent_jobs: parseInt($("set-workers").value, 10) }) });
+    S.settings = r.settings;
+    if (msg) { msg.className = "msg ok"; msg.textContent = "已保存：最大并发 " + r.workers + " 个任务"; }
+  } catch (e) {
+    if (msg) { msg.className = "msg err"; msg.textContent = e.message; }
+  }
+}
+
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { tasks: "任务", runs: "运行记录", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定" };
+const TAB_TITLES = { tasks: "任务", runs: "运行记录", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", orch: "编排中枢" };
+
+
 
 /* ---------------------------------------------------------- 手机连接（扫码） */
 /* ZCode 桌面端式样：大二维码居中，地址+复制在下方；多来源（Tailscale/局域网）用 chips 切换 */
@@ -1897,7 +2144,8 @@ async function openPhoneConnect() {
     '<button class="ghost small" onclick="copyConnUrl()">复制地址</button></div>' +
     '<p class="hint">手机相机扫码即自动登录（地址已含访问令牌，扫一次永久记住）。' +
     '局域网地址要求手机与电脑连同一 WiFi；Tailscale 地址出门也能用，' +
-    '两端需登录同一 Tailscale 账号。手机控制时另一端自动变为只读，可在顶栏接管。</p>' +
+    '两端需登录同一 Tailscale 账号。手机控制时另一端自动变为只读，可在顶栏接管。<br>' +
+    '连不上时（如路由器重启后地址变了）回电脑重新打开此弹框扫新码即可。</p>' +
     "</div>";
   openModal("📱 手机连接", body, "");
   renderConnQR();
@@ -1951,6 +2199,7 @@ function switchTab(name) {
   if (title) title.textContent = TAB_TITLES[name] || "设置";
   if (name === "runs" && !S.detailRunId) closeRun();
   if (name === "agents") autoCheckUpdates();   // 进目录页自动查各 CLI 新版本
+  if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排中枢页拉取配置
 }
 
 /* 退出设置：左栏恢复任务树，内容回到任务页 */
@@ -1975,6 +2224,7 @@ function openSettingsMenu() {
     { label: "⚙ 智能体管理", fn: () => switchTab("agents") },
     { label: "◈ 模型接入", fn: () => switchTab("models") },
     { label: "🔗 CLI 绑定", fn: () => switchTab("bindings") },
+    { label: "✦ 编排中枢", fn: () => switchTab("orch") },
   ]);
 }
 
@@ -2034,6 +2284,13 @@ window.submitToken = submitToken;
 window.openPhoneConnect = openPhoneConnect;
 window.pickConnUrl = pickConnUrl;
 window.copyConnUrl = copyConnUrl;
+window.openFlowsManager = openFlowsManager;
+window.flowForm = flowForm;
+window.saveFlow = saveFlow;
+window.deleteFlow = deleteFlow;
+window.saveOrchestrator = saveOrchestrator;
+window.testOrchestrator = testOrchestrator;
+window.saveSettings = saveSettings;
 
 document.addEventListener("DOMContentLoaded", () => {
   // 远程地址里带的 ?token= 存起来并从地址栏抹掉，之后所有请求走请求头
@@ -2070,12 +2327,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("chk-archived").checked = S.showArchived;
   $("f-resume-agent").addEventListener("change", loadSessions);
   $("f-workdir").value = localStorage.getItem("orch.workdir") || "";
-  $("f-type").addEventListener("change", () => {
-    const novel = $("f-type").value === "novel";
-    $("f-code-only").classList.toggle("hidden", novel);
-    $("f-novel-only").classList.toggle("hidden", !novel);
-    renderImplSelects();
-  });
+  $("f-type").addEventListener("change", onTypeChange);
   $("f-mode").addEventListener("change", () => {
     $("f-manual-only").classList.toggle("hidden", $("f-mode").value !== "manual");
   });
@@ -2101,4 +2353,5 @@ document.addEventListener("DOMContentLoaded", () => {
   schedulePolling();
   startSSE();
   startCtrlHeartbeat();
+  loadFlows();   // 任务类型下拉（内置 + 自定义流程）
 });

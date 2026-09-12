@@ -54,10 +54,7 @@ class TestResumeArgv(BaseTest):
         from app.core import runner
         codex = {"id": "codex-cli", "kind": "codex", "mode": "real", "command": "codex"}
         claude = {"id": "claude-code", "kind": "claude", "mode": "real", "command": "claude"}
-        # resume 时 codex 走 exec resume；claude 加 --resume
-        r = runner.run_agent(codex, "hi", resume="sid-123")  # 命令不存在也无所谓，只看参数构建
-        self.assertNotIn("ok", r or None) if False else None
-        # 直接检查内部构建逻辑：用 monkeypatch 拦截 run_process
+        # 直接检查内部构建逻辑：用 monkeypatch 拦截 run_process（不得真实调用 CLI）
         import app.core.runner as R
         captured = {}
         orig = R.run_process

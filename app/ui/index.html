@@ -2,8 +2,16 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Tutti · 多智能体编排台</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#6d5df6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tutti">
 <link rel="stylesheet" href="style.css">
 <script>document.documentElement.dataset.theme = localStorage.getItem("orch.theme") === "light" ? "light" : "dark";</script>
 </head>
@@ -34,6 +42,7 @@
       <button class="set-item" data-sub="agents">⚙ 智能体管理</button>
       <button class="set-item" data-sub="models">◈ 模型接入</button>
       <button class="set-item" data-sub="bindings">🔗 CLI 绑定</button>
+      <button class="set-item" data-sub="orch">✦ 编排中枢</button>
       <div class="set-group">远程</div>
       <button id="btn-phone" class="set-item" data-sub="__phone">📱 手机连接</button>
     </div>
@@ -65,11 +74,8 @@
         <div class="form">
           <div class="grid-2">
             <div class="field">
-              <label>类型</label>
-              <select id="f-type">
-                <option value="code">代码（实现 → 验证 → 评审）</option>
-                <option value="novel">小说（草稿 → 多轮评审 → 发布门禁）</option>
-              </select>
+              <label>类型 <button class="ghost small" onclick="openFlowsManager()" title="管理任务类型：新增/编辑自定义流程">管理</button></label>
+              <select id="f-type"></select>
             </div>
             <div class="field">
               <label>继续会话</label>
@@ -109,12 +115,13 @@
               <div id="f-code-only">
                 <div class="field"><label>验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）"></div>
               </div>
-              <div id="f-novel-only" class="hidden">
+              <div id="f-review-only" class="hidden">
                 <div class="grid-3">
                   <div class="field"><label>稿件文件</label><input id="f-manuscript" value="manuscript.md" placeholder="工作目录内的文件名"></div>
                   <div class="field"><label>评审轮数</label><input id="f-rounds" type="number" value="2" min="1" max="5"></div>
                   <div class="field"><label>发布阈值</label><input id="f-threshold" type="number" value="7.0" min="1" max="10" step="0.5"></div>
                 </div>
+                <div class="field"><label>评审维度（逗号分隔，可自定义）</label><input id="f-rubric" placeholder="例：情节, 人物, 文笔"></div>
               </div>
 
               <div id="f-manual-only" class="hidden">
@@ -210,8 +217,26 @@
       <div id="sub-bindings" class="subpage hidden">
         <div class="panel wide">
           <div class="panel-head"><h2>CLI 绑定</h2></div>
-          <p class="hint">Tutti 编排运行时的模型都在这里配：绑定供应商会注入其 API key 与地址；「模型链」第 1 个是主模型、其余按顺序降级，链空则按供应商默认 / 难度自动选。不绑供应商、只选模型链 = 只传 -m 参数，沿用 CLI 自身凭据。只影响 Tutti 发起的调用，不改写 CLI 全局配置（要改默认模型请到「智能体管理」页）。</p>
+          <p class="hint">Tutti 编排运行时的模型都在这里配：模型链可跨厂商混搭——每条自带供应商注入（API key + 地址），第 1 条是主模型、其余按顺序降级，瞬态错误自动切到下一条（可能是另一家厂商）。链空则按供应商默认 / 难度自动选。只影响 Tutti 发起的调用，不改写 CLI 全局配置（要改默认模型请到「智能体管理」页）。</p>
           <div id="binding-list" class="cards"></div>
+        </div>
+      </div>
+
+      <!-- 编排中枢 -->
+      <div id="sub-orch" class="subpage hidden">
+        <div class="panel wide">
+          <div class="panel-head"><h2>编排中枢</h2></div>
+          <p class="hint">「编排者」是 Tutti 自己的智能体：直连 API 供应商的模型（不占 CLI 会话），统一负责任务规划拆解、难度判定与写作大纲。未启用或调用失败时自动回落为「最强可用 CLI 智能体」规划，流程永不阻塞。</p>
+          <div id="orch-config"></div>
+          <h3 class="sec-title">运行设置</h3>
+          <div class="field"><label>最大并发任务数（多任务同时跑、互不打扰）</label>
+            <div class="input-row">
+              <input id="set-workers" type="number" min="1" max="6" value="3">
+              <button class="ghost small" onclick="saveSettings()">保存</button>
+            </div>
+            <p class="hint">1 = 串行排队；建议 2-4。每个任务在独立线程执行，运行数据按任务隔离。</p>
+          </div>
+          <div id="settings-msg" class="msg"></div>
         </div>
       </div>
     </section>

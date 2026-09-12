@@ -389,7 +389,7 @@ def _run_code(run, task, agents, ev, stats, mode):
     scores = review_json.get("scores") or {}
     overall_score = round(sum(scores.values()) / len(scores), 1) if scores else None
     verdict = {
-        "type": "code", "pass": overall_pass, "mode": mode,
+        "type": "code", "engine": "code", "pass": overall_pass, "mode": mode,
         "verify_ran": verify_ran, "verify_pass": verify_pass,
         "review_pass": bool(review_json.get("pass")),
         "scores": scores, "overall_score": overall_score,
@@ -444,9 +444,9 @@ def _pick_reviewer_legacy(agents, impl):
     return impl, "（自评：仅有实现者一个智能体可用）"
 
 
-# ---------------------------------------------------------------- 小说流水线
+# ---------------------------------------------------------------- review 引擎（小说/文档/翻译/调研…通用）
 
-NOVEL_DRAFT_PROMPT = """你是一名小说作者。请在当前工作目录中撰写/修订稿件文件：`__FILE__`（直接写入该文件）。
+NOVEL_DRAFT_PROMPT = """你是一名专业作者。请在当前工作目录中撰写/修订稿件文件：`__FILE__`（直接写入该文件）。
 
 ## 写作任务
 __GOAL__
@@ -458,7 +458,7 @@ __CONTEXT__
 - 只修改 `__FILE__` 这一个文件；保持 Markdown 结构。
 - 完成后用 3 句话说明本轮写了什么。"""
 
-NOVEL_REVISE_PROMPT = """你是一名小说作者。请根据下方汇总评审意见修订稿件文件：`__FILE__`（直接写入该文件）。
+NOVEL_REVISE_PROMPT = """你是一名专业作者。请根据下方汇总评审意见修订稿件文件：`__FILE__`（直接写入该文件）。
 
 ## 原始写作任务
 __GOAL__
@@ -470,7 +470,7 @@ __CRITIQUE__
 - 针对性改进所有 major 问题；保持既定风格与设定。
 - 完成后用 3 句话说明本轮改了什么。"""
 
-NOVEL_CRITIQUE_PROMPT = """你是严格的小说评审（不要使用任何工具、不要修改文件，只依据下方稿件内容评审）。
+NOVEL_CRITIQUE_PROMPT = """你是严格的评审（不要使用任何工具、不要修改文件，只依据下方稿件内容评审）。
 请输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {
   "scores": {"__DIMKEYS__"},
@@ -485,7 +485,22 @@ __MANUSCRIPT__
 ---"""
 
 
-def _run_novel(run, task, agents, ev, stats, mode):
+def _tpl(task, key, default):
+    """自定义流程的提示词覆盖：任务上带模板则用之，否则用内置默认。"""
+    t = (task.get(key) or "").strip()
+    return t if t else default
+
+
+def _ensure_critique_placeholders(tpl):
+    """自定义评审模板缺占位符时补上，避免稿件内容/维度定义丢失导致盲评。"""
+    if "__MANUSCRIPT__" not in tpl:
+        tpl += "\n\n## 待评审稿件\n---\n__MANUSCRIPT__\n---"
+    if "__DIMKEYS__" not in tpl:
+        tpl = ("请按维度打分（1-10 分）。\n\n" + tpl)
+    return tpl
+
+
+def _run_content_review(run, task, agents, ev, stats, mode):
     run_id = run["id"]
     workdir = task["workdir"]
     ms_name = _ms_name(task.get("manuscript"))
@@ -532,6 +547,11 @@ def _run_novel(run, task, agents, ev, stats, mode):
 
     draft_note = route.get("author", "") if mode == "auto" else ""
 
+    # 编排者大纲：只对真实执行有意义；失败静默退回无大纲
+    outline = planner.make_review_outline(task) if impl.get("mode") != "mock" else None
+    if outline:
+        store.update_run(run_id, outline=outline)
+
     # 1) 起草
     if impl.get("mode") == "mock":
         step, log_abs = store.add_step(run_id, "draft", impl["id"], impl.get("label"), note=draft_note)
@@ -544,9 +564,12 @@ def _run_novel(run, task, agents, ev, stats, mode):
         except Exception:
             pass
     else:
-        prompt = (NOVEL_DRAFT_PROMPT.replace("__FILE__", ms_name)
+        prompt = (_tpl(task, "draft_prompt", NOVEL_DRAFT_PROMPT).replace("__FILE__", ms_name)
                   .replace("__GOAL__", task["goal"])
                   .replace("__CONTEXT__", task.get("context") or "（无）"))
+        if outline:
+            prompt += "\n\n## 编排者大纲（按要点组织稿件）\n" + \
+                      "\n".join("- " + i for i in outline["items"])
         draft_res = _run_step(run_id, "draft", modelhub.bind_agent(impl, difficulty), prompt,
                               workdir, readonly=False, ev=ev, note=draft_note,
                               resume=resume_ctx["session"] if resume_ctx else None)
@@ -562,9 +585,10 @@ def _run_novel(run, task, agents, ev, stats, mode):
         manuscript = read_ms()
         per_agent, issues_all = {}, []
         dimkey = ", ".join('"%s": 0' % d for d in dims)
-        crit_prompt = (NOVEL_CRITIQUE_PROMPT
-                       .replace("__DIMKEYS__", dimkey)
-                       .replace("__MANUSCRIPT__", manuscript or "（稿件为空！）"))
+        crit_prompt = (_ensure_critique_placeholders(
+            _tpl(task, "critique_prompt", NOVEL_CRITIQUE_PROMPT))
+            .replace("__DIMKEYS__", dimkey)
+            .replace("__MANUSCRIPT__", manuscript or "（稿件为空！）"))
         for agent in critics:
             role = "critique-r%d" % r
             if agent.get("mode") == "mock":
@@ -629,13 +653,15 @@ def _run_novel(run, task, agents, ev, stats, mode):
     final_means = history_rounds[-1]["means"] if history_rounds else {}
     overall = round(sum(final_means.values()) / len(final_means), 1) if final_means else 0.0
     verdict = {
-        "type": "novel", "publishable": publishable, "overall": overall, "mode": mode,
+        "type": task["type"], "engine": "review", "publishable": publishable,
+        "overall": overall, "mode": mode,
         "threshold": threshold, "rounds_used": history_rounds[-1]["round"] if history_rounds else 0,
         "scores": final_means, "history": history_rounds, "route": route,
     }
 
     # 3) 报告
-    lines = ["# 小说评审报告：%s" % task["title"], "",
+    lines = ["# 评审报告：%s" % task["title"], "",
+             "- 任务类型：%s" % task["type"],
              "- 结论：**%s**（综合 %.1f / 阈值 %.1f，%d 轮评审）"
              % ("✅ 达到发布标准" if publishable else "❌ 未达标，建议再修",
                 overall, threshold, verdict["rounds_used"]),
@@ -668,7 +694,7 @@ def _run_novel(run, task, agents, ev, stats, mode):
     lines += ["", "## 稿件位置", "", "`%s`" % ms_path, ""]
     store.write_report(run_id, "\n".join(lines))
     store.update_run(run_id, status="done", verdict=verdict,
-                     summary="小说任务%s（综合 %.1f）" % ("达标" if publishable else "未达标", overall),
+                     summary="评审任务%s（综合 %.1f）" % ("达标" if publishable else "未达标", overall),
                      ended_at=_now())
 
 
@@ -689,11 +715,13 @@ def execute_run(run_id):
     stats = history.agent_stats()
     mode = task.get("mode") or ("manual" if task.get("implementer") else "auto")
     store.update_run(run_id, mode=mode)
+    # engine 决定流水线：code=实现/验证/评审/修复；review=起草/多维评审/修订/门禁
+    engine = task.get("engine") or ("code" if task["type"] == "code" else "review")
     try:
-        if task["type"] == "code":
+        if engine == "code":
             _run_code(run, task, agents, ev, stats, mode)
         else:
-            _run_novel(run, task, agents, ev, stats, mode)
+            _run_content_review(run, task, agents, ev, stats, mode)
     except Cancelled:
         store.update_run(run_id, status="cancelled", ended_at=_now())
     except Exception as e:

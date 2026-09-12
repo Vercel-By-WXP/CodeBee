@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
-"""任务队列：单一 worker 线程顺序执行编排任务与管理操作（安装/升级/冒烟）。
+"""任务队列：可并发 worker 池（默认 3，1-6 可配）执行编排任务与管理操作。
 
-安装/升级失败时自动触发 AI 诊断修复：由真实智能体读取失败日志与本机环境，
-给出修正命令；仅当命令命中白名单前缀（npm/winget/pip 安装类）才自动执行，
-否则把建议命令记录在运行记录里等人工确认。
+多个任务同时跑、互不打扰：每个 job 一条独立线程，run/step 数据按 run_id
+隔离，store 层有全局锁。目标并发数可在设置页调整；调小后多余线程在取到
+新任务前自行退出，调大即时补齐。安装/升级失败时自动触发 AI 诊断修复：
+由真实智能体读取失败日志与本机环境给出修正命令；仅当命令命中白名单前缀
+（npm/winget/pip 安装类）才自动执行，否则把建议命令记录在运行记录里等人工确认。
 """
 from __future__ import annotations
 
@@ -14,6 +16,10 @@ import traceback
 _QUEUE = queue.Queue()
 CANCELS = {}
 _started = False
+_alive = 0            # 活跃 worker 线程数
+_target = 3           # 目标并发数（settings.max_concurrent_jobs）
+_pool_lock = threading.Lock()
+_seq = 0
 
 AI_REPAIR_PROMPT = """你是环境工程师。在 Windows 上执行下面的安装命令失败了，请诊断原因并给出修正命令。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
@@ -39,15 +45,44 @@ def _repair_command_allowed(cmd):
     return cmd.startswith(AI_REPAIR_ALLOW) and "|" not in cmd and "&" not in cmd and ">" not in cmd
 
 
+def configure(max_workers):
+    """设置目标并发数（1-6）：扩容立即补线程，缩容由空闲线程自行退出。"""
+    global _target
+    _target = max(1, min(6, int(max_workers)))
+    if _started:
+        _resize()
+    return _target
+
+
+def _resize():
+    global _seq
+    with _pool_lock:
+        while _alive < _target:
+            _seq += 1
+            try:
+                threading.Thread(target=_worker, name="job-worker-%d" % _seq,
+                                 daemon=True).start()
+            except RuntimeError:
+                break  # 资源受限起不了新线程：保持现有 worker，不影响任务执行
+
+
 def start_worker():
     global _started
     if _started:
         return
     _started = True
-    threading.Thread(target=_worker, name="job-worker", daemon=True).start()
+    try:
+        from . import settings
+        configure(settings.load()["max_concurrent_jobs"])
+        return
+    except Exception:
+        pass
+    configure(3)
 
 
 def enqueue(job):
+    if not _started:
+        start_worker()
     _QUEUE.put(job)
 
 
@@ -66,27 +101,45 @@ def cancel_event_for(run_id):
 
 
 def _worker():
-    while True:
-        job = _QUEUE.get()
-        run_id = job.get("run_id")
-        ev = cancel_event_for(run_id) if run_id else threading.Event()
-        try:
-            if job.get("kind") == "orchestration":
-                from . import pipeline
-                pipeline.execute_run(run_id)
-            elif job.get("kind") == "mgmt":
-                _do_mgmt(job, ev)
-        except Exception:
+    global _alive
+    with _pool_lock:
+        _alive += 1
+    try:
+        while True:
+            with _pool_lock:
+                if _alive > _target:   # 缩容：多余的线程在空闲检查点自行退出
+                    return
             try:
-                from . import store
-                err = traceback.format_exc()
-                store.update_run(run_id, status="failed", error=err[-1500:], ended_at=_now())
+                job = _QUEUE.get(timeout=5)  # 定期醒来检查并发数是否被调小
+            except queue.Empty:
+                continue
+            run_id = job.get("run_id")
+            ev = cancel_event_for(run_id) if run_id else threading.Event()
+            try:
+                if job.get("kind") == "orchestration":
+                    from . import pipeline
+                    pipeline.execute_run(run_id)
+                elif job.get("kind") == "mgmt":
+                    _do_mgmt(job, ev)
             except Exception:
-                pass
-        finally:
-            if run_id:
-                CANCELS.pop(run_id, None)
-            _QUEUE.task_done()
+                try:
+                    from . import store
+                    err = traceback.format_exc()
+                    store.update_run(run_id, status="failed", error=err[-1500:], ended_at=_now())
+                except Exception:
+                    pass
+            finally:
+                if run_id:
+                    CANCELS.pop(run_id, None)
+                _QUEUE.task_done()
+    finally:
+        with _pool_lock:
+            _alive -= 1
+
+
+def workers_info():
+    with _pool_lock:
+        return {"target": _target, "alive": _alive}
 
 
 def _now():

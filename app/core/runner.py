@@ -247,18 +247,20 @@ def _resolve_attempts(agent):
     """把 agent 的模型配置展开为逐次尝试列表。
 
     优先用跨厂商链 call_chain（每条自带 env / codex_provider，来自不同供应商）；
-    无链时退回 model + model_fallbacks（同一 CLI 进程内换 -m）。
+    无链时退回 model + model_fallbacks（同一 CLI 进程内换 -m，沿用 agent 级注入）。
     """
     chain = agent.get("call_chain") or []
     if chain:
         return [{"model": (e.get("model") or "").strip() or None,
                  "env": dict(e.get("env") or {}),
+                 "from_chain": True,
                  "own_cp": "codex_provider" in e,
                  "codex_provider": e.get("codex_provider")} for e in chain]
     base_model = agent.get("model")
     fb = [m for m in (agent.get("model_fallbacks") or []) if m and m != base_model]
     models_to_try = ([base_model] if base_model else []) + fb
-    return [{"model": m or None, "env": {}, "own_cp": False, "codex_provider": None}
+    return [{"model": m or None, "env": {}, "from_chain": False, "own_cp": False,
+             "codex_provider": None}
             for m in (models_to_try or [None])[:3]]
 
 
@@ -350,8 +352,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         eff_agent["env"] = env
         if att["own_cp"]:
             eff_agent["codex_provider"] = att["codex_provider"]
-        elif "codex_provider" in eff_agent:
-            del eff_agent["codex_provider"]  # 链内条目未注入供应商时不沿用 agent 级覆盖
+        elif att["from_chain"] and "codex_provider" in eff_agent:
+            # 链内条目未注入供应商时不能沿用上一条（可能是另一家厂商）的 -c 覆盖
+            del eff_agent["codex_provider"]
         for attempt in range(2):  # claude 偶发空响应（0 token）自动重试一次
             argv, stdin_text, prompt_eff = _build_call(eff_agent, kind, sid, readonly,
                                                        att["model"], prompt)

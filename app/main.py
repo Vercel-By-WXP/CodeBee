@@ -14,12 +14,13 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
-from core import catalog, jobs, manager, registry, remote, store
+from core import catalog, flows, jobs, manager, registry, remote, settings, store
 from core import paths
 
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
-        ".ico": "image/x-icon"}
+        ".ico": "image/x-icon", ".json": "application/manifest+json; charset=utf-8",
+        ".webmanifest": "application/manifest+json; charset=utf-8"}
 
 PORT = 8765  # main() 启动时更新；/api/connect 组装扫码地址用
 
@@ -87,6 +88,8 @@ class Handler(BaseHTTPRequestHandler):
     def _deny_control(self):
         ok, view = remote.acquire(self._client_id(), self._client_name())
         if ok:
+            if view.get("mine"):
+                store.bump_state()  # 空闲自动接管：让其他端立即看到
             return None
         return self._json(423, {
             "error": "「%s」正在控制，请先在右上角接管控制权" % view.get("holder", "其他设备"),
@@ -121,6 +124,13 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/models/sources":
                 from core import modelhub
                 return self._json(200, {"sources": modelhub.sources()})
+            if path == "/api/flows":
+                return self._json(200, {"flows": flows.list_flows()})
+            if path == "/api/settings":
+                return self._json(200, dict(settings.load(), **jobs.workers_info()))
+            if path == "/api/orchestrator":
+                from core import modelhub
+                return self._json(200, {"orchestrator": modelhub.orchestrator_view()})
             if path == "/api/catalog":
                 return self._json(200, {"catalog": manager.catalog_view(),
                                         "checking": manager.updates_checking()})
@@ -160,9 +170,10 @@ class Handler(BaseHTTPRequestHandler):
                 text = store.read_step_log(m.group(1), rel)
                 return self._json(200, {"log": text})
             return self._json(404, {"error": "unknown api"})
-        # 静态文件
+        # 静态文件：单文件或 UI 子目录文件（如 icons/icon-192.png）；
+        # _static 内的 parents 校验确保解析后仍在 UI_DIR 内，防穿越
         name = path.lstrip("/")
-        if re.match(r"^[\w.-]+$", name):
+        if re.match(r"^[\w.-]+(/[\w.-]+)*$", name):
             return self._static(name)
         return self._json(404, {"error": "not found"})
 
@@ -300,8 +311,42 @@ class Handler(BaseHTTPRequestHandler):
                                      provider_id=body.get("provider_id"),
                                      model=body.get("model"),
                                      models=body.get("models"),
-                                     difficulty_routing=body.get("difficulty_routing"))
+                                     difficulty_routing=body.get("difficulty_routing"),
+                                     chain=body.get("chain"))
             return self._json(200, {"ok": True, "binding": b})
+        if path == "/api/flows":
+            flow, err = flows.upsert_flow(self._body())
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True, "flow": flow})
+        m = re.match(r"^/api/flows/([^/]+)/delete$", path)
+        if m:
+            err = flows.delete_flow(m.group(1))
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
+        if path == "/api/settings":
+            view, err = settings.save(self._body())
+            if err:
+                return self._json(400, {"error": err, "settings": view})
+            n = jobs.configure(view["max_concurrent_jobs"])
+            return self._json(200, {"ok": True, "settings": view, "workers": n})
+        if path == "/api/orchestrator":
+            from core import modelhub
+            body = self._body()
+            err = modelhub.set_orchestrator(body.get("provider_id"),
+                                            model=body.get("model"),
+                                            enabled=body.get("enabled"))
+            return self._json(400, {"error": err}) if err else self._json(
+                200, {"ok": True, "orchestrator": modelhub.orchestrator_view()})
+        if path == "/api/orchestrator/test":
+            from core import modelhub
+            orch = modelhub.resolve_orchestrator()
+            if not orch:
+                return self._json(400, {"ok": False, "error": "编排者未启用或配置失效"})
+            prov, model = orch
+            res = modelhub.chat(prov["id"], model,
+                                "请只回复两个字：收到", max_tokens=64, timeout=30)
+            return self._json(200, dict(res, model=model,
+                                        provider=prov.get("name", prov["id"])))
         m = re.match(r"^/api/catalog/([^/]+)/(install|upgrade|smoke)$", path)
         if m:
             entry = catalog.by_id(m.group(1))
@@ -339,32 +384,40 @@ class Handler(BaseHTTPRequestHandler):
             if not ok:
                 return self._json(423, {"error": "「%s」正在控制" % view.get("holder", "其他设备"),
                                         "control": view})
+            store.bump_state()  # 控制权交接：让其他端立即看到
             return self._json(200, {"ok": True, "control": view})
         if action == "release":
-            return self._json(200, {"ok": True, "control": remote.release(self._client_id())})
+            view = remote.release(self._client_id())
+            store.bump_state()
+            return self._json(200, {"ok": True, "control": view})
         return self._json(400, {"error": "action 必须是 acquire 或 release"})
 
     def _api_events(self):
-        """SSE：状态（含控制权）变化即推送，前端省掉 2s 轮询。"""
+        """SSE 事件驱动：等 store 状态版本变化才构建/推送，空闲连接几乎零开销
+        （此前每连接每 0.8s 盲构建全量 payload，多端并发会把 detect 的慢 IO
+        放大成服务假死）。每 ~2s 醒一次顺带检查控制权变化。"""
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         cid = self._client_id()
-        last = ""
+        ver = store.state_version()
+        sent_ctrl = None
         n = 0
         try:
             while True:
-                payload = json.dumps(_state_payload(cid), ensure_ascii=False)
-                if payload != last:
-                    self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
-                    self.wfile.flush()
-                    last = payload
+                ver = store.wait_state_change(ver, 2.0)
+                ctrl = remote.control_view(cid)
+                if ver == store.state_version() and ctrl == sent_ctrl:
+                    continue  # 超时醒来且无变化
+                payload = json.dumps(_state_payload(cid, ver), ensure_ascii=False)
+                self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
+                self.wfile.flush()
+                sent_ctrl = ctrl
                 n += 1
-                if n % 20 == 0:  # ~16s 一次注释行：探活兼防中间层断开空闲连接
+                if n % 20 == 0:  # ~40s 一次注释行：探活兼防中间层断开空闲连接
                     self.wfile.write(b": ping\n\n")
                     self.wfile.flush()
-                time.sleep(0.8)
         except Exception:
             pass  # 客户端断开是常态，线程随进程退出
 
@@ -397,18 +450,17 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, p.read_bytes(), MIME.get(suffix, "application/octet-stream"))
 
 
-def _state_payload(client_id=""):
+def _state_payload(client_id="", ver=None):
     agents = registry.effective_agents(catalog.load(), manager.detect_all())
-    ctrl = remote.control_view(client_id)
-    if ctrl.get("mode") == "held":
-        # 倒计时按 10s 桶化：否则每秒 -1 都会让 SSE 判定"状态变了"而全量推送
-        ctrl["expires_in"] = max(10, (ctrl["expires_in"] // 10) * 10)
+    if ver is None:
+        ver = store.state_version()
     return {
+        "v": ver,
         "agents": agents,
         "tasks": store.list_tasks(30, archived=False),
         "archived_tasks": store.list_tasks(30, archived=True),
         "runs": store.list_runs(40),
-        "control": ctrl,
+        "control": remote.control_view(client_id),
     }
 
 
@@ -425,6 +477,7 @@ def main():
     store.load_all()
     from core import modelhub
     modelhub.migrate_orch_models()  # 旧「编排模型」偏好并入 CLI 绑定（幂等，带备份）
+    modelhub.migrate_chains()       # 旧单供应商模型链升级为跨厂商 chain（幂等，带备份）
     jobs.start_worker()
     tok = remote.token()
 
