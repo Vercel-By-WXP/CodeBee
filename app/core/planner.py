@@ -115,7 +115,10 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None):
         prov, model = orch
         # 网关 502/503 是常见瞬时故障，编排者重试一次再放弃（实测公司网关连续 8h 502）
         for _attempt in (1, 2):
-            res = modelhub.chat(prov["id"], model, prompt)
+            # glm-5.3 等推理模型的"思考"就吃掉数千 token：max_tokens 给足，
+            # 否则 stop_reason=max_tokens、正文为空（实测 2048 全被思考吞掉）
+            res = modelhub.chat(prov["id"], model, prompt,
+                                max_tokens=16000, timeout=300)
             _log_usage("outline", "outline", task, res, model=model,
                        provider=prov.get("name", prov.get("id", "")))
             data = runner.extract_json(res.get("text") or "") if res["ok"] else None
@@ -125,9 +128,10 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None):
                 return outline
 
     if author_agent and author_agent.get("mode") == "real":
+        # 8 章大纲 + 经验包注入是重生成任务，300s 实测不够（claude CLI 必超时）
         res = runner.run_agent(modelhub.bind_agent(author_agent), prompt,
                                workdir=workdir or task.get("workdir"), readonly=True,
-                               timeout=300, cancel_event=ev)
+                               timeout=900, cancel_event=ev)
         _log_usage("outline", "outline", task, res, agent=author_agent)
         outline = _norm_chapters(runner.extract_json(res.get("text") or ""), n)
         if outline:
@@ -216,7 +220,8 @@ def _orch_code_plan(task, prov, model):
                         (CODE_PLAN_PROMPT.replace("__N__", str(MAX_SUBTASKS))
                          .replace("__GOAL__", task["goal"])
                          .replace("__CONTEXT__", task.get("context") or "（无）")
-                         .replace("__VERIFY__", task.get("verify_command") or "（未配置）")))
+                         .replace("__VERIFY__", task.get("verify_command") or "（未配置）")),
+                        max_tokens=8000, timeout=300)
     _log_usage("plan", "plan", task, res, model=model,
                provider=prov.get("name", prov.get("id", "")))
     if not res["ok"]:
@@ -238,7 +243,8 @@ def make_review_outline(task):
     res = modelhub.chat(prov["id"], model,
                         (REVIEW_OUTLINE_PROMPT
                          .replace("__GOAL__", task["goal"])
-                         .replace("__CONTEXT__", task.get("context") or "（无）")))
+                         .replace("__CONTEXT__", task.get("context") or "（无）")),
+                        max_tokens=8000, timeout=300)
     _log_usage("outline", "outline", task, res, model=model,
                provider=prov.get("name", prov.get("id", "")))
     if not res["ok"]:
