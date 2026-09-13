@@ -31,6 +31,7 @@
       </div>
       <div class="side-foot">
         <button id="btn-settings">⚙ 设置</button>
+        <button id="btn-phone-side" class="icon-btn" title="手机连接（扫码用手机打开 Tutti）" aria-label="手机连接">📱</button>
       </div>
     </div>
     <!-- 设置视图：左栏整体变成设置导航 -->
@@ -39,6 +40,7 @@
       <div class="set-group">编排</div>
       <button class="set-item active" data-sub="tasks">✦ 任务</button>
       <button class="set-item" data-sub="runs">≡ 运行记录</button>
+      <button class="set-item" data-sub="usage">📊 用量统计</button>
       <div class="set-group">配置</div>
       <button class="set-item" data-sub="agents">⚙ 智能体管理</button>
       <button class="set-item" data-sub="models">◈ 模型接入</button>
@@ -174,6 +176,29 @@
         <div id="rd-log" class="logbox hidden"><pre id="rd-log-text"></pre></div>
         <h3 class="sec-title">报告</h3>
         <div id="rd-report" class="report"></div>
+      </div>
+      </div>
+
+      <!-- 用量统计 -->
+      <div id="sub-usage" class="subpage hidden">
+      <div class="panel wide">
+        <div class="panel-head">
+          <h2>用量统计</h2>
+          <div class="actions" id="usage-ranges">
+            <button class="ghost small" data-days="1">今天</button>
+            <button class="ghost small" data-days="7">近 7 天</button>
+            <button class="ghost small active" data-days="30">近 30 天</button>
+            <button class="ghost small" data-days="0">全部</button>
+            <button id="btn-usage-refresh" class="ghost small" title="重新拉取">⟳</button>
+          </div>
+        </div>
+        <p class="hint">统计所有真实 LLM 调用：编排各角色步骤（规划/实现/评审/修订…）、编排者直连 API、连通性冒烟与 AI 修复；mock 智能体与本地验证不计入。</p>
+        <div id="usage-kpis" class="usage-kpis"><p class="hint">加载中…</p></div>
+        <h3 class="sec-title">每日趋势（输入 / 输出 token）</h3>
+        <div id="usage-trend"></div>
+        <div id="usage-dims"></div>
+        <h3 class="sec-title">最近调用</h3>
+        <div id="usage-recent" class="list"></div>
       </div>
       </div>
 

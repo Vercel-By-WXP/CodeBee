@@ -2219,6 +2219,12 @@ function usageTrendSvg(byDay) {
   const bw = Math.max(2, (iw - gap * (n - 1)) / n);
   let bars = "", labels = "";
   const labelStep = Math.max(1, Math.ceil(n / 9));
+  // 抽稀 x 轴标签：末日必须标；若与前一标签太近（< 半步长）则挤掉前者防重叠
+  const labeled = new Set();
+  for (let i = 0; i < n; i += labelStep) labeled.add(i);
+  if (labeled.has(n - 1) || labeled.size === 0) labeled.add(n - 1);
+  else if (n - 1 - [...labeled].pop() < labelStep / 2) { labeled.delete([...labeled].pop()); labeled.add(n - 1); }
+  else labeled.add(n - 1);
   byDay.forEach((d, i) => {
     const x = padL + i * (bw + gap);
     const tok = d.tokens || 0;
@@ -2240,7 +2246,7 @@ function usageTrendSvg(byDay) {
         '" width="' + bw.toFixed(1) + '" height="' + Math.max(0, hOut).toFixed(1) +
         '" fill="var(--accent2)" opacity="0.9"><title>' + tip + "</title></rect>";
     }
-    if (i % labelStep === 0 || i === n - 1) {
+    if (labeled.has(i)) {
       labels += '<text class="uc-x" x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - 7) +
         '" text-anchor="middle">' + esc(String(d.day).slice(5)) + "</text>";
     }
@@ -2264,11 +2270,12 @@ function usageDimTable(title, rows) {
     body = '<table class="usage-table"><thead><tr>' +
       "<th>" + esc(title) + "</th><th>调用</th><th>Tokens</th><th>输入/输出</th><th>耗时</th><th>费用</th>" +
       "</tr></thead><tbody>" + rows.map((r) => {
-        const pct = Math.round((r.tokens || 0) * 100 / maxTok);
+        const pct = Math.max(4, Math.round((r.tokens || 0) * 100 / maxTok));
         const okPct = r.calls ? Math.round((r.ok || 0) * 100 / r.calls) : 0;
         return "<tr>" +
-          '<td class="bar-cell"><div class="bar" style="width:' + pct + '%"><span>' +
-          esc(r.key) + '</span><i>' + okPct + "% 成</i></div></td>" +
+          '<td class="bar-cell"><div class="bar-outer">' +
+          '<div class="bar-fill" style="width:' + pct + '%"></div>' +
+          "<span>" + esc(r.key) + "</span><i>" + okPct + "% 成</i></div></td>" +
           '<td class="num">' + fmtTok(r.calls) + "</td>" +
           '<td class="num" title="输入 ' + fmtTok(r.input) + ' · 输出 ' + fmtTok(r.output) + '">' + fmtTok(r.tokens) + "</td>" +
           '<td class="num sub">' + fmtTok(r.input) + " / " + fmtTok(r.output) + "</td>" +
@@ -2317,10 +2324,10 @@ function renderUsage() {
   ].join("");
   $("usage-trend").innerHTML = usageTrendSvg(u.by_day || []);
   $("usage-dims").innerHTML = [
-    ["按工具（CLI / API）", u.by_tool],
+    ["按工具（CLI / API）", (u.by_tool || []).map((r) => Object.assign({}, r, { key: toolName(r.key) }))],
     ["按智能体", u.by_agent],
     ["按模型", u.by_model],
-    ["按步骤角色", u.by_role],
+    ["按步骤角色", (u.by_role || []).map((r) => Object.assign({}, r, { key: roleName(r.key) }))],
     ["按任务类型", u.by_task_type],
   ].map(([title, rows]) => usageDimTable(title, rows)).join("");
   $("usage-recent").innerHTML = usageRecentTable(u.recent || []);
@@ -2522,6 +2529,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (menu.dataset.closedAt && Date.now() - +menu.dataset.closedAt < 250) return;
     openSettingsMenu();
   });
+  $("btn-phone-side").addEventListener("click", openPhoneConnect);
   $("model-pill").addEventListener("click", () => switchTab("models"));
   document.querySelectorAll("#usage-ranges [data-days]").forEach((b) =>
     b.addEventListener("click", () => setUsageDays(b.dataset.days)));

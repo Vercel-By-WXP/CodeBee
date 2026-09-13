@@ -171,6 +171,7 @@ def _do_mgmt(job, ev):
     elif op == "smoke":
         from . import runner as _r
         from . import registry
+        from . import usage as _usage
         agents = registry.effective_agents(catalog.load(), manager.detect_all())
         agent = next((a for a in agents if a["id"] == entry["id"]), None)
         if agent is None:
@@ -180,6 +181,16 @@ def _do_mgmt(job, ev):
         res = _r.run_agent(agent, "连通性测试：请只回复两个字：OK", readonly=True,
                            timeout=180, cancel_event=ev, log_path=str(log_abs))
         ok = res["ok"] and "OK" in (res.get("text") or "").upper()
+        try:
+            _usage.record(source="smoke", run_id=run_id, role="smoke",
+                          agent=agent.get("id", ""), agent_label=agent.get("label", ""),
+                          tool=agent.get("kind", ""), model=res.get("model") or "",
+                          ok=bool(res.get("ok")),
+                          duration_s=float((res.get("raw") or {}).get("duration") or 0.0),
+                          cost_usd=float(res.get("cost_usd") or 0.0),
+                          usage=res.get("usage"))
+        except Exception:
+            pass
         store.finish_step(run_id, step["n"], "done" if ok else "failed",
                           summary=("连通正常：%s" % (res.get("text") or "")[:120]) if ok
                           else ("异常：%s" % (res.get("error") or (res.get("text") or "")[:120])),
@@ -200,6 +211,7 @@ def _do_mgmt(job, ev):
 def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
     """安装失败后的 AI 诊断修复：诊断 → 白名单校验 → 执行 → 复检。"""
     from . import catalog, manager, registry, router, runner, store
+    from . import usage as _usage
     agents = registry.effective_agents(catalog.load(), manager.detect_all())
     agent, _reason = router.pick(agents, "repair", "mgmt")
     if agent is None or agent.get("mode") != "real":
@@ -223,6 +235,16 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
                                    note="自动诊断修复")
     res = runner.run_agent(agent, prompt, readonly=True, timeout=300,
                            cancel_event=ev, log_path=str(log_abs))
+    try:
+        _usage.record(source="repair", run_id=run_id, role="ai-repair",
+                      agent=agent.get("id", ""), agent_label=agent.get("label", ""),
+                      tool=agent.get("kind", ""), model=res.get("model") or "",
+                      ok=bool(res.get("ok")),
+                      duration_s=float((res.get("raw") or {}).get("duration") or 0.0),
+                      cost_usd=float(res.get("cost_usd") or 0.0),
+                      usage=res.get("usage"))
+    except Exception:
+        pass
     if not res["ok"]:
         store.finish_step(run_id, step["n"], "failed",
                           summary="诊断调用失败：%s" % (res.get("error") or "")[:200])

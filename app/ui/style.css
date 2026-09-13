@@ -73,13 +73,22 @@ body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-righ
   border-radius: 10px; padding: 9px 12px; font-size: 14px; cursor: pointer; margin-bottom: 8px;
 }
 .new-task:hover { background: var(--panel2); }
-.side-foot { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+.side-foot {
+  display: flex; align-items: center; gap: 4px;
+  border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px;
+}
 #btn-settings {
-  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; text-align: left;
   background: none; border: none; color: var(--muted); padding: 8px 10px;
   border-radius: 8px; cursor: pointer; font-size: 13.5px; font-family: inherit;
 }
 #btn-settings:hover { color: var(--text); background: var(--panel2); }
+/* 左下角手机连接图标（ZCode 桌面端式样：设置旁常驻一级入口） */
+#btn-phone-side {
+  flex: none; width: 34px; height: 34px; font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+}
+#btn-phone-side:hover { background: var(--panel2); }
 .side-section { display: flex; flex-direction: column; min-height: 0; flex: 1; margin-top: 14px; }
 .side-section.tasks { flex: 1; }
 .side-label { color: var(--muted); font-size: 11px; padding: 0 10px 6px; letter-spacing: .05em; }
@@ -713,3 +722,68 @@ body.modal-open { overflow: hidden; }
 }
 .oitem input { width: auto; accent-color: var(--accent); }
 .ohint { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+
+/* ================= 用量统计 ================= */
+.usage-kpis {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
+  margin: 14px 0 4px;
+}
+.kpi {
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 12px 14px; min-width: 0;
+}
+.kpi.wide { grid-column: span 2; }
+.kpi-v {
+  font-size: 22px; font-weight: 700; letter-spacing: -.02em;
+  font-family: var(--mono); white-space: nowrap;
+}
+.kpi-l { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.kpi-s {
+  color: var(--muted); font-size: 11px; margin-top: 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.usage-svg {
+  width: 100%; height: auto; display: block;
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: var(--r-md); margin-bottom: 6px;
+}
+.usage-svg .uc-x { fill: var(--muted); font-size: 11px; }
+.usage-svg .uc-legend text { fill: var(--muted); font-size: 11px; }
+.usage-svg rect:hover { opacity: 1; }
+.usage-table { width: 100%; border-collapse: collapse; margin: 6px 0 4px; }
+.usage-table th {
+  text-align: left; color: var(--muted); font-size: 12px; font-weight: 600;
+  padding: 6px 10px; border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+.usage-table th.num, .usage-table td.num { text-align: right; font-family: var(--mono); }
+.usage-table td {
+  padding: 7px 10px; border-bottom: 1px solid var(--border);
+  font-size: 13px; vertical-align: middle;
+}
+.usage-table td.sub, .usage-table .sub { color: var(--muted); }
+.usage-table td.mono { font-family: var(--mono); font-size: 12px; }
+.usage-table .bad-row td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
+.usage-table .bar-cell { width: 26%; min-width: 170px; }
+.usage-table .bar-outer {
+  position: relative; display: flex; align-items: center;
+  justify-content: space-between; gap: 8px; white-space: nowrap;
+}
+.usage-table .bar-fill {
+  position: absolute; top: -3px; bottom: -3px; left: -10px;
+  background: var(--accent); opacity: .16; border-radius: 6px;
+}
+.usage-table .bar-outer span {
+  position: relative; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.usage-table .bar-outer i {
+  position: relative; font-style: normal; font-size: 11px; color: var(--muted);
+}
+.usage-recent-wrap { max-height: 420px; overflow: auto; }
+
+@media (max-width: 900px) {
+  .usage-kpis { grid-template-columns: repeat(2, 1fr); }
+  .kpi.wide { grid-column: span 2; }
+  .usage-table .bar-cell { min-width: 120px; width: 42%; }
+}

@@ -28,9 +28,11 @@ class TestParsers(BaseTest):
             '{"type":"item.completed","item":{"id":"i0","type":"agent_message","text":"你好"}}',
             '{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":5}}',
         ])
-        text, tokens = runner._parse_codex_jsonl(codex_out)
+        text, usage = runner._parse_codex_jsonl(codex_out)
         self.assertEqual(text, "你好")
-        self.assertEqual(tokens, 105)
+        self.assertEqual(usage["total"], 105)
+        self.assertEqual(usage["input"], 100)
+        self.assertEqual(usage["output"], 5)
 
         claude_out = json.dumps({
             "type": "result", "is_error": False, "result": "OK",
@@ -40,6 +42,7 @@ class TestParsers(BaseTest):
         p = runner._parse_claude_json(claude_out)
         self.assertEqual(p["text"], "OK")
         self.assertEqual(p["tokens"], 12)
+        self.assertEqual(p["usage"]["total"], 12)
         self.assertIsNone(runner._parse_claude_json("not json"))
 
 

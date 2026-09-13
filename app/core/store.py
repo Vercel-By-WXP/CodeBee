@@ -460,7 +460,7 @@ def add_step(run_id, role, agent_id, agent_label, note=""):
 
 
 def finish_step(run_id, n, status, summary="", exit_code=None,
-                cost_usd=0.0, tokens=0.0, duration_s=None):
+                cost_usd=0.0, tokens=0.0, duration_s=None, model=None):
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -473,6 +473,8 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                 s["exit_code"] = exit_code
                 s["cost_usd"] = round(cost_usd, 4)
                 s["tokens"] = tokens
+                if model:
+                    s["model"] = str(model)[:80]
                 if duration_s is not None:
                     s["duration_s"] = round(duration_s, 1)
                 break

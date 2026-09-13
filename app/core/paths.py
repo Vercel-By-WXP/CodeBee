@@ -12,6 +12,7 @@ UI_DIR = APP_DIR / "ui"
 DATA_DIR = Path(os.environ.get("TUTTI_DATA") or (ROOT / "data"))
 TASKS_DIR = DATA_DIR / "tasks"
 RUNS_DIR = DATA_DIR / "runs"
+USAGE_DIR = DATA_DIR / "usage"
 CATALOG_FILE = DATA_DIR / "catalog.json"
 ENABLED_FILE = DATA_DIR / "orchestration.json"
 

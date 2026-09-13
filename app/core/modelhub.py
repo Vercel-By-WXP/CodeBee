@@ -1823,12 +1823,13 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120):
     """直连供应商 API 做一次对话（编排者规划 / 连通性测试）。
 
     支持 anthropic / openai / google 三种协议；复用 SSRF 防护。
-    返回 {ok, text, tokens, error}。
+    返回 {ok, text, tokens, usage, error}；usage 为细分 {input, output, cached, reasoning, total}。
     """
     with _LOCK:
         prov = next((p for p in providers() if p.get("id") == provider_id), None)
     if not prov or not prov.get("api_key"):
-        return {"ok": False, "text": "", "tokens": 0, "error": "供应商不存在或未配置密钥"}
+        return {"ok": False, "text": "", "tokens": 0, "usage": None,
+                "error": "供应商不存在或未配置密钥"}
     proto = prov.get("protocol")
     base = prov["base_url"].rstrip("/")
     if proto == "google":
@@ -1852,31 +1853,45 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120):
     status, data, err = _post_json_http(url, headers, body, bool(prov.get("allow_private")),
                                         timeout=timeout)
     if status == 0:
-        return {"ok": False, "text": "", "tokens": 0, "error": err}
+        return {"ok": False, "text": "", "tokens": 0, "usage": None, "error": err}
     if not 200 <= status < 300:
         msg = ""
         if isinstance(data, dict):
             e = data.get("error")
             msg = e.get("message", "") if isinstance(e, dict) else str(e)
-        return {"ok": False, "text": "", "tokens": 0,
+        return {"ok": False, "text": "", "tokens": 0, "usage": None,
                 "error": "HTTP %s %s" % (status, str(msg)[:200])}
-    text, tokens = "", 0
+    text = ""
+    usage = {"input": 0, "output": 0, "cached": 0, "reasoning": 0, "total": 0}
     try:
         if proto == "anthropic":
             text = "\n".join(b.get("text", "") for b in (data.get("content") or [])
                              if isinstance(b, dict) and b.get("type") == "text")
             u = data.get("usage") or {}
-            tokens = u.get("input_tokens", 0) + u.get("output_tokens", 0)
+            usage["input"] = int(u.get("input_tokens") or 0)
+            usage["output"] = int(u.get("output_tokens") or 0)
+            usage["cached"] = (int(u.get("cache_read_input_tokens") or 0)
+                               + int(u.get("cache_creation_input_tokens") or 0))
         elif proto == "google":
             cand = ((data.get("candidates") or [{}])[0].get("content") or {})
             text = "\n".join(p.get("text", "") for p in (cand.get("parts") or [])
                              if isinstance(p, dict))
-            tokens = (data.get("usageMetadata") or {}).get("totalTokenCount", 0)
+            um = data.get("usageMetadata") or {}
+            usage["input"] = int(um.get("promptTokenCount") or 0)
+            usage["output"] = int(um.get("candidatesTokenCount") or 0)
+            usage["total"] = int(um.get("totalTokenCount") or 0)
         else:
             choice = (data.get("choices") or [{}])[0]
             msg = choice.get("message") or {}
             text = msg.get("content") or ""
-            tokens = (data.get("usage") or {}).get("total_tokens", 0)
+            u = data.get("usage") or {}
+            usage["input"] = int(u.get("prompt_tokens") or 0)
+            usage["output"] = int(u.get("completion_tokens") or 0)
+            usage["total"] = int(u.get("total_tokens") or 0)
     except Exception as e:
-        return {"ok": False, "text": "", "tokens": 0, "error": "响应解析失败: %r" % e}
-    return {"ok": True, "text": (text or "").strip(), "tokens": tokens or 0, "error": ""}
+        return {"ok": False, "text": "", "tokens": 0, "usage": None,
+                "error": "响应解析失败: %r" % e}
+    if not usage["total"]:
+        usage["total"] = usage["input"] + usage["output"] + usage["cached"]
+    return {"ok": True, "text": (text or "").strip(), "tokens": usage["total"],
+            "usage": usage, "error": ""}

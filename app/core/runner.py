@@ -183,7 +183,13 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
 # ---------------------------------------------------------------- 各家适配
 
 def _parse_codex_jsonl(stdout):
-    text, tokens = "", 0
+    """解析 codex exec JSONL 事件流。返回 (text, usage)。
+
+    usage 细分来自 turn.completed：input_tokens（含 cached）、cached_input_tokens、
+    output_tokens、reasoning_output_tokens；多 turn 累加。
+    """
+    text = ""
+    usage = {"input": 0, "output": 0, "cached": 0, "reasoning": 0, "total": 0}
     for line in stdout.splitlines():
         line = line.strip()
         if not line.startswith("{"):
@@ -197,9 +203,16 @@ def _parse_codex_jsonl(stdout):
             if item.get("type") == "agent_message" and item.get("text"):
                 text = item["text"]
         elif ev.get("type") == "turn.completed":
-            usage = ev.get("usage") or {}
-            tokens += usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
-    return text, tokens
+            u = ev.get("usage") or {}
+            inp = int(u.get("input_tokens") or 0)
+            out = int(u.get("output_tokens") or 0)
+            usage["input"] += inp
+            usage["output"] += out
+            usage["cached"] += int(u.get("cached_input_tokens") or 0)
+            usage["reasoning"] += int(u.get("reasoning_output_tokens") or 0)
+            usage["total"] += (u.get("total_tokens") if u.get("total_tokens") is not None
+                               else inp + out)
+    return text, usage
 
 
 def _parse_claude_json(stdout):
@@ -209,11 +222,19 @@ def _parse_claude_json(stdout):
         return None
     if not isinstance(data, dict):
         return None
+    u = data.get("usage") or {}
+    inp = int(u.get("input_tokens") or 0)
+    out = int(u.get("output_tokens") or 0)
+    # 缓存读 + 缓存写都计入 cached（读是省钱的部分，写是额外消耗的部分）
+    cached = int(u.get("cache_read_input_tokens") or 0) + \
+        int(u.get("cache_creation_input_tokens") or 0)
+    usage = {"input": inp, "output": out, "cached": cached, "reasoning": 0,
+             "total": inp + out + cached}
     return {
         "text": data.get("result") or "",
         "cost_usd": data.get("total_cost_usd") or 0.0,
-        "tokens": ((data.get("usage") or {}).get("input_tokens", 0)
-                   + (data.get("usage") or {}).get("output_tokens", 0)),
+        "usage": usage,
+        "tokens": usage["total"],
         "is_error": bool(data.get("is_error")),
     }
 
@@ -361,7 +382,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
                               timeout=timeout, cancel_event=cancel_event, log_path=log_path)
             out = {"ok": res["ok"], "text": "", "json": None, "cost_usd": 0.0,
-                   "tokens": 0, "error": "", "raw": res, "kind": kind, "model": att["model"]}
+                   "tokens": 0, "usage": None, "error": "", "raw": res,
+                   "kind": kind, "model": att["model"]}
             if not res["ok"]:
                 tail = (res["stderr"] or res["stdout"] or "")[-500:]
                 out["error"] = (("超时" if res["timed_out"] else "取消" if res["cancelled"]
@@ -375,7 +397,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                         out["error"] = "claude 返回 is_error: " + parsed["text"][:500]
                 break
             if kind == "codex":
-                out["text"], out["tokens"] = _parse_codex_jsonl(res["stdout"])
+                out["text"], out["usage"] = _parse_codex_jsonl(res["stdout"])
+                out["tokens"] = out["usage"]["total"]
                 if not out["text"]:  # 事件流解析失败时退化为取 stdout 尾部
                     out["text"] = res["stdout"][-2000:]
             elif kind == "claude":
@@ -387,6 +410,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 out["text"] = parsed["text"]
                 out["cost_usd"] = parsed["cost_usd"]
                 out["tokens"] = parsed["tokens"]
+                out["usage"] = parsed["usage"]
                 if parsed["is_error"]:
                     out["ok"] = False
                     out["error"] = "claude 返回 is_error: " + parsed["text"][:500]

@@ -18,7 +18,7 @@ import os
 import re
 import time
 
-from . import catalog, history, jobs, manager, modelhub, mocks, planner, registry, router, runner, store
+from . import catalog, history, jobs, manager, modelhub, mocks, planner, registry, router, runner, store, usage
 
 DEFAULT_RUBRIC = ["情节", "人物", "文笔", "节奏", "吸引力"]
 
@@ -134,8 +134,32 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                       exit_code=res.get("raw", {}).get("exit_code"),
                       cost_usd=res.get("cost_usd", 0.0),
                       tokens=res.get("tokens", 0),
-                      duration_s=time.time() - start)
+                      duration_s=time.time() - start,
+                      model=res.get("model"))
+    if agent.get("mode") != "mock":
+        _record_usage(run_id, role, agent, res, source="pipeline")
     return res
+
+
+def _record_usage(run_id, role, agent, res, source="pipeline"):
+    """把一次真实智能体调用记入用量台账；取不到的上下文留空，绝不抛错。"""
+    try:
+        run = store.get_run(run_id) or {}
+        task = store.get_task(run.get("task_id")) if run.get("task_id") else None
+        usage.record(
+            source=source, run_id=run_id,
+            task_id=run.get("task_id") or "",
+            task_type=(task or {}).get("type", ""),
+            role=role, agent=agent.get("id", ""),
+            agent_label=agent.get("label", ""),
+            tool=agent.get("kind", ""),
+            model=res.get("model") or "",
+            ok=bool(res.get("ok")),
+            duration_s=float(res.get("raw", {}).get("duration") or 0.0),
+            cost_usd=float(res.get("cost_usd") or 0.0),
+            usage=res.get("usage"))
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------- 提示词

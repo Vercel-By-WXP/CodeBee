@@ -115,6 +115,21 @@ Tutti 会扫描本地会话文件（`~/.codex/sessions`、`~/.claude/projects`�
 互不打扰——每个任务独立线程，运行数据按 run 隔离，互不等待。并发数调小后多余线程
 在空闲检查点自行退出，调大即时补齐。串行模式（=1）也可用。
 
+## 用量统计
+
+「📊 用量统计」设置页：所有真实 LLM 调用（编排各角色步骤、编排者直连 API、
+连通性冒烟与 AI 修复）都会记入 append-only 台账（`data/usage/usage-YYYYMM.jsonl`，
+按月分文件），mock 智能体与本地验证命令不计入。页面提供：
+
+- **KPI 总览**：总 tokens（输入/输出/缓存细分）、调用次数与成功率、累计费用（claude 报告值）、
+  单次均值、缓存命中率、活跃天数与累计调用时长；
+- **每日趋势**：输入/缓存/输出堆叠柱状图（纯 SVG，零依赖），时间范围可切今天 / 7 天 / 30 天 / 全部；
+- **五个维度排行**：按工具（Codex CLI / Claude Code / 编排者 API…）、按智能体、按模型、
+  按步骤角色（规划/实现/评审/修订…）、按任务类型，各带调用数、tokens、耗时、费用与成功率；
+- **最近调用明细**：时间、工具、智能体、模型、角色、成败、tokens 细分与单次费用。
+
+聚合接口：`GET /api/usage?days=N`（N=0 表示全部历史；按天序列自动补零可直接画图）。
+
 ## 编排中枢（编排者模型）
 
 「✦ 编排中枢」设置页里可以给 **Tutti 自己的智能体**指定一个厂商的模型
@@ -225,6 +240,7 @@ data/
   settings.json         运行设置（最大并发数）
   tasks/*.json          任务
   runs/<run_id>/        每次运行：run.json、steps/*.log、report.md、error.log
+  usage/                用量台账（usage-YYYYMM.jsonl，按月分文件，append-only）
 ```
 
 安全约束（内置，勿绕过）：配置路径必须位于用户主目录内；任务工作目录必须是已存在的
@@ -233,9 +249,11 @@ data/
 ## 测试
 
 ```bat
-cd tests && python -m unittest test_units test_pipeline test_flows test_binding_models test_binding_chain test_modelhub test_catalog_models test_orchestrator test_remote test_sessions test_auto -v
+cd tests && python -m unittest test_units test_pipeline test_flows test_binding_models test_binding_chain test_modelhub test_catalog_models test_orchestrator test_remote test_sessions test_auto test_usage -v
 python tests\e2e_service.py   :: 起真实服务的端到端（临时数据目录 + 独立端口，零配额）
+python tests\e2e_usage.py     :: 用量统计端到端（预置台账 → 聚合断言 → mock 不入账）
 node tests\ui_check.mjs      :: Edge headless + CDP 的 UI 交互验证（需本机服务在 18798）
+node tests\ui_check_usage.mjs :: 用量页 UI 验证（自起临时服务 + 种子数据 + 截图）
 ```
 
 单元测试（解析器/消毒/穿越防护/mock 确定性/流程注册表/跨厂商链/编排者/并发池）+

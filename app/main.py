@@ -153,6 +153,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "catalog": manager.catalog_view()})
             if path == "/api/runs":
                 return self._json(200, {"runs": store.list_runs()})
+            if path == "/api/usage":
+                from core import usage
+                q = parse_qs(urlparse(self.path).query)
+                try:
+                    days = max(0, min(3650, int((q.get("days") or ["30"])[0])))
+                except ValueError:
+                    days = 30
+                return self._json(200, usage.summary(days=days))
             m = re.match(r"^/api/runs/([^/]+)$", path)
             if m:
                 run = store.get_run(m.group(1))
@@ -347,13 +355,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": err}) if err else self._json(
                 200, {"ok": True, "orchestrator": modelhub.orchestrator_view()})
         if path == "/api/orchestrator/test":
-            from core import modelhub
+            from core import modelhub, usage
             orch = modelhub.resolve_orchestrator()
             if not orch:
                 return self._json(400, {"ok": False, "error": "编排者未启用或配置失效"})
             prov, model = orch
             res = modelhub.chat(prov["id"], model,
                                 "请只回复两个字：收到", max_tokens=64, timeout=30)
+            try:
+                usage.record(source="test", role="orch-test", agent="orchestrator",
+                             agent_label="编排者", tool="orchestrator", model=model,
+                             provider=prov.get("name", prov.get("id", "")),
+                             ok=bool(res.get("ok")), usage=res.get("usage"))
+            except Exception:
+                pass
             return self._json(200, dict(res, model=model,
                                         provider=prov.get("name", prov["id"])))
         m = re.match(r"^/api/catalog/([^/]+)/(install|upgrade|smoke)$", path)

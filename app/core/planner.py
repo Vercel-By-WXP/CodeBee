@@ -9,9 +9,26 @@ from __future__ import annotations
 
 import json
 
-from . import modelhub, runner
+from . import modelhub, runner, usage
 
 MAX_SUBTASKS = 4
+
+
+def _log_usage(source, role, task, res, agent=None, tool="", model="", provider=""):
+    """规划链路的调用入台账（编排者直连 / CLI 规划）；失败不影响规划本身。"""
+    try:
+        usage.record(source=source, task_id=(task or {}).get("id", ""),
+                     task_type=(task or {}).get("type", ""), role=role,
+                     agent=(agent or {}).get("id", "") or "orchestrator",
+                     agent_label=(agent or {}).get("label", "") or "编排者",
+                     tool=tool or (agent or {}).get("kind", "") or "orchestrator",
+                     model=model or ((res or {}).get("model") or ""),
+                     provider=provider, ok=bool((res or {}).get("ok")),
+                     duration_s=float(((res or {}).get("raw") or {}).get("duration") or 0.0),
+                     cost_usd=float((res or {}).get("cost_usd") or 0.0),
+                     usage=(res or {}).get("usage"))
+    except Exception:
+        pass
 
 CODE_PLAN_PROMPT = """你是技术负责人。请把下面的开发目标拆解为 __N__ 个以内、按顺序执行的子任务，
 并判定任务难度。只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
@@ -93,6 +110,8 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None):
     if orch:
         prov, model = orch
         res = modelhub.chat(prov["id"], model, prompt)
+        _log_usage("outline", "outline", task, res, model=model,
+                   provider=prov.get("name", prov.get("id", "")))
         data = runner.extract_json(res.get("text") or "") if res["ok"] else None
         outline = _norm_chapters(data, n)
         if outline:
@@ -103,6 +122,7 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None):
         res = runner.run_agent(modelhub.bind_agent(author_agent), prompt,
                                workdir=workdir or task.get("workdir"), readonly=True,
                                timeout=300, cancel_event=ev)
+        _log_usage("outline", "outline", task, res, agent=author_agent)
         outline = _norm_chapters(runner.extract_json(res.get("text") or ""), n)
         if outline:
             outline["source"] = "llm(%s)" % author_agent["id"]
@@ -165,6 +185,7 @@ def make_code_plan(task, planner_agent, workdir, ev=None, resume=None):
               .replace("__VERIFY__", task.get("verify_command") or "（未配置）"))
     res = runner.run_agent(planner_agent, prompt, workdir=workdir, readonly=True,
                            timeout=300, cancel_event=ev, resume=resume)
+    _log_usage("plan", "plan", task, res, agent=planner_agent)
     data = runner.extract_json(res.get("text") or "")
     steps = _norm_subtasks(data)
     if steps:
@@ -184,6 +205,8 @@ def _orch_code_plan(task, prov, model):
                          .replace("__GOAL__", task["goal"])
                          .replace("__CONTEXT__", task.get("context") or "（无）")
                          .replace("__VERIFY__", task.get("verify_command") or "（未配置）")))
+    _log_usage("plan", "plan", task, res, model=model,
+               provider=prov.get("name", prov.get("id", "")))
     if not res["ok"]:
         return None
     data = runner.extract_json(res.get("text") or "")
@@ -204,6 +227,8 @@ def make_review_outline(task):
                         (REVIEW_OUTLINE_PROMPT
                          .replace("__GOAL__", task["goal"])
                          .replace("__CONTEXT__", task.get("context") or "（无）")))
+    _log_usage("outline", "outline", task, res, model=model,
+               provider=prov.get("name", prov.get("id", "")))
     if not res["ok"]:
         return None
     data = runner.extract_json(res.get("text") or "")
