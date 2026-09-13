@@ -41,6 +41,206 @@ html[data-theme="light"] {
   --log-text: #3a4050;
   --shadow: 0 10px 30px rgba(0, 0, 0, .06);
 }
+
+/* ================= 皮肤（换肤） =================
+ * 一套皮肤 = 一份完整调色板，各含「夜间 / 日间」两版，都由上面同一组变量描述，
+ * 所以换肤只是换变量值，布局与组件样式一律不动。
+ * 上面的 :root 就是默认皮肤「经典」的夜间版，html[data-theme="light"] 是它的日间版——
+ * 因此 data-skin="classic"（或皮肤值缺失/非法）时无需任何规则，自然回落到经典。
+ * 约定：每个皮肤块必须写全同一组变量（含各自的日间版），漏写会让日间版落到夜间值上。
+ * 生效优先级：html[data-skin=X][data-theme=light]（0,2,1）> html[data-skin=X] 与
+ * html[data-theme=light]（均 0,1,1，后者在文件里靠前，同权重下被皮肤块覆盖）。 */
+html[data-skin="ocean"] {
+  --bg: #0e1626;
+  --sidebar: #0a111e;
+  --panel: #17243a;
+  --panel2: #21304a;
+  --border: rgba(255, 255, 255, .10);
+  --border-strong: rgba(255, 255, 255, .20);
+  --text: #e7eefb;
+  --muted: #93a6c4;
+  --accent: #3ba9f5;
+  --accent2: #6d6cf6;
+  --ok: #35c99b;
+  --warn: #f0b429;
+  --bad: #f2637a;
+  --chip-queued-bg: #21304a;
+  --log-bg: #08101c;
+  --log-text: #bccbe4;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .45);
+}
+html[data-skin="ocean"][data-theme="light"] {
+  --bg: #ffffff;
+  --sidebar: #eff5fd;
+  --panel: #ffffff;
+  --panel2: #f0f6fd;
+  --border: #d7e3f4;
+  --border-strong: #b9cde8;
+  --text: #0c1a2c;
+  --muted: #5d7290;
+  --accent: #1f6fd0;
+  --accent2: #5b4fe0;
+  --ok: #0d9a72;
+  --warn: #a9761a;
+  --bad: #d23c58;
+  --chip-queued-bg: #f0f6fd;
+  --log-bg: #f4f8fe;
+  --log-text: #33475f;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .07);
+}
+html[data-skin="forest"] {
+  --bg: #141d18;
+  --sidebar: #0f1613;
+  --panel: #1d2a23;
+  --panel2: #26362d;
+  --border: rgba(255, 255, 255, .09);
+  --border-strong: rgba(255, 255, 255, .18);
+  --text: #e6f1ea;
+  --muted: #94ac9e;
+  --accent: #35c98c;
+  --accent2: #2bbfa8;
+  --ok: #35c98c;
+  --warn: #e5b154;
+  --bad: #ef6a6a;
+  --chip-queued-bg: #26362d;
+  --log-bg: #0b1310;
+  --log-text: #b9cfc2;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .42);
+}
+html[data-skin="forest"][data-theme="light"] {
+  --bg: #ffffff;
+  --sidebar: #eef6f1;
+  --panel: #ffffff;
+  --panel2: #eff7f2;
+  --border: #d6e7dd;
+  --border-strong: #b9d4c5;
+  --text: #10201a;
+  --muted: #5b7266;
+  --accent: #0e8f61;
+  --accent2: #0d8577;
+  --ok: #0e8f61;
+  --warn: #9c6d12;
+  --bad: #cc3f4d;
+  --chip-queued-bg: #eff7f2;
+  --log-bg: #f2f8f4;
+  --log-text: #33463c;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .07);
+}
+html[data-skin="amber"] {
+  --bg: #1e1915;
+  --sidebar: #171310;
+  --panel: #2a231d;
+  --panel2: #362c23;
+  --border: rgba(255, 255, 255, .09);
+  --border-strong: rgba(255, 255, 255, .18);
+  --text: #f2e9dd;
+  --muted: #b5a390;
+  --accent: #e79a2b;
+  --accent2: #e2703f;
+  --ok: #3fbf8a;
+  --warn: #e8b44a;
+  --bad: #ea6262;
+  --chip-queued-bg: #362c23;
+  --log-bg: #15110d;
+  --log-text: #dccfbe;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .42);
+}
+html[data-skin="amber"][data-theme="light"] {
+  --bg: #ffffff;
+  --sidebar: #faf3e9;
+  --panel: #ffffff;
+  --panel2: #fbf3e8;
+  --border: #ebdfcd;
+  --border-strong: #d6c3a6;
+  --text: #241b12;
+  --muted: #7c6952;
+  --accent: #b96a12;
+  --accent2: #b8542c;
+  --ok: #0e8f61;
+  --warn: #96650c;
+  --bad: #c93b45;
+  --chip-queued-bg: #fbf3e8;
+  --log-bg: #fdf7ef;
+  --log-text: #4a3c2e;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .07);
+}
+html[data-skin="violet"] {
+  --bg: #16121e;
+  --sidebar: #110d18;
+  --panel: #221b30;
+  --panel2: #2e2440;
+  --border: rgba(255, 255, 255, .10);
+  --border-strong: rgba(255, 255, 255, .20);
+  --text: #efe8fa;
+  --muted: #a99cc2;
+  --accent: #a86cf5;
+  --accent2: #ec4f95;
+  --ok: #35c99b;
+  --warn: #f0b429;
+  --bad: #f2637a;
+  --chip-queued-bg: #2e2440;
+  --log-bg: #0d0913;
+  --log-text: #ccc0e2;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .46);
+}
+html[data-skin="violet"][data-theme="light"] {
+  --bg: #ffffff;
+  --sidebar: #f5eefd;
+  --panel: #ffffff;
+  --panel2: #f6effd;
+  --border: #e5d9f6;
+  --border-strong: #cdb9ea;
+  --text: #1c1230;
+  --muted: #6d6090;
+  --accent: #7b3ce0;
+  --accent2: #c92c74;
+  --ok: #0d9a72;
+  --warn: #9c6d12;
+  --bad: #cc3f4d;
+  --chip-queued-bg: #f6effd;
+  --log-bg: #f9f4fe;
+  --log-text: #3d3352;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .07);
+}
+/* 高对比：纯黑/纯白 + 硬边框 + 去阴影，弱视与强光环境下更清晰 */
+html[data-skin="contrast"] {
+  --bg: #000000;
+  --sidebar: #000000;
+  --panel: #0b0b0b;
+  --panel2: #1c1c1c;
+  --border: #6f6f6f;
+  --border-strong: #c9c9c9;
+  --text: #ffffff;
+  --muted: #dcdcdc;
+  --accent: #4da3ff;
+  --accent2: #ff9d4d;
+  --ok: #23d18b;
+  --warn: #ffc21a;
+  --bad: #ff5d5d;
+  --chip-queued-bg: #1c1c1c;
+  --log-bg: #000000;
+  --log-text: #f2f2f2;
+  --shadow: none;
+}
+html[data-skin="contrast"][data-theme="light"] {
+  --bg: #ffffff;
+  --sidebar: #ffffff;
+  --panel: #ffffff;
+  --panel2: #f0f0f0;
+  --border: #767676;
+  --border-strong: #000000;
+  --text: #000000;
+  --muted: #4a4a4a;
+  --accent: #0b52c9;
+  --accent2: #b03000;
+  --ok: #05703f;
+  --warn: #7a5200;
+  --bad: #b3001b;
+  --chip-queued-bg: #f0f0f0;
+  --log-bg: #ffffff;
+  --log-text: #000000;
+  --shadow: none;
+}
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
@@ -73,22 +273,46 @@ body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-righ
   border-radius: 10px; padding: 9px 12px; font-size: 14px; cursor: pointer; margin-bottom: 8px;
 }
 .new-task:hover { background: var(--panel2); }
+/* 图标精灵：统一线性图标（stroke=currentColor，跟随主题与 hover 变色） */
+#icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.ico {
+  width: 16px; height: 16px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+  vertical-align: -3px;
+}
+.ico-lg { width: 19px; height: 19px; stroke-width: 1.6; }
+
 .side-foot {
   display: flex; align-items: center; gap: 4px;
   border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px;
 }
-#btn-settings {
-  display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; text-align: left;
-  background: none; border: none; color: var(--muted); padding: 8px 10px;
-  border-radius: 8px; cursor: pointer; font-size: 13.5px; font-family: inherit;
-}
-#btn-settings:hover { color: var(--text); background: var(--panel2); }
-/* 左下角手机连接图标（ZCode 桌面端式样：设置旁常驻一级入口） */
-#btn-phone-side {
-  flex: none; width: 34px; height: 34px; font-size: 15px;
+/* 左下角常驻图标入口：设置 / 手机连接（ZCode 桌面端式样，不展开菜单） */
+.foot-btn {
   display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex: none;
+  background: none; border: none; color: var(--muted);
+  border-radius: 8px; cursor: pointer; padding: 0; font-family: inherit;
+  transition: background-color .15s, color .15s;
 }
-#btn-phone-side:hover { background: var(--panel2); }
+.foot-btn:hover { color: var(--text); background: var(--panel2); }
+.foot-btn:active { transform: scale(.94); }
+/* 左下角中间：编排者供应商指示（夹在设置与手机连接两个图标按钮之间，占满剩余宽度） */
+.foot-prov {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 8px;
+  background: none; border: none; color: var(--muted);
+  border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 12.5px;
+  transition: background-color .15s, color .15s;
+}
+.foot-prov:hover { color: var(--text); background: var(--panel2); }
+.foot-prov:active { transform: scale(.97); }
+.foot-prov .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+/* 状态点：灰=未选、绿=生效中、黄=已选但不生效（缺密钥/停用/无模型） */
+.pdot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--muted); }
+.pdot.ok { background: var(--ok); }
+.pdot.warn { background: var(--warn); }
 .side-section { display: flex; flex-direction: column; min-height: 0; flex: 1; margin-top: 14px; }
 .side-section.tasks { flex: 1; }
 .side-label { color: var(--muted); font-size: 11px; padding: 0 10px 6px; letter-spacing: .05em; }
@@ -143,8 +367,20 @@ body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-righ
 .icon-btn {
   background: none; border: none; color: var(--muted); font-size: 16px;
   width: 32px; height: 32px; border-radius: 8px; cursor: pointer; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; font-family: inherit; transition: background-color .15s, color .15s;
 }
 .icon-btn:hover { background: var(--panel2); color: var(--text); }
+.icon-btn:active { transform: scale(.94); }
+/* 图标按钮的加载态：图标自旋（不要用 textContent 改文案，会抹掉 SVG 图标） */
+.icon-btn.loading { color: var(--accent); }
+.icon-btn.loading .ico { animation: ico-spin .9s linear infinite; }
+@keyframes ico-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn.loading .ico { animation: none; }
+}
+/* 面板标题里的纯图标按钮（如用量页刷新）比顶栏略小 */
+.panel-head .icon-btn { width: 28px; height: 28px; }
 
 /* 顶栏右上角：当前模型胶囊 + 主题 + 连接状态 */
 .top-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -157,14 +393,8 @@ body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-righ
 }
 .pill:hover { border-color: var(--border-strong); }
 .pill > span { overflow: hidden; text-overflow: ellipsis; }
-.pill .pill-ico { flex: none; opacity: .85; }
-#model-pill { font-family: var(--mono); }
-.q-mark {
-  width: 18px; height: 18px; border-radius: 50%; flex: none;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border-strong); color: var(--muted);
-  font-size: 11px; line-height: 1; cursor: help; user-select: none;
-}
+/* 纯图标胶囊（顶栏皮肤 / 明暗切换）：去掉文字后收紧内边距，保持圆形观感 */
+.pill.icon-only { padding: 5px 9px; gap: 0; }
 .top-actions .conn { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .top-actions .conn::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
 .top-actions .conn.ok::before { background: var(--ok); }
@@ -180,21 +410,25 @@ body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-righ
 body.settings-mode .side-main { display: none; }
 body.settings-mode .side-settings { display: flex; }
 .set-back {
-  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
-  background: none; border: none; color: var(--muted); padding: 7px 10px;
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  background: none; border: none; color: var(--muted); padding: 8px 10px;
   border-radius: 8px; cursor: pointer; font-size: 13.5px; font-family: inherit; margin-bottom: 10px;
+  transition: background-color .15s, color .15s;
 }
 .set-back:hover { color: var(--text); background: var(--panel2); }
 .side-settings .set-group { color: var(--muted); font-size: 11px; padding: 12px 10px 4px; letter-spacing: .05em; }
 .side-settings .set-group:first-of-type { padding-top: 2px; }
 .side-settings .set-item {
-  display: flex; align-items: center; gap: 10px; text-align: left;
+  display: flex; align-items: center; gap: 9px; text-align: left;
   background: none; border: none; color: var(--muted); padding: 8px 10px;
   border-radius: 8px; cursor: pointer; font-size: 13.5px; width: 100%; font-family: inherit;
   transition: background-color .15s, color .15s;
 }
 .side-settings .set-item:hover { color: var(--text); background: var(--panel2); }
 .side-settings .set-item.active { color: var(--text); background: var(--panel2); font-weight: 600; }
+/* 选中项图标转强调色（图标列与文字列严格对齐，不靠 emoji 宽度撑开） */
+.side-settings .set-item.active .ico { color: var(--accent); }
+.side-settings .set-item .ico, .set-back .ico { opacity: .9; }
 
 /* ---------------- 主栏 ---------------- */
 main { flex: 1; overflow-y: auto; padding: 28px 32px 96px; }
@@ -272,6 +506,11 @@ button.primary {
   font-size: 14px; font-weight: 600; cursor: pointer;
 }
 button.primary:hover { filter: brightness(1.08); }
+/* 带 SVG 图标的文字按钮：图标与文字同一基线、间距统一（图标仍随 currentColor 变色） */
+button.primary:has(> .ico), button.ghost:has(> .ico) {
+  display: inline-flex; align-items: center; gap: 6px;
+}
+button.primary > .ico, button.ghost > .ico { vertical-align: 0; }
 button.ghost {
   background: none; color: var(--text); border: 1px solid var(--border-strong);
   border-radius: 9px; padding: 6px 13px; cursor: pointer; font-size: 12.5px;
@@ -281,7 +520,7 @@ button.danger {
   background: none; color: var(--bad); border: 1px solid var(--bad);
   border-radius: 9px; padding: 6px 13px; cursor: pointer; font-size: 12.5px;
 }
-button.danger:hover { background: rgba(240, 86, 106, .1); }
+button.danger:hover { background: color-mix(in srgb, var(--bad) 12%, transparent); }
 button:disabled { opacity: .45; cursor: not-allowed; }
 button.small { padding: 4px 10px; font-size: 12px; }
 
@@ -311,10 +550,10 @@ button.small { padding: 4px 10px; font-size: 12px; }
 
 .chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; flex: none; }
 .chip.queued { background: var(--chip-queued-bg); color: var(--muted); }
-.chip.running { background: rgba(91, 140, 255, .16); color: var(--accent); }
-.chip.done { background: rgba(52, 201, 142, .14); color: var(--ok); }
-.chip.failed { background: rgba(240, 86, 106, .14); color: var(--bad); }
-.chip.cancelled { background: rgba(245, 185, 66, .14); color: var(--warn); }
+.chip.running { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.chip.done { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.chip.failed { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+.chip.cancelled { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips label {
@@ -337,7 +576,7 @@ button.small { padding: 4px 10px; font-size: 12px; }
   padding: 4px 12px; font-size: 12px; color: var(--muted);
 }
 .stat b { color: var(--text); font-weight: 600; font-family: var(--mono); font-size: 12px; }
-.stat.err { color: var(--bad); border-color: rgba(240, 86, 106, .45); background: rgba(240, 86, 106, .08); }
+.stat.err { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); background: color-mix(in srgb, var(--bad) 8%, transparent); }
 .route { margin-top: 10px; font-size: 12px; color: var(--muted); }
 .route b { color: var(--text); }
 
@@ -505,8 +744,8 @@ button.small { padding: 4px 10px; font-size: 12px; }
   .top-actions { gap: 6px; }
   .pill { max-width: 140px; padding: 4px 10px; font-size: 11.5px; }
   .pill.ctrl { max-width: none; }
-  /* 手机顶栏精简：模型胶囊与帮助符号撤下（模型入口在 设置 → 模型接入） */
-  #model-pill, .q-mark { display: none; }
+  /* 手机顶栏精简：皮肤入口撤下（皮肤在 设置 → 皮肤），只留明暗图标 */
+  #btn-skin { display: none; }
   .page-title { font-size: 14px; }
   main { padding: 14px 10px 70px; }
   .panel { padding: 13px; }
@@ -635,8 +874,8 @@ details.prow-hidden[open] > summary { margin-bottom: 6px; }
 .prow-hidden-ops { display: flex; gap: 6px; }
 .hint.warn { color: var(--warn, #e0a800); }
 .badge { font-size: 11px; padding: 1px 8px; border-radius: 999px; }
-.badge.ok { background: rgba(52,201,142,.15); color: var(--ok); }
-.badge.bad { background: rgba(240,86,106,.15); color: var(--bad); }
+.badge.ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+.badge.bad { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
 @media (max-width: 900px) { .prov-layout { grid-template-columns: 1fr; } .prov-side { position: static; } }
 
 /* ---- 管理操作就地反馈 ---- */
@@ -647,7 +886,17 @@ details.prow-hidden[open] > summary { margin-bottom: 6px; }
 .mgmt-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mgmt-title { font-size: 12px; font-weight: 600; }
 .mgmt-ops { margin-left: auto; display: flex; gap: 4px; }
-.mgmt-log { max-height: 220px; overflow: auto; background: #0a0c10; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 8px 0 0; font-family: var(--mono); font-size: 11px; white-space: pre-wrap; word-break: break-all; color: #b7c0d4; }
+.mgmt-log { max-height: 260px; overflow: auto; background: var(--log-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 8px 0 0; font-family: var(--mono); font-size: 11px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; color: var(--log-text); }
+.mgmt-log.muted { color: var(--muted); font-style: italic; }
+/* 运行中：呼吸圆点，日志还没吐字时也能看出"在跑" */
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; animation: live-pulse 1.1s ease-in-out infinite; }
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .35; transform: scale(.75); }
+}
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+/* 卸载等不可逆操作：与常规操作拉开距离，避免误点 */
+.card .ops .danger { margin-left: auto; }
 
 /* ---- 通用弹框 ---- */
 .modal-wrap { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -708,8 +957,11 @@ body.modal-open { overflow: hidden; }
 .ochip .mini {
   border: none; background: transparent; color: var(--muted);
   cursor: pointer; font-size: 12px; line-height: 1; padding: 0 3px;
+  display: inline-flex; align-items: center;
 }
 .ochip .mini:hover { color: var(--text); }
+/* 链内小按钮里的图标（设为主模型）比正文图标略小 */
+.ochip .mini .ico { width: 12px; height: 12px; stroke-width: 2; }
 .opanel {
   margin-top: 8px; border: 1px solid var(--border); border-radius: 10px;
   padding: 10px 12px; background: var(--panel2); max-height: 260px; overflow: auto;
@@ -724,6 +976,25 @@ body.modal-open { overflow: hidden; }
 .ohint { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 
 /* ================= 用量统计 ================= */
+/* 时间范围分段控件：互斥选项用连体分段，选中态一眼可辨
+ *（此前是 4 个 ghost 按钮且 .active 无样式，用户看不出选的是哪个） */
+.seg {
+  display: inline-flex; align-items: center; gap: 2px;
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 9px; padding: 2px;
+}
+.seg-btn {
+  background: none; border: none; color: var(--muted); font-family: inherit;
+  font-size: 12.5px; padding: 4px 11px; border-radius: 7px; cursor: pointer;
+  white-space: nowrap; transition: background-color .15s, color .15s;
+}
+.seg-btn:hover { color: var(--text); background: var(--border); }
+.seg-btn.active {
+  background: var(--accent); color: #fff; font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .22);
+}
+html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .16); }
+
 .usage-kpis {
   display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
   margin: 14px 0 4px;
@@ -733,11 +1004,16 @@ body.modal-open { overflow: hidden; }
   border-radius: var(--r-md); padding: 12px 14px; min-width: 0;
 }
 .kpi.wide { grid-column: span 2; }
+/* 卡片标签行：图标 + 名称，图标用弱化色，跟随主题 */
+.kpi-l {
+  display: flex; align-items: center; gap: 5px;
+  color: var(--muted); font-size: 12px; margin-top: 2px;
+}
+.kpi-l .ico { opacity: .75; width: 13px; height: 13px; stroke-width: 1.9; }
 .kpi-v {
   font-size: 22px; font-weight: 700; letter-spacing: -.02em;
   font-family: var(--mono); white-space: nowrap;
 }
-.kpi-l { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .kpi-s {
   color: var(--muted); font-size: 11px; margin-top: 6px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -786,4 +1062,52 @@ body.modal-open { overflow: hidden; }
   .usage-kpis { grid-template-columns: repeat(2, 1fr); }
   .kpi.wide { grid-column: span 2; }
   .usage-table .bar-cell { min-width: 120px; width: 42%; }
+}
+
+/* ================= 外观（皮肤 / 换肤） =================
+ * 卡片是 <button>：可 Tab 到、可回车选中。预览色块由 JS 从各皮肤的 CSS 变量
+ * 实时取色后内联（见 app.js skinPalette），所以这里不重复写任何色值，
+ * 皮肤改色只改上面那一组变量即可。 */
+.skin-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px; margin: 4px 0 2px;
+}
+.skin-card {
+  display: flex; flex-direction: column; gap: 9px; text-align: left; font-family: inherit;
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 11px; cursor: pointer;
+  transition: border-color .15s, transform .12s;
+}
+.skin-card:hover { border-color: var(--border-strong); }
+.skin-card:active { transform: scale(.985); }
+.skin-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 选中态：描边 + 常显勾选，不靠颜色深浅传达（保证各皮肤下都看得出来） */
+.skin-card.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.skin-card .skin-check { color: var(--accent); opacity: 0; transition: opacity .15s; }
+.skin-card.active .skin-check { opacity: 1; }
+/* 预览：左侧栏色 + 主区底色 + 三根「内容条」（强调色 / 正文色 / 次强调色） */
+.skin-prev {
+  display: flex; height: 52px; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--border);
+}
+.skin-prev .pv-side { width: 30%; }
+.skin-prev .pv-main { flex: 1; display: flex; flex-direction: column; gap: 5px; padding: 8px; }
+.skin-prev .pv-bar { height: 6px; border-radius: 4px; }
+.skin-prev .pv-bar.w85 { width: 85%; }
+.skin-prev .pv-bar.w60 { width: 60%; }
+.skin-prev .pv-bar.w40 { width: 40%; }
+.skin-meta { display: flex; align-items: center; gap: 6px; }
+.skin-name { flex: 1; font-weight: 600; font-size: 13.5px; }
+.skin-desc { color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+
+@media (max-width: 900px) {
+  .skin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .skin-prev { height: 44px; }
+  .skin-prev .pv-main { gap: 4px; padding: 6px; }
+  .skin-desc { display: none; }        /* 窄屏只留名字与配色预览 */
+}
+/* 极窄屏（320~340px）才落单列，否则 6 套皮肤要滚很久 */
+@media (max-width: 340px) {
+  .skin-grid { grid-template-columns: 1fr; }
 }

@@ -65,8 +65,14 @@ def _kill_tree(pid):
 
 
 def _pipe_reader(stream, chunks, log_fh):
+    """持续读子进程管道并实时落盘。
+
+    必须用 read1()：BufferedReader.read(n) 会阻塞到凑满 n 字节或 EOF，
+    在长命令（npm 安装等）上等于"进程结束才一次性返回"，日志面板全程空白。
+    read1() 只要有数据就返回，日志才能真正边跑边看。
+    """
     while True:
-        b = stream.read(65536)
+        b = stream.read1(65536)
         if not b:
             break
         chunks.append(b)
@@ -326,11 +332,15 @@ def _build_call(agent, kind, sid, readonly, model, prompt):
         stdin_text = prompt
     elif kind == "opencode":
         argv = resolve_command(agent["command"]) + ["run"]
+        if sid:
+            argv += ["-s", sid]  # 无头续会话：-s 指定会话 id（-c 只能接最近一次）
         if model:
             argv += ["--model", model]
-        stdin_text = prompt  # 版本差异待装后验证
+        stdin_text = prompt  # 无位置参数且 stdin 有内容时读 stdin
     elif kind == "qwen":  # gemini-cli 系：无参数且 stdin 有内容时读 stdin
         argv = resolve_command(agent["command"])
+        if sid:
+            argv += ["-r", sid]  # 恢复指定会话（~/.qwen/projects/*/chats/<sid>.jsonl）
         if model:
             argv += ["-m", model]
         stdin_text = prompt
@@ -339,9 +349,14 @@ def _build_call(agent, kind, sid, readonly, model, prompt):
             "--yes-always", "--no-auto-commits", "--no-check-update", "--message", prompt]
         if model:
             argv += ["--model", model]
-    else:  # generic：模板把 {prompt} 嵌进参数（注意 cmd 行长度限制）
+    else:  # generic：模板把 {prompt}/{session} 嵌进参数（注意 cmd 行长度限制）
         tmpl = agent.get("argv_template") or ["-p", "{prompt}"]
-        argv = resolve_command(agent["command"]) + [str(a).replace("{prompt}", prompt) for a in tmpl]
+        if sid and agent.get("resume_argv_template"):
+            tmpl = agent["resume_argv_template"]
+        argv = resolve_command(agent["command"]) + [
+            str(a).replace("{prompt}", prompt).replace("{session}", sid) for a in tmpl]
+        if "{prompt}" not in tmpl:
+            stdin_text = prompt  # 恢复模板不带 {prompt}：提示词走 stdin（mimo 实测支持）
     return argv, stdin_text, prompt
 
 
@@ -349,8 +364,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
               timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None):
     """执行一次智能体调用，返回统一结构
     {ok, text, json, cost_usd, tokens, error, raw}。
-    agent 来自 registry.effective_agents()；resume 为已有会话 id
-    （codex: exec resume；claude: --resume），仅真实智能体生效。
+    agent 来自 registry.effective_agents()；resume 为已有会话 id，仅真实智能体生效
+    （codex: exec resume；claude: --resume；opencode/mimo: run -s；qwen: -r；
+    generic: catalog orch.resume_argv_template）。
 
     模型尝试顺序来自 _resolve_attempts：跨厂商链（每条独立 env）或
     主模型 + 降级备选；瞬态错误才换下一条，取消/超时/解析失败不降级。
@@ -363,6 +379,10 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             base_env.setdefault("CLAUDE_CODE_GIT_BASH_PATH", bash)
         base_env.setdefault("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "16000")
     sid = (resume or "").strip() if agent.get("mode") == "real" else ""
+    if sid and kind == "generic" and not agent.get("resume_argv_template"):
+        return {"ok": False, "text": "", "json": None, "cost_usd": 0.0, "tokens": 0,
+                "usage": None, "error": "该 CLI 未配置会话恢复（catalog orch.resume_argv_template），"
+                             "无法在已有会话上继续", "raw": None, "kind": kind, "model": None}
 
     attempts = _resolve_attempts(agent)
     out = None

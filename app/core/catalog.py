@@ -8,6 +8,7 @@ data/catalog.json 是唯一事实来源，首次运行自动生成；用户可�
 from __future__ import annotations
 
 import json
+import re
 import threading
 
 from . import paths
@@ -93,7 +94,8 @@ DEFAULT_CATALOG = [
         "id": "mimo-code", "name": "MiMo Code", "cli_group": "installable",
         "note": "小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run \"提示词\"，-p 在该 CLI 是 --password",
         "detect": {"cli": "mimo"},
-        "orch": {"kind": "generic", "command": "mimo", "argv_template": ["run", "{prompt}"]},
+        "orch": {"kind": "generic", "command": "mimo", "argv_template": ["run", "{prompt}"],
+                 "resume_argv_template": ["run", "-s", "{session}"]},
         "config": {"path": "~/.mimo/config.json", "format": "json", "model_key": None},
         "install": "npm install -g @mimo-ai/cli",
         "upgrade": "npm install -g @mimo-ai/cli@latest",
@@ -124,6 +126,72 @@ DEFAULT_CATALOG = [
 _LOCK = threading.RLock()
 _CACHE = {"entries": None}
 
+# generic 类 CLI 实测出会话恢复方式后在这里登记（{session}/{prompt} 占位），
+# load() 幂等补进已有 data/catalog.json——用户手改过的字段不覆盖。
+ORCH_RESUME_PATCH = {
+    "mimo-code": ["run", "-s", "{session}"],
+}
+
+
+def npm_pkg_name(cmd):
+    """从 npm 安装命令里取包名（支持 @scope/name@latest）。
+
+    跳过包名之前的 flag：`npm install -g --ignore-scripts @scope/pkg` 必须取到
+    @scope/pkg，否则「检查更新」会拿 flag 当包名去查 registry。
+    """
+    m = re.search(r"npm\s+(?:install|i)\s+(.+)$", cmd or "")
+    if not m:
+        return None
+    for tok in m.group(1).split():
+        if tok.startswith("-"):
+            continue
+        if tok.startswith("@"):
+            m2 = re.match(r"(@[^/]+/[^@]+)", tok)
+            return m2.group(1) if m2 else None
+        return tok.split("@")[0]
+    return None
+
+
+def derive_uninstall(cmd):
+    """从安装命令推导卸载命令（npm / winget / pip 三种本机渠道）。
+
+    卸载命令不单独维护一份，避免与安装命令不同步；认不出渠道返回 None，
+    此时条目可显式配置 uninstall 字段覆盖。
+    """
+    c = (cmd or "").strip()
+    m = re.search(r"npm\s+(?:install|i)\s+(.+)$", c)
+    if m:
+        pkg = npm_pkg_name(c)
+        return "npm uninstall -g %s" % pkg if pkg else None
+    m = re.search(r"winget\s+install\b(.*)$", c)
+    if m:
+        return ("winget uninstall" + m.group(1)).strip() or None
+    m = re.search(r"((?:py\s+-[\d.]+|python3?|pip3?)\s+(?:-m\s+)?pip\s+install)\s+(.+)$", c)
+    if m:
+        # 去掉 -U / --upgrade 等 flag，只留包名
+        pkgs = [t for t in m.group(2).split() if not t.startswith("-")]
+        if pkgs:
+            head = m.group(1).replace("pip install", "pip uninstall")
+            return "%s -y %s" % (head, pkgs[0])
+    return None
+
+
+def uninstall_command(entry):
+    """该条目的卸载命令：catalog 显式配置优先，否则由 install/upgrade 推导。"""
+    explicit = (entry.get("uninstall") or "").strip()
+    if explicit:
+        return explicit
+    return derive_uninstall(entry.get("install") or entry.get("upgrade") or "")
+
+
+def _apply_resume_patch(entries):
+    for e in entries:
+        tmpl = ORCH_RESUME_PATCH.get(e.get("id"))
+        orch = e.get("orch")
+        if tmpl and isinstance(orch, dict) and orch.get("kind") == "generic" \
+                and "resume_argv_template" not in orch:
+            orch["resume_argv_template"] = list(tmpl)
+
 
 def load(force=False):
     with _LOCK:
@@ -137,6 +205,7 @@ def load(force=False):
             entries = json.loads(paths.CATALOG_FILE.read_text(encoding="utf-8"))
         except Exception:
             entries = [dict(e) for e in DEFAULT_CATALOG]
+        _apply_resume_patch(entries)
         _CACHE["entries"] = entries
         return entries
 

@@ -100,6 +100,99 @@ def cancel_event_for(run_id):
     return ev
 
 
+AUTO_RESUME_MAX = 2      # 连载任务自动续跑上限（超时/中断后自动接着写，无需人工）
+
+
+def _maybe_auto_resume(run_id):
+    """连载任务失败自动续跑：继承已完成章继续，最多 AUTO_RESUME_MAX 次。
+
+    真实长篇单次运行常因供应商拥堵超时中断；这里在 worker 收尾时自动重排一次
+    续跑（store.retry_task 会带上 inherit），让整个流程真正无人值守。
+    """
+    try:
+        from . import store
+        run = store.get_run(run_id)
+        if not run or run.get("status") not in ("failed", "cancelled"):
+            return False
+        task = store.get_task(run.get("task_id")) if run.get("task_id") else None
+        if not task or not task.get("serial"):
+            return False
+        if run.get("cancelled_by_user") or run.get("status") == "cancelled":
+            return False   # 用户主动取消的运行绝不自动续跑
+        if int(run.get("auto_resumes") or 0) >= AUTO_RESUME_MAX:
+            return False
+        ok, err, new_run = store.retry_task(task["id"])
+        if not ok or not new_run:
+            return False
+        store.update_run(new_run["id"], auto_resumes=int(run.get("auto_resumes") or 0) + 1,
+                         auto_resumed_from=run_id)
+        _QUEUE.put({"kind": "orchestration", "run_id": new_run["id"], "task_id": task["id"]})
+        return True
+    except Exception:
+        return False
+
+
+RESUME_WINDOW_HOURS = 24   # 启动恢复只看最近 24h 内中断的运行（更早的视为已放弃）
+
+
+def _recent(run):
+    """运行创建时间是否在恢复窗口内（时间格式 %Y-%m-%d %H:%M:%S）。"""
+    import time as _t
+    try:
+        ts = _t.mktime(_t.strptime(run.get("created_at") or "", "%Y-%m-%d %H:%M:%S"))
+    except Exception:
+        return False
+    return (_t.time() - ts) <= RESUME_WINDOW_HOURS * 3600
+
+
+def resume_interrupted(limit=3):
+    """启动恢复：把**近期**中断的连载任务重新入队（继承已完成章）。返回恢复条数。
+
+    服务被外部杀掉/崩溃时 worker 的 finally 不会执行；这里在启动时补一次。
+    只在 RESUME_WINDOW_HOURS 窗口内、且该任务没有更新的终态运行时恢复——
+    避免复活用户早已放弃或已完成任务的旧运行。用户手动取消的一律跳过。
+    """
+    try:
+        from . import store
+    except Exception:
+        return 0
+    runs = store.list_runs(200)
+    latest_by_task = {}
+    for r in runs:   # list_runs 已按 id 倒序：首次出现即该 task 最新运行
+        tid = r.get("task_id")
+        if tid and tid not in latest_by_task:
+            latest_by_task[tid] = r["id"]
+    n = 0
+    try:
+        for run in sorted(runs, key=lambda r: r["id"]):
+            if n >= limit:
+                break
+            if run.get("status") != "failed" or not run.get("task_id"):
+                continue
+            if run.get("cancelled_by_user"):
+                continue
+            if not _recent(run):
+                continue
+            if latest_by_task.get(run["task_id"]) != run["id"]:
+                continue   # 该任务已有更新的运行（如用户重试/已完结），不复活旧中断
+            task = store.get_task(run["task_id"])
+            if not task or not task.get("serial"):
+                continue
+            if int(run.get("auto_resumes") or 0) >= AUTO_RESUME_MAX:
+                continue
+            ok, err, new_run = store.retry_task(task["id"])
+            if not ok or not new_run:
+                continue
+            store.update_run(new_run["id"],
+                             auto_resumes=int(run.get("auto_resumes") or 0) + 1,
+                             auto_resumed_from=run["id"])
+            _QUEUE.put({"kind": "orchestration", "run_id": new_run["id"], "task_id": task["id"]})
+            n += 1
+    except Exception:
+        return n
+    return n
+
+
 def _worker():
     global _alive
     with _pool_lock:
@@ -131,6 +224,10 @@ def _worker():
             finally:
                 if run_id:
                     CANCELS.pop(run_id, None)
+                    try:
+                        _maybe_auto_resume(run_id)   # 连载失败自动续跑（继承已完成章）
+                    except Exception:
+                        pass
                 _QUEUE.task_done()
     finally:
         with _pool_lock:
@@ -159,14 +256,15 @@ def _do_mgmt(job, ev):
         return
     step, log_abs = store.add_step(run_id, op or "mgmt", entry["id"], entry.get("name", entry["id"]))
     ok = False
-    if op in ("install", "upgrade"):
+    if op in ("install", "upgrade", "uninstall"):
         res = manager.run_mgmt_command(entry, op, cancel_event=ev, log_path=str(log_abs))
         ok = res["ok"]
         store.finish_step(run_id, step["n"],
                           "done" if ok else "failed",
                           summary=("完成" if ok else "失败") + (": " + res["error"][:300] if res.get("error") else ""),
                           exit_code=res.get("exit_code"))
-        if not ok:
+        # AI 修复只针对安装类失败；卸载失败多为权限/程序占用，留给用户看日志处理
+        if not ok and op in ("install", "upgrade"):
             ok = _ai_repair(run_id, entry, ev, entry.get(op), log_abs)
     elif op == "smoke":
         from . import runner as _r
@@ -182,7 +280,7 @@ def _do_mgmt(job, ev):
                            timeout=180, cancel_event=ev, log_path=str(log_abs))
         ok = res["ok"] and "OK" in (res.get("text") or "").upper()
         try:
-            _usage.record(source="smoke", run_id=run_id, role="smoke",
+            _usage.record(source="smoke", run_id=run_id, step=step["n"], role="smoke",
                           agent=agent.get("id", ""), agent_label=agent.get("label", ""),
                           tool=agent.get("kind", ""), model=res.get("model") or "",
                           ok=bool(res.get("ok")),
@@ -236,7 +334,7 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
     res = runner.run_agent(agent, prompt, readonly=True, timeout=300,
                            cancel_event=ev, log_path=str(log_abs))
     try:
-        _usage.record(source="repair", run_id=run_id, role="ai-repair",
+        _usage.record(source="repair", run_id=run_id, step=step["n"], role="ai-repair",
                       agent=agent.get("id", ""), agent_label=agent.get("label", ""),
                       tool=agent.get("kind", ""), model=res.get("model") or "",
                       ok=bool(res.get("ok")),

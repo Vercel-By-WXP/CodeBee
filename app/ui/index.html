@@ -13,9 +13,51 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Tutti">
 <link rel="stylesheet" href="style.css">
-<script>document.documentElement.dataset.theme = localStorage.getItem("orch.theme") === "light" ? "light" : "dark";</script>
+<!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗，避免刷新时闪一下默认配色。
+     皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，自然回落经典。 -->
+<script>
+(function () {
+  try {
+    document.documentElement.dataset.skin = localStorage.getItem("orch.skin") || "classic";
+    document.documentElement.dataset.theme = localStorage.getItem("orch.theme") === "light" ? "light" : "dark";
+  } catch (e) {
+    document.documentElement.dataset.skin = "classic";
+    document.documentElement.dataset.theme = "dark";
+  }
+})();
+</script>
 </head>
 <body>
+<!-- ================= 图标精灵：统一线性图标（stroke=currentColor，随主题与 hover 自动变色） ================= -->
+<svg id="icon-sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="M3 6h11"/><path d="M3 12h11"/><path d="M3 18h7"/><path d="m16.5 16.5 2 2 4-4"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M8 17v-5"/><path d="M13 17V8"/><path d="M18 17v-3"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2"/><path d="M15 2v2"/><path d="M9 20v2"/><path d="M15 20v2"/><path d="M2 9h2"/><path d="M2 15h2"/><path d="M20 9h2"/><path d="M20 15h2"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
+  <symbol id="i-gamepad" viewBox="0 0 24 24"><line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="18" x2="18.01" y1="10" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 8h5M8 12h8M8 16h6"/></symbol>
+  <symbol id="i-workflow" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M12 18h.01"/></symbol>
+  <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2a10 10 0 0 0 0 20 2 2 0 0 0 2-2v-1a2 2 0 0 1 2-2h1.5A4.5 4.5 0 0 0 22 12.5C22 6.7 17.5 2 12 2Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.5 12.5 5 5 10-11"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-sigma" viewBox="0 0 24 24"><path d="M18 7V5a1 1 0 0 0-1-1H6.5a.5.5 0 0 0-.4.8l4.5 6a2 2 0 0 1 0 2.4l-4.5 6a.5.5 0 0 0 .4.8H17a1 1 0 0 0 1-1v-2"/></symbol>
+  <symbol id="i-hash" viewBox="0 0 24 24"><path d="M4 9h16"/><path d="M4 15h16"/><path d="M10 3 8 21"/><path d="M16 3l-2 18"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+  <symbol id="i-calendar-days" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M8 15h.01"/><path d="M12 15h.01"/><path d="M16 15h.01"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></symbol>
+</svg>
 <div id="drawer-mask" aria-hidden="true"></div>
 <div id="app">
 
@@ -30,39 +72,52 @@
         <div id="side-tasks" class="side-tasks"></div>
       </div>
       <div class="side-foot">
-        <button id="btn-settings">⚙ 设置</button>
-        <button id="btn-phone-side" class="icon-btn" title="手机连接（扫码用手机打开 Tutti）" aria-label="手机连接">📱</button>
+        <button id="btn-settings" class="foot-btn" title="设置" aria-label="设置">
+          <svg class="ico ico-lg" aria-hidden="true"><use href="#i-gear"></use></svg>
+        </button>
+        <!-- 中间：Tutti 自己的智能体（编排者）当前用的厂商；点击到设置里的「编排中枢」更换 -->
+        <button id="btn-prov-side" class="foot-prov">
+          <span id="prov-side-dot" class="pdot"></span>
+          <span id="prov-side-text" class="nm">未选厂商</span>
+        </button>
+        <button id="btn-phone-side" class="foot-btn" title="手机连接（扫码用手机打开 Tutti）" aria-label="手机连接">
+          <svg class="ico ico-lg" aria-hidden="true"><use href="#i-phone"></use></svg>
+        </button>
       </div>
     </div>
     <!-- 设置视图：左栏整体变成设置导航 -->
     <div class="side-settings">
-      <button id="btn-set-back" class="set-back">← 返回 Tutti</button>
+      <button id="btn-set-back" class="set-back">
+        <svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>返回 Tutti
+      </button>
       <div class="set-group">编排</div>
-      <button class="set-item active" data-sub="tasks">✦ 任务</button>
-      <button class="set-item" data-sub="runs">≡ 运行记录</button>
-      <button class="set-item" data-sub="usage">📊 用量统计</button>
+      <button class="set-item active" data-sub="tasks"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg>任务</button>
+      <button class="set-item" data-sub="runs"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>运行记录</button>
+      <button class="set-item" data-sub="usage"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg>用量统计</button>
       <div class="set-group">配置</div>
-      <button class="set-item" data-sub="agents">⚙ 智能体管理</button>
-      <button class="set-item" data-sub="models">◈ 模型接入</button>
-      <button class="set-item" data-sub="bindings">🔗 CLI 绑定</button>
-      <button class="set-item" data-sub="orch">✦ 编排中枢</button>
+      <button class="set-item" data-sub="agents"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg>智能体管理</button>
+      <button class="set-item" data-sub="models"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>模型接入</button>
+      <button class="set-item" data-sub="bindings"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg>CLI 绑定</button>
+      <button class="set-item" data-sub="skills"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg>经验库</button>
+      <button class="set-item" data-sub="orch"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg>编排中枢</button>
+      <div class="set-group">外观</div>
+      <button class="set-item" data-sub="appearance"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg>皮肤</button>
       <div class="set-group">远程</div>
-      <button id="btn-phone" class="set-item" data-sub="__phone">📱 手机连接</button>
+      <button id="btn-phone" class="set-item" data-sub="__phone"><svg class="ico" aria-hidden="true"><use href="#i-phone"></use></svg>手机连接</button>
     </div>
   </aside>
 
   <!-- ================= 主栏 ================= -->
   <div id="mainwrap">
     <header class="topbar">
-      <button id="btn-menu" class="icon-btn" title="收起 / 展开侧栏">☰</button>
+      <button id="btn-menu" class="icon-btn" title="收起 / 展开侧栏" aria-label="收起 / 展开侧栏">
+        <svg class="ico ico-lg" aria-hidden="true"><use href="#i-menu"></use></svg>
+      </button>
       <div id="page-title" class="page-title">任务</div>
       <div class="top-actions">
-        <button id="ctrl-pill" class="pill ctrl hidden" onclick="ctrlClick()" title="多端控制权：同一时刻只有一台设备能操作；空闲时执行任意操作会自动接管">🔓 控制空闲</button>
-        <button id="model-pill" class="pill" title="当前 Codex CLI 绑定的供应商与模型 · 点击前往 CLI 绑定页">
-          <span class="pill-ico">⚙</span><span id="model-pill-text">模型未绑定</span>
-        </button>
-        <span class="q-mark" title="这里显示 Codex CLI 当前绑定的供应商 / 模型；在「CLI 绑定」页可更改（供应商 + 模型链 + 难度路由），运行时模型链优先、其余按供应商配置自动选。">?</span>
-        <button id="btn-theme" class="pill">🌙 夜间</button>
+        <button id="ctrl-pill" class="pill ctrl icon-only hidden" onclick="ctrlClick()" title="多端控制权" aria-label="多端控制权"><svg class="ico" aria-hidden="true"><use href="#i-unlock"></use></svg></button>
+        <button id="btn-skin" class="pill icon-only" title="皮肤 / 换肤：多套配色，各含日间与夜间" aria-label="皮肤 / 换肤"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg></button>
+        <button id="btn-theme" class="pill icon-only" title="切换日间 / 夜间主题" aria-label="切换日间 / 夜间主题"><svg class="ico" aria-hidden="true"><use href="#i-moon"></use></svg></button>
         <div id="conn" class="conn">连接中…</div>
       </div>
     </header>
@@ -84,8 +139,6 @@
               <label>继续会话</label>
               <select id="f-resume-agent">
                 <option value="">不沿用（全新开始）</option>
-                <option value="codex-cli">Codex CLI 的会话</option>
-                <option value="claude-code">Claude Code 的会话</option>
               </select>
             </div>
           </div>
@@ -94,9 +147,10 @@
           <div class="field hidden" id="row-resume-session">
             <label>选择会话</label>
             <select id="f-resume-session"><option>（加载中…）</option></select>
+            <p class="hint" id="resume-session-hint"></p>
           </div>
           <div class="form-actions">
-            <button id="btn-create" class="primary">创建并运行 ↑</button>
+            <button id="btn-create" class="primary"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg>创建并运行</button>
             <span id="create-msg" class="msg"></span>
           </div>
 
@@ -163,7 +217,7 @@
       </div>
       <div id="run-detail" class="panel wide hidden">
         <div class="detail-head">
-          <button id="btn-back" class="ghost">← 返回</button>
+          <button id="btn-back" class="ghost"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>返回</button>
           <h2 id="rd-title"></h2>
           <span id="rd-status" class="chip"></span>
           <button id="btn-cancel" class="danger hidden">取消运行</button>
@@ -185,15 +239,20 @@
         <div class="panel-head">
           <h2>用量统计</h2>
           <div class="actions" id="usage-ranges">
-            <button class="ghost small" data-days="1">今天</button>
-            <button class="ghost small" data-days="7">近 7 天</button>
-            <button class="ghost small active" data-days="30">近 30 天</button>
-            <button class="ghost small" data-days="0">全部</button>
-            <button id="btn-usage-refresh" class="ghost small" title="重新拉取">⟳</button>
+            <div class="seg" role="group" aria-label="时间范围">
+              <button class="seg-btn active" data-days="1">今天</button>
+              <button class="seg-btn" data-days="7">近 7 天</button>
+              <button class="seg-btn" data-days="30">近 30 天</button>
+              <button class="seg-btn" data-days="0">全部</button>
+            </div>
+            <button id="btn-usage-refresh" class="icon-btn" title="重新拉取" aria-label="重新拉取">
+              <svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg>
+            </button>
           </div>
         </div>
         <p class="hint">统计所有真实 LLM 调用：编排各角色步骤（规划/实现/评审/修订…）、编排者直连 API、连通性冒烟与 AI 修复；mock 智能体与本地验证不计入。</p>
         <div id="usage-kpis" class="usage-kpis"><p class="hint">加载中…</p></div>
+        <div id="usage-note"></div>
         <h3 class="sec-title">每日趋势（输入 / 输出 token）</h3>
         <div id="usage-trend"></div>
         <div id="usage-dims"></div>
@@ -230,7 +289,7 @@
             <div class="prov-side-head">
               <span>供应商</span>
               <span class="prov-side-ops">
-                <button id="btn-refresh-models" class="ghost small" title="全部重新拉取模型列表">⟳</button>
+                <button id="btn-refresh-models" class="icon-btn" title="全部重新拉取模型列表" aria-label="全部重新拉取模型列表"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg></button>
                 <button id="btn-import" class="ghost small" title="从本机各 AI 工具导入供应商">导入</button>
                 <button id="btn-add-provider" class="ghost small" title="手动添加供应商">＋</button>
               </span>
@@ -252,6 +311,19 @@
         </div>
       </div>
 
+      <!-- 经验库 -->
+      <div id="sub-skills" class="subpage hidden">
+        <div class="panel wide">
+          <div class="panel-head"><h2>经验库</h2></div>
+          <p class="hint">系统自己的经验沉淀：<b>内置规范包</b>（如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与<b>运行中自动学到的教训</b>（每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。</p>
+          <h3 class="sec-title">内置规范包</h3>
+          <div id="skill-packs" class="cards"></div>
+          <h3 class="sec-title">自动沉淀的教训 <span class="tag" id="skill-count"></span></h3>
+          <div id="skill-lessons" class="cards"></div>
+        </div>
+      </div>
+
       <!-- 编排中枢 -->
       <div id="sub-orch" class="subpage hidden">
         <div class="panel wide">
@@ -267,6 +339,21 @@
             <p class="hint">1 = 串行排队；建议 2-4。每个任务在独立线程执行，运行数据按任务隔离。</p>
           </div>
           <div id="settings-msg" class="msg"></div>
+        </div>
+      </div>
+
+      <!-- 外观 / 皮肤 -->
+      <div id="sub-appearance" class="subpage hidden">
+        <div class="panel wide">
+          <div class="panel-head"><h2>皮肤</h2></div>
+          <p class="hint">每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与电脑各自独立）。<b>经典</b>是默认皮肤，即原本的界面。</p>
+          <h3 class="sec-title">明暗</h3>
+          <div id="skin-mode" class="seg" role="group" aria-label="明暗模式">
+            <button class="seg-btn" data-mode="dark">夜间</button>
+            <button class="seg-btn" data-mode="light">日间</button>
+          </div>
+          <h3 class="sec-title">皮肤 <span class="tag" id="skin-cur"></span></h3>
+          <div id="skin-grid" class="skin-grid"></div>
         </div>
       </div>
     </section>

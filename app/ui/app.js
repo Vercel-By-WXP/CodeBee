@@ -2,7 +2,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: localStorage.getItem("orch.showArchived") === "1", selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, orchSig: "", settings: null };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: localStorage.getItem("orch.showArchived") === "1", selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set() };
 
 /* ---------------------------------------------------------- 任务类型（流程） */
 async function loadFlows() {
@@ -255,6 +255,9 @@ async function poll() {
     S.providers = models.providers; S.bindings = models.bindings;
     S.modelCatalog = models.catalog || [];
     S.sourceNames = models.source_names || S.sourceNames || {};
+    // 供应商集合/启停/密钥变了才重拉编排者：否则「生效中」状态点会在停用厂商后失真
+    const provSig = JSON.stringify((S.providers || []).map((p) => [p.id, p.enabled, !!p.api_key]));
+    if (provSig !== S.provSig) { S.provSig = provSig; loadOrchestrator(); }
     if (!S.sseLive) await refreshState();
     render();
   } catch (e) {
@@ -306,15 +309,23 @@ function renderCtrl() {
   if (!el) return;
   const c = S.control;
   el.classList.remove("hidden", "mine", "held");
-  if (!c || c.mode === "free") {
-    el.textContent = "🔓 控制空闲";
-  } else if (c.mine) {
-    el.classList.add("mine");
-    el.textContent = "🎮 你在控制";
-  } else {
-    el.classList.add("held");
-    el.textContent = "🔒 " + (c.holder || "其他设备") + " 控制中";
+  // 顶栏统一纯图标：状态靠图标 + 颜色（mine=绿 / held=黄）传达，
+  // 完整语义（谁在控制）放 title / aria-label，悬停与读屏都能拿到
+  let icon = "unlock", tip = "控制空闲：执行任意操作即可自动接管";
+  if (c && c.mode !== "free") {
+    if (c.mine) {
+      el.classList.add("mine");
+      icon = "gamepad"; tip = "你在控制（点击释放）";
+    } else {
+      el.classList.add("held");
+      icon = "lock";
+      const holder = c.holder || "其他设备";
+      tip = "「" + holder + "」控制中（点击接管）";
+    }
   }
+  el.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-' + icon + '"></use></svg>';
+  el.title = tip;
+  el.setAttribute("aria-label", tip);
 }
 
 async function ctrlAction(action, force) {
@@ -360,22 +371,10 @@ function render() {
   renderCatalog();
   renderModels();
   renderBindings();
+  renderOrchSide();   // 用缓存的 S.orch 重画（供应商变更时由 poll 触发重新拉取）
 }
 
 /* ---------------------------------------------------------- 模型接入 */
-/* 顶栏右上角胶囊：显示 Codex CLI 当前绑定的供应商 / 模型 */
-function renderModelPill() {
-  const el = $("model-pill-text");
-  if (!el) return;
-  const provs = S.providers || [], bindings = S.bindings || {};
-  const b = bindings["codex-cli"] || bindings["claude-code"] || {};
-  const p = provs.find((x) => x.id === b.provider_id);
-  if (!p) { el.textContent = "模型未绑定"; return; }
-  const name = p.name.replace(/^\[[^\]]+\]\s*/, "");  // 去掉 "[CC] " 之类前缀
-  const model = b.model || p.model || "";
-  el.textContent = model ? name + " · " + model : name;
-}
-
 /* 批量选择的只读/可写访问器：渲染只读，点击才写，避免轮询重绘时误改状态 */
 function modelSel(pid) { return (S.selModels || {})[pid] || {}; }
 function modelSelSet(pid) {
@@ -392,7 +391,6 @@ function renderModels() {
                               S.selProvs, S.selModels]);
   if (sig === S.modelsSig) return;  // 数据没变不重绘，避免清掉正在输入的内容
   S.modelsSig = sig;
-  renderModelPill();
   renderProvDetail();
 }
 
@@ -711,7 +709,7 @@ function provModelRow(pid, m, group) {
     '<input type="checkbox" class="pcheck"' + (sel[m.name] ? " checked" : "") +
     ' title="勾选以批量操作"' +
     ' onchange="toggleModelSel(\'' + esc(pid) + '\', \'' + esc(m.name) + '\', this.checked)">' +
-    '<span class="drag" title="拖动调整优先级">☰</span>' +
+    '<span class="drag" title="拖动调整优先级"><svg class="ico" aria-hidden="true"><use href="#i-grip"></use></svg></span>' +
     '<span class="pprio">#' + m.priority + "</span>" +
     '<span class="pname" title="' + esc(m.name) + '">' + esc(m.name) + "</span>" +
     price + tmHtml +
@@ -855,13 +853,18 @@ function restoreHidden(pid) {
 }
 
 async function refreshAllModels() {
+  // 按钮内是 SVG 图标，不能用 textContent 改文案（会抹掉图标）；
+  // 加载态用 class 驱动图标旋转，结束时移除
   const btn = $("btn-refresh-models");
-  btn.disabled = true; btn.textContent = "…"; btn.title = "正在刷新全部模型列表…";
+  btn.disabled = true; btn.classList.add("loading"); btn.title = "正在刷新全部模型列表…";
   try {
     const r = await api("/api/models/refresh-all", { method: "POST" });
     btn.title = r.message || "正在刷新…";
   } catch (e) { alert("刷新失败：" + e.message); }
-  setTimeout(() => { btn.disabled = false; btn.textContent = "⟳"; btn.title = "全部重新拉取模型列表"; }, 1500);
+  setTimeout(() => {
+    btn.disabled = false; btn.classList.remove("loading");
+    btn.title = "全部重新拉取模型列表";
+  }, 1500);
   setTimeout(poll, 2500); setTimeout(poll, 8000);
 }
 
@@ -1101,6 +1104,15 @@ function renderImplSelects() {
     '<option value="' + esc(a.id) + '">' + esc(a.label) + "</option>").join("");
   if (prev && agents.some((a) => a.id === prev)) sel.value = prev;
 
+  // 继续会话：已安装且支持会话扫描的 CLI（不要求启用编排——续会话是显式指定）
+  const rsel = $("f-resume-agent");
+  const rprev = rsel.value;
+  const rAgents = (S.catalog || []).filter((e) =>
+    e.installed && e.orch_kind && S.sessionAgents.has(e.id));
+  rsel.innerHTML = '<option value="">不沿用（全新开始）</option>' +
+    rAgents.map((e) => '<option value="' + esc(e.id) + '">' + esc(e.name) + " 的会话</option>").join("");
+  if (rprev && rAgents.some((e) => e.id === rprev)) rsel.value = rprev;
+
   const box = $("critic-box");
   if (flowById($("f-type").value)?.engine === "review") {
     box.classList.remove("hidden");
@@ -1134,7 +1146,9 @@ async function createTask() {
   const resumeAgent = $("f-resume-agent").value;
   if (resumeAgent && sid) {
     const opt = $("f-resume-session").selectedOptions[0];
-    payload.resume = { agent: resumeAgent, session: sid, preview: opt ? opt.textContent : "" };
+    const hit = (S.sessionList || []).find((s) => s.session_id === sid);
+    payload.resume = { agent: resumeAgent, session: sid,
+      preview: opt ? opt.textContent : "", project: (hit && hit.project) || "" };
   }
   if (flowById(payload.type)?.engine === "code") {
     payload.verify_command = $("f-verify").value.trim();
@@ -1164,23 +1178,45 @@ async function createTask() {
 }
 
 /* ---------------------------------------------------------- 会话延续 */
+/* 后端支持会话扫描的工具集合（/api/sessions 的键）；决定继续会话下拉出现哪些工具 */
+async function refreshSessionAgents() {
+  try {
+    const r = await api("/api/sessions");
+    S.sessionAgents = new Set(Object.keys(r.sessions || {}));
+  } catch (e) { /* 拉取失败保持现状，下拉由其余渲染兜底 */ }
+  renderImplSelects();
+}
+
 async function loadSessions() {
   const agent = $("f-resume-agent").value;
   const row = $("row-resume-session");
   const sel = $("f-resume-session");
-  if (!agent) { row.classList.add("hidden"); return; }
+  if (!agent) { row.classList.add("hidden"); S.sessionList = []; return; }
   row.classList.remove("hidden");
   sel.innerHTML = '<option>（加载中…）</option>';
   try {
     const r = await api("/api/sessions");
     const list = (r.sessions || {})[agent] || [];
+    S.sessionList = list;   // 提交时带上 project（续会话要在该目录下启动 CLI）
     sel.innerHTML = list.length ? list.map((s) => {
-      const who = s.project ? " [" + String(s.project).replace(/[\\\\/]+$/, "").split(/[\\\\/]/).pop() + "]" : "";
+      const who = s.project ? " [" + String(s.project).replace(/[\\/]+$/, "").split(/[\\/]/).pop() + "]" : "";
       return '<option value="' + esc(s.session_id) + '">[' + esc(s.mtime) + "]" + who + " " + esc(s.preview.slice(0, 60)) + "</option>";
     }).join("") : '<option value="">（未找到该智能体的本地会话）</option>';
   } catch (e) {
+    S.sessionList = [];
     sel.innerHTML = '<option value="">（扫描失败）</option>';
   }
+  showResumeHint();
+}
+
+/* 提示该会话将在哪个目录续接（CLI 需在会话项目目录下启动） */
+function showResumeHint() {
+  const hint = $("resume-session-hint");
+  if (!hint) return;
+  const hit = (S.sessionList || []).find((s) => s.session_id === $("f-resume-session").value);
+  if (!hit || !hit.project) { hint.textContent = ""; return; }
+  hint.textContent = "该会话属于 " + hit.project + "，续接时 CLI 将在该目录下启动"
+    + (hit.turns ? "（已有 " + hit.turns + " 轮对话上下文）" : "");
 }
 
 function renderTaskList() {
@@ -1249,10 +1285,7 @@ function openCtxMenu(x, y, items) {
 
 function closeCtxMenu() {
   const menu = $("ctx-menu");
-  if (menu && !menu.classList.contains("hidden")) {
-    menu.dataset.closedAt = String(Date.now());  // 记录关闭时间，供“点按钮开→再点关”的切换判断
-    menu.classList.add("hidden");
-  }
+  if (menu && !menu.classList.contains("hidden")) menu.classList.add("hidden");
 }
 
 function bindCtxMenus() {
@@ -1530,17 +1563,105 @@ async function cancelRun() {
   await api("/api/runs/" + encodeURIComponent(S.detailRunId) + "/cancel", { method: "POST" });
 }
 
-/* ---------------------------------------------------------- 主题（白天/黑夜） */
-function applyTheme() {
-  const t = localStorage.getItem("orch.theme") === "light" ? "light" : "dark";
-  document.documentElement.dataset.theme = t;
-  $("btn-theme").textContent = t === "dark" ? "🌙 夜间" : "☀️ 日间";
+/* ---------------------------------------------------------- 外观：皮肤 + 明暗（换肤） */
+/* 调色板全部在 style.css（html[data-skin="X"]，每套含夜间/日间两版变量）；这里只放顺序
+ * 与文案。卡片预览色块用 skinPalette 从 CSS 变量实时取值，不在 JS 里重复写色值——
+ * 皮肤改色只需要动 style.css，预览与真实界面不会各自漂移。 */
+const SKINS = [
+  { id: "classic", name: "经典", desc: "黑白灰 + 蓝色强调，ChatGPT 式清爽配色（默认）" },
+  { id: "ocean", name: "深海", desc: "藏青底色 + 天蓝强调，夜间长时间盯任务更沉静" },
+  { id: "forest", name: "森野", desc: "墨绿底色 + 青翠强调，偏自然的护眼配色" },
+  { id: "amber", name: "暖阳", desc: "暖棕底色 + 琥珀强调，纸感暖调" },
+  { id: "violet", name: "霓虹", desc: "暗紫底色 + 品红强调，霓虹感强" },
+  { id: "contrast", name: "高对比", desc: "纯黑 / 纯白 + 硬边框、去阴影，弱视与强光环境更清晰" },
+];
+const SKIN_IDS = new Set(SKINS.map((s) => s.id));
+const SKIN_KEY = "orch.skin";
+const THEME_KEY = "orch.theme";
+
+function currentSkin() {
+  const s = localStorage.getItem(SKIN_KEY) || "";
+  return SKIN_IDS.has(s) ? s : "classic";   // 值缺失/非法（如换过版本）一律回落经典
 }
 
-function toggleTheme() {
-  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-  localStorage.setItem("orch.theme", next);
-  applyTheme();
+function currentMode() { return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark"; }
+
+/* 取某皮肤在指定明暗下的实际配色：临时拨到根属性读计算值再还原。
+ * 同步执行，浏览器不会中途绘制，所以看不到闪烁。 */
+function skinPalette(id, mode) {
+  const root = document.documentElement;
+  const skin0 = root.dataset.skin, theme0 = root.dataset.theme;
+  root.dataset.skin = id;
+  root.dataset.theme = mode;
+  const cs = getComputedStyle(root);
+  const get = (n) => cs.getPropertyValue(n).trim();
+  const pal = { bg: get("--bg"), sidebar: get("--sidebar"), accent: get("--accent"), accent2: get("--accent2"), text: get("--text") };
+  root.dataset.skin = skin0;
+  root.dataset.theme = theme0;
+  return pal;
+}
+
+/* 把皮肤 + 明暗落到根属性，并同步顶栏两个入口、手机状态栏色 */
+function applyAppearance() {
+  const root = document.documentElement;
+  const skin = currentSkin(), mode = currentMode();
+  root.dataset.skin = skin;
+  root.dataset.theme = mode;
+  const dark = mode === "dark";
+  const th = $("btn-theme");
+  if (th) th.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-' + (dark ? "moon" : "sun") + '"></use></svg>';
+  // 手机浏览器的状态栏 / 地址栏配色跟着皮肤走（各皮肤底色差异大，写死一个色会脱节）
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    const side = getComputedStyle(root).getPropertyValue("--sidebar").trim();
+    if (side) meta.setAttribute("content", side);
+  }
+}
+
+function setThemeMode(mode) {
+  localStorage.setItem(THEME_KEY, mode === "light" ? "light" : "dark");
+  applyAppearance();
+  renderAppearance();
+}
+
+function setSkin(id) {
+  if (!SKIN_IDS.has(id)) return;
+  localStorage.setItem(SKIN_KEY, id);
+  applyAppearance();
+  renderAppearance();
+  const s = SKINS.find((x) => x.id === id);
+  toast("已换肤：" + (s ? s.name : id) + "（" + (currentMode() === "dark" ? "夜间" : "日间") + "）");
+}
+
+function toggleTheme() { setThemeMode(currentMode() === "light" ? "dark" : "light"); }
+
+/* 外观页：皮肤卡片（点选即换） + 明暗分段控。选中态同时给描边与勾选，
+ * 不只靠颜色深浅传达，保证在高对比等皮肤下也一眼可辨。 */
+function renderAppearance() {
+  const grid = $("skin-grid");
+  if (!grid) return;
+  const cur = currentSkin(), mode = currentMode();
+  grid.innerHTML = SKINS.map((s) => {
+    const p = skinPalette(s.id, mode);
+    return '<button type="button" class="skin-card' + (s.id === cur ? " active" : "") + '" data-skin="' + s.id + '" title="' + esc(s.desc) + '">'
+      + '<span class="skin-prev" aria-hidden="true">'
+      + '<span class="pv-side" style="background:' + p.sidebar + '"></span>'
+      + '<span class="pv-main" style="background:' + p.bg + '">'
+      + '<span class="pv-bar w85" style="background:' + p.accent + '"></span>'
+      + '<span class="pv-bar w60" style="background:' + p.text + ';opacity:.3"></span>'
+      + '<span class="pv-bar w40" style="background:' + p.accent2 + '"></span>'
+      + '</span></span>'
+      + '<span class="skin-meta"><span class="skin-name">' + esc(s.name) + '</span>'
+      + '<svg class="ico skin-check" aria-hidden="true"><use href="#i-check"></use></svg></span>'
+      + '<span class="skin-desc">' + esc(s.desc) + '</span>'
+      + '</button>';
+  }).join("");
+  document.querySelectorAll("#skin-mode [data-mode]").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+  const tag = $("skin-cur");
+  if (tag) {
+    const s = SKINS.find((x) => x.id === cur);
+    tag.textContent = (s ? s.name : cur) + " · " + (mode === "dark" ? "夜间" : "日间");
+  }
 }
 
 /* ---------------------------------------------------------- 智能体目录：模型选择 */
@@ -1637,7 +1758,8 @@ function bindModelBox(c, provId) {
         return '<span class="ochip' + (i === 0 ? " primary" : "") + '">' +
           "<b>" + (i === 0 ? "主" : "备") + "</b>" + esc(pname) + " · " + esc(c2.m) +
           (i > 0 ? '<button class="mini" data-m="' + esc(c2.m) + '" data-p="' + esc(c2.p) +
-                  '" title="设为主模型" onclick="bindPromote(\'' + esc(c.id) + '\', this)">↑</button>' : "") +
+                  '" title="设为主模型" onclick="bindPromote(\'' + esc(c.id) + '\', this)">' +
+                  '<svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg></button>' : "") +
           '<button class="mini" data-m="' + esc(c2.m) + '" data-p="' + esc(c2.p) +
             '" title="移除" onclick="bindRemove(\'' + esc(c.id) + '\', this)">×</button>' +
           "</span>";
@@ -1727,6 +1849,10 @@ function renderCatalog() {
     '<div class="card"><div class="head"><span class="name">演示智能体 A / B（mock）</span><span class="tag">内置</span></div>' +
     '<div class="note">不消耗任何配额即可演示完整流水线（起草→评审→修订→报告）。</div>' +
     '<div class="facts">始终可用，出现在任务表单中。</div></div>';
+  // 日志流式刷新后定位到最新一行（除非用户主动往上翻看历史）
+  document.querySelectorAll("pre.mgmt-log").forEach((el) => {
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) el.scrollTop = el.scrollHeight;
+  });
 }
 
 function card(c) {
@@ -1749,6 +1875,7 @@ function card(c) {
     c.installed && c.has_upgrade ? '<button class="ghost small" onclick="checkUpdate(\'' + esc(c.id) + '\')">检查更新</button>' : "",
     !c.installed && c.has_install ? '<button class="ghost small" onclick="mgmt(\'' + esc(c.id) + '\', \'install\')">安装</button>' : "",
     c.installed ? '<button class="ghost small" onclick="showMgmtLog(\'' + esc(c.id) + '\')">日志</button>' : "",
+    c.installed && c.uninstall_cmd ? '<button class="danger small" onclick="mgmt(\'' + esc(c.id) + '\', \'uninstall\')">卸载</button>' : "",
     !c.installed && !c.has_install ? '<span class="hint">安装命令待配置（编辑 data/catalog.json）</span>' : "",
   ].join("");
   return '<div class="card">' +
@@ -1761,10 +1888,11 @@ function card(c) {
     '<div class="ops">' + orchBox + ops + "</div>" + modelBox + "</div>";
 }
 
-/* 管理操作（升级/安装/冒烟）的就地反馈面板：状态 + 版本对比 + 输出日志 */
+/* 管理操作（升级/安装/卸载/冒烟）的就地反馈面板：状态 + 版本对比 + 流式日志 */
 function mgmtPanel(agentId) {
   const st = (S.mgmt || {})[agentId];
   if (!st) return "";
+  const running = st.status === "queued" || st.status === "running";
   const chip = statusChip(st.status || "queued");
   const vcmp = (st.versionBefore || st.versionAfter)
     ? '<span class="hint">版本 ' + esc(st.versionBefore || "?") + " → <b>" +
@@ -1772,15 +1900,18 @@ function mgmtPanel(agentId) {
       (st.status === "done" && st.versionBefore && st.versionAfter === st.versionBefore
         ? "（已是最新版本，无需升级）" : "") + "</span>"
     : "";
+  // 运行且暂无输出时给"等待中"提示（npm 下载阶段本来就有一段静默期）
+  const empty = running ? "（等待输出…安装/下载阶段可能有一段静默期）" : "（无输出）";
   const logBox = st.showLog
-    ? '<pre class="mgmt-log">' + esc(st.log || "（尚无输出）") + "</pre>" : "";
+    ? '<pre class="mgmt-log' + (st.log ? "" : " muted") + '">' +
+      esc(st.log || empty) + "</pre>" : "";
   return '<div class="mgmt-panel ' + esc(st.status || "queued") + '">' +
-    '<div class="mgmt-head">' + chip +
+    '<div class="mgmt-head">' + (running ? '<span class="live-dot"></span>' : "") + chip +
     '<span class="mgmt-title">' + esc(st.opLabel || "") + "</span>" + vcmp +
     '<span class="mgmt-ops">' +
     '<button class="ghost small" onclick="toggleMgmtLog(\'' + esc(agentId) + '\')">' +
     (st.showLog ? "收起日志" : "查看日志") + "</button>" +
-    '<button class="ghost small" onclick="openRunInRuns(\'' + esc(st.runId) + '\')">完整运行</button>' +
+    (st.runId ? '<button class="ghost small" onclick="openRunInRuns(\'' + esc(st.runId) + '\')">完整运行</button>' : "") +
     '<button class="ghost small" onclick="clearMgmt(\'' + esc(agentId) + '\')">×</button>' +
     "</span></div>" +
     (st.summary ? '<div class="hint">' + esc(String(st.summary).slice(0, 300)) + "</div>" : "") +
@@ -1803,12 +1934,20 @@ async function saveModel(id) {
 }
 
 async function mgmt(id, op) {
-  const names = { install: "安装", upgrade: "升级", smoke: "冒烟测试" };
+  const names = { install: "安装", upgrade: "升级", uninstall: "卸载", smoke: "冒烟测试" };
+  const entry = (S.catalog || []).find((x) => x.id === id) || {};
   if (op === "install" && !confirm("确定执行安装？命令来自 data/catalog.json，可在管理页查看。")) return;
+  if (op === "uninstall") {
+    // 卸载不可逆：把将要执行的真实命令摊开给用户确认
+    const cmd = entry.uninstall_cmd || "（未能推导，请先在 catalog 配置 uninstall）";
+    if (!confirm("确定卸载 " + entry.name + "？\n\n将执行：\n" + cmd +
+                 "\n\n该 CLI 会从本机移除（配置文件保留）。此操作不可撤销。")) return;
+  }
   const before = ((S.catalog || []).find((x) => x.id === id) || {}).version;
   S.mgmt = S.mgmt || {};
+  // 安装/升级/卸载默认展开日志：输出就是用户要看的进度（流式实时刷新）
   S.mgmt[id] = { opLabel: names[op] || op, status: "queued", versionBefore: before,
-                 log: "", showLog: false };
+                 log: "", showLog: op !== "smoke" };
   S.catSig = null;
   renderCatalog();
   let r;
@@ -1836,6 +1975,7 @@ async function pollMgmt(agentId, runId) {
     st.status = run.status;
     st.summary = run.summary || run.error || "";
     st.retries = 0;
+    // 运行中也持续拉日志：输出是流式写入的，边跑边看才有意义
     if (st.showLog || run.status === "failed") {
       try { st.log = await fetchRunLog(runId); } catch (e) { /* 网络抖动时保留上一份日志 */ }
     }
@@ -1957,50 +2097,70 @@ function openFlowsManager() {
     '<div class="item"><div class="t"><span class="name">' + esc(f.icon || "") + " " + esc(f.name) +
     '</span><span class="tag">' + esc(f.id) + "</span>" +
     '<span class="tag">' + (f.engine === "code" ? "代码引擎" : "评审引擎") + "</span>" +
-    (f.builtin ? '<span class="tag ok">内置</span>' : "") +
-    (!f.builtin ? '<button class="ghost small" onclick="flowForm(\'' + esc(f.id) + '\')">编辑</button>' +
-      '<button class="danger small" onclick="deleteFlow(\'' + esc(f.id) + '\')">删除</button>' : "") +
+    (f.serial ? '<span class="tag">连载 ' + f.serial.chapters + " 章</span>" : "") +
+    (f.builtin ? '<span class="tag ok">预置</span>' : '<span class="tag">自定义</span>') +
+    (f.edited ? '<span class="tag">已改</span>' : "") +
+    '<button class="ghost small" onclick="flowForm(\'' + esc(f.id) + '\')">编辑</button>' +
+    (f.builtin
+      ? (f.edited ? '<button class="ghost small" onclick="flowReset(\'' + esc(f.id) + '\')">恢复默认</button>' : "")
+      : '<button class="danger small" onclick="deleteFlow(\'' + esc(f.id) + '\')">删除</button>') +
     '</div><div class="desc">' + esc(f.note || "") +
-    (f.rubric ? "　维度：" + esc(f.rubric.join(" / ")) : "") + "</div></div>").join("");
-  const body = '<div class="list">' + rows + "</div>" +
+    (f.rubric ? "　维度：" + esc(f.rubric.join(" / ")) : "") +
+    (f.threshold ? "　阈值：" + f.threshold : "") +
+    (f.serial ? "　每章 " + f.serial.words_per_chapter + " 字" : "") + "</div></div>").join("");
+  const body = '<p class="hint">预置流程可直接编辑（阈值/轮数/维度/章节数/提示词），改动随时可「恢复默认」；' +
+    '自定义流程只需填名称与引擎，其余留空走默认。</p>' +
+    '<div class="list">' + rows + "</div>" +
     '<button class="primary" style="margin-top:10px" onclick="flowForm()">＋ 新建自定义流程</button>';
   openModal("🧩 任务类型管理", body, "");
+}
+
+async function flowReset(fid) {
+  if (!confirm("把「" + fid + "」恢复为内置默认配置？")) return;
+  try { await api("/api/flows/" + encodeURIComponent(fid) + "/reset", { method: "POST" }); }
+  catch (e) { alert("恢复失败：" + e.message); return; }
+  await loadFlows();
+  openFlowsManager();
+  toast("已恢复默认");
 }
 
 /* 新建/编辑流程表单弹框；fid 空 = 新建 */
 function flowForm(fid) {
   const f = fid ? flowById(fid) : null;
-  const engineSel =
+  const isBuiltin = !!(f && f.builtin);
+  const engine = f ? f.engine : "review";
+  const engLocked = !!f;   // 编辑时引擎不可改（语义一致性）
+  const body =
+    '<div class="form">' +
     '<div class="grid-2">' +
-    '<div class="field"><label>流程 ID（小写字母开头）</label><input id="fl-id" value="' + esc(f ? f.id : "") + '"' + (f ? " disabled" : "") + ' placeholder="例：podcast-script"></div>' +
-    '<div class="field"><label>名称</label><input id="fl-name" value="' + esc(f ? f.name : "") + '" placeholder="例：播客脚本"></div>' +
+    '<div class="field"><label>名称 <span class="req">*</span></label><input id="fl-name" value="' +
+      esc(f ? f.name : "") + '" placeholder="例：播客脚本"></div>' +
+    '<div class="field"><label>引擎 <span class="req">*</span></label><select id="fl-engine"' +
+      (engLocked ? " disabled" : "") + '>' +
+      '<option value="review"' + (engine === "review" ? " selected" : "") + '>评审引擎（起草 → 多维评审 → 修订 → 门禁）</option>' +
+      '<option value="code"' + (engine === "code" ? " selected" : "") + '>代码引擎（实现 → 验证 → 评审 → 修复）</option>' +
+      "</select></div></div>" +
+    (f ? "" : '<div class="field"><label>流程 ID（留空 = 按名称自动生成）</label><input id="fl-id" placeholder="小写字母开头，可留空"></div>') +
+    '<details id="fl-adv"' + (f ? " open" : "") + '><summary>进阶设置（可留空，走引擎默认）</summary><div class="adv-body">' +
+    '<div id="fl-review-fields"' + (engine === "review" ? "" : ' class="hidden"') + ">" +
+    '<div class="grid-2">' +
+    '<div class="field"><label>产出文件名</label><input id="fl-manuscript" value="' + esc(f && f.manuscript ? f.manuscript : "") + '" placeholder="留空 = 按流程 ID 生成"></div>' +
+    '<div class="field"><label>发布阈值（1-10）</label><input id="fl-threshold" type="number" step="0.5" min="1" max="10" value="' + (f && f.threshold ? f.threshold : "") + '" placeholder="留空 = 7.0"></div>' +
     "</div>" +
     '<div class="grid-2">' +
-    '<div class="field"><label>图标</label><input id="fl-icon" value="' + esc(f ? (f.icon || "") : "") + '" maxlength="4" placeholder="✨"></div>' +
-    '<div class="field"><label>引擎</label><select id="fl-engine"' + (f ? " disabled" : "") + '>' +
-    '<option value="review"' + (!f || f.engine === "review" ? " selected" : "") + '>评审引擎（起草 → 多维评审 → 修订 → 门禁）</option>' +
-    '<option value="code"' + (f && f.engine === "code" ? " selected" : "") + '>代码引擎（实现 → 验证 → 评审 → 修复）</option>' +
-    "</select></div></div>" +
-    '<div id="fl-review-fields">' +
-    '<div class="grid-2">' +
-    '<div class="field"><label>产出文件名</label><input id="fl-manuscript" value="' + esc(f ? (f.manuscript || "") : "") + '" placeholder="例：script.md"></div>' +
-    '<div class="field"><label>发布阈值（1-10）</label><input id="fl-threshold" type="number" step="0.5" min="1" max="10" value="' + (f ? (f.threshold || 7) : 7) + '"></div>' +
+    '<div class="field"><label>评审轮数（1-5）</label><input id="fl-rounds" type="number" min="1" max="5" value="' + (f && f.rounds ? f.rounds : "") + '" placeholder="留空 = 2"></div>' +
+    '<div class="field"><label>评审维度（逗号分隔）</label><input id="fl-rubric" value="' + esc(f && f.rubric ? f.rubric.join(", ") : "") + '" placeholder="留空 = 内容, 结构, 表达"></div>' +
     "</div>" +
     '<div class="grid-2">' +
-    '<div class="field"><label>评审轮数（1-5）</label><input id="fl-rounds" type="number" min="1" max="5" value="' + (f ? (f.rounds || 2) : 2) + '"></div>' +
-    '<div class="field"><label>评审维度（逗号分隔）</label><input id="fl-rubric" value="' + esc(f && f.rubric ? f.rubric.join(", ") : "") + '" placeholder="例：结构, 内容, 表达"></div>' +
-    "</div>" +
-    '<div class="field"><label>起草提示词（可选，占位符 __FILE__ __GOAL__ __CONTEXT__）</label><textarea id="fl-draft" rows="3" placeholder="留空 = 用内置通用模板">' + esc(f && f.draft_prompt ? f.draft_prompt : "") + "</textarea></div>" +
-    '<div class="field"><label>评审提示词（可选，占位符 __DIMKEYS__ __MANUSCRIPT__）</label><textarea id="fl-critique" rows="3" placeholder="留空 = 用内置通用模板">' + esc(f && f.critique_prompt ? f.critique_prompt : "") + "</textarea></div>" +
-    '<div class="grid-2">' +
-    '<div class="field"><label>连载模式：默认章节数（空 = 单稿件）</label><input id="fl-chapters" type="number" min="2" max="20" value="' + (f && f.serial ? f.serial.chapters : "") + '" placeholder="例：8"></div>' +
+    '<div class="field"><label>连载章节数（留空 = 单稿件）</label><input id="fl-chapters" type="number" min="2" max="20" value="' + (f && f.serial ? f.serial.chapters : "") + '" placeholder="例：8"></div>' +
     '<div class="field"><label>每章约字数</label><input id="fl-words-per-ch" type="number" min="500" max="8000" step="100" value="' + (f && f.serial ? f.serial.words_per_chapter : "") + '" placeholder="例：2500"></div>' +
     "</div>" +
-    "</div>";
-  openModal(f ? "编辑流程：" + esc(f.name) : "新建自定义流程",
-    '<div class="form">' +
+    '<div class="field"><label>起草提示词（可选，占位符 __FILE__ __GOAL__ __CONTEXT__ __SKILLS__）</label><textarea id="fl-draft" rows="3" placeholder="留空 = 内置通用模板">' + esc(f && f.draft_prompt ? f.draft_prompt : "") + "</textarea></div>" +
+    '<div class="field"><label>评审提示词（可选，占位符 __DIMKEYS__ __MANUSCRIPT__）</label><textarea id="fl-critique" rows="3" placeholder="留空 = 内置通用模板">' + esc(f && f.critique_prompt ? f.critique_prompt : "") + "</textarea></div>" +
+    "</div>" +
     '<div class="field"><label>一句话说明（显示在流程列表）</label><input id="fl-note" value="' + esc(f ? (f.note || "") : "") + '" placeholder="例：技术播客单集脚本产出"></div>' +
-    engineSel + "</div>", "");
+    "</div></details></div>";
+  openModal(f ? ("编辑流程：" + esc(f.name) + (isBuiltin ? "（预置）" : "")) : "新建自定义流程", body, "");
   const foot = $("modal-foot");
   if (foot) foot.innerHTML = '<button class="primary" onclick="saveFlow()">保存</button>' +
     '<button class="ghost" onclick="closeModal()">取消</button>';
@@ -2011,23 +2171,36 @@ function flowForm(fid) {
 }
 
 async function saveFlow() {
-  const payload = {
-    id: $("fl-id").value.trim(), name: $("fl-name").value.trim(),
-    icon: $("fl-icon").value.trim() || "✨", engine: $("fl-engine").value,
-    note: $("fl-note").value.trim(),
-  };
-  if (payload.engine === "review") {
-    payload.manuscript = $("fl-manuscript").value.trim();
-    payload.threshold = parseFloat($("fl-threshold").value) || 7;
-    payload.rounds = parseInt($("fl-rounds").value, 10) || 2;
-    payload.rubric = $("fl-rubric").value.split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
-    payload.draft_prompt = $("fl-draft").value.trim();
-    payload.critique_prompt = $("fl-critique").value.trim();
+  const name = $("fl-name").value.trim();
+  if (!name) { alert("请填写名称"); return; }
+  const idEl = $("fl-id");
+  let id = idEl ? idEl.value.trim() : ($("fl-engine").dataset.fid || "");
+  if (!id) {
+    // 按名称生成 id（中文名 → 用拼音不可行，退化为时间戳短 id，用户可事后改）
+    id = "flow-" + Date.now().toString(36);
+  }
+  const engine = $("fl-engine").value;
+  const payload = { id, name, engine, note: $("fl-note").value.trim() };
+  const iconEl = $("fl-icon");
+  if (iconEl && iconEl.value.trim()) payload.icon = iconEl.value.trim();
+  if (engine === "review") {
+    const ms = $("fl-manuscript").value.trim();
+    if (ms) payload.manuscript = ms;
+    const th = parseFloat($("fl-threshold").value);
+    if (th) payload.threshold = th;
+    const rd = parseInt($("fl-rounds").value, 10);
+    if (rd) payload.rounds = rd;
+    const rb = $("fl-rubric").value.split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
+    if (rb.length) payload.rubric = rb;
     const ch = parseInt($("fl-chapters").value, 10);
     if (ch >= 2) payload.serial = {
       chapters: ch,
       words_per_chapter: parseInt($("fl-words-per-ch").value, 10) || 2500,
     };
+    const dp = $("fl-draft").value.trim();
+    if (dp) payload.draft_prompt = dp;
+    const cp = $("fl-critique").value.trim();
+    if (cp) payload.critique_prompt = cp;
   }
   try {
     await api("/api/flows", { method: "POST", body: JSON.stringify(payload) });
@@ -2047,13 +2220,86 @@ async function deleteFlow(fid) {
   toast("已删除");
 }
 
+/* ---------------------------------------------------------- 经验库 */
+async function loadSkills() {
+  try {
+    S.skills = await api("/api/skills");
+  } catch (e) { S.skills = null; }
+  renderSkills();
+}
+
+function renderSkills() {
+  const box = $("skill-packs");
+  if (!box || !S.skills) return;
+  const packs = S.skills.packs || [], lessons = S.skills.lessons || [];
+  box.innerHTML = packs.map((p) =>
+    '<div class="card"><div class="head"><span class="name">📚 ' + esc(p.name) + "</span>" +
+    '<span class="tag">' + esc((p.scopes || []).join(" / ")) + "</span>" +
+    (p.enabled ? '<span class="tag ok">启用中</span>' : '<span class="tag">已停用</span>') + "</div>" +
+    '<div class="note">' + esc(p.note || "") + "</div>" +
+    '<div class="facts">正文 <b>' + p.chars + "</b> 字（自动注入该类任务的规划与评审提示词）</div>" +
+    '<div class="ops"><button class="ghost small" onclick="skillPackOp(\'' + esc(p.id) + '\', \'' +
+    (p.enabled ? "disable" : "enable") + '\')">' + (p.enabled ? "停用" : "启用") + "</button></div></div>").join("")
+    || '<div class="empty">暂无经验包</div>';
+  const cnt = $("skill-count");
+  if (cnt) cnt.textContent = lessons.length ? lessons.length + " 条" : "（暂无，跑一次任务后自动生成）";
+  $("skill-lessons").innerHTML = lessons.map((x) =>
+    '<div class="card' + (x.enabled === false ? " off" : "") + '"><div class="head">' +
+    '<span class="name">' + esc(x.title) + "</span>" +
+    '<span class="tag">' + esc(x.scope === "*" ? "通用" : x.scope) + "</span>" +
+    (x.seen > 1 ? '<span class="tag">出现 ' + x.seen + " 次</span>" : "") +
+    (x.hits ? '<span class="tag">已注入 ' + x.hits + " 次</span>" : "") +
+    (x.enabled === false ? '<span class="tag">已停用</span>' : "") + "</div>" +
+    '<div class="note">' + esc(x.content) + "</div>" +
+    '<div class="ops">' +
+    '<button class="ghost small" onclick="skillLessonOp(\'' + esc(x.id) + '\', \'' +
+    (x.enabled === false ? "enable" : "disable") + '\')">' + (x.enabled === false ? "启用" : "停用") + "</button>" +
+    '<button class="danger small" onclick="skillLessonOp(\'' + esc(x.id) + '\', \'delete\')">删除</button>' +
+    "</div></div>").join("") || '<div class="empty">还没有自动教训——完成一次真实任务后，系统会自己复盘并沉淀。</div>';
+}
+
+async function skillPackOp(id, op) {
+  try { await api("/api/skills/pack-op", { method: "POST", body: JSON.stringify({ id, op }) }); }
+  catch (e) { alert(e.message); return; }
+  loadSkills();
+}
+
+async function skillLessonOp(id, op) {
+  if (op === "delete" && !confirm("删除这条教训？")) return;
+  try { await api("/api/skills/lesson-op", { method: "POST", body: JSON.stringify({ id, op }) }); }
+  catch (e) { alert(e.message); return; }
+  loadSkills();
+}
+
 /* ---------------------------------------------------------- 编排中枢（编排者 + 并发设置） */
 async function loadOrchestrator() {
   try {
     const r = await api("/api/orchestrator");
     S.orch = r.orchestrator || null;
   } catch (e) { S.orch = null; }
+  renderOrchSide();
   renderOrch();
+}
+
+/* 侧栏左下角中间的「编排者供应商」：显示 Tutti 自己的智能体当前用的厂商，
+ * 点一下到设置里的「编排中枢」更换（可选范围＝已接入的供应商）。 */
+function renderOrchSide() {
+  const btn = $("btn-prov-side"), txt = $("prov-side-text"), dot = $("prov-side-dot");
+  if (!btn || !txt || !dot) return;
+  const o = S.orch || {};
+  const name = (o.provider_name || "").trim().replace(/^\[[^\]]+\]\s*/, "");  // 去掉 "[CC] " 之类前缀
+  const model = (o.model || "").trim();
+  if (!name) {
+    txt.textContent = "未选厂商";
+    dot.className = "pdot";
+    btn.title = "尚未选择编排者供应商\n点击到「编排中枢」，从已接入的厂商里选一个";
+    return;
+  }
+  txt.textContent = name;
+  dot.className = "pdot " + (o.ready ? "ok" : "warn");
+  btn.title = "编排者供应商：" + name + (model ? " · " + model : "") +
+    (o.ready ? "（生效中）" : "（未生效：检查密钥 / 启停 / 模型）") +
+    "\n点击到「编排中枢」更换";
 }
 
 async function loadSettings() {
@@ -2069,6 +2315,15 @@ function orchProvs() {
   return (S.providers || []).filter((p) => p.api_key && p.enabled !== false);
 }
 
+/* 编排者模型下拉的选项：当前值 + 该供应商已启用模型（按优先级） */
+function orchModelHtml(prov, curModel) {
+  const names = (prov ? (prov.models || []).filter((m) => !m.hidden && m.enabled !== false)
+    .sort((a, b) => (a.priority || 0) - (b.priority || 0)).map((m) => m.name) : []);
+  const all = Array.from(new Set([curModel].concat(names).filter(Boolean)));
+  return '<option value="">（用供应商默认模型）</option>' +
+    all.map((m) => '<option value="' + esc(m) + '"' + (m === curModel ? " selected" : "") + ">" + esc(m) + "</option>").join("");
+}
+
 function renderOrch() {
   const box = $("orch-config");
   if (!box || !S.orch) return;
@@ -2080,24 +2335,23 @@ function renderOrch() {
   const opts = '<option value="">（不使用编排者）</option>' + provs.map((p) =>
     '<option value="' + esc(p.id) + '"' + (S.orch.provider_id === p.id ? " selected" : "") + ">" +
     esc(p.name) + "（" + esc(p.protocol) + "）</option>").join("");
-  const modelOpts = (sel ? (sel.models || []).filter((m) => !m.hidden && m.enabled !== false)
-      .sort((a, b) => (a.priority || 0) - (b.priority || 0)).map((m) => m.name) : []);
   const curModel = S.orch.model || (sel ? sel.model : "") || "";
-  const allOpts = Array.from(new Set([curModel].concat(modelOpts).filter(Boolean)));
   box.innerHTML =
     '<div class="grid-2">' +
     '<div class="field"><label>编排者供应商</label><select id="orch-prov">' + opts + "</select></div>" +
-    '<div class="field"><label>编排者模型</label><select id="orch-model">' +
-    '<option value="">（用供应商默认模型）</option>' +
-    allOpts.map((m) => '<option value="' + esc(m) + '"' + (m === curModel ? " selected" : "") + ">" + esc(m) + "</option>").join("") +
-    "</select></div></div>" +
+    '<div class="field"><label>编排者模型</label><select id="orch-model">' + orchModelHtml(sel, curModel) + "</select></div></div>" +
     '<div class="ops"><label class="toggle"><input type="checkbox" id="orch-enabled"' +
     (S.orch.enabled ? " checked" : "") + "> 启用编排者（规划 / 难度判定 / 写作大纲）</label>" +
     '<button class="ghost small" onclick="saveOrchestrator()">保存</button>' +
     '<button class="ghost small" onclick="testOrchestrator()">测试连通</button>' +
     '<span id="orch-test" class="msg"></span></div>' +
     (S.orch.enabled && !S.orch.ready ? '<p class="hint warn">当前配置不生效：请检查供应商密钥、启停状态与模型选择。</p>' : "");
-  $("orch-prov").addEventListener("change", () => { S.orchSig = null; renderOrch(); });
+  // 换供应商只刷新模型下拉，不整块重绘：整块重绘会按 S.orch 重写 selected，
+  // 把用户刚选中的供应商弹回旧值，保存下去的还是旧值
+  $("orch-prov").addEventListener("change", () => {
+    const p = orchProvs().find((x) => x.id === $("orch-prov").value) || null;
+    $("orch-model").innerHTML = orchModelHtml(p, (p ? p.model : "") || "");
+  });
 }
 
 async function saveOrchestrator() {
@@ -2108,6 +2362,7 @@ async function saveOrchestrator() {
       enabled: $("orch-enabled").checked }) });
     S.orch = r.orchestrator;
     S.orchSig = null;
+    renderOrchSide();   // 侧栏指示同步
     renderOrch();
     toast("编排者配置已保存");
   } catch (e) { alert("保存失败：" + e.message); }
@@ -2139,7 +2394,8 @@ async function saveSettings() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { tasks: "任务", runs: "运行记录", usage: "用量统计", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", orch: "编排中枢" };
+const TAB_TITLES = { tasks: "任务", runs: "运行记录", usage: "用量统计", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", orch: "编排中枢", appearance: "皮肤" };
+const SET_TABS = new Set(Object.keys(TAB_TITLES));   // 设置导航里的子页（__phone 是弹框，不算）
 
 
 
@@ -2175,36 +2431,80 @@ function toolName(t) {
            orchestrator: "编排者 · 直连API" }[t] || t;
 }
 
-/* 角色前缀 → 中文（implement-2/4、critique-c3 这类带后缀的取前缀） */
+/* 角色 → 中文。带后缀的角色保留区分度，否则 implement-1/4…implement-4/4
+ * 会全部显示成「实现」，维度表里看着像重复行。
+ *   implement-2/4 → 实现 2/4    draft-c3 → 起草 第3章
+ *   fix-r2        → 修复 第2轮   global-critique → 全局评审 */
 function roleName(r) {
-  const base = String(r || "").split("-")[0].replace(/\d+$/, "");
-  return { plan: "规划", implement: "实现", review: "评审", verify: "验证", fix: "修复",
-           draft: "起草", critique: "评审", revise: "修订", outline: "大纲",
-           merge: "合并", smoke: "冒烟", "ai": "AI修复", global: "全局评审",
-           "orch": "连通测试" }[base] || r;
+  const raw = String(r || "");
+  const FULL = { "global-critique": "全局评审", "ai-repair": "AI修复" };
+  if (FULL[raw]) return FULL[raw];
+  const ZH = { plan: "规划", implement: "实现", review: "评审", verify: "验证",
+               fix: "修复", draft: "起草", critique: "评审", revise: "修订",
+               outline: "大纲", merge: "合并", smoke: "冒烟", global: "全局评审",
+               orch: "连通测试" };
+  const m = raw.match(/^([A-Za-z]+)(?:-(.+))?$/);
+  if (!m) return raw;
+  const base = ZH[m[1].toLowerCase()] || m[1];
+  let suf = m[2];
+  if (!suf) return base;
+  const ch = suf.match(/^c(\d+)$/);
+  if (ch) return base + " 第" + ch[1] + "章";
+  const rd = suf.match(/^r(\d+)$/);
+  if (rd) return base + " 第" + rd[1] + "轮";
+  return base + " " + suf;
 }
 
 async function loadUsage() {
   const kpis = $("usage-kpis");
   if (!kpis) return;
   try {
-    S.usage = await api("/api/usage?days=" + encodeURIComponent(S.usageDays ?? 30));
+    S.usage = await api("/api/usage?days=" + encodeURIComponent(usageRange()));
     renderUsage();
   } catch (e) {
-    kpis.innerHTML = '<p class="hint">加载失败：' + esc(e.message) + "</p>";
+    // 失败时四个区都要给出可见反馈，否则标题下全空、看着像页面坏了
+    const hint = '<p class="hint">加载失败：' + esc(e.message) + "</p>";
+    kpis.innerHTML = hint;
+    ["usage-trend", "usage-dims", "usage-recent"].forEach((id) => {
+      const el = $(id);
+      if (el) el.innerHTML = hint;
+    });
   }
+}
+
+/* 时间范围默认「今天」：看用量最常关心的是当下消耗，历史区间按需切换 */
+const USAGE_DAYS_KEY = "orch.usageDays";
+
+function usageRange() {
+  const raw = S.usageDays;
+  const n = raw === undefined || raw === null || raw === "" ? 1 : Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 1;
 }
 
 function setUsageDays(days) {
   S.usageDays = Number(days);
+  try { localStorage.setItem(USAGE_DAYS_KEY, String(S.usageDays)); } catch (e) { /* 隐私模式忽略 */ }
   document.querySelectorAll("#usage-ranges [data-days]").forEach((b) =>
     b.classList.toggle("active", Number(b.dataset.days) === S.usageDays));
   loadUsage();
 }
 
-function kpiCard(label, value, sub, wide) {
+/* 进入用量页时对齐分段控件的选中态（默认今天；记忆上次选择） */
+function syncUsageRange() {
+  if (S.usageDays === undefined || S.usageDays === null || S.usageDays === "") {
+    const saved = localStorage.getItem(USAGE_DAYS_KEY);
+    S.usageDays = saved === null || saved === "" ? 1 : Number(saved);
+  }
+  const cur = usageRange();
+  document.querySelectorAll("#usage-ranges [data-days]").forEach((b) =>
+    b.classList.toggle("active", Number(b.dataset.days) === cur));
+}
+
+/* 卡片标签：图标 + 名称（图标用精灵表，stroke=currentColor 自动跟随主题） */
+function kpiCard(label, value, sub, wide, icon) {
+  const ico = icon ? '<svg class="ico" aria-hidden="true"><use href="#' + icon + '"></use></svg>' : "";
   return '<div class="kpi' + (wide ? " wide" : "") + '"><div class="kpi-v">' + value +
-    '</div><div class="kpi-l">' + esc(label) + "</div>" +
+    '</div><div class="kpi-l">' + ico + esc(label) + "</div>" +
     (sub ? '<div class="kpi-s">' + esc(sub) + "</div>" : "") + "</div>";
 }
 
@@ -2215,8 +2515,17 @@ function usageTrendSvg(byDay) {
   const iw = W - padL - padR, ih = H - padT - padB;
   const max = Math.max(1, ...byDay.map((d) => (d.tokens || 0)));
   const n = byDay.length;
-  const gap = n > 90 ? 1 : Math.max(2, Math.floor(iw / n / 4));
-  const bw = Math.max(2, (iw - gap * (n - 1)) / n);
+  let gap = n > 90 ? 1 : Math.max(2, Math.floor(iw / n / 4));
+  let bw = Math.max(2, (iw - gap * (n - 1)) / n);
+  // 天数少时上面的均分公式会把柱子撑得巨宽（单日直接铺满整图成一块色板）：
+  // 封顶柱宽与间距，再把整组柱子水平居中，保持柱状图的样子
+  const MAX_BW = 48, MAX_GAP = 36;
+  let xOff = padL;
+  if (bw > MAX_BW) {
+    bw = MAX_BW;
+    if (n > 1) gap = Math.min(gap, MAX_GAP);
+    xOff = padL + Math.max(0, (iw - (bw * n + gap * (n - 1))) / 2);
+  }
   let bars = "", labels = "";
   const labelStep = Math.max(1, Math.ceil(n / 9));
   // 抽稀 x 轴标签：末日必须标；若与前一标签太近（< 半步长）则挤掉前者防重叠
@@ -2226,7 +2535,7 @@ function usageTrendSvg(byDay) {
   else if (n - 1 - [...labeled].pop() < labelStep / 2) { labeled.delete([...labeled].pop()); labeled.add(n - 1); }
   else labeled.add(n - 1);
   byDay.forEach((d, i) => {
-    const x = padL + i * (bw + gap);
+    const x = xOff + i * (bw + gap);
     const tok = d.tokens || 0;
     const hIn = ih * ((d.input || 0) / max);
     const hCa = ih * (((d.tokens || 0) - (d.input || 0) - (d.output || 0)) / max);
@@ -2247,7 +2556,9 @@ function usageTrendSvg(byDay) {
         '" fill="var(--accent2)" opacity="0.9"><title>' + tip + "</title></rect>";
     }
     if (labeled.has(i)) {
-      labels += '<text class="uc-x" x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - 7) +
+      // 夹住标签中心，避免首/末标签的文字探出 viewBox 被裁掉
+      const cx = Math.min(Math.max(x + bw / 2, padL + 18), W - padR - 18);
+      labels += '<text class="uc-x" x="' + cx.toFixed(1) + '" y="' + (H - 7) +
         '" text-anchor="middle">' + esc(String(d.day).slice(5)) + "</text>";
     }
   });
@@ -2310,18 +2621,30 @@ function renderUsage() {
   if (!u) return;
   const t = u.totals || {};
   const activeDays = t.days_active || 0;
+  // 回填记录只有总量、没有输入/输出细分：细分全为 0 时说明当前范围只有历史数据，
+  // 不提示的话「输入 0 · 输出 0」会被误读成统计坏了
+  const noBreakdown = t.tokens > 0 && !t.input && !t.output && !t.cached;
   $("usage-kpis").innerHTML = [
     kpiCard("总 Tokens", fmtTok(t.tokens),
-      "输入 " + fmtTok(t.input) + " · 输出 " + fmtTok(t.output) + " · 缓存 " + fmtTok(t.cached), true),
+      "输入 " + fmtTok(t.input) + " · 输出 " + fmtTok(t.output) + " · 缓存 " + fmtTok(t.cached),
+      true, "i-sigma"),
     kpiCard("调用次数", fmtTok(t.calls),
-      "成功率 " + (t.calls ? Math.round(t.ok * 100 / t.calls) : 0) + "%（失败 " + fmtTok(t.failed) + "）"),
+      "成功率 " + (t.calls ? Math.round(t.ok * 100 / t.calls) : 0) + "%（失败 " + fmtTok(t.failed) + "）",
+      false, "i-hash"),
     kpiCard("累计费用", fmtUsd(t.cost_usd),
-      "活跃日均 " + fmtUsd(activeDays ? t.cost_usd / activeDays : 0)),
+      "活跃日均 " + fmtUsd(activeDays ? t.cost_usd / activeDays : 0), false, "i-coin"),
     kpiCard("单次均值", fmtTok(t.avg_tokens_per_call) + " tok",
-      "缓存命中率 " + (t.cache_rate || 0) + "%"),
+      "缓存命中率 " + (t.cache_rate || 0) + "%", false, "i-gauge"),
     kpiCard("活跃天数", fmtTok(activeDays),
-      "累计调用时长 " + fmtDur(t.duration_s)),
+      "累计调用时长 " + fmtDur(t.duration_s), false, "i-calendar-days"),
   ].join("");
+  const note = $("usage-note");
+  if (note) {
+    note.innerHTML = noBreakdown
+      ? '<p class="hint">当前范围内都是历史运行回填的记录：只保留总量与费用，' +
+        "输入/输出/缓存细分从新调用开始记录。</p>"
+      : "";
+  }
   $("usage-trend").innerHTML = usageTrendSvg(u.by_day || []);
   $("usage-dims").innerHTML = [
     ["按工具（CLI / API）", (u.by_tool || []).map((r) => Object.assign({}, r, { key: toolName(r.key) }))],
@@ -2407,6 +2730,7 @@ function switchTab(name) {
   if (name === "__phone") { openPhoneConnect(); return; }  // 手机连接是弹框，不切页
   // 导航收进「设置」：进设置后左栏整体换成设置导航，内容铺满
   S.tab = name;
+  if (SET_TABS.has(name)) localStorage.setItem("orch.setTab", name);
   document.body.classList.add("settings-mode");
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-settings"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", b.dataset.sub === name));
@@ -2416,7 +2740,9 @@ function switchTab(name) {
   if (name === "runs" && !S.detailRunId) closeRun();
   if (name === "agents") autoCheckUpdates();   // 进目录页自动查各 CLI 新版本
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排中枢页拉取配置
-  if (name === "usage") loadUsage();           // 进用量页拉取统计（切范围/手动刷新再拉）
+  if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
+  if (name === "usage") { syncUsageRange(); loadUsage(); }   // 进用量页：对齐范围选中态并拉取
+  if (name === "appearance") renderAppearance();   // 进皮肤页：按当前皮肤/明暗重画卡片
   collapseDrawerIfMobile();
 }
 
@@ -2432,21 +2758,10 @@ function exitSettings() {
   collapseDrawerIfMobile();
 }
 
-/* 侧栏底部「⚙ 设置」：弹出导航菜单（任务/运行记录/智能体管理/模型接入/CLI 绑定） */
-function openSettingsMenu() {
-  const btn = $("btn-settings");
-  if (!btn) return;
-  const r = btn.getBoundingClientRect();
-  openCtxMenu(r.left, r.top - 8, [
-    { label: "✦ 任务", fn: () => switchTab("tasks") },
-    { label: "≡ 运行记录", fn: () => switchTab("runs") },
-    { label: "📊 用量统计", fn: () => switchTab("usage") },
-    { label: "⚙ 智能体管理", fn: () => switchTab("agents") },
-    { label: "◈ 模型接入", fn: () => switchTab("models") },
-    { label: "🔗 CLI 绑定", fn: () => switchTab("bindings") },
-    { label: "✦ 编排中枢", fn: () => switchTab("orch") },
-    { label: "📱 手机连接", fn: () => openPhoneConnect() },
-  ]);
+/* 侧栏底部齿轮：直接进设置（左栏换成设置导航，不再弹菜单）。回到上次看的那页，默认编排中枢 */
+function enterSettings() {
+  const saved = localStorage.getItem("orch.setTab") || "";
+  switchTab(SET_TABS.has(saved) ? saved : "orch");
 }
 
 window.openRun = openRun;
@@ -2510,9 +2825,15 @@ window.openFlowsManager = openFlowsManager;
 window.flowForm = flowForm;
 window.saveFlow = saveFlow;
 window.deleteFlow = deleteFlow;
+window.flowReset = flowReset;
+window.skillPackOp = skillPackOp;
+window.skillLessonOp = skillLessonOp;
 window.saveOrchestrator = saveOrchestrator;
 window.testOrchestrator = testOrchestrator;
 window.saveSettings = saveSettings;
+window.setSkin = setSkin;
+window.setThemeMode = setThemeMode;
+window.renderAppearance = renderAppearance;
 
 document.addEventListener("DOMContentLoaded", () => {
   // 远程地址里带的 ?token= 存起来并从地址栏抹掉，之后所有请求走请求头
@@ -2523,14 +2844,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   document.querySelectorAll(".set-item").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.sub)));
   $("btn-set-back").addEventListener("click", exitSettings);
-  $("btn-settings").addEventListener("click", () => {
-    // document 级捕获监听会先关掉已打开的菜单；若刚因本次点击而关闭则不再重开（实现开关切换）
-    const menu = $("ctx-menu");
-    if (menu.dataset.closedAt && Date.now() - +menu.dataset.closedAt < 250) return;
-    openSettingsMenu();
-  });
+  $("btn-settings").addEventListener("click", enterSettings);
   $("btn-phone-side").addEventListener("click", openPhoneConnect);
-  $("model-pill").addEventListener("click", () => switchTab("models"));
+  $("btn-prov-side").addEventListener("click", () => switchTab("orch"));   // 供应商指示 → 编排中枢页更换
   document.querySelectorAll("#usage-ranges [data-days]").forEach((b) =>
     b.addEventListener("click", () => setUsageDays(b.dataset.days)));
   $("btn-usage-refresh").addEventListener("click", loadUsage);
@@ -2539,6 +2855,16 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-retry").addEventListener("click", () => { const r = S.lastRun; if (r && r.task_id) retryTask(r.task_id); });
   $("btn-delete").addEventListener("click", () => { if (S.detailRunId) deleteRun(S.detailRunId); });
   $("btn-theme").addEventListener("click", toggleTheme);
+  // 顶栏皮肤胶囊 → 皮肤页；皮肤卡片 / 明暗分段用事件委托（卡片是动态渲染的）
+  $("btn-skin").addEventListener("click", () => switchTab("appearance"));
+  $("skin-grid").addEventListener("click", (e) => {
+    const card = e.target.closest(".skin-card");
+    if (card) setSkin(card.dataset.skin);
+  });
+  $("skin-mode").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-mode]");
+    if (b) setThemeMode(b.dataset.mode);
+  });
   $("btn-menu").addEventListener("click", () => document.body.classList.toggle("side-collapsed"));
   // 手机抽屉：遮罩点击 / 侧栏内任何可点项（导航、任务树、设置入口）点击后都收回
   $("drawer-mask").addEventListener("click", () => document.body.classList.add("side-collapsed"));
@@ -2548,7 +2874,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-new-task").addEventListener("click", exitSettings);
   bindCtxMenus();
   if (window.innerWidth < 900) document.body.classList.add("side-collapsed");
-  applyTheme();
+  applyAppearance();
   $("btn-create").addEventListener("click", createTask);
   $("chk-archived").addEventListener("change", () => {
     S.showArchived = $("chk-archived").checked;
@@ -2557,6 +2883,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("chk-archived").checked = S.showArchived;
   $("f-resume-agent").addEventListener("change", loadSessions);
+  $("f-resume-session").addEventListener("change", showResumeHint);
   $("f-workdir").value = localStorage.getItem("orch.workdir") || "";
   $("f-type").addEventListener("change", onTypeChange);
   $("f-mode").addEventListener("change", () => {
@@ -2564,7 +2891,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("f-type").dispatchEvent(new Event("change"));
   $("btn-reload-catalog").addEventListener("click", async () => {
-    await api("/api/catalog/reload", { method: "POST" }); poll();
+    await api("/api/catalog/reload", { method: "POST" }); poll(); refreshSessionAgents();
   });
   $("btn-import").addEventListener("click", openImportDialog);
   $("btn-add-provider").addEventListener("click", openAddProviderDialog);
@@ -2585,4 +2912,6 @@ document.addEventListener("DOMContentLoaded", () => {
   startSSE();
   startCtrlHeartbeat();
   loadFlows();   // 任务类型下拉（内置 + 自定义流程）
+  refreshSessionAgents();  // 继续会话下拉的工具集合（服务端 60s 缓存，开销小）
+  loadOrchestrator();      // 侧栏左下角的编排者供应商指示（进入编排中枢页时会再拉一次）
 });

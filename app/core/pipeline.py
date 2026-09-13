@@ -18,7 +18,7 @@ import os
 import re
 import time
 
-from . import catalog, history, jobs, manager, modelhub, mocks, planner, registry, router, runner, store, usage
+from . import catalog, history, jobs, manager, modelhub, mocks, planner, registry, router, runner, skills, store, usage
 
 DEFAULT_RUBRIC = ["情节", "人物", "文笔", "节奏", "吸引力"]
 
@@ -98,7 +98,7 @@ def _pick_critics_manual(agents, task):
 
 
 def _valid_resume(task, agents):
-    """校验任务上的 resume 声明；返回 {agent, session, note} 或 None。"""
+    """校验任务上的 resume 声明；返回 {agent, session, project, note} 或 None。"""
     r = task.get("resume") or {}
     if not (r.get("agent") and r.get("session")):
         return None
@@ -106,7 +106,20 @@ def _valid_resume(task, agents):
     if a is None or a.get("mode") != "real":
         return None
     return {"agent": a, "session": r["session"],
+            "project": (r.get("project") or "").strip(),
             "note": "沿用已有会话 %s…（保留其上下文继续工作）" % str(r["session"])[:8]}
+
+
+def _resume_workdir(resume_ctx, fallback):
+    """续会话的工作目录：CLI 必须在会话所属项目目录下启动才能定位到会话
+    （opencode/qwen 实测按 cwd 查找，否则报找不到或直接挂起）。
+    目录已不存在时退回任务工作目录。"""
+    if not resume_ctx:
+        return fallback
+    proj = resume_ctx.get("project") or ""
+    if proj and os.path.isdir(proj):
+        return proj
+    return fallback
 
 
 def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None):
@@ -137,17 +150,21 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                       duration_s=time.time() - start,
                       model=res.get("model"))
     if agent.get("mode") != "mock":
-        _record_usage(run_id, role, agent, res, source="pipeline")
+        _record_usage(run_id, role, agent, res, source="pipeline", step=step["n"])
     return res
 
 
-def _record_usage(run_id, role, agent, res, source="pipeline"):
-    """把一次真实智能体调用记入用量台账；取不到的上下文留空，绝不抛错。"""
+def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
+    """把一次真实智能体调用记入用量台账；取不到的上下文留空，绝不抛错。
+
+    step 必须与 store.add_step 的步骤号一致：启动时的历史回填按
+    (run_id, role, step) 去重，缺了会把同一步骤重复入账。
+    """
     try:
         run = store.get_run(run_id) or {}
         task = store.get_task(run.get("task_id")) if run.get("task_id") else None
         usage.record(
-            source=source, run_id=run_id,
+            source=source, run_id=run_id, step=step,
             task_id=run.get("task_id") or "",
             task_type=(task or {}).get("type", ""),
             role=role, agent=agent.get("id", ""),
@@ -304,7 +321,8 @@ def _run_code(run, task, agents, ev, stats, mode):
     if mode == "auto":
         plan_step, plan_log = store.add_step(run_id, "plan", impl["id"], impl.get("label"),
                                              note=route.get("implementer", ""))
-        plan = planner.make_code_plan(task, modelhub.bind_agent(impl, difficulty), workdir, ev,
+        plan = planner.make_code_plan(task, modelhub.bind_agent(impl, difficulty),
+                                      _resume_workdir(resume_ctx, workdir), ev,
                                       resume=resume_ctx["session"] if resume_ctx else None)
         # 规划器判定优先于启发式（仅当用户未显式指定难度）
         if not explicit and plan.get("difficulty") in ("easy", "hard"):
@@ -330,6 +348,8 @@ def _run_code(run, task, agents, ev, stats, mode):
         # 会话延续只对原实现者有效；换将后新智能体没有该会话，必须丢弃
         use_resume = (resume_ctx["session"]
                       if (resume_ctx and impl_agent["id"] == resume_ctx["agent"]["id"]) else None)
+        # 续会话时 CLI 要在会话所属项目目录下启动，否则定位不到会话
+        step_wd = _resume_workdir(resume_ctx, workdir) if use_resume else workdir
         impl_b = modelhub.bind_agent(impl_agent, difficulty)
         for i, sub in enumerate(subtasks):
             prompt = (CODE_IMPL_PROMPT
@@ -339,7 +359,7 @@ def _run_code(run, task, agents, ev, stats, mode):
                       .replace("__CONTEXT__", task.get("context") or "（无）")
                       .replace("__VERIFY_HINT__", _verify_hint(task)))
             role = "implement" if len(subtasks) == 1 else "implement-%d/%d" % (i + 1, len(subtasks))
-            res = _run_step(run_id, role, impl_b, prompt, workdir,
+            res = _run_step(run_id, role, impl_b, prompt, step_wd,
                             readonly=False, ev=ev, note=prefix_note if i == 0 else "",
                             resume=use_resume)
             if impl_agent.get("mode") == "mock" and res["ok"]:
@@ -528,6 +548,8 @@ def _ensure_critique_placeholders(tpl):
 
 SERIAL_CHAPTER_PROMPT = """你是一名网文作者。请撰写本书第 __I__ 章，把本章正文写入文件 `__FILE__`（直接写入该文件，只写本章）。
 
+__SKILLS__
+
 ## 全书目标
 __GOAL__
 
@@ -599,11 +621,56 @@ def _write_chapter(workdir, i, text):
         f.write(text)
 
 
+def _all_ge(scores, threshold):
+    """scores 全部 ≥ threshold（分数缺失视为不达标，不炸比较）。"""
+    def num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+    thr = num(threshold)
+    if thr is None:
+        return False
+    vals = [num(v) for v in (scores or {}).values()]
+    return bool(vals) and all(v is not None and v >= thr for v in vals)
+
+
+def _weakest_chapters(chapter_scores, global_means, threshold, limit=2):
+    """定位最该重改的章：维度不达标者优先，其次全书短板对应维度最低者。
+
+    分数缺失/非法（None、非数字）按"未知"处理：不参与比较，也不让排序崩溃。
+    """
+    def num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    thr = num(threshold) or 7.0
+    short = [d for d, v in (global_means or {}).items()
+             if (num(v) if num(v) is not None else thr) < thr]
+
+    def score(c):
+        m = {d: num(v) for d, v in (c.get("means") or {}).items()}
+        bad = [v for d, v in m.items() if d in short and v is not None]
+        vals = [v for v in m.values() if v is not None]
+        return (0 if not c.get("passed") else 1,
+                -sum(1 for v in vals if v < thr),
+                (sum(bad) / len(bad)) if bad else 99.0,
+                (sum(vals) / len(vals)) if vals else 99.0)
+
+    cand = [c for c in chapter_scores if not c.get("passed") or short]
+    cand.sort(key=score)
+    return cand[:limit]
+
+
 def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route, resume_ctx, difficulty):
     """连载流水线：大纲 → 逐章起草/评审/修订 → 全局一致性评审 → 合并成书。"""
     import json as _json
     run_id = run["id"]
     workdir = task["workdir"]
+    # 续会话步骤的 CLI 启动目录（稿件读写仍用 workdir）
+    step_wd = _resume_workdir(resume_ctx, workdir) if resume_ctx else workdir
     serial = task.get("serial") or {}
     n = int(serial.get("chapters") or 8)
     wpc = int(serial.get("words_per_chapter") or 2500)
@@ -618,6 +685,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         if note:
             tpl = tpl.replace("你是严格的评审",
                               "你是严格的评审（背景：%s，请结合全书目标评审本章节）" % note, 1)
+        sk, _ = skills.block_for(task)
+        if sk:
+            tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % sk, 1)
         return tpl.replace("__DIMKEYS__", dimkey).replace(
             "__MANUSCRIPT__", text or "（稿件为空！）")
 
@@ -627,6 +697,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     inh_scores = {c.get("chapter"): c for c in (inherit.get("chapter_scores") or [])}
     if inherit.get("outline"):
         outline = inherit["outline"]
+        # 历史遗留：降级/模板大纲被继承时，真实任务宁可中止重生成，也不按空模板写全书
+        if (outline.get("degraded") or outline.get("source") == "template") \
+                and impl.get("mode") != "mock":
+            store.update_run(run_id, status="failed",
+                             error="继承的大纲为降级模板（无真实情节），已中止以重新生成大纲",
+                             ended_at=_now())
+            return
         n = len(outline.get("chapters") or []) or n
         outline_step, _ = store.add_step(run_id, "outline", impl["id"], impl.get("label"),
                                          note="断点续跑")
@@ -638,6 +715,17 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         outline_step, outline_log = store.add_step(run_id, "outline", impl["id"], impl.get("label"),
                                                    note=route.get("author", ""))
         outline = planner.make_serial_outline(task, impl, workdir, ev)
+        if outline.get("degraded") and impl.get("mode") != "mock":
+            # 兜底模板只有章号没有情节，据此写出的两万字等于废稿——
+            # 中止并交给自动续跑等编排者恢复后重试，而不是空转烧配额。
+            store.finish_step(run_id, outline_step["n"], "failed",
+                              summary="大纲降级：%s" % (outline.get("degraded_reason") or "编排者不可用"),
+                              duration_s=None)
+            store.update_run(run_id, status="failed",
+                             error="大纲生成失败（%s），已中止以免按空模板写全书"
+                                   % (outline.get("degraded_reason") or "编排者不可用"),
+                             ended_at=_now())
+            return
         try:
             with open(outline_log, "a", encoding="utf-8") as f:
                 f.write("\n===== 最终大纲 =====\n")
@@ -689,7 +777,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             store.finish_step(run_id, step["n"], "done", summary="（mock）第 %d 章草稿落盘" % i,
                               duration_s=0.2)
         else:
+            sk_block, _ = skills.block_for(task)
             prompt = (SERIAL_CHAPTER_PROMPT
+                      .replace("__SKILLS__", sk_block)
                       .replace("__I__", str(i)).replace("__FILE__", ch_file)
                       .replace("__GOAL__", task["goal"])
                       .replace("__OUTLINE__", outline_txt)
@@ -699,7 +789,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                       .replace("__HOOK__", ch.get("hook") or "留下悬念")
                       .replace("__WORDS__", str(wpc)))
             res = _run_step(run_id, "draft-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
-                            workdir, readonly=False, ev=ev, timeout=2400,
+                            step_wd, readonly=False, ev=ev, timeout=2400,
                             resume=resume_ctx["session"] if resume_ctx else None)
             if not res["ok"]:
                 store.update_run(run_id, status="failed",
@@ -721,12 +811,14 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         for rnd in (1, 2):
             text = _read_chapter(workdir, i)
             cj_by_agent = {}
+            scored = 0   # 真正给出分数的评审数；失败/不可解析不得当成 0 分计入
             for agent in critics:
                 role = "critique-c%d" % i
                 if agent.get("mode") == "mock":
                     step, log_abs = store.add_step(run_id, role, agent["id"], agent.get("label"))
                     time.sleep(0.15)
                     cj = mocks.critique(agent["id"], rnd, dims, threshold_ch)
+                    scored += 1
                     store.finish_step(run_id, step["n"], "done",
                                       summary="均分 %.1f：%s" % (
                                           sum(cj["scores"].values()) / max(1, len(dims)),
@@ -737,12 +829,23 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                     crit_prompt_for(text, note="小说第 %d 章" % i),
                                     workdir, readonly=True, ev=ev)
                     cj = runner.extract_json(res.get("text") or "")
-                    if not isinstance(cj, dict) or not isinstance(cj.get("scores"), dict):
+                    if not isinstance(cj, dict) or not isinstance(cj.get("scores"), dict) \
+                            or not cj.get("scores"):
                         cj = {"scores": {}, "issues": [],
-                              "summary": "评审输出无法解析：%s" % (res.get("text") or "")[:150]}
+                              "summary": "评审输出无法解析：%s" % (res.get("text")
+                                                          or res.get("error") or "")[:150]}
+                    else:
+                        scored += 1
                 cj_by_agent[agent["id"]] = cj
                 issues_all.extend({"chapter": i, **it} for it in (cj.get("issues") or [])[:6])
                 _check_cancel(ev)
+            if not scored:
+                # 「评不上」≠「评了 0 分」：全部评审失败时中止本轮，
+                # 让自动续跑换个时机重试，而不是以 0 分误判章稿质量。
+                store.update_run(run_id, status="failed",
+                                 error="第 %d 章评审全部失败（评审模型不可用或输出不可解析），"
+                                       "已中止以免以 0 分误判质量" % i, ended_at=_now())
+                return
             vals = {}
             for d in dims:
                 xs = [float(cj["scores"].get(d, 0)) for cj in cj_by_agent.values()
@@ -774,7 +877,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__CRITIQUE__", "\n".join(crit_lines))
                           .replace("__WORDS__", str(wpc)))
                 _run_step(run_id, "revise-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
-                          workdir, readonly=False, ev=ev, timeout=2400,
+                          step_wd, readonly=False, ev=ev, timeout=2400,
                           resume=resume_ctx["session"] if resume_ctx else None)
             _check_cancel(ev)
         chapter_scores.append({"chapter": i, "title": ch["title"], "means": means,
@@ -812,7 +915,105 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 global_means.setdefault(d, []).append(float(v))
         _check_cancel(ev)
     global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in global_means.items()}
-    global_pass = bool(global_means) and all(v >= threshold for v in global_means.values())
+    global_pass = _all_ge(global_means, threshold)
+
+    # ---- 3.5) 自驱打磨：全局评审不过 → 自动重改最弱章并重评（至多 2 轮，无需人工）
+    polish_rounds = 0
+    while (not global_pass) and polish_rounds < 2 and chapter_scores:
+        polish_rounds += 1
+        weak = _weakest_chapters(chapter_scores, global_means, threshold, limit=2)
+        if not weak:
+            break
+        note = "自动打磨第 %d 轮：全局评审未过，重改最弱章 %s" % (
+            polish_rounds, "、".join("第 %d 章" % c["chapter"] for c in weak))
+        pstep, _ = store.add_step(run_id, "polish-r%d" % polish_rounds, impl["id"],
+                                  impl.get("label"), note=note)
+        fixed = []
+        for c in weak:
+            i = c["chapter"]
+            ch = outline["chapters"][i - 1]
+            dims_txt = "；".join(
+                "%s %.1f" % (d, (c.get("means") or {}).get(d, 0.0))
+                for d in dims if float((c.get("means") or {}).get(d, 0.0)) < threshold)
+            gj = "；".join("%s %.1f" % (d, s2) for d, s2 in global_means.items()
+                           if float(s2) < threshold)
+            crit = ("- 本章维度不达标：%s（阈值 %.1f）\n- 全书一致性评审指出的短板：%s"
+                    "\n- 重改要求：优先修全书节奏/衔接问题（章间过渡、信息倾泻、主角主动性），"
+                    "再补本章短板；不得改动既有剧情主线的关键事实。"
+                    % (dims_txt or "（无）", threshold, gj or "（无）"))
+            if impl.get("mode") == "mock":
+                _write_chapter(workdir, i, mocks.draft_manuscript(
+                    {"title": ch["title"], "goal": task["goal"]}, 3))
+            else:
+                prompt = (SERIAL_REVISE_PROMPT
+                          .replace("__I__", str(i)).replace("__FILE__", "chapter-%02d.md" % i)
+                          .replace("__GOAL__", task["goal"])
+                          .replace("__CRITIQUE__", crit)
+                          .replace("__WORDS__", str(wpc)))
+                res = _run_step(run_id, "polish-c%d" % i, modelhub.bind_agent(impl, difficulty),
+                                prompt, workdir, readonly=False, ev=ev, timeout=2400,
+                                resume=resume_ctx["session"] if resume_ctx else None)
+                if not res["ok"]:
+                    continue
+            # 重评该章
+            cj_by_agent = {}
+            for agent in critics:
+                if agent.get("mode") == "mock":
+                    cj = mocks.critique(agent["id"], 3, dims, threshold_ch)
+                else:
+                    res2 = _run_step(run_id, "critique-c%d" % i, modelhub.bind_agent(agent, difficulty),
+                                     crit_prompt_for(_read_chapter(workdir, i), note="小说第 %d 章（打磨后）" % i),
+                                     workdir, readonly=True, ev=ev)
+                    cj = runner.extract_json(res2.get("text") or "")
+                    if not isinstance(cj, dict) or not isinstance(cj.get("scores"), dict):
+                        cj = {"scores": {}, "issues": [], "summary": "评审输出无法解析"}
+                cj_by_agent[agent["id"]] = cj
+                _check_cancel(ev)
+            vals = {}
+            for d in dims:
+                xs = [float(cj["scores"].get(d, 0)) for cj in cj_by_agent.values()
+                      if isinstance(cj.get("scores"), dict) and d in cj["scores"]]
+                vals[d] = round(sum(xs) / len(xs), 1) if xs else 0.0
+            for c2 in chapter_scores:
+                if c2["chapter"] == i:
+                    c2["means"] = vals
+                    c2["passed"] = bool(vals) and all(v >= threshold_ch for v in vals.values())
+                    c2["rounds"] = int(c2.get("rounds") or 1) + 1
+                    c2["polished"] = True
+                    c2["words"] = _wc(_read_chapter(workdir, i))
+                    fixed.append(i)
+            store.update_run(run_id, chapter_scores=chapter_scores)
+            _check_cancel(ev)
+        # 重评全书一致性
+        full_text = "\n\n".join(_read_chapter(workdir, i2) for i2 in range(1, n + 1))
+        gmeans, gissues = {}, []
+        for agent in critics:
+            if agent.get("mode") == "mock":
+                gj2 = {"scores": {d: 8.0 for d in dims}, "issues": [],
+                       "summary": "（mock）打磨后全书达标"}
+            else:
+                res3 = _run_step(run_id, "global-critique", modelhub.bind_agent(agent, difficulty),
+                                 (SERIAL_GLOBAL_PROMPT.replace("__DIMKEYS__", dimkey)
+                                  .replace("__GOAL__", task["goal"])
+                                  .replace("__MANUSCRIPT__", full_text[:60000])),
+                                 workdir, readonly=True, ev=ev, timeout=2400)
+                gj2 = runner.extract_json(res3.get("text") or "")
+                if not isinstance(gj2, dict) or not isinstance(gj2.get("scores"), dict):
+                    gj2 = {"scores": {}, "issues": [], "summary": "全局评审输出无法解析"}
+            global_issues.extend({"chapter": "全书", **it} for it in (gj2.get("issues") or [])[:8])
+            for d in dims:
+                v = gj2.get("scores", {}).get(d)
+                if v is not None:
+                    gmeans.setdefault(d, []).append(float(v))
+            _check_cancel(ev)
+        global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans.items()}
+        global_pass = _all_ge(global_means, threshold)
+        store.finish_step(run_id, pstep["n"], "done" if global_pass else "failed",
+                          summary="重改 %s；打磨后全局 %s（%s）" % (
+                              "、".join("第 %d 章" % x for x in fixed),
+                              "、".join("%s %.1f" % (d, global_means.get(d, 0.0)) for d in dims),
+                              "通过" if global_pass else "仍未通过"),
+                          duration_s=1.0)
 
     # ---- 4) 合并成书
     step, _ = store.add_step(run_id, "merge", "builtin", "内置合成器")
@@ -883,6 +1084,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     rounds = task.get("rounds", 2)
     route = {}
     resume_ctx = _valid_resume(task, agents)
+    # 续会话步骤的 CLI 启动目录（稿件读写仍用 workdir）
+    step_wd = _resume_workdir(resume_ctx, workdir) if resume_ctx else workdir
     difficulty = task.get("difficulty") or (
         "hard" if threshold >= 8.5 else "easy" if threshold <= 6 else "default")
 
@@ -945,7 +1148,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             prompt += "\n\n## 编排者大纲（按要点组织稿件）\n" + \
                       "\n".join("- " + i for i in outline["items"])
         draft_res = _run_step(run_id, "draft", modelhub.bind_agent(impl, difficulty), prompt,
-                              workdir, readonly=False, ev=ev, note=draft_note,
+                              step_wd, readonly=False, ev=ev, note=draft_note,
                               resume=resume_ctx["session"] if resume_ctx else None)
         if not draft_res["ok"]:
             store.update_run(run_id, status="failed", error="起草失败: %s" % draft_res.get("error"),
@@ -1086,6 +1289,12 @@ def execute_run(run_id):
                          ended_at=_now())
         return
     agents = _agents()
+    # 续会话是对该 CLI 的显式指定：目标未启用编排时也注入本次运行（不影响路由池）
+    want = ((task.get("resume") or {}).get("agent") or "").strip()
+    if want and _pick(agents, want) is None:
+        extra = registry.installed_agent(want, catalog.load(), manager.detect_all())
+        if extra:
+            agents.append(extra)
     stats = history.agent_stats()
     mode = task.get("mode") or ("manual" if task.get("implementer") else "auto")
     store.update_run(run_id, mode=mode)
@@ -1130,5 +1339,12 @@ def execute_run(run_id):
             err_path = store.run_dir(run_id) / "error.log"
             if _inside(str(store.run_dir(run_id).parent), str(err_path)):
                 err_path.write_text(traceback.format_exc(), encoding="utf-8")
+        except Exception:
+            pass
+    finally:
+        # 自学习闭环：运行结束自动把本次评审暴露的问题沉淀为可复用教训（异步，不阻塞）
+        try:
+            if store.get_run(run_id):
+                skills.learn_async(run_id)
         except Exception:
             pass

@@ -92,9 +92,17 @@ def main():
         check("自定义流程出现在列表", any(f["id"] == "podcast" for f in d["flows"]))
         st, d = req("POST", "/api/flows/podcast/delete")
         check("删除自定义流程", st == 200)
-        st, d = req("POST", "/api/flows", {"id": "novel", "name": "冒充", "engine": "review",
+        # 预置流程按用户要求可编辑（落 overrides），但不可删除、可恢复默认
+        st, d = req("POST", "/api/flows", {"id": "novel", "name": "改编小说", "engine": "review",
                                            "rubric": ["x"]})
-        check("内置流程不可覆盖", st == 400, d)
+        check("预置流程可编辑", st == 200 and d.get("ok"), d)
+        st, d = req("GET", "/api/flows")
+        nv = next((f for f in d["flows"] if f["id"] == "novel"), {})
+        check("编辑生效并带 edited 标记", nv.get("name") == "改编小说" and nv.get("edited"), nv)
+        st, d = req("POST", "/api/flows/novel/delete")
+        check("预置流程不可删除", st == 400, d)
+        st, d = req("POST", "/api/flows/novel/reset")
+        check("预置流程可恢复默认", st == 200 and d.get("ok"), d)
 
         # ---- 2) 跨厂商模型链：建两厂商 → 绑定 chain → 校验落盘
         req("POST", "/api/models/provider", {

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import unittest
+
+from base import BaseTest
 
 from app.core import paths, runner, store, usage
-from tests.base import BaseTest
 
 
 class TestUsageLedger(BaseTest):
@@ -144,6 +146,66 @@ class TestStepModelField(BaseTest):
         got = store.get_run(run["id"])["steps"][0]
         self.assertEqual(got["model"], "gpt-5.2")
         self.assertEqual(got["tokens"], 123)
+
+
+class TestBackfill(BaseTest):
+    """历史 run.json → 台账回填：只补有 token 的步骤、幂等、可推断工具。"""
+
+    def _mk_run(self, run_id, task_id, day, steps):
+        d = self._paths.RUNS_DIR / run_id
+        d.mkdir(parents=True, exist_ok=True)
+        run = {"id": run_id, "task_id": task_id, "kind": "orchestration",
+               "title": "回填测试", "status": "done",
+               "created_at": day + " 09:00:00", "started_at": day + " 09:00:01",
+               "ended_at": day + " 09:10:00", "steps": steps}
+        (d / "run.json").write_text(json.dumps(run, ensure_ascii=False), encoding="utf-8")
+
+    def _mk_task(self, task_id, ttype):
+        self._paths.TASKS_DIR.mkdir(parents=True, exist_ok=True)
+        (self._paths.TASKS_DIR / (task_id + ".json")).write_text(
+            json.dumps({"id": task_id, "type": ttype, "title": "t", "goal": "g",
+                        "workdir": str(self.workdir), "status": "done"},
+                       ensure_ascii=False), encoding="utf-8")
+
+    def test_backfill_only_token_steps_and_idempotent(self):
+        self._mk_task("t-bf", "novel")
+        self._mk_run("r-bf", "t-bf", "2026-09-10", [
+            {"n": 1, "role": "implement", "agent": "codex-cli", "agent_label": "Codex CLI",
+             "status": "done", "tokens": 5000, "cost_usd": 0.03, "duration_s": 42.0,
+             "model": "gpt-x"},
+            {"n": 2, "role": "verify", "agent": "builtin", "status": "done", "tokens": 0},
+            {"n": 3, "role": "review", "agent": "claude-code", "agent_label": "[CC]",
+             "status": "failed", "tokens": 1200, "cost_usd": 0.01},
+        ])
+        n1 = usage.backfill_from_runs()
+        self.assertEqual(n1, 2)                      # 无 token 的 verify 不入账
+        s = usage.summary(days=0)
+        self.assertEqual(s["totals"]["calls"], 2)
+        self.assertEqual(s["totals"]["tokens"], 6200)
+        self.assertEqual(s["totals"]["failed"], 1)
+        self.assertEqual(s["totals"]["input"], 0)    # 历史无细分
+        tools = {r["key"]: r for r in s["by_tool"]}
+        self.assertEqual(set(tools), {"codex", "claude"})   # 由 agent id 推断
+        self.assertEqual({r["key"] for r in s["by_task_type"]}, {"novel"})  # 从 tasks 补齐
+        self.assertTrue(all(r["source"] == "backfill" for r in s["recent"]))
+
+        # 幂等：再跑一次不新增
+        self.assertEqual(usage.backfill_from_runs(), 0)
+        self.assertEqual(usage.summary(days=0)["totals"]["calls"], 2)
+
+    def test_backfill_does_not_duplicate_live_records(self):
+        """真实埋点已入账的步骤，回填不能重复计一次。"""
+        self._mk_task("t-live", "code")
+        self._mk_run("r-live", "t-live", "2026-09-11", [
+            {"n": 1, "role": "implement", "agent": "codex-cli", "status": "done",
+             "tokens": 800, "cost_usd": 0.01},
+        ])
+        # 模拟真实埋点（带 step，与回填去重键一致）
+        usage.record(source="pipeline", run_id="r-live", step=1, task_id="t-live",
+                     task_type="code", role="implement", agent="codex-cli",
+                     tool="codex", usage={"input": 500, "output": 300, "total": 800})
+        self.assertEqual(usage.backfill_from_runs(), 0, "已有真实记录的步骤不应再回填")
+        self.assertEqual(usage.summary(days=0)["totals"]["calls"], 1)
 
 
 if __name__ == "__main__":

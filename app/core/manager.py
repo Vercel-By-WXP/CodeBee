@@ -234,18 +234,25 @@ def write_model(entry, model):
 # ---------------------------------------------------------------- 安装/升级
 
 def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
-    """执行 install/upgrade 命令（在任务队列里跑，日志落盘）。"""
-    cmd = entry.get(op)
-    if not cmd:
-        return {"ok": False,
-                "error": "未配置 %s 命令：请在 data/catalog.json 的 \"%s\" 里补充，或用官方渠道安装"
-                         % (op, entry["id"])}
+    """执行 install/upgrade/uninstall 命令（在任务队列里跑，日志实时落盘）。"""
+    if op == "uninstall":
+        cmd = catalog.uninstall_command(entry)
+        if not cmd:
+            return {"ok": False,
+                    "error": "无法推导卸载命令：请在 data/catalog.json 的 \"%s\" 里配置 uninstall 字段"
+                             % entry["id"]}
+    else:
+        cmd = entry.get(op)
+        if not cmd:
+            return {"ok": False,
+                    "error": "未配置 %s 命令：请在 data/catalog.json 的 \"%s\" 里补充，或用官方渠道安装"
+                             % (op, entry["id"])}
     res = runner.run_process(shell_cmd=cmd, cwd=str(paths.ROOT),
                              timeout=1800, cancel_event=cancel_event, log_path=log_path)
     detect_all(force=True)
     with _LOCK:
         _STATE["versions"].pop(entry["id"], None)
-    return {"ok": res["ok"], "exit_code": res["exit_code"],
+    return {"ok": res["ok"], "exit_code": res["exit_code"], "command": cmd,
             "error": "" if res["ok"] else (res["stderr"][-800:] or "退出码 %s" % res["exit_code"])}
 
 
@@ -256,22 +263,8 @@ UPDATE_TTL = 600
 
 
 def _npm_pkg_name(cmd):
-    """从 npm 安装命令里取包名（支持 @scope/name@latest）。
-
-    跳过包名之前的 flag：`npm install -g --ignore-scripts @scope/pkg` 必须取到
-    @scope/pkg，否则「检查更新」会拿 flag 当包名去查 registry。
-    """
-    m = re.search(r"npm\s+(?:install|i)\s+(.+)$", cmd or "")
-    if not m:
-        return None
-    for tok in m.group(1).split():
-        if tok.startswith("-"):
-            continue
-        if tok.startswith("@"):
-            m2 = re.match(r"(@[^/]+/[^@]+)", tok)
-            return m2.group(1) if m2 else None
-        return tok.split("@")[0]
-    return None
+    """从 npm 安装命令里取包名（实现已统一到 catalog.npm_pkg_name）。"""
+    return catalog.npm_pkg_name(cmd)
 
 
 def _ver_tuple(s):
@@ -422,5 +415,7 @@ def catalog_view():
             "update": update_info(e),
             "has_install": bool(e.get("install")),
             "has_upgrade": bool(e.get("upgrade")),
+            # 卸载命令由 install/upgrade 推导（或 catalog 显式配置），供 UI 确认框展示
+            "uninstall_cmd": catalog.uninstall_command(e) if det.get("installed") else None,
         })
     return view

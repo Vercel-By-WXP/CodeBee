@@ -111,21 +111,30 @@ async function main() {
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(3000);
 
-    // 1) 导航进入用量页
-    await evalJs(`switchTab("usage"); "ok"`);
-    await sleep(1200);
+    // 1) 导航进入用量页（默认范围=今天）
+    await evalJs(`localStorage.removeItem("orch.usageDays"); S.usageDays = undefined; switchTab("usage"); "ok"`);
+    await sleep(1400);
     const visible = await evalJs(`!document.getElementById("sub-usage").classList.contains("hidden")`);
     check("用量页可见", visible === true);
     const title = await evalJs(`document.getElementById("page-title").textContent`);
     check("页标题=用量统计", title === "用量统计", title);
 
-    // 2) KPI 卡片（种子 30 天窗口内 4 条 + 40 天前 1 条被排除）
+    // 2) 默认选中「今天」：只有当天 1 条（1600）
+    const defActive = await evalJs(`[...document.querySelectorAll("#usage-ranges [data-days]")]
+      .filter(b => b.classList.contains("active")).map(b => b.dataset.days).join(",")`);
+    check("默认选中「今天」", defActive === "1", "active=" + defActive);
+    const todayKpi = await evalJs(`document.getElementById("usage-kpis").textContent`);
+    check("默认（今天）tokens=1600", /1,?600|1600/.test(todayKpi), todayKpi.slice(0, 120));
+
+    // 3) 显式切「近 30 天」：4 条（40 天前那条被排除）
+    await evalJs(`setUsageDays(30); "ok"`);
+    await sleep(1200);
     const kpiText = await evalJs(`document.getElementById("usage-kpis").textContent`);
     check("KPI 总 tokens=5800（1600+2300+400+1500）", /5,?800|5800/.test(kpiText), kpiText.slice(0, 120));
     check("KPI 调用次数=4", /4/.test(kpiText), kpiText.slice(0, 120));
     check("KPI 失败数=1", /失败\s*1/.test(kpiText), kpiText.slice(0, 160));
 
-    // 3) 趋势图 SVG 与维度排行
+    // 4) 趋势图 SVG 与维度排行
     const svgN = await evalJs(`document.querySelectorAll("#usage-trend svg rect").length`);
     check("趋势图 SVG 有柱形", svgN >= 4, "rects=" + svgN);
     const dimsHtml = await evalJs(`document.getElementById("usage-dims").textContent`);
@@ -137,23 +146,23 @@ async function main() {
     check("最近调用行数 ≥4", recentRows >= 4, "rows=" + recentRows);
     await shot("usage-30d.png");
 
-    // 4) 切换「全部」→ 40 天前的 qwen 记录出现
+    // 5) 切换「全部」→ 40 天前的 qwen 记录出现
     await evalJs(`setUsageDays(0); "ok"`);
-    await sleep(1000);
+    await sleep(1200);
     const allText = await evalJs(`document.getElementById("usage-kpis").textContent`);
     check("切全部后 tokens=10800（显示 1.1万）", /10,?800|1\.1万/.test(allText), allText.slice(0, 120));
     const dimsAll = await evalJs(`document.getElementById("usage-dims").textContent`);
     check("全部范围出现 Qwen CLI", dimsAll.includes("Qwen CLI"), "");
     await shot("usage-all.png");
 
-    // 5) 切「今天」→ 只剩当天 1600
+    // 6) 切「今天」→ 只剩当天 1600
     await evalJs(`setUsageDays(1); "ok"`);
-    await sleep(1000);
+    await sleep(1200);
     const todayText = await evalJs(`document.getElementById("usage-kpis").textContent`);
     check("切今天后 tokens=1600", /1,?600|1600/.test(todayText), todayText.slice(0, 120));
     await shot("usage-today.png");
 
-    // 6) 服务端无异常
+    // 7) 服务端无异常
     const st = await fetch(SERVICE + "/api/usage?days=7").then((r) => r.status);
     check("服务端 /api/usage 200", st === 200);
 

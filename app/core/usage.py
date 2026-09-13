@@ -27,7 +27,7 @@ DIMENSIONS = {
     "task_type": "任务类型",
 }
 
-FIELDS = ("ts", "day", "run_id", "task_id", "task_type", "role", "agent", "agent_label",
+FIELDS = ("ts", "day", "run_id", "step", "task_id", "task_type", "role", "agent", "agent_label",
           "tool", "model", "provider", "ok", "duration_s",
           "input", "output", "cached", "reasoning", "total", "cost_usd", "source")
 
@@ -56,11 +56,15 @@ def _parse_bool(v):
     return bool(v)
 
 
-def record(source="", run_id="", task_id="", task_type="", role="",
+def record(source="", run_id="", task_id="", task_type="", role="", step=0,
            agent="", agent_label="", tool="", model="", provider="",
            ok=True, duration_s=0.0, cost_usd=0.0, usage=None):
     """追加一条用量记录。usage 为细分 dict：{input, output, cached, reasoning, total}；
-    缺省字段按 0 处理。任何异常都吞掉——统计永远不能拖垮业务调用方。"""
+    缺省字段按 0 处理。任何异常都吞掉——统计永远不能拖垮业务调用方。
+
+    step 为该运行内的步骤号：与 backfill_from_runs 的去重键一致，缺了会导致
+    启动回填把同一步骤重复入账。
+    """
     try:
         u = usage or {}
         rec = {
@@ -68,6 +72,7 @@ def record(source="", run_id="", task_id="", task_type="", role="",
             "day": time.strftime("%Y-%m-%d"),
             "source": str(source or "pipeline")[:24],
             "run_id": str(run_id or "")[:64],
+            "step": _parse_int(step),
             "task_id": str(task_id or "")[:64],
             "task_type": str(task_type or "")[:32] or "unknown",
             "role": str(role or "")[:40] or "unknown",
@@ -94,6 +99,101 @@ def record(source="", run_id="", task_id="", task_type="", role="",
                 f.write(line + "\n")
     except Exception:
         pass
+
+
+def backfill_from_runs():
+    """把历史 run.json 里已记录的 token 用量回填进台账（启动时调用，幂等）。
+
+    埋点是后加的：此前的运行只在 run.json 的步骤里存了 tokens/cost_usd 总量，
+    没有输入/输出/缓存细分，所以回填记录 input/output/cached 记 0、只有 total，
+    并以 source="backfill" 标记便于区分。已回填的 (run_id, 步骤号) 会跳过，
+    重复启动不会产生重复记录。
+    """
+    try:
+        runs_dir = paths.RUNS_DIR
+        if not runs_dir.is_dir():
+            return 0
+        # 已入账的 (run_id, role, 步骤号) 集合——含真实埋点与既往回填
+        seen = set()
+        for r in _iter_records(0):
+            seen.add((str(r.get("run_id") or ""), str(r.get("role") or ""),
+                      _parse_int(r.get("step"))))
+        added = 0
+        # 旧 run 未存任务类型，从 tasks/*.json 补齐（缺了就记 unknown）
+        task_types = {}
+        try:
+            for tp in paths.TASKS_DIR.glob("*.json"):
+                try:
+                    t = json.loads(tp.read_text(encoding="utf-8"))
+                    task_types[t.get("id")] = t.get("type") or ""
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        for p in sorted(runs_dir.glob("*/run.json")):
+            try:
+                run = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(run, dict):
+                continue
+            run_id = str(run.get("id") or p.parent.name)
+            day = str(run.get("started_at") or run.get("created_at") or "")[:10]
+            if not day:
+                continue
+            for s in (run.get("steps") or []):
+                if not isinstance(s, dict):
+                    continue
+                total = _parse_int(s.get("tokens"))
+                if total <= 0:
+                    continue          # 无 token 的步骤（验证/合并/mock）不入账
+                n = _parse_int(s.get("n"))
+                key = (run_id, str(s.get("role") or ""), n)
+                if key in seen:
+                    continue
+                seen.add(key)
+                rec = {
+                    "ts": "%s %s" % (day, str(s.get("started_at") or "00:00:00")[:8]),
+                    "day": day, "source": "backfill", "run_id": run_id,
+                    "step": n,
+                    "task_id": str(run.get("task_id") or ""),
+                    "task_type": task_types.get(str(run.get("task_id") or "")) or "unknown",
+                    "role": str(s.get("role") or "")[:40] or "unknown",
+                    "agent": str(s.get("agent") or "")[:40] or "unknown",
+                    "agent_label": str(s.get("agent_label") or "")[:60],
+                    "tool": _tool_of(str(s.get("agent") or "")),
+                    "model": str(s.get("model") or "")[:80] or "(历史未记录)",
+                    "provider": "",
+                    "ok": str(s.get("status") or "") == "done",
+                    "duration_s": round(_parse_float(s.get("duration_s")), 1),
+                    "cost_usd": round(_parse_float(s.get("cost_usd")), 4),
+                    "input": 0, "output": 0, "cached": 0, "reasoning": 0,
+                    "total": total,
+                }
+                with LOCK:
+                    paths.USAGE_DIR.mkdir(parents=True, exist_ok=True)
+                    with open(_month_file(day), "a", encoding="utf-8") as f:
+                        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                added += 1
+        return added
+    except Exception:
+        return 0
+
+
+# 智能体 id → 工具 kind（回填时旧记录没有 tool 字段，只能从 id 推断）
+_AGENT_TOOL = {"codex-cli": "codex", "claude-code": "claude", "qwen-cli": "qwen",
+               "qwencode": "qwen", "opencode": "opencode", "aider": "aider",
+               "orchestrator": "orchestrator"}
+
+
+def _tool_of(agent_id):
+    a = str(agent_id or "").lower()
+    if a in _AGENT_TOOL:
+        return _AGENT_TOOL[a]
+    for k, v in _AGENT_TOOL.items():
+        if a.startswith(k):
+            return v
+    return a or "unknown"
 
 
 def _iter_records(days):

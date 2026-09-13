@@ -51,6 +51,21 @@ def set_preference(agent_id, enabled=None, model=None, models=None):
         return pref
 
 
+def _build_agent(entry):
+    """catalog 条目 → 运行时智能体字典（resume_argv_template 透传给 runner）。"""
+    orch = entry.get("orch") or {}
+    return {
+        "id": entry["id"],
+        "label": entry.get("name", entry["id"]),
+        "kind": orch.get("kind", "generic"),
+        "command": orch.get("command") or (entry.get("detect") or {}).get("cli") or entry["id"],
+        "mode": "real",
+        "env": orch.get("env") or {},
+        "argv_template": orch.get("argv_template"),
+        "resume_argv_template": orch.get("resume_argv_template"),
+    }
+
+
 def effective_agents(catalog_entries, detected):
     """生成当前可参与编排的智能体列表（真实已装+启用，外加内置 mock）。"""
     enabled = load_enabled()
@@ -65,14 +80,23 @@ def effective_agents(catalog_entries, detected):
         pref = enabled.get(entry.get("id")) or {}
         if not pref.get("enabled", entry.get("default_enabled", False)):
             continue
-        out.append({
-            "id": entry["id"],
-            "label": entry.get("name", entry["id"]),
-            "kind": orch.get("kind", "generic"),
-            "command": orch.get("command") or (entry.get("detect") or {}).get("cli") or entry["id"],
-            "mode": "real",
-            "env": orch.get("env") or {},
-            "argv_template": orch.get("argv_template"),
-        })
+        out.append(_build_agent(entry))
     out.extend([dict(m) for m in MOCK_AGENTS])
     return out
+
+
+def installed_agent(entry_id, catalog_entries, detected):
+    """按 id 构建「已安装」的智能体，无视编排启用开关。
+
+    续会话是用户对该 CLI 的显式指定，不依赖其是否参与自动路由；
+    未安装 / 无编排配置 / id 不存在时返回 None。
+    """
+    for entry in catalog_entries:
+        if entry.get("id") != entry_id:
+            continue
+        if not (entry.get("orch") or {}).get("kind"):
+            return None
+        if not ((detected or {}).get(entry_id) or {}).get("installed"):
+            return None
+        return _build_agent(entry)
+    return None

@@ -144,6 +144,10 @@ def create_task(payload):
         task["resume"] = {"agent": str(resume["agent"])[:40],
                           "session": str(resume["session"])[:80],
                           "preview": str(resume.get("preview") or "")[:140]}
+        # 会话所属项目目录：续会话时 CLI 必须在该目录下启动（opencode/qwen 按 cwd 定位会话）
+        proj = str(resume.get("project") or "")[:260]
+        if proj:
+            task["resume"]["project"] = proj
     with LOCK:
         _TASKS[task["id"]] = task
         _save_json(paths.TASKS_DIR / (task["id"] + ".json"), task)
@@ -417,7 +421,10 @@ def retry_task(task_id):
                                key=lambda r: r["id"], reverse=True)
             for prev in prev_runs:
                 outline = prev.get("outline")
-                if not outline:
+                # 降级大纲没有真实情节，继承只会让每一遍都按空模板写废——
+                # 跳过它，让新运行重新生成（编排者恢复后即可拿到真大纲）。
+                # mock 模板的 outline 无 degraded 标记，正常继承不受影响。
+                if not outline or outline.get("degraded"):
                     continue
                 done = sorted({int(s["role"].split("c")[-1])
                                for s in (prev.get("steps") or [])

@@ -135,6 +135,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"sources": modelhub.sources()})
             if path == "/api/flows":
                 return self._json(200, {"flows": flows.list_flows()})
+            if path == "/api/skills":
+                from core import skills
+                return self._json(200, skills.view())
             if path == "/api/settings":
                 return self._json(200, dict(settings.load(), **jobs.workers_info()))
             if path == "/api/orchestrator":
@@ -227,6 +230,8 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/runs/([^/]+)/cancel$", path)
         if m:
             ok = jobs.cancel(m.group(1))
+            # 标记"用户主动取消"：自动续跑必须尊重这个意图，不得把它续上
+            store.update_run(m.group(1), cancelled_by_user=True)
             return self._json(200, {"ok": ok})
         m = re.match(r"^/api/runs/([^/]+)/delete$", path)
         if m:
@@ -336,6 +341,24 @@ class Handler(BaseHTTPRequestHandler):
             if err:
                 return self._json(400, {"error": err})
             return self._json(200, {"ok": True, "flow": flow})
+        if path == "/api/skills/lesson-op":
+            from core import skills
+            body = self._body()
+            err = skills.lesson_op(body.get("id") or "", body.get("op") or "")
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
+        if path == "/api/skills/pack-op":
+            from core import skills
+            body = self._body()
+            err = skills.pack_op(body.get("id") or "", body.get("op") or "")
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
+        if path == "/api/skills/learn":
+            from core import skills
+            n = skills.learn_from_run((self._body().get("run_id") or ""))
+            return self._json(200, {"ok": True, "learned": n})
+        m = re.match(r"^/api/flows/([^/]+)/reset$", path)
+        if m:
+            err = flows.reset_flow(m.group(1))
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
         m = re.match(r"^/api/flows/([^/]+)/delete$", path)
         if m:
             err = flows.delete_flow(m.group(1))
@@ -371,13 +394,18 @@ class Handler(BaseHTTPRequestHandler):
                 pass
             return self._json(200, dict(res, model=model,
                                         provider=prov.get("name", prov["id"])))
-        m = re.match(r"^/api/catalog/([^/]+)/(install|upgrade|smoke)$", path)
+        m = re.match(r"^/api/catalog/([^/]+)/(install|upgrade|uninstall|smoke)$", path)
         if m:
             entry = catalog.by_id(m.group(1))
             if not entry:
                 return self._json(404, {"error": "catalog 中无此条目"})
             op = m.group(2)
-            titles = {"install": "安装", "upgrade": "升级", "smoke": "冒烟测试"}
+            titles = {"install": "安装", "upgrade": "升级", "uninstall": "卸载",
+                      "smoke": "冒烟测试"}
+            if op == "uninstall" and not catalog.uninstall_command(entry):
+                return self._json(400, {
+                    "error": "无法推导卸载命令：请在 data/catalog.json 的 \"%s\" 里配置 uninstall 字段"
+                             % entry["id"]})
             run = store.create_run("mgmt", "%s %s" % (titles[op], entry.get("name", entry["id"])),
                                    entry_id=entry["id"], op=op)
             jobs.enqueue({"kind": "mgmt", "run_id": run["id"], "entry_id": entry["id"], "op": op})
@@ -511,7 +539,14 @@ def main():
     from core import modelhub
     modelhub.migrate_orch_models()  # 旧「编排模型」偏好并入 CLI 绑定（幂等，带备份）
     modelhub.migrate_chains()       # 旧单供应商模型链升级为跨厂商 chain（幂等，带备份）
+    from core import usage
+    n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）
+    if n_bf:
+        print("[Tutti] 用量台账：已从历史运行回填 %d 条记录" % n_bf)
     jobs.start_worker()
+    n_resume = jobs.resume_interrupted()   # 启动恢复：服务被杀中断的连载任务自动续跑
+    if n_resume:
+        print("[Tutti] 已自动恢复 %d 个中断的连载任务（断点续跑）" % n_resume)
     tok = remote.token()
     import atexit
     import os as _os

@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import json
 import threading
 import time
 
@@ -43,10 +44,19 @@ class TestFlows(BaseTest):
                                       "rubric": ["选题", "结构"]})
         self.assertIsNone(err, err)
         self.assertEqual(upd["name"], "播客脚本V2")
-        # 内置 id 冒充新增：拒绝
-        self.assertTrue(flows.upsert_flow({"id": "novel", "name": "冒充内置",
-                                           "engine": "review", "rubric": ["a"]})[1])
-        self.assertTrue(flows.delete_flow("novel"))          # 内置不可删
+        # 预置流程现在可编辑（改后带 edited 标记），可一键恢复默认；不可删除
+        edited, err = flows.upsert_flow({"id": "novel", "name": "小说", "engine": "review",
+                                         "threshold": 8.5, "rubric": ["情节", "人物"]})
+        self.assertIsNone(err, err)
+        self.assertEqual(edited["threshold"], 8.5)
+        self.assertTrue(edited["edited"])
+        self.assertEqual(flows.get_flow("novel")["rubric"], ["情节", "人物"])
+        self.assertTrue(flows.delete_flow("novel"))          # 预置流程不可删除
+        self.assertIsNone(flows.reset_flow("novel"))          # 恢复默认
+        back = flows.get_flow("novel")
+        self.assertEqual(back["threshold"], 7.0)
+        self.assertEqual(back["rubric"], ["情节", "人物", "文笔", "节奏", "吸引力"])
+        self.assertFalse(back.get("edited"))
         self.assertIsNone(flows.delete_flow("podcast"))      # 自定义可删
         self.assertIsNone(flows.get_flow("podcast"))
 
@@ -274,6 +284,81 @@ class TestSerialResume(BaseTest):
         c3 = [s for s in run2["steps"] if s["role"] == "draft-c3"]
         self.assertEqual(len(c3), 1)
         self.assertNotIn("断点续跑", c3[0].get("summary") or "")
+
+
+class TestAutopilotPolish(BaseTest):
+    """自驱打磨：全局评审不过 → 自动重改最弱章并重评（无人干预）。
+
+    用确定性 mock 评审：第 1 轮全书「节奏」故意低于阈值，打磨后达标——
+    验证系统会自己定位弱章、重写、重评，而不是把问题丢给用户。
+    """
+
+    def runTest(self):
+        from app.core import pipeline, skills, store
+        skills._FILE = self.data_dir / "skills.json"
+        calls = {"global": 0}
+
+        # 桩：mock 评审固定给分；全局评审第 1 次说节奏 6.0（不过），第 2 次 8.0
+        import app.core.mocks as mocks
+
+        def fake_critique(agent_id, round_no, dims, threshold):
+            return {"scores": {d: 8.5 for d in dims}, "issues": [], "summary": "mock 达标"}
+
+        def fake_global(run_id, role, agent, prompt, workdir, readonly, ev, timeout=None, **kw):
+            calls["global"] += 1
+            score = 6.0 if calls["global"] == 1 else 8.5
+            step, log_abs = store.add_step(run_id, role, agent["id"], agent.get("label"))
+            store.finish_step(run_id, step["n"], "done", summary="mock 全局评审")
+            return {"ok": True, "text": json.dumps({"scores": {"节奏": score, "情节": 8.5},
+                                                    "issues": [], "summary": "mock"}),
+                    "cost_usd": 0, "tokens": 0, "error": "", "raw": {"exit_code": 0}}
+
+        # 全局评审在连载里走 _run_step；这里直接给 critics 换成"真实"智能体并桩掉 _run_step
+        orig_step = pipeline._run_step
+        orig_crit = mocks.critique
+
+        def fake_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=None, note="", resume=None):
+            """全部桩化（单测不得真跑 CLI）：全局评审按次数给分，其余给达标分。"""
+            if role == "global-critique":
+                return fake_global(run_id, role, agent, prompt, workdir, readonly, ev, timeout)
+            step, _log = store.add_step(run_id, role, agent["id"], agent.get("label"))
+            store.finish_step(run_id, step["n"], "done", summary="桩评审")
+            return {"ok": True, "cost_usd": 0, "tokens": 0, "error": "",
+                    "text": json.dumps({"scores": {d: 8.5 for d in ("情节", "人物", "文笔", "节奏", "吸引力")},
+                                        "issues": [], "summary": "桩评审达标"}),
+                    "raw": {"exit_code": 0}}
+
+        mocks.critique = fake_critique
+        pipeline._run_step = fake_step
+        # 作者用 mock（草稿走 mock 分支），评审用一个"真实"智能体 → 评审/全局都经 _run_step，
+        # 由 fake_step 接管打分（模拟"第 1 次全局不过、打磨后通过"）
+        fake_real = {"id": "fake-reviewer", "label": "桩评审", "kind": "claude",
+                     "mode": "real", "command": "claude", "env": {}}
+        pipeline._agents = lambda: self.mock_agents() + [dict(fake_real)]
+        try:
+            task = store.create_task({
+                "type": "serial_novel", "title": "自驱打磨", "mode": "manual",
+                "implementer": "mock-a", "critics": ["fake-reviewer"],
+                "goal": "短篇", "workdir": str(self.workdir),
+                "serial": {"chapters": 2, "words_per_chapter": 600},
+                "threshold": 7.0})
+            run = store.create_run("orchestration", task["title"], task_id=task["id"])
+            pipeline.execute_run(run["id"])
+            run = store.get_run(run["id"])
+        finally:
+            mocks.critique = orig_crit
+            pipeline._run_step = orig_step
+
+        self.assertEqual(run["status"], "done", run.get("error"))
+        v = run["verdict"]
+        # 第 1 次全局不过 → 自动打磨 → 第 2 次通过
+        self.assertEqual(calls["global"], 2, "全局评审应被调用两次（打磨前/后）")
+        self.assertTrue(v["global_pass"], v.get("global_scores"))
+        self.assertTrue(v["publishable"], v)
+        roles = [s["role"] for s in run["steps"]]
+        self.assertIn("polish-r1", roles, roles)
+        polished = [c for c in v["chapter_scores"] if c.get("polished")]
+        self.assertTrue(polished, v["chapter_scores"])
 
 
 if __name__ == "__main__":

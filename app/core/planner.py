@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from . import modelhub, runner, usage
+from . import modelhub, runner, skills, usage
 
 MAX_SUBTASKS = 4
 
@@ -56,6 +56,8 @@ __GOAL__
 __CONTEXT__"""
 
 SERIAL_OUTLINE_PROMPT = """你是网文主编，熟悉签约平台（番茄/七猫/起点）的过稿标准。
+
+__SKILLS__
 请为下面的小说目标设计一份连载大纲：共 __N__ 章，每章约 __W__ 字。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {"book_title": "书名", "chapters": [{"title": "章节标题", "beats": "本章剧情要点（50-120字：事件/冲突/推进）", "hook": "章末钩子（一句话）"}]}
@@ -102,21 +104,25 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None):
     serial = task.get("serial") or {}
     n = int(serial.get("chapters") or 8)
     wpc = int(serial.get("words_per_chapter") or 2500)
-    prompt = (SERIAL_OUTLINE_PROMPT.replace("__N__", str(n)).replace("__W__", str(wpc))
+    sk_block, _ = skills.block_for(task)
+    prompt = (SERIAL_OUTLINE_PROMPT.replace("__SKILLS__", sk_block)
+              .replace("__N__", str(n)).replace("__W__", str(wpc))
               .replace("__GOAL__", task["goal"])
               .replace("__CONTEXT__", task.get("context") or "（无）"))
 
     orch = _orchestrator()
     if orch:
         prov, model = orch
-        res = modelhub.chat(prov["id"], model, prompt)
-        _log_usage("outline", "outline", task, res, model=model,
-                   provider=prov.get("name", prov.get("id", "")))
-        data = runner.extract_json(res.get("text") or "") if res["ok"] else None
-        outline = _norm_chapters(data, n)
-        if outline:
-            outline["source"] = "编排者(%s · %s)" % (prov.get("name", prov["id"]), model)
-            return outline
+        # 网关 502/503 是常见瞬时故障，编排者重试一次再放弃（实测公司网关连续 8h 502）
+        for _attempt in (1, 2):
+            res = modelhub.chat(prov["id"], model, prompt)
+            _log_usage("outline", "outline", task, res, model=model,
+                       provider=prov.get("name", prov.get("id", "")))
+            data = runner.extract_json(res.get("text") or "") if res["ok"] else None
+            outline = _norm_chapters(data, n)
+            if outline:
+                outline["source"] = "编排者(%s · %s)" % (prov.get("name", prov["id"]), model)
+                return outline
 
     if author_agent and author_agent.get("mode") == "real":
         res = runner.run_agent(modelhub.bind_agent(author_agent), prompt,
@@ -131,9 +137,15 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None):
         # mock：确定性模板大纲
         pass
 
+    # 兜底模板只有章号、没有任何情节设计，据此写出的全书等于空转。
+    # 真实任务标记 degraded 让上层中止并等续跑重试；mock 测试按确定性模板继续。
     chapters = [{"title": "第 %d 章" % i, "beats": "按全书目标推进剧情，保持冲突与钩子",
                  "hook": ""} for i in range(1, n + 1)]
-    return {"book_title": "", "chapters": chapters, "source": "template"}
+    out = {"book_title": "", "chapters": chapters, "source": "template"}
+    if author_agent and author_agent.get("mode") != "mock":
+        out["degraded"] = True
+        out["degraded_reason"] = "大纲生成失败（编排者/作者模型均未返回可用大纲）"
+    return out
 
 
 def _norm_subtasks(data):

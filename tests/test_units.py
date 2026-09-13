@@ -304,6 +304,92 @@ class TestNpmPkgName(BaseTest):
         self.assertIsNone(manager._npm_pkg_name(None))
 
 
+class TestCatalogResumePatch(BaseTest):
+    def runTest(self):
+        from app.core import catalog, paths
+        # 模拟旧版 data/catalog.json：mimo 没有 resume_argv_template
+        entries = [dict(e) for e in catalog.DEFAULT_CATALOG]
+        for e in entries:
+            if e["id"] == "mimo-code":
+                (e.get("orch") or {}).pop("resume_argv_template", None)
+        paths.CATALOG_FILE.write_text(json.dumps(entries, ensure_ascii=False), encoding="utf-8")
+        catalog._CACHE["entries"] = None
+        loaded = catalog.load(force=True)
+        mimo = next(e for e in loaded if e["id"] == "mimo-code")
+        self.assertEqual(mimo["orch"]["resume_argv_template"], ["run", "-s", "{session}"])
+        # 幂等：再 load 一次不会叠加
+        loaded2 = catalog.load(force=True)
+        mimo2 = next(e for e in loaded2 if e["id"] == "mimo-code")
+        self.assertEqual(mimo2["orch"]["resume_argv_template"], ["run", "-s", "{session}"])
+        catalog._CACHE["entries"] = None
+
+
+class TestUninstallDerive(BaseTest):
+    """卸载命令由安装命令推导：不单独维护一份，避免两边不同步。"""
+
+    def runTest(self):
+        from app.core import catalog
+        cases = [
+            ("npm install -g @openai/codex",
+             "npm uninstall -g @openai/codex"),
+            ("npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
+             "npm uninstall -g @earendil-works/pi-coding-agent"),
+            ("npm install -g opencode-ai@latest",
+             "npm uninstall -g opencode-ai"),
+            ("winget install -e --id Anthropic.ClaudeCode",
+             "winget uninstall -e --id Anthropic.ClaudeCode"),
+            ("py -3.13 -m pip install -U aider-chat",
+             "py -3.13 -m pip uninstall -y aider-chat"),
+        ]
+        for install, want in cases:
+            self.assertEqual(catalog.derive_uninstall(install), want, install)
+        # 认不出的渠道返回 None（由显式 uninstall 字段兜底）
+        self.assertIsNone(catalog.derive_uninstall("brew install foo"))
+        self.assertIsNone(catalog.derive_uninstall(""))
+        self.assertIsNone(catalog.derive_uninstall(None))
+        # 显式配置优先于推导
+        self.assertEqual(
+            catalog.uninstall_command({"id": "x", "install": "npm install -g a",
+                                       "uninstall": "  custom uninstall  "}),
+            "custom uninstall")
+        self.assertEqual(
+            catalog.uninstall_command({"id": "x", "install": "npm install -g a"}),
+            "npm uninstall -g a")
+        # 每个内置条目都能推出卸载命令（装了就能卸）
+        for e in catalog.DEFAULT_CATALOG:
+            self.assertTrue(catalog.uninstall_command(e),
+                            "内置条目缺少可推导的卸载命令: %s" % e["id"])
+
+
+class TestMgmtUninstall(BaseTest):
+    """卸载走与管理操作同一套：run_mgmt_command 取推导命令并执行。"""
+
+    def runTest(self):
+        from app.core import manager, runner
+        seen = {}
+        orig = runner.run_process
+
+        def fake(shell_cmd=None, **kw):
+            seen["cmd"] = shell_cmd
+            return {"ok": True, "exit_code": 0, "stdout": "", "stderr": "",
+                    "duration": 0.0, "cancelled": False, "timed_out": False}
+        runner.run_process = fake
+        try:
+            entry = {"id": "probe", "name": "Probe",
+                     "install": "npm install -g @scope/probe"}
+            res = manager.run_mgmt_command(entry, "uninstall")
+            self.assertTrue(res["ok"])
+            self.assertEqual(seen["cmd"], "npm uninstall -g @scope/probe")
+            self.assertEqual(res["command"], "npm uninstall -g @scope/probe")
+            # 推不出命令时明确报错，不执行空命令
+            bad = manager.run_mgmt_command({"id": "y", "install": "brew install z"},
+                                           "uninstall")
+            self.assertFalse(bad["ok"])
+            self.assertIn("uninstall", bad["error"])
+        finally:
+            runner.run_process = orig
+
+
 if __name__ == "__main__":
     import unittest as _u
     _u.main()

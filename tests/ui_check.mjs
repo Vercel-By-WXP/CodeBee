@@ -120,7 +120,67 @@ async function main() {
         Buffer.from(r.result.data, "base64"));
     });
 
-    // 6) 服务端确认这些请求没有 5xx（控制台无异常由服务日志兜底）
+    // 6) 侧栏左下角图标入口：设置/手机连接都是图标（无 emoji、无文字），点齿轮直接进设置页
+    await evalJs(`exitSettings(); localStorage.removeItem("orch.setTab"); "ok"`);
+    await sleep(300);
+    const footIcons = await evalJs(`JSON.stringify({
+      count: document.querySelectorAll("#btn-settings, #btn-phone-side").length,
+      iconed: document.querySelectorAll("#btn-settings > svg.ico use, #btn-phone-side > svg.ico use").length,
+      text: (document.getElementById("btn-settings").textContent || "").trim(),
+      emoji: /[\\u{1F300}-\\u{1FAFF}\\u{2600}-\\u{27BF}]/u.test(document.querySelector(".side-foot").textContent || "")
+    })`);
+    const foot = JSON.parse(footIcons);
+    check("左下角两个图标入口都存在", foot.count === 2, JSON.stringify(foot));
+    check("设置/手机连接用 SVG 图标而非文字或 emoji", foot.iconed === 2 && foot.text === "" && !foot.emoji, JSON.stringify(foot));
+
+    await evalJs(`document.getElementById("btn-settings").click(); "ok"`);
+    await sleep(900);
+    const afterClick = await evalJs(`JSON.stringify({
+      settingsMode: document.body.classList.contains("settings-mode"),
+      menuHidden: document.getElementById("ctx-menu").classList.contains("hidden"),
+      menuEmpty: (document.getElementById("ctx-menu").innerHTML || "").trim() === "",
+      sideVisible: getComputedStyle(document.querySelector(".side-settings")).display,
+      title: document.getElementById("page-title").textContent,
+      active: (document.querySelector(".set-item.active") || {}).dataset?.sub || ""
+    })`);
+    const ac = JSON.parse(afterClick);
+    check("点齿轮直接进设置页（不再弹菜单）",
+      ac.settingsMode && ac.menuHidden && ac.menuEmpty && ac.sideVisible === "flex",
+      afterClick);
+    check("设置页默认落到一个有效子页", ["tasks", "runs", "usage", "agents", "models", "bindings", "orch", "appearance"].includes(ac.active) && !!ac.title, afterClick);
+
+    const navIcons = await evalJs(`JSON.stringify({
+      items: document.querySelectorAll(".side-settings .set-item").length,
+      iconed: document.querySelectorAll(".side-settings .set-item > svg.ico use[href^='#i-']").length,
+      back: !!document.querySelector("#btn-set-back > svg.ico use"),
+      texts: Array.from(document.querySelectorAll(".side-settings .set-item")).map(b => b.textContent.trim())
+    })`);
+    const nav = JSON.parse(navIcons);
+    check("设置导航每项都有统一 SVG 图标", nav.items >= 8 && nav.iconed === nav.items && nav.back, JSON.stringify(nav));
+    check("设置导航只剩纯文字标签（无 emoji 混排）",
+      nav.texts.every((t) => !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{2BFF}]/u.test(t)), JSON.stringify(nav.texts));
+
+    // 切回设置后回退：返回 Tutti 应恢复任务树
+    await evalJs(`document.getElementById("btn-set-back").click(); "ok"`);
+    await sleep(400);
+    const backOk = await evalJs(`JSON.stringify({
+      settingsMode: document.body.classList.contains("settings-mode"),
+      mainVisible: getComputedStyle(document.querySelector(".side-main")).display
+    })`);
+    const bk = JSON.parse(backOk);
+    check("返回 Tutti 恢复任务树", !bk.settingsMode && bk.mainVisible === "flex", backOk);
+    await send("Page.captureScreenshot", { format: "png" }).then((r) => {
+      writeFileSync(join(ROOT, ".ui-shots", "r3-sidebar.png"),
+        Buffer.from(r.result.data, "base64"));
+    });
+    await evalJs(`document.getElementById("btn-settings").click(); "ok"`);
+    await sleep(800);
+    await send("Page.captureScreenshot", { format: "png" }).then((r) => {
+      writeFileSync(join(ROOT, ".ui-shots", "r3-settings-nav.png"),
+        Buffer.from(r.result.data, "base64"));
+    });
+
+    // 7) 服务端确认这些请求没有 5xx（控制台无异常由服务日志兜底）
     const state = await fetch(SERVICE + "/api/state").then((r) => r.json());
     check("页面操作期间服务状态正常", Array.isArray(state.agents));
 

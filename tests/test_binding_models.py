@@ -7,6 +7,7 @@ registry 只保留「参与编排」开关。
 from __future__ import annotations
 
 import json
+import unittest
 
 from base import BaseTest
 
@@ -125,3 +126,7 @@ class TestBindingModelChain(BaseTest):
         # 删 m1 → 链里同步清除
         modelhub.model_op(pid, "m1", "delete")
         self.assertEqual(modelhub.bindings()["codex-cli"]["models"], ["m2"])
+
+
+if __name__ == "__main__":
+    unittest.main()
