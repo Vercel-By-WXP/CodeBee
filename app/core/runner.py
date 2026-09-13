@@ -363,9 +363,16 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             out = {"ok": res["ok"], "text": "", "json": None, "cost_usd": 0.0,
                    "tokens": 0, "error": "", "raw": res, "kind": kind, "model": att["model"]}
             if not res["ok"]:
+                tail = (res["stderr"] or res["stdout"] or "")[-500:]
                 out["error"] = (("超时" if res["timed_out"] else "取消" if res["cancelled"]
                                  else "退出码 %s" % res["exit_code"])
-                                + ("；stderr: " + res["stderr"][-500:] if res["stderr"] else ""))
+                                + ("；stderr/stdout: " + tail if tail else ""))
+                if kind == "claude":
+                    # claude 把 API Error(503/无渠道…)写在 stdout JSON 的 result(is_error)，
+                    # 提取出来供降级判定（stderr 尾部可能只是无害警告）
+                    parsed = _parse_claude_json(res["stdout"] or "")
+                    if parsed and parsed.get("is_error") and parsed.get("text"):
+                        out["error"] = "claude 返回 is_error: " + parsed["text"][:500]
                 break
             if kind == "codex":
                 out["text"], out["tokens"] = _parse_codex_jsonl(res["stdout"])

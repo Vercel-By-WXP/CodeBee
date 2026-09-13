@@ -223,6 +223,59 @@ class TestSerialPipeline(BaseTest):
         self.assertEqual(t["serial"]["words_per_chapter"], 500)
 
 
+class TestSerialResume(BaseTest):
+    """连载断点续跑：retry 继承上一遍大纲与已完成章，只补写缺失章。"""
+
+    def runTest(self):
+        from app.core import pipeline, store
+        pipeline._agents = self.mock_agents
+        task = store.create_task({
+            "type": "serial_novel", "title": "续跑测试", "mode": "auto",
+            "goal": "短篇连载", "workdir": str(self.workdir),
+            "serial": {"chapters": 3, "words_per_chapter": 800},
+            "threshold": 6.0,
+        })
+        # 模拟一次中断的运行：大纲 + 前两章已起草完成
+        run1 = store.create_run("orchestration", task["title"], task_id=task["id"])
+        outline = {"book_title": "续跑书", "chapters": [
+            {"title": "一", "beats": "b1", "hook": ""},
+            {"title": "二", "beats": "b2", "hook": ""},
+            {"title": "三", "beats": "b3", "hook": ""}],
+            "source": "template"}
+        store.update_run(run1["id"], outline=outline)
+        for i in (1, 2):
+            step, _ = store.add_step(run1["id"], "draft-c%d" % i, "mock-a", "mock")
+            store.finish_step(run1["id"], step["n"], "done", summary="ok")
+            with (self.workdir / ("chapter-%02d.md" % i)).open("w", encoding="utf-8") as f:
+                f.write("第 %d 章旧稿内容" % i)
+        store.update_run(run1["id"], status="failed", error="中断", ended_at="x")
+
+        ok, err, run2 = store.retry_task(task["id"])
+        self.assertTrue(ok, err)
+        self.assertEqual(run2["inherit"]["done_chapters"], [1, 2])
+        self.assertEqual(run2["inherit"]["outline"]["book_title"], "续跑书")
+        pipeline.execute_run(run2["id"])
+        run2 = store.get_run(run2["id"])
+        self.assertEqual(run2["status"], "done", run2.get("error"))
+        v = run2["verdict"]
+        self.assertEqual(v["chapters_used"], 3)
+        self.assertTrue(v["publishable"], v)
+        roles = [(s["role"], s.get("note") or "") for s in run2["steps"]]
+        d1 = [n for n, note in roles if n == "draft-c1"]
+        self.assertTrue(d1, roles)
+        # 前两章的起草步骤应标注断点续跑（复用旧稿），且全部三份稿件在盘
+        self.assertEqual(len(d1), 1)
+        resumed = [s for s in run2["steps"]
+                   if s["role"] == "draft-c1" and "断点续跑" in (s.get("summary") or "")]
+        self.assertTrue(resumed, [s["role"] + ":" + (s.get("summary") or "") for s in run2["steps"]])
+        for i in (1, 2, 3):
+            self.assertTrue((self.workdir / ("chapter-%02d.md" % i)).is_file())
+        # 第 3 章是新起草的（mock 内容与旧稿不同——这里只验证步骤数：c3 起草 1 次无续跑标注）
+        c3 = [s for s in run2["steps"] if s["role"] == "draft-c3"]
+        self.assertEqual(len(c3), 1)
+        self.assertNotIn("断点续跑", c3[0].get("summary") or "")
+
+
 if __name__ == "__main__":
     import unittest as _u
     _u.main()

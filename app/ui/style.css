@@ -462,17 +462,24 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .phone-connect .hint { text-align: center; }
 
 /* ---------------- 响应式 ---------------- */
+/* 手机抽屉遮罩：抽屉展开时盖住内容区，点击关闭抽屉 */
+#drawer-mask { display: none; }
 @media (max-width: 900px) {
   #app { grid-template-columns: 1fr; }
   body.side-collapsed #app { grid-template-columns: 1fr; }
   #sidebar {
-    position: fixed; z-index: 60; top: 0; left: 0; bottom: 0; width: 280px;
+    position: fixed; z-index: 60; top: 0; left: 0; bottom: 0;
+    width: min(300px, 84vw);
     transform: translateX(-105%); transition: transform .2s ease;
     box-shadow: var(--shadow);
     opacity: 1 !important; pointer-events: auto !important;
     padding: 14px 12px 12px !important; border-right: 1px solid var(--border) !important;
   }
   body:not(.side-collapsed) #sidebar { transform: none; }
+  body:not(.side-collapsed) #drawer-mask {
+    display: block; position: fixed; inset: 0; z-index: 55;
+    background: rgba(0, 0, 0, .45);
+  }
   main { padding: 18px 14px 70px; }
   .panel { padding: 16px; }
   .composer { padding: 20px 18px 16px; }
@@ -489,7 +496,8 @@ button.small { padding: 4px 10px; font-size: 12px; }
   .top-actions { gap: 6px; }
   .pill { max-width: 140px; padding: 4px 10px; font-size: 11.5px; }
   .pill.ctrl { max-width: none; }
-  .q-mark { display: none; }
+  /* 手机顶栏精简：模型胶囊与帮助符号撤下（模型入口在 设置 → 模型接入） */
+  #model-pill, .q-mark { display: none; }
   .page-title { font-size: 14px; }
   main { padding: 14px 10px 70px; }
   .panel { padding: 13px; }

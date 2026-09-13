@@ -2206,6 +2206,11 @@ function fallbackCopy(text, done) {
   ta.remove();
 }
 
+/* 手机端（<900px）抽屉收起：点导航/任何侧栏可点项后都应收回，别挡内容 */
+function collapseDrawerIfMobile() {
+  if (window.innerWidth < 900) document.body.classList.add("side-collapsed");
+}
+
 function switchTab(name) {
   if (name === "__phone") { openPhoneConnect(); return; }  // 手机连接是弹框，不切页
   // 导航收进「设置」：进设置后左栏整体换成设置导航，内容铺满
@@ -2219,6 +2224,7 @@ function switchTab(name) {
   if (name === "runs" && !S.detailRunId) closeRun();
   if (name === "agents") autoCheckUpdates();   // 进目录页自动查各 CLI 新版本
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排中枢页拉取配置
+  collapseDrawerIfMobile();
 }
 
 /* 退出设置：左栏恢复任务树，内容回到任务页 */
@@ -2230,6 +2236,7 @@ function exitSettings() {
   document.body.classList.remove("settings-mode");
   const title = $("page-title");
   if (title) title.textContent = TAB_TITLES.tasks;
+  collapseDrawerIfMobile();
 }
 
 /* 侧栏底部「⚙ 设置」：弹出导航菜单（任务/运行记录/智能体管理/模型接入/CLI 绑定） */
@@ -2333,6 +2340,11 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-delete").addEventListener("click", () => { if (S.detailRunId) deleteRun(S.detailRunId); });
   $("btn-theme").addEventListener("click", toggleTheme);
   $("btn-menu").addEventListener("click", () => document.body.classList.toggle("side-collapsed"));
+  // 手机抽屉：遮罩点击 / 侧栏内任何可点项（导航、任务树、设置入口）点击后都收回
+  $("drawer-mask").addEventListener("click", () => document.body.classList.add("side-collapsed"));
+  $("sidebar").addEventListener("click", (e) => {
+    if (e.target.closest("button, summary, .stepx")) collapseDrawerIfMobile();
+  });
   $("btn-new-task").addEventListener("click", exitSettings);
   bindCtxMenus();
   if (window.innerWidth < 900) document.body.classList.add("side-collapsed");

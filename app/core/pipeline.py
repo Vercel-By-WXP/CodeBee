@@ -517,7 +517,8 @@ __PREV__
 - 章节标题：__TITLE__
 - 剧情要点：__BEATS__
 - 章末钩子：__HOOK__
-- 正文约 __WORDS__ 字，中文，直接开写正文（可含本章标题行），不要写任何与正文无关的说明。"""
+- 正文约 __WORDS__ 字，中文，直接开写正文（可含本章标题行）。
+- 写完文件后，最终回复只输出一行：`第 __I__ 章完成（约 __WORDS__ 字）`——不要在回复里复述或解释正文。"""
 
 SERIAL_REVISE_PROMPT = """你是一名网文作者。第 __I__ 章没有通过评审，请修订文件 `__FILE__`（直接改写该文件）。
 
@@ -596,19 +597,34 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         return tpl.replace("__DIMKEYS__", dimkey).replace(
             "__MANUSCRIPT__", text or "（稿件为空！）")
 
-    # ---- 1) 大纲
-    outline_step, outline_log = store.add_step(run_id, "outline", impl["id"], impl.get("label"),
-                                               note=route.get("author", ""))
-    outline = planner.make_serial_outline(task, impl, workdir, ev)
-    try:
-        outline_log.write_text(_json.dumps(outline, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception:
-        pass
-    store.finish_step(run_id, outline_step["n"], "done",
-                      summary="大纲来源 %s：%s（共 %d 章）" % (
-                          outline.get("source", "?"),
-                          outline.get("book_title") or task["title"], n),
-                      duration_s=0.1 if impl.get("mode") == "mock" else None)
+    # ---- 1) 大纲（断点续跑时直接继承上一遍，保证全书结构一致）
+    inherit = run.get("inherit") or {}
+    done_set = set(inherit.get("done_chapters") or [])
+    inh_scores = {c.get("chapter"): c for c in (inherit.get("chapter_scores") or [])}
+    if inherit.get("outline"):
+        outline = inherit["outline"]
+        n = len(outline.get("chapters") or []) or n
+        outline_step, _ = store.add_step(run_id, "outline", impl["id"], impl.get("label"),
+                                         note="断点续跑")
+        store.finish_step(run_id, outline_step["n"], "done",
+                          summary="继承上一遍大纲（共 %d 章），已完成 %d 章将被复用"
+                                  % (n, len(done_set & set(range(1, n + 1)))),
+                          duration_s=0.1)
+    else:
+        outline_step, outline_log = store.add_step(run_id, "outline", impl["id"], impl.get("label"),
+                                                   note=route.get("author", ""))
+        outline = planner.make_serial_outline(task, impl, workdir, ev)
+        try:
+            with open(outline_log, "a", encoding="utf-8") as f:
+                f.write("\n===== 最终大纲 =====\n")
+                f.write(_json.dumps(outline, ensure_ascii=False, indent=2))
+        except Exception:
+            pass
+        store.finish_step(run_id, outline_step["n"], "done",
+                          summary="大纲来源 %s：%s（共 %d 章）" % (
+                              outline.get("source", "?"),
+                              outline.get("book_title") or task["title"], n),
+                          duration_s=0.1 if impl.get("mode") == "mock" else None)
     store.update_run(run_id, outline=outline)
     _check_cancel(ev)
     outline_txt = "\n".join(
@@ -632,8 +648,16 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     tails.append("（第 %d 章结尾）…%s" % (j, t[-260:].strip()))
             prev = "\n".join(tails) or "（无）"
 
-        # 起草
-        if impl.get("mode") == "mock":
+        reuse = i in done_set and os.path.exists(os.path.join(workdir, ch_file))
+        if reuse:
+            # 断点续跑：上一遍已写好的章直接复用（不重写；分数沿用既有记录或重评）
+            step, _log = store.add_step(run_id, "draft-c%d" % i, impl["id"], impl.get("label"),
+                                        note="断点续跑")
+            store.finish_step(run_id, step["n"], "done",
+                              summary="（断点续跑）复用上一遍成稿 %s（约 %d 字）"
+                                      % (ch_file, _wc(_read_chapter(workdir, i))),
+                              duration_s=0.1)
+        elif impl.get("mode") == "mock":
             step, log_abs = store.add_step(run_id, "draft-c%d" % i, impl["id"], impl.get("label"))
             _write_chapter(workdir, i, mocks.draft_manuscript(
                 {"title": ch["title"], "goal": task["goal"]}, 1))
@@ -651,12 +675,21 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                       .replace("__HOOK__", ch.get("hook") or "留下悬念")
                       .replace("__WORDS__", str(wpc)))
             res = _run_step(run_id, "draft-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
-                            workdir, readonly=False, ev=ev,
+                            workdir, readonly=False, ev=ev, timeout=2400,
                             resume=resume_ctx["session"] if resume_ctx else None)
             if not res["ok"]:
                 store.update_run(run_id, status="failed",
                                  error="第 %d 章起草失败: %s" % (i, res.get("error")), ended_at=_now())
                 return
+
+        # 复用章且上一遍已有评审分数 → 直接沿用，不再重评
+        if reuse and inh_scores.get(i, {}).get("means"):
+            cs = dict(inh_scores[i])
+            cs.setdefault("chapter", i)
+            cs["reused"] = True
+            chapter_scores.append(cs)
+            store.update_run(run_id, chapter_scores=chapter_scores)
+            continue
 
         # 评审-修订（每章至多 1 轮修订）
         rounds_used = 1
@@ -717,13 +750,15 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__CRITIQUE__", "\n".join(crit_lines))
                           .replace("__WORDS__", str(wpc)))
                 _run_step(run_id, "revise-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
-                          workdir, readonly=False, ev=ev,
+                          workdir, readonly=False, ev=ev, timeout=2400,
                           resume=resume_ctx["session"] if resume_ctx else None)
             _check_cancel(ev)
         chapter_scores.append({"chapter": i, "title": ch["title"], "means": means,
                                "passed": bool(means) and all(v >= threshold_ch for v in means.values()),
                                "rounds": rounds_used,
                                "words": _wc(_read_chapter(workdir, i))})
+        # 每章即时持久化：长篇中断/超时后可断点续跑，不丢已完成章的分数
+        store.update_run(run_id, chapter_scores=chapter_scores)
 
     # ---- 3) 全局一致性评审
     full_text = "\n\n".join(_read_chapter(workdir, i) for i in range(1, n + 1))
@@ -742,7 +777,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                             (SERIAL_GLOBAL_PROMPT.replace("__DIMKEYS__", dimkey)
                              .replace("__GOAL__", task["goal"])
                              .replace("__MANUSCRIPT__", full_text[:60000])),
-                            workdir, readonly=True, ev=ev)
+                            workdir, readonly=True, ev=ev, timeout=2400)
             gj = runner.extract_json(res.get("text") or "")
             if not isinstance(gj, dict) or not isinstance(gj.get("scores"), dict):
                 gj = {"scores": {}, "issues": [], "summary": "全局评审输出无法解析"}

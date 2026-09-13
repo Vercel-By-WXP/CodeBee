@@ -395,7 +395,12 @@ def delete_task(task_id):
 
 
 def retry_task(task_id):
-    """手动重试：为失败/已取消的任务再创建一次新运行。返回 (ok, 错误, run)。"""
+    """手动重试：为失败/已取消的任务再创建一次新运行。返回 (ok, 错误, run)。
+
+    连载任务断点续跑：若上一次运行已产出大纲与部分章节成稿，新运行继承
+    （inherit）大纲与已完成章号——流水线跳过这些章的起草（成稿/评审分数
+    直接复用或重评），避免几十万字长篇因一次超时全部重来。
+    """
     if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)):
         return False, "非法的任务 ID", None
     with LOCK:
@@ -406,8 +411,29 @@ def retry_task(task_id):
             if r.get("task_id") == task_id and r.get("status") in ("queued", "running"):
                 return False, "任务仍在运行中，不能重试", None
         run = create_run("orchestration", task.get("title") or task_id, task_id=task_id)
+        if task.get("serial"):
+            prev_runs = sorted((r for r in _RUNS.values()
+                                if r.get("task_id") == task_id and r["id"] != run["id"]),
+                               key=lambda r: r["id"], reverse=True)
+            for prev in prev_runs:
+                outline = prev.get("outline")
+                if not outline:
+                    continue
+                done = sorted({int(s["role"].split("c")[-1])
+                               for s in (prev.get("steps") or [])
+                               if s.get("status") == "done"
+                               and (s.get("role") or "").startswith("draft-c")
+                               and str(s.get("role")).split("c")[-1].isdigit()})
+                if done:
+                    run["inherit"] = {
+                        "outline": outline,
+                        "done_chapters": done,
+                        "chapter_scores": ((prev.get("verdict") or {}).get("chapter_scores") or []),
+                    }
+                    break
         task["status"] = "queued"
         _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
+        _save_json(paths.RUNS_DIR / run["id"] / "run.json", run)
     return True, "", run
 
 
