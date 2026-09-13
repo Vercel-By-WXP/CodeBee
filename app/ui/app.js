@@ -2139,7 +2139,192 @@ async function saveSettings() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { tasks: "任务", runs: "运行记录", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", orch: "编排中枢" };
+const TAB_TITLES = { tasks: "任务", runs: "运行记录", usage: "用量统计", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", orch: "编排中枢" };
+
+
+
+/* ---------------------------------------------------------- 用量统计 */
+/* 台账：/api/usage 按天/工具(CLI)/智能体/模型/角色/任务类型多维聚合；纯 SVG 画趋势 */
+
+function fmtTok(n) {
+  n = Number(n) || 0;
+  if (n >= 1e8) return (n / 1e8).toFixed(2) + "亿";
+  if (n >= 1e4) return (n / 1e4).toFixed(n >= 1e6 ? 0 : 1) + "万";
+  return n.toLocaleString("en-US");
+}
+
+function fmtUsd(x) {
+  x = Number(x) || 0;
+  if (!x) return "$0";
+  if (x < 0.01) return "$" + x.toFixed(4);
+  if (x < 1) return "$" + x.toFixed(3);
+  return "$" + x.toFixed(2);
+}
+
+function fmtDur(s) {
+  s = Number(s) || 0;
+  if (s >= 3600) return (s / 3600).toFixed(1) + "h";
+  if (s >= 60) return Math.round(s / 60) + "min";
+  return Math.round(s) + "s";
+}
+
+/* 工具 kind → 显示名 */
+function toolName(t) {
+  return { codex: "Codex CLI", claude: "Claude Code", qwen: "Qwen CLI",
+           opencode: "OpenCode", aider: "Aider", generic: "自定义 CLI",
+           orchestrator: "编排者 · 直连API" }[t] || t;
+}
+
+/* 角色前缀 → 中文（implement-2/4、critique-c3 这类带后缀的取前缀） */
+function roleName(r) {
+  const base = String(r || "").split("-")[0].replace(/\d+$/, "");
+  return { plan: "规划", implement: "实现", review: "评审", verify: "验证", fix: "修复",
+           draft: "起草", critique: "评审", revise: "修订", outline: "大纲",
+           merge: "合并", smoke: "冒烟", "ai": "AI修复", global: "全局评审",
+           "orch": "连通测试" }[base] || r;
+}
+
+async function loadUsage() {
+  const kpis = $("usage-kpis");
+  if (!kpis) return;
+  try {
+    S.usage = await api("/api/usage?days=" + encodeURIComponent(S.usageDays ?? 30));
+    renderUsage();
+  } catch (e) {
+    kpis.innerHTML = '<p class="hint">加载失败：' + esc(e.message) + "</p>";
+  }
+}
+
+function setUsageDays(days) {
+  S.usageDays = Number(days);
+  document.querySelectorAll("#usage-ranges [data-days]").forEach((b) =>
+    b.classList.toggle("active", Number(b.dataset.days) === S.usageDays));
+  loadUsage();
+}
+
+function kpiCard(label, value, sub, wide) {
+  return '<div class="kpi' + (wide ? " wide" : "") + '"><div class="kpi-v">' + value +
+    '</div><div class="kpi-l">' + esc(label) + "</div>" +
+    (sub ? '<div class="kpi-s">' + esc(sub) + "</div>" : "") + "</div>";
+}
+
+/* 每日堆叠柱状图：输入(accent) / 缓存(ok) / 输出(accent2)，悬浮出明细 */
+function usageTrendSvg(byDay) {
+  if (!byDay || !byDay.length) return '<p class="hint">（暂无数据）</p>';
+  const W = 720, H = 210, padT = 12, padB = 24, padL = 6, padR = 6;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const max = Math.max(1, ...byDay.map((d) => (d.tokens || 0)));
+  const n = byDay.length;
+  const gap = n > 90 ? 1 : Math.max(2, Math.floor(iw / n / 4));
+  const bw = Math.max(2, (iw - gap * (n - 1)) / n);
+  let bars = "", labels = "";
+  const labelStep = Math.max(1, Math.ceil(n / 9));
+  byDay.forEach((d, i) => {
+    const x = padL + i * (bw + gap);
+    const tok = d.tokens || 0;
+    const hIn = ih * ((d.input || 0) / max);
+    const hCa = ih * (((d.tokens || 0) - (d.input || 0) - (d.output || 0)) / max);
+    const hOut = ih * ((d.output || 0) / max);
+    if (tok > 0) {
+      const tip = esc(d.day + "　总 " + fmtTok(tok) + "（输入 " + fmtTok(d.input || 0) +
+        " · 输出 " + fmtTok(d.output || 0) + " · 其他/缓存 " + fmtTok(Math.max(0, tok - (d.input || 0) - (d.output || 0))) +
+        "）\n调用 " + (d.calls || 0) + " 次 · " + fmtUsd(d.cost_usd));
+      const yBase = padT + ih;
+      bars += '<rect x="' + x.toFixed(1) + '" y="' + (yBase - hIn).toFixed(1) +
+        '" width="' + bw.toFixed(1) + '" height="' + Math.max(hIn, tok > 0 ? 1 : 0).toFixed(1) +
+        '" fill="var(--accent)"><title>' + tip + "</title></rect>";
+      bars += '<rect x="' + x.toFixed(1) + '" y="' + (yBase - hIn - hCa).toFixed(1) +
+        '" width="' + bw.toFixed(1) + '" height="' + Math.max(0, hCa).toFixed(1) +
+        '" fill="var(--ok)" opacity="0.55"><title>' + tip + "</title></rect>";
+      bars += '<rect x="' + x.toFixed(1) + '" y="' + (yBase - hIn - hCa - hOut).toFixed(1) +
+        '" width="' + bw.toFixed(1) + '" height="' + Math.max(0, hOut).toFixed(1) +
+        '" fill="var(--accent2)" opacity="0.9"><title>' + tip + "</title></rect>";
+    }
+    if (i % labelStep === 0 || i === n - 1) {
+      labels += '<text class="uc-x" x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - 7) +
+        '" text-anchor="middle">' + esc(String(d.day).slice(5)) + "</text>";
+    }
+  });
+  return '<svg class="usage-svg" viewBox="0 0 ' + W + " " + H + '" role="img" preserveAspectRatio="xMidYMid meet">' +
+    bars + labels +
+    '<g class="uc-legend">' +
+    '<rect x="6" y="2" width="10" height="10" rx="2" fill="var(--accent)"/><text class="uc-x" x="20" y="11">输入</text>' +
+    '<rect x="52" y="2" width="10" height="10" rx="2" fill="var(--ok)" opacity="0.55"/><text class="uc-x" x="66" y="11">缓存/其他</text>' +
+    '<rect x="118" y="2" width="10" height="10" rx="2" fill="var(--accent2)" opacity="0.9"/><text class="uc-x" x="132" y="11">输出</text>' +
+    "</g></svg>";
+}
+
+/* 维度排行表：首列名称带相对占比条 */
+function usageDimTable(title, rows) {
+  let body;
+  if (!rows || !rows.length) {
+    body = '<p class="hint">（该维度暂无数据）</p>';
+  } else {
+    const maxTok = Math.max(1, ...rows.map((r) => r.tokens || 0));
+    body = '<table class="usage-table"><thead><tr>' +
+      "<th>" + esc(title) + "</th><th>调用</th><th>Tokens</th><th>输入/输出</th><th>耗时</th><th>费用</th>" +
+      "</tr></thead><tbody>" + rows.map((r) => {
+        const pct = Math.round((r.tokens || 0) * 100 / maxTok);
+        const okPct = r.calls ? Math.round((r.ok || 0) * 100 / r.calls) : 0;
+        return "<tr>" +
+          '<td class="bar-cell"><div class="bar" style="width:' + pct + '%"><span>' +
+          esc(r.key) + '</span><i>' + okPct + "% 成</i></div></td>" +
+          '<td class="num">' + fmtTok(r.calls) + "</td>" +
+          '<td class="num" title="输入 ' + fmtTok(r.input) + ' · 输出 ' + fmtTok(r.output) + '">' + fmtTok(r.tokens) + "</td>" +
+          '<td class="num sub">' + fmtTok(r.input) + " / " + fmtTok(r.output) + "</td>" +
+          '<td class="num sub">' + fmtDur(r.duration_s) + "</td>" +
+          '<td class="num">' + fmtUsd(r.cost_usd) + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  }
+  return '<h3 class="sec-title">' + esc(title) + "</h3>" + body;
+}
+
+function usageRecentTable(rows) {
+  if (!rows || !rows.length) return '<p class="hint">（暂无数据）</p>';
+  return '<table class="usage-table recent"><thead><tr>' +
+    "<th>时间</th><th>工具</th><th>智能体</th><th>模型</th><th>角色</th><th>状态</th><th>Tokens</th><th>费用</th>" +
+    "</tr></thead><tbody>" + rows.map((r) => {
+      const det = "输入 " + fmtTok(r.input) + " · 缓存 " + fmtTok(r.cached) + " · 输出 " + fmtTok(r.output);
+      const model = String(r.model || "");
+      return "<tr" + (r.ok ? "" : ' class="bad-row"') + ">" +
+        '<td class="num sub">' + esc(String(r.ts || "").slice(5)) + "</td>" +
+        "<td>" + esc(toolName(r.tool)) + "</td>" +
+        "<td>" + esc(r.agent_label || r.agent || "") + "</td>" +
+        '<td class="mono" title="' + esc(det) + '">' + esc(model.length > 30 ? model.slice(0, 29) + "…" : model) + "</td>" +
+        '<td class="sub">' + esc(roleName(r.role)) + "</td>" +
+        "<td>" + (r.ok ? '<span class="chip done">OK</span>' : '<span class="chip failed">失败</span>') + "</td>" +
+        '<td class="num" title="' + esc(det) + '">' + fmtTok(r.total) + "</td>" +
+        '<td class="num">' + fmtUsd(r.cost_usd) + "</td></tr>";
+    }).join("") + "</tbody></table>";
+}
+
+function renderUsage() {
+  const u = S.usage;
+  if (!u) return;
+  const t = u.totals || {};
+  const activeDays = t.days_active || 0;
+  $("usage-kpis").innerHTML = [
+    kpiCard("总 Tokens", fmtTok(t.tokens),
+      "输入 " + fmtTok(t.input) + " · 输出 " + fmtTok(t.output) + " · 缓存 " + fmtTok(t.cached), true),
+    kpiCard("调用次数", fmtTok(t.calls),
+      "成功率 " + (t.calls ? Math.round(t.ok * 100 / t.calls) : 0) + "%（失败 " + fmtTok(t.failed) + "）"),
+    kpiCard("累计费用", fmtUsd(t.cost_usd),
+      "活跃日均 " + fmtUsd(activeDays ? t.cost_usd / activeDays : 0)),
+    kpiCard("单次均值", fmtTok(t.avg_tokens_per_call) + " tok",
+      "缓存命中率 " + (t.cache_rate || 0) + "%"),
+    kpiCard("活跃天数", fmtTok(activeDays),
+      "累计调用时长 " + fmtDur(t.duration_s)),
+  ].join("");
+  $("usage-trend").innerHTML = usageTrendSvg(u.by_day || []);
+  $("usage-dims").innerHTML = [
+    ["按工具（CLI / API）", u.by_tool],
+    ["按智能体", u.by_agent],
+    ["按模型", u.by_model],
+    ["按步骤角色", u.by_role],
+    ["按任务类型", u.by_task_type],
+  ].map(([title, rows]) => usageDimTable(title, rows)).join("");
+  $("usage-recent").innerHTML = usageRecentTable(u.recent || []);
+}
 
 
 
@@ -2224,6 +2409,7 @@ function switchTab(name) {
   if (name === "runs" && !S.detailRunId) closeRun();
   if (name === "agents") autoCheckUpdates();   // 进目录页自动查各 CLI 新版本
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排中枢页拉取配置
+  if (name === "usage") loadUsage();           // 进用量页拉取统计（切范围/手动刷新再拉）
   collapseDrawerIfMobile();
 }
 
@@ -2247,10 +2433,12 @@ function openSettingsMenu() {
   openCtxMenu(r.left, r.top - 8, [
     { label: "✦ 任务", fn: () => switchTab("tasks") },
     { label: "≡ 运行记录", fn: () => switchTab("runs") },
+    { label: "📊 用量统计", fn: () => switchTab("usage") },
     { label: "⚙ 智能体管理", fn: () => switchTab("agents") },
     { label: "◈ 模型接入", fn: () => switchTab("models") },
     { label: "🔗 CLI 绑定", fn: () => switchTab("bindings") },
     { label: "✦ 编排中枢", fn: () => switchTab("orch") },
+    { label: "📱 手机连接", fn: () => openPhoneConnect() },
   ]);
 }
 
@@ -2275,6 +2463,7 @@ window.bindRemove = bindRemove;
 window.bindPromote = bindPromote;
 window.mgmt = mgmt;
 window.switchTab = switchTab;
+window.setUsageDays = setUsageDays;
 window.saveProvider = saveProvider;
 window.delProvider = delProvider;
 window.openAddProviderDialog = openAddProviderDialog;
@@ -2334,6 +2523,9 @@ document.addEventListener("DOMContentLoaded", () => {
     openSettingsMenu();
   });
   $("model-pill").addEventListener("click", () => switchTab("models"));
+  document.querySelectorAll("#usage-ranges [data-days]").forEach((b) =>
+    b.addEventListener("click", () => setUsageDays(b.dataset.days)));
+  $("btn-usage-refresh").addEventListener("click", loadUsage);
   $("btn-back").addEventListener("click", closeRun);
   $("btn-cancel").addEventListener("click", cancelRun);
   $("btn-retry").addEventListener("click", () => { const r = S.lastRun; if (r && r.task_id) retryTask(r.task_id); });
