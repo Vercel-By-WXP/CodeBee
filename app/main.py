@@ -147,6 +147,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, skills.view())
             if path == "/api/settings":
                 return self._json(200, dict(settings.load(), **jobs.workers_info()))
+            if path == "/api/selfupdate":
+                from core import selfupdate
+                return self._json(200, selfupdate.check(
+                    force=bool(parse_qs(urlparse(self.path).query).get("force"))))
             if path == "/api/orchestrator":
                 from core import modelhub
                 return self._json(200, {"orchestrator": modelhub.orchestrator_view()})
@@ -323,6 +327,20 @@ class Handler(BaseHTTPRequestHandler):
             n = manager.check_updates_async(force=force)
             return self._json(200, {"ok": True, "count": n,
                                     "checking": manager.updates_checking()})
+        if path == "/api/selfupdate/apply":
+            from core import selfupdate
+            res = selfupdate.apply_upgrade()
+            return self._json(400, res) if res.get("error") else self._json(200, dict(res, ok=True))
+        if path == "/api/selfupdate/restart":
+            from core import selfupdate
+            global PORT
+            if not selfupdate.relaunch(PORT):
+                return self._json(400, {"error": "重启参数非法"})
+            def _bye():
+                time.sleep(0.8)
+                selfupdate.self_quit()
+            threading.Thread(target=_bye, daemon=True).start()
+            return self._json(200, {"ok": True, "message": "服务正在重启，几秒后自动恢复"})
         if path == "/api/models/provider/delete":
             from core import modelhub
             body = self._body()
@@ -706,17 +724,19 @@ def main():
                         help="服务跑在 Cloudflare Tunnel/frp 等反代后面时开启："
                              "带转发头的回源请求必须带令牌，防止本机回源被当成 127.0.0.1 豁免")
     parser.add_argument("--public-url", default="",
-                        help="固定公网地址（如 https://tutti.example.com），扫码弹框优先展示")
+                        help="固定公网地址（如 https://codebee.example.com），扫码弹框优先展示")
     parser.add_argument("--no-public-tunnel", action="store_true",
                         help="不自动开 Cloudflare 快速隧道（默认：检测到 cloudflared 就自动开，"
                              "获得随机 *.trycloudflare.com 公网地址，重启会变）")
+    parser.add_argument("--wait-port", action="store_true",
+                        help="自更新重启用：先等旧实例释放端口再启动（Windows 双 LISTEN 防护）")
     args = parser.parse_args()
 
     paths.ensure_dirs()
     from core import attachments
     n_pc = attachments.cleanup_stale()  # 待提交附件残留清理（崩溃/弃单不堆积）
     if n_pc:
-        print("[Tutti] 附件待提交区：清理过期残留 %d 个" % n_pc)
+        print("[CodeBee] 附件待提交区：清理过期残留 %d 个" % n_pc)
     catalog.load()
     store.load_all()
     from core import modelhub
@@ -752,46 +772,49 @@ def main():
 
     global PORT
     PORT = args.port
+    if args.wait_port:
+        from core import selfupdate
+        selfupdate.wait_port_before_bind(args.port)
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
 
     def _announce_public(url):
-        print("[Tutti] 公网     %s/?token=%s" % (url, tok))
-        print("[Tutti]          ← 任何网络可访问；临时地址重启会变，手机重新扫码即可。"
-              "\n[Tutti]          要固定域名：cloudflared tunnel login 后参考 README 公网章节。")
+        print("[CodeBee] 公网     %s/?token=%s" % (url, tok))
+        print("[CodeBee]          ← 任何网络可访问；临时地址重启会变，手机重新扫码即可。"
+              "\n[CodeBee]          要固定域名：cloudflared tunnel login 后参考 README 公网章节。")
         store.bump_state()  # 扫码弹框下次打开即可拿到公网地址
 
-    print("[Tutti] 本机     http://127.0.0.1:%d" % args.port)
-    print("[Tutti] 数据目录 %s" % paths.DATA_DIR)
+    print("[CodeBee] 本机     http://127.0.0.1:%d" % args.port)
+    print("[CodeBee] 数据目录 %s" % paths.DATA_DIR)
     if remote.PUBLIC_URL:
-        print("[Tutti] 公网     %s/?token=%s   ← 任何网络可访问（反代回源已强制校验令牌）"
+        print("[CodeBee] 公网     %s/?token=%s   ← 任何网络可访问（反代回源已强制校验令牌）"
               % (remote.PUBLIC_URL, tok))
     elif not args.no_public_tunnel and args.host != "127.0.0.1":
         if remote.has_local_creds():
-            print("[Tutti] （检测到已有 Cloudflare 隧道凭据：临时隧道在此类机器上不可用，"
+            print("[CodeBee] （检测到已有 Cloudflare 隧道凭据：临时隧道在此类机器上不可用，"
                   "请用 --public-url 配固定域名，或 start-public.bat）")
         elif remote.start_quick_tunnel(args.port, _announce_public):
-            print("[Tutti] 正在建立 Cloudflare 快速隧道（公网地址几秒后打印；"
+            print("[CodeBee] 正在建立 Cloudflare 快速隧道（公网地址几秒后打印；"
                   "若打不开说明当前网络不支持，可改用固定域名或 Tailscale）…")
         else:
-            print("[Tutti] （未检测到 cloudflared，跳过公网隧道；"
+            print("[CodeBee] （未检测到 cloudflared，跳过公网隧道；"
                   "winget install Cloudflare.cloudflared 后重启即可获得公网地址）")
     atexit.register(remote.stop_quick_tunnel)
     if args.host != "127.0.0.1":
         lan = remote.lan_ip()
         if lan:
-            print("[Tutti] 局域网   http://%s:%d/?token=%s   ← 手机同一 WiFi 直接打开" % (lan, args.port, tok))
+            print("[CodeBee] 局域网   http://%s:%d/?token=%s   ← 手机同一 WiFi 直接打开" % (lan, args.port, tok))
         ts = remote.tailscale_ip()
         if ts:
-            print("[Tutti] Tailscale http://%s:%d/?token=%s   ← 外网随时随地访问" % (ts, args.port, tok))
+            print("[CodeBee] Tailscale http://%s:%d/?token=%s   ← 外网随时随地访问" % (ts, args.port, tok))
         elif not remote.PUBLIC_URL:
-            print("[Tutti] （未检测到 Tailscale；安装后重启本服务即可获得外网地址）")
-        print("[Tutti] 远程访问受令牌保护；手机打开一次带 token 的地址后会记住。")
+            print("[CodeBee] （未检测到 Tailscale；安装后重启本服务即可获得外网地址）")
+        print("[CodeBee] 远程访问受令牌保护；手机打开一次带 token 的地址后会记住。")
     if not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open("http://127.0.0.1:%d" % args.port)).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\n[Tutti] 已退出")
+        print("\n[CodeBee] 已退出")
 
 
 if __name__ == "__main__":

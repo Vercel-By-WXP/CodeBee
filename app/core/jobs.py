@@ -214,6 +214,8 @@ def _worker():
                     pipeline.execute_run(run_id)
                 elif job.get("kind") == "mgmt":
                     _do_mgmt(job, ev)
+                elif job.get("kind") == "selfupgrade":
+                    _do_selfupgrade(job)
             except Exception:
                 try:
                     from . import store
@@ -304,6 +306,24 @@ def _do_mgmt(job, ev):
     store.update_run(run_id, status=final, ended_at=_now(),
                      summary=("%s %s %s%s" % (entry.get("name"), op,
                                               "完成" if final == "done" else "失败", suffix)))
+
+
+def _do_selfupgrade(job):
+    """CodeBee 自升级：在 mgmt run 里跑 npm install -g @latest，日志实时落盘。"""
+    from . import selfupdate, store
+    run_id = job["run_id"]
+    store.update_run(run_id, status="running", started_at=_now())
+    step, log_abs = store.add_step(run_id, "selfupgrade", "__self__", "CodeBee")
+    try:
+        res = selfupdate.run_upgrade(run_id, str(log_abs))
+    except Exception as e:
+        res = {"ok": False, "exit_code": None, "error": repr(e)}
+    store.finish_step(run_id, step["n"], "done" if res["ok"] else "failed",
+                      summary="升级完成，点「重启」生效" if res["ok"]
+                      else ("升级失败: " + res["error"][:300]),
+                      exit_code=res.get("exit_code"))
+    store.update_run(run_id, status="done" if res["ok"] else "failed", ended_at=_now(),
+                     summary="CodeBee selfupgrade %s" % ("完成" if res["ok"] else "失败"))
 
 
 def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
