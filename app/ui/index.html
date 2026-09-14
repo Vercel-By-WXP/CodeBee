@@ -93,63 +93,81 @@
   <aside id="sidebar">
     <!-- 常规视图：任务树 -->
     <div class="side-main">
-      <div class="brand" title="多智能体编排台 · All agents, one score.">
-        <span class="logo-tile" aria-hidden="true"><svg class="ico"><use href="#i-logo"></use></svg></span>
-        <span class="brand-name">Tutti<span class="sub">多智能体编排台 · All agents, one score.</span></span>
+      <div class="brand" title="CodeBee · 多智能体编排台" data-i18n-title="CodeBee · 多智能体编排台">
+        <span class="logo-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none">
+          <!-- 六边形蜂：蜂身即蜂房（六边形+两道条纹），双翅，环绕 8 字舞虚线 = 多智能体协作 -->
+          <path d="M4.2 9.2 C 6.8 6.2, 10.4 5.2, 13.6 6.1" stroke="#fff" stroke-opacity=".55" stroke-width="1.15" stroke-linecap="round" stroke-dasharray="2.3 2.3"/>
+          <path d="M19.8 14.8 C 17.2 17.8, 13.6 18.8, 10.4 17.9" stroke="#fff" stroke-opacity=".55" stroke-width="1.15" stroke-linecap="round" stroke-dasharray="2.3 2.3"/>
+          <ellipse cx="8.1" cy="7.2" rx="2.5" ry="1.5" fill="#fff" opacity=".55" transform="rotate(-38 8.1 7.2)"/>
+          <ellipse cx="15.9" cy="7.2" rx="2.5" ry="1.5" fill="#fff" opacity=".55" transform="rotate(38 15.9 7.2)"/>
+          <circle cx="12" cy="8.4" r="2.15" fill="#fff"/>
+          <polygon points="15.8,10.4 15.8,17.2 12,19.4 8.2,17.2 8.2,10.4 12,8.2"
+                   fill="#fff" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
+          <path d="M8.9 12.1 H15.1 M8.9 15 H15.1" stroke="#3b4870" stroke-width="1.35" stroke-linecap="round"/>
+        </svg></span>
+        <span class="brand-name">CodeBee</span>
       </div>
-      <button id="btn-new-task" class="new-task">＋ 新任务</button>
+      <button data-i18n="＋ 新任务" id="btn-new-task" class="new-task">＋ 新任务</button>
       <div class="side-section tasks">
-        <div class="side-label">任务</div>
+        <div class="side-label-row">
+          <div data-i18n="任务" class="side-label">任务</div>
+          <button id="btn-notify-toggle" class="foot-btn notify-toggle" title="完成/待裁决提示音" aria-label="完成/待裁决提示音"
+                  data-i18n-title="完成/待裁决提示音" data-i18n-aria="完成/待裁决提示音">
+            <svg class="ico" aria-hidden="true"><use href="#i-bell"></use></svg>
+          </button>
+        </div>
         <div id="side-tasks" class="side-tasks"></div>
       </div>
       <div class="side-foot">
-        <button id="btn-settings" class="foot-btn" title="设置" aria-label="设置">
+        <button id="btn-settings" class="foot-btn" title="设置" aria-label="设置" data-i18n-aria="设置" data-i18n-title="设置">
           <svg class="ico ico-lg" aria-hidden="true"><use href="#i-gear"></use></svg>
         </button>
-        <!-- 中间：Tutti 自己的智能体（编排者）当前用的厂商；点击到设置里的「编排中枢」更换 -->
+        <!-- 中间：CodeBee 自己的智能体（编排者）当前用的厂商；点击到设置里的「编排中枢」更换 -->
         <button id="btn-prov-side" class="foot-prov">
           <span id="prov-side-dot" class="pdot"></span>
-          <span id="prov-side-text" class="nm">未选厂商</span>
+          <span data-i18n="未选厂商" id="prov-side-text" class="nm">未选厂商</span>
         </button>
-        <button id="btn-phone-side" class="foot-btn" title="手机连接（扫码用手机打开 Tutti）" aria-label="手机连接">
+        <button id="btn-phone-side" class="foot-btn" title="手机连接（扫码用手机打开 CodeBee）" aria-label="手机连接" data-i18n-aria="手机连接" data-i18n-title="手机连接（扫码用手机打开 CodeBee）">
           <svg class="ico ico-lg" aria-hidden="true"><use href="#i-phone"></use></svg>
         </button>
       </div>
     </div>
     <!-- 设置视图：左栏整体变成设置导航 -->
     <div class="side-settings">
-      <button id="btn-set-back" class="set-back">
-        <svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>返回 Tutti
+      <button id="btn-set-back" class="set-back" data-i18n="返回 CodeBee">
+        <svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>返回 CodeBee
       </button>
-      <div class="set-group">编排</div>
-      <button class="set-item active" data-sub="tasks"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg>任务</button>
-      <button class="set-item" data-sub="runs"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>运行记录</button>
-      <button class="set-item" data-sub="usage"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg>用量统计</button>
-      <div class="set-group">配置</div>
-      <button class="set-item" data-sub="agents"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg>智能体管理</button>
-      <button class="set-item" data-sub="models"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>模型接入</button>
-      <button class="set-item" data-sub="bindings"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg>CLI 绑定</button>
-      <button class="set-item" data-sub="skills"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg>经验库</button>
-      <button class="set-item" data-sub="orch"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg>编排中枢</button>
-      <div class="set-group">外观</div>
-      <button class="set-item" data-sub="appearance"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg>皮肤</button>
-      <div class="set-group">远程</div>
-      <button id="btn-phone" class="set-item" data-sub="__phone"><svg class="ico" aria-hidden="true"><use href="#i-phone"></use></svg>手机连接</button>
+      <div data-i18n="编排" class="set-group">编排</div>
+      <button class="set-item active" data-sub="tasks" data-i18n="任务"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg>任务</button>
+      <button class="set-item" data-sub="runs" data-i18n="运行记录"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>运行记录</button>
+      <button class="set-item" data-sub="usage" data-i18n="用量统计"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg>用量统计</button>
+      <div data-i18n="配置" class="set-group">配置</div>
+      <button class="set-item" data-sub="agents" data-i18n="智能体管理"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg>智能体管理</button>
+      <button class="set-item" data-sub="models" data-i18n="模型接入"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>模型接入</button>
+      <button class="set-item" data-sub="bindings" data-i18n="CLI 绑定"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg>CLI 绑定</button>
+      <button class="set-item" data-sub="skills" data-i18n="经验库"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg>经验库</button>
+      <button class="set-item" data-sub="orch" data-i18n="编排中枢"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg>编排中枢</button>
+      <div data-i18n="外观" class="set-group">外观</div>
+      <button class="set-item" data-sub="appearance" data-i18n="皮肤"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg>皮肤</button>
+      <div data-i18n="软件" class="set-group">软件</div>
+      <button id="btn-about" class="set-item" data-sub="about" data-i18n="关于与更新"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>关于与更新</button>
+      <div data-i18n="远程" class="set-group">远程</div>
+      <button id="btn-phone" class="set-item" data-sub="__phone" data-i18n="手机连接"><svg class="ico" aria-hidden="true"><use href="#i-phone"></use></svg>手机连接</button>
     </div>
   </aside>
 
   <!-- ================= 主栏 ================= -->
   <div id="mainwrap">
     <header class="topbar">
-      <button id="btn-menu" class="icon-btn" title="收起 / 展开侧栏" aria-label="收起 / 展开侧栏">
+      <button id="btn-menu" class="icon-btn" title="收起 / 展开侧栏" aria-label="收起 / 展开侧栏" data-i18n-aria="收起 / 展开侧栏" data-i18n-title="收起 / 展开侧栏">
         <svg class="ico ico-lg" aria-hidden="true"><use href="#i-menu"></use></svg>
       </button>
-      <div id="page-title" class="page-title">任务</div>
+      <div data-i18n="任务" id="page-title" class="page-title">任务</div>
       <div class="top-actions">
-        <button id="ctrl-pill" class="pill ctrl icon-only hidden" onclick="ctrlClick()" title="多端控制权" aria-label="多端控制权"><svg class="ico" aria-hidden="true"><use href="#i-unlock"></use></svg></button>
-        <button id="btn-skin" class="pill icon-only" title="皮肤 / 换肤：多套配色，各含日间与夜间" aria-label="皮肤 / 换肤"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg></button>
-        <button id="btn-theme" class="pill icon-only" title="切换日间 / 夜间主题" aria-label="切换日间 / 夜间主题"><svg class="ico" aria-hidden="true"><use href="#i-moon"></use></svg></button>
-        <div id="conn" class="conn">连接中…</div>
+        <button id="ctrl-pill" class="pill ctrl icon-only hidden" onclick="ctrlClick()" title="多端控制权" aria-label="多端控制权" data-i18n-aria="多端控制权" data-i18n-title="多端控制权"><svg class="ico" aria-hidden="true"><use href="#i-unlock"></use></svg></button>
+        <button id="btn-skin" class="pill icon-only" title="皮肤 / 换肤：多套配色，各含日间与夜间" aria-label="皮肤 / 换肤" data-i18n-aria="皮肤 / 换肤" data-i18n-title="皮肤 / 换肤：多套配色，各含日间与夜间"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg></button>
+        <button id="btn-theme" class="pill icon-only" title="切换日间 / 夜间主题" aria-label="切换日间 / 夜间主题" data-i18n-aria="切换日间 / 夜间主题" data-i18n-title="切换日间 / 夜间主题"><svg class="ico" aria-hidden="true"><use href="#i-moon"></use></svg></button>
+        <div data-i18n="连接中…" id="conn" class="conn">连接中…</div>
       </div>
     </header>
 
@@ -381,15 +399,36 @@
         </div>
       </div>
 
+      <!-- 关于与更新（selfupdate） -->
+      <div id="sub-about" class="subpage hidden">
+        <div class="panel wide">
+          <div class="panel-head"><h2 data-i18n="关于与更新">关于与更新</h2></div>
+          <div id="su-info" class="empty">加载中…</div>
+          <div class="input-row" style="margin-top:10px">
+            <button id="su-check" class="ghost small" onclick="suCheck()"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="检查更新">检查更新</span></button>
+            <button id="su-apply" class="ghost small hidden" onclick="suApply()"><span data-i18n="升级到新版">升级到新版</span></button>
+            <button id="su-restart" class="ghost small hidden" onclick="suRestart()"><span data-i18n="重启服务生效">重启服务生效</span></button>
+          </div>
+          <p id="su-note" class="hint"></p>
+          <p id="su-progress" class="hint"></p>
+          <p class="hint">升级会通过 npm 拉取最新版并自动执行（日志可在运行记录里实时查看）；完成后点「重启服务生效」，页面会自动重连。开发仓库（git clone）模式不提供自动升级，请用 git pull。</p>
+        </div>
+      </div>
+
       <!-- 外观 / 皮肤 -->
       <div id="sub-appearance" class="subpage hidden">
         <div class="panel wide">
-          <div class="panel-head"><h2>皮肤</h2></div>
-          <p class="hint">每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与电脑各自独立）。<b>经典</b>是默认皮肤，即原本的界面。</p>
-          <h3 class="sec-title">明暗</h3>
-          <div id="skin-mode" class="seg" role="group" aria-label="明暗模式">
-            <button class="seg-btn" data-mode="dark">夜间</button>
-            <button class="seg-btn" data-mode="light">日间</button>
+          <div class="panel-head"><h2 data-i18n="皮肤">皮肤</h2></div>
+          <p class="hint">每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与电脑各自独立）。<b data-i18n="经典">经典</b>是默认皮肤，即原本的界面。</p>
+          <h3 class="sec-title">语言 / Language</h3>
+          <div id="lang-mode" class="seg" role="group" aria-label="Language">
+            <button class="seg-btn" data-lang="zh">中文</button>
+            <button class="seg-btn" data-lang="en">English</button>
+          </div>
+          <h3 data-i18n="明暗" class="sec-title">明暗</h3>
+          <div id="skin-mode" class="seg" role="group" aria-label="明暗模式" data-i18n-aria="明暗模式">
+            <button data-i18n="夜间" class="seg-btn" data-mode="dark">夜间</button>
+            <button data-i18n="日间" class="seg-btn" data-mode="light">日间</button>
           </div>
           <h3 class="sec-title">皮肤 <span class="tag" id="skin-cur"></span></h3>
           <div id="skin-grid" class="skin-grid"></div>

@@ -2694,15 +2694,134 @@ async function saveSettings() {
     const r = await api("/api/settings", { method: "POST", body: JSON.stringify({
       max_concurrent_jobs: parseInt($("set-workers").value, 10) }) });
     S.settings = r.settings;
-    if (msg) { msg.className = "msg ok"; msg.textContent = "已保存：最大并发 " + r.workers + " 个任务"; }
+    if (msg) { msg.className = "msg ok"; msg.textContent = t("已保存：最大并发 ") + r.workers + t(" 个任务"); }
   } catch (e) {
     if (msg) { msg.className = "msg err"; msg.textContent = e.message; }
   }
 }
 
+/* ---------------------------------------------------------- 关于与更新（selfupdate）
+ * 后端 /api/selfupdate：mode=npm 才可自动升级；repo（git clone）提示 git pull。
+ * 升级 = 建 mgmt run 跑 npm install -g @latest（日志实时落盘）→ 完成后点「重启」，
+ * 服务就地拉起新实例并自退（--wait-port 等端口释放），前端轮询恢复后自动刷新。 */
+let SU = null;          // 最近一次 check() 结果
+let SU_TIMER = null;    // 升级 run 轮询句柄
+
+const SU_MODE_TXT = { npm: "npm 全局安装", repo: "开发仓库（git clone）", source: "源码拷贝", other: "未知安装方式" };
+
+/* 最近一次「升级 Tutti 本体」run 是否已完成（决定重启按钮显隐；查 S.runs，
+ * 页面刷新后按钮不丢）。runs 里 op=selfupgrade 的那条即升级 run。 */
+function suLastUpgradeRun() {
+  return (S.runs || []).find((r) => r.op === "selfupgrade") || null;
+}
+
+async function loadSelfupdate(force) {
+  try {
+    SU = await api("/api/selfupdate" + (force ? "?force=1" : ""));
+  } catch (e) { SU = null; }
+  renderSu();
+  return SU;
+}
+
+function renderSu() {
+  const info = $("su-info");
+  if (!info) return;
+  if (!SU) { info.textContent = t("无法获取版本信息（服务未连接）"); return; }
+  const modeTxt = t(SU_MODE_TXT[SU.mode] || "未知安装方式");
+  const cur = SU.current ? "v" + SU.current : t("（未同步版本号）");
+  let html = "<p class=\"hint\">" + t("当前版本") + "：<b>" + cur + "</b>　·　" + t("安装方式") + "：" + modeTxt + "</p>";
+  if (SU.has_update) {
+    html += "<p class=\"hint\"><b>" + t("发现新版本") + " v" + SU.latest +
+      "　<a href=\"#\" onclick=\"event.preventDefault();suApply()\">" + t("立即升级") + "</a></b></p>";
+  } else if (SU.mode === "npm" && !SU.note) {
+    html += "<p class=\"hint\">" + t("已是最新版。") + "</p>";
+  }
+  info.innerHTML = html;
+  const note = $("su-note");
+  if (note) note.textContent = SU.note || "";
+  const b = $("su-check");
+  if (b) b.disabled = false;
+  $("su-apply").classList.toggle("hidden", !SU.has_update);
+  const last = suLastUpgradeRun();
+  $("su-restart").classList.toggle("hidden", !(last && last.status === "done"));
+}
+
+async function suCheck() {
+  const b = $("su-check");
+  if (b) b.disabled = true;
+  await loadSelfupdate(true);
+}
+
+async function suApply() {
+  if (!(await uiConfirm(t("升级会下载并安装最新版（约 1-2 分钟），期间服务继续可用。现在开始？"),
+      { ok: t("开始升级") }))) return;
+  const prog = $("su-progress");
+  try {
+    const r = await api("/api/selfupdate/apply", { method: "POST", body: JSON.stringify({}) });
+    toast(t("升级已开始，日志见运行记录"));
+    const runId = r.run_id;
+    $("su-apply").disabled = true;
+    if (prog) prog.textContent = t("正在升级…");
+    clearInterval(SU_TIMER);
+    SU_TIMER = setInterval(async () => {
+      try {
+        const run = await api("/api/runs/" + encodeURIComponent(runId));
+        if (run && run.status && run.status !== "running" && run.status !== "queued") {
+          clearInterval(SU_TIMER); SU_TIMER = null;
+          $("su-apply").disabled = false;
+          if (prog) prog.textContent = "";
+          if (run.status === "done") {
+            toast(t("升级完成！点「重启服务生效」换新版本"));
+            refreshState();
+          } else {
+            toast(t("升级失败，详情见运行记录"), true);
+          }
+        }
+      } catch (e) { /* 轮询抖动忽略 */ }
+    }, 2500);
+  } catch (e) {
+    if (prog) prog.textContent = "";
+    toast(e.message, true);
+  }
+}
+
+async function suRestart() {
+  if (!(await uiConfirm(t("重启服务换上新版本？页面会短暂断开并自动恢复。"), { ok: t("重启") }))) return;
+  const prog = $("su-progress");
+  try {
+    await api("/api/selfupdate/restart", { method: "POST", body: JSON.stringify({}) });
+  } catch (e) { /* 请求发出即视为成功：旧进程可能已退出 */ }
+  if (prog) prog.textContent = t("正在重启…");
+  toast(t("服务重启中，几秒后自动恢复"));
+  let tries = 0;
+  const t2 = setInterval(async () => {
+    tries++;
+    try {
+      await api("/api/control");
+      clearInterval(t2);
+      location.reload();
+    } catch (e) {
+      if (tries > 60) { clearInterval(t2); if (prog) prog.textContent = t("重启超时，请手动刷新页面"); }
+    }
+  }, 1500);
+}
+
+/* 页面加载后静默查一次新版本（服务端有 10 分钟缓存）；同版本只提醒一次 */
+async function suStartupCheck() {
+  const s = await loadSelfupdate(false);
+  if (s && s.has_update && localStorage.getItem("su.seen") !== s.latest) {
+    localStorage.setItem("su.seen", s.latest);
+    toast(t("发现新版本 v") + s.latest + t("，可在「关于与更新」一键升级"));
+  }
+}
+
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { tasks: "任务", runs: "运行记录", usage: "用量统计", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", orch: "编排中枢", appearance: "皮肤" };
+const TAB_TITLES = { tasks: "任务", runs: "运行记录", usage: "用量统计", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", orch: "编排中枢", appearance: "皮肤", about: "关于与更新" };
 const SET_TABS = new Set(Object.keys(TAB_TITLES));   // 设置导航里的子页（__phone 是弹框，不算）
+
+function tabTitle(name) {
+  return t(TAB_TITLES[name]) || t("设置");
+}
 
 
 
@@ -3082,13 +3201,14 @@ function switchTab(name) {
   document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", b.dataset.sub === name));
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-" + name));
   const title = $("page-title");
-  if (title) title.textContent = TAB_TITLES[name] || "设置";
+  if (title) title.textContent = tabTitle(name);
   if (name === "runs" && !S.detailRunId) closeRun();
   if (name === "agents") autoCheckUpdates();   // 进目录页自动查各 CLI 新版本
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排中枢页拉取配置
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
   if (name === "usage") { syncUsageRange(); loadUsage(); }   // 进用量页：对齐范围选中态并拉取
   if (name === "appearance") renderAppearance();   // 进皮肤页：按当前皮肤/明暗重画卡片
+  if (name === "about") loadSelfupdate(false);     // 进关于页：拉版本与更新状态
   collapseDrawerIfMobile();
 }
 
@@ -3176,12 +3296,18 @@ window.deleteFlow = deleteFlow;
 window.flowReset = flowReset;
 window.skillPackOp = skillPackOp;
 window.skillLessonOp = skillLessonOp;
+window.skillCatFilter = skillCatFilter;
 window.saveOrchestrator = saveOrchestrator;
 window.testOrchestrator = testOrchestrator;
 window.saveSettings = saveSettings;
 window.setSkin = setSkin;
 window.setThemeMode = setThemeMode;
 window.renderAppearance = renderAppearance;
+window.setLangBtn = setLangBtn;
+window.syncLangMode = syncLangMode;
+window.suCheck = suCheck;
+window.suApply = suApply;
+window.suRestart = suRestart;
 
 document.addEventListener("DOMContentLoaded", () => {
   // 远程地址里带的 ?token= 存起来并从地址栏抹掉，之后所有请求走请求头
@@ -3262,4 +3388,5 @@ document.addEventListener("DOMContentLoaded", () => {
   loadFlows();   // 任务类型下拉（内置 + 自定义流程）
   refreshSessionAgents();  // 继续会话下拉的工具集合（服务端 60s 缓存，开销小）
   loadOrchestrator();      // 侧栏左下角的编排者供应商指示（进入编排中枢页时会再拉一次）
+  suStartupCheck();        // 静默查一次新版本（有新版 toast 提醒，同版本只提一次）
 });
