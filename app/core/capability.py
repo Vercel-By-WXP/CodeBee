@@ -85,3 +85,46 @@ def resolve_binding_by_task(task, providers, bindings):
     if not b:
         b = (bindings or {}).get("default")
     return b, tt
+
+
+# ---------------------------------------------------------------- §07 T3.1 级联
+
+TIER_ORDER = {"budget": 0, "standard": 1, "premium": 2}
+
+
+def cascade_reorder(agent, tier_of):
+    """FrugalGPT 式便宜优先：easy 任务把 call_chain 按 tier 升序稳定重排。
+
+    agent 来自 modelhub.bind_agent（可能带 call_chain）；tier_of(chain_entry)
+    返回该条目的档位串（"budget"/"standard"/"premium"或 None=standard）。
+    稳定排序保证同档内保持用户配置的原顺序。链长 <2 或非链式原样返回。
+    """
+    chain = (agent or {}).get("call_chain") or []
+    if len(chain) < 2:
+        return agent
+
+    def key(entry):
+        return TIER_ORDER.get(tier_of(entry) or "standard", 1)
+
+    out = dict(agent)
+    out["call_chain"] = sorted(chain, key=key)
+    return out
+
+
+def make_tier_lookup(providers):
+    """由 providers 列表构造 chain_entry → tier 的查询函数。
+
+    tier 来源（按优先级）：链条目 model 在供应商 models[] 里的 tier 字段 →
+    供应商级 tier → None（按 standard 兜底）。缺什么都不抛。
+    """
+    by_id = {p.get("id"): p for p in (providers or []) if p.get("id")}
+
+    def tier_of(entry):
+        p = by_id.get((entry or {}).get("provider_id") or "")
+        if not p:
+            return None
+        for m in (p.get("models") or []):
+            if isinstance(m, dict) and m.get("name") == (entry or {}).get("model"):
+                return m.get("tier") or p.get("tier")
+        return p.get("tier")
+    return tier_of

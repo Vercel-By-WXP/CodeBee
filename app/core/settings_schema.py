@@ -204,22 +204,44 @@ def describe(ns, redact_secrets=True):
 
 def register_default_namespaces():
     """注册 Tutti 默认 namespace。幂等（已注册则跳过）。"""
-    if "orchestrator" in _NAMESPACES:
+    if "orchestrator" in _NAMESPACES and "budget" in _NAMESPACES:
         return
-    register_namespace(
-        "orchestrator",
-        fields=[
-            FieldDef("compaction.enabled", "bool", False,
-                     "上下文压缩总开关（灰度：与 TUTTI_COMPACTION 任一开启即生效）"),
-            FieldDef("compaction.pressure_threshold", "float", 0.8,
-                     "触发压缩的压力比阈值",
-                     clamp=(0.1, 0.99)),
-            FieldDef("compaction.retain_tail_tokens", "int", 8000,
-                     "压缩时保留尾部预算（token 估算）",
-                     clamp=(0, 100000)),
-            FieldDef("max_goal_rounds", "int", 5,
-                     "Goal 续行上限",
-                     clamp=(1, 20)),
-        ],
-        validate=lambda v: None,
-    )
+    if "orchestrator" not in _NAMESPACES:
+        register_namespace(
+            "orchestrator",
+            fields=[
+                FieldDef("compaction.enabled", "bool", False,
+                         "上下文压缩总开关（灰度：与 TUTTI_COMPACTION 任一开启即生效）"),
+                FieldDef("compaction.pressure_threshold", "float", 0.8,
+                         "触发压缩的压力比阈值",
+                         clamp=(0.1, 0.99)),
+                FieldDef("compaction.retain_tail_tokens", "int", 8000,
+                         "压缩时保留尾部预算（token 估算）",
+                         clamp=(0, 100000)),
+                FieldDef("max_goal_rounds", "int", 5,
+                         "Goal 续行上限",
+                         clamp=(1, 20)),
+            ],
+            validate=lambda v: None,
+        )
+    if "budget" not in _NAMESPACES:
+        register_namespace(
+            "budget",
+            fields=[
+                # §07 T2.1：0 = 不限；达到上限后 pipeline 停止后续真实调用（ENV_BLOCK）
+                FieldDef("max_tokens_per_run", "int", 0,
+                         "单次运行 token 预算上限（0=不限；超额停止后续步骤，等自动续跑）",
+                         clamp=(0, 100_000_000)),
+            ],
+            validate=lambda v: None,
+        )
+    if "cascade" not in _NAMESPACES:
+        register_namespace(
+            "cascade",
+            fields=[
+                # §07 T3.1：easy 任务先走低档模型，质量闸门不过沿 chain 升级
+                FieldDef("enabled", "bool", False,
+                         "FrugalGPT 式级联：easy 任务按 tier 升序重排模型链（需供应商声明 tier）"),
+            ],
+            validate=lambda v: None,
+        )

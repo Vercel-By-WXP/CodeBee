@@ -42,15 +42,19 @@ MAX_LESSONS_INJECT = 8       # 注入的自动教训条数上限
 # 自动教训的问题分类：闭集枚举，对齐评审维度。沉淀时由复盘官归类（兜底路径按评审
 # 维度关键词映射），UI 据此分类过滤查看。刻意保持小而稳，避免类别爆炸让过滤失去意义。
 LESSON_CATEGORIES = ["情节逻辑", "人物塑造", "节奏爽点", "文笔风格", "一致性", "流程规范"]
-LESSON_UNCATEGORIZED = "未分类"   # 老数据 / 无法归类的兜底
-# dim（评审维度名）或模型归类文本 → 分类：按关键词就近命中，首个匹配者胜
+LESSON_UNCATEGORIZED = "未分类"   # 无法归类的兜底
+# dim（评审维度名）/标题/正文 → 分类：按关键词就近命中，首个匹配者胜。
+# 顺序敏感：流程规范排在一致性前（「不一致」这类工程标题不该误入一致性类）；
+# 一致性刻意不收裸「一致」。文笔风格不收裸「重复」（易误伤「重复修复」类工程教训）。
 _CATEGORY_KEYWORDS = [
     ("情节逻辑", ("情节", "剧情", "主线", "冲突", "逻辑", "事件", "伏笔", "填坑", "转折")),
     ("人物塑造", ("人物", "角色", "弧光", "人设", "性格", "动机", "ooc", "崩人设")),
     ("节奏爽点", ("节奏", "爽点", "钩子", "吸引力", "开篇", "黄金三章", "追读", "断章", "高潮")),
-    ("文笔风格", ("文笔", "语言", "描写", "对白", "对话", "文风", "措辞", "病句", "重复")),
-    ("一致性",  ("一致", "连贯", "设定", "前后", "时间线", "吃书", "连续性", "人设统一")),
-    ("流程规范", ("流程", "规范", "格式", "字数", "章节", "签约", "交稿", "工程", "测试", "部署", "接口")),
+    ("流程规范", ("流程", "规范", "格式", "字数", "签约", "交稿", "工程", "测试", "部署",
+                "接口", "验证", "评审", "验收", "修复", "单测", "用例", "verify", "review",
+                "失败", "定位", "诊断", "回归", "空转")),
+    ("一致性",  ("连贯", "吃书", "时间线", "前后矛盾", "前后不一", "连续性", "设定冲突", "人设统一")),
+    ("文笔风格", ("文笔", "语言", "描写", "对白", "对话", "文风", "措辞", "病句")),
 ]
 
 
@@ -67,12 +71,15 @@ def _category_from(text):
 
 
 def _normalize_category(category, dim=None):
-    """把任意输入归一到闭集分类：先精确命中枚举，再按关键词映射 category，
-    再退到评审维度 dim，最后 None（调用方据此决定是否落未分类）。"""
+    """把任意输入归一到闭集分类：先精确命中枚举（category 与 dim 都走精确），
+    再按关键词映射 category，再退到 dim 关键词，最后 None（调用方据此落未分类）。"""
     c = str(category or "").strip()
     if c in LESSON_CATEGORIES:
         return c
-    return _category_from(c) or _category_from(dim) or None
+    d = str(dim or "").strip()
+    if d in LESSON_CATEGORIES:
+        return d
+    return _category_from(c) or _category_from(d) or None
 
 # 内置经验包：文件 → 适用流程（scope）；scope 为空表示适用全部
 BUILTIN_PACKS = [
@@ -583,3 +590,32 @@ def view():
             cats.append(c)
     return {"packs": list_packs(), "lessons": lessons,
             "categories": cats, "counts": counts, "total": len(lessons)}
+
+
+def migrate_lesson_categories():
+    """一次性迁移：给分类字段上线前沉淀的教训按 标题→正文 关键词回填 category。
+
+    幂等——已有 category 的条目一律不动（不覆盖复盘官/用户的判断）；
+    全部都有分类时零写入。改动前留 .bak。返回回填条数。"""
+    with _LOCK:
+        data = _load()
+        items = data.get("lessons") or []
+        dirty = 0
+        for it in items:
+            if it.get("category"):
+                continue
+            cat = (_category_from(it.get("title"))
+                   or _category_from(it.get("content")))
+            if cat:
+                it["category"] = cat
+                dirty += 1
+        if not dirty:
+            return 0
+        try:
+            bak = _FILE.with_suffix(".json.bak")
+            if _FILE.is_file() and not bak.is_file():
+                bak.write_bytes(_FILE.read_bytes())
+        except Exception:
+            pass
+        _save(data)
+        return dirty

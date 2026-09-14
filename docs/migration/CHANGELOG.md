@@ -103,6 +103,18 @@ Phase 6（Agent Team）按设计稿维持观望。
 之前归为「并行 agent 破坏」的 test_auto.TestPlannerFallback 实为上述 base.py 泄漏，已修复并纠正归因；
 test_paths.py 的 5 个 AttributeError 仍是并行 agent 删除 paths 私有函数所致，维持原判。
 
+## Token 成本优化 T2/T3（docs/migration/07-token-cost.md）
+
+```
+2026-09-14 | T2.1 | settings_schema（budget namespace）+ pipeline:_budget_max_tokens/_spawn_step | 单次 run token 预算闸：budget.max_tokens_per_run（0=不限），超额停止后续真实调用（ENV_BLOCK，提示调参），允许越过线的当前步完成；main.py 启动注册默认 namespaces（幂等）
+2026-09-14 | T2.2 | modelhub.chat（cache_ttl 参数 + _chat_cache_path）+ main.py 连通性测试接线 | 精确匹配响应缓存：key=供应商+模型+prompt+max_tokens，只缓存 ok 结果，原子落盘 data/chat_cache/；仅幂等调用开启（连通测试 24h）；创作调用默认不开（避免屏蔽模型新输出）
+2026-09-14 | T3.1 | capability.cascade_reorder/make_tier_lookup + pipeline code 流接线 | FrugalGPT 式级联（默认关 cascade.enabled）：easy 任务把 call_chain 按 tier 升序稳定重排（供应商级或 models[].tier 声明，缺省 standard），便宜模型先跑，质量闸门不过走既有 repair/换将兜底
+2026-09-14 | (顺手修) | app/core/skills.py:_normalize_category | 修复教训分类 dim 精确命中路径：dim="一致性"（枚举成员）此前只走关键词模糊匹配落到未分类；补 dim 精确命中枚举（并行 agent 的 test_skills 契约，其实现漏了此分支）
+```
+
+T3.2（LLMLingua 技能块压缩）/ T3.3（语义缓存）维持设计稿结论：实验性/不采用。
+全量回归 312 测试 36s 全绿。
+
 ---
 
 ## 实施记录格式

@@ -704,6 +704,8 @@ _APPDATA = os.environ.get("APPDATA") or os.path.join(_HOME, "AppData", "Roaming"
 CCSWITCH_DB = os.path.join(_HOME, ".cc-switch", "cc-switch.db")
 CLAUDE_SETTINGS = os.path.join(_HOME, ".claude", "settings.json")
 CODEX_DIR = os.path.join(_HOME, ".codex")
+DSH_DIR = os.environ.get("DSH_HOME") or os.path.join(_HOME, ".dsh")
+DSH_SETTINGS = os.path.join(DSH_DIR, "settings.yaml")
 ZCODE_CONFIG = os.path.join(_HOME, ".zcode", "v2", "config.json")
 QWEN_SETTINGS = os.path.join(_HOME, ".qwen", "settings.json")
 GEMINI_DIR = os.path.join(_HOME, ".gemini")
@@ -1313,6 +1315,64 @@ def _src_trae():
     return out
 
 
+def _dotenv_get(path, key):
+    """极简 dotenv：取 KEY=VALUE 行的值（dsh 的 ~/.dsh/.env 是 credentials-local 存储）。"""
+    try:
+        with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                if line.startswith("export "):
+                    line = line[7:].lstrip()
+                k, v = line.split("=", 1)
+                if k.strip() == key:
+                    return v.strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return ""
+
+
+def _src_dsh():
+    """DeepSeek Harness（dsh）：~/.dsh/settings.yaml 的 llm-deepseek 端点与模型。
+
+    dsh 的约定是密钥不进 settings.yaml——走 ~/.dsh/.env（credentials-local 存储）
+    或进程 env 的 DEEPSEEK_API_KEY；都没有时仅登记供应商，导入后补填密钥。
+    """
+    out = {"providers": [], "note": "", "found": os.path.isfile(DSH_SETTINGS)}
+    if not out["found"]:
+        return out
+    d = {}
+    try:
+        import yaml
+        with open(DSH_SETTINGS, "r", encoding="utf-8-sig") as f:
+            d = yaml.safe_load(f)
+    except Exception:
+        d = {}
+    if not isinstance(d, dict):
+        d = {}
+    llm = d.get("llm-deepseek") if isinstance(d.get("llm-deepseek"), dict) else {}
+    adm = d.get("agent-default-model") if isinstance(d.get("agent-default-model"), dict) else {}
+    base = str(llm.get("baseURL") or "")
+    names = [str(m["id"]) for m in (llm.get("models") or [])
+             if isinstance(m, dict) and m.get("id")]
+    if not base:
+        out["note"] = "settings.yaml 未配置 llm-deepseek.baseURL"
+        return out
+    key = (_dotenv_get(os.path.join(DSH_DIR, ".env"), "DEEPSEEK_API_KEY")
+           or os.environ.get("DEEPSEEK_API_KEY") or "")
+    p = _prov("DeepSeek Harness", "openai", base, key, "dsh", "dsh:llm-deepseek",
+              model=str(adm.get("model") or "") or (names[0] if names else ""))
+    if p:
+        p["models"] = [{"name": n, "enabled": True, "priority": i + 1}
+                       for i, n in enumerate(dict.fromkeys(names))]
+        out["providers"].append(p)
+        if not key:
+            out["note"] = ("未找到 DEEPSEEK_API_KEY（dsh 把密钥放在 ~/.dsh/.env 或环境变量），"
+                           "导入后请在编辑里补填")
+    return out
+
+
 # (来源 id, 显示名, 说明, 采集器, 配置文件路径)
 _SOURCES = [
     ("ccswitch", "CCSwitch", "本地库（Claude / Claude Desktop / Codex / Gemini / OpenClaw）",
@@ -1337,6 +1397,8 @@ _SOURCES = [
      _src_cursor, lambda: [CURSOR_DB]),
     ("trae", "Trae", "Trae / Trae SOLO 中自定义模型的 Base URL + AK",
      _src_trae, lambda: list(TRAE_DBS)),
+    ("dsh", "DeepSeek Harness", "~/.dsh/settings.yaml 的 llm-deepseek（密钥走 ~/.dsh/.env）",
+     _src_dsh, lambda: [DSH_SETTINGS]),
 ]
 
 _SOURCE_NAMES = {sid: name for sid, name, _d, _f, _p in _SOURCES}
@@ -1470,9 +1532,24 @@ def bind_agent(agent, difficulty="default"):
     return a
 
 
-def _chain_entry_env(prov, model):
-    """一条链的运行时注入：env（claude=ANTHROPIC_*，codex=一次性 provider 覆盖）。"""
+# 用「自家 env 约定」而非 codex -c 覆盖来接收供应商的 CLI。
+# dsh（DeepSeek Harness）的 llm-deepseek 适配器只认 DEEPSEEK_API_KEY /
+# DEEPSEEK_BASE_URL，且端点必须是 OpenAI 兼容的 /chat/completions。
+_DEEPSEEK_ENV_TARGETS = ("deepseek-harness", "dsh")
+
+
+def _deepseek_env_target(target):
+    return (target or "").strip().lower() in _DEEPSEEK_ENV_TARGETS
+
+
+def _chain_entry_env(prov, model, target=""):
+    """一条链的运行时注入：env（claude=ANTHROPIC_*，codex=一次性 provider 覆盖，
+    dsh=DEEPSEEK_*）。"""
     out = {"model": model, "env": {}, "provider": prov}
+    if _deepseek_env_target(target):
+        out["env"] = {"DEEPSEEK_API_KEY": prov["api_key"],
+                      "DEEPSEEK_BASE_URL": prov["base_url"]}
+        return out
     if prov["protocol"] == "anthropic":
         out["env"] = {"ANTHROPIC_BASE_URL": prov["base_url"],
                       "ANTHROPIC_AUTH_TOKEN": prov["api_key"]}
@@ -1500,6 +1577,9 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     provs = {p.get("id"): p for p in providers()}
     routing = bool(b.get("difficulty_routing"))
     tier = difficulty if difficulty in ("easy", "hard") else None
+    # dsh 走 DEEPSEEK_* env，端点必须是 OpenAI 兼容的 /chat/completions，
+    # anthropic 协议的网关注进去也调不通，直接判为不可绑定。
+    allowed = ("openai",) if _deepseek_env_target(agent_kind_or_id) else _BINDABLE_PROTOCOLS
 
     if chain:
         entries = []
@@ -1513,9 +1593,10 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
             prov = provs.get(pid)
             if not prov or not prov.get("enabled", True) or not prov.get("api_key"):
                 continue  # 该条失效：跳过（降级链的语义就是逐条顶上）
-            if prov.get("protocol") not in _BINDABLE_PROTOCOLS:
+            if prov.get("protocol") not in allowed:
                 continue
-            entries.append(_chain_entry_env(prov, model or prov.get("model") or ""))
+            entries.append(_chain_entry_env(prov, model or prov.get("model") or "",
+                                            target=agent_kind_or_id))
         if not entries:
             return None
         head = entries[0]
@@ -1533,8 +1614,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     prov = provs.get(pid)
     if not prov or not prov.get("enabled", True) or not prov.get("api_key"):
         return None
-    if prov.get("protocol") not in _BINDABLE_PROTOCOLS:
-        return None  # google 只登记，暂无可注入的 CLI
+    if prov.get("protocol") not in allowed:
+        return None  # google 只登记；dsh 只接受 OpenAI 兼容端点
     names = [m["name"] for m in _enabled_models(prov)]
     model = prov.get("model_" + tier) or "" if (routing and tier) else ""
     if not model:
@@ -1543,7 +1624,7 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
         model = names[0] if (not routing or difficulty != "easy") else names[-1]
     # model 可为空：仅注入供应商凭据，不指定模型（用网关默认）
     fallbacks = [n for n in names if n != model][:MAX_BIND_MODELS - 1]
-    head = _chain_entry_env(prov, model)
+    head = _chain_entry_env(prov, model, target=agent_kind_or_id)
     out = {"model": model, "env": head["env"], "provider": prov,
            "model_fallbacks": fallbacks,
            "call_chain": [dict(head, model=n) for n in [model] + fallbacks]}
@@ -1819,12 +1900,35 @@ def resolve_orchestrator():
     return prov, model
 
 
-def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120):
+def _chat_cache_path(provider_id, model_name, prompt, max_tokens):
+    """§07 T2.2：精确匹配响应缓存的落盘路径（只缓存 ok 的幂等调用）。"""
+    import hashlib as _h
+    key = "|".join([str(provider_id), str(model_name), str(max_tokens), str(prompt)])
+    name = _h.sha256(key.encode("utf-8")).hexdigest()[:24]
+    return paths.DATA_DIR / "chat_cache" / (name + ".json")
+
+
+def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_ttl=0):
     """直连供应商 API 做一次对话（编排者规划 / 连通性测试）。
 
     支持 anthropic / openai / google 三种协议；复用 SSRF 防护。
     返回 {ok, text, tokens, usage, error}；usage 为细分 {input, output, cached, reasoning, total}。
+    cache_ttl>0 启用精确匹配响应缓存（key=供应商+模型+prompt+max_tokens，只缓存
+    ok 结果）——仅限幂等调用（连通性测试等）；创作类调用不要开，否则同一 prompt
+    的二次请求会屏蔽模型的新输出。
     """
+    if cache_ttl > 0:
+        try:
+            cache_path = _chat_cache_path(provider_id, model_name, prompt, max_tokens)
+            if cache_path.is_file():
+                age = time.time() - cache_path.stat().st_mtime
+                if age <= cache_ttl:
+                    import json as _json
+                    data = _json.loads(cache_path.read_text(encoding="utf-8"))
+                    if isinstance(data, dict) and data.get("ok"):
+                        return data
+        except Exception:
+            pass
     with _LOCK:
         prov = next((p for p in providers() if p.get("id") == provider_id), None)
     if not prov or not prov.get("api_key"):
@@ -1893,5 +1997,17 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120):
                 "error": "响应解析失败: %r" % e}
     if not usage["total"]:
         usage["total"] = usage["input"] + usage["output"] + usage["cached"]
-    return {"ok": True, "text": (text or "").strip(), "tokens": usage["total"],
-            "usage": usage, "error": ""}
+    result = {"ok": True, "text": (text or "").strip(), "tokens": usage["total"],
+              "usage": usage, "error": ""}
+    # §07 T2.2：cache_ttl>0 时落盘缓存（仅 ok 结果，原子写）
+    if cache_ttl > 0:
+        try:
+            cache_path = _chat_cache_path(provider_id, model_name, prompt, max_tokens)
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = cache_path.with_suffix(".tmp")
+            import json as _json
+            tmp.write_text(_json.dumps(result, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(cache_path)
+        except Exception:
+            pass
+    return result

@@ -119,6 +119,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(401, {"error": "需要访问令牌（启动 Tutti 时控制台会显示）"})
             if path == "/api/state":
                 return self._json(200, _state_payload(self._client_id()))
+            if path == "/api/browse":
+                return self._api_browse()
+            if path == "/api/git/info":
+                return self._api_git_info()
             if path == "/api/events":
                 return self._api_events()
             if path == "/api/control":
@@ -186,7 +190,22 @@ class Handler(BaseHTTPRequestHandler):
                 if not store.get_run(m.group(1)):
                     return self._json(404, {"error": "not found"})
                 wd, files = store.run_artifacts(m.group(1))
-                return self._json(200, {"workdir": wd, "files": files})
+                run = store.get_run(m.group(1)) or {}
+                return self._json(200, {"workdir": wd, "files": files,
+                                        "task_id": run.get("task_id") or ""})
+            m = re.match(r"^/api/tasks/([^/]+)/runs$", path)
+            if m:
+                # 任务级详情用：该任务全部 run（含 steps），不受前端 run 窗口限制
+                if not store.get_task(m.group(1)):
+                    return self._json(404, {"error": "not found"})
+                return self._json(200, {"runs": store.task_runs(m.group(1))})
+            m = re.match(r"^/api/tasks/([^/]+)/continue-info$", path)
+            if m:
+                # 「继续连载」弹框数据：能否续、已写到第几章、默认续几章
+                info = store.continue_info(m.group(1))
+                if info is None:
+                    return self._json(404, {"error": "not found"})
+                return self._json(200, info)
             m = re.match(r"^/api/runs/([^/]+)/file$", path)
             if m:
                 if not store.get_run(m.group(1)):
@@ -195,9 +214,11 @@ class Handler(BaseHTTPRequestHandler):
                 data, err = store.read_run_file(m.group(1), unquote(rel))
                 if err:
                     return self._json(404, {"error": err})
-                ctype = MIME.get(Path(rel.lower()).suffix, "application/octet-stream")
-                if ctype == "text/markdown; charset=utf-8":
-                    ctype = "text/plain; charset=utf-8"  # 浏览器直接看文本，不触发下载
+                ext = Path(rel.lower()).suffix
+                ctype = MIME.get(ext, "application/octet-stream")
+                # 文本类扩展名直接在浏览器里看内容；未知二进制才触发下载
+                if ext in (".md", ".txt", ".log", ".csv", ".yml", ".yaml", ".ini", ".toml"):
+                    ctype = "text/plain; charset=utf-8"
                 return self._send(200, data, ctype)
             m = re.match(r"^/api/runs/([^/]+)/log$", path)
             if m:
@@ -234,7 +255,9 @@ class Handler(BaseHTTPRequestHandler):
             return deny
         if path == "/api/tasks":
             return self._api_create_task()
-        m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry|rename)$", path)
+        if path == "/api/attachments":
+            return self._api_add_attachment()
+        m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry|rename|continue)$", path)
         if m:
             if m.group(2) == "archive":
                 body = self._body()
@@ -245,6 +268,19 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(400, {"error": err})
                 jobs.enqueue({"kind": "orchestration", "run_id": run["id"], "task_id": m.group(1)})
                 return self._json(200, {"ok": True, "run_id": run["id"]})
+            elif m.group(2) == "continue":
+                # 继续连载：在旧任务基础上新建任务（沿用目标/目录/评审设置，章节号衔接）
+                ok, err, new_task = store.continue_task(
+                    m.group(1), (self._body() or {}).get("chapters"))
+                if not ok:
+                    return self._json(400, {"error": err})
+                run = store.create_run("orchestration", new_task["title"],
+                                       task_id=new_task["id"])
+                store.update_task_status(new_task["id"], "queued")
+                jobs.enqueue({"kind": "orchestration",
+                              "run_id": run["id"], "task_id": new_task["id"]})
+                return self._json(200, {"ok": True, "task_id": new_task["id"],
+                                        "run_id": run["id"]})
             elif m.group(2) == "rename":
                 ok, err = store.rename_task(m.group(1), self._body().get("title"))
             else:
@@ -395,6 +431,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": err, "settings": view})
             n = jobs.configure(view["max_concurrent_jobs"])
             return self._json(200, {"ok": True, "settings": view, "workers": n})
+        if path == "/api/settings/default-workdir":
+            body = self._body()
+            old = settings.default_workdir()
+            view, err = settings.save({"default_workdir": body.get("path") or ""})
+            if err:
+                return self._json(400, {"error": err, "settings": view})
+            new = settings.default_workdir()
+            moved = skipped = 0
+            if body.get("migrate") and old != new:
+                try:
+                    Path(new).mkdir(parents=True, exist_ok=True)
+                except Exception as e:
+                    return self._json(400, {"error": "新默认路径不可创建: %s" % e})
+                moved, skipped = store.migrate_task_workdirs(old, new)
+            return self._json(200, {"ok": True, "settings": view, "moved": moved, "skipped": skipped})
         if path == "/api/orchestrator":
             from core import modelhub
             body = self._body()
@@ -410,7 +461,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"ok": False, "error": "编排者未启用或配置失效"})
             prov, model = orch
             res = modelhub.chat(prov["id"], model,
-                                "请只回复两个字：收到", max_tokens=64, timeout=30)
+                                "请只回复两个字：收到", max_tokens=64, timeout=30,
+                                cache_ttl=86400)  # §07 T2.2：连通测试幂等，24h 精确缓存
             try:
                 usage.record(source="test", role="orch-test", agent="orchestrator",
                              agent_label="编排者", tool="orchestrator", model=model,
@@ -480,6 +532,75 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._json(500, {"error": "无法打开目录: %s" % e})
         return self._json(200, {"ok": True, "path": str(p)})
+
+    def _api_browse(self):
+        """本机目录浏览（工作目录「选择…」弹框用）。仅限本机请求：目录枚举是信息
+        泄露面，手机/局域网端不提供、继续手填。path 缺省=用户主目录；__drives__=盘符
+        列表（Windows 从「此电脑」开始选）。只列目录不列文件，纯只读。"""
+        # 本机判定按来源 IP，不能按 client_id：页面请求带 X-Tutti-Client，
+        # 本机页面的 client_id 也不是 "local"，会被误拒
+        ip, fw = self._forwarded_ip()
+        if ip not in ("127.0.0.1", "::1") or fw:
+            return self._json(403, {"error": "目录选择仅限本机使用，请手动输入路径"})
+        qs = parse_qs(urlparse(self.path).query)
+        raw = (qs.get("path") or [""])[0].strip()
+        if raw == "__drives__":
+            drives = [c + ":\\" for c in "CDEFGHIJKLMNOPQRSTUVWXYZ"
+                      if Path(c + ":\\").exists()]
+            return self._json(200, {"path": "此电脑", "parent": "", "dirs": drives})
+        try:
+            p = Path(raw).expanduser() if raw else Path.home()
+        except Exception:
+            return self._json(400, {"error": "非法路径"})
+        if not p.exists():
+            return self._json(404, {"error": "目录不存在: %s" % p})
+        if not p.is_dir():
+            return self._json(400, {"error": "不是目录: %s" % p})
+        try:
+            dirs = sorted((d.name for d in p.iterdir() if d.is_dir()), key=str.lower)
+        except PermissionError:
+            dirs = []  # 无权限的目录按空目录处理，可继续选它本身
+        parent = "" if p.parent == p else str(p.parent)
+        return self._json(200, {"path": str(p), "parent": parent, "dirs": dirs})
+
+    def _api_git_info(self):
+        """探测工作目录是否为 git 仓库，返回分支/标签/最近提交供「代码版本」下拉。
+        只读（rev-parse / status / log），不改仓库。仅限本机请求（同目录浏览的口径）。"""
+        ip, fw = self._forwarded_ip()
+        if ip not in ("127.0.0.1", "::1") or fw:
+            return self._json(403, {"error": "代码版本探测仅限本机使用"})
+        from core import gitmod
+        qs = parse_qs(urlparse(self.path).query)
+        raw = (qs.get("workdir") or [""])[0].strip()
+        if not raw:
+            return self._json(200, {"repo": False})
+        try:
+            p = Path(raw).expanduser()
+        except Exception:
+            return self._json(400, {"error": "非法路径"})
+        if not p.is_dir():
+            return self._json(200, {"repo": False})
+        try:
+            return self._json(200, gitmod.repo_info(str(p)))
+        except Exception as e:
+            return self._json(200, {"repo": False, "error": str(e)[:200]})
+
+    def _api_add_attachment(self):
+        """上传一个任务附件（截图/文件）到待提交区：{name, data: base64} → 返回附件 id。
+        创建任务时把 id 列表放进 payload.attachments，落盘到工作目录 _attachments/。"""
+        from core import attachments
+        # 防超大声明：base64 后约 11MB 对应 8MB 文件上限，预留余量
+        try:
+            if int(self.headers.get("Content-Length") or 0) > 12 * 1024 * 1024:
+                return self._json(413, {"error": "附件过大（上限 8MB）"})
+        except ValueError:
+            return self._json(400, {"error": "非法 Content-Length"})
+        body = self._body()
+        try:
+            meta = attachments.save_pending(body.get("name"), body.get("data"))
+        except ValueError as e:
+            return self._json(400, {"error": str(e)})
+        return self._json(200, {"ok": True, "attachment": meta})
 
     def _api_control(self):
         body = self._body()
@@ -568,6 +689,8 @@ def _state_payload(client_id="", ver=None):
         "archived_tasks": store.list_tasks(30, archived=True),
         # 每个任务的最近一次运行（不受 runs 窗口限制）：侧栏靠它展示各任务真实近况
         "task_latest": store.latest_run_by_task(),
+        # 每个任务的运行次数/步骤总数（全量）：侧栏「查看全部」的计数来源
+        "task_stats": store.task_run_stats(),
         "runs": store.list_runs(40),
         "control": remote.control_view(client_id),
     }
@@ -590,20 +713,33 @@ def main():
     args = parser.parse_args()
 
     paths.ensure_dirs()
+    from core import attachments
+    n_pc = attachments.cleanup_stale()  # 待提交附件残留清理（崩溃/弃单不堆积）
+    if n_pc:
+        print("[Tutti] 附件待提交区：清理过期残留 %d 个" % n_pc)
     catalog.load()
     store.load_all()
     from core import modelhub
     modelhub.migrate_orch_models()  # 旧「编排模型」偏好并入 CLI 绑定（幂等，带备份）
     modelhub.migrate_chains()       # 旧单供应商模型链升级为跨厂商 chain（幂等，带备份）
+    from core import skills
+    n_lc = skills.migrate_lesson_categories()  # 分类字段上线前的教训按关键词回填（幂等，带备份）
+    if n_lc:
+        print("[Tutti] 经验库：%d 条历史教训已自动归类" % n_lc)
     from core import usage
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）
     if n_bf:
         print("[Tutti] 用量台账：已从历史运行回填 %d 条记录" % n_bf)
-    # dsh-migration Â§1E：崩溃遗留的 running run 标记为 failed（在 jobs.resume_interrupted
+    # dsh-migration §1E：崩溃遗留的 running run 标记为 failed（在 jobs.resume_interrupted
     # 之前执行，否则续跑逻辑会把僵尸 run 当成正常中断接手）
     n_rc = store.recover_orphaned_runs()
     if n_rc:
         print("[Tutti] 崩溃恢复：%d 个遗留运行标记为 failed（interrupted at startup）" % n_rc)
+    try:
+        from core import settings_schema
+        settings_schema.register_default_namespaces()  # budget/cascade/compaction 配置就绪（幂等）
+    except Exception:
+        pass
     jobs.start_worker()
     n_resume = jobs.resume_interrupted()   # 启动恢复：服务被杀中断的连载任务自动续跑
     if n_resume:
@@ -625,6 +761,7 @@ def main():
         store.bump_state()  # 扫码弹框下次打开即可拿到公网地址
 
     print("[Tutti] 本机     http://127.0.0.1:%d" % args.port)
+    print("[Tutti] 数据目录 %s" % paths.DATA_DIR)
     if remote.PUBLIC_URL:
         print("[Tutti] 公网     %s/?token=%s   ← 任何网络可访问（反代回源已强制校验令牌）"
               % (remote.PUBLIC_URL, tok))

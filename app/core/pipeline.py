@@ -213,9 +213,36 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     return res
 
 
+def _budget_max_tokens():
+    """§07 T2.1：单次 run 的 token 预算上限；0/未配置 = 不限。"""
+    try:
+        from .settings_schema import get as ss_get, register_default_namespaces
+        register_default_namespaces()
+        return int(ss_get("budget", "max_tokens_per_run") or 0)
+    except Exception:
+        return 0
+
+
 def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
                 timeout, resume, step, log_abs):
     """真实 CLI 调用：压缩灰度路径或原路径。"""
+    # T2.1 预算闸：已用 token 达到单次 run 上限 → 阻断后续真实调用（ENV_BLOCK）。
+    # 只拦「下一步」，允许越过线的当前步完成；auto 续跑可在用户调高预算后接手。
+    cap = _budget_max_tokens()
+    if cap > 0:
+        try:
+            from .token_meter import token_meter
+            used = token_meter.used(session_run_id)
+        except Exception:
+            used = 0
+        if used >= cap:
+            from .error_codes import ErrorCode
+            log_path_warn = "已超出单次运行 token 预算：%d/%d（可在设置 budget.max_tokens_per_run 调整），停止后续步骤" % (used, cap)
+            return {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+                    "tokens": 0, "usage": None, "error": log_path_warn,
+                    "error_code": ErrorCode.ENV_BLOCK, "sid": "",
+                    "raw": {"exit_code": None}, "kind": agent.get("kind", "generic"),
+                    "model": agent.get("model")}
     if _compaction_enabled() and not resume:
         # Phase 2（1D）：撑爆 → 压缩 → 守门重试；同时把 usage 累进 token_meter（1C）
         session = _get_session(session_run_id)
@@ -471,6 +498,18 @@ def _run_code(run, task, agents, ev, stats, mode):
         # 续会话时 CLI 要在会话所属项目目录下启动，否则定位不到会话
         step_wd = _resume_workdir(resume_ctx, workdir) if use_resume else workdir
         impl_b = modelhub.bind_agent(impl_agent, difficulty)
+        # §07 T3.1 FrugalGPT 级联（默认关）：easy 任务把链按 tier 升序重排，
+        # 便宜模型先跑；质量闸门不过走既有 repair/换将轮，等效"贵模型兜底"。
+        if difficulty == "easy":
+            try:
+                from .settings_schema import get as ss_get, register_default_namespaces
+                register_default_namespaces()
+                if ss_get("cascade", "enabled"):
+                    from . import capability
+                    impl_b = capability.cascade_reorder(
+                        impl_b, capability.make_tier_lookup(modelhub.providers()))
+            except Exception:
+                pass
         for i, sub in enumerate(subtasks):
             prompt = (CODE_IMPL_PROMPT
                       .replace("__GOAL__", task["goal"])
