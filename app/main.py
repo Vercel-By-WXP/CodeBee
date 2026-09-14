@@ -8,10 +8,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
+import sys
 import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from core import catalog, flows, jobs, manager, registry, remote, settings, store
@@ -178,6 +181,24 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, "（报告尚未生成）", "text/markdown; charset=utf-8")
                 return self._send(200, p.read_text(encoding="utf-8", errors="replace"),
                                   "text/markdown; charset=utf-8")
+            m = re.match(r"^/api/runs/([^/]+)/files$", path)
+            if m:
+                if not store.get_run(m.group(1)):
+                    return self._json(404, {"error": "not found"})
+                wd, files = store.run_artifacts(m.group(1))
+                return self._json(200, {"workdir": wd, "files": files})
+            m = re.match(r"^/api/runs/([^/]+)/file$", path)
+            if m:
+                if not store.get_run(m.group(1)):
+                    return self._json(404, {"error": "not found"})
+                rel = (parse_qs(urlparse(self.path).query).get("name") or [""])[0]
+                data, err = store.read_run_file(m.group(1), unquote(rel))
+                if err:
+                    return self._json(404, {"error": err})
+                ctype = MIME.get(Path(rel.lower()).suffix, "application/octet-stream")
+                if ctype == "text/markdown; charset=utf-8":
+                    ctype = "text/plain; charset=utf-8"  # 浏览器直接看文本，不触发下载
+                return self._send(200, data, ctype)
             m = re.match(r"^/api/runs/([^/]+)/log$", path)
             if m:
                 # step 由前端 encodeURIComponent 编码（"steps/x.log" → "steps%2Fx.log"），
@@ -213,7 +234,7 @@ class Handler(BaseHTTPRequestHandler):
             return deny
         if path == "/api/tasks":
             return self._api_create_task()
-        m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry)$", path)
+        m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry|rename)$", path)
         if m:
             if m.group(2) == "archive":
                 body = self._body()
@@ -224,9 +245,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(400, {"error": err})
                 jobs.enqueue({"kind": "orchestration", "run_id": run["id"], "task_id": m.group(1)})
                 return self._json(200, {"ok": True, "run_id": run["id"]})
+            elif m.group(2) == "rename":
+                ok, err = store.rename_task(m.group(1), self._body().get("title"))
             else:
                 ok, err = store.delete_task(m.group(1))
             return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
+        m = re.match(r"^/api/(tasks|runs)/([^/]+)/reveal$", path)
+        if m:
+            return self._api_reveal(m.group(1), m.group(2))
         m = re.match(r"^/api/runs/([^/]+)/cancel$", path)
         if m:
             ok = jobs.cancel(m.group(1))
@@ -427,6 +453,34 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(404, {"error": "unknown api"})
 
     # ------------------------------------------------------------ 业务
+    def _api_reveal(self, kind, res_id):
+        """打开/返回资源所在目录：任务=工作目录，运行=记录目录（步骤日志、报告都在里面）。
+        路径一律由服务端按 id 推导，不接受客户端传任意路径——本服务监听局域网，
+        不能变成远程探测文件系统的口子。open=false 只回路径给前端复制。"""
+        if kind == "tasks":
+            task = store.get_task(res_id)
+            if not task:
+                return self._json(404, {"error": "任务不存在"})
+            p = Path(task.get("workdir") or "")
+        else:
+            run = store.get_run(res_id)
+            if not run:
+                return self._json(404, {"error": "运行记录不存在"})
+            p = paths.RUNS_DIR / res_id
+        if not p.is_dir():
+            return self._json(404, {"error": "目录不存在: %s" % p})
+        if self._body().get("open"):
+            try:
+                if sys.platform == "win32":
+                    subprocess.Popen(["explorer", str(p)])
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", str(p)])
+                else:
+                    subprocess.Popen(["xdg-open", str(p)])
+            except Exception as e:
+                return self._json(500, {"error": "无法打开目录: %s" % e})
+        return self._json(200, {"ok": True, "path": str(p)})
+
     def _api_control(self):
         body = self._body()
         action = body.get("action") or ""
@@ -512,6 +566,8 @@ def _state_payload(client_id="", ver=None):
         "agents": agents,
         "tasks": store.list_tasks(30, archived=False),
         "archived_tasks": store.list_tasks(30, archived=True),
+        # 每个任务的最近一次运行（不受 runs 窗口限制）：侧栏靠它展示各任务真实近况
+        "task_latest": store.latest_run_by_task(),
         "runs": store.list_runs(40),
         "control": remote.control_view(client_id),
     }

@@ -1,0 +1,5 @@
+**/__pycache__
+**/*.pyc
+**/.mimosa
+**/data
+.DS_Store

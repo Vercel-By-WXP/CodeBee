@@ -1138,9 +1138,10 @@ async function createTask() {
     workdir: $("f-workdir").value.trim(),
   };
   if (!payload.workdir) {
-    msg.className = "msg err"; msg.textContent = "工作目录必填（之后会记住）"; return;
+    delete payload.workdir;  // 留空 → 服务端用「默认保存路径」（编排中枢可改）
+  } else {
+    localStorage.setItem("orch.workdir", payload.workdir);
   }
-  localStorage.setItem("orch.workdir", payload.workdir);
   if (payload.mode === "manual") payload.implementer = $("f-impl").value;
   const sid = $("f-resume-session").value;
   const resumeAgent = $("f-resume-agent").value;
@@ -1289,7 +1290,7 @@ function closeCtxMenu() {
 }
 
 function bindCtxMenus() {
-  // 侧栏任务树：右键任务 → 详情/归档/删除；管理类运行 → 详情/删除记录
+  // 侧栏任务树：右键任务 → 详情/目录/重试/重命名/归档/删除；管理类运行 → 详情/目录/删除记录
   $("side-tasks").addEventListener("contextmenu", (e) => {
     const det = e.target.closest("details.stask");
     if (!det) return;
@@ -1299,12 +1300,17 @@ function bindCtxMenus() {
     if (runId) items.push({ label: "打开详情", fn: () => sideOpenRun(runId) });
     if (taskId) {
       items.push("-");
+      items.push({ label: "打开工作目录", fn: () => revealPath("tasks", taskId, true) });
+      items.push({ label: "复制工作目录路径", fn: () => revealPath("tasks", taskId, false) });
+      if (runId) items.push({ label: "复制日志目录路径", fn: () => revealPath("runs", runId, false) });
       const st = det.dataset.status || "";
       if (st === "failed" || st === "cancelled") items.push({ label: "↻ 重试任务", fn: () => retryTask(taskId) });
+      items.push({ label: "重命名任务", fn: () => renameTask(taskId) });
       items.push({ label: archivedTaskIds().has(taskId) ? "取消归档" : "归档", fn: () => archiveTask(taskId, !archivedTaskIds().has(taskId)) });
       items.push({ label: "删除任务", danger: true, fn: () => deleteTask(taskId) });
     } else if (runId) {
       items.push("-");
+      items.push({ label: "复制日志目录路径", fn: () => revealPath("runs", runId, false) });
       items.push({ label: "删除记录", danger: true, fn: () => deleteRun(runId) });
     }
     openCtxMenu(e.clientX, e.clientY, items);
@@ -1325,6 +1331,34 @@ function bindCtxMenus() {
   window.addEventListener("blur", closeCtxMenu);
   window.addEventListener("scroll", closeCtxMenu, true);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeCtxMenu(); });
+}
+
+/* 右键菜单：打开/复制路径。open=true 由服务端在资源管理器打开目录；false 回传路径复制到剪贴板 */
+async function revealPath(kind, id, open) {
+  let r;
+  try {
+    r = await api("/api/" + kind + "/" + encodeURIComponent(id) + "/reveal",
+      { method: "POST", body: JSON.stringify({ open: !!open }) });
+  } catch (e) { toast("操作失败：" + e.message, true); return; }
+  if (open) return;
+  const txt = r.path || "";
+  const done = () => toast("已复制：" + txt);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(done, () => fallbackCopy(txt, done));
+  } else {
+    fallbackCopy(txt, done);
+  }
+}
+
+async function renameTask(id) {
+  const t = ((S.state && S.state.tasks) || []).find((x) => x.id === id);
+  const name = (prompt("重命名任务", (t && t.title) || "") || "").trim();
+  if (!name) return;
+  try {
+    await api("/api/tasks/" + encodeURIComponent(id) + "/rename",
+      { method: "POST", body: JSON.stringify({ title: name }) });
+  } catch (e) { alert("重命名失败：" + e.message); return; }
+  poll();
 }
 
 async function retryTask(id) {
@@ -1376,47 +1410,223 @@ function renderRunList() {
   }).join("");
 }
 
-/* 侧栏「任务」树：任务 → 各 CLI 步骤，点击步骤在右侧打开运行详情 */
+/* 相对时间："YYYY-MM-DD HH:MM:SS" → 刚刚/N 分钟前/N 小时前/昨天/N 天前/MM-DD */
+function relTime(s, now) {
+  const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return String(s || "");
+  const t = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+  const d = ((now || Date.now()) - t) / 1000;
+  if (d < 60) return "刚刚";
+  if (d < 3600) return Math.max(1, Math.floor(d / 60)) + " 分钟前";
+  if (d < 86400) return Math.floor(d / 3600) + " 小时前";
+  if (d < 172800) return "昨天";
+  if (d < 7 * 86400) return Math.floor(d / 86400) + " 天前";
+  return m[2] + "-" + m[3];
+}
+
+/* 任务行状态字形：进行中转圈 / 排队空圈 / 取消橙圈 / 失败叉 / 完成勾 */
+function staskGlyph(status) {
+  if (status === "running") return '<span class="sglyph spin"></span>';
+  if (status === "queued") return '<span class="sglyph ring"></span>';
+  if (status === "cancelled") return '<span class="sglyph ring warn"></span>';
+  if (status === "failed") return '<svg class="sglyph bad"><use href="#i-x"/></svg>';
+  if (status === "done") return '<svg class="sglyph ok"><use href="#i-check"/></svg>';
+  return '<span class="sglyph ring"></span>';
+}
+
+/* 侧栏「任务」树：任务 → 各 CLI 步骤，点击步骤在右侧打开运行详情。
+ * 以任务表为底：每个任务恒有一行，近况取后端全量下发的最近一次运行（task_latest）；
+ * run 窗口只用来捞无主运行（管理操作/任务已删）。任务不因别人刷屏而消失。 */
 function renderSideTasks() {
   const box = $("side-tasks");
   if (!box) return;
   const runs = ((S.state && S.state.runs) || []).slice(0, 40);
+  const tasks = (S.state && S.state.tasks) || [];
+  const latest = (S.state && S.state.task_latest) || {};
   const archivedIds = archivedTaskIds();
-  const sig = JSON.stringify([runs.map((r) => [r.id, r.status, (r.steps || []).length]), S.detailRunId, archivedIds.size]);
+  const tasksById = {};
+  tasks.forEach((t) => { tasksById[t.id] = t; });
+  // 标题参与签名：右键重命名后 runs 状态/步数都没变，缺了它侧栏会一直顶着旧名
+  const sig = JSON.stringify([
+    runs.map((r) => [r.id, r.status, (r.steps || []).length, r.title]),
+    tasks.map((t) => [t.id, t.title]),
+    Object.keys(latest).map((k) => [k, latest[k].id, latest[k].status, (latest[k].steps || []).length]),
+    S.detailRunId, S.detailTaskKey, archivedIds.size,
+  ]);
   if (sig === S.sideSig && box.children.length) return;
   S.sideSig = sig;
   const openKeys = new Set(Array.from(box.querySelectorAll("details.stask[open]")).map((d) => d.dataset.key));
   const groups = [], byKey = {};
-  for (const r of runs) {
-    if (r.task_id && archivedIds.has(r.task_id)) continue;  // 已归档任务不上侧栏
-    const key = r.task_id || r.id;
+  const push = (key, taskId, title, status, time) => {
     if (!byKey[key]) {
-      byKey[key] = { key, taskId: r.task_id || "", title: r.title || r.id, status: r.status, active: false, runIds: [], steps: [] };
+      byKey[key] = { key, taskId: taskId || "", title, status: status || "", time: time || "", active: false, runIds: [], steps: [] };
       groups.push(byKey[key]);
     }
-    const g = byKey[key];
+    return byKey[key];
+  };
+  for (const t of tasks) {
+    if (archivedIds.has(t.id)) continue;  // 已归档任务不上侧栏
+    const lr = latest[t.id];
+    const g = push(t.id, t.id, t.title || t.id, lr ? lr.status : "",
+      lr ? (lr.started_at || lr.created_at) : t.created_at);
+    if (lr) {
+      g.runIds.push(lr.id);
+      if (lr.status === "running") g.active = true;
+      (lr.steps || []).forEach((s) => g.steps.push(Object.assign({ runId: lr.id }, s)));
+    }
+  }
+  for (const r of runs) {
+    if (r.task_id && (tasksById[r.task_id] || archivedIds.has(r.task_id))) continue;  // 任务行已覆盖/已归档
+    const g = push(r.task_id || r.id, r.task_id || "", r.title || r.id, r.status, r.started_at || r.created_at);
     g.runIds.push(r.id);
     if (r.status === "running") g.active = true;
     (r.steps || []).forEach((s) => g.steps.push(Object.assign({ runId: r.id }, s)));
   }
-  box.innerHTML = groups.length ? groups.map((g, gi) => {
+  // 活动时间倒序；从未运行的任务按创建时间参与排序（新任务自然靠前）
+  groups.sort((a, b) => String(b.time || "").localeCompare(String(a.time || "")));
+  box.innerHTML = groups.map((g, gi) => {
     if (g.active) g.status = "running";
     const isOpen = openKeys.size ? openKeys.has(g.key) : (S.detailRunId ? g.runIds.indexOf(S.detailRunId) >= 0 : gi === 0);
-    const items = g.steps.slice(0, 8).map((s) =>
-      '<div class="stepx" title="' + esc((s.note ? s.note + "：" : "") + (s.summary || "")) + '" onclick="sideOpenRun(\'' + esc(s.runId) + '\')">' +
+    const sel = (g.key === S.detailTaskKey || g.runIds.indexOf(S.detailRunId) >= 0) ? " active" : "";
+    const items = g.steps.slice(0, 8).map((s, si) =>
+      '<div class="stepx" data-n="' + (Number(s.n) || si + 1) + '" title="' + esc((s.note ? s.note + "：" : "") + (s.summary || "")) +
+      '" onclick="sideOpenRun(\'' + esc(s.runId) + '\', ' + (Number(s.n) || si + 1) + ')">' +
+      '<span class="sdot ' + esc(s.status || "") + '"></span>' +
       '<span class="sagent">' + esc(s.agent_label || s.agent || s.role || "") + "</span>" +
-      '<span class="ssum">' + esc((s.note ? s.note + "：" : "") + (s.summary || s.role || "")) + "</span></div>"
+      '<span class="ssum">' + esc((s.note ? s.note + "：" : "") + (s.summary || s.role || "")) + "</span>" +
+      '<span class="stm">' + esc(String(s.started_at || "").slice(0, 5)) + "</span></div>"
     ).join("");
     const more = g.steps.length > 8
-      ? '<div class="stepx" onclick="sideOpenRun(\'' + esc(g.runIds[0]) + '\')"><span class="ssum">… 共 ' + g.steps.length + " 步，点击查看全部</span></div>" : "";
-    const empty = items ? "" : '<div class="stepx" onclick="sideOpenRun(\'' + esc(g.runIds[0]) + '\')"><span class="ssum">暂无步骤，点击查看</span></div>';
-    return '<details class="stask" data-key="' + esc(g.key) + '" data-task="' + esc(g.taskId || "") + '" data-run="' + esc(g.runIds[0] || "") + '" data-status="' + esc(g.status || "") + '"' + (isOpen ? " open" : "") + "><summary>" +
-      '<span class="dot ' + esc(g.status) + '"></span><span class="t">' + esc(g.title) + "</span></summary>" + items + more + empty + "</details>";
-  }).join("") : '<div class="side-empty">暂无任务</div>';
+      ? '<div class="smore" onclick="sideOpenTask(\'' + esc(g.key) + '\')">查看全部 ' + g.steps.length + " 步</div>" : "";
+    // 没有任何运行的纯任务没有可打开的目标，点击行不绑事件
+    const empty = items ? "" : (g.runIds[0]
+      ? '<div class="smore" onclick="sideOpenTask(\'' + esc(g.key) + '\')">暂无步骤，点击查看</div>'
+      : '<div class="smore">暂无运行记录</div>');
+    const body = (items || more || empty) ? '<div class="steps">' + items + more + empty + "</div>" : "";
+    return '<details class="stask' + sel + '" data-key="' + esc(g.key) + '" data-task="' + esc(g.taskId || "") +
+      '" data-run="' + esc(g.runIds[0] || "") + '" data-status="' + esc(g.status || "") + '"' + (isOpen ? " open" : "") + "><summary>" +
+      '<svg class="chev"><use href="#i-chevron-r"/></svg>' + staskGlyph(g.status) +
+      '<span class="t">' + esc(g.title) + "</span>" +
+      '<span class="tm">' + esc(relTime(g.time)) + "</span></summary>" + body + "</details>";
+  }).join("") || '<div class="side-empty">暂无任务</div>';
 }
 
-window.sideOpenRun = function (id) { switchTab("runs"); openRun(id); };
-window.openRunInRuns = function (id) { switchTab("runs"); openRun(id); };
+/* 「查看全部 N 步」/「暂无步骤」：打开该任务最近一次运行；无主运行成组时 key 即 run id */
+window.sideOpenTask = function (key) {
+  const lr = ((S.state || {}).task_latest || {})[key];
+  if (lr && lr.id) { sideOpenRun(lr.id); return; }
+  const r = ((S.state || {}).runs || []).find((x) => x.id === key);
+  if (r) sideOpenRun(r.id);
+};
+
+/* 主视图打开详情面板的公共部分：留在任务树，主栏切到运行/任务详情 */
+function showDetailInMain() {
+  S.tab = "runs";
+  document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-runs"));
+  document.querySelectorAll(".set-item").forEach((b) => b.classList.remove("active"));
+  document.body.classList.remove("settings-mode");
+  const title = $("page-title");
+  if (title) title.textContent = "运行详情";
+  collapseDrawerIfMobile();
+}
+
+/* 侧栏点子任务：不跳设置页——留在任务树主视图，右侧主栏直接展示运行详情。
+ * 带步骤号 n 时，详情渲染完自动定位到该步：滚动 + 高亮 + 展开它的日志。 */
+window.sideOpenRun = function (id, n) {
+  S.focusStep = Number(n) || 0;
+  S.focusDone = false;
+  S.detailTaskKey = null;
+  if (!S.histJump && typeof histPush === "function") histPush({ m: "main", tab: "run-detail" });
+  showDetailInMain();
+  openRun(id);
+};
+
+/* 侧栏「查看全部 N 步」：任务可能被续跑/重试过多次，步骤分散在多条 run 里。
+ * 打开任务级详情：按时间顺序列出该任务全部 run 的全部步骤，run 之间加分隔条。 */
+window.sideOpenTask = function (key) {
+  S.detailTaskKey = key;
+  S.detailRunId = null;
+  S.focusStep = 0;
+  S.taskSig = "";
+  if (!S.histJump && typeof histPush === "function") histPush({ m: "main", tab: "run-detail" });
+  showDetailInMain();
+  $("run-detail").classList.remove("hidden");
+  document.querySelector("#sub-runs .panel:first-child").classList.add("hidden");
+  renderTaskDetail();
+};
+window.openRunInRuns = function (id) { S.focusStep = 0; S.focusDone = true; switchTab("runs"); openRun(id); };
+
+/* 任务级详情：聚合该任务所有 run 的步骤。数据来自客户端已轮询的 S.state，
+ * 签名没变就不重画；报告与成品取最新一次 run 的（缓存避免轮询期反复拉取）。 */
+function renderTaskDetail() {
+  const key = S.detailTaskKey;
+  if (!key) return;
+  const runs = ((S.state || {}).runs || []).filter((r) => (r.task_id || r.id) === key);
+  if (!runs.length) return;
+  const sig = JSON.stringify(runs.map((r) => [r.id, r.status, (r.steps || []).length]));
+  if (sig === S.taskSig) return;
+  S.taskSig = sig;
+  const latest = runs[0];                       // runs 新→旧
+  const chrono = runs.slice().reverse();        // 展示按时间正序
+  const totalSteps = runs.reduce((a, r) => a + (r.steps || []).length, 0);
+  const active = runs.some((r) => r.status === "running" || r.status === "queued");
+  const st = active ? "running" : latest.status;
+  $("rd-title").textContent = latest.title || key;
+  const chip = $("rd-status");
+  chip.className = "chip " + st;
+  chip.textContent = { queued: "排队中", running: "运行中", done: "完成", failed: "失败", cancelled: "已取消" }[st] || st;
+  $("btn-cancel").classList.add("hidden");
+  $("btn-delete").classList.add("hidden");
+  $("btn-retry").classList.toggle("hidden", !(latest.task_id && (latest.status === "failed" || latest.status === "cancelled")));
+  S.lastRun = latest;
+  const sum = (f) => runs.reduce((a, r) => a + (Number(r[f]) || 0), 0);
+  $("rd-meta").innerHTML =
+    '<span class="stat">运行 <b>' + runs.length + "</b> 次</span>" +
+    '<span class="stat">步骤 <b>' + totalSteps + "</b> 步</span>" +
+    '<span class="stat">成本 <b>$' + sum("cost_usd").toFixed(3) + "</b></span>" +
+    '<span class="stat">tokens <b>' + sum("tokens") + "</b></span>" +
+    (latest.error ? '<span class="stat err">' + esc(latest.error.slice(0, 200)) + "</span>" : "");
+  $("rd-plan").classList.add("hidden");
+  const statusTxt = { queued: "排队中", running: "运行中", done: "完成", failed: "失败", cancelled: "已取消" };
+  let html = "";
+  chrono.forEach((r, i) => {
+    html += '<div class="run-sep"><span class="rs-i">第 ' + (i + 1) + "/" + chrono.length + ' 次运行</span>' +
+      '<span class="rs-t">' + esc(String(r.created_at || "").slice(5, 16)) + "</span>" +
+      '<span class="chip ' + esc(r.status || "") + '">' + (statusTxt[r.status] || r.status || "") + "</span>" +
+      (r.error ? '<span class="rs-err" title="' + esc(r.error.slice(0, 200)) + '">' + esc(r.error.slice(0, 60)) + "</span>" : "") +
+      "</div>";
+    html += (r.steps || []).map((s) =>
+      '<div class="step" onclick="toggleLog(\'' + esc(r.id) + "', '" + esc(s.log) + '\')" title="' + esc(s.note || "") + '">' +
+      '<span class="n">' + String(s.n).padStart(2, "0") + "</span>" +
+      '<span class="role">' + esc(s.role) + "</span>" +
+      '<span class="who">' + esc(s.agent_label || s.agent) + "</span>" +
+      '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
+      '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
+      statusChip(s.status) + "</div>"
+    ).join("");
+  });
+  $("rd-steps").innerHTML = html || '<div class="empty">尚无步骤</div>';
+  $("rd-log").classList.add("hidden");
+  currentLog = null;
+  // 报告：最新一次 run 的（缓存，轮询重画不重复拉取）
+  const drawReport = async () => {
+    if (S.taskReport && S.taskReport.key === key && S.taskReport.runId === latest.id) {
+      $("rd-report").innerHTML = S.taskReport.html; return;
+    }
+    if (latest.status === "done" || latest.report) {
+      try {
+        const md = await fetch("/api/runs/" + encodeURIComponent(latest.id) + "/report").then((r) => r.text());
+        const html2 = md2html(md);
+        S.taskReport = { key, runId: latest.id, html: html2 };
+        if (S.detailTaskKey === key) $("rd-report").innerHTML = html2;
+      } catch (e) { /* 报告拉取失败静默，保留旧内容 */ }
+    } else {
+      $("rd-report").innerHTML = '<div class="hint">运行结束后生成</div>';
+    }
+  };
+  drawReport();
+  loadArtifacts(latest.id);
+}
 
 async function deleteRun(id) {
   if (!confirm("删除该运行记录（含全部日志与报告）？不可恢复。")) return;
@@ -1474,6 +1684,7 @@ async function clearRuns() {
 
 async function openRun(id) {
   S.detailRunId = id;
+  S.detailTaskKey = null;
   document.querySelector("#sub-runs .panel:first-child").classList.add("hidden");
   $("run-detail").classList.remove("hidden");
   renderRunDetail();
@@ -1481,12 +1692,41 @@ async function openRun(id) {
 
 function closeRun() {
   S.detailRunId = null;
+  S.detailTaskKey = null;
+  S.taskSig = "";
+  S.focusStep = 0;
   $("run-detail").classList.add("hidden");
-  document.querySelector("#sub-runs .panel:first-child").classList.remove("hidden");
+  if (document.body.classList.contains("settings-mode")) {
+    document.querySelector("#sub-runs .panel:first-child").classList.remove("hidden");
+  } else {
+    // 从主视图（侧栏点子任务）进来的详情：返回直接回任务页，不露出运行列表
+    document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-tasks"));
+    document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", b.dataset.sub === "tasks"));
+    const title = $("page-title");
+    if (title) title.textContent = TAB_TITLES.tasks;
+  }
+}
+
+/* 侧栏点了具体子任务后：在运行详情里标出那一步。轮询会不停重画步骤区，
+ * 所以高亮是持久的（.focus），而滚动 + 闪烁 + 展开日志只做一次（.flash）。 */
+function applyStepFocus() {
+  const n = S.focusStep;
+  if (!n) return;
+  const el = document.querySelector('#rd-steps .step[data-n="' + n + '"]');
+  if (!el) return;
+  el.classList.add("focus");
+  if (S.focusDone) return;
+  S.focusDone = true;
+  el.classList.add("flash");
+  try { el.scrollIntoView({ block: "center", behavior: "smooth" }); }
+  catch (e) { el.scrollIntoView(); }
+  if (el.dataset.log) toggleLog(S.detailRunId, el.dataset.log);
+  setTimeout(() => el.classList.remove("flash"), 1800);
 }
 
 async function renderRunDetail() {
   const id = S.detailRunId;
+  if (S.detailTaskKey) { renderTaskDetail(); return; }   // 任务级详情（轮询也会走到这里刷新）
   if (!id) return;
   let run;
   try { run = (await api("/api/runs/" + encodeURIComponent(id))).run; }
@@ -1509,7 +1749,8 @@ async function renderRunDetail() {
     (run.error ? '<span class="stat err">' + esc(run.error.slice(0, 200)) + "</span>" : "");
   renderPlan(run);
   $("rd-steps").innerHTML = (run.steps || []).map((s) =>
-    '<div class="step" onclick="toggleLog(\'' + esc(run.id) + "', '" + esc(s.log) + '\')" title="' + esc(s.note || "") + '">' +
+    '<div class="step" data-n="' + Number(s.n) + '" data-log="' + esc(s.log || "") +
+    '" onclick="toggleLog(\'' + esc(run.id) + "', '" + esc(s.log) + '\')" title="' + esc(s.note || "") + '">' +
     '<span class="n">' + String(s.n).padStart(2, "0") + "</span>" +
     '<span class="role">' + esc(s.role) + "</span>" +
     '<span class="who">' + esc(s.agent_label || s.agent) + "</span>" +
@@ -1517,6 +1758,7 @@ async function renderRunDetail() {
     '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
     statusChip(s.status) + "</div>"
   ).join("") || '<div class="empty">尚无步骤</div>';
+  applyStepFocus();
   // 报告
   if (run.status === "done" || run.report) {
     const md = await fetch("/api/runs/" + encodeURIComponent(id) + "/report").then((r) => r.text());
@@ -1524,7 +1766,43 @@ async function renderRunDetail() {
   } else {
     $("rd-report").innerHTML = '<div class="hint">运行结束后生成</div>';
   }
+  loadArtifacts(id);
 }
+
+/* 成品文件：run 开始后工作目录里新产生/修改过的文件，点击直接查看内容 */
+function fmtSize(n) {
+  n = Number(n) || 0;
+  if (n >= 1 << 20) return (n / (1 << 20)).toFixed(1) + " MB";
+  if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
+  return n + " B";
+}
+
+async function loadArtifacts(runId) {
+  const box = $("rd-files");
+  if (!box) return;
+  box.innerHTML = "";
+  let d;
+  try { d = await api("/api/runs/" + encodeURIComponent(runId) + "/files"); }
+  catch (e) { return; }
+  // 用户可能已经切到别的详情：过期响应不落盘
+  if (S.detailRunId !== runId && !(S.detailTaskKey && S.lastRun && S.lastRun.id === runId)) return;
+  if (!d.files || !d.files.length) {
+    box.innerHTML = '<p class="hint">本次运行没有在工作目录里产出新文件。</p>';
+    return;
+  }
+  const chips = d.files.map((f) =>
+    '<a class="file-chip" href="/api/runs/' + encodeURIComponent(runId) + "/file?name=" +
+    encodeURIComponent(f.name) + '" target="_blank" rel="noopener" ' +
+    'title="' + esc(f.name + " · " + fmtSize(f.size)) + '">' + esc(f.name) +
+    "<i>" + fmtSize(f.size) + "</i></a>").join("");
+  box.innerHTML = '<div class="files-head"><span class="sec-title">成品文件</span>' +
+    '<span class="wd" title="点击复制" onclick="copyText(this.textContent)">' + esc(d.workdir) + "</span></div>" +
+    '<div class="file-chips">' + chips + "</div>";
+}
+
+window.copyText = function (t) {
+  try { navigator.clipboard.writeText(t); } catch (e) { /* 剪贴板不可用则忽略 */ }
+};
 
 let currentLog = null;
 
@@ -1845,10 +2123,6 @@ function renderCatalog() {
   for (const c of cat) (groups[c.group] || groups.installable).push(c);
   $("ag-installed").innerHTML = groups.installed.map(card).join("");
   $("ag-installable").innerHTML = groups.installable.map(card).join("");
-  $("ag-mocks").innerHTML =
-    '<div class="card"><div class="head"><span class="name">演示智能体 A / B（mock）</span><span class="tag">内置</span></div>' +
-    '<div class="note">不消耗任何配额即可演示完整流水线（起草→评审→修订→报告）。</div>' +
-    '<div class="facts">始终可用，出现在任务表单中。</div></div>';
   // 日志流式刷新后定位到最新一行（除非用户主动往上翻看历史）
   document.querySelectorAll("pre.mgmt-log").forEach((el) => {
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) el.scrollTop = el.scrollHeight;
@@ -1875,12 +2149,14 @@ function card(c) {
     c.installed && c.has_upgrade ? '<button class="ghost small" onclick="checkUpdate(\'' + esc(c.id) + '\')">检查更新</button>' : "",
     !c.installed && c.has_install ? '<button class="ghost small" onclick="mgmt(\'' + esc(c.id) + '\', \'install\')">安装</button>' : "",
     c.installed ? '<button class="ghost small" onclick="showMgmtLog(\'' + esc(c.id) + '\')">日志</button>' : "",
-    c.installed && c.uninstall_cmd ? '<button class="danger small" onclick="mgmt(\'' + esc(c.id) + '\', \'uninstall\')">卸载</button>' : "",
     !c.installed && !c.has_install ? '<span class="hint">安装命令待配置（编辑 data/catalog.json）</span>' : "",
   ].join("");
   return '<div class="card">' +
     '<div class="head"><span class="name">' + esc(c.name) + "</span>" +
-    (c.installed ? statusChip("done") : '<span class="tag">未安装</span>') + updateChip(c) + "</div>" +
+    (c.installed ? statusChip("done") : '<span class="tag">未安装</span>') + updateChip(c) +
+    // 卸载放卡片右上角（与状态徽标同行），不再吊在操作行尾部
+    (c.installed && c.uninstall_cmd ? '<button class="danger small" onclick="mgmt(\'' + esc(c.id) + '\', \'uninstall\')">卸载</button>' : "") +
+    "</div>" +
     '<div class="note">' + esc(c.note || "") + "</div>" +
     '<div class="facts">版本 <b>' + esc(c.version || "-") + "</b>　模型 <b>" + esc(fmtModel(c.model) || "-") + "</b>" +
     ((c.detail || c.config_path) ? "<br>" + esc(c.detail || c.config_path) : "") + "</div>" +
@@ -2307,7 +2583,38 @@ async function loadSettings() {
     S.settings = await api("/api/settings");
     const inp = $("set-workers");
     if (inp && S.settings) inp.value = S.settings.max_concurrent_jobs;
+    const wd = $("set-workdir"), hint = $("set-workdir-hint");
+    if (wd && S.settings) wd.value = S.settings.default_workdir_effective || "";
+    if (hint && S.settings) {
+      const custom = !!(S.settings.default_workdir || "").trim();
+      hint.textContent = custom ? "当前生效：" + S.settings.default_workdir_effective + "（自定义）"
+                                : "当前生效：" + S.settings.default_workdir_effective + "（内置默认，尚未自定义）";
+    }
+    // 新任务表单：目录留空即落到默认路径，给一句话提示
+    const fhint = $("f-workdir-hint");
+    if (fhint && S.settings) fhint.textContent = "留空则保存到：" + (S.settings.default_workdir_effective || "");
   } catch (e) { /* 忽略 */ }
+}
+
+/* 保存默认保存路径；可选把旧默认路径下的现有任务目录迁移到新路径 */
+async function saveDefaultWorkdir() {
+  const msg = $("settings-msg");
+  try {
+    const r = await api("/api/settings/default-workdir", { method: "POST", body: JSON.stringify({
+      path: ($("set-workdir").value || "").trim(),
+      migrate: $("set-workdir-migrate") && $("set-workdir-migrate").checked,
+    }) });
+    S.settings = r.settings;
+    const n = (r.moved || 0), sk = (r.skipped || 0);
+    if (msg) {
+      msg.className = "msg ok";
+      msg.textContent = "默认保存路径已更新：" + r.settings.default_workdir_effective +
+        (n ? "；已迁移 " + n + " 个任务目录" : "") + (sk ? "（跳过 " + sk + " 个运行中/迁移失败）" : "");
+    }
+    loadSettings();
+  } catch (e) {
+    if (msg) { msg.className = "msg err"; msg.textContent = e.message; }
+  }
 }
 
 /* 编排者供应商下拉：三种协议都支持直连（含 google），不限于可注入 CLI 的 */
@@ -2508,24 +2815,51 @@ function kpiCard(label, value, sub, wide, icon) {
     (sub ? '<div class="kpi-s">' + esc(sub) + "</div>" : "") + "</div>";
 }
 
-/* 每日堆叠柱状图：输入(accent) / 缓存(ok) / 输出(accent2)，悬浮出明细 */
+/* 单日没有趋势可言，一根孤柱悬在空白里很难看：改画全宽的
+ * 输入/缓存/输出构成条 + 汇总信息头，信息量也更大。 */
+function usageSingleDay(d) {
+  const tok = d.tokens || 0;
+  const p = (n) => String(n).padStart(2, "0");
+  const now = new Date();
+  const today = now.getFullYear() + "-" + p(now.getMonth() + 1) + "-" + p(now.getDate());
+  const dayTxt = String(d.day).slice(5) + (d.day === today ? " · 今天" : "");
+  const head = '<div class="us-head"><span class="us-day">' + esc(dayTxt) + "</span>" +
+    '<span class="us-sum">' + esc(fmtTok(tok) + " tokens · 调用 " + (d.calls || 0) + " 次 · " + fmtUsd(d.cost_usd)) + "</span></div>";
+  if (tok <= 0) return head + '<div class="us-bar us-empty"><span>当天暂无用量</span></div>';
+  const seg = (cls, val, label) => {
+    const pct = (val || 0) * 100 / tok;
+    if (pct <= 0) return "";
+    // 太窄的段不放内嵌文字（挤成一团），数值交给底部明细行
+    const inner = pct >= 10 ? "<span>" + label + " " + Math.round(pct) + "%</span>" : "";
+    return '<div class="us-seg us-' + cls + '" style="width:' + pct.toFixed(2) + '%"' +
+      ' title="' + label + " " + fmtTok(val || 0) + "（" + pct.toFixed(1) + '%）">' + inner + "</div>";
+  };
+  const other = Math.max(0, tok - (d.input || 0) - (d.output || 0));
+  return head +
+    '<div class="us-bar">' +
+    seg("in", d.input, "输入") +
+    seg("ca", other, "缓存/其他") +
+    seg("out", d.output, "输出") +
+    "</div>" +
+    '<div class="us-foot">输入 ' + esc(fmtTok(d.input || 0)) + " · 缓存/其他 " + esc(fmtTok(other)) +
+    " · 输出 " + esc(fmtTok(d.output || 0)) + "</div>";
+}
+
+/* 每日堆叠柱状图：输入(accent) / 缓存(ok) / 输出(accent2)，悬浮出明细。
+ * 槽位布局：每天一个等宽槽、柱子在槽内居中，柱子沿全宽均匀分布；
+ * 无数据的天画基线小短柱占位，不再是一片空白里悬着几根孤柱。 */
 function usageTrendSvg(byDay) {
   if (!byDay || !byDay.length) return '<p class="hint">（暂无数据）</p>';
+  if (byDay.length === 1) return '<div class="usage-single">' + usageSingleDay(byDay[0]) + "</div>";
   const W = 720, H = 210, padT = 12, padB = 24, padL = 6, padR = 6;
   const iw = W - padL - padR, ih = H - padT - padB;
   const max = Math.max(1, ...byDay.map((d) => (d.tokens || 0)));
   const n = byDay.length;
-  let gap = n > 90 ? 1 : Math.max(2, Math.floor(iw / n / 4));
-  let bw = Math.max(2, (iw - gap * (n - 1)) / n);
-  // 天数少时上面的均分公式会把柱子撑得巨宽（单日直接铺满整图成一块色板）：
-  // 封顶柱宽与间距，再把整组柱子水平居中，保持柱状图的样子
-  const MAX_BW = 48, MAX_GAP = 36;
-  let xOff = padL;
-  if (bw > MAX_BW) {
-    bw = MAX_BW;
-    if (n > 1) gap = Math.min(gap, MAX_GAP);
-    xOff = padL + Math.max(0, (iw - (bw * n + gap * (n - 1))) / 2);
-  }
+  const slot = iw / n;
+  const gap = Math.max(1, Math.min(slot * 0.25, 36));
+  const bw = Math.max(2, Math.min(48, slot - gap));
+  const xOf = (i) => padL + i * slot + (slot - bw) / 2;
+  const yBase = padT + ih;
   let bars = "", labels = "";
   const labelStep = Math.max(1, Math.ceil(n / 9));
   // 抽稀 x 轴标签：末日必须标；若与前一标签太近（< 半步长）则挤掉前者防重叠
@@ -2535,18 +2869,18 @@ function usageTrendSvg(byDay) {
   else if (n - 1 - [...labeled].pop() < labelStep / 2) { labeled.delete([...labeled].pop()); labeled.add(n - 1); }
   else labeled.add(n - 1);
   byDay.forEach((d, i) => {
-    const x = xOff + i * (bw + gap);
+    const x = xOf(i);
     const tok = d.tokens || 0;
-    const hIn = ih * ((d.input || 0) / max);
-    const hCa = ih * (((d.tokens || 0) - (d.input || 0) - (d.output || 0)) / max);
-    const hOut = ih * ((d.output || 0) / max);
+    const dayTxt = String(d.day).slice(5);
     if (tok > 0) {
       const tip = esc(d.day + "　总 " + fmtTok(tok) + "（输入 " + fmtTok(d.input || 0) +
         " · 输出 " + fmtTok(d.output || 0) + " · 其他/缓存 " + fmtTok(Math.max(0, tok - (d.input || 0) - (d.output || 0))) +
         "）\n调用 " + (d.calls || 0) + " 次 · " + fmtUsd(d.cost_usd));
-      const yBase = padT + ih;
+      const hIn = ih * ((d.input || 0) / max);
+      const hCa = ih * (((d.tokens || 0) - (d.input || 0) - (d.output || 0)) / max);
+      const hOut = ih * ((d.output || 0) / max);
       bars += '<rect x="' + x.toFixed(1) + '" y="' + (yBase - hIn).toFixed(1) +
-        '" width="' + bw.toFixed(1) + '" height="' + Math.max(hIn, tok > 0 ? 1 : 0).toFixed(1) +
+        '" width="' + bw.toFixed(1) + '" height="' + Math.max(hIn, 1).toFixed(1) +
         '" fill="var(--accent)"><title>' + tip + "</title></rect>";
       bars += '<rect x="' + x.toFixed(1) + '" y="' + (yBase - hIn - hCa).toFixed(1) +
         '" width="' + bw.toFixed(1) + '" height="' + Math.max(0, hCa).toFixed(1) +
@@ -2554,16 +2888,26 @@ function usageTrendSvg(byDay) {
       bars += '<rect x="' + x.toFixed(1) + '" y="' + (yBase - hIn - hCa - hOut).toFixed(1) +
         '" width="' + bw.toFixed(1) + '" height="' + Math.max(0, hOut).toFixed(1) +
         '" fill="var(--accent2)" opacity="0.9"><title>' + tip + "</title></rect>";
+    } else {
+      // 当天无用量：基线上的占位短柱（不再是空白），悬浮给出说明
+      bars += '<rect x="' + x.toFixed(1) + '" y="' + (yBase - 2.5).toFixed(1) +
+        '" width="' + bw.toFixed(1) + '" height="2.5" rx="1" fill="var(--border-strong)" opacity="0.9">' +
+        "<title>" + esc(d.day + "　无用量") + "</title></rect>";
     }
     if (labeled.has(i)) {
       // 夹住标签中心，避免首/末标签的文字探出 viewBox 被裁掉
       const cx = Math.min(Math.max(x + bw / 2, padL + 18), W - padR - 18);
       labels += '<text class="uc-x" x="' + cx.toFixed(1) + '" y="' + (H - 7) +
-        '" text-anchor="middle">' + esc(String(d.day).slice(5)) + "</text>";
+        '" text-anchor="middle">' + esc(dayTxt) + "</text>";
     }
   });
+  // 基线 + 半高参考虚线 + 峰值刻度：柱子有「地」可落，高度有参照
+  const grid =
+    '<line class="uc-grid" x1="' + padL + '" y1="' + (padT + ih / 2).toFixed(1) + '" x2="' + (W - padR) + '" y2="' + (padT + ih / 2).toFixed(1) + '"/>' +
+    '<line class="uc-base" x1="' + padL + '" y1="' + yBase + '" x2="' + (W - padR) + '" y2="' + yBase + '"/>' +
+    '<text class="uc-max" x="' + (W - padR) + '" y="' + (padT + 9) + '" text-anchor="end">峰值 ' + esc(fmtTok(max)) + "</text>";
   return '<svg class="usage-svg" viewBox="0 0 ' + W + " " + H + '" role="img" preserveAspectRatio="xMidYMid meet">' +
-    bars + labels +
+    grid + bars + labels +
     '<g class="uc-legend">' +
     '<rect x="6" y="2" width="10" height="10" rx="2" fill="var(--accent)"/><text class="uc-x" x="20" y="11">输入</text>' +
     '<rect x="52" y="2" width="10" height="10" rx="2" fill="var(--ok)" opacity="0.55"/><text class="uc-x" x="66" y="11">缓存/其他</text>' +
@@ -2579,7 +2923,8 @@ function usageDimTable(title, rows) {
   } else {
     const maxTok = Math.max(1, ...rows.map((r) => r.tokens || 0));
     body = '<table class="usage-table"><thead><tr>' +
-      "<th>" + esc(title) + "</th><th>调用</th><th>Tokens</th><th>输入/输出</th><th>耗时</th><th>费用</th>" +
+      "<th>" + esc(title) + '</th><th class="num">调用</th><th class="num">Tokens</th>' +
+      '<th class="num">输入/输出</th><th class="num">耗时</th><th class="num">费用</th>' +
       "</tr></thead><tbody>" + rows.map((r) => {
         const pct = Math.max(4, Math.round((r.tokens || 0) * 100 / maxTok));
         const okPct = r.calls ? Math.round((r.ok || 0) * 100 / r.calls) : 0;
@@ -2600,7 +2945,8 @@ function usageDimTable(title, rows) {
 function usageRecentTable(rows) {
   if (!rows || !rows.length) return '<p class="hint">（暂无数据）</p>';
   return '<table class="usage-table recent"><thead><tr>' +
-    "<th>时间</th><th>工具</th><th>智能体</th><th>模型</th><th>角色</th><th>状态</th><th>Tokens</th><th>费用</th>" +
+    '<th class="num">时间</th><th>工具</th><th>智能体</th><th>模型</th><th>角色</th><th>状态</th>' +
+    '<th class="num">Tokens</th><th class="num">费用</th>' +
     "</tr></thead><tbody>" + rows.map((r) => {
       const det = "输入 " + fmtTok(r.input) + " · 缓存 " + fmtTok(r.cached) + " · 输出 " + fmtTok(r.output);
       const model = String(r.model || "");
@@ -2769,6 +3115,8 @@ window.closeRun = closeRun;
 window.archiveTask = archiveTask;
 window.deleteTask = deleteTask;
 window.retryTask = retryTask;
+window.revealPath = revealPath;
+window.renameTask = renameTask;
 window.toggleLog = toggleLog;
 window.cancelRun = cancelRun;
 window.deleteRun = deleteRun;

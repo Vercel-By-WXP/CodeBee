@@ -20,6 +20,9 @@ import subprocess
 import threading
 import time
 
+from .env_scrub import scrub_env
+from .error_codes import ErrorCode
+
 CREATE_NO_WINDOW = 0x08000000
 DEFAULT_TIMEOUT = 1200  # 单步 20 分钟
 
@@ -62,6 +65,20 @@ def _kill_tree(pid):
             capture_output=True, creationflags=CREATE_NO_WINDOW, timeout=15)
     except Exception:
         pass
+
+
+def _drain_streams(proc, t_out, t_err, *, timeout=10):
+    """kill_tree 后等管道线程读完剩余字节。
+
+    daemon=True 线程 join 超时即结束（不会卡死主流程）。
+    设计稿：docs/migration/01-defense-patterns.md §5B。
+    参考 dsh docs/defensive-patterns.zh.md 第 21 行（"dispose 必须达到完全停稳"）。
+    """
+    deadline = time.time() + timeout
+    for t in (t_out, t_err):
+        remaining = max(0.0, deadline - time.time())
+        if remaining > 0:
+            t.join(timeout=remaining)
 
 
 def _pipe_reader(stream, chunks, log_fh):
@@ -109,8 +126,9 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
     if argv is None:
         return {"ok": False, "exit_code": None, "stdout": "", "stderr": "argv 为空",
                 "duration": 0.0, "cancelled": False, "timed_out": False}
-    full_env = os.environ.copy()
+    full_env = scrub_env(os.environ.copy(), mode="drop")
     if env:
+        # 5A：env 关键字环境变量注入用户传入的 env（属于有意注入，例如模型 API key）
         full_env.update({str(k): str(v) for k, v in env.items()})
     log_fh = open(log_path, "ab") if log_path else None
     try:
@@ -152,10 +170,12 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
             if cancel_event is not None and cancel_event.is_set():
                 cancelled = True
                 _kill_tree(proc.pid)
+                _drain_streams(proc, t_out, t_err, timeout=10)
                 break
             if time.time() - start > timeout:
                 timed_out = True
                 _kill_tree(proc.pid)
+                _drain_streams(proc, t_out, t_err, timeout=5)
                 break
         duration = round(time.time() - start, 1)
         t_out.join(timeout=5)
@@ -270,6 +290,44 @@ def _transient_error(err):
     return any(k in err for k in _TRANSIENT)
 
 
+def _classify_failure(res, *, parsed=None, kind="", attempt_done=False, empty_output=False):
+    """根据 run_process 结果 + 解析结果，返回 ErrorCode 字符串。
+
+    设计稿：docs/migration/01-defense-patterns.md §5D + §2D。
+
+    Args:
+        res: run_process 返回的 dict（含 ok/cancelled/timed_out/exit_code/stdout/stderr）
+        parsed: claude 解析后的 dict（或 None）；codex 由 caller 处理
+        kind: "claude" | "codex" | "generic" | ...
+        attempt_done: claude 空响应是否已重试一次（True=已是第二次）
+        empty_output: 调用方已确认 stdout 为空（用于 generic/codex 的空响应）
+
+    Returns:
+        ErrorCode 枚举值字符串；成功返回 ""。
+    """
+    if res.get("cancelled"):
+        return ErrorCode.CANCELLED
+    if res.get("timed_out"):
+        return ErrorCode.TIMEOUT
+    # claude 解析失败（进程 ok 但 JSON 不可解析）
+    if kind == "claude" and parsed is None:
+        return ErrorCode.PARSE_FAIL
+    # claude 明确 is_error
+    if parsed and parsed.get("is_error"):
+        return ErrorCode.VENDOR_REFUSAL
+    # claude 两次都空
+    if kind == "claude" and attempt_done and not (parsed or {}).get("text", "").strip():
+        return ErrorCode.EMPTY
+    # generic/codex 空输出（caller 已确认）
+    if empty_output and not parsed:
+        return ErrorCode.EMPTY
+    # 退出码非 0（vendor 内部崩溃）
+    ec = res.get("exit_code")
+    if ec is not None and ec != 0:
+        return ErrorCode.VENDOR_ERROR
+    return ""
+
+
 def _resolve_attempts(agent):
     """把 agent 的模型配置展开为逐次尝试列表。
 
@@ -360,18 +418,51 @@ def _build_call(agent, kind, sid, readonly, model, prompt):
     return argv, stdin_text, prompt
 
 
+def _check_approval(agent):
+    """5G：catalog entry sensitive + policy=NEVER → 拒绝（无人值守不静默降级）。
+
+    Policy 来源：环境变量 TUTTI_APPROVAL_POLICY（默认 "never"）。
+    sensitive 字段从 catalog orch.sensitive 读取。
+
+    Returns:
+        (True, "") 表示放行；
+        (False, reason) 表示拒绝（error_code=ENV_BLOCK）。
+    """
+    policy = os.environ.get("TUTTI_APPROVAL_POLICY", "never").strip().lower()
+    sensitive = bool((agent.get("orch") or {}).get("sensitive"))
+    if not sensitive:
+        return True, ""
+    if policy == "never":
+        return False, "sensitive step blocked by policy=never (set TUTTI_APPROVAL_POLICY=ask to require explicit approval)"
+    # policy=ask 留 Phase 5 做完整 UI 弹窗流程；当前等价 never
+    return False, "sensitive step requires policy=ask UI flow (Phase 5) — currently blocking"
+
+
 def run_agent(agent, prompt, workdir=None, readonly=True,
               timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None):
     """执行一次智能体调用，返回统一结构
-    {ok, text, json, cost_usd, tokens, error, raw}。
+    {ok, text, json, cost_usd, tokens, error, error_code, raw}。
     agent 来自 registry.effective_agents()；resume 为已有会话 id，仅真实智能体生效
     （codex: exec resume；claude: --resume；opencode/mimo: run -s；qwen: -r；
     generic: catalog orch.resume_argv_template）。
 
     模型尝试顺序来自 _resolve_attempts：跨厂商链（每条独立 env）或
     主模型 + 降级备选；瞬态错误才换下一条，取消/超时/解析失败不降级。
+
+    5E：catalog `orch.timeout_ms`（毫秒）优先于 caller 传入的 timeout。
     """
+    # 5E：catalog orch.timeout_ms 优先
+    orch_timeout_ms = (agent.get("orch") or {}).get("timeout_ms")
+    if orch_timeout_ms:
+        timeout = float(orch_timeout_ms) / 1000.0
     kind = agent.get("kind", "generic")
+    # 5G：approval NEVER 一线（无人值守不静默降级）
+    ok, reason = _check_approval(agent)
+    if not ok:
+        return {"ok": False, "text": "", "json": None, "cost_usd": 0.0, "tokens": 0,
+                "usage": None, "error": reason,
+                "error_code": ErrorCode.ENV_BLOCK,
+                "raw": None, "kind": kind, "model": None}
     base_env = dict(agent.get("env") or {})
     if kind == "claude":
         bash = find_git_bash()
@@ -381,8 +472,11 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     sid = (resume or "").strip() if agent.get("mode") == "real" else ""
     if sid and kind == "generic" and not agent.get("resume_argv_template"):
         return {"ok": False, "text": "", "json": None, "cost_usd": 0.0, "tokens": 0,
-                "usage": None, "error": "该 CLI 未配置会话恢复（catalog orch.resume_argv_template），"
-                             "无法在已有会话上继续", "raw": None, "kind": kind, "model": None}
+                "usage": None,
+                "error": "该 CLI 未配置会话恢复（catalog orch.resume_argv_template），"
+                         "无法在已有会话上继续",
+                "error_code": ErrorCode.VENDOR_ERROR,
+                "raw": None, "kind": kind, "model": None}
 
     attempts = _resolve_attempts(agent)
     out = None
@@ -402,30 +496,33 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
                               timeout=timeout, cancel_event=cancel_event, log_path=log_path)
             out = {"ok": res["ok"], "text": "", "json": None, "cost_usd": 0.0,
-                   "tokens": 0, "usage": None, "error": "", "raw": res,
-                   "kind": kind, "model": att["model"]}
+                   "tokens": 0, "usage": None, "error": "", "error_code": "",
+                   "raw": res, "kind": kind, "model": att["model"]}
             if not res["ok"]:
                 tail = (res["stderr"] or res["stdout"] or "")[-500:]
                 out["error"] = (("超时" if res["timed_out"] else "取消" if res["cancelled"]
                                  else "退出码 %s" % res["exit_code"])
                                 + ("；stderr/stdout: " + tail if tail else ""))
+                # 5D+2D：错误码归一
                 if kind == "claude":
-                    # claude 把 API Error(503/无渠道…)写在 stdout JSON 的 result(is_error)，
-                    # 提取出来供降级判定（stderr 尾部可能只是无害警告）
-                    parsed = _parse_claude_json(res["stdout"] or "")
-                    if parsed and parsed.get("is_error") and parsed.get("text"):
-                        out["error"] = "claude 返回 is_error: " + parsed["text"][:500]
+                    parsed_err = _parse_claude_json(res["stdout"] or "")
+                    if parsed_err and parsed_err.get("is_error") and parsed_err.get("text"):
+                        out["error"] = "claude 返回 is_error: " + parsed_err["text"][:500]
+                out["error_code"] = _classify_failure(res, kind=kind)
                 break
             if kind == "codex":
                 out["text"], out["usage"] = _parse_codex_jsonl(res["stdout"])
                 out["tokens"] = out["usage"]["total"]
                 if not out["text"]:  # 事件流解析失败时退化为取 stdout 尾部
                     out["text"] = res["stdout"][-2000:]
+                if not out["text"]:
+                    out["error_code"] = _classify_failure(res, kind="codex", empty_output=True)
             elif kind == "claude":
                 parsed = _parse_claude_json(res["stdout"])
                 if parsed is None:
                     out["ok"] = False
                     out["error"] = "claude 输出无法解析为 JSON；stdout 尾部: " + res["stdout"][-500:]
+                    out["error_code"] = _classify_failure(res, kind="claude", parsed=None)
                     break
                 out["text"] = parsed["text"]
                 out["cost_usd"] = parsed["cost_usd"]
@@ -434,11 +531,17 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 if parsed["is_error"]:
                     out["ok"] = False
                     out["error"] = "claude 返回 is_error: " + parsed["text"][:500]
+                    out["error_code"] = _classify_failure(res, kind="claude", parsed=parsed)
                     break
                 if not out["text"] and attempt == 0:
                     continue  # 空响应，同模型重试
+                if not out["text"] and attempt == 1:
+                    out["error_code"] = _classify_failure(
+                        res, kind="claude", parsed=parsed, attempt_done=True)
             else:
                 out["text"] = res["stdout"].strip()
+                if not out["text"]:
+                    out["error_code"] = _classify_failure(res, kind=kind, empty_output=True)
             break
         if out["ok"] or ai == len(attempts) - 1:
             return out

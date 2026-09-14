@@ -48,6 +48,8 @@
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
   <symbol id="i-palette" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2a10 10 0 0 0 0 20 2 2 0 0 0 2-2v-1a2 2 0 0 1 2-2h1.5A4.5 4.5 0 0 0 22 12.5C22 6.7 17.5 2 12 2Z"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.5 12.5 5 5 10-11"/></symbol>
+  <symbol id="i-chevron-r" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
   <symbol id="i-sigma" viewBox="0 0 24 24"><path d="M18 7V5a1 1 0 0 0-1-1H6.5a.5.5 0 0 0-.4.8l4.5 6a2 2 0 0 1 0 2.4l-4.5 6a.5.5 0 0 0 .4.8H17a1 1 0 0 0 1-1v-2"/></symbol>
@@ -57,7 +59,33 @@
   <symbol id="i-calendar-days" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M8 15h.01"/><path d="M12 15h.01"/><path d="M16 15h.01"/></symbol>
   <symbol id="i-grip" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></symbol>
   <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></symbol>
-</svg>
+  <symbol id="i-baton" viewBox="0 0 24 24">
+    <path d="M6.8 17.2 13.6 8.2" stroke-width="2.4"/>
+    <circle cx="5.2" cy="18.8" r="2.6" fill="currentColor" stroke="none"/>
+    <circle cx="16" cy="5.9" r="1.6" fill="currentColor" stroke="none"/>
+    <circle cx="19.9" cy="4.3" r="2" fill="currentColor" stroke="none"/>
+    <circle cx="21.6" cy="8.9" r="2.3" fill="currentColor" stroke="none"/>
+  </symbol>
+  <!-- 品牌 LOGO：谱线编队（旋律线串智能体节点，队首渐变高亮 = 编排者） -->
+  <symbol id="i-logo" viewBox="0 0 64 64">
+    <g stroke-width="2.6" stroke-linecap="round" opacity=".85">
+      <line x1="9" y1="17" x2="55" y2="17" stroke="#6b7089"/>
+      <line x1="9" y1="27" x2="55" y2="27" stroke="#6b7089"/>
+      <line x1="9" y1="37" x2="55" y2="37" stroke="#6b7089"/>
+      <line x1="9" y1="47" x2="55" y2="47" stroke="#6b7089"/>
+    </g>
+    <path d="M14 47 C 22 47 24 27 32 27 C 40 27 40 37 50 17" fill="none" stroke="url(#tutti-g)" stroke-width="3.4" stroke-linecap="round"/>
+    <circle cx="14" cy="47" r="4.4" fill="#22d3ee"/>
+    <circle cx="32" cy="27" r="4.4" fill="#8b5cf6"/>
+    <circle cx="41.5" cy="35.5" r="4.4" fill="#c084fc"/>
+    <circle cx="50" cy="17" r="5.8" fill="url(#tutti-g)"/>
+    <circle cx="50" cy="17" r="2.3" fill="var(--panel, #171a21)"/>
+  </symbol></svg>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <linearGradient id="tutti-g" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/><stop offset=".5" stop-color="#8b5cf6"/><stop offset="1" stop-color="#f472b6"/>
+    </linearGradient>
+  </defs></svg>
 <div id="drawer-mask" aria-hidden="true"></div>
 <div id="app">
 
@@ -65,7 +93,10 @@
   <aside id="sidebar">
     <!-- 常规视图：任务树 -->
     <div class="side-main">
-      <div class="brand">🎼 Tutti<span class="sub">多智能体编排台 · All agents, one score.</span></div>
+      <div class="brand" title="多智能体编排台 · All agents, one score.">
+        <span class="logo-tile" aria-hidden="true"><svg class="ico"><use href="#i-logo"></use></svg></span>
+        <span class="brand-name">Tutti<span class="sub">多智能体编排台 · All agents, one score.</span></span>
+      </div>
       <button id="btn-new-task" class="new-task">＋ 新任务</button>
       <div class="side-section tasks">
         <div class="side-label">任务</div>
@@ -143,7 +174,8 @@
             </div>
           </div>
           <div class="field"><label>目标</label><textarea id="f-goal" rows="3" placeholder="要完成什么，一句话即可" required></textarea></div>
-          <div class="field"><label>工作目录</label><input id="f-workdir" placeholder="绝对路径，例 E:\GoOut\my-project"></div>
+          <div class="field"><label>工作目录</label><input id="f-workdir" placeholder="留空则保存到默认路径；或填绝对路径，例 E:\GoOut\my-project">
+            <p class="hint" id="f-workdir-hint"></p></div>
           <div class="field hidden" id="row-resume-session">
             <label>选择会话</label>
             <select id="f-resume-session"><option>（加载中…）</option></select>
@@ -228,6 +260,7 @@
         <div id="rd-plan" class="hidden"></div>
         <div id="rd-steps" class="steps"></div>
         <div id="rd-log" class="logbox hidden"><pre id="rd-log-text"></pre></div>
+        <div id="rd-files" class="rd-files"></div>
         <h3 class="sec-title">报告</h3>
         <div id="rd-report" class="report"></div>
       </div>
@@ -276,8 +309,6 @@
         <div id="ag-installed" class="cards"></div>
         <h3 class="sec-title">可安装</h3>
         <div id="ag-installable" class="cards"></div>
-        <h3 class="sec-title">内置演示</h3>
-        <div id="ag-mocks" class="cards"></div>
       </div>
       </div>
 
@@ -338,6 +369,14 @@
             </div>
             <p class="hint">1 = 串行排队；建议 2-4。每个任务在独立线程执行，运行数据按任务隔离。</p>
           </div>
+          <div class="field"><label>默认保存路径（新建任务未指定工作目录时使用；支持 ~）</label>
+            <div class="input-row">
+              <input id="set-workdir" type="text" placeholder="例 E:\GoOut\workspace">
+              <button class="ghost small" onclick="saveDefaultWorkdir()">保存</button>
+            </div>
+            <label class="toggle" style="margin-top:6px"><input id="set-workdir-migrate" type="checkbox"> 保存时把「旧默认路径下」的现有任务目录迁移到新路径（运行中的跳过；手动指定的目录不受影响）</label>
+            <p class="hint" id="set-workdir-hint"></p>
+          </div>
           <div id="settings-msg" class="msg"></div>
         </div>
       </div>
@@ -364,7 +403,7 @@
 <!-- 访问令牌门：仅远程（非本机）访问且令牌缺失/错误时显示 -->
 <div id="token-gate" class="token-gate hidden">
   <div class="gate-card">
-    <div class="gate-brand">🎼 Tutti</div>
+    <div class="gate-brand"><span class="logo-tile" aria-hidden="true"><svg class="ico"><use href="#i-logo"></use></svg></span><span>Tutti</span></div>
     <p class="gate-hint">这台设备第一次连接，请输入访问令牌<br><span>（电脑上启动 Tutti 时控制台会显示，形如 http://192.168.x.x:8765/?token=xxxxxxxx）</span></p>
     <input id="gate-token" type="password" placeholder="访问令牌" autocomplete="off">
     <button id="gate-go" class="primary" onclick="submitToken()">进入</button>

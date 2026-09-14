@@ -270,6 +270,24 @@ def list_runs(limit=60):
         return [_RUNS[i] for i in ids[:limit]]
 
 
+def latest_run_by_task():
+    """每个任务的最近一次运行（含 steps），全量扫描不受 list_runs 窗口限制。
+
+    侧栏靠它给每个任务展示真实近况；从未运行过的任务不在返回值里。
+    run id 含时间戳，字典序即新旧序。
+    """
+    with LOCK:
+        best = {}
+        for r in _RUNS.values():
+            tid = r.get("task_id")
+            if not tid:
+                continue
+            cur = best.get(tid)
+            if cur is None or r["id"] > cur["id"]:
+                best[tid] = r
+        return {tid: dict(r) for tid, r in best.items()}
+
+
 def update_run(run_id, **fields):
     with LOCK:
         run = _RUNS.get(run_id)
@@ -306,6 +324,104 @@ def delete_run(run_id):
     shutil.rmtree(paths.RUNS_DIR / run_id, ignore_errors=True)
     bump_state()
     return True, ""
+
+
+def recover_orphaned_runs():
+    """启动时调用：把上一轮进程崩溃遗留的 status='running' run 标记为 failed。
+
+    设计稿：docs/migration/01-defense-patterns.md §1E。
+    参考 dsh docs/subsystems/persistence.zh.md:108-114 interruptedTurnClosers。
+    调用时机：load_all 之后，启动 HTTP 服务之前。
+    返回恢复的 run 数。
+    """
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    with LOCK:
+        # status=running 视为崩溃遗留（包括 ended_at 已设的异常状态，统一兜底）
+        candidates = [r["id"] for r in _RUNS.values() if r.get("status") == "running"]
+    recovered = 0
+    for run_id in candidates:
+        # update_run 内部再次加 LOCK（RLock 允许重入），并把终态回填到 task
+        update_run(run_id,
+                   status="failed",
+                   ended_at=now,
+                   error="interrupted at startup (auto-recovered)")
+        recovered += 1
+    if recovered:
+        bump_state()
+    return recovered
+
+
+def run_workdir(run_id):
+    """该 run 的工作目录（经其 task 关联）；无任务的 run（如管理操作）返回空串。"""
+    run = get_run(run_id)
+    if not run:
+        return ""
+    task = get_task(run.get("task_id") or "") if run.get("task_id") else None
+    return str(task.get("workdir") or "") if task else ""
+
+
+_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".idea", ".vscode"}
+
+
+def run_artifacts(run_id, limit=50):
+    """列一次 run 的「成品文件」：工作目录里在该 run 开始之后新产生/修改过的文件。
+
+    返回 (workdir, files)；files 按 mtime 新→旧，name 为工作目录内相对路径，
+    已跳过 .git / node_modules 等噪音目录，最多 limit 个。
+    """
+    wd = run_workdir(run_id)
+    if not wd:
+        return "", []
+    run = get_run(run_id) or {}
+    t0 = str(run.get("started_at") or run.get("created_at") or "")
+    try:
+        t0 = time.mktime(time.strptime(t0, "%Y-%m-%d %H:%M:%S"))
+    except Exception:
+        t0 = 0
+    root = Path(wd)
+    if not root.is_dir():
+        return wd, []
+    files = []
+    try:
+        for p in root.rglob("*"):
+            if not p.is_file():
+                continue
+            if any(part in _SKIP_DIRS for part in p.parts):
+                continue
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            if st.st_mtime < t0:
+                continue
+            files.append({"name": str(p.relative_to(root)).replace("\\", "/"),
+                          "size": st.st_size, "mtime": int(st.st_mtime)})
+            if len(files) >= 400:  # 防超大目录拖垮接口；截断后再排序取最新
+                break
+    except OSError:
+        pass
+    files.sort(key=lambda f: -f["mtime"])
+    return wd, files[:limit]
+
+
+def read_run_file(run_id, rel):
+    """读取 run 工作目录内的一个文件（防目录穿越）。返回 (bytes, 错误)。"""
+    wd = run_workdir(run_id)
+    if not wd:
+        return b"", "该运行没有关联的工作目录"
+    rel = (rel or "").replace("\\", "/").lstrip("/")
+    if not rel:
+        return b"", "缺少文件名"
+    root = Path(wd).resolve()
+    p = (root / rel).resolve()
+    if root != p and root not in p.parents:
+        return b"", "非法路径"
+    if not p.is_file():
+        return b"", "文件不存在"
+    try:
+        return p.read_bytes(), None
+    except OSError as e:
+        return b"", "读取失败: %s" % e
 
 
 def delete_runs(run_ids):
@@ -442,6 +558,35 @@ def retry_task(task_id):
         _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
         _save_json(paths.RUNS_DIR / run["id"] / "run.json", run)
     return True, "", run
+
+
+def rename_task(task_id, title):
+    """重命名任务：同步更新任务与全部运行记录的标题。
+
+    侧栏任务树按 run.title 显示组名，只改任务会让历史运行仍顶着旧名，
+    所以两者一起改（运行 json 逐个回写）。
+    """
+    if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)):
+        return False, "非法的任务 ID"
+    title = str(title or "").strip()
+    if not title:
+        return False, "标题不能为空"
+    if len(title) > 120:
+        return False, "标题过长（最多 120 字）"
+    with LOCK:
+        task = _TASKS.get(task_id)
+        if not task:
+            return False, "任务不存在"
+        if task.get("title") == title:
+            return True, ""
+        task["title"] = title
+        _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
+        for r in _RUNS.values():
+            if r.get("task_id") == task_id:
+                r["title"] = title
+                _save_json(paths.RUNS_DIR / r["id"] / "run.json", r)
+        bump_state()
+    return True, ""
 
 
 def add_step(run_id, role, agent_id, agent_label, note=""):

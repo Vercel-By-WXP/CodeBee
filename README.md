@@ -1,4 +1,4 @@
-# Tutti · 多智能体编排台
+# <img src="app/ui/icons/logo.svg" width="42" align="top" alt="Tutti logo"> Tutti · 多智能体编排台
 
 > All agents, one score. —— 一声令下，众声齐奏。
 > *Tutti*，音乐术语「全体齐奏」：指挥一挥手，所有声部同时进场。

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Tutti logo · 谱线编队：乐谱线上的多智能体，旋律线串节点，队首高亮 = 编排者 -->
+  <defs>
+    <linearGradient id="tg" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset=".5" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#f472b6"/>
+    </linearGradient>
+    <radialGradient id="tbg" cx=".28" cy=".22" r="1.1">
+      <stop offset="0" stop-color="#1c2030"/>
+      <stop offset="1" stop-color="#12141d"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#tbg)"/>
+  <g stroke="#565b73" stroke-width="13" stroke-linecap="round" opacity=".85">
+    <line x1="72" y1="136" x2="440" y2="136"/>
+    <line x1="72" y1="216" x2="440" y2="216"/>
+    <line x1="72" y1="296" x2="440" y2="296"/>
+    <line x1="72" y1="376" x2="440" y2="376"/>
+  </g>
+  <path d="M112 376 C 176 376 192 216 256 216 C 320 216 320 296 400 136"
+        fill="none" stroke="url(#tg)" stroke-width="25" stroke-linecap="round"/>
+  <circle cx="112" cy="376" r="34" fill="#22d3ee"/>
+  <circle cx="256" cy="216" r="34" fill="#8b5cf6"/>
+  <circle cx="331" cy="283" r="34" fill="#c084fc"/>
+  <circle cx="400" cy="136" r="45" fill="url(#tg)"/>
+  <circle cx="400" cy="136" r="17" fill="#12141d"/>
+</svg>

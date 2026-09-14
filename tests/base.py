@@ -18,6 +18,9 @@ class BaseTest(unittest.TestCase):
     def setUp(self):
         from app.core import paths
         self._paths = paths
+        # 隔离：保存当前 pipeline._agents（可能被 monkey-patch），tearDown 恢复
+        from app.core import pipeline
+        self._pipeline_agents_backup = pipeline._agents
         self.tmp = Path(tempfile.mkdtemp(prefix="orch-test-"))
         self.data_dir = self.tmp / "data"
         self.workdir = self.tmp / "work"
@@ -35,6 +38,12 @@ class BaseTest(unittest.TestCase):
         store._RUNS.clear()
 
     def tearDown(self):
+        # 恢复 monkey-patched 的 pipeline._agents（test_pipeline 等会改成 mock 列表）
+        try:
+            from app.core import pipeline
+            pipeline._agents = self._pipeline_agents_backup
+        except Exception:
+            pass
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def mock_agents(self):
