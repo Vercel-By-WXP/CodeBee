@@ -792,9 +792,24 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                             step_wd, readonly=False, ev=ev, timeout=2400,
                             resume=resume_ctx["session"] if resume_ctx else None)
             if not res["ok"]:
-                store.update_run(run_id, status="failed",
-                                 error="第 %d 章起草失败: %s" % (i, res.get("error")), ended_at=_now())
-                return
+                # 成品是文件不是退出码：CLI 超时但章稿已完整落盘（终章长文实测
+                # 反复出现——文件写完、收尾声明没等到）就送评审门把关，别整章作废
+                txt = _read_chapter(workdir, i)
+                if txt and _wc(txt) >= int(wpc * 0.6):
+                    live = (store.get_run(run_id).get("steps") or [])
+                    if live:
+                        store.finish_step(run_id, live[-1]["n"], "done",
+                                          summary="起草调用超时，但章稿已完整落盘（约 %d 字）——交评审门判质量"
+                                                  % _wc(txt))
+                    else:
+                        store.update_run(run_id, status="failed",
+                                         error="第 %d 章起草失败: %s" % (i, res.get("error")),
+                                         ended_at=_now())
+                        return
+                else:
+                    store.update_run(run_id, status="failed",
+                                     error="第 %d 章起草失败: %s" % (i, res.get("error")), ended_at=_now())
+                    return
 
         # 复用章且上一遍已有评审分数 → 直接沿用，不再重评
         if reuse and inh_scores.get(i, {}).get("means"):

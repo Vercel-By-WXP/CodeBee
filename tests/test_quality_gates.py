@@ -20,6 +20,7 @@ from base import BaseTest
 
 ROLE_CLI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures_role_cli.py")
 BAD_CLI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures_bad_cli.py")
+CRASH_CLI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures_crash_cli.py")
 
 
 @contextlib.contextmanager
@@ -93,6 +94,30 @@ class TestQualityGates(BaseTest):
             means = cs.get("means") or {}
             self.assertNotEqual(set(means.values()) or {0}, {0.0},
                                 "评审失败被当成 0 分记录：%s" % cs)
+
+    def test_draft_crash_with_written_file_recovers(self):
+        """起草调用失败但章稿已完整落盘 → 送评审门，不整章作废。"""
+        from app.core import pipeline, store
+        with _fake_env(cli=CRASH_CLI):
+            task = store.create_task({
+                "type": "serial_novel", "title": "闸门-崩溃恢复", "mode": "manual",
+                "implementer": "fakecli", "critics": ["mock-a"],
+                "goal": "写一部短篇连载", "workdir": str(self.workdir),
+                "serial": {"chapters": 2, "words_per_chapter": 800},
+            })
+            run = store.create_run("orchestration", task["title"], task_id=task["id"])
+            pipeline.execute_run(run["id"])
+        run = store.get_run(run["id"])
+        self.assertEqual(run["status"], "done", run.get("error"))
+        roles = {(s["role"], s["status"]): s for s in run["steps"]}
+        d1 = roles[("draft-c1", "done")]
+        self.assertIn("落盘", d1.get("summary") or "")
+        for i in (1, 2):
+            self.assertTrue((self.workdir / ("chapter-%02d.md" % i)).is_file())
+        cs = run.get("chapter_scores") or []
+        self.assertEqual([c["chapter"] for c in cs], [1, 2])
+        v = run.get("verdict") or {}
+        self.assertTrue(v.get("serial"))
 
     def test_retry_skips_degraded_outline_but_keeps_mock_template(self):
         """降级大纲不继承（强制重新生成）；mock 模板大纲正常继承。"""

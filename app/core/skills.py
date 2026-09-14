@@ -330,7 +330,8 @@ def learn_from_run(run_id, use_orchestrator=True):
                           .replace("__VERDICT__", verdict_txt)
                           .replace("__ISSUES__",
                                    "\n".join("- %s" % i.get("note", "") for i in issues)[:3000] or "（无）"))
-                res = modelhub.chat(prov["id"], model, prompt, max_tokens=1200, timeout=180)
+                # 推理模型的思考会吞掉全部预算：max_tokens 给足才有正文可解析
+                res = modelhub.chat(prov["id"], model, prompt, max_tokens=8000, timeout=300)
                 if res.get("ok"):
                     data = runner.extract_json(res.get("text") or "")
                     raw = (data or {}).get("lessons") if isinstance(data, dict) else None
