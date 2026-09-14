@@ -159,6 +159,24 @@ def _make_llm_caller(agent, workdir):
     return caller
 
 
+def _resume_sid(agent, sid):
+    """§07 T1.1：该 agent 是否可用会话 id 续会话；不可用返回 None（退回全新调用）。
+
+    codex/claude/opencode/qwen 原生支持 resume；generic 需 catalog 配了
+    resume_argv_template；mock/其余一律 None。避免 run_agent 对 generic 的
+    「未配置会话恢复」硬失败把修订流程打断。
+    """
+    sid = (sid or "").strip()
+    if not sid or agent.get("mode") == "mock":
+        return None
+    kind = agent.get("kind", "generic")
+    if kind in ("codex", "claude", "opencode", "qwen"):
+        return sid
+    if kind == "generic" and agent.get("resume_argv_template"):
+        return sid
+    return None
+
+
 def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None):
     """执行一个智能体步骤并记录。返回 runner 统一结果。"""
     step, log_abs = store.add_step(run_id, role, agent["id"],
@@ -396,6 +414,7 @@ def _run_code(run, task, agents, ev, stats, mode):
     run_id = run["id"]
     workdir = task["workdir"]
     repairs = []       # 每轮 {round, kind, verify_pass, review_pass, issues}
+    impl_sid = [""]    # §07 T1.1：最后一次实现的 CLI 会话 id（fix 轮复用）
     route = {}
     switched = False
     resume_ctx = _valid_resume(task, agents)
@@ -463,6 +482,10 @@ def _run_code(run, task, agents, ev, stats, mode):
             res = _run_step(run_id, role, impl_b, prompt, step_wd,
                             readonly=False, ev=ev, note=prefix_note if i == 0 else "",
                             resume=use_resume)
+            # §07 T1.1：记录最后一次实现的会话 id，fix 轮复用（会话内前缀走缓存读计价）
+            new_sid = _resume_sid(impl_b, res.get("sid"))
+            if new_sid:
+                impl_sid[0] = new_sid
             if impl_agent.get("mode") == "mock" and res["ok"]:
                 try:
                     mock_path = os.path.abspath(os.path.join(workdir, "mock-impl.txt"))
@@ -501,7 +524,7 @@ def _run_code(run, task, agents, ev, stats, mode):
             res = _run_step(run_id, "fix-r%d" % round_no, modelhub.bind_agent(impl, difficulty),
                             prompt, workdir, readonly=False, ev=ev,
                             note="自动修复第 %d 轮" % round_no,
-                            resume=resume_ctx["session"] if resume_ctx else None)
+                            resume=resume_ctx["session"] if resume_ctx else impl_sid[0])
             if impl.get("mode") == "mock" and res["ok"]:
                 pass  # mock 不产生真实变更
         review_json, verify_pass, verify_ran = review_and_score()
@@ -647,7 +670,7 @@ def _ensure_critique_placeholders(tpl):
 
 # ---------------------------------------------------------------- 连载引擎（长篇小说：逐章打磨）
 
-SERIAL_CHAPTER_PROMPT = """你是一名网文作者。请撰写本书第 __I__ 章，把本章正文写入文件 `__FILE__`（直接写入该文件，只写本章）。
+SERIAL_CHAPTER_PROMPT = """你是一名网文作者（写作规范见下方经验库）。本书信息如下，请先完整读完再执行末尾的「本章任务」。
 
 __SKILLS__
 
@@ -657,14 +680,17 @@ __GOAL__
 ## 全书大纲（__SCOPE__）
 __OUTLINE__
 
-## 前情提要（此前各章结尾摘录，衔接用）
-__PREV__
-
-## 本章要求
+---
+## 本章任务（执行这一条即可）
+- 撰写本书第 __I__ 章，把本章正文写入文件 `__FILE__`（直接写入该文件，只写本章）。
 - 章节标题：__TITLE__
 - 剧情要点：__BEATS__
 - 章末钩子：__HOOK__
 - 正文约 __WORDS__ 字，中文，直接开写正文（可含本章标题行）。
+
+## 前情提要（此前各章结尾摘录，衔接用）
+__PREV__
+
 - 写完文件后，最终回复只输出一行：`第 __I__ 章完成（约 __WORDS__ 字）`——不要在回复里复述或解释正文。"""
 
 SERIAL_REVISE_PROMPT = """你是一名网文作者。第 __I__ 章没有通过评审，请修订文件 `__FILE__`（直接改写该文件）。
@@ -789,7 +815,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         if note:
             tpl = tpl.replace("你是严格的评审",
                               "你是严格的评审（背景：%s，请结合全书目标评审本章节）" % note, 1)
-        sk, _ = skills.block_for(task)
+        # stable_order：评审分轮次调用，hits 中途变化会打碎前缀缓存（§07 T1.2'）
+        sk, _ = skills.block_for(task, stable_order=True)
         if sk:
             tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % sk, 1)
         return tpl.replace("__DIMKEYS__", dimkey).replace(
@@ -858,6 +885,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         ch = outline["chapters"][k - 1]
         ch_file = "chapter-%02d.md" % i
         prev = ""
+        draft_sid = ""  # §07 T1.1：本轮 draft/复用章的会话 id（revise 复用；reuse 时为空）
         if i > 1:
             tails = []
             for j in range(max(1, i - 2), i):
@@ -883,7 +911,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             store.finish_step(run_id, step["n"], "done", summary="（mock）第 %d 章草稿落盘" % i,
                               duration_s=0.2)
         else:
-            sk_block, _ = skills.block_for(task)
+            # stable_order：同一任务 8 个章节的技能块必须字节级一致（§07 T1.2' 前缀缓存）
+            sk_block, _ = skills.block_for(task, stable_order=True)
             scope = ("本章 = 大纲第 %d 章" % i) if start == 1 else (
                 "本批为第 %d–%d 章，下列按全书章号列出各章要点" % (start, end))
             prompt = (SERIAL_CHAPTER_PROMPT
@@ -900,6 +929,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             res = _run_step(run_id, "draft-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
                             step_wd, readonly=False, ev=ev, timeout=2400,
                             resume=resume_ctx["session"] if resume_ctx else None)
+            # §07 T1.1：draft 会话 id 供本轮 revise 复用（同会话内前缀走缓存读计价）
+            draft_sid = _resume_sid(impl, res.get("sid")) or ""
             if not res["ok"]:
                 # 成品是文件不是退出码：CLI 超时但章稿已完整落盘（终章长文实测
                 # 反复出现——文件写完、收尾声明没等到）就送评审门把关，别整章作废
@@ -935,6 +966,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         for rnd in (1, 2):
             text = _read_chapter(workdir, i)
             cj_by_agent = {}
+            critic_sids = {}  # §07 T1.1：每评审的会话 id（第 2 轮复用，前缀走缓存读）
             scored = 0   # 真正给出分数的评审数；失败/不可解析不得当成 0 分计入
             for agent in critics:
                 role = "critique-c%d" % i
@@ -951,7 +983,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 else:
                     res = _run_step(run_id, role, modelhub.bind_agent(agent, difficulty),
                                     crit_prompt_for(text, note="小说第 %d 章" % i),
-                                    workdir, readonly=True, ev=ev)
+                                    workdir, readonly=True, ev=ev,
+                                    resume=critic_sids.get(agent["id"]))
                     cj = runner.extract_json(res.get("text") or "")
                     if not isinstance(cj, dict) or not isinstance(cj.get("scores"), dict) \
                             or not cj.get("scores"):
@@ -960,6 +993,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                                           or res.get("error") or "")[:150]}
                     else:
                         scored += 1
+                    # §07 T1.1：记录该评审的会话 id（第 2 轮复用）
+                    csid = _resume_sid(agent, res.get("sid"))
+                    if csid:
+                        critic_sids[agent["id"]] = csid
                 cj_by_agent[agent["id"]] = cj
                 issues_all.extend({"chapter": i, **it} for it in (cj.get("issues") or [])[:6])
                 _check_cancel(ev)
@@ -1002,7 +1039,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__WORDS__", str(wpc)))
                 _run_step(run_id, "revise-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
                           step_wd, readonly=False, ev=ev, timeout=2400,
-                          resume=resume_ctx["session"] if resume_ctx else None)
+                          resume=resume_ctx["session"] if resume_ctx else draft_sid)
             _check_cancel(ev)
         chapter_scores.append({"chapter": i, "title": ch["title"], "means": means,
                                "passed": bool(means) and all(v >= threshold_ch for v in means.values()),

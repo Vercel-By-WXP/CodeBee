@@ -209,12 +209,15 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
 # ---------------------------------------------------------------- 各家适配
 
 def _parse_codex_jsonl(stdout):
-    """解析 codex exec JSONL 事件流。返回 (text, usage)。
+    """解析 codex exec JSONL 事件流。返回 (text, usage, sid)。
 
     usage 细分来自 turn.completed：input_tokens（含 cached）、cached_input_tokens、
     output_tokens、reasoning_output_tokens；多 turn 累加。
+    sid 来自 thread.started 的 thread_id（§07 T1.1：供后续 revise/fix 复用会话，
+    会话内前缀按供应商缓存读计价）。
     """
     text = ""
+    sid = ""
     usage = {"input": 0, "output": 0, "cached": 0, "reasoning": 0, "total": 0}
     for line in stdout.splitlines():
         line = line.strip()
@@ -224,7 +227,9 @@ def _parse_codex_jsonl(stdout):
             ev = json.loads(line)
         except Exception:
             continue
-        if ev.get("type") == "item.completed":
+        if ev.get("type") == "thread.started":
+            sid = str(ev.get("thread_id") or sid)
+        elif ev.get("type") == "item.completed":
             item = ev.get("item") or {}
             if item.get("type") == "agent_message" and item.get("text"):
                 text = item["text"]
@@ -238,7 +243,7 @@ def _parse_codex_jsonl(stdout):
             usage["reasoning"] += int(u.get("reasoning_output_tokens") or 0)
             usage["total"] += (u.get("total_tokens") if u.get("total_tokens") is not None
                                else inp + out)
-    return text, usage
+    return text, usage, sid
 
 
 def _parse_claude_json(stdout):
@@ -262,6 +267,8 @@ def _parse_claude_json(stdout):
         "usage": usage,
         "tokens": usage["total"],
         "is_error": bool(data.get("is_error")),
+        # §07 T1.1：claude -p 返回本次会话 id，供 --resume 复用
+        "sid": str(data.get("session_id") or ""),
     }
 
 
@@ -476,7 +483,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 "error": "该 CLI 未配置会话恢复（catalog orch.resume_argv_template），"
                          "无法在已有会话上继续",
                 "error_code": ErrorCode.VENDOR_ERROR,
-                "raw": None, "kind": kind, "model": None}
+                "sid": "", "raw": None, "kind": kind, "model": None}
 
     attempts = _resolve_attempts(agent)
     out = None
@@ -497,7 +504,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                               timeout=timeout, cancel_event=cancel_event, log_path=log_path)
             out = {"ok": res["ok"], "text": "", "json": None, "cost_usd": 0.0,
                    "tokens": 0, "usage": None, "error": "", "error_code": "",
-                   "raw": res, "kind": kind, "model": att["model"]}
+                   "sid": "", "raw": res, "kind": kind, "model": att["model"]}
             if not res["ok"]:
                 tail = (res["stderr"] or res["stdout"] or "")[-500:]
                 out["error"] = (("超时" if res["timed_out"] else "取消" if res["cancelled"]
@@ -511,7 +518,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 out["error_code"] = _classify_failure(res, kind=kind)
                 break
             if kind == "codex":
-                out["text"], out["usage"] = _parse_codex_jsonl(res["stdout"])
+                out["text"], out["usage"], out_sid = _parse_codex_jsonl(res["stdout"])
+                out["sid"] = out_sid  # §07 T1.1：会话 id 供 revise/fix 复用
                 out["tokens"] = out["usage"]["total"]
                 if not out["text"]:  # 事件流解析失败时退化为取 stdout 尾部
                     out["text"] = res["stdout"][-2000:]
@@ -528,6 +536,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 out["cost_usd"] = parsed["cost_usd"]
                 out["tokens"] = parsed["tokens"]
                 out["usage"] = parsed["usage"]
+                out["sid"] = parsed.get("sid") or ""  # §07 T1.1
                 if parsed["is_error"]:
                     out["ok"] = False
                     out["error"] = "claude 返回 is_error: " + parsed["text"][:500]

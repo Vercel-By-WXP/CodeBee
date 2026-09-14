@@ -36,8 +36,43 @@ def _user_pack_dir():
     """用户自建包目录：每次现取 paths.DATA_DIR（测试重定向后自动跟随）。"""
     return paths.DATA_DIR / "skillpacks"
 
-MAX_INJECT_CHARS = 6000      # 单次注入上限（防止提示词爆炸）
+MAX_INJECT_CHARS = 9000      # 单次注入上限（防止提示词爆炸；七猫+番茄双平台包并存后上调）
 MAX_LESSONS_INJECT = 8       # 注入的自动教训条数上限
+
+# 自动教训的问题分类：闭集枚举，对齐评审维度。沉淀时由复盘官归类（兜底路径按评审
+# 维度关键词映射），UI 据此分类过滤查看。刻意保持小而稳，避免类别爆炸让过滤失去意义。
+LESSON_CATEGORIES = ["情节逻辑", "人物塑造", "节奏爽点", "文笔风格", "一致性", "流程规范"]
+LESSON_UNCATEGORIZED = "未分类"   # 老数据 / 无法归类的兜底
+# dim（评审维度名）或模型归类文本 → 分类：按关键词就近命中，首个匹配者胜
+_CATEGORY_KEYWORDS = [
+    ("情节逻辑", ("情节", "剧情", "主线", "冲突", "逻辑", "事件", "伏笔", "填坑", "转折")),
+    ("人物塑造", ("人物", "角色", "弧光", "人设", "性格", "动机", "ooc", "崩人设")),
+    ("节奏爽点", ("节奏", "爽点", "钩子", "吸引力", "开篇", "黄金三章", "追读", "断章", "高潮")),
+    ("文笔风格", ("文笔", "语言", "描写", "对白", "对话", "文风", "措辞", "病句", "重复")),
+    ("一致性",  ("一致", "连贯", "设定", "前后", "时间线", "吃书", "连续性", "人设统一")),
+    ("流程规范", ("流程", "规范", "格式", "字数", "章节", "签约", "交稿", "工程", "测试", "部署", "接口")),
+]
+
+
+def _category_from(text):
+    """把模型归类文本或评审维度名就近映射到闭集分类；命中不了返回 None。"""
+    s = str(text or "").strip().lower()
+    if not s:
+        return None
+    for cat, kws in _CATEGORY_KEYWORDS:
+        for kw in kws:
+            if kw.lower() in s:
+                return cat
+    return None
+
+
+def _normalize_category(category, dim=None):
+    """把任意输入归一到闭集分类：先精确命中枚举，再按关键词映射 category，
+    再退到评审维度 dim，最后 None（调用方据此决定是否落未分类）。"""
+    c = str(category or "").strip()
+    if c in LESSON_CATEGORIES:
+        return c
+    return _category_from(c) or _category_from(dim) or None
 
 # 内置经验包：文件 → 适用流程（scope）；scope 为空表示适用全部
 BUILTIN_PACKS = [
@@ -45,6 +80,10 @@ BUILTIN_PACKS = [
      "file": "qimao-signing.md",
      "scopes": ["novel", "serial_novel"],
      "note": "黄金一章、爽点纪律、期待感三源、人物红线、自检清单"},
+    {"id": "fanqie-novel", "name": "番茄小说写作与流量守则",
+     "file": "fanqie-novel.md",
+     "scopes": ["novel", "serial_novel"],
+     "note": "算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点"},
 ]
 
 # ---------------------------------------------------------------- 用户自建包（3A）
@@ -238,11 +277,14 @@ def _lesson_id(scope, title):
     return "sk-" + h
 
 
-def list_lessons(scope=None, only_enabled=False):
+def list_lessons(scope=None, only_enabled=False, category=None):
     with _LOCK:
         items = list((_load().get("lessons") or []))
     if scope:
         items = [x for x in items if x.get("scope") in (scope, "*")]
+    if category:
+        items = [x for x in items
+                 if (x.get("category") or LESSON_UNCATEGORIZED) == category]
     if only_enabled:
         items = [x for x in items if x.get("enabled", True)]
     items.sort(key=lambda x: (-int(x.get("hits") or 0), -int(x.get("seen") or 1),
@@ -250,12 +292,17 @@ def list_lessons(scope=None, only_enabled=False):
     return items
 
 
-def upsert_lesson(scope, title, content, source=""):
-    """写入/合并一条教训：同 scope 同标题视为同一条（seen+1，内容取新的）。"""
+def upsert_lesson(scope, title, content, source="", category=None, dim=None):
+    """写入/合并一条教训：同 scope 同标题视为同一条（seen+1，内容取新的）。
+
+    category 为闭集枚举之一（见 LESSON_CATEGORIES）；输入非法时退到 dim 关键词映射，
+    仍归不出则落「未分类」。id 仍只按 scope+标题哈希，故老教训再沉淀会合并而非分裂。
+    """
     title = str(title or "").strip()[:60]
     content = str(content or "").strip()[:1200]
     if not title or not content:
         return None
+    cat = _normalize_category(category, dim) or LESSON_UNCATEGORIZED
     lid = _lesson_id(scope, title)
     with _LOCK:
         data = _load()
@@ -265,12 +312,16 @@ def upsert_lesson(scope, title, content, source=""):
                 it["content"] = content
                 it["seen"] = int(it.get("seen") or 1) + 1
                 it["updated_at"] = _now()
+                # 合并时不降级已有分类：除非本次归到了明确类别，或该条原本没有分类
+                if cat != LESSON_UNCATEGORIZED or not it.get("category"):
+                    it["category"] = cat
                 if source:
                     it["source"] = source
                 _save(data)
                 return it
         it = {"id": lid, "scope": scope, "title": title, "content": content,
               "source": source, "hits": 0, "seen": 1, "enabled": True,
+              "category": cat,
               "created_at": _now(), "kind": "lesson"}
         items.append(it)
         _save(data)
@@ -312,11 +363,14 @@ def pack_op(pack_id, op):
 
 # ---------------------------------------------------------------- 注入
 
-def block_for(task, scope_override=None):
+def block_for(task, scope_override=None, *, stable_order=False):
     """生成注入提示词的经验块。命中即计数。返回 (文本, 命中的 id 列表)。
 
     3A：内置包 + 用户自建包都参与 scope 匹配；3B：带 persona 的包先注入
     「角色设定」块再注入规范正文。
+    stable_order=True（docs/migration/07-token-cost.md T1.2'）：教训按 id 排序
+    而非 hits——hits 在任务中途变化会让技能块字节级不稳定，打碎供应商的
+    前缀缓存（同一任务 8 章应看到完全相同的技能块）。内容不变，只稳排序。
     """
     scope = scope_override or task.get("type") or "*"
     parts, used = [], []
@@ -338,6 +392,8 @@ def block_for(task, scope_override=None):
 
     lessons = list_lessons(scope, only_enabled=True)[:MAX_LESSONS_INJECT]
     if lessons:
+        if stable_order:
+            lessons.sort(key=lambda x: x.get("id") or "")
         lines = []
         for x in lessons:
             lines.append("- **%s**：%s" % (x["title"], x["content"]))
@@ -374,7 +430,9 @@ def bump_hits(ids):
 LEARN_PROMPT = """你是编排系统的复盘官。下面是刚结束的一次任务运行的评审结果与主要问题。
 请把**可复用到下次同类任务**的经验教训提炼出来（不要复述本次剧情，不要写泛泛的套话）。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"lessons": [{"title": "≤14 字的问题归类", "content": "下次必须怎么做/避免什么（≤120 字，具体可执行）"}]}
+{"lessons": [{"title": "≤14 字的问题归类", "category": "问题分类", "content": "下次必须怎么做/避免什么（≤120 字，具体可执行）"}]}
+category 必须从以下固定枚举中选一个（贴合评审维度，不要自创类别）：
+__CATEGORIES__
 最多 5 条，只保留反复出现或影响过稿/验收的关键问题；没有值得沉淀的就返回空数组。
 
 ## 任务类型
@@ -435,12 +493,14 @@ def _fallback_lessons(task, run):
                 weak.setdefault(d, []).append((c.get("chapter"), float(s)))
     for d, lst in sorted(weak.items(), key=lambda kv: -len(kv[1]))[:3]:
         chs = "、".join("第 %s 章(%.1f)" % (c, s) for c, s in lst[:4])
-        out.append({"title": "%s 维度反复不达标" % d,
+        out.append({"dim": d,
+                    "title": "%s 维度反复不达标" % d,
                     "content": "历史运行中 %s 的「%s」多次低于阈值（%s）。写这一维度前先对照经验包自检，"
                                "宁可少写事件也要把该维度做扎实。" % (task.get("type"), d, chs)})
     for d, s in (v.get("global_scores") or {}).items():
         if float(s) < float(v.get("threshold") or 7.0):
-            out.append({"title": "全书「%s」被一致性评审扣分" % d,
+            out.append({"dim": d,
+                        "title": "全书「%s」被一致性评审扣分" % d,
                         "content": "单章达标但全书「%s」仅 %.1f 分。下一部作品在章纲阶段就要规划该维度的"
                                    "整体曲线（而不是逐章各写各的）。" % (d, float(s))})
     return out[:5]
@@ -471,7 +531,8 @@ def learn_from_run(run_id, use_orchestrator=True):
                 prov, model = orch
                 verdict_txt = json.dumps({k: v[k] for k in v if k not in ("route", "chapter_scores")},
                                          ensure_ascii=False)[:1200]
-                prompt = (LEARN_PROMPT.replace("__TYPE__", str(task.get("type")))
+                prompt = (LEARN_PROMPT.replace("__CATEGORIES__", "、".join(LESSON_CATEGORIES))
+                          .replace("__TYPE__", str(task.get("type")))
                           .replace("__GOAL__", (task.get("goal") or "")[:600])
                           .replace("__VERDICT__", verdict_txt)
                           .replace("__ISSUES__",
@@ -484,14 +545,16 @@ def learn_from_run(run_id, use_orchestrator=True):
                     if isinstance(raw, list):
                         for x in raw[:5]:
                             if isinstance(x, dict) and x.get("title") and x.get("content"):
-                                lessons.append({"title": str(x["title"]), "content": str(x["content"])})
+                                lessons.append({"title": str(x["title"]), "content": str(x["content"]),
+                                                "category": x.get("category")})
         except Exception:
             lessons = []
     if not lessons:
         lessons = _fallback_lessons(task, run)
     n = 0
     for x in lessons:
-        if upsert_lesson(task.get("type") or "*", x["title"], x["content"], source=run_id):
+        if upsert_lesson(task.get("type") or "*", x["title"], x["content"], source=run_id,
+                         category=x.get("category"), dim=x.get("dim")):
             n += 1
     return n
 
@@ -507,5 +570,16 @@ def learn_async(run_id):
 
 
 def view():
-    """经验库总览（给 UI/API）。"""
-    return {"packs": list_packs(), "lessons": list_lessons()}
+    """经验库总览（给 UI/API）。categories：闭集枚举 + 实际出现过的分类，
+    counts 给每类条数，供 UI 下拉过滤与计数显示。"""
+    lessons = list_lessons()
+    counts = {}
+    for x in lessons:
+        c = x.get("category") or LESSON_UNCATEGORIZED
+        counts[c] = counts.get(c, 0) + 1
+    cats = list(LESSON_CATEGORIES)
+    for c in sorted(counts):     # 历史里出现过的额外分类也带上（不丢过滤项）
+        if c not in cats:
+            cats.append(c)
+    return {"packs": list_packs(), "lessons": lessons,
+            "categories": cats, "counts": counts, "total": len(lessons)}

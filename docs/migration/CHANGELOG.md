@@ -91,6 +91,20 @@ Phase 6（Agent Team）按设计稿维持观望。
 - `tests/test_auto.py::TestPlannerFallback`（parallel agent 回归）：mock 检测逻辑被破坏，调用真实 LLM 而非 fallback to template
 - 修复方向：与并行 agent 协商合并
 
+## Token 成本优化（docs/migration/07-token-cost.md）
+
+```
+2026-09-14 | T1.3 | app/core/pipeline.py:SERIAL_CHAPTER_PROMPT | 静态前置重排：角色→技能→目标→大纲放前（任务内字节稳定），每章可变部分（章号/文件/前情/要求）沉底——同任务跨章命中供应商前缀缓存（此前第 1 行就含章号，前缀从第 1 行断）
+2026-09-14 | T1.2' | app/core/skills.py:block_for + pipeline 两处接线 | stable_order：教训按 id 排序而非 hits——hits 每章 bump 会让技能块字节级漂移打碎前缀缓存；内容不变只稳排序（角色化裁剪方案否决：平台签约标准正是评审依据，裁剪伤过稿率）
+2026-09-14 | T1.1 | runner.py（codex thread_id/claude session_id 解析→run_agent 返回 sid）+ pipeline（_resume_sid 守卫 + fix/revise/二次评审复用会话） | 修订/修复轮从全量重发变增量：台账实测 fix 单次 ~100 万 tok、revise-c8 单次 109 万 tok；generic 无 resume 模板自动退回全新调用不打断流程；tests/test_token_cost.py 9 绿
+2026-09-14 | (test-infra 重大修复) | tests/base.py | setUp 中 pipeline 备份导入发生在 DATA_DIR 重定向前 → modelhub._FILE 绑到真实 models.json → 测试进程读真实编排者配置发真网 API（单组合 286s、产真大纲绕过降级闸门）。修复：重定向先行 + modelhub/settings/flows/skills 的 import 期 _FILE 统一重绑临时目录。同组合 286s→2.1s；test_auto「编排者泄漏」与 gates 降级闸门偶发失败同根因，一并修复（此前的并行 agent 归属判断有误，纠正）
+```
+
+之前归为「并行 agent 破坏」的 test_auto.TestPlannerFallback 实为上述 base.py 泄漏，已修复并纠正归因；
+test_paths.py 的 5 个 AttributeError 仍是并行 agent 删除 paths 私有函数所致，维持原判。
+
+---
+
 ## 实施记录格式
 
 每项提交示例：

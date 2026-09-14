@@ -103,7 +103,7 @@ class TestRunnerUsageParse(BaseTest):
                                   "output_tokens": 300, "reasoning_output_tokens": 120,
                                   "total_tokens": 1500}}),
         ])
-        text, u = runner._parse_codex_jsonl(stdout)
+        text, u, _sid = runner._parse_codex_jsonl(stdout)
         self.assertEqual(text, "回答")
         self.assertEqual(u, {"input": 1200, "output": 300, "cached": 900,
                              "reasoning": 120, "total": 1500})
@@ -126,7 +126,7 @@ class TestRunnerUsageParse(BaseTest):
                  json.dumps({"type": "turn.completed",
                              "usage": {"input_tokens": 200, "cached_input_tokens": 80,
                                        "output_tokens": 70, "reasoning_output_tokens": 20}})]
-        _, u = runner._parse_codex_jsonl("\n".join(turns))
+        _, u, _sid = runner._parse_codex_jsonl("\n".join(turns))
         self.assertEqual(u["input"], 300)
         self.assertEqual(u["output"], 120)
         self.assertEqual(u["cached"], 80)
