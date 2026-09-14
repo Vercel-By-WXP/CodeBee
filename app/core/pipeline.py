@@ -177,7 +177,7 @@ def _resume_sid(agent, sid):
     return None
 
 
-def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None):
+def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None):
     """执行一个智能体步骤并记录。返回 runner 统一结果。"""
     step, log_abs = store.add_step(run_id, role, agent["id"],
                                    agent.get("label", agent["id"]), note=note)
@@ -207,14 +207,23 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
         res = _spawn_step(session_run_id=run_id, role=role, agent=agent,
                           prompt=effective_prompt, workdir=workdir, readonly=readonly,
                           ev=ev, timeout=timeout, resume=resume, step=step,
-                          log_abs=log_abs)
+                          log_abs=log_abs, images=images)
     _check_cancel(ev)
     _finish_step_result(run_id, step, res, role, agent, start)
     return res
 
 
 def _budget_max_tokens():
-    """§07 T2.1：单次 run 的 token 预算上限；0/未配置 = 不限。"""
+    """§07 T2.1：单次 run 的 token 预算上限；0/未配置 = 不限。
+
+    环境变量 TUTTI_BUDGET_MAX_TOKENS 优先（运维场景：不动配置文件直接钳住失控 run）。
+    """
+    try:
+        env_val = os.environ.get("TUTTI_BUDGET_MAX_TOKENS")
+        if env_val:
+            return max(0, int(env_val))
+    except Exception:
+        pass
     try:
         from .settings_schema import get as ss_get, register_default_namespaces
         register_default_namespaces()

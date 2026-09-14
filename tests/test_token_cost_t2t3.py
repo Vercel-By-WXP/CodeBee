@@ -34,6 +34,22 @@ class TestBudgetNamespace(BudgetBase):
                   expected_revision=rev)
         self.assertEqual(ss.get("budget", "max_tokens_per_run"), 5000)
 
+    def test_env_overrides_settings(self):
+        """TUTTI_BUDGET_MAX_TOKENS 优先于 settings（运维快捷钳制）。"""
+        from app.core import settings_schema as ss, pipeline
+        ss.mutate("budget", [{"op": "set", "path": "max_tokens_per_run", "value": 5000}])
+        old = os.environ.get("TUTTI_BUDGET_MAX_TOKENS")
+        try:
+            os.environ["TUTTI_BUDGET_MAX_TOKENS"] = "123"
+            self.assertEqual(pipeline._budget_max_tokens(), 123)
+            os.environ["TUTTI_BUDGET_MAX_TOKENS"] = "0"
+            self.assertEqual(pipeline._budget_max_tokens(), 0)
+        finally:
+            if old is None:
+                os.environ.pop("TUTTI_BUDGET_MAX_TOKENS", None)
+            else:
+                os.environ["TUTTI_BUDGET_MAX_TOKENS"] = old
+
 
 class TestBudgetGate(BudgetBase):
     """_spawn_step 的预算闸：超额 → ENV_BLOCK；未超额 → 正常调用。"""
@@ -153,6 +169,35 @@ class TestChatExactCache(BudgetBase):
         os.utime(cp, (old, old))
         modelhub.chat("prov-test", "m1", "p", max_tokens=64, cache_ttl=3600)
         self.assertEqual(len(self._calls), 2, "过期缓存不应命中")
+
+
+class TestUsageCacheRate(BaseTest):
+    """/api/usage 聚合暴露 cache_rate（§07 验收指标的观测面）。"""
+
+    def _seed(self):
+        from app.core import usage
+        usage.record(source="pipeline", run_id="r1", role="draft", model="m-a",
+                     ok=True, usage={"input": 800, "output": 100, "cached": 0})
+        usage.record(source="pipeline", run_id="r1", role="draft", model="m-a",
+                     ok=True, usage={"input": 200, "output": 100, "cached": 800})
+
+    def test_totals_and_day_cache_rate(self):
+        self._seed()
+        from app.core import usage
+        s = usage.summary(days=7)
+        # 总命中率 = 800 / (1000 + 800) ≈ 44.4%
+        self.assertEqual(s["totals"]["cached"], 800)
+        self.assertAlmostEqual(s["totals"]["cache_rate"], 44.4, places=1)
+        day = [d for d in s["by_day"] if d["tokens"] > 0][0]
+        self.assertAlmostEqual(day["cache_rate"], 44.4, places=1)
+        self.assertEqual(day["cached"], 800)
+
+    def test_by_model_cache_rate(self):
+        self._seed()
+        from app.core import usage
+        s = usage.summary(days=7)
+        rows = {r["key"]: r for r in s["by_model"]}
+        self.assertAlmostEqual(rows["m-a"]["cache_rate"], 44.4, places=1)
 
 
 class TestCascadeReorder(BaseTest):

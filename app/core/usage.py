@@ -233,21 +233,26 @@ def _num(r, key):
 
 
 def _group(records, key):
-    """按 key 聚合：{name: {calls, ok, tokens, input, output, cost_usd, duration_s}}。"""
+    """按 key 聚合：{name: {calls, ok, tokens, input, output, cached, cache_rate, cost_usd, duration_s}}。"""
     groups = {}
     for r in records:
         name = str(r.get(key) or "") or "unknown"
         g = groups.setdefault(name, {"calls": 0, "ok": 0, "tokens": 0,
-                                     "input": 0, "output": 0, "cost_usd": 0.0,
-                                     "duration_s": 0.0})
+                                     "input": 0, "output": 0, "cached": 0,
+                                     "cost_usd": 0.0, "duration_s": 0.0})
         g["calls"] += 1
         if r.get("ok"):
             g["ok"] += 1
         g["tokens"] += _num(r, "total")
         g["input"] += _num(r, "input")
         g["output"] += _num(r, "output")
+        g["cached"] += _num(r, "cached")
         g["cost_usd"] = round(g["cost_usd"] + float(r.get("cost_usd") or 0.0), 4)
         g["duration_s"] = round(g["duration_s"] + float(r.get("duration_s") or 0.0), 1)
+    # §07 验收指标：缓存命中率（cached / (input + cached)），与 totals.cache_rate 同口径
+    for g in groups.values():
+        denom = g["input"] + g["cached"]
+        g["cache_rate"] = round(g["cached"] * 100.0 / denom, 1) if denom else 0.0
     return groups
 
 
@@ -277,12 +282,16 @@ def summary(days=30, recent_limit=30):
             by_day.append({"day": d, "calls": g.get("calls", 0),
                            "tokens": g.get("tokens", 0),
                            "input": g.get("input", 0), "output": g.get("output", 0),
+                           "cached": g.get("cached", 0),
+                           "cache_rate": g.get("cache_rate", 0.0),
                            "cost_usd": round(g.get("cost_usd", 0.0), 4)})
     else:
         for d in sorted(day_groups):
             g = day_groups[d]
             by_day.append({"day": d, "calls": g["calls"], "tokens": g["tokens"],
                            "input": g["input"], "output": g["output"],
+                           "cached": g.get("cached", 0),
+                           "cache_rate": g.get("cache_rate", 0.0),
                            "cost_usd": g["cost_usd"]})
 
     totals = {

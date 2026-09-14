@@ -115,6 +115,15 @@ test_paths.py 的 5 个 AttributeError 仍是并行 agent 删除 paths 私有函
 T3.2（LLMLingua 技能块压缩）/ T3.3（语义缓存）维持设计稿结论：实验性/不采用。
 全量回归 312 测试 36s 全绿。
 
+## Token 成本可观测性收尾
+
+```
+2026-09-14 | (观测) | app/core/usage.py:_group/by_day | 聚合暴露 cache_rate：by_day 趋势与 by_model/by_tool/by_role/by_task_type 各维度均带 cached + cache_rate（口径同 totals：cached/(input+cached)）——「命中率爬升」验收曲线可直接从 /api/usage 读出
+2026-09-14 | (运维) | app/core/pipeline.py:_budget_max_tokens | 预算闸环境变量快捷通道：TUTTI_BUDGET_MAX_TOKENS 优先于 settings（不动配置文件直接钳住失控 run；0=显式不限）
+```
+
+全量回归 315 测试 31s 全绿。
+
 ---
 
 ## 实施记录格式
