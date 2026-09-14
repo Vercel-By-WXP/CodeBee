@@ -138,6 +138,14 @@ goal = goal_svc.current() or goal_svc.create(
 
 ## 2B. Goal Round Driver（无人值守续行）
 
+> **⚠️ 2026-09-14 缓期：与 Tutti v5 自驱闭环重叠。**
+> 复核发现 Tutti 已有等价机制：`jobs.resume_interrupted()` + `_maybe_auto_resume()`
+> （连载任务断点续跑，v5 落地并经 2 万字零干预验收）。再建独立的 Round Driver
+> 会造成双通道续行——同一任务既被 resume 逻辑接手又被 driver 排队，产生重复入队。
+> **GoalService（2A）已落地**，独立目标状态就绪；未来若需要"不挂任务的独立目标"
+> （如跨任务长期目标），把 driver 挂到 goal_service.current() 的 armed 边沿即可，
+> 前置条件是给 jobs.enqueue 加去重键。
+
 **目标**：当 goal `active && armed && roundsStarted<maxGoalRounds` 且当前 agent 空闲时，自动排入下一条 `<goal_round>` 提示词；用 `agent/pre-step` 做 CAS 竞态防护。
 
 **dsh 参考**：[`packages/goal/goal-round-driver/`](E:/GoOut/_dsh_ref/packages/goal/goal-round-driver/) `README.zh.md:62-72` active + armed + rounds < max 时排入 `<goal_round>` user message；只负责轮次调度，不判断"是否真的完成"。
@@ -244,6 +252,17 @@ goal_round_driver.stop()
 
 ## 2C. revision + CAS 任务板
 
+> **⚠️ 2026-09-14 实施时按 Tutti 实际架构最小化。**
+> 设计稿原假设 jobs.py 有可变 Job 板（多执行方并发改同一 Job 状态）。实际 Tutti
+> 的 jobs.py 是 worker 池 + `store.update_run` 集中状态迁移（LOCK 保护），
+> 不存在"Job 板"结构。真实风险点是防御模式「异步状态不是同步状态」：
+> 陈旧 worker（被取消/崩溃恢复前）覆盖新状态。
+> **落地形式**：`store.update_run(run_id, expected_status=None, **fields)` ——
+> expected_status 非 None 时做 CAS，不匹配返回 None 不写入。
+> 8 测试绿（tests/test_run_cas.py），含 recover_orphaned_runs 重放安全用例。
+
+原设计稿（保留备查）：把 `jobs.py` 的 `Job` 模型加上 `revision: int` 字段；任何状态变更走 CAS（`expectedRevision` 不匹配即失败），失败方重新读最新板。
+
 **目标**：把 `jobs.py` 的 `Job` 模型加上 `revision: int` 字段；任何状态变更走 CAS（`expectedRevision` 不匹配即失败），失败方重新读最新板。
 
 **dsh 参考**：[`docs/subsystems/goal.zh.md:128-136`](E:/GoOut/_dsh_ref/docs/subsystems/goal.zh.md#L128) `goal/change` 全量快照 + revision CAS。
@@ -312,6 +331,14 @@ except StaleJobRevisionError:
 ---
 
 ## 4B. CredentialRef + resolve()-per-call
+
+> **⚠️ 2026-09-14 实施时发现设计前提不成立，本项取消。**
+> 复核 `app/core/modelhub.py`：`providers()`（L481）每次调用都执行 `_load()` 现读
+> `data/models.json`，`bind_agent()` 在每次 run_agent 调用时组装链路——
+> **改密钥本就无需重启，per-call 热生效已经成立**（`chat()` L1841 同样每次现读）。
+> 设计稿当时依据的"api_key 多处直读、需重启"痛点来自早期版本，已被
+> 「运行时模型统一到 CLI 绑定页」的重构解决。
+> 若未来出现新的凭据来源分层需求（如 managed file > env 的优先级合成），再重启本项。
 
 **目标**：把"凭据分散在 main.py + runner.py"统一到 `credentials.py`，分层源（inherited env > managed file > user config），`resolve(ref)` 每次从层叠现读，热改密钥立即生效。
 

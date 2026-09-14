@@ -118,3 +118,7 @@ class RepeatGuard:
                 else:
                     break
             return {"chain_len": len(chain), "last_fp": last_fp, "count": count}
+
+
+# 模块级默认实例（pipeline 接线用；run_id 入键天然隔离多任务，测试无需替换）
+guard = RepeatGuard()

@@ -103,5 +103,13 @@ def register_default_checks():
             return f"step count {ctx.get('actual_steps')} != expected {ctx.get('expected_steps')}"
         return None
 
+    def ok_but_error_code(ctx):
+        """step 级：ok=True 却带非空 error_code —— 解析降级（如 codex 空输出
+        回落 stdout 尾部）被当成功，值得告警复核。"""
+        if ctx.get("ok") and ctx.get("error_code"):
+            return "step 标记成功但携带 error_code=%s（疑似降级输出）" % ctx["error_code"]
+        return None
+
     invariants.register("pipeline", "review_no_all_fail_zero", review_no_all_fail_zero)
     invariants.register("pipeline", "step_count_consistency", step_count_consistency)
+    invariants.register("step", "ok_but_error_code", ok_but_error_code)

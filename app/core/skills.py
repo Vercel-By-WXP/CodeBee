@@ -1,15 +1,20 @@
 # -*- coding: utf-8 -*-
-"""经验库（Skills）：内置写作/工程规范包 + 运行中自动沉淀的教训，自动注入提示词。
+"""经验库（Skills）：内置写作/工程规范包 + 用户自建包 + 运行中自动沉淀的教训。
+
+设计稿：docs/migration/04-skills-seam.md §3A/§3B（按 Tutti 实际架构落地：
+模型在外部 CLI 中无法按需调「skill 工具」，注入式 block_for 是唯一通道，
+故 dsh 的「按需正文加载」不适用；落地的是多源 provider + persona + mtime 热缓存）。
 
 三层内容：
   1) **内置经验包**（app/core/skillpacks/*.md）：人工维护的领域规范（如七猫签约标准），
      按流程类型（scope）匹配注入；
-  2) **自动教训**（data/skills.json）：每次运行结束后由编排者（或退化规则）总结本次
-     评审暴露的问题，去重沉淀为可复用教训，下次同类任务自动带上——**越跑越好**；
-  3) 注入时统计命中（hits），高频教训排前面；可停用/删除。
+  2) **用户自建包**（data/skillpacks/*.md）：frontmatter 声明 name/scopes/persona，
+     无需改代码即可沉淀领域规范；目录 mtime 缓存，改文件即生效（3A 多源分层）；
+  3) **自动教训**（data/skills.json）：每次运行结束后由编排者（或退化规则）总结本次
+     评审暴露的问题，去重沉淀为可复用教训，下次同类任务自动带上——**越跑越好**。
 
-注入点：连载大纲、逐章起草、评审提示词（评审也要按平台标准判）。
-全部自动，无需人工干预；总结失败不影响任务本身（异步 + 兜底）。
+Persona（3B）：包的 frontmatter `persona:` 字段注入为独立的「角色设定」块，
+排在正文之前（不与规范正文混排）。
 """
 from __future__ import annotations
 
@@ -18,12 +23,18 @@ import json
 import re
 import threading
 import time
+from pathlib import Path
 
 from . import paths
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "skills.json"
 PACK_DIR = paths.APP_DIR / "core" / "skillpacks"
+
+
+def _user_pack_dir():
+    """用户自建包目录：每次现取 paths.DATA_DIR（测试重定向后自动跟随）。"""
+    return paths.DATA_DIR / "skillpacks"
 
 MAX_INJECT_CHARS = 6000      # 单次注入上限（防止提示词爆炸）
 MAX_LESSONS_INJECT = 8       # 注入的自动教训条数上限
@@ -35,6 +46,115 @@ BUILTIN_PACKS = [
      "scopes": ["novel", "serial_novel"],
      "note": "黄金一章、爽点纪律、期待感三源、人物红线、自检清单"},
 ]
+
+# ---------------------------------------------------------------- 用户自建包（3A）
+
+# 用户包 mtime 缓存：路径 → (mtime, 解析结果)。文件改动即失效（零依赖替代 watchdog）
+_user_pack_cache = {}
+_user_dir_mtime = {"ts": 0.0, "ids": None}
+
+
+def _parse_frontmatter(text):
+    """解析 markdown 头部 ```--- frontmatter ---```（YAML 子集：key: value / list）。
+
+    返回 (meta: dict, body: str)。无 frontmatter 时 meta 为空、body 为原文。
+    """
+    if not text.startswith("---"):
+        return {}, text
+    end = text.find("\n---", 3)
+    if end < 0:
+        return {}, text
+    head = text[3:end].strip("\r\n")
+    body = text[end + 4:].lstrip("\r\n")
+    meta = {}
+    cur_list_key = None
+    for line in head.splitlines():
+        line = line.rstrip()
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+        if line.lstrip().startswith("- "):
+            if cur_list_key:
+                meta.setdefault(cur_list_key, []).append(
+                    line.lstrip()[2:].strip().strip("'\""))
+            continue
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$", line)
+        if m:
+            key, val = m.group(1), m.group(2).strip()
+            if val == "":
+                meta[key] = []
+                cur_list_key = key
+            else:
+                meta[key] = val.strip("'\"")
+                cur_list_key = None
+    return meta, body
+
+
+def _user_pack_dir_mtime():
+    try:
+        return _user_pack_dir().stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _list_user_pack_files():
+    """data/skillpacks/*.md 文件清单（目录 mtime 缓存）。"""
+    with _LOCK:
+        dts = _user_pack_dir_mtime()
+        if _user_dir_mtime["ids"] is not None and dts == _user_dir_mtime["ts"]:
+            return _user_dir_mtime["ids"]
+        files = []
+        try:
+            _user_pack_dir().mkdir(parents=True, exist_ok=True)
+            for p in sorted(_user_pack_dir().glob("*.md")):
+                files.append(p)
+        except OSError:
+            pass
+        _user_dir_mtime["ts"] = dts
+        _user_dir_mtime["ids"] = files
+        return files
+
+
+def _load_user_pack(path):
+    """读取并解析一个用户包（文件 mtime 缓存）。文件缺失/不可读返回 None。"""
+    try:
+        mt = path.stat().st_mtime
+    except OSError:
+        return None
+    key = str(path)
+    with _LOCK:
+        hit = _user_pack_cache.get(key)
+        if hit and hit[0] == mt:
+            return hit[1]
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    meta, body = _parse_frontmatter(raw)
+    stem = path.stem
+    pack = {
+        "id": "user-" + hashlib.sha256(stem.encode("utf-8")).hexdigest()[:10],
+        "name": str(meta.get("name") or stem),
+        "file": key,
+        "scopes": [str(s) for s in (meta.get("scopes") or ["*"])] or ["*"],
+        "note": str(meta.get("note") or ""),
+        "persona": str(meta.get("persona") or ""),
+        "builtin": False,
+        "user": True,
+    }
+    pack["body"] = body
+    with _LOCK:
+        _user_pack_cache[key] = (mt, pack)
+    return pack
+
+
+def user_packs():
+    """全部用户自建包（每次现读清单 + mtime 缓存正文——改文件即生效）。"""
+    out = []
+    for p in _list_user_pack_files():
+        pack = _load_user_pack(p)
+        if pack:
+            out.append(pack)
+    return out
 
 
 def _now():
@@ -59,8 +179,11 @@ def _save(data):
 # ---------------------------------------------------------------- 内置经验包
 
 def pack_text(pack):
-    """读取内置包正文（文件缺失返回空串）。"""
+    """读取包正文（内置包相对 skillpacks/，用户包 file 为绝对路径）。文件缺失返回空串。"""
     try:
+        if pack.get("user"):
+            p = Path(pack["file"])
+            return p.read_text(encoding="utf-8", errors="replace") if p.is_file() else ""
         p = (PACK_DIR / pack["file"]).resolve()
         if PACK_DIR.resolve() not in p.parents or not p.is_file():
             return ""
@@ -69,14 +192,27 @@ def pack_text(pack):
         return ""
 
 
+def all_packs():
+    """内置 + 用户自建包的并集（3A 多源分层：同名场景下内置优先）。"""
+    builtin = [dict(p) for p in BUILTIN_PACKS]
+    builtin_ids = {p["id"] for p in builtin}
+    out = list(builtin)
+    for up in user_packs():
+        if up["id"] not in builtin_ids:
+            out.append(up)
+    return out
+
+
 def list_packs():
     with _LOCK:
         state = _load().get("packs") or {}
     out = []
-    for p in BUILTIN_PACKS:
+    for p in all_packs():
         st = state.get(p["id"]) or {}
         out.append({"id": p["id"], "name": p["name"], "scopes": p["scopes"],
-                    "note": p["note"], "builtin": True,
+                    "note": p.get("note", ""), "builtin": bool(p.get("builtin")),
+                    "user": bool(p.get("user")),
+                    "persona": bool(p.get("persona")),
                     "enabled": bool(st.get("enabled", True)),
                     "chars": len(pack_text(p))})
     return out
@@ -160,10 +296,11 @@ def lesson_op(lesson_id, op):
 
 
 def pack_op(pack_id, op):
-    """启用/停用内置经验包（不可删除，只能停用）。"""
+    """启用/停用包（内置与用户自建均可停用；用户包不可通过此接口删除，删文件即可）。"""
     if op not in ("enable", "disable"):
         return "未知操作 " + str(op)
-    if pack_id not in {p["id"] for p in BUILTIN_PACKS}:
+    known = {p["id"] for p in all_packs()}
+    if pack_id not in known:
         return "经验包不存在"
     with _LOCK:
         data = _load()
@@ -176,19 +313,28 @@ def pack_op(pack_id, op):
 # ---------------------------------------------------------------- 注入
 
 def block_for(task, scope_override=None):
-    """生成注入提示词的经验块。命中即计数。返回 (文本, 命中的 id 列表)。"""
+    """生成注入提示词的经验块。命中即计数。返回 (文本, 命中的 id 列表)。
+
+    3A：内置包 + 用户自建包都参与 scope 匹配；3B：带 persona 的包先注入
+    「角色设定」块再注入规范正文。
+    """
     scope = scope_override or task.get("type") or "*"
     parts, used = [], []
 
-    for p in BUILTIN_PACKS:
-        if scope not in p["scopes"]:
+    for p in all_packs():
+        if scope not in p["scopes"] and "*" not in p["scopes"]:
             continue
         if not _pack_enabled(p["id"]):
             continue
-        txt = pack_text(p)
+        txt = pack_text(p).strip()
+        if not txt and not p.get("persona"):
+            continue
+        # 3B：persona 独立成块（角色设定与规范正文分开，模型更易区分 obey 层级）
+        if p.get("persona"):
+            parts.append("### 【角色设定：%s】\n%s" % (p["name"], str(p["persona"]).strip()))
         if txt:
-            parts.append("### 【%s】\n%s" % (p["name"], txt.strip()))
-            used.append(p["id"])
+            parts.append("### 【%s】\n%s" % (p["name"], txt))
+        used.append(p["id"])
 
     lessons = list_lessons(scope, only_enabled=True)[:MAX_LESSONS_INJECT]
     if lessons:

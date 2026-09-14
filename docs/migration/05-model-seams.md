@@ -7,6 +7,14 @@
 
 ## 4A. LLMProvider 抽象 + 原子切换
 
+> **⚠️ 2026-09-14 实施时复核：dsh 式 adapter 重构对 Tutti 无净收益，取消。**
+> 复核 `app/core/modelhub.py`：`chat()`（L1841）本身已是统一 adapter seam——
+> anthropic/openai/google 三协议在一个入口分发、`providers()` 每次现读、
+> `_save()` tmp+replace 原子写。再抽 `LlmProvider` 协议 + ProviderRegistry
+> 只是把现有函数包一层间接层，没有可替换的第二个实现要挂进来
+> （dsh 需要该抽象是因为它有 llm-deepseek / llm-pi-ai / llm-replay 多提供方并存）。
+> 未来若出现第二实现（如同一供应商多网关 A/B），再按需引入。
+
 **目标**：把 modelhub 双写（registry + bindings）改为单写 `registerProvider`，返回带 `replace()` 的 handle；约 5 处 chat() 调用点同步改造。
 
 **dsh 参考**：
@@ -101,6 +109,13 @@ def chat(messages: list[dict], *, model: str, **kwargs) -> dict:
 ---
 
 ## 4C. Settings schema-driven + path-mutate + revision
+
+> **✅ 2026-09-14 落地为 `app/core/settings_schema.py`（零触碰 settings.py）。**
+> 按 Tutti 实际架构调整：settings.py 正被并行迭代且已有原子写+钳制，故不替换；
+> 本模块提供「namespace 注册 + FieldDef 类型/choices/clamp + revision CAS +
+> describe(redact_secrets) 脱敏」，管理独立的 data/settings_v2.json，供新增配置
+> 使用（已注册默认 namespace `orchestrator`：compaction.* 与 max_goal_rounds）。
+> 18 测试绿（tests/test_settings_schema.py）。
 
 **目标**：把 `max_concurrent_jobs` 和未来的阈值类配置迁到 schema 层；引入 `mutate(ns, ops)` 支持"只写 secret 路径"。
 
@@ -272,6 +287,13 @@ def register_default_namespaces():
 
 ## 4D. 能力维度（按能力选模型）
 
+> **✅ 2026-09-14 落地为 `app/core/capability.py`（零触碰 modelhub.py）。**
+> 供应商在 data/models.json 里声明可选 `strengths: [writing|coding|reasoning|vision]`
+> 字段即可被识别（未声明视为无偏好兜底）；`classify_task_type`（显式 task_type >
+> 关键词分类 > coding 兜底）、`pick_by_strength`（强项优先/原序兜底/停用过滤）、
+> `resolve_binding_by_task`（维度绑定缺失回落 default）。13 测试绿（tests/test_capability.py）。
+> bindings 按维度分键的 UI/存储改造留待接入时做（本模块已兼容现有 default 键）。
+
 **目标**：给每个 provider profile 加 `capability_dim`（writing/code/reasoning/vision），bindings 可按 dim 选模型而非简单"主备"。
 
 **dsh 参考**：[`packages/llm/llm/src/types.ts:566`](E:/GoOut/_dsh_ref/packages/llm/llm/src/types.ts#L566) `LlmResolvedModelInfo.reasoning` 类似设计。
@@ -347,6 +369,12 @@ def resolve_binding(task) -> dict:
 ---
 
 ## 4E. dormant provider（UI 显示但未启用）
+
+> **⚠️ 2026-09-14 实施时复核：机制已存在，取消。**
+> `modelhub.providers_op(ids, "disable")`（L555）即 dormant 语义——停用只影响
+> 编排时运行时解析、不清配置、不影响绑定引用、随时可再启用；启用供应商的
+> 模型目录拉取（L259）只对 `enabled=True` 且有 api_key 的条目执行。
+> UI 的供应商启停开关走的正是这条通路。
 
 **目标**：modelhub 已有 `providers` 数组，但启用需要重启；引入 dormant provider，UI 可勾选启用，启用时原子 swap。
 

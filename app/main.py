@@ -599,6 +599,11 @@ def main():
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）
     if n_bf:
         print("[Tutti] 用量台账：已从历史运行回填 %d 条记录" % n_bf)
+    # dsh-migration Â§1E：崩溃遗留的 running run 标记为 failed（在 jobs.resume_interrupted
+    # 之前执行，否则续跑逻辑会把僵尸 run 当成正常中断接手）
+    n_rc = store.recover_orphaned_runs()
+    if n_rc:
+        print("[Tutti] 崩溃恢复：%d 个遗留运行标记为 failed（interrupted at startup）" % n_rc)
     jobs.start_worker()
     n_resume = jobs.resume_interrupted()   # 启动恢复：服务被杀中断的连载任务自动续跑
     if n_resume:

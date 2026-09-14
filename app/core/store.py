@@ -288,10 +288,16 @@ def latest_run_by_task():
         return {tid: dict(r) for tid, r in best.items()}
 
 
-def update_run(run_id, **fields):
+def update_run(run_id, expected_status=None, **fields):
+    """更新运行字段。expected_status 非 None 时做 CAS（§2C）：
+    当前状态不等于 expected_status 则拒绝写入并返回 None，
+    防止陈旧执行方（被取消的 worker、崩溃恢复前的旧线程）覆盖新状态
+    ——防御模式「异步状态不是同步状态」。不传则保持原行为。"""
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
+            return None
+        if expected_status is not None and run.get("status") != expected_status:
             return None
         run.update(fields)
         _save_json(paths.RUNS_DIR / run_id / "run.json", run)

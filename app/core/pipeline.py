@@ -16,9 +16,15 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import time
 
 from . import catalog, history, jobs, manager, modelhub, mocks, planner, registry, router, runner, skills, store, usage
+from . import diagnostics
+from . import paths as paths_mod
+from . import session_log as session_log_mod
+from . import step_runner as step_runner_mod
+from .repeat_guard import guard as repeat_guard
 
 DEFAULT_RUBRIC = ["情节", "人物", "文笔", "节奏", "吸引力"]
 
@@ -122,6 +128,37 @@ def _resume_workdir(resume_ctx, fallback):
     return fallback
 
 
+def _compaction_enabled():
+    """Phase 2 灰度开关：环境变量 TUTTI_COMPACTION=1 启用上下文压缩（默认关）。"""
+    return os.environ.get("TUTTI_COMPACTION") == "1"
+
+
+_sessions_cache = {}
+_sessions_lock = threading.Lock()
+
+
+def _get_session(run_id):
+    """每 run 一个 surface 会话日志（data/runs/<id>/session.jsonl）。"""
+    with _sessions_lock:
+        s = _sessions_cache.get(run_id)
+        if s is None:
+            sdir = paths_mod.RUNS_DIR / run_id
+            sdir.mkdir(parents=True, exist_ok=True)
+            s = session_log_mod.Session(run_id, store_path=str(sdir / "session.jsonl"))
+            _sessions_cache[run_id] = s
+        return s
+
+
+def _make_llm_caller(agent, workdir):
+    """压缩摘要用 LLM：直接复用当前 step 的 agent（同 CLI 同模型）。"""
+    def caller(messages):
+        prompt = "\n\n".join(m.get("content", "") for m in messages)
+        res = runner.run_agent(agent, prompt, workdir=workdir, readonly=True,
+                               timeout=300)
+        return res.get("text") or ""
+    return caller
+
+
 def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None):
     """执行一个智能体步骤并记录。返回 runner 统一结果。"""
     step, log_abs = store.add_step(run_id, role, agent["id"],
@@ -137,10 +174,66 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
             except Exception:
                 pass
     else:
+        # 5C：重复调用守门——指纹取原始 prompt（提醒注入 spawn 副本，不污染计数链）
+        guard = repeat_guard.check(run_id, role, prompt)
+        if guard["should_stop"]:
+            from .error_codes import ErrorCode
+            res = {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+                   "tokens": 0, "usage": None, "error": guard["reminder"],
+                   "error_code": ErrorCode.ENV_BLOCK,
+                   "raw": {"exit_code": None}, "kind": agent.get("kind", "generic"),
+                   "model": agent.get("model")}
+            _finish_step_result(run_id, step, res, role, agent, start)
+            return res
+        effective_prompt = (guard["reminder"] + "\n\n---\n\n" + prompt) if guard["reminder"] else prompt
+        res = _spawn_step(session_run_id=run_id, role=role, agent=agent,
+                          prompt=effective_prompt, workdir=workdir, readonly=readonly,
+                          ev=ev, timeout=timeout, resume=resume, step=step,
+                          log_abs=log_abs)
+    _check_cancel(ev)
+    _finish_step_result(run_id, step, res, role, agent, start)
+    return res
+
+
+def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
+                timeout, resume, step, log_abs):
+    """真实 CLI 调用：压缩灰度路径或原路径。"""
+    if _compaction_enabled() and not resume:
+        # Phase 2（1D）：撑爆 → 压缩 → 守门重试；同时把 usage 累进 token_meter（1C）
+        session = _get_session(session_run_id)
+        llm_caller = _make_llm_caller(agent, workdir)
+        call_kwargs = dict(workdir=workdir, readonly=readonly,
+                           timeout=timeout, cancel_event=ev, log_path=str(log_abs))
+
+        def _call(p, **kw):
+            # 模型可见即已记录（§1A 不变量）：入参/出参先落 session 日志
+            session.append("user_message", {"content": p, "role": role},
+                           turn_id=str(step["n"]))
+            r = runner.run_agent(agent, p, **{**call_kwargs, **kw})
+            session.append("assistant_message",
+                           {"content": (r.get("text") or r.get("error") or ""),
+                            "ok": r.get("ok"), "model": r.get("model")},
+                           turn_id=str(step["n"]))
+            try:
+                from .token_meter import token_meter
+                token_meter.accumulate(session_run_id, r.get("usage"),
+                                       model=r.get("model") or "")
+            except Exception:
+                pass
+            return r
+
+        res, _retried = step_runner_mod.execute_step(
+            session, _call, prompt, model=agent.get("model") or "",
+            llm_caller=llm_caller)
+    else:
         res = runner.run_agent(agent, prompt, workdir=workdir, readonly=readonly,
                                timeout=timeout, cancel_event=ev, log_path=str(log_abs),
                                resume=resume)
-    _check_cancel(ev)
+    return res
+
+
+def _finish_step_result(run_id, step, res, role, agent, start):
+    """step 收尾：记录 + 用量 + 运行时断言（5F）。"""
     store.finish_step(run_id, step["n"],
                       "done" if res["ok"] else "failed",
                       summary=((res.get("text") or res.get("error") or "")[:200]),
@@ -151,7 +244,15 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                       model=res.get("model"))
     if agent.get("mode") != "mock":
         _record_usage(run_id, role, agent, res, source="pipeline", step=step["n"])
-    return res
+    # 5F：step 级运行时断言（只告警不阻断）
+    try:
+        diagnostics.invariants.run_for("step", {
+            "run_id": run_id, "role": role, "ok": res.get("ok"),
+            "error_code": res.get("error_code") or "",
+            "text_len": len(res.get("text") or ""),
+        })
+    except Exception:
+        pass
 
 
 def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
@@ -553,7 +654,7 @@ __SKILLS__
 ## 全书目标
 __GOAL__
 
-## 全书大纲（本章 = 大纲第 __I__ 章）
+## 全书大纲（__SCOPE__）
 __OUTLINE__
 
 ## 前情提要（此前各章结尾摘录，衔接用）
@@ -678,6 +779,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     threshold = task.get("threshold", 7.0)
     threshold_ch = threshold - 0.5 if threshold >= 7.5 else threshold   # 单章阈值略放宽 0.5 分
     dimkey = ", ".join('"%s": 0' % d for d in dims)
+    # 续写批次的全书起始章号（=1 为全新连载；>1 时章节文件/步骤/评分都用全书章号，
+    # 与上一批任务在同一工作目录无缝衔接）
+    start = int(serial.get("start_chapter") or 1)
 
     def crit_prompt_for(text, note=""):
         tpl = _ensure_critique_placeholders(
@@ -709,7 +813,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                          note="断点续跑")
         store.finish_step(run_id, outline_step["n"], "done",
                           summary="继承上一遍大纲（共 %d 章），已完成 %d 章将被复用"
-                                  % (n, len(done_set & set(range(1, n + 1)))),
+                                  % (n, len(done_set & set(range(start, start + n)))),
                           duration_s=0.1)
     else:
         outline_step, outline_log = store.add_step(run_id, "outline", impl["id"], impl.get("label"),
@@ -739,17 +843,19 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           duration_s=0.1 if impl.get("mode") == "mock" else None)
     store.update_run(run_id, outline=outline)
     _check_cancel(ev)
+    end = start + n - 1   # 本批最后一章的全书章号（全局评审与合并成书覆盖 1..end）
     outline_txt = "\n".join(
-        "第 %d 章《%s》：%s%s" % (i + 1, c["title"], c["beats"],
-                                ("（章末钩子：%s）" % c["hook"]) if c.get("hook") else "")
-        for i, c in enumerate(outline["chapters"]))
+        "第 %d 章《%s》：%s%s" % (start + k, c["title"], c["beats"],
+                                ("（章末钩子：%s）" % c.get("hook")) if c.get("hook") else "")
+        for k, c in enumerate(outline["chapters"]))
 
     chapter_scores = []          # [{chapter,title,means,passed,rounds,words}]
     issues_all = []
 
     # ---- 2) 逐章
-    for i in range(1, n + 1):
-        ch = outline["chapters"][i - 1]
+    for k in range(1, n + 1):
+        i = start + k - 1        # 全书章号：文件名/步骤角色/评分记录都按全书编号
+        ch = outline["chapters"][k - 1]
         ch_file = "chapter-%02d.md" % i
         prev = ""
         if i > 1:
@@ -778,8 +884,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                               duration_s=0.2)
         else:
             sk_block, _ = skills.block_for(task)
+            scope = ("本章 = 大纲第 %d 章" % i) if start == 1 else (
+                "本批为第 %d–%d 章，下列按全书章号列出各章要点" % (start, end))
             prompt = (SERIAL_CHAPTER_PROMPT
                       .replace("__SKILLS__", sk_block)
+                      .replace("__SCOPE__", scope)
                       .replace("__I__", str(i)).replace("__FILE__", ch_file)
                       .replace("__GOAL__", task["goal"])
                       .replace("__OUTLINE__", outline_txt)
@@ -902,8 +1011,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         # 每章即时持久化：长篇中断/超时后可断点续跑，不丢已完成章的分数
         store.update_run(run_id, chapter_scores=chapter_scores)
 
-    # ---- 3) 全局一致性评审
-    full_text = "\n\n".join(_read_chapter(workdir, i) for i in range(1, n + 1))
+    # ---- 3) 全局一致性评审（覆盖 1..end 全书：续写批次必须连同旧章一起查一致性）
+    full_text = "\n\n".join(_read_chapter(workdir, i) for i in range(1, end + 1))
     global_means, global_issues = {}, []
     for agent in critics:
         role = "global-critique"
@@ -946,7 +1055,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         fixed = []
         for c in weak:
             i = c["chapter"]
-            ch = outline["chapters"][i - 1]
+            ch = outline["chapters"][i - start]   # outline 是本批的：按批内下标取，i 是全书章号
             dims_txt = "；".join(
                 "%s %.1f" % (d, (c.get("means") or {}).get(d, 0.0))
                 for d in dims if float((c.get("means") or {}).get(d, 0.0)) < threshold)
@@ -1000,7 +1109,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             store.update_run(run_id, chapter_scores=chapter_scores)
             _check_cancel(ev)
         # 重评全书一致性
-        full_text = "\n\n".join(_read_chapter(workdir, i2) for i2 in range(1, n + 1))
+        full_text = "\n\n".join(_read_chapter(workdir, i2) for i2 in range(1, end + 1))
         gmeans, gissues = {}, []
         for agent in critics:
             if agent.get("mode") == "mock":
@@ -1035,7 +1144,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     ms_name = _ms_name(task.get("manuscript"))
     book_title = outline.get("book_title") or task["title"]
     parts = ["# %s" % book_title, ""]
-    for i in range(1, n + 1):
+    for i in range(1, end + 1):     # 合并全书：续写时包含上一批已写好的章
         parts.append(_read_chapter(workdir, i).strip())
         parts.append("")
     with _ms_io(workdir, ms_name, "w") as f:
@@ -1052,12 +1161,16 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     verdict = {
         "type": task["type"], "engine": "review", "serial": True,
         "publishable": publishable, "overall": overall, "mode": mode,
-        "threshold": threshold, "chapters_used": n, "total_words": total_words,
+        "threshold": threshold, "chapters_used": n,
+        "start_chapter": start, "end_chapter": end, "total_words": total_words,
         "chapter_scores": chapter_scores, "global_scores": global_means,
         "global_pass": global_pass, "route": route,
     }
+    scope_txt = ("续写第 %d–%d 章，衔接前文 %d 章" % (start, end, start - 1)) if start > 1 \
+        else ("共 %d 章" % n)
     lines = ["# 连载小说评审报告：%s" % task["title"], "",
-             "- 书名：%s（%d 章 / 约 %d 字，合并为 `%s`）" % (book_title, n, total_words, ms_name),
+             "- 书名：%s（%s / 约 %d 字，合并为 `%s`）" % (
+                 book_title, scope_txt, total_words, ms_name),
              "- 结论：**%s**（各章门禁 %s / 全局评审 %s）" % (
                  "✅ 达到发布标准" if publishable else "❌ 未达标",
                  "通过" if chapters_pass else "未通过",
@@ -1085,8 +1198,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         lines.append("（无 major 问题）")
     store.write_report(run_id, "\n".join(lines))
     store.update_run(run_id, status="done", verdict=verdict,
-                     summary="连载任务%s（%d 章约 %d 字，综合 %.1f）" % (
-                         "达标" if publishable else "未达标", n, total_words, overall),
+                     summary="连载任务%s（%s，约 %d 字，综合 %.1f）" % (
+                         "达标" if publishable else "未达标", scope_txt,
+                         total_words, overall),
                      ended_at=_now())
 
 
