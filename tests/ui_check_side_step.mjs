@@ -151,16 +151,19 @@ async function main() {
     check("点击后：详情标题有内容且页面标题为运行详情",
       after.title.trim().length > 0 && after.pageTitle === "运行详情",
       "rd=" + after.title + " page=" + after.pageTitle);
-    // 成品文件已移至右侧检查器「成品文件」分区：主栏详情页不再有 rd-files 区块
+    // 成品文件双入口：主栏「成果」分区（rd-arts，标签页内）+ 右侧检查器；旧 rd-files 不复活
     await sleep(1500);
     const filesUi = await js(`(() => {
-      const main = document.getElementById("rd-files");
-      const box = document.getElementById("insp-artifacts");
-      return { mainGone: !main, inspectorBox: !!box,
+      const pane = document.querySelector('.rd-pane[data-pane="result"]');
+      const arts = document.getElementById("rd-arts");
+      return { oldRdFilesGone: !document.getElementById("rd-files"),
+        artsInResultPane: !!(arts && pane && pane.contains(arts)),
+        inspectorBox: !!document.getElementById("insp-artifacts"),
         reportVisible: !!document.getElementById("rd-report") };
     })()`);
-    check("点击后：主栏无成品区块，成品容器在检查器",
-      filesUi.mainGone === true && filesUi.inspectorBox === true && filesUi.reportVisible === true,
+    check("点击后：成品在「成果」分区（主栏+检查器双入口）",
+      filesUi.oldRdFilesGone === true && filesUi.artsInResultPane === true &&
+      filesUi.inspectorBox === true && filesUi.reportVisible === true,
       JSON.stringify(filesUi));
 
     // 点不同子任务 → 定位到不同步骤（滚动 + 高亮 + 展开日志），内容不再千篇一律

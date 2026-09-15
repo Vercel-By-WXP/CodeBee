@@ -104,11 +104,11 @@
         <span class="brand-name">CodeBee</span>
       </div>
       <button id="btn-new-task" class="new-task"><span class="nt-label" data-i18n="＋ 新任务">＋ 新任务</span><span class="kbd" aria-hidden="true">N</span></button>
-      <div class="side-search">
+      <button class="side-search" id="btn-cmdk" title="搜索" data-i18n-title="搜索">
         <svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>
-        <input id="side-search" type="text" placeholder="搜索任务" data-i18n-ph="搜索任务" autocomplete="off" spellcheck="false">
+        <span class="ss-label" data-i18n="搜索">搜索</span>
         <span class="kbd" aria-hidden="true">Ctrl K</span>
-      </div>
+      </button>
       <div class="side-quick">
         <button class="qitem" id="btn-q-automation" title="自动化" data-i18n-title="自动化">
           <svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>
@@ -200,7 +200,10 @@
     <section id="page-settings" class="page">
       <div id="sub-tasks" class="subpage">
       <div class="panel wide composer">
-        <h2 data-i18n="要完成什么？" class="hero">要完成什么？</h2>
+        <div class="hero-row">
+          <h2 data-i18n="要完成什么？" class="hero">要完成什么？</h2>
+          <button type="button" id="btn-wizard" class="ghost small" data-i18n="✨ 向导创建" data-i18n-title="三问一确认：目标 → 类型 → 目录，预填进表单" title="三问一确认：目标 → 类型 → 目录，预填进表单" onclick="openTaskWizard()">✨ 向导创建</button>
+        </div>
         <p data-i18n="一句话目标即可 —— CodeBee 自动拆解、智能路由、执行、验证并跨厂商评审。" class="hint hero-sub">一句话目标即可 —— CodeBee 自动拆解、智能路由、执行、验证并跨厂商评审。</p>
         <div class="form">
           <div class="grid-2">
@@ -562,7 +565,12 @@
 
       <!-- 外观 / 皮肤 -->
       <div id="sub-appearance" class="subpage hidden">
-        <div class="panel wide">
+        <!-- 页内锚点：皮肤页变长后两胶囊直达，滚动时高亮跟随 -->
+        <div id="cs-anchor" class="seg cs-anchor" role="group" aria-label="本页分区" data-i18n-aria="本页分区">
+          <button class="seg-btn active" data-apn="apn-skin" data-i18n="外观">外观</button>
+          <button class="seg-btn" data-apn="apn-code" data-i18n="代码">代码</button>
+        </div>
+        <div class="panel wide" id="apn-skin">
           <div class="panel-head"><h2 data-i18n="皮肤">皮肤</h2></div>
           <p class="hint">每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与电脑各自独立）。<b data-i18n="经典">经典</b>是默认皮肤，即原本的界面。</p>
           <h3 class="sec-title">语言 / Language</h3>
@@ -580,7 +588,7 @@
         </div>
 
         <!-- 代码设置：主题/行号/换行/字号只管代码内容，存本设备（与皮肤同一套语汇） -->
-        <div class="panel wide">
+        <div class="panel wide" id="apn-code">
           <div class="panel-head"><h2 data-i18n="代码设置">代码设置</h2></div>
           <p class="hint" data-i18n="设置代码内容的主题、字号和显示方式，不受界面字号影响。">设置代码内容的主题、字号和显示方式，不受界面字号影响。</p>
           <div class="code-set-rows">
@@ -708,6 +716,22 @@
 </div>
 
 <div id="ctx-menu" class="ctx-menu hidden"></div>
+
+<!-- 命令面板（Ctrl+K）：搜索任务直达 + 快捷命令 -->
+<div id="cmdk-mask" class="cmdk-mask hidden">
+  <div class="cmdk" role="dialog" aria-label="命令面板" onclick="event.stopPropagation()">
+    <div class="cmdk-input">
+      <svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>
+      <input id="cmdk-q" type="text" placeholder="搜索操作、任务或文件" data-i18n-ph="搜索操作、任务或文件" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="cmdk-tabs" id="cmdk-tabs">
+      <button class="on" data-t="all" data-i18n="全部">全部</button>
+      <button data-t="ops" data-i18n="操作">操作</button>
+      <button data-t="tasks" data-i18n="任务">任务</button>
+    </div>
+    <div class="cmdk-list" id="cmdk-list"></div>
+  </div>
+</div>
 
 <!-- 通用弹框（导入供应商 / 添加供应商） -->
 <div id="modal" class="modal-wrap hidden">

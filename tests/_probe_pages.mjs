@@ -75,6 +75,29 @@ async function main() {
       return JSON.stringify({ autoOpen, marketOpen });
     })()`));
 
+    console.log("=== 命令面板 ===");
+    console.log(await evalJs(`(async () => {
+      const mask = document.querySelector("#cmdk-mask");
+      if (!mask) return "!! 无面板 DOM";
+      document.querySelector("#btn-cmdk").click();
+      await new Promise(r => setTimeout(r, 300));
+      const open1 = !mask.classList.contains("hidden");
+      const items0 = document.querySelectorAll("#cmdk-list .cmdk-item").length;
+      const inp = document.querySelector("#cmdk-q");
+      inp.value = "自"; inp.dispatchEvent(new Event("input", { bubbles: true }));
+      await new Promise(r => setTimeout(r, 200));
+      const labels1 = [...document.querySelectorAll("#cmdk-list .cmdk-item .l")].map(x => x.textContent);
+      inp.value = "zzz不存在"; inp.dispatchEvent(new Event("input", { bubbles: true }));
+      await new Promise(r => setTimeout(r, 200));
+      const empty1 = !!document.querySelector("#cmdk-list .cmdk-empty");
+      inp.value = ""; inp.dispatchEvent(new Event("input", { bubbles: true }));
+      await new Promise(r => setTimeout(r, 200));
+      inp.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await new Promise(r => setTimeout(r, 200));
+      const closed = mask.classList.contains("hidden");
+      return JSON.stringify({ open1, items0, labels1, empty1, closed });
+    })()`));
+
     console.log("=== 进入设置 → 自动化 ===");
     await evalJs(`document.querySelector("#btn-settings").click()`);
     await sleep(1200);

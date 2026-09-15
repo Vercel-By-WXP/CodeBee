@@ -1,9 +1,9 @@
 /* 「最近任务」面板移除 + 侧栏已归档找回 UI 验证（Edge headless + CDP，沿 ui_check_about 模板）。
  * 自起临时服务（TUTTI_DATA=临时目录、端口 18799，可 SERVICE/CDP_PORT 覆盖）→ 造数后把
  * task-3d 预置为已归档 → 断言：主区不再有「最近任务」面板与 #task-list；侧栏头部有
- * 「显示已归档」开关；默认侧栏不含已归档任务；点开关后已归档任务灰显回原文件夹（带
- * 「已归档」徽章）、localStorage 落盘；再点还原。顺带收集页面 JS 错误（旧 chk-archived
- * 接线若残留会在 init 抛错）。 */
+ * 「显示已归档」开关（默认不选中）；默认侧栏不含已归档任务；点开关后已归档任务灰显回
+ * 原文件夹（带「已归档」徽章，会话内生效、不写 localStorage）；再点还原。顺带收集页面
+ * JS 错误（旧 chk-archived 接线若残留会在 init 抛错）。 */
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, accessSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -133,16 +133,17 @@ async function main() {
         dirs: ds.map((d) => (d.querySelector("summary .t") || {}).textContent?.trim()),
         titles: [...document.querySelectorAll("#side-tasks .stask .t")].map((x) => x.textContent.trim()),
         archRows: document.querySelectorAll("#side-tasks .stask.archived").length,
-        ls: localStorage.getItem("orch.showArchived"),
+        btnOn: document.getElementById("btn-side-arch").classList.contains("on"),
       };
     })()`);
     check("侧栏头部有「显示已归档」开关", init.toggle, JSON.stringify(init));
+    check("默认图标不选中（.on 关，符合「默认隐藏已归档」）", !init.btnOn, JSON.stringify(init));
     check("默认侧栏不显示已归档任务（只剩 3 行）", init.titles.length === 3 && init.archRows === 0,
       JSON.stringify(init.titles));
     check("已归档任务所在文件夹 proj-gamma 默认隐藏", !init.dirs.includes("proj-gamma"),
       JSON.stringify(init.dirs));
 
-    /* ---- C) 点开关：已归档任务灰显回原文件夹，带「已归档」徽章，localStorage 落盘 ---- */
+    /* ---- C) 点开关：已归档任务灰显回原文件夹，带「已归档」徽章（会话内生效，不再持久化） ---- */
     await evalJs(`document.getElementById("btn-side-arch").click()`);
     await sleep(600);
     const on = await evalJs(`(() => {
@@ -156,7 +157,7 @@ async function main() {
         inGamma: arch ? !!arch.closest("details.sdir")?.dataset.dir?.endsWith("proj-gamma") : false,
       };
     })()`);
-    check("开关打开后 localStorage 落盘 orch.showArchived=1", on.ls === "1", JSON.stringify(on));
+    check("开关打开后不再写 localStorage（会话级开关）", on.ls === null, JSON.stringify(on));
     check("开关按钮高亮（.on）", on.btnOn, JSON.stringify(on));
     check("已归档任务回到 proj-gamma 文件夹", on.inGamma && on.dirs.includes("proj-gamma"), JSON.stringify(on.dirs));
     check("已归档行带灰色「已归档」徽章", on.archTitle === "样式核验-三天前（20 步长任务）" && on.archBadge === "已归档",
@@ -169,7 +170,7 @@ async function main() {
       ls: localStorage.getItem("orch.showArchived"),
       archRows: document.querySelectorAll("#side-tasks .stask.archived").length,
     }))()`);
-    check("再点还原：localStorage=0、已归档行消失", off.ls === "0" && off.archRows === 0, JSON.stringify(off));
+    check("再点还原：已归档行消失、localStorage 保持为空", off.archRows === 0 && off.ls === null, JSON.stringify(off));
 
     /* ---- E) 页面无 JS 错误（含 init 期） ---- */
     const errs = await evalJs(`window.__errs`);

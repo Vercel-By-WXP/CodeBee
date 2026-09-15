@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""从品牌母版重新生成全套 logo 资产（2026-09 正式版 B 标）。
+"""从品牌母版重新生成 logo 资产（2026-09 正式版 B 标）——不含 favicon！
+
+favicon/PWA 图标（icon-192/512.png）2026-09-15 起改为自定义「渐变瓷片+字母 B」，
+由 tests/_gen_favicon.py 纯代码生成；本脚本重跑**不会**再触碰它们。
 
 母版：app/ui/icons/brand-square.png（方形竖版，上 B 标下字标）——
 设计稿转自 CodeBee LOGO（蜂巢瓷片拼成 B）。本脚本自动：
@@ -8,8 +11,7 @@
    高饱和瓷片色（藏青 #013a75 / 亮青 #29abe2 一族）原样保留；
 3) 产出 app/ui/icons/：
    - logo-mark.png       透明底 B 标（备用 / README 历史）
-   - logo-horizontal.png 透明底横版锁版图（B 标+CodeBee 字标一体；UI 左上角 / 令牌门 / README）
-   - icon-192/512.png    白底方形 PWA 图标（B 标居中占 66%，maskable 安全区）
+   - logo-horizontal.png 透明底横版锁版图（B 标+CodeBee 字标一体；README 锁版图）
 
 ⚠️ 横版含银灰瓷片（主体 ~#c0c0d0，高光至 ~#e4e5e8，低饱和）：透明阈值必须钉在
 mn≥235，否则银瓷片会被打穿变半透明。
@@ -28,7 +30,6 @@ MASTER = os.path.join(OUT, "brand-square.png")
 WHITE_MIN = 245   # mn ≥ 此值且低饱和 → 纯白，全透明
 EDGE_MIN = 160    # 过渡带下限（mn ≥ 此值且低饱和 → 软边）
 EDGE_SAT = 45     # 过渡带允许的最大饱和度（瓷片色饱和度高，不会误伤）
-ICON_RATIO = 0.66  # 图标内容高 / 画布边长
 
 # 横版锁版参数：银灰瓷片（最亮 mn≈234）与白底（252-255）同在低饱和区，
 # 全局阈值必须钉在 mn≥246 才能不打穿瓷片；二值透明，不做软边（28px 显示下无感）
@@ -79,15 +80,6 @@ def to_transparent(crop):
     return Image.fromarray(rgba, "RGBA")
 
 
-def make_icon(mark, size):
-    canvas = Image.new("RGB", (size, size), (255, 255, 255))
-    h = int(size * ICON_RATIO)
-    w = int(round(mark.width * h / float(mark.height)))
-    m = mark.resize((w, h), Image.LANCZOS)
-    canvas.paste(m, ((size - w) // 2, (size - h) // 2), m)
-    return canvas
-
-
 def to_transparent_lockup(crop):
     """横版锁版白底转透明：二值规则（mn≥246 且近无饱和 → 透明），
     银灰瓷片最亮 mn≈234，与阈值间隔充分，绝无打穿。"""
@@ -122,9 +114,7 @@ def main():
     mark = to_transparent(crop)
     mark.save(os.path.join(OUT, "logo-mark.png"), optimize=True)
     print("wrote logo-mark.png  %dx%d" % mark.size)
-    for size in (192, 512):
-        make_icon(mark, size).save(os.path.join(OUT, "icon-%d.png" % size), optimize=True)
-        print("wrote icon-%d.png" % size)
+    # favicon/PWA（icon-192/512.png）归 tests/_gen_favicon.py 管，这里不再生成
     if os.path.isfile(LOCKUP_MASTER):
         hz = Image.open(LOCKUP_MASTER)
         ha = np.asarray(hz.convert("RGB"))

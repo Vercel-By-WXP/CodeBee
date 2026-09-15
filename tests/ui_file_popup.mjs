@@ -210,10 +210,12 @@ async function main() {
           q.body.includes("第一章 试炼开始");
       }, "md 渲染进弹窗"],
       ["cover.json", async () => {
+        // codeBlockHTML 已改行号表格（e2e975c）：美化与否看行数——原始 json 是单行
         const q = JSON.parse(await evalJs(popState));
-        return q.open && !!(await evalJs(`!!document.querySelector("#file-pop .fp-code pre")`)) &&
-          q.body.includes('"title"') && q.body.includes("\n  ");
-      }, "json 美化缩进"],
+        return q.open && !!(await evalJs(`!!document.querySelector("#file-pop .fp-code .code-block")`)) &&
+          Number(await evalJs(`document.querySelectorAll("#file-pop .fp-code .cb-ln").length`)) >= 3 &&
+          q.body.includes('"title"') && q.body.includes('"chapters"');
+      }, "json 美化渲染（多行行号表格）"],
       ["hero.png", async () => !!(await evalJs(
         `(() => { const i = document.querySelector("#file-pop .fp-img img"); return i && i.src.startsWith("blob:"); })()`)),
         "png blob 直显"],

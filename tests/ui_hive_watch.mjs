@@ -254,31 +254,35 @@ async function main() {
       (tailClean || "").includes("码头与旧识重逢") && !(tailClean || "").includes("WARN"),
       tailClean);
 
-    // F) 双栏布局：主栏（蜂巢/日志/步骤）+ 侧栏（控制台+指挥区），窄屏降单列由 CSS 媒体查询管
+    // F) 标签化布局：头部收纳操作按钮与统计；蜂巢/日志/步骤在主栏；分区切换生效。
+    // 终态造数（done + 可取报告）→ 自动选卡落「成果」分区
     const layout = await evalJson(`(() => {
       const panel = document.getElementById("run-detail");
-      const grid = panel.querySelector(".rd-grid");
-      const side = panel.querySelector(".rd-side");
+      const head = panel.querySelector(".detail-head");
       const main = panel.querySelector(".rd-main");
-      const inSide = (id) => !!(side && side.querySelector("#" + id));
+      const inHead = (id) => !!(head && head.querySelector("#" + id));
       const inMain = (id) => !!(main && main.querySelector("#" + id));
-      const st = getComputedStyle(grid);
+      const tabs = Array.from(panel.querySelectorAll("#rd-tabs .rd-tab"));
       return {
-        gridCols: st.gridTemplateColumns.split(" ").length,
-        pauseInSide: inSide("btn-pause"), cancelInSide: inSide("btn-cancel"),
-        directInSide: inSide("rd-direct"), metaInSide: inSide("rd-meta"),
+        tabIds: tabs.map((b) => b.dataset.tab).join(","),
+        pauseInHead: inHead("btn-pause"), cancelInHead: inHead("btn-cancel"),
+        metaStrip: !!panel.querySelector("#rd-meta.rd-meta-strip"),
         hiveInMain: inMain("rd-hive"), stepsInMain: inMain("rd-steps"),
         logInMain: inMain("rd-log"),
-        sideSticky: getComputedStyle(side).position,
-        vw: innerWidth, mq: matchMedia("(max-width: 1100px)").matches,
+        activeTab: ((panel.querySelector("#rd-tabs .rd-tab.active") || {}).dataset || {}).tab || "",
+        stepsPaneHidden: main.querySelector('.rd-pane[data-pane="steps"]').classList.contains("hidden"),
+        hivePaneHidden: main.querySelector('.rd-pane[data-pane="hive"]').classList.contains("hidden"),
+        oldSideGone: !panel.querySelector(".rd-side"),
       };
     })()`);
-    check("双栏 grid（宽屏两列）", layout.gridCols === 2,
-      JSON.stringify([layout.gridCols, layout.vw, layout.mq]));
-    check("控制按钮在侧栏", layout.pauseInSide && layout.cancelInSide);
-    check("指挥区/状态在侧栏", layout.directInSide && layout.metaInSide);
-    check("蜂巢/日志/步骤在主栏", layout.hiveInMain && layout.logInMain && layout.stepsInMain);
-    check("侧栏吸顶（宽屏 sticky）", layout.sideSticky === "sticky", layout.sideSticky);
+    check("标签条五分区（蜂巢/步骤/成果/版本/圣经）",
+      layout.tabIds === "hive,steps,result,git,bible", layout.tabIds);
+    check("操作按钮/统计条上移头部", layout.pauseInHead && layout.cancelInHead && layout.metaStrip);
+    check("旧侧栏移除；蜂巢/日志/步骤在主栏",
+      layout.oldSideGone && layout.hiveInMain && layout.logInMain && layout.stepsInMain);
+    check("终态自动落「成果」分区（pane 切换生效）",
+      layout.activeTab === "result" && layout.stepsPaneHidden === true,
+      JSON.stringify([layout.activeTab, layout.stepsPaneHidden]));
 
     // F2) 主区自适应：收起左栏变宽、打开检查器让位（:has 放宽 sub-runs 容器）
     const adapt = await evalJson(`(async () => {

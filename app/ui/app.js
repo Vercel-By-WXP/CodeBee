@@ -2,7 +2,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: localStorage.getItem("orch.showArchived") === "1", selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {} };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {} };
 
 /* ---------------------------------------------------------- 任务类型（流程） */
 async function loadFlows() {
@@ -241,6 +241,129 @@ function uiPrompt(title, value) {
     },
   }).then((ok) => ((ok && inp) ? inp.value.trim() : null));
 }
+
+/* ------------------------------------------------- 采访式向导（新建任务） */
+/* 不想面对整张表单的新用户：三问一确认——目标 → 类型 → 目录 → 预览填入。
+ * 代码类流程多追问一步「验证命令」（怎么算跑通）；页序列按所选类型动态生成。
+ * 向导只把答案预填进既有表单，提交/附件/评审设置全部留在表单里：
+ * 不新增提交路径，质量闸门与既有测试照旧。目录浏览用表单里的「选择…」。 */
+let wiz = null;   // { page, pages, goal, type, workdir, verify }
+
+function wizardPages(type) {
+  const flow = flowById(type);
+  return ["goal", "type"].concat(
+    flow && flow.engine === "code" ? ["verify"] : [], ["workdir", "summary"]);
+}
+
+window.openTaskWizard = async function () {
+  // 冷启动时 boot 的 loadFlows 可能晚于用户点击：空了就现拉一次（autoForm 同款防御）
+  if (!S.flows || !S.flows.length) { try { await loadFlows(); } catch (e) { /* 渲染时兜底 */ } }
+  const type = (($("f-type") || {}).value) || ((S.flows || [])[0] || {}).id || "";
+  wiz = { page: 0, pages: wizardPages(type), goal: "", type,
+          workdir: (($("f-workdir") || {}).value || ""), verify: "" };
+  renderWizard();
+};
+
+window.wizardBack = function () { if (wiz && wiz.page > 0) { wiz.page--; renderWizard(); } };
+window.wizardPickType = function (id) {
+  if (!wiz) return;
+  wiz.type = id;
+  wiz.pages = wizardPages(id);   // 按新类型重排页序列（代码流程插入验证步）
+  wiz.page = 2;                  // 类型页的下一页
+  renderWizard();
+};
+
+window.wizardNext = function () {
+  if (!wiz) return;
+  const id = wiz.pages[wiz.page];
+  if (id === "goal") {
+    const v = (($("wz-goal") || {}).value || "").trim();
+    if (!v) { toast(t("目标还不能为空"), true); return; }
+    wiz.goal = v;
+    wiz.page++;
+  } else if (id === "verify") {
+    wiz.verify = (($("wz-verify") || {}).value || "").trim();
+    wiz.page++;
+  } else if (id === "workdir") {
+    wiz.workdir = (($("wz-workdir") || {}).value || "").trim();
+    wiz.page++;
+  }
+  renderWizard();
+};
+
+function wizardFoot(back) {
+  return (back ? '<button class="ghost" onclick="wizardBack()">' + esc(t("上一步")) + "</button>" : "") +
+    '<button class="primary" onclick="wizardNext()">' + esc(t("下一步")) + "</button>";
+}
+
+function renderWizard() {
+  if (!wiz) return;
+  const f = flowById(wiz.type);
+  const id = wiz.pages[wiz.page];
+  let body = "", foot = "";
+  if (id === "goal") {
+    body = '<textarea id="wz-goal" class="wz-goal" rows="4" placeholder="' +
+      esc(t("要完成什么，一句话即可")) +
+      '" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();wizardNext()}">' +
+      esc(wiz.goal) + "</textarea>";
+    foot = wizardFoot(false);
+  } else if (id === "type") {
+    body = '<div class="wz-flows">' + (S.flows || []).map((fl) =>
+      '<button type="button" class="wz-flow' + (fl.id === wiz.type ? " on" : "") +
+      '" onclick="wizardPickType(\'' + esc(fl.id) + '\')">' +
+      flowIconHtml(fl) +
+      '<span class="wz-fname">' + esc(fl.name || fl.id) + "</span>" +
+      '<span class="wz-fdesc">' + esc(flowDesc(fl)) + "</span></button>").join("") + "</div>" +
+      '<p class="hint">' + esc(t("点一个类型即选定并继续；进表单后仍可改")) + "</p>";
+    foot = wizardFoot(true);
+  } else if (id === "verify") {
+    body = '<input id="wz-verify" class="wz-input" autocomplete="off" value="' + esc(wiz.verify) +
+      '" placeholder="' + esc(t("例：npm test、pytest -q；留空=只靠 AI 评审")) +
+      '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();wizardNext()}">' +
+      '<p class="hint">' + esc(t("一条能在工作目录里跑的命令，退出码 0 即视为通过；之后可在表单改")) + "</p>";
+    foot = wizardFoot(true);
+  } else if (id === "workdir") {
+    body = '<input id="wz-workdir" class="wz-input" autocomplete="off" value="' + esc(wiz.workdir) +
+      '" placeholder="' + esc(t("留空用默认保存路径；也可稍后在表单里点「选择…」")) +
+      '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();wizardNext()}">' +
+      '<p class="hint">' + esc(t("建议给每个任务一个独立目录，产出互不覆盖")) + "</p>";
+    foot = wizardFoot(true);
+  } else {
+    body = '<div class="wz-sum">' +
+      '<div><span class="wz-k">' + esc(t("类型")) + "</span>" + esc((f && f.name) || wiz.type) + "</div>" +
+      '<div><span class="wz-k">' + esc(t("目标")) + "</span>" + esc(wiz.goal.slice(0, 120)) + "</div>" +
+      (f && f.engine === "code"
+        ? '<div><span class="wz-k">' + esc(t("验证命令")) + "</span>" +
+          esc(wiz.verify || t("留空靠 AI 评审")) + "</div>"
+        : "") +
+      '<div><span class="wz-k">' + esc(t("工作目录")) + "</span>" +
+      esc(wiz.workdir || t("默认保存路径")) + "</div></div>" +
+      '<p class="hint">' + esc(t("填入表单后可继续：加附件、选实现者、改评审设置")) + "</p>";
+    foot = '<button class="ghost" onclick="wizardBack()">' + esc(t("上一步")) + "</button>" +
+      '<button class="primary" onclick="wizardApply()">' + esc(t("填入表单")) + "</button>";
+  }
+  openModal(t("新建任务向导") + " · " + (wiz.page + 1) + "/" + wiz.pages.length, body, foot);
+  const first = $("wz-goal") || $("wz-verify") || $("wz-workdir");
+  if (first) first.focus();
+}
+
+window.wizardApply = function () {
+  if (!wiz) return;
+  closeModal();
+  const flow = flowById(wiz.type);
+  if (flow && $("f-type").value !== wiz.type) { $("f-type").value = wiz.type; onTypeChange(); }
+  $("f-goal").value = wiz.goal;
+  if (flow && flow.engine === "code") $("f-verify").value = wiz.verify || "";
+  if (wiz.workdir) {
+    $("f-workdir").value = wiz.workdir;
+    localStorage.setItem("orch.workdir", wiz.workdir);
+  }
+  S.atts = []; renderAttachChips();   // 新目标不带旧附件
+  queueGitProbe();                    // 工作目录可能变了，重新探测代码版本
+  $("f-goal").focus();
+  toast(t("已按向导预填，检查或补充后点「创建并运行」"));
+  wiz = null;
+};
 
 /* 访问令牌门（仅远程设备会碰到） */
 function showTokenGate(err) {
@@ -2063,6 +2186,27 @@ function paintNotifyToggle() {
   b.title = on ? t("提示音已开（点击关闭）") : t("提示音已关（点击开启）");
 }
 
+// 「展开全部」钮：文件夹全开时箭头翻成收起朝向，提示文案跟着换（renderSideTasks 末尾与点击后各同步一次）
+function syncSideExpandBtn() {
+  const b = $("btn-side-expand");
+  if (!b) return;
+  const dlist = Array.from($("side-tasks").querySelectorAll("details.sdir"));
+  const allOpen = dlist.length > 0 && !dlist.some((d) => !d.open);
+  b.classList.toggle("up", allOpen);
+  b.title = t(allOpen ? "收起全部" : "展开全部");
+  b.setAttribute("aria-label", b.title);
+}
+
+// 「显示已归档」开关：点亮状态连同提示文案一起刷（原 HTML 里是写死的「显示已归档」）
+function paintArchToggle() {
+  const b = $("btn-side-arch");
+  if (!b) return;
+  b.classList.toggle("on", S.showArchived);
+  const tip = t(S.showArchived ? "隐藏已归档" : "显示已归档");
+  b.title = tip;
+  b.setAttribute("aria-label", tip);
+}
+
 function renderSideTasks() {
   const box = $("side-tasks");
   if (!box) return;
@@ -2207,6 +2351,7 @@ function renderSideTasks() {
   }).join("") || ('<div class="side-empty">' + (q ? t("无匹配任务") : t("暂无任务")) + "</div>");
   scanAttention(groups);
   paintNotifyToggle();
+  syncSideExpandBtn();
   // 底部 pill 上的待裁决徽章：数量跟随全量任务（不受搜索过滤影响）
   const vcount = groups.filter((g) => g.verdict).length;
   const vb = $("prov-side-badge");
@@ -2237,7 +2382,7 @@ window.sideOpenRun = function (id, n) {
   S.detailTaskKey = null;
   if (!S.histJump && typeof histPush === "function") histPush({ m: "main", tab: "run-detail" });
   showDetailInMain();
-  openRun(id);
+  openRun(id, n ? "steps" : null);   // 带步骤号：钉住步骤分区，自动选卡不抢
 };
 
 /* 侧栏「查看全部 N 步」：任务可能被续跑/重试过多次，步骤分散在多条 run 里。
@@ -2247,6 +2392,7 @@ window.sideOpenTask = function (key) {
   S.detailRunId = null;
   S.focusStep = 0;
   S.taskSig = "";
+  rdTabReset();
   if (!S.histJump && typeof histPush === "function") histPush({ m: "main", tab: "run-detail" });
   showDetailInMain();
   $("run-detail").classList.remove("hidden");
@@ -2380,6 +2526,13 @@ function drawTaskDetail(key, runs) {
   S.lastRunTask = tk || null;
   renderGitPanel(latest, tk);
   renderBiblePanel(tk);
+  const actSteps = ((activeRun || latest).steps || []);
+  rdTabsSync({
+    running: active, status: st, gitState: (tk || {}).git_state || "",
+    steps: totalSteps,
+    runningCount: actSteps.filter((x) => x.status === "running").length,
+    hasResult: latest.status === "done" || !!latest.report,
+  });
 }
 
 async function deleteRun(id) {
@@ -2436,9 +2589,10 @@ async function clearRuns() {
   poll();
 }
 
-async function openRun(id) {
+async function openRun(id, pinTab) {
   S.detailRunId = id;
   S.detailTaskKey = null;
+  rdTabReset(pinTab || null);   // sideOpenRun 带步骤号时钉住步骤分区
   document.querySelector("#sub-runs .panel:first-child").classList.add("hidden");
   $("run-detail").classList.remove("hidden");
   renderRunDetail();
@@ -2449,6 +2603,7 @@ function closeRun() {
   S.detailTaskKey = null;
   S.taskSig = "";
   S.focusStep = 0;
+  rdTabReset();
   stopLogLive();
   stopHiveTick();
   $("run-detail").classList.add("hidden");
@@ -2478,6 +2633,76 @@ function applyStepFocus() {
   catch (e) { el.scrollIntoView(); }
   if (el.dataset.log) toggleLog(S.detailRunId, el.dataset.log);
   setTimeout(() => el.classList.remove("flash"), 1800);
+}
+
+/* ---------------- 详情页标签分区：蜂巢（实时）/ 步骤 / 成果 / 版本 / 圣经 ----------------
+ * 主栏详情从一根长条改成五个分区：实时监控、历史步骤、交付成果、代码版本、故事圣经。
+ * 分区内容的 hidden 语义保持不变（没数据整块收起）；标签页只切外层 .rd-pane，
+ * 测试/代码对 #rd-hive、#rd-git 等 hidden 的判断不受影响。
+ * 自动选卡只在「详情目标 + run 状态 + git 裁决态」签名变化时触发一次——
+ * 轮询重画不抢用户手选的分区；侧栏点具体步骤（sideOpenRun）钉住步骤分区。 */
+function rdTabAvail() {
+  return {
+    hive: !$("rd-hive").classList.contains("hidden"),
+    steps: true,
+    result: true,
+    git: !$("rd-git").classList.contains("hidden"),
+    bible: !$("rd-bible").classList.contains("hidden"),
+  };
+}
+
+function applyRdTabs() {
+  const avail = rdTabAvail();
+  if (!S.rdTab || !avail[S.rdTab]) {
+    S.rdTab = ["hive", "steps", "result", "git", "bible"].find((k) => avail[k]) || "steps";
+  }
+  document.querySelectorAll("#rd-tabs .rd-tab").forEach((b) => {
+    b.classList.toggle("hidden", !avail[b.dataset.tab]);
+    b.classList.toggle("active", b.dataset.tab === S.rdTab);
+  });
+  document.querySelectorAll("#run-detail .rd-pane").forEach((p) =>
+    p.classList.toggle("hidden", p.dataset.pane !== S.rdTab));
+}
+
+/* 徽章：蜂巢=在岗数（运行中）、步骤=总步数、版本=待裁决、成果=文件数（loadArtifacts 里刷） */
+function rdTabBadges() {
+  const c = S._rdCtx || {};
+  const set = (tab, text, cls) => {
+    const el = document.querySelector('#rd-tabs .rd-tab[data-tab="' + tab + '"] .rd-badge');
+    if (!el) return;
+    el.textContent = text;
+    el.className = "rd-badge" + (text ? (cls ? " " + cls : "") : " hidden");
+  };
+  set("hive", c.runningCount ? "● " + c.runningCount : "");
+  set("steps", c.steps ? String(c.steps) : "");
+  set("git", c.gitState === "isolated" ? t("待裁决") : "", "verdict");
+}
+
+/* ctx 可省略：省略时只刷新可用性/徽章/pane（renderHive/renderGitPanel 等收尾调用）。
+ * 带 ctx 时先做自动选卡判断，再落徽章。 */
+function rdTabsSync(ctx) {
+  if (ctx) S._rdCtx = ctx;
+  if (ctx && !S.rdTabPin) {
+    const sig = (S.detailTaskKey || S.detailRunId || "") + "|" + (ctx.status || "") +
+      "|" + (ctx.gitState || "") + "|" + (ctx.running ? 1 : 0);
+    if (S.rdTabSig !== sig) {
+      S.rdTabSig = sig;
+      const avail = rdTabAvail();
+      S.rdTab = ctx.running ? (avail.hive ? "hive" : "steps")
+        : (ctx.gitState === "isolated" && avail.git ? "git"
+          : (ctx.hasResult ? "result" : "steps"));
+    }
+  }
+  applyRdTabs();
+  rdTabBadges();
+}
+
+/* 换一个详情目标时清空选卡状态：下一次渲染按新目标自动落位 */
+function rdTabReset(pin) {
+  S.rdTab = pin || null;
+  S.rdTabSig = "";
+  S.rdTabPin = !!pin;
+  S._rdCtx = {};
 }
 
 async function renderRunDetail() {
@@ -2536,6 +2761,12 @@ async function renderRunDetail() {
   S.lastRunTask = rcTask || null;
   renderGitPanel(run, rcTask);
   renderBiblePanel(rcTask);
+  rdTabsSync({
+    running: active, status: run.status, gitState: (rcTask || {}).git_state || "",
+    steps: (run.steps || []).length,
+    runningCount: (run.steps || []).filter((x) => x.status === "running").length,
+    hasResult: run.status === "done" || !!run.report,
+  });
 }
 
 /* 代码版本隔离面板：run 检出任务分支 tutti/<id> 后，产物提交在该分支上、
@@ -2563,11 +2794,11 @@ const GIT_STATE_CHIP = {
  * 代码类任务更不该看到小说面板。 */
 async function renderBiblePanel(task) {
   const box = $("rd-bible");
-  if (!box || !(task || {}).id) { if (box) box.classList.add("hidden"); return; }
-  if (!task.serial) { box.classList.add("hidden"); return; }
+  if (!box || !(task || {}).id) { if (box) box.classList.add("hidden"); rdTabsSync(); return; }
+  if (!task.serial) { box.classList.add("hidden"); rdTabsSync(); return; }
   let d;
   try { d = await api("/api/tasks/" + encodeURIComponent(task.id) + "/bible"); }
-  catch (e) { box.classList.add("hidden"); return; }
+  catch (e) { box.classList.add("hidden"); rdTabsSync(); return; }
   if ((S.detailTaskKey || S.detailRunId) !== (S._bibleKey || (S.detailTaskKey || S.detailRunId))) { /* noop */ }
   const running = task.status === "running" || task.status === "queued";
   const text = d.text || "";
@@ -2597,6 +2828,7 @@ async function renderBiblePanel(task) {
   }
   box.classList.remove("hidden");
   box.innerHTML = html;
+  rdTabsSync();   // 圣经面板显隐决定「圣经」标签可用性
 }
 
 window.bibleEdit = function (taskId) { S._bibleEdit = taskId; renderBiblePanel(S.lastRunTask || findTask(taskId)); };
@@ -2621,7 +2853,7 @@ function renderGitPanel(run, task) {
   const box = $("rd-git");
   if (!box) return;
   const g = (run || {}).git;
-  if (!g || !g.branch) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+  if (!g || !g.branch) { box.classList.add("hidden"); box.innerHTML = ""; rdTabsSync(); return; }
   const tid = (task || {}).id || "";
   const state = (task || {}).git_state || "";
   const files = ((run || {}).changes || {}).files || [];
@@ -2658,6 +2890,7 @@ function renderGitPanel(run, task) {
   }
   box.classList.remove("hidden");
   box.innerHTML = html;
+  rdTabsSync();   // 版本面板显隐决定「版本」标签可用性
 }
 
 async function _gitVerdictDone() {
@@ -3175,26 +3408,11 @@ function fmtSize(n) {
   return n + " B";
 }
 
-async function loadArtifacts(runId) {
-  // 成品文件渲染进检查器「成品文件」TAB（主栏聚焦步骤/日志/报告，不再重复展示）
-  const box = $("insp-artifacts");
-  if (!box) return;
-  box.innerHTML = "";
-  let d;
-  try { d = await api("/api/runs/" + encodeURIComponent(runId) + "/files"); }
-  catch (e) { return; }
-  // 用户可能已经切到别的详情：过期响应不落盘（检查器当前的 run 同样有效）
-  const inspRun = (S.inspData && S.inspData.run && S.inspData.run.id) || "";
-  if (S.detailRunId !== runId && inspRun !== runId &&
-      !(S.detailTaskKey && S.lastRun && S.lastRun.id === runId)) return;
-  if (!d.files || !d.files.length) {
-    box.innerHTML = '<p class="hint">本次运行没有在工作目录里产出新文件。</p>';
-    previewStop();
-    return;
-  }
-  const chips = d.files.map((f) => {
+/* 成品文件行（检查器「成品文件」与主栏「成果」分区共用一套标记）：
+ * fc-row：文件行 + （md/txt 的）内联预览按钮同行排布，避免按钮独占一行参差不齐 */
+function artifactsChips(runId, files) {
+  return files.map((f) => {
     const isMd = /\.md$/i.test(f.name) || /\.txt$/i.test(f.name);
-    // fc-row：文件行 + （md/txt 的）内联预览按钮同行排布，避免按钮独占一行参差不齐
     return '<span class="fc-row">' +
       '<a class="file-chip" href="/api/runs/' + encodeURIComponent(runId) + "/file?name=" +
       encodeURIComponent(f.name) + '" target="_blank" rel="noopener" ' +
@@ -3207,13 +3425,41 @@ async function loadArtifacts(runId) {
         '<svg class="ico" aria-hidden="true"><use href="#i-book"/></svg>' + t("预览") + "</a>" : "") +
       "</span>";
   }).join("");
-  box.innerHTML = '<div class="files-head"><span class="sec-title">成品文件</span>' +
-    '<span class="wd" title="点击复制" onclick="copyText(this.textContent)">' + esc(d.workdir) + "</span></div>" +
-    '<div class="file-chips">' + chips + "</div>" +
-    '<div id="rd-preview" class="rd-preview hidden"></div>';
+}
+
+async function loadArtifacts(runId) {
+  // 双入口同源渲染：检查器「成品文件」TAB + 主栏详情「成果」分区。
+  // #rd-preview 是静态节点（在成果分区里），不再内嵌在检查器标记内——
+  // 检查器轮询重画不会再把正在看的预览冲掉。
+  let d;
+  try { d = await api("/api/runs/" + encodeURIComponent(runId) + "/files"); }
+  catch (e) { return; }
+  // 用户可能已经切到别的详情：过期响应不落盘（检查器当前的 run 同样有效）
+  const inspRun = (S.inspData && S.inspData.run && S.inspData.run.id) || "";
+  if (S.detailRunId !== runId && inspRun !== runId &&
+      !(S.detailTaskKey && S.lastRun && S.lastRun.id === runId)) return;
+  const files = d.files || [];
+  const box = $("insp-artifacts");
+  const mainBox = $("rd-arts");
+  // 成果分区徽章：文件数（终态才有产出，运行中不计）
+  const fb = document.querySelector('#rd-tabs .rd-tab[data-tab="result"] .rd-badge');
+  if (fb) { fb.textContent = files.length ? String(files.length) : "";
+    fb.className = "rd-badge" + (files.length ? "" : " hidden"); }
+  if (!files.length) {
+    if (box) box.innerHTML = '<span class="insp-hint">' + esc(t("本次运行没有在工作目录里产出新文件。")) + "</span>";
+    if (mainBox) { mainBox.classList.add("hidden"); mainBox.innerHTML = ""; }
+    previewStop();
+    return;
+  }
+  const head = '<div class="files-head"><span class="sec-title">' + t("成品文件") + '</span>' +
+    '<span class="wd" title="' + esc(t("点击复制")) + '" onclick="copyText(this.textContent)">' + esc(d.workdir) + "</span></div>";
+  const chips = artifactsChips(runId, files);
+  if (box) box.innerHTML = head + '<div class="file-chips">' + chips + "</div>";
+  if (mainBox) { mainBox.classList.remove("hidden");
+    mainBox.innerHTML = head + '<div class="file-chips">' + chips + "</div>"; }
   // 正在预览的文件还活着就原地刷新（运行中轮询 → 稿子越写越长的实时视图）
   if (S.preview && S.preview.runId === runId && S.preview.name) {
-    if (!d.files.some((f) => f.name === S.preview.name)) previewStop();
+    if (!files.some((f) => f.name === S.preview.name)) previewStop();
     else previewRender(runId, S.preview.name, true);
   }
 }
@@ -3488,6 +3734,7 @@ window.renderHive = function (run) {
       if (first) { S.hiveAutoLog = run.id; toggleLog(run.id, first.log); }
     }
   } else stopHiveTick();
+  rdTabsSync();   // 蜂巢显隐直接决定「蜂巢」标签可用性
 };
 
 /* 活跃步骤的实时尾巴：拉 900 字符窗口，去噪后取最后一行正文 */
@@ -3931,6 +4178,31 @@ function csApplyFromControls() {
   localStorage.setItem(CT_SIZE_KEY, String(isFinite(n) ? Math.min(22, Math.max(10, n)) : 12.5));
   applyCodeTheme();
   renderCodePreviews();
+}
+
+/* 皮肤页锚点：「外观 / 代码」两胶囊。点击滚到对应面板（main 是滚动容器）；
+ * main 滚动时反算当前区块高亮胶囊。只在皮肤页可见时计算，别处滚动不花开销。 */
+let _apnClicking = false;   // 点击平滑滚动期间不抢高亮，落定后按位置归位
+
+function apnScrollTo(id) {
+  const el = document.getElementById(id);
+  const main = document.querySelector("main");
+  if (!el || !main) return;
+  _apnClicking = true;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  setTimeout(() => { _apnClicking = false; apnSyncActive(); }, 600);   // 平滑滚动约 400-500ms
+}
+
+function apnSyncActive() {
+  if (_apnClicking || S.tab !== "appearance") return;
+  const main = document.querySelector("main");
+  const anchor = document.getElementById("cs-anchor");
+  if (!main || !anchor || anchor.offsetParent === null) return;   // 皮肤页没显示就不算
+  const code = document.getElementById("apn-code");
+  if (!code) return;
+  // 代码面板顶进视口上缘（留一点余量）就算「代码」区，否则「外观」
+  const onCode = code.getBoundingClientRect().top - main.getBoundingClientRect().top <= 120;
+  anchor.querySelectorAll("[data-apn]").forEach((b) => b.classList.toggle("active", b.dataset.apn === (onCode ? "apn-code" : "apn-skin")));
 }
 
 /* ---------------------------------------------------------- 智能体目录：模型选择 */
@@ -5296,6 +5568,9 @@ function setLangBtn(lang) {
   document.title = (lang === "en" ? "CodeBee · Multi-agent Orchestrator" : "CodeBee · 多智能体编排台");
   applyI18n();
   render();
+  // 侧栏区头两颗钮的 title/aria 是 JS 按状态写的，applyI18n 会用静态词条盖掉，这里重刷
+  paintArchToggle();
+  syncSideExpandBtn();
   renderCodePreviews();   // 预览徽章是动态文案：语言切换时若停在皮肤页要跟着换
   // 重画还在缓存里的页面标题
   const title = $("page-title");
@@ -5761,6 +6036,14 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-back").addEventListener("click", closeRun);
   $("btn-cancel").addEventListener("click", cancelRun);
   bindDirector();
+  // 详情标签页：手点即切并钉住——状态变化触发的自动选卡不再抢用户的手选
+  $("rd-tabs").addEventListener("click", (e) => {
+    const b = e.target.closest(".rd-tab");
+    if (!b || b.classList.contains("hidden")) return;
+    S.rdTab = b.dataset.tab;
+    S.rdTabPin = true;
+    applyRdTabs();
+  });
   // 详情子页显隐 → 容器宽度 class（:has 在部分浏览器不生效，JS 同步为准）
   (function () {
     const sub = document.getElementById("sub-runs");
@@ -5789,17 +6072,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-delete").addEventListener("click", () => { if (S.detailRunId) deleteRun(S.detailRunId); });
   $("btn-theme").addEventListener("click", toggleTheme);
   $("btn-notify-toggle").addEventListener("click", toggleNotifySound);
-  // 侧栏搜索：输入即过滤任务树；Esc 清空还原（有内容时拦住，不让它连坐关弹框）
-  const sideQ = $("side-search");
-  if (sideQ) {
-    sideQ.addEventListener("input", () => { S.sideQ = sideQ.value; renderSideTasks(); });
-    sideQ.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        if (sideQ.value) { e.stopPropagation(); sideQ.value = ""; S.sideQ = ""; renderSideTasks(); }
-        sideQ.blur();
-      }
-    });
-  }
+  // 命令面板：侧栏搜索行 / Ctrl+K 唤起（函数若尚未落地，跳过而不炸整个初始化）
+  if (typeof bindCmdK === "function") bindCmdK();
   // 文件夹全部展开/收起（写回 localStorage，与手点单个 folder 同一套持久化）
   $("btn-side-expand").addEventListener("click", () => {
     const dlist = Array.from($("side-tasks").querySelectorAll("details.sdir"));
@@ -5807,8 +6081,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const anyClosed = dlist.some((d) => !d.open);
     dlist.forEach((d) => { d.open = anyClosed; });
     saveOpenDirs();
-    const b = $("btn-side-expand");
-    if (b) b.title = anyClosed ? t("收起全部") : t("展开全部");
+    syncSideExpandBtn();
   });
   // 顶栏皮肤胶囊 → 皮肤页；皮肤卡片 / 明暗分段用事件委托（卡片是动态渲染的）
   $("btn-skin").addEventListener("click", () => switchTab("appearance"));
@@ -5830,6 +6103,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (el) el.addEventListener("input", csApplyFromControls);
     if (el && el.tagName === "SELECT") el.addEventListener("change", csApplyFromControls);
   }
+  // 皮肤页锚点：胶囊点击滚到对应面板；main 滚动时高亮跟随（处理器内部自判皮肤页可见）
+  const csAnchor = $("cs-anchor");
+  if (csAnchor) csAnchor.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-apn]");
+    if (b) apnScrollTo(b.dataset.apn);
+  });
+  document.querySelector("main").addEventListener("scroll", apnSyncActive, { passive: true });
   syncLangMode();
   $("btn-menu").addEventListener("click", () => document.body.classList.toggle("side-collapsed"));
   // 手机抽屉：遮罩点击 / 侧栏内任何可点项（导航、任务树、设置入口）点击后都收回
@@ -5846,15 +6126,16 @@ document.addEventListener("DOMContentLoaded", () => {
   if (window.innerWidth < 900) document.body.classList.add("side-collapsed");
   applyAppearance();
   $("btn-create").addEventListener("click", createTask);
-  /* 侧栏「显示已归档」开关（原「最近任务」面板移除后，归档找回的唯一入口） */
+  /* 侧栏「显示已归档」开关（原「最近任务」面板移除后，归档找回的唯一入口）。
+   * 只作当次查看，不写 localStorage——持久化会让图标常亮、违背「默认隐藏」的预期 */
   $("btn-side-arch").addEventListener("click", () => {
     S.showArchived = !S.showArchived;
-    localStorage.setItem("orch.showArchived", S.showArchived ? "1" : "0");
-    $("btn-side-arch").classList.toggle("on", S.showArchived);
+    paintArchToggle();
     S.sideSig = "";   // 强制侧栏重绘
     renderSideTasks();
   });
-  $("btn-side-arch").classList.toggle("on", S.showArchived);
+  paintArchToggle();
+  localStorage.removeItem("orch.showArchived");   // 清掉旧版持久化残留，避免误解为默认选中
   $("f-resume-agent").addEventListener("change", loadSessions);
   $("f-resume-session").addEventListener("change", showResumeHint);
   $("f-workdir").value = localStorage.getItem("orch.workdir") || "";
@@ -5904,19 +6185,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Escape" && filePopIsOpen()) { window.filePopClose(); return; }
     if (e.key === "Escape" && !$("modal").classList.contains("hidden")) closeModal();
   });
-  // 快捷键：Ctrl/Cmd+K 聚焦侧栏搜索；N 新建任务（正在输入或弹框打开时不劫持）
+  // 快捷键：Ctrl/Cmd+K 命令面板；N 新建任务（正在输入或弹框打开时不劫持）
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
-      const sq = $("side-search");
-      if (sq && !document.body.classList.contains("settings-mode")) {
-        e.preventDefault(); sq.focus(); sq.select();
-      }
+      e.preventDefault(); cmdkOpen();
       return;
     }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
     if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "n" || e.key === "N")
         && $("modal").classList.contains("hidden") && $("ask").classList.contains("hidden")
-        && filePopIsOpen() === false && !document.body.classList.contains("settings-mode")) {
+        && filePopIsOpen() === false && $("cmdk-mask").classList.contains("hidden")
+        && !document.body.classList.contains("settings-mode")) {
       $("btn-new-task").click();
     }
   });
@@ -5958,3 +6237,119 @@ document.addEventListener("DOMContentLoaded", () => {
   loadOrchestrator();      // 侧栏左下角的编排者供应商指示（进入编排设置页时会再拉一次）
   suStartupCheck();        // 静默查一次新版本（有新版 toast 提醒，同版本只提一次）
 });
+
+/* ===== 命令面板（Ctrl+K / 侧栏搜索行）：任务直达 + 快捷命令 ===== */
+const CmdK = { tab: "all", q: "", sel: 0, flat: [] };
+
+function cmdkOps() {
+  return [
+    { icon: "i-tasks", label: t("新任务"), kbd: "N", run: () => $("btn-new-task").click() },
+    { icon: "i-calendar-days", label: t("自动化"), run: () => switchTab("automation") },
+    { icon: "i-blocks", label: t("插件市场"), run: () => switchTab("market") },
+    { icon: "i-book", label: t("经验库"), run: () => switchTab("skills") },
+    { icon: "i-cpu", label: t("智能体管理"), run: () => switchTab("agents") },
+    { icon: "i-chart", label: t("用量统计"), run: () => switchTab("usage") },
+    { icon: "i-gear", label: t("设置"), run: () => enterSettings() },
+    { icon: "i-phone", label: t("手机连接"), run: () => switchTab("__phone") },
+  ];
+}
+function cmdkTaskItems() {
+  const latest = (S.state && S.state.task_latest) || {};
+  const arr = ((S.state && S.state.tasks) || []).map((tk) => {
+    const lr = latest[tk.id];
+    return { key: tk.id, label: tk.title || tk.id, time: lr ? (lr.started_at || lr.created_at) : (tk.created_at || "") };
+  }).filter((x) => x.label);
+  arr.sort((a, b) => String(b.time || "").localeCompare(String(a.time || "")));
+  return arr.slice(0, 8).map((x) => ({
+    icon: "i-tasks", label: x.label, time: relTime(x.time),
+    run: () => { if (window.sideOpenTask) sideOpenTask(x.key); },
+  }));
+}
+function cmdkRender() {
+  const box = $("cmdk-list");
+  if (!box) return;
+  const q = CmdK.q.trim().toLowerCase();
+  const match = (it) => !q || it.label.toLowerCase().includes(q);
+  const secs = [];
+  if (CmdK.tab !== "ops") {
+    const items = cmdkTaskItems().filter(match);
+    if (items.length) secs.push({ name: t("最近任务"), items });
+  }
+  if (CmdK.tab !== "tasks") {
+    const items = cmdkOps().filter(match);
+    if (items.length) secs.push({ name: t("命令"), items });
+  }
+  CmdK.flat = secs.reduce((a, s) => a.concat(s.items), []);
+  if (CmdK.sel >= CmdK.flat.length) CmdK.sel = Math.max(0, CmdK.flat.length - 1);
+  if (!CmdK.flat.length) { box.innerHTML = '<div class="cmdk-empty">' + t("无匹配结果") + "</div>"; return; }
+  let idx = 0;
+  box.innerHTML = secs.map((s) =>
+    '<div class="cmdk-sec">' + esc(s.name) + "</div>" +
+    s.items.map((it) => {
+      const on = idx++ === CmdK.sel ? " on" : "";
+      return '<div class="cmdk-item' + on + '" data-i="' + (idx - 1) + '">' +
+        '<svg class="ico" aria-hidden="true"><use href="#' + it.icon + '"></use></svg>' +
+        '<span class="l">' + esc(it.label) + "</span>" +
+        (it.time ? '<span class="tm">' + esc(it.time) + "</span>" : "") +
+        (it.kbd ? '<span class="kbd">' + esc(it.kbd) + "</span>" : "") +
+        "</div>";
+    }).join("")
+  ).join("");
+  const on = box.querySelector(".cmdk-item.on");
+  if (on) on.scrollIntoView({ block: "nearest" });
+}
+function cmdkMove(d) {
+  if (!CmdK.flat.length) return;
+  CmdK.sel = (CmdK.sel + d + CmdK.flat.length) % CmdK.flat.length;
+  cmdkRender();
+}
+function cmdkRun(i) {
+  const it = CmdK.flat[i];
+  if (!it) return;
+  cmdkClose();
+  it.run();
+}
+function cmdkOpen() {
+  const mask = $("cmdk-mask");
+  if (!mask) return;
+  mask.classList.remove("hidden");
+  CmdK.tab = "all"; CmdK.q = ""; CmdK.sel = 0;
+  const inp = $("cmdk-q");
+  if (inp) inp.value = "";
+  document.querySelectorAll("#cmdk-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.t === "all"));
+  cmdkRender();
+  if (inp) inp.focus();
+}
+function cmdkClose() {
+  const mask = $("cmdk-mask");
+  if (mask) mask.classList.add("hidden");
+}
+function bindCmdK() {
+  const btn = $("btn-cmdk");
+  if (btn) btn.addEventListener("click", cmdkOpen);
+  const mask = $("cmdk-mask");
+  if (mask) mask.addEventListener("click", cmdkClose);
+  const inp = $("cmdk-q");
+  if (inp) {
+    inp.addEventListener("input", () => { CmdK.q = inp.value; CmdK.sel = 0; cmdkRender(); });
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") { e.preventDefault(); cmdkMove(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); cmdkMove(-1); }
+      else if (e.key === "Enter") { e.preventDefault(); cmdkRun(CmdK.sel); }
+      else if (e.key === "Escape") { e.stopPropagation(); cmdkClose(); }
+    });
+  }
+  const tabs = $("cmdk-tabs");
+  if (tabs) tabs.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-t]");
+    if (!b) return;
+    CmdK.tab = b.dataset.t; CmdK.sel = 0;
+    tabs.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+    cmdkRender();
+  });
+  const list = $("cmdk-list");
+  if (list) list.addEventListener("click", (e) => {
+    const it = e.target.closest(".cmdk-item");
+    if (it) cmdkRun(Number(it.dataset.i) || 0);
+  });
+}

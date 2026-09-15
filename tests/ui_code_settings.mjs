@@ -224,6 +224,26 @@ async function main() {
     await evalJs(`(function(){ if(typeof setThemeMode==="function") setThemeMode("dark"); return true; })()`);
     await sleep(200);
 
+    // ── 8.5 页内锚点：胶囊点击滚动 + 高亮跟随 ──
+    check("锚点胶囊存在且初亮「外观」", await evalJs(
+      `document.querySelectorAll("#cs-anchor [data-apn]").length===2 &&
+       document.querySelector("#cs-anchor [data-apn='apn-skin']").classList.contains("active")`));
+    await evalJs(`(function(){
+      const b=document.querySelector("#cs-anchor [data-apn='apn-code']");
+      b.click(); return true;
+    })()`);
+    await sleep(900);   // 平滑滚动 + 落定归位（apnScrollTo 内 600ms 后 apnSyncActive）
+    check("点「代码」后面板滚进视口（top 接近容器顶）", await evalJs(
+      `Math.abs(document.getElementById("apn-code").getBoundingClientRect().top
+        - document.querySelector("main").getBoundingClientRect().top) < 160`));
+    check("落定后高亮归到「代码」胶囊", await evalJs(
+      `document.querySelector("#cs-anchor [data-apn='apn-code']").classList.contains("active")`));
+    // 反向：滚回顶部，「外观」亮回
+    await evalJs(`document.querySelector("main").scrollTo({top:0}); true`);
+    await sleep(500);
+    check("滚回顶部后「外观」胶囊亮回", await evalJs(
+      `document.querySelector("#cs-anchor [data-apn='apn-skin']").classList.contains("active")`));
+
     // ── 9. 英文模式：新词条走 i18n 字典（走真实切换入口 setLangBtn，动态徽章才会重画）──
     await evalJs(`(function(){
       if (typeof setLangBtn==="function") { setLangBtn("en"); return true; }
@@ -233,8 +253,8 @@ async function main() {
     })()`);
     await sleep(500);
     check("英文模式：面板标题 → Code Display", await evalJs(
-      `document.querySelector("#sub-appearance .panel:nth-of-type(2) h2").textContent==="Code Display"`),
-      await evalJs(`document.querySelector("#sub-appearance .panel:nth-of-type(2) h2").textContent`));
+      `document.querySelector("#apn-code h2").textContent==="Code Display"`),
+      await evalJs(`document.querySelector("#apn-code h2").textContent`));
     check("英文模式：显示行号 → Show line numbers", await evalJs(
       `document.querySelector("#cs-row-linenum, .cs-row:nth-child(3) b").textContent==="Show line numbers"`));
     check("英文模式：预览徽章 → Active", await evalJs(

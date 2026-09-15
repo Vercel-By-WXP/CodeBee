@@ -78,7 +78,7 @@ async function main() {
         gateDeco: gate.querySelectorAll('img, svg, .logo-tile').length,
         gateText: gate.textContent.trim(),
         bg: getComputedStyle(name).backgroundImage,
-        sideSearch: !!document.querySelector('.side-search input#side-search'),
+        sideSearch: !!document.getElementById('btn-cmdk'),
         kbds: document.querySelectorAll('.side-main .kbd').length,
         expandBtn: !!document.getElementById('btn-side-expand'),
         pbadge: !!document.getElementById('prov-side-badge') });
@@ -88,7 +88,7 @@ async function main() {
     check("品牌区无磁贴/图片/矢量装饰", tp.ok && tp.brandDeco === 0, tile);
     check("扫码门同款纯文字", tp.ok && tp.gateDeco === 0 && tp.gateText === "CodeBee", tile);
     check("字标无渐变（纯正文色）", tp.ok && (tp.bg === "none" || tp.bg === ""), tile);
-    check("侧栏搜索框 + 快捷键提示（N / Ctrl K）", tp.ok && tp.sideSearch && tp.kbds >= 2, tile);
+    check("搜索行（命令面板触发）+ 快捷键提示（N / Ctrl K）", tp.ok && tp.sideSearch && tp.kbds >= 2, tile);
     check("任务树展开/收起按钮 + 待裁决徽章容器", tp.ok && tp.expandBtn && tp.pbadge, tile);
     const oldSprite = await evalJs(`!!document.querySelector('#icon-sprite symbol#i-logo') || !!document.querySelector('#icon-sprite symbol#i-note')`);
     check("旧 #i-logo/#i-note sprite 已移除", !oldSprite);

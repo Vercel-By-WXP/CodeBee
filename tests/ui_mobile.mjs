@@ -7,8 +7,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const SERVICE = "http://127.0.0.1:18798";
-const CDP_PORT = 9335;
+const SERVICE = process.env.SERVICE || "http://127.0.0.1:18798";   // 18798 常被并行 agent 双绑，可用 SERVICE 覆盖
+const CDP_PORT = Number(process.env.CDP_PORT) || 9335;
 const EDGE = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
