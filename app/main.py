@@ -261,11 +261,14 @@ class Handler(BaseHTTPRequestHandler):
                 q = parse_qs(urlparse(self.path).query)
                 rel = (q.get("step") or [""])[0]
                 rel = rel.replace("\\", "/").lstrip("/")
-                # tail：蜂巢卡片实时尾巴轮询用小窗口；日志面板用默认（4000）
+                # tail：蜂巢卡片实时尾巴轮询用小窗口；日志面板用默认（4000）。
+                # 先取默认/解析再夹紧：此前 max(200, min(40000, 0)) 恒为 200，
+                # 不带 tail 的日志抽屉一直只读到末尾 200 字节（2026-09-15 实测暴露）
                 try:
-                    tail = max(200, min(40000, int((q.get("tail") or [""])[0] or 0))) or paths.LOG_TAIL_CHARS
+                    tail = int((q.get("tail") or [""])[0] or 0) or paths.LOG_TAIL_CHARS
                 except ValueError:
                     tail = paths.LOG_TAIL_CHARS
+                tail = max(200, min(40000, tail))
                 run = store.get_run(m.group(1))
                 if not run:
                     return self._json(404, {"error": "not found"})
