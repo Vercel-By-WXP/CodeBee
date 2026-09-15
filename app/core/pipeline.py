@@ -50,6 +50,15 @@ def _inside(dirpath, target):
         return False
 
 
+def _task_images(task, workdir):
+    """任务的图片附件绝对路径（仅 codex 原生 -i 用）。无附件/异常返回空列表。"""
+    try:
+        from . import attachments as att_mod
+        return att_mod.image_paths(task, workdir)
+    except Exception:
+        return []
+
+
 def _ms_name(raw):
     name = re.sub(r"[\\/\x00]+", "_", str(raw or "")).strip()
     name = re.sub(r"\.{2,}", "_", name).lstrip(".")
@@ -177,8 +186,95 @@ def _resume_sid(agent, sid):
     return None
 
 
+def _is_review_role(role):
+    """评审类步骤：用户指令在此类步骤注入时升级为「评分依据」，不再是普通纠偏。"""
+    r = str(role or "")
+    return "critique" in r or r == "review"
+
+
+def _drain_directives(run_id, workdir, role=None, step_n=None):
+    """取出运行中积压的用户指令（store.drain_messages），拼成注入块 + 收集图片附件。
+
+    无头 CLI 没有交互 stdin，插不进正在跑的进程——指令在下一个步骤开始前
+    生效（轮间干预），所以 drain 放在 _run_step 的真实调用分支。
+    role/step_n 仅作送达回执（consumed_by）；评审类步骤额外追加「评分依据」
+    框架文案，把用户意见变成评审判定的正式输入（插话进评审门）。
+    返回 (注入文本块 或 "", 图片绝对路径列表)；消费即标记，不会重复注入。
+    """
+    try:
+        msgs = store.drain_messages(run_id, consumed_by={"step": step_n, "role": role})
+    except Exception:
+        return "", []
+    if not msgs:
+        return "", []
+    lines = ["## 用户实时指令（运行中追加，针对当前进展的纠偏，优先级高于原始要求）"]
+    if _is_review_role(role):
+        lines.append("本步为评审步骤：请把上述用户意见作为评分依据之一，"
+                     "在相应维度的分数与 issues 中明确体现（引用用户原话）。")
+    imgs = []
+    for m in msgs:
+        stamp = m.get("created_at") or ""
+        sender = m.get("sender") or "用户"
+        text = (m.get("text") or "").strip()
+        lines.append("- [%s %s] %s" % (stamp, sender, text) if text
+                     else "- [%s %s]（附件指令，见下方文件）" % (stamp, sender))
+        for rel in (m.get("attachments") or []):
+            rel = str(rel)
+            low = rel.lower()
+            if low.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")):
+                ap = os.path.join(workdir or "", rel) if workdir else rel
+                if workdir and os.path.isfile(ap):
+                    imgs.append(ap)
+                    lines.append("  · 图片附件：%s（请查看图片内容）" % rel)
+                else:
+                    lines.append("  · 图片附件：%s" % rel)
+            else:
+                lines.append("  · 文件附件：%s（位于工作目录，可直接读取）" % rel)
+    return "\n".join(lines), imgs
+
+
+def _steered_task(run_id, task):
+    """规划/大纲步骤的输入任务副本：未消费的用户指令合入 context（peek 不消费）。
+
+    编排者决策（code plan / 连载大纲）不走 _run_step，消息只在 context 里可见；
+    peek 语义保证后续真实步骤仍会 drain 注入——规划者和执行者都看到，双保险。
+    """
+    try:
+        msgs = store.peek_messages(run_id)
+    except Exception:
+        return task
+    if not msgs:
+        return task
+    lines = ["## 用户实时指令（运行中追加，规划时必须纳入考量）"]
+    for m in msgs:
+        text = (m.get("text") or "").strip()
+        if text:
+            lines.append("- [%s %s] %s" % (m.get("created_at") or "",
+                                           m.get("sender") or "用户", text))
+        for rel in (m.get("attachments") or []):
+            lines.append("  · 附件：%s（位于工作目录，可直接读取）" % rel)
+    t2 = dict(task)
+    t2["context"] = ((task.get("context") or "") + "\n\n" + "\n".join(lines)).strip()
+    return t2
+
+
+def _wait_gate(run_id, ev):
+    """暂停闸门：run.paused 标志位挂在下一个步骤开始前，放行或取消才继续。
+
+    轮询 1s（本地内存读，开销可忽略）；取消事件优先——用户点「取消运行」
+    不必先解除暂停。终止态（服务重启恢复/外部取消）同样放行，防卡死。"""
+    while True:
+        run = store.get_run(run_id) or {}
+        if not run.get("paused") or run.get("status") not in ("queued", "running"):
+            return
+        if ev is not None and ev.is_set():
+            return
+        time.sleep(1.0)
+
+
 def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None):
     """执行一个智能体步骤并记录。返回 runner 统一结果。"""
+    _wait_gate(run_id, ev)
     step, log_abs = store.add_step(run_id, role, agent["id"],
                                    agent.get("label", agent["id"]), note=note)
     start = time.time()
@@ -203,13 +299,23 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                    "model": agent.get("model")}
             _finish_step_result(run_id, step, res, role, agent, start)
             return res
+        # 运行中指挥：drain 用户追加的指令/附件，注入本步（守门拦截时不 drain，
+        # 消息留给下一个真实步骤，不空耗）；role/step_n 作送达回执
+        directive_block, directive_imgs = _drain_directives(run_id, workdir,
+                                                            role=role, step_n=step["n"])
+        if directive_imgs:
+            images = list(images or []) + directive_imgs
+        if directive_block:
+            prompt = directive_block + "\n\n---\n\n" + prompt
         effective_prompt = (guard["reminder"] + "\n\n---\n\n" + prompt) if guard["reminder"] else prompt
         res = _spawn_step(session_run_id=run_id, role=role, agent=agent,
                           prompt=effective_prompt, workdir=workdir, readonly=readonly,
                           ev=ev, timeout=timeout, resume=resume, step=step,
                           log_abs=log_abs, images=images)
-    _check_cancel(ev)
+    # 先收尾再查取消：取消时进程已被 run_process 杀停，若先抛 Cancelled，
+    # 步骤记录会永远停在「运行中」变僵尸（与 _run_verify 的顺序对齐）
     _finish_step_result(run_id, step, res, role, agent, start)
+    _check_cancel(ev)
     return res
 
 
@@ -233,7 +339,7 @@ def _budget_max_tokens():
 
 
 def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
-                timeout, resume, step, log_abs):
+                timeout, resume, step, log_abs, images=None):
     """真实 CLI 调用：压缩灰度路径或原路径。"""
     # T2.1 预算闸：已用 token 达到单次 run 上限 → 阻断后续真实调用（ENV_BLOCK）。
     # 只拦「下一步」，允许越过线的当前步完成；auto 续跑可在用户调高预算后接手。
@@ -257,7 +363,8 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
         session = _get_session(session_run_id)
         llm_caller = _make_llm_caller(agent, workdir)
         call_kwargs = dict(workdir=workdir, readonly=readonly,
-                           timeout=timeout, cancel_event=ev, log_path=str(log_abs))
+                           timeout=timeout, cancel_event=ev, log_path=str(log_abs),
+                           images=images)
 
         def _call(p, **kw):
             # 模型可见即已记录（§1A 不变量）：入参/出参先落 session 日志
@@ -282,14 +389,23 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
     else:
         res = runner.run_agent(agent, prompt, workdir=workdir, readonly=readonly,
                                timeout=timeout, cancel_event=ev, log_path=str(log_abs),
-                               resume=resume)
+                               resume=resume, images=images)
     return res
 
 
 def _finish_step_result(run_id, step, res, role, agent, start):
     """step 收尾：记录 + 用量 + 运行时断言（5F）。"""
+    # 被取消杀停的步骤如实记「已取消」；超时被杀记「超时」——都只是步骤
+    # 显示层的细分，run 级仍是 failed，善后路径（重试/自动续跑）不变
+    raw = res.get("raw") or {}
+    if raw.get("cancelled"):
+        status = "cancelled"
+    elif raw.get("timed_out"):
+        status = "timeout"
+    else:
+        status = "done" if res["ok"] else "failed"
     store.finish_step(run_id, step["n"],
-                      "done" if res["ok"] else "failed",
+                      status,
                       summary=((res.get("text") or res.get("error") or "")[:200]),
                       exit_code=res.get("raw", {}).get("exit_code"),
                       cost_usd=res.get("cost_usd", 0.0),
@@ -386,14 +502,11 @@ __DIFF__
 
 
 def _git_diff(workdir):
-    try:
-        r = runner.run_process(argv=["git", "diff", "HEAD"], cwd=workdir, timeout=60)
-        if r["ok"]:
-            return r["stdout"][:30000]
-        r2 = runner.run_process(argv=["git", "diff"], cwd=workdir, timeout=60)
-        return r2["stdout"][:30000] if r2["ok"] else ""
-    except Exception:
-        return ""
+    """评审用的变更集：git diff HEAD 之外还拼上未跟踪新文件——
+    新文件不进 git diff，但恰是智能体产物的大头（新章节/新模块），
+    缺了评审官等于半盲评。只读，不动 index。"""
+    from . import gitmod
+    return gitmod.collect_changes(workdir)["diff"]
 
 
 def _verify_hint(task):
@@ -411,8 +524,16 @@ def _run_verify(run_id, task, workdir, ev):
     r = runner.run_process(shell_cmd=task["verify_command"], cwd=workdir,
                            timeout=600, cancel_event=ev, log_path=str(log_abs))
     ok = r["ok"]
-    store.finish_step(run_id, step["n"], "done" if ok else "failed",
-                      summary=("验证通过" if ok else "验证失败（exit %s）" % r["exit_code"]),
+    # 与 _finish_step_result 同一套显示层细分：超时/取消杀停不再冒充「失败」
+    if r.get("cancelled"):
+        v_status, v_sum = "cancelled", "验证被取消终止"
+    elif r.get("timed_out"):
+        v_status, v_sum = "timeout", "验证超时被终止"
+    else:
+        v_status = "done" if ok else "failed"
+        v_sum = "验证通过" if ok else "验证失败（exit %s）" % r["exit_code"]
+    store.finish_step(run_id, step["n"], v_status,
+                      summary=v_sum,
                       exit_code=r["exit_code"], duration_s=time.time() - start)
     _check_cancel(ev)
     return ok, True
@@ -424,7 +545,8 @@ def _run_review(run_id, task, workdir, reviewer, ev):
               .replace("__GOAL__", task["goal"])
               .replace("__VERIFY__", task.get("verify_command") or "（未配置）")
               .replace("__DIFF__", diff or "（无法获取 git diff，请综合任务目标谨慎评审）"))
-    res = _run_step(run_id, "review", reviewer, prompt, workdir, readonly=True, ev=ev)
+    res = _run_step(run_id, "review", reviewer, prompt, workdir, readonly=True, ev=ev,
+                    images=_task_images(task, workdir))
     if reviewer.get("mode") == "mock":
         return mocks.review(task, True)
     parsed = runner.extract_json(res.get("text") or "")
@@ -475,11 +597,14 @@ def _run_code(run, task, agents, ev, stats, mode):
 
     # ---- 规划
     if mode == "auto":
+        _wait_gate(run_id, ev)
         plan_step, plan_log = store.add_step(run_id, "plan", impl["id"], impl.get("label"),
                                              note=route.get("implementer", ""))
-        plan = planner.make_code_plan(task, modelhub.bind_agent(impl, difficulty),
+        plan = planner.make_code_plan(_steered_task(run_id, task),
+                                      modelhub.bind_agent(impl, difficulty),
                                       _resume_workdir(resume_ctx, workdir), ev,
-                                      resume=resume_ctx["session"] if resume_ctx else None)
+                                      resume=resume_ctx["session"] if resume_ctx else None,
+                                      log_path=str(plan_log) if plan_log else None)
         # 规划器判定优先于启发式（仅当用户未显式指定难度）
         if not explicit and plan.get("difficulty") in ("easy", "hard"):
             difficulty = plan["difficulty"]
@@ -507,6 +632,7 @@ def _run_code(run, task, agents, ev, stats, mode):
         # 续会话时 CLI 要在会话所属项目目录下启动，否则定位不到会话
         step_wd = _resume_workdir(resume_ctx, workdir) if use_resume else workdir
         impl_b = modelhub.bind_agent(impl_agent, difficulty)
+        att_imgs = _task_images(task, workdir)  # 图片附件供 codex 原生 -i 直读
         # §07 T3.1 FrugalGPT 级联（默认关）：easy 任务把链按 tier 升序重排，
         # 便宜模型先跑；质量闸门不过走既有 repair/换将轮，等效"贵模型兜底"。
         if difficulty == "easy":
@@ -529,7 +655,7 @@ def _run_code(run, task, agents, ev, stats, mode):
             role = "implement" if len(subtasks) == 1 else "implement-%d/%d" % (i + 1, len(subtasks))
             res = _run_step(run_id, role, impl_b, prompt, step_wd,
                             readonly=False, ev=ev, note=prefix_note if i == 0 else "",
-                            resume=use_resume)
+                            resume=use_resume, images=att_imgs)
             # §07 T1.1：记录最后一次实现的会话 id，fix 轮复用（会话内前缀走缓存读计价）
             new_sid = _resume_sid(impl_b, res.get("sid"))
             if new_sid:
@@ -707,6 +833,51 @@ def _tpl(task, key, default):
     return t if t else default
 
 
+# ---------------------------------------------------------------- 故事圣经与评审视角
+
+BIBLE_FILE = "story-bible.md"
+_BIBLE_MAX_CHARS = 20000
+
+# 评审视角播种（dev-3.0 式 bug hunters）：N 个评审各领一个深挖镜头，
+# 避免全员盯着同一处。按评审序号取模分配——同一评审每轮同一镜头，
+# 提示词前缀字节稳定，不碎前缀缓存。
+CRITIC_LENSES = (
+    "情节逻辑与因果链（事件是否成立、动机是否充分、有没有逻辑硬伤）",
+    "人物一致性与弧光（言行是否符合人设、成长是否有迹可循）",
+    "文笔与节奏（语言质量、场景切换、详略与爽点铺排）",
+    "设定与伏笔台账（世界观自洽、伏笔是否按故事圣经埋设与回收）",
+)
+
+
+def _story_bible(workdir):
+    """故事圣经（NovelClaw 式结构化记忆）：工作目录里的 story-bible.md
+    （人物卡/世界观/伏笔台账），作者手工维护，每章起草与评审前自动注入。
+    不存在/为空返回 ""——约定式功能，零配置时不产生任何提示词噪音。"""
+    p = os.path.abspath(os.path.join(str(workdir or ""), BIBLE_FILE))
+    if not _inside(workdir, p) or not os.path.isfile(p):
+        return ""
+    try:
+        with open(p, encoding="utf-8", errors="replace") as f:
+            txt = f.read(_BIBLE_MAX_CHARS).strip()
+    except OSError:
+        return ""
+    if not txt:
+        return ""
+    return ("## 故事圣经（story-bible.md：人物/世界观/伏笔台账，本书一切写作与评审以此为准，"
+            "与其冲突处以圣经为准）\n\n" + txt)
+
+
+def _critic_lens(critics, agent):
+    """该评审的专属视角；单评审/手动指定时不播种（无从轮换，也别稀释注意力）。"""
+    try:
+        idx = list(critics).index(agent)
+    except ValueError:
+        return ""
+    if len(critics) < 2:
+        return ""
+    return CRITIC_LENSES[idx % len(CRITIC_LENSES)]
+
+
 def _ensure_critique_placeholders(tpl):
     """自定义评审模板缺占位符时补上，避免稿件内容/维度定义丢失导致盲评。"""
     if "__MANUSCRIPT__" not in tpl:
@@ -786,6 +957,18 @@ def _read_chapter(workdir, i):
         return ""
 
 
+def _read_variant(workdir, i, k):
+    """赛马变体稿 chapter-XX-vK.md；不存在/读失败返回空串。"""
+    p = os.path.abspath(os.path.join(str(workdir), "chapter-%02d-v%d.md" % (i, k)))
+    if not _inside(workdir, p) or not os.path.isfile(p):
+        return ""
+    try:
+        with open(p, encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
 def _wc(text):
     """近似字数（去空白后的字符数，中文场景够用）。"""
     return len(re.sub(r"\s", "", text or ""))
@@ -856,6 +1039,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     # 续写批次的全书起始章号（=1 为全新连载；>1 时章节文件/步骤/评分都用全书章号，
     # 与上一批任务在同一工作目录无缝衔接）
     start = int(serial.get("start_chapter") or 1)
+    # 故事圣经：工作目录里的 story-bible.md，整个 run 内字节稳定（前缀缓存友好）
+    bible = _story_bible(workdir)
+
 
     def crit_prompt_for(text, note=""):
         tpl = _ensure_critique_placeholders(
@@ -867,6 +1053,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         sk, _ = skills.block_for(task, stable_order=True)
         if sk:
             tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % sk, 1)
+        if bible:
+            tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % bible, 1)
         return tpl.replace("__DIMKEYS__", dimkey).replace(
             "__MANUSCRIPT__", text or "（稿件为空！）")
 
@@ -891,9 +1079,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                   % (n, len(done_set & set(range(start, start + n)))),
                           duration_s=0.1)
     else:
+        _wait_gate(run_id, ev)
         outline_step, outline_log = store.add_step(run_id, "outline", impl["id"], impl.get("label"),
                                                    note=route.get("author", ""))
-        outline = planner.make_serial_outline(task, impl, workdir, ev)
+        outline = planner.make_serial_outline(_steered_task(run_id, task), impl, workdir, ev,
+                                              log_path=str(outline_log) if outline_log else None)
         if outline.get("degraded") and impl.get("mode") != "mock":
             # 兜底模板只有章号没有情节，据此写出的两万字等于废稿——
             # 中止并交给自动续跑等编排者恢复后重试，而不是空转烧配额。
@@ -901,7 +1091,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                               summary="大纲降级：%s" % (outline.get("degraded_reason") or "编排者不可用"),
                               duration_s=None)
             store.update_run(run_id, status="failed",
-                             error="大纲生成失败（%s），已中止以免按空模板写全书"
+                             error="%s，已中止以免按空模板写全书"
                                    % (outline.get("degraded_reason") or "编排者不可用"),
                              ended_at=_now())
             return
@@ -942,6 +1132,89 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     tails.append("（第 %d 章结尾）…%s" % (j, t[-260:].strip()))
             prev = "\n".join(tails) or "（无）"
 
+        # 评审-修订（每章至多 1 轮修订）
+        rounds_used = 1
+        means = {}
+
+        def run_critique(text, rnd, note_extra="", critic_sids=None):
+            """一轮多维评审：返回 (cj_by_agent, scored)。变体赛马与主循环共用。"""
+            cj_map, sids = {}, dict(critic_sids or {})
+            scored = 0   # 真正给出分数的评审数；失败/不可解析不得当成 0 分计入
+            for agent in critics:
+                role = "critique-c%d" % i
+                if agent.get("mode") == "mock":
+                    step, log_abs = store.add_step(run_id, role, agent["id"], agent.get("label"))
+                    time.sleep(0.15)
+                    cj = mocks.critique(agent["id"], rnd, dims, threshold_ch)
+                    scored += 1
+                    store.finish_step(run_id, step["n"], "done",
+                                      summary="均分 %.1f：%s" % (
+                                          sum(cj["scores"].values()) / max(1, len(dims)),
+                                          cj["summary"]),
+                                      duration_s=0.15)
+                else:
+                    lens = _critic_lens(critics, agent)
+                    res = _run_step(run_id, role, modelhub.bind_agent(agent, difficulty),
+                                    crit_prompt_for(
+                                        text,
+                                        note=("小说第 %d 章" % i) + (
+                                            "｜你的专属评审视角：%s（其他评审会覆盖其余视角，"
+                                            "请深挖你的镜头，但所有维度仍需打分）" % lens)
+                                        if lens else "") + note_extra,
+                                    workdir, readonly=True, ev=ev,
+                                    resume=sids.get(agent["id"]))
+                    cj = runner.extract_json(res.get("text") or "")
+                    if not isinstance(cj, dict) or not isinstance(cj.get("scores"), dict) \
+                            or not cj.get("scores"):
+                        cj = {"scores": {}, "issues": [],
+                              "summary": "评审输出无法解析：%s" % (res.get("text")
+                                                          or res.get("error") or "")[:150]}
+                    else:
+                        scored += 1
+                    # §07 T1.1：记录该评审的会话 id（第 2 轮复用）
+                    csid = _resume_sid(agent, res.get("sid"))
+                    if csid:
+                        sids[agent["id"]] = csid
+                cj_map[agent["id"]] = cj
+                issues_all.extend({"chapter": i, **it} for it in (cj.get("issues") or [])[:6])
+                _check_cancel(ev)
+
+            # 评审者级 fallback：名单内评审全挂（网关抖动/CLI 故障）时，
+            # 从其它已启用真实智能体补位至多 2 个（排除 mock 与已试过的），
+            # 只要有一个出分就不触发「评审全败中止」。
+            if not scored and impl.get("mode") != "mock":
+                tried = {a.get("id") for a in critics}
+                pool = [a for a in (agents or [])
+                        if a.get("mode") == "real" and a.get("id") not in tried]
+                for spare in pool[:2]:
+                    res = _run_step(run_id, role, modelhub.bind_agent(spare, difficulty),
+                                    crit_prompt_for(
+                                        text,
+                                        note="小说第 %d 章" % i) + note_extra,
+                                    workdir, readonly=True, ev=ev)
+                    cj = runner.extract_json(res.get("text") or "")
+                    if isinstance(cj, dict) and isinstance(cj.get("scores"), dict) \
+                            and cj.get("scores"):
+                        cj_map[spare["id"]] = cj
+                        scored += 1
+                        issues_all.extend({"chapter": i, **it}
+                                          for it in (cj.get("issues") or [])[:6])
+                        break
+                    _check_cancel(ev)
+            return cj_map, scored, sids
+
+        def means_of(cj_map):
+            vals = {}
+            for d in dims:
+                xs = [float(cj["scores"].get(d, 0)) for cj in cj_map.values()
+                      if isinstance(cj.get("scores"), dict) and d in cj["scores"]]
+                vals[d] = round(sum(xs) / len(xs), 1) if xs else 0.0
+            return vals
+
+        critic_sids = {}   # §07 T1.1：每评审的会话 id（第 2 轮复用，前缀走缓存读）
+        race_cj = None     # 变体赛马已评审胜者：直接作为第 1 轮结果，不重评
+        race_scored = 0
+
         reuse = i in done_set and os.path.exists(os.path.join(workdir, ch_file))
         if reuse:
             # 断点续跑：上一遍已写好的章直接复用（不重写；分数沿用既有记录或重评）
@@ -961,43 +1234,133 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         else:
             # stable_order：同一任务 8 个章节的技能块必须字节级一致（§07 T1.2' 前缀缓存）
             sk_block, _ = skills.block_for(task, stable_order=True)
+            if bible:
+                sk_block = (sk_block + "\n\n" + bible) if sk_block else bible
             scope = ("本章 = 大纲第 %d 章" % i) if start == 1 else (
                 "本批为第 %d–%d 章，下列按全书章号列出各章要点" % (start, end))
-            prompt = (SERIAL_CHAPTER_PROMPT
-                      .replace("__SKILLS__", sk_block)
-                      .replace("__SCOPE__", scope)
-                      .replace("__I__", str(i)).replace("__FILE__", ch_file)
-                      .replace("__GOAL__", task["goal"])
-                      .replace("__OUTLINE__", outline_txt)
-                      .replace("__PREV__", prev)
-                      .replace("__TITLE__", ch["title"])
-                      .replace("__BEATS__", ch["beats"] or "按大纲推进")
-                      .replace("__HOOK__", ch.get("hook") or "留下悬念")
-                      .replace("__WORDS__", str(wpc)))
-            res = _run_step(run_id, "draft-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
-                            step_wd, readonly=False, ev=ev, timeout=2400,
-                            resume=resume_ctx["session"] if resume_ctx else None)
-            # §07 T1.1：draft 会话 id 供本轮 revise 复用（同会话内前缀走缓存读计价）
-            draft_sid = _resume_sid(impl, res.get("sid")) or ""
-            if not res["ok"]:
-                # 成品是文件不是退出码：CLI 超时但章稿已完整落盘（终章长文实测
-                # 反复出现——文件写完、收尾声明没等到）就送评审门把关，别整章作废
-                txt = _read_chapter(workdir, i)
-                if txt and _wc(txt) >= int(wpc * 0.6):
+
+            def _draft_prompt(vfile):
+                return (SERIAL_CHAPTER_PROMPT
+                        .replace("__SKILLS__", sk_block)
+                        .replace("__SCOPE__", scope)
+                        .replace("__I__", str(i)).replace("__FILE__", vfile)
+                        .replace("__GOAL__", task["goal"])
+                        .replace("__OUTLINE__", outline_txt)
+                        .replace("__PREV__", prev)
+                        .replace("__TITLE__", ch["title"])
+                        .replace("__BEATS__", ch["beats"] or "按大纲推进")
+                        .replace("__HOOK__", ch.get("hook") or "留下悬念")
+                        .replace("__WORDS__", str(wpc)))
+
+            n_variants = max(1, min(3, int(serial.get("variants") or 1)))
+            race = (n_variants >= 2 and not _compaction_enabled()
+                    and not resume_ctx)   # 续会话语义只认 impl 一人，赛马退场
+            if not race:
+                prompt = _draft_prompt(ch_file)
+                res = _run_step(run_id, "draft-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
+                                step_wd, readonly=False, ev=ev, timeout=2400,
+                                resume=resume_ctx["session"] if resume_ctx else None,
+                                images=_task_images(task, workdir))
+                # §07 T1.1：draft 会话 id 供本轮 revise 复用（同会话内前缀走缓存读计价）
+                draft_sid = _resume_sid(impl, res.get("sid")) or ""
+                if not res["ok"]:
+                    # 成品是文件不是退出码：CLI 超时但章稿已完整落盘（终章长文实测
+                    # 反复出现——文件写完、收尾声明没等到）就送评审门把关，别整章作废
+                    txt = _read_chapter(workdir, i)
+                    if not (txt and _wc(txt) >= int(wpc * 0.6)):
+                        store.update_run(run_id, status="failed",
+                                         error="第 %d 章起草失败: %s" % (i, res.get("error")), ended_at=_now())
+                        return
                     live = (store.get_run(run_id).get("steps") or [])
                     if live:
                         store.finish_step(run_id, live[-1]["n"], "done",
                                           summary="起草调用超时，但章稿已完整落盘（约 %d 字）——交评审门判质量"
                                                   % _wc(txt))
-                    else:
-                        store.update_run(run_id, status="failed",
-                                         error="第 %d 章起草失败: %s" % (i, res.get("error")),
-                                         ended_at=_now())
-                        return
-                else:
+            else:
+                # ---- 同章多稿赛马（dev-3.0）：n 个作者并行起草 → 逐变体评审 →
+                # 均分最高者为正稿。变体写隔离文件 chapter-XX-vK.md，赢家改名、
+                # 败稿删除；变体 0 = 本任作者（revise 会话沿用），其余取跨族优先的
+                # 其他真实智能体，不足时同作者开新会话凑数。
+                pool = [impl]
+                others = [a for a in agents if a.get("mode") == "real" and a["id"] != impl["id"]]
+                others.sort(key=lambda a: 0 if a.get("kind") != impl.get("kind") else 1)
+                pool += others[:n_variants - 1]
+                while len(pool) < n_variants:
+                    pool.append(impl)   # 不够就同作者再开一路（新会话天然出不同稿）
+                results = {}
+
+                def _draft_one(kk, agent):
+                    vfile = "chapter-%02d-v%d.md" % (i, kk)
+                    r = _run_step(run_id, "draft-c%d-v%d" % (i, kk),
+                                  modelhub.bind_agent(agent, difficulty),
+                                  _draft_prompt(vfile), step_wd, readonly=False, ev=ev,
+                                  timeout=2400,
+                                  # 赛马只在全新起草时启用（无续会话），每路都是新会话
+                                  images=_task_images(task, workdir),
+                                  note="赛马变体 %d/%d（%s）" % (kk + 1, len(pool), agent.get("id")))
+                    results[kk] = (vfile, agent, r)
+
+                threads = []
+                for kk, agent in enumerate(pool):
+                    th = threading.Thread(target=_draft_one, args=(kk, agent),
+                                          name="race-%s-c%d-v%d" % (run_id, i, kk), daemon=True)
+                    threads.append(th)
+                    th.start()
+                for th in threads:
+                    th.join(3000)
+                _check_cancel(ev)
+
+                scored_variants = []
+                for kk in range(len(pool)):
+                    vfile, agent, r = results.get(kk, (None, None, None))
+                    if vfile is None:
+                        continue
+                    txt = _read_variant(workdir, i, kk)
+                    ok_text = txt and _wc(txt) >= int(wpc * 0.6)
+                    if r is not None and not r["ok"] and not ok_text:
+                        continue   # 这一路彻底失败（无成品也不够长）
+                    if not ok_text:
+                        continue
+                    cj_map, sc, sids2 = run_critique(
+                        txt, 1, note_extra="（本稿为同章赛马变体 %d/%d，只评这一份）" % (kk + 1, len(pool)))
+                    m = means_of(cj_map)
+                    avg = round(sum(m.values()) / max(1, len(m)), 2) if m else 0.0
+                    scored_variants.append({"variant": kk, "agent": agent.get("id"),
+                                            "file": vfile, "means": m, "avg": avg,
+                                            "cj": cj_map, "scored": sc, "sids": sids2})
+                if not scored_variants:
                     store.update_run(run_id, status="failed",
-                                     error="第 %d 章起草失败: %s" % (i, res.get("error")), ended_at=_now())
+                                     error="第 %d 章赛马全部变体起草失败" % i, ended_at=_now())
                     return
+                scored_variants.sort(key=lambda v: (-v["avg"], v["variant"]))
+                win = scored_variants[0]
+                # 收敛：赢家转正，败稿删除；胜者评审结果直接作为第 1 轮（不重评）
+                if win["file"] != ch_file:
+                    try:
+                        os.replace(os.path.join(workdir, win["file"]),
+                                   os.path.join(workdir, ch_file))
+                    except OSError as e:
+                        store.update_run(run_id, status="failed",
+                                         error="第 %d 章赛马收卷失败: %r" % (i, e), ended_at=_now())
+                        return
+                for v in scored_variants[1:]:
+                    try:
+                        os.remove(os.path.join(workdir, v["file"]))
+                    except OSError:
+                        pass
+                race_log = [{"variant": v["variant"], "agent": v["agent"], "avg": v["avg"],
+                             "chosen": v is win, "reviewed": v["scored"] > 0}
+                            for v in scored_variants]
+                latest_run = store.get_run(run_id) or {}
+                all_variants = dict(latest_run.get("variants") or {})
+                all_variants[str(i)] = race_log
+                store.update_run(run_id, variants=all_variants)
+                if win["scored"] > 0:
+                    race_cj, race_scored = win["cj"], win["scored"]
+                    critic_sids.update(win["sids"])
+                # revise 会话沿用变体 0（本任作者）的会话；那一路失败则留空
+                r0 = (results.get(0) or (None, None, None))[2] or {}
+                draft_sid = _resume_sid(impl, r0.get("sid")) or ""
 
         # 复用章且上一遍已有评审分数 → 直接沿用，不再重评
         if reuse and inh_scores.get(i, {}).get("means"):
@@ -1008,46 +1371,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             store.update_run(run_id, chapter_scores=chapter_scores)
             continue
 
-        # 评审-修订（每章至多 1 轮修订）
-        rounds_used = 1
-        means = {}
         for rnd in (1, 2):
             text = _read_chapter(workdir, i)
-            cj_by_agent = {}
-            critic_sids = {}  # §07 T1.1：每评审的会话 id（第 2 轮复用，前缀走缓存读）
-            scored = 0   # 真正给出分数的评审数；失败/不可解析不得当成 0 分计入
-            for agent in critics:
-                role = "critique-c%d" % i
-                if agent.get("mode") == "mock":
-                    step, log_abs = store.add_step(run_id, role, agent["id"], agent.get("label"))
-                    time.sleep(0.15)
-                    cj = mocks.critique(agent["id"], rnd, dims, threshold_ch)
-                    scored += 1
-                    store.finish_step(run_id, step["n"], "done",
-                                      summary="均分 %.1f：%s" % (
-                                          sum(cj["scores"].values()) / max(1, len(dims)),
-                                          cj["summary"]),
-                                      duration_s=0.15)
-                else:
-                    res = _run_step(run_id, role, modelhub.bind_agent(agent, difficulty),
-                                    crit_prompt_for(text, note="小说第 %d 章" % i),
-                                    workdir, readonly=True, ev=ev,
-                                    resume=critic_sids.get(agent["id"]))
-                    cj = runner.extract_json(res.get("text") or "")
-                    if not isinstance(cj, dict) or not isinstance(cj.get("scores"), dict) \
-                            or not cj.get("scores"):
-                        cj = {"scores": {}, "issues": [],
-                              "summary": "评审输出无法解析：%s" % (res.get("text")
-                                                          or res.get("error") or "")[:150]}
-                    else:
-                        scored += 1
-                    # §07 T1.1：记录该评审的会话 id（第 2 轮复用）
-                    csid = _resume_sid(agent, res.get("sid"))
-                    if csid:
-                        critic_sids[agent["id"]] = csid
-                cj_by_agent[agent["id"]] = cj
-                issues_all.extend({"chapter": i, **it} for it in (cj.get("issues") or [])[:6])
-                _check_cancel(ev)
+            if rnd == 1 and race_cj is not None:
+                cj_by_agent, scored = race_cj, race_scored
+            else:
+                cj_by_agent, scored, sids_now = run_critique(text, rnd, critic_sids=critic_sids)
+                critic_sids.update(sids_now)
             if not scored:
                 # 「评不上」≠「评了 0 分」：全部评审失败时中止本轮，
                 # 让自动续跑换个时机重试，而不是以 0 分误判章稿质量。
@@ -1055,12 +1385,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                  error="第 %d 章评审全部失败（评审模型不可用或输出不可解析），"
                                        "已中止以免以 0 分误判质量" % i, ended_at=_now())
                 return
-            vals = {}
-            for d in dims:
-                xs = [float(cj["scores"].get(d, 0)) for cj in cj_by_agent.values()
-                      if isinstance(cj.get("scores"), dict) and d in cj["scores"]]
-                vals[d] = round(sum(xs) / len(xs), 1) if xs else 0.0
-            means = vals
+            means = means_of(cj_by_agent)
             passed = bool(means) and all(v >= threshold_ch for v in means.values())
             if passed or rnd == 2:
                 break
@@ -1109,8 +1434,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             store.finish_step(run_id, step["n"], "done", summary="均分 8.0：（mock）全书达标",
                               duration_s=0.15)
         else:
+            gtpl = SERIAL_GLOBAL_PROMPT
+            if bible:
+                gtpl = gtpl.replace("## 全书目标", bible + "\n\n## 全书目标", 1)
             res = _run_step(run_id, role, modelhub.bind_agent(agent, difficulty),
-                            (SERIAL_GLOBAL_PROMPT.replace("__DIMKEYS__", dimkey)
+                            (gtpl.replace("__DIMKEYS__", dimkey)
                              .replace("__GOAL__", task["goal"])
                              .replace("__MANUSCRIPT__", full_text[:60000])),
                             workdir, readonly=True, ev=ev, timeout=2400)
@@ -1312,15 +1640,16 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         critics = _pick_critics_manual(agents, task)
     else:
         impl, route["author"] = router.pick(agents, "implement", "novel", stats)
-        critics, route["critics"] = router.pick_critics(agents, "novel", stats)
+        critics, route["critics"] = router.pick_critics(agents, "novel", stats, impl=impl)
     if impl is None:
         store.update_run(run_id, status="failed", error="没有可用智能体", ended_at=_now())
         return
     if resume_ctx is not None and mode == "auto":
-        critics, route["critics"] = router.pick_critics(agents, "novel", stats)
+        critics, route["critics"] = router.pick_critics(agents, "novel", stats, impl=impl)
 
     # ---- 规划（小说为模板计划）
-    plan = planner.make_novel_plan(task, impl, critics)
+    _wait_gate(run_id, ev)
+    plan = planner.make_novel_plan(_steered_task(run_id, task), impl, critics)
     store.update_run(run_id, plan=plan, route=route, difficulty=difficulty)
 
     ms_path = os.path.join(workdir, ms_name)
@@ -1338,8 +1667,9 @@ def _run_content_review(run, task, agents, ev, stats, mode):
 
     draft_note = route.get("author", "") if mode == "auto" else ""
 
-    # 编排者大纲：只对真实执行有意义；失败静默退回无大纲
-    outline = planner.make_review_outline(task) if impl.get("mode") != "mock" else None
+    # 编排者大纲：只对真实执行有意义；失败静默退回无大纲（喂入带指令的任务副本）
+    outline = (planner.make_review_outline(_steered_task(run_id, task))
+               if impl.get("mode") != "mock" else None)
     if outline:
         store.update_run(run_id, outline=outline)
 
@@ -1363,7 +1693,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                       "\n".join("- " + i for i in outline["items"])
         draft_res = _run_step(run_id, "draft", modelhub.bind_agent(impl, difficulty), prompt,
                               step_wd, readonly=False, ev=ev, note=draft_note,
-                              resume=resume_ctx["session"] if resume_ctx else None)
+                              resume=resume_ctx["session"] if resume_ctx else None,
+                              images=_task_images(task, workdir))
         if not draft_res["ok"]:
             store.update_run(run_id, status="failed", error="起草失败: %s" % draft_res.get("error"),
                              ended_at=_now())
@@ -1502,6 +1833,22 @@ def execute_run(run_id):
         store.update_run(run_id, status="failed", error="找不到任务 %s" % run.get("task_id"),
                          ended_at=_now())
         return
+    # 代码版本检出：任务指定了基线版本时，先检出任务分支 tutti/<task-id> 再跑流水线。
+    # 显式意图不容静默降级——仓库缺失/脏工作区/引用不存在一律中止运行并报错，
+    # 绝不带着用户未提交改动切分支、也不悄悄退回当前 HEAD。
+    git_ctx = None
+    if task.get("git_rev"):
+        from . import gitmod
+        ok, err, gitinfo = gitmod.prepare_checkout(
+            task["workdir"], task["git_rev"], task["id"])
+        if not ok:
+            store.update_run(run_id, status="failed", error="代码版本检出失败：%s" % err,
+                             ended_at=_now())
+            return
+        git_ctx = gitinfo
+        store.update_run(run_id, git=gitinfo)
+        # 任务分支裁决状态：新一轮 run 产生新分支内容，重置回「待裁决」
+        store.set_task_git_state(task["id"], "isolated")
     agents = _agents()
     # 续会话是对该 CLI 的显式指定：目标未启用编排时也注入本次运行（不影响路由池）
     want = ((task.get("resume") or {}).get("agent") or "").strip()
@@ -1532,12 +1879,12 @@ def execute_run(run_id):
                 critics = _pick_critics_manual(agents, task)
             else:
                 impl, route["author"] = router.pick(agents, "implement", task["type"], stats)
-                critics, route["critics"] = router.pick_critics(agents, task["type"], stats)
+                critics, route["critics"] = router.pick_critics(agents, task["type"], stats, impl=impl)
             if impl is None:
                 store.update_run(run_id, status="failed", error="没有可用智能体", ended_at=_now())
                 return
             if resume_ctx is not None and mode == "auto":
-                critics, route["critics"] = router.pick_critics(agents, task["type"], stats)
+                critics, route["critics"] = router.pick_critics(agents, task["type"], stats, impl=impl)
             if task.get("serial"):
                 _run_serial_review(run, task, agents, ev, stats, mode,
                                    critics, impl, route, resume_ctx, difficulty)
@@ -1556,6 +1903,25 @@ def execute_run(run_id):
         except Exception:
             pass
     finally:
+        # 任务分支收尾（git_rev 隔离链的第二半）：先只读快照本 run 的全部变更
+        # 落 run 记录供人审，再把产物提交到 tutti/<task-id> 并切回原分支。
+        # 放 finally：done/failed/cancelled/异常一律保存现场；收尾自身绝不抛错，
+        # 问题记入 run.git.restore_error，不覆盖 run 的最终结论。
+        if git_ctx is not None:
+            from . import gitmod
+            try:
+                store.update_run(run_id, changes=gitmod.collect_changes(task["workdir"]))
+                fin = gitmod.finalize_run(
+                    task["workdir"], git_ctx,
+                    "tutti %s: %s（%s）" % (run_id, task.get("title") or task["goal"][:40],
+                                            (store.get_run(run_id) or {}).get("status") or "?"))
+                store.update_run(run_id, git={**git_ctx, **fin})
+            except Exception as e:
+                try:
+                    store.update_run(run_id, git={**git_ctx,
+                                                  "restore_error": repr(e)[:200]})
+                except Exception:
+                    pass
         # 自学习闭环：运行结束自动把本次评审暴露的问题沉淀为可复用教训（异步，不阻塞）
         try:
             if store.get_run(run_id):

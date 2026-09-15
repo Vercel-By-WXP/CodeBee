@@ -12,7 +12,7 @@ data/models.json 结构：
                              "models",         # 链内模型名序列（冗余，兼容旧读方）
                              "model",          # 链首模型名（冗余）
                              "difficulty_routing"}},
-  "orchestrator": {"provider_id", "model", "enabled"}   # 编排中枢：直连 API 的规划/管理模型
+  "orchestrator": {"provider_id", "model", "enabled"}   # 编排设置：直连 API 的规划/管理模型
 }
 
 导入来源（只读，不改写任何工具自身的配置）：CCSwitch、Claude Code、Codex CLI、
@@ -125,11 +125,11 @@ def _auto_priority(name):
 
 def _auth_header_variants(key, protocol):
     if protocol == "google":
-        return [{"x-goog-api-key": key, "User-Agent": "tutti-orchestrator/1.0"}]
-    h1 = {"Authorization": "Bearer " + key, "User-Agent": "tutti-orchestrator/1.0"}
+        return [{"x-goog-api-key": key, "User-Agent": "codebee-orchestrator/1.0"}]
+    h1 = {"Authorization": "Bearer " + key, "User-Agent": "codebee-orchestrator/1.0"}
     if protocol == "anthropic":
         h2 = {"x-api-key": key, "anthropic-version": "2023-06-01",
-              "User-Agent": "tutti-orchestrator/1.0"}
+              "User-Agent": "codebee-orchestrator/1.0"}
         return [h1, h2]
     return [h1]
 
@@ -1633,6 +1633,45 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     return out
 
 
+def launch_pick(agent_id, protocols):
+    """「一键打开」专属选链：绑定链里第一个「已启用+有密钥+协议匹配」的供应商。
+
+    与 resolve_binding 的差别：协议不匹配不降级——交互 TUI 只认自家协议的凭据
+    （claude 只吃 ANTHROPIC_*，塞 ORCH_API_KEY 等于没 key），宁可明确提示也不
+    静默错注入。返回 (pick|None, note)：pick={model, provider}；note 面向用户的
+    不可用原因（链上同协议供应商停用 / 协议不匹配 / 未绑定），可直达 toast。
+    """
+    protocols = tuple(p for p in (protocols or ()) if p)
+    b = bindings().get(agent_id) or {}
+    chain = _binding_chain(b)
+    provs = {p.get("id"): p for p in providers()}
+    disabled, mismatch = [], False
+    for item in chain:
+        pid = str(item.get("provider_id") or "").strip()
+        if not pid:
+            continue  # 纯链条目（只传 -m）：对打开场景无凭据可用
+        prov = provs.get(pid)
+        if not prov:
+            continue
+        if not prov.get("enabled", True) or not prov.get("api_key"):
+            if prov.get("protocol") in protocols:
+                disabled.append(prov.get("name") or pid)
+            continue
+        if prov.get("protocol") in protocols:
+            return {"model": str(item.get("model") or "").strip() or prov.get("model") or "",
+                    "provider": prov}, None
+        mismatch = True
+    if disabled:
+        return None, ("绑定链里的 %s 已停用或无密钥：打开后需在其自带界面登录；"
+                      "要打开即用请在「CLI 绑定」页启用"
+                      % "、".join(dict.fromkeys(disabled)))
+    if mismatch:
+        return None, ("当前绑定的供应商协议与该 CLI 不匹配：打开后需在其自带界面登录；"
+                      "要打开即用请在「CLI 绑定」页换绑可注入协议的供应商")
+    return None, ("未绑定供应商：打开后需在其自带界面登录；"
+                  "要打开即用请到「CLI 绑定」页绑定")
+
+
 def migrate_orch_models():
     """一次性迁移：把 orchestration.json 里的编排模型链搬进 bindings（幂等）。
 
@@ -1845,7 +1884,7 @@ def migrate_chains():
         return True
 
 
-# ---------------------------------------------------------------- 编排中枢（编排者模型）
+# ---------------------------------------------------------------- 编排设置（编排者模型）
 
 def orchestrator_view():
     """编排者配置（脱敏展示 + 可用性判定）。"""

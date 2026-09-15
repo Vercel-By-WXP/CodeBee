@@ -1,74 +1,152 @@
 # -*- coding: utf-8 -*-
-"""重新生成 PWA 图标（icons/icon-192.png、icon-512.png）。
+"""从品牌母版重新生成全套 logo 资产（2026-09 正式版 B 标）。
 
-与 app/ui/index.html 里的 #i-baton 精灵图同一造型：指挥棒（棒头实心圆 +
-斜向棒体）挥出弧线，弧上三颗渐大的声部点渐次进场。白图形色，底为 CSS 磁贴
-同款 135° 蓝紫渐变（--accent #5b8cff → --accent2 #8b5cf6）。
-maskable 安全区：图形内容控制在画布中央 ~66% 内。
+母版：app/ui/icons/brand-square.png（方形竖版，上 B 标下字标）——
+设计稿转自 CodeBee LOGO（蜂巢瓷片拼成 B）。本脚本自动：
+1) 定位 B 标区域（首个墨迹行带，与字标间有大片留白）；
+2) 白底转透明：纯白→alpha 0；抗锯齿过渡带→部分 alpha 并去白（c'=(c-(1-a)·255)/a），
+   高饱和瓷片色（藏青 #013a75 / 亮青 #29abe2 一族）原样保留；
+3) 产出 app/ui/icons/：
+   - logo-mark.png       透明底 B 标（备用 / README 历史）
+   - logo-horizontal.png 透明底横版锁版图（B 标+CodeBee 字标一体；UI 左上角 / 令牌门 / README）
+   - icon-192/512.png    白底方形 PWA 图标（B 标居中占 66%，maskable 安全区）
 
-用法：python tests/_gen_logo_icons.py   （改动 logo 造型后重跑）
+⚠️ 横版含银灰瓷片（主体 ~#c0c0d0，高光至 ~#e4e5e8，低饱和）：透明阈值必须钉在
+mn≥235，否则银瓷片会被打穿变半透明。
+用法：python tests/_gen_logo_icons.py   （换母版后重跑）
 """
 import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + "/..")
-from PIL import Image, ImageDraw
+import numpy as np
+from PIL import Image
 
-ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+_TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(_TESTS_DIR)  # 仓库根（tests 的上级）
 OUT = os.path.join(ROOT, "app", "ui", "icons")
-SS = 4  # 超采样倍数，缩回后获得平滑边缘
+MASTER = os.path.join(OUT, "brand-square.png")
 
-C0 = (0x5B, 0x8C, 0xFF)  # 左上
-C1 = (0x8B, 0x5C, 0xF6)  # 右下
-GLYPH = (255, 255, 255)
+WHITE_MIN = 245   # mn ≥ 此值且低饱和 → 纯白，全透明
+EDGE_MIN = 160    # 过渡带下限（mn ≥ 此值且低饱和 → 软边）
+EDGE_SAT = 45     # 过渡带允许的最大饱和度（瓷片色饱和度高，不会误伤）
+ICON_RATIO = 0.66  # 图标内容高 / 画布边长
 
-# 与 #i-baton 同一组坐标（viewBox 0..24）
-GRIP = (5.2, 18.8, 2.6)
-STICK = ((6.8, 17.2), (13.6, 8.2))
-DOTS = [(16.0, 5.9, 1.6), (19.9, 4.3, 2.0), (21.6, 8.9, 2.3)]
-STROKE = 2.4
-
-# 内容包围盒 → 居中偏移：x∈[3.2,23.45] y∈[1.85,21]，中心约 (13.3,11.4)
-CX, CY = 13.25, 11.85
-SAFE = 0.66  # 内容占画布比例（maskable 安全区内）
+# 横版锁版参数：银灰瓷片（最亮 mn≈234）与白底（252-255）同在低饱和区，
+# 全局阈值必须钉在 mn≥246 才能不打穿瓷片；二值透明，不做软边（28px 显示下无感）
+LOCKUP_MASTER = os.path.join(OUT, "brand-horizontal.png")
+L_WHITE_MIN = 246  # mn ≥ 此值且 sat≤8 → 全透明（背景 + 字腔）
+L_EDGE_SAT = 8
 
 
-def render(size):
-    s = size * SS
-    img = Image.new("RGB", (s, s), C0)
-    px = img.load()
-    for y in range(s):
-        for x in range(s):
-            t = (x + y) / (2.0 * (s - 1))  # 135°：左上→右下
-            px[x, y] = tuple(int(a + (b - a) * t) for a, b in zip(C0, C1))
-    d = ImageDraw.Draw(img)
-    scale = s * SAFE / 24.0
-    ox, oy = (s - 24.0 * scale) / 2.0, (s - 24.0 * scale) / 2.0
+def locate_mark(img):
+    """返回 B 标在母版中的 (x0, y0, x1, y1)：第一个墨迹行带 + 带内墨迹列。"""
+    a = np.asarray(img.convert("RGB"))
+    ink = a.astype(int).sum(axis=2) < 700
+    rows = ink.sum(axis=1)
+    bands, start = [], None
+    for y, v in enumerate(rows):
+        if v > 3 and start is None:
+            start = y
+        elif v <= 3 and start is not None:
+            bands.append((start, y))
+            start = None
+    if start is not None:
+        bands.append((start, len(rows)))
+    bands = [(s, e) for s, e in bands if e - s > 8]
+    y0, y1 = bands[0]
+    cols = ink[y0:y1].sum(axis=0)
+    nz = np.nonzero(cols > 2)[0]
+    return int(nz.min()), int(y0), int(nz.max()) + 1, int(y1)
 
-    def P(x, y):
-        return ox + x * scale, oy + y * scale
 
-    def R(r):
-        return r * scale
+def to_transparent(crop):
+    """白底转透明（RGBA Image）：软边去白，饱和瓷片色不动。"""
+    px = np.asarray(crop.convert("RGB")).astype(int)
+    mn = px.min(axis=2)
+    sat = px.max(axis=2) - mn
+    alpha = np.full(mn.shape, 255.0)
+    pure = (mn >= WHITE_MIN) & (sat <= 8)
+    band = (~pure) & (mn >= EDGE_MIN) & (sat <= EDGE_SAT)
+    t = np.clip((WHITE_MIN - mn) / float(WHITE_MIN - EDGE_MIN), 0.0, 1.0)
+    alpha[pure] = 0.0
+    alpha[band] = t[band] * 255.0
+    out = px.astype(float)
+    sel = band & (alpha > 20)
+    a = alpha[sel] / 255.0
+    for c in range(3):
+        ch = out[..., c][sel]
+        out[..., c][sel] = np.clip((ch - (1.0 - a) * 255.0) / np.maximum(a, 0.08), 0, 255)
+    rgba = np.dstack([out.astype(np.uint8), alpha.astype(np.uint8)])
+    return Image.fromarray(rgba, "RGBA")
 
-    d.line([P(*STICK[0]), P(*STICK[1])], fill=GLYPH, width=int(round(STROKE * scale)))
-    ex = STROKE * scale / 2.0  # 像素半径：线宽一半，让棒体端点呈圆头
-    for pt in STICK:
-        x, y = P(*pt)
-        d.ellipse((x - ex, y - ex, x + ex, y + ex), fill=GLYPH)
-    for x, y, r in [GRIP] + DOTS:
-        cx, cy = P(x, y)
-        rr = R(r) + ex  # 实心点与描边同粗度基准，视觉与小图标一致
-        d.ellipse((cx - rr, cy - rr, cx + rr, cy + rr), fill=GLYPH)
-    return img.resize((size, size), Image.LANCZOS)
+
+def make_icon(mark, size):
+    canvas = Image.new("RGB", (size, size), (255, 255, 255))
+    h = int(size * ICON_RATIO)
+    w = int(round(mark.width * h / float(mark.height)))
+    m = mark.resize((w, h), Image.LANCZOS)
+    canvas.paste(m, ((size - w) // 2, (size - h) // 2), m)
+    return canvas
+
+
+def to_transparent_lockup(crop):
+    """横版锁版白底转透明：二值规则（mn≥246 且近无饱和 → 透明），
+    银灰瓷片最亮 mn≈234，与阈值间隔充分，绝无打穿。"""
+    px = np.asarray(crop.convert("RGB")).astype(int)
+    mn = px.min(axis=2)
+    sat = px.max(axis=2) - mn
+    alpha = np.where((mn >= L_WHITE_MIN) & (sat <= L_EDGE_SAT), 0, 255).astype(np.uint8)
+    return Image.fromarray(np.dstack([px.astype(np.uint8), alpha]), "RGBA")
+
+
+def ascii_map(img, w=44, h=40):
+    """透明标记转文本网格核对（X=不透明瓷片 .=透明 x=半透明边）。"""
+    a = np.asarray(img.resize((w, h), Image.LANCZOS))
+    al = a[..., 3]
+    rows = []
+    for yy in range(h):
+        row = ""
+        for xx in range(w):
+            v = al[yy, xx]
+            row += "." if v < 40 else ("x" if v < 200 else "X")
+        rows.append(row)
+    return "\n".join(rows)
 
 
 def main():
     if not os.path.isdir(OUT):
         os.makedirs(OUT)
+    master = Image.open(MASTER)
+    x0, y0, x1, y1 = locate_mark(master)
+    print("mark bbox: (%d,%d)-(%d,%d) %dx%d" % (x0, y0, x1, y1, x1 - x0, y1 - y0))
+    crop = master.convert("RGB").crop((x0, y0, x1, y1))
+    mark = to_transparent(crop)
+    mark.save(os.path.join(OUT, "logo-mark.png"), optimize=True)
+    print("wrote logo-mark.png  %dx%d" % mark.size)
     for size in (192, 512):
-        render(size).save(os.path.join(OUT, "icon-%d.png" % size))
+        make_icon(mark, size).save(os.path.join(OUT, "icon-%d.png" % size), optimize=True)
         print("wrote icon-%d.png" % size)
+    if os.path.isfile(LOCKUP_MASTER):
+        hz = Image.open(LOCKUP_MASTER)
+        ha = np.asarray(hz.convert("RGB"))
+        hink = ha.astype(int).sum(axis=2) < 700
+        hrows = np.nonzero(hink.sum(axis=1) > 2)[0]
+        hcols = np.nonzero(hink.sum(axis=0) > 2)[0]
+        m = 4
+        box = (max(0, int(hcols.min()) - m), max(0, int(hrows.min()) - m),
+               min(hz.width, int(hcols.max()) + 1 + m), min(hz.height, int(hrows.max()) + 1 + m))
+        lockup = to_transparent_lockup(hz.convert("RGB").crop(box))
+        lockup.save(os.path.join(OUT, "logo-horizontal.png"), optimize=True)
+        print("wrote logo-horizontal.png  %dx%d" % lockup.size)
+        la = np.asarray(lockup)
+        lmn = la[..., :3].astype(int).min(axis=2)
+        lsat = la[..., :3].astype(int).max(axis=2) - lmn
+        silver = (lsat >= 5) & (lsat <= 40) & (lmn >= 150) & (lmn <= 225)
+        ratio = float((la[..., 3][silver] >= 250).mean()) if silver.any() else 1.0
+        print("silver-protection: px=%d opaque_ratio=%.4f" % (int(silver.sum()), ratio))
+    else:
+        print("skip logo-horizontal.png（无 brand-horizontal.png）")
+    print("--- logo-mark 透明度网格 ---")
+    print(ascii_map(mark))
 
 
 if __name__ == "__main__":

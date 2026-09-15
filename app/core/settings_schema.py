@@ -221,6 +221,9 @@ def register_default_namespaces():
                 FieldDef("max_goal_rounds", "int", 5,
                          "Goal 续行上限",
                          clamp=(1, 20)),
+                FieldDef("outline_timeout_s", "int", 900,
+                         "大纲/规划 CLI 兜底调用的超时秒数（env TUTTI_OUTLINE_TIMEOUT 优先）",
+                         clamp=(60, 3600)),
             ],
             validate=lambda v: None,
         )

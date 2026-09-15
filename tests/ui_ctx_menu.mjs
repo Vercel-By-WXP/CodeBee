@@ -173,7 +173,6 @@ async function main() {
 
     /* ---- D) 页面点「重命名任务」→ 侧栏/state/运行标题同步 ---- */
     await evalJs(`(async () => {
-      window.prompt = () => ${JSON.stringify(NEW_TITLE)};
       const det = ${rowSel};
       det.dispatchEvent(new MouseEvent("contextmenu",
         { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
@@ -182,10 +181,39 @@ async function main() {
         .find(x => x.textContent.trim() === "重命名任务");
       item.click();
     })()`);
-    // SSE 推送按 2s 桶轮询版本号，改名后的重绘最坏要等两个周期
-    await sleep(5000);
-    const sideTitle = await evalJs(
-      `document.querySelector('#side-tasks .stask[data-task="${TASK}"] summary .t').textContent.trim()`);
+    // 重命名走应用内 #ask 输入弹框（uiPrompt，非 window.prompt）：等弹框出现，
+    // 填入新标题后点「确定」提交
+    await sleep(800);
+    const askShown = await evalJs(`(() => {
+      const dlg = document.getElementById("ask");
+      if (!dlg || dlg.classList.contains("hidden")) return false;
+      document.getElementById("ask-input").value = ${JSON.stringify(NEW_TITLE)};
+      document.getElementById("ask-yes").click();
+      return true;
+    })()`);
+    check("重命名弹出应用内输入弹框", askShown === true);
+    // renameTask 内部 poll() 完成后，SSE 推送按 2s 桶轮询版本号，等重绘
+    await sleep(500);
+    // SSE 推送按 2s 桶轮询版本号：改名后轮询 DOM 等重绘，最坏等 8s
+    let sideTitle = "";
+    for (let i = 0; i < 16; i++) {
+      await sleep(500);
+      sideTitle = await evalJs(
+        `(document.querySelector('#side-tasks .stask[data-task="${TASK}"] summary .t')||{}).textContent?.trim()||""`);
+      if (sideTitle === NEW_TITLE) break;
+    }
+    if (sideTitle !== NEW_TITLE) {
+      // 失败时 dump 页面内部状态，定位是 state 没到还是 sig/重绘问题
+      const dump = await evalJs(`JSON.stringify({
+        sseLive: !!S.sseLive,
+        esState: S.es ? S.es.readyState : "no-es",
+        stateRunTitles: (S.state.runs || []).map(r => [r.id.slice(-4), r.title]),
+        sideSig: (S.sideSig || "").slice(0, 80),
+        domTitles: [...document.querySelectorAll("#side-tasks .stask")].map(d => d.dataset.task + ":" + d.querySelector(".t").textContent),
+        conn: (document.getElementById("conn") || {}).textContent,
+      })`);
+      console.log("  [dump]", dump);
+    }
     check("侧栏任务组标题已更新", sideTitle === NEW_TITLE, sideTitle);
     const st1 = await api("/api/state");
     const t1 = (st1.json.tasks || []).find((t) => t.id === TASK);
@@ -201,6 +229,119 @@ async function main() {
       !mm.err && mm.labels.includes("复制日志目录路径") && mm.labels.includes("删除记录")
       && !mm.labels.includes("重命名任务") && !mm.labels.includes("打开工作目录"),
       JSON.stringify(mm));
+
+    /* ---- F) 文件夹行右键菜单：新建任务/打开工作目录/复制路径/移除 ---- */
+    const fm = await menuOf(`document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"])')`);
+    const needDir = ["查看文件", "新建任务到该目录", "打开工作目录", "复制工作目录路径", "移除该文件夹"];
+    check("文件夹行右键菜单弹出且含五项", !fm.err && !fm.hidden && needDir.every((x) => fm.labels.includes(x)),
+      JSON.stringify(fm));
+    // 「其他」兜底文件夹（无主运行聚合，非真实目录）不弹菜单
+    const om = await menuOf(`document.querySelector('#side-tasks .sdir[data-dir="__orphan__"]')`);
+    check("「其他」兜底文件夹不弹菜单", !!om.err || om.hidden === true, JSON.stringify(om));
+    // 点「新建任务到该目录」→ 表单工作目录被预填
+    await evalJs(`(async () => {
+      const det = document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"])');
+      det.dispatchEvent(new MouseEvent("contextmenu",
+        { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
+      await new Promise(r => setTimeout(r, 200));
+      [...document.querySelectorAll("#ctx-menu .ctx-item")]
+        .find(x => x.textContent.trim() === "新建任务到该目录").click();
+    })()`);
+    await sleep(600);
+    const wdForm = await evalJs(`document.getElementById("f-workdir").value`);
+    check("「新建任务到该目录」预填表单工作目录", wdForm === workdir,
+      "form=" + wdForm + " want=" + workdir);
+    // 点「移除该文件夹」→ 确认弹框 → 任务被归档，侧栏文件夹消失；文件还在
+    await evalJs(`(async () => {
+      const det = document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"])');
+      det.dispatchEvent(new MouseEvent("contextmenu",
+        { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
+      await new Promise(r => setTimeout(r, 200));
+      [...document.querySelectorAll("#ctx-menu .ctx-item")]
+        .find(x => x.textContent.trim() === "移除该文件夹").click();
+    })()`);
+    await sleep(800);
+    const confirmShown = await evalJs(`(() => {
+      const dlg = document.getElementById("ask");
+      if (!dlg || dlg.classList.contains("hidden")) return false;
+      document.getElementById("ask-yes").click();
+      return true;
+    })()`);
+    check("「移除」弹确认框", confirmShown === true);
+    // SSE 按 2s 桶轮询版本号：轮询等侧栏重绘，该 workdir 的 .sdir 应消失
+    let dirGone = false;
+    for (let i = 0; i < 16; i++) {
+      await sleep(500);
+      dirGone = await evalJs(
+        `!document.querySelector('#side-tasks .sdir[data-dir=' + JSON.stringify(${JSON.stringify(workdir)}) + ']')`);
+      if (dirGone) break;
+    }
+    check("移除后侧栏文件夹消失", dirGone === true);
+    // 移除=归档：检查任务进了 archived_tasks、文件未删
+    const st2 = await api("/api/state");
+    const t2 = (st2.json.archived_tasks || []).find((x) => x.id === TASK);
+    const man = workdir && (await import("node:fs")).existsSync(workdir + "/manuscript.md");
+    check("移除=归档：任务进 archived_tasks 且文件未删",
+      !!t2 && man, JSON.stringify({ inArchived: !!t2, man }));
+
+    /* ---- G) 「查看文件」：侧栏文件夹内联展开（附件式 chips，可折叠 toggle） ---- */
+    // 取消归档找回：页面持有控制权，写接口必须由页面自己发（无头 API 会被 423 挡）。
+    const restore = await evalJs(`fetch("/api/tasks/${TASK}/archive", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+      body: JSON.stringify({ archived: false }) }).then(r => r.status)`);
+    check("取消归档还原（为查看文件测试准备）", restore === 200);
+    // SSE 按 2s 桶轮询：等文件夹重新出现在侧栏
+    let folderBack = false;
+    for (let i = 0; i < 16; i++) {
+      await sleep(500);
+      const sdir = await evalJs(
+        `!!document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"])')`);
+      if (sdir) { folderBack = true; break; }
+    }
+    check("取消归档后文件夹回到侧栏", folderBack === true);
+    // 右键「查看文件」→ 文件夹行内联展开文件 chips
+    const fb = await menuOf(`document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"])')`);
+    if (fb && !fb.err && !fb.hidden && fb.labels.includes("查看文件")) {
+      await evalJs(`(async () => {
+        const det = document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"])');
+        det.dispatchEvent(new MouseEvent("contextmenu",
+          { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
+        await new Promise(r => setTimeout(r, 200));
+        [...document.querySelectorAll("#ctx-menu .ctx-item")]
+          .find(x => x.textContent.trim() === "查看文件").click();
+      })()`);
+      await sleep(800);
+      const fbInline = await evalJs(`(() => {
+        const box = document.querySelector("#side-tasks .sdir:not([data-dir='__orphan__']) .sdir-files");
+        const chips = box ? [...box.querySelectorAll(".sdir-chip")] : [];
+        const files = chips.map(c => c.querySelector("span").textContent.trim()
+          + " " + c.querySelector("i").textContent.trim());
+        return JSON.stringify({ exists: !!box, count: chips.length, files });
+      })()`);
+      check("「查看文件」在文件夹行内联展开（无弹框）",
+        JSON.parse(fbInline).exists === true, "inline=" + fbInline);
+      check("内联 chips 含 manuscript 文件", fbInline.includes("manuscript"),
+        "chips=" + fbInline);
+      const modalStillHidden = await evalJs(
+        `document.getElementById("modal").classList.contains("hidden")`);
+      check("未弹出 modal（保持侧栏内联）", modalStillHidden === true);
+      // 再次点「查看文件」→ 收起（toggle 关闭）
+      await evalJs(`(async () => {
+        const det = document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"])');
+        det.dispatchEvent(new MouseEvent("contextmenu",
+          { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
+        await new Promise(r => setTimeout(r, 200));
+        [...document.querySelectorAll("#ctx-menu .ctx-item")]
+          .find(x => x.textContent.trim() === "查看文件").click();
+      })()`);
+      await sleep(400);
+      const fbGone = await evalJs(
+        `!document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"]) .sdir-files')`);
+      check("再次点击「查看文件」收起内联区", fbGone === true);
+    } else {
+      check("侧栏文件夹可弹出右键菜单", false, JSON.stringify(fb));
+    }
   } finally {
     try { proc.kill(); } catch (e) { /* ignore */ }
     try { spawn("taskkill", ["/F", "/T", "/PID", String(proc.pid)], { stdio: "ignore" }); } catch (e) { /* ignore */ }

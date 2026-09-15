@@ -115,6 +115,19 @@ def decode_output(data):
         return data.decode("utf-8", "replace")
 
 
+def tail_decoded(data, tail):
+    """按字节取尾部再解码；切片可能落在 UTF-8 多字节字符中间，先丢弃开头的
+    continuation 字节（10xxxxxx，至多 3 个）对齐字符边界，否则残缺字节会被
+    GBK 回退解码成乱码字符。"""
+    if not data:
+        return ""
+    chunk = data[-tail:] if tail and len(data) > tail else data
+    i = 0
+    while i < len(chunk) and i < 3 and (chunk[i] & 0xC0) == 0x80:
+        i += 1
+    return decode_output(chunk[i:])
+
+
 def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None):
     """通用子进程执行：并发读管道防死锁；超时/取消杀整棵进程树。
@@ -131,6 +144,23 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         # 5A：env 关键字环境变量注入用户传入的 env（属于有意注入，例如模型 API key）
         full_env.update({str(k): str(v) for k, v in env.items()})
     log_fh = open(log_path, "ab") if log_path else None
+    # 审计：调用下达前先把「执行的命令 + 发给智能体的指令原文」写进日志，
+    # 运行中点开步骤就能看到"编排者下了什么令"，不用等结束猜。
+    # env 绝不写（含 API key）；argv 里只有 base_url/env_key 名，无密钥值。
+    # 指令超 12000 字符截断（章节正文可能很长），标注原始长度防误读。
+    if log_fh:
+        try:
+            head = ["===== 下达 %s =====" % time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "$ " + " ".join(str(a) for a in argv)]
+            if stdin_text:
+                capped = stdin_text[:12000]
+                head.append("--- 指令（%d 字符%s）---" % (
+                    len(stdin_text), "，已截断" if len(stdin_text) > 12000 else ""))
+                head.append(capped)
+            log_fh.write(("\n".join(head) + "\n--- 输出 ---\n").encode("utf-8", "replace"))
+            log_fh.flush()
+        except Exception:
+            pass
     try:
         try:
             proc = subprocess.Popen(
@@ -289,7 +319,14 @@ def _model_flag(kind, model):
 
 
 _TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
-              "unavailable", "overloaded", "rate limit", "timeout", "timed out")
+              "unavailable", "overloaded", "rate limit", "timeout", "timed out",
+              # 2026-09-15 连载验收实测：网关故障形态远不止 HTTP 5xx——
+              # Z.ai 报 "400 [1211] Unknown Model"（模型临时下架）、qwen 连本地
+              # 端点 ECONNREFUSED、codex initialize 空响应，这些都被旧表判成
+              # 「非瞬态不降级」，导致跨厂商链上健康的后继模型从未被尝试。
+              "unknown model", "1211", "connection error", "econnrefused",
+              "connection aborted", "initialize", "reset by peer",
+              "channel is closed", "no route to host")
 
 
 def _transient_error(err):
@@ -356,21 +393,25 @@ def _resolve_attempts(agent):
             for m in (models_to_try or [None])[:3]]
 
 
-def _build_call(agent, kind, sid, readonly, model, prompt):
-    """构建一次 CLI 调用的 (argv, stdin_text, prompt)。model 可为 None=CLI 默认。"""
+def _build_call(agent, kind, sid, readonly, model, prompt, images=None):
+    """构建一次 CLI 调用的 (argv, stdin_text, prompt)。model 可为 None=CLI 默认。
+    images 为图片附件绝对路径：codex 用 -i 原生附图；其余 kind 忽略（调用方已过滤）。"""
     env = {}
     argv = None
     stdin_text = None
+    imgs = [str(p) for p in (images or []) if p]
     if kind == "codex":
         cp = agent.get("codex_provider")
         if sid:
-            # resume 子命令不支持 -s：读模式用 -c sandbox_mode，写模式用 --full-auto
+            # resume 子命令不支持 -s 也不支持 --full-auto（0.154 实测：
+            # "unexpected argument '--full-auto'"）——读/写模式都用 -c sandbox_mode
             argv = resolve_command(agent["command"]) + [
                 "exec", "resume", sid, "-",
                 "--skip-git-repo-check", "--json"]
             if model:
                 argv += ["-m", model]
-            argv += (["-c", 'sandbox_mode="read-only"'] if readonly else ["--full-auto"])
+            argv += ["-c", 'sandbox_mode="%s"' %
+                     ("read-only" if readonly else "workspace-write")]
             if cp:
                 argv += _codex_provider_args(cp)
         else:
@@ -381,6 +422,10 @@ def _build_call(agent, kind, sid, readonly, model, prompt):
                 argv += ["-m", model]
             if cp:
                 argv += _codex_provider_args(cp)
+        # codex exec 与 exec resume 都支持 -i：图片直接附到 prompt（exec resume 的
+        # -i 附在恢复后发送的首条消息上，即本次 stdin prompt）
+        for p in imgs:
+            argv += ["-i", p]
         stdin_text = prompt
     elif kind == "claude":
         argv = resolve_command(agent["command"]) + ["-p", "--output-format", "json"]
@@ -446,12 +491,15 @@ def _check_approval(agent):
 
 
 def run_agent(agent, prompt, workdir=None, readonly=True,
-              timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None):
+              timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None,
+              images=None):
     """执行一次智能体调用，返回统一结构
     {ok, text, json, cost_usd, tokens, error, error_code, raw}。
     agent 来自 registry.effective_agents()；resume 为已有会话 id，仅真实智能体生效
     （codex: exec resume；claude: --resume；opencode/mimo: run -s；qwen: -r；
     generic: catalog orch.resume_argv_template）。
+    images：任务图片附件的绝对路径，仅 codex 原生支持（-i）；其余智能体靠
+    提示词里的 _attachments/ 路径 + 自身读文件能力获取，无读图工具时静默忽略。
 
     模型尝试顺序来自 _resolve_attempts：跨厂商链（每条独立 env）或
     主模型 + 降级备选；瞬态错误才换下一条，取消/超时/解析失败不降级。
@@ -499,7 +547,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             del eff_agent["codex_provider"]
         for attempt in range(2):  # claude 偶发空响应（0 token）自动重试一次
             argv, stdin_text, prompt_eff = _build_call(eff_agent, kind, sid, readonly,
-                                                       att["model"], prompt)
+                                                       att["model"], prompt,
+                                                       images=images if kind == "codex" else None)
             res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
                               timeout=timeout, cancel_event=cancel_event, log_path=log_path)
             out = {"ok": res["ok"], "text": "", "json": None, "cost_usd": 0.0,

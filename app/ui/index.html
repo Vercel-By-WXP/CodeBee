@@ -1,28 +1,31 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-lang="zh">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Tutti · 多智能体编排台</title>
+<title>CodeBee · 多智能体编排台</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#6d5df6">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Tutti">
+<meta name="apple-mobile-web-app-status-bar-style"="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CodeBee">
 <link rel="stylesheet" href="style.css">
-<!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗，避免刷新时闪一下默认配色。
+<!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，自然回落经典。 -->
 <script>
 (function () {
   try {
     document.documentElement.dataset.skin = localStorage.getItem("orch.skin") || "classic";
     document.documentElement.dataset.theme = localStorage.getItem("orch.theme") === "light" ? "light" : "dark";
+    document.documentElement.dataset.lang = localStorage.getItem("orch.lang") === "en" ? "en" : "zh";
+    document.documentElement.lang = document.documentElement.dataset.lang === "en" ? "en" : "zh-CN";
   } catch (e) {
     document.documentElement.dataset.skin = "classic";
     document.documentElement.dataset.theme = "dark";
+    document.documentElement.dataset.lang = "zh";
   }
 })();
 </script>
@@ -30,6 +33,8 @@
 <body>
 <!-- ================= 图标精灵：统一线性图标（stroke=currentColor，随主题与 hover 自动变色） ================= -->
 <svg id="icon-sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.8-4.8"/></symbol>
+  <symbol id="i-chevrons-d" viewBox="0 0 24 24"><path d="m6 6 6 6 6-6"/><path d="m6 13 6 6 6-6"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-tasks" viewBox="0 0 24 24"><path d="M3 6h11"/><path d="M3 12h11"/><path d="M3 18h7"/><path d="m16.5 16.5 2 2 4-4"/></symbol>
   <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
@@ -39,6 +44,8 @@
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
   <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-bee" viewBox="0 0 24 24"><ellipse cx="12" cy="14" rx="5.2" ry="6.2"/><path d="M8 12h8M8.3 14.8h7.4M9.4 17.4h5.2"/><path d="M9.6 8.4C8 6.2 5.4 6.6 5.7 8.6c.2 1.4 2.1 1.9 3.7 1.1M14.4 8.4c1.6-2.2 4.2-1.8 3.9.2-.2 1.4-2.1 1.9-3.7 1.1"/><path d="M13.4 5.6l2.1-2.1M15.9 6.9l2.5-1.2"/></symbol>
   <symbol id="i-gamepad" viewBox="0 0 24 24"><line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="18" x2="18.01" y1="10" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"/></symbol>
   <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 8h5M8 12h8M8 16h6"/></symbol>
   <symbol id="i-workflow" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></symbol>
@@ -49,6 +56,9 @@
   <symbol id="i-palette" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2a10 10 0 0 0 0 20 2 2 0 0 0 2-2v-1a2 2 0 0 1 2-2h1.5A4.5 4.5 0 0 0 22 12.5C22 6.7 17.5 2 12 2Z"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.5 12.5 5 5 10-11"/></symbol>
   <symbol id="i-chevron-r" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></symbol>
+  <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+  <symbol id="i-git-branch" viewBox="0 0 24 24"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
@@ -66,26 +76,23 @@
     <circle cx="19.9" cy="4.3" r="2" fill="currentColor" stroke="none"/>
     <circle cx="21.6" cy="8.9" r="2.3" fill="currentColor" stroke="none"/>
   </symbol>
-  <!-- 品牌 LOGO：谱线编队（旋律线串智能体节点，队首渐变高亮 = 编排者） -->
-  <symbol id="i-logo" viewBox="0 0 64 64">
-    <g stroke-width="2.6" stroke-linecap="round" opacity=".85">
-      <line x1="9" y1="17" x2="55" y2="17" stroke="#6b7089"/>
-      <line x1="9" y1="27" x2="55" y2="27" stroke="#6b7089"/>
-      <line x1="9" y1="37" x2="55" y2="37" stroke="#6b7089"/>
-      <line x1="9" y1="47" x2="55" y2="47" stroke="#6b7089"/>
-    </g>
-    <path d="M14 47 C 22 47 24 27 32 27 C 40 27 40 37 50 17" fill="none" stroke="url(#tutti-g)" stroke-width="3.4" stroke-linecap="round"/>
-    <circle cx="14" cy="47" r="4.4" fill="#22d3ee"/>
-    <circle cx="32" cy="27" r="4.4" fill="#8b5cf6"/>
-    <circle cx="41.5" cy="35.5" r="4.4" fill="#c084fc"/>
-    <circle cx="50" cy="17" r="5.8" fill="url(#tutti-g)"/>
-    <circle cx="50" cy="17" r="2.3" fill="var(--panel, #171a21)"/>
-  </symbol></svg>
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-    <linearGradient id="tutti-g" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0" stop-color="#22d3ee"/><stop offset=".5" stop-color="#8b5cf6"/><stop offset="1" stop-color="#f472b6"/>
-    </linearGradient>
-  </defs></svg>
+  <!-- 任务类型图标（flows.py 预置流程 icon 字段引用；stroke=currentColor 黑白随主题） -->
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m4 17 6-5-6-5"/><path d="M12 19h8"/></symbol>
+  <symbol id="i-book-open" viewBox="0 0 24 24"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></symbol>
+  <symbol id="i-library" viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></symbol>
+  <symbol id="i-news" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Z"/><path d="M4 22a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></symbol>
+  <symbol id="i-clapper" viewBox="0 0 24 24"><path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+  <symbol id="i-file-text" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></symbol>
+  <symbol id="i-lang" viewBox="0 0 24 24"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></symbol>
+  <symbol id="i-file-search" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><circle cx="11.5" cy="14.5" r="2.5"/><path d="m13.3 16.3 1.7 1.7"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 19v3"/></symbol>
+  <symbol id="i-clip-check" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+  <symbol id="i-blocks" viewBox="0 0 24 24"><rect x="14" y="3" width="7" height="7" rx="1"/><path d="M10 21V8a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H3"/></symbol>
+  <symbol id="i-idcard" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="10.5" r="2"/><path d="M5.5 15.5a2.5 2.5 0 0 1 5 0"/><path d="M13.5 10H18"/><path d="M13.5 14H18"/></symbol>
+  <!-- 任务详情面板开合（#btn-insp）：箭头方向由 CSS 变量穿透 use 影子树切换，开着=‹ 收起，关着=› 展开 -->
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15.5 4v16"/><path d="m11 9.5-2.5 2.5 2.5 2.5" style="display:var(--insp-chev-open,none)"/><path d="m10 9.5 2.5 2.5-2.5 2.5" style="display:var(--insp-chev-closed,inline)"/></symbol>
+</svg>
 <div id="drawer-mask" aria-hidden="true"></div>
 <div id="app">
 
@@ -94,23 +101,35 @@
     <!-- 常规视图：任务树 -->
     <div class="side-main">
       <div class="brand" title="CodeBee · 多智能体编排台" data-i18n-title="CodeBee · 多智能体编排台">
-        <span class="logo-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none">
-          <!-- 六边形蜂：蜂身即蜂房（六边形+两道条纹），双翅，环绕 8 字舞虚线 = 多智能体协作 -->
-          <path d="M4.2 9.2 C 6.8 6.2, 10.4 5.2, 13.6 6.1" stroke="#fff" stroke-opacity=".55" stroke-width="1.15" stroke-linecap="round" stroke-dasharray="2.3 2.3"/>
-          <path d="M19.8 14.8 C 17.2 17.8, 13.6 18.8, 10.4 17.9" stroke="#fff" stroke-opacity=".55" stroke-width="1.15" stroke-linecap="round" stroke-dasharray="2.3 2.3"/>
-          <ellipse cx="8.1" cy="7.2" rx="2.5" ry="1.5" fill="#fff" opacity=".55" transform="rotate(-38 8.1 7.2)"/>
-          <ellipse cx="15.9" cy="7.2" rx="2.5" ry="1.5" fill="#fff" opacity=".55" transform="rotate(38 15.9 7.2)"/>
-          <circle cx="12" cy="8.4" r="2.15" fill="#fff"/>
-          <polygon points="15.8,10.4 15.8,17.2 12,19.4 8.2,17.2 8.2,10.4 12,8.2"
-                   fill="#fff" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
-          <path d="M8.9 12.1 H15.1 M8.9 15 H15.1" stroke="#3b4870" stroke-width="1.35" stroke-linecap="round"/>
-        </svg></span>
         <span class="brand-name">CodeBee</span>
       </div>
-      <button data-i18n="＋ 新任务" id="btn-new-task" class="new-task">＋ 新任务</button>
+      <button id="btn-new-task" class="new-task"><span class="nt-label" data-i18n="＋ 新任务">＋ 新任务</span><span class="kbd" aria-hidden="true">N</span></button>
+      <div class="side-search">
+        <svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>
+        <input id="side-search" type="text" placeholder="搜索任务" data-i18n-ph="搜索任务" autocomplete="off" spellcheck="false">
+        <span class="kbd" aria-hidden="true">Ctrl K</span>
+      </div>
+      <div class="side-quick">
+        <button class="qitem" id="btn-q-automation" title="自动化" data-i18n-title="自动化">
+          <svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>
+          <span data-i18n="自动化">自动化</span>
+        </button>
+        <button class="qitem" id="btn-q-market" title="插件市场" data-i18n-title="插件市场">
+          <svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg>
+          <span data-i18n="插件市场">插件市场</span>
+        </button>
+      </div>
       <div class="side-section tasks">
         <div class="side-label-row">
           <div data-i18n="任务" class="side-label">任务</div>
+          <button id="btn-side-expand" class="foot-btn notify-toggle" title="展开全部" aria-label="展开全部"
+                  data-i18n-title="展开全部" data-i18n-aria="展开全部">
+            <svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
+          </button>
+          <button id="btn-side-arch" class="foot-btn notify-toggle arch-toggle" title="显示已归档" aria-label="显示已归档"
+                  data-i18n-title="显示已归档" data-i18n-aria="显示已归档">
+            <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
+          </button>
           <button id="btn-notify-toggle" class="foot-btn notify-toggle" title="完成/待裁决提示音" aria-label="完成/待裁决提示音"
                   data-i18n-title="完成/待裁决提示音" data-i18n-aria="完成/待裁决提示音">
             <svg class="ico" aria-hidden="true"><use href="#i-bell"></use></svg>
@@ -122,10 +141,11 @@
         <button id="btn-settings" class="foot-btn" title="设置" aria-label="设置" data-i18n-aria="设置" data-i18n-title="设置">
           <svg class="ico ico-lg" aria-hidden="true"><use href="#i-gear"></use></svg>
         </button>
-        <!-- 中间：CodeBee 自己的智能体（编排者）当前用的厂商；点击到设置里的「编排中枢」更换 -->
+        <!-- 中间：CodeBee 自己的智能体（编排者）当前用的厂商；点击到设置里的「编排设置」更换 -->
         <button id="btn-prov-side" class="foot-prov">
           <span id="prov-side-dot" class="pdot"></span>
           <span data-i18n="未选厂商" id="prov-side-text" class="nm">未选厂商</span>
+          <span id="prov-side-badge" class="pbadge hidden"></span>
         </button>
         <button id="btn-phone-side" class="foot-btn" title="手机连接（扫码用手机打开 CodeBee）" aria-label="手机连接" data-i18n-aria="手机连接" data-i18n-title="手机连接（扫码用手机打开 CodeBee）">
           <svg class="ico ico-lg" aria-hidden="true"><use href="#i-phone"></use></svg>
@@ -140,13 +160,15 @@
       <div data-i18n="编排" class="set-group">编排</div>
       <button class="set-item active" data-sub="tasks" data-i18n="任务"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg>任务</button>
       <button class="set-item" data-sub="runs" data-i18n="运行记录"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>运行记录</button>
+      <button class="set-item" data-sub="automation" data-i18n="自动化"><svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>自动化</button>
       <button class="set-item" data-sub="usage" data-i18n="用量统计"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg>用量统计</button>
       <div data-i18n="配置" class="set-group">配置</div>
       <button class="set-item" data-sub="agents" data-i18n="智能体管理"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg>智能体管理</button>
       <button class="set-item" data-sub="models" data-i18n="模型接入"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>模型接入</button>
       <button class="set-item" data-sub="bindings" data-i18n="CLI 绑定"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg>CLI 绑定</button>
       <button class="set-item" data-sub="skills" data-i18n="经验库"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg>经验库</button>
-      <button class="set-item" data-sub="orch" data-i18n="编排中枢"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg>编排中枢</button>
+      <button class="set-item" data-sub="market" data-i18n="插件市场"><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg>插件市场</button>
+      <button class="set-item" data-sub="orch" data-i18n="编排设置"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg>编排设置</button>
       <div data-i18n="外观" class="set-group">外观</div>
       <button class="set-item" data-sub="appearance" data-i18n="皮肤"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg>皮肤</button>
       <div data-i18n="软件" class="set-group">软件</div>
@@ -167,6 +189,8 @@
         <button id="ctrl-pill" class="pill ctrl icon-only hidden" onclick="ctrlClick()" title="多端控制权" aria-label="多端控制权" data-i18n-aria="多端控制权" data-i18n-title="多端控制权"><svg class="ico" aria-hidden="true"><use href="#i-unlock"></use></svg></button>
         <button id="btn-skin" class="pill icon-only" title="皮肤 / 换肤：多套配色，各含日间与夜间" aria-label="皮肤 / 换肤" data-i18n-aria="皮肤 / 换肤" data-i18n-title="皮肤 / 换肤：多套配色，各含日间与夜间"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg></button>
         <button id="btn-theme" class="pill icon-only" title="切换日间 / 夜间主题" aria-label="切换日间 / 夜间主题" data-i18n-aria="切换日间 / 夜间主题" data-i18n-title="切换日间 / 夜间主题"><svg class="ico" aria-hidden="true"><use href="#i-moon"></use></svg></button>
+        <!-- 详情面板开关：贴动作组最右 = 紧挨面板弹出的那一侧，空间映射一致 -->
+        <button id="btn-insp" class="pill icon-only" type="button" onclick="toggleInspector()" title="打开任务详情" aria-label="打开任务详情" data-i18n-title="打开任务详情" data-i18n-aria="打开任务详情"><svg class="ico" aria-hidden="true"><use href="#i-panel"></use></svg></button>
         <div data-i18n="连接中…" id="conn" class="conn">连接中…</div>
       </div>
     </header>
@@ -176,81 +200,100 @@
     <section id="page-settings" class="page">
       <div id="sub-tasks" class="subpage">
       <div class="panel wide composer">
-        <h2 class="hero">要完成什么？</h2>
-        <p class="hint hero-sub">一句话目标即可 —— Tutti 自动拆解、智能路由、执行、验证并跨厂商评审。</p>
+        <h2 data-i18n="要完成什么？" class="hero">要完成什么？</h2>
+        <p data-i18n="一句话目标即可 —— CodeBee 自动拆解、智能路由、执行、验证并跨厂商评审。" class="hint hero-sub">一句话目标即可 —— CodeBee 自动拆解、智能路由、执行、验证并跨厂商评审。</p>
         <div class="form">
           <div class="grid-2">
             <div class="field">
-              <label>类型 <button class="ghost small" onclick="openFlowsManager()" title="管理任务类型：新增/编辑自定义流程">管理</button></label>
-              <select id="f-type"></select>
+              <label>类型 <button data-i18n="管理" class="ghost small" onclick="openFlowsManager()" title="管理任务类型：新增/编辑自定义流程" data-i18n-title="管理任务类型：新增/编辑自定义流程">管理</button></label>
+              <!-- 值真源仍是 #f-type（隐藏 select，既有联动/测试全兼容）；上面是带黑白图标的可见层 -->
+              <div class="type-wrap">
+                <select id="f-type" class="hidden" tabindex="-1" aria-hidden="true"></select>
+                <button type="button" id="f-type-btn" class="type-pick" onclick="toggleTypeMenu()" aria-haspopup="listbox" aria-controls="type-menu">
+                  <span class="tp-ico" id="f-type-ico" aria-hidden="true"></span>
+                  <span class="tp-name" id="f-type-name"></span>
+                  <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+                </button>
+                <div id="type-menu" class="type-menu hidden" role="listbox" aria-label="任务类型"></div>
+              </div>
             </div>
             <div class="field">
-              <label>继续会话</label>
+              <label data-i18n="继续会话">继续会话</label>
               <select id="f-resume-agent">
-                <option value="">不沿用（全新开始）</option>
+                <option data-i18n="不沿用（全新开始）" value="">不沿用（全新开始）</option>
               </select>
             </div>
           </div>
-          <div class="field"><label>目标</label><textarea id="f-goal" rows="3" placeholder="要完成什么，一句话即可" required></textarea></div>
-          <div class="field"><label>工作目录</label><input id="f-workdir" placeholder="留空则保存到默认路径；或填绝对路径，例 E:\GoOut\my-project">
+          <div class="field"><label data-i18n="目标">目标</label><textarea id="f-goal" rows="3" placeholder="要完成什么，一句话即可" required data-i18n-ph="要完成什么，一句话即可"></textarea>
+            <div class="att-strip">
+              <button type="button" class="ghost small" id="btn-attach" title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/" data-i18n-title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/"><svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg><span data-i18n="附件">附件</span></button>
+              <span class="att-hint" data-i18n="也可直接粘贴截图">也可直接粘贴截图</span>
+              <div id="att-chips" class="att-chips"></div>
+            </div>
+            <input type="file" id="f-attach-file" class="hidden" multiple>
+          </div>
+          <div class="field"><label data-i18n="工作目录">工作目录</label>
+            <div class="input-row">
+              <input id="f-workdir" placeholder="留空则保存到默认路径；或填绝对路径，例 E:\GoOut\my-project">
+              <button data-i18n="选择…" class="ghost small" type="button" title="浏览本机目录选择" data-i18n-title="浏览本机目录选择" onclick="pickFolder('f-workdir')">选择…</button>
+            </div>
             <p class="hint" id="f-workdir-hint"></p></div>
+          <div class="field hidden" id="row-git">
+            <label data-i18n="代码版本"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>代码版本</label>
+            <select id="f-git-rev"></select>
+            <p class="hint" id="git-hint"></p>
+          </div>
           <div class="field hidden" id="row-resume-session">
-            <label>选择会话</label>
-            <select id="f-resume-session"><option>（加载中…）</option></select>
+            <label data-i18n="选择会话">选择会话</label>
+            <select id="f-resume-session"><option data-i18n="（加载中…）">（加载中…）</option></select>
             <p class="hint" id="resume-session-hint"></p>
           </div>
           <div class="form-actions">
-            <button id="btn-create" class="primary"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg>创建并运行</button>
+            <button id="btn-create" class="primary" data-i18n="创建并运行"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg>创建并运行</button>
             <span id="create-msg" class="msg"></span>
           </div>
 
           <details id="f-advanced">
-            <summary>高级选项（默认全智能，无需改动）</summary>
+            <summary data-i18n="高级选项（默认全智能，无需改动）">高级选项（默认全智能，无需改动）</summary>
             <div class="adv-body">
-              <div class="field"><label>上下文</label><textarea id="f-context" rows="2" placeholder="背景信息、约束、相关文件（可空）"></textarea></div>
+              <div class="field"><label data-i18n="上下文">上下文</label><textarea id="f-context" rows="2" placeholder="背景信息、约束、相关文件（可空）" data-i18n-ph="背景信息、约束、相关文件（可空）"></textarea></div>
               <div class="grid-2">
                 <div class="field">
-                  <label>编排模式</label>
+                  <label data-i18n="编排模式">编排模式</label>
                   <select id="f-mode">
-                    <option value="auto">智能（推荐）：自动拆解 + 智能路由 + 失败自动修复/换将</option>
-                    <option value="manual">手动：自行指定实现者与评审组</option>
+                    <option data-i18n="智能（推荐）：自动拆解 + 智能路由 + 失败自动修复/换将" value="auto">智能（推荐）：自动拆解 + 智能路由 + 失败自动修复/换将</option>
+                    <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
                   </select>
                 </div>
-                <div class="field"><label>任务标题</label><input id="f-title" placeholder="可空，自动取目标首行"></div>
+                <div class="field"><label data-i18n="任务标题">任务标题</label><input id="f-title" placeholder="可空，自动取目标首行"></div>
               </div>
 
               <div id="f-code-only">
-                <div class="field"><label>验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）"></div>
+                <div class="field"><label data-i18n="验证命令">验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）"></div>
               </div>
               <div id="f-review-only" class="hidden">
                 <div class="grid-3">
-                  <div class="field"><label>稿件文件（合并稿）</label><input id="f-manuscript" value="manuscript.md" placeholder="工作目录内的文件名"></div>
-                  <div class="field"><label>评审轮数</label><input id="f-rounds" type="number" value="2" min="1" max="5"></div>
-                  <div class="field"><label>发布阈值（全书）</label><input id="f-threshold" type="number" value="7.0" min="1" max="10" step="0.5"></div>
+                  <div class="field"><label data-i18n="稿件文件（合并稿）">稿件文件（合并稿）</label><input id="f-manuscript" value="manuscript.md" placeholder="工作目录内的文件名"></div>
+                  <div class="field"><label data-i18n="评审轮数">评审轮数</label><input id="f-rounds" type="number" value="2" min="1" max="5"></div>
+                  <div class="field"><label data-i18n="发布阈值（全书）">发布阈值（全书）</label><input id="f-threshold" type="number" value="7.0" min="1" max="10" step="0.5"></div>
                 </div>
-                <div class="field"><label>评审维度（逗号分隔，可自定义）</label><input id="f-rubric" placeholder="例：情节, 人物, 文笔"></div>
+                <div class="field"><label data-i18n="评审维度（逗号分隔，可自定义）">评审维度（逗号分隔，可自定义）</label><input id="f-rubric" placeholder="例：情节, 人物, 文笔"></div>
                 <div class="grid-2">
-                  <div class="field"><label>连载模式：章节数（空 = 单稿件一次成文）</label><input id="f-chapters" type="number" min="2" max="20" placeholder="例：8（逐章起草+评审+修订）"></div>
-                  <div class="field"><label>每章约字数</label><input id="f-words-per-ch" type="number" min="500" max="8000" step="100" placeholder="例：2500"></div>
+                  <div class="field"><label data-i18n="连载模式：章节数（空 = 单稿件一次成文）">连载模式：章节数（空 = 单稿件一次成文）</label><input id="f-chapters" type="number" min="2" max="20" placeholder="例：8（逐章起草+评审+修订）"></div>
+                  <div class="field"><label data-i18n="每章约字数">每章约字数</label><input id="f-words-per-ch" type="number" min="500" max="8000" step="100" placeholder="例：2500"></div>
+                  <div class="field"><label data-i18n="同章赛马稿件数">同章赛马稿件数</label><input id="f-variants" type="number" min="1" max="3" step="1" placeholder="1 = 关闭（2-3 每章多稿择优，更贵）"></div>
                 </div>
               </div>
 
               <div id="f-manual-only" class="hidden">
                 <div class="grid-2">
-                  <div class="field"><label>实现者</label><select id="f-impl"></select></div>
-                  <div class="field" id="critic-box"><label>评审组</label><div id="f-critics" class="chips"></div></div>
+                  <div class="field"><label data-i18n="实现者">实现者</label><select id="f-impl"></select></div>
+                  <div class="field" id="critic-box"><label data-i18n="评审组">评审组</label><div id="f-critics" class="chips"></div></div>
                 </div>
               </div>
             </div>
           </details>
         </div>
-      </div>
-      <div class="panel wide">
-        <div class="panel-head">
-          <h2>最近任务</h2>
-          <label class="toggle"><input type="checkbox" id="chk-archived"> 显示已归档</label>
-        </div>
-        <div id="task-list" class="list"></div>
       </div>
       </div>
 
@@ -258,29 +301,108 @@
       <div id="sub-runs" class="subpage hidden">
       <div class="panel wide">
         <div class="panel-head">
-          <h2>运行记录</h2>
+          <h2 data-i18n="运行记录">运行记录</h2>
           <div class="actions">
-            <button id="btn-clear-runs" class="danger small" onclick="clearRuns()" title="删除全部已结束的运行记录（运行中的会保留）">全部清除</button>
+            <button data-i18n="全部清除" id="btn-clear-runs" class="danger small" onclick="clearRuns()" title="删除全部已结束的运行记录（运行中的会保留）" data-i18n-title="删除全部已结束的运行记录（运行中的会保留）">全部清除</button>
           </div>
         </div>
         <div id="run-list" class="list"></div>
       </div>
+      <!-- 运行详情：头部（标题/状态/操作/统计）+ 标签分区 + 贴底日志抽屉。
+           分区内容的 hidden 语义不变（没数据整块收起）；标签页只切外层 pane。 -->
       <div id="run-detail" class="panel wide hidden">
         <div class="detail-head">
-          <button id="btn-back" class="ghost"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>返回</button>
+          <button id="btn-back" class="ghost" data-i18n="返回"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>返回</button>
           <h2 id="rd-title"></h2>
           <span id="rd-status" class="chip"></span>
-          <button id="btn-cancel" class="danger hidden">取消运行</button>
-          <button id="btn-retry" class="primary hidden">↻ 重试任务</button>
-          <button id="btn-delete" class="danger">删除记录</button>
+          <div class="rd-actions">
+            <button id="btn-pause" class="ghost hidden" data-i18n="暂停">暂停</button>
+            <button data-i18n="取消运行" id="btn-cancel" class="danger hidden">取消运行</button>
+            <button data-i18n="↻ 重试任务" id="btn-retry" class="primary hidden">↻ 重试任务</button>
+            <button data-i18n="✎ 编辑重试" id="btn-editretry" class="ghost hidden" data-i18n-title="取回原任务的目标/目录/评审设置，修改后提交即重新开跑" title="取回原任务的目标/目录/评审设置，修改后提交即重新开跑">✎ 编辑重试</button>
+            <button data-i18n="继续连载" id="btn-continue" class="ghost hidden">继续连载</button>
+            <button data-i18n="基于此任务新建" id="btn-newfrom" class="ghost hidden">基于此任务新建</button>
+            <button data-i18n="删除记录" id="btn-delete" class="danger hidden">删除记录</button>
+          </div>
         </div>
-        <div id="rd-meta" class="stats"></div>
-        <div id="rd-plan" class="hidden"></div>
-        <div id="rd-steps" class="steps"></div>
-        <div id="rd-log" class="logbox hidden"><pre id="rd-log-text"></pre></div>
-        <div id="rd-files" class="rd-files"></div>
-        <h3 class="sec-title">报告</h3>
-        <div id="rd-report" class="report"></div>
+        <div id="rd-meta" class="stats rd-meta-strip"></div>
+        <div id="rd-tabs" class="rd-tabs" role="tablist" data-i18n-aria="详情分区">
+          <button class="rd-tab" data-tab="hive" data-i18n="蜂巢">蜂巢<span class="rd-badge hidden"></span></button>
+          <button class="rd-tab" data-tab="steps" data-i18n="步骤">步骤<span class="rd-badge hidden"></span></button>
+          <button class="rd-tab" data-tab="result" data-i18n="成果">成果<span class="rd-badge hidden"></span></button>
+          <button class="rd-tab" data-tab="git" data-i18n="版本">版本<span class="rd-badge hidden"></span></button>
+          <button class="rd-tab" data-tab="bible" data-i18n="圣经">圣经<span class="rd-badge hidden"></span></button>
+        </div>
+        <div class="rd-main">
+          <div class="rd-pane" data-pane="hive">
+            <div id="rd-hive" class="rd-hive hidden">
+              <div class="sec-title"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="蜂巢工作台">蜂巢工作台</span><span id="rd-hive-sub" class="tag"></span></div>
+              <div id="rd-hive-cells" class="hive-cells"></div>
+            </div>
+            <!-- 运行中指挥信箱（链路保留，暂不露出；恢复时去掉 hidden 即可） -->
+            <div id="rd-direct" class="rd-direct hidden">
+              <div class="sec-title"><svg class="ico" aria-hidden="true"><use href="#i-baton"></use></svg><span data-i18n="运行中指挥">运行中指挥</span></div>
+              <div id="rd-msgs" class="rd-msgs"></div>
+              <div class="rd-composer">
+                <textarea id="rd-msg-input" rows="2" data-i18n-ph="补充说明或纠偏，将随下一条智能体步骤下达；可直接粘贴截图" placeholder="补充说明或纠偏，将随下一条智能体步骤下达；可直接粘贴截图"></textarea>
+                <div class="rd-composer-bar">
+                  <button id="rd-attach-btn" class="ghost" data-i18n="附件">附件</button>
+                  <span id="rd-attach-list" class="rd-att-list"></span>
+                  <span id="rd-direct-hint" class="rd-hint"></span>
+                  <button id="rd-send-btn" class="primary" data-i18n="下达指令">下达指令</button>
+                </div>
+                <input id="rd-attach-file" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.txt,.md,.markdown,.csv,.json,.log,.py,.js,.ts,.html,.css,.xml,.yml,.yaml,.toml,.pdf,.docx,.xlsx,.pptx" class="hidden" />
+              </div>
+            </div>
+          </div>
+          <div class="rd-pane" data-pane="steps">
+            <div id="rd-plan" class="hidden"></div>
+            <div id="rd-steps" class="steps"></div>
+          </div>
+          <div class="rd-pane" data-pane="result">
+            <h3 data-i18n="报告" class="sec-title">报告</h3>
+            <div id="rd-report" class="report"></div>
+            <div id="rd-arts" class="rd-arts hidden"></div>
+            <div id="rd-preview" class="rd-preview hidden"></div>
+          </div>
+          <div class="rd-pane" data-pane="git">
+            <div id="rd-git" class="rd-git hidden"></div>
+          </div>
+          <div class="rd-pane" data-pane="bible">
+            <div id="rd-bible" class="rd-bible hidden"></div>
+          </div>
+          <div id="rd-log" class="logbox rd-logdrawer hidden">
+            <div class="log-live-bar">
+              <span id="rd-log-live" class="log-live"></span>
+              <span id="rd-log-at" class="log-at"></span>
+              <span class="spacer"></span>
+              <span class="hint" data-i18n="停在底部自动跟随新输出；上翻回看时不动">停在底部自动跟随新输出；上翻回看时不动</span>
+            </div>
+            <pre id="rd-log-text"></pre>
+          </div>
+        </div>
+      </div>
+      </div>
+
+      <!-- 自动化：定时任务 + 模板 -->
+      <div id="sub-automation" class="subpage hidden">
+      <div class="panel wide">
+        <div class="panel-head">
+          <h2 data-i18n="自动化">自动化</h2>
+          <div class="actions">
+            <button id="btn-auto-refresh" class="ghost small" title="重新拉取任务列表" data-i18n-title="重新拉取任务列表"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="刷新">刷新</span></button>
+            <button id="btn-auto-new" class="primary small" title="创建一个按计划自动运行的任务" data-i18n-title="创建一个按计划自动运行的任务"><span data-i18n="新建定时任务">新建定时任务</span></button>
+          </div>
+        </div>
+        <p data-i18n="按计划自动运行任务，或在需要时随时执行。" class="hint">按计划自动运行任务，或在需要时随时执行。</p>
+        <div id="auto-filter" class="seg" role="group" aria-label="任务筛选" data-i18n-aria="任务筛选">
+          <button data-i18n="全部" class="seg-btn active" data-f="all">全部</button>
+          <button data-i18n="进行中" class="seg-btn" data-f="on">进行中</button>
+          <button data-i18n="已停用" class="seg-btn" data-f="off">已停用</button>
+        </div>
+        <div id="auto-list" class="cards"></div>
+        <h3 data-i18n="定时任务模板" class="sec-title">定时任务模板</h3>
+        <div id="auto-tpl" class="cards auto-tpl-grid"></div>
       </div>
       </div>
 
@@ -288,26 +410,26 @@
       <div id="sub-usage" class="subpage hidden">
       <div class="panel wide">
         <div class="panel-head">
-          <h2>用量统计</h2>
+          <h2 data-i18n="用量统计">用量统计</h2>
           <div class="actions" id="usage-ranges">
-            <div class="seg" role="group" aria-label="时间范围">
-              <button class="seg-btn active" data-days="1">今天</button>
-              <button class="seg-btn" data-days="7">近 7 天</button>
-              <button class="seg-btn" data-days="30">近 30 天</button>
-              <button class="seg-btn" data-days="0">全部</button>
+            <div class="seg" role="group" aria-label="时间范围" data-i18n-aria="时间范围">
+              <button data-i18n="今天" class="seg-btn active" data-days="1">今天</button>
+              <button data-i18n="近 7 天" class="seg-btn" data-days="7">近 7 天</button>
+              <button data-i18n="近 30 天" class="seg-btn" data-days="30">近 30 天</button>
+              <button data-i18n="全部" class="seg-btn" data-days="0">全部</button>
             </div>
-            <button id="btn-usage-refresh" class="icon-btn" title="重新拉取" aria-label="重新拉取">
+            <button id="btn-usage-refresh" class="icon-btn" title="重新拉取" aria-label="重新拉取" data-i18n-aria="重新拉取" data-i18n-title="重新拉取">
               <svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg>
             </button>
           </div>
         </div>
-        <p class="hint">统计所有真实 LLM 调用：编排各角色步骤（规划/实现/评审/修订…）、编排者直连 API、连通性冒烟与 AI 修复；mock 智能体与本地验证不计入。</p>
-        <div id="usage-kpis" class="usage-kpis"><p class="hint">加载中…</p></div>
+        <p data-i18n="统计所有真实 LLM 调用：编排各角色步骤（规划/实现/评审/修订…）、编排者直连 API、连通性冒烟与 AI 修复；mock 智能体与本地验证不计入。" class="hint">统计所有真实 LLM 调用：编排各角色步骤（规划/实现/评审/修订…）、编排者直连 API、连通性冒烟与 AI 修复；mock 智能体与本地验证不计入。</p>
+        <div id="usage-kpis" class="usage-kpis"><p data-i18n="加载中…" class="hint">加载中…</p></div>
         <div id="usage-note"></div>
-        <h3 class="sec-title">每日趋势（输入 / 输出 token）</h3>
+        <h3 data-i18n="每日趋势（输入 / 缓存 / 输出 token）" class="sec-title">每日趋势（输入 / 缓存 / 输出 token）</h3>
         <div id="usage-trend"></div>
         <div id="usage-dims"></div>
-        <h3 class="sec-title">最近调用</h3>
+        <h3 data-i18n="最近调用" class="sec-title">最近调用</h3>
         <div id="usage-recent" class="list"></div>
       </div>
       </div>
@@ -316,16 +438,16 @@
       <div id="sub-agents" class="subpage hidden">
       <div class="panel wide">
         <div class="panel-head">
-          <h2>智能体目录</h2>
+          <h2 data-i18n="智能体目录">智能体目录</h2>
           <div class="actions">
-            <button id="btn-reload-catalog" class="ghost">重新加载 catalog</button>
-            <button id="btn-reset-catalog" class="ghost">恢复默认 catalog</button>
+            <button data-i18n="重新加载 catalog" id="btn-reload-catalog" class="ghost">重新加载 catalog</button>
+            <button data-i18n="恢复默认 catalog" id="btn-reset-catalog" class="ghost">恢复默认 catalog</button>
           </div>
         </div>
-        <p class="hint">启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 CLI 自己的配置文件（Tutti 之外也生效），Tutti 编排运行时用哪个供应商 / 模型请到「CLI 绑定」页配置。安装命令不明的条目可直接编辑 <code>data/catalog.json</code> 后点重新加载。</p>
-        <h3 class="sec-title">已安装</h3>
+        <p class="hint">启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 CLI 自己的配置文件（CodeBee 之外也生效），CodeBee 编排运行时用哪个供应商 / 模型请到「CLI 绑定」页配置。安装命令不明的条目可直接编辑 <code>data/catalog.json</code> 后点重新加载。</p>
+        <h3 data-i18n="已安装" class="sec-title">已安装</h3>
         <div id="ag-installed" class="cards"></div>
-        <h3 class="sec-title">可安装</h3>
+        <h3 data-i18n="可安装" class="sec-title">可安装</h3>
         <div id="ag-installable" class="cards"></div>
       </div>
       </div>
@@ -336,14 +458,14 @@
         <div class="prov-layout">
           <aside class="prov-side">
             <div class="prov-side-head">
-              <span>供应商</span>
+              <span data-i18n="供应商">供应商</span>
               <span class="prov-side-ops">
-                <button id="btn-refresh-models" class="icon-btn" title="全部重新拉取模型列表" aria-label="全部重新拉取模型列表"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg></button>
-                <button id="btn-import" class="ghost small" title="从本机各 AI 工具导入供应商">导入</button>
-                <button id="btn-add-provider" class="ghost small" title="手动添加供应商">＋</button>
+                <button id="btn-refresh-models" class="icon-btn" title="全部重新拉取模型列表" aria-label="全部重新拉取模型列表" data-i18n-aria="全部重新拉取模型列表" data-i18n-title="全部重新拉取模型列表"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg></button>
+                <button data-i18n="导入" id="btn-import" class="ghost small" title="从本机各 AI 工具导入供应商" data-i18n-title="从本机各 AI 工具导入供应商">导入</button>
+                <button data-i18n="＋" id="btn-add-provider" class="ghost small" title="手动添加供应商" data-i18n-title="手动添加供应商">＋</button>
               </span>
             </div>
-            <input id="prov-search" class="side-search" type="search" placeholder="搜索供应商…" autocomplete="off">
+            <input id="prov-search" class="side-search" type="search" placeholder="搜索供应商…" autocomplete="off" data-i18n-ph="搜索供应商…">
             <div id="prov-list"></div>
           </aside>
           <div class="prov-detail" id="prov-detail"></div>
@@ -354,8 +476,8 @@
       <!-- CLI 绑定 -->
       <div id="sub-bindings" class="subpage hidden">
         <div class="panel wide">
-          <div class="panel-head"><h2>CLI 绑定</h2></div>
-          <p class="hint">Tutti 编排运行时的模型都在这里配：模型链可跨厂商混搭——每条自带供应商注入（API key + 地址），第 1 条是主模型、其余按顺序降级，瞬态错误自动切到下一条（可能是另一家厂商）。链空则按供应商默认 / 难度自动选。只影响 Tutti 发起的调用，不改写 CLI 全局配置（要改默认模型请到「智能体管理」页）。</p>
+          <div class="panel-head"><h2 data-i18n="CLI 绑定">CLI 绑定</h2></div>
+          <p data-i18n="CodeBee 编排运行时的模型都在这里配：模型链可跨厂商混搭——每条自带供应商注入（API key + 地址），第 1 条是主模型、其余按顺序降级，瞬态错误自动切到下一条（可能是另一家厂商）。链空则按供应商默认 / 难度自动选。只影响 CodeBee 发起的调用，不改写 CLI 全局配置（要改默认模型请到「智能体管理」页）。" class="hint">CodeBee 编排运行时的模型都在这里配：模型链可跨厂商混搭——每条自带供应商注入（API key + 地址），第 1 条是主模型、其余按顺序降级，瞬态错误自动切到下一条（可能是另一家厂商）。链空则按供应商默认 / 难度自动选。只影响 CodeBee 发起的调用，不改写 CLI 全局配置（要改默认模型请到「智能体管理」页）。</p>
           <div id="binding-list" class="cards"></div>
         </div>
       </div>
@@ -363,36 +485,59 @@
       <!-- 经验库 -->
       <div id="sub-skills" class="subpage hidden">
         <div class="panel wide">
-          <div class="panel-head"><h2>经验库</h2></div>
-          <p class="hint">系统自己的经验沉淀：<b>内置规范包</b>（如七猫签约标准，自动注入小说类任务的规划与评审提示词）
-            与<b>运行中自动学到的教训</b>（每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。</p>
-          <h3 class="sec-title">内置规范包</h3>
+          <div class="panel-head"><h2 data-i18n="经验库">经验库</h2></div>
+          <p class="hint">系统自己的经验沉淀：<b data-i18n="内置规范包">内置规范包</b>（如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与<b data-i18n="运行中自动学到的教训">运行中自动学到的教训</b>（每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。</p>
+          <h3 data-i18n="内置规范包" class="sec-title">内置规范包</h3>
           <div id="skill-packs" class="cards"></div>
-          <h3 class="sec-title">自动沉淀的教训 <span class="tag" id="skill-count"></span></h3>
+          <h3 class="sec-title"><span data-i18n="自动沉淀的教训">自动沉淀的教训</span> <span class="tag" id="skill-count"></span></h3>
+          <div class="cat-chips" id="skill-cat-chips"></div>
           <div id="skill-lessons" class="cards"></div>
         </div>
       </div>
 
-      <!-- 编排中枢 -->
+      <!-- 插件市场：经验包一键安装 -->
+      <div id="sub-market" class="subpage hidden">
+      <div class="panel wide">
+        <div class="panel-head">
+          <h2 data-i18n="插件市场">插件市场</h2>
+          <span id="mk-count" class="pm-count"></span>
+        </div>
+        <p data-i18n="用经验包为 CodeBee 扩展写作与工程守则，一键装进经验库。" class="hint">用经验包为 CodeBee 扩展写作与工程守则，一键装进经验库。</p>
+        <div class="pm-tools mk-tools">
+          <input id="mk-search" type="search" placeholder="搜索插件…" data-i18n-ph="搜索插件…" autocomplete="off">
+          <select id="mk-cat" aria-label="分类" data-i18n-aria="分类"></select>
+          <div id="mk-state" class="seg" role="group" aria-label="安装状态" data-i18n-aria="安装状态">
+            <button data-i18n="全部" class="seg-btn active" data-s="all">全部</button>
+            <button data-i18n="已安装" class="seg-btn" data-s="installed">已安装</button>
+            <button data-i18n="未安装" class="seg-btn" data-s="not">未安装</button>
+          </div>
+        </div>
+        <div id="mk-grid" class="cards mk-grid"></div>
+      </div>
+      </div>
+
+      <!-- 编排设置 -->
       <div id="sub-orch" class="subpage hidden">
         <div class="panel wide">
-          <div class="panel-head"><h2>编排中枢</h2></div>
-          <p class="hint">「编排者」是 Tutti 自己的智能体：直连 API 供应商的模型（不占 CLI 会话），统一负责任务规划拆解、难度判定与写作大纲。未启用或调用失败时自动回落为「最强可用 CLI 智能体」规划，流程永不阻塞。</p>
+          <div class="panel-head"><h2 data-i18n="编排设置">编排设置</h2></div>
+          <p data-i18n="「编排者」是 CodeBee 自己的智能体：直连 API 供应商的模型（不占 CLI 会话），统一负责任务规划拆解、难度判定与写作大纲。未启用或调用失败时自动回落为「最强可用 CLI 智能体」规划，流程永不阻塞。" class="hint">「编排者」是 CodeBee 自己的智能体：直连 API 供应商的模型（不占 CLI 会话），统一负责任务规划拆解、难度判定与写作大纲。未启用或调用失败时自动回落为「最强可用 CLI 智能体」规划，流程永不阻塞。</p>
           <div id="orch-config"></div>
-          <h3 class="sec-title">运行设置</h3>
-          <div class="field"><label>最大并发任务数（多任务同时跑、互不打扰）</label>
+          <h3 data-i18n="运行设置" class="sec-title">运行设置</h3>
+          <div class="field"><label data-i18n="最大并发任务数（多任务同时跑、互不打扰）">最大并发任务数（多任务同时跑、互不打扰）</label>
             <div class="input-row">
               <input id="set-workers" type="number" min="1" max="6" value="3">
-              <button class="ghost small" onclick="saveSettings()">保存</button>
+              <button data-i18n="保存" class="ghost small" onclick="saveSettings()">保存</button>
             </div>
-            <p class="hint">1 = 串行排队；建议 2-4。每个任务在独立线程执行，运行数据按任务隔离。</p>
+            <p data-i18n="1 = 串行排队；建议 2-4。每个任务在独立线程执行，运行数据按任务隔离。" class="hint">1 = 串行排队；建议 2-4。每个任务在独立线程执行，运行数据按任务隔离。</p>
           </div>
-          <div class="field"><label>默认保存路径（新建任务未指定工作目录时使用；支持 ~）</label>
+          <div class="field"><label data-i18n="默认保存路径（新建任务未指定工作目录时使用；支持 ~）">默认保存路径（新建任务未指定工作目录时使用；支持 ~）</label>
             <div class="input-row">
-              <input id="set-workdir" type="text" placeholder="例 E:\GoOut\workspace">
-              <button class="ghost small" onclick="saveDefaultWorkdir()">保存</button>
+              <input id="set-workdir" type="text" placeholder="例 E:\GoOut\workspace" data-i18n-ph="例 E:\GoOut\workspace">
+              <button data-i18n="选择…" class="ghost small" type="button" title="浏览本机目录选择" data-i18n-title="浏览本机目录选择" onclick="pickFolder('set-workdir')">选择…</button>
+              <button data-i18n="保存" class="ghost small" onclick="saveDefaultWorkdir()">保存</button>
             </div>
-            <label class="toggle" style="margin-top:6px"><input id="set-workdir-migrate" type="checkbox"> 保存时把「旧默认路径下」的现有任务目录迁移到新路径（运行中的跳过；手动指定的目录不受影响）</label>
+            <label class="toggle" style="margin-top:6px"><input id="set-workdir-migrate" type="checkbox"> <span data-i18n="保存时把「旧默认路径下」的现有任务目录迁移到新路径（运行中的跳过；手动指定的目录不受影响）">保存时把「旧默认路径下」的现有任务目录迁移到新路径（运行中的跳过；手动指定的目录不受影响）</span></label>
             <p class="hint" id="set-workdir-hint"></p>
           </div>
           <div id="settings-msg" class="msg"></div>
@@ -403,7 +548,7 @@
       <div id="sub-about" class="subpage hidden">
         <div class="panel wide">
           <div class="panel-head"><h2 data-i18n="关于与更新">关于与更新</h2></div>
-          <div id="su-info" class="empty">加载中…</div>
+          <div id="su-info" class="empty" data-i18n="加载中…">加载中…</div>
           <div class="input-row" style="margin-top:10px">
             <button id="su-check" class="ghost small" onclick="suCheck()"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="检查更新">检查更新</span></button>
             <button id="su-apply" class="ghost small hidden" onclick="suApply()"><span data-i18n="升级到新版">升级到新版</span></button>
@@ -411,7 +556,7 @@
           </div>
           <p id="su-note" class="hint"></p>
           <p id="su-progress" class="hint"></p>
-          <p class="hint">升级会通过 npm 拉取最新版并自动执行（日志可在运行记录里实时查看）；完成后点「重启服务生效」，页面会自动重连。开发仓库（git clone）模式不提供自动升级，请用 git pull。</p>
+          <p class="hint" data-i18n="升级会通过 npm 拉取最新版并自动执行（日志可在运行记录里实时查看）；完成后点「重启服务生效」，页面会自动重连。开发仓库（git clone）模式不提供自动升级，请用 git pull。">升级会通过 npm 拉取最新版并自动执行（日志可在运行记录里实时查看）；完成后点「重启服务生效」，页面会自动重连。开发仓库（git clone）模式不提供自动升级，请用 git pull。</p>
         </div>
       </div>
 
@@ -430,22 +575,134 @@
             <button data-i18n="夜间" class="seg-btn" data-mode="dark">夜间</button>
             <button data-i18n="日间" class="seg-btn" data-mode="light">日间</button>
           </div>
-          <h3 class="sec-title">皮肤 <span class="tag" id="skin-cur"></span></h3>
+          <h3 class="sec-title"><span data-i18n="皮肤">皮肤</span> <span class="tag" id="skin-cur"></span></h3>
           <div id="skin-grid" class="skin-grid"></div>
+        </div>
+
+        <!-- 代码设置：主题/行号/换行/字号只管代码内容，存本设备（与皮肤同一套语汇） -->
+        <div class="panel wide">
+          <div class="panel-head"><h2 data-i18n="代码设置">代码设置</h2></div>
+          <p class="hint" data-i18n="设置代码内容的主题、字号和显示方式，不受界面字号影响。">设置代码内容的主题、字号和显示方式，不受界面字号影响。</p>
+          <div class="code-set-rows">
+            <div class="cs-row">
+              <div class="cs-lab"><b data-i18n="浅色代码主题">浅色代码主题</b><span class="hint" data-i18n="浅色界面下代码内容使用的高亮主题。">浅色界面下代码内容使用的高亮主题。</span></div>
+              <select id="cs-theme-light" aria-label="浅色代码主题" data-i18n-aria="浅色代码主题"></select>
+            </div>
+            <div class="cs-row">
+              <div class="cs-lab"><b data-i18n="深色代码主题">深色代码主题</b><span class="hint" data-i18n="深色界面下代码内容使用的高亮主题。">深色界面下代码内容使用的高亮主题。</span></div>
+              <select id="cs-theme-dark" aria-label="深色代码主题" data-i18n-aria="深色代码主题"></select>
+            </div>
+            <div class="cs-row">
+              <div class="cs-lab"><b data-i18n="显示行号">显示行号</b><span class="hint" data-i18n="在代码内容和差异视图中显示行号。">在代码内容和差异视图中显示行号。</span></div>
+              <label class="cs-switch"><input type="checkbox" id="cs-linenum"><span class="cs-track" aria-hidden="true"></span></label>
+            </div>
+            <div class="cs-row">
+              <div class="cs-lab"><b data-i18n="长行自动换行">长行自动换行</b><span class="hint" data-i18n="代码内容过长时自动换行。">代码内容过长时自动换行。</span></div>
+              <label class="cs-switch"><input type="checkbox" id="cs-wrap"><span class="cs-track" aria-hidden="true"></span></label>
+            </div>
+            <div class="cs-row">
+              <div class="cs-lab"><b data-i18n="代码字号">代码字号</b><span class="hint" data-i18n="调整代码块、文件预览和差异视图的默认字号。">调整代码块、文件预览和差异视图的默认字号。</span></div>
+              <span class="cs-size"><input type="number" id="cs-size" min="10" max="22" step="1" aria-label="代码字号" data-i18n-aria="代码字号"> <span class="hint">px</span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 代码预览：浅/深两卡同屏，当前界面用的那套标记「当前生效」 -->
+        <div class="panel wide">
+          <div class="panel-head"><h2 data-i18n="代码预览">代码预览</h2></div>
+          <p class="hint" data-i18n="同时预览浅色与深色代码主题，当前界面使用的主题会标记为「当前生效」。">同时预览浅色与深色代码主题，当前界面使用的主题会标记为「当前生效」。</p>
+          <div class="cs-previews">
+            <div class="cs-preview" id="cs-preview-light">
+              <div class="cs-pv-head"><span class="cs-pv-tt"><b data-i18n="浅色预览">浅色预览</b><span class="cs-pv-theme"></span></span><span class="tag cs-pv-badge"></span></div>
+              <div class="cs-pv-code" data-ctheme-mode="light"></div>
+            </div>
+            <div class="cs-preview" id="cs-preview-dark">
+              <div class="cs-pv-head"><span class="cs-pv-tt"><b data-i18n="深色预览">深色预览</b><span class="cs-pv-theme"></span></span><span class="tag cs-pv-badge"></span></div>
+              <div class="cs-pv-code" data-ctheme-mode="dark"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 文件夹浏览（侧栏文件夹右键「查看文件」）：左侧目录树，右侧文件 chips -->
+      <div id="sub-files" class="subpage hidden">
+        <div class="panel wide">
+          <div class="panel-head">
+            <h2 data-i18n="查看文件">查看文件</h2>
+            <div class="files-crumb" id="files-crumb"></div>
+          </div>
+          <div class="files-page">
+            <aside class="files-tree" id="files-tree"></aside>
+            <div class="files-main">
+              <div id="files-list" class="files-list"></div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
     </main>
   </div>
+
+  <!-- ================= 任务检查器（右缘停靠列，参考桌面端 Git 工具 + 进程面板） ================= -->
+  <aside id="inspector" class="hidden" aria-label="任务检查器" data-i18n-aria="任务检查器">
+    <div class="insp-head">
+      <svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>
+      <span id="insp-title" class="t" title=""></span>
+      <button id="insp-full" class="ghost small" data-i18n="完整详情" data-i18n-title="在主栏打开任务完整详情（全部步骤/日志/报告）" title="在主栏打开任务完整详情（全部步骤/日志/报告）">完整详情</button>
+      <button id="insp-close" class="icon-btn" data-i18n-title="收起检查器" title="收起检查器" aria-label="收起检查器" data-i18n-aria="收起检查器"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></button>
+    </div>
+    <!-- 常驻统计条：运行/步骤/成本/tokens 一行看完，不占分区 -->
+    <div id="insp-stats" class="insp-strip"></div>
+    <!-- 分区 TAB：一次只展示一个分区；任务状态变化时自动选中（运行中→进度，待裁决→Git）。
+         成品文件归这里：主栏详情页不再重复展示（详情页聚焦步骤/日志/报告） -->
+    <nav id="insp-tabs" class="insp-tabs" role="tablist" aria-label="检查器分区" data-i18n-aria="检查器分区">
+      <button class="insp-tab" data-tab="git" role="tab"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg><span data-i18n="Git 工具">Git 工具</span><span id="insp-badge-git" class="insp-badge hidden"></span></button>
+      <button class="insp-tab" data-tab="progress" role="tab"><svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg><span data-i18n="进度">进度</span><span id="insp-badge-progress" class="insp-badge hidden"></span></button>
+      <button class="insp-tab" data-tab="files" role="tab"><svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg><span data-i18n="成品文件">成品文件</span><span id="insp-badge-files" class="insp-badge hidden"></span></button>
+    </nav>
+    <div class="insp-body">
+      <!-- Git 分区：分支 + 行级统计 + 变更清单 + 合并/丢弃裁决 + 单文件 diff -->
+      <section class="insp-pane" id="insp-pane-git">
+        <div class="insp-pane-head"><span id="insp-git-chip" class="chip hidden"></span></div>
+        <div id="insp-git-main" class="insp-git-main"></div>
+        <pre id="insp-diff" class="insp-diff hidden"></pre>
+      </section>
+      <!-- 进度分区：环形进度（养成感动画）+ 步骤清单，点步骤跳主栏详情 -->
+      <section class="insp-pane hidden" id="insp-pane-progress">
+        <div class="insp-ring-wrap">
+          <svg class="insp-ring" viewBox="0 0 84 84" aria-hidden="true">
+            <circle class="tr" cx="42" cy="42" r="36"></circle>
+            <circle class="pr" id="insp-ring" cx="42" cy="42" r="36"></circle>
+          </svg>
+          <div class="insp-ring-num"><b id="insp-progress-n">0/0</b><span data-i18n="步">步</span></div>
+        </div>
+        <div id="insp-steps" class="insp-steps"></div>
+      </section>
+      <!-- 成品文件分区：点开即看，不进详情页 -->
+      <section class="insp-pane hidden" id="insp-pane-files">
+        <div id="insp-artifacts" class="insp-artifacts"></div>
+      </section>
+    </div>
+    <!-- 迷你指挥坞：运行中常驻底部，任何分区下都能直接下达指令（不带附件，附件在详情页） -->
+    <section class="insp-direct hidden" id="insp-card-direct">
+      <div class="insp-direct-head"><svg class="ico" aria-hidden="true"><use href="#i-baton"></use></svg><span data-i18n="运行中指挥">运行中指挥</span></div>
+      <textarea id="insp-msg-input" rows="2" data-i18n-ph="补充说明或纠偏，将随下一条智能体步骤下达" placeholder="补充说明或纠偏，将随下一条智能体步骤下达"></textarea>
+      <div class="insp-direct-bar">
+        <span id="insp-direct-hint" class="insp-hint"></span>
+        <button id="insp-send-btn" class="primary small" data-i18n="下达指令">下达指令</button>
+      </div>
+    </section>
+  </aside>
+  <div id="insp-mask" aria-hidden="true"></div>
 </div>
 
 <!-- 访问令牌门：仅远程（非本机）访问且令牌缺失/错误时显示 -->
 <div id="token-gate" class="token-gate hidden">
   <div class="gate-card">
-    <div class="gate-brand"><span class="logo-tile" aria-hidden="true"><svg class="ico"><use href="#i-logo"></use></svg></span><span>Tutti</span></div>
-    <p class="gate-hint">这台设备第一次连接，请输入访问令牌<br><span>（电脑上启动 Tutti 时控制台会显示，形如 http://192.168.x.x:8765/?token=xxxxxxxx）</span></p>
-    <input id="gate-token" type="password" placeholder="访问令牌" autocomplete="off">
-    <button id="gate-go" class="primary" onclick="submitToken()">进入</button>
+    <div class="gate-brand"><span class="brand-name">CodeBee</span></div>
+    <p class="gate-hint">这台设备第一次连接，请输入访问令牌<br><span data-i18n="（电脑上启动 CodeBee 时控制台会显示，形如 http://192.168.x.x:8765/?token=xxxxxxxx）">（电脑上启动 CodeBee 时控制台会显示，形如 http://192.168.x.x:8765/?token=xxxxxxxx）</span></p>
+    <input id="gate-token" type="password" placeholder="访问令牌" autocomplete="off" data-i18n-ph="访问令牌">
+    <button data-i18n="进入" id="gate-go" class="primary" onclick="submitToken()">进入</button>
     <p id="gate-err" class="msg"></p>
   </div>
 </div>
@@ -458,14 +715,32 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-head">
       <span id="modal-title"></span>
-      <button class="icon-btn" onclick="closeModal()" title="关闭">✕</button>
+      <button class="icon-btn" onclick="closeModal()" title="关闭" data-i18n-title="关闭">✕</button>
     </div>
     <div class="modal-body" id="modal-body"></div>
     <div class="modal-foot" id="modal-foot"></div>
   </div>
 </div>
 
+<!-- 应用内确认 / 输入弹框（替代浏览器原生 confirm/prompt；可叠在 #modal 之上） -->
+<div id="ask" class="modal-wrap ask-wrap hidden">
+  <div class="modal-mask" id="ask-mask"></div>
+  <div class="modal ask-modal" role="dialog" aria-modal="true" aria-labelledby="ask-title">
+    <div class="modal-head">
+      <span data-i18n="确认" id="ask-title">确认</span>
+      <button class="icon-btn" id="ask-x" title="关闭" aria-label="关闭" data-i18n-aria="关闭" data-i18n-title="关闭">✕</button>
+    </div>
+    <div class="modal-body" id="ask-body"></div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button data-i18n="取消" class="ghost" id="ask-no">取消</button>
+      <button data-i18n="确定" class="primary" id="ask-yes">确定</button>
+    </div>
+  </div>
+</div>
+
 <script src="qrcode.js"></script>
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

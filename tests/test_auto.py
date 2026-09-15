@@ -20,7 +20,7 @@ class TestRouter(BaseTest):
         # 评审者必须跨厂商：实现者是 x-cli 时不得再选 x-cli
         rev, note = router.pick_reviewer(agents, pick, "code", stats)
         self.assertEqual(rev["id"], "y-cli")
-        self.assertTrue(note.startswith("跨厂商"))
+        self.assertTrue(note.startswith("跨厂商评审（claude ≠ codex）"))
         # 无历史时也不选 mock（真实智能体基线更高）
         pick2, _ = router.pick(agents, "implement", "code", {})
         self.assertEqual(pick2["id"], "x-cli")  # 同基线取第一个真实者

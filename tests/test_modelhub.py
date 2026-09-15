@@ -745,7 +745,10 @@ class TestMultiSourceImport(BaseTest):
             CLAUDE_SETTINGS=str(claude), CODEX_DIR=str(codex), ZCODE_CONFIG=str(zcode),
             QWEN_SETTINGS=str(qwen), GEMINI_DIR=str(gem),
             OPENCODE_CONFIG=str(oc), OPENCODE_AUTH=str(ocauth), CONTINUE_DIR=str(cont),
-            CURSOR_DB=str(cur), TRAE_DBS=[str(trae)])
+            CURSOR_DB=str(cur), TRAE_DBS=[str(trae)],
+            # dsh 来源由 test_deepseek_harness.py 专项覆盖；这里指到临时目录，
+            # 防止装了 dsh 的真机把 ~/.dsh 的真实供应商混进导入计数
+            DSH_DIR=str(home), DSH_SETTINGS=str(home / "no-dsh-settings.yaml"))
 
     def runTest(self):
         from app.core import modelhub

@@ -1,0 +1,972 @@
+/* CodeBee 多语言：t(key, ...args) 在 zh 模式直接返回 key，在 en 模式查表。
+ * 翻译未命中时回落到中文（key 即原文），所以页面永远有显示。
+ * 字典 key = 源码里的中文原文（含空格/换行/标点）。
+ * 模板字面量里的 HTML+表达式片段没有进字典，保留中文（不完美的折中）。
+ */
+"use strict";
+
+(function () {
+  // 语言档案名（与 localStorage 一致）
+  const LANG_KEY = "orch.lang";
+  // 字典：键 = 中文原文；值 = 英文译文。未命中即回落中文。
+  const EN = {
+    // —— 短片段（拼接用）——
+
+    // —— 用量统计图表 ——
+
+    // —— 时间/计数单位 ——
+
+    // —— 「」包裹的内容片段 ——
+
+    // —— 提示/标题 ——
+
+    // —— 头部/状态 ——
+    // Git 变更徽章：英文模式回落 git 标准字母（zh 模式直接显示中文单字）
+    "改": "M",
+    "新": "A",
+    "删": "D",
+    "移": "R",
+
+    // —— 操作按钮/弹框 ——
+
+    // —— 表单字段/标签 ——
+    "代码设置": "Code Display",
+    "设置代码内容的主题、字号和显示方式，不受界面字号影响。": "Choose the theme, font size and display style for code content; independent of the UI font size.",
+    "浅色代码主题": "Light code theme",
+    "浅色界面下代码内容使用的高亮主题。": "Syntax highlighting theme for code content under the light interface.",
+    "深色代码主题": "Dark code theme",
+    "深色界面下代码内容使用的高亮主题。": "Syntax highlighting theme for code content under the dark interface.",
+    "显示行号": "Show line numbers",
+    "在代码内容和差异视图中显示行号。": "Show line numbers in code content and diff views.",
+    "长行自动换行": "Wrap long lines",
+    "代码内容过长时自动换行。": "Wrap long code lines automatically.",
+    "代码字号": "Code font size",
+    "调整代码块、文件预览和差异视图的默认字号。": "Default font size for code blocks, file previews and diff views.",
+    "代码预览": "Code Preview",
+    "同时预览浅色与深色代码主题，当前界面使用的主题会标记为「当前生效」。": "Preview both light and dark code themes side by side; the one matching the current interface is marked “Active”.",
+    "浅色预览": "Light preview",
+    "深色预览": "Dark preview",
+    "当前生效": "Active",
+    "深色": "Dark",
+    "浅色": "Light",
+    "经典浅色，清爽不抢眼，日间界面首选": "Classic light theme — clean and unobtrusive, the top pick for day mode",
+    "VS 家族浅色，蓝紫关键词配色": "Visual Studio family light theme with blue-purple keywords",
+    "苹果开发工具同款浅色，冷色克制": "Same light theme as Apple's dev tools — cool and restrained",
+    "米黄纸感底色，长时间阅读更柔和": "Warm paper-toned background, easier on the eyes for long reads",
+    "经典深色，夜间界面首选": "Classic dark theme — the top pick for night mode",
+    "VS 家族深色，灰蓝底更沉稳": "Visual Studio family dark theme on a steady gray-blue base",
+    "高饱和黄紫粉，老牌编辑器名主题": "High-saturation yellow/purple/pink — the famous classic editor theme",
+    "Atom 出品的均衡深色，蓝灰底不刺眼": "Balanced dark theme from Atom on a soft blue-gray base",
+
+    // —— 智能/手动 模式 ——
+
+    // —— 引擎/角色 ——
+
+    // —— 任务/状态 ——
+
+    // —— 保存/失败 通用 ——
+
+    // —— 工作流管理 ——
+
+    // —— 多端控制 ——
+
+    // —— 设置 - 保存路径 ——
+
+    // —— 设置 - 并发 ——
+
+    // —— 用量 ——
+
+    // —— 皮肤 ——
+
+    // —— 模型/导入 ——
+
+    // —— 模型批量 ——
+
+    // —— 模型分组/列表 ——
+
+    // —— 运行详情/日志 ——
+    "在面板内预览": "Preview in panel",
+    "预览": "Preview",
+    "实时": "Live",
+    "预览失败：": "Preview failed: ",
+    "提示音已开（点击关闭）": "Sound on (click to mute)",
+    "提示音已关（点击开启）": "Sound off (click to unmute)",
+    "完成/待裁决提示音": "Completion / verdict chime",
+    "同章赛马稿件数": "Race drafts per chapter",
+    "故事圣经": "Story bible",
+    "story-bible.md · 人物/世界观/伏笔台账，每章起草与评审自动注入": "story-bible.md · characters/world/foreshadowing ledger, auto-injected into every draft and review",
+    "运行中不能修改": "Locked while a run is active",
+    "尚未创建。点「编辑」写下人物卡/世界观/伏笔台账，下一轮起草即刻生效。": "Not created yet. Click Edit to write character cards / world / foreshadowing — it takes effect from the next chapter.",
+    "故事圣经已保存": "Story bible saved",
+    "保存失败：": "Save failed: ",
+    "代码版本隔离": "Version isolation",
+    "任务分支：产物提交在此，原分支未受影响": "Task branch: artifacts are committed here; the original branch is untouched",
+    "待裁决": "Pending verdict",
+    "已合并": "Merged",
+    "已丢弃": "Discarded",
+    "基线": "Baseline",
+    "分支提交": "Branch commit",
+    "收尾出错：": "Finalize error: ",
+    "个文件": " files",
+    "本次运行没有产生工作区变更。": "No workspace changes were produced in this run.",
+
+    // —— 任务检查器（右缘停靠列）——
+    "Git 工具": "Git tools",
+    "进度": "Progress",
+    "运行统计": "Run stats",
+    "完整详情": "Full detail",
+    "收起检查器": "Collapse inspector",
+    "在主栏打开任务完整详情（全部步骤/日志/报告）": "Open the task's full detail in the main column (all steps / logs / report)",
+    "运行": "Runs",
+    "步骤": "Steps",
+    "成本": "Cost",
+    "暂无工作区变更。": "No workspace changes yet.",
+    "单击：卡内展开 diff；双击：弹窗查看": "Click: expand diff here; double-click: open in popup",
+    "双击弹窗查看该文件的变更": "Double-click to view this file's changes in a popup",
+    "复制": "Copy",
+    "已复制": "Copied",
+    "选择文件夹": "Choose folder",
+    "此电脑": "This PC",
+    "上级": "Up",
+    "选这个": "Select",
+    "使用当前目录": "Use this folder",
+    "正在读取目录…": "Loading folder…",
+    "（没有子目录）": "(no subfolders)",
+    "读取失败：": "Failed to read: ",
+    "请先进入一个具体目录": "Enter a concrete folder first",
+    "浏览本机目录选择": "Browse local folders",
+    "检出失败": "Checkout failed",
+    "未创建": "not created",
+    "处理后点「重试任务」，运行会重新检出任务分支。": "After fixing, click Retry — the run will check out the task branch again.",
+    "合并成功，但你之前的未提交改动没能自动还原，": "Merged, but your uncommitted changes could not be restored automatically — ",
+    "在新页打开": "Open in new tab",
+    "下载": "Download",
+    "二进制文件不预览，可在新页打开或下载查看。": "No preview for binary files — open in a new tab or download.",
+    "内容读取失败：": "Failed to load content: ",
+    "未启用代码版本隔离（该任务未指定代码版本）。": "Code-version isolation is off (no code version was chosen for this task).",
+    "diff 读取失败：": "Failed to load diff: ",
+    "暂无该文件的已保存 diff（运行结束后生成变更快照，或该运行没有保存变更内容）。": "No saved diff for this file yet (the snapshot is written when the run ends, or this run saved no changes).",
+    "补充说明或纠偏，将随下一条智能体步骤下达": "Extra guidance or correction, delivered with the next agent step",
+    "本次运行没有在工作目录里产出新文件。": "No new files were produced in the workdir for this run.",
+    "合并回原分支": "Merge into base branch",
+    "丢弃分支": "Discard branch",
+    "合并＝采纳产物回原分支；丢弃＝删除任务分支（不可恢复）。": "Merge = adopt artifacts into the base branch. Discard = delete the task branch (irreversible).",
+    "把任务分支的产物合并回原分支？": "Merge task-branch artifacts into the base branch?",
+    "合并": "Merge",
+    "已合并：": "Merged: ",
+    "个提交 → ": " commits → ",
+    "丢弃任务分支？该分支上的产物将永久删除，不可恢复。": "Discard the task branch? Its artifacts will be permanently deleted. This cannot be undone.",
+    "丢弃": "Discard",
+    "已丢弃任务分支": "Task branch discarded",
+    "合并失败：": "Merge failed: ",
+    "丢弃失败：": "Discard failed: ",
+
+    // —— 连接/QR ——
+
+    // —— 经验库 ——
+
+    // —— 模型绑定 ——
+
+    // —— 智能体管理 ——
+
+    // —— 模型管理 - 编辑 ——
+
+    // —— 添加供应商表单 ——
+
+    // —— 流程管理 ——
+
+    // —— 编排设置 ——
+
+    // —— 任务 ——
+
+    // —— 多源/批量 ——
+
+    // —— 连接错误/重试 ——
+
+    // —— 角色表里角色名 ——
+
+    // —— 状态/控制 ——
+
+    // —— 流程表单 ——
+
+    // —— 运行中指挥（详情页消息信箱）——
+    "运行中指挥": "Steer this run",
+    "补充说明或纠偏，将随下一条智能体步骤下达；可直接粘贴截图": "Add guidance or corrections — delivered with the next agent step; screenshots can be pasted directly",
+    "附件": "Attach",
+    "下达指令": "Send",
+    "（仅附件）": "(attachment only)",
+    "附件：": "Files: ",
+    "将在下一个步骤开始前送达执行者": "Will reach the agent before the next step",
+    "指令已入箱，将在下一个步骤下达": "Directive queued — it will be delivered with the next step",
+    "发送失败：": "Send failed: ",
+    "附件上传失败：": "Upload failed: ",
+    "读取文件失败": "Failed to read file",
+    "：超过 8MB，已跳过": ": over 8MB, skipped",
+    "附件最多 ": "Max ",
+    "移除": "Remove",
+    "已暂停：指令入箱，放行后随下一步送达": "Paused — your directive is queued and will be delivered once resumed",
+    "已随步骤送达：": "Delivered with step: ",
+    "蜂巢工作台": "Hive workbench",
+    "在岗": "busy",
+    "全部空闲": "all idle",
+    "工作中": "working",
+    "开始于 ": "started at ",
+    "该步骤无日志": "No log for this step",
+    "规划": "Plan", "起草": "Draft", "评审": "Review", "修订": "Revise",
+    "打磨": "Polish", "合成": "Merge", "实现": "Implement", "执行": "Run",
+    "进行中": "active",
+    "已暂停：当前步骤跑完后挂起": "Paused — will suspend after the current step finishes",
+    "已放行，继续执行": "Resumed",
+    "操作失败：": "Operation failed: ",
+    "暂停": "Pause",
+    "继续执行": "Resume",
+
+    // —— 新建任务：附件与代码版本 ——
+    "也可直接粘贴截图": "or paste a screenshot directly",
+    "添加附件：截图/文本/代码/PDF 等，创建任务时落盘到工作目录 _attachments/": "Add attachments — screenshots/text/code/PDF; saved to the task workdir under _attachments/ on creation",
+    "附件最多 12 个": "Up to 12 attachments",
+    "不支持的附件类型：": "Unsupported file type: ",
+    "附件超过：": "Attachment over the size limit: ",
+    "附件超过 8MB：": "Attachment over 8MB: ",
+    "添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/": "Add attachments — screenshots / text / Word·Excel·PPT / PDF (8MB normal, 24MB Office); saved to the task workdir under _attachments/ on creation",
+    "读取失败": "Failed to read",
+    "代码版本": "Code version",
+    "不切换（用当前分支 %1）": "Keep current branch %1",
+    "分支": "Branches",
+    "标签": "Tags",
+    "最近提交": "Recent commits",
+    "当前分支 %1 @ %2": "Current branch %1 @ %2",
+    "；工作区有 %1 处未提交改动": "; %1 uncommitted change(s)",
+    "；运行时将从「%1」检出任务分支 tutti/&lt;任务ID&gt;": "; a task branch tutti/<task-id> will be checked out from \"%1\" before the run",
+
+    // —— 补：index.html data-i18n 漏的 key ——
+    "打开任务详情": "Open task details",
+    "收起任务详情": "Hide task details",
+    "还没有可展示的任务详情": "No task details to show yet",
+    " 个": " ",
+    " 个任务": " tasks",
+    " 个任务目录": " task directories",
+    " 个来源": " sources",
+    " 个步骤": " steps",
+    " 条": " runs",
+    " / 共 ": " / of ",
+    "只看该类": "Show only this category",
+    "该分类下暂无教训": "No lessons in this category yet",
+    " 条运行中的记录已保留（请先取消再清除）。": " active runs were kept (cancel them first).",
+    " 条运行记录（含全部日志与报告）？不可恢复。": " running records (with all logs and reports)? This cannot be undone.",
+    " 条（1 个主模型 + ": " entries (1 primary model + ",
+    " 条；另有 ": " removed; another ",
+    " 模型": " models",
+    " 次 · ": " runs · ",
+    " 第": " #",
+    " 轮对话上下文）": " turns of context)",
+    " 字": " chars",
+    " 章": " ch",
+    " 万": "0,000",
+    " 亿": "00,000,000",
+    " 主": "Pri",
+    " 备": "Bk",
+    "（": " (",
+    "）": ")",
+    "：": ": ",
+    "，续接时 CLI 将在该目录下启动": "; the CLI will start in that directory when resuming",
+    "，跳过重复 ": ", skipped duplicates ",
+    "，更新 ": ", updated ",
+    "，留空=不改）": "; leave blank to keep unchanged)",
+    "，可点「升级」更新。": ". Click Upgrade to install it.",
+    "；已迁移 ": "; migrated ",
+    "？\n\n将执行：\n": "?\n\nWill run:\n",
+    " tokens · 调用 ": " tokens · calls ",
+    " · 今天": " · today",
+    " · 其他/缓存 ": " · other/cache ",
+    " · 已停用": " · disabled",
+    " · 缓存 ": " · cache ",
+    " · 缓存/其他 ": " · cache/other ",
+    " · 自定义": " · custom",
+    " · 输出 ": " · output ",
+    "　总 ": "　Total ",
+    "　无用量": "　No usage",
+    "　每章 ": "　per chapter ",
+    "　|　": "　|　",
+    "　维度：": "　Rubric: ",
+    "　阈值：": "　Threshold: ",
+    "：输入 ": ": input ",
+    "：输出 ": ": output ",
+    "：缓存 ": ": cache ",
+    "：其他/缓存 ": ": other/cache ",
+    "：调用 ": ": calls ",
+    "）\n调用 ": ")\nCalls ",
+    " 分钟前": " min ago",
+    " 小时前": " hours ago",
+    " 天前": " days ago",
+    " 昨天": " yesterday",
+    " 刚刚": " just now",
+    "（已有 ": "(already ",
+    "%（失败 ": "% (failed ",
+    "「": "\"",
+    "」将变为只读。": "\" will become read-only.",
+    "」恢复为内置默认配置？": "\" restored to built-in defaults?",
+    "」控制中（点击接管）": "\" is in control (click to take over)",
+    "」？已有任务不受影响。": "\"? Existing tasks are not affected.",
+    "」？\n停用后它的绑定会回落为 CLI 默认；配置与模型列表保留，可随时再启用。": "\"?\nOnce disabled, its binding reverts to CLI defaults; config and model list are kept and can be re-enabled anytime.",
+    "」？\n刷新 / 重新导入模型列表都不会再带回，可在分组底部「恢复全部」找回。": "\"?\nRefresh or re-import won't bring it back; you can recover from \"Restore all\" at the bottom of the group.",
+    "任务": "Tasks",
+    "运行记录": "Runs",
+    "运行详情": "Run detail",
+    "用量统计": "Usage",
+    "智能体管理": "Agents",
+    "模型接入": "Models",
+    "CLI 绑定": "CLI bindings",
+    "编排设置": "Orchestrator",
+    "经验库": "Skill library",
+    "皮肤": "Skins",
+    "手机连接": "Phone link",
+    "设置": "Settings",
+    "多端控制权": "Multi-device control",
+    "时间范围": "Time range",
+    "明暗模式": "Theme",
+    "主": "Primary",
+    "备": "Backup",
+    "通用": "General",
+    "已连接": "Connected",
+    "连接失败": "Disconnected",
+    "重连中…": "Reconnecting…",
+    "运行中": "Running",
+    "排队中": "Queued",
+    "完成": "Done",
+    "失败": "Failed",
+    "已取消": "Cancelled",
+    "提交中…": "Submitting…",
+    "保存中…": "Saving…",
+    "导入中…": "Importing…",
+    "测试中…": "Testing…",
+    "正在刷新…": "Refreshing…",
+    "正在刷新全部模型列表…": "Refreshing all model lists…",
+    "正在查询远端最新版本…": "Checking the latest version…",
+    "无法判断是否有更新。": "Cannot determine whether an update is available.",
+    "已是最新版本（": "Already up to date (",
+    "发现新版本：": "New version found: ",
+    "需要访问令牌": "Access token required",
+    "令牌不正确或已更换，请重新输入": "Token invalid or rotated. Please re-enter it.",
+    "未选厂商": "No provider",
+    "未获取": "Not fetched",
+    "未获取到可用的连接地址": "No connection URLs available",
+    "未设置": "Not set",
+    "未知": "Unknown",
+    "（未知）": "(unknown)",
+    "保存": "Save",
+    "关闭": "Close",
+    "取消": "Cancel",
+    "确定": "OK",
+    "确认": "Confirm",
+    "确认操作": "Confirm",
+    "是": "Yes",
+    "否": "No",
+    "启用": "Enable",
+    "停用": "Disable",
+    "停用供应商": "Disable provider",
+    "停用供应商「": "Disable provider \"",
+    "停用所选 ": "Disable the selected ",
+    "启用供应商": "Enable provider",
+    "启用所选 ": "Enable the selected ",
+    "删除": "Delete",
+    "删除任务": "Delete task",
+    "删除记录": "Delete record",
+    "删除所选 ": "Delete the selected ",
+    "删除模型「": "Delete model \"",
+    "删除自定义流程「": "Delete custom flow \"",
+    "删除该供应商（绑定会自动解绑）？": "Delete this provider (bindings will be detached)?",
+    "删除该任务及其全部运行记录（含日志与报告）？不可恢复。": "Delete this task and all its runs (logs and reports)? This cannot be undone.",
+    "删除该运行记录（含全部日志与报告）？不可恢复。": "Delete this run (with logs and reports)? This cannot be undone.",
+    "删除这条教训？": "Delete this lesson?",
+    "删除全部已结束的运行记录（运行中的会保留）": "Delete all finished runs (active ones are kept)",
+    "清除全部运行记录（含日志与报告）？运行中的记录会保留，需先取消。不可恢复。": "Clear all runs (logs and reports)? Active runs are kept — cancel them first. This cannot be undone.",
+    "全选": "Select all",
+    "全不选": "Select none",
+    "取消选择": "Clear selection",
+    "勾选以批量删除": "Tick to bulk delete",
+    "勾选可批量删除": "Tick to bulk delete",
+    "取消归档": "Unarchive",
+    "归档": "Archive",
+    "重命名任务": "Rename task",
+    "重试任务": "Retry task",
+    "↻ 重试任务": "↻ Retry task",
+    "✎ 编辑重试": "✎ Edit & retry",
+    "超时": "Timeout",
+    "取回原任务的目标/目录/评审设置，修改后提交即重新开跑": "Reload this task's goal/directory/review settings into the form — edit and submit to run again",
+    "打开详情": "Open detail",
+    "打开工作目录": "Open working directory",
+    "复制工作目录路径": "Copy workdir path",
+    "复制日志目录路径": "Copy log path",
+    "新建任务到该目录": "New task in this folder",
+    "查看文件": "Browse files",
+    "该目录下暂无文件": "No files in this directory",
+    "移除该文件夹": "Remove this folder",
+    "该目录下的任务都在运行/排队中，暂不能移除": "All tasks in this folder are running/queued; can't remove yet",
+    "把该文件夹下 %1 个任务移出侧栏？文件与运行记录不会删除，可在侧栏「显示已归档」开关找回。": "Move %1 task(s) in this folder out of the sidebar? Files and run records are kept — restore via the 'Show archived' toggle in the sidebar.",
+    "（另有 %1 个运行中任务保留原位）": " (%1 running task(s) stay in place)",
+    "导入": "Import",
+    "导入供应商": "Import providers",
+    "导入选中": "Import selected",
+    "添加供应商": "Add provider",
+    "手动添加供应商": "Add provider manually",
+    "从本机各 AI 工具导入供应商": "Import from local AI tools",
+    "重新拉取": "Reload",
+    "全部重新拉取模型列表": "Reload all model lists",
+    "获取模型列表": "Fetch model list",
+    "升级": "Upgrade",
+    "检查更新": "Check update",
+    "安装": "Install",
+    "卸载": "Uninstall",
+    "冒烟": "Smoke",
+    "冒烟测试": "Smoke test",
+    "恢复全部": "Restore all",
+    "恢复所选 ": "Restore the selected ",
+    "查看日志": "View log",
+    "收起日志": "Hide log",
+    "＋ 添加": "＋ Add",
+    "收起": "Collapse",
+    "引用选中": "Quote selection",
+    "把选中的正文作为引用填进下方指挥框": "Quote the selected passage into the steering box below",
+    "请先在预览正文里选中一段文字": "Select a passage in the preview first",
+    "找不到指挥输入框": "Steering input not found",
+    "已引用进指挥框，补一句意见即可下达": "Quoted into the steering box — add a note and send",
+    "＋ 新任务": "＋ New task",
+    "搜索任务": "Search tasks",
+    "展开全部": "Expand all",
+    "收起全部": "Collapse all",
+    "无匹配任务": "No matching tasks",
+    " 个任务待裁决": " tasks pending verdict",
+    "执行「": "Execute \"",
+    "」？": "\"?",
+    "把「": "Restore \"",
+    "（用供应商默认模型）": " (use provider default)",
+    "（用 CLI 默认模型）": " (use CLI default model)",
+    "（按供应商/难度自动解析）": " (auto by provider/difficulty)",
+    "名称": "Name",
+    "默认模型": "Default model",
+    "API 地址": "API endpoint",
+    "密钥": "API key",
+    "简单任务模型": "Easy-task model",
+    "困难任务模型": "Hard-task model",
+    "难度路由 · 简单": "Difficulty routing · easy",
+    "难度路由 · 困难": "Difficulty routing · hard",
+    "继续会话": "Resume session",
+    "目标": "Goal",
+    "工作目录": "Working directory",
+    "类型": "Type",
+    "上下文": "Context",
+    "编排模式": "Orchestration mode",
+    "任务标题": "Task title",
+    "验证命令": "Verify command",
+    "稿件文件（合并稿）": "Manuscript file (merged)",
+    "评审轮数": "Review rounds",
+    "发布阈值（全书）": "Publish threshold (whole book)",
+    "评审维度（逗号分隔，可自定义）": "Review dimensions (comma-separated; custom OK)",
+    "连载模式：章节数（空 = 单稿件一次成文）": "Serial: chapters (blank = single draft)",
+    "每章约字数": "Approx. words per chapter",
+    "实现者": "Implementer",
+    "评审组": "Reviewers",
+    "管理": "Manage",
+    "管理任务类型：新增/编辑自定义流程": "Manage task types: add/edit custom flows",
+    "要完成什么，一句话即可": "What's the goal? One sentence is enough.",
+    "背景信息、约束、相关文件（可空）": "Background, constraints, related files (optional)",
+    "留空则保存到：": "Leave blank to save to: ",
+    "选择…": "Browse…",
+    "保存并运行": "Save and run",
+    "创建并运行": "Create and run",
+    "高级选项（默认全智能，无需改动）": "Advanced (smart defaults — leave as-is)",
+    "智能": "Smart",
+    "手动": "Manual",
+    "智能（推荐）：自动拆解 + 智能路由 + 失败自动修复/换将": "Smart (recommended): auto-decompose + smart routing + auto-fix/swap on failure",
+    "手动：自行指定实现者与评审组": "Manual: pick implementer and reviewers yourself",
+    "代码引擎": "Code engine",
+    "评审引擎": "Review engine",
+    "实现 → 验证 → 评审": "Implement → verify → review",
+    "起草 → 多维评审 → 门禁": "Draft → multi-dim review → gate",
+    "实现": "Implement",
+    "起草": "Draft",
+    "大纲": "Outline",
+    "规划": "Plan",
+    "评审": "Review",
+    "修订": "Revise",
+    "修复": "Fix",
+    "合并": "Merge",
+    "验证": "Verify",
+    "连通测试": "Connectivity",
+    "全局评审": "Global review",
+    "AI修复": "AI fix",
+    "编排者 · 直连API": "Orchestrator · direct API",
+    "Codex CLI": "Codex CLI",
+    "Claude Code": "Claude Code",
+    "Qwen CLI": "Qwen CLI",
+    "OpenCode": "OpenCode",
+    "Aider": "Aider",
+    "自定义 CLI": "Custom CLI",
+    "已归档": "Archived",
+    "已停用": "Disabled",
+    "正在刷新模型列表…": "Refreshing model list…",
+    "无任务": "No tasks yet",
+    "暂无任务": "No tasks yet",
+    "暂无运行记录": "No runs yet",
+    "尚无步骤": "No steps yet",
+    "暂无供应商——点上方「导入」。": "No providers yet — click \"Import\" above.",
+    "没有匹配「": "No matches for \"",
+    "」的供应商。": "\".",
+    "没有可扫描的来源。": "No scannable sources.",
+    "没有已归档任务": "No archived tasks",
+    "请填写名称": "Please enter a name",
+    "请至少选择一个来源。": "Please select at least one source.",
+    "请先在下拉里选择一个模型（要清除配置请手动编辑配置文件）。": "Pick a model from the dropdown first (to clear it, edit the config file manually).",
+    "该供应商没有可用模型（或全部被停用）。": "This provider has no available models (or all are disabled).",
+    "保存失败：": "Save failed: ",
+    "操作失败：": "Operation failed: ",
+    "删除失败：": "Delete failed: ",
+    "排序失败：": "Reorder failed: ",
+    "刷新失败：": "Refresh failed: ",
+    "批量删除失败：": "Bulk delete failed: ",
+    "获取失败：": "Fetch failed: ",
+    "清除失败：": "Clear failed: ",
+    "重命名失败：": "Rename failed: ",
+    "重试失败：": "Retry failed: ",
+    "恢复失败：": "Restore failed: ",
+    "检查失败：": "Check failed: ",
+    "失败：": "Failed: ",
+    "日志读取失败: ": "Log read failed: ",
+    "日志读取失败：": "Log read failed: ",
+    "复制失败，请手动选择地址": "Copy failed, please select the URL manually",
+    "确定执行安装？命令来自 data/catalog.json，可在管理页查看。": "Run install? The command comes from data/catalog.json and is shown on the management page.",
+    "确定取消该运行？": "Cancel this run?",
+    "确定卸载 ": "Uninstall ",
+    "新建自定义流程": "New custom flow",
+    "流程已保存": "Flow saved",
+    "已删除": "Deleted",
+    "已恢复默认": "Restored to default",
+    "🧩 任务类型管理": "🧩 Task types",
+    "编辑流程：": "Edit flow: ",
+    "任务类型管理": "Task types",
+    "控制空闲：执行任意操作即可自动接管": "Idle: any write action will take control",
+    "你在控制（点击释放）": "You are in control (click to release)",
+    "接管控制权？「": "Take over control? \"",
+    "其他设备": "Other device",
+    "尚未选择编排者供应商\n点击到「编排设置」，从已接入的厂商里选一个": "No orchestrator provider yet\nClick \"Orchestrator\" to pick one",
+    "编排者供应商：": "Orchestrator provider: ",
+    "编排者配置已保存": "Orchestrator config saved",
+    "回应正常": " responded normally",
+    "\n点击到「编排设置」更换": "\nClick \"Orchestrator\" to change it",
+    "默认保存路径已更新：": "Default save path updated: ",
+    "当前生效：": "Currently in effect: ",
+    "（内置默认，尚未自定义）": " (built-in default, not customized)",
+    "已保存：最大并发 ": "Saved: max concurrent jobs = ",
+    "总 Tokens": "Total tokens",
+    "调用次数": "Calls",
+    "累计费用": "Total cost",
+    "单次均值": "Avg / call",
+    "活跃天数": "Active days",
+    "成功率 ": "Success ",
+    "活跃日均 ": "Active-day avg ",
+    "累计调用时长 ": "Total duration ",
+    "缓存命中率 ": "Cache hit rate ",
+    "按工具（CLI / API）": "By tool (CLI / API)",
+    "按智能体": "By agent",
+    "按模型": "By model",
+    "按步骤角色": "By step role",
+    "按任务类型": "By task type",
+    "今天": "Today",
+    "近 7 天": "Last 7 days",
+    "近 30 天": "Last 30 days",
+    "全部": "All",
+    "输入": "Input",
+    "输出": "Output",
+    "缓存/其他": "Cache / other",
+    "缓存": "Cache",
+    "其他": "Other",
+    "协议 · ": "protocol · ",
+    "经典": "Classic",
+    "深海": "Deep sea",
+    "森野": "Forest",
+    "暖阳": "Amber",
+    "霓虹": "Neon",
+    "高对比": "High contrast",
+    "夜间": "Dark",
+    "日间": "Light",
+    "黑白灰 + 蓝色强调，ChatGPT 式清爽配色（默认）": "Black/white/gray with blue accent — clean ChatGPT style (default)",
+    "藏青底色 + 天蓝强调，夜间长时间盯任务更沉静": "Navy background with sky-blue accent — calm for long sessions in dark mode",
+    "墨绿底色 + 青翠强调，偏自然的护眼配色": "Ink-green with emerald accent — natural and easy on the eyes",
+    "暖棕底色 + 琥珀强调，纸感暖调": "Warm brown with amber accent — paper-like warmth",
+    "暗紫底色 + 品红强调，霓虹感强": "Deep purple with magenta — bold neon feel",
+    "纯黑 / 纯白 + 硬边框、去阴影，弱视与强光环境更清晰": "Pure black/white, hard borders, no shadows — clear for low vision or bright light",
+    "已换肤：": "Skin changed: ",
+    "皮肤 / 换肤": "Skin",
+    "皮肤 / 换肤：多套配色，各含日间与夜间": "Skin: each set has both light and dark variants",
+    "切换日间 / 夜间主题": "Toggle light/dark theme",
+    "收起 / 展开侧栏": "Collapse / expand sidebar",
+    "编排": "Orchestration",
+    "配置": "Config",
+    "外观": "Appearance",
+    "远程": "Remote",
+    "返回 CodeBee": "Back to CodeBee",
+    "多智能体编排台": "Multi-agent Orchestrator",
+    "CodeBee · 多智能体编排台": "CodeBee · Multi-agent Orchestrator",
+    "📱 手机连接": "📱 Phone link",
+    "解析失败": "Parse failed",
+    "无可用配置": "No usable config",
+    "未找到": "Not found",
+    "未找到配置": "Config not found",
+    "未找到该智能体的本地会话": "No local sessions for this agent",
+    "扫描失败：": "Scan failed: ",
+    "导入失败：": "Import failed: ",
+    "发现 ": " found ",
+    "已选 ": "Selected: ",
+    "新增 ": " added ",
+    "（加载中…）": "(loading…)",
+    "（扫描失败）": "(scan failed)",
+    " 个供应商？": " providers?",
+    " 个供应商？\n停用后其绑定会回落为 CLI 默认；配置与模型列表都保留，可随时再启用。": " providers?\nOnce disabled, their bindings revert to CLI defaults; config and model lists are kept and can be re-enabled anytime.",
+    " 个供应商？\n相关 CLI 绑定会自动解绑，此操作不可撤销。": " providers?\nRelated CLI bindings will be detached. This cannot be undone.",
+    " 个模型？": " models?",
+    " 个模型？\n停用只影响编排选模，不删除配置。": " models?\nDisable only affects orchestration picks — config is kept.",
+    " 个模型？\n刷新 / 重新导入都不会再带回，可在「已删除」里恢复。": " models?\nRefresh or re-import won't bring them back; you can recover from the \"Deleted\" section.",
+    " 个模型？\n它们会重新启用并自动置顶。": " models?\nThey will be re-enabled and pinned to the top.",
+    "停用（不影响配置，仅编排选模跳过）": "Disable (config kept — only skipped by orchestrator)",
+    "勾选以批量操作": "Tick for bulk actions",
+    "拖动调整优先级": "Drag to reorder",
+    "已删除 ": " deleted models (won't return on refresh)",
+    "（拖动 ☰ 调序；启用的排最前）": "(drag ☰ to reorder; enabled ones come first)",
+    "（过滤中，拖拽排序暂停）": "(filtering — drag-to-reorder paused)",
+    " 全选": " select all",
+    "（筛选后 ": "(filtered ",
+    " 个）": " shown)",
+    " 个模型": " models",
+    " 个模型（刷新不会再带回）": " deleted models (won't return on refresh)",
+    " 个）：": "):",
+    " 没有匹配「": " no matches for \"",
+    " 个运行中/迁移失败）": " skipped (running or migration failed)",
+    "路由依据：": "Routing basis: ",
+    "编排计划 ": "Orchestration plan ",
+    "运行结束后生成": "Generated after the run finishes",
+    "本次运行没有在工作目录里产出新文件。": "This run produced no new files in the working directory.",
+    "成品文件": "Artifacts",
+    "成品": "Artifacts",
+    "步": "steps",
+    "● 实时": "● LIVE",
+    "已结束": "Ended",
+    "刚刚更新 ": "updated ",
+    "停在底部自动跟随新输出；上翻回看时不动": "Stay at the bottom to follow new output; scrolling up freezes the view",
+    "共 ": "Total ",
+    " 个文件": " files",
+    "（仅显示最近 200 个）": " (showing only the latest 200)",
+    "删除所选": "Delete selected",
+    "条；另有 ": " removed; another ",
+    "查看全部 ": "View all ",
+    " 次运行 · ": " runs · ",
+    " 步": " steps",
+    "暂无步骤，点击查看": "No steps yet — click to view",
+    " 编辑流程：": " Edit flow: ",
+    "（预置）": "(built-in)",
+    "已复制，手机浏览器粘贴打开即可": "Copied — paste in your phone browser to open",
+    "已复制：": "Copied: ",
+    "手机相机扫码即自动登录（地址已含访问令牌，扫一次永久记住）。\n局域网地址要求手机与电脑连同一 WiFi；Tailscale 地址出门也能用，\n两端需登录同一 Tailscale 账号。手机控制时另一端自动变为只读，可在顶栏接管。\n连不上时（如路由器重启后地址变了）回电脑重新打开此弹框扫新码即可。": "Scan with your phone camera to log in (the URL embeds the access token — one scan remembers it).\nLAN requires the phone and computer on the same WiFi; Tailscale works anywhere as long as both devices are signed into the same Tailscale account.\nWhen the phone is in control, the computer becomes read-only — take over from the top bar.\nIf it can't connect (e.g. the IP changed after a router reboot), re-open this dialog on the computer and scan the new QR.",
+    "复制地址": "Copy URL",
+    "启用中": "Enabled",
+    "条": " entries",
+    "（暂无，跑一次任务后自动生成）": " (none yet — generated after the first run)",
+    " 出现 ": " seen ",
+    " 次": " times",
+    " 已注入 ": " injected ",
+    "运行时模型链（跨厂商，最多 3 条）": "Runtime model chain (cross-provider, max 3 entries)",
+    "链先生效（覆盖「按难度自动选模型」）；主模型瞬态失败自动降级到下一条——可以是另一家厂商。": "Chain wins (overrides \"auto-pick by difficulty\"); if the primary fails transiently, the next entry takes over — possibly a different provider.",
+    "已注入该厂商凭据": "Injects this provider's credentials",
+    "还没有可用模型——先到「模型接入」页导入供应商并获取模型列表。": "No available models — import a provider and fetch the model list on the \"Models\" page first.",
+    "勾选该 CLI 编排运行时的模型（可跨供应商混选）：第 1 条是主模型，其余按顺序作降级备选，每条自带该供应商的凭据注入。": "Pick the models this CLI uses at runtime (cross-provider is OK): the first is primary, the rest are fallbacks in order. Each entry carries its provider's credentials.",
+    "最多选 3 条（1 个主模型 + 2 个降级备选）。": "Up to 3 entries (1 primary + 2 fallbacks).",
+    "有未保存改动": "Unsaved changes",
+    "未安装": "Not installed",
+    "有新版本 ": "New version ",
+    "已是最新": "Up to date",
+    "该渠道无法自动检查": "Cannot auto-check this channel",
+    "检查更新中…": "Checking for updates…",
+    "预置": "Built-in",
+    "自定义": "Custom",
+    "已改": "Edited",
+    "恢复默认": "Restore default",
+    "还没有该智能体的管理操作记录（先点升级/安装/冒烟测试）。": "No management actions recorded for this agent yet (try upgrade / install / smoke test first).",
+    "安装命令待配置（编辑 data/catalog.json）": "Install command not configured (edit data/catalog.json)",
+    "已写入：": "Saved: ",
+    "仅管理": "Management only",
+    "参与编排": "Join orchestration",
+    "版本 ": "Version ",
+    " → <b>": " → <b>",
+    "（已是最新版本，无需升级）": " (already up to date — no upgrade needed)",
+    "（等待输出…安装/下载阶段可能有一段静默期）": " (waiting for output… install/download may be silent for a while)",
+    "（无输出）": " (no output)",
+    "（尚无输出）": " (no output yet)",
+    "完整运行": "Full run",
+    "编辑供应商配置（地址 / 密钥 / 难度模型）": "Edit provider config (endpoint / key / difficulty models)",
+    "尚未获取模型列表——点上方「获取模型列表」。": "Model list not fetched — click \"Fetch model list\" above.",
+    "按名称过滤模型…": "Filter models by name…",
+    " 协议 · ": " protocol · ",
+    "API 地址必须以 http:// 或 https:// 开头": "API endpoint must start with http:// or https://",
+    "保存后会自动拉取该供应商的模型列表（未填密钥时跳过）。": "The provider's model list will be fetched automatically after saving (skipped if no API key).",
+    "评审引擎（起草 → 多维评审 → 修订 → 门禁）": "Review engine (draft → multi-dim review → revise → gate)",
+    "代码引擎（实现 → 验证 → 评审 → 修复）": "Code engine (implement → verify → review → fix)",
+    "流程 ID（留空 = 按名称自动生成）": "Flow ID (blank = auto-generated from name)",
+    "进阶设置（可留空，走引擎默认）": "Advanced (blank uses engine defaults)",
+    "产出文件名": "Output filename",
+    "发布阈值（1-10）": "Publish threshold (1-10)",
+    "评审轮数（1-5）": "Review rounds (1-5)",
+    "评审维度（逗号分隔）": "Review dimensions (comma-separated)",
+    "连载章节数（留空 = 单稿件）": "Chapters (blank = single draft)",
+    "起草提示词（可选，占位符 __FILE__ __GOAL__ __CONTEXT__ __SKILLS__）": "Draft prompt (optional; placeholders __FILE__ __GOAL__ __CONTEXT__ __SKILLS__)",
+    "评审提示词（可选，占位符 __DIMKEYS__ __MANUSCRIPT__）": "Critique prompt (optional; placeholders __DIMKEYS__ __MANUSCRIPT__)",
+    "一句话说明（显示在流程列表）": "One-line description (shown in flow list)",
+    "连载 ": "Serial ",
+    " 编辑": " Edit",
+    " 恢复默认": " Restore default",
+    " 删除": " Delete",
+    " 章</span>": " ch</span>",
+    " 连载 ": " serial ",
+    " 维度：": " rubric: ",
+    " 阈值：": " threshold: ",
+    " 每章 ": " per chapter ",
+    "（不使用编排者）": " (no orchestrator)",
+    "编排者供应商": "Orchestrator provider",
+    "编排者模型": "Orchestrator model",
+    "启用编排者（规划 / 难度判定 / 写作大纲）": "Enable orchestrator (plan / difficulty / outline)",
+    "测试连通": "Test connection",
+    "先选一个供应商再测试连通": "Pick a provider first",
+    "当前配置不生效：请检查供应商密钥、启停状态与模型选择。": "Current config is not active: check the API key, enabled state, and model selection.",
+    "最大并发任务数（多任务同时跑、互不打扰）": "Max concurrent tasks (run in parallel, fully isolated)",
+    "1 · 串行": "1 · serial",
+    "1 = 串行排队；建议 2-4。每个任务在独立线程执行，运行数据按任务隔离。": "1 = serial queue; 2-4 recommended. Each task runs in its own thread; data is isolated per task.",
+    "默认保存路径（新建任务未指定工作目录时使用；支持 ~）": "Default save path (used when a new task doesn't specify one; ~ supported)",
+    "保存时把「旧默认路径下」的现有任务目录迁移到新路径（运行中的跳过；手动指定的目录不受影响）": "When saving, migrate existing task directories under the old default path to the new one (skip running tasks; manually specified paths are untouched)",
+    "不沿用（全新开始）": "Don't resume (fresh start)",
+    " —— 不支持会话恢复 ——": " —— Resume not supported —— ",
+    "（无法续接旧会话）": " (cannot resume old sessions)",
+    " 的会话": "'s sessions",
+    "选择会话": "Pick session",
+    "（未找到该智能体的本地会话）": "(no local sessions for this agent)",
+    "该会话属于 ": "This session belongs to ",
+    "已创建，跳转运行页…": "Created — switching to the run page…",
+    "继续连载": "Resume serial",
+    " 暂无任务——在上面输入一句话目标开始。": " No tasks yet — enter a one-line goal above to start.",
+    "勾选要导入的来源。导入只读取这些工具的配置，不会改动它们本身；\n已导入过的供应商会原地更新（保留你设置的模型与启停状态）。": "Tick the sources to import. Only reads their configs — does not modify them.\nAlready-imported providers are updated in place (preserving your model and enable/disable settings).",
+    "：未找到配置": ": config not found",
+    "：解析失败：": ": parse failed: ",
+    "": "",
+    "连接中断，正在重试（": "Connection lost, retrying (",
+    "连接中…": "Connecting…",
+    "要完成什么？": "What do you want to accomplish?",
+    "一句话目标即可 —— CodeBee 自动拆解、智能路由、执行、验证并跨厂商评审。": "A one-line goal is enough — CodeBee auto-decomposes, routes, executes, verifies, and cross-vendor reviews.",
+    "最近任务": "Recent tasks",
+    "全部清除": "Clear all",
+    "取消运行": "Cancel run",
+    "报告": "Report",
+    "统计所有真实 LLM 调用：编排各角色步骤（规划/实现/评审/修订…）、编排者直连 API、连通性冒烟与 AI 修复；mock 智能体与本地验证不计入。": "Counts all real LLM calls: orchestration roles (plan / implement / review / revise…), direct orchestrator API, connectivity smoke tests, AI fixes. Mock agents and local verifications are excluded.",
+    "加载中…": "Loading…",
+    "每日趋势（输入 / 缓存 / 输出 token）": "Daily trend (input / cache / output tokens)",
+    "最近调用": "Recent calls",
+    "智能体目录": "Agent catalog",
+    "重新加载 catalog": "Reload catalog",
+    "恢复默认 catalog": "Restore default catalog",
+    "已安装": "Installed",
+    "可安装": "Installable",
+    "供应商": "Providers",
+    "＋": "＋",
+    "CodeBee 编排运行时的模型都在这里配：模型链可跨厂商混搭——每条自带供应商注入（API key + 地址），第 1 条是主模型、其余按顺序降级，瞬态错误自动切到下一条（可能是另一家厂商）。链空则按供应商默认 / 难度自动选。只影响 CodeBee 发起的调用，不改写 CLI 全局配置（要改默认模型请到「智能体管理」页）。": "Models used by CodeBee at runtime are configured here: the model chain can mix providers — each entry carries its provider's injection (API key + endpoint); the first is primary, the rest are fallbacks, and transient errors auto-switch to the next (possibly a different provider). An empty chain falls back to provider default / difficulty. This only affects calls initiated by CodeBee, not the CLI's global config (to change the default model, go to \"Agents\").",
+    "内置规范包": "Built-in rule packs",
+    "运行中自动学到的教训": "Auto-learned lessons",
+    "「编排者」是 CodeBee 自己的智能体：直连 API 供应商的模型（不占 CLI 会话），统一负责任务规划拆解、难度判定与写作大纲。未启用或调用失败时自动回落为「最强可用 CLI 智能体」规划，流程永不阻塞。": "The \"Orchestrator\" is CodeBee's own agent — it talks directly to provider APIs (no CLI session), handling task planning, difficulty scoring, and writing outlines. When disabled or failing, it falls back to the strongest available CLI agent for planning — the flow never blocks.",
+    "运行设置": "Runtime settings",
+    "（电脑上启动 CodeBee 时控制台会显示，形如 http://192.168.x.x:8765/?token=xxxxxxxx）": "(Shown in the console when you start CodeBee on the computer — looks like http://192.168.x.x:8765/?token=xxxxxxxx)",
+    "软件": "Software",
+    "关于与更新": "About & Updates",
+    "显示已归档": "Show archived",
+    "返回": "Back",
+    "基于此任务新建": "New from this task",
+    "暂停": "Pause",
+    "自动沉淀的教训": "Auto-learned lessons",
+    "升级到新版": "Upgrade to new version",
+    "重启服务生效": "Restart to apply",
+    "升级会通过 npm 拉取最新版并自动执行（日志可在运行记录里实时查看）；完成后点「重启服务生效」，页面会自动重连。开发仓库（git clone）模式不提供自动升级，请用 git pull。": "Upgrading pulls the latest version via npm and applies it automatically (logs stream into Runs). When finished, click \"Restart to apply\" — the page reconnects on its own. Dev repos (git clone) don't support auto-upgrade; use git pull.",
+    "搜索供应商…": "Search providers…",
+    "例 E:\\GoOut\\workspace": "e.g. E:\\GoOut\\workspace",
+    "访问令牌": "Access token",
+    "任务检查器": "Task inspector",
+    "完成/待裁决提示音": "Sound on completion / pending verdict",
+    "进入": "Enter",
+    "明暗": "Theme",
+    "手机连接（扫码用手机打开 CodeBee）": "Phone link (scan QR to open CodeBee on your phone)",
+
+    // —— 设置 - 自动化 ——
+    "自动化": "Automation",
+    "按计划自动运行任务，或在需要时随时执行。": "Run tasks on a schedule, or trigger them anytime.",
+    "新建定时任务": "New scheduled task",
+    "创建一个按计划自动运行的任务": "Create a task that runs on a schedule",
+    "重新拉取任务列表": "Reload the task list",
+    "刷新": "Refresh",
+    "任务筛选": "Filter tasks",
+    "定时任务模板": "Scheduled task templates",
+    "每天 ": "Every day at ",
+    "每 ": "Every ",
+    " 小时": " hours",
+    "每": "Each ",
+    "周一": "Mon", "周二": "Tue", "周三": "Wed", "周四": "Thu",
+    "周五": "Fri", "周六": "Sat", "周日": "Sun",
+    " 执行一次": " (runs once)",
+    "未设置节奏": "No schedule",
+    "拉起失败": "Launch failed",
+    "已错过": "Missed",
+    "正常": "OK",
+    "启用 / 停用": "Enable / disable",
+    "流程：": "Flow: ",
+    "下次运行 ": "Next run ",
+    "已运行 ": "Ran ",
+    "立即执行": "Run now",
+    "编辑": "Edit",
+    "加载失败：服务未连接": "Failed to load: service not connected",
+    "没有符合条件任务": "No tasks match the filter",
+    "还没有定时任务——点右上「新建定时任务」，或从下面的模板一键创建。": "No scheduled tasks yet — click “New scheduled task” at the top right, or create one from a template below.",
+    "用此模板": "Use template",
+    "暂无模板": "No templates",
+    "例：每日仓库巡检": "e.g. Daily repo inspection",
+    "执行内容": "Prompt",
+    "到点要完成什么，一句话或分步说明均可": "What should run when due — one line or step-by-step",
+    "留空 = 默认保存路径；或填绝对路径": "Empty = default save path; or an absolute path",
+    "每天": "Daily",
+    "每隔 N 小时": "Every N hours",
+    "每周": "Weekly",
+    "仅一次": "Once",
+    "流程": "Flow",
+    "默认流程": "Default flow",
+    "时间": "Time",
+    "间隔小时（1-720）": "Interval hours (1-720)",
+    "星期几": "Day of week",
+    "执行时间": "Run at",
+    "到点自动把执行内容作为一个新任务跑起来；错过的一次性任务不补跑。": "When due, the prompt runs as a new task; missed one-time tasks are not re-run.",
+    "编辑定时任务": "Edit scheduled task",
+    "请填写执行内容": "Please fill in the prompt",
+    "请选择执行时间": "Please pick a run time",
+    "定时任务已更新": "Scheduled task updated",
+    "定时任务已创建，到点自动运行": "Scheduled task created — it will run on time",
+    "上次拉起失败，请先检查工作目录 / 流程配置后再试": "Last launch failed — check the workdir / flow settings, then try again",
+    "已开始执行，可在任务树查看新运行": "Started — see the new run in the task tree",
+    "删除定时任务「": "Delete scheduled task \"",
+    "」？已产生的运行记录不受影响。": "\"? Existing run records are not affected.",
+
+    // —— 设置 - 插件市场 ——
+    "插件市场": "Plugin market",
+    "用经验包为 CodeBee 扩展写作与工程守则，一键装进经验库。": "Extend CodeBee with experience packs for writing and engineering rules — one click into the skill library.",
+    "搜索插件…": "Search plugins…",
+    "分类": "Category",
+    "安装状态": "Install state",
+    "未安装": "Not installed",
+    "全部分类": "All categories",
+    "全部流程": "All flows",
+    "适用：": "Applies to: ",
+    "约 ": "about ",
+    "字": "chars",
+    "已内置": "Built-in",
+    "没有符合条件插件": "No plugins match the filters",
+    "该插件已安装过": "Already installed",
+    "安装成功，可到「经验库」查看": "Installed — see it in the skill library",
+    "卸载该插件？它会从经验库中移除。": "Uninstall this plugin? It will be removed from the skill library.",
+    "已卸载": "Uninstalled",
+  };
+
+  // ---------- 工具 ----------
+  function getLang() {
+    try {
+      const v = localStorage.getItem(LANG_KEY);
+      if (v === "en") return "en";
+    } catch (e) { /* 隐私模式忽略 */ }
+    return "zh";
+  }
+
+  function setLang(lang) {
+    try { localStorage.setItem(LANG_KEY, lang === "en" ? "en" : "zh"); } catch (e) { /* ignore */ }
+    document.documentElement.dataset.lang = lang === "en" ? "en" : "zh";
+  }
+
+  // t(key, ...args)：en 模式查表 + {0}/{1} 占位替换；zh 模式或未命中直接返回 key
+  function t(key) {
+    if (key == null) return "";
+    const lang = getLang();
+    if (lang === "en") {
+      const v = EN[key];
+      if (v != null) {
+        let s = v;
+        for (let i = 1; i < arguments.length; i++) {
+          s = s.split("{" + (i - 1) + "}").join(String(arguments[i]));
+        }
+        return s;
+      }
+    }
+    let s = String(key);
+    for (let i = 1; i < arguments.length; i++) {
+      s = s.split("{" + (i - 1) + "}").join(String(arguments[i]));
+    }
+    return s;
+  }
+
+  // applyI18n：处理 data-i18n / data-i18n-ph / data-i18n-title / data-i18n-aria
+  //   - data-i18n：替换元素内的文本（保留 SVG/图标等元素子节点；图标+文字混合按钮也能用）
+  //   - data-i18n-ph：placeholder
+  //   - data-i18n-title：title
+  //   - data-i18n-aria：aria-label
+  function setElementText(el, text) {
+    // 合并所有直接 text node：优先保留「有内容」的那个作落点，其余删除。
+    // 图标+文字混合按钮常带前导空白（<button>\n  <svg/>标签），若固定保留第一个
+    // text node，标签会被塞进 svg 之前的空白里，文字跑到图标左边（布局翻转）。
+    let firstText = null;
+    for (const n of Array.from(el.childNodes)) {
+      if (n.nodeType !== Node.TEXT_NODE) continue;
+      if (!firstText && n.textContent.trim()) firstText = n;
+    }
+    if (!firstText) {
+      for (const n of Array.from(el.childNodes)) {
+        if (n.nodeType === Node.TEXT_NODE) { firstText = n; break; }
+      }
+    }
+    for (const n of Array.from(el.childNodes)) {
+      if (n.nodeType === Node.TEXT_NODE && n !== firstText) n.remove();
+    }
+    if (firstText) firstText.textContent = text;
+    else el.appendChild(document.createTextNode(text));
+  }
+
+  function applyI18n(root) {
+    const scope = root || document;
+    scope.querySelectorAll("[data-i18n]").forEach((el) => {
+      setElementText(el, t(el.dataset.i18n));
+    });
+    scope.querySelectorAll("[data-i18n-ph]").forEach((el) => {
+      el.setAttribute("placeholder", t(el.dataset.i18nPh));
+    });
+    scope.querySelectorAll("[data-i18n-title]").forEach((el) => {
+      el.setAttribute("title", t(el.dataset.i18nTitle));
+    });
+    scope.querySelectorAll("[data-i18n-aria]").forEach((el) => {
+      el.setAttribute("aria-label", t(el.dataset.i18nAria));
+    });
+  }
+
+  // 暴露
+  window.t = t;
+  window.setLang = setLang;
+  window.getLang = getLang;
+  window.applyI18n = applyI18n;
+  window.I18N_EN = EN;
+
+  // 首次设置 html lang 属性
+  document.documentElement.dataset.lang = getLang();
+  document.documentElement.lang = getLang() === "en" ? "en" : "zh-CN";
+
+  // DOM 已就绪时自动 apply：index.html 里所有 data-i18n 元素立即拿到译文
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => applyI18n());
+  } else {
+    applyI18n();
+  }
+})();

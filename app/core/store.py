@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import secrets
 import shutil
@@ -78,7 +79,15 @@ def create_task(payload):
         raise ValueError("目标描述不能为空")
     title = title or goal.splitlines()[0][:30]  # 标题可省略，自动取目标首行
     if not workdir:
-        raise ValueError("工作目录不能为空")
+        # 未指定目录 → 用「默认保存路径」（设置里可改；内置回落 <data 同级>/workspace）。
+        # 默认路径允许自动创建；用户显式给的目录仍必须已存在。
+        from . import settings as settings_mod
+        workdir = settings_mod.default_workdir()
+        wd = Path(workdir)
+        try:
+            wd.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise ValueError("默认保存路径不可用: %s（%s）" % (workdir, e))
     wd = Path(workdir)
     if not wd.is_absolute():
         raise ValueError("工作目录必须是绝对路径")
@@ -98,9 +107,20 @@ def create_task(payload):
         "mode": mode,
         "difficulty": difficulty,
         "implementer": payload.get("implementer") or "",
+        "attachments": [],
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "status": "created",
     }
+    # 代码版本：仅当引用合法才固化（流水线执行前据此检出任务分支）
+    from . import gitmod
+    git_rev = (payload.get("git_rev") or "").strip()
+    if git_rev:
+        # 前端下拉值带 kind 前缀（branch:main / tag:v1 / commit:abc），此处归一为纯 rev；
+        # git 分支/标签名本身允许含冒号（罕见），前缀剥离只认这三种已知 kind
+        git_rev = re.sub(r"^(branch|tag|commit):", "", git_rev)
+        if not gitmod.valid_rev(git_rev):
+            raise ValueError("非法的代码版本引用：%s" % git_rev[:40])
+        task["git_rev"] = git_rev
     if flow["engine"] == "code":
         task["verify_command"] = (payload.get("verify_command") or "").strip()
     else:
@@ -129,13 +149,34 @@ def create_task(payload):
         serial = payload.get("serial") if isinstance(payload.get("serial"), dict) else flow.get("serial")
         if isinstance(serial, dict) and serial.get("chapters"):
             try:
-                task["serial"] = {
-                    "chapters": max(2, min(20, int(serial["chapters"]))),
+                s = {
+                    # 续写批次允许只续 1 章，下限放宽到 1（全新连载仍由前端约束 ≥2）
+                    "chapters": max(1, min(20, int(serial["chapters"]))),
                     "words_per_chapter": max(500, min(8000,
                                                       int(serial.get("words_per_chapter") or 2500))),
                 }
             except Exception:
-                pass
+                s = None
+            if s:
+                # 续写：从 start_chapter 章接着写（章节文件/步骤/评分都用全书章号）；
+                # continues 指向上一批任务，生成大纲时回溯前情保证剧情衔接
+                try:
+                    sc = max(1, min(500, int(serial.get("start_chapter") or 1)))
+                except Exception:
+                    sc = 1
+                if sc > 1:
+                    s["start_chapter"] = sc
+                cont = str(serial.get("continues") or "").strip()
+                if re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", cont) and get_task(cont):
+                    s["continues"] = cont
+                # 同章多稿赛马（dev-3.0）：1=关；2-3 = 每章并行起草 N 稿评审择优
+                try:
+                    v = max(1, min(3, int(serial.get("variants") or 1)))
+                except Exception:
+                    v = 1
+                if v > 1:
+                    s["variants"] = v
+                task["serial"] = s
     critics = payload.get("critics")
     if isinstance(critics, list) and critics:
         task["critics"] = [str(c) for c in critics]
@@ -148,6 +189,25 @@ def create_task(payload):
         proj = str(resume.get("project") or "")[:260]
         if proj:
             task["resume"]["project"] = proj
+    # 附件：把待提交文件移入工作目录 _attachments/，清单注入 context（__CONTEXT__ 全链路可见）。
+    # 两种形态：字符串 id = 待提交区文件（新建任务）；dict 清单 = 已落盘的附件
+    # （继续连载/重试沿用同目录同文件，直接复制清单，不再移文件）。
+    att_ids = payload.get("attachments")
+    if isinstance(att_ids, list) and att_ids:
+        from . import attachments as att_mod
+        items = [a for a in att_ids if isinstance(a, dict) and a.get("path")]
+        if not items:  # 纯 id 形态 → 从待提交区移入工作目录
+            try:
+                items = att_mod.commit_to_workdir(
+                    str(wd), [str(x) for x in att_ids][:att_mod.MAX_FILES])
+            except Exception as e:
+                raise ValueError("附件落盘失败: %s" % e)
+        if items:
+            task["attachments"] = items
+            blk = att_mod.context_block(items)
+            # 复制清单场景下 context 已含附件块（随旧任务沿用），别重复追加
+            if blk and "## 附件材料" not in task["context"]:
+                task["context"] = (task["context"] + blk).strip()
     with LOCK:
         _TASKS[task["id"]] = task
         _save_json(paths.TASKS_DIR / (task["id"] + ".json"), task)
@@ -200,6 +260,49 @@ def list_tasks(limit=100, archived=None):
         return out
 
 
+def migrate_task_workdirs(old_root, new_root):
+    """把「旧默认保存路径」下的任务目录搬到新默认路径下，并更新任务记录。
+
+    只动位于 old_root 内部的任务目录（当初由默认路径自动放置的）；用户显式
+    指定的其他目录一律不碰。运行中/排队中的任务跳过（工作目录正被使用）。
+    返回 (移动数, 跳过数)。
+    """
+    oldp = Path(old_root).resolve()
+    newp = Path(new_root).resolve()
+    if oldp == newp:
+        return 0, 0
+    moved = skipped = 0
+    with LOCK:
+        for tid in sorted(_TASKS.keys()):
+            t = _TASKS[tid]
+            wd = str(t.get("workdir") or "").strip()
+            if not wd:
+                continue
+            try:
+                wdp = Path(wd).resolve()
+                rel = wdp.relative_to(oldp)
+            except (ValueError, OSError):
+                continue  # 不在旧默认路径下：不碰
+            if t.get("status") in ("queued", "running"):
+                skipped += 1
+                continue
+            if not wdp.is_dir():
+                continue
+            target = newp / rel
+            if target.exists():
+                target = newp / (rel.name + "_migrated_" + tid[-4:])
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(wdp), str(target))
+            except Exception:
+                skipped += 1
+                continue
+            t["workdir"] = str(target)
+            _save_json(paths.TASKS_DIR / (tid + ".json"), t)
+            moved += 1
+    return moved, skipped
+
+
 def load_all():
     with LOCK:
         for p in paths.TASKS_DIR.glob("*.json"):
@@ -245,7 +348,7 @@ def create_run(kind, title, task_id=None, entry_id=None, op=None):
         "kind": kind,  # orchestration | mgmt
         "title": title,
         "task_id": task_id, "entry_id": entry_id, "op": op,
-        "status": "queued", "steps": [],
+        "status": "queued", "steps": [], "messages": [],
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "started_at": None, "ended_at": None,
         "cost_usd": 0.0, "tokens": 0, "error": "",
@@ -286,6 +389,110 @@ def latest_run_by_task():
             if cur is None or r["id"] > cur["id"]:
                 best[tid] = r
         return {tid: dict(r) for tid, r in best.items()}
+
+
+def task_run_stats():
+    """每个任务的运行次数与步骤总数（全量扫描，不受 run 窗口限制）。
+
+    侧栏「查看全部 N 次运行 · M 步」的计数来源——从窗口里数会因刷屏/窗口滑动而算错。
+    """
+    with LOCK:
+        stats = {}
+        for r in _RUNS.values():
+            tid = r.get("task_id")
+            if not tid:
+                continue
+            s = stats.setdefault(tid, {"runs": 0, "steps": 0})
+            s["runs"] += 1
+            s["steps"] += len(r.get("steps") or [])
+        return stats
+
+
+def task_runs(task_id):
+    """某任务的全部运行（新→旧，含 steps）。任务级详情视图用，按需拉全量。"""
+    with LOCK:
+        runs = [dict(r) for r in _RUNS.values() if r.get("task_id") == task_id]
+    runs.sort(key=lambda r: r["id"], reverse=True)
+    return runs
+
+
+def task_side(task_id):
+    """任务检查器（右缘停靠列）的轻量聚合：最新 run 摘要 + 进度步骤 +
+    git 分支/裁决状态 + 变更行级统计 + 成品文件。
+
+    刻意不带 diff 文本与消息历史——面板每 2s 轮询一次，响应必须保持 KB 级；
+    diff 按需走 /api/runs/<id> 单拉。任务不存在返回 None。
+
+    变更统计取双路径：任务运行中 → 实时 numstat（工作区正检出在任务分支，
+    未提交改动即产物）；已结束 → 读最新 run 的 changes 快照（finalize 已把
+    产物提交进任务分支并切回，实时统计恒为 0，只能用落盘快照）。
+    """
+    task = get_task(task_id)
+    if not task:
+        return None
+    runs = task_runs(task_id)
+    latest = runs[0] if runs else None
+    steps = (latest or {}).get("steps") or []
+    done = sum(1 for s in steps if s.get("status") == "done")
+    current = next((s for s in steps if s.get("status") == "running"), None)
+    active = bool(latest) and latest.get("status") in ("queued", "running")
+    # 分支上下文取最近一次带 git 信息的 run（重试/续跑会带出同一任务分支）
+    git = {}
+    for r in runs:
+        if r.get("git"):
+            git = {k: r["git"].get(k) for k in
+                   ("rev", "branch", "commit", "from_branch", "base_commit",
+                    "restored", "restore_error")}
+            break
+    git["state"] = task.get("git_state") or ""
+    changes = {"count": 0, "add_total": None, "del_total": None, "files": []}
+    if active:
+        from . import gitmod
+        live = gitmod.collect_changes(task.get("workdir"))
+        changes["count"] = len(live.get("files") or [])
+        changes["add_total"] = live.get("add_total") or 0
+        changes["del_total"] = live.get("del_total") or 0
+        changes["files"] = [
+            {"status": f.get("status"), "path": f.get("path"),
+             "add": f.get("add") or 0, "del": f.get("del") or 0}
+            for f in (live.get("files") or [])[:50]]
+        git["branch"] = git.get("branch") or gitmod.branch_name(task_id)
+    elif latest is not None:
+        snap = latest.get("changes") or {}
+        snap_files = snap.get("files") or []
+        changes["count"] = len(snap_files)
+        changes["add_total"] = snap.get("add_total")
+        changes["del_total"] = snap.get("del_total")
+        changes["files"] = [
+            {"status": f.get("status"), "path": f.get("path"),
+             "add": f.get("add"), "del": f.get("del")}
+            for f in snap_files[:50]]
+    total_steps = sum(len(r.get("steps") or []) for r in runs)
+    # 成品口径闸：任务一步都没跑出来过（如历次都在检出前失败）→ 工作目录里的
+    # 文件变动全是并行活动的噪音，不算这个任务的成品
+    wd, arts = run_artifacts(latest["id"], limit=50) if (latest and total_steps > 0) else ("", [])
+    return {
+        "task": {k: task.get(k) for k in ("id", "title", "status", "workdir", "git_state",
+                                          "git_rev")},
+        "run": ({k: latest.get(k) for k in ("id", "status", "cost_usd", "tokens", "error",
+                                            "created_at", "started_at", "ended_at")}
+                if latest else None),
+        "progress": {"total": len(steps), "done": done,
+                     "current": ({k: current.get(k) for k in
+                                  ("n", "role", "agent_label", "summary", "status")}
+                                 if current else None)},
+        "steps": [{k: s.get(k) for k in ("n", "role", "agent_label", "summary",
+                                         "status", "duration_s", "log")}
+                  for s in steps[:20]],
+        "git": git,
+        "changes": changes,
+        "workdir": wd,
+        "files": arts,
+        "stats": {"runs": len(runs),
+                  "steps": total_steps,
+                  "cost_usd": sum(float(r.get("cost_usd") or 0) for r in runs),
+                  "tokens": sum(int(r.get("tokens") or 0) for r in runs)},
+    }
 
 
 def update_run(run_id, expected_status=None, **fields):
@@ -352,7 +559,27 @@ def recover_orphaned_runs():
                    ended_at=now,
                    error="interrupted at startup (auto-recovered)")
         recovered += 1
-    if recovered:
+    # 步骤级兜底：终态 run 里卡在 queued/running 的步骤落「已取消」。
+    # 既清崩溃遗留，也清取消收尾修复前的僵尸步骤（运行已取消、格子永转）；
+    # 进行中的 run 不碰——其步骤是活流程，收尾由 pipeline._run_step 负责。
+    healed = 0
+    step_now = time.strftime("%H:%M:%S")
+    with LOCK:
+        for r in _RUNS.values():
+            if r.get("status") not in ("done", "failed", "cancelled"):
+                continue
+            changed = False
+            for s in r.get("steps") or []:
+                if s.get("status") in ("queued", "running"):
+                    s["status"] = "cancelled"
+                    s["ended_at"] = s.get("ended_at") or step_now
+                    if not s.get("summary"):
+                        s["summary"] = "步骤未正常收尾（取消/中断自动恢复）"
+                    changed = True
+            if changed:
+                _save_json(paths.RUNS_DIR / r["id"] / "run.json", r)
+                healed += 1
+    if healed:
         bump_state()
     return recovered
 
@@ -368,20 +595,49 @@ def run_workdir(run_id):
 
 _SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".idea", ".vscode"}
 
+# 构建产物/依赖缓存目录：里面的文件是工具链再生成的，不是任务成品
+_BUILD_DIRS = {
+    "target", "build", "dist", "out", "bin", "obj",           # 通用构建输出
+    "surefire", "failsafe-reports", "test-output", "reports",  # 测试/报告输出
+    ".next", ".nuxt", ".output", ".gradle", ".gradle-home",    # 前端/Gradle
+    "__MACOSX",
+}
 
-def run_artifacts(run_id, limit=50):
-    """列一次 run 的「成品文件」：工作目录里在该 run 开始之后新产生/修改过的文件。
 
-    返回 (workdir, files)；files 按 mtime 新→旧，name 为工作目录内相对路径，
-    已跳过 .git / node_modules 等噪音目录，最多 limit 个。
+def task_first_start(task_id, fallback=""):
+    """该任务最早一次运行的开始时间（含回退：任务创建时间 → 指定回退值）。"""
+    stamps = []
+    with LOCK:
+        for r in _RUNS.values():
+            if r.get("task_id") == task_id:
+                stamps.append(str(r.get("started_at") or r.get("created_at") or ""))
+    task = get_task(task_id) if task_id else None
+    if task:
+        stamps.append(str(task.get("created_at") or ""))
+    stamps.append(str(fallback or ""))
+    best = ""
+    for s in stamps:
+        if s and (not best or s < best):
+            best = s
+    return best
+
+
+def run_artifacts(run_id, limit=200):
+    """列一次运行的「成品文件」：工作目录里自该任务首次运行以来新产生/修改的文件。
+
+    断点续跑会拆成多条 run，只按本 run 过滤会漏掉早期章节；这里以「任务首跑」
+    为起点。返回 (workdir, files)；files 按 mtime 新→旧，name 为工作目录内
+    相对路径，已跳过 .git / 隐藏目录 / node_modules / target 等构建产物目录，
+    最多 limit 个。
     """
     wd = run_workdir(run_id)
     if not wd:
         return "", []
     run = get_run(run_id) or {}
-    t0 = str(run.get("started_at") or run.get("created_at") or "")
+    t0 = task_first_start(run.get("task_id") or "",
+                           run.get("started_at") or run.get("created_at") or "")
     try:
-        t0 = time.mktime(time.strptime(t0, "%Y-%m-%d %H:%M:%S"))
+        t0 = time.mktime(time.strptime(t0, "%Y-%m-%d %H:%M:%S")) - 1
     except Exception:
         t0 = 0
     root = Path(wd)
@@ -394,6 +650,12 @@ def run_artifacts(run_id, limit=50):
                 continue
             if any(part in _SKIP_DIRS for part in p.parts):
                 continue
+            if any(part in _BUILD_DIRS for part in p.parts[:-1]):
+                continue
+            # 隐藏目录一律是工具过程文件（.mimocode/.zcode/.claude/.codex…），
+            # 不是成品；按前缀通排，免得每来一个新 agent CLI 就补一次白名单
+            if any(part.startswith(".") for part in p.parts[:-1]):
+                continue
             try:
                 st = p.stat()
             except OSError:
@@ -402,12 +664,85 @@ def run_artifacts(run_id, limit=50):
                 continue
             files.append({"name": str(p.relative_to(root)).replace("\\", "/"),
                           "size": st.st_size, "mtime": int(st.st_mtime)})
-            if len(files) >= 400:  # 防超大目录拖垮接口；截断后再排序取最新
+            if len(files) >= 800:  # 防超大目录拖垮接口；截断后再排序取最新
                 break
     except OSError:
         pass
     files.sort(key=lambda f: -f["mtime"])
     return wd, files[:limit]
+
+
+def task_step_count(task_id):
+    """该任务所有 run 的步骤总数（含进行中）。
+
+    成品口径的闸：一步都没跑出来过的任务（历次都在检出等前置环节失败）
+    没有成品可言，工作目录里的文件变动全是并行活动的噪音。
+    """
+    if not task_id:
+        return 0
+    return sum(len(r.get("steps") or []) for r in task_runs(task_id))
+
+
+# ---------------------------------------------------------------- 故事圣经（story-bible.md）
+
+BIBLE_FILE = "story-bible.md"
+BIBLE_MAX_CHARS = 20000
+
+
+def _bible_path(workdir):
+    """工作目录内圣经文件绝对路径；目录穿越直接返回 None（不读外面任何东西）。"""
+    wd = str(workdir or "").strip()
+    if not wd or not os.path.isdir(wd):
+        return None
+    root = Path(wd).resolve()
+    p = (root / BIBLE_FILE).resolve()
+    if root != p and root not in p.parents:
+        return None
+    return p
+
+
+def read_story_bible(task_id):
+    """读取任务工作目录里的故事圣经。返回 (文件路径, 文本内容, None) 或
+    (None, None, 错误信息)。"""
+    from . import store as _self
+    task = get_task(task_id)
+    if not task:
+        return None, None, "任务不存在"
+    p = _bible_path(task.get("workdir"))
+    if p is None:
+        return None, None, "工作目录不存在或路径越界"
+    try:
+        if p.is_file():
+            return str(p), p.read_text(encoding="utf-8", errors="replace"), None
+        return str(p), "", None   # 文件未创建：空内容
+    except OSError as e:
+        return None, None, "读取失败: %s" % e
+
+
+def write_story_bible(task_id, text):
+    """写入故事圣经到任务工作目录。守卫：
+    - 任务不存在/工作目录越界 → 拒绝；
+    - 任务正在运行（queued/running）→ 拒绝（圣经是中流砥柱，运行中不能换骨架）；
+    - 文本超长（BIBLE_MAX_CHARS）→ 拒绝；
+    - 写入失败 → 报错。
+    返回 (ok, 错误信息)。"""
+    task = get_task(task_id)
+    if not task:
+        return False, "任务不存在"
+    if task.get("status") in ("queued", "running"):
+        return False, "任务正在运行，不能修改故事圣经（请等运行结束后再编辑）"
+    p = _bible_path(task.get("workdir"))
+    if p is None:
+        return False, "工作目录不存在或路径越界"
+    text = (text or "").strip()
+    if len(text) > BIBLE_MAX_CHARS:
+        return False, "故事圣经超长（最大 %d 字符，当前 %d 字符）" % (BIBLE_MAX_CHARS, len(text))
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+        return True, ""
+    except OSError as e:
+        return False, "写入失败: %s" % e
 
 
 def read_run_file(run_id, rel):
@@ -537,6 +872,18 @@ def retry_task(task_id):
             if r.get("task_id") == task_id and r.get("status") in ("queued", "running"):
                 return False, "任务仍在运行中，不能重试", None
         run = create_run("orchestration", task.get("title") or task_id, task_id=task_id)
+        # 运行中指挥继承：旧 run 里未消费的用户纠偏指令带入新 run——
+        # 指令是针对目标的意图，不因一次超时/失败而丢（自动续跑同享）。
+        # 旧 run 的消息保留原样（历史回放可见），新 run 里是未消费副本。
+        inherited = []
+        for prev in _RUNS.values():
+            if prev.get("task_id") != task_id or prev["id"] == run["id"]:
+                continue
+            for m in prev.get("messages") or []:
+                if not m.get("consumed"):
+                    inherited.append(dict(m))
+        if inherited:
+            run["messages"] = inherited[-50:]  # 封顶防多轮重试滚雪球
         if task.get("serial"):
             prev_runs = sorted((r for r in _RUNS.values()
                                 if r.get("task_id") == task_id and r["id"] != run["id"]),
@@ -557,13 +904,166 @@ def retry_task(task_id):
                     run["inherit"] = {
                         "outline": outline,
                         "done_chapters": done,
-                        "chapter_scores": ((prev.get("verdict") or {}).get("chapter_scores") or []),
+                        # 分数优先取 verdict（整轮成功时的最终账）；
+                        # failed/cancelled 的 run 没有 verdict，退回每章实时
+                        # 落账的 chapter_scores——否则多轮失败恢复会把全部
+                        # 已过线章节重新评审（实测一晚白烧数百万 token）
+                        "chapter_scores": ((prev.get("verdict") or {}).get("chapter_scores")
+                                           or prev.get("chapter_scores") or []),
                     }
                     break
         task["status"] = "queued"
         _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
         _save_json(paths.RUNS_DIR / run["id"] / "run.json", run)
     return True, "", run
+
+
+_CH_FILE_RE = re.compile(r"^chapter-(\d{1,4})\.md$")
+
+
+def serial_book_progress(task):
+    """这本书已经写到第几章：工作目录里的 chapter-*.md 是事实标准（续写批次
+    共用同一目录，天然包含全部历史章）；文件缺失时沿 continues 链推算兜底。"""
+    last = 0
+    wd = str(task.get("workdir") or "")
+    if wd:
+        try:
+            for p in Path(wd).glob("chapter-*.md"):
+                m = _CH_FILE_RE.match(p.name)
+                if m:
+                    last = max(last, int(m.group(1)))
+        except OSError:
+            pass
+    if last:
+        return last
+    seen = set()
+    cur = task
+    while cur and cur.get("serial") and cur["id"] not in seen and len(seen) < 20:
+        seen.add(cur["id"])
+        s = cur["serial"]
+        try:
+            start = int(s.get("start_chapter") or 1)
+        except Exception:
+            start = 1
+        runs = task_runs(cur["id"])
+        batch = 0
+        for r in runs:
+            o = r.get("outline")
+            if o and o.get("chapters") and not o.get("degraded"):
+                batch = len(o["chapters"])
+                break
+        # 从没跑过的任务不计入进度：计划章数 ≠ 已写成章数
+        if runs:
+            batch = batch or int(s.get("chapters") or 0)
+        if batch:
+            last = max(last, start + batch - 1)
+        cur = get_task(str(s.get("continues") or ""))
+    return last
+
+
+def continue_info(task_id):
+    """「继续连载」弹框数据：能否续、已写到第几章、默认续几章。任务不存在返回 None。"""
+    task = get_task(task_id)
+    if not task:
+        return None
+    serial = task.get("serial") or {}
+    try:
+        default_ch = int(serial.get("chapters") or 8)
+    except Exception:
+        default_ch = 8
+    info = {"task_id": task_id, "serial": bool(serial),
+            "last_chapter": 0, "default_chapters": default_ch,
+            "words_per_chapter": int(serial.get("words_per_chapter") or 2500),
+            "can": False, "reason": ""}
+    if not serial:
+        info["reason"] = "只有连载任务支持继续连载"
+        return info
+    if task.get("status") in ("queued", "running"):
+        info["reason"] = "任务还在运行中，等结束或取消后再续写"
+        return info
+    for r in _RUNS.values():
+        if r.get("task_id") == task_id and r.get("status") in ("queued", "running"):
+            info["reason"] = "有运行中的记录，请先取消"
+            return info
+    last = serial_book_progress(task)
+    info["last_chapter"] = last
+    if last < 1:
+        info["reason"] = "还没写成任何一章（工作目录里没有 chapter-*.md），先跑完一次连载"
+        return info
+    info["can"] = True
+    return info
+
+
+def continue_task(task_id, chapters=None):
+    """在此基础上新建任务继续连载：沿用目标/上下文/目录/评审设置，从已写到
+    的下一章接着写（章节文件与成书合并按全书章号衔接，旧章不动）。
+    返回 (ok, 错误, 新任务)。"""
+    task = get_task(task_id)
+    if not task:
+        return False, "任务不存在", None
+    info = continue_info(task_id)
+    if not info.get("can"):
+        return False, info.get("reason") or "当前不能继续连载", None
+    serial = task["serial"]
+    try:
+        batch = max(1, min(20, int(chapters or serial.get("chapters") or 8)))
+    except Exception:
+        batch = int(serial.get("chapters") or 8)
+    # 标题：去掉历史「·续N」后缀取根名，按链条代数标 ·续 / ·续2 / ·续3…
+    base_title = re.sub(r"·续\d*$", "", task.get("title") or "").strip() or task_id
+    gen, cur, seen = 0, task, set()
+    while cur and cur["id"] not in seen and len(seen) < 20:
+        seen.add(cur["id"])
+        gen += 1
+        cur = get_task(str((cur.get("serial") or {}).get("continues") or ""))
+    payload = {
+        "type": task["type"],
+        "title": base_title + ("·续" if gen <= 1 else "·续%d" % gen),
+        "goal": task.get("goal") or "",
+        "context": task.get("context") or "",
+        "workdir": task.get("workdir") or "",
+        "mode": task.get("mode") or "auto",
+        "difficulty": task.get("difficulty") or "auto",
+        "implementer": task.get("implementer") or "",
+        "critics": task.get("critics") or [],
+        "manuscript": task.get("manuscript") or "manuscript.md",
+        "threshold": task.get("threshold") or 7.0,
+        "serial": {"chapters": batch,
+                   "words_per_chapter": int(serial.get("words_per_chapter") or 2500),
+                   "start_chapter": info["last_chapter"] + 1,
+                   "continues": task_id},
+    }
+    if serial.get("variants"):   # 赛马配置随链条沿用
+        payload["serial"]["variants"] = serial["variants"]
+    for key in ("draft_prompt", "critique_prompt"):  # 自定义提示词覆盖一并沿用
+        if task.get(key):
+            payload[key] = task[key]
+    try:
+        new = create_task(payload)
+    except ValueError as e:
+        return False, str(e), None
+    return True, "", new
+
+
+def set_task_git_state(task_id, state):
+    """任务分支裁决状态：isolated（有分支待裁决）/ merged / discarded / None（清除）。
+
+    run 检出任务分支时置 isolated，人审合并/丢弃后置终态，新一轮 run 又会
+    重置回 isolated。返回 (ok, 错误信息)。
+    """
+    if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)):
+        return False, "非法的任务 ID"
+    with LOCK:
+        task = _TASKS.get(task_id)
+        if not task:
+            return False, "任务不存在"
+        if state:
+            task["git_state"] = state
+        else:
+            task.pop("git_state", None)
+        _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
+        bump_state()
+    return True, ""
 
 
 def rename_task(task_id, title):
@@ -641,6 +1141,95 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
         _save_json(paths.RUNS_DIR / run_id / "run.json", run)
 
 
+# ---------------------------------------------------------------- 运行中指挥（消息信箱）
+# 用户可在任务运行中往编排者「递话」：文字 + 附件（截图/文件）。消息先进信箱，
+# 下一个智能体步骤开始前由 pipeline drain 出来注入 prompt——不插进正在跑的进程
+# （无头 CLI 没有交互 stdin），而是在最近的轮间安全点生效。consumed 标记防重复注入。
+
+def _ensure_messages(run):
+    if "messages" not in run or not isinstance(run.get("messages"), list):
+        run["messages"] = []
+    return run["messages"]
+
+
+def add_message(run_id, text, sender="本机", attachments=None):
+    """往运行信箱追加一条用户指令。attachments 为已落盘到 workdir 的
+    附件相对路径清单（由 main.py 提交后传入）。返回消息 dict 或 None。"""
+    text = str(text or "").strip()
+    atts = [str(a) for a in (attachments or []) if a][:12]
+    if not text and not atts:
+        return None
+    if len(text) > 4000:
+        text = text[:4000]
+    with LOCK:
+        run = _RUNS.get(run_id)
+        if not run:
+            return None
+        msgs = _ensure_messages(run)
+        if len(msgs) >= 200:  # 信箱封顶：只保留最近 200 条，防 run.json 无限膨胀
+            del msgs[:len(msgs) - 199]
+        msg = {
+            "id": "%06d" % (len(msgs) + 1),
+            "text": text, "sender": str(sender or "")[:24],
+            "attachments": atts,
+            "created_at": time.strftime("%H:%M:%S"),
+            "consumed": False,
+        }
+        msgs.append(msg)
+        _save_json(paths.RUNS_DIR / run_id / "run.json", run)
+        return msg
+
+
+def drain_messages(run_id, consumed_by=None):
+    """取出并标记全部未消费消息（运行中指挥注入点调用）。
+
+    consumed_by：{"step": 步号, "role": 角色}——送达回执，记录指令最终进了
+    哪个步骤，详情页「✓已下达」据此显示去向。返回 [{text,attachments,...}]。"""
+    with LOCK:
+        run = _RUNS.get(run_id)
+        if not run:
+            return []
+        pend = [m for m in _ensure_messages(run) if not m.get("consumed")]
+        if not pend:
+            return []
+        receipt = None
+        if consumed_by:
+            try:
+                receipt = {"step": int(consumed_by.get("step") or 0),
+                           "role": str(consumed_by.get("role") or "")[:40]}
+            except Exception:
+                receipt = None
+        for m in pend:
+            m["consumed"] = True
+            if receipt:
+                m["consumed_by"] = dict(receipt)
+        _save_json(paths.RUNS_DIR / run_id / "run.json", run)
+        return [{"text": m.get("text", ""), "attachments": m.get("attachments", []),
+                 "sender": m.get("sender", ""), "created_at": m.get("created_at", "")}
+                for m in pend]
+
+
+def peek_messages(run_id):
+    """只读未消费消息（不标记）：规划步骤合入上下文用，执行步骤仍会 drain 注入。"""
+    with LOCK:
+        run = _RUNS.get(run_id)
+        if not run:
+            return []
+        return [{"text": m.get("text", ""), "attachments": m.get("attachments", []),
+                 "sender": m.get("sender", ""), "created_at": m.get("created_at", "")}
+                for m in _ensure_messages(run) if not m.get("consumed")]
+
+
+def set_paused(run_id, paused):
+    """暂停/放行：标志位挂在下一个步骤开始前（pipeline 轮间闸门读取）。"""
+    with LOCK:
+        run = _RUNS.get(run_id)
+        if not run:
+            return False
+    update_run(run_id, paused=bool(paused))
+    return True
+
+
 def write_report(run_id, markdown):
     p = paths.RUNS_DIR / run_id / "report.md"
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -661,7 +1250,7 @@ def read_step_log(run_id, rel_path, tail=paths.LOG_TAIL_CHARS):
             return ""
         data = p.read_bytes()
         if len(data) > tail:
-            return "...(已截断)...\n" + runner.decode_output(data[-tail:])
+            return "...(已截断)...\n" + runner.tail_decoded(data, tail)
         return runner.decode_output(data)
     except Exception:
         return ""

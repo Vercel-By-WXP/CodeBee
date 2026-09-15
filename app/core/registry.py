@@ -63,6 +63,9 @@ def _build_agent(entry):
         "env": orch.get("env") or {},
         "argv_template": orch.get("argv_template"),
         "resume_argv_template": orch.get("resume_argv_template"),
+        # 小时级 token 配额（可选，0/缺省=不限）：路由时对本小时用量超标的
+        # 智能体降权（munder-difflin 式配额感知），订阅型 CLI 不至于被单任务打爆
+        "quota_tokens_per_hour": int(orch.get("quota_tokens_per_hour") or 0),
     }
 
 

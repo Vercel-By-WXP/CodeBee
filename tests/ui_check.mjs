@@ -1,6 +1,6 @@
 /* 第 3 轮 UI 验证：Edge headless + CDP（Node 内置 WebSocket，零依赖）。
  * 打开临时服务的页面 → 断言类型下拉由 JS 填充 → 切换各设置页 →
- * 打开流程管理弹框 → 断言编排中枢渲染 → 截图 → 关闭浏览器（清理进程）。 */
+ * 打开流程管理弹框 → 断言编排设置渲染 → 截图 → 关闭浏览器（清理进程）。 */
 import { spawn } from "node:child_process";
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -84,11 +84,11 @@ async function main() {
     check("选 novel → 评审表单区显示", reviewShown === true);
     check("评审维度按流程预填", /情节/.test(rubricFilled || ""), rubricFilled);
 
-    // 3) 编排中枢页：供应商下拉渲染（无供应商时也有「不使用」选项）
+    // 3) 编排设置页：供应商下拉渲染（无供应商时也有「不使用」选项）
     await evalJs(`switchTab("orch"); "ok"`);
     await sleep(1200);
     const orchHtml = await evalJs(`document.getElementById("orch-config").innerHTML`);
-    check("编排中枢渲染编排者表单", /编排者供应商/.test(orchHtml || ""), (orchHtml || "").slice(0, 120));
+    check("编排设置渲染编排者表单", /编排者供应商/.test(orchHtml || ""), (orchHtml || "").slice(0, 120));
     const workers = await evalJs(`document.getElementById("set-workers").value`);
     check("并发数输入框已加载", Number(workers) >= 1 && Number(workers) <= 6, workers);
     await send("Page.captureScreenshot", { format: "png" }).then((r) => {

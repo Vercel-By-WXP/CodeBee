@@ -1,17 +1,43 @@
 # -*- coding: utf-8 -*-
-"""运行设置（data/settings.json）：目前只有并发 worker 数。"""
+"""运行设置（data/settings.json）：并发 worker 数 + 默认保存路径。"""
 from __future__ import annotations
 
 import json
 import threading
+from pathlib import Path
 
 from . import paths
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "settings.json"
 
-DEFAULTS = {"max_concurrent_jobs": 3}
+# default_workdir 为空表示未自定义，用 builtin_workdir() 回落
+DEFAULTS = {"max_concurrent_jobs": 3, "default_workdir": ""}
 MIN_WORKERS, MAX_WORKERS = 1, 6
+
+
+def builtin_workdir():
+    """内置默认保存路径：<data 目录同级>/workspace。"""
+    return str(paths.DATA_DIR.parent / "workspace")
+
+
+def default_workdir():
+    """当前生效的默认保存路径（自定义优先，回落内置值）。"""
+    raw = str(load().get("default_workdir") or "").strip()
+    return raw if raw else builtin_workdir()
+
+
+def _norm_workdir(v):
+    """展开 ~ 并转绝对路径；空值合法（回落内置）。返回 (标准化串, 错误)。"""
+    v = str(v or "").strip()
+    if not v:
+        return "", None
+    if v.startswith("~"):
+        v = str(Path(v).expanduser())
+    p = Path(v)
+    if not p.is_absolute():
+        return "", "默认保存路径必须是绝对路径"
+    return str(p), None
 
 
 def load():
@@ -27,6 +53,9 @@ def load():
         out["max_concurrent_jobs"] = max(MIN_WORKERS, min(MAX_WORKERS, int(out["max_concurrent_jobs"])))
     except Exception:
         out["max_concurrent_jobs"] = DEFAULTS["max_concurrent_jobs"]
+    wd, _ = _norm_workdir(out.get("default_workdir"))
+    out["default_workdir"] = wd
+    out["default_workdir_effective"] = wd if wd else builtin_workdir()
     return out
 
 
@@ -43,8 +72,14 @@ def save(patch):
                 return cur, "max_concurrent_jobs 必须是整数"
             if not MIN_WORKERS <= cur["max_concurrent_jobs"] <= MAX_WORKERS:
                 return cur, "max_concurrent_jobs 取值 %d-%d" % (MIN_WORKERS, MAX_WORKERS)
+        if "default_workdir" in patch:
+            wd, err = _norm_workdir(patch.get("default_workdir"))
+            if err:
+                return cur, err
+            cur["default_workdir"] = wd
         _FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = _FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(_FILE)
+    cur["default_workdir_effective"] = cur["default_workdir"] if cur["default_workdir"] else builtin_workdir()
     return cur, None

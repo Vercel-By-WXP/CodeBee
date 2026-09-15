@@ -95,6 +95,22 @@ class TestStepLogTraversal(BaseTest):
         self.assertEqual(store.read_step_log(run["id"], "../secret.txt"), "")
 
 
+class TestTailDecoded(BaseTest):
+    def runTest(self):
+        from app.core import runner
+        # 切点落在 UTF-8 多字节字符中间时，必须对齐到下一个完整字符，
+        # 否则残缺字节走 GBK 回退被解成乱码（详情页日志出现 ◆ 的根因）
+        mid = "不要在回复里复述或解释正文。".encode("utf-8")
+        raw = b"a" * 1000 + mid + b"b" * 3959  # 切点=len-4000 落在「不」字第 2 字节
+        out = runner.tail_decoded(raw, 4000)
+        self.assertFalse("\ufffd" in out or "◆" in out, repr(out[:20]))
+        self.assertTrue(out.startswith("要在回复里复述或解释正文。"), repr(out[:20]))
+        self.assertTrue(out.endswith("b" * 10))
+        # 短于 tail 不截断
+        self.assertEqual(runner.tail_decoded("中文".encode("utf-8"), 4000), "中文")
+        self.assertEqual(runner.tail_decoded(b"", 4000), "")
+
+
 class TestDeleteRun(BaseTest):
     def runTest(self):
         from app.core import paths, store
@@ -391,6 +407,32 @@ class TestMgmtUninstall(BaseTest):
             self.assertIn("uninstall", bad["error"])
         finally:
             runner.run_process = orig
+
+
+class TestArtifactGate(BaseTest):
+    def runTest(self):
+        """成品口径闸：任务一步都没跑出来过 → 工作目录里的并行改动不算成品。"""
+        from app.core import store
+        wd = self.workdir / "gate-repo"
+        wd.mkdir()
+        task = store.create_task({"type": "code", "title": "口径闸", "goal": "g",
+                                  "workdir": str(wd)})
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        # 模拟并行改动：工作目录里有任务创建之后新写的文件
+        (wd / "someone-elses.md").write_text("并行活动的产物", encoding="utf-8")
+        store.update_task_status(task["id"], "failed")
+
+        # 0 步 → files 被闸掉
+        d = store.task_side(task["id"])
+        self.assertEqual(d["files"], [])
+        self.assertEqual(store.task_step_count(task["id"]), 0)
+
+        # 跑出过步骤（断点续跑/正常完成）→ 文件照常列为成品
+        store.update_run(run["id"], steps=[{"n": 1, "status": "done", "role": "起草",
+                                            "summary": "s", "duration_s": 1}])
+        d2 = store.task_side(task["id"])
+        self.assertTrue(any(f["name"] == "someone-elses.md" for f in d2["files"]))
+        self.assertEqual(store.task_step_count(task["id"]), 1)
 
 
 if __name__ == "__main__":

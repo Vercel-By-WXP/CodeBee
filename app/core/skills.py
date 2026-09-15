@@ -370,6 +370,33 @@ def pack_op(pack_id, op):
 
 # ---------------------------------------------------------------- 注入
 
+def _text_bigrams(text):
+    """中文友好的零依赖关键词：去空白/标点后取字符 bigram 集合。
+    不引入分词依赖，对中文标题/短句的重叠度足够区分相关性。"""
+    t = re.sub(r"[\s\W_]+", "", str(text or ""))
+    return {t[i:i + 2] for i in range(len(t) - 1)}
+
+
+def relevance_top(lessons, task, limit):
+    """任务相关性 top-k（pro-workflow 思想）：教训积累超过注入上限时，
+    按与任务目标/上下文/标题的重叠度选最相关的 limit 条，而不是只看 hits。
+    排序依据在单个 run 内恒定（goal 固定、id 唯一），同一任务字节稳定，
+    不碎供应商前缀缓存。不超过上限时不重排，保持既有 hits 语义。"""
+    if len(lessons) <= limit:
+        return lessons
+    probe = (_text_bigrams((task or {}).get("goal"))
+             | _text_bigrams((task or {}).get("context"))
+             | _text_bigrams((task or {}).get("title")))
+    if not probe:
+        return lessons[:limit]
+
+    def rank(x):
+        grams = _text_bigrams(x.get("title")) | _text_bigrams(x.get("content"))
+        return (-len(probe & grams), x.get("id") or "")
+
+    return sorted(lessons, key=rank)[:limit]
+
+
 def block_for(task, scope_override=None, *, stable_order=False):
     """生成注入提示词的经验块。命中即计数。返回 (文本, 命中的 id 列表)。
 
@@ -397,7 +424,8 @@ def block_for(task, scope_override=None, *, stable_order=False):
             parts.append("### 【%s】\n%s" % (p["name"], txt))
         used.append(p["id"])
 
-    lessons = list_lessons(scope, only_enabled=True)[:MAX_LESSONS_INJECT]
+    lessons = relevance_top(list_lessons(scope, only_enabled=True), task,
+                            MAX_LESSONS_INJECT)
     if lessons:
         if stable_order:
             lessons.sort(key=lambda x: x.get("id") or "")

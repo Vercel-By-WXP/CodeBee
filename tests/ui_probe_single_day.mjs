@@ -77,12 +77,24 @@ async function main() {
         target = list.find((t) => t.type === "page");
       } catch (e) { /* wait */ }
     }
+    if (!target) throw new Error("Edge CDP target 未就绪");
     ws = new WebSocket(target.webSocketDebuggerUrl);
-    await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
+    await new Promise((res, rej) => {
+      const to = setTimeout(() => rej(new Error("ws 连接超时")), 12000);
+      ws.onopen = () => { clearTimeout(to); res(); };
+      ws.onerror = (e) => { clearTimeout(to); rej(new Error("ws 连接失败")); };
+    });
     let seq = 0; const pending = new Map();
     ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data);
       if (m.id && pending.has(m.id)) pending.get(m.id)(m);
+    };
+    const pageErrors = [];
+    ws.onmessage = (ev) => {
+      const m = JSON.parse(ev.data);
+      if (m.method === "Runtime.exceptionThrown")
+        pageErrors.push(String(m.params.exceptionDetails.exception?.description
+          || m.params.exceptionDetails.text).slice(0, 400));
     };
     const send = (method, params = {}) => new Promise((res) => {
       const id = ++seq; pending.set(id, res); ws.send(JSON.stringify({ id, method, params }));
@@ -90,6 +102,7 @@ async function main() {
     const js = async (expr) => (await send("Runtime.evaluate",
       { expression: expr, returnByValue: true, awaitPromise: true })).result?.result?.value;
 
+    await send("Runtime.enable");
     await send("Page.enable");
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(4000);
@@ -104,15 +117,17 @@ async function main() {
       const svg = document.querySelector("#usage-trend svg");
       if (!svg) return { err: "无 svg" };
       const vb = svg.viewBox.baseVal;
-      const rects = [...svg.querySelectorAll("rect")].filter(r => !r.closest(".uc-legend"));
-      const main = rects.filter(r => r.getAttribute("fill") === "var(--accent)");   // 每天 1 根输入主柱
-      const stubs = rects.filter(r => r.getAttribute("fill") === "var(--border-strong)");
-      const xs = [...new Set(main.map(r => Math.round(Number(r.getAttribute("x")))))].sort((a, b) => a - b);
-      const bw = [...new Set(main.map(r => Number(r.getAttribute("width"))))];
-      return { vbW: vb.width, barDays: xs.length, xs, bw, stubCount: stubs.length,
+      const groups = [...svg.querySelectorAll("g.bar")];
+      const txOf = (g) => { const m = /translate\\(([-\\d.]+)[ ,]/.exec(g.getAttribute("transform") || ""); return m ? Number(m[1]) : 0; };
+      const withBar = groups.filter(g => !g.classList.contains("bar-zero"));
+      const xs = [...new Set(withBar.map(txOf))].sort((a, b) => a - b);
+      const bw = [...new Set(withBar.map(g => Number(g.querySelector("rect").getAttribute("width"))))];
+      return { vbW: vb.width, barDays: withBar.length, xs, bw,
+               stubCount: groups.length - withBar.length,
                hasBase: !!svg.querySelector(".uc-base"),
                hasGrid: !!svg.querySelector(".uc-grid"),
-               peak: (svg.querySelector(".uc-max") || {}).textContent || "",
+               peak: (svg.querySelector(".uc-val-max") || {}).textContent || "",
+               vals: [...svg.querySelectorAll("text.uc-val")].map(t => t.textContent),
                labels: [...svg.querySelectorAll("text.uc-x")].map(t => Math.round(Number(t.getAttribute("x")))),
                labelCount: svg.querySelectorAll("text.uc-x").length };
     })()`;
@@ -157,35 +172,45 @@ async function main() {
     await send("Emulation.clearDeviceMetricsOverride");
     await sleep(600);
 
-    // 第 2 轮：补前两天数据 → 切「近 7 天」：3 天有数据的柱子 + 4 个零日占位
+    // 第 2 轮：补前两天数据 → 切「近 7 天」→ 横向构成条：3 个数据行 + 4 个零日行
     appendFileSync(monthFile, [seedRec(dayStr(1), "r4", 900000), seedRec(dayStr(1), "r5", 800),
       seedRec(dayStr(2), "r6", 1200000)].join("\n") + "\n");
     await js(`setUsageDays(7); "ok"`);
     await sleep(2000);
-    const b = await js(dumpBars);
-    check("7 天范围：3 天有柱子", b.barDays === 3, JSON.stringify(b));
-    check("7 天范围：4 个零日基线占位", b.stubCount === 4, "stubs=" + b.stubCount);
-    check("7 天范围：柱宽封顶 ≤ 48", (b.bw || []).every((w) => w <= 48), "bw=" + b.bw);
-    check("7 天范围：有基线和参考虚线", b.hasBase === true && b.hasGrid === true,
-      JSON.stringify({ base: b.hasBase, grid: b.hasGrid }));
-    check("7 天范围：有峰值刻度", /^峰值 /.test(b.peak || ""), b.peak);
-    // 槽位分布：柱子与占位沿全宽均匀分布
-    const spread = b.xs && b.xs.length === 3 ? b.xs[b.xs.length - 1] - b.xs[0] : 0;
-    check("7 天范围：柱子沿全宽均匀分布（跨度 > 150）", spread > 150, "跨度=" + spread + " xs=" + b.xs);
-    // 标签与柱子同槽位居中：labels 前 7 个是日期标签，末 3 个是图例（同样挂 uc-x 类）
-    const dateLabels = (b.labels || []).slice(0, 7);
-    const slotOk = dateLabels.length === 7 && dateLabels.every((lx, i) =>
-      Math.abs(lx - (6 + i * (708 / 7) + (708 / 7) / 2)) < 4);
-    check("7 天范围：标签与柱子槽位对齐（7 个日期标签）", slotOk, "labels=" + b.labels);
-    const labelOk = await js(`(() => {
-      const svg = document.querySelector("#usage-trend svg");
-      const vb = svg.viewBox.baseVal;
-      return [...svg.querySelectorAll("text.uc-x")].every(t => {
-        const bb = t.getBBox();
-        return bb.x >= -1 && bb.x + bb.width <= vb.width + 1;
-      });
+    const rows = await js(`(() => {
+      const wrap = document.querySelector("#usage-trend .usage-rows");
+      if (!wrap) return { err: "无 .usage-rows", html: document.getElementById("usage-trend").innerHTML.slice(0, 120) };
+      const all = [...wrap.querySelectorAll(".ur-row")];
+      return {
+        rows: all.length,
+        data: all.filter(r => r.querySelector(".ur-seg.us-in")).length,
+        zero: all.filter(r => r.classList.contains("zero")).length,
+        today: all.filter(r => r.classList.contains("today")).length,
+        sums: all.map(r => (r.querySelector(".ur-sum") || {}).textContent || ""),
+        legend: wrap.querySelectorAll(".ur-legend i").length,
+        segW: (() => { const first = wrap.querySelector(".ur-row .ur-seg.us-in");
+          return first ? Number(first.style.width.replace("%", "")) : 0; })(),
+      };
     })()`);
-    check("7 天范围：日期标签不越界", labelOk === true, String(labelOk));
+    check("7 天范围：渲染横向构成条（无竖版 svg）", !rows.err, JSON.stringify(rows).slice(0, 150));
+    check("7 天范围：7 行（每天一行）", rows.rows === 7, "rows=" + rows.rows);
+    check("7 天范围：3 个数据行 + 4 个零日行", rows.data === 3 && rows.zero === 4,
+      "data=" + rows.data + " zero=" + rows.zero);
+    check("7 天范围：今天行有加重标记", rows.today === 1, "today=" + rows.today);
+    check("7 天范围：图例 3 项", rows.legend === 3, "legend=" + rows.legend);
+    check("7 天范围：数据行右侧有总量、零日行显示 —",
+      (rows.sums || []).filter(s => s && s !== "—").length === 3, JSON.stringify(rows.sums));
+    check("7 天范围：首行输入段宽度与占比相符（240.6万/总量的 70% 左右）",
+      rows.segW > 55 && rows.segW < 85, "segW=" + rows.segW);
+    // 手机窄屏：横向构成条不得撑出横向滚动
+    await send("Emulation.setDeviceMetricsOverride",
+      { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    await sleep(900);
+    const mobOver2 = await js(`(() => { const d = document.documentElement;
+      return d.scrollWidth > d.clientWidth + 2 ? (d.scrollWidth + ">" + d.clientWidth) : ""; })()`);
+    check("7 天范围：手机窄屏无横向溢出", mobOver2 === "", mobOver2);
+    await send("Emulation.clearDeviceMetricsOverride");
+    await sleep(600);
 
     // 表格对齐：数字列表头必须与该列内容同为右对齐，且右边缘重合
     const misalign = await js(`(() => {
@@ -207,6 +232,7 @@ async function main() {
     check("表格：数字列表头与内容右对齐且边缘重合", Array.isArray(misalign) && misalign.length === 0,
       JSON.stringify(misalign));
 
+    console.log("页面异常:", pageErrors.length ? pageErrors.slice(0, 3).join(" || ") : "无");
     ws.close();
   } finally {
     try { ws && ws.close(); } catch (e) { /* ignore */ }

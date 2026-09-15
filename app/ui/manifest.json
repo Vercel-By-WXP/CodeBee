@@ -1,7 +1,7 @@
 {
-  "name": "Tutti · 多智能体编排台",
-  "short_name": "Tutti",
-  "description": "All agents, one score. 一句话目标，自动拆解、路由、执行、验证与跨厂商评审。",
+  "name": "CodeBee · 多智能体编排台",
+  "short_name": "CodeBee",
+  "description": "All agents, one hive. 一句话目标，自动拆解、路由、执行、验证与跨厂商评审。",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

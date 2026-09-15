@@ -10,9 +10,13 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
+import sys
 import threading
 import time
+import webbrowser
+import zlib
 from pathlib import Path
 
 from . import catalog, paths, runner
@@ -22,6 +26,9 @@ VERSION_TTL = 300  # 版本缓存 5 分钟
 
 _LOCK = threading.RLock()
 _STATE = {"detected": {}, "versions": {}, "detect_ts": 0.0, "detect_ev": None}
+
+# 能自动写入默认模型的 config.format（其余格式只能手动编辑）
+_WRITABLE_FORMATS = ("toml-line", "json", "yaml-line")
 
 
 def _expand(p):
@@ -158,6 +165,119 @@ def _config_path(entry):
     return _safe_config_path(cfg.get("path"))
 
 
+def _yaml_model_path(cfg):
+    """把 config.model_key 的点号路径拆成 (段, 键)；无点号时段为 None（顶层键）。"""
+    key = (cfg.get("model_key") or "model").strip()
+    if "." in key:
+        section, leaf = key.split(".", 1)
+        return section.strip(), leaf.strip()
+    return None, key
+
+
+def _yaml_quote(value):
+    """YAML 双引号标量。必须加引号：模型名可能以 [ 开头（YAML 流序列）或含 #。"""
+    return '"%s"' % value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _yaml_unquote(raw):
+    """取 YAML 标量的值：剥引号、丢行尾注释。引号内的 # 不算注释。"""
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    if s[0] in ("'", '"'):
+        q = s[0]
+        i = 1
+        buf = []
+        while i < len(s):
+            ch = s[i]
+            if q == '"' and ch == "\\" and i + 1 < len(s):
+                nxt = s[i + 1]
+                buf.append('"' if nxt == '"' else ("\\" if nxt == "\\" else nxt))
+                i += 2
+                continue
+            if ch == q:
+                if q == "'" and i + 1 < len(s) and s[i + 1] == "'":  # '' 转义
+                    buf.append("'")
+                    i += 2
+                    continue
+                break
+            buf.append(ch)
+            i += 1
+        return "".join(buf).strip()
+    # 无引号：截断行尾注释（# 前的空白才算注释起始）
+    return re.split(r"\s+#", s, 1)[0].strip()
+
+
+def _yaml_span(lines, section):
+    """定位顶层段的行区间 [start, end)；start 为段名行，其子键在 start+1..end。"""
+    start = None
+    for i, ln in enumerate(lines):
+        m = re.match(r"^([^\s#][^:]*):\s*(.*)$", ln)
+        if not m:
+            continue
+        if m.group(1).strip() == section:
+            start = i
+            continue
+        if start is not None:
+            return start, i
+    if start is None:
+        return None, None
+    return start, len(lines)
+
+
+def _yaml_read_value(text, section, leaf):
+    lines = text.splitlines()
+    if section is None:
+        m = re.search(r"(?m)^%s\s*:\s*(.+?)\s*$" % re.escape(leaf), text)
+        return _yaml_unquote(m.group(1)) or None if m else None
+    start, end = _yaml_span(lines, section)
+    if start is None:
+        return None
+    for ln in lines[start + 1:end]:
+        m = re.match(r"^\s+%s\s*:\s*(.+?)\s*$" % re.escape(leaf), ln)
+        if m:
+            return _yaml_unquote(m.group(1)) or None
+    return None
+
+
+def _yaml_write_value(text, section, leaf, value):
+    """就地写入 YAML 的 section.leaf，保留其余内容、缩进与换行风格。"""
+    eol = "\r\n" if "\r\n" in text else "\n"
+    lines = text.splitlines()
+    quoted = _yaml_quote(value)
+    if section is None:
+        for i, ln in enumerate(lines):
+            if re.match(r"^%s\s*:" % re.escape(leaf), ln):
+                lines[i] = "%s: %s" % (leaf, quoted)
+                break
+        else:
+            lines.append("%s: %s" % (leaf, quoted))
+        return eol.join(lines).rstrip("\r\n") + eol
+    start, end = _yaml_span(lines, section)
+    if start is None:  # 段不存在：整段追加
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append("%s:" % section)
+        lines.append("  %s: %s" % (leaf, quoted))
+        return eol.join(lines).rstrip("\r\n") + eol
+    for i in range(start + 1, end):
+        m = re.match(r"^(\s+)%s\s*:" % re.escape(leaf), lines[i])
+        if m:  # 键已存在：只换值，保留原缩进
+            lines[i] = "%s%s: %s" % (m.group(1), leaf, quoted)
+            return eol.join(lines).rstrip("\r\n") + eol
+    indent, last = "  ", start  # 段存在但无该键：跟随段内缩进、追加到段尾
+    for i in range(start + 1, end):
+        if not lines[i].strip():
+            continue
+        if indent == "  ":
+            m = re.match(r"^(\s+)\S", lines[i])
+            if m:
+                indent = m.group(1)
+        last = i
+    lines.insert(last + 1, "%s%s: %s" % (indent, leaf, quoted))
+    return eol.join(lines).rstrip("\r\n") + eol
+
+
 def read_model(entry):
     path = _config_path(entry)
     cfg = entry.get("config") or {}
@@ -182,18 +302,20 @@ def read_model(entry):
     if cfg["format"] == "jsonc":
         m = re.search(r'"model"\s*:\s*"([^"]+)"', text)
         return m.group(1) if m else None
+    if cfg["format"] == "yaml-line":
+        return _yaml_read_value(text, *_yaml_model_path(cfg))
     return None
 
 
 def write_model(entry, model):
-    """写入默认模型（改动前自动备份 .bak）。仅支持 toml-line / json 两种格式。"""
+    """写入默认模型（改动前自动备份 .bak）。支持 toml-line / json / yaml-line。"""
     path = _config_path(entry)
     cfg = entry.get("config") or {}
     fmt = cfg.get("format")
     if not path:
         return {"ok": False,
                 "error": "配置路径无效或不在用户主目录内，已拒绝写入"}
-    if fmt not in ("toml-line", "json"):
+    if fmt not in _WRITABLE_FORMATS:
         return {"ok": False, "error": "该工具的模型配置格式暂不支持自动写入，请手动编辑 %s" % path}
     model = (model or "").strip()
     if not model:
@@ -210,6 +332,11 @@ def write_model(entry, model):
     try:
         if os.path.isfile(path):
             shutil.copyfile(path, path + ".bak")
+        elif fmt == "yaml-line":
+            # dsh 首次运行只建 profiles/sessions/storages，不建 settings.yaml；
+            # 该文件正是用户层覆盖的落点，缺了就按需创建（否则模型永远写不进去）
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_bytes(b"")
         if fmt == "toml-line":
             text = open(path, encoding="utf-8", errors="replace").read()
             new_line = 'model = "%s"' % model
@@ -218,9 +345,18 @@ def write_model(entry, model):
             else:
                 text = text.rstrip("\n") + "\n" + new_line + "\n"
             Path(path).write_bytes(text.encode("utf-8"))
+        elif fmt == "yaml-line":
+            # newline="" 关掉通用换行转换：文本层面看不出 \r\n 就会被静默改写成 LF，
+            # 用户的 Windows 配置不该因为写个模型名而整篇换行符被替换
+            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            text = _yaml_write_value(text, *_yaml_model_path(cfg), value=model)
+            Path(path).write_bytes(text.encode("utf-8"))
         else:
             try:
                 data = json.loads(open(path, encoding="utf-8", errors="replace").read())
+            except FileNotFoundError:
+                return {"ok": False,
+                        "error": "配置文件尚未生成（%s 首次运行后才有），暂无法写入" % path}
             except Exception:
                 return {"ok": False, "error": "配置文件不是合法 JSON，已中止（避免覆盖）"}
             data["model"] = model
@@ -229,6 +365,779 @@ def write_model(entry, model):
         return {"ok": True, "model": read_model(entry)}
     except Exception as e:
         return {"ok": False, "error": repr(e)}
+
+
+# ---------------------------------------------------------------- 一键打开
+
+def _port_open(port, timeout=0.5):
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def launch_env(entry):
+    """打开交互/网页版时注入的子进程环境变量：与编排同源的绑定凭据
+    （dsh=DEEPSEEK_*，claude=ANTHROPIC_*，codex=ORCH_API_KEY）。交互进程
+    脱离了编排链路，没有这层注入就拿不到 API key。无绑定时返回 {}。"""
+    try:
+        from . import modelhub  # 惰性导入：modelhub 体量大且避免潜在环
+        b = modelhub.resolve_binding(entry["id"]) or {}
+    except Exception:
+        return {}
+    return dict(b.get("env") or {})
+
+
+def _launch_log_path(entry):
+    """web 类启动日志的落点：id 白名单化后仅作文件名成分，最终路径必须仍围栏
+    在数据目录内（catalog.json 用户可编辑，id 不可信；非白名单 id 用 crc32
+    稳定代称——跨进程重启不变，「已在运行」回读上次日志才找得到）。"""
+    raw_id = str(entry.get("id") or "")
+    if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", raw_id):
+        stem = raw_id
+    else:
+        stem = "agent-%d" % (zlib.crc32(raw_id.encode("utf-8")) & 0xFFFFFFFF)
+    data_root = os.path.abspath(str(paths.DATA_DIR))
+    p = Path(data_root, "launch", stem + ".log")
+    try:
+        if os.path.commonpath([os.path.abspath(str(p)), data_root]) != data_root:
+            return None
+    except ValueError:
+        return None
+    return p
+
+
+def _best_url(log_path, port):
+    """从启动日志提取该端口的信任 URL（含 token 优先）。无日志/未匹配返回 None。"""
+    try:
+        text = open(str(log_path), encoding="utf-8", errors="replace").read()
+    except Exception:
+        return None
+    urls = re.findall(r"https?://[^\s\"'<>]+", text)
+    same = [u for u in urls if ":%d" % port in u]
+    if not same:
+        return None
+    tokened = [u for u in same if "token=" in u]
+    return (tokened or same)[0]
+
+
+def _yaml_model_ids(text, section):
+    """收集 section.models 序列里的全部模型 id（保持顺序）。段/键缺失返回 []。"""
+    lines = text.splitlines()
+    start, end = _yaml_span(lines, section)
+    if start is None:
+        return []
+    m_indent = None
+    for i in range(start + 1, end):
+        m = re.match(r"^(\s+)models\s*:\s*(?:#.*)?$", lines[i])
+        if m:
+            m_indent = len(m.group(1))
+            start = i
+            break
+    if m_indent is None:
+        return []
+    ids = []
+    for ln in lines[start + 1:end]:
+        if not ln.strip():
+            continue
+        if len(ln) - len(ln.lstrip(" ")) <= m_indent:
+            break  # models 列表结束（遇到同级或更浅缩进的键）
+        m = re.match(r"^\s*-\s+id\s*:\s*(.+?)\s*$", ln)
+        if m:
+            ids.append(_yaml_unquote(m.group(1)))
+    return ids
+
+
+def _yaml_ensure_model_entry(text, section, model, context_window=1000000):
+    """确保 section.models 序列里有 id==model 的条目，缺则按现有条目形状追加
+    （id/name/contextWindow——dsh 的 catalog 校验要求 id 与 name 非空）。
+    已存在或段/列表结构不完整时原文返回。返回 (new_text, added)。"""
+    eol = "\r\n" if "\r\n" in text else "\n"
+    lines = text.splitlines()
+    start, end = _yaml_span(lines, section)
+    if start is None:
+        return text, False
+    m_idx = m_indent = None
+    for i in range(start + 1, end):
+        m = re.match(r"^(\s+)models\s*:\s*(?:#.*)?$", lines[i])
+        if m:
+            m_idx, m_indent = i, len(m.group(1))
+            break
+    if m_idx is None:
+        return text, False  # 段内没有 models 键：不凭空造结构（保守）
+    item_indent = None
+    last_item = m_idx
+    i = m_idx + 1
+    while i < end:
+        ln = lines[i]
+        if not ln.strip():
+            i += 1
+            continue
+        if len(ln) - len(ln.lstrip(" ")) <= m_indent:
+            break  # models 列表结束
+        m = re.match(r"^(\s*)-\s+id\s*:\s*(.+?)\s*$", ln)
+        if m:
+            item_indent = m.group(1)
+            last_item = i
+            if _yaml_unquote(m.group(2)) == model:
+                return text, False
+        elif re.match(r"^\s+\S", ln):
+            last_item = i  # 条目的续属性行（name/contextWindow…）
+        i += 1
+    item_indent = item_indent or (" " * (m_indent + 2))
+    block = ["%s- id: %s" % (item_indent, _yaml_quote(model)),
+             "%s  name: %s" % (item_indent, _yaml_quote(model)),
+             "%s  contextWindow: %d" % (item_indent, context_window)]
+    lines[last_item + 1:last_item + 1] = block
+    return eol.join(lines).rstrip("\r\n") + eol, True
+
+
+def _sync_dsh_settings(entry, model, base_url):
+    """dsh 专属：把绑定模型的端点与模型目录写进 ~/.dsh/settings.yaml 的
+    llm-deepseek 段（agent-default-model.model 由 write_model 负责）。
+    端点不同步不行——settings 优先级高于 env，密钥会发给旧端点；
+    models 列表不同步不行——dsh web 的模型下拉只列它，缺条目就选不中。
+    返回错误串或 None。"""
+    path = _config_path(entry)
+    if not path:
+        return "dsh 配置路径无效"
+    path = os.path.realpath(path)
+    home = os.path.abspath(os.path.expanduser("~"))
+    try:
+        if os.path.commonpath([path, home]) != home:
+            return "dsh 配置路径越出用户主目录，已拒绝"
+    except ValueError:
+        return "dsh 配置路径越出用户主目录，已拒绝"
+    try:
+        if os.path.isfile(path):
+            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+        else:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            text = ""
+        text2 = _yaml_write_value(text, "llm-deepseek", "baseURL", base_url)
+        text2, _added = _yaml_ensure_model_entry(text2, "llm-deepseek", model)
+        if text2 != text:
+            if os.path.isfile(path):
+                shutil.copyfile(path, path + ".bak")
+            Path(path).write_bytes(text2.encode("utf-8"))
+        return None
+    except Exception as e:
+        return repr(e)
+
+
+def _dsh_selfcheck_model(entry):
+    """dsh 无绑定时自检：agent-default-model.model 必须在端点 models 列表内，
+    否则 web UI 打开就是一个选不中的模型（glm-5.3-flash vs V4 端点的实况）。
+    不在列表则改选列表第一个并写回。返回 (生效模型, note)。"""
+    path = _config_path(entry)
+    if not path or not os.path.isfile(path):
+        return None, ""
+    try:
+        text = open(path, encoding="utf-8", errors="replace", newline="").read()
+    except Exception:
+        return None, ""
+    cur = _yaml_read_value(text, "agent-default-model", "model")
+    ids = _yaml_model_ids(text, "llm-deepseek")
+    if not ids:
+        return cur, "dsh 端点未登记任何模型，请先在 dsh 侧配置模型目录"
+    if cur in ids:
+        return cur, ""
+    first = ids[0]
+    w = write_model(entry, first)
+    fixed = w.get("model") if w.get("ok") else None
+    note = "dsh 默认模型 %s 不在端点模型列表，已改选 %s" % (cur or "（空）", first)
+    if not fixed:
+        note += "（写入失败：%s）" % w.get("error")
+    return fixed, note
+
+
+def _dsh_key_present():
+    """dsh 的密钥是否有着落：进程 env 或它自己的 ~/.dsh/.env（credentials-local）。"""
+    if os.environ.get("DEEPSEEK_API_KEY"):
+        return True
+    try:
+        envfile = os.path.join(os.path.expanduser("~"), ".dsh", ".env")
+        return "DEEPSEEK_API_KEY" in open(envfile, encoding="utf-8", errors="replace").read()
+    except Exception:
+        return False
+
+
+def _toml_section_set(text, section, pairs):
+    """就地写 TOML 段（[section] 下多键）。段存在则逐键替换，缺则整段追加在文末。
+    只处理 codex config.toml 这种顶层简单段；返回 (new_text, changed)。"""
+    eol = "\r\n" if "\r\n" in text else "\n"
+    lines = text.splitlines()
+    start = end = None
+    header = "[%s]" % section
+    for i, ln in enumerate(lines):
+        if ln.strip() == header:
+            start = i
+        elif start is not None and ln.startswith("[") and ln.rstrip().endswith("]"):
+            end = i
+            break
+    if start is None:
+        block = [header] + ["%s = %s" % (k, v) for k, v in pairs]
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.extend(block)
+        return eol.join(lines).rstrip("\r\n") + eol, True
+    end = end if end is not None else len(lines)
+    changed = False
+    todo = dict(pairs)
+    for i in range(start + 1, end):
+        m = re.match(r"^(\s*)([A-Za-z0-9_.-]+)\s*=", lines[i])
+        if m and m.group(2) in todo:
+            lines[i] = "%s%s = %s" % (m.group(1), m.group(2), todo.pop(m.group(2)))
+            changed = True
+    if todo:
+        ins = start + 1
+        while ins < end and not lines[ins].strip():
+            ins += 1
+        for k, v in list(todo.items())[::-1]:
+            lines.insert(ins, "%s = %s" % (k, v))
+        changed = True
+    return eol.join(lines).rstrip("\r\n") + eol, changed
+
+
+def _toml_top_set(text, key, value):
+    """写 TOML 顶层键（第一个 [段] 之前的区域）。返回 (new_text, changed)。"""
+    eol = "\r\n" if "\r\n" in text else "\n"
+    lines = text.splitlines()
+    pat = re.compile(r"^(\s*)%s\s*=\s*.+$" % re.escape(key))
+    for i, ln in enumerate(lines):
+        if pat.match(ln):
+            lines[i] = "%s%s = %s" % (pat.match(ln).group(1), key, value)
+            return eol.join(lines).rstrip("\r\n") + eol, True
+    first_section = next((i for i, ln in enumerate(lines)
+                          if ln.startswith("[") and ln.rstrip().endswith("]")), len(lines))
+    lines.insert(first_section, "%s = %s" % (key, value))
+    return eol.join(lines).rstrip("\r\n") + eol, True
+
+
+def _sync_codex_settings(entry, model, cp):
+    """codex 专属：把绑定供应商与模型写进 ~/.codex/config.toml
+    （[model_providers.orch] 段 + 顶层 model_provider/model）。
+
+    codex 交互 TUI 不认编排的 -c 一次性覆盖，也不认 ORCH_API_KEY env——
+    没有 config.toml 里的 provider 段，绑定模型根本无处可用；而 model 单写
+    不写 provider 会指到 codex 自带 openai 官方端点上（401）。与编排的
+    _codex_provider_args 同构，但落 config 文件。返回错误串或 None。"""
+    path = _config_path(entry)
+    if not path:
+        return "codex 配置路径无效"
+    path = os.path.realpath(path)
+    home = os.path.abspath(os.path.expanduser("~"))
+    try:
+        if os.path.commonpath([path, home]) != home:
+            return "codex 配置路径越出用户主目录，已拒绝"
+    except ValueError:
+        return "codex 配置路径越出用户主目录，已拒绝"
+    name = cp.get("name", "orch")
+    def q(v):
+        return '"%s"' % str(v).replace("\\", "\\\\").replace('"', '\\"')
+    pairs = [("name", q(cp.get("name", name))),
+             ("base_url", q(cp.get("base_url", ""))),
+             ("env_key", q(cp.get("env_key", "ORCH_API_KEY"))),
+             ("wire_api", q(cp.get("wire_api", "responses")))]
+    try:
+        if os.path.isfile(path):
+            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+        else:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            text = ""
+        text2, _ = _toml_section_set(text, "model_providers.%s" % name, pairs)
+        text2, _ = _toml_top_set(text2, "model_provider", q(name))
+        if model:
+            text2, _ = _toml_top_set(text2, "model", q(model))
+        if text2 != text:
+            if os.path.isfile(path):
+                shutil.copyfile(path, path + ".bak")
+            Path(path).write_bytes(text2.encode("utf-8"))
+        return None
+    except Exception as e:
+        return repr(e)
+
+
+# ---------------------------------------------------------------- 打开前凭据注入
+
+def _jsonc_scan_object(text, start):
+    """扫描 text[start]（须为 '{'）起的 JSON(C) 对象：返回 (闭合偏移, 键表)。
+    键表为 [key, key_start, key_end, value_start, value_end]（偏移相对整个 text，
+    value_end 指向值结束后一格）。跳过字符串转义、// 与 /* */ 注释、嵌套括号，
+    未闭合时容错返回文末。"""
+    n = len(text)
+    i = start + 1
+    keys = []
+    state = "key"
+    depth = 0
+
+    def skip_string(j):
+        while j < n:
+            if text[j] == "\\":
+                j += 2
+                continue
+            if text[j] == '"':
+                return j + 1
+            j += 1
+        return n
+
+    def skip_comment(j):
+        if j + 1 < n and text[j + 1] == "/":
+            e = text.find("\n", j)
+            return n if e < 0 else e
+        if j + 1 < n and text[j + 1] == "*":
+            e = text.find("*/", j + 2)
+            return n if e < 0 else e + 2
+        return j + 1  # 非注释的孤立斜杠：当普通字符
+
+    while i < n:
+        ch = text[i]
+        if ch in " \t\r\n":
+            i += 1
+            continue
+        if ch == "/":
+            i = skip_comment(i)
+            continue
+        if state == "key":
+            if ch == "}":
+                return i, keys
+            if ch == ",":
+                i += 1
+                continue
+            if ch == '"':
+                j = skip_string(i + 1)
+                keys.append([text[i + 1:j - 1], i, j, 0, 0])
+                state = "colon"
+                i = j
+                continue
+            i += 1
+            continue
+        if state == "colon":
+            if ch == ":":
+                state = "value"
+            i += 1
+            continue
+        # state == value
+        if not keys:
+            return n, keys  # 结构异常：放弃扫描
+        keys[-1][3] = i
+        if ch in "{[":
+            depth = 0
+            j = i
+            while j < n:
+                c = text[j]
+                if c == '"':
+                    j = skip_string(j + 1)
+                    continue
+                if c == "/":
+                    j = skip_comment(j)
+                    continue
+                if c in "{[":
+                    depth += 1
+                elif c in "}]":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            keys[-1][4] = j + 1
+            i = j + 1
+        elif ch == '"':
+            j = skip_string(i + 1)
+            keys[-1][4] = j
+            i = j
+        else:  # 数字 / true / false / null
+            j = i
+            while j < n and text[j] not in ",}\r\n":
+                j += 1
+            keys[-1][4] = j
+            i = j
+        state = "key"
+    return n, keys
+
+
+def _jsonc_set(text, path, value_json):
+    """JSON(C) 顶层就地写键：path=("provider","orch") 或 ("model",)。
+    只动目标片段，其余文本（含注释与原格式）原样保留。返回 (new_text, ok)。"""
+    brace = text.find("{")
+    if brace < 0:
+        return text, False
+    end, keys = _jsonc_scan_object(text, brace)
+    head = path[0]
+    if len(path) == 1:
+        for _k, _ks, _ke, vs, ve in keys:
+            if _k == head:
+                return text[:vs] + value_json + text[ve:], True
+        return _jsonc_insert_entry(text, brace, end, head, value_json), True
+    # 二级路径：先定位一级键的值对象
+    tgt = None
+    for k, _ks, _ke, vs, ve in keys:
+        if k == head:
+            tgt = (vs, ve)
+            break
+    if tgt is None:  # 一级键不存在：整体插入
+        block = json.dumps({path[1]: json.loads(value_json)}, ensure_ascii=False)
+        return _jsonc_insert_entry(text, brace, end, head, block), True
+    vs, ve = tgt
+    if text[vs:ve].lstrip()[0:1] != "{":
+        return text, False  # 一级值不是对象：保守放弃（不覆盖用户的非标结构）
+    end2, keys2 = _jsonc_scan_object(text, vs)
+    for k, _ks, _ke, v2s, v2e in keys2:
+        if k == path[1]:
+            return text[:v2s] + value_json + text[v2e:], True
+    seg = text[vs:end2 + 1]
+    new_seg = _jsonc_insert_entry(seg, 0, end2 - vs, path[1], value_json)
+    if new_seg is None:
+        return text, False
+    return text[:vs] + new_seg + text[end2 + 1:], True
+
+
+def _jsonc_insert_entry(text, brace, end, key, value_json):
+    """在 {brace..end} 对象的开头插入 "key": value（带尾逗号，不依赖原文件的
+    逗号风格）；对象为空时去掉多余逗号。"""
+    m = re.match(r"\{([ \t\r\n]*)", text[brace:end + 1])
+    first = brace + (m.end(1) if m else 1)  # m 从 brace 起 match：end(1) 已含 '{'
+    if first >= end:  # 空对象 {}
+        return text[:brace + 1] + ' "%s": %s ' % (key, value_json) + text[end:]
+    return text[:first] + '"%s": %s,\n  ' % (key, value_json) + text[first:]
+
+
+def _sync_settings_env(path, updates, remove_keys=()):
+    """把键值对写进目标 settings.json 的 env 段（claude/qwen 等同构：交互 TUI
+    启动时把该段合并进进程环境）。只动 env 相关键，其余内容保留；坏 JSON 中止
+    不覆盖；改动前 .bak。返回错误串或 None。path 必须已过主目录围栏校验。"""
+    try:
+        if os.path.isfile(path):
+            text = open(path, encoding="utf-8", errors="replace").read()
+            try:
+                data = json.loads(text)
+            except Exception:
+                return "settings.json 不是合法 JSON，已中止（避免覆盖）"
+        else:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            data = {}
+        if not isinstance(data, dict):
+            return "settings.json 结构异常（顶层不是对象），已中止"
+        env = data.get("env")
+        if not isinstance(env, dict):
+            env = {}
+        for k in remove_keys:
+            env.pop(k, None)
+        env.update(updates)
+        data["env"] = env
+        if os.path.isfile(path):
+            shutil.copyfile(path, path + ".bak")
+        Path(path).write_bytes(json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
+        return None
+    except Exception as e:
+        return repr(e)
+
+
+def _guard_home(path):
+    """展开并校验配置路径必须在用户主目录内；通过则返回 realpath，否则 None。"""
+    if not path:
+        return None
+    path = os.path.realpath(path)
+    home = os.path.abspath(os.path.expanduser("~"))
+    try:
+        if os.path.commonpath([path, home]) != home:
+            return None
+    except ValueError:
+        return None
+    return path
+
+
+def _sync_claude_settings(entry, model, prov):
+    """claude-code 专属：把 anthropic 供应商的端点+密钥+模型写进
+    ~/.claude/settings.json 的 env 段（交互 TUI 与无头共用该文件，只认
+    ANTHROPIC_*；编排降级链给的 ORCH_API_KEY 对它等于没 key）。
+    返回错误串或 None。"""
+    path = _guard_home(_config_path(entry))
+    if not path:
+        return "claude 配置路径无效或越出用户主目录，已拒绝"
+    updates = {"ANTHROPIC_BASE_URL": prov.get("base_url") or "",
+               # AUTH_TOKEN 走 Bearer 头（Z.ai 等原生 anthropic 网关的用法）；
+               # 与 x-api-key 互斥，清掉可能残留的 ANTHROPIC_API_KEY 防止带错头
+               "ANTHROPIC_AUTH_TOKEN": prov.get("api_key") or ""}
+    if model:
+        updates["ANTHROPIC_MODEL"] = model
+    return _sync_settings_env(path, updates, remove_keys=("ANTHROPIC_API_KEY",))
+
+
+def _sync_qwen_settings(entry, model, prov):
+    """qwencode 专属：openai 兼容供应商写进 ~/.qwen/settings.json 的 env 段
+    （qwen-code 实测认 OPENAI_API_KEY/OPENAI_BASE_URL/OPENAI_MODEL，存在即
+    优先走 openai 兼容通道——2026-09-15 真机对维云端点实测请求到达并鉴权）。
+    anthropic 协议未实证，不开（协议不匹配时宁可提示）。返回错误串或 None。"""
+    path = _guard_home(_config_path(entry))
+    if not path:
+        return "qwen 配置路径无效或越出用户主目录，已拒绝"
+    updates = {"OPENAI_API_KEY": prov.get("api_key") or "",
+               "OPENAI_BASE_URL": prov.get("base_url") or ""}
+    if model:
+        updates["OPENAI_MODEL"] = model
+    return _sync_settings_env(path, updates)
+
+
+def _opencode_config_candidates(entry):
+    """opencode 配置的候选路径：catalog 登记的 jsonc 优先，其次同目录的
+    opencode.json（opencode 两种文件名都认，用户现有安装多用 json）。"""
+    out = []
+    primary = _config_path(entry)
+    if primary:
+        out.append(primary)
+    alt = os.path.join(os.path.abspath(os.path.expanduser("~/.config/opencode")),
+                       "opencode.json")
+    if alt not in out:
+        out.append(alt)
+    return out
+
+
+def _sync_opencode_settings(entry, model, prov):
+    """opencode 专属：把绑定供应商写进其配置的 provider.orch 段 + 顶层 model
+    （opencode 交互 TUI 只认自家配置文件里的凭据，ORCH_API_KEY env 对它等于
+    没 key）。写入所有已存在的候选文件（避免新文件遮蔽旧文件的读取优先级），
+    全不存在时建 catalog 登记的那个。纯 JSON 走整体读改写；带注释的 JSONC 走
+    文本级就地 patch（保留注释）。返回错误串或 None。"""
+    npm = "@ai-sdk/anthropic" if prov.get("protocol") == "anthropic" else "@ai-sdk/openai-compatible"
+    block = {"npm": npm, "name": prov.get("name") or "CodeBee 绑定",
+             "options": {"baseURL": prov.get("base_url") or "",
+                         "apiKey": prov.get("api_key") or ""},
+             "models": {model: {"name": model}} if model else {}}
+    top_model = ("orch/" + model) if model else ""
+    targets = [p for p in _opencode_config_candidates(entry) if os.path.isfile(p)] \
+        or [_opencode_config_candidates(entry)[0]]
+    errs = []
+    for path in targets:
+        try:
+            path = os.path.realpath(path)
+            home = os.path.abspath(os.path.expanduser("~"))
+            try:
+                if os.path.commonpath([path, home]) != home:
+                    errs.append("路径越出主目录：%s" % path)
+                    continue
+            except ValueError:
+                errs.append("路径越出主目录：%s" % path)
+                continue
+            if os.path.isfile(path):
+                text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            else:
+                Path(path).parent.mkdir(parents=True, exist_ok=True)
+                text = ""
+            try:
+                data = json.loads(text) if text.strip() else {}
+            except Exception:
+                data = None
+            if data is not None:  # 纯 JSON：整体读改写（保序）
+                if not isinstance(data, dict):
+                    errs.append("结构异常（顶层不是对象）：%s" % path)
+                    continue
+                provs = data.get("provider")
+                if not isinstance(provs, dict):
+                    provs = {}
+                provs["orch"] = block
+                data["provider"] = provs
+                if top_model:
+                    data["model"] = top_model
+                new_text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+            else:  # JSONC（带注释）：文本级 patch
+                block_json = json.dumps(block, ensure_ascii=False)
+                new_text, ok = _jsonc_set(text, ("provider", "orch"), block_json)
+                if not ok:
+                    errs.append("JSONC 就地改写失败：%s" % path)
+                    continue
+                if top_model:
+                    new_text, _ = _jsonc_set(new_text, ("model",),
+                                             json.dumps(top_model))
+            if os.path.isfile(path):
+                shutil.copyfile(path, path + ".bak")
+            Path(path).write_bytes(new_text.encode("utf-8"))
+        except Exception as e:
+            errs.append("%s: %r" % (path, e))
+    return "；".join(errs) or None
+
+
+# 打开前专属注入通道：{agent_id: (可注入协议, 注入器)}。交互 TUI 脱离编排链路，
+# 只认自家配置文件里的凭据，编排降级给的 env（ORCH_API_KEY 等）对它们无效。
+_AGENT_INJECTORS = {
+    "claude-code": (("anthropic",), _sync_claude_settings),
+    "opencode": (("anthropic", "openai"), _sync_opencode_settings),
+    "qwencode": (("openai",), _sync_qwen_settings),
+}
+
+# 无专属注入通道的专有协议 CLI：env 注入大概率无效，打开时明确告知而非静默废
+# （mimo 系 opencode 衍生但配置路径未实证，先按提示类；grok 吃 XAI_API_KEY 但
+# 无端点 env 可指中转，openai 协议供应商也用不上）
+_NO_CHANNEL_HINT = ("grok-build", "pi", "mimo-code")
+
+
+def _sync_agent_injection(entry, binding):
+    """打开前把绑定链里第一个可注入供应商落进 CLI 自家配置。与编排降级链解耦：
+    协议不匹配不降级（claude 拿 openai 的 key 等于没 key）。返回给用户看的提示
+    （成功注入 / 不可用原因），None=该 CLI 无需处理。"""
+    from . import modelhub
+    spec = _AGENT_INJECTORS.get(entry["id"])
+    if spec:
+        protocols, injector = spec
+        pick, note = modelhub.launch_pick(entry["id"], protocols)
+        if pick:
+            prov = pick["provider"]
+            err = injector(entry, pick["model"], prov)
+            if err:
+                return "%s 凭据同步失败：%s（打开后可能需在其自带界面登录）" % (
+                    entry.get("name", entry["id"]), err)
+            return "已注入 %s（%s · %s）" % (prov.get("name") or "供应商",
+                                            prov.get("protocol"), prov.get("base_url", ""))
+        return note
+    if entry["id"] in _NO_CHANNEL_HINT:
+        if binding.get("env"):
+            return "已按绑定注入 env，但该 CLI 未必认 CodeBee 的凭据通道，打开后若要求登录请在其界面内登录"
+        return "未绑定可用供应商：打开后需在其自带界面登录；要打开即用请到「CLI 绑定」页绑定"
+    return None
+
+
+def _sync_launch_model(entry, binding):
+    """打开前把「CLI 绑定」页选中的模型落到该 CLI 自己的配置文件——保证
+    交互/网页版启动即选中绑定模型（绑定页是运行时模型唯一真源，目录页的
+    「默认模型」只是手动快照，会滞后）。dsh 额外同步端点与 models 目录；
+    codex 额外落 provider 段（交互 TUI 只认 config.toml，不认编排的 -c 覆盖
+    与 ORCH_API_KEY env）。返回给用户看的同步笔记列表。"""
+    notes = []
+    model = (binding.get("model") or "").strip()
+    prov = binding.get("provider") or {}
+    fmt = (entry.get("config") or {}).get("format")
+    is_dsh = entry["id"] in ("deepseek-harness", "dsh")
+    is_codex = entry["id"] in ("codex-cli", "codex")
+    cp = binding.get("codex_provider")
+    if model and fmt in _WRITABLE_FORMATS:
+        w = write_model(entry, model)
+        notes.append("模型已同步为 %s" % w["model"] if w.get("ok")
+                     else "模型同步失败：%s" % w.get("error"))
+    elif model and not is_dsh and entry["id"] not in _AGENT_INJECTORS:
+        # 有专属注入通道的 CLI 由 _sync_agent_injection 负责落模型（含 jsonc），
+        # 不再报「只读配置」以免与注入成功的提示互相矛盾
+        notes.append("该工具模型为只读配置，按其现有配置打开（绑定模型 %s 未自动写入）" % model)
+    if is_dsh and model and prov.get("base_url"):
+        err = _sync_dsh_settings(entry, model, prov["base_url"])
+        notes.append("dsh 端点已同步为 %s" % prov["base_url"] if not err
+                     else "dsh 端点同步失败：%s" % err)
+    elif is_dsh and not model:
+        _fixed, note = _dsh_selfcheck_model(entry)
+        if note:
+            notes.append(note)
+    if is_codex and cp:
+        err = _sync_codex_settings(entry, model, cp)
+        notes.append("codex 供应商已同步为 %s" % cp.get("base_url", "") if not err
+                     else "codex 供应商同步失败：%s" % err)
+    inj = _sync_agent_injection(entry, binding)
+    if inj:
+        notes.append(inj)
+    return notes
+
+
+def launch(entry, open_browser=True):
+    """一键打开：web 类后台起服务并自动开浏览器；console 类新开终端窗口跑交互 TUI。
+
+    打开前把「CLI 绑定」页的模型落盘到该 CLI 配置文件（dsh 连端点与 models
+    目录一起同步），并注入绑定密钥 env——保证打开即选中可用模型。"""
+    if not detect_entry(entry).get("installed"):
+        return {"ok": False, "error": "未安装，无法打开"}
+    launch = entry.get("launch") or {}
+    cmd = (launch.get("command") or "").strip()
+    if not cmd:
+        return {"ok": False, "error": "未配置打开命令（可在 data/catalog.json 补 launch 字段）"}
+    is_dsh = entry["id"] in ("deepseek-harness", "dsh")
+    try:
+        from . import modelhub
+        binding = modelhub.resolve_binding(entry["id"]) or {}
+    except Exception:
+        binding = {}
+    env = os.environ.copy()
+    env.update(binding.get("env") or {})
+    notes = _sync_launch_model(entry, binding)
+    if is_dsh and not (binding.get("env") or {}) and not _dsh_key_present():
+        notes.append("未发现 dsh 密钥：打开后可能需在 dsh 内登录配置；"
+                     "要打开即用，请到「CLI 绑定」页给 DeepSeek Harness 绑定 openai 协议供应商")
+    name = entry.get("name", entry["id"])
+    kind = (launch.get("kind") or "console").lower()
+    extra = ("；".join(notes)) if notes else ""
+
+    if kind == "web":
+        try:
+            port = int(launch.get("port") or 0)
+        except (TypeError, ValueError):
+            port = 0
+        if port <= 0:
+            return {"ok": False, "error": "web 类打开必须配置固定端口（launch.port）"}
+        bare = "http://127.0.0.1:%d" % port
+        log_path = _launch_log_path(entry)
+        if not log_path:
+            return {"ok": False, "error": "启动日志路径不可信，已拒绝打开"}
+        if _port_open(port):
+            # 已在运行：新实例抢不到端口、新 token 也拿不到——从上次启动日志
+            # 恢复带 token 的信任 URL（dsh web 有 /?token=... 围栏，裸开是 401）。
+            # 模型同步照做：正在跑的实例不重启，改的是它下次生效的配置
+            url = _best_url(log_path, port) or bare
+            if open_browser:
+                webbrowser.open(url)
+            msg = "服务已在运行，已打开 " + url
+            if extra:
+                msg += "（" + extra + "）"
+            return {"ok": True, "kind": "web", "url": url, "message": msg}
+        # 后台起服务：无窗口、不阻塞请求；子进程输出重定向到启动日志（cmd 层
+        # 重定向，路径含空格才加引号）——web 类普遍会在启动行打印带 token 的
+        # 信任 URL（如 dsh web），就绪线程从日志提取后再开浏览器
+        ls = str(log_path)
+        spawn_cmd = "%s > %s 2>&1" % (cmd, ('"%s"' % ls) if " " in ls else ls)
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.Popen(["cmd", "/c", spawn_cmd], cwd=str(paths.ROOT), env=env,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+        except Exception as e:
+            return {"ok": False, "error": "无法启动服务: %r" % e}
+        if open_browser:
+            threading.Thread(target=_open_when_ready, args=(port, bare, log_path),
+                             name="launch-wait-%d" % port, daemon=True).start()
+        return {"ok": True, "kind": "web", "url": bare,
+                "message": "%s 正在启动，就绪后浏览器会自动打开（%s）%s"
+                           % (name, bare, ("；" + extra) if extra else "")}
+
+    if sys.platform != "win32":
+        return {"ok": False, "error": "终端窗口拉起暂仅支持 Windows"}
+    # start 为目标命令新开一个可见终端窗口；cmd /k 让 CLI 退出后窗口保留，
+    # 报错不至于一闪而过。外层 cmd 用 CREATE_NO_WINDOW 隐藏。
+    argv = ["cmd", "/c", "start", "CodeBee %s" % name, "/D", str(paths.ROOT),
+            "cmd", "/k", cmd]
+    try:
+        subprocess.Popen(argv, cwd=str(paths.ROOT), env=env,
+                         creationflags=CREATE_NO_WINDOW)
+    except Exception as e:
+        return {"ok": False, "error": "无法打开终端窗口: %r" % e}
+    return {"ok": True, "kind": "console", "message": "已在新的终端窗口打开 %s%s"
+            % (name, ("（" + extra + "）") if extra else "")}
+
+
+def _open_when_ready(port, url, log_path, timeout=30):
+    """等 web 服务端口就绪后开浏览器。优先从启动日志提取带 token 的信任 URL
+    （端口通了 token 行可能还差几十毫秒才落盘，故就绪后最多再等 6 秒）；
+    超时兜底也开——服务可能只是慢，用户手动刷新即可。"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _port_open(port):
+            break
+        time.sleep(0.5)
+    token_deadline = time.time() + 6
+    best = None
+    while time.time() < token_deadline:
+        best = _best_url(log_path, port)
+        if best and "token=" in best:
+            break
+        time.sleep(0.5)
+    try:
+        webbrowser.open(best or url)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------- 安装/升级
@@ -408,7 +1317,7 @@ def catalog_view():
             "detail": det.get("detail", ""),
             "version": version_of(e),
             "config_path": _config_path(e),
-            "config_writable": (e.get("config") or {}).get("format") in ("toml-line", "json"),
+            "config_writable": (e.get("config") or {}).get("format") in _WRITABLE_FORMATS,
             "model": read_model(e),
             "orch_kind": (e.get("orch") or {}).get("kind"),
             "orch_enabled": orch_enabled,
@@ -417,5 +1326,7 @@ def catalog_view():
             "has_upgrade": bool(e.get("upgrade")),
             # 卸载命令由 install/upgrade 推导（或 catalog 显式配置），供 UI 确认框展示
             "uninstall_cmd": catalog.uninstall_command(e) if det.get("installed") else None,
+            # 一键打开配置（kind=web/console + command）；没配的条目 UI 不出「打开」按钮
+            "launch": e.get("launch"),
         })
     return view

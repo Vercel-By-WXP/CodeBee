@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tutti（多智能体编排台）：纯标准库 HTTP 服务（零依赖，Python 3.8+）。
+"""CodeBee（多智能体编排台）：纯标准库 HTTP 服务（零依赖，Python 3.8+）。
 
 启动：python app/main.py [端口]，默认 8765，自动打开浏览器。
 """
@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -17,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from core import catalog, flows, jobs, manager, registry, remote, settings, store
+from core import automation, catalog, flows, jobs, manager, market, registry, remote, settings, store
 from core import paths
 
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -27,9 +29,13 @@ MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=ut
 
 PORT = 8765  # main() 启动时更新；/api/connect 组装扫码地址用
 
+# 侧栏「查看文件」/「目录浏览」跳过的噪音目录（与 store 的习惯一致）
+_SKIP_DIRS_SHARE = {".git", "node_modules", "__pycache__", ".venv", "venv",
+                    ".idea", ".vscode", "_attachments"}
+
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "Tutti/1.0"
+    server_version = "CodeBee/1.0"
 
     # ------------------------------------------------------------ 基础
     def log_message(self, fmt, *args):
@@ -73,10 +79,10 @@ class Handler(BaseHTTPRequestHandler):
         ip, fw = self._forwarded_ip()
         return remote.request_authed(ip, fw,
                                      (q.get("token") or [""])[0],
-                                     self.headers.get("X-Tutti-Token") or "")
+                                     self.headers.get("X-CodeBee-Token") or "")
 
     def _client_id(self):
-        cid = (self.headers.get("X-Tutti-Client") or "").strip()
+        cid = (self.headers.get("X-CodeBee-Client") or "").strip()
         if not cid:  # EventSource 带不了自定义头，身份从 query 兜底
             cid = (parse_qs(urlparse(self.path).query).get("client") or [""])[0].strip()
         if cid:
@@ -86,7 +92,7 @@ class Handler(BaseHTTPRequestHandler):
         return "local" if (ip in ("127.0.0.1", "::1") and not fw) else ""
 
     def _client_name(self):
-        name = (self.headers.get("X-Tutti-Name") or "").strip()
+        name = (self.headers.get("X-CodeBee-Name") or "").strip()
         if not name:
             name = (parse_qs(urlparse(self.path).query).get("name") or [""])[0].strip()
         if name:
@@ -116,11 +122,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._static("index.html")
         if path.startswith("/api/"):
             if not self._authed():
-                return self._json(401, {"error": "需要访问令牌（启动 Tutti 时控制台会显示）"})
+                return self._json(401, {"error": "需要访问令牌（启动 CodeBee 时控制台会显示）"})
             if path == "/api/state":
                 return self._json(200, _state_payload(self._client_id()))
             if path == "/api/browse":
                 return self._api_browse()
+            if path == "/api/dir/scan":
+                # 侧栏文件夹「查看文件」：列出该工作目录的文件（跳过噪音目录，只列文件）
+                return self._api_dir_scan()
+            if path == "/api/dir/file":
+                return self._api_dir_file()
             if path == "/api/git/info":
                 return self._api_git_info()
             if path == "/api/events":
@@ -191,18 +202,33 @@ class Handler(BaseHTTPRequestHandler):
                                   "text/markdown; charset=utf-8")
             m = re.match(r"^/api/runs/([^/]+)/files$", path)
             if m:
-                if not store.get_run(m.group(1)):
+                run = store.get_run(m.group(1))
+                if not run:
                     return self._json(404, {"error": "not found"})
                 wd, files = store.run_artifacts(m.group(1))
-                run = store.get_run(m.group(1)) or {}
+                # 任务一步都没跑出来过（如历次都在检出前失败）→ 工作目录里的
+                # 文件变动是并行活动的噪音，不算这个任务的成品
+                if files and not store.task_step_count(run.get("task_id") or ""):
+                    files = []
                 return self._json(200, {"workdir": wd, "files": files,
                                         "task_id": run.get("task_id") or ""})
+            m = re.match(r"^/api/tasks/([^/]+)/side$", path)
+            if m:
+                # 任务检查器（右缘停靠列）专用：轻量聚合、可轮询，不带 diff 文本
+                return self._api_task_side(m.group(1))
             m = re.match(r"^/api/tasks/([^/]+)/runs$", path)
             if m:
                 # 任务级详情用：该任务全部 run（含 steps），不受前端 run 窗口限制
                 if not store.get_task(m.group(1)):
                     return self._json(404, {"error": "not found"})
                 return self._json(200, {"runs": store.task_runs(m.group(1))})
+            m = re.match(r"^/api/tasks/([^/]+)/bible$", path)
+            if m:
+                # 故事圣经：查看（无令牌豁免走 _authed 已过；本机免令牌）
+                fp, text, err = store.read_story_bible(m.group(1))
+                if err:
+                    return self._json(400, {"error": err})
+                return self._json(200, {"path": fp, "text": text})
             m = re.match(r"^/api/tasks/([^/]+)/continue-info$", path)
             if m:
                 # 「继续连载」弹框数据：能否续、已写到第几章、默认续几章
@@ -228,13 +254,33 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 # step 由前端 encodeURIComponent 编码（"steps/x.log" → "steps%2Fx.log"），
                 # 必须解码后再拼路径，否则永远找不到日志文件。read_step_log 内部已防目录穿越。
-                rel = (parse_qs(urlparse(self.path).query).get("step") or [""])[0]
+                q = parse_qs(urlparse(self.path).query)
+                rel = (q.get("step") or [""])[0]
                 rel = rel.replace("\\", "/").lstrip("/")
+                # tail：蜂巢卡片实时尾巴轮询用小窗口；日志面板用默认（4000）
+                try:
+                    tail = max(200, min(40000, int((q.get("tail") or [""])[0] or 0))) or paths.LOG_TAIL_CHARS
+                except ValueError:
+                    tail = paths.LOG_TAIL_CHARS
                 run = store.get_run(m.group(1))
                 if not run:
                     return self._json(404, {"error": "not found"})
-                text = store.read_step_log(m.group(1), rel)
-                return self._json(200, {"log": text})
+                text = store.read_step_log(m.group(1), rel, tail=tail)
+                # 带上步骤/运行状态：日志面板靠它区分「实时刷新中」和「已结束」，
+                # 结束即停轮询（否则用户盯着不动的日志以为刷新坏了）
+                st = next((s.get("status") or "" for s in (run.get("steps") or [])
+                           if s.get("log") == rel), "")
+                return self._json(200, {"log": text, "step_status": st,
+                                        "run_status": run.get("status") or ""})
+            if path == "/api/automation":
+                return self._json(200, {"tasks": automation.list_tasks(),
+                                        "templates": automation.templates()})
+            m = re.match(r"^/api/automation/([^/]+)$", path)
+            if m:
+                t = automation.get_task(m.group(1))
+                return self._json(200, {"task": t}) if t else self._json(404, {"error": "not found"})
+            if path == "/api/market":
+                return self._json(200, market.view())
             return self._json(404, {"error": "unknown api"})
         # 静态文件：单文件或 UI 子目录文件（如 icons/icon-192.png）；
         # _static 内的 parents 校验确保解析后仍在 UI_DIR 内，防穿越
@@ -247,7 +293,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         m = None
         if not self._authed():
-            return self._json(401, {"error": "需要访问令牌（启动 Tutti 时控制台会显示）"})
+            return self._json(401, {"error": "需要访问令牌（启动 CodeBee 时控制台会显示）"})
         if path == "/api/control":
             return self._api_control()
         if path == "/api/control/heartbeat":
@@ -290,9 +336,28 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 ok, err = store.delete_task(m.group(1))
             return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
+        m = re.match(r"^/api/tasks/([^/]+)/bible$", path)
+        if m:
+            # 故事圣经：编辑保存（运行中由 store 拒绝，防打碎前缀缓存）
+            body = self._body()
+            ok, err = store.write_story_bible(m.group(1), body.get("text") or "")
+            return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
+        m = re.match(r"^/api/tasks/([^/]+)/(git-merge|git-discard)$", path)
+        if m:
+            return self._api_git_verdict(m.group(1), m.group(2))
         m = re.match(r"^/api/(tasks|runs)/([^/]+)/reveal$", path)
         if m:
             return self._api_reveal(m.group(1), m.group(2))
+        m = re.match(r"^/api/runs/([^/]+)/messages$", path)
+        if m:
+            return self._api_add_message(m.group(1))
+        m = re.match(r"^/api/runs/([^/]+)/pause$", path)
+        if m:
+            # 暂停/放行：标志位挂在下一个步骤开始前；取消不必先解除暂停
+            body = self._body() or {}
+            if not store.set_paused(m.group(1), bool(body.get("paused"))):
+                return self._json(404, {"error": "not found"})
+            return self._json(200, {"ok": True, "paused": bool(body.get("paused"))})
         m = re.match(r"^/api/runs/([^/]+)/cancel$", path)
         if m:
             ok = jobs.cancel(m.group(1))
@@ -506,6 +571,15 @@ class Handler(BaseHTTPRequestHandler):
                                    entry_id=entry["id"], op=op)
             jobs.enqueue({"kind": "mgmt", "run_id": run["id"], "entry_id": entry["id"], "op": op})
             return self._json(200, {"run_id": run["id"]})
+        m = re.match(r"^/api/catalog/([^/]+)/launch$", path)
+        if m:
+            # 一键打开（web 类起服务+开浏览器 / console 类新终端窗口）。
+            # 即时返回不走任务队列；body 可传 {"open": false} 供测试免开浏览器
+            entry = catalog.by_id(m.group(1))
+            if not entry:
+                return self._json(404, {"error": "catalog 中无此条目"})
+            res = manager.launch(entry, open_browser=bool(self._body().get("open", True)))
+            return self._json(200 if res.get("ok") else 400, res)
         m = re.match(r"^/api/catalog/([^/]+)/check-update$", path)
         if m:
             entry = catalog.by_id(m.group(1))
@@ -520,6 +594,40 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             res = manager.write_model(entry, body.get("model"))
             return self._json(200 if res["ok"] else 400, res)
+        if path == "/api/automation":
+            try:
+                t = automation.create(self._body())
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+            return self._json(200, {"ok": True, "task": t})
+        m = re.match(r"^/api/automation/([^/]+)$", path)
+        if m:
+            try:
+                t = automation.update(m.group(1), self._body())
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+            return self._json(200, {"ok": True, "task": t}) if t else self._json(404, {"error": "not found"})
+        m = re.match(r"^/api/automation/([^/]+)/(toggle|run|delete)$", path)
+        if m:
+            tid, op = m.group(1), m.group(2)
+            if op == "toggle":
+                t = automation.set_enabled(tid, bool((self._body() or {}).get("enabled", True)))
+                return self._json(200, {"ok": True, "task": t}) if t else self._json(404, {"error": "not found"})
+            if op == "run":
+                t, run_id = automation.run_now(tid)
+                if t is None:
+                    return self._json(404, {"error": "not found"})
+                return self._json(200, {"ok": True, "task": t, "run_id": run_id or ""})
+            ok = automation.delete(tid)
+            return self._json(200, {"ok": True}) if ok else self._json(404, {"error": "not found"})
+        m = re.match(r"^/api/market/([^/]+)/(install|remove)$", path)
+        if m:
+            if m.group(2) == "install":
+                res, err = market.install(m.group(1))
+            else:
+                err = market.remove(m.group(1))
+                res = {"ok": True, "id": m.group(1)}
+            return self._json(400, {"error": err}) if err else self._json(200, res)
         return self._json(404, {"error": "unknown api"})
 
     # ------------------------------------------------------------ 业务
@@ -551,11 +659,42 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(500, {"error": "无法打开目录: %s" % e})
         return self._json(200, {"ok": True, "path": str(p)})
 
+    def _api_git_verdict(self, task_id, op):
+        """任务分支裁决：git-merge 合并回原分支（采纳）/ git-discard 删除分支（否决）。
+
+        丢弃不可恢复，必须显式 confirm=true；两边的守卫与冲突回滚都在
+        gitmod 里（见 merge_task_branch / discard_task_branch）。
+        """
+        from core import gitmod
+        task = store.get_task(task_id)
+        if not task:
+            return self._json(404, {"error": "任务不存在"})
+        if op == "git-merge":
+            ok, err, info = gitmod.merge_task_branch(task.get("workdir"), task)
+            if not ok:
+                return self._json(400, {"error": err})
+            store.set_task_git_state(task_id, "merged")
+            return self._json(200, {"ok": True, **(info or {})})
+        body = self._body()
+        if not body.get("confirm"):
+            return self._json(400, {"error": "丢弃任务分支不可恢复，需要 confirm=true 二次确认"})
+        ok, err = gitmod.discard_task_branch(task.get("workdir"), task)
+        if not ok:
+            return self._json(400, {"error": err})
+        store.set_task_git_state(task_id, "discarded")
+        return self._json(200, {"ok": True})
+
+    def _api_task_side(self, task_id):
+        """任务检查器（右缘停靠列）的轻量聚合端点。聚合逻辑在 store.task_side
+        （可单测、单实例状态）；这里只做 404 转换。"""
+        d = store.task_side(task_id)
+        return self._json(404, {"error": "任务不存在"}) if d is None else self._json(200, d)
+
     def _api_browse(self):
         """本机目录浏览（工作目录「选择…」弹框用）。仅限本机请求：目录枚举是信息
         泄露面，手机/局域网端不提供、继续手填。path 缺省=用户主目录；__drives__=盘符
         列表（Windows 从「此电脑」开始选）。只列目录不列文件，纯只读。"""
-        # 本机判定按来源 IP，不能按 client_id：页面请求带 X-Tutti-Client，
+        # 本机判定按来源 IP，不能按 client_id：页面请求带 X-CodeBee-Client，
         # 本机页面的 client_id 也不是 "local"，会被误拒
         ip, fw = self._forwarded_ip()
         if ip not in ("127.0.0.1", "::1") or fw:
@@ -580,6 +719,84 @@ class Handler(BaseHTTPRequestHandler):
             dirs = []  # 无权限的目录按空目录处理，可继续选它本身
         parent = "" if p.parent == p else str(p.parent)
         return self._json(200, {"path": str(p), "parent": parent, "dirs": dirs})
+
+    def _api_dir_scan(self):
+        """侧栏文件夹「查看文件」：列出该工作目录里的文件（附件式 chip 展示）。
+
+        只读；仅限本机请求（同 /api/browse 的信息泄露口径）。文件名最多取
+        最近 200 个（按 mtime 新→旧），跳过 .git / node_modules 等噪音目录；
+        只列文件不递归（子目录里的文件不进列表，但可再开「查看文件」进入）。
+        名称带目录前缀（如 "docs/readme.md"），前端按层级缩进成文件夹感。
+        """
+        ip, fw = self._forwarded_ip()
+        if ip not in ("127.0.0.1", "::1") or fw:
+            return self._json(403, {"error": "文件浏览仅限本机使用"})
+        qs = parse_qs(urlparse(self.path).query)
+        raw = (qs.get("path") or [""])[0].strip()
+        if not raw:
+            return self._json(400, {"error": "缺少 path"})
+        try:
+            p = Path(raw).expanduser()
+        except Exception:
+            return self._json(400, {"error": "非法路径"})
+        if not p.is_dir():
+            return self._json(404, {"error": "目录不存在: %s" % p})
+        files = []
+        subdirs = []
+        try:
+            for child in p.iterdir():
+                if child.is_file():
+                    try:
+                        st = child.stat()
+                    except OSError:
+                        continue
+                    files.append({"name": child.name, "size": st.st_size,
+                                  "mtime": int(st.st_mtime)})
+                elif child.is_dir():
+                    if child.name not in _SKIP_DIRS_SHARE:
+                        subdirs.append(child.name)
+        except (PermissionError, OSError):
+            return self._json(403, {"error": "无权限读取该目录"})
+        files.sort(key=lambda f: (-f["mtime"], f["name"].lower()))
+        return self._json(200, {"path": str(p), "files": files[:200],
+                                "subdirs": sorted(subdirs, key=str.lower)})
+
+    def _api_dir_file(self):
+        """侧栏「查看文件」里点文件 chip：返回该文件内容（浏览器新页打开/下载）。
+        只限本机（同 browse 口径）；name 必须相对，解析后仍落在 dir 内，防穿越。"""
+        ip, fw = self._forwarded_ip()
+        if ip not in ("127.0.0.1", "::1") or fw:
+            return self._json(403, {"error": "文件查看仅限本机使用"})
+        qs = parse_qs(urlparse(self.path).query)
+        raw_dir = (qs.get("dir") or [""])[0].strip()
+        raw_name = (qs.get("name") or [""])[0].strip()
+        if not raw_dir or not raw_name:
+            return self._json(400, {"error": "缺少 dir/name"})
+        try:
+            base = Path(raw_dir).expanduser().resolve()
+        except Exception:
+            return self._json(400, {"error": "非法路径"})
+        if not base.is_dir():
+            return self._json(404, {"error": "目录不存在: %s" % base})
+        name = unquote(raw_name).replace("\\", "/")
+        parts = name.split("/")
+        if not name or not all(p and p != ".." for p in parts):
+            return self._json(400, {"error": "非法文件名"})
+        fp = (base / name).resolve()
+        if fp.parent != base and not str(fp).startswith(str(base) + "/"):
+            return self._json(403, {"error": "越界"})
+        if not fp.is_file():
+            return self._json(404, {"error": "文件不存在"})
+        try:
+            data = fp.read_bytes()
+        except OSError:
+            return self._json(403, {"error": "无法读取"})
+        ext = Path(name.lower()).suffix
+        ctype = MIME.get(ext, "application/octet-stream")
+        if ext in (".md", ".txt", ".log", ".csv", ".yml", ".yaml", ".json", ".ini", ".toml",
+                   ".py", ".js", ".ts", ".html", ".css", ".svg"):
+            ctype = "text/plain; charset=utf-8"
+        return self._send(200, data, ctype)
 
     def _api_git_info(self):
         """探测工作目录是否为 git 仓库，返回分支/标签/最近提交供「代码版本」下拉。
@@ -607,10 +824,11 @@ class Handler(BaseHTTPRequestHandler):
         """上传一个任务附件（截图/文件）到待提交区：{name, data: base64} → 返回附件 id。
         创建任务时把 id 列表放进 payload.attachments，落盘到工作目录 _attachments/。"""
         from core import attachments
-        # 防超大声明：base64 后约 11MB 对应 8MB 文件上限，预留余量
+        # 防超大声明：普通附件 8MB（base64 约 11MB），Office 文档 24MB（约 32MB），
+        # 门限取上限加余量；按扩展名的精确校验在 save_pending 里
         try:
-            if int(self.headers.get("Content-Length") or 0) > 12 * 1024 * 1024:
-                return self._json(413, {"error": "附件过大（上限 8MB）"})
+            if int(self.headers.get("Content-Length") or 0) > 34 * 1024 * 1024:
+                return self._json(413, {"error": "附件过大（普通 8MB / Word·Excel·PPT 24MB）"})
         except ValueError:
             return self._json(400, {"error": "非法 Content-Length"})
         body = self._body()
@@ -619,6 +837,34 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as e:
             return self._json(400, {"error": str(e)})
         return self._json(200, {"ok": True, "attachment": meta})
+
+    def _api_add_message(self, run_id):
+        """运行中指挥：往该 run 的信箱追加一条用户指令（文字 + 附件）。
+        附件走待提交区（前端先 POST /api/attachments 拿 id）→ commit 进 workdir，
+        把落盘相对路径随消息入箱，供下一个步骤 drain 时注入。写接口已在 do_POST
+        统一做过设备控制（_deny_control），此处不重复。"""
+        run = store.get_run(run_id)
+        if not run:
+            return self._json(404, {"error": "not found"})
+        body = self._body() or {}
+        text = body.get("text") or ""
+        att_ids = body.get("attachments") or []
+        workdir = store.run_workdir(run_id)
+        saved = []
+        if att_ids and workdir:
+            from core import attachments
+            try:
+                saved = attachments.commit_to_workdir(workdir, att_ids)
+            except Exception:
+                saved = []
+        saved_paths = [a.get("path") for a in saved if a.get("path")]
+        if not text.strip() and not saved_paths:
+            return self._json(400, {"error": "消息为空"})
+        msg = store.add_message(run_id, text, sender=self._client_name(),
+                                attachments=saved_paths)
+        if not msg:
+            return self._json(400, {"error": "运行不存在或消息非法"})
+        return self._json(200, {"ok": True, "message": msg})
 
     def _api_control(self):
         body = self._body()
@@ -714,8 +960,21 @@ def _state_payload(client_id="", ver=None):
     }
 
 
+class ThreadedServer(ThreadingHTTPServer):
+    """Windows 下 SO_REUSEADDR 允许两个进程同时 LISTEN 同一端口（请求随机
+    分发到其中一个——服务"时好时坏"的根源）。独占锁让第二个实例在这里
+    干净失败，而不是静默双绑。正常重启不受影响（监听 socket 关闭不进
+    TIME_WAIT；已建立连接的 TIME_WAIT 不阻止重新 LISTEN 同端口）。"""
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if os.name == "nt":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Tutti 多智能体编排台")
+    parser = argparse.ArgumentParser(description="CodeBee 多智能体编排台")
     parser.add_argument("--host", default="0.0.0.0",
                         help="监听地址；0.0.0.0 允许手机/局域网访问（默认），127.0.0.1 仅本机")
     parser.add_argument("--port", type=int, default=8765)
@@ -745,16 +1004,16 @@ def main():
     from core import skills
     n_lc = skills.migrate_lesson_categories()  # 分类字段上线前的教训按关键词回填（幂等，带备份）
     if n_lc:
-        print("[Tutti] 经验库：%d 条历史教训已自动归类" % n_lc)
+        print("[CodeBee] 经验库：%d 条历史教训已自动归类" % n_lc)
     from core import usage
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）
     if n_bf:
-        print("[Tutti] 用量台账：已从历史运行回填 %d 条记录" % n_bf)
+        print("[CodeBee] 用量台账：已从历史运行回填 %d 条记录" % n_bf)
     # dsh-migration §1E：崩溃遗留的 running run 标记为 failed（在 jobs.resume_interrupted
     # 之前执行，否则续跑逻辑会把僵尸 run 当成正常中断接手）
     n_rc = store.recover_orphaned_runs()
     if n_rc:
-        print("[Tutti] 崩溃恢复：%d 个遗留运行标记为 failed（interrupted at startup）" % n_rc)
+        print("[CodeBee] 崩溃恢复：%d 个遗留运行标记为 failed（interrupted at startup）" % n_rc)
     try:
         from core import settings_schema
         settings_schema.register_default_namespaces()  # budget/cascade/compaction 配置就绪（幂等）
@@ -763,7 +1022,10 @@ def main():
     jobs.start_worker()
     n_resume = jobs.resume_interrupted()   # 启动恢复：服务被杀中断的连载任务自动续跑
     if n_resume:
-        print("[Tutti] 已自动恢复 %d 个中断的连载任务（断点续跑）" % n_resume)
+        print("[CodeBee] 已自动恢复 %d 个中断的连载任务（断点续跑）" % n_resume)
+    n_auto = automation.start()   # 自动化：加载定时任务并拉起调度线程（错过的一次性任务不补跑）
+    if n_auto:
+        print("[CodeBee] 自动化：%d 个定时任务已加载" % n_auto)
     tok = remote.token()
     import atexit
     import os as _os
@@ -775,7 +1037,19 @@ def main():
     if args.wait_port:
         from core import selfupdate
         selfupdate.wait_port_before_bind(args.port)
-    httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+    try:
+        httpd = ThreadedServer((args.host, args.port), Handler)
+    except OSError as e:
+        # Windows 的 SO_REUSEADDR 允许两个进程同时 LISTEN 同一端口（请求随机
+        # 分发，表现为"时好时坏"）；加独占锁后双起在这里干净失败并指路。
+        import os
+        hint = ""
+        if os.name == "nt":
+            hint = ("（Windows 排查：netstat -ano | findstr :%d 找到 PID，"
+                    "tasklist /FI \"PID eq <PID>\" 看是谁；旧进程杀掉或换 --port）"
+                    % args.port)
+        raise SystemExit("[CodeBee] 端口 %d 已被占用，无法启动：%s %s"
+                         % (args.port, e, hint))
 
     def _announce_public(url):
         print("[CodeBee] 公网     %s/?token=%s" % (url, tok))

@@ -196,6 +196,31 @@ def _tool_of(agent_id):
     return a or "unknown"
 
 
+_HOURLY_CACHE = {"ts": 0.0, "val": {}}
+_HOURLY_TTL = 60.0   # 秒：路由调用频繁但台账追加低频，60s 缓存足够新鲜
+
+
+def agent_tokens_recent(agent, hours=1):
+    """该智能体近 N 小时的 token 总量（路由配额惩罚用）。按 ts 前缀过滤，
+    60 秒 TTL 进程内缓存——运行中每次路由都查也只扫两天的台账。"""
+    try:
+        agent = str(agent or "")
+        now = time.time()
+        if now - _HOURLY_CACHE["ts"] > _HOURLY_TTL:
+            bound = time.strftime("%Y-%m-%d %H:%M:%S",
+                                  time.localtime(now - hours * 3600.0))
+            total = {}
+            for r in _iter_records(2):
+                if str(r.get("ts") or "") < bound:
+                    continue
+                a = str(r.get("agent") or "")
+                total[a] = total.get(a, 0) + max(0, _parse_int((r.get("usage") or {}).get("total")))
+            _HOURLY_CACHE.update(ts=now, val=total)
+        return int(_HOURLY_CACHE["val"].get(agent) or 0)
+    except Exception:
+        return 0
+
+
 def _iter_records(days):
     """按时间范围读取台账（days=0 表示全部）。返回按写入顺序的记录列表。"""
     out = []

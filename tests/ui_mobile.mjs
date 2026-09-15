@@ -164,7 +164,7 @@ async function main() {
       collapsed: document.body.classList.contains("side-collapsed"),
       active: (document.querySelector(".set-item.active") || {}).dataset?.sub || ""
     })`));
-    check("点供应商指示进编排中枢并收起抽屉",
+    check("点供应商指示进编排设置并收起抽屉",
       provNav.collapsed && provNav.active === "orch", JSON.stringify(provNav));
 
     ws.close();

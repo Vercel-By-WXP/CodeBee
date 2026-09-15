@@ -133,9 +133,10 @@ class TestLearnFromRun(BaseTest):
         def fake_chat(pid, model, prompt, **kw):
             calls["chat"] += 1
             self.assertIn("复盘官", prompt)
+            self.assertIn("情节逻辑", prompt)                 # 枚举注入提示词，约束模型归类
             return {"ok": True, "tokens": 10, "error": "",
                     "text": '```json\n{"lessons": [{"title": "章间衔接", '
-                            '"content": "写章纲时先定全书节奏曲线"}]}\n```'}
+                            '"category": "一致性", "content": "写章纲时先定全书节奏曲线"}]}\n```'}
 
         orig_r, orig_c = modelhub.resolve_orchestrator, modelhub.chat
         modelhub.resolve_orchestrator, modelhub.chat = fake_resolve, fake_chat
@@ -145,7 +146,93 @@ class TestLearnFromRun(BaseTest):
             modelhub.resolve_orchestrator, modelhub.chat = orig_r, orig_c
         self.assertEqual(calls["chat"], 1)
         self.assertEqual(n, 1)
-        self.assertEqual(skills.list_lessons("novel")[0]["title"], "章间衔接")
+        first = skills.list_lessons("novel")[0]
+        self.assertEqual(first["title"], "章间衔接")
+        self.assertEqual(first["category"], "一致性")          # 模型归类透传落库
+
+
+class TestLessonCategories(BaseTest):
+    """自动教训的自动分类与分类过滤查看。"""
+
+    def runTest(self):
+        from app.core import skills
+        skills._FILE = self.data_dir / "skills.json"
+
+        # 1) 枚举闭集 + 未分类兜底名可用
+        self.assertIn("一致性", skills.LESSON_CATEGORIES)
+        self.assertIn("流程规范", skills.LESSON_CATEGORIES)
+
+        # 2) 显式 category 精确命中枚举直接落库
+        a = skills.upsert_lesson("serial_novel", "章末无钩子", "每章结尾断章要狠",
+                                 category="节奏爽点")
+        self.assertEqual(a["category"], "节奏爽点")
+
+        # 3) 非法/自创 category → 按关键词就近映射；再退到 dim；都不中 → 未分类
+        b = skills.upsert_lesson("serial_novel", "人设崩塌", "主角动机要前置",
+                                 category="人物崩了")             # 含「人物」关键词
+        self.assertEqual(b["category"], "人物塑造")
+        c = skills.upsert_lesson("serial_novel", "设定前后矛盾", "建立设定台账",
+                                 dim="一致性")                    # category 缺省，退 dim
+        self.assertEqual(c["category"], "一致性")
+        d = skills.upsert_lesson("serial_novel", "无信号条目", "内容内容",
+                                 category="玄学")                  # 既非枚举也无关键词、无 dim
+        self.assertEqual(d["category"], skills.LESSON_UNCATEGORIZED)
+
+        # 4) 分类过滤查看：每类只回对应条；未分类单列
+        self.assertEqual([x["title"] for x in skills.list_lessons(category="节奏爽点")],
+                         ["章末无钩子"])
+        self.assertEqual([x["title"] for x in skills.list_lessons(category=skills.LESSON_UNCATEGORIZED)],
+                         ["无信号条目"])
+        self.assertEqual(len(skills.list_lessons(category="情节逻辑")), 0)
+
+        # 5) view 暴露 categories + counts 供 UI 下拉
+        v = skills.view()
+        self.assertEqual(v["total"], 4)
+        self.assertEqual(v["counts"].get("节奏爽点"), 1)
+        self.assertEqual(v["counts"].get(skills.LESSON_UNCATEGORIZED), 1)
+        # 闭集全枚举都在下拉里（含 0 条的类，过滤项不缺）
+        for cat in skills.LESSON_CATEGORIES:
+            self.assertIn(cat, v["categories"])
+
+        # 6) 老数据（无 category 字段）归入未分类，可被未分类过滤命中
+        raw = json.loads((self.data_dir / "skills.json").read_text(encoding="utf-8"))
+        for it in raw["lessons"]:
+            it.pop("category", None)
+        (self.data_dir / "skills.json").write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+        legacy = skills.list_lessons(category=skills.LESSON_UNCATEGORIZED)
+        self.assertEqual(len(legacy), 4)
+        # 旧条目再沉淀（同 scope 同标题）合并而非分裂，并补上分类
+        again = skills.upsert_lesson("serial_novel", "章末无钩子", "更新版：断章要狠",
+                                     category="节奏爽点")
+        self.assertEqual(again["seen"], 2)
+        self.assertEqual(again["category"], "节奏爽点")
+        self.assertEqual(len([x for x in skills.list_lessons() if x["title"] == "章末无钩子"]), 1)
+
+        # 7) 合并降级保护：本次归不到类（未分类）不得覆盖已有的明确分类
+        keep = skills.upsert_lesson("serial_novel", "章末无钩子", "再更新", category=None)
+        self.assertEqual(keep["category"], "节奏爽点")
+
+        # 8) 启动迁移：无 category 的历史教训按标题→正文关键词回填（只回填归得出的，
+        #    无信号的不动，读取时视为未分类），幂等
+        raw = json.loads((self.data_dir / "skills.json").read_text(encoding="utf-8"))
+        for it in raw["lessons"]:
+            it.pop("category", None)
+        (self.data_dir / "skills.json").write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+        n = skills.migrate_lesson_categories()
+        self.assertEqual(n, 3)
+        by_title = {x["title"]: x for x in skills.list_lessons()}
+        self.assertEqual(by_title["章末无钩子"]["category"], "节奏爽点")   # 标题含「钩子」
+        self.assertEqual(by_title["人设崩塌"]["category"], "人物塑造")     # 标题含「人设」
+        self.assertEqual(by_title["设定前后矛盾"]["category"], "一致性")   # 标题含「前后矛盾」
+        self.assertNotIn("category", by_title["无信号条目"])               # 无词可依，不硬塞
+        self.assertEqual(skills.view()["counts"][skills.LESSON_UNCATEGORIZED], 1)  # 读取时视为未分类
+        # 幂等：再跑一遍零写入、分类不漂移
+        self.assertEqual(skills.migrate_lesson_categories(), 0)
+        snap = {x["title"]: x.get("category") for x in skills.list_lessons()}
+        skills.migrate_lesson_categories()
+        self.assertEqual({x["title"]: x.get("category") for x in skills.list_lessons()}, snap)
+        # 已有明确分类的条目绝不被迁移覆盖
+        self.assertEqual(by_title["章末无钩子"]["category"], "节奏爽点")
 
 
 if __name__ == "__main__":

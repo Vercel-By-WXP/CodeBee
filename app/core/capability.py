@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """能力维度（4D）：按任务类型（writing/coding/reasoning/vision）选模型。
 
-设计稿：docs/migration/05-model-seams.md §4D（按 Tutti 实际架构落地：
+设计稿：docs/migration/05-model-seams.md §4D（按 CodeBee 实际架构落地：
 不改 modelhub.py——供应商声明可选 `strengths` 字段即可被识别；
 选择逻辑独立成模块，零侵入）。
 
@@ -41,7 +41,7 @@ def classify_task_type(task) -> str:
     best = max(scores, key=lambda d: scores[d])
     if scores[best] > 0:
         return best
-    return "coding"  # 默认兜底（Tutti 主场景）
+    return "coding"  # 默认兜底（CodeBee 主场景）
 
 
 def provider_strengths(prov):

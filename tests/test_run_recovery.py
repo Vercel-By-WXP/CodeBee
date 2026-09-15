@@ -96,3 +96,35 @@ class TestRecoverOrphanedRuns(BaseTest):
         self.assertEqual(data["status"], "failed")
         self.assertIsNotNone(data["ended_at"])
         self.assertIn("interrupted", data["error"])
+
+    def test_retry_failed_run_inherits_live_chapter_scores(self):
+        """§07 补缺陷：failed run 没有 verdict，retry 应继承每章实时落账的分数。
+
+        实测缺陷：inherit.chapter_scores 只取 verdict——failed/cancelled run
+        永远没有 verdict，导致多轮失败恢复时全部已过线章节被重新评审
+        （真实连载一晚白烧数百万 token）。
+        """
+        from app.core import store
+        task = store.create_task({
+            "type": "serial_novel", "title": "t", "goal": "写连载",
+            "workdir": str(self.workdir),
+            "serial": {"chapters": 3, "words_per_chapter": 800},
+        })
+        prev = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(prev["id"], status="failed", ended_at="2026-09-15 00:00:00")
+        store.update_run(prev["id"], outline={
+            "book_title": "书", "source": "编排者",
+            "chapters": [{"title": "第 1 章", "beats": "b", "hook": "h"}]})
+        store.add_step(prev["id"], "draft-c1", "mock", "mock")
+        store.finish_step(prev["id"], 1, "done", summary="x", duration_s=0.1)
+        # failed run 没有 verdict，但每章分数实时落账在 run.chapter_scores
+        store.update_run(prev["id"], chapter_scores=[
+            {"chapter": 1, "title": "第 1 章",
+             "means": {"情节": 8.0, "人物": 8.0}, "passed": True, "rounds": 1}])
+
+        ok, err, nxt = store.retry_task(task["id"])
+        self.assertTrue(ok, err)
+        scores = (nxt.get("inherit") or {}).get("chapter_scores") or []
+        self.assertEqual([c.get("chapter") for c in scores], [1],
+                         "failed run 的实时章节分数必须被继承")
+        self.assertEqual(scores[0]["means"]["情节"], 8.0)

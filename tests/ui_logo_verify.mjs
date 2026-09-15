@@ -1,6 +1,5 @@
-/* Logo 重设计 + 去除内置演示区块的渲染核验：Edge headless + CDP。
- * 1) #i-baton symbol 存在且几何非空；品牌磁贴与扫码门 use 指向 #i-baton；
- *    磁贴截图区域有墨迹（白图形 vs 渐变底方差 > 0）。
+/* 品牌纯文字定版（2026-09-15：不放图片）+ 去除内置演示区块的渲染核验：Edge headless + CDP。
+ * 1) 品牌区与扫码门为纯文字「CodeBee」，无任何品牌图片。
  * 2) 智能体管理页不再有「内置演示」标题与 ag-mocks 容器。
  * 用法：node tests/ui_logo_verify.mjs （脚本自己起临时服务，端口 18811） */
 import { spawn } from "node:child_process";
@@ -67,47 +66,32 @@ async function main() {
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(3500);
 
-    /* ---- 1) 精灵表与引用 ---- */
-    const sprite = await evalJs(`(() => {
-      const s = document.querySelector('#icon-sprite symbol#i-baton');
-      if (!s) return JSON.stringify({ exists: false });
-      const bb = s.getBBox();
-      return JSON.stringify({ exists: true, w: +bb.width.toFixed(1), h: +bb.height.toFixed(1), kids: s.children.length });
+    /* ---- 1) 品牌区：Codex 式低调纯文字，无磁贴/图片/渐变 ---- */
+    const tile = await evalJs(`(() => {
+      const brand = document.querySelector('.brand');
+      const name = document.querySelector('.brand .brand-name');
+      const gate = document.querySelector('.gate-brand');
+      if (!brand || !name || !gate) return JSON.stringify({ ok: false });
+      return JSON.stringify({ ok: true,
+        name: name.textContent.trim(),
+        brandDeco: brand.querySelectorAll('img, svg, .logo-tile').length,
+        gateDeco: gate.querySelectorAll('img, svg, .logo-tile').length,
+        gateText: gate.textContent.trim(),
+        bg: getComputedStyle(name).backgroundImage,
+        sideSearch: !!document.querySelector('.side-search input#side-search'),
+        kbds: document.querySelectorAll('.side-main .kbd').length,
+        expandBtn: !!document.getElementById('btn-side-expand'),
+        pbadge: !!document.getElementById('prov-side-badge') });
     })()`);
-    const sp = JSON.parse(sprite);
-    check("#i-baton symbol 存在且几何非空", sp.exists && sp.w > 10 && sp.h > 10 && sp.kids >= 4, sprite);
-    const oldNote = await evalJs(`!!document.querySelector('#icon-sprite symbol#i-note')`);
-    check("旧 #i-note 已移除", !oldNote);
-    const uses = await evalJs(`(() => {
-      const brand = document.querySelector('.brand .logo-tile use');
-      const gate = document.querySelector('.gate-brand .logo-tile use');
-      return JSON.stringify({ brand: brand && brand.getAttribute('href'), gate: gate && gate.getAttribute('href') });
-    })()`);
-    const u = JSON.parse(uses);
-    check("品牌磁贴 use → #i-baton", u.brand === "#i-baton", uses);
-    check("扫码门 use → #i-baton", u.gate === "#i-baton", uses);
-
-    /* ---- 2) 磁贴像素：渐变底上确有白色图形墨迹 ---- */
-    const ink = await evalJs(`(() => {
-      const r = document.querySelector('.brand .logo-tile').getBoundingClientRect();
-      return JSON.stringify({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) });
-    })()`);
-    const shot = await send("Page.captureScreenshot", { format: "png" });
-    const png = Buffer.from(shot.result.data, "base64");
-    const inkStat = await evalJs(`(async () => {
-      const b = ${ink};
-      const img = new Image();
-      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = "data:image/png;base64,${png.toString("base64")}"; });
-      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
-      const g = c.getContext('2d'); g.drawImage(img, 0, 0);
-      const d = g.getImageData(b.x, b.y, b.w, b.h).data;
-      let white = 0, n = 0;
-      for (let i = 0; i < d.length; i += 4) { n++; if (d[i] > 235 && d[i+1] > 235 && d[i+2] > 235) white++; }
-      return JSON.stringify({ white, n, ratio: +(white / n).toFixed(3) });
-    })()`);
-    const st = JSON.parse(inkStat);
-    // 指挥棒图形约占磁贴 15-35% 亮像素；低于 5% 说明空白，高于 60% 说明整块白底
-    check("磁贴内有白色指挥棒图形（亮像素占比合理）", st.ratio > 0.05 && st.ratio < 0.6, inkStat);
+    const tp = JSON.parse(tile);
+    check("品牌字标为纯文字 CodeBee（Codex 式低调）", tp.ok && tp.name === "CodeBee", tile);
+    check("品牌区无磁贴/图片/矢量装饰", tp.ok && tp.brandDeco === 0, tile);
+    check("扫码门同款纯文字", tp.ok && tp.gateDeco === 0 && tp.gateText === "CodeBee", tile);
+    check("字标无渐变（纯正文色）", tp.ok && (tp.bg === "none" || tp.bg === ""), tile);
+    check("侧栏搜索框 + 快捷键提示（N / Ctrl K）", tp.ok && tp.sideSearch && tp.kbds >= 2, tile);
+    check("任务树展开/收起按钮 + 待裁决徽章容器", tp.ok && tp.expandBtn && tp.pbadge, tile);
+    const oldSprite = await evalJs(`!!document.querySelector('#icon-sprite symbol#i-logo') || !!document.querySelector('#icon-sprite symbol#i-note')`);
+    check("旧 #i-logo/#i-note sprite 已移除", !oldSprite);
 
     /* ---- 3) 智能体管理页：内置演示区块已去除 ---- */
     const agents = await evalJs(`(async () => {

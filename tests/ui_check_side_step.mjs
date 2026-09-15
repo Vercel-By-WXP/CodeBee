@@ -64,6 +64,31 @@ async function main() {
     check("mock 任务完成（有步骤可点）", run && run.status === "done" && (run.steps || []).length > 0,
       run ? run.status + " steps=" + (run.steps || []).length : "无");
 
+    // ===== 默认保存路径：不传 workdir 的任务落到设置里的默认目录 =====
+    const wsDir = join(tmp, "默认保存");
+    const dw = await (await fetch(SERVICE + "/api/settings/default-workdir", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: wsDir }) })).json();
+    const normP = (s) => String(s || "").replace(/\//g, "\\").toLowerCase();
+    check("设置默认保存路径", dw.ok === true && normP(dw.settings.default_workdir_effective) === normP(wsDir),
+      JSON.stringify({ got: dw.settings?.default_workdir_effective, want: wsDir }).slice(0, 200));
+    const sub2 = await (await fetch(SERVICE + "/api/tasks", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "doc", goal: "缺省目录任务", mode: "auto" }) })).json();
+    check("不传 workdir 的任务受理", Boolean(sub2.run_id), JSON.stringify(sub2).slice(0, 120));
+    let run2f = null;
+    for (let i = 0; i < 120; i++) {
+      await sleep(500);
+      run2f = (await (await fetch(SERVICE + "/api/runs/" + sub2.run_id)).json()).run;
+      if (["done", "failed", "cancelled"].includes(run2f.status)) break;
+    }
+    const fl = await (await fetch(SERVICE + "/api/runs/" + sub2.run_id + "/files")).json();
+    check("缺省目录任务的成品落在默认路径", fl.workdir === wsDir && (fl.files || []).length > 0,
+      JSON.stringify({ workdir: fl.workdir, n: (fl.files || []).length }).slice(0, 150));
+    const fa = await (await fetch(SERVICE + "/api/runs/" + sub2.run_id + "/file?name=" +
+      encodeURIComponent(fl.files?.[0]?.name || "无"))).text();
+    check("成品文件可读取（非空内容）", fl.files?.length && fa.length > 0, "len=" + fa.length);
+
     edge = spawn(EDGE, ["--headless=new", "--disable-gpu", "--no-first-run",
       `--user-data-dir=${join(tmp, "p")}`, `--remote-debugging-port=${CDP_PORT}`,
       "--window-size=1440,1000", "about:blank"], { stdio: "ignore" });
@@ -126,6 +151,17 @@ async function main() {
     check("点击后：详情标题有内容且页面标题为运行详情",
       after.title.trim().length > 0 && after.pageTitle === "运行详情",
       "rd=" + after.title + " page=" + after.pageTitle);
+    // 成品文件已移至右侧检查器「成品文件」分区：主栏详情页不再有 rd-files 区块
+    await sleep(1500);
+    const filesUi = await js(`(() => {
+      const main = document.getElementById("rd-files");
+      const box = document.getElementById("insp-artifacts");
+      return { mainGone: !main, inspectorBox: !!box,
+        reportVisible: !!document.getElementById("rd-report") };
+    })()`);
+    check("点击后：主栏无成品区块，成品容器在检查器",
+      filesUi.mainGone === true && filesUi.inspectorBox === true && filesUi.reportVisible === true,
+      JSON.stringify(filesUi));
 
     // 点不同子任务 → 定位到不同步骤（滚动 + 高亮 + 展开日志），内容不再千篇一律
     const pick = await js(`(() => {
@@ -203,7 +239,9 @@ async function main() {
       if (smore) break;
       await sleep(500);
     }
-    check("侧栏出现「查看全部 " + expectSteps + " 步」", smore === "查看全部 " + expectSteps + " 步", "smore=" + smore);
+    check("侧栏出现「查看全部 2 次运行 · N 步」",
+      smore.includes("查看全部") && smore.includes("2 次运行") && smore.includes(expectSteps + " 步"),
+      "smore=" + smore);
 
     await js(`(() => {
       const s = [...document.querySelectorAll("#side-tasks .smore")].find(x => x.textContent.includes("查看全部"));

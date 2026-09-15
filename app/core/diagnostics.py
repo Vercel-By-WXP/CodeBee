@@ -5,7 +5,7 @@
 参考 dsh packages/runtime-diagnostics/invariants/src/index.ts：
   enabled/package_allowlist/package_blocklist 三过滤；失败抛 InvariantError 含 packageName。
 
-Tutti 实施简化为单文件 + pytest 钩子（设计稿说明）；register(name, fn) 注册断言，
+CodeBee 实施简化为单文件 + pytest 钩子（设计稿说明）；register(name, fn) 注册断言，
 run_for(source, ctx) 在指定 source 下跑所有断言并返回失败列表。
 """
 from __future__ import annotations
@@ -87,7 +87,7 @@ invariants = InvariantRegistry()  # 单例
 
 # === 默认 invariants ===
 def register_default_checks():
-    """注册 Tutti 默认运行时断言。"""
+    """注册 CodeBee 默认运行时断言。"""
 
     def review_no_all_fail_zero(ctx):
         """评审全部 0 分但 run 标 success → 不允许（已锁 test_quality_gates:62-75）。"""

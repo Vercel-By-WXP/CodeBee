@@ -5,3 +5,5 @@ data/
 .DS_Store
 Thumbs.db
 .ui-shots/
+.zcode/
+tests/_shots/

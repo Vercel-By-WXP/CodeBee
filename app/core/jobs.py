@@ -335,7 +335,7 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
     if agent is None or agent.get("mode") != "real":
         return False  # 无真实智能体可用，维持原失败
     try:
-        log_tail = runner.decode_output(orig_log.read_bytes()[-2000:]) if orig_log.exists() else "（无输出）"
+        log_tail = runner.tail_decoded(orig_log.read_bytes(), 2000) if orig_log.exists() else "（无输出）"
     except Exception:
         log_tail = "（日志不可读）"
     import shutil

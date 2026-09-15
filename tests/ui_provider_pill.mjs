@@ -1,5 +1,5 @@
 /* 侧栏左下角「编排者供应商」指示：显示当前 Tutti 智能体用的厂商，点击进设置更换。
- * 覆盖：未选/生效中/不生效三态、点击跳转编排中枢、下拉范围＝已接入（有密钥）的厂商、
+ * 覆盖：未选/生效中/不生效三态、点击跳转编排设置、下拉范围＝已接入（有密钥）的厂商、
  * 页内改选后侧栏即时同步。
  *
  * 注意（踩过的坑）：Tutti 的写接口都需要设备控制权——控制权空闲时由首个写请求自动接管，
@@ -144,7 +144,7 @@ async function main() {
     const empty = JSON.parse(await pill());
     check("未选厂商时显示占位并可见", empty.visible && empty.text === "未选厂商", JSON.stringify(empty));
     check("未选厂商用灰点", /^pdot$/.test(empty.dot), empty.dot);
-    check("未选厂商的悬停提示说明去哪选", /编排中枢/.test(empty.title), empty.title);
+    check("未选厂商的悬停提示说明去哪选", /编排设置/.test(empty.title), empty.title);
 
     /* ---- 2) 选一个已接入厂商：显示其名 + 绿点（生效中） ---- */
     await pageApi("/api/orchestrator", { provider_id: withKey[0][0], model: P_A.model, enabled: true });
@@ -164,7 +164,7 @@ async function main() {
     await pageApi("/api/models/provider-op", { ids: [withKey[0][0]], op: "enable" });
     await sleep(400);
 
-    /* ---- 4) 点击 → 进设置里的「编排中枢」页 ---- */
+    /* ---- 4) 点击 → 进设置里的「编排设置」页 ---- */
     await reload();
     await evalJs(`document.getElementById("btn-prov-side").click(); "ok"`);
     await sleep(1300);
@@ -175,10 +175,10 @@ async function main() {
       orchShown: !document.getElementById("sub-orch").classList.contains("hidden"),
       hasSelect: !!document.getElementById("orch-prov")
     })`));
-    check("点击后进入设置页的编排中枢",
+    check("点击后进入设置页的编排设置",
       jumped.settingsMode && jumped.active === "orch" && jumped.orchShown && jumped.hasSelect,
       JSON.stringify(jumped));
-    check("顶栏标题同步为编排中枢", jumped.title === "编排中枢", jumped.title);
+    check("顶栏标题同步为编排设置", jumped.title === "编排设置", jumped.title);
 
     /* ---- 5) 下拉范围＝已接入（有密钥）的厂商，无密钥的不可选 ---- */
     const opts = JSON.parse(await evalJs(`JSON.stringify(
