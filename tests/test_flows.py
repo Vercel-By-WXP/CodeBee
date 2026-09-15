@@ -257,7 +257,9 @@ class TestSerialResume(BaseTest):
             step, _ = store.add_step(run1["id"], "draft-c%d" % i, "mock-a", "mock")
             store.finish_step(run1["id"], step["n"], "done", summary="ok")
             with (self.workdir / ("chapter-%02d.md" % i)).open("w", encoding="utf-8") as f:
-                f.write("第 %d 章旧稿内容" % i)
+                # 坏稿防线（1ea1157）：字数 < max(200, 30% wpc) 的旧稿不再复用，
+                # 本用例验证的是续跑标注，夹具必须写出「合格成稿」字数
+                f.write("第 %d 章旧稿内容\n" % i + "旧稿正文段落，用于跨过复用字数门槛。" * 20)
         store.update_run(run1["id"], status="failed", error="中断", ended_at="x")
 
         ok, err, run2 = store.retry_task(task["id"])
