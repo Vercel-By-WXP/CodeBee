@@ -556,6 +556,8 @@ async function healthOp(op) {
   const r = await api("/api/health/op", { provider: down.provider, op });
   if (r && r.health) { S.state.health = r.health; renderHealthBanner(r.health); }
   closeModal(); render();
+  if (op === "silence") toast(t("已静默 {0} 的告警（恢复后自动重新武装）").replace("{0}", down.provider));
+  if (op === "reset") toast(t("已手动标记 {0} 为恢复，探针将重新核实").replace("{0}", down.provider));
 }
 
 /* 模型级禁用：链降级（resolve_binding 的 _model_bindable）会自动跳过它。
@@ -575,6 +577,7 @@ async function healthDisableModel(pid, model) {
   S.modelCatalog = models.catalog || [];
   S.provSig = "";
   closeModal(); render(); loadOrchestrator();
+  toast(t("已禁用模型 {0} · {1}，链降级自动跳过；绑定页可重新启用").replace("{0}", pid).replace("{1}", model));
 }
 
 async function healthDisableProvider(pid) {
@@ -591,6 +594,7 @@ async function healthDisableProvider(pid) {
   S.providers = models.providers; S.bindings = models.bindings;
   S.provSig = "";
   closeModal(); render(); loadOrchestrator();
+  toast(t("已禁用厂商 {0}：链降级自动跳过，绑定页可重新启用").replace("{0}", pid));
 }
 
 async function refreshState() {
@@ -2295,7 +2299,7 @@ function saveOpenDirs() {
 
 /* 侧栏「任务」树：文件夹（工作目录）→ 任务，两级。
  * 一级文件夹 = 任务 workdir 末段名（无主运行归「其他」垫底）；二级任务行 = 单行按钮：
- * 状态字形 + 单行省略标题 + 徽章 + 相对时间，点击右缘滑出「任务详情」。
+ * 状态字形 + 单行省略标题 + 徽章 + 相对时间，点击主栏直开任务详情。
  * 以任务表为底：每个任务恒有一行，近况取后端全量下发的最近一次运行（task_latest）；
  * run 窗口只用来捞无主运行（管理操作/任务已删）。任务不因别人刷屏而消失。 */
 /* 闸门等待提醒（Baton 式徽章 + 可选提示音）：
@@ -2472,7 +2476,7 @@ function renderSideTasks() {
       (act.length ? act : dirs.slice(0, 1)).forEach((d) => openDirs.add(d.dir));
     }
   }
-  // 二级任务行：单行即全部——点击直接滑出右侧「任务详情」（检查器）。
+  // 二级任务行：单行即全部——点击主栏直开任务详情。
   // 内嵌步骤层已砍：步骤/运行明细在任务详情里更全，侧栏只留状态字形 + 徽章 + 相对时间。
   // 右键菜单仍吃 data-task / data-run；主栏开着某任务详情时行保持高亮。
   const row = (g) => {
@@ -2524,14 +2528,15 @@ function showDetailInMain() {
   syncInspectorVis();    // 从设置子页点进运行详情：任务上下文，检查器跟着回来
 }
 
-/* 任务行激活（点击/键盘）：点任务 = 出「任务详情」，不允许任何行点了没反应。
+/* 任务行激活（点击/键盘）：点任务 = 主栏（侧栏右边的中间区域）直接展开任务详情，
+ * 聚合该任务全部 run 的步骤；不允许任何行点了没反应。
  * 无主运行行（任务已删/管理运行，data-task 为空）→ 直开它自己的运行详情；
- * 已归档任务 → toast 指路（检查器只认在册任务，归档行先取消归档）；
- * 没跑过/排队中 → toast 说明（准入闸门 inspEligible 的用户可读版）。 */
+ * 已归档任务 → toast 指路（归档行先取消归档）；
+ * 没跑过/排队中 → toast 说明（没有可展示的运行内容）。 */
 function sideRowActivate(det) {
   const taskId = det.dataset.task || "", runId = det.dataset.run || "";
   if (!taskId) {
-    if (runId) sideOpenRun(runId);   // 无主运行：详情照开，只是不进检查器
+    if (runId) sideOpenRun(runId);   // 无主运行：直开运行详情
     return;
   }
   const known = ((S.state || {}).tasks || []).some((x) => x.id === taskId);
@@ -2541,7 +2546,7 @@ function sideRowActivate(det) {
     return;
   }
   if (!inspEligible(taskId)) { toast(t("该任务还没跑过（或排队中），还没有任务详情"), true); return; }
-  openInspector(taskId);
+  sideOpenTask(taskId);
 }
 
 /* 打开单条运行详情（右键菜单「打开详情」/检查器步骤条）：不跳设置页——
@@ -3186,7 +3191,8 @@ window.gitDiscard = async function (taskId) {
 };
 
 /* ------------------------------------------------- 任务检查器（右缘停靠列）
- * 参考桌面端的 Git 工具 + 进程浮窗：点任务树的任务行，右缘滑出停靠列，
+ * 参考桌面端的 Git 工具 + 进程浮窗：顶栏「任务详情」按钮开合（点任务树的任务行
+ * 现在主栏直开任务级详情，检查器入口收拢到按钮/刷新恢复），
  * 五张卡——Git 工具（分支 + +/- 统计 + 变更清单 + 合并/丢弃裁决）、进度
  * （x/y 步 + 状态点清单）、运行统计、成品文件快捷区、迷你指挥区。
  * 数据走 /api/tasks/<id>/side（KB 级、可轮询、无 diff 文本）；主视图不动，
@@ -3668,8 +3674,8 @@ function bindInspector() {
     S.inspTab = b.dataset.tab;
     applyInspectorTab();
   });
-  // 任务树点任务行：右缘滑出「任务详情」（检查器）；任务行无内嵌层，整行即按钮；
-  // 文件夹行折叠 / 右键菜单不受影响。不在检查器准入范围内的行也不允许点了没反应：
+  // 任务树点任务行：主栏（中间区域）直开任务详情；任务行无内嵌层，整行即按钮；
+  // 文件夹行折叠 / 右键菜单不受影响。不在详情准入范围内的行也不允许点了没反应：
   // 无主运行行直开运行详情，归档/没跑过给 toast 说明。
   $("side-tasks").addEventListener("click", (e) => {
     const det = e.target.closest(".stask");
