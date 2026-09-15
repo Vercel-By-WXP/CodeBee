@@ -684,6 +684,10 @@ def set_binding(agent_id, provider_id=None, model=None, models=None,
             clean = [b["model"]] if b["model"] else []
             b["chain"] = [{"provider_id": eff_pid, "model": m} for m in clean]
             b["models"] = clean
+            # model 为空 = 仅注入供应商凭据（resolve 文档承诺的状态）：
+            # 显式指定 provider_id 时必须落盘，否则全新绑定静默丢主供应商
+            if provider_id is not None:
+                b["provider_id"] = eff_pid
         elif provider_id is not None:
             b["provider_id"] = eff_pid
         if difficulty_routing is not None:
@@ -1591,6 +1595,14 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
 
     if chain:
         entries = []
+        # 告警模块联动：已被健康监测判定 down 的供应商直接跳过——
+        # 链降级的语义就是「别把时间浪费在已知挂掉的网关上」
+        # （2026-09-15 实测：qwencode 对宕机网关内部重试 40 分钟才轮到补位）。
+        try:
+            from . import health
+            down_set = health.down_names()
+        except Exception:
+            down_set = set()
         for item in chain:
             model = (item.get("model") or "").strip()
             pid = (item.get("provider_id") or "").strip()
@@ -1603,6 +1615,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
                 continue  # 该条失效：跳过（降级链的语义就是逐条顶上）
             if prov.get("protocol") not in allowed:
                 continue
+            if prov.get("name") in down_set:
+                continue  # 健康监测判定 down：跳过，省掉无效等待
             entries.append(_chain_entry_env(prov, model or prov.get("model") or "",
                                             target=agent_kind_or_id))
         if not entries:

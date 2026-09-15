@@ -64,6 +64,14 @@ def _log_usage(source, role, task, res, agent=None, tool="", model="", provider=
                      duration_s=float(((res or {}).get("raw") or {}).get("duration") or 0.0),
                      cost_usd=float((res or {}).get("cost_usd") or 0.0),
                      usage=(res or {}).get("usage"))
+        # 告警模块：编排者直连调用的成功/失败上报（provider 名与台账一致）
+        if provider:
+            from . import health
+            if (res or {}).get("ok"):
+                health.report_success(provider)
+            else:
+                health.report_failure(provider, (res or {}).get("error") or "",
+                                      model=model)
     except Exception:
         pass
 

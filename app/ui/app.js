@@ -482,9 +482,48 @@ function md2html(md) {
 function applyState(d) {
   S.state = d;
   if (d.control) setControl(d.control);
+  if (d.health) renderHealthBanner(d.health);
   $("conn").textContent = t("已连接");
   $("conn").className = "conn ok";
   restoreInspector();   // 刷新后恢复上次打开的检查器（只在已开时为空操作）
+}
+
+/* ---------------------------------------------------------- 供应商健康告警横幅 */
+/* 告警触发时顶栏横幅 + 提示音（一次性，静默或恢复后停）；手动恢复走 /api/health/op。 */
+let _healthBeeped = false;
+function renderHealthBanner(health) {
+  const el = $("health-banner");
+  if (!el) return;
+  const alerts = (health && health.alerts) || [];
+  if (!alerts.length) {
+    const rec = (health.providers || []).find((p) => p.status === "recovered");
+    if (rec && Date.now() - S._healthRecoveredAt < 60000) {
+      el.textContent = "✓ " + rec.provider + " " + t("已恢复");
+      el.className = "health-banner recovered";
+    } else {
+      el.className = "health-banner hidden";
+      el.textContent = "";
+      _healthBeeped = false;
+    }
+    return;
+  }
+  const names = alerts.map((p) => p.provider).join("、");
+  el.textContent = "⚠ " + names + " " + t("连接异常");
+  el.className = "health-banner alerting";
+  el.title = alerts.map((p) => p.provider + "：连续失败 " + p.consecutive_failures + " 次（" + (p.last_error || "未知错误") + "）").join("\n");
+  if (!_healthBeeped) { _healthBeeped = true; beepAttention(); }
+}
+
+async function healthBannerClick() {
+  const alerts = (S.state && S.state.health && S.state.health.alerts) || [];
+  const down = alerts.find((p) => p.alerting);
+  if (!down) return;
+  if (confirm(t("静默 {0} 的告警？（确定=静默；取消=手动标记恢复）").replace("{0}", down.provider))) {
+    await api("/api/health/op", { provider: down.provider, op: "silence" });
+  } else {
+    await api("/api/health/op", { provider: down.provider, op: "reset" });
+  }
+  await refreshState(); render();
 }
 
 async function refreshState() {
@@ -616,6 +655,7 @@ function render() {
   renderBindings();
   renderOrchSide();   // 用缓存的 S.orch 重画（供应商变更时由 poll 触发重新拉取）
   refreshInspector(); // 检查器开着时节流跟刷（内部 2s 节流，关着直接返回）
+  refreshDetailSide(); // 详情页开着时节流跟刷任务级 side（累计统计 + git 实时）
 }
 
 /* ---------------------------------------------------------- 模型接入 */
@@ -1715,7 +1755,7 @@ function bindCtxMenus() {
     const dirTasks = ((S.state || {}).tasks || []).filter((x) => (x.workdir || "") === dir);
     const ids = dirTasks.map((x) => x.id);
     const items = [
-      { label: t("查看文件"), fn: () => toggleFolderFiles(dirEl, dir) },
+      { label: t("查看文件"), fn: () => openFolderFiles(dir) },
       { label: t("新建任务到该目录"), fn: () => newTaskInDir(dir) },
       "-",
       { label: t("打开工作目录"), fn: () => { if (ids[0]) revealPath("tasks", ids[0], true); } },
@@ -1936,63 +1976,135 @@ function newFromTask(id) {
 }
 window.newFromTask = newFromTask;
 
-/* 文件夹右键「查看文件」：在文件夹行内联展开文件列表（附件式 chip，可折叠），
- * 点开后再点即收起。子目录另开独立 inline 段。 */
-function toggleFolderFiles(dirEl, dir) {
-  // 查找是否已有 .sdir-files 容器
-  const dirbody = dirEl.querySelector(":scope > .dirbody");
-  if (!dirbody) return;
-  let existing = dirbody.querySelector(":scope > .sdir-files");
-  if (existing) {
-    existing.remove();
-    return;
-  }
-  // 新建容器并插入 dirbody 末尾
-  const wrap = document.createElement("div");
-  wrap.className = "sdir-files";
-  wrap.innerHTML = '<span class="sdir-files-loading">' + t("加载中…") + "</span>";
-  dirbody.appendChild(wrap);
-  toggleFolderFilesLoad(wrap, dir);
+/* 文件夹右键「查看文件」：左侧栏整体切到文件浏览页（同设置视图的整页切换），
+ * 递归列出该工作目录下全部文件，按目录层级渲染成可折叠树；点文件中央弹窗预览。
+ * 返回 = 「返回任务列表」按钮，恢复任务树。 */
+function openFolderFiles(dir) {
+  S.sfDir = dir;   // 迟到响应比对用：返回后丢弃
+  document.body.classList.add("files-mode");
+  document.body.classList.remove("settings-mode");
+  const last = String(dir || "").split(/[\\/]/).filter(Boolean).pop() || dir;
+  const titleEl = $("sf-dir"), rowEl = $("sf-dir-row");
+  if (titleEl) titleEl.textContent = last;
+  if (rowEl) rowEl.title = dir;
+  if ($("sf-count")) $("sf-count").textContent = "";
+  if ($("sf-body")) $("sf-body").innerHTML = '<div class="sf-msg">' + esc(t("加载中…")) + "</div>";
+  loadFolderFiles(dir);
 }
 
-async function toggleFolderFilesLoad(wrap, dir) {
-  let d;
-  try {
-    d = await api("/api/dir/scan?path=" + encodeURIComponent(dir));
-  } catch (e) {
-    wrap.innerHTML = '<div class="sdir-files-empty">' + esc(t("读取失败")) + "</div>";
-    return;
-  }
-  const icon = (n) => { const ext = n.split(".").pop().toLowerCase();
-    return ext === "md" || ext === "txt" ? "#i-book" : "#i-file"; };
-  const chips = (d.files || []).map((f) => {
-    const href = "/api/dir/file?dir=" + encodeURIComponent(dir.replace(/\\/g, "/")) +
-      "&name=" + encodeURIComponent(f.name);
-    return '<a class="sdir-chip" href="' + href + '" target="_blank" rel="noopener" title="' +
-      esc(f.name + " · " + fmtSize(f.size)) + '">' +
-      '<svg class="ico" aria-hidden="true"><use href="#i-paperclip"/></svg>' +
-      "<span>" + esc(f.name) + "</span><i>" + fmtSize(f.size) + "</i></a>";
-  }).join("");
-  // 子目录：可点行，递归展开
-  const subdirs = (d.subdirs || []).map((n) => {
-    const subPath = dir.replace(/[\\/]+$/, "") + "\\" + n;
-    return '<div class="sdir-sub" onclick="toggleFolderSub(this, \'' + esc(subPath) + '\')">' +
-      '<svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg><span>' + esc(n) + "</span></div>";
-  }).join("");
-  wrap.innerHTML = (subdirs ? '<div class="sdir-subs">' + subdirs + "</div>" : "") +
-    (chips ? '<div class="sdir-chips">' + chips + "</div>"
-      : '<div class="sdir-files-empty">' + t("该目录下暂无文件") + "</div>");
+/* 相对路径文件数组 → 嵌套树节点 {dirs:{名:节点}, files:[...]} */
+function sfBuildTree(files) {
+  const root = { dirs: {}, files: [] };
+  (files || []).forEach((f) => {
+    const parts = String(f.name).split("/");
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++)
+      node = node.dirs[parts[i]] || (node.dirs[parts[i]] = { dirs: {}, files: [] });
+    node.files.push(f);
+  });
+  return root;
 }
 
-window.toggleFolderSub = function (el, dir) {
-  const existing = el.parentNode.querySelector(":scope > .sdir-files");
-  if (existing) { existing.remove(); return; }
-  const wrap = document.createElement("div");
-  wrap.className = "sdir-files";
-  wrap.innerHTML = '<span class="sdir-files-loading">' + t("加载中…") + "</span>";
-  el.after(wrap);
-  toggleFolderFilesLoad(wrap, dir);
+function sfFIcon(n) {
+  const ext = String(n).split(".").pop().toLowerCase();
+  return ext === "md" || ext === "txt" ? "#i-book" : "#i-file";
+}
+
+/* 目录内文件行：点击中央弹窗预览（不开新标签页）。
+ * data-dir 记文件名相对的目录（根扫=根目录，懒加载子目录=该子目录）——
+ * 取内容按行上自己的目录拼 URL，不能用根目录，否则子目录文件必 404。 */
+function sfFileHtml(f, depth, dir) {
+  return '<a class="sf-file" style="--sf-d:' + depth + '" data-name="' + esc(f.name) +
+    '" data-dir="' + esc(dir || "") + '" data-size="' + (Number(f.size) || 0) +
+    '" href="javascript:void(0)"' +
+    ' title="' + esc(f.name + " · " + fmtSize(f.size)) + '">' +
+    '<svg class="ico" aria-hidden="true"><use href="' + sfFIcon(f.name) + '"/></svg>' +
+    "<span>" + esc(String(f.name).split("/").pop()) + "</span><i>" + fmtSize(f.size) + "</i></a>";
+}
+
+/* 树节点渲染层：目录字典序在前、目录内文件 mtime 新→旧；
+ * lazyDirs 是旧后端 scan 只扫一层时回的 subdirs 名单 → 渲染成懒加载文件夹，
+ * 点开（ontoggle）再拉该子目录。dir 用于拼懒加载子目录的绝对路径。 */
+function sfRenderLevel(node, depth, lazyDirs, dir) {
+  const dirs = Object.keys(node.dirs).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  const fs = node.files.slice().sort((a, b) => (b.mtime - a.mtime) || a.name.localeCompare(b.name));
+  const countOf = (nd) => nd.files.length +
+    Object.keys(nd.dirs).reduce((n, k) => n + countOf(nd.dirs[k]), 0);
+  return dirs.map((n) => {
+    const sub = node.dirs[n];
+    return '<details class="sf-dir" open style="--sf-d:' + depth + '">' +
+      '<summary title="' + esc(n) + '"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg>' +
+      "<span>" + esc(n) + "</span><i>" + countOf(sub) + "</i></summary>" +
+      sfRenderLevel(sub, depth + 1, null, dir) + "</details>";
+  }).join("") +
+    (lazyDirs || []).map((n) => {
+      const sep = String(dir).indexOf("\\") >= 0 ? "\\" : "/";
+      const full = String(dir).replace(/[\\/]+$/, "") + sep + n;
+      return '<details class="sf-dir sf-lazy" style="--sf-d:' + depth + '" data-lazy="' + esc(full) +
+        '" ontoggle="sfLazyToggle(this)">' +
+        '<summary title="' + esc(n) + '"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg>' +
+        "<span>" + esc(n) + '</span><i class="sf-lc"></i></summary>' +
+        '<div class="sf-kids"></div></details>';
+    }).join("") + fs.map((f) => sfFileHtml(f, depth, dir)).join("");
+}
+
+/* 懒加载文件夹展开：第一次展开时扫该子目录并填充；失败清标记可重开重试 */
+window.sfLazyToggle = async function (det) {
+  if (!det.open || det.dataset.loaded) return;
+  const dir = det.dataset.lazy || "";
+  if (!dir) return;
+  const kids = det.querySelector(".sf-kids");
+  const badge = det.querySelector(".sf-lc");
+  if (kids) kids.innerHTML = '<div class="sf-msg">' + esc(t("加载中…")) + "</div>";
+  let d = null, err = "";
+  try { d = await api("/api/dir/scan?path=" + encodeURIComponent(dir)); }
+  catch (e) { err = (e && e.message) || String(e); }
+  if (!det.open) return;   // 加载期间又被收起：丢弃
+  if (!d || d.error) {
+    if (kids) kids.innerHTML = '<div class="sf-msg sf-error">' +
+      esc(t("读取失败：") + (err || (d && d.error) || t("未知错误"))) + "</div>";
+    det.dataset.loaded = "";   // 允许下次展开重试
+    return;
+  }
+  det.dataset.loaded = "1";
+  let depth = 0;
+  for (let p = det.parentElement; p; p = p.parentElement)
+    if (p.classList && p.classList.contains("sf-dir")) depth++;
+  if (kids) kids.innerHTML = sfRenderLevel(sfBuildTree(d.files), depth, d.subdirs, dir);
+  if (badge) badge.textContent = (d.files || []).length ? String(d.files.length) : "";
 };
+
+async function loadFolderFiles(dir) {
+  let d = null, err = "";
+  try { d = await api("/api/dir/scan?path=" + encodeURIComponent(dir)); }
+  catch (e) { err = (e && e.message) || String(e); }
+  // 已返回任务列表 / 已切去别的文件夹：丢弃迟到响应
+  if (!document.body.classList.contains("files-mode") || S.sfDir !== dir) return;
+  const body = $("sf-body");
+  if (!body) return;
+  const cnt = $("sf-count");
+  if (cnt) cnt.textContent = "";
+  if (!d || (d.error && !(d.files || []).length)) {
+    body.innerHTML = '<div class="sf-msg sf-error">' +
+      esc(t("读取失败：") + (err || (d && d.error) || t("未知错误"))) + "</div>";
+    return;
+  }
+  const files = d.files || [];
+  if (cnt) cnt.textContent = files.length ? files.length + t(" 个文件") : "";
+  if (!files.length && !(d.subdirs || []).length) {
+    body.innerHTML = '<div class="sf-msg">' + esc(t("该目录下暂无文件")) + "</div>";
+    return;
+  }
+  body.innerHTML = sfRenderLevel(sfBuildTree(files), 0, d.subdirs, dir) +
+    (d.truncated ? '<div class="sf-note">' +
+      esc(t("（文件过多，仅显示最近的 %1 个）").replace("%1", files.length)) + "</div>" : "");
+}
+
+/* 返回任务列表：左栏恢复任务树（文件页不留状态，重进即重扫） */
+function closeFolderFiles() {
+  S.sfDir = "";
+  document.body.classList.remove("files-mode");
+}
 
 /* 文件夹右键「新建任务到该目录」：只预填工作目录，其余留白（ZCode 式——在该工作区里开新活） */
 function newTaskInDir(dir) {
@@ -2397,6 +2509,8 @@ window.sideOpenTask = function (key) {
   showDetailInMain();
   $("run-detail").classList.remove("hidden");
   document.querySelector("#sub-runs .panel:first-child").classList.add("hidden");
+  detailSideReset();     // 换详情目标：任务级 side 缓存作废，等首拉
+  syncInspectorVis();    // 详情已铺开：检查器让位（选中保留，返回列表自动滑回）
   renderTaskDetail();
 };
 window.openRunInRuns = function (id) { S.focusStep = 0; S.focusDone = true; switchTab("runs"); openRun(id); };
@@ -2501,7 +2615,7 @@ function drawTaskDetail(key, runs) {
   $("rd-steps").innerHTML = html || '<div class="empty">尚无步骤</div>';
   // 轮询重画不收起已打开的日志框：运行中日志靠 2.5s live 刷新持续更新，
   // 收起+清 currentLog 会让刚点开的输出被下一轮轮询弹掉
-  if (currentLog && !stepsMatch(runs, currentLog)) { $("rd-log").classList.add("hidden"); currentLog = null; stopLogLive(); }
+  if (currentLog && !stepsMatch(runs, currentLog)) window.rdLogClose();
   // 报告：最新一次 run 的（缓存，轮询重画不重复拉取）
   const drawReport = async () => {
     if (S.taskReport && S.taskReport.key === key && S.taskReport.runId === latest.id) {
@@ -2519,13 +2633,13 @@ function drawTaskDetail(key, runs) {
     }
   };
   drawReport();
-  loadArtifacts(latest.id);   // 成品 TAB 数据源（渲染进检查器，主栏不展示）
-  // 成品文件已移至右侧检查器「成品文件」分区：主栏详情不再重复展示
-  // 任务级详情：git 隔离面板挂在最新一次 run 上（分支/变更快照以它为准）
+  loadArtifacts(latest.id);   // 成品文件双入口同源：主栏「成果」分区 + 检查器（列表上下文）
+  // 任务级详情：git 面板吃任务级 side（实时/最新快照），side 未到先以最新 run 快照落位
   const tk = ((S.state || {}).tasks || []).find((x) => x.id === key);
   S.lastRunTask = tk || null;
   renderGitPanel(latest, tk);
   renderBiblePanel(tk);
+  refreshDetailSide();   // 有变化才重画版本面板；meta 累计组任务级详情已有全量 sums，不重复出
   const actSteps = ((activeRun || latest).steps || []);
   rdTabsSync({
     running: active, status: st, gitState: (tk || {}).git_state || "",
@@ -2595,6 +2709,8 @@ async function openRun(id, pinTab) {
   rdTabReset(pinTab || null);   // sideOpenRun 带步骤号时钉住步骤分区
   document.querySelector("#sub-runs .panel:first-child").classList.add("hidden");
   $("run-detail").classList.remove("hidden");
+  detailSideReset();     // 换详情目标：任务级 side 缓存作废，等首拉
+  syncInspectorVis();    // 详情已铺开：检查器让位（选中保留，返回列表自动滑回）
   renderRunDetail();
 }
 
@@ -2606,6 +2722,7 @@ function closeRun() {
   rdTabReset();
   stopLogLive();
   stopHiveTick();
+  detailSideReset();
   $("run-detail").classList.add("hidden");
   if (document.body.classList.contains("settings-mode")) {
     document.querySelector("#sub-runs .panel:first-child").classList.remove("hidden");
@@ -2616,6 +2733,7 @@ function closeRun() {
     const title = $("page-title");
     if (title) title.textContent = tabTitle("tasks");
   }
+  syncInspectorVis();    // 离开详情：回设置运行列表时检查器按各上下文规则重新落位
 }
 
 /* 侧栏点了具体子任务后：在运行详情里标出那一步。轮询会不停重画步骤区，
@@ -2736,7 +2854,9 @@ async function renderRunDetail() {
     '<span class="stat">成本 <b>$' + Number(run.cost_usd || 0).toFixed(3) + "</b></span>" +
     '<span class="stat">tokens <b>' + (run.tokens || 0) + "</b></span>" +
     (run.mode ? '<span class="stat">模式 <b>' + (run.mode === "auto" ? t("智能") : t("手动")) + "</b></span>" : "") +
-    (run.error ? '<span class="stat err">' + errTag(run.error) + esc(run.error.slice(0, 200)) + "</span>" : "");
+    (run.error ? '<span class="stat err">' + errTag(run.error) + esc(run.error.slice(0, 200)) + "</span>" : "") +
+    '<span class="stat tasksum hidden" id="rd-meta-task"></span>';
+  if (S.detailSide) fillMetaTask(S.detailSide.stats || {});   // 缓存命中：轮询重画不闪丢累计组
   renderPlan(run);
   $("rd-steps").innerHTML = (run.steps || []).map((s) =>
     '<div class="step" data-n="' + Number(s.n) + '" data-log="' + esc(s.log || "") +
@@ -2757,10 +2877,12 @@ async function renderRunDetail() {
   } else {
     $("rd-report").innerHTML = '<div class="hint">运行结束后生成</div>';
   }
-  // 成品文件已移至右侧检查器（loadArtifacts 不再在主栏调用）
+  // 成品文件双入口同源：主栏「成果」分区 + 检查器成品 TAB（列表上下文），
+  // 详情上下文检查器让位后主栏是唯一可见面
   S.lastRunTask = rcTask || null;
   renderGitPanel(run, rcTask);
   renderBiblePanel(rcTask);
+  refreshDetailSide();   // 任务累计统计 + git 实时（2s 节流；有变化才重画面板）
   rdTabsSync({
     running: active, status: run.status, gitState: (rcTask || {}).git_state || "",
     steps: (run.steps || []).length,
@@ -2770,9 +2892,10 @@ async function renderRunDetail() {
 }
 
 /* 代码版本隔离面板：run 检出任务分支 tutti/<id> 后，产物提交在该分支上、
- * 用户工作区已切回原分支。这里展示本 run 的变更快照，并按任务裁决状态
- * （isolated 待裁决 / merged 已合并 / discarded 已丢弃）给出合并·丢弃出口。
- * 分支是「每任务一条」，裁决按钮在任务级生效；run 无 git 字段（未指定代码版本）时整块隐藏。 */
+ * 用户工作区已切回原分支。分支是「每任务一条」，裁决（合并/丢弃）在任务级生效。
+ * 数据源两路：任务级 side（详情页自拉，运行中实时 numstat、结束后最新 run 快照，
+ * 续跑/重试的新 run 没带 git 字段也能从任务带出分支）优先；side 不可用
+ * （无主运行/任务已删）退回本 run 自带快照。两路都没有分支时整块隐藏。 */
 const GIT_STATUS_LABEL = { M: "改", A: "新", D: "删", R: "移", C: "新", "?": "新" };
 /* 状态徽章文案：新数据后端已归一成单字符；旧 run 快照里可能还存着 "??"/"MM"
  * 这类原始 XY，取首字符兜底查表，查不到再退原文，绝不把 "??" 当文案渲染。 */
@@ -2849,38 +2972,121 @@ function findTask(taskId) {
   return ((S.state || {}).tasks || []).find((x) => x.id === taskId);
 }
 
+/* ---------------- 详情页任务级 side 数据（检查器让位后的主栏自给） ----------------
+ * 检查器收进列表上下文后，任务累计统计与 git 实时状态由详情页自己轮询
+ * /api/tasks/<id>/side（KB 级、2s 节流，与检查器同款）。拉不到（无主运行、
+ * 任务已删、接口失败）就静默保持 null，版本面板退回 run 快照、meta 不出累计组。 */
+function detailSideReset() {
+  S.detailSide = null;
+  S.detailSideSig = "";
+  S.detailSideAt = 0;
+}
+
+function detailSideTaskKey() {
+  return (S.detailTaskKey || (S.lastRun && S.lastRun.task_id) || "");
+}
+
+async function refreshDetailSide(force) {
+  const key = detailSideTaskKey();
+  if (!key || $("run-detail").classList.contains("hidden")) return;
+  const now = Date.now();
+  if (!force && now - (S.detailSideAt || 0) < 2000) return;
+  S.detailSideAt = now;
+  let d;
+  try { d = await api("/api/tasks/" + encodeURIComponent(key) + "/side"); }
+  catch (e) { return; }                      // 拉取失败静默，等下一轮节流重试
+  if (detailSideTaskKey() !== key) return;   // 期间已切到别的详情：过期响应不落盘
+  if (!d || !d.task) { S.detailSide = null; return; }
+  S.detailSide = d;
+  const sig = JSON.stringify([d.task.git_state, d.git, d.changes, d.stats]);
+  if (sig === S.detailSideSig) return;       // 没变化不重画（保住文件行 hover 态）
+  S.detailSideSig = sig;
+  applyDetailSide();
+}
+
+/* side 数据落位：meta 条任务累计组 + 版本面板重画（内部再按数据源取舍） */
+function applyDetailSide() {
+  const d = S.detailSide;
+  if (!d) return;
+  fillMetaTask((d.stats || {}));
+  renderGitPanel(S.lastRun, S.lastRunTask);
+}
+
+/* meta 条的任务累计 pill：run 级统计旁边给任务全貌。renderRunDetail 每轮
+ * 轮询都会重建 rd-meta，所以渲染时也要回填（S.detailSide 有缓存就即时填） */
+function fillMetaTask(st) {
+  const el = $("rd-meta-task");
+  if (!el) return;
+  el.classList.remove("hidden");
+  el.innerHTML = esc(t("任务累计")) + " <b>" + (st.runs || 0) + "</b> " + esc(t("次运行")) +
+    " · <b>" + (st.steps || 0) + "</b> " + esc(t("步")) +
+    ' · <b>$' + (Number(st.cost_usd) || 0).toFixed(3) + "</b> · tok <b>" + (st.tokens || 0) + "</b>";
+}
+
 function renderGitPanel(run, task) {
   const box = $("rd-git");
   if (!box) return;
-  const g = (run || {}).git;
-  if (!g || !g.branch) { box.classList.add("hidden"); box.innerHTML = ""; rdTabsSync(); return; }
   const tid = (task || {}).id || "";
-  const state = (task || {}).git_state || "";
-  const files = ((run || {}).changes || {}).files || [];
+  // 数据源取舍：side 命中且确实属于当前详情的任务才用，否则退 run 快照
+  const sTask = ((S.detailSide || {}).task || {});
+  const useSide = !!sTask.id && sTask.id === ((run || {}).task_id || tid);
+  const side = useSide ? S.detailSide : null;
+  const g = side ? (side.git || {}) : ((run || {}).git || {});
+  const state = side ? (sTask.git_state || "") : ((task || {}).git_state || "");
+  const revChosen = side ? (sTask.git_rev || "") : ((task || {}).git_rev || "");
+  const ch = side ? (side.changes || {}) : ((run || {}).changes || {});
+  const files = ch.files || [];
+  const active = ["running", "queued"].indexOf(side ? sTask.status : ((task || {}).status)) >= 0;
+  if (!g || !g.branch) {
+    // 没有任务分支：区分「没启用」（未指定代码版本 → 整块隐藏）和
+    // 「启用了但检出失败」（给原因，不能误报成没启用——同检查器口径）
+    if (revChosen) {
+      const lastErr = side ? (((side.run || {}).error) || "") : ((run || {}).error || "");
+      box.classList.remove("hidden");
+      box.innerHTML =
+        '<div class="git-head"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>' +
+        '<span class="sec-title">' + t("代码版本隔离") + '</span>' +
+        '<span class="chip failed">' + t("检出失败") + "</span>" +
+        '<code class="git-branch">tutti/' + esc(tid || "（无主运行）") + "（" + esc(t("未创建")) + "）</code></div>" +
+        (lastErr ? '<div class="hint warn">' + esc(lastErr) + "</div>" : "") +
+        '<div class="hint">' + esc(t("处理后点「重试任务」，运行会重新检出任务分支。")) + "</div>";
+      rdTabsSync();
+      return;
+    }
+    box.classList.add("hidden"); box.innerHTML = ""; rdTabsSync(); return;
+  }
   const chip = GIT_STATE_CHIP[state] || ["muted", "—"];
   let html =
     '<div class="git-head"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>' +
     '<span class="sec-title">' + t("代码版本隔离") + '</span>' +
-    '<code class="git-branch" title="' + esc(t("任务分支：产物提交在此，原分支未受影响")) + '">' + esc(g.branch) + "</code>" +
-    '<span class="chip ' + chip[0] + '">' + t(chip[1]) + "</span>" +
+    '<code class="git-branch" title="' + esc(t("任务分支：产物提交在此，原分支未受影响")) + '">' + esc(g.branch) + "</code>";
+  const addT = ch.add_total, delT = ch.del_total;
+  if (addT != null && delT != null) {
+    html += '<span class="insp-plus">+' + addT + '</span><span class="insp-minus">-' + delT + "</span>";
+  }
+  html += '<span class="chip ' + chip[0] + '">' + t(chip[1]) + "</span>" +
     "</div>";
   html += '<div class="git-meta">' +
     "<span>" + esc(t("基线")) + " <b>" + esc(g.rev || "-") + "</b> → " + esc(g.from_branch || "-") + "</span>" +
     (g.commit ? "<span>" + esc(t("分支提交")) + " <b>" + esc(g.commit) + "</b></span>" : "") +
+    (side ? "" : "<span>" + esc(t("本 run 快照")) + "</span>") +
     "</div>";
   if (g.restore_error) {
     html += '<div class="hint warn">' + esc(t("收尾出错：")) + esc(g.restore_error) + "</div>";
   }
+  // 变更行双击看 diff：diff 文本挂在 run 的 changes 快照上，side 场景取最新 run
+  const diffRunId = (side && (side.run || {}).id) || (run || {}).id || "";
   html += '<div class="git-files">' + (files.length
     ? files.slice(0, 40).map((f) =>
-        '<button class="gf" data-p="' + esc(f.path) + '" data-rid="' + esc((run || {}).id || "") +
+        '<button class="gf" data-p="' + esc(f.path) + '" data-rid="' + esc(diffRunId) +
         '" ondblclick="fileDiffPopup(this.dataset.p, this.dataset.rid)" title="' +
         esc(t("双击弹窗查看该文件的变更")) + '"><i class="gs ' + (f.status === "M" ? "m" : f.status === "D" ? "d" : "n") + '">' +
         esc(gitStatusLabel(f.status)) + "</i>" + esc(f.path) + "</button>").join("") +
       (files.length > 40 ? '<span class="gm">+' + (files.length - 40) + " " + esc(t("个文件")) + "</span>" : "")
-    : '<span class="hint">' + esc(t("本次运行没有产生工作区变更。")) + "</span>") +
+    : '<span class="hint">' + esc(t(active ? "运行中：工作区变更会实时出现在这里。" : "本次运行没有产生工作区变更。")) + "</span>") +
     "</div>";
-  if (state === "isolated" && tid) {
+  // 裁决是任务级动作：只在待裁决且任务空闲时给出（运行/排队中合并会踩正在写的分支）
+  if (state === "isolated" && tid && !active) {
     html += '<div class="git-actions">' +
       '<button class="primary" onclick="gitMerge(\'' + esc(tid) + "')\">" +
       '<svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>' + t("合并回原分支") + "</button>" +
@@ -2897,6 +3103,7 @@ async function _gitVerdictDone() {
   poll();
   if (S.detailTaskKey) { S.taskSig = ""; renderTaskDetail(); }
   else if (S.detailRunId) renderRunDetail();
+  refreshDetailSide(true);  // 裁决改变 git_state：立即重拉任务级数据重画面板
   refreshInspector(true);   // 检查器开着时同步裁决结果
 }
 
@@ -2979,8 +3186,9 @@ window.toggleInspector = function () {
   openInspector(key);
 };
 
-/* 检查器只属于任务上下文：设置子页（用量统计/皮肤等）与「新建任务表单」一律收起，
- * 但不丢选中——回到运行详情时原任务自动滑回；重新点任务才换内容 */
+/* 检查器只属于「列表快捷预览」上下文：设置子页、新建表单、运行/任务详情一律收起。
+ * 详情页已铺开全部信息（蜂巢/步骤/成果/版本/圣经/指挥），检查器留着只会同屏
+ * 出现两份标题/成品/Git——让它让位，但不丢选中，回到列表上下文自动滑回 */
 function syncInspectorVis() {
   const insp = $("inspector");
   if (!insp) return;
@@ -2992,7 +3200,10 @@ function syncInspectorVis() {
   //   openInspector 直接开，不会被这里关掉）
   const onComposer = !document.body.classList.contains("settings-mode") &&
     !$("sub-tasks").classList.contains("hidden");
-  if (document.body.classList.contains("settings-mode") || onComposer || !S.inspKey || runsGone) {
+  // 主栏正开着运行/任务详情：详情页是全功能视图，检查器同屏只会重复
+  const onDetail = !$("run-detail").classList.contains("hidden");
+  if (document.body.classList.contains("settings-mode") || onComposer || onDetail ||
+      !S.inspKey || runsGone) {
     document.body.classList.remove("inspector-open");
     insp.classList.add("hidden");
     return;                      // 隐藏态不轮询，refreshInspector 的闸门在 body 类上
@@ -3125,7 +3336,7 @@ function drawInspector() {
       : ((d.files || []).length ? "files" : "progress"));
   }
   applyInspectorTab();
-  loadArtifacts(runId);   // 成品 TAB：工作目录新产出（含实时预览刷新）
+  loadArtifacts(runId);   // 成品 TAB：工作目录新产出（运行中轮询刷新文件列表）
 
   /* —— 进度分区：环形进度 + 步骤清单 —— */
   const pr = d.progress || {};
@@ -3302,13 +3513,12 @@ const FP_TXT = new Set(["md", "txt", "log", "csv", "yml", "yaml", "ini", "toml",
 
 function _fpExt(name) { return (String(name).split(".").pop() || "").toLowerCase(); }
 
-/* 成品文件弹窗预览：按扩展名分流——图片 blob 直显、md 渲染、
- * 文本/代码等宽原文、json 美化、其余二进制只给下载。 */
-window.artPopup = async function (runId, name, size) {
-  const url = "/api/runs/" + encodeURIComponent(runId) + "/file?name=" + encodeURIComponent(name);
+/* 按 URL 弹窗预览：图片 blob 直显、md 渲染、文本/代码等宽原文、json 美化、
+ * 其余二进制只给下载。成品弹窗与目录文件弹窗共用。 */
+async function _fpPreviewUrl(url, name, size) {
   const ext = _fpExt(name);
-  _fpOpen(name, size ? "<i>" + esc(fmtSize(size)) + "</i>" : "",
-    '<a class="ghost" href="' + url + '" download="' + esc(name) + '">' + esc(t("下载")) + "</a>");
+  _fpOpen(String(name).split("/").pop(), size ? "<i>" + esc(fmtSize(size)) + "</i>" : "",
+    '<a class="ghost" href="' + url + '" download="' + esc(String(name).split("/").pop()) + '">' + esc(t("下载")) + "</a>");
   const el = _fpEnsure();
   try {
     if (FP_IMG.has(ext)) {
@@ -3326,9 +3536,7 @@ window.artPopup = async function (runId, name, size) {
       const text = await r.text();
       if (!filePopIsOpen()) return;
       let body;
-      if (ext === "md") {
-        body = '<div class="fp-md prev-body">' + md2html(text) + "</div>";
-      } else if (ext === "json") {
+      if (ext === "json") {
         let pretty = text;
         try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (e) { /* 坏 json 原样展示 */ }
         body = '<div class="fp-code">' + codeBlockHTML(pretty) + "</div>";
@@ -3344,6 +3552,17 @@ window.artPopup = async function (runId, name, size) {
   } catch (e) {
     _fpSetBody('<div class="fp-hint">' + esc(t("内容读取失败：") + (e.message || e)) + "</div>");
   }
+}
+
+/* 成品文件弹窗预览 */
+window.artPopup = async function (runId, name, size) {
+  return _fpPreviewUrl("/api/runs/" + encodeURIComponent(runId) + "/file?name=" + encodeURIComponent(name), name, size);
+};
+
+/* 文件浏览页点文件：中央弹窗预览工作目录里的文件（dir=根目录，name=相对路径） */
+window.dirFilePopup = async function (dir, name, size) {
+  return _fpPreviewUrl("/api/dir/file?dir=" + encodeURIComponent(String(dir).replace(/\\/g, "/")) +
+    "&name=" + encodeURIComponent(name), name, size);
 };
 
 /* 迷你指挥：与详情页指挥区同一个消息端点，只是不带附件 */
@@ -3408,10 +3627,11 @@ function fmtSize(n) {
 }
 
 /* 成品文件行（检查器「成品文件」与主栏「成果」分区共用一套标记）：
- * fc-row：文件行 + （md/txt 的）内联预览按钮同行排布，避免按钮独占一行参差不齐 */
+ * fc-row：文件行 + 弹窗预览按钮同行排布，避免按钮独占一行参差不齐。
+ * 点文件名与点「预览」同款 artPopup 弹窗，行为一致不 surprise。 */
 function artifactsChips(runId, files) {
   return files.map((f) => {
-    const isMd = /\.md$/i.test(f.name) || /\.txt$/i.test(f.name);
+    const isTxt = FP_TXT.has(_fpExt(f.name));   // 文本/代码都有弹窗预览（按代码格式展示）
     return '<span class="fc-row">' +
       '<a class="file-chip" href="/api/runs/' + encodeURIComponent(runId) + "/file?name=" +
       encodeURIComponent(f.name) + '" target="_blank" rel="noopener" ' +
@@ -3419,8 +3639,8 @@ function artifactsChips(runId, files) {
       esc(f.name) + "', " + (Number(f.size) || 0) + ');return false">' +
       '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
       '<span class="p">' + esc(f.name) + "</span><i>" + fmtSize(f.size) + "</i></a>" +
-      (isMd ? '<a class="file-chip prev" title="' + esc(t("在面板内预览")) +
-        '" onclick="previewArtifact(\'' + esc(runId) + '\', \'' + esc(f.name) + '\')">' +
+      (isTxt ? '<a class="file-chip prev" title="' + esc(t("查看内容")) +
+        '" onclick="artPopup(\'' + esc(runId) + '\', \'' + esc(f.name) + '\', ' + (Number(f.size) || 0) + ')">' +
         '<svg class="ico" aria-hidden="true"><use href="#i-book"/></svg>' + t("预览") + "</a>" : "") +
       "</span>";
   }).join("");
@@ -3428,8 +3648,6 @@ function artifactsChips(runId, files) {
 
 async function loadArtifacts(runId) {
   // 双入口同源渲染：检查器「成品文件」TAB + 主栏详情「成果」分区。
-  // #rd-preview 是静态节点（在成果分区里），不再内嵌在检查器标记内——
-  // 检查器轮询重画不会再把正在看的预览冲掉。
   let d;
   try { d = await api("/api/runs/" + encodeURIComponent(runId) + "/files"); }
   catch (e) { return; }
@@ -3447,7 +3665,6 @@ async function loadArtifacts(runId) {
   if (!files.length) {
     if (box) box.innerHTML = '<span class="insp-hint">' + esc(t("本次运行没有在工作目录里产出新文件。")) + "</span>";
     if (mainBox) { mainBox.classList.add("hidden"); mainBox.innerHTML = ""; }
-    previewStop();
     return;
   }
   const head = '<div class="files-head"><span class="sec-title">' + t("成品文件") + '</span>' +
@@ -3456,71 +3673,7 @@ async function loadArtifacts(runId) {
   if (box) box.innerHTML = head + '<div class="file-chips">' + chips + "</div>";
   if (mainBox) { mainBox.classList.remove("hidden");
     mainBox.innerHTML = head + '<div class="file-chips">' + chips + "</div>"; }
-  // 正在预览的文件还活着就原地刷新（运行中轮询 → 稿子越写越长的实时视图）
-  if (S.preview && S.preview.runId === runId && S.preview.name) {
-    if (!files.some((f) => f.name === S.preview.name)) previewStop();
-    else previewRender(runId, S.preview.name, true);
-  }
 }
-
-/* 面板内预览：拉取成品 markdown/txt 用 md2html 渲染；轮询自动刷新，切换详情时停 */
-let _previewSeq = 0;
-
-async function previewRender(runId, name, quiet) {
-  const box = $("rd-preview");
-  if (!box) return;
-  const seq = ++_previewSeq;
-  try {
-    const r = await fetch("/api/runs/" + encodeURIComponent(runId) + "/file?name=" + encodeURIComponent(name));
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const text = await r.text();
-    if (seq !== _previewSeq) return;               // 过期响应（已切到别的预览）
-    box.classList.remove("hidden");
-    box.innerHTML = '<div class="prev-head"><svg class="ico" aria-hidden="true"><use href="#i-book"/></svg>' +
-      '<b>' + esc(name) + "</b>" +
-      (S.lastRun && (S.lastRun.status === "running") ? '<span class="chip running">' + t("实时") + "</span>" : "") +
-      '<button class="ghost" onclick="quoteSelection()" title="' + esc(t("把选中的正文作为引用填进下方指挥框")) + '">' +
-      esc(t("引用选中")) + "</button>" +
-      '<button class="ghost" onclick="previewStop()">' + esc(t("收起")) + "</button></div>" +
-      '<div class="prev-body">' + md2html(text) + "</div>";
-  } catch (e) {
-    if (!quiet) { box.classList.remove("hidden"); box.innerHTML = '<div class="hint">' + esc(t("预览失败：")) + esc(String(e.message || e)) + "</div>"; }
-  }
-}
-
-window.previewArtifact = function (runId, name) {
-  if (S.preview && S.preview.runId === runId && S.preview.name === name) { previewStop(); return; }
-  S.preview = { runId, name };
-  previewRender(runId, name);
-};
-
-function previewStop() {
-  S.preview = null;
-  _previewSeq++;
-  const box = $("rd-preview");
-  if (box) { box.classList.add("hidden"); box.innerHTML = ""; }
-}
-
-/* 选中即指挥（dev-3.0 式）：在预览正文里选中一段，点「引用选中」→
- * 该片段以引用块填进运行中指挥框，作者一句话即可定点纠偏。
- * 没有选中时提示先选。目标 run：详情区当前的 run（S.detailRunId）。 */
-window.quoteSelection = function () {
-  const body = document.querySelector("#rd-preview .prev-body");
-  const sel = window.getSelection && window.getSelection();
-  const text = sel && !sel.isCollapsed && body && body.contains(sel.anchorNode)
-    ? String(sel).trim() : "";
-  const ta = (S.inspKey && $("insp-msg-input")) || $("rd-msg-input");
-  if (!text) { toast(t("请先在预览正文里选中一段文字"), true); return; }
-  if (!ta) { toast(t("找不到指挥输入框"), true); return; }
-  const quote = text.length > 400 ? text.slice(0, 400) + "…" : text;
-  const ref = S.preview && S.preview.name ? "（" + S.preview.name + "）" : "";
-  const NL = String.fromCharCode(10);
-  ta.value = (ta.value ? ta.value + NL : "") +
-    t("针对 ") + ref + t(" 中这段：") + NL + "> " +
-    quote.replace(/\n+/g, NL + "> ") + NL + t("我的意见：");
-  ta.focus();
-  toast(t("已引用进指挥框，补一句意见即可下达"));
-};
 
 window.copyText = function (t) {
   try { navigator.clipboard.writeText(t); } catch (e) { /* 剪贴板不可用则忽略 */ }
@@ -3566,16 +3719,44 @@ function logLiveBadge(live) {
   }
 }
 
+/* 抽屉标题：按 (runId, 日志路径) 反查步骤角色与执行者——不知道在看谁的日志，
+ * 抽屉就成了无名黑框 */
+function rdLogStepLabel(runId, rel) {
+  const pools = [];
+  if (S.lastRun && S.lastRun.id === runId) pools.push(S.lastRun.steps || []);
+  if (S.state && S.state.runs) {
+    const r = S.state.runs.find((x) => x.id === runId);
+    if (r) pools.push(r.steps || []);
+  }
+  for (const steps of pools) {
+    const s = steps.find((x) => x.log === rel);
+    if (s) return [s.role || "", s.agent_label || s.agent || ""].filter(Boolean).join(" · ");
+  }
+  return rel || "";
+}
+
+window.rdLogClose = function () {
+  const box = $("rd-log");
+  if (!box) return;
+  box.classList.add("hidden");
+  currentLog = null;
+  stopLogLive();
+  const st = $("rd-log-step");
+  if (st) st.textContent = "";
+};
+
 async function toggleLog(runId, rel) {
   const box = $("rd-log"), pre = $("rd-log-text");
   if (currentLog === rel && !box.classList.contains("hidden")) {
-    box.classList.add("hidden"); currentLog = null; stopLogLive(); return;
+    window.rdLogClose(); return;
   }
   try {
     const r = await api("/api/runs/" + encodeURIComponent(runId) + "/log?step=" + encodeURIComponent(rel) + "&pretty=1");
     pre.textContent = r.log || t("（等待输出…）");
     box.classList.remove("hidden");
     currentLog = rel;
+    const st = $("rd-log-step");
+    if (st) st.textContent = rdLogStepLabel(runId, rel);
     pre.scrollTop = pre.scrollHeight;   // 打开即看最新输出
     // 输出是流式写入的：运行中点开就持续刷新；步骤结束（后端带 step_status）即停
     const live = r.step_status === "running";
@@ -3599,7 +3780,9 @@ async function toggleLog(runId, rel) {
         }
       } catch (e) { /* 网络抖动保留上一帧 */ }
     }, 2500);
-  } catch (e) { pre.textContent = t("日志读取失败: ") + e.message; box.classList.remove("hidden"); logLiveBadge(false); }
+  } catch (e) { pre.textContent = t("日志读取失败: ") + e.message; box.classList.remove("hidden");
+    const st = $("rd-log-step"); if (st) st.textContent = rdLogStepLabel(runId, rel);
+    logLiveBadge(false); }
 }
 /* ---------------- 蜂巢工作台：每个智能体一格，点开即看实时输出 ---------------- */
 let hiveTimer = null;                    // 卡片尾巴轮询表
@@ -3815,13 +3998,11 @@ function drawDirAtts() {
 }
 window.dirRemoveAtt = function (i) { dirAtts.splice(i, 1); drawDirAtts(); };
 
-/* 渲染指挥区：只认当前详情页指向的运行；messages 随 run 对象来（SSE 刷新即更新）
- * 【已屏蔽】运行中指挥信箱暂不露出；函数与后端链路保留，恢复时删掉首行 return 即可 */
+/* 渲染指挥区：只认当前详情页指向的运行；messages 随 run 对象来（SSE 刷新即更新）。
+ * 放在「蜂巢」分区蜂巢下方——运行中的驾驶舱：看着蜜蜂干活，随手递话/贴截图。 */
 function renderDirector(run, active) {
   const box = $("rd-direct");
   if (!box) return;
-  box.classList.add("hidden");
-  return;
   if (!run || !active) { box.classList.add("hidden"); return; }
   if (dirRunId !== run.id) { dirRunId = run.id; dirAtts = []; drawDirAtts(); }
   box.classList.remove("hidden");
@@ -4216,9 +4397,20 @@ function modelGroups() {
       .filter((m) => !m.hidden && m.enabled !== false)
       .sort((a, b) => (a.priority || 0) - (b.priority || 0))
       .map((m) => m.name).filter(Boolean);
-    if (ms.length) out.push({ id: p.id, name: p.name, models: ms });
+    if (ms.length) out.push({ id: p.id, name: p.name, models: ms, protocol: p.protocol || "" });
   }
   return out;
+}
+
+/* CLI 允许注入的供应商 wire 协议——与 modelhub.resolve_binding 的 allowed 规则
+ * 保持一致（codex 只吃 openai wire、claude 只吃 anthropic、dsh 只吃 OpenAI
+ * 兼容端点，其余两种皆可）。后端会跳过不匹配的链条目，这里在选择层就挡住。 */
+function bindAllowedProtocols(kind) {
+  const k = String(kind || "").toLowerCase();
+  if (/codex/.test(k)) return ["openai"];
+  if (/claude/.test(k)) return ["anthropic"];
+  if (/dsh|deepseek/.test(k)) return ["openai"];
+  return ["anthropic", "openai"];
 }
 
 /* 默认模型下拉：按供应商分组；当前值不在列表里时保留为选项，避免显示丢失 */
@@ -4292,11 +4484,15 @@ function bindRepaint() { S.bindSig = null; renderBindings(); }
 
 function bindModelBox(c, provId) {
   const st = bindSelById(c.id);
+  const allow = bindAllowedProtocols(c.orch_kind);
+  const protoOf = (pid) => ((S.providers || []).find((p) => p.id === pid) || {}).protocol || "";
   const chips = st.chain.length
     ? st.chain.map((c2, i) => {
         const pname = c2.p ? provName(c2.p) : t("CLI 默认凭据");
+        const dead = c2.p && allow.indexOf(protoOf(c2.p)) < 0;
         return '<span class="ochip' + (i === 0 ? " primary" : "") + '">' +
           "<b>" + (i === 0 ? t("主") : t("备")) + "</b>" + esc(pname) + " · " + esc(c2.m) +
+          (dead ? ' <span class="hint warn">⚠ ' + esc(t("协议不匹配，解析时跳过")) + "</span>" : "") +
           (i > 0 ? '<button class="mini" data-m="' + esc(c2.m) + '" data-p="' + esc(c2.p) +
                   '" title="设为主模型" onclick="bindPromote(\'' + esc(c.id) + '\', this)">' +
                   '<svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg></button>' : "") +
@@ -4317,12 +4513,19 @@ function bindModelBox(c, provId) {
 
 function bindPanel(c) {
   const st = bindSelById(c.id);
-  const groups = modelGroups();
+  const allow = bindAllowedProtocols(c.orch_kind);
+  const all = modelGroups();
+  const groups = all.filter((g) => allow.indexOf(g.protocol) >= 0);
+  const hiddenN = all.length - groups.length;
   if (!groups.length) {
-    return '<div class="ohint">还没有可用模型——先到「模型接入」页导入供应商并获取模型列表。</div>';
+    return '<div class="ohint">' + esc(all.length
+      ? t("该 CLI 只接受特定 wire 协议的供应商，当前没有匹配项——先到「模型接入」页导入对应协议的网关。")
+      : t("还没有可用模型——先到「模型接入」页导入供应商并获取模型列表。")) + "</div>";
   }
   return '<div class="opanel">' +
-    '<div class="ohint">勾选该 CLI 编排运行时的模型（可跨供应商混选）：第 1 条是主模型，其余按顺序作降级备选，每条自带该供应商的凭据注入。</div>' +
+    '<div class="ohint">勾选该 CLI 编排运行时的模型（可跨供应商混选）：第 1 条是主模型，其余按顺序作降级备选，每条自带该供应商的凭据注入。' +
+    (hiddenN ? "<br>" + esc(t("%1 个供应商 wire 协议不匹配已隐藏（降级只在同协议网关间进行）。").replace("%1", hiddenN)) : "") +
+    "</div>" +
     groups.map((g) =>
       '<div class="ogroup"><div class="ogname">' + esc(g.name) +
       ' <span class="tag">注入该厂商凭据</span></div>' +
@@ -4567,7 +4770,7 @@ async function fetchRunLog(runId) {
   if (!steps.length) return t("（尚无输出）");
   const last = steps[steps.length - 1];
   const res = await api("/api/runs/" + encodeURIComponent(runId) +
-                        "/log?step=" + encodeURIComponent(last.log || ""));
+                        "/log?step=" + encodeURIComponent(last.log || "") + "&pretty=1");
   return res.log || t("（无输出）");
 }
 
@@ -5089,11 +5292,20 @@ function autoTemplate(tplId) {
 }
 
 /* ---------------------------------------------------------- 插件市场 */
-/* /api/market → {catalog, categories(闭集)}；搜索/分类/状态全在本地过滤 */
+/* /api/market → {catalog, categories(闭集)}；搜索/分类/状态全在本地过滤。
+ * 外部目录（/api/market/remote）只读缓存不联网；联网拉取仅在用户点「拉取更新」。 */
 async function loadMarket() {
   try { S.market = await api("/api/market"); }
   catch (e) { S.market = null; }
+  try { S.marketRemote = await api("/api/market/remote"); }
+  catch (e) { S.marketRemote = null; }
   renderMarket();
+  renderMarketRemote();
+}
+
+function mkCount(text) {
+  const el = $("mk-count");
+  if (el) el.textContent = text || "";
 }
 
 function mkScopeText(scopes) {
@@ -5150,7 +5362,7 @@ function renderMarket() {
   if (q) items = items.filter((p) =>
     (p.name || "").toLowerCase().indexOf(q) >= 0 || (p.desc || "").toLowerCase().indexOf(q) >= 0);
   const cnt = $("mk-count");
-  if (cnt) cnt.textContent = t("共 ") + items.length + t(" 个");
+  if (cnt && mkActiveView() === "local") cnt.textContent = t("共 ") + items.length + t(" 个");
   grid.innerHTML = items.map(mkCardHtml).join("") || '<div class="empty">' + t("没有符合条件插件") + "</div>";
 }
 
@@ -5170,6 +5382,111 @@ async function mkRemove(id) {
   toast(t("已卸载"));
   loadMarket();
 }
+
+/* ------------------------------------------------------ 市场：外部目录 */
+/* 公开生态（ZCode / Anthropic）插件目录：只装纯技能类（文档型）插件；
+ * 含脚本/钩子/MCP 的条目服务端预分类灰显，安装时还会做权威文件级检查。 */
+
+function mkActiveView() {
+  const btn = document.querySelector("#mk-view .seg-btn.active");
+  return btn ? (btn.dataset.v || "local") : "local";
+}
+
+function mkSetView(v) {
+  document.querySelectorAll("#mk-view .seg-btn").forEach((b) =>
+    b.classList.toggle("active", b.dataset.v === v));
+  const local = $("mk-local"), remote = $("mk-remote");
+  if (local) local.classList.toggle("hidden", v !== "local");
+  if (remote) remote.classList.toggle("hidden", v !== "remote");
+  renderMarket();
+  renderMarketRemote();
+}
+
+function mkrCardHtml(p) {
+  let ops;
+  if (p.installed) ops = '<span class="tag ok">' + t("已安装") + "</span>" +
+    '<button class="ghost small" onclick="mkRemove(\'' + esc(p.id) + '\')">' + t("卸载") + "</button>";
+  else if (p.compat === "blocked") ops = '<button class="ghost small" disabled title="' +
+    esc(p.block_reason || t("该插件含脚本/钩子/MCP 组件，仅支持纯技能类插件")) + '">' + t("不适配") + "</button>";
+  else ops = '<button class="primary small" onclick="mkrInstall(\'' + esc(p.id) + '\')">' + t("安装") + "</button>";
+  const meta = [p.author, p.version ? "v" + p.version : ""].filter(Boolean).join(" · ");
+  return '<div class="card mk-card' + (p.compat === "blocked" ? " blocked" : "") + '"><div class="head">' +
+    '<span class="name">' + esc(p.title || p.name) + "</span>" +
+    '<span class="tag mk-src">' + esc(p.source_name || "") + "</span>" +
+    (p.category ? '<span class="tag">' + esc(p.category) + "</span>" : "") +
+    "</div>" +
+    '<div class="note">' + esc(p.desc || "") + "</div>" +
+    '<div class="mk-meta"><span>' + esc(meta) + "</span></div>" +
+    '<div class="ops">' + ops + "</div></div>";
+}
+
+function renderMarketRemote() {
+  const grid = $("mkr-grid");
+  if (!grid) return;
+  if (mkActiveView() !== "remote") return;   // 本地视图时不动计数（renderMarket 负责）
+  const data = S.marketRemote;
+  if (!data) {
+    grid.innerHTML = '<div class="empty">' + t("加载失败：服务未连接") + "</div>";
+    mkCount("");
+    return;
+  }
+  // 来源下拉：首次填充，之后保留用户选择
+  const srcSel = $("mkr-source");
+  if (srcSel && !srcSel.options.length) {
+    srcSel.innerHTML = '<option value="">' + t("全部来源") + "</option>" +
+      (data.sources || []).map((s) =>
+        '<option value="' + esc(s.id) + '">' + esc(s.name) + "（" + s.count + "）</option>").join("");
+  }
+  // 更新时间汇总
+  const times = (data.sources || []).map((s) => s.fetched_at).filter(Boolean);
+  const meta = $("mkr-meta");
+  if (meta) meta.textContent = times.length
+    ? t("目录更新于 ") + times.join(" / ") + (data.truncated ? "；" + t("条目过多，仅显示前 200 条，请搜索或按来源筛选") : "") : "";
+  const q = (($("mkr-search") || {}).value || "").trim().toLowerCase();
+  const sid = srcSel ? srcSel.value : "";
+  let items = data.entries || [];
+  if (sid) items = items.filter((p) => p.source_id === sid);
+  if (q) items = items.filter((p) =>
+    (p.name || "").toLowerCase().indexOf(q) >= 0 ||
+    (p.title || "").toLowerCase().indexOf(q) >= 0 ||
+    (p.desc || "").toLowerCase().indexOf(q) >= 0);
+  mkCount(t("共 ") + items.length + t(" 个"));
+  if (!items.length) {
+    grid.innerHTML = '<div class="empty">' + (data.total
+      ? t("没有符合条件插件")
+      : t("外部目录还是空的，点「拉取更新」从公开生态获取。")) + "</div>";
+    return;
+  }
+  grid.innerHTML = items.map(mkrCardHtml).join("");
+}
+
+async function mkrRefresh() {
+  const btn = $("mkr-refresh");
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const old = btn.textContent;
+  btn.textContent = t("拉取中…");
+  try {
+    const r = await api("/api/market/remote/refresh", { method: "POST", body: "{}" });
+    S.marketRemote = r;
+    const bad = (r.refresh || []).filter((x) => !x.ok);
+    if (bad.length) toast(t("部分来源拉取失败：") + bad.map((x) => x.error || x.id).join("；"), true);
+    else toast(t("拉取成功"));
+  } catch (e) { toast(e.message, true); }
+  btn.disabled = false;
+  btn.textContent = old;
+  renderMarket();
+  renderMarketRemote();
+}
+
+async function mkrInstall(id) {
+  try {
+    const r = await api("/api/market/remote/install", { method: "POST", body: JSON.stringify({ id }) });
+    toast(r && r.already ? t("该插件已安装过") : t("安装成功，可到「经验库」查看"));
+  } catch (e) { toast(e.message, true); return; }
+  loadMarket();
+}
+
 
 /* ---------------------------------------------------------- 编排设置（编排者 + 并发设置） */
 async function loadOrchestrator() {
@@ -5515,7 +5832,7 @@ async function loadUsage() {
     // 失败时四个区都要给出可见反馈，否则标题下全空、看着像页面坏了
     const hint = '<p class="hint">加载失败：' + esc(e.message) + "</p>";
     kpis.innerHTML = hint;
-    ["usage-trend", "usage-dims", "usage-recent"].forEach((id) => {
+    ["usage-trend", "usage-dims", "usage-recent", "usage-heat", "usage-models"].forEach((id) => {
       const el = $(id);
       if (el) el.innerHTML = hint;
     });
@@ -5621,108 +5938,251 @@ function usageSingleDay(d) {
     t(" · 输出 ") + esc(fmtTok(d.output || 0)) + "</div>";
 }
 
-/* 每日堆叠柱状图：输入(accent) / 缓存(ok) / 输出(accent2)，悬浮出明细。
- * 槽位布局：每天一个等宽槽、柱子在槽内居中，柱子沿全宽均匀分布；
- * 无数据的天画基线小短柱占位，不再是一片空白里悬着几根孤柱。 */
-/* 多日横向构成条（2~14 天）："单日构成卡"的逐日版——每天一行全宽堆叠条，
- * 日期在左、总量在右；零用量那天画灰色的细占位行。天数多时行太多，仍走竖柱。 */
-function usageRowsHtml(byDay) {
-  const p = (n) => String(n).padStart(2, "0");
+/* 折线/甜甜圈共用色板：主题变量 --uch-1..6（明暗皮肤各配亮暗两套） */
+function usageColor(i) {
+  return "var(--uch-" + ((i % 6) + 1) + ")";
+}
+
+/* Catmull-Rom → 三次贝塞尔：数据点间的平滑曲线（轻微过冲，控制点纵向夹住） */
+function _smoothPath(pts, yMin, yMax) {
+  if (pts.length < 2) return "";
+  const cl = (y) => Math.min(yMax, Math.max(yMin, y));
+  let d = "M" + pts[0][0].toFixed(1) + " " + pts[0][1].toFixed(1);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = cl(p1[1] + (p2[1] - p0[1]) / 6);
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = cl(p2[1] - (p3[1] - p1[1]) / 6);
+    d += " C" + c1x.toFixed(1) + " " + c1y.toFixed(1) + " " + c2x.toFixed(1) + " " + c2y.toFixed(1) +
+      " " + p2[0].toFixed(1) + " " + p2[1].toFixed(1);
+  }
+  return d;
+}
+
+/* 多模型平滑折线（≥2 天）：每个模型一条曲线（Top5 + 其他），点带明细悬浮；
+ * 台账无模型细分（历史回填）时兜底画一条总量线。 */
+function usageMultilineSvg(byDay, byDayModel) {
+  const days = (byDay || []).map((d) => d.day);
+  const n = days.length;
+  if (n < 2) return '<p class="hint">（暂无数据）</p>';
+  const modelOfDay = {};
+  (byDayModel || []).forEach((d) => { modelOfDay[d.day] = d.models || {}; });
+  const dayModels = days.map((day) => modelOfDay[day] || {});
+  const totals = {};
+  dayModels.forEach((m) => Object.entries(m).forEach(([k, v]) => { totals[k] = (totals[k] || 0) + (v || 0); }));
+  const names = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
+  const top = names.slice(0, 5);
+  const rest = names.slice(5);
+  const series = top.map((m) => ({ name: m, vals: dayModels.map((mm) => mm[m] || 0) }));
+  if (rest.length) {
+    series.push({ name: t("其他"), vals: dayModels.map((mm) => rest.reduce((s, m) => s + (mm[m] || 0), 0)) });
+  }
+  if (!series.length) series.push({ name: t("总量"), vals: (byDay || []).map((d) => d.tokens || 0) });
+
+  const max = Math.max(1, ...series.flatMap((s) => s.vals));
+  const W = 760, H = 250, padT = 26, padB = 26, padL = 10, padR = 10;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const xOf = (i) => padL + (iw * i) / (n - 1);
+  const yOf = (v) => padT + ih - (ih * v) / max;
+
+  let body = "", labels = "";
+  const labelStep = Math.max(1, Math.ceil(n / 9));
+  const labeled = new Set();
+  for (let i = 0; i < n; i += labelStep) labeled.add(i);
+  labeled.add(n - 1);   // 末日必须标
+  days.forEach((day, i) => {
+    if (!labeled.has(i)) return;
+    const cx = Math.min(Math.max(xOf(i), padL + 20), W - padR - 20);
+    labels += '<text class="uc-x" x="' + cx.toFixed(1) + '" y="' + (H - 7) +
+      '" text-anchor="middle">' + esc(String(day).slice(5)) + "</text>";
+  });
+  series.forEach((s, si) => {
+    const col = usageColor(si);
+    const pts = s.vals.map((v, i) => [xOf(i), yOf(v)]);
+    body += '<path d="' + _smoothPath(pts, padT - 6, padT + ih + 6) +
+      '" fill="none" stroke="' + col + '" stroke-width="2" stroke-linecap="round"/>';
+    pts.forEach((pt, i) => {
+      body += '<circle cx="' + pt[0].toFixed(1) + '" cy="' + pt[1].toFixed(1) + '" r="2.7" fill="' + col + '">' +
+        "<title>" + esc(days[i] + "\n" + s.name + " " + fmtTok(s.vals[i]) + t(" tokens")) + "</title></circle>";
+    });
+  });
+  const grid = [0.25, 0.5, 0.75].map((f) =>
+    '<line class="uc-grid" x1="' + padL + '" y1="' + (padT + ih * f).toFixed(1) +
+    '" x2="' + (W - padR) + '" y2="' + (padT + ih * f).toFixed(1) + '"/>').join("") +
+    '<line class="uc-base" x1="' + padL + '" y1="' + (padT + ih) + '" x2="' + (W - padR) + '" y2="' + (padT + ih) + '"/>';
+  const legend = '<div class="um-legend">' +
+    series.map((s, si) =>
+      '<span><i style="background:' + usageColor(si) + '"></i>' +
+      esc(s.name.length > 22 ? s.name.slice(0, 21) + "…" : s.name) + "</span>").join("") +
+    '<span class="um-peak">' + esc(t("峰值 ") + fmtTok(max)) + "</span></div>";
+  return legend +
+    '<svg class="usage-svg" viewBox="0 0 ' + W + " " + H + '" role="img" preserveAspectRatio="xMidYMid meet">' +
+    grid + body + labels + "</svg>";
+}
+
+/* Token 活动热力图：GitHub 贡献图风格。窗口自适应——覆盖全部活跃历史（封顶
+ * 53 周、不足 8 周也补足 8 周），新装用户不会再拖出十个月的灰格子。
+ * 每日=7 行×周列；每周=每周一格；累计=按月一格。 */
+const USAGE_HEAT_KEY = "orch.usageHeatMode";
+
+function usageHeatMode() {
+  if (S.usageHeatMode === undefined || S.usageHeatMode === null || S.usageHeatMode === "") {
+    try { S.usageHeatMode = localStorage.getItem(USAGE_HEAT_KEY) || "day"; } catch (e) { S.usageHeatMode = "day"; }
+  }
+  return ["day", "week", "total"].includes(S.usageHeatMode) ? S.usageHeatMode : "day";
+}
+
+function setUsageHeatMode(mode) {
+  S.usageHeatMode = mode;
+  try { localStorage.setItem(USAGE_HEAT_KEY, mode); } catch (e) { /* 隐私模式忽略 */ }
+  document.querySelectorAll("#usage-heat-modes [data-heat]").forEach((b) =>
+    b.classList.toggle("active", b.dataset.heat === mode));
+  renderUsageHeat();
+}
+
+function renderUsageHeat() {
+  const el = $("usage-heat");
+  if (!el) return;
+  const all = (S.usage && S.usage.all_by_day) || [];
+  if (!all.length) { el.innerHTML = '<p class="hint">' + t("（暂无数据）") + "</p>"; return; }
+  el.innerHTML = usageHeatSvg(all, usageHeatMode());
+}
+
+function usageHeatSvg(all, mode) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  const iso = (dt) => dt.getFullYear() + "-" + p2(dt.getMonth() + 1) + "-" + p2(dt.getDate());
+  const map = {};
+  all.forEach((d) => { map[d.day] = d.tokens || 0; });
   const now = new Date();
-  const today = now.getFullYear() + "-" + p(now.getMonth() + 1) + "-" + p(now.getDate());
-  const rows = byDay.map((d) => {
-    const tok = d.tokens || 0;
-    const tip = esc(d.day + "　总 " + fmtTok(tok) + (tok > 0 ? "（输入 " + fmtTok(d.input || 0) +
-      " · 输出 " + fmtTok(d.output || 0) + " · 其他/缓存 " + fmtTok(Math.max(0, tok - (d.input || 0) - (d.output || 0))) + "）" : "") +
-      "\n调用 " + (d.calls || 0) + t(" 次 · ") + fmtUsd(d.cost_usd));
-    let track;
-    if (tok > 0) {
-      const seg = (cls, v) => {
-        const pct = (v || 0) * 100 / tok;
-        return pct > 0 ? '<div class="ur-seg us-' + cls + '" style="width:' + pct.toFixed(2) + '%" title="' + tip + '"></div>' : "";
-      };
-      track = seg("in", d.input) + seg("ca", Math.max(0, tok - (d.input || 0) - (d.output || 0))) + seg("out", d.output);
-    } else {
-      track = '<div class="ur-zero" title="' + tip + '">无用量</div>';
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const firstActive = new Date(all[0].day + "T00:00:00");
+  if (isNaN(firstActive.getTime())) return '<p class="hint">' + t("（暂无数据）") + "</p>";
+  // 窗口：最早活跃日与 53 周前取较早者，不足 8 周补足 8 周，对齐周一
+  let start = new Date(Math.min(firstActive.getTime(), today.getTime() - 364 * 864e5));
+  const minStart = new Date(today.getTime() - 55 * 864e5);
+  if (start > minStart) start = minStart;
+  start = new Date(start.getTime() - ((start.getDay() + 6) % 7) * 864e5);
+  const totalDays = Math.round((today - start) / 864e5) + 1;
+  const weeks = Math.ceil(totalDays / 7);
+
+  const fmtD = (dt) => (dt.getMonth() + 1) + t("月") + dt.getDate() + t("日");
+  const CELL = 12, GAP = 3, PITCH = CELL + GAP, TOP = 18;
+  let cells = "", labelEls = "";
+  const clsOf = (v, maxV) => v <= 0 ? "uh-h0" : v < maxV * 0.25 ? "uh-h1" : v < maxV * 0.5 ? "uh-h2" : v < maxV * 0.75 ? "uh-h3" : "uh-h4";
+
+  if (mode === "day" || mode === "week") {
+    const perWeek = [];
+    for (let w = 0; w < weeks; w++) {
+      let sum = 0, first = null, last = null;
+      for (let k = 0; k < 7; k++) {
+        const dt = new Date(start.getTime() + (w * 7 + k) * 864e5);
+        if (dt > today) break;
+        const v = map[iso(dt)] || 0;
+        sum += v;
+        if (!first) first = dt;
+        last = dt;
+      }
+      perWeek.push({ sum, first, last });
     }
-    return '<div class="ur-row' + (tok > 0 ? "" : " zero") + (d.day === today ? " today" : "") + '">' +
-      '<span class="ur-day">' + esc(String(d.day).slice(5)) + "</span>" +
-      '<div class="ur-track">' + track + "</div>" +
-      '<span class="ur-sum">' + (tok > 0 ? esc(fmtTok(tok)) : "—") + "</span></div>";
+    const maxW = Math.max(0, ...perWeek.map((w) => w.sum));
+    if (mode === "day") {
+      for (let w = 0; w < weeks; w++) {
+        for (let k = 0; k < 7; k++) {
+          const dt = new Date(start.getTime() + (w * 7 + k) * 864e5);
+          if (dt > today) break;
+          const v = map[iso(dt)] || 0;
+          cells += '<rect class="' + clsOf(v, maxW) + '" x="' + (w * PITCH) + '" y="' + (TOP + k * PITCH) +
+            '" width="' + CELL + '" height="' + CELL + '" rx="2.5"><title>' +
+            esc(fmtD(dt) + " · " + fmtTok(v) + t(" tokens")) + "</title></rect>";
+        }
+      }
+    } else {
+      perWeek.forEach((w, i) => {
+        if (!w.first) return;
+        cells += '<rect class="' + clsOf(w.sum, maxW) + '" x="' + (i * PITCH) + '" y="' + TOP +
+          '" width="' + CELL + '" height="' + CELL + '" rx="2.5"><title>' +
+          esc(fmtD(w.first) + (w.last && w.last !== w.first ? " ~ " + fmtD(w.last) : "") +
+            " · " + fmtTok(w.sum) + t(" tokens")) + "</title></rect>";
+      });
+    }
+    // 月份标签：每月第一次出现的列
+    let lastMon = -1;
+    for (let w = 0; w < weeks; w++) {
+      const dt = new Date(start.getTime() + w * 7 * 864e5);
+      if (dt > today) break;
+      if (dt.getMonth() !== lastMon) {
+        lastMon = dt.getMonth();
+        labelEls += '<text class="uh-mon" x="' + (w * PITCH) + '" y="11">' + esc((dt.getMonth() + 1) + t("月")) + "</text>";
+      }
+    }
+    const H = TOP + 7 * PITCH + 4;
+    return '<svg class="usage-heat-svg' + (mode === "week" ? " single-row" : "") +
+      '" viewBox="0 0 ' + (weeks * PITCH + 4) + " " + H + '" preserveAspectRatio="xMidYMid meet" role="img">' +
+      labelEls + cells + "</svg>";
+  }
+
+  // 累计：按月一格（宽格 + 月份标签），值=当月合计
+  const perMonth = [];
+  let cur = null;
+  for (let dt = new Date(start); dt <= today; dt = new Date(dt.getTime() + 864e5)) {
+    const key = dt.getFullYear() + "-" + p2(dt.getMonth() + 1);
+    if (!cur || cur.key !== key) {
+      cur = { key, label: (dt.getFullYear() % 100) + "." + p2(dt.getMonth() + 1), sum: 0 };
+      perMonth.push(cur);
+    }
+    cur.sum += map[iso(dt)] || 0;
+  }
+  const maxM = Math.max(0, ...perMonth.map((m) => m.sum));
+  const MW = 34, MH = 18, MP = 42;
+  perMonth.forEach((m, i) => {
+    cells += '<rect class="' + clsOf(m.sum, maxM) + '" x="' + (i * MP) + '" y="' + TOP + '" width="' + MW + '" height="' + MH +
+      '" rx="3"><title>' + esc(m.label.replace(".", t("年")) + t("月") + " · " + fmtTok(m.sum) + t(" tokens")) + "</title></rect>";
+    labelEls += '<text class="uh-mon" x="' + (i * MP + MW / 2) + '" y="' + (TOP + MH + 13) +
+      '" text-anchor="middle">' + esc(m.label) + "</text>";
+  });
+  return '<svg class="usage-heat-svg" viewBox="0 0 ' + (perMonth.length * MP + 4) + " " + (TOP + MH + 22) +
+    '" preserveAspectRatio="xMidYMid meet" role="img">' + labelEls + cells + "</svg>";
+}
+
+/* 模型用量甜甜圈：Top5 + 其他；左环（中心总量）右列表（名称/百分比/tokens） */
+function renderUsageModels() {
+  const el = $("usage-models");
+  if (!el) return;
+  const rows = (S.usage && S.usage.by_model) || [];
+  if (!rows.length) { el.innerHTML = '<p class="hint">' + t("（该维度暂无数据）") + "</p>"; return; }
+  const total = rows.reduce((s, r) => s + (r.tokens || 0), 0);
+  const top = rows.slice(0, 5);
+  const rest = rows.slice(5);
+  const segs = top.map((r) => ({ name: r.key, tokens: r.tokens || 0 }));
+  if (rest.length) segs.push({ name: t("其他模型"), tokens: rest.reduce((s, r) => s + (r.tokens || 0), 0) });
+
+  const R = 64, C = 2 * Math.PI * R;
+  let off = 0, arcs = "";
+  segs.forEach((s, i) => {
+    const frac = total > 0 ? s.tokens / total : 0;
+    if (frac <= 0) return;
+    const len = frac * C;
+    arcs += '<circle class="ud-seg" cx="90" cy="90" r="' + R + '" fill="none" stroke="' + usageColor(i) +
+      '" stroke-width="26" stroke-dasharray="' + Math.max(len - 1.6, 0.6).toFixed(2) + " " + C.toFixed(2) +
+      '" stroke-dashoffset="' + (-off).toFixed(2) + '" transform="rotate(-90 90 90)"><title>' +
+      esc(s.name + " · " + fmtTok(s.tokens) + t(" tokens（") + (frac * 100).toFixed(1) + "%）") + "</title></circle>";
+    off += len;
+  });
+  const svg = '<svg class="ud-ring" viewBox="0 0 180 180" role="img">' + arcs +
+    '<text class="ud-total" x="90" y="88" text-anchor="middle">' + esc(fmtTok(total)) + "</text>" +
+    '<text class="ud-unit" x="90" y="107" text-anchor="middle">' + esc(t("tokens")) + "</text></svg>";
+  const list = segs.map((s, i) => {
+    const pct = total > 0 ? (s.tokens * 100 / total) : 0;
+    return '<div class="ud-row"><span class="ud-dot" style="background:' + usageColor(i) + '"></span>' +
+      '<div class="ud-name">' + esc(s.name) + "<small>" + esc(fmtTok(s.tokens) + t(" tokens")) + "</small></div>" +
+      '<span class="ud-pct">' + (pct >= 10 ? Math.round(pct) : pct.toFixed(1)) + "%</span></div>";
   }).join("");
-  const legend = '<div class="ur-legend">' +
-    '<span><i class="us-in"></i>输入</span><span><i class="us-ca"></i>缓存/其他</span><span><i class="us-out"></i>输出</span></div>';
-  return '<div class="usage-rows">' + legend + rows + "</div>";
+  el.innerHTML = '<div class="usage-donut">' + svg + '<div class="ud-list">' + list + "</div></div>";
 }
 
 function usageTrendSvg(byDay) {
   if (!byDay || !byDay.length) return '<p class="hint">（暂无数据）</p>';
   if (byDay.length === 1) return '<div class="usage-single">' + usageSingleDay(byDay[0]) + "</div>";
-  if (byDay.length <= 14) return usageRowsHtml(byDay);
-  const W = 720, H = 210, padT = 30, padB = 24, padL = 6, padR = 6;  // padT 给图例行留净空
-  const iw = W - padL - padR, ih = H - padT - padB;
-  const max = Math.max(1, ...byDay.map((d) => (d.tokens || 0)));
-  const n = byDay.length;
-  const slot = iw / n;
-  const gap = Math.max(1, Math.min(slot * 0.25, 36));
-  const bw = Math.max(2, Math.min(48, slot - gap));
-  const xOf = (i) => padL + i * slot + (slot - bw) / 2;
-  const yBase = padT + ih;
-  let bars = "", labels = "";
-  const labelStep = Math.max(1, Math.ceil(n / 9));
-  // 抽稀 x 轴标签：末日必须标；若与前一标签太近（< 半步长）则挤掉前者防重叠
-  const labeled = new Set();
-  for (let i = 0; i < n; i += labelStep) labeled.add(i);
-  if (labeled.has(n - 1) || labeled.size === 0) labeled.add(n - 1);
-  else if (n - 1 - [...labeled].pop() < labelStep / 2) { labeled.delete([...labeled].pop()); labeled.add(n - 1); }
-  else labeled.add(n - 1);
-  byDay.forEach((d, i) => {
-    const x = xOf(i);
-    const tok = d.tokens || 0;
-    const dayTxt = String(d.day).slice(5);
-    if (tok > 0) {
-      const tip = esc(d.day + t("　总 ") + fmtTok(tok) + t("（输入 ") + fmtTok(d.input || 0) +
-        t(" · 输出 ") + fmtTok(d.output || 0) + t(" · 其他/缓存 ") + fmtTok(Math.max(0, tok - (d.input || 0) - (d.output || 0))) +
-        t("）\\n调用 ") + (d.calls || 0) + t(t(" 次 · ")) + fmtUsd(d.cost_usd));
-      const hIn = ih * ((d.input || 0) / max);
-      const hCa = ih * (((d.tokens || 0) - (d.input || 0) - (d.output || 0)) / max);
-      const hOut = ih * ((d.output || 0) / max);
-      bars += '<rect x="' + x.toFixed(1) + '" y="' + (yBase - hIn).toFixed(1) +
-        '" width="' + bw.toFixed(1) + '" height="' + Math.max(hIn, 1).toFixed(1) +
-        '" fill="var(--uc-in)"><title>' + tip + "</title></rect>";
-      bars += '<rect x="' + x.toFixed(1) + '" y="' + (yBase - hIn - hCa).toFixed(1) +
-        '" width="' + bw.toFixed(1) + '" height="' + Math.max(0, hCa).toFixed(1) +
-        '" fill="var(--uc-ca)" opacity="0.85"><title>' + tip + "</title></rect>";
-      bars += '<rect x="' + x.toFixed(1) + '" y="' + (yBase - hIn - hCa - hOut).toFixed(1) +
-        '" width="' + bw.toFixed(1) + '" height="' + Math.max(0, hOut).toFixed(1) +
-        '" fill="var(--uc-out)" opacity="0.95"><title>' + tip + "</title></rect>";
-    } else {
-      // 当天无用量：基线上的占位短柱（不再是空白），悬浮给出说明
-      bars += '<rect x="' + x.toFixed(1) + '" y="' + (yBase - 2.5).toFixed(1) +
-        '" width="' + bw.toFixed(1) + '" height="2.5" rx="1" fill="var(--border-strong)" opacity="0.9">' +
-        "<title>" + esc(d.day + t("　无用量")) + "</title></rect>";
-    }
-    if (labeled.has(i)) {
-      // 夹住标签中心，避免首/末标签的文字探出 viewBox 被裁掉
-      const cx = Math.min(Math.max(x + bw / 2, padL + 18), W - padR - 18);
-      labels += '<text class="uc-x" x="' + cx.toFixed(1) + '" y="' + (H - 7) +
-        '" text-anchor="middle">' + esc(dayTxt) + "</text>";
-    }
-  });
-  // 基线 + 1/4、1/2、3/4 参考虚线：柱子有「地」可落，高度有参照
-  const grid =
-    '<line class="uc-grid" x1="' + padL + '" y1="' + (padT + ih * 0.25).toFixed(1) + '" x2="' + (W - padR) + '" y2="' + (padT + ih * 0.25).toFixed(1) + '"/>' +
-    '<line class="uc-grid" x1="' + padL + '" y1="' + (padT + ih * 0.5).toFixed(1) + '" x2="' + (W - padR) + '" y2="' + (padT + ih * 0.5).toFixed(1) + '"/>' +
-    '<line class="uc-grid" x1="' + padL + '" y1="' + (padT + ih * 0.75).toFixed(1) + '" x2="' + (W - padR) + '" y2="' + (padT + ih * 0.75).toFixed(1) + '"/>' +
-    '<line class="uc-base" x1="' + padL + '" y1="' + yBase + '" x2="' + (W - padR) + '" y2="' + yBase + '"/>';
-  return '<svg class="usage-svg" viewBox="0 0 ' + W + " " + H + '" role="img" preserveAspectRatio="xMidYMid meet">' +
-    grid + bars + labels +
-    '<g class="uc-legend">' +
-    '<rect x="6" y="2" width="10" height="10" rx="2" fill="var(--uc-in)"/><text class="uc-x" x="20" y="11">输入</text>' +
-    '<rect x="52" y="2" width="10" height="10" rx="2" fill="var(--uc-ca)" opacity="0.85"/><text class="uc-x" x="66" y="11">缓存/其他</text>' +
-    '<rect x="118" y="2" width="10" height="10" rx="2" fill="var(--uc-out)" opacity="0.95"/><text class="uc-x" x="132" y="11">输出</text>' +
-    '<text class="uc-peak" x="176" y="11">峰值 ' + esc(fmtTok(max)) + "</text>" +
-    "</g></svg>";
+  return usageMultilineSvg(byDay, (S.usage && S.usage.by_day_model) || []);
 }
 
 /* 维度排行表：首列名称带相对占比条 */
@@ -5781,18 +6241,18 @@ function renderUsage() {
   // 不提示的话「输入 0 · 输出 0」会被误读成统计坏了
   const noBreakdown = tot.tokens > 0 && !tot.input && !tot.output && !tot.cached;
   $("usage-kpis").innerHTML = [
-    kpiCard(t("总 Tokens"), fmtTok(tot.tokens),
-      t("输入 ") + fmtTok(tot.input) + t(" · 输出 ") + fmtTok(tot.output) + t(" · 缓存 ") + fmtTok(tot.cached),
+    kpiCard(t("累计 Token 数"), fmtTok(tot.tokens),
+      t("调用 ") + fmtTok(tot.calls) + t(" 次 · 成功率 ") +
+      (tot.calls ? Math.round(tot.ok * 100 / tot.calls) : 0) + "% · " + fmtUsd(tot.cost_usd),
       true, "i-sigma"),
-    kpiCard(t("调用次数"), fmtTok(tot.calls),
-      t("成功率 ") + (tot.calls ? Math.round(tot.ok * 100 / tot.calls) : 0) + t("%（失败 ") + fmtTok(tot.failed) + t("）"),
-      false, "i-hash"),
-    kpiCard(t("累计费用"), fmtUsd(tot.cost_usd),
-      t("活跃日均 ") + fmtUsd(activeDays ? tot.cost_usd / activeDays : 0), false, "i-coin"),
-    kpiCard(t("单次均值"), fmtTok(tot.avg_tokens_per_call) + " tok",
-      t("缓存命中率 ") + (tot.cache_rate || 0) + "%", false, "i-gauge"),
-    kpiCard(t("活跃天数"), fmtTok(activeDays),
-      t("累计调用时长 ") + fmtDur(tot.duration_s), false, "i-calendar-days"),
+    kpiCard(t("峰值 Token 数"), fmtTok(tot.peak_tokens),
+      t("单日最高 · 日均 ") + fmtTok(activeDays ? tot.tokens / activeDays : 0), false, "i-gauge"),
+    kpiCard(t("最长单次时长"), fmtDur(tot.max_duration_s),
+      t("累计调用 ") + fmtDur(tot.duration_s), false, "i-history"),
+    kpiCard(t("当前连续天数"), fmtTok(tot.streak_current) + t(" 天"),
+      t("范围内活跃 ") + fmtTok(activeDays) + t(" 天"), false, "i-calendar-days"),
+    kpiCard(t("最长连续天数"), fmtTok(tot.streak_longest) + t(" 天"),
+      t("缓存命中率 ") + (tot.cache_rate || 0) + "%", false, "i-calendar-days"),
   ].join("");
   const note = $("usage-note");
   if (note) {
@@ -5802,6 +6262,8 @@ function renderUsage() {
       : "";
   }
   $("usage-trend").innerHTML = usageTrendSvg(u.by_day || []);
+  renderUsageHeat();
+  renderUsageModels();
   $("usage-dims").innerHTML = [
     [t("按工具（CLI / API）"), (u.by_tool || []).map((r) => Object.assign({}, r, { key: toolName(r.key) }))],
     [t("按智能体"), u.by_agent],
@@ -5888,6 +6350,7 @@ function switchTab(name) {
   S.tab = name;
   if (SET_TABS.has(name)) localStorage.setItem("orch.setTab", name);
   document.body.classList.add("settings-mode");
+  document.body.classList.remove("files-mode");   // 文件浏览页与设置导航互斥，别叠在左栏
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-settings"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", b.dataset.sub === name));
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-" + name));
@@ -5916,6 +6379,7 @@ function exitSettings() {
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-tasks"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", b.dataset.sub === "tasks"));
   document.body.classList.remove("settings-mode");
+  document.body.classList.remove("files-mode");
   const title = $("page-title");
   if (title) title.textContent = tabTitle("tasks");
   collapseDrawerIfMobile();
@@ -6005,6 +6469,9 @@ window.loadAutomation = loadAutomation;
 window.mkInstall = mkInstall;
 window.mkRemove = mkRemove;
 window.loadMarket = loadMarket;
+window.mkrInstall = mkrInstall;
+window.mkrRefresh = mkrRefresh;
+window.mkSetView = mkSetView;
 window.saveOrchestrator = saveOrchestrator;
 window.testOrchestrator = testOrchestrator;
 window.saveSettings = saveSettings;
@@ -6026,12 +6493,24 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   document.querySelectorAll(".set-item").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.sub)));
   $("btn-set-back").addEventListener("click", exitSettings);
+  $("btn-files-back").addEventListener("click", closeFolderFiles);   // 文件浏览页返回任务树
+  // 文件浏览页点文件行：中央弹窗预览（行是委托绑定，懒加载子目录里的行同样生效；
+  // dir 用行上记录的所属目录——懒加载行的文件名相对的是子目录，用根目录拼会 404）
+  $("sf-body").addEventListener("click", (e) => {
+    const f = e.target.closest(".sf-file");
+    if (!f) return;
+    const dir = f.dataset.dir || S.sfDir;
+    if (!dir) return;
+    dirFilePopup(dir, f.dataset.name || "", Number(f.dataset.size) || 0);
+  });
   $("btn-settings").addEventListener("click", enterSettings);
   $("btn-phone-side").addEventListener("click", openPhoneConnect);
   $("btn-prov-side").addEventListener("click", () => switchTab("orch"));   // 供应商指示 → 编排设置页更换
   document.querySelectorAll("#usage-ranges [data-days]").forEach((b) =>
     b.addEventListener("click", () => setUsageDays(b.dataset.days)));
   $("btn-usage-refresh").addEventListener("click", loadUsage);
+  document.querySelectorAll("#usage-heat-modes [data-heat]").forEach((b) =>
+    b.addEventListener("click", () => setUsageHeatMode(b.dataset.heat)));
   $("btn-back").addEventListener("click", closeRun);
   $("btn-cancel").addEventListener("click", cancelRun);
   bindDirector();
@@ -6183,6 +6662,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // 文件内容弹窗(240) 夹在 ask(250) 与 modal(200) 之间，Esc 同样逐层关
     if (e.key === "Escape" && filePopIsOpen()) { window.filePopClose(); return; }
     if (e.key === "Escape" && !$("modal").classList.contains("hidden")) closeModal();
+    // 日志抽屉：Esc 收起（最底层，放在弹窗之后）
+    if (e.key === "Escape" && !$("rd-log").classList.contains("hidden")) window.rdLogClose();
   });
   // 快捷键：Ctrl/Cmd+K 命令面板；N 新建任务（正在输入或弹框打开时不劫持）
   document.addEventListener("keydown", (e) => {
@@ -6194,7 +6675,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "n" || e.key === "N")
         && $("modal").classList.contains("hidden") && $("ask").classList.contains("hidden")
         && filePopIsOpen() === false && $("cmdk-mask").classList.contains("hidden")
-        && !document.body.classList.contains("settings-mode")) {
+        && !document.body.classList.contains("settings-mode")
+        && !document.body.classList.contains("files-mode")) {
       $("btn-new-task").click();
     }
   });
@@ -6213,7 +6695,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll("#auto-filter .seg-btn").forEach((x) => x.classList.toggle("active", x === b));
     renderAutomation();
   });
-  // 插件市场：搜索 / 分类 / 状态段选（本地过滤）
+  // 插件市场：搜索 / 分类 / 状态段选（本地过滤）；本地/外部视图切换与外部目录交互
   $("mk-search").addEventListener("input", renderMarket);
   $("mk-cat").addEventListener("change", renderMarket);
   $("mk-state").addEventListener("click", (e) => {
@@ -6223,6 +6705,14 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll("#mk-state .seg-btn").forEach((x) => x.classList.toggle("active", x === b));
     renderMarket();
   });
+  $("mk-view").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-v]");
+    if (!b) return;
+    mkSetView(b.dataset.v);
+  });
+  $("mkr-search").addEventListener("input", renderMarketRemote);
+  $("mkr-source").addEventListener("change", renderMarketRemote);
+  $("mkr-refresh").addEventListener("click", mkrRefresh);
   $("btn-reset-catalog").addEventListener("click", async () => {
     if (!await uiConfirm(t("恢复内置默认 catalog？你对该文件的修改将丢失。"), { ok: "恢复", danger: true })) return;
     await api("/api/catalog/reset", { method: "POST" }); poll();

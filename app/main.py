@@ -19,8 +19,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from core import automation, catalog, flows, jobs, manager, market, registry, remote, settings, store
+from core import automation, catalog, flows, jobs, manager, market, market_remote, registry, remote, settings, store
 from core import paths
+from core import health
 
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
@@ -138,6 +139,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._api_events()
             if path == "/api/control":
                 return self._json(200, {"control": remote.control_view(self._client_id())})
+            if path == "/api/health":
+                from core import health
+                return self._json(200, health.snapshot())
             if path == "/api/connect":
                 # 供设置页「手机连接」弹框生成二维码；远程打开需令牌，天然受保护
                 return self._json(200, {"urls": remote.build_connect_urls(PORT),
@@ -284,6 +288,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"task": t}) if t else self._json(404, {"error": "not found"})
             if path == "/api/market":
                 return self._json(200, market.view())
+            if path == "/api/market/remote":
+                return self._json(200, market_remote.view())
             return self._json(404, {"error": "unknown api"})
         # 静态文件：单文件或 UI 子目录文件（如 icons/icon-192.png）；
         # _static 内的 parents 校验确保解析后仍在 UI_DIR 内，防穿越
@@ -308,6 +314,24 @@ class Handler(BaseHTTPRequestHandler):
             return deny
         if path == "/api/tasks":
             return self._api_create_task()
+        if path == "/api/health/op":
+            # 供应商健康告警的手动操作（silence 静默 / reset 手动恢复）
+            from core import health
+            body = self._body()
+            prov = (body.get("provider") or "").strip()
+            if not prov:
+                return self._json(400, {"error": "provider 必填"})
+            op = body.get("op") or ""
+            if op == "silence":
+                ok, err = health.silence(prov, minutes=int(body.get("minutes") or 0))
+            elif op == "reset":
+                ok, err = health.reset(prov)
+            else:
+                return self._json(400, {"error": "op 必须是 silence 或 reset"})
+            if not ok:
+                return self._json(404, {"error": err})
+            store.bump_state()
+            return self._json(200, {"ok": True, "health": health.snapshot()})
         if path == "/api/attachments":
             return self._api_add_attachment()
         m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry|rename|continue)$", path)
@@ -623,6 +647,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "task": t, "run_id": run_id or ""})
             ok = automation.delete(tid)
             return self._json(200, {"ok": True}) if ok else self._json(404, {"error": "not found"})
+        # 外部目录路由必须在通配的 market/<id>/(install|remove) 之前——
+        # 否则 "remote" 会被当成包名吞掉
+        if path == "/api/market/remote/refresh":
+            return self._json(200, market_remote.refresh((self._body() or {}).get("source")))
+        m = re.match(r"^/api/market/remote/install$", path)
+        if m:
+            res, err = market_remote.install_remote((self._body() or {}).get("id") or "")
+            return self._json(400, {"error": err}) if err else self._json(200, res)
         m = re.match(r"^/api/market/([^/]+)/(install|remove)$", path)
         if m:
             if m.group(2) == "install":
@@ -724,12 +756,12 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"path": str(p), "parent": parent, "dirs": dirs})
 
     def _api_dir_scan(self):
-        """侧栏文件夹「查看文件」：列出该工作目录里的文件（附件式 chip 展示）。
+        """侧栏文件夹「查看文件」：递归列出该工作目录下的全部文件（左侧文件页树形展示）。
 
-        只读；仅限本机请求（同 /api/browse 的信息泄露口径）。文件名最多取
-        最近 200 个（按 mtime 新→旧），跳过 .git / node_modules 等噪音目录；
-        只列文件不递归（子目录里的文件不进列表，但可再开「查看文件」进入）。
-        名称带目录前缀（如 "docs/readme.md"），前端按层级缩进成文件夹感。
+        只读；仅限本机请求（同 /api/browse 的信息泄露口径）。name 为相对路径
+        （"/" 分隔，如 "docs/readme.md"），前端按目录层级渲染成树；跳过
+        .git / node_modules 等噪音目录；上限 2000 个文件（mtime 新→旧），
+        超出截断并带 truncated 标记。
         """
         ip, fw = self._forwarded_ip()
         if ip not in ("127.0.0.1", "::1") or fw:
@@ -745,24 +777,27 @@ class Handler(BaseHTTPRequestHandler):
         if not p.is_dir():
             return self._json(404, {"error": "目录不存在: %s" % p})
         files = []
-        subdirs = []
+        truncated = False
         try:
-            for child in p.iterdir():
-                if child.is_file():
+            for cur, dirs, names in os.walk(str(p)):
+                # os.walk 默认不跟随目录符号链接：环形目录不会死循环
+                dirs[:] = [d for d in dirs if d not in _SKIP_DIRS_SHARE]
+                for n in names:
                     try:
-                        st = child.stat()
+                        st = (Path(cur) / n).stat()
                     except OSError:
-                        continue
-                    files.append({"name": child.name, "size": st.st_size,
-                                  "mtime": int(st.st_mtime)})
-                elif child.is_dir():
-                    if child.name not in _SKIP_DIRS_SHARE:
-                        subdirs.append(child.name)
+                        continue   # 断链/权限：跳过单个文件
+                    files.append({"name": (Path(cur) / n).relative_to(p).as_posix(),
+                                  "size": st.st_size, "mtime": int(st.st_mtime)})
+                    if len(files) >= 2000:
+                        truncated = True
+                        break
+                if truncated:
+                    break
         except (PermissionError, OSError):
             return self._json(403, {"error": "无权限读取该目录"})
         files.sort(key=lambda f: (-f["mtime"], f["name"].lower()))
-        return self._json(200, {"path": str(p), "files": files[:200],
-                                "subdirs": sorted(subdirs, key=str.lower)})
+        return self._json(200, {"path": str(p), "files": files, "truncated": truncated})
 
     def _api_dir_file(self):
         """侧栏「查看文件」里点文件 chip：返回该文件内容（浏览器新页打开/下载）。
@@ -786,7 +821,11 @@ class Handler(BaseHTTPRequestHandler):
         if not name or not all(p and p != ".." for p in parts):
             return self._json(400, {"error": "非法文件名"})
         fp = (base / name).resolve()
-        if fp.parent != base and not str(fp).startswith(str(base) + "/"):
+        # 嵌套路径（docs/x.md）也要放行：Windows 下 str(fp) 是反斜杠，
+        # startswith(base+"/") 会把合法子目录文件误判越界，改用 relative_to 判定
+        try:
+            fp.relative_to(base)
+        except ValueError:
             return self._json(403, {"error": "越界"})
         if not fp.is_file():
             return self._json(404, {"error": "文件不存在"})
@@ -960,6 +999,8 @@ def _state_payload(client_id="", ver=None):
         "task_stats": store.task_run_stats(),
         "runs": store.list_runs(40),
         "control": remote.control_view(client_id),
+        # 供应商健康/告警（顶栏横幅数据源；有告警时 bump_state 会推给所有端）
+        "health": health.snapshot(),
     }
 
 
@@ -1001,9 +1042,15 @@ def main():
         print("[CodeBee] 附件待提交区：清理过期残留 %d 个" % n_pc)
     catalog.load()
     store.load_all()
+    health.init()  # 供应商健康/告警：恢复落盘状态 + 启动探针线程
     from core import modelhub
     modelhub.migrate_orch_models()  # 旧「编排模型」偏好并入 CLI 绑定（幂等，带备份）
     modelhub.migrate_chains()       # 旧单供应商模型链升级为跨厂商 chain（幂等，带备份）
+    try:
+        from core import settings_schema
+        settings_schema.register_default_namespaces()  # budget/cascade/compaction 配置就绪（幂等）
+    except Exception:
+        pass
     from core import skills
     n_lc = skills.migrate_lesson_categories()  # 分类字段上线前的教训按关键词回填（幂等，带备份）
     if n_lc:

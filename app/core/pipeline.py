@@ -446,6 +446,17 @@ def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
             duration_s=float(res.get("raw", {}).get("duration") or 0.0),
             cost_usd=float(res.get("cost_usd") or 0.0),
             usage=res.get("usage"))
+        # 告警模块：CLI 调用成功/失败上报（provider 名与 usage 台账一致）
+        from . import health
+        prov = agent.get("provider") or {}
+        prov_name = (prov.get("name") if isinstance(prov, dict) else "") or ""
+        if prov_name:
+            if res.get("ok"):
+                health.report_success(prov_name)
+            else:
+                health.report_failure(prov_name, res.get("error") or "",
+                                      model=res.get("model") or "",
+                                      provider_id=agent.get("id") or "")
     except Exception:
         pass
 

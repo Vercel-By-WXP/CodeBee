@@ -152,6 +152,18 @@
         </button>
       </div>
     </div>
+    <!-- 文件浏览视图：右键文件夹「查看文件」进入，左栏整体换成该目录的文件树 -->
+    <div class="side-files">
+      <button id="btn-files-back" class="set-back" data-i18n="返回任务列表">
+        <svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>返回任务列表
+      </button>
+      <div class="sf-head" id="sf-dir-row" title="">
+        <svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>
+        <span id="sf-dir" class="sf-title"></span>
+        <span id="sf-count" class="sf-count"></span>
+      </div>
+      <div id="sf-body" class="sf-body"></div>
+    </div>
     <!-- 设置视图：左栏整体变成设置导航 -->
     <div class="side-settings">
       <button id="btn-set-back" class="set-back" data-i18n="返回 CodeBee">
@@ -185,6 +197,7 @@
         <svg class="ico ico-lg" aria-hidden="true"><use href="#i-menu"></use></svg>
       </button>
       <div data-i18n="任务" id="page-title" class="page-title">任务</div>
+      <div id="health-banner" class="health-banner hidden" onclick="healthBannerClick()" title="供应商健康告警" aria-label="供应商健康告警"></div>
       <div class="top-actions">
         <button id="ctrl-pill" class="pill ctrl icon-only hidden" onclick="ctrlClick()" title="多端控制权" aria-label="多端控制权" data-i18n-aria="多端控制权" data-i18n-title="多端控制权"><svg class="ico" aria-hidden="true"><use href="#i-unlock"></use></svg></button>
         <button id="btn-skin" class="pill icon-only" title="皮肤 / 换肤：多套配色，各含日间与夜间" aria-label="皮肤 / 换肤" data-i18n-aria="皮肤 / 换肤" data-i18n-title="皮肤 / 换肤：多套配色，各含日间与夜间"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg></button>
@@ -342,7 +355,8 @@
               <div class="sec-title"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="蜂巢工作台">蜂巢工作台</span><span id="rd-hive-sub" class="tag"></span></div>
               <div id="rd-hive-cells" class="hive-cells"></div>
             </div>
-            <!-- 运行中指挥信箱（链路保留，暂不露出；恢复时去掉 hidden 即可） -->
+            <!-- 运行中指挥信箱：renderDirector 只认活跃 run，渲染时摘掉 hidden；
+                 与检查器的迷你指挥坞不同屏（详情上下文检查器让位），这里是带附件的完整版 -->
             <div id="rd-direct" class="rd-direct hidden">
               <div class="sec-title"><svg class="ico" aria-hidden="true"><use href="#i-baton"></use></svg><span data-i18n="运行中指挥">运行中指挥</span></div>
               <div id="rd-msgs" class="rd-msgs"></div>
@@ -366,7 +380,6 @@
             <h3 data-i18n="报告" class="sec-title">报告</h3>
             <div id="rd-report" class="report"></div>
             <div id="rd-arts" class="rd-arts hidden"></div>
-            <div id="rd-preview" class="rd-preview hidden"></div>
           </div>
           <div class="rd-pane" data-pane="git">
             <div id="rd-git" class="rd-git hidden"></div>
@@ -376,10 +389,13 @@
           </div>
           <div id="rd-log" class="logbox rd-logdrawer hidden">
             <div class="log-live-bar">
+              <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
+              <span id="rd-log-step" class="rd-log-step" data-i18n-title="当前日志所属的步骤" title="当前日志所属的步骤"></span>
               <span id="rd-log-live" class="log-live"></span>
               <span id="rd-log-at" class="log-at"></span>
               <span class="spacer"></span>
               <span class="hint" data-i18n="停在底部自动跟随新输出；上翻回看时不动">停在底部自动跟随新输出；上翻回看时不动</span>
+              <button class="ghost rd-log-x" onclick="rdLogClose()" data-i18n-title="关闭日志" title="关闭日志"><svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg></button>
             </div>
             <pre id="rd-log-text"></pre>
           </div>
@@ -409,11 +425,11 @@
       </div>
       </div>
 
-      <!-- 用量统计 -->
+      <!-- 使用统计 -->
       <div id="sub-usage" class="subpage hidden">
       <div class="panel wide">
         <div class="panel-head">
-          <h2 data-i18n="用量统计">用量统计</h2>
+          <h2 data-i18n="使用统计">使用统计<span class="badge2" data-i18n="应用用量">应用用量</span></h2>
           <div class="actions" id="usage-ranges">
             <div class="seg" role="group" aria-label="时间范围" data-i18n-aria="时间范围">
               <button data-i18n="今天" class="seg-btn active" data-days="1">今天</button>
@@ -429,8 +445,20 @@
         <p data-i18n="统计所有真实 LLM 调用：编排各角色步骤（规划/实现/评审/修订…）、编排者直连 API、连通性冒烟与 AI 修复；mock 智能体与本地验证不计入。" class="hint">统计所有真实 LLM 调用：编排各角色步骤（规划/实现/评审/修订…）、编排者直连 API、连通性冒烟与 AI 修复；mock 智能体与本地验证不计入。</p>
         <div id="usage-kpis" class="usage-kpis"><p data-i18n="加载中…" class="hint">加载中…</p></div>
         <div id="usage-note"></div>
-        <h3 data-i18n="每日趋势（输入 / 缓存 / 输出 token）" class="sec-title">每日趋势（输入 / 缓存 / 输出 token）</h3>
+        <h3 data-i18n="Token 活动" class="sec-title">Token 活动</h3>
+        <div class="usage-heat-head">
+          <div class="usage-heat-scale" aria-hidden="true"><span data-i18n="少">少</span><i class="hs0"></i><i class="hs1"></i><i class="hs2"></i><i class="hs3"></i><i class="hs4"></i><span data-i18n="多">多</span></div>
+          <div class="seg" id="usage-heat-modes" role="group" aria-label="热力图粒度" data-i18n-aria="热力图粒度">
+            <button data-i18n="每日" class="seg-btn active" data-heat="day">每日</button>
+            <button data-i18n="每周" class="seg-btn" data-heat="week">每周</button>
+            <button data-i18n="累计" class="seg-btn" data-heat="total">累计</button>
+          </div>
+        </div>
+        <div id="usage-heat"></div>
+        <h3 data-i18n="每日 Token 趋势图" class="sec-title">每日 Token 趋势图</h3>
         <div id="usage-trend"></div>
+        <h3 data-i18n="模型用量" class="sec-title">模型用量</h3>
+        <div id="usage-models"></div>
         <div id="usage-dims"></div>
         <h3 data-i18n="最近调用" class="sec-title">最近调用</h3>
         <div id="usage-recent" class="list"></div>
@@ -499,7 +527,7 @@
         </div>
       </div>
 
-      <!-- 插件市场：经验包一键安装 -->
+      <!-- 插件市场：经验包一键安装 + 外部生态目录 -->
       <div id="sub-market" class="subpage hidden">
       <div class="panel wide">
         <div class="panel-head">
@@ -507,6 +535,11 @@
           <span id="mk-count" class="pm-count"></span>
         </div>
         <p data-i18n="用经验包为 CodeBee 扩展写作与工程守则，一键装进经验库。" class="hint">用经验包为 CodeBee 扩展写作与工程守则，一键装进经验库。</p>
+        <div id="mk-view" class="seg mk-view" role="group" aria-label="市场视图" data-i18n-aria="市场视图">
+          <button data-i18n="经验包" class="seg-btn active" data-v="local">经验包</button>
+          <button data-i18n="外部目录" class="seg-btn" data-v="remote">外部目录</button>
+        </div>
+        <div id="mk-local">
         <div class="pm-tools mk-tools">
           <input id="mk-search" type="search" placeholder="搜索插件…" data-i18n-ph="搜索插件…" autocomplete="off">
           <select id="mk-cat" aria-label="分类" data-i18n-aria="分类"></select>
@@ -517,6 +550,17 @@
           </div>
         </div>
         <div id="mk-grid" class="cards mk-grid"></div>
+        </div>
+        <div id="mk-remote" class="hidden">
+          <p data-i18n="外部目录收录公开生态（ZCode / Anthropic）的插件。为防供应链注入，只允许安装纯技能类（文档型）插件；含脚本、钩子或 MCP 组件的一律灰显不可装。" class="hint">外部目录收录公开生态（ZCode / Anthropic）的插件。为防供应链注入，只允许安装纯技能类（文档型）插件；含脚本、钩子或 MCP 组件的一律灰显不可装。</p>
+          <div class="pm-tools mk-tools">
+            <input id="mkr-search" type="search" placeholder="搜索外部插件…" data-i18n-ph="搜索外部插件…" autocomplete="off">
+            <select id="mkr-source" aria-label="来源" data-i18n-aria="来源"></select>
+            <button id="mkr-refresh" class="ghost small" data-i18n="拉取更新">拉取更新</button>
+          </div>
+          <div id="mkr-meta" class="hint mkr-meta"></div>
+          <div id="mkr-grid" class="cards mk-grid"></div>
+        </div>
       </div>
       </div>
 
@@ -662,7 +706,8 @@
     <!-- 常驻统计条：运行/步骤/成本/tokens 一行看完，不占分区 -->
     <div id="insp-stats" class="insp-strip"></div>
     <!-- 分区 TAB：一次只展示一个分区；任务状态变化时自动选中（运行中→进度，待裁决→Git）。
-         成品文件归这里：主栏详情页不再重复展示（详情页聚焦步骤/日志/报告） -->
+         检查器定位＝任务树上的快捷预览列：主栏进运行/任务详情后整列让位（syncInspectorVis），
+         这里的 Git/进度/成品只在「没开详情」的浏览态出现，与详情页五分区不同屏 -->
     <nav id="insp-tabs" class="insp-tabs" role="tablist" aria-label="检查器分区" data-i18n-aria="检查器分区">
       <button class="insp-tab" data-tab="git" role="tab"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg><span data-i18n="Git 工具">Git 工具</span><span id="insp-badge-git" class="insp-badge hidden"></span></button>
       <button class="insp-tab" data-tab="progress" role="tab"><svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg><span data-i18n="进度">进度</span><span id="insp-badge-progress" class="insp-badge hidden"></span></button>
