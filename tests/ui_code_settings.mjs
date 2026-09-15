@@ -245,6 +245,17 @@ async function main() {
     check("滚回顶部后「外观」胶囊亮回", await evalJs(
       `document.querySelector("#cs-anchor [data-apn='apn-skin']").classList.contains("active")`));
 
+    // ── 8.7 成品预览链：点文件与「预览」按钮同款 artPopup 弹窗（面板内嵌预览已移除）──
+    check("artPopup 的 md 分支统一 codeBlockHTML（无 fp-md 代码路径）", await evalJs(
+      `String(_fpPreviewUrl).indexOf('codeBlockHTML(text)')>=0 && String(_fpPreviewUrl).indexOf("fp-md")<0`));
+    check("预览按钮扩到全部文本类文件（FP_TXT 判定而非 md/txt 正则）", await evalJs(
+      `String(artifactsChips).indexOf("FP_TXT")>=0 && String(artifactsChips).indexOf("isMd")<0`));
+    check("预览按钮改走 artPopup 弹窗，面板内嵌预览已整体移除", await evalJs(
+      `String(artifactsChips).indexOf("artPopup")>=0 &&
+       String(artifactsChips).indexOf("previewArtifact")<0 &&
+       typeof window.previewArtifact==="undefined" &&
+       !document.getElementById("rd-preview")`));
+
     // ── 9. 英文模式：新词条走 i18n 字典（走真实切换入口 setLangBtn，动态徽章才会重画）──
     await evalJs(`(function(){
       if (typeof setLangBtn==="function") { setLangBtn("en"); return true; }

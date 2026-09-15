@@ -1,5 +1,5 @@
 /* 任务检查器（右缘停靠列）UI 验收：
- * 1) 点任务树的 <summary>：展开行为保留 + 右缘滑出检查器（任务树仍可见）
+ * 1) 入口 = 顶栏「任务详情」按钮/开合记忆（点任务树任务行现在主栏直开任务详情，见 ui_tree）
  * 2) Git 工具卡：分支名 + +/- 统计 + 变更清单 + 合并/丢弃按钮（isolated 时）
  * 3) 进度卡 x/y + 步骤清单；点步骤跳主栏详情
  * 4) 收起按钮 → 列消失；「完整详情」→ 主栏任务详情
@@ -128,34 +128,25 @@ async function main() {
     let taskRow = null;
     for (let i = 0; i < 20 && !taskRow; i++) {
       taskRow = await js(`(() => {
-        const d = [...document.querySelectorAll("#side-tasks details.stask")].find(x => x.dataset.task === ${JSON.stringify(taskId)});
+        const d = [...document.querySelectorAll("#side-tasks .stask")].find(x => x.dataset.task === ${JSON.stringify(taskId)});
         return d ? true : false;
       })()`);
       if (!taskRow) await sleep(500);
     }
     check("侧栏出现目标任务行", !!taskRow, "taskId=" + taskId);
 
-    // 点任务行 summary：检查器滑出（展开态取反是原生行为——首个任务默认已展开，点击后折叠）
-    const wasOpenBefore = await js(`(() => {
-      const d = [...document.querySelectorAll("#side-tasks details.stask")].find(x => x.dataset.task === ${JSON.stringify(taskId)});
-      return d ? !!d.open : null;
-    })()`);
-    await js(`(() => {
-      const d = [...document.querySelectorAll("#side-tasks details.stask")].find(x => x.dataset.task === ${JSON.stringify(taskId)});
-      d.querySelector("summary").click(); return 1;
-    })()`);
+    // 打开检查器：点任务树任务行现在主栏直开任务详情（见 ui_tree），检查器入口 = 顶栏「任务详情」按钮
+    await js(`openInspector(${JSON.stringify(taskId)}); "ok"`);
     await sleep(2200);
     const open = await js(`(() => {
       const insp = document.getElementById("inspector");
       const cs = getComputedStyle(insp);
-      const treeVisible = !!document.querySelector("#side-tasks details.stask");
-      const stask = [...document.querySelectorAll("#side-tasks details.stask")].find(x => x.dataset.task === ${JSON.stringify(taskId)});
+      const treeVisible = !!document.querySelector("#side-tasks .stask");
       return {
         bodyOpen: document.body.classList.contains("inspector-open"),
         inspVisible: !insp.classList.contains("hidden") && cs.display !== "none",
         gridCols: getComputedStyle(document.getElementById("app")).gridTemplateColumns.split(" ").length,
         treeVisible,
-        expanded: stask ? !!stask.open : null,
         title: (document.getElementById("insp-title") || {}).textContent || "",
         branch: (document.querySelector("#insp-git-main .insp-branch code") || {}).textContent || "",
         plus: (document.querySelector("#insp-git-main .insp-plus") || {}).textContent || "",
@@ -167,11 +158,8 @@ async function main() {
         files: document.querySelectorAll("#insp-artifacts .file-chip").length,
       };
     })()`);
-    check("点任务行：检查器滑出且任务树仍在", open.bodyOpen && open.inspVisible && open.treeVisible && open.gridCols === 3,
+    check("检查器打开且任务树仍在", open.bodyOpen && open.inspVisible && open.treeVisible && open.gridCols === 3,
       JSON.stringify(open));
-    check("点任务行：任务行展开态正确切换（原生折叠/展开保留）",
-      open.expanded !== null && open.expanded !== wasOpenBefore,
-      JSON.stringify({ before: wasOpenBefore, after: open.expanded }));
     check("Git 卡：任务分支名 tutti/<id>", open.branch === "tutti/" + taskId, open.branch);
     check("Git 卡：+N 行统计出现", /^\+\d+$/.test(open.plus), open.plus);
     check("Git 卡：待裁决徽标 + 合并/丢弃按钮", open.chip.includes("待裁决") && open.mergeBtn === true,
@@ -222,11 +210,11 @@ async function main() {
     await sleep(1600);
     const jumped = await js(`(() => ({
       detail: !document.getElementById("run-detail").classList.contains("hidden"),
-      inspectorStillOpen: document.body.classList.contains("inspector-open"),
+      inspectorYielded: document.getElementById("inspector").classList.contains("hidden"),
       focus: Number((document.querySelector("#rd-steps .step.focus") || { dataset: { n: 0 } }).dataset.n) || 0,
     }))()`);
-    check("点进度步骤：主栏开详情、检查器不收起",
-      jumped.detail && jumped.inspectorStillOpen && jumped.focus > 0, JSON.stringify(jumped));
+    check("点进度步骤：主栏开详情并定位，检查器让位（详情全功能，不同屏重复）",
+      jumped.detail && jumped.inspectorYielded && jumped.focus > 0, JSON.stringify(jumped));
 
     // 变更清单点开单文件 diff
     await js(`(() => { const b = document.querySelector("#insp-git-main .insp-cf"); if (b) b.click(); return 1; })()`);
@@ -245,8 +233,10 @@ async function main() {
     const full = await js(`(() => ({
       detail: !document.getElementById("run-detail").classList.contains("hidden"),
       inspectorOpen: document.body.classList.contains("inspector-open"),
+      keyKept: !!S.inspKey,
     }))()`);
-    check("完整详情按钮：主栏任务详情打开、检查器保持", full.detail && full.inspectorOpen, JSON.stringify(full));
+    check("完整详情按钮：主栏任务详情打开、检查器让位但选中保留",
+      full.detail && !full.inspectorOpen && full.keyKept, JSON.stringify(full));
 
     // 收起 → 列消失
     await js(`document.getElementById("insp-close").click(); "ok"`);
@@ -259,32 +249,34 @@ async function main() {
     check("收起按钮：检查器隐藏、grid 回两列", !closed.bodyOpen && closed.inspHidden && closed.gridCols === 2,
       JSON.stringify(closed));
 
-    // 重新打开（收起后再点任务行还能回来）
-    await js(`(() => {
-      const d = [...document.querySelectorAll("#side-tasks details.stask")].find(x => x.dataset.task === ${JSON.stringify(taskId)});
-      d.querySelector("summary").click(); return 1;
-    })()`);
+    // 重新打开（收起后顶栏「任务详情」按钮还能回来）
+    await js(`document.getElementById("btn-insp").click(); "ok"`);
     await sleep(1800);
     const reopened = await js(`document.body.classList.contains("inspector-open")`);
-    check("再次点任务行：检查器重新滑出", reopened === true, String(reopened));
+    check("顶栏按钮：检查器重新滑出", reopened === true, String(reopened));
 
-    // 刷新恢复：收起后 localStorage 应清空；开着时刷新应回到同一任务
+    // 刷新恢复：开合记忆——localStorage 记住任务；刷新落在新建表单（非检查器
+    // 上下文）不自动滑出，选中不丢，点任务行即刻滑回且绑定同一任务
     const memOpen = await js(`(() => ({ body: document.body.classList.contains("inspector-open"), ls: localStorage.getItem("orch.inspector") }))()`);
     check("开合记忆：开着时 localStorage 记住任务",
       memOpen.body === true && memOpen.ls === taskId, JSON.stringify(memOpen));
     await js(`location.reload(); "ok"`);
     await sleep(4000);
-    let restored = null;
-    for (let i = 0; i < 10 && !restored; i++) {
-      restored = await js(`(() => {
-        const tree = !!document.querySelector("#side-tasks details.stask");
-        return tree ? document.body.classList.contains("inspector-open") : null;
+    let memAfter = null;
+    for (let i = 0; i < 10 && memAfter === null; i++) {
+      memAfter = await js(`(() => {
+        const tree = !!document.querySelector("#side-tasks .stask");
+        return tree ? { ls: localStorage.getItem("orch.inspector"),
+                        shown: document.body.classList.contains("inspector-open") } : null;
       })()`);
-      if (restored === null) await sleep(800);
+      if (memAfter === null) await sleep(800);
     }
-    check("刷新后：检查器自动恢复到上次任务", restored === true, String(restored));
+    check("刷新后：localStorage 保留任务，表单页不自动滑出",
+      !!memAfter && memAfter.ls === taskId && memAfter.shown === false, JSON.stringify(memAfter));
+    await js(`document.getElementById("btn-insp").click(); "ok"`);
+    await sleep(1500);
     const restoredTitle = await js(`(document.getElementById("insp-title") || {}).textContent || ""`);
-    check("刷新后：恢复的是同一任务", restoredTitle.includes("检查器验收"), restoredTitle);
+    check("刷新后：顶栏按钮滑回且是同一任务", restoredTitle.includes("检查器验收"), restoredTitle);
     await js(`document.getElementById("insp-close").click(); "ok"`);
     await sleep(600);
     const memClosed = await js(`localStorage.getItem("orch.inspector")`);
@@ -310,27 +302,36 @@ async function main() {
     check("未运行用例：第二条任务 run 已删除", del2.ok === true, JSON.stringify(del2).slice(0, 120));
     await sleep(1500);   // 等 SSE 把 task_latest 的变化刷进前端
     const skip = await js(`(() => {
-      const d = [...document.querySelectorAll("#side-tasks details.stask")].find(x => x.dataset.task === ${JSON.stringify(t2.task_id)});
+      const d = [...document.querySelectorAll("#side-tasks .stask")].find(x => x.dataset.task === ${JSON.stringify(t2.task_id)});
       if (!d) return { found: false };
-      d.querySelector("summary").click();
+      d.click();
       return { found: true, bodyOpen: document.body.classList.contains("inspector-open") };
     })()`);
     await sleep(800);
     const skipAfter = await js(`(() => ({
       bodyOpen: document.body.classList.contains("inspector-open"),
       hidden: document.getElementById("inspector").classList.contains("hidden"),
+      detailShown: !document.getElementById("run-detail").classList.contains("hidden"),
+      toast: (document.getElementById("toast") || {}).textContent || "",
     }))()`);
-    check("没跑过的任务：点行不滑出检查器",
-      !!skip.found && skip.bodyOpen === false && skipAfter.bodyOpen === false && skipAfter.hidden === true,
+    check("没跑过的任务：点行不开检查器、不开详情，但给 toast 说明",
+      !!skip.found && skipAfter.bodyOpen === false && skipAfter.hidden === true &&
+      skipAfter.detailShown === false && skipAfter.toast.includes("还没跑过"),
       JSON.stringify({ skip, skipAfter }));
-    // 跑过的任务不受影响：回头点第一条任务，检查器照常滑出
+    // 跑过的任务不受影响：回头点第一条任务，主栏直开任务详情
     await js(`(() => {
-      const d = [...document.querySelectorAll("#side-tasks details.stask")].find(x => x.dataset.task === ${JSON.stringify(taskId)});
-      d.querySelector("summary").click(); return 1;
+      const d = [...document.querySelectorAll("#side-tasks .stask")].find(x => x.dataset.task === ${JSON.stringify(taskId)});
+      d.click(); return 1;
     })()`);
-    await sleep(1200);
-    const backOpen = await js(`document.body.classList.contains("inspector-open")`);
-    check("跑过的任务：点行照常滑出", backOpen === true, String(backOpen));
+    await sleep(1500);
+    const mainDetail = await js(`(() => ({
+      detailShown: !document.getElementById("run-detail").classList.contains("hidden"),
+      pageTitle: (document.getElementById("page-title") || {}).textContent || "",
+      inspectorHidden: document.getElementById("inspector").classList.contains("hidden"),
+    }))()`);
+    check("跑过的任务：点行主栏直开任务详情（检查器让位）",
+      mainDetail.detailShown === true && mainDetail.pageTitle === "运行详情" && mainDetail.inspectorHidden === true,
+      JSON.stringify(mainDetail));
 
     console.log("页面异常:", pageErrors.length ? pageErrors.join(" || ") : "无");
     ws.close();

@@ -206,7 +206,7 @@ async function main() {
     const mdStates = [
       ["chapter-01.md", async () => {
         const q = JSON.parse(await evalJs(popState));
-        return q.open && !!(await evalJs(`!!document.querySelector("#file-pop .fp-md")`)) &&
+        return q.open && !!(await evalJs(`!!document.querySelector("#file-pop .fp-code .code-block")`)) &&
           q.body.includes("第一章 试炼开始");
       }, "md 渲染进弹窗"],
       ["cover.json", async () => {

@@ -34,7 +34,7 @@ function renderTypeOptions() {
   if (!sel || !S.flows) return;
   const prev = sel.value;
   sel.innerHTML = (S.flows || []).map((f) => {
-    return '<option value="' + esc(f.id) + '">' + esc(f.name) + t("（") + flowDesc(f) + (f.builtin ? "" : t(" · 自定义")) + "）</option>";
+    return '<option value="' + esc(f.id) + '">' + esc(f.name) + t("（") + flowDesc(f) + (f.builtin ? "" : t(" · 自定义")) + t("）") + "</option>";
   }).join("");
   if (prev && flowById(prev)) sel.value = prev;
   renderTypeMenu();
@@ -398,7 +398,7 @@ function errTag(err) {
 }
 
 function runKindTag(k) {
-  return k === "mgmt" ? '<span class="tag">管理</span>' : '<span class="tag">编排</span>';
+  return k === "mgmt" ? '<span class="tag">' + t("管理") + '</span>' : '<span class="tag">' + t("编排") + '</span>';
 }
 
 /* 供应商来源标签：手动添加的不打标，其余按来源 id → 显示名映射 */
@@ -513,7 +513,7 @@ function renderHealthBanner(health) {
   el.className = "health-banner alerting";
   el.title = alerts.map((p) =>
     p.provider + (p.model ? " · " + p.model : "") +
-    "：连续失败 " + p.consecutive_failures + " 次（" + (p.last_error || "未知错误") + "）"
+    t("：连续失败 ") + p.consecutive_failures + t(" 次（") + (p.last_error || t("未知错误")) + t("）")
   ).join("\n");
   if (!_healthBeeped) { _healthBeeped = true; beepAttention(); }
 }
@@ -522,7 +522,7 @@ function healthBannerText(health) {
   return ((health && health.alerts) || []).map((p) => {
     const m = p.model ? " · " + p.model : "";
     return "⚠ " + p.provider + m + " " + t("连接异常");
-  }).join("　");
+  }).join(t("　"));
 }
 
 function healthBannerClick() {
@@ -780,27 +780,27 @@ function renderBindings() {
   S.bindSig = sig;
   bbox.innerHTML = targets.map((c) => {
     const b = (S.bindings || {})[c.id] || {};
-    const opts = '<option value="">不绑定（用 CLI 自身的凭据与配置）</option>' + bindable.map((p) =>
+    const opts = '<option value="">' + t("不绑定（用 CLI 自身的凭据与配置）") + '</option>' + bindable.map((p) =>
       '<option value="' + esc(p.id) + '"' + (b.provider_id === p.id ? " selected" : "") + ">" +
-      esc(p.name) + t("（") + esc(p.protocol) + (p.enabled === false ? t(" · 已停用") : "") + "）</option>").join("");
+      esc(p.name) + t("（") + esc(p.protocol) + (p.enabled === false ? t(" · 已停用") : "") + t("）") + "</option>").join("");
     const bound = provs.find((p) => p.id === b.provider_id);
     const offWarn = bound && bound.enabled === false
-      ? '<p class="hint warn">该供应商已停用：编排时不会注入它，将回落为 CLI 默认配置（模型链也不会生效）。</p>' : "";
+      ? '<p class="hint warn">' + t("该供应商已停用：编排时不会注入它，将回落为 CLI 默认配置（模型链也不会生效）。") + '</p>' : "";
     const protoWarn = bound && !bindable.some((p) => p.id === bound.id)
-      ? '<p class="hint warn">该供应商协议为 ' + esc(bound.protocol) +
-        '，当前没有可注入的 CLI，编排时会回落为 CLI 默认配置。</p>' : "";
+      ? '<p class="hint warn">' + t("该供应商协议为 ") + esc(bound.protocol) +
+        t("，当前没有可注入的 CLI，编排时会回落为 CLI 默认配置。") + '</p>' : "";
     return '<div class="card"><div class="head"><span class="name">' + esc(c.name) + "</span>" +
       '<span class="tag">' + esc(c.orch_kind) + "</span></div>" +
-      '<div class="field"><label>供应商</label><select id="bindprov-' + esc(c.id) + '">' + opts + "</select></div>" +
-      '<p class="hint">绑定后编排调用会注入该供应商的 API key 与地址；不绑定则只按下方模型链传 -m 参数。</p>' +
+      '<div class="field"><label>' + t("供应商") + '</label><select id="bindprov-' + esc(c.id) + '">' + opts + "</select></div>" +
+      '<p class="hint">' + t("绑定后编排调用会注入该供应商的 API key 与地址；不绑定则只按下方模型链传 -m 参数。") + '</p>' +
       bindModelBox(c, b.provider_id) + offWarn + protoWarn +
       '<div class="ops"><label class="toggle"><input type="checkbox" id="binddiff-' + esc(c.id) + '"' +
-      (b.difficulty_routing ? " checked" : "") + '> 按难度自动选模型（简单/困难）</label>' +
-      '<button class="ghost small" onclick="saveBinding(\'' + esc(c.id) + '\')">保存</button></div></div>';
+      (b.difficulty_routing ? " checked" : "") + '>' + t(" 按难度自动选模型（简单/困难）") + '</label>' +
+      '<button class="ghost small" onclick="saveBinding(\'' + esc(c.id) + '\')">' + t("保存") + '</button></div></div>';
   }).join("") +
-    (!targets.length ? '<p class="hint">还没有已安装且可编排的 CLI——先到「智能体管理」页安装并启用。</p>' : "") +
-    (nonBindable ? '<p class="hint">另有 ' + nonBindable +
-      ' 个供应商（google 等协议）仅登记，不支持注入 CLI，未出现在上面的下拉中。</p>' : "");
+    (!targets.length ? '<p class="hint">' + t("还没有已安装且可编排的 CLI——先到「智能体管理」页安装并启用。") + '</p>' : "") +
+    (nonBindable ? '<p class="hint">' + t("另有 ") + nonBindable +
+      t(" 个供应商（google 等协议）仅登记，不支持注入 CLI，未出现在上面的下拉中。") + '</p>' : "");
 }
 
 /* ---------------------------------------------------------- 供应商主从视图 */
@@ -823,14 +823,14 @@ function renderProvList() {
   }
   const selN = Object.keys(S.selProvs || {}).length;
   box.classList.toggle("has-sel", selN > 0);
-  const batch = selN ? '<div class="prov-batch"><span class="n">已选 ' + selN + " 个</span>" +
-    '<button class="ghost small" onclick="batchProvOp(\'enable\')">启用</button>' +
-    '<button class="ghost small" onclick="batchProvOp(\'disable\')">停用</button>' +
-    '<button class="danger small" onclick="batchProvOp(\'delete\')">删除</button>' +
-    '<button class="ghost small" onclick="clearProvSel()">取消</button></div>' : "";
+  const batch = selN ? '<div class="prov-batch"><span class="n">' + t("已选 ") + selN + t(" 个") + "</span>" +
+    '<button class="ghost small" onclick="batchProvOp(\'enable\')">' + t("启用") + '</button>' +
+    '<button class="ghost small" onclick="batchProvOp(\'disable\')">' + t("停用") + '</button>' +
+    '<button class="danger small" onclick="batchProvOp(\'delete\')">' + t("删除") + '</button>' +
+    '<button class="ghost small" onclick="clearProvSel()">' + t("取消") + '</button></div>' : "";
   const allBox = provs.length ? '<label class="prov-all"><input type="checkbox"' +
     (selN === provs.length && selN > 0 ? " checked" : "") +
-    ' onchange="toggleAllProvSel(this.checked)"> 全选' +
+    ' onchange="toggleAllProvSel(this.checked)">' + t(" 全选") +
     (kw ? t("（筛选后 ") + provs.length + t(" 个）") : t("（") + provs.length + t("）")) + "</label>" : "";
   box.innerHTML = batch + allBox + (provs.map((p) => {
     const n = p.models == null ? null : p.models.filter((m) => !m.hidden).length;
@@ -839,7 +839,7 @@ function renderProvList() {
     return '<div class="prov-item' + (p.id === S.selProv ? " active" : "") + (off ? " off" : "") +
       '" onclick="selectProvider(\'' + esc(p.id) + '\')">' +
       '<input type="checkbox" class="pi-check"' + (S.selProvs[p.id] ? " checked" : "") +
-      ' title="勾选以批量操作" onclick="event.stopPropagation()"' +
+      ' title="' + t("勾选以批量操作") + '" onclick="event.stopPropagation()"' +
       ' onchange="toggleProvSel(\'' + esc(p.id) + '\', this.checked)">' +
       '<div class="pi-body"><div class="pi-top"><div class="pi-name">' + esc(p.name) + "</div>" +
       '<span class="pi-n">' + st + "</span></div>" +
@@ -911,13 +911,13 @@ function renderProvDetail() {
   if (S.dragging) return;  // 拖拽中不重绘
   const p = (S.providers || []).find((x) => x.id === S.selProv);
   if (!p) {
-    box.innerHTML = '<div class="empty">左侧选择供应商；还没有供应商时点左上角「导入」，' +
-      '可从 CCSwitch / Codex / Claude Code / ZCode / Qwen / Gemini / OpenCode / Continue / Cursor / Trae 扫描带入。</div>';
+    box.innerHTML = '<div class="empty">' + t("左侧选择供应商；还没有供应商时点左上角「导入」，") +
+      t("可从 CCSwitch / Codex / Claude Code / ZCode / Qwen / Gemini / OpenCode / Continue / Cursor / Trae 扫描带入。") + '</div>';
     return;
   }
   const tp = (S.testProvState || {})[p.id];
   const tpHtml = tp ? (tp.ok
-    ? '<span class="badge ok">✓ 连通 ' + tp.latency_ms + "ms · " + tp.count + " 个模型</span>"
+    ? '<span class="badge ok">' + t("✓ 连通 ") + tp.latency_ms + "ms · " + tp.count + " 个模型</span>"
     : '<span class="badge bad" title="' + esc(tp.error || "") + '">✗ ' + esc((tp.error || t("失败")).slice(0, 60)) + "</span>") : "";
   const models = (p.models || []).filter((m) => !m.hidden)
     .sort((a, b) => (a.priority || 0) - (b.priority || 0));
@@ -939,36 +939,36 @@ function renderProvDetail() {
     '<button class="danger small" onclick="delProvider(\'' + esc(p.id) + '\')">' + t("删除") + "</button>" +
     "</div></div>";
   if (selN) {
-    html += '<div class="mrow-batch"><span class="n">已选 ' + selN + " 个模型</span>" +
-      '<button class="ghost small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'enable\')">启用</button>' +
-      '<button class="ghost small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'disable\')">停用</button>' +
-      '<button class="ghost small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'restore\')">恢复</button>' +
-      '<button class="danger small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'delete\')">删除</button>' +
-      '<button class="ghost small" onclick="clearModelSel(\'' + esc(p.id) + '\')">取消</button></div>';
+    html += '<div class="mrow-batch"><span class="n">' + t("已选 ") + selN + t(" 个模型") + "</span>" +
+      '<button class="ghost small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'enable\')">' + t("启用") + '</button>' +
+      '<button class="ghost small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'disable\')">' + t("停用") + '</button>' +
+      '<button class="ghost small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'restore\')">' + t("恢复") + '</button>' +
+      '<button class="danger small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'delete\')">' + t("删除") + '</button>' +
+      '<button class="ghost small" onclick="clearModelSel(\'' + esc(p.id) + '\')">' + t("取消") + '</button></div>';
   }
-  html += '<details class="pd-config"><summary>编辑供应商配置（地址 / 密钥 / 难度模型）</summary>' +
+  html += '<details class="pd-config"><summary>' + t("编辑供应商配置（地址 / 密钥 / 难度模型）") + '</summary>' +
     providerCard(p) + "</details>";
   if (p.models == null) {
-    html += '<div class="empty">尚未获取模型列表——点上方「获取模型列表」。</div>';
+    html += '<div class="empty">' + t("尚未获取模型列表——点上方「获取模型列表」。") + '</div>';
   } else {
     const kw = (S.modelFilter || {})[p.id] || "";
     html += '<div class="pm-tools">' +
-      '<input id="pm-search-' + esc(p.id) + '" type="search" placeholder="按名称过滤模型…" autocomplete="off"' +
+      '<input id="pm-search-' + esc(p.id) + '" type="search" placeholder="' + t("按名称过滤模型…") + '" autocomplete="off"' +
       ' value="' + esc(kw) + '" oninput="filterModels(\'' + esc(p.id) + '\', this.value)">' +
       '<span class="pm-count" id="pm-count-' + esc(p.id) + '"></span></div>';
     html += '<div id="pm-groups" class="pm-groups' + (selN ? " has-sel" : "") + '">' +
       provModelGroupsHtml(p) + "</div>";
     if (hidden.length) {
-      html += '<details class="prow-hidden"><summary>已删除 ' + hidden.length +
-        " 个模型（刷新不会再带回）</summary><div class=\"prow-hidden-list\">";
+      html += '<details class="prow-hidden"><summary>' + t("已删除 ") + hidden.length +
+        t(" 个模型（刷新不会再带回）") + "</summary><div class=\"prow-hidden-list\">";
       for (const m of hidden) {
         html += '<label><input type="checkbox"' + (sel[m.name] ? " checked" : "") +
           ' onchange="toggleModelSel(\'' + esc(p.id) + '\', \'' + esc(m.name) + '\', this.checked)">' +
           esc(m.name) + "</label>";
       }
       html += '</div><div class="prow-hidden-ops">' +
-        '<button class="ghost small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'restore\')">恢复所选</button>' +
-        '<button class="ghost small" onclick="restoreHidden(\'' + esc(p.id) + '\')">恢复全部</button>' +
+        '<button class="ghost small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'restore\')">' + t("恢复所选") + '</button>' +
+        '<button class="ghost small" onclick="restoreHidden(\'' + esc(p.id) + '\')">' + t("恢复全部") + '</button>' +
         "</div></details>";
     }
   }
@@ -1001,7 +1001,7 @@ function provModelGroupsHtml(p) {
     const allSel = gm.every((m) => sel[m.name]);
     html += '<div class="pgroup"><div class="pgroup-title">' +
       '<label class="pcheck-all"><input type="checkbox"' + (allSel ? " checked" : "") +
-      ' onchange="toggleGroupSel(\'' + esc(p.id) + '\', \'' + esc(g) + '\', this.checked)">全选</label>' +
+      ' onchange="toggleGroupSel(\'' + esc(p.id) + '\', \'' + esc(g) + '\', this.checked)">' + t("全选") + '</label>' +
       esc(g) + t(" 协议 · ") + gm.length + t(" 个") +
       (kw ? t("（过滤中，拖拽排序暂停）") : t("（拖动 ☰ 调序；启用的排最前）")) + "</div>";
     for (const m of gm) html += provModelRow(p.id, m, g);
@@ -1075,16 +1075,16 @@ function provModelRow(pid, m, group) {
   return '<div class="prow' + (m.enabled ? "" : " off") + '" draggable="true" data-group="' +
     esc(group) + '" data-name="' + esc(m.name) + '">' +
     '<input type="checkbox" class="pcheck"' + (sel[m.name] ? " checked" : "") +
-    ' title="勾选以批量操作"' +
+    ' title="' + t("勾选以批量操作") + '"' +
     ' onchange="toggleModelSel(\'' + esc(pid) + '\', \'' + esc(m.name) + '\', this.checked)">' +
-    '<span class="drag" title="拖动调整优先级"><svg class="ico" aria-hidden="true"><use href="#i-grip"></use></svg></span>' +
+    '<span class="drag" title="' + t("拖动调整优先级") + '"><svg class="ico" aria-hidden="true"><use href="#i-grip"></use></svg></span>' +
     '<span class="pprio">#' + m.priority + "</span>" +
     '<span class="pname" title="' + esc(m.name) + '">' + esc(m.name) + "</span>" +
     price + tmHtml +
     '<span class="row-ops">' +
-    '<button class="ghost small row-op" onclick="testModelBtn(\'' + esc(pid) + '\', \'' + esc(m.name) + '\')">测试</button>' +
-    '<button class="danger small row-op" title="从列表删除：刷新/重新导入不会再带回，可在分组底部恢复"' +
-    ' onclick="delModel(\'' + esc(pid) + '\', \'' + esc(m.name) + '\')">删除</button>' +
+    '<button class="ghost small row-op" onclick="testModelBtn(\'' + esc(pid) + '\', \'' + esc(m.name) + '\')">' + t("测试") + '</button>' +
+    '<button class="danger small row-op" title="' + t("从列表删除：刷新/重新导入不会再带回，可在分组底部恢复") + '"' +
+    ' onclick="delModel(\'' + esc(pid) + '\', \'' + esc(m.name) + '\')">' + t("删除") + '</button>' +
     '<label class="tog-mini" title="' + (m.enabled ? t("停用（不影响配置，仅编排选模跳过）") : t("启用")) + '">' +
     '<input type="checkbox" ' + (m.enabled ? "checked" : "") +
     ' onchange="modelOp(\'' + esc(pid) + '\', \'' + esc(m.name) + '\', this.checked ? \'enable\' : \'disable\')"><i></i></label>' +
@@ -1259,8 +1259,8 @@ function providerCard(p) {
     fld("peasy-" + p.id, t("简单任务模型"), p.model_easy || "", t("难度路由 · 简单")) +
     fld("phard-" + p.id, t("困难任务模型"), p.model_hard || "", t("难度路由 · 困难")) +
     "</div>" +
-    '<div class="ops"><button class="ghost small" onclick="saveProvider(\'' + esc(p.id) + '\')">保存</button>' +
-    '<button class="danger small" onclick="delProvider(\'' + esc(p.id) + '\')">删除</button></div></div>';
+    '<div class="ops"><button class="ghost small" onclick="saveProvider(\'' + esc(p.id) + '\')">' + t("保存") + '</button>' +
+    '<button class="danger small" onclick="delProvider(\'' + esc(p.id) + '\')">' + t("删除") + '</button></div></div>';
 }
 
 async function saveProvider(id) {
@@ -1293,30 +1293,30 @@ async function delProvider(id) {
 /* 「＋」手动添加供应商：弹框表单（替代原来的多段 prompt） */
 function openAddProviderDialog() {
   const protoOpts =
-    '<option value="anthropic">anthropic（Claude 系）</option>' +
-    '<option value="openai">openai（Codex / 通用）</option>' +
-    '<option value="google">google（Gemini，仅登记不支持注入）</option>';
+    '<option value="anthropic">' + t("anthropic（Claude 系）") + '</option>' +
+    '<option value="openai">' + t("openai（Codex / 通用）") + '</option>' +
+    '<option value="google">' + t("google（Gemini，仅登记不支持注入）") + '</option>';
   openModal(t("添加供应商"),
     '<div class="form">' +
     '<div class="grid-2">' +
-    '<div class="field"><label>名称 *</label><input id="np-name" placeholder="例：公司网关"></div>' +
-    '<div class="field"><label>协议 *</label><select id="np-proto">' + protoOpts + "</select></div>" +
+    '<div class="field"><label>' + t("名称 *") + '</label><input id="np-name" placeholder="' + t("例：公司网关") + '"></div>' +
+    '<div class="field"><label>' + t("协议 *") + '</label><select id="np-proto">' + protoOpts + "</select></div>" +
     "</div>" +
-    '<div class="field"><label>API 地址 *</label>' +
-    '<input id="np-url" placeholder="https://host/v1（若填 /chat/completions 会自动收敛为基址）"></div>' +
-    '<div class="field"><label>API 密钥</label>' +
-    '<input id="np-key" placeholder="sk-...（可留空，稍后补填）"></div>' +
+    '<div class="field"><label>' + t("API 地址 *") + '</label>' +
+    '<input id="np-url" placeholder="' + t("https://host/v1（若填 /chat/completions 会自动收敛为基址）") + '"></div>' +
+    '<div class="field"><label>' + t("API 密钥") + '</label>' +
+    '<input id="np-key" placeholder="' + t("sk-...（可留空，稍后补填）") + '"></div>' +
     '<div class="grid-3">' +
-    '<div class="field"><label>默认模型</label><input id="np-model" placeholder="可留空"></div>' +
-    '<div class="field"><label>简单任务模型</label><input id="np-easy" placeholder="可留空"></div>' +
-    '<div class="field"><label>困难任务模型</label><input id="np-hard" placeholder="可留空"></div>' +
+    '<div class="field"><label>' + t("默认模型") + '</label><input id="np-model" placeholder="' + t("可留空") + '"></div>' +
+    '<div class="field"><label>' + t("简单任务模型") + '</label><input id="np-easy" placeholder="' + t("可留空") + '"></div>' +
+    '<div class="field"><label>' + t("困难任务模型") + '</label><input id="np-hard" placeholder="' + t("可留空") + '"></div>' +
     "</div>" +
-    '<p class="hint">保存后会自动拉取该供应商的模型列表（未填密钥时跳过）。</p>' +
+    '<p class="hint">' + t("保存后会自动拉取该供应商的模型列表（未填密钥时跳过）。") + '</p>' +
     '<div id="add-result" class="msg"></div>' +
     "</div>",
-    '<button class="ghost" onclick="closeModal()">取消</button>' +
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>' +
     '<span class="spacer"></span>' +
-    '<button class="primary" id="btn-do-add" onclick="doAddProvider()">保存</button>');
+    '<button class="primary" id="btn-do-add" onclick="doAddProvider()">' + t("保存") + '</button>');
   setTimeout(() => { const el = $("np-name"); if (el) el.focus(); }, 0);
 }
 
@@ -1352,13 +1352,13 @@ async function doAddProvider() {
 
 /* 「导入」：扫描本机各 AI 工具配置，勾选后可一次导入 */
 async function openImportDialog() {
-  openModal(t("导入供应商"), '<div class="hint">正在扫描本机 AI 工具配置…</div>',
-    '<button class="ghost" onclick="closeModal()">取消</button>');
+  openModal(t("导入供应商"), '<div class="hint">' + t("正在扫描本机 AI 工具配置…") + '</div>',
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>');
   let data;
   try {
     data = await api("/api/models/sources");
   } catch (e) {
-    $("modal-body").innerHTML = '<div class="msg bad">扫描失败：' + esc(e.message) + "</div>";
+    $("modal-body").innerHTML = '<div class="msg bad">' + t("扫描失败：") + esc(e.message) + "</div>";
     return;
   }
   const srcs = data.sources || [];
@@ -1366,10 +1366,10 @@ async function openImportDialog() {
   const rows = srcs.map((s) => {
     const ok = s.found && s.count > 0;
     let status;
-    if (!s.found) status = '<span class="badge">未找到</span>';
-    else if (s.error) status = '<span class="badge bad">解析失败</span>';
-    else if (s.count > 0) status = '<span class="badge ok">发现 ' + s.count + " 个</span>";
-    else status = '<span class="badge">无可用配置</span>';
+    if (!s.found) status = '<span class="badge">' + t("未找到") + '</span>';
+    else if (s.error) status = '<span class="badge bad">' + t("解析失败") + '</span>';
+    else if (s.count > 0) status = '<span class="badge ok">' + t("发现 ") + s.count + t(" 个") + "</span>";
+    else status = '<span class="badge">' + t("无可用配置") + '</span>';
     return '<label class="src-row' + (ok ? "" : " disabled") + '">' +
       '<input type="checkbox" value="' + esc(s.id) + '"' + (ok ? " checked" : " disabled") +
       (ok ? ' onchange="updateImportSelHint()"' : "") + ">" +
@@ -1382,18 +1382,18 @@ async function openImportDialog() {
       "</div></label>";
   }).join("");
   $("modal-body").innerHTML =
-    '<p class="hint">勾选要导入的来源。导入只读取这些工具的配置，不会改动它们本身；' +
-    "已导入过的供应商会原地更新（保留你设置的模型与启停状态）。</p>" +
-    '<div class="src-list">' + (rows || '<div class="hint">没有可扫描的来源。</div>') + "</div>" +
+    '<p class="hint">' + t("勾选要导入的来源。导入只读取这些工具的配置，不会改动它们本身；") +
+    t("已导入过的供应商会原地更新（保留你设置的模型与启停状态）。") + "</p>" +
+    '<div class="src-list">' + (rows || '<div class="hint">' + t("没有可扫描的来源。") + '</div>') + "</div>" +
     '<div id="import-result" class="import-result"></div>';
   $("modal-foot").innerHTML =
     '<span class="hint" id="import-sel-hint"></span>' +
     '<span class="spacer"></span>' +
-    '<button class="ghost" onclick="toggleAllSources(true)">全选</button>' +
-    '<button class="ghost" onclick="toggleAllSources(false)">全不选</button>' +
-    '<button class="ghost" onclick="closeModal()">取消</button>' +
+    '<button class="ghost" onclick="toggleAllSources(true)">' + t("全选") + '</button>' +
+    '<button class="ghost" onclick="toggleAllSources(false)">' + t("全不选") + '</button>' +
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>' +
     '<button class="primary" id="btn-do-import" onclick="doImport()"' +
-    (usable.length ? "" : " disabled") + ">导入选中</button>";
+    (usable.length ? "" : " disabled") + ">" + t("导入选中") + "</button>";
   updateImportSelHint();
 }
 
@@ -1426,8 +1426,8 @@ async function doImport() {
   try {
     const r = await api("/api/models/import", { method: "POST", body: JSON.stringify({ sources: ids }) });
     const lines = (r.sources || []).map((s) => {
-      if (!s.found) return "<li>" + esc(s.name) + "：未找到配置</li>";
-      if (s.error) return "<li>" + esc(s.name) + '：<span class="bad">' + esc(s.error) + "</span></li>";
+      if (!s.found) return "<li>" + esc(s.name) + t("：未找到配置") + "</li>";
+      if (s.error) return "<li>" + esc(s.name) + t("：") + '<span class="bad">' + esc(s.error) + "</span></li>";
       let txt = t("新增 ") + s.added + t("，更新 ") + s.updated;
       if (s.duplicate) txt += t("，跳过重复 ") + s.duplicate;
       const extra = s.note ? t("（") + esc(s.note) + t("）") : "";
@@ -1440,7 +1440,7 @@ async function doImport() {
     btn.onclick = closeModal;
     if (r.imported) { S.selProv = null; S.modelsSig = null; poll(); }
   } catch (e) {
-    $("import-result").innerHTML = '<div class="msg bad">导入失败：' + esc(e.message) + "</div>";
+    $("import-result").innerHTML = '<div class="msg bad">' + t("导入失败：") + esc(e.message) + "</div>";
     btn.disabled = false; btn.textContent = t("导入选中");
     boxes.forEach((b) => { b.disabled = false; });
     updateImportSelHint();
@@ -1481,8 +1481,8 @@ function renderImplSelects() {
   const rprev = rsel.value;
   const rAgents = (S.catalog || []).filter((e) =>
     e.installed && e.orch_kind && S.sessionAgents.has(e.id));
-  rsel.innerHTML = '<option value="">不沿用（全新开始）</option>' +
-    rAgents.map((e) => '<option value="' + esc(e.id) + '">' + esc(e.name) + " 的会话</option>").join("");
+  rsel.innerHTML = '<option value="">' + t("不沿用（全新开始）") + '</option>' +
+    rAgents.map((e) => '<option value="' + esc(e.id) + '">' + esc(e.name) + t(" 的会话") + "</option>").join("");
   if (rprev && rAgents.some((e) => e.id === rprev)) rsel.value = rprev;
 
   const box = $("critic-box");
@@ -1718,7 +1718,7 @@ async function loadSessions() {
   const sel = $("f-resume-session");
   if (!agent) { row.classList.add("hidden"); S.sessionList = []; return; }
   row.classList.remove("hidden");
-  sel.innerHTML = '<option>（加载中…）</option>';
+  sel.innerHTML = '<option>' + t("（加载中…）") + '</option>';
   try {
     const r = await api("/api/sessions");
     const list = (r.sessions || {})[agent] || [];
@@ -1726,10 +1726,10 @@ async function loadSessions() {
     sel.innerHTML = list.length ? list.map((s) => {
       const who = s.project ? " [" + String(s.project).replace(/[\\/]+$/, "").split(/[\\/]/).pop() + "]" : "";
       return '<option value="' + esc(s.session_id) + '">[' + esc(s.mtime) + "]" + who + " " + esc(s.preview.slice(0, 60)) + "</option>";
-    }).join("") : '<option value="">（未找到该智能体的本地会话）</option>';
+    }).join("") : '<option value="">' + t("（未找到该智能体的本地会话）") + '</option>';
   } catch (e) {
     S.sessionList = [];
-    sel.innerHTML = '<option value="">（扫描失败）</option>';
+    sel.innerHTML = '<option value="">' + t("（扫描失败）") + '</option>';
   }
   showResumeHint();
 }
@@ -2232,13 +2232,13 @@ function renderRunList() {
   const selN = Object.keys(S.selRuns).length;
   const clr = $("btn-clear-runs");
   if (clr) clr.disabled = !runs.length;
-  if (!runs.length) { box.innerHTML = '<div class="empty">暂无运行记录</div>'; return; }
+  if (!runs.length) { box.innerHTML = '<div class="empty">' + t("暂无运行记录") + '</div>'; return; }
   const tools = '<div class="run-tools">' +
     '<label class="toggle"><input type="checkbox"' +
     (pickable.size && selN === pickable.size ? " checked" : "") +
-    ' onchange="toggleAllRunSel(this.checked)"> 全选</label>' +
+    ' onchange="toggleAllRunSel(this.checked)">' + t(" 全选") + '</label>' +
     '<span class="n">' + (selN ? t("已选 ") + selN + t(" 条") : t("勾选可批量删除")) + "</span>" +
-    (selN ? '<button class="danger small" onclick="deleteSelectedRuns()">删除所选</button>' +
+    (selN ? '<button class="danger small" onclick="deleteSelectedRuns()">' + t("删除所选") + '</button>' +
             '<button class="ghost small" onclick="clearRunSel()">取消选择</button>' : "") +
     "</div>";
   box.innerHTML = tools + runs.map((r) => {
@@ -2251,7 +2251,7 @@ function renderRunList() {
       runKindTag(r.kind) +
       '<span class="name">' + esc(r.title) + "</span>" + statusChip(r.status) +
       '<span class="time">' + esc(r.created_at) + "</span>" +
-      '<button class="danger small" title="删除该记录" onclick="event.stopPropagation(); deleteRun(\'' + esc(r.id) + '\')">删除</button></div>' +
+      '<button class="danger small" title="' + t("删除该记录") + '" onclick="event.stopPropagation(); deleteRun(\'' + esc(r.id) + '\')">' + t("删除") + '</button></div>' +
       '<div class="desc">' + esc(r.summary || r.error || (r.steps ? r.steps.length + t(" 个步骤") : "")) + "</div></div>";
   }).join("");
 }
@@ -2664,16 +2664,16 @@ function drawTaskDetail(key, runs) {
   renderHive(activeRun || latest);   // 终态回看最近一次运行的蜂巢
   const sum = (f) => runs.reduce((a, r) => a + (Number(r[f]) || 0), 0);
   $("rd-meta").innerHTML =
-    '<span class="stat">运行 <b>' + runs.length + "</b> 次</span>" +
-    '<span class="stat">步骤 <b>' + totalSteps + "</b> 步</span>" +
-    '<span class="stat">成本 <b>$' + sum("cost_usd").toFixed(3) + "</b></span>" +
+    '<span class="stat">' + t("运行 ") + '<b>' + runs.length + "</b>" + t(" 次") + "</span>" +
+    '<span class="stat">' + t("步骤 ") + '<b>' + totalSteps + "</b>" + t(" 步") + "</span>" +
+    '<span class="stat">' + t("成本 ") + '<b>$' + sum("cost_usd").toFixed(3) + "</b></span>" +
     '<span class="stat">tokens <b>' + sum("tokens") + "</b></span>" +
     (latest.error ? '<span class="stat err">' + errTag(latest.error) + esc(latest.error.slice(0, 200)) + "</span>" : "");
   $("rd-plan").classList.add("hidden");
   const statusTxt = { queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消") };
   let html = "";
   chrono.forEach((r, i) => {
-    html += '<div class="run-sep"><span class="rs-i">第 ' + (i + 1) + "/" + chrono.length + ' 次运行</span>' +
+    html += '<div class="run-sep"><span class="rs-i">' + t("第 ") + (i + 1) + "/" + chrono.length + t(" 次运行") + '</span>' +
       '<span class="rs-t">' + esc(String(r.created_at || "").slice(5, 16)) + "</span>" +
       '<span class="chip ' + esc(r.status || "") + '">' + (statusTxt[r.status] || r.status || "") + "</span>" +
       (r.error ? '<span class="rs-err" title="' + esc(r.error.slice(0, 200)) + '">' + esc(r.error.slice(0, 60)) + "</span>" : "") +
@@ -2688,7 +2688,7 @@ function drawTaskDetail(key, runs) {
       statusChip(s.status) + "</div>"
     ).join("");
   });
-  $("rd-steps").innerHTML = html || '<div class="empty">尚无步骤</div>';
+  $("rd-steps").innerHTML = html || '<div class="empty">' + t("尚无步骤") + '</div>';
   // 轮询重画不收起已打开的日志框：运行中日志靠 2.5s live 刷新持续更新，
   // 收起+清 currentLog 会让刚点开的输出被下一轮轮询弹掉
   if (currentLog && !stepsMatch(runs, currentLog)) window.rdLogClose();
@@ -2705,7 +2705,7 @@ function drawTaskDetail(key, runs) {
         if (S.detailTaskKey === key) $("rd-report").innerHTML = html2;
       } catch (e) { /* 报告拉取失败静默，保留旧内容 */ }
     } else {
-      $("rd-report").innerHTML = '<div class="hint">运行结束后生成</div>';
+      $("rd-report").innerHTML = '<div class="hint">' + t("运行结束后生成") + '</div>';
     }
   };
   drawReport();
@@ -2926,10 +2926,10 @@ async function renderRunDetail() {
   renderDirector(run, active);
   renderHive(run);
   $("rd-meta").innerHTML =
-    '<span class="stat">创建 <b>' + esc(run.created_at) + "</b></span>" +
-    '<span class="stat">成本 <b>$' + Number(run.cost_usd || 0).toFixed(3) + "</b></span>" +
+    '<span class="stat">' + t("创建 ") + '<b>' + esc(run.created_at) + "</b></span>" +
+    '<span class="stat">' + t("成本 ") + '<b>$' + Number(run.cost_usd || 0).toFixed(3) + "</b></span>" +
     '<span class="stat">tokens <b>' + (run.tokens || 0) + "</b></span>" +
-    (run.mode ? '<span class="stat">模式 <b>' + (run.mode === "auto" ? t("智能") : t("手动")) + "</b></span>" : "") +
+    (run.mode ? '<span class="stat">' + t("模式 ") + '<b>' + (run.mode === "auto" ? t("智能") : t("手动")) + "</b></span>" : "") +
     (run.error ? '<span class="stat err">' + errTag(run.error) + esc(run.error.slice(0, 200)) + "</span>" : "") +
     '<span class="stat tasksum hidden" id="rd-meta-task"></span>';
   if (S.detailSide) fillMetaTask(S.detailSide.stats || {});   // 缓存命中：轮询重画不闪丢累计组
@@ -2943,7 +2943,7 @@ async function renderRunDetail() {
     '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
     '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
     statusChip(s.status) + "</div>"
-  ).join("") || '<div class="empty">尚无步骤</div>';
+  ).join("") || '<div class="empty">' + t("尚无步骤") + '</div>';
   applyStepFocus();
   // 报告
   if (run.status === "done" || run.report) {
@@ -2951,7 +2951,7 @@ async function renderRunDetail() {
     $("rd-report").innerHTML = md2html(md);
     loadArtifacts(id);
   } else {
-    $("rd-report").innerHTML = '<div class="hint">运行结束后生成</div>';
+    $("rd-report").innerHTML = '<div class="hint">' + t("运行结束后生成") + '</div>';
   }
   // 成品文件双入口同源：主栏「成果」分区 + 检查器成品 TAB（列表上下文），
   // 详情上下文检查器让位后主栏是唯一可见面
@@ -3123,7 +3123,7 @@ function renderGitPanel(run, task) {
         '<div class="git-head"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>' +
         '<span class="sec-title">' + t("代码版本隔离") + '</span>' +
         '<span class="chip failed">' + t("检出失败") + "</span>" +
-        '<code class="git-branch">tutti/' + esc(tid || "（无主运行）") + "（" + esc(t("未创建")) + "）</code></div>" +
+        '<code class="git-branch">tutti/' + esc(tid || t("（无主运行）")) + t("（") + esc(t("未创建")) + t("）") + "</code></div>" +
         (lastErr ? '<div class="hint warn">' + esc(lastErr) + "</div>" : "") +
         '<div class="hint">' + esc(t("处理后点「重试任务」，运行会重新检出任务分支。")) + "</div>";
       rdTabsSync();
@@ -3350,7 +3350,7 @@ function drawInspector() {
     if (revChosen) {
       chipEl.className = "chip failed"; chipEl.textContent = t("检出失败"); chipEl.classList.remove("hidden");
       main.innerHTML = '<div class="insp-branch"><code>tutti/' + esc(d.task.id || "") +
-        '（' + esc(t("未创建")) + '）</code></div>' +
+        t("（") + esc(t("未创建")) + t("）") + '</code></div>' +
         (lastErr ? '<div class="hint warn">' + esc(lastErr) + "</div>" : "") +
         '<span class="insp-hint">' + esc(t("处理后点「重试任务」，运行会重新检出任务分支。")) + "</span>";
     } else {
@@ -3774,11 +3774,11 @@ function renderPlan(run) {
   if (!plan || !plan.steps || !plan.steps.length) { box.classList.add("hidden"); return; }
   const route = run.route || {};
   const routeHtml = Object.keys(route).length
-    ? '<div class="route">路由依据：' +
+    ? '<div class="route">' + t("路由依据：") +
       Object.keys(route).map((k) => "<b>" + esc(k) + "</b> " + esc(route[k])).join(t("　|　")) + "</div>"
     : "";
   box.classList.remove("hidden");
-  box.innerHTML = '<h3 class="sec-title">编排计划 <span class="tag">来源 ' + esc(plan.source || "?") + "</span></h3>" +
+  box.innerHTML = '<h3 class="sec-title">' + t("编排计划 ") + '<span class="tag">' + t("来源 ") + esc(plan.source || "?") + "</span></h3>" +
     '<div class="steps">' + plan.steps.map((s, i) =>
       '<div class="step plan"><span class="n">' + String(i + 1).padStart(2, "0") + "</span>" +
       '<span class="role">' + esc(s.title || "") + "</span>" +
@@ -4096,7 +4096,7 @@ function renderDirector(run, active) {
     '<span class="m-who">' + esc(m.sender || "") + "</span>" +
     esc(m.text || t("（仅附件）")) +
     ((m.attachments || []).length
-      ? '<span class="m-atts">' + t("附件：") + m.attachments.map(esc).join("、") + "</span>" : "") +
+      ? '<span class="m-atts">' + t("附件：") + m.attachments.map(esc).join(t("、")) + "</span>" : "") +
     (m.consumed && m.consumed_by && m.consumed_by.step
       ? '<span class="m-atts">' + t("已随步骤送达：") + "#" + Number(m.consumed_by.step) +
         " " + esc(m.consumed_by.role || "") + "</span>" : "") +
@@ -4499,9 +4499,9 @@ function bindAllowedProtocols(kind) {
 function modelSelectHtml(id, current) {
   const cur = fmtModel(current);
   const groups = modelGroups();
-  let opts = '<option value="">（未设置）</option>';
+  let opts = '<option value="">' + t("（未设置）") + '</option>';
   if (cur && !groups.some((g) => g.models.includes(cur))) {
-    opts += '<option value="' + esc(cur) + '" selected>' + esc(cur) + "（当前值）</option>";
+    opts += '<option value="' + esc(cur) + '" selected>' + esc(cur) + t("（当前值）") + "</option>";
   }
   for (const g of groups) {
     opts += '<optgroup label="' + esc(g.name) + '">' +
@@ -4516,10 +4516,10 @@ function modelSelectHtml(id, current) {
 function updateChip(c) {
   if (!c.installed) return "";
   const u = c.update || {};
-  if (S.catalogChecking && u.status === "unknown") return '<span class="tag">检查更新中…</span>';
-  if (u.status === "updatable") return '<span class="tag upd">有新版本 ' + esc(u.latest || "") + "</span>";
-  if (u.status === "current") return '<span class="tag ok">已是最新</span>';
-  if (u.status === "unsupported") return '<span class="tag">该渠道无法自动检查</span>';
+  if (S.catalogChecking && u.status === "unknown") return '<span class="tag">' + t("检查更新中…") + '</span>';
+  if (u.status === "updatable") return '<span class="tag upd">' + t("有新版本 ") + esc(u.latest || "") + "</span>";
+  if (u.status === "current") return '<span class="tag ok">' + t("已是最新") + '</span>';
+  if (u.status === "unsupported") return '<span class="tag">' + t("该渠道无法自动检查") + '</span>';
   return "";
 }
 
@@ -4576,14 +4576,14 @@ function bindModelBox(c, provId) {
           "<b>" + (i === 0 ? t("主") : t("备")) + "</b>" + esc(pname) + " · " + esc(c2.m) +
           (dead ? ' <span class="hint warn">⚠ ' + esc(t("协议不匹配，解析时跳过")) + "</span>" : "") +
           (i > 0 ? '<button class="mini" data-m="' + esc(c2.m) + '" data-p="' + esc(c2.p) +
-                  '" title="设为主模型" onclick="bindPromote(\'' + esc(c.id) + '\', this)">' +
+                  '" title="' + t("设为主模型") + '" onclick="bindPromote(\'' + esc(c.id) + '\', this)">' +
                   '<svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg></button>' : "") +
           '<button class="mini" data-m="' + esc(c2.m) + '" data-p="' + esc(c2.p) +
-            '" title="移除" onclick="bindRemove(\'' + esc(c.id) + '\', this)">×</button>' +
+            '" title="' + t("移除") + '" onclick="bindRemove(\'' + esc(c.id) + '\', this)">×</button>' +
           "</span>";
       }).join("")
-    : '<span class="hint">未设置' + (provId ? t("（按供应商/难度自动解析）") : t("（用 CLI 默认模型）")) + "</span>";
-  return '<div class="field"><label>运行时模型链（跨厂商，最多 ' + MAX_ORCH_MODELS + " 条）</label>" +
+    : '<span class="hint">' + t("未设置") + (provId ? t("（按供应商/难度自动解析）") : t("（用 CLI 默认模型）")) + "</span>";
+  return '<div class="field"><label>' + t("运行时模型链（跨厂商，最多 ") + MAX_ORCH_MODELS + t(" 条）") + "</label>" +
     '<div class="orch-row">' + chips +
     '<button class="ghost small" onclick="bindToggle(\'' + esc(c.id) + '\')">' +
     (st.open ? t("收起") : t("＋ 添加")) + "</button>" +
@@ -4605,12 +4605,12 @@ function bindPanel(c) {
       : t("还没有可用模型——先到「模型接入」页导入供应商并获取模型列表。")) + "</div>";
   }
   return '<div class="opanel">' +
-    '<div class="ohint">勾选该 CLI 编排运行时的模型（可跨供应商混选）：第 1 条是主模型，其余按顺序作降级备选，每条自带该供应商的凭据注入。' +
+    '<div class="ohint">' + t("勾选该 CLI 编排运行时的模型（可跨供应商混选）：第 1 条是主模型，其余按顺序作降级备选，每条自带该供应商的凭据注入。") +
     (hiddenN ? "<br>" + esc(t("%1 个供应商 wire 协议不匹配已隐藏（降级只在同协议网关间进行）。").replace("%1", hiddenN)) : "") +
     "</div>" +
     groups.map((g) =>
       '<div class="ogroup"><div class="ogname">' + esc(g.name) +
-      ' <span class="tag">注入该厂商凭据</span></div>' +
+      ' <span class="tag">' + t("注入该厂商凭据") + '</span></div>' +
       g.models.map((m) => {
         const has = st.chain.some((x) => x.p === g.id && x.m === m);
         return '<label class="oitem"><input type="checkbox" value="' + esc(m) + '" data-p="' + esc(g.id) + '"' +
@@ -4680,16 +4680,16 @@ function card(c) {
   const orchBox = c.orch_kind
     ? '<label class="toggle"><input type="checkbox" ' + (c.orch_enabled ? "checked" : "") +
       ' onchange="toggleOrch(\'' + esc(c.id) + '\', this.checked)"> 参与编排</label>'
-    : '<span class="tag">仅管理</span>';
+    : '<span class="tag">' + t("仅管理") + '</span>';
   const hasModels = modelGroups().length > 0;
   const modelBox = c.config_writable
     ? (hasModels
-        ? '<div class="field"><label>默认模型（写入配置文件）</label><div class="input-row">' +
+        ? '<div class="field"><label>' + t("默认模型（写入配置文件）") + '</label><div class="input-row">' +
           modelSelectHtml(c.id, c.model) +
           '<button class="ghost small" onclick="saveModel(\'' + esc(c.id) + '\')">保存</button></div></div>'
-        : '<div class="field"><label>默认模型（写入配置文件）</label>' +
-          '<div class="hint warn">还没有可选模型：先到「模型接入」页导入供应商并获取模型列表。</div></div>')
-    : (c.model ? '<div class="facts">模型：<b>' + esc(fmtModel(c.model)) + "</b></div>" : "");
+        : '<div class="field"><label>' + t("默认模型（写入配置文件）") + '</label>' +
+          '<div class="hint warn">' + t("还没有可选模型：先到「模型接入」页导入供应商并获取模型列表。") + '</div></div>')
+    : (c.model ? '<div class="facts">' + t("模型：") + '<b>' + esc(fmtModel(c.model)) + "</b></div>" : "");
   const ops = [
     // 一键打开（web 类开浏览器 / console 类新终端跑 TUI）：已安装且配了 launch 才出
     c.installed && c.launch ? '<button class="primary small" onclick="openAgent(\'' + esc(c.id) + '\')">' +
@@ -4703,12 +4703,12 @@ function card(c) {
   ].join("");
   return '<div class="card">' +
     '<div class="head"><span class="name">' + esc(c.name) + "</span>" +
-    (c.installed ? statusChip("done") : '<span class="tag">未安装</span>') + updateChip(c) +
+    (c.installed ? statusChip("done") : '<span class="tag">' + t("未安装") + '</span>') + updateChip(c) +
     // 卸载放卡片右上角（与状态徽标同行），不再吊在操作行尾部
     (c.installed && c.uninstall_cmd ? '<button class="danger small" onclick="mgmt(\'' + esc(c.id) + '\', \'uninstall\')">卸载</button>' : "") +
     "</div>" +
     '<div class="note">' + esc(c.note || "") + "</div>" +
-    '<div class="facts">版本 <b>' + esc(c.version || "-") + "</b>　模型 <b>" + esc(fmtModel(c.model) || "-") + "</b>" +
+    '<div class="facts">' + t("版本 ") + '<b>' + esc(c.version || "-") + "</b>" + t("　模型 ") + "<b>" + esc(fmtModel(c.model) || "-") + "</b>" +
     ((c.detail || c.config_path) ? "<br>" + esc(c.detail || c.config_path) : "") + "</div>" +
     mgmtPanel(c.id) +
     '<div class="ops">' + orchBox + ops + "</div>" + modelBox + "</div>";
@@ -4721,7 +4721,7 @@ function mgmtPanel(agentId) {
   const running = st.status === "queued" || st.status === "running";
   const chip = statusChip(st.status || "queued");
   const vcmp = (st.versionBefore || st.versionAfter)
-    ? '<span class="hint">版本 ' + esc(st.versionBefore || "?") + " → <b>" +
+    ? '<span class="hint">' + t("版本 ") + esc(st.versionBefore || "?") + " → <b>" +
       esc(st.versionAfter || "…") + "</b>" +
       (st.status === "done" && st.versionBefore && st.versionAfter === st.versionBefore
         ? t("（已是最新版本，无需升级）") : "") + "</span>"
@@ -4932,21 +4932,21 @@ function openFlowsManager() {
     '<div class="item"><div class="t"><span class="name">' + flowIconHtml(f) + " " + esc(f.name) +
     '</span><span class="tag">' + esc(f.id) + "</span>" +
     '<span class="tag">' + (f.engine === "code" ? t("代码引擎") : t("评审引擎")) + "</span>" +
-    (f.serial ? '<span class="tag">连载 ' + f.serial.chapters + " 章</span>" : "") +
-    (f.builtin ? '<span class="tag ok">预置</span>' : '<span class="tag">自定义</span>') +
+    (f.serial ? '<span class="tag">' + t("连载 ") + f.serial.chapters + " 章</span>" : "") +
+    (f.builtin ? '<span class="tag ok">预置</span>' : '<span class="tag">' + t("自定义") + '</span>') +
     (f.edited ? '<span class="tag">已改</span>' : "") +
-    '<button class="ghost small" onclick="flowForm(\'' + esc(f.id) + '\')">编辑</button>' +
+    '<button class="ghost small" onclick="flowForm(\'' + esc(f.id) + '\')">' + t("编辑") + '</button>' +
     (f.builtin
       ? (f.edited ? '<button class="ghost small" onclick="flowReset(\'' + esc(f.id) + '\')">恢复默认</button>' : "")
-      : '<button class="danger small" onclick="deleteFlow(\'' + esc(f.id) + '\')">删除</button>') +
+      : '<button class="danger small" onclick="deleteFlow(\'' + esc(f.id) + '\')">' + t("删除") + '</button>') +
     '</div><div class="desc">' + esc(f.note || "") +
     (f.rubric ? t("　维度：") + esc(f.rubric.join(" / ")) : "") +
     (f.threshold ? t("　阈值：") + f.threshold : "") +
     (f.serial ? t("　每章 ") + f.serial.words_per_chapter + t(" 字") : "") + "</div></div>").join("");
-  const body = '<p class="hint">预置流程可直接编辑（阈值/轮数/维度/章节数/提示词），改动随时可「恢复默认」；' +
-    '自定义流程只需填名称与引擎，其余留空走默认。</p>' +
+  const body = '<p class="hint">' + t("预置流程可直接编辑（阈值/轮数/维度/章节数/提示词），改动随时可「恢复默认」；") +
+    t("自定义流程只需填名称与引擎，其余留空走默认。") + '</p>' +
     '<div class="list">' + rows + "</div>" +
-    '<button class="primary" style="margin-top:10px" onclick="flowForm()">＋ 新建自定义流程</button>';
+    '<button class="primary" style="margin-top:10px" onclick="flowForm()">' + t("＋ 新建自定义流程") + '</button>';
   openModal(t("🧩 任务类型管理"), body, "");
 }
 
@@ -4968,38 +4968,38 @@ function flowForm(fid) {
   const body =
     '<div class="form">' +
     '<div class="grid-2">' +
-    '<div class="field"><label>名称 <span class="req">*</span></label><input id="fl-name" value="' +
-      esc(f ? f.name : "") + '" placeholder="例：播客脚本"></div>' +
-    '<div class="field"><label>引擎 <span class="req">*</span></label><select id="fl-engine"' +
+    '<div class="field"><label>' + t("名称 ") + '<span class="req">*</span></label><input id="fl-name" value="' +
+      esc(f ? f.name : "") + '" placeholder="' + t("例：播客脚本") + '"></div>' +
+    '<div class="field"><label>' + t("引擎 ") + '<span class="req">*</span></label><select id="fl-engine"' +
       (engLocked ? " disabled" : "") + '>' +
-      '<option value="review"' + (engine === "review" ? " selected" : "") + '>评审引擎（起草 → 多维评审 → 修订 → 门禁）</option>' +
-      '<option value="code"' + (engine === "code" ? " selected" : "") + '>代码引擎（实现 → 验证 → 评审 → 修复）</option>' +
+      '<option value="review"' + (engine === "review" ? " selected" : "") + '>' + t("评审引擎（起草 → 多维评审 → 修订 → 门禁）") + '</option>' +
+      '<option value="code"' + (engine === "code" ? " selected" : "") + '>' + t("代码引擎（实现 → 验证 → 评审 → 修复）") + '</option>' +
       "</select></div></div>" +
-    (f ? "" : '<div class="field"><label>流程 ID（留空 = 按名称自动生成）</label><input id="fl-id" placeholder="小写字母开头，可留空"></div>') +
-    '<details id="fl-adv"' + (f ? " open" : "") + '><summary>进阶设置（可留空，走引擎默认）</summary><div class="adv-body">' +
+    (f ? "" : '<div class="field"><label>' + t("流程 ID（留空 = 按名称自动生成）") + '</label><input id="fl-id" placeholder="' + t("小写字母开头，可留空") + '"></div>') +
+    '<details id="fl-adv"' + (f ? " open" : "") + '><summary>' + t("进阶设置（可留空，走引擎默认）") + '</summary><div class="adv-body">' +
     '<div id="fl-review-fields"' + (engine === "review" ? "" : ' class="hidden"') + ">" +
     '<div class="grid-2">' +
-    '<div class="field"><label>产出文件名</label><input id="fl-manuscript" value="' + esc(f && f.manuscript ? f.manuscript : "") + '" placeholder="留空 = 按流程 ID 生成"></div>' +
-    '<div class="field"><label>发布阈值（1-10）</label><input id="fl-threshold" type="number" step="0.5" min="1" max="10" value="' + (f && f.threshold ? f.threshold : "") + '" placeholder="留空 = 7.0"></div>' +
+    '<div class="field"><label>' + t("产出文件名") + '</label><input id="fl-manuscript" value="' + esc(f && f.manuscript ? f.manuscript : "") + '" placeholder="' + t("留空 = 按流程 ID 生成") + '"></div>' +
+    '<div class="field"><label>' + t("发布阈值（1-10）") + '</label><input id="fl-threshold" type="number" step="0.5" min="1" max="10" value="' + (f && f.threshold ? f.threshold : "") + '" placeholder="' + t("留空 = 7.0") + '"></div>' +
     "</div>" +
     '<div class="grid-2">' +
-    '<div class="field"><label>评审轮数（1-5）</label><input id="fl-rounds" type="number" min="1" max="5" value="' + (f && f.rounds ? f.rounds : "") + '" placeholder="留空 = 2"></div>' +
-    '<div class="field"><label>评审维度（逗号分隔）</label><input id="fl-rubric" value="' + esc(f && f.rubric ? f.rubric.join(", ") : "") + '" placeholder="留空 = 内容, 结构, 表达"></div>' +
+    '<div class="field"><label>' + t("评审轮数（1-5）") + '</label><input id="fl-rounds" type="number" min="1" max="5" value="' + (f && f.rounds ? f.rounds : "") + '" placeholder="' + t("留空 = 2") + '"></div>' +
+    '<div class="field"><label>' + t("评审维度（逗号分隔）") + '</label><input id="fl-rubric" value="' + esc(f && f.rubric ? f.rubric.join(", ") : "") + '" placeholder="' + t("留空 = 内容, 结构, 表达") + '"></div>' +
     "</div>" +
     '<div class="grid-2">' +
-    '<div class="field"><label>连载章节数（留空 = 单稿件）</label><input id="fl-chapters" type="number" min="2" max="20" value="' + (f && f.serial ? f.serial.chapters : "") + '" placeholder="例：8"></div>' +
-    '<div class="field"><label>每章约字数</label><input id="fl-words-per-ch" type="number" min="500" max="8000" step="100" value="' + (f && f.serial ? f.serial.words_per_chapter : "") + '" placeholder="例：2500"></div>' +
-    '<div class="field"><label>同章赛马稿件数</label><input id="fl-variants" type="number" min="1" max="3" step="1" value="' + (f && f.serial ? (f.serial.variants || 1) : 1) + '" placeholder="1 = 关闭"></div>' +
+    '<div class="field"><label>' + t("连载章节数（留空 = 单稿件）") + '</label><input id="fl-chapters" type="number" min="2" max="20" value="' + (f && f.serial ? f.serial.chapters : "") + '" placeholder="' + t("例：8") + '"></div>' +
+    '<div class="field"><label>' + t("每章约字数") + '</label><input id="fl-words-per-ch" type="number" min="500" max="8000" step="100" value="' + (f && f.serial ? f.serial.words_per_chapter : "") + '" placeholder="' + t("例：2500") + '"></div>' +
+    '<div class="field"><label>' + t("同章赛马稿件数") + '</label><input id="fl-variants" type="number" min="1" max="3" step="1" value="' + (f && f.serial ? (f.serial.variants || 1) : 1) + '" placeholder="' + t("1 = 关闭") + '"></div>' +
     "</div>" +
-    '<div class="field"><label>起草提示词（可选，占位符 __FILE__ __GOAL__ __CONTEXT__ __SKILLS__）</label><textarea id="fl-draft" rows="3" placeholder="留空 = 内置通用模板">' + esc(f && f.draft_prompt ? f.draft_prompt : "") + "</textarea></div>" +
-    '<div class="field"><label>评审提示词（可选，占位符 __DIMKEYS__ __MANUSCRIPT__）</label><textarea id="fl-critique" rows="3" placeholder="留空 = 内置通用模板">' + esc(f && f.critique_prompt ? f.critique_prompt : "") + "</textarea></div>" +
+    '<div class="field"><label>' + t("起草提示词（可选，占位符 __FILE__ __GOAL__ __CONTEXT__ __SKILLS__）") + '</label><textarea id="fl-draft" rows="3" placeholder="' + t("留空 = 内置通用模板") + '">' + esc(f && f.draft_prompt ? f.draft_prompt : "") + "</textarea></div>" +
+    '<div class="field"><label>' + t("评审提示词（可选，占位符 __DIMKEYS__ __MANUSCRIPT__）") + '</label><textarea id="fl-critique" rows="3" placeholder="' + t("留空 = 内置通用模板") + '">' + esc(f && f.critique_prompt ? f.critique_prompt : "") + "</textarea></div>" +
     "</div>" +
-    '<div class="field"><label>一句话说明（显示在流程列表）</label><input id="fl-note" value="' + esc(f ? (f.note || "") : "") + '" placeholder="例：技术播客单集脚本产出"></div>' +
+    '<div class="field"><label>' + t("一句话说明（显示在流程列表）") + '</label><input id="fl-note" value="' + esc(f ? (f.note || "") : "") + '" placeholder="' + t("例：技术播客单集脚本产出") + '"></div>' +
     "</div></details></div>";
   openModal(f ? (t("编辑流程：") + esc(f.name) + (isBuiltin ? t("（预置）") : "")) : t("新建自定义流程"), body, "");
   const foot = $("modal-foot");
-  if (foot) foot.innerHTML = '<button class="primary" onclick="saveFlow()">保存</button>' +
-    '<button class="ghost" onclick="closeModal()">取消</button>';
+  if (foot) foot.innerHTML = '<button class="primary" onclick="saveFlow()">' + t("保存") + '</button>' +
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>';
   const eng = $("fl-engine");
   if (eng) eng.addEventListener("change", () => {
     $("fl-review-fields").classList.toggle("hidden", eng.value !== "review");
@@ -5096,7 +5096,7 @@ function renderSkills() {
       esc(label) + "<b>" + (val ? (counts[val] || 0) : lessons.length) + "</b></button>";
     chipBox.innerHTML = cats.length > 1 ? chip("", t("全部")) + cats.map((c) => chip(c, t(c))).join("") : "";
   }
-  const shown = filt ? lessons.filter((x) => (x.category || "未分类") === filt) : lessons;
+  const shown = filt ? lessons.filter((x) => (x.category || t("未分类")) === filt) : lessons;
   const cnt = $("skill-count");
   if (cnt) cnt.textContent = lessons.length
     ? (filt ? shown.length + t(" / 共 ") + lessons.length + t(" 条") : lessons.length + t(" 条"))
@@ -5517,13 +5517,13 @@ function renderMarketRemote() {
   if (srcSel && !srcSel.options.length) {
     srcSel.innerHTML = '<option value="">' + t("全部来源") + "</option>" +
       (data.sources || []).map((s) =>
-        '<option value="' + esc(s.id) + '">' + esc(s.name) + "（" + s.count + "）</option>").join("");
+        '<option value="' + esc(s.id) + '">' + esc(s.name) + t("（") + s.count + t("）") + "</option>").join("");
   }
   // 更新时间汇总
   const times = (data.sources || []).map((s) => s.fetched_at).filter(Boolean);
   const meta = $("mkr-meta");
   if (meta) meta.textContent = times.length
-    ? t("目录更新于 ") + times.join(" / ") + (data.truncated ? "；" + t("条目较多，每来源最多显示 60 条，请搜索或按来源筛选") : "") : "";
+    ? t("目录更新于 ") + times.join(" / ") + (data.truncated ? t("；") + t("条目较多，每来源最多显示 60 条，请搜索或按来源筛选") : "") : "";
   const q = (($("mkr-search") || {}).value || "").trim().toLowerCase();
   const sid = srcSel ? srcSel.value : "";
   let items = data.entries || [];
@@ -5552,7 +5552,7 @@ async function mkrRefresh() {
     const r = await api("/api/market/remote/refresh", { method: "POST", body: "{}" });
     S.marketRemote = r;
     const bad = (r.refresh || []).filter((x) => !x.ok);
-    if (bad.length) toast(t("部分来源拉取失败：") + bad.map((x) => x.error || x.id).join("；"), true);
+    if (bad.length) toast(t("部分来源拉取失败：") + bad.map((x) => x.error || x.id).join(t("；")), true);
     else toast(t("拉取成功"));
   } catch (e) { toast(e.message, true); }
   btn.disabled = false;
@@ -5650,7 +5650,7 @@ function orchModelHtml(prov, curModel) {
   const names = (prov ? (prov.models || []).filter((m) => !m.hidden && m.enabled !== false)
     .sort((a, b) => (a.priority || 0) - (b.priority || 0)).map((m) => m.name) : []);
   const all = Array.from(new Set([curModel].concat(names).filter(Boolean)));
-  return '<option value="">（用供应商默认模型）</option>' +
+  return '<option value="">' + t("（用供应商默认模型）") + '</option>' +
     all.map((m) => '<option value="' + esc(m) + '"' + (m === curModel ? " selected" : "") + ">" + esc(m) + "</option>").join("");
 }
 
@@ -5662,18 +5662,18 @@ function renderOrch() {
   if (sig === S.orchSig) return;
   S.orchSig = sig;
   const sel = provs.find((p) => p.id === S.orch.provider_id) || null;
-  const opts = '<option value="">（不使用编排者）</option>' + provs.map((p) =>
+  const opts = '<option value="">' + t("（不使用编排者）") + '</option>' + provs.map((p) =>
     '<option value="' + esc(p.id) + '"' + (S.orch.provider_id === p.id ? " selected" : "") + ">" +
-    esc(p.name) + t("（") + esc(p.protocol) + "）</option>").join("");
+    esc(p.name) + t("（") + esc(p.protocol) + t("）") + "</option>").join("");
   const curModel = S.orch.model || (sel ? sel.model : "") || "";
   box.innerHTML =
     '<div class="grid-2">' +
-    '<div class="field"><label>编排者供应商</label><select id="orch-prov">' + opts + "</select></div>" +
-    '<div class="field"><label>编排者模型</label><select id="orch-model">' + orchModelHtml(sel, curModel) + "</select></div></div>" +
+    '<div class="field"><label>' + t("编排者供应商") + '</label><select id="orch-prov">' + opts + "</select></div>" +
+    '<div class="field"><label>' + t("编排者模型") + '</label><select id="orch-model">' + orchModelHtml(sel, curModel) + "</select></div></div>" +
     '<div class="ops"><label class="toggle"><input type="checkbox" id="orch-enabled"' +
-    (S.orch.enabled ? " checked" : "") + "> 启用编排者（规划 / 难度判定 / 写作大纲）</label>" +
-    '<button class="ghost small" onclick="saveOrchestrator()">保存</button>' +
-    '<button class="ghost small" onclick="testOrchestrator()">测试连通</button>' +
+    (S.orch.enabled ? " checked" : "") + ">" + t(" 启用编排者（规划 / 难度判定 / 写作大纲）") + "</label>" +
+    '<button class="ghost small" onclick="saveOrchestrator()">' + t("保存") + '</button>' +
+    '<button class="ghost small" onclick="testOrchestrator()">' + t("测试连通") + '</button>' +
     '<span id="orch-test" class="msg"></span></div>' +
     (S.orch.enabled && !S.orch.ready ? '<p class="hint warn">当前配置不生效：请检查供应商密钥、启停状态与模型选择。</p>' : "");
   // 换供应商只刷新模型下拉，不整块重绘：整块重绘会按 S.orch 重写 selected，
@@ -5752,10 +5752,10 @@ function renderSu() {
   if (!SU) { info.textContent = t("无法获取版本信息（服务未连接）"); return; }
   const modeTxt = t(SU_MODE_TXT[SU.mode] || "未知安装方式");
   const cur = SU.current ? "v" + SU.current : t("（未同步版本号）");
-  let html = "<p class=\"hint\">" + t("当前版本") + "：<b>" + cur + "</b>　·　" + t("安装方式") + "：" + modeTxt + "</p>";
+  let html = "<p class=\"hint\">" + t("当前版本") + t("：") + "<b>" + cur + "</b>" + t("　·　") + t("安装方式") + t("：") + modeTxt + "</p>";
   if (SU.has_update) {
     html += "<p class=\"hint\"><b>" + t("发现新版本") + " v" + SU.latest +
-      "　<a href=\"#\" onclick=\"event.preventDefault();suApply()\">" + t("立即升级") + "</a></b></p>";
+      t("　") + "<a href=\"#\" onclick=\"event.preventDefault();suApply()\">" + t("立即升级") + "</a></b></p>";
   } else if (SU.mode === "npm" && !SU.note) {
     html += "<p class=\"hint\">" + t("已是最新版。") + "</p>";
   }
@@ -5912,7 +5912,7 @@ async function loadUsage() {
     renderUsage();
   } catch (e) {
     // 失败时四个区都要给出可见反馈，否则标题下全空、看着像页面坏了
-    const hint = '<p class="hint">加载失败：' + esc(e.message) + "</p>";
+    const hint = '<p class="hint">' + t("加载失败：") + esc(e.message) + "</p>";
     kpis.innerHTML = hint;
     ["usage-trend", "usage-dims", "usage-recent", "usage-heat", "usage-models"].forEach((id) => {
       const el = $(id);
@@ -6000,7 +6000,7 @@ function usageSingleDay(d) {
   const dayTxt = String(d.day).slice(5) + (d.day === today ? t(" · 今天") : "");
   const head = '<div class="us-head"><span class="us-day">' + esc(dayTxt) + "</span>" +
     '<span class="us-sum">' + esc(fmtTok(tok) + t(" tokens · 调用 ") + (d.calls || 0) + t(t(" 次 · ")) + fmtUsd(d.cost_usd)) + "</span></div>";
-  if (tok <= 0) return head + '<div class="us-bar us-empty"><span>当天暂无用量</span></div>';
+  if (tok <= 0) return head + '<div class="us-bar us-empty"><span>' + t("当天暂无用量") + '</span></div>';
   const seg = (cls, val, label) => {
     const pct = (val || 0) * 100 / tok;
     if (pct <= 0) return "";
@@ -6016,7 +6016,7 @@ function usageSingleDay(d) {
     seg("ca", other, t("缓存/其他")) +
     seg("out", d.output, t("输出")) +
     "</div>" +
-    '<div class="us-foot">输入 ' + esc(fmtTok(d.input || 0)) + t(" · 缓存/其他 ") + esc(fmtTok(other)) +
+    '<div class="us-foot">' + t("输入 ") + esc(fmtTok(d.input || 0)) + t(" · 缓存/其他 ") + esc(fmtTok(other)) +
     t(" · 输出 ") + esc(fmtTok(d.output || 0)) + "</div>";
 }
 
@@ -6045,7 +6045,7 @@ function _smoothPath(pts, yMin, yMax) {
 function usageMultilineSvg(byDay, byDayModel) {
   const days = (byDay || []).map((d) => d.day);
   const n = days.length;
-  if (n < 2) return '<p class="hint">（暂无数据）</p>';
+  if (n < 2) return '<p class="hint">' + t("（暂无数据）") + '</p>';
   const modelOfDay = {};
   (byDayModel || []).forEach((d) => { modelOfDay[d.day] = d.models || {}; });
   const dayModels = days.map((day) => modelOfDay[day] || {});
@@ -6246,7 +6246,7 @@ function renderUsageModels() {
     arcs += '<circle class="ud-seg" cx="90" cy="90" r="' + R + '" fill="none" stroke="' + usageColor(i) +
       '" stroke-width="26" stroke-dasharray="' + Math.max(len - 1.6, 0.6).toFixed(2) + " " + C.toFixed(2) +
       '" stroke-dashoffset="' + (-off).toFixed(2) + '" transform="rotate(-90 90 90)"><title>' +
-      esc(s.name + " · " + fmtTok(s.tokens) + t(" tokens（") + (frac * 100).toFixed(1) + "%）") + "</title></circle>";
+      esc(s.name + " · " + fmtTok(s.tokens) + t(" tokens（") + (frac * 100).toFixed(1) + t("%）")) + "</title></circle>";
     off += len;
   });
   const svg = '<svg class="ud-ring" viewBox="0 0 180 180" role="img">' + arcs +
@@ -6262,7 +6262,7 @@ function renderUsageModels() {
 }
 
 function usageTrendSvg(byDay) {
-  if (!byDay || !byDay.length) return '<p class="hint">（暂无数据）</p>';
+  if (!byDay || !byDay.length) return '<p class="hint">' + t("（暂无数据）") + '</p>';
   if (byDay.length === 1) return '<div class="usage-single">' + usageSingleDay(byDay[0]) + "</div>";
   return usageMultilineSvg(byDay, (S.usage && S.usage.by_day_model) || []);
 }
@@ -6271,19 +6271,19 @@ function usageTrendSvg(byDay) {
 function usageDimTable(title, rows) {
   let body;
   if (!rows || !rows.length) {
-    body = '<p class="hint">（该维度暂无数据）</p>';
+    body = '<p class="hint">' + t("（该维度暂无数据）") + '</p>';
   } else {
     const maxTok = Math.max(1, ...rows.map((r) => r.tokens || 0));
     body = '<table class="usage-table"><thead><tr>' +
-      "<th>" + esc(title) + '</th><th class="num">调用</th><th class="num">Tokens</th>' +
-      '<th class="num">输入/输出</th><th class="num">耗时</th><th class="num">费用</th>' +
+      "<th>" + esc(title) + '</th><th class="num">' + t("调用") + '</th><th class="num">Tokens</th>' +
+      '<th class="num">' + t("输入/输出") + '</th><th class="num">' + t("耗时") + '</th><th class="num">' + t("费用") + '</th>' +
       "</tr></thead><tbody>" + rows.map((r) => {
         const pct = Math.max(4, Math.round((r.tokens || 0) * 100 / maxTok));
         const okPct = r.calls ? Math.round((r.ok || 0) * 100 / r.calls) : 0;
         return "<tr>" +
           '<td class="bar-cell"><div class="bar-outer">' +
           '<div class="bar-fill" style="width:' + pct + '%"></div>' +
-          "<span>" + esc(r.key) + "</span><i>" + okPct + "% 成</i></div></td>" +
+          "<span>" + esc(r.key) + "</span><i>" + okPct + t("% 成") + "</i></div></td>" +
           '<td class="num">' + fmtTok(r.calls) + "</td>" +
           '<td class="num" title="输入 ' + fmtTok(r.input) + t(' · 输出 ') + fmtTok(r.output) + '">' + fmtTok(r.tokens) + "</td>" +
           '<td class="num sub">' + fmtTok(r.input) + " / " + fmtTok(r.output) + "</td>" +
@@ -6295,10 +6295,10 @@ function usageDimTable(title, rows) {
 }
 
 function usageRecentTable(rows) {
-  if (!rows || !rows.length) return '<p class="hint">（暂无数据）</p>';
+  if (!rows || !rows.length) return '<p class="hint">' + t("（暂无数据）") + '</p>';
   return '<table class="usage-table recent"><thead><tr>' +
-    '<th class="num">时间</th><th>工具</th><th>智能体</th><th>模型</th><th>角色</th><th>状态</th>' +
-    '<th class="num">Tokens</th><th class="num">费用</th>' +
+    '<th class="num">' + t("时间") + '</th><th>' + t("工具") + '</th><th>' + t("智能体") + '</th><th>' + t("模型") + '</th><th>' + t("角色") + '</th><th>' + t("状态") + '</th>' +
+    '<th class="num">Tokens</th><th class="num">' + t("费用") + '</th>' +
     "</tr></thead><tbody>" + rows.map((r) => {
       const det = t("输入 ") + fmtTok(r.input) + t(" · 缓存 ") + fmtTok(r.cached) + t(" · 输出 ") + fmtTok(r.output);
       const model = String(r.model || "");
@@ -6308,7 +6308,7 @@ function usageRecentTable(rows) {
         "<td>" + esc(r.agent_label || r.agent || "") + "</td>" +
         '<td class="mono" title="' + esc(det) + '">' + esc(model.length > 30 ? model.slice(0, 29) + "…" : model) + "</td>" +
         '<td class="sub">' + esc(roleName(r.role)) + "</td>" +
-        "<td>" + (r.ok ? '<span class="chip done">OK</span>' : '<span class="chip failed">失败</span>') + "</td>" +
+        "<td>" + (r.ok ? '<span class="chip done">OK</span>' : '<span class="chip failed">' + t("失败") + '</span>') + "</td>" +
         '<td class="num" title="' + esc(det) + '">' + fmtTok(r.total) + "</td>" +
         '<td class="num">' + fmtUsd(r.cost_usd) + "</td></tr>";
     }).join("") + "</tbody></table>";
@@ -6339,7 +6339,7 @@ function renderUsage() {
   const note = $("usage-note");
   if (note) {
     note.innerHTML = noBreakdown
-      ? '<p class="hint">当前范围内都是历史运行回填的记录：只保留总量与费用，' +
+      ? '<p class="hint">' + t("当前范围内都是历史运行回填的记录：只保留总量与费用，") +
         "输入/输出/缓存细分从新调用开始记录。</p>"
       : "";
   }
@@ -6375,11 +6375,11 @@ async function openPhoneConnect() {
     '<div class="qr-box" id="qr-box"></div>' +
     (urls.length > 1 ? '<div class="conn-chips">' + chips + "</div>" : "") +
     '<div class="conn-url-row"><code id="conn-url"></code>' +
-    '<button class="ghost small" onclick="copyConnUrl()">复制地址</button></div>' +
-    '<p class="hint">手机相机扫码即自动登录（地址已含访问令牌，扫一次永久记住）。' +
+    '<button class="ghost small" onclick="copyConnUrl()">' + t("复制地址") + '</button></div>' +
+    '<p class="hint">' + t("手机相机扫码即自动登录（地址已含访问令牌，扫一次永久记住）。") +
     t('局域网地址要求手机与电脑连同一 WiFi；Tailscale 地址出门也能用，') +
-    '两端需登录同一 Tailscale 账号。手机控制时另一端自动变为只读，可在顶栏接管。<br>' +
-    '连不上时（如路由器重启后地址变了）回电脑重新打开此弹框扫新码即可。</p>' +
+    t("两端需登录同一 Tailscale 账号。手机控制时另一端自动变为只读，可在顶栏接管。") + '<br>' +
+    t("连不上时（如路由器重启后地址变了）回电脑重新打开此弹框扫新码即可。") + '</p>' +
     "</div>";
   openModal(t("📱 手机连接"), body, "");
   renderConnQR();
@@ -6796,7 +6796,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("mkr-source").addEventListener("change", renderMarketRemote);
   $("mkr-refresh").addEventListener("click", mkrRefresh);
   $("btn-reset-catalog").addEventListener("click", async () => {
-    if (!await uiConfirm(t("恢复内置默认 catalog？你对该文件的修改将丢失。"), { ok: "恢复", danger: true })) return;
+    if (!await uiConfirm(t("恢复内置默认 catalog？你对该文件的修改将丢失。"), { ok: t("恢复"), danger: true })) return;
     await api("/api/catalog/reset", { method: "POST" }); poll();
   });
   poll();

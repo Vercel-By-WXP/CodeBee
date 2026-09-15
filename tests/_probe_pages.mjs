@@ -59,7 +59,7 @@ async function main() {
       const side = document.querySelector("#sidebar");
       const texts = [...side.querySelectorAll(".side-main > *, .side-label-row > *")].filter(vis)
         .map((e) => e.className + " | " + e.textContent.trim().replace(/\\s+/g, " ").slice(0, 60));
-      const tree = [...document.querySelectorAll("#side-tasks .sdir > summary, #side-tasks .stask > summary")]
+      const tree = [...document.querySelectorAll("#side-tasks .sdir > summary, #side-tasks .stask")]
         .slice(0, 5).map((e) => e.textContent.trim().replace(/\\s+/g, " ").slice(0, 50));
       return JSON.stringify({ rows: texts, treeSample: tree, searchVisible: vis(document.querySelector(".side-search")) }, null, 1);
     })()`));

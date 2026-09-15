@@ -1845,6 +1845,13 @@ def execute_run(run_id):
     if not run:
         return
     ev = jobs.cancel_event_for(run_id)
+    if run.get("cancelled_by_user"):
+        # 排队期间被取消：事件可能已置位，也可能只在 run 上留了标记——
+        # 双保险兜底，任务标记已落，失败收尾照常走（不会被自动续跑复活）。
+        ev.set()
+        store.update_run(run_id, status="cancelled", ended_at=_now(),
+                         error="排队期间被取消")
+        return
     task = store.get_task(run.get("task_id"))
     store.update_run(run_id, status="running", started_at=_now())
     if task is None:

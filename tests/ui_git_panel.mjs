@@ -3,8 +3,10 @@
  * 2) 打开 run 详情 → #rd-git 可见：分支名、待裁决 chip、变更文件 chips、合并/丢弃按钮；
  * 3) POST git-merge（Node 侧 fetch 直接打 API，绕开浏览器 confirm）→ state 变 merged、
  *    刷新后面板不再有裁决按钮、chip=已合并、原分支收到产物；
- * 4) 非检出 run（无 git 字段）→ 面板隐藏；
- * 5) i18n：切英文后面板关键文案变英文。 */
+ * 4) i18n：切英文后面板关键文案变英文；
+ * 5) 续跑回归：无 git 字段的新 run → 版本页签仍在（任务级 side 带出分支）
+ *    + meta 条任务累计 pill + 行级统计；
+ * 6) git-discard 守卫路径。 */
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, rmSync as rmf } from "node:fs";
 import { tmpdir } from "node:os";
@@ -49,6 +51,14 @@ async function main() {
   G(["checkout", "-q", "master"]);
   const baseCommit = execFileSync("git", ["rev-parse", "--short", "master"], { cwd: work, encoding: "utf-8" }).trim();
 
+  // 任务 B：续跑回归用——runB1 带 git 快照（首轮），runB2 是续跑产生的新 run、
+  // 不带 git 字段（真实续跑链路里检出/收尾都发生在首轮，新 run 快照没有 git）。
+  // 修复前：打开 runB2 详情 → renderGitPanel 只认 run.git → 版本页签整块消失；
+  // 修复后：详情页自拉任务级 side（分支上下文取最近一次带 git 的 run）→ 页签仍在。
+  const taskIdB = "t" + Date.now().toString(36) + "gitresumed";
+  const runB1 = "r" + Date.now().toString(36) + "gitres1";
+  const runB2 = "r" + Date.now().toString(36) + "gitres2";
+
   // 预置任务 + run（直接落 run.json / task json，不跑流水线）
 
 
@@ -78,6 +88,33 @@ async function main() {
       { status: "??", path: "_notes/new.md" }],
       diff: "diff --git a/README.md b/README.md" },
   }), "utf-8");
+
+  // 任务 B + 两条 run（首轮带 git / 续跑不带）
+  mkdirSync(join(dataDir, "runs", runB1), { recursive: true });
+  mkdirSync(join(dataDir, "runs", runB2), { recursive: true });
+  writeFileSync(join(dataDir, "tasks", taskIdB + ".json"), JSON.stringify({
+    id: taskIdB, type: "code", engine: "code", title: "续跑版本页签种子", goal: "改点东西",
+    workdir: work, git_rev: "HEAD", git_state: "isolated", status: "done",
+    serial: false, created_at: "2026-09-15 09:00:00", attachments: [], mode: "auto",
+    difficulty: "auto", implementer: "", verify_command: "",
+  }), "utf-8");
+  const seedRun = (rid, createdAt, withGit, changes) => writeFileSync(join(dataDir, "runs", rid, "run.json"), JSON.stringify({
+    id: rid, kind: "orchestration", title: "续跑版本页签种子", task_id: taskIdB,
+    status: "done",
+    steps: [{ n: 1, status: "done", role: "起草", agent_label: "writer",
+              summary: "续跑一步", duration_s: 5, log: "steps/1.log" }],
+    messages: [], created_at: createdAt,
+    started_at: createdAt, ended_at: createdAt,
+    cost_usd: 0.5, tokens: 1000, error: "", verdict: null, summary: "",
+    ...(withGit ? { git: { rev: "HEAD", branch: "tutti/" + taskIdB, commit: tbCommit,
+                           from_branch: "master", base_commit: baseCommit, restored: true, restore_error: "" } } : {}),
+    changes,
+  }), "utf-8");
+  seedRun(runB1, "2026-09-15 09:01:00", true,
+    { files: [{ status: "A", path: "chapter-01.md" }], diff: "diff --git a/chapter-01.md b/chapter-01.md" });
+  seedRun(runB2, "2026-09-15 09:30:00", false,
+    { files: [{ status: "M", path: "README.md" }], add_total: 12, del_total: 3,
+      diff: "diff --git a/README.md b/README.md" });
 
   let svc = null, edge = null, ws = null;
   try {
@@ -181,24 +218,24 @@ async function main() {
     })()`));
     check("英文模式：Version isolation / Merged", s4.title === "Version isolation" && s4.chip === "Merged", JSON.stringify(s4));
 
-    /* 4.5) 铃铛 / 预览按钮（徽章已在第 1 步合并前查过） */
-    const s45 = JSON.parse(await evalJs(`(() => {
+    /* 4.5) 铃铛 / 预览按钮（徽章已在第 1 步合并前查过）——预览与点文件同款弹窗 */
+    const s45 = JSON.parse(await evalJs(`(async () => {
       const bell = document.getElementById("btn-notify-toggle");
       const prev = [...document.querySelectorAll("#insp-pane-files .file-chip.prev")];
-      let pv = null;
       if (prev.length) { prev[0].click(); }
-      return new Promise((res) => setTimeout(() => {
-        const box = document.getElementById("rd-preview");
-        res(JSON.stringify({
-            bellOff: bell ? bell.classList.contains("off") : null,
-          nPrev: prev.length,
-          previewShown: box && !box.classList.contains("hidden"),
-          previewBody: box && box.querySelector(".prev-body") ? !!box.querySelector(".prev-body").innerHTML : false,
-        }));
-      }, 700));
+      await new Promise((res) => setTimeout(res, 700));
+      const pop = document.getElementById("file-pop");
+      const out = {
+        bellOff: bell ? bell.classList.contains("off") : null,
+        nPrev: prev.length,
+        popOpen: !!(pop && !pop.classList.contains("hidden")),
+        popCode: !!(pop && pop.querySelector(".fp-code .code-block")),
+      };
+      if (out.popOpen) window.filePopClose();
+      return JSON.stringify(out);
     })()`));
     check("铃铛开关存在且默认开启", s45.bellOff === false, JSON.stringify(s45));
-    check("成品 md 有预览按钮且点击后渲染", s45.nPrev >= 1 && s45.previewShown && s45.previewBody, JSON.stringify(s45));
+    check("成品 md 预览按钮 → 与点文件同款弹窗渲染", s45.nPrev >= 1 && s45.popOpen && s45.popCode, JSON.stringify(s45));
 
     /* 4.6) 故事圣经面板：未创建时显示引导；API 写入后回读一致、面板显示内容 */
     const bp = JSON.parse(await evalJs(`(async () => {
@@ -222,7 +259,41 @@ async function main() {
     })()`));
     check("圣经内容上面板", (bp2.view || "").includes("主角"), JSON.stringify(bp2));
 
-    /* 5) git-discard：对另一个任务（复用同 run 的分支场景不合适，直接守卫路径即可） */
+    /* 5) 续跑回归：无 git 字段的新 run → 版本页签仍在（side 带出任务分支），
+     *    且详情页自给任务级数据：meta 条任务累计 pill、+/- 行级统计、裁决按钮 */
+    const s5 = JSON.parse(await evalJs(`(async () => {
+      openRun(${JSON.stringify(runB2)});
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        const el = document.getElementById("rd-meta-task");
+        if (el && !el.classList.contains("hidden")) break;   // 等 side 首拉落位
+      }
+      await new Promise(r => setTimeout(r, 600));
+      const box = document.getElementById("rd-git");
+      const tab = document.querySelector('#rd-tabs .rd-tab[data-tab="git"]');
+      return JSON.stringify({
+        hidden: box ? box.classList.contains("hidden") : null,
+        branch: box?.querySelector(".git-branch")?.textContent,
+        chip: box?.querySelector(".git-head .chip")?.textContent,
+        files: [...(box?.querySelectorAll(".gf") || [])].map(e => e.textContent.trim()),
+        plus: box?.querySelector(".insp-plus")?.textContent,
+        minus: box?.querySelector(".insp-minus")?.textContent,
+        mergeBtn: !!box?.querySelector(".git-actions .primary"),
+        tabHidden: tab ? tab.classList.contains("hidden") : null,
+        tasksum: (document.getElementById("rd-meta-task") || {}).textContent || "",
+      });
+    })()`));
+    check("续跑 run：版本面板可见（不再因无 git 快照整块消失）", s5.hidden === false, JSON.stringify(s5));
+    check("续跑 run：分支由任务级 side 带出", (s5.branch || "").startsWith("tutti/" + taskIdB.slice(0, 6)), s5.branch);
+    check("续跑 run：版本页签可用", s5.tabHidden === false, String(s5.tabHidden));
+    check("续跑 run：变更清单来自最新 run 快照", s5.files.length === 1 && (s5.files[0] || "").includes("README.md"), JSON.stringify(s5.files));
+    check("续跑 run：+/- 行级统计在（+12/-3）", s5.plus === "+12" && s5.minus === "-3", JSON.stringify({ p: s5.plus, m: s5.minus }));
+    check("续跑 run：待裁决时裁决按钮在", s5.mergeBtn === true, String(s5.mergeBtn));
+    check("续跑 run：meta 条任务累计 pill（2 次运行；第 4 段切了英文，双语都认）",
+      (s5.tasksum || "").includes("任务累计") || (s5.tasksum || "").includes("Task total"),
+      s5.tasksum);
+
+    /* 6) git-discard：对另一个任务（复用同 run 的分支场景不合适，直接守卫路径即可） */
     const dv = await (await fetch(SERVICE + "/api/tasks/" + taskId + "/git-discard", {
       method: "POST", body: JSON.stringify({ confirm: true }) })).json();
     check("已 merged 的任务丢弃 → 分支仍在被拒绝或成功（守卫允许）", dv.ok === true || !!dv.error, JSON.stringify(dv));

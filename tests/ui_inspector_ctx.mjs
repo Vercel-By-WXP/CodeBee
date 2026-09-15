@@ -1,9 +1,11 @@
-/* 检查器（右缘停靠列）上下文显隐验收：
+/* 检查器（右缘停靠列）上下文显隐验收（检查器＝任务树浏览态的快捷预览列）：
  * 1) 任务树点任务行 → 检查器滑出（body.inspector-open）
  * 2) 切到用量统计（设置子页）→ 检查器自动收起、body 无 inspector-open
  * 3) localStorage 里 orch.inspector 仍保留选中（不丢内容）
- * 4) 退出设置回任务树 → 检查器自动滑回，任务标题一致
- * 5) 从设置子页直接点侧栏子任务进运行详情 → 检查器恢复展示
+ * 4) 从用量页点子任务进运行详情 → 检查器让位（详情页已铺开全部信息，
+ *    同屏不再出现第二份标题/成品/Git），但 S.inspKey 保留
+ * 5) 详情页自给任务级数据：meta 条出现「任务累计」pill（side 端点驱动）
+ * 6) 点返回 → 检查器保持收起（回新建表单不是检查器上下文）
  * 自含临时服务（端口 18795），mock 任务零配额。
  * 用法：node tests/ui_inspector_ctx.mjs */
 import { spawn } from "node:child_process";
@@ -14,7 +16,9 @@ import { fileURLToPath } from "node:url";
 
 const PORT = 18795;
 const SERVICE = "http://127.0.0.1:" + PORT;
-const CDP_PORT = 9353;
+// 可用 TUTTI_TEST_PORT / TUTTI_TEST_CDP 覆盖——9353 与 ui_inspector.mjs 相同，
+// 并行跑两测试会互抢 CDP 口、互相驱动对方页面（2026-09-15 踩过）
+const CDP_PORT = Number(process.env.TUTTI_TEST_CDP) || 9354;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -95,12 +99,12 @@ async function main() {
     }
     check("侧栏出现任务行", hasTask);
 
-    // 1) 点任务行 → 检查器滑出
-    await js(`document.querySelector("#side-tasks .stask[data-task] summary").click(); "ok"`);
+    // 1) 顶栏「任务详情」按钮 → 检查器滑出（浏览态快捷预览；点任务行现在主栏直开详情，见 ui_tree）
+    await js(`document.getElementById("btn-insp").click(); "ok"`);
     await sleep(900);
     const open1 = await js(`document.body.classList.contains("inspector-open")
       && !document.getElementById("inspector").classList.contains("hidden")`);
-    check("点任务行后检查器滑出", open1 === true);
+    check("顶栏按钮后检查器滑出", open1 === true);
     const inspTitle = await js(`(S.inspData||{}).task ? S.inspData.task.title || S.inspData.task.id : ""`);
     check("检查器绑定到该任务", Boolean(inspTitle), String(inspTitle));
 
@@ -113,25 +117,41 @@ async function main() {
     const kept = await js(`localStorage.getItem("orch.inspector") || ""`);
     check("选中仍保留在 localStorage", Boolean(kept), String(kept));
 
-    // 3) 退出设置回任务树 → 自动滑回
-    await js(`exitSettings(); "ok"`);
+    // 3) 进运行详情 → 检查器让位，但选中保留（内嵌步骤层已移除，走 sideOpenRun 直开最近 run）
+    await js(`(() => { const k = localStorage.getItem("orch.inspector");
+      const lr = (S.state.task_latest || {})[k]; sideOpenRun(lr.id); return "ok"; })()`);
     await sleep(900);
-    const back = await js(`document.body.classList.contains("inspector-open")
-      && !document.getElementById("inspector").classList.contains("hidden")`);
-    check("回任务树后检查器自动滑回", back === true);
-    const sameTask = await js(`S.inspKey === ${JSON.stringify(String(kept))}`);
-    check("滑回后仍指向原任务", sameTask === true, "S.inspKey=" + String(await js("S.inspKey")));
+    const yielded = await js(`!document.body.classList.contains("settings-mode")
+      && !document.body.classList.contains("inspector-open")
+      && document.getElementById("inspector").classList.contains("hidden")
+      && !document.getElementById("run-detail").classList.contains("hidden")`);
+    check("进运行详情后检查器让位（详情页全功能，不同屏重复）", yielded === true,
+      JSON.stringify(await js(`({open:document.body.classList.contains("inspector-open"),
+        detailHidden:document.getElementById("run-detail").classList.contains("hidden")})`)));
+    const keyKept = await js(`S.inspKey === ${JSON.stringify(String(kept))}`);
+    check("让位但 S.inspKey 保留（返回列表可滑回）", keyKept === true, "S.inspKey=" + String(await js("S.inspKey")));
 
-    // 4) 再进设置子页 → 收起；从用量页点子任务进运行详情 → 恢复
-    await js(`switchTab("usage"); "ok"`);
-    await sleep(700);
-    const closed2 = await js(`!document.body.classList.contains("inspector-open")`);
-    check("再次进设置子页收起", closed2 === true);
-    await js(`document.querySelector("#side-tasks .stepx").click(); "ok"`);
+    // 4) 详情页自给任务级数据：meta 条「任务累计」pill（side 端点驱动）
+    let tasksum = null;
+    for (let i = 0; i < 10 && !tasksum; i++) {
+      await sleep(600);
+      tasksum = await js(`(() => { const el = document.getElementById("rd-meta-task");
+        return (el && !el.classList.contains("hidden")) ? el.textContent : ""; })()`);
+      if (tasksum && tasksum.includes("任务累计")) break;
+      tasksum = null;
+    }
+    check("meta 条出现任务累计 pill（side 驱动）", !!tasksum, String(tasksum));
+    // 检查器让位后详情页不再有第二份标题：主栏详情标题在、检查器隐藏
+    const oneTitle = await js(`!!document.getElementById("rd-title").textContent
+      && document.getElementById("inspector").classList.contains("hidden")`);
+    check("详情上下文只有主栏一份任务标题", oneTitle === true);
+
+    // 5) 点返回 → 回新建表单，检查器保持收起
+    await js(`document.getElementById("btn-back").click(); "ok"`);
     await sleep(900);
-    const inDetail = await js(`!document.body.classList.contains("settings-mode")
-      && document.body.classList.contains("inspector-open")`);
-    check("从设置子页点子任务进详情后检查器恢复", inDetail === true);
+    const afterBack = await js(`document.getElementById("run-detail").classList.contains("hidden")
+      && !document.body.classList.contains("inspector-open")`);
+    check("返回后检查器保持收起（新建表单非检查器上下文）", afterBack === true);
 
     ws.close();
   } finally {
@@ -144,15 +164,12 @@ async function main() {
         try { spawn("taskkill", ["/F", "/T", "/PID", String(p.pid)], { stdio: "ignore" }); } catch (e) { /* ignore */ }
       }
     }
-    if (results_err(tmp)) { /* keep */ } else {
-      try { rmSync(tmp, { recursive: true, force: true }); } catch (e) { /* ignore */ }
-    }
+    await sleep(400);
+    try { rmSync(tmp, { recursive: true, force: true }); } catch (e) { /* ignore */ }
   }
 
   const bad = FAIL.length;
   console.log("\n===== 检查器上下文显隐：%d 通过 / %d 失败 =====", PASS.length, bad);
   if (bad) { console.log("失败项：", FAIL); process.exit(1); }
-
-  function results_err(t) { return FAIL.length > 0 && false; } // 失败也不留现场（临时数据无价值）
 }
 main().catch((e) => { console.error(e); process.exit(1); });

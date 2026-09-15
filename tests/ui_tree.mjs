@@ -1,10 +1,10 @@
-/* 侧栏任务树核验（文件夹 → 任务 → 步骤 三级，ZCode 桌面端式样）：
+/* 侧栏任务树核验（文件夹 → 任务 两级，ZCode 桌面端式样）：
  *   一级文件夹行 = 折叠箭头 + 目录图标 + 末段名（hover 全路径）+ 任务计数徽标；
- *   二级任务行 = 折叠箭头(SVG,展开旋转) + 状态字形(运行旋转✻/完成绿点/失败红点/取消橙点/排队空圈/未运行暗点)
- *              + 单行省略标题 + 右对齐紧凑相对时间（刚刚/N 分/N 小时/昨天/N 天/MM-DD）；
- *   三级步骤行 = 状态点 + 工具名 + 摘要 + 时间（缩进引导线），点它打开对应运行详情。
- * 覆盖：文件夹分组/排序/默认展开、结构、时间右对齐、单行省略、五态字形与动画、步骤行齐全、
- *       展开状态跨重绘保留、点步骤跳运行详情、选中高亮、无横向溢出。
+ *   二级任务行 = 单行按钮：状态字形(运行旋转✻/完成绿点/失败红点/取消橙点/排队空圈/未运行暗点)
+ *              + 单行省略标题 + 右对齐紧凑相对时间（刚刚/N 分/N 小时/昨天/N 天/MM-DD），
+ *              无内嵌步骤层——点击整行右缘滑出「任务详情」（检查器）。
+ * 覆盖：文件夹分组/排序/默认展开、结构（无步骤层）、时间右对齐、单行省略、五态字形与动画、
+ *       点任务行主栏直开任务详情、选中高亮、文件夹展开状态跨重绘保留、无横向溢出。
  * 前置：TUTTI_DATA 先用 tests/_seed_tree_fixtures.py 造数（含 proj-alpha/beta/gamma 三目录），
  *       再起 18798 临时服务。 */
 import { spawn } from "node:child_process";
@@ -116,9 +116,8 @@ async function main() {
       const all = [...document.querySelectorAll("#side-tasks .stask")];
       const isOpen = (d) => !!d.closest("details.sdir")?.hasAttribute("open");
       const rows = all.filter(isOpen);
-      const sums = rows.map((d) => d.querySelector("summary"));
-      const hs = sums.map((s) => +s.getBoundingClientRect().height.toFixed(1));
-      const tmRights = sums.map((s) => { const t = s.querySelector(".tm");
+      const hs = rows.map((d) => +d.getBoundingClientRect().height.toFixed(1));
+      const tmRights = rows.map((d) => { const t = d.querySelector(".tm");
         return t ? +t.getBoundingClientRect().right.toFixed(1) : null; });
       return {
         allRows: all.length,
@@ -126,8 +125,9 @@ async function main() {
         openFlags: all.map(isOpen),
         titles: rows.map((d) => (d.querySelector(".t") || {}).textContent?.trim()),
         times: rows.map((d) => (d.querySelector(".tm") || {}).textContent?.trim()),
-        chev: rows.map((d) => !!d.querySelector("summary svg.chev use[href='#i-chevron-r']")),
-        glyph: rows.map((d) => !!d.querySelector("summary .sglyph")),
+        noChev: rows.every((d) => !d.querySelector("svg.chev")),
+        glyph: rows.map((d) => !!d.querySelector(".sglyph")),
+        notDetails: all.every((d) => d.tagName === "DIV"),
         heightsAllEqual: new Set(hs).size === 1,
         tmRightAligned: new Set(tmRights).size === 1,
         treeOverflow: (() => { const t = document.getElementById("side-tasks");
@@ -140,7 +140,8 @@ async function main() {
     check("折叠文件夹里的行确实不可见（父级 open 与可见性一致）",
       og.openFlags.filter(Boolean).length === og.rows && og.openFlags.includes(false),
       JSON.stringify(og.openFlags));
-    check("每行都有折叠箭头与状态字形", og.chev.every(Boolean) && og.glyph.every(Boolean), organic);
+    check("任务行是单行 div（无 details 折叠语义）", og.notDetails, organic);
+    check("任务行无折叠箭头、有状态字形", og.noChev && og.glyph.every(Boolean), organic);
     check("右列是紧凑相对时间（不是原始时间戳）", og.times.every((t) => TIME_RE.test(t)), JSON.stringify(og.times));
     check("可见任务覆盖多档：分/小时",
       /分/.test(og.times.join()) && /小时/.test(og.times.join()), JSON.stringify(og.times));
@@ -148,64 +149,59 @@ async function main() {
     check("时间列右对齐（ZCode 特征）", og.tmRightAligned, organic);
     check("任务树无横向溢出", og.treeOverflow <= 0, "overflow=" + og.treeOverflow);
 
-    const steps1 = JSON.parse(await evalJs(`(() => {
-      const row = document.querySelector("#side-tasks .stask");
-      const sx = [...row.querySelectorAll(".stepx")];
-      return JSON.stringify({
-        open: row.hasAttribute("open"),
-        n: sx.length,
-        dotOk: sx.every((x) => !!x.querySelector(".sdot.done")),
-        agent: sx.map((x) => (x.querySelector(".sagent") || {}).textContent?.trim()),
-        tm: sx.map((x) => (x.querySelector(".stm") || {}).textContent?.trim()),
-        tmFmt: sx.every((x) => /^\\d{2}:\\d{2}$/.test((x.querySelector(".stm") || {}).textContent?.trim() || "")),
-        indented: row.querySelector(".steps") ? getComputedStyle(row.querySelector(".steps")).borderLeftWidth : "",
-      });
-    })()`));
-    check("首任务默认展开且 3 个步骤齐全", steps1.open && steps1.n === 3, JSON.stringify(steps1));
-    check("步骤行带状态点/工具名/摘要/时间", steps1.dotOk && steps1.tmFmt, JSON.stringify(steps1));
-    check("步骤区有缩进引导线", steps1.indented === "1px", steps1.indented);
-
-    const more = JSON.parse(await evalJs(`(() => {
-      const rows = [...document.querySelectorAll("#side-tasks .stask")];
-      const long = rows.find((d) => d.querySelector(".smore"));
-      return JSON.stringify({ found: !!long, text: long ? long.querySelector(".smore").textContent.trim() : "" });
-    })()`));
-    check("超 8 步收进「查看全部 N 步」", more.found && /查看全部 20 步/.test(more.text), JSON.stringify(more));
-
-    /* ---- B) 点步骤 → 主栏开运行详情；任务行高亮 ---- */
-    await evalJs(`document.querySelector("#side-tasks .stask .stepx").click(); "ok"`);
-    await sleep(1200);
-    const jumped = await evalJs(`JSON.stringify({
-      title: document.getElementById("page-title").textContent,
-      detailShown: !document.getElementById("run-detail").classList.contains("hidden")
+    /* ---- A2) 内嵌步骤层已移除：侧栏不再有步骤行/「查看全部」辅助行 ---- */
+    const gone = await evalJs(`JSON.stringify({
+      stepx: document.querySelectorAll("#side-tasks .stepx").length,
+      smore: document.querySelectorAll("#side-tasks .smore").length,
+      stepsBox: document.querySelectorAll("#side-tasks .stask .steps").length,
     })`);
-    check("点步骤在主栏打开运行详情", JSON.parse(jumped).title === "运行详情" &&
-      JSON.parse(jumped).detailShown, jumped);
-    // 高亮类由 renderSideTasks 在下次轮询时刷上；这里强制重绘以直接验证类逻辑
-    await evalJs(`S.sideSig = null; renderSideTasks(); "ok"`);
+    const gonev = JSON.parse(gone);
+    check("侧栏无内嵌步骤层（.stepx/.smore/.steps 全为 0）",
+      gonev.stepx === 0 && gonev.smore === 0 && gonev.stepsBox === 0, gone);
+
+    /* ---- B) 点任务行 → 主栏（中间区域）直开任务详情；检查器让位 ---- */
+    await evalJs(`document.querySelector("#side-tasks .stask[data-task]").click(); "ok"`);
+    await sleep(1500);
+    const opened = JSON.parse(await evalJs(`JSON.stringify({
+      settingsMode: document.body.classList.contains("settings-mode"),
+      detailShown: !document.getElementById("run-detail").classList.contains("hidden"),
+      listHidden: document.querySelector("#sub-runs .panel:first-child").classList.contains("hidden"),
+      pageTitle: document.getElementById("page-title").textContent,
+      rdTitle: (document.getElementById("rd-title") || {}).textContent || "",
+      inspectorHidden: document.getElementById("inspector").classList.contains("hidden"),
+      detailTaskKey: S.detailTaskKey,
+    })`));
+    check("点任务行主栏直开任务详情", opened.settingsMode === false && opened.detailShown &&
+      opened.listHidden && opened.pageTitle === "运行详情", JSON.stringify(opened));
+    check("点开的是任务级详情（标题带任务名，检查器让位）",
+      opened.rdTitle.includes("五分钟前") && opened.inspectorHidden && !!opened.detailTaskKey,
+      JSON.stringify(opened));
+
+    /* ---- B2) 行高亮：点击已置 detailTaskKey，重绘后仍在 ---- */
+    await evalJs(`(() => { S.sideSig = null; renderSideTasks(); return "ok"; })()`);
     await sleep(400);
     const active = JSON.parse(await evalJs(`JSON.stringify({
-      detail: S.detailRunId,
       has: !!document.querySelector("#side-tasks .stask.active"),
       title: (document.querySelector("#side-tasks .stask.active .t") || {}).textContent || ""
     })`));
     check("当前查看的任务在树上高亮", active.has && /五分钟前/.test(active.title), JSON.stringify(active));
 
-    /* ---- C) 展开状态跨重绘保留（2s 轮询不吞用户操作） ---- */
+    /* ---- C) 文件夹展开状态跨重绘保留（2s 轮询不吞用户操作） ---- */
     await evalJs(`(() => {
-      const rows = [...document.querySelectorAll("#side-tasks .stask")];
-      rows[2].open = true;    // 人为展开第三个
+      const dirs = [...document.querySelectorAll("#side-tasks details.sdir")];
+      dirs[1].open = true;    // 人为展开第二个文件夹
       S.sideSig = null;       // 强制下一轮重绘
       renderSideTasks();
       return "ok";
     })()`);
     await sleep(400);
     const kept = JSON.parse(await evalJs(`(() => {
+      const dirs = [...document.querySelectorAll("#side-tasks details.sdir")];
       const rows = [...document.querySelectorAll("#side-tasks .stask")];
-      return JSON.stringify({ third: rows[2].hasAttribute("open"),
-        n: rows.length, active: !!document.querySelector("#side-tasks .stask.active") });
+      return JSON.stringify({ second: dirs[1].hasAttribute("open"),
+        rows: rows.length, active: !!document.querySelector("#side-tasks .stask.active") });
     })()`));
-    check("重绘后展开状态保留", kept.third && kept.n === 4 && kept.active, JSON.stringify(kept));
+    check("重绘后文件夹展开状态保留", kept.second && kept.rows === 4 && kept.active, JSON.stringify(kept));
 
     /* ---- D) 合成状态：五种字形与动画、超长标题省略 ---- */
     await evalJs(`(() => {
@@ -237,18 +233,15 @@ async function main() {
     const syn = JSON.parse(await evalJs(`(() => {
       const rows = [...document.querySelectorAll("#side-tasks .stask")];
       const by = (id) => rows.find((d) => d.dataset.key === "t-" + id);
-      const glyphOf = (row) => { const g = row.querySelector("summary .sglyph");
+      const glyphOf = (row) => { const g = row.querySelector(".sglyph");
         return g ? [...g.classList].filter((c) => c !== "sglyph").join(" ") : ""; };
       const anim = (el) => getComputedStyle(el).animationName;
       const t0 = by("x1").querySelector(".t");
-      const sx = by("x1").querySelectorAll(".stepx");
       return JSON.stringify({
         n: rows.length,
         run: glyphOf(by("x1")), queue: glyphOf(by("x2")), cancel: glyphOf(by("x3")),
         fail: glyphOf(by("x4")), done: glyphOf(by("x5")),
-        spinAnim: anim(by("x1").querySelector("summary .sglyph")),
-        stepDotAnim: anim(by("x1").querySelector(".sdot.running")),
-        stepTm: sx.length ? sx[0].querySelector(".stm").textContent.trim() : "",
+        spinAnim: anim(by("x1").querySelector(".sglyph")),
         titleEllipsized: t0.scrollWidth > t0.clientWidth,
         runTimeText: by("x1").querySelector(".tm").textContent.trim(),
         queueTimeText: by("x2").querySelector(".tm").textContent.trim(),
@@ -260,8 +253,6 @@ async function main() {
       syn.run === "ast" && syn.queue === "ring" && syn.cancel === "warn" &&
       syn.fail === "bad" && syn.done === "ok", syn);
     check("进行中✻用的是旋转动画", syn.spinAnim === "ico-spin", syn.spinAnim);
-    check("进行中步骤点用脉冲动画", syn.stepDotAnim === "pulse", syn.stepDotAnim);
-    check("步骤时间右对齐为 HH:MM", syn.stepTm === "12:00", syn.stepTm);
     check("超长标题单行省略", syn.titleEllipsized, syn);
     check("紧凑时间分档正确（刚刚 / 5 分）",
       syn.runTimeText === "刚刚" && syn.queueTimeText === "5 分",

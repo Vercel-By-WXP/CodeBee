@@ -1,7 +1,8 @@
-/* 侧栏点子任务 → 主栏直接展示运行详情（不跳设置页）验收：
- * 1) 点 .stepx 后 body 仍无 settings-mode（左栏还是任务树）
- * 2) #sub-runs 可见且 #run-detail 展开、标题有内容
+/* 侧栏任务详情入口 → 主栏详情行为验收：
+ * 1) 点任务行（单行即按钮，无内嵌步骤层）：主栏（中间区域）直开任务详情，检查器让位
+ * 2) 进运行详情（sideOpenRun）：#run-detail 展开、标题有内容、步骤定位/高亮/展开日志
  * 3) 点「返回」回任务页（不露出运行列表）
+ * 4) 任务级详情（sideOpenTask）：重试造第 2 条 run → 聚合两跑全部步骤
  * 自含临时服务（端口 18797），mock 任务零配额。
  * 用法：node tests/ui_check_side_step.mjs */
 import { spawn } from "node:child_process";
@@ -123,34 +124,54 @@ async function main() {
     console.log("served app.js 版本:", await js(
       `fetch("app.js").then(r => r.text()).then(t => (t.includes("sideOpenTask") ? "新" : "旧") + "-" + (t.includes("applyStepFocus") ? "有焦点" : "无焦点"))`));
 
-    // 侧栏出现任务组与子步骤（SSE/轮询刷新）
-    let stepCount = 0;
-    for (let i = 0; i < 20; i++) {
-      stepCount = await js(`document.querySelectorAll("#side-tasks .stepx").length`) || 0;
-      if (stepCount > 0) break;
-      await sleep(500);
+    // 侧栏出现任务行（SSE/轮询刷新）；内嵌步骤层已移除，行内不再有 .stepx
+    let hasRow = false;
+    for (let i = 0; i < 20 && !hasRow; i++) {
+      hasRow = await js(`!!document.querySelector("#side-tasks .stask[data-task]")`);
+      if (!hasRow) await sleep(500);
     }
-    check("侧栏出现子步骤条目", stepCount > 0, "stepx=" + stepCount);
+    check("侧栏出现任务行", hasRow);
+    const layerGone = await js(`JSON.stringify({
+      stepx: document.querySelectorAll("#side-tasks .stepx").length,
+      smore: document.querySelectorAll("#side-tasks .smore").length })`);
+    check("侧栏无内嵌步骤层", JSON.parse(layerGone).stepx === 0 && JSON.parse(layerGone).smore === 0, layerGone);
 
-    // 点第一个子任务
-    await js(`document.querySelector("#side-tasks .stepx").click(); "ok"`);
-    await sleep(1500);
+    // 点任务行：主栏（中间区域）直开任务详情，检查器让位
+    await js(`document.querySelector("#side-tasks .stask[data-task]").click(); "ok"`);
+    await sleep(1800);
     const after = await js(`(() => ({
       settingsMode: document.body.classList.contains("settings-mode"),
-      subRunsVisible: !document.getElementById("sub-runs").classList.contains("hidden"),
       detailVisible: !document.getElementById("run-detail").classList.contains("hidden"),
-      listHidden: document.querySelector("#sub-runs .panel:first-child").classList.contains("hidden"),
-      title: (document.getElementById("rd-title") || {}).textContent || "",
+      detailTaskKey: S.detailTaskKey || "",
+      rdTitle: (document.getElementById("rd-title") || {}).textContent || "",
+      inspectorYielded: document.getElementById("inspector").classList.contains("hidden"),
       sideMainVisible: getComputedStyle(document.querySelector("#sidebar .side-main")).display !== "none",
       pageTitle: (document.getElementById("page-title") || {}).textContent || "",
     }))()`);
     check("点击后：左栏仍是任务树（未进设置模式）", after.settingsMode === false && after.sideMainVisible === true,
       JSON.stringify(after));
-    check("点击后：主栏直接展示运行详情", after.subRunsVisible && after.detailVisible && after.listHidden,
-      JSON.stringify(after));
-    check("点击后：详情标题有内容且页面标题为运行详情",
-      after.title.trim().length > 0 && after.pageTitle === "运行详情",
-      "rd=" + after.title + " page=" + after.pageTitle);
+    check("点击后：主栏直开任务详情（标题带任务名、检查器让位）",
+      after.detailVisible === true && !!after.detailTaskKey &&
+      after.rdTitle.trim().length > 0 && after.inspectorYielded === true &&
+      after.pageTitle === "运行详情", JSON.stringify(after));
+
+    // 进运行详情（右键菜单「打开详情」同款入口）：主栏直开展示，检查器让位
+    await js(`sideOpenRun(${JSON.stringify(runId)}); "ok"`);
+    await sleep(1500);
+    const detail = await js(`(() => ({
+      subRunsVisible: !document.getElementById("sub-runs").classList.contains("hidden"),
+      detailVisible: !document.getElementById("run-detail").classList.contains("hidden"),
+      listHidden: document.querySelector("#sub-runs .panel:first-child").classList.contains("hidden"),
+      title: (document.getElementById("rd-title") || {}).textContent || "",
+      inspectorYielded: document.getElementById("inspector").classList.contains("hidden"),
+      pageTitle: (document.getElementById("page-title") || {}).textContent || "",
+    }))()`);
+    check("进运行详情：主栏直接展示", detail.subRunsVisible && detail.detailVisible && detail.listHidden,
+      JSON.stringify(detail));
+    check("进运行详情：详情标题有内容且页面标题为运行详情",
+      detail.title.trim().length > 0 && detail.pageTitle === "运行详情",
+      "rd=" + detail.title + " page=" + detail.pageTitle);
+    check("进运行详情：检查器让位（详情页全功能）", detail.inspectorYielded === true, JSON.stringify(detail));
     // 成品文件双入口：主栏「成果」分区（rd-arts，标签页内）+ 右侧检查器；旧 rd-files 不复活
     await sleep(1500);
     const filesUi = await js(`(() => {
@@ -166,12 +187,9 @@ async function main() {
       filesUi.inspectorBox === true && filesUi.reportVisible === true,
       JSON.stringify(filesUi));
 
-    // 点不同子任务 → 定位到不同步骤（滚动 + 高亮 + 展开日志），内容不再千篇一律
-    const pick = await js(`(() => {
-      const xs = [...document.querySelectorAll("#side-tasks .stepx")];
-      return xs.slice(0, 2).map(x => Number(x.dataset.n) || 0);
-    })()`);
-    check("侧栏至少两个子任务可对比", pick.length === 2 && pick[0] > 0 && pick[1] > 0 && pick[0] !== pick[1],
+    // 定位不同步骤 → 高亮/展开日志，内容不再千篇一律（侧栏步骤层已移除，步骤号取自 run 数据）
+    const pick = (run.steps || []).slice(0, 2).map((s) => Number(s.n) || 0);
+    check("run 至少两个步骤可对比", pick.length === 2 && pick[0] > 0 && pick[1] > 0 && pick[0] !== pick[1],
       JSON.stringify(pick));
     const focusOf = async (n) => {
       await js(`sideOpenRun(${JSON.stringify(runId)}, ${n}); "ok"`);
@@ -186,9 +204,9 @@ async function main() {
       })()`);
     };
     const f1 = await focusOf(pick[0]);
-    check("点子任务 A：高亮定位到步骤 A", f1.focusN === pick[0], JSON.stringify(f1));
+    check("步骤定位 A：高亮定位到步骤 A", f1.focusN === pick[0], JSON.stringify(f1));
     const f2 = await focusOf(pick[1]);
-    check("点子任务 B：高亮切换到步骤 B（内容不同）", f2.focusN === pick[1] && f2.focusN !== f1.focusN,
+    check("步骤定位 B：高亮切换到步骤 B（内容不同）", f2.focusN === pick[1] && f2.focusN !== f1.focusN,
       JSON.stringify(f2));
     check("定位的步骤在视口内（滚动生效）", f2.scrolled === true, JSON.stringify(f2));
 
@@ -230,26 +248,10 @@ async function main() {
     check("第 2 条 run 完成", run2st && run2st.status === "done", run2st ? run2st.status : "无");
     const expectSteps = (runInfo.steps || []).length + (run2st.steps || []).length;
 
-    // 等 SSE/轮询把侧栏刷出 smore（12 步 > 8 才显示）；先整页刷新确保拿到最新 state
+    // 等 SSE/轮询拿到第 2 条 run；侧栏无「查看全部」了，任务级详情直走 sideOpenTask 入口
     await js(`location.reload(); "ok"`);
     await sleep(4000);
-    let smore = null;
-    for (let i = 0; i < 20; i++) {
-      smore = await js(`(() => {
-        const s = [...document.querySelectorAll("#side-tasks .smore")].find(x => x.textContent.includes("查看全部"));
-        return s ? s.textContent.trim() : "";
-      })()`);
-      if (smore) break;
-      await sleep(500);
-    }
-    check("侧栏出现「查看全部 2 次运行 · N 步」",
-      smore.includes("查看全部") && smore.includes("2 次运行") && smore.includes(expectSteps + " 步"),
-      "smore=" + smore);
-
-    await js(`(() => {
-      const s = [...document.querySelectorAll("#side-tasks .smore")].find(x => x.textContent.includes("查看全部"));
-      s.click(); return 1;
-    })()`);
+    await js(`sideOpenTask(${JSON.stringify(runInfo.task_id)}); "ok"`);
     await sleep(1800);
     const taskView = await js(`(() => ({
       settingsMode: document.body.classList.contains("settings-mode"),
@@ -259,12 +261,12 @@ async function main() {
       meta: (document.getElementById("rd-meta") || {}).textContent || "",
       title: (document.getElementById("rd-title") || {}).textContent || "",
     }))()`);
-    check("查看全部：主栏直开任务级详情（未进设置模式）",
+    check("任务级详情：主栏直开（未进设置模式）",
       taskView.settingsMode === false && taskView.detailVisible === true, JSON.stringify(taskView).slice(0, 180));
-    check("查看全部：步骤数 = 各次运行之和（" + expectSteps + "）", taskView.steps === expectSteps,
+    check("任务级详情：步骤数 = 各次运行之和（" + expectSteps + "）", taskView.steps === expectSteps,
       "实际=" + taskView.steps);
-    check("查看全部：运行分隔条 = 运行次数（2）", taskView.seps === 2, "seps=" + taskView.seps);
-    check("查看全部：汇总行含运行次数与总步数",
+    check("任务级详情：运行分隔条 = 运行次数（2）", taskView.seps === 2, "seps=" + taskView.seps);
+    check("任务级详情：汇总行含运行次数与总步数",
       /运行\s*2\s*次/.test(taskView.meta.replace(/\s+/g, " ")) && taskView.meta.includes(String(expectSteps)),
       taskView.meta.slice(0, 120));
 
@@ -275,7 +277,7 @@ async function main() {
       subTasksVisible: !document.getElementById("sub-tasks").classList.contains("hidden"),
       detailHidden: document.getElementById("run-detail").classList.contains("hidden"),
     }))()`);
-    check("查看全部：返回回任务页", back2.subTasksVisible && back2.detailHidden, JSON.stringify(back2));
+    check("任务级详情：返回回任务页", back2.subTasksVisible && back2.detailHidden, JSON.stringify(back2));
     console.log("页面异常:", pageErrors.length ? pageErrors.join(" || ") : "无");
 
     ws.close();

@@ -201,7 +201,7 @@ async function main() {
     for (let i = 0; i < 16; i++) {
       await sleep(500);
       sideTitle = await evalJs(
-        `(document.querySelector('#side-tasks .stask[data-task="${TASK}"] summary .t')||{}).textContent?.trim()||""`);
+        `(document.querySelector('#side-tasks .stask[data-task="${TASK}"] .t')||{}).textContent?.trim()||""`);
       if (sideTitle === NEW_TITLE) break;
     }
     if (sideTitle !== NEW_TITLE) {

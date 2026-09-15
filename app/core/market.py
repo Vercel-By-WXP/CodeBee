@@ -211,6 +211,16 @@ def install(pack_id):
     files = pack.get("files") or {}
     if not any(str(v).strip() for v in files.values()):
         return None, "包内容缺失（skillpacks/market/%s 不存在或为空）" % pack.get("file")
+    return install_files(pack_id, pack["name"], files)
+
+
+def install_files(pack_id, name, files, extra=None):
+    """通用安装入口：任意 {安装相对路径: 文本内容} 写进用户包目录并记账。
+    内置市场包（install）与外部目录插件（market_remote）共用这一条落地通道，
+    避让 / 安装标记 / market.json 记账 / 幂等纪律完全一致；extra 追加进记账记录
+    （如外部插件的来源与版本）。"""
+    if not files or not any(str(v).strip() for v in files.values()):
+        return None, "包内容为空: %s" % pack_id
     with _LOCK:
         udir = _user_pack_dir()
         reg = _load_registry()
@@ -231,17 +241,19 @@ def install(pack_id):
                 written = []
                 for rel in sorted(files):
                     # 主文件落避让后的名字；带子目录的附加件按原相对路径落 assets
-                    name = target if rel == primary else rel
-                    dest = _dest_path(pack_id, name)
+                    name_i = target if rel == primary else rel
+                    dest = _dest_path(pack_id, name_i)
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     dest.write_text(files[rel], encoding="utf-8")
-                    written.append(name)
+                    written.append(name_i)
             except OSError as e:
                 return None, "写入用户技能库失败: %s" % e
-            installed[pack_id] = {"file": target, "files": written,
-                                  "installed_at": _now()}
+            record = {"file": target, "files": written, "installed_at": _now()}
+            if extra:
+                record.update(extra)
+            installed[pack_id] = record
         _save_registry(reg)
-    return {"ok": True, "id": pack_id, "name": pack["name"], "file": target,
+    return {"ok": True, "id": pack_id, "name": name, "file": target,
             "already": already}, None
 
 

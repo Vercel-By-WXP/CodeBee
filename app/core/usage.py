@@ -281,22 +281,97 @@ def _group(records, key):
     return groups
 
 
-def _dim_rows(records, key):
+def _model_display_map(records):
+    """模型名归一映射 {casefold: 展示名}：同一模型不同大小写（GLM-5.3-Flash 与
+    glm-5.3-flash）会被拆成两行统计，这里把 casefold 相同的归为一组，
+    展示名取组内出现次数最多的原始写法（平局取更长写法，信息更全）。"""
+    canon = {}
+    for r in records:
+        name = str(r.get("model") or "") or "unknown"
+        c = canon.setdefault(name.casefold(), {})
+        c["total"] = c.get("total", 0) + 1
+        c["names"] = c.get("names") or {}
+        c["names"][name] = (c["names"].get(name) or 0) + 1
+    display = {}
+    for k, c in canon.items():
+        display[k] = max(c["names"].items(),
+                         key=lambda kv: (kv[1], len(kv[0])))[0]
+    return display
+
+
+def _remap_model(records, display):
+    """把 records 的 model 字段替换为归一后的展示名（不改动原记录）。"""
+    out = []
+    for r in records:
+        name = str(r.get("model") or "") or "unknown"
+        r2 = dict(r)
+        r2["model"] = display.get(name.casefold(), name)
+        out.append(r2)
+    return out
+
+
+def _dim_rows(records, key, normalize=False):
     rows = []
+    if normalize:
+        records = _remap_model(records, _model_display_map(records))
     for name, g in _group(records, key).items():
         rows.append({"key": name, **g})
     rows.sort(key=lambda x: -x["tokens"])
     return rows
 
 
+def _streaks(dayset):
+    """连续活跃天数：current=从今天（今天没用量则从昨天）往回的连续天数；
+    longest=历史上最长连续段。dayset 为 ISO 日期字符串集合。"""
+    import datetime
+    ds = set()
+    for s in dayset:
+        try:
+            ds.add(datetime.date.fromisoformat(str(s)))
+        except (ValueError, TypeError):
+            continue
+    if not ds:
+        return 0, 0
+    today = datetime.date.today()
+    anchor = today if today in ds else today - datetime.timedelta(days=1)
+    current = 0
+    d = anchor
+    while d in ds:
+        current += 1
+        d -= datetime.timedelta(days=1)
+    longest = run = 0
+    prev = None
+    for d in sorted(ds):
+        run = run + 1 if (prev is not None and (d - prev).days == 1) else 1
+        longest = max(longest, run)
+        prev = d
+    return current, longest
+
+
 def summary(days=30, recent_limit=30):
-    """多维聚合。days=0 表示全部历史。by_day 连续补零，方便前端直接画趋势。"""
+    """多维聚合。days=0 表示全部历史。by_day 连续补零，方便前端直接画趋势。
+
+    一次全量扫描后在内存里按范围过滤（_iter_records 本就逐文件全读，
+    这样热力图/连续天数所需的全历史数据不再二次扫描）：
+    - all_by_day：全历史按日 tokens（热力图、连续天数）；
+    - by_day_model：范围内按日按模型 tokens（多模型趋势折线，模型名已归一）；
+    - totals 增 peak_tokens / max_duration_s / streak_current / streak_longest。
+    """
     import datetime
     with LOCK:
-        records = _iter_records(days)
+        all_records = _iter_records(0)
     now = datetime.date.today()
     span = int(days) if days else 0
     since = (now - datetime.timedelta(days=max(span, 1) - 1)) if span else None
+    if span:
+        since_s = since.isoformat()
+        records = [r for r in all_records if str(r.get("day") or "") >= since_s]
+    else:
+        records = all_records
+
+    # 模型名归一：维度行与按日趋势共用同一展示名映射
+    model_display = _model_display_map(records)
+    model_records = _remap_model(records, model_display)
 
     day_groups = _group(records, "day")
     by_day = []
@@ -319,6 +394,23 @@ def summary(days=30, recent_limit=30):
                            "cache_rate": g.get("cache_rate", 0.0),
                            "cost_usd": g["cost_usd"]})
 
+    # 按日按模型 tokens（范围内；与 by_day 同一天序列，无数据天给空表）
+    day_model = {}
+    for r in model_records:
+        d = str(r.get("day") or "")
+        if not d:
+            continue
+        m = day_model.setdefault(d, {})
+        name = str(r.get("model") or "unknown")
+        m[name] = m.get(name, 0) + _num(r, "total")
+    by_day_model = [{"day": bd["day"], "models": day_model.get(bd["day"], {})}
+                    for bd in by_day]
+
+    # 全历史按日 tokens（热力图 / 连续天数；不补零，按日期排序）
+    all_day_groups = _group(all_records, "day")
+    all_by_day = [{"day": d, "tokens": all_day_groups[d]["tokens"]}
+                  for d in sorted(all_day_groups)]
+
     totals = {
         "calls": len(records),
         "ok": sum(1 for r in records if r.get("ok")),
@@ -335,6 +427,11 @@ def summary(days=30, recent_limit=30):
     totals["avg_tokens_per_call"] = int(totals["tokens"] / totals["calls"]) if totals["calls"] else 0
     denom = totals["input"] + totals["cached"]
     totals["cache_rate"] = round(totals["cached"] * 100.0 / denom, 1) if denom else 0.0
+    totals["peak_tokens"] = max((bd["tokens"] for bd in by_day), default=0)
+    totals["max_duration_s"] = round(max((float(r.get("duration_s") or 0.0) for r in records), default=0.0), 1)
+    cur, lng = _streaks(str(r.get("day") or "") for r in all_records)
+    totals["streak_current"] = cur
+    totals["streak_longest"] = lng
 
     recent = sorted(records, key=lambda r: str(r.get("ts", "")), reverse=True)[:recent_limit]
     return {
@@ -342,9 +439,11 @@ def summary(days=30, recent_limit=30):
         "range": {"days": span, "since": since.isoformat() if since else ""},
         "totals": totals,
         "by_day": by_day,
+        "by_day_model": by_day_model,
+        "all_by_day": all_by_day,
         "by_tool": _dim_rows(records, "tool"),
         "by_agent": _dim_rows(records, "agent"),
-        "by_model": _dim_rows(records, "model"),
+        "by_model": _dim_rows(records, "model", normalize=True),
         "by_role": _dim_rows(records, "role"),
         "by_task_type": _dim_rows(records, "task_type"),
         "recent": recent,

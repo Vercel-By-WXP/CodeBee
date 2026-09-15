@@ -131,12 +131,14 @@ async function main() {
     await sleep(1200);
     const kpiText = await evalJs(`document.getElementById("usage-kpis").textContent`);
     check("KPI 总 tokens=5800（1600+2300+400+1500）", /5,?800|5800/.test(kpiText), kpiText.slice(0, 120));
-    check("KPI 调用次数=4", /4/.test(kpiText), kpiText.slice(0, 120));
-    check("KPI 失败数=1", /失败\s*1/.test(kpiText), kpiText.slice(0, 160));
+    check("KPI 副行调用 4 次", /调用\s*4/.test(kpiText), kpiText.slice(0, 160));
+    check("KPI 副行成功率 75%（4 中 3 成）", /成功率\s*75/.test(kpiText), kpiText.slice(0, 160));
 
-    // 4) 趋势图 SVG 与维度排行
-    const svgN = await evalJs(`document.querySelectorAll("#usage-trend svg rect").length`);
-    check("趋势图 SVG 有柱形", svgN >= 4, "rects=" + svgN);
+    // 4) 趋势图 SVG（多模型折线：≥2 天走 path 曲线 + 数据点）与维度排行
+    const pathN = await evalJs(`document.querySelectorAll("#usage-trend svg path").length`);
+    check("趋势图 SVG 有折线", pathN >= 1, "paths=" + pathN);
+    const dotN = await evalJs(`document.querySelectorAll("#usage-trend svg circle").length`);
+    check("趋势图有数据点", dotN >= 4, "circles=" + dotN);
     const dimsHtml = await evalJs(`document.getElementById("usage-dims").textContent`);
     check("维度表含工具/智能体/模型/角色/任务类型", ["按工具", "按智能体", "按模型", "按步骤角色", "按任务类型"]
       .every((k) => dimsHtml.includes(k)), dimsHtml.slice(0, 120));

@@ -1,0 +1,139 @@
+{
+  "name": "codebee-market",
+  "description": "CodeBee 官方插件市场：内置经验包目录（纯技能类，文档型）。",
+  "description_i18n": {
+    "en": "Official CodeBee plugin market: built-in experience packs (pure skill, docs-only).",
+    "zh-CN": "CodeBee 官方插件市场：内置经验包目录（纯技能类，文档型）。"
+  },
+  "owner": {
+    "name": "CodeBee"
+  },
+  "plugins": [
+    {
+      "name": "git-workflow",
+      "displayName": "Git 提交与分支守则",
+      "description": "提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。",
+      "author": {
+        "name": "CodeBee"
+      },
+      "category": "workflow",
+      "keywords": [
+        "codebee",
+        "skillpack",
+        "流程规范"
+      ],
+      "version": "2026.09.15",
+      "source": {
+        "source": "codebee-skillpack",
+        "file": "packs/git-workflow.md",
+        "url": "https://github.com/scwuxinping/codebee-market.git"
+      },
+      "homepage": "https://github.com/scwuxinping/codebee-market.git"
+    },
+    {
+      "name": "code-risk-checklist",
+      "displayName": "代码风险自查清单",
+      "description": "提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。",
+      "author": {
+        "name": "CodeBee"
+      },
+      "category": "workflow",
+      "keywords": [
+        "codebee",
+        "skillpack",
+        "流程规范"
+      ],
+      "version": "2026.09.15",
+      "source": {
+        "source": "codebee-skillpack",
+        "file": "packs/code-risk-checklist.md",
+        "url": "https://github.com/scwuxinping/codebee-market.git"
+      },
+      "homepage": "https://github.com/scwuxinping/codebee-market.git"
+    },
+    {
+      "name": "release-notes",
+      "displayName": "版本发布说明撰写模板",
+      "description": "面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。",
+      "author": {
+        "name": "CodeBee"
+      },
+      "category": "writing-style",
+      "keywords": [
+        "codebee",
+        "skillpack",
+        "文笔风格"
+      ],
+      "version": "2026.09.15",
+      "source": {
+        "source": "codebee-skillpack",
+        "file": "packs/release-notes.md",
+        "url": "https://github.com/scwuxinping/codebee-market.git"
+      },
+      "homepage": "https://github.com/scwuxinping/codebee-market.git"
+    },
+    {
+      "name": "weekly-report",
+      "displayName": "周报/晨报生成器守则",
+      "description": "先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。",
+      "author": {
+        "name": "CodeBee"
+      },
+      "category": "workflow",
+      "keywords": [
+        "codebee",
+        "skillpack",
+        "流程规范"
+      ],
+      "version": "2026.09.15",
+      "source": {
+        "source": "codebee-skillpack",
+        "file": "packs/weekly-report.md",
+        "url": "https://github.com/scwuxinping/codebee-market.git"
+      },
+      "homepage": "https://github.com/scwuxinping/codebee-market.git"
+    },
+    {
+      "name": "character-bible",
+      "displayName": "角色小传与人物弧光模板",
+      "description": "角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。",
+      "author": {
+        "name": "CodeBee"
+      },
+      "category": "characters",
+      "keywords": [
+        "codebee",
+        "skillpack",
+        "人物塑造"
+      ],
+      "version": "2026.09.15",
+      "source": {
+        "source": "codebee-skillpack",
+        "file": "packs/character-bible.md",
+        "url": "https://github.com/scwuxinping/codebee-market.git"
+      },
+      "homepage": "https://github.com/scwuxinping/codebee-market.git"
+    },
+    {
+      "name": "worldview-consistency",
+      "displayName": "世界观设定一致性台账守则",
+      "description": "设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。",
+      "author": {
+        "name": "CodeBee"
+      },
+      "category": "consistency",
+      "keywords": [
+        "codebee",
+        "skillpack",
+        "一致性"
+      ],
+      "version": "2026.09.15",
+      "source": {
+        "source": "codebee-skillpack",
+        "file": "packs/worldview-consistency.md",
+        "url": "https://github.com/scwuxinping/codebee-market.git"
+      },
+      "homepage": "https://github.com/scwuxinping/codebee-market.git"
+    }
+  ]
+}

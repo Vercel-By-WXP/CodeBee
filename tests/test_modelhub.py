@@ -325,11 +325,12 @@ class TestBatchOps(BaseTest):
         self.assertTrue(modelhub.model_ops("nope", ["m1"], "disable")[1])
 
         # 5) 供应商批量停用：运行时回落 CLI 默认，配置保留
-        modelhub.set_binding("claude-code", provider_id=pid, model="")
-        self.assertIsNotNone(modelhub.resolve_binding("claude-code"))
+        # （codex-cli×openai 是协议合法配对；2026-09-15 起 resolve 按 CLI 过滤 wire 协议）
+        modelhub.set_binding("codex-cli", provider_id=pid, model="")
+        self.assertIsNotNone(modelhub.resolve_binding("codex-cli"))
         self.assertEqual(modelhub.providers_op([pid], "disable"), (1, ""))
         self.assertFalse(modelhub.providers()[0]["enabled"])
-        self.assertIsNone(modelhub.resolve_binding("claude-code"))
+        self.assertIsNone(modelhub.resolve_binding("codex-cli"))
         self.assertFalse([p for p in modelhub.provider_view() if p["id"] == pid][0]["enabled"])
         self.assertEqual(modelhub.providers_op([pid], "disable")[0], 0)   # 重复停用不计数
         # 保存配置（upsert）不得把已停用状态覆盖回启用
@@ -337,7 +338,7 @@ class TestBatchOps(BaseTest):
                                   "base_url": "https://p.test/v1", "api_key": ""})
         self.assertFalse(modelhub.providers()[0]["enabled"])
         self.assertEqual(modelhub.providers_op([pid], "enable"), (1, ""))
-        self.assertIsNotNone(modelhub.resolve_binding("claude-code"))
+        self.assertIsNotNone(modelhub.resolve_binding("codex-cli"))
 
         # 6) 混合不存在的 id → 整体不生效；删除则连带解绑
         modelhub.upsert_provider({"name": "Q", "protocol": "openai",
@@ -515,7 +516,7 @@ class TestDuplicateIdRepair(BaseTest):
                 {"id": "prov-13", "name": "D", "protocol": "openai",
                  "base_url": "https://d.test/v1", "api_key": FAKE_KEY},
             ],
-            "bindings": {"claude-code": {"provider_id": "prov-11"}},
+            "bindings": {"codex-cli": {"provider_id": "prov-11"}},
         }
         modelhub._save(data)
 
@@ -526,7 +527,8 @@ class TestDuplicateIdRepair(BaseTest):
         self.assertEqual(ids[0], "prov-11")                # 首次出现的保留原 id
         self.assertEqual(ids[1], "prov-13")
         # 绑定仍解析到首次出现的那条（与修复前一致，不会静默改绑）
-        r = modelhub.resolve_binding("claude-code")
+        # （codex-cli×openai 协议合法；resolve 自 2026-09-15 起按 CLI 过滤 wire 协议）
+        r = modelhub.resolve_binding("codex-cli")
         self.assertEqual(r["provider"]["name"], "A")
 
         # 去重后：可以精确停用「原来撞号」的那条，另一条不受影响
