@@ -1580,6 +1580,14 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     # dsh 走 DEEPSEEK_* env，端点必须是 OpenAI 兼容的 /chat/completions，
     # anthropic 协议的网关注进去也调不通，直接判为不可绑定。
     allowed = ("openai",) if _deepseek_env_target(agent_kind_or_id) else _BINDABLE_PROTOCOLS
+    # 2026-09-15 连载验收实测：CLI 与供应商协议必须匹配——codex 只吃 openai wire
+    # （codex_provider 机制），claude 只吃 anthropic wire。混着注入会产生
+    # 「codex 拿到 ANTHROPIC_* env 却缺 ORCH_API_KEY」这类必然失败的组合
+    # （症状：Missing environment variable: ORCH_API_KEY）。
+    if agent_kind_or_id in ("codex-cli", "codex"):
+        allowed = ("openai",)
+    elif agent_kind_or_id in ("claude-code", "claude"):
+        allowed = ("anthropic",)
 
     if chain:
         entries = []
