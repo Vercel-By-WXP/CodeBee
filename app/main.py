@@ -311,10 +311,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/control/heartbeat":
             ok, view = remote.heartbeat(self._client_id())
             return self._json(200, {"ok": ok, "control": view})
-        # 写操作需要控制权：空闲自动接管；他人持有时 423，由前端引导抢夺
-        deny = self._deny_control()
-        if deny:
-            return deny
+        # 写操作需要控制权：空闲自动接管；他人持有时 423，由前端引导抢夺。
+        # 例外（配置管理类操作全局生效，不被「哪台设备在操作」挡住，
+        # 否则告警弹框里的按钮在多端场景会静默 423 失败）：
+        if path in ("/api/health/op", "/api/models/provider-op", "/api/models/model-op",
+                    "/api/models/test-provider", "/api/models/test-model"):
+            pass                                    # 落到下方各自路由
+        else:
+            deny = self._deny_control()
+            if deny:
+                return deny
         if path == "/api/tasks":
             return self._api_create_task()
         if path == "/api/health/op":

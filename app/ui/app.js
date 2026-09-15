@@ -545,7 +545,7 @@ function healthBannerClick() {
     "<button class='btn ghost' onclick=\"healthDisableProvider('" + esc(pid0) + "')\">" + t("禁用该厂商") + "</button>" +
     "<button class='btn ghost' onclick=\"healthOp('silence')\">" + t("静默本次告警") + "</button>" +
     "<button class='btn ghost' onclick=\"healthOp('reset')\">" + t("手动标记恢复") + "</button>" +
-    "<button class='btn' onclick='closeModal()'>" + t("关闭") + "</button>";
+    "<button class='primary' onclick='closeModal()'>" + t("关闭") + "</button>";
   openModal(t("供应商健康告警"), rows, foot);
 }
 
@@ -553,11 +553,15 @@ async function healthOp(op) {
   const alerts = (S.state && S.state.health && S.state.health.alerts) || [];
   const down = alerts[0];
   if (!down) return;
-  const r = await api("/api/health/op", { provider: down.provider, op });
-  if (r && r.health) { S.state.health = r.health; renderHealthBanner(r.health); }
-  closeModal(); render();
-  if (op === "silence") toast(t("已静默 {0} 的告警（恢复后自动重新武装）").replace("{0}", down.provider));
-  if (op === "reset") toast(t("已手动标记 {0} 为恢复，探针将重新核实").replace("{0}", down.provider));
+  try {
+    const r = await api("/api/health/op", { provider: down.provider, op });
+    if (r && r.health) { S.state.health = r.health; renderHealthBanner(r.health); }
+    closeModal(); render();
+    if (op === "silence") toast(t("已静默 {0} 的告警（恢复后自动重新武装）").replace("{0}", down.provider));
+    if (op === "reset") toast(t("已手动标记 {0} 为恢复，探针将重新核实").replace("{0}", down.provider));
+  } catch (e) {
+    toast(t("操作失败：") + e.message, true);
+  }
 }
 
 /* 模型级禁用：链降级（resolve_binding 的 _model_bindable）会自动跳过它。
@@ -568,16 +572,20 @@ async function healthDisableModel(pid, model) {
     t("确认禁用模型 {0}？链降级将自动跳过它，其余模型不受影响；可在 CLI 绑定页重新启用。").replace("{0}", pid + " · " + model),
     { title: t("禁用模型"), danger: true, ok: t("禁用") });
   if (!yes) return;
-  await api("/api/models/model-op", { provider_id: pid, name: model, op: "disable" });
-  if (S.state.health && S.state.health.alerts[0]) {
-    await api("/api/health/op", { provider: S.state.health.alerts[0].provider, op: "silence" });
+  try {
+    await api("/api/models/model-op", { provider_id: pid, name: model, op: "disable" });
+    if (S.state.health && S.state.health.alerts[0]) {
+      await api("/api/health/op", { provider: S.state.health.alerts[0].provider, op: "silence" });
+    }
+    const models = await api("/api/models");
+    S.providers = models.providers; S.bindings = models.bindings;
+    S.modelCatalog = models.catalog || [];
+    S.provSig = "";
+    closeModal(); render(); loadOrchestrator();
+    toast(t("已禁用模型 {0} · {1}，链降级自动跳过；绑定页可重新启用").replace("{0}", pid).replace("{1}", model));
+  } catch (e) {
+    toast(t("操作失败：") + e.message, true);
   }
-  const models = await api("/api/models");
-  S.providers = models.providers; S.bindings = models.bindings;
-  S.modelCatalog = models.catalog || [];
-  S.provSig = "";
-  closeModal(); render(); loadOrchestrator();
-  toast(t("已禁用模型 {0} · {1}，链降级自动跳过；绑定页可重新启用").replace("{0}", pid).replace("{1}", model));
 }
 
 async function healthDisableProvider(pid) {
@@ -586,15 +594,19 @@ async function healthDisableProvider(pid) {
     t("确认禁用该厂商？禁用后链降级自动跳过它，恢复后可在 CLI 绑定页重新启用。"),
     { title: t("禁用厂商"), danger: true, ok: t("禁用") });
   if (!yes) return;
-  await api("/api/models/provider-op", { ids: [pid], op: "disable" });
-  if (S.state.health && S.state.health.alerts[0]) {
-    await api("/api/health/op", { provider: S.state.health.alerts[0].provider, op: "silence" });
+  try {
+    await api("/api/models/provider-op", { ids: [pid], op: "disable" });
+    if (S.state.health && S.state.health.alerts[0]) {
+      await api("/api/health/op", { provider: S.state.health.alerts[0].provider, op: "silence" });
+    }
+    const models = await api("/api/models");
+    S.providers = models.providers; S.bindings = models.bindings;
+    S.provSig = "";
+    closeModal(); render(); loadOrchestrator();
+    toast(t("已禁用厂商 {0}：链降级自动跳过，绑定页可重新启用").replace("{0}", pid));
+  } catch (e) {
+    toast(t("操作失败：") + e.message, true);
   }
-  const models = await api("/api/models");
-  S.providers = models.providers; S.bindings = models.bindings;
-  S.provSig = "";
-  closeModal(); render(); loadOrchestrator();
-  toast(t("已禁用厂商 {0}：链降级自动跳过，绑定页可重新启用").replace("{0}", pid));
 }
 
 async function refreshState() {
