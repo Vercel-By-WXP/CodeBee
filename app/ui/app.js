@@ -562,7 +562,10 @@ async function healthOp(op) {
    只对出问题的那一格生效——厂商其它模型照常可用。 */
 async function healthDisableModel(pid, model) {
   if (!pid || !model) { closeModal(); return; }
-  if (!confirm(t("确认禁用模型 {0}？链降级将自动跳过它，其余模型不受影响；可在 CLI 绑定页重新启用。").replace("{0}", pid + " · " + model))) return;
+  const yes = await uiConfirm(
+    t("确认禁用模型 {0}？链降级将自动跳过它，其余模型不受影响；可在 CLI 绑定页重新启用。").replace("{0}", pid + " · " + model),
+    { title: t("禁用模型"), danger: true, ok: t("禁用") });
+  if (!yes) return;
   await api("/api/models/model-op", { provider_id: pid, name: model, op: "disable" });
   if (S.state.health && S.state.health.alerts[0]) {
     await api("/api/health/op", { provider: S.state.health.alerts[0].provider, op: "silence" });
@@ -576,7 +579,10 @@ async function healthDisableModel(pid, model) {
 
 async function healthDisableProvider(pid) {
   if (!pid) { closeModal(); return; }
-  if (!confirm(t("确认禁用该厂商？禁用后链降级自动跳过它，恢复后可在 CLI 绑定页重新启用。"))) return;
+  const yes = await uiConfirm(
+    t("确认禁用该厂商？禁用后链降级自动跳过它，恢复后可在 CLI 绑定页重新启用。"),
+    { title: t("禁用厂商"), danger: true, ok: t("禁用") });
+  if (!yes) return;
   await api("/api/models/provider-op", { ids: [pid], op: "disable" });
   if (S.state.health && S.state.health.alerts[0]) {
     await api("/api/health/op", { provider: S.state.health.alerts[0].provider, op: "silence" });
@@ -2518,6 +2524,26 @@ function showDetailInMain() {
   syncInspectorVis();    // 从设置子页点进运行详情：任务上下文，检查器跟着回来
 }
 
+/* 任务行激活（点击/键盘）：点任务 = 出「任务详情」，不允许任何行点了没反应。
+ * 无主运行行（任务已删/管理运行，data-task 为空）→ 直开它自己的运行详情；
+ * 已归档任务 → toast 指路（检查器只认在册任务，归档行先取消归档）；
+ * 没跑过/排队中 → toast 说明（准入闸门 inspEligible 的用户可读版）。 */
+function sideRowActivate(det) {
+  const taskId = det.dataset.task || "", runId = det.dataset.run || "";
+  if (!taskId) {
+    if (runId) sideOpenRun(runId);   // 无主运行：详情照开，只是不进检查器
+    return;
+  }
+  const known = ((S.state || {}).tasks || []).some((x) => x.id === taskId);
+  if (!known) {
+    const arch = archivedTaskIds().has(taskId);
+    toast(arch ? t("已归档任务：先在右键菜单里取消归档，再看任务详情") : t("任务不存在或已删除"), true);
+    return;
+  }
+  if (!inspEligible(taskId)) { toast(t("该任务还没跑过（或排队中），还没有任务详情"), true); return; }
+  openInspector(taskId);
+}
+
 /* 打开单条运行详情（右键菜单「打开详情」/检查器步骤条）：不跳设置页——
  * 留在任务树主视图，主栏直接展示运行详情。
  * 带步骤号 n 时，详情渲染完自动定位到该步：滚动 + 高亮 + 展开它的日志。 */
@@ -3643,15 +3669,16 @@ function bindInspector() {
     applyInspectorTab();
   });
   // 任务树点任务行：右缘滑出「任务详情」（检查器）；任务行无内嵌层，整行即按钮；
-  // 文件夹行折叠 / 右键菜单不受影响
+  // 文件夹行折叠 / 右键菜单不受影响。不在检查器准入范围内的行也不允许点了没反应：
+  // 无主运行行直开运行详情，归档/没跑过给 toast 说明。
   $("side-tasks").addEventListener("click", (e) => {
     const det = e.target.closest(".stask");
-    if (det && det.dataset.task) openInspector(det.dataset.task);
+    if (det) sideRowActivate(det);
   });
   $("side-tasks").addEventListener("keydown", (e) => {
     if (e.key !== "Enter" && e.key !== " ") return;
     const det = e.target.closest(".stask");
-    if (det && det.dataset.task) { e.preventDefault(); openInspector(det.dataset.task); }
+    if (det) { e.preventDefault(); sideRowActivate(det); }
   });
 }
 
