@@ -138,6 +138,44 @@ class TestContinueSerial(BaseTest):
         self.assertEqual(r2["inherit"]["done_chapters"], [11])
 
 
+    def test_truncated_draft_not_reused(self):
+        """坏稿防线：进程中途死掉留下的半成品（<30% 目标字数）不得被断点续跑
+        当「已完成成稿」复用——必须整章重写（2026-09-15 实测 4 字节 chapter-12
+        被复用后评审打 0 分、修订陷入循环）。"""
+        from app.core import pipeline, store
+        task = store.create_task({
+            "type": "serial_novel", "title": "坏稿防线", "goal": "g",
+            "workdir": str(self.workdir),
+            "serial": {"chapters": 1, "words_per_chapter": 800,
+                       "start_chapter": 9, "continues": "t-20260101-0000-9999"},
+        })
+        r1 = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(r1["id"], outline={
+            "book_title": "书", "source": "template",
+            "chapters": [{"title": "第 9 章", "beats": "空", "hook": ""}]})
+        s, _ = store.add_step(r1["id"], "draft-c9", "mock", "mock")
+        store.finish_step(r1["id"], s["n"], "done", summary="x", duration_s=0.1)
+        store.update_run(r1["id"], status="failed", ended_at="2026-09-13 00:00:00")
+        # 中途死掉留下的 4 字节半成品
+        (self.workdir / "chapter-09.md").write_text("第九", encoding="utf-8")
+
+        ok, err, r2 = store.retry_task(task["id"])
+        self.assertTrue(ok, err)
+        # done_chapters 继承自 steps（draft done），但坏稿必须被重写而不是复用
+        self.assertIn(9, r2["inherit"]["done_chapters"])
+        pipeline._agents = self.mock_agents
+        pipeline.execute_run(r2["id"])
+        r2 = store.get_run(r2["id"])
+        reuse_note = [s for s in r2["steps"]
+                      if s.get("role") == "draft-c9" and "复用" in (s.get("summary") or "")]
+        self.assertEqual(reuse_note, [], "坏稿不得被复用")
+        rewritten = [s for s in r2["steps"] if s.get("role") == "draft-c9"]
+        self.assertTrue(rewritten and rewritten[-1]["status"] == "done")
+        self.assertGreater(
+            (self.workdir / "chapter-09.md").stat().st_size, 200,
+            "重写后的章稿应超过坏稿阈值")
+
+
 if __name__ == "__main__":
     import unittest as _u
     _u.main()

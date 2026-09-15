@@ -1228,6 +1228,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
 
         reuse = i in done_set and os.path.exists(os.path.join(workdir, ch_file))
         if reuse:
+            # 坏稿防线：进程中途死掉会留下半成品文件（实测 4 字节的 chapter-12），
+            # 按「文件存在」复用会让评审给垃圾稿打低分、修订陷入循环。
+            # 字数低于 max(200, 30% 目标字数) → 视为未完成，整章重写。
+            words_now = _wc(_read_chapter(workdir, i))
+            if words_now < max(200, int(wpc * 0.3)):
+                reuse = False
+        if reuse:
             # 断点续跑：上一遍已写好的章直接复用（不重写；分数沿用既有记录或重评）
             step, _log = store.add_step(run_id, "draft-c%d" % i, impl["id"], impl.get("label"),
                                         note="断点续跑")
