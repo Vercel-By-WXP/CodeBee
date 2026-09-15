@@ -128,6 +128,124 @@ def tail_decoded(data, tail):
     return decode_output(chunk[i:])
 
 
+_TS_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.,]+Z?\s*")
+
+
+def collapse_dup_lines(text, max_group=4):
+    """折叠「归一化后重复」的邻近行，保留每种首行原文并标注折叠数。
+
+    真实案例：codex_otel 遥测对网关自定义模型名（如 [opencode]xxx，方括号是
+    非法 OTel tag 字符）每个 SSE 事件刷一对 WARN——counter/duration 两种文案
+    交替出现，且每条带微秒时间戳：剥掉时间戳前缀后相邻行仍不相等，必须按
+    「邻近组」折叠——组内至多 max_group 个键，新键只有组满才结算上一组，
+    这样交替刷屏的各个文案都归入同一组（计数各自累计）。空行先结算所在组
+    再原样保留。超过组宽的零散重复（中间隔着足量新行）不受影响。
+    """
+    if not text:
+        return ""
+    out = []
+    keys, first, cnt = [], {}, {}
+
+    def _flush():
+        for k in keys:
+            out.append(first[k])
+            if cnt[k] > 1:
+                out.append("⋯（上行重复 ×%d 已折叠）" % (cnt[k] - 1))
+        keys.clear()
+        first.clear()
+        cnt.clear()
+
+    for ln in text.splitlines():
+        k = _TS_PREFIX.sub("", ln).strip()
+        if not k:
+            _flush()          # 先结算扣住的组，保证空行前后顺序不失真
+            out.append(ln)
+            continue
+        if k in cnt:
+            cnt[k] += 1
+        elif len(keys) >= max_group:
+            _flush()
+            keys.append(k)
+            first[k] = ln
+            cnt[k] = 1
+        else:
+            keys.append(k)
+            first[k] = ln
+            cnt[k] = 1
+    _flush()
+    if text.endswith("\n"):
+        out.append("")
+    return "\n".join(out)
+
+
+def _fmt_codex_item(it, cap):
+    t = it.get("type") or ""
+    if t == "agent_message":
+        return "【消息】" + str(it.get("text") or "")[:cap]
+    if t == "reasoning":
+        return "【思考】" + str(it.get("text") or "")[:cap]
+    if t == "command_execution":
+        line = "【命令】%s（退出码 %s）" % (it.get("command") or "?", it.get("exit_code", "?"))
+        outp = str(it.get("aggregated_output") or "").strip()
+        if outp:
+            line += "\n  | " + outp[:600].replace("\n", "\n  | ")
+        return line
+    if t == "file_change":
+        names = ", ".join(str(c.get("path") or "?") for c in (it.get("changes") or [])
+                          if isinstance(c, dict))
+        return "【文件改动】" + (names or "?")
+    if t == "mcp_tool_call":
+        return "【工具】%s %s" % (it.get("tool") or "?",
+                                  json.dumps(it.get("arguments") or "", ensure_ascii=False)[:200])
+    if t == "web_search":
+        return "【搜索】" + str(it.get("query") or "")
+    if t == "error":
+        return "【错误】" + str(it.get("message") or "")
+    return None
+
+
+def pretty_cli_log(text, max_event_chars=4000):
+    """codex --json 的 JSONL 事件流 → 人类可读行；非 JSONL 行原样保留。
+
+    --json 模式下 stdout 全是机器事件（thread/turn/item…），智能体真正在说的
+    话被埋在转义 JSON 里；这里逐行翻译成【消息】【思考】【命令】，让日志抽屉
+    读到的是「蜂在干什么」。解析失败或未识别的事件类型原样保留，不吞内容。
+    """
+    out = []
+    for ln in (text or "").splitlines():
+        s = ln.strip()
+        ev = None
+        if s.startswith("{") and s.endswith("}"):
+            try:
+                ev = json.loads(s)
+            except Exception:
+                ev = None
+        if not isinstance(ev, dict):
+            out.append(ln)
+            continue
+        typ = ev.get("type") or ""
+        if typ in ("thread.started", "turn.started"):
+            continue
+        if typ == "turn.completed":
+            u = ev.get("usage") or {}
+            out.append("— 一轮完成（tokens 入 %s / 出 %s）—" % (
+                u.get("input_tokens", "?"), u.get("output_tokens", "?")))
+            continue
+        if typ == "turn.failed":
+            e = ev.get("error")
+            out.append("— 一轮失败：%s —" % (e.get("message") if isinstance(e, dict) else e))
+            continue
+        if typ in ("item.completed", "item.started", "item.updated"):
+            if typ != "item.completed" or not isinstance(ev.get("item"), dict):
+                continue  # started/updated 是过程噪音，completed 才有内容
+            line = _fmt_codex_item(ev["item"], max_event_chars)
+            if line:
+                out.append(line)
+            continue
+        out.append(ln)
+    return "\n".join(out)
+
+
 def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None):
     """通用子进程执行：并发读管道防死锁；超时/取消杀整棵进程树。
@@ -538,6 +656,11 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     for ai, att in enumerate(attempts):
         env = dict(base_env)
         env.update(att["env"])
+        if kind == "codex":
+            # 网关自定义模型名（如 [opencode]xxx）是合法 API 模型名不能改，但方括号
+            # 是非法 OTel tag 值 → codex_otel 每个 SSE 事件刷 2 条 WARN 淹没真输出。
+            # 只静音遥测模块（codex 不认 RUST_LOG 也无害），其余 WARN 全保留。
+            env.setdefault("RUST_LOG", "codex_otel=off")
         eff_agent = dict(agent)
         eff_agent["env"] = env
         if att["own_cp"]:

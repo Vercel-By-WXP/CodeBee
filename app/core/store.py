@@ -1242,7 +1242,7 @@ def write_report(run_id, markdown):
     return p
 
 
-def read_step_log(run_id, rel_path, tail=paths.LOG_TAIL_CHARS):
+def read_step_log(run_id, rel_path, tail=paths.LOG_TAIL_CHARS, pretty=False):
     p = (paths.RUNS_DIR / run_id / rel_path).resolve()
     try:
         # 防目录穿越：必须落在本 run 目录内
@@ -1250,7 +1250,14 @@ def read_step_log(run_id, rel_path, tail=paths.LOG_TAIL_CHARS):
             return ""
         data = p.read_bytes()
         if len(data) > tail:
-            return "...(已截断)...\n" + runner.tail_decoded(data, tail)
-        return runner.decode_output(data)
+            text = "...(已截断)...\n" + runner.tail_decoded(data, tail)
+        else:
+            text = runner.decode_output(data)
+        # 折叠遥测刷屏（时间戳不同的重复 WARN）；pretty 再把 codex JSONL
+        # 事件流翻译成【消息】【命令】等可读行，日志抽屉直读"蜂在干什么"
+        text = runner.collapse_dup_lines(text)
+        if pretty:
+            text = runner.pretty_cli_log(text)
+        return text
     except Exception:
         return ""

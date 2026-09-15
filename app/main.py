@@ -265,7 +265,10 @@ class Handler(BaseHTTPRequestHandler):
                 run = store.get_run(m.group(1))
                 if not run:
                     return self._json(404, {"error": "not found"})
-                text = store.read_step_log(m.group(1), rel, tail=tail)
+                # pretty=1：日志抽屉等人类视图，把 codex JSONL 事件流翻译成可读行；
+                # 蜂巢卡片等机器视图可不带，只享受重复行折叠
+                pretty = (q.get("pretty") or [""])[0] in ("1", "true")
+                text = store.read_step_log(m.group(1), rel, tail=tail, pretty=pretty)
                 # 带上步骤/运行状态：日志面板靠它区分「实时刷新中」和「已结束」，
                 # 结束即停轮询（否则用户盯着不动的日志以为刷新坏了）
                 st = next((s.get("status") or "" for s in (run.get("steps") or [])

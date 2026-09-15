@@ -3572,7 +3572,7 @@ async function toggleLog(runId, rel) {
     box.classList.add("hidden"); currentLog = null; stopLogLive(); return;
   }
   try {
-    const r = await api("/api/runs/" + encodeURIComponent(runId) + "/log?step=" + encodeURIComponent(rel));
+    const r = await api("/api/runs/" + encodeURIComponent(runId) + "/log?step=" + encodeURIComponent(rel) + "&pretty=1");
     pre.textContent = r.log || t("（等待输出…）");
     box.classList.remove("hidden");
     currentLog = rel;
@@ -3585,7 +3585,7 @@ async function toggleLog(runId, rel) {
     S.logLive = setInterval(async () => {
       if (!currentLog || currentLog !== rel) return stopLogLive();
       try {
-        const rr = await api("/api/runs/" + encodeURIComponent(runId) + "/log?step=" + encodeURIComponent(rel));
+        const rr = await api("/api/runs/" + encodeURIComponent(runId) + "/log?step=" + encodeURIComponent(rel) + "&pretty=1");
         if (currentLog === rel) {
           // 贴底跟随：用户滚到底部附近才自动滚到最新输出，回看历史不打扰
           const stick = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 48;
@@ -3633,12 +3633,12 @@ function hiveElapsed(started) {
   return (h ? h + ":" + String(mn).padStart(2, "0") : String(mn)) + ":" + String(sc).padStart(2, "0");
 }
 
-/* 尾巴去噪：codex 遥测 WARN/半行 JSON 不是"它在干什么"；JSONL agent_message 是正文 */
+/* 尾巴去噪：codex 遥测 WARN/折叠标记/半行 JSON 不是"它在干什么"；翻译后的【消息】行是正文 */
 function hiveCleanLine(lines) {
   for (let i = lines.length - 1; i >= 0; i--) {
     const l = String(lines[i] || "").trim();
     if (!l) continue;
-    if (/warn\b|telemetry|metrics|failed to flush|mcp/i.test(l)) continue;
+    if (/warn\b|telemetry|metrics|failed to flush|mcp|已折叠/i.test(l)) continue;
     if (l.startsWith("{") && /"type"\s*:/.test(l)) {
       try {
         const ev = JSON.parse(l);
@@ -3746,7 +3746,7 @@ async function hiveTick(rid) {
   for (const rel of rels) {
     try {
       const r = await api("/api/runs/" + encodeURIComponent(rid) +
-        "/log?step=" + encodeURIComponent(rel) + "&tail=900");
+        "/log?step=" + encodeURIComponent(rel) + "&tail=900&pretty=1");
       const lines = String(r.log || "").split("\n").filter((l) => l.trim());
       const last = hiveCleanLine(lines);
       const key = rid + "|" + rel;
