@@ -1516,6 +1516,15 @@ def _enabled_models(prov):
     return sorted(ms, key=lambda m: m.get("priority", 999))
 
 
+def _model_bindable(prov, model):
+    """模型是否可用于链降级：models[] 里显式停用/隐藏的不可用；
+    名单里查不到（如纯字符串 models 或自由模型名）视为可用，不拦。"""
+    for m in (prov.get("models") or []):
+        if isinstance(m, dict) and m.get("name") == model:
+            return bool(m.get("enabled", True)) and not m.get("hidden")
+    return True
+
+
 def bind_agent(agent, difficulty="default"):
     """按绑定生成应用了供应商/模型覆盖的 agent 副本；无绑定时原样返回。"""
     r = resolve_binding(agent.get("id"), difficulty) or resolve_binding(agent.get("kind"), difficulty)
@@ -1617,6 +1626,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
                 continue
             if prov.get("name") in down_set:
                 continue  # 健康监测判定 down：跳过，省掉无效等待
+            if model and not _model_bindable(prov, model):
+                continue  # 模型被停用/删除：该条跳过（2026-09-15 告警弹框「禁用该模型」）
             entries.append(_chain_entry_env(prov, model or prov.get("model") or "",
                                             target=agent_kind_or_id))
         if not entries:

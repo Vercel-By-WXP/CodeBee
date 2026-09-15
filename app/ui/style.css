@@ -327,25 +327,19 @@ body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-righ
 .side-section.tasks { flex: 1; }
 .side-label { color: var(--muted); font-size: 11px; padding: 0 10px 6px; letter-spacing: .05em; }
 
-/* 任务列表：任务 → 二级步骤行（ZCode 桌面端式样）——
- * 任务行 = 折叠箭头 + 状态字形 + 单行省略标题 + 右对齐紧凑时间；
- * 二级步骤行 = 状态点 + 工具名 + 摘要 + 时间，点它打开对应运行详情 */
+/* 任务列表：文件夹 → 任务单行（ZCode 桌面端式样）——
+ * 任务行 = 状态字形 + 单行省略标题 + 徽章 + 右对齐紧凑时间，整行即按钮：
+ * 点击右缘滑出「任务详情」（无内嵌步骤层，步骤明细看任务详情页） */
 .side-tasks { display: flex; flex-direction: column; gap: 1px; overflow-y: auto; min-height: 0; flex: 1; padding: 0 2px; }
-.stask summary {
+.stask {
   display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px;
-  cursor: pointer; color: var(--text); font-size: 13px; list-style: none; user-select: none;
+  cursor: pointer; color: var(--text); font-size: 13px; user-select: none;
 }
-.stask summary::-webkit-details-marker { display: none; }
-.stask summary:hover { background: var(--panel2); }
-.stask.active > summary { background: var(--panel2); }
-.stask .chev {
-  width: 12px; height: 12px; flex: none; color: var(--muted);
-  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
-  transition: transform .15s ease;
-}
-.stask[open] > summary .chev { transform: rotate(90deg); }
-.stask summary .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.stask summary .tm { flex: none; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.stask:hover { background: var(--panel2); }
+.stask.active { background: var(--panel2); }
+.stask:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.stask .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stask .tm { flex: none; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 /* 状态字形：进行中旋转✻ / 完成绿点 / 失败红点 / 取消橙点 / 排队空圈 / 未运行暗点 */
 /* 闸门等待徽章（任务分支待裁决）+ 侧栏铃铛开关 */
 .sbadge {
@@ -377,29 +371,12 @@ body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-righ
   color: var(--text); font-size: 11px; line-height: 12px; text-align: center;
   animation: ico-spin 1.2s linear infinite;
 }
-/* 二级步骤时间线：缩进引导线 + 状态点 + 工具名 + 摘要 + 右对齐时间 */
-.stask .steps {
-  display: flex; flex-direction: column; gap: 1px; margin: 1px 0 4px 13px; padding-left: 9px;
-  border-left: 1px solid var(--border);
-}
-.stepx {
-  display: flex; align-items: baseline; gap: 6px; padding: 4px 8px;
-  border-radius: 8px; font-size: 12px; color: var(--muted); cursor: pointer; overflow: hidden;
-}
-.stepx:hover { background: var(--panel2); color: var(--text); }
+/* 步骤状态点：检查器「步骤」页签复用（侧栏已无内嵌步骤层） */
 .sdot { width: 5px; height: 5px; border-radius: 50%; flex: none; background: var(--muted); align-self: center; }
 .sdot.done { background: var(--ok); }
 .sdot.failed { background: var(--bad); }
 .sdot.cancelled { background: var(--warn); }
 .sdot.running { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
-.stepx .sagent { flex: none; font-weight: 600; }
-.stepx .ssum { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.stepx .stm { flex: none; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.smore {
-  margin: 1px 0 1px 13px; padding: 4px 8px 4px 9px; border-radius: 8px;
-  font-size: 12px; color: var(--muted); cursor: pointer;
-}
-.smore:hover { background: var(--panel2); color: var(--text); }
 .side-empty { color: var(--muted); font-size: 12px; padding: 4px 10px; }
 
 /* 一级文件夹行（工作目录）：折叠箭头 + 目录图标 + 末段名 + 任务计数徽标；
@@ -1009,7 +986,7 @@ body.inspector-open #inspector { display: flex; }
   background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
   font-family: var(--mono); font-size: 11px; line-height: 1.5; white-space: pre;
 }
-/* 进度卡：步骤行复用侧栏 stepx 的状态点口径 */
+/* 进度卡（检查器「步骤」页签）：状态点与全局步骤口径一致 */
 .insp-steps { display: flex; flex-direction: column; gap: 2px; }
 .insp-step {
   display: flex; align-items: center; gap: 7px; min-width: 0; width: 100%;
@@ -1836,8 +1813,8 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
 .arch-toggle .ico { opacity: .4; }
 .arch-toggle.on .ico { opacity: 1; color: var(--accent); }
 .arch-toggle.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.stask.archived > summary .t { opacity: .5; }
-.stask.archived > summary .sglyph { opacity: .4; }
+.stask.archived .t { opacity: .5; }
+.stask.archived .sglyph { opacity: .4; }
 .sbadge.archb {
   color: var(--muted);
   background: color-mix(in srgb, var(--muted) 16%, transparent);
@@ -2441,3 +2418,11 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
 .mk-card.blocked { opacity: 0.55; }
 .mk-src { background: var(--accent-soft, rgba(64, 150, 238, 0.14)); color: var(--accent, #4096ee); }
 .mkr-meta { margin: -2px 0 8px; }
+
+/* ---- 供应商健康告警弹框：禁用厂商的危险按钮 ---- */
+.modal-foot button.danger {
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+  border: 1px solid rgba(220, 38, 38, 0.45);
+}
+.modal-foot button.danger:hover { background: rgba(220, 38, 38, 0.22); }

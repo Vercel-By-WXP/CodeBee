@@ -489,8 +489,10 @@ function applyState(d) {
 }
 
 /* ---------------------------------------------------------- 供应商健康告警横幅 */
-/* 告警触发时顶栏横幅 + 提示音（一次性，静默或恢复后停）；手动恢复走 /api/health/op。 */
+/* 告警触发时顶栏横幅（厂商+模型）+ 提示音；点击弹出详情弹框：
+   静默本次告警 / 手动标记恢复 / 一键禁用厂商。 */
 let _healthBeeped = false;
+
 function renderHealthBanner(health) {
   const el = $("health-banner");
   if (!el) return;
@@ -507,23 +509,82 @@ function renderHealthBanner(health) {
     }
     return;
   }
-  const names = alerts.map((p) => p.provider).join("、");
-  el.textContent = "⚠ " + names + " " + t("连接异常");
+  el.textContent = healthBannerText(health);
   el.className = "health-banner alerting";
-  el.title = alerts.map((p) => p.provider + "：连续失败 " + p.consecutive_failures + " 次（" + (p.last_error || "未知错误") + "）").join("\n");
+  el.title = alerts.map((p) =>
+    p.provider + (p.model ? " · " + p.model : "") +
+    "：连续失败 " + p.consecutive_failures + " 次（" + (p.last_error || "未知错误") + "）"
+  ).join("\n");
   if (!_healthBeeped) { _healthBeeped = true; beepAttention(); }
 }
 
-async function healthBannerClick() {
+function healthBannerText(health) {
+  return ((health && health.alerts) || []).map((p) => {
+    const m = p.model ? " · " + p.model : "";
+    return "⚠ " + p.provider + m + " " + t("连接异常");
+  }).join("　");
+}
+
+function healthBannerClick() {
   const alerts = (S.state && S.state.health && S.state.health.alerts) || [];
-  const down = alerts.find((p) => p.alerting);
+  if (!alerts.length) return;
+  const rows = alerts.map((p) => {
+    const model = p.model ? " · " + p.model : "";
+    return "<div style='margin-bottom:10px'>" +
+      "<b>" + esc(p.provider) + (p.model ? " · " + esc(p.model) : "") + "</b>" +
+      "<div style='opacity:.75;font-size:12px;margin-top:2px'>" +
+      t("连续失败") + " " + p.consecutive_failures + " " + t("次 · 首次失败 ") + (p.first_fail_at || "-") +
+      "</div>" +
+      "<div style='color:#dc2626;font-size:12px;margin-top:2px;word-break:break-all'>" +
+      esc(p.last_error || "") + "</div></div>";
+  }).join("");
+  const pid0 = alerts[0].provider_id || "";
+  const model0 = alerts[0].model || "";
+  const foot =
+    (model0 ? "<button class='btn ghost' onclick=\"healthDisableModel('" + esc(pid0) + "','" + esc(model0) + "')\">" + t("禁用该模型") + "</button>" : "") +
+    "<button class='btn ghost' onclick=\"healthDisableProvider('" + esc(pid0) + "')\">" + t("禁用该厂商") + "</button>" +
+    "<button class='btn ghost' onclick=\"healthOp('silence')\">" + t("静默本次告警") + "</button>" +
+    "<button class='btn ghost' onclick=\"healthOp('reset')\">" + t("手动标记恢复") + "</button>" +
+    "<button class='btn' onclick='closeModal()'>" + t("关闭") + "</button>";
+  openModal(t("供应商健康告警"), rows, foot);
+}
+
+async function healthOp(op) {
+  const alerts = (S.state && S.state.health && S.state.health.alerts) || [];
+  const down = alerts[0];
   if (!down) return;
-  if (confirm(t("静默 {0} 的告警？（确定=静默；取消=手动标记恢复）").replace("{0}", down.provider))) {
-    await api("/api/health/op", { provider: down.provider, op: "silence" });
-  } else {
-    await api("/api/health/op", { provider: down.provider, op: "reset" });
+  const r = await api("/api/health/op", { provider: down.provider, op });
+  if (r && r.health) { S.state.health = r.health; renderHealthBanner(r.health); }
+  closeModal(); render();
+}
+
+/* 模型级禁用：链降级（resolve_binding 的 _model_bindable）会自动跳过它。
+   只对出问题的那一格生效——厂商其它模型照常可用。 */
+async function healthDisableModel(pid, model) {
+  if (!pid || !model) { closeModal(); return; }
+  if (!confirm(t("确认禁用模型 {0}？链降级将自动跳过它，其余模型不受影响；可在 CLI 绑定页重新启用。").replace("{0}", pid + " · " + model))) return;
+  await api("/api/models/model-op", { provider_id: pid, name: model, op: "disable" });
+  if (S.state.health && S.state.health.alerts[0]) {
+    await api("/api/health/op", { provider: S.state.health.alerts[0].provider, op: "silence" });
   }
-  await refreshState(); render();
+  const models = await api("/api/models");
+  S.providers = models.providers; S.bindings = models.bindings;
+  S.modelCatalog = models.catalog || [];
+  S.provSig = "";
+  closeModal(); render(); loadOrchestrator();
+}
+
+async function healthDisableProvider(pid) {
+  if (!pid) { closeModal(); return; }
+  if (!confirm(t("确认禁用该厂商？禁用后链降级自动跳过它，恢复后可在 CLI 绑定页重新启用。"))) return;
+  await api("/api/models/provider-op", { ids: [pid], op: "disable" });
+  if (S.state.health && S.state.health.alerts[0]) {
+    await api("/api/health/op", { provider: S.state.health.alerts[0].provider, op: "silence" });
+  }
+  const models = await api("/api/models");
+  S.providers = models.providers; S.bindings = models.bindings;
+  S.provSig = "";
+  closeModal(); render(); loadOrchestrator();
 }
 
 async function refreshState() {
@@ -2226,9 +2287,9 @@ function saveOpenDirs() {
   } catch (e) { /* 隐私模式忽略 */ }
 }
 
-/* 侧栏「任务」树：文件夹（工作目录）→ 任务 → 各 CLI 步骤，三级。
- * 一级文件夹 = 任务 workdir 末段名（无主运行归「其他」垫底）；二级任务行 = 折叠箭头 +
- * 状态字形 + 单行省略标题 + 相对时间；三级步骤行 = 状态点 + 工具名 + 摘要 + 时间，点击打开运行详情。
+/* 侧栏「任务」树：文件夹（工作目录）→ 任务，两级。
+ * 一级文件夹 = 任务 workdir 末段名（无主运行归「其他」垫底）；二级任务行 = 单行按钮：
+ * 状态字形 + 单行省略标题 + 徽章 + 相对时间，点击右缘滑出「任务详情」。
  * 以任务表为底：每个任务恒有一行，近况取后端全量下发的最近一次运行（task_latest）；
  * run 窗口只用来捞无主运行（管理操作/任务已删）。任务不因别人刷屏而消失。 */
 /* 闸门等待提醒（Baton 式徽章 + 可选提示音）：
@@ -2331,10 +2392,11 @@ function renderSideTasks() {
   const tasksById = {};
   tasks.forEach((t) => { tasksById[t.id] = t; });
   // 标题、工作目录参与签名：重命名/换目录后侧栏要跟着重排，缺了会顶着旧分组
+  // （内嵌步骤层已移除，run 步骤数不再上侧栏，不参与签名）
   const sig = JSON.stringify([
-    runs.map((r) => [r.id, r.status, (r.steps || []).length, r.title]),
+    runs.map((r) => [r.id, r.status, r.title]),
     tasks.map((t) => [t.id, t.title, t.workdir, t.git_state || ""]),
-    Object.keys(latest).map((k) => [k, latest[k].id, latest[k].status, (latest[k].steps || []).length]),
+    Object.keys(latest).map((k) => [k, latest[k].id, latest[k].status]),
     S.detailRunId, S.detailTaskKey, archivedIds.size, S.showArchived, S.sideQ || "",
   ]);
   if (sig === S.sideSig && box.children.length) return;
@@ -2344,7 +2406,7 @@ function renderSideTasks() {
   const push = (key, taskId, title, status, time, dir) => {
     if (!byKey[key]) {
       byKey[key] = { key, taskId: taskId || "", title, status: status || "", time: time || "",
-        dir: dir || ORPHAN, active: false, runIds: [], steps: [] };
+        dir: dir || ORPHAN, active: false, runIds: [] };
       groups.push(byKey[key]);
     }
     return byKey[key];
@@ -2360,7 +2422,6 @@ function renderSideTasks() {
     if (lr) {
       g.runIds.push(lr.id);
       if (lr.status === "running") g.active = true;
-      (lr.steps || []).forEach((s) => g.steps.push(Object.assign({ runId: lr.id }, s)));
     }
   }
   for (const r of runs) {
@@ -2369,7 +2430,6 @@ function renderSideTasks() {
       r.started_at || r.created_at, ORPHAN);
     g.runIds.push(r.id);
     if (r.status === "running") g.active = true;
-    (r.steps || []).forEach((s) => g.steps.push(Object.assign({ runId: r.id }, s)));
   }
   // 侧栏搜索（Ctrl+K）：按任务标题模糊过滤，文件夹随命中任务自动聚拢/消失
   const q = (S.sideQ || "").trim().toLowerCase();
@@ -2390,10 +2450,7 @@ function renderSideTasks() {
     if (ao !== bo) return ao - bo;
     return String(b.time || "").localeCompare(String(a.time || ""));
   });
-  // 首轮默认展开的落点：第一个真实文件夹里的最近任务（无 detailRunId 指向时）
-  const firstDir = dirs.find((d) => d.dir !== ORPHAN) || dirs[0];
-  const firstKey = firstDir && firstDir.groups[0] ? firstDir.groups[0].key : "";
-  // 展开态：会话内已渲染过 → 以 DOM 为准（保留用户点击）；首轮 → 读 localStorage，无则启发式
+  // 文件夹展开态：会话内已渲染过 → 以 DOM 为准（保留用户点击）；首轮 → 读 localStorage，无则启发式
   const paintedDirs = !!box.querySelector("details.sdir");
   let openDirs;
   if (paintedDirs) {
@@ -2409,44 +2466,19 @@ function renderSideTasks() {
       (act.length ? act : dirs.slice(0, 1)).forEach((d) => openDirs.add(d.dir));
     }
   }
-  const paintedTasks = !!box.querySelector("details.stask");
-  const openTasks = paintedTasks
-    ? new Set(Array.from(box.querySelectorAll("details.stask[open]")).map((d) => d.dataset.key))
-    : new Set();
-  // 二级任务行（沿用原步骤行/查看全部/选中高亮逻辑），渲染进所属文件夹的 body 里
+  // 二级任务行：单行即全部——点击直接滑出右侧「任务详情」（检查器）。
+  // 内嵌步骤层已砍：步骤/运行明细在任务详情里更全，侧栏只留状态字形 + 徽章 + 相对时间。
+  // 右键菜单仍吃 data-task / data-run；主栏开着某任务详情时行保持高亮。
   const row = (g) => {
     if (g.active) g.status = "running";
-    const isOpen = openTasks.size ? openTasks.has(g.key)
-      : (S.detailRunId ? g.runIds.indexOf(S.detailRunId) >= 0 : g.key === firstKey);
     const sel = (g.key === S.detailTaskKey || g.runIds.indexOf(S.detailRunId) >= 0) ? " active" : "";
-    const items = g.steps.slice(0, 8).map((s, si) =>
-      '<div class="stepx" data-n="' + (Number(s.n) || si + 1) + '" title="' + esc((s.note ? s.note + "：" : "") + (s.summary || "")) +
-      '" onclick="sideOpenRun(\'' + esc(s.runId) + '\', ' + (Number(s.n) || si + 1) + ')">' +
-      '<span class="sdot ' + esc(s.status || "") + '"></span>' +
-      '<span class="sagent">' + esc(s.agent_label || s.agent || s.role || "") + "</span>" +
-      '<span class="ssum">' + esc(s.summary || s.note || s.role || "") + "</span>" +
-      '<span class="stm">' + esc(String(s.started_at || "").slice(0, 5)) + "</span></div>"
-    ).join("");
-    // 任务可能被续跑/重试过多次：行内只展示最近一次运行的步骤，更多走任务详情；
-    // 计数用后端全量统计（task_stats）——从 40 条 run 窗口里数会因刷屏/窗口滑动算错
-    const stats = g.taskId ? ((S.state.task_stats || {})[g.taskId]) : null;
-    const runCount = stats ? stats.runs : g.runIds.length;
-    const totalSteps = stats ? stats.steps : g.steps.length;
-    const more = (runCount > 1 || g.steps.length > 8)
-      ? '<div class="smore" onclick="sideOpenTask(\'' + esc(g.key) + '\')">查看全部 ' +
-        (runCount > 1 ? runCount + t(" 次运行 · ") : "") + totalSteps + t(" 步</div>") : "";
-    // 辅助行只出一条：有「查看全部」就不再叠「暂无步骤/暂无运行记录」
-    const aux = more || (items ? "" : (g.runIds[0]
-      ? '<div class="smore" onclick="sideOpenTask(\'' + esc(g.key) + '\')">暂无步骤，点击查看</div>'
-      : '<div class="smore">暂无运行记录</div>'));
-    const body = (items || aux) ? '<div class="steps">' + items + aux + "</div>" : "";
-    return '<details class="stask' + sel + (g.archived ? " archived" : "") + '" data-key="' + esc(g.key) + '" data-task="' + esc(g.taskId || "") +
-      '" data-run="' + esc(g.runIds[0] || "") + '" data-status="' + esc(g.status || "") + '"' + (isOpen ? " open" : "") + "><summary>" +
-      '<svg class="chev"><use href="#i-chevron-r"/></svg>' + staskGlyph(g.status) +
+    return '<div class="stask' + sel + (g.archived ? " archived" : "") + '" tabindex="0" role="button" data-key="' + esc(g.key) +
+      '" data-task="' + esc(g.taskId || "") + '" data-run="' + esc(g.runIds[0] || "") +
+      '" data-status="' + esc(g.status || "") + '">' + staskGlyph(g.status) +
       '<span class="t">' + esc(g.title) + "</span>" +
       (g.archived ? '<span class="sbadge archb">' + t("已归档") + "</span>" : "") +
       (g.verdict ? '<span class="sbadge">' + t("待裁决") + "</span>" : "") +
-      '<span class="tm">' + esc(relTime(g.time)) + "</span></summary>" + body + "</details>";
+      '<span class="tm">' + esc(relTime(g.time)) + "</span></div>";
   };
   // 一级文件夹行：折叠箭头 + 目录图标 + 末段名（hover 显全路径）+ 任务计数徽标
   box.innerHTML = dirs.map((d) => {
@@ -2486,7 +2518,8 @@ function showDetailInMain() {
   syncInspectorVis();    // 从设置子页点进运行详情：任务上下文，检查器跟着回来
 }
 
-/* 侧栏点子任务：不跳设置页——留在任务树主视图，右侧主栏直接展示运行详情。
+/* 打开单条运行详情（右键菜单「打开详情」/检查器步骤条）：不跳设置页——
+ * 留在任务树主视图，主栏直接展示运行详情。
  * 带步骤号 n 时，详情渲染完自动定位到该步：滚动 + 高亮 + 展开它的日志。 */
 window.sideOpenRun = function (id, n) {
   S.focusStep = Number(n) || 0;
@@ -2497,8 +2530,8 @@ window.sideOpenRun = function (id, n) {
   openRun(id, n ? "steps" : null);   // 带步骤号：钉住步骤分区，自动选卡不抢
 };
 
-/* 侧栏「查看全部 N 步」：任务可能被续跑/重试过多次，步骤分散在多条 run 里。
- * 打开任务级详情：按时间顺序列出该任务全部 run 的全部步骤，run 之间加分隔条。 */
+/* 打开任务级详情：任务可能被续跑/重试过多次，步骤分散在多条 run 里。
+ * 按时间顺序列出该任务全部 run 的全部步骤，run 之间加分隔条。 */
 window.sideOpenTask = function (key) {
   S.detailTaskKey = key;
   S.detailRunId = null;
@@ -2727,7 +2760,7 @@ function closeRun() {
   if (document.body.classList.contains("settings-mode")) {
     document.querySelector("#sub-runs .panel:first-child").classList.remove("hidden");
   } else {
-    // 从主视图（侧栏点子任务）进来的详情：返回直接回任务页，不露出运行列表
+    // 从主视图（侧栏点任务行）进来的详情：返回直接回任务页，不露出运行列表
     document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-tasks"));
     document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", b.dataset.sub === "tasks"));
     const title = $("page-title");
@@ -2758,7 +2791,7 @@ function applyStepFocus() {
  * 分区内容的 hidden 语义保持不变（没数据整块收起）；标签页只切外层 .rd-pane，
  * 测试/代码对 #rd-hive、#rd-git 等 hidden 的判断不受影响。
  * 自动选卡只在「详情目标 + run 状态 + git 裁决态」签名变化时触发一次——
- * 轮询重画不抢用户手选的分区；侧栏点具体步骤（sideOpenRun）钉住步骤分区。 */
+ * 轮询重画不抢用户手选的分区；带步骤号打开详情（sideOpenRun，检查器步骤条入口）钉住步骤分区。 */
 function rdTabAvail() {
   return {
     hive: !$("rd-hive").classList.contains("hidden"),
@@ -3609,12 +3642,16 @@ function bindInspector() {
     S.inspTab = b.dataset.tab;
     applyInspectorTab();
   });
-  // 任务树点任务行（summary）：展开行为保留，同时右缘滑出检查器；
-  // 文件夹行 / 步骤行 / 右键菜单不受影响
+  // 任务树点任务行：右缘滑出「任务详情」（检查器）；任务行无内嵌层，整行即按钮；
+  // 文件夹行折叠 / 右键菜单不受影响
   $("side-tasks").addEventListener("click", (e) => {
-    if (!e.target.closest("summary")) return;
     const det = e.target.closest(".stask");
     if (det && det.dataset.task) openInspector(det.dataset.task);
+  });
+  $("side-tasks").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const det = e.target.closest(".stask");
+    if (det && det.dataset.task) { e.preventDefault(); openInspector(det.dataset.task); }
   });
 }
 
@@ -5441,7 +5478,7 @@ function renderMarketRemote() {
   const times = (data.sources || []).map((s) => s.fetched_at).filter(Boolean);
   const meta = $("mkr-meta");
   if (meta) meta.textContent = times.length
-    ? t("目录更新于 ") + times.join(" / ") + (data.truncated ? "；" + t("条目过多，仅显示前 200 条，请搜索或按来源筛选") : "") : "";
+    ? t("目录更新于 ") + times.join(" / ") + (data.truncated ? "；" + t("条目较多，每来源最多显示 60 条，请搜索或按来源筛选") : "") : "";
   const q = (($("mkr-search") || {}).value || "").trim().toLowerCase();
   const sid = srcSel ? srcSel.value : "";
   let items = data.entries || [];
@@ -6593,7 +6630,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // 手机抽屉：遮罩点击 / 侧栏内任何可点项（导航、任务树、设置入口）点击后都收回
   $("drawer-mask").addEventListener("click", () => document.body.classList.add("side-collapsed"));
   $("sidebar").addEventListener("click", (e) => {
-    if (e.target.closest("button, summary, .stepx")) collapseDrawerIfMobile();
+    if (e.target.closest("button, summary, .stask")) collapseDrawerIfMobile();
   });
   $("btn-new-task").addEventListener("click", exitSettings);
   // 主侧栏快捷入口：直达自动化 / 插件市场（switchTab 自己会切设置模式并挂载页面）

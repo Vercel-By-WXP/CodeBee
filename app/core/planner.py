@@ -89,7 +89,8 @@ def _outline_timeout():
     return DEFAULT_OUTLINE_TIMEOUT
 
 
-def _log_usage(source, role, task, res, agent=None, tool="", model="", provider=""):
+def _log_usage(source, role, task, res, agent=None, tool="", model="", provider="",
+               provider_id=""):
     """规划链路的调用入台账（编排者直连 / CLI 规划）；失败不影响规划本身。"""
     try:
         usage.record(source=source, task_id=(task or {}).get("id", ""),
@@ -102,14 +103,14 @@ def _log_usage(source, role, task, res, agent=None, tool="", model="", provider=
                      duration_s=float(((res or {}).get("raw") or {}).get("duration") or 0.0),
                      cost_usd=float((res or {}).get("cost_usd") or 0.0),
                      usage=(res or {}).get("usage"))
-        # 告警模块：编排者直连调用的成功/失败上报（provider 名与台账一致）
+        # 告警模块：编排者直连调用的成功/失败上报（provider_id 供「禁用厂商」定位）
         if provider:
             from . import health
             if (res or {}).get("ok"):
                 health.report_success(provider)
             else:
                 health.report_failure(provider, (res or {}).get("error") or "",
-                                      model=model)
+                                      model=model, provider_id=provider_id)
     except Exception:
         pass
 
@@ -302,12 +303,14 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
         for _attempt in (1, 2):
             # glm-5.3 等推理模型的"思考"就吃掉数千 token：max_tokens 给足，
             # 否则 stop_reason=max_tokens、正文为空（实测 2048 全被思考吞掉）
+            # 流式回调把增量实时写进步骤日志，直连生成不再是一行标题的黑箱
             cb = _log_streamer(log_path)
             res = modelhub.chat(prov["id"], model, prompt,
                                 max_tokens=16000, timeout=300, on_delta=cb)
             cb.flush()
             _log_usage("outline", "outline", task, res, model=model,
-                       provider=prov.get("name", prov.get("id", "")))
+                       provider=prov.get("name", prov.get("id", "")),
+                       provider_id=prov.get("id", ""))
             if res["ok"]:
                 _append_log(log_path, "尝试 %d：返回 %d tokens，解析 JSON 中…"
                             % (_attempt, res.get("tokens") or 0))
@@ -426,7 +429,8 @@ def _orch_code_plan(task, prov, model, log_path=None):
                          .replace("__GOAL__", task["goal"])
                          .replace("__CONTEXT__", task.get("context") or "（无）")
                          .replace("__VERIFY__", task.get("verify_command") or "（未配置）")),
-                        max_tokens=8000, timeout=300)
+                        max_tokens=8000, timeout=300, on_delta=cb)
+    cb.flush()
     _log_usage("plan", "plan", task, res, model=model,
                provider=prov.get("name", prov.get("id", "")))
     if not res["ok"]:

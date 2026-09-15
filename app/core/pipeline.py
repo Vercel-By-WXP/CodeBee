@@ -456,7 +456,7 @@ def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
             else:
                 health.report_failure(prov_name, res.get("error") or "",
                                       model=res.get("model") or "",
-                                      provider_id=agent.get("id") or "")
+                                      provider_id=prov.get("id") or "")
     except Exception:
         pass
 
