@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 
 from . import modelhub, runner, skills, usage
 
@@ -29,6 +30,43 @@ def _append_log(log_path, text):
             f.write(text if text.endswith("\n") else text + "\n")
     except OSError:
         pass
+
+
+def _log_streamer(log_path, min_chars=400, min_secs=0.8):
+    """直连流式增量 → 步骤日志的节流写入器（原样拼接，不额外加换行）。
+
+    编排者直连生成原本全程黑箱：日志只有一行标题，用户盯着它几分钟以为
+    卡死。每个 SSE 分片都开文件写太碎，攒够 min_chars 或超过 min_secs 才
+    刷一次；结束时必须调 cb.flush() 补上尾段。无 log_path 时为空操作
+    （仍带 flush，调用方无需判空）。"""
+    if not log_path:
+        def nop(delta):
+            pass
+        nop.flush = lambda: None
+        return nop
+    st = {"buf": "", "at": time.time()}
+
+    def _write():
+        if st["buf"]:
+            try:
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(st["buf"])
+            except OSError:
+                pass
+            st["buf"] = ""
+        st["at"] = time.time()
+
+    def cb(delta):
+        if not delta:
+            return
+        st["buf"] += delta
+        if len(st["buf"]) >= min_chars or time.time() - st["at"] >= min_secs:
+            _write()
+
+    def flush():
+        _write()
+    cb.flush = flush
+    return cb
 
 
 def _outline_timeout():
@@ -264,8 +302,10 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
         for _attempt in (1, 2):
             # glm-5.3 等推理模型的"思考"就吃掉数千 token：max_tokens 给足，
             # 否则 stop_reason=max_tokens、正文为空（实测 2048 全被思考吞掉）
+            cb = _log_streamer(log_path)
             res = modelhub.chat(prov["id"], model, prompt,
-                                max_tokens=16000, timeout=300)
+                                max_tokens=16000, timeout=300, on_delta=cb)
+            cb.flush()
             _log_usage("outline", "outline", task, res, model=model,
                        provider=prov.get("name", prov.get("id", "")))
             if res["ok"]:
@@ -380,6 +420,7 @@ def _fallback_code_plan(task, note):
 
 
 def _orch_code_plan(task, prov, model, log_path=None):
+    cb = _log_streamer(log_path)
     res = modelhub.chat(prov["id"], model,
                         (CODE_PLAN_PROMPT.replace("__N__", str(MAX_SUBTASKS))
                          .replace("__GOAL__", task["goal"])

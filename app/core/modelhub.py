@@ -1812,6 +1812,110 @@ def _post_json_http(url, headers, body, allow_private, timeout=20):
         return 0, None, repr(e)[:300]
 
 
+def _sse_parse(proto, obj):
+    """解析一条 SSE 事件 JSON → (增量文本, usage增量或None)。三协议字段各异。
+
+    只认文本增量与用量字段；tool_call / reasoning 等事件返回空串跳过。"""
+    if not isinstance(obj, dict):
+        return "", None
+    if proto == "anthropic":
+        t = obj.get("type")
+        if t == "content_block_delta":
+            d = obj.get("delta") or {}
+            return (d.get("text") or ""), None
+        if t == "message_start":
+            u = (obj.get("message") or {}).get("usage") or obj.get("usage") or {}
+            return "", {"input": int(u.get("input_tokens") or 0),
+                        "cached": (int(u.get("cache_read_input_tokens") or 0)
+                                   + int(u.get("cache_creation_input_tokens") or 0))}
+        if t == "message_delta":
+            u = obj.get("usage") or {}
+            return "", {"output": int(u.get("output_tokens") or 0)}
+        return "", None
+    if proto == "google":
+        text = ""
+        for cand in obj.get("candidates") or []:
+            for p in ((cand.get("content") or {}).get("parts") or []):
+                if isinstance(p, dict):
+                    text += p.get("text") or ""
+        um = obj.get("usageMetadata")
+        usage = None
+        if isinstance(um, dict):
+            usage = {"input": int(um.get("promptTokenCount") or 0),
+                     "output": int(um.get("candidatesTokenCount") or 0),
+                     "total": int(um.get("totalTokenCount") or 0)}
+        return text, usage
+    # openai 兼容（chat/completions 流）
+    text = ""
+    for ch in obj.get("choices") or []:
+        d = ch.get("delta") or {}
+        text += d.get("content") or ""
+    usage = None
+    u = obj.get("usage")
+    if isinstance(u, dict):
+        usage = {"input": int(u.get("prompt_tokens") or 0),
+                 "output": int(u.get("completion_tokens") or 0),
+                 "total": int(u.get("total_tokens") or 0),
+                 "cached": int(((u.get("prompt_tokens_details") or {}) or {}).get("cached_tokens") or 0)}
+    return text, usage
+
+
+def _post_sse_http(url, headers, body, allow_private, timeout, proto, on_delta):
+    """带 SSRF 防护的流式 POST（SSE）。返回 (status, text, usage, err)。
+
+    编排者直连调用不经 run_process，此前生成全程日志只有一行标题（黑箱）；
+    这里逐行读 data: 事件、边收边回调 on_delta(增量文本)，直连调用也能像
+    CLI 步骤一样看到「正在吐字」。单条事件解析失败静默跳过，不中断整流。"""
+    import urllib.parse
+    p = urllib.parse.urlsplit(url)
+    if p.scheme not in ("http", "https"):
+        return 0, "", None, "协议必须是 http/https"
+    if _validate_host(url, allow_private) is None:
+        return 0, "", None, "目标地址校验未通过"
+    parts, usage = [], {}
+    resp_status = 0
+    try:
+        req = urllib.request.Request(url, method="POST",
+                                     headers=dict(headers, **{"Content-Type": "application/json"}),
+                                     data=json.dumps(body).encode("utf-8"))
+        with urllib.request.build_opener(_NoRedirect).open(req, timeout=timeout) as resp:
+            resp_status = resp.status
+            if not 200 <= resp.status < 300:
+                raw = resp.read(65536).decode("utf-8", "replace")
+                return resp.status, "", None, "HTTP %s %s" % (resp.status, raw[:200])
+            while True:
+                line = resp.readline()
+                if not line:
+                    break
+                line = line.decode("utf-8", "replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if not payload or payload == "[DONE]":
+                    continue
+                try:
+                    obj = json.loads(payload)
+                except Exception:
+                    continue
+                delta, u = _sse_parse(proto, obj)
+                if delta:
+                    parts.append(delta)
+                    try:
+                        on_delta(delta)
+                    except Exception:
+                        pass
+                if isinstance(u, dict):
+                    usage.update({k: v for k, v in u.items() if v})
+                if sum(len(s) for s in parts) > 2 * 1024 * 1024:   # 防失控
+                    break
+    except Exception as e:
+        return 0, "", None, repr(e)[:300]
+    text = "".join(parts)
+    if not usage.get("total"):
+        usage["total"] = usage.get("input", 0) + usage.get("output", 0) + usage.get("cached", 0)
+    return resp_status, text, usage, ""
+
+
 def test_provider(provider_id):
     """供应商连通性测试：GET /models 并测延迟。返回 {ok, latency_ms, count, error}。"""
     import time as _t
@@ -1969,7 +2073,8 @@ def _chat_cache_path(provider_id, model_name, prompt, max_tokens):
     return paths.DATA_DIR / "chat_cache" / (name + ".json")
 
 
-def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_ttl=0):
+def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_ttl=0,
+         on_delta=None):
     """直连供应商 API 做一次对话（编排者规划 / 连通性测试）。
 
     支持 anthropic / openai / google 三种协议；复用 SSRF 防护。
@@ -1977,6 +2082,9 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_tt
     cache_ttl>0 启用精确匹配响应缓存（key=供应商+模型+prompt+max_tokens，只缓存
     ok 结果）——仅限幂等调用（连通性测试等）；创作类调用不要开，否则同一 prompt
     的二次请求会屏蔽模型的新输出。
+    on_delta 给定时走 SSE 流式：每收到一段增量文本回调一次。编排者直连调用
+    不经 run_process、原本生成全程日志只有一行标题，靠它把「正在吐字」实时
+    写进步骤日志（planner._log_streamer 节流落盘）。
     """
     if cache_ttl > 0:
         try:
@@ -2014,6 +2122,21 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_tt
             headers = {"Authorization": "Bearer " + prov["api_key"]}
         body = {"model": model_name, "max_tokens": max_tokens,
                 "messages": [{"role": "user", "content": prompt}]}
+
+    if on_delta is not None:
+        sbody = dict(body)
+        sbody["stream"] = True
+        if proto not in ("anthropic", "google"):
+            sbody["stream_options"] = {"include_usage": True}   # openai 系最后一个 chunk 带 usage
+        status, text, usage_d, err = _post_sse_http(
+            url, headers, sbody, bool(prov.get("allow_private")), timeout, proto, on_delta)
+        if status == 0 or err:
+            return {"ok": False, "text": "", "tokens": 0, "usage": None, "error": err}
+        if not usage_d.get("total"):
+            usage_d["total"] = (usage_d.get("input", 0) + usage_d.get("output", 0)
+                                + usage_d.get("cached", 0))
+        return {"ok": True, "text": (text or "").strip(), "tokens": usage_d.get("total") or 0,
+                "usage": usage_d, "error": ""}
 
     status, data, err = _post_json_http(url, headers, body, bool(prov.get("allow_private")),
                                         timeout=timeout)
