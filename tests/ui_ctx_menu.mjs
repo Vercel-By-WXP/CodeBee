@@ -5,7 +5,9 @@
  *   API：reveal open=false 回真实路径；伪造 id 404；空标题 rename 400；
  *   页面流程：点「复制工作目录路径」剪贴板拿到 workdir；点「重命名任务」后侧栏与
  *   state 里的任务和运行标题同步更新。
- * 前置：TUTTI_DATA 用 tests/_seed_ctx_fixtures.py 造数，再起 18798 临时服务。 */
+ * 前置：TUTTI_DATA 用 tests/_seed_ctx_fixtures.py 造数，再起临时服务（端口/CDP
+ * 可用 TUTTI_TEST_PORT / TUTTI_TEST_CDP 覆盖，默认 18798/9339——18798 常被并行
+ * 测试或残留服务占用，Windows 下同端口可双绑，撞上会打到别人的服务）。 */
 import { spawn } from "node:child_process";
 import { execSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -13,9 +15,9 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SERVICE = "http://127.0.0.1:18798";
-const PORT = 18798;
-const CDP_PORT = 9339;
+const PORT = Number(process.env.TUTTI_TEST_PORT) || 18798;
+const CDP_PORT = Number(process.env.TUTTI_TEST_CDP) || 9339;
+const SERVICE = "http://127.0.0.1:" + PORT;
 const EDGE = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -284,7 +286,7 @@ async function main() {
     check("移除=归档：任务进 archived_tasks 且文件未删",
       !!t2 && man, JSON.stringify({ inArchived: !!t2, man }));
 
-    /* ---- G) 「查看文件」：侧栏文件夹内联展开（附件式 chips，可折叠 toggle） ---- */
+    /* ---- G) 「查看文件」：左侧栏整页切到文件浏览页，递归列出全部文件 ---- */
     // 取消归档找回：页面持有控制权，写接口必须由页面自己发（无头 API 会被 423 挡）。
     const restore = await evalJs(`fetch("/api/tasks/${TASK}/archive", {
       method: "POST",
@@ -300,48 +302,177 @@ async function main() {
       if (sdir) { folderBack = true; break; }
     }
     check("取消归档后文件夹回到侧栏", folderBack === true);
-    // 右键「查看文件」→ 文件夹行内联展开文件 chips
-    const fb = await menuOf(`document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"])')`);
-    if (fb && !fb.err && !fb.hidden && fb.labels.includes("查看文件")) {
-      await evalJs(`(async () => {
-        const det = document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"])');
-        det.dispatchEvent(new MouseEvent("contextmenu",
-          { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
-        await new Promise(r => setTimeout(r, 200));
-        [...document.querySelectorAll("#ctx-menu .ctx-item")]
-          .find(x => x.textContent.trim() === "查看文件").click();
+    // API 先行核验：递归返回根/一层/两层嵌套文件，跳过 node_modules
+    const scan = await api("/api/dir/scan?path=" + encodeURIComponent(workdir));
+    const names = (scan.json && scan.json.files || []).map((f) => f.name);
+    check("scan 递归列出全部文件（根+docs+docs/deep）",
+      scan.code === 200 && ["manuscript.md", "docs/note.md", "docs/deep/data.csv"]
+        .every((n) => names.includes(n)), JSON.stringify(names));
+    check("scan 跳过 node_modules 等噪音目录", !names.some((n) => n.includes("node_modules")),
+      JSON.stringify(names));
+    // 嵌套文件可打开（Windows 下曾把子目录文件误判越界 403）
+    const nested = await fetch(SERVICE + "/api/dir/file?dir=" + encodeURIComponent(workdir.replace(/\\/g, "/"))
+      + "&name=" + encodeURIComponent("docs/deep/data.csv"));
+    check("嵌套文件 /api/dir/file 可打开（不误判越界）", nested.status === 200,
+      "status=" + nested.status);
+    await nested.arrayBuffer();   // 消费响应体
+    // 右键「查看文件」→ 左栏整页切到文件浏览页（不再内联塞任务树）
+    await evalJs(`(async () => {
+      const det = document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"])');
+      det.dispatchEvent(new MouseEvent("contextmenu",
+        { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
+      await new Promise(r => setTimeout(r, 200));
+      [...document.querySelectorAll("#ctx-menu .ctx-item")]
+        .find(x => x.textContent.trim() === "查看文件").click();
+    })()`);
+    let page = null;
+    for (let i = 0; i < 20 && !page; i++) {
+      await sleep(300);
+      page = await evalJs(`(() => {
+        if (!document.body.classList.contains("files-mode")) return null;
+        const rows = [...document.querySelectorAll("#sf-body .sf-file")];
+        if (!rows.length) return null;
+        return JSON.stringify({
+          sideMainShown: getComputedStyle(document.querySelector(".side-main")).display !== "none",
+          filesShown: getComputedStyle(document.querySelector(".side-files")).display !== "none",
+          title: (document.getElementById("sf-dir") || {}).textContent || "",
+          count: (document.getElementById("sf-count") || {}).textContent || "",
+          files: rows.map(a => a.querySelector("span").textContent + "|" + (a.dataset.name || "")),
+          dirCount: document.querySelectorAll("#sf-body details.sf-dir").length,
+          dirsOpen: document.querySelectorAll("#sf-body details.sf-dir[open]").length,
+        });
       })()`);
-      await sleep(800);
-      const fbInline = await evalJs(`(() => {
-        const box = document.querySelector("#side-tasks .sdir:not([data-dir='__orphan__']) .sdir-files");
-        const chips = box ? [...box.querySelectorAll(".sdir-chip")] : [];
-        const files = chips.map(c => c.querySelector("span").textContent.trim()
-          + " " + c.querySelector("i").textContent.trim());
-        return JSON.stringify({ exists: !!box, count: chips.length, files });
-      })()`);
-      check("「查看文件」在文件夹行内联展开（无弹框）",
-        JSON.parse(fbInline).exists === true, "inline=" + fbInline);
-      check("内联 chips 含 manuscript 文件", fbInline.includes("manuscript"),
-        "chips=" + fbInline);
-      const modalStillHidden = await evalJs(
-        `document.getElementById("modal").classList.contains("hidden")`);
-      check("未弹出 modal（保持侧栏内联）", modalStillHidden === true);
-      // 再次点「查看文件」→ 收起（toggle 关闭）
-      await evalJs(`(async () => {
-        const det = document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"])');
-        det.dispatchEvent(new MouseEvent("contextmenu",
-          { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
-        await new Promise(r => setTimeout(r, 200));
-        [...document.querySelectorAll("#ctx-menu .ctx-item")]
-          .find(x => x.textContent.trim() === "查看文件").click();
-      })()`);
-      await sleep(400);
-      const fbGone = await evalJs(
-        `!document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"]) .sdir-files')`);
-      check("再次点击「查看文件」收起内联区", fbGone === true);
-    } else {
-      check("侧栏文件夹可弹出右键菜单", false, JSON.stringify(fb));
     }
+    const fp = page ? JSON.parse(page) : {};
+    check("「查看文件」后左栏整页切到文件页（任务树收起）",
+      !!page && fp.sideMainShown === false && fp.filesShown === true, JSON.stringify(fp));
+    check("文件页标题为文件夹名", fp.title === "sandbox-workdir", fp.title);
+    check("文件页计数 = 3 个文件", fp.count.includes("3"), fp.count);
+    check("树里列出全部 3 个文件（含两层嵌套）",
+      fp.files && fp.files.length === 3 &&
+      fp.files.some((x) => x.endsWith("|docs/note.md")) &&
+      fp.files.some((x) => x.endsWith("|docs/deep/data.csv")), JSON.stringify(fp.files || []));
+    check("子目录渲染为 2 个可折叠节点且默认展开",
+      fp.dirCount === 2 && fp.dirsOpen === 2, "dirs=" + fp.dirCount + " open=" + fp.dirsOpen);
+    check("未弹出 modal（左栏页面而非弹框）",
+      await evalJs(`document.getElementById("modal").classList.contains("hidden")`) === true);
+    // 点文件行（manuscript.md）→ 中央弹窗预览内容，不再开新标签页
+    await evalJs(`(() => {
+      const row = [...document.querySelectorAll("#sf-body .sf-file")]
+        .find(a => a.dataset.name === "manuscript.md");
+      if (!row) return false;
+      row.click();
+      return true;
+    })()`);
+    let pop = null;
+    for (let i = 0; i < 20 && !pop; i++) {
+      await sleep(300);
+      pop = await evalJs(`(() => {
+        const el = document.getElementById("file-pop");
+        if (!el || el.classList.contains("hidden")) return null;
+        const code = el.querySelector(".fp-code");
+        return JSON.stringify({ text: code ? code.innerText : "" });
+      })()`);
+    }
+    const pp = pop ? JSON.parse(pop) : {};
+    check("点文件行中央弹窗预览内容（不开新标签页）",
+      pp.text && pp.text.includes("造数稿件"), JSON.stringify(pp).slice(0, 200));
+    await evalJs(`window.filePopClose()`);
+    await sleep(200);
+    // 点「返回任务列表」→ 恢复任务树
+    await evalJs(`document.getElementById("btn-files-back").click()`);
+    await sleep(300);
+    const backOk = await evalJs(`(() => ({
+      modeOff: !document.body.classList.contains("files-mode"),
+      treeShown: getComputedStyle(document.querySelector(".side-main")).display !== "none",
+    }))()`);
+    check("「返回任务列表」恢复任务树", backOk.modeOff === true && backOk.treeShown === true,
+      JSON.stringify(backOk));
+
+    /* ---- H) 旧后端兼容：scan 只回一层 files+subdirs 时，文件夹懒加载可点 ---- */
+    await evalJs(`(() => {
+      window.__realFetch = window.fetch;
+      window.fetch = (u, o) => String(u).includes("/api/dir/scan")
+        ? Promise.resolve(new Response(JSON.stringify({
+            path: "x", truncated: false,
+            files: [{ name: "manuscript.md", size: 9, mtime: 2 }],
+            subdirs: ["docs"],
+          }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        : window.__realFetch(u, o);
+      return true;
+    })()`);
+    // 重新右键进文件页
+    await evalJs(`(async () => {
+      const det = document.querySelector('#side-tasks .sdir:not([data-dir="__orphan__"])');
+      det.dispatchEvent(new MouseEvent("contextmenu",
+        { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
+      await new Promise(r => setTimeout(r, 200));
+      [...document.querySelectorAll("#ctx-menu .ctx-item")]
+        .find(x => x.textContent.trim() === "查看文件").click();
+    })()`);
+    let legacy = null;
+    for (let i = 0; i < 20 && !legacy; i++) {
+      await sleep(300);
+      legacy = await evalJs(`(() => {
+        const lz = document.querySelector("#sf-body details.sf-lazy");
+        if (!lz) return null;
+        return JSON.stringify({
+          lazyName: (lz.querySelector("summary span") || {}).textContent || "",
+        });
+      })()`);
+    }
+    const lg = legacy ? JSON.parse(legacy) : {};
+    check("旧格式 subdirs 渲染成可点文件夹节点", lg.lazyName === "docs", JSON.stringify(lg));
+    // 展开懒加载文件夹 → 内层文件由 stub 接口填充
+    await evalJs(`(() => {
+      const d = document.querySelector("#sf-body details.sf-lazy");
+      d.open = true;
+      return true;
+    })()`);
+    let kid = null;
+    for (let i = 0; i < 20 && !kid; i++) {
+      await sleep(300);
+      kid = await evalJs(`(() => {
+        const f = document.querySelector("#sf-body details.sf-lazy .sf-kids .sf-file");
+        if (!f) return null;
+        return JSON.stringify({ name: f.dataset.name || "" });
+      })()`);
+    }
+    const kd = kid ? JSON.parse(kid) : {};
+    check("点开懒加载文件夹展示内层文件", kd.name === "manuscript.md", JSON.stringify(kd));
+    // 点懒加载文件夹里的文件：取内容必须用「该子目录」当 dir（曾用根目录拼名 → 404）
+    await evalJs(`(() => {
+      window.__fpReq = "";
+      window.fetch = (u, o) => {
+        if (String(u).includes("/api/dir/file")) {
+          window.__fpReq = String(u);
+          return Promise.resolve(new Response("# lazy 文件正文", {
+            status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } }));
+        }
+        return window.__realFetch(u, o);
+      };
+      document.querySelector("#sf-body details.sf-lazy .sf-kids .sf-file").click();
+      return true;
+    })()`);
+    let req = "";
+    for (let i = 0; i < 20 && !req; i++) {
+      await sleep(200);
+      req = await evalJs(`window.__fpReq || ""`);
+    }
+    check("懒加载子目录文件按子目录取内容（不再 404）",
+      /dir=[^&]+%2Fdocs&name=manuscript\.md$/.test(req), req);
+    await sleep(600);
+    const lazyBody = await evalJs(
+      `(document.querySelector("#file-pop .fp-body")||{}).innerText||""`);
+    check("弹窗展示懒加载子目录文件内容", lazyBody.includes("lazy 文件正文"),
+      lazyBody.slice(0, 120));
+    await evalJs(`window.filePopClose()`);
+    // 收尾：还原 fetch，退出文件页
+    await evalJs(`(() => {
+      window.fetch = window.__realFetch;
+      document.getElementById("btn-files-back").click();
+      return true;
+    })()`);
   } finally {
     try { proc.kill(); } catch (e) { /* ignore */ }
     try { spawn("taskkill", ["/F", "/T", "/PID", String(proc.pid)], { stdio: "ignore" }); } catch (e) { /* ignore */ }

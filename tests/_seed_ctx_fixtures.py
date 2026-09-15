@@ -12,10 +12,17 @@ from pathlib import Path
 data = Path(os.environ.get("TUTTI_DATA") or "/tmp/tutti-ctx")
 now = time.time()
 
-# 任务工作目录：真实存在（reveal 的 is_dir 校验要过），里面放个稿件文件
+# 任务工作目录：真实存在（reveal 的 is_dir 校验要过），里面放个稿件文件；
+# 「查看文件」递归核验用的嵌套文件也一并造（含噪音目录里的——必须被跳过）
 workdir = data / "sandbox-workdir"
 workdir.mkdir(parents=True, exist_ok=True)
 (workdir / "manuscript.md").write_text("# 造数稿件\n", encoding="utf-8")
+(workdir / "docs").mkdir(exist_ok=True)
+(workdir / "docs" / "note.md").write_text("# 嵌套笔记\n", encoding="utf-8")
+(workdir / "docs" / "deep").mkdir(exist_ok=True)
+(workdir / "docs" / "deep" / "data.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+(workdir / "node_modules").mkdir(exist_ok=True)
+(workdir / "node_modules" / "skipme.txt").write_text("noise\n", encoding="utf-8")
 
 TASK = "task-ctx"
 

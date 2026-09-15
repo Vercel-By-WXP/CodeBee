@@ -206,8 +206,9 @@ async function main() {
       typeof fp === "object" && fp.table && fp.ln && fp.kw && fp.num && fp.com && fp.str, JSON.stringify(fp));
 
     // 直接调 artPopup 内部分流不可行（需真实文件），改为验证 fp-code 渲染管线已被替换：
+    // artPopup 抽出共用的 _fpPreviewUrl（成品弹窗与目录文件弹窗共用），分流代码在那里面
     check("artPopup 代码分支用 codeBlockHTML（源码核验）", await evalJs(
-      `String(artPopup).indexOf("codeBlockHTML")>=0`));
+      `String(artPopup).indexOf("_fpPreviewUrl")>=0 && String(_fpPreviewUrl).indexOf("codeBlockHTML")>=0`));
     check("fpDiffPopup 行号管线（_fpDiffLine 带 no 槽）", await evalJs(
       `String(_fpDiffLine).indexOf("fp-no")>=0 && String(_fpDiffLine).indexOf("codeLineNum")>=0`));
 
