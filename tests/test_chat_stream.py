@@ -6,6 +6,8 @@
 SSE 流式，planner._log_streamer 把增量节流写进步骤日志。"""
 from __future__ import annotations
 
+import json
+
 from base import BaseTest
 
 
@@ -77,4 +79,41 @@ class TestLogStreamer(BaseTest):
         # 无 log_path → 空操作不炸
         cb2 = planner._log_streamer(None)
         cb2("x")
-        cb2.flush()
+
+
+class TestChatEmptyStreamFallback(BaseTest):
+    def runTest(self):
+        """实测暴露：网关对大请求回 200 空流 → 必须退回非流式，不能当成功返回空文本。"""
+        from app.core import modelhub
+        # 先在 providers 里放一个可用供应商（chat 需要 api_key 才走请求路径）
+        modelhub._FILE.write_text(json.dumps({
+            "providers": [{"id": "prov-x", "name": "X", "protocol": "openai",
+                           "base_url": "https://gw.example/v1", "api_key": "k",
+                           "enabled": True}],
+        }, ensure_ascii=False), encoding="utf-8")
+
+        calls = {"sse": 0, "json": 0}
+
+        def fake_sse(url, headers, body, allow_private, timeout, proto, on_delta):
+            calls["sse"] += 1
+            return 200, "", {}, ""          # 空流：200 但零事件
+
+        def fake_json(url, headers, body, allow_private, timeout=20):
+            calls["json"] += 1
+            self.assertNotIn("stream", body)   # 回退请求必须不带 stream
+            return 200, {"choices": [{"message": {"content": "非流式结果"}}],
+                         "usage": {"prompt_tokens": 3, "completion_tokens": 2,
+                                   "total_tokens": 5}}, ""
+
+        modelhub._post_sse_http, orig_sse = fake_sse, modelhub._post_sse_http
+        modelhub._post_json_http, orig_json = fake_json, modelhub._post_json_http
+        try:
+            res = modelhub.chat("prov-x", "m", "hi", on_delta=lambda d: None)
+        finally:
+            modelhub._post_sse_http = orig_sse
+            modelhub._post_json_http = orig_json
+        self.assertEqual(calls["sse"], 1)
+        self.assertEqual(calls["json"], 1)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["text"], "非流式结果")
+        self.assertEqual(res["tokens"], 5)

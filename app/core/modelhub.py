@@ -2143,11 +2143,16 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_tt
             url, headers, sbody, bool(prov.get("allow_private")), timeout, proto, on_delta)
         if status == 0 or err:
             return {"ok": False, "text": "", "tokens": 0, "usage": None, "error": err}
-        if not usage_d.get("total"):
-            usage_d["total"] = (usage_d.get("input", 0) + usage_d.get("output", 0)
-                                + usage_d.get("cached", 0))
-        return {"ok": True, "text": (text or "").strip(), "tokens": usage_d.get("total") or 0,
-                "usage": usage_d, "error": ""}
+        if not (text or "").strip():
+            # 网关对 stream 请求回了 200 但没吐任何 SSE 事件（空流/普通 JSON 体，
+            # 实测 vsllm 大请求会这样）：绝不能当成功返回空文本，掉到下方非流式重发
+            pass
+        else:
+            if not usage_d.get("total"):
+                usage_d["total"] = (usage_d.get("input", 0) + usage_d.get("output", 0)
+                                    + usage_d.get("cached", 0))
+            return {"ok": True, "text": (text or "").strip(), "tokens": usage_d.get("total") or 0,
+                    "usage": usage_d, "error": ""}
 
     status, data, err = _post_json_http(url, headers, body, bool(prov.get("allow_private")),
                                         timeout=timeout)
