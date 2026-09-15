@@ -3308,7 +3308,6 @@ window.artPopup = async function (runId, name, size) {
   const url = "/api/runs/" + encodeURIComponent(runId) + "/file?name=" + encodeURIComponent(name);
   const ext = _fpExt(name);
   _fpOpen(name, size ? "<i>" + esc(fmtSize(size)) + "</i>" : "",
-    '<a class="ghost" href="' + url + '" target="_blank" rel="noopener">' + esc(t("在新页打开")) + "</a>" +
     '<a class="ghost" href="' + url + '" download="' + esc(name) + '">' + esc(t("下载")) + "</a>");
   const el = _fpEnsure();
   try {
@@ -3341,7 +3340,7 @@ window.artPopup = async function (runId, name, size) {
         '<button class="ghost" onclick="copyFPText()">' + esc(t("复制")) + "</button>");
       return;
     }
-    _fpSetBody('<div class="fp-hint">' + esc(t("二进制文件不预览，可在新页打开或下载查看。")) + "</div>");
+    _fpSetBody('<div class="fp-hint">' + esc(t("二进制文件不预览，可下载查看。")) + "</div>");
   } catch (e) {
     _fpSetBody('<div class="fp-hint">' + esc(t("内容读取失败：") + (e.message || e)) + "</div>");
   }
