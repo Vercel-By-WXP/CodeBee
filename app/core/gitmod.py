@@ -332,8 +332,7 @@ def collect_changes(workdir, max_diff=30000):
         lines_n = _count_lines(fp, cap=_STAT_MAX_LINES)
         add_total += lines_n
         try:
-            with open(fp, encoding="utf-8", errors="replace") as f:
-                text = f.read(_INSIDE_MAX_FILE_CHARS)
+            text = runner.read_text_any_enc(fp)[:_INSIDE_MAX_FILE_CHARS]
         except OSError:
             continue
         lines = text.splitlines()[:_INSIDE_MAX_FILE_LINES]

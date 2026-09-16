@@ -115,6 +115,17 @@ def decode_output(data):
         return data.decode("utf-8", "replace")
 
 
+def read_text_any_enc(path):
+    """读文本文件，编码纪律同 decode_output（UTF-8 严格 → GBK 回退 → replace 兜底）。
+
+    工作区文件由 CLI 子代理落盘，中文 Windows 上 PowerShell Set-Content 缺省写
+    GBK；消费侧（章节/diff/故事圣经）统一走本函数，不再因编码混编出 U+FFFD。
+    文件不存在/读失败抛 OSError，由调用方兜底（与 open 语义一致）。"""
+    with open(path, "rb") as f:
+        data = f.read()
+    return decode_output(data)
+
+
 def tail_decoded(data, tail):
     """按字节取尾部再解码；切片可能落在 UTF-8 多字节字符中间，先丢弃开头的
     continuation 字节（10xxxxxx，至多 3 个）对齐字符边界，否则残缺字节会被

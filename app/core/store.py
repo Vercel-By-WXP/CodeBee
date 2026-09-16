@@ -713,7 +713,7 @@ def read_story_bible(task_id):
         return None, None, "工作目录不存在或路径越界"
     try:
         if p.is_file():
-            return str(p), p.read_text(encoding="utf-8", errors="replace"), None
+            return str(p), runner.read_text_any_enc(p), None
         return str(p), "", None   # 文件未创建：空内容
     except OSError as e:
         return None, None, "读取失败: %s" % e
@@ -1168,8 +1168,16 @@ def add_message(run_id, text, sender="本机", attachments=None):
         msgs = _ensure_messages(run)
         if len(msgs) >= 200:  # 信箱封顶：只保留最近 200 条，防 run.json 无限膨胀
             del msgs[:len(msgs) - 199]
+        # id 取「现存最大 +1」而非 len+1：撤回/封顶删除后 len 会回落，
+        # 用 len+1 会和存活消息撞号，前端按 id 撤回就错杀。
+        nxt = 1
+        for m in msgs:
+            try:
+                nxt = max(nxt, int(m.get("id") or 0) + 1)
+            except (TypeError, ValueError):
+                pass
         msg = {
-            "id": "%06d" % (len(msgs) + 1),
+            "id": "%06d" % nxt,
             "text": text, "sender": str(sender or "")[:24],
             "attachments": atts,
             "created_at": time.strftime("%H:%M:%S"),
@@ -1218,6 +1226,32 @@ def peek_messages(run_id):
         return [{"text": m.get("text", ""), "attachments": m.get("attachments", []),
                  "sender": m.get("sender", ""), "created_at": m.get("created_at", "")}
                 for m in _ensure_messages(run) if not m.get("consumed")]
+
+
+def retract_message(run_id, msg_id):
+    """撤回一条尚未下达（consumed=False）的指令：从信箱删除。
+
+    只删未消费的——已随步骤注入执行的删不掉（那是审计事实，且 prompt 已喂出）。
+    返回 (ok, err)：ok=False 时 err 说明原因，供前端 toast。"""
+    msg_id = str(msg_id or "").strip()
+    if not msg_id:
+        return False, "缺少消息 id"
+    with LOCK:
+        run = _RUNS.get(run_id)
+        if not run:
+            return False, "运行不存在"
+        msgs = _ensure_messages(run)
+        for i, m in enumerate(msgs):
+            if str(m.get("id")) == msg_id:
+                if m.get("consumed"):
+                    cb = m.get("consumed_by") or {}
+                    where = ("已随步骤 #" + str(cb.get("step")) + " 送达") if cb.get("step") \
+                        else "已送达执行"
+                    return False, "指令" + where + "，无法撤回"
+                del msgs[i]
+                _save_json(paths.RUNS_DIR / run_id / "run.json", run)
+                return True, ""
+        return False, "消息不在信箱中（可能已被撤回）"
 
 
 def set_paused(run_id, paused):

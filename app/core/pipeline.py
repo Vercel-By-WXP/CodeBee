@@ -952,20 +952,10 @@ __MANUSCRIPT__
 
 
 def _read_text_any_enc(p):
-    """工作区文件读文本：UTF-8 优先，严格解码失败回退 GBK（中文 Windows），
-    再失败按 UTF-8 replace。不回写磁盘——CLI 子代理在中文 Windows 上用
-    PowerShell Set-Content 写章稿缺省落成 GBK，errors="replace" 会把整章
-    中文变成 U+FFFD 并沿前情提要/评审/合并稿扩散，回退 GBK 即可救回。"""
-    with open(p, "rb") as f:
-        b = f.read()
-    try:
-        return b.decode("utf-8")
-    except UnicodeDecodeError:
-        pass
-    try:
-        return b.decode("gbk")
-    except UnicodeDecodeError:
-        return b.decode("utf-8", "replace")
+    """工作区文件读文本：委托 runner.read_text_any_enc（UTF-8 → GBK → replace）。
+    CLI 子代理在中文 Windows 上可能把文件落成 GBK，统一走这条纪律，消费侧
+    （前情提要/评审/合并稿）不再因编码混编出 U+FFFD。"""
+    return runner.read_text_any_enc(p)
 
 
 def _chapter_io(workdir, i, mode):
