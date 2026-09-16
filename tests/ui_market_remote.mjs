@@ -171,15 +171,26 @@ async function main() {
     check("按来源筛选后计数仍 4", cnt2.includes("4"), cnt2);
 
     // 5) 搜索（服务端过滤 + 350ms 防抖）：搜 clean 只剩 1
+    check("搜索按钮存在", await evalJs(`!!document.getElementById("mkr-search-btn")`));
     await evalJs(`(() => { const s = document.getElementById("mkr-search");
       s.value = "clean"; s.dispatchEvent(new Event("input")); })()`);
     await sleep(1200);
     const cnt3 = await evalJs(`document.getElementById("mk-count").textContent`);
     check("搜索 clean 后计数 1（已加载 1 / 共 1）", cnt3.includes("1") && cnt3.includes("已加载"), cnt3);
+    // 回车立即搜（不等防抖）：改词后回车，300ms 内就该生效
+    await evalJs(`(() => { const s = document.getElementById("mkr-search");
+      s.value = "hook"; s.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); })()`);
+    await sleep(600);
+    const cntEnter = await evalJs(`document.getElementById("mk-count").textContent`);
+    check("回车立即搜 hook（已加载 1 / 共 1）", cntEnter.includes("1") && cntEnter.includes("已加载"), cntEnter);
+    // 搜索按钮点击：清词后点按钮立即恢复全量
+    await evalJs(`(() => { const s = document.getElementById("mkr-search"); s.value = "";
+      document.getElementById("mkr-search-btn").click(); })()`);
+    await sleep(600);
+    const cntBtn = await evalJs(`document.getElementById("mk-count").textContent`);
+    check("搜索按钮点击恢复全量 4", cntBtn.includes("4"), cntBtn);
     // 全部加载完（4 < 60/页）：续页区隐藏
     check("无更多页时续页区隐藏", await evalJs(`document.getElementById("mkr-more").classList.contains("hidden")`));
-    await evalJs(`(() => { const s = document.getElementById("mkr-search"); s.value = ""; s.dispatchEvent(new Event("input")); })()`);
-    await sleep(1000);
 
     // 6) 安装失败路径：可装条目的 zip 地址指向 127.0.0.1 → SSRF 网关确定性拒绝，
     //    toast 报错（验证整条 安装→服务端→错误提示 链路，且不外联）。
