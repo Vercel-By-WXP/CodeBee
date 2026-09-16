@@ -54,8 +54,8 @@ codebee
 **方式二：源码运行（开发者）**
 
 ```bat
-git clone https://github.com/Vercel-By-WXP/Tutti.git
-cd Tutti
+git clone https://github.com/Vercel-By-WXP/CodeBee.git
+cd CodeBee
 start.bat
 :: 或
 python app\main.py --port 8765
