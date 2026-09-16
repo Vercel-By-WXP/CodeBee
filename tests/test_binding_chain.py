@@ -27,7 +27,7 @@ def _two_providers(modelhub):
 
 
 class TestCrossProviderChain(BaseTest):
-    def runTest(self):
+    def test_cross_provider_chain(self):
         from app.core import modelhub
         modelhub._FILE = self.data_dir / "models.json"
         pa, pb = _two_providers(modelhub)
@@ -46,29 +46,43 @@ class TestCrossProviderChain(BaseTest):
         self.assertEqual(b["model"], "claude-x")
         self.assertEqual(b["provider_id"], pa)          # 链首非空 provider
 
-        # 2) 解析：每条独立 env（anthropic=ANTHROPIC_*，openai=codex_provider）
+        # 2) 解析协议闸门：B 是 openai 且未适配 → claude-code 链里被跳过
         r = modelhub.resolve_binding("claude-code")
         self.assertEqual(r["model"], "claude-x")
+        self.assertEqual(r["model_fallbacks"], [])
+        self.assertEqual(len(r["call_chain"]), 1)
+
+        # 2b) B 通过「模型接入」适配测试（wire_caps 记实测过的 anthropic 面）
+        #     → 同一条链参与解析，按适配端点注入 ANTHROPIC_*（跨厂商降级恢复）
+        data = modelhub._load()
+        for p in data["providers"]:
+            if p["id"] == pb:
+                p["wire_caps"] = {"anthropic": {"base": "https://b.test",
+                                                "wire_api": "messages",
+                                                "checked_at": "2026-09-15 12:00"}}
+        modelhub._save(data)
+        r = modelhub.resolve_binding("claude-code")
         self.assertEqual(r["model_fallbacks"], ["gpt-y"])
         cc = r["call_chain"]
         self.assertEqual(len(cc), 2)
         self.assertEqual(cc[0]["env"]["ANTHROPIC_BASE_URL"], "https://a.test/v1")
         self.assertEqual(cc[0]["env"]["ANTHROPIC_MODEL"], "claude-x")
         self.assertNotIn("codex_provider", cc[0])
-        self.assertEqual(cc[1]["env"].get("ORCH_API_KEY"), FAKE_KEY_B)
-        self.assertEqual(cc[1]["codex_provider"]["base_url"], "https://b.test/v1")
+        self.assertEqual(cc[1]["env"]["ANTHROPIC_BASE_URL"], "https://b.test")
+        self.assertEqual(cc[1]["env"]["ANTHROPIC_AUTH_TOKEN"], FAKE_KEY_B)
+        self.assertNotIn("codex_provider", cc[1])
         # bind_agent 把链挂到副本
         agent = {"id": "claude-code", "kind": "claude", "mode": "real", "command": "claude"}
         ba = modelhub.bind_agent(agent)
         self.assertEqual(len(ba["call_chain"]), 2)
-        self.assertEqual(ba["call_chain"][1]["env"]["ORCH_API_KEY"], FAKE_KEY_B)
+        self.assertEqual(ba["call_chain"][1]["env"]["ANTHROPIC_BASE_URL"], "https://b.test")
 
-        # 3) 主供应商失效 → 链内跳过，备选顶上（跨厂商自动降级）
+        # 3) 主供应商失效 → 链内跳过，适配过的 B 顶上（跨厂商自动降级）
         modelhub.providers_op([pa], "disable")
         r2 = modelhub.resolve_binding("claude-code")
         self.assertEqual(r2["model"], "gpt-y")
         self.assertEqual(len(r2["call_chain"]), 1)
-        self.assertEqual(r2["call_chain"][0]["env"].get("ORCH_API_KEY"), FAKE_KEY_B)
+        self.assertEqual(r2["call_chain"][0]["env"].get("ANTHROPIC_BASE_URL"), "https://b.test")
         # 全链失效 → 整体回落 CLI 默认
         modelhub.providers_op([pb], "disable")
         self.assertIsNone(modelhub.resolve_binding("claude-code"))

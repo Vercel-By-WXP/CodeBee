@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""git_rev 隔离链回归：检出任务分支 → 产物提交到 tutti/<task-id> → 切回原分支。
+"""git_rev 隔离链回归：检出任务分支 → 产物提交到 codebee/<task-id> → 切回原分支。
 
 锁定 Baton/Codeband 式隔离的关键不变量：
 1. run 结束后用户工作区回到原分支且干净，产物只在任务分支上（WIP 也提交）；
@@ -58,7 +58,7 @@ class TestGitCheckout(BaseTest):
         self.assertEqual(g("status", "--porcelain")["stdout"].strip(), "")
         self.assertFalse((repo / "mock-impl.txt").exists())
         # 任务分支：存在、带产物提交；run.git 记录了收尾结果
-        tb = "tutti/" + task["id"]
+        tb = "codebee/" + task["id"]
         self.assertTrue(g("rev-parse", "--verify", "--quiet", "refs/heads/" + tb)["ok"])
         self.assertIn("mock-impl.txt", g("ls-tree", "-r", "--name-only", tb)["stdout"])
         self.assertTrue(run["git"]["restored"])
@@ -76,7 +76,7 @@ class TestGitCheckout(BaseTest):
 
         run1, task = self._run_code_task(repo)
         self.assertEqual(run1["status"], "done")
-        tb = "tutti/" + task["id"]
+        tb = "codebee/" + task["id"]
         self.assertEqual(int(g("rev-list", "--count", tb)["stdout"].strip()), base_count + 1)
 
         # 第二次 run：mock 实现向 mock-impl.txt 追加一行 → 新一笔提交
@@ -116,7 +116,7 @@ class TestGitCheckout(BaseTest):
         # 产物仍只落在任务分支，不污染用户工作区
         self.assertFalse((repo / "mock-impl.txt").exists())
         self.assertIn("mock-impl.txt",
-                      g("ls-tree", "-r", "--name-only", "tutti/" + task["id"])["stdout"])
+                      g("ls-tree", "-r", "--name-only", "codebee/" + task["id"])["stdout"])
 
     def test_non_repo_workdir_fails_loudly(self):
         """非 git 仓库 + git_rev → 显式失败（不静默退回当前 HEAD）。"""
@@ -142,7 +142,7 @@ class TestGitCheckout(BaseTest):
 
         self.assertEqual(run["status"], "done")
         self.assertTrue((att / "upload.png").exists())
-        tb = "tutti/" + task["id"]
+        tb = "codebee/" + task["id"]
         ls = g("ls-tree", "-r", "--name-only", tb)["stdout"]
         self.assertIn("mock-impl.txt", ls)
         self.assertNotIn("_attachments", ls)
@@ -175,9 +175,9 @@ class TestGitCheckout(BaseTest):
         from app.core import gitmod
         repo, g = self._git_repo()
         origin = g("rev-parse", "--abbrev-ref", "HEAD")["stdout"].strip()
-        g("checkout", "-q", "-b", "tutti/task-x")
+        g("checkout", "-q", "-b", "codebee/task-x")
         fin = gitmod.finalize_run(str(repo), {
-            "branch": "tutti/task-x", "from_branch": origin,
+            "branch": "codebee/task-x", "from_branch": origin,
             "base_commit": g("rev-parse", "--short", origin)["stdout"].strip(),
         }, "tutti r1: 空跑")
         self.assertTrue(fin["restored"])
@@ -197,7 +197,7 @@ class TestGitCheckout(BaseTest):
         # pipeline 检出时把任务标记为待裁决
         from app.core import store
         self.assertEqual(store.get_task(task["id"]).get("git_state"), "isolated")
-        tb = "tutti/" + task["id"]
+        tb = "codebee/" + task["id"]
 
         # 合并：mock-impl.txt 回到原分支、工作区干净、状态置 merged
         # （走 API 层语义：gitmod 合并 + store 置终态，与 _api_git_verdict 一致）
@@ -227,7 +227,7 @@ class TestGitCheckout(BaseTest):
         self.assertTrue(ok3, err3)
         store.set_task_git_state(task2["id"], "discarded")
         self.assertFalse(g("rev-parse", "--verify", "--quiet",
-                            "refs/heads/tutti/" + task2["id"])["ok"])
+                            "refs/heads/codebee/" + task2["id"])["ok"])
         self.assertEqual(g("status", "--porcelain")["stdout"].strip(), "")
         self.assertEqual(store.get_task(task2["id"]).get("git_state"), "discarded")
 
@@ -252,7 +252,7 @@ class TestGitCheckout(BaseTest):
         self.assertFalse(ok)
         self.assertIn("不存在", err)
         # 手工造一条任务分支（无带检出信息的 run 记录）
-        g("checkout", "-q", "-b", "tutti/" + task["id"])
+        g("checkout", "-q", "-b", "codebee/" + task["id"])
         (repo / "art.txt").write_text("产物", encoding="utf-8")
         g("add", "-A")
         g("-c", "user.name=T", "-c", "user.email=t@l", "commit", "-m", "artifacts")

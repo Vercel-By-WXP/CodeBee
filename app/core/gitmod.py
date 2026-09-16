@@ -4,10 +4,10 @@
 设计约束（对齐质量闸门原则：显式意图不容静默降级）：
 - 探测只读：/api/git/info 只跑 rev-parse / status / log，不改仓库任何东西。
 - 检出不破坏用户现场：不直接在所选版本上 detached checkout，而是从它创建
-  任务分支 tutti/<task-id> 再检出——原分支指针不动，任务产物落在任务分支上。
+  任务分支 codebee/<task-id> 再检出（老 tutti/<id> 分支仍可合并/丢弃）——原分支指针不动，任务产物落在任务分支上。
 - 工作区不必干净也能检出：未提交改动先 git stash 原样收起（_attachments/
   的附件除外，那是同一任务刚上传的素材），收尾切回后 apply 还原——开发仓库
-  永远有并行改动，硬拒绝等于代码版本隔离不可用。stash 条目按 tutti-stash-*
+  永远有并行改动，硬拒绝等于代码版本隔离不可用。stash 条目按 codebee-stash-*
   标记，还原失败时保留在 stash 列表里可手工找回，绝不静默丢弃。
 """
 from __future__ import annotations
@@ -78,8 +78,12 @@ def repo_info(workdir):
     }
 
 
+BRANCH_PREFIX = "codebee/"   # 任务分支前缀；老分支 tutti/<id> 在列表里仍被识别（下方 _TASK_BRANCH_RE）
+_TASK_BRANCH_RES = ("codebee/", "tutti/")   # 老版本发布的任务分支前缀，只读兼容
+
+
 def branch_name(task_id):
-    return "tutti/" + str(task_id)
+    return BRANCH_PREFIX + str(task_id)
 
 
 def _stash_dirty(workdir, label):
@@ -88,7 +92,7 @@ def _stash_dirty(workdir, label):
     _attachments/ 除外：那是本任务刚上传的附件，必须留在工作目录供注入。
     pathspec 排除走 argv，不经过 shell。失败返回错误——绝不静默带着脏改动切分支。
     """
-    m = "tutti-stash-%s" % label
+    m = "codebee-stash-%s" % label
     r = _git(workdir, "stash", "push", "-u", "-m", m,
              "--", ".", ":(exclude)_attachments", timeout=60)
     if not r["ok"]:
@@ -359,7 +363,7 @@ def finalize_run(workdir, gitinfo, message):
     语义（对齐 Baton/Codeband 的隔离模型；本轮只做「保存现场」，任务分支
     的合并/丢弃留给后续的人工裁决）：
     - 产物必须可找回：哪怕 run 失败/取消，已写盘的半成品也提交到
-      tutti/<task-id>（WIP 语义），绝不留在用户工作区里污染原分支；
+      codebee/<task-id>（WIP 语义），绝不留在用户工作区里污染原分支；
     - _attachments/ 不提交也不丢：用户上传的共享附件保持未跟踪，
       切分支后仍留在工作目录（未跟踪文件随分支切换保留）；
     - 任何收尾失败都不抛出：run 终态已定，问题记入 restore_error
@@ -394,7 +398,7 @@ def finalize_run(workdir, gitinfo, message):
         staged = _git(workdir, "diff", "--cached", "--name-only")
         if staged["ok"] and (staged["stdout"] or "").strip():
             # 一次性身份配置：用户仓库可能没配 user.name/email，缺身份不应让提交失败
-            c = _git(workdir, "-c", "user.name=Tutti", "-c", "user.email=tutti@orchestra.local",
+            c = _git(workdir, "-c", "user.name=CodeBee", "-c", "user.email=codebee@orchestra.local",
                      "commit", "-m", str(message)[:200], "--quiet")
             if not c["ok"]:
                 out["restore_error"] = "提交任务分支失败：%s" % (c["stderr"] or "")[-160:]
@@ -481,9 +485,9 @@ def merge_task_branch(workdir, task):
             out = {"restore_error": ""}
             _restore_stash(wd, stash_sha, out)
         return refuse("任务分支没有领先基线的提交（产物为空），无需合并；可直接丢弃")
-    m = _git(wd, "-c", "user.name=Tutti", "-c", "user.email=tutti@orchestra.local",
+    m = _git(wd, "-c", "user.name=CodeBee", "-c", "user.email=codebee@orchestra.local",
              "merge", "--no-ff", br, "-m",
-             "tutti: 合并任务分支 %s（%s）" % (tid, (task or {}).get("title") or "")[:200])
+             "codebee: 合并任务分支 %s（%s）" % (tid, (task or {}).get("title") or "")[:200])
     if not m["ok"]:
         ab = _git(wd, "merge", "--abort")
         tail = (m["stderr"] or m["stdout"] or "")[-200:]
@@ -775,7 +779,7 @@ def workbench_op(workdir, action, params=None):
 
     守卫：action 白名单；path 走 _safe_relpath；分支/提交信息限长。
     丢弃（discard）与删除未跟踪文件（delete）不可恢复，必须 confirm=true。
-    stash 系列只认 tutti-stash-* 标记条目——用户自己的 stash 不在工作台露出，
+    stash 系列只认 codebee-stash-* 标记条目（老 tutti-stash-* 也认）——用户自己的 stash 不在工作台露出，
     避免误 pop 撞掉检出链收起的现场。
     """
     params = params or {}
@@ -915,7 +919,7 @@ def workbench_op(workdir, action, params=None):
 
     if action == "stash_push":
         msg = str(params.get("message") or "").strip()[:120]
-        m = "tutti-stash-%s" % (msg or "workbench")
+        m = "codebee-stash-%s" % (msg or "workbench")
         r = _git(wd, "stash", "push", "-u", "-m", m, "--", ".", ":(exclude)_attachments",
                  timeout=90)
         ok, err, data = _res(r)
@@ -938,8 +942,8 @@ def workbench_op(workdir, action, params=None):
         if found is None:
             return False, "stash 条目不存在", {}
         # %s 的形态是 "On master: <message>"/"WIP on ..."，认标记用包含判断
-        if "tutti-stash-" not in found:
-            return False, "工作台只处理编排台自己收起的 stash（tutti-stash-*），你自己的条目请手工处理", {}
+        if "codebee-stash-" not in found:
+            return False, "工作台只处理编排台自己收起的 stash（codebee-stash-*），你自己的条目请手工处理", {}
         if action == "stash_pop":
             return _res(_git(wd, "stash", "pop", ref, timeout=90))
         if not params.get("confirm"):

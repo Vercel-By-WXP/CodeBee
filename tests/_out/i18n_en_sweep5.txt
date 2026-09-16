@@ -1,0 +1,14 @@
+data-lang = undefined （切换失败）
+[tasks] 残留中文 0 处
+[runs] 残留中文 0 处
+[automation] 残留中文 0 处
+[usage] 残留中文 0 处
+[agents] 残留中文 0 处
+[models] 残留中文 0 处
+[bindings] 残留中文 0 处
+[skills] 残留中文 0 处
+[market] 残留中文 0 处
+[orch] 残留中文 0 处
+[appearance] 残留中文 0 处
+[about] 残留中文 0 处
+FAIL: JS exception: "ReferenceError: switchTab is not defined\n    at <anonymous>:1:1"

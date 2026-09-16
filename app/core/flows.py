@@ -18,18 +18,22 @@ from . import paths
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "flows.json"
 
-ENGINES = ("code", "review")
+ENGINES = ("code", "review", "direct")
 
 # 引擎默认参数：自定义流程留空时的兜底
 ENGINE_DEFAULTS = {
     "review": {"manuscript": "output.md", "rubric": ["内容", "结构", "表达"],
                "threshold": 7.0, "rounds": 2},
     "code": {"verify_command": ""},
+    # direct：无参数——目标+附件即全部输入，跑完即止
 }
 
 # icon 约定："i-*" = 前端精灵表单色线性图标（随日/夜主题黑白）；其他值（emoji）原样显示，
 # 供自定义流程兜底。预置图标不进 overrides（见 _EDITABLE），保证升级后老数据也拿到新图标。
 BUILTIN_FLOWS = [
+    {"id": "direct", "name": "直接执行", "icon": "i-gauge", "engine": "direct", "builtin": True,
+     "goal_hint": "让 AI 直接做什么（一句话，可带附件）",
+     "note": "单智能体直达：目标+附件交给一个 CLI 跑完即止，无拆解/评审（快）"},
     {"id": "code", "name": "代码", "icon": "i-code", "engine": "code", "builtin": True,
      "goal_hint": "要实现/修复什么（一句话）",
      "note": "实现 → 验证命令 → 跨厂商评审 → 自动修复/换将"},
@@ -235,7 +239,7 @@ def upsert_flow(payload):
     if not _ID_RE.match(fid):
         return None, "流程 ID 只能是小写字母开头的字母/数字/-/_（≤32 位）"
     if engine not in ENGINES:
-        return None, "engine 必须是 code 或 review"
+        return None, "engine 必须是 code、review 或 direct"
     builtin_ids = {b["id"] for b in BUILTIN_FLOWS}
 
     if fid in builtin_ids:
@@ -282,8 +286,9 @@ def upsert_flow(payload):
             v = str(payload.get(key) or "").strip()
             if v:
                 flow[key] = v[:4000]
-    else:
+    elif engine == "code":
         flow["verify_command"] = str(payload.get("verify_command") or "")[:200]
+    # direct：无流程参数（目标+附件即全部输入）
     with _LOCK:
         data = _read()
         flows = data.get("flows") if isinstance(data.get("flows"), list) else []

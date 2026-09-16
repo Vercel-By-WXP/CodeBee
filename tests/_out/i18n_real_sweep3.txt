@@ -1,0 +1,1572 @@
+data-lang = en OK
+[tasks] 残留中文 36 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[runs] 残留中文 36 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[automation] 残留中文 36 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[usage] 残留中文 36 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[agents] 残留中文 36 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[models] 残留中文 36 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[bindings] 残留中文 36 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[skills] 残留中文 118 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+    · 爽点须配新阻力   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击、收官章禁一路顺风：每章至少一个本章内生的新麻烦，胜利只给七分（留质疑、流程延迟或对手反扑），章末必再起一波；禁靠前   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章首钩子不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 下次每章正文前100字内必须出现新信息、冲突、悬念或目标；写作前先定章首钩子句，验收时检查读者是否能立即知道为何继续读。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇说明拖节奏   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 设定、人物、环境信息不要铺在章首；先写事件异常或行动压力，必要背景压到钩子之后分散交代，避免开篇高密度不足导致过稿不稳。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章节开篇钩子滞后   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章第一屏必须抛出未解决冲突或新悬念；禁止以背景、情绪、日常铺垫开场。写完后检查前150字内是否有目标、威胁或选择，若没   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇信息密度不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 连载章节开头至少同时提供三类新信息：本章目标、主要障碍、失败代价；若只有状态说明，删减铺垫，把具体冲突事件提前到第一段。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章末钩子防自答   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 埋钩前先做谜面查重：读者能否用前文已有信息直接推出答案？能推出就换谜。优先立反常巧合、隐藏动机类真谜，并对钩子与已写情节   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 爽点依赖反派崩溃时，反派须正面出场给反应：台词、失态、挣扎等细节，不能只靠时间戳或旁人转述暗示；递证据、报进度类功能角色   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 隐瞒须硬动机   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 角色手握可自证的证据却长期隐瞒时，必须先设定硬理由（如亮出会打草惊蛇、毁掉更大布局、付具体代价），并在隐瞒期间写其挣扎与   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 胜利只给七分   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章反击成功的同时必须引入至少一个新阻力（新对手、新变数、旧患复发），且让阻力当章实际发生而非停留在计划层面；全程顺风顺   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 关键爽点须预埋伏笔   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 决定性反转所依赖的条款、道具、关系，必须在更早章节落笔可见（至少一句具体描写），不能事后亮牌+主角自答带过；写大纲时为每   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 禁静态倒叙承接章   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 旧账/往事禁止以两人对坐口述集中铺陈（连续独白、场景单一、当下动作停滞）；须拆散夹进验证据、交锋等当下动作里边做边带出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 情节 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「情节」多次低于阈值（第 10 章(6.5)、第 11 章(5.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证未过先定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · review 通过但 verify_pass=false 时，先复现验收命令并读取失败输出，按失败点修复；不得以代码评审   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 新增函数补用例   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 为新增函数补最小可运行测试，至少覆盖正常调用和边界；若无测试入口，先增加验证脚本，保证验证器能执行目标函数。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复不重复空转   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一 verify 结果连续失败两轮后，停止盲改，检查函数签名、调用路径、依赖、退出码和测试覆盖，确认验证器真的运行了目   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收口径显式化   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 实现前明确函数名、参数、返回值和调用方式，并让评审与验证脚本使用同一口径；避免“只加函数”目标下验收标准不可判定。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先修复   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后必须先运行最小单测或调用验证并确认通过；若 verify_pass=false，停止继续评审或返工，优先定位失   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败无问题清单   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 验证失败且问题列表为空时，评审必须补出复现命令、失败用例、函数签名和期望返回，否则不得继续修复。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 重复修复未定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复须记录修改点、预期断言变化、错误输出差异；同一失败连续两轮未定位，就停止并要人工日志。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 函数任务缺验收项   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数任务先确认是否要求单测、导出路径、类型注解、异常和边界输入，并转成自动验收项。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审与验证脱节   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审通过不能覆盖验证失败；验收以验证为准，高分评审必须解释不影响验证，否则按缺漏处理。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 环境缺陷误判代码   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 先区分代码缺陷与测试环境：检查依赖、入口、配置、断言版本；环境问题应标记阻塞并补环境，不反复改代码。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审不能替代验证   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · code任务以verify为验收硬门槛；review_pass、高分数不能替代通过。连续两轮verify失败时停止打补丁   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先归因   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · verify失败但issues为空时，先复现并记录退出码、报错栈、失败断言与期望值；确认根因是代码、测试配置还是环境，再   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 空评审不可信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 当评审无问题但验证失败，评审结果需标记为不可信；要求评审必须引用失败用例或明确无法判定，否则重新评审或人工定位验证输出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 明确接口验收   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数类任务开工前补齐函数名、参数、返回值、错误处理和验收测试；信息不足时先向用户确认，避免按猜测实现导致verify不   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复前本地复跑   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先本地跑verify或等价最小测试，确保失败原因已变化；若同一断言连续两轮未改善，不再增量修复，改为重新设计实   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 目标不可执行先澄清   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 代码任务目标过短或含混时，先补全输入、约束和验收标准；未澄清不得进入编码，避免产出无法验证。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证不通过不得通过   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 即使评审通过或分数高，只要 verify_pass=false 就判未通过；修复后必须提交新的验证日志与失败归因。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 多轮修复未变要停   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 切换前保留失败诊断   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 触发 switch 前保存最后一次验证输出、改动差异和疑似原因；下次同类任务优先核对失败分类。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验评不一致   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 修复循环若出现 review_pass 高且 verify_pass 连续失败，停止同策略自动修复，转人工分析验收命令、   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 无问题不盲信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审 issues 为空但整体 pass=false 时，以验收硬失败为唯一可信问题；提交前必须重跑 verify，并记   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收以verify为准   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同类加函数任务，只要verify_pass=false即不得因review_pass=true或高分判定通过；必须将ve   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复绑定失败证据   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先抓取verify日志/断言栈，明确期望签名、输入输出和依赖；无证据不改代码，禁止仅凭评审分数重复提交。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 三轮失败升级   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 若verify连续2-3轮失败且无新证据，停止盲修，切换策略：要求补充测试/验收标准，或人工确认运行环境与函数入口。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 加函数校验完整性   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后本地跑编译/静态检查/单测，确认函数被导出、类型签名匹配、错误路径和返回值可被调用，再进入verify。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 信息与证据必须有来源   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 凡主角获取越权信息或关键证据（系统记录、录音、账目），必须当章或前文落实来源链（人脉、留底、委托调查），并让角色当场追问   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸必须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击/打脸章节反派必须正面出场，写出其台词、失态、心理挣扎与代价；禁止只靠助理掉烟、旁人反应等旁证收尾。若该章反派客观无   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 人物 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「人物」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 文笔 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「文笔」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+[market] 残留中文 118 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+    · 爽点须配新阻力   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击、收官章禁一路顺风：每章至少一个本章内生的新麻烦，胜利只给七分（留质疑、流程延迟或对手反扑），章末必再起一波；禁靠前   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章首钩子不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 下次每章正文前100字内必须出现新信息、冲突、悬念或目标；写作前先定章首钩子句，验收时检查读者是否能立即知道为何继续读。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇说明拖节奏   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 设定、人物、环境信息不要铺在章首；先写事件异常或行动压力，必要背景压到钩子之后分散交代，避免开篇高密度不足导致过稿不稳。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章节开篇钩子滞后   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章第一屏必须抛出未解决冲突或新悬念；禁止以背景、情绪、日常铺垫开场。写完后检查前150字内是否有目标、威胁或选择，若没   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇信息密度不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 连载章节开头至少同时提供三类新信息：本章目标、主要障碍、失败代价；若只有状态说明，删减铺垫，把具体冲突事件提前到第一段。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章末钩子防自答   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 埋钩前先做谜面查重：读者能否用前文已有信息直接推出答案？能推出就换谜。优先立反常巧合、隐藏动机类真谜，并对钩子与已写情节   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 爽点依赖反派崩溃时，反派须正面出场给反应：台词、失态、挣扎等细节，不能只靠时间戳或旁人转述暗示；递证据、报进度类功能角色   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 隐瞒须硬动机   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 角色手握可自证的证据却长期隐瞒时，必须先设定硬理由（如亮出会打草惊蛇、毁掉更大布局、付具体代价），并在隐瞒期间写其挣扎与   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 胜利只给七分   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章反击成功的同时必须引入至少一个新阻力（新对手、新变数、旧患复发），且让阻力当章实际发生而非停留在计划层面；全程顺风顺   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 关键爽点须预埋伏笔   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 决定性反转所依赖的条款、道具、关系，必须在更早章节落笔可见（至少一句具体描写），不能事后亮牌+主角自答带过；写大纲时为每   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 禁静态倒叙承接章   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 旧账/往事禁止以两人对坐口述集中铺陈（连续独白、场景单一、当下动作停滞）；须拆散夹进验证据、交锋等当下动作里边做边带出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 情节 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「情节」多次低于阈值（第 10 章(6.5)、第 11 章(5.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证未过先定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · review 通过但 verify_pass=false 时，先复现验收命令并读取失败输出，按失败点修复；不得以代码评审   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 新增函数补用例   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 为新增函数补最小可运行测试，至少覆盖正常调用和边界；若无测试入口，先增加验证脚本，保证验证器能执行目标函数。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复不重复空转   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一 verify 结果连续失败两轮后，停止盲改，检查函数签名、调用路径、依赖、退出码和测试覆盖，确认验证器真的运行了目   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收口径显式化   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 实现前明确函数名、参数、返回值和调用方式，并让评审与验证脚本使用同一口径；避免“只加函数”目标下验收标准不可判定。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先修复   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后必须先运行最小单测或调用验证并确认通过；若 verify_pass=false，停止继续评审或返工，优先定位失   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败无问题清单   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 验证失败且问题列表为空时，评审必须补出复现命令、失败用例、函数签名和期望返回，否则不得继续修复。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 重复修复未定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复须记录修改点、预期断言变化、错误输出差异；同一失败连续两轮未定位，就停止并要人工日志。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 函数任务缺验收项   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数任务先确认是否要求单测、导出路径、类型注解、异常和边界输入，并转成自动验收项。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审与验证脱节   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审通过不能覆盖验证失败；验收以验证为准，高分评审必须解释不影响验证，否则按缺漏处理。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 环境缺陷误判代码   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 先区分代码缺陷与测试环境：检查依赖、入口、配置、断言版本；环境问题应标记阻塞并补环境，不反复改代码。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审不能替代验证   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · code任务以verify为验收硬门槛；review_pass、高分数不能替代通过。连续两轮verify失败时停止打补丁   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先归因   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · verify失败但issues为空时，先复现并记录退出码、报错栈、失败断言与期望值；确认根因是代码、测试配置还是环境，再   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 空评审不可信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 当评审无问题但验证失败，评审结果需标记为不可信；要求评审必须引用失败用例或明确无法判定，否则重新评审或人工定位验证输出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 明确接口验收   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数类任务开工前补齐函数名、参数、返回值、错误处理和验收测试；信息不足时先向用户确认，避免按猜测实现导致verify不   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复前本地复跑   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先本地跑verify或等价最小测试，确保失败原因已变化；若同一断言连续两轮未改善，不再增量修复，改为重新设计实   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 目标不可执行先澄清   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 代码任务目标过短或含混时，先补全输入、约束和验收标准；未澄清不得进入编码，避免产出无法验证。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证不通过不得通过   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 即使评审通过或分数高，只要 verify_pass=false 就判未通过；修复后必须提交新的验证日志与失败归因。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 多轮修复未变要停   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 切换前保留失败诊断   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 触发 switch 前保存最后一次验证输出、改动差异和疑似原因；下次同类任务优先核对失败分类。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验评不一致   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 修复循环若出现 review_pass 高且 verify_pass 连续失败，停止同策略自动修复，转人工分析验收命令、   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 无问题不盲信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审 issues 为空但整体 pass=false 时，以验收硬失败为唯一可信问题；提交前必须重跑 verify，并记   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收以verify为准   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同类加函数任务，只要verify_pass=false即不得因review_pass=true或高分判定通过；必须将ve   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复绑定失败证据   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先抓取verify日志/断言栈，明确期望签名、输入输出和依赖；无证据不改代码，禁止仅凭评审分数重复提交。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 三轮失败升级   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 若verify连续2-3轮失败且无新证据，停止盲修，切换策略：要求补充测试/验收标准，或人工确认运行环境与函数入口。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 加函数校验完整性   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后本地跑编译/静态检查/单测，确认函数被导出、类型签名匹配、错误路径和返回值可被调用，再进入verify。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 信息与证据必须有来源   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 凡主角获取越权信息或关键证据（系统记录、录音、账目），必须当章或前文落实来源链（人脉、留底、委托调查），并让角色当场追问   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸必须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击/打脸章节反派必须正面出场，写出其台词、失态、心理挣扎与代价；禁止只靠助理掉烟、旁人反应等旁证收尾。若该章反派客观无   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 人物 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「人物」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 文笔 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「文笔」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+[orch] 残留中文 118 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+    · 爽点须配新阻力   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击、收官章禁一路顺风：每章至少一个本章内生的新麻烦，胜利只给七分（留质疑、流程延迟或对手反扑），章末必再起一波；禁靠前   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章首钩子不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 下次每章正文前100字内必须出现新信息、冲突、悬念或目标；写作前先定章首钩子句，验收时检查读者是否能立即知道为何继续读。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇说明拖节奏   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 设定、人物、环境信息不要铺在章首；先写事件异常或行动压力，必要背景压到钩子之后分散交代，避免开篇高密度不足导致过稿不稳。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章节开篇钩子滞后   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章第一屏必须抛出未解决冲突或新悬念；禁止以背景、情绪、日常铺垫开场。写完后检查前150字内是否有目标、威胁或选择，若没   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇信息密度不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 连载章节开头至少同时提供三类新信息：本章目标、主要障碍、失败代价；若只有状态说明，删减铺垫，把具体冲突事件提前到第一段。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章末钩子防自答   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 埋钩前先做谜面查重：读者能否用前文已有信息直接推出答案？能推出就换谜。优先立反常巧合、隐藏动机类真谜，并对钩子与已写情节   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 爽点依赖反派崩溃时，反派须正面出场给反应：台词、失态、挣扎等细节，不能只靠时间戳或旁人转述暗示；递证据、报进度类功能角色   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 隐瞒须硬动机   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 角色手握可自证的证据却长期隐瞒时，必须先设定硬理由（如亮出会打草惊蛇、毁掉更大布局、付具体代价），并在隐瞒期间写其挣扎与   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 胜利只给七分   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章反击成功的同时必须引入至少一个新阻力（新对手、新变数、旧患复发），且让阻力当章实际发生而非停留在计划层面；全程顺风顺   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 关键爽点须预埋伏笔   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 决定性反转所依赖的条款、道具、关系，必须在更早章节落笔可见（至少一句具体描写），不能事后亮牌+主角自答带过；写大纲时为每   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 禁静态倒叙承接章   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 旧账/往事禁止以两人对坐口述集中铺陈（连续独白、场景单一、当下动作停滞）；须拆散夹进验证据、交锋等当下动作里边做边带出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 情节 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「情节」多次低于阈值（第 10 章(6.5)、第 11 章(5.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证未过先定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · review 通过但 verify_pass=false 时，先复现验收命令并读取失败输出，按失败点修复；不得以代码评审   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 新增函数补用例   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 为新增函数补最小可运行测试，至少覆盖正常调用和边界；若无测试入口，先增加验证脚本，保证验证器能执行目标函数。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复不重复空转   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一 verify 结果连续失败两轮后，停止盲改，检查函数签名、调用路径、依赖、退出码和测试覆盖，确认验证器真的运行了目   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收口径显式化   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 实现前明确函数名、参数、返回值和调用方式，并让评审与验证脚本使用同一口径；避免“只加函数”目标下验收标准不可判定。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先修复   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后必须先运行最小单测或调用验证并确认通过；若 verify_pass=false，停止继续评审或返工，优先定位失   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败无问题清单   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 验证失败且问题列表为空时，评审必须补出复现命令、失败用例、函数签名和期望返回，否则不得继续修复。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 重复修复未定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复须记录修改点、预期断言变化、错误输出差异；同一失败连续两轮未定位，就停止并要人工日志。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 函数任务缺验收项   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数任务先确认是否要求单测、导出路径、类型注解、异常和边界输入，并转成自动验收项。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审与验证脱节   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审通过不能覆盖验证失败；验收以验证为准，高分评审必须解释不影响验证，否则按缺漏处理。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 环境缺陷误判代码   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 先区分代码缺陷与测试环境：检查依赖、入口、配置、断言版本；环境问题应标记阻塞并补环境，不反复改代码。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审不能替代验证   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · code任务以verify为验收硬门槛；review_pass、高分数不能替代通过。连续两轮verify失败时停止打补丁   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先归因   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · verify失败但issues为空时，先复现并记录退出码、报错栈、失败断言与期望值；确认根因是代码、测试配置还是环境，再   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 空评审不可信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 当评审无问题但验证失败，评审结果需标记为不可信；要求评审必须引用失败用例或明确无法判定，否则重新评审或人工定位验证输出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 明确接口验收   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数类任务开工前补齐函数名、参数、返回值、错误处理和验收测试；信息不足时先向用户确认，避免按猜测实现导致verify不   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复前本地复跑   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先本地跑verify或等价最小测试，确保失败原因已变化；若同一断言连续两轮未改善，不再增量修复，改为重新设计实   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 目标不可执行先澄清   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 代码任务目标过短或含混时，先补全输入、约束和验收标准；未澄清不得进入编码，避免产出无法验证。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证不通过不得通过   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 即使评审通过或分数高，只要 verify_pass=false 就判未通过；修复后必须提交新的验证日志与失败归因。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 多轮修复未变要停   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 切换前保留失败诊断   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 触发 switch 前保存最后一次验证输出、改动差异和疑似原因；下次同类任务优先核对失败分类。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验评不一致   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 修复循环若出现 review_pass 高且 verify_pass 连续失败，停止同策略自动修复，转人工分析验收命令、   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 无问题不盲信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审 issues 为空但整体 pass=false 时，以验收硬失败为唯一可信问题；提交前必须重跑 verify，并记   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收以verify为准   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同类加函数任务，只要verify_pass=false即不得因review_pass=true或高分判定通过；必须将ve   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复绑定失败证据   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先抓取verify日志/断言栈，明确期望签名、输入输出和依赖；无证据不改代码，禁止仅凭评审分数重复提交。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 三轮失败升级   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 若verify连续2-3轮失败且无新证据，停止盲修，切换策略：要求补充测试/验收标准，或人工确认运行环境与函数入口。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 加函数校验完整性   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后本地跑编译/静态检查/单测，确认函数被导出、类型签名匹配、错误路径和返回值可被调用，再进入verify。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 信息与证据必须有来源   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 凡主角获取越权信息或关键证据（系统记录、录音、账目），必须当章或前文落实来源链（人脉、留底、委托调查），并让角色当场追问   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸必须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击/打脸章节反派必须正面出场，写出其台词、失态、心理挣扎与代价；禁止只靠助理掉烟、旁人反应等旁证收尾。若该章反派客观无   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 人物 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「人物」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 文笔 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「文笔」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+[appearance] 残留中文 118 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+    · 爽点须配新阻力   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击、收官章禁一路顺风：每章至少一个本章内生的新麻烦，胜利只给七分（留质疑、流程延迟或对手反扑），章末必再起一波；禁靠前   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章首钩子不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 下次每章正文前100字内必须出现新信息、冲突、悬念或目标；写作前先定章首钩子句，验收时检查读者是否能立即知道为何继续读。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇说明拖节奏   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 设定、人物、环境信息不要铺在章首；先写事件异常或行动压力，必要背景压到钩子之后分散交代，避免开篇高密度不足导致过稿不稳。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章节开篇钩子滞后   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章第一屏必须抛出未解决冲突或新悬念；禁止以背景、情绪、日常铺垫开场。写完后检查前150字内是否有目标、威胁或选择，若没   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇信息密度不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 连载章节开头至少同时提供三类新信息：本章目标、主要障碍、失败代价；若只有状态说明，删减铺垫，把具体冲突事件提前到第一段。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章末钩子防自答   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 埋钩前先做谜面查重：读者能否用前文已有信息直接推出答案？能推出就换谜。优先立反常巧合、隐藏动机类真谜，并对钩子与已写情节   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 爽点依赖反派崩溃时，反派须正面出场给反应：台词、失态、挣扎等细节，不能只靠时间戳或旁人转述暗示；递证据、报进度类功能角色   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 隐瞒须硬动机   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 角色手握可自证的证据却长期隐瞒时，必须先设定硬理由（如亮出会打草惊蛇、毁掉更大布局、付具体代价），并在隐瞒期间写其挣扎与   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 胜利只给七分   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章反击成功的同时必须引入至少一个新阻力（新对手、新变数、旧患复发），且让阻力当章实际发生而非停留在计划层面；全程顺风顺   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 关键爽点须预埋伏笔   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 决定性反转所依赖的条款、道具、关系，必须在更早章节落笔可见（至少一句具体描写），不能事后亮牌+主角自答带过；写大纲时为每   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 禁静态倒叙承接章   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 旧账/往事禁止以两人对坐口述集中铺陈（连续独白、场景单一、当下动作停滞）；须拆散夹进验证据、交锋等当下动作里边做边带出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 情节 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「情节」多次低于阈值（第 10 章(6.5)、第 11 章(5.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证未过先定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · review 通过但 verify_pass=false 时，先复现验收命令并读取失败输出，按失败点修复；不得以代码评审   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 新增函数补用例   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 为新增函数补最小可运行测试，至少覆盖正常调用和边界；若无测试入口，先增加验证脚本，保证验证器能执行目标函数。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复不重复空转   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一 verify 结果连续失败两轮后，停止盲改，检查函数签名、调用路径、依赖、退出码和测试覆盖，确认验证器真的运行了目   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收口径显式化   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 实现前明确函数名、参数、返回值和调用方式，并让评审与验证脚本使用同一口径；避免“只加函数”目标下验收标准不可判定。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先修复   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后必须先运行最小单测或调用验证并确认通过；若 verify_pass=false，停止继续评审或返工，优先定位失   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败无问题清单   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 验证失败且问题列表为空时，评审必须补出复现命令、失败用例、函数签名和期望返回，否则不得继续修复。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 重复修复未定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复须记录修改点、预期断言变化、错误输出差异；同一失败连续两轮未定位，就停止并要人工日志。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 函数任务缺验收项   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数任务先确认是否要求单测、导出路径、类型注解、异常和边界输入，并转成自动验收项。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审与验证脱节   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审通过不能覆盖验证失败；验收以验证为准，高分评审必须解释不影响验证，否则按缺漏处理。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 环境缺陷误判代码   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 先区分代码缺陷与测试环境：检查依赖、入口、配置、断言版本；环境问题应标记阻塞并补环境，不反复改代码。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审不能替代验证   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · code任务以verify为验收硬门槛；review_pass、高分数不能替代通过。连续两轮verify失败时停止打补丁   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先归因   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · verify失败但issues为空时，先复现并记录退出码、报错栈、失败断言与期望值；确认根因是代码、测试配置还是环境，再   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 空评审不可信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 当评审无问题但验证失败，评审结果需标记为不可信；要求评审必须引用失败用例或明确无法判定，否则重新评审或人工定位验证输出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 明确接口验收   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数类任务开工前补齐函数名、参数、返回值、错误处理和验收测试；信息不足时先向用户确认，避免按猜测实现导致verify不   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复前本地复跑   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先本地跑verify或等价最小测试，确保失败原因已变化；若同一断言连续两轮未改善，不再增量修复，改为重新设计实   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 目标不可执行先澄清   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 代码任务目标过短或含混时，先补全输入、约束和验收标准；未澄清不得进入编码，避免产出无法验证。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证不通过不得通过   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 即使评审通过或分数高，只要 verify_pass=false 就判未通过；修复后必须提交新的验证日志与失败归因。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 多轮修复未变要停   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 切换前保留失败诊断   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 触发 switch 前保存最后一次验证输出、改动差异和疑似原因；下次同类任务优先核对失败分类。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验评不一致   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 修复循环若出现 review_pass 高且 verify_pass 连续失败，停止同策略自动修复，转人工分析验收命令、   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 无问题不盲信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审 issues 为空但整体 pass=false 时，以验收硬失败为唯一可信问题；提交前必须重跑 verify，并记   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收以verify为准   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同类加函数任务，只要verify_pass=false即不得因review_pass=true或高分判定通过；必须将ve   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复绑定失败证据   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先抓取verify日志/断言栈，明确期望签名、输入输出和依赖；无证据不改代码，禁止仅凭评审分数重复提交。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 三轮失败升级   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 若verify连续2-3轮失败且无新证据，停止盲修，切换策略：要求补充测试/验收标准，或人工确认运行环境与函数入口。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 加函数校验完整性   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后本地跑编译/静态检查/单测，确认函数被导出、类型签名匹配、错误路径和返回值可被调用，再进入verify。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 信息与证据必须有来源   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 凡主角获取越权信息或关键证据（系统记录、录音、账目），必须当章或前文落实来源链（人脉、留底、委托调查），并让角色当场追问   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸必须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击/打脸章节反派必须正面出场，写出其台词、失态、心理挣扎与代价；禁止只靠助理掉烟、旁人反应等旁证收尾。若该章反派客观无   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 人物 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「人物」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 文笔 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「文笔」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+[about] 残留中文 118 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+    · 爽点须配新阻力   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击、收官章禁一路顺风：每章至少一个本章内生的新麻烦，胜利只给七分（留质疑、流程延迟或对手反扑），章末必再起一波；禁靠前   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章首钩子不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 下次每章正文前100字内必须出现新信息、冲突、悬念或目标；写作前先定章首钩子句，验收时检查读者是否能立即知道为何继续读。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇说明拖节奏   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 设定、人物、环境信息不要铺在章首；先写事件异常或行动压力，必要背景压到钩子之后分散交代，避免开篇高密度不足导致过稿不稳。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章节开篇钩子滞后   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章第一屏必须抛出未解决冲突或新悬念；禁止以背景、情绪、日常铺垫开场。写完后检查前150字内是否有目标、威胁或选择，若没   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇信息密度不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 连载章节开头至少同时提供三类新信息：本章目标、主要障碍、失败代价；若只有状态说明，删减铺垫，把具体冲突事件提前到第一段。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章末钩子防自答   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 埋钩前先做谜面查重：读者能否用前文已有信息直接推出答案？能推出就换谜。优先立反常巧合、隐藏动机类真谜，并对钩子与已写情节   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 爽点依赖反派崩溃时，反派须正面出场给反应：台词、失态、挣扎等细节，不能只靠时间戳或旁人转述暗示；递证据、报进度类功能角色   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 隐瞒须硬动机   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 角色手握可自证的证据却长期隐瞒时，必须先设定硬理由（如亮出会打草惊蛇、毁掉更大布局、付具体代价），并在隐瞒期间写其挣扎与   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 胜利只给七分   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章反击成功的同时必须引入至少一个新阻力（新对手、新变数、旧患复发），且让阻力当章实际发生而非停留在计划层面；全程顺风顺   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 关键爽点须预埋伏笔   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 决定性反转所依赖的条款、道具、关系，必须在更早章节落笔可见（至少一句具体描写），不能事后亮牌+主角自答带过；写大纲时为每   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 禁静态倒叙承接章   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 旧账/往事禁止以两人对坐口述集中铺陈（连续独白、场景单一、当下动作停滞）；须拆散夹进验证据、交锋等当下动作里边做边带出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 情节 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「情节」多次低于阈值（第 10 章(6.5)、第 11 章(5.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证未过先定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · review 通过但 verify_pass=false 时，先复现验收命令并读取失败输出，按失败点修复；不得以代码评审   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 新增函数补用例   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 为新增函数补最小可运行测试，至少覆盖正常调用和边界；若无测试入口，先增加验证脚本，保证验证器能执行目标函数。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复不重复空转   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一 verify 结果连续失败两轮后，停止盲改，检查函数签名、调用路径、依赖、退出码和测试覆盖，确认验证器真的运行了目   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收口径显式化   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 实现前明确函数名、参数、返回值和调用方式，并让评审与验证脚本使用同一口径；避免“只加函数”目标下验收标准不可判定。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先修复   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后必须先运行最小单测或调用验证并确认通过；若 verify_pass=false，停止继续评审或返工，优先定位失   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败无问题清单   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 验证失败且问题列表为空时，评审必须补出复现命令、失败用例、函数签名和期望返回，否则不得继续修复。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 重复修复未定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复须记录修改点、预期断言变化、错误输出差异；同一失败连续两轮未定位，就停止并要人工日志。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 函数任务缺验收项   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数任务先确认是否要求单测、导出路径、类型注解、异常和边界输入，并转成自动验收项。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审与验证脱节   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审通过不能覆盖验证失败；验收以验证为准，高分评审必须解释不影响验证，否则按缺漏处理。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 环境缺陷误判代码   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 先区分代码缺陷与测试环境：检查依赖、入口、配置、断言版本；环境问题应标记阻塞并补环境，不反复改代码。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审不能替代验证   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · code任务以verify为验收硬门槛；review_pass、高分数不能替代通过。连续两轮verify失败时停止打补丁   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先归因   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · verify失败但issues为空时，先复现并记录退出码、报错栈、失败断言与期望值；确认根因是代码、测试配置还是环境，再   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 空评审不可信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 当评审无问题但验证失败，评审结果需标记为不可信；要求评审必须引用失败用例或明确无法判定，否则重新评审或人工定位验证输出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 明确接口验收   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数类任务开工前补齐函数名、参数、返回值、错误处理和验收测试；信息不足时先向用户确认，避免按猜测实现导致verify不   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复前本地复跑   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先本地跑verify或等价最小测试，确保失败原因已变化；若同一断言连续两轮未改善，不再增量修复，改为重新设计实   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 目标不可执行先澄清   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 代码任务目标过短或含混时，先补全输入、约束和验收标准；未澄清不得进入编码，避免产出无法验证。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证不通过不得通过   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 即使评审通过或分数高，只要 verify_pass=false 就判未通过；修复后必须提交新的验证日志与失败归因。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 多轮修复未变要停   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 切换前保留失败诊断   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 触发 switch 前保存最后一次验证输出、改动差异和疑似原因；下次同类任务优先核对失败分类。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验评不一致   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 修复循环若出现 review_pass 高且 verify_pass 连续失败，停止同策略自动修复，转人工分析验收命令、   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 无问题不盲信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审 issues 为空但整体 pass=false 时，以验收硬失败为唯一可信问题；提交前必须重跑 verify，并记   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收以verify为准   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同类加函数任务，只要verify_pass=false即不得因review_pass=true或高分判定通过；必须将ve   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复绑定失败证据   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先抓取verify日志/断言栈，明确期望签名、输入输出和依赖；无证据不改代码，禁止仅凭评审分数重复提交。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 三轮失败升级   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 若verify连续2-3轮失败且无新证据，停止盲修，切换策略：要求补充测试/验收标准，或人工确认运行环境与函数入口。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 加函数校验完整性   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后本地跑编译/静态检查/单测，确认函数被导出、类型签名匹配、错误路径和返回值可被调用，再进入verify。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 信息与证据必须有来源   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 凡主角获取越权信息或关键证据（系统记录、录音、账目），必须当章或前文落实来源链（人脉、留底、委托调查），并让角色当场追问   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸必须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击/打脸章节反派必须正面出场，写出其台词、失态、心理挣扎与代价；禁止只靠助理掉烟、旁人反应等旁证收尾。若该章反派客观无   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 人物 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「人物」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 文笔 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「文笔」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+[composer] 残留中文 118 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+    · 爽点须配新阻力   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击、收官章禁一路顺风：每章至少一个本章内生的新麻烦，胜利只给七分（留质疑、流程延迟或对手反扑），章末必再起一波；禁靠前   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章首钩子不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 下次每章正文前100字内必须出现新信息、冲突、悬念或目标；写作前先定章首钩子句，验收时检查读者是否能立即知道为何继续读。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇说明拖节奏   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 设定、人物、环境信息不要铺在章首；先写事件异常或行动压力，必要背景压到钩子之后分散交代，避免开篇高密度不足导致过稿不稳。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章节开篇钩子滞后   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章第一屏必须抛出未解决冲突或新悬念；禁止以背景、情绪、日常铺垫开场。写完后检查前150字内是否有目标、威胁或选择，若没   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇信息密度不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 连载章节开头至少同时提供三类新信息：本章目标、主要障碍、失败代价；若只有状态说明，删减铺垫，把具体冲突事件提前到第一段。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章末钩子防自答   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 埋钩前先做谜面查重：读者能否用前文已有信息直接推出答案？能推出就换谜。优先立反常巧合、隐藏动机类真谜，并对钩子与已写情节   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 爽点依赖反派崩溃时，反派须正面出场给反应：台词、失态、挣扎等细节，不能只靠时间戳或旁人转述暗示；递证据、报进度类功能角色   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 隐瞒须硬动机   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 角色手握可自证的证据却长期隐瞒时，必须先设定硬理由（如亮出会打草惊蛇、毁掉更大布局、付具体代价），并在隐瞒期间写其挣扎与   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 胜利只给七分   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章反击成功的同时必须引入至少一个新阻力（新对手、新变数、旧患复发），且让阻力当章实际发生而非停留在计划层面；全程顺风顺   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 关键爽点须预埋伏笔   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 决定性反转所依赖的条款、道具、关系，必须在更早章节落笔可见（至少一句具体描写），不能事后亮牌+主角自答带过；写大纲时为每   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 禁静态倒叙承接章   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 旧账/往事禁止以两人对坐口述集中铺陈（连续独白、场景单一、当下动作停滞）；须拆散夹进验证据、交锋等当下动作里边做边带出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 情节 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「情节」多次低于阈值（第 10 章(6.5)、第 11 章(5.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证未过先定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · review 通过但 verify_pass=false 时，先复现验收命令并读取失败输出，按失败点修复；不得以代码评审   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 新增函数补用例   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 为新增函数补最小可运行测试，至少覆盖正常调用和边界；若无测试入口，先增加验证脚本，保证验证器能执行目标函数。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复不重复空转   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一 verify 结果连续失败两轮后，停止盲改，检查函数签名、调用路径、依赖、退出码和测试覆盖，确认验证器真的运行了目   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收口径显式化   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 实现前明确函数名、参数、返回值和调用方式，并让评审与验证脚本使用同一口径；避免“只加函数”目标下验收标准不可判定。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先修复   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后必须先运行最小单测或调用验证并确认通过；若 verify_pass=false，停止继续评审或返工，优先定位失   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败无问题清单   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 验证失败且问题列表为空时，评审必须补出复现命令、失败用例、函数签名和期望返回，否则不得继续修复。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 重复修复未定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复须记录修改点、预期断言变化、错误输出差异；同一失败连续两轮未定位，就停止并要人工日志。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 函数任务缺验收项   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数任务先确认是否要求单测、导出路径、类型注解、异常和边界输入，并转成自动验收项。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审与验证脱节   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审通过不能覆盖验证失败；验收以验证为准，高分评审必须解释不影响验证，否则按缺漏处理。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 环境缺陷误判代码   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 先区分代码缺陷与测试环境：检查依赖、入口、配置、断言版本；环境问题应标记阻塞并补环境，不反复改代码。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审不能替代验证   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · code任务以verify为验收硬门槛；review_pass、高分数不能替代通过。连续两轮verify失败时停止打补丁   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先归因   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · verify失败但issues为空时，先复现并记录退出码、报错栈、失败断言与期望值；确认根因是代码、测试配置还是环境，再   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 空评审不可信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 当评审无问题但验证失败，评审结果需标记为不可信；要求评审必须引用失败用例或明确无法判定，否则重新评审或人工定位验证输出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 明确接口验收   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数类任务开工前补齐函数名、参数、返回值、错误处理和验收测试；信息不足时先向用户确认，避免按猜测实现导致verify不   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复前本地复跑   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先本地跑verify或等价最小测试，确保失败原因已变化；若同一断言连续两轮未改善，不再增量修复，改为重新设计实   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 目标不可执行先澄清   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 代码任务目标过短或含混时，先补全输入、约束和验收标准；未澄清不得进入编码，避免产出无法验证。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证不通过不得通过   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 即使评审通过或分数高，只要 verify_pass=false 就判未通过；修复后必须提交新的验证日志与失败归因。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 多轮修复未变要停   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 切换前保留失败诊断   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 触发 switch 前保存最后一次验证输出、改动差异和疑似原因；下次同类任务优先核对失败分类。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验评不一致   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 修复循环若出现 review_pass 高且 verify_pass 连续失败，停止同策略自动修复，转人工分析验收命令、   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 无问题不盲信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审 issues 为空但整体 pass=false 时，以验收硬失败为唯一可信问题；提交前必须重跑 verify，并记   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收以verify为准   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同类加函数任务，只要verify_pass=false即不得因review_pass=true或高分判定通过；必须将ve   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复绑定失败证据   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先抓取verify日志/断言栈，明确期望签名、输入输出和依赖；无证据不改代码，禁止仅凭评审分数重复提交。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 三轮失败升级   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 若verify连续2-3轮失败且无新证据，停止盲修，切换策略：要求补充测试/验收标准，或人工确认运行环境与函数入口。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 加函数校验完整性   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后本地跑编译/静态检查/单测，确认函数被导出、类型签名匹配、错误路径和返回值可被调用，再进入verify。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 信息与证据必须有来源   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 凡主角获取越权信息或关键证据（系统记录、录音、账目），必须当章或前文落实来源链（人脉、留底、委托调查），并让角色当场追问   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸必须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击/打脸章节反派必须正面出场，写出其台词、失态、心理挣扎与代价；禁止只靠助理掉烟、旁人反应等旁证收尾。若该章反派客观无   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 人物 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「人物」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 文笔 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「文笔」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+[add-provider-dialog] 残留中文 118 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+    · 爽点须配新阻力   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击、收官章禁一路顺风：每章至少一个本章内生的新麻烦，胜利只给七分（留质疑、流程延迟或对手反扑），章末必再起一波；禁靠前   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章首钩子不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 下次每章正文前100字内必须出现新信息、冲突、悬念或目标；写作前先定章首钩子句，验收时检查读者是否能立即知道为何继续读。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇说明拖节奏   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 设定、人物、环境信息不要铺在章首；先写事件异常或行动压力，必要背景压到钩子之后分散交代，避免开篇高密度不足导致过稿不稳。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章节开篇钩子滞后   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章第一屏必须抛出未解决冲突或新悬念；禁止以背景、情绪、日常铺垫开场。写完后检查前150字内是否有目标、威胁或选择，若没   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇信息密度不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 连载章节开头至少同时提供三类新信息：本章目标、主要障碍、失败代价；若只有状态说明，删减铺垫，把具体冲突事件提前到第一段。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章末钩子防自答   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 埋钩前先做谜面查重：读者能否用前文已有信息直接推出答案？能推出就换谜。优先立反常巧合、隐藏动机类真谜，并对钩子与已写情节   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 爽点依赖反派崩溃时，反派须正面出场给反应：台词、失态、挣扎等细节，不能只靠时间戳或旁人转述暗示；递证据、报进度类功能角色   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 隐瞒须硬动机   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 角色手握可自证的证据却长期隐瞒时，必须先设定硬理由（如亮出会打草惊蛇、毁掉更大布局、付具体代价），并在隐瞒期间写其挣扎与   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 胜利只给七分   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章反击成功的同时必须引入至少一个新阻力（新对手、新变数、旧患复发），且让阻力当章实际发生而非停留在计划层面；全程顺风顺   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 关键爽点须预埋伏笔   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 决定性反转所依赖的条款、道具、关系，必须在更早章节落笔可见（至少一句具体描写），不能事后亮牌+主角自答带过；写大纲时为每   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 禁静态倒叙承接章   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 旧账/往事禁止以两人对坐口述集中铺陈（连续独白、场景单一、当下动作停滞）；须拆散夹进验证据、交锋等当下动作里边做边带出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 情节 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「情节」多次低于阈值（第 10 章(6.5)、第 11 章(5.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证未过先定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · review 通过但 verify_pass=false 时，先复现验收命令并读取失败输出，按失败点修复；不得以代码评审   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 新增函数补用例   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 为新增函数补最小可运行测试，至少覆盖正常调用和边界；若无测试入口，先增加验证脚本，保证验证器能执行目标函数。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复不重复空转   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一 verify 结果连续失败两轮后，停止盲改，检查函数签名、调用路径、依赖、退出码和测试覆盖，确认验证器真的运行了目   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收口径显式化   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 实现前明确函数名、参数、返回值和调用方式，并让评审与验证脚本使用同一口径；避免“只加函数”目标下验收标准不可判定。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先修复   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后必须先运行最小单测或调用验证并确认通过；若 verify_pass=false，停止继续评审或返工，优先定位失   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败无问题清单   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 验证失败且问题列表为空时，评审必须补出复现命令、失败用例、函数签名和期望返回，否则不得继续修复。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 重复修复未定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复须记录修改点、预期断言变化、错误输出差异；同一失败连续两轮未定位，就停止并要人工日志。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 函数任务缺验收项   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数任务先确认是否要求单测、导出路径、类型注解、异常和边界输入，并转成自动验收项。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审与验证脱节   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审通过不能覆盖验证失败；验收以验证为准，高分评审必须解释不影响验证，否则按缺漏处理。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 环境缺陷误判代码   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 先区分代码缺陷与测试环境：检查依赖、入口、配置、断言版本；环境问题应标记阻塞并补环境，不反复改代码。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审不能替代验证   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · code任务以verify为验收硬门槛；review_pass、高分数不能替代通过。连续两轮verify失败时停止打补丁   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先归因   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · verify失败但issues为空时，先复现并记录退出码、报错栈、失败断言与期望值；确认根因是代码、测试配置还是环境，再   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 空评审不可信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 当评审无问题但验证失败，评审结果需标记为不可信；要求评审必须引用失败用例或明确无法判定，否则重新评审或人工定位验证输出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 明确接口验收   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数类任务开工前补齐函数名、参数、返回值、错误处理和验收测试；信息不足时先向用户确认，避免按猜测实现导致verify不   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复前本地复跑   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先本地跑verify或等价最小测试，确保失败原因已变化；若同一断言连续两轮未改善，不再增量修复，改为重新设计实   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 目标不可执行先澄清   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 代码任务目标过短或含混时，先补全输入、约束和验收标准；未澄清不得进入编码，避免产出无法验证。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证不通过不得通过   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 即使评审通过或分数高，只要 verify_pass=false 就判未通过；修复后必须提交新的验证日志与失败归因。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 多轮修复未变要停   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 切换前保留失败诊断   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 触发 switch 前保存最后一次验证输出、改动差异和疑似原因；下次同类任务优先核对失败分类。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验评不一致   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 修复循环若出现 review_pass 高且 verify_pass 连续失败，停止同策略自动修复，转人工分析验收命令、   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 无问题不盲信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审 issues 为空但整体 pass=false 时，以验收硬失败为唯一可信问题；提交前必须重跑 verify，并记   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收以verify为准   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同类加函数任务，只要verify_pass=false即不得因review_pass=true或高分判定通过；必须将ve   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复绑定失败证据   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先抓取verify日志/断言栈，明确期望签名、输入输出和依赖；无证据不改代码，禁止仅凭评审分数重复提交。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 三轮失败升级   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 若verify连续2-3轮失败且无新证据，停止盲修，切换策略：要求补充测试/验收标准，或人工确认运行环境与函数入口。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 加函数校验完整性   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后本地跑编译/静态检查/单测，确认函数被导出、类型签名匹配、错误路径和返回值可被调用，再进入verify。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 信息与证据必须有来源   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 凡主角获取越权信息或关键证据（系统记录、录音、账目），必须当章或前文落实来源链（人脉、留底、委托调查），并让角色当场追问   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸必须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击/打脸章节反派必须正面出场，写出其台词、失态、心理挣扎与代价；禁止只靠助理掉烟、旁人反应等旁证收尾。若该章反派客观无   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 人物 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「人物」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 文笔 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「文笔」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+[import-dialog] 残留中文 119 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+    · 爽点须配新阻力   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击、收官章禁一路顺风：每章至少一个本章内生的新麻烦，胜利只给七分（留质疑、流程延迟或对手反扑），章末必再起一波；禁靠前   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章首钩子不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 下次每章正文前100字内必须出现新信息、冲突、悬念或目标；写作前先定章首钩子句，验收时检查读者是否能立即知道为何继续读。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇说明拖节奏   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 设定、人物、环境信息不要铺在章首；先写事件异常或行动压力，必要背景压到钩子之后分散交代，避免开篇高密度不足导致过稿不稳。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章节开篇钩子滞后   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章第一屏必须抛出未解决冲突或新悬念；禁止以背景、情绪、日常铺垫开场。写完后检查前150字内是否有目标、威胁或选择，若没   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇信息密度不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 连载章节开头至少同时提供三类新信息：本章目标、主要障碍、失败代价；若只有状态说明，删减铺垫，把具体冲突事件提前到第一段。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章末钩子防自答   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 埋钩前先做谜面查重：读者能否用前文已有信息直接推出答案？能推出就换谜。优先立反常巧合、隐藏动机类真谜，并对钩子与已写情节   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 爽点依赖反派崩溃时，反派须正面出场给反应：台词、失态、挣扎等细节，不能只靠时间戳或旁人转述暗示；递证据、报进度类功能角色   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 隐瞒须硬动机   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 角色手握可自证的证据却长期隐瞒时，必须先设定硬理由（如亮出会打草惊蛇、毁掉更大布局、付具体代价），并在隐瞒期间写其挣扎与   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 胜利只给七分   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章反击成功的同时必须引入至少一个新阻力（新对手、新变数、旧患复发），且让阻力当章实际发生而非停留在计划层面；全程顺风顺   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 关键爽点须预埋伏笔   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 决定性反转所依赖的条款、道具、关系，必须在更早章节落笔可见（至少一句具体描写），不能事后亮牌+主角自答带过；写大纲时为每   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 禁静态倒叙承接章   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 旧账/往事禁止以两人对坐口述集中铺陈（连续独白、场景单一、当下动作停滞）；须拆散夹进验证据、交锋等当下动作里边做边带出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 情节 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「情节」多次低于阈值（第 10 章(6.5)、第 11 章(5.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证未过先定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · review 通过但 verify_pass=false 时，先复现验收命令并读取失败输出，按失败点修复；不得以代码评审   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 新增函数补用例   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 为新增函数补最小可运行测试，至少覆盖正常调用和边界；若无测试入口，先增加验证脚本，保证验证器能执行目标函数。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复不重复空转   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一 verify 结果连续失败两轮后，停止盲改，检查函数签名、调用路径、依赖、退出码和测试覆盖，确认验证器真的运行了目   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收口径显式化   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 实现前明确函数名、参数、返回值和调用方式，并让评审与验证脚本使用同一口径；避免“只加函数”目标下验收标准不可判定。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先修复   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后必须先运行最小单测或调用验证并确认通过；若 verify_pass=false，停止继续评审或返工，优先定位失   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败无问题清单   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 验证失败且问题列表为空时，评审必须补出复现命令、失败用例、函数签名和期望返回，否则不得继续修复。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 重复修复未定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复须记录修改点、预期断言变化、错误输出差异；同一失败连续两轮未定位，就停止并要人工日志。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 函数任务缺验收项   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数任务先确认是否要求单测、导出路径、类型注解、异常和边界输入，并转成自动验收项。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审与验证脱节   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审通过不能覆盖验证失败；验收以验证为准，高分评审必须解释不影响验证，否则按缺漏处理。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 环境缺陷误判代码   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 先区分代码缺陷与测试环境：检查依赖、入口、配置、断言版本；环境问题应标记阻塞并补环境，不反复改代码。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审不能替代验证   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · code任务以verify为验收硬门槛；review_pass、高分数不能替代通过。连续两轮verify失败时停止打补丁   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先归因   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · verify失败但issues为空时，先复现并记录退出码、报错栈、失败断言与期望值；确认根因是代码、测试配置还是环境，再   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 空评审不可信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 当评审无问题但验证失败，评审结果需标记为不可信；要求评审必须引用失败用例或明确无法判定，否则重新评审或人工定位验证输出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 明确接口验收   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数类任务开工前补齐函数名、参数、返回值、错误处理和验收测试；信息不足时先向用户确认，避免按猜测实现导致verify不   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复前本地复跑   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先本地跑verify或等价最小测试，确保失败原因已变化；若同一断言连续两轮未改善，不再增量修复，改为重新设计实   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 目标不可执行先澄清   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 代码任务目标过短或含混时，先补全输入、约束和验收标准；未澄清不得进入编码，避免产出无法验证。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证不通过不得通过   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 即使评审通过或分数高，只要 verify_pass=false 就判未通过；修复后必须提交新的验证日志与失败归因。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 多轮修复未变要停   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 切换前保留失败诊断   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 触发 switch 前保存最后一次验证输出、改动差异和疑似原因；下次同类任务优先核对失败分类。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验评不一致   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 修复循环若出现 review_pass 高且 verify_pass 连续失败，停止同策略自动修复，转人工分析验收命令、   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 无问题不盲信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审 issues 为空但整体 pass=false 时，以验收硬失败为唯一可信问题；提交前必须重跑 verify，并记   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收以verify为准   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同类加函数任务，只要verify_pass=false即不得因review_pass=true或高分判定通过；必须将ve   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复绑定失败证据   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先抓取verify日志/断言栈，明确期望签名、输入输出和依赖；无证据不改代码，禁止仅凭评审分数重复提交。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 三轮失败升级   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 若verify连续2-3轮失败且无新证据，停止盲修，切换策略：要求补充测试/验收标准，或人工确认运行环境与函数入口。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 加函数校验完整性   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后本地跑编译/静态检查/单测，确认函数被导出、类型签名匹配、错误路径和返回值可被调用，再进入verify。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 信息与证据必须有来源   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 凡主角获取越权信息或关键证据（系统记录、录音、账目），必须当章或前文落实来源链（人脉、留底、委托调查），并让角色当场追问   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸必须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击/打脸章节反派必须正面出场，写出其台词、失态、心理挣扎与代价；禁止只靠助理掉烟、旁人反应等旁证收尾。若该章反派客观无   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 人物 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「人物」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 文笔 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「文笔」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 跳过 1 条（缺地址或格式不识别）：opencode/维云模型 YBJ   @ div.src-note<div.src-main<label.src-row<div.src-list
+[flows-manager] 残留中文 118 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+    · 爽点须配新阻力   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击、收官章禁一路顺风：每章至少一个本章内生的新麻烦，胜利只给七分（留质疑、流程延迟或对手反扑），章末必再起一波；禁靠前   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章首钩子不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 下次每章正文前100字内必须出现新信息、冲突、悬念或目标；写作前先定章首钩子句，验收时检查读者是否能立即知道为何继续读。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇说明拖节奏   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 设定、人物、环境信息不要铺在章首；先写事件异常或行动压力，必要背景压到钩子之后分散交代，避免开篇高密度不足导致过稿不稳。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章节开篇钩子滞后   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章第一屏必须抛出未解决冲突或新悬念；禁止以背景、情绪、日常铺垫开场。写完后检查前150字内是否有目标、威胁或选择，若没   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇信息密度不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 连载章节开头至少同时提供三类新信息：本章目标、主要障碍、失败代价；若只有状态说明，删减铺垫，把具体冲突事件提前到第一段。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章末钩子防自答   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 埋钩前先做谜面查重：读者能否用前文已有信息直接推出答案？能推出就换谜。优先立反常巧合、隐藏动机类真谜，并对钩子与已写情节   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 爽点依赖反派崩溃时，反派须正面出场给反应：台词、失态、挣扎等细节，不能只靠时间戳或旁人转述暗示；递证据、报进度类功能角色   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 隐瞒须硬动机   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 角色手握可自证的证据却长期隐瞒时，必须先设定硬理由（如亮出会打草惊蛇、毁掉更大布局、付具体代价），并在隐瞒期间写其挣扎与   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 胜利只给七分   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章反击成功的同时必须引入至少一个新阻力（新对手、新变数、旧患复发），且让阻力当章实际发生而非停留在计划层面；全程顺风顺   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 关键爽点须预埋伏笔   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 决定性反转所依赖的条款、道具、关系，必须在更早章节落笔可见（至少一句具体描写），不能事后亮牌+主角自答带过；写大纲时为每   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 禁静态倒叙承接章   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 旧账/往事禁止以两人对坐口述集中铺陈（连续独白、场景单一、当下动作停滞）；须拆散夹进验证据、交锋等当下动作里边做边带出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 情节 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「情节」多次低于阈值（第 10 章(6.5)、第 11 章(5.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证未过先定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · review 通过但 verify_pass=false 时，先复现验收命令并读取失败输出，按失败点修复；不得以代码评审   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 新增函数补用例   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 为新增函数补最小可运行测试，至少覆盖正常调用和边界；若无测试入口，先增加验证脚本，保证验证器能执行目标函数。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复不重复空转   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一 verify 结果连续失败两轮后，停止盲改，检查函数签名、调用路径、依赖、退出码和测试覆盖，确认验证器真的运行了目   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收口径显式化   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 实现前明确函数名、参数、返回值和调用方式，并让评审与验证脚本使用同一口径；避免“只加函数”目标下验收标准不可判定。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先修复   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后必须先运行最小单测或调用验证并确认通过；若 verify_pass=false，停止继续评审或返工，优先定位失   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败无问题清单   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 验证失败且问题列表为空时，评审必须补出复现命令、失败用例、函数签名和期望返回，否则不得继续修复。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 重复修复未定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复须记录修改点、预期断言变化、错误输出差异；同一失败连续两轮未定位，就停止并要人工日志。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 函数任务缺验收项   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数任务先确认是否要求单测、导出路径、类型注解、异常和边界输入，并转成自动验收项。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审与验证脱节   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审通过不能覆盖验证失败；验收以验证为准，高分评审必须解释不影响验证，否则按缺漏处理。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 环境缺陷误判代码   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 先区分代码缺陷与测试环境：检查依赖、入口、配置、断言版本；环境问题应标记阻塞并补环境，不反复改代码。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审不能替代验证   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · code任务以verify为验收硬门槛；review_pass、高分数不能替代通过。连续两轮verify失败时停止打补丁   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先归因   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · verify失败但issues为空时，先复现并记录退出码、报错栈、失败断言与期望值；确认根因是代码、测试配置还是环境，再   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 空评审不可信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 当评审无问题但验证失败，评审结果需标记为不可信；要求评审必须引用失败用例或明确无法判定，否则重新评审或人工定位验证输出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 明确接口验收   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数类任务开工前补齐函数名、参数、返回值、错误处理和验收测试；信息不足时先向用户确认，避免按猜测实现导致verify不   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复前本地复跑   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先本地跑verify或等价最小测试，确保失败原因已变化；若同一断言连续两轮未改善，不再增量修复，改为重新设计实   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 目标不可执行先澄清   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 代码任务目标过短或含混时，先补全输入、约束和验收标准；未澄清不得进入编码，避免产出无法验证。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证不通过不得通过   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 即使评审通过或分数高，只要 verify_pass=false 就判未通过；修复后必须提交新的验证日志与失败归因。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 多轮修复未变要停   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 切换前保留失败诊断   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 触发 switch 前保存最后一次验证输出、改动差异和疑似原因；下次同类任务优先核对失败分类。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验评不一致   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 修复循环若出现 review_pass 高且 verify_pass 连续失败，停止同策略自动修复，转人工分析验收命令、   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 无问题不盲信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审 issues 为空但整体 pass=false 时，以验收硬失败为唯一可信问题；提交前必须重跑 verify，并记   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收以verify为准   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同类加函数任务，只要verify_pass=false即不得因review_pass=true或高分判定通过；必须将ve   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复绑定失败证据   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先抓取verify日志/断言栈，明确期望签名、输入输出和依赖；无证据不改代码，禁止仅凭评审分数重复提交。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 三轮失败升级   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 若verify连续2-3轮失败且无新证据，停止盲修，切换策略：要求补充测试/验收标准，或人工确认运行环境与函数入口。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 加函数校验完整性   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后本地跑编译/静态检查/单测，确认函数被导出、类型签名匹配、错误路径和返回值可被调用，再进入verify。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 信息与证据必须有来源   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 凡主角获取越权信息或关键证据（系统记录、录音、账目），必须当章或前文落实来源链（人脉、留底、委托调查），并让角色当场追问   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸必须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击/打脸章节反派必须正面出场，写出其台词、失态、心理挣扎与代价；禁止只靠助理掉烟、旁人反应等旁证收尾。若该章反派客观无   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 人物 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「人物」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 文笔 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「文笔」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+[auto-form] 残留中文 118 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+    · 爽点须配新阻力   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击、收官章禁一路顺风：每章至少一个本章内生的新麻烦，胜利只给七分（留质疑、流程延迟或对手反扑），章末必再起一波；禁靠前   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章首钩子不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 下次每章正文前100字内必须出现新信息、冲突、悬念或目标；写作前先定章首钩子句，验收时检查读者是否能立即知道为何继续读。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇说明拖节奏   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 设定、人物、环境信息不要铺在章首；先写事件异常或行动压力，必要背景压到钩子之后分散交代，避免开篇高密度不足导致过稿不稳。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章节开篇钩子滞后   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章第一屏必须抛出未解决冲突或新悬念；禁止以背景、情绪、日常铺垫开场。写完后检查前150字内是否有目标、威胁或选择，若没   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇信息密度不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 连载章节开头至少同时提供三类新信息：本章目标、主要障碍、失败代价；若只有状态说明，删减铺垫，把具体冲突事件提前到第一段。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章末钩子防自答   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 埋钩前先做谜面查重：读者能否用前文已有信息直接推出答案？能推出就换谜。优先立反常巧合、隐藏动机类真谜，并对钩子与已写情节   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 爽点依赖反派崩溃时，反派须正面出场给反应：台词、失态、挣扎等细节，不能只靠时间戳或旁人转述暗示；递证据、报进度类功能角色   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 隐瞒须硬动机   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 角色手握可自证的证据却长期隐瞒时，必须先设定硬理由（如亮出会打草惊蛇、毁掉更大布局、付具体代价），并在隐瞒期间写其挣扎与   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 胜利只给七分   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章反击成功的同时必须引入至少一个新阻力（新对手、新变数、旧患复发），且让阻力当章实际发生而非停留在计划层面；全程顺风顺   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 关键爽点须预埋伏笔   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 决定性反转所依赖的条款、道具、关系，必须在更早章节落笔可见（至少一句具体描写），不能事后亮牌+主角自答带过；写大纲时为每   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 禁静态倒叙承接章   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 旧账/往事禁止以两人对坐口述集中铺陈（连续独白、场景单一、当下动作停滞）；须拆散夹进验证据、交锋等当下动作里边做边带出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 情节 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「情节」多次低于阈值（第 10 章(6.5)、第 11 章(5.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证未过先定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · review 通过但 verify_pass=false 时，先复现验收命令并读取失败输出，按失败点修复；不得以代码评审   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 新增函数补用例   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 为新增函数补最小可运行测试，至少覆盖正常调用和边界；若无测试入口，先增加验证脚本，保证验证器能执行目标函数。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复不重复空转   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一 verify 结果连续失败两轮后，停止盲改，检查函数签名、调用路径、依赖、退出码和测试覆盖，确认验证器真的运行了目   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收口径显式化   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 实现前明确函数名、参数、返回值和调用方式，并让评审与验证脚本使用同一口径；避免“只加函数”目标下验收标准不可判定。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先修复   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后必须先运行最小单测或调用验证并确认通过；若 verify_pass=false，停止继续评审或返工，优先定位失   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败无问题清单   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 验证失败且问题列表为空时，评审必须补出复现命令、失败用例、函数签名和期望返回，否则不得继续修复。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 重复修复未定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复须记录修改点、预期断言变化、错误输出差异；同一失败连续两轮未定位，就停止并要人工日志。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 函数任务缺验收项   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数任务先确认是否要求单测、导出路径、类型注解、异常和边界输入，并转成自动验收项。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审与验证脱节   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审通过不能覆盖验证失败；验收以验证为准，高分评审必须解释不影响验证，否则按缺漏处理。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 环境缺陷误判代码   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 先区分代码缺陷与测试环境：检查依赖、入口、配置、断言版本；环境问题应标记阻塞并补环境，不反复改代码。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审不能替代验证   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · code任务以verify为验收硬门槛；review_pass、高分数不能替代通过。连续两轮verify失败时停止打补丁   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先归因   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · verify失败但issues为空时，先复现并记录退出码、报错栈、失败断言与期望值；确认根因是代码、测试配置还是环境，再   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 空评审不可信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 当评审无问题但验证失败，评审结果需标记为不可信；要求评审必须引用失败用例或明确无法判定，否则重新评审或人工定位验证输出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 明确接口验收   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数类任务开工前补齐函数名、参数、返回值、错误处理和验收测试；信息不足时先向用户确认，避免按猜测实现导致verify不   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复前本地复跑   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先本地跑verify或等价最小测试，确保失败原因已变化；若同一断言连续两轮未改善，不再增量修复，改为重新设计实   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 目标不可执行先澄清   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 代码任务目标过短或含混时，先补全输入、约束和验收标准；未澄清不得进入编码，避免产出无法验证。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证不通过不得通过   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 即使评审通过或分数高，只要 verify_pass=false 就判未通过；修复后必须提交新的验证日志与失败归因。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 多轮修复未变要停   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 切换前保留失败诊断   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 触发 switch 前保存最后一次验证输出、改动差异和疑似原因；下次同类任务优先核对失败分类。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验评不一致   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 修复循环若出现 review_pass 高且 verify_pass 连续失败，停止同策略自动修复，转人工分析验收命令、   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 无问题不盲信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审 issues 为空但整体 pass=false 时，以验收硬失败为唯一可信问题；提交前必须重跑 verify，并记   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收以verify为准   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同类加函数任务，只要verify_pass=false即不得因review_pass=true或高分判定通过；必须将ve   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复绑定失败证据   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先抓取verify日志/断言栈，明确期望签名、输入输出和依赖；无证据不改代码，禁止仅凭评审分数重复提交。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 三轮失败升级   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 若verify连续2-3轮失败且无新证据，停止盲修，切换策略：要求补充测试/验收标准，或人工确认运行环境与函数入口。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 加函数校验完整性   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后本地跑编译/静态检查/单测，确认函数被导出、类型签名匹配、错误路径和返回值可被调用，再进入verify。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 信息与证据必须有来源   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 凡主角获取越权信息或关键证据（系统记录、录音、账目），必须当章或前文落实来源链（人脉、留底、委托调查），并让角色当场追问   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸必须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击/打脸章节反派必须正面出场，写出其台词、失态、心理挣扎与代价；禁止只靠助理掉烟、旁人反应等旁证收尾。若该章反派客观无   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 人物 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「人物」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 文笔 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「文笔」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+[cmdk] 残留中文 118 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 服务重启中断，可重试   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+    · 爽点须配新阻力   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击、收官章禁一路顺风：每章至少一个本章内生的新麻烦，胜利只给七分（留质疑、流程延迟或对手反扑），章末必再起一波；禁靠前   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章首钩子不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 下次每章正文前100字内必须出现新信息、冲突、悬念或目标；写作前先定章首钩子句，验收时检查读者是否能立即知道为何继续读。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇说明拖节奏   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 设定、人物、环境信息不要铺在章首；先写事件异常或行动压力，必要背景压到钩子之后分散交代，避免开篇高密度不足导致过稿不稳。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章节开篇钩子滞后   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章第一屏必须抛出未解决冲突或新悬念；禁止以背景、情绪、日常铺垫开场。写完后检查前150字内是否有目标、威胁或选择，若没   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 开篇信息密度不足   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 连载章节开头至少同时提供三类新信息：本章目标、主要障碍、失败代价；若只有状态说明，删减铺垫，把具体冲突事件提前到第一段。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 章末钩子防自答   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 埋钩前先做谜面查重：读者能否用前文已有信息直接推出答案？能推出就换谜。优先立反常巧合、隐藏动机类真谜，并对钩子与已写情节   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 爽点依赖反派崩溃时，反派须正面出场给反应：台词、失态、挣扎等细节，不能只靠时间戳或旁人转述暗示；递证据、报进度类功能角色   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 隐瞒须硬动机   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 角色手握可自证的证据却长期隐瞒时，必须先设定硬理由（如亮出会打草惊蛇、毁掉更大布局、付具体代价），并在隐瞒期间写其挣扎与   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 胜利只给七分   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每章反击成功的同时必须引入至少一个新阻力（新对手、新变数、旧患复发），且让阻力当章实际发生而非停留在计划层面；全程顺风顺   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 关键爽点须预埋伏笔   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 决定性反转所依赖的条款、道具、关系，必须在更早章节落笔可见（至少一句具体描写），不能事后亮牌+主角自答带过；写大纲时为每   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 禁静态倒叙承接章   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 旧账/往事禁止以两人对坐口述集中铺陈（连续独白、场景单一、当下动作停滞）；须拆散夹进验证据、交锋等当下动作里边做边带出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 情节 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「情节」多次低于阈值（第 10 章(6.5)、第 11 章(5.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证未过先定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · review 通过但 verify_pass=false 时，先复现验收命令并读取失败输出，按失败点修复；不得以代码评审   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 新增函数补用例   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 为新增函数补最小可运行测试，至少覆盖正常调用和边界；若无测试入口，先增加验证脚本，保证验证器能执行目标函数。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复不重复空转   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一 verify 结果连续失败两轮后，停止盲改，检查函数签名、调用路径、依赖、退出码和测试覆盖，确认验证器真的运行了目   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收口径显式化   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 实现前明确函数名、参数、返回值和调用方式，并让评审与验证脚本使用同一口径；避免“只加函数”目标下验收标准不可判定。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先修复   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后必须先运行最小单测或调用验证并确认通过；若 verify_pass=false，停止继续评审或返工，优先定位失   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败无问题清单   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 验证失败且问题列表为空时，评审必须补出复现命令、失败用例、函数签名和期望返回，否则不得继续修复。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 重复修复未定位   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复须记录修改点、预期断言变化、错误输出差异；同一失败连续两轮未定位，就停止并要人工日志。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 函数任务缺验收项   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数任务先确认是否要求单测、导出路径、类型注解、异常和边界输入，并转成自动验收项。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审与验证脱节   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审通过不能覆盖验证失败；验收以验证为准，高分评审必须解释不影响验证，否则按缺漏处理。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 环境缺陷误判代码   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 先区分代码缺陷与测试环境：检查依赖、入口、配置、断言版本；环境问题应标记阻塞并补环境，不反复改代码。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 评审不能替代验证   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · code任务以verify为验收硬门槛；review_pass、高分数不能替代通过。连续两轮verify失败时停止打补丁   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证失败先归因   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · verify失败但issues为空时，先复现并记录退出码、报错栈、失败断言与期望值；确认根因是代码、测试配置还是环境，再   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 空评审不可信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 当评审无问题但验证失败，评审结果需标记为不可信；要求评审必须引用失败用例或明确无法判定，否则重新评审或人工定位验证输出。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 明确接口验收   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 加函数类任务开工前补齐函数名、参数、返回值、错误处理和验收测试；信息不足时先向用户确认，避免按猜测实现导致verify不   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复前本地复跑   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先本地跑verify或等价最小测试，确保失败原因已变化；若同一断言连续两轮未改善，不再增量修复，改为重新设计实   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 目标不可执行先澄清   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 代码任务目标过短或含混时，先补全输入、约束和验收标准；未澄清不得进入编码，避免产出无法验证。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验证不通过不得通过   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 即使评审通过或分数高，只要 verify_pass=false 就判未通过；修复后必须提交新的验证日志与失败归因。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 多轮修复未变要停   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 切换前保留失败诊断   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 触发 switch 前保存最后一次验证输出、改动差异和疑似原因；下次同类任务优先核对失败分类。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验评不一致   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 修复循环若出现 review_pass 高且 verify_pass 连续失败，停止同策略自动修复，转人工分析验收命令、   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 无问题不盲信   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 评审 issues 为空但整体 pass=false 时，以验收硬失败为唯一可信问题；提交前必须重跑 verify，并记   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 验收以verify为准   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 同类加函数任务，只要verify_pass=false即不得因review_pass=true或高分判定通过；必须将ve   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 修复绑定失败证据   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 每轮修复前先抓取verify日志/断言栈，明确期望签名、输入输出和依赖；无证据不改代码，禁止仅凭评审分数重复提交。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 三轮失败升级   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 若verify连续2-3轮失败且无新证据，停止盲修，切换策略：要求补充测试/验收标准，或人工确认运行环境与函数入口。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 加函数校验完整性   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 新增函数后本地跑编译/静态检查/单测，确认函数被导出、类型签名匹配、错误路径和返回值可被调用，再进入verify。   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 信息与证据必须有来源   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 凡主角获取越权信息或关键证据（系统记录、录音、账目），必须当章或前文落实来源链（人脉、留底、委托调查），并让角色当场追问   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 打脸必须反派在场   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 反击/打脸章节反派必须正面出场，写出其台词、失态、心理挣扎与代价；禁止只靠助理掉烟、旁人反应等旁证收尾。若该章反派客观无   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 人物 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「人物」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+    · 文笔 维度反复不达标   @ span.name<div.head<div.card<div#skill-lessons.cards
+    · 历史运行中 serial_novel 的「文笔」多次低于阈值（第 10 章(6.5)、第 11 章(6.0)）。写这一维   @ div.note<div.card<div#skill-lessons.cards<div.panel.wide
+
+=== 英文模式残留中文合计：1551 处 ===

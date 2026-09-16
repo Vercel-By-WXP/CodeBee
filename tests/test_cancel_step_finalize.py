@@ -148,3 +148,38 @@ class TestCancelStepFinalize(BaseTest):
             self.assertEqual(s["status"], "cancelled")
         for s in (store.get_run(rid2) or {})["steps"]:
             self.assertEqual(s["status"], "cancelled")
+
+    def test_cancel_queued_run_takes_effect_immediately(self):
+        """排队中的任务点取消：直接落 cancelled 终态，不再等起跑。
+
+        真实缺口（2026-09-15）：取消事件在 worker 起跑时才创建，排队任务
+        jobs.cancel 返回 False，起跑后照跑不误——取消像没反应。
+        """
+        from app.core import jobs, store
+        run = store.create_run("orchestration", "排队取消测试")
+        rid = run["id"]
+        self.assertEqual(run["status"], "queued")
+        # 模拟 main.py 取消路由：先落标记再调 jobs.cancel
+        store.update_run(rid, cancelled_by_user=True)
+        ok = jobs.cancel(rid)
+        self.assertTrue(ok, "排队任务必须能立即取消")
+        self.assertEqual((store.get_run(rid) or {}).get("status"), "cancelled")
+        self.assertTrue((store.get_run(rid) or {}).get("cancelled_by_user"))
+        # 取消后的 run 不再被当成排队任务继续（终态幂等：再取消不报错不变态）
+        ok2 = jobs.cancel(rid)
+        self.assertFalse(ok2)
+        self.assertEqual((store.get_run(rid) or {}).get("status"), "cancelled")
+
+    def test_execute_run_honors_cancelled_by_user_flag(self):
+        """起跑兜底：run 已带 cancelled_by_user 标记时，execute_run 不再启动流水线。
+
+        覆盖事件与标记竞态的场景（排队期取消后 CANCELS 被清掉、事件丢失）。
+        """
+        from app.core import jobs, pipeline, store
+        rid = store.create_run("orchestration", "标记兜底测试")["id"]
+        store.update_run(rid, cancelled_by_user=True)
+        # execute_run 会调 cancel_event_for 拿事件；这里直接跑入口
+        pipeline.execute_run(rid)
+        run = store.get_run(rid)
+        self.assertEqual(run["status"], "cancelled")
+        self.assertFalse(run.get("steps"), "不得产生任何步骤——流水线没跑")

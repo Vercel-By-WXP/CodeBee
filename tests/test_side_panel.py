@@ -108,7 +108,7 @@ class TestSidePanel(BaseTest):
         self.assertEqual(d["task"]["id"], task["id"])
         self.assertEqual(d["task"]["git_state"], "isolated")
         self.assertEqual(d["run"]["id"], run["id"])
-        self.assertEqual(d["git"]["branch"], "tutti/" + task["id"])
+        self.assertEqual(d["git"]["branch"], "codebee/" + task["id"])
         self.assertEqual(d["git"]["state"], "isolated")
         self.assertTrue(d["git"]["restored"])
         # 结束后走快照：mock 产物在快照里，统计数值来自落盘 changes
@@ -132,7 +132,7 @@ class TestSidePanel(BaseTest):
             "workdir": str(repo), "git_rev": "HEAD"})
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
         store.update_run(run["id"], status="running", git={
-            "rev": "HEAD", "branch": "tutti/" + task["id"],
+            "rev": "HEAD", "branch": "codebee/" + task["id"],
             "commit": "abc1234", "from_branch": "master", "base_commit": "abc1234"})
         store.update_task_status(task["id"], "running")
         (repo / "live.txt").write_text("l1\nl2\n", encoding="utf-8")
@@ -144,7 +144,7 @@ class TestSidePanel(BaseTest):
         self.assertEqual(d["changes"]["count"], 1)
         self.assertEqual(d["changes"]["add_total"], 2)
         # 运行中没有裁决按钮的依据，但分支信息齐全
-        self.assertEqual(d["git"]["branch"], "tutti/" + task["id"])
+        self.assertEqual(d["git"]["branch"], "codebee/" + task["id"])
 
     def test_side_endpoint_errors_and_minimal(self):
         """404 与「未启用隔离」任务的最小返回（git.branch 空 → 前端只给说明）。"""

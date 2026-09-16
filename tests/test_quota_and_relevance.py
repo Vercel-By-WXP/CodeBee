@@ -79,10 +79,10 @@ class TestQuotaRouting(BaseTest):
         total2, reason2 = router.score(agent, "implement", "code", {})
         self.assertLess(total2, total)
         self.assertIn("5000/1000", reason2)
-        # 无配额：用量再大也无感
+        # 无配额：用量再大也无感（总分里只剩绑定链校准项：测试环境绑定空 → -25）
         usage._HOURLY_CACHE.update(ts=time.time(), val={"q-cli": 999999})
         free = {"id": "q-cli", "kind": "codex", "quota_tokens_per_hour": 0}
         total3, reason3 = router.score(free, "implement", "code", {})
-        self.assertEqual(total3, router.CAPABILITY["codex"])
+        self.assertEqual(total3, router.CAPABILITY["codex"] - 25.0)
         self.assertNotIn("tokens", reason3)
         usage._HOURLY_CACHE.update(ts=0.0, val={})

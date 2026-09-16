@@ -12,7 +12,7 @@
 
 - **跨厂商对抗式评审**：评审者强制来自与作者不同的模型族——同族自评有同款盲区，
   换一双"眼睛"才挑得出陈词滥调（无跨厂商可用时如实备注，绝不伪装）。
-- **产物隔离在任务分支**：指定代码版本的任务，产物提交在 `tutti/<task-id>` 分支上，
+- **产物隔离在任务分支**：指定代码版本的任务，产物提交在 `codebee/<task-id>` 分支上，
   你的工作区始终干净；UI 或 `tools/bee.py` 里过目变更，一键「合并回原分支」或「丢弃」。
 - **多任务并发互不打扰**（1-6 可配）、**六种内置任务类型 + 自定义流程**；
   「编排设置」可指定任意厂商的 API 模型作为**编排者**；CLI 可绑定**跨厂商模型链**。
@@ -34,13 +34,34 @@ python toolsee.py discard <task>    :: 否决——删除任务分支（需输 
 
 ## 快速开始
 
+**方式一：npm 安装（推荐，普通用户）**
+
+需要本机装有 [Node.js](https://nodejs.org) 与 [Python 3.8+](https://www.python.org/downloads/windows/)
+（Windows 装 Python 时勾选 “Add python.exe to PATH”）。然后：
+
 ```bat
+npm install -g codebee
+codebee
+```
+
+`codebee` 命令会启动服务并自动打开浏览器（默认 `http://127.0.0.1:8765`）。
+**启动后那个命令行窗口就是服务本身**——保持开着别关，Ctrl+C 即退出。
+升级：`npm update -g codebee`，或在界面「设置 → 关于与更新」里一键升级。
+
+数据存放在用户目录（Windows `%APPDATA%\CodeBee`，macOS/Linux `~/.codebee`），
+升级/重装不影响；老版本 Tutti 目录（`%APPDATA%\Tutti`）会被自动沿用，无需迁移。
+
+**方式二：源码运行（开发者）**
+
+```bat
+git clone https://github.com/Vercel-By-WXP/Tutti.git
+cd Tutti
 start.bat
 :: 或
 python app\main.py --port 8765
 ```
 
-自动打开 `http://127.0.0.1:8765`。首次运行会在 `data/` 下生成默认目录。
+自动打开 `http://127.0.0.1:8765`。源码模式数据落仓库 `data/` 目录。
 
 ## 手机 / 远程访问
 
@@ -68,8 +89,8 @@ python app\main.py --port 8765
 ```bat
 :: 一次性配置：cloudflared 登录后创建隧道并绑定子域名
 cloudflared tunnel login
-cloudflared tunnel create tutti
-cloudflared tunnel route dns --overwrite-dns <隧道UUID> tutti.你的域名.com
+cloudflared tunnel create codebee
+cloudflared tunnel route dns --overwrite-dns <隧道UUID> codebee.你的域名.com
 
 :: 之后日常启动（服务 + 隧道一键起）：
 start-public.bat

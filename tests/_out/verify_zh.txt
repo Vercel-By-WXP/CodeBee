@@ -1,0 +1,146 @@
+connected to http://127.0.0.1:18801/
+
+=== Step 1: 默认中文 ===
+{
+  "lang": "en",
+  "title": "CodeBee · 多智能体编排台",
+  "brand": "CodeBee",
+  "newTaskBtn": "＋ New taskN",
+  "tasksLabel": "Tasks",
+  "provSideText": "No provider",
+  "setItems": [
+    "Tasks",
+    "Runs",
+    "Automation",
+    "Usage",
+    "Agents",
+    "Models",
+    "CLI bindings",
+    "Skill library",
+    "Plugin market",
+    "Orchestrator",
+    "Skins",
+    "About & Updates",
+    "Phone link"
+  ],
+  "pageTitle": "Tasks",
+  "conn": "Connecting…",
+  "hero": "Good afternoon — what can I help you with?",
+  "heroSub": "A one-line goal is enough — CodeBee auto-decomposes, routes, executes, verifies, and cross-vendor reviews.",
+  "appearanceTitles": [
+    "Language",
+    "Theme",
+    "Skins"
+  ],
+  "langModeBtns": [
+    {
+      "lang": "zh",
+      "text": "中文",
+      "active": false
+    },
+    {
+      "lang": "en",
+      "text": "English",
+      "active": true
+    }
+  ]
+}
+
+=== Step 2: 进入外观页（中文） ===
+appearanceTitles: [ 'Language', 'Theme', 'Skins Deep sea · Light' ]
+langModeBtns: [
+  { lang: 'zh', text: '中文', active: false },
+  { lang: 'en', text: 'English', active: true }
+]
+
+=== Step 3: 切到英文 ===
+{
+  "lang": "en",
+  "title": "! CodeBee · 多智能体编排台",
+  "brand": "CodeBee",
+  "newTaskBtn": "＋ New taskN",
+  "tasksLabel": "Tasks",
+  "provSideText": "No provider",
+  "setItems": [
+    "Tasks",
+    "Runs",
+    "Automation",
+    "Usage",
+    "Agents",
+    "Models",
+    "CLI bindings",
+    "Skill library",
+    "Plugin market",
+    "Orchestrator",
+    "Skins",
+    "About & Updates",
+    "Phone link"
+  ],
+  "pageTitle": "Skins",
+  "conn": "Connected",
+  "hero": "Good afternoon — what can I help you with?",
+  "heroSub": "A one-line goal is enough — CodeBee auto-decomposes, routes, executes, verifies, and cross-vendor reviews.",
+  "appearanceTitles": [
+    "Language",
+    "Theme",
+    "Skins Deep sea · Light"
+  ],
+  "langModeBtns": [
+    {
+      "lang": "zh",
+      "text": "中文",
+      "active": false
+    },
+    {
+      "lang": "en",
+      "text": "English",
+      "active": true
+    }
+  ]
+}
+
+=== Step 4: 切回中文 ===
+{
+  "lang": "zh",
+  "title": "! CodeBee · 多智能体编排台",
+  "brand": "CodeBee",
+  "newTaskBtn": "＋ 新任务N",
+  "tasksLabel": "任务",
+  "provSideText": "未选厂商",
+  "setItems": [
+    "任务",
+    "运行记录",
+    "自动化",
+    "用量统计",
+    "智能体管理",
+    "模型接入",
+    "CLI 绑定",
+    "经验库",
+    "插件市场",
+    "编排设置",
+    "皮肤",
+    "关于与更新",
+    "手机连接"
+  ],
+  "pageTitle": "皮肤",
+  "conn": "已连接",
+  "hero": "下午好呀，有什么想让我帮忙的吗",
+  "heroSub": "一句话目标即可 —— CodeBee 自动拆解、智能路由、执行、验证并跨厂商评审。",
+  "appearanceTitles": [
+    "语言 / Language",
+    "明暗",
+    "皮肤 Deep sea · Light"
+  ],
+  "langModeBtns": [
+    {
+      "lang": "zh",
+      "text": "中文",
+      "active": true
+    },
+    {
+      "lang": "en",
+      "text": "English",
+      "active": false
+    }
+  ]
+}

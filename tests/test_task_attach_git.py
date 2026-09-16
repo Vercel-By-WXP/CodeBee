@@ -209,7 +209,7 @@ class TestGitmodInfoAndCheckout(BaseTest):
         task = store.create_task({"type": "code", "goal": "g", "workdir": str(wd)})
         ok, err, gi = gitmod.prepare_checkout(str(wd), "v1.0", task["id"])
         self.assertTrue(ok, err)
-        self.assertEqual(gi["branch"], "tutti/" + task["id"])
+        self.assertEqual(gi["branch"], "codebee/" + task["id"])
         self.assertEqual((wd / "a.txt").read_text(encoding="utf-8"), "v1")
 
         # 脏工作区不再拒绝检出：stash 原样收起（_attachments 未跟踪文件不算脏、不收）
@@ -219,7 +219,7 @@ class TestGitmodInfoAndCheckout(BaseTest):
         self.assertTrue(gi2["stash"])
         self.assertFalse(gitmod.repo_info(str(wd))["dirty"])   # 用户改动已收起，工作区干净
         # 收尾切回基线分支并还原用户改动
-        fin = gitmod.finalize_run(str(wd), gi2, "tutti: 测试收尾")
+        fin = gitmod.finalize_run(str(wd), gi2, "codebee: 测试收尾")
         self.assertTrue(fin["restored"], fin.get("restore_error"))
         self.assertEqual(fin["restore_error"], "")
         self.assertEqual((wd / "a.txt").read_text(encoding="utf-8"), "dirty")

@@ -136,6 +136,7 @@ async function main() {
         sub: (document.getElementById("rd-hive-sub") || {}).textContent || "",
         tail1: (document.querySelector("#rd-hive-cells .hive-lane .hc-tail") || {}).textContent || "",
         title1: (document.querySelector("#rd-hive-cells .hive-lane .hive-cell") || {}).title || "",
+        failTail: (document.querySelector("#rd-hive-cells .hive-cell.st-failed .hc-tail") || {}).textContent || "",
       };
     })()`);
     check("终态任务蜂巢显示", hive.visible === true);
@@ -146,6 +147,8 @@ async function main() {
     check("卡片尾巴=步骤摘要回看", (hive.tail1 || "").includes("第三章草稿完成"), hive.tail1);
     check("悬停 title 含角色与摘要", (hive.title1 || "").includes("draft-c1") &&
       (hive.title1 || "").includes("第三章"), hive.title1);
+    check("悬停 title 带结论前缀", (hive.title1 || "").includes("结论："), hive.title1);
+    check("失败格尾巴=失败原因结论", (hive.failTail || "").includes("评审超时"), hive.failTail);
 
     // A2) 泳道流水线：起草→评审先后关系 + 活跃/完成态
     const lanes = await evalJson(`(() => {
@@ -275,8 +278,8 @@ async function main() {
         oldSideGone: !panel.querySelector(".rd-side"),
       };
     })()`);
-    check("标签条五分区（蜂巢/步骤/成果/版本/圣经）",
-      layout.tabIds === "hive,steps,result,git,bible", layout.tabIds);
+    check("标签条六分区（蜂巢/步骤/成果/版本/圣经/作品信息）",
+      layout.tabIds === "hive,steps,result,git,bible,bookmeta", layout.tabIds);
     check("操作按钮/统计条上移头部", layout.pauseInHead && layout.cancelInHead && layout.metaStrip);
     check("旧侧栏移除；蜂巢/日志/步骤在主栏",
       layout.oldSideGone && layout.hiveInMain && layout.logInMain && layout.stepsInMain);

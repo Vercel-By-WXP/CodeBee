@@ -473,6 +473,57 @@ async function main() {
       document.getElementById("btn-files-back").click();
       return true;
     })()`);
+    await sleep(400);
+
+    /* ---- I) 删任务清详情：任务级详情开着时右键删除任务，右侧详情必须关掉 ---- */
+    // 回归：deleteTask 原来只在 S.detailRunId 有值时 closeRun，任务级详情
+    // （detailTaskKey 命中、detailRunId 为空）删完还挂在已删任务上，再点重试撞「任务不存在」。
+    await evalJs(`window.sideOpenTask("${TASK}")`);
+    await sleep(600);
+    const detailOpen = await evalJs(`(() => ({
+      shown: !document.getElementById("run-detail").classList.contains("hidden"),
+      key: S.detailTaskKey || "",
+      runId: S.detailRunId || "",
+    }))()`);
+    check("任务级详情已打开（detailTaskKey 命中、detailRunId 为空）",
+      detailOpen.shown === true && detailOpen.key === TASK && detailOpen.runId === "",
+      JSON.stringify(detailOpen));
+    await evalJs(`(async () => {
+      const det = ${rowSel};
+      det.dispatchEvent(new MouseEvent("contextmenu",
+        { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
+      await new Promise(r => setTimeout(r, 200));
+      [...document.querySelectorAll("#ctx-menu .ctx-item")]
+        .find(x => x.textContent.trim() === "删除任务").click();
+    })()`);
+    await sleep(800);
+    const delConfirm = await evalJs(`(() => {
+      const dlg = document.getElementById("ask");
+      if (!dlg || dlg.classList.contains("hidden")) return false;
+      document.getElementById("ask-yes").click();
+      return true;
+    })()`);
+    check("「删除任务」弹确认框", delConfirm === true);
+    // 删除成功 → closeRun 立刻收详情 + poll 刷侧栏；SSE 按 2s 桶推，最长等 8s
+    let cleaned = null;
+    for (let i = 0; i < 16 && !cleaned; i++) {
+      await sleep(500);
+      cleaned = await evalJs(`(() => {
+        const hidden = document.getElementById("run-detail").classList.contains("hidden");
+        const rowGone = !document.querySelector('#side-tasks .stask[data-task="${TASK}"]');
+        return (hidden && rowGone) ? JSON.stringify({ hidden, rowGone }) : null;
+      })()`);
+    }
+    check("删除后右侧任务级详情关闭且侧栏行消失",
+      !!cleaned, JSON.stringify(cleaned || await evalJs(`JSON.stringify({
+        hidden: document.getElementById("run-detail").classList.contains("hidden"),
+        rowGone: !document.querySelector('#side-tasks .stask[data-task="${TASK}"]'),
+        key: S.detailTaskKey || "", runId: S.detailRunId || "",
+      })`)));
+    const st3 = await api("/api/state");
+    check("服务端任务与运行记录都已删除",
+      !(st3.json.tasks || []).some((t) => t.id === TASK)
+        && !(st3.json.runs || []).some((r) => r.task_id === TASK));
   } finally {
     try { proc.kill(); } catch (e) { /* ignore */ }
     try { spawn("taskkill", ["/F", "/T", "/PID", String(proc.pid)], { stdio: "ignore" }); } catch (e) { /* ignore */ }

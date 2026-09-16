@@ -13,6 +13,18 @@ CAPABILITY = {
 MAX_REPAIR_ROUNDS = 2  # 自动修复循环上限
 
 
+def _binding_bonus(agent_id):
+    """绑定链可用性加分/减分：链上有可用条目 +8，解析为空（回落 CLI 本机默认）
+    -25。2026-09-16 实测：静态能力基线让配额烧干的 codex 永远压过健康备用 CLI，
+    绑定空的 CLI 更是连用户配置的模型都没用上——先按「能不能按配置跑起来」校准。"""
+    try:
+        from . import modelhub
+        b = modelhub.resolve_binding(agent_id)
+        return 8.0 if (b and b.get("call_chain")) else -25.0
+    except Exception:
+        return 0.0
+
+
 def _history_bonus(stats, agent_id, ttype):
     s = (stats.get(agent_id) or {}).get(ttype) or {}
     if not s.get("runs"):
@@ -27,8 +39,14 @@ def score(agent, role, ttype, stats=None):
     （封顶 -45，足以盖过历史加分），满额后仅在没有其他选择时才会被选中。"""
     stats = stats or {}
     base = CAPABILITY.get(agent.get("kind"), 60)
+    bb = _binding_bonus(agent.get("id"))
+    btxt = ""
+    if bb > 0:
+        btxt = "，绑定链可用（+%s）" % bb
+    elif bb < 0:
+        btxt = "，绑定链为空将回落 CLI 本机默认配置（%s）" % bb
     hb = _history_bonus(stats, agent.get("id"), ttype)
-    total = base + hb
+    total = base + bb + hb
     hs = (stats.get(agent.get("id")) or {}).get(ttype)
     htxt = ("，历史 %d/%d 胜（+%s）" % (hs["wins"], hs["runs"], hb)) if hs else "，无历史记录"
     quota_txt = ""
@@ -45,7 +63,7 @@ def score(agent, role, ttype, stats=None):
             if penalty:
                 total += penalty
                 quota_txt = "，本小时 %d/%d tokens（%s）" % (used, quota, penalty)
-    return total, "能力基线 %d%s%s，总分 %s" % (base, htxt, quota_txt, round(total, 1))
+    return total, "能力基线 %d%s%s%s，总分 %s" % (base, btxt, htxt, quota_txt, round(total, 1))
 
 
 def pick(agents, role, ttype, stats=None, exclude=()):

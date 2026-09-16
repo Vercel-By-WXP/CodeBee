@@ -58,13 +58,15 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass  # 安静模式；异常仍会记录到 run 目录
 
-    def _send(self, code, body, ctype="application/json; charset=utf-8"):
+    def _send(self, code, body, ctype="application/json; charset=utf-8", headers=None):
         if isinstance(body, str):
             body = body.encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
         self.end_headers()
         try:
             self.wfile.write(body)
@@ -249,6 +251,13 @@ class Handler(BaseHTTPRequestHandler):
                 if err:
                     return self._json(400, {"error": err})
                 return self._json(200, {"path": fp, "text": text})
+            m = re.match(r"^/api/tasks/([^/]+)/book-meta$", path)
+            if m:
+                # 作品信息（番茄/七猫建书表单资料）：读取任务上的生成状态与结果
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "not found"})
+                return self._json(200, {"book_meta": task.get("book_meta") or {}})
             m = re.match(r"^/api/tasks/([^/]+)/git$", path)
             if m:
                 # GIT 工作台全貌（详情页「版本」页签）：仓库状态聚合 + 任务隔离态
@@ -308,6 +317,9 @@ class Handler(BaseHTTPRequestHandler):
                            if s.get("log") == rel), "")
                 return self._json(200, {"log": text, "step_status": st,
                                         "run_status": run.get("status") or ""})
+            m = re.match(r"^/api/runs/([^/]+)/timeline$", path)
+            if m:
+                return self._api_run_timeline(m.group(1))
             if path == "/api/automation":
                 return self._json(200, {"tasks": automation.list_tasks(),
                                         "templates": automation.templates()})
@@ -347,7 +359,7 @@ class Handler(BaseHTTPRequestHandler):
         # 否则告警弹框里的按钮在多端场景会静默 423 失败）：
         if path in ("/api/health/op", "/api/models/provider-op", "/api/models/model-op",
                     "/api/models/test-provider", "/api/models/test-model",
-                    "/api/models/probe-wire"):
+                    "/api/models/probe-wire", "/api/models/key-op"):
             pass                                    # 落到下方各自路由
         else:
             deny = self._deny_control()
@@ -375,6 +387,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "health": health.snapshot()})
         if path == "/api/attachments":
             return self._api_add_attachment()
+        if path == "/api/dir/save":
+            # 「查看文件」弹窗编辑保存（本机 + 控制权 + 防穿越 + mtime 冲突检测）
+            return self._api_dir_save()
         m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry|rename|continue)$", path)
         if m:
             if m.group(2) == "archive":
@@ -410,6 +425,9 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             ok, err = store.write_story_bible(m.group(1), body.get("text") or "")
             return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
+        m = re.match(r"^/api/tasks/([^/]+)/book-meta$", path)
+        if m:
+            return self._api_book_meta_generate(m.group(1))
         m = re.match(r"^/api/tasks/([^/]+)/(git-merge|git-discard)$", path)
         if m:
             return self._api_git_verdict(m.group(1), m.group(2))
@@ -423,6 +441,9 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/runs/([^/]+)/messages$", path)
         if m:
             return self._api_add_message(m.group(1))
+        m = re.match(r"^/api/runs/([^/]+)/chat$", path)
+        if m:
+            return self._api_direct_chat(m.group(1))
         m = re.match(r"^/api/runs/([^/]+)/messages/retract$", path)
         if m:
             return self._api_retract_message(m.group(1))
@@ -492,6 +513,18 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             n, err = modelhub.providers_op(body.get("ids") or [], body.get("op") or "")
             return self._json(400, {"error": err}) if err else self._json(200, {"ok": True, "count": n})
+        if path == "/api/models/key-op":
+            # 多 KEY：增删改 / 启停 / 排序 / 重置冷却（欠费充值后手动恢复）
+            from core import modelhub
+            body = self._body()
+            err = modelhub.key_op(body.get("provider_id") or "",
+                                  body.get("op") or "",
+                                  key_id=body.get("key_id") or "",
+                                  key=body.get("key") or "",
+                                  label=body.get("label") or "",
+                                  enabled=body.get("enabled"),
+                                  ids=body.get("ids"))
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
         if path == "/api/models/provider":
             from core import modelhub
             err = modelhub.upsert_provider(self._body())
@@ -551,7 +584,8 @@ class Handler(BaseHTTPRequestHandler):
             from core import modelhub
             body = self._body()
             return self._json(200, modelhub.test_model(body.get("provider_id") or "",
-                                                       body.get("name") or ""))
+                                                       body.get("name") or "",
+                                                       key_id=body.get("key_id") or ""))
         if path == "/api/models/binding":
             from core import modelhub
             body = self._body()
@@ -773,6 +807,37 @@ class Handler(BaseHTTPRequestHandler):
         store.set_task_git_state(task_id, "discarded")
         return self._json(200, {"ok": True})
 
+    def _api_book_meta_generate(self, task_id):
+        """作品信息一键生成（POST /api/tasks/<id>/book-meta，body: {platform}）。
+
+        后台线程跑（编排者→作者CLI→模板的降级链可能数分钟），请求立即返回；
+        前端靠任务 book_meta 状态（SSE 全量状态里带）轮进度。已有 running 时
+        幂等拒绝，不重复起线程。"""
+        from core import bookmeta
+        task = store.get_task(task_id)
+        if not task:
+            return self._json(404, {"error": "任务不存在"})
+        body = self._body() or {}
+        platform = (body.get("platform") or "").strip()
+        if platform not in bookmeta.PLATFORMS:
+            return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
+        if not bookmeta.needs_book_meta(task):
+            return self._json(400, {"error": "只有连载首批任务需要作品信息；续写批次沿用第一批的开书资料"})
+        if task.get("status") in ("queued", "running"):
+            return self._json(400, {"error": "任务正在运行，请等本轮结束后再生成作品信息"})
+        cur = ((task.get("book_meta") or {}).get(platform) or {})
+        if cur.get("status") == "running":
+            return self._json(200, {"ok": True, "already": True})
+        if not store.set_book_meta(task_id, platform,
+                                   {"status": "running",
+                                    "at": time.strftime("%Y-%m-%d %H:%M:%S")}):
+            return self._json(404, {"error": "任务不存在"})
+        author = bookmeta._resolve_author(task)
+        threading.Thread(target=bookmeta.generate_async, daemon=True,
+                         name="book-meta-%s" % platform,
+                         args=(task_id, platform, author)).start()
+        return self._json(200, {"ok": True, "started": True})
+
     def _api_task_side(self, task_id):
         """任务检查器（右缘停靠列）的轻量聚合端点。聚合逻辑在 store.task_side
         （可单测、单实例状态）；这里只做 404 转换。"""
@@ -857,8 +922,7 @@ class Handler(BaseHTTPRequestHandler):
 
         只读；仅限本机请求（同 /api/browse 的信息泄露口径）。name 为相对路径
         （"/" 分隔，如 "docs/readme.md"），前端按目录层级渲染成树；跳过
-        .git / node_modules 等噪音目录；上限 2000 个文件（mtime 新→旧），
-        超出截断并带 truncated 标记。
+        .git / node_modules 等噪音目录；不设文件数上限，全量列出。
         """
         ip, fw = self._forwarded_ip()
         if ip not in ("127.0.0.1", "::1") or fw:
@@ -874,7 +938,6 @@ class Handler(BaseHTTPRequestHandler):
         if not p.is_dir():
             return self._json(404, {"error": "目录不存在: %s" % p})
         files = []
-        truncated = False
         try:
             for cur, dirs, names in os.walk(str(p)):
                 # os.walk 默认不跟随目录符号链接：环形目录不会死循环
@@ -886,15 +949,10 @@ class Handler(BaseHTTPRequestHandler):
                         continue   # 断链/权限：跳过单个文件
                     files.append({"name": (Path(cur) / n).relative_to(p).as_posix(),
                                   "size": st.st_size, "mtime": int(st.st_mtime)})
-                    if len(files) >= 2000:
-                        truncated = True
-                        break
-                if truncated:
-                    break
         except (PermissionError, OSError):
             return self._json(403, {"error": "无权限读取该目录"})
         files.sort(key=lambda f: (-f["mtime"], f["name"].lower()))
-        return self._json(200, {"path": str(p), "files": files, "truncated": truncated})
+        return self._json(200, {"path": str(p), "files": files})
 
     def _api_dir_file(self):
         """侧栏「查看文件」里点文件 chip：返回该文件内容（浏览器新页打开/下载）。
@@ -937,7 +995,63 @@ class Handler(BaseHTTPRequestHandler):
             ctype = "text/plain; charset=utf-8"
         if ctype.startswith("text/"):
             data = _utf8_bytes(data)
-        return self._send(200, data, ctype)
+        # mtime 供前端「编辑保存」做冲突检测：文件被任务/外部改动后拒绝覆盖（409）
+        return self._send(200, data, ctype,
+                          {"X-Tutti-Mtime": str(int(fp.stat().st_mtime))})
+
+    def _api_dir_save(self):
+        """「查看文件」弹窗的编辑保存：{dir, name, content, mtime} → 覆写该文件。
+
+        仅限本机（同 /api/dir/file 口径，写操作还过全局控制权门槛）；name 必须
+        相对且解析后落在 dir 内（与读取端同一套防穿越判定）；内容按 UTF-8 落盘
+        （读取端本就把文本按 UTF-8 下发，GBK 老文件保存一次即归一化为 UTF-8）。
+        mtime 是打开预览时响应头 X-Tutti-Mtime 带回的旧值：不等 → 文件已被
+        任务/外部改动过，回 409 拒绝覆盖，让用户重开预览确认后再改。
+        """
+        ip, fw = self._forwarded_ip()
+        if ip not in ("127.0.0.1", "::1") or fw:
+            return self._json(403, {"error": "文件保存仅限本机使用"})
+        body = self._body()
+        raw_dir = (body.get("dir") or "").strip()
+        raw_name = (body.get("name") or "").strip()
+        content = body.get("content")
+        if not raw_dir or not raw_name:
+            return self._json(400, {"error": "缺少 dir/name"})
+        if not isinstance(content, str):
+            return self._json(400, {"error": "content 必须是文本"})
+        if len(content.encode("utf-8")) > 4 * 1024 * 1024:
+            return self._json(400, {"error": "内容超过 4MB，请在编辑器里改大文件"})
+        try:
+            base = Path(raw_dir).expanduser().resolve()
+        except Exception:
+            return self._json(400, {"error": "非法路径"})
+        if not base.is_dir():
+            return self._json(404, {"error": "目录不存在: %s" % base})
+        name = raw_name.replace("\\", "/")
+        parts = name.split("/")
+        if not name or not all(p and p != ".." for p in parts):
+            return self._json(400, {"error": "非法文件名"})
+        fp = (base / name).resolve()
+        try:
+            fp.relative_to(base)
+        except ValueError:
+            return self._json(403, {"error": "越界"})
+        if fp.exists() and not fp.is_file():
+            return self._json(400, {"error": "同名路径不是文件"})
+        old_mtime = body.get("mtime")
+        if fp.exists() and old_mtime is not None:
+            try:
+                if abs(int(fp.stat().st_mtime) - int(old_mtime)) > 1:
+                    return self._json(409, {"error": "文件已被外部修改，请关闭弹窗重新打开确认后再编辑"})
+            except OSError:
+                pass
+        try:
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            fp.write_bytes(content.encode("utf-8"))
+        except OSError:
+            return self._json(403, {"error": "无法写入（只读/被占用？）"})
+        return self._json(200, {"ok": True, "size": fp.stat().st_size,
+                                "mtime": int(fp.stat().st_mtime)})
 
     def _api_git_info(self):
         """探测工作目录是否为 git 仓库，返回分支/标签/最近提交供「代码版本」下拉。
@@ -1006,6 +1120,87 @@ class Handler(BaseHTTPRequestHandler):
         if not msg:
             return self._json(400, {"error": "运行不存在或消息非法"})
         return self._json(200, {"ok": True, "message": msg})
+
+    def _api_run_timeline(self, run_id):
+        """直连对话视图的时间线：用户消息与各步 CLI 输出按序合并成一个气泡流。
+
+        步骤正文取自该步日志文件（CLI 原始输出），按 created/序号排序：
+        [user 消息] → [assistant 输出] → [user 追问] → …。供详情页「对话」分区直读，
+        前端不必逐条拉日志。非 direct 任务也能取（返回步骤流），只是视图不启用。"""
+        run = store.get_run(run_id)
+        if not run:
+            return self._json(404, {"error": "not found"})
+        items = []
+        for m in (run.get("messages") or []):
+            items.append({
+                "kind": "user",
+                "at": m.get("created_at") or "",
+                "who": m.get("sender") or "",
+                "text": m.get("text") or "",
+                "attachments": m.get("attachments") or [],
+                "consumed": bool(m.get("consumed")),
+                "id": m.get("id"),
+            })
+        for s in (run.get("steps") or []):
+            body = ""
+            if s.get("log"):
+                body = store.read_step_log(run_id, s["log"], tail=20000, pretty=True)
+            if not body:
+                body = s.get("summary") or ""
+            items.append({
+                "kind": "agent",
+                "at": s.get("ended_at") or s.get("started_at") or "",
+                "who": s.get("agent_label") or s.get("agent") or "",
+                "role": s.get("role") or "",
+                "n": s.get("n"),
+                "status": s.get("status") or "",
+                "text": body,
+                "note": s.get("note") or "",
+            })
+        return self._json(200, {
+            "run_id": run_id, "status": run.get("status") or "",
+            "engine": (store.get_task(run.get("task_id") or "") or {}).get("engine") or "",
+            "items": items,
+        })
+
+    def _api_direct_chat(self, run_id):
+        """直连对话追话：往已结束的 direct run 追加一条消息并自动续跑。
+
+        机制：消息入旧 run 信箱 → retry_task 起新 run（未消费消息自动继承）
+        → 入队编排 → _run_direct 看到信箱积压走续轮档（DIRECT_FOLLOWUP）。
+        仅 direct 引擎任务可用；运行中的 run 走既有 /messages（轮间注入）。
+        写接口已在 do_POST 统一做过设备控制。"""
+        run = store.get_run(run_id)
+        if not run:
+            return self._json(404, {"error": "not found"})
+        task = store.get_task(run.get("task_id") or "") if run.get("task_id") else None
+        if not task or task.get("engine") != "direct":
+            return self._json(400, {"error": "该任务不是直连任务，请用「下达指令」"})
+        if (run.get("status") or "") in ("queued", "running"):
+            return self._json(400, {"error": "运行中：消息会随下一步自动送达，无需追话"})
+        body = self._body() or {}
+        text = body.get("text") or ""
+        att_ids = body.get("attachments") or []
+        workdir = store.run_workdir(run_id) or task.get("workdir") or ""
+        saved = []
+        if att_ids and workdir:
+            from core import attachments
+            try:
+                saved = attachments.commit_to_workdir(workdir, att_ids)
+            except Exception:
+                saved = []
+        saved_paths = [a.get("path") for a in saved if a.get("path")]
+        if not text.strip() and not saved_paths:
+            return self._json(400, {"error": "消息为空"})
+        msg = store.add_message(run_id, text, sender=self._client_name(),
+                                attachments=saved_paths)
+        if not msg:
+            return self._json(400, {"error": "消息非法"})
+        ok, err, new_run = store.retry_task(task["id"])
+        if not ok:
+            return self._json(400, {"error": err or "无法续跑"})
+        jobs.enqueue({"kind": "orchestration", "run_id": new_run["id"], "task_id": task["id"]})
+        return self._json(200, {"ok": True, "run_id": new_run["id"]})
 
     def _api_retract_message(self, run_id):
         """撤回一条尚未下达的指令（drain 前从信箱删除）。已送达的撤不回——

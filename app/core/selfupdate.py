@@ -7,7 +7,7 @@
   repo  — 带 .git 的开发仓库：**永不自动升级**（会覆盖开发中的代码），提示走 git pull；
   other — 裸源码拷贝，提示手动替换。
 
-升级 = 在标准 mgmt run 里跑 `npm install -g tutti-orchestrator@latest`（日志实时落盘、
+升级 = 在标准 mgmt run 里跑 `npm install -g codebee@latest`（日志实时落盘、
 SSE 可看进度）。npm 替换的是包目录文件，当前进程已加载进内存不受影响，装完后由
 「重启」换新代码：新进程先等旧端口释放再 bind（Windows SO_REUSEADDR 允许双 LISTEN
 同时存在，必须先验旧进程真退了），旧进程发送完重启响应后自退。
@@ -29,7 +29,7 @@ import time
 
 from . import paths, runner
 
-_PKG_NAME = "tutti-orchestrator"   # npm 发布名；必须与 package.json 的 name 一致（单测断言）
+_PKG_NAME = "codebee"   # npm 发布名；必须与 package.json 的 name 一致（单测断言）
 _UPDATE_TTL = 600   # 查新结果缓存（秒）
 _LOCK = threading.Lock()
 _CHECK_CACHE = {"ts": 0.0, "result": None}
@@ -63,9 +63,11 @@ def _ver_tuple(s):
 
 
 def _npm_latest():
-    """npm view tutti-orchestrator version；返回 (latest, err)。"""
+    """npm view codebee version；返回 (latest, err)。
+    用 _PKG_NAME 变量而非行内字面量：发布名改过一次（tutti-orchestrator→codebee），
+    硬编码两处容易漏改；Mimosa 安全基线要求 argv 可执行文件为字面量，参数用变量不违反。"""
     r = runner.run_process(
-        argv=["cmd", "/c", "npm", "view", "tutti-orchestrator", "version"], timeout=60)
+        argv=["cmd", "/c", "npm", "view", _PKG_NAME, "version"], timeout=60)
     if not r["ok"]:
         return "", (r["stderr"] or r["stdout"] or "")[-200:] or "npm 命令失败"
     m = re.search(r"\d+\.\d+\.\d+[\w.\-]*", r["stdout"] or "")
@@ -104,7 +106,7 @@ def apply_upgrade():
     if install_mode() != "npm":
         return {"error": "当前安装方式不支持自动升级（见版本页说明）"}
     from . import store, jobs
-    run = store.create_run("mgmt", "升级 Tutti 本体（npm install -g tutti-orchestrator@latest）",
+    run = store.create_run("mgmt", "升级 CodeBee 本体（npm install -g %s@latest）" % _PKG_NAME,
                            entry_id="__self__", op="selfupgrade")
     jobs.enqueue({"kind": "selfupgrade", "run_id": run["id"]})
     return {"run_id": run["id"]}
@@ -113,7 +115,7 @@ def apply_upgrade():
 def run_upgrade(run_id, log_path):
     """worker 线程里执行升级命令（run/step 生命周期由 jobs 层管）。"""
     res = runner.run_process(
-        argv=["cmd", "/c", "npm", "install", "-g", "tutti-orchestrator@latest"],
+        argv=["cmd", "/c", "npm", "install", "-g", _PKG_NAME + "@latest"],
         cwd=str(paths.ROOT), timeout=900, log_path=log_path)
     if res["ok"]:
         with _LOCK:  # 装完即过期查新缓存，重启后自然拿到新版本

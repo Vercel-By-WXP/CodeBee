@@ -1,0 +1,652 @@
+data-lang = en OK
+[tasks] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[runs] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[automation] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[usage] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[agents] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[models] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[bindings] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[skills] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[market] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[orch] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[appearance] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[about] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[composer] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[add-provider-dialog] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[import-dialog] 残留中文 36 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+    · 跳过 1 条（缺地址或格式不识别）：opencode/维云模型 YBJ   @ div.src-note<div.src-main<label.src-row<div.src-list
+[flows-manager] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[auto-form] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+[cmdk] 残留中文 35 处
+    · 七猫甜宠·续2（auto 多智能体并行）·续4   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）·续3   @ span.t<div.stask<div.dirbody<details.sdir
+    · 七猫甜宠·续2（auto 多智能体并行）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频2万字   @ span.t<div.stask<div.dirbody<details.sdir
+    · 1.云市场草稿，按用户隔离数据权限，只能看到自己生成的草稿。   @ span.t<div.stask<div.dirbody<details.sdir
+    · 请排查这个问题  光华冠群   @ span.t<div.stask<div.dirbody<details.sdir
+    · 全自动试跑·七猫女频短篇   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑B)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑C)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(连载试跑D)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 加班夜的天台(2万字签约稿)   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 bind-proof.txt，内容为一个词：   @ span.t<div.stask<div.dirbody<details.sdir
+    · 在当前目录创建 resume-proof.txt，内容只有一   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示代码任务   @ span.t<div.stask<div.dirbody<details.sdir
+    · 演示章节   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · 第 34 章起草失败: 退出码 1；stderr/stdout: Reading prompt from stdin..   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 编排者/作者模型均未返回可用大纲（<HTTPError 429: 'Too Many Requests'>），已中止以免   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 21–30 章，衔接前文 20 章，约 80498 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务达标（续写第 9–20 章，衔接前文 8 章，约 54830 字，综合 7.4）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 连载任务未达标（续写第 9–20 章，衔接前文 8 章，约 55563 字，综合 7.1）   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: ver failed: connection clos   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: orized: {"detail":"Unauthor   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 19 章起草失败: 退出码 1；stderr/stdout: the documentation for more    @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · 第 12 章评审全部失败（评审模型不可用或输出不可解析），已中止以免以 0 分误判质量   @ div.desc<div.item<div#run-list.list<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 维云模型 YBJ   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 微云   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item
+    · 公司Anthropic   @ div.pi-name<div.pi-top<div.pi-body<div.prov-item.off
+    · 维云模型 YBJ (openai)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 微云 (anthropic)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 公司Anthropic (anthropic · disabled)   @ option<select#bindprov-codex-cli<div.field<div.card
+    · 维云模型 YBJ · [opencode]deepseek-v4-flash   @ span.ochip.primary<div.orch-row<div.field<div.card
+    · 维云模型 YBJ · glm-5.3-flash   @ span.ochip<div.orch-row<div.field<div.card
+
+=== 英文模式残留中文合计：631 处 ===

@@ -1,0 +1,130 @@
+data-lang = en OK
+[tasks] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[runs] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[automation] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[usage] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[agents] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[models] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[bindings] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[skills] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[market] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[orch] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[appearance] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[about] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[composer] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[add-provider-dialog] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[import-dialog] 残留中文 7 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 跳过 1 条（缺地址或格式不识别）：opencode/维云模型 YBJ   @ div.src-note<div.src-main<label.src-row<div.src-list
+[flows-manager] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[auto-form] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+[cmdk] 残留中文 6 处
+    · 样式核验-五分钟前   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-两小时前（失败）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-昨天（取消）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 样式核验-三天前（20 步长任务）   @ span.t<div.stask<div.dirbody<details.sdir
+    · 中文   @ span<button.lang-item<div#lang-menu.lang-menu.hidden<div.lang-wrap
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+
+=== 英文模式残留中文合计：109 处 ===

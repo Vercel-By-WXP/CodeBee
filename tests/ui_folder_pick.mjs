@@ -94,18 +94,27 @@ async function main() {
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(3500);
 
-    /* ---- A) 两列 select 顶部对齐 ---- */
+    /* ---- A) Composer 胶囊行：类型按钮与目录胶囊同排顶部对齐（真源 #f-type 仍 hidden） ---- */
     const align = await evalJs(`(() => {
-      const sel = [...document.querySelectorAll(".grid-2 select")].slice(0, 2);
-      const labels = [...document.querySelectorAll(".grid-2 .field > label")].slice(0, 2);
-      const ls = labels.map(l => Math.round(l.getBoundingClientRect().height));
-      const ts = sel.map(s => Math.round(s.getBoundingClientRect().top));
-      return JSON.stringify({ n: sel.length, labelHeights: ls, selectTops: ts });
+      const typeBtn = document.getElementById("f-type-btn");
+      const wd = document.querySelector(".cmp-wd");
+      const goal = document.getElementById("f-goal");
+      const send = document.getElementById("btn-create");
+      const tb = typeBtn && typeBtn.getBoundingClientRect();
+      const wb = wd && wd.getBoundingClientRect();
+      return JSON.stringify({
+        hasType: !!typeBtn, hasWd: !!wd, hasGoal: !!goal, hasSend: !!send,
+        typeTop: tb ? Math.round(tb.top) : -1, wdTop: wb ? Math.round(wb.top) : -1,
+        sameRow: !!(tb && wb && Math.abs(tb.top - wb.top) < 6),
+        goalBelow: !!(tb && goal && goal.getBoundingClientRect().top > tb.bottom - 2),
+        sendInBox: !!(send && send.closest(".cmp-box")),
+      });
     })()`);
     const al = JSON.parse(align);
-    check("类型/继续会话两个 select 顶部对齐", al.n === 2 && al.selectTops[0] === al.selectTops[1],
-      align);
-    check("两列 label 等高", al.labelHeights[0] === al.labelHeights[1], align);
+    check("胶囊行四件套齐全", al.hasType && al.hasWd && al.hasGoal && al.hasSend, align);
+    check("类型/目录胶囊同排", al.sameRow, align);
+    check("目标框在胶囊行下方", al.goalBelow, align);
+    check("发送按钮在 composer 框内", al.sendInBox, align);
 
     /* ---- B) /api/browse ---- */
     const home = await api("/api/browse");

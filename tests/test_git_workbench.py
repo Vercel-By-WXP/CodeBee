@@ -7,7 +7,7 @@
 3. _attachments/ 永不进提交也永不被 stash（与隔离链同一口径）；
 4. 切分支：脏工作区显式拒绝；干净时本地直切、远程分支建跟踪分支；
 5. fetch/pull/push：无远程显式报错；有本地 bare 远程时推拉闭环；
-6. stash 只认 tutti-stash-* 条目，用户自己的 stash 工作台不碰；
+6. stash 只认 codebee-stash-* 条目，用户自己的 stash 工作台不碰；
 7. 丢弃/删除类不可恢复操作必须 confirm=true。
 """
 from __future__ import annotations
@@ -278,7 +278,7 @@ class TestGitWorkbench(BaseTest):
         self.assertTrue((att / "a.txt").exists())          # 附件不收
         st = gitmod.workbench_status(str(repo))
         self.assertEqual(len(st["stashes"]), 1)
-        self.assertIn("tutti-stash-", st["stashes"][0]["subject"])
+        self.assertIn("codebee-stash-", st["stashes"][0]["subject"])
         ok, err, _ = gitmod.workbench_op(str(repo), "stash_pop", {"ref": st["stashes"][0]["ref"]})
         self.assertTrue(ok, err)
         self.assertTrue((repo / "wip.txt").exists())
@@ -292,7 +292,7 @@ class TestGitWorkbench(BaseTest):
         self.assertEqual(len(st["stashes"]), 1)
         ok, err, _ = gitmod.workbench_op(str(repo), "stash_pop", {"ref": st["stashes"][0]["ref"]})
         self.assertFalse(ok)
-        self.assertIn("tutti-stash", err)
+        self.assertIn("codebee-stash", err)
 
     def test_stash_drop_needs_confirm(self):
         repo, g = self._git_repo()

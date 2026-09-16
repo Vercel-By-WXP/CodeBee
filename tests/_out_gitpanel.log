@@ -1,0 +1,35 @@
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'chapter-01.md', LF will be replaced by CRLF the next time Git touches it
+  ✓ 临时服务启动
+  ✓ Edge headless 就绪
+  ✓ #rd-git 渲染且可见
+  ✓ 工作台主态：标题=Git 工作台
+  ✓ 工作台未跟踪组有 live-note.md
+  ✗ 分支名 tutti/<task>　— mastertutti/tmu3nxqeugitseed
+  ✗ 待裁决 chip　— 
+  ✓ 侧栏待裁决徽章在（git_state=isolated 任务，合并前）
+  ✗ 变更文件 3 枚（含新文件）　— ["新live-note.md+1"]
+  ✗ 未跟踪徽章显示「新」而非 ??　— ["新live-note.md+1"]
+  ✓ 合并/丢弃按钮在（isolated）
+  ✓ git-merge 成功
+  ✓ 任务 git_state=merged
+  ✓ 产物已并入原分支（README 变更在）
+  ✗ 合并后面板 chip=已合并 且无裁决按钮　— {"hasMerge":true}
+  ✗ 英文模式：Version isolation / Merged　— {"title":"Git Workbench"}
+  ✓ 铃铛开关存在且默认开启
+  ✗ 成品 md 预览按钮 → 与点文件同款弹窗渲染　— {"bellOff":false,"nPrev":3,"popOpen":true,"popCode":false}
+  ✓ 故事圣经面板可见且带引导
+  ✓ 圣经 POST 保存成功
+  ✓ 圣经回读一致
+  ✓ 圣经内容上面板
+  ✓ 续跑 run：版本面板可见（不再因无 git 快照整块消失）
+  ✓ 续跑 run：分支由任务级 side 带出
+  ✓ 续跑 run：版本页签可用
+  ✓ 续跑 run：变更清单来自最新 run 快照
+  ✓ 续跑 run：+/- 行级统计在（+12/-3）
+  ✓ 续跑 run：待裁决时裁决按钮在
+  ✓ 续跑 run：meta 条任务累计 pill（2 次运行；第 4 段切了英文，双语都认）
+  ✓ 已 merged 的任务丢弃 → 分支仍在被拒绝或成功（守卫允许）
+
+FAILED 23/30

@@ -53,7 +53,7 @@
   <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
-  <symbol id="i-palette" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2a10 10 0 0 0 0 20 2 2 0 0 0 2-2v-1a2 2 0 0 1 2-2h1.5A4.5 4.5 0 0 0 22 12.5C22 6.7 17.5 2 12 2Z"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2c1.9 0 3.6 2.8 4 6.5h-8c.4-3.7 2.1-6.5 4-6.5ZM4.3 10.5h2.7c-.1 1-.1 2 0 3H4.3a8 8 0 0 1 0-3Zm.8-2a8 8 0 0 1 4-4.2c-1 1.3-1.8 3-2.1 4.2H5.1Zm-1 7h2c.3 1.3 1 3 2.1 4.2a8 8 0 0 1-4-4.2Zm2-2a17 17 0 0 1 0-3h8a17 17 0 0 1 0 3h-8Zm2.9 6.2c-1-1.2-1.8-2.9-2.1-4.2h1.9c.3 1.2 1.1 3 2.1 4.2a8 8 0 0 1-1.9 0Zm3 0c-1-.5-2-2.6-2.4-4.2h4.8c-.4 1.6-1.4 3.7-2.4 4.2Zm1.9-.2c1-1.2 1.8-2.9 2.1-4.2h2a8 8 0 0 1-4.1 4.2Zm4.4-6.2h-2.7c.1-1 .1-2 0-3h2.7a8 8 0 0 1 0 3Zm-2.4-5a11 11 0 0 0-2-4.2 8 8 0 0 1 4 4.2h-2Z"/><path d="M7 10.5h10M7 13.5h10" fill="none" stroke="currentColor" stroke-width=".8" opacity=".45"/></symbol><symbol id="i-palette" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2a10 10 0 0 0 0 20 2 2 0 0 0 2-2v-1a2 2 0 0 1 2-2h1.5A4.5 4.5 0 0 0 22 12.5C22 6.7 17.5 2 12 2Z"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.5 12.5 5 5 10-11"/></symbol>
   <symbol id="i-chevron-r" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></symbol>
@@ -204,6 +204,14 @@
       <div id="health-banner" class="health-banner hidden" onclick="healthBannerClick()" title="供应商健康告警" aria-label="供应商健康告警" data-i18n-title="供应商健康告警" data-i18n-aria="供应商健康告警"></div>
       <div class="top-actions">
         <button id="ctrl-pill" class="pill ctrl icon-only hidden" onclick="ctrlClick()" title="多端控制权" aria-label="多端控制权" data-i18n-aria="多端控制权" data-i18n-title="多端控制权"><svg class="ico" aria-hidden="true"><use href="#i-unlock"></use></svg></button>
+        <!-- 语言快捷切换：语言名用母语写死（中文/English），刻意不做 i18n——任何母语的人都要能读懂并选中 -->
+        <div class="lang-wrap">
+          <button id="btn-lang" class="pill icon-only" type="button" onclick="toggleLangMenu()" title="语言 / Language" aria-label="切换语言" aria-haspopup="listbox" aria-controls="lang-menu" data-i18n-title="语言 / Language" data-i18n-aria="切换语言"><svg class="ico" aria-hidden="true"><use href="#i-globe"></use></svg></button>
+          <div id="lang-menu" class="lang-menu hidden" role="listbox" aria-label="语言 / Language" data-i18n-aria="语言 / Language">
+            <button type="button" class="lang-item" role="option" data-lang="zh" onclick="pickLang('zh')"><span>中文</span><svg class="ico li-check" aria-hidden="true"><use href="#i-check"></use></svg></button>
+            <button type="button" class="lang-item" role="option" data-lang="en" onclick="pickLang('en')"><span>English</span><svg class="ico li-check" aria-hidden="true"><use href="#i-check"></use></svg></button>
+          </div>
+        </div>
         <button id="btn-skin" class="pill icon-only" title="皮肤 / 换肤：多套配色，各含日间与夜间" aria-label="皮肤 / 换肤" data-i18n-aria="皮肤 / 换肤" data-i18n-title="皮肤 / 换肤：多套配色，各含日间与夜间"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg></button>
         <button id="btn-theme" class="pill icon-only" title="切换日间 / 夜间主题" aria-label="切换日间 / 夜间主题" data-i18n-aria="切换日间 / 夜间主题" data-i18n-title="切换日间 / 夜间主题"><svg class="ico" aria-hidden="true"><use href="#i-moon"></use></svg></button>
         <!-- 详情面板开关：贴动作组最右 = 紧挨面板弹出的那一侧，空间映射一致 -->
@@ -218,90 +226,98 @@
       <div id="sub-tasks" class="subpage">
       <div class="panel wide composer">
         <div class="hero-row">
-          <h2 data-i18n="要完成什么？" class="hero">要完成什么？</h2>
+          <h2 class="hero" id="cmp-greet">上午好呀，有什么想让我帮忙的吗</h2>
           <button type="button" id="btn-wizard" class="ghost small" data-i18n="✨ 向导创建" data-i18n-title="三问一确认：目标 → 类型 → 目录，预填进表单" title="三问一确认：目标 → 类型 → 目录，预填进表单" onclick="openTaskWizard()">✨ 向导创建</button>
         </div>
         <p data-i18n="一句话目标即可 —— CodeBee 自动拆解、智能路由、执行、验证并跨厂商评审。" class="hint hero-sub">一句话目标即可 —— CodeBee 自动拆解、智能路由、执行、验证并跨厂商评审。</p>
         <div class="form">
-          <div class="grid-2">
-            <div class="field">
-              <label>类型 <button data-i18n="管理" class="ghost small" onclick="openFlowsManager()" title="管理任务类型：新增/编辑自定义流程" data-i18n-title="管理任务类型：新增/编辑自定义流程">管理</button></label>
-              <!-- 值真源仍是 #f-type（隐藏 select，既有联动/测试全兼容）；上面是带黑白图标的可见层 -->
-              <div class="type-wrap">
-                <select id="f-type" class="hidden" tabindex="-1" aria-hidden="true"></select>
-                <button type="button" id="f-type-btn" class="type-pick" onclick="toggleTypeMenu()" aria-haspopup="listbox" aria-controls="type-menu">
-                  <span class="tp-ico" id="f-type-ico" aria-hidden="true"></span>
-                  <span class="tp-name" id="f-type-name"></span>
-                  <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
-                </button>
-                <div id="type-menu" class="type-menu hidden" role="listbox" aria-label="任务类型"></div>
+          <!-- 胶囊行（ZCode 式）：类型 / 工作目录一眼可见、点胶囊就地改。
+               值真源仍是 #f-type / #f-workdir（既有 ID，联动与测试锚点全兼容）。 -->
+          <div class="cmp-pills">
+            <div class="type-wrap">
+              <select id="f-type" class="hidden" tabindex="-1" aria-hidden="true"></select>
+              <button type="button" id="f-type-btn" class="type-pick" onclick="toggleTypeMenu()" aria-haspopup="listbox" aria-controls="type-menu">
+                <span class="tp-ico" id="f-type-ico" aria-hidden="true"></span>
+                <span class="tp-name" id="f-type-name"></span>
+                <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+              </button>
+              <div id="type-menu" class="type-menu hidden" role="listbox" aria-label="任务类型" data-i18n-aria="任务类型"></div>
+            </div>
+            <button type="button" class="ghost small" id="btn-flows-mgr" data-i18n="管理" data-i18n-title="管理任务类型：新增/编辑自定义流程" title="管理任务类型：新增/编辑自定义流程" onclick="openFlowsManager()">管理</button>
+            <div class="cmp-wd">
+              <svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <div class="input-row">
+                <input id="f-workdir" placeholder="留空则保存到默认路径；或填绝对路径，例 E:\GoOut\my-project" data-i18n-ph="留空则保存到默认路径；或填绝对路径，例 E:\GoOut\my-project">
+                <button data-i18n="选择…" class="ghost small" type="button" title="浏览本机目录选择" data-i18n-title="浏览本机目录选择" onclick="pickFolder('f-workdir')">选择…</button>
               </div>
             </div>
-            <div class="field">
-              <label data-i18n="继续会话">继续会话</label>
-              <select id="f-resume-agent">
-                <option data-i18n="不沿用（全新开始）" value="">不沿用（全新开始）</option>
-              </select>
-            </div>
           </div>
-          <div class="field"><label data-i18n="目标">目标</label><textarea id="f-goal" rows="3" placeholder="要完成什么，一句话即可" required data-i18n-ph="要完成什么，一句话即可"></textarea>
-            <div class="att-strip">
-              <button type="button" class="ghost small" id="btn-attach" title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/" data-i18n-title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/"><svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg><span data-i18n="附件">附件</span></button>
-              <span class="att-hint" data-i18n="也可直接粘贴截图">也可直接粘贴截图</span>
-              <div id="att-chips" class="att-chips"></div>
-            </div>
-            <input type="file" id="f-attach-file" class="hidden" multiple>
-          </div>
-          <div class="field"><label data-i18n="工作目录">工作目录</label>
-            <div class="input-row">
-              <input id="f-workdir" placeholder="留空则保存到默认路径；或填绝对路径，例 E:\GoOut\my-project">
-              <button data-i18n="选择…" class="ghost small" type="button" title="浏览本机目录选择" data-i18n-title="浏览本机目录选择" onclick="pickFolder('f-workdir')">选择…</button>
-            </div>
-            <p class="hint" id="f-workdir-hint"></p></div>
+          <p class="hint cmp-hint" id="f-workdir-hint"></p>
+          <!-- 工作目录指向 git 仓库时出现（probeGit 显隐）：运行时检出任务分支 -->
           <div class="field hidden" id="row-git">
             <label data-i18n="代码版本"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>代码版本</label>
             <select id="f-git-rev"></select>
             <p class="hint" id="git-hint"></p>
           </div>
+          <!-- Composer 大输入框：附件在左下、发送在右下；Enter 发送，Shift+Enter 换行 -->
+          <div class="cmp-box">
+            <textarea id="f-goal" rows="3" placeholder="要完成什么，一句话即可" required data-i18n-ph="要完成什么，一句话即可"></textarea>
+            <div class="cmp-bar">
+              <div class="att-strip">
+                <button type="button" class="ghost small" id="btn-attach" title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/" data-i18n-title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/"><svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg><span data-i18n="附件">附件</span></button>
+                <span class="att-hint" data-i18n="也可直接粘贴截图">也可直接粘贴截图</span>
+                <div id="att-chips" class="att-chips"></div>
+              </div>
+              <div class="cmp-send">
+                <span id="create-msg" class="msg"></span>
+                <button id="btn-create" class="primary round" title="创建并运行" data-i18n-title="创建并运行" aria-label="创建并运行" data-i18n-aria="创建并运行"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg></button>
+              </div>
+            </div>
+            <input type="file" id="f-attach-file" class="hidden" multiple>
+          </div>
+          <!-- 快捷类型：点一个即选定并聚焦目标框（renderQuickChips 渲染） -->
+          <div id="cmp-quick" class="cmp-quick" role="group" aria-label="常用类型" data-i18n-aria="常用类型"></div>
           <div class="field hidden" id="row-resume-session">
             <label data-i18n="选择会话">选择会话</label>
             <select id="f-resume-session"><option data-i18n="（加载中…）">（加载中…）</option></select>
             <p class="hint" id="resume-session-hint"></p>
           </div>
-          <div class="form-actions">
-            <button id="btn-create" class="primary" data-i18n="创建并运行"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg>创建并运行</button>
-            <span id="create-msg" class="msg"></span>
-          </div>
 
           <details id="f-advanced">
             <summary data-i18n="高级选项（默认全智能，无需改动）">高级选项（默认全智能，无需改动）</summary>
             <div class="adv-body">
-              <div class="field"><label data-i18n="上下文">上下文</label><textarea id="f-context" rows="2" placeholder="背景信息、约束、相关文件（可空）" data-i18n-ph="背景信息、约束、相关文件（可空）"></textarea></div>
               <div class="grid-2">
                 <div class="field">
-                  <label data-i18n="编排模式">编排模式</label>
-                  <select id="f-mode">
-                    <option data-i18n="智能（推荐）：自动拆解 + 智能路由 + 失败自动修复/换将" value="auto">智能（推荐）：自动拆解 + 智能路由 + 失败自动修复/换将</option>
-                    <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
+                  <label data-i18n="继续会话">继续会话</label>
+                  <select id="f-resume-agent">
+                    <option data-i18n="不沿用（全新开始）" value="">不沿用（全新开始）</option>
                   </select>
                 </div>
-                <div class="field"><label data-i18n="任务标题">任务标题</label><input id="f-title" placeholder="可空，自动取目标首行"></div>
+                <div class="field"><label data-i18n="任务标题">任务标题</label><input id="f-title" placeholder="可空，自动取目标首行" data-i18n-ph="可空，自动取目标首行"></div>
+              </div>
+              <div class="field"><label data-i18n="上下文">上下文</label><textarea id="f-context" rows="2" placeholder="背景信息、约束、相关文件（可空）" data-i18n-ph="背景信息、约束、相关文件（可空）"></textarea></div>
+              <div class="field">
+                <label data-i18n="编排模式">编排模式</label>
+                <select id="f-mode">
+                  <option data-i18n="智能（推荐）：自动拆解 + 智能路由 + 失败自动修复/换将" value="auto">智能（推荐）：自动拆解 + 智能路由 + 失败自动修复/换将</option>
+                  <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
+                </select>
               </div>
 
               <div id="f-code-only">
-                <div class="field"><label data-i18n="验证命令">验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）"></div>
+                <div class="field"><label data-i18n="验证命令">验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）" data-i18n-ph="例：python -m pytest -q（可空=只评审）"></div>
               </div>
               <div id="f-review-only" class="hidden">
                 <div class="grid-3">
-                  <div class="field"><label data-i18n="稿件文件（合并稿）">稿件文件（合并稿）</label><input id="f-manuscript" value="manuscript.md" placeholder="工作目录内的文件名"></div>
+                  <div class="field"><label data-i18n="稿件文件（合并稿）">稿件文件（合并稿）</label><input id="f-manuscript" value="manuscript.md" placeholder="工作目录内的文件名" data-i18n-ph="工作目录内的文件名"></div>
                   <div class="field"><label data-i18n="评审轮数">评审轮数</label><input id="f-rounds" type="number" value="2" min="1" max="5"></div>
                   <div class="field"><label data-i18n="发布阈值（全书）">发布阈值（全书）</label><input id="f-threshold" type="number" value="7.0" min="1" max="10" step="0.5"></div>
                 </div>
-                <div class="field"><label data-i18n="评审维度（逗号分隔，可自定义）">评审维度（逗号分隔，可自定义）</label><input id="f-rubric" placeholder="例：情节, 人物, 文笔"></div>
+                <div class="field"><label data-i18n="评审维度（逗号分隔，可自定义）">评审维度（逗号分隔，可自定义）</label><input id="f-rubric" placeholder="例：情节, 人物, 文笔" data-i18n-ph="例：情节, 人物, 文笔"></div>
                 <div class="grid-2">
-                  <div class="field"><label data-i18n="连载模式：章节数（空 = 单稿件一次成文）">连载模式：章节数（空 = 单稿件一次成文）</label><input id="f-chapters" type="number" min="2" max="20" placeholder="例：8（逐章起草+评审+修订）"></div>
-                  <div class="field"><label data-i18n="每章约字数">每章约字数</label><input id="f-words-per-ch" type="number" min="500" max="8000" step="100" placeholder="例：2500"></div>
-                  <div class="field"><label data-i18n="同章赛马稿件数">同章赛马稿件数</label><input id="f-variants" type="number" min="1" max="3" step="1" placeholder="1 = 关闭（2-3 每章多稿择优，更贵）"></div>
+                  <div class="field"><label data-i18n="连载模式：章节数（空 = 单稿件一次成文）">连载模式：章节数（空 = 单稿件一次成文）</label><input id="f-chapters" type="number" min="2" max="20" placeholder="例：8（逐章起草+评审+修订）" data-i18n-ph="例：8（逐章起草+评审+修订）"></div>
+                  <div class="field"><label data-i18n="每章约字数">每章约字数</label><input id="f-words-per-ch" type="number" min="500" max="8000" step="100" placeholder="例：2500" data-i18n-ph="例：2500"></div>
+                  <div class="field"><label data-i18n="同章赛马稿件数">同章赛马稿件数</label><input id="f-variants" type="number" min="1" max="3" step="1" placeholder="1 = 关闭（2-3 每章多稿择优，更贵）" data-i18n-ph="1 = 关闭（2-3 每章多稿择优，更贵）"></div>
                 </div>
               </div>
 
@@ -347,13 +363,32 @@
         </div>
         <div id="rd-meta" class="stats rd-meta-strip"></div>
         <div id="rd-tabs" class="rd-tabs" role="tablist" data-i18n-aria="详情分区">
+          <button class="rd-tab" data-tab="chat" data-i18n="对话">对话<span class="rd-badge hidden"></span></button>
           <button class="rd-tab" data-tab="hive" data-i18n="蜂巢">蜂巢<span class="rd-badge hidden"></span></button>
           <button class="rd-tab" data-tab="steps" data-i18n="步骤">步骤<span class="rd-badge hidden"></span></button>
           <button class="rd-tab" data-tab="result" data-i18n="成果">成果<span class="rd-badge hidden"></span></button>
           <button class="rd-tab" data-tab="git" data-i18n="Git">Git<span class="rd-badge hidden"></span></button>
           <button class="rd-tab" data-tab="bible" data-i18n="圣经">圣经<span class="rd-badge hidden"></span></button>
+          <button class="rd-tab" data-tab="bookmeta" data-i18n="作品信息">作品信息<span class="rd-badge hidden"></span></button>
         </div>
         <div class="rd-main">
+          <!-- 对话分区（直连任务默认）：用户消息与 CLI 输出混排的时间线 + 贴底追话框。
+               运行中发出去走信箱（下一步送达）；已结束发出去走 /chat 自动续跑新一轮。 -->
+          <div class="rd-pane" data-pane="chat">
+            <div id="rd-chat" class="rd-chat hidden">
+              <div id="rd-chat-flow" class="rd-chat-flow"></div>
+              <div class="rd-chat-bar">
+                <textarea id="rd-chat-input" rows="2" data-i18n-ph="继续说…（Enter 发送，Shift+Enter 换行；可直接粘贴截图）" placeholder="继续说…（Enter 发送，Shift+Enter 换行；可直接粘贴截图）"></textarea>
+                <div class="rd-chat-tools">
+                  <button id="rd-chat-attach" class="ghost small" data-i18n="附件">附件</button>
+                  <span id="rd-chat-att-list" class="rd-att-list"></span>
+                  <span id="rd-chat-hint" class="rd-hint"></span>
+                  <button id="rd-chat-send" class="primary round" data-i18n-title="发送" title="发送" data-i18n-aria="发送" aria-label="发送"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg></button>
+                </div>
+                <input id="rd-chat-file" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.txt,.md,.markdown,.csv,.json,.log,.py,.js,.ts,.html,.css,.xml,.yml,.yaml,.toml,.pdf,.docx,.xlsx,.pptx" class="hidden" />
+              </div>
+            </div>
+          </div>
           <div class="rd-pane" data-pane="hive">
             <div id="rd-hive" class="rd-hive hidden">
               <div class="sec-title"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="蜂巢工作台">蜂巢工作台</span><span id="rd-hive-sub" class="tag"></span></div>
@@ -390,6 +425,9 @@
           </div>
           <div class="rd-pane" data-pane="bible">
             <div id="rd-bible" class="rd-bible hidden"></div>
+          </div>
+          <div class="rd-pane" data-pane="bookmeta">
+            <div id="rd-bookmeta" class="rd-bookmeta hidden"></div>
           </div>
           <div id="rd-log" class="logbox rd-logdrawer hidden">
             <div class="log-live-bar">
@@ -479,7 +517,7 @@
             <button data-i18n="恢复默认 catalog" id="btn-reset-catalog" class="ghost">恢复默认 catalog</button>
           </div>
         </div>
-        <p class="hint">启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 CLI 自己的配置文件（CodeBee 之外也生效），CodeBee 编排运行时用哪个供应商 / 模型请到「CLI 绑定」页配置。安装命令不明的条目可直接编辑 <code>data/catalog.json</code> 后点重新加载。</p>
+        <p class="hint"><span data-i18n="启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 CLI 自己的配置文件（CodeBee 之外也生效），CodeBee 编排运行时用哪个供应商 / 模型请到「CLI 绑定」页配置。安装命令不明的条目可直接编辑">启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 CLI 自己的配置文件（CodeBee 之外也生效），CodeBee 编排运行时用哪个供应商 / 模型请到「CLI 绑定」页配置。安装命令不明的条目可直接编辑</span> <code>data/catalog.json</code> <span data-i18n="后点重新加载。">后点重新加载。</span></p>
         <h3 data-i18n="已安装" class="sec-title">已安装</h3>
         <div id="ag-installed" class="cards"></div>
         <h3 data-i18n="可安装" class="sec-title">可安装</h3>
@@ -521,8 +559,8 @@
       <div id="sub-skills" class="subpage hidden">
         <div class="panel wide">
           <div class="panel-head"><h2 data-i18n="经验库">经验库</h2></div>
-          <p class="hint">系统自己的经验沉淀：<b data-i18n="内置规范包">内置规范包</b>（如七猫签约标准，自动注入小说类任务的规划与评审提示词）
-            与<b data-i18n="运行中自动学到的教训">运行中自动学到的教训</b>（每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。</p>
+          <p class="hint"><span data-i18n="系统自己的经验沉淀：">系统自己的经验沉淀：</span><b data-i18n="内置规范包">内置规范包</b><span data-i18n="（如七猫签约标准，自动注入小说类任务的规划与评审提示词） 与">（如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与</span><b data-i18n="运行中自动学到的教训">运行中自动学到的教训</b><span data-i18n="（每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。">（每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。</span></p>
           <h3 data-i18n="内置规范包" class="sec-title">内置规范包</h3>
           <div id="skill-packs" class="cards"></div>
           <h3 class="sec-title"><span data-i18n="自动沉淀的教训">自动沉淀的教训</span> <span class="tag" id="skill-count"></span></h3>
@@ -538,7 +576,7 @@
           <h2 data-i18n="插件市场">插件市场</h2>
           <span id="mk-count" class="pm-count"></span>
         </div>
-        <p data-i18n="用经验包为 CodeBee 扩展写作与工程守则，一键装进经验库。" class="hint">用经验包为 CodeBee 扩展写作与工程守则，一键装进经验库。</p>
+        <p data-i18n="用经验包为 CodeBee 扩展写作与工程守则，一键装进经验库。安装即生效，无需手动调用：运行任务时，经验库按插件标注的「适用」自动把内容注入该类任务的提示词；可随时到「经验库」页启用、停用或卸载。" class="hint">用经验包为 CodeBee 扩展写作与工程守则，一键装进经验库。安装即生效，无需手动调用：运行任务时，经验库按插件标注的「适用」自动把内容注入该类任务的提示词；可随时到「经验库」页启用、停用或卸载。</p>
         <div id="mk-view" class="seg mk-view" role="group" aria-label="市场视图" data-i18n-aria="市场视图">
           <button data-i18n="经验包" class="seg-btn active" data-v="local">经验包</button>
           <button data-i18n="外部目录" class="seg-btn" data-v="remote">外部目录</button>
@@ -556,14 +594,20 @@
         <div id="mk-grid" class="cards mk-grid"></div>
         </div>
         <div id="mk-remote" class="hidden">
-          <p data-i18n="外部目录聚合公开生态：ZCode、Anthropic、Anthropic 官方技能、社区多端技能库（Codex / Gemini 兼容）与 ClawHub。为防供应链注入，只允许安装纯技能类（文档型）插件；含脚本、钩子或 MCP 组件的一律灰显不可装。" class="hint">外部目录聚合公开生态：ZCode、Anthropic、Anthropic 官方技能、社区多端技能库（Codex / Gemini 兼容）与 ClawHub。为防供应链注入，只允许安装纯技能类（文档型）插件；含脚本、钩子或 MCP 组件的一律灰显不可装。</p>
+          <p data-i18n="外部目录聚合公开生态：ZCode、Anthropic、Anthropic 官方技能、社区多端技能库（Codex / Gemini 兼容）与 ClawHub。本平台只注入纯技能内容（文档型）；插件包里的脚本、钩子或 MCP 组件会在安装时自动剥离并告知，绝不会被写入或执行。装好的技能不会单独「运行」，而是作为经验内容自动注入相关任务的提示词。" class="hint">外部目录聚合公开生态：ZCode、Anthropic、Anthropic 官方技能、社区多端技能库（Codex / Gemini 兼容）与 ClawHub。本平台只注入纯技能内容（文档型）；插件包里的脚本、钩子或 MCP 组件会在安装时自动剥离并告知，绝不会被写入或执行。装好的技能不会单独「运行」，而是作为经验内容自动注入相关任务的提示词。</p>
           <div class="pm-tools mk-tools">
             <input id="mkr-search" type="search" placeholder="搜索外部插件…" data-i18n-ph="搜索外部插件…" autocomplete="off">
+            <button id="mkr-search-btn" class="ghost small" title="搜索" data-i18n-title="搜索" aria-label="搜索" data-i18n-aria="搜索"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg><span data-i18n="搜索">搜索</span></button>
             <select id="mkr-source" aria-label="来源" data-i18n-aria="来源"></select>
             <button id="mkr-refresh" class="ghost small" data-i18n="拉取更新">拉取更新</button>
           </div>
           <div id="mkr-meta" class="hint mkr-meta"></div>
           <div id="mkr-grid" class="cards mk-grid"></div>
+          <div id="mkr-more" class="mkr-more hidden">
+            <span id="mkr-more-txt" class="hint"></span>
+            <button id="mkr-more-btn" class="ghost small" data-i18n="加载更多">加载更多</button>
+          </div>
+          <div id="mkr-sentinel" class="mkr-sentinel"></div>
         </div>
       </div>
       </div>
@@ -620,10 +664,11 @@
         </div>
         <div class="panel wide" id="apn-skin">
           <div class="panel-head"><h2 data-i18n="皮肤">皮肤</h2></div>
-          <p class="hint">每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与电脑各自独立）。<b data-i18n="经典">经典</b>是默认皮肤，即原本的界面。</p>
-          <h3 class="sec-title">语言 / Language</h3>
+          <p class="hint"><span data-i18n="每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与电脑各自独立）。">每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与电脑各自独立）。</span><b data-i18n="经典">经典</b><span data-i18n="是默认皮肤，即原本的界面。">是默认皮肤，即原本的界面。</span></p>
+          <h3 class="sec-title" data-i18n="语言 / Language">语言 / Language</h3>
           <div id="lang-mode" class="seg" role="group" aria-label="Language">
-            <button class="seg-btn" data-lang="zh">中文</button>
+            <!-- 语言名一律用本语言书写，不翻译 -->
+            <button class="seg-btn" data-lang="zh"><span>中文</span></button>
             <button class="seg-btn" data-lang="en">English</button>
           </div>
           <h3 data-i18n="明暗" class="sec-title">明暗</h3>
@@ -757,7 +802,7 @@
 <div id="token-gate" class="token-gate hidden">
   <div class="gate-card">
     <div class="gate-brand"><span class="brand-name">CodeBee</span></div>
-    <p class="gate-hint">这台设备第一次连接，请输入访问令牌<br><span data-i18n="（电脑上启动 CodeBee 时控制台会显示，形如 http://192.168.x.x:8765/?token=xxxxxxxx）">（电脑上启动 CodeBee 时控制台会显示，形如 http://192.168.x.x:8765/?token=xxxxxxxx）</span></p>
+    <p class="gate-hint"><span data-i18n="这台设备第一次连接，请输入访问令牌">这台设备第一次连接，请输入访问令牌</span><br><span data-i18n="（电脑上启动 CodeBee 时控制台会显示，形如 http://192.168.x.x:8765/?token=xxxxxxxx）">（电脑上启动 CodeBee 时控制台会显示，形如 http://192.168.x.x:8765/?token=xxxxxxxx）</span></p>
     <input id="gate-token" type="password" placeholder="访问令牌" autocomplete="off" data-i18n-ph="访问令牌">
     <button data-i18n="进入" id="gate-go" class="primary" onclick="submitToken()">进入</button>
     <p id="gate-err" class="msg"></p>
@@ -768,7 +813,7 @@
 
 <!-- 命令面板（Ctrl+K）：搜索任务直达 + 快捷命令 -->
 <div id="cmdk-mask" class="cmdk-mask hidden">
-  <div class="cmdk" role="dialog" aria-label="命令面板" onclick="event.stopPropagation()">
+  <div class="cmdk" role="dialog" aria-label="命令面板" data-i18n-aria="命令面板" onclick="event.stopPropagation()">
     <div class="cmdk-input">
       <svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>
       <input id="cmdk-q" type="text" placeholder="搜索操作、任务或文件" data-i18n-ph="搜索操作、任务或文件" autocomplete="off" spellcheck="false">

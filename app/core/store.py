@@ -123,6 +123,8 @@ def create_task(payload):
         task["git_rev"] = git_rev
     if flow["engine"] == "code":
         task["verify_command"] = (payload.get("verify_command") or "").strip()
+    elif flow["engine"] == "direct":
+        pass  # 直连任务：无验证命令也无评审参数，目标+附件即全部输入
     else:
         ms = (payload.get("manuscript") or flow.get("manuscript") or "manuscript.md").strip()
         ms = re.sub(r"[\\/]", "_", ms)  # 只允许工作目录内的相对文件名
@@ -230,7 +232,34 @@ def update_task_status(task_id, status):
             _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
 
 
+def _valid_id(task_id):
+    """task_id 白名单：字母开头，仅字母/数字/下划线/连字符。
+
+    id 会被拼进磁盘路径（tasks/<id>.json 等）与 URL，`../` 这类穿越序列必须
+    在入口处拒掉；store 里所有「id 直拼路径」的读写都要先过这道闸。
+    """
+    return bool(re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)))
+
+
+def set_book_meta(task_id, platform, entry):
+    """写任务的作品信息状态（book_meta[platform] = {status, data?, error?, at}）。
+
+    一键生成是后台线程跑的，前端靠任务 JSON 里的这个字段看进度（SSE 推送）。
+    任务不存在返回 False。"""
+    if not _valid_id(task_id):
+        return False
+    with LOCK:
+        task = _TASKS.get(task_id)
+        if not task:
+            return False
+        task.setdefault("book_meta", {})[platform] = entry
+        _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
+    return True
+
+
 def get_task(task_id):
+    if not _valid_id(task_id):
+        return None
     with LOCK:
         if task_id in _TASKS:
             return _TASKS[task_id]
@@ -525,7 +554,7 @@ def run_dir(run_id):
 
 def delete_run(run_id):
     """删除一条运行记录（内存 + 磁盘目录）。返回 (ok, 错误信息)。"""
-    if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(run_id)):
+    if not _valid_id(run_id):
         return False, "非法的记录 ID"
     with LOCK:
         run = _RUNS.get(run_id)
@@ -776,7 +805,7 @@ def delete_runs(run_ids):
     deleted, skipped, bad = 0, 0, 0
     for run_id in run_ids:
         rid = str(run_id)
-        if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", rid):
+        if not _valid_id(rid):
             bad += 1
             continue
         with LOCK:
@@ -810,19 +839,14 @@ def clear_runs():
 
 
 def archive_task(task_id, archived=True):
-    """归档/取消归档：归档后从默认列表与侧栏隐藏，数据保留，可随时恢复。"""
-    if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)):
+    """归档/取消归档：归档后从默认列表与侧栏隐藏，数据保留，可随时恢复。
+    运行中/排队也允许归档——归档只是隐藏，运行照常继续，不删任何东西。"""
+    if not _valid_id(task_id):
         return False, "非法的任务 ID"
     with LOCK:
         task = _TASKS.get(task_id)
         if not task:
             return False, "任务不存在"
-        if archived:
-            if task.get("status") in ("queued", "running"):
-                return False, "运行中的任务不能归档，请先取消"
-            for r in _RUNS.values():
-                if r.get("task_id") == task_id and r.get("status") in ("queued", "running"):
-                    return False, "有运行中的记录，请先取消"
         task["archived"] = bool(archived)
         _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
     return True, ""
@@ -830,7 +854,7 @@ def archive_task(task_id, archived=True):
 
 def delete_task(task_id):
     """删除任务及其全部运行记录（含日志与报告目录）。返回 (ok, 错误信息)。"""
-    if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)):
+    if not _valid_id(task_id):
         return False, "非法的任务 ID"
     with LOCK:
         task = _TASKS.get(task_id)
@@ -862,7 +886,7 @@ def retry_task(task_id):
     （inherit）大纲与已完成章号——流水线跳过这些章的起草（成稿/评审分数
     直接复用或重评），避免几十万字长篇因一次超时全部重来。
     """
-    if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)):
+    if not _valid_id(task_id):
         return False, "非法的任务 ID", None
     with LOCK:
         task = _TASKS.get(task_id)
@@ -1051,7 +1075,7 @@ def set_task_git_state(task_id, state):
     run 检出任务分支时置 isolated，人审合并/丢弃后置终态，新一轮 run 又会
     重置回 isolated。返回 (ok, 错误信息)。
     """
-    if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)):
+    if not _valid_id(task_id):
         return False, "非法的任务 ID"
     with LOCK:
         task = _TASKS.get(task_id)
@@ -1072,7 +1096,7 @@ def rename_task(task_id, title):
     侧栏任务树按 run.title 显示组名，只改任务会让历史运行仍顶着旧名，
     所以两者一起改（运行 json 逐个回写）。
     """
-    if not re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", str(task_id)):
+    if not _valid_id(task_id):
         return False, "非法的任务 ID"
     title = str(title or "").strip()
     if not title:

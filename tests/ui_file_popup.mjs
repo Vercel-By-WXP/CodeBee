@@ -154,9 +154,11 @@ async function main() {
         meta: p.querySelectorAll(".fp-meta").length,
         body: (p.querySelector(".fp-body")||{}).innerText || "" } : { open: false }; })())`;
 
-    /* 1) 主栏 Git 面板：双击 .gf → 弹窗只含该文件 diff */
+    /* 1) 主栏 Git 面板（工作台态）：双击 .gf → 弹窗只含该文件实时 diff */
     await evalJs(`(async () => { openRun(${JSON.stringify(runId)});
-      await new Promise(r => setTimeout(r, 1200)); return 1; })()`);
+      for (let i = 0; i < 25; i++) { await new Promise(r => setTimeout(r, 300));
+        if (document.querySelector("#rd-git .gf")) return 1; }   // 等工作台数据落位
+      return 1; })()`);
     const dbl = `(() => { const b = [...document.querySelectorAll("#rd-git .gf")]
       .find(x => x.dataset.p === ${JSON.stringify("README.md")});
       if (!b) return "no-gf";

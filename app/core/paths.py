@@ -4,7 +4,9 @@
 数据目录选择顺序：
 1. TUTTI_DATA 环境变量（测试/多实例时整体指到别处，必须在任何模块使用前设置）；
 2. 仓库内 data/ 且已有内容——开发仓库与老安装平滑沿用，升级不动数据；
-3. 用户目录：Windows %APPDATA%\\Tutti，macOS/Linux ~/.tutti。
+3. 用户目录：Windows %APPDATA%\\CodeBee，macOS/Linux ~/.codebee。
+   老安装的 %APPDATA%\\Tutti / ~/.tutti 若存在则自动沿用（零迁移），
+   新安装一律落 CodeBee 目录。
    npm/pip 全局安装的包目录会在 `npm update -g` 时被整体替换，
    数据绝不能落在包内，故全新安装一律走用户目录。
 """
@@ -23,16 +25,20 @@ _DATA_SENTINELS = ("catalog.json", "models.json", "orchestration.json", "tasks",
 
 
 def _user_data_dir(platform=None, environ=None, home=None) -> Path:
-    """全局安装场景的用户数据目录（不创建，仅计算）。home 供测试注入。"""
+    """全局安装场景的用户数据目录（不创建，仅计算）。home 供测试注入。
+    新装落 CodeBee；老 Tutti 目录存在则沿用（改名零迁移）。"""
     platform = platform or sys.platform
     env = os.environ if environ is None else environ
     home = Path(home) if home else Path.home()
     if platform == "win32":
         appdata = env.get("APPDATA")
-        if appdata:
-            return Path(appdata) / "Tutti"
-        return home / "AppData" / "Roaming" / "Tutti"
-    return home / ".tutti"
+        base = Path(appdata) if appdata else home / "AppData" / "Roaming"
+        if (base / "Tutti").exists():
+            return base / "Tutti"
+        return base / "CodeBee"
+    if (home / ".tutti").exists():
+        return home / ".tutti"
+    return home / ".codebee"
 
 
 def default_data_dir(repo=None, environ=None) -> Path:

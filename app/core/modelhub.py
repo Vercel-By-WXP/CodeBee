@@ -28,6 +28,7 @@ anthropic/openai 可注入到 CLI；google 仅登记（当前无对应 CLI 可�
 """
 from __future__ import annotations
 
+import copy
 import ipaddress
 import json
 import os
@@ -54,13 +55,26 @@ _FILE = paths.DATA_DIR / "models.json"
 # 可注入 CLI 的协议；google 只登记（当前 catalog 里没有可注入的 gemini CLI）
 _PROTOCOLS = ("anthropic", "openai", "google")
 _BINDABLE_PROTOCOLS = ("anthropic", "openai")
+# 聚合中转网关（new-api/one-api 系）一个密钥常同时开多条 wire，导入时不必先问
+# 用户选哪条：protocol="auto" 表示「不指定，按实测能力集挑」。旧数据里的
+# anthropic/openai/google 一律视为显式指定（用户可覆盖），行为完全不变。
+_PROTOCOL_AUTO = "auto"
+_PROTOCOL_CHOICES = _PROTOCOLS + (_PROTOCOL_AUTO,)
+# auto 挑主协议时的偏好顺序：只挑「实测过的」wire（wire_caps），不猜。
+_WIRE_PREFERENCE = ("anthropic", "openai")
 
 
 def _load():
     try:
-        return _normalize_ids(json.loads(_FILE.read_text(encoding="utf-8")))
+        data = _normalize_ids(json.loads(_FILE.read_text(encoding="utf-8")))
     except Exception:
         return {"providers": [], "bindings": {}}
+    # 多 KEY 供应商的 api_key 是「首个可用 KEY」的镜像：每次读取时重算，冷却
+    # 到期自动把首选 KEY 换回来（或已切到备用）。没有 keys 数组的老数据不动。
+    for p in data.get("providers") or []:
+        if isinstance(p.get("keys"), list):
+            _sync_api_key(p)
+    return data
 
 
 def _normalize_ids(data):
@@ -159,15 +173,21 @@ def _fetch_models_http(base_url, api_key, protocol, allow_private=False):
 
     仅访问用户自己配置的供应商地址；协议白名单 + 解析 IP 边界校验 + 禁用重定向。
     google 走 /v1beta/models，返回项形如 {"name": "models/gemini-x"}。
+    protocol="auto"（导入时未指定格式）两条 URL 形状都试——anthropic 与 openai
+    的取列表路径本就相同，多试 google 那条只是让 auto 名副其实。
     """
     import urllib.parse
     base = (base_url or "").rstrip("/")
     if not base.startswith(("http://", "https://")):
         return None, "base_url 必须是 http/https"
+    std = [base + "/models"] if base.endswith("/v1") else [base + "/v1/models", base + "/models"]
+    goog = [base + "/models"] if base.endswith("/v1beta") else [base + "/v1beta/models"]
     if protocol == "google":
-        urls = [base + "/models"] if base.endswith("/v1beta") else [base + "/v1beta/models"]
+        urls = goog
+    elif protocol == _PROTOCOL_AUTO:
+        urls = std + [u for u in goog if u not in std]
     else:
-        urls = [base + "/models"] if base.endswith("/v1") else [base + "/v1/models", base + "/models"]
+        urls = std
     last_err = ""
     opener = urllib.request.build_opener(_NoRedirect)
     for url in urls:
@@ -175,7 +195,12 @@ def _fetch_models_http(base_url, api_key, protocol, allow_private=False):
         if host_info is None:
             last_err = host_info[1]
             continue
-        for headers in _auth_header_variants(api_key, protocol):
+        # auto 不知道是哪条 wire，鉴权头也按两种都试（google 那种单独补上）
+        hdrs = _auth_header_variants(api_key, protocol)
+        if protocol == _PROTOCOL_AUTO:
+            hdrs = _auth_header_variants(api_key, "anthropic") + \
+                [{"x-goog-api-key": api_key, "User-Agent": "codebee-orchestrator/1.0"}]
+        for headers in hdrs:
             try:
                 req = urllib.request.Request(url, headers=headers, method="GET")
                 with opener.open(req, timeout=15) as resp:
@@ -247,7 +272,17 @@ def refresh_models(provider_id):
         prov["models"] = allm
         prov["models_fetched_at"] = time.strftime("%Y-%m-%d %H:%M")
         _save(data)
-        return len(allm), ""
+    # 取列表成功后自动做一次 wire 适配探测，但丢到后台线程：探测最坏要等多个
+    # 候选端点各自超时（网络不通/慢时几十秒），同步跑会把 /api/models/refresh
+    # 拖成长请求，前端 await 不到响应——用户看就是「点了获取模型列表没反应」。
+    # 探完落 wire_caps，页面下一轮轮询自然刷出「已适配」徽标。
+    def _bg_probe(pid=provider_id):
+        try:
+            probe_wire_caps(pid)
+        except Exception:
+            pass
+    threading.Thread(target=_bg_probe, name="wire-probe", daemon=True).start()
+    return len(allm), ""
 
 
 def refresh_all_async():
@@ -495,14 +530,213 @@ def _mask(key):
 
 
 def provider_view():
-    """脱敏后的供应商列表（给 UI/API）。enabled 缺省视为启用；启用的排在停用前。"""
+    """脱敏后的供应商列表（给 UI/API）。enabled 缺省视为启用；启用的排在停用前。
+
+    keys 里的密钥逐条脱敏；冷却状态实时算好（cooling）给界面显示。
+    """
     out = []
+    now = time.time()
     for p in providers():
         row = {k: (_mask(v) if k == "api_key" else v) for k, v in p.items()}
         row["enabled"] = bool(p.get("enabled", True))
+        ks = []
+        for k in _provider_keys(p):
+            ks.append({"id": k["id"], "key": _mask(k["key"]),
+                       "label": k.get("label") or "", "enabled": k["enabled"],
+                       "cooling": k["cooling"],
+                       "cool_until": float(k.get("cool_until") or 0),
+                       "last_error": (k.get("last_error") or "")[:200],
+                       "last_fail_at": float(k.get("last_fail_at") or 0)})
+        row["keys"] = ks
+        row["keys_enabled"] = sum(1 for k in ks if k["enabled"])
         out.append(row)
     out.sort(key=lambda r: not r["enabled"])  # 兜底：导入等未走启停操作的也保持启用在前
     return out
+
+
+# ---------------------------------------------------------------- 多 KEY（同厂商多密钥）
+# 一个厂商可配多把 KEY（不同账号，或欠费后的备用号）：
+#   provider["keys"] = [{"id","key","label","enabled","cool_until","last_error"}, ...]
+# 数组顺序即调用顺序（界面可拖拽）；api_key 是「首个可用 KEY」的镜像，所有既有
+# 读取点（凭据注入/健康探测/取模型列表）无需感知多 KEY 结构。没配 keys 的老数据
+# 由 _provider_keys 按 api_key 现场合成一条——文件一个字节都不用改。
+_KEY_COOLDOWN_S = 30 * 60      # 欠费类失败后的冷却时长
+MAX_PROVIDER_KEYS = 8          # 单厂商 KEY 上限
+MAX_CHAIN_ATTEMPTS = 8         # 链展开后的尝试上限（模型 × KEY）
+# 欠费/配额类失败：换 KEY 有意义（同厂商另一账号还能用），与瞬态网络错误分开记
+_QUOTA_HINTS = ("insufficient", "quota", "balance", "credit", "billing", "arrears",
+                "payment required", "402", "欠费", "余额", "额度", "exceeded")
+
+
+def _quota_error(err):
+    """疑似欠费/配额耗尽。误判的代价只是临时切到备用 KEY（冷却到期或手动恢复
+    即回到首选），比「账单断了还死磕同一把 KEY」小得多。"""
+    e = (err or "").lower()
+    return any(k in e for k in _QUOTA_HINTS)
+
+
+def _provider_keys(prov, available_only=False, now=None):
+    """供应商的 KEY 列表，顺序=调用顺序。返回 [{id,key,label,enabled,cooling,...}]。
+
+    available_only 只留「启用且不在冷却期」的；没配 keys 时按 api_key 合成一条。
+    """
+    ks = (prov or {}).get("keys")
+    if not isinstance(ks, list) or not ks:
+        legacy = ((prov or {}).get("api_key") or "").strip()
+        ks = [{"id": "k1", "key": legacy, "label": "", "enabled": True}] if legacy else []
+    now = time.time() if now is None else now
+    out = []
+    for i, k in enumerate(ks):
+        if not isinstance(k, dict):
+            continue
+        kk = (k.get("key") or "").strip()
+        if not kk:
+            continue
+        en = bool(k.get("enabled", True))
+        cooling = float(k.get("cool_until") or 0) > now
+        if available_only and (not en or cooling):
+            continue
+        out.append(dict(k, key=kk, enabled=en, cooling=cooling,
+                        id=str(k.get("id") or ("k%d" % (i + 1)))))
+    return out
+
+
+def _chain_keys(prov):
+    """链条目展开用的 KEY 序列：优先「启用且未冷却」；全都冷却时退回首个启用的
+    （冷却没到期也得有人顶，否则整个供应商被跳过——代价比多试一次大）。"""
+    avail = _provider_keys(prov, available_only=True)
+    if avail:
+        return avail[:MAX_PROVIDER_KEYS]
+    return [k for k in _provider_keys(prov) if k["enabled"]][:1]
+
+
+def _sync_api_key(prov):
+    """把 api_key 镜像刷成「首个可用 KEY」（全冷却时取首个启用的）。
+
+    这是多 KEY 与既有单 KEY 代码之间的唯一桥：注入/健康/探测读 api_key 的地方
+    自动跟着切换，不必逐处改成读 keys。没有启用的 KEY 时置空——既有
+    「无密钥即跳过」的判定自然生效。
+    """
+    if not isinstance(prov.get("keys"), list):
+        return                      # 老结构：api_key 就是真源，别动它
+    avail = _provider_keys(prov, available_only=True)
+    pick = avail[0] if avail else next((k for k in _provider_keys(prov) if k["enabled"]), None)
+    prov["api_key"] = pick["key"] if pick else ""
+
+
+def _materialize_keys(prov):
+    """把「按 api_key 合成」的隐式单 KEY 落成显式 keys 数组（首次改 KEY 时调用）。
+    返回该数组（就地写入 prov）。"""
+    if not isinstance(prov.get("keys"), list):
+        prov["keys"] = [{"id": "k1", "key": k["key"], "label": k.get("label") or "",
+                         "enabled": True} for k in _provider_keys(prov)]
+    return prov["keys"]
+
+
+def _next_key_id(keys):
+    used = {str(k.get("id") or "") for k in keys if isinstance(k, dict)}
+    for i in range(1, MAX_PROVIDER_KEYS + 2):
+        if ("k%d" % i) not in used:
+            return "k%d" % i
+    return "k%d" % (len(used) + 1)
+
+
+def key_op(provider_id, op, key_id="", key="", label="", enabled=None, ids=None):
+    """KEY 级操作（add | update | delete | reorder | reset）。返回错误串或 None。
+
+    reset 清掉冷却与最近错误（欠费充值后手动恢复）；reorder 用 ids 给全量顺序。
+    """
+    import time as _t
+    with _LOCK:
+        data = _load()
+        prov = next((p for p in data.get("providers", []) if p.get("id") == provider_id), None)
+        if not prov:
+            return "供应商不存在"
+        keys = _materialize_keys(prov)
+        if op == "add":
+            val = (key or "").strip()
+            if not val:
+                return "密钥不能为空"
+            if len(keys) >= MAX_PROVIDER_KEYS:
+                return "最多 %d 把密钥" % MAX_PROVIDER_KEYS
+            keys.append({"id": _next_key_id(keys), "key": val,
+                         "label": (label or "").strip(), "enabled": True})
+        elif op in ("update", "delete", "enable", "disable", "reset"):
+            target = next((k for k in keys if str(k.get("id")) == str(key_id)), None)
+            if target is None:
+                return "密钥不存在"
+            if op == "delete":
+                keys.remove(target)
+            elif op == "update":
+                if (key or "").strip():
+                    target["key"] = key.strip()
+                if label is not None:
+                    target["label"] = (label or "").strip()
+                if enabled is not None:
+                    target["enabled"] = bool(enabled)
+                    if target["enabled"]:
+                        target.pop("cool_until", None)
+                        target.pop("last_error", None)
+            elif op in ("enable", "disable"):
+                target["enabled"] = (op == "enable")
+                if target["enabled"]:      # 重新启用即视为手动恢复
+                    target.pop("cool_until", None)
+                    target.pop("last_error", None)
+            else:  # reset：只清冷却与错误，不动启用状态（欠费充值后恢复首选位）
+                target.pop("cool_until", None)
+                target.pop("last_error", None)
+        elif op == "reorder":
+            order = [str(i) for i in (ids or [])]
+            byid = {str(k.get("id")): k for k in keys}
+            if sorted(order) != sorted(byid):
+                return "排序列表与现有密钥不一致"
+            prov["keys"] = [byid[i] for i in order]
+        else:
+            return "未知操作 " + op
+        _sync_api_key(prov)
+        # 密钥变了：旧的 wire 适配探测结果作废（换号可能换了可用协议面）
+        if op in ("add", "update", "delete"):
+            prov.pop("wire_caps", None)
+        _save(data)
+        return None
+
+
+def note_key_error(provider_id, key_id, error=""):
+    """一次 KEY 级失败回写：欠费类进冷却（后续解析自动跳过 → 切备用 KEY）。"""
+    import time as _t
+    if not provider_id or not key_id:
+        return
+    with _LOCK:
+        data = _load()
+        prov = next((p for p in data.get("providers", []) if p.get("id") == provider_id), None)
+        if not prov or not isinstance(prov.get("keys"), list):
+            return          # 老结构没有 keys 数组：不值得为它落盘
+        target = next((k for k in prov["keys"] if str(k.get("id")) == str(key_id)), None)
+        if target is None:
+            return
+        target["last_error"] = (error or "")[:300]
+        target["last_fail_at"] = _t.time()
+        if _quota_error(error):
+            target["cool_until"] = _t.time() + _KEY_COOLDOWN_S
+        _sync_api_key(prov)
+        _save(data)
+
+
+def note_key_ok(provider_id, key_id):
+    """一次 KEY 级成功回写：清最近错误（冷却不动——那是欠费标记，等它自己过期）。"""
+    if not provider_id or not key_id:
+        return
+    with _LOCK:
+        data = _load()
+        prov = next((p for p in data.get("providers", []) if p.get("id") == provider_id), None)
+        if not prov or not isinstance(prov.get("keys"), list):
+            return
+        target = next((k for k in prov["keys"] if str(k.get("id")) == str(key_id)), None)
+        if target is None or not target.get("last_error"):
+            return
+        target.pop("last_error", None)
+        _save(data)
+
 
 def _is_private_host(url):
     """主机是私网/环回 IP 字面量或 localhost 时返回 True（自动放行内网网关）。"""
@@ -527,15 +761,20 @@ def upsert_provider(entry):
             return "名称不能为空"
         if not base_url.startswith(("http://", "https://")):
             return "base_url 必须是 http/https"
-        proto = entry.get("protocol") or "anthropic"
-        if proto not in _PROTOCOLS:
-            return "protocol 只能是 %s" % " / ".join(_PROTOCOLS)
         target = None
         if pid:
             target = next((p for p in plist if p["id"] == pid), None)
         if target is None:
             target = {"id": _next_pid(plist)}
             plist.append(target)
+        # 未指定格式：更新时沿用旧值（不因表单漏传就把已定的格式打回 auto），
+        # 新增时默认 auto——聚合网关一个密钥常同时开多条 wire，不必先问用户。
+        proto = entry.get("protocol") or target.get("protocol") or _PROTOCOL_AUTO
+        if proto not in _PROTOCOL_CHOICES:
+            return "protocol 只能是 %s" % " / ".join(_PROTOCOL_CHOICES)
+        # 地址或密钥变了，旧的 wire 适配探测结果作废（下次刷新/手动测试重测）
+        if target.get("base_url") != base_url or (entry.get("api_key") or "").strip():
+            target.pop("wire_caps", None)
         target.update({
             "name": name, "protocol": proto, "base_url": base_url,
             "model": (entry.get("model") or "").strip(),
@@ -544,7 +783,19 @@ def upsert_provider(entry):
             "source": entry.get("source") or target.get("source") or "manual",
         })
         key = (entry.get("api_key") or "").strip()
-        if key or "api_key" not in target:
+        if isinstance(target.get("keys"), list):
+            # 多 KEY 供应商：表单里新填的密钥替换首选 KEY 的值（不另开一把），
+            # 并清掉它的冷却/错误——用户手填密钥就是「这把是好的」的意思。
+            if key:
+                ks = _materialize_keys(target)
+                if ks:
+                    ks[0]["key"] = key
+                    ks[0].pop("cool_until", None)
+                    ks[0].pop("last_error", None)
+                else:
+                    target["keys"] = [{"id": "k1", "key": key, "label": "", "enabled": True}]
+            _sync_api_key(target)
+        elif key or "api_key" not in target:
             target["api_key"] = key
         if _is_private_host(target["base_url"]):
             target["allow_private"] = True
@@ -553,13 +804,14 @@ def upsert_provider(entry):
 
 
 def providers_op(ids, op):
-    """批量供应商操作（enable | disable | delete）。返回 (改动数, 错误)。
+    """批量供应商操作（enable | disable | delete | duplicate）。返回 (改动数, 错误)。
 
     停用只影响 Tutti 编排时的运行时解析（resolve_binding 返回空 → 回落 CLI 默认），
     不清除配置，也不影响绑定引用，随时可再启用。
+    duplicate 复制一条（同地址同密钥的第二个账号/新网关），副本不带绑定引用。
     """
     ids = list(dict.fromkeys(i for i in (ids or []) if i))
-    if op not in ("enable", "disable", "delete"):
+    if op not in ("enable", "disable", "delete", "duplicate"):
         return 0, "未知操作 " + op
     if not ids:
         return 0, "未选择供应商"
@@ -567,6 +819,29 @@ def providers_op(ids, op):
         data = _load()
         plist = data.get("providers", [])
         known = {p.get("id") for p in plist}
+        if op == "duplicate":
+            missing = [i for i in ids if i not in known]
+            if missing:
+                return 0, "供应商不存在"
+            fresh = []
+            for i in ids:
+                src = next(p for p in plist if p.get("id") == i)
+                dup = copy.deepcopy(src)
+                dup["id"] = _next_pid(plist + fresh)
+                dup["name"] = (src.get("name") or "供应商") + " 副本"
+                dup["enabled"] = True
+                # 副本的 KEY 重新编号，避免与源共用一个 id（界面按 id 定位）
+                if isinstance(dup.get("keys"), list):
+                    for n, k in enumerate(dup["keys"], 1):
+                        if isinstance(k, dict):
+                            k["id"] = "k%d" % n
+                            k.pop("cool_until", None)
+                            k.pop("last_error", None)
+                dup.pop("orchestrator", None)
+                fresh.append(dup)
+            plist.extend(fresh)
+            _save(data)
+            return len(fresh), ""
         missing = [i for i in ids if i not in known]
         if missing:
             return 0, "供应商不存在：%d 个" % len(missing)
@@ -1054,8 +1329,9 @@ def _src_ccswitch():
     except Exception:
         pass
     if skipped:
-        out["note"] = "跳过 %d 条（缺地址或格式不识别）：%s" % (
+        out["note"] = "跳过 {0} 条（缺地址或格式不识别）：{1}".format(
             len(skipped), "、".join(sorted(set(skipped))[:4]))
+        out["note_args"] = [len(skipped), "、".join(sorted(set(skipped))[:4])]
     return out
 
 
@@ -1139,7 +1415,9 @@ def _src_zcode():
         else:
             bad.append(str(p.get("name") or pid))
     if bad:
-        out["note"] = "跳过 %d 个（缺合法 baseURL）：%s" % (len(bad), "、".join(bad[:4]))
+        out["note"] = "跳过 {0} 个（缺合法 baseURL）：{1}".format(
+            len(bad), "、".join(bad[:4]))
+        out["note_args"] = [len(bad), "、".join(bad[:4])]
     return out
 
 
@@ -1422,6 +1700,7 @@ def _collect(fn):
     res.setdefault("providers", [])
     res.setdefault("pricing", {})
     res.setdefault("note", "")
+    res.setdefault("note_args", [])
     res.setdefault("error", "")
     res.setdefault("found", False)
     return res
@@ -1434,11 +1713,12 @@ def sources():
         ps = [p for p in paths() if p]
         found = any(os.path.isfile(p) for p in ps)
         row = {"id": sid, "name": name, "desc": desc, "paths": ps,
-               "found": found, "count": 0, "note": "", "error": ""}
+               "found": found, "count": 0, "note": "", "note_args": [], "error": ""}
         if found:
             res = _collect(fn)
             row["count"] = len(res["providers"])
             row["note"] = res["note"]
+            row["note_args"] = res.get("note_args", [])
             row["error"] = res["error"]
         rows.append(row)
     return rows
@@ -1479,7 +1759,8 @@ def import_sources(ids=None):
             out["sources"].append({
                 "id": sid, "name": name, "found": res["found"],
                 "added": added, "updated": updated, "duplicate": dup,
-                "count": added + updated, "note": res["note"], "error": res["error"]})
+                "count": added + updated, "note": res["note"],
+                "note_args": res.get("note_args", []), "error": res["error"]})
         if out["added"] or out["updated"] or out["pricing"]:
             _save(data)
     out["imported"] = out["added"] + out["updated"]
@@ -1555,25 +1836,68 @@ def _deepseek_env_target(target):
     return (target or "").strip().lower() in _DEEPSEEK_ENV_TARGETS
 
 
-def _chain_entry_env(prov, model, target=""):
+def _chain_entry_env(prov, model, target="", endpoint=None, key="", key_id="",
+                     provider_id=""):
     """一条链的运行时注入：env（claude=ANTHROPIC_*，codex=一次性 provider 覆盖，
-    dsh=DEEPSEEK_*）。"""
-    out = {"model": model, "env": {}, "provider": prov}
+    dsh=DEEPSEEK_*）。endpoint=(proto, base_url, wire_api) 是 wire_caps 适配出的
+    生效端点；None 时按供应商原生协议与地址注入。key 指定用哪把密钥（多 KEY
+    展开时逐条注入），空则用供应商当前的首选密钥。
+
+    key_id/provider_id 原样带进条目，供 runner 把「哪把 KEY 失败了」回写冷却。
+    """
+    proto, base = ((endpoint[0], endpoint[1]) if endpoint
+                   else (prov["protocol"], prov["base_url"]))
+    use_key = key or prov.get("api_key") or ""
+    out = {"model": model, "env": {}, "provider": prov,
+           "provider_id": provider_id or prov.get("id") or "", "key_id": key_id}
     if _deepseek_env_target(target):
-        out["env"] = {"DEEPSEEK_API_KEY": prov["api_key"],
-                      "DEEPSEEK_BASE_URL": prov["base_url"]}
+        out["env"] = {"DEEPSEEK_API_KEY": use_key,
+                      "DEEPSEEK_BASE_URL": base}
         return out
-    if prov["protocol"] == "anthropic":
-        out["env"] = {"ANTHROPIC_BASE_URL": prov["base_url"],
-                      "ANTHROPIC_AUTH_TOKEN": prov["api_key"]}
+    if proto == "anthropic":
+        out["env"] = {"ANTHROPIC_BASE_URL": base,
+                      "ANTHROPIC_AUTH_TOKEN": use_key}
         if model:
             out["env"]["ANTHROPIC_MODEL"] = model
     else:
-        out["env"] = {"ORCH_API_KEY": prov["api_key"]}
+        out["env"] = {"ORCH_API_KEY": use_key}
+        wire_api = endpoint[2] if endpoint else prov.get("wire_api", "responses")
         out["codex_provider"] = {
-            "name": "orch", "base_url": prov["base_url"],
-            "env_key": "ORCH_API_KEY", "wire_api": prov.get("wire_api", "responses")}
+            "name": "orch", "base_url": base,
+            "env_key": "ORCH_API_KEY", "wire_api": wire_api}
     return out
+
+
+def _entry_endpoint(prov, allowed):
+    """链条目的生效端点：显式协议命中直接用；否则查 wire_caps——实测通过的
+    wire（可能是同密钥的另一条协议面，也可能是 auto 供应商的分类结果）也可
+    注入。返回 (proto, base_url, wire_api) 或 None（真不匹配，维持跳过语义）。
+
+    protocol="auto"（导入时未指定格式）只认实测结果：没有 wire_caps 就返回
+    None——不猜。分类由「获取模型列表」后的后台探测补齐，是瞬态状态。
+    """
+    proto = prov.get("protocol")
+    if proto in allowed:
+        return proto, prov.get("base_url"), prov.get("wire_api", "responses")
+    caps = prov.get("wire_caps") or {}
+    for p in allowed:
+        cap = caps.get(p) or {}
+        if cap.get("base"):
+            return p, cap["base"], cap.get("wire_api") or "responses"
+    return None
+
+
+def _protocol_candidates(prov):
+    """需要「唯一协议」时按序尝试的候选 [(proto, base)]。
+
+    显式协议只有一条（就是它自己）；auto 列出实测过的 wire（偏好序），
+    调用方逐个试、全失败才报错——不猜一条去发请求。"""
+    proto = (prov or {}).get("protocol")
+    if proto in _PROTOCOLS:
+        return [(proto, (prov or {}).get("base_url") or "")]
+    caps = (prov or {}).get("wire_caps") or {}
+    return [(p, caps[p]["base"]) for p in _WIRE_PREFERENCE
+            if (caps.get(p) or {}).get("base")]
 
 
 def resolve_binding(agent_kind_or_id, difficulty="default"):
@@ -1622,19 +1946,34 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
             prov = provs.get(pid)
             if not prov or not prov.get("enabled", True) or not prov.get("api_key"):
                 continue  # 该条失效：跳过（降级链的语义就是逐条顶上）
-            if prov.get("protocol") not in allowed:
-                continue
+            ep = _entry_endpoint(prov, allowed)
+            if not ep:
+                continue  # 原生协议与适配过的 wire 都不匹配：跳过
             if prov.get("name") in down_set:
                 continue  # 健康监测判定 down：跳过，省掉无效等待
             if model and not _model_bindable(prov, model):
                 continue  # 模型被停用/删除：该条跳过（2026-09-15 告警弹框「禁用该模型」）
-            entries.append(_chain_entry_env(prov, model or prov.get("model") or "",
-                                            target=agent_kind_or_id))
+            # 多 KEY：同一厂商按 KEY 展开成多条，顺序即调用顺序。欠费的 KEY 被
+            # 冷却跳过（切备用），全冷却时仍留一条顶上——降级复用既有尝试循环。
+            for kk in _chain_keys(prov):
+                if len(entries) >= MAX_CHAIN_ATTEMPTS:
+                    break
+                entries.append(_chain_entry_env(
+                    prov, model or prov.get("model") or "",
+                    target=agent_kind_or_id, endpoint=ep, key=kk["key"],
+                    key_id=kk.get("id") or "", provider_id=pid))
+            if len(entries) >= MAX_CHAIN_ATTEMPTS:
+                break
         if not entries:
             return None
         head = entries[0]
         out = {"model": head["model"], "env": head["env"], "provider": head.get("provider"),
-               "model_fallbacks": [e["model"] for e in entries[1:]],
+               # model_fallbacks 是「换模型」的列表（runner 无链时的回退用）：
+               # 同模型的其它 KEY 条目不算换模型，必须排除，否则主模型会被当成
+               # 自己的降级备选。多 KEY 的切换由 call_chain 逐条尝试负责。
+               "model_fallbacks": list(dict.fromkeys(
+                   e["model"] for e in entries[1:]
+                   if e.get("model") and e["model"] != head["model"])),
                "call_chain": [dict(e) for e in entries]}
         if head.get("codex_provider"):
             out["codex_provider"] = head["codex_provider"]
@@ -1647,8 +1986,9 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     prov = provs.get(pid)
     if not prov or not prov.get("enabled", True) or not prov.get("api_key"):
         return None
-    if prov.get("protocol") not in allowed:
-        return None  # google 只登记；dsh 只接受 OpenAI 兼容端点
+    ep = _entry_endpoint(prov, allowed)
+    if not ep:
+        return None  # google 只登记；dsh 只接受 OpenAI 兼容端点；未适配的不硬塞
     names = [m["name"] for m in _enabled_models(prov)]
     model = prov.get("model_" + tier) or "" if (routing and tier) else ""
     if not model:
@@ -1657,10 +1997,22 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
         model = names[0] if (not routing or difficulty != "easy") else names[-1]
     # model 可为空：仅注入供应商凭据，不指定模型（用网关默认）
     fallbacks = [n for n in names if n != model][:MAX_BIND_MODELS - 1]
-    head = _chain_entry_env(prov, model, target=agent_kind_or_id)
+    # 多 KEY：主模型先按 KEY 逐把试（欠费自动切备用），再降级到别的模型
+    chain_keys = _chain_keys(prov)
+    entries = []
+    for kk in chain_keys:
+        entries.append(_chain_entry_env(prov, model, target=agent_kind_or_id,
+                                        endpoint=ep, key=kk["key"],
+                                        key_id=kk.get("id") or "", provider_id=pid))
+    for n in fallbacks:
+        if len(entries) >= MAX_CHAIN_ATTEMPTS:
+            break
+        entries.append(_chain_entry_env(prov, n, target=agent_kind_or_id,
+                                        endpoint=ep, provider_id=pid))
+    head = entries[0]
     out = {"model": model, "env": head["env"], "provider": prov,
            "model_fallbacks": fallbacks,
-           "call_chain": [dict(head, model=n) for n in [model] + fallbacks]}
+           "call_chain": [dict(e) for e in entries]}
     if head.get("codex_provider"):
         out["codex_provider"] = head["codex_provider"]
     return out
@@ -1693,6 +2045,17 @@ def launch_pick(agent_id, protocols):
         if prov.get("protocol") in protocols:
             return {"model": str(item.get("model") or "").strip() or prov.get("model") or "",
                     "provider": prov}, None
+        # 原生协议不匹配但适配测试过（wire_caps）：按适配出的端点给一份
+        # 协议/地址已覆写的供应商副本，下游凭据注入逻辑无需感知差异。
+        caps = prov.get("wire_caps") or {}
+        for proto in protocols:
+            cap = caps.get(proto) or {}
+            if cap.get("base"):
+                adapted = dict(prov, protocol=proto, base_url=cap["base"])
+                if cap.get("wire_api"):
+                    adapted["wire_api"] = cap["wire_api"]
+                return {"model": str(item.get("model") or "").strip() or prov.get("model") or "",
+                        "provider": adapted}, None
         mismatch = True
     if disabled:
         return None, ("绑定链里的 %s 已停用或无密钥：打开后需在其自带界面登录；"
@@ -1928,59 +2291,213 @@ def _post_sse_http(url, headers, body, allow_private, timeout, proto, on_delta):
 
 
 def test_provider(provider_id):
-    """供应商连通性测试：GET /models 并测延迟。返回 {ok, latency_ms, count, error}。"""
+    """供应商连通性测试：GET /models 并测延迟。返回 {ok, latency_ms, count, error}。
+
+    多 KEY：按顺序试，记录哪把通（key_id 回给界面），失败的 KEY 记账。
+    """
     import time as _t
     with _LOCK:
         prov = next((p for p in providers() if p.get("id") == provider_id), None)
     if not prov:
         return {"ok": False, "error": "供应商不存在"}
+    keys = _chain_keys(prov) or [{"key": prov.get("api_key") or "", "id": ""}]
     t0 = _t.time()
-    names, err = _fetch_models_http(prov.get("base_url"), prov.get("api_key") or "",
-                                    prov.get("protocol"), bool(prov.get("allow_private")))
-    latency = int((_t.time() - t0) * 1000)
-    if names is None:
-        return {"ok": False, "latency_ms": latency, "error": err}
-    return {"ok": True, "latency_ms": latency, "count": len(names), "error": ""}
+    last = ""
+    for kk in keys:
+        names, err = _fetch_models_http(prov.get("base_url"), kk["key"],
+                                        prov.get("protocol"), bool(prov.get("allow_private")))
+        if names is not None:
+            note_key_ok(provider_id, kk.get("id") or "")
+            return {"ok": True, "latency_ms": int((_t.time() - t0) * 1000),
+                    "count": len(names), "error": "", "key_id": kk.get("id") or ""}
+        last = err
+        note_key_error(provider_id, kk.get("id") or "", err)
+    return {"ok": False, "latency_ms": int((_t.time() - t0) * 1000), "error": last}
 
 
-def test_model(provider_id, model_name):
-    """单模型连通性测试：发一条 1 token 的最小对话。返回 {ok, latency_ms, error}。"""
+def test_model(provider_id, model_name, key_id=""):
+    """单模型连通性测试：发一条 1 token 的最小对话。返回 {ok, latency_ms, error}。
+
+    auto 供应商逐条试实测过的 wire（显式协议只有一条）；多 KEY 供应商逐把试
+    （指定 key_id 则只测那把）。返回里带 protocol/key_id 说明这次是谁通的。
+    """
     import time as _t
     import urllib.parse
     with _LOCK:
         prov = next((p for p in providers() if p.get("id") == provider_id), None)
     if not prov or not prov.get("api_key"):
         return {"ok": False, "error": "供应商不存在或未配置密钥"}
-    proto = prov.get("protocol")
-    base = prov["base_url"].rstrip("/")
-    if proto == "google":
-        url = base + "/v1beta/models/%s:generateContent" % model_name
-        if base.endswith("/v1beta"):
-            url = base + "/models/%s:generateContent" % model_name
-        headers = {"x-goog-api-key": prov["api_key"]}
-        body = {"contents": [{"parts": [{"text": "ping"}]}]}
+    protos = _protocol_candidates(prov)
+    if not protos:
+        return {"ok": False, "error": "该供应商还没有可用 wire——先「获取模型列表」或手动指定格式"}
+    if key_id:
+        keys = [k for k in _provider_keys(prov) if k["id"] == key_id]
+        if not keys:
+            return {"ok": False, "error": "密钥不存在"}
     else:
-        path = "/messages" if proto == "anthropic" else "/chat/completions"
-        url = (base + path) if base.endswith("/v1") else (base + "/v1" + path)
-        if proto == "anthropic":
-            headers = {"x-api-key": prov["api_key"], "anthropic-version": "2023-06-01"}
-        else:
-            headers = {"Authorization": "Bearer " + prov["api_key"]}
-        body = {"model": model_name, "max_tokens": 1,
-                "messages": [{"role": "user", "content": "ping"}]}
+        keys = _chain_keys(prov) or [{"key": prov.get("api_key") or "", "id": ""}]
     t0 = _t.time()
-    status, data, err = _post_json_http(url, headers, body, bool(prov.get("allow_private")))
-    latency = int((_t.time() - t0) * 1000)
-    if status == 0:
-        return {"ok": False, "latency_ms": latency, "error": err}
-    if 200 <= status < 300:
-        return {"ok": True, "latency_ms": latency, "error": ""}
-    msg = ""
-    if isinstance(data, dict):
-        e = data.get("error")
-        msg = e.get("message", "") if isinstance(e, dict) else str(e)
-    return {"ok": False, "latency_ms": latency,
-            "error": "HTTP %s %s" % (status, str(msg)[:160])}
+    last = {"ok": False, "error": "无可用 wire"}
+    for kk in keys:
+        for proto, pbase in protos:
+            base = (pbase or "").rstrip("/")
+            if proto == "google":
+                url = base + "/v1beta/models/%s:generateContent" % model_name
+                if base.endswith("/v1beta"):
+                    url = base + "/models/%s:generateContent" % model_name
+                headers = {"x-goog-api-key": kk["key"]}
+                body = {"contents": [{"parts": [{"text": "ping"}]}]}
+            else:
+                path = "/messages" if proto == "anthropic" else "/chat/completions"
+                url = (base + path) if base.endswith("/v1") else (base + "/v1" + path)
+                if proto == "anthropic":
+                    headers = {"x-api-key": kk["key"], "anthropic-version": "2023-06-01"}
+                else:
+                    headers = {"Authorization": "Bearer " + kk["key"]}
+                body = {"model": model_name, "max_tokens": 1,
+                        "messages": [{"role": "user", "content": "ping"}]}
+            status, data, err = _post_json_http(url, headers, body, bool(prov.get("allow_private")))
+            if status == 0:
+                last = {"ok": False, "error": err}
+                note_key_error(provider_id, kk.get("id") or "", err)
+                continue
+            if 200 <= status < 300:
+                note_key_ok(provider_id, kk.get("id") or "")
+                return {"ok": True, "latency_ms": int((_t.time() - t0) * 1000),
+                        "error": "", "protocol": proto, "key_id": kk.get("id") or ""}
+            msg = ""
+            if isinstance(data, dict):
+                e = data.get("error")
+                msg = e.get("message", "") if isinstance(e, dict) else str(e)
+            last = {"ok": False, "error": "HTTP %s %s" % (status, str(msg)[:160])}
+            note_key_error(provider_id, kk.get("id") or "", last["error"])
+    last["latency_ms"] = int((_t.time() - t0) * 1000)
+    return last
+
+
+# ---------------------------------------------------------------- wire 协议适配
+# 聚合中转网关（new-api/one-api 系）通常同一密钥同时开 openai(/chat/completions)
+# 与 anthropic(/v1/messages) 两面 wire。在「模型接入」页用 1 token 最小对话实测，
+# 通过的记入 provider["wire_caps"][proto]；绑定解析（_entry_endpoint）据此放宽
+# 「协议必须原生匹配」——claude 链上的 openai 供应商、codex 链上的 anthropic
+# 供应商不再被跳过。探不过就保持原样跳过：宁可 ⚠ 也不错注入（2026-09-15 实测
+# 混注入会产生 Missing ORCH_API_KEY 这类必然失败组合）。
+
+# 已知第一方双端点映射：(主机名集合, 原生路径前缀, 另一协议的端点 base)。
+# 这类网关两种 wire 挂在不同路径，同 base 探测必 404，只能按已知映射补候选。
+_KNOWN_WIRE_BASES = (
+    (("api.z.ai",), "/api/anthropic", "https://api.z.ai/api/paas/v4"),
+)
+
+
+def _wire_base_candidates(base_url, target_proto):
+    """探测候选 base 列表：常规 /v1 变体 + 已知双端点映射（映射优先）。"""
+    import urllib.parse
+    base = (base_url or "").rstrip("/")
+    if target_proto == "openai":
+        # openai 习惯：base 含 /v1 直接用；否则补 /v1，再兜一个不带 /v1 的
+        cands = [base if base.endswith("/v1") else base + "/v1"]
+        if not base.endswith("/v1"):
+            cands.append(base)
+    else:
+        # anthropic 习惯：CLI 在 base 后拼 /v1/messages，base 本身不含 /v1
+        cands = [base[:-3] if base.endswith("/v1") else base]
+    u = urllib.parse.urlsplit(base)
+    host, path = u.hostname or "", u.path or ""
+    for hosts, suffix, alt in _KNOWN_WIRE_BASES:
+        if host in hosts and path.startswith(suffix) and alt not in cands:
+            cands.insert(0, alt)
+    return cands
+
+
+def _probe_wire_once(base, api_key, target_proto, model, allow_private, timeout=12):
+    """对一个候选 base 实测目标 wire（1 token 最小对话）。返回 (ok, wire_api, err)。
+
+    openai wire 先试 responses（codex 默认）再退 chat/completions；anthropic
+    只试 /v1/messages（x-api-key 与 Bearer 两种鉴权头都试）。"""
+    if target_proto == "anthropic":
+        url = base.rstrip("/") + "/v1/messages"
+        body = {"model": model, "max_tokens": 1,
+                "messages": [{"role": "user", "content": "ping"}]}
+        variants = [("messages", url, body, {"x-api-key": api_key,
+                                             "anthropic-version": "2023-06-01"}),
+                    ("messages", url, body, {"Authorization": "Bearer " + api_key,
+                                             "anthropic-version": "2023-06-01"})]
+    else:
+        b = base.rstrip("/")
+        variants = [
+            ("responses", b + "/responses",
+             {"model": model, "input": "ping", "max_output_tokens": 16},
+             {"Authorization": "Bearer " + api_key}),
+            ("chat", b + "/chat/completions",
+             {"model": model, "max_tokens": 1,
+              "messages": [{"role": "user", "content": "ping"}]},
+             {"Authorization": "Bearer " + api_key}),
+        ]
+        if target_proto != "openai":  # pragma: no cover — 调用方保证
+            variants = variants[-1:]
+    last = ""
+    for item in variants:
+        wire_api, url, body, headers = item
+        status, _data, err = _post_json_http(url, headers, body, allow_private, timeout=timeout)
+        if 200 <= status < 300:
+            return True, wire_api, ""
+        last = err if status == 0 else "HTTP %s" % status
+    return False, "", last
+
+
+def probe_wire_caps(provider_id):
+    """适配测试：实测该供应商的可用 wire，存进 wire_caps。返回 (caps, note)。
+
+    显式协议的供应商只测「除原生外」的 wire（原生天然可用，不必花请求）；
+    protocol="auto"（导入未指定格式）则把可注入 wire 全测一遍，caps 就是分类
+    结果。之前通过、本次失败的条目移除（网关两面变动以实测为准）。google 不参与。
+    note 是给 UI 的补充说明（失败原因 / 未测原因），全通过时为空串。"""
+    import time as _t
+    with _LOCK:
+        prov = next((p for p in providers() if p.get("id") == provider_id), None)
+    if not prov:
+        return {}, "供应商不存在"
+    if not prov.get("api_key"):
+        return {}, "该供应商未配置密钥"
+    model = prov.get("model") or next(
+        (m.get("name") for m in _ranked(prov.get("models") or [])
+         if m.get("name") and m.get("enabled", True)), "")
+    if not model:
+        return {}, "没有可用模型名——先「获取模型列表」再测"
+    native = prov.get("protocol")
+    auto = native == _PROTOCOL_AUTO
+    caps = dict(prov.get("wire_caps") or {})
+    notes = []
+    for target in _BINDABLE_PROTOCOLS:
+        if not auto and target == native:
+            continue  # 显式协议：原生那条不用测
+        found, err = None, ""
+        for base in _wire_base_candidates(prov.get("base_url"), target):
+            ok, wire_api, err = _probe_wire_once(base, prov["api_key"], target,
+                                                 model, bool(prov.get("allow_private")))
+            if ok:
+                found = {"base": base.rstrip("/"), "wire_api": wire_api,
+                         "checked_at": _t.strftime("%Y-%m-%d %H:%M")}
+                break
+        if found:
+            caps[target] = found
+        else:
+            caps.pop(target, None)
+            notes.append("%s wire 不通（%s）" % (target, (err or "无响应")[:80]))
+    if auto and not caps:
+        notes.append("没有探到可用的 wire——检查地址/密钥，或手动指定格式")
+    if caps != (prov.get("wire_caps") or {}):
+        with _LOCK:
+            data = _load()
+            p = next((q for q in data.get("providers", []) if q.get("id") == provider_id), None)
+            if p is not None:
+                if caps:
+                    p["wire_caps"] = caps
+                else:
+                    p.pop("wire_caps", None)
+                _save(data)
+    return caps, "；".join(notes)
 
 
 def classify_difficulty(goal, verify_command):
@@ -2114,57 +2631,83 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_tt
     if not prov or not prov.get("api_key"):
         return {"ok": False, "text": "", "tokens": 0, "usage": None,
                 "error": "供应商不存在或未配置密钥"}
-    proto = prov.get("protocol")
-    base = prov["base_url"].rstrip("/")
-    if proto == "google":
-        if base.endswith("/v1beta"):
-            url = base + "/models/%s:generateContent" % model_name
-        else:
-            url = base + "/v1beta/models/%s:generateContent" % model_name
-        headers = {"x-goog-api-key": prov["api_key"]}
-        body = {"contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"maxOutputTokens": max_tokens}}
-    else:
-        path = "/messages" if proto == "anthropic" else "/chat/completions"
-        url = (base + path) if base.endswith("/v1") else (base + "/v1" + path)
-        if proto == "anthropic":
-            headers = {"x-api-key": prov["api_key"], "anthropic-version": "2023-06-01"}
-        else:
-            headers = {"Authorization": "Bearer " + prov["api_key"]}
-        body = {"model": model_name, "max_tokens": max_tokens,
-                "messages": [{"role": "user", "content": prompt}]}
-
-    if on_delta is not None:
-        sbody = dict(body)
-        sbody["stream"] = True
-        if proto not in ("anthropic", "google"):
-            sbody["stream_options"] = {"include_usage": True}   # openai 系最后一个 chunk 带 usage
-        status, text, usage_d, err = _post_sse_http(
-            url, headers, sbody, bool(prov.get("allow_private")), timeout, proto, on_delta)
-        if status == 0 or err:
-            return {"ok": False, "text": "", "tokens": 0, "usage": None, "error": err}
-        if not (text or "").strip():
-            # 网关对 stream 请求回了 200 但没吐任何 SSE 事件（空流/普通 JSON 体，
-            # 实测 vsllm 大请求会这样）：绝不能当成功返回空文本，掉到下方非流式重发
-            pass
-        else:
-            if not usage_d.get("total"):
-                usage_d["total"] = (usage_d.get("input", 0) + usage_d.get("output", 0)
-                                    + usage_d.get("cached", 0))
-            return {"ok": True, "text": (text or "").strip(), "tokens": usage_d.get("total") or 0,
-                    "usage": usage_d, "error": ""}
-
-    status, data, err = _post_json_http(url, headers, body, bool(prov.get("allow_private")),
-                                        timeout=timeout)
-    if status == 0:
-        return {"ok": False, "text": "", "tokens": 0, "usage": None, "error": err}
-    if not 200 <= status < 300:
-        msg = ""
-        if isinstance(data, dict):
-            e = data.get("error")
-            msg = e.get("message", "") if isinstance(e, dict) else str(e)
+    protos = _protocol_candidates(prov)
+    if not protos:
         return {"ok": False, "text": "", "tokens": 0, "usage": None,
-                "error": "HTTP %s %s" % (status, str(msg)[:200])}
+                "error": "该供应商还没有可用 wire——先「获取模型列表」或手动指定格式"}
+    # 多 KEY：按「KEY 序 × 协议」展开逐条试。欠费的 KEY 先被跳过（切备用），
+    # 冷却中的 KEY 一条都不剩时仍按原顺序试——比整家供应商不可用强。
+    keys = _chain_keys(prov) or [{"key": prov.get("api_key") or "", "id": ""}]
+    cands = [(proto, base, k["key"], k.get("id") or "")
+             for k in keys for (proto, base) in protos]
+    if on_delta is not None:
+        cands = cands[:1]   # 流式不重试：回调会重复吐字，宁可按首选 wire 失败
+
+    def _build(proto, base, use_key):
+        """按协议构造 (url, headers, body)。base 已 strip。"""
+        if proto == "google":
+            if base.endswith("/v1beta"):
+                url = base + "/models/%s:generateContent" % model_name
+            else:
+                url = base + "/v1beta/models/%s:generateContent" % model_name
+            headers = {"x-goog-api-key": use_key}
+            body = {"contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"maxOutputTokens": max_tokens}}
+        else:
+            path = "/messages" if proto == "anthropic" else "/chat/completions"
+            url = (base + path) if base.endswith("/v1") else (base + "/v1" + path)
+            if proto == "anthropic":
+                headers = {"x-api-key": use_key, "anthropic-version": "2023-06-01"}
+            else:
+                headers = {"Authorization": "Bearer " + use_key}
+            body = {"model": model_name, "max_tokens": max_tokens,
+                    "messages": [{"role": "user", "content": prompt}]}
+        return url, headers, body
+
+    last_err = ""
+    for proto, pbase, use_key, key_id in cands:
+        base = (pbase or "").rstrip("/")
+        url, headers, body = _build(proto, base, use_key)
+
+        if on_delta is not None:
+            sbody = dict(body)
+            sbody["stream"] = True
+            if proto not in ("anthropic", "google"):
+                sbody["stream_options"] = {"include_usage": True}   # openai 系最后一个 chunk 带 usage
+            status, text, usage_d, err = _post_sse_http(
+                url, headers, sbody, bool(prov.get("allow_private")), timeout, proto, on_delta)
+            if status == 0 or err:
+                return {"ok": False, "text": "", "tokens": 0, "usage": None, "error": err}
+            if not (text or "").strip():
+                # 网关对 stream 请求回了 200 但没吐任何 SSE 事件（空流/普通 JSON 体，
+                # 实测 vsllm 大请求会这样）：绝不能当成功返回空文本，退回非流式重发
+                pass
+            else:
+                if not usage_d.get("total"):
+                    usage_d["total"] = (usage_d.get("input", 0) + usage_d.get("output", 0)
+                                        + usage_d.get("cached", 0))
+                return {"ok": True, "text": (text or "").strip(), "tokens": usage_d.get("total") or 0,
+                        "usage": usage_d, "error": ""}
+
+        status, data, err = _post_json_http(url, headers, body, bool(prov.get("allow_private")),
+                                            timeout=timeout)
+        if status == 0:
+            last_err = err
+            note_key_error(provider_id, key_id, err)   # 记账：欠费类进冷却，切备用
+            continue          # 这条 wire/KEY 连不上：换下一条
+        if not 200 <= status < 300:
+            msg = ""
+            if isinstance(data, dict):
+                e = data.get("error")
+                msg = e.get("message", "") if isinstance(e, dict) else str(e)
+            last_err = "HTTP %s %s" % (status, str(msg)[:200])
+            note_key_error(provider_id, key_id, last_err)
+            continue
+        note_key_ok(provider_id, key_id)
+        break
+    else:
+        return {"ok": False, "text": "", "tokens": 0, "usage": None,
+                "error": last_err or "所有可用 wire 均失败"}
     text = ""
     usage = {"input": 0, "output": 0, "cached": 0, "reasoning": 0, "total": 0}
     try:

@@ -91,12 +91,29 @@ def cancel(run_id):
     if ev:
         ev.set()
         return True
+    # 事件不存在=任务还在队列里没被 worker 拿起：直接落终态（取消事件在
+    # worker 起跑时才创建，排队任务点取消会在这里漏掉——起跑后再杀一遍）。
+    try:
+        from . import store
+        run = store.get_run(run_id)
+        if not run:
+            return False
+        if run.get("status") == "queued":
+            store.update_run(run_id, expected_status="queued", status="cancelled",
+                             ended_at=_now())
+            return True
+        if run.get("status") == "running" and run.get("cancelled_by_user"):
+            return True   # 上一轮取消已标记，等起跑时的兜底检查收口
+    except Exception:
+        pass
     return False
 
 
 def cancel_event_for(run_id):
-    ev = threading.Event()
-    CANCELS[run_id] = ev
+    ev = CANCELS.get(run_id)   # get-or-create：排队期置位的取消不因重建事件而丢失
+    if ev is None:
+        ev = threading.Event()
+        CANCELS[run_id] = ev
     return ev
 
 
@@ -209,6 +226,14 @@ def _worker():
             run_id = job.get("run_id")
             ev = cancel_event_for(run_id) if run_id else threading.Event()
             try:
+                # 出队后再兜一次底：排队期取消（cancel 已直接落终态）的任务
+                # 不再进流水线，避免 execute_run 又把 cancelled 改回 running。
+                # 查不到的 run（如测试 mock）不拦，保持原行为。
+                if run_id:
+                    from . import store
+                    r0 = store.get_run(run_id)
+                    if r0 and r0.get("status") == "cancelled":
+                        continue   # task_done 由 finally 统一收口，不能在此重复
                 if job.get("kind") == "orchestration":
                     from . import pipeline
                     pipeline.execute_run(run_id)

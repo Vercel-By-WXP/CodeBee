@@ -1,0 +1,1289 @@
+data-lang = en OK
+[tasks] 残留中文 49 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[runs] 残留中文 49 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page.page-wide
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page.page-wide
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page.page-wide
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page.page-wide
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page.page-wide
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page.page-wide
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page.page-wide
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page.page-wide
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.settings-mode
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[automation] 残留中文 57 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.settings-mode
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[usage] 残留中文 57 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.settings-mode
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[agents] 残留中文 57 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.settings-mode
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[models] 残留中文 57 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.settings-mode
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[bindings] 残留中文 57 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.settings-mode
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[skills] 残留中文 61 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage<section#page-settings.page
+    · 📚 七猫签约标准与写作规范   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 黄金一章、爽点纪律、期待感三源、人物红线、自检清单   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 📚 番茄小说写作与流量守则   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.settings-mode
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[market] 残留中文 78 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 📚 七猫签约标准与写作规范   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 黄金一章、爽点纪律、期待感三源、人物红线、自检清单   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 📚 番茄小说写作与流量守则   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Applies to: 小说 / 连载小说   @ span<div.mk-meta<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.settings-mode
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[orch] 残留中文 78 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 📚 七猫签约标准与写作规范   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 黄金一章、爽点纪律、期待感三源、人物红线、自检清单   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 📚 番茄小说写作与流量守则   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Applies to: 小说 / 连载小说   @ span<div.mk-meta<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.settings-mode
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[appearance] 残留中文 78 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 📚 七猫签约标准与写作规范   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 黄金一章、爽点纪律、期待感三源、人物红线、自检清单   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 📚 番茄小说写作与流量守则   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Applies to: 小说 / 连载小说   @ span<div.mk-meta<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.settings-mode
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[about] 残留中文 78 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 📚 七猫签约标准与写作规范   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 黄金一章、爽点纪律、期待感三源、人物红线、自检清单   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 📚 番茄小说写作与流量守则   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Applies to: 小说 / 连载小说   @ span<div.mk-meta<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.settings-mode
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[composer] 残留中文 78 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 📚 七猫签约标准与写作规范   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 黄金一章、爽点纪律、期待感三源、人物红线、自检清单   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 📚 番茄小说写作与流量守则   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Applies to: 小说 / 连载小说   @ span<div.mk-meta<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[add-provider-dialog] 残留中文 78 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 📚 七猫签约标准与写作规范   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 黄金一章、爽点纪律、期待感三源、人物红线、自检清单   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 📚 番茄小说写作与流量守则   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Applies to: 小说 / 连载小说   @ span<div.mk-meta<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.modal-open
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[import-dialog] 残留中文 91 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 📚 七猫签约标准与写作规范   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 黄金一章、爽点纪律、期待感三源、人物红线、自检清单   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 📚 番茄小说写作与流量守则   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Applies to: 小说 / 连载小说   @ span<div.mk-meta<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.modal-open
+    · 本地库（Claude / Claude Desktop / Codex / Gemini / OpenClaw）   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.claude/settings.json 的 env 供应商   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.codex/config.toml + auth.json（含多 model_providers）   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.zcode/v2/config.json 的 provider 表   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.qwen/settings.json 的 modelProviders   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.gemini 的 .env / settings.json   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.config/opencode/opencode.json 的 provider 表   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.continue/config.yaml 的 models   @ div.src-desc<div.src-main<label.src-row.disabled<div.src-list
+    · 配置里没有带 apiBase 的模型条目   @ div.src-note<div.src-main<label.src-row.disabled<div.src-list
+    · Cursor 的 cursorAuth/openAIKey + 自定义 Base URL   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · Trae / Trae SOLO 中自定义模型的 Base URL + AK   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.dsh/settings.yaml 的 llm-deepseek（密钥走 ~/.dsh/.env）   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · 未找到 DEEPSEEK_API_KEY（dsh 把密钥放在 ~/.dsh/.env 或环境变量），导入后请在编辑里补填   @ div.src-note<div.src-main<label.src-row<div.src-list
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[flows-manager] 残留中文 91 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 📚 七猫签约标准与写作规范   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 黄金一章、爽点纪律、期待感三源、人物红线、自检清单   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 📚 番茄小说写作与流量守则   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Applies to: 小说 / 连载小说   @ span<div.mk-meta<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.modal-open
+    · 实现 → 验证命令 → 跨厂商评审 → 自动修复/换将   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 起草 → 多维评审 → 修订循环 → 发布门禁　Rubric: 情节 / 人物 / 文笔 / 节奏 / 吸引力　Thre   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 大纲 → 逐章起草 → 每章多维评审修订 → 全局一致性评审 → 合并（可断点续跑）　Rubric: 情节 / 人物 /   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 公众号/头条风格文章：起草 → 多维评审 → 修订循环 → 发布门禁　Rubric: 选题与标题 / 开头吸引力 / 结   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 分镜 + 口播脚本：起草 → 多维评审 → 修订循环 → 发布门禁　Rubric: 黄金3秒钩子 / 节奏密度 / 口播   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 起草 → 多维评审 → 修订循环 → 发布门禁　Rubric: 准确性 / 结构清晰 / 表达流畅 / 实用价值　Thr   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 起草 → 多维评审 → 修订循环 → 发布门禁　Rubric: 忠实度 / 流畅度 / 术语一致性 / 风格贴合　Thr   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 起草 → 多维评审 → 修订循环 → 发布门禁　Rubric: 全面性 / 深度 / 论据可靠 / 可读性 / 结论质量   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 起草 → 多维评审 → 修订循环 → 发布门禁　Rubric: 主题聚焦 / 结构 / 感染力 / 语言风格　Thres   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 周报/月报/述职材料：起草 → 多维评审 → 修订循环 → 发布门禁　Rubric: 重点突出 / 数据支撑 / 结构清   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 商务/客户/跨部门邮件：起草 → 多维评审 → 修订循环 → 发布门禁　Rubric: 目的明确 / 语气得体 / 信息   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 技术选型/架构/实施方案：起草 → 多维评审 → 修订循环 → 发布门禁　Rubric: 可行性 / 方案完整性 / 风   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 简历优化/定制：起草 → 多维评审 → 修订循环 → 发布门禁　Rubric: 真实可信 / 岗位匹配 / 成果量化 /   @ div.desc<div.item<div.list<div#modal-body.modal-body
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[auto-form] 残留中文 78 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 📚 七猫签约标准与写作规范   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 黄金一章、爽点纪律、期待感三源、人物红线、自检清单   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 📚 番茄小说写作与流量守则   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Applies to: 小说 / 连载小说   @ span<div.mk-meta<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.modal-open
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+[cmdk] 残留中文 78 处
+    · 类型   @ label<div.field<div.grid-2<div.form
+    · 代码 (Implement → verify → review)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 连载小说 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 自媒体文章 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 短视频脚本 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 文档 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 翻译 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 调研报告 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 演讲稿 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 工作汇报 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 商务邮件 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 技术方案 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 简历 (Draft → multi-dim review → gate)   @ option<select#f-type.hidden<div.type-wrap<div.field
+    · 代码   @ span#f-type-name.tp-name<button#f-type-btn.type-pick<div.type-wrap<div.field
+    · 小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 连载小说   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 自媒体文章   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 短视频脚本   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 文档   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 翻译   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 调研报告   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 演讲稿   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 工作汇报   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 商务邮件   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 技术方案   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 简历   @ span.ti-name<span.ti-body<button.type-item<div#type-menu.type-menu.hidden
+    · 每日仓库巡检   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每天早上自动巡检一次仓库：汇总未提交变更、梳理 TODO/FIXME 待办与风险，生成当天的巡检报告 INSPECTIO   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 连载定时推进   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 配合连载小说任务：到点自动读取故事圣经与已有章节，续写下一段剧情，并自检人设、时间线与伏笔的一致性。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 经验库周整理   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周一自动整理经验库：合并重复教训、按主题归纳、标记疑似过时的条目，产出精简整理报告（不直接改写原文件）。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 依赖与安全扫描   @ span.name<div.head<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid
+    · 每周五自动对项目做一次只读的依赖与安全巡检：清点直接依赖、排查敏感文件与明文密钥风险，给出升级整改建议。   @ div.note<div.card.auto-tpl-card<div#auto-tpl.cards.auto-tpl-grid<div.panel.wide
+    · 启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 C   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · 后点重新加载。   @ p.hint<div.panel.wide<div#sub-agents.subpage.hidden<section#page-settings.page
+    · ChatGPT 官方编程智能体；本机走自定义 provider（gpt-5.5）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Anthropic 官方 CLI；无头调用自动注入 Git Bash 路径与输出上限   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 无头模式：opencode run（stdin 传入提示词）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run "提示词"，-p 在该 CLI    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · xAI 终端编码智能体；可执行名是 grok（不是 grok-build）   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-wo   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi   @ div.note<div.card<div#ag-installable.cards<div.panel.wide
+    · 系统自己的经验沉淀：   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （如七猫签约标准，自动注入小说类任务的规划与评审提示词）
+            与   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · （每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。   @ p.hint<div.panel.wide<div#sub-skills.subpage.hidden<section#page-settings.page
+    · 📚 七猫签约标准与写作规范   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 黄金一章、爽点纪律、期待感三源、人物红线、自检清单   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 📚 番茄小说写作与流量守则   @ span.name<div.head<div.card<div#skill-packs.cards
+    · 算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点   @ div.note<div.card<div#skill-packs.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Applies to: 小说 / 连载小说   @ span<div.mk-meta<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 每套皮肤都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢皮肤。选中的皮肤立即生效并记在这台设备上（手机与   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 是默认皮肤，即原本的界面。   @ p.hint<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden<section#page-settings.page
+    · 中文   @ button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide<div#sub-appearance.subpage.hidden
+    · 这台设备第一次连接，请输入访问令牌   @ p.gate-hint<div.gate-card<div#token-gate.token-gate.hidden<body.side-collapsed.modal-open
+    · 要实现/修复什么（一句话）   @ [attr placeholder] textarea#f-goal
+
+=== 英文模式残留中文合计：1250 处 ===

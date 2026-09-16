@@ -26,6 +26,7 @@ function flowIconHtml(f) {
 }
 
 function flowDesc(f) {
+  if (f.engine === "direct") return t("单智能体直达（快）");
   return f.engine === "code" ? t("实现 → 验证 → 评审") : t("起草 → 多维评审 → 门禁");
 }
 
@@ -34,9 +35,12 @@ function renderTypeOptions() {
   if (!sel || !S.flows) return;
   const prev = sel.value;
   sel.innerHTML = (S.flows || []).map((f) => {
-    return '<option value="' + esc(f.id) + '">' + esc(f.name) + t("（") + flowDesc(f) + (f.builtin ? "" : t(" · 自定义")) + t("）") + "</option>";
+    return '<option value="' + esc(f.id) + '">' + esc(t(f.name)) + t("（") + flowDesc(f) + (f.builtin ? "" : t(" · 自定义")) + t("）") + "</option>";
   }).join("");
   if (prev && flowById(prev)) sel.value = prev;
+  // 首屏默认落在「直接执行」（快档位：单 CLI 直达，无拆解/评审）；
+  // 老数据或该流程被删时保持首项，不硬造一个不存在的值
+  else if (flowById("direct")) sel.value = "direct";
   renderTypeMenu();
   onTypeChange();
 }
@@ -49,7 +53,7 @@ function renderTypeMenu() {
   menu.innerHTML = (S.flows || []).map((f) =>
     '<button type="button" class="type-item" role="option" data-v="' + esc(f.id) + '" onclick="pickType(\'' + esc(f.id) + '\')">' +
     '<span class="ti-ico" aria-hidden="true">' + flowIconHtml(f) + "</span>" +
-    '<span class="ti-body"><span class="ti-name">' + esc(f.name) +
+    '<span class="ti-body"><span class="ti-name">' + esc(t(f.name)) +
     (f.builtin ? "" : '<em class="ti-tag">' + t("自定义") + "</em>") + "</span>" +
     '<span class="ti-desc">' + esc(flowDesc(f)) + "</span></span>" +
     '<svg class="ico ti-check" aria-hidden="true"><use href="#i-check"></use></svg>' +
@@ -62,7 +66,7 @@ function syncTypeBtn() {
   const flow = flowById(sel.value);
   const ico = $("f-type-ico"), name = $("f-type-name");
   if (flow && ico) ico.innerHTML = flowIconHtml(flow);
-  if (flow && name) name.textContent = flow.name;
+  if (flow && name) name.textContent = t(flow.name);
   const menu = $("type-menu");
   if (menu) menu.querySelectorAll(".type-item").forEach((b) => b.classList.toggle("on", b.dataset.v === sel.value));
 }
@@ -88,14 +92,17 @@ window.pickType = pickType;
 /* 切换类型：按引擎显隐表单区、带出流程默认值 */
 function onTypeChange() {
   syncTypeBtn();
+  renderQuickChips();
   const flow = flowById($("f-type").value);
   const engine = flow ? flow.engine : "code";
   const isReview = engine === "review";
+  const isDirect = engine === "direct";
   const codeOnly = $("f-code-only"), reviewOnly = $("f-review-only");
-  if (codeOnly) codeOnly.classList.toggle("hidden", isReview);
+  // 直连：验证命令与评审参数都不适用，两块一起收起（目标+附件即全部输入）
+  if (codeOnly) codeOnly.classList.toggle("hidden", isReview || isDirect);
   if (reviewOnly) reviewOnly.classList.toggle("hidden", !isReview);
   const goal = $("f-goal");
-  if (goal && flow && flow.goal_hint) goal.placeholder = flow.goal_hint;
+  if (goal && flow && flow.goal_hint) goal.placeholder = t(flow.goal_hint);
   if (isReview && flow) {
     if (flow.manuscript) $("f-manuscript").value = flow.manuscript;
     if (flow.rounds) $("f-rounds").value = flow.rounds;
@@ -109,6 +116,32 @@ function onTypeChange() {
     }
   }
   renderImplSelects();
+}
+
+/* 快捷类型 chips（Composer 框下方）：内置流程一键选定，选中态跟 #f-type 走 */
+function renderQuickChips() {
+  const box = $("cmp-quick");
+  if (!box || !S.flows) return;
+  const cur = ($("f-type") || {}).value;
+  box.innerHTML = (S.flows || []).filter((f) => f.builtin).slice(0, 5).map((f) =>
+    '<button type="button" class="cmp-chip' + (f.id === cur ? " on" : "") +
+    '" onclick="pickQuickType(\'' + esc(f.id) + '\')">' + flowIconHtml(f) +
+    "<span>" + esc(t(f.name)) + "</span></button>").join("");
+}
+window.pickQuickType = function (id) {
+  pickType(id);
+  const g = $("f-goal");
+  if (g) g.focus();
+};
+
+/* 问候语（Composer 起手，ZCode 式）：按时段换称呼；启动/切语言/回任务页时重算 */
+function cmpGreeting() {
+  const el = $("cmp-greet");
+  if (!el) return;
+  const h = new Date().getHours();
+  el.textContent = t(h >= 5 && h < 12 ? "上午好呀，有什么想让我帮忙的吗"
+    : h < 18 ? "下午好呀，有什么想让我帮忙的吗"
+    : "晚上好呀，有什么想让我帮忙的吗");
 }
 
 /* ---------------------------------------------------------- 本机身份与鉴权 */
@@ -160,9 +193,23 @@ function qsAuth() {
 
 /* ---------------------------------------------------------- 工具 */
 async function api(path, opts) {
-  const res = await fetch(path, Object.assign({
-    headers: authHeaders(),
-  }, opts || {}));
+  opts = opts || {};
+  // 可选超时：长请求（如外部插件下载）传 opts.timeout，网络卡死时也能
+  // 按时给出错误反馈，而不是无限静默
+  let ctrl = null;
+  if (opts.timeout) {
+    ctrl = new AbortController();
+    var timer = setTimeout(() => ctrl.abort(), opts.timeout);
+  }
+  let res;
+  try {
+    res = await fetch(path, Object.assign({ headers: authHeaders() }, opts, ctrl ? { signal: ctrl.signal } : {}));
+  } catch (e) {
+    if (ctrl && e.name === "AbortError") throw new Error(t("请求超时，请重试或检查网络"));
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   if (res.status === 401) { showTokenGate(t("令牌不正确或已更换，请重新输入")); throw new Error(t("需要访问令牌")); }
   let data = null;
   try { data = await res.json(); } catch (e) { /* ignore */ }
@@ -354,10 +401,7 @@ window.wizardApply = function () {
   if (flow && $("f-type").value !== wiz.type) { $("f-type").value = wiz.type; onTypeChange(); }
   $("f-goal").value = wiz.goal;
   if (flow && flow.engine === "code") $("f-verify").value = wiz.verify || "";
-  if (wiz.workdir) {
-    $("f-workdir").value = wiz.workdir;
-    localStorage.setItem("orch.workdir", wiz.workdir);
-  }
+  if (wiz.workdir) $("f-workdir").value = wiz.workdir;   // 只预填本次表单，不再持久化为「下次默认」
   S.atts = []; renderAttachChips();   // 新目标不带旧附件
   queueGitProbe();                    // 工作目录可能变了，重新探测代码版本
   $("f-goal").focus();
@@ -408,9 +452,11 @@ function srcTag(source) {
   return '<span class="tag">' + esc(name) + "</span>";
 }
 
-/* 只有 anthropic / openai 能注入到 CLI；google 等仅登记 */
+/* 可注入 CLI 的供应商：显式 anthropic/openai，或 auto 但实测出过 wire
+ * （wire_caps）。google 与「auto 且还没探测」的仅登记。 */
 function bindableProvs(provs) {
-  return (provs || []).filter((p) => p.protocol === "anthropic" || p.protocol === "openai");
+  return (provs || []).filter((p) => p.protocol === "anthropic" || p.protocol === "openai" ||
+    (p.wire_caps || {}).anthropic || (p.wire_caps || {}).openai);
 }
 
 /* ---------------------------------------------------------- 通用弹框 */
@@ -554,7 +600,8 @@ async function healthOp(op) {
   const down = alerts[0];
   if (!down) return;
   try {
-    const r = await api("/api/health/op", { provider: down.provider, op });
+    const r = await api("/api/health/op", { method: "POST",
+      body: JSON.stringify({ provider: down.provider, op }) });
     if (r && r.health) { S.state.health = r.health; renderHealthBanner(r.health); }
     closeModal(); render();
     if (op === "silence") toast(t("已静默 {0} 的告警（恢复后自动重新武装）").replace("{0}", down.provider));
@@ -573,9 +620,11 @@ async function healthDisableModel(pid, model) {
     { title: t("禁用模型"), danger: true, ok: t("禁用") });
   if (!yes) return;
   try {
-    await api("/api/models/model-op", { provider_id: pid, name: model, op: "disable" });
+    await api("/api/models/model-op", { method: "POST",
+      body: JSON.stringify({ provider_id: pid, name: model, op: "disable" }) });
     if (S.state.health && S.state.health.alerts[0]) {
-      await api("/api/health/op", { provider: S.state.health.alerts[0].provider, op: "silence" });
+      await api("/api/health/op", { method: "POST",
+        body: JSON.stringify({ provider: S.state.health.alerts[0].provider, op: "silence" }) });
     }
     const models = await api("/api/models");
     S.providers = models.providers; S.bindings = models.bindings;
@@ -595,9 +644,11 @@ async function healthDisableProvider(pid) {
     { title: t("禁用厂商"), danger: true, ok: t("禁用") });
   if (!yes) return;
   try {
-    await api("/api/models/provider-op", { ids: [pid], op: "disable" });
+    await api("/api/models/provider-op", { method: "POST",
+      body: JSON.stringify({ ids: [pid], op: "disable" }) });
     if (S.state.health && S.state.health.alerts[0]) {
-      await api("/api/health/op", { provider: S.state.health.alerts[0].provider, op: "silence" });
+      await api("/api/health/op", { method: "POST",
+        body: JSON.stringify({ provider: S.state.health.alerts[0].provider, op: "silence" }) });
     }
     const models = await api("/api/models");
     S.providers = models.providers; S.bindings = models.bindings;
@@ -686,7 +737,7 @@ function renderCtrl() {
       el.classList.add("held");
       icon = "lock";
       const holder = c.holder || t("其他设备");
-      tip = t("「") + holder + t("」控制中（点击接管）");
+      tip = t("{0} 正在控制（点击接管）", holder);
     }
   }
   el.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-' + icon + '"></use></svg>';
@@ -754,7 +805,7 @@ function renderModels() {
   const box = $("prov-detail");
   if (!box) return;
   const sig = JSON.stringify([S.providers, S.bindings, S.selProv,
-                              S.testProvState, S.testModelState,
+                              S.testProvState, S.testModelState, S.probeState,
                               S.selProvs, S.selModels]);
   if (sig === S.modelsSig) return;  // 数据没变不重绘，避免清掉正在输入的内容
   S.modelsSig = sig;
@@ -780,20 +831,32 @@ function renderBindings() {
   S.bindSig = sig;
   bbox.innerHTML = targets.map((c) => {
     const b = (S.bindings || {})[c.id] || {};
-    const opts = '<option value="">' + t("不绑定（用 CLI 自身的凭据与配置）") + '</option>' + bindable.map((p) =>
-      '<option value="' + esc(p.id) + '"' + (b.provider_id === p.id ? " selected" : "") + ">" +
-      esc(p.name) + t("（") + esc(p.protocol) + (p.enabled === false ? t(" · 已停用") : "") + t("）") + "</option>").join("");
+    const opts = '<option value="">' + t("不绑定（用 CLI 自身的凭据与配置）") + '</option>' + bindable.map((p) => {
+      const adaptedOnly = p.protocol !== "anthropic" && p.protocol !== "openai";
+      return '<option value="' + esc(p.id) + '"' + (b.provider_id === p.id ? " selected" : "") + ">" +
+        esc(p.name) + t("（") + esc(protoLabel(p)) + (adaptedOnly ? t(" · 已适配") : "") +
+        (p.enabled === false ? t(" · 已停用") : "") + t("）") + "</option>";
+    }).join("");
     const bound = provs.find((p) => p.id === b.provider_id);
     const offWarn = bound && bound.enabled === false
       ? '<p class="hint warn">' + t("该供应商已停用：编排时不会注入它，将回落为 CLI 默认配置（模型链也不会生效）。") + '</p>' : "";
     const protoWarn = bound && !bindable.some((p) => p.id === bound.id)
-      ? '<p class="hint warn">' + t("该供应商协议为 ") + esc(bound.protocol) +
+      ? '<p class="hint warn">' + t("该供应商协议为 ") + esc(protoLabel(bound)) +
         t("，当前没有可注入的 CLI，编排时会回落为 CLI 默认配置。") + '</p>' : "";
+    // 供应商停用但链上勾选了它家模型：链条目在解析时也会被整条跳过，
+    // 链空了照样回落本机默认——这是 2026-09-16 配额事故的隐藏形态，单说
+    // 「供应商下拉」警告不够，链本身的死活也要点名。
+    const chainDead = bindChain(b).some((c2) => c2.p && (() => {
+      const pv = provs.find((p) => p.id === c2.p);
+      return !pv || pv.enabled === false;
+    })());
+    const chainWarn = (!bound || bound.enabled !== false) && chainDead
+      ? '<p class="hint warn">' + t("模型链里有已停用/已删除的供应商：这些条目解析时会被跳过，链可能因此整体失效。") + '</p>' : "";
     return '<div class="card"><div class="head"><span class="name">' + esc(c.name) + "</span>" +
       '<span class="tag">' + esc(c.orch_kind) + "</span></div>" +
       '<div class="field"><label>' + t("供应商") + '</label><select id="bindprov-' + esc(c.id) + '">' + opts + "</select></div>" +
       '<p class="hint">' + t("绑定后编排调用会注入该供应商的 API key 与地址；不绑定则只按下方模型链传 -m 参数。") + '</p>' +
-      bindModelBox(c, b.provider_id) + offWarn + protoWarn +
+      bindModelBox(c, b.provider_id) + offWarn + protoWarn + chainWarn +
       '<div class="ops"><label class="toggle"><input type="checkbox" id="binddiff-' + esc(c.id) + '"' +
       (b.difficulty_routing ? " checked" : "") + '>' + t(" 按难度自动选模型（简单/困难）") + '</label>' +
       '<button class="ghost small" onclick="saveBinding(\'' + esc(c.id) + '\')">' + t("保存") + '</button></div></div>';
@@ -843,7 +906,8 @@ function renderProvList() {
       ' onchange="toggleProvSel(\'' + esc(p.id) + '\', this.checked)">' +
       '<div class="pi-body"><div class="pi-top"><div class="pi-name">' + esc(p.name) + "</div>" +
       '<span class="pi-n">' + st + "</span></div>" +
-      '<div class="pi-meta"><span class="tag">' + esc(p.protocol) + "</span>" +
+      '<div class="pi-meta"><span class="tag">' + esc(protoLabel(p)) + "</span>" +
+      ((p.keys || []).length > 1 ? '<span class="tag">' + t("%1 把密钥").replace("%1", (p.keys || []).length) + "</span>" : "") +
       (off ? '<span class="tag">' + t("已停用") + "</span>" : "") +
       "</div></div></div>";
   }).join("") ||
@@ -884,8 +948,8 @@ async function batchProvOp(op) {
   if (!ids.length) return;
   const tips = {
     enable: t("启用所选 ") + ids.length + t(" 个供应商？"),
-    disable: t("停用所选 ") + ids.length + t(" 个供应商？\\n停用后其绑定会回落为 CLI 默认；配置与模型列表都保留，可随时再启用。"),
-    delete: t("删除所选 ") + ids.length + t(" 个供应商？\\n相关 CLI 绑定会自动解绑，此操作不可撤销。"),
+    disable: t("停用所选 ") + ids.length + t(" 个供应商？\n停用后其绑定会回落为 CLI 默认；配置与模型列表都保留，可随时再启用。"),
+    delete: t("删除所选 ") + ids.length + t(" 个供应商？\n相关 CLI 绑定会自动解绑，此操作不可撤销。"),
   };
   if (!await uiConfirm(tips[op] || (t("执行「") + op + t("」？")))) return;
   try {
@@ -917,8 +981,16 @@ function renderProvDetail() {
   }
   const tp = (S.testProvState || {})[p.id];
   const tpHtml = tp ? (tp.ok
-    ? '<span class="badge ok">' + t("✓ 连通 ") + tp.latency_ms + "ms · " + tp.count + " 个模型</span>"
+    ? '<span class="badge ok">' + t("✓ 连通 ") + tp.latency_ms + "ms · " + tp.count + t(" 个模型") + "</span>"
     : '<span class="badge bad" title="' + esc(tp.error || "") + '">✗ ' + esc((tp.error || t("失败")).slice(0, 60)) + "</span>") : "";
+  // 适配测试通过的 wire（同密钥实测可注入的另一条协议面）
+  const capTags = Object.entries(p.wire_caps || {}).map(([pr, cap]) =>
+    '<span class="tag ok" title="' + esc(t("适配测试通过：同密钥实测支持该协议注入") +
+      (cap.checked_at ? " · " + cap.checked_at : "")) + '">' + esc(pr) + " ✓</span>").join("");
+  const pb = (S.probeState || {})[p.id];
+  const pbHtml = !pb ? "" : (pb.busy
+    ? '<span class="badge">' + esc(t("适配测试中…")) + "</span>"
+    : (pb.ok ? '<span class="badge ok">' : '<span class="badge bad">') + esc(pb.message || "") + "</span>");
   const models = (p.models || []).filter((m) => !m.hidden)
     .sort((a, b) => (a.priority || 0) - (b.priority || 0));
   const hidden = (p.models || []).filter((m) => m.hidden);
@@ -926,13 +998,16 @@ function renderProvDetail() {
   const selN = Object.keys(sel).length;
   let html = '<div class="pd-head">' +
     '<div class="pd-title"><span class="pd-name">' + esc(p.name) + "</span>" +
-    '<span class="tag">' + esc(p.protocol) + "</span>" +
+    '<span class="tag">' + esc(protoLabel(p)) + "</span>" + capTags +
     (p.enabled === false ? '<span class="tag">' + t("已停用") + "</span>" : "") +
-    srcTag(p.source) + tpHtml + "</div>" +
+    srcTag(p.source) + tpHtml + pbHtml + "</div>" +
     '<div class="pd-url" title="' + esc(p.base_url || "") + '">' + esc(p.base_url || "") + "</div>" +
     '<div class="pd-ops">' +
     '<button class="primary small" onclick="testProv(\'' + esc(p.id) + '\')">' + t("测试连接") + "</button>" +
+    '<button class="ghost small" onclick="probeWire(\'' + esc(p.id) + '\')" title="' +
+    esc(t("实测该网关同一密钥是否也支持另一条 wire 协议；通过后绑定链可跨协议注入")) + '">' + t("适配测试") + "</button>" +
     '<button class="ghost small" onclick="refreshProviderModels(\'' + esc(p.id) + '\')">' + t("获取模型列表") + "</button>" +
+    '<button class="ghost small" onclick="duplicateProvider(\'' + esc(p.id) + '\')" title="' + t("复制一份（同地址同密钥，可再换 KEY / 改名）") + '">' + t("复制一份") + "</button>" +
     '<button class="ghost small" onclick="toggleProviderEnabled(\'' + esc(p.id) + '\', ' +
     (p.enabled === false) + ')">' + (p.enabled === false ? t("启用供应商") : t("停用供应商")) + "</button>" +
     '<span class="pd-ops-gap"></span>' +
@@ -946,7 +1021,7 @@ function renderProvDetail() {
       '<button class="danger small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'delete\')">' + t("删除") + '</button>' +
       '<button class="ghost small" onclick="clearModelSel(\'' + esc(p.id) + '\')">' + t("取消") + '</button></div>';
   }
-  html += '<details class="pd-config"><summary>' + t("编辑供应商配置（地址 / 密钥 / 难度模型）") + '</summary>' +
+  html += '<details class="pd-config"><summary>' + t("编辑供应商配置（地址 / 协议 / 难度模型）") + '</summary>' +
     providerCard(p) + "</details>";
   if (p.models == null) {
     html += '<div class="empty">' + t("尚未获取模型列表——点上方「获取模型列表」。") + '</div>';
@@ -972,9 +1047,120 @@ function renderProvDetail() {
         "</div></details>";
     }
   }
+  // 密钥区放最下：与模型列表同属「日常不动、偶尔来看」的配置，别挡在模型区前面
+  html += keyListHtml(p);
   box.innerHTML = html;
   updateModelCount(p.id);
   bindModelRowDnD(p.id, box);
+  bindKeyRowDnD(p.id, box);
+}
+
+/* ---------------------------------------------------------- 多 KEY（同厂商多密钥）
+ * 顺序即调用顺序：欠费/停用的 KEY 被解析自动跳过，切到下一把。 */
+function keyListHtml(p) {
+  const keys = p.keys || [];
+  const single = keys.length <= 1;
+  const rows = keys.map((k, i) => {
+    const badge = !k.enabled
+      ? '<span class="tag">' + t("已停用") + "</span>"
+      : (k.cooling
+         ? '<span class="tag warn" title="' + esc(k.last_error || "") + '">' + t("冷却中") + "</span>" : "");
+    const err = k.last_error
+      ? '<span class="hint warn" title="' + esc(k.last_error) + '">✗ ' + esc(k.last_error.slice(0, 40)) + "</span>" : "";
+    const inUse = k.enabled && !k.cooling && k.key === p.api_key;
+    return '<div class="krow' + (k.enabled ? "" : " off") + '" draggable="true" data-kid="' + esc(k.id) + '">' +
+      '<span class="drag" title="' + t("拖动调整调用顺序") + '"><svg class="ico" aria-hidden="true"><use href="#i-grip"></use></svg></span>' +
+      '<span class="pprio">#' + (i + 1) + "</span>" +
+      '<span class="klabel" title="' + esc(k.label || "") + '">' +
+        esc(k.label || t("密钥") + " " + k.id.slice(1)) + "</span>" +
+      '<span class="kval hint">' + esc(k.key) + "</span>" +
+      (inUse ? '<span class="tag ok">' + t("使用中") + "</span>" : "") + badge + err +
+      '<span class="row-ops">' +
+      (k.cooling ? '<button class="ghost small row-op" onclick="keyOp(\'' + esc(p.id) + '\', \'' + esc(k.id) + '\', \'reset\')" title="' + t("充值后手动恢复（清掉冷却）") + '">' + t("恢复") + "</button>" : "") +
+      '<label class="tog-mini" title="' + (k.enabled ? t("停用该密钥（编排自动跳过）") : t("启用")) + '">' +
+        '<input type="checkbox" ' + (k.enabled ? "checked" : "") +
+        ' onchange="keyOp(\'' + esc(p.id) + '\', \'' + esc(k.id) + '\', this.checked ? \'enable\' : \'disable\')"><i></i></label>' +
+      '<button class="danger small row-op" onclick="keyOp(\'' + esc(p.id) + '\', \'' + esc(k.id) + '\', \'delete\')">' + t("删除") + "</button>" +
+      "</span></div>";
+  }).join("");
+  return '<div class="keys-box"><div class="keys-head"><b>' + t("密钥（按顺序调用，欠费自动切备用）") + "</b>" +
+    (single ? '<span class="hint">' + t("点「添加密钥」配备用号") + "</span>" : "") +
+    '<button class="ghost small" onclick="promptAddKey(\'' + esc(p.id) + '\')">＋ ' + t("添加密钥") + "</button></div>" +
+    (rows || '<div class="hint" style="padding:4px 8px">' + t("尚未配置密钥") + "</div>") +
+    "</div>";
+}
+
+function bindKeyRowDnD(pid, root) {
+  const box = root.querySelector(".keys-box");
+  if (!box) return;
+  box.querySelectorAll(".krow").forEach((row) => {
+    row.addEventListener("dragstart", () => { S.draggingKey = row.dataset.kid; row.classList.add("dragging"); });
+    row.addEventListener("dragend", () => {
+      S.draggingKey = null;
+      box.querySelectorAll(".krow").forEach((r) => r.classList.remove("dragging", "drag-over"));
+    });
+    row.addEventListener("dragover", (e) => {
+      if (!S.draggingKey || S.draggingKey === row.dataset.kid) return;
+      e.preventDefault();
+      row.classList.add("drag-over");
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      if (!S.draggingKey || S.draggingKey === row.dataset.kid) return;
+      const p = (S.providers || []).find((x) => x.id === pid);
+      const order = (p.keys || []).map((k) => k.id);
+      const i = order.indexOf(S.draggingKey), j = order.indexOf(row.dataset.kid);
+      if (i < 0 || j < 0) return;
+      order.splice(j, 0, order.splice(i, 1)[0]);
+      keyReorder(pid, order);
+    });
+  });
+}
+
+async function keyReorder(pid, ids) {
+  try {
+    await api("/api/models/key-op", { method: "POST",
+      body: JSON.stringify({ provider_id: pid, op: "reorder", ids }) });
+  } catch (e) { toast(t("排序失败：") + e.message, true); }
+  poll();
+}
+
+/* 「＋ 添加密钥」：两问（密钥、备注名）走应用内弹框，不用原生 prompt */
+async function promptAddKey(pid) {
+  const key = await uiPrompt(t("新密钥（sk-...）"), "");
+  if (key === null) return;
+  if (!key.trim()) { toast(t("已取消：密钥为空"), true); return; }
+  const label = await uiPrompt(t("备注名（可空，如：备用号）"), "");
+  if (label === null) label = "";
+  await keyOpCall(pid, "add", "", key.trim(), (label || "").trim());
+  toast(t("已添加密钥"));
+}
+
+async function keyOpCall(pid, op, keyId, key, label) {
+  try {
+    await api("/api/models/key-op", { method: "POST",
+      body: JSON.stringify({ provider_id: pid, op, key_id: keyId, key, label }) });
+  } catch (e) { toast(t("操作失败：") + e.message, true); }
+  // 操作期间轮询照跑（uiPrompt 弹框不阻塞轮询），S.modelsSig 还是旧值：必须
+  // 清签名强制重绘，否则 KEY 写盘成功界面也看不到。
+  S.modelsSig = null;
+  await poll();
+}
+
+async function keyOp(pid, keyId, op) {
+  if (op === "delete" && !await uiConfirm(t("删除该密钥？（不影响其它密钥）"),
+      { danger: true, ok: t("删除") })) return;
+  await keyOpCall(pid, op, keyId);
+}
+
+async function duplicateProvider(pid) {
+  try {
+    const r = await api("/api/models/provider-op", { method: "POST",
+      body: JSON.stringify({ ids: [pid], op: "duplicate" }) });
+    if (r.ok) toast(t("已复制供应商（启用状态，绑定不随带）"));
+  } catch (e) { toast(t("复制失败：") + e.message, true); }
+  poll();
 }
 
 /* 模型分组区 HTML（全量重绘与过滤重绘共用；过滤时暂停拖拽排序） */
@@ -1137,6 +1323,25 @@ async function testModelBtn(pid, name) {
   renderModels();
 }
 
+/* 适配测试：实测该网关同一密钥是否也支持另一条 wire 协议（结果存 wire_caps，
+ * 绑定链/默认绑定的解析随之放宽）。「获取模型列表」成功后后端也会自动测一次。 */
+async function probeWire(pid) {
+  S.probeState = S.probeState || {};
+  S.probeState[pid] = { busy: true };
+  renderProvDetail();
+  try {
+    const res = await api("/api/models/probe-wire",
+      { method: "POST", body: JSON.stringify({ id: pid }) });
+    const names = Object.keys(res.wire_caps || {});
+    S.probeState[pid] = names.length
+      ? { ok: true, message: t("已适配：") + names.map((n) => n + " wire").join(t("、")) }
+      : { ok: false, message: t("未发现可适配的 wire") + (res.note ? t("：") + res.note : "") };
+  } catch (e) { S.probeState[pid] = { ok: false, message: e.message }; }
+  S.modelsSig = null;
+  renderModels();
+  poll();  // wire_caps 已落盘：拉最新供应商状态，绑定页徽标同步
+}
+
 async function modelOp(pid, name, op) {
   try {
     await api("/api/models/model-op", { method: "POST",
@@ -1184,9 +1389,9 @@ async function batchModelOp(pid, op) {
   if (!names.length) return;
   const tips = {
     enable: t("启用所选 ") + names.length + t(" 个模型？"),
-    disable: t("停用所选 ") + names.length + t(" 个模型？\\n停用只影响编排选模，不删除配置。"),
-    delete: t("删除所选 ") + names.length + t(" 个模型？\\n刷新 / 重新导入都不会再带回，可在「已删除」里恢复。"),
-    restore: t("恢复所选 ") + names.length + t(" 个模型？\\n它们会重新启用并自动置顶。"),
+    disable: t("停用所选 ") + names.length + t(" 个模型？\n停用只影响编排选模，不删除配置。"),
+    delete: t("删除所选 ") + names.length + t(" 个模型？\n刷新 / 重新导入都不会再带回，可在「已删除」里恢复。"),
+    restore: t("恢复所选 ") + names.length + t(" 个模型？\n它们会重新启用并自动置顶。"),
   };
   if (!await uiConfirm(tips[op] || (t("执行「") + op + t("」？")))) return;
   try {
@@ -1198,7 +1403,7 @@ async function batchModelOp(pid, op) {
 }
 
 async function delModel(pid, name) {
-  if (!await uiConfirm(t("删除模型「") + name + t("」？\\n刷新 / 重新导入模型列表都不会再带回，可在分组底部「恢复全部」找回。"), { ok: t("删除"), danger: true })) return;
+  if (!await uiConfirm(t("删除模型「") + name + t("」？\n刷新 / 重新导入模型列表都不会再带回，可在分组底部「恢复全部」找回。"), { ok: t("删除"), danger: true })) return;
   modelOp(pid, name, "delete");
 }
 
@@ -1206,7 +1411,7 @@ async function toggleProviderEnabled(pid, enabled) {
   const p = (S.providers || []).find((x) => x.id === pid) || {};
   const off = p.enabled === false;
   if (!off && !await uiConfirm(t("停用供应商「") + (p.name || pid) +
-      t("」？\\n停用后它的绑定会回落为 CLI 默认；配置与模型列表保留，可随时再启用。"), { ok: t("停用") })) return;
+      t("」？\n停用后它的绑定会回落为 CLI 默认；配置与模型列表保留，可随时再启用。"), { ok: t("停用") })) return;
   try {
     await api("/api/models/provider-op", { method: "POST",
       body: JSON.stringify({ ids: [pid], op: off ? "enable" : "disable" }) });
@@ -1216,7 +1421,7 @@ async function toggleProviderEnabled(pid, enabled) {
 }
 
 async function restoreHidden(pid) {
-  if (!await uiConfirm(t("恢复该供应商下全部已删除的模型？\\n它们会回到优先级末尾。"), { ok: t("恢复") })) return;
+  if (!await uiConfirm(t("恢复该供应商下全部已删除的模型？\n它们会回到优先级末尾。"), { ok: t("恢复") })) return;
   modelOp(pid, "", "restore-all");
 }
 
@@ -1237,28 +1442,45 @@ async function refreshAllModels() {
 }
 
 async function refreshProviderModels(id) {
+  toast(t("正在获取模型列表…"));
   try {
     const r = await api("/api/models/refresh", { method: "POST", body: JSON.stringify({ id }) });
     if (!r.ok && r.message) toast(t("获取失败：") + r.message, true);
+    else toast(t("已获取模型列表 · wire 适配测试后台进行中"));
   } catch (e) { toast(t("获取失败：") + e.message, true); }
   poll();
+  setTimeout(poll, 4000);  // 后台探测落盘后补一轮，适配徽标及时出现
 }
 
+/* 供应商编辑卡：协议可选「自动」；显式选定时它是主协议（用于需要唯一协议的
+ * 场景，如 opencode 配置生成），auto 则完全按实测能力集（wire_caps）走。 */
 function providerCard(p) {
   const fld = (id, label, val, ph, full) =>
     '<div class="field' + (full ? " full" : "") + '"><label>' + label + '</label>' +
     '<input id="' + id + '" value="' + esc(val) + '" placeholder="' + esc(ph) + '"></div>';
+  const cur = p.protocol || "auto";
+  const protoSel =
+    '<div class="field"><label>' + t("协议") + '</label><select id="pproto-' + esc(p.id) + '">' +
+    [["auto", t("自动（按实测能力集）")],
+     ["anthropic", "anthropic"],
+     ["openai", "openai"],
+     ["google", t("google（仅登记）")]].map(([v, label]) =>
+      '<option value="' + v + '"' + (cur === v ? " selected" : "") + ">" + esc(label) + "</option>").join("") +
+    "</select></div>";
   return '<div class="card" id="pcard-' + esc(p.id) + '">' +
-    '<div class="head"><span class="name">' + esc(p.name) + '</span><span class="tag">' + esc(p.protocol) + "</span>" +
+    '<div class="head"><span class="name">' + esc(p.name) + '</span><span class="tag">' + esc(cur) + "</span>" +
     srcTag(p.source) + "</div>" +
     '<div class="fields grid">' +
     fld("pname-" + p.id, t("名称"), p.name, t("名称")) +
+    protoSel +
     fld("pmodel-" + p.id, t("默认模型"), p.model || "", t("默认模型")) +
     fld("purl-" + p.id, t("API 地址"), p.base_url, "base_url", true) +
-    fld("pkey-" + p.id, t("密钥"), "", t("（") + (p.api_key || t("未设置")) + t("，留空=不改）"), true) +
+    fld("pkey-" + p.id, t("首选密钥（填了=替换 #1；备用号在下方密钥区添加）"), "", t("（") + (p.api_key || t("未设置")) + t("，留空=不改）"), true) +
     fld("peasy-" + p.id, t("简单任务模型"), p.model_easy || "", t("难度路由 · 简单")) +
     fld("phard-" + p.id, t("困难任务模型"), p.model_hard || "", t("难度路由 · 困难")) +
     "</div>" +
+    (cur === "auto"
+      ? '<p class="hint">' + t("协议=自动：该网关支持哪些 wire 由「适配测试」实测决定（上方能力标签）。") + '</p>' : "") +
     '<div class="ops"><button class="ghost small" onclick="saveProvider(\'' + esc(p.id) + '\')">' + t("保存") + '</button>' +
     '<button class="danger small" onclick="delProvider(\'' + esc(p.id) + '\')">' + t("删除") + '</button></div></div>';
 }
@@ -1266,7 +1488,7 @@ function providerCard(p) {
 async function saveProvider(id) {
   const body = {
     id, name: $("pname-" + id).value.trim(),
-    protocol: ($("purl-" + id).value.includes("anthropic") ? "anthropic" : (S.providers.find((x) => x.id === id) || {}).protocol || "anthropic"),
+    protocol: ($("pproto-" + id) || {}).value || "auto",
     base_url: $("purl-" + id).value.trim(),
     api_key: $("pkey-" + id).value.trim(),
     model: $("pmodel-" + id).value.trim(),
@@ -1290,9 +1512,12 @@ async function delProvider(id) {
   poll();
 }
 
-/* 「＋」手动添加供应商：弹框表单（替代原来的多段 prompt） */
+/* 「＋」手动添加供应商：弹框表单（替代原来的多段 prompt）。
+ * 协议默认「自动」——聚合网关一个密钥常同时开多条 wire，保存后由后台探测
+ * 分类（wire_caps），不必先问用户。 */
 function openAddProviderDialog() {
   const protoOpts =
+    '<option value="auto">' + t("自动探测（推荐 · 聚合网关多协议都开）") + '</option>' +
     '<option value="anthropic">' + t("anthropic（Claude 系）") + '</option>' +
     '<option value="openai">' + t("openai（Codex / 通用）") + '</option>' +
     '<option value="google">' + t("google（Gemini，仅登记不支持注入）") + '</option>';
@@ -1300,7 +1525,7 @@ function openAddProviderDialog() {
     '<div class="form">' +
     '<div class="grid-2">' +
     '<div class="field"><label>' + t("名称 *") + '</label><input id="np-name" placeholder="' + t("例：公司网关") + '"></div>' +
-    '<div class="field"><label>' + t("协议 *") + '</label><select id="np-proto">' + protoOpts + "</select></div>" +
+    '<div class="field"><label>' + t("协议") + '</label><select id="np-proto">' + protoOpts + "</select></div>" +
     "</div>" +
     '<div class="field"><label>' + t("API 地址 *") + '</label>' +
     '<input id="np-url" placeholder="' + t("https://host/v1（若填 /chat/completions 会自动收敛为基址）") + '"></div>' +
@@ -1311,7 +1536,7 @@ function openAddProviderDialog() {
     '<div class="field"><label>' + t("简单任务模型") + '</label><input id="np-easy" placeholder="' + t("可留空") + '"></div>' +
     '<div class="field"><label>' + t("困难任务模型") + '</label><input id="np-hard" placeholder="' + t("可留空") + '"></div>' +
     "</div>" +
-    '<p class="hint">' + t("保存后会自动拉取该供应商的模型列表（未填密钥时跳过）。") + '</p>' +
+    '<p class="hint">' + t("保存后会自动拉取模型列表并探测该网关支持的 wire 协议（未填密钥时跳过）；探测结果决定哪些 CLI 能用它。") + '</p>' +
     '<div id="add-result" class="msg"></div>' +
     "</div>",
     '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>' +
@@ -1375,9 +1600,9 @@ async function openImportDialog() {
       (ok ? ' onchange="updateImportSelHint()"' : "") + ">" +
       '<div class="src-main">' +
       '<div class="src-name">' + esc(s.name) + status + "</div>" +
-      '<div class="src-desc">' + esc(s.desc) + "</div>" +
+      '<div class="src-desc">' + esc(t(s.desc)) + "</div>" +
       '<div class="src-path">' + esc((s.paths || []).join("  ·  ")) + "</div>" +
-      (s.note ? '<div class="src-note">' + esc(s.note) + "</div>" : "") +
+      (s.note ? '<div class="src-note">' + esc(t.apply(null, [s.note].concat(s.note_args || []))) + "</div>" : "") +
       (s.error ? '<div class="src-note bad">' + esc(s.error) + "</div>" : "") +
       "</div></label>";
   }).join("");
@@ -1430,7 +1655,7 @@ async function doImport() {
       if (s.error) return "<li>" + esc(s.name) + t("：") + '<span class="bad">' + esc(s.error) + "</span></li>";
       let txt = t("新增 ") + s.added + t("，更新 ") + s.updated;
       if (s.duplicate) txt += t("，跳过重复 ") + s.duplicate;
-      const extra = s.note ? t("（") + esc(s.note) + t("）") : "";
+      const extra = s.note ? t("（") + esc(t.apply(null, [s.note].concat(s.note_args || []))) + t("）") : "";
       return "<li>" + esc(s.name) + t("：") + txt + extra + "</li>";
     }).join("");
     $("import-result").innerHTML =
@@ -1509,11 +1734,8 @@ async function createTask() {
     context: $("f-context").value.trim(),
     workdir: $("f-workdir").value.trim(),
   };
-  if (!payload.workdir) {
-    delete payload.workdir;  // 留空 → 服务端用「默认保存路径」（编排设置可改）
-  } else {
-    localStorage.setItem("orch.workdir", payload.workdir);
-  }
+  if (!payload.workdir) delete payload.workdir;  // 留空 → 服务端用「默认保存路径」（编排设置可改）
+  else unhideSideDir(payload.workdir);           // 在已移除的目录新建任务 → 自动恢复显示
   if (payload.mode === "manual") payload.implementer = $("f-impl").value;
   // 附件与代码版本：任务创建时服务端把待提交附件移入 _attachments/ 并注入上下文
   if ((S.atts || []).length) payload.attachments = S.atts.filter((a) => a.id).map((a) => a.id);
@@ -1530,8 +1752,11 @@ async function createTask() {
     payload.resume = { agent: resumeAgent, session: sid,
       preview: opt ? opt.textContent : "", project: (hit && hit.project) || "" };
   }
-  if (flowById(payload.type)?.engine === "code") {
+  const _eng = (flowById(payload.type) || {}).engine;
+  if (_eng === "code") {
     payload.verify_command = $("f-verify").value.trim();
+  } else if (_eng === "direct") {
+    // 直连：目标+附件即全部输入，不带验证/评审参数
   } else {
     payload.manuscript = $("f-manuscript").value.trim() || "manuscript.md";
     payload.rounds = parseInt($("f-rounds").value, 10) || 2;
@@ -1550,8 +1775,7 @@ async function createTask() {
   try {
     const r = await api("/api/tasks", { method: "POST", body: JSON.stringify(payload) });
     msg.textContent = t("已创建，跳转运行页…");
-    switchTab("runs");
-    openRun(r.run_id);
+    jumpToRun(r.run_id);
     $("f-goal").value = "";
     S.atts = []; renderAttachChips();   // 附件已移交任务待提交区，清空本地列表
   } catch (e) {
@@ -1647,7 +1871,7 @@ function onGoalPaste(e) {
 
 /* ---------------------------------------------------------- 代码版本（Git） */
 /* 工作目录指向 git 仓库时给出分支/标签/提交选择；创建任务后执行前由服务端
- * 从所选版本检出任务分支 tutti/<task-id>（脏工作区会显式失败，不静默降级）。 */
+ * 从所选版本检出任务分支 codebee/<task-id>（脏工作区会显式失败，不静默降级）。 */
 let _gitProbeTimer = null;
 
 function queueGitProbe() {
@@ -1696,7 +1920,7 @@ function renderGitHint() {
   const base = t("当前分支 %1 @ %2").replace("%1", info.branch).replace("%2", (info.head || "").slice(0, 8));
   const dirty = info.dirty ? t("；工作区有 %1 处未提交改动").replace("%1", info.dirty_count) : "";
   const act = kind
-    ? t("；运行时将从「%1」检出任务分支 tutti/&lt;任务ID&gt;").replace("%1", rev)
+    ? t("；运行时将从「%1」检出任务分支 codebee/&lt;任务ID&gt;").replace("%1", rev)
     : "";
   $("git-hint").innerHTML = esc(base + dirty + act);
 }
@@ -1754,17 +1978,48 @@ async function archiveTask(id, archived) {
 
 async function deleteTask(id) {
   if (!await uiConfirm(t("删除该任务及其全部运行记录（含日志与报告）？不可恢复。"), { ok: t("删除"), danger: true })) return;
+  let gone = false;
   try {
     await api("/api/tasks/" + encodeURIComponent(id) + "/delete", { method: "POST" });
-  } catch (e) { toast(t("删除失败：") + e.message, true); return; }
-  if (S.detailRunId) closeRun();
+  } catch (e) {
+    // 任务已不在（他端删过 / 重复点）：不报错晾着，照常把视图清掉
+    if (!/任务不存在/.test(e.message)) { toast(t("删除失败：") + e.message, true); return; }
+    gone = true;
+  }
+  // 详情有两种打开方式：run 级（detailRunId）与任务级（detailTaskKey，detailRunId 为空）。
+  // 删的正是当前详情对应的任务时都要关，否则右侧还挂着已删任务、再点重试就撞「任务不存在」。
+  if (S.detailRunId || S.detailTaskKey === id) closeRun();
   poll();
+  if (gone) toast(t("任务已删除"));
 }
 
 /* ---------------------------------------------------------- 右键菜单（归档/删除） */
 const ORPHAN_DIR = "__orphan__";  // 无主运行（无 task_id / 任务已删）的兜底文件夹，与 renderSideTasks 共用
 function archivedTaskIds() {
   return new Set((((S.state || {}).archived_tasks) || []).map((t) => t.id));
+}
+
+/* 文件夹「移除」隐藏表（localStorage）：移除的目录连同其下任务（含已归档灰显的）
+ * 从侧栏隐藏——纯归档文件夹重复归档是 no-op，状态不变侧栏不重绘，必须显式隐藏；
+ * 在该目录新建任务时自动恢复显示。 */
+let _hiddenDirs = null;
+function sideHiddenDirs() {
+  if (!_hiddenDirs) {
+    try { _hiddenDirs = new Set(JSON.parse(localStorage.getItem("tutti.hiddenDirs") || "[]")); }
+    catch (e) { _hiddenDirs = new Set(); }
+  }
+  return _hiddenDirs;
+}
+function hideSideDir(dir) {
+  const s = sideHiddenDirs();
+  if (!s.has(dir)) { s.add(dir); localStorage.setItem("tutti.hiddenDirs", JSON.stringify([...s])); }
+  S.sideSig = ""; renderSideTasks();
+}
+function unhideSideDir(dir) {
+  const s = sideHiddenDirs();
+  if (!dir || !s.delete(dir)) return;
+  localStorage.setItem("tutti.hiddenDirs", JSON.stringify([...s]));
+  S.sideSig = "";
 }
 
 let ctxItems = [];
@@ -1835,7 +2090,11 @@ function bindCtxMenus() {
     e.preventDefault();
     const dir = dirEl.dataset.dir || "";
     if (!dir || dir === ORPHAN_DIR) return;
-    const dirTasks = ((S.state || {}).tasks || []).filter((x) => (x.workdir || "") === dir);
+    // 含已归档任务：「显示已归档」开着时灰显回原文件夹的那批也算在内——
+    // 不然纯归档文件夹右键移除会收集到空列表，点了没反应（重复归档是无害 no-op）
+    const stAll = S.state || {};
+    const dirTasks = (stAll.tasks || []).concat(stAll.archived_tasks || [])
+      .filter((x) => (x.workdir || "") === dir);
     const ids = dirTasks.map((x) => x.id);
     const items = [
       { label: t("查看文件"), fn: () => openFolderFiles(dir) },
@@ -1844,7 +2103,7 @@ function bindCtxMenus() {
       { label: t("打开工作目录"), fn: () => { if (ids[0]) revealPath("tasks", ids[0], true); } },
       { label: t("复制工作目录路径"), fn: () => { if (ids[0]) revealPath("tasks", ids[0], false); } },
       "-",
-      { label: t("移除该文件夹"), danger: true, fn: () => removeSideDir(ids) },
+      { label: t("移除该文件夹"), danger: true, fn: () => removeSideDir(ids, dir) },
     ];
     openCtxMenu(e.clientX, e.clientY, items);
   });
@@ -1974,8 +2233,7 @@ async function renameTask(id) {
 async function retryTask(id) {
   try {
     const r = await api("/api/tasks/" + encodeURIComponent(id) + "/retry", { method: "POST" });
-    switchTab("runs");
-    openRun(r.run_id);
+    jumpToRun(r.run_id);
   } catch (e) { toast(t("重试失败：") + e.message, true); return; }
   poll();
 }
@@ -2001,8 +2259,7 @@ async function continueSerial(id) {
     r = await api("/api/tasks/" + encodeURIComponent(id) + "/continue",
       { method: "POST", body: JSON.stringify({ chapters: ch }) });
   } catch (e) { toast(t("创建续写任务失败：") + e.message, true); return; }
-  switchTab("runs");
-  openRun(r.run_id);
+  jumpToRun(r.run_id);
   poll();
 }
 window.continueSerial = continueSerial;
@@ -2026,7 +2283,6 @@ function newFromTask(id) {
   // 不随预填带走：新任务要么重新上传，要么由 _attachments 路径引用
   $("f-context").value = (tk.context || "").split("\n## 附件材料")[0].trimEnd();
   $("f-workdir").value = tk.workdir || "";
-  if (tk.workdir) localStorage.setItem("orch.workdir", tk.workdir);
   S.atts = []; renderAttachChips();  // 附件清单不继承：同目录引用已随 context 保留
   queueGitProbe();  // 工作目录变了，重新探测代码版本
   $("f-mode").value = tk.mode === "manual" ? "manual" : "auto";
@@ -2178,9 +2434,7 @@ async function loadFolderFiles(dir) {
     body.innerHTML = '<div class="sf-msg">' + esc(t("该目录下暂无文件")) + "</div>";
     return;
   }
-  body.innerHTML = sfRenderLevel(sfBuildTree(files), 0, d.subdirs, dir) +
-    (d.truncated ? '<div class="sf-note">' +
-      esc(t("（文件过多，仅显示最近的 %1 个）").replace("%1", files.length)) + "</div>" : "");
+  body.innerHTML = sfRenderLevel(sfBuildTree(files), 0, d.subdirs, dir);
 }
 
 /* 返回任务列表：左栏恢复任务树（文件页不留状态，重进即重扫） */
@@ -2193,27 +2447,25 @@ function closeFolderFiles() {
 function newTaskInDir(dir) {
   exitSettings();   // 回到新建任务表单
   $("f-workdir").value = dir;
-  localStorage.setItem("orch.workdir", dir);
+  unhideSideDir(dir);  // 在已移除的目录建任务 → 恢复显示
   queueGitProbe();  // 工作目录变了，重新探测代码版本
 }
 
-/* 文件夹右键「移除」：把该目录下的任务整体归档（可从侧栏「显示已归档」开关取消归档找回），
- * 文件与运行记录都不动。运行中/排队的任务归档不了，留原位并提示。 */
-async function removeSideDir(ids) {
-  const latest = (S.state && S.state.task_latest) || {};
-  const free = [], busy = [];
-  ids.forEach((id) => {
-    const st = (latest[id] || {}).status || "";
-    (st === "running" || st === "queued" ? busy : free).push(id);
-  });
-  if (!free.length) { toast(t("该目录下的任务都在运行/排队中，暂不能移除"), true); return; }
+/* 文件夹右键「移除」：未归档任务整体归档后，整个目录从侧栏隐藏（可随时从
+ * localStorage 的 tutti.hiddenDirs 找回，或在该目录新建任务自动恢复）；
+ * 文件与运行记录都不动，运行中/排队的任务也照常归档——归档只是隐藏，运行不受影响。 */
+async function removeSideDir(ids, dir) {
+  if (!ids.length) {
+    if (dir) hideSideDir(dir);
+    return;
+  }
   const ok = await uiConfirm(
-    t("把该文件夹下 %1 个任务移出侧栏？文件与运行记录不会删除，可在侧栏「显示已归档」开关找回。")
-      .replace("%1", free.length)
-    + (busy.length ? t("（另有 %1 个运行中任务保留原位）").replace("%1", busy.length) : ""),
+    t("把该文件夹下 %1 个任务移出侧栏？文件与运行记录不会删除；移除后文件夹从侧栏隐藏，在该目录新建任务会重新显示。")
+      .replace("%1", ids.length),
     { ok: t("移除") });
   if (!ok) return;
-  for (const id of free) await archiveTask(id, true);
+  for (const id of ids) await archiveTask(id, true);
+  if (dir) hideSideDir(dir);
 }
 
 /* ---------------------------------------------------------- 运行列表 */
@@ -2239,7 +2491,7 @@ function renderRunList() {
     ' onchange="toggleAllRunSel(this.checked)">' + t(" 全选") + '</label>' +
     '<span class="n">' + (selN ? t("已选 ") + selN + t(" 条") : t("勾选可批量删除")) + "</span>" +
     (selN ? '<button class="danger small" onclick="deleteSelectedRuns()">' + t("删除所选") + '</button>' +
-            '<button class="ghost small" onclick="clearRunSel()">取消选择</button>' : "") +
+            '<button class="ghost small" onclick="clearRunSel()">' + t("取消选择") + '</button>' : "") +
     "</div>";
   box.innerHTML = tools + runs.map((r) => {
     const can = runDeletable(r);
@@ -2252,7 +2504,7 @@ function renderRunList() {
       '<span class="name">' + esc(r.title) + "</span>" + statusChip(r.status) +
       '<span class="time">' + esc(r.created_at) + "</span>" +
       '<button class="danger small" title="' + t("删除该记录") + '" onclick="event.stopPropagation(); deleteRun(\'' + esc(r.id) + '\')">' + t("删除") + '</button></div>' +
-      '<div class="desc">' + esc(r.summary || r.error || (r.steps ? r.steps.length + t(" 个步骤") : "")) + "</div></div>";
+      '<div class="desc">' + esc(t(r.summary || r.error || (r.steps ? r.steps.length + t(" 个步骤") : ""))) + "</div></div>";
   }).join("");
 }
 
@@ -2465,6 +2717,9 @@ function renderSideTasks() {
     if (String(g.time || "") > String(d.time || "")) d.time = g.time;
     if (g.active) d.active = true;
   }
+  // 已移除（隐藏）的目录不上侧栏；「其他」兜底永远保留
+  const hid = sideHiddenDirs();
+  for (let i = dirs.length - 1; i >= 0; i--) if (hid.has(dirs[i].dir)) dirs.splice(i, 1);
   // 组内任务按活动时间倒序；文件夹：无主运行「其他」恒垫底，其余按最近活动倒序（活跃项目浮上来）
   dirs.forEach((d) => d.groups.sort((a, b) => String(b.time || "").localeCompare(String(a.time || ""))));
   dirs.sort((a, b) => {
@@ -2540,6 +2795,17 @@ function showDetailInMain() {
   syncInspectorVis();    // 从设置子页点进运行详情：任务上下文，检查器跟着回来
 }
 
+/* 重试/续写/建任务产生新 run 后的统一去向：任务树主视图就地进详情（左栏不动），
+ * 只有本来就在设置导航里才切 runs 子页（目录页「完整运行」按钮进来仍留在设置侧栏）。
+ * 顺带清步骤定位，别把旧 run 的 focusStep 带进新详情。 */
+function jumpToRun(id) {
+  S.focusStep = 0;
+  S.focusDone = false;
+  if (document.body.classList.contains("settings-mode")) switchTab("runs");
+  else showDetailInMain();
+  openRun(id);
+}
+
 /* 任务行激活（点击/键盘）：点任务 = 主栏（侧栏右边的中间区域）直接展开任务详情，
  * 聚合该任务全部 run 的步骤；不允许任何行点了没反应。
  * 无主运行行（任务已删/管理运行，data-task 为空）→ 直开它自己的运行详情；
@@ -2589,7 +2855,7 @@ window.sideOpenTask = function (key) {
   syncInspectorVis();    // 详情已铺开：检查器让位（选中保留，返回列表自动滑回）
   renderTaskDetail();
 };
-window.openRunInRuns = function (id) { S.focusStep = 0; S.focusDone = true; switchTab("runs"); openRun(id); };
+window.openRunInRuns = function (id) { jumpToRun(id); };
 
 /* 详情页右侧「✎ 编辑重试」开关：失败/取消的任务把「基于此任务新建」换成
  * 「编辑重试」——同一预填行为（newFromTask），标签贴合「改完再跑」的意图；
@@ -2630,10 +2896,13 @@ function renderTaskDetail() {
 function drawTaskDetail(key, runs) {
   if (!runs.length) return;
   // 消息数/未消费数也入签名：新指令或被 drain 后重画指挥区；步骤状态入签名：
-  // 取消收尾把僵尸步骤落成「已取消」时要立即重画，不等条数变化
+  // 取消收尾把僵尸步骤落成「已取消」时要立即重画，不等条数变化；
+  // 作品信息状态入签名：后台一键生成 running→done 要立刻反映到成果区面板
+  const bmTask = ((S.state || {}).tasks || []).find((x) => x.id === key);
   const sig = JSON.stringify(runs.map((r) => [r.id, r.status, (r.steps || []).length,
     (r.steps || []).map((s) => s.status).join(""),
-    (r.messages || []).length, (r.messages || []).filter((m) => !m.consumed).length]));
+    (r.messages || []).length, (r.messages || []).filter((m) => !m.consumed).length])
+    .concat([JSON.stringify((bmTask || {}).book_meta || null)]));
   if (sig === S.taskSig) return;
   S.taskSig = sig;
   const latest = runs[0];                       // runs 新→旧
@@ -2645,7 +2914,6 @@ function drawTaskDetail(key, runs) {
   const chip = $("rd-status");
   chip.className = "chip " + st;
   chip.textContent = { queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消") }[st] || st;
-  $("btn-cancel").classList.add("hidden");
   const bpt = $("btn-pause");
   if (bpt) bpt.classList.add("hidden");
   $("btn-delete").classList.add("hidden");
@@ -2655,6 +2923,10 @@ function drawTaskDetail(key, runs) {
   S.lastRun = latest;
   // 指挥区指向最新的活跃运行（无则隐藏整个指挥区，避免终态任务误导用户以为指令还能生效）
   const activeRun = runs.find((r) => r.status === "queued" || r.status === "running");
+  // 活跃运行（含排队中）显示取消按钮；取消目标钉在活跃 run——任务级详情没有
+  // S.detailRunId，cancelRun 靠 S.cancelTargetRunId 知道取消谁
+  $("btn-cancel").classList.toggle("hidden", !activeRun);
+  S.cancelTargetRunId = activeRun ? activeRun.id : null;
   const bp2 = $("btn-pause");
   if (bp2 && activeRun) {
     bp2.classList.toggle("hidden", false);
@@ -2682,7 +2954,7 @@ function drawTaskDetail(key, runs) {
       '<div class="step" onclick="toggleLog(\'' + esc(r.id) + "', '" + esc(s.log) + '\')" title="' + esc(s.note || "") + '">' +
       '<span class="n">' + String(s.n).padStart(2, "0") + "</span>" +
       '<span class="role">' + esc(s.role) + "</span>" +
-      '<span class="who">' + esc(s.agent_label || s.agent) + "</span>" +
+      '<span class="who">' + esc(t(s.agent_label || s.agent)) + "</span>" +
       '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
       '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
       statusChip(s.status) + "</div>"
@@ -2715,6 +2987,7 @@ function drawTaskDetail(key, runs) {
   S.lastRunTask = tk || null;
   renderGitPanel(latest, tk);
   renderBiblePanel(tk);
+  renderBookMetaPanel(tk);
   refreshDetailSide();   // 有变化才重画版本面板；meta 累计组任务级详情已有全量 sums，不重复出
   const actSteps = ((activeRun || latest).steps || []);
   rdTabsSync({
@@ -2837,18 +3110,21 @@ function applyStepFocus() {
  * 轮询重画不抢用户手选的分区；带步骤号打开详情（sideOpenRun，检查器步骤条入口）钉住步骤分区。 */
 function rdTabAvail() {
   return {
+    chat: !$("rd-chat").classList.contains("hidden"),
     hive: !$("rd-hive").classList.contains("hidden"),
     steps: true,
     result: true,
     git: !$("rd-git").classList.contains("hidden"),
     bible: !$("rd-bible").classList.contains("hidden"),
+    bookmeta: !$("rd-bookmeta").classList.contains("hidden"),
   };
 }
 
 function applyRdTabs() {
   const avail = rdTabAvail();
   if (!S.rdTab || !avail[S.rdTab]) {
-    S.rdTab = ["hive", "steps", "result", "git", "bible"].find((k) => avail[k]) || "steps";
+    S.rdTab = ["chat", "hive", "steps", "result", "git", "bible", "bookmeta"]
+      .find((k) => avail[k]) || "steps";
   }
   document.querySelectorAll("#rd-tabs .rd-tab").forEach((b) => {
     b.classList.toggle("hidden", !avail[b.dataset.tab]);
@@ -2882,9 +3158,11 @@ function rdTabsSync(ctx) {
     if (S.rdTabSig !== sig) {
       S.rdTabSig = sig;
       const avail = rdTabAvail();
-      S.rdTab = ctx.running ? (avail.hive ? "hive" : "steps")
-        : (ctx.gitState === "isolated" && avail.git ? "git"
-          : (ctx.hasResult ? "result" : "steps"));
+      // 直连任务：对话就是全部内容，默认落「对话」；其余流程保持既有落位
+      S.rdTab = (avail.chat ? "chat" : null)
+        || (ctx.running ? (avail.hive ? "hive" : "steps")
+          : (ctx.gitState === "isolated" && avail.git ? "git"
+            : (ctx.hasResult ? "result" : "steps")));
     }
   }
   applyRdTabs();
@@ -2913,6 +3191,7 @@ async function renderRunDetail() {
   chip.textContent = { queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消") }[run.status] || run.status;
   const active = run.status === "queued" || run.status === "running";
   $("btn-cancel").classList.toggle("hidden", !active);
+  S.cancelTargetRunId = active ? run.id : null;
   $("btn-delete").classList.toggle("hidden", active);
   $("btn-retry").classList.toggle("hidden", !(run.task_id && (run.status === "failed" || run.status === "cancelled")));
   const rcTask = ((S.state || {}).tasks || []).find((x) => x.id === run.task_id);
@@ -2925,6 +3204,7 @@ async function renderRunDetail() {
     bp.textContent = run.paused ? t("继续执行") : t("暂停"); }
   renderDirector(run, active);
   renderHive(run);
+  renderChat(run, active);
   $("rd-meta").innerHTML =
     '<span class="stat">' + t("创建 ") + '<b>' + esc(run.created_at) + "</b></span>" +
     '<span class="stat">' + t("成本 ") + '<b>$' + Number(run.cost_usd || 0).toFixed(3) + "</b></span>" +
@@ -2939,7 +3219,7 @@ async function renderRunDetail() {
     '" onclick="toggleLog(\'' + esc(run.id) + "', '" + esc(s.log) + '\')" title="' + esc(s.note || "") + '">' +
     '<span class="n">' + String(s.n).padStart(2, "0") + "</span>" +
     '<span class="role">' + esc(s.role) + "</span>" +
-    '<span class="who">' + esc(s.agent_label || s.agent) + "</span>" +
+    '<span class="who">' + esc(t(s.agent_label || s.agent)) + "</span>" +
     '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
     '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
     statusChip(s.status) + "</div>"
@@ -2958,6 +3238,7 @@ async function renderRunDetail() {
   S.lastRunTask = rcTask || null;
   renderGitPanel(run, rcTask);
   renderBiblePanel(rcTask);
+  renderBookMetaPanel(rcTask);
   refreshDetailSide();   // 任务累计统计 + git 实时（2s 节流；有变化才重画面板）
   rdTabsSync({
     running: active, status: run.status, gitState: (rcTask || {}).git_state || "",
@@ -2967,7 +3248,7 @@ async function renderRunDetail() {
   });
 }
 
-/* 代码版本隔离面板：run 检出任务分支 tutti/<id> 后，产物提交在该分支上、
+/* 代码版本隔离面板：run 检出任务分支 codebee/<id> 后，产物提交在该分支上、
  * 用户工作区已切回原分支。分支是「每任务一条」，裁决（合并/丢弃）在任务级生效。
  * 数据源两路：任务级 side（详情页自拉，运行中实时 numstat、结束后最新 run 快照，
  * 续跑/重试的新 run 没带 git 字段也能从任务带出分支）优先；side 不可用
@@ -3047,6 +3328,139 @@ window.bibleSave = async function (taskId) {
 function findTask(taskId) {
   return ((S.state || {}).tasks || []).find((x) => x.id === taskId);
 }
+
+/* ---------------- 作品信息一键生成（番茄/七猫建书表单资料） ----------------
+ * 独立 TAB（仅连载任务）：用户手动点按钮触发生成（不自动调模型），后台线程跑，
+ * 状态随任务 JSON（SSE 全量状态）自动刷进来。生成完字段直接内联在平台卡片里，
+ * 每个字段带复制按钮——用户的目的就是往番茄/七猫建书表单里逐格粘贴。 */
+const BOOKMETA_PLATFORMS = [
+  { id: "fanqie", label: "番茄" },
+  { id: "qimao", label: "七猫" },
+];
+const BOOKMETA_FIELDS = {
+  fanqie: [["book_name", "作品名"], ["signing_mode", "签约模式"], ["target_reader", "目标读者"],
+    ["read_tags", "阅读标签"], ["content_tags", "内容标签"], ["protagonist_1", "主角名1"],
+    ["protagonist_2", "主角名2"], ["summary", "作品简介"]],
+  qimao: [["book_name", "作品名称"], ["target_reader", "目标读者"], ["category_main", "一级分类"],
+    ["category_sub", "二级分类"], ["tags", "作品标签"], ["protagonist_1", "主角名1"],
+    ["protagonist_2", "主角名2"], ["status", "作品状态"], ["summary", "作品简介"]],
+};
+
+function bmFieldValue(v) {
+  if (Array.isArray(v)) return v.length ? v.join("、") : t("（待补充）");
+  const s = String(v == null ? "" : v).trim();
+  return s || t("（待补充）");
+}
+
+function bmStatusChip(st) {
+  const map = { done: ["ok", "已生成"], running: ["run", "生成中"], failed: ["bad", "生成失败"] };
+  const m = map[st];
+  return m ? '<span class="bm-st ' + m[0] + '">' + (m[1] === "生成中" ? "● " : "") + t(m[1]) + "</span>" : "";
+}
+
+/* 作品信息 TAB：只有连载首批需要（建书表单只在开书时填一次）。
+ * 续写批次（serial.start_chapter > 1）沿用第一批的书名/简介/标签，不再重复出面板——
+ * 开书资料属于「这本书」，不属于某一批章节。非连载任务同样不渲染。 */
+function bmNeedsPanel(task) {
+  const s = (task || {}).serial;
+  if (!s) return false;
+  try { return intOf(s.start_chapter, 1) <= 1; } catch (e) { return true; }
+}
+
+function intOf(v, dflt) {
+  const n = parseInt(v, 10);
+  return isNaN(n) ? dflt : n;
+}
+
+function renderBookMetaPanel(task) {
+  const box = $("rd-bookmeta");
+  if (!box || !(task || {}).id || !bmNeedsPanel(task)) {
+    if (box) box.classList.add("hidden");
+    return;
+  }
+  const bm = task.book_meta || {};
+  const taskBusy = task.status === "running" || task.status === "queued";
+  let html = '<div class="bm-head"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>' +
+    '<span class="sec-title">' + t("作品信息") + "</span>" +
+    '<span class="hint">' + esc(t("按发布平台生成建书表单资料，逐字段复制过去")) + "</span>" +
+    '<span class="flex1"></span>';
+  if (taskBusy) html += '<span class="bm-warn">' + esc(t("任务运行中，生成将在本轮结束后可用")) + "</span>";
+  html += "</div>";
+  if (!bm.fanqie && !bm.qimao && !taskBusy) {
+    html += '<div class="bm-guide"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>' +
+      '<div><b>' + esc(t("章节已就绪，创建作品还差开书资料")) + "</b>" +
+      "<p>" + esc(t("点平台卡片上的「生成」按钮，一键产出书名/简介/标签/主角名等建书资料，生成后逐字段复制进建书表单。")) + "</p></div></div>";
+  }
+  html += '<div class="bm-cards">' + BOOKMETA_PLATFORMS.map((p) => {
+    const entry = bm[p.id] || {};
+    const st = entry.status || "";
+    let body = "";
+    if (st === "running") {
+      body = '<div class="bm-skwrap">' + BOOKMETA_FIELDS[p.id].map(() =>
+        '<div class="bm-sk"><span class="bm-sk-l"></span><span class="bm-sk-v"></span></div>').join("") + "</div>";
+    } else if (st === "done" && entry.data) {
+      body = '<div class="bm-fields">' + (BOOKMETA_FIELDS[p.id] || []).map(([key, label]) => {
+        const raw = entry.data[key];
+        const long = key === "summary";
+        const tags = Array.isArray(raw) && raw.length;
+        const val = bmFieldValue(raw);
+        // 标签类字段渲染成 chips（复制仍复制顿号串），长字段独占整行
+        const v = tags
+          ? '<span class="bm-chips">' + raw.map((x) => '<span class="bm-chip">' + esc(String(x)) + "</span>").join("") + "</span>"
+          : '<span class="bm-f-v' + (long ? " bm-f--scroll" : "") + '" title="' + esc(val) + '">' + esc(val) + "</span>";
+        return '<div class="bm-f' + (long || tags ? " bm-f--full" : "") + '">' +
+          '<span class="bm-f-k">' + esc(t(label)) + "</span>" + v +
+          '<button class="bm-copy" data-text="' + esc(val) + '" data-label="' + esc(t(label)) +
+          '" title="' + esc(t("点击复制")) + '" onclick="bmCopyBtn(this)"><svg class="ico" aria-hidden="true"><use href="#i-file-text"/></svg>' + t("复制") + "</button></div>";
+      }).join("") + "</div>";
+    } else if (st === "failed") {
+      body = '<div class="bm-errhint">' + esc(entry.error || t("生成失败")) + "</div>";
+    } else {
+      body = '<div class="bm-empty">' + esc(t("尚未生成")) + "</div>";
+    }
+    let action;
+    if (st === "running") {
+      action = '<button class="ghost" disabled><svg class="ico spin" aria-hidden="true"><use href="#i-refresh"/></svg>' + t("生成中…") + "</button>";
+    } else if (st === "done") {
+      action = '<button class="ghost" onclick="bmGen(\'' + esc(task.id) + "', '" + p.id + '\')" title="' + esc(t("重新生成会覆盖现有内容")) + '">' +
+        '<svg class="ico" aria-hidden="true"><use href="#i-refresh"/></svg>' + t("重新生成") + "</button>";
+    } else {
+      action = '<button class="primary" onclick="bmGen(\'' + esc(task.id) + "', '" + p.id + '\')">' +
+        (st === "failed" ? t("重试") : t("生成")) + "</button>";
+    }
+    // 头部行：平台名 + 状态徽章 + 右侧操作按钮（action 必须在 head 内闭合，
+    // 否则头部 div 吞掉后面的字段区，卡片会嵌套叠在一起）
+    const head = '<div class="bm-card-head">' +
+      '<span class="bm-plat-name"><svg class="ico" aria-hidden="true"><use href="#i-library"/></svg>' + esc(t(p.label)) + "</span>" +
+      bmStatusChip(st) + '<span class="flex1"></span>' + action + "</div>";
+    return '<div class="bm-card st-' + esc(st || "new") + '">' + head + body +
+      (entry.source && st === "done" ? '<div class="bm-src">' + esc(t("来源：") + entry.source) + "</div>" : "") +
+      "</div>";
+  }).join("") + "</div>";
+  box.classList.remove("hidden");
+  box.innerHTML = html;
+  // TAB 徽章：已生成平台数（生成中显示 ●，随下次轮询刷新）
+  const badge = document.querySelector('#rd-tabs .rd-tab[data-tab="bookmeta"] .rd-badge');
+  if (badge) {
+    const n = BOOKMETA_PLATFORMS.filter((p) => (bm[p.id] || {}).status === "done").length;
+    const anyRun = BOOKMETA_PLATFORMS.some((p) => (bm[p.id] || {}).status === "running");
+    badge.textContent = anyRun ? "●" : (n ? n + "/" + BOOKMETA_PLATFORMS.length : "");
+    badge.className = "rd-badge" + (badge.textContent ? (anyRun ? " live" : "") : " hidden");
+  }
+}
+
+window.bmGen = async function (taskId, platform) {
+  try {
+    await api("/api/tasks/" + encodeURIComponent(taskId) + "/book-meta",
+      { method: "POST", body: JSON.stringify({ platform }) });
+    toast(t("已开始生成，完成后这里会自动更新"));
+  } catch (e) { toast(t("生成失败：") + e.message, true); }
+};
+
+window.bmCopyBtn = function (btn) {
+  copyText(btn.dataset.text || "");
+  toast(t("已复制：") + (btn.dataset.label || ""));
+};
 
 /* ---------------- 详情页任务级 side 数据（检查器让位后的主栏自给） ----------------
  * 检查器收进列表上下文后，任务累计统计与 git 实时状态由详情页自己轮询
@@ -3156,7 +3570,7 @@ function _renderGitSnapshot(run, task) {
         '<div class="git-head"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>' +
         '<span class="sec-title">' + t("代码版本隔离") + '</span>' +
         '<span class="chip failed">' + t("检出失败") + "</span>" +
-        '<code class="git-branch">tutti/' + esc(tid || t("（无主运行）")) + t("（") + esc(t("未创建")) + t("）") + "</code></div>" +
+        '<code class="git-branch">codebee/' + esc(tid || t("（无主运行）")) + t("（") + esc(t("未创建")) + t("）") + "</code></div>" +
         (lastErr ? '<div class="hint warn">' + esc(lastErr) + "</div>" : "") +
         '<div class="hint">' + esc(t("处理后点「重试任务」，运行会重新检出任务分支。")) + "</div>";
       rdTabsSync();
@@ -3306,7 +3720,7 @@ function renderGitWbMain(d, task) {
   if (iso.rev && !iso.state) {
     html += '<div class="hint">' + esc(t("已配置代码版本隔离，但任务分支尚未创建（检出失败见运行错误）。")) + "</div>";
   } else if (iso.state === "isolated") {
-    html += '<div class="git-meta"><span>' + esc(t("任务分支")) + " <b>tutti/" + esc(tid) + "</b></span>" +
+    html += '<div class="git-meta"><span>' + esc(t("任务分支")) + " <b>codebee/" + esc(tid) + "</b></span>" +
       '<span class="chip isolated">' + t("待裁决") + "</span></div>";
     if (!ro) {
       html += '<div class="git-actions">' +
@@ -3318,7 +3732,7 @@ function renderGitWbMain(d, task) {
     }
   } else if (iso.state) {
     const chip = GIT_STATE_CHIP[iso.state] || ["muted", "—"];
-    html += '<div class="git-meta"><span>' + esc(t("任务分支")) + " <b>tutti/" + esc(tid) + "</b></span>" +
+    html += '<div class="git-meta"><span>' + esc(t("任务分支")) + " <b>codebee/" + esc(tid) + "</b></span>" +
       '<span class="chip ' + chip[0] + '">' + t(chip[1]) + "</span></div>";
   }
   box.classList.remove("hidden");
@@ -3569,7 +3983,7 @@ function drawInspector() {
     const lastErr = ((d.run || {}).error || "");
     if (revChosen) {
       chipEl.className = "chip failed"; chipEl.textContent = t("检出失败"); chipEl.classList.remove("hidden");
-      main.innerHTML = '<div class="insp-branch"><code>tutti/' + esc(d.task.id || "") +
+      main.innerHTML = '<div class="insp-branch"><code>codebee/' + esc(d.task.id || "") +
         t("（") + esc(t("未创建")) + t("）") + '</code></div>' +
         (lastErr ? '<div class="hint warn">' + esc(lastErr) + "</div>" : "") +
         '<span class="insp-hint">' + esc(t("处理后点「重试任务」，运行会重新检出任务分支。")) + "</span>";
@@ -3714,15 +4128,24 @@ window.inspDiffFile = async function (path) {
  * 内容预览（md 渲染 / 代码等宽 / 图片直显 / 二进制给下载）。
  * z-index 240：高于主 modal(200)、低于 #ask(250)——弹窗上再弹确认不遮眼。 */
 let _fpUrls = [];   // 图片预览的 objectURL，关窗统一回收
+/* 编辑态：_fpRawText=开窗时取到的原文（json 展示会美化，编辑始终用原文）；
+ * _fpSaveCtx={dir,name,mtime} 非空=该弹窗可编辑（目录文件弹窗专属，成品只读）；
+ * _fpDirty=编辑框有改动未保存——关窗/退出编辑先确认，防误丢。 */
+let _fpRawText = "", _fpSaveCtx = null, _fpDirty = false;
 
 function filePopIsOpen() {
   const el = document.getElementById("file-pop");
   return !!el && !el.classList.contains("hidden");
 }
 
-window.filePopClose = function () {
+window.filePopClose = async function () {
   const el = document.getElementById("file-pop");
   if (!el) return;
+  if (_fpDirty) {
+    const ok = await uiConfirm(t("有未保存的修改，确定关闭？"));
+    if (!ok) return;
+  }
+  _fpDirty = false; _fpSaveCtx = null; _fpRawText = "";
   el.classList.add("hidden");
   el.querySelector(".fp-body").innerHTML = "";
   el.querySelector(".fp-acts").innerHTML = "";
@@ -3743,6 +4166,13 @@ function _fpEnsure() {
   document.body.appendChild(el);
   el.addEventListener("click", (e) => { if (e.target === el) window.filePopClose(); });
   el.querySelector(".fp-x").addEventListener("click", window.filePopClose);
+  // 编辑模式下 Ctrl/Cmd+S = 保存（拦掉浏览器默认的「保存网页」）
+  el.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+      const ta = el.querySelector(".fp-edit");
+      if (ta && !ta.classList.contains("hidden")) { e.preventDefault(); window.fpSaveEdit(); }
+    }
+  });
   return el;
 }
 
@@ -3787,6 +4217,7 @@ function _fpDiffLine(ln, no) {
 window.fileDiffPopup = async function (path, runId) {
   runId = runId || ((S.inspData || {}).run || {}).id || S.detailRunId || (S.lastRun || {}).id || "";
   if (!runId) return;
+  _fpSaveCtx = null; _fpRawText = ""; _fpDirty = false;   // diff 弹窗只读，别带上一个目录文件的编辑态
   let sub = "";
   for (const fs of [((S.inspData || {}).changes || {}).files, ((S.lastRun || {}).changes || {}).files]) {
     const f = (fs || []).find((x) => x.path === path);
@@ -3811,9 +4242,13 @@ const FP_TXT = new Set(["md", "txt", "log", "csv", "yml", "yaml", "ini", "toml",
 function _fpExt(name) { return (String(name).split(".").pop() || "").toLowerCase(); }
 
 /* 按 URL 弹窗预览：图片 blob 直显、md 渲染、文本/代码等宽原文、json 美化、
- * 其余二进制只给下载。成品弹窗与目录文件弹窗共用。 */
-async function _fpPreviewUrl(url, name, size) {
+ * 其余二进制只给下载。成品弹窗与目录文件弹窗共用；目录文件弹窗带 save
+ * 上下文 → 额外给「编辑」，改完保存回工作目录（POST /api/dir/save）。 */
+async function _fpPreviewUrl(url, name, size, opts) {
+  opts = opts || {};
   const ext = _fpExt(name);
+  _fpSaveCtx = opts.save || null;
+  _fpRawText = ""; _fpDirty = false;
   _fpOpen(String(name).split("/").pop(), size ? "<i>" + esc(fmtSize(size)) + "</i>" : "",
     '<a class="ghost" href="' + url + '" download="' + esc(String(name).split("/").pop()) + '">' + esc(t("下载")) + "</a>");
   const el = _fpEnsure();
@@ -3832,17 +4267,23 @@ async function _fpPreviewUrl(url, name, size) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       const text = await r.text();
       if (!filePopIsOpen()) return;
-      let body;
-      if (ext === "json") {
-        let pretty = text;
-        try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (e) { /* 坏 json 原样展示 */ }
-        body = '<div class="fp-code">' + codeBlockHTML(pretty) + "</div>";
-      } else {
-        body = '<div class="fp-code">' + codeBlockHTML(text) + "</div>";
-      }
+      _fpRawText = text;
+      if (_fpSaveCtx) _fpSaveCtx.mtime = r.headers.get("X-Tutti-Mtime") || "";
+      const codeHtml = ext === "json"
+        ? (() => { let pretty = text; try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (e) { /* 坏 json 原样展示 */ } return codeBlockHTML(pretty); })()
+        : codeBlockHTML(text);
+      const body = '<div class="fp-code">' + '<div class="fp-vp">' + codeHtml + "</div>" +
+        (_fpSaveCtx ? '<textarea class="fp-edit hidden" spellcheck="false"></textarea>' : "") + "</div>";
       _fpSetBody(body);
-      el.querySelector(".fp-acts").insertAdjacentHTML("afterbegin",
-        '<button class="ghost" onclick="copyFPText()">' + esc(t("复制")) + "</button>");
+      if (_fpSaveCtx) {
+        el.querySelector(".fp-edit").addEventListener("input", () => { _fpDirty = true; });
+      }
+      const btns = [];
+      if (_fpSaveCtx) btns.push('<button class="ghost fp-b-edit" onclick="fpEnterEdit()">' + esc(t("编辑")) + "</button>");
+      btns.push('<button class="ghost" onclick="copyFPText()">' + esc(t("复制")) + "</button>");
+      if (_fpSaveCtx) btns.push('<button class="ghost fp-b-save hidden" onclick="fpSaveEdit()">' + esc(t("保存")) + "</button>" +
+        '<button class="ghost fp-b-cancel hidden" onclick="fpExitEdit()">' + esc(t("退出编辑")) + "</button>");
+      el.querySelector(".fp-acts").insertAdjacentHTML("afterbegin", btns.join(""));
       return;
     }
     _fpSetBody('<div class="fp-hint">' + esc(t("二进制文件不预览，可下载查看。")) + "</div>");
@@ -3851,15 +4292,77 @@ async function _fpPreviewUrl(url, name, size) {
   }
 }
 
+/* 弹窗编辑模式切换：编辑按钮 ⇄ 保存/退出编辑；预览视图 ⇄ 文本编辑框 */
+function _fpToggleActs(editing) {
+  const el = _fpEnsure();
+  const q = (c) => el.querySelector(".fp-acts " + c);
+  if (q(".fp-b-edit")) q(".fp-b-edit").classList.toggle("hidden", editing);
+  if (q(".fp-b-save")) q(".fp-b-save").classList.toggle("hidden", !editing);
+  if (q(".fp-b-cancel")) q(".fp-b-cancel").classList.toggle("hidden", !editing);
+}
+
+window.fpEnterEdit = function () {
+  if (!_fpSaveCtx) return;
+  const el = _fpEnsure();
+  const ta = el.querySelector(".fp-edit");
+  if (!ta) return;
+  ta.value = _fpRawText;
+  el.querySelector(".fp-vp").classList.add("hidden");
+  ta.classList.remove("hidden");
+  _fpToggleActs(true);
+  _fpDirty = false;
+  ta.focus();
+};
+
+window.fpExitEdit = async function () {
+  if (_fpDirty) {
+    const ok = await uiConfirm(t("有未保存的修改，确定退出编辑？"));
+    if (!ok) return;
+  }
+  const el = _fpEnsure();
+  el.querySelector(".fp-edit").classList.add("hidden");
+  el.querySelector(".fp-vp").classList.remove("hidden");
+  _fpToggleActs(false);
+  _fpDirty = false;
+};
+
+window.fpSaveEdit = async function () {
+  const el = _fpEnsure();
+  const ta = el.querySelector(".fp-edit");
+  if (!ta || !_fpSaveCtx) return;
+  const btn = el.querySelector(".fp-b-save");
+  if (btn) btn.disabled = true;
+  try {
+    const d = await api("/api/dir/save", { method: "POST", body: JSON.stringify({
+      dir: _fpSaveCtx.dir, name: _fpSaveCtx.name, content: ta.value, mtime: _fpSaveCtx.mtime,
+    }) });
+    _fpRawText = ta.value;
+    _fpSaveCtx.mtime = String(d.mtime || "");
+    _fpDirty = false;
+    // 回到预览层并重画为保存后的内容（同一个框，只换里子）
+    el.querySelector(".fp-vp").innerHTML = codeBlockHTML(_fpRawText);
+    ta.classList.add("hidden");
+    el.querySelector(".fp-vp").classList.remove("hidden");
+    _fpToggleActs(false);
+    toast(t("已保存"));
+  } catch (e) {
+    toast(t("保存失败：") + e.message, true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
 /* 成品文件弹窗预览 */
 window.artPopup = async function (runId, name, size) {
   return _fpPreviewUrl("/api/runs/" + encodeURIComponent(runId) + "/file?name=" + encodeURIComponent(name), name, size);
 };
 
-/* 文件浏览页点文件：中央弹窗预览工作目录里的文件（dir=根目录，name=相对路径） */
+/* 文件浏览页点文件：中央弹窗预览工作目录里的文件（dir=根目录，name=相对路径）。
+ * 带 save 上下文 → 弹窗内可直接编辑并保存回该文件。 */
 window.dirFilePopup = async function (dir, name, size) {
   return _fpPreviewUrl("/api/dir/file?dir=" + encodeURIComponent(String(dir).replace(/\\/g, "/")) +
-    "&name=" + encodeURIComponent(name), name, size);
+    "&name=" + encodeURIComponent(name), name, size,
+    { editable: true, save: { dir: String(dir), name: String(name) } });
 };
 
 /* 迷你指挥：与详情页指挥区同一个消息端点，只是不带附件 */
@@ -3978,7 +4481,12 @@ async function loadArtifacts(runId) {
 }
 
 window.copyText = function (t) {
-  try { navigator.clipboard.writeText(t); } catch (e) { /* 剪贴板不可用则忽略 */ }
+  // writeText 返回 promise，无头/非安全上下文会拒绝——必须挂 catch，否则
+  // 未处理的 promise 拒绝会以控制台错误冒出来（测试断言 0 错误会被它打爆）
+  try {
+    const p = navigator.clipboard.writeText(t);
+    if (p && p.catch) p.catch(() => { /* 剪贴板不可用则忽略 */ });
+  } catch (e) { /* 剪贴板不可用则忽略 */ }
 };
 
 let currentLog = null;
@@ -4162,9 +4670,15 @@ window.renderHive = function (run) {
       : s.status === "cancelled" ? "cancelled"
       : s.status === "timeout" ? "timeout" : "done";
     const who = s.agent_label || s.agent || "";
-    const title = [s.role, who, s.started_at ? t("开始于 ") + s.started_at : "",
-                   (s.note ? "◆ " + s.note : ""), s.summary].filter(Boolean).join(" · ");
+    // 完成即给结论：终态格子定格在 summary（智能体最终回答/失败原因），
+    // 悬停 title 展示全文；运行中格子才跟实时尾巴
+    const concl = String(s.summary || "").replace(/\s+/g, " ").trim();
     const key = run.id + "|" + (s.log || "");
+    if (st !== "running") delete hiveTails[key];
+    const tailText = st === "running" ? (hiveTails[key] || concl) : concl;
+    const title = [s.role, who, s.started_at ? t("开始于 ") + s.started_at : "",
+                   (s.note ? "◆ " + s.note : "")].filter(Boolean).join(" · ")
+      + (concl && st !== "running" ? "\n" + t("结论：") + concl : "");
     return '<div class="hive-cell st-' + st + '" title="' + esc(title) + '" ' +
       'onclick="hiveOpenLog(\'' + esc(run.id) + "', '" + esc(s.log || "") + '\')">' +
       '<div class="hc-head">' +
@@ -4172,7 +4686,7 @@ window.renderHive = function (run) {
       '<span class="hc-role">' + esc(s.role || "") + "</span>" +
       '<span class="hc-who">' + esc(who) + "</span></div>" +
       '<div class="hc-tail" data-log="' + esc(s.log || "") + '">' +
-      esc(hiveTails[key] || (s.summary || "")) + "</div>" +
+      esc(tailText) + "</div>" +
       '<div class="hc-meta"><span class="hc-elapsed" data-started="' + esc(s.started_at || "") + '">' +
       (s.duration_s != null ? s.duration_s + "s" : hiveElapsed(s.started_at)) + "</span>" +
       (st === "running" ? '<span class="hc-live">● ' + t("工作中") + "</span>" : "") +
@@ -4221,12 +4735,13 @@ window.renderHive = function (run) {
   rdTabsSync();   // 蜂巢显隐直接决定「蜂巢」标签可用性
 };
 
-/* 活跃步骤的实时尾巴：拉 900 字符窗口，去噪后取最后一行正文 */
+/* 活跃步骤的实时尾巴：拉 900 字符窗口，去噪后取最后一行正文。
+ * 只刷运行中格子——终态格子的结论一旦定格，不再被命令回显覆盖。 */
 async function hiveTick(rid) {
   if (document.hidden || !rid) return;
   const box = $("rd-hive-cells");
   if (!box) return;
-  const rels = Array.from(box.querySelectorAll(".hc-tail[data-log]"))
+  const rels = Array.from(box.querySelectorAll(".hive-cell.st-running .hc-tail[data-log]"))
     .map((el) => el.dataset.log).filter(Boolean);
   for (const rel of rels) {
     try {
@@ -4237,7 +4752,7 @@ async function hiveTick(rid) {
       const key = rid + "|" + rel;
       if (last && hiveTails[key] !== last) {
         hiveTails[key] = last;
-        box.querySelectorAll(".hc-tail").forEach((el) => {
+        box.querySelectorAll(".hive-cell.st-running .hc-tail").forEach((el) => {
           if (el.dataset.log === rel) el.textContent = last;
         });
       }
@@ -4254,9 +4769,15 @@ window.hiveOpenLog = function (runId, rel) {
 function stopLogLive() { if (S.logLive) { clearInterval(S.logLive); S.logLive = null; } }
 
 async function cancelRun() {
-  if (!S.detailRunId) return;
+  // 任务级详情没有 S.detailRunId，取消目标用渲染时钉好的 cancelTargetRunId
+  const rid = S.detailRunId || S.cancelTargetRunId;
+  if (!rid) return;
   if (!await uiConfirm(t("确定取消该运行？"), { ok: t("确定") })) return;
-  await api("/api/runs/" + encodeURIComponent(S.detailRunId) + "/cancel", { method: "POST" });
+  let r;
+  try {
+    r = await api("/api/runs/" + encodeURIComponent(rid) + "/cancel", { method: "POST" });
+  } catch (e) { toast(t("取消失败：网络异常"), true); return; }
+  toast(r && r.ok ? t("已请求取消，运行将在当前调用停止后终止") : t("该运行已结束，无需取消"));
 }
 
 /* ---------------------------------------------------- 运行中指挥（消息信箱） */
@@ -4652,14 +5173,14 @@ function renderAppearance() {
  * [data-ctheme-mode][data-codetheme]：html 上由 applyCodeTheme 落当前生效主题，
  * 预览卡同名属性拨到另一套即可同屏双色，无需 iframe。 */
 const CODE_THEMES = [
-  { id: "github", name: "GitHub Light", dark: false, desc: t("经典浅色，清爽不抢眼，日间界面首选") },
-  { id: "vs", name: "Visual Studio Light", dark: false, desc: t("VS 家族浅色，蓝紫关键词配色") },
-  { id: "xcode", name: "Xcode Light", dark: false, desc: t("苹果开发工具同款浅色，冷色克制") },
-  { id: "solarized", name: "Solarized Light", dark: false, desc: t("米黄纸感底色，长时间阅读更柔和") },
-  { id: "github-dark", name: "GitHub Dark", dark: true, desc: t("经典深色，夜间界面首选") },
-  { id: "vs2015", name: "Visual Studio Dark", dark: true, desc: t("VS 家族深色，灰蓝底更沉稳") },
-  { id: "monokai", name: "Monokai", dark: true, desc: t("高饱和黄紫粉，老牌编辑器名主题") },
-  { id: "one-dark", name: "One Dark", dark: true, desc: t("Atom 出品的均衡深色，蓝灰底不刺眼") },
+  { id: "github", name: "GitHub Light", dark: false, desc: "经典浅色，清爽不抢眼，日间界面首选" },
+  { id: "vs", name: "Visual Studio Light", dark: false, desc: "VS 家族浅色，蓝紫关键词配色" },
+  { id: "xcode", name: "Xcode Light", dark: false, desc: "苹果开发工具同款浅色，冷色克制" },
+  { id: "solarized", name: "Solarized Light", dark: false, desc: "米黄纸感底色，长时间阅读更柔和" },
+  { id: "github-dark", name: "GitHub Dark", dark: true, desc: "经典深色，夜间界面首选" },
+  { id: "vs2015", name: "Visual Studio Dark", dark: true, desc: "VS 家族深色，灰蓝底更沉稳" },
+  { id: "monokai", name: "Monokai", dark: true, desc: "高饱和黄紫粉，老牌编辑器名主题" },
+  { id: "one-dark", name: "One Dark", dark: true, desc: "Atom 出品的均衡深色，蓝灰底不刺眼" },
 ];
 const CT_LIGHT_KEY = "orch.codeTheme.light";
 const CT_DARK_KEY = "orch.codeTheme.dark";
@@ -4778,7 +5299,7 @@ function renderCodeSettings() {
   if (!selL) return;
   const fill = (sel, dark) => {
     sel.innerHTML = CODE_THEMES.filter((x) => !!x.dark === dark).map((x) =>
-      '<option value="' + x.id + '"' + (x.id === codeThemeFor(dark ? "dark" : "light") ? " selected" : "") + ">" + esc(x.name) + "</option>").join("");
+      '<option value="' + x.id + '"' + (x.id === codeThemeFor(dark ? "dark" : "light") ? " selected" : "") + ">" + esc(t(x.desc)) + "</option>").join("");
   };
   fill(selL, false);
   fill(selD, true);
@@ -4803,7 +5324,7 @@ function renderCodePreviews() {
       badge.classList.toggle("cs-badge-on", active);
     }
     const tt = document.querySelector("#cs-preview-" + mode + " .cs-pv-theme");
-    if (tt) tt.textContent = th ? th.name : thId;
+    if (tt) tt.textContent = th ? t(th.desc) : thId;
   }
 }
 
@@ -4856,9 +5377,27 @@ function modelGroups() {
       .filter((m) => !m.hidden && m.enabled !== false)
       .sort((a, b) => (a.priority || 0) - (b.priority || 0))
       .map((m) => m.name).filter(Boolean);
-    if (ms.length) out.push({ id: p.id, name: p.name, models: ms, protocol: p.protocol || "" });
+    if (ms.length) out.push({ id: p.id, name: p.name, models: ms,
+      protocol: p.protocol || "", caps: p.wire_caps || {} });
   }
   return out;
+}
+
+/* 供应商协议标签：auto 显示成「自动 · 实测 wire 列表」，便于一眼看出能注入什么 */
+function protoLabel(p) {
+  const proto = (p || {}).protocol || "";
+  if (proto !== "auto") return proto;
+  const caps = Object.keys((p || {}).wire_caps || {});
+  return caps.length ? t("自动 · ") + caps.join("/") : t("自动（未探测）");
+}
+
+/* 供应商可否按 allow 里的某协议注入：显式协议或「模型接入」页适配测试
+ * 通过的 wire_caps（auto 供应商全靠它）。返回命中的协议名，不适配返回空串。 */
+function provAdaptedProto(p, allow) {
+  if (!p) return "";
+  if (allow.indexOf(p.protocol) >= 0) return p.protocol;
+  const caps = p.wire_caps || {};
+  return allow.find((pr) => (caps[pr] || {}).base) || "";
 }
 
 /* CLI 允许注入的供应商 wire 协议——与 modelhub.resolve_binding 的 allowed 规则
@@ -4872,10 +5411,15 @@ function bindAllowedProtocols(kind) {
   return ["anthropic", "openai"];
 }
 
-/* 默认模型下拉：按供应商分组；当前值不在列表里时保留为选项，避免显示丢失 */
-function modelSelectHtml(id, current) {
+/* 默认模型下拉：按供应商分组，只列该 CLI 协议能吃的供应商（auto 靠 wire_caps 命中）；
+ * 当前值不在过滤后列表里时保留为选项，避免显示丢失 */
+function modelSelectHtml(id, current, kind) {
   const cur = fmtModel(current);
-  const groups = modelGroups();
+  const allow = bindAllowedProtocols(kind);
+  const groups = modelGroups().filter((g) => {
+    const p = (S.providers || []).find((x) => x.id === g.id);
+    return provAdaptedProto(p, allow);
+  });
   let opts = '<option value="">' + t("（未设置）") + '</option>';
   if (cur && !groups.some((g) => g.models.includes(cur))) {
     opts += '<option value="' + esc(cur) + '" selected>' + esc(cur) + t("（当前值）") + "</option>";
@@ -4944,14 +5488,23 @@ function bindRepaint() { S.bindSig = null; renderBindings(); }
 function bindModelBox(c, provId) {
   const st = bindSelById(c.id);
   const allow = bindAllowedProtocols(c.orch_kind);
-  const protoOf = (pid) => ((S.providers || []).find((p) => p.id === pid) || {}).protocol || "";
   const chips = st.chain.length
     ? st.chain.map((c2, i) => {
         const pname = c2.p ? provName(c2.p) : t("CLI 默认凭据");
-        const dead = c2.p && allow.indexOf(protoOf(c2.p)) < 0;
+        const pv = c2.p ? (S.providers || []).find((p) => p.id === c2.p) : null;
+        const adapted = provAdaptedProto(pv, allow);
+        const dead = c2.p && !adapted;
+        // auto 供应商按实测 wire 注入是常态，说「自动」；显式协议靠适配才通的
+        // 才叫「已适配」——两者含义不同，别混成一句。
+        const badge = !c2.p || !adapted ? ""
+          : (pv.protocol === "auto"
+             ? ' <span class="hint ok">✓ ' + esc(t("自动 · %1 wire").replace("%1", adapted)) + "</span>"
+             : (pv.protocol !== adapted
+                ? ' <span class="hint ok">✓ ' + esc(t("已适配（%1 wire）").replace("%1", adapted)) + "</span>"
+                : ""));
         return '<span class="ochip' + (i === 0 ? " primary" : "") + '">' +
           "<b>" + (i === 0 ? t("主") : t("备")) + "</b>" + esc(pname) + " · " + esc(c2.m) +
-          (dead ? ' <span class="hint warn">⚠ ' + esc(t("协议不匹配，解析时跳过")) + "</span>" : "") +
+          (dead ? ' <span class="hint warn">⚠ ' + esc(t("协议不匹配，解析时跳过")) + "</span>" : badge) +
           (i > 0 ? '<button class="mini" data-m="' + esc(c2.m) + '" data-p="' + esc(c2.p) +
                   '" title="' + t("设为主模型") + '" onclick="bindPromote(\'' + esc(c.id) + '\', this)">' +
                   '<svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg></button>' : "") +
@@ -4959,14 +5512,16 @@ function bindModelBox(c, provId) {
             '" title="' + t("移除") + '" onclick="bindRemove(\'' + esc(c.id) + '\', this)">×</button>' +
           "</span>";
       }).join("")
-    : '<span class="hint">' + t("未设置") + (provId ? t("（按供应商/难度自动解析）") : t("（用 CLI 默认模型）")) + "</span>";
+    : '<span class="hint">' + t("未设置") + (provId
+        ? t("（按供应商/难度自动解析——供应商协议不匹配或被停用时解析为空，回落 CLI 本机默认）")
+        : t("（用 CLI 默认模型——不会注入任何供应商凭据）")) + "</span>";
   return '<div class="field"><label>' + t("运行时模型链（跨厂商，最多 ") + MAX_ORCH_MODELS + t(" 条）") + "</label>" +
     '<div class="orch-row">' + chips +
     '<button class="ghost small" onclick="bindToggle(\'' + esc(c.id) + '\')">' +
     (st.open ? t("收起") : t("＋ 添加")) + "</button>" +
-    (st.dirty ? ' <span class="hint">有未保存改动</span>' : "") +
+    (st.dirty ? ' <span class="hint">' + t("有未保存改动") + '</span>' : "") +
     "</div>" +
-    (st.chain.length ? '<div class="hint">链先生效（覆盖「按难度自动选模型」）；主模型瞬态失败自动降级到下一条——可以是另一家厂商。</div>' : "") +
+    (st.chain.length ? '<div class="hint">' + t("链先生效（覆盖「按难度自动选模型」）；主模型瞬态失败自动降级到下一条——可以是另一家厂商。") + '</div>' : "") +
     (st.open ? bindPanel(c) : "") + "</div>";
 }
 
@@ -4974,7 +5529,8 @@ function bindPanel(c) {
   const st = bindSelById(c.id);
   const allow = bindAllowedProtocols(c.orch_kind);
   const all = modelGroups();
-  const groups = all.filter((g) => allow.indexOf(g.protocol) >= 0);
+  // 原生协议匹配，或适配测试过 allow 里某条 wire 的供应商都可勾选
+  const groups = all.filter((g) => provAdaptedProto(g, allow));
   const hiddenN = all.length - groups.length;
   if (!groups.length) {
     return '<div class="ohint">' + esc(all.length
@@ -4987,7 +5543,10 @@ function bindPanel(c) {
     "</div>" +
     groups.map((g) =>
       '<div class="ogroup"><div class="ogname">' + esc(g.name) +
-      ' <span class="tag">' + t("注入该厂商凭据") + '</span></div>' +
+      ' <span class="tag">' + (g.protocol === "auto"
+        ? t("自动 · 注入该厂商凭据")
+        : (provAdaptedProto(g, allow) === g.protocol
+           ? t("注入该厂商凭据") : t("已适配 · 注入该厂商凭据"))) + '</span></div>' +
       g.models.map((m) => {
         const has = st.chain.some((x) => x.p === g.id && x.m === m);
         return '<label class="oitem"><input type="checkbox" value="' + esc(m) + '" data-p="' + esc(g.id) + '"' +
@@ -5056,14 +5615,14 @@ function renderCatalog() {
 function card(c) {
   const orchBox = c.orch_kind
     ? '<label class="toggle"><input type="checkbox" ' + (c.orch_enabled ? "checked" : "") +
-      ' onchange="toggleOrch(\'' + esc(c.id) + '\', this.checked)"> 参与编排</label>'
+      ' onchange="toggleOrch(\'' + esc(c.id) + '\', this.checked)">' + t(" 参与编排") + '</label>'
     : '<span class="tag">' + t("仅管理") + '</span>';
   const hasModels = modelGroups().length > 0;
   const modelBox = c.config_writable
     ? (hasModels
         ? '<div class="field"><label>' + t("默认模型（写入配置文件）") + '</label><div class="input-row">' +
-          modelSelectHtml(c.id, c.model) +
-          '<button class="ghost small" onclick="saveModel(\'' + esc(c.id) + '\')">保存</button></div></div>'
+          modelSelectHtml(c.id, c.model, c.orch_kind || c.id) +
+          '<button class="ghost small" onclick="saveModel(\'' + esc(c.id) + '\')">' + t("保存") + '</button></div></div>'
         : '<div class="field"><label>' + t("默认模型（写入配置文件）") + '</label>' +
           '<div class="hint warn">' + t("还没有可选模型：先到「模型接入」页导入供应商并获取模型列表。") + '</div></div>')
     : (c.model ? '<div class="facts">' + t("模型：") + '<b>' + esc(fmtModel(c.model)) + "</b></div>" : "");
@@ -5071,20 +5630,20 @@ function card(c) {
     // 一键打开（web 类开浏览器 / console 类新终端跑 TUI）：已安装且配了 launch 才出
     c.installed && c.launch ? '<button class="primary small" onclick="openAgent(\'' + esc(c.id) + '\')">' +
       (c.launch.kind === "web" ? t("打开网页") : t("打开")) + "</button>" : "",
-    c.installed && c.orch_kind ? '<button class="ghost small" onclick="mgmt(\'' + esc(c.id) + '\', \'smoke\')">冒烟测试</button>' : "",
-    c.installed && c.has_upgrade ? '<button class="ghost small" onclick="mgmt(\'' + esc(c.id) + '\', \'upgrade\')">升级</button>' : "",
-    c.installed && c.has_upgrade ? '<button class="ghost small" onclick="checkUpdate(\'' + esc(c.id) + '\')">检查更新</button>' : "",
-    !c.installed && c.has_install ? '<button class="ghost small" onclick="mgmt(\'' + esc(c.id) + '\', \'install\')">安装</button>' : "",
-    c.installed ? '<button class="ghost small" onclick="showMgmtLog(\'' + esc(c.id) + '\')">日志</button>' : "",
-    !c.installed && !c.has_install ? '<span class="hint">安装命令待配置（编辑 data/catalog.json）</span>' : "",
+    c.installed && c.orch_kind ? '<button class="ghost small" onclick="mgmt(\'' + esc(c.id) + '\', \'smoke\')">' + t("冒烟测试") + '</button>' : "",
+    c.installed && c.has_upgrade ? '<button class="ghost small" onclick="mgmt(\'' + esc(c.id) + '\', \'upgrade\')">' + t("升级") + '</button>' : "",
+    c.installed && c.has_upgrade ? '<button class="ghost small" onclick="checkUpdate(\'' + esc(c.id) + '\')">' + t("检查更新") + '</button>' : "",
+    !c.installed && c.has_install ? '<button class="ghost small" onclick="mgmt(\'' + esc(c.id) + '\', \'install\')">' + t("安装") + '</button>' : "",
+    c.installed ? '<button class="ghost small" onclick="showMgmtLog(\'' + esc(c.id) + '\')">' + t("日志") + '</button>' : "",
+    !c.installed && !c.has_install ? '<span class="hint">' + t("安装命令待配置（编辑 data/catalog.json）") + '</span>' : "",
   ].join("");
   return '<div class="card">' +
     '<div class="head"><span class="name">' + esc(c.name) + "</span>" +
     (c.installed ? statusChip("done") : '<span class="tag">' + t("未安装") + '</span>') + updateChip(c) +
     // 卸载放卡片右上角（与状态徽标同行），不再吊在操作行尾部
-    (c.installed && c.uninstall_cmd ? '<button class="danger small" onclick="mgmt(\'' + esc(c.id) + '\', \'uninstall\')">卸载</button>' : "") +
+    (c.installed && c.uninstall_cmd ? '<button class="danger small" onclick="mgmt(\'' + esc(c.id) + '\', \'uninstall\')">' + t("卸载") + '</button>' : "") +
     "</div>" +
-    '<div class="note">' + esc(c.note || "") + "</div>" +
+    '<div class="note">' + esc(t(c.note || "")) + "</div>" +
     '<div class="facts">' + t("版本 ") + '<b>' + esc(c.version || "-") + "</b>" + t("　模型 ") + "<b>" + esc(fmtModel(c.model) || "-") + "</b>" +
     ((c.detail || c.config_path) ? "<br>" + esc(c.detail || c.config_path) : "") + "</div>" +
     mgmtPanel(c.id) +
@@ -5114,7 +5673,7 @@ function mgmtPanel(agentId) {
     '<span class="mgmt-ops">' +
     '<button class="ghost small" onclick="toggleMgmtLog(\'' + esc(agentId) + '\')">' +
     (st.showLog ? t("收起日志") : t("查看日志")) + "</button>" +
-    (st.runId ? '<button class="ghost small" onclick="openRunInRuns(\'' + esc(st.runId) + '\')">完整运行</button>' : "") +
+    (st.runId ? '<button class="ghost small" onclick="openRunInRuns(\'' + esc(st.runId) + '\')">' + t("完整运行") + '</button>' : "") +
     '<button class="ghost small" onclick="clearMgmt(\'' + esc(agentId) + '\')">×</button>' +
     "</span></div>" +
     (st.summary ? '<div class="hint">' + esc(String(st.summary).slice(0, 300)) + "</div>" : "") +
@@ -5152,8 +5711,8 @@ async function mgmt(id, op) {
   if (op === "uninstall") {
     // 卸载不可逆：把将要执行的真实命令摊开给用户确认
     const cmd = entry.uninstall_cmd || t("（未能推导，请先在 catalog 配置 uninstall）");
-    if (!await uiConfirm(t("确定卸载 ") + entry.name + t("？\\n\\n将执行：\\n") + cmd +
-                 t("\\n\\n该 CLI 会从本机移除（配置文件保留）。此操作不可撤销。"), { ok: t("卸载"), danger: true })) return;
+    if (!await uiConfirm(t("确定卸载 ") + entry.name + t("？\n\n将执行：\n") + cmd +
+                 t("\n\n该 CLI 会从本机移除（配置文件保留）。此操作不可撤销。"), { ok: t("卸载"), danger: true })) return;
   }
   const before = ((S.catalog || []).find((x) => x.id === id) || {}).version;
   S.mgmt = S.mgmt || {};
@@ -5290,9 +5849,9 @@ async function checkUpdate(agentId) {
     S.mgmt[agentId] = Object.assign({}, S.mgmt[agentId], {
       status: up === true ? "done" : (up === false ? "done" : "failed"),
       summary: msg, log: t("当前版本：") + (r.current || "?") +
-        t("\\n最新版本：") + (r.latest || t("(未知)")) +
-        t("\\n可更新：") + (up === true ? t("是") : up === false ? t("否") : t("未知")) +
-        (r.note ? t("\\n说明：") + r.note : ""),
+        t("\n最新版本：") + (r.latest || t("(未知)")) +
+        t("\n可更新：") + (up === true ? t("是") : up === false ? t("否") : t("未知")) +
+        (r.note ? t("\n说明：") + r.note : ""),
       showLog: true, versionAfter: r.latest || undefined,
     });
   } catch (e) {
@@ -5306,18 +5865,18 @@ async function checkUpdate(agentId) {
 function openFlowsManager() {
   const flows = S.flows || [];
   const rows = flows.map((f) =>
-    '<div class="item"><div class="t"><span class="name">' + flowIconHtml(f) + " " + esc(f.name) +
+    '<div class="item"><div class="t"><span class="name">' + flowIconHtml(f) + " " + esc(t(f.name)) +
     '</span><span class="tag">' + esc(f.id) + "</span>" +
     '<span class="tag">' + (f.engine === "code" ? t("代码引擎") : t("评审引擎")) + "</span>" +
-    (f.serial ? '<span class="tag">' + t("连载 ") + f.serial.chapters + " 章</span>" : "") +
-    (f.builtin ? '<span class="tag ok">预置</span>' : '<span class="tag">' + t("自定义") + '</span>') +
-    (f.edited ? '<span class="tag">已改</span>' : "") +
+    (f.serial ? '<span class="tag">' + t("连载 ") + f.serial.chapters + t(" 章") + "</span>" : "") +
+    (f.builtin ? '<span class="tag ok">' + t("预置") + '</span>' : '<span class="tag">' + t("自定义") + '</span>') +
+    (f.edited ? '<span class="tag">' + t("已改") + '</span>' : "") +
     '<button class="ghost small" onclick="flowForm(\'' + esc(f.id) + '\')">' + t("编辑") + '</button>' +
     (f.builtin
-      ? (f.edited ? '<button class="ghost small" onclick="flowReset(\'' + esc(f.id) + '\')">恢复默认</button>' : "")
+      ? (f.edited ? '<button class="ghost small" onclick="flowReset(\'' + esc(f.id) + '\')">' + t("恢复默认") + '</button>' : "")
       : '<button class="danger small" onclick="deleteFlow(\'' + esc(f.id) + '\')">' + t("删除") + '</button>') +
-    '</div><div class="desc">' + esc(f.note || "") +
-    (f.rubric ? t("　维度：") + esc(f.rubric.join(" / ")) : "") +
+    '</div><div class="desc">' + esc(t(f.note || "")) +
+    (f.rubric ? t("　维度：") + esc(f.rubric.map((d) => t(d)).join(" / ")) : "") +
     (f.threshold ? t("　阈值：") + f.threshold : "") +
     (f.serial ? t("　每章 ") + f.serial.words_per_chapter + t(" 字") : "") + "</div></div>").join("");
   const body = '<p class="hint">' + t("预置流程可直接编辑（阈值/轮数/维度/章节数/提示词），改动随时可「恢复默认」；") +
@@ -5351,6 +5910,7 @@ function flowForm(fid) {
       (engLocked ? " disabled" : "") + '>' +
       '<option value="review"' + (engine === "review" ? " selected" : "") + '>' + t("评审引擎（起草 → 多维评审 → 修订 → 门禁）") + '</option>' +
       '<option value="code"' + (engine === "code" ? " selected" : "") + '>' + t("代码引擎（实现 → 验证 → 评审 → 修复）") + '</option>' +
+      '<option value="direct"' + (engine === "direct" ? " selected" : "") + '>' + t("直连引擎（单智能体直达，无拆解/评审，快）") + '</option>' +
       "</select></div></div>" +
     (f ? "" : '<div class="field"><label>' + t("流程 ID（留空 = 按名称自动生成）") + '</label><input id="fl-id" placeholder="' + t("小写字母开头，可留空") + '"></div>') +
     '<details id="fl-adv"' + (f ? " open" : "") + '><summary>' + t("进阶设置（可留空，走引擎默认）") + '</summary><div class="adv-body">' +
@@ -5452,10 +6012,10 @@ function renderSkills() {
   if (!box || !S.skills) return;
   const packs = S.skills.packs || [], lessons = S.skills.lessons || [];
   box.innerHTML = packs.map((p) =>
-    '<div class="card"><div class="head"><span class="name">📚 ' + esc(p.name) + "</span>" +
-    '<span class="tag">' + esc((p.scopes || []).join(" / ")) + "</span>" +
+    '<div class="card"><div class="head"><span class="name">📚 ' + esc(t(p.name)) + "</span>" +
+    '<span class="tag">' + esc((p.scopes || []).map((s) => t(s)).join(" / ")) + "</span>" +
     (p.enabled ? '<span class="tag ok">' + t("启用中") + "</span>" : '<span class="tag">' + t("已停用") + "</span>") + "</div>" +
-    '<div class="note">' + esc(p.note || "") + "</div>" +
+    '<div class="note">' + esc(t(p.note || "")) + "</div>" +
     '<div class="facts">' + t("正文 ") + "<b>" + p.chars + "</b>" + t(" 字（自动注入该类任务的规划与评审提示词）") + "</div>" +
     '<div class="ops"><button class="ghost small" onclick="skillPackOp(\'' + esc(p.id) + '\', \'' +
     (p.enabled ? "disable" : "enable") + '\')">' + (p.enabled ? t("停用") : t("启用")) + "</button></div></div>").join("")
@@ -5473,21 +6033,21 @@ function renderSkills() {
       esc(label) + "<b>" + (val ? (counts[val] || 0) : lessons.length) + "</b></button>";
     chipBox.innerHTML = cats.length > 1 ? chip("", t("全部")) + cats.map((c) => chip(c, t(c))).join("") : "";
   }
-  const shown = filt ? lessons.filter((x) => (x.category || t("未分类")) === filt) : lessons;
+  const shown = filt ? lessons.filter((x) => (x.category || "未分类") === filt) : lessons;
   const cnt = $("skill-count");
   if (cnt) cnt.textContent = lessons.length
     ? (filt ? shown.length + t(" / 共 ") + lessons.length + t(" 条") : lessons.length + t(" 条"))
     : t("（暂无，跑一次任务后自动生成）");
   $("skill-lessons").innerHTML = shown.map((x) =>
     '<div class="card' + (x.enabled === false ? " off" : "") + '"><div class="head">' +
-    '<span class="name">' + esc(x.title) + "</span>" +
+    '<span class="name">' + esc(t(x.title)) + "</span>" +
     (x.category ? '<span class="tag cat" style="color:' + (CAT_COLOR[x.category] || "var(--muted)") + '" ' +
       'onclick="skillCatFilter(\'' + esc(x.category) + '\')" title="' + t("只看该类") + '">' + esc(t(x.category)) + "</span>" : "") +
     '<span class="tag">' + esc(x.scope === "*" ? t("通用") : x.scope) + "</span>" +
     (x.seen > 1 ? '<span class="tag">' + t("出现 ") + x.seen + t(" 次") + "</span>" : "") +
     (x.hits ? '<span class="tag">' + t("已注入 ") + x.hits + t(" 次") + "</span>" : "") +
     (x.enabled === false ? '<span class="tag">' + t("已停用") + "</span>" : "") + "</div>" +
-    '<div class="note">' + esc(x.content) + "</div>" +
+    '<div class="note">' + esc(t(x.content)) + "</div>" +
     '<div class="ops">' +
     '<button class="ghost small" onclick="skillLessonOp(\'' + esc(x.id) + '\', \'' +
     (x.enabled === false ? "enable" : "disable") + '\')">' + (x.enabled === false ? t("启用") : t("停用")) + "</button>" +
@@ -5582,7 +6142,7 @@ function autoCardHtml(tsk) {
     ' onchange="autoToggle(\'' + esc(tsk.id) + '\', this.checked)"><span>' + (tsk.enabled ? t("启用中") : t("已停用")) + "</span></label>" +
     "</div>" +
     '<div class="auto-kind">' + esc(autoKindText(tsk)) +
-    (flow ? '<span class="tag">' + t("流程：") + esc(flow.name) + "</span>" : "") + "</div>" +
+    (flow ? '<span class="tag">' + t("流程：") + esc(t(flow.name)) + "</span>" : "") + "</div>" +
     '<div class="auto-prompt">' + esc(tsk.prompt) + "</div>" +
     '<div class="auto-meta">' +
     (tsk.enabled && tsk.next_run ? "<span>" + t("下次运行 ") + esc(tsk.next_run) + "</span>" : "") +
@@ -5611,8 +6171,8 @@ function renderAutomation() {
   const tpl = $("auto-tpl");
   if (tpl) {
     tpl.innerHTML = (S.autoTpl || []).map((tp) =>
-      '<div class="card auto-tpl-card"><div class="head"><span class="name">' + esc(tp.name) + "</span></div>" +
-      '<div class="note">' + esc(tp.desc || "") + "</div>" +
+      '<div class="card auto-tpl-card"><div class="head"><span class="name">' + esc(t(tp.name)) + "</span></div>" +
+      '<div class="note">' + esc(t(tp.desc || "")) + "</div>" +
       '<div class="ops"><span class="auto-pace">' + esc(autoTplPace(tp)) + "</span>" +
       '<button class="ghost small" onclick="autoTemplate(\'' + esc(tp.id) + '\')">' + t("用此模板") + "</button></div></div>"
     ).join("") || '<div class="empty">' + t("暂无模板") + "</div>";
@@ -5645,7 +6205,7 @@ async function autoForm(task, tpl) {
     '<div class="field"><label>' + t("流程") + '</label><select id="au-flow">' +
       '<option value="">' + t("默认流程") + "</option>" +
       (S.flows || []).map((fl) =>
-        '<option value="' + esc(fl.id) + '"' + (fl.id === curFlow ? " selected" : "") + ">" + esc(fl.name) + "</option>").join("") +
+        '<option value="' + esc(fl.id) + '"' + (fl.id === curFlow ? " selected" : "") + ">" + esc(t(fl.name)) + "</option>").join("") +
       "</select></div>" +
     "</div>" +
     '<div class="grid-2">' +
@@ -5756,8 +6316,12 @@ function autoTemplate(tplId) {
 async function loadMarket() {
   try { S.market = await api("/api/market"); }
   catch (e) { S.market = null; }
-  try { S.marketRemote = await api("/api/market/remote"); }
-  catch (e) { S.marketRemote = null; }
+  if (mkActiveView() === "remote") {
+    await mkrLoadPage(true);   // 外部视图：按当前过滤条件重拉第一页（装/卸后状态翻牌）
+  } else {
+    S.mkrAll = null;           // 本地视图进市场：外部数据进视图时再拉（mkSetView 触发）
+    S.marketRemote = null;
+  }
   renderMarket();
   renderMarketRemote();
 }
@@ -5770,7 +6334,7 @@ function mkCount(text) {
 function mkScopeText(scopes) {
   const list = scopes || [];
   if (!list.length || list.indexOf("*") >= 0) return t("全部流程");
-  return list.map((s) => { const f = flowById(s); return f ? f.name : s; }).join(" / ");
+  return list.map((s) => { const f = flowById(s); return f ? t(f.name) : s; }).join(" / ");
 }
 
 /* 体量：「约 1.7k 字」；千字以下原样数字 */
@@ -5787,11 +6351,11 @@ function mkCardHtml(p) {
     '<button class="ghost small" onclick="mkRemove(\'' + esc(p.id) + '\')">' + t("卸载") + "</button>";
   else ops = '<button class="primary small" onclick="mkInstall(\'' + esc(p.id) + '\')">' + t("安装") + "</button>";
   return '<div class="card mk-card"><div class="head">' +
-    '<span class="name">' + esc(p.name) + "</span>" +
+    '<span class="name">' + esc(t(p.name)) + "</span>" +
     '<span class="tag">' + esc(t(p.category || "")) + "</span>" +
     "</div>" +
-    '<div class="note">' + esc(p.desc || "") + "</div>" +
-    '<div class="mk-meta"><span>' + t("适用：") + esc(mkScopeText(p.scopes)) + "</span><span>" + esc(mkCharsText(p.chars)) + "</span></div>" +
+    '<div class="note">' + esc(t(p.desc || "")) + "</div>" +
+    '<div class="mk-meta"><span title="' + esc(t("运行该类型任务时自动注入提示词，无需手动调用")) + '">' + t("适用：") + esc(mkScopeText(p.scopes)) + "</span><span>" + esc(mkCharsText(p.chars)) + "</span></div>" +
     '<div class="ops">' + ops + "</div></div>";
 }
 
@@ -5828,7 +6392,7 @@ function renderMarket() {
 async function mkInstall(id) {
   try {
     const r = await api("/api/market/" + encodeURIComponent(id) + "/install", { method: "POST", body: "{}" });
-    toast(r && r.already ? t("该插件已安装过") : t("安装成功，可到「经验库」查看"));
+    toast(r && r.already ? t("该插件已安装过") : t("安装成功，运行任务时自动注入提示词；可到「经验库」启停或查看"));
   } catch (e) { toast(e.message, true); return; }
   loadMarket();
 }
@@ -5843,8 +6407,10 @@ async function mkRemove(id) {
 }
 
 /* ------------------------------------------------------ 市场：外部目录 */
-/* 公开生态（ZCode / Anthropic）插件目录：只装纯技能类（文档型）插件；
- * 含脚本/钩子/MCP 的条目服务端预分类灰显，安装时还会做权威文件级检查。 */
+/* 公开生态插件目录：只装纯技能类（文档型）；含脚本/钩子/MCP 的条目服务端
+ * 预分类灰显。服务端对全量本地缓存做搜索/来源过滤后分页下发（每页 60），
+ * 前端累积渲染 + 滚动哨兵自动续页；缓存全在本地，翻页零成本。 */
+const MKR_PAGE = 60;
 
 function mkActiveView() {
   const btn = document.querySelector("#mk-view .seg-btn.active");
@@ -5858,6 +6424,43 @@ function mkSetView(v) {
   if (local) local.classList.toggle("hidden", v !== "local");
   if (remote) remote.classList.toggle("hidden", v !== "remote");
   renderMarket();
+  if (v === "remote" && !S.mkrAll) mkrLoadPage(true);
+  else renderMarketRemote();
+}
+
+function mkrFilterKey() {
+  const q = (($("mkr-search") || {}).value || "").trim().toLowerCase();
+  const srcSel = $("mkr-source");
+  return q + "|" + (srcSel ? srcSel.value : "");
+}
+
+/* 搜索防抖：过滤在服务端对全量做，停 350ms 再发请求；只跟当前过滤键变化时重拉首页 */
+function mkrDebounce() {
+  clearTimeout(mkrDebounce._t);
+  mkrDebounce._t = setTimeout(() => {
+    if (mkrFilterKey() === S.mkrKey && S.mkrAll) return;   // 同条件不重复拉
+    mkrLoadPage(true);
+  }, 350);
+}
+
+/* 拉一页：reset=清空已累积列表（首进/搜索/换来源/刷新后）。 */
+async function mkrLoadPage(reset) {
+  if (S.mkrLoading) return;
+  if (reset) { S.mkrAll = []; S.mkrOffset = 0; }
+  const q = (($("mkr-search") || {}).value || "").trim();
+  const srcSel = $("mkr-source");
+  let url = "/api/market/remote?offset=" + (S.mkrOffset || 0) + "&limit=" + MKR_PAGE;
+  if (srcSel && srcSel.value) url += "&source=" + encodeURIComponent(srcSel.value);
+  if (q) url += "&q=" + encodeURIComponent(q);
+  S.mkrLoading = true;
+  let data = null;
+  try { data = await api(url); } catch (e) { data = null; }
+  S.mkrLoading = false;
+  if (!data) { S.marketRemote = null; S.mkrAll = null; renderMarketRemote(); return; }
+  S.marketRemote = data;
+  S.mkrAll = (S.mkrAll || []).concat(data.entries || []);
+  S.mkrOffset = S.mkrAll.length;
+  S.mkrKey = mkrFilterKey();
   renderMarketRemote();
 }
 
@@ -5866,15 +6469,15 @@ function mkrCardHtml(p) {
   if (p.installed) ops = '<span class="tag ok">' + t("已安装") + "</span>" +
     '<button class="ghost small" onclick="mkRemove(\'' + esc(p.id) + '\')">' + t("卸载") + "</button>";
   else if (p.compat === "blocked") ops = '<button class="ghost small" disabled title="' +
-    esc(p.block_reason || t("该插件含脚本/钩子/MCP 组件，仅支持纯技能类插件")) + '">' + t("不适配") + "</button>";
-  else ops = '<button class="primary small" onclick="mkrInstall(\'' + esc(p.id) + '\')">' + t("安装") + "</button>";
+    esc(p.block_reason || t("该插件无法从公开生态下载")) + '">' + t("不适配") + "</button>";
+  else ops = '<button class="primary small" data-mk="' + esc(p.id) + '" onclick="mkrInstall(\'' + esc(p.id) + '\')">' + t("安装") + "</button>";
   const meta = [p.author, p.version ? "v" + p.version : ""].filter(Boolean).join(" · ");
   return '<div class="card mk-card' + (p.compat === "blocked" ? " blocked" : "") + '"><div class="head">' +
-    '<span class="name">' + esc(p.title || p.name) + "</span>" +
+    '<span class="name">' + esc(t(p.title || p.name)) + "</span>" +
     '<span class="tag mk-src">' + esc(p.source_name || "") + "</span>" +
     (p.category ? '<span class="tag">' + esc(p.category) + "</span>" : "") +
     "</div>" +
-    '<div class="note">' + esc(p.desc || "") + "</div>" +
+    '<div class="note">' + esc(t(p.desc || "")) + "</div>" +
     '<div class="mk-meta"><span>' + esc(meta) + "</span></div>" +
     '<div class="ops">' + ops + "</div></div>";
 }
@@ -5889,34 +6492,47 @@ function renderMarketRemote() {
     mkCount("");
     return;
   }
-  // 来源下拉：首次填充，之后保留用户选择
+  // 来源下拉：首次填充，之后保留用户选择（计数是目录全量，不是本页）
   const srcSel = $("mkr-source");
   if (srcSel && !srcSel.options.length) {
     srcSel.innerHTML = '<option value="">' + t("全部来源") + "</option>" +
       (data.sources || []).map((s) =>
         '<option value="' + esc(s.id) + '">' + esc(s.name) + t("（") + s.count + t("）") + "</option>").join("");
   }
-  // 更新时间汇总
   const times = (data.sources || []).map((s) => s.fetched_at).filter(Boolean);
   const meta = $("mkr-meta");
-  if (meta) meta.textContent = times.length
-    ? t("目录更新于 ") + times.join(" / ") + (data.truncated ? t("；") + t("条目较多，每来源最多显示 60 条，请搜索或按来源筛选") : "") : "";
-  const q = (($("mkr-search") || {}).value || "").trim().toLowerCase();
-  const sid = srcSel ? srcSel.value : "";
-  let items = data.entries || [];
-  if (sid) items = items.filter((p) => p.source_id === sid);
-  if (q) items = items.filter((p) =>
-    (p.name || "").toLowerCase().indexOf(q) >= 0 ||
-    (p.title || "").toLowerCase().indexOf(q) >= 0 ||
-    (p.desc || "").toLowerCase().indexOf(q) >= 0);
-  mkCount(t("共 ") + items.length + t(" 个"));
+  if (meta) meta.textContent = times.length ? t("目录更新于 ") + times.join(" / ") : "";
+  const items = S.mkrAll || [];
+  mkCount(t("已加载 ") + items.length + t(" / 共 ") + data.total + t(" 个"));
   if (!items.length) {
-    grid.innerHTML = '<div class="empty">' + (data.total
-      ? t("没有符合条件插件")
-      : t("外部目录还是空的，点「拉取更新」从公开生态获取。")) + "</div>";
+    grid.innerHTML = '<div class="empty">' + (data.total === 0 && !S.mkrOffset && !(($("mkr-search")||{}).value||"").trim() && !(srcSel||{}).value
+      ? t("外部目录还是空的，点「拉取更新」从公开生态获取。")
+      : t("没有符合条件插件")) + "</div>";
+    const more = $("mkr-more");
+    if (more) more.classList.add("hidden");
     return;
   }
   grid.innerHTML = items.map(mkrCardHtml).join("");
+  const more = $("mkr-more");
+  if (more) {
+    more.classList.toggle("hidden", !data.has_more);
+    const txt = $("mkr-more-txt");
+    if (txt) txt.textContent = t("还有 ") + (data.total - items.length) + t(" 条，继续滚动加载");
+    const btn = $("mkr-more-btn");
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* 滚动哨兵进入视野即续页（main 是滚动容器，哨兵贴在列表尾）。 */
+function mkrBindSentinel() {
+  const sentinel = $("mkr-sentinel");
+  if (!sentinel || !("IntersectionObserver" in window)) return;
+  new IntersectionObserver((es) => {
+    if (!es.some((e) => e.isIntersecting)) return;
+    if (mkActiveView() !== "remote") return;
+    if (S.mkrLoading || !S.marketRemote || !S.marketRemote.has_more) return;
+    mkrLoadPage(false);
+  }, { root: document.querySelector("main"), rootMargin: "400px" }).observe(sentinel);
 }
 
 async function mkrRefresh() {
@@ -5927,23 +6543,44 @@ async function mkrRefresh() {
   btn.textContent = t("拉取中…");
   try {
     const r = await api("/api/market/remote/refresh", { method: "POST", body: "{}" });
-    S.marketRemote = r;
     const bad = (r.refresh || []).filter((x) => !x.ok);
     if (bad.length) toast(t("部分来源拉取失败：") + bad.map((x) => x.error || x.id).join(t("；")), true);
     else toast(t("拉取成功"));
+    // 刷新后来源计数变了：下拉重建并保留当前选择，再重拉第一页
+    const srcSel = $("mkr-source");
+    if (srcSel) {
+      const keep = srcSel.value;
+      srcSel.innerHTML = '<option value="">' + t("全部来源") + "</option>" +
+        (r.sources || []).map((s) =>
+          '<option value="' + esc(s.id) + '">' + esc(s.name) + t("（") + s.count + t("）") + "</option>").join("");
+      srcSel.value = keep;
+    }
+    mkrLoadPage(true);
   } catch (e) { toast(e.message, true); }
   btn.disabled = false;
   btn.textContent = old;
-  renderMarket();
-  renderMarketRemote();
 }
 
 async function mkrInstall(id) {
+  // 安装要现场下载插件包（zip/tarball，实测 10~60s），必须立刻给反馈，
+  // 否则用户以为点了没反应；按钮按 data-mk 定位，失败时由重拉页面复位
+  const btn = document.querySelector('#mkr-grid button[data-mk="' + id + '"]');
+  if (btn) { btn.disabled = true; btn.textContent = t("安装中…"); }
+  toast(t("正在下载安装，插件包较大时需要约一分钟…"));
   try {
-    const r = await api("/api/market/remote/install", { method: "POST", body: JSON.stringify({ id }) });
-    toast(r && r.already ? t("该插件已安装过") : t("安装成功，可到「经验库」查看"));
-  } catch (e) { toast(e.message, true); return; }
-  loadMarket();
+    const r = await api("/api/market/remote/install", { method: "POST",
+      body: JSON.stringify({ id }), timeout: 180000 });
+    if (r && r.already) toast(t("该插件已安装过"));
+    else {
+      // 剥离式安装：脚本/钩子/MCP 文件被剔除但技能装上了，如实告知剔除了什么
+      const stripped = (r && r.stripped) || [];
+      toast(t("安装成功，运行任务时自动注入提示词；可到「经验库」启停或查看") + (stripped.length
+        ? t("；已自动剥离脚本/钩子/MCP 文件：") + stripped.slice(0, 3).join("、")
+          + (stripped.length > 3 ? t(" 等 ") + stripped.length + t(" 个文件") : "")
+        : ""));
+    }
+  } catch (e) { toast(e.message, true); }
+  mkrLoadPage(true);   // 重装当前过滤页（已安装徽章要翻牌，失败也复位按钮）
 }
 
 
@@ -5968,14 +6605,14 @@ function renderOrchSide() {
   if (!name) {
     txt.textContent = t("未选厂商");
     dot.className = "pdot";
-    btn.title = t("尚未选择编排者供应商\\n点击到「编排设置」，从已接入的厂商里选一个");
+    btn.title = t("尚未选择编排者供应商\n点击到「编排设置」，从已接入的厂商里选一个");
     return;
   }
   txt.textContent = name;
   dot.className = "pdot " + (o.ready ? "ok" : "warn");
   btn.title = t("编排者供应商：") + name + (model ? " · " + model : "") +
     (o.ready ? t("（生效中）") : t("（未生效：检查密钥 / 启停 / 模型）")) +
-    t("\\n点击到「编排设置」更换");
+    t("\n点击到「编排设置」更换");
 }
 
 async function loadSettings() {
@@ -6041,7 +6678,7 @@ function renderOrch() {
   const sel = provs.find((p) => p.id === S.orch.provider_id) || null;
   const opts = '<option value="">' + t("（不使用编排者）") + '</option>' + provs.map((p) =>
     '<option value="' + esc(p.id) + '"' + (S.orch.provider_id === p.id ? " selected" : "") + ">" +
-    esc(p.name) + t("（") + esc(p.protocol) + t("）") + "</option>").join("");
+    esc(p.name) + t("（") + esc(protoLabel(p)) + t("）") + "</option>").join("");
   const curModel = S.orch.model || (sel ? sel.model : "") || "";
   box.innerHTML =
     '<div class="grid-2">' +
@@ -6052,7 +6689,7 @@ function renderOrch() {
     '<button class="ghost small" onclick="saveOrchestrator()">' + t("保存") + '</button>' +
     '<button class="ghost small" onclick="testOrchestrator()">' + t("测试连通") + '</button>' +
     '<span id="orch-test" class="msg"></span></div>' +
-    (S.orch.enabled && !S.orch.ready ? '<p class="hint warn">当前配置不生效：请检查供应商密钥、启停状态与模型选择。</p>' : "");
+    (S.orch.enabled && !S.orch.ready ? '<p class="hint warn">' + t("当前配置不生效：请检查供应商密钥、启停状态与模型选择。") + '</p>' : "");
   // 换供应商只刷新模型下拉，不整块重绘：整块重绘会按 S.orch 重写 selected，
   // 把用户刚选中的供应商弹回旧值，保存下去的还是旧值
   $("orch-prov").addEventListener("change", () => {
@@ -6253,8 +6890,15 @@ function tabTitle(name) {
 
 function fmtTok(n) {
   n = Number(n) || 0;
-  if (n >= 1e8) return (n / 1e8).toFixed(2) + t("亿");
-  if (n >= 1e4) return (n / 1e4).toFixed(n >= 1e6 ? 0 : 1) + t("万");
+  // 中文按 万/亿；英文按 K/M/B 数量级（123456 万≠123.5M，须各走各的进率）
+  if (getLang() === "en") {
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
+    if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
+  } else {
+    if (n >= 1e8) return (n / 1e8).toFixed(2) + t("亿");
+    if (n >= 1e4) return (n / 1e4).toFixed(n >= 1e6 ? 0 : 1) + t("万");
+  }
   return n.toLocaleString("en-US");
 }
 
@@ -6354,7 +6998,32 @@ function syncLangMode() {
   const lang = getLang();
   document.querySelectorAll("#lang-mode [data-lang]").forEach((b) =>
     b.classList.toggle("active", b.dataset.lang === lang));
+  // 顶栏地球下拉的选中态（皮肤页分段与顶栏菜单两个入口共享同一真源）
+  document.querySelectorAll("#lang-menu .lang-item").forEach((b) =>
+    b.classList.toggle("on", b.dataset.lang === lang));
 }
+
+/* 顶栏语言快捷切换：地球按钮弹下拉，语言名用母语写死（见 index.html 注释） */
+function toggleLangMenu(force) {
+  const menu = $("lang-menu");
+  if (!menu) return;
+  const show = force != null ? !!force : menu.classList.contains("hidden");
+  if (show) syncLangMenu();
+  menu.classList.toggle("hidden", !show);
+}
+
+function syncLangMenu() {
+  const lang = getLang();
+  document.querySelectorAll("#lang-menu .lang-item").forEach((b) =>
+    b.classList.toggle("on", b.dataset.lang === lang));
+}
+
+function pickLang(lang) {
+  toggleLangMenu(false);
+  setLangBtn(lang);
+}
+window.toggleLangMenu = toggleLangMenu;
+window.pickLang = pickLang;
 
 function setLangBtn(lang) {
   if (getLang() === lang) return;
@@ -6366,6 +7035,7 @@ function setLangBtn(lang) {
   document.title = (lang === "en" ? "CodeBee · Multi-agent Orchestrator" : "CodeBee · 多智能体编排台");
   applyI18n();
   render();
+  cmpGreeting();   // 问候语跟随语言重算
   // 侧栏区头两颗钮的 title/aria 是 JS 按状态写的，applyI18n 会用静态词条盖掉，这里重刷
   paintArchToggle();
   syncSideExpandBtn();
@@ -6407,7 +7077,7 @@ function usageSingleDay(d) {
     // 太窄的段不放内嵌文字（挤成一团），数值交给底部明细行
     const inner = pct >= 10 ? "<span>" + label + " " + Math.round(pct) + "%</span>" : "";
     return '<div class="us-seg us-' + cls + '" style="width:' + pct.toFixed(2) + '%"' +
-      ' title="' + label + " " + fmtTok(val || 0) + t("（") + pct.toFixed(1) + '%）">' + inner + "</div>";
+      ' title="' + label + " " + fmtTok(val || 0) + t("（") + pct.toFixed(1) + t("%）") + '">' + inner + "</div>";
   };
   const other = Math.max(0, tok - (d.input || 0) - (d.output || 0));
   return head +
@@ -6546,7 +7216,11 @@ function usageHeatSvg(all, mode) {
   const totalDays = Math.round((today - start) / 864e5) + 1;
   const weeks = Math.ceil(totalDays / 7);
 
-  const fmtD = (dt) => (dt.getMonth() + 1) + t("月") + dt.getDate() + t("日");
+  // 中文 M月D日；英文走本地化短日期（9m5d 不成词）
+  const MON_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const fmtD = (dt) => getLang() === "en"
+    ? MON_EN[dt.getMonth()] + " " + dt.getDate()
+    : (dt.getMonth() + 1) + t("月") + dt.getDate() + t("日");
   const CELL = 12, GAP = 3, PITCH = CELL + GAP, TOP = 18;
   let cells = "", labelEls = "";
   const clsOf = (v, maxV) => v <= 0 ? "uh-h0" : v < maxV * 0.25 ? "uh-h1" : v < maxV * 0.5 ? "uh-h2" : v < maxV * 0.75 ? "uh-h3" : "uh-h4";
@@ -6593,7 +7267,7 @@ function usageHeatSvg(all, mode) {
       if (dt > today) break;
       if (dt.getMonth() !== lastMon) {
         lastMon = dt.getMonth();
-        labelEls += '<text class="uh-mon" x="' + (w * PITCH) + '" y="11">' + esc((dt.getMonth() + 1) + t("月")) + "</text>";
+        labelEls += '<text class="uh-mon" x="' + (w * PITCH) + '" y="11">' + esc(getLang() === "en" ? MON_EN[dt.getMonth()] : (dt.getMonth() + 1) + t("月")) + "</text>";
       }
     }
     const H = TOP + 7 * PITCH + 4;
@@ -6617,7 +7291,9 @@ function usageHeatSvg(all, mode) {
   const MW = 34, MH = 18, MP = 42;
   perMonth.forEach((m, i) => {
     cells += '<rect class="' + clsOf(m.sum, maxM) + '" x="' + (i * MP) + '" y="' + TOP + '" width="' + MW + '" height="' + MH +
-      '" rx="3"><title>' + esc(m.label.replace(".", t("年")) + t("月") + " · " + fmtTok(m.sum) + t(" tokens")) + "</title></rect>";
+      '" rx="3"><title>' + esc((getLang() === "en"
+        ? MON_EN[Number(m.label.split(".")[1]) - 1] + " 20" + m.label.split(".")[0]
+        : m.label.replace(".", t("年")) + t("月")) + " · " + fmtTok(m.sum) + t(" tokens")) + "</title></rect>";
     labelEls += '<text class="uh-mon" x="' + (i * MP + MW / 2) + '" y="' + (TOP + MH + 13) +
       '" text-anchor="middle">' + esc(m.label) + "</text>";
   });
@@ -6655,7 +7331,7 @@ function renderUsageModels() {
   const list = segs.map((s, i) => {
     const pct = total > 0 ? (s.tokens * 100 / total) : 0;
     return '<div class="ud-row"><span class="ud-dot" style="background:' + usageColor(i) + '"></span>' +
-      '<div class="ud-name">' + esc(s.name) + "<small>" + esc(fmtTok(s.tokens) + t(" tokens")) + "</small></div>" +
+      '<div class="ud-name">' + esc(t(s.name)) + "<small>" + esc(fmtTok(s.tokens) + t(" tokens")) + "</small></div>" +
       '<span class="ud-pct">' + (pct >= 10 ? Math.round(pct) : pct.toFixed(1)) + "%</span></div>";
   }).join("");
   el.innerHTML = '<div class="usage-donut">' + svg + '<div class="ud-list">' + list + "</div></div>";
@@ -6685,7 +7361,7 @@ function usageDimTable(title, rows) {
           '<div class="bar-fill" style="width:' + pct + '%"></div>' +
           "<span>" + esc(r.key) + "</span><i>" + okPct + t("% 成") + "</i></div></td>" +
           '<td class="num">' + fmtTok(r.calls) + "</td>" +
-          '<td class="num" title="输入 ' + fmtTok(r.input) + t(' · 输出 ') + fmtTok(r.output) + '">' + fmtTok(r.tokens) + "</td>" +
+          '<td class="num" title="' + t("输入 ") + fmtTok(r.input) + t(" · 输出 ") + fmtTok(r.output) + '">' + fmtTok(r.tokens) + "</td>" +
           '<td class="num sub">' + fmtTok(r.input) + " / " + fmtTok(r.output) + "</td>" +
           '<td class="num sub">' + fmtDur(r.duration_s) + "</td>" +
           '<td class="num">' + fmtUsd(r.cost_usd) + "</td></tr>";
@@ -6705,8 +7381,8 @@ function usageRecentTable(rows) {
       return "<tr" + (r.ok ? "" : ' class="bad-row"') + ">" +
         '<td class="num sub">' + esc(String(r.ts || "").slice(5)) + "</td>" +
         "<td>" + esc(toolName(r.tool)) + "</td>" +
-        "<td>" + esc(r.agent_label || r.agent || "") + "</td>" +
-        '<td class="mono" title="' + esc(det) + '">' + esc(model.length > 30 ? model.slice(0, 29) + "…" : model) + "</td>" +
+        "<td>" + esc(t(r.agent_label || r.agent || "")) + "</td>" +
+        '<td class="mono" title="' + esc(det) + '">' + esc(t(model.length > 30 ? model.slice(0, 29) + "…" : model)) + "</td>" +
         '<td class="sub">' + esc(roleName(r.role)) + "</td>" +
         "<td>" + (r.ok ? '<span class="chip done">OK</span>' : '<span class="chip failed">' + t("失败") + '</span>') + "</td>" +
         '<td class="num" title="' + esc(det) + '">' + fmtTok(r.total) + "</td>" +
@@ -6740,7 +7416,7 @@ function renderUsage() {
   if (note) {
     note.innerHTML = noBreakdown
       ? '<p class="hint">' + t("当前范围内都是历史运行回填的记录：只保留总量与费用，") +
-        "输入/输出/缓存细分从新调用开始记录。</p>"
+        t("输入/输出/缓存细分从新调用开始记录。") + "</p>"
       : "";
   }
   $("usage-trend").innerHTML = usageTrendSvg(u.by_day || []);
@@ -6862,6 +7538,7 @@ function exitSettings() {
   document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", b.dataset.sub === "tasks"));
   document.body.classList.remove("settings-mode");
   document.body.classList.remove("files-mode");
+  cmpGreeting();   // 回到任务页：问候语刷新
   const title = $("page-title");
   if (title) title.textContent = tabTitle("tasks");
   collapseDrawerIfMobile();
@@ -6954,6 +7631,8 @@ window.loadMarket = loadMarket;
 window.mkrInstall = mkrInstall;
 window.mkrRefresh = mkrRefresh;
 window.mkSetView = mkSetView;
+window.mkrLoadPage = mkrLoadPage;
+window.renderMarketRemote = renderMarketRemote;
 window.saveOrchestrator = saveOrchestrator;
 window.testOrchestrator = testOrchestrator;
 window.saveSettings = saveSettings;
@@ -6997,6 +7676,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-back").addEventListener("click", closeRun);
   $("btn-cancel").addEventListener("click", cancelRun);
   bindDirector();
+  bindChat();
   // 详情标签页：手点即切并钉住——状态变化触发的自动选卡不再抢用户的手选
   $("rd-tabs").addEventListener("click", (e) => {
     const b = e.target.closest(".rd-tab");
@@ -7099,7 +7779,10 @@ document.addEventListener("DOMContentLoaded", () => {
   localStorage.removeItem("orch.showArchived");   // 清掉旧版持久化残留，避免误解为默认选中
   $("f-resume-agent").addEventListener("change", loadSessions);
   $("f-resume-session").addEventListener("change", showResumeHint);
-  $("f-workdir").value = localStorage.getItem("orch.workdir") || "";
+  /* 工作目录不再用「上次用过」的旧记忆预填：那样改默认保存路径后，新建任务仍会被
+   * 旧目录盖过（留空才是真正跟随默认）。显式选目录的入口（向导/克隆/右键新建任务到该目录）
+   * 各自直接写字段值，不跨刷新持久化。清掉旧版残留键，避免误解为默认选中。 */
+  localStorage.removeItem("orch.workdir");
   // 附件：按钮选文件 + 目标框粘贴截图；工作目录变化时探测 git 仓库（代码版本下拉）
   $("btn-attach").addEventListener("click", () => $("f-attach-file").click());
   $("f-attach-file").addEventListener("change", (e) => {
@@ -7107,6 +7790,10 @@ document.addEventListener("DOMContentLoaded", () => {
     e.target.value = "";  // 允许重复选同一个文件
   });
   $("f-goal").addEventListener("paste", onGoalPaste);
+  // Composer 手感：Enter 直接发送，Shift+Enter 换行（输入法组词中不劫持）
+  $("f-goal").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); createTask(); }
+  });
   $("f-workdir").addEventListener("input", queueGitProbe);
   $("f-workdir").addEventListener("change", queueGitProbe);
   // 点工作目录输入框直接进文件夹选择（远端设备被 403 守卫拦下，静默继续手输）
@@ -7124,10 +7811,20 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") toggleTypeMenu(false);
   });
+  // 语言下拉同款：点外面 / Escape 收起；按钮自身点击由 toggleLangMenu 负责
+  document.addEventListener("click", (e) => {
+    const menu = $("lang-menu"), btn = $("btn-lang");
+    if (menu && !menu.classList.contains("hidden") &&
+        !menu.contains(e.target) && !(btn && btn.contains(e.target))) toggleLangMenu(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") toggleLangMenu(false);
+  });
   $("f-mode").addEventListener("change", () => {
     $("f-manual-only").classList.toggle("hidden", $("f-mode").value !== "manual");
   });
   $("f-type").dispatchEvent(new Event("change"));
+  cmpGreeting();   // 问候语按时段刷新（切语言/回任务页也会重算）
   $("btn-reload-catalog").addEventListener("click", async () => {
     await api("/api/catalog/reload", { method: "POST" }); poll(); refreshSessionAgents();
   });
@@ -7193,9 +7890,21 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!b) return;
     mkSetView(b.dataset.v);
   });
-  $("mkr-search").addEventListener("input", renderMarketRemote);
-  $("mkr-source").addEventListener("change", renderMarketRemote);
+  $("mkr-search").addEventListener("input", mkrDebounce);
+  $("mkr-search").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    clearTimeout(mkrDebounce._t);
+    mkrLoadPage(true);   // 回车立即搜（不等防抖）
+  });
+  $("mkr-search-btn").addEventListener("click", () => {
+    clearTimeout(mkrDebounce._t);
+    mkrLoadPage(true);
+  });
+  $("mkr-source").addEventListener("change", () => mkrLoadPage(true));
   $("mkr-refresh").addEventListener("click", mkrRefresh);
+  $("mkr-more-btn").addEventListener("click", () => mkrLoadPage(false));
+  mkrBindSentinel();
   $("btn-reset-catalog").addEventListener("click", async () => {
     if (!await uiConfirm(t("恢复内置默认 catalog？你对该文件的修改将丢失。"), { ok: t("恢复"), danger: true })) return;
     await api("/api/catalog/reset", { method: "POST" }); poll();
@@ -7207,6 +7916,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadFlows();   // 任务类型下拉（内置 + 自定义流程）
   refreshSessionAgents();  // 继续会话下拉的工具集合（服务端 60s 缓存，开销小）
   loadOrchestrator();      // 侧栏左下角的编排者供应商指示（进入编排设置页时会再拉一次）
+  loadSettings();          // 启动即拉设置：新建表单的「留空则保存到：<默认路径>」提示依赖它
   suStartupCheck();        // 静默查一次新版本（有新版 toast 提醒，同版本只提一次）
 });
 

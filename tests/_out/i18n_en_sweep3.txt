@@ -1,0 +1,266 @@
+data-lang = en OK
+[tasks] 残留中文 4 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[runs] 残留中文 4 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page.page-wide
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[automation] 残留中文 4 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[usage] 残留中文 4 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[agents] 残留中文 4 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[models] 残留中文 4 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[bindings] 残留中文 4 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[skills] 残留中文 4 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[market] 残留中文 20 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[orch] 残留中文 20 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[appearance] 残留中文 20 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[about] 残留中文 20 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[composer] 残留中文 20 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[add-provider-dialog] 残留中文 20 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[import-dialog] 残留中文 33 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+    · 本地库（Claude / Claude Desktop / Codex / Gemini / OpenClaw）   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.claude/settings.json 的 env 供应商   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.codex/config.toml + auth.json（含多 model_providers）   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.zcode/v2/config.json 的 provider 表   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.qwen/settings.json 的 modelProviders   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.gemini 的 .env / settings.json   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.config/opencode/opencode.json 的 provider 表   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.continue/config.yaml 的 models   @ div.src-desc<div.src-main<label.src-row.disabled<div.src-list
+    · 配置里没有带 apiBase 的模型条目   @ div.src-note<div.src-main<label.src-row.disabled<div.src-list
+    · Cursor 的 cursorAuth/openAIKey + 自定义 Base URL   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · Trae / Trae SOLO 中自定义模型的 Base URL + AK   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · ~/.dsh/settings.yaml 的 llm-deepseek（密钥走 ~/.dsh/.env）   @ div.src-desc<div.src-main<label.src-row<div.src-list
+    · 未找到 DEEPSEEK_API_KEY（dsh 把密钥放在 ~/.dsh/.env 或环境变量），导入后请在编辑里补填   @ div.src-note<div.src-main<label.src-row<div.src-list
+[flows-manager] 残留中文 20 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[auto-form] 残留中文 20 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+[cmdk] 残留中文 20 处
+    · 通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入写 settings.json    @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——答完即退   @ div.note<div.card<div#ag-installed.cards<div.panel.wide
+    · 七猫签约标准与写作规范   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 七猫签约导向的写作规范：黄金一章、爽点纪律、期待感三源、人物红线与自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 番茄小说写作与流量守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 算法流量池与完读追读、黄金三章整体验、题材标签匹配、更新纪律与合同要点。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · Git 提交与分支守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提交信息格式与粒度、分支模型、force push 与回滚等危险操作红线，附提交前自检清单。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 代码风险自查清单   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 提测/评审前按事故率过单：边界与异常、资源与并发、注入与泄密、跨平台与回退。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 版本发布说明撰写模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 面向用户的更新公告写法：固定六段结构、破坏性变更三要素、可复制模板与反例对照。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 周报/晨报生成器守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 先取材再总结：从任务与运行记录提炼晨报三段、周报四段，量化纪律与可复制模板。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 角色小传与人物弧光模板   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 角色档案模板（欲望/恐惧/语言指纹）、四拍弧光规划与连载防 OOC 纪律。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 世界观设定一致性台账守则   @ span.name<div.head<div.card.mk-card<div#mk-grid.cards.mk-grid
+    · 设定台账五件套、设定变更三步流程、高频吃书场景排查与章前查章后记闭环。   @ div.note<div.card.mk-card<div#mk-grid.cards.mk-grid<div#mk-local
+    · 开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）   @ p#su-note.hint<div.panel.wide<div#sub-about.subpage.hidden<section#page-settings.page
+    · 中文   @ span<button.seg-btn<div#lang-mode.seg<div#apn-skin.panel.wide
+
+=== 英文模式残留中文合计：245 处 ===

@@ -1,0 +1,23 @@
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'staged.txt', LF will be replaced by CRLF the next time Git touches it
+  ✓ 临时服务启动
+  ✓ Edge headless 就绪
+  ✓ #rd-git 工作台渲染且可见
+  ✓ Git 页签常驻可见
+  ✓ 标题=Git 工作台，分支下拉=master
+  ✓ HEAD 短哈希在场
+  ✓ 三组分类：暂存/未暂存/未跟踪各 1
+  ✓ 无远程：抓取/推送禁用
+  ✓ 暂存区有货：提交按钮可用
+  ✓ 点文件行弹实时 diff（+行着色）
+  ✓ 点击暂存：README.md 进暂存组
+  ✓ 提交后暂存区清空
+  ✓ 提交落库（信息一致）
+  ✓ 分支下拉切到 dev（下拉与真实仓库一致）
+  ✓ stash 收起后条目出现
+  ✓ stash 还原后条目消失
+  ✓ stash 还原：文件回到工作区
+  ✓ 英文模式：Git Workbench / Fetch / Pull / Push / Staged changes
+  ✓ 全程无 JS 异常
+
+OK 19/19

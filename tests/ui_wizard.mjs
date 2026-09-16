@@ -109,12 +109,14 @@ async function main() {
 
     // 第一张卡是 code 流程 → 追问验证命令（5 步）
     const pickedName = await evalJs(
-      `(() => { const c = document.querySelector(".wz-flow .wz-fname");
-        const name = c ? c.textContent : ""; c.closest(".wz-flow").click(); return name; })()`);
+      `(() => { const cards = [...document.querySelectorAll(".wz-flow")];
+        const c = cards.find(x => ((x.querySelector(".wz-fname")||{}).textContent||"") === "代码") || cards[0];
+        const name = (c.querySelector(".wz-fname")||{}).textContent || "";
+        c.click(); return name; })()`);
     await sleep(300);
     st = JSON.parse(await evalJs(wizState));
     check("code 流程追问验证命令（第 3/5 步）",
-      st.title.includes("3/5") && !st.modalHidden && st.verify, JSON.stringify(st));
+      st.title.includes("3/5") && !st.modalHidden && st.verify, JSON.stringify(st) + " picked=" + pickedName);
 
     await evalJs(`(function(){ const v = document.getElementById("wz-verify");
       v.value = "npm test"; v.dispatchEvent(new Event("input", { bubbles: true })); })()`);

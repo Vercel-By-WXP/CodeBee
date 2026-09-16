@@ -275,6 +275,12 @@ def _wait_gate(run_id, ev):
 def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None):
     """执行一个智能体步骤并记录。返回 runner 统一结果。"""
     _wait_gate(run_id, ev)
+    # 绑定解析为空 → CLI 将回落本机默认配置（用户配置的模型/供应商全部不生效）。
+    # 2026-09-16 实测：这种状态下烧干配额的本机默认供应商被静默使用，用户以为
+    # 在用自己配的模型。首次出现时在步骤备注里醒目标出。
+    if agent.get("mode") == "real" and not (agent.get("call_chain") or agent.get("env")):
+        note = ((note + "；") if note else "") + \
+               "⚠ 未解析到绑定链，本步回落 CLI 本机默认配置（请在模型接入页检查该 CLI 的供应商绑定）"
     step, log_abs = store.add_step(run_id, role, agent["id"],
                                    agent.get("label", agent["id"]), note=note)
     start = time.time()
@@ -406,7 +412,7 @@ def _finish_step_result(run_id, step, res, role, agent, start):
         status = "done" if res["ok"] else "failed"
     store.finish_step(run_id, step["n"],
                       status,
-                      summary=((res.get("text") or res.get("error") or "")[:200]),
+                      summary=((res.get("text") or res.get("error") or "")[:600]),
                       exit_code=res.get("raw", {}).get("exit_code"),
                       cost_usd=res.get("cost_usd", 0.0),
                       tokens=res.get("tokens", 0),
@@ -642,48 +648,76 @@ def _run_code(run, task, agents, ev, stats, mode):
                       if (resume_ctx and impl_agent["id"] == resume_ctx["agent"]["id"]) else None)
         # 续会话时 CLI 要在会话所属项目目录下启动，否则定位不到会话
         step_wd = _resume_workdir(resume_ctx, workdir) if use_resume else workdir
-        impl_b = modelhub.bind_agent(impl_agent, difficulty)
-        att_imgs = _task_images(task, workdir)  # 图片附件供 codex 原生 -i 直读
-        # §07 T3.1 FrugalGPT 级联（默认关）：easy 任务把链按 tier 升序重排，
-        # 便宜模型先跑；质量闸门不过走既有 repair/换将轮，等效"贵模型兜底"。
-        if difficulty == "easy":
-            try:
-                from .settings_schema import get as ss_get, register_default_namespaces
-                register_default_namespaces()
-                if ss_get("cascade", "enabled"):
-                    from . import capability
-                    impl_b = capability.cascade_reorder(
-                        impl_b, capability.make_tier_lookup(modelhub.providers()))
-            except Exception:
-                pass
-        for i, sub in enumerate(subtasks):
-            prompt = (CODE_IMPL_PROMPT
-                      .replace("__GOAL__", task["goal"])
-                      .replace("__SUBTASK__",
-                               sub["detail"] if sub["detail"] else sub["title"])
-                      .replace("__CONTEXT__", task.get("context") or "（无）")
-                      .replace("__VERIFY_HINT__", _verify_hint(task)))
-            role = "implement" if len(subtasks) == 1 else "implement-%d/%d" % (i + 1, len(subtasks))
-            res = _run_step(run_id, role, impl_b, prompt, step_wd,
-                            readonly=False, ev=ev, note=prefix_note if i == 0 else "",
-                            resume=use_resume, images=att_imgs)
-            # §07 T1.1：记录最后一次实现的会话 id，fix 轮复用（会话内前缀走缓存读计价）
-            new_sid = _resume_sid(impl_b, res.get("sid"))
-            if new_sid:
-                impl_sid[0] = new_sid
-            if impl_agent.get("mode") == "mock" and res["ok"]:
+
+        def _run_one(agt):
+            """用指定智能体跑全部子任务；返回 (ok, 最后一次 res)。"""
+            agt_b = modelhub.bind_agent(agt, difficulty)
+            att_imgs = _task_images(task, workdir)  # 图片附件供 codex 原生 -i 直读
+            # §07 T3.1 FrugalGPT 级联（默认关）：easy 任务把链按 tier 升序重排，
+            # 便宜模型先跑；质量闸门不过走既有 repair/换将轮，等效"贵模型兜底"。
+            if difficulty == "easy":
                 try:
-                    mock_path = os.path.abspath(os.path.join(workdir, "mock-impl.txt"))
-                    if _inside(workdir, mock_path):
-                        with open(mock_path, "a", encoding="utf-8") as f:
-                            f.write("%s mock 实现：%s / %s\n" % (_now(), task["title"], sub["title"]))
+                    from .settings_schema import get as ss_get, register_default_namespaces
+                    register_default_namespaces()
+                    if ss_get("cascade", "enabled"):
+                        from . import capability
+                        agt_b = capability.cascade_reorder(
+                            agt_b, capability.make_tier_lookup(modelhub.providers()))
                 except Exception:
                     pass
-            if not res["ok"]:
-                store.update_run(run_id, status="failed",
-                                 error="实现步骤失败: %s" % res.get("error"), ended_at=_now())
-                return False
-        return True
+            for i, sub in enumerate(subtasks):
+                prompt = (CODE_IMPL_PROMPT
+                          .replace("__GOAL__", task["goal"])
+                          .replace("__SUBTASK__",
+                                   sub["detail"] if sub["detail"] else sub["title"])
+                          .replace("__CONTEXT__", task.get("context") or "（无）")
+                          .replace("__VERIFY_HINT__", _verify_hint(task)))
+                role = "implement" if len(subtasks) == 1 else "implement-%d/%d" % (i + 1, len(subtasks))
+                res = _run_step(run_id, role, agt_b, prompt, step_wd,
+                                readonly=False, ev=ev,
+                                note=prefix_note if i == 0 else "",
+                                resume=use_resume, images=att_imgs)
+                # §07 T1.1：记录最后一次实现的会话 id，fix 轮复用（会话内前缀走缓存读计价）
+                new_sid = _resume_sid(agt_b, res.get("sid"))
+                if new_sid:
+                    impl_sid[0] = new_sid
+                if agt.get("mode") == "mock" and res["ok"]:
+                    try:
+                        mock_path = os.path.abspath(os.path.join(workdir, "mock-impl.txt"))
+                        if _inside(workdir, mock_path):
+                            with open(mock_path, "a", encoding="utf-8") as f:
+                                f.write("%s mock 实现：%s / %s\n" % (_now(), task["title"], sub["title"]))
+                    except Exception:
+                        pass
+                if not res["ok"]:
+                    return False, res
+            return True, res
+
+        ok, res = _run_one(impl_agent)
+        if ok:
+            return True
+        # 实现步失败不立刻判死：2026-09-16 实测配额烧干时 5 连跑全在同一条 CLI 上
+        # 失败收场，而健康的 opencode 一直在旁观望——跨 CLI 换将重试一次
+        # （mode=manual 尊重用户指定，不换）。
+        if mode == "auto" and impl_agent.get("mode") == "real":
+            ex = {impl_agent["id"], "mock-a", "mock-b"}
+            other, other_reason = router.pick(agents, "implement", "code", stats,
+                                              exclude=ex)
+            if other is not None and other.get("mode") == "real":
+                note = "实现步失败自动换将 %s → %s：%s。失败原因：%s" % (
+                    impl_agent["id"], other["id"], other_reason,
+                    (res.get("error") or "")[:200])
+                ok2, res = _run_one(other)
+                if ok2:
+                    store.update_run(run_id, error="", route_note=note)
+                    return True
+                res_err = "%s；换将后仍失败：%s" % (note, (res.get("error") or "")[:200])
+            else:
+                res_err = "实现步骤失败（无其他真实 CLI 可换将）: %s" % res.get("error")
+        else:
+            res_err = "实现步骤失败: %s" % res.get("error")
+        store.update_run(run_id, status="failed", error=res_err, ended_at=_now())
+        return False
 
     def review_and_score():
         review_json = _run_review(run_id, task, workdir, modelhub.bind_agent(reviewer, difficulty), ev)
@@ -782,6 +816,169 @@ def _run_code(run, task, agents, ev, stats, mode):
                          "通过" if verify_pass else "未通过",
                          "通过" if review_json.get("pass") else "未通过",
                          "，%d 轮修复" % (len(repairs) - 1) if len(repairs) > 1 else ""),
+                     ended_at=_now())
+
+
+# ---------------------------------------------------------------- direct 引擎（直连单 CLI：无拆解/评审，对话式续轮）
+
+DIRECT_PROMPT = """你是 CodeBee 的执行智能体，直接完成用户交代的任务。用户的目标、背景与工作目录内的附件就是全部输入：不拆解、不评审、不换人，直接动手。
+
+## 任务
+__GOAL__
+
+## 背景与上下文
+__CONTEXT__
+
+## 要求
+- 能改直接改、能写直接写（限本工作目录内），产出文件一律 UTF-8 编码（PowerShell 写文件显式 -Encoding UTF8）。
+- 回复的最后一行单独输出一行交代结果：
+DIRECT_DONE: <一句话说明本轮做了什么、产出了哪些文件>
+这一行之后不要再输出任何内容。"""
+
+DIRECT_FOLLOWUP_PROMPT = """你在与用户的持续对话中。用户针对已有成果发来了新消息（见下方「用户实时指令」注入块），请接着处理。
+
+## 原始任务
+__GOAL__
+
+## 要求
+- 优先回应用户新消息（继续做/改/答疑均可），仍限本工作目录内。
+- 回复的最后一行单独输出：
+DIRECT_DONE: <一句话说明本轮做了什么>
+这一行之后不要再输出任何内容。"""
+
+DIRECT_MAX_TURNS = 200   # 对话续轮上限（每轮都要用户主动发消息才触发，防意外打满）
+
+
+def _pending_messages(run_id):
+    """该 run 信箱里未消费消息列表（读不到时当空，绝不因信箱异常打断执行）。"""
+    try:
+        return store.peek_messages(run_id)
+    except Exception:
+        return []
+
+
+def _direct_prev_run(task_id, exclude_run_id):
+    """同一任务下最近一次已结束的 direct run（追话时继承会话 id 与工作目录）。"""
+    try:
+        runs = store.list_runs(limit=200)
+    except Exception:
+        return None
+    cands = [r for r in runs
+             if r.get("task_id") == task_id and r.get("id") != exclude_run_id
+             and r.get("status") in ("done", "failed", "cancelled")]
+    if not cands:
+        return None
+    return max(cands, key=lambda r: r.get("id") or "")
+
+
+def _direct_last_text(run):
+    """上一轮 direct run 的最后一条步骤输出（取步骤记录里的 summary）。"""
+    steps = run.get("steps") or []
+    for s in reversed(steps):
+        txt = (s.get("summary") or "").strip()
+        if txt:
+            return txt
+    return ""
+
+
+def _run_direct(run, task, agents, ev, stats, mode):
+    """直连引擎：目标+附件直接交给一个 CLI，跑完即止。
+
+    无规划/评审/验证/换将——快档位，质量交给执行 CLI 自身。对话式续轮：
+    运行中信箱来消息 → drain 注入下一步（_run_step 既有机制）；步骤结束后
+    信箱还有未消费消息就再续一轮（会话续接，同一 CLI 连续对话）；信箱空了
+    收工为 done。运行结束后再来消息走 retry_task（消息自动继承到新 run）。
+    """
+    run_id = run["id"]
+    workdir = task["workdir"]
+    route = {}
+    resume_ctx = _valid_resume(task, agents)
+    if resume_ctx is not None:
+        impl = resume_ctx["agent"]
+        route["implementer"] = resume_ctx["note"]
+    elif mode == "manual":
+        impl, _ = _pick_implementer(agents, task.get("implementer"))
+    else:
+        impl, route["implementer"] = router.pick(agents, "implement", task["type"], stats)
+    if impl is None:
+        store.update_run(run_id, status="failed", error="没有可用智能体", ended_at=_now())
+        return
+    difficulty = task.get("difficulty") or "default"
+    step_wd = _resume_workdir(resume_ctx, workdir) if resume_ctx else workdir
+    store.update_run(run_id, route=route, difficulty=difficulty)
+
+    sid = (resume_ctx["session"] if resume_ctx else "") or ""
+    last_text = ""
+    # 追话起跑（/api/runs/<id>/chat → retry_task）：信箱已有未消费消息 = 这是对话
+    # 的下一轮而非首轮。继承上一轮的 CLI 会话 id，让它真的「接着上次聊」；
+    # 同时把首步切成续轮档（DIRECT_FOLLOWUP），避免又走一遍开场的完整任务框架。
+    try:
+        pending0 = store.peek_messages(run_id)
+    except Exception:
+        pending0 = []
+    if pending0:
+        prev = _direct_prev_run(task["id"], run_id)
+        if prev:
+            ps = (prev.get("direct_session") or {})
+            if ps.get("agent") == impl["id"] and ps.get("session"):
+                sid = sid or ps["session"]
+            if ps.get("workdir"):
+                step_wd = ps["workdir"]
+            last_text = _direct_last_text(prev)
+    first = not pending0
+    turns = 0
+    while True:
+        _wait_gate(run_id, ev)
+        if first:
+            prompt = (DIRECT_PROMPT
+                      .replace("__GOAL__", task["goal"])
+                      .replace("__CONTEXT__", task.get("context") or "（无）"))
+            note = route.get("implementer", "")
+            images = _task_images(task, workdir)
+        else:
+            prompt = DIRECT_FOLLOWUP_PROMPT.replace("__GOAL__", task["goal"])
+            if not sid and last_text:
+                # 无会话续接能力的 CLI（如 dsh 一次性任务）：把上一轮输出尾部带进上下文
+                prompt += "\n\n## 上一轮输出（结尾）\n" + last_text[-3000:]
+            note = "对话续轮"
+            images = None
+        # 续轮判据：只有「本步执行期间新到」的消息才再开一轮。
+        # 不能只看「信箱非空」——真实步骤的 drain 在 _run_step 内部发生，起跑前
+        # 就积压的消息会被本步吃掉（peek 归零）；而 mock/不走 drain 的路径消息
+        # 永远不消费，只看非空会空转到轮数上限。比较步骤前后的未消费数即可区分。
+        before_n = len(_pending_messages(run_id))
+        res = _run_step(run_id, "direct" if first else "chat", impl, prompt, step_wd,
+                        readonly=False, ev=ev, note=note,
+                        resume=sid or None, images=images)
+        if not res["ok"]:
+            store.update_run(run_id, status="failed",
+                             error="执行失败: %s" % res.get("error"), ended_at=_now())
+            return
+        turns += 1
+        last_text = (res.get("text") or "").strip()
+        new_sid = _resume_sid(impl, res.get("sid"))
+        if new_sid:
+            sid = new_sid
+        try:
+            store.update_run(run_id, direct_session={"agent": impl["id"], "session": sid,
+                                                     "workdir": step_wd})
+        except Exception:
+            pass
+        if turns >= DIRECT_MAX_TURNS:
+            break
+        if len(_pending_messages(run_id)) <= before_n:
+            break           # 本步期间没有新消息：对话告一段落
+        first = False
+
+    verdict = {"type": task["type"], "engine": "direct", "pass": True, "mode": mode,
+               "direct": True, "turns": turns, "impl": impl["id"], "route": route}
+    report = ["# 直连任务：%s" % task["title"], "",
+              "- 执行者：%s（%d 轮对话）" % (impl.get("label"), turns), ""]
+    if last_text:
+        report += ["## 最近一轮输出", "", last_text[-5000:], ""]
+    store.write_report(run_id, "\n".join(report))
+    store.update_run(run_id, status="done", verdict=verdict,
+                     summary="直连完成（%d 轮）：%s" % (turns, last_text[:160]),
                      ended_at=_now())
 
 
@@ -1890,11 +2087,14 @@ def execute_run(run_id):
     stats = history.agent_stats()
     mode = task.get("mode") or ("manual" if task.get("implementer") else "auto")
     store.update_run(run_id, mode=mode)
-    # engine 决定流水线：code=实现/验证/评审/修复；review=起草/多维评审/修订/门禁
+    # engine 决定流水线：code=实现/验证/评审/修复；review=起草/多维评审/修订/门禁；
+    # direct=单 CLI 直达（无拆解/评审，信箱续轮即对话）
     engine = task.get("engine") or ("code" if task["type"] == "code" else "review")
     try:
         if engine == "code":
             _run_code(run, task, agents, ev, stats, mode)
+        elif engine == "direct":
+            _run_direct(run, task, agents, ev, stats, mode)
         else:
             route = {}
             resume_ctx = _valid_resume(task, agents)

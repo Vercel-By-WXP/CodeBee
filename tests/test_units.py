@@ -189,13 +189,14 @@ class TestTaskArchiveDelete(BaseTest):
         self.assertFalse((self._paths.RUNS_DIR / r2["id"]).exists())
         self.assertEqual([r["id"] for r in store.list_runs(10)], [r1["id"]])
 
-        # 防护：运行中的任务不能删除/归档；非法 ID 拒绝
+        # 防护：运行中的任务不能删除；归档不设限（只是隐藏，运行照常继续）；非法 ID 拒绝
         store.update_run(r1["id"], status="running")
         ok, err = store.delete_task(t1["id"])
         self.assertFalse(ok)
         self.assertIn("取消", err)
         ok, _ = store.archive_task(t1["id"], True)
-        self.assertFalse(ok)
+        self.assertTrue(ok)
+        self.assertEqual([t["id"] for t in store.list_tasks(archived=True)], [t1["id"]])
         ok, _ = store.delete_task("../escape")
         self.assertFalse(ok)
 
@@ -217,7 +218,7 @@ class TestTaskRetry(BaseTest):
         self.assertEqual(r2["task_id"], t["id"])
         self.assertEqual(store.get_task(t["id"])["status"], "queued")
         ok, _ = store.archive_task(t["id"], True)
-        self.assertFalse(ok)                      # 重试产生的活跃运行挡住归档
+        self.assertTrue(ok)                       # 运行中也可归档：只是隐藏，运行照常继续
         store.update_run(r2["id"], status="done")
         self.assertEqual(store.get_task(t["id"])["status"], "done")
         # load_all 回填历史遗留：run 终态而任务停在 queued

@@ -143,9 +143,10 @@ async function main() {
         artsInResult: !!document.querySelector('.rd-pane[data-pane="result"] #rd-arts'),
       };
     })()`);
-    check("分区条：蜂巢/步骤/成果/圣经在场，版本（无 git）隐藏",
+    // 对话分区只对直连任务可见，非直连（本用例是连载小说）应与 git 一同隐藏
+    check("分区条：蜂巢/步骤/成果/圣经在场，版本（无 git）与对话（非直连）隐藏",
       ["hive", "steps", "result", "git", "bible"].every((k) => strip.ids.includes(k)) &&
-      strip.hiddenIds === "git",
+      strip.hiddenIds.split(",").sort().join(",") === "chat,git",
       JSON.stringify([strip.ids, strip.hiddenIds]));
     check("终态（done）自动落「成果」分区", strip.active === "result", strip.active);
     check("成果分区含成品文件（章节 + 圣经）且在 result pane 内",

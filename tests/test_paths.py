@@ -35,22 +35,35 @@ class TestDefaultDataDir(unittest.TestCase):
         # 仅有 ensure_dirs 建出的空 data/ 目录（无 sentinel）→ 视为全新安装
         r = self._repo(sentinel=None)
         out = paths.default_data_dir(repo=r, environ={"APPDATA": "C:/App"})
-        self.assertEqual(out, Path("C:/App") / "Tutti")
+        self.assertEqual(out, Path("C:/App") / "CodeBee")
 
     def test_no_repo_data_uses_user(self):
         r = self._repo(with_data=False)
         out = paths.default_data_dir(repo=r, environ={"APPDATA": "C:/App"})
-        self.assertEqual(out, Path("C:/App") / "Tutti")
+        self.assertEqual(out, Path("C:/App") / "CodeBee")
 
     def test_user_dir_per_platform(self):
         self.assertEqual(paths._user_data_dir("win32", {"APPDATA": "C:/App"}, "C:/Users/x"),
-                         Path("C:/App") / "Tutti")
+                         Path("C:/App") / "CodeBee")
         self.assertEqual(paths._user_data_dir("win32", {}, "C:/Users/x"),
-                         Path("C:/Users/x") / "AppData" / "Roaming" / "Tutti")
+                         Path("C:/Users/x") / "AppData" / "Roaming" / "CodeBee")
         self.assertEqual(paths._user_data_dir("darwin", {}, "/Users/x"),
-                         Path("/Users/x") / ".tutti")
+                         Path("/Users/x") / ".codebee")
         self.assertEqual(paths._user_data_dir("linux", {}, "/home/y"),
-                         Path("/home/y") / ".tutti")
+                         Path("/home/y") / ".codebee")
+
+    def test_legacy_tutti_dir_is_kept(self):
+        # 老安装的 Tutti 目录存在 → 沿用 Tutti（改名零迁移）；不存在 → 落 CodeBee
+        base = Path(tempfile.mkdtemp(prefix="tutti-legacy-"))
+        try:
+            self.assertEqual(paths._user_data_dir("win32", {"APPDATA": str(base)}, None),
+                             base / "CodeBee")           # 无老目录：新装
+            (base / "Tutti").mkdir()
+            self.assertEqual(paths._user_data_dir("win32", {"APPDATA": str(base)}, None),
+                             base / "Tutti")             # 有老目录：沿用
+        finally:
+            import shutil
+            shutil.rmtree(base, ignore_errors=True)
 
 
 if __name__ == "__main__":

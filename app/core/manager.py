@@ -28,7 +28,7 @@ _LOCK = threading.RLock()
 _STATE = {"detected": {}, "versions": {}, "detect_ts": 0.0, "detect_ev": None}
 
 # 能自动写入默认模型的 config.format（其余格式只能手动编辑）
-_WRITABLE_FORMATS = ("toml-line", "json", "yaml-line")
+_WRITABLE_FORMATS = ("toml-line", "toml-section", "json", "json-path", "yaml-line")
 
 
 def _expand(p):
@@ -158,6 +158,75 @@ def version_of(entry):
     return version or "-"
 
 
+# ---------------------------------------------------------------- TOML 表内键
+
+def _toml_span(lines, table):
+    """定位顶层表 `[table]` 的行区间 [start, end)；start 为表头行。
+    只认顶层表头（行首无空白），不误吞嵌套 `[[array]]` 之外的子表——
+    子表在 TOML 里也是 `[a.b]` 顶层写法，同样按表头截断。"""
+    header = re.compile(r"^\[([^\[\]]+)\]\s*$")
+    start = None
+    for i, ln in enumerate(lines):
+        if ln.lstrip().startswith("["):
+            m = header.match(ln.strip())
+            if not m:
+                continue
+            if start is not None:
+                return start, i
+            if m.group(1).strip() == table:
+                start = i
+    if start is None:
+        return None, None
+    return start, len(lines)
+
+
+def _toml_read_value(text, table, leaf):
+    m = re.search(r'(?m)^\s*%s\s*=\s*"([^"]*)"\s*(#.*)?$' % re.escape(leaf), text) \
+        if table is None else None
+    if table is None:
+        return m.group(1) if m else None
+    start, end = _toml_span(text.splitlines(), table)
+    if start is None:
+        return None
+    for ln in text.splitlines()[start + 1:end]:
+        m = re.match(r'^\s*%s\s*=\s*"([^"]*)"\s*(#.*)?$' % re.escape(leaf), ln)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _toml_write_value(text, table, leaf, value):
+    """就地写入 TOML 的 [table] leaf（双引号标量），保留其余内容与换行风格。"""
+    eol = "\r\n" if "\r\n" in text else "\n"
+    lines = text.splitlines()
+    new_line = '%s = "%s"' % (leaf, value.replace("\\", "\\\\").replace('"', '\\"'))
+    # 换值不换行：保留行尾注释等其余内容
+    pat = re.compile(r'^(\s*%s\s*=\s*)"(?:[^"\\]|\\.)*"(.*)$' % re.escape(leaf))
+    if table is None:
+        for i, ln in enumerate(lines):
+            m = pat.match(ln)
+            if m:
+                lines[i] = "%s\"%s\"%s" % (m.group(1), value.replace("\\", "\\\\").replace('"', '\\"'), m.group(2))
+                break
+        else:
+            lines.append(new_line)
+        return eol.join(lines).rstrip("\r\n") + eol
+    start, end = _toml_span(lines, table)
+    if start is None:  # 表不存在：整段追加
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append("[%s]" % table)
+        lines.append(new_line)
+        return eol.join(lines).rstrip("\r\n") + eol
+    for i in range(start + 1, end):
+        m = pat.match(lines[i])
+        if m:
+            lines[i] = "%s\"%s\"%s" % (m.group(1), value.replace("\\", "\\\\").replace('"', '\\"'), m.group(2))
+            return eol.join(lines).rstrip("\r\n") + eol
+    lines.insert(end, new_line)  # 表内末尾追加（表头区间终点即下一表头前）
+    return eol.join(lines).rstrip("\r\n") + eol
+
+
 # ---------------------------------------------------------------- 模型配置
 
 def _config_path(entry):
@@ -167,6 +236,11 @@ def _config_path(entry):
 
 def _yaml_model_path(cfg):
     """把 config.model_key 的点号路径拆成 (段, 键)；无点号时段为 None（顶层键）。"""
+    return _dotted_key(cfg)
+
+
+def _dotted_key(cfg):
+    """model_key 点号路径拆 (表/段, 键)；无点号时第一元为 None（顶层键）。"""
     key = (cfg.get("model_key") or "model").strip()
     if "." in key:
         section, leaf = key.split(".", 1)
@@ -278,6 +352,28 @@ def _yaml_write_value(text, section, leaf, value):
     return eol.join(lines).rstrip("\r\n") + eol
 
 
+def _json_path_get(data, keys):
+    """沿点号路径下钻 JSON 嵌套；终点必须是字符串。"""
+    cur = data
+    for k in keys:
+        if isinstance(cur, dict) and k in cur:
+            cur = cur[k]
+        else:
+            return None
+    return cur if isinstance(cur, str) else None
+
+
+def _json_path_set(data, keys, value):
+    """沿点号路径写入 JSON 嵌套，缺中间对象就地创建；
+    中途遇到非 dict（如 string 简写形式）升级为对象。"""
+    cur = data
+    for k in keys[:-1]:
+        if not isinstance(cur.get(k), dict):
+            cur[k] = {}
+        cur = cur[k]
+    cur[keys[-1]] = value
+
+
 def read_model(entry):
     path = _config_path(entry)
     cfg = entry.get("config") or {}
@@ -290,6 +386,9 @@ def read_model(entry):
     if cfg["format"] == "toml-line":
         m = re.search(r'(?m)^\s*model\s*=\s*"([^"]+)"', text)
         return m.group(1) if m else None
+    if cfg["format"] == "toml-section":
+        table, leaf = _dotted_key(cfg)
+        return _toml_read_value(text, table, leaf)
     if cfg["format"] == "json":
         try:
             v = json.loads(text).get("model")
@@ -300,15 +399,26 @@ def read_model(entry):
         m = re.search(r'"model"\s*:\s*"([^"]+)"', text)
         return m.group(1) if m else None
     if cfg["format"] == "jsonc":
-        m = re.search(r'"model"\s*:\s*"([^"]+)"', text)
-        return m.group(1) if m else None
+        keys = (cfg.get("model_key") or "model").split(".")
+        try:
+            data = json.loads(re.sub(r"//[^\n]*", "", text) or "{}")
+        except Exception:
+            return None
+        return _json_path_get(data, keys)
+    if cfg["format"] == "json-path":
+        try:
+            data = json.loads(text or "{}")
+        except Exception:
+            return None
+        return _json_path_get(data, (cfg.get("model_key") or "model").split("."))
     if cfg["format"] == "yaml-line":
         return _yaml_read_value(text, *_yaml_model_path(cfg))
     return None
 
 
 def write_model(entry, model):
-    """写入默认模型（改动前自动备份 .bak）。支持 toml-line / json / yaml-line。"""
+    """写入默认模型（改动前自动备份 .bak）。支持 toml-line / toml-section /
+    json / json-path / yaml-line。"""
     path = _config_path(entry)
     cfg = entry.get("config") or {}
     fmt = cfg.get("format")
@@ -332,11 +442,12 @@ def write_model(entry, model):
     try:
         if os.path.isfile(path):
             shutil.copyfile(path, path + ".bak")
-        elif fmt == "yaml-line":
-            # dsh 首次运行只建 profiles/sessions/storages，不建 settings.yaml；
-            # 该文件正是用户层覆盖的落点，缺了就按需创建（否则模型永远写不进去）
+        else:
+            # 各 CLI 首次运行都未必建主配置（grok 不建 config.toml、pi 不建
+            # settings.json、openclaw 缺失即安全默认——官方文档明确「缺失即
+            # 内置默认」）；它正是用户层覆盖的落点，缺了按需创建
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            Path(path).write_bytes(b"")
+            Path(path).write_bytes(b"{}" if fmt in ("json", "json-path") else b"")
         if fmt == "toml-line":
             text = open(path, encoding="utf-8", errors="replace").read()
             new_line = 'model = "%s"' % model
@@ -345,12 +456,31 @@ def write_model(entry, model):
             else:
                 text = text.rstrip("\n") + "\n" + new_line + "\n"
             Path(path).write_bytes(text.encode("utf-8"))
+        elif fmt == "toml-section":
+            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            text = _toml_write_value(text, *_dotted_key(cfg), value=model)
+            Path(path).write_bytes(text.encode("utf-8"))
         elif fmt == "yaml-line":
             # newline="" 关掉通用换行转换：文本层面看不出 \r\n 就会被静默改写成 LF，
             # 用户的 Windows 配置不该因为写个模型名而整篇换行符被替换
             text = open(path, encoding="utf-8", errors="replace", newline="").read()
             text = _yaml_write_value(text, *_yaml_model_path(cfg), value=model)
             Path(path).write_bytes(text.encode("utf-8"))
+        elif fmt == "json-path":
+            # openclaw（agents.defaults.model.primary）：默认模型藏在嵌套对象里，
+            # 且 openclaw 对未知顶层键直接拒绝启动——绝不能写顶层 "model"
+            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            try:
+                data = json.loads(text) if text.strip() else {}
+            except Exception:
+                return {"ok": False, "error": "配置文件不是合法 JSON，已中止（避免覆盖）"}
+            _json_path_set(data, (cfg.get("model_key") or "model").split("."), model)
+            # pi 的 settings.json：defaultModel 必须配 defaultProvider 才能解析出
+            # (provider, model) 二元组；catalog 里声明了的伴随键一并落盘
+            for k, v in (cfg.get("model_extra_keys") or {}).items():
+                _json_path_set(data, k.split("."), v)
+            Path(path).write_bytes(
+                json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
         else:
             try:
                 data = json.loads(open(path, encoding="utf-8", errors="replace").read())

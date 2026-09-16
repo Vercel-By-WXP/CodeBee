@@ -1,0 +1,57 @@
+data-lang = en OK
+[tasks] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[runs] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[automation] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[usage] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[agents] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[models] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[bindings] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[skills] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[market] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[orch] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[appearance] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[about] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[composer] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[add-provider-dialog] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[import-dialog] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[flows-manager] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[auto-form] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+[cmdk] 残留中文 2 处
+    · "其他设备" is in control (click to take over)   @ [attr title] button#ctrl-pill
+    · "其他设备" is in control (click to take over)   @ [attr aria-label] button#ctrl-pill
+
+=== 英文模式残留中文合计：36 处 ===

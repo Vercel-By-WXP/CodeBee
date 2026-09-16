@@ -18,6 +18,8 @@ from . import paths
 #   toml-line : 按行正则读写 `model = "..."`（适合 codex config.toml）
 #   json      : 整体 JSON 读写 "model" 键（适合 claude settings.json）
 #   jsonc     : 正则读写 "model": "..."（适合 opencode.jsonc，显示为主）
+#   toml-section: 读写 TOML 指定 [section] 表下的键；model_key 写点号路径（表.键）
+#               （适合 grok 的 "models.default"）
 #   yaml-line : 按行读写 YAML 嵌套标量；model_key 写点号路径（段.键）
 #               （适合 dsh 的 "agent-default-model.model"）
 # orch.kind 取值: codex | claude | opencode | qwen | aider | generic | null
@@ -82,51 +84,65 @@ DEFAULT_CATALOG = [
     },
     {
         "id": "openclaw", "name": "OpenClaw", "cli_group": "installable",
-        "note": "网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证",
+        "note": "网关型个人 AI 智能体（原 Clawdbot）；编排模板装好后需验证；"
+                "默认模型在 openclaw.json 的 agents.defaults.model.primary"
+                "（顶层 model 键会被 schema 校验拒绝启动，绝不写顶层）",
         "detect": {"cli": "openclaw"},
         "orch": {"kind": "generic", "command": "openclaw", "argv_template": ["{prompt}"]},
-        "config": {"path": "~/.openclaw/openclaw.json", "format": "json", "model_key": None},
+        "config": {"path": "~/.openclaw/openclaw.json", "format": "json-path",
+                   "model_key": "agents.defaults.model.primary"},
         "install": "npm install -g openclaw",
         "upgrade": "npm install -g openclaw@latest",
         "default_enabled": False,
     },
     {
         "id": "kimi-code", "name": "Kimi Code", "cli_group": "installable",
-        "note": "月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 kimi-cli 正在下线",
+        "note": "月之暗面 Kimi 编码 CLI（TypeScript 版，需 Node ≥22.19）；旧 Python 版 "
+                "kimi-cli 正在下线；默认模型在 ~/.kimi-code/config.toml 的顶层 "
+                "default_model（值须是 [models] 表里定义的别名），首启自动建文件",
         "detect": {"cli": "kimi"},
         "orch": {"kind": "generic", "command": "kimi", "argv_template": ["-p", "{prompt}"]},
-        "config": {"path": "~/.kimi/config.json", "format": "json", "model_key": None},
+        "config": {"path": "~/.kimi-code/config.toml", "format": "toml-section",
+                   "model_key": "default_model"},
         "install": "npm install -g @moonshot-ai/kimi-code",
         "upgrade": "npm install -g @moonshot-ai/kimi-code@latest",
         "default_enabled": False,
     },
     {
         "id": "mimo-code", "name": "MiMo Code", "cli_group": "installable",
-        "note": "小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run \"提示词\"，-p 在该 CLI 是 --password",
+        "note": "小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run \"提示词\"，"
+                "-p 在该 CLI 是 --password；默认模型在 ~/.config/mimocode/mimocode.jsonc "
+                "顶层 model（provider/model 格式），onboarding 自动建文件",
         "detect": {"cli": "mimo"},
         "orch": {"kind": "generic", "command": "mimo", "argv_template": ["run", "{prompt}"],
                  "resume_argv_template": ["run", "-s", "{session}"]},
-        "config": {"path": "~/.mimo/config.json", "format": "json", "model_key": None},
+        "config": {"path": "~/.config/mimocode/mimocode.jsonc", "format": "jsonc",
+                   "model_key": "model"},
         "install": "npm install -g @mimo-ai/cli",
         "upgrade": "npm install -g @mimo-ai/cli@latest",
         "default_enabled": False,
     },
     {
         "id": "grok-build", "name": "Grok Build", "cli_group": "installable",
-        "note": "xAI 终端编码智能体；可执行名是 grok（不是 grok-build）",
+        "note": "xAI 终端编码智能体；可执行名是 grok（不是 grok-build）；"
+                "默认模型在 ~/.grok/config.toml 的 [models] default（JSON 版配置不存在）",
         "detect": {"cli": "grok"},
         "orch": {"kind": "generic", "command": "grok", "argv_template": ["-p", "{prompt}"]},
-        "config": {"path": "~/.grok/config.json", "format": "json", "model_key": None},
+        "config": {"path": "~/.grok/config.toml", "format": "toml-section",
+                   "model_key": "models.default"},
         "install": "npm install -g @xai-official/grok",
         "upgrade": "npm install -g @xai-official/grok@latest",
         "default_enabled": False,
     },
     {
         "id": "pi", "name": "Pi", "cli_group": "installable",
-        "note": "Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-works/ 前缀",
+        "note": "Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-works/ 前缀；"
+                "默认模型在 ~/.pi/agent/settings.json 的 defaultModel（须配 defaultProvider 才能解析）",
         "detect": {"cli": "pi"},
         "orch": {"kind": "generic", "command": "pi", "argv_template": ["-p", "{prompt}"]},
-        "config": {"path": "~/.pi/config.json", "format": "json", "model_key": None},
+        "config": {"path": "~/.pi/agent/settings.json", "format": "json-path",
+                   "model_key": "defaultModel",
+                   "model_extra_keys": {"defaultProvider": ""}},
         "install": "npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
         "upgrade": "npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest",
         "default_enabled": False,
@@ -181,8 +197,22 @@ LAUNCH_PATCH = {    "codex-cli": {"kind": "console", "command": "codex"},
 # config.format 修正（{id: config 字段}）：load() 幂等覆盖。qwen 的 settings.json
 # 顶层 "model" 是 legacy（被忽略并告警）——老用户的 catalog.json 里 qwencode 还是
 # format=json，不修正的话每次打开都会写无效字段；覆盖无风险（写了也不生效）。
+# grok/kimi/mimo/pi/openclaw 同理：真实落点均经官方文档/源码查证（详见各条目 note
+# 与 tests/test_grok_build.py），早期错标（不存在的文件/错误键名）导致保存默认模型
+# 必然失败或写进无效键，覆盖无风险。
 CONFIG_PATCH = {
     "qwencode": {"path": "~/.qwen/settings.json", "format": None, "model_key": None},
+    "grok-build": {"path": "~/.grok/config.toml", "format": "toml-section",
+                   "model_key": "models.default"},
+    "kimi-code": {"path": "~/.kimi-code/config.toml", "format": "toml-section",
+                  "model_key": "default_model"},
+    "mimo-code": {"path": "~/.config/mimocode/mimocode.jsonc", "format": "jsonc",
+                  "model_key": "model"},
+    "pi": {"path": "~/.pi/agent/settings.json", "format": "json-path",
+           "model_key": "defaultModel",
+           "model_extra_keys": {"defaultProvider": ""}},
+    "openclaw": {"path": "~/.openclaw/openclaw.json", "format": "json-path",
+                 "model_key": "agents.defaults.model.primary"},
 }
 
 

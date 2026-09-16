@@ -405,6 +405,35 @@ def _parse_codex_jsonl(stdout):
     return text, usage, sid
 
 
+def _codex_fail_msg(stdout):
+    """从 JSONL 事件流提取终态失败消息；无失败返回 ""。
+
+    2026-09-16 实测：配额/限流只出现在 error 与 turn.failed 事件里，旧解析器
+    两者都丢——进程退出码非 0 时错误串里只剩 "Reading prompt from stdin..."，
+    _quota_error/_transient_error 判不出可降级，健康后继模型从未被尝试。
+    Reconnecting... 是 CLI 内部重试噪音（可能自愈），不取；turn.failed 是
+    终态优先于裸 error（后者取最后一条兜底）。
+    """
+    terminal, last_err = "", ""
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except Exception:
+            continue
+        t = ev.get("type")
+        if t == "turn.failed":
+            e = ev.get("error")
+            terminal = e.get("message") if isinstance(e, dict) else str(e or "")
+        elif t == "error":
+            m = str(ev.get("message") or "")
+            if m and "reconnecting" not in m.lower():
+                last_err = m
+    return terminal or last_err
+
+
 def _parse_claude_json(stdout):
     try:
         data = json.loads(stdout)
@@ -463,6 +492,35 @@ def _transient_error(err):
     return any(k in err for k in _TRANSIENT)
 
 
+# 欠费/配额耗尽：换 KEY 与换厂商都该继续（同厂商另一账号往往还能用）。
+# 与 modelhub._QUOTA_HINTS 同源，这里独立一份避免 core 模块间循环依赖。
+_QUOTA = ("insufficient", "quota", "balance", "credit", "billing", "arrears",
+          "payment required", "402", "欠费", "余额", "额度", "exceeded")
+
+
+def _quota_error(err):
+    err = (err or "").lower()
+    return any(k in err for k in _QUOTA)
+
+
+def _report_key(att, out):
+    """把这次尝试的结果回写到 KEY 账本：欠费/失败 → 冷却，成功 → 清错误。
+
+    回写失败绝不能影响主流程（账本是旁路），所以整体吞异常。
+    """
+    pid, kid = att.get("provider_id") or "", att.get("key_id") or ""
+    if not (pid and kid):
+        return
+    try:
+        from . import modelhub
+        if out.get("ok"):
+            modelhub.note_key_ok(pid, kid)
+        elif out.get("error"):
+            modelhub.note_key_error(pid, kid, out["error"])
+    except Exception:
+        pass
+
+
 def _classify_failure(res, *, parsed=None, kind="", attempt_done=False, empty_output=False):
     """根据 run_process 结果 + 解析结果，返回 ErrorCode 字符串。
 
@@ -506,6 +564,9 @@ def _resolve_attempts(agent):
 
     优先用跨厂商链 call_chain（每条自带 env / codex_provider，来自不同供应商）；
     无链时退回 model + model_fallbacks（同一 CLI 进程内换 -m，沿用 agent 级注入）。
+
+    链条目可能带 key_id/provider_id（同一厂商多把 KEY 展开成的多条）——失败时
+    据此把「哪把 KEY 不行」回写冷却，后续解析自动切备用。
     """
     chain = agent.get("call_chain") or []
     if chain:
@@ -513,12 +574,14 @@ def _resolve_attempts(agent):
                  "env": dict(e.get("env") or {}),
                  "from_chain": True,
                  "own_cp": "codex_provider" in e,
-                 "codex_provider": e.get("codex_provider")} for e in chain]
+                 "codex_provider": e.get("codex_provider"),
+                 "provider_id": e.get("provider_id") or "",
+                 "key_id": e.get("key_id") or ""} for e in chain]
     base_model = agent.get("model")
     fb = [m for m in (agent.get("model_fallbacks") or []) if m and m != base_model]
     models_to_try = ([base_model] if base_model else []) + fb
     return [{"model": m or None, "env": {}, "from_chain": False, "own_cp": False,
-             "codex_provider": None}
+             "codex_provider": None, "provider_id": "", "key_id": ""}
             for m in (models_to_try or [None])[:3]]
 
 
@@ -689,10 +752,18 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                    "tokens": 0, "usage": None, "error": "", "error_code": "",
                    "sid": "", "raw": res, "kind": kind, "model": att["model"]}
             if not res["ok"]:
-                tail = (res["stderr"] or res["stdout"] or "")[-500:]
+                # stderr 与 stdout 都要进错误串：codex 把 "Reading prompt from
+                # stdin..." 打在 stderr，真正的配额/限流错误全在 stdout 的 JSONL
+                # 里——只取其一会让 _quota_error/_transient_error 判空。
+                tail = ((res["stderr"] or "") + "\n" + (res["stdout"] or "")).strip()[-600:]
                 out["error"] = (("超时" if res["timed_out"] else "取消" if res["cancelled"]
                                  else "退出码 %s" % res["exit_code"])
                                 + ("；stderr/stdout: " + tail if tail else ""))
+                if kind == "codex":
+                    fm = _codex_fail_msg(res["stdout"])
+                    if fm:
+                        # 事件流终态错误比原始 JSONL 尾部可读，也是链降级判定依据
+                        out["error"] = "codex: %s（退出码 %s）" % (fm, res["exit_code"])
                 # 5D+2D：错误码归一
                 if kind == "claude":
                     parsed_err = _parse_claude_json(res["stdout"] or "")
@@ -704,9 +775,16 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 out["text"], out["usage"], out_sid = _parse_codex_jsonl(res["stdout"])
                 out["sid"] = out_sid  # §07 T1.1：会话 id 供 revise/fix 复用
                 out["tokens"] = out["usage"]["total"]
-                if not out["text"]:  # 事件流解析失败时退化为取 stdout 尾部
+                # 退出码 0 不代表成功：配额耗尽时 turn.failed 收尾、进程仍正常退出，
+                # 不判失败的话编排者会把错误信息当成果往下传
+                fm = _codex_fail_msg(res["stdout"])
+                if fm:
+                    out["ok"] = False
+                    out["error"] = "codex: %s" % fm
+                    out["error_code"] = ErrorCode.VENDOR_ERROR
+                elif not out["text"]:  # 事件流解析失败时退化为取 stdout 尾部
                     out["text"] = res["stdout"][-2000:]
-                if not out["text"]:
+                if not out["text"] and out["ok"]:
                     out["error_code"] = _classify_failure(res, kind="codex", empty_output=True)
             elif kind == "claude":
                 parsed = _parse_claude_json(res["stdout"])
@@ -735,11 +813,13 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 if not out["text"]:
                     out["error_code"] = _classify_failure(res, kind=kind, empty_output=True)
             break
+        _report_key(att, out)
         if out["ok"] or ai == len(attempts) - 1:
             return out
-        if not _transient_error(out.get("error")):
+        # 瞬态网络错误 → 换下一条；欠费/配额耗尽同样换（可能是同厂商的备用 KEY，
+        # 也可能是另一家厂商）——账单断了死磕同一把 KEY 没有任何意义。
+        if not (_transient_error(out.get("error")) or _quota_error(out.get("error"))):
             return out  # 非瞬态（取消/超时/解析失败）不降级
-        # 瞬态错误 → 换下一条（可能是另一个厂商的模型）
     return out
 
 
