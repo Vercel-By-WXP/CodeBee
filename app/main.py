@@ -310,7 +310,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/market":
                 return self._json(200, market.view())
             if path == "/api/market/remote":
-                return self._json(200, market_remote.view())
+                q = parse_qs(urlparse(self.path).query)
+                return self._json(200, market_remote.view(
+                    offset=(q.get("offset") or ["0"])[0],
+                    limit=(q.get("limit") or [""])[0],
+                    source=(q.get("source") or [""])[0],
+                    q=(q.get("q") or [""])[0]))
             return self._json(404, {"error": "unknown api"})
         # 静态文件：单文件或 UI 子目录文件（如 icons/icon-192.png）；
         # _static 内的 parents 校验确保解析后仍在 UI_DIR 内，防穿越
