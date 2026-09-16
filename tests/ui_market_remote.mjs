@@ -164,19 +164,22 @@ async function main() {
     const hasInstall = await evalJs(`[...document.querySelectorAll("#mkr-grid .mk-card button.primary")].length`);
     check("仅 1 个可安装按钮", hasInstall === 1, "install=" + hasInstall);
 
-    // 4) 来源筛选：选 ZCode 官方后仍 4 条（唯一来源），计数不变
+    // 4) 来源筛选（服务端过滤，change 直接触发重查）：唯一来源仍 4 条
     await evalJs(`(() => { const s = document.getElementById("mkr-source"); s.value = "zcode"; s.dispatchEvent(new Event("change")); })()`);
-    await sleep(300);
+    await sleep(900);
     const cnt2 = await evalJs(`document.getElementById("mk-count").textContent`);
     check("按来源筛选后计数仍 4", cnt2.includes("4"), cnt2);
 
-    // 5) 搜索过滤：搜 clean 只剩 1
+    // 5) 搜索（服务端过滤 + 350ms 防抖）：搜 clean 只剩 1
     await evalJs(`(() => { const s = document.getElementById("mkr-search");
       s.value = "clean"; s.dispatchEvent(new Event("input")); })()`);
-    await sleep(300);
+    await sleep(1200);
     const cnt3 = await evalJs(`document.getElementById("mk-count").textContent`);
-    check("搜索 clean 后计数 1", cnt3.includes("1"), cnt3);
+    check("搜索 clean 后计数 1（已加载 1 / 共 1）", cnt3.includes("1") && cnt3.includes("已加载"), cnt3);
+    // 全部加载完（4 < 60/页）：续页区隐藏
+    check("无更多页时续页区隐藏", await evalJs(`document.getElementById("mkr-more").classList.contains("hidden")`));
     await evalJs(`(() => { const s = document.getElementById("mkr-search"); s.value = ""; s.dispatchEvent(new Event("input")); })()`);
+    await sleep(1000);
 
     // 6) 安装失败路径：可装条目的 zip 地址指向 127.0.0.1 → SSRF 网关确定性拒绝，
     //    toast 报错（验证整条 安装→服务端→错误提示 链路，且不外联）

@@ -49,9 +49,18 @@ async function main() {
       console.log("  ⚠ total=0：多半撞了端口双绑（Windows SO_REUSEADDR），"
         + "用 netstat 查 " + PORT + " 的 PID 归属后按 PID 清理再试");
     }
-    check("API 五源目录就绪（total>500）", remote.total > 500, "total=" + remote.total);
-    check("每源限 60 下发", remote.entries.length <= 5 * 60 + 5 && remote.entries.length > 100,
-      "下发=" + remote.entries.length);
+    check("API 五源目录就绪（过滤后全量 total>500）", remote.total > 500, "total=" + remote.total);
+    check("默认每页 60 下发", remote.entries.length === 60 && remote.has_more === true,
+      "本页=" + remote.entries.length + " total=" + remote.total);
+    const page2 = await fetch(SERVICE + "/api/market/remote?offset=60&limit=60").then((r) => r.json());
+    const overlap = page2.entries.filter((e) => remote.entries.some((x) => x.id === e.id));
+    check("第二页不重叠", overlap.length === 0 && page2.entries.length === 60, "重叠=" + overlap.length);
+    const srcAll = await fetch(SERVICE + "/api/market/remote?source=anthropic").then((r) => r.json());
+    check("来源筛选返回全量（不再被配额截断）", srcAll.total > 200 && srcAll.total <= 300,
+      "anthropic total=" + srcAll.total);
+    const qAll = await fetch(SERVICE + "/api/market/remote?q=commit").then((r) => r.json());
+    check("搜索跨全量命中", qAll.total >= 1 && qAll.entries.every(
+      (e) => (e.name + e.title + e.desc).toLowerCase().includes("commit")), "commit total=" + qAll.total);
 
     edge = spawn(EDGE_CANDIDATES.find(() => true), [
       "--headless=new", "--disable-gpu", "--no-first-run",
@@ -99,37 +108,50 @@ async function main() {
     await evalJs(`mkSetView("remote"); "ok"`);
     await sleep(1200);
 
-    // 来源下拉：真实计数进标签（条数会随上游实时变动，只断言形态）
+    // 来源下拉：真实计数进标签
     const srcLabels = await evalJs(`[...document.getElementById("mkr-source").options].map(o => o.textContent).join("|")`);
-    check("下拉含 ClawHub 与计数", /ClawHub（OpenClaw 生态）（\d+）/.test(srcLabels) && !/ClawHub（OpenClaw 生态）（0）/.test(srcLabels), srcLabels);
-    check("下拉含 Anthropic 生态（296）", /Anthropic 生态（296）/.test(srcLabels), srcLabels);
+    check("下拉含五源与计数", srcLabels.includes("ClawHub") && srcLabels.includes("ZCode 官方")
+      && srcLabels.includes("Anthropic 生态"), srcLabels.slice(0, 160));
 
-    // 卡片规模与灰显规模（每源 60 配额下灰显占比被稀释，只要求成规模出现）
+    // 卡片规模：首屏只渲第一页（60），滚动懒加载续页
     const cards = await evalJs(`document.querySelectorAll("#mkr-grid .mk-card").length`);
-    check("真实目录渲染 200+ 卡片", cards >= 200, "cards=" + cards);
+    check("首屏渲第一页 60 卡片", cards === 60, "cards=" + cards);
     const gray = await evalJs(`document.querySelectorAll("#mkr-grid .mk-card.blocked").length`);
-    check("真实不适配条目灰显成规模", gray >= 20, "gray=" + gray + "/" + cards);
+    check("真实不适配条目灰显成规模", gray >= 5, "gray=" + gray + "/" + cards);
     const installBtns = await evalJs(`[...document.querySelectorAll("#mkr-grid .mk-card button.primary")].length`);
-    check("可安装按钮若干", installBtns > 20, "install=" + installBtns);
+    check("可安装按钮若干", installBtns >= 10, "install=" + installBtns);
+    const cntLoad = await evalJs(`document.getElementById("mk-count").textContent`);
+    check("计数「已加载 60 / 共 N」", /已加载\s*60\s*\/\s*共\s*\d+/.test(cntLoad), cntLoad);
+    check("续页区可见（还有更多）", await evalJs(`!document.getElementById("mkr-more").classList.contains("hidden")`));
 
-    // 截断提示
-    const meta = await evalJs(`document.getElementById("mkr-meta").textContent`);
-    check("元信息含更新时间与截断提示", meta.includes("目录更新于") && meta.includes("60 条"), meta.slice(0, 120));
-
-    // 真实搜索：commit 应有多条
+    // 真实搜索 commit（服务端跨全量过滤 + 防抖）：结果数应远超本页可见
     await evalJs(`(() => { const s = document.getElementById("mkr-search");
       s.value = "commit"; s.dispatchEvent(new Event("input")); })()`);
-    await sleep(500);
+    await sleep(1200);
     const cntSearch = await evalJs(`document.getElementById("mk-count").textContent`);
-    check("真实搜索 commit 有结果", !cntSearch.includes("共 0"), cntSearch);
+    const cardsSearch = await evalJs(`document.querySelectorAll("#mkr-grid .mk-card").length`);
+    check("真实搜索 commit 命中跨全量（>3）", !cntSearch.includes("共 0") && Number((cntSearch.match(/共\s*(\d+)/) || [])[1]) > 3 && cardsSearch > 3,
+      cntSearch);
     await evalJs(`(() => { const s = document.getElementById("mkr-search"); s.value = ""; s.dispatchEvent(new Event("input")); })()`);
-    await sleep(300);
+    await sleep(1200);
 
-    // ClawHub 来源筛选：恰好 60
-    await evalJs(`(() => { const s = document.getElementById("mkr-source"); s.value = "clawhub"; s.dispatchEvent(new Event("change")); })()`);
-    await sleep(500);
-    const cntClaw = await evalJs(`document.getElementById("mk-count").textContent`);
-    check("筛选 ClawHub 计数 60", cntClaw.includes("60"), cntClaw);
+    // 滚动懒加载：点「加载更多」→ 卡片变 120，计数同步
+    await evalJs(`document.getElementById("mkr-more-btn").click(); "ok"`);
+    await sleep(1200);
+    const cards2 = await evalJs(`document.querySelectorAll("#mkr-grid .mk-card").length`);
+    check("加载更多→120 卡片", cards2 === 120, "cards=" + cards2);
+    const cntMore = await evalJs(`document.getElementById("mk-count").textContent`);
+    check("计数→已加载 120", cntMore.includes("120"), cntMore);
+
+    // 滚到底：哨兵进视野自动续页
+    await evalJs(`document.querySelector("main").scrollTop = document.querySelector("main").scrollHeight; "ok"`);
+    await sleep(1500);
+    const cards3 = await evalJs(`document.querySelectorAll("#mkr-grid .mk-card").length`);
+    check("滚到底自动续页（>120）", cards3 > 120, "cards=" + cards3);
+
+    // 元信息只剩更新时间（截断提示已随分页退役）
+    const meta = await evalJs(`document.getElementById("mkr-meta").textContent`);
+    check("元信息含更新时间", meta.includes("目录更新于"), meta.slice(0, 120));
 
     await shot("market-remote-live.png");
     console.log("\n截图: .ui-shots/market-remote-live.png");

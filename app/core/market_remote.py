@@ -69,8 +69,9 @@ SOURCES = [
               "https://clawhub.ai/api/v1/trending"]},
 ]
 
-# 每来源在视图里最多展示的条目数（anthropic 生态 286 条，全量下发太重）
-_VIEW_PER_SOURCE = 60
+# 外部目录视图：服务端对全量缓存过滤后分页下发（缓存全在本地，翻页零成本）。
+# 单页默认 60，UI 滚动到底自动续下一页。
+_PAGE_LIMIT = 60
 
 _CLAWHUB_BASE = "https://clawhub.ai/api/v1"
 _CLAWHUB_PAGES = 4        # 技能列表最多翻页数（50/页，覆盖最新 ~200 个）
@@ -292,10 +293,11 @@ def _entries_from_cache(cache=None):
     return entries
 
 
-def view(limit_per_source=_VIEW_PER_SOURCE):
-    """外部目录视图：来源元信息 + 统一条目（给 UI/API）。
-    每来源最多 limit_per_source 条（按名排序截断），防止单一大源把
-    其他来源挤出下发窗口；搜索/筛选在客户端对已下发条目做。"""
+def view(offset=0, limit=_PAGE_LIMIT, source=None, q=None):
+    """外部目录视图（服务端过滤 + 分页）。缓存全在本地，对全量条目过滤再切页
+    零成本——搜索/来源筛选不再受「已加载页」限制，滚动翻页逛完全部目录。
+    返回 {sources, entries(本页), total(过滤后全量), offset, has_more,
+    categories}。"""
     cache = _load_cache()
     entries = _entries_from_cache(cache)
     sources = []
@@ -308,14 +310,19 @@ def view(limit_per_source=_VIEW_PER_SOURCE):
     for e in entries:
         if e["category"] and e["category"] not in cats:
             cats.append(e["category"])
-    by_src, out = {}, []
-    for e in entries:
-        n = by_src.get(e["source_id"], 0)
-        if n < limit_per_source:
-            out.append(e)
-            by_src[e["source_id"]] = n + 1
-    return {"sources": sources, "entries": out, "total": len(entries),
-            "truncated": len(out) < len(entries), "categories": cats}
+    if source:
+        entries = [e for e in entries if e["source_id"] == source]
+    qq = str(q or "").strip().lower()
+    if qq:
+        entries = [e for e in entries if qq in (e["name"] or "").lower()
+                   or qq in (e["title"] or "").lower()
+                   or qq in (e["desc"] or "").lower()]
+    offset = max(0, int(offset or 0))
+    limit = max(1, min(int(limit or _PAGE_LIMIT), 500))
+    page = entries[offset:offset + limit]
+    return {"sources": sources, "entries": page, "total": len(entries),
+            "offset": offset, "has_more": offset + limit < len(entries),
+            "categories": cats}
 
 
 def _fetch_clawhub_catalog():

@@ -569,6 +569,59 @@ class TestMarketRemoteGhFiles(BaseTest):
         self.assertEqual(len(cdn_calls), 2, cdn_calls)   # 前缀过滤：只有 2 个文件
 
 
+class TestMarketRemotePaging(BaseTest):
+    """view() 服务端分页与过滤：切页 has_more、搜索、来源筛选、组合过滤。"""
+
+    def runTest(self):
+        from app.core import market_remote as mr
+        cache = self.data_dir / "market_remote"
+        cache.mkdir(parents=True)
+        plugins = [{"name": "alpha-%d" % i, "description": "desc %d" % i,
+                    "source": {"source": "clawhub", "slug": "alpha-%d" % i}}
+                   for i in range(5)]
+        plugins.append({"name": "beta", "description": "searchable needle",
+                        "source": {"source": "clawhub", "slug": "beta"}})
+        (cache / "zcode.json").write_text(json.dumps(
+            {"fetched_at": "t", "url": "", "catalog": {"plugins": plugins}},
+            ensure_ascii=False), encoding="utf-8")
+
+        # 全量一页装不下：切页与 has_more
+        p1 = mr.view(offset=0, limit=2)
+        self.assertEqual(len(p1["entries"]), 2)
+        self.assertEqual(p1["total"], 6)
+        self.assertTrue(p1["has_more"])
+        p3 = mr.view(offset=4, limit=2)
+        self.assertEqual(len(p3["entries"]), 2)
+        self.assertFalse(p3["has_more"])
+        p4 = mr.view(offset=6, limit=2)
+        self.assertEqual(p4["entries"], [])
+        # 页与页不重叠
+        ids1 = {e["id"] for e in p1["entries"]}
+        ids3 = {e["id"] for e in p3["entries"]}
+        self.assertFalse(ids1 & ids3)
+
+        # 搜索（大小写不敏感，命中 name/desc）
+        hit = mr.view(q="NEEDLE")
+        self.assertEqual(hit["total"], 1)
+        self.assertEqual(hit["entries"][0]["name"], "beta")
+        # 来源筛选
+        only = mr.view(source="zcode")
+        self.assertEqual(only["total"], 6)
+        none = mr.view(source="anthropic")
+        self.assertEqual(none["total"], 0)
+        self.assertFalse(none["has_more"])
+        # 组合：搜索 + 分页
+        combo = mr.view(q="alpha-", limit=2)
+        self.assertEqual(combo["total"], 5)
+        self.assertEqual(len(combo["entries"]), 2)
+        self.assertTrue(combo["has_more"])
+
+        # 上限夹紧：limit 超界按 500 封顶、offset 负数归 0
+        big = mr.view(offset=-5, limit=9999)
+        self.assertEqual(len(big["entries"]), 6)
+        self.assertEqual(big["offset"], 0)
+
+
 class TestMarketRemoteClawhub(BaseTest):
     def runTest(self):
         from app.core import market_remote as mr
