@@ -271,6 +271,44 @@ class TestSteeredPlanning(BaseTest):
         self.assertEqual(len(store.peek_messages(rid)), 1)
 
 
+class TestRetractMessage(BaseTest):
+    """撤回未下达指令：删未消费的、拒删已送达的、幂等与边界。"""
+
+    def runTest(self):
+        from app.core import store
+        run = store.create_run("orchestration", "撤回测试")
+        rid = run["id"]
+        m1 = store.add_message(rid, "这条会被撤回")
+        m2 = store.add_message(rid, "这条会被送达")
+        self.assertIsNotNone(m1)
+        self.assertIsNotNone(m2)
+
+        # 撤回未消费：从信箱删除，落盘同步
+        ok, err = store.retract_message(rid, m1["id"])
+        self.assertTrue(ok, err)
+        msgs = store.get_run(rid)["messages"]
+        self.assertEqual([m["text"] for m in msgs], ["这条会被送达"])
+        disk = json.loads((store.paths.RUNS_DIR / rid / "run.json")
+                          .read_text(encoding="utf-8"))
+        self.assertEqual(len(disk["messages"]), 1)
+
+        # 撤回不存在的 id：拒绝并给原因
+        ok, err = store.retract_message(rid, "999999")
+        self.assertFalse(ok)
+        self.assertIn("不在信箱", err)
+
+        # drain 后消息已送达：拒撤，回执信息进 err（界面上该撤的只剩未消费）
+        store.drain_messages(rid, consumed_by={"step": 3, "role": "draft-c1"})
+        ok, err = store.retract_message(rid, m2["id"])
+        self.assertFalse(ok)
+        self.assertIn("已随步骤", err)
+        self.assertIn("无法撤回", err)
+
+        # 空 id / 不存在的 run：安全拒绝不炸
+        self.assertEqual(store.retract_message(rid, None), (False, "缺少消息 id"))
+        self.assertFalse(store.retract_message("r-nope", "000001")[0])
+
+
 if __name__ == "__main__":
     import unittest as _u
     _u.main()

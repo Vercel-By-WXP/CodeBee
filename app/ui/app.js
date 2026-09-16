@@ -4099,7 +4099,10 @@ function renderDirector(run, active) {
       ? '<span class="m-atts">' + t("附件：") + m.attachments.map(esc).join(t("、")) + "</span>" : "") +
     (m.consumed && m.consumed_by && m.consumed_by.step
       ? '<span class="m-atts">' + t("已随步骤送达：") + "#" + Number(m.consumed_by.step) +
-        " " + esc(m.consumed_by.role || "") + "</span>" : "") +
+        " " + esc(m.consumed_by.role || "") + "</span>"
+      : (m.consumed ? "" :
+        '<button class="m-retract ghost small" title="' + esc(t("尚未送达，可撤回")) +
+        '" onclick="dirRetract(\'' + esc(String(m.id || "")) + '\')">' + t("撤回") + "</button>")) +
     "</div>").join("");
   const hint = $("rd-direct-hint");
   if (hint) hint.textContent = run.paused ? t("已暂停：指令入箱，放行后随下一步送达")
@@ -4138,6 +4141,23 @@ window.dirSend = async function () {
       d.run.status === "running" || d.run.status === "queued");
   } catch (e) { toast(t("发送失败：") + e.message, true); }
   finally { btn.disabled = false; }
+};
+
+/* 撤回尚未下达的指令：drain 前从信箱删除；已随步骤送达的后端会拒绝。 */
+window.dirRetract = async function (msgId) {
+  if (!dirRunId || !msgId) return;
+  try {
+    await api("/api/runs/" + encodeURIComponent(dirRunId) + "/messages/retract", {
+      method: "POST", body: JSON.stringify({ id: msgId }),
+    });
+    toast(t("指令已撤回，不会送达执行"));
+  } catch (e) { toast(t("撤回失败：") + e.message, true); }
+  // 本地立即重拉该 run 重画消息流（不等 SSE 回程）
+  try {
+    const d = await api("/api/runs/" + encodeURIComponent(dirRunId));
+    if (d.run && dirRunId === d.run.id) renderDirector(d.run,
+      d.run.status === "running" || d.run.status === "queued");
+  } catch (e) { /* 下一轮轮询兜底 */ }
 };
 
 function bindDirector() {

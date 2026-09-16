@@ -406,6 +406,9 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/runs/([^/]+)/messages$", path)
         if m:
             return self._api_add_message(m.group(1))
+        m = re.match(r"^/api/runs/([^/]+)/messages/retract$", path)
+        if m:
+            return self._api_retract_message(m.group(1))
         m = re.match(r"^/api/runs/([^/]+)/pause$", path)
         if m:
             # 暂停/放行：标志位挂在下一个步骤开始前；取消不必先解除暂停
@@ -943,6 +946,15 @@ class Handler(BaseHTTPRequestHandler):
         if not msg:
             return self._json(400, {"error": "运行不存在或消息非法"})
         return self._json(200, {"ok": True, "message": msg})
+
+    def _api_retract_message(self, run_id):
+        """撤回一条尚未下达的指令（drain 前从信箱删除）。已送达的撤不回——
+        那是审计事实。写接口已在 do_POST 统一做过设备控制。"""
+        body = self._body() or {}
+        ok, err = store.retract_message(run_id, body.get("id"))
+        if not ok:
+            return self._json(400, {"error": err})
+        return self._json(200, {"ok": True})
 
     def _api_control(self):
         body = self._body()

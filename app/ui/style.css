@@ -2426,3 +2426,7 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
   border: 1px solid rgba(220, 38, 38, 0.45);
 }
 .modal-foot button.danger:hover { background: rgba(220, 38, 38, 0.22); }
+
+/* 运行中指挥：未消费指令的撤回按钮（贴右侧，hover 提亮） */
+.rd-msg .m-retract { float: right; margin-left: 8px; padding: 0 7px; font-size: 11.5px; opacity: .8; }
+.rd-msg .m-retract:hover { opacity: 1; color: #dc2626; border-color: rgba(220, 38, 38, .45); }

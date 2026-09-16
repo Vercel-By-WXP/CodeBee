@@ -232,6 +232,33 @@ async function main() {
     })()`);
     check("送达去向显示（#4 critique-c2）", (ui4 || "").includes("#4") && (ui4 || "").includes("critique-c2"), ui4);
 
+    // F3) 撤回未下达指令：未消费才出按钮 → 点击走真实 HTTP → 落盘删除；已消费不出按钮
+    const ui5 = await evalJson(`(async () => {
+      renderDirector({ id: "${RUN_ID}", status: "running", messages: [
+        { id: "000001", text: "开场说明（已消费）", sender: "种子", attachments: [],
+          created_at: "00:00:01", consumed: true },
+        { id: "000002", text: "要撤回的指令", sender: "测试机", attachments: [],
+          created_at: "00:00:02", consumed: false },
+      ] }, true);
+      await new Promise((r) => setTimeout(r, 100));
+      const btns = document.querySelectorAll("#rd-msgs .m-retract");
+      const out = { btnCount: btns.length, btnText: (btns[0] || {}).textContent || "" };
+      if (btns.length === 1) { btns[0].click(); await new Promise((r) => setTimeout(r, 700)); }
+      // dirRetract 会重拉 run 再 renderDirector：种子的 run 是终态（done），
+      // 按设计指挥区整体隐藏（终态不给误导性输入框）；删除生效以下方落盘断言为准。
+      out.boxHiddenAfter = document.getElementById("rd-direct").classList.contains("hidden");
+      return out;
+    })()`);
+    check("未消费消息带撤回按钮（已消费没有）", ui5.btnCount === 1, ui5.btnCount);
+    check("按钮文案为「撤回」", (ui5.btnText || "").trim() === "撤回", ui5.btnText);
+    await sleep(300);
+    const disk4 = JSON.parse(readFileSync(join(runsDir, "run.json"), "utf-8"));
+    check("撤回后信箱落盘删除",
+      (disk4.messages || []).length === 1 && !(disk4.messages || []).some((m) => m.text === "要撤回的指令"),
+      JSON.stringify((disk4.messages || []).map((m) => m.text)));
+    check("点击撤回触发 dirRetract 重渲染（终态 run → 指挥区隐藏）",
+      ui5.boxHiddenAfter === true, JSON.stringify(ui5));
+
     // G) pause 端点：标志位落 run.json + state 可见
     const pz = await evalJson(`(async () => {
       const a = await api("/api/runs/${RUN_ID}/pause", { method: "POST", body: JSON.stringify({ paused: true }) });
