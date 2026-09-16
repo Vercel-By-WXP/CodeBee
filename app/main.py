@@ -28,6 +28,22 @@ MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=ut
         ".ico": "image/x-icon", ".json": "application/manifest+json; charset=utf-8",
         ".webmanifest": "application/manifest+json; charset=utf-8"}
 
+
+def _utf8_bytes(data):
+    """文本预览出口的编码守卫：字节流非合法 UTF-8 时按 GBK 解码后重编码为
+    UTF-8 再发。子代理在中文 Windows 上可能把工作区文件落成 GBK，直接透传
+    会让声明 charset=utf-8 的浏览器预览整片乱码（与 pipeline 读防线同一问题
+    的服务端出口面）。"""
+    try:
+        data.decode("utf-8")
+        return data
+    except UnicodeDecodeError:
+        pass
+    try:
+        return data.decode("gbk").encode("utf-8")
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return data.decode("utf-8", "replace").encode("utf-8")
+
 PORT = 8765  # main() 启动时更新；/api/connect 组装扫码地址用
 
 # 侧栏「查看文件」/「目录浏览」跳过的噪音目录（与 store 的习惯一致）
@@ -253,6 +269,8 @@ class Handler(BaseHTTPRequestHandler):
                 # 文本类扩展名直接在浏览器里看内容；未知二进制才触发下载
                 if ext in (".md", ".txt", ".log", ".csv", ".yml", ".yaml", ".ini", ".toml"):
                     ctype = "text/plain; charset=utf-8"
+                if ctype.startswith("text/"):
+                    data = _utf8_bytes(data)
                 return self._send(200, data, ctype)
             m = re.match(r"^/api/runs/([^/]+)/log$", path)
             if m:
@@ -315,7 +333,8 @@ class Handler(BaseHTTPRequestHandler):
         # 例外（配置管理类操作全局生效，不被「哪台设备在操作」挡住，
         # 否则告警弹框里的按钮在多端场景会静默 423 失败）：
         if path in ("/api/health/op", "/api/models/provider-op", "/api/models/model-op",
-                    "/api/models/test-provider", "/api/models/test-model"):
+                    "/api/models/test-provider", "/api/models/test-model",
+                    "/api/models/probe-wire"):
             pass                                    # 落到下方各自路由
         else:
             deny = self._deny_control()
@@ -396,9 +415,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "paused": bool(body.get("paused"))})
         m = re.match(r"^/api/runs/([^/]+)/cancel$", path)
         if m:
-            ok = jobs.cancel(m.group(1))
-            # 标记"用户主动取消"：自动续跑必须尊重这个意图，不得把它续上
+            # 先落「用户主动取消」标记再置事件：自动续跑必须尊重这个意图不得续上；
+            # 顺序保证起跑方读到已置位事件时，标记一定已写入（排队取消的兜底依赖它）。
             store.update_run(m.group(1), cancelled_by_user=True)
+            ok = jobs.cancel(m.group(1))
             return self._json(200, {"ok": ok})
         m = re.match(r"^/api/runs/([^/]+)/delete$", path)
         if m:
@@ -502,6 +522,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/models/test-provider":
             from core import modelhub
             return self._json(200, modelhub.test_provider(self._body().get("id") or ""))
+        if path == "/api/models/probe-wire":
+            # 适配测试：实测供应商另一条 wire 协议（同密钥），结果存 wire_caps
+            from core import modelhub
+            caps, note = modelhub.probe_wire_caps(self._body().get("id") or "")
+            return self._json(200, {"ok": True, "wire_caps": caps, "note": note})
         if path == "/api/models/test-model":
             from core import modelhub
             body = self._body()
@@ -847,6 +872,8 @@ class Handler(BaseHTTPRequestHandler):
         if ext in (".md", ".txt", ".log", ".csv", ".yml", ".yaml", ".json", ".ini", ".toml",
                    ".py", ".js", ".ts", ".html", ".css", ".svg"):
             ctype = "text/plain; charset=utf-8"
+        if ctype.startswith("text/"):
+            data = _utf8_bytes(data)
         return self._send(200, data, ctype)
 
     def _api_git_info(self):

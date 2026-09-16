@@ -247,7 +247,15 @@ def _prev_serial_story(task):
             if m and int(m.group(1)) > best_i:
                 best, best_i = p, int(m.group(1))
         if best_i:
-            tail = best.read_text(encoding="utf-8", errors="replace")[-500:].strip()
+            # GBK 兼容：CLI 子代理在中文 Windows 上可能把章稿落成 GBK
+            b = best.read_bytes()
+            try:
+                tail = b.decode("utf-8")[-500:].strip()
+            except UnicodeDecodeError:
+                try:
+                    tail = b.decode("gbk")[-500:].strip()
+                except UnicodeDecodeError:
+                    tail = b.decode("utf-8", "replace")[-500:].strip()
     except OSError:
         pass
     return "\n".join(lines), max(best_i, 0), book_title, tail

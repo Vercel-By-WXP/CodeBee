@@ -463,7 +463,7 @@ def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
 
 # ---------------------------------------------------------------- 提示词
 
-CODE_IMPL_PROMPT = """你是一名高级工程师，请在当前工作目录中直接完成以下任务（直接修改/创建文件）。
+CODE_IMPL_PROMPT = """你是一名高级工程师，请在当前工作目录中直接完成以下任务（直接修改/创建文件）。创建/写入的文件一律以 UTF-8 编码保存（PowerShell 显式加 -Encoding UTF8，禁止依赖系统默认编码）。
 
 ## 总体目标
 __GOAL__
@@ -479,7 +479,7 @@ __CONTEXT__
 - 完成后只用 3-5 句话总结你改了什么、为什么。
 __VERIFY_HINT__"""
 
-CODE_FIX_PROMPT = """你是一名高级工程师。你之前的实现没有通过验收，请在当前工作目录中直接修复（直接修改/创建文件）。
+CODE_FIX_PROMPT = """你是一名高级工程师。你之前的实现没有通过验收，请在当前工作目录中直接修复（直接修改/创建文件）。创建/写入的文件一律以 UTF-8 编码保存（PowerShell 显式加 -Encoding UTF8，禁止依赖系统默认编码）。
 
 ## 总体目标
 __GOAL__
@@ -799,7 +799,7 @@ def _pick_reviewer_legacy(agents, impl):
 
 # ---------------------------------------------------------------- review 引擎（小说/文档/翻译/调研…通用）
 
-NOVEL_DRAFT_PROMPT = """你是一名专业作者。请在当前工作目录中撰写/修订稿件文件：`__FILE__`（直接写入该文件）。
+NOVEL_DRAFT_PROMPT = """你是一名专业作者。请在当前工作目录中撰写/修订稿件文件：`__FILE__`（直接写入该文件）。文件必须以 UTF-8 编码保存（PowerShell 写文件显式加 -Encoding UTF8，禁止依赖默认编码）。
 
 ## 写作任务
 __GOAL__
@@ -811,7 +811,7 @@ __CONTEXT__
 - 只修改 `__FILE__` 这一个文件；保持 Markdown 结构。
 - 完成后用 3 句话说明本轮写了什么。"""
 
-NOVEL_REVISE_PROMPT = """你是一名专业作者。请根据下方汇总评审意见修订稿件文件：`__FILE__`（直接写入该文件）。
+NOVEL_REVISE_PROMPT = """你是一名专业作者。请根据下方汇总评审意见修订稿件文件：`__FILE__`（直接写入该文件）。文件必须以 UTF-8 编码保存（PowerShell 写文件显式加 -Encoding UTF8，禁止依赖默认编码）。
 
 ## 原始写作任务
 __GOAL__
@@ -868,8 +868,7 @@ def _story_bible(workdir):
     if not _inside(workdir, p) or not os.path.isfile(p):
         return ""
     try:
-        with open(p, encoding="utf-8", errors="replace") as f:
-            txt = f.read(_BIBLE_MAX_CHARS).strip()
+        txt = _read_text_any_enc(p)[:_BIBLE_MAX_CHARS].strip()
     except OSError:
         return ""
     if not txt:
@@ -912,7 +911,7 @@ __OUTLINE__
 
 ---
 ## 本章任务（执行这一条即可）
-- 撰写本书第 __I__ 章，把本章正文写入文件 `__FILE__`（直接写入该文件，只写本章）。
+- 撰写本书第 __I__ 章，把本章正文写入文件 `__FILE__`（直接写入该文件，只写本章）。文件必须以 UTF-8 编码保存：PowerShell 一律显式加 `-Encoding UTF8`（如 `Set-Content -Path __FILE__ -Encoding UTF8`），禁止依赖系统默认编码，否则中文会乱码。
 - 章节标题：__TITLE__
 - 剧情要点：__BEATS__
 - 章末钩子：__HOOK__
@@ -923,7 +922,7 @@ __PREV__
 
 - 写完文件后，最终回复只输出一行：`第 __I__ 章完成（约 __WORDS__ 字）`——不要在回复里复述或解释正文。"""
 
-SERIAL_REVISE_PROMPT = """你是一名网文作者。第 __I__ 章没有通过评审，请修订文件 `__FILE__`（直接改写该文件）。
+SERIAL_REVISE_PROMPT = """你是一名网文作者。第 __I__ 章没有通过评审，请修订文件 `__FILE__`（直接改写该文件）。文件必须以 UTF-8 编码保存（PowerShell 显式加 -Encoding UTF8，禁止依赖默认编码）。
 
 ## 全书目标
 __GOAL__
@@ -952,18 +951,37 @@ __MANUSCRIPT__
 ---"""
 
 
+def _read_text_any_enc(p):
+    """工作区文件读文本：UTF-8 优先，严格解码失败回退 GBK（中文 Windows），
+    再失败按 UTF-8 replace。不回写磁盘——CLI 子代理在中文 Windows 上用
+    PowerShell Set-Content 写章稿缺省落成 GBK，errors="replace" 会把整章
+    中文变成 U+FFFD 并沿前情提要/评审/合并稿扩散，回退 GBK 即可救回。"""
+    with open(p, "rb") as f:
+        b = f.read()
+    try:
+        return b.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return b.decode("gbk")
+    except UnicodeDecodeError:
+        return b.decode("utf-8", "replace")
+
+
 def _chapter_io(workdir, i, mode):
-    """打开第 i 章文件；open 紧邻边界校验，路径越界直接拒绝（形态同 _ms_io）。"""
+    """打开第 i 章文件；open 紧邻边界校验，路径越界直接拒绝（形态同 _ms_io）。
+    读模式兼容 GBK 落盘的章稿（见 _read_text_any_enc）。"""
     p = os.path.abspath(os.path.join(workdir, "chapter-%02d.md" % i))
     if not _inside(workdir, p):
         raise ValueError("章节路径越界: chapter-%02d.md" % i)
+    if mode == "r":
+        return _read_text_any_enc(p)
     return open(p, mode, encoding="utf-8", errors="replace")
 
 
 def _read_chapter(workdir, i):
     try:
-        with _chapter_io(workdir, i, "r") as f:
-            return f.read()
+        return _chapter_io(workdir, i, "r")
     except Exception:
         return ""
 
@@ -974,8 +992,7 @@ def _read_variant(workdir, i, k):
     if not _inside(workdir, p) or not os.path.isfile(p):
         return ""
     try:
-        with open(p, encoding="utf-8", errors="replace") as f:
-            return f.read()
+        return _read_text_any_enc(p)
     except OSError:
         return ""
 
@@ -1678,8 +1695,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
 
     def read_ms():
         try:
-            with _ms_io(workdir, ms_name, "r") as f:
-                return f.read()
+            return _read_text_any_enc(ms_path)
         except Exception:
             return ""
 
