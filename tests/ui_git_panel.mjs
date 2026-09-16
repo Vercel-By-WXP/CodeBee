@@ -50,6 +50,8 @@ async function main() {
   const tbCommit = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: work, encoding: "utf-8" }).trim();
   G(["checkout", "-q", "master"]);
   const baseCommit = execFileSync("git", ["rev-parse", "--short", "master"], { cwd: work, encoding: "utf-8" }).trim();
+  // 现场未提交文件：工作台（工作目录实时态）要有一条未跟踪变更可断言
+  writeFileSync(join(work, "live-note.md"), "现场未提交\n", "utf-8");
 
   // 任务 B：续跑回归用——runB1 带 git 快照（首轮），runB2 是续跑产生的新 run、
   // 不带 git 字段（真实续跑链路里检出/收尾都发生在首轮，新 run 快照没有 git）。
@@ -165,6 +167,10 @@ async function main() {
       if (!box) return JSON.stringify({ exists: false });
       return JSON.stringify({
         exists: true, hidden: box.classList.contains("hidden"),
+        wbTitle: box.querySelector(".git-head .sec-title")?.textContent,
+        selBranch: box.querySelector("#gwb-branch")?.value,
+        untracked: [...box.querySelectorAll('.gwb-group[data-kind="untracked"] .gf .p')].map(e => e.textContent),
+        isoChip: [...box.querySelectorAll(".git-meta .chip")].map(e => e.textContent).find(x => x && x !== "—") || "",
         branch: box.querySelector(".git-branch")?.textContent,
         chip: box.querySelector(".git-head .chip")?.textContent,
         files: [...box.querySelectorAll(".gf")].map(e => e.textContent.trim()),
@@ -176,12 +182,14 @@ async function main() {
       });
     })()`));
     check("#rd-git 渲染且可见", s1.exists && !s1.hidden, JSON.stringify(s1));
-    check("分支名 tutti/<task>", (s1.branch || "").startsWith("tutti/" + taskId.slice(0, 6)), s1.branch);
-    check("待裁决 chip", s1.chip === "待裁决", s1.chip);
+    // 工作目录是 git 仓库 → 工作台主态（而非隔离快照）：真实分支名 + 未跟踪现场文件
+    check("工作台主态：标题=Git 工作台", (s1.title || s1.wbTitle) === "Git 工作台", JSON.stringify({ t: s1.title || s1.wbTitle }));
+    check("工作台未跟踪组有 live-note.md", s1.untracked && s1.untracked.some(p => p.includes("live-note.md")), JSON.stringify(s1.untracked));
+    check("分支下拉=master（工作区在原分支，任务分支隔离在后台）", s1.selBranch === "master", s1.selBranch);
+    check("待裁决 chip（任务分支隔离区）", s1.isoChip === "待裁决", s1.isoChip);
     check("侧栏待裁决徽章在（git_state=isolated 任务，合并前）", s1.badge === "待裁决", JSON.stringify(s1.badge));
-    check("变更文件 3 枚（含新文件）", s1.files.length === 3 && s1.files.some(f => f.includes("chapter-01.md")), JSON.stringify(s1.files));
-    // 旧快照里存的原始 "??" 也要归一成「新」，不许把 ?? 当文案渲染
-    check("未跟踪徽章显示「新」而非 ??", s1.files.some(f => f.includes("_notes/new.md") && f.startsWith("新")), JSON.stringify(s1.files));
+    // 未跟踪徽章显示「新」而非 ??
+    check("未跟踪徽章显示「新」而非 ??", (s1.files || []).some(f => f.includes("live-note.md") && f.startsWith("新")), JSON.stringify(s1.files));
     check("合并/丢弃按钮在（isolated）", s1.mergeBtn && s1.discardBtn, JSON.stringify({ m: s1.mergeBtn, d: s1.discardBtn }));
 
     /* 2) API 合并 → state merged → 原分支收到产物 → 面板更新 */
@@ -195,12 +203,13 @@ async function main() {
     check("产物已并入原分支（README 变更在）", curBranch !== "tutti/" + taskId && ls.includes("README.md"), curBranch);
 
     // SSE 活跃时 poll() 跳过 refreshState；无头验证直接强拉状态并重绘详情
-    await evalJs(`(async () => { await refreshState(); renderRunDetail(); })()`);
+    // （合并走的是裸 API 而非 UI 裁决按钮，工作台缓存要手动作废重拉）
+    await evalJs(`(async () => { await refreshState(); renderRunDetail(); await loadGitWb(true); })()`);
     await sleep(1500);
     const s3 = JSON.parse(await evalJs(`(() => {
       const box = document.getElementById("rd-git");
       return JSON.stringify({
-        chip: box?.querySelector(".git-head .chip")?.textContent,
+        chip: [...(box?.querySelectorAll(".git-meta .chip") || [])].map(e => e.textContent).find(x => x && x !== "—") || "",
         hasMerge: !!box?.querySelector(".git-actions .primary"),
       });
     })()`));
@@ -213,23 +222,26 @@ async function main() {
     await sleep(1200);
     const s4 = JSON.parse(await evalJs(`(() => {
       const box = document.getElementById("rd-git");
-      return JSON.stringify({ title: box?.querySelector(".sec-title")?.textContent,
-        chip: box?.querySelector(".git-head .chip")?.textContent });
+      return JSON.stringify({ title: box?.querySelector(".git-head .sec-title")?.textContent,
+        chip: [...(box?.querySelectorAll(".git-meta .chip") || [])].map(e => e.textContent).find(x => x && x !== "—") || "" });
     })()`));
-    check("英文模式：Version isolation / Merged", s4.title === "Version isolation" && s4.chip === "Merged", JSON.stringify(s4));
+    check("英文模式：Git Workbench / Merged", s4.title === "Git Workbench" && s4.chip === "Merged", JSON.stringify(s4));
 
     /* 4.5) 铃铛 / 预览按钮（徽章已在第 1 步合并前查过）——预览与点文件同款弹窗 */
     const s45 = JSON.parse(await evalJs(`(async () => {
       const bell = document.getElementById("btn-notify-toggle");
       const prev = [...document.querySelectorAll("#insp-pane-files .file-chip.prev")];
-      if (prev.length) { prev[0].click(); }
-      await new Promise((res) => setTimeout(res, 700));
+      const first = prev.find(e => /\.(md|json)$/i.test(e.textContent)) || prev[0];
+      if (first) { first.click(); }
+      await new Promise((res) => setTimeout(res, 900));
       const pop = document.getElementById("file-pop");
       const out = {
         bellOff: bell ? bell.classList.contains("off") : null,
         nPrev: prev.length,
+        clicked: first ? first.textContent.trim().slice(0, 40) : null,
         popOpen: !!(pop && !pop.classList.contains("hidden")),
         popCode: !!(pop && pop.querySelector(".fp-code .code-block")),
+        body: pop ? (pop.querySelector(".fp-body")?.innerHTML || "").slice(0, 120) : null,
       };
       if (out.popOpen) window.filePopClose();
       return JSON.stringify(out);
@@ -273,21 +285,23 @@ async function main() {
       const tab = document.querySelector('#rd-tabs .rd-tab[data-tab="git"]');
       return JSON.stringify({
         hidden: box ? box.classList.contains("hidden") : null,
-        branch: box?.querySelector(".git-branch")?.textContent,
+        branch: box?.querySelector("#gwb-branch")?.value,
         chip: box?.querySelector(".git-head .chip")?.textContent,
         files: [...(box?.querySelectorAll(".gf") || [])].map(e => e.textContent.trim()),
-        plus: box?.querySelector(".insp-plus")?.textContent,
-        minus: box?.querySelector(".insp-minus")?.textContent,
+        plus: box?.querySelector(".gwb-group .insp-plus")?.textContent,
+        minus: box?.querySelector(".gwb-group .insp-minus")?.textContent,
         mergeBtn: !!box?.querySelector(".git-actions .primary"),
         tabHidden: tab ? tab.classList.contains("hidden") : null,
         tasksum: (document.getElementById("rd-meta-task") || {}).textContent || "",
       });
     })()`));
     check("续跑 run：版本面板可见（不再因无 git 快照整块消失）", s5.hidden === false, JSON.stringify(s5));
-    check("续跑 run：分支由任务级 side 带出", (s5.branch || "").startsWith("tutti/" + taskIdB.slice(0, 6)), s5.branch);
+    check("续跑 run：工作台分支=master（实时工作区）", s5.branch === "master", s5.branch);
     check("续跑 run：版本页签可用", s5.tabHidden === false, String(s5.tabHidden));
-    check("续跑 run：变更清单来自最新 run 快照", s5.files.length === 1 && (s5.files[0] || "").includes("README.md"), JSON.stringify(s5.files));
-    check("续跑 run：+/- 行级统计在（+12/-3）", s5.plus === "+12" && s5.minus === "-3", JSON.stringify({ p: s5.plus, m: s5.minus }));
+    // 工作台显示实时工作区变更：live-note.md（种子现场）与 story-bible.md（4.6 写入）都在
+    check("续跑 run：变更清单来自实时工作区", (s5.files || []).some(f => f.includes("live-note.md")) &&
+      (s5.files || []).some(f => f.includes("story-bible.md")), JSON.stringify(s5.files));
+    check("续跑 run：行级统计在（live-note.md +1）", s5.plus === "+1", JSON.stringify({ p: s5.plus, m: s5.minus }));
     check("续跑 run：待裁决时裁决按钮在", s5.mergeBtn === true, String(s5.mergeBtn));
     check("续跑 run：meta 条任务累计 pill（2 次运行；第 4 段切了英文，双语都认）",
       (s5.tasksum || "").includes("任务累计") || (s5.tasksum || "").includes("Task total"),

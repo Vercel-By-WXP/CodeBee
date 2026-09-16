@@ -572,3 +572,378 @@ def _latest_run_git(task_id):
     except Exception:
         return None
     return best
+
+
+# ---------------------------------------------------------------- GIT 工作台
+# 详情页「版本」页签的完整 Git 操作面：状态聚合（只读）+ 白名单写操作。
+# 与隔离链（prepare_checkout/finalize/merge/discard）互不改动；写操作的
+# 「任务运行中拒绝」守卫在路由层（那里才拿得到 task.status），这里只管仓库。
+
+_WB_MAX_FILES = 300        # 单组文件列表上限（超大仓库不拖死轮询）
+_WB_DIFF_MAX_CHARS = 200000  # 单文件 diff 文本上限
+
+
+def _safe_relpath(path):
+    """工作台路径参数白名单：仓库内相对路径。挡绝对路径、.. 上跳、
+    以 - 开头（git 会当选项解析）；通过返回规范化后的正斜杠路径。"""
+    s = str(path or "").replace("\\", "/").strip()
+    if not s or s.startswith("-") or len(s) > 500:
+        return ""
+    if s.startswith("/") or re.match(r"^[A-Za-z]:", s):
+        return ""
+    parts = [x for x in s.split("/") if x not in ("", ".")]
+    if any(x == ".." for x in parts):
+        return ""
+    return "/".join(parts)
+
+
+def _porcelain_grouped(workdir):
+    """status --porcelain -z → (staged, unstaged, untracked) 三组 [{status,path}]。
+
+    与 _porcelain_entries 的区别：按 XY 两列拆「已暂存/未暂存」——工作台的
+    stage/unstage 语义需要知道改动落在 index 还是工作区。X 列非空非 ? → 有
+    暂存改动；Y 列非空 → 有未暂存改动（同一文件可同时进两组，同 git UI 惯例）。
+    """
+    staged, unstaged, untracked = [], [], []
+    entries = _porcelain_entries(workdir)
+    if entries is None:
+        return None
+    for xy, path in entries:
+        if not path:
+            continue
+        if _attach_path(path):
+            continue   # 任务附件目录不算变更（与 collect_changes 同口径）
+        x, y = xy[0], xy[1]
+        if xy == "??":
+            untracked.append({"status": "?", "path": path})
+            continue
+        if x not in (" ", "?"):
+            staged.append({"status": _status_code(x + " "), "path": path})
+        if y not in (" ", "?"):
+            unstaged.append({"status": _status_code(" " + y), "path": path})
+    return staged, unstaged, untracked
+
+
+def workbench_status(workdir):
+    """只读聚合工作台全貌：分支/HEAD/远程、三组变更文件、ahead/behind、stash。
+
+    非 git 仓库返回 {"repo": False}；任何子命令失败只降级对应字段，绝不抛错。
+    """
+    r = _git(workdir, "rev-parse", "--is-inside-work-tree")
+    if not r["ok"] or r["stdout"].strip() != "true":
+        return {"repo": False}
+    out = {"repo": True}
+    head = _git(workdir, "rev-parse", "--short", "HEAD")
+    out["head"] = (head["stdout"] or "").strip() if head["ok"] else ""
+    br = _git(workdir, "rev-parse", "--abbrev-ref", "HEAD")
+    cur = (br["stdout"] or "").strip() if br["ok"] else ""
+    out["branch"] = cur or "(游离 HEAD)"
+    out["detached"] = cur == "HEAD"
+    groups = _porcelain_grouped(workdir)
+    if groups is None:
+        groups = ([], [], [])
+    staged, unstaged, untracked = groups
+    out["staged"], out["unstaged"], out["untracked"] = (
+        staged[:_WB_MAX_FILES], unstaged[:_WB_MAX_FILES], untracked[:_WB_MAX_FILES])
+    out["truncated"] = any(len(g) > _WB_MAX_FILES for g in groups)
+    # +/- 行级统计：git diff HEAD（工作区 vs HEAD）已含暂存+未暂存的全貌，
+    # 同一文件在两组都出现时共用同一份统计（不可两份相加——会重复计数）
+    stats = {}
+    rn = _git(workdir, "diff", "HEAD", "--numstat", "--no-renames", "-z")
+    if rn["ok"]:
+        for rec in (rn["stdout"] or "").split("\0"):
+            parts = rec.split("\t")
+            if len(parts) < 3 or not parts[2]:
+                continue
+            path = "\t".join(parts[2:])
+            try:
+                a = int(parts[0])
+            except ValueError:
+                a = 0
+            try:
+                d = int(parts[1])
+            except ValueError:
+                d = 0
+            stats[path] = (a, d)
+    for g in (staged, unstaged):
+        for f in g:
+            a, d = stats.get(f["path"], (0, 0))
+            f["add"], f["del"] = a, d
+    for f in untracked:
+        fp = os.path.abspath(os.path.join(str(workdir), f["path"]))
+        f["add"] = _count_lines(fp) if os.path.isfile(fp) else 0
+        f["del"] = 0
+    # 分支列表：本地 + 远程（origin/* 去前缀展示，checkout 时再映射回）
+    branches = []
+    rb = _git(workdir, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+    if rb["ok"]:
+        branches = [x for x in (l.strip() for l in rb["stdout"].splitlines()) if x][:200]
+    remote_branches = []
+    rr = _git(workdir, "for-each-ref", "--format=%(refname:short)", "refs/remotes/")
+    if rr["ok"]:
+        for x in (l.strip() for l in rr["stdout"].splitlines()):
+            if x and not x.endswith("/HEAD"):
+                remote_branches.append(x)
+        remote_branches = remote_branches[:200]
+    out["branches"] = branches
+    out["remote_branches"] = remote_branches
+    # ahead/behind 与上游：无上游时 upstream 为空，前端据此禁用 pull/push
+    out["upstream"] = ""
+    out["ahead"] = out["behind"] = 0
+    up = _git(workdir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+    if up["ok"]:
+        out["upstream"] = (up["stdout"] or "").strip()
+        ab = _git(workdir, "rev-list", "--left-right", "--count", "HEAD..." + out["upstream"])
+        if ab["ok"]:
+            toks = (ab["stdout"] or "").split()
+            if len(toks) == 2:
+                out["ahead"], out["behind"] = int(toks[0]), int(toks[1])
+    # 远程名（默认 origin；多远程时取第一个）
+    rv = _git(workdir, "remote")
+    remotes = [x for x in ((rv["stdout"] or "").split()) if x] if rv["ok"] else []
+    out["remotes"] = remotes
+    # stash 列表（工作台收起/还原入口）
+    st = _git(workdir, "stash", "list", "--format=%gd\x01%s")
+    stashes = []
+    if st["ok"]:
+        for ln in (st["stdout"] or "").splitlines():
+            h, _, subj = ln.partition("\x01")
+            if h.strip():
+                stashes.append({"ref": h.strip(), "subject": subj.strip()[:120]})
+    out["stashes"] = stashes[:50]
+    # 最近提交（时间线，给「本次修改」一个上下文锚点）
+    lg = _git(workdir, "log", "-n", "8", "--format=%h\x01%an\x01%ar\x01%s")
+    recent = []
+    if lg["ok"]:
+        for ln in (lg["stdout"] or "").splitlines():
+            toks = ln.split("\x01")
+            if len(toks) >= 4 and toks[0].strip():
+                recent.append({"hash": toks[0], "author": toks[1],
+                               "age": toks[2], "subject": toks[3][:120]})
+    out["recent"] = recent
+    return out
+
+
+def file_diff(workdir, path):
+    """单文件实时 diff 文本。已跟踪 → git diff HEAD -- path（含暂存区改动，
+    即 HEAD 到当前工作区全貌）；未跟踪 → 读文件拼 new-file diff 形态。
+    返回 {"diff": str, "untracked": bool}；路径非法/不在仓库内返回 error。"""
+    rp = _safe_relpath(path)
+    if not rp:
+        return {"error": "非法文件路径"}
+    fp = os.path.abspath(os.path.join(str(workdir), rp))
+    if not _inside(workdir, fp):
+        return {"error": "路径越出工作目录"}
+    tracked = _git(workdir, "ls-files", "--error-unmatch", "--", rp)["ok"]
+    if tracked:
+        r = _git(workdir, "diff", "HEAD", "--", rp, timeout=40)
+        if not r["ok"]:
+            return {"error": (r["stderr"] or "git diff 失败")[-200:]}
+        return {"diff": (r["stdout"] or "")[:_WB_DIFF_MAX_CHARS], "untracked": False}
+    if not os.path.isfile(fp):
+        return {"diff": "", "untracked": True}   # 未跟踪目录（整棵新树）：无单文件 diff
+    try:
+        text = runner.read_text_any_enc(fp)[:_WB_DIFF_MAX_CHARS]
+    except OSError as e:
+        return {"error": "读取失败：%s" % e}
+    lines = text.splitlines()[:_INSIDE_MAX_FILE_LINES]
+    body = "\n".join("+" + ln for ln in lines)
+    if len(text) >= _WB_DIFF_MAX_CHARS or text.count("\n") >= _INSIDE_MAX_FILE_LINES:
+        body += "\n+…（文件过长，已截断）"
+    section = ("diff --git a/%s b/%s\nnew file mode 100644\n"
+               "--- /dev/null\n+++ b/%s\n@@ -0,0 +1,%d @@\n%s\n"
+               % (rp, rp, rp, len(lines), body))
+    return {"diff": section, "untracked": True}
+
+
+# 写操作白名单：action → 是否需要 confirm（不可恢复类）
+_WB_ACTIONS = {"checkout", "fetch", "pull", "push", "stage", "unstage",
+               "discard", "delete", "commit", "stage_all", "unstage_all",
+               "stash_push", "stash_pop", "stash_drop"}
+
+
+def _res(r, extra=None):
+    """run_process 结果 → (ok, err, data)：错误取 stderr 尾（超时尾巴一并带上）。"""
+    if r["ok"]:
+        return True, "", (extra or {})
+    tail = ((r["stderr"] or "") + (r["stdout"] or "")).strip()[-300:]
+    return False, tail or "git 命令失败（exit %s）" % r.get("exit_code"), (extra or {})
+
+
+def workbench_op(workdir, action, params=None):
+    """工作台写操作统一入口。返回 (ok, 错误信息, 附带信息 dict)。
+
+    守卫：action 白名单；path 走 _safe_relpath；分支/提交信息限长。
+    丢弃（discard）与删除未跟踪文件（delete）不可恢复，必须 confirm=true。
+    stash 系列只认 tutti-stash-* 标记条目——用户自己的 stash 不在工作台露出，
+    避免误 pop 撞掉检出链收起的现场。
+    """
+    params = params or {}
+    wd = str(workdir or "")
+    if action not in _WB_ACTIONS:
+        return False, "不支持的操作：%s" % action, {}
+    info = workbench_status(wd)
+    if not info.get("repo"):
+        return False, "工作目录不是 git 仓库", {}
+
+    def need_path():
+        rp = _safe_relpath(params.get("path"))
+        if not rp:
+            return ""
+        if not _inside(wd, os.path.abspath(os.path.join(wd, rp))):
+            return ""
+        return rp
+
+    if action == "checkout":
+        br = str(params.get("branch") or "").strip()
+        if not br or len(br) > 200 or br.startswith("-"):
+            return False, "分支名非法", {}
+        dirty = (info.get("staged") or []) + (info.get("unstaged") or [])
+        if dirty:
+            return False, "工作区有未提交改动，切分支可能丢失现场：先提交或收起（stash）", {}
+        if br in (info.get("branches") or []):
+            return _res(_git(wd, "checkout", "--quiet", br, timeout=60))
+        # 远程分支 origin/foo → 建本地跟踪分支 foo；已存在同名本地分支则直接切
+        if "/" in br and br in (info.get("remote_branches") or []):
+            name = br.split("/", 1)[1]
+            r = _git(wd, "checkout", "-b", name, "--track", br, timeout=60)
+            if not r["ok"]:
+                r = _git(wd, "checkout", "--quiet", name, timeout=60)
+            return _res(r)
+        if not _git(wd, "rev-parse", "--verify", "--quiet", br)["ok"]:
+            return False, "分支 %s 不存在" % br, {}
+        return _res(_git(wd, "checkout", "--quiet", br, timeout=60))
+
+    if action == "stage":
+        rp = need_path()
+        if not rp:
+            return False, "非法文件路径", {}
+        if _attach_path(rp):
+            return False, "_attachments/ 是任务附件素材，不进版本库，不能暂存", {}
+        return _res(_git(wd, "add", "--", rp, timeout=60))
+
+    if action == "unstage":
+        rp = need_path()
+        if not rp:
+            return False, "非法文件路径", {}
+        # 未跟踪 → 直接撤出 index；已跟踪 → 回退 index 到 HEAD（保留工作区改动）
+        if _git(wd, "ls-files", "--error-unmatch", "--", rp)["ok"]:
+            return _res(_git(wd, "reset", "-q", "--", rp, timeout=60))
+        return _res(_git(wd, "rm", "--cached", "-q", "--", rp, timeout=60))
+
+    if action == "discard":
+        rp = need_path()
+        if not rp:
+            return False, "非法文件路径", {}
+        if not params.get("confirm"):
+            return False, "丢弃未提交改动不可恢复，需要 confirm=true 二次确认", {}
+        if _git(wd, "ls-files", "--error-unmatch", "--", rp)["ok"]:
+            # checkout HEAD -- path：index 与工作区一起还原到 HEAD（含已暂存改动）
+            return _res(_git(wd, "checkout", "HEAD", "--", rp, timeout=60))
+        return _res(_git(wd, "clean", "-qfd", "--", rp, timeout=60))
+
+    if action == "delete":
+        rp = need_path()
+        if not rp:
+            return False, "非法文件路径", {}
+        if not params.get("confirm"):
+            return False, "删除未跟踪文件不可恢复，需要 confirm=true 二次确认", {}
+        if _git(wd, "ls-files", "--error-unmatch", "--", rp)["ok"]:
+            return False, "该文件已被 git 跟踪，请用丢弃改动还原", {}
+        return _res(_git(wd, "clean", "-qfd", "--", rp, timeout=60))
+
+    if action in ("stage_all", "unstage_all"):
+        if action == "stage_all":
+            r = _git(wd, "add", "-A", timeout=60)
+            if r["ok"]:
+                _git(wd, "reset", "-q", "--", "_attachments")   # 附件永不进提交
+            return _res(r)
+        return _res(_git(wd, "reset", "-q", timeout=60))
+
+    if action == "commit":
+        msg = str(params.get("message") or "").strip()[:500]
+        if not msg:
+            return False, "提交信息不能为空", {}
+        staged = info.get("staged") or []
+        att = [f for f in staged if f["path"] == "_attachments"
+               or f["path"].startswith("_attachments/")]
+        if att:
+            _git(wd, "reset", "-q", "--", "_attachments")
+            staged = [f for f in staged if f not in att]
+        if not staged:
+            return False, "暂存区为空：先暂存要提交的文件", {}
+        # 用户手动提交优先用仓库自己的身份；没配置再回落 CodeBee 身份
+        cfg = _git(wd, "config", "user.email")
+        ident = [] if (cfg["stdout"] or "").strip() else [
+            "-c", "user.name=CodeBee", "-c", "user.email=codebee@orchestra.local"]
+        r = _git(wd, *ident, "commit", "-m", msg, "--quiet", timeout=60)
+        ok, err, data = _res(r)
+        if ok:
+            h = _git(wd, "rev-parse", "--short", "HEAD")
+            data = {"commit": (h["stdout"] or "").strip() if h["ok"] else "",
+                    "files": len(staged)}
+        return ok, err, data
+
+    if action in ("fetch", "pull", "push"):
+        remotes = info.get("remotes") or []
+        if not remotes:
+            return False, "该仓库没有配置远程（git remote），无法%s" % {
+                "fetch": "抓取", "pull": "拉取", "push": "推送"}[action], {}
+        remote = str(params.get("remote") or remotes[0]).strip()
+        if not remote or remote.startswith("-") or len(remote) > 100:
+            return False, "远程名非法", {}
+        if action == "fetch":
+            return _res(_git(wd, "fetch", "--prune", remote, timeout=120))
+        br = info.get("branch") or ""
+        if info.get("detached"):
+            return False, "游离 HEAD 状态不能%s，请先切换到分支" % {
+                "pull": "拉取", "push": "推送"}[action], {}
+        if action == "pull":
+            if info.get("upstream"):
+                r = _git(wd, "pull", "--rebase=false", timeout=120)
+            else:
+                r = _git(wd, "pull", "--rebase=false", remote, br, timeout=120)
+            ok, err, data = _res(r)
+            if not ok and ("CONFLICT" in (r["stdout"] or "") + err
+                           or "conflict" in err.lower()):
+                err += "（存在冲突：请手工解决后提交，或 git merge --abort 回退）"
+            return ok, err, data
+        # push：有上游推上游；无上游首推建立跟踪
+        if info.get("upstream"):
+            return _res(_git(wd, "push", timeout=120))
+        return _res(_git(wd, "push", "-u", remote, br, timeout=120))
+
+    if action == "stash_push":
+        msg = str(params.get("message") or "").strip()[:120]
+        m = "tutti-stash-%s" % (msg or "workbench")
+        r = _git(wd, "stash", "push", "-u", "-m", m, "--", ".", ":(exclude)_attachments",
+                 timeout=90)
+        ok, err, data = _res(r)
+        if ok and not (info.get("staged") or info.get("unstaged") or info.get("untracked")):
+            data = {"noop": True}   # 干净树：git 返回 ok 但没存东西
+        return ok, err, data
+
+    if action in ("stash_pop", "stash_drop"):
+        ref = str(params.get("ref") or "").strip()
+        if not re.match(r"^stash@\{[0-9]+\}$", ref):
+            return False, "stash 引用非法", {}
+        lst = _git(wd, "stash", "list", "--format=%gd\x01%s")
+        found = None
+        if lst["ok"]:
+            for ln in (lst["stdout"] or "").splitlines():
+                h, _, subj = ln.partition("\x01")
+                if h.strip() == ref:
+                    found = subj.strip()
+                    break
+        if found is None:
+            return False, "stash 条目不存在", {}
+        # %s 的形态是 "On master: <message>"/"WIP on ..."，认标记用包含判断
+        if "tutti-stash-" not in found:
+            return False, "工作台只处理编排台自己收起的 stash（tutti-stash-*），你自己的条目请手工处理", {}
+        if action == "stash_pop":
+            return _res(_git(wd, "stash", "pop", ref, timeout=90))
+        if not params.get("confirm"):
+            return False, "删除 stash 条目不可恢复，需要 confirm=true 二次确认", {}
+        return _res(_git(wd, "stash", "drop", ref, timeout=60))
+
+    return False, "不支持的操作：%s" % action, {}

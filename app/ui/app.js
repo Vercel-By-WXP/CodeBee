@@ -2,7 +2,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {} };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {} };
 
 /* ---------------------------------------------------------- 任务类型（流程） */
 async function loadFlows() {
@@ -3099,7 +3099,40 @@ function fillMetaTask(st) {
     ' · <b>$' + (Number(st.cost_usd) || 0).toFixed(3) + "</b> · tok <b>" + (st.tokens || 0) + "</b>";
 }
 
+/* ---------------- GIT 工作台（详情页「版本」页签） ----------------
+ * 工作目录是 git 仓库 → 完整工作台：分支切换 / 三组变更文件（暂存·取消暂存·
+ * 丢弃/删除）/ 提交 / fetch·pull·push / stash 收起还原；数据走
+ * /api/tasks/<id>/git（workdir 由服务端按任务推导，不接受任意路径），
+ * 5s 节流轮询、写操作后立即重拉。非仓库 → 退回「代码版本隔离」快照面板。
+ * 写操作在任务运行中被服务端 409 拒绝，前端同步禁用并给只读提示。 */
+async function loadGitWb(force) {
+  const key = detailSideTaskKey();
+  if (!key || S.gitWbBusy) return;
+  if (!force && S.gitWbKey === key && Date.now() - (S.gitWbAt || 0) < 5000) return;
+  S.gitWbBusy = true;
+  try {
+    const d = await api("/api/tasks/" + encodeURIComponent(key) + "/git");
+    if (detailSideTaskKey() !== key) return;   // 期间已切详情目标：过期响应不落盘
+    S.gitWb = d; S.gitWbKey = key; S.gitWbAt = Date.now();
+    renderGitPanel(S.lastRun, S.lastRunTask);
+  } catch (e) { /* 静默：下一轮节流重试 */ }
+  finally { S.gitWbBusy = false; }
+}
+
 function renderGitPanel(run, task) {
+  const box = $("rd-git");
+  if (!box) return;
+  const tid = (task || {}).id || "";
+  if (tid) {
+    loadGitWb();   // 5s 节流；写操作后 force 立即重拉
+    const wb = (S.gitWbKey === tid) ? S.gitWb : null;
+    if (wb && wb.repo) { renderGitWbMain(wb, task); return; }
+    // 探测未回（wb=null）：先按快照落位不闪空；确认非仓库（repo=false）也走快照
+  }
+  _renderGitSnapshot(run, task);
+}
+
+function _renderGitSnapshot(run, task) {
   const box = $("rd-git");
   if (!box) return;
   const tid = (task || {}).id || "";
@@ -3175,8 +3208,195 @@ function renderGitPanel(run, task) {
   rdTabsSync();   // 版本面板显隐决定「版本」标签可用性
 }
 
+/* 工作台文件行：状态字 + 路径 + ±统计，悬停出 暂存/取消暂存/丢弃(删除) 按钮，
+ * 点击/双击弹实时 diff（/api/tasks/<id>/git/diff，读工作区，不依赖 run 快照） */
+function _gwbRow(f, kind, ro) {
+  const p = f.path || "";
+  const cls = f.status === "M" ? "m" : f.status === "D" ? "d" : "n";
+  let acts = "";
+  if (!ro) {
+    const stage = '<button class="ghost gwb-act" data-p="' + esc(p) + '" onclick="gitWbStage(this.dataset.p)" title="' +
+      esc(t("暂存")) + '">+</button>';
+    const unstage = '<button class="ghost gwb-act" data-p="' + esc(p) + '" onclick="gitWbUnstage(this.dataset.p)" title="' +
+      esc(t("取消暂存")) + '">−</button>';
+    const discard = '<button class="ghost gwb-act gwb-danger" data-p="' + esc(p) + '" onclick="gitWbDiscard(this.dataset.p)" title="' +
+      esc(t("丢弃改动")) + '">↶</button>';
+    const del = '<button class="ghost gwb-act gwb-danger" data-p="' + esc(p) + '" onclick="gitWbDelete(this.dataset.p)" title="' +
+      esc(t("删除文件")) + '">✕</button>';
+    if (kind === "staged") acts = unstage + discard;
+    else if (kind === "unstaged") acts = stage + discard;
+    else acts = stage + del;
+  }
+  return '<div class="gwb-row">' +
+    '<button class="gf" data-p="' + esc(p) + '" onclick="gitWbDiff(this.dataset.p)" ' +
+    'ondblclick="gitWbDiff(this.dataset.p)" title="' + esc(t("点击查看该文件的变更内容")) + '">' +
+    '<i class="gs ' + cls + '">' + esc(gitStatusLabel(f.status)) + "</i>" +
+    '<span class="p">' + esc(p) + "</span>" +
+    (f.add ? '<span class="insp-plus">+' + f.add + "</span>" : "") +
+    (f.del ? '<span class="insp-minus">-' + f.del + "</span>" : "") +
+    "</button>" + acts + "</div>";
+}
+
+function _gwbGroup(title, files, kind, ro, emptyHint) {
+  const n = (files || []).length;
+  return '<div class="gwb-group" data-kind="' + kind + '">' +
+    '<div class="gwb-ghead"><b>' + esc(title) + '</b><span class="gm">' + n + "</span></div>" +
+    (n ? files.map((f) => _gwbRow(f, kind, ro)).join("")
+       : '<span class="hint">' + esc(emptyHint) + "</span>") +
+    "</div>";
+}
+
+function renderGitWbMain(d, task) {
+  const box = $("rd-git");
+  if (!box) return;
+  const tid = (task || {}).id || "";
+  const ro = d.task && (d.task.status === "running" || d.task.status === "queued");
+  const prevMsg = (box.querySelector("#gwb-msg") || {}).value || "";
+  const dis = ro ? " disabled" : "";
+  // 分支下拉：本地 + 远程两组；游离 HEAD 时当前值给占位项
+  const cur = d.branch || "";
+  const opt = (b) => '<option value="' + esc(b) + '"' + (b === cur ? " selected" : "") + ">" + esc(b) + "</option>";
+  let sel = '<select id="gwb-branch" class="git-branch gwb-branch" title="' + esc(t("切换分支")) + '"' + dis + ">";
+  if (d.detached) sel += '<option value="" selected disabled>' + esc(t("(游离 HEAD)")) + "</option>";
+  if ((d.branches || []).length) sel += '<optgroup label="' + esc(t("本地分支")) + '">' + d.branches.map(opt).join("") + "</optgroup>";
+  if ((d.remote_branches || []).length) sel += '<optgroup label="' + esc(t("远程分支")) + '">' + d.remote_branches.map(opt).join("") + "</optgroup>";
+  sel += "</select>";
+  let html =
+    '<div class="git-head"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>' +
+    '<span class="sec-title">' + t("Git 工作台") + "</span>" + sel +
+    '<code class="git-branch" title="HEAD">' + esc(d.head || "") + "</code>" +
+    (d.upstream ? '<span class="gm" title="' + esc(d.upstream) + '">↑' + (d.ahead || 0) + " ↓" + (d.behind || 0) + "</span>" : "") +
+    '<span class="flex1"></span>' +
+    '<button class="ghost" onclick="loadGitWb(true)" title="' + esc(t("刷新")) + '">' +
+    '<svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg></button></div>';
+  // 工具条：抓取/拉取/推送 + 全部暂存 + stash；无远程时网络类禁用
+  const noRemote = !(d.remotes || []).length;
+  const hasChg = (d.staged || []).length + (d.unstaged || []).length + (d.untracked || []).length;
+  html += '<div class="gwb-toolbar">' +
+    '<button class="ghost"' + (noRemote || ro ? " disabled" : "") + ' onclick="gitWbFetch()">' + t("抓取") + "</button>" +
+    '<button class="ghost"' + (noRemote || ro ? " disabled" : "") + ' onclick="gitWbPull()">' + t("拉取") + "</button>" +
+    '<button class="ghost"' + (noRemote || ro ? " disabled" : "") + ' onclick="gitWbPush()">' + t("推送") + "</button>" +
+    '<button class="ghost"' + (!hasChg || ro ? " disabled" : "") + ' onclick="gitWbStageAll()">' + t("全部暂存") + "</button>" +
+    '<button class="ghost"' + (!hasChg || ro ? " disabled" : "") + ' onclick="gitWbStash()" title="' +
+    esc(t("把未提交改动收进 stash（不含 _attachments）")) + '">' + t("收起改动") + "</button>" +
+    (ro ? '<span class="hint">' + esc(t("任务运行中：Git 写操作暂停（只读查看）。")) + "</span>" : "") +
+    "</div>";
+  (d.stashes || []).forEach((s) => {
+    html += '<div class="gwb-stash"><span class="gm">' + esc(s.ref) + '</span><span class="p">' + esc(s.subject) + "</span>" +
+      (ro ? "" : '<button class="ghost" onclick="gitWbStashPop(\'' + esc(s.ref) + '\')">' + t("还原") + "</button>" +
+        '<button class="ghost gwb-danger" onclick="gitWbStashDrop(\'' + esc(s.ref) + '\')">' + t("删除") + "</button>") +
+      "</div>";
+  });
+  // 三组变更文件
+  html += _gwbGroup(t("暂存的变更"), d.staged, "staged", ro, t("暂存区为空")) +
+    _gwbGroup(t("变更（未暂存）"), d.unstaged, "unstaged", ro, t("没有未暂存的改动")) +
+    _gwbGroup(t("未跟踪"), d.untracked, "untracked", ro, t("没有未跟踪文件"));
+  // 提交区
+  html += '<div class="gwb-commit">' +
+    '<input id="gwb-msg" maxlength="500" placeholder="' + esc(t("提交信息（提交暂存区里的文件）")) + '"' + dis + ">" +
+    '<button class="primary" onclick="gitWbCommit()"' + (!(d.staged || []).length || ro ? " disabled" : "") + ">" + t("提交") + "</button></div>";
+  // 最近提交时间线
+  if ((d.recent || []).length) {
+    html += '<div class="gwb-log">' + d.recent.map((c) =>
+      '<div class="gwb-lc"><code>' + esc(c.hash) + '</code><span class="p">' + esc(c.subject) + "</span>" +
+      '<span class="gm">' + esc(c.author) + " · " + esc(c.age) + "</span></div>").join("") + "</div>";
+  }
+  // 任务分支隔离区（沿用快照面板的裁决按钮）
+  const iso = d.isolation || {};
+  if (iso.rev && !iso.state) {
+    html += '<div class="hint">' + esc(t("已配置代码版本隔离，但任务分支尚未创建（检出失败见运行错误）。")) + "</div>";
+  } else if (iso.state === "isolated") {
+    html += '<div class="git-meta"><span>' + esc(t("任务分支")) + " <b>tutti/" + esc(tid) + "</b></span>" +
+      '<span class="chip isolated">' + t("待裁决") + "</span></div>";
+    if (!ro) {
+      html += '<div class="git-actions">' +
+        '<button class="primary" onclick="gitMerge(\'' + esc(tid) + "')\">" +
+        '<svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>' + t("合并回原分支") + "</button>" +
+        '<button class="danger ghost" onclick="gitDiscard(\'' + esc(tid) + "')\">" +
+        '<svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg>' + t("丢弃分支") + "</button>" +
+        '<span class="hint">' + esc(t("合并＝采纳产物回原分支；丢弃＝删除任务分支（不可恢复）。")) + "</span></div>";
+    }
+  } else if (iso.state) {
+    const chip = GIT_STATE_CHIP[iso.state] || ["muted", "—"];
+    html += '<div class="git-meta"><span>' + esc(t("任务分支")) + " <b>tutti/" + esc(tid) + "</b></span>" +
+      '<span class="chip ' + chip[0] + '">' + t(chip[1]) + "</span></div>";
+  }
+  box.classList.remove("hidden");
+  box.innerHTML = html;
+  const bs = box.querySelector("#gwb-branch");
+  if (bs) bs.addEventListener("change", () => { if (bs.value) window.gitWbCheckout(bs.value); });
+  const mi = box.querySelector("#gwb-msg");
+  if (mi) {
+    if (prevMsg) mi.value = prevMsg;   // 轮询重画不丢用户正在写的提交信息
+    mi.addEventListener("keydown", (e) => { if (e.key === "Enter") window.gitWbCommit(); });
+  }
+  rdTabsSync();   // 版本面板显隐决定「版本」标签可用性
+}
+
+/* 工作台单文件实时 diff：点击文件行即弹（读工作区，运行中也能看最新状态） */
+window.gitWbDiff = async function (path) {
+  const key = detailSideTaskKey();
+  if (!key || !path) return;
+  _fpOpen(String(path).split("/").pop(), "",
+    '<button class="ghost" onclick="copyFPText()">' + esc(t("复制")) + "</button>");
+  let d;
+  try { d = await api("/api/tasks/" + encodeURIComponent(key) + "/git/diff?path=" + encodeURIComponent(path)); }
+  catch (e) { _fpSetBody('<div class="fp-hint">' + esc(t("diff 读取失败：") + e.message) + "</div>"); return; }
+  if (!filePopIsOpen()) return;   // 读取期间被 Esc 关掉：别把内容又糊上去
+  const lines = String(d.diff || "").split("\n");
+  _fpSetBody((d.diff && lines.length)
+    ? '<div class="fp-diff">' + lines.map((ln, i) => _fpDiffLine(ln, i + 1)).join("") + "</div>"
+    : '<div class="fp-hint">' + esc(t("该文件当前没有未提交的变更。")) + "</div>");
+};
+
+async function _gitWbPost(action, params, okMsg) {
+  const key = detailSideTaskKey();
+  if (!key) return null;
+  let res = null;
+  try {
+    res = await api("/api/tasks/" + encodeURIComponent(key) + "/git",
+      { method: "POST", body: JSON.stringify(Object.assign({ action }, params || {})) });
+    if (okMsg) toast(typeof okMsg === "function" ? okMsg(res || {}) : okMsg);
+  } catch (e) { toast(e.message, true); }
+  loadGitWb(true);   // 成败都立即重拉：失败信息已在 toast，列表反映真实状态
+  return res;
+}
+
+window.gitWbStage = function (p) { return _gitWbPost("stage", { path: p }); };
+window.gitWbUnstage = function (p) { return _gitWbPost("unstage", { path: p }); };
+window.gitWbStageAll = function () { return _gitWbPost("stage_all", null, t("已暂存全部变更")); };
+window.gitWbFetch = function () { return _gitWbPost("fetch", null, t("已抓取远程更新")); };
+window.gitWbPull = function () { return _gitWbPost("pull", null, t("已拉取远程更新")); };
+window.gitWbPush = function () { return _gitWbPost("push", null, t("已推送到远程")); };
+window.gitWbCheckout = function (br) {
+  if (!br) return;
+  return _gitWbPost("checkout", { branch: br }, t("已切换到 ") + br);
+};
+window.gitWbDiscard = async function (p) {
+  if (!await uiConfirm(t("丢弃该文件的全部未提交改动？此操作不可恢复。"), { ok: t("丢弃"), danger: true })) return;
+  return _gitWbPost("discard", { path: p, confirm: true });
+};
+window.gitWbDelete = async function (p) {
+  if (!await uiConfirm(t("删除这个未跟踪文件？此操作不可恢复。"), { ok: t("删除"), danger: true })) return;
+  return _gitWbPost("delete", { path: p, confirm: true });
+};
+window.gitWbStash = function () { return _gitWbPost("stash_push", null, t("未提交改动已收进 stash")); };
+window.gitWbStashPop = function (ref) { return _gitWbPost("stash_pop", { ref }, t("已还原 stash 改动")); };
+window.gitWbStashDrop = async function (ref) {
+  if (!await uiConfirm(t("删除这条 stash？收起的改动将永久丢弃。"), { ok: t("删除"), danger: true })) return;
+  return _gitWbPost("stash_drop", { ref, confirm: true });
+};
+window.gitWbCommit = async function () {
+  const msg = (($("gwb-msg") || {}).value || "").trim();
+  if (!msg) { toast(t("请先填写提交信息"), true); return; }
+  const d = await _gitWbPost("commit", { message: msg },
+    (r) => t("已提交 ") + (r.files || 0) + t(" 个文件 → ") + (r.commit || ""));
+  if (d && $("gwb-msg")) $("gwb-msg").value = "";
+};
+
 async function _gitVerdictDone() {
   poll();
+  S.gitWbAt = 0;            // 工作台缓存作废：裁决改了 git_state，5s 节流内也要立刻重拉
   if (S.detailTaskKey) { S.taskSig = ""; renderTaskDetail(); }
   else if (S.detailRunId) renderRunDetail();
   refreshDetailSide(true);  // 裁决改变 git_state：立即重拉任务级数据重画面板

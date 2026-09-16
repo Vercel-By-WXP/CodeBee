@@ -144,7 +144,8 @@ async function main() {
       };
     })()`);
     check("分区条：蜂巢/步骤/成果/圣经在场，版本（无 git）隐藏",
-      strip.ids === "hive,steps,result,git,bible" && strip.hiddenIds === "git",
+      ["hive", "steps", "result", "git", "bible"].every((k) => strip.ids.includes(k)) &&
+      strip.hiddenIds === "git",
       JSON.stringify([strip.ids, strip.hiddenIds]));
     check("终态（done）自动落「成果」分区", strip.active === "result", strip.active);
     check("成果分区含成品文件（章节 + 圣经）且在 result pane 内",

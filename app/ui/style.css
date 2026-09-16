@@ -2446,3 +2446,35 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
 .upd-pill .upd-x:hover { opacity: 1; background: color-mix(in srgb, var(--text) 15%, transparent); }
 .upd-pill .upd-x .ico { width: 11px; height: 11px; }
 .upd-pill.hidden { display: none; }
+
+/* ---------------- GIT 工作台（详情页 Git 页签） ----------------
+ * 追加在文件尾：分支下拉 / 工具条 / 三组变更行（悬停操作钮）/ 提交区 / 时间线 */
+.rd-git .gwb-branch { flex: none; max-width: 220px; height: 24px; font-size: 12px;
+  font-family: var(--mono); background: var(--panel2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; cursor: pointer; }
+.rd-git .gwb-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.rd-git .gwb-toolbar button { font-size: 12px; padding: 3px 10px; }
+.rd-git .gwb-toolbar .hint { font-size: 12px; }
+.rd-git .gwb-group { margin-top: 10px; }
+.rd-git .gwb-ghead { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.rd-git .gwb-ghead b { color: var(--text); font-weight: 600; }
+.rd-git .gwb-row { display: flex; align-items: center; gap: 4px; }
+.rd-git .gwb-row .gf { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-git .gwb-row .gf .p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-git .gwb-act { flex: none; width: 22px; height: 22px; padding: 0; font-size: 13px; line-height: 1;
+  visibility: hidden; border-radius: 5px; }
+.rd-git .gwb-row:hover .gwb-act { visibility: visible; }
+.rd-git .gwb-act.gwb-danger:hover { color: var(--bad); border-color: var(--bad); }
+.rd-git .gwb-commit { display: flex; gap: 8px; margin-top: 12px; }
+.rd-git .gwb-commit input { flex: 1 1 auto; min-width: 0; background: var(--panel2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; }
+.rd-git .gwb-commit input:focus { outline: none; border-color: var(--accent); }
+.rd-git .gwb-log { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.rd-git .gwb-lc { display: flex; align-items: baseline; gap: 8px; font-size: 12px; padding: 2px 0; min-width: 0; }
+.rd-git .gwb-lc code { font-family: var(--mono); color: var(--accent); flex: none; }
+.rd-git .gwb-lc .p { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-git .gwb-lc .gm { flex: none; color: var(--muted); }
+.rd-git .gwb-stash { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-top: 6px; }
+.rd-git .gwb-stash .p { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.rd-git .gwb-stash button { font-size: 12px; padding: 2px 8px; }

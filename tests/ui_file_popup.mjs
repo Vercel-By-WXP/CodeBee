@@ -48,6 +48,9 @@ async function main() {
   // 切回 master 会把分支上跟踪的 chapter-01.md 带走；成品列表按工作目录实存文件列，
   // 补一份未跟踪副本（续跑场景里成稿本来就以未跟踪/新增态躺在工作区）
   writeFileSync(join(work, "chapter-01.md"), "第一章 试炼开始\n清晨的雾还没散。\n", "utf-8");
+  // 工作台显示实时工作区变更：给 README.md 留一处未暂存修改，
+  // 「双击 .gf → diff 弹窗」断言才有目标行（实时 diff 与快照 diff 同为该文件的 +行）
+  writeFileSync(join(work, "README.md"), "baseline\n新增一行说明\n", "utf-8");
 
   // 成品文件（未跟踪，落在工作目录即可被 run_artifacts 列出）
   writeFileSync(join(work, "cover.json"), '{"title":"七猫甜宠","chapters":3}', "utf-8");

@@ -249,6 +249,14 @@ class Handler(BaseHTTPRequestHandler):
                 if err:
                     return self._json(400, {"error": err})
                 return self._json(200, {"path": fp, "text": text})
+            m = re.match(r"^/api/tasks/([^/]+)/git$", path)
+            if m:
+                # GIT 工作台全貌（详情页「版本」页签）：仓库状态聚合 + 任务隔离态
+                return self._api_git_wb(m.group(1))
+            m = re.match(r"^/api/tasks/([^/]+)/git/diff$", path)
+            if m:
+                # 工作台单文件实时 diff（?path= 仓库内相对路径）
+                return self._api_git_wb_diff(m.group(1))
             m = re.match(r"^/api/tasks/([^/]+)/continue-info$", path)
             if m:
                 # 「继续连载」弹框数据：能否续、已写到第几章、默认续几章
@@ -405,6 +413,10 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/tasks/([^/]+)/(git-merge|git-discard)$", path)
         if m:
             return self._api_git_verdict(m.group(1), m.group(2))
+        m = re.match(r"^/api/tasks/([^/]+)/git$", path)
+        if m:
+            # GIT 工作台写操作：{action, path?, message?, branch?, confirm?}
+            return self._api_git_wb_op(m.group(1))
         m = re.match(r"^/api/(tasks|runs)/([^/]+)/reveal$", path)
         if m:
             return self._api_reveal(m.group(1), m.group(2))
@@ -766,6 +778,49 @@ class Handler(BaseHTTPRequestHandler):
         （可单测、单实例状态）；这里只做 404 转换。"""
         d = store.task_side(task_id)
         return self._json(404, {"error": "任务不存在"}) if d is None else self._json(200, d)
+
+    # ------------------------------------------------------ GIT 工作台（详情页版本页签）
+    # 与 /api/git/info 不同：workdir 由任务 id 服务端推导，不接受客户端传任意路径，
+    # 所以不必限本机——局域网端（手机）打开详情页同样能看变更、做日常 git 操作。
+
+    def _api_git_wb(self, task_id):
+        from core import gitmod
+        task = store.get_task(task_id)
+        if not task:
+            return self._json(404, {"error": "任务不存在"})
+        d = gitmod.workbench_status(str(task.get("workdir") or ""))
+        d["isolation"] = {"state": task.get("git_state") or "",
+                          "rev": task.get("git_rev") or "",
+                          "branch": gitmod.branch_name(task_id)}
+        d["task"] = {"id": task_id, "status": task.get("status") or "",
+                     "title": task.get("title") or ""}
+        return self._json(200, d)
+
+    def _api_git_wb_diff(self, task_id):
+        from core import gitmod
+        task = store.get_task(task_id)
+        if not task:
+            return self._json(404, {"error": "任务不存在"})
+        qs = parse_qs(urlparse(self.path).query)
+        d = gitmod.file_diff(str(task.get("workdir") or ""), (qs.get("path") or [""])[0])
+        if d.get("error"):
+            return self._json(400, {"error": d["error"]})
+        return self._json(200, d)
+
+    def _api_git_wb_op(self, task_id):
+        from core import gitmod
+        task = store.get_task(task_id)
+        if not task:
+            return self._json(404, {"error": "任务不存在"})
+        if task.get("status") in ("queued", "running"):
+            return self._json(409, {"error": "任务正在运行：智能体正在工作目录里产出，"
+                                            "Git 写操作等任务结束再进行（只读查看不受限）"})
+        body = self._body()
+        action = str(body.get("action") or "")
+        ok, err, data = gitmod.workbench_op(str(task.get("workdir") or ""), action, body)
+        if not ok:
+            return self._json(400, {"error": err})
+        return self._json(200, {"ok": True, "action": action, **(data or {})})
 
     def _api_browse(self):
         """本机目录浏览（工作目录「选择…」弹框用）。仅限本机请求：目录枚举是信息
