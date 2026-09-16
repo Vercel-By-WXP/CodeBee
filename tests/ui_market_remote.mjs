@@ -73,9 +73,9 @@ async function main() {
 
     // 服务端直读 API：预分类与 installed 布尔
     const remote0 = await fetch(SERVICE + "/api/market/remote").then((r) => r.json());
-    check("API 外部目录 4 条且 3 条预分类 blocked",
-      remote0.total === 4 && remote0.entries.filter((e) => e.compat === "blocked").length === 3,
-      JSON.stringify(remote0).slice(0, 160));
+    check("API 外部目录 4 条且仅 1 条灰显（unsupported 来源）",
+      remote0.total === 4 && remote0.entries.filter((e) => e.compat === "blocked").length === 1,
+      JSON.stringify(remote0.entries.map((e) => [e.name, e.compat])));
     check("API 未安装态 installable=false",
       remote0.entries.every((e) => e.installable === (e.compat === "ok")),
       JSON.stringify(remote0.entries.map((e) => [e.name, e.installable])));
@@ -151,18 +151,17 @@ async function main() {
       srcOpts === 6 && srcLabels.includes("ZCode 官方") && srcLabels.includes("ClawHub"),
       srcLabels);
 
-    // 3) 不适配灰显：3 个禁用按钮 + 卡片降透明 + title 原因
+    // 3) 剥离式安装：mcp/hooks 关键词不再灰显（安装时自动剥离）；
+    //    只有来源类型不支持（local-only）灰显禁用
     const gray = await evalJs(`(() => {
       const btns = [...document.querySelectorAll("#mkr-grid .mk-card button[disabled]")];
       return { n: btns.length, txt: btns[0] && btns[0].textContent.trim(),
-               title: btns.find(b => (b.title || "").includes("MCP")) ? 1 : 0,
                dim: document.querySelectorAll("#mkr-grid .mk-card.blocked").length };
     })()`);
-    check("3 个不适配按钮灰显禁用", gray.n === 3 && gray.txt.includes("不适配"), JSON.stringify(gray));
-    check("含 MCP 原因的 title 提示", gray.title === 1);
-    check("3 张卡片降透明样式", gray.dim === 3, "dim=" + gray.dim);
+    check("仅 unsupported 来源灰显（1 个）", gray.n === 1 && gray.txt.includes("不适配"), JSON.stringify(gray));
+    check("1 张卡片降透明样式", gray.dim === 1, "dim=" + gray.dim);
     const hasInstall = await evalJs(`[...document.querySelectorAll("#mkr-grid .mk-card button.primary")].length`);
-    check("仅 1 个可安装按钮", hasInstall === 1, "install=" + hasInstall);
+    check("可安装按钮 3 个（mcp/hooks 剥离后可装）", hasInstall === 3, "install=" + hasInstall);
 
     // 4) 来源筛选（服务端过滤，change 直接触发重查）：唯一来源仍 4 条
     await evalJs(`(() => { const s = document.getElementById("mkr-source"); s.value = "zcode"; s.dispatchEvent(new Event("change")); })()`);

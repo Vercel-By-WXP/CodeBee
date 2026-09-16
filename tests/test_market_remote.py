@@ -154,51 +154,65 @@ class TestMarketRemoteCompat(BaseTest):
                    "source": {"type": "zip", "url": "https://x.example.com/a.zip"}}
             raw.update(kw)
             return mr._normalize({"id": "zcode", "name": "Z"}, raw)
+        # 剥离式安装：脚本/钩子/MCP 关键词不再灰显（安装时自动剥离）
         self.assertIsNone(mr._compat_block(mk(keywords=["git", "cli"])))
-        self.assertIsNotNone(mr._compat_block(mk(keywords=["mcp"])))
-        self.assertIsNotNone(mr._compat_block(mk(keywords=["hooks"])))
-        self.assertIsNotNone(mr._compat_block(mk(keywords=["slash-commands"])))
-        self.assertIsNotNone(mr._compat_block(mk(description="Uses MCP servers.")))
-        self.assertIsNotNone(mr._compat_block(mk(name="mcp-helper")))
-        # webhook 不算 hook（词边界）
+        self.assertIsNone(mr._compat_block(mk(keywords=["mcp"])))
+        self.assertIsNone(mr._compat_block(mk(keywords=["hooks"])))
+        self.assertIsNone(mr._compat_block(mk(keywords=["slash-commands"])))
+        self.assertIsNone(mr._compat_block(mk(description="Uses MCP servers.")))
+        self.assertIsNone(mr._compat_block(mk(name="mcp-helper")))
         self.assertIsNone(mr._compat_block(mk(description="Webhook relay skill.")))
+        # 只有来源类型不支持才灰显
+        self.assertIsNotNone(mr._compat_block(mk(name="weird", source={"source": "local"})))
 
 
 class TestMarketRemoteInspect(BaseTest):
     def runTest(self):
         from app.core import market_remote as mr
         root = self.tmp / "plug"
-        # 纯技能：skills/*/SKILL.md + 文档 + 图片 + json → 通过
+        # 纯技能：skills/*/SKILL.md + 文档 + 图片 + json → 全保留，无剔除
         (root / "skills" / "foo").mkdir(parents=True)
         (root / "skills" / "foo" / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
         (root / "skills" / "foo" / "ref.md").write_text(REF_MD, encoding="utf-8")
         (root / "skills" / "foo" / "diagram.png").write_bytes(b"\x89PNG")
         (root / ".claude-plugin").mkdir()
         (root / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
-        blocked, files = mr.inspect_tree(root)
-        self.assertIsNone(blocked)
+        files, stripped = mr.inspect_tree(root)
+        self.assertEqual(stripped, [])
         self.assertEqual(len(files), 4)
         sk = mr.find_skills(root, files)
         self.assertEqual([s["name"] for s in sk], ["foo"])
         self.assertEqual(len(sk[0]["extras"]), 1)   # ref.md 是文本附件；png 不算
 
-        # 脚本目录 / mcp 配置 / 可执行扩展 / 未知扩展 → 一律拒绝
-        for name, make in [
-            ("scripts", lambda r: (r / "scripts").mkdir() or (r / "scripts" / "run.py").write_text("x", encoding="utf-8")),
-            ("mcp", lambda r: (r / ".mcp.json").write_text("{}", encoding="utf-8")),
-            ("exec", lambda r: (r / "tools").mkdir() or (r / "tools" / "a.sh").write_text("x", encoding="utf-8")),
-            ("binary", lambda r: (r / "lib.dll").write_bytes(b"MZ")),
-            ("weird", lambda r: (r / "x.foo").write_text("x", encoding="utf-8")),
+        # 剥离式：脚本目录 / mcp 配置 / 可执行扩展 / 未知扩展 → 剔除但技能保留
+        for name, make, want in [
+            ("scripts", lambda r: (r / "scripts").mkdir() or (r / "scripts" / "run.py").write_text("x", encoding="utf-8"), "scripts/run.py"),
+            ("mcp", lambda r: (r / ".mcp.json").write_text("{}", encoding="utf-8"), ".mcp.json"),
+            ("exec", lambda r: (r / "tools").mkdir() or (r / "tools" / "a.sh").write_text("x", encoding="utf-8"), "tools/a.sh"),
+            ("binary", lambda r: (r / "lib.dll").write_bytes(b"MZ"), "lib.dll"),
+            ("weird", lambda r: (r / "x.foo").write_text("x", encoding="utf-8"), "x.foo"),
         ]:
             r2 = self.tmp / ("plug-" + name)
             (r2 / "skills" / "foo").mkdir(parents=True)
             (r2 / "skills" / "foo" / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
             make(r2)
-            reason, _ = mr.inspect_tree(r2)
-            self.assertTrue(reason, name)
+            files2, stripped2 = mr.inspect_tree(r2)
+            self.assertEqual(stripped2, [want], name)
+            self.assertEqual([f[0] for f in files2], ["skills/foo/SKILL.md"], name)
+
+        # github 型真实形态：skills/ 十个技能 + scripts/secret_sync.py + README
+        # → 脚本剥离、技能全保留
+        r3 = self.tmp / "plug-gh"
+        (r3 / "scripts").mkdir(parents=True)
+        (r3 / "scripts" / "secret_sync.py").write_text("x", encoding="utf-8")
+        (r3 / "skills" / "commit").mkdir(parents=True)
+        (r3 / "skills" / "commit" / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
+        files3, stripped3 = mr.inspect_tree(r3)
+        self.assertEqual(stripped3, ["scripts/secret_sync.py"])
+        self.assertEqual([f[0] for f in files3], ["skills/commit/SKILL.md"])
 
         # skills 白名单：仓库里两个技能，条目只声明一个 → 只装声明的那个；
-        # 且未声明技能目录里的脚本不连坐（声明技能自己藏脚本仍拒）
+        # 未声明技能目录里的脚本不参与（既不剥离也不装）
         root3 = self.tmp / "plug-wl"
         for sk in ("one", "two"):
             (root3 / "skills" / sk).mkdir(parents=True)
@@ -207,8 +221,9 @@ class TestMarketRemoteInspect(BaseTest):
         (root3 / "skills" / "two" / "helper.py").write_text("import os", encoding="utf-8")
         entry_wl = {"id": "remote-t-wl", "title": "WL", "desc": "",
                     "install": {"skills": ["one"]}}
-        files, blocked = mr.build_files(entry_wl, root3)
+        files, blocked, stripped = mr.build_files(entry_wl, root3)
         self.assertIsNone(blocked)
+        self.assertEqual(stripped, [])
         tops = [k for k in files if "/" not in k]
         self.assertEqual(len(tops), 1)
         self.assertIn("S-one", files[tops[0]])
@@ -216,17 +231,19 @@ class TestMarketRemoteInspect(BaseTest):
         # 白名单与内容不匹配 → 明确报错
         entry_bad = {"id": "remote-t-wl2", "title": "WL2", "desc": "",
                      "install": {"skills": ["nope"]}}
-        files, blocked = mr.build_files(entry_bad, root3)
+        files, blocked, stripped = mr.build_files(entry_bad, root3)
         self.assertTrue(blocked)
-        # 白名单技能自己带脚本 → 仍拒（不连坐 ≠ 放水）
+        # 白名单技能自己带脚本 → 剥离脚本、技能照装（不连坐 = 剥离不拒收）
         root4 = self.tmp / "plug-wl2"
         (root4 / "skills" / "dirty").mkdir(parents=True)
         (root4 / "skills" / "dirty" / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
         (root4 / "skills" / "dirty" / "run.py").write_text("import os", encoding="utf-8")
         entry_d = {"id": "remote-t-wl3", "title": "WL3", "desc": "",
                    "install": {"skills": ["dirty"]}}
-        files, blocked = mr.build_files(entry_d, root4)
-        self.assertTrue(blocked)
+        files, blocked, stripped = mr.build_files(entry_d, root4)
+        self.assertIsNone(blocked)
+        self.assertEqual(stripped, ["skills/dirty/run.py"])
+        self.assertTrue(any("S-main" in v or "Clean Commit" in v for v in files.values()))
 
 
 class TestMarketRemoteInstall(BaseTest):
@@ -317,12 +334,12 @@ class TestMarketRemoteGuards(BaseTest):
         self.assertIsNone(res)
         self.assertIn("没有这个插件", err)
 
-        # 预分类灰显的条目：安装直接拒（不发网络请求）
-        seed([{"name": "mcp-tool", "description": "x",
-               "source": {"type": "zip", "url": "https://cdn.example.com/a.zip"}}])
-        res, err = mr.install_remote("remote-zcode-mcp-tool")
+        # 来源类型不支持（unsupported）的条目：预分类灰显，安装直接拒（不发网络请求）
+        seed([{"name": "local-only", "description": "x",
+               "source": {"source": "local", "path": "x"}}])
+        res, err = mr.install_remote("remote-zcode-local-only")
         self.assertIsNone(res)
-        self.assertIn("MCP", err)
+        self.assertIn("来源类型不支持", err)
 
         # sha256 不符
         good = {"name": "clean", "description": "x",
@@ -335,7 +352,7 @@ class TestMarketRemoteGuards(BaseTest):
         self.assertIsNone(res)
         self.assertIn("sha256", err)
 
-        # 包里藏脚本：下载成功但被文件级检查拒绝
+        # 包里藏脚本：剥离式安装——脚本被剔除、技能照装，结果带 stripped 清单
         good2 = {"name": "dirty", "description": "x",
                  "source": {"type": "zip", "url": "https://cdn.example.com/d.zip"}}
         seed([good2])
@@ -343,8 +360,12 @@ class TestMarketRemoteGuards(BaseTest):
         fetcher, resolver = _patch_fetch(mr, lambda url: dirty)
         with fetcher, resolver:
             res, err = mr.install_remote("remote-zcode-dirty")
-        self.assertIsNone(res)
-        self.assertIn("安全检查拒绝", err)
+        self.assertIsNone(err, err)
+        self.assertEqual(res["stripped"], ["scripts/go.py"])
+        self.assertEqual(res["skills"], 1)
+        # 剔除的脚本确实没落盘
+        self.assertFalse((self.data_dir / "skillpacks" / "market-assets"
+                          / "remote-zcode-dirty" / "scripts" / "go.py").exists())
 
         # zip 路径穿越
         seed([dict(good2, name="slip")])
@@ -355,7 +376,7 @@ class TestMarketRemoteGuards(BaseTest):
         self.assertIsNone(res)
         self.assertIn("可疑", err)
 
-        # 无技能的纯文档包
+        # 无技能的纯文档包（剥离后没有 SKILL.md）
         seed([dict(good2, name="nodoc")])
         fetcher, resolver = _patch_fetch(mr, lambda url: _mk_zip({"README.md": "# x"}))
         with fetcher, resolver:
@@ -382,7 +403,7 @@ class TestMarketRemoteRefresh(BaseTest):
         self.assertEqual(v["total"], 2)
         kinds = {e["name"]: e["compat"] for e in v["entries"]}
         self.assertEqual(kinds["a"], "ok")
-        self.assertEqual(kinds["b"], "blocked")
+        self.assertEqual(kinds["b"], "ok")   # topics 带 mcp → 剥离式可装
         # 缓存落盘：断网后 view() 仍可读（UI 加载永不联网）
         f = self.data_dir / "market_remote" / "zcode.json"
         self.assertTrue(f.is_file())
@@ -655,7 +676,7 @@ class TestMarketRemoteClawhub(BaseTest):
         self.assertEqual(v["refresh"][0]["count"], 4)   # alpha 去重后 3 + trending 1
         by = {e["name"]: e for e in v["entries"]}
         self.assertEqual(by["alpha"]["compat"], "ok")
-        self.assertEqual(by["beta"]["compat"], "blocked")          # topics 带 mcp
+        self.assertEqual(by["beta"]["compat"], "ok")          # topics 带 mcp → 剥离式可装
         self.assertEqual(by["delta"]["install"]["kind"], "clawhub")
         self.assertEqual(by["delta"]["install"]["reference"], "own/delta")
         self.assertIn("trending", by["delta"]["keywords"])

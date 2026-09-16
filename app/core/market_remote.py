@@ -241,15 +241,11 @@ _CMD_WORDS = {"commands", "slash-commands", "hooks", "mcp", "scripts"}
 
 
 def _compat_block(entry):
-    """返回 None=预检通过，或不适配原因字符串。"""
-    blob = " ".join([entry["name"], entry.get("category") or ""] + entry["keywords"])
-    blob_l = blob.lower()
-    if ("mcp" in blob_l or _MCP_RE.search(entry.get("desc") or "")):
-        return "疑似含 MCP 组件（本平台不运行 MCP 服务）"
-    if _HOOK_RE.search(blob) or (_CMD_WORDS & set(entry["keywords"])):
-        return "含钩子/命令/脚本组件（仅支持纯技能类）"
+    """返回 None=预检通过，或不适配原因字符串。
+    剥离式安装后，脚本/钩子/MCP 组件在安装时自动剔除，不再作为灰显依据——
+    只有来源类型本身不支持（无法下载）才预灰显。"""
     if entry["install"]["kind"] == "unsupported":
-        return "来源类型不支持（仅支持 zip 直链与 git 子目录）"
+        return "来源类型不支持（仅支持 zip 直链、git 子目录与 ClawHub）"
     return None
 
 
@@ -453,16 +449,20 @@ def _is_junk(rel):
 
 
 def inspect_tree(root, whitelist=None):
-    """对插件根目录做纯技能类白名单检查。
-    whitelist 给定时（多插件同仓库的 repo-relative 来源），检查范围收敛到
-    白名单技能目录内——同仓库其他插件的可执行件不连坐，白名单技能自己
-    藏脚本照样拒。
-    返回 (None=通过, 文件清单 [(rel, abs)]) 或 (拒绝原因, None)。"""
-    files = []
+    """对插件根目录做剥离式安全检查：可执行件与脚本/钩子/命令/agents 目录、
+    MCP 配置不拒绝而是**剔除**（本平台不执行它们，它们只是供应链攻击面），
+    纯技能内容（文本/图片）保留。白名单给定时（多插件同仓库的 repo-relative
+    来源）范围收敛到白名单技能目录——同仓库其他插件的内容不参与。
+    返回 (files [(rel, abs)], stripped [rel])；硬错误（文件数超限）抛 ValueError。"""
+    files, stripped = [], []
     wl = set(whitelist or ())
+    scanned = 0
     for p in sorted(Path(root).rglob("*")):
         if p.is_dir():
             continue
+        scanned += 1
+        if scanned > _CAP_FILES * 4:
+            raise ValueError("文件数超过上限（%d）" % (_CAP_FILES * 4))
         rel = p.relative_to(root).as_posix()
         if _is_junk(rel):
             continue
@@ -470,20 +470,21 @@ def inspect_tree(root, whitelist=None):
         if wl and not any(seg in wl for seg in parts[:-1]):
             continue   # 白名单外的内容不参与本插件的检查与安装
         if parts[0].lower() in _BLOCK_DIRS:
-            return "含 %s/ 组件（仅支持纯技能类插件）" % parts[0].lower(), None
+            stripped.append(rel)
+            continue
         if parts[-1].lower() == ".mcp.json":
-            return "含 MCP 配置（.mcp.json）", None
+            stripped.append(rel)
+            continue
         ext = Path(parts[-1]).suffix.lower()
-        if not ext and parts[-1].lower() not in _NO_EXT_OK:
-            return "含不支持的文件类型: %s" % rel, None
-        if ext in _EXEC_EXT:
-            return "含可执行文件: %s" % rel, None
-        if ext and ext not in _TEXT_EXT and ext not in _IMG_EXT:
-            return "含不支持的文件类型: %s" % rel, None
+        if (ext in _EXEC_EXT
+                or (not ext and parts[-1].lower() not in _NO_EXT_OK)
+                or (ext and ext not in _TEXT_EXT and ext not in _IMG_EXT)):
+            stripped.append(rel)   # 可执行/未知类型一律剥离
+            continue
         files.append((rel, p))
     if len(files) > _CAP_FILES:
-        return "文件数超过上限（%d）" % _CAP_FILES, None
-    return None, files
+        raise ValueError("文件数超过上限（%d）" % _CAP_FILES)
+    return files, stripped
 
 
 def find_skills(root, files):
@@ -795,18 +796,20 @@ def build_files(entry, root):
     """插件树 → market.install_files 的 files dict：
     主 SKILL.md 落顶层（注入件），其余文本附件落 market-assets/<id>/ 原相对路径。
     条目显式声明了 skills 白名单（如 anthropics/skills 的 skills: [...]）时，
-    检查与打包都只看白名单技能目录——同仓库其他插件的内容不越界、不连坐。"""
+    检查与打包都只看白名单技能目录——同仓库其他插件的内容不越界。
+    返回 (files dict, 错误, stripped 剔除清单)。"""
     whitelist = (entry.get("install") or {}).get("skills") or []
-    blocked, files = inspect_tree(root, whitelist=whitelist or None)
-    if blocked:
-        return None, blocked
+    try:
+        files, stripped = inspect_tree(root, whitelist=whitelist or None)
+    except ValueError as e:
+        return None, str(e), []
     skills = find_skills(root, files)
     if not skills:
-        return None, "未找到技能（skills/*/SKILL.md）"
+        return None, "未找到技能（该插件剔除脚本/钩子/MCP 组件后没有纯技能内容）", stripped
     if whitelist:
         skills = [s for s in skills if s["name"] in set(whitelist)]
         if not skills:
-            return None, "白名单技能与包内容不匹配: %s" % ",".join(whitelist[:5])
+            return None, "白名单技能与包内容不匹配: %s" % ",".join(whitelist[:5]), stripped
     pack_id = entry["id"]
     out, total = {}, 0
     for i, sk in enumerate(skills):
@@ -825,11 +828,11 @@ def build_files(entry, root):
                 continue
             total += len(text)
             if total > _CAP_TOTAL_TEXT:
-                return None, "插件文本总量超过上限（%d KB）" % (_CAP_TOTAL_TEXT // 1024)
+                return None, "插件文本总量超过上限（%d KB）" % (_CAP_TOTAL_TEXT // 1024), stripped
             out[rel] = text
     if not out:
-        return None, "技能内容为空"
-    return out, None
+        return None, "技能内容为空", stripped
+    return out, None, stripped
 
 
 def install_remote(entry_id):
@@ -852,9 +855,9 @@ def install_remote(entry_id):
             root = _download_clawhub(entry, tmp)
         else:
             root = _download_git_any(entry, tmp)
-        files, blocked = build_files(entry, root)
+        files, blocked, stripped = build_files(entry, root)
         if blocked:
-            return None, "安装被安全检查拒绝——%s" % blocked
+            return None, blocked
         res, err = market.install_files(entry_id, entry["title"], files, extra={
             "remote": {"source": entry["source_id"], "name": entry["name"],
                        "version": entry["version"], "homepage": entry["homepage"]},
@@ -862,6 +865,7 @@ def install_remote(entry_id):
         if err:
             return None, err
         res["skills"] = sum(1 for k in files if k.endswith(".md") and "/" not in k)
+        res["stripped"] = sorted(stripped)
         return res, None
     except ValueError as e:
         return None, str(e)

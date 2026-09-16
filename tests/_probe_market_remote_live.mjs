@@ -117,9 +117,9 @@ async function main() {
     const cards = await evalJs(`document.querySelectorAll("#mkr-grid .mk-card").length`);
     check("首屏渲第一页 60 卡片", cards === 60, "cards=" + cards);
     const gray = await evalJs(`document.querySelectorAll("#mkr-grid .mk-card.blocked").length`);
-    check("真实不适配条目灰显成规模", gray >= 5, "gray=" + gray + "/" + cards);
+    check("灰显大幅减少（剥离式：仅 unsupported 来源）", gray <= 20, "gray=" + gray + "/" + cards);
     const installBtns = await evalJs(`[...document.querySelectorAll("#mkr-grid .mk-card button.primary")].length`);
-    check("可安装按钮若干", installBtns >= 10, "install=" + installBtns);
+    check("可安装按钮占多数（>2/3）", installBtns >= cards * 2 / 3, "install=" + installBtns + "/" + cards);
     const cntLoad = await evalJs(`document.getElementById("mk-count").textContent`);
     check("计数「已加载 60 / 共 N」", /已加载\s*60\s*\/\s*共\s*\d+/.test(cntLoad), cntLoad);
     check("续页区可见（还有更多）", await evalJs(`!document.getElementById("mkr-more").classList.contains("hidden")`));
