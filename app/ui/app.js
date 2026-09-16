@@ -5781,12 +5781,29 @@ function renderSu() {
   }
   info.innerHTML = html;
   const note = $("su-note");
-  if (note) note.textContent = SU.note || "";
+  if (note) note.textContent = t(SU.note || "");
   const b = $("su-check");
   if (b) b.disabled = false;
   $("su-apply").classList.toggle("hidden", !SU.has_update);
   const last = suLastUpgradeRun();
   $("su-restart").classList.toggle("hidden", !(last && last.status === "done"));
+  renderUpdPill();
+}
+
+/* 顶栏左上角常驻更新胶囊：有新版才出现（同版本被忽略后不再出现），
+ * 点击直达「关于与更新」，× 忽略本版本（与 su.seen 记账键同一套语义） */
+function renderUpdPill() {
+  const pill = $("upd-pill");
+  if (!pill) return;
+  const show = !!(SU && SU.has_update && localStorage.getItem("su.seen") !== SU.latest);
+  pill.classList.toggle("hidden", !show);
+  if (show) $("upd-pill-txt").textContent = t("新版本 v") + SU.latest;
+}
+
+function updDismiss() {
+  if (SU && SU.latest) localStorage.setItem("su.seen", SU.latest);
+  renderUpdPill();
+  toast(t("已忽略该版本提醒，可随时在「关于与更新」里升级"));
 }
 
 async function suCheck() {
@@ -6585,6 +6602,7 @@ window.syncLangMode = syncLangMode;
 window.suCheck = suCheck;
 window.suApply = suApply;
 window.suRestart = suRestart;
+window.updDismiss = updDismiss;
 
 document.addEventListener("DOMContentLoaded", () => {
   // 远程地址里带的 ?token= 存起来并从地址栏抹掉，之后所有请求走请求头

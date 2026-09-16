@@ -196,8 +196,12 @@
       <button id="btn-menu" class="icon-btn" title="收起 / 展开侧栏" aria-label="收起 / 展开侧栏" data-i18n-aria="收起 / 展开侧栏" data-i18n-title="收起 / 展开侧栏">
         <svg class="ico ico-lg" aria-hidden="true"><use href="#i-menu"></use></svg>
       </button>
+      <button id="upd-pill" class="pill upd-pill hidden" onclick="switchTab('about')" title="发现新版本，点击前往更新" aria-label="发现新版本" data-i18n-title="发现新版本，点击前往更新" data-i18n-aria="发现新版本">
+        <svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span id="upd-pill-txt"></span>
+        <span class="upd-x" role="button" onclick="event.stopPropagation();updDismiss()" title="忽略此版本" aria-label="忽略此版本" data-i18n-title="忽略此版本" data-i18n-aria="忽略此版本"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></span>
+      </button>
       <div data-i18n="任务" id="page-title" class="page-title">任务</div>
-      <div id="health-banner" class="health-banner hidden" onclick="healthBannerClick()" title="供应商健康告警" aria-label="供应商健康告警"></div>
+      <div id="health-banner" class="health-banner hidden" onclick="healthBannerClick()" title="供应商健康告警" aria-label="供应商健康告警" data-i18n-title="供应商健康告警" data-i18n-aria="供应商健康告警"></div>
       <div class="top-actions">
         <button id="ctrl-pill" class="pill ctrl icon-only hidden" onclick="ctrlClick()" title="多端控制权" aria-label="多端控制权" data-i18n-aria="多端控制权" data-i18n-title="多端控制权"><svg class="ico" aria-hidden="true"><use href="#i-unlock"></use></svg></button>
         <button id="btn-skin" class="pill icon-only" title="皮肤 / 换肤：多套配色，各含日间与夜间" aria-label="皮肤 / 换肤" data-i18n-aria="皮肤 / 换肤" data-i18n-title="皮肤 / 换肤：多套配色，各含日间与夜间"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg></button>

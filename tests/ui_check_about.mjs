@@ -137,6 +137,23 @@ async function main() {
     const active = await evalJs(`(document.querySelector(".set-item.active") || {}).dataset?.sub`);
     check("关于页为当前活动子页", active === "about", active);
 
+    // 7) 顶栏左上角更新胶囊：无新版时隐藏；伪造 has_update 后出现并可忽略
+    const pill0 = await evalJs(`document.getElementById("upd-pill").classList.contains("hidden")`);
+    check("无新版时顶栏更新胶囊隐藏", pill0 === true);
+    const pill1 = JSON.parse(await evalJs(`
+      SU = { mode: "npm", current: "0.1.0", latest: "9.9.9", has_update: true, note: "" };
+      renderSu();
+      JSON.stringify({ hidden: document.getElementById("upd-pill").classList.contains("hidden"),
+        txt: document.getElementById("upd-pill-txt").textContent || "" })`));
+    check("伪造新版后顶栏左上角出现更新胶囊", pill1.hidden === false && /9\.9\.9/.test(pill1.txt), JSON.stringify(pill1));
+    await evalJs(`updDismiss(); "ok"`);
+    await sleep(300);
+    const pill2 = JSON.parse(await evalJs(`JSON.stringify({
+      hidden: document.getElementById("upd-pill").classList.contains("hidden"),
+      seen: localStorage.getItem("su.seen") })`));
+    check("点 × 忽略本版本：胶囊隐藏且 su.seen 记账", pill2.hidden === true && pill2.seen === "9.9.9", JSON.stringify(pill2));
+    await evalJs(`localStorage.removeItem("su.seen"); "ok"`);
+
     await send("Page.captureScreenshot", { format: "png" }).then((r) => {
       writeFileSync(join(ROOT, ".ui-shots", "about-page.png"),
         Buffer.from(r.result.data, "base64"));

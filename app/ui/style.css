@@ -2430,3 +2430,19 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
 /* 运行中指挥：未消费指令的撤回按钮（贴右侧，hover 提亮） */
 .rd-msg .m-retract { float: right; margin-left: 8px; padding: 0 7px; font-size: 11.5px; opacity: .8; }
 .rd-msg .m-retract:hover { opacity: 1; color: #dc2626; border-color: rgba(220, 38, 38, .45); }
+
+/* 外部目录滚动分页：续页提示行 + 哨兵（追加于文件尾，防并行重排） */
+.mkr-more { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 0 2px; }
+.mkr-more.hidden { display: none; }
+.mkr-sentinel { height: 1px; }
+
+
+/* 顶栏左上角更新胶囊（追加于文件尾，防并行重排）：有新版才出现，点击进「关于与更新」 */
+.upd-pill { background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: var(--accent); color: var(--text); gap: 5px; padding: 5px 10px; }
+.upd-pill:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.upd-pill .upd-x { display: inline-flex; align-items: center; opacity: .65;
+  border-radius: 50%; padding: 1px; }
+.upd-pill .upd-x:hover { opacity: 1; background: color-mix(in srgb, var(--text) 15%, transparent); }
+.upd-pill .upd-x .ico { width: 11px; height: 11px; }
+.upd-pill.hidden { display: none; }
