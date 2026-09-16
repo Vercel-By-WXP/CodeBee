@@ -113,7 +113,11 @@ async function main() {
 
     // 4) 点「检查更新」→ 按钮短暂 disabled → 恢复；note 保持 git pull 提示
     await evalJs(`suCheck(); "ok"`);
-    await sleep(2500);
+    await sleep(1200);
+    const checkToast = await evalJs(`document.getElementById("toast")?.textContent || ""`);
+    check("检查更新有 toast 结果反馈（repo 模式报 git pull 提示，不再无反应）",
+      /git pull/.test(checkToast || ""), checkToast);
+    await sleep(1500);
     const afterCheck = JSON.parse(await evalJs(`JSON.stringify({
       disabled: document.getElementById("su-check").disabled,
       note: document.getElementById("su-note").textContent || ""

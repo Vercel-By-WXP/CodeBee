@@ -5809,7 +5809,13 @@ function updDismiss() {
 async function suCheck() {
   const b = $("su-check");
   if (b) b.disabled = true;
-  await loadSelfupdate(true);
+  let s = null;
+  try { s = await loadSelfupdate(true); }  // repo 模式秒回；npm 模式真查 registry
+  finally { if (b) b.disabled = false; }
+  if (!s) { toast(t("检查更新失败：服务未连接"), true); return; }
+  if (s.has_update) toast(t("发现新版本 v") + s.latest + t("，点「升级到新版」即可"));
+  else if (s.note) toast(s.note);
+  else toast(t("已是最新版"));
 }
 
 async function suApply() {
