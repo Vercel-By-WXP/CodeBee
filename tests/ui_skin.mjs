@@ -136,8 +136,8 @@ async function main() {
       bg: getComputedStyle(document.documentElement).getPropertyValue("--bg").trim(),
       meta: document.querySelector('meta[name="theme-color"]').getAttribute("content")
     })`));
-    check("首屏默认皮肤=经典、默认明暗=夜间", boot.skin === "classic" && boot.theme === "dark", JSON.stringify(boot));
-    check("经典夜间底色仍是原来的 #212121（未改变默认观感）", boot.bg === "#212121", boot.bg);
+    check("首屏默认皮肤=深海、默认明暗=日间", boot.skin === "ocean" && boot.theme === "light", JSON.stringify(boot));
+    check("深海日间底色为白底 #ffffff", boot.bg === "#ffffff", boot.bg);
 
     /* ---- 设置 → 皮肤页 ---- */
     await evalJs(`document.getElementById("btn-settings").click(); "ok"`);
@@ -159,16 +159,18 @@ async function main() {
       prevBg: [...document.querySelectorAll("#skin-grid .skin-card")].map(c => c.querySelector(".pv-main").style.background)
     })`));
     check("皮肤页能打开且标题为「皮肤」", page.shown && page.title === "皮肤", JSON.stringify(page).slice(0, 200));
-    check("皮肤页列出全部 6 套皮肤", page.cards === 6 && JSON.stringify(page.ids) === JSON.stringify(SKIN_IDS), JSON.stringify(page.ids));
-    check("默认选中「经典」", page.active.length === 1 && page.active[0] === "classic", JSON.stringify(page.active));
-    check("明暗分段显示当前为夜间", JSON.stringify(page.modeOn) === JSON.stringify(["dark"]), JSON.stringify(page.modeOn));
+    check("皮肤页列出全部 6 套皮肤（深海默认排首）", page.cards === 6 && JSON.stringify([...page.ids].sort()) === JSON.stringify([...SKIN_IDS].sort()), JSON.stringify(page.ids));
+    check("默认选中「深海」", page.active.length === 1 && page.active[0] === "ocean", JSON.stringify(page.active));
+    check("明暗分段显示当前为日间", JSON.stringify(page.modeOn) === JSON.stringify(["light"]), JSON.stringify(page.modeOn));
     check("顶栏皮肤入口为纯图标（不显示皮肤名文字）", page.pillIconOnly === true, JSON.stringify(page.pillIconOnly));
-    check("皮肤页标签显示「经典 · 夜间」", /经典/.test(page.cur) && /夜间/.test(page.cur), page.cur);
+    check("皮肤页标签显示「深海 · 日间」", /深海/.test(page.cur) && /日间/.test(page.cur), page.cur);
     check("每张卡片预览色块都取到了色值（无空块）",
       page.prevBg.length === 6 && page.prevBg.every((c) => c && c !== "rgba(0, 0, 0, 0)" && c !== ""),
       JSON.stringify(page.prevBg));
-    check("不同皮肤的预览色块不同（说明调色板真的各不一样）",
-      new Set(page.prevBg).size >= 4, JSON.stringify([...new Set(page.prevBg)]).slice(0, 200));
+    const sides = JSON.parse(await evalJs(`JSON.stringify(
+      [...document.querySelectorAll("#skin-grid .skin-card .pv-side")].map((c) => c.style.background))`));
+    check("不同皮肤的预览色块不同（默认日间下各皮肤 bg 同为白底，改查侧栏色条——说明调色板真的各不一样）",
+      new Set(sides).size >= 4, JSON.stringify(sides));
 
     /* ---- 逐个换肤：根属性 / 持久化 / 界面色真变 / 状态栏色 ---- */
     const seen = {};
@@ -258,7 +260,7 @@ async function main() {
       skin: document.documentElement.dataset.skin,
       bg: getComputedStyle(document.documentElement).getPropertyValue("--bg").trim()
     })`));
-    check("皮肤值非法时渲染回落经典（界面不会裸奔）", bad.bg === "#212121", JSON.stringify(bad));
+    check("皮肤值非法时渲染回落深海（界面不会裸奔）", bad.bg === "#0e1626", JSON.stringify(bad));
 
     /* ---- 窄屏：顶栏不挤、皮肤页两列、点选仍生效 ---- */
     await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });

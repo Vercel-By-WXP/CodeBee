@@ -75,6 +75,9 @@ html[data-skin="ocean"] {
   --log-bg: #08101c;
   --log-text: #bccbe4;
   --shadow: 0 10px 30px rgba(0, 0, 0, .45);
+  --uc-in: #3ba9f5;
+  --uc-ca: #6d6cf6;
+  --uc-out: #35c99b;
 }
 html[data-skin="ocean"][data-theme="light"] {
   --bg: #ffffff;
@@ -94,6 +97,9 @@ html[data-skin="ocean"][data-theme="light"] {
   --log-bg: #f4f8fe;
   --log-text: #33475f;
   --shadow: 0 10px 30px rgba(0, 0, 0, .07);
+  --uc-in: #1f6fd0;
+  --uc-ca: #5b4fe0;
+  --uc-out: #0d9a72;
 }
 html[data-skin="forest"] {
   --bg: #141d18;
@@ -113,6 +119,9 @@ html[data-skin="forest"] {
   --log-bg: #0b1310;
   --log-text: #b9cfc2;
   --shadow: 0 10px 30px rgba(0, 0, 0, .42);
+  --uc-in: #35c98c;
+  --uc-ca: #2bbfa8;
+  --uc-out: #35c98c;
 }
 html[data-skin="forest"][data-theme="light"] {
   --bg: #ffffff;
@@ -132,6 +141,9 @@ html[data-skin="forest"][data-theme="light"] {
   --log-bg: #f2f8f4;
   --log-text: #33463c;
   --shadow: 0 10px 30px rgba(0, 0, 0, .07);
+  --uc-in: #0e8f61;
+  --uc-ca: #0d8577;
+  --uc-out: #0e8f61;
 }
 html[data-skin="amber"] {
   --bg: #1e1915;
@@ -151,6 +163,9 @@ html[data-skin="amber"] {
   --log-bg: #15110d;
   --log-text: #dccfbe;
   --shadow: 0 10px 30px rgba(0, 0, 0, .42);
+  --uc-in: #e79a2b;
+  --uc-ca: #e2703f;
+  --uc-out: #3fbf8a;
 }
 html[data-skin="amber"][data-theme="light"] {
   --bg: #ffffff;
@@ -170,6 +185,9 @@ html[data-skin="amber"][data-theme="light"] {
   --log-bg: #fdf7ef;
   --log-text: #4a3c2e;
   --shadow: 0 10px 30px rgba(0, 0, 0, .07);
+  --uc-in: #b96a12;
+  --uc-ca: #b8542c;
+  --uc-out: #0e8f61;
 }
 html[data-skin="violet"] {
   --bg: #16121e;
@@ -189,6 +207,9 @@ html[data-skin="violet"] {
   --log-bg: #0d0913;
   --log-text: #ccc0e2;
   --shadow: 0 10px 30px rgba(0, 0, 0, .46);
+  --uc-in: #a86cf5;
+  --uc-ca: #ec4f95;
+  --uc-out: #35c99b;
 }
 html[data-skin="violet"][data-theme="light"] {
   --bg: #ffffff;
@@ -208,6 +229,9 @@ html[data-skin="violet"][data-theme="light"] {
   --log-bg: #f9f4fe;
   --log-text: #3d3352;
   --shadow: 0 10px 30px rgba(0, 0, 0, .07);
+  --uc-in: #7b3ce0;
+  --uc-ca: #c92c74;
+  --uc-out: #0d9a72;
 }
 /* 高对比：纯黑/纯白 + 硬边框 + 去阴影，弱视与强光环境下更清晰 */
 html[data-skin="contrast"] {
@@ -228,6 +252,9 @@ html[data-skin="contrast"] {
   --log-bg: #000000;
   --log-text: #f2f2f2;
   --shadow: none;
+  --uc-in: #4da3ff;
+  --uc-ca: #ff9d4d;
+  --uc-out: #23d18b;
 }
 html[data-skin="contrast"][data-theme="light"] {
   --bg: #ffffff;
@@ -247,6 +274,9 @@ html[data-skin="contrast"][data-theme="light"] {
   --log-bg: #ffffff;
   --log-text: #000000;
   --shadow: none;
+  --uc-in: #0b52c9;
+  --uc-ca: #b03000;
+  --uc-out: #05703f;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }

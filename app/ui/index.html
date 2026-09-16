@@ -14,17 +14,17 @@
 <meta name="apple-mobile-web-app-title" content="CodeBee">
 <link rel="stylesheet" href="style.css">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗 + 语言，避免刷新时闪一下默认配色。
-     皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，自然回落经典。 -->
+     皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，自然回落深海。 -->
 <script>
 (function () {
   try {
-    document.documentElement.dataset.skin = localStorage.getItem("orch.skin") || "classic";
-    document.documentElement.dataset.theme = localStorage.getItem("orch.theme") === "light" ? "light" : "dark";
+    document.documentElement.dataset.skin = localStorage.getItem("orch.skin") || "ocean";
+    document.documentElement.dataset.theme = localStorage.getItem("orch.theme") === "dark" ? "dark" : "light";
     document.documentElement.dataset.lang = localStorage.getItem("orch.lang") === "en" ? "en" : "zh";
     document.documentElement.lang = document.documentElement.dataset.lang === "en" ? "en" : "zh-CN";
   } catch (e) {
-    document.documentElement.dataset.skin = "classic";
-    document.documentElement.dataset.theme = "dark";
+    document.documentElement.dataset.skin = "ocean";
+    document.documentElement.dataset.theme = "light";
     document.documentElement.dataset.lang = "zh";
   }
 })();

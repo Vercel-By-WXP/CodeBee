@@ -4406,17 +4406,154 @@ function bindDirector() {
 }
 
 
+/* ---------------- 对话分区（直连任务默认视图） ----------------
+ * 直连 run 的蜂巢/版本/圣经基本是空的，真正的主角是时间线：用户说的话与 CLI
+ * 每轮输出混排成气泡。运行中发送 = 信箱（下一步送达）；已结束发送 = /chat
+ * （后端自动起新一轮 run 接着聊）。轮次边界如实标注：无头 CLI 插不进正在跑的
+ * 进程，运行中递的话只在下一步生效。 */
+let chatRunId = null;
+let chatAtts = [];
+let chatSig = "";
+
+function chatEngineIsDirect(run) {
+  const t = ((S.state || {}).tasks || []).find((x) => x.id === (run && run.task_id));
+  return !!(t && t.engine === "direct");
+}
+
+async function renderChat(run, active) {
+  const box = $("rd-chat");
+  if (!box) return;
+  // 只对直连任务启用（其它流程有自己的蜂巢/步骤视图，不抢默认选卡）
+  if (!run || !chatEngineIsDirect(run)) { box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  if (chatRunId !== run.id) { chatRunId = run.id; chatAtts = []; drawChatAtts(); chatSig = ""; }
+  const sig = run.id + "|" + run.status + "|" + (run.steps || []).length +
+    "|" + ((run.messages || []).length);
+  if (sig === chatSig) return;   // 轮询重画去抖：内容没变不重建 DOM（保住输入焦点）
+  chatSig = sig;
+  let items = [];
+  try { items = ((await api("/api/runs/" + encodeURIComponent(run.id) + "/timeline")).items) || []; }
+  catch (e) { items = []; }
+  const flow = $("rd-chat-flow");
+  flow.innerHTML = items.map((it) => {
+    if (it.kind === "user") {
+      return '<div class="chat-row me">' +
+        '<div class="chat-bubble me">' + esc(it.text || t("（仅附件）")) +
+        ((it.attachments || []).length
+          ? '<div class="chat-atts">' + it.attachments.map((a) =>
+              '<span class="att-chip2">' + esc(String(a).split(/[\\/]/).pop()) + "</span>").join("") + "</div>"
+          : "") +
+        '<div class="chat-meta">' + esc(it.who || "") + " " + esc(it.at || "") +
+        (it.consumed ? "" : " · " + t("待送达")) + "</div></div></div>";
+    }
+    return '<div class="chat-row">' +
+      '<div class="chat-bubble agent">' +
+      '<div class="chat-meta">' + esc(it.who || "") + " " + esc(it.at || "") +
+      (it.note ? " · " + esc(it.note) : "") +
+      (it.status && it.status !== "done" ? " · " + esc(it.status) : "") + "</div>" +
+      '<pre class="chat-body">' + esc(it.text || "") + "</pre></div></div>";
+  }).join("") || '<div class="hint">' + esc(t("还没有对话内容")) + "</div>";
+  const hint = $("rd-chat-hint");
+  if (hint) hint.textContent = active
+    ? t("运行中：消息随下一步送达（插不进正在跑的这一步）")
+    : t("已结束：发送后将自动开新一轮接着做");
+  flow.scrollTop = flow.scrollHeight;
+}
+
+function drawChatAtts() {
+  const box = $("rd-chat-att-list");
+  if (!box) return;
+  box.innerHTML = chatAtts.map((a, i) =>
+    '<span class="att-chip2">' + esc(a.name) + '<b onclick="chatRemoveAtt(' + i + ')" title="' +
+    esc(t("移除")) + '">×</b></span>').join("");
+}
+window.chatRemoveAtt = function (i) { chatAtts.splice(i, 1); drawChatAtts(); };
+
+async function chatUploadFiles(files) {
+  for (const f of files) {
+    try {
+      const b64 = await new Promise((res, rej) => {
+        const rd = new FileReader();
+        rd.onload = () => res(String(rd.result).split(",")[1] || "");
+        rd.onerror = () => rej(new Error(t("读取失败")));
+        rd.readAsDataURL(f);
+      });
+      const r = await api("/api/attachments", { method: "POST",
+        body: JSON.stringify({ name: f.name, data: b64 }) });
+      chatAtts.push(r.attachment); drawChatAtts();
+    } catch (e) { toast(t("附件上传失败：") + f.name + " — " + e.message, true); }
+  }
+}
+
+window.chatSend = async function () {
+  if (!chatRunId) return;
+  const ta = $("rd-chat-input");
+  const text = (ta.value || "").trim();
+  if (!text && !chatAtts.length) return;
+  const btn = $("rd-chat-send");
+  const run = S.lastRun || {};
+  const active = run.status === "running" || run.status === "queued";
+  btn.disabled = true;
+  try {
+    if (active) {
+      await api("/api/runs/" + encodeURIComponent(chatRunId) + "/messages", {
+        method: "POST",
+        body: JSON.stringify({ text, attachments: chatAtts.map((a) => a.id) }),
+      });
+      toast(t("已入箱：随下一步送达"));
+    } else {
+      const r = await api("/api/runs/" + encodeURIComponent(chatRunId) + "/chat", {
+        method: "POST",
+        body: JSON.stringify({ text, attachments: chatAtts.map((a) => a.id) }),
+      });
+      toast(t("已开新一轮，接着做…"));
+      if (r && r.run_id) { chatSig = ""; jumpToRun(r.run_id); return; }
+    }
+    ta.value = "";
+    chatAtts = []; drawChatAtts();
+    chatSig = "";   // 强制重画时间线
+    const d = await api("/api/runs/" + encodeURIComponent(chatRunId));
+    if (d.run) renderChat(d.run, d.run.status === "running" || d.run.status === "queued");
+  } catch (e) { toast(t("发送失败：") + e.message, true); }
+  finally { btn.disabled = false; }
+};
+
+function bindChat() {
+  const btn = $("rd-chat-attach"), file = $("rd-chat-file"), send = $("rd-chat-send"),
+        ta = $("rd-chat-input");
+  if (!btn || !file || !send || !ta) return;
+  btn.addEventListener("click", () => file.click());
+  file.addEventListener("change", (e) => {
+    chatUploadFiles(Array.from(e.target.files || []));
+    e.target.value = "";
+  });
+  send.addEventListener("click", window.chatSend);
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); window.chatSend(); }
+  });
+  ta.addEventListener("paste", (e) => {
+    const items = Array.from((e.clipboardData || {}).items || [])
+      .filter((it) => it.kind === "file" && it.type.startsWith("image/"));
+    if (!items.length) return;
+    e.preventDefault();
+    chatUploadFiles(items.map((it) => {
+      const f = it.getAsFile();
+      return f && !f.name ? new File([f], "paste-" + Date.now() + ".png", { type: f.type }) : f;
+    }).filter(Boolean));
+  });
+}
+
 /* ---------------------------------------------------------- 外观：皮肤 + 明暗（换肤） */
 /* 调色板全部在 style.css（html[data-skin="X"]，每套含夜间/日间两版变量）；这里只放顺序
  * 与文案。卡片预览色块用 skinPalette 从 CSS 变量实时取值，不在 JS 里重复写色值——
  * 皮肤改色只需要动 style.css，预览与真实界面不会各自漂移。 */
 const SKINS = [
-  { id: "classic", name: t("经典"), desc: t("黑白灰 + 蓝色强调，ChatGPT 式清爽配色（默认）") },
-  { id: "ocean", name: t("深海"), desc: t("藏青底色 + 天蓝强调，夜间长时间盯任务更沉静") },
-  { id: "forest", name: t("森野"), desc: t("墨绿底色 + 青翠强调，偏自然的护眼配色") },
-  { id: "amber", name: t("暖阳"), desc: t("暖棕底色 + 琥珀强调，纸感暖调") },
-  { id: "violet", name: t("霓虹"), desc: t("暗紫底色 + 品红强调，霓虹感强") },
-  { id: "contrast", name: t("高对比"), desc: t("纯黑 / 纯白 + 硬边框、去阴影，弱视与强光环境更清晰") },
+  { id: "ocean", name: "深海", desc: "藏青底色 + 天蓝强调，夜间长时间盯任务更沉静（默认）" },
+  { id: "classic", name: "经典", desc: "黑白灰 + 蓝色强调，ChatGPT 式清爽配色" },
+  { id: "forest", name: "森野", desc: "墨绿底色 + 青翠强调，偏自然的护眼配色" },
+  { id: "amber", name: "暖阳", desc: "暖棕底色 + 琥珀强调，纸感暖调" },
+  { id: "violet", name: "霓虹", desc: "暗紫底色 + 品红强调，霓虹感强" },
+  { id: "contrast", name: "高对比", desc: "纯黑 / 纯白 + 硬边框、去阴影，弱视与强光环境更清晰" },
 ];
 const SKIN_IDS = new Set(SKINS.map((s) => s.id));
 const SKIN_KEY = "orch.skin";
@@ -4424,10 +4561,10 @@ const THEME_KEY = "orch.theme";
 
 function currentSkin() {
   const s = localStorage.getItem(SKIN_KEY) || "";
-  return SKIN_IDS.has(s) ? s : "classic";   // 值缺失/非法（如换过版本）一律回落经典
+  return SKIN_IDS.has(s) ? s : "ocean";   // 值缺失/非法（如换过版本）一律回落深海
 }
 
-function currentMode() { return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark"; }
+function currentMode() { return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"; }
 
 /* 取某皮肤在指定明暗下的实际配色：临时拨到根属性读计算值再还原。
  * 同步执行，浏览器不会中途绘制，所以看不到闪烁。 */
@@ -4475,7 +4612,7 @@ function setSkin(id) {
   applyAppearance();
   renderAppearance();
   const s = SKINS.find((x) => x.id === id);
-  toast(t("已换肤：") + (s ? s.name : id) + t("（") + (currentMode() === "dark" ? t("夜间") : t("日间")) + t("）"));
+  toast(t("已换肤：") + (s ? t(s.name) : id) + t("（") + (currentMode() === "dark" ? t("夜间") : t("日间")) + t("）"));
 }
 
 function toggleTheme() { setThemeMode(currentMode() === "light" ? "dark" : "light"); }
@@ -4488,7 +4625,7 @@ function renderAppearance() {
   const cur = currentSkin(), mode = currentMode();
   grid.innerHTML = SKINS.map((s) => {
     const p = skinPalette(s.id, mode);
-    return '<button type="button" class="skin-card' + (s.id === cur ? " active" : "") + '" data-skin="' + s.id + '" title="' + esc(s.desc) + '">'
+    return '<button type="button" class="skin-card' + (s.id === cur ? " active" : "") + '" data-skin="' + s.id + '" title="' + esc(t(s.desc)) + '">'
       + '<span class="skin-prev" aria-hidden="true">'
       + '<span class="pv-side" style="background:' + p.sidebar + '"></span>'
       + '<span class="pv-main" style="background:' + p.bg + '">'
@@ -4496,16 +4633,16 @@ function renderAppearance() {
       + '<span class="pv-bar w60" style="background:' + p.text + ';opacity:.3"></span>'
       + '<span class="pv-bar w40" style="background:' + p.accent2 + '"></span>'
       + '</span></span>'
-      + '<span class="skin-meta"><span class="skin-name">' + esc(s.name) + '</span>'
+      + '<span class="skin-meta"><span class="skin-name">' + esc(t(s.name)) + '</span>'
       + '<svg class="ico skin-check" aria-hidden="true"><use href="#i-check"></use></svg></span>'
-      + '<span class="skin-desc">' + esc(s.desc) + '</span>'
+      + '<span class="skin-desc">' + esc(t(s.desc)) + '</span>'
       + '</button>';
   }).join("");
   document.querySelectorAll("#skin-mode [data-mode]").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
   const tag = $("skin-cur");
   if (tag) {
     const s = SKINS.find((x) => x.id === cur);
-    tag.textContent = (s ? s.name : cur) + " · " + (mode === "dark" ? t("夜间") : t("日间"));
+    tag.textContent = (s ? t(s.name) : cur) + " · " + (mode === "dark" ? t("夜间") : t("日间"));
   }
 }
 
