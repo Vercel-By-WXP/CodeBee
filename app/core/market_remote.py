@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import ipaddress
 import json
 import re
@@ -513,8 +514,11 @@ def find_skills(root, files):
 # ---------------------------------------------------------------- 下载
 
 def _safe_extract(zf, dest):
-    """防炸弹解包：先校验成员名（拒绝绝对路径/穿越/盘符）与总量，解包后再逐个
-    验证落点解析后仍在 dest 内（双保险，防符号链接等绕过）。"""
+    """防炸弹解包：先校验成员名与总量，再逐成员手动写出（不用 extractall——
+    Windows 打包的 zip 成员名常带反斜杠 fork_core\\x.py，extractall 按「/」
+    建父目录在 Windows 上会 FileNotFoundError）。落盘三重防线：段字符白名单、
+    resolve 收容校验、落点复查。"""
+    members = []
     total, names = 0, 0
     for zi in zf.infolist():
         if zi.is_dir():
@@ -528,12 +532,24 @@ def _safe_extract(zf, dest):
             raise ValueError("解包总量超过上限")
         if names > _CAP_FILES * 4:
             raise ValueError("zip 内文件数过多")
+        members.append((zi, name))
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
-    zf.extractall(dest)
     base = dest.resolve()
+    seg_ok = re.compile(r"^\.{0,2}[A-Za-z0-9_][A-Za-z0-9_. ()\[\]-]*$")
+    for zi, name in members:
+        parts = _rel_parts(name)
+        if not parts or any(seg in ("..", ".") or not seg_ok.match(seg) for seg in parts):
+            raise ValueError("zip 内路径可疑: %s" % zi.filename)
+        p = Path(os.path.join(dest, *parts)).resolve()
+        if base != p and base not in p.parents:
+            raise ValueError("zip 内路径可疑: %s" % zi.filename)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with zf.open(zi) as src:
+            p.write_bytes(src.read())
     for p in dest.rglob("*"):
-        if base != p.resolve() and base not in p.resolve().parents:
+        rp = p.resolve()
+        if base != rp and base not in rp.parents:
             raise ValueError("解包落点越界: %s" % p)
     return dest
 

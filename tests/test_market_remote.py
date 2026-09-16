@@ -376,6 +376,35 @@ class TestMarketRemoteGuards(BaseTest):
         self.assertIsNone(res)
         self.assertIn("可疑", err)
 
+        # Windows 反斜杠成员名（Go archive/zip 打包的真实形态，ClawHub 实测）：
+        # 解包不炸、路径归一、技能装上。py3.8 zipfile 写入时会强制转斜杠，
+        # 造不出字面反斜杠包——用假 zip 对象直测 _safe_extract 的成员名处理。
+        class FakeZI:
+            def __init__(self, name, data):
+                self.filename = name
+                self.data = data.encode("utf-8")
+                self.file_size = len(self.data)
+            def is_dir(self):
+                return False
+
+        class FakeZip:
+            def __init__(self, members):
+                self._m = [FakeZI(n, d) for n, d in members]
+            def infolist(self):
+                return self._m
+            def open(self, zi):
+                return io.BytesIO(zi.data)
+
+        dst = Path(tempfile.mkdtemp()) / "bs"
+        mr._safe_extract(FakeZip([("skills\\s\\SKILL.md", SKILL_MD),
+                                  ("skills\\s\\ref.md", REF_MD)]), dst)
+        self.assertTrue((dst / "skills" / "s" / "SKILL.md").is_file())
+        self.assertTrue((dst / "skills" / "s" / "ref.md").is_file())
+
+        # 穿越换皮（反斜杠夹带 ..）仍然拒绝
+        with self.assertRaises(ValueError):
+            mr._safe_extract(FakeZip([("skills\\..\\evil.txt", "x")]), Path(tempfile.mkdtemp()) / "ev")
+
         # 无技能的纯文档包（剥离后没有 SKILL.md）
         seed([dict(good2, name="nodoc")])
         fetcher, resolver = _patch_fetch(mr, lambda url: _mk_zip({"README.md": "# x"}))
