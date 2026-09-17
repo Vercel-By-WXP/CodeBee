@@ -1967,6 +1967,17 @@ def _protocol_candidates(prov):
             if (caps.get(p) or {}).get("base")]
 
 
+def bindable_protocols(agent_kind_or_id):
+    """该 CLI 可绑定的 wire 协议（与 resolve_binding 的 allowed 一致）。
+    供死链告警/失败文案解释「为什么绑不上」：claude 只认 anthropic，
+    codex/dsh 只认 openai，其余开放双协议（含 wire 适配）。"""
+    if _deepseek_env_target(agent_kind_or_id) or agent_kind_or_id in ("codex-cli", "codex"):
+        return ("openai",)
+    if agent_kind_or_id in ("claude-code", "claude"):
+        return ("anthropic",)
+    return tuple(_BINDABLE_PROTOCOLS)
+
+
 def resolve_binding(agent_kind_or_id, difficulty="default"):
     """返回 {env:{}, model:..., model_fallbacks:[...], codex_provider:..., call_chain:[...]} 或 None。
 
@@ -1981,17 +1992,11 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     provs = {p.get("id"): p for p in providers()}
     routing = bool(b.get("difficulty_routing"))
     tier = difficulty if difficulty in ("easy", "hard") else None
-    # dsh 走 DEEPSEEK_* env，端点必须是 OpenAI 兼容的 /chat/completions，
-    # anthropic 协议的网关注进去也调不通，直接判为不可绑定。
-    allowed = ("openai",) if _deepseek_env_target(agent_kind_or_id) else _BINDABLE_PROTOCOLS
-    # 2026-09-15 连载验收实测：CLI 与供应商协议必须匹配——codex 只吃 openai wire
-    # （codex_provider 机制），claude 只吃 anthropic wire。混着注入会产生
-    # 「codex 拿到 ANTHROPIC_* env 却缺 ORCH_API_KEY」这类必然失败的组合
-    # （症状：Missing environment variable: ORCH_API_KEY）。
-    if agent_kind_or_id in ("codex-cli", "codex"):
-        allowed = ("openai",)
-    elif agent_kind_or_id in ("claude-code", "claude"):
-        allowed = ("anthropic",)
+    # 协议必须匹配（bindable_protocols）：dsh 只吃 OpenAI 兼容端点，codex 只吃
+    # openai wire（codex_provider 机制），claude 只吃 anthropic wire——混着注入
+    # 会产生「codex 拿到 ANTHROPIC_* env 却缺 ORCH_API_KEY」这类必然失败的组合
+    # （2026-09-15 连载验收实测，症状：Missing environment variable: ORCH_API_KEY）。
+    allowed = bindable_protocols(agent_kind_or_id)
 
     if chain:
         entries = []

@@ -67,7 +67,8 @@ class TestDirectiveInjection(BaseTest):
         (wd / "_attachments").mkdir()
         (wd / "_attachments" / "pic.png").write_bytes(b"png")
 
-        agent = {"id": "a1", "kind": "codex", "mode": "real", "command": "codex"}
+        agent = {"id": "a1", "kind": "codex", "mode": "real", "command": "codex",
+                 "env": {"TUTTI_TEST_SELFCONFIG": "1"}}  # 自带配置：过死链闸门
         seen = {}
         orig = runner.run_process
 
@@ -217,7 +218,8 @@ class TestPauseGate(BaseTest):
         from app.core import pipeline, runner, store
         run = store.create_run("orchestration", "闸门测试")
         rid = run["id"]
-        agent = {"id": "a1", "kind": "codex", "mode": "real", "command": "codex"}
+        agent = {"id": "a1", "kind": "codex", "mode": "real", "command": "codex",
+                 "env": {"TUTTI_TEST_SELFCONFIG": "1"}}  # 自带配置：过死链闸门
         seen = {}
         orig = runner.run_process
 

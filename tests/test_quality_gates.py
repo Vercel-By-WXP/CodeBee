@@ -35,7 +35,8 @@ def _fake_env(cli, entry_id="fakecli"):
         {"id": entry_id, "name": "Fake CLI", "cli_group": "installable",
          "detect": {"cli": sys.executable},
          "orch": {"kind": "generic", "command": sys.executable,
-                  "argv_template": [cli, "{prompt}"]},
+                  "argv_template": [cli, "{prompt}"],
+                  "env": {"TUTTI_TEST_SELFCONFIG": "1"}},  # 自带配置：过死链闸门
          "default_enabled": True},
     ], ensure_ascii=False), encoding="utf-8")
     catalog._CACHE["entries"] = None

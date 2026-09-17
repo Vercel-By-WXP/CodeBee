@@ -567,7 +567,9 @@ function renderHealthBanner(health) {
   el.className = "health-banner alerting";
   el.title = alerts.map((p) =>
     p.provider + (p.model ? " · " + p.model : "") +
-    t("：连续失败 ") + p.consecutive_failures + t(" 次（") + (p.last_error || t("未知错误")) + t("）")
+    (p.static
+      ? t("：") + (p.last_error || t("未知错误"))
+      : t("：连续失败 ") + p.consecutive_failures + t(" 次（") + (p.last_error || t("未知错误")) + t("）"))
   ).join("\n");
   if (!_healthBeeped) { _healthBeeped = true; beepAttention(); }
 }
@@ -575,7 +577,7 @@ function renderHealthBanner(health) {
 function healthBannerText(health) {
   return ((health && health.alerts) || []).map((p) => {
     const m = p.model ? " · " + p.model : "";
-    return "⚠ " + p.provider + m + " " + t("连接异常");
+    return "⚠ " + p.provider + m + " " + (p.static ? t("绑定链失效") : t("连接异常"));
   }).join(t("　"));
 }
 
@@ -584,19 +586,21 @@ function healthBannerClick() {
   if (!alerts.length) return;
   const rows = alerts.map((p) => {
     const model = p.model ? " · " + p.model : "";
-    return "<div style='margin-bottom:10px'>" +
-      "<b>" + esc(p.provider) + (p.model ? " · " + esc(p.model) : "") + "</b>" +
+    const statLine = p.static ? "" :
       "<div style='opacity:.75;font-size:12px;margin-top:2px'>" +
       t("连续失败") + " " + p.consecutive_failures + " " + t("次 · 首次失败 ") + (p.first_fail_at || "-") +
-      "</div>" +
+      "</div>";
+    return "<div style='margin-bottom:10px'>" +
+      "<b>" + esc(p.provider) + (p.model ? " · " + esc(p.model) : "") + "</b>" +
+      statLine +
       "<div style='color:#dc2626;font-size:12px;margin-top:2px;word-break:break-all'>" +
       esc(p.last_error || "") + "</div></div>";
   }).join("");
   const pid0 = alerts[0].provider_id || "";
   const model0 = alerts[0].model || "";
   const foot =
-    (model0 ? "<button class='btn ghost' onclick=\"healthDisableModel('" + esc(pid0) + "','" + esc(model0) + "')\">" + t("禁用该模型") + "</button>" : "") +
-    "<button class='btn ghost' onclick=\"healthDisableProvider('" + esc(pid0) + "')\">" + t("禁用该厂商") + "</button>" +
+    (pid0 && model0 ? "<button class='btn ghost' onclick=\"healthDisableModel('" + esc(pid0) + "','" + esc(model0) + "')\">" + t("禁用该模型") + "</button>" : "") +
+    (pid0 ? "<button class='btn ghost' onclick=\"healthDisableProvider('" + esc(pid0) + "')\">" + t("禁用该厂商") + "</button>" : "") +
     "<button class='btn ghost' onclick=\"healthOp('silence')\">" + t("静默本次告警") + "</button>" +
     "<button class='btn ghost' onclick=\"healthOp('reset')\">" + t("手动标记恢复") + "</button>" +
     "<button class='primary' onclick='closeModal()'>" + t("关闭") + "</button>";
@@ -848,19 +852,19 @@ function renderBindings() {
     }).join("");
     const bound = provs.find((p) => p.id === b.provider_id);
     const offWarn = bound && bound.enabled === false
-      ? '<p class="hint warn">' + t("该供应商已停用：编排时不会注入它，将回落为 CLI 默认配置（模型链也不会生效）。") + '</p>' : "";
+      ? '<p class="hint warn">' + t("该供应商已停用：编排时不会注入它，模型链因此失效时相关步骤会直接判失败。") + '</p>' : "";
     const protoWarn = bound && !bindable.some((p) => p.id === bound.id)
       ? '<p class="hint warn">' + t("该供应商协议为 ") + esc(protoLabel(bound)) +
-        t("，当前没有可注入的 CLI，编排时会回落为 CLI 默认配置。") + '</p>' : "";
-    // 供应商停用但链上勾选了它家模型：链条目在解析时也会被整条跳过，
-    // 链空了照样回落本机默认——这是 2026-09-16 配额事故的隐藏形态，单说
-    // 「供应商下拉」警告不够，链本身的死活也要点名。
+        t("，当前没有可注入的 CLI，编排时相关步骤会直接判失败。") + '</p>' : "";
+    // 供应商停用但链上勾选了它家模型：链条目在解析时也会被整条跳过，链空了
+    // 相关步骤会直接判失败（2026-09-17 起；此前的静默回落本机默认正是 2026-09-16
+    // 配额事故的隐藏形态）——单说「供应商下拉」警告不够，链本身的死活也要点名。
     const chainDead = bindChain(b).some((c2) => c2.p && (() => {
       const pv = provs.find((p) => p.id === c2.p);
       return !pv || pv.enabled === false;
     })());
     const chainWarn = (!bound || bound.enabled !== false) && chainDead
-      ? '<p class="hint warn">' + t("模型链里有已停用/已删除的供应商：这些条目解析时会被跳过，链可能因此整体失效。") + '</p>' : "";
+      ? '<p class="hint warn">' + t("模型链里有已停用/已删除的供应商：这些条目解析时会被跳过，链可能因此整体失效，相关步骤将判失败。") + '</p>' : "";
     return '<div class="card"><div class="head"><span class="name">' + esc(c.name) + "</span>" +
       '<span class="tag">' + esc(c.orch_kind) + "</span></div>" +
       '<div class="field"><label>' + t("供应商") + '</label><select id="bindprov-' + esc(c.id) + '">' + opts + "</select></div>" +
@@ -5916,7 +5920,7 @@ function bindModelBox(c, provId) {
           "</span>";
       }).join("")
     : '<span class="hint">' + t("未设置") + (provId
-        ? t("（按供应商/难度自动解析——供应商协议不匹配或被停用时解析为空，回落 CLI 本机默认）")
+        ? t("（按供应商/难度自动解析——供应商协议不匹配或被停用时解析为空，相关步骤将判失败）")
         : t("（用 CLI 默认模型——不会注入任何供应商凭据）")) + "</span>";
   return '<div class="field"><label>' + t("运行时模型链（跨厂商，最多 ") + MAX_ORCH_MODELS + t(" 条）") + "</label>" +
     '<div class="orch-row">' + chips +

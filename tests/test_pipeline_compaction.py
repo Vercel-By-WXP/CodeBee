@@ -35,10 +35,12 @@ class _CompactionEnv:
 
 
 def _real_agent():
+    # env=自带配置：死链闸门（2026-09-17）不再放行无绑定链的真实智能体
     return {"id": "fakecli", "kind": "generic",
             "command": sys.executable,
             "argv_template": [str(FIXTURES / "fixtures_role_cli.py"), "{prompt}"],
-            "mode": "real", "label": "Fake CLI"}
+            "mode": "real", "label": "Fake CLI",
+            "env": {"TUTTI_TEST_SELFCONFIG": "1"}}
 
 
 class TestPipelineCompactionWiring(BaseTest):

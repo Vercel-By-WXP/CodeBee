@@ -34,7 +34,8 @@ class TestResumeE2E(BaseTest):
              "detect": {"cli": sys.executable},
              "orch": {"kind": "generic", "command": sys.executable,
                       "argv_template": [FAKE, "{prompt}"],
-                      "resume_argv_template": [FAKE, "-s", "{session}"]},
+                      "resume_argv_template": [FAKE, "-s", "{session}"],
+                      "env": {"TUTTI_TEST_SELFCONFIG": "1"}},  # 自带配置：过死链闸门
              "default_enabled": False},
         ], ensure_ascii=False), encoding="utf-8")
         catalog._CACHE["entries"] = None

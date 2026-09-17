@@ -101,7 +101,7 @@ class TestRouterBindingCalibration(BaseTest):
         s_none, r_none = router.score(none_agent, "implement", "code")
         self.assertAlmostEqual(s_ok - s_none, 33.0)  # +8 与 -25 的差
         self.assertIn("绑定链可用", r_ok)
-        self.assertIn("回落 CLI 本机默认", r_none)
+        self.assertIn("绑定链为空", r_none)
 
 
 class TestImplementSwitchOnFailure(BaseTest):
@@ -118,8 +118,10 @@ class TestImplementSwitchOnFailure(BaseTest):
                      "sys.stdin.read();"
                      "print('{\"pass\": true, \"scores\": {\"accuracy\": 9}, \"issues\": []}')")
         a1 = {"id": "fake-a1", "kind": "generic", "mode": "real", "label": "坏CLI",
+              "env": {"TUTTI_TEST_SELFCONFIG": "1"},  # 自带配置：过死链闸门
               "command": py, "argv_template": ["-c", fail_script]}
         a2 = {"id": "fake-a2", "kind": "generic", "mode": "real", "label": "好CLI",
+              "env": {"TUTTI_TEST_SELFCONFIG": "1"},  # 自带配置：过死链闸门
               "command": py, "argv_template": ["-c", ok_script]}
         pipeline._agents = lambda: [a1, a2]
         # 规划离线化：不调 CLI，静态计划

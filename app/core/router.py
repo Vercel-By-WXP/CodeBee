@@ -14,9 +14,10 @@ MAX_REPAIR_ROUNDS = 2  # 自动修复循环上限
 
 
 def _binding_bonus(agent_id):
-    """绑定链可用性加分/减分：链上有可用条目 +8，解析为空（回落 CLI 本机默认）
-    -25。2026-09-16 实测：静态能力基线让配额烧干的 codex 永远压过健康备用 CLI，
-    绑定空的 CLI 更是连用户配置的模型都没用上——先按「能不能按配置跑起来」校准。"""
+    """绑定链可用性加分/减分：链上有可用条目 +8，解析为空 -25。2026-09-16 实测：
+    静态能力基线让配额烧干的 codex 永远压过健康备用 CLI，绑定空的 CLI 更是连
+    用户配置的模型都没用上——先按「能不能按配置跑起来」校准。2026-09-17 起
+    空链步骤在 pipeline 直接判失败（不再静默回落本机默认），此处只管排序。"""
     try:
         from . import modelhub
         b = modelhub.resolve_binding(agent_id)
@@ -49,7 +50,7 @@ def score(agent, role, ttype, stats=None):
     if bb > 0:
         btxt = "，绑定链可用（+%s）" % bb
     elif bb < 0:
-        btxt = "，绑定链为空将回落 CLI 本机默认配置（%s）" % bb
+        btxt = "，绑定链为空：相关步骤将判失败（%s）" % bb
     hb = _history_bonus(stats, agent.get("id"), ttype)
     total = base + bb + hb
     hs = (stats.get(agent.get("id")) or {}).get(ttype)

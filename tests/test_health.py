@@ -230,3 +230,60 @@ class TestSnapshotShape(HealthBase):
         for k in ("provider", "status", "consecutive_failures", "last_error",
                   "alerting", "silenced", "first_fail_at"):
             self.assertIn(k, p)
+
+
+class TestStaticBindingAlerts(HealthBase):
+    """静态死链告警：绑定链起跑前就全死（厂商停用/无密钥/协议不匹配）。
+    与运行期故障不同：立即告警、不进探针，绑定恢复自动解除。"""
+
+    def test_dead_immediately_alerts(self):
+        from app.core import health
+        health.report_binding_dead("claude-code", "绑定链全部失效")
+        snap = health.snapshot()
+        self.assertTrue(snap["any_alerting"])
+        p = snap["alerts"][0]
+        self.assertEqual(p["provider"], "绑定链·claude-code")
+        self.assertTrue(p["static"])
+        self.assertTrue(p["alerting"])
+        self.assertIn("绑定链", p["last_error"])
+
+    def test_static_never_probed(self):
+        """静态死链无端点可探：不得进入探针目标，只能靠绑定恢复解除。"""
+        from app.core import health
+        health.report_binding_dead("opencode", "x")
+        with health._LOCK:
+            st = health._PROVIDERS["绑定链·opencode"]
+            targets = [n for n, s in health._PROVIDERS.items()
+                       if not s.get("static") and s.get("status") in ("failing", "down")]
+        self.assertTrue(st["static"])
+        self.assertEqual(st["status"], "down")
+        self.assertEqual(targets, [])
+
+    def test_ok_clears_and_rearms(self):
+        from app.core import health
+        health.report_binding_dead("claude-code", "x")
+        health.report_binding_ok("claude-code")
+        snap = health.snapshot()
+        self.assertFalse(snap["any_alerting"])
+        self.assertEqual([p["status"] for p in snap["providers"] if p["static"]],
+                         ["recovered"])
+        # 恢复后再死 → 重新告警
+        health.report_binding_dead("claude-code", "y")
+        self.assertTrue(health.snapshot()["any_alerting"])
+
+    def test_silence_mutes_until_recovery(self):
+        from app.core import health
+        health.report_binding_dead("claude-code", "x")
+        ok, _ = health.silence("绑定链·claude-code")
+        self.assertTrue(ok)
+        health.report_binding_dead("claude-code", "x2")
+        self.assertFalse(health.snapshot()["any_alerting"],
+                         "静默期内不得重复告警")
+        health.report_binding_ok("claude-code")   # 恢复即重新武装
+        health.report_binding_dead("claude-code", "x3")
+        self.assertTrue(health.snapshot()["any_alerting"])
+
+    def test_ok_without_state_is_noop(self):
+        from app.core import health
+        health.report_binding_ok("never-bound")
+        self.assertEqual(health.snapshot()["providers"], [])

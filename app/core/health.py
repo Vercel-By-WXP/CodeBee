@@ -157,6 +157,58 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
         _persist()
 
 
+# ------------------------------------------------- 静态死链告警（绑定层）
+
+def report_binding_dead(key: str, error: str = ""):
+    """静态死链告警：某 CLI 的绑定链在起跑前就已全部失效（厂商停用/删除/无密钥、
+    模型停用、协议不匹配）。与运行期 report_failure 的区别：不计数、不进探针，
+    立即置 down+告警（尊重静默）；绑定恢复后由 report_binding_ok 自动解除。
+    伪供应商名带「绑定链·」前缀，不会与真实厂商名相撞。"""
+    if not key:
+        return
+    with _LOCK:
+        name = "绑定链·%s" % key
+        st = _PROVIDERS.get(name)
+        if st is None:
+            st = _PROVIDERS.setdefault(name, {
+                "name": name, "provider_id": "", "model": "",
+                "status": "ok", "consecutive_failures": 0,
+                "first_fail_at": 0, "last_fail_at": 0, "last_ok_at": 0,
+                "last_error": "", "alerted": False, "silenced": False,
+                "silence_until": 0, "probe_next_at": 0, "probe_backoff_idx": 0,
+                "recovered_at": 0,
+            })
+        st["static"] = True
+        st["binding_key"] = str(key)
+        st["name"] = name
+        st["status"] = "down"
+        st["last_fail_at"] = _now()
+        st["last_error"] = str(error or "")[:300]
+        st["probe_next_at"] = 0
+        if not _effective_silenced(st) and not st.get("alerted"):
+            st["alerted"] = True
+            log.warning("[health] ⚠️ 绑定链告警：%s 全部失效（%s）",
+                        name, st["last_error"][:120])
+        _persist()
+
+
+def report_binding_ok(key: str):
+    """绑定链恢复可用：自动解除该 CLI 的静态死链告警（无记录时零开销）。"""
+    if not key:
+        return
+    with _LOCK:
+        st = _PROVIDERS.get("绑定链·%s" % key)
+        if not st or not st.get("static"):
+            return
+        st["status"] = "recovered"
+        st["alerted"] = False
+        st["silenced"] = False
+        st["silence_until"] = 0
+        st["recovered_at"] = _now()
+        log.info("[health] 绑定链 %s 已恢复（静态告警解除）", st["name"])
+        _persist()
+
+
 # ---------------------------------------------------------------- 手动操作
 
 def silence(provider: str, minutes: int = 0):
@@ -215,6 +267,7 @@ def snapshot():
                 "last_error": st.get("last_error") or "",
                 "alerting": alerting,
                 "silenced": silenced,
+                "static": bool(st.get("static")),
             })
         # 稳定排序：告警中 > 故障中 > 恢复 > 正常
         rank = {"down": 0, "failing": 1, "recovered": 2, "ok": 3}
@@ -271,7 +324,8 @@ def _probe_loop():
         try:
             with _LOCK:
                 targets = [(name, st) for name, st in _PROVIDERS.items()
-                           if st.get("status") in ("failing", "down")
+                           if not st.get("static")  # 静态死链无端点可探，绑定恢复时自动解除
+                           and st.get("status") in ("failing", "down")
                            and (st.get("probe_next_at") or 0) <= _now()]
                 for name, st in targets:
                     idx = int(st.get("probe_backoff_idx") or 0)

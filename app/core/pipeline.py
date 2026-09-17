@@ -273,18 +273,54 @@ def _wait_gate(run_id, ev):
         time.sleep(1.0)
 
 
+def _binding_dead_msg(agent):
+    """死链失败文案：说明为什么不回落本机默认 + 该 CLI 需要什么协议的供应商。"""
+    aid = agent.get("id") or ""
+    try:
+        from . import modelhub
+        protos = modelhub.bindable_protocols(aid)
+    except Exception:
+        protos = ()
+    hint = ("该 CLI 仅接受 %s 协议的已启用供应商；" % "、".join(protos)) if protos else ""
+    return ("绑定链全部失效（链上供应商已停用/删除/无密钥，或模型已停用），"
+            "本步判失败、不回落 CLI 本机默认——%s请在「CLI 绑定」页为该 CLI 绑定已启用的供应商" % hint)
+
+
 def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None, require_tools=False):
     """执行一个智能体步骤并记录。返回 runner 统一结果。"""
     _wait_gate(run_id, ev)
-    # 绑定解析为空 → CLI 将回落本机默认配置（用户配置的模型/供应商全部不生效）。
-    # 2026-09-16 实测：这种状态下烧干配额的本机默认供应商被静默使用，用户以为
-    # 在用自己配的模型。首次出现时在步骤备注里醒目标出。
-    if agent.get("mode") == "real" and not (agent.get("call_chain") or agent.get("env")):
-        note = ((note + "；") if note else "") + \
-               "⚠ 未解析到绑定链，本步回落 CLI 本机默认配置（请在模型接入页检查该 CLI 的供应商绑定）"
+    # 绑定解析为空：旧语义是回落 CLI 本机默认继续跑，2026-09-16 实测这种状态
+    # 会静默烧本机默认供应商的配额（用户以为在用自己配的模型）。2026-09-17 起
+    # 改为「告警 + 本步直接判失败」——宁可失败不静默降级；auto 流程实现步的
+    # 既有换将会接手健康 CLI，真没有可用 CLI 时运行以明确的绑定错误收场。
+    dead_binding = (agent.get("mode") == "real"
+                    and not (agent.get("call_chain") or agent.get("env")))
+    dead_msg = _binding_dead_msg(agent) if dead_binding else ""
+    if dead_binding:
+        try:
+            from . import health
+            health.report_binding_dead(agent["id"], dead_msg)
+        except Exception:
+            pass
+        note = ((note + "；") if note else "") + "⚠ " + dead_msg
+    elif agent.get("mode") == "real":
+        try:  # 绑定恢复：自动解除该 CLI 的静态死链告警
+            from . import health
+            health.report_binding_ok(agent["id"])
+        except Exception:
+            pass
     step, log_abs = store.add_step(run_id, role, agent["id"],
                                    agent.get("label", agent["id"]), note=note)
     start = time.time()
+    if dead_binding:
+        from .error_codes import ErrorCode
+        res = {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+               "tokens": 0, "usage": None, "error": dead_msg,
+               "error_code": ErrorCode.ENV_BLOCK,
+               "raw": {"exit_code": None}, "kind": agent.get("kind", "generic"),
+               "model": agent.get("model")}
+        _finish_step_result(run_id, step, res, role, agent, start)
+        return res
     if agent.get("mode") == "mock":
         time.sleep(0.3)
         res = {"ok": True, "text": "[mock] %s" % prompt[:80], "json": None,

@@ -29,12 +29,14 @@ class TestRaceVariants(BaseTest):
             {"id": "badcli", "name": "Bad CLI", "cli_group": "x",
              "detect": {"cli": sys.executable},
              "orch": {"kind": "generic", "command": sys.executable,
-                      "argv_template": [RACE, "bad", "{prompt}"]},
+                      "argv_template": [RACE, "bad", "{prompt}"],
+                      "env": {"TUTTI_TEST_SELFCONFIG": "1"}},  # 自带配置：过死链闸门
              "default_enabled": True},
             {"id": "goodcli", "name": "Good CLI", "cli_group": "x",
              "detect": {"cli": sys.executable},
              "orch": {"kind": "generic", "command": sys.executable,
-                      "argv_template": [RACE, "good", "{prompt}"]},
+                      "argv_template": [RACE, "good", "{prompt}"],
+                      "env": {"TUTTI_TEST_SELFCONFIG": "1"}},  # 自带配置：过死链闸门
              "default_enabled": True},
         ]
         self.data_dir.mkdir(parents=True, exist_ok=True)

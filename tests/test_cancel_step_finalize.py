@@ -15,7 +15,9 @@ from base import BaseTest
 
 
 def _real_agent():
-    return {"id": "a1", "mode": "real", "kind": "generic", "label": "测试智能体"}
+    # env=自带配置：死链闸门（2026-09-17）不再放行无绑定链的真实智能体
+    return {"id": "a1", "mode": "real", "kind": "generic", "label": "测试智能体",
+            "env": {"TUTTI_TEST_SELFCONFIG": "1"}}
 
 
 class TestCancelStepFinalize(BaseTest):

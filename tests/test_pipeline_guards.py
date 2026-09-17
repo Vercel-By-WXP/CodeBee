@@ -12,10 +12,13 @@ FIXTURES = Path(__file__).parent
 
 
 def _real_agent():
+    # env=自带配置：2026-09-17 起无绑定链的真实智能体会在 _run_step 死链闸门
+    # 判失败；假 CLI 以「自带配置」语义过闸（本文件测的是守门接线，不是绑定）
     return {"id": "fakecli", "kind": "generic",
             "command": sys.executable,
             "argv_template": [str(FIXTURES / "fixtures_role_cli.py"), "{prompt}"],
-            "mode": "real", "label": "Fake CLI"}
+            "mode": "real", "label": "Fake CLI",
+            "env": {"TUTTI_TEST_SELFCONFIG": "1"}}
 
 
 class TestPipelineRepeatGuardWiring(BaseTest):
