@@ -3115,3 +3115,10 @@ html[data-skin="contrast"] .lane-idx { box-shadow: none; }
 }
 /* 对话正文里的代码块（codeBlockHTML）：与上下文留缝 */
 .chat-bubble.agent .code-block { margin: 8px 0; }
+
+/* 对话附件胶囊可点开预览（时间线 .att-open / 输入条 .att-view）：手型 + 悬停描边，
+ * 与蜂巢卡片 hover 同一强调色，读得出来「能点」 */
+.chat-atts .att-chip2.att-open, .rd-att-list .att-chip2.att-view { cursor: pointer; }
+.chat-atts .att-chip2.att-open:hover, .rd-att-list .att-chip2.att-view:hover {
+  border-color: var(--accent); color: var(--accent);
+}

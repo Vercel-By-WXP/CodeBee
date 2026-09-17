@@ -86,6 +86,46 @@ def save_pending(name, data_b64):
     return meta
 
 
+def norm_rel(a):
+    """把一条附件记录归一成工作目录内相对路径（正斜杠）。
+
+    附件只会落在 <workdir>/_attachments/ 下；老数据可能是绝对路径或裸文件名，
+    统一钉回 _attachments/ 起头的相对位置，供前端「点击查看」直接走
+    /api/runs/<id>/file?name= 通道。取不到路径返回空串。"""
+    if isinstance(a, dict):
+        p = str(a.get("path") or a.get("name") or "")
+    else:
+        p = str(a or "")
+    p = p.replace("\\", "/").strip()
+    if not p:
+        return ""
+    if p.startswith("_attachments/"):
+        return p
+    return "_attachments/" + p.rsplit("/", 1)[-1]
+
+
+def read_pending(fid):
+    """读待提交区附件原文（输入条胶囊点击预览用）。id 是 16 位十六进制
+    随机数且只认文件名，猜不中即空。返回 (bytes, mime, name)；找不到
+    返回 (b"", "", "")。"""
+    fid = str(fid or "")
+    if not _ID_RE.match(fid):
+        return b"", "", ""
+    p = _pending_dir() / fid
+    if not p.is_file():
+        return b"", "", ""
+    meta = {}
+    try:
+        meta = json.loads((_pending_dir() / (fid + ".json")).read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    try:
+        data = p.read_bytes()
+    except OSError:
+        return b"", "", ""
+    return data, str(meta.get("mime") or "application/octet-stream"), _safe_name(meta.get("name") or fid)
+
+
 _XML_PART_MAX = 20 * 1024 * 1024  # 单个 Office 部件（XML 条目）读入上限
 
 

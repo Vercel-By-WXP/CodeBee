@@ -25,6 +25,8 @@ from core import health
 
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
+        ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+        ".webp": "image/webp", ".bmp": "image/bmp",
         ".ico": "image/x-icon", ".json": "application/manifest+json; charset=utf-8",
         ".webmanifest": "application/manifest+json; charset=utf-8"}
 
@@ -320,6 +322,21 @@ class Handler(BaseHTTPRequestHandler):
             m = re.match(r"^/api/runs/([^/]+)/timeline$", path)
             if m:
                 return self._api_run_timeline(m.group(1))
+            m = re.match(r"^/api/attachments/([0-9a-f]{16})$", path)
+            if m:
+                # 待提交附件原文（对话输入条胶囊点击预览）：只读，id 猜不中即 404
+                from core import attachments
+                data, mime, name = attachments.read_pending(m.group(1))
+                if not data:
+                    return self._json(404, {"error": "附件不存在或已提交"})
+                ext = Path(name.lower()).suffix
+                ctype = MIME.get(ext, mime or "application/octet-stream")
+                if ctype.startswith("text/") or ext in (
+                        ".txt", ".md", ".log", ".csv", ".json", ".xml",
+                        ".yml", ".yaml", ".toml", ".py", ".js", ".ts", ".html", ".css"):
+                    ctype = "text/plain; charset=utf-8"
+                    data = _utf8_bytes(data)
+                return self._send(200, data, ctype)
             if path == "/api/automation":
                 return self._json(200, {"tasks": automation.list_tasks(),
                                         "templates": automation.templates()})
@@ -1152,15 +1169,12 @@ class Handler(BaseHTTPRequestHandler):
         else:
             runs = [run]
         # 首条用户气泡=任务目标：否则对话开场只有智能体在说话（用户看不到自己问了什么）。
-        # 附件归一成文件名：task.attachments 是 [{name,path,...}] 对象，直接下发
-        # 前端会渲染成「[object Object]」（2026-09-17 实测）；时间取任务创建时刻
-        # （对话的开场是任务本身，不是某一轮续跑的起始时间）
+        # 附件归一成 _attachments/ 相对路径：前端展示仍取文件名（attName 剥目录），
+        # 但「点击查看」需要相对路径走 /api/runs/<id>/file 通道——只下发文件名的话
+        # 点开永远 404。时间取任务创建时刻（对话的开场是任务本身，不是某一轮续跑的起始时间）
         if task and engine == "direct":
-            atts = []
-            for a in (task.get("attachments") or []):
-                p = str((a.get("name") or a.get("path") or "") if isinstance(a, dict) else a)
-                if p:
-                    atts.append(p.replace("\\", "/").rsplit("/", 1)[-1])
+            from core import attachments as _att
+            atts = [p for p in (_att.norm_rel(a) for a in (task.get("attachments") or [])) if p]
             items.append({
                 "kind": "user",
                 "at": task.get("created_at") or (runs[0].get("created_at") if runs else "") or "",
@@ -1456,6 +1470,15 @@ def main():
     n_rc = store.recover_orphaned_runs()
     if n_rc:
         print("[CodeBee] 崩溃恢复：%d 个遗留运行标记为 failed（interrupted at startup）" % n_rc)
+    try:
+        from core import manager as _mgr
+        n_z = _mgr.sweep_orphan_cli_processes()
+        if n_z:
+            # 服务重启孤儿化的 CLI 孙进程：僵尸 opencode 会劫持后续会话的项目根，
+            # 必须在恢复运行之前清掉（2026-09-17 mo-so「工作目录是 Temp」真凶）
+            print("[CodeBee] 崩溃恢复：清扫 %d 个孤儿 CLI 进程（opencode/codex）" % n_z)
+    except Exception:
+        pass
     from core import bookmeta
     n_bo = bookmeta.recover_orphans()  # 作品信息生成线程同样会被重启杀掉，遗留 running 收尸
     if n_bo:

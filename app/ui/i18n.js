@@ -145,6 +145,7 @@
     "Atom 出品的均衡深色，蓝灰底不刺眼": "Balanced dark theme from Atom on a soft blue-gray base",
     "查看内容": "View content",
     "预览": "Preview",
+    "点击查看": "Click to view",
     "蜂巢": "Hive",
     "对话": "Chat",
     "发送": "Send",

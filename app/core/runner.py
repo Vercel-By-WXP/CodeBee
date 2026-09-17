@@ -654,7 +654,7 @@ def _codex_sandbox(readonly):
     return "danger-full-access"
 
 
-def _build_call(agent, kind, sid, readonly, model, prompt, images=None):
+def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=None):
     """构建一次 CLI 调用的 (argv, stdin_text, prompt)。model 可为 None=CLI 默认。
     images 为图片附件绝对路径：codex 用 -i 原生附图；其余 kind 忽略（调用方已过滤）。"""
     env = {}
@@ -710,6 +710,10 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None):
         stdin_text = prompt
     elif kind == "opencode":
         argv = resolve_command(agent["command"]) + ["run"]
+        if workdir:
+            # opencode 的 shell 不总跟进程 cwd 走（服务端复用时会落在旧项目根，
+            # 2026-09-17 mo-so 实测 agent 在 Temp 里全盘找代码）——显式钉死
+            argv += ["--dir", str(workdir)]
         if sid:
             argv += ["-s", sid]  # 无头续会话：-s 指定会话 id（-c 只能接最近一次）
         if model:
@@ -841,7 +845,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         for attempt in range(2):  # claude 偶发空响应（0 token）自动重试一次
             argv, stdin_text, prompt_eff = _build_call(eff_agent, kind, sid, readonly,
                                                        att["model"], prompt,
-                                                       images=images if kind == "codex" else None)
+                                                       images=images if kind == "codex" else None,
+                                                       workdir=workdir)
             res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
                               timeout=timeout, cancel_event=cancel_event, log_path=log_path,
                               stall_timeout=stall_t)
@@ -869,6 +874,18 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     parsed_err = _parse_claude_json(res["stdout"] or "")
                     if parsed_err and parsed_err.get("is_error") and parsed_err.get("text"):
                         out["error"] = "claude 返回 is_error: " + parsed_err["text"][:500]
+                if kind == "codex" and att.get("provider_id"):
+                    el = out["error"].lower()
+                    if (("wire_api" in el and "no longer supported" in el)
+                            or "no route matched" in el):
+                        # codex 撞 chat-only 供应商（0.154 只讲 responses）：
+                        # 自动冷却该供应商 30 分钟，链展开/路由绑定分随之
+                        # 自动绕开——不用人工改绑定（2026-09-17 mo-so 实测）
+                        try:
+                            from . import modelhub as _mh
+                            _mh.note_codex_wire_dead(att["provider_id"])
+                        except Exception:
+                            pass
                 out["error_code"] = _classify_failure(res, kind=kind)
                 break
             if kind == "codex":

@@ -69,6 +69,52 @@ def detect_entry(entry):
     return {"installed": False, "detail": ""}
 
 
+def sweep_orphan_cli_processes():
+    """启动清扫：服务重启会孤儿化正在跑的 CLI 孙进程（外部只杀服务 PID，不带
+    /T），僵尸 opencode 更会劫持后续会话——opencode 是客户端-服务端架构，新
+    `opencode run` 连上僵尸实例后 shell 全在僵尸的项目根里跑（2026-09-17
+    mo-so 实测：agent 在 Temp 里找代码，汇报「工作目录没有源码」）。
+
+    按「Tutti 调用签名 + 父进程已死」双条件匹配，不误杀用户自己在用的 CLI：
+      opencode：命令行含 opencode + --model（同步写入的 provider 固定 orch）
+      codex：命令行含 codex + --skip-git-repo-check（Tutti 专属 flag 组合）
+    claude 不扫（签名与用户手动使用难区分）。返回清扫数量。"""
+    ps_exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
+                          "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    if not os.path.isfile(ps_exe):
+        ps_exe = "powershell"
+    ps = ("Get-CimInstance Win32_Process | "
+          "Where-Object { $_.Name -match '^(opencode|codex|node|cmd)\\.exe$' } | "
+          "Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress")
+    try:
+        r = subprocess.run([ps_exe, "-NoProfile", "-Command", ps],
+                           capture_output=True, creationflags=CREATE_NO_WINDOW, timeout=60)
+        import json as _json
+        raw = r.stdout.decode("utf-8", "replace").strip()
+        items = _json.loads(raw) if raw else []
+        if isinstance(items, dict):
+            items = [items]
+        live = {i.get("ProcessId") for i in items}
+        killed = 0
+        for i in items:
+            cl = str(i.get("CommandLine") or "").lower()
+            ppid = i.get("ParentProcessId")
+            is_ours = (("opencode" in cl and "--model" in cl)
+                       or ("codex" in cl and "--skip-git-repo-check" in cl))
+            if not is_ours or ppid in live or not i.get("ProcessId"):
+                continue
+            try:
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(i["ProcessId"])],
+                               capture_output=True, creationflags=CREATE_NO_WINDOW,
+                               timeout=15)
+                killed += 1
+            except Exception:
+                pass
+        return killed
+    except Exception:
+        return 0
+
+
 def detect_all(force=False):
     """检测全部条目。检测（慢磁盘 IO）在锁外跑：shutil.which/isfile 在
     Windows 上遇到断链的 PATH 项可能卡数秒，持锁会把所有并发请求堵死

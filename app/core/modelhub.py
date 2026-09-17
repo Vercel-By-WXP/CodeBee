@@ -748,13 +748,46 @@ def note_key_ok(provider_id, key_id):
     with _LOCK:
         data = _load()
         prov = next((p for p in data.get("providers", []) if p.get("id") == provider_id), None)
-        if not prov or not isinstance(prov.get("keys"), list):
+        if not prov:
             return
-        target = next((k for k in prov["keys"] if str(k.get("id")) == str(key_id)), None)
+        target = next((k for k in (prov.get("keys") or []) if str(k.get("id")) == str(key_id)), None)
         if target is None or not target.get("last_error"):
             return
         target.pop("last_error", None)
         _save(data)
+
+
+def _is_codex_target(target):
+    return (target or "").strip().lower() in ("codex-cli", "codex", "codex-code")
+
+
+def note_codex_wire_dead(provider_id, minutes=30):
+    """codex 撞上 wire 不兼容的供应商 → 供应商级冷却（自动绕开的记账位）。
+
+    codex 0.154 起只支持 responses wire（chat 被官方移除），讯飞等只有
+    chat completions 的 MaaS 每次 404/启动即拒。runner 按 404+no Route
+    matched / wire_api no longer supported 特征自动调用本函数；链展开与
+    路由绑定加分据此自动绕开，无需人工改绑定（2026-09-17 mo-so 实测）。
+    """
+    import time as _t
+    if not provider_id:
+        return
+    with _LOCK:
+        data = _load()
+        prov = next((p for p in data.get("providers", []) if p.get("id") == provider_id), None)
+        if not prov:
+            return
+        prov["codex_wire_dead_until"] = _t.time() + max(1, int(minutes)) * 60
+        _save(data)
+
+
+def codex_wire_blocked(prov):
+    """该供应商是否处于 codex wire 不兼容冷却期。"""
+    import time as _t
+    try:
+        return float((prov or {}).get("codex_wire_dead_until") or 0) > _t.time()
+    except Exception:
+        return False
 
 
 def _is_private_host(url):
@@ -1985,6 +2018,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
                 continue  # 原生协议与适配过的 wire 都不匹配：跳过
             if prov.get("name") in down_set:
                 continue  # 健康监测判定 down：跳过，省掉无效等待
+            if _is_codex_target(agent_kind_or_id) and codex_wire_blocked(prov):
+                continue  # codex 撞过该供应商 wire 不兼容（chat-only）：冷却中自动绕开
             if model and not _model_bindable(prov, model):
                 continue  # 模型被停用/删除：该条跳过（2026-09-15 告警弹框「禁用该模型」）
             # 多 KEY：同一厂商按 KEY 展开成多条，顺序即调用顺序。欠费的 KEY 被
@@ -2020,6 +2055,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     prov = provs.get(pid)
     if not prov or not prov.get("enabled", True) or not prov.get("api_key"):
         return None
+    if _is_codex_target(agent_kind_or_id) and codex_wire_blocked(prov):
+        return None  # codex wire 不兼容冷却中：解析为空 → 路由绑定分自动转负
     ep = _entry_endpoint(prov, allowed)
     if not ep:
         return None  # google 只登记；dsh 只接受 OpenAI 兼容端点；未适配的不硬塞

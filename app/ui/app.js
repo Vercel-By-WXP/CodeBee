@@ -5161,16 +5161,27 @@ async function renderChat(run, active) {
     return String(p).split(/[\\/]/).pop() || ""; };
   flow.innerHTML = items.map((it) => {
     if (it.kind === "user") {
-      // 用户消息：右侧浅灰圆角块，元信息在块内顶部
-      const atts = (it.attachments || []).map(attName).filter(Boolean);
+      // 用户消息：右侧浅灰圆角块，元信息在块内顶部。
+      // 附件胶囊可点开预览：data-att 带 _attachments/ 相对路径（老数据裸文件名
+      // 在前端钉回 _attachments/，与服务端 norm_rel 同口径），事件委托绑在
+      // rd-chat-flow 上——时间线整块 innerHTML 重建也不丢监听
+      const atts = (it.attachments || []).map((a) => {
+        const nm = attName(a);
+        if (!nm) return null;
+        let rel = typeof a === "string" ? a : ((a && (a.path || a.name)) || nm);
+        rel = String(rel).replace(/\\/g, "/");
+        if (!rel.startsWith("_attachments/")) rel = "_attachments/" + rel.split("/").pop();
+        return { nm, rel };
+      }).filter(Boolean);
       return '<div class="chat-row me">' +
         '<div class="chat-bubble me">' +
         '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
         (it.consumed ? "" : " · " + t("待送达")) + "</div>" +
         esc(it.text || t("（仅附件）")) +
         (atts.length
-          ? '<div class="chat-atts">' + atts.map((n) =>
-              '<span class="att-chip2">' + esc(n) + "</span>").join("") + "</div>"
+          ? '<div class="chat-atts">' + atts.map((a) =>
+              '<span class="att-chip2 att-open" data-att="' + esc(a.rel) +
+              '" title="' + esc(t("点击查看")) + '">' + esc(a.nm) + "</span>").join("") + "</div>"
           : "") +
         "</div></div>";
     }
@@ -5201,11 +5212,27 @@ async function renderChat(run, active) {
 function drawChatAtts() {
   const box = $("rd-chat-att-list");
   if (!box) return;
+  // 点名字开预览（待提交区原文走 /api/attachments/<id>），× 才是移除
   box.innerHTML = chatAtts.map((a, i) =>
-    '<span class="att-chip2">' + esc(a.name) + '<b onclick="chatRemoveAtt(' + i + ')" title="' +
-    esc(t("移除")) + '">×</b></span>').join("");
+    '<span class="att-chip2 att-view" data-att-id="' + esc(a.id || "") +
+    '" data-att-name="' + esc(a.name) + '" title="' + esc(t("点击查看")) + '">' + esc(a.name) +
+    '<b onclick="chatRemoveAtt(' + i + ')" title="' + esc(t("移除")) + '">×' +
+    '</b></span>').join("");
 }
 window.chatRemoveAtt = function (i) { chatAtts.splice(i, 1); drawChatAtts(); };
+
+/* 对话附件点击预览：已落盘的走 run 工作目录 /api/runs/<id>/file（rel 为
+ * _attachments/ 相对路径），待提交的走 /api/attachments/<id>；
+ * 弹窗与成品预览同款——图片直接看图、文本看码、二进制给下载。 */
+window.chatAttPopup = function (rel) {
+  if (!rel || !chatRunId) return;
+  return _fpPreviewUrl("/api/runs/" + encodeURIComponent(chatRunId) +
+    "/file?name=" + encodeURIComponent(rel), rel);
+};
+window.chatPendingPopup = function (id, name) {
+  if (!id) return;
+  return _fpPreviewUrl("/api/attachments/" + encodeURIComponent(id), name || "attachment");
+};
 
 async function chatUploadFiles(files) {
   for (const f of files) {
@@ -5293,6 +5320,19 @@ function bindChat() {
       const f = it.getAsFile();
       return f && !f.name ? new File([f], "paste-" + Date.now() + ".png", { type: f.type }) : f;
     }).filter(Boolean));
+  });
+  // 附件胶囊点击预览：委托绑在静态容器上——时间线轮询整块重建 innerHTML、
+  // 输入条胶囊增删重画，都不丢监听。时间线胶囊走已落盘文件，输入条胶囊
+  // （× 移除按钮除外）走待提交区
+  $("rd-chat-flow").addEventListener("click", (e) => {
+    const chip = e.target.closest(".att-open");
+    if (chip) window.chatAttPopup(chip.dataset.att);
+  });
+  const attBox = $("rd-chat-att-list");
+  if (attBox) attBox.addEventListener("click", (e) => {
+    if (e.target.closest("b")) return;   // × 自己的 onclick 负责移除
+    const chip = e.target.closest("[data-att-id]");
+    if (chip) window.chatPendingPopup(chip.dataset.attId, chip.dataset.attName);
   });
 }
 
