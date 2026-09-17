@@ -3122,3 +3122,258 @@ html[data-skin="contrast"] .lane-idx { box-shadow: none; }
 .chat-atts .att-chip2.att-open:hover, .rd-att-list .att-chip2.att-view:hover {
   border-color: var(--accent); color: var(--accent);
 }
+
+/* ================= CodeBee 工作台重构 =================
+ * 这层只消费既有皮肤变量，保留 app.js 的换肤、状态、SSE 和详情结构。
+ * 目标是把原本偏终端化的视觉，收束为适合长期使用的正式工作台。 */
+:root {
+  --cb-font: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  --cb-display: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  --cb-surface: color-mix(in srgb, var(--panel) 92%, transparent);
+  --cb-surface-soft: color-mix(in srgb, var(--panel2) 72%, transparent);
+  --cb-accent-soft: color-mix(in srgb, var(--accent) 10%, var(--panel));
+  --cb-accent-line: color-mix(in srgb, var(--accent) 34%, var(--border));
+  --cb-shadow: 0 10px 26px color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+body {
+  font-family: var(--cb-font);
+  font-size: 14px;
+  line-height: 1.7;
+  letter-spacing: 0;
+  background: var(--bg);
+}
+html[data-theme="light"] body {
+  background-color: color-mix(in srgb, var(--bg) 93%, var(--accent) 7%);
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--accent) 4%, transparent), transparent 240px);
+}
+html[data-skin="contrast"] body { background-image: none; }
+html[data-skin="contrast"][data-theme="light"] body { background-color: #fff; }
+
+#app { grid-template-columns: 272px 1fr; }
+#sidebar {
+  padding: 16px 13px 12px;
+  background: color-mix(in srgb, var(--sidebar) 94%, var(--accent) 6%);
+  border-right-color: color-mix(in srgb, var(--border) 80%, var(--accent) 20%);
+}
+.brand {
+  min-height: 43px;
+  margin: 0 3px 8px;
+  padding: 7px 8px 13px;
+  border-bottom-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+}
+.brand-name { font-family: var(--cb-display); font-size: 17px; font-weight: 700; letter-spacing: .025em; }
+.new-task {
+  min-height: 40px; padding: 9px 11px; margin: 0 0 6px;
+  background: var(--cb-accent-soft); border: 1px solid var(--cb-accent-line);
+  border-radius: 9px; color: var(--accent); font-weight: 600;
+  transition: transform .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+.new-task:hover { background: color-mix(in srgb, var(--accent) 16%, var(--panel)); box-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 14%, transparent); }
+.new-task:active { transform: translateY(1px); }
+.side-search, .qitem, .stask, .sdir summary, .side-settings .set-item, .set-back { border-radius: 7px; }
+.side-search, .qitem { color: var(--muted); }
+.side-search:hover, .qitem:hover, .stask:hover, .sdir summary:hover,
+.side-settings .set-item:hover, .set-back:hover { background: var(--cb-surface-soft); }
+.stask { padding: 7px 8px; }
+.stask.active, .side-settings .set-item.active {
+  background: var(--cb-accent-soft); color: var(--accent); box-shadow: inset 2px 0 0 var(--accent);
+}
+.stask.active .tm, .side-settings .set-item.active .ico { color: var(--accent); }
+.side-label, .side-settings .set-group { font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+.side-foot { border-top-color: var(--border); padding-top: 12px; }
+
+.topbar {
+  min-height: 57px; padding: 11px 28px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--border) 86%, var(--accent) 14%);
+  backdrop-filter: blur(16px);
+}
+.page-title { font-family: var(--cb-display); font-size: 16px; font-weight: 700; letter-spacing: .02em; }
+.icon-btn, .foot-btn { border-radius: 7px; }
+.pill { background: var(--cb-surface); border-color: var(--border); box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 4%, transparent); }
+.pill:hover { border-color: var(--cb-accent-line); color: var(--accent); }
+
+main { padding: 30px 36px 88px; }
+.page { max-width: 1480px; gap: 24px; }
+.subpage { gap: 24px; }
+main .panel.wide { padding: 0; }
+.panel-head {
+  margin-bottom: 18px; padding: 0 0 14px;
+  border-bottom-color: color-mix(in srgb, var(--border) 84%, var(--accent) 16%);
+}
+.panel-head h2, h2 { font-family: var(--cb-display); font-size: 18px; font-weight: 700; letter-spacing: .02em; }
+h3.sec-title, .sec-title { color: var(--muted); font-size: 11.5px; letter-spacing: .11em; }
+.hint { line-height: 1.75; }
+
+input, select, textarea {
+  background: var(--cb-surface); border-color: var(--border);
+  border-radius: 8px; font-family: inherit;
+  transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+}
+input:hover, select:hover, textarea:hover { background: var(--panel); border-color: var(--border-strong); }
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 11%, transparent);
+}
+button { font-family: inherit; }
+button.primary {
+  border-radius: 8px; font-weight: 600; letter-spacing: .01em;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+button.ghost, button.danger { border-radius: 8px; }
+button.ghost:hover { border-color: var(--cb-accent-line); color: var(--accent); background: var(--cb-accent-soft); }
+
+/* 首页任务创建：保留原表单功能，将其组织成一个稳定的操作面。 */
+.composer { max-width: 1180px; margin: 28px auto 0; }
+.hero-row { align-items: flex-end; }
+#cmp-greet { font-family: var(--cb-display); font-size: 26px; font-weight: 600; line-height: 1.4; letter-spacing: .015em; }
+.hero-sub { font-size: 13px; max-width: 720px; }
+.cmp-pills { gap: 9px; margin-top: 22px; }
+.cmp-pills .type-pick, .cmp-wd { background: var(--cb-surface); border-color: var(--border); }
+.cmp-pills .type-pick:hover, .cmp-wd:hover { border-color: var(--cb-accent-line); }
+.cmp-box {
+  border-radius: 11px; padding: 8px 10px 9px; background: var(--cb-surface);
+  border-color: color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
+  box-shadow: var(--cb-shadow);
+}
+.cmp-box:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent), var(--cb-shadow); }
+.cmp-box textarea { min-height: 98px; font-size: 16px; }
+.cmp-quick { margin-top: 14px; }
+.cmp-chip { background: transparent; border-radius: 7px; }
+.cmp-chip.on { background: var(--cb-accent-soft); }
+
+/* 全局数据面：运行记录、智能体、模型、自动化、市场和设置复用同一张工作卡。 */
+.item, .card, .mcard, .opanel, .auto-tpl-card, .cs-preview, .skin-card, .bm-card {
+  background: var(--cb-surface); border-color: var(--border); border-radius: 10px;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 3%, transparent);
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease, background-color .2s ease;
+}
+.item:hover, .card:hover, .mcard:hover, .opanel:hover, .auto-tpl-card:hover, .skin-card:hover, .bm-card:hover {
+  background: var(--panel); border-color: var(--cb-accent-line);
+  box-shadow: var(--cb-shadow); transform: translateY(-2px);
+}
+.item { padding: 14px 16px; }
+.item .name, .card .name { font-weight: 700; }
+.cards { gap: 16px; }
+.card { padding: 17px; }
+.mcard { background: var(--cb-surface-soft); }
+.tag, .chip, .stat { border-radius: 6px; }
+.chip { padding: 3px 10px; font-weight: 700; }
+.chip.running { background: color-mix(in srgb, var(--accent) 13%, var(--panel)); }
+.usage-kpis { gap: 14px; }
+.usage-kpi, .usage-single, .usage-donut, .usage-heat, .usage-recent-wrap { background: var(--cb-surface); border: 1px solid var(--border); border-radius: 10px; }
+.usage-table th { background: var(--cb-surface-soft); }
+.usage-table tr:hover td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.seg { background: var(--cb-surface-soft); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
+.seg-btn { border-radius: 6px; }
+.seg-btn.active { background: var(--panel); color: var(--accent); box-shadow: 0 1px 4px color-mix(in srgb, var(--text) 8%, transparent); }
+.skin-grid { gap: 14px; }
+.skin-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 13%, transparent); }
+
+/* 运行详情：头部、指标和页签建立固定层级，信息可扫读。 */
+#run-detail {
+  max-width: 1240px; margin: 0 auto; padding: 0;
+  animation: cb-detail-in .38s cubic-bezier(.2, .8, .2, 1) both;
+}
+@keyframes cb-detail-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+#run-detail .detail-head {
+  position: sticky; top: -30px; z-index: 5; padding: 16px 0 13px;
+  background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(16px);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 84%, var(--accent) 16%);
+}
+#run-detail .detail-head h2 { font-family: var(--cb-display); font-size: 18px; font-weight: 700; line-height: 1.5; }
+.rd-meta-strip { gap: 8px; margin: 17px 0 14px; }
+.rd-meta-strip .stat { background: var(--cb-surface); border: 1px solid var(--border); padding: 5px 10px; }
+.rd-tabs {
+  position: sticky; top: 61px; z-index: 4; margin: 0 -4px 18px; padding: 4px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent); border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(14px);
+}
+.rd-tab { min-height: 34px; padding: 7px 13px; border-radius: 7px; }
+.rd-tab.active { background: var(--cb-accent-soft); }
+.rd-tab.active::after { display: none; }
+.rd-main { gap: 16px; }
+.rd-pane { animation: cb-pane-in .28s ease both; }
+@keyframes cb-pane-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.steps { gap: 10px; }
+.step { background: var(--cb-surface); border-color: var(--border); border-radius: 9px; padding: 11px 13px; }
+.step:hover { background: var(--panel); border-color: var(--cb-accent-line); }
+.step .n { background: var(--cb-accent-soft); color: var(--accent); border-radius: 6px; }
+.rd-direct, .rd-logdrawer, .rd-arts, .rd-git, .rd-bible, .report {
+  background: var(--cb-surface); border-color: var(--border); border-radius: 10px;
+}
+.report { padding: 16px 20px; }
+.logbox, #run-detail #rd-log.rd-logdrawer { border-radius: 10px; overflow: hidden; }
+
+/* 蜂巢工作台：皮肤色作为状态语言，卡片和流程留在同一浅层空间。 */
+.rd-hive { padding: 2px 0 8px; }
+.rd-hive .sec-title { font-family: var(--cb-font); letter-spacing: .08em; }
+.rd-hive .sec-title > span:not(.tag), .rd-hive .sec-title .ico { color: var(--accent); }
+.hive-lane {
+  position: relative; overflow: hidden; padding: 13px 14px;
+  background: var(--cb-surface); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: none; color: var(--text);
+}
+.hive-lane::before {
+  content: ""; position: absolute; inset: 0 0 auto; height: 2px;
+  background: color-mix(in srgb, var(--accent) 42%, transparent); opacity: .7;
+}
+.hive-lane.lane-active {
+  border-color: var(--cb-accent-line); background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 9%, transparent);
+}
+.hive-lane.lane-active::before { animation: cb-lane-live 2.2s ease-in-out infinite; }
+@keyframes cb-lane-live { 50% { opacity: 1; background: var(--accent); } }
+.lane-name, .hc-role { color: var(--text); text-shadow: none; }
+.lane-n, .lane-prog, .hc-who, .hc-meta { color: var(--muted); }
+.lane-idx { background: var(--cb-accent-soft); color: var(--accent); border: 1px solid var(--cb-accent-line); border-radius: 5px; box-shadow: none; }
+.lane-track::before { height: 1px; background: var(--border); }
+.ld { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); }
+.ld-done { background: var(--ok); }
+.ld-run { border-radius: 50%; background: var(--accent); animation: cb-node-pulse 1.4s ease-in-out infinite; }
+@keyframes cb-node-pulse { 50% { transform: scale(1.5); opacity: .45; } }
+.lane-flow::after { width: 7px; height: 7px; margin-top: -3px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent); }
+.hive-cell {
+  position: relative; overflow: hidden; padding: 12px;
+  background: var(--panel); border-color: var(--border); border-radius: 8px; box-shadow: none; color: var(--text);
+}
+.hive-cell::before { height: 2px; border-radius: 0; background: var(--border); }
+.hive-cell.st-running { border-color: var(--cb-accent-line); box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 10%, transparent); }
+.hive-cell.st-running::before { background: var(--accent); }
+.hive-cell.st-done::before { background: var(--ok); }
+.hive-cell.st-failed::before { background: var(--bad); }
+.hive-cell:hover { transform: translateY(-2px); box-shadow: var(--cb-shadow); border-color: var(--cb-accent-line); }
+.hc-tail { background: var(--cb-surface-soft); border-color: var(--border); border-radius: 5px; color: var(--muted); }
+.hive-cell .hc-live { border-radius: 999px; }
+
+/* 动效在高负荷运行时有反馈，同时尊重系统的减少动态效果偏好。 */
+@media (prefers-reduced-motion: no-preference) {
+  .page:not(.hidden) > .subpage:not(.hidden) { animation: cb-page-in .35s ease both; }
+  @keyframes cb-page-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+@media (max-width: 900px) {
+  #app { grid-template-columns: 1fr; }
+  main { padding: 22px 18px 72px; }
+  .topbar { padding: 10px 16px; }
+  .top-actions { gap: 5px; }
+  #run-detail .detail-head { top: -22px; }
+  .rd-tabs { top: 57px; }
+}
+
+/* 关于与更新：更新内容展示块（relnotes/whatsnew 共用） */
+.su-notes {
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border, rgba(128, 128, 128, .25));
+  border-radius: 8px;
+  background: var(--bg-soft, rgba(128, 128, 128, .06));
+  font-family: inherit;
+  max-height: 40vh;
+  overflow: auto;
+}

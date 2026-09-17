@@ -62,23 +62,71 @@ def _ver_tuple(s):
     return [int(x) for x in re.findall(r"\d+", str(s or ""))[:4]]
 
 
-def _npm_latest():
-    """npm view codebee version；返回 (latest, err)。
-    用 _PKG_NAME 变量而非行内字面量：发布名改过一次（tutti-orchestrator→codebee），
-    硬编码两处容易漏改；Mimosa 安全基线要求 argv 可执行文件为字面量，参数用变量不违反。"""
+_RELNOTES_RE = re.compile(
+    r"<!--\s*relnotes:start\s*-->(.*?)<!--\s*relnotes:end\s*-->", re.S)
+
+
+def _relnotes(readme):
+    """README 里 relnotes 标记段的内容（发布前手工更新，见 CHANGELOG.md 头部说明）。"""
+    m = _RELNOTES_RE.search(str(readme or ""))
+    return m.group(1).strip() if m else ""
+
+
+def _npm_meta():
+    """npm view <pkg> --json；返回 (latest, relnotes, err)。
+
+    relnotes 来自 registry 元数据里的 README（与查新同一条 npm 通道，不依赖
+    GitHub 连通性），展示「新版本更新内容」用。部分 npm 版本 --json 不带
+    readme 字段，此时回退到 `npm view <pkg> readme` 纯文本再提取。"""
     r = runner.run_process(
-        argv=["cmd", "/c", "npm", "view", _PKG_NAME, "version"], timeout=60)
+        argv=["cmd", "/c", "npm", "view", _PKG_NAME, "--json"], timeout=60)
     if not r["ok"]:
-        return "", (r["stderr"] or r["stdout"] or "")[-200:] or "npm 命令失败"
-    m = re.search(r"\d+\.\d+\.\d+[\w.\-]*", r["stdout"] or "")
-    return (m.group(0) if m else ""), ("" if m else "npm 输出无法解析")
+        return "", "", (r["stderr"] or r["stdout"] or "")[-200:] or "npm 命令失败"
+    ver, notes = "", ""
+    try:
+        meta = json.loads(r["stdout"] or "{}")
+        if isinstance(meta, dict):
+            ver = str(meta.get("version") or "")
+            notes = _relnotes(meta.get("readme") or "")
+    except Exception:
+        pass
+    if not ver:  # 旧 npm --json 失败时退回纯文本解析
+        m = re.search(r"\d+\.\d+\.\d+[\w.\-]*", r["stdout"] or "")
+        ver = m.group(0) if m else ""
+    if ver and not notes:
+        r2 = runner.run_process(
+            argv=["cmd", "/c", "npm", "view", _PKG_NAME, "readme"], timeout=60)
+        if r2["ok"]:
+            notes = _relnotes(r2["stdout"] or "")
+    return ver, notes, ("" if ver else "npm 输出无法解析")
+
+
+def changelog_section(version):
+    """本地 CHANGELOG.md 中 version 对应小节（升级重启后「本次更新内容」用）。"""
+    v = re.escape(str(version or "").lstrip("v"))
+    m = re.search(r"(?ms)^## v?%s\b[^\n]*$(.*?)(?=^## |\Z)" % v,
+                  _read_changelog())
+    if not m:
+        return ""
+    body = m.group(0).strip()
+    return body
+
+
+def _read_changelog():
+    try:
+        return (paths.ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    except Exception:
+        return ""
 
 
 def check(force=False):
-    """GET /api/selfupdate 载荷：{mode, current, latest, has_update, note}。"""
+    """GET /api/selfupdate 载荷：{mode, current, latest, has_update, note,
+    notes, whatsnew}。notes=远端新版本的更新内容（npm readme relnotes 段）；
+    whatsnew=当前版本在本地 CHANGELOG.md 的小节（升级重启后弹「本次更新内容」）。"""
     mode = install_mode()
     cur = package_version()
-    out = {"mode": mode, "current": cur, "latest": "", "has_update": False, "note": ""}
+    out = {"mode": mode, "current": cur, "latest": "", "has_update": False,
+           "note": "", "notes": "", "whatsnew": changelog_section(cur)}
     if mode != "npm":
         out["note"] = ("开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）"
                        if mode == "repo" else "非 npm 安装，无法自动更新")
@@ -87,8 +135,9 @@ def check(force=False):
         if not force and _CHECK_CACHE["result"] and \
                 time.time() - _CHECK_CACHE["ts"] < _UPDATE_TTL:
             return dict(_CHECK_CACHE["result"])
-    latest, err = _npm_latest()
+    latest, notes, err = _npm_meta()
     out["latest"] = latest
+    out["notes"] = notes
     if err:
         out["note"] = "查询新版本失败：" + err
     elif latest and cur:

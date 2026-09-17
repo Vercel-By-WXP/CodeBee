@@ -7168,7 +7168,22 @@ async function loadSelfupdate(force) {
     SU = await api("/api/selfupdate" + (force ? "?force=1" : ""));
   } catch (e) { SU = null; }
   renderSu();
+  maybeWhatsnew();
   return SU;
+}
+
+/* 升级重启后的一次性「本次更新内容」：localStorage 记住已展示的版本，
+ * 版本变化且有本地 changelog 小节时弹窗（首次使用只记账不弹）。 */
+function maybeWhatsnew() {
+  if (!SU || !SU.current) return;
+  const prev = localStorage.getItem("su.myver");
+  localStorage.setItem("su.myver", SU.current);
+  if (prev && prev !== SU.current && SU.whatsnew) {
+    openModal(t("本次更新内容"),
+      "<p class=\"hint\">" + t("已更新到") + " <b>v" + esc(SU.current) + "</b></p>" +
+      "<pre class=\"su-notes\">" + esc(SU.whatsnew) + "</pre>",
+      "<button class=\"small\" onclick=\"closeModal()\">" + t("知道了") + "</button>");
+  }
 }
 
 function renderSu() {
@@ -7181,6 +7196,10 @@ function renderSu() {
   if (SU.has_update) {
     html += "<p class=\"hint\"><b>" + t("发现新版本") + " v" + SU.latest +
       t("　") + "<a href=\"#\" onclick=\"event.preventDefault();suApply()\">" + t("立即升级") + "</a></b></p>";
+    if (SU.notes) {
+      html += "<div class=\"hint\"><b>" + t("新版本更新内容") + t("：") + "</b>" +
+        "<pre class=\"su-notes\">" + esc(SU.notes) + "</pre></div>";
+    }
   } else if (SU.mode === "npm" && !SU.note) {
     html += "<p class=\"hint\">" + t("已是最新版。") + "</p>";
   }
