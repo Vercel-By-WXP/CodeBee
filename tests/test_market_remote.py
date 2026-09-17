@@ -710,3 +710,78 @@ class TestMarketRemoteClawhub(BaseTest):
         self.assertEqual(by["delta"]["install"]["reference"], "own/delta")
         self.assertIn("trending", by["delta"]["keywords"])
         self.assertEqual(by["alpha"]["version"], "1.0.1")
+
+
+class TestMarketRemoteCocoloop(BaseTest):
+    """CocoLoop 商店来源：分页拉取合成目录、去重、zip 直链安装全链路
+    （zip 内藏 scripts/ 的真实形态 → 剥离式安装）。"""
+
+    def runTest(self):
+        from app.core import market_remote as mr
+
+        def store_page(items, pages=1):
+            return json.dumps({"code": 0, "message": "success",
+                               "data": {"items": items, "total": len(items) * pages,
+                                        "page": 1, "page_size": len(items),
+                                        "pages": pages}}).encode("utf-8")
+
+        page1 = store_page([
+            {"name": "News Market", "author": "mc82465", "category": "专业技能",
+             "security_level": "B", "downloads": "2k",
+             "brief": "聚合A股资讯",
+             "download_url": "https://dl.example.com/news-market.zip"},
+            {"name": "Top RSS", "author": "wps", "category": "效率",
+             "security_level": "A", "downloads": "998",
+             "download_url": "https://dl.example.com/top-rss.zip"},
+        ], pages=2)
+        page2 = store_page([
+            {"name": "News Market", "downloads": "2k",   # 重复名应去重
+             "download_url": "https://dl.example.com/news-market2.zip"},
+            {"name": "No URL", "downloads": "1"},        # 无直链应跳过
+        ])
+        payloads = [page1, page2]
+        calls = []
+
+        def responder(url):
+            calls.append(url)
+            return payloads[min(len(calls) - 1, len(payloads) - 1)]
+
+        fetcher, resolver = _patch_fetch(mr, responder)
+        with fetcher, resolver:
+            v = mr.refresh(source_id="cocoloop")
+        self.assertTrue(v["refresh"][0]["ok"])
+        self.assertEqual(v["refresh"][0]["count"], 2)   # 去重+跳过无直链后剩 2
+        by = {e["name"]: e for e in v["entries"]}
+        self.assertEqual(by["News Market"]["install"]["kind"], "zip")
+        self.assertEqual(by["News Market"]["install"]["url"],
+                         "https://dl.example.com/news-market.zip")
+        self.assertEqual(by["News Market"]["author"], "mc82465")
+        self.assertEqual(by["News Market"]["category"], "专业技能")
+        self.assertIn("安全评级:b", by["News Market"]["keywords"])   # _normalize 统一小写
+        self.assertIn("page=2", calls[-1])   # 有下一页时确实翻了页
+
+        # 安装：CocoLoop 真实包形态——SKILL.md + scripts/*.py + 附件文本
+        zip_bytes = _mk_zip({
+            "SKILL.md": SKILL_MD,
+            "scripts/news.py": "import os",
+            "skill-card.md": REF_MD,
+        })
+        fetcher, resolver = _patch_fetch(mr, lambda url: zip_bytes)
+        with fetcher, resolver:
+            res, err = mr.install_remote(by["News Market"]["id"])
+        self.assertIsNone(err, err)
+        self.assertEqual(res["skills"], 1)
+        self.assertEqual(res["stripped"], ["scripts/news.py"])
+        primary = self.data_dir / "skillpacks" / ("market-%s.md" % by["News Market"]["id"])
+        self.assertTrue(primary.is_file())
+        self.assertIn("market_id: %s" % by["News Market"]["id"],
+                      primary.read_text(encoding="utf-8"))
+
+        # 错误码非 0：报 ok=False 而不是抛异常
+        bad = json.dumps({"code": 1005, "message": "bad sort",
+                          "data": [{"msg": "literal_error"}]}).encode("utf-8")
+        fetcher, resolver = _patch_fetch(mr, lambda url: bad)
+        with fetcher, resolver:
+            v2 = mr.refresh(source_id="cocoloop")
+        self.assertFalse(v2["refresh"][0]["ok"])
+        self.assertIn("bad sort", v2["refresh"][0]["error"])

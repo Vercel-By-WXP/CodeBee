@@ -20,6 +20,7 @@ import threading
 import time
 
 from . import catalog, history, jobs, manager, modelhub, mocks, planner, registry, router, runner, skills, store, usage
+from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
 from . import session_log as session_log_mod
@@ -272,7 +273,7 @@ def _wait_gate(run_id, ev):
         time.sleep(1.0)
 
 
-def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None):
+def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None, require_tools=False):
     """执行一个智能体步骤并记录。返回 runner 统一结果。"""
     _wait_gate(run_id, ev)
     # 绑定解析为空 → CLI 将回落本机默认配置（用户配置的模型/供应商全部不生效）。
@@ -317,10 +318,61 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
         res = _spawn_step(session_run_id=run_id, role=role, agent=agent,
                           prompt=effective_prompt, workdir=workdir, readonly=readonly,
                           ev=ev, timeout=timeout, resume=resume, step=step,
-                          log_abs=log_abs, images=images)
+                          log_abs=log_abs, images=images, require_tools=require_tools)
     # 先收尾再查取消：取消时进程已被 run_process 杀停，若先抛 Cancelled，
     # 步骤记录会永远停在「运行中」变僵尸（与 _run_verify 的顺序对齐）
     _finish_step_result(run_id, step, res, role, agent, start)
+    _check_cancel(ev)
+    return res
+
+
+def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=None):
+    """内置智能体步骤：直连模型 API + 工具循环（builtin_agent），不经 CLI 进程。
+
+    与 _run_step 对齐的三件事：暂停/取消闸门、运行中指令 drain 注入、重复调用
+    守门；结果同样经 _finish_step_result 落步骤（output=干净回答）并入用量台账。
+    日志只有「迭代/工具」摘要行——对话视图吃 output，日志抽屉看工具轨迹。"""
+    _wait_gate(run_id, ev)
+    step, log_abs = store.add_step(run_id, role, "builtin", "CodeBee", note=note)
+    start = time.time()
+    agent_pseudo = {"id": "builtin", "label": "CodeBee", "kind": "builtin", "mode": "real",
+                    "provider": {"id": bi.get("provider_id") or "",
+                                 "name": bi.get("provider_name") or ""}}
+    guard = repeat_guard.check(run_id, role, prompt)
+    if guard["should_stop"]:
+        from .error_codes import ErrorCode
+        res = {"ok": False, "text": "", "usage": None, "cost_usd": 0.0, "tokens": 0,
+               "error": guard["reminder"], "error_code": ErrorCode.ENV_BLOCK,
+               "raw": {"exit_code": None}, "model": bi.get("model")}
+        _finish_step_result(run_id, step, res, role, agent_pseudo, start)
+        return res
+    # 运行中指挥：drain 用户追加的指令/附件，注入本轮（与 _run_step 同语义）
+    directive_block, directive_imgs = _drain_directives(run_id, workdir, role=role, step_n=step["n"])
+    if directive_imgs:
+        images = list(images or []) + directive_imgs
+    if directive_block:
+        prompt = directive_block + "\n\n---\n\n" + prompt
+    if guard["reminder"]:
+        prompt = guard["reminder"] + "\n\n---\n\n" + prompt
+    lines = ["CodeBee（%s · %s）" % (bi.get("provider_name"), bi.get("model"))]
+
+    def _log(line):
+        lines.append(str(line))
+
+    res = builtin_agent.run(bi, prompt, workdir, cancel_event=ev, log=_log, images=images)
+    if log_abs:
+        try:
+            log_abs.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        except Exception:
+            pass
+    usage = res.get("usage") or {}
+    res.setdefault("raw", {})
+    res["raw"]["exit_code"] = 0 if res.get("ok") else 1
+    res["raw"]["duration"] = time.time() - start
+    res["tokens"] = int(usage.get("total") or 0)
+    res.setdefault("cost_usd", 0.0)
+    # 先收尾再查取消：与 _run_step 同序，防步骤记录停在「运行中」变僵尸
+    _finish_step_result(run_id, step, res, role, agent_pseudo, start)
     _check_cancel(ev)
     return res
 
@@ -345,7 +397,7 @@ def _budget_max_tokens():
 
 
 def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
-                timeout, resume, step, log_abs, images=None):
+                timeout, resume, step, log_abs, images=None, require_tools=False):
     """真实 CLI 调用：压缩灰度路径或原路径。"""
     # T2.1 预算闸：已用 token 达到单次 run 上限 → 阻断后续真实调用（ENV_BLOCK）。
     # 只拦「下一步」，允许越过线的当前步完成；auto 续跑可在用户调高预算后接手。
@@ -370,7 +422,7 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
         llm_caller = _make_llm_caller(agent, workdir)
         call_kwargs = dict(workdir=workdir, readonly=readonly,
                            timeout=timeout, cancel_event=ev, log_path=str(log_abs),
-                           images=images)
+                           images=images, require_tools=require_tools)
 
         def _call(p, **kw):
             # 模型可见即已记录（§1A 不变量）：入参/出参先落 session 日志
@@ -395,7 +447,7 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
     else:
         res = runner.run_agent(agent, prompt, workdir=workdir, readonly=readonly,
                                timeout=timeout, cancel_event=ev, log_path=str(log_abs),
-                               resume=resume, images=images)
+                               resume=resume, images=images, require_tools=require_tools)
     return res
 
 
@@ -417,7 +469,10 @@ def _finish_step_result(run_id, step, res, role, agent, start):
                       cost_usd=res.get("cost_usd", 0.0),
                       tokens=res.get("tokens", 0),
                       duration_s=time.time() - start,
-                      model=res.get("model"))
+                      model=res.get("model"),
+                      # 智能体的最终回答（runner 已从 JSONL 事件流里抽出 agent_message）。
+                      # 对话视图直读这个；日志文件是全量事件流，塞进气泡就成了「看日志」。
+                      output=(res.get("text") or ""))
     if agent.get("mode") != "mock":
         _record_usage(run_id, role, agent, res, source="pipeline", step=step["n"])
     # 5F：step 级运行时断言（只告警不阻断）
@@ -676,7 +731,8 @@ def _run_code(run, task, agents, ev, stats, mode):
                 res = _run_step(run_id, role, agt_b, prompt, step_wd,
                                 readonly=False, ev=ev,
                                 note=prefix_note if i == 0 else "",
-                                resume=use_resume, images=att_imgs)
+                                resume=use_resume, images=att_imgs,
+                                require_tools=True)
                 # §07 T1.1：记录最后一次实现的会话 id，fix 轮复用（会话内前缀走缓存读计价）
                 new_sid = _resume_sid(agt_b, res.get("sid"))
                 if new_sid:
@@ -743,7 +799,8 @@ def _run_code(run, task, agents, ev, stats, mode):
             res = _run_step(run_id, "fix-r%d" % round_no, modelhub.bind_agent(impl, difficulty),
                             prompt, workdir, readonly=False, ev=ev,
                             note="自动修复第 %d 轮" % round_no,
-                            resume=resume_ctx["session"] if resume_ctx else impl_sid[0])
+                            resume=resume_ctx["session"] if resume_ctx else impl_sid[0],
+                            require_tools=True)
             if impl.get("mode") == "mock" and res["ok"]:
                 pass  # mock 不产生真实变更
         review_json, verify_pass, verify_ran = review_and_score()
@@ -848,6 +905,28 @@ DIRECT_DONE: <一句话说明本轮做了什么>
 
 DIRECT_MAX_TURNS = 200   # 对话续轮上限（每轮都要用户主动发消息才触发，防意外打满）
 
+# 内置智能体版：人格与工具说明在 builtin_agent._SYSTEM_PROMPT，这里只给任务输入；
+# 不要求 DIRECT_DONE 协议尾行——builtin 的最终回答本身就是干净文本
+BUILTIN_DIRECT_PROMPT = """## 任务
+__GOAL__
+
+## 背景与上下文
+__CONTEXT__
+
+## 要求
+- 能改直接改、能写直接写（用工具，限本工作目录内），产出文件一律 UTF-8 编码。
+- 完成后直接给用户一段简短说明：做了什么、产出/修改了哪些文件。"""
+
+BUILTIN_FOLLOWUP_PROMPT = """## 原始任务
+__GOAL__
+
+## 上一轮输出（结尾）
+__PREV__
+
+## 要求
+- 优先回应用户的新消息（继续做/改/答疑均可），仍限本工作目录内，工具可用。
+- 回复直接说清本轮做了什么、答案是什么。"""
+
 
 def _pending_messages(run_id):
     """该 run 信箱里未消费消息列表（读不到时当空，绝不因信箱异常打断执行）。"""
@@ -882,25 +961,36 @@ def _direct_last_text(run):
 
 
 def _run_direct(run, task, agents, ev, stats, mode):
-    """直连引擎：目标+附件直接交给一个 CLI，跑完即止。
+    """直连引擎：目标+附件直接交给一个执行者，跑完即止。
 
-    无规划/评审/验证/换将——快档位，质量交给执行 CLI 自身。对话式续轮：
-    运行中信箱来消息 → drain 注入下一步（_run_step 既有机制）；步骤结束后
-    信箱还有未消费消息就再续一轮（会话续接，同一 CLI 连续对话）；信箱空了
-    收工为 done。运行结束后再来消息走 retry_task（消息自动继承到新 run）。
+    执行者优先级：内置智能体（直连模型 API + 工具循环，无 CLI 进程）→ CLI 智能体。
+    任务显式声明 CLI 会话续接（resume）或手动指定了执行者时尊重选择走 CLI；
+    无可用供应商时回退 CLI。无规划/评审/验证/换将——快档位。对话式续轮：
+    运行中信箱来消息 → drain 注入下一步；步骤结束后信箱还有未消费消息就
+    再续一轮；信箱空了收工为 done。运行结束后再来消息走 retry_task
+    （消息自动继承到新 run）。
     """
     run_id = run["id"]
     workdir = task["workdir"]
     route = {}
     resume_ctx = _valid_resume(task, agents)
-    if resume_ctx is not None:
+    bi = None
+    if resume_ctx is None and not (mode == "manual" and task.get("implementer")):
+        try:
+            bi = builtin_agent.resolve()
+        except Exception:
+            bi = None
+    if bi is not None:
+        impl = None
+        route["implementer"] = "CodeBee（%s · %s）" % (bi["provider_name"], bi["model"])
+    elif resume_ctx is not None:
         impl = resume_ctx["agent"]
         route["implementer"] = resume_ctx["note"]
     elif mode == "manual":
         impl, _ = _pick_implementer(agents, task.get("implementer"))
     else:
         impl, route["implementer"] = router.pick(agents, "implement", task["type"], stats)
-    if impl is None:
+    if impl is None and bi is None:
         store.update_run(run_id, status="failed", error="没有可用智能体", ended_at=_now())
         return
     difficulty = task.get("difficulty") or "default"
@@ -910,8 +1000,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
     sid = (resume_ctx["session"] if resume_ctx else "") or ""
     last_text = ""
     # 追话起跑（/api/runs/<id>/chat → retry_task）：信箱已有未消费消息 = 这是对话
-    # 的下一轮而非首轮。继承上一轮的 CLI 会话 id，让它真的「接着上次聊」；
-    # 同时把首步切成续轮档（DIRECT_FOLLOWUP），避免又走一遍开场的完整任务框架。
+    # 的下一轮而非首轮。CLI 继承上一轮的会话 id（真的「接着上次聊」），内置智能体
+    # 靠「上一轮输出（结尾）」块带上下文；同时把首步切成续轮档。
     try:
         pending0 = store.peek_messages(run_id)
     except Exception:
@@ -920,7 +1010,7 @@ def _run_direct(run, task, agents, ev, stats, mode):
         prev = _direct_prev_run(task["id"], run_id)
         if prev:
             ps = (prev.get("direct_session") or {})
-            if ps.get("agent") == impl["id"] and ps.get("session"):
+            if impl is not None and ps.get("agent") == impl["id"] and ps.get("session"):
                 sid = sid or ps["session"]
             if ps.get("workdir"):
                 step_wd = ps["workdir"]
@@ -930,38 +1020,55 @@ def _run_direct(run, task, agents, ev, stats, mode):
     while True:
         _wait_gate(run_id, ev)
         if first:
-            prompt = (DIRECT_PROMPT
-                      .replace("__GOAL__", task["goal"])
-                      .replace("__CONTEXT__", task.get("context") or "（无）"))
+            if bi is not None:
+                prompt = (BUILTIN_DIRECT_PROMPT
+                          .replace("__GOAL__", task["goal"])
+                          .replace("__CONTEXT__", task.get("context") or "（无）"))
+            else:
+                prompt = (DIRECT_PROMPT
+                          .replace("__GOAL__", task["goal"])
+                          .replace("__CONTEXT__", task.get("context") or "（无）"))
             note = route.get("implementer", "")
             images = _task_images(task, workdir)
         else:
-            prompt = DIRECT_FOLLOWUP_PROMPT.replace("__GOAL__", task["goal"])
-            if not sid and last_text:
-                # 无会话续接能力的 CLI（如 dsh 一次性任务）：把上一轮输出尾部带进上下文
-                prompt += "\n\n## 上一轮输出（结尾）\n" + last_text[-3000:]
+            if bi is not None:
+                prompt = (BUILTIN_FOLLOWUP_PROMPT
+                          .replace("__GOAL__", task["goal"])
+                          .replace("__PREV__", (last_text or "（无）")[-3000:]))
+            else:
+                prompt = DIRECT_FOLLOWUP_PROMPT.replace("__GOAL__", task["goal"])
+                if not sid and last_text:
+                    # 无会话续接能力的 CLI（如 dsh 一次性任务）：把上一轮输出尾部带进上下文
+                    prompt += "\n\n## 上一轮输出（结尾）\n" + last_text[-3000:]
             note = "对话续轮"
             images = None
         # 续轮判据：只有「本步执行期间新到」的消息才再开一轮。
-        # 不能只看「信箱非空」——真实步骤的 drain 在 _run_step 内部发生，起跑前
-        # 就积压的消息会被本步吃掉（peek 归零）；而 mock/不走 drain 的路径消息
-        # 永远不消费，只看非空会空转到轮数上限。比较步骤前后的未消费数即可区分。
+        # 不能只看「信箱非空」——真实步骤的 drain 在 _run_step/_run_builtin_step
+        # 内部发生，起跑前就积压的消息会被本步吃掉（peek 归零）；而 mock/不走
+        # drain 的路径消息永远不消费，只看非空会空转到轮数上限。
+        # 比较步骤前后的未消费数即可区分。
         before_n = len(_pending_messages(run_id))
-        res = _run_step(run_id, "direct" if first else "chat", impl, prompt, step_wd,
-                        readonly=False, ev=ev, note=note,
-                        resume=sid or None, images=images)
+        if bi is not None:
+            res = _run_builtin_step(run_id, "direct" if first else "chat", bi, prompt,
+                                    step_wd, ev=ev, note=note, images=images)
+        else:
+            res = _run_step(run_id, "direct" if first else "chat", impl, prompt, step_wd,
+                            readonly=False, ev=ev, note=note,
+                            resume=sid or None, images=images)
         if not res["ok"]:
             store.update_run(run_id, status="failed",
                              error="执行失败: %s" % res.get("error"), ended_at=_now())
             return
         turns += 1
         last_text = (res.get("text") or "").strip()
-        new_sid = _resume_sid(impl, res.get("sid"))
-        if new_sid:
-            sid = new_sid
+        if impl is not None:
+            new_sid = _resume_sid(impl, res.get("sid"))
+            if new_sid:
+                sid = new_sid
         try:
-            store.update_run(run_id, direct_session={"agent": impl["id"], "session": sid,
-                                                     "workdir": step_wd})
+            store.update_run(run_id, direct_session={
+                "agent": "builtin" if bi is not None else impl["id"],
+                "session": sid, "workdir": step_wd})
         except Exception:
             pass
         if turns >= DIRECT_MAX_TURNS:
@@ -971,9 +1078,12 @@ def _run_direct(run, task, agents, ev, stats, mode):
         first = False
 
     verdict = {"type": task["type"], "engine": "direct", "pass": True, "mode": mode,
-               "direct": True, "turns": turns, "impl": impl["id"], "route": route}
+               "direct": True, "turns": turns,
+               "impl": "builtin" if bi is not None else impl["id"], "route": route}
+    impl_label = ("CodeBee（%s · %s）" % (bi["provider_name"], bi["model"])
+                  if bi is not None else impl.get("label"))
     report = ["# 直连任务：%s" % task["title"], "",
-              "- 执行者：%s（%d 轮对话）" % (impl.get("label"), turns), ""]
+              "- 执行者：%s（%d 轮对话）" % (impl_label, turns), ""]
     if last_text:
         report += ["## 最近一轮输出", "", last_text[-5000:], ""]
     store.write_report(run_id, "\n".join(report))

@@ -97,7 +97,7 @@ async function main() {
     await evalJs(`sideOpenTask("tedit1")`);
     await sleep(1200);
     let bs = JSON.parse(await evalJs(btnsOf));
-    check("失败态：重试任务可见", bs.retry.vis, JSON.stringify(bs));
+    check("失败态：继续任务可见", bs.retry.vis, JSON.stringify(bs));
     check("失败态：编辑重试可见且文案正确", bs.edit.vis && bs.edit.txt.includes("编辑重试"), JSON.stringify(bs.edit));
     check("失败态：基于此任务新建隐藏（与编辑重试互斥）", !bs.nf.vis, JSON.stringify(bs));
 
@@ -161,7 +161,7 @@ async function main() {
     bs = JSON.parse(await evalJs(btnsOf));
     check("完成态：基于此任务新建可见", bs.nf.vis, JSON.stringify(bs));
     check("完成态：编辑重试隐藏", !bs.edit.vis, JSON.stringify(bs));
-    check("完成态：重试任务隐藏", !bs.retry.vis, JSON.stringify(bs));
+    check("完成态：继续任务隐藏", !bs.retry.vis, JSON.stringify(bs));
 
     // 超时场景（放最后，避免打乱前面预填断言的当前任务）：
     // 错误框带 TIMEOUT 徽标；步骤芯片显示「超时」（rd-steps 行内是 chip，无 sdot）

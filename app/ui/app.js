@@ -123,7 +123,12 @@ function renderQuickChips() {
   const box = $("cmp-quick");
   if (!box || !S.flows) return;
   const cur = ($("f-type") || {}).value;
-  box.innerHTML = (S.flows || []).filter((f) => f.builtin).slice(0, 5).map((f) =>
+  // 直连是默认档位：固定首枚 chip；其余内置流程跟后面（去重，共 5 枚）
+  const builtins = (S.flows || []).filter((f) => f.builtin);
+  const d = builtins.find((f) => f.id === "direct");
+  const list = d ? [d].concat(builtins.filter((f) => f.id !== "direct").slice(0, 4))
+                 : builtins.slice(0, 5);
+  box.innerHTML = list.map((f) =>
     '<button type="button" class="cmp-chip' + (f.id === cur ? " on" : "") +
     '" onclick="pickQuickType(\'' + esc(f.id) + '\')">' + flowIconHtml(f) +
     "<span>" + esc(t(f.name)) + "</span></button>").join("");
@@ -483,10 +488,12 @@ function fmtModel(m) {
   return typeof m === "object" ? JSON.stringify(m) : String(m);
 }
 
-/* 极简 Markdown 渲染（标题/加粗/行内码/列表/表格/代码块） */
+/* 极简 Markdown 渲染（标题/加粗/行内码/列表/表格/代码块）。
+ * 围栏代码块走 codeBlockHTML（行号表格+高亮+代码主题）：裸 <pre> 只有
+ * --log-bg 底色没配浅字，暖色皮肤里深底配深字根本读不了。 */
 function md2html(md) {
   const lines = String(md || "").split(/\r?\n/);
-  let html = [], inCode = false, inTable = false, listOpen = false;
+  let html = [], inCode = false, codeBuf = null, inTable = false, listOpen = false;
   const inline = (t) => esc(t)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
@@ -496,10 +503,11 @@ function md2html(md) {
     const line = raw.replace(/\s+$/, "");
     if (line.startsWith("```")) {
       closeList(); closeTable();
-      html.push(inCode ? "</pre>" : "<pre>");
+      if (inCode) { html.push(codeBlockHTML(codeBuf.join("\n"))); codeBuf = null; }
+      else codeBuf = [];
       inCode = !inCode; continue;
     }
-    if (inCode) { html.push(esc(raw)); continue; }
+    if (inCode) { codeBuf.push(raw); continue; }
     if (/^\|(.+)\|\s*$/.test(line)) {
       const cells = line.slice(1, -1).split("|").map((s) => s.trim());
       if (/^[-: ]+$/.test(cells.join(""))) continue; // 分隔行
@@ -519,7 +527,7 @@ function md2html(md) {
     html.push("<p>" + inline(line) + "</p>");
   }
   closeList(); closeTable();
-  if (inCode) html.push("</pre>");
+  if (inCode && codeBuf) html.push(codeBlockHTML(codeBuf.join("\n")));   // 未闭合围栏也按代码块收尾
   return html.join("\n");
 }
 
@@ -829,6 +837,7 @@ function renderBindings() {
                               targets.map((c) => [c.id, c.orch_kind]), S.bindSel]);
   if (sig === S.bindSig) return;
   S.bindSig = sig;
+  syncSaveAllBtn();
   bbox.innerHTML = targets.map((c) => {
     const b = (S.bindings || {})[c.id] || {};
     const opts = '<option value="">' + t("不绑定（用 CLI 自身的凭据与配置）") + '</option>' + bindable.map((p) => {
@@ -1257,6 +1266,10 @@ function provModelRow(pid, m, group) {
       esc((tm.error || "").slice(0, 24)) + "</span>") : "";
   const price = (m.price_in != null && m.price_out != null)
     ? '<span class="hint">¥' + esc(m.price_in) + "/¥" + esc(m.price_out) + "</span>" : "";
+  const imgcap = '<span class="tag imgcap' + (m.image_in ? " ok" : "") + '" title="' +
+    (m.image_in ? t("支持图片输入，点击关闭")
+                : t("纯文本模型，点击开启图片输入（内置智能体传图以此为准）")) + '"' +
+    ' onclick="toggleModelImage(\'' + esc(pid) + '\', \'' + esc(m.name) + '\')">' + t("图") + "</span>";
   const sel = modelSel(pid);
   return '<div class="prow' + (m.enabled ? "" : " off") + '" draggable="true" data-group="' +
     esc(group) + '" data-name="' + esc(m.name) + '">' +
@@ -1266,7 +1279,7 @@ function provModelRow(pid, m, group) {
     '<span class="drag" title="' + t("拖动调整优先级") + '"><svg class="ico" aria-hidden="true"><use href="#i-grip"></use></svg></span>' +
     '<span class="pprio">#' + m.priority + "</span>" +
     '<span class="pname" title="' + esc(m.name) + '">' + esc(m.name) + "</span>" +
-    price + tmHtml +
+    price + imgcap + tmHtml +
     '<span class="row-ops">' +
     '<button class="ghost small row-op" onclick="testModelBtn(\'' + esc(pid) + '\', \'' + esc(m.name) + '\')">' + t("测试") + '</button>' +
     '<button class="danger small row-op" title="' + t("从列表删除：刷新/重新导入不会再带回，可在分组底部恢复") + '"' +
@@ -1351,6 +1364,21 @@ async function modelOp(pid, name, op) {
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   S.modelsSig = null;
   poll();
+}
+
+function toggleModelImage(pid, name) {
+  const p = (S.providers || []).find((x) => x.id === pid);
+  const m = p && (p.models || []).find((x) => x.name === name);
+  api("/api/models/model-caps", { method: "POST",
+    body: JSON.stringify({ provider_id: pid, name, image_in: !(m && m.image_in) }) })
+    .then(() => { S.modelsSig = null; poll(); })
+    .catch((e) => toast(t("保存失败：") + e.message, true));
+}
+
+/* 反查模型是否声明图片输入（绑定页 chip/列表只读徽标用） */
+function modelHasImage(pid, name) {
+  const p = (S.providers || []).find((x) => x.id === pid);
+  return !!(p && (p.models || []).some((x) => x.name === name && x.image_in));
 }
 
 /* ---- 模型批量选择 ---- */
@@ -1674,9 +1702,14 @@ async function doImport() {
 
 async function saveBinding(id) {
   const st = bindSelById(id);
+  // 主供应商跟链首走：模型链是唯一真源，链首非空时供应商下拉必须与之一致
+  // （下拉是旧状态时把旧值发上去，后端「显式指定」就会盖回停用的旧供应商）。
+  const headP = st.chain.length ? st.chain[0].p : "";
+  const provSel = $("bindprov-" + id);
+  if (provSel && provSel.value !== (headP || "")) provSel.value = headP || "";
   try {
     await api("/api/models/binding", { method: "POST", body: JSON.stringify({
-      agent_id: id, provider_id: $("bindprov-" + id).value,
+      agent_id: id, provider_id: provSel ? provSel.value : "",
       chain: st.chain.map((c) => ({ provider_id: c.p, model: c.m })),
       difficulty_routing: $("binddiff-" + id).checked }) });
     st.dirty = false;
@@ -1775,6 +1808,9 @@ async function createTask() {
   try {
     const r = await api("/api/tasks", { method: "POST", body: JSON.stringify(payload) });
     msg.textContent = t("已创建，跳转运行页…");
+    // 先把新任务刷进 state 再跳：chatEngineIsDirect 靠 S.state.tasks 判引擎，
+    // 不刷的话对话页签不会就绪，自动选卡落不到「对话」
+    try { await refreshState(); } catch (e) { /* 刷失败等轮询兜底 */ }
     jumpToRun(r.run_id);
     $("f-goal").value = "";
     S.atts = []; renderAttachChips();   // 附件已移交任务待提交区，清空本地列表
@@ -1972,6 +2008,13 @@ async function archiveTask(id, archived) {
   try {
     await api("/api/tasks/" + encodeURIComponent(id) + "/archive",
       { method: "POST", body: JSON.stringify({ archived: !!archived }) });
+    // 取消归档时把任务工作目录从「已移除目录」里捞回来：用户点时钟开关找回
+    // 归档任务再取消归档，直觉上文件夹就该回侧栏（否则只能靠在该目录新建任务）。
+    if (!archived) {
+      const t0 = ((S.state || {}).tasks || []).concat(((S.state || {}).archived_tasks) || [])
+        .find((x) => x.id === id);
+      if (t0 && t0.workdir) unhideSideDir(t0.workdir);
+    }
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   poll();
 }
@@ -2065,7 +2108,7 @@ function bindCtxMenus() {
       items.push({ label: t("复制工作目录路径"), fn: () => revealPath("tasks", taskId, false) });
       if (runId) items.push({ label: t("复制日志目录路径"), fn: () => revealPath("runs", runId, false) });
       const st = det.dataset.status || "";
-      if (st === "failed" || st === "cancelled") items.push({ label: t("↻ 重试任务"), fn: () => retryTask(taskId) });
+      if (st === "failed" || st === "cancelled") items.push({ label: t("↻ 继续任务"), fn: () => retryTask(taskId) });
       // 与详情页同一套说法：失败/取消叫「编辑重试」，其余叫「基于此任务新建」
       items.push({ label: (st === "failed" || st === "cancelled") ? t("✎ 编辑重试") : t("基于此任务新建"),
                    fn: () => newFromTask(taskId) });
@@ -2934,6 +2977,7 @@ function drawTaskDetail(key, runs) {
   }
   renderDirector(activeRun || null, !!activeRun);
   renderHive(activeRun || latest);   // 终态回看最近一次运行的蜂巢
+  renderChat(latest, active);        // 直连任务：对话时间线在任务级详情同样渲染（S.lastRun 已指向 latest）
   const sum = (f) => runs.reduce((a, r) => a + (Number(r[f]) || 0), 0);
   $("rd-meta").innerHTML =
     '<span class="stat">' + t("运行 ") + '<b>' + runs.length + "</b>" + t(" 次") + "</span>" +
@@ -2973,8 +3017,9 @@ function drawTaskDetail(key, runs) {
       try {
         const md = await fetch("/api/runs/" + encodeURIComponent(latest.id) + "/report").then((r) => r.text());
         const html2 = md2html(md);
+        if (S.detailTaskKey !== key) return;   // 拉取期间切了详情：过期报告不落缓存/不落盘
         S.taskReport = { key, runId: latest.id, html: html2 };
-        if (S.detailTaskKey === key) $("rd-report").innerHTML = html2;
+        $("rd-report").innerHTML = html2;
       } catch (e) { /* 报告拉取失败静默，保留旧内容 */ }
     } else {
       $("rd-report").innerHTML = '<div class="hint">' + t("运行结束后生成") + '</div>';
@@ -3073,6 +3118,7 @@ function closeRun() {
   stopHiveTick();
   detailSideReset();
   $("run-detail").classList.add("hidden");
+  renderChatNav();   // 解除 main.chat-fill（对话为主的固定高度），恢复外层滚动
   if (document.body.classList.contains("settings-mode")) {
     document.querySelector("#sub-runs .panel:first-child").classList.remove("hidden");
   } else {
@@ -3132,7 +3178,55 @@ function applyRdTabs() {
   });
   document.querySelectorAll("#run-detail .rd-pane").forEach((p) =>
     p.classList.toggle("hidden", p.dataset.pane !== S.rdTab));
+  // 对话页签不放日志抽屉：会盖住贴底输入条（手动切来/自动选卡都覆盖）
+  if (S.rdTab === "chat" && !$("rd-log").classList.contains("hidden")) window.rdLogClose();
+  renderChatNav();
 }
+
+/* 直连任务「对话为主」布局：收起常规页签条，右上角一排小胶囊按需打开
+ * 蜂巢/步骤/成果等分区；离开对话时给「返回对话」入口（用户 2026-09-17 拍板：
+ * 对话场景其它页签用处不大，默认关掉、需要再点开）。 */
+function renderChatNav() {
+  const nav = $("rd-chat-nav"), detail = $("run-detail");
+  if (!nav || !detail) return;
+  const direct = !detail.classList.contains("hidden") && !!S.lastRun &&
+    chatEngineIsDirect(S.lastRun);
+  detail.classList.toggle("chat-mode", direct);
+  // 对话为主时锁死外层滚动（main 是滚动根）；离开详情必须解锚，否则任务列表滚不动
+  const mainEl = document.querySelector("main");
+  if (mainEl) mainEl.classList.toggle("chat-fill", direct);
+  if (!direct) { nav.classList.add("hidden"); nav.innerHTML = ""; return; }
+  const labels = { hive: t("蜂巢"), steps: t("步骤"), result: t("成果"),
+    git: "Git", bible: t("圣经"), bookmeta: t("作品信息") };
+  const avail = rdTabAvail();
+  let pills = "";
+  for (const k of ["hive", "steps", "result", "git", "bible", "bookmeta"]) {
+    if (!avail[k]) continue;
+    // 徽章直接镜像隐藏页签上的（蜂巢在岗数/步骤数/待裁决/成果数），不另设状态源
+    const badge = document.querySelector('#rd-tabs .rd-tab[data-tab="' + k + '"] .rd-badge');
+    pills += '<button class="cn-pill' + (S.rdTab === k ? " on" : "") +
+      '" onclick="rdChatNavGo(\'' + k + '\')">' + labels[k] +
+      (badge && badge.textContent ? "<b>" + esc(badge.textContent) + "</b>" : "") + "</button>";
+  }
+  nav.innerHTML = (S.rdTab !== "chat"
+    ? '<button class="cn-back" onclick="rdChatNavBack()">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>' +
+      t("返回对话") + "</button>"
+    : "") +
+    '<span class="cn-pills">' + pills + "</span>";
+  nav.classList.remove("hidden");
+}
+window.rdChatNavGo = function (tab) {
+  S.rdTab = tab;
+  S.rdTabPin = true;   // 用户主动去看其它分区：别被自动选卡拽回对话
+  applyRdTabs();
+};
+window.rdChatNavBack = function () {
+  S.rdTab = "chat";
+  S.rdTabPin = false;
+  S.rdTabSig = "";
+  applyRdTabs();
+};
 
 /* 徽章：蜂巢=在岗数（运行中）、步骤=总步数、版本=待裁决、成果=文件数（loadArtifacts 里刷） */
 function rdTabBadges() {
@@ -3153,16 +3247,22 @@ function rdTabBadges() {
 function rdTabsSync(ctx) {
   if (ctx) S._rdCtx = ctx;
   if (ctx && !S.rdTabPin) {
+    // 对话页签可用性入签名：刚建的任务要等 state 刷进来 direct 才判定成立，
+    // chat 从不可用变可用时必须触发一次重新选卡（否则落在步骤/蜂巢不跳对话）
+    const chatAvail = $("rd-chat") && !$("rd-chat").classList.contains("hidden");
     const sig = (S.detailTaskKey || S.detailRunId || "") + "|" + (ctx.status || "") +
-      "|" + (ctx.gitState || "") + "|" + (ctx.running ? 1 : 0);
+      "|" + (ctx.gitState || "") + "|" + (ctx.running ? 1 : 0) + "|" + (chatAvail ? 1 : 0);
     if (S.rdTabSig !== sig) {
       S.rdTabSig = sig;
       const avail = rdTabAvail();
-      // 直连任务：对话就是全部内容，默认落「对话」；其余流程保持既有落位
+      // 直连任务：对话就是全部内容，默认落「对话」；其余流程保持既有落位。
+      // 没跑到终态时成果分区是空的，落进去只见「运行结束后生成」白板——
+      // 运行中先落蜂巢/步骤，收尾后自动选卡会再切到成果
+      const finishing = !ctx.running && ["done", "failed", "cancelled", "timeout"].includes(ctx.status);
       S.rdTab = (avail.chat ? "chat" : null)
         || (ctx.running ? (avail.hive ? "hive" : "steps")
           : (ctx.gitState === "isolated" && avail.git ? "git"
-            : (ctx.hasResult ? "result" : "steps")));
+            : (ctx.hasResult && finishing ? "result" : "steps")));
     }
   }
   applyRdTabs();
@@ -3185,6 +3285,7 @@ async function renderRunDetail() {
   try { run = (await api("/api/runs/" + encodeURIComponent(id))).run; }
   catch (e) { return; }
   if (!run) return;
+  if (S.detailRunId !== id || S.detailTaskKey) return;   // 拉取期间已切走：过期响应不落盘
   $("rd-title").textContent = run.title;
   const chip = $("rd-status");
   chip.className = "chip " + run.status;
@@ -3228,6 +3329,8 @@ async function renderRunDetail() {
   // 报告
   if (run.status === "done" || run.report) {
     const md = await fetch("/api/runs/" + encodeURIComponent(id) + "/report").then((r) => r.text());
+    // 报告拉取期间切了详情：过期报告/成品不落盘（A 的报告写进 B 详情的报告区）
+    if (S.detailRunId !== id || S.detailTaskKey) return;
     $("rd-report").innerHTML = md2html(md);
     loadArtifacts(id);
   } else {
@@ -3276,10 +3379,15 @@ async function renderBiblePanel(task) {
   const box = $("rd-bible");
   if (!box || !(task || {}).id) { if (box) box.classList.add("hidden"); rdTabsSync(); return; }
   if (!task.serial) { box.classList.add("hidden"); rdTabsSync(); return; }
+  // 拉取期间可能切详情：过期响应不落盘（把 A 任务的圣经写进 B 详情的串台面）
+  const detailKey = S.detailTaskKey || S.detailRunId || "";
   let d;
   try { d = await api("/api/tasks/" + encodeURIComponent(task.id) + "/bible"); }
   catch (e) { box.classList.add("hidden"); rdTabsSync(); return; }
-  if ((S.detailTaskKey || S.detailRunId) !== (S._bibleKey || (S.detailTaskKey || S.detailRunId))) { /* noop */ }
+  if ((S.detailTaskKey || S.detailRunId || "") !== detailKey ||
+      ((S.lastRunTask || {}).id || "") !== (task.id || "")) {
+    box.classList.add("hidden"); rdTabsSync(); return;
+  }
   const running = task.status === "running" || task.status === "queued";
   const text = d.text || "";
   const editing = S._bibleEdit === task.id;
@@ -3339,10 +3447,13 @@ const BOOKMETA_PLATFORMS = [
 ];
 const BOOKMETA_FIELDS = {
   fanqie: [["book_name", "作品名"], ["signing_mode", "签约模式"], ["target_reader", "目标读者"],
-    ["read_tags", "阅读标签"], ["content_tags", "内容标签"], ["protagonist_1", "主角名1"],
-    ["protagonist_2", "主角名2"], ["summary", "作品简介"]],
+    ["category", "主分类"], ["tags_theme", "主题标签"], ["tags_role", "角色标签"],
+    ["tags_plot", "情节标签"], ["content_plot", "内容·情节"], ["content_emotion", "内容·情感"],
+    ["content_character", "内容·人设"], ["content_world", "内容·世界观"],
+    ["protagonist_1", "主角名1"], ["protagonist_2", "主角名2"], ["summary", "作品简介"]],
   qimao: [["book_name", "作品名称"], ["target_reader", "目标读者"], ["category_main", "一级分类"],
-    ["category_sub", "二级分类"], ["tags", "作品标签"], ["protagonist_1", "主角名1"],
+    ["category_sub", "二级分类"], ["tags_style", "风格标签"], ["tags_role", "角色标签"],
+    ["tags_plot", "情节标签"], ["tags_bg", "背景标签"], ["protagonist_1", "主角名1"],
     ["protagonist_2", "主角名2"], ["status", "作品状态"], ["summary", "作品简介"]],
 };
 
@@ -3454,6 +3565,7 @@ window.bmGen = async function (taskId, platform) {
     await api("/api/tasks/" + encodeURIComponent(taskId) + "/book-meta",
       { method: "POST", body: JSON.stringify({ platform }) });
     toast(t("已开始生成，完成后这里会自动更新"));
+    await refreshState(); render();   // 立即翻到「生成中」，不等 SSE 推送/下一轮轮询
   } catch (e) { toast(t("生成失败：") + e.message, true); }
 };
 
@@ -3572,7 +3684,7 @@ function _renderGitSnapshot(run, task) {
         '<span class="chip failed">' + t("检出失败") + "</span>" +
         '<code class="git-branch">codebee/' + esc(tid || t("（无主运行）")) + t("（") + esc(t("未创建")) + t("）") + "</code></div>" +
         (lastErr ? '<div class="hint warn">' + esc(lastErr) + "</div>" : "") +
-        '<div class="hint">' + esc(t("处理后点「重试任务」，运行会重新检出任务分支。")) + "</div>";
+        '<div class="hint">' + esc(t("处理后点「继续任务」，运行会重新检出任务分支。")) + "</div>";
       rdTabsSync();
       return;
     }
@@ -3955,6 +4067,9 @@ async function refreshInspector(force) {
 function drawInspector() {
   const d = S.inspData;
   if (!d || !d.task) return;
+  // 已收起（详情页让位/用户关闭）就整帧不落盘：在途响应回来时用户多半已切到
+  // 别的详情，落盘只会让 loadArtifacts 等渲染面拿到别人任务的 run（串台源头）
+  if (!document.body.classList.contains("inspector-open")) return;
   const ta = $("insp-msg-input");
   if (ta && document.activeElement === ta) return;
   const sig = JSON.stringify([
@@ -3986,7 +4101,7 @@ function drawInspector() {
       main.innerHTML = '<div class="insp-branch"><code>codebee/' + esc(d.task.id || "") +
         t("（") + esc(t("未创建")) + t("）") + '</code></div>' +
         (lastErr ? '<div class="hint warn">' + esc(lastErr) + "</div>" : "") +
-        '<span class="insp-hint">' + esc(t("处理后点「重试任务」，运行会重新检出任务分支。")) + "</span>";
+        '<span class="insp-hint">' + esc(t("处理后点「继续任务」，运行会重新检出任务分支。")) + "</span>";
     } else {
       // 没指定代码版本：没有任务分支，卡里只留一句说明
       chipEl.classList.add("hidden");
@@ -4456,15 +4571,22 @@ async function loadArtifacts(runId) {
   let d;
   try { d = await api("/api/runs/" + encodeURIComponent(runId) + "/files"); }
   catch (e) { return; }
-  // 用户可能已经切到别的详情：过期响应不落盘（检查器当前的 run 同样有效）
-  const inspRun = (S.inspData && S.inspData.run && S.inspData.run.id) || "";
-  if (S.detailRunId !== runId && inspRun !== runId &&
-      !(S.detailTaskKey && S.lastRun && S.lastRun.id === runId)) return;
+  // 成果分区/徽章只吃当前详情目标的 run：详情开着但 runId 是别的任务（检查器
+  // 后台跟刷旧选中）时，绝不能把别家的文件写进主栏——那是肉眼可见的串台
+  const detailOpen = !$("run-detail").classList.contains("hidden");
+  const detailOwns = detailOpen &&
+    (S.detailRunId === runId ||
+     (S.detailTaskKey && S.lastRun && S.lastRun.id === runId));
+  // 检查器入口只在「开着且 runId 仍是检查器当前 run」时认领；两边都不认 → 过期响应丢弃
+  const inspOpen = document.body.classList.contains("inspector-open") && S.inspKey !== null;
+  const inspOwns = inspOpen &&
+    runId === ((S.inspData && S.inspData.run && S.inspData.run.id) || "");
+  if (!detailOwns && !inspOwns) return;
   const files = d.files || [];
-  const box = $("insp-artifacts");
-  const mainBox = $("rd-arts");
-  // 成果分区徽章：文件数（终态才有产出，运行中不计）
-  const fb = document.querySelector('#rd-tabs .rd-tab[data-tab="result"] .rd-badge');
+  const box = inspOwns ? $("insp-artifacts") : null;
+  const mainBox = detailOwns ? $("rd-arts") : null;
+  // 成果分区徽章：文件数（终态才有产出，运行中不计）；只随 detailOwns 一起刷
+  const fb = detailOwns ? document.querySelector('#rd-tabs .rd-tab[data-tab="result"] .rd-badge') : null;
   if (fb) { fb.textContent = files.length ? String(files.length) : "";
     fb.className = "rd-badge" + (files.length ? "" : " hidden"); }
   if (!files.length) {
@@ -4562,6 +4684,12 @@ async function toggleLog(runId, rel) {
   }
   try {
     const r = await api("/api/runs/" + encodeURIComponent(runId) + "/log?step=" + encodeURIComponent(rel) + "&pretty=1");
+    // 拉取期间可能切详情：过期日志不落盘（A 的步骤输出写进 B 详情的抽屉）。
+    // 检查器蜂巢/步骤点开日志同款：run 属检查器当前 run 也算在场
+    const owned = S.detailRunId === runId ||
+      (S.detailTaskKey && S.lastRun && S.lastRun.id === runId) ||
+      ((S.inspData || {}).run || {}).id === runId;
+    if (!owned) return;
     pre.textContent = r.log || t("（等待输出…）");
     box.classList.remove("hidden");
     currentLog = rel;
@@ -4602,7 +4730,8 @@ const hiveTails = {};                    // "runid|rel" -> 最近一行输出缓
 function stopHiveTick() { if (hiveTimer) { clearInterval(hiveTimer); hiveTimer = null; } }
 
 /* run.steps -> 阶段泳道流水线：规划→起草→评审→修订→打磨→合成，先后关系一眼可见；
- * 运行中蜜蜂摆动+秒表走动；轨道光点流向下一阶段；点格即看实时输出。 */
+ * 运行中蜜蜂摆动+秒表走动+蜜光呼吸；彗尾光点流向下一阶段；点格即看实时输出；
+ * 入场瀑布只在步骤结构真变时重播（签名闸门，轮询空转不重建 DOM）。 */
 function hiveStage(role) {
   const r = String(role || "");
   if (/^(plan|outline)/.test(r)) return t("规划");
@@ -4663,7 +4792,7 @@ window.renderHive = function (run) {
   if (sub) sub.textContent = running.length
     ? t("在岗") + " " + running.length + " / " + steps.length : t("全部空闲");
   const activeIdx = lanes.map((l) => byStage[l].some((s) => s.status === "running")).lastIndexOf(true);
-  const cell = (s) => {
+  const cell = (s, laneIdx, cellIdx) => {
     // 五归一：取消/超时的格子不再冒充「完成」——与步骤芯片同三色体系
     const st = s.status === "running" || s.status === "queued" ? "running"
       : s.status === "failed" ? "failed"
@@ -4679,7 +4808,10 @@ window.renderHive = function (run) {
     const title = [s.role, who, s.started_at ? t("开始于 ") + s.started_at : "",
                    (s.note ? "◆ " + s.note : "")].filter(Boolean).join(" · ")
       + (concl && st !== "running" ? "\n" + t("结论：") + concl : "");
-    return '<div class="hive-cell st-' + st + '" title="' + esc(title) + '" ' +
+    // --d：入场瀑布逐格延迟（泳道间 110ms + 同泳道逐格 45ms），样式端消费
+    return '<div class="hive-cell st-' + st + (st === "running" ? " hc-breathe" : "") + '"' +
+      ' style="--d:' + (laneIdx * 110 + cellIdx * 45) + 'ms"' +
+      ' title="' + esc(title) + '" ' +
       'onclick="hiveOpenLog(\'' + esc(run.id) + "', '" + esc(s.log || "") + '\')">' +
       '<div class="hc-head">' +
       '<svg class="ico hc-bee" aria-hidden="true"><use href="#i-bee"></use></svg>' +
@@ -4689,17 +4821,19 @@ window.renderHive = function (run) {
       esc(tailText) + "</div>" +
       '<div class="hc-meta"><span class="hc-elapsed" data-started="' + esc(s.started_at || "") + '">' +
       (s.duration_s != null ? s.duration_s + "s" : hiveElapsed(s.started_at)) + "</span>" +
-      (st === "running" ? '<span class="hc-live">● ' + t("工作中") + "</span>" : "") +
+      (st === "running" ? '<span class="hc-live"><i class="live-dot"></i>' + t("工作中") + "</span>" : "") +
       (st === "timeout" ? '<span class="hc-dead">⏱ ' + t("超时") + "</span>" : "") +
       (st === "cancelled" ? '<span class="hc-dead">' + t("已取消") + "</span>" : "") +
       "</div></div>";
   };
-  const dots = (list) => list.slice(-12).map((s) => {
+  const dots = (list, laneIdx) => list.slice(-12).map((s, di) => {
     const dc = s.status === "running" ? "run" : s.status === "failed" ? "fail"
       : s.status === "cancelled" ? "cancel" : s.status === "timeout" ? "time" : "done";
     const stx = { running: t("运行中"), failed: t("失败"), cancelled: t("已取消"),
                   timeout: t("超时"), done: t("完成") }[dc] || s.status;
-    return '<i class="ld ld-' + dc + '" title="' + esc((s.role || "") + " · " + stx) + '"></i>';
+    // --d：与格子同款级联延迟——入场时整条轨道按执行顺序"哗"地点亮（进度回放感）
+    return '<i class="ld ld-' + dc + '" style="--d:' + (laneIdx * 110 + di * 45) + 'ms"' +
+      ' title="' + esc((s.role || "") + " · " + stx) + '"></i>';
   }).join("");
   $("rd-hive-cells").innerHTML = lanes.map((stage, i) => {
     const list = byStage[stage];
@@ -4707,13 +4841,38 @@ window.renderHive = function (run) {
     // 无 running（终态回看）：全部视为已完成泳道；有 running 时 activeIdx 之前算完成
     const cls = hasRun ? "lane-active"
       : (activeIdx === -1 || i < activeIdx ? "lane-done" : "lane-idle");
+    // 泳道头视觉 v2：阶段序号徽章（01/02…流水线站序）+ 已完成进度（settled/total）
+    const settled = list.filter((s) => !["running", "queued"].includes(s.status)).length;
     return '<div class="hive-lane ' + cls + '">' +
-      '<div class="lane-head"><span class="lane-name">' + esc(stage) + '</span>' +
+      '<div class="lane-head">' +
+      '<span class="lane-idx">' + String(i + 1).padStart(2, "0") + "</span>" +
+      '<span class="lane-name">' + esc(stage) + '</span>' +
       '<span class="lane-n">×' + list.length + "</span>" +
-      (hasRun ? '<span class="lane-live">● ' + t("进行中") + "</span>" : "") + "</div>" +
-      '<div class="lane-track">' + dots(list) + "</div>" +
-      '<div class="lane-cells">' + list.slice(-8).map(cell).join("") + "</div></div>";
+      (settled ? '<span class="lane-prog">' + settled + "/" + list.length + "</span>" : "") +
+      (hasRun ? '<span class="lane-live"><i class="live-dot"></i>' + t("进行中") + "</span>" : "") + "</div>" +
+      '<div class="lane-track">' + dots(list, i) + "</div>" +
+      '<div class="lane-cells">' + list.slice(-8).map((s, ci) => cell(s, i, ci)).join("") + "</div></div>";
   }).join('<div class="lane-flow" aria-hidden="true"></div>');
+  // 入场瀑布闸门：只按"结构"（泳道数/格数/状态构成）签名；运行中尾巴/秒表每 2s
+  // 变化不能触重播。签名没变就不动 DOM——格子不闪、动画不重启、悬停不弹手。
+  const sig = lanes.map((l) => l + ":" + byStage[l].length + "(" +
+    byStage[l].map((s) => s.status[0] || "?").join("") + ")").join("|");
+  const cellsBox = $("rd-hive-cells");
+  if (cellsBox.dataset.hiveSig !== sig) {
+    const fresh = cellsBox.dataset.hiveSig == null;   // 首次展开详情也照播，先落框架再逐格亮起
+    cellsBox.dataset.hiveSig = sig;
+    // hive-enter 只在下一帧就摘（Rune/Hermes 式一闪而过的瀑布），全程保留会锁死
+    // 入场帧；1400ms 定时是 RAF 被后台标签页冻结时的兜底。
+    if (!fresh) cellsBox.classList.remove("hive-enter");
+    cellsBox.classList.add("hive-enter");
+    if (cellsBox._hiveEnterRAF) cancelAnimationFrame(cellsBox._hiveEnterRAF);
+    cellsBox._hiveEnterRAF = requestAnimationFrame(() => {
+      requestAnimationFrame(() => cellsBox.classList.remove("hive-enter"));
+      cellsBox._hiveEnterRAF = null;
+    });
+    if (cellsBox._hiveEnterT) clearTimeout(cellsBox._hiveEnterT);
+    cellsBox._hiveEnterT = setTimeout(() => cellsBox.classList.remove("hive-enter"), 1400);
+  }
   const live = running.length && (run.status === "running" || run.status === "queued");
   if (hiveClock) { clearInterval(hiveClock); hiveClock = null; }
   if (live) {
@@ -4725,12 +4884,8 @@ window.renderHive = function (run) {
         el.textContent = hiveElapsed(el.dataset.started);
       });
     }, 1000);
-    // 点开任务第一眼就在干活：自动展开第一个在岗步骤的实时日志。
-    // 每 run 只自动开一次；用户手动收起后不再打扰。
-    if (S.hiveAutoLog !== run.id && !currentLog) {
-      const first = running.find((s) => s.log);
-      if (first) { S.hiveAutoLog = run.id; toggleLog(run.id, first.log); }
-    }
+    // 日志抽屉一律手动打开（点蜂巢格/步骤行）：自动弹开会盖住对话输入条，
+    // 用户要求所有页面默认不展示日志（2026-09-17）
   } else stopHiveTick();
   rdTabsSync();   // 蜂巢显隐直接决定「蜂巢」标签可用性
 };
@@ -4739,6 +4894,10 @@ window.renderHive = function (run) {
  * 只刷运行中格子——终态格子的结论一旦定格，不再被命令回显覆盖。 */
 async function hiveTick(rid) {
   if (document.hidden || !rid) return;
+  // 换详情目标后旧蜂巢定时器必须停：先把 run.id 记下来，拉回来不是它就停表，
+  // 否则 A 任务的步骤尾巴会持续写进 B 详情的蜂巢格
+  if (!((S.inspData || {}).run || {}).id && S.detailRunId !== rid &&
+      !(S.detailTaskKey && S.lastRun && S.lastRun.id === rid)) { stopHiveTick(); return; }
   const box = $("rd-hive-cells");
   if (!box) return;
   const rels = Array.from(box.querySelectorAll(".hive-cell.st-running .hc-tail[data-log]"))
@@ -4941,6 +5100,38 @@ function chatEngineIsDirect(run) {
   return !!(t && t.engine === "direct");
 }
 
+/* 对话正文：``` 围栏渲染成真代码块（复用 codeBlockHTML：行号+高亮+代码主题），
+ * 其余文本保持 pre-wrap 原样（行内 `code` 与 **加粗** 轻量翻译）。模型输出先
+ * 全量 esc 再插标记；未闭合围栏按代码块收尾，流式输出中途也不撒裸反引号。 */
+function chatBodyHTML(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  const out = [];
+  let txt = [], code = null;
+  const flushTxt = () => {
+    if (!txt.length) return;
+    out.push('<div class="chat-body">' + txt.map((l) => {
+      let h = esc(l);
+      h = h.replace(/`([^`]+)`/g, "<code>$1</code>");
+      h = h.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+      return h;
+    }).join("\n") + "</div>");
+    txt = [];
+  };
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, "");
+    if (line.startsWith("```")) {
+      if (code) { out.push(codeBlockHTML(code.join("\n"))); code = null; }
+      else { flushTxt(); code = []; }
+      continue;
+    }
+    if (code) code.push(raw);
+    else txt.push(raw);
+  }
+  if (code) out.push(codeBlockHTML(code.join("\n")));
+  flushTxt();
+  return out.join("");
+}
+
 async function renderChat(run, active) {
   const box = $("rd-chat");
   if (!box) return;
@@ -4951,32 +5142,58 @@ async function renderChat(run, active) {
   const sig = run.id + "|" + run.status + "|" + (run.steps || []).length +
     "|" + ((run.messages || []).length);
   if (sig === chatSig) return;   // 轮询重画去抖：内容没变不重建 DOM（保住输入焦点）
+  const runForFetch = run.id;    // 拉取期间可能切详情：过期响应不落盘（同 renderRunDetail 闸门）
   chatSig = sig;
   let items = [];
   try { items = ((await api("/api/runs/" + encodeURIComponent(run.id) + "/timeline")).items) || []; }
   catch (e) { items = []; }
+  if (!$("run-detail") || $("run-detail").classList.contains("hidden")) return;
+  // 过期闸门：run 级（renderRunDetail）与任务级（drawTaskDetail）都经 S.lastRun
+  // 指向当前详情正在展示的那条 run——拉取期间切了详情就丢弃响应
+  if (!S.lastRun || S.lastRun.id !== runForFetch) return;
   const flow = $("rd-chat-flow");
+  // 时间显示统一收敛到 HH:MM（日期在 meta 条里，全量戳塞气泡就是噪音）；
+  // 附件兼容 字符串路径 / {name|path} 对象 两种形态（对象直接拼会成 [object Object]）
+  const chatTime = (v) => { const s = String(v || "");
+    return /^\d{4}-\d{2}-\d{2}[ T]/.test(s) ? s.slice(11, 16) : s; };
+  const attName = (a) => { const p = typeof a === "string" ? a
+    : ((a && (a.name || a.path)) || "");
+    return String(p).split(/[\\/]/).pop() || ""; };
   flow.innerHTML = items.map((it) => {
     if (it.kind === "user") {
+      // 用户消息：右侧浅灰圆角块，元信息在块内顶部
+      const atts = (it.attachments || []).map(attName).filter(Boolean);
       return '<div class="chat-row me">' +
-        '<div class="chat-bubble me">' + esc(it.text || t("（仅附件）")) +
-        ((it.attachments || []).length
-          ? '<div class="chat-atts">' + it.attachments.map((a) =>
-              '<span class="att-chip2">' + esc(String(a).split(/[\\/]/).pop()) + "</span>").join("") + "</div>"
+        '<div class="chat-bubble me">' +
+        '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
+        (it.consumed ? "" : " · " + t("待送达")) + "</div>" +
+        esc(it.text || t("（仅附件）")) +
+        (atts.length
+          ? '<div class="chat-atts">' + atts.map((n) =>
+              '<span class="att-chip2">' + esc(n) + "</span>").join("") + "</div>"
           : "") +
-        '<div class="chat-meta">' + esc(it.who || "") + " " + esc(it.at || "") +
-        (it.consumed ? "" : " · " + t("待送达")) + "</div></div></div>";
+        "</div></div>";
     }
+    // 协议尾行是给编排器判收的机器标记，不该出现在聊天正文里（真源在提示词约定）
+    const body = String(it.text || "").replace(/\n*DIRECT_DONE:.*\s*$/s, "").trim();
+    // 运行中还没有正文：三点打字动画（终态无正文才落「无文本输出」占位）
+    const bodyHtml = body ? chatBodyHTML(body)
+      : (it.status === "running"
+        ? '<span class="chat-typing" aria-label="' + esc(t("正在执行…")) + '"><i></i><i></i><i></i></span>'
+        : esc(t("（本轮无文本输出）")));
+    // 元信息只留 名字+时间（+失败标记）：路由/供应商细节属于「步骤」页签，塞这里就是噪音
+    const metaBad = it.status === "failed" || it.status === "cancelled";
+    // 智能体回复：头像 + 整幅正文（不套气泡框），元信息小字落在正文下方
     return '<div class="chat-row">' +
+      '<span class="chat-avatar" aria-hidden="true"><svg class="ico"><use href="#i-bee"></use></svg></span>' +
       '<div class="chat-bubble agent">' +
-      '<div class="chat-meta">' + esc(it.who || "") + " " + esc(it.at || "") +
-      (it.note ? " · " + esc(it.note) : "") +
-      (it.status && it.status !== "done" ? " · " + esc(it.status) : "") + "</div>" +
-      '<pre class="chat-body">' + esc(it.text || "") + "</pre></div></div>";
+      '<div class="chat-body">' + bodyHtml + "</div>" +
+      '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
+      (metaBad ? " · " + t(it.status === "failed" ? "失败" : "已取消") : "") + "</div></div></div>";
   }).join("") || '<div class="hint">' + esc(t("还没有对话内容")) + "</div>";
   const hint = $("rd-chat-hint");
   if (hint) hint.textContent = active
-    ? t("运行中：消息随下一步送达（插不进正在跑的这一步）")
+    ? t("运行中：新消息会排队，本轮回答完后依次送达")
     : t("已结束：发送后将自动开新一轮接着做");
   flow.scrollTop = flow.scrollHeight;
 }
@@ -5017,24 +5234,33 @@ window.chatSend = async function () {
   btn.disabled = true;
   try {
     if (active) {
+      // 运行中：消息进信箱排队（时间线上带「待送达」标记），本轮跑完自动续轮送达
       await api("/api/runs/" + encodeURIComponent(chatRunId) + "/messages", {
         method: "POST",
         body: JSON.stringify({ text, attachments: chatAtts.map((a) => a.id) }),
       });
-      toast(t("已入箱：随下一步送达"));
+      toast(t("已排队：随下一步一起送达"));
     } else {
       const r = await api("/api/runs/" + encodeURIComponent(chatRunId) + "/chat", {
         method: "POST",
         body: JSON.stringify({ text, attachments: chatAtts.map((a) => a.id) }),
       });
       toast(t("已开新一轮，接着做…"));
-      if (r && r.run_id) { chatSig = ""; jumpToRun(r.run_id); return; }
+      if (r && r.run_id) {
+        if (S.detailTaskKey) { S.taskSig = ""; renderTaskDetail(); }
+        else jumpToRun(r.run_id);
+      }
     }
+    // 发送成功一律清空输入框（只清输入，时间线里的历史回复不动）；
+    // 此前 /chat 分支提前 return 跳过了清空，发出去的字一直留在框里
     ta.value = "";
+    ta.style.height = "";
     chatAtts = []; drawChatAtts();
     chatSig = "";   // 强制重画时间线
-    const d = await api("/api/runs/" + encodeURIComponent(chatRunId));
-    if (d.run) renderChat(d.run, d.run.status === "running" || d.run.status === "queued");
+    if (active) {
+      const d = await api("/api/runs/" + encodeURIComponent(chatRunId));
+      if (d.run) renderChat(d.run, d.run.status === "running" || d.run.status === "queued");
+    }
   } catch (e) { toast(t("发送失败：") + e.message, true); }
   finally { btn.disabled = false; }
 };
@@ -5049,6 +5275,12 @@ function bindChat() {
     e.target.value = "";
   });
   send.addEventListener("click", window.chatSend);
+  // 自动伸高：跟内容走、有上限（160px 后内部滚动）；清空由 chatSend 归零。
+  // 高度只由用户输入驱动，轮询重画不碰它——框框不再忽大忽小
+  ta.addEventListener("input", () => {
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
+  });
   ta.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); window.chatSend(); }
   });
@@ -5070,6 +5302,7 @@ function bindChat() {
  * 皮肤改色只需要动 style.css，预览与真实界面不会各自漂移。 */
 const SKINS = [
   { id: "ocean", name: "深海", desc: "藏青底色 + 天蓝强调，夜间长时间盯任务更沉静（默认）" },
+  { id: "hermes", name: "墨金", desc: "暖墨底色 + 金色发丝线，Hermes 式古典优雅" },
   { id: "classic", name: "经典", desc: "黑白灰 + 蓝色强调，ChatGPT 式清爽配色" },
   { id: "forest", name: "森野", desc: "墨绿底色 + 青翠强调，偏自然的护眼配色" },
   { id: "amber", name: "暖阳", desc: "暖棕底色 + 琥珀强调，纸感暖调" },
@@ -5392,7 +5625,9 @@ function protoLabel(p) {
 }
 
 /* 供应商可否按 allow 里的某协议注入：显式协议或「模型接入」页适配测试
- * 通过的 wire_caps（auto 供应商全靠它）。返回命中的协议名，不适配返回空串。 */
+ * 通过的 wire_caps（auto 供应商全靠它）。返回命中的协议名，不适配返回空串。
+ * 与 modelhub._entry_endpoint 同规则——它同时就是「注入本 CLI 实际走的 wire」，
+ * 勾选面板据此标死解析时会被跳过的条目。 */
 function provAdaptedProto(p, allow) {
   if (!p) return "";
   if (allow.indexOf(p.protocol) >= 0) return p.protocol;
@@ -5485,6 +5720,132 @@ function bindSelById(id) {
 
 function bindRepaint() { S.bindSig = null; renderBindings(); }
 
+/* 一键推荐绑定：给每个链为空的 CLI 按协议适配规则预填一条主模型。
+ * 推荐顺序：显式协议原生匹配 > auto 且 wire_caps 命中；默认模型停用的厂商
+ * 降权（当前键位是坏的，除非只剩它，否则不当首选——失效链重推荐实测）；
+ * 同分按 priority / 数组序稳定。只预填草稿态（dirty），逐条看清后各自保存
+ * 或「全部保存」，健康链绝不被覆盖。 */
+function recommendFor(c) {
+  const allow = bindAllowedProtocols(c.orch_kind);
+  const provs = (S.providers || []).filter((p) => chainProvUsable(p, allow));
+  if (!provs.length) return null;
+  const score = (p) => {
+    const native = allow.indexOf(p.protocol) >= 0;
+    const badDefault = (p.models || []).some((m) => m.name === p.model &&
+      (m.hidden || m.enabled === false)) ? 500 : 0;
+    return (native ? 0 : 1) * 1000 + badDefault + (p.priority || 0);
+  };
+  provs.sort((a, b) => score(a) - score(b));
+  const p = provs[0];
+  const models = (p.models || []).filter((m) => !m.hidden && m.enabled !== false);
+  if (!models.length) return null;
+  return { p: p.id, m: models[0].name };
+}
+
+/* 供应商对某 CLI 是否「推荐可用」：启用、协议适配，且至少有一把不在冷却期的
+ * KEY（全冷却=欠费失效，推荐了也白推荐——解析层照样失败）。 */
+function chainProvUsable(p, allow) {
+  if (!p || p.enabled === false) return false;
+  if (!provAdaptedProto(p, allow)) return false;
+  const ks = p.keys || [];
+  if (!ks.length) return true; // 老数据单 KEY（api_key 镜像）：无 keys 结构视为可用
+  return ks.some((k) => k.enabled !== false && !k.cooling);
+}
+
+/* 绑定链里的死条目：厂商已删/停用/协议不再适配/KEY 全冷却，或该模型已被
+ * 隐藏停用。这些条目解析时会被跳过，留在链首等于配了个寂寞。 */
+function chainDeadReasons(c, chain) {
+  const allow = bindAllowedProtocols(c.orch_kind);
+  const dead = (chain || []).map((x) => {
+    if (!x.p) return ""; // 空 p = CLI 默认凭据，不算死
+    const pv = (S.providers || []).find((p) => p.id === x.p);
+    if (!pv) return t("供应商已删除");
+    if (pv.enabled === false) return t("供应商已停用");
+    if (!provAdaptedProto(pv, allow)) return t("协议不匹配");
+    const ks = pv.keys || [];
+    if (ks.length && !ks.some((k) => k.enabled !== false && !k.cooling))
+      return t("密钥全部冷却中");
+    const mm = (pv.models || []).find((m) => m.name === x.m);
+    if (mm && (mm.hidden || mm.enabled === false)) return t("模型已停用");
+    return "";
+  });
+  return dead;
+}
+
+function autoBindAll() {
+  const targets = (S.catalog || []).filter((c) => c.installed && c.orch_kind);
+  let filled = 0, skipped = 0, noProv = 0, refilled = 0;
+  for (const c of targets) {
+    const st = bindSelById(c.id);
+    if (!st.chain.length) {
+      const rec = recommendFor(c);
+      if (!rec) { noProv++; continue; }
+      st.chain = [rec];
+      st.dirty = true;
+      filled++;
+      continue;
+    }
+    // 链非空：只处理死链——整条链全部死透（或只有链首且已死）才重推荐，
+    // 部分存活的长链保留（还降级得动，不擅自覆盖用户手工配的结构）
+    const dead = chainDeadReasons(c, st.chain);
+    const aliveN = dead.filter((d) => !d).length;
+    const allDead = aliveN === 0;
+    const headDead = dead[0] !== ""; // 空 p = CLI 默认凭据，是有意配置不算死
+    const rec = recommendFor(c);
+    if (allDead && rec) {
+      st.chain = [rec];
+      st.dirty = true;
+      refilled++;
+    } else if (allDead) {
+      noProv++;
+    } else if (headDead && rec && chainKey(st.chain) !== chainKey([rec])) {
+      // 链首死但链内还有活的备选：只把推荐的新链首插到最前面（原降级序保留）
+      const hasRec = st.chain.some((x) => x.p === rec.p && x.m === rec.m);
+      if (!hasRec) {
+        st.chain = [rec].concat(st.chain);
+        st.dirty = true;
+        refilled++;
+      } else {
+        // 推荐项已在链内：把它升到链首
+        st.chain = [rec].concat(st.chain.filter((x) => x !== rec));
+        st.dirty = true;
+        refilled++;
+      }
+    } else {
+      skipped++;
+    }
+  }
+  bindRepaint();
+  if (filled && refilled) {
+    toast(t("已为 %1 个空链 CLI 预填推荐，并修复 %2 条失效链——确认后保存。")
+      .replace("%1", filled).replace("%2", refilled));
+  } else if (filled) {
+    toast(t("已为 %1 个 CLI 预填推荐模型，确认无误后点各卡片「保存」，或点右上「全部保存」。").replace("%1", filled));
+  } else if (refilled) {
+    toast(t("已为 %1 条失效链重新推荐（原厂商失效/停用/模型停用）——确认后点「全部保存」生效。")
+      .replace("%1", refilled));
+  } else if (noProv && !skipped) {
+    toast(t("没有可推荐的：先到「模型接入」页导入与 CLI 协议匹配的供应商。"), true);
+  } else if (skipped && !filled && !refilled) {
+    toast(t("所有 CLI 都已配置模型链，无需推荐。"));
+  }
+}
+
+async function saveAllBindings() {
+  const targets = (S.catalog || []).filter((c) => c.installed && c.orch_kind);
+  const dirty = targets.filter((c) => (S.bindSel[c.id] || {}).dirty);
+  for (const c of dirty) await saveBinding(c.id);
+  if (dirty.length) toast(t("已保存 %1 个 CLI 的绑定。").replace("%1", dirty.length));
+}
+
+/* 有未保存草稿时显示「全部保存」按钮（在 poll 重绘里顺带刷新） */
+function syncSaveAllBtn() {
+  const btn = $("btn-saveall-bind");
+  if (!btn) return;
+  const anyDirty = Object.values(S.bindSel || {}).some((st) => st.dirty);
+  btn.classList.toggle("hidden", !anyDirty);
+}
+
 function bindModelBox(c, provId) {
   const st = bindSelById(c.id);
   const allow = bindAllowedProtocols(c.orch_kind);
@@ -5504,6 +5865,8 @@ function bindModelBox(c, provId) {
                 : ""));
         return '<span class="ochip' + (i === 0 ? " primary" : "") + '">' +
           "<b>" + (i === 0 ? t("主") : t("备")) + "</b>" + esc(pname) + " · " + esc(c2.m) +
+          (modelHasImage(c2.p, c2.m)
+            ? ' <span class="tag ok" title="' + esc(t("支持图片输入")) + '">' + t("图") + "</span>" : "") +
           (dead ? ' <span class="hint warn">⚠ ' + esc(t("协议不匹配，解析时跳过")) + "</span>" : badge) +
           (i > 0 ? '<button class="mini" data-m="' + esc(c2.m) + '" data-p="' + esc(c2.p) +
                   '" title="' + t("设为主模型") + '" onclick="bindPromote(\'' + esc(c.id) + '\', this)">' +
@@ -5548,10 +5911,18 @@ function bindPanel(c) {
         : (provAdaptedProto(g, allow) === g.protocol
            ? t("注入该厂商凭据") : t("已适配 · 注入该厂商凭据"))) + '</span></div>' +
       g.models.map((m) => {
+        // 本供应商注入本 CLI 实际走的 wire（与后端 _entry_endpoint 同规则）；
+        // 无命中 = 勾了也会被解析层整条跳过，标死防止白配
+        const wire = provAdaptedProto(g, allow);
+        const dead = !wire;
         const has = st.chain.some((x) => x.p === g.id && x.m === m);
-        return '<label class="oitem"><input type="checkbox" value="' + esc(m) + '" data-p="' + esc(g.id) + '"' +
-          (has ? " checked" : "") +
-          " onchange=\"bindPick('" + esc(c.id) + "', this, this.checked)\">" + esc(m) + "</label>";
+        return '<label class="oitem' + (dead ? " dim" : "") + '"><input type="checkbox" value="' + esc(m) + '" data-p="' + esc(g.id) + '"' +
+          (has ? " checked" : "") + (dead ? " disabled" : "") +
+          " onchange=\"bindPick('" + esc(c.id) + "', this, this.checked)\">" + esc(m) +
+          (modelHasImage(g.id, m)
+            ? ' <span class="tag ok" title="' + esc(t("支持图片输入")) + '">' + t("图") + "</span>" : "") +
+          (dead ? ' <span class="hint warn">' + esc(t("无可用 wire，解析时跳过")) + "</span>" : "") +
+          "</label>";
       }).join("") +
       "</div>").join("") + "</div>";
 }

@@ -65,7 +65,7 @@ def main():
               <div class="rd-actions">
                 <button id="btn-pause" class="ghost hidden" data-i18n="暂停">暂停</button>
                 <button data-i18n="取消运行" id="btn-cancel" class="danger hidden">取消运行</button>
-                <button data-i18n="↻ 重试任务" id="btn-retry" class="primary hidden">↻ 重试任务</button>
+                <button data-i18n="↻ 继续任务" id="btn-retry" class="primary hidden">↻ 继续任务</button>
                 <button data-i18n="继续连载" id="btn-continue" class="ghost hidden">继续连载</button>
                 <button data-i18n="基于此任务新建" id="btn-newfrom" class="ghost hidden">基于此任务新建</button>
                 <button data-i18n="删除记录" id="btn-delete" class="danger hidden">删除记录</button>

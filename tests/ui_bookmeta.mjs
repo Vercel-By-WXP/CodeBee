@@ -2,7 +2,7 @@
  * 造数：连载任务（done run + 章节 + 圣经 + 大纲）→
  * 断言：第 6 个 TAB（作品信息）可用且终态不抢自动选卡 / 引导占位 /
  * 点生成（服务端模板兜底，确定性）→ 字段内联逐条 + 复制按钮 + toast /
- * TAB 徽章 1/2 → 2/2 / 重新生成 / 七猫 9 字段。
+ * TAB 徽章 1/2 → 2/2 / 重新生成 / 番茄14字段/七猫12字段。
  * 临时数据目录 + 独立端口（18834 / CDP 9367，与其他 UI 测试互不冲撞）。
  * 用法：node tests/ui_bookmeta.mjs */
 import { spawn } from "node:child_process";
@@ -218,8 +218,9 @@ async function main() {
         return { rows, copies, badge };
       })()`);
     }
-    check("番茄生成完成：8 字段内联 + 每条复制按钮",
-      fanqie && fanqie.rows === 8 && fanqie.copies === 8, JSON.stringify(fanqie) +
+    // 番茄字段 2026-09 扩到 10 个（分类 + 主题/角色/情节 三组标签，见 bookmeta.FIELD_LABELS）
+    check("番茄生成完成：14 字段内联 + 每条复制按钮",
+      fanqie && fanqie.rows === 14 && fanqie.copies === 14, JSON.stringify(fanqie) +
       (fanqie ? "" : "　panel=" + (await evalJson(`(document.getElementById("rd-bookmeta") || {}).textContent || "NOBOX"`))));
     check("TAB 徽章 1/2", fanqie && fanqie.badge === "1/2", fanqie && fanqie.badge);
 
@@ -259,7 +260,7 @@ async function main() {
           hasStatus: labels.some((x) => x.includes("作品状态")) };
       })()`);
     }
-    check("七猫生成完成：9 字段（含分类/状态）", qimao && qimao.rows === 9 &&
+    check("七猫生成完成：12 字段（四组标签/分类/状态）", qimao && qimao.rows === 12 &&
       qimao.hasCategory && qimao.hasStatus, JSON.stringify(qimao));
     check("TAB 徽章 2/2", qimao && qimao.badge === "2/2", qimao && qimao.badge);
     const regen = await evalJson(`(() =>

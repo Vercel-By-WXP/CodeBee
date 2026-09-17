@@ -1,0 +1,4685 @@
+{
+ "source": "https://zuozhe.qimao.com/api/pc/v1/book/book-option (captured 2026-09-17, 登录态)",
+ "is_girl_list": [
+  {
+   "label": "男生",
+   "value": "0"
+  },
+  {
+   "label": "女生",
+   "value": "1"
+  }
+ ],
+ "category_list": [
+  {
+   "category": [
+    {
+     "category_name": "玄幻奇幻",
+     "id": "7",
+     "children": [
+      {
+       "category_name": "东方玄幻",
+       "id": "37",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "异世大陆",
+       "id": "38",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "诸天万界",
+       "id": "39",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "王朝争霸",
+       "id": "40",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "西方奇幻",
+       "id": "41",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "都市",
+     "id": "8",
+     "children": [
+      {
+       "category_name": "都市高手",
+       "id": "42",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "都市高武",
+       "id": "43",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "乡村生活",
+       "id": "44",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "热血校园",
+       "id": "46",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "商战职场",
+       "id": "47",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "明星娱乐",
+       "id": "48",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "都市生活",
+       "id": "49",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "灵气复苏",
+       "id": "986",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "官场",
+       "id": "987",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "奇闻异事",
+     "id": "9",
+     "children": [
+      {
+       "category_name": "恐怖灵异",
+       "id": "50",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "奇门秘术",
+       "id": "51",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "侦探推理",
+       "id": "52",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "寻宝探险",
+       "id": "54",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "武侠仙侠",
+     "id": "10",
+     "children": [
+      {
+       "category_name": "幻想修真",
+       "id": "55",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "上古洪荒",
+       "id": "56",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "古典仙侠",
+       "id": "57",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "武侠幻想",
+       "id": "58",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "传统武侠",
+       "id": "60",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "军事",
+     "id": "11",
+     "children": [
+      {
+       "category_name": "现代军事",
+       "id": "61",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "抗战烽火",
+       "id": "62",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "战争幻想",
+       "id": "63",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "谍战特工",
+       "id": "64",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "历史",
+     "id": "12",
+     "children": [
+      {
+       "category_name": "穿越历史",
+       "id": "65",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "架空历史",
+       "id": "66",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "历史传记",
+       "id": "67",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "游戏",
+     "id": "13",
+     "children": [
+      {
+       "category_name": "虚拟网游",
+       "id": "68",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "电子竞技",
+       "id": "70",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "科幻",
+     "id": "14",
+     "children": [
+      {
+       "category_name": "未来幻想",
+       "id": "71",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "末世危机",
+       "id": "72",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "星际机甲",
+       "id": "73",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "体育",
+     "id": "15",
+     "children": [
+      {
+       "category_name": "篮球风云",
+       "id": "74",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "足球天下",
+       "id": "75",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "其他竞技",
+       "id": "76",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "N次元",
+     "id": "16",
+     "children": [
+      {
+       "category_name": "原生幻想",
+       "id": "77",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "衍生同人",
+       "id": "99",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "轻小说",
+       "id": "985",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "现实题材",
+     "id": "80",
+     "children": [
+      {
+       "category_name": "现实百态",
+       "id": "977",
+       "is_realistic_themes": 1,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 1,
+     "platform_category_id": 0
+    }
+   ],
+   "tag_info": [
+    {
+     "type_id": 1,
+     "select_list": [
+      {
+       "id": "1",
+       "tag_id": "1",
+       "tag_name": "热血"
+      },
+      {
+       "id": "3",
+       "tag_id": "3",
+       "tag_name": "轻松"
+      },
+      {
+       "id": "7",
+       "tag_id": "7",
+       "tag_name": "暗黑"
+      },
+      {
+       "id": "12",
+       "tag_id": "12",
+       "tag_name": "现实题材"
+      },
+      {
+       "id": "16",
+       "tag_id": "16",
+       "tag_name": "虐恋"
+      },
+      {
+       "id": "17",
+       "tag_id": "17",
+       "tag_name": "治愈"
+      },
+      {
+       "id": "21",
+       "tag_id": "21",
+       "tag_name": "甜宠"
+      },
+      {
+       "id": "27",
+       "tag_id": "27",
+       "tag_name": "悬疑"
+      },
+      {
+       "id": "317",
+       "tag_id": "317",
+       "tag_name": "种田"
+      },
+      {
+       "id": "336",
+       "tag_id": "336",
+       "tag_name": "清穿"
+      },
+      {
+       "id": "342",
+       "tag_id": "342",
+       "tag_name": "宅斗"
+      },
+      {
+       "id": "343",
+       "tag_id": "343",
+       "tag_name": "宫斗"
+      },
+      {
+       "id": "541",
+       "tag_id": "541",
+       "tag_name": "中短篇"
+      },
+      {
+       "id": "574",
+       "tag_id": "574",
+       "tag_name": "青春"
+      },
+      {
+       "id": "592",
+       "tag_id": "592",
+       "tag_name": "军事"
+      },
+      {
+       "id": "598",
+       "tag_id": "598",
+       "tag_name": "爽文"
+      },
+      {
+       "id": "599",
+       "tag_id": "599",
+       "tag_name": "恐怖"
+      },
+      {
+       "id": "600",
+       "tag_id": "600",
+       "tag_name": "烧脑"
+      },
+      {
+       "id": "605",
+       "tag_id": "605",
+       "tag_name": "正剧"
+      },
+      {
+       "id": "723",
+       "tag_id": "723",
+       "tag_name": "商战"
+      },
+      {
+       "id": "790",
+       "tag_id": "790",
+       "tag_name": "权谋"
+      },
+      {
+       "id": "791",
+       "tag_id": "791",
+       "tag_name": "励志"
+      },
+      {
+       "id": "793",
+       "tag_id": "793",
+       "tag_name": "搞笑"
+      },
+      {
+       "id": "878",
+       "tag_id": "878",
+       "tag_name": "日常"
+      },
+      {
+       "id": "934",
+       "tag_id": "934",
+       "tag_name": "短篇"
+      },
+      {
+       "id": "955",
+       "tag_id": "955",
+       "tag_name": "短故事"
+      },
+      {
+       "id": "975",
+       "tag_id": "975",
+       "tag_name": "买股文"
+      },
+      {
+       "id": "977",
+       "tag_id": "977",
+       "tag_name": "第一人称"
+      },
+      {
+       "id": "978",
+       "tag_id": "978",
+       "tag_name": "纯爱"
+      },
+      {
+       "id": "1222",
+       "tag_id": "1222",
+       "tag_name": "快节奏"
+      },
+      {
+       "id": "1224",
+       "tag_id": "1224",
+       "tag_name": "反套路"
+      },
+      {
+       "id": "1268",
+       "tag_id": "1268",
+       "tag_name": "新疆现实题材"
+      },
+      {
+       "id": "1269",
+       "tag_id": "1269",
+       "tag_name": "国安现实题材"
+      }
+     ],
+     "type_name": "风格",
+     "is_realistic_themes": 0,
+     "can_choose_count": 3
+    },
+    {
+     "type_id": 2,
+     "select_list": [
+      {
+       "id": "28",
+       "tag_id": "28",
+       "tag_name": "兵王"
+      },
+      {
+       "id": "30",
+       "tag_id": "30",
+       "tag_name": "护花高手"
+      },
+      {
+       "id": "31",
+       "tag_id": "31",
+       "tag_name": "仙帝"
+      },
+      {
+       "id": "34",
+       "tag_id": "34",
+       "tag_name": "学生"
+      },
+      {
+       "id": "36",
+       "tag_id": "36",
+       "tag_name": "赘婿"
+      },
+      {
+       "id": "37",
+       "tag_id": "37",
+       "tag_name": "神豪"
+      },
+      {
+       "id": "41",
+       "tag_id": "41",
+       "tag_name": "奶爸"
+      },
+      {
+       "id": "62",
+       "tag_id": "62",
+       "tag_name": "皇帝"
+      },
+      {
+       "id": "74",
+       "tag_id": "74",
+       "tag_name": "道士"
+      },
+      {
+       "id": "89",
+       "tag_id": "89",
+       "tag_name": "女总裁"
+      },
+      {
+       "id": "92",
+       "tag_id": "92",
+       "tag_name": "校花"
+      },
+      {
+       "id": "106",
+       "tag_id": "106",
+       "tag_name": "皇后"
+      },
+      {
+       "id": "107",
+       "tag_id": "107",
+       "tag_name": "王妃"
+      },
+      {
+       "id": "108",
+       "tag_id": "108",
+       "tag_name": "医妃"
+      },
+      {
+       "id": "113",
+       "tag_id": "113",
+       "tag_name": "公主"
+      },
+      {
+       "id": "117",
+       "tag_id": "117",
+       "tag_name": "嫡女"
+      },
+      {
+       "id": "118",
+       "tag_id": "118",
+       "tag_name": "庶女"
+      },
+      {
+       "id": "125",
+       "tag_id": "125",
+       "tag_name": "王爷"
+      },
+      {
+       "id": "128",
+       "tag_id": "128",
+       "tag_name": "太子"
+      },
+      {
+       "id": "133",
+       "tag_id": "133",
+       "tag_name": "首辅"
+      },
+      {
+       "id": "141",
+       "tag_id": "141",
+       "tag_name": "丑女"
+      },
+      {
+       "id": "153",
+       "tag_id": "153",
+       "tag_name": "大叔"
+      },
+      {
+       "id": "156",
+       "tag_id": "156",
+       "tag_name": "医生"
+      },
+      {
+       "id": "161",
+       "tag_id": "161",
+       "tag_name": "律师"
+      },
+      {
+       "id": "182",
+       "tag_id": "182",
+       "tag_name": "吸血鬼"
+      },
+      {
+       "id": "188",
+       "tag_id": "188",
+       "tag_name": "特工"
+      },
+      {
+       "id": "189",
+       "tag_id": "189",
+       "tag_name": "法医"
+      },
+      {
+       "id": "190",
+       "tag_id": "190",
+       "tag_name": "仵作"
+      },
+      {
+       "id": "191",
+       "tag_id": "191",
+       "tag_name": "女配"
+      },
+      {
+       "id": "196",
+       "tag_id": "196",
+       "tag_name": "全能"
+      },
+      {
+       "id": "202",
+       "tag_id": "202",
+       "tag_name": "杀伐果断"
+      },
+      {
+       "id": "239",
+       "tag_id": "239",
+       "tag_name": "霸道"
+      },
+      {
+       "id": "248",
+       "tag_id": "248",
+       "tag_name": "偏执"
+      },
+      {
+       "id": "259",
+       "tag_id": "259",
+       "tag_name": "忠犬"
+      },
+      {
+       "id": "263",
+       "tag_id": "263",
+       "tag_name": "残疾"
+      },
+      {
+       "id": "265",
+       "tag_id": "265",
+       "tag_name": "毒舌"
+      },
+      {
+       "id": "268",
+       "tag_id": "268",
+       "tag_name": "傲娇"
+      },
+      {
+       "id": "273",
+       "tag_id": "273",
+       "tag_name": "病娇"
+      },
+      {
+       "id": "356",
+       "tag_id": "356",
+       "tag_name": "萌宝"
+      },
+      {
+       "id": "444",
+       "tag_id": "444",
+       "tag_name": "龙"
+      },
+      {
+       "id": "449",
+       "tag_id": "449",
+       "tag_name": "僵尸"
+      },
+      {
+       "id": "464",
+       "tag_id": "464",
+       "tag_name": "欢喜冤家"
+      },
+      {
+       "id": "507",
+       "tag_id": "507",
+       "tag_name": "师徒恋"
+      },
+      {
+       "id": "525",
+       "tag_id": "525",
+       "tag_name": "弃少"
+      },
+      {
+       "id": "527",
+       "tag_id": "527",
+       "tag_name": "战神"
+      },
+      {
+       "id": "533",
+       "tag_id": "533",
+       "tag_name": "强强"
+      },
+      {
+       "id": "544",
+       "tag_id": "544",
+       "tag_name": "魔尊"
+      },
+      {
+       "id": "545",
+       "tag_id": "545",
+       "tag_name": "团宠"
+      },
+      {
+       "id": "547",
+       "tag_id": "547",
+       "tag_name": "特种兵"
+      },
+      {
+       "id": "607",
+       "tag_id": "607",
+       "tag_name": "暴君"
+      },
+      {
+       "id": "608",
+       "tag_id": "608",
+       "tag_name": "皇叔"
+      },
+      {
+       "id": "609",
+       "tag_id": "609",
+       "tag_name": "皇子"
+      },
+      {
+       "id": "610",
+       "tag_id": "610",
+       "tag_name": "摄政王"
+      },
+      {
+       "id": "611",
+       "tag_id": "611",
+       "tag_name": "奸臣"
+      },
+      {
+       "id": "612",
+       "tag_id": "612",
+       "tag_name": "世子"
+      },
+      {
+       "id": "613",
+       "tag_id": "613",
+       "tag_name": "锦衣卫"
+      },
+      {
+       "id": "614",
+       "tag_id": "614",
+       "tag_name": "太监"
+      },
+      {
+       "id": "617",
+       "tag_id": "617",
+       "tag_name": "女帝"
+      },
+      {
+       "id": "622",
+       "tag_id": "622",
+       "tag_name": "明星"
+      },
+      {
+       "id": "624",
+       "tag_id": "624",
+       "tag_name": "豪门总裁"
+      },
+      {
+       "id": "627",
+       "tag_id": "627",
+       "tag_name": "老师"
+      },
+      {
+       "id": "630",
+       "tag_id": "630",
+       "tag_name": "校草"
+      },
+      {
+       "id": "636",
+       "tag_id": "636",
+       "tag_name": "侦探"
+      },
+      {
+       "id": "637",
+       "tag_id": "637",
+       "tag_name": "警察"
+      },
+      {
+       "id": "638",
+       "tag_id": "638",
+       "tag_name": "主播"
+      },
+      {
+       "id": "640",
+       "tag_id": "640",
+       "tag_name": "少年"
+      },
+      {
+       "id": "645",
+       "tag_id": "645",
+       "tag_name": "师兄"
+      },
+      {
+       "id": "647",
+       "tag_id": "647",
+       "tag_name": "领主"
+      },
+      {
+       "id": "687",
+       "tag_id": "687",
+       "tag_name": "温柔"
+      },
+      {
+       "id": "692",
+       "tag_id": "692",
+       "tag_name": "呆萌"
+      },
+      {
+       "id": "693",
+       "tag_id": "693",
+       "tag_name": "可盐可甜"
+      },
+      {
+       "id": "694",
+       "tag_id": "694",
+       "tag_name": "娇媚"
+      },
+      {
+       "id": "695",
+       "tag_id": "695",
+       "tag_name": "绿茶"
+      },
+      {
+       "id": "698",
+       "tag_id": "698",
+       "tag_name": "铁血"
+      },
+      {
+       "id": "700",
+       "tag_id": "700",
+       "tag_name": "败家子"
+      },
+      {
+       "id": "704",
+       "tag_id": "704",
+       "tag_name": "弃妇"
+      },
+      {
+       "id": "706",
+       "tag_id": "706",
+       "tag_name": "女扮男装"
+      },
+      {
+       "id": "707",
+       "tag_id": "707",
+       "tag_name": "女尊"
+      },
+      {
+       "id": "708",
+       "tag_id": "708",
+       "tag_name": "女强"
+      },
+      {
+       "id": "712",
+       "tag_id": "712",
+       "tag_name": "替身"
+      },
+      {
+       "id": "717",
+       "tag_id": "717",
+       "tag_name": "二婚"
+      },
+      {
+       "id": "782",
+       "tag_id": "782",
+       "tag_name": "姐姐"
+      },
+      {
+       "id": "786",
+       "tag_id": "786",
+       "tag_name": "学霸"
+      },
+      {
+       "id": "788",
+       "tag_id": "788",
+       "tag_name": "天才"
+      },
+      {
+       "id": "789",
+       "tag_id": "789",
+       "tag_name": "杀手"
+      },
+      {
+       "id": "792",
+       "tag_id": "792",
+       "tag_name": "将军"
+      },
+      {
+       "id": "794",
+       "tag_id": "794",
+       "tag_name": "腹黑"
+      },
+      {
+       "id": "796",
+       "tag_id": "796",
+       "tag_name": "废柴"
+      },
+      {
+       "id": "797",
+       "tag_id": "797",
+       "tag_name": "反派"
+      },
+      {
+       "id": "799",
+       "tag_id": "799",
+       "tag_name": "扮猪吃虎"
+      },
+      {
+       "id": "810",
+       "tag_id": "810",
+       "tag_name": "智商在线"
+      },
+      {
+       "id": "812",
+       "tag_id": "812",
+       "tag_name": "真假千金"
+      },
+      {
+       "id": "816",
+       "tag_id": "816",
+       "tag_name": "咸鱼"
+      },
+      {
+       "id": "817",
+       "tag_id": "817",
+       "tag_name": "锦鲤"
+      },
+      {
+       "id": "835",
+       "tag_id": "835",
+       "tag_name": "小众职业"
+      },
+      {
+       "id": "843",
+       "tag_id": "843",
+       "tag_name": "双女主"
+      },
+      {
+       "id": "845",
+       "tag_id": "845",
+       "tag_name": "后妈"
+      },
+      {
+       "id": "846",
+       "tag_id": "846",
+       "tag_name": "哥哥"
+      },
+      {
+       "id": "849",
+       "tag_id": "849",
+       "tag_name": "黑莲花"
+      },
+      {
+       "id": "850",
+       "tag_id": "850",
+       "tag_name": "黑月光"
+      },
+      {
+       "id": "851",
+       "tag_id": "851",
+       "tag_name": "白月光"
+      },
+      {
+       "id": "852",
+       "tag_id": "852",
+       "tag_name": "书生"
+      },
+      {
+       "id": "907",
+       "tag_id": "907",
+       "tag_name": "糙汉"
+      },
+      {
+       "id": "918",
+       "tag_id": "918",
+       "tag_name": "老千"
+      },
+      {
+       "id": "942",
+       "tag_id": "942",
+       "tag_name": "渔女"
+      },
+      {
+       "id": "944",
+       "tag_id": "944",
+       "tag_name": "丞相"
+      },
+      {
+       "id": "946",
+       "tag_id": "946",
+       "tag_name": "驸马"
+      },
+      {
+       "id": "947",
+       "tag_id": "947",
+       "tag_name": "双洁"
+      },
+      {
+       "id": "948",
+       "tag_id": "948",
+       "tag_name": "作精"
+      },
+      {
+       "id": "958",
+       "tag_id": "958",
+       "tag_name": "外卖员"
+      },
+      {
+       "id": "961",
+       "tag_id": "961",
+       "tag_name": "丫鬟"
+      },
+      {
+       "id": "962",
+       "tag_id": "962",
+       "tag_name": "恶婆婆"
+      },
+      {
+       "id": "963",
+       "tag_id": "963",
+       "tag_name": "幕后BOSS"
+      },
+      {
+       "id": "971",
+       "tag_id": "971",
+       "tag_name": "奶团"
+      },
+      {
+       "id": "972",
+       "tag_id": "972",
+       "tag_name": "大女主"
+      },
+      {
+       "id": "973",
+       "tag_id": "973",
+       "tag_name": "主母"
+      },
+      {
+       "id": "974",
+       "tag_id": "974",
+       "tag_name": "妾室"
+      },
+      {
+       "id": "1200",
+       "tag_id": "1200",
+       "tag_name": "人间清醒"
+      },
+      {
+       "id": "1215",
+       "tag_id": "1215",
+       "tag_name": "无节操"
+      },
+      {
+       "id": "1216",
+       "tag_id": "1216",
+       "tag_name": "嘴炮"
+      },
+      {
+       "id": "1217",
+       "tag_id": "1217",
+       "tag_name": "痴情"
+      },
+      {
+       "id": "1218",
+       "tag_id": "1218",
+       "tag_name": "超A"
+      },
+      {
+       "id": "1219",
+       "tag_id": "1219",
+       "tag_name": "高冷"
+      },
+      {
+       "id": "1220",
+       "tag_id": "1220",
+       "tag_name": "财迷"
+      },
+      {
+       "id": "1221",
+       "tag_id": "1221",
+       "tag_name": "醋王"
+      },
+      {
+       "id": "1227",
+       "tag_id": "1227",
+       "tag_name": "万人迷"
+      },
+      {
+       "id": "1228",
+       "tag_id": "1228",
+       "tag_name": "戏精"
+      },
+      {
+       "id": "1229",
+       "tag_id": "1229",
+       "tag_name": "炮灰"
+      },
+      {
+       "id": "1230",
+       "tag_id": "1230",
+       "tag_name": "吃货"
+      },
+      {
+       "id": "1231",
+       "tag_id": "1231",
+       "tag_name": "旺夫"
+      },
+      {
+       "id": "1232",
+       "tag_id": "1232",
+       "tag_name": "美强惨"
+      },
+      {
+       "id": "1233",
+       "tag_id": "1233",
+       "tag_name": "顶流"
+      },
+      {
+       "id": "1234",
+       "tag_id": "1234",
+       "tag_name": "小狼狗"
+      },
+      {
+       "id": "1235",
+       "tag_id": "1235",
+       "tag_name": "反差萌"
+      },
+      {
+       "id": "1236",
+       "tag_id": "1236",
+       "tag_name": "心机"
+      },
+      {
+       "id": "1237",
+       "tag_id": "1237",
+       "tag_name": "暖男"
+      },
+      {
+       "id": "1238",
+       "tag_id": "1238",
+       "tag_name": "逗比"
+      },
+      {
+       "id": "1240",
+       "tag_id": "1240",
+       "tag_name": "毒医"
+      },
+      {
+       "id": "1241",
+       "tag_id": "1241",
+       "tag_name": "厨娘"
+      },
+      {
+       "id": "1242",
+       "tag_id": "1242",
+       "tag_name": "冰山"
+      },
+      {
+       "id": "1243",
+       "tag_id": "1243",
+       "tag_name": "古灵精怪"
+      },
+      {
+       "id": "1245",
+       "tag_id": "1245",
+       "tag_name": "宠妻"
+      },
+      {
+       "id": "1247",
+       "tag_id": "1247",
+       "tag_name": "黑化"
+      },
+      {
+       "id": "1253",
+       "tag_id": "1253",
+       "tag_name": "独宠"
+      },
+      {
+       "id": "1254",
+       "tag_id": "1254",
+       "tag_name": "御姐"
+      },
+      {
+       "id": "1255",
+       "tag_id": "1255",
+       "tag_name": "佛系"
+      },
+      {
+       "id": "1262",
+       "tag_id": "1262",
+       "tag_name": "神医"
+      },
+      {
+       "id": "1263",
+       "tag_id": "1263",
+       "tag_name": "真假少爷"
+      }
+     ],
+     "type_name": "角色",
+     "is_realistic_themes": 0,
+     "can_choose_count": 3
+    },
+    {
+     "type_id": 3,
+     "select_list": [
+      {
+       "id": "47",
+       "tag_id": "47",
+       "tag_name": "鉴宝"
+      },
+      {
+       "id": "72",
+       "tag_id": "72",
+       "tag_name": "剑道"
+      },
+      {
+       "id": "297",
+       "tag_id": "297",
+       "tag_name": "透视"
+      },
+      {
+       "id": "300",
+       "tag_id": "300",
+       "tag_name": "美食"
+      },
+      {
+       "id": "305",
+       "tag_id": "305",
+       "tag_name": "无敌流"
+      },
+      {
+       "id": "312",
+       "tag_id": "312",
+       "tag_name": "争霸"
+      },
+      {
+       "id": "313",
+       "tag_id": "313",
+       "tag_name": "召唤"
+      },
+      {
+       "id": "327",
+       "tag_id": "327",
+       "tag_name": "盗墓"
+      },
+      {
+       "id": "335",
+       "tag_id": "335",
+       "tag_name": "快穿"
+      },
+      {
+       "id": "338",
+       "tag_id": "338",
+       "tag_name": "穿书"
+      },
+      {
+       "id": "345",
+       "tag_id": "345",
+       "tag_name": "随身空间"
+      },
+      {
+       "id": "355",
+       "tag_id": "355",
+       "tag_name": "契约婚姻"
+      },
+      {
+       "id": "357",
+       "tag_id": "357",
+       "tag_name": "娱乐圈"
+      },
+      {
+       "id": "373",
+       "tag_id": "373",
+       "tag_name": "穿越"
+      },
+      {
+       "id": "383",
+       "tag_id": "383",
+       "tag_name": "荒岛求生"
+      },
+      {
+       "id": "397",
+       "tag_id": "397",
+       "tag_name": "家族崛起"
+      },
+      {
+       "id": "400",
+       "tag_id": "400",
+       "tag_name": "逆袭"
+      },
+      {
+       "id": "402",
+       "tag_id": "402",
+       "tag_name": "强者回归"
+      },
+      {
+       "id": "410",
+       "tag_id": "410",
+       "tag_name": "一统天下"
+      },
+      {
+       "id": "419",
+       "tag_id": "419",
+       "tag_name": "直播"
+      },
+      {
+       "id": "420",
+       "tag_id": "420",
+       "tag_name": "聊天群"
+      },
+      {
+       "id": "421",
+       "tag_id": "421",
+       "tag_name": "红包"
+      },
+      {
+       "id": "423",
+       "tag_id": "423",
+       "tag_name": "御兽"
+      },
+      {
+       "id": "426",
+       "tag_id": "426",
+       "tag_name": "血脉"
+      },
+      {
+       "id": "427",
+       "tag_id": "427",
+       "tag_name": "武魂"
+      },
+      {
+       "id": "428",
+       "tag_id": "428",
+       "tag_name": "丹药"
+      },
+      {
+       "id": "437",
+       "tag_id": "437",
+       "tag_name": "风水"
+      },
+      {
+       "id": "465",
+       "tag_id": "465",
+       "tag_name": "青梅竹马"
+      },
+      {
+       "id": "467",
+       "tag_id": "467",
+       "tag_name": "破镜重圆"
+      },
+      {
+       "id": "476",
+       "tag_id": "476",
+       "tag_name": "替嫁"
+      },
+      {
+       "id": "480",
+       "tag_id": "480",
+       "tag_name": "闪婚"
+      },
+      {
+       "id": "481",
+       "tag_id": "481",
+       "tag_name": "隐婚"
+      },
+      {
+       "id": "483",
+       "tag_id": "483",
+       "tag_name": "逃婚"
+      },
+      {
+       "id": "492",
+       "tag_id": "492",
+       "tag_name": "致富"
+      },
+      {
+       "id": "501",
+       "tag_id": "501",
+       "tag_name": "错嫁"
+      },
+      {
+       "id": "524",
+       "tag_id": "524",
+       "tag_name": "先婚后爱"
+      },
+      {
+       "id": "526",
+       "tag_id": "526",
+       "tag_name": "脑洞"
+      },
+      {
+       "id": "528",
+       "tag_id": "528",
+       "tag_name": "进化"
+      },
+      {
+       "id": "530",
+       "tag_id": "530",
+       "tag_name": "吞噬"
+      },
+      {
+       "id": "539",
+       "tag_id": "539",
+       "tag_name": "影视"
+      },
+      {
+       "id": "557",
+       "tag_id": "557",
+       "tag_name": "无限流"
+      },
+      {
+       "id": "558",
+       "tag_id": "558",
+       "tag_name": "马甲"
+      },
+      {
+       "id": "564",
+       "tag_id": "564",
+       "tag_name": "开局流"
+      },
+      {
+       "id": "565",
+       "tag_id": "565",
+       "tag_name": "签到"
+      },
+      {
+       "id": "580",
+       "tag_id": "580",
+       "tag_name": "同人"
+      },
+      {
+       "id": "581",
+       "tag_id": "581",
+       "tag_name": "体育"
+      },
+      {
+       "id": "602",
+       "tag_id": "602",
+       "tag_name": "官场"
+      },
+      {
+       "id": "649",
+       "tag_id": "649",
+       "tag_name": "神祇"
+      },
+      {
+       "id": "671",
+       "tag_id": "671",
+       "tag_name": "修仙"
+      },
+      {
+       "id": "702",
+       "tag_id": "702",
+       "tag_name": "古穿今"
+      },
+      {
+       "id": "703",
+       "tag_id": "703",
+       "tag_name": "性转"
+      },
+      {
+       "id": "709",
+       "tag_id": "709",
+       "tag_name": "HE"
+      },
+      {
+       "id": "710",
+       "tag_id": "710",
+       "tag_name": "BE"
+      },
+      {
+       "id": "711",
+       "tag_id": "711",
+       "tag_name": "1V1"
+      },
+      {
+       "id": "713",
+       "tag_id": "713",
+       "tag_name": "姐弟恋"
+      },
+      {
+       "id": "714",
+       "tag_id": "714",
+       "tag_name": "相爱相杀"
+      },
+      {
+       "id": "715",
+       "tag_id": "715",
+       "tag_name": "追妻火葬场"
+      },
+      {
+       "id": "716",
+       "tag_id": "716",
+       "tag_name": "打脸虐渣"
+      },
+      {
+       "id": "719",
+       "tag_id": "719",
+       "tag_name": "暗恋"
+      },
+      {
+       "id": "720",
+       "tag_id": "720",
+       "tag_name": "日久生情"
+      },
+      {
+       "id": "721",
+       "tag_id": "721",
+       "tag_name": "一见钟情"
+      },
+      {
+       "id": "722",
+       "tag_id": "722",
+       "tag_name": "带球跑"
+      },
+      {
+       "id": "724",
+       "tag_id": "724",
+       "tag_name": "职场"
+      },
+      {
+       "id": "726",
+       "tag_id": "726",
+       "tag_name": "金手指"
+      },
+      {
+       "id": "727",
+       "tag_id": "727",
+       "tag_name": "异能"
+      },
+      {
+       "id": "728",
+       "tag_id": "728",
+       "tag_name": "技术流"
+      },
+      {
+       "id": "729",
+       "tag_id": "729",
+       "tag_name": "全球"
+      },
+      {
+       "id": "730",
+       "tag_id": "730",
+       "tag_name": "基建"
+      },
+      {
+       "id": "731",
+       "tag_id": "731",
+       "tag_name": "求生"
+      },
+      {
+       "id": "732",
+       "tag_id": "732",
+       "tag_name": "丧尸"
+      },
+      {
+       "id": "733",
+       "tag_id": "733",
+       "tag_name": "机甲"
+      },
+      {
+       "id": "734",
+       "tag_id": "734",
+       "tag_name": "网游"
+      },
+      {
+       "id": "735",
+       "tag_id": "735",
+       "tag_name": "游戏"
+      },
+      {
+       "id": "736",
+       "tag_id": "736",
+       "tag_name": "电竞"
+      },
+      {
+       "id": "738",
+       "tag_id": "738",
+       "tag_name": "篮球"
+      },
+      {
+       "id": "739",
+       "tag_id": "739",
+       "tag_name": "足球"
+      },
+      {
+       "id": "740",
+       "tag_id": "740",
+       "tag_name": "推理"
+      },
+      {
+       "id": "741",
+       "tag_id": "741",
+       "tag_name": "探险"
+      },
+      {
+       "id": "742",
+       "tag_id": "742",
+       "tag_name": "怪谈"
+      },
+      {
+       "id": "744",
+       "tag_id": "744",
+       "tag_name": "长生流"
+      },
+      {
+       "id": "745",
+       "tag_id": "745",
+       "tag_name": "国术"
+      },
+      {
+       "id": "746",
+       "tag_id": "746",
+       "tag_name": "古武"
+      },
+      {
+       "id": "751",
+       "tag_id": "751",
+       "tag_name": "战争"
+      },
+      {
+       "id": "753",
+       "tag_id": "753",
+       "tag_name": "魔法"
+      },
+      {
+       "id": "763",
+       "tag_id": "763",
+       "tag_name": "经典衍生"
+      },
+      {
+       "id": "773",
+       "tag_id": "773",
+       "tag_name": "奇闻异事"
+      },
+      {
+       "id": "783",
+       "tag_id": "783",
+       "tag_name": "前世今生"
+      },
+      {
+       "id": "784",
+       "tag_id": "784",
+       "tag_name": "重生"
+      },
+      {
+       "id": "787",
+       "tag_id": "787",
+       "tag_name": "系统"
+      },
+      {
+       "id": "795",
+       "tag_id": "795",
+       "tag_name": "复仇"
+      },
+      {
+       "id": "814",
+       "tag_id": "814",
+       "tag_name": "读心术"
+      },
+      {
+       "id": "821",
+       "tag_id": "821",
+       "tag_name": "恋综"
+      },
+      {
+       "id": "822",
+       "tag_id": "822",
+       "tag_name": "双男主"
+      },
+      {
+       "id": "823",
+       "tag_id": "823",
+       "tag_name": "无CP"
+      },
+      {
+       "id": "825",
+       "tag_id": "825",
+       "tag_name": "非典型修仙"
+      },
+      {
+       "id": "828",
+       "tag_id": "828",
+       "tag_name": "双重生"
+      },
+      {
+       "id": "829",
+       "tag_id": "829",
+       "tag_name": "诡异流"
+      },
+      {
+       "id": "830",
+       "tag_id": "830",
+       "tag_name": "爱国流"
+      },
+      {
+       "id": "831",
+       "tag_id": "831",
+       "tag_name": "单元故事"
+      },
+      {
+       "id": "832",
+       "tag_id": "832",
+       "tag_name": "迪化流"
+      },
+      {
+       "id": "833",
+       "tag_id": "833",
+       "tag_name": "灵魂互换"
+      },
+      {
+       "id": "834",
+       "tag_id": "834",
+       "tag_name": "克苏鲁"
+      },
+      {
+       "id": "837",
+       "tag_id": "837",
+       "tag_name": "稳健流"
+      },
+      {
+       "id": "842",
+       "tag_id": "842",
+       "tag_name": "扮演"
+      },
+      {
+       "id": "844",
+       "tag_id": "844",
+       "tag_name": "双向奔赴"
+      },
+      {
+       "id": "855",
+       "tag_id": "855",
+       "tag_name": "科技"
+      },
+      {
+       "id": "857",
+       "tag_id": "857",
+       "tag_name": "男二上位"
+      },
+      {
+       "id": "860",
+       "tag_id": "860",
+       "tag_name": "无女主"
+      },
+      {
+       "id": "861",
+       "tag_id": "861",
+       "tag_name": "单女主"
+      },
+      {
+       "id": "862",
+       "tag_id": "862",
+       "tag_name": "离婚后"
+      },
+      {
+       "id": "864",
+       "tag_id": "864",
+       "tag_name": "逃荒"
+      },
+      {
+       "id": "868",
+       "tag_id": "868",
+       "tag_name": "国运"
+      },
+      {
+       "id": "872",
+       "tag_id": "872",
+       "tag_name": "钓鱼"
+      },
+      {
+       "id": "880",
+       "tag_id": "880",
+       "tag_name": "恋爱"
+      },
+      {
+       "id": "882",
+       "tag_id": "882",
+       "tag_name": "群穿"
+      },
+      {
+       "id": "883",
+       "tag_id": "883",
+       "tag_name": "都市脑洞"
+      },
+      {
+       "id": "884",
+       "tag_id": "884",
+       "tag_name": "玄幻脑洞"
+      },
+      {
+       "id": "885",
+       "tag_id": "885",
+       "tag_name": "历史脑洞"
+      },
+      {
+       "id": "890",
+       "tag_id": "890",
+       "tag_name": "港综"
+      },
+      {
+       "id": "891",
+       "tag_id": "891",
+       "tag_name": "记忆曝光"
+      },
+      {
+       "id": "894",
+       "tag_id": "894",
+       "tag_name": "囤物资"
+      },
+      {
+       "id": "900",
+       "tag_id": "900",
+       "tag_name": "玄学"
+      },
+      {
+       "id": "902",
+       "tag_id": "902",
+       "tag_name": "模拟器"
+      },
+      {
+       "id": "909",
+       "tag_id": "909",
+       "tag_name": "相亲"
+      },
+      {
+       "id": "911",
+       "tag_id": "911",
+       "tag_name": "综艺"
+      },
+      {
+       "id": "913",
+       "tag_id": "913",
+       "tag_name": "规则怪谈"
+      },
+      {
+       "id": "916",
+       "tag_id": "916",
+       "tag_name": "黑道"
+      },
+      {
+       "id": "917",
+       "tag_id": "917",
+       "tag_name": "军婚"
+      },
+      {
+       "id": "920",
+       "tag_id": "920",
+       "tag_name": "谍战"
+      },
+      {
+       "id": "936",
+       "tag_id": "936",
+       "tag_name": "股海风云"
+      },
+      {
+       "id": "940",
+       "tag_id": "940",
+       "tag_name": "综武"
+      },
+      {
+       "id": "941",
+       "tag_id": "941",
+       "tag_name": "全家火葬场"
+      },
+      {
+       "id": "945",
+       "tag_id": "945",
+       "tag_name": "多女主"
+      },
+      {
+       "id": "954",
+       "tag_id": "954",
+       "tag_name": "多重人格"
+      },
+      {
+       "id": "960",
+       "tag_id": "960",
+       "tag_name": "全民"
+      },
+      {
+       "id": "964",
+       "tag_id": "964",
+       "tag_name": "宠夫"
+      },
+      {
+       "id": "984",
+       "tag_id": "984",
+       "tag_name": "NBA"
+      },
+      {
+       "id": "1203",
+       "tag_id": "1203",
+       "tag_name": "通古今"
+      },
+      {
+       "id": "1213",
+       "tag_id": "1213",
+       "tag_name": "全民领主"
+      },
+      {
+       "id": "1223",
+       "tag_id": "1223",
+       "tag_name": "草根崛起"
+      },
+      {
+       "id": "1225",
+       "tag_id": "1225",
+       "tag_name": "氪金"
+      },
+      {
+       "id": "1226",
+       "tag_id": "1226",
+       "tag_name": "荒野求生"
+      },
+      {
+       "id": "1239",
+       "tag_id": "1239",
+       "tag_name": "死对头"
+      },
+      {
+       "id": "1244",
+       "tag_id": "1244",
+       "tag_name": "天作之合"
+      },
+      {
+       "id": "1246",
+       "tag_id": "1246",
+       "tag_name": "婚恋"
+      },
+      {
+       "id": "1248",
+       "tag_id": "1248",
+       "tag_name": "双向救赎"
+      },
+      {
+       "id": "1249",
+       "tag_id": "1249",
+       "tag_name": "萌宠"
+      },
+      {
+       "id": "1250",
+       "tag_id": "1250",
+       "tag_name": "爆红"
+      },
+      {
+       "id": "1251",
+       "tag_id": "1251",
+       "tag_name": "失忆"
+      },
+      {
+       "id": "1252",
+       "tag_id": "1252",
+       "tag_name": "倒追"
+      },
+      {
+       "id": "1256",
+       "tag_id": "1256",
+       "tag_name": "修罗场"
+      },
+      {
+       "id": "1257",
+       "tag_id": "1257",
+       "tag_name": "崩人设"
+      },
+      {
+       "id": "1258",
+       "tag_id": "1258",
+       "tag_name": "偷听心声"
+      },
+      {
+       "id": "1259",
+       "tag_id": "1259",
+       "tag_name": "父子火葬场"
+      },
+      {
+       "id": "1260",
+       "tag_id": "1260",
+       "tag_name": "后悔流"
+      },
+      {
+       "id": "1264",
+       "tag_id": "1264",
+       "tag_name": "弹幕文"
+      },
+      {
+       "id": "1265",
+       "tag_id": "1265",
+       "tag_name": "万物沟通"
+      },
+      {
+       "id": "1270",
+       "tag_id": "1270",
+       "tag_name": "影视原著"
+      }
+     ],
+     "type_name": "情节",
+     "is_realistic_themes": 0,
+     "can_choose_count": 3
+    },
+    {
+     "type_id": 6,
+     "select_list": [
+      {
+       "id": "307",
+       "tag_id": "307",
+       "tag_name": "诸天万界"
+      },
+      {
+       "id": "321",
+       "tag_id": "321",
+       "tag_name": "三国"
+      },
+      {
+       "id": "322",
+       "tag_id": "322",
+       "tag_name": "大唐"
+      },
+      {
+       "id": "323",
+       "tag_id": "323",
+       "tag_name": "水浒"
+      },
+      {
+       "id": "324",
+       "tag_id": "324",
+       "tag_name": "西游"
+      },
+      {
+       "id": "329",
+       "tag_id": "329",
+       "tag_name": "漫威"
+      },
+      {
+       "id": "330",
+       "tag_id": "330",
+       "tag_name": "火影"
+      },
+      {
+       "id": "331",
+       "tag_id": "331",
+       "tag_name": "海贼王"
+      },
+      {
+       "id": "332",
+       "tag_id": "332",
+       "tag_name": "英雄联盟"
+      },
+      {
+       "id": "333",
+       "tag_id": "333",
+       "tag_name": "绝地求生"
+      },
+      {
+       "id": "334",
+       "tag_id": "334",
+       "tag_name": "王者荣耀"
+      },
+      {
+       "id": "371",
+       "tag_id": "371",
+       "tag_name": "武侠"
+      },
+      {
+       "id": "403",
+       "tag_id": "403",
+       "tag_name": "灵气复苏"
+      },
+      {
+       "id": "542",
+       "tag_id": "542",
+       "tag_name": "神奇宝贝"
+      },
+      {
+       "id": "546",
+       "tag_id": "546",
+       "tag_name": "奥特曼"
+      },
+      {
+       "id": "556",
+       "tag_id": "556",
+       "tag_name": "末世"
+      },
+      {
+       "id": "559",
+       "tag_id": "559",
+       "tag_name": "洪荒"
+      },
+      {
+       "id": "566",
+       "tag_id": "566",
+       "tag_name": "玄幻"
+      },
+      {
+       "id": "567",
+       "tag_id": "567",
+       "tag_name": "仙侠"
+      },
+      {
+       "id": "568",
+       "tag_id": "568",
+       "tag_name": "异界"
+      },
+      {
+       "id": "569",
+       "tag_id": "569",
+       "tag_name": "西幻"
+      },
+      {
+       "id": "570",
+       "tag_id": "570",
+       "tag_name": "奇幻"
+      },
+      {
+       "id": "571",
+       "tag_id": "571",
+       "tag_name": "都市"
+      },
+      {
+       "id": "572",
+       "tag_id": "572",
+       "tag_name": "年代"
+      },
+      {
+       "id": "573",
+       "tag_id": "573",
+       "tag_name": "民国"
+      },
+      {
+       "id": "575",
+       "tag_id": "575",
+       "tag_name": "校园"
+      },
+      {
+       "id": "576",
+       "tag_id": "576",
+       "tag_name": "古代"
+      },
+      {
+       "id": "577",
+       "tag_id": "577",
+       "tag_name": "架空历史"
+      },
+      {
+       "id": "578",
+       "tag_id": "578",
+       "tag_name": "远古"
+      },
+      {
+       "id": "582",
+       "tag_id": "582",
+       "tag_name": "星际"
+      },
+      {
+       "id": "583",
+       "tag_id": "583",
+       "tag_name": "历史"
+      },
+      {
+       "id": "586",
+       "tag_id": "586",
+       "tag_name": "大明"
+      },
+      {
+       "id": "590",
+       "tag_id": "590",
+       "tag_name": "乡村"
+      },
+      {
+       "id": "593",
+       "tag_id": "593",
+       "tag_name": "未来世界"
+      },
+      {
+       "id": "594",
+       "tag_id": "594",
+       "tag_name": "科幻"
+      },
+      {
+       "id": "648",
+       "tag_id": "648",
+       "tag_name": "精灵鬼怪"
+      },
+      {
+       "id": "725",
+       "tag_id": "725",
+       "tag_name": "红楼"
+      },
+      {
+       "id": "747",
+       "tag_id": "747",
+       "tag_name": "封神"
+      },
+      {
+       "id": "748",
+       "tag_id": "748",
+       "tag_name": "天庭"
+      },
+      {
+       "id": "752",
+       "tag_id": "752",
+       "tag_name": "卡牌"
+      },
+      {
+       "id": "756",
+       "tag_id": "756",
+       "tag_name": "神话"
+      },
+      {
+       "id": "757",
+       "tag_id": "757",
+       "tag_name": "哈利波特"
+      },
+      {
+       "id": "758",
+       "tag_id": "758",
+       "tag_name": "假面骑士"
+      },
+      {
+       "id": "759",
+       "tag_id": "759",
+       "tag_name": "龙珠"
+      },
+      {
+       "id": "760",
+       "tag_id": "760",
+       "tag_name": "游戏衍生"
+      },
+      {
+       "id": "761",
+       "tag_id": "761",
+       "tag_name": "动漫衍生"
+      },
+      {
+       "id": "762",
+       "tag_id": "762",
+       "tag_name": "影视衍生"
+      },
+      {
+       "id": "776",
+       "tag_id": "776",
+       "tag_name": "现代言情"
+      },
+      {
+       "id": "777",
+       "tag_id": "777",
+       "tag_name": "古代言情"
+      },
+      {
+       "id": "778",
+       "tag_id": "778",
+       "tag_name": "幻想言情"
+      },
+      {
+       "id": "840",
+       "tag_id": "840",
+       "tag_name": "高武"
+      },
+      {
+       "id": "854",
+       "tag_id": "854",
+       "tag_name": "四合院"
+      },
+      {
+       "id": "856",
+       "tag_id": "856",
+       "tag_name": "兽世"
+      },
+      {
+       "id": "858",
+       "tag_id": "858",
+       "tag_name": "大秦"
+      },
+      {
+       "id": "866",
+       "tag_id": "866",
+       "tag_name": "原神"
+      },
+      {
+       "id": "867",
+       "tag_id": "867",
+       "tag_name": "我的世界"
+      },
+      {
+       "id": "869",
+       "tag_id": "869",
+       "tag_name": "铠甲勇士"
+      },
+      {
+       "id": "870",
+       "tag_id": "870",
+       "tag_name": "超神学院"
+      },
+      {
+       "id": "871",
+       "tag_id": "871",
+       "tag_name": "柯南"
+      },
+      {
+       "id": "915",
+       "tag_id": "915",
+       "tag_name": "抗战"
+      },
+      {
+       "id": "943",
+       "tag_id": "943",
+       "tag_name": "宋朝"
+      },
+      {
+       "id": "957",
+       "tag_id": "957",
+       "tag_name": "赛博朋克"
+      },
+      {
+       "id": "959",
+       "tag_id": "959",
+       "tag_name": "惊悚世界"
+      },
+      {
+       "id": "969",
+       "tag_id": "969",
+       "tag_name": "崩坏星穹铁道"
+      },
+      {
+       "id": "1214",
+       "tag_id": "1214",
+       "tag_name": "衍生言情"
+      },
+      {
+       "id": "1261",
+       "tag_id": "1261",
+       "tag_name": "传统玄幻"
+      }
+     ],
+     "type_name": "背景",
+     "is_realistic_themes": 0,
+     "can_choose_count": 3
+    }
+   ]
+  },
+  {
+   "category": [
+    {
+     "category_name": "现代言情",
+     "id": "1",
+     "children": [
+      {
+       "category_name": "总裁豪门",
+       "id": "17",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "职场情缘",
+       "id": "19",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "民国旧影",
+       "id": "20",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "娱乐明星",
+       "id": "21",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "都市奇幻",
+       "id": "22",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "年代重生",
+       "id": "90",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "青春校园",
+       "id": "91",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "现实生活",
+       "id": "92",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "现代悬疑",
+       "id": "988",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "古代言情",
+     "id": "2",
+     "children": [
+      {
+       "category_name": "宫闱宅斗",
+       "id": "24",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "种田经商",
+       "id": "25",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "古代情缘",
+       "id": "26",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "远古大陆",
+       "id": "93",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "权谋天下",
+       "id": "94",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "武侠江湖",
+       "id": "95",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "古代悬疑",
+       "id": "989",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "幻想言情",
+     "id": "3",
+     "children": [
+      {
+       "category_name": "玄幻仙侠",
+       "id": "28",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "异世幻想",
+       "id": "30",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "未来科幻",
+       "id": "31",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "无限快穿",
+       "id": "96",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "末世求生",
+       "id": "97",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "游戏竞技",
+     "id": "5",
+     "children": [
+      {
+       "category_name": "运动竞技",
+       "id": "34",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "网游电竞",
+       "id": "35",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "衍生言情",
+     "id": "6",
+     "children": [
+      {
+       "category_name": "次元衍生",
+       "id": "36",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      },
+      {
+       "category_name": "经典衍生",
+       "id": "98",
+       "is_realistic_themes": 0,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 0,
+     "platform_category_id": 0
+    },
+    {
+     "category_name": "现实主义",
+     "id": "81",
+     "children": [
+      {
+       "category_name": "现实故事",
+       "id": "978",
+       "is_realistic_themes": 1,
+       "platform_category_id": 0
+      }
+     ],
+     "is_realistic_themes": 1,
+     "platform_category_id": 0
+    }
+   ],
+   "tag_info": [
+    {
+     "type_id": 1,
+     "select_list": [
+      {
+       "id": "1",
+       "tag_id": "1",
+       "tag_name": "热血"
+      },
+      {
+       "id": "3",
+       "tag_id": "3",
+       "tag_name": "轻松"
+      },
+      {
+       "id": "7",
+       "tag_id": "7",
+       "tag_name": "暗黑"
+      },
+      {
+       "id": "12",
+       "tag_id": "12",
+       "tag_name": "现实题材"
+      },
+      {
+       "id": "16",
+       "tag_id": "16",
+       "tag_name": "虐恋"
+      },
+      {
+       "id": "17",
+       "tag_id": "17",
+       "tag_name": "治愈"
+      },
+      {
+       "id": "21",
+       "tag_id": "21",
+       "tag_name": "甜宠"
+      },
+      {
+       "id": "27",
+       "tag_id": "27",
+       "tag_name": "悬疑"
+      },
+      {
+       "id": "317",
+       "tag_id": "317",
+       "tag_name": "种田"
+      },
+      {
+       "id": "336",
+       "tag_id": "336",
+       "tag_name": "清穿"
+      },
+      {
+       "id": "342",
+       "tag_id": "342",
+       "tag_name": "宅斗"
+      },
+      {
+       "id": "343",
+       "tag_id": "343",
+       "tag_name": "宫斗"
+      },
+      {
+       "id": "541",
+       "tag_id": "541",
+       "tag_name": "中短篇"
+      },
+      {
+       "id": "574",
+       "tag_id": "574",
+       "tag_name": "青春"
+      },
+      {
+       "id": "592",
+       "tag_id": "592",
+       "tag_name": "军事"
+      },
+      {
+       "id": "598",
+       "tag_id": "598",
+       "tag_name": "爽文"
+      },
+      {
+       "id": "599",
+       "tag_id": "599",
+       "tag_name": "恐怖"
+      },
+      {
+       "id": "600",
+       "tag_id": "600",
+       "tag_name": "烧脑"
+      },
+      {
+       "id": "605",
+       "tag_id": "605",
+       "tag_name": "正剧"
+      },
+      {
+       "id": "723",
+       "tag_id": "723",
+       "tag_name": "商战"
+      },
+      {
+       "id": "790",
+       "tag_id": "790",
+       "tag_name": "权谋"
+      },
+      {
+       "id": "791",
+       "tag_id": "791",
+       "tag_name": "励志"
+      },
+      {
+       "id": "793",
+       "tag_id": "793",
+       "tag_name": "搞笑"
+      },
+      {
+       "id": "878",
+       "tag_id": "878",
+       "tag_name": "日常"
+      },
+      {
+       "id": "934",
+       "tag_id": "934",
+       "tag_name": "短篇"
+      },
+      {
+       "id": "955",
+       "tag_id": "955",
+       "tag_name": "短故事"
+      },
+      {
+       "id": "975",
+       "tag_id": "975",
+       "tag_name": "买股文"
+      },
+      {
+       "id": "977",
+       "tag_id": "977",
+       "tag_name": "第一人称"
+      },
+      {
+       "id": "978",
+       "tag_id": "978",
+       "tag_name": "纯爱"
+      },
+      {
+       "id": "1222",
+       "tag_id": "1222",
+       "tag_name": "快节奏"
+      },
+      {
+       "id": "1224",
+       "tag_id": "1224",
+       "tag_name": "反套路"
+      },
+      {
+       "id": "1268",
+       "tag_id": "1268",
+       "tag_name": "新疆现实题材"
+      },
+      {
+       "id": "1269",
+       "tag_id": "1269",
+       "tag_name": "国安现实题材"
+      }
+     ],
+     "type_name": "风格",
+     "is_realistic_themes": 0,
+     "can_choose_count": 3
+    },
+    {
+     "type_id": 2,
+     "select_list": [
+      {
+       "id": "28",
+       "tag_id": "28",
+       "tag_name": "兵王"
+      },
+      {
+       "id": "30",
+       "tag_id": "30",
+       "tag_name": "护花高手"
+      },
+      {
+       "id": "31",
+       "tag_id": "31",
+       "tag_name": "仙帝"
+      },
+      {
+       "id": "34",
+       "tag_id": "34",
+       "tag_name": "学生"
+      },
+      {
+       "id": "36",
+       "tag_id": "36",
+       "tag_name": "赘婿"
+      },
+      {
+       "id": "37",
+       "tag_id": "37",
+       "tag_name": "神豪"
+      },
+      {
+       "id": "41",
+       "tag_id": "41",
+       "tag_name": "奶爸"
+      },
+      {
+       "id": "62",
+       "tag_id": "62",
+       "tag_name": "皇帝"
+      },
+      {
+       "id": "74",
+       "tag_id": "74",
+       "tag_name": "道士"
+      },
+      {
+       "id": "89",
+       "tag_id": "89",
+       "tag_name": "女总裁"
+      },
+      {
+       "id": "92",
+       "tag_id": "92",
+       "tag_name": "校花"
+      },
+      {
+       "id": "106",
+       "tag_id": "106",
+       "tag_name": "皇后"
+      },
+      {
+       "id": "107",
+       "tag_id": "107",
+       "tag_name": "王妃"
+      },
+      {
+       "id": "108",
+       "tag_id": "108",
+       "tag_name": "医妃"
+      },
+      {
+       "id": "113",
+       "tag_id": "113",
+       "tag_name": "公主"
+      },
+      {
+       "id": "117",
+       "tag_id": "117",
+       "tag_name": "嫡女"
+      },
+      {
+       "id": "118",
+       "tag_id": "118",
+       "tag_name": "庶女"
+      },
+      {
+       "id": "125",
+       "tag_id": "125",
+       "tag_name": "王爷"
+      },
+      {
+       "id": "128",
+       "tag_id": "128",
+       "tag_name": "太子"
+      },
+      {
+       "id": "133",
+       "tag_id": "133",
+       "tag_name": "首辅"
+      },
+      {
+       "id": "141",
+       "tag_id": "141",
+       "tag_name": "丑女"
+      },
+      {
+       "id": "153",
+       "tag_id": "153",
+       "tag_name": "大叔"
+      },
+      {
+       "id": "156",
+       "tag_id": "156",
+       "tag_name": "医生"
+      },
+      {
+       "id": "161",
+       "tag_id": "161",
+       "tag_name": "律师"
+      },
+      {
+       "id": "182",
+       "tag_id": "182",
+       "tag_name": "吸血鬼"
+      },
+      {
+       "id": "188",
+       "tag_id": "188",
+       "tag_name": "特工"
+      },
+      {
+       "id": "189",
+       "tag_id": "189",
+       "tag_name": "法医"
+      },
+      {
+       "id": "190",
+       "tag_id": "190",
+       "tag_name": "仵作"
+      },
+      {
+       "id": "191",
+       "tag_id": "191",
+       "tag_name": "女配"
+      },
+      {
+       "id": "196",
+       "tag_id": "196",
+       "tag_name": "全能"
+      },
+      {
+       "id": "202",
+       "tag_id": "202",
+       "tag_name": "杀伐果断"
+      },
+      {
+       "id": "239",
+       "tag_id": "239",
+       "tag_name": "霸道"
+      },
+      {
+       "id": "248",
+       "tag_id": "248",
+       "tag_name": "偏执"
+      },
+      {
+       "id": "259",
+       "tag_id": "259",
+       "tag_name": "忠犬"
+      },
+      {
+       "id": "263",
+       "tag_id": "263",
+       "tag_name": "残疾"
+      },
+      {
+       "id": "265",
+       "tag_id": "265",
+       "tag_name": "毒舌"
+      },
+      {
+       "id": "268",
+       "tag_id": "268",
+       "tag_name": "傲娇"
+      },
+      {
+       "id": "273",
+       "tag_id": "273",
+       "tag_name": "病娇"
+      },
+      {
+       "id": "356",
+       "tag_id": "356",
+       "tag_name": "萌宝"
+      },
+      {
+       "id": "444",
+       "tag_id": "444",
+       "tag_name": "龙"
+      },
+      {
+       "id": "449",
+       "tag_id": "449",
+       "tag_name": "僵尸"
+      },
+      {
+       "id": "464",
+       "tag_id": "464",
+       "tag_name": "欢喜冤家"
+      },
+      {
+       "id": "507",
+       "tag_id": "507",
+       "tag_name": "师徒恋"
+      },
+      {
+       "id": "525",
+       "tag_id": "525",
+       "tag_name": "弃少"
+      },
+      {
+       "id": "527",
+       "tag_id": "527",
+       "tag_name": "战神"
+      },
+      {
+       "id": "533",
+       "tag_id": "533",
+       "tag_name": "强强"
+      },
+      {
+       "id": "544",
+       "tag_id": "544",
+       "tag_name": "魔尊"
+      },
+      {
+       "id": "545",
+       "tag_id": "545",
+       "tag_name": "团宠"
+      },
+      {
+       "id": "547",
+       "tag_id": "547",
+       "tag_name": "特种兵"
+      },
+      {
+       "id": "607",
+       "tag_id": "607",
+       "tag_name": "暴君"
+      },
+      {
+       "id": "608",
+       "tag_id": "608",
+       "tag_name": "皇叔"
+      },
+      {
+       "id": "609",
+       "tag_id": "609",
+       "tag_name": "皇子"
+      },
+      {
+       "id": "610",
+       "tag_id": "610",
+       "tag_name": "摄政王"
+      },
+      {
+       "id": "611",
+       "tag_id": "611",
+       "tag_name": "奸臣"
+      },
+      {
+       "id": "612",
+       "tag_id": "612",
+       "tag_name": "世子"
+      },
+      {
+       "id": "613",
+       "tag_id": "613",
+       "tag_name": "锦衣卫"
+      },
+      {
+       "id": "614",
+       "tag_id": "614",
+       "tag_name": "太监"
+      },
+      {
+       "id": "617",
+       "tag_id": "617",
+       "tag_name": "女帝"
+      },
+      {
+       "id": "622",
+       "tag_id": "622",
+       "tag_name": "明星"
+      },
+      {
+       "id": "624",
+       "tag_id": "624",
+       "tag_name": "豪门总裁"
+      },
+      {
+       "id": "627",
+       "tag_id": "627",
+       "tag_name": "老师"
+      },
+      {
+       "id": "630",
+       "tag_id": "630",
+       "tag_name": "校草"
+      },
+      {
+       "id": "636",
+       "tag_id": "636",
+       "tag_name": "侦探"
+      },
+      {
+       "id": "637",
+       "tag_id": "637",
+       "tag_name": "警察"
+      },
+      {
+       "id": "638",
+       "tag_id": "638",
+       "tag_name": "主播"
+      },
+      {
+       "id": "640",
+       "tag_id": "640",
+       "tag_name": "少年"
+      },
+      {
+       "id": "645",
+       "tag_id": "645",
+       "tag_name": "师兄"
+      },
+      {
+       "id": "647",
+       "tag_id": "647",
+       "tag_name": "领主"
+      },
+      {
+       "id": "687",
+       "tag_id": "687",
+       "tag_name": "温柔"
+      },
+      {
+       "id": "692",
+       "tag_id": "692",
+       "tag_name": "呆萌"
+      },
+      {
+       "id": "693",
+       "tag_id": "693",
+       "tag_name": "可盐可甜"
+      },
+      {
+       "id": "694",
+       "tag_id": "694",
+       "tag_name": "娇媚"
+      },
+      {
+       "id": "695",
+       "tag_id": "695",
+       "tag_name": "绿茶"
+      },
+      {
+       "id": "698",
+       "tag_id": "698",
+       "tag_name": "铁血"
+      },
+      {
+       "id": "700",
+       "tag_id": "700",
+       "tag_name": "败家子"
+      },
+      {
+       "id": "704",
+       "tag_id": "704",
+       "tag_name": "弃妇"
+      },
+      {
+       "id": "706",
+       "tag_id": "706",
+       "tag_name": "女扮男装"
+      },
+      {
+       "id": "707",
+       "tag_id": "707",
+       "tag_name": "女尊"
+      },
+      {
+       "id": "708",
+       "tag_id": "708",
+       "tag_name": "女强"
+      },
+      {
+       "id": "712",
+       "tag_id": "712",
+       "tag_name": "替身"
+      },
+      {
+       "id": "717",
+       "tag_id": "717",
+       "tag_name": "二婚"
+      },
+      {
+       "id": "782",
+       "tag_id": "782",
+       "tag_name": "姐姐"
+      },
+      {
+       "id": "786",
+       "tag_id": "786",
+       "tag_name": "学霸"
+      },
+      {
+       "id": "788",
+       "tag_id": "788",
+       "tag_name": "天才"
+      },
+      {
+       "id": "789",
+       "tag_id": "789",
+       "tag_name": "杀手"
+      },
+      {
+       "id": "792",
+       "tag_id": "792",
+       "tag_name": "将军"
+      },
+      {
+       "id": "794",
+       "tag_id": "794",
+       "tag_name": "腹黑"
+      },
+      {
+       "id": "796",
+       "tag_id": "796",
+       "tag_name": "废柴"
+      },
+      {
+       "id": "797",
+       "tag_id": "797",
+       "tag_name": "反派"
+      },
+      {
+       "id": "799",
+       "tag_id": "799",
+       "tag_name": "扮猪吃虎"
+      },
+      {
+       "id": "810",
+       "tag_id": "810",
+       "tag_name": "智商在线"
+      },
+      {
+       "id": "812",
+       "tag_id": "812",
+       "tag_name": "真假千金"
+      },
+      {
+       "id": "816",
+       "tag_id": "816",
+       "tag_name": "咸鱼"
+      },
+      {
+       "id": "817",
+       "tag_id": "817",
+       "tag_name": "锦鲤"
+      },
+      {
+       "id": "835",
+       "tag_id": "835",
+       "tag_name": "小众职业"
+      },
+      {
+       "id": "843",
+       "tag_id": "843",
+       "tag_name": "双女主"
+      },
+      {
+       "id": "845",
+       "tag_id": "845",
+       "tag_name": "后妈"
+      },
+      {
+       "id": "846",
+       "tag_id": "846",
+       "tag_name": "哥哥"
+      },
+      {
+       "id": "849",
+       "tag_id": "849",
+       "tag_name": "黑莲花"
+      },
+      {
+       "id": "850",
+       "tag_id": "850",
+       "tag_name": "黑月光"
+      },
+      {
+       "id": "851",
+       "tag_id": "851",
+       "tag_name": "白月光"
+      },
+      {
+       "id": "852",
+       "tag_id": "852",
+       "tag_name": "书生"
+      },
+      {
+       "id": "907",
+       "tag_id": "907",
+       "tag_name": "糙汉"
+      },
+      {
+       "id": "918",
+       "tag_id": "918",
+       "tag_name": "老千"
+      },
+      {
+       "id": "942",
+       "tag_id": "942",
+       "tag_name": "渔女"
+      },
+      {
+       "id": "944",
+       "tag_id": "944",
+       "tag_name": "丞相"
+      },
+      {
+       "id": "946",
+       "tag_id": "946",
+       "tag_name": "驸马"
+      },
+      {
+       "id": "947",
+       "tag_id": "947",
+       "tag_name": "双洁"
+      },
+      {
+       "id": "948",
+       "tag_id": "948",
+       "tag_name": "作精"
+      },
+      {
+       "id": "958",
+       "tag_id": "958",
+       "tag_name": "外卖员"
+      },
+      {
+       "id": "961",
+       "tag_id": "961",
+       "tag_name": "丫鬟"
+      },
+      {
+       "id": "962",
+       "tag_id": "962",
+       "tag_name": "恶婆婆"
+      },
+      {
+       "id": "963",
+       "tag_id": "963",
+       "tag_name": "幕后BOSS"
+      },
+      {
+       "id": "971",
+       "tag_id": "971",
+       "tag_name": "奶团"
+      },
+      {
+       "id": "972",
+       "tag_id": "972",
+       "tag_name": "大女主"
+      },
+      {
+       "id": "973",
+       "tag_id": "973",
+       "tag_name": "主母"
+      },
+      {
+       "id": "974",
+       "tag_id": "974",
+       "tag_name": "妾室"
+      },
+      {
+       "id": "1200",
+       "tag_id": "1200",
+       "tag_name": "人间清醒"
+      },
+      {
+       "id": "1215",
+       "tag_id": "1215",
+       "tag_name": "无节操"
+      },
+      {
+       "id": "1216",
+       "tag_id": "1216",
+       "tag_name": "嘴炮"
+      },
+      {
+       "id": "1217",
+       "tag_id": "1217",
+       "tag_name": "痴情"
+      },
+      {
+       "id": "1218",
+       "tag_id": "1218",
+       "tag_name": "超A"
+      },
+      {
+       "id": "1219",
+       "tag_id": "1219",
+       "tag_name": "高冷"
+      },
+      {
+       "id": "1220",
+       "tag_id": "1220",
+       "tag_name": "财迷"
+      },
+      {
+       "id": "1221",
+       "tag_id": "1221",
+       "tag_name": "醋王"
+      },
+      {
+       "id": "1227",
+       "tag_id": "1227",
+       "tag_name": "万人迷"
+      },
+      {
+       "id": "1228",
+       "tag_id": "1228",
+       "tag_name": "戏精"
+      },
+      {
+       "id": "1229",
+       "tag_id": "1229",
+       "tag_name": "炮灰"
+      },
+      {
+       "id": "1230",
+       "tag_id": "1230",
+       "tag_name": "吃货"
+      },
+      {
+       "id": "1231",
+       "tag_id": "1231",
+       "tag_name": "旺夫"
+      },
+      {
+       "id": "1232",
+       "tag_id": "1232",
+       "tag_name": "美强惨"
+      },
+      {
+       "id": "1233",
+       "tag_id": "1233",
+       "tag_name": "顶流"
+      },
+      {
+       "id": "1234",
+       "tag_id": "1234",
+       "tag_name": "小狼狗"
+      },
+      {
+       "id": "1235",
+       "tag_id": "1235",
+       "tag_name": "反差萌"
+      },
+      {
+       "id": "1236",
+       "tag_id": "1236",
+       "tag_name": "心机"
+      },
+      {
+       "id": "1237",
+       "tag_id": "1237",
+       "tag_name": "暖男"
+      },
+      {
+       "id": "1238",
+       "tag_id": "1238",
+       "tag_name": "逗比"
+      },
+      {
+       "id": "1240",
+       "tag_id": "1240",
+       "tag_name": "毒医"
+      },
+      {
+       "id": "1241",
+       "tag_id": "1241",
+       "tag_name": "厨娘"
+      },
+      {
+       "id": "1242",
+       "tag_id": "1242",
+       "tag_name": "冰山"
+      },
+      {
+       "id": "1243",
+       "tag_id": "1243",
+       "tag_name": "古灵精怪"
+      },
+      {
+       "id": "1245",
+       "tag_id": "1245",
+       "tag_name": "宠妻"
+      },
+      {
+       "id": "1247",
+       "tag_id": "1247",
+       "tag_name": "黑化"
+      },
+      {
+       "id": "1253",
+       "tag_id": "1253",
+       "tag_name": "独宠"
+      },
+      {
+       "id": "1254",
+       "tag_id": "1254",
+       "tag_name": "御姐"
+      },
+      {
+       "id": "1255",
+       "tag_id": "1255",
+       "tag_name": "佛系"
+      },
+      {
+       "id": "1262",
+       "tag_id": "1262",
+       "tag_name": "神医"
+      },
+      {
+       "id": "1263",
+       "tag_id": "1263",
+       "tag_name": "真假少爷"
+      }
+     ],
+     "type_name": "角色",
+     "is_realistic_themes": 0,
+     "can_choose_count": 3
+    },
+    {
+     "type_id": 3,
+     "select_list": [
+      {
+       "id": "47",
+       "tag_id": "47",
+       "tag_name": "鉴宝"
+      },
+      {
+       "id": "72",
+       "tag_id": "72",
+       "tag_name": "剑道"
+      },
+      {
+       "id": "297",
+       "tag_id": "297",
+       "tag_name": "透视"
+      },
+      {
+       "id": "300",
+       "tag_id": "300",
+       "tag_name": "美食"
+      },
+      {
+       "id": "305",
+       "tag_id": "305",
+       "tag_name": "无敌流"
+      },
+      {
+       "id": "312",
+       "tag_id": "312",
+       "tag_name": "争霸"
+      },
+      {
+       "id": "313",
+       "tag_id": "313",
+       "tag_name": "召唤"
+      },
+      {
+       "id": "327",
+       "tag_id": "327",
+       "tag_name": "盗墓"
+      },
+      {
+       "id": "335",
+       "tag_id": "335",
+       "tag_name": "快穿"
+      },
+      {
+       "id": "338",
+       "tag_id": "338",
+       "tag_name": "穿书"
+      },
+      {
+       "id": "345",
+       "tag_id": "345",
+       "tag_name": "随身空间"
+      },
+      {
+       "id": "355",
+       "tag_id": "355",
+       "tag_name": "契约婚姻"
+      },
+      {
+       "id": "357",
+       "tag_id": "357",
+       "tag_name": "娱乐圈"
+      },
+      {
+       "id": "373",
+       "tag_id": "373",
+       "tag_name": "穿越"
+      },
+      {
+       "id": "383",
+       "tag_id": "383",
+       "tag_name": "荒岛求生"
+      },
+      {
+       "id": "397",
+       "tag_id": "397",
+       "tag_name": "家族崛起"
+      },
+      {
+       "id": "400",
+       "tag_id": "400",
+       "tag_name": "逆袭"
+      },
+      {
+       "id": "402",
+       "tag_id": "402",
+       "tag_name": "强者回归"
+      },
+      {
+       "id": "410",
+       "tag_id": "410",
+       "tag_name": "一统天下"
+      },
+      {
+       "id": "419",
+       "tag_id": "419",
+       "tag_name": "直播"
+      },
+      {
+       "id": "420",
+       "tag_id": "420",
+       "tag_name": "聊天群"
+      },
+      {
+       "id": "421",
+       "tag_id": "421",
+       "tag_name": "红包"
+      },
+      {
+       "id": "423",
+       "tag_id": "423",
+       "tag_name": "御兽"
+      },
+      {
+       "id": "426",
+       "tag_id": "426",
+       "tag_name": "血脉"
+      },
+      {
+       "id": "427",
+       "tag_id": "427",
+       "tag_name": "武魂"
+      },
+      {
+       "id": "428",
+       "tag_id": "428",
+       "tag_name": "丹药"
+      },
+      {
+       "id": "437",
+       "tag_id": "437",
+       "tag_name": "风水"
+      },
+      {
+       "id": "465",
+       "tag_id": "465",
+       "tag_name": "青梅竹马"
+      },
+      {
+       "id": "467",
+       "tag_id": "467",
+       "tag_name": "破镜重圆"
+      },
+      {
+       "id": "476",
+       "tag_id": "476",
+       "tag_name": "替嫁"
+      },
+      {
+       "id": "480",
+       "tag_id": "480",
+       "tag_name": "闪婚"
+      },
+      {
+       "id": "481",
+       "tag_id": "481",
+       "tag_name": "隐婚"
+      },
+      {
+       "id": "483",
+       "tag_id": "483",
+       "tag_name": "逃婚"
+      },
+      {
+       "id": "492",
+       "tag_id": "492",
+       "tag_name": "致富"
+      },
+      {
+       "id": "501",
+       "tag_id": "501",
+       "tag_name": "错嫁"
+      },
+      {
+       "id": "524",
+       "tag_id": "524",
+       "tag_name": "先婚后爱"
+      },
+      {
+       "id": "526",
+       "tag_id": "526",
+       "tag_name": "脑洞"
+      },
+      {
+       "id": "528",
+       "tag_id": "528",
+       "tag_name": "进化"
+      },
+      {
+       "id": "530",
+       "tag_id": "530",
+       "tag_name": "吞噬"
+      },
+      {
+       "id": "539",
+       "tag_id": "539",
+       "tag_name": "影视"
+      },
+      {
+       "id": "557",
+       "tag_id": "557",
+       "tag_name": "无限流"
+      },
+      {
+       "id": "558",
+       "tag_id": "558",
+       "tag_name": "马甲"
+      },
+      {
+       "id": "564",
+       "tag_id": "564",
+       "tag_name": "开局流"
+      },
+      {
+       "id": "565",
+       "tag_id": "565",
+       "tag_name": "签到"
+      },
+      {
+       "id": "580",
+       "tag_id": "580",
+       "tag_name": "同人"
+      },
+      {
+       "id": "581",
+       "tag_id": "581",
+       "tag_name": "体育"
+      },
+      {
+       "id": "602",
+       "tag_id": "602",
+       "tag_name": "官场"
+      },
+      {
+       "id": "649",
+       "tag_id": "649",
+       "tag_name": "神祇"
+      },
+      {
+       "id": "671",
+       "tag_id": "671",
+       "tag_name": "修仙"
+      },
+      {
+       "id": "702",
+       "tag_id": "702",
+       "tag_name": "古穿今"
+      },
+      {
+       "id": "703",
+       "tag_id": "703",
+       "tag_name": "性转"
+      },
+      {
+       "id": "709",
+       "tag_id": "709",
+       "tag_name": "HE"
+      },
+      {
+       "id": "710",
+       "tag_id": "710",
+       "tag_name": "BE"
+      },
+      {
+       "id": "711",
+       "tag_id": "711",
+       "tag_name": "1V1"
+      },
+      {
+       "id": "713",
+       "tag_id": "713",
+       "tag_name": "姐弟恋"
+      },
+      {
+       "id": "714",
+       "tag_id": "714",
+       "tag_name": "相爱相杀"
+      },
+      {
+       "id": "715",
+       "tag_id": "715",
+       "tag_name": "追妻火葬场"
+      },
+      {
+       "id": "716",
+       "tag_id": "716",
+       "tag_name": "打脸虐渣"
+      },
+      {
+       "id": "719",
+       "tag_id": "719",
+       "tag_name": "暗恋"
+      },
+      {
+       "id": "720",
+       "tag_id": "720",
+       "tag_name": "日久生情"
+      },
+      {
+       "id": "721",
+       "tag_id": "721",
+       "tag_name": "一见钟情"
+      },
+      {
+       "id": "722",
+       "tag_id": "722",
+       "tag_name": "带球跑"
+      },
+      {
+       "id": "724",
+       "tag_id": "724",
+       "tag_name": "职场"
+      },
+      {
+       "id": "726",
+       "tag_id": "726",
+       "tag_name": "金手指"
+      },
+      {
+       "id": "727",
+       "tag_id": "727",
+       "tag_name": "异能"
+      },
+      {
+       "id": "728",
+       "tag_id": "728",
+       "tag_name": "技术流"
+      },
+      {
+       "id": "729",
+       "tag_id": "729",
+       "tag_name": "全球"
+      },
+      {
+       "id": "730",
+       "tag_id": "730",
+       "tag_name": "基建"
+      },
+      {
+       "id": "731",
+       "tag_id": "731",
+       "tag_name": "求生"
+      },
+      {
+       "id": "732",
+       "tag_id": "732",
+       "tag_name": "丧尸"
+      },
+      {
+       "id": "733",
+       "tag_id": "733",
+       "tag_name": "机甲"
+      },
+      {
+       "id": "734",
+       "tag_id": "734",
+       "tag_name": "网游"
+      },
+      {
+       "id": "735",
+       "tag_id": "735",
+       "tag_name": "游戏"
+      },
+      {
+       "id": "736",
+       "tag_id": "736",
+       "tag_name": "电竞"
+      },
+      {
+       "id": "738",
+       "tag_id": "738",
+       "tag_name": "篮球"
+      },
+      {
+       "id": "739",
+       "tag_id": "739",
+       "tag_name": "足球"
+      },
+      {
+       "id": "740",
+       "tag_id": "740",
+       "tag_name": "推理"
+      },
+      {
+       "id": "741",
+       "tag_id": "741",
+       "tag_name": "探险"
+      },
+      {
+       "id": "742",
+       "tag_id": "742",
+       "tag_name": "怪谈"
+      },
+      {
+       "id": "744",
+       "tag_id": "744",
+       "tag_name": "长生流"
+      },
+      {
+       "id": "745",
+       "tag_id": "745",
+       "tag_name": "国术"
+      },
+      {
+       "id": "746",
+       "tag_id": "746",
+       "tag_name": "古武"
+      },
+      {
+       "id": "751",
+       "tag_id": "751",
+       "tag_name": "战争"
+      },
+      {
+       "id": "753",
+       "tag_id": "753",
+       "tag_name": "魔法"
+      },
+      {
+       "id": "763",
+       "tag_id": "763",
+       "tag_name": "经典衍生"
+      },
+      {
+       "id": "773",
+       "tag_id": "773",
+       "tag_name": "奇闻异事"
+      },
+      {
+       "id": "783",
+       "tag_id": "783",
+       "tag_name": "前世今生"
+      },
+      {
+       "id": "784",
+       "tag_id": "784",
+       "tag_name": "重生"
+      },
+      {
+       "id": "787",
+       "tag_id": "787",
+       "tag_name": "系统"
+      },
+      {
+       "id": "795",
+       "tag_id": "795",
+       "tag_name": "复仇"
+      },
+      {
+       "id": "814",
+       "tag_id": "814",
+       "tag_name": "读心术"
+      },
+      {
+       "id": "821",
+       "tag_id": "821",
+       "tag_name": "恋综"
+      },
+      {
+       "id": "822",
+       "tag_id": "822",
+       "tag_name": "双男主"
+      },
+      {
+       "id": "823",
+       "tag_id": "823",
+       "tag_name": "无CP"
+      },
+      {
+       "id": "825",
+       "tag_id": "825",
+       "tag_name": "非典型修仙"
+      },
+      {
+       "id": "828",
+       "tag_id": "828",
+       "tag_name": "双重生"
+      },
+      {
+       "id": "829",
+       "tag_id": "829",
+       "tag_name": "诡异流"
+      },
+      {
+       "id": "830",
+       "tag_id": "830",
+       "tag_name": "爱国流"
+      },
+      {
+       "id": "831",
+       "tag_id": "831",
+       "tag_name": "单元故事"
+      },
+      {
+       "id": "832",
+       "tag_id": "832",
+       "tag_name": "迪化流"
+      },
+      {
+       "id": "833",
+       "tag_id": "833",
+       "tag_name": "灵魂互换"
+      },
+      {
+       "id": "834",
+       "tag_id": "834",
+       "tag_name": "克苏鲁"
+      },
+      {
+       "id": "837",
+       "tag_id": "837",
+       "tag_name": "稳健流"
+      },
+      {
+       "id": "842",
+       "tag_id": "842",
+       "tag_name": "扮演"
+      },
+      {
+       "id": "844",
+       "tag_id": "844",
+       "tag_name": "双向奔赴"
+      },
+      {
+       "id": "855",
+       "tag_id": "855",
+       "tag_name": "科技"
+      },
+      {
+       "id": "857",
+       "tag_id": "857",
+       "tag_name": "男二上位"
+      },
+      {
+       "id": "860",
+       "tag_id": "860",
+       "tag_name": "无女主"
+      },
+      {
+       "id": "861",
+       "tag_id": "861",
+       "tag_name": "单女主"
+      },
+      {
+       "id": "862",
+       "tag_id": "862",
+       "tag_name": "离婚后"
+      },
+      {
+       "id": "864",
+       "tag_id": "864",
+       "tag_name": "逃荒"
+      },
+      {
+       "id": "868",
+       "tag_id": "868",
+       "tag_name": "国运"
+      },
+      {
+       "id": "872",
+       "tag_id": "872",
+       "tag_name": "钓鱼"
+      },
+      {
+       "id": "880",
+       "tag_id": "880",
+       "tag_name": "恋爱"
+      },
+      {
+       "id": "882",
+       "tag_id": "882",
+       "tag_name": "群穿"
+      },
+      {
+       "id": "883",
+       "tag_id": "883",
+       "tag_name": "都市脑洞"
+      },
+      {
+       "id": "884",
+       "tag_id": "884",
+       "tag_name": "玄幻脑洞"
+      },
+      {
+       "id": "885",
+       "tag_id": "885",
+       "tag_name": "历史脑洞"
+      },
+      {
+       "id": "890",
+       "tag_id": "890",
+       "tag_name": "港综"
+      },
+      {
+       "id": "891",
+       "tag_id": "891",
+       "tag_name": "记忆曝光"
+      },
+      {
+       "id": "894",
+       "tag_id": "894",
+       "tag_name": "囤物资"
+      },
+      {
+       "id": "900",
+       "tag_id": "900",
+       "tag_name": "玄学"
+      },
+      {
+       "id": "902",
+       "tag_id": "902",
+       "tag_name": "模拟器"
+      },
+      {
+       "id": "909",
+       "tag_id": "909",
+       "tag_name": "相亲"
+      },
+      {
+       "id": "911",
+       "tag_id": "911",
+       "tag_name": "综艺"
+      },
+      {
+       "id": "913",
+       "tag_id": "913",
+       "tag_name": "规则怪谈"
+      },
+      {
+       "id": "916",
+       "tag_id": "916",
+       "tag_name": "黑道"
+      },
+      {
+       "id": "917",
+       "tag_id": "917",
+       "tag_name": "军婚"
+      },
+      {
+       "id": "920",
+       "tag_id": "920",
+       "tag_name": "谍战"
+      },
+      {
+       "id": "936",
+       "tag_id": "936",
+       "tag_name": "股海风云"
+      },
+      {
+       "id": "940",
+       "tag_id": "940",
+       "tag_name": "综武"
+      },
+      {
+       "id": "941",
+       "tag_id": "941",
+       "tag_name": "全家火葬场"
+      },
+      {
+       "id": "945",
+       "tag_id": "945",
+       "tag_name": "多女主"
+      },
+      {
+       "id": "954",
+       "tag_id": "954",
+       "tag_name": "多重人格"
+      },
+      {
+       "id": "960",
+       "tag_id": "960",
+       "tag_name": "全民"
+      },
+      {
+       "id": "964",
+       "tag_id": "964",
+       "tag_name": "宠夫"
+      },
+      {
+       "id": "984",
+       "tag_id": "984",
+       "tag_name": "NBA"
+      },
+      {
+       "id": "1203",
+       "tag_id": "1203",
+       "tag_name": "通古今"
+      },
+      {
+       "id": "1213",
+       "tag_id": "1213",
+       "tag_name": "全民领主"
+      },
+      {
+       "id": "1223",
+       "tag_id": "1223",
+       "tag_name": "草根崛起"
+      },
+      {
+       "id": "1225",
+       "tag_id": "1225",
+       "tag_name": "氪金"
+      },
+      {
+       "id": "1226",
+       "tag_id": "1226",
+       "tag_name": "荒野求生"
+      },
+      {
+       "id": "1239",
+       "tag_id": "1239",
+       "tag_name": "死对头"
+      },
+      {
+       "id": "1244",
+       "tag_id": "1244",
+       "tag_name": "天作之合"
+      },
+      {
+       "id": "1246",
+       "tag_id": "1246",
+       "tag_name": "婚恋"
+      },
+      {
+       "id": "1248",
+       "tag_id": "1248",
+       "tag_name": "双向救赎"
+      },
+      {
+       "id": "1249",
+       "tag_id": "1249",
+       "tag_name": "萌宠"
+      },
+      {
+       "id": "1250",
+       "tag_id": "1250",
+       "tag_name": "爆红"
+      },
+      {
+       "id": "1251",
+       "tag_id": "1251",
+       "tag_name": "失忆"
+      },
+      {
+       "id": "1252",
+       "tag_id": "1252",
+       "tag_name": "倒追"
+      },
+      {
+       "id": "1256",
+       "tag_id": "1256",
+       "tag_name": "修罗场"
+      },
+      {
+       "id": "1257",
+       "tag_id": "1257",
+       "tag_name": "崩人设"
+      },
+      {
+       "id": "1258",
+       "tag_id": "1258",
+       "tag_name": "偷听心声"
+      },
+      {
+       "id": "1259",
+       "tag_id": "1259",
+       "tag_name": "父子火葬场"
+      },
+      {
+       "id": "1260",
+       "tag_id": "1260",
+       "tag_name": "后悔流"
+      },
+      {
+       "id": "1264",
+       "tag_id": "1264",
+       "tag_name": "弹幕文"
+      },
+      {
+       "id": "1265",
+       "tag_id": "1265",
+       "tag_name": "万物沟通"
+      },
+      {
+       "id": "1270",
+       "tag_id": "1270",
+       "tag_name": "影视原著"
+      }
+     ],
+     "type_name": "情节",
+     "is_realistic_themes": 0,
+     "can_choose_count": 3
+    },
+    {
+     "type_id": 6,
+     "select_list": [
+      {
+       "id": "307",
+       "tag_id": "307",
+       "tag_name": "诸天万界"
+      },
+      {
+       "id": "321",
+       "tag_id": "321",
+       "tag_name": "三国"
+      },
+      {
+       "id": "322",
+       "tag_id": "322",
+       "tag_name": "大唐"
+      },
+      {
+       "id": "323",
+       "tag_id": "323",
+       "tag_name": "水浒"
+      },
+      {
+       "id": "324",
+       "tag_id": "324",
+       "tag_name": "西游"
+      },
+      {
+       "id": "329",
+       "tag_id": "329",
+       "tag_name": "漫威"
+      },
+      {
+       "id": "330",
+       "tag_id": "330",
+       "tag_name": "火影"
+      },
+      {
+       "id": "331",
+       "tag_id": "331",
+       "tag_name": "海贼王"
+      },
+      {
+       "id": "332",
+       "tag_id": "332",
+       "tag_name": "英雄联盟"
+      },
+      {
+       "id": "333",
+       "tag_id": "333",
+       "tag_name": "绝地求生"
+      },
+      {
+       "id": "334",
+       "tag_id": "334",
+       "tag_name": "王者荣耀"
+      },
+      {
+       "id": "371",
+       "tag_id": "371",
+       "tag_name": "武侠"
+      },
+      {
+       "id": "403",
+       "tag_id": "403",
+       "tag_name": "灵气复苏"
+      },
+      {
+       "id": "542",
+       "tag_id": "542",
+       "tag_name": "神奇宝贝"
+      },
+      {
+       "id": "546",
+       "tag_id": "546",
+       "tag_name": "奥特曼"
+      },
+      {
+       "id": "556",
+       "tag_id": "556",
+       "tag_name": "末世"
+      },
+      {
+       "id": "559",
+       "tag_id": "559",
+       "tag_name": "洪荒"
+      },
+      {
+       "id": "566",
+       "tag_id": "566",
+       "tag_name": "玄幻"
+      },
+      {
+       "id": "567",
+       "tag_id": "567",
+       "tag_name": "仙侠"
+      },
+      {
+       "id": "568",
+       "tag_id": "568",
+       "tag_name": "异界"
+      },
+      {
+       "id": "569",
+       "tag_id": "569",
+       "tag_name": "西幻"
+      },
+      {
+       "id": "570",
+       "tag_id": "570",
+       "tag_name": "奇幻"
+      },
+      {
+       "id": "571",
+       "tag_id": "571",
+       "tag_name": "都市"
+      },
+      {
+       "id": "572",
+       "tag_id": "572",
+       "tag_name": "年代"
+      },
+      {
+       "id": "573",
+       "tag_id": "573",
+       "tag_name": "民国"
+      },
+      {
+       "id": "575",
+       "tag_id": "575",
+       "tag_name": "校园"
+      },
+      {
+       "id": "576",
+       "tag_id": "576",
+       "tag_name": "古代"
+      },
+      {
+       "id": "577",
+       "tag_id": "577",
+       "tag_name": "架空历史"
+      },
+      {
+       "id": "578",
+       "tag_id": "578",
+       "tag_name": "远古"
+      },
+      {
+       "id": "582",
+       "tag_id": "582",
+       "tag_name": "星际"
+      },
+      {
+       "id": "583",
+       "tag_id": "583",
+       "tag_name": "历史"
+      },
+      {
+       "id": "586",
+       "tag_id": "586",
+       "tag_name": "大明"
+      },
+      {
+       "id": "590",
+       "tag_id": "590",
+       "tag_name": "乡村"
+      },
+      {
+       "id": "593",
+       "tag_id": "593",
+       "tag_name": "未来世界"
+      },
+      {
+       "id": "594",
+       "tag_id": "594",
+       "tag_name": "科幻"
+      },
+      {
+       "id": "648",
+       "tag_id": "648",
+       "tag_name": "精灵鬼怪"
+      },
+      {
+       "id": "725",
+       "tag_id": "725",
+       "tag_name": "红楼"
+      },
+      {
+       "id": "747",
+       "tag_id": "747",
+       "tag_name": "封神"
+      },
+      {
+       "id": "748",
+       "tag_id": "748",
+       "tag_name": "天庭"
+      },
+      {
+       "id": "752",
+       "tag_id": "752",
+       "tag_name": "卡牌"
+      },
+      {
+       "id": "756",
+       "tag_id": "756",
+       "tag_name": "神话"
+      },
+      {
+       "id": "757",
+       "tag_id": "757",
+       "tag_name": "哈利波特"
+      },
+      {
+       "id": "758",
+       "tag_id": "758",
+       "tag_name": "假面骑士"
+      },
+      {
+       "id": "759",
+       "tag_id": "759",
+       "tag_name": "龙珠"
+      },
+      {
+       "id": "760",
+       "tag_id": "760",
+       "tag_name": "游戏衍生"
+      },
+      {
+       "id": "761",
+       "tag_id": "761",
+       "tag_name": "动漫衍生"
+      },
+      {
+       "id": "762",
+       "tag_id": "762",
+       "tag_name": "影视衍生"
+      },
+      {
+       "id": "776",
+       "tag_id": "776",
+       "tag_name": "现代言情"
+      },
+      {
+       "id": "777",
+       "tag_id": "777",
+       "tag_name": "古代言情"
+      },
+      {
+       "id": "778",
+       "tag_id": "778",
+       "tag_name": "幻想言情"
+      },
+      {
+       "id": "840",
+       "tag_id": "840",
+       "tag_name": "高武"
+      },
+      {
+       "id": "854",
+       "tag_id": "854",
+       "tag_name": "四合院"
+      },
+      {
+       "id": "856",
+       "tag_id": "856",
+       "tag_name": "兽世"
+      },
+      {
+       "id": "858",
+       "tag_id": "858",
+       "tag_name": "大秦"
+      },
+      {
+       "id": "866",
+       "tag_id": "866",
+       "tag_name": "原神"
+      },
+      {
+       "id": "867",
+       "tag_id": "867",
+       "tag_name": "我的世界"
+      },
+      {
+       "id": "869",
+       "tag_id": "869",
+       "tag_name": "铠甲勇士"
+      },
+      {
+       "id": "870",
+       "tag_id": "870",
+       "tag_name": "超神学院"
+      },
+      {
+       "id": "871",
+       "tag_id": "871",
+       "tag_name": "柯南"
+      },
+      {
+       "id": "915",
+       "tag_id": "915",
+       "tag_name": "抗战"
+      },
+      {
+       "id": "943",
+       "tag_id": "943",
+       "tag_name": "宋朝"
+      },
+      {
+       "id": "957",
+       "tag_id": "957",
+       "tag_name": "赛博朋克"
+      },
+      {
+       "id": "959",
+       "tag_id": "959",
+       "tag_name": "惊悚世界"
+      },
+      {
+       "id": "969",
+       "tag_id": "969",
+       "tag_name": "崩坏星穹铁道"
+      },
+      {
+       "id": "1214",
+       "tag_id": "1214",
+       "tag_name": "衍生言情"
+      },
+      {
+       "id": "1261",
+       "tag_id": "1261",
+       "tag_name": "传统玄幻"
+      }
+     ],
+     "type_name": "背景",
+     "is_realistic_themes": 0,
+     "can_choose_count": 3
+    }
+   ]
+  }
+ ]
+}

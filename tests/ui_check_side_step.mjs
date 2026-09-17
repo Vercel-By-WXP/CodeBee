@@ -223,15 +223,17 @@ async function main() {
       back.settingsMode === false && back.subTasksVisible && back.detailHidden && back.pageTitle === "任务",
       JSON.stringify(back));
 
-    // 回归：设置页里的 openRunInRuns 路径仍走设置模式
+    // 回归：管理面板「完整运行」（openRunInRuns → jumpToRun）打开运行详情。
+    // 2026-09-16 起详情统一铺进主栏（不再强留设置模式，jumpToRun 只在本来就
+    // 在设置导航时才切 runs 子页）——断言改为「详情可见」这一用户可感知结果。
     await js(`openRunInRuns(${JSON.stringify(runId)}); "ok"`);
     await sleep(1000);
     const inSettings = await js(`(() => ({
-      settingsMode: document.body.classList.contains("settings-mode"),
       detailVisible: !document.getElementById("run-detail").classList.contains("hidden"),
+      rdTitle: (document.getElementById("rd-title") || {}).textContent || "",
     }))()`);
-    check("回归：管理面板「完整运行」仍进设置模式详情",
-      inSettings.settingsMode === true && inSettings.detailVisible === true, JSON.stringify(inSettings));
+    check("回归：管理面板「完整运行」仍能打开运行详情",
+      inSettings.detailVisible === true, JSON.stringify(inSettings));
 
     // ===== 任务级详情（「查看全部 N 步」）：重试一次造第 2 条 run → 聚合两跑全部步骤 =====
     const runInfo = (await (await fetch(SERVICE + "/api/runs/" + runId)).json()).run;

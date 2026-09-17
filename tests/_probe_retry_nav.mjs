@@ -127,7 +127,7 @@ async function main() {
         { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
       await new Promise(r => setTimeout(r, 300));
       const item = [...document.querySelectorAll("#ctx-menu .ctx-item")]
-        .find((x) => x.textContent.includes("重试任务"));
+        .find((x) => x.textContent.includes("继续任务"));
       if (item) item.click();
       return item ? "clicked" : "no-item"; })()`);
     await sleep(1200);

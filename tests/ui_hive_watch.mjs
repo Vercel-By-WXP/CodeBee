@@ -278,8 +278,8 @@ async function main() {
         oldSideGone: !panel.querySelector(".rd-side"),
       };
     })()`);
-    check("标签条六分区（蜂巢/步骤/成果/版本/圣经/作品信息）",
-      layout.tabIds === "hive,steps,result,git,bible,bookmeta", layout.tabIds);
+    check("标签条七分区（对话/蜂巢/步骤/成果/版本/圣经/作品信息）",
+      layout.tabIds === "chat,hive,steps,result,git,bible,bookmeta", layout.tabIds);
     check("操作按钮/统计条上移头部", layout.pauseInHead && layout.cancelInHead && layout.metaStrip);
     check("旧侧栏移除；蜂巢/日志/步骤在主栏",
       layout.oldSideGone && layout.hiveInMain && layout.logInMain && layout.stepsInMain);

@@ -31,9 +31,9 @@ ENGINE_DEFAULTS = {
 # icon 约定："i-*" = 前端精灵表单色线性图标（随日/夜主题黑白）；其他值（emoji）原样显示，
 # 供自定义流程兜底。预置图标不进 overrides（见 _EDITABLE），保证升级后老数据也拿到新图标。
 BUILTIN_FLOWS = [
-    {"id": "direct", "name": "直接执行", "icon": "i-gauge", "engine": "direct", "builtin": True,
+    {"id": "direct", "name": "直接执行", "icon": "i-chat", "engine": "direct", "builtin": True,
      "goal_hint": "让 AI 直接做什么（一句话，可带附件）",
-     "note": "单智能体直达：目标+附件交给一个 CLI 跑完即止，无拆解/评审（快）"},
+     "note": "CodeBee 直连模型 API 干活（无 CLI 进程），无可用供应商时回退本机 CLI；无拆解/评审（快）"},
     {"id": "code", "name": "代码", "icon": "i-code", "engine": "code", "builtin": True,
      "goal_hint": "要实现/修复什么（一句话）",
      "note": "实现 → 验证命令 → 跨厂商评审 → 自动修复/换将"},

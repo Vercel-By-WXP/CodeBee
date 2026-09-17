@@ -114,6 +114,22 @@ def _normalize_ids(data):
 _LITE = ("mini", "flash", "lite", "nano", "small", "tiny", "8b", "7b", "4b")
 _HEAVY = ("opus", "pro", "max", "ultra", "plus", "heavy", "codex")
 
+# 图片输入命名惯例：vision/omni 词段、glm-4v 式「数字+v」段；vl 子串另判
+# （qwen-vl / internvl2 / cogvlm 等视觉家族的通用命名根，文本模型名含 vl 的极罕见）
+_IMAGE_IN_RE = re.compile(
+    r"(?:^|[-_.])(?:vision|visual|omni)(?:[-_.0-9]|$)|[-_.]\dv(?:[-_.]|$)")
+
+
+def _auto_image_in(name):
+    """按模型名启发式预填「支持图片输入」。claude/gemini 全系原生多模态直接标；
+    其余只认显式命名（vision 词段、vl 子串、数字+v），宁缺勿滥——漏标的明模型
+    用户手动打开即可，误标只是运行时网关显式报错、开关改回即恢复。
+    仅用于新模型的初始声明。"""
+    n = (name or "").lower()
+    if n.startswith(("claude", "gemini")):
+        return True
+    return bool(_IMAGE_IN_RE.search(n)) or "vl" in n
+
 
 def _auto_priority(name):
     """按模型名启发式估强弱：分越高越强（优先级越靠前）。仅用于新模型的初始排序。"""
@@ -251,11 +267,14 @@ def refresh_models(provider_id):
                 # 保留 hidden：用户删掉的模型刷新时不能被重新带回
                 item = {"name": n, "enabled": bool(o.get("enabled", True)),
                         "priority": o.get("priority", 0),
-                        "hidden": bool(o.get("hidden"))}
+                        "hidden": bool(o.get("hidden")),
+                        # 模态声明同理：用户/预填设过的 image_in 刷新时不能被抹掉
+                        "image_in": bool(o.get("image_in"))}
                 (hidden if item["hidden"] else existing).append(item)
             else:
                 fresh.append({"name": n, "enabled": True,
-                              "auto": _auto_priority(n)})
+                              "auto": _auto_priority(n),
+                              "image_in": _auto_image_in(n)})
         # 已删除但本次未返回的条目也保留，否则下次拉取会当作新模型“复活”
         hidden += [dict(o) for n, o in old.items()
                    if o.get("hidden") and n not in names]
@@ -949,6 +968,13 @@ def set_binding(agent_id, provider_id=None, model=None, models=None,
             _sync_chain_refs(b)
             if provider_id is not None:
                 b["provider_id"] = eff_pid  # 显式指定主供应商时覆盖链首推导
+                # 链首非空时主供应商跟链首走：旧读方/下拉残留的 provider_id
+                # 若与链首不一致，会复活成「下拉=停用的旧供应商」（2026-09-16
+                # 一键推荐实测）。链首为空（纯 CLI 默认凭据）才保留显式指定。
+                head_pid = next((c.get("provider_id") for c in b["chain"]
+                                 if c.get("provider_id")), "")
+                if head_pid:
+                    b["provider_id"] = head_pid
         elif models is not None:
             # 有序模型链：第 1 个主模型，其余按序降级
             clean = _clean_models(models)
@@ -1806,6 +1832,14 @@ def _model_bindable(prov, model):
     return True
 
 
+def _model_image_in(prov, model):
+    """模型是否声明支持图片输入：models[] 条目 image_in；缺省/查不到=False（纯文本）。"""
+    for m in ((prov or {}).get("models") or []):
+        if isinstance(m, dict) and m.get("name") == model:
+            return bool(m.get("image_in"))
+    return False
+
+
 def bind_agent(agent, difficulty="default"):
     """按绑定生成应用了供应商/模型覆盖的 agent 副本；无绑定时原样返回。"""
     r = resolve_binding(agent.get("id"), difficulty) or resolve_binding(agent.get("kind"), difficulty)
@@ -2164,6 +2198,24 @@ def reorder_models(provider_id, ordered_names):
         _promote(models)  # 拖拽不能把停用模型排到启用模型前面
         _save(data)
         return None
+
+
+def set_model_caps(provider_id, name, image_in):
+    """声明单个模型的模态能力（当前仅 image_in 图片输入）。返回错误文案或 None。"""
+    with _LOCK:
+        data = _load()
+        prov = next((p for p in data.get("providers", []) if p.get("id") == provider_id), None)
+        if not prov:
+            return "供应商不存在"
+        target = next((m for m in (prov.get("models") or [])
+                       if m.get("name") == name), None)
+        if target is None:
+            return "模型不存在: %s" % name
+        image_in = bool(image_in)
+        if bool(target.get("image_in")) != image_in:   # 有差异才落盘
+            target["image_in"] = image_in
+            _save(data)
+    return None
 
 
 def _post_json_http(url, headers, body, allow_private, timeout=20):

@@ -45,23 +45,94 @@ class TestNorm(unittest.TestCase):
         m = bookmeta._norm({
             "book_name": "这是一个超过了十五个字限制的书名需要被截断它",
             "signing_mode": "不知道", "target_reader": "未知",
-            "read_tags": ["都市", "都市", "  ", "异能", 123],
+            "read_tags": ["重生", "重生", "  ", "打脸", "完全编造的标签"],
             "protagonist_1": "林晚照还会更长",
             "summary": "x" * 600,
         }, "fanqie", "女主复仇文")
         self.assertLessEqual(len(m["book_name"]), 15)
-        self.assertEqual(m["signing_mode"], "连载模式")     # 非法值回默认
+        self.assertEqual(m["signing_mode"], "连载模式")     # 非法值回默认（表单真实选项）
         self.assertEqual(m["target_reader"], "女频")        # goal 含「女」
-        self.assertEqual(m["read_tags"], ["都市", "异能", "123"])  # 去重/去空/转字符串
+        self.assertEqual(m["category"], "")                 # 假分类清空（宁缺勿错）
+        self.assertEqual(m["legacy_read_tags"], ["重生", "打脸"])  # 旧字段并入+过滤
+        self.assertEqual(m["tags_theme"], [])
+        self.assertEqual(m["content_world"], [])            # 新内容标签组默认空
         self.assertEqual(m["protagonist_1"], "林晚照还会")
         self.assertLessEqual(len(m["summary"]), 500)
+
+    def test_fanqie_content_tags_limits(self):
+        # 内容标签四组：官方上限 情节4/情感2/人设4/世界观1，表外词过滤
+        m = bookmeta._norm({
+            "book_name": "《织焰》", "summary": "s", "target_reader": "女频",
+            "content_plot": ["追妻火葬场", "全员重生", "编造情节", "修罗场", "多宝", "退婚"],
+            "content_emotion": ["先婚后爱", "智性恋", "隐婚"],
+            "content_character": ["满级大佬", "炮灰", "学霸", "神豪", "团宠"],
+            "content_world": ["规则怪谈", "兽世"],   # 世界观最多 1，第二个被截
+        }, "fanqie", "")
+        self.assertEqual(len(m["content_plot"]), 4)
+        self.assertNotIn("编造情节", m["content_plot"])
+        self.assertEqual(len(m["content_emotion"]), 2)      # 截到上限 2
+        self.assertEqual(len(m["content_character"]), 4)
+        self.assertEqual(m["content_world"], ["规则怪谈"])   # 只留 1 个
+
+    def test_fanqie_real_catalog(self):
+        # 真实表内项可通过：女频分类「宫斗宅斗」、阅读标签三组各最多 2
+        m = bookmeta._norm({
+            "book_name": "《金枝》", "summary": "s", "target_reader": "女频",
+            "signing_mode": "连载模式", "category": "宫斗宅斗",
+            "tags_theme": ["古言权谋"], "tags_role": ["嫡女"],
+            "tags_plot": ["重生", "追妻火葬场"],   # 「宅斗」不在番茄女频标签表，会被滤
+        }, "fanqie", "女频宅斗")
+        self.assertEqual(m["category"], "宫斗宅斗")
+        self.assertEqual(m["tags_theme"], ["古言权谋"])
+        self.assertEqual(m["tags_role"], ["嫡女"])
+        self.assertEqual(m["tags_plot"], ["重生", "追妻火葬场"])
+        # 男频/女频表隔离：男频分类在女频频段下不可用
+        m2 = bookmeta._norm({"book_name": "x", "summary": "s", "target_reader": "女频",
+                             "category": "战神赘婿"}, "fanqie", "")
+        self.assertEqual(m2["category"], "")
+
+    def test_qimao_cascade(self):
+        from core import bookmeta_catalog as cat
+        m = bookmeta._norm({"book_name": "x", "summary": "s", "target_reader": "女生",
+                            "category_main": "古代言情", "category_sub": "宫闱宅斗"},
+                           "qimao", "")
+        self.assertEqual(m["category_main"], "古代言情")
+        self.assertEqual(m["category_sub"], "宫闱宅斗")
+        # 级联不匹配 → 二级清空
+        m2 = bookmeta._norm({"book_name": "x", "summary": "s", "target_reader": "女生",
+                             "category_main": "古代言情", "category_sub": "总裁豪门"},
+                            "qimao", "")
+        self.assertEqual(m2["category_sub"], "")
+        # 一级分类必须在真实表内，且按频道隔离：男生频道没有「古代言情」
+        m3 = bookmeta._norm({"book_name": "x", "summary": "s", "target_reader": "男生",
+                             "category_main": "古代言情"}, "qimao", "")
+        self.assertEqual(m3["category_main"], "")
+        m4 = bookmeta._norm({"book_name": "x", "summary": "s", "target_reader": "男生",
+                             "category_main": "玄幻奇幻", "category_sub": "东方玄幻"},
+                            "qimao", "")
+        self.assertEqual((m4["category_main"], m4["category_sub"]), ("玄幻奇幻", "东方玄幻"))
+        self.assertEqual(len(cat.QIMAO_MAIN_CATEGORIES), 17)   # 男生11 + 女生6（官方全量）
+
+    def test_qimao_four_tag_groups(self):
+        # 四组标签：官方每组必选 1-3（过滤表外、截 3）；旧 tags 字段并入所属组
+        m = bookmeta._norm({
+            "book_name": "x", "summary": "s", "target_reader": "女生",
+            "tags_style": ["甜宠", "编造风格", "爽文", "轻松"],   # 截到 3
+            "tags_role": ["嫡女", "团宠"], "tags_plot": ["重生"], "tags_bg": ["古代"],
+            "tags": ["女帝"],   # 旧字段并入角色组
+        }, "qimao", "")
+        self.assertEqual(m["tags_style"], ["甜宠", "爽文", "轻松"])
+        self.assertEqual(m["tags_role"], ["嫡女", "团宠", "女帝"])
+        self.assertEqual(m["tags_plot"], ["重生"])
+        self.assertEqual(m["tags_bg"], ["古代"])
 
     def test_qimao_norm_defaults(self):
         m = bookmeta._norm({"summary": "s"}, "qimao", "男主都市流")
         self.assertEqual(m["target_reader"], "男生")
         self.assertEqual(m["status"], "连载中")
         self.assertEqual(m["book_name"], "")
-        self.assertEqual(m["tags"], [])
+        for k in ("tags_style", "tags_role", "tags_plot", "tags_bg"):
+            self.assertEqual(m[k], [])
 
     def test_norm_rejects_garbage(self):
         self.assertIsNone(bookmeta._norm("not a dict", "fanqie"))
@@ -78,17 +149,38 @@ class TestNorm(unittest.TestCase):
         m2 = bookmeta._template_meta({"goal": "g", "title": "t"}, "qimao", None)
         self.assertEqual(m2["status"], "连载中")
 
+    def test_options_block_injects_real_tables(self):
+        # 提示词选项块：按读者频段给对应表，且包含真实分类名
+        blk_f = bookmeta._fq_options_block("女频宅斗文")
+        self.assertIn("宫斗宅斗", blk_f)
+        self.assertIn("古言权谋", blk_f)
+        self.assertIn("先婚后爱", blk_f)      # 内容标签·情感组注入
+        self.assertNotIn("战神赘婿", blk_f)   # 女频表不含男频分类
+        blk_m = bookmeta._fq_options_block("男频都市异能")
+        self.assertIn("都市高武", blk_m)
+        self.assertIn("多女主", blk_m)
+        blk_q = bookmeta._qm_options_block("女频古代言情")
+        self.assertIn("现代言情", blk_q)
+        self.assertIn("总裁豪门", blk_q)
+        self.assertIn("必选1-3个", blk_q)
+        # 频道隔离：女生频道不出现男生一级
+        self.assertNotIn("玄幻奇幻", blk_q)
+
 
 class TestMarkdown(unittest.TestCase):
     def test_render_contains_fields(self):
         task = {"id": "t-1", "title": "测试书"}
         meta = bookmeta._norm({"book_name": "《测试》", "summary": "简介内容",
-                               "read_tags": ["都市", "异能"]}, "fanqie", "")
+                               "category": "宫斗宅斗", "tags_plot": ["重生", "打脸"],
+                               "content_world": ["规则怪谈"],
+                               "target_reader": "女频"}, "fanqie", "")
         meta["source"] = "编排者(x)"
         md = bookmeta.render_markdown(task, "fanqie", meta)
         self.assertIn("作品信息（番茄）", md)
         self.assertIn("**作品名**：《测试》", md)
-        self.assertIn("**阅读标签**：都市、异能", md)
+        self.assertIn("**主分类**：宫斗宅斗", md)
+        self.assertIn("**情节标签**：重生、打脸", md)
+        self.assertIn("**内容·世界观**：规则怪谈", md)
         self.assertIn("**主角名2**：（待补充）", md)
         self.assertIn("来源：编排者(x)", md)
 
@@ -115,6 +207,34 @@ class TestStoreBookMeta(unittest.TestCase):
 
     def test_set_missing_task(self):
         self.assertFalse(store.set_book_meta("t-nope-000000-9999", "fanqie", {}))
+
+    def test_set_bumps_state_version(self):
+        # 不 bump 则 SSE 存活的前端不拉新状态：卡片停在旧状态（点生成不翻、跑完也不翻）
+        tid = "t-bmtest-000000-0004"
+        with store.LOCK:
+            store._TASKS[tid] = {"id": tid, "title": "x", "goal": "g", "status": "done"}
+        ver0 = store.state_version()
+        self.assertTrue(store.set_book_meta(tid, "qimao", {"status": "running"}))
+        self.assertGreater(store.state_version(), ver0)
+
+
+class TestRecoverOrphans(unittest.TestCase):
+    """服务重启杀掉后台生成线程后，落盘 running 无人写终态：启动收尸改判 failed
+    （不改判则前端永远「生成中」且按钮禁用，接口幂等拒绝，卡死不可自愈）。"""
+
+    def test_running_to_failed_done_kept(self):
+        tid = "t-bmtest-000000-0003"
+        with store.LOCK:
+            store._TASKS[tid] = {"id": tid, "title": "x", "goal": "g", "status": "done",
+                                 "book_meta": {"fanqie": {"status": "running", "at": "x"},
+                                               "qimao": {"status": "done",
+                                                         "data": {"book_name": "n"}}}}
+        n = bookmeta.recover_orphans()
+        self.assertGreaterEqual(n, 1)
+        bm = store.get_task(tid)["book_meta"]
+        self.assertEqual(bm["fanqie"]["status"], "failed")
+        self.assertIn("重启", bm["fanqie"]["error"])
+        self.assertEqual(bm["qimao"]["status"], "done")   # 已完成的不误伤
 
 
 class TestCollectMaterial(unittest.TestCase):

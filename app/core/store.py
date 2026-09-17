@@ -244,8 +244,9 @@ def _valid_id(task_id):
 def set_book_meta(task_id, platform, entry):
     """写任务的作品信息状态（book_meta[platform] = {status, data?, error?, at}）。
 
-    一键生成是后台线程跑的，前端靠任务 JSON 里的这个字段看进度（SSE 推送）。
-    任务不存在返回 False。"""
+    一键生成是后台线程跑的，前端靠任务 JSON 里的这个字段看进度。这里必须
+    bump_state：SSE 存活时前端不主动拉状态，不推送则卡片停在旧状态（点生成
+    不翻「生成中」、跑完不翻「已生成」）。任务不存在返回 False。"""
     if not _valid_id(task_id):
         return False
     with LOCK:
@@ -254,6 +255,7 @@ def set_book_meta(task_id, platform, entry):
             return False
         task.setdefault("book_meta", {})[platform] = entry
         _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
+    bump_state()
     return True
 
 
@@ -1142,7 +1144,7 @@ def add_step(run_id, role, agent_id, agent_label, note=""):
 
 
 def finish_step(run_id, n, status, summary="", exit_code=None,
-                cost_usd=0.0, tokens=0.0, duration_s=None, model=None):
+                cost_usd=0.0, tokens=0.0, duration_s=None, model=None, output=None):
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -1159,6 +1161,8 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                     s["model"] = str(model)[:80]
                 if duration_s is not None:
                     s["duration_s"] = round(duration_s, 1)
+                if output is not None:
+                    s["output"] = str(output)[:6000]
                 break
         run["cost_usd"] = round(run.get("cost_usd", 0.0) + cost_usd, 4)
         run["tokens"] = run.get("tokens", 0) + tokens

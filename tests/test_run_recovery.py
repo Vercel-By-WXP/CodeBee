@@ -128,3 +128,43 @@ class TestRecoverOrphanedRuns(BaseTest):
         self.assertEqual([c.get("chapter") for c in scores], [1],
                          "failed run 的实时章节分数必须被继承")
         self.assertEqual(scores[0]["means"]["情节"], 8.0)
+
+
+class TestResumeInterrupted(BaseTest):
+    """启动恢复（jobs.resume_interrupted）——重点是 paused 尊重用户暂停意图。"""
+
+    @staticmethod
+    def _seed_serial_task(store, workdir, title):
+        return store.create_task({
+            "type": "serial_novel", "title": title, "goal": "写连载",
+            "workdir": str(workdir),
+            "serial": {"chapters": 3, "words_per_chapter": 800},
+        })
+
+    def test_skips_user_paused_run(self):
+        """用户暂停 + 服务重启：收尸成 failed 后不得自动续跑。
+
+        用户明确表达「停下」；重启替他拉起来违背意图——继续与否
+        必须由用户点「继续任务」决定。
+        """
+        from app.core import store
+        from app.core import jobs
+        task = self._seed_serial_task(store, self.workdir, "paused serial")
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running", paused=True)
+        store.recover_orphaned_runs()   # 启动收尸：running → failed，paused 标志保留
+        self.assertEqual(jobs.resume_interrupted(), 0)
+        runs = [r for r in store.list_runs(50) if r.get("task_id") == task["id"]]
+        self.assertEqual(len(runs), 1, "暂停的任务重启后不得被自动续跑出新运行")
+
+    def test_resumes_unpaused_interrupted_serial(self):
+        """无暂停标志的中断连载仍自动续跑（既有行为回归）。"""
+        from app.core import store
+        from app.core import jobs
+        task = self._seed_serial_task(store, self.workdir, "plain serial")
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running")
+        store.recover_orphaned_runs()
+        self.assertEqual(jobs.resume_interrupted(), 1)
+        runs = [r for r in store.list_runs(50) if r.get("task_id") == task["id"]]
+        self.assertEqual(len(runs), 2, "普通中断的连载任务应被自动续跑")

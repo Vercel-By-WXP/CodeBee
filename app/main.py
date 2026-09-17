@@ -572,6 +572,14 @@ class Handler(BaseHTTPRequestHandler):
             err = modelhub.reorder_models(body.get("provider_id") or "",
                                           body.get("names") or [])
             return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
+        if path == "/api/models/model-caps":
+            # 模态能力声明：当前仅 image_in（图片输入），内置智能体传图以此为准
+            from core import modelhub
+            body = self._body()
+            err = modelhub.set_model_caps(body.get("provider_id") or "",
+                                          body.get("name") or "",
+                                          body.get("image_in"))
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
         if path == "/api/models/test-provider":
             from core import modelhub
             return self._json(200, modelhub.test_provider(self._body().get("id") or ""))
@@ -1122,16 +1130,54 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"ok": True, "message": msg})
 
     def _api_run_timeline(self, run_id):
-        """直连对话视图的时间线：用户消息与各步 CLI 输出按序合并成一个气泡流。
+        """直连对话视图的时间线：目标 + 用户消息 + 各步最终回答按序合并成气泡流。
 
-        步骤正文取自该步日志文件（CLI 原始输出），按 created/序号排序：
-        [user 消息] → [assistant 输出] → [user 追问] → …。供详情页「对话」分区直读，
-        前端不必逐条拉日志。非 direct 任务也能取（返回步骤流），只是视图不启用。"""
+        形状：[任务目标] → [用户消息] → [assistant 输出] → [用户追问] → …。
+        步骤正文只认 output/summary（干净回答），供详情页「对话」分区直读。
+
+        直连任务按「任务级」回放（跨该任务全部 run 依时间合并）：追话每轮
+        起一个新 run，用户消息有继承、智能体回答（步骤 output）不继承——只
+        回放单个 run 会把历史轮的回答全丢掉（2026-09-17 实测：一发消息，
+        之前智能体输出从时间线消失）。继承的消息是同 id 副本，跨 run 按
+        (id, 时间, 文本) 去重；每个 run 内先消息后步骤（消息总是先于本轮
+        回答送达）。非 direct 任务保持单 run 步骤流（视图未启用）。"""
         run = store.get_run(run_id)
         if not run:
             return self._json(404, {"error": "not found"})
+        task = store.get_task(run.get("task_id") or "") if run.get("task_id") else None
+        engine = (task or {}).get("engine") or ""
         items = []
-        for m in (run.get("messages") or []):
+        if engine == "direct":
+            runs = list(reversed(store.task_runs(run["task_id"])))   # 旧→新
+        else:
+            runs = [run]
+        # 首条用户气泡=任务目标：否则对话开场只有智能体在说话（用户看不到自己问了什么）。
+        # 附件归一成文件名：task.attachments 是 [{name,path,...}] 对象，直接下发
+        # 前端会渲染成「[object Object]」（2026-09-17 实测）；时间取任务创建时刻
+        # （对话的开场是任务本身，不是某一轮续跑的起始时间）
+        if task and engine == "direct":
+            atts = []
+            for a in (task.get("attachments") or []):
+                p = str((a.get("name") or a.get("path") or "") if isinstance(a, dict) else a)
+                if p:
+                    atts.append(p.replace("\\", "/").rsplit("/", 1)[-1])
+            items.append({
+                "kind": "user",
+                "at": task.get("created_at") or (runs[0].get("created_at") if runs else "") or "",
+                "who": "用户",
+                "text": task.get("goal") or "",
+                "attachments": atts,
+                "consumed": True,
+                "id": None,
+            })
+        seen_msgs = set()
+
+        def _emit_msg(m):
+            key = (str(m.get("id") or ""), str(m.get("created_at") or ""),
+                   str(m.get("text") or ""))
+            if key in seen_msgs:
+                return   # retry 继承的同一条消息：只在原 run 位置显示一次
+            seen_msgs.add(key)
             items.append({
                 "kind": "user",
                 "at": m.get("created_at") or "",
@@ -1141,7 +1187,8 @@ class Handler(BaseHTTPRequestHandler):
                 "consumed": bool(m.get("consumed")),
                 "id": m.get("id"),
             })
-        for s in (run.get("steps") or []):
+
+        def _emit_step(s):
             # 正文只认 output（runner 抽好的最终回答）→ summary。绝不回退读原始
             # 日志：日志是全量事件流（下发提示词回显 + CLI 报错），塞进气泡就成了
             # 「看日志」（2026-09-17 实测症状）；运行中的步骤两者都还没有，留空给
@@ -1159,9 +1206,29 @@ class Handler(BaseHTTPRequestHandler):
                 "text": body,
                 "note": s.get("note") or "",
             })
+
+        for r in runs:
+            msgs = r.get("messages") or []
+            steps = r.get("steps") or []
+            # 消息没有日期（只有 HH:MM:SS），跨 run 不能按时间混排；用语义顺序：
+            # 已消费消息（驱动了本轮回答）→ 已完成步骤 → 未消费消息（run 结束后
+            # 才追话到达的）→ 运行中/排队步骤（打字动画）。追问因此总在上一轮
+            # 回答之后、本轮打字动画之前。
+            for m in msgs:
+                if m.get("consumed"):
+                    _emit_msg(m)
+            for s in steps:
+                if (s.get("status") or "") == "done":
+                    _emit_step(s)
+            for m in msgs:
+                if not m.get("consumed"):
+                    _emit_msg(m)
+            for s in steps:
+                if (s.get("status") or "") != "done":
+                    _emit_step(s)
         return self._json(200, {
             "run_id": run_id, "status": run.get("status") or "",
-            "engine": (store.get_task(run.get("task_id") or "") or {}).get("engine") or "",
+            "engine": engine,
             "items": items,
         })
 
@@ -1389,6 +1456,10 @@ def main():
     n_rc = store.recover_orphaned_runs()
     if n_rc:
         print("[CodeBee] 崩溃恢复：%d 个遗留运行标记为 failed（interrupted at startup）" % n_rc)
+    from core import bookmeta
+    n_bo = bookmeta.recover_orphans()  # 作品信息生成线程同样会被重启杀掉，遗留 running 收尸
+    if n_bo:
+        print("[CodeBee] 崩溃恢复：%d 条作品信息生成中断标记为 failed（可点重试）" % n_bo)
     try:
         from core import settings_schema
         settings_schema.register_default_namespaces()  # budget/cascade/compaction 配置就绪（幂等）

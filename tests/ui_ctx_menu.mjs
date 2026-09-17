@@ -287,12 +287,11 @@ async function main() {
       !!t2 && man, JSON.stringify({ inArchived: !!t2, man }));
 
     /* ---- G) 「查看文件」：左侧栏整页切到文件浏览页，递归列出全部文件 ---- */
-    // 取消归档找回：页面持有控制权，写接口必须由页面自己发（无头 API 会被 423 挡）。
-    const restore = await evalJs(`fetch("/api/tasks/${TASK}/archive", {
-      method: "POST",
-      headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
-      body: JSON.stringify({ archived: false }) }).then(r => r.status)`);
-    check("取消归档还原（为查看文件测试准备）", restore === 200);
+    // 取消归档找回：走页面 archiveTask()（用户真实路径：时钟开关→取消归档）——
+    // 前端会顺带把任务工作目录从「已移除目录」捞回（unhideSideDir），
+    // 这是「取消归档后文件夹回到侧栏」的产品语义。
+    const restore = await evalJs(`archiveTask("${TASK}", false); "ok"`);
+    check("取消归档还原（为查看文件测试准备）", restore === "ok");
     // SSE 按 2s 桶轮询：等文件夹重新出现在侧栏
     let folderBack = false;
     for (let i = 0; i < 16; i++) {

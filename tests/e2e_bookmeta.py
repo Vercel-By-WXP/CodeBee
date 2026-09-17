@@ -103,6 +103,11 @@ def main():
               data_f.get("book_name") and data_f.get("signing_mode") == "连载模式"
               and data_f.get("target_reader") in ("男频", "女频") and data_f.get("summary"),
               data_f)
+        check("番茄字段在（主分类/阅读三组/内容四组）",
+              "category" in data_f and "tags_theme" in data_f
+              and "tags_role" in data_f and "tags_plot" in data_f
+              and "content_plot" in data_f and "content_world" in data_f,
+              sorted(data_f.keys()))
         check("goal 含「女」→ 女频", data_f.get("target_reader") == "女频",
               data_f.get("target_reader"))
         md = wd / "作品信息-番茄.md"

@@ -94,7 +94,7 @@ async function main() {
     check("检出失败任务：chip 显示「检出失败」", c.chip.includes("检出失败") && !c.hidden, JSON.stringify(c));
     check("卡片带检出错误原因", c.main.includes("仓库中不存在版本"), c.main);
     check("不再误报「未启用代码版本隔离」", !c.main.includes("未启用代码版本隔离"), c.main);
-    check("提示可重试重新检出", c.main.includes("重试任务"), c.main);
+    check("提示可继续重新检出", c.main.includes("继续任务"), c.main);
 
     await evalJs(`(async () => { openInspector("tfail2");
       await new Promise(r => setTimeout(r, 1200)); return 1; })()`);

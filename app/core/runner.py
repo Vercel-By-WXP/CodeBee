@@ -81,18 +81,21 @@ def _drain_streams(proc, t_out, t_err, *, timeout=10):
             t.join(timeout=remaining)
 
 
-def _pipe_reader(stream, chunks, log_fh):
+def _pipe_reader(stream, chunks, log_fh, stamp=None):
     """持续读子进程管道并实时落盘。
 
     必须用 read1()：BufferedReader.read(n) 会阻塞到凑满 n 字节或 EOF，
     在长命令（npm 安装等）上等于"进程结束才一次性返回"，日志面板全程空白。
     read1() 只要有数据就返回，日志才能真正边跑边看。
+    stamp：共享 [最后输出时刻]，停滞看门狗据此判定进程是否卡死。
     """
     while True:
         b = stream.read1(65536)
         if not b:
             break
         chunks.append(b)
+        if stamp is not None:
+            stamp[0] = time.time()
         if log_fh:
             try:
                 log_fh.write(b)
@@ -258,16 +261,22 @@ def pretty_cli_log(text, max_event_chars=4000):
 
 
 def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
-                timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None):
+                timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None,
+                stall_timeout=0):
     """通用子进程执行：并发读管道防死锁；超时/取消杀整棵进程树。
 
-    返回 {ok, exit_code, stdout, stderr, duration, cancelled, timed_out}。
+    stall_timeout：停滞看门狗（秒，0=关闭）——超过该时长 stdout/stderr 无任何
+    新输出即判卡死，提前杀树返回（timed_out=True + stalled=True）。只对输出
+    持续流动的 CLI 开（codex JSONL 事件流）；claude json 到结束才一次性输出，
+    开了会把正常长任务误杀。
+
+    返回 {ok, exit_code, stdout, stderr, duration, cancelled, timed_out, stalled}。
     """
     if shell_cmd:
         argv = ["cmd", "/c", shell_cmd]
     if argv is None:
         return {"ok": False, "exit_code": None, "stdout": "", "stderr": "argv 为空",
-                "duration": 0.0, "cancelled": False, "timed_out": False}
+                "duration": 0.0, "cancelled": False, "timed_out": False, "stalled": False}
     full_env = scrub_env(os.environ.copy(), mode="drop")
     if env:
         # 5A：env 关键字环境变量注入用户传入的 env（属于有意注入，例如模型 API key）
@@ -302,8 +311,9 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                     "stderr": "启动失败: %r" % e, "duration": 0.0,
                     "cancelled": False, "timed_out": False}
         out_chunks, err_chunks = [], []
-        t_out = threading.Thread(target=_pipe_reader, args=(proc.stdout, out_chunks, log_fh), daemon=True)
-        t_err = threading.Thread(target=_pipe_reader, args=(proc.stderr, err_chunks, log_fh), daemon=True)
+        stamp = [time.time()]   # 最后输出时刻（两条管道共同刷新）
+        t_out = threading.Thread(target=_pipe_reader, args=(proc.stdout, out_chunks, log_fh, stamp), daemon=True)
+        t_err = threading.Thread(target=_pipe_reader, args=(proc.stderr, err_chunks, log_fh, stamp), daemon=True)
         t_out.start()
         t_err.start()
         if stdin_text is not None:
@@ -319,7 +329,7 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                         pass
             threading.Thread(target=_feed, daemon=True).start()
         start = time.time()
-        cancelled = timed_out = False
+        cancelled = timed_out = stalled = False
         while True:
             try:
                 proc.wait(timeout=0.4)
@@ -332,6 +342,14 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 _drain_streams(proc, t_out, t_err, timeout=10)
                 break
             if time.time() - start > timeout:
+                timed_out = True
+                _kill_tree(proc.pid)
+                _drain_streams(proc, t_out, t_err, timeout=5)
+                break
+            if stall_timeout and time.time() - stamp[0] > stall_timeout:
+                # 停滞看门狗：长静默多为卡死（网关挂起/CLI 假死），与其耗满总
+                # 超时不如提前杀——错误按超时归类，走既有的换模型/换将链路
+                stalled = True
                 timed_out = True
                 _kill_tree(proc.pid)
                 _drain_streams(proc, t_out, t_err, timeout=5)
@@ -350,12 +368,15 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 pass
         if cancelled:
             stderr += "\n[已被用户取消]"
+        elif stalled:
+            stderr += "\n[输出停滞 %ss，已终止进程树]" % stall_timeout
         elif timed_out:
             stderr += "\n[超时 %ss，已终止进程树]" % timeout
         return {
             "ok": exit_code == 0 and not cancelled and not timed_out,
             "exit_code": exit_code, "stdout": stdout, "stderr": stderr,
             "duration": duration, "cancelled": cancelled, "timed_out": timed_out,
+            "stalled": stalled,
         }
     finally:
         if log_fh:
@@ -405,6 +426,28 @@ def _parse_codex_jsonl(stdout):
     return text, usage, sid
 
 
+def _codex_work_events(stdout):
+    """统计本轮事件流里真实「动了手」的事件数（命令执行/文件改动/MCP 工具）。
+
+    实现步空转闸的客观判据：2026-09-17 mo-so 实现步模型一条命令都没发，纯口头
+    谎报「进程执行被策略拦截」却 exit 0 + 一段像模像样的总结——text 看不出敷衍，
+    command_execution 计数为 0 才是硬证据。"""
+    n = 0
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except Exception:
+            continue
+        if ev.get("type") == "item.completed" and (
+                ev.get("item") or {}).get("type") in (
+                "command_execution", "file_change", "mcp_tool_call"):
+            n += 1
+    return n
+
+
 def _codex_fail_msg(stdout):
     """从 JSONL 事件流提取终态失败消息；无失败返回 ""。
 
@@ -435,10 +478,21 @@ def _codex_fail_msg(stdout):
 
 
 def _parse_claude_json(stdout):
+    data = None
     try:
         data = json.loads(stdout)
     except Exception:
-        return None
+        # stream-json：逐行事件取最后一条 type=="result"（与旧单 JSON 同构）
+        for line in stdout.splitlines():
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                ev = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(ev, dict) and ev.get("type") == "result":
+                data = ev
     if not isinstance(data, dict):
         return None
     u = data.get("usage") or {}
@@ -478,6 +532,7 @@ def _model_flag(kind, model):
 
 _TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
               "unavailable", "overloaded", "rate limit", "timeout", "timed out",
+              "输出停滞",
               # 2026-09-15 连载验收实测：网关故障形态远不止 HTTP 5xx——
               # Z.ai 报 "400 [1211] Unknown Model"（模型临时下架）、qwen 连本地
               # 端点 ECONNREFUSED、codex initialize 空响应，这些都被旧表判成
@@ -585,6 +640,20 @@ def _resolve_attempts(agent):
             for m in (models_to_try or [None])[:3]]
 
 
+def _codex_sandbox(readonly):
+    """codex 沙箱档位。写步默认 danger-full-access（2026-09-17 用户拍板「默认给全部
+    权限」）：workspace-write 禁网+禁盘外写，模型偶发还会误判沙箱受限、谎报
+    「进程执行被策略拦截」直接躺平（mo-so BUG#27596 实测，沙箱探针证明命令本可跑）。
+    只读步（评审/规划）仍 read-only——评审者可写会污染 git diff 裁决。
+    env TUTTI_CODEX_SANDBOX 可钉死某档（workspace-write / read-only / danger-full-access）。"""
+    if readonly:
+        return "read-only"
+    env = os.environ.get("TUTTI_CODEX_SANDBOX", "").strip().lower()
+    if env in ("workspace-write", "read-only", "danger-full-access"):
+        return env
+    return "danger-full-access"
+
+
 def _build_call(agent, kind, sid, readonly, model, prompt, images=None):
     """构建一次 CLI 调用的 (argv, stdin_text, prompt)。model 可为 None=CLI 默认。
     images 为图片附件绝对路径：codex 用 -i 原生附图；其余 kind 忽略（调用方已过滤）。"""
@@ -602,14 +671,13 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None):
                 "--skip-git-repo-check", "--json"]
             if model:
                 argv += ["-m", model]
-            argv += ["-c", 'sandbox_mode="%s"' %
-                     ("read-only" if readonly else "workspace-write")]
+            argv += ["-c", 'sandbox_mode="%s"' % _codex_sandbox(readonly)]
             if cp:
                 argv += _codex_provider_args(cp)
         else:
             argv = resolve_command(agent["command"]) + [
                 "exec", "--skip-git-repo-check", "--json",
-                "-s", "read-only" if readonly else "workspace-write"]
+                "-s", _codex_sandbox(readonly)]
             if model:
                 argv += ["-m", model]
             if cp:
@@ -620,7 +688,10 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None):
             argv += ["-i", p]
         stdin_text = prompt
     elif kind == "claude":
-        argv = resolve_command(agent["command"]) + ["-p", "--output-format", "json"]
+        # stream-json（2026-09-17 起）：逐行事件边跑边吐——停滞看门狗有得看，
+        # 步骤日志实时可读；result 末行与旧单 JSON 同构，解析器双形态兼容
+        argv = resolve_command(agent["command"]) + [
+            "-p", "--output-format", "stream-json", "--verbose"]
         if sid:
             argv += ["--resume", sid]
         if model:
@@ -629,15 +700,23 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None):
             # 实测本机自定义网关在 -p 模式下工具续接会丢最终结果（用工具必空）。
             # 评审/规划所需的上下文已内嵌在提示词中，显式禁用工具最稳。
             prompt = "（请勿使用任何工具，直接依据下方内容回答。）\n\n" + prompt
-        else:
+        elif os.environ.get("TUTTI_CLAUDE_PERMS", "").strip() == "acceptEdits":
             argv += ["--permission-mode", "acceptEdits"]
+        else:
+            # 无人值守 -p 下 acceptEdits 只自动放行改文件，Bash 一律权限拒绝 →
+            # 模型以为环境受限谎报「被策略拦截」躺平（同 codex 沙箱误判案）。
+            # 默认跳过全部权限检查（2026-09-17 用户拍板），env 可收回旧行为。
+            argv += ["--dangerously-skip-permissions"]
         stdin_text = prompt
     elif kind == "opencode":
         argv = resolve_command(agent["command"]) + ["run"]
         if sid:
             argv += ["-s", sid]  # 无头续会话：-s 指定会话 id（-c 只能接最近一次）
         if model:
-            argv += ["--model", model]
+            # opencode 只认 provider/model 全名（裸名直接 UnknownError，实测）；
+            # CodeBee 同步进其配置的 provider id 固定为 orch，故裸名补前缀。
+            # 绑定里已写全名（含 /）的尊重原值。
+            argv += ["--model", model if "/" in model else "orch/" + model]
         stdin_text = prompt  # 无位置参数且 stdin 有内容时读 stdin
     elif kind == "qwen":  # gemini-cli 系：无参数且 stdin 有内容时读 stdin
         argv = resolve_command(agent["command"])
@@ -682,9 +761,20 @@ def _check_approval(agent):
     return False, "sensitive step requires policy=ask UI flow (Phase 5) — currently blocking"
 
 
+def _stall_timeout(env_name, default):
+    """停滞看门狗秒数：stdout/stderr 持续无新输出超过该时长 → 判卡死提前杀，
+    错误按超时归类走既有换模型/换将链路。只对事件流持续流动的 CLI 启用
+    （codex JSONL / claude stream-json）；qwen/opencode/generic 结束才一次性
+    输出，开了会误杀正常长任务，仍靠总超时兜底。env 可调，0=关闭。"""
+    try:
+        return max(0, int(os.environ.get(env_name, str(default))))
+    except Exception:
+        return default
+
+
 def run_agent(agent, prompt, workdir=None, readonly=True,
               timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None,
-              images=None):
+              images=None, require_tools=False):
     """执行一次智能体调用，返回统一结构
     {ok, text, json, cost_usd, tokens, error, error_code, raw}。
     agent 来自 registry.effective_agents()；resume 为已有会话 id，仅真实智能体生效
@@ -692,6 +782,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     generic: catalog orch.resume_argv_template）。
     images：任务图片附件的绝对路径，仅 codex 原生支持（-i）；其余智能体靠
     提示词里的 _attachments/ 路径 + 自身读文件能力获取，无读图工具时静默忽略。
+    require_tools：实现步空转闸（仅 codex 事件流可判）——True 时本轮零
+    command_execution/file_change/mcp_tool_call 事件即判 VENDOR_REFUSAL，
+    防模型纯口头谎报「环境受限」蒙混过关（2026-09-17 mo-so 实测）。
 
     模型尝试顺序来自 _resolve_attempts：跨厂商链（每条独立 env）或
     主模型 + 降级备选；瞬态错误才换下一条，取消/超时/解析失败不降级。
@@ -703,6 +796,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     if orch_timeout_ms:
         timeout = float(orch_timeout_ms) / 1000.0
     kind = agent.get("kind", "generic")
+    stall_t = (_stall_timeout("TUTTI_CODEX_STALL_TIMEOUT", 600) if kind == "codex"
+               else _stall_timeout("TUTTI_CLAUDE_STALL_TIMEOUT", 600)
+               if kind == "claude" else 0)
     # 5G：approval NEVER 一线（无人值守不静默降级）
     ok, reason = _check_approval(agent)
     if not ok:
@@ -747,7 +843,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                                        att["model"], prompt,
                                                        images=images if kind == "codex" else None)
             res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
-                              timeout=timeout, cancel_event=cancel_event, log_path=log_path)
+                              timeout=timeout, cancel_event=cancel_event, log_path=log_path,
+                              stall_timeout=stall_t)
             out = {"ok": res["ok"], "text": "", "json": None, "cost_usd": 0.0,
                    "tokens": 0, "usage": None, "error": "", "error_code": "",
                    "sid": "", "raw": res, "kind": kind, "model": att["model"]}
@@ -756,9 +853,12 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 # stdin..." 打在 stderr，真正的配额/限流错误全在 stdout 的 JSONL
                 # 里——只取其一会让 _quota_error/_transient_error 判空。
                 tail = ((res["stderr"] or "") + "\n" + (res["stdout"] or "")).strip()[-600:]
-                out["error"] = (("超时" if res["timed_out"] else "取消" if res["cancelled"]
-                                 else "退出码 %s" % res["exit_code"])
-                                + ("；stderr/stdout: " + tail if tail else ""))
+                head = ("输出停滞 %ss（stall timed out，疑似卡死已提前终止）" % stall_t
+                        if res.get("stalled")
+                        else "超时" if res["timed_out"]
+                        else "取消" if res["cancelled"]
+                        else "退出码 %s" % res["exit_code"])
+                out["error"] = head + ("；stderr/stdout: " + tail if tail else "")
                 if kind == "codex":
                     fm = _codex_fail_msg(res["stdout"])
                     if fm:
@@ -784,6 +884,15 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     out["error_code"] = ErrorCode.VENDOR_ERROR
                 elif not out["text"]:  # 事件流解析失败时退化为取 stdout 尾部
                     out["text"] = res["stdout"][-2000:]
+                if require_tools and out["ok"] and _codex_work_events(res["stdout"]) == 0:
+                    # 实现步空转闸：exit 0 + 有话但零动手 → 判拒绝（fatal 语义正确，
+                    # 不把谎报的「已改完」静默传给下游；auto 模式换将逻辑按 ok 触发，
+                    # 仍可换别的 CLI 再试）。原文尾段留进错误供人核对。
+                    out["ok"] = False
+                    out["error"] = ("实现步零工具调用：模型未执行任何命令/文件改动，"
+                                    "仅口头汇报（典型如谎报环境受限）。回答尾段: %s"
+                                    % (out["text"] or "")[-300:])
+                    out["error_code"] = ErrorCode.VENDOR_REFUSAL
                 if not out["text"] and out["ok"]:
                     out["error_code"] = _classify_failure(res, kind="codex", empty_output=True)
             elif kind == "claude":

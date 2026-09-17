@@ -205,6 +205,9 @@ def resume_interrupted(limit=3):
                 continue
             if run.get("cancelled_by_user"):
                 continue
+            if run.get("paused"):
+                continue   # 用户主动暂停的运行（重启收尸后 paused 标志保留）不自动续跑——
+                           # 「继续」由用户点「继续任务」决定，不替用户做主
             if not _recent(run):
                 continue
             if latest_by_task.get(run["task_id"]) != run["id"]:
@@ -320,8 +323,12 @@ def _do_mgmt(job, ev):
             store.finish_step(run_id, step["n"], "failed", summary="该智能体未安装或未启用编排")
             store.update_run(run_id, status="failed", error="未启用", ended_at=_now())
             return
-        res = _r.run_agent(agent, "连通性测试：请只回复两个字：OK", readonly=True,
-                           timeout=180, cancel_event=ev, log_path=str(log_abs))
+        res = _r.run_agent(agent, "连通性测试：请只回复两个字：OK",
+                           readonly=True,
+                           # 300s：codex CLI 启动要拉 5 个 MCP 服务器 + 注入约 13 万
+                           # token 技能上下文，首 token 常超 180s（2026-09-17 实测
+                           # 网关裸探 8s 就回，慢在 CLI 自身启动与上下文）。
+                           timeout=300, cancel_event=ev, log_path=str(log_abs))
         ok = res["ok"] and "OK" in (res.get("text") or "").upper()
         try:
             _usage.record(source="smoke", run_id=run_id, step=step["n"], role="smoke",

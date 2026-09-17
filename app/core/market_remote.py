@@ -68,6 +68,9 @@ SOURCES = [
     {"id": "clawhub", "name": "ClawHub（OpenClaw 生态）", "kind": "clawhub",
      "urls": ["https://clawhub.ai/api/v1/skills?limit=50",
               "https://clawhub.ai/api/v1/trending"]},
+    {"id": "cocoloop", "name": "CocoLoop 技能商店", "kind": "cocoloop",
+     "urls": ["https://api.cocoloop.cn/api/v1/store/skills",
+              "https://api.cocoloop.com/api/v1/store/skills"]},
 ]
 
 # 外部目录视图：服务端对全量缓存过滤后分页下发（缓存全在本地，翻页零成本）。
@@ -77,6 +80,9 @@ _PAGE_LIMIT = 60
 _CLAWHUB_BASE = "https://clawhub.ai/api/v1"
 _CLAWHUB_PAGES = 4        # 技能列表最多翻页数（50/页，覆盖最新 ~200 个）
 _CLAWHUB_TRENDING = 20    # trending 榕入目录的条数
+
+_COLOLOOP_PAGES = 3       # CocoLoop 商店最多翻页数（50/页，覆盖热门 ~150 个）
+_COLOLOOP_PAGE_SIZE = 50
 
 SOURCES_BY_ID = {s["id"]: s for s in SOURCES}
 
@@ -203,6 +209,12 @@ def _normalize(source_meta, entry):
         install = {"kind": "clawhub", "slug": str(src_d.get("slug") or ""),
                    "reference": str(src_d.get("reference") or ""),
                    "url": src_d.get("url") or ""}
+    elif src_d.get("source") == "cocoloop":
+        # CocoLoop 商店：download_url 是 zip 直链（同 zcode 的 zip 来源，
+        # 但清单里没有 sha256，靠 https 传输 + 解包后的纯技能白名单兜底）
+        url = str(src_d.get("url") or "").strip()
+        install = ({"kind": "zip", "url": url, "sha256": "", "path": ""}
+                   if url else {"kind": "unsupported"})
     else:
         install = {"kind": "unsupported"}
     author = entry.get("author") or {}
@@ -375,6 +387,51 @@ def _fetch_clawhub_catalog():
     return {"name": "clawhub", "description": "ClawHub skills", "plugins": plugins}
 
 
+def _fetch_cocoloop_catalog():
+    """CocoLoop 商店（api.cocoloop.cn）→ 合成标准 plugins 目录。
+    按下载量排序翻几页取热门技能；安全等级（S+/S/A…）榕进 keywords 供 UI 展示。
+    api.cocoloop.com 会 302 到 .cn 域名，urllib 自动跟随，两镜像等效。"""
+    base = SOURCES_BY_ID["cocoloop"]["urls"][0]
+    seen, plugins = set(), []
+    for page in range(1, _COLOLOOP_PAGES + 1):
+        url = ("%s?page=%d&page_size=%d&sort=downloads"
+               % (base, page, _COLOLOOP_PAGE_SIZE))
+        d = json.loads(_fetch(url).decode("utf-8", errors="replace"))
+        if not isinstance(d, dict) or d.get("code") not in (0, None):
+            raise ValueError("CocoLoop 响应异常: %s" % (d.get("message") if isinstance(d, dict) else d))
+        items = (d.get("data") or {}).get("items") or []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            name = str(it.get("name") or "").strip()
+            dl = str(it.get("download_url") or "").strip()
+            if not name or not dl or name in seen:
+                continue
+            seen.add(name)
+            sec = str(it.get("security_level") or "").strip()
+            keywords = [str(k) for k in (it.get("tags") or [])][:8] if isinstance(it.get("tags"), list) else []
+            if sec:
+                keywords.append("安全评级:%s" % sec.upper())
+            plugins.append({
+                "name": name,
+                "displayName": str(it.get("subtitle") or "").strip() or name,
+                "description": str(it.get("brief") or it.get("subtitle")
+                                   or name)[:400],
+                "author": {"name": str(it.get("author") or "").strip()},
+                "version": "",
+                "category": str(it.get("category") or "").strip(),
+                "keywords": keywords,
+                "stats": {"downloads": str(it.get("downloads") or "")},
+                "source": {"source": "cocoloop", "url": dl},
+            })
+        total = int((d.get("data") or {}).get("pages") or 0)
+        if page >= max(total, 1):
+            break
+    if not plugins:
+        raise ValueError("CocoLoop 目录为空")
+    return {"name": "cocoloop", "description": "CocoLoop skills", "plugins": plugins}
+
+
 def refresh(source_id=None):
     """拉取目录清单（全部或指定来源），成功即写缓存。返回 view()。"""
     results = []
@@ -388,6 +445,12 @@ def refresh(source_id=None):
                 used = s["urls"][0]
             except Exception as e:
                 err = "%s: %s" % ("clawhub.ai", e)
+        elif s["kind"] == "cocoloop":
+            try:
+                raw = _fetch_cocoloop_catalog()
+                used = s["urls"][0]
+            except Exception as e:
+                err = "%s: %s" % (urlparse(s["urls"][0]).hostname, e)
         else:
             for url in s["urls"]:
                 try:

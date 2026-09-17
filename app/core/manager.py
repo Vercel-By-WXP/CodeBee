@@ -28,7 +28,8 @@ _LOCK = threading.RLock()
 _STATE = {"detected": {}, "versions": {}, "detect_ts": 0.0, "detect_ev": None}
 
 # 能自动写入默认模型的 config.format（其余格式只能手动编辑）
-_WRITABLE_FORMATS = ("toml-line", "toml-section", "json", "json-path", "yaml-line")
+_WRITABLE_FORMATS = ("toml-line", "toml-section", "json", "json-path", "jsonc",
+                     "yaml-line")
 
 
 def _expand(p):
@@ -401,7 +402,7 @@ def read_model(entry):
     if cfg["format"] == "jsonc":
         keys = (cfg.get("model_key") or "model").split(".")
         try:
-            data = json.loads(re.sub(r"//[^\n]*", "", text) or "{}")
+            data = json.loads(_jsonc_strip_comments(text) or "{}")
         except Exception:
             return None
         return _json_path_get(data, keys)
@@ -418,7 +419,7 @@ def read_model(entry):
 
 def write_model(entry, model):
     """写入默认模型（改动前自动备份 .bak）。支持 toml-line / toml-section /
-    json / json-path / yaml-line。"""
+    json / json-path / jsonc / yaml-line。"""
     path = _config_path(entry)
     cfg = entry.get("config") or {}
     fmt = cfg.get("format")
@@ -447,8 +448,19 @@ def write_model(entry, model):
             # settings.json、openclaw 缺失即安全默认——官方文档明确「缺失即
             # 内置默认」）；它正是用户层覆盖的落点，缺了按需创建
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            Path(path).write_bytes(b"{}" if fmt in ("json", "json-path") else b"")
-        if fmt == "toml-line":
+            Path(path).write_bytes(b"{}" if fmt in ("json", "json-path", "jsonc") else b"")
+        if fmt == "jsonc":
+            # mimo（mimocode.jsonc）有注释，整体重解析会丢注释——复用
+            # _jsonc_set 做就地片段改写（只动目标键，其余原样保留）
+            keys = (cfg.get("model_key") or "model").split(".")
+            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            new_text, ok = _jsonc_set(text, tuple(keys),
+                                      json.dumps(model, ensure_ascii=False))
+            if not ok:
+                return {"ok": False,
+                        "error": "jsonc 结构异常，未能就地写入 %s（已避免覆盖）" % path}
+            Path(path).write_bytes(new_text.encode("utf-8"))
+        elif fmt == "toml-line":
             text = open(path, encoding="utf-8", errors="replace").read()
             new_line = 'model = "%s"' % model
             if re.search(r'(?m)^\s*model\s*=\s*"[^"]*"', text):
@@ -476,9 +488,17 @@ def write_model(entry, model):
                 return {"ok": False, "error": "配置文件不是合法 JSON，已中止（避免覆盖）"}
             _json_path_set(data, (cfg.get("model_key") or "model").split("."), model)
             # pi 的 settings.json：defaultModel 必须配 defaultProvider 才能解析出
-            # (provider, model) 二元组；catalog 里声明了的伴随键一并落盘
+            # (provider, model) 二元组；catalog 里声明了的伴随键一并落盘。
+            # setdefault 语义：用户已设的值（如 defaultProvider: anthropic）不被空串覆盖
             for k, v in (cfg.get("model_extra_keys") or {}).items():
-                _json_path_set(data, k.split("."), v)
+                cur = data
+                ks = k.split(".")
+                for kk in ks[:-1]:
+                    if not isinstance(cur.get(kk), dict):
+                        cur[kk] = {}
+                    cur = cur[kk]
+                if cur.get(ks[-1]) in (None, ""):
+                    cur[ks[-1]] = v
             Path(path).write_bytes(
                 json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
         else:
@@ -872,24 +892,65 @@ def _jsonc_scan_object(text, start):
                 j += 1
             keys[-1][4] = j + 1
             i = j + 1
+            state = "key"
         elif ch == '"':
             j = skip_string(i + 1)
             keys[-1][4] = j
             i = j
-        else:  # 数字 / true / false / null
+            state = "key"
+        else:  # 数字 / true / false / null（或值后直接撞上 , } 换行的容错）
             j = i
             while j < n and text[j] not in ",}\r\n":
                 j += 1
             keys[-1][4] = j
-            i = j
-        state = "key"
+            # j==i 说明值位置直接是分隔符/换行（空值或状态残留）——必须前进一格，
+            # 否则 while i < n 永远停在原地（死循环）
+            i = j if j > i else j + 1
+            state = "key"
     return n, keys
+
+
+def _jsonc_strip_comments(text):
+    """剥掉 jsonc 的 // 行注释与 /* */ 块注释，供 json.loads 解析。
+    字符串字面量内部的 //（$schema 的 https:// 等）不剥——逐字符扫描；
+    简单的 re.sub(r"//[^\\n]*") 会把 URL 截断导致解析失败。"""
+    out = []
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '"':
+            j = i + 1
+            while j < n:
+                if text[j] == "\\":
+                    j += 2
+                    continue
+                if text[j] == '"':
+                    break
+                j += 1
+            out.append(text[i:min(j + 1, n)])
+            i = j + 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "/":
+            e = text.find("\n", i)
+            i = n if e < 0 else e  # 行注释：换行符本身保留
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "*":
+            e = text.find("*/", i + 2)
+            i = n if e < 0 else e + 2
+            out.append(" ")
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def _jsonc_set(text, path, value_json):
     """JSON(C) 顶层就地写键：path=("provider","orch") 或 ("model",)。
-    只动目标片段，其余文本（含注释与原格式）原样保留。返回 (new_text, ok)。"""
+    只动目标片段，其余文本（含注释与原格式）原样保留。返回 (new_text, ok)。
+    空文件按空对象起笔（write_model 缺文件按需创建的产物）。"""
     brace = text.find("{")
+    if brace < 0 and not text.strip():
+        return ('{\n  "%s": %s\n}' % (path[0], value_json), True)
     if brace < 0:
         return text, False
     end, keys = _jsonc_scan_object(text, brace)
@@ -1030,10 +1091,18 @@ def _sync_opencode_settings(entry, model, prov):
     全不存在时建 catalog 登记的那个。纯 JSON 走整体读改写；带注释的 JSONC 走
     文本级就地 patch（保留注释）。返回错误串或 None。"""
     npm = "@ai-sdk/anthropic" if prov.get("protocol") == "anthropic" else "@ai-sdk/openai-compatible"
+    base = prov.get("base_url") or ""
+    if prov.get("protocol") == "anthropic" and not base.rstrip("/").endswith("/v1"):
+        # @ai-sdk/anthropic 在 baseURL 后只拼 /messages（官方默认 baseURL 本身带
+        # /v1），而 models.json 里 anthropic 供应商的 base 不带 /v1（modelhub
+        # 发请求时自己补）——不补会打到 <host>/messages，网关回 "Not Allowed"
+        # （2026-09-17 公司Anthropic 实测）。
+        base = base.rstrip("/") + "/v1"
     block = {"npm": npm, "name": prov.get("name") or "CodeBee 绑定",
-             "options": {"baseURL": prov.get("base_url") or "",
+             "options": {"baseURL": base,
                          "apiKey": prov.get("api_key") or ""},
              "models": {model: {"name": model}} if model else {}}
+    top_perms = {"edit": "allow", "bash": "allow", "webfetch": "allow"}
     top_model = ("orch/" + model) if model else ""
     targets = [p for p in _opencode_config_candidates(entry) if os.path.isfile(p)] \
         or [_opencode_config_candidates(entry)[0]]
@@ -1069,6 +1138,10 @@ def _sync_opencode_settings(entry, model, prov):
                 data["provider"] = provs
                 if top_model:
                     data["model"] = top_model
+                # 无人值守必配：headless 下 opencode 工具调用默认要审批，全部被
+                # 拒（"The user rejected permission..."，2026-09-17 实测）——
+                # 按用户拍板的「默认给全部权限」写入放行段
+                data["permission"] = top_perms
                 new_text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
             else:  # JSONC（带注释）：文本级 patch
                 block_json = json.dumps(block, ensure_ascii=False)
@@ -1079,6 +1152,8 @@ def _sync_opencode_settings(entry, model, prov):
                 if top_model:
                     new_text, _ = _jsonc_set(new_text, ("model",),
                                              json.dumps(top_model))
+                new_text, _ = _jsonc_set(new_text, ("permission",),
+                                         json.dumps(top_perms))
             if os.path.isfile(path):
                 shutil.copyfile(path, path + ".bak")
             Path(path).write_bytes(new_text.encode("utf-8"))
