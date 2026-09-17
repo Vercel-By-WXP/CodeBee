@@ -57,7 +57,11 @@ def configure(max_workers):
 def _resize():
     global _seq
     with _pool_lock:
-        while _alive < _target:
+        # 上限 50 次尝试：Thread.start() 返回到 _worker 真正执行之间有调度间隙，
+        # 极端环境下（杀软挂起新线程）_alive 迟迟不涨，无界循环会转着圈造线程。
+        attempts = 0
+        while _alive < _target and attempts < 50:
+            attempts += 1
             _seq += 1
             try:
                 threading.Thread(target=_worker, name="job-worker-%d" % _seq,
@@ -67,6 +71,9 @@ def _resize():
 
 
 def start_worker():
+    """标记队列可用并加载并发配置。worker 线程**不在启动期创建**（真实装机
+    案例：某些杀软环境下启动期 Thread.start() 挂死，进程停在任务队列一步），
+    推迟到首次 enqueue 时由 _ensure_workers 创建——服务就绪不再依赖线程。"""
     global _started
     if _started:
         return
@@ -83,7 +90,17 @@ def start_worker():
 def enqueue(job):
     if not _started:
         start_worker()
+    _ensure_workers()
     _QUEUE.put(job)
+
+
+def _ensure_workers():
+    """队列里积压超过空闲 worker 数时补线程（惰性扩容，替代启动期预建）。"""
+    with _pool_lock:
+        pending = _QUEUE.qsize()
+        need = max(_target, 1) - _alive + pending
+    if need > 0:
+        _resize()
 
 
 def cancel(run_id):

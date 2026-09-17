@@ -1142,14 +1142,13 @@ class Handler(BaseHTTPRequestHandler):
                 "id": m.get("id"),
             })
         for s in (run.get("steps") or []):
-            # 正文优先取步骤记录里的 output（runner 抽好的最终回答，干净）；
-            # 老 run 没有该字段时退回日志——日志是全量事件流（含【思考】【命令】），
-            # 塞进对话气泡就成了「看日志」，只作兜底。
+            # 正文只认 output（runner 抽好的最终回答）→ summary。绝不回退读原始
+            # 日志：日志是全量事件流（下发提示词回显 + CLI 报错），塞进气泡就成了
+            # 「看日志」（2026-09-17 实测症状）；运行中的步骤两者都还没有，留空给
+            # 前端显示「正在执行」占位。
             body = s.get("output") or ""
             if not body:
                 body = s.get("summary") or ""
-            if not body and s.get("log"):
-                body = store.read_step_log(run_id, s["log"], tail=8000, pretty=True)
             items.append({
                 "kind": "agent",
                 "at": s.get("ended_at") or s.get("started_at") or "",
@@ -1343,6 +1342,13 @@ def main():
 
     # 启动每步都落一行进度（flush 强制落屏）：冷启动在慢盘/杀软扫描下可能几十秒，
     # 不打印会让用户以为卡死（真实案例：npm 装完首启只看到横幅像挂了）。
+    # 看门狗：任何阶段卡超过 20 秒，自动把所有线程堆栈打到控制台（每 20s 重复）——
+    # 用户截图即可精确定位卡点，不用猜。
+    try:
+        import faulthandler
+        faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)
+    except Exception:
+        pass
     _t0 = time.time()
 
     def _step(msg):
@@ -1431,6 +1437,11 @@ def main():
     print("[CodeBee] 本机     http://127.0.0.1:%d" % args.port, flush=True)
     print("[CodeBee] 数据目录 %s" % paths.DATA_DIR, flush=True)
     print("[CodeBee] ✔ 已就绪，浏览器即将自动打开；不要关闭本窗口。", flush=True)
+    try:
+        import faulthandler
+        faulthandler.cancel_dump_traceback_later()  # 启动完成，看门狗退役（否则运行期每 20s 误报堆栈）
+    except Exception:
+        pass
     if remote.PUBLIC_URL:
         print("[CodeBee] 公网     %s/?token=%s   ← 任何网络可访问（反代回源已强制校验令牌）"
               % (remote.PUBLIC_URL, tok))
