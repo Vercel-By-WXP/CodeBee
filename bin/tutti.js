@@ -102,7 +102,7 @@ for (const a of process.argv.slice(2)) {
 
 // CLI 转发契约：codebee 之后的用户参数（已过白名单）原样作为 main.py 的 argv。
 // 控制台日志即见：GBK 控制台下强制 UTF-8 输出（否则中文 print 触发 UnicodeEncodeError 静默卡死）。
-const childEnv = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' });
+const childEnv = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1', PYTHONUNBUFFERED: '1' });
 // TUTTI_PYTHON 覆盖解释器：只允许在三个字面量里选（py/python/python3，.exe
 // 后缀可选、大小写不限）——环境变量永远只做「选择题」，不做「填空题」；
 // 机器上有多个解释器且探测选错时，用它切换。

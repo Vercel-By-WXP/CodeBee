@@ -1142,11 +1142,14 @@ class Handler(BaseHTTPRequestHandler):
                 "id": m.get("id"),
             })
         for s in (run.get("steps") or []):
-            body = ""
-            if s.get("log"):
-                body = store.read_step_log(run_id, s["log"], tail=20000, pretty=True)
+            # 正文优先取步骤记录里的 output（runner 抽好的最终回答，干净）；
+            # 老 run 没有该字段时退回日志——日志是全量事件流（含【思考】【命令】），
+            # 塞进对话气泡就成了「看日志」，只作兜底。
+            body = s.get("output") or ""
             if not body:
                 body = s.get("summary") or ""
+            if not body and s.get("log"):
+                body = store.read_step_log(run_id, s["log"], tail=8000, pretty=True)
             items.append({
                 "kind": "agent",
                 "at": s.get("ended_at") or s.get("started_at") or "",
@@ -1338,15 +1341,26 @@ def main():
                         help="自更新重启用：先等旧实例释放端口再启动（Windows 双 LISTEN 防护）")
     args = parser.parse_args()
 
+    # 启动每步都落一行进度（flush 强制落屏）：冷启动在慢盘/杀软扫描下可能几十秒，
+    # 不打印会让用户以为卡死（真实案例：npm 装完首启只看到横幅像挂了）。
+    _t0 = time.time()
+
+    def _step(msg):
+        print("[CodeBee] %s (%.1fs)" % (msg, time.time() - _t0), flush=True)
+
+    _step("正在准备数据目录…")
     paths.ensure_dirs()
     from core import attachments
     n_pc = attachments.cleanup_stale()  # 待提交附件残留清理（崩溃/弃单不堆积）
     if n_pc:
         print("[CodeBee] 附件待提交区：清理过期残留 %d 个" % n_pc)
+    _step("正在加载任务目录…")
     catalog.load()
     store.load_all()
+    _step("正在启动健康探针…")
     health.init()  # 供应商健康/告警：恢复落盘状态 + 启动探针线程
     from core import modelhub
+    _step("正在迁移模型绑定…")
     modelhub.migrate_orch_models()  # 旧「编排模型」偏好并入 CLI 绑定（幂等，带备份）
     modelhub.migrate_chains()       # 旧单供应商模型链升级为跨厂商 chain（幂等，带备份）
     try:
@@ -1355,10 +1369,12 @@ def main():
     except Exception:
         pass
     from core import skills
+    _step("正在整理经验库…")
     n_lc = skills.migrate_lesson_categories()  # 分类字段上线前的教训按关键词回填（幂等，带备份）
     if n_lc:
         print("[CodeBee] 经验库：%d 条历史教训已自动归类" % n_lc)
     from core import usage
+    _step("正在回填用量台账…")
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）
     if n_bf:
         print("[CodeBee] 用量台账：已从历史运行回填 %d 条记录" % n_bf)
@@ -1372,10 +1388,12 @@ def main():
         settings_schema.register_default_namespaces()  # budget/cascade/compaction 配置就绪（幂等）
     except Exception:
         pass
+    _step("正在启动任务队列…")
     jobs.start_worker()
     n_resume = jobs.resume_interrupted()   # 启动恢复：服务被杀中断的连载任务自动续跑
     if n_resume:
         print("[CodeBee] 已自动恢复 %d 个中断的连载任务（断点续跑）" % n_resume)
+    _step("正在启动自动化调度…")
     n_auto = automation.start()   # 自动化：加载定时任务并拉起调度线程（错过的一次性任务不补跑）
     if n_auto:
         print("[CodeBee] 自动化：%d 个定时任务已加载" % n_auto)
@@ -1410,8 +1428,9 @@ def main():
               "\n[CodeBee]          要固定域名：cloudflared tunnel login 后参考 README 公网章节。")
         store.bump_state()  # 扫码弹框下次打开即可拿到公网地址
 
-    print("[CodeBee] 本机     http://127.0.0.1:%d" % args.port)
-    print("[CodeBee] 数据目录 %s" % paths.DATA_DIR)
+    print("[CodeBee] 本机     http://127.0.0.1:%d" % args.port, flush=True)
+    print("[CodeBee] 数据目录 %s" % paths.DATA_DIR, flush=True)
+    print("[CodeBee] ✔ 已就绪，浏览器即将自动打开；不要关闭本窗口。", flush=True)
     if remote.PUBLIC_URL:
         print("[CodeBee] 公网     %s/?token=%s   ← 任何网络可访问（反代回源已强制校验令牌）"
               % (remote.PUBLIC_URL, tok))
