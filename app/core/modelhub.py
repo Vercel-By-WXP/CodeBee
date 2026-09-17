@@ -2023,8 +2023,10 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
                 continue  # 原生协议与适配过的 wire 都不匹配：跳过
             if prov.get("name") in down_set:
                 continue  # 健康监测判定 down：跳过，省掉无效等待
-            if _is_codex_target(agent_kind_or_id) and codex_wire_blocked(prov):
-                continue  # codex 撞过该供应商 wire 不兼容（chat-only）：冷却中自动绕开
+            if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
+                continue  # codex 0.154+ 只讲 responses wire：chat-only 供应商在起跑前
+                          # 就剔除（此前撞了才冷却 30 分钟，每轮白烧一次注定失败的
+                          # 尝试——2026-09-17 续4 连载 c35 实测）
             if model and not _model_bindable(prov, model):
                 continue  # 模型被停用/删除：该条跳过（2026-09-15 告警弹框「禁用该模型」）
             # 多 KEY：同一厂商按 KEY 展开成多条，顺序即调用顺序。欠费的 KEY 被
@@ -2060,11 +2062,12 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     prov = provs.get(pid)
     if not prov or not prov.get("enabled", True) or not prov.get("api_key"):
         return None
-    if _is_codex_target(agent_kind_or_id) and codex_wire_blocked(prov):
-        return None  # codex wire 不兼容冷却中：解析为空 → 路由绑定分自动转负
     ep = _entry_endpoint(prov, allowed)
     if not ep:
         return None  # google 只登记；dsh 只接受 OpenAI 兼容端点；未适配的不硬塞
+    if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
+        return None  # codex 0.154+ 只讲 responses：chat-only 供应商直接判不可绑
+                     # （解析为空 → 死链闸门/路由降权接手，不浪费 CLI 尝试）
     names = [m["name"] for m in _enabled_models(prov)]
     model = prov.get("model_" + tier) or "" if (routing and tier) else ""
     if not model:

@@ -832,6 +832,11 @@ def _sync_codex_settings(entry, model, cp):
     name = cp.get("name", "orch")
     def q(v):
         return '"%s"' % str(v).replace("\\", "\\\\").replace('"', '\\"')
+    if (cp.get("wire_api") or "responses") == "chat":
+        # codex 0.154+ 起 chat wire 被官方移除，写进 config.toml 会让 CLI 连配置
+        # 都载入不了（Error loading config.toml）——宁可明确拒绝也不落坏配置。
+        return ("供应商只有 chat completions wire，codex 0.154+ 已移除支持，未写入"
+                " config.toml——请为 codex 绑定 responses 兼容的供应商")
     pairs = [("name", q(cp.get("name", name))),
              ("base_url", q(cp.get("base_url", ""))),
              ("env_key", q(cp.get("env_key", "ORCH_API_KEY"))),
