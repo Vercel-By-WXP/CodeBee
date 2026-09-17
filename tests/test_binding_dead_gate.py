@@ -8,6 +8,8 @@ auto 流程实现步的既有换将负责接手健康 CLI。
 """
 from __future__ import annotations
 
+import json
+
 from base import BaseTest
 
 
@@ -90,3 +92,54 @@ class TestBindingDeadGate(HealthMixin):
                                  str(self.workdir), readonly=True, ev=None)
         self.assertTrue(res["ok"])
         self.assertEqual(health.snapshot()["providers"], [])
+
+
+class TestAlertSyncOnOps(HealthMixin):
+    """厂商/模型启停后即刻重评估静态告警：恢复当场解除，新死当场亮起。"""
+
+    _MODELS = {
+        "providers": [{"id": "p1", "name": "P1", "protocol": "openai",
+                       "base_url": "https://x.example/v1", "api_key": "k",
+                       "enabled": True, "wire_api": "responses",
+                       "models": [{"name": "m1", "enabled": True}]}],
+        "bindings": {"opencode": {"provider_id": "p1", "model": "m1",
+                                  "chain": [{"provider_id": "p1", "model": "m1"}],
+                                  "models": ["m1"]}},
+    }
+
+    def _seed(self):
+        from app.core import modelhub as MH
+        MH._FILE.write_text(json.dumps(self._MODELS), encoding="utf-8")
+
+    def test_provider_disable_raises_reenable_clears(self):
+        from app.core import health, modelhub as MH
+        self._seed()
+        MH.sync_binding_alerts()
+        self.assertFalse(health.snapshot()["any_alerting"])   # 链健康：无告警
+        n, err = MH.providers_op(["p1"], "disable")
+        self.assertEqual((n, err), (1, ""))
+        self.assertTrue(health.snapshot()["any_alerting"], "停用厂商必须当场告警")
+        self.assertIn("已停用", health.snapshot()["alerts"][0]["last_error"])
+        n, _ = MH.providers_op(["p1"], "enable")
+        self.assertEqual(n, 1)
+        self.assertFalse(health.snapshot()["any_alerting"], "重新启用必须当场解除告警")
+
+    def test_model_disable_raises_reenable_clears(self):
+        from app.core import health, modelhub as MH
+        self._seed()
+        n, err = MH.model_ops("p1", ["m1"], "disable")
+        self.assertEqual((n, err), (1, ""))
+        self.assertTrue(health.snapshot()["any_alerting"], "停用链上模型必须当场告警")
+        n, _ = MH.model_ops("p1", ["m1"], "enable")
+        self.assertEqual(n, 1)
+        self.assertFalse(health.snapshot()["any_alerting"])
+
+    def test_unbound_cli_never_alerts(self):
+        from app.core import health, modelhub as MH
+        models = json.loads(json.dumps(self._MODELS))
+        models["bindings"]["qwencode"] = {"models": []}   # 没配过链
+        MH._FILE.write_text(json.dumps(models), encoding="utf-8")
+        MH.providers_op(["p1"], "disable")
+        names = [p["provider"] for p in health.snapshot()["providers"]]
+        self.assertIn("绑定链·opencode", names)
+        self.assertNotIn("绑定链·qwencode", names, "没配链的 CLI 不归静态告警管")

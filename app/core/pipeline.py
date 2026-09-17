@@ -274,16 +274,13 @@ def _wait_gate(run_id, ev):
 
 
 def _binding_dead_msg(agent):
-    """死链失败文案：说明为什么不回落本机默认 + 该 CLI 需要什么协议的供应商。"""
-    aid = agent.get("id") or ""
+    """死链失败文案：委托 modelhub 单一真源（告警 sync 共用同一文案）。"""
     try:
         from . import modelhub
-        protos = modelhub.bindable_protocols(aid)
+        return modelhub.binding_dead_msg(agent.get("id") or "")
     except Exception:
-        protos = ()
-    hint = ("该 CLI 仅接受 %s 协议的已启用供应商；" % "、".join(protos)) if protos else ""
-    return ("绑定链全部失效（链上供应商已停用/删除/无密钥，或模型已停用），"
-            "本步判失败、不回落 CLI 本机默认——%s请在「CLI 绑定」页为该 CLI 绑定已启用的供应商" % hint)
+        return ("绑定链全部失效，本步判失败、不回落 CLI 本机默认——"
+                "请在「CLI 绑定」页为该 CLI 绑定已启用的供应商")
 
 
 def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None, require_tools=False):
