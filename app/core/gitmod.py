@@ -66,6 +66,11 @@ def repo_info(workdir):
             if h.strip():
                 recent.append({"hash": h.strip(), "subject": subj.strip()[:120]})
     br = (branch["stdout"] or "").strip() if branch["ok"] else ""
+    if br == "HEAD":
+        # 游离 HEAD 时 abbrev-ref 返回字面量 "HEAD"——统一成哨兵值。
+        # 否则「切回 from_branch」会把 "HEAD" 当分支名原样 checkout，
+        # 而 git checkout HEAD 是原地空转（退出码 0 但不换位），分支永远切不走。
+        br = "(游离 HEAD)"
     return {
         "repo": True,
         "branch": br or "(游离 HEAD)",
@@ -408,7 +413,7 @@ def finalize_run(workdir, gitinfo, message):
     # 切回原分支；原为游离 HEAD 时回到基线提交（同样游离）
     back = (gitinfo or {}).get("from_branch") or ""
     base = (gitinfo or {}).get("base_commit") or ""
-    target = back if (back and back != "(游离 HEAD)" and back != branch) else base
+    target = back if (back and back not in ("(游离 HEAD)", "HEAD") and back != branch) else base
     if target:
         co = _git(workdir, "checkout", "--quiet", target, timeout=60)
         if not co["ok"]:
@@ -472,6 +477,12 @@ def merge_task_branch(workdir, task):
             out = {"restore_error": ""}
             _restore_stash(wd, stash_sha, out)
         return refuse("无法确定任务分支的基线分支（找不到带检出信息的运行记录），请手工合并")
+    if origin in ("HEAD", "(游离 HEAD)"):
+        # 老数据里游离基线存的是字面量 "HEAD"：合并没有分支可落，显式拒绝
+        if stash_sha:
+            out = {"restore_error": ""}
+            _restore_stash(wd, stash_sha, out)
+        return refuse("任务分支从游离 HEAD 检出，没有可合并的基线分支；请手工合并")
     if cur != origin:
         if stash_sha:
             out = {"restore_error": ""}
@@ -516,11 +527,56 @@ def merge_task_branch(workdir, task):
     return True, "", info_out
 
 
+def _worktrees_on_branch(workdir, br):
+    """git worktree list --porcelain → 检出 br 的工作树路径列表。
+
+    porcelain 自 git 2.7 起可用；解析失败返回 None（调用方显式拒绝，
+    绝不带着「分支可能仍被占用」硬删）。
+    """
+    w = _git(workdir, "worktree", "list", "--porcelain")
+    if not w["ok"]:
+        return None
+    entries, cur = [], None
+    for ln in (w["stdout"] or "").splitlines():
+        if ln.startswith("worktree "):
+            cur = {"path": ln[len("worktree "):].strip(), "branch": ""}
+            entries.append(cur)
+        elif cur is not None and ln.startswith("branch refs/heads/"):
+            cur["branch"] = ln[len("branch refs/heads/"):].strip()
+    return [x for x in entries if x["branch"] == br]
+
+
+def _switch_off_branch(workdir, br, target):
+    """把工作树从 br 上切走，返回错误信息（成功为空串）。
+
+    先尝试切到 target；两种失败形态都兜底成游离：
+    - checkout 直接失败（如目标分支被别的工作树占用）→ --detach target；
+    - checkout「成功」却没换位（target 是 HEAD 这类原地引用，实测
+      git checkout HEAD 退出码 0 且停在原分支）→ 复查后强制游离。
+    最终以 rev-parse 复核 br 真的腾空为准，不信 checkout 的退出码。
+    """
+    co = _git(workdir, "checkout", "--quiet", target, timeout=60) if target \
+        else _git(workdir, "checkout", "--quiet", "--detach", timeout=60)
+    cur = _git(workdir, "rev-parse", "--abbrev-ref", "HEAD")
+    if (cur["stdout"] or "").strip() == br:
+        co = _git(workdir, "checkout", "--quiet", "--detach", target, timeout=60) \
+            if target else _git(workdir, "checkout", "--quiet", "--detach", timeout=60)
+        if not co["ok"]:
+            return "切离任务分支失败：%s" % (co["stderr"] or "")[-120:]
+    elif not co["ok"]:
+        return "切回 %s 失败：%s" % (target, (co["stderr"] or "")[-120:])
+    return ""
+
+
 def discard_task_branch(workdir, task):
     """丢弃任务分支（人审后的「否决」出口，不可恢复）。
 
     守卫同 merge（活跃任务/仓库缺失/分支不存在拒绝）；若工作区恰好停在
     任务分支上且干净（收尾出错的遗留现场），先切回基线再删分支。
+    分支也可能被**其它** worktree 检出（run 收尾被中断、任务分支滞留在
+    另一个工作树里）——git 拒绝删除被检出的分支，所以删前逐个清理：
+    干净的工作树切回基线（目标分支被占用就游离在那），有未提交改动的
+    不动、显式拒绝；目录已消失的残留登记由 worktree prune 清掉。
     返回 (ok, 错误信息)。
     """
     def refuse(msg):
@@ -536,19 +592,37 @@ def discard_task_branch(workdir, task):
     br = branch_name(tid)
     if not _git(wd, "rev-parse", "--verify", "--quiet", "refs/heads/" + br)["ok"]:
         return refuse("任务分支 %s 不存在（可能已被合并或丢弃）" % br)
+    latest = _latest_run_git(tid) or {}
+    back = latest.get("from_branch") or ""
+    base = latest.get("base_commit") or ""
+    target = back if (back and back not in ("(游离 HEAD)", "HEAD") and back != br) else base
     cur = info.get("branch") or ""
     if cur == br:
         if info.get("dirty"):
             return refuse("工作区停在任务分支上且有未提交改动，请先处理再丢弃")
-        latest = _latest_run_git(tid) or {}
-        back = latest.get("from_branch") or ""
-        base = latest.get("base_commit") or ""
-        target = back if (back and back != "(游离 HEAD)" and back != br) else base
         if not target:
             return refuse("工作区停在任务分支上且找不到可切回的基线，请手工切走后再丢弃")
-        co = _git(wd, "checkout", "--quiet", target, timeout=60)
-        if not co["ok"]:
-            return refuse("切回 %s 失败：%s" % (target, (co["stderr"] or "")[-160:]))
+        err = _switch_off_branch(wd, br, target)
+        if err:
+            return refuse(err)
+    wts = _worktrees_on_branch(wd, br)
+    if wts is None:
+        return refuse("无法枚举 worktree，请手工处理占用任务分支的工作树后再丢弃")
+    for wt in wts:
+        p = wt["path"]
+        if not os.path.isdir(p):
+            continue
+        st = _git(p, "status", "--porcelain")
+        dirty = [ln for ln in (st["stdout"] or "").splitlines()
+                 if ln.strip() and not _attach_entry(ln.strip())] if st["ok"] else []
+        if dirty:
+            return refuse("任务分支仍被工作树 %s 占用且其中有未提交改动，"
+                          "请先处理后再丢弃" % p)
+        err = _switch_off_branch(p, br, target)
+        if err:
+            return refuse("工作树 %s %s" % (p, err))
+    if wts:
+        _git(wd, "worktree", "prune")
     d = _git(wd, "branch", "-D", br)
     if not d["ok"]:
         return refuse("删除任务分支失败：%s" % (d["stderr"] or "")[-160:])

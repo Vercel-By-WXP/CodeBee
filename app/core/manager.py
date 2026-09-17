@@ -78,6 +78,8 @@ def sweep_orphan_cli_processes():
     按「Tutti 调用签名 + 父进程已死」双条件匹配，不误杀用户自己在用的 CLI：
       opencode：命令行含 opencode + --model（同步写入的 provider 固定 orch）
       codex：命令行含 codex + --skip-git-repo-check（Tutti 专属 flag 组合）
+      kimi：命令行含 kimi-code/dist/main.mjs（node 直启路径，2026-09-17 实测
+      僵尸 kimi 会占住讯飞网关同钥请求队列，堵死后续所有 kimi 调用）
     claude 不扫（签名与用户手动使用难区分）。返回清扫数量。"""
     ps_exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
                           "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
@@ -100,7 +102,8 @@ def sweep_orphan_cli_processes():
             cl = str(i.get("CommandLine") or "").lower()
             ppid = i.get("ParentProcessId")
             is_ours = (("opencode" in cl and "--model" in cl)
-                       or ("codex" in cl and "--skip-git-repo-check" in cl))
+                       or ("codex" in cl and "--skip-git-repo-check" in cl)
+                       or ("kimi-code" in cl and "main.mjs" in cl))
             if not is_ours or ppid in live or not i.get("ProcessId"):
                 continue
             try:
@@ -1213,12 +1216,102 @@ def _sync_opencode_settings(entry, model, prov):
     return "；".join(errs) or None
 
 
+def _kimi_render(prov, model):
+    """渲染 kimi-code 的 CodeBee 托管块（顶层键在前，表在后——TOML 语义）。"""
+    import re as _re
+    ptype = "anthropic" if prov.get("protocol") == "anthropic" else "openai"
+    base = prov.get("base_url") or ""
+    alias = model or "default"
+    pname = (prov.get("name") or "CodeBee").replace("\"", "")
+    return (
+        "# >>> CodeBee managed (do not edit between markers) >>>\n"
+        "defaultProvider = \"orch\"\n"
+        "defaultModel = \"%s\"\n"
+        "yolo = true\n"
+        "defaultPermissionMode = \"yolo\"\n"
+        "\n"
+        "[providers.orch]\n"
+        "type = \"%s\"\n"
+        "name = \"%s\"\n"
+        "baseUrl = \"%s\"\n"
+        "apiKey = \"%s\"\n"
+        "\n"
+        "[models.\"%s\"]\n"
+        "provider = \"orch\"\n"
+        "model = \"%s\"\n"
+        "maxContextSize = 131072\n"
+        "displayName = \"%s · %s\"\n"
+        "# <<< CodeBee managed <<<\n"
+        % (alias, ptype, pname, base,
+           (prov.get("api_key") or "").replace("\"", ""),
+           alias, alias, pname, alias))
+
+
+def _sync_kimi_settings(entry, model, prov):
+    """kimi-code 专属：把绑定供应商写进 ~/.kimi-code/config.toml。
+
+    schema 从官方 bundle 反推（2026-09-17）：顶层 defaultProvider/defaultModel/
+    yolo/defaultPermissionMode（camelCase）+ [providers.<id>]（type/apiKey/
+    baseUrl）+ [models.<别名>]（provider/model/maxContextSize 必填）。无人值守
+    要 yolo——否则工具调用逐个要审批，headless 全被拒。文本级托管块（标记注释
+    之间）幂等重写，用户自有内容保留在外。"""
+    import re as _re
+    top_keys = ("defaultProvider", "defaultModel", "yolo", "defaultPermissionMode")
+    targets = [os.path.abspath(os.path.expanduser("~/.kimi-code/config.toml"))]
+    errs = []
+    for path in targets:
+        try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            text = ""
+            if os.path.isfile(path):
+                text = open(path, encoding="utf-8", errors="replace", newline="").read()
+                shutil.copyfile(path, path + ".bak")
+            # 移除旧托管块与旧顶层键（防重复/防键落进别的表）
+            text = _re.sub(r"# >>> CodeBee managed.*?# <<< CodeBee managed <<<\n?",
+                           "", text, flags=_re.S)
+            for k in top_keys:
+                text = _re.sub(r"(?m)^%s\s*=.*$\n?" % k, "", text)
+            body = _re.sub(r"\n+$", "\n", text).lstrip("\n")
+            managed = _kimi_render(prov, model)
+            has_table = _re.search(r"(?m)^\[", body) is not None
+            top = "".join("%s\n" % ln for ln in managed.split("\n")
+                          if _re.match(r"^(%s)\s*=" % "|".join(top_keys), ln))
+            tables = "\n".join(ln for ln in managed.split("\n")
+                               if not _re.match(r"^(%s)\s*=" % "|".join(top_keys), ln))
+            if has_table:
+                new_text = top + "\n" + body + "\n" + tables
+            else:
+                new_text = (body + "\n" if body else "") + managed
+            Path(path).write_bytes(new_text.encode("utf-8"))
+        except Exception as e:
+            errs.append("%s: %r" % (path, e))
+    return "；".join(errs) or None
+
+
+def sync_cli_config_now(agent_id):
+    """运行期自愈：CLI 本体没配置（如 kimi「No model configured」）→ 立即把
+    绑定注入其自家配置，换将/下轮即可用。返回给日志的备注（空=无事发生）。"""
+    try:
+        from . import modelhub
+        entry = next((a for a in catalog.load() if a.get("id") == agent_id), None)
+        if not entry:
+            return ""
+        b = modelhub.bindings().get(agent_id) or {}
+        note = _sync_agent_injection(entry, b)
+        if note:
+            return "已自动注入 %s 配置：%s" % (agent_id, note)
+        return ""
+    except Exception as e:
+        return "自动注入失败: %r" % e
+
+
 # 打开前专属注入通道：{agent_id: (可注入协议, 注入器)}。交互 TUI 脱离编排链路，
 # 只认自家配置文件里的凭据，编排降级给的 env（ORCH_API_KEY 等）对它们无效。
 _AGENT_INJECTORS = {
     "claude-code": (("anthropic",), _sync_claude_settings),
     "opencode": (("anthropic", "openai"), _sync_opencode_settings),
     "qwencode": (("openai",), _sync_qwen_settings),
+    "kimi-code": (("openai", "anthropic"), _sync_kimi_settings),
 }
 
 # 无专属注入通道的专有协议 CLI：env 注入大概率无效，打开时明确告知而非静默废

@@ -285,3 +285,95 @@ class TestGitCheckout(BaseTest):
         self.assertEqual(g("stash", "list")["stdout"].strip(), "")
         blob = g("show", "%s:mock-impl.txt" % origin)["stdout"]
         self.assertIn("mock 实现：", blob)
+
+    # ---------------------------------------- 丢弃：分支被其它 worktree 占用
+
+    def _holder_scene(self):
+        """造「收尾被打断」遗留现场：主工作树停在任务分支上 + 另一个
+        linked worktree 作为裁决 workdir（用户实测 mo-so 占分支案的形状）。
+        返回 (repo, g, wt, task, origin)。"""
+        from app.core import store
+        repo, g = self._git_repo()
+        origin = g("rev-parse", "--abbrev-ref", "HEAD")["stdout"].strip()
+        run, task = self._run_code_task(repo)
+        assert run["status"] == "done"
+        g("checkout", "-q", "codebee/" + task["id"])   # 模拟 finalize 未跑成
+        wt = self.tmp / "wt-inspect"
+        g("worktree", "add", "-q", "-b", "inspect-side", str(wt), origin)
+        return repo, g, wt, task, origin
+
+    def test_discard_frees_branch_held_by_other_worktree(self):
+        """任务分支被别的 worktree 检出时丢弃：干净的工作树自动切回基线，
+        分支照删（旧逻辑在此报 cannot delete branch used by worktree）。"""
+        from app.core import gitmod, store
+        repo, g, wt, task, origin = self._holder_scene()
+        tb = "codebee/" + task["id"]
+
+        ok, err = gitmod.discard_task_branch(str(wt), store.get_task(task["id"]))
+        self.assertTrue(ok, err)
+        self.assertFalse(g("rev-parse", "--verify", "--quiet", "refs/heads/" + tb)["ok"])
+        # 被占用的主工作树被送回基线分支且保持干净；裁决用的工作树不受影响
+        self.assertEqual(g("rev-parse", "--abbrev-ref", "HEAD")["stdout"].strip(), origin)
+        self.assertEqual(g("status", "--porcelain")["stdout"].strip(), "")
+        self.assertEqual(g("-C", str(wt), "rev-parse", "--abbrev-ref", "HEAD")["stdout"].strip(),
+                         "inspect-side")
+
+    def test_discard_refuses_when_holder_worktree_dirty(self):
+        """占用分支的 worktree 有未提交改动 → 显式拒绝，分支与改动原样保留。"""
+        from app.core import gitmod, store
+        repo, g, wt, task, origin = self._holder_scene()
+        tb = "codebee/" + task["id"]
+        (repo / "wip.txt").write_text("未提交", encoding="utf-8")
+
+        ok, err = gitmod.discard_task_branch(str(wt), store.get_task(task["id"]))
+        self.assertFalse(ok)
+        self.assertIn("未提交改动", err)
+        self.assertTrue(g("rev-parse", "--verify", "--quiet", "refs/heads/" + tb)["ok"])
+        self.assertTrue((repo / "wip.txt").exists())
+
+    # --------------------------------- 游离基线（from_branch="HEAD"）专项
+
+    def test_discard_with_literal_head_from_branch(self):
+        """用户实测案：游离基线在老数据里存的是字面量 "HEAD"，而
+        git checkout HEAD 原地空转（退出码 0 但不换位）——旧逻辑 checkout
+        「成功」后分支仍被占用，branch -D 照样报 used by worktree。
+        现在按游离处理回基线提交，且以 rev-parse 复核分支真的腾空。"""
+        import json
+        from app.core import gitmod, paths
+        repo, g = self._git_repo()
+        origin_sha = g("rev-parse", "HEAD")["stdout"].strip()
+        tid = "t-detach-head-case"
+        tb = "codebee/" + tid
+        g("checkout", "-q", "-b", tb)
+        (repo / "art.txt").write_text("产物", encoding="utf-8")
+        g("add", "-A")
+        g("-c", "user.name=T", "-c", "user.email=t@l", "commit", "-qm", "art")
+        rundir = paths.RUNS_DIR / "r-test-head"
+        rundir.mkdir(parents=True)
+        (rundir / "run.json").write_text(json.dumps({
+            "id": "r-test-head", "task_id": tid,
+            "git": {"branch": tb, "from_branch": "HEAD",
+                    "base_commit": origin_sha[:9]},
+        }), encoding="utf-8")
+
+        ok, err = gitmod.discard_task_branch(str(repo), {"id": tid, "status": "done"})
+        self.assertTrue(ok, err)
+        self.assertFalse(g("rev-parse", "--verify", "--quiet", "refs/heads/" + tb)["ok"])
+        # 主工作树被送回基线提交（游离形态）：abbrev-ref 为 HEAD，提交即基线
+        self.assertEqual(g("rev-parse", "--abbrev-ref", "HEAD")["stdout"].strip(), "HEAD")
+        self.assertEqual(g("rev-parse", "HEAD")["stdout"].strip(), origin_sha)
+
+    def test_finalize_from_detached_head_returns_to_base(self):
+        """收尾同理：from_branch="HEAD" 不能原样 checkout（空转），
+        必须回 base_commit（同样游离）。"""
+        from app.core import gitmod
+        repo, g = self._git_repo()
+        origin_sha = g("rev-parse", "HEAD")["stdout"].strip()
+        g("checkout", "-q", "-b", "codebee/task-dh")
+        fin = gitmod.finalize_run(str(repo), {
+            "branch": "codebee/task-dh", "from_branch": "HEAD",
+            "base_commit": origin_sha[:9]}, "r: 空跑")
+        self.assertTrue(fin["restored"])
+        self.assertEqual(fin["restore_error"], "")
+        self.assertEqual(g("rev-parse", "--abbrev-ref", "HEAD")["stdout"].strip(), "HEAD")
+        self.assertEqual(g("rev-parse", "HEAD")["stdout"].strip(), origin_sha)

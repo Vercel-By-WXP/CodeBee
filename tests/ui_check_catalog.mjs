@@ -81,7 +81,13 @@ async function main() {
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(4000);
     await js(`switchTab("agents"); "ok"`);
-    await sleep(2500);
+    // CLI 探测逐条扫 PATH 要几秒——等「已安装」区出卡片再断言（有界 40s），
+    // 否则检测未完成时全是「未安装」，样式断言集体假红
+    for (let i = 0; i < 40; i++) {
+      const n = await js(`document.querySelectorAll("#ag-installed .card").length`);
+      if (n > 0) break;
+      await sleep(1000);
+    }
 
     const dump = await js(`(() => {
       const cards = [...document.querySelectorAll("#ag-installed .card")];

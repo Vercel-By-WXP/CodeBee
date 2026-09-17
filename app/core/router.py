@@ -54,7 +54,7 @@ def score(agent, role, ttype, stats=None):
     hb = _history_bonus(stats, agent.get("id"), ttype)
     total = base + bb + hb
     hs = (stats.get(agent.get("id")) or {}).get(ttype)
-    htxt = ("，历史 %d/%d 胜（+%s）" % (hs["wins"], hs["runs"], hb)) if hs else "，无历史记录"
+    htxt = ("，历史 %d/%d 胜（%s）" % (hs["wins"], hs["runs"], "%+.1f" % hb)) if hs else "，无历史记录"
     quota_txt = ""
     quota = int(agent.get("quota_tokens_per_hour") or 0)
     if quota > 0:

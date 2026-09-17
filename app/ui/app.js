@@ -644,6 +644,7 @@ async function healthDisableModel(pid, model) {
     S.provSig = "";
     closeModal(); render(); loadOrchestrator();
     toast(t("已禁用模型 {0} · {1}，链降级自动跳过；绑定页可重新启用").replace("{0}", pid).replace("{1}", model));
+    autoRebindSoon();
   } catch (e) {
     toast(t("操作失败：") + e.message, true);
   }
@@ -667,6 +668,7 @@ async function healthDisableProvider(pid) {
     S.provSig = "";
     closeModal(); render(); loadOrchestrator();
     toast(t("已禁用厂商 {0}：链降级自动跳过，绑定页可重新启用").replace("{0}", pid));
+    autoRebindSoon();
   } catch (e) {
     toast(t("操作失败：") + e.message, true);
   }
@@ -968,6 +970,7 @@ async function batchProvOp(op) {
   try {
     await api("/api/models/provider-op", { method: "POST",
       body: JSON.stringify({ ids, op }) });
+    if (op !== "duplicate") autoRebindSoon();
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   S.selProvs = {};
   S.modelsSig = null;
@@ -1154,6 +1157,7 @@ async function keyOpCall(pid, op, keyId, key, label) {
   try {
     await api("/api/models/key-op", { method: "POST",
       body: JSON.stringify({ provider_id: pid, op, key_id: keyId, key, label }) });
+    autoRebindSoon();   // 密钥启停/删除/解冻会改变厂商「推荐可用」判定，自动补绑一次
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   // 操作期间轮询照跑（uiPrompt 弹框不阻塞轮询），S.modelsSig 还是旧值：必须
   // 清签名强制重绘，否则 KEY 写盘成功界面也看不到。
@@ -1363,6 +1367,7 @@ async function modelOp(pid, name, op) {
   try {
     await api("/api/models/model-op", { method: "POST",
       body: JSON.stringify({ provider_id: pid, name, op }) });
+    autoRebindSoon();   // 模型停用/启用/删除会改变推荐源与死链判定，自动补绑一次
     const s = modelSel(pid);            // 单行操作后同步清掉该行勾选
     if (s[name]) { delete modelSelSet(pid)[name]; }
   } catch (e) { toast(t("操作失败：") + e.message, true); }
@@ -1429,6 +1434,7 @@ async function batchModelOp(pid, op) {
   try {
     await api("/api/models/model-op", { method: "POST",
       body: JSON.stringify({ provider_id: pid, names, op }) });
+    autoRebindSoon();
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   clearModelSel(pid);
   poll();
@@ -1447,6 +1453,7 @@ async function toggleProviderEnabled(pid, enabled) {
   try {
     await api("/api/models/provider-op", { method: "POST",
       body: JSON.stringify({ ids: [pid], op: off ? "enable" : "disable" }) });
+    autoRebindSoon();
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   S.modelsSig = null;
   poll();
@@ -1470,7 +1477,8 @@ async function refreshAllModels() {
     btn.disabled = false; btn.classList.remove("loading");
     btn.title = t("全部重新拉取模型列表");
   }, 1500);
-  setTimeout(poll, 2500); setTimeout(poll, 8000);
+  setTimeout(poll, 2500);
+  setTimeout(autoRebindSoon, 8000);   // 模型列表落盘后推荐源才完整，补绑一次
 }
 
 async function refreshProviderModels(id) {
@@ -1481,7 +1489,7 @@ async function refreshProviderModels(id) {
     else toast(t("已获取模型列表 · wire 适配测试后台进行中"));
   } catch (e) { toast(t("获取失败：") + e.message, true); }
   poll();
-  setTimeout(poll, 4000);  // 后台探测落盘后补一轮，适配徽标及时出现
+  setTimeout(autoRebindSoon, 4000);   // 模型列表落盘后补绑一次（后台 wire 探测同步进行）
 }
 
 /* 供应商编辑卡：协议可选「自动」；显式选定时它是主协议（用于需要唯一协议的
@@ -1537,6 +1545,7 @@ async function delProvider(id) {
   try {
     await api("/api/models/provider-op", { method: "POST",
       body: JSON.stringify({ ids: [id], op: "delete" }) });
+    autoRebindSoon();
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   if (S.selModels) delete S.selModels[id];
   if (S.selProvs) delete S.selProvs[id];
@@ -1600,6 +1609,7 @@ async function doAddProvider() {
     S.modelsSig = null;
     closeModal();
     poll();
+    autoRebindSoon();   // 新增即启用：马上给空链/死链一次推荐机会
     if (p && body.api_key) refreshProviderModels(p.id);  // 有密钥才自动拉模型列表
   } catch (e) {
     res.textContent = t("保存失败：") + e.message;
@@ -1695,7 +1705,7 @@ async function doImport() {
     btn.textContent = t("完成");
     btn.disabled = false;
     btn.onclick = closeModal;
-    if (r.imported) { S.selProv = null; S.modelsSig = null; poll(); }
+    if (r.imported) { S.selProv = null; S.modelsSig = null; poll(); autoRebindSoon(); }
   } catch (e) {
     $("import-result").innerHTML = '<div class="msg bad">' + t("导入失败：") + esc(e.message) + "</div>";
     btn.disabled = false; btn.textContent = t("导入选中");
@@ -4809,7 +4819,9 @@ window.renderHive = function (run) {
     const key = run.id + "|" + (s.log || "");
     if (st !== "running") delete hiveTails[key];
     const tailText = st === "running" ? (hiveTails[key] || concl) : concl;
-    const title = [s.role, who, s.started_at ? t("开始于 ") + s.started_at : "",
+    const title = [s.role, who,
+                   (s.duration_s != null ? s.duration_s + "s" : ""),
+                   s.started_at ? t("开始于 ") + s.started_at : "",
                    (s.note ? "◆ " + s.note : "")].filter(Boolean).join(" · ")
       + (concl && st !== "running" ? "\n" + t("结论：") + concl : "");
     // --d：入场瀑布逐格延迟（泳道间 110ms + 同泳道逐格 45ms），样式端消费
@@ -4818,7 +4830,7 @@ window.renderHive = function (run) {
       ' title="' + esc(title) + '" ' +
       'onclick="hiveOpenLog(\'' + esc(run.id) + "', '" + esc(s.log || "") + '\')">' +
       '<div class="hc-head">' +
-      '<svg class="ico hc-bee" aria-hidden="true"><use href="#i-bee"></use></svg>' +
+      '<img class="hc-bee" src="icons/bee.svg" alt="" aria-hidden="true">' +
       '<span class="hc-role">' + esc(s.role || "") + "</span>" +
       '<span class="hc-who">' + esc(who) + "</span></div>" +
       '<div class="hc-tail" data-log="' + esc(s.log || "") + '">' +
@@ -4856,7 +4868,13 @@ window.renderHive = function (run) {
       (hasRun ? '<span class="lane-live"><i class="live-dot"></i>' + t("进行中") + "</span>" : "") + "</div>" +
       '<div class="lane-track">' + dots(list, i) + "</div>" +
       '<div class="lane-cells">' + list.slice(-8).map((s, ci) => cell(s, i, ci)).join("") + "</div></div>";
-  }).join('<div class="lane-flow" aria-hidden="true"></div>');
+  }).join('<div class="lane-flow" aria-hidden="true">'
+    + '<svg class="flow-line flow-line-down" viewBox="0 0 36 44" aria-hidden="true">'
+    + '<path class="flow-path" d="M14 2 C14 16 22 28 22 42"/><path class="flow-tip" d="M16 36 L22 43 L28 36"/></svg>'
+    + '<svg class="flow-line flow-line-up" viewBox="0 0 36 44" aria-hidden="true">'
+    + '<path class="flow-path" d="M22 2 C22 16 14 28 14 42"/><path class="flow-tip" d="M8 36 L14 43 L20 36"/></svg>'
+    + '<span class="flow-bee"><img src="icons/bee.svg" alt="" aria-hidden="true"></span>'
+    + '</div>');
   // 入场瀑布闸门：只按"结构"（泳道数/格数/状态构成）签名；运行中尾巴/秒表每 2s
   // 变化不能触重播。签名没变就不动 DOM——格子不闪、动画不重启、悬停不弹手。
   const sig = lanes.map((l) => l + ":" + byStage[l].length + "(" +
@@ -5765,20 +5783,20 @@ function bindSelById(id) {
 function bindRepaint() { S.bindSig = null; renderBindings(); }
 
 /* 一键推荐绑定：给每个链为空的 CLI 按协议适配规则预填一条主模型。
- * 推荐顺序：显式协议原生匹配 > auto 且 wire_caps 命中；默认模型停用的厂商
- * 降权（当前键位是坏的，除非只剩它，否则不当首选——失效链重推荐实测）；
- * 同分按 priority / 数组序稳定。只预填草稿态（dirty），逐条看清后各自保存
+ * 推荐顺序：显式协议原生匹配 > auto 且 wire_caps 命中；同分按 priority /
+ * 数组序稳定。默认模型停用的厂商直接不推荐——它当前键位就是坏的，绑上去
+ * 解析照样失败；没有合适的就什么都不绑（2026-09-17 用户拍板，不再保留
+ * 「只剩它也上」的兜底）。只预填草稿态（dirty），逐条看清后各自保存
  * 或「全部保存」，健康链绝不被覆盖。 */
 function recommendFor(c) {
-  const allow = bindAllowedProtocols(c.orch_kind);
-  const provs = (S.providers || []).filter((p) => chainProvUsable(p, allow));
+  // 目录页「默认模型」下拉用 orch_kind || id 判协议（仅管理条目没有 orch_kind），
+  // 推荐口径与下拉过滤保持一致；绑定页条目恒有 orch_kind，不受影响
+  const allow = bindAllowedProtocols(c.orch_kind || c.id);
+  const badDefault = (p) => (p.models || []).some((m) => m.name === p.model &&
+    (m.hidden || m.enabled === false));
+  const provs = (S.providers || []).filter((p) => !badDefault(p) && chainProvUsable(p, allow));
   if (!provs.length) return null;
-  const score = (p) => {
-    const native = allow.indexOf(p.protocol) >= 0;
-    const badDefault = (p.models || []).some((m) => m.name === p.model &&
-      (m.hidden || m.enabled === false)) ? 500 : 0;
-    return (native ? 0 : 1) * 1000 + badDefault + (p.priority || 0);
-  };
+  const score = (p) => (allow.indexOf(p.protocol) >= 0 ? 0 : 1) * 1000 + (p.priority || 0);
   provs.sort((a, b) => score(a) - score(b));
   const p = provs[0];
   const models = (p.models || []).filter((m) => !m.hidden && m.enabled !== false);
@@ -5816,48 +5834,38 @@ function chainDeadReasons(c, chain) {
   return dead;
 }
 
+/* 单条绑定链的推荐修复动作：需要改返回新链，不动返回 null。
+ * 空链 → 预填推荐；整条死透（或只有链首且已死）→ 重推荐；链首死但链内还有
+ * 活的备选 → 新链首插最前（原降级序保留，推荐项已在链内则升首去重）。 */
+function bindRepairAction(c, st) {
+  const rec = recommendFor(c);
+  if (!st.chain.length) return rec ? [rec] : null;
+  const dead = chainDeadReasons(c, st.chain);
+  const allDead = dead.every((d) => d);
+  const headDead = dead[0] !== ""; // 空 p = CLI 默认凭据，是有意配置不算死
+  if (allDead) return rec ? [rec] : null;
+  if (headDead && rec && chainKey(st.chain) !== chainKey([rec]))
+    return [rec].concat(st.chain.filter((x) => !(x.p === rec.p && x.m === rec.m)));
+  return null;
+}
+
 function autoBindAll() {
   const targets = (S.catalog || []).filter((c) => c.installed && c.orch_kind);
   let filled = 0, skipped = 0, noProv = 0, refilled = 0;
   for (const c of targets) {
     const st = bindSelById(c.id);
-    if (!st.chain.length) {
-      const rec = recommendFor(c);
-      if (!rec) { noProv++; continue; }
-      st.chain = [rec];
-      st.dirty = true;
-      filled++;
+    const act = bindRepairAction(c, st);
+    if (!act) {
+      // 没动它：分清「健康链无需推荐」和「没有可推荐的」两种落空
+      if (!st.chain.length) { noProv++; continue; }
+      const dead = chainDeadReasons(c, st.chain);
+      if (dead.every((d) => d)) noProv++; else skipped++;
       continue;
     }
-    // 链非空：只处理死链——整条链全部死透（或只有链首且已死）才重推荐，
-    // 部分存活的长链保留（还降级得动，不擅自覆盖用户手工配的结构）
-    const dead = chainDeadReasons(c, st.chain);
-    const aliveN = dead.filter((d) => !d).length;
-    const allDead = aliveN === 0;
-    const headDead = dead[0] !== ""; // 空 p = CLI 默认凭据，是有意配置不算死
-    const rec = recommendFor(c);
-    if (allDead && rec) {
-      st.chain = [rec];
-      st.dirty = true;
-      refilled++;
-    } else if (allDead) {
-      noProv++;
-    } else if (headDead && rec && chainKey(st.chain) !== chainKey([rec])) {
-      // 链首死但链内还有活的备选：只把推荐的新链首插到最前面（原降级序保留）
-      const hasRec = st.chain.some((x) => x.p === rec.p && x.m === rec.m);
-      if (!hasRec) {
-        st.chain = [rec].concat(st.chain);
-        st.dirty = true;
-        refilled++;
-      } else {
-        // 推荐项已在链内：把它升到链首
-        st.chain = [rec].concat(st.chain.filter((x) => x !== rec));
-        st.dirty = true;
-        refilled++;
-      }
-    } else {
-      skipped++;
-    }
+    const wasEmpty = !st.chain.length;
+    st.chain = act;
+    st.dirty = true;
+    if (wasEmpty) filled++; else refilled++;
   }
   bindRepaint();
   if (filled && refilled) {
@@ -5872,6 +5880,56 @@ function autoBindAll() {
     toast(t("没有可推荐的：先到「模型接入」页导入与 CLI 协议匹配的供应商。"), true);
   } else if (skipped && !filled && !refilled) {
     toast(t("所有 CLI 都已配置模型链，无需推荐。"));
+  }
+}
+
+/* 厂商/模型停用·启用·删除后自动补一次推荐绑定（2026-09-17 用户拍板）：
+ * 绑定链——空链预填、死链重推荐、死链首插新首，与「一键推荐绑定」同规则，
+ * 但直接落盘（自动场景没有人工确认环节）；目录页——空默认模型直填。
+ * 没有合适的推荐就保持原样，什么都不绑。绑定页上用户手改中的草稿（dirty）
+ * 不碰；一处都没改成静默返回，不打扰停用/启用的操作反馈。 */
+let _autoRebindRunning = false, _autoRebindAgain = false;
+async function autoRebindSoon() {
+  if (_autoRebindRunning) { _autoRebindAgain = true; return; }
+  _autoRebindRunning = true;
+  try {
+    await poll();   // 拿停用/启用落盘后的最新 providers / bindings / catalog
+    let fixed = 0;
+    for (const c of (S.catalog || []).filter((x) => x.installed && x.orch_kind)) {
+      const st = bindSelById(c.id);
+      if (st.dirty) continue;   // 用户手改中，不覆盖草稿
+      const act = bindRepairAction(c, st);
+      if (!act) continue;
+      const b = (S.bindings || {})[c.id] || {};
+      try {
+        await api("/api/models/binding", { method: "POST", body: JSON.stringify({
+          agent_id: c.id, provider_id: act[0].p,
+          chain: act.map((x) => ({ provider_id: x.p, model: x.m })),
+          difficulty_routing: !!b.difficulty_routing }) });
+        st.chain = act; st.dirty = false; st.key = chainKey(act);
+        fixed++;
+      } catch (e) { /* 单条失败不打断，等下次变更再补 */ }
+    }
+    for (const c of (S.catalog || []).filter((x) =>
+        x.installed && x.config_writable && !fmtModel(x.model))) {
+      const rec = recommendFor(c);
+      if (!rec) continue;
+      try {
+        const r = await api("/api/catalog/" + encodeURIComponent(c.id) + "/model",
+          { method: "POST", body: JSON.stringify({ model: rec.m }) });
+        c.model = r.model || rec.m;
+        fixed++;
+      } catch (e) { /* 同上 */ }
+    }
+    if (fixed) {
+      S.catSig = null; S.bindSig = null;
+      render();
+      toast(t("厂商/模型变动，已自动重绑 %1 处。").replace("%1", fixed));
+    }
+  } catch (e) { /* 自动补绑失败静默：不打断用户的停用/启用操作 */ }
+  finally {
+    _autoRebindRunning = false;
+    if (_autoRebindAgain) { _autoRebindAgain = false; autoRebindSoon(); }
   }
 }
 
@@ -6107,6 +6165,45 @@ async function saveModel(id) {
     const r = await api("/api/catalog/" + encodeURIComponent(id) + "/model", { method: "POST", body: JSON.stringify({ model: v }) });
     toast(t("已写入：") + (r.model || v));
   } catch (e) { toast(t("失败：") + e.message, true); }
+  poll();
+}
+
+/* 一键绑定推荐模型（智能体目录页）：给「默认模型」还空着的已安装智能体按
+ * 协议适配规则（复用绑定页 recommendFor 评分）挑一家厂商的启用模型并直接
+ * 写入该 CLI 自身配置（写入侧先自动 .bak 备份）。已配置的不动——目录页的
+ * 默认模型会写进 CLI 全局配置，手工设置过的值（含 CLI 订阅自带的默认）不
+ * 该被一键覆盖；要换模型逐卡下拉改就行。 */
+async function catAutoBindAll() {
+  const targets = (S.catalog || []).filter((c) => c.installed && c.config_writable);
+  if (!targets.length) { toast(t("没有支持写入默认模型的已安装智能体。"), true); return; }
+  const empty = targets.filter((c) => !fmtModel(c.model));
+  if (!empty.length) { toast(t("所有已安装智能体都已配置默认模型，无需绑定。")); return; }
+  let done = 0, failed = 0, noProv = 0, firstErr = "";
+  for (const c of empty) {
+    const rec = recommendFor(c);
+    if (!rec) { noProv++; continue; }
+    try {
+      const r = await api("/api/catalog/" + encodeURIComponent(c.id) + "/model",
+        { method: "POST", body: JSON.stringify({ model: rec.m }) });
+      c.model = r.model || rec.m;
+      done++;
+    } catch (e) {
+      failed++;
+      if (!firstErr) firstErr = c.name + "：" + e.message;
+    }
+  }
+  S.catSig = null;
+  renderCatalog();
+  if (done && failed) {
+    toast(t("已为 %1 个智能体写入推荐模型，%2 个失败。").replace("%1", done).replace("%2", failed) +
+      (firstErr ? " " + firstErr : ""), true);
+  } else if (done) {
+    toast(t("已为 %1 个智能体写入推荐模型（原配置已自动备份 .bak）。").replace("%1", done));
+  } else if (failed) {
+    toast(t("推荐模型写入失败：") + firstErr, true);
+  } else {
+    toast(t("没有可推荐的：先到「模型接入」页导入与 CLI 协议匹配的供应商。"), true);
+  }
   poll();
 }
 
@@ -8262,6 +8359,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-reload-catalog").addEventListener("click", async () => {
     await api("/api/catalog/reload", { method: "POST" }); poll(); refreshSessionAgents();
   });
+  $("btn-catalog-autobind").addEventListener("click", catAutoBindAll);
   $("btn-import").addEventListener("click", openImportDialog);
   $("btn-add-provider").addEventListener("click", openAddProviderDialog);
   $("prov-search").addEventListener("input", () => {

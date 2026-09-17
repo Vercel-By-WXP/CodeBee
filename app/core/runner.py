@@ -58,6 +58,28 @@ def resolve_command(command):
     return [path]
 
 
+def _npm_shim_bypass(argv):
+    """generic 类 CLI 把提示词嵌进 argv；经 cmd /c 重解析时引号/特殊字符会把
+    提示词截烂（kimi 实测：模型只看到 UTF-8 须知、任务本体整段丢失）。识别
+    标准 npm .cmd 垫片（%_prog% + %dp0% 目标脚本），改 node 直启绕开 cmd。
+    识别不出标准形态原样返回。"""
+    if len(argv) >= 3 and argv[0] == "cmd" and argv[1] == "/c" \
+            and str(argv[2]).lower().endswith((".cmd", ".bat")):
+        shim = argv[2]
+        try:
+            text = open(shim, encoding="utf-8", errors="replace").read()
+        except Exception:
+            return argv
+        m = re.search(r'%_prog%"\s+"?%dp0%(\\[^"\n]+?\.(?:mjs|js))"?', text)
+        if not m:
+            return argv
+        script = os.path.normpath(
+            os.path.join(os.path.dirname(shim), m.group(1).lstrip("\\")))
+        node = os.path.join(os.path.dirname(shim), "node.exe")
+        return [node if os.path.isfile(node) else "node", script] + list(argv[3:])
+    return argv
+
+
 def _kill_tree(pid):
     try:
         subprocess.run(
@@ -740,6 +762,8 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
             tmpl = agent["resume_argv_template"]
         argv = resolve_command(agent["command"]) + [
             str(a).replace("{prompt}", prompt).replace("{session}", sid) for a in tmpl]
+        # 提示词在 argv 里 → 必须绕开 cmd 重解析（见 _npm_shim_bypass）
+        argv = _npm_shim_bypass(argv)
         if "{prompt}" not in tmpl:
             stdin_text = prompt  # 恢复模板不带 {prompt}：提示词走 stdin（mimo 实测支持）
     return argv, stdin_text, prompt
@@ -800,9 +824,18 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     if orch_timeout_ms:
         timeout = float(orch_timeout_ms) / 1000.0
     kind = agent.get("kind", "generic")
-    stall_t = (_stall_timeout("TUTTI_CODEX_STALL_TIMEOUT", 600) if kind == "codex"
-               else _stall_timeout("TUTTI_CLAUDE_STALL_TIMEOUT", 600)
-               if kind == "claude" else 0)
+    if kind == "codex":
+        stall_t = _stall_timeout("TUTTI_CODEX_STALL_TIMEOUT", 600)
+    elif kind == "claude":
+        stall_t = _stall_timeout("TUTTI_CLAUDE_STALL_TIMEOUT", 600)
+    else:
+        # 数据驱动：catalog orch.stall_timeout_s——给 kimi 这类边写边吐进度行的
+        # CLI 配置后，静默挂死 10 分钟即杀（不必耗满总超时）；qwen/mimo 这类
+        # 结束才一次性输出的留 0（开了必误杀），靠总超时兜底
+        try:
+            stall_t = max(0, int((agent.get("orch") or {}).get("stall_timeout_s") or 0))
+        except Exception:
+            stall_t = 0
     # 5G：approval NEVER 一线（无人值守不静默降级）
     ok, reason = _check_approval(agent)
     if not ok:
@@ -886,6 +919,20 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                             _mh.note_codex_wire_dead(att["provider_id"])
                         except Exception:
                             pass
+                elif "no model configured" in out["error"].lower():
+                    # CLI 本体没配置（kimi 实测）→ 运行期自愈：把绑定注入其
+                    # 自家配置，本次换将之后的下一轮即可用
+                    try:
+                        from . import manager as _mg
+                        note = _mg.sync_cli_config_now(agent.get("id", ""))
+                        if note and log_path:
+                            try:
+                                with open(log_path, "a", encoding="utf-8") as fh:
+                                    fh.write("\n[自愈] %s\n" % note)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
                 out["error_code"] = _classify_failure(res, kind=kind)
                 break
             if kind == "codex":

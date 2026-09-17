@@ -66,6 +66,10 @@ def _build_agent(entry):
         # 小时级 token 配额（可选，0/缺省=不限）：路由时对本小时用量超标的
         # 智能体降权（munder-difflin 式配额感知），订阅型 CLI 不至于被单任务打爆
         "quota_tokens_per_hour": int(orch.get("quota_tokens_per_hour") or 0),
+        # 整包透传 orch：per-agent 运行时开关（timeout_ms 5E、stall_timeout_s
+        # 看门狗等）都在 runner 侧读取——此前只挑字段，catalog 上配的
+        # timeout_ms/stall 根本流不到 runner（2026-09-17 连载 c35 实测）
+        "orch": orch,
     }
 
 

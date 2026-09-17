@@ -134,7 +134,9 @@ def cancel_event_for(run_id):
     return ev
 
 
-AUTO_RESUME_MAX = 2      # 连载任务自动续跑上限（超时/中断后自动接着写，无需人工）
+AUTO_RESUME_MAX = 3      # 连载任务自动续跑上限（超时/中断后自动接着写，无需人工）
+AUTO_RESUME_DELAY_S = 300  # 自动续跑延迟入队秒数：网关限流/欠费窗口通常分钟级，
+                           # 立即重排会撞在同一堵墙上把续跑次数烧光（2026-09-17 七猫实测）
 
 
 def _maybe_auto_resume(run_id):
@@ -160,7 +162,13 @@ def _maybe_auto_resume(run_id):
             return False
         store.update_run(new_run["id"], auto_resumes=int(run.get("auto_resumes") or 0) + 1,
                          auto_resumed_from=run_id)
-        _QUEUE.put({"kind": "orchestration", "run_id": new_run["id"], "task_id": task["id"]})
+
+        def _enqueue():
+            _QUEUE.put({"kind": "orchestration",
+                        "run_id": new_run["id"], "task_id": task["id"]})
+        t = threading.Timer(AUTO_RESUME_DELAY_S, _enqueue)
+        t.daemon = True
+        t.start()
         return True
     except Exception:
         return False

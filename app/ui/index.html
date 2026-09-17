@@ -519,11 +519,12 @@
         <div class="panel-head">
           <h2 data-i18n="智能体目录">智能体目录</h2>
           <div class="actions">
+            <button data-i18n="一键绑定推荐模型" id="btn-catalog-autobind" class="ghost">一键绑定推荐模型</button>
             <button data-i18n="重新加载 catalog" id="btn-reload-catalog" class="ghost">重新加载 catalog</button>
             <button data-i18n="恢复默认 catalog" id="btn-reset-catalog" class="ghost">恢复默认 catalog</button>
           </div>
         </div>
-        <p class="hint"><span data-i18n="启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 CLI 自己的配置文件（CodeBee 之外也生效），CodeBee 编排运行时用哪个供应商 / 模型请到「CLI 绑定」页配置。安装命令不明的条目可直接编辑">启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 CLI 自己的配置文件（CodeBee 之外也生效），CodeBee 编排运行时用哪个供应商 / 模型请到「CLI 绑定」页配置。安装命令不明的条目可直接编辑</span> <code>data/catalog.json</code> <span data-i18n="后点重新加载。">后点重新加载。</span></p>
+        <p class="hint"><span data-i18n="启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 CLI 自己的配置文件（CodeBee 之外也生效），CodeBee 编排运行时用哪个供应商 / 模型请到「CLI 绑定」页配置。点「一键绑定推荐模型」可为默认模型还空着的智能体自动填入推荐；厂商 / 模型停用或启用后也会自动补绑一次。安装命令不明的条目可直接编辑">启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 CLI 自己的配置文件（CodeBee 之外也生效），CodeBee 编排运行时用哪个供应商 / 模型请到「CLI 绑定」页配置。点「一键绑定推荐模型」可为默认模型还空着的智能体自动填入推荐；厂商 / 模型停用或启用后也会自动补绑一次。安装命令不明的条目可直接编辑</span> <code>data/catalog.json</code> <span data-i18n="后点重新加载。">后点重新加载。</span></p>
         <h3 data-i18n="已安装" class="sec-title">已安装</h3>
         <div id="ag-installed" class="cards"></div>
         <h3 data-i18n="可安装" class="sec-title">可安装</h3>

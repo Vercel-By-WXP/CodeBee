@@ -1622,77 +1622,165 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     and not resume_ctx)   # 续会话语义只认 impl 一人，赛马退场
             if not race:
                 prompt = _draft_prompt(ch_file)
-                res = _run_step(run_id, "draft-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
-                                step_wd, readonly=False, ev=ev, timeout=2400,
-                                resume=resume_ctx["session"] if resume_ctx else None,
-                                images=_task_images(task, workdir))
-                # §07 T1.1：draft 会话 id 供本轮 revise 复用（同会话内前缀走缓存读计价）
-                draft_sid = _resume_sid(impl, res.get("sid")) or ""
+                # 网关突发限流（Not Allowed / UnknownError）秒~分钟级自愈：章稿
+                # 失败先退避重试同作者（保住连载风格一致），重试穷尽才判死整 run
+                # ——2026-09-17 七猫连载实测：多 run 并行推进时后位章节必撞限流，
+                # 一章失败即整 run 作废，太贵。
+                def _chapter_state():
+                    """草稿验收：成品是章稿文件本身，不是退出码——文件够长才算好。"""
+                    txt = _read_chapter(workdir, i)
+                    return (bool(txt) and _wc(txt) >= int(wpc * 0.6)), (txt or "")
+
+                res = None
+                good = False
+                txt = ""
+                use_prompt = prompt
+                for draft_attempt in range(3):
+                    if draft_attempt:
+                        if ev is not None and ev.is_set():
+                            break
+                        time.sleep(30 * draft_attempt)   # 30s / 60s 退避
+                    if draft_attempt and len(prompt) > 12000 and sk_block and sk_block in prompt:
+                        # 长提示词在容量受限通道（讯飞托管 35B 等）上会挂起/秒拒
+                        # ——降级重试：经验库块截到 4K 字，保留大纲/前情/本章要点
+                        # （2026-09-17 七猫实测：全量 30KB 对讯飞必挂）
+                        use_prompt = prompt.replace(
+                            sk_block, sk_block[:4000] + "\n\n（经验库已因通道容量限制精简）")
+                    res = _run_step(run_id, "draft-c%d" % i, modelhub.bind_agent(impl, difficulty), use_prompt,
+                                    step_wd, readonly=False, ev=ev, timeout=2400,
+                                    resume=resume_ctx["session"] if resume_ctx else None,
+                                    images=_task_images(task, workdir),
+                                    note=("起草重试 %d/2（网关限流退避）" % draft_attempt) if draft_attempt else "")
+                    good, txt = _chapter_state()
+                    if good:
+                        break
+                    if res["ok"] and _wc(res.get("text") or "") >= int(wpc * 0.6):
+                        # 回复正文就是完整章稿（kimi 35B 实测：正文当消息回而不
+                        # 落盘）→ 代为落盘救回成品
+                        try:
+                            _write_chapter(workdir, i, res["text"])
+                            good, txt = _chapter_state()
+                        except OSError:
+                            pass
+                        if good:
+                            break
+                    if ev is not None and ev.is_set():
+                        break
+                # 同作者重试穷尽 → 起草换将：按路由分序逐个试备选（最多 2 个，
+                # 只试一个会让第二名没机会——2026-09-17 c35 实测 opencode 顶在
+                # 前面，能干活的 kimi 永远轮不上）。连载不断档优先，风格差异交
+                # 评审门与后续 revise 拉回。
+                if not good:
+                    tried = {impl["id"], "mock-a", "mock-b"}
+                    for _alt in range(2):
+                        if good or (ev is not None and ev.is_set()):
+                            break
+                        other, other_reason = router.pick(
+                            agents, "implement", task.get("type") or "serial", None,
+                            exclude=tried)
+                        if not (other and other.get("mode") == "real"):
+                            break
+                        tried.add(other["id"])
+                        res = _run_step(run_id, "draft-c%d" % i,
+                                        modelhub.bind_agent(other, difficulty), use_prompt,
+                                        step_wd, readonly=False, ev=ev, timeout=2400,
+                                        images=_task_images(task, workdir),
+                                        note="起草换将 %s → %s：%s" % (
+                                            impl["id"], other["id"],
+                                            (other_reason or "")[:90]))
+                        good, txt = _chapter_state()
+                        if not good and res["ok"] and _wc(res.get("text") or "") >= int(wpc * 0.6):
+                            try:
+                                _write_chapter(workdir, i, res["text"])
+                                good, txt = _chapter_state()
+                            except OSError:
+                                pass
+                        if good:
+                            draft_sid = ""   # 换将作者无本任会话，revise 另起
+                if not good:
+                    time.sleep(3)   # 落盘竞态宽限：CLI 崩溃退出前写的文件可能晚于
+                    good, txt = _chapter_state()   # 退出检查零点几秒才可见（c34 实测）
+                if not good:
+                    store.update_run(run_id, status="failed",
+                                     error="第 %d 章起草失败: %s" % (i, (res or {}).get("error")), ended_at=_now())
+                    return
                 if not res["ok"]:
                     # 成品是文件不是退出码：CLI 超时但章稿已完整落盘（终章长文实测
                     # 反复出现——文件写完、收尾声明没等到）就送评审门把关，别整章作废
-                    txt = _read_chapter(workdir, i)
-                    if not (txt and _wc(txt) >= int(wpc * 0.6)):
-                        store.update_run(run_id, status="failed",
-                                         error="第 %d 章起草失败: %s" % (i, res.get("error")), ended_at=_now())
-                        return
                     live = (store.get_run(run_id).get("steps") or [])
                     if live:
                         store.finish_step(run_id, live[-1]["n"], "done",
                                           summary="起草调用超时，但章稿已完整落盘（约 %d 字）——交评审门判质量"
                                                   % _wc(txt))
+                # §07 T1.1：draft 会话 id 供本轮 revise 复用（同会话内前缀走缓存读计价）
+                draft_sid = (_resume_sid(impl, res.get("sid")) or "") if res["ok"] else draft_sid
             else:
                 # ---- 同章多稿赛马（dev-3.0）：n 个作者并行起草 → 逐变体评审 →
                 # 均分最高者为正稿。变体写隔离文件 chapter-XX-vK.md，赢家改名、
                 # 败稿删除；变体 0 = 本任作者（revise 会话沿用），其余取跨族优先的
                 # 其他真实智能体，不足时同作者开新会话凑数。
-                pool = [impl]
-                others = [a for a in agents if a.get("mode") == "real" and a["id"] != impl["id"]]
-                others.sort(key=lambda a: 0 if a.get("kind") != impl.get("kind") else 1)
-                pool += others[:n_variants - 1]
-                while len(pool) < n_variants:
-                    pool.append(impl)   # 不够就同作者再开一路（新会话天然出不同稿）
-                results = {}
-
-                def _draft_one(kk, agent):
-                    vfile = "chapter-%02d-v%d.md" % (i, kk)
-                    r = _run_step(run_id, "draft-c%d-v%d" % (i, kk),
-                                  modelhub.bind_agent(agent, difficulty),
-                                  _draft_prompt(vfile), step_wd, readonly=False, ev=ev,
-                                  timeout=2400,
-                                  # 赛马只在全新起草时启用（无续会话），每路都是新会话
-                                  images=_task_images(task, workdir),
-                                  note="赛马变体 %d/%d（%s）" % (kk + 1, len(pool), agent.get("id")))
-                    results[kk] = (vfile, agent, r)
-
-                threads = []
-                for kk, agent in enumerate(pool):
-                    th = threading.Thread(target=_draft_one, args=(kk, agent),
-                                          name="race-%s-c%d-v%d" % (run_id, i, kk), daemon=True)
-                    threads.append(th)
-                    th.start()
-                for th in threads:
-                    th.join(3000)
-                _check_cancel(ev)
-
                 scored_variants = []
-                for kk in range(len(pool)):
-                    vfile, agent, r = results.get(kk, (None, None, None))
-                    if vfile is None:
-                        continue
-                    txt = _read_variant(workdir, i, kk)
-                    ok_text = txt and _wc(txt) >= int(wpc * 0.6)
-                    if r is not None and not r["ok"] and not ok_text:
-                        continue   # 这一路彻底失败（无成品也不够长）
-                    if not ok_text:
-                        continue
-                    cj_map, sc, sids2 = run_critique(
-                        txt, 1, note_extra="（本稿为同章赛马变体 %d/%d，只评这一份）" % (kk + 1, len(pool)))
-                    m = means_of(cj_map)
-                    avg = round(sum(m.values()) / max(1, len(m)), 2) if m else 0.0
-                    scored_variants.append({"variant": kk, "agent": agent.get("id"),
-                                            "file": vfile, "means": m, "avg": avg,
-                                            "cj": cj_map, "scored": sc, "sids": sids2})
+                for race_round in range(2):
+                    # 全变体失败（网关突发限流）→ 60s 退避重赛一轮，别一章判死
+                    if race_round:
+                        if ev is not None and ev.is_set():
+                            break
+                        time.sleep(60)
+                        for kk in range(n_variants):
+                            # 清上一轮残稿：防陈旧半成品被本轮评分误认成新成品
+                            try:
+                                os.remove(os.path.join(workdir, "chapter-%02d-v%d.md" % (i, kk)))
+                            except OSError:
+                                pass
+                    pool = [impl]
+                    others = [a for a in agents if a.get("mode") == "real" and a["id"] != impl["id"]]
+                    others.sort(key=lambda a: 0 if a.get("kind") != impl.get("kind") else 1)
+                    pool += others[:n_variants - 1]
+                    while len(pool) < n_variants:
+                        pool.append(impl)   # 不够就同作者再开一路（新会话天然出不同稿）
+                    results = {}
+
+                    def _draft_one(kk, agent):
+                        vfile = "chapter-%02d-v%d.md" % (i, kk)
+                        r = _run_step(run_id, "draft-c%d-v%d" % (i, kk),
+                                      modelhub.bind_agent(agent, difficulty),
+                                      _draft_prompt(vfile), step_wd, readonly=False, ev=ev,
+                                      timeout=2400,
+                                      # 赛马只在全新起草时启用（无续会话），每路都是新会话
+                                      images=_task_images(task, workdir),
+                                      note="赛马变体 %d/%d（%s）" % (kk + 1, len(pool), agent.get("id")))
+                        results[kk] = (vfile, agent, r)
+
+                    threads = []
+                    for kk, agent in enumerate(pool):
+                        th = threading.Thread(target=_draft_one, args=(kk, agent),
+                                              name="race-%s-c%d-v%d" % (run_id, i, kk), daemon=True)
+                        threads.append(th)
+                        th.start()
+                    for th in threads:
+                        th.join(3000)
+                    _check_cancel(ev)
+
+                    scored_variants = []
+                    for kk in range(len(pool)):
+                        vfile, agent, r = results.get(kk, (None, None, None))
+                        if vfile is None:
+                            continue
+                        txt = _read_variant(workdir, i, kk)
+                        ok_text = txt and _wc(txt) >= int(wpc * 0.6)
+                        if r is not None and not r["ok"] and not ok_text:
+                            continue   # 这一路彻底失败（无成品也不够长）
+                        if not ok_text:
+                            continue
+                        cj_map, sc, sids2 = run_critique(
+                            txt, 1, note_extra="（本稿为同章赛马变体 %d/%d，只评这一份）" % (kk + 1, len(pool)))
+                        m = means_of(cj_map)
+                        avg = round(sum(m.values()) / max(1, len(m)), 2) if m else 0.0
+                        scored_variants.append({"variant": kk, "agent": agent.get("id"),
+                                                "file": vfile, "means": m, "avg": avg,
+                                                "cj": cj_map, "scored": sc, "sids": sids2})
+                    if scored_variants:
+                        break
                 if not scored_variants:
                     store.update_run(run_id, status="failed",
                                      error="第 %d 章赛马全部变体起草失败" % i, ended_at=_now())
