@@ -6,8 +6,8 @@ generic 分支），调用形如：python fixtures_race_cli.py <good|bad> <promp
 
 - 起草（prompt 含「本章任务」）：提取章号/变体号写稿；tag=good 时稿内
   埋「高光情节」标记，tag=bad 时埋「注水情节」（两稿长度都过审稿门槛）。
-- 评审（prompt 含「待评审稿件」）：稿件含「高光情节」→ 全维度 9.5 分；
-  含「注水情节」→ 4.0 分。
+- 评审（prompt 含「待评审稿件」，或含「全书整体」的全局一致性评审）：
+  稿件含「高光情节」→ 全维度 9.5 分；含「注水情节」→ 4.0 分。
 - 其余（大纲/规划）：输出可解析的最小大纲 JSON。
 """
 import re
@@ -46,7 +46,7 @@ if "本章任务" in prompt:
     target = Path(name)
     target.write_text("# 章\n\n" + _fill(mark, 900), encoding="utf-8")
     print("第 X 章完成（约 900 字）")
-elif "待评审稿件" in prompt:
+elif "待评审稿件" in prompt or "全书整体" in prompt:
     score = 9.5 if "高光情节" in prompt else 4.0
     dims = ["情节", "人物", "文笔", "节奏", "吸引力"]
     print("```json\n{\"scores\": {%s}, \"issues\": [], \"summary\": \"race review\"}\n```"
