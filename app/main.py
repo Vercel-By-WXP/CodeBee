@@ -1816,6 +1816,9 @@ def _state_payload(client_id="", ver=None):
         "control": remote.control_view(client_id),
         # 供应商健康/告警（顶栏横幅数据源；有告警时 bump_state 会推给所有端）
         "health": health.snapshot(),
+        # 任务队列观测（worker 池目标/存活 + 队列深度）：排队问题排障一眼定位
+        # 是「并发满载在等」还是「job 蒸发没人管」（后者由看门狗 2 分钟自愈）
+        "jobs": jobs.workers_info(),
     }
 
 

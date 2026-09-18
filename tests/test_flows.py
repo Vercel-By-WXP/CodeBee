@@ -124,8 +124,8 @@ class TestSettingsAndConcurrency(BaseTest):
         from app.core import jobs, settings
         settings._FILE = self.data_dir / "settings.json"
 
-        # 1) 设置读写与边界校验
-        self.assertEqual(settings.load()["max_concurrent_jobs"], 3)
+        # 1) 设置读写与边界校验（默认 6：2026-09-18 起对齐「多任务并行不排队」）
+        self.assertEqual(settings.load()["max_concurrent_jobs"], 6)
         view, err = settings.save({"max_concurrent_jobs": 5})
         self.assertIsNone(err)
         self.assertEqual(view["max_concurrent_jobs"], 5)

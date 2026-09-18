@@ -1033,7 +1033,7 @@
     "当前配置不生效：请检查供应商密钥、启停状态与模型选择。": "Current config is not active: check the API key, enabled state, and model selection.",
     "最大并发任务数（多任务同时跑、互不打扰）": "Max concurrent tasks (run in parallel, fully isolated)",
     "1 · 串行": "1 · serial",
-    "1 = 串行排队；建议 2-4。每个任务在独立线程执行，运行数据按任务隔离。": "1 = serial queue; 2-4 recommended. Each task runs in its own thread; data is isolated per task.",
+    "1 = 串行排队；任务多可开 6-12 并行。同一任务仍单飞（防双烧评审），跨任务互不打扰；排队超 2 分钟会自动补队自愈。": "1 = serial queue; open 6-12 when running many tasks. Same task stays single-flight (no double review); tasks don't block each other; anything stuck in queue over 2 minutes self-heals automatically.",
     "默认保存路径（新建任务未指定工作目录时使用；支持 ~）": "Default save path (used when a new task doesn't specify one; ~ supported)",
     "保存时把「旧默认路径下」的现有任务目录迁移到新路径（运行中的跳过；手动指定的目录不受影响）": "When saving, migrate existing task directories under the old default path to the new one (skip running tasks; manually specified paths are untouched)",
     "不沿用（全新开始）": "Don't resume (fresh start)",

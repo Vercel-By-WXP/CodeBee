@@ -675,10 +675,10 @@
           <h3 data-i18n="运行设置" class="sec-title">运行设置</h3>
           <div class="field"><label data-i18n="最大并发任务数（多任务同时跑、互不打扰）">最大并发任务数（多任务同时跑、互不打扰）</label>
             <div class="input-row">
-              <input id="set-workers" type="number" min="1" max="6" value="3">
+              <input id="set-workers" type="number" min="1" max="12" value="6">
               <button data-i18n="保存" class="ghost small" onclick="saveSettings()">保存</button>
             </div>
-            <p data-i18n="1 = 串行排队；建议 2-4。每个任务在独立线程执行，运行数据按任务隔离。" class="hint">1 = 串行排队；建议 2-4。每个任务在独立线程执行，运行数据按任务隔离。</p>
+            <p data-i18n="1 = 串行排队；任务多可开 6-12 并行。同一任务仍单飞（防双烧评审），跨任务互不打扰；排队超 2 分钟会自动补队自愈。" class="hint">1 = 串行排队；任务多可开 6-12 并行。同一任务仍单飞（防双烧评审），跨任务互不打扰；排队超 2 分钟会自动补队自愈。</p>
           </div>
           <div class="field"><label data-i18n="默认保存路径（新建任务未指定工作目录时使用；支持 ~）">默认保存路径（新建任务未指定工作目录时使用；支持 ~）</label>
             <div class="input-row">

@@ -606,9 +606,11 @@ def update_run(run_id, expected_status=None, **fields):
             return None
         run.update(fields)
         _save_json(paths.RUNS_DIR / run_id / "run.json", run)
-        # 终态回填：运行结束（成功/失败/取消）时同步任务状态，否则任务永远停在 queued
+        # 状态回填：起跑与结束都同步任务状态。只回填终态的话，run 在跑、
+        # 任务永远显示「排队中」（2026-09-18 实案：「# 重写·续」run 已 running
+        # 写了一小时，任务卡 queued，用户以为卡死连点重试）。
         st = fields.get("status")
-        if st in ("done", "failed", "cancelled"):
+        if st in ("running", "done", "failed", "cancelled"):
             tid = run.get("task_id")
             task = _TASKS.get(tid) if tid else None
             if task:

@@ -16,10 +16,12 @@ _FILE = paths.DATA_DIR / "settings.json"
 # 「导出诊断包」是用户手动操作不受此开关限制）
 # publish_daily_cap / publish_fail_streak：自动发布护栏——每任务每平台每日
 # 成功发章上限、平台连续失败几次后暂停自动发布（publish/auto.py 读取）
-DEFAULTS = {"max_concurrent_jobs": 3, "default_workdir": "", "hooks_token": "",
+DEFAULTS = {"max_concurrent_jobs": 6, "default_workdir": "", "hooks_token": "",
             "telemetry_errors": True, "publish_daily_cap": 10,
             "publish_fail_streak": 3}
-MIN_WORKERS, MAX_WORKERS = 1, 6
+# 并发上限 12：worker 只是拉起 CLI 子进程的调度位，跨任务无共享资源；
+# 同任务单飞守卫在 jobs 层。默认 6 对齐「多任务并行不排队」的使用预期。
+MIN_WORKERS, MAX_WORKERS = 1, 12
 
 
 def builtin_workdir():

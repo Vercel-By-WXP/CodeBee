@@ -20,6 +20,12 @@ _alive = 0            # 活跃 worker 线程数
 _target = 3           # 目标并发数（settings.max_concurrent_jobs）
 _pool_lock = threading.Lock()
 _seq = 0
+MAX_POOL = 12         # 并发上限：每个 job 只是拉起 CLI 子进程，跨任务并行无共享
+                      # 资源（同任务单飞另有守卫），照竞品（emdash/munder-difflin
+                      # 高并行环境）放开到 12
+WATCHDOG_INTERVAL_S = 60   # 队列看门狗巡检周期
+WATCHDOG_STALE_S = 120     # queued 超过该秒数视为掉队（正常入队到被拿起 ≤5s）
+_watchdog_started = False
 
 AI_REPAIR_PROMPT = """你是环境工程师。在 Windows 上执行下面的安装命令失败了，请诊断原因并给出修正命令。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
@@ -48,9 +54,9 @@ def _repair_command_allowed(cmd):
 
 
 def configure(max_workers):
-    """设置目标并发数（1-6）：扩容立即补线程，缩容由空闲线程自行退出。"""
+    """设置目标并发数（1-12）：扩容立即补线程，缩容由空闲线程自行退出。"""
     global _target
-    _target = max(1, min(6, int(max_workers)))
+    _target = max(1, min(MAX_POOL, int(max_workers)))
     if _started:
         _resize()
     return _target
@@ -97,12 +103,35 @@ def enqueue(job):
 
 
 def _ensure_workers():
-    """队列里积压超过空闲 worker 数时补线程（惰性扩容，替代启动期预建）。"""
+    """队列里积压超过空闲 worker 数时补线程（惰性扩容，替代启动期预建）。
+    看门狗线程同样惰性起：与 worker 一样不在启动期 Thread.start()（杀软
+    挂起新线程的真实装机案例，见 start_worker 注释），首队到达时一起补。"""
+    global _watchdog_started
     with _pool_lock:
         pending = _QUEUE.qsize()
         need = max(_target, 1) - _alive + pending
+        if not _watchdog_started:
+            _watchdog_started = True
+            threading.Thread(target=_watchdog, name="job-watchdog",
+                             daemon=True).start()
     if need > 0:
         _resize()
+
+
+def _watchdog():
+    """队列看门狗：周期把卡死的 queued 编排运行补回队列。
+
+    job 队列在内存里，任何一次入队丢失（2026-09-18 实案：r-20260918-211920
+    排队 1 小时无人接手、进程未重启则启动补队永远不跑）都会让 UI 永远
+    「排队中」。这里每分钟自愈一次；重复入队由 worker 出队守卫（非 queued
+    跳过）与同任务单飞守卫兜底，幂等。巡检自身异常绝不退出。"""
+    import time as _t
+    while True:
+        _t.sleep(WATCHDOG_INTERVAL_S)
+        try:
+            requeue_pending(limit=6, max_age_s=WATCHDOG_STALE_S)
+        except Exception:
+            pass
 
 
 def cancel(run_id):
@@ -282,11 +311,43 @@ def _yield_duplicate(run_id):
         return False
 
 
-def requeue_pending(limit=10):
-    """启动补队：队列在内存里，进程一死排队项就没人管了（2026-09-18
-    七猫 r-162724 排队僵尸案：续跑副本 created 后服务重启，Timer 随进程
-    蒸发，运行永远停在「排队中」）。重启后把近 24h 的遗留 queued 编排运行
-    重新入队；同任务已有在跑/排队的不重复补。返回补队条数。"""
+def _age_s(run, now=None):
+    """run 已创建多少秒（created_at 解析失败返回 0：宁可早补，别误判卡死）。"""
+    import time as _t
+    now = now if now is not None else _t.time()
+    try:
+        ts = _t.mktime(_t.strptime(run.get("created_at") or "", "%Y-%m-%d %H:%M:%S"))
+    except Exception:
+        return 0.0
+    return max(0.0, now - ts)
+
+
+def _in_resume_backoff(run, now=None):
+    """续跑副本是否还在退避等待窗口内（resume_enqueue_at 未到点）。
+
+    到点时间由 _maybe_auto_resume 落在 run 上，Timer 到点才入队；巡检/补队
+    若无视它直接重排，等于把 300s 网关退避窗口烧掉（立即重排撞同一堵墙）。"""
+    import time as _t
+    now = now if now is not None else _t.time()
+    at = str(run.get("resume_enqueue_at") or "")
+    if not at:
+        return False
+    try:
+        return _t.mktime(_t.strptime(at, "%Y-%m-%d %H:%M:%S")) > now
+    except Exception:
+        return False   # 解析失败按「不在退避」处理：宁可入队，别让副本永远卡死
+
+
+def requeue_pending(limit=10, max_age_s=None):
+    """把遗留的 queued 编排运行重新入队（启动补队与运行期巡检共用）。
+
+    队列在内存里，进程一死排队项就没人管了（2026-09-18 七猫 r-162724
+    排队僵尸案：续跑副本 created 后服务重启，Timer 随进程蒸发，运行永远
+    停在「排队中」）。同任务已有在跑/排队的不重复补。
+
+    max_age_s：巡检模式只补「卡了超过该秒数」的，刚入队的正常排队不掺和；
+    None（启动模式）全量补。resume_enqueue_at 未到点的续跑副本两种模式都
+    跳过——重启不该把退避窗口烧掉。返回补队条数。"""
     try:
         from . import store
     except Exception:
@@ -299,6 +360,10 @@ def requeue_pending(limit=10):
             if run.get("status") != "queued" or run.get("kind") != "orchestration":
                 continue
             if not run.get("task_id") or not _recent(run):
+                continue
+            if _in_resume_backoff(run):
+                continue   # 退避窗口内的续跑副本：到点 Timer 自会入队
+            if max_age_s is not None and _age_s(run) < max_age_s:
                 continue
             if _task_active_run(run["task_id"], exclude_run_id=run["id"]):
                 continue   # 同任务已有更活跃的运行，别再排一份
@@ -326,13 +391,15 @@ def _worker():
             run_id = job.get("run_id")
             ev = cancel_event_for(run_id) if run_id else threading.Event()
             try:
-                # 出队后再兜一次底：排队期取消（cancel 已直接落终态）的任务
-                # 不再进流水线，避免 execute_run 又把 cancelled 改回 running。
-                # 查不到的 run（如测试 mock）不拦，保持原行为。
+                # 出队后状态闸：非 queued 一律跳过。排队期取消的（cancel 已
+                # 直接落终态）不再进流水线；running/done/failed 的是看门狗
+                # 重排/双入队产生的重复副本——另一 worker 已在跑或已跑完，
+                # 再 execute_run 会把同一运行执行两次。查不到的 run（测试
+                # mock）不拦，保持原行为。
                 if run_id:
                     from . import store
                     r0 = store.get_run(run_id)
-                    if r0 and r0.get("status") == "cancelled":
+                    if r0 and r0.get("status") != "queued":
                         continue   # task_done 由 finally 统一收口，不能在此重复
                     if job.get("kind") == "orchestration" and _yield_duplicate(run_id):
                         continue   # 同任务单飞：续跑副本让位（已落 cancelled）
@@ -365,7 +432,17 @@ def _worker():
 
 def workers_info():
     with _pool_lock:
-        return {"target": _target, "alive": _alive}
+        return {"target": _target, "alive": _alive, "queued": _QUEUE.qsize()}
+
+
+def _drain_test_queue():
+    """测试辅助：清空内存队列并结清未决 join（生产代码勿调）。"""
+    while True:
+        try:
+            _QUEUE.get_nowait()
+            _QUEUE.task_done()
+        except Exception:
+            return
 
 
 def _now():
