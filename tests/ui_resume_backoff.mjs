@@ -184,6 +184,10 @@ async function main() {
           return new Response(JSON.stringify({ runs: [queuedRun, failedRun] }),
             { status: 200, headers: { "Content-Type": "application/json" } });
         }
+        if (url.includes("/api/runs/${R_QUE}")) {
+          return new Response(JSON.stringify({ run: queuedRun }),
+            { status: 200, headers: { "Content-Type": "application/json" } });
+        }
         return origFetch(u, o);
       };
       const origApply = applyState;
@@ -261,6 +265,28 @@ async function main() {
       && String(res.chip || "").includes("2"),
       res.chip);
 
+    // 2b) 运行行徽章（.run-sep）：排队轮写明将于何时续跑，失败轮照常「失败」
+    //     （2026-09-18 用户把退避窗口误读成资源排队案——行徽章也要写明）
+    const sepChips = await evalJson(`(() => {
+      const chips = Array.from(document.querySelectorAll('.run-sep .chip'))
+        .map((e) => e.textContent.trim());
+      return { chips };
+    })()`);
+    check("运行行徽章：排队轮「将于 08:30 自动续跑」",
+      (sepChips.chips || [])[0] === "将于 08:30 自动续跑", JSON.stringify(sepChips));
+    check("运行行徽章：失败轮照常「失败」",
+      (sepChips.chips || [])[1] === "失败", JSON.stringify(sepChips));
+
+    // 2c) 运行详情页头部徽章（renderRunDetail）同款退避文案
+    const runChip = await evalJson(`(async () => {
+      openRun("${R_QUE}");
+      await new Promise((r) => setTimeout(r, 1200));
+      return { chip: document.getElementById("rd-status").textContent };
+    })()`);
+    check("运行详情页头徽章「将于 08:30 自动续跑」",
+      String(runChip.chip || "").includes("自动续跑")
+      && String(runChip.chip || "").includes("08:30"), JSON.stringify(runChip));
+
     // 3) 预定时刻已过：chip 翻回「排队中」
     const after = await evalJson(`(async () => {
       window.__queuedRun.resume_enqueue_at = "2020-01-01 08:30:00";
@@ -271,6 +297,23 @@ async function main() {
     })()`);
     check("退避窗口已过 → chip 翻回「排队中」", String(after.chip || "").includes("排队中")
       && !String(after.chip || "").includes("自动续跑"), JSON.stringify(after));
+
+    // 3b) 到点翻回要覆盖所有新接入面：运行行徽章 + 运行详情页头徽章
+    const afterAll = await evalJson(`(async () => {
+      S.taskSig = "";
+      sideOpenTask("${T_RES}");
+      await new Promise((r) => setTimeout(r, 1200));
+      const sep = Array.from(document.querySelectorAll('.run-sep .chip'))
+        .map((e) => e.textContent.trim());
+      openRun("${R_QUE}");
+      await new Promise((r) => setTimeout(r, 1200));
+      return { sep, runChip: document.getElementById("rd-status").textContent };
+    })()`);
+    check("到点后运行行徽章翻回「排队中」",
+      (afterAll.sep || [])[0] === "排队中", JSON.stringify(afterAll.sep));
+    check("到点后运行详情页头徽章翻回「排队中」",
+      String(afterAll.runChip || "").includes("排队中")
+      && !String(afterAll.runChip || "").includes("自动续跑"), afterAll.runChip);
 
     check("无新增控制台错误", consoleErrors.length === 0, consoleErrors.join(" | ").slice(0, 300));
   } finally {

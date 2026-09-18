@@ -228,3 +228,74 @@ class TestAutoResumeBackoff(BaseTest):
         task, run = self._seed_failed_serial_run(
             store, "maxed book", auto_resumes=jobs.AUTO_RESUME_MAX)
         self.assertFalse(jobs._maybe_auto_resume(run["id"]))
+
+    # 同因连撞的两组错误：章号/引用号/数字不同，病根文本相同（kimi 欠费、
+    # opencode UnknownError 这类死墙每次撞都长一样，只是易变片段在换皮）
+    _ERR_A = ('第 12 章起草失败: 退出码 1；stderr/stdout: Error: {"name": "UnknownError", '
+              '"data": {"message": "Unexpected server error. Check server logs for details.", '
+              '"ref": "err_b20f42d6"}}')
+    _ERR_A_RELABELED = ('第 44 章起草失败: 退出码 1；stderr/stdout: Error: {"name": "UnknownError", '
+                        '"data": {"message": "Unexpected server error. Check server logs for details.", '
+                        '"ref": "err_ffff9999"}}')
+    _ERR_B = '第 44 章起草失败: 退出码 1；provider.auth_error: 403 no valid authorization'
+
+    def test_same_cause_stops_resume_early(self):
+        """续跑副本再失败且与上一轮错误同因：止损落终态，不再排下一轮。"""
+        from app.core import jobs, store
+        task, run_a = self._seed_failed_serial_run(store, "same-cause book")
+        store.update_run(run_a["id"], error=self._ERR_A)
+        captured = {}
+        orig_timer = jobs.threading.Timer
+
+        def fake_timer(interval, fn):
+            captured["interval"] = interval
+
+            class _T:
+                daemon = False
+                def start(self):
+                    pass
+            return _T()
+
+        jobs.threading.Timer = fake_timer
+        try:
+            self.assertTrue(jobs._maybe_auto_resume(run_a["id"]))
+            runs = [r for r in store.list_runs(50) if r.get("task_id") == task["id"]]
+            run_b = next(r for r in runs if r["id"] != run_a["id"])
+            store.update_run(run_b["id"], status="failed", error=self._ERR_A_RELABELED)
+            self.assertFalse(jobs._maybe_auto_resume(run_b["id"]),
+                             "同因连撞必须止损，不得再排续跑副本")
+        finally:
+            jobs.threading.Timer = orig_timer
+        runs = [r for r in store.list_runs(50) if r.get("task_id") == task["id"]]
+        self.assertEqual(len(runs), 2, "同因止损后不得出现第 3 个运行")
+        run_b = next(r for r in runs if r["id"] != run_a["id"])
+        self.assertEqual(run_b.get("auto_resume_stopped"), "same_cause")
+        self.assertIn("止损", run_b.get("error") or "", "终态错误里要写明止损死因")
+        self.assertEqual(jobs._QUEUE.qsize(), 0)
+
+    def test_different_cause_still_resumes(self):
+        """失败原因变了（换墙了）：退避重试仍值得烧，继续自动续跑。"""
+        from app.core import jobs, store
+        task, run_a = self._seed_failed_serial_run(store, "diff-cause book")
+        store.update_run(run_a["id"], error=self._ERR_A)
+        orig_timer = jobs.threading.Timer
+
+        def fake_timer(interval, fn):
+            class _T:
+                daemon = False
+                def start(self):
+                    pass
+            return _T()
+
+        jobs.threading.Timer = fake_timer
+        try:
+            self.assertTrue(jobs._maybe_auto_resume(run_a["id"]))
+            runs = [r for r in store.list_runs(50) if r.get("task_id") == task["id"]]
+            run_b = next(r for r in runs if r["id"] != run_a["id"])
+            store.update_run(run_b["id"], status="failed", error=self._ERR_B)
+            self.assertTrue(jobs._maybe_auto_resume(run_b["id"]),
+                            "错误签名不同说明墙变了，应继续续跑")
+        finally:
+            jobs.threading.Timer = orig_timer
+        runs = [r for r in store.list_runs(50) if r.get("task_id") == task["id"]]
+        self.assertEqual(len(runs), 3, "异因失败应排出第 3 个运行")

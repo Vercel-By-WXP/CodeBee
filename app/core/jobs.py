@@ -184,11 +184,26 @@ def _task_active_run(task_id, exclude_run_id=None):
     return None
 
 
+def _err_signature(err):
+    """错误串的稳定特征：剥掉章号/引用号/数字等易变片段，只留病根文本。
+    同因连撞判定用——退避重跑后错误若还长得一样，说明墙没动（欠费/配置死），
+    再多次退避也只是重复付费。"""
+    import re
+    s = str(err or "")
+    s = re.sub(r"第\s*\d+\s*章", "第N章", s)
+    s = re.sub(r"err_[0-9a-fA-F]+", "err_X", s)
+    s = re.sub(r"\d+", "N", s)
+    return re.sub(r"\s+", " ", s).strip()[:400]
+
+
 def _maybe_auto_resume(run_id):
     """连载任务失败自动续跑：继承已完成章继续，最多 AUTO_RESUME_MAX 次。
 
     真实长篇单次运行常因供应商拥堵超时中断；这里在 worker 收尾时自动重排一次
     续跑（store.retry_task 会带上 inherit），让整个流程真正无人值守。
+    同因连撞止损：续跑副本再失败时与本次失败的错误签名比对（2026-09-18
+    重写任务 kimi 403 欠费案），一模一样说明退避没换来不同结果，直接落
+    终态写明死因，不再烧剩余的退避次数。
     """
     try:
         from . import store
@@ -202,6 +217,16 @@ def _maybe_auto_resume(run_id):
             return False   # 用户主动取消的运行绝不自动续跑
         if int(run.get("auto_resumes") or 0) >= AUTO_RESUME_MAX:
             return False
+        prev_id = run.get("auto_resumed_from")
+        if prev_id:
+            prev = store.get_run(prev_id)
+            sig_now = _err_signature(run.get("error"))
+            if (prev and sig_now and prev.get("error")
+                    and sig_now == _err_signature(prev.get("error"))):
+                store.update_run(run_id, auto_resume_stopped="same_cause",
+                                 error=(run.get("error") or "")
+                                 + "｜自动续跑止损：连续两次失败原因相同，不再重试")
+                return False
         if _task_active_run(task["id"], exclude_run_id=run_id):
             return False   # 同任务已有运行排队/在跑：再排副本只会与之撞车
         ok, err, new_run = store.retry_task(task["id"])
