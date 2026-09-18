@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 from .browser import BrowserError
 
@@ -83,8 +84,13 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 if not text:
                     continue
                 note(i, "点击「%s」" % text)
-                r = page.call(_click_text_js(), text, st.get("scope") or "",
-                              bool(st.get("contains")))
+                r = None
+                for _try in range(3):               # SPA 渲染慢：找不到先等再试
+                    r = page.call(_click_text_js(), text, st.get("scope") or "",
+                                  bool(st.get("contains")))
+                    if (r or {}).get("ok"):
+                        break
+                    time.sleep(0.9)
                 if not (r or {}).get("ok"):
                     raise FlowError((r or {}).get("err") or text)
             elif act == "shot":
