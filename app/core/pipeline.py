@@ -2753,7 +2753,7 @@ def _write_task_spec(task, workdir):
                          % (s.get("chapters"), s.get("words_per_chapter"), s.get("variants", 1)))
         if task.get("verify_command"):
             lines.append("- 验证命令：`%s`" % task["verify_command"])
-        if root not in target.parents:   # sink 侧复检：写入路径仍限定在工作目录内
+        if not str(target).startswith(str(root) + os.sep):   # sink 侧复检：路径必须仍在工作目录内
             return ""
         with open(str(target), "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
