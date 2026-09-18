@@ -184,9 +184,25 @@ class Page:
         try:
             self.send("Runtime.enable")
             self.send("Page.enable")
+            self._ua_override()
         except BrowserError:
             self.ws.close()
             raise
+
+    def _ua_override(self):
+        """UA 伪装成标准 Chrome：Edge 尾巴（Edg/x.y）会被部分站点（如七猫
+        建书页）的浏览器检测判「版本过低」整页替换。用 CDP Browser.getVersion
+        的真实内核版本拼标准 Chrome UA，各站点兼容性等同 Chrome。失败不拦
+        （个别上下文可能禁用该域）。"""
+        try:
+            r = self.send("Browser.getVersion", timeout=5.0)
+            ver = str((r.get("product") or "")).split("/")[-1] or "130.0.0.0"
+            ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/%s Safari/537.36" % ver)
+            self.send("Network.setUserAgentOverride",
+                      {"userAgent": ua}, timeout=5.0)
+        except BrowserError:
+            pass
 
     # ------------------------------------------------------------ CDP 协议
     def send(self, method, params=None, timeout=30.0):

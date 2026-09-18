@@ -31,12 +31,56 @@ class FlowError(Exception):
     """流程失败：message 面向用户（含步骤序号与截图路径线索）。"""
 
 
+def _click_match_js():
+    # 点同时包含所有关键词的最小可见元素（长度最小者=最内层卡片）
+    return ("(keys,maxLen)=>{"
+            "const hit=[...document.querySelectorAll('div,li,section,label,span,a')].filter(e=>{"
+            "const x=(e.innerText||'').trim();"
+            "return x && x.length<=maxLen && keys.every(k=>x.includes(k));});"
+            "if(!hit.length)return{ok:false,err:'找不到同时含 '+keys.join('+')+' 的元素'};"
+            "hit.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
+            "hit[0].scrollIntoView({block:'center'});hit[0].click();"
+            "return{ok:true,tag:hit[0].tagName};}")
+
+
+def _fill_label_js():
+    # Element UI 表单：在 .el-form-item（或 class 含 form-item 的容器）里按
+    # label 文本定位控件，走与 browser.fill 相同的 native setter 管道
+    return ("(labelText,text)=>{"
+            "const items=[...document.querySelectorAll('.el-form-item,[class*=form-item]')];"
+            "let target=null;"
+            "for(const it of items){"
+            "const lb=it.querySelector('[class*=label],[class*=label]');"
+            "const ltxt=((lb&&lb.innerText)||'').trim();"
+            "if(ltxt&&ltxt.includes(labelText)){target=it;break;}}"
+            "if(!target)return{ok:false,err:'找不到字段「'+labelText+'」'};"
+            "const el=target.querySelector('textarea,[contenteditable=true],input[type=text]')||"
+            "target.querySelector('input,textarea');"
+            "if(!el)return{ok:false,err:'字段「'+labelText+'」下没有输入控件'};"
+            "el.scrollIntoView({block:'center'});el.focus();"
+            "if(el.isContentEditable){"
+            "const r=document.createRange();r.selectNodeContents(el);"
+            "const g=getSelection();g.removeAllRanges();g.addRange(r);"
+            "document.execCommand('insertText',false,text);"
+            "return{ok:true};}"
+            "const proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;"
+            "const d=Object.getOwnPropertyDescriptor(proto,'value');"
+            "(d&&d.set?d.set:function(v){el.value=v}).call(el,text);"
+            "el.dispatchEvent(new Event('input',{bubbles:true}));"
+            "el.dispatchEvent(new Event('change',{bubbles:true}));"
+            "return{ok:true};}")
+
+
 def _click_text_js():
+    # contains 模式下外层容器（整页文本）也会 includes 命中——候选按文本长度
+    # 升序取最短者=最内层最精确元素（「新建小说」按钮赢过包它的大 DIV）
     return ("(t,scope,contains)=>{"
             "const els=[...document.querySelectorAll(scope||'button,a,[role=button],span,li')];"
-            "const hit=els.find(e=>{const x=(e.innerText||'').trim();"
+            "const cands=els.filter(e=>{const x=(e.innerText||'').trim();"
             "return x&&(contains?x.includes(t):x===t);});"
-            "if(!hit)return{ok:false,err:'页面上找不到文本为「'+t+'」的可点元素'};"
+            "if(!cands.length)return{ok:false,err:'页面上找不到文本为「'+t+'」的可点元素'};"
+            "cands.sort((a,b)=>((a.innerText||'').trim().length)-((b.innerText||'').trim().length));"
+            "const hit=cands[0];"
             "hit.scrollIntoView({block:'center'});hit.click();return{ok:true};}")
 
 
@@ -93,6 +137,90 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     time.sleep(0.9)
                 if not (r or {}).get("ok"):
                     raise FlowError((r or {}).get("err") or text)
+            elif act == "click_match":
+                # 关键词选块（站点卡片等）：点同时包含所有关键词的最小元素
+                keys = [str(x) for x in (st.get("any") or []) if str(x).strip()]
+                note(i, "点击含 %s 的卡片" % keys)
+                r = None
+                for _try in range(4):               # 弹层渲染慢：找不到先等再试
+                    r = page.call(_click_match_js(), keys,
+                                  int(st.get("max_len") or 400))
+                    if (r or {}).get("ok"):
+                        break
+                    time.sleep(1.0)
+                if not (r or {}).get("ok"):
+                    raise FlowError((r or {}).get("err") or "卡片未找到")
+            elif act == "fill_label":
+                # 按字段标签填（Element UI form-item：label 与控件同容器）
+                key = st.get("key") or ""
+                label = str(st.get("label") or "")
+                text = str(values.get(key, "") or "")
+                if not text:
+                    continue
+                note(i, "填字段「%s」（%d 字）" % (label, len(text)))
+                page.wait_for("[class*=form]", timeout=8)
+                r = None
+                for _try in range(3):
+                    r = page.call(_fill_label_js(), label, text)
+                    if (r or {}).get("ok"):
+                        break
+                    time.sleep(0.9)
+                if not (r or {}).get("ok"):
+                    raise FlowError((r or {}).get("err") or "填字段失败")
+            elif act == "radio":
+                # 单选组：values[map[key]] 映射到 radio value 后点它。
+                # 隐藏 input（Element UI）点不到——点它的最近可见 label 祖先。
+                key = st.get("key") or ""
+                group = st.get("map") or {}
+                want = str(values.get(key, "")).strip()
+                val = group.get(want)
+                if val is None:
+                    if st.get("optional"):
+                        note(i, "跳过单选 %s（无值）" % key)
+                        continue
+                    raise FlowError("单选 %s：值「%s」不在映射 %s 里" % (key, want, list(group)))
+                note(i, "单选 %s=%s（value=%s）" % (key, want, val))
+                r = page.call(
+                    "(v)=>{const r=[...document.querySelectorAll('input[type=radio]')]"
+                    ".find(x=>x.value===v);if(!r)return{ok:false,err:'radio v='+v};"
+                    "const lab=r.closest('label')||(r.closest('.el-radio')||{}).firstElementChild||r;"
+                    "const t=lab.matches('label,.el-radio')?lab:(r.parentElement||r);"
+                    "t.scrollIntoView({block:'center'});t.click();return{ok:true};}", str(val))
+                if not (r or {}).get("ok"):
+                    raise FlowError((r or {}).get("err") or "单选点击失败")
+            elif act == "tags":
+                # 标签弹层逐个点选：manager 把标签清单放 values["_tags"]。
+                # 项为 [组名, 标签] 时先点左侧组名切换（组标签懒渲染）再点标签；
+                # 纯字符串直接点。弹层打开由前置 click_text「添加标签」负责。
+                tags = values.get("_tags") or []
+                if not tags:
+                    note(i, "无标签可点，跳过")
+                    continue
+                scope = st.get("scope") or "span,li,label,[class*=dialog] *,[class*=popper] *"
+                note(i, "点选标签 %d 项" % len(tags))
+                for item in tags:
+                    grp, tg = ("", str(item)) if isinstance(item, (str, int)) \
+                        else (str(item[0] or ""), str(item[1] or ""))
+                    if not tg:
+                        continue
+                    if grp:                             # 切到目标组
+                        r0 = None
+                        for _try in range(2):
+                            r0 = page.call(_click_text_js(), grp, scope, True)
+                            if (r0 or {}).get("ok"):
+                                break
+                            time.sleep(0.6)
+                        if not (r0 or {}).get("ok"):
+                            raise FlowError("标签组「%s」切换失败" % grp)
+                        time.sleep(0.3)
+                    r = None
+                    for _try in range(3):
+                        r = page.call(_click_text_js(), tg, scope, True)
+                        if (r or {}).get("ok"):
+                            break
+                        time.sleep(0.7)
+                    if not (r or {}).get("ok"):
+                        raise FlowError("标签「%s」点选失败：%s" % (tg, (r or {}).get("err")))
             elif act == "shot":
                 note(i, "截图 %s" % st.get("name"))
                 if shot:
@@ -108,9 +236,23 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     if shot:
                         shot("ready-manual-submit")
                     return i + 1
-                note(i, "提交 %s" % st.get("sel") or "")
-                page.wait_for(st["sel"], timeout=8)
-                page.click(st["sel"])
+                if st.get("text"):                    # 按按钮文本提交（CSS 无 :contains）
+                    text = str(st["text"])
+                    note(i, "提交「%s」" % text)
+                    r = None
+                    for _try in range(3):
+                        r = page.call(_click_text_js(), text,
+                                      st.get("scope") or "button,[class*=btn]",
+                                      False)
+                        if (r or {}).get("ok"):
+                            break
+                        time.sleep(0.9)
+                    if not (r or {}).get("ok"):
+                        raise FlowError((r or {}).get("err") or "提交按钮未找到")
+                else:
+                    note(i, "提交 %s" % st.get("sel") or "")
+                    page.wait_for(st["sel"], timeout=8)
+                    page.click(st["sel"])
             elif act == "url_any":
                 u = str(page.url() or "")
                 marks = st.get("any") or []

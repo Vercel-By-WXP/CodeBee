@@ -14,6 +14,8 @@ CONFIG = {
     "id": "qimao",
     "label": "七猫",
     "home": "https://zuozhe.qimao.com/",
+    # 作品管理页：建书入口（「新建小说」按钮所在）；建书向导第二步表单在其下
+    "book_manage": "https://zuozhe.qimao.com/front/book-manage",
     "login_url_marks": ["login", "signin", "passport", "sso"],
 }
 
@@ -67,6 +69,11 @@ FLOWS = {"create_book": CREATE_BOOK, "upload_chapter": UPLOAD_CHAPTER,
          "check_login": CHECK_LOGIN, "probe_form": PROBE_FORM}
 
 
+# 标签字段名 → 弹层左侧组显示名（tags 步骤按组切换后点选；每组必选 1-3 个）
+TAG_GROUP_LABELS = {"tags_style": "风格", "tags_role": "角色",
+                    "tags_plot": "情节", "tags_bg": "背景"}
+
+
 def values_create_book(meta):
     return {
         "title": (meta.get("book_name") or "").strip(),
@@ -75,6 +82,7 @@ def values_create_book(meta):
         "target_reader": (meta.get("target_reader") or "").strip(),
         "category_main": (meta.get("category_main") or "").strip(),
         "category_sub": (meta.get("category_sub") or "").strip(),
+        "status": (meta.get("status") or "连载中").strip(),
     }
 
 

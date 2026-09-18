@@ -288,14 +288,23 @@ def create_book_async(task_id, plat, auto_submit=False):
 
 
 def _with_tag_steps(steps, groups, values):
-    """把标签组的逐个点击插到 submit 步之前（标签值动态，不能写死在流程表）。"""
-    tag_steps = []
-    for _key, tags in groups or []:
-        for t in tags:
-            tag_steps.append({"do": "click_text", "text": t, "contains": False,
-                              "scope": "[class*=tag] li,span,label,[class*=label]"})
-    if not tag_steps:
+    """标签走数据驱动：清单进 values["_tags"]（[组名, 标签] 对），由 flow 的
+    "tags" 步骤按组切换点选。组显示名映射来自平台模块 TAG_GROUP_LABELS
+    （缺省平台无映射时退化为纯标签）。兼容旧流程表（无 tags 步骤时插桩）。"""
+    from . import qimao as _qm
+    flat = []
+    for key, tags in groups or []:
+        grp = getattr(_qm, "TAG_GROUP_LABELS", {}).get(key, "")
+        flat.extend([grp, str(t)] if grp and str(t).strip() else str(t)
+                    for t in tags if str(t).strip())
+    if not flat:
         return steps
+    if any(st.get("do") == "tags" for st in steps):
+        values["_tags"] = flat
+        return steps
+    tag_steps = [{"do": "click_text", "text": str(t), "contains": False,
+                  "scope": "[class*=tag] li,span,label,[class*=label]"}
+                 for t in flat]
     out, inserted = list(steps), False
     for i, st in enumerate(out):
         if st.get("do") in ("submit", "shot") and not inserted:
