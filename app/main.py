@@ -484,6 +484,8 @@ class Handler(BaseHTTPRequestHandler):
                 return deny
         if path == "/api/tasks":
             return self._api_create_task()
+        if path == "/api/tasks/clarify":
+            return self._api_task_clarify()
         if path == "/api/hooks/run":
             return self._api_hook_run()
         if path == "/api/health/op":
@@ -1718,6 +1720,59 @@ class Handler(BaseHTTPRequestHandler):
     def _api_create_task(self):
         status, resp = self._create_and_start(self._body())
         return self._json(status, resp)
+
+    def _api_task_clarify(self):
+        """需求拷问（借鉴 grill-me-skill）：goal 过短/模糊时生成澄清问题。
+
+        POST /api/tasks/clarify，体 {goal, type, context?}。内置智能体单次调用
+        产出 1-3 个问题（每题 2-4 个选项+可自由补充）；失败/超时静默返回
+        {questions: []}——采访态是增强不是闸门，绝不挡创建。"""
+        body = self._body()
+        goal = str(body.get("goal") or "").strip()
+        ttype = str(body.get("type") or "direct").strip()[:40]
+        context = str(body.get("context") or "").strip()[:2000]
+        # 短路：goal 够具体（≥12 字符）或带背景就不打扰
+        if len(goal) >= 12 or context:
+            return self._json(200, {"questions": []})
+        try:
+            from core import builtin_agent
+            bi = builtin_agent.resolve()
+        except Exception:
+            return self._json(200, {"questions": []})
+        prompt = ("用户想用「%s」任务让 AI 做这件事：%s\n"
+                  "这件事的描述比较模糊。请提出最多 3 个最关键的澄清问题（能自答的不要问），"
+                  "每个问题给出 2-4 个最常见的选项。只输出 JSON 数组，不要输出其他内容：\n"
+                  '[{"q": "问题", "options": ["选项1", "选项2"]}]' % (ttype, goal[:200]))
+        try:
+            res = builtin_agent.run(bi, prompt, os.getcwd() if hasattr(os, "getcwd") else ".",
+                                    timeout=60)
+            import json as _json
+            arr = None
+            text = (res.get("text") or "").strip()
+            try:
+                arr = _json.loads(text)
+            except Exception:
+                import re as _re
+                m = _re.search(r"\[[\s\S]*\]", text)
+                if m:
+                    try:
+                        arr = _json.loads(m.group(0))
+                    except Exception:
+                        arr = None
+            if not isinstance(arr, list):
+                return self._json(200, {"questions": []})
+            questions = []
+            for it in arr[:3]:
+                if not isinstance(it, dict):
+                    continue
+                q = str(it.get("q") or "").strip()[:200]
+                opts = [str(o).strip()[:80] for o in (it.get("options") or [])
+                        if str(o).strip()][:4]
+                if q and len(opts) >= 2:
+                    questions.append({"q": q, "options": opts})
+            return self._json(200, {"questions": questions})
+        except Exception:
+            return self._json(200, {"questions": []})
 
     def _api_hook_run(self):
         """外部触发开任务（webhook，借鉴 emdash/mission-control 的外部集成面）。

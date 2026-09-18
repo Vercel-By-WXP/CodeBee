@@ -5094,3 +5094,22 @@ body.welcome-open { overflow: hidden; }
 }
 .bm-pub button.pb-tool:hover { color: var(--accent); background: var(--panel2); }
 .bm-pub .pb-ch-item { padding: 5px 11px; }   /* 章稿列表项同规格 */
+
+/* 需求拷问采访卡（借鉴 grill-me）：goal 模糊时的澄清问题+选项芯片 */
+.clarify-box {
+  margin-top: 10px; padding: 12px 14px; border: 1px dashed var(--border-strong);
+  border-radius: 10px; background: var(--panel2); font-size: 13px;
+}
+.clarify-box.hidden { display: none; }
+.cl-head { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.cl-head .ico { width: 15px; height: 15px; color: var(--accent); }
+.cl-head b { flex: 1; }
+.cl-q { margin-top: 8px; }
+.cl-qtext { font-weight: 600; margin-bottom: 6px; }
+.cl-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.cl-opt {
+  border: 1px solid var(--border); background: transparent; color: inherit;
+  border-radius: 999px; padding: 4px 12px; font-size: 12.5px; cursor: pointer; opacity: .9;
+}
+.cl-opt:hover { border-color: var(--accent); color: var(--accent); opacity: 1; }
+.cl-opt.picked { border-color: var(--accent); color: var(--accent); opacity: .75; cursor: default; }

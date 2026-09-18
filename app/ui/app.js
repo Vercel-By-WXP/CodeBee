@@ -271,6 +271,14 @@ function qsAuth() {
   return s ? "?" + s : "";
 }
 
+/* 下载/预览等导航类 URL 同样带不了请求头：令牌拼进 query（已有 query 用 &，
+ * 没有用 ?；已带 token 的 URL 原样返回）。本机会话令牌为空则原样返回。 */
+function urlAuth(u) {
+  const t = localStorage.getItem("orch.token");
+  if (!t || String(u).includes("token=")) return u;
+  return u + (String(u).includes("?") ? "&" : "?") + "token=" + encodeURIComponent(t);
+}
+
 /* ---------------------------------------------------------- 工具 */
 async function api(path, opts) {
   opts = opts || {};
@@ -393,6 +401,20 @@ function esc(s) {
 function statusChip(st) {
   const zh = { queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") };
   return '<span class="chip ' + esc(st) + '">' + (zh[st] || esc(st)) + "</span>";
+}
+
+/* 运行状态文案（传 run 对象）：退避窗口内的续跑副本写明「将于 HH:MM 自动
+ * 续跑」，别让 5 分钟等待看起来像卡死/资源排队（2026-09-18 重写任务误判案）。
+ * 到点后翻回「排队中」——页面轮询重渲染时 Date.now() 已过预定时刻。 */
+function runStatusText(run) {
+  const st = String((run && run.status) || "");
+  if (st === "queued" && run && run.resume_enqueue_at) {
+    const at = Date.parse(String(run.resume_enqueue_at).replace(" ", "T"));
+    if (!isNaN(at) && Date.now() < at)
+      return t("将于 ") + String(run.resume_enqueue_at).slice(11, 16) + t(" 自动续跑");
+  }
+  return { queued: t("排队中"), running: t("运行中"), done: t("完成"),
+    failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") }[st] || st;
 }
 
 /* 运行错误来源徽标：错误文案以「超时」打头（runner 统一格式）时标 TIMEOUT，
@@ -1758,6 +1780,40 @@ function renderImplSelects() {
   }
 }
 
+/* 需求拷问采访卡（借鉴 grill-me 一次一问的折中：一卡多问、芯片点选）：
+ * 点选项把「问题+所选」追加进目标框，凑齐后用户补一句即可发送；「跳过」直接创建 */
+function renderClarify(questions, goal, resetSubmit) {
+  const box = $("clarify-box");
+  if (!box) { resetSubmit(); return; }
+  box.classList.remove("hidden");
+  box.innerHTML =
+    '<div class="cl-head"><svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg>' +
+    '<b>' + esc(t("先对齐几个点，再做更准")) + "</b>" +
+    '<button type="button" class="ghost small" id="clarify-skip">' + esc(t("跳过，直接做")) + "</button></div>" +
+    questions.map((it, i) =>
+      '<div class="cl-q"><div class="cl-qtext">' + (i + 1) + ". " + esc(it.q) + "</div>" +
+      '<div class="cl-opts">' + (it.options || []).map((o) =>
+        '<button type="button" class="cl-opt" data-q="' + esc(it.q) + '" data-o="' + esc(o) + '">' +
+        esc(o) + "</button>").join("") + "</div></div>").join("");
+  box.querySelectorAll(".cl-opt").forEach((b) => b.addEventListener("click", () => {
+    const ta = $("f-goal");
+    if (!ta) return;
+    const line = it0safe(b.dataset.q, b.dataset.o);
+    ta.value = ta.value.trim() + (ta.value.includes(line) ? "" : (ta.value ? "\n" : "") + line);
+    b.classList.add("picked");
+    b.disabled = true;
+  }));
+  function it0safe(q, o) { return q + "：" + o; }
+  const skip = $("clarify-skip");
+  if (skip) skip.addEventListener("click", () => {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    S.clarifyDone = true;              // 跳过 = 本轮不再采访
+    $("btn-create").click();
+  });
+  $("f-goal").focus();
+}
+
 async function createTask() {
   if (S.creatingTask) return;
   S.creatingTask = true;
@@ -1790,6 +1846,22 @@ async function createTask() {
     resetSubmit();
     return;
   }
+  // 需求拷问闸（借鉴 grill-me）：goal 很短且没写背景时先问 1-3 个澄清问题；
+  // 采访失败/无问题照常创建——是增强不是闸门
+  if (payload.goal.length < 12 && !payload.context && !S.clarifyDone) {
+    msg.textContent = t("目标有点简短，先问几个问题…");
+    try {
+      const cq = await api("/api/tasks/clarify", {
+        method: "POST", body: JSON.stringify({ goal: payload.goal, type: payload.type }) });
+      const qs = (cq && cq.questions) || [];
+      if (qs.length) {
+        S.clarifyDone = true;            // 本轮已采访；再点发送直接创建
+        renderClarify(qs, payload.goal, resetSubmit);
+        return;
+      }
+    } catch (e) { /* 澄清失败照常创建 */ }
+  }
+  S.clarifyDone = false;
   if (!payload.workdir) delete payload.workdir;  // 留空 → 服务端用「默认保存路径」（编排设置可改）
   else unhideSideDir(payload.workdir);           // 在已移除的目录新建任务 → 自动恢复显示
   if (payload.mode === "manual") payload.implementer = $("f-impl").value;
@@ -2684,7 +2756,8 @@ function renderRunList() {
       ' title="' + (can ? t("勾选以批量删除") : t("运行中的记录不可删除，请先取消")) + '"' +
       ' onclick="event.stopPropagation()" onchange="toggleRunSel(\'' + esc(r.id) + '\', this.checked)">' +
       runKindTag(r.kind) +
-      '<span class="name">' + esc(r.title) + "</span>" + statusChip(r.status) +
+      '<span class="name">' + esc(r.title) + "</span>" +
+      '<span class="chip ' + esc(r.status || "") + '">' + esc(runStatusText(r)) + "</span>" +
       '<span class="time">' + esc(r.created_at) + "</span>" +
       '<button class="danger small" title="' + t("删除该记录") + '" onclick="event.stopPropagation(); deleteRun(\'' + esc(r.id) + '\')">' + t("删除") + '</button></div>' +
       '<div class="desc">' + esc(t(r.summary || r.error || (r.steps ? r.steps.length + t(" 个步骤") : ""))) + "</div></div>";
@@ -3073,10 +3146,9 @@ function renderTaskDetail() {
   setEditRetry(tk ? tk.id : "", tk ? tk.status : "", !!tk);
   const isTask = ((S.state || {}).tasks || []).some((t2) => t2.id === key);
   if (isTask) {
-    fetch("/api/tasks/" + encodeURIComponent(key) + "/runs")
-      .then((r) => r.json())
+    api("/api/tasks/" + encodeURIComponent(key) + "/runs")
       .then((d) => { if (S.detailTaskKey === key) drawTaskDetail(key, d.runs || []); })
-      .catch((e) => { /* 拉取失败静默，等下一轮轮询重试 */ });
+      .catch((e) => { /* 拉取失败静默，等下一轮轮询重试；401 已由 api() 弹令牌门 */ });
     return;
   }
   drawTaskDetail(key, ((S.state || {}).runs || []).filter((r) => (r.task_id || r.id) === key));
@@ -3146,13 +3218,12 @@ function drawTaskDetail(key, runs) {
     '<span class="stat">tokens <b>' + sum("tokens") + "</b></span>" +
     (latest.error ? '<span class="stat err">' + errTag(latest.error) + esc(latest.error.slice(0, 200)) + "</span>" : "");
   $("rd-plan").classList.add("hidden");
-  const statusTxt = { queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消") };
   let html = "";
   ordered.forEach((r, i) => {
     const runNo = runs.length - i;
     html += '<div class="run-sep"><span class="rs-i">' + t("第 ") + runNo + "/" + runs.length + t(" 次运行") + '</span>' +
       '<span class="rs-t">' + esc(String(r.created_at || "").slice(5, 16)) + "</span>" +
-      '<span class="chip ' + esc(r.status || "") + '">' + (statusTxt[r.status] || r.status || "") + "</span>" +
+      '<span class="chip ' + esc(r.status || "") + '">' + esc(runStatusText(r)) + "</span>" +
       (r.error ? '<span class="rs-err" title="' + esc(r.error.slice(0, 200)) + '">' + esc(r.error.slice(0, 60)) + "</span>" : "") +
       "</div>";
     html += (r.steps || []).slice().reverse().map((s) =>
@@ -3182,7 +3253,8 @@ function drawTaskDetail(key, runs) {
     }
     if (latest.status === "done" || latest.report) {
       try {
-        const r = await fetch("/api/runs/" + encodeURIComponent(latest.id) + "/report");
+        const r = await fetch("/api/runs/" + encodeURIComponent(latest.id) + "/report",
+          { headers: authHeaders() });
         if (!r.ok) throw new Error("HTTP " + r.status);
         const md = await r.text();
         if (!md.trim()) throw new Error("empty");
@@ -3496,7 +3568,7 @@ async function renderRunDetail() {
   $("rd-title").textContent = run.title;
   const chip = $("rd-status");
   chip.className = "chip " + run.status;
-  chip.textContent = { queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消") }[run.status] || run.status;
+  chip.textContent = runStatusText(run);
   const active = run.status === "queued" || run.status === "running";
   $("btn-cancel").classList.toggle("hidden", !active);
   S.cancelTargetRunId = active ? run.id : null;
@@ -3544,7 +3616,8 @@ async function renderRunDetail() {
   // 报告
   if (run.status === "done" || run.report) {
     try {
-      const r = await fetch("/api/runs/" + encodeURIComponent(id) + "/report");
+      const r = await fetch("/api/runs/" + encodeURIComponent(id) + "/report",
+        { headers: authHeaders() });
       if (!r.ok) throw new Error("HTTP " + r.status);
       const md = await r.text();
       if (!md.trim()) throw new Error("empty");
@@ -4641,8 +4714,8 @@ function drawInspector() {
   const artBox = $("insp-artifacts");
   if (artBox) artBox.innerHTML = arts.length
     ? arts.map((f) =>
-        '<a class="file-chip" href="/api/runs/' + encodeURIComponent(runId) + "/file?name=" +
-        encodeURIComponent(f.name) + '" target="_blank" rel="noopener" title="' +
+        '<a class="file-chip" href="' + urlAuth("/api/runs/" + encodeURIComponent(runId) + "/file?name=" +
+        encodeURIComponent(f.name)) + '" target="_blank" rel="noopener" title="' +
         esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(runId) +
         '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
         '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
@@ -4813,6 +4886,7 @@ function _fpExt(name) { return (String(name).split(".").pop() || "").toLowerCase
  * 上下文 → 额外给「编辑」，改完保存回工作目录（POST /api/dir/save）。 */
 async function _fpPreviewUrl(url, name, size, opts) {
   opts = opts || {};
+  url = urlAuth(url);   // 预览 fetch 与下载链接都走这个 URL：远程会话在此统一补令牌
   const ext = _fpExt(name);
   _fpSaveCtx = opts.save || null;
   _fpRawText = ""; _fpDirty = false; _fpCopyText = null;
@@ -5008,8 +5082,8 @@ function artifactsChips(runId, files) {
   return files.map((f) => {
     const isTxt = FP_TXT.has(_fpExt(f.name));   // 文本/代码都有弹窗预览（按代码格式展示）
     return '<span class="fc-row">' +
-      '<a class="file-chip artifact-file-open" href="/api/runs/' + encodeURIComponent(runId) + "/file?name=" +
-      encodeURIComponent(f.name) + '" target="_blank" rel="noopener" ' +
+      '<a class="file-chip artifact-file-open" href="' + urlAuth("/api/runs/" + encodeURIComponent(runId) + "/file?name=" +
+      encodeURIComponent(f.name)) + '" target="_blank" rel="noopener" ' +
       'title="' + esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
       '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
       '<span class="p">' + esc(f.name) + "</span><i>" + fmtSize(f.size) + "</i></a>" +
@@ -5807,8 +5881,8 @@ function chatResultHTML(run, res) {
   if (res.duration_s != null) meta.push(chatDurTxt(res.duration_s));
   const files = res.files || [];
   const chips = files.map((f) =>
-    '<a class="file-chip chat-file-open" href="/api/runs/' + encodeURIComponent(run.id) + "/file?name=" +
-    encodeURIComponent(f.name) + '" target="_blank" rel="noopener" title="' +
+    '<a class="file-chip chat-file-open" href="' + urlAuth("/api/runs/" + encodeURIComponent(run.id) + "/file?name=" +
+    encodeURIComponent(f.name)) + '" target="_blank" rel="noopener" title="' +
     esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(run.id) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
     '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
     '<span class="p">' + esc(f.name) + "</span><i>" + fmtSize(f.size) + "</i></a>").join("");
@@ -5867,8 +5941,7 @@ function renderRunOutcome(run, runs) {
   const status = String(run.status || "");
   const active = status === "running" || status === "queued";
   const bad = status === "failed" || status === "cancelled" || status === "timeout";
-  const label = active ? (status === "queued" ? t("排队中") : t("运行中"))
-    : (status === "done" ? t("完成") : status === "failed" ? t("失败") : status === "cancelled" ? t("已取消") : status || t("未知状态"));
+  const label = runStatusText(run);
   const icon = status === "done" ? "#i-check" : bad ? "#i-x" : "#i-gauge";
   const duration = runDurationSeconds(run);
   const latest = steps.slice().reverse().find((s) => s.agent_label || s.agent || s.role);
@@ -5910,9 +5983,7 @@ function renderDetailOverview(run, runs, task) {
   const status = String(run.status || "");
   const active = status === "running" || status === "queued";
   const bad = status === "failed" || status === "cancelled" || status === "timeout";
-  const statusText = active ? (status === "queued" ? t("排队中") : t("运行中"))
-    : status === "done" ? t("完成") : status === "failed" ? t("失败")
-      : status === "cancelled" ? t("已取消") : status || t("未知状态");
+  const statusText = runStatusText(run);
   const last = steps.slice().reverse().find((s) => s.summary || s.output || s.note) || steps[steps.length - 1];
   const lastText = last ? String(last.summary || last.output || last.note || "").replace(/\s+/g, " ").trim().slice(0, 240) : "";
   const executor = run.executor || run.implementer || (last && (last.agent_label || last.agent)) || "";
