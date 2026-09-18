@@ -1076,6 +1076,7 @@ def _run_code(run, task, agents, ev, stats, mode):
         lines.append("（无）")
     lines += ["", "## 评审总评", "", review_json.get("summary", ""), ""]
     store.write_report(run_id, "\n".join(lines))
+    _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
     store.update_run(run_id, status="done", verdict=verdict,
                      summary="代码任务%s（验证%s / 评审%s%s）" % (
                          "通过" if overall_pass else "未通过",
@@ -1343,6 +1344,7 @@ def _run_direct(run, task, agents, ev, stats, mode):
     if last_text:
         report += ["## 最近一轮输出", "", last_text[-5000:], ""]
     store.write_report(run_id, "\n".join(report))
+    _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
     store.update_run(run_id, status="done", verdict=verdict,
                      summary="直连完成（%d 轮）：%s" % (turns, last_text[:160]),
                      ended_at=_now())
@@ -2317,6 +2319,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     else:
         lines.append("（无 major 问题）")
     store.write_report(run_id, "\n".join(lines))
+    _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
     store.update_run(run_id, status="done", verdict=verdict,
                      summary="连载任务%s（%s，约 %d 字，综合 %.1f）" % (
                          "达标" if publishable else "未达标", scope_txt,
@@ -2662,6 +2665,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         lines.append("（无）")
     lines += ["", "## 稿件位置", "", "`%s`" % ms_path, ""]
     store.write_report(run_id, "\n".join(lines))
+    _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
     store.update_run(run_id, status="done", verdict=verdict,
                      summary="评审任务%s（综合 %.1f）" % ("达标" if publishable else "未达标", overall),
                      ended_at=_now())
@@ -2760,6 +2764,58 @@ def _write_task_spec(task, workdir):
         return str(target)
     except Exception:
         return ""
+
+
+def _write_task_evidence(run_id, task, workdir, summary_lines):
+    """验证证据持久化（借鉴 gsd-pi 的 validation evidence）：run 收尾把确定性
+    证据追加进 .codebee/evidence.md——验证命令结果、评审分数、AI 味检测等。
+    与 spec.md（任务意图）呼应成「任务档案」；失败静默，绝不挡收尾。"""
+    if not summary_lines:
+        return ""
+    try:
+        spec_dir = os.path.join(workdir, ".codebee")
+        os.makedirs(spec_dir, exist_ok=True)
+        path = os.path.join(spec_dir, "evidence.md")
+        header_needed = not os.path.exists(path)
+        with open(path, "a", encoding="utf-8") as f:
+            if header_needed:
+                f.write("# 验证证据（每次运行追加一节）\n\n")
+            f.write("## %s · run %s\n\n" % (_now(), run_id))
+            for ln in summary_lines:
+                f.write("- %s\n" % str(ln)[:300])
+            f.write("\n")
+        return path
+    except Exception:
+        return ""
+
+
+def _evidence_lines_from_run(run_id, task):
+    """从 run 步骤与 verdict 提取证据行（确定性事实，不抄模型输出）。"""
+    run = store.get_run(run_id) or {}
+    lines = []
+    for s in run.get("steps") or []:
+        role = str(s.get("role") or "")
+        if role == "verify":
+            lines.append("验证命令 `%s` → %s%s" % (
+                task.get("verify_command") or "", s.get("status"),
+                "（%s）" % s.get("summary") if s.get("summary") else ""))
+    verdict = run.get("verdict") or {}
+    if verdict:
+        means = verdict.get("scores") or {}
+        if means:
+            lines.append("评审均分：%s（阈值 %s，%s）" % (
+                "、".join("%s %.1f" % (d, v) for d, v in means.items()),
+                verdict.get("threshold"),
+                "达标" if verdict.get("publishable") else "未达标"))
+        if verdict.get("overall") is not None:
+            lines.append("综合分 %.1f / %d 轮" % (verdict.get("overall") or 0.0,
+                                                  verdict.get("rounds_used") or 0))
+        bestof = run.get("bestof")
+        if bestof:
+            lines.append("赛马：%s（胜者 %s）" % (
+                bestof.get("kind") or "内容候选",
+                bestof.get("pick", bestof.get("winner_files", "?"))))
+    return lines
 
 
 def execute_run(run_id):
