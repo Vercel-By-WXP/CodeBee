@@ -234,19 +234,9 @@
         </div>
         <p data-i18n="一句话目标即可 —— CodeBee 自动拆解、智能路由、执行、验证并跨厂商评审。" class="hint hero-sub">一句话目标即可 —— CodeBee 自动拆解、智能路由、执行、验证并跨厂商评审。</p>
         <div class="form">
-          <!-- 胶囊行（ZCode 式）：类型 / 工作目录一眼可见、点胶囊就地改。
+          <!-- 参考对话式工作台：工作目录是上下文，任务类型放到底部工具栏。
                值真源仍是 #f-type / #f-workdir（既有 ID，联动与测试锚点全兼容）。 -->
           <div class="cmp-pills">
-            <div class="type-wrap">
-              <select id="f-type" class="hidden" tabindex="-1" aria-hidden="true"></select>
-              <button type="button" id="f-type-btn" class="type-pick" onclick="toggleTypeMenu()" aria-haspopup="listbox" aria-controls="type-menu">
-                <span class="tp-ico" id="f-type-ico" aria-hidden="true"></span>
-                <span class="tp-name" id="f-type-name"></span>
-                <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
-              </button>
-              <div id="type-menu" class="type-menu hidden" role="listbox" aria-label="任务类型" data-i18n-aria="任务类型"></div>
-            </div>
-            <button type="button" class="ghost small" id="btn-flows-mgr" data-i18n="管理" data-i18n-title="管理任务类型：新增/编辑自定义流程" title="管理任务类型：新增/编辑自定义流程" onclick="openFlowsManager()">管理</button>
             <div class="cmp-wd">
               <svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>
               <div class="input-row">
@@ -264,8 +254,21 @@
           </div>
           <!-- Composer 大输入框：附件在左下、发送在右下；Enter 发送，Shift+Enter 换行 -->
           <div class="cmp-box">
+            <div class="cmp-context-note"><svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg><span data-i18n="描述目标即可，CodeBee 会自动拆解并执行">描述目标即可，CodeBee 会自动拆解并执行</span></div>
             <textarea id="f-goal" rows="3" placeholder="要完成什么，一句话即可" required data-i18n-ph="要完成什么，一句话即可"></textarea>
             <div class="cmp-bar">
+              <div class="cmp-mode">
+                <div class="type-wrap">
+                  <select id="f-type" class="hidden" tabindex="-1" aria-hidden="true"></select>
+                  <button type="button" id="f-type-btn" class="type-pick" onclick="toggleTypeMenu()" aria-haspopup="listbox" aria-controls="type-menu">
+                    <span class="tp-ico" id="f-type-ico" aria-hidden="true"></span>
+                    <span class="tp-name" id="f-type-name"></span>
+                    <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+                  </button>
+                  <div id="type-menu" class="type-menu hidden" role="listbox" aria-label="任务类型" data-i18n-aria="任务类型"></div>
+                </div>
+                <button type="button" class="ghost small" id="btn-flows-mgr" data-i18n="管理" data-i18n-title="管理任务类型：新增/编辑自定义流程" title="管理任务类型：新增/编辑自定义流程" onclick="openFlowsManager()">管理</button>
+              </div>
               <div class="att-strip">
                 <button type="button" class="ghost small" id="btn-attach" title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/" data-i18n-title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/"><svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg><span data-i18n="附件">附件</span></button>
                 <span class="att-hint" data-i18n="也可直接粘贴截图">也可直接粘贴截图</span>
@@ -280,6 +283,8 @@
           </div>
           <!-- 快捷类型：点一个即选定并聚焦目标框（renderQuickChips 渲染） -->
           <div id="cmp-quick" class="cmp-quick" role="group" aria-label="常用类型" data-i18n-aria="常用类型"></div>
+          <!-- 开跑前成本预估（refreshEstimate 填充；无同类样本时保持隐藏） -->
+          <p class="hint cmp-estimate hidden" id="cmp-estimate"></p>
           <div class="field hidden" id="row-resume-session">
             <label data-i18n="选择会话">选择会话</label>
             <select id="f-resume-session"><option data-i18n="（加载中…）">（加载中…）</option></select>
@@ -287,7 +292,7 @@
           </div>
 
           <details id="f-advanced">
-            <summary data-i18n="高级选项（默认全智能，无需改动）">高级选项（默认全智能，无需改动）</summary>
+            <summary data-i18n="更多选项">更多选项</summary>
             <div class="adv-body">
               <div class="grid-2">
                 <div class="field">
@@ -311,6 +316,11 @@
                 <div class="field"><label data-i18n="验证命令">验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）" data-i18n-ph="例：python -m pytest -q（可空=只评审）"></div>
               </div>
               <div id="f-review-only" class="hidden">
+                <div id="bible-create-field" class="field hidden">
+                  <label><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg><span data-i18n="初始故事圣经">初始故事圣经</span><span class="field-optional" data-i18n="可选">可选</span></label>
+                  <textarea id="f-bible" rows="5" placeholder="人物、世界观、主线冲突、伏笔和不能违背的设定；会在开跑前写入 story-bible.md" data-i18n-ph="人物、世界观、主线冲突、伏笔和不能违背的设定；会在开跑前写入 story-bible.md"></textarea>
+                  <p class="hint" data-i18n="连载任务会在每章起草与评审时自动注入；工作目录已有 story-bible.md 时请留空，避免覆盖已有设定。">连载任务会在每章起草与评审时自动注入；工作目录已有 story-bible.md 时请留空，避免覆盖已有设定。</p>
+                </div>
                 <div class="grid-3">
                   <div class="field"><label data-i18n="稿件文件（合并稿）">稿件文件（合并稿）</label><input id="f-manuscript" value="manuscript.md" placeholder="工作目录内的文件名" data-i18n-ph="工作目录内的文件名"></div>
                   <div class="field"><label data-i18n="评审轮数">评审轮数</label><input id="f-rounds" type="number" value="2" min="1" max="5"></div>
@@ -365,14 +375,15 @@
           </div>
         </div>
         <div id="rd-meta" class="stats rd-meta-strip"></div>
+        <div id="rd-overview" class="rd-overview hidden" aria-live="polite"></div>
         <div id="rd-tabs" class="rd-tabs" role="tablist" data-i18n-aria="详情分区">
-          <button class="rd-tab" data-tab="chat" data-i18n="对话">对话<span class="rd-badge hidden"></span></button>
-          <button class="rd-tab" data-tab="hive" data-i18n="蜂巢">蜂巢<span class="rd-badge hidden"></span></button>
-          <button class="rd-tab" data-tab="steps" data-i18n="步骤">步骤<span class="rd-badge hidden"></span></button>
-          <button class="rd-tab" data-tab="result" data-i18n="成果">成果<span class="rd-badge hidden"></span></button>
-          <button class="rd-tab" data-tab="git" data-i18n="Git">Git<span class="rd-badge hidden"></span></button>
-          <button class="rd-tab" data-tab="bible" data-i18n="圣经">圣经<span class="rd-badge hidden"></span></button>
-          <button class="rd-tab" data-tab="bookmeta" data-i18n="作品信息">作品信息<span class="rd-badge hidden"></span></button>
+          <button id="rd-tab-chat" class="rd-tab" role="tab" aria-controls="rd-pane-chat" aria-selected="false" tabindex="-1" data-tab="chat" data-i18n="对话"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-chat"></use></svg>对话<span class="rd-badge hidden"></span></button>
+          <button id="rd-tab-hive" class="rd-tab" role="tab" aria-controls="rd-pane-hive" aria-selected="false" tabindex="-1" data-tab="hive" data-i18n="蜂巢"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-bee"></use></svg>蜂巢<span class="rd-badge hidden"></span></button>
+          <button id="rd-tab-steps" class="rd-tab" role="tab" aria-controls="rd-pane-steps" aria-selected="false" tabindex="-1" data-tab="steps" data-i18n="步骤"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-tasks"></use></svg>步骤<span class="rd-badge hidden"></span></button>
+          <button id="rd-tab-result" class="rd-tab" role="tab" aria-controls="rd-pane-result" aria-selected="false" tabindex="-1" data-tab="result" data-i18n="成果"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-file-text"></use></svg>成果<span class="rd-badge hidden"></span></button>
+          <button id="rd-tab-git" class="rd-tab" role="tab" aria-controls="rd-pane-git" aria-selected="false" tabindex="-1" data-tab="git" data-i18n="Git"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>Git<span class="rd-badge hidden"></span></button>
+          <button id="rd-tab-bible" class="rd-tab" role="tab" aria-controls="rd-pane-bible" aria-selected="false" tabindex="-1" data-tab="bible" data-i18n="圣经"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-book"></use></svg>圣经<span class="rd-badge hidden"></span></button>
+          <button id="rd-tab-bookmeta" class="rd-tab" role="tab" aria-controls="rd-pane-bookmeta" aria-selected="false" tabindex="-1" data-tab="bookmeta" data-i18n="作品信息"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-idcard"></use></svg>作品信息<span class="rd-badge hidden"></span></button>
         </div>
         <!-- 直连任务「对话为主」导航：常规页签条收起（chat-mode），这里给按需打开
              其它分区的小按钮 + 非对话分区时的「返回对话」入口 -->
@@ -380,7 +391,7 @@
         <div class="rd-main">
           <!-- 对话分区（直连任务默认）：用户消息与 CLI 输出混排的时间线 + 贴底追话框。
                运行中发出去走信箱（下一步送达）；已结束发出去走 /chat 自动续跑新一轮。 -->
-          <div class="rd-pane" data-pane="chat">
+          <div id="rd-pane-chat" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-chat" data-pane="chat">
             <div id="rd-chat" class="rd-chat hidden">
               <div id="rd-chat-flow" class="rd-chat-flow"></div>
               <div class="rd-chat-bar">
@@ -395,7 +406,7 @@
               </div>
             </div>
           </div>
-          <div class="rd-pane" data-pane="hive">
+          <div id="rd-pane-hive" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-hive" data-pane="hive">
             <div id="rd-hive" class="rd-hive hidden">
               <div class="sec-title"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="蜂巢工作台">蜂巢工作台</span><span id="rd-hive-sub" class="tag"></span></div>
               <div id="rd-hive-cells" class="hive-cells"></div>
@@ -417,22 +428,23 @@
               </div>
             </div>
           </div>
-          <div class="rd-pane" data-pane="steps">
+          <div id="rd-pane-steps" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-steps" data-pane="steps">
             <div id="rd-plan" class="hidden"></div>
             <div id="rd-steps" class="steps"></div>
           </div>
-          <div class="rd-pane" data-pane="result">
+          <div id="rd-pane-result" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-result" data-pane="result">
+            <div id="rd-outcome" class="rd-outcome hidden"></div>
             <h3 data-i18n="报告" class="sec-title">报告</h3>
             <div id="rd-report" class="report"></div>
             <div id="rd-arts" class="rd-arts hidden"></div>
           </div>
-          <div class="rd-pane" data-pane="git">
+          <div id="rd-pane-git" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-git" data-pane="git">
             <div id="rd-git" class="rd-git hidden"></div>
           </div>
-          <div class="rd-pane" data-pane="bible">
+          <div id="rd-pane-bible" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-bible" data-pane="bible">
             <div id="rd-bible" class="rd-bible hidden"></div>
           </div>
-          <div class="rd-pane" data-pane="bookmeta">
+          <div id="rd-pane-bookmeta" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-bookmeta" data-pane="bookmeta">
             <div id="rd-bookmeta" class="rd-bookmeta hidden"></div>
           </div>
           <div id="rd-log" class="logbox rd-logdrawer hidden">

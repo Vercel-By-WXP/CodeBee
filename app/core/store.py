@@ -67,14 +67,24 @@ def create_task(payload):
     type 必须是 flows.py 里的有效流程 ID；流程参数（引擎/维度/阈值/轮数/产出
     文件/提示词覆盖）在创建时固化到任务上，之后修改流程定义不影响已建任务。
     """
+    if not isinstance(payload, dict):
+        raise ValueError("任务参数必须是 JSON 对象")
+
+    def _text(value, field):
+        if value is None:
+            return ""
+        if not isinstance(value, str):
+            raise ValueError("%s 必须是文本" % field)
+        return value.strip()
+
     from . import flows as flows_mod
     flow = flows_mod.get_flow(payload.get("type"))
     if flow is None:
         raise ValueError("未知任务类型：%s（可选：%s）"
                          % (payload.get("type"), "、".join(f["id"] for f in flows_mod.list_flows())))
-    title = (payload.get("title") or "").strip()
-    goal = (payload.get("goal") or "").strip()
-    workdir = (payload.get("workdir") or "").strip()
+    title = _text(payload.get("title"), "title")
+    goal = _text(payload.get("goal"), "goal")
+    workdir = _text(payload.get("workdir"), "workdir")
     if not goal:
         raise ValueError("目标描述不能为空")
     title = title or goal.splitlines()[0][:30]  # 标题可省略，自动取目标首行
@@ -102,7 +112,7 @@ def create_task(payload):
     task = {
         "id": _new_id("t"), "type": flow["id"], "engine": flow["engine"],
         "title": title, "goal": goal,
-        "context": (payload.get("context") or "").strip(),
+        "context": _text(payload.get("context"), "context"),
         "workdir": str(wd),
         "mode": mode,
         "difficulty": difficulty,
@@ -113,7 +123,7 @@ def create_task(payload):
     }
     # 代码版本：仅当引用合法才固化（流水线执行前据此检出任务分支）
     from . import gitmod
-    git_rev = (payload.get("git_rev") or "").strip()
+    git_rev = _text(payload.get("git_rev"), "git_rev")
     if git_rev:
         # 前端下拉值带 kind 前缀（branch:main / tag:v1 / commit:abc），此处归一为纯 rev；
         # git 分支/标签名本身允许含冒号（罕见），前缀剥离只认这三种已知 kind
@@ -122,11 +132,12 @@ def create_task(payload):
             raise ValueError("非法的代码版本引用：%s" % git_rev[:40])
         task["git_rev"] = git_rev
     if flow["engine"] == "code":
-        task["verify_command"] = (payload.get("verify_command") or "").strip()
+        task["verify_command"] = _text(payload.get("verify_command"), "verify_command")
     elif flow["engine"] == "direct":
         pass  # 直连任务：无验证命令也无评审参数，目标+附件即全部输入
     else:
-        ms = (payload.get("manuscript") or flow.get("manuscript") or "manuscript.md").strip()
+        ms = _text(payload.get("manuscript") or flow.get("manuscript") or "manuscript.md",
+                   "manuscript")
         ms = re.sub(r"[\\/]", "_", ms)  # 只允许工作目录内的相对文件名
         ms = re.sub(r"\.{2,}", "_", ms).lstrip(".")  # 顺带清掉残留的 ..
         task["manuscript"] = ms
@@ -147,8 +158,18 @@ def create_task(payload):
         for key in ("draft_prompt", "critique_prompt"):  # 自定义流程的提示词覆盖
             if flow.get(key):
                 task[key] = flow[key]
-        # 连载模式：逐章起草/评审/修订（任务级 serial 覆盖流程默认）
-        serial = payload.get("serial") if isinstance(payload.get("serial"), dict) else flow.get("serial")
+        # 连载模式：逐章起草/评审/修订（任务级 serial 覆盖流程默认）。
+        # payload 中显式传 null 表示关闭流程默认连载；字段缺失才沿用流程默认，
+        # 这样前端把章节清空时不会被 serial_novel 的默认值悄悄重新打开。
+        serial_unset = object()
+        serial_value = payload.get("serial", serial_unset)
+        if serial_value is None or (isinstance(serial_value, dict) and
+                                    serial_value.get("enabled") is False):
+            serial = None
+        elif isinstance(serial_value, dict):
+            serial = serial_value
+        else:
+            serial = flow.get("serial")
         if isinstance(serial, dict) and serial.get("chapters"):
             try:
                 s = {
@@ -182,6 +203,15 @@ def create_task(payload):
     critics = payload.get("critics")
     if isinstance(critics, list) and critics:
         task["critics"] = [str(c) for c in critics]
+    # 初始故事圣经必须在任务入队前落盘，保证首个章节步骤就能读到设定。
+    # 只对带连载引擎的任务接收；已有不同内容的圣经拒绝覆盖，避免新任务误伤旧书设定。
+    initial_bible = str(payload.get("story_bible") or "").strip()
+    if initial_bible:
+        if not task.get("serial"):
+            raise ValueError("初始故事圣经仅适用于连载小说任务")
+        if len(initial_bible) > BIBLE_MAX_CHARS:
+            raise ValueError("故事圣经超长（最大 %d 字符，当前 %d 字符）" %
+                             (BIBLE_MAX_CHARS, len(initial_bible)))
     resume = payload.get("resume")
     if isinstance(resume, dict) and resume.get("agent") and resume.get("session"):
         task["resume"] = {"agent": str(resume["agent"])[:40],
@@ -191,6 +221,11 @@ def create_task(payload):
         proj = str(resume.get("project") or "")[:260]
         if proj:
             task["resume"]["project"] = proj
+    # 初始圣经先于附件提交：如果目录已有设定，尽早拒绝，避免附件已移动却
+    # 因故事圣经冲突导致任务创建失败。相同内容的重试是幂等的（例如附件
+    # 提交中断后重试），不会覆盖已有设定。
+    if initial_bible:
+        _write_initial_story_bible(str(wd), initial_bible)
     # 附件：把待提交文件移入工作目录 _attachments/，清单注入 context（__CONTEXT__ 全链路可见）。
     # 两种形态：字符串 id = 待提交区文件（新建任务）；dict 清单 = 已落盘的附件
     # （继续连载/重试沿用同目录同文件，直接复制清单，不再移文件）。
@@ -388,8 +423,15 @@ def create_run(kind, title, task_id=None, entry_id=None, op=None):
     rdir = paths.RUNS_DIR / run["id"]
     (rdir / "steps").mkdir(parents=True, exist_ok=True)
     with LOCK:
+        # 先完成原子落盘，再发布到内存索引。旧顺序在 _save_json 失败时会
+        # 留下只存在于 _RUNS 的“幽灵 run”，后续 UI 看到排队记录却永远无法
+        # 读取/恢复其 run.json。
+        try:
+            _save_json(rdir / "run.json", run)
+        except Exception:
+            _RUNS.pop(run["id"], None)
+            raise
         _RUNS[run["id"]] = run
-        _save_json(rdir / "run.json", run)
     return run
 
 
@@ -732,6 +774,52 @@ def _bible_path(workdir):
     return p
 
 
+def _write_initial_story_bible(workdir, text):
+    """创建任务时安全播种故事圣经。
+
+    初始圣经写入发生在任务入队之前，多个请求可能同时指向同一个工作目录。
+    旧逻辑先在锁外检查、再在锁外写入，两个请求都能通过检查，后写请求会
+    覆盖先写的设定。这里把检查和写入放进同一进程锁，并在文件不存在时用
+    ``O_EXCL`` 做最后一道独占创建；已有不同内容的文件始终拒绝覆盖。
+    """
+    p = _bible_path(workdir)
+    if p is None:
+        raise ValueError("故事圣经写入失败：工作目录不可用")
+    with LOCK:
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            if p.exists():
+                if not p.is_file():
+                    raise ValueError("故事圣经写入失败：目标路径不是文件")
+                existing = runner.read_text_any_enc(p).strip()
+                if existing:
+                    if existing == text:
+                        return
+                    raise ValueError("工作目录已有 story-bible.md，请清空初始圣经输入或先编辑已有设定")
+                # 空文件是合法的旧占位文件；在锁内覆盖，避免本服务内的并发写入。
+                p.write_text(text, encoding="utf-8")
+                return
+            try:
+                fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+            except FileExistsError:
+                # 其他进程可能刚创建了文件。相同内容可幂等返回；空文件仍可
+                # 完成播种，非空不同内容绝不静默覆盖。
+                if p.is_file():
+                    existing = runner.read_text_any_enc(p).strip()
+                    if existing == text:
+                        return
+                    if not existing:
+                        p.write_text(text, encoding="utf-8")
+                        return
+                raise ValueError("工作目录已有 story-bible.md，请清空初始圣经输入或先编辑已有设定")
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(text)
+        except ValueError:
+            raise
+        except OSError as e:
+            raise ValueError("故事圣经写入失败：%s" % e)
+
+
 def read_story_bible(task_id):
     """读取任务工作目录里的故事圣经。返回 (文件路径, 文本内容, None) 或
     (None, None, 错误信息)。"""
@@ -757,23 +845,26 @@ def write_story_bible(task_id, text):
     - 文本超长（BIBLE_MAX_CHARS）→ 拒绝；
     - 写入失败 → 报错。
     返回 (ok, 错误信息)。"""
-    task = get_task(task_id)
-    if not task:
-        return False, "任务不存在"
-    if task.get("status") in ("queued", "running"):
-        return False, "任务正在运行，不能修改故事圣经（请等运行结束后再编辑）"
-    p = _bible_path(task.get("workdir"))
-    if p is None:
-        return False, "工作目录不存在或路径越界"
-    text = (text or "").strip()
-    if len(text) > BIBLE_MAX_CHARS:
-        return False, "故事圣经超长（最大 %d 字符，当前 %d 字符）" % (BIBLE_MAX_CHARS, len(text))
-    try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text, encoding="utf-8")
-        return True, ""
-    except OSError as e:
-        return False, "写入失败: %s" % e
+    with LOCK:
+        task = get_task(task_id)
+        if not task:
+            return False, "任务不存在"
+        if task.get("status") in ("queued", "running"):
+            return False, "任务正在运行，不能修改故事圣经（请等运行结束后再编辑）"
+        p = _bible_path(task.get("workdir"))
+        if p is None:
+            return False, "工作目录不存在或路径越界"
+        text = (text or "").strip()
+        if len(text) > BIBLE_MAX_CHARS:
+            return False, "故事圣经超长（最大 %d 字符，当前 %d 字符）" % (BIBLE_MAX_CHARS, len(text))
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text, encoding="utf-8")
+        except OSError as e:
+            return False, "写入失败: %s" % e
+    # 故事圣经是提示词输入，写入后让 SSE/轮询端尽快看到新状态。
+    bump_state()
+    return True, ""
 
 
 def read_run_file(run_id, rel):

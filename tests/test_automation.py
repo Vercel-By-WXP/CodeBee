@@ -374,6 +374,37 @@ class TestRealLaunchChain(AutomationCase):
             self.aut._launch_run = self._fake_launch
 
 
+class TestRealLaunchFailureClosesRecords(AutomationCase):
+    """真实定时启动链在入队失败时不能留下 queued 孤儿记录。"""
+
+    def runTest(self):
+        from app.core import jobs as jobs_mod
+        from app.core import store as store_mod
+
+        orig_enqueue = jobs_mod.enqueue
+        self.aut._launch_run = self._orig_launch
+
+        def fail_enqueue(_job):
+            raise RuntimeError("worker queue unavailable")
+
+        jobs_mod.enqueue = fail_enqueue
+        try:
+            task = self.make(name="入队失败", kind="daily", time="09:00")
+            with self.assertRaises(RuntimeError):
+                self.aut._launch_run(task)
+        finally:
+            jobs_mod.enqueue = orig_enqueue
+            self.aut._launch_run = self._fake_launch
+
+        created = store_mod.list_tasks(20)
+        self.assertTrue(created)
+        persisted_task = next(t for t in created if t["title"].startswith("入队失败 "))
+        self.assertEqual(persisted_task["status"], "failed")
+        run = store_mod.latest_run_by_task()[persisted_task["id"]]
+        self.assertEqual(run["status"], "failed")
+        self.assertNotIn("worker queue unavailable", run.get("error", ""))
+
+
 if __name__ == "__main__":
     import unittest as _u
     _u.main()

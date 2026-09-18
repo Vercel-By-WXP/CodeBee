@@ -286,26 +286,20 @@ def _binding_dead_msg(agent):
 def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None, require_tools=False):
     """执行一个智能体步骤并记录。返回 runner 统一结果。"""
     _wait_gate(run_id, ev)
-    # 绑定解析为空：旧语义是回落 CLI 本机默认继续跑，2026-09-16 实测这种状态
-    # 会静默烧本机默认供应商的配额（用户以为在用自己配的模型）。2026-09-17 起
-    # 改为「告警 + 本步直接判失败」——宁可失败不静默降级；auto 流程实现步的
-    # 既有换将会接手健康 CLI，真没有可用 CLI 时运行以明确的绑定错误收场。
+    # 绑定解析为空分两种（2026-09-18 起 区分对待）：
+    # · 从没配过链（binding_configured=False）：回落 CLI 本机默认照跑——
+    #   用户根本没在 CodeBee 里配供应商，谈不到「烧自己配的配额」；判失败
+    #   反而把用本地登录的普通用户全挡在门外（0.1.6 真实装机误伤案例）。
+    # · 配过链但全死（binding_configured=True）：本步判失败不静默降级——
+    #   宁可失败不偷跑本机默认；auto 流程实现步的既有换将会接手健康 CLI。
+    #   只记在步骤备注/错误里，不再产生全局健康告警胶囊（同上案例：红胶囊
+    #   吓不到也帮不到普通用户，2026-09-18 用户拍板移除）。
     dead_binding = (agent.get("mode") == "real"
+                    and agent.get("binding_configured")
                     and not (agent.get("call_chain") or agent.get("env")))
     dead_msg = _binding_dead_msg(agent) if dead_binding else ""
     if dead_binding:
-        try:
-            from . import health
-            health.report_binding_dead(agent["id"], dead_msg)
-        except Exception:
-            pass
         note = ((note + "；") if note else "") + "⚠ " + dead_msg
-    elif agent.get("mode") == "real":
-        try:  # 绑定恢复：自动解除该 CLI 的静态死链告警
-            from . import health
-            health.report_binding_ok(agent["id"])
-        except Exception:
-            pass
     step, log_abs = store.add_step(run_id, role, agent["id"],
                                    agent.get("label", agent["id"]), note=note)
     start = time.time()

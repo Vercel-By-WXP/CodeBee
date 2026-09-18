@@ -299,11 +299,36 @@ def _launch_run(t):
                                     time.strftime("%m-%d %H:%M"))).strip()[:40],
                "goal": t.get("prompt") or "",
                "workdir": (t.get("workdir") or "").strip()}
-    task = store.create_task(payload)
-    run = store.create_run("orchestration", task["title"], task_id=task["id"])
-    store.update_task_status(task["id"], "queued")
-    jobs.enqueue({"kind": "orchestration", "run_id": run["id"], "task_id": task["id"]})
-    return run["id"]
+    task = None
+    run = None
+    try:
+        task = store.create_task(payload)
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_task_status(task["id"], "queued")
+        jobs.enqueue({"kind": "orchestration", "run_id": run["id"],
+                      "task_id": task["id"]})
+        return run["id"]
+    except Exception:
+        # A scheduler failure must not leave a task/run that looks queued forever.
+        # Keep the public error generic; the detailed traceback stays in the
+        # service log and the run record remains useful for diagnostics.
+        log.exception("automation: 运行入队失败 task=%s run=%s",
+                      (task or {}).get("id"), (run or {}).get("id"))
+        if run:
+            try:
+                store.update_run(run["id"], status="failed",
+                                 error="任务入队失败，请稍后重试",
+                                 ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+            except Exception:
+                log.exception("automation: 运行失败收口失败 run=%s", run.get("id"))
+        elif task:
+            # create_run may fail before a run is available. The task was
+            # already persisted by create_task, so mark it failed as well.
+            try:
+                store.update_task_status(task["id"], "failed")
+            except Exception:
+                log.exception("automation: 任务失败收口失败 task=%s", task.get("id"))
+        raise
 
 
 def _fire(snapshot, now):

@@ -455,7 +455,6 @@ def model_ops(provider_id, names, op):
         if changed:
             _promote(models, newly_enabled)  # 启用的置顶，停用的退到启用块之后
             _save(data)
-            sync_binding_alerts()  # 模型启停/恢复 → 绑定链死活立即刷新告警
         return changed, ""
 
 
@@ -475,7 +474,6 @@ def _restore_all(provider_id):
             m["enabled"] = True
         _promote(models, names)  # 恢复 = 重新启用：同样置顶
         _save(data)
-        sync_binding_alerts()
         return None
 
 
@@ -928,8 +926,6 @@ def providers_op(ids, op):
                     not (p.get("id") in sel and p.get("enabled", True)),
                     not bool(p.get("enabled", True))))
         _save(data)
-        if changed or op == "delete":
-            sync_binding_alerts()  # 厂商启停/删除 → 绑定链死活立即刷新告警
         return changed, ("" if changed else "所选供应商已是目标状态")
 
 
@@ -1888,11 +1884,19 @@ def _model_image_in(prov, model):
 
 
 def bind_agent(agent, difficulty="default"):
-    """按绑定生成应用了供应商/模型覆盖的 agent 副本；无绑定时原样返回。"""
-    r = resolve_binding(agent.get("id"), difficulty) or resolve_binding(agent.get("kind"), difficulty)
-    if not r:
-        return agent
+    """按绑定生成应用了供应商/模型覆盖的 agent 副本；无绑定时原样返回。
+
+    binding_configured：该 CLI 是否配过绑定链（配没配与解析结果分开带出——
+    执行层死链闸门只对「配过但全死」判失败，没配过的回落 CLI 本机默认）。"""
+    rid = agent.get("id")
+    b = bindings().get(rid) or bindings().get(
+        "codex-cli" if rid == "codex" else "claude-code") or {}
+    configured = bool(_binding_chain(b))
+    r = resolve_binding(rid, difficulty) or resolve_binding(agent.get("kind"), difficulty)
     a = dict(agent)
+    a["binding_configured"] = configured
+    if not r:
+        return a
     merged = dict(agent.get("env") or {})
     merged.update(r.get("env") or {})
     a["env"] = merged
@@ -2002,33 +2006,6 @@ def binding_dead_msg(cli_id):
     hint = ("该 CLI 仅接受 %s 协议的已启用供应商；" % "、".join(protos)) if protos else ""
     return ("绑定链全部失效（链上供应商已停用/删除/无密钥，或模型已停用），"
             "本步判失败、不回落 CLI 本机默认——%s请在「CLI 绑定」页为该 CLI 绑定已启用的供应商" % hint)
-
-
-def sync_binding_alerts():
-    """厂商/模型启停、删除、恢复后立即重评估各 CLI 绑定链的静态死链告警：
-    恢复的当场解除、新死的当场亮起——不必等下一次步骤执行才发现
-    （2026-09-17 起与死链硬失败闸门配套）。幂等：health 侧静默/恢复语义不变。"""
-    from . import health
-    try:
-        binds = bindings()
-    except Exception:
-        return
-    for cli_id in sorted(binds.keys()):
-        b = binds.get(cli_id) or {}
-        if not _binding_chain(b):
-            continue  # 没配过链的 CLI 不归静态告警管（执行层闸门在跑时兜）
-        try:
-            r = resolve_binding(cli_id)
-            ok = bool(r and r.get("call_chain"))
-        except Exception:
-            ok = False
-        try:
-            if ok:
-                health.report_binding_ok(cli_id)
-            else:
-                health.report_binding_dead(cli_id, binding_dead_msg(cli_id))
-        except Exception:
-            pass  # 告警是尽力而为的旁路：persist 失败（如目录不可用）不拖累操作本身
 
 
 def resolve_binding(agent_kind_or_id, difficulty="default"):

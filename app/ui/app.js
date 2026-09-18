@@ -2,7 +2,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {} };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {} };
 
 /* ---------------------------------------------------------- 任务类型（流程） */
 async function loadFlows() {
@@ -101,6 +101,13 @@ function onTypeChange() {
   // 直连：验证命令与评审参数都不适用，两块一起收起（目标+附件即全部输入）
   if (codeOnly) codeOnly.classList.toggle("hidden", isReview || isDirect);
   if (reviewOnly) reviewOnly.classList.toggle("hidden", !isReview);
+  const bibleCreate = $("bible-create-field");
+  const isSerialReview = isReview && !!(flow && flow.serial);
+  if (bibleCreate) bibleCreate.classList.toggle("hidden", !isSerialReview);
+  const clearSerialFields = () => ["f-chapters", "f-words-per-ch", "f-variants", "f-bible"].forEach((id) => {
+    const el = $(id);
+    if (el) el.value = "";
+  });
   const goal = $("f-goal");
   if (goal && flow && flow.goal_hint) goal.placeholder = t(flow.goal_hint);
   if (isReview && flow) {
@@ -113,9 +120,13 @@ function onTypeChange() {
     if (flow.serial) {
       if (!$("f-chapters").value) $("f-chapters").value = flow.serial.chapters || "";
       if (!$("f-words-per-ch").value) $("f-words-per-ch").value = flow.serial.words_per_chapter || "";
-    }
+    } else clearSerialFields();
+  } else {
+    // 隐藏控件仍保留 DOM 值；换流程时清理，避免章节/圣经状态污染下一次提交。
+    clearSerialFields();
   }
   renderImplSelects();
+  refreshEstimate();
 }
 
 /* 快捷类型 chips（Composer 框下方）：内置流程一键选定，选中态跟 #f-type 走 */
@@ -147,6 +158,28 @@ function cmpGreeting() {
   el.textContent = t(h >= 5 && h < 12 ? "上午好呀，有什么想让我帮忙的吗"
     : h < 18 ? "下午好呀，有什么想让我帮忙的吗"
     : "晚上好呀，有什么想让我帮忙的吗");
+}
+
+/* 开跑前成本预估（借鉴 omnigent 的 pre-run estimate）：读台账同类任务给量级参考。
+ * 无样本/请求失败都保持隐藏；快速切类型用序号丢弃过期响应。 */
+let _estSeq = 0;
+async function refreshEstimate() {
+  const el = $("cmp-estimate");
+  const flowId = ($("f-type") || {}).value || "";
+  if (!el) return;
+  const seq = ++_estSeq;
+  try {
+    const d = await api("/api/usage/estimate?type=" + encodeURIComponent(flowId) + "&days=90");
+    if (seq !== _estSeq) return;
+    if (!d || !(d.samples > 0)) { el.classList.add("hidden"); el.textContent = ""; return; }
+    const tk = "≈" + fmtTok(d.median_tokens) + " tokens";
+    const tail = "（" + t("近{0}天 · {1}次同类", d.days || 90, d.samples) + "）";
+    const cost = (d.median_cost_usd || 0) > 0 ? " · ≈$" + (d.median_cost_usd).toFixed(2) : "";
+    el.textContent = t("预估：≈{0}{1}", tk, cost) + tail;
+    el.classList.remove("hidden");
+  } catch (e) {
+    if (seq === _estSeq) { el.classList.add("hidden"); el.textContent = ""; }
+  }
 }
 
 /* ---------------------------------------------------------- 本机身份与鉴权 */
@@ -1771,6 +1804,20 @@ function renderImplSelects() {
 }
 
 async function createTask() {
+  if (S.creatingTask) return;
+  S.creatingTask = true;
+  const submit = $("btn-create");
+  if (submit) {
+    submit.disabled = true;
+    submit.setAttribute("aria-busy", "true");
+  }
+  const resetSubmit = () => {
+    S.creatingTask = false;
+    if (submit) {
+      submit.disabled = false;
+      submit.removeAttribute("aria-busy");
+    }
+  };
   const msg = $("create-msg");
   msg.className = "msg"; msg.textContent = t("提交中…");
   const payload = {
@@ -1781,6 +1828,13 @@ async function createTask() {
     context: $("f-context").value.trim(),
     workdir: $("f-workdir").value.trim(),
   };
+  if (!payload.goal) {
+    msg.className = "msg err";
+    msg.textContent = t("请先填写目标");
+    $("f-goal").focus();
+    resetSubmit();
+    return;
+  }
   if (!payload.workdir) delete payload.workdir;  // 留空 → 服务端用「默认保存路径」（编排设置可改）
   else unhideSideDir(payload.workdir);           // 在已移除的目录新建任务 → 自动恢复显示
   if (payload.mode === "manual") payload.implementer = $("f-impl").value;
@@ -1799,7 +1853,8 @@ async function createTask() {
     payload.resume = { agent: resumeAgent, session: sid,
       preview: opt ? opt.textContent : "", project: (hit && hit.project) || "" };
   }
-  const _eng = (flowById(payload.type) || {}).engine;
+  const flow = flowById(payload.type) || {};
+  const _eng = flow.engine;
   if (_eng === "code") {
     payload.verify_command = $("f-verify").value.trim();
   } else if (_eng === "direct") {
@@ -1811,11 +1866,18 @@ async function createTask() {
     const rubric = $("f-rubric").value.trim();
     if (rubric) payload.rubric = rubric.split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
     const ch = parseInt($("f-chapters").value, 10);
-    if (ch >= 2) payload.serial = {
-      chapters: ch,
-      words_per_chapter: parseInt($("f-words-per-ch").value, 10) || 2500,
-      variants: Math.max(1, Math.min(3, parseInt($("f-variants").value, 10) || 1)),
-    };
+    if (ch >= 2) {
+      payload.serial = {
+        chapters: ch,
+        words_per_chapter: parseInt($("f-words-per-ch").value, 10) || 2500,
+        variants: Math.max(1, Math.min(3, parseInt($("f-variants").value, 10) || 1)),
+      };
+    } else if (flow.serial) {
+      // 显式 null 覆盖 serial_novel 的流程默认，空章节就是单稿件。
+      payload.serial = null;
+    }
+    const initialBible = ($("f-bible") || {}).value ? $("f-bible").value.trim() : "";
+    if (initialBible && flow.serial && payload.serial) payload.story_bible = initialBible;
     const critics = Array.from($("f-critics").querySelectorAll("input:checked")).map((i) => i.value);
     if (critics.length) payload.critics = critics;
   }
@@ -1827,9 +1889,12 @@ async function createTask() {
     try { await refreshState(); } catch (e) { /* 刷失败等轮询兜底 */ }
     jumpToRun(r.run_id);
     $("f-goal").value = "";
+    if ($("f-bible")) $("f-bible").value = "";
     S.atts = []; renderAttachChips();   // 附件已移交任务待提交区，清空本地列表
   } catch (e) {
     msg.className = "msg err"; msg.textContent = e.message;
+  } finally {
+    resetSubmit();
   }
 }
 
@@ -2106,6 +2171,45 @@ function closeCtxMenu() {
   if (menu && !menu.classList.contains("hidden")) menu.classList.add("hidden");
 }
 
+/* 任务行的「⋯」与右键共用同一组动作，避免两个入口越改越不一样。
+ * det 是 .stask 元素；菜单位置由调用方提供，缺省时贴在行右下角。 */
+function taskContextItems(det) {
+  const taskId = det && det.dataset ? (det.dataset.task || "") : "";
+  const runId = det && det.dataset ? (det.dataset.run || "") : "";
+  const items = [];
+  if (runId) items.push({ label: t("打开详情"), fn: () => sideOpenRun(runId) });
+  if (taskId) {
+    items.push("-");
+    items.push({ label: t("打开工作目录"), fn: () => revealPath("tasks", taskId, true) });
+    items.push({ label: t("复制工作目录路径"), fn: () => revealPath("tasks", taskId, false) });
+    if (runId) items.push({ label: t("复制日志目录路径"), fn: () => revealPath("runs", runId, false) });
+    const st = det.dataset.status || "";
+    if (st === "failed" || st === "cancelled") items.push({ label: t("↻ 继续任务"), fn: () => retryTask(taskId) });
+    items.push({ label: (st === "failed" || st === "cancelled") ? t("✎ 编辑重试") : t("基于此任务新建"),
+      fn: () => newFromTask(taskId) });
+    const sTask = ((S.state || {}).tasks || []).find((x) => x.id === taskId);
+    if (sTask && sTask.serial && st !== "running" && st !== "queued")
+      items.push({ label: t("继续连载（新任务）"), fn: () => continueSerial(taskId) });
+    items.push({ label: t("重命名任务"), fn: () => renameTask(taskId) });
+    const archived = archivedTaskIds().has(taskId);
+    items.push({ label: archived ? t("取消归档") : t("归档"), fn: () => archiveTask(taskId, !archived) });
+    items.push({ label: t("删除任务"), danger: true, fn: () => deleteTask(taskId) });
+  } else if (runId) {
+    items.push("-");
+    items.push({ label: t("复制日志目录路径"), fn: () => revealPath("runs", runId, false) });
+    items.push({ label: t("删除记录"), danger: true, fn: () => deleteRun(runId) });
+  }
+  return items;
+}
+
+window.openTaskActions = function (det, ev) {
+  if (!det) return;
+  const r = det.getBoundingClientRect();
+  const x = ev && Number.isFinite(ev.clientX) ? ev.clientX : r.right - 8;
+  const y = ev && Number.isFinite(ev.clientY) ? ev.clientY : r.bottom;
+  openCtxMenu(x, y, taskContextItems(det));
+};
+
 function bindCtxMenus() {
   // 侧栏任务树：右键任务 → 详情/目录/重试/重命名/归档/删除；管理类运行 → 详情/目录/删除记录
   $("side-tasks").addEventListener("contextmenu", (e) => {
@@ -2113,31 +2217,7 @@ function bindCtxMenus() {
     const det = e.target.closest(".stask");
     if (det) {
     e.preventDefault();
-    const taskId = det.dataset.task || "", runId = det.dataset.run || "";
-    const items = [];
-    if (runId) items.push({ label: t("打开详情"), fn: () => sideOpenRun(runId) });
-    if (taskId) {
-      items.push("-");
-      items.push({ label: t("打开工作目录"), fn: () => revealPath("tasks", taskId, true) });
-      items.push({ label: t("复制工作目录路径"), fn: () => revealPath("tasks", taskId, false) });
-      if (runId) items.push({ label: t("复制日志目录路径"), fn: () => revealPath("runs", runId, false) });
-      const st = det.dataset.status || "";
-      if (st === "failed" || st === "cancelled") items.push({ label: t("↻ 继续任务"), fn: () => retryTask(taskId) });
-      // 与详情页同一套说法：失败/取消叫「编辑重试」，其余叫「基于此任务新建」
-      items.push({ label: (st === "failed" || st === "cancelled") ? t("✎ 编辑重试") : t("基于此任务新建"),
-                   fn: () => newFromTask(taskId) });
-      const sTask = ((S.state || {}).tasks || []).find((x) => x.id === taskId);
-      if (sTask && sTask.serial && st !== "running" && st !== "queued")
-        items.push({ label: t("继续连载（新任务）"), fn: () => continueSerial(taskId) });
-      items.push({ label: t("重命名任务"), fn: () => renameTask(taskId) });
-      items.push({ label: archivedTaskIds().has(taskId) ? t("取消归档") : t("归档"), fn: () => archiveTask(taskId, !archivedTaskIds().has(taskId)) });
-      items.push({ label: t("删除任务"), danger: true, fn: () => deleteTask(taskId) });
-    } else if (runId) {
-      items.push("-");
-      items.push({ label: t("复制日志目录路径"), fn: () => revealPath("runs", runId, false) });
-      items.push({ label: t("删除记录"), danger: true, fn: () => deleteRun(runId) });
-    }
-    openCtxMenu(e.clientX, e.clientY, items);
+    openCtxMenu(e.clientX, e.clientY, taskContextItems(det));
     return;
     }
     // 文件夹行（ZCode 桌面端式样）：新建任务到该目录 / 打开工作目录 / 复制路径 / 移除。
@@ -2812,7 +2892,9 @@ function renderSideTasks() {
       '<span class="t">' + esc(g.title) + "</span>" +
       (g.archived ? '<span class="sbadge archb">' + t("已归档") + "</span>" : "") +
       (g.verdict ? '<span class="sbadge">' + t("待裁决") + "</span>" : "") +
-      '<span class="tm">' + esc(relTime(g.time)) + "</span></div>";
+      '<span class="tm">' + esc(relTime(g.time)) + "</span>" +
+      '<button class="stask-more" type="button" aria-haspopup="menu" aria-label="' + esc(t("任务操作")) + '" title="' + esc(t("任务操作")) +
+      '" onclick="event.stopPropagation();openTaskActions(this.closest(\'.stask\'), event)">⋯</button></div>';
   };
   // 一级文件夹行：折叠箭头 + 目录图标 + 末段名（hover 显全路径）+ 任务计数徽标
   box.innerHTML = dirs.map((d) => {
@@ -2963,7 +3045,7 @@ function drawTaskDetail(key, runs) {
   if (sig === S.taskSig) return;
   S.taskSig = sig;
   const latest = runs[0];                       // runs 新→旧
-  const chrono = runs.slice().reverse();        // 展示按时间正序
+  const ordered = runs.slice();                 // 详情按最近运行优先，方便排查
   const totalSteps = runs.reduce((a, r) => a + (r.steps || []).length, 0);
   const active = runs.some((r) => r.status === "running" || r.status === "queued");
   const st = active ? "running" : latest.status;
@@ -2978,6 +3060,8 @@ function drawTaskDetail(key, runs) {
   setEditRetry(latest.task_id, latest.status,
     !!((S.state || {}).tasks || []).some((x) => x.id === latest.task_id));
   S.lastRun = latest;
+  renderRunOutcome(latest, runs);
+  renderDetailOverview(latest, runs, bmTask);
   // 指挥区指向最新的活跃运行（无则隐藏整个指挥区，避免终态任务误导用户以为指令还能生效）
   const activeRun = runs.find((r) => r.status === "queued" || r.status === "running");
   // 活跃运行（含排队中）显示取消按钮；取消目标钉在活跃 run——任务级详情没有
@@ -3002,20 +3086,23 @@ function drawTaskDetail(key, runs) {
   $("rd-plan").classList.add("hidden");
   const statusTxt = { queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消") };
   let html = "";
-  chrono.forEach((r, i) => {
-    html += '<div class="run-sep"><span class="rs-i">' + t("第 ") + (i + 1) + "/" + chrono.length + t(" 次运行") + '</span>' +
+  ordered.forEach((r, i) => {
+    const runNo = runs.length - i;
+    html += '<div class="run-sep"><span class="rs-i">' + t("第 ") + runNo + "/" + runs.length + t(" 次运行") + '</span>' +
       '<span class="rs-t">' + esc(String(r.created_at || "").slice(5, 16)) + "</span>" +
       '<span class="chip ' + esc(r.status || "") + '">' + (statusTxt[r.status] || r.status || "") + "</span>" +
       (r.error ? '<span class="rs-err" title="' + esc(r.error.slice(0, 200)) + '">' + esc(r.error.slice(0, 60)) + "</span>" : "") +
       "</div>";
-    html += (r.steps || []).map((s) =>
-      '<div class="step" onclick="toggleLog(\'' + esc(r.id) + "', '" + esc(s.log) + '\')" title="' + esc(s.note || "") + '">' +
+    html += (r.steps || []).slice().reverse().map((s) =>
+      '<div class="step" data-n="' + Number(s.n) + '" data-run-id="' + esc(r.id) + '" data-log="' + esc(s.log || "") + '" title="' + esc(s.note || "") + '">' +
       '<span class="n">' + String(s.n).padStart(2, "0") + "</span>" +
       '<span class="role">' + esc(s.role) + "</span>" +
       '<span class="who">' + esc(t(s.agent_label || s.agent)) + "</span>" +
       '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
       '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
-      statusChip(s.status) + "</div>"
+      statusChip(s.status) +
+      (s.log ? '<button class="step-log-btn" type="button" data-log-run="' + esc(r.id) + '" data-log-rel="' + esc(s.log) + '" title="' + esc(t("查看日志")) + '">' + esc(t("CLI 日志")) + "</button>" : "") +
+      "</div>"
     ).join("");
   });
   $("rd-steps").innerHTML = html || '<div class="empty">' + t("尚无步骤") + '</div>';
@@ -3158,7 +3245,7 @@ function applyStepFocus() {
   el.classList.add("flash");
   try { el.scrollIntoView({ block: "center", behavior: "smooth" }); }
   catch (e) { el.scrollIntoView(); }
-  if (el.dataset.log) toggleLog(S.detailRunId, el.dataset.log);
+  if (el.dataset.log) toggleLog(el.dataset.runId || S.detailRunId, el.dataset.log);
   setTimeout(() => el.classList.remove("flash"), 1800);
 }
 
@@ -3192,6 +3279,18 @@ function applyRdTabs() {
   });
   document.querySelectorAll("#run-detail .rd-pane").forEach((p) =>
     p.classList.toggle("hidden", p.dataset.pane !== S.rdTab));
+  document.querySelectorAll("#rd-tabs .rd-tab").forEach((b) => {
+    const active = b.dataset.tab === S.rdTab && !b.classList.contains("hidden");
+    b.setAttribute("aria-selected", active ? "true" : "false");
+    b.tabIndex = active ? 0 : -1;
+  });
+  document.querySelectorAll("#run-detail .rd-pane").forEach((p) =>
+    p.setAttribute("aria-hidden", p.dataset.pane === S.rdTab ? "false" : "true"));
+  const focusedTab = document.activeElement;
+  if (focusedTab && focusedTab.matches && focusedTab.matches("#rd-tabs .rd-tab.hidden")) {
+    const nextTab = document.querySelector('#rd-tabs .rd-tab[data-tab="' + S.rdTab + '"]:not(.hidden)');
+    if (nextTab) nextTab.focus({ preventScroll: true });
+  }
   // 对话页签不放日志抽屉：会盖住贴底输入条（手动切来/自动选卡都覆盖）
   if (S.rdTab === "chat" && !$("rd-log").classList.contains("hidden")) window.rdLogClose();
   renderChatNav();
@@ -3269,11 +3368,14 @@ function rdTabsSync(ctx) {
     if (S.rdTabSig !== sig) {
       S.rdTabSig = sig;
       const avail = rdTabAvail();
-      // 直连任务：对话就是全部内容，默认落「对话」；其余流程保持既有落位。
-      // 没跑到终态时成果分区是空的，落进去只见「运行结束后生成」白板——
-      // 运行中先落蜂巢/步骤，收尾后自动选卡会再切到成果
+      const direct = chatAvail && chatEngineIsDirect(S.lastRun);
+      // 直连任务的主问题是「继续聊什么、上一轮回答是什么」——默认把对话
+      // 放在第一视线；编排/代码任务才默认落蜂巢，先看阶段与在岗步骤。
+      // 没跑到终态时成果分区是空的，避免打开详情先看到白板。
       const finishing = !ctx.running && ["done", "failed", "cancelled", "timeout"].includes(ctx.status);
-      S.rdTab = (avail.chat ? "chat" : null)
+      S.rdTab = (direct && avail.chat ? "chat" : null)
+        || (avail.hive ? "hive" : null)
+        || (avail.chat ? "chat" : null)
         || (ctx.running ? (avail.hive ? "hive" : "steps")
           : (ctx.gitState === "isolated" && avail.git ? "git"
             : (ctx.hasResult && finishing ? "result" : "steps")));
@@ -3314,6 +3416,8 @@ async function renderRunDetail() {
     !(rcTask && rcTask.serial && run.status !== "running" && run.status !== "queued"));
   setEditRetry(run.task_id, run.status, !!rcTask);
   S.lastRun = run;
+  renderRunOutcome(run);
+  renderDetailOverview(run, [run], rcTask);
   const bp = $("btn-pause");
   if (bp) { bp.classList.toggle("hidden", !active);
     bp.textContent = run.paused ? t("继续执行") : t("暂停"); }
@@ -3329,15 +3433,19 @@ async function renderRunDetail() {
     '<span class="stat tasksum hidden" id="rd-meta-task"></span>';
   if (S.detailSide) fillMetaTask(S.detailSide.stats || {});   // 缓存命中：轮询重画不闪丢累计组
   renderPlan(run);
-  $("rd-steps").innerHTML = (run.steps || []).map((s) =>
-    '<div class="step" data-n="' + Number(s.n) + '" data-log="' + esc(s.log || "") +
-    '" onclick="toggleLog(\'' + esc(run.id) + "', '" + esc(s.log) + '\')" title="' + esc(s.note || "") + '">' +
+  // 详情页优先展示最近一步，排查运行中的任务时无需滚到底部；
+  // 蜂巢泳道仍按原始流程顺序呈现，避免破坏阶段语义。
+  $("rd-steps").innerHTML = (run.steps || []).slice().reverse().map((s) =>
+    '<div class="step" data-n="' + Number(s.n) + '" data-run-id="' + esc(run.id) + '" data-log="' + esc(s.log || "") +
+    '" title="' + esc(s.note || "") + '">' +
     '<span class="n">' + String(s.n).padStart(2, "0") + "</span>" +
     '<span class="role">' + esc(s.role) + "</span>" +
     '<span class="who">' + esc(t(s.agent_label || s.agent)) + "</span>" +
     '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
     '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
-    statusChip(s.status) + "</div>"
+    statusChip(s.status) +
+    (s.log ? '<button class="step-log-btn" type="button" data-log-run="' + esc(run.id) + '" data-log-rel="' + esc(s.log) + '" title="' + esc(t("查看日志")) + '">' + esc(t("CLI 日志")) + "</button>" : "") +
+    "</div>"
   ).join("") || '<div class="empty">' + t("尚无步骤") + '</div>';
   applyStepFocus();
   // 报告
@@ -4547,6 +4655,7 @@ function bindInspector() {
   });
   $("side-tasks").addEventListener("keydown", (e) => {
     if (e.key !== "Enter" && e.key !== " ") return;
+    if (e.target.closest("button, a, input, select, textarea, summary")) return;
     const det = e.target.closest(".stask");
     if (det) { e.preventDefault(); sideRowActivate(det); }
   });
@@ -4567,14 +4676,13 @@ function artifactsChips(runId, files) {
   return files.map((f) => {
     const isTxt = FP_TXT.has(_fpExt(f.name));   // 文本/代码都有弹窗预览（按代码格式展示）
     return '<span class="fc-row">' +
-      '<a class="file-chip" href="/api/runs/' + encodeURIComponent(runId) + "/file?name=" +
+      '<a class="file-chip artifact-file-open" href="/api/runs/' + encodeURIComponent(runId) + "/file?name=" +
       encodeURIComponent(f.name) + '" target="_blank" rel="noopener" ' +
-      'title="' + esc(f.name + " · " + fmtSize(f.size)) + '" onclick="artPopup(\'' + esc(runId) + "', '" +
-      esc(f.name) + "', " + (Number(f.size) || 0) + ');return false">' +
+      'title="' + esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
       '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
       '<span class="p">' + esc(f.name) + "</span><i>" + fmtSize(f.size) + "</i></a>" +
-      (isTxt ? '<a class="file-chip prev" title="' + esc(t("查看内容")) +
-        '" onclick="artPopup(\'' + esc(runId) + '\', \'' + esc(f.name) + '\', ' + (Number(f.size) || 0) + ')">' +
+      (isTxt ? '<a class="file-chip prev artifact-file-preview" title="' + esc(t("查看内容")) +
+        '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
         '<svg class="ico" aria-hidden="true"><use href="#i-book"/></svg>' + t("预览") + "</a>" : "") +
       "</span>";
   }).join("");
@@ -4625,11 +4733,13 @@ window.copyText = function (t) {
   } catch (e) { /* 剪贴板不可用则忽略 */ }
 };
 
-let currentLog = null;
+let currentLog = null; // { runId, rel }：同一路径在不同轮次也必须能切换
 
 /* 当前打开的日志是否仍属于这批步骤（重画后日志路径消失说明步骤被重建，才收起） */
-function stepsMatch(runs, rel) {
-  return (runs || []).some((r) => (r.steps || []).some((s) => s.log === rel));
+function stepsMatch(runs, current) {
+  if (!current) return false;
+  return (runs || []).some((r) => String(r.id || "") === String(current.runId || "") &&
+    (r.steps || []).some((s) => s.log === current.rel));
 }
 
 function renderPlan(run) {
@@ -4693,7 +4803,7 @@ window.rdLogClose = function () {
 
 async function toggleLog(runId, rel) {
   const box = $("rd-log"), pre = $("rd-log-text");
-  if (currentLog === rel && !box.classList.contains("hidden")) {
+  if (currentLog && currentLog.runId === runId && currentLog.rel === rel && !box.classList.contains("hidden")) {
     window.rdLogClose(); return;
   }
   try {
@@ -4701,12 +4811,14 @@ async function toggleLog(runId, rel) {
     // 拉取期间可能切详情：过期日志不落盘（A 的步骤输出写进 B 详情的抽屉）。
     // 检查器蜂巢/步骤点开日志同款：run 属检查器当前 run 也算在场
     const owned = S.detailRunId === runId ||
-      (S.detailTaskKey && S.lastRun && S.lastRun.id === runId) ||
+      // 任务级直连时间线会跨多轮 run 回放；按钮上的 run 可能不是最新一轮，
+      // 只按 latest.id 判断会让旧轮次的「CLI 日志」点击后悄悄失效。
+      (S.detailTaskKey && S.lastRun && S.lastRun.task_id === S.detailTaskKey) ||
       ((S.inspData || {}).run || {}).id === runId;
     if (!owned) return;
     pre.textContent = r.log || t("（等待输出…）");
     box.classList.remove("hidden");
-    currentLog = rel;
+    currentLog = { runId, rel };
     const st = $("rd-log-step");
     if (st) st.textContent = rdLogStepLabel(runId, rel);
     pre.scrollTop = pre.scrollHeight;   // 打开即看最新输出
@@ -4716,10 +4828,10 @@ async function toggleLog(runId, rel) {
     stopLogLive();
     if (!live) return;
     S.logLive = setInterval(async () => {
-      if (!currentLog || currentLog !== rel) return stopLogLive();
+      if (!currentLog || currentLog.runId !== runId || currentLog.rel !== rel) return stopLogLive();
       try {
         const rr = await api("/api/runs/" + encodeURIComponent(runId) + "/log?step=" + encodeURIComponent(rel) + "&pretty=1");
-        if (currentLog === rel) {
+        if (currentLog && currentLog.runId === runId && currentLog.rel === rel) {
           // 贴底跟随：用户滚到底部附近才自动滚到最新输出，回看历史不打扰
           const stick = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 48;
           pre.textContent = rr.log || t("（等待输出…）");
@@ -4803,8 +4915,16 @@ window.renderHive = function (run) {
   });
   const running = steps.filter((s) => s.status === "running");
   const sub = $("rd-hive-sub");
-  if (sub) sub.textContent = running.length
-    ? t("在岗") + " " + running.length + " / " + steps.length : t("全部空闲");
+  if (sub) {
+    const done = steps.filter((s) => ["done", "completed", "success"].includes(String(s.status || "").toLowerCase())).length;
+    const issues = steps.filter((s) => ["failed", "timeout", "cancelled"].includes(String(s.status || "").toLowerCase())).length;
+    sub.innerHTML = '<span class="hive-count hive-count-live"><i class="live-dot"></i>' +
+      esc(t("在岗")) + " " + running.length + '</span>' +
+      '<span class="hive-count hive-count-done">✓ ' + done + '</span>' +
+      (issues ? '<span class="hive-count hive-count-issue">! ' + issues + '</span>' : "") +
+      '<span class="hive-count hive-count-total">' + steps.length + ' ' + esc(t("步骤")) + '</span>' +
+      '<span class="hive-hint">' + esc(t("点击步骤卡片查看 CLI 日志")) + '</span>';
+  }
   const activeIdx = lanes.map((l) => byStage[l].some((s) => s.status === "running")).lastIndexOf(true);
   const cell = (s, laneIdx, cellIdx) => {
     // 五归一：取消/超时的格子不再冒充「完成」——与步骤芯片同三色体系
@@ -4825,10 +4945,11 @@ window.renderHive = function (run) {
                    (s.note ? "◆ " + s.note : "")].filter(Boolean).join(" · ")
       + (concl && st !== "running" ? "\n" + t("结论：") + concl : "");
     // --d：入场瀑布逐格延迟（泳道间 110ms + 同泳道逐格 45ms），样式端消费
-    return '<div class="hive-cell st-' + st + (st === "running" ? " hc-breathe" : "") + '"' +
+    return '<div class="hive-cell st-' + st + (st === "running" ? " hc-breathe" : "") + '" role="button" tabindex="0"' +
+      ' data-hive-run="' + esc(run.id) + '" data-hive-log="' + esc(s.log || "") + '"' +
       ' style="--d:' + (laneIdx * 110 + cellIdx * 45) + 'ms"' +
       ' title="' + esc(title) + '" ' +
-      'onclick="hiveOpenLog(\'' + esc(run.id) + "', '" + esc(s.log || "") + '\')">' +
+      '>' +
       '<div class="hc-head">' +
       '<img class="hc-bee" src="icons/bee.svg" alt="" aria-hidden="true">' +
       '<span class="hc-role">' + esc(s.role || "") + "</span>" +
@@ -4840,6 +4961,7 @@ window.renderHive = function (run) {
       (st === "running" ? '<span class="hc-live"><i class="live-dot"></i>' + t("工作中") + "</span>" : "") +
       (st === "timeout" ? '<span class="hc-dead">⏱ ' + t("超时") + "</span>" : "") +
       (st === "cancelled" ? '<span class="hc-dead">' + t("已取消") + "</span>" : "") +
+      (s.log ? '<span class="hc-log-link">' + esc(t("CLI 日志")) + "</span>" : "") +
       "</div></div>";
   };
   const dots = (list, laneIdx) => list.slice(-12).map((s, di) => {
@@ -4859,12 +4981,14 @@ window.renderHive = function (run) {
       : (activeIdx === -1 || i < activeIdx ? "lane-done" : "lane-idle");
     // 泳道头视觉 v2：阶段序号徽章（01/02…流水线站序）+ 已完成进度（settled/total）
     const settled = list.filter((s) => !["running", "queued"].includes(s.status)).length;
+    const meter = list.length ? Math.round((settled / list.length) * 100) : 0;
     return '<div class="hive-lane ' + cls + '">' +
       '<div class="lane-head">' +
       '<span class="lane-idx">' + String(i + 1).padStart(2, "0") + "</span>" +
       '<span class="lane-name">' + esc(stage) + '</span>' +
       '<span class="lane-n">×' + list.length + "</span>" +
       (settled ? '<span class="lane-prog">' + settled + "/" + list.length + "</span>" : "") +
+      '<span class="lane-meter" aria-label="' + meter + '%"><i style="width:' + meter + '%"></i></span>' +
       (hasRun ? '<span class="lane-live"><i class="live-dot"></i>' + t("进行中") + "</span>" : "") + "</div>" +
       '<div class="lane-track">' + dots(list, i) + "</div>" +
       '<div class="lane-cells">' + list.slice(-8).map((s, ci) => cell(s, i, ci)).join("") + "</div></div>";
@@ -5166,9 +5290,10 @@ async function renderChat(run, active) {
   if (sig === chatSig) return;   // 轮询重画去抖：内容没变不重建 DOM（保住输入焦点）
   const runForFetch = run.id;    // 拉取期间可能切详情：过期响应不落盘（同 renderRunDetail 闸门）
   chatSig = sig;
-  let items = [];
-  try { items = ((await api("/api/runs/" + encodeURIComponent(run.id) + "/timeline")).items) || []; }
-  catch (e) { items = []; }
+  let data = null;
+  try { data = await api("/api/runs/" + encodeURIComponent(run.id) + "/timeline"); }
+  catch (e) { data = null; }
+  const items = (data && data.items) || [];
   if (!$("run-detail") || $("run-detail").classList.contains("hidden")) return;
   // 过期闸门：run 级（renderRunDetail）与任务级（drawTaskDetail）都经 S.lastRun
   // 指向当前详情正在展示的那条 run——拉取期间切了详情就丢弃响应
@@ -5181,7 +5306,7 @@ async function renderChat(run, active) {
   const attName = (a) => { const p = typeof a === "string" ? a
     : ((a && (a.name || a.path)) || "");
     return String(p).split(/[\\/]/).pop() || ""; };
-  flow.innerHTML = items.map((it) => {
+  let html = items.map((it) => {
     if (it.kind === "user") {
       // 用户消息：右侧浅灰圆角块，元信息在块内顶部。
       // 附件胶囊可点开预览：data-att 带 _attachments/ 相对路径（老数据裸文件名
@@ -5222,13 +5347,175 @@ async function renderChat(run, active) {
       '<div class="chat-bubble agent">' +
       '<div class="chat-body">' + bodyHtml + "</div>" +
       '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
-      (metaBad ? " · " + t(it.status === "failed" ? "失败" : "已取消") : "") + "</div></div></div>";
-  }).join("") || '<div class="hint">' + esc(t("还没有对话内容")) + "</div>";
+      (metaBad ? " · " + t(it.status === "failed" ? "失败" : "已取消") : "") + "</div>" +
+      (it.log && it.run ? '<div class="chat-actions"><button class="chat-log-btn" type="button" data-chat-log-run="' +
+        esc(it.run) + '" data-chat-log-rel="' + esc(it.log) + '" title="' + esc(t("查看日志")) + '">' + esc(t("CLI 日志")) + "</button></div>" : "") +
+      "</div></div>";
+  }).join("");
+  // 时间线收尾的「执行结果」卡：run 终态后的确定性摘要（成没成/耗时/执行者/
+  // 产出文件）——不依赖模型最后一句话自觉交代（用户反馈：输"1"跑完 55 秒
+  // 只见一句寒暄，执行结果无处可看）。
+  const res = data && data.result;
+  if (res) html += chatResultHTML(run, res);
   const hint = $("rd-chat-hint");
   if (hint) hint.textContent = active
     ? t("运行中：新消息会排队，本轮回答完后依次送达")
     : t("已结束：发送后将自动开新一轮接着做");
+  flow.innerHTML = html || '<div class="hint">' + esc(t("还没有对话内容")) + "</div>";
   flow.scrollTop = flow.scrollHeight;
+}
+
+/* 执行结果卡（时间线收尾）：run 终态后的确定性摘要——成没成、跑多久、谁执行
+ * 的、产出了哪些文件，全部产品明示，不依赖模型自觉交代。失败给「查看执行步骤」
+ * 入口；文件 chip 复用成品预览通道（artPopup）。 */
+function chatResultHTML(run, res) {
+  const ok = res.status === "done";
+  const bad = res.status === "failed";
+  const icon = ok ? "#i-check" : "#i-x";
+  const label = ok ? t("任务完成") : (bad ? t("任务失败") : t("已取消"));
+  const meta = [];
+  if (res.executor) meta.push(esc(res.executor));
+  if (res.turns) meta.push(res.turns + " " + t("轮对话"));
+  if (res.duration_s != null) meta.push(chatDurTxt(res.duration_s));
+  const files = res.files || [];
+  const chips = files.map((f) =>
+    '<a class="file-chip chat-file-open" href="/api/runs/' + encodeURIComponent(run.id) + "/file?name=" +
+    encodeURIComponent(f.name) + '" target="_blank" rel="noopener" title="' +
+    esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(run.id) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
+    '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
+    '<span class="p">' + esc(f.name) + "</span><i>" + fmtSize(f.size) + "</i></a>").join("");
+  return '<div class="chat-row">' +
+    '<span class="chat-avatar" aria-hidden="true"><svg class="ico"><use href="' + icon + '"></use></svg></span>' +
+    '<div class="chat-result' + (ok ? "" : bad ? " bad" : " off") + '">' +
+    '<div class="cr-head"><svg class="ico" aria-hidden="true"><use href="' + icon + '"></use></svg>' +
+    esc(label) + "</div>" +
+    (meta.length ? '<div class="cr-meta">' + meta.join(" · ") + "</div>" : "") +
+    (bad && res.error ? '<div class="cr-err">' + esc(res.error) + "</div>" : "") +
+    '<div class="cr-files">' + (chips
+      ? '<div class="cr-files-title">' + esc(t("产出文件")) + "（" + files.length + "）</div>" +
+        '<div class="file-chips">' + chips + "</div>"
+      : '<div class="cr-files-title">' + esc(t("无文件产出")) + "</div>") + "</div>" +
+    (bad ? '<button class="ghost cr-steps" onclick="rdChatNavGo(\'steps\')">' +
+      esc(t("查看执行步骤")) + "</button>" : "") +
+    "</div></div>";
+}
+
+function chatDurTxt(s) {
+  s = Number(s) || 0;
+  if (s < 60) return s + " " + t("秒");
+  const m = Math.floor(s / 60), r = s % 60;
+  return m + " " + t("分") + (r ? " " + r + " " + t("秒") : "");
+}
+
+/* 代码/编排任务的确定性结果摘要：报告是长文，步骤是过程，用户还需要一眼
+ * 知道这次到底成没成、做了多少步、用了多久，以及失败原因。这个卡片不依赖
+ * 智能体是否在最后一句话里主动总结；直连任务也能在「成果」页签看到同一口径。 */
+function runDurationSeconds(run) {
+  if (!run) return null;
+  if (Number.isFinite(Number(run.duration_s))) return Number(run.duration_s);
+  const steps = (run.steps || []).filter((s) => Number.isFinite(Number(s.duration_s)));
+  if (steps.length) return steps.reduce((a, s) => a + Number(s.duration_s || 0), 0);
+  const a = Date.parse(String(run.started_at || "").replace(" ", "T"));
+  const b = Date.parse(String(run.ended_at || "").replace(" ", "T"));
+  return Number.isFinite(a) && Number.isFinite(b) && b >= a ? (b - a) / 1000 : null;
+}
+
+function runOutcomeSummary(run) {
+  if (!run) return "";
+  const last = (run.steps || []).slice().reverse().find((s) => s.output || s.summary);
+  const raw = run.summary || (last && (last.output || last.summary)) || run.error || "";
+  return String(raw).replace(/\s+/g, " ").trim().slice(0, 520);
+}
+
+function renderRunOutcome(run, runs) {
+  const box = $("rd-outcome");
+  if (!box) return;
+  if (!run) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+  const all = runs && runs.length ? runs : [run];
+  const steps = (run.steps || []);
+  const total = all.reduce((n, r) => n + ((r.steps || []).length), 0);
+  const settled = all.reduce((n, r) => n + (r.steps || []).filter((s) =>
+    !["running", "queued"].includes(String(s.status || ""))).length, 0);
+  const status = String(run.status || "");
+  const active = status === "running" || status === "queued";
+  const bad = status === "failed" || status === "cancelled" || status === "timeout";
+  const label = active ? (status === "queued" ? t("排队中") : t("运行中"))
+    : (status === "done" ? t("完成") : status === "failed" ? t("失败") : status === "cancelled" ? t("已取消") : status || t("未知状态"));
+  const icon = status === "done" ? "#i-check" : bad ? "#i-x" : "#i-gauge";
+  const duration = runDurationSeconds(run);
+  const latest = steps.slice().reverse().find((s) => s.agent_label || s.agent || s.role);
+  const route = run.route && typeof run.route === "object" ? run.route.implementer : "";
+  // route.implementer 是路由评分说明，不是用户真正关心的 CLI 名称；优先
+  // 展示步骤上的 agent_label，只有旧数据没有步骤执行者时才回退到路由说明。
+  const executor = run.executor || run.implementer || (latest && (latest.agent_label || latest.agent)) || route || "";
+  const summary = runOutcomeSummary(run);
+  const meta = [];
+  if (executor) meta.push('<span><b>' + esc(t("执行者")) + '</b> ' + esc(executor) + "</span>");
+  if (total) meta.push('<span><b>' + esc(t("步骤")) + '</b> ' + settled + "/" + total + "</span>");
+  if (duration != null) meta.push('<span><b>' + esc(t("耗时")) + '</b> ' + esc(chatDurTxt(duration < 1 ? Number(duration.toFixed(1)) : Math.round(duration))) + "</span>");
+  return (box.classList.remove("hidden"), box.innerHTML =
+    '<div class="outcome-top">' +
+      '<div class="outcome-title ' + (bad ? "bad" : active ? "live" : "ok") + '">' +
+        '<svg class="ico" aria-hidden="true"><use href="' + icon + '"></use></svg>' + esc(t("执行结果")) +
+        '<span class="outcome-status">' + esc(label) + "</span></div>" +
+      (meta.length ? '<div class="outcome-meta">' + meta.join("") + "</div>" : "") +
+    "</div>" +
+    (summary ? '<div class="outcome-summary">' + esc(summary) + "</div>" : "") +
+    (run.error ? '<div class="outcome-error">' + esc(run.error) + "</div>" : "") +
+    (total ? '<div class="outcome-actions"><button class="ghost" type="button" onclick="rdChatNavGo(\'steps\')">' + esc(t("查看执行步骤")) + "</button></div>" : "")
+  );
+}
+
+/* 任务详情首屏概览：把“这次任务做了什么、做到哪、最近发生了什么”放在
+ * 蜂巢上方。直连任务仍以对话为主，由 chat-mode 隐藏概览，避免它抢走输入空间。 */
+function renderDetailOverview(run, runs, task) {
+  const box = $("rd-overview");
+  if (!box || !run) return;
+  if (chatEngineIsDirect(run)) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  const all = runs && runs.length ? runs : [run];
+  const steps = (run.steps || []);
+  const total = all.reduce((n, r) => n + ((r.steps || []).length), 0);
+  const settled = all.reduce((n, r) => n + (r.steps || []).filter((s) =>
+    !["running", "queued"].includes(String(s.status || ""))).length, 0);
+  const pct = total ? Math.max(0, Math.min(100, Math.round((settled / total) * 100))) : 0;
+  const status = String(run.status || "");
+  const active = status === "running" || status === "queued";
+  const bad = status === "failed" || status === "cancelled" || status === "timeout";
+  const statusText = active ? (status === "queued" ? t("排队中") : t("运行中"))
+    : status === "done" ? t("完成") : status === "failed" ? t("失败")
+      : status === "cancelled" ? t("已取消") : status || t("未知状态");
+  const last = steps.slice().reverse().find((s) => s.summary || s.output || s.note) || steps[steps.length - 1];
+  const lastText = last ? String(last.summary || last.output || last.note || "").replace(/\s+/g, " ").trim().slice(0, 240) : "";
+  const executor = run.executor || run.implementer || (last && (last.agent_label || last.agent)) || "";
+  const duration = runDurationSeconds(run);
+  const goal = (task && task.goal) || run.goal || run.title || "";
+  const actions = [];
+  if (total) actions.push('<button type="button" class="ghost" data-overview-tab="steps">' + esc(t("查看步骤")) + "</button>");
+  if (last && last.log) actions.push('<button type="button" class="ghost" data-overview-run="' + esc(run.id) + '" data-overview-log="' + esc(last.log) + '">' + esc(t("打开 CLI 日志")) + "</button>");
+  if (status === "done" || run.report) actions.push('<button type="button" class="ghost" data-overview-tab="result">' + esc(t("查看成果")) + "</button>");
+  box.innerHTML =
+    '<div class="rd-overview-main">' +
+      '<div class="rd-overview-kicker">' + esc(t("任务概览")) + '</div>' +
+      '<div class="rd-overview-title" title="' + esc(run.title || "") + '">' + esc(run.title || "") + '</div>' +
+      (goal ? '<div class="rd-overview-goal" title="' + esc(goal) + '">' + esc(goal) + '</div>' : "") +
+    '</div>' +
+    '<div class="rd-overview-state">' +
+      '<span class="state-label">' + esc(t("当前状态")) + '</span>' +
+      '<strong class="state-value ' + (bad ? "bad" : status === "done" ? "ok" : "") + '">' + esc(statusText) + '</strong>' +
+    '</div>' +
+    '<div class="rd-overview-progress" aria-label="' + esc(pct + "%") + '"><i style="width:' + pct + '%"></i></div>' +
+    '<div class="rd-overview-facts">' +
+      '<span><b>' + settled + "/" + total + '</b> ' + esc(t("步骤已完成")) + '</span>' +
+      (executor ? '<span>' + esc(t("执行者")) + ' <b>' + esc(executor) + '</b></span>' : "") +
+      (duration != null ? '<span>' + esc(t("耗时")) + ' <b>' + esc(chatDurTxt(duration < 1 ? Number(duration.toFixed(1)) : Math.round(duration))) + '</b></span>' : "") +
+    '</div>' +
+    (lastText ? '<div class="rd-overview-last"><b>' + esc(t("最近一步")) + '</b><span>' + esc(lastText) + '</span></div>' : "") +
+    (actions.length ? '<div class="rd-overview-actions">' + actions.join("") + '</div>' : "");
+  box.classList.remove("hidden");
 }
 
 function drawChatAtts() {
@@ -5347,6 +5634,14 @@ function bindChat() {
   // 输入条胶囊增删重画，都不丢监听。时间线胶囊走已落盘文件，输入条胶囊
   // （× 移除按钮除外）走待提交区
   $("rd-chat-flow").addEventListener("click", (e) => {
+    const logBtn = e.target.closest("[data-chat-log-run][data-chat-log-rel]");
+    if (logBtn) { e.stopPropagation(); toggleLog(logBtn.dataset.chatLogRun, logBtn.dataset.chatLogRel); return; }
+    const file = e.target.closest(".chat-file-open[data-file-run]");
+    if (file) {
+      e.preventDefault();
+      artPopup(file.dataset.fileRun, file.dataset.fileName || "", Number(file.dataset.fileSize) || 0);
+      return;
+    }
     const chip = e.target.closest(".att-open");
     if (chip) window.chatAttPopup(chip.dataset.att);
   });
@@ -7356,7 +7651,8 @@ async function suApply() {
     clearInterval(SU_TIMER);
     SU_TIMER = setInterval(async () => {
       try {
-        const run = await api("/api/runs/" + encodeURIComponent(runId));
+        const d = await api("/api/runs/" + encodeURIComponent(runId));
+        const run = d && d.run;   // /api/runs/<id> 返回 {run:{…}} 信封，别读外壳
         if (run && run.status && run.status !== "running" && run.status !== "queued") {
           clearInterval(SU_TIMER); SU_TIMER = null;
           $("su-apply").disabled = false;
@@ -7692,6 +7988,19 @@ function usageMultilineSvg(byDay, byDayModel) {
     '<line class="uc-grid" x1="' + padL + '" y1="' + (padT + ih * f).toFixed(1) +
     '" x2="' + (W - padR) + '" y2="' + (padT + ih * f).toFixed(1) + '"/>').join("") +
     '<line class="uc-base" x1="' + padL + '" y1="' + (padT + ih) + '" x2="' + (W - padR) + '" y2="' + (padT + ih) + '"/>';
+  // 底层活动量柱保留每日总量轮廓；折线仍表达各模型趋势，双层信息比单一曲线
+  // 更容易看出“哪天整体有调用、哪天只是某个模型占比变化”。
+  const dailyTotals = days.map((_, i) => series.reduce((sum, s) => sum + (s.vals[i] || 0), 0));
+  const dayMax = Math.max(1, ...dailyTotals);
+  const barW = Math.max(3, (iw / n) * 0.52);
+  const bars = dailyTotals.map((v, i) => {
+    const h = ih * v / dayMax;
+    const x = xOf(i) - barW / 2;
+    const y = padT + ih - h;
+    return '<rect class="uc-bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) +
+      '" width="' + barW.toFixed(1) + '" height="' + Math.max(0.5, h).toFixed(1) +
+      '" rx="2"><title>' + esc(days[i] + " · " + fmtTok(v) + t(" tokens")) + "</title></rect>";
+  }).join("");
   const legend = '<div class="um-legend">' +
     series.map((s, si) =>
       '<span><i style="background:' + usageColor(si) + '"></i>' +
@@ -7699,7 +8008,7 @@ function usageMultilineSvg(byDay, byDayModel) {
     '<span class="um-peak">' + esc(t("峰值 ") + fmtTok(max)) + "</span></div>";
   return legend +
     '<svg class="usage-svg" viewBox="0 0 ' + W + " " + H + '" role="img" preserveAspectRatio="xMidYMid meet">' +
-    grid + body + labels + "</svg>";
+    grid + bars + body + labels + "</svg>";
 }
 
 /* Token 活动热力图：GitHub 贡献图风格。窗口自适应——覆盖全部活跃历史（封顶
@@ -7932,7 +8241,8 @@ function renderUsage() {
   $("usage-kpis").innerHTML = [
     kpiCard(t("累计 Token 数"), fmtTok(tot.tokens),
       t("调用 ") + fmtTok(tot.calls) + t(" 次 · 成功率 ") +
-      (tot.calls ? Math.round(tot.ok * 100 / tot.calls) : 0) + "% · " + fmtUsd(tot.cost_usd),
+      (tot.calls ? Math.round(tot.ok * 100 / tot.calls) : 0) + "% · " +
+      t("失败 ") + fmtTok(tot.failed || 0) + t(" · ") + fmtUsd(tot.cost_usd),
       true, "i-sigma"),
     kpiCard(t("峰值 Token 数"), fmtTok(tot.peak_tokens),
       t("单日最高 · 日均 ") + fmtTok(activeDays ? tot.tokens / activeDays : 0), false, "i-gauge"),
@@ -8208,6 +8518,44 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-cancel").addEventListener("click", cancelRun);
   bindDirector();
   bindChat();
+  const bindArtifactClicks = (root) => {
+    if (!root) return;
+    root.addEventListener("click", (e) => {
+      const file = e.target.closest("[data-file-run][data-file-name]");
+      if (!file) return;
+      e.preventDefault();
+      artPopup(file.dataset.fileRun, file.dataset.fileName || "", Number(file.dataset.fileSize) || 0);
+    });
+  };
+  bindArtifactClicks($("rd-arts"));
+  bindArtifactClicks($("insp-artifacts"));
+  // 动态详情区统一用 data 属性委托，日志路径/文件名不再拼进 inline JS。
+  const detailOverview = $("rd-overview");
+  if (detailOverview) detailOverview.addEventListener("click", (e) => {
+    const log = e.target.closest("[data-overview-log]");
+    if (log) { toggleLog(log.dataset.overviewRun, log.dataset.overviewLog); return; }
+    const tab = e.target.closest("[data-overview-tab]");
+    if (tab) { S.rdTab = tab.dataset.overviewTab; S.rdTabPin = true; applyRdTabs(); }
+  });
+  const stepBox = $("rd-steps");
+  if (stepBox) stepBox.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-log-run][data-log-rel]");
+    const row = e.target.closest(".step[data-log]");
+    if (btn) { e.stopPropagation(); toggleLog(btn.dataset.logRun, btn.dataset.logRel); return; }
+    if (row && row.dataset.log) toggleLog(row.dataset.runId || S.detailRunId, row.dataset.log);
+  });
+  const hiveBox = $("rd-hive-cells");
+  if (hiveBox) {
+    hiveBox.addEventListener("click", (e) => {
+      const cell = e.target.closest("[data-hive-run][data-hive-log]");
+      if (cell) hiveOpenLog(cell.dataset.hiveRun, cell.dataset.hiveLog);
+    });
+    hiveBox.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const cell = e.target.closest("[data-hive-run][data-hive-log]");
+      if (cell) { e.preventDefault(); hiveOpenLog(cell.dataset.hiveRun, cell.dataset.hiveLog); }
+    });
+  }
   // 详情标签页：手点即切并钉住——状态变化触发的自动选卡不再抢用户的手选
   $("rd-tabs").addEventListener("click", (e) => {
     const b = e.target.closest(".rd-tab");
@@ -8215,6 +8563,21 @@ document.addEventListener("DOMContentLoaded", () => {
     S.rdTab = b.dataset.tab;
     S.rdTabPin = true;
     applyRdTabs();
+  });
+  $("rd-tabs").addEventListener("keydown", (e) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    const tabs = Array.from($("rd-tabs").querySelectorAll(".rd-tab:not(.hidden)"));
+    if (!tabs.length) return;
+    const current = Math.max(0, tabs.indexOf(document.activeElement));
+    let next = current;
+    if (e.key === "ArrowRight") next = (current + 1) % tabs.length;
+    if (e.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
+    if (e.key === "Home") next = 0;
+    if (e.key === "End") next = tabs.length - 1;
+    e.preventDefault();
+    tabs[next].focus();
+    tabs[next].click();
+    tabs[next].scrollIntoView({ block: "nearest", inline: "nearest" });
   });
   // 详情子页显隐 → 容器宽度 class（:has 在部分浏览器不生效，JS 同步为准）
   (function () {

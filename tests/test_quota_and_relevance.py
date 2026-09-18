@@ -55,6 +55,15 @@ class TestRelevanceInjection(BaseTest):
 
 class TestQuotaRouting(BaseTest):
 
+    def test_recent_tokens_reads_normalized_usage_total(self):
+        from app.core import usage
+        usage._HOURLY_CACHE.update(ts=0.0, val={})
+        usage.record(source="pipeline", run_id="r-quota", agent="q-cli",
+                     usage={"input": 100, "output": 25, "total": 125})
+        usage.record(source="pipeline", run_id="r-quota", agent="q-cli",
+                     usage={"total": 75})
+        self.assertEqual(usage.agent_tokens_recent("q-cli", hours=1), 200)
+
     def test_registry_passes_quota(self):
         from app.core import registry
         agent = registry._build_agent({

@@ -19,6 +19,7 @@ SSE 可看进度）。npm 替换的是包目录文件，当前进程已加载进
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import socket
@@ -26,8 +27,11 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 from . import paths, runner
+
+log = logging.getLogger(__name__)
 
 _PKG_NAME = "codebee"   # npm 发布名；必须与 package.json 的 name 一致（单测断言）
 _UPDATE_TTL = 600   # 查新结果缓存（秒）
@@ -162,9 +166,26 @@ def apply_upgrade():
     if install_mode() != "npm":
         return {"error": "当前安装方式不支持自动升级（见版本页说明）"}
     from . import store, jobs
-    run = store.create_run("mgmt", "升级 CodeBee 本体（npm install -g %s@latest）" % _PKG_NAME,
-                           entry_id="__self__", op="selfupgrade")
-    jobs.enqueue({"kind": "selfupgrade", "run_id": run["id"]})
+    try:
+        run = store.create_run(
+            "mgmt", "升级 CodeBee 本体（npm install -g %s@latest）" % _PKG_NAME,
+            entry_id="__self__", op="selfupgrade")
+    except Exception:
+        log.exception("selfupdate: 创建升级运行记录失败")
+        return {"error": "升级任务创建失败，请稍后重试"}
+    try:
+        jobs.enqueue({"kind": "selfupgrade", "run_id": run["id"]})
+    except Exception:
+        # The run is already durable when enqueue fails. Close it explicitly so
+        # the upgrade panel cannot remain in a misleading queued state.
+        log.exception("selfupdate: 升级任务入队失败 run=%s", run["id"])
+        try:
+            store.update_run(run["id"], status="failed",
+                             error="升级任务入队失败，请稍后重试",
+                             ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+        except Exception:
+            log.exception("selfupdate: 升级运行失败收口失败 run=%s", run["id"])
+        return {"error": "升级任务入队失败，请稍后重试", "run_id": run["id"]}
     return {"run_id": run["id"]}
 
 
@@ -172,7 +193,9 @@ def run_upgrade(run_id, log_path):
     """worker 线程里执行升级命令（run/step 生命周期由 jobs 层管）。"""
     res = runner.run_process(
         argv=_npm_argv("install", "-g", _PKG_NAME + "@latest"),
-        cwd=str(paths.ROOT), timeout=900, log_path=log_path)
+        # Windows 上 npm 换版本靠把包目录整体改名（codebee → .codebee-xxx）；
+        # cwd 若落在本包内，目录被自身进程占用，rename 必报 EBUSY——钉在包外
+        cwd=str(Path.home()), timeout=900, log_path=log_path)
     if res["ok"]:
         with _LOCK:  # 装完即过期查新缓存，重启后自然拿到新版本
             _CHECK_CACHE["result"] = None
@@ -207,9 +230,10 @@ def relaunch(port):
     if port < 1 or port > 65535:
         return False
     subprocess.Popen(
-        [sys.executable, "main.py", "--port", str(port),
+        [sys.executable, str(paths.APP_DIR / "main.py"), "--port", str(port),
          "--wait-port", "--no-browser"],
-        cwd=str(paths.APP_DIR),
+        # 新实例 CWD 同样不得落在包内，否则下次升级 npm 改名包目录再撞 EBUSY
+        cwd=str(Path.home()),
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         close_fds=True,
         creationflags=(0x00000008 | 0x00000200) if os.name == "nt" else 0)

@@ -214,7 +214,10 @@ def agent_tokens_recent(agent, hours=1):
                 if str(r.get("ts") or "") < bound:
                     continue
                 a = str(r.get("agent") or "")
-                total[a] = total.get(a, 0) + max(0, _parse_int((r.get("usage") or {}).get("total")))
+                # record() 将规范化后的 token 总数落在顶层 ``total``；旧实现
+                # 误读不存在的嵌套 usage 字段，导致配额路由永远认为本小时
+                # 用量为 0，超过供应商额度也不会降权。
+                total[a] = total.get(a, 0) + max(0, _parse_int(r.get("total")))
             _HOURLY_CACHE.update(ts=now, val=total)
         return int(_HOURLY_CACHE["val"].get(agent) or 0)
     except Exception:
@@ -447,4 +450,51 @@ def summary(days=30, recent_limit=30):
         "by_role": _dim_rows(records, "role"),
         "by_task_type": _dim_rows(records, "task_type"),
         "recent": recent,
+    }
+
+
+def estimate(task_type="", days=90):
+    """同类任务开跑前成本预估（借鉴 omnigent 的 pre-run estimate；数据源就是本台账）。
+
+    同一 run 的多条步骤记录加总为一个样本，优先用成功 run，给中位数/平均/P90。
+    task_type 为空=全类型。无样本时 samples=0，前端不展示。"""
+    span = max(1, min(3650, int(days or 90)))
+    with LOCK:
+        records = _iter_records(span)
+    runs = {}
+    for r in records:
+        tt = str(r.get("task_type") or "unknown")
+        if task_type and tt != task_type:
+            continue
+        rid = str(r.get("run_id") or "")
+        if not rid:
+            continue
+        g = runs.setdefault(rid, {"tokens": 0, "cost": 0.0, "ok": False})
+        g["tokens"] += _num(r, "total")
+        g["cost"] += _parse_float(r.get("cost_usd"))
+        if r.get("ok"):
+            g["ok"] = True
+    ok_runs = [g for g in runs.values() if g["ok"]]
+    basis = ok_runs or list(runs.values())
+    if not basis:
+        return {"task_type": task_type or "", "days": span, "samples": 0}
+    toks = sorted(g["tokens"] for g in basis)
+    costs = sorted(g["cost"] for g in basis)
+    n = len(toks)
+    mid = n // 2
+    med = toks[mid] if n % 2 else (toks[mid - 1] + toks[mid]) / 2.0
+    med_c = costs[mid] if n % 2 else (costs[mid - 1] + costs[mid]) / 2.0
+    import datetime
+    import math
+    return {
+        "task_type": task_type or "",
+        "days": span,
+        "samples": n,
+        "ok_samples": len(ok_runs),
+        "avg_tokens": int(sum(toks) / n),
+        "median_tokens": int(med),
+        "p90_tokens": toks[max(0, min(n - 1, math.ceil(0.9 * n) - 1))],
+        "avg_cost_usd": round(sum(costs) / n, 4),
+        "median_cost_usd": round(med_c, 4),
+        "since": (datetime.date.today() - datetime.timedelta(days=span - 1)).isoformat(),
     }

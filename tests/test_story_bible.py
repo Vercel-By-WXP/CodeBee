@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+import threading
+
 from base import BaseTest
 
 
@@ -111,4 +113,32 @@ class TestStoryBibleStore(BaseTest):
         # 不存在的任务 → 拒绝
         ok6, err6 = store.write_story_bible("t-nonexist", "x")
         self.assertFalse(ok6)
+
+    def test_initial_bible_creation_is_atomic(self):
+        """并发建任务时只允许一个请求播种同一目录的初始圣经。"""
+        from app.core import store
+        payload = {
+            "type": "serial_novel", "goal": "并发建书",
+            "workdir": str(self.workdir),
+            "serial": {"chapters": 2, "words_per_chapter": 600},
+        }
+        results = []
+
+        def create(i):
+            try:
+                task = store.create_task({**payload, "story_bible": "设定 %d" % i})
+                results.append(("ok", task["id"]))
+            except ValueError as exc:
+                results.append(("error", str(exc)))
+
+        threads = [threading.Thread(target=create, args=(i,)) for i in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(sum(kind == "ok" for kind, _ in results), 1)
+        self.assertEqual(sum(kind == "error" for kind, _ in results), 1)
+        self.assertIn((self.workdir / "story-bible.md").read_text(encoding="utf-8"),
+                      ("设定 0", "设定 1"))
 

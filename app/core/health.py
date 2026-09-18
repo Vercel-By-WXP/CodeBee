@@ -59,6 +59,13 @@ def init(data_dir=None):
                     _PROVIDERS[name] = st
         except (OSError, json.JSONDecodeError):
             pass
+        # 「绑定链·」静态告警胶囊已从产品移除（2026-09-18：普通用户误伤，
+        # 用户拍板）——老版本持久化的条目启动即清，别让 0.1.6 的状态阴魂不散。
+        stale = [k for k in _PROVIDERS if k.startswith("绑定链·")]
+        if stale:
+            for k in stale:
+                _PROVIDERS.pop(k, None)
+            _persist()
         if not _STARTED:
             _STARTED = True
             t = threading.Thread(target=_probe_loop, name="health-probe", daemon=True)
@@ -158,56 +165,6 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
 
 
 # ------------------------------------------------- 静态死链告警（绑定层）
-
-def report_binding_dead(key: str, error: str = ""):
-    """静态死链告警：某 CLI 的绑定链在起跑前就已全部失效（厂商停用/删除/无密钥、
-    模型停用、协议不匹配）。与运行期 report_failure 的区别：不计数、不进探针，
-    立即置 down+告警（尊重静默）；绑定恢复后由 report_binding_ok 自动解除。
-    伪供应商名带「绑定链·」前缀，不会与真实厂商名相撞。"""
-    if not key:
-        return
-    with _LOCK:
-        name = "绑定链·%s" % key
-        st = _PROVIDERS.get(name)
-        if st is None:
-            st = _PROVIDERS.setdefault(name, {
-                "name": name, "provider_id": "", "model": "",
-                "status": "ok", "consecutive_failures": 0,
-                "first_fail_at": 0, "last_fail_at": 0, "last_ok_at": 0,
-                "last_error": "", "alerted": False, "silenced": False,
-                "silence_until": 0, "probe_next_at": 0, "probe_backoff_idx": 0,
-                "recovered_at": 0,
-            })
-        st["static"] = True
-        st["binding_key"] = str(key)
-        st["name"] = name
-        st["status"] = "down"
-        st["last_fail_at"] = _now()
-        st["last_error"] = str(error or "")[:300]
-        st["probe_next_at"] = 0
-        if not _effective_silenced(st) and not st.get("alerted"):
-            st["alerted"] = True
-            log.warning("[health] ⚠️ 绑定链告警：%s 全部失效（%s）",
-                        name, st["last_error"][:120])
-        _persist()
-
-
-def report_binding_ok(key: str):
-    """绑定链恢复可用：自动解除该 CLI 的静态死链告警（无记录时零开销）。"""
-    if not key:
-        return
-    with _LOCK:
-        st = _PROVIDERS.get("绑定链·%s" % key)
-        if not st or not st.get("static"):
-            return
-        st["status"] = "recovered"
-        st["alerted"] = False
-        st["silenced"] = False
-        st["silence_until"] = 0
-        st["recovered_at"] = _now()
-        log.info("[health] 绑定链 %s 已恢复（静态告警解除）", st["name"])
-        _persist()
-
 
 # ---------------------------------------------------------------- 手动操作
 

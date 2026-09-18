@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import socket
@@ -22,6 +23,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 from core import automation, catalog, flows, jobs, manager, market, market_remote, registry, remote, settings, store
 from core import paths
 from core import health
+
+log = logging.getLogger(__name__)
 
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
@@ -47,6 +50,23 @@ def _utf8_bytes(data):
         return data.decode("utf-8", "replace").encode("utf-8")
 
 PORT = 8765  # main() 启动时更新；/api/connect 组装扫码地址用
+
+# 写接口统一限制 JSON 请求体，避免误传文件或异常客户端把 worker 线程和
+# 内存拖垮。16 MiB 足够覆盖任务上下文、故事圣经和附件清单（附件本体走
+# 独立上传接口）。
+MAX_BODY_BYTES = 16 * 1024 * 1024
+# 附件本体用 base64 包装：24 MiB Office 文件编码后约 32 MiB，再留少量 JSON
+# 开销。该上限仍会在 attachments.save_pending 中按扩展名再次精确校验。
+MAX_ATTACHMENT_BODY_BYTES = 34 * 1024 * 1024
+_BODY_UNSET = object()
+
+
+class RequestBodyError(ValueError):
+    """客户端请求体不可解析；status 用于把错误稳定映射为 400/413。"""
+
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
 
 # 侧栏「查看文件」/「目录浏览」跳过的噪音目录（与 store 的习惯一致）
 _SKIP_DIRS_SHARE = {".git", "node_modules", "__pycache__", ".venv", "venv",
@@ -79,13 +99,38 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(obj, ensure_ascii=False))
 
     def _body(self):
-        try:
-            n = int(self.headers.get("Content-Length") or 0)
-            if n <= 0:
-                return {}
-            return json.loads(self.rfile.read(n).decode("utf-8"))
-        except Exception:
-            return {}
+        cached = getattr(self, "_parsed_body", _BODY_UNSET)
+        if cached is not _BODY_UNSET:
+            return cached
+        raw_len = self.headers.get("Content-Length")
+        if not raw_len:
+            body = {}
+        else:
+            try:
+                n = int(raw_len)
+            except (TypeError, ValueError):
+                raise RequestBodyError("Content-Length 无效")
+            if n < 0:
+                raise RequestBodyError("Content-Length 无效")
+            limit = getattr(self, "_body_limit", MAX_BODY_BYTES)
+            if n > limit:
+                raise RequestBodyError("请求体过大（最大 %d MiB）" % (limit // (1024 * 1024)), 413)
+            if n == 0:
+                body = {}
+            else:
+                data = self.rfile.read(n)
+                try:
+                    text = data.decode("utf-8")
+                except UnicodeDecodeError:
+                    raise RequestBodyError("请求体必须使用 UTF-8 编码")
+                try:
+                    body = json.loads(text)
+                except (TypeError, ValueError):
+                    raise RequestBodyError("请求体不是有效的 JSON")
+                if not isinstance(body, dict):
+                    raise RequestBodyError("JSON 请求体顶层必须是对象")
+        self._parsed_body = body
+        return body
 
     # ------------------------------------------------------------ 远程访问
     def _forwarded_ip(self):
@@ -210,6 +255,15 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     days = 30
                 return self._json(200, usage.summary(days=days))
+            if path == "/api/usage/estimate":
+                from core import usage
+                q = parse_qs(urlparse(self.path).query)
+                ttype = (q.get("type") or [""])[0][:32]
+                try:
+                    edays = max(1, min(3650, int((q.get("days") or ["90"])[0])))
+                except ValueError:
+                    edays = 90
+                return self._json(200, usage.estimate(task_type=ttype, days=edays))
             m = re.match(r"^/api/runs/([^/]+)$", path)
             if m:
                 run = store.get_run(m.group(1))
@@ -366,6 +420,14 @@ class Handler(BaseHTTPRequestHandler):
         m = None
         if not self._authed():
             return self._json(401, {"error": "需要访问令牌（启动 CodeBee 时控制台会显示）"})
+        # 所有写接口共用一次严格解析；后续路由再次调用 _body() 时直接取缓存。
+        # 这样 malformed JSON 不会被当成空对象继续执行，也避免同一请求重复读流。
+        self._body_limit = (MAX_ATTACHMENT_BODY_BYTES if path == "/api/attachments"
+                            else MAX_BODY_BYTES)
+        try:
+            self._body()
+        except RequestBodyError as e:
+            return self._json(e.status, {"error": str(e)})
         if path == "/api/control":
             return self._api_control()
         if path == "/api/control/heartbeat":
@@ -416,7 +478,11 @@ class Handler(BaseHTTPRequestHandler):
                 ok, err, run = store.retry_task(m.group(1))
                 if not ok:
                     return self._json(400, {"error": err})
-                jobs.enqueue({"kind": "orchestration", "run_id": run["id"], "task_id": m.group(1)})
+                queued, qerr = self._enqueue_run(
+                    run["id"], m.group(1),
+                    {"kind": "orchestration", "run_id": run["id"], "task_id": m.group(1)})
+                if not queued:
+                    return self._json(503, {"error": qerr, "run_id": run["id"]})
                 return self._json(200, {"ok": True, "run_id": run["id"]})
             elif m.group(2) == "continue":
                 # 继续连载：在旧任务基础上新建任务（沿用目标/目录/评审设置，章节号衔接）
@@ -424,11 +490,36 @@ class Handler(BaseHTTPRequestHandler):
                     m.group(1), (self._body() or {}).get("chapters"))
                 if not ok:
                     return self._json(400, {"error": err})
-                run = store.create_run("orchestration", new_task["title"],
-                                       task_id=new_task["id"])
-                store.update_task_status(new_task["id"], "queued")
-                jobs.enqueue({"kind": "orchestration",
-                              "run_id": run["id"], "task_id": new_task["id"]})
+                run = None
+                try:
+                    run = store.create_run("orchestration", new_task["title"],
+                                           task_id=new_task["id"])
+                    store.update_task_status(new_task["id"], "queued")
+                except Exception:
+                    # continue_task has already persisted the new task. If run
+                    # initialization fails, close whichever records exist so a
+                    # retry is possible and no task remains queued forever.
+                    log.exception("续写运行初始化失败 task=%s run=%s",
+                                  new_task.get("id"), (run or {}).get("id"))
+                    if run:
+                        try:
+                            store.update_run(
+                                run["id"], status="failed",
+                                error="运行记录创建失败，请稍后重试",
+                                ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+                        except Exception:
+                            log.exception("续写运行失败收口失败 run=%s", run.get("id"))
+                    try:
+                        store.update_task_status(new_task["id"], "failed")
+                    except Exception:
+                        log.exception("续写任务失败收口失败 task=%s", new_task.get("id"))
+                    return self._json(503, {"error": "运行记录创建失败，请稍后重试"})
+                queued, qerr = self._enqueue_run(
+                    run["id"], new_task["id"],
+                    {"kind": "orchestration",
+                     "run_id": run["id"], "task_id": new_task["id"]})
+                if not queued:
+                    return self._json(503, {"error": qerr, "run_id": run["id"]})
                 return self._json(200, {"ok": True, "task_id": new_task["id"],
                                         "run_id": run["id"]})
             elif m.group(2) == "rename":
@@ -508,7 +599,11 @@ class Handler(BaseHTTPRequestHandler):
                                     "checking": manager.updates_checking()})
         if path == "/api/selfupdate/apply":
             from core import selfupdate
-            res = selfupdate.apply_upgrade()
+            try:
+                res = selfupdate.apply_upgrade()
+            except Exception:
+                log.exception("自更新任务创建失败")
+                return self._json(503, {"error": "升级任务创建失败，请稍后重试"})
             return self._json(400, res) if res.get("error") else self._json(200, dict(res, ok=True))
         if path == "/api/selfupdate/restart":
             from core import selfupdate
@@ -709,7 +804,11 @@ class Handler(BaseHTTPRequestHandler):
                              % entry["id"]})
             run = store.create_run("mgmt", "%s %s" % (titles[op], entry.get("name", entry["id"])),
                                    entry_id=entry["id"], op=op)
-            jobs.enqueue({"kind": "mgmt", "run_id": run["id"], "entry_id": entry["id"], "op": op})
+            queued, qerr = self._enqueue_run(
+                run["id"], None,
+                {"kind": "mgmt", "run_id": run["id"], "entry_id": entry["id"], "op": op})
+            if not queued:
+                return self._json(503, {"error": qerr, "run_id": run["id"]})
             return self._json(200, {"run_id": run["id"]})
         m = re.match(r"^/api/catalog/([^/]+)/launch$", path)
         if m:
@@ -1202,11 +1301,13 @@ class Handler(BaseHTTPRequestHandler):
                 "id": m.get("id"),
             })
 
-        def _emit_step(s):
+        def _emit_step(s, run_id_of_step):
             # 正文只认 output（runner 抽好的最终回答）→ summary。绝不回退读原始
             # 日志：日志是全量事件流（下发提示词回显 + CLI 报错），塞进气泡就成了
             # 「看日志」（2026-09-17 实测症状）；运行中的步骤两者都还没有，留空给
-            # 前端显示「正在执行」占位。
+            # 前端显示「正在执行」占位。log/run 随项下发：气泡上「执行过程」入口
+            # 要按归属 run 打开该步日志（时间线是任务级跨 run 回放，不能拿当前
+            # run id 想当然）。
             body = s.get("output") or ""
             if not body:
                 body = s.get("summary") or ""
@@ -1219,6 +1320,8 @@ class Handler(BaseHTTPRequestHandler):
                 "status": s.get("status") or "",
                 "text": body,
                 "note": s.get("note") or "",
+                "run": run_id_of_step,
+                "log": s.get("log") or "",
             })
 
         for r in runs:
@@ -1233,18 +1336,57 @@ class Handler(BaseHTTPRequestHandler):
                     _emit_msg(m)
             for s in steps:
                 if (s.get("status") or "") == "done":
-                    _emit_step(s)
+                    _emit_step(s, r.get("id") or run_id)
             for m in msgs:
                 if not m.get("consumed"):
                     _emit_msg(m)
             for s in steps:
                 if (s.get("status") or "") != "done":
-                    _emit_step(s)
+                    _emit_step(s, r.get("id") or run_id)
         return self._json(200, {
             "run_id": run_id, "status": run.get("status") or "",
             "engine": engine,
             "items": items,
+            "result": self._direct_result(runs[-1] if runs else run, engine),
         })
+
+    def _direct_result(self, latest, engine):
+        """对话页「执行结果」卡的数据：最新 run 到终态后给出确定性摘要——
+        成没成、跑多久、谁执行的、产出了哪些文件。模型最后一轮回答可能只是
+        寒暄/追问（用户反馈：输入"1"跑完 55 秒只见一句"消息可能发错了"），
+        执行结果不能依赖模型自觉交代，由产品明示。"""
+        if engine != "direct" or not latest:
+            return None
+        st = latest.get("status") or ""
+        if st not in ("done", "failed", "cancelled", "timeout"):
+            return None
+        verdict = latest.get("verdict") or {}
+        route = latest.get("route") or {}
+
+        def _sec(a, b):
+            try:
+                return max(0, int(time.mktime(time.strptime(b, "%Y-%m-%d %H:%M:%S")) -
+                                  time.mktime(time.strptime(a, "%Y-%m-%d %H:%M:%S"))))
+            except Exception:
+                return None
+        t0 = latest.get("started_at") or latest.get("created_at")
+        wd, files = "", []
+        try:
+            wd, files = store.run_artifacts(latest.get("id") or "", limit=12)
+            if files and not store.task_step_count(latest.get("task_id") or ""):
+                files = []   # 与 /files 端点同口径：无步骤的任务不给成品（fixture 防误报）
+        except Exception:
+            wd, files = "", []
+        return {
+            "status": st,
+            "error": (latest.get("error") or "") if st in ("failed", "timeout") else "",
+            "executor": route.get("implementer") or verdict.get("impl") or "",
+            "turns": verdict.get("turns") or 0,
+            "duration_s": _sec(t0, latest.get("ended_at") or "")
+                if t0 and latest.get("ended_at") else None,
+            "workdir": wd,
+            "files": files,
+        }
 
     def _api_direct_chat(self, run_id):
         """直连对话追话：往已结束的 direct run 追加一条消息并自动续跑。
@@ -1282,7 +1424,11 @@ class Handler(BaseHTTPRequestHandler):
         ok, err, new_run = store.retry_task(task["id"])
         if not ok:
             return self._json(400, {"error": err or "无法续跑"})
-        jobs.enqueue({"kind": "orchestration", "run_id": new_run["id"], "task_id": task["id"]})
+        queued, qerr = self._enqueue_run(
+            new_run["id"], task["id"],
+            {"kind": "orchestration", "run_id": new_run["id"], "task_id": task["id"]})
+        if not queued:
+            return self._json(503, {"error": qerr, "run_id": new_run["id"]})
         return self._json(200, {"ok": True, "run_id": new_run["id"]})
 
     def _api_retract_message(self, run_id):
@@ -1347,10 +1493,60 @@ class Handler(BaseHTTPRequestHandler):
             task = store.create_task(body)
         except ValueError as e:
             return self._json(400, {"error": str(e)})
-        run = store.create_run("orchestration", task["title"], task_id=task["id"])
-        store.update_task_status(task["id"], "queued")
-        jobs.enqueue({"kind": "orchestration", "run_id": run["id"], "task_id": task["id"]})
+        run = None
+        try:
+            run = store.create_run("orchestration", task["title"], task_id=task["id"])
+            store.update_task_status(task["id"], "queued")
+        except Exception:
+            # create_run 已落盘后，update_task_status 仍可能因磁盘/JSON 错误失败。
+            # 这时必须把已经存在的 run 收口，否则 UI 会永久显示「排队中」。
+            log.exception("创建任务运行记录失败 task=%s run=%s", task.get("id"),
+                          (run or {}).get("id"))
+            if run:
+                try:
+                    store.update_run(run["id"], status="failed",
+                                     error="运行记录初始化失败",
+                                     ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+                except Exception:
+                    log.exception("收口失败的运行记录失败 run=%s", run.get("id"))
+            try:
+                store.update_task_status(task["id"], "failed")
+            except Exception:
+                log.exception("收口失败的任务状态失败 task=%s", task.get("id"))
+            return self._json(503, {"error": "运行记录创建失败，请稍后重试"})
+        queued, qerr = self._enqueue_run(
+            run["id"], task["id"],
+            {"kind": "orchestration", "run_id": run["id"], "task_id": task["id"]})
+        if not queued:
+            return self._json(503, {"error": qerr, "run_id": run["id"]})
         return self._json(200, {"task_id": task["id"], "run_id": run["id"]})
+
+    def _enqueue_run(self, run_id, task_id, job):
+        """入队失败时把已持久化记录收口到 failed，避免 UI 永远显示排队中。"""
+        try:
+            jobs.enqueue(job)
+            return True, ""
+        except Exception:
+            # 不把异常文本（本机路径、命令行参数、供应商响应）返回给客户端；
+            # 详细堆栈只进服务端日志，run 记录也保留稳定的用户可读文案。
+            log.exception("任务入队失败 run=%s task=%s", run_id, task_id)
+            err = "任务入队失败，请稍后重试"
+            try:
+                closed = store.update_run(run_id, status="failed", error=err,
+                                          ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+                if closed is None:
+                    # The run may have been removed between creation and enqueue
+                    # (for example, an operator cleared history concurrently).
+                    # Still force the task out of queued so the UI cannot wait
+                    # forever on a record that no longer exists.
+                    raise RuntimeError("运行记录不存在")
+            except Exception:
+                if task_id:
+                    try:
+                        store.update_task_status(task_id, "failed")
+                    except Exception:
+                        pass
+            return False, err
 
     def _api_set_preference(self):
         body = self._body()

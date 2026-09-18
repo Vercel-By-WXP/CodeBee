@@ -232,6 +232,17 @@ class TestSerialPipeline(BaseTest):
         self.assertEqual(t["serial"]["chapters"], 20)      # 上限钳制
         self.assertEqual(t["serial"]["words_per_chapter"], 500)
 
+    def test_explicit_serial_null_disables_flow_default(self):
+        from app.core import store
+        # serial_novel 自带连载默认；前端清空章节后显式 null 必须能关闭它。
+        single = store.create_task({"type": "serial_novel", "goal": "单篇",
+                                    "workdir": str(self.workdir), "serial": None})
+        self.assertNotIn("serial", single)
+        # 不传字段仍保持旧客户端兼容，继续沿用流程默认。
+        legacy = store.create_task({"type": "serial_novel", "goal": "默认连载",
+                                    "workdir": str(self.workdir)})
+        self.assertTrue(legacy.get("serial"))
+
 
 class TestSerialResume(BaseTest):
     """连载断点续跑：retry 继承上一遍大纲与已完成章，只补写缺失章。"""
