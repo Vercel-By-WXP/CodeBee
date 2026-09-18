@@ -2598,6 +2598,46 @@ def _run_serial_qa(run, task, agents, ev):
                      error="答疑失败（执行/评审链不可用）——" + "；".join(errors[-3:]))
 
 
+def _write_task_spec(task, workdir):
+    """任务规格落盘 .codebee/spec.md（借鉴 agent-orchestrator 的 .spec/PROMPT.md 与
+    planning-with-files 的文件化计划）：任务定义随工作目录留存、随任务分支版本化，
+    追话/复盘/续跑时可见原始意图。失败静默返回空串——规格文件永远不能挡住任务执行。"""
+    try:
+        spec_dir = os.path.join(workdir, ".codebee")
+        os.makedirs(spec_dir, exist_ok=True)
+        lines = [
+            "# 任务规格", "",
+            "- 标题：%s" % (task.get("title") or ""),
+            "- 类型：%s" % (task.get("type") or ""),
+            "- 创建：%s" % (task.get("created_at") or ""),
+            "- 目标：%s" % str(task.get("goal") or "").replace("\n", " "),
+        ]
+        if task.get("context"):
+            lines.append("- 背景：%s" % str(task["context"]).replace("\n", " "))
+        if task.get("difficulty"):
+            lines.append("- 难度：%s" % task["difficulty"])
+        if task.get("mode"):
+            lines.append("- 路由模式：%s" % task["mode"])
+        label = {"rounds": "评审轮数", "threshold": "发布阈值", "best_of": "赛马候选数"}
+        for k in ("rounds", "threshold", "best_of"):
+            if task.get(k) is not None:
+                lines.append("- %s：%s" % (label[k], task[k]))
+        if task.get("rubric"):
+            lines.append("- 评审维度：%s" % "、".join(task["rubric"]))
+        if task.get("serial"):
+            s = task["serial"]
+            lines.append("- 连载：%s 章 × %s 字（赛马变体 %s）"
+                         % (s.get("chapters"), s.get("words_per_chapter"), s.get("variants", 1)))
+        if task.get("verify_command"):
+            lines.append("- 验证命令：`%s`" % task["verify_command"])
+        path = os.path.join(spec_dir, "spec.md")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        return path
+    except Exception:
+        return ""
+
+
 def execute_run(run_id):
     run = store.get_run(run_id)
     if not run:
@@ -2632,6 +2672,9 @@ def execute_run(run_id):
         store.update_run(run_id, git=gitinfo)
         # 任务分支裁决状态：新一轮 run 产生新分支内容，重置回「待裁决」
         store.set_task_git_state(task["id"], "isolated")
+    # 任务规格文件化（借鉴 planning-with-files/agent-orchestrator）：任何任务都在
+    # 工作目录留一份 .codebee/spec.md——原始意图可见、随任务分支版本化
+    _write_task_spec(task, task["workdir"])
     agents = _agents()
     global _CURRENT_AGENTS
     _CURRENT_AGENTS = agents

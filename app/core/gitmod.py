@@ -321,6 +321,10 @@ def collect_changes(workdir, max_diff=30000):
             continue
         if xy == "??" and _attach_path(path):
             continue
+        # .codebee/ 是本工具的任务元数据目录（spec.md 等）：随任务分支提交版本化，
+        # 但不算产品变更——面板/裁决视图只看任务产出，过程文件是噪音
+        if path == ".codebee" or path.startswith(".codebee/") or path.startswith('" .codebee'):
+            continue
         files.append({"status": _status_code(xy), "path": path})
         if xy == "??":
             untracked.append(path)
