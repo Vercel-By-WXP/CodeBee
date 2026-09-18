@@ -55,6 +55,19 @@ class TaskSpecTests(BaseTest):
         res = self._write({"title": "t", "goal": "g"}, workdir=str(blocker))
         self.assertEqual(res, "")
 
+    def test_path_stays_inside_resolved_workdir(self):
+        # 守卫契约：spec 恒落在 resolve(workdir) 内。含 ../ 的脏 workdir 先被
+        # 规范化再收权（写到它「真正指向」的目录里，不会越到别处）
+        import pathlib
+        outer = self.tmp / "outer"
+        outer.mkdir()
+        fake = os.path.join(str(self.tmp), "..",
+                            os.path.basename(str(self.tmp)), "outer")
+        path = self._write({"goal": "g"}, workdir=fake)
+        self.assertTrue(path)
+        self.assertIn(pathlib.Path(outer).resolve(),
+                      pathlib.Path(path).resolve().parents)
+
 
 if __name__ == "__main__":
     unittest.main()
