@@ -1402,6 +1402,24 @@ def _read_text_any_enc(p):
     return runner.read_text_any_enc(p)
 
 
+def _critique_json(res, dims):
+    """评审输出解析三道网，返回统一形状 {scores, issues, summary}：
+    ① extract_json（严格 JSON → 围栏 → 宽松修复内嵌引号 → 花括号扫描）
+    ② as_scores（兜底扫描掉进内层时，返回值本身就是 维度→分 本体，包回）
+    ③ scores_from_prose（agentic CLI 把 JSON 写进文件、stdout 只留中文总结）
+    任何一道出分即算有效评审——「无法解析」绝不能把正常出分的评审吞掉
+    （2026-09-18 七猫案：kimi 内嵌引号病连烧三轮自动续跑全判评审全挂）。"""
+    text = res.get("text") or ""
+    gj = runner.as_scores(runner.extract_json(text))
+    if isinstance(gj, dict) and isinstance(gj.get("scores"), dict) and gj.get("scores"):
+        return gj
+    prose = runner.scores_from_prose(text, dims)
+    if prose:
+        return {"scores": prose, "issues": [], "summary": text[:400]}
+    return {"scores": {}, "issues": [],
+            "summary": "评审输出无法解析：%s" % (text or res.get("error") or "")[:150]}
+
+
 def _chapter_io(workdir, i, mode):
     """打开第 i 章文件；open 紧邻边界校验，路径越界直接拒绝（形态同 _ms_io）。
     读模式兼容 GBK 落盘的章稿（见 _read_text_any_enc）。"""
@@ -1625,13 +1643,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                         if lens else "") + note_extra,
                                     workdir, readonly=True, ev=ev,
                                     resume=sids.get(agent["id"]))
-                    cj = runner.extract_json(res.get("text") or "")
-                    if not isinstance(cj, dict) or not isinstance(cj.get("scores"), dict) \
-                            or not cj.get("scores"):
-                        cj = {"scores": {}, "issues": [],
-                              "summary": "评审输出无法解析：%s" % (res.get("text")
-                                                          or res.get("error") or "")[:150]}
-                    else:
+                    cj = _critique_json(res, dims)
+                    if cj.get("scores"):
                         scored += 1
                     # §07 T1.1：记录该评审的会话 id（第 2 轮复用）
                     csid = _resume_sid(agent, res.get("sid"))
@@ -2004,11 +2017,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                  .replace("__GOAL__", task["goal"])
                                  .replace("__MANUSCRIPT__", full_text[:60000])),
                                 workdir, readonly=True, ev=ev, timeout=2400)
-                gj = runner.extract_json(res.get("text") or "")
-                if isinstance(gj, dict) and isinstance(gj.get("scores"), dict) and gj.get("scores"):
+                gj = _critique_json(res, dims)
+                if gj.get("scores"):
                     scored += 1
-                else:
-                    gj = {"scores": {}, "issues": [], "summary": "全局评审输出无法解析"}
             global_issues.extend({"chapter": "全书", **it} for it in (gj.get("issues") or [])[:8])
             for d in dims:
                 v = gj.get("scores", {}).get(d)
@@ -2534,6 +2545,54 @@ def _run_content_review(run, task, agents, ev, stats, mode):
 
 # ---------------------------------------------------------------- 入口
 
+SERIAL_QA_PROMPT = """你是网文《__TITLE__》的责任编辑（不要修改任何文件）。读者（作者本人）就这本书提了一个问题，请直接回答：
+
+__QUESTION__
+
+回答要求：
+- 只回答问题，不要重写章节、不要改动任何文件。
+- 先给结论，再给依据；涉及章节时点明具体文件（如 chapter-09.md）。
+- 问题若暴露了稿件自身毛病（缺章、编号错位、前后矛盾），说清楚坏在哪个文件、该怎么修。
+
+各章成稿都在当前工作目录（chapter-XX.md），合并稿 manuscript.md 可能只含部分章节，可按需查阅。"""
+
+
+def _run_serial_qa(run, task, agents, ev):
+    """连载答疑轮：追话提问不再整本重跑——单步只读问答，答案落步骤 output，
+    对话页时间线（消息气泡 + 步骤正文）直接可读（2026-09-18「为啥没有第九章」
+    案：一句追问被当成完整编排指令，重评 8 章还烧出连环自动续跑）。"""
+    run_id = run["id"]
+    workdir = run.get("workdir") or task.get("workdir") or ""
+    question = (run.get("qa_text") or "").strip() or "（见下方读者追问）"
+    prompt = (SERIAL_QA_PROMPT
+              .replace("__TITLE__", (task.get("title") or "本书").lstrip("# ").strip())
+              .replace("__QUESTION__", question))
+    # 回答者顺序：评审组（专职读稿）→ 实现者 → 其余已启用真实智能体；死链自动落到下一个
+    critic_ids = task.get("critics") or []
+    impl_id = task.get("implementer") or ""
+    ordered = [a for a in agents if a.get("id") in critic_ids]
+    ordered += [a for a in agents
+                if a.get("id") == impl_id and a.get("id") not in critic_ids]
+    ordered += [a for a in agents
+                if a.get("mode") == "real"
+                and a.get("id") not in critic_ids and a.get("id") != impl_id]
+    ordered = [a for a in ordered if a.get("mode") != "mock"] or ordered[:1]
+    errors = []
+    for agent in ordered[:3]:
+        _check_cancel(ev)
+        res = _run_step(run_id, "qa", modelhub.bind_agent(agent, "default"),
+                        prompt, workdir, readonly=True, ev=ev, timeout=1200)
+        if res.get("ok") and (res.get("text") or "").strip():
+            store.update_run(run_id, status="done", ended_at=_now(),
+                             verdict={"qa": True,
+                                      "answered_by": agent.get("id")})
+            return
+        errors.append("%s：%s" % (agent.get("id"),
+                                  (res.get("error") or "无输出")[:120]))
+    store.update_run(run_id, status="failed", ended_at=_now(),
+                     error="答疑失败（执行/评审链不可用）——" + "；".join(errors[-3:]))
+
+
 def execute_run(run_id):
     run = store.get_run(run_id)
     if not run:
@@ -2584,6 +2643,11 @@ def execute_run(run_id):
     # direct=单 CLI 直达（无拆解/评审，信箱续轮即对话）
     engine = task.get("engine") or ("code" if task["type"] == "code" else "review")
     try:
+        # 连载答疑轮：op=qa 不走编排流水线，单步只读回答后即收尾；
+        # 放进 try——Cancelled 与主流程同口径收口为 cancelled
+        if run.get("op") == "qa":
+            _run_serial_qa(run, task, agents, ev)
+            return
         if engine == "code":
             _run_code(run, task, agents, ev, stats, mode)
         elif engine == "direct":

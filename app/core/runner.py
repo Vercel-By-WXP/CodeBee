@@ -1059,6 +1059,44 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     return out
 
 
+def _loads_lenient(text):
+    """容错 json.loads：修复字符串内未转义引号后再解析。
+
+    模型高频病：评审 note 里带英文直引号（"第5章"冷战三天"使用…"），
+    严格 JSON 被打碎。判据：字符串内遇到 `"` 时向后看第一个非空白字符，
+    是 , } ] : 视为结构性收尾引号，否则按字面引号转义。"""
+    out = []
+    i, n = 0, len(text)
+    in_str = False
+    while i < n:
+        c = text[i]
+        if in_str:
+            if c == "\\" and i + 1 < n:
+                out.append(text[i:i + 2])
+                i += 2
+                continue
+            if c == '"':
+                j = i + 1
+                while j < n and text[j] in " \t\r\n":
+                    j += 1
+                nxt = text[j] if j < n else ""
+                if nxt in ",}]:":
+                    in_str = False
+                    out.append(c)
+                else:
+                    out.append('\\"')
+                i += 1
+                continue
+            out.append(c)
+            i += 1
+            continue
+        if c == '"':
+            in_str = True
+        out.append(c)
+        i += 1
+    return json.loads("".join(out))
+
+
 def extract_json(text):
     """从模型回复中提取 JSON：直接解析 → ```json 围栏 → 平衡花括号扫描。"""
     if not text:
@@ -1072,6 +1110,10 @@ def extract_json(text):
     if m:
         try:
             return json.loads(m.group(1))
+        except Exception:
+            pass
+        try:
+            return _loads_lenient(m.group(1))
         except Exception:
             pass
     start = text.find("{")
@@ -1090,3 +1132,33 @@ def extract_json(text):
                         break
         start = text.find("{", start + 1)
     return None
+
+
+def as_scores(gj):
+    """评审解析第二道网：花括号兜底扫描会掉进第一个可平衡的子对象——
+    外层 JSON 病得重时返回的是「维度→分数」本体（无 scores 键），这里包回
+    评审形状，否则良评审被误判成「输出不可解析」（2026-09-18 七猫案：
+    kimi 正常出分却因内嵌引号整轮判评审全挂，连环白烧自动续跑）。"""
+    if isinstance(gj, dict) and not isinstance(gj.get("scores"), dict):
+        vals = {k: v for k, v in gj.items()
+                if isinstance(v, (int, float)) and not isinstance(v, bool)}
+        if vals and len(vals) == len(gj) and len(vals) >= 3:
+            return {"scores": vals, "issues": [], "summary": ""}
+    return gj if isinstance(gj, dict) else None
+
+
+def scores_from_prose(text, dims):
+    """评审解析第三道网：agentic CLI 有时把 JSON 写进文件、stdout 只留中文
+    总结（「情节 8 / 人物 8 / …」）。JSON 全灭后按维度名从正文提分；
+    至少命中 3 个维度才认（防普通行文里的巧合数字）。"""
+    if not text or not dims:
+        return {}
+    found = {}
+    for d in dims:
+        m = re.search(re.escape(d) + r"\s*[:：/是]?\s*([0-9]+(?:\.[0-9]+)?)", text)
+        if m:
+            try:
+                found[d] = float(m.group(1))
+            except (TypeError, ValueError):
+                pass
+    return found if len(found) >= 3 else {}

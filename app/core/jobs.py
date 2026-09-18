@@ -141,6 +141,20 @@ AUTO_RESUME_DELAY_S = 300  # 自动续跑延迟入队秒数：网关限流/欠�
                            # 立即重排会撞在同一堵墙上把续跑次数烧光（2026-09-17 七猫实测）
 
 
+def _task_active_run(task_id, exclude_run_id=None):
+    """该任务当前 queued/running 的运行（同任务单飞守卫用）；无则 None。"""
+    try:
+        from . import store
+        for r in store.task_runs(task_id):
+            if r.get("id") == exclude_run_id:
+                continue
+            if r.get("status") in ("queued", "running"):
+                return r
+    except Exception:
+        pass
+    return None
+
+
 def _maybe_auto_resume(run_id):
     """连载任务失败自动续跑：继承已完成章继续，最多 AUTO_RESUME_MAX 次。
 
@@ -159,6 +173,8 @@ def _maybe_auto_resume(run_id):
             return False   # 用户主动取消的运行绝不自动续跑
         if int(run.get("auto_resumes") or 0) >= AUTO_RESUME_MAX:
             return False
+        if _task_active_run(task["id"], exclude_run_id=run_id):
+            return False   # 同任务已有运行排队/在跑：再排副本只会与之撞车
         ok, err, new_run = store.retry_task(task["id"])
         if not ok or not new_run:
             return False
@@ -246,6 +262,54 @@ def resume_interrupted(limit=3):
     return n
 
 
+def _yield_duplicate(run_id):
+    """同任务单飞（worker 出队时把关）：系统续跑副本出队时若同任务已有
+    运行排队/在跑，取消自己让位——恢复副本与原轮并行跑只会双烧评审。
+    用户轮不在此拦（retry_task 建轮时已拒运行中任务）。返回 True 表示
+    本运行已落 cancelled，不要执行。"""
+    try:
+        from . import store
+        r0 = store.get_run(run_id)
+        if not r0 or not r0.get("auto_resumed_from"):
+            return False
+        other = _task_active_run(r0.get("task_id"), exclude_run_id=run_id)
+        if not other or other.get("kind") != "orchestration":
+            return False
+        store.update_run(run_id, status="cancelled", ended_at=_now(),
+                         error="同任务已有运行在跑（%s），续跑副本自动让位" % other.get("id"))
+        return True
+    except Exception:
+        return False
+
+
+def requeue_pending(limit=10):
+    """启动补队：队列在内存里，进程一死排队项就没人管了（2026-09-18
+    七猫 r-162724 排队僵尸案：续跑副本 created 后服务重启，Timer 随进程
+    蒸发，运行永远停在「排队中」）。重启后把近 24h 的遗留 queued 编排运行
+    重新入队；同任务已有在跑/排队的不重复补。返回补队条数。"""
+    try:
+        from . import store
+    except Exception:
+        return 0
+    n = 0
+    try:
+        for run in store.list_runs(200):
+            if n >= limit:
+                break
+            if run.get("status") != "queued" or run.get("kind") != "orchestration":
+                continue
+            if not run.get("task_id") or not _recent(run):
+                continue
+            if _task_active_run(run["task_id"], exclude_run_id=run["id"]):
+                continue   # 同任务已有更活跃的运行，别再排一份
+            _QUEUE.put({"kind": "orchestration", "run_id": run["id"],
+                        "task_id": run["task_id"]})
+            n += 1
+    except Exception:
+        pass
+    return n
+
+
 def _worker():
     global _alive
     with _pool_lock:
@@ -270,6 +334,8 @@ def _worker():
                     r0 = store.get_run(run_id)
                     if r0 and r0.get("status") == "cancelled":
                         continue   # task_done 由 finally 统一收口，不能在此重复
+                    if job.get("kind") == "orchestration" and _yield_duplicate(run_id):
+                        continue   # 同任务单飞：续跑副本让位（已落 cancelled）
                 if job.get("kind") == "orchestration":
                     from . import pipeline
                     pipeline.execute_run(run_id)
