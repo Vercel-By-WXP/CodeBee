@@ -75,12 +75,13 @@ DEFAULT_CATALOG = [
     },
     {
         "id": "aider", "name": "Aider", "cli_group": "installable",
-        "note": "Python 系结对编程 CLI；用 py -3.13 安装，模型经其配置/环境变量设置",
+        "note": "Python 系结对编程 CLI；用 uv tool 安装（自动备好 3.12 托管解释器），"
+                "模型经其配置/环境变量设置",
         "detect": {"cli": "aider"},
         "orch": {"kind": "aider", "command": "aider"},
         "config": {"path": "~/.aider.conf.yml", "format": None, "model_key": None},
-        "install": "py -3.13 -m pip install -U aider-chat",
-        "upgrade": "py -3.13 -m pip install -U aider-chat",
+        "install": "uv tool install --python 3.12 aider-chat",
+        "upgrade": "uv tool upgrade aider-chat",
         "default_enabled": False,
     },
     {
@@ -224,8 +225,6 @@ CONFIG_PATCH = {
 INSTALL_PATCH_NONWIN = {
     "claude-code": ("npm install -g @anthropic-ai/claude-code",
                     "npm install -g @anthropic-ai/claude-code@latest"),
-    "aider": ("python3 -m pip install -U aider-chat",
-              "python3 -m pip install -U aider-chat"),
 }
 
 
@@ -269,6 +268,13 @@ def derive_uninstall(cmd):
         if pkgs:
             head = m.group(1).replace("pip install", "pip uninstall")
             return "%s -y %s" % (head, pkgs[0])
+    m = re.search(r"uv\s+tool\s+install\b(.*)$", c)
+    if m:
+        # uv tool install 的包名在末尾（--python 3.12 这类 flag 的值不带横杠，
+        # 取最后一个非 flag token 才是包名）
+        pkgs = [t for t in m.group(1).split() if not t.startswith("-")]
+        if pkgs:
+            return "uv tool uninstall %s" % pkgs[-1]
     return None
 
 
@@ -303,6 +309,19 @@ def _apply_config_patch(entries):
 
 
 def _apply_install_patch(entries):
+    # Aider 渠道整体迁移到 uv tool（跨平台、含存量数据幂等修正）：anaconda 的
+    # py -3.13 装 aider 必挂在 numpy 源码构建（老 setuptools 引用 py3.12 已删除
+    # 的 pkgutil.ImpImporter），而多数机器又没有 3.9-3.12 的 pip 解释器；uv 能
+    # 自带托管解释器一条命令装好。只迁移仍旧 pip 形态的配置，已是 uv 或用户
+    # 自定义的其他命令不动（2026-09-18 本机实装失败定版）。
+    aider_uv = ("uv tool install --python 3.12 aider-chat",
+                "uv tool upgrade aider-chat")
+    for e in entries:
+        if e.get("id") != "aider":
+            continue
+        cur = (e.get("install") or "").strip()
+        if "pip" in cur and "install" in cur:
+            e["install"], e["upgrade"] = aider_uv
     if sys.platform == "win32":
         return
     for e in entries:

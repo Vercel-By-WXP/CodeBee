@@ -662,6 +662,39 @@ def recover_orphaned_runs():
     return recovered
 
 
+def recover_interrupted_mgmt():
+    """启动时调用：把崩溃遗留的 queued 管理操作 run 标记为 failed。
+
+    running 的 mgmt run 已由 recover_orphaned_runs 统一收尸；queued 不在
+    其候选里——通用恢复故意留着 queued 给连载任务的 resume_interrupted
+    复活，但 mgmt job 只存在于内存队列，重启后永远没人认领，留着还会
+    堵住同条目的去重闸门。workers 尚未启动，此时 queued 必是遗留。
+    """
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    with LOCK:
+        candidates = [r["id"] for r in _RUNS.values()
+                      if r.get("kind") == "mgmt" and r.get("status") == "queued"]
+    for run_id in candidates:
+        update_run(run_id, status="failed", ended_at=now,
+                   error="interrupted at startup (mgmt auto-recovered)")
+    return len(candidates)
+
+
+def active_mgmt_run(entry_id):
+    """该目录条目当前进行中（queued/running）的管理操作 run；没有则 None。
+
+    供「同条目同时只跑一个安装/升级/卸载」去重闸使用：两个同名全局 npm
+    并发装同一包会互锁（2026-09-18 codex 双开案）。内存索引即真源——
+    重启后 recover_* 已把遗留 run 收成终态。
+    """
+    with LOCK:
+        for r in _RUNS.values():
+            if r.get("kind") == "mgmt" and r.get("entry_id") == entry_id \
+                    and r.get("status") in ("queued", "running"):
+                return dict(r)
+    return None
+
+
 def run_workdir(run_id):
     """该 run 的工作目录（经其 task 关联）；无任务的 run（如管理操作）返回空串。"""
     run = get_run(run_id)

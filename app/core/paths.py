@@ -55,6 +55,7 @@ DATA_DIR = default_data_dir()
 TASKS_DIR = DATA_DIR / "tasks"
 RUNS_DIR = DATA_DIR / "runs"
 USAGE_DIR = DATA_DIR / "usage"
+ERRORS_DIR = DATA_DIR / "errors"
 CATALOG_FILE = DATA_DIR / "catalog.json"
 ENABLED_FILE = DATA_DIR / "orchestration.json"
 

@@ -264,6 +264,18 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     edays = 90
                 return self._json(200, usage.estimate(task_type=ttype, days=edays))
+            if path == "/api/diagnostics/bundle":
+                # 诊断包（zip）：脱敏错误台账 + 用量台账 + 环境元信息，供用户贴 Issue
+                from core import telemetry
+                data = telemetry.build_bundle_bytes(days=30)
+                return self._send(200, data, ctype="application/zip", headers={
+                    "Content-Disposition":
+                        'attachment; filename="codebee-diag-%s.zip"'
+                        % time.strftime("%Y%m%d-%H%M%S")})
+            if path == "/api/diagnostics/issue-summary":
+                # 一键反馈 Issue 的预填摘要（标题+正文，全程脱敏，用户亲手提交）
+                from core import telemetry
+                return self._json(200, telemetry.issue_report(days=30))
             m = re.match(r"^/api/runs/([^/]+)$", path)
             if m:
                 run = store.get_run(m.group(1))
@@ -805,12 +817,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {
                     "error": "无法推导卸载命令：请在 data/catalog.json 的 \"%s\" 里配置 uninstall 字段"
                              % entry["id"]})
+            if op in ("install", "upgrade", "uninstall"):
+                # 同条目去重闸：已有进行中的管理操作就把本次请求挂到那个 run 上。
+                # 两个同包全局 npm 并发装会互锁成双僵尸（2026-09-18 codex 双开案）
+                active = store.active_mgmt_run(entry["id"])
+                if active:
+                    return self._json(200, {"run_id": active["id"], "deduped": True})
             run = store.create_run("mgmt", "%s %s" % (titles[op], entry.get("name", entry["id"])),
                                    entry_id=entry["id"], op=op)
             queued, qerr = self._enqueue_run(
                 run["id"], None,
                 {"kind": "mgmt", "run_id": run["id"], "entry_id": entry["id"], "op": op})
             if not queued:
+                # 入队失败必须落终态：queued 僵尸会永久堵住去重闸
+                store.update_run(run["id"], status="failed", error=qerr or "enqueue 失败",
+                                 ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
                 return self._json(503, {"error": qerr, "run_id": run["id"]})
             return self._json(200, {"run_id": run["id"]})
         m = re.match(r"^/api/catalog/([^/]+)/launch$", path)
@@ -1711,6 +1732,9 @@ def main():
     n_rc = store.recover_orphaned_runs()
     if n_rc:
         print("[CodeBee] 崩溃恢复：%d 个遗留运行标记为 failed（interrupted at startup）" % n_rc)
+    n_mg = store.recover_interrupted_mgmt()
+    if n_mg:
+        print("[CodeBee] 崩溃恢复：%d 个遗留管理操作标记为 failed（interrupted at startup）" % n_mg)
     try:
         from core import manager as _mgr
         n_z = _mgr.sweep_orphan_cli_processes()
@@ -1729,11 +1753,19 @@ def main():
         settings_schema.register_default_namespaces()  # budget/cascade/compaction 配置就绪（幂等）
     except Exception:
         pass
+    try:
+        from core import telemetry
+        telemetry.start_background()  # 匿名错误回传+版本 ping（默认开可关；未配端点自动休眠，延迟 45s 不挡启动）
+    except Exception:
+        pass
     _step("正在启动任务队列…")
     jobs.start_worker()
     n_resume = jobs.resume_interrupted()   # 启动恢复：服务被杀中断的连载任务自动续跑
     if n_resume:
         print("[CodeBee] 已自动恢复 %d 个中断的连载任务（断点续跑）" % n_resume)
+    n_rq = jobs.requeue_pending()   # 启动补队：队列在内存里，重启会让排队项变僵尸
+    if n_rq:
+        print("[CodeBee] 已重新入队 %d 个遗留排队运行" % n_rq)
     _step("正在启动自动化调度…")
     n_auto = automation.start()   # 自动化：加载定时任务并拉起调度线程（错过的一次性任务不补跑）
     if n_auto:

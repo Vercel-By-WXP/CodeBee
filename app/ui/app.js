@@ -6442,11 +6442,19 @@ function renderCatalog() {
   });
 }
 
+/* 该条目有管理操作在跑（queued/running）时，写操作按钮置灰防重复触发；
+   页面刷新后按钮恢复，后端同条目去重闸仍然兜底 */
+function mgmtBusy(id) {
+  const st = (S.mgmt || {})[id];
+  return !!st && (st.status === "queued" || st.status === "running");
+}
+
 function card(c) {
   const orchBox = c.orch_kind
     ? '<label class="toggle"><input type="checkbox" ' + (c.orch_enabled ? "checked" : "") +
       ' onchange="toggleOrch(\'' + esc(c.id) + '\', this.checked)">' + t(" 参与编排") + '</label>'
     : '<span class="tag">' + t("仅管理") + '</span>';
+  const dis = mgmtBusy(c.id) ? " disabled" : "";
   const hasModels = modelGroups().length > 0;
   const modelBox = c.config_writable
     ? (hasModels
@@ -6460,10 +6468,10 @@ function card(c) {
     // 一键打开（web 类开浏览器 / console 类新终端跑 TUI）：已安装且配了 launch 才出
     c.installed && c.launch ? '<button class="primary small" onclick="openAgent(\'' + esc(c.id) + '\')">' +
       (c.launch.kind === "web" ? t("打开网页") : t("打开")) + "</button>" : "",
-    c.installed && c.orch_kind ? '<button class="ghost small" onclick="mgmt(\'' + esc(c.id) + '\', \'smoke\')">' + t("冒烟测试") + '</button>' : "",
-    c.installed && c.has_upgrade ? '<button class="ghost small" onclick="mgmt(\'' + esc(c.id) + '\', \'upgrade\')">' + t("升级") + '</button>' : "",
+    c.installed && c.orch_kind ? '<button class="ghost small"' + dis + ' onclick="mgmt(\'' + esc(c.id) + '\', \'smoke\')">' + t("冒烟测试") + '</button>' : "",
+    c.installed && c.has_upgrade ? '<button class="ghost small"' + dis + ' onclick="mgmt(\'' + esc(c.id) + '\', \'upgrade\')">' + t("升级") + '</button>' : "",
     c.installed && c.has_upgrade ? '<button class="ghost small" onclick="checkUpdate(\'' + esc(c.id) + '\')">' + t("检查更新") + '</button>' : "",
-    !c.installed && c.has_install ? '<button class="ghost small" onclick="mgmt(\'' + esc(c.id) + '\', \'install\')">' + t("安装") + '</button>' : "",
+    !c.installed && c.has_install ? '<button class="ghost small"' + dis + ' onclick="mgmt(\'' + esc(c.id) + '\', \'install\')">' + t("安装") + '</button>' : "",
     c.installed ? '<button class="ghost small" onclick="showMgmtLog(\'' + esc(c.id) + '\')">' + t("日志") + '</button>' : "",
     !c.installed && !c.has_install ? '<span class="hint">' + t("安装命令待配置（编辑 data/catalog.json）") + '</span>' : "",
   ].join("");
@@ -6471,7 +6479,7 @@ function card(c) {
     '<div class="head"><span class="name">' + esc(c.name) + "</span>" +
     (c.installed ? statusChip("done") : '<span class="tag">' + t("未安装") + '</span>') + updateChip(c) +
     // 卸载放卡片右上角（与状态徽标同行），不再吊在操作行尾部
-    (c.installed && c.uninstall_cmd ? '<button class="danger small" onclick="mgmt(\'' + esc(c.id) + '\', \'uninstall\')">' + t("卸载") + '</button>' : "") +
+    (c.installed && c.uninstall_cmd ? '<button class="danger small"' + dis + ' onclick="mgmt(\'' + esc(c.id) + '\', \'uninstall\')">' + t("卸载") + '</button>' : "") +
     "</div>" +
     '<div class="note">' + esc(t(c.note || "")) + "</div>" +
     '<div class="facts">' + t("版本 ") + '<b>' + esc(c.version || "-") + "</b>" + t("　模型 ") + "<b>" + esc(fmtModel(c.model) || "-") + "</b>" +
@@ -6600,6 +6608,7 @@ async function mgmt(id, op) {
     return;
   }
   S.mgmt[id].runId = r.run_id;
+  if (r.deduped) toast(t("该条目已有进行中的任务，已转为跟踪该任务"));
   S.catSig = null; renderCatalog();
   pollMgmt(id, r.run_id);   // 就地跟踪，不再跳转页面
 }
@@ -7489,6 +7498,8 @@ async function loadSettings() {
     S.settings = await api("/api/settings");
     const inp = $("set-workers");
     if (inp && S.settings) inp.value = S.settings.max_concurrent_jobs;
+    const tel = $("set-telemetry");
+    if (tel && S.settings) tel.checked = S.settings.telemetry_errors !== false;
     const wd = $("set-workdir"), hint = $("set-workdir-hint");
     if (wd && S.settings) wd.value = S.settings.default_workdir_effective || "";
     if (hint && S.settings) {
@@ -7686,6 +7697,57 @@ function updDismiss() {
   if (SU && SU.latest) localStorage.setItem("su.seen", SU.latest);
   renderUpdPill();
   toast(t("已忽略该版本提醒，可随时在「关于与更新」里升级"));
+}
+
+/* 匿名错误报告开关：改完立即生效（后端每轮上报前都会读一次设置） */
+async function saveTelemetry(on) {
+  try {
+    const r = await api("/api/settings", { method: "POST", body: JSON.stringify({ telemetry_errors: !!on }) });
+    S.settings = r.settings;
+    toast(on ? t("已开启匿名错误报告，感谢帮助改进 CodeBee")
+             : t("已关闭匿名错误报告，数据不再离开本机"));
+  } catch (e) {
+    const tel = $("set-telemetry");
+    if (tel) tel.checked = !on;   // 存失败弹回旧值，不让 UI 与后端各说各话
+    toast(e.message || t("保存失败"), true);
+  }
+}
+
+/* 导出诊断包：脱敏错误台账 + 用量统计 + 版本环境信息（zip），贴 Issue 用 */
+async function exportDiagBundle() {
+  const b = $("diag-export");
+  if (b) b.disabled = true;
+  try {
+    const r = await fetch("/api/diagnostics/bundle", { headers: authHeaders() });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const u = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a");
+    a.href = u;
+    a.download = "codebee-diag-" + new Date().toISOString().slice(0, 10) + ".zip";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 5000);
+    toast(t("诊断包已开始下载，反馈问题时可附在 Issue 里"));
+  } catch (e) {
+    toast(t("诊断包导出失败：") + e.message, true);
+  } finally {
+    if (b) b.disabled = false;
+  }
+}
+
+/* 一键反馈 Issue：拉脱敏摘要 → 预填 GitHub Issue 新建页（用户亲手提交，不自动回传） */
+async function reportIssue() {
+  try {
+    const s = await api("/api/diagnostics/issue-summary");
+    const url = "https://github.com/Vercel-By-WXP/CodeBee/issues/new" +
+      "?title=" + encodeURIComponent(s.title || "") +
+      "&body=" + encodeURIComponent(s.body || "");
+    window.open(url, "_blank");
+    toast(t("已打开 GitHub 反馈页，内容已预填，可直接提交（也可附上诊断包 zip）"));
+  } catch (e) {
+    toast(t("反馈摘要生成失败：") + e.message, true);
+  }
 }
 
 async function suCheck() {

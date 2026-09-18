@@ -1576,8 +1576,29 @@ def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
     detect_all(force=True)
     with _LOCK:
         _STATE["versions"].pop(entry["id"], None)
+    if res["ok"]:
+        # 安装/升级成功即作废该条目的更新检查缓存并后台复检：否则 10 分钟 TTL
+        # 内徽章仍显示「有新版本」，诱导同版本重装（重装易撞 EBUSY 文件锁，
+        # 2026-09-18 dsh 案）。
+        refresh_update_async(entry)
     return {"ok": res["ok"], "exit_code": res["exit_code"], "command": cmd,
             "error": "" if res["ok"] else (res["stderr"][-800:] or "退出码 %s" % res["exit_code"])}
+
+
+def refresh_update_async(entry):
+    """作废单条目的更新检查缓存，并后台立刻复检一次远端最新版本。
+
+    完成的安装/升级调用它，卡片徽章马上脱离旧结论（unknown → 几秒后
+    「已是最新/有新版本」），不用等 10 分钟缓存过期。npm view 在后台线程
+    跑，不阻塞 mgmt 任务收尾。
+    """
+    with _LOCK:
+        _UPDATE_CACHE.pop(entry["id"], None)
+    try:
+        threading.Thread(target=check_update, args=(entry,), kwargs={"force": True},
+                         name="update-recheck-%s" % entry.get("id"), daemon=True).start()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------- 版本检查

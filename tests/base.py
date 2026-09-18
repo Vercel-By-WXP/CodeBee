@@ -27,6 +27,7 @@ class BaseTest(unittest.TestCase):
         paths.TASKS_DIR = self.data_dir / "tasks"
         paths.RUNS_DIR = self.data_dir / "runs"
         paths.USAGE_DIR = self.data_dir / "usage"
+        paths.ERRORS_DIR = self.data_dir / "errors"
         paths.CATALOG_FILE = self.data_dir / "catalog.json"
         paths.ENABLED_FILE = self.data_dir / "orchestration.json"
         paths.ensure_dirs()

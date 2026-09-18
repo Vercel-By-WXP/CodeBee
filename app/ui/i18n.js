@@ -920,6 +920,7 @@
     "未安装": "Not installed",
     "有新版本 ": "New version ",
     "已是最新": "Up to date",
+    "该条目已有进行中的任务，已转为跟踪该任务": "A task is already running for this CLI — tracking it instead",
     "该渠道无法自动检查": "Cannot auto-check this channel",
     "检查更新中…": "Checking for updates…",
     "预置": "Built-in",
@@ -1696,6 +1697,20 @@
     "验证不通过不得通过：即使评审通过或分数高，只要 verify_pass=false 就判未通过；修复后必须提交新的验证日志与失败归因。": "Failed verification blocks acceptance: even with a passing or high-scoring review, verify_pass=false means not accepted; after fixing, submit fresh verification logs and failure attribution.",
     "多轮修复未变要停：同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。": "Stop when multiple fixes change nothing: when the same verification failure survives two consecutive rounds, stop blind changes and switch to investigating the environment, fixtures, dependency versions or the acceptance command; record a minimal reproduction.",
     "切换前保留失败诊断 / 修复绑定失败证据 / 修复不重复空转": "Keep failure diagnostics before switching / capture bind-failure evidence / no idle repair loops",
+
+    // —— 帮助改进（遥测/诊断包）——
+    "帮助改进 CodeBee": "Help Improve CodeBee",
+    "发送匿名错误报告（帮助我们发现和修复问题）": "Send anonymous error reports (helps us find and fix issues)",
+    "只上报失败原因码、供应商/模型名与脱敏后的错误摘录——绝不上传任务内容、章节正文、API 密钥和本机路径；关闭后立即停止一切上报。": "Only failure reason codes, provider/model names and sanitized error excerpts are reported — never task content, chapter text, API keys or local paths; turning it off stops all reporting immediately.",
+    "导出诊断包": "Export diagnostics bundle",
+    "生成一个 zip（近 30 天错误记录 + 用量统计 + 版本环境信息，已剥离敏感数据），反馈问题时可附在 Issue 里。": "Generates a zip (last 30 days of error records + usage stats + version/environment info, sensitive data stripped) that you can attach to an Issue when reporting problems.",
+    "已开启匿名错误报告，感谢帮助改进 CodeBee": "Anonymous error reporting enabled — thanks for helping improve CodeBee",
+    "已关闭匿名错误报告，数据不再离开本机": "Anonymous error reporting disabled — no data leaves this machine",
+    "诊断包已开始下载，反馈问题时可附在 Issue 里": "Diagnostics bundle download started — attach it to an Issue when reporting problems",
+    "诊断包导出失败：": "Failed to export diagnostics bundle: ",
+    "一键反馈 Issue": "Report Issue",
+    "已打开 GitHub 反馈页，内容已预填，可直接提交（也可附上诊断包 zip）": "GitHub issue page opened with the report pre-filled — submit it, and feel free to attach the diagnostics zip",
+    "反馈摘要生成失败：": "Failed to build issue summary: ",
   };
 
   // ---------- 工具 ----------

@@ -394,6 +394,10 @@ class TestMgmtUninstall(BaseTest):
             return {"ok": True, "exit_code": 0, "stdout": "", "stderr": "",
                     "duration": 0.0, "cancelled": False, "timed_out": False}
         runner.run_process = fake
+        # 2026-09-18 起 mgmt 成功会后台复检更新徽章（check_update 线程），隔离掉：
+        # 否则复检线程用 argv 调 run_process，会把下面捕获的 shell_cmd 覆盖成 None
+        orig_check = manager.check_update
+        manager.check_update = lambda e, force=False: None
         try:
             entry = {"id": "probe", "name": "Probe",
                      "install": "npm install -g @scope/probe"}
@@ -408,6 +412,7 @@ class TestMgmtUninstall(BaseTest):
             self.assertIn("uninstall", bad["error"])
         finally:
             runner.run_process = orig
+            manager.check_update = orig_check
 
 
 class TestArtifactGate(BaseTest):

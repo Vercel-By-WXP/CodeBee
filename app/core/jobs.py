@@ -24,8 +24,8 @@ _seq = 0
 AI_REPAIR_PROMPT = """你是环境工程师。在 Windows 上执行下面的安装命令失败了，请诊断原因并给出修正命令。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {"diagnosis": "失败原因（一句话）", "command": "修正后的完整安装命令", "safe": true/false}
-硬性约束：command 只能是本机包管理器的安装命令，前缀必须是 npm install / winget install /
-py -3.13 -m pip install 之一。给不出符合约束的安全命令时，safe 设为 false 且 command 留空。
+硬性约束：command 只能是本机包管理器的安装命令，前缀必须是 __ALLOW__ 之一。
+给不出符合约束的安全命令时，safe 设为 false 且 command 留空。
 
 ## 失败的命令
 __CMD__
@@ -36,8 +36,10 @@ __LOG__
 ## 本机环境
 __ENV__"""
 
-# AI 修复命令白名单：只放行包管理器的安装类命令
-AI_REPAIR_ALLOW = ("npm install ", "winget install", "py -3.13 -m pip install")
+# AI 修复命令白名单：只放行包管理器的安装类命令（提示词里的前缀清单由它生成，
+# 两处永远不会漂移）
+AI_REPAIR_ALLOW = ("npm install ", "winget install", "py -3.13 -m pip install",
+                   "uv tool install")
 
 
 def _repair_command_allowed(cmd):
@@ -320,12 +322,21 @@ def _do_mgmt(job, ev):
     if op in ("install", "upgrade", "uninstall"):
         res = manager.run_mgmt_command(entry, op, cancel_event=ev, log_path=str(log_abs))
         ok = res["ok"]
+        # 文件占用类失败（Windows 文件锁 EBUSY/EPERM）给人话结论并跳过 AI 修复：
+        # 修复智能体面对文件锁只会给出 taskkill 全杀 node 之类白名单必拒的危险
+        # 命令，白白烧一轮 300s 诊断（2026-09-18 dsh 同版本重装 EBUSY 案）
+        lock_hit = (not ok and op in ("install", "upgrade") and _file_lock_error(res))
+        if lock_hit:
+            summary = ("失败：安装文件被占用（可能有同名程序在运行，或杀毒软件正在扫描），"
+                       "请关闭占用该文件的程序后重试。完整输出见日志。")
+        else:
+            summary = ("完成" if ok else "失败") + (": " + res["error"][:300] if res.get("error") else "")
         store.finish_step(run_id, step["n"],
                           "done" if ok else "failed",
-                          summary=("完成" if ok else "失败") + (": " + res["error"][:300] if res.get("error") else ""),
+                          summary=summary,
                           exit_code=res.get("exit_code"))
         # AI 修复只针对安装类失败；卸载失败多为权限/程序占用，留给用户看日志处理
-        if not ok and op in ("install", "upgrade"):
+        if not ok and op in ("install", "upgrade") and not lock_hit:
             ok = _ai_repair(run_id, entry, ev, entry.get(op), log_abs)
     elif op == "smoke":
         from . import runner as _r
@@ -389,6 +400,12 @@ def _do_selfupgrade(job):
                      summary="CodeBee selfupgrade %s" % ("完成" if res["ok"] else "失败"))
 
 
+def _file_lock_error(res):
+    """安装/升级失败输出是否为文件占用类错误（npm/pip 的 EBUSY/EPERM 文件锁）。"""
+    err = (res or {}).get("error") or ""
+    return "EBUSY" in err or "EPERM" in err
+
+
 def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
     """安装失败后的 AI 诊断修复：诊断 → 白名单校验 → 执行 → 复检。"""
     from . import catalog, manager, registry, router, runner, store
@@ -411,7 +428,8 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
     ]
     prompt = (AI_REPAIR_PROMPT.replace("__CMD__", failed_cmd or "（未知）")
               .replace("__LOG__", log_tail)
-              .replace("__ENV__", "\n".join(env_lines)))
+              .replace("__ENV__", "\n".join(env_lines))
+              .replace("__ALLOW__", " / ".join(p.strip() for p in AI_REPAIR_ALLOW)))
     step, log_abs = store.add_step(run_id, "ai-repair", agent["id"], agent.get("label"),
                                    note="自动诊断修复")
     res = runner.run_agent(agent, prompt, readonly=True, timeout=300,
@@ -436,7 +454,9 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
     cmd = str((data or {}).get("command") or "").strip()
     safe = bool((data or {}).get("safe")) and _repair_command_allowed(cmd)
     try:
-        log_abs.write_text(
+        # write_bytes 而非 write_text(...encode())：bytes 传入文本模式 write 会
+        # TypeError 且被下面的裸 except 吞掉，诊断三行从未落过日志（2026-09-18 修）
+        log_abs.write_bytes(
             ("\n[AI 诊断] %s\n[AI 建议] %s\n[白名单] %s\n" %
              (diagnosis, cmd or "（无）", "通过" if safe else "不通过，拒绝自动执行")).encode("utf-8"))
     except Exception:
@@ -451,6 +471,9 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
     manager.detect_all(force=True)
     with manager._LOCK:
         manager._STATE["versions"].pop(entry["id"], None)
+    if fix["ok"]:
+        # 修复安装同样会改变版本结论，徽章缓存一并作废复检
+        manager.refresh_update_async(entry)
     installed = manager.detect_entry(entry)["installed"]
     store.finish_step(run_id, step["n"],
                       "done" if (fix["ok"] and installed) else "failed",

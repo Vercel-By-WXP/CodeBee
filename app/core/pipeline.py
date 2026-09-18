@@ -548,6 +548,21 @@ def _finish_step_result(run_id, step, res, role, agent, start):
                       # 对话视图直读这个；日志文件是全量事件流，塞进气泡就成了「看日志」。
                       output=(res.get("text") or ""),
                       followups=res.get("followups"))
+    # 错误台账：失败/超时各记一条结构化记录（遥测与诊断包的数据源）。
+    # 用户主动取消不入账——那不是产品问题；detail 只存脱敏后的失败摘录。
+    if status in ("failed", "timeout"):
+        try:
+            from . import errorlog
+            prov = agent.get("provider") or {}
+            errorlog.record(
+                category="step", reason=str(res.get("error_code") or "UNKNOWN"),
+                detail=(res.get("error") or ""),
+                provider=(prov.get("name") if isinstance(prov, dict) else "") or "",
+                model=res.get("model") or "", tool=agent.get("kind", ""),
+                role=role, run_id=run_id, task_id=(store.get_run(run_id) or {}).get("task_id") or "",
+                step=step["n"], exit_code=res.get("raw", {}).get("exit_code"))
+        except Exception:
+            pass
     if agent.get("mode") != "mock":
         _record_usage(run_id, role, agent, res, source="pipeline", step=step["n"])
     # 5F：step 级运行时断言（只告警不阻断）

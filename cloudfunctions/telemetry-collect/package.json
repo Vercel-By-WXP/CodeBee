@@ -1,0 +1,9 @@
+{
+  "name": "telemetry-collect",
+  "version": "1.0.0",
+  "description": "CodeBee anonymous error telemetry collector (HTTP function)",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.7.0"
+  }
+}

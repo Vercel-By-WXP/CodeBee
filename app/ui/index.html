@@ -675,6 +675,14 @@
           <p id="su-note" class="hint"></p>
           <p id="su-progress" class="hint"></p>
           <p class="hint" data-i18n="升级会通过 npm 拉取最新版并自动执行（日志可在运行记录里实时查看）；完成后点「重启服务生效」，页面会自动重连。开发仓库（git clone）模式不提供自动升级，请用 git pull。">升级会通过 npm 拉取最新版并自动执行（日志可在运行记录里实时查看）；完成后点「重启服务生效」，页面会自动重连。开发仓库（git clone）模式不提供自动升级，请用 git pull。</p>
+          <h3 data-i18n="帮助改进 CodeBee" class="sec-title">帮助改进 CodeBee</h3>
+          <label class="toggle"><input id="set-telemetry" type="checkbox" onchange="saveTelemetry(this.checked)"> <span data-i18n="发送匿名错误报告（帮助我们发现和修复问题）">发送匿名错误报告（帮助我们发现和修复问题）</span></label>
+          <p data-i18n="只上报失败原因码、供应商/模型名与脱敏后的错误摘录——绝不上传任务内容、章节正文、API 密钥和本机路径；关闭后立即停止一切上报。" class="hint">只上报失败原因码、供应商/模型名与脱敏后的错误摘录——绝不上传任务内容、章节正文、API 密钥和本机路径；关闭后立即停止一切上报。</p>
+          <div class="input-row" style="margin-top:8px">
+            <button id="diag-export" class="ghost small" onclick="exportDiagBundle()"><svg class="ico" aria-hidden="true"><use href="#i-file-search"></use></svg><span data-i18n="导出诊断包">导出诊断包</span></button>
+            <button id="issue-report" class="ghost small" onclick="reportIssue()"><svg class="ico" aria-hidden="true"><use href="#i-mail"></use></svg><span data-i18n="一键反馈 Issue">一键反馈 Issue</span></button>
+          </div>
+          <p data-i18n="生成一个 zip（近 30 天错误记录 + 用量统计 + 版本环境信息，已剥离敏感数据），反馈问题时可附在 Issue 里。" class="hint">生成一个 zip（近 30 天错误记录 + 用量统计 + 版本环境信息，已剥离敏感数据），反馈问题时可附在 Issue 里。</p>
         </div>
       </div>
 
