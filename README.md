@@ -44,29 +44,38 @@ python toolsee.py discard <task>    :: 否决——删除任务分支（需输 
 
 **方式一：npm 安装（推荐，普通用户）**
 
-需要本机装有 [Node.js](https://nodejs.org) 与 [Python 3.8+](https://www.python.org/downloads/windows/)
-（Windows 装 Python 时勾选 “Add python.exe to PATH”）。然后：
+需要本机装有 [Node.js](https://nodejs.org) 与 [Python 3.8+](https://www.python.org/downloads/)
+（Windows 装 Python 时勾选 “Add python.exe to PATH”；macOS 可 `brew install python3`）。然后：
 
 ```bat
 npm install -g codebee
 codebee
 ```
 
-`codebee` 命令会启动服务并自动打开浏览器（默认 `http://127.0.0.1:8765`）。
+支持 Windows / macOS / Linux。`codebee` 命令会启动服务并自动打开浏览器
+（默认 `http://127.0.0.1:8765`）。
 **启动后那个命令行窗口就是服务本身**——保持开着别关，Ctrl+C 即退出。
 升级：`npm update -g codebee`，或在界面「设置 → 关于与更新」里一键升级。
 
 数据存放在用户目录（Windows `%APPDATA%\CodeBee`，macOS/Linux `~/.codebee`），
-升级/重装不影响；老版本 Tutti 目录（`%APPDATA%\Tutti`）会被自动沿用，无需迁移。
+升级/重装不影响；老版本 Tutti 目录（`%APPDATA%\Tutti` / `~/.tutti`）会被自动沿用，无需迁移。
 
 **方式二：源码运行（开发者）**
 
 ```bat
 git clone https://github.com/Vercel-By-WXP/CodeBee.git
 cd CodeBee
+:: Windows
 start.bat
 :: 或
 python app\main.py --port 8765
+```
+
+```bash
+# macOS / Linux
+./start.sh
+# 或
+python3 app/main.py --port 8765
 ```
 
 自动打开 `http://127.0.0.1:8765`。源码模式数据落仓库 `data/` 目录。

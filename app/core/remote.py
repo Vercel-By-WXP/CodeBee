@@ -13,6 +13,7 @@ import re
 import secrets
 import shutil
 import subprocess
+import sys
 import threading
 import time
 
@@ -81,6 +82,12 @@ def cloudflared_exe() -> str:
     exe = shutil.which("cloudflared")
     if exe:
         return exe
+    if sys.platform == "darwin":
+        # Homebrew（Apple Silicon /usr/local 旧装）不在 PATH 时的常见落点
+        for guess in ("/opt/homebrew/bin/cloudflared", "/usr/local/bin/cloudflared"):
+            if os.path.isfile(guess):
+                return guess
+        return ""
     guess = os.path.join(os.environ.get("ProgramFiles(x86)", ""), "cloudflared", "cloudflared.exe")
     return guess if os.path.isfile(guess) else ""
 

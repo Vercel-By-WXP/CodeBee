@@ -36,6 +36,7 @@ import re
 import shutil
 import socket
 import sqlite3
+import sys
 import threading
 import time
 import urllib.request
@@ -1043,6 +1044,15 @@ def set_binding(agent_id, provider_id=None, model=None, models=None,
 _HOME = os.path.expanduser("~")
 _APPDATA = os.environ.get("APPDATA") or os.path.join(_HOME, "AppData", "Roaming")
 
+# VSCode 系编辑器（Cursor/Trae）用户数据目录随平台不同：
+# Windows %APPDATA%\<app>，macOS ~/Library/Application Support/<app>，Linux ~/.config/<app>
+if sys.platform == "darwin":
+    _VSC_USER_BASE = os.path.join(_HOME, "Library", "Application Support")
+elif os.name == "nt":
+    _VSC_USER_BASE = _APPDATA
+else:
+    _VSC_USER_BASE = os.path.join(_HOME, ".config")
+
 CCSWITCH_DB = os.path.join(_HOME, ".cc-switch", "cc-switch.db")
 CLAUDE_SETTINGS = os.path.join(_HOME, ".claude", "settings.json")
 CODEX_DIR = os.path.join(_HOME, ".codex")
@@ -1054,9 +1064,9 @@ GEMINI_DIR = os.path.join(_HOME, ".gemini")
 OPENCODE_CONFIG = os.path.join(_HOME, ".config", "opencode", "opencode.json")
 OPENCODE_AUTH = os.path.join(_HOME, ".local", "share", "opencode", "auth.json")
 CONTINUE_DIR = os.path.join(_HOME, ".continue")
-CURSOR_DB = os.path.join(_APPDATA, "Cursor", "User", "globalStorage", "state.vscdb")
-TRAE_DBS = [os.path.join(_APPDATA, "Trae CN", "User", "globalStorage", "state.vscdb"),
-            os.path.join(_APPDATA, "TRAE SOLO CN", "User", "globalStorage", "state.vscdb")]
+CURSOR_DB = os.path.join(_VSC_USER_BASE, "Cursor", "User", "globalStorage", "state.vscdb")
+TRAE_DBS = [os.path.join(_VSC_USER_BASE, "Trae CN", "User", "globalStorage", "state.vscdb"),
+            os.path.join(_VSC_USER_BASE, "TRAE SOLO CN", "User", "globalStorage", "state.vscdb")]
 
 
 def _next_pid(plist):

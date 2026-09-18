@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import threading
 import time
@@ -23,7 +24,9 @@ import time
 from .env_scrub import scrub_env
 from .error_codes import ErrorCode
 
-CREATE_NO_WINDOW = 0x08000000
+# 非 Windows 必须置 0：POSIX 的 Popen 对非零 creationflags 直接抛 ValueError，
+# 置 0 则两边通用（remote.py 同款守卫）。
+CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 DEFAULT_TIMEOUT = 1200  # 单步 20 分钟
 
 _BASH_CANDIDATES = [
@@ -35,6 +38,11 @@ _bash_cache = {"path": None, "done": False}
 
 
 def find_git_bash():
+    """Windows 专供：claude 原生 exe 找不到 bash 会拒绝启动，指给 Git Bash。
+    macOS/Linux 有系统 bash，claude 自会找到；强行设 CLAUDE_CODE_GIT_BASH_PATH
+    反而可能指错（/bin/bash 与 Git Bash 行为有差异），故非 Windows 一律 None。"""
+    if os.name != "nt":
+        return None
     if _bash_cache["done"]:
         return _bash_cache["path"]
     _bash_cache["done"] = True
@@ -81,6 +89,19 @@ def _npm_shim_bypass(argv):
 
 
 def _kill_tree(pid):
+    """杀整棵进程树。Windows 用 taskkill /T；POSIX 靠 spawn 时的
+    start_new_session（子进程自成一个进程组，pgid==pid）用 killpg 连孙带杀。"""
+    if os.name != "nt":
+        try:
+            os.killpg(pid, signal.SIGKILL)
+            return
+        except Exception:
+            pass
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except Exception:
+            pass
+        return
     try:
         subprocess.run(
             ["taskkill", "/F", "/T", "/PID", str(pid)],
@@ -295,7 +316,8 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
     返回 {ok, exit_code, stdout, stderr, duration, cancelled, timed_out, stalled}。
     """
     if shell_cmd:
-        argv = ["cmd", "/c", shell_cmd]
+        # shell 串的解析器随平台：重定向/引号语法两边通用，只是解释器不同
+        argv = ["cmd", "/c", shell_cmd] if os.name == "nt" else ["/bin/sh", "-c", shell_cmd]
     if argv is None:
         return {"ok": False, "exit_code": None, "stdout": "", "stderr": "argv 为空",
                 "duration": 0.0, "cancelled": False, "timed_out": False, "stalled": False}
@@ -327,7 +349,8 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 [str(a) for a in argv], cwd=cwd, env=full_env,
                 stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                creationflags=CREATE_NO_WINDOW)
+                creationflags=CREATE_NO_WINDOW,
+                start_new_session=(os.name != "nt"))  # POSIX 需独立进程组供 killpg 杀树；Windows 忽略该参数
         except Exception as e:
             return {"ok": False, "exit_code": None, "stdout": "",
                     "stderr": "启动失败: %r" % e, "duration": 0.0,

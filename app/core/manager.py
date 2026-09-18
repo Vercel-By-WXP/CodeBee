@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -21,7 +23,8 @@ from pathlib import Path
 
 from . import catalog, paths, runner
 
-CREATE_NO_WINDOW = 0x08000000
+# 非 Windows 置 0：POSIX 的 Popen 对非零 creationflags 抛 ValueError（runner 同款守卫）
+CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 VERSION_TTL = 300  # 版本缓存 5 分钟
 
 _LOCK = threading.RLock()
@@ -69,6 +72,43 @@ def detect_entry(entry):
     return {"installed": False, "detail": ""}
 
 
+def _orphan_signature(cl):
+    """「Tutti 专属调用签名」判定（两个平台的清扫共用）。"""
+    return (("opencode" in cl and "--model" in cl)
+            or ("codex" in cl and "--skip-git-repo-check" in cl)
+            or ("kimi-code" in cl and "main.mjs" in cl))
+
+
+def _sweep_orphans_posix():
+    """POSIX 版清扫：ps 一次拉全量，签名同 Windows。孤儿判据不同——POSIX 的
+    孤儿进程会被内核过继给 1 号进程（launchd/init），Windows 则保留死掉的
+    ppid，所以这里认 ppid==1；用户手动在终端里跑的同名 CLI 父进程是活着的
+    shell（ppid!=1），不会被误杀。"""
+    try:
+        r = subprocess.run(["ps", "-eo", "pid=,ppid=,command="],
+                           capture_output=True, timeout=60)
+        killed = 0
+        for ln in r.stdout.decode("utf-8", "replace").splitlines():
+            parts = ln.strip().split(None, 2)
+            if len(parts) != 3 or not parts[0].isdigit() or not parts[1].isdigit():
+                continue
+            pid, ppid, cmd = int(parts[0]), int(parts[1]), parts[2]
+            if pid == 1 or ppid != 1 or not _orphan_signature(cmd.lower()):
+                continue
+            try:
+                os.killpg(pid, signal.SIGKILL)  # 服务 spawn 用了 start_new_session，pgid==pid
+                killed += 1
+            except Exception:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                    killed += 1
+                except Exception:
+                    pass
+        return killed
+    except Exception:
+        return 0
+
+
 def sweep_orphan_cli_processes():
     """启动清扫：服务重启会孤儿化正在跑的 CLI 孙进程（外部只杀服务 PID，不带
     /T），僵尸 opencode 更会劫持后续会话——opencode 是客户端-服务端架构，新
@@ -81,6 +121,8 @@ def sweep_orphan_cli_processes():
       kimi：命令行含 kimi-code/dist/main.mjs（node 直启路径，2026-09-17 实测
       僵尸 kimi 会占住讯飞网关同钥请求队列，堵死后续所有 kimi 调用）
     claude 不扫（签名与用户手动使用难区分）。返回清扫数量。"""
+    if os.name != "nt":
+        return _sweep_orphans_posix()
     ps_exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
                           "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
     if not os.path.isfile(ps_exe):
@@ -101,10 +143,7 @@ def sweep_orphan_cli_processes():
         for i in items:
             cl = str(i.get("CommandLine") or "").lower()
             ppid = i.get("ParentProcessId")
-            is_ours = (("opencode" in cl and "--model" in cl)
-                       or ("codex" in cl and "--skip-git-repo-check" in cl)
-                       or ("kimi-code" in cl and "main.mjs" in cl))
-            if not is_ours or ppid in live or not i.get("ProcessId"):
+            if not _orphan_signature(cl) or ppid in live or not i.get("ProcessId"):
                 continue
             try:
                 subprocess.run(["taskkill", "/F", "/T", "/PID", str(i["ProcessId"])],
@@ -168,6 +207,8 @@ def _uwp_version(package_dir):
 
 
 def _exe_version(path):
+    if os.name != "nt":
+        return None  # exe 版本探测是 Windows 专属功能（PowerShell 读 PE 资源）
     try:
         r = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
@@ -191,7 +232,11 @@ def version_of(entry):
     cli = (entry.get("detect") or {}).get("cli")
     if cli and det.get("installed"):
         try:
-            r = subprocess.run(["cmd", "/c", cli, "--version"], capture_output=True,
+            # Windows 下 CLI 可能是 npm .cmd 垫片，须经 cmd /c 才能直接点名跑；
+            # POSIX 没有垫片，符号链接直接跑即可
+            probe = ["cmd", "/c", cli, "--version"] if os.name == "nt" \
+                else [cli, "--version"]
+            r = subprocess.run(probe, capture_output=True,
                                creationflags=CREATE_NO_WINDOW, timeout=20)
             out = (r.stdout or b"").decode("utf-8", "replace").strip()
             if not out:
@@ -1440,9 +1485,13 @@ def launch(entry, open_browser=True):
         spawn_cmd = "%s > %s 2>&1" % (cmd, ('"%s"' % ls) if " " in ls else ls)
         try:
             log_path.parent.mkdir(parents=True, exist_ok=True)
-            subprocess.Popen(["cmd", "/c", spawn_cmd], cwd=str(paths.ROOT), env=env,
+            # 重定向语法 sh 与 cmd 通用，只换解释器；start_new_session 让子服务
+            # 脱离本服务进程组（杀树/退出互不牵连）
+            shell = ["cmd", "/c"] if os.name == "nt" else ["/bin/sh", "-c"]
+            subprocess.Popen(shell + [spawn_cmd], cwd=str(paths.ROOT), env=env,
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+                             stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW,
+                             start_new_session=(os.name != "nt"))
         except Exception as e:
             return {"ok": False, "error": "无法启动服务: %r" % e}
         if open_browser:
@@ -1452,8 +1501,25 @@ def launch(entry, open_browser=True):
                 "message": "%s 正在启动，就绪后浏览器会自动打开（%s）%s"
                            % (name, bare, ("；" + extra) if extra else "")}
 
+    if sys.platform == "darwin":
+        # Terminal.app 新开窗口跑交互 TUI；do script 的命令串常驻窗口，等价
+        # Windows 的 cmd /k（CLI 退出后窗口保留，报错不至于一闪而过）。
+        # 两层转义各管各的：shlex.quote 管 shell 层（cd 路径的引号），
+        # 反斜杠/双引号替换管 AppleScript 字符串层。
+        shell_cmd = "cd %s && %s" % (shlex.quote(str(paths.ROOT)), cmd)
+        asc = 'tell application "Terminal" to do script ' + \
+              '"' + shell_cmd.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        try:
+            subprocess.Popen(["osascript", "-e", asc], cwd=str(paths.ROOT), env=env,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        except Exception as e:
+            return {"ok": False, "error": "无法打开终端窗口: %r" % e}
+        return {"ok": True, "kind": "console", "message": "已在新的终端窗口打开 %s%s"
+                % (name, ("（" + extra + "）") if extra else "")}
+
     if sys.platform != "win32":
-        return {"ok": False, "error": "终端窗口拉起暂仅支持 Windows"}
+        return {"ok": False, "error": "终端窗口拉起暂仅支持 Windows/macOS"}
     # start 为目标命令新开一个可见终端窗口；cmd /k 让 CLI 退出后窗口保留，
     # 报错不至于一闪而过。外层 cmd 用 CREATE_NO_WINDOW 隐藏。
     argv = ["cmd", "/c", "start", "CodeBee %s" % name, "/D", str(paths.ROOT),
@@ -1544,7 +1610,10 @@ def check_update(entry, force=False):
     cmd = entry.get("install") or entry.get("upgrade") or ""
     pkg = _npm_pkg_name(cmd)
     if pkg:
-        r = runner.run_process(argv=["cmd", "/c", "npm", "view", pkg, "version"], timeout=90)
+        # Windows 的 npm 是 .cmd 垫片须经 cmd /c；POSIX 直接跑
+        npm_view = ["cmd", "/c", "npm", "view", pkg, "version"] if os.name == "nt" \
+            else ["npm", "view", pkg, "version"]
+        r = runner.run_process(argv=npm_view, timeout=90)
         latest = ""
         if r["ok"]:
             for line in (r["stdout"] or "").splitlines():
@@ -1558,7 +1627,7 @@ def check_update(entry, force=False):
             result["updatable"] = bool(_ver_tuple(latest) > _ver_tuple(cur_num))
             if not result["updatable"]:
                 result["note"] = "已是最新版本"
-    elif "winget" in cmd:
+    elif os.name == "nt" and "winget" in cmd:
         m = re.search(r"--id\s+([A-Za-z0-9._-]+)", cmd)
         wid = m.group(1) if m else None
         if not wid:

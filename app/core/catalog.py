@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import sys
 import threading
 
 from . import paths
@@ -216,6 +217,18 @@ CONFIG_PATCH = {
 }
 
 
+# 安装命令平台修正（{id: (install, upgrade)}）：仅非 Windows 套用。winget 是
+# Windows 包管理器、py 启动器 Windows 独有，这两类命令在 macOS/Linux 上必失败
+# ——load() 幂等改写为等价的 npm/pip 渠道（与 CONFIG_PATCH 同策略：覆盖无风险，
+# 旧数据不修正的话每次点安装/升级都注定失败）。
+INSTALL_PATCH_NONWIN = {
+    "claude-code": ("npm install -g @anthropic-ai/claude-code",
+                    "npm install -g @anthropic-ai/claude-code@latest"),
+    "aider": ("python3 -m pip install -U aider-chat",
+              "python3 -m pip install -U aider-chat"),
+}
+
+
 def npm_pkg_name(cmd):
     """从 npm 安装命令里取包名（支持 @scope/name@latest）。
 
@@ -289,6 +302,15 @@ def _apply_config_patch(entries):
             e["config"] = dict(patch)
 
 
+def _apply_install_patch(entries):
+    if sys.platform == "win32":
+        return
+    for e in entries:
+        patch = INSTALL_PATCH_NONWIN.get(e.get("id"))
+        if patch:
+            e["install"], e["upgrade"] = patch
+
+
 def _merge_new_defaults(entries):
     """把内置默认里「新增的」条目补进已加载清单（同 id 已存在则原样保留）。
 
@@ -321,6 +343,7 @@ def load(force=False):
         _apply_resume_patch(entries)
         _apply_launch_patch(entries)
         _apply_config_patch(entries)
+        _apply_install_patch(entries)
         _CACHE["entries"] = entries
         return entries
 

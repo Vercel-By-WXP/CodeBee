@@ -72,6 +72,13 @@ def _relnotes(readme):
     return m.group(1).strip() if m else ""
 
 
+def _npm_argv(*args):
+    """npm 命令 argv：Windows 的 npm 是 .cmd 垫片须经 cmd /c；POSIX 直接跑。"""
+    if os.name == "nt":
+        return ["cmd", "/c", "npm"] + list(args)
+    return ["npm"] + list(args)
+
+
 def _npm_meta():
     """npm view <pkg> --json；返回 (latest, relnotes, err)。
 
@@ -79,7 +86,7 @@ def _npm_meta():
     GitHub 连通性），展示「新版本更新内容」用。部分 npm 版本 --json 不带
     readme 字段，此时回退到 `npm view <pkg> readme` 纯文本再提取。"""
     r = runner.run_process(
-        argv=["cmd", "/c", "npm", "view", _PKG_NAME, "--json"], timeout=60)
+        argv=_npm_argv("view", _PKG_NAME, "--json"), timeout=60)
     if not r["ok"]:
         return "", "", (r["stderr"] or r["stdout"] or "")[-200:] or "npm 命令失败"
     ver, notes = "", ""
@@ -95,7 +102,7 @@ def _npm_meta():
         ver = m.group(0) if m else ""
     if ver and not notes:
         r2 = runner.run_process(
-            argv=["cmd", "/c", "npm", "view", _PKG_NAME, "readme"], timeout=60)
+            argv=_npm_argv("view", _PKG_NAME, "readme"), timeout=60)
         if r2["ok"]:
             notes = _relnotes(r2["stdout"] or "")
     return ver, notes, ("" if ver else "npm 输出无法解析")
@@ -164,7 +171,7 @@ def apply_upgrade():
 def run_upgrade(run_id, log_path):
     """worker 线程里执行升级命令（run/step 生命周期由 jobs 层管）。"""
     res = runner.run_process(
-        argv=["cmd", "/c", "npm", "install", "-g", _PKG_NAME + "@latest"],
+        argv=_npm_argv("install", "-g", _PKG_NAME + "@latest"),
         cwd=str(paths.ROOT), timeout=900, log_path=log_path)
     if res["ok"]:
         with _LOCK:  # 装完即过期查新缓存，重启后自然拿到新版本

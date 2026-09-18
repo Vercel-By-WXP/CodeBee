@@ -1,0 +1,4 @@
+# 跨平台换行钉死：sh 脚本必须 LF（CRLF 会让 macOS/Linux 报坏解释器），
+# bat 必须 CRLF；其余文本随 core.autocrlf。
+*.sh text eol=lf
+*.bat text eol=crlf
