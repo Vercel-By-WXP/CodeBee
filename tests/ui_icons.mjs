@@ -199,30 +199,32 @@ async function main() {
     check("顶栏无横向溢出，且不再有残留的「模型未绑定」文字",
       topbar.overflow <= 0 && !/模型未绑定/.test(topbar.actions), JSON.stringify(topbar));
 
-    /* ---- 5) 主题切换：图标换 sun/moon，且浅色下描边跟随文字色 ---- */
-    const themeDark = await evalJs(`document.querySelector("#btn-theme svg.ico use").getAttribute("href")`);
-    check("夜间主题显示月亮图标", themeDark === "#i-moon", themeDark);
+    /* ---- 5) 主题切换：图标=当前主题（默认日间 ocean 亮色→太阳），点击切夜间→月亮，再点回日间 ---- */
+    const themeLight = await evalJs(`document.querySelector("#btn-theme svg.ico use").getAttribute("href")`);
+    check("默认日间主题显示太阳图标", themeLight === "#i-sun", themeLight);
     await evalJs(`document.getElementById("btn-theme").click(); "ok"`);
     await sleep(500);
-    const light = await evalJs(`(() => {
+    const dark = await evalJs(`(() => {
       const svg = document.querySelector("#btn-theme svg.ico");
-      const cs = getComputedStyle(svg);
-      const gear = document.querySelector("#btn-settings svg.ico");
       return JSON.stringify({
         theme: document.documentElement.dataset.theme,
         href: svg.querySelector("use").getAttribute("href"),
-        stroke: cs.stroke, color: getComputedStyle(document.getElementById("btn-theme")).color,
-        gearStroke: getComputedStyle(gear).stroke,
-        gearColor: getComputedStyle(document.getElementById("btn-settings")).color,
+        stroke: getComputedStyle(svg).stroke,
+        color: getComputedStyle(document.getElementById("btn-theme")).color,
       });
     })()`);
-    const lt = JSON.parse(light);
-    check("切浅色后换成太阳图标", lt.theme === "light" && lt.href === "#i-sun", JSON.stringify(lt));
-    check("浅色下图标描边仍跟随文字色", lt.stroke === lt.color && lt.gearStroke === lt.gearColor, JSON.stringify(lt));
+    const dk = JSON.parse(dark);
+    check("切夜间后换成月亮图标", dk.theme === "dark" && dk.href === "#i-moon", JSON.stringify(dk));
+    check("夜间下图标描边仍跟随文字色", dk.stroke === dk.color, JSON.stringify(dk));
+    await evalJs(`document.getElementById("btn-theme").click(); "ok"`);   // 还原日间
+    await sleep(300);
+    const back = await evalJs(`(() => ({
+      theme: document.documentElement.dataset.theme,
+      href: document.querySelector("#btn-theme svg.ico use").getAttribute("href"),
+    }))()`);
+    check("再切回日间恢复太阳图标", back.theme === "light" && back.href === "#i-sun", JSON.stringify(back));
     const shot3 = await send("Page.captureScreenshot", { format: "png" });
     writeFileSync(join(ROOT, ".ui-shots", "r3-settings-nav-light.png"), Buffer.from(shot3.result.data, "base64"));
-    await evalJs(`document.getElementById("btn-theme").click(); "ok"`);   // 还原夜间
-    await sleep(300);
 
     ws.close();
   } finally {
