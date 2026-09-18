@@ -1413,6 +1413,8 @@ def _tpl(task, key, default):
 
 BIBLE_FILE = "story-bible.md"
 _BIBLE_MAX_CHARS = 20000
+MODULES_FILE = "plot-modules.md"
+_MODULES_MAX_CHARS = 12000
 
 # 评审视角播种（dev-3.0 式 bug hunters）：N 个评审各领一个深挖镜头，
 # 避免全员盯着同一处。按评审序号取模分配——同一评审每轮同一镜头，
@@ -1440,6 +1442,23 @@ def _story_bible(workdir):
         return ""
     return ("## 故事圣经（story-bible.md：人物/世界观/伏笔台账，本书一切写作与评审以此为准，"
             "与其冲突处以圣经为准）\n\n" + txt)
+
+
+def _plot_modules(workdir):
+    """剧情模块库（oh-story 拆文沉淀式）：工作目录里的 plot-modules.md
+    （可复用的桥段/冲突/爽点/名场面素材模块），作者手工维护，每章起草与
+    评审前自动注入。不存在/为空返回 ""——约定式功能，零配置零噪音。"""
+    p = os.path.abspath(os.path.join(str(workdir or ""), MODULES_FILE))
+    if not _inside(workdir, p) or not os.path.isfile(p):
+        return ""
+    try:
+        txt = _read_text_any_enc(p)[:_MODULES_MAX_CHARS].strip()
+    except OSError:
+        return ""
+    if not txt:
+        return ""
+    return ("## 剧情模块库（plot-modules.md：可复用的桥段/冲突/爽点素材模块，"
+            "鼓励化用，不要照抄原句）\n\n" + txt)
 
 
 def _critic_lens(critics, agent):
@@ -1642,6 +1661,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     start = int(serial.get("start_chapter") or 1)
     # 故事圣经：工作目录里的 story-bible.md，整个 run 内字节稳定（前缀缓存友好）
     bible = _story_bible(workdir)
+    # 剧情模块库：plot-modules.md（拆文沉淀的可复用素材模块）并入同一注入块，
+    # 同样要求 run 内字节稳定；无模块库时零噪音
+    mods = _plot_modules(workdir)
+    if mods:
+        bible = (bible + "\n\n" + mods) if bible else mods
 
 
     def crit_prompt_for(text, note=""):

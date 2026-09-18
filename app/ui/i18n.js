@@ -285,6 +285,7 @@
     "可选": "Optional",
     "人物、世界观、主线冲突、伏笔和不能违背的设定；会在开跑前写入 story-bible.md": "Characters, world rules, main conflict, foreshadowing, and non-negotiable canon; saved to story-bible.md before the run starts",
     "连载任务会在每章起草与评审时自动注入；工作目录已有 story-bible.md 时请留空，避免覆盖已有设定。": "Serial tasks inject it into every drafting and review step; leave this blank when the workdir already has story-bible.md to avoid overwriting existing canon.",
+    "连载任务会在每章起草与评审时自动注入；工作目录已有 story-bible.md 时请留空，避免覆盖已有设定。另可放 plot-modules.md 剧情模块库（拆文沉淀的桥段/爽点素材，每章自动注入）。": "Serial tasks inject it into every drafting and review step; leave this blank when the workdir already has story-bible.md to avoid overwriting existing canon. You can also add plot-modules.md (a reusable scene/trope library) — it's injected into every chapter too.",
     "在岗": "busy",
     "全部空闲": "all idle",
     "工作中": "working",
