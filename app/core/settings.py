@@ -14,8 +14,11 @@ _FILE = paths.DATA_DIR / "settings.json"
 # default_workdir 为空表示未自定义，用 builtin_workdir() 回落；
 # telemetry_errors：匿名错误回传开关（默认开；关掉后版本 ping/错误上传/诊断包遥测部分全部停发，
 # 「导出诊断包」是用户手动操作不受此开关限制）
+# publish_daily_cap / publish_fail_streak：自动发布护栏——每任务每平台每日
+# 成功发章上限、平台连续失败几次后暂停自动发布（publish/auto.py 读取）
 DEFAULTS = {"max_concurrent_jobs": 3, "default_workdir": "", "hooks_token": "",
-            "telemetry_errors": True}
+            "telemetry_errors": True, "publish_daily_cap": 10,
+            "publish_fail_streak": 3}
 MIN_WORKERS, MAX_WORKERS = 1, 6
 
 
@@ -84,6 +87,16 @@ def save(patch):
             cur["hooks_token"] = str(patch.get("hooks_token") or "").strip()[:128]
         if "telemetry_errors" in patch:
             cur["telemetry_errors"] = bool(patch.get("telemetry_errors"))
+        if "publish_daily_cap" in patch:
+            try:
+                cur["publish_daily_cap"] = max(1, min(50, int(patch.get("publish_daily_cap"))))
+            except (TypeError, ValueError):
+                return cur, "publish_daily_cap 必须是 1-50 的整数"
+        if "publish_fail_streak" in patch:
+            try:
+                cur["publish_fail_streak"] = max(1, min(10, int(patch.get("publish_fail_streak"))))
+            except (TypeError, ValueError):
+                return cur, "publish_fail_streak 必须是 1-10 的整数"
         _FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = _FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")

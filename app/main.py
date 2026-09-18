@@ -334,6 +334,23 @@ class Handler(BaseHTTPRequestHandler):
                 if not task:
                     return self._json(404, {"error": "not found"})
                 return self._json(200, {"book_meta": task.get("book_meta") or {}})
+            if path == "/api/publish":
+                # 一键发布：平台连接状态 + 最近台账（详情页发布面板）
+                from core.publish import manager as pub
+                view = pub.view()
+                view["history"] = pub.history(limit=30)
+                return self._json(200, view)
+            m = re.match(r"^/api/publish/task/([^/]+)/history$", path)
+            if m:
+                from core.publish import manager as pub
+                from core.publish import ledger as pub_ledger
+                return self._json(200, {"history": pub.history(task_id=m.group(1), limit=50),
+                                        "books": pub_ledger.load_books().get(m.group(1)) or {}})
+            m = re.match(r"^/api/publish/task/([^/]+)/pending$", path)
+            if m:
+                # 自动发布视图：待发清单统计 + 护栏状态 + 批量发布进度
+                from core.publish import auto as pub_auto
+                return self._json(200, pub_auto.status(m.group(1)))
             m = re.match(r"^/api/tasks/([^/]+)/git$", path)
             if m:
                 # GIT 工作台全貌（详情页「版本」页签）：仓库状态聚合 + 任务隔离态
@@ -561,6 +578,15 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/tasks/([^/]+)/book-meta$", path)
         if m:
             return self._api_book_meta_generate(m.group(1))
+        m = re.match(r"^/api/publish/(fanqie|qimao)/(connect|disconnect|probe)$", path)
+        if m:
+            return self._api_publish_platform_op(m.group(1), m.group(2))
+        m = re.match(r"^/api/publish/task/([^/]+)/(create-book|chapter)$", path)
+        if m:
+            return self._api_publish_task_op(m.group(1), m.group(2))
+        m = re.match(r"^/api/publish/task/([^/]+)/publish-all$", path)
+        if m:
+            return self._api_publish_auto(m.group(1))
         m = re.match(r"^/api/tasks/([^/]+)/(git-merge|git-discard)$", path)
         if m:
             return self._api_git_verdict(m.group(1), m.group(2))
@@ -1001,6 +1027,72 @@ class Handler(BaseHTTPRequestHandler):
         threading.Thread(target=bookmeta.generate_async, daemon=True,
                          name="book-meta-%s" % platform,
                          args=(task_id, platform, author)).start()
+        return self._json(200, {"ok": True, "started": True})
+
+    def _api_publish_platform_op(self, platform, op):
+        """平台会话操作：connect 开浏览器等扫码 / disconnect 关 / probe 探测表单。"""
+        from core.publish import manager as pub
+        if op == "connect":
+            ok, err = pub.connect(platform)
+        elif op == "disconnect":
+            ok, err = pub.disconnect(platform), ""
+        else:
+            ok, err = pub.probe_form_async(platform)
+        if not ok:
+            return self._json(400, {"error": err or "操作失败"})
+        return self._json(200, {"ok": True})
+
+    def _api_publish_task_op(self, task_id, op):
+        """发布动作：create-book（按作品信息建书）/ chapter（发一章）。
+
+        章节文件必须在任务工作目录内（防穿越，同 /api/dir/file 口径）；
+        auto_submit=false 时流程填好表单即停，提交权留给用户人工确认。"""
+        from pathlib import Path as _P
+        from core import store
+        from core.publish import manager as pub
+        task = store.get_task(task_id)
+        if not task:
+            return self._json(404, {"error": "任务不存在"})
+        body = self._body() or {}
+        platform = (body.get("platform") or "").strip()
+        if platform not in ("fanqie", "qimao"):
+            return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
+        auto_submit = bool(body.get("auto_submit"))
+        if op == "create-book":
+            ok, err = pub.create_book_async(task_id, platform, auto_submit)
+        else:
+            f = str(body.get("file") or "").strip()
+            if not f:
+                return self._json(400, {"error": "file 必填（章节文件路径）"})
+            wd = task.get("workdir") or ""
+            try:
+                fp = _P(f) if _P(f).is_absolute() else _P(wd) / f
+                fp = fp.resolve()
+                fp.relative_to(_P(wd).resolve())
+            except (OSError, ValueError):
+                return self._json(400, {"error": "章节文件必须在任务工作目录内"})
+            ok, err = pub.upload_chapter_async(task_id, platform, str(fp), auto_submit)
+        if not ok:
+            return self._json(400, {"error": err or "操作失败"})
+        return self._json(200, {"ok": True, "started": True})
+
+    def _api_publish_auto(self, task_id):
+        """批量发布全部待发章节（publish/auto.py）。
+
+        护栏（每日上限/连败退避/幂等/单飞）在 auto 层，每章发起前复查；
+        auto_submit 默认 false——每章表单填好后停，提交权留给用户。"""
+        from core import store
+        from core.publish import auto as pub_auto
+        if not store.get_task(task_id):
+            return self._json(404, {"error": "任务不存在"})
+        body = self._body() or {}
+        platform = (body.get("platform") or "").strip()
+        if platform not in ("fanqie", "qimao"):
+            return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
+        ok, err = pub_auto.publish_pending_async(
+            task_id, platform, auto_submit=bool(body.get("auto_submit")))
+        if not ok:
+            return self._json(400, {"error": err or "操作失败"})
         return self._json(200, {"ok": True, "started": True})
 
     def _api_task_side(self, task_id):
@@ -1817,6 +1909,13 @@ def main():
     n_bo = bookmeta.recover_orphans()  # 作品信息生成线程同样会被重启杀掉，遗留 running 收尸
     if n_bo:
         print("[CodeBee] 崩溃恢复：%d 条作品信息生成中断标记为 failed（可点重试）" % n_bo)
+    try:
+        from core.publish import manager as publish_mgr
+        n_pb = publish_mgr.recover_orphans()  # 发布线程同款收尸：waiting_login/busy 改判 error
+        if n_pb:
+            print("[CodeBee] 崩溃恢复：%d 条平台发布中断标记为可重试" % n_pb)
+    except Exception:
+        pass
     try:
         from core import settings_schema
         settings_schema.register_default_namespaces()  # budget/cascade/compaction 配置就绪（幂等）

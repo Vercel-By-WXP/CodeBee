@@ -56,6 +56,7 @@ TASKS_DIR = DATA_DIR / "tasks"
 RUNS_DIR = DATA_DIR / "runs"
 USAGE_DIR = DATA_DIR / "usage"
 ERRORS_DIR = DATA_DIR / "errors"
+PUBLISH_DIR = DATA_DIR / "publish"  # 一键发布：台账/作品登记/流程选择器覆盖/浏览器 profile
 CATALOG_FILE = DATA_DIR / "catalog.json"
 ENABLED_FILE = DATA_DIR / "orchestration.json"
 
