@@ -5049,3 +5049,24 @@ body.welcome-open { overflow: hidden; }
   font-size: 10.5px; color: var(--muted); opacity: .9;
   border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; line-height: 16px;
 }
+
+/* ---------------- 一键发布：平台卡内的发布行（追加于文件尾，防并行重排） ---------------- */
+.bm-pub {
+  margin: 0 18px 14px; padding: 10px 12px 8px; border-top: 1px dashed var(--border);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+}
+.pb-badge {
+  font-size: 11px; line-height: 18px; padding: 0 9px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
+}
+.pb-badge.pb-st-ok { color: #1d7a3e; border-color: color-mix(in srgb, #1d7a3e 35%, transparent); }
+.pb-badge.pb-st-wait { color: #9a6b00; border-color: color-mix(in srgb, #9a6b00 35%, transparent); }
+.pb-badge.pb-st-busy { color: #1f5fbf; border-color: color-mix(in srgb, #1f5fbf 35%, transparent); }
+.pb-badge.pb-st-err { color: #c23b3b; border-color: color-mix(in srgb, #c23b3b 40%, transparent); }
+.pb-book { font-size: 12px; color: var(--muted); max-width: 220px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-err { width: 100%; font-size: 12px; color: #c23b3b; word-break: break-all; }
+.pb-chapters { width: 100%; display: flex; flex-direction: column; gap: 4px;
+  margin-top: 4px; max-height: 240px; overflow: auto; }
+.pb-hint { font-size: 11.5px; color: var(--muted); }
+.pb-ch-item { text-align: left; justify-content: flex-start; font-size: 12.5px; }

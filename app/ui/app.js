@@ -3746,6 +3746,7 @@ function renderBookMetaPanel(task) {
       bmStatusChip(st) + '<span class="flex1"></span>' + action + "</div>";
     return '<div class="bm-card st-' + esc(st || "new") + '">' + head + body +
       (entry.source && st === "done" ? '<div class="bm-src">' + esc(t("来源：") + entry.source) + "</div>" : "") +
+      pbBlock(task, p.id) +
       "</div>";
   }).join("") + "</div>";
   box.classList.remove("hidden");
@@ -3758,6 +3759,7 @@ function renderBookMetaPanel(task) {
     badge.textContent = anyRun ? "●" : (n ? n + "/" + BOOKMETA_PLATFORMS.length : "");
     badge.className = "rd-badge" + (badge.textContent ? (anyRun ? " live" : "") : " hidden");
   }
+  pbSyncState(task);   // 发布状态独立于 SSE（/api/publish），节流拉取+变化重渲染
 }
 
 window.bmGen = async function (taskId, platform) {
@@ -3773,6 +3775,198 @@ window.bmCopyBtn = function (btn) {
   copyText(btn.dataset.text || "");
   toast(t("已复制：") + (btn.dataset.label || ""));
 };
+
+/* ---------------- 一键发布（bookmeta 分区内每平台卡的发布行） ----------------
+ * 状态独立于 SSE（/api/publish 轮询，5s 节流；waiting_login/busy 靠主轮询周期
+ * 自然刷新）。Phase 1 纪律：所有提交动作 auto_submit=false——表单填好后停，
+ * 提交权留给用户在浏览器窗口里人工确认（建书/发章皆是）。 */
+const PB_ST = {
+  none: ["未连接", "pb-st-none"], waiting_login: ["等扫码…", "pb-st-wait"],
+  connected: ["已连接", "pb-st-ok"], busy: ["操作中…", "pb-st-busy"],
+  error: ["出错", "pb-st-err"],
+};
+
+function pbBlock(task, platform) {
+  const ps = (S.pubState && S.pubState.platforms && S.pubState.platforms[platform]) || {};
+  const st = ps.status || "none";
+  const [label, cls] = PB_ST[st] || PB_ST.none;
+  const books = (S.pubTaskInfo && S.pubTaskInfo.books) || {};
+  const book = books[platform];
+  const hist = (S.pubTaskInfo && S.pubTaskInfo.history) || [];
+  const nCh = hist.filter((r) => r.platform === platform && r.action === "upload_chapter" && r.ok).length;
+  const busy = st === "busy";
+  let btns = "";
+  if (st === "none" || st === "error" || st === "waiting_login") {
+    btns += '<button class="ghost" onclick="pbConnect(\'' + platform + '\')">' +
+      (st === "error" ? t("重连") : t("连接平台")) + "</button>";
+  } else if (st === "connected") {
+    btns += '<button class="ghost" onclick="pbDisconnect(\'' + platform + '\')" title="' + esc(t("关掉该平台的浏览器窗口（登录态保留）")) + '">' + t("断开") + "</button>";
+  }
+  btns += '<button class="ghost" onclick="pbProbe(\'' + platform + '\')" title="' +
+    esc(t("dump 平台表单结构（校准自动填表用）")) + '">' + t("探测") + "</button>";
+  if (book) {
+    btns += '<span class="pb-book" title="' + esc(t("已在此平台创建的作品")) + '">' +
+      esc(t("已建书：") + (book.title || "")) + "</span>";
+    btns += ' <button class="primary" ' + (busy ? "disabled" : "") +
+      ' onclick="pbUploadChapter(\'' + esc(task.id) + "', '" + platform + '\')">' +
+      t("发一章") + (nCh ? "（已发 " + nCh + "）" : "") + "</button>";
+    // 批量发布（publish/auto.py）：待发清单 + 护栏 + 进度都来自 /pending 视图
+    const au = (((S.pubAuto && S.pubAuto.books) || [])
+      .find((b) => b.platform === platform)) || {};
+    const run = (S.pubAuto && S.pubAuto.running &&
+      S.pubAuto.running.platform === platform) ? S.pubAuto.running : null;
+    if (run && run.status === "running") {
+      btns += '<span class="pb-book">' + esc(t("自动发布中 ") + run.done + "/" + run.total) + "</span>";
+    } else if (au.pending > 0) {
+      btns += ' <button class="ghost" ' + (busy || !au.guard_ok ? "disabled" : "") +
+        ' title="' + esc(au.guard_ok ? t("按章号顺序逐章发布；每章填好表单停一次，由你人工提交") : au.guard_reason || "") + '"' +
+        ' onclick="pbPublishAll(\'' + esc(task.id) + "', '" + platform + '\')">' +
+        t("发布全部待发") + "（" + au.pending + "）</button>";
+    }
+    if (au.pending > 0 && !au.guard_ok) {
+      btns += '<div class="pb-err">' + esc(au.guard_reason || t("护栏拦截")) + "</div>";
+    }
+    if (run && run.status !== "running") {
+      const doneLine = run.status === "done"
+        ? t("自动发布完成：") + run.done + "/" + run.total
+        : t("自动发布中断：") + (run.error || "");
+      btns += '<div class="' + (run.status === "done" ? "pb-hint" : "pb-err") + '">' +
+        esc(doneLine + "（" + (run.at || "") + "）") + "</div>";
+    }
+  } else {
+    btns += '<button class="primary" ' + (busy ? "disabled" : "") +
+      ' onclick="pbCreateBook(\'' + esc(task.id) + "', '" + platform + '\')">' + t("创建作品") + "</button>";
+  }
+  return '<div class="bm-pub">' +
+    '<span class="pb-badge ' + cls + '">' + esc(t(label)) + "</span>" +
+    btns +
+    (st === "error" && ps.error ? '<div class="pb-err">' + esc(ps.error) + "</div>" : "") +
+    '<div class="pb-chapters hidden" id="pb-ch-' + platform + '"></div>' +
+    "</div>";
+}
+
+let _pbTimer = 0;
+function pbSyncState(task) {
+  clearTimeout(_pbTimer);
+  _pbTimer = setTimeout(async () => {
+    const now = Date.now();
+    if (now - (S.pubFetchAt || 0) < 5000) return;   // 节流：主轮询不每次都打 /api/publish
+    S.pubFetchAt = now;
+    let sig = "";
+    try {
+      const v = await api("/api/publish");
+      S.pubState = v;
+      sig += JSON.stringify(v.platforms || {});
+    } catch (e) { return; }
+    try {
+      const ti = await api("/api/publish/task/" + encodeURIComponent(task.id) + "/history");
+      S.pubTaskInfo = ti;
+      sig += "#" + JSON.stringify(ti.books || {}) + "#" + (ti.history || []).length;
+    } catch (e) { /* 任务级失败不阻塞平台状态 */ }
+    try {
+      // 批量发布视图（待发数/护栏/进度）——进行中时靠本节流轮询自然刷新
+      const au = await api("/api/publish/task/" + encodeURIComponent(task.id) + "/pending");
+      S.pubAuto = au;
+      sig += "@" + JSON.stringify(au.books || {}) + "@" + JSON.stringify(au.running || {});
+    } catch (e) { /* 视图缺失（老服务）不阻塞 */ }
+    if (sig !== (S._pbSig || "") && !$("rd-bookmeta").classList.contains("hidden")) {
+      S._pbSig = sig;
+      renderBookMetaPanel(task);
+    } else S._pbSig = sig;
+  }, 120);
+}
+
+window.pbConnect = async function (platform) {
+  try {
+    await api("/api/publish/" + platform + "/connect", { method: "POST", body: "{}" });
+    toast(t("已打开浏览器——请在窗口里登录平台，登录后这里自动变为「已连接」"));
+  } catch (e) { toast(t("连接失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbDisconnect = async function (platform) {
+  try { await api("/api/publish/" + platform + "/disconnect", { method: "POST", body: "{}" }); }
+  catch (e) { toast(t("断开失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbProbe = async function (platform) {
+  try {
+    await api("/api/publish/" + platform + "/probe", { method: "POST", body: "{}" });
+    toast(t("已开始探测，结果记录在发布台账（data/publish）里"));
+  } catch (e) { toast(t("探测失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbCreateBook = async function (taskId, platform) {
+  if (!confirm(t("将用生成的作品信息在平台自动填建书表单。填好后会停在最后一步，由你在浏览器里人工点提交。继续？"))) return;
+  try {
+    await api("/api/publish/task/" + encodeURIComponent(taskId) + "/create-book",
+      { method: "POST", body: JSON.stringify({ platform }) });
+    toast(t("正在自动填写建书表单…（完成后请在浏览器里确认提交）"));
+  } catch (e) { toast(t("建书失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbUploadChapter = async function (taskId, platform) {
+  const box = $("pb-ch-" + platform);
+  if (!box) return;
+  if (!box.classList.contains("hidden")) { box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  box.innerHTML = '<div class="pb-loading">' + esc(t("正在列出章节文件…")) + "</div>";
+  let wd = "";
+  try { const tk = ((S.state || {}).tasks || []).find((x) => x.id === taskId); wd = (tk && tk.workdir) || ""; } catch (e) { /* 兜底空 */ }
+  if (!wd) { box.innerHTML = '<div class="pb-err">' + esc(t("找不到任务工作目录")) + "</div>"; return; }
+  let files = [];
+  try {
+    const r = await api("/api/dir/scan?path=" + encodeURIComponent(wd));
+    files = (r.files || []).filter((f) => /\.md$/i.test(f.name || "") &&
+      !/^作品信息/.test((f.name || "").split("/").pop()));
+  } catch (e) {
+    box.innerHTML = '<div class="pb-err">' + esc(t("列文件失败：") + e.message) + "</div>";
+    return;
+  }
+  if (!files.length) { box.innerHTML = '<div class="pb-err">' + esc(t("工作目录里没有 .md 章稿")) + "</div>"; return; }
+  files.sort((a, b) => (a.name > b.name ? 1 : -1));
+  box.innerHTML = '<div class="pb-hint">' + esc(t("选一章发送（表单填好后停，人工确认提交）；已成功发过的章会被台账拦下：")) + "</div>" +
+    files.map((f) =>
+      '<button class="ghost pb-ch-item" onclick="pbSendChapter(\'' + esc(taskId) + "', '" + platform +
+      '\',\'' + esc(f.name) + '\')" title="' + esc(f.name) + '">' + esc(f.name.split("/").pop()) + "</button>"
+    ).join("");
+};
+
+window.pbSendChapter = async function (taskId, platform, relName) {
+  if (!confirm(t("将把《" + relName + "》填进平台章节编辑器，填好后由你人工提交。继续？"))) return;
+  try {
+    await api("/api/publish/task/" + encodeURIComponent(taskId) + "/chapter",
+      { method: "POST", body: JSON.stringify({ platform, file: relName }) });
+    toast(t("正在填写章节…（完成后请在浏览器里确认提交）"));
+    const box = $("pb-ch-" + platform);
+    if (box) box.classList.add("hidden");
+  } catch (e) { toast(t("发章失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbPublishAll = async function (taskId, platform) {
+  const au = (((S.pubAuto && S.pubAuto.books) || [])
+    .find((b) => b.platform === platform)) || {};
+  if (!au.pending) return;
+  if (!confirm(t("将按章号顺序发布全部待发章节（共 " + au.pending +
+    " 章）。每章填好表单停一次，由你在浏览器里人工提交；护栏（每日上限/连续失败暂停）生效。继续？"))) return;
+  try {
+    await api("/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
+      { method: "POST", body: JSON.stringify({ platform }) });
+    toast(t("自动发布已开始——每章填好后请在浏览器窗口里确认提交"));
+  } catch (e) { toast(t("自动发布失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+function pbKick() {
+  const key = detailSideTaskKey();
+  if (!key) return;
+  const tk = ((S.state || {}).tasks || []).find((x) => x.id === key);
+  if (tk) { S.pubFetchAt = 0; pbSyncState(tk); }
+}
 
 /* ---------------- 详情页任务级 side 数据（检查器让位后的主栏自给） ----------------
  * 检查器收进列表上下文后，任务累计统计与 git 实时状态由详情页自己轮询
