@@ -1810,6 +1810,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         critic_sids = {}   # §07 T1.1：每评审的会话 id（第 2 轮复用，前缀走缓存读）
         race_cj = None     # 变体赛马已评审胜者：直接作为第 1 轮结果，不重评
         race_scored = 0
+        race_losers = []   # 赛马败稿文本（收卷前留存）：首轮修订时提炼败者精华
 
         reuse = i in done_set and os.path.exists(os.path.join(workdir, ch_file))
         if reuse:
@@ -2035,6 +2036,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                          error="第 %d 章赛马收卷失败: %r" % (i, e), ended_at=_now())
                         return
                 for v in scored_variants[1:]:
+                    # 败者精华：删除前留存文本，供首轮修订提炼（懒调用）
+                    try:
+                        race_losers.append({
+                            "variant": v["variant"],
+                            "text": (_read_text_any_enc(os.path.join(workdir, v["file"])) or "")[:8000]})
+                    except OSError:
+                        pass
                     try:
                         os.remove(os.path.join(workdir, v["file"]))
                     except OSError:
@@ -2087,6 +2095,27 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             crit_lines = ["- %s：%.1f（章阈值 %.1f）" % (d, means[d], threshold_ch) for d in dims]
             crit_lines += ["- [%s] %s" % (x.get("dim", "?"), str(x.get("note", ""))[:140])
                            for x in majors]
+            if rnd == 1 and race_losers and impl.get("mode") == "real":
+                # 赛马败者精华回收（连载版）：一次选择器调用提炼落选稿优点，
+                # 与评审意见一并喂给首轮修订；失败静默不影响修订
+                try:
+                    cands = "### 胜者稿（已选定）\n\n%s" % _read_chapter(workdir, i)[:8000]
+                    for li, lo in enumerate(race_losers, 1):
+                        cands += "\n\n### 落选稿 %d\n\n%s" % (li, lo["text"])
+                    sel_prompt = (BESTOF_SELECTOR_PROMPT
+                                  .replace("__GOAL__", task["goal"])
+                                  .replace("__CANDIDATES__", cands))
+                    sel = _run_step(run_id, "race-select-c%d" % i,
+                                    modelhub.bind_agent(critics[0] if critics else impl, difficulty),
+                                    sel_prompt, step_wd, readonly=True, ev=ev,
+                                    note="赛马败者精华提炼")
+                    _selcj = runner.extract_json(sel.get("text") or "")
+                    _imp = str((_selcj or {}).get("improvements") or "").strip()
+                    if _imp:
+                        crit_lines.append("- [赛马精华] 终审从落选候选稿提炼出值得吸收的优点：%s"
+                                          % _imp[:400])
+                except Exception:
+                    pass
             if impl.get("mode") == "mock":
                 step, log_abs = store.add_step(run_id, "revise-c%d" % i, impl["id"],
                                                impl.get("label"))
