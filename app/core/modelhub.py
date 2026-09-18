@@ -1930,7 +1930,16 @@ def bind_agent(agent, difficulty="default"):
     """按绑定生成应用了供应商/模型覆盖的 agent 副本；无绑定时原样返回。
 
     binding_configured：该 CLI 是否配过绑定链（配没配与解析结果分开带出——
-    执行层死链闸门只对「配过但全死」判失败，没配过的回落 CLI 本机默认）。"""
+    执行层死链闸门只对「配过但全死」判失败，没配过的回落 CLI 本机默认）。
+
+    所有真实派发都经此函数（含死链补位），入口顺带做运行前配置同步防线：
+    绑定换供应商后 CLI 自家配置不会自愈（2026-09-18 opencode 钉死讯飞旧端点
+    案），这里把当前链首落进 CLI 自家配置。失败静默，不拦派发。"""
+    try:
+        from . import manager
+        manager.sync_runtime_config(agent)
+    except Exception:
+        pass
     rid = agent.get("id")
     b = bindings().get(rid) or bindings().get(
         "codex-cli" if rid == "codex" else "claude-code") or {}

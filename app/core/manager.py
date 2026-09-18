@@ -1429,6 +1429,55 @@ def _sync_launch_model(entry, binding):
     return notes
 
 
+# kind（runner 调用族）→ catalog 条目 id：flow/编排智能体的 id 常是业务名
+# （draft-c12 等），CLI 身份在 kind 里；目录型智能体的 id 就是条目 id。
+_KIND_ENTRY = {"codex": "codex-cli", "claude": "claude-code",
+               "qwen": "qwencode", "opencode": "opencode", "aider": "aider"}
+_RUNTIME_SYNC = {"fps": {}, "lock": threading.Lock()}
+
+
+def sync_runtime_config(agent):
+    """运行前防线：把「CLI 绑定」页当前链首落进该 CLI 自家配置——与一键打开
+    同一套 _sync_launch_model 写盘，不改任何语义。
+
+    绑定换供应商后 CLI 自家配置不会自愈，而同步过去只发生在一键打开：
+    2026-09-18 opencode 钉死讯飞 404 旧端点案——绑定早切到云知声，起跑撞旧
+    配置 2 秒 UnknownError，3 次续跑全灭。bind_agent 入口调用本函数即全覆盖
+    （死链补位也在覆盖内：_dead_binding_substitute 内部同样走 bind_agent）。
+
+    指纹缓存：同绑定（模型/供应商/端点/KEY/codex 段）只写一次盘，步骤级高频
+    调用近零成本，也不与用户手工编辑配置打架（绑定没变就不动）；无绑定或
+    条目无配置段直接返回（测试空转，绝不碰真实家目录）；任何失败静默放过
+    ——防线不拦运行，配置错误会在步骤错误里现形。"""
+    try:
+        cand = [agent.get("id"), _KIND_ENTRY.get(agent.get("kind") or "")]
+        entry = None
+        for x in cand:
+            if x:
+                entry = catalog.by_id(x)
+                if entry:
+                    break
+        if entry is None or not (entry.get("config") or {}).get("path"):
+            return
+        from . import modelhub
+        binding = modelhub.resolve_binding(entry["id"]) or {}
+        model = (binding.get("model") or "").strip()
+        env = binding.get("env") or {}
+        if not model and not env:
+            return   # 没配链或链全死：没有可落的目标，绝不动用户配置
+        # 指纹取解析结果整体：env 里带端点+KEY（provider 字典不含原始 KEY，
+        # 换 KEY 必须可见），codex 段单独入纹
+        fp = (model, repr(sorted(env.items())),
+              repr(binding.get("codex_provider") or "")[:300])
+        with _RUNTIME_SYNC["lock"]:
+            if _RUNTIME_SYNC["fps"].get(entry["id"]) == fp:
+                return
+            _sync_launch_model(entry, binding)
+            _RUNTIME_SYNC["fps"][entry["id"]] = fp
+    except Exception:
+        pass
+
+
 def launch(entry, open_browser=True):
     """一键打开：web 类后台起服务并自动开浏览器；console 类新开终端窗口跑交互 TUI。
 
