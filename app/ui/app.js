@@ -60,9 +60,17 @@ function renderTypeMenu() {
     (f.builtin ? "" : '<em class="ti-tag">' + t("自定义") + "</em>") + "</span>" +
     '<span class="ti-desc">' + esc(flowDesc(f)) + "</span></span>" +
     '<svg class="ico ti-check" aria-hidden="true"><use href="#i-check"></use></svg>' +
-    "</button>").join("");
+    "</button>").join("")
+    /* 底部固定入口：管理流程替代原工具条上的「管理」按钮（简化 composer 工具行） */
+    + '<div class="type-menu-foot"><button type="button" class="type-item" onclick="manageFlowsFromMenu()">' +
+    '<span class="ti-ico" aria-hidden="true"><svg class="ico"><use href="#i-gear"></use></svg></span>' +
+    '<span class="ti-body"><span class="ti-name">' + esc(t("管理任务类型…")) + "</span></span></button></div>";
   syncTypeBtn();
 }
+window.manageFlowsFromMenu = function () {
+  toggleTypeMenu(false);
+  openFlowsManager();
+};
 
 function syncTypeBtn() {
   const sel = $("f-type");
@@ -330,126 +338,6 @@ function uiPrompt(title, value) {
     },
   }).then((ok) => ((ok && inp) ? inp.value.trim() : null));
 }
-
-/* ------------------------------------------------- 采访式向导（新建任务） */
-/* 不想面对整张表单的新用户：三问一确认——目标 → 类型 → 目录 → 预览填入。
- * 代码类流程多追问一步「验证命令」（怎么算跑通）；页序列按所选类型动态生成。
- * 向导只把答案预填进既有表单，提交/附件/评审设置全部留在表单里：
- * 不新增提交路径，质量闸门与既有测试照旧。目录浏览用表单里的「选择…」。 */
-let wiz = null;   // { page, pages, goal, type, workdir, verify }
-
-function wizardPages(type) {
-  const flow = flowById(type);
-  return ["goal", "type"].concat(
-    flow && flow.engine === "code" ? ["verify"] : [], ["workdir", "summary"]);
-}
-
-window.openTaskWizard = async function () {
-  // 冷启动时 boot 的 loadFlows 可能晚于用户点击：空了就现拉一次（autoForm 同款防御）
-  if (!S.flows || !S.flows.length) { try { await loadFlows(); } catch (e) { /* 渲染时兜底 */ } }
-  const type = (($("f-type") || {}).value) || ((S.flows || [])[0] || {}).id || "";
-  wiz = { page: 0, pages: wizardPages(type), goal: "", type,
-          workdir: (($("f-workdir") || {}).value || ""), verify: "" };
-  renderWizard();
-};
-
-window.wizardBack = function () { if (wiz && wiz.page > 0) { wiz.page--; renderWizard(); } };
-window.wizardPickType = function (id) {
-  if (!wiz) return;
-  wiz.type = id;
-  wiz.pages = wizardPages(id);   // 按新类型重排页序列（代码流程插入验证步）
-  wiz.page = 2;                  // 类型页的下一页
-  renderWizard();
-};
-
-window.wizardNext = function () {
-  if (!wiz) return;
-  const id = wiz.pages[wiz.page];
-  if (id === "goal") {
-    const v = (($("wz-goal") || {}).value || "").trim();
-    if (!v) { toast(t("目标还不能为空"), true); return; }
-    wiz.goal = v;
-    wiz.page++;
-  } else if (id === "verify") {
-    wiz.verify = (($("wz-verify") || {}).value || "").trim();
-    wiz.page++;
-  } else if (id === "workdir") {
-    wiz.workdir = (($("wz-workdir") || {}).value || "").trim();
-    wiz.page++;
-  }
-  renderWizard();
-};
-
-function wizardFoot(back) {
-  return (back ? '<button class="ghost" onclick="wizardBack()">' + esc(t("上一步")) + "</button>" : "") +
-    '<button class="primary" onclick="wizardNext()">' + esc(t("下一步")) + "</button>";
-}
-
-function renderWizard() {
-  if (!wiz) return;
-  const f = flowById(wiz.type);
-  const id = wiz.pages[wiz.page];
-  let body = "", foot = "";
-  if (id === "goal") {
-    body = '<textarea id="wz-goal" class="wz-goal" rows="4" placeholder="' +
-      esc(t("要完成什么，一句话即可")) +
-      '" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();wizardNext()}">' +
-      esc(wiz.goal) + "</textarea>";
-    foot = wizardFoot(false);
-  } else if (id === "type") {
-    body = '<div class="wz-flows">' + (S.flows || []).map((fl) =>
-      '<button type="button" class="wz-flow' + (fl.id === wiz.type ? " on" : "") +
-      '" onclick="wizardPickType(\'' + esc(fl.id) + '\')">' +
-      flowIconHtml(fl) +
-      '<span class="wz-fname">' + esc(fl.name || fl.id) + "</span>" +
-      '<span class="wz-fdesc">' + esc(flowDesc(fl)) + "</span></button>").join("") + "</div>" +
-      '<p class="hint">' + esc(t("点一个类型即选定并继续；进表单后仍可改")) + "</p>";
-    foot = wizardFoot(true);
-  } else if (id === "verify") {
-    body = '<input id="wz-verify" class="wz-input" autocomplete="off" value="' + esc(wiz.verify) +
-      '" placeholder="' + esc(t("例：npm test、pytest -q；留空=只靠 AI 评审")) +
-      '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();wizardNext()}">' +
-      '<p class="hint">' + esc(t("一条能在工作目录里跑的命令，退出码 0 即视为通过；之后可在表单改")) + "</p>";
-    foot = wizardFoot(true);
-  } else if (id === "workdir") {
-    body = '<input id="wz-workdir" class="wz-input" autocomplete="off" value="' + esc(wiz.workdir) +
-      '" placeholder="' + esc(t("留空用默认保存路径；也可稍后在表单里点「选择…」")) +
-      '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();wizardNext()}">' +
-      '<p class="hint">' + esc(t("建议给每个任务一个独立目录，产出互不覆盖")) + "</p>";
-    foot = wizardFoot(true);
-  } else {
-    body = '<div class="wz-sum">' +
-      '<div><span class="wz-k">' + esc(t("类型")) + "</span>" + esc((f && f.name) || wiz.type) + "</div>" +
-      '<div><span class="wz-k">' + esc(t("目标")) + "</span>" + esc(wiz.goal.slice(0, 120)) + "</div>" +
-      (f && f.engine === "code"
-        ? '<div><span class="wz-k">' + esc(t("验证命令")) + "</span>" +
-          esc(wiz.verify || t("留空靠 AI 评审")) + "</div>"
-        : "") +
-      '<div><span class="wz-k">' + esc(t("工作目录")) + "</span>" +
-      esc(wiz.workdir || t("默认保存路径")) + "</div></div>" +
-      '<p class="hint">' + esc(t("填入表单后可继续：加附件、选实现者、改评审设置")) + "</p>";
-    foot = '<button class="ghost" onclick="wizardBack()">' + esc(t("上一步")) + "</button>" +
-      '<button class="primary" onclick="wizardApply()">' + esc(t("填入表单")) + "</button>";
-  }
-  openModal(t("新建任务向导") + " · " + (wiz.page + 1) + "/" + wiz.pages.length, body, foot);
-  const first = $("wz-goal") || $("wz-verify") || $("wz-workdir");
-  if (first) first.focus();
-}
-
-window.wizardApply = function () {
-  if (!wiz) return;
-  closeModal();
-  const flow = flowById(wiz.type);
-  if (flow && $("f-type").value !== wiz.type) { $("f-type").value = wiz.type; onTypeChange(); }
-  $("f-goal").value = wiz.goal;
-  if (flow && flow.engine === "code") $("f-verify").value = wiz.verify || "";
-  if (wiz.workdir) $("f-workdir").value = wiz.workdir;   // 只预填本次表单，不再持久化为「下次默认」
-  S.atts = []; renderAttachChips();   // 新目标不带旧附件
-  queueGitProbe();                    // 工作目录可能变了，重新探测代码版本
-  $("f-goal").focus();
-  toast(t("已按向导预填，检查或补充后点「创建并运行」"));
-  wiz = null;
-};
 
 /* 访问令牌门（仅远程设备会碰到） */
 function showTokenGate(err) {
@@ -1077,13 +965,16 @@ function renderProvDetail() {
   html += '<details class="pd-config"><summary>' + t("编辑供应商配置（地址 / 协议 / 难度模型）") + '</summary>' +
     providerCard(p) + "</details>";
   if (p.models == null) {
-    html += '<div class="empty">' + t("尚未获取模型列表——点上方「获取模型列表」。") + '</div>';
+    html += '<div class="empty">' + t("尚未获取模型列表——点上方「获取模型列表」。") + '</div>' +
+      '<div class="hint">' + t("厂商列表接口调不通？直接手工添加模型名也能用。") + '</div>' +
+      pmAddHtml(p);
   } else {
     const kw = (S.modelFilter || {})[p.id] || "";
     html += '<div class="pm-tools">' +
       '<input id="pm-search-' + esc(p.id) + '" type="search" placeholder="' + t("按名称过滤模型…") + '" autocomplete="off"' +
       ' value="' + esc(kw) + '" oninput="filterModels(\'' + esc(p.id) + '\', this.value)">' +
-      '<span class="pm-count" id="pm-count-' + esc(p.id) + '"></span></div>';
+      '<span class="pm-count" id="pm-count-' + esc(p.id) + '"></span>' +
+      pmAddHtml(p) + '</div>';
     html += '<div id="pm-groups" class="pm-groups' + (selN ? " has-sel" : "") + '">' +
       provModelGroupsHtml(p) + "</div>";
     if (hidden.length) {
@@ -1518,6 +1409,36 @@ async function refreshAllModels() {
   setTimeout(autoRebindSoon, 8000);   // 模型列表落盘后推荐源才完整，补绑一次
 }
 
+/* 手工添加模型：有的厂商列表接口调不通（或只返回部分），直接填模型名也能进列表。
+ * 后端打 manual 标记，之后刷新即使厂商列表里没有它也不丢。 */
+function pmAddHtml(p) {
+  return '<div class="pm-add">' +
+    '<input id="pm-add-' + esc(p.id) + '" type="text" autocomplete="off" spellcheck="false"' +
+    ' placeholder="' + t("手工添加模型名（列表接口调不通时用），回车添加") + '"' +
+    ' onkeydown="pmAddKey(event, \'' + esc(p.id) + '\')">' +
+    '<button class="ghost small" title="' + esc(t("厂商列表接口调不通时，直接把模型名加进列表")) + '"' +
+    ' onclick="addModelManual(\'' + esc(p.id) + '\')">' +
+    '<svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>' + t("添加") + '</button></div>';
+}
+
+function pmAddKey(ev, pid) {
+  if (ev.key === "Enter") { ev.preventDefault(); addModelManual(pid); }
+}
+
+async function addModelManual(pid) {
+  const inp = $("pm-add-" + pid);
+  const name = ((inp && inp.value) || "").trim();
+  if (!name) { toast(t("先填模型名"), true); return; }
+  try {
+    const r = await api("/api/models/add", { method: "POST", body: JSON.stringify({ id: pid, name }) });
+    if (!r.ok) { toast(t("添加失败：") + (r.message || ""), true); return; }
+    toast(t("已添加模型 ") + name);
+    S.modelsSig = null;   // 新模型落盘后签名必变，这里主动置空确保立刻重绘
+    poll();
+    setTimeout(autoRebindSoon, 4000);   // 模型可用后推荐源更完整，补绑一次
+  } catch (e) { toast(t("添加失败：") + e.message, true); }
+}
+
 async function refreshProviderModels(id) {
   toast(t("正在获取模型列表…"));
   try {
@@ -1915,14 +1836,25 @@ const ATT_CAP_OFFICE = 24 * 1024 * 1024; // Office 文档放宽到 24MB
 function renderAttachChips() {
   const box = $("att-chips");
   if (!box) return;
-  box.innerHTML = (S.atts || []).map((a) =>
-    '<span class="att-chip" title="' + esc(a.name) + '">' +
-    '<svg class="ico"><use href="#i-paperclip"/></svg>' +
-    "<span>" + esc(a.name) + "</span>" +
-    " <i>" + fmtSize(a.size) + "</i>" +
-    '<button class="ax" title="' + esc(t("移除")) + '" onclick="removeAtt(\'' + a.id + '\')">' +
-    '<svg class="ico"><use href="#i-x"/></svg></button></span>'
-  ).join("");
+  box.innerHTML = (S.atts || []).map((a) => {
+    const name = String(a.name || "attachment");
+    const id = String(a.id || "");
+    const image = /^image\//i.test(String(a.mime || "")) ||
+      /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name);
+    const remove = '<button type="button" class="ax" data-att-remove="' + esc(id) +
+      '" title="' + esc(t("移除")) + '" aria-label="' + esc(t("移除")) + '">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></button>';
+    if (image && id) {
+      const src = "/api/attachments/" + encodeURIComponent(id) + qsAuth();
+      return '<span class="att-chip att-image" title="' + esc(name) + '">' +
+        '<img src="' + esc(src) + '" alt="' + esc(name) + '" loading="lazy" draggable="false">' +
+        '<span class="att-image-name">' + esc(name) + "</span>" + remove + "</span>";
+    }
+    return '<span class="att-chip" title="' + esc(name) + '">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg>' +
+      "<span>" + esc(name) + "</span>" +
+      " <i>" + fmtSize(a.size) + "</i>" + remove + "</span>";
+  }).join("");
 }
 
 function fmtSize(n) {
@@ -2014,7 +1946,9 @@ async function probeGit() {
   const prev = sel.value;
   const opt = (v, label) => '<option value="' + esc(v) + '">' + esc(label) + "</option>";
   const groups = [];
-  groups.push(opt("", t("不切换（用当前分支 %1）").replace("%1", info.branch || "HEAD")));
+  // 首选项=跟随当前分支：胶囊上直接显示分支名（参考工作区选择器的「main ▾」），
+  // 悬停胶囊看完整说明（renderGitHint 写 row.title）；换分支在「分支」组里选
+  groups.push(opt("", info.branch || "HEAD"));
   groups.push('<optgroup label="' + esc(t("分支")) + '">'
     + (info.branches || []).map((b) => opt("branch:" + b, b)).join("") + "</optgroup>");
   if ((info.tags || []).length) {
@@ -2042,9 +1976,68 @@ function renderGitHint() {
   const act = kind
     ? t("；运行时将从「%1」检出任务分支 codebee/&lt;任务ID&gt;").replace("%1", rev)
     : "";
-  $("git-hint").innerHTML = esc(base + dirty + act);
+  const text = base + dirty + act;
+  $("git-hint").innerHTML = esc(text);
+  // 极简：提示行不再常驻，分支胶囊的悬停 title 承载同一份详情（剥掉 innerHTML 用的实体）
+  const row = $("row-git");
+  if (row) row.title = text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 }
 window.probeGit = probeGit;
+
+/* ---- 工作目录「最近文件夹」下拉：默认选中一个目录，▾ 展开最近 5 个 + 浏览/用默认 ---- */
+function wdRecents() {
+  const st = S.state || {};
+  const seen = new Set(); const out = [];
+  for (const tk of (st.tasks || []).concat(st.archived_tasks || [])) {
+    const wd = (tk.workdir || "").trim();
+    if (!wd || seen.has(wd)) continue;
+    seen.add(wd); out.push(wd);
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+window.toggleWdMenu = function (ev) {
+  if (ev) ev.stopPropagation();
+  const menu = $("wd-menu");
+  if (!menu) return;
+  if (!menu.classList.contains("hidden")) { menu.classList.add("hidden"); return; }
+  const cur = (($("f-workdir") || {}).value || "").trim();
+  const eff = ((S.settings || {}).default_workdir_effective || "").trim();
+  const base = (p) => p.split(/[\\/]/).filter(Boolean).pop() || p;
+  const row = (p, label, on) =>
+    '<button type="button" class="wd-item' + (on ? " on" : "") + '" data-wd="' + esc(p) +
+    '" title="' + esc(p) + '">' +
+    '<svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>' +
+    "<span>" + esc(label) + "</span>" +
+    (on ? '<svg class="ico wd-check" aria-hidden="true"><use href="#i-check"></use></svg>' : "") +
+    "</button>";
+  let html = wdRecents().map((p) => row(p, base(p), p === cur)).join("");
+  html += '<div class="wd-sep"></div>' +
+    '<button type="button" class="wd-item" data-wd-act="browse">' +
+    '<svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>' +
+    "<span>" + esc(t("浏览本机目录…")) + "</span></button>" +
+    '<button type="button" class="wd-item" data-wd-act="default"' + (eff ? "" : " disabled") + ">" +
+    '<svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg>' +
+    "<span>" + esc(t("用默认路径")) + "</span></button>";
+  menu.innerHTML = html;
+  menu.classList.remove("hidden");
+};
+window.wdMenuPick = function (item) {
+  const inp = $("f-workdir"), menu = $("wd-menu");
+  if (!item || !inp || item.disabled) return;
+  if (item.dataset.wdAct === "browse") {
+    if (menu) menu.classList.add("hidden");
+    window.pickFolder("f-workdir");
+    return;
+  }
+  inp.value = item.dataset.wdAct === "default"
+    ? ((S.settings || {}).default_workdir_effective || "")
+    : (item.dataset.wd || "");
+  inp.dispatchEvent(new Event("input", { bubbles: true }));   // queueGitProbe 跟上换目录
+  inp.dispatchEvent(new Event("change", { bubbles: true }));
+  if (menu) menu.classList.add("hidden");
+  inp.focus();
+};
 
 /* ---------------------------------------------------------- 会话延续 */
 /* 后端支持会话扫描的工具集合（/api/sessions 的键）；决定继续会话下拉出现哪些工具 */
@@ -2259,10 +2252,11 @@ function bindCtxMenus() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeCtxMenu(); });
 }
 
-/* ------------------------------------------------- 文件夹选择弹框（工作目录「选择…」/点输入框）
- * 服务端目录浏览（/api/browse 仅本机；浏览器安全模型拿不到本机绝对路径，
- * 原生目录选择器只回相对路径，没法用）。进入=点行，选定=行内「选这个」或
- * 底部「使用当前目录」。远端设备 browse 被 403 拒：点输入框不再弹框，继续手输。 */
+/* ------------------------------------------------- 文件夹选择（工作目录「选择…」/点输入框）
+ * 首选系统原生对话框：服务端 tkinter 子进程弹真窗口（/api/pick_folder，仅本机），
+ * 前端只收回填路径。机器没有 tkinter（fallback=true）时回落网页目录弹框：
+ * /api/browse 浏览（服务端只给目录名、前端拼绝对路径），选定=行内「选这个」或
+ * 底部「使用当前目录」。远端设备两条通道都被 403 拒：点输入框不再弹框，继续手输。 */
 const pickerSt = { target: "", cwd: "", parent: "", local: null };   // local: null=未知 true=本机 false=远端
 
 function pickerRender(r) {
@@ -2310,19 +2304,35 @@ async function pickerBrowse(p) {
   return true;
 }
 
+/* 网页目录弹框（原生对话框不可用时的回落通道） */
+async function webPickFolder(targetId, cur) {
+  openModal(t("选择文件夹"), '<div id="pk-body" class="hint">' + esc(t("正在读取目录…")) + "</div>",
+    '<button class="ghost" onclick="closeModal();pkRefocus()">' + esc(t("取消")) + "</button>" +
+    '<button class="primary" onclick="pickUseP(pickerCwd())">' + esc(t("使用当前目录")) + "</button>");
+  await pickerBrowse(cur || "__drives__");
+}
+
 window.pickFolder = async function (targetId, fromClick) {
   if (fromClick && pickerSt.local === false) return;   // 远端已确认被拒：点击不打扰
   pickerSt.target = targetId;
   const cur = (($(targetId) || {}).value || "").trim();
-  openModal(t("选择文件夹"), '<div id="pk-body" class="hint">' + esc(t("正在读取目录…")) + "</div>",
-    '<button class="ghost" onclick="closeModal();pkRefocus()">' + esc(t("取消")) + "</button>" +
-    '<button class="primary" onclick="pickUseP(pickerCwd())">' + esc(t("使用当前目录")) + "</button>");
-  const ok = await pickerBrowse(cur || "__drives__");
-  // 点输入框进来的：远端被拒就收框并提示，别让每次点击都吃一个错误弹窗
-  if (!ok && fromClick && pickerSt.local === false) {
-    closeModal();
-    toast(t("目录选择仅限本机使用，请手动输入路径"), true);
+  let r = null;
+  try {
+    r = await api("/api/pick_folder", { method: "POST",
+      body: JSON.stringify({ initial: cur, title: t("选择文件夹") }) });
+  } catch (e) {
+    if (/仅限本机/.test(e.message || "")) {
+      pickerSt.local = false;
+      if (fromClick) toast(t("目录选择仅限本机使用，请手动输入路径"), true);
+      return;
+    }
+    toast(t("操作失败：") + (e.message || e), true);
+    return;
   }
+  if (r.busy) { toast(t("已有一个选择窗口正在等待"), true); return; }
+  if (r.fallback) { await webPickFolder(targetId, cur); return; }
+  if (r.path) pickUseP(r.path);
+  else window.pkRefocus();   // 用户取消：焦点还给输入框，方便手输
 };
 window.pickEnterP = (p) => pickerBrowse(p);
 window.pickParentP = () => pickerBrowse(pickerSt.parent || "__drives__");
@@ -3078,6 +3088,7 @@ function drawTaskDetail(key, runs) {
   if (bpt) bpt.classList.add("hidden");
   $("btn-delete").classList.add("hidden");
   $("btn-retry").classList.toggle("hidden", !(latest.task_id && (latest.status === "failed" || latest.status === "cancelled")));
+  $("btn-talk").classList.toggle("hidden", !(latest.task_id && !chatEngineIsDirect(latest)));
   setEditRetry(latest.task_id, latest.status,
     !!((S.state || {}).tasks || []).some((x) => x.id === latest.task_id));
   S.lastRun = latest;
@@ -3406,12 +3417,26 @@ function rdTabsSync(ctx) {
   rdTabBadges();
 }
 
+/* 详情头部的按需信息面板：统计和任务概览不再常驻挤占蜂巢/对话空间。 */
+function setRdMetaOpen(open) {
+  const detail = $("run-detail");
+  const pop = $("rd-meta-popover");
+  const toggle = $("rd-more-toggle");
+  if (!pop || !toggle) return;
+  const on = !!open;
+  pop.classList.toggle("hidden", !on);
+  if (detail) detail.classList.toggle("rd-info-open", on);
+  toggle.setAttribute("aria-expanded", on ? "true" : "false");
+}
+
 /* 换一个详情目标时清空选卡状态：下一次渲染按新目标自动落位 */
 function rdTabReset(pin) {
   S.rdTab = pin || null;
   S.rdTabSig = "";
   S.rdTabPin = !!pin;
   S._rdCtx = {};
+  syncChatLogSpace(false);
+  setRdMetaOpen(false);
 }
 
 async function renderRunDetail() {
@@ -3432,6 +3457,7 @@ async function renderRunDetail() {
   S.cancelTargetRunId = active ? run.id : null;
   $("btn-delete").classList.toggle("hidden", active);
   $("btn-retry").classList.toggle("hidden", !(run.task_id && (run.status === "failed" || run.status === "cancelled")));
+  $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
   const rcTask = ((S.state || {}).tasks || []).find((x) => x.id === run.task_id);
   $("btn-continue").classList.toggle("hidden",
     !(rcTask && rcTask.serial && run.status !== "running" && run.status !== "queued"));
@@ -4008,6 +4034,7 @@ function renderGitWbMain(d, task) {
 window.gitWbDiff = async function (path) {
   const key = detailSideTaskKey();
   if (!key || !path) return;
+  _fpSaveCtx = null; _fpRawText = ""; _fpDirty = false; _fpCopyText = null;   // 复用单例弹窗，别带上一个文件的编辑态
   _fpOpen(String(path).split("/").pop(), "",
     '<button class="ghost" onclick="copyFPText()">' + esc(t("复制")) + "</button>");
   let d;
@@ -4015,6 +4042,7 @@ window.gitWbDiff = async function (path) {
   catch (e) { _fpSetBody('<div class="fp-hint">' + esc(t("diff 读取失败：") + e.message) + "</div>"); return; }
   if (!filePopIsOpen()) return;   // 读取期间被 Esc 关掉：别把内容又糊上去
   const lines = String(d.diff || "").split("\n");
+  _fpCopyText = (d.diff && lines.length) ? lines.join("\n") : "";   // 复制给 diff 原文，行号槽不进剪贴板
   _fpSetBody((d.diff && lines.length)
     ? '<div class="fp-diff">' + lines.map((ln, i) => _fpDiffLine(ln, i + 1)).join("") + "</div>"
     : '<div class="fp-hint">' + esc(t("该文件当前没有未提交的变更。")) + "</div>");
@@ -4351,8 +4379,8 @@ function drawInspector() {
     ? arts.map((f) =>
         '<a class="file-chip" href="/api/runs/' + encodeURIComponent(runId) + "/file?name=" +
         encodeURIComponent(f.name) + '" target="_blank" rel="noopener" title="' +
-        esc(f.name + " · " + fmtSize(f.size)) + '" onclick="artPopup(\'' + esc(runId) + "', '" +
-        esc(f.name) + "', " + (Number(f.size) || 0) + ');return false">' +
+        esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(runId) +
+        '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
         '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
         '<span class="p">' + esc(f.name) + "</span><i>" + fmtSize(f.size) + "</i></a>").join("")
     : '<span class="insp-hint">' + esc(t("本次运行没有在工作目录里产出新文件。")) + "</span>";
@@ -4397,8 +4425,10 @@ window.inspDiffFile = async function (path) {
 let _fpUrls = [];   // 图片预览的 objectURL，关窗统一回收
 /* 编辑态：_fpRawText=开窗时取到的原文（json 展示会美化，编辑始终用原文）；
  * _fpSaveCtx={dir,name,mtime} 非空=该弹窗可编辑（目录文件弹窗专属，成品只读）；
- * _fpDirty=编辑框有改动未保存——关窗/退出编辑先确认，防误丢。 */
-let _fpRawText = "", _fpSaveCtx = null, _fpDirty = false;
+ * _fpDirty=编辑框有改动未保存——关窗/退出编辑先确认，防误丢；
+ * _fpCopyText=复制按钮要吐的原文（正文是行号表格，innerText 会连行号列一起带出）；
+ * null=非文本内容，回退 innerText。 */
+let _fpRawText = "", _fpSaveCtx = null, _fpDirty = false, _fpCopyText = null;
 
 function filePopIsOpen() {
   const el = document.getElementById("file-pop");
@@ -4412,7 +4442,7 @@ window.filePopClose = async function () {
     const ok = await uiConfirm(t("有未保存的修改，确定关闭？"));
     if (!ok) return;
   }
-  _fpDirty = false; _fpSaveCtx = null; _fpRawText = "";
+  _fpDirty = false; _fpSaveCtx = null; _fpRawText = ""; _fpCopyText = null;
   el.classList.add("hidden");
   el.querySelector(".fp-body").innerHTML = "";
   el.querySelector(".fp-acts").innerHTML = "";
@@ -4459,10 +4489,15 @@ function _fpSetBody(html) {
   el.querySelector(".fp-body").innerHTML = html;
 }
 
-window.copyFPText = function () {
+/* 复制源：文本类正文优先给预留原文（不带行号/着色槽），其余回退 innerText */
+window.fpCopySource = function () {
   const body = document.querySelector("#file-pop .fp-body");
-  if (!body) return;
-  try { navigator.clipboard.writeText(body.innerText || ""); toast(t("已复制")); } catch (e) { /* 剪贴板不可用则忽略 */ }
+  if (!body) return "";
+  return _fpCopyText !== null ? _fpCopyText : (body.innerText || "");
+};
+
+window.copyFPText = function () {
+  try { navigator.clipboard.writeText(window.fpCopySource() || ""); toast(t("已复制")); } catch (e) { /* 剪贴板不可用则忽略 */ }
 };
 
 /* diff 行着色：+/− 上色、@@ 小节、头部落灰；"--- "/"+++ " 先判，避免内容行误染。
@@ -4484,7 +4519,7 @@ function _fpDiffLine(ln, no) {
 window.fileDiffPopup = async function (path, runId) {
   runId = runId || ((S.inspData || {}).run || {}).id || S.detailRunId || (S.lastRun || {}).id || "";
   if (!runId) return;
-  _fpSaveCtx = null; _fpRawText = ""; _fpDirty = false;   // diff 弹窗只读，别带上一个目录文件的编辑态
+  _fpSaveCtx = null; _fpRawText = ""; _fpDirty = false; _fpCopyText = null;   // diff 弹窗只读，别带上一个目录文件的编辑态
   let sub = "";
   for (const fs of [((S.inspData || {}).changes || {}).files, ((S.lastRun || {}).changes || {}).files]) {
     const f = (fs || []).find((x) => x.path === path);
@@ -4496,6 +4531,7 @@ window.fileDiffPopup = async function (path, runId) {
   catch (e) { _fpSetBody('<div class="fp-hint">' + esc(t("diff 读取失败：") + e.message) + "</div>"); return; }
   if (!filePopIsOpen()) return;   // 读取期间被 Esc 关掉：别把内容又糊上去
   const lines = _sliceDiff(((d.run || {}).changes || {}).diff || "", path);
+  _fpCopyText = lines.length ? lines.join("\n") : "";   // 复制给切片原文，行号槽(.fp-no)不进剪贴板
   _fpSetBody(lines.length
     ? '<div class="fp-diff">' + lines.map((ln, idx) => _fpDiffLine(ln, idx + 1)).join("") + "</div>"
     : '<div class="fp-hint">' + esc(t("暂无该文件的已保存 diff（运行结束后生成变更快照，或该运行没有保存变更内容）。")) + "</div>");
@@ -4515,7 +4551,7 @@ async function _fpPreviewUrl(url, name, size, opts) {
   opts = opts || {};
   const ext = _fpExt(name);
   _fpSaveCtx = opts.save || null;
-  _fpRawText = ""; _fpDirty = false;
+  _fpRawText = ""; _fpDirty = false; _fpCopyText = null;
   _fpOpen(String(name).split("/").pop(), size ? "<i>" + esc(fmtSize(size)) + "</i>" : "",
     '<a class="ghost" href="' + url + '" download="' + esc(String(name).split("/").pop()) + '">' + esc(t("下载")) + "</a>");
   const el = _fpEnsure();
@@ -4536,9 +4572,10 @@ async function _fpPreviewUrl(url, name, size, opts) {
       if (!filePopIsOpen()) return;
       _fpRawText = text;
       if (_fpSaveCtx) _fpSaveCtx.mtime = r.headers.get("X-Tutti-Mtime") || "";
-      const codeHtml = ext === "json"
-        ? (() => { let pretty = text; try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (e) { /* 坏 json 原样展示 */ } return codeBlockHTML(pretty); })()
-        : codeBlockHTML(text);
+      let shown = text;
+      if (ext === "json") { try { shown = JSON.stringify(JSON.parse(text), null, 2); } catch (e) { /* 坏 json 原样展示 */ } }
+      _fpCopyText = shown;   // 复制=看到的原文；行号列不进剪贴板（编辑/保存仍用 _fpRawText 原文）
+      const codeHtml = codeBlockHTML(shown);
       const body = '<div class="fp-code">' + '<div class="fp-vp">' + codeHtml + "</div>" +
         (_fpSaveCtx ? '<textarea class="fp-edit hidden" spellcheck="false"></textarea>' : "") + "</div>";
       _fpSetBody(body);
@@ -4604,6 +4641,7 @@ window.fpSaveEdit = async function () {
       dir: _fpSaveCtx.dir, name: _fpSaveCtx.name, content: ta.value, mtime: _fpSaveCtx.mtime,
     }) });
     _fpRawText = ta.value;
+    _fpCopyText = ta.value;
     _fpSaveCtx.mtime = String(d.mtime || "");
     _fpDirty = false;
     // 回到预览层并重画为保存后的内容（同一个框，只换里子）
@@ -4821,8 +4859,17 @@ function rdLogStepLabel(runId, rel) {
   return rel || "";
 }
 
+/* 直连任务的输入框只在日志抽屉真正打开时才让出底部空间。
+ * 日志和聊天 pane 位于同一个主区，不能靠普通兄弟选择器反向联动，
+ * 所以用详情根节点的状态类做显式同步。 */
+function syncChatLogSpace(open) {
+  const detail = $("run-detail");
+  if (detail) detail.classList.toggle("chat-log-open", !!open);
+}
+
 window.rdLogClose = function () {
   const box = $("rd-log");
+  syncChatLogSpace(false);
   if (!box) return;
   box.classList.add("hidden");
   currentLog = null;
@@ -4848,6 +4895,7 @@ async function toggleLog(runId, rel) {
     if (!owned) return;
     pre.textContent = r.log || t("（等待输出…）");
     box.classList.remove("hidden");
+    syncChatLogSpace(true);
     currentLog = { runId, rel };
     const st = $("rd-log-step");
     if (st) st.textContent = rdLogStepLabel(runId, rel);
@@ -4875,6 +4923,7 @@ async function toggleLog(runId, rel) {
       } catch (e) { /* 网络抖动保留上一帧 */ }
     }, 2500);
   } catch (e) { pre.textContent = t("日志读取失败: ") + e.message; box.classList.remove("hidden");
+    syncChatLogSpace(true);
     const st = $("rd-log-step"); if (st) st.textContent = rdLogStepLabel(runId, rel);
     logLiveBadge(false); }
 }
@@ -5236,6 +5285,74 @@ window.dirRetract = async function (msgId) {
   } catch (e) { /* 下一轮轮询兜底 */ }
 };
 
+/* 人工干预（非直连任务）：运行中=递话入箱，下一个步骤开始前送达主智能体
+ * （它判断后引导执行方向）；已结束=发送后自动断点续跑，主智能体带着
+ * 反馈重新规划。后端链路：信箱 → retry 继承未消费消息 → 规划 peek/执行 drain。 */
+window.rdTalkToggle = function () {
+  const box = $("rd-talk");
+  if (!box) return;
+  const show = box.classList.contains("hidden");
+  box.classList.toggle("hidden", !show);
+  const hint = $("rd-talk-hint");
+  if (hint) {
+    const run = S.lastRun;
+    const active = !!run && (run.status === "running" || run.status === "queued");
+    hint.textContent = active ? t("运行中：下一个步骤开始前送达主智能体")
+      : t("已结束：发送后自动断点续跑，主智能体带着反馈重新规划");
+  }
+  if (show) { const ta = $("rd-talk-input"); if (ta) setTimeout(() => ta.focus(), 0); }
+};
+
+window.rdTalkSend = async function () {
+  const run = S.lastRun;
+  const ta = $("rd-talk-input");
+  const text = ((ta && ta.value) || "").trim();
+  if (!run || !run.id) return;
+  if (!text && !talkAtts.length) { if (ta) ta.focus(); return; }
+  const btn = $("rd-talk-send");
+  btn.disabled = true;
+  try {
+    await api("/api/runs/" + encodeURIComponent(run.id) + "/messages",
+      { method: "POST", body: JSON.stringify({ text, attachments: talkAtts.map((a) => a.id) }) });
+    if (ta) ta.value = "";
+    talkAtts = []; drawTalkAtts();
+    const box = $("rd-talk");
+    if (box) box.classList.add("hidden");
+    const active = run.status === "running" || run.status === "queued";
+    if (!active && run.task_id) {
+      await retryTask(run.task_id);
+      toast(t("已转交：带着你的反馈断点续跑，主智能体会重新规划"));
+    } else {
+      toast(t("已递话：主智能体在下一个步骤开始前会看到"));
+    }
+  } catch (e) { toast(t("发送失败：") + e.message, true); }
+  finally { btn.disabled = false; }
+};
+
+/* 递话附件：与运行中指挥同一落盘通道（/api/attachments 待提交区 → 随消息入箱） */
+let talkAtts = [];
+async function talkUploadFiles(files) {
+  for (const f of files) {
+    if (talkAtts.length >= DIR_ATT_MAX) { toast(t("附件最多 ") + DIR_ATT_MAX + t(" 个"), true); break; }
+    if (f.size > DIR_ATT_BYTES) { toast(f.name + t("：超过 8MB，已跳过"), true); continue; }
+    try {
+      const b64 = await fileToB64(f);
+      const d = await api("/api/attachments", { method: "POST",
+        body: JSON.stringify({ name: f.name, data: b64 }) });
+      if (d.attachment) talkAtts.push(d.attachment);
+    } catch (e) { toast(t("附件上传失败：") + e.message, true); }
+  }
+  drawTalkAtts();
+}
+function drawTalkAtts() {
+  const box = $("rd-talk-atts");
+  if (!box) return;
+  box.innerHTML = talkAtts.map((a, i) =>
+    '<span class="att-chip2">' + esc(a.name) + "<b onclick=\"talkRemoveAtt(" + i + ')" title="' +
+    t("移除") + "\">×</b></span>").join("");
+}
+window.talkRemoveAtt = function (i) { talkAtts.splice(i, 1); drawTalkAtts(); };
+
 function bindDirector() {
   $("rd-attach-btn").addEventListener("click", () => $("rd-attach-file").click());
   $("btn-pause").addEventListener("click", window.dirTogglePause);
@@ -5272,8 +5389,11 @@ let chatAtts = [];
 let chatSig = "";
 
 function chatEngineIsDirect(run) {
-  const t = ((S.state || {}).tasks || []).find((x) => x.id === (run && run.task_id));
-  return !!(t && t.engine === "direct");
+  const st = S.state || {};
+  const all = (st.tasks || []).concat(st.archived_tasks || []);
+  const task = all.find((x) => x.id === (run && run.task_id));
+  return !!((task && task.engine === "direct") ||
+    (!task && run && (run.engine === "direct" || run.type === "direct")));
 }
 
 /* 对话正文：``` 围栏渲染成真代码块（复用 codeBlockHTML：行号+高亮+代码主题），
@@ -5314,6 +5434,8 @@ async function renderChat(run, active) {
   // 只对直连任务启用（其它流程有自己的蜂巢/步骤视图，不抢默认选卡）
   if (!run || !chatEngineIsDirect(run)) { box.classList.add("hidden"); return; }
   box.classList.remove("hidden");
+  const continueNote = $("rd-chat-continue-note");
+  if (continueNote) continueNote.classList.toggle("hidden", !!active);
   if (chatRunId !== run.id) { chatRunId = run.id; chatAtts = []; drawChatAtts(); chatSig = ""; }
   const sig = run.id + "|" + run.status + "|" + (run.steps || []).length +
     "|" + ((run.messages || []).length);
@@ -5513,11 +5635,8 @@ function renderRunOutcome(run, runs) {
 function renderDetailOverview(run, runs, task) {
   const box = $("rd-overview");
   if (!box || !run) return;
-  if (chatEngineIsDirect(run)) {
-    box.classList.add("hidden");
-    box.innerHTML = "";
-    return;
-  }
+  const direct = chatEngineIsDirect(run);
+  box.classList.toggle("direct-overview", direct);
   const all = runs && runs.length ? runs : [run];
   const steps = (run.steps || []);
   const total = all.reduce((n, r) => n + ((r.steps || []).length), 0);
@@ -5647,6 +5766,13 @@ function bindChat() {
   const btn = $("rd-chat-attach"), file = $("rd-chat-file"), send = $("rd-chat-send"),
         ta = $("rd-chat-input");
   if (!btn || !file || !send || !ta) return;
+  const focusBtn = $("rd-chat-focus");
+  if (focusBtn) focusBtn.addEventListener("click", () => {
+    S.rdTab = "chat";
+    S.rdTabPin = true;
+    applyRdTabs();
+    setTimeout(() => ta.focus(), 0);
+  });
   btn.addEventListener("click", () => file.click());
   file.addEventListener("change", (e) => {
     chatUploadFiles(Array.from(e.target.files || []));
@@ -7507,9 +7633,13 @@ async function loadSettings() {
       hint.textContent = custom ? t("当前生效：") + S.settings.default_workdir_effective + t("（自定义）")
                                 : t("当前生效：") + S.settings.default_workdir_effective + t("（内置默认，尚未自定义）");
     }
-    // 新任务表单：目录留空即落到默认路径，给一句话提示
-    const fhint = $("f-workdir-hint");
-    if (fhint && S.settings) fhint.textContent = t("留空则保存到：") + (S.settings.default_workdir_effective || "");
+    // 新任务表单：默认就「选中」默认路径（参考工作区选择器的默认选中态）；
+    // 手动清空输入仍表示跟随默认。f-workdir-hint 保留给「继续会话/克隆任务」的覆盖警告
+    const wdInput = $("f-workdir");
+    if (wdInput && S.settings && !wdInput.value.trim()) {
+      wdInput.value = S.settings.default_workdir_effective || "";
+      queueGitProbe();   // 目录在场即探测代码版本，点亮分支胶囊
+    }
   } catch (e) { /* 忽略 */ }
 }
 
@@ -7654,6 +7784,36 @@ function maybeWhatsnew() {
       "<button class=\"small\" onclick=\"closeModal()\">" + t("知道了") + "</button>");
   }
 }
+
+/* ===== 首次启动欢迎引导：产品是什么 + 装完三步开工 =====
+ * localStorage orch.welcomed 记账，只自动弹一次；「关于与更新」页可手动重开。
+ * 令牌门在场时让位（远端新设备先输令牌，下次启动引导照常弹）。 */
+function welcomeOpen() {
+  const w = $("welcome");
+  if (!w) return;
+  if (!$("token-gate").classList.contains("hidden")) return;
+  w.classList.remove("hidden");
+  document.body.classList.add("welcome-open");
+}
+function welcomeClose() {
+  const w = $("welcome");
+  if (!w) return;
+  w.classList.add("hidden");
+  document.body.classList.remove("welcome-open");
+  try { localStorage.setItem("orch.welcomed", "1"); } catch (e) { /* 存储不可用则下次再弹 */ }
+}
+function welcomeGo(tab) {
+  welcomeClose();
+  switchTab(tab);   // 直达「模型接入」/「CLI 绑定」
+}
+function maybeWelcome() {
+  let seen = "";
+  try { seen = localStorage.getItem("orch.welcomed"); } catch (e) { /* ignore */ }
+  if (!seen) welcomeOpen();
+}
+window.welcomeOpen = welcomeOpen;
+window.welcomeClose = welcomeClose;
+window.welcomeGo = welcomeGo;
 
 function renderSu() {
   const info = $("su-info");
@@ -8469,6 +8629,7 @@ function collapseDrawerIfMobile() {
 
 function switchTab(name) {
   if (name === "__phone") { openPhoneConnect(); return; }  // 手机连接是弹框，不切页
+  if (name === "__guide") { welcomeOpen(); return; }       // 使用引导是弹层，不切页（设置导航「软件」组）
   // 导航收进「设置」：进设置后左栏整体换成设置导航，内容铺满
   S.tab = name;
   if (SET_TABS.has(name)) localStorage.setItem("orch.setTab", name);
@@ -8661,6 +8822,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const tab = e.target.closest("[data-overview-tab]");
     if (tab) { S.rdTab = tab.dataset.overviewTab; S.rdTabPin = true; applyRdTabs(); }
   });
+  const rdMore = $("rd-more-toggle"), rdMetaPop = $("rd-meta-popover"), rdMoreClose = $("rd-more-close");
+  if (rdMore) rdMore.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setRdMetaOpen(rdMetaPop && rdMetaPop.classList.contains("hidden"));
+  });
+  if (rdMoreClose) rdMoreClose.addEventListener("click", () => setRdMetaOpen(false));
+  document.addEventListener("click", (e) => {
+    if (!rdMetaPop || rdMetaPop.classList.contains("hidden")) return;
+    if (rdMetaPop.contains(e.target) || (rdMore && rdMore.contains(e.target))) return;
+    setRdMetaOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && rdMetaPop && !rdMetaPop.classList.contains("hidden")) setRdMetaOpen(false);
+  });
   const stepBox = $("rd-steps");
   if (stepBox) stepBox.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-log-run][data-log-rel]");
@@ -8713,6 +8888,60 @@ document.addEventListener("DOMContentLoaded", () => {
     sync();
   })();
   $("btn-retry").addEventListener("click", () => { const r = S.lastRun; if (r && r.task_id) retryTask(r.task_id); });
+  /* 日志控制台高度：顶边手柄拖拽调整（localStorage 记忆），双击复位为默认弹性高度 */
+  (() => {
+    const grip = $("rd-log-grip"), box = $("rd-log");
+    if (!grip || !box) return;
+    const KEY = "orch.rdLogH";
+    const saved = parseInt(localStorage.getItem(KEY), 10);
+    /* 记忆值是「期望高度」：flex 允许收缩（shrink 1），窗口变矮时自动缩回视口内，
+       永不把抽屉顶出窗口底（用户反馈「还是超长了」的根因就是固定 px 不收缩） */
+    if (saved >= 140) box.style.flex = "0 1 " + saved + "px";
+    grip.addEventListener("dblclick", () => {
+      localStorage.removeItem(KEY);
+      box.style.flex = "";
+    });
+    grip.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      try { grip.setPointerCapture(e.pointerId); } catch (err) { /* 老浏览器降级 */ }
+      const startY = e.clientY;
+      const startH = box.getBoundingClientRect().height;
+      const pre = $("rd-log-text");
+      const stick = pre ? pre.scrollHeight - pre.scrollTop - pre.clientHeight < 48 : false;
+      let lastH = Math.round(Math.max(startH, 140));
+      document.body.classList.add("rd-log-resizing");
+      const onMove = (ev) => {
+        lastH = Math.round(Math.min(Math.max(startH + (startY - ev.clientY), 140), window.innerHeight * 0.72));
+        box.style.flex = "0 1 " + lastH + "px";
+      };
+      const onUp = (ev) => {
+        try { grip.releasePointerCapture(ev.pointerId); } catch (err) { /* 已释放 */ }
+        document.body.classList.remove("rd-log-resizing");
+        grip.removeEventListener("pointermove", onMove);
+        grip.removeEventListener("pointerup", onUp);
+        grip.removeEventListener("pointercancel", onUp);
+        localStorage.setItem(KEY, String(lastH));   // 存钳制后的目标值，隐藏态 rect 是 0 不能用
+        if (stick && pre) pre.scrollTop = pre.scrollHeight;   // 拖完仍在贴底状态则继续跟最新
+      };
+      grip.addEventListener("pointermove", onMove);
+      grip.addEventListener("pointerup", onUp);
+      grip.addEventListener("pointercancel", onUp);
+    });
+  })();
+  if ($("btn-talk")) $("btn-talk").addEventListener("click", window.rdTalkToggle);
+  if ($("rd-talk-send")) $("rd-talk-send").addEventListener("click", window.rdTalkSend);
+  if ($("rd-talk-input")) $("rd-talk-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); window.rdTalkSend(); }
+  });
+  if ($("rd-talk-attach")) $("rd-talk-attach").addEventListener("click", () => $("rd-talk-file").click());
+  if ($("rd-talk-file")) $("rd-talk-file").addEventListener("change", (e) => {
+    talkUploadFiles(Array.from(e.target.files || []));
+    e.target.value = "";
+  });
+  if ($("rd-talk-input")) $("rd-talk-input").addEventListener("paste", (e) => {
+    const files = Array.from((e.clipboardData || {}).files || []);
+    if (files.length) { e.preventDefault(); talkUploadFiles(files); }
+  });
   $("btn-continue").addEventListener("click", () => {
     const tid = (S.lastRun && S.lastRun.task_id) || S.detailTaskKey || "";
     if (tid) continueSerial(tid);
@@ -8798,14 +9027,23 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-resume-agent").addEventListener("change", loadSessions);
   $("f-resume-session").addEventListener("change", showResumeHint);
   /* 工作目录不再用「上次用过」的旧记忆预填：那样改默认保存路径后，新建任务仍会被
-   * 旧目录盖过（留空才是真正跟随默认）。显式选目录的入口（向导/克隆/右键新建任务到该目录）
-   * 各自直接写字段值，不跨刷新持久化。清掉旧版残留键，避免误解为默认选中。 */
+   * 旧目录盖过。首屏默认选中设置里的默认路径（loadSettings 落值），克隆/右键新建
+   * 等显式入口各自直接写字段值，不跨刷新持久化。清掉旧版残留键，避免误解为默认选中。 */
   localStorage.removeItem("orch.workdir");
   // 附件：按钮选文件 + 目标框粘贴截图；工作目录变化时探测 git 仓库（代码版本下拉）
   $("btn-attach").addEventListener("click", () => $("f-attach-file").click());
   $("f-attach-file").addEventListener("change", (e) => {
     addAttachFiles(Array.from(e.target.files || []));
     e.target.value = "";  // 允许重复选同一个文件
+  });
+  const attChipBox = $("att-chips");
+  if (attChipBox) attChipBox.addEventListener("click", (e) => {
+    const remove = e.target.closest("[data-att-remove]");
+    if (remove) {
+      e.preventDefault();
+      e.stopPropagation();
+      removeAtt(remove.dataset.attRemove || "");
+    }
   });
   $("f-goal").addEventListener("paste", onGoalPaste);
   // Composer 手感：Enter 直接发送，Shift+Enter 换行（输入法组词中不劫持）
@@ -8816,6 +9054,18 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-workdir").addEventListener("change", queueGitProbe);
   // 点工作目录输入框直接进文件夹选择（远端设备被 403 守卫拦下，静默继续手输）
   $("f-workdir").addEventListener("click", () => window.pickFolder("f-workdir", true));
+  // 最近文件夹菜单：条目点击统一走 wdMenuPick；点外面收起
+  const wdMenu = $("wd-menu");
+  if (wdMenu) wdMenu.addEventListener("click", (e) => {
+    const item = e.target.closest(".wd-item");
+    if (!item) return;
+    e.stopPropagation();
+    window.wdMenuPick(item);
+  });
+  document.addEventListener("click", (e) => {
+    if (wdMenu && !wdMenu.classList.contains("hidden") &&
+        !e.target.closest("#wd-menu, #f-workdir-menu-btn")) wdMenu.classList.add("hidden");
+  });
   $("set-workdir").addEventListener("click", () => window.pickFolder("set-workdir", true));
   $("f-git-rev").addEventListener("change", renderGitHint);
   if ($("f-workdir").value) queueGitProbe();  // 回填的目录：进页面即探测代码版本
@@ -8860,6 +9110,7 @@ document.addEventListener("DOMContentLoaded", () => {
         && e.target.tagName !== "TEXTAREA") { _askClose(true); return; }
     // 文件内容弹窗(240) 夹在 ask(250) 与 modal(200) 之间，Esc 同样逐层关
     if (e.key === "Escape" && filePopIsOpen()) { window.filePopClose(); return; }
+    if (e.key === "Escape" && !$("welcome").classList.contains("hidden")) { welcomeClose(); return; }
     if (e.key === "Escape" && !$("modal").classList.contains("hidden")) closeModal();
     // 日志抽屉：Esc 收起（最底层，放在弹窗之后）
     if (e.key === "Escape" && !$("rd-log").classList.contains("hidden")) window.rdLogClose();
@@ -8873,7 +9124,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
     if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "n" || e.key === "N")
         && $("modal").classList.contains("hidden") && $("ask").classList.contains("hidden")
-        && filePopIsOpen() === false && $("cmdk-mask").classList.contains("hidden")
+        && $("welcome").classList.contains("hidden") && filePopIsOpen() === false && $("cmdk-mask").classList.contains("hidden")
         && !document.body.classList.contains("settings-mode")
         && !document.body.classList.contains("files-mode")) {
       $("btn-new-task").click();
@@ -8935,8 +9186,9 @@ document.addEventListener("DOMContentLoaded", () => {
   loadFlows();   // 任务类型下拉（内置 + 自定义流程）
   refreshSessionAgents();  // 继续会话下拉的工具集合（服务端 60s 缓存，开销小）
   loadOrchestrator();      // 侧栏左下角的编排者供应商指示（进入编排设置页时会再拉一次）
-  loadSettings();          // 启动即拉设置：新建表单的「留空则保存到：<默认路径>」提示依赖它
+  loadSettings();          // 启动即拉设置：新建表单「默认选中默认路径」依赖它
   suStartupCheck();        // 静默查一次新版本（有新版 toast 提醒，同版本只提一次）
+  maybeWelcome();          // 首次启动弹欢迎引导（orch.welcomed 记账，只弹一次）
 });
 
 /* ===== 命令面板（Ctrl+K / 侧栏搜索行）：任务直达 + 快捷命令 ===== */
@@ -8951,6 +9203,7 @@ function cmdkOps() {
     { icon: "i-cpu", label: t("智能体管理"), run: () => switchTab("agents") },
     { icon: "i-chart", label: t("用量统计"), run: () => switchTab("usage") },
     { icon: "i-gear", label: t("设置"), run: () => enterSettings() },
+    { icon: "i-bee", label: t("使用引导"), run: () => welcomeOpen() },
     { icon: "i-phone", label: t("手机连接"), run: () => switchTab("__phone") },
   ];
 }

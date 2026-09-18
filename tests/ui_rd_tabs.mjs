@@ -1,6 +1,6 @@
 /* 运行详情页标签化重构验收：Edge headless + CDP，零依赖。
  * 造数：终态任务（3 步骤 + 日志 + 成品 md + 连载圣经）→
- * 断言：标签条分区可用性 / 终态自动落「成果」/ 徽章 / 手点钉住不被自动选卡抢 /
+ * 断言：标签条分区可用性 / 终态自动落「蜂巢」/ 徽章 / 手点钉住不被自动选卡抢 /
  * 日志抽屉跨分区 / sideOpenRun 钉步骤分区并聚焦。临时数据目录 + 独立端口。
  * 用法：node tests/ui_rd_tabs.mjs */
 import { spawn } from "node:child_process";
@@ -148,7 +148,7 @@ async function main() {
       ["hive", "steps", "result", "git", "bible"].every((k) => strip.ids.includes(k)) &&
       strip.hiddenIds.split(",").sort().join(",") === "chat,git",
       JSON.stringify([strip.ids, strip.hiddenIds]));
-    check("终态（done）自动落「成果」分区", strip.active === "result", strip.active);
+    check("终态（done）自动落「蜂巢」分区", strip.active === "hive", strip.active);
     check("成果分区含成品文件（章节 + 圣经）且在 result pane 内",
       strip.artsChips === 2 && strip.artsInResult === true, JSON.stringify(strip));
     check("徽章：步骤=3 · 成果=文件数",

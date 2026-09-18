@@ -1,8 +1,10 @@
-/* 工作目录「点输入框/选择…」弹框核验（Edge headless + CDP，临时端口 18831）：
- * A) 「选择…」按钮与点输入框都能打开选择弹框；
- * B) 目录行写回的是绝对路径（服务端只给目录名，前端拼接）；
- * C) 上级/此电脑导航、使用当前目录、行内「选这个」；
- * D) 选定后 input/change 事件触发（git 探测联动）。 */
+/* 工作目录「点输入框/选择…」核验（Edge headless + CDP，临时端口 18831）：
+ * 主通道是系统原生「选择文件夹」对话框（服务端 tkinter 子进程），无头测试里
+ * 不能真弹，页面内 stub 掉 /api/pick_folder，验证前端四条分支：
+ * A) 原生成功：路径直接回填输入框 + input/change 事件联动，不弹网页弹框；
+ * B) 点输入框同走原生；C) 取消（空 path）写回原值；D) busy 提示；
+ * E) fallback（机器无 tkinter）：回落网页目录弹框——预填直读、「选这个」写回、
+ *    弹框固定高度、英文标题。 */
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -66,90 +68,128 @@ async function main() {
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(3500);
 
-    const modalState = `JSON.stringify((() => { const m = document.getElementById("modal");
-      const rows = [...document.querySelectorAll("#pk-body .pk-row")];
-      const pb = document.getElementById("pk-body");
-      return { open: m ? !m.classList.contains("hidden") : false,
-        title: (document.getElementById("modal-title")||{}).textContent || "",
-        path: (document.querySelector("#pk-body .pk-path")||{}).textContent || "",
-        rows: rows.map(r => ({ p: r.dataset.p, hasBtn: !!r.querySelector("button") })),
-        bodyH: pb ? Math.round(pb.getBoundingClientRect().height) : 0,
-        foot: (document.getElementById("modal-foot")||{}).textContent || "" }; })())`;
+    /* stub：/api/pick_folder 按应答队列回包，其余请求照走原 fetch；请求体留档断言 */
+    await evalJs(`(() => {
+      const orig = window.fetch.bind(window);
+      window.__pickReplies = [];
+      window.__pickReqs = [];
+      window.fetch = (url, opts) => {
+        if (String(url).includes("/api/pick_folder")) {
+          window.__pickReqs.push(String((opts || {}).body || ""));
+          const reply = window.__pickReplies.length ? window.__pickReplies.shift() : { path: "" };
+          return Promise.resolve(new Response(JSON.stringify(reply),
+            { status: 200, headers: { "Content-Type": "application/json" } }));
+        }
+        return orig(url, opts);
+      };
+      let fired = 0;
+      document.getElementById("f-workdir").addEventListener("input", () => { fired++; });
+      window.__wdEvents = () => fired;
+      return 1;
+    })()`);
 
-    /* A1) 「选择…」按钮打开弹框（预填 sandbox → 直读该目录） */
+    const pickBtn = `(() => { const b = [...document.querySelectorAll("button")]
+      .find(x => x.getAttribute("onclick") === "pickFolder('f-workdir')");
+      if (!b) throw new Error("选择…按钮不存在"); b.click(); return 1; })()`;
+    const inputState = `JSON.stringify({
+      v: document.getElementById("f-workdir").value,
+      open: !document.getElementById("modal").classList.contains("hidden"),
+      events: window.__wdEvents(),
+      toast: (document.getElementById("toast") || {}).textContent || "" })`;
+
+    /* A) 原生成功：路径直接回填，不弹网页弹框 */
     await evalJs(`(() => {
       const inp = document.getElementById("f-workdir");
       inp.value = ${JSON.stringify(sandbox)};
       inp.dispatchEvent(new Event("change", { bubbles: true }));
-      let fired = 0;
-      inp.addEventListener("input", () => { fired++; });
-      window.__wdEvents = () => fired;
+      window.__pickReplies.push({ path: ${JSON.stringify(join(sandbox, "a"))} });
       return 1; })()`);
-    await evalJs(`(() => { const b = [...document.querySelectorAll("button")]
-      .find(x => x.getAttribute("onclick") === "pickFolder('f-workdir')");
-      if (b) b.click(); return 1; })()`);
-    await sleep(900);
-    let m = JSON.parse(await evalJs(modalState));
-    const hOneRow = m.bodyH;
-    check("「选择…」按钮：弹框打开且直读预填目录", m.open && m.path === sandbox, JSON.stringify(m).slice(0, 220));
-    check("子目录行：绝对路径 + 行内按钮", m.rows.length === 1 && m.rows[0].p === join(sandbox, "a") && m.rows[0].hasBtn,
-      JSON.stringify(m.rows));
+    await evalJs(pickBtn);
+    await sleep(400);
+    let st = JSON.parse(await evalJs(inputState));
+    check("原生成功：写回绝对路径且不弹网页弹框",
+      st.v === join(sandbox, "a") && !st.open, JSON.stringify(st));
+    check("选定触发 input 事件（git 探测联动）", st.events >= 1, "events=" + st.events);
+    const req0 = JSON.parse(await evalJs(`window.__pickReqs[0] || "null"`));
+    check("原生请求带上预填目录与标题", req0 && req0.initial === sandbox && req0.title === "选择文件夹",
+      JSON.stringify(req0));
 
-    /* B) 行内「选这个」→ 写回绝对路径 + input/change 联动 */
+    /* B) 点输入框同走原生：initial 取当前值，回包直接写回 */
+    await evalJs(`(() => { window.__pickReplies.push({ path: ${JSON.stringify(sandbox)} }); return 1; })()`);
+    await evalJs(`document.getElementById("f-workdir").click(); "ok"`);
+    await sleep(400);
+    st = JSON.parse(await evalJs(inputState));
+    const req1 = JSON.parse(await evalJs(`window.__pickReqs[1] || "null"`));
+    check("点输入框：回填新路径且请求 initial=当前值",
+      st.v === sandbox && !st.open && req1 && req1.initial === join(sandbox, "a"),
+      JSON.stringify({ st, req1 }));
+
+    /* C) 取消（空 path）：原值不动 */
+    await evalJs(`(() => { window.__pickReplies.push({ path: "" }); return 1; })()`);
+    await evalJs(pickBtn);
+    await sleep(400);
+    st = JSON.parse(await evalJs(inputState));
+    check("取消：写回值不变且不弹框", st.v === sandbox && !st.open, JSON.stringify(st));
+
+    /* D) 已有对话框在等（busy）：提示且不弹框 */
+    await evalJs(`(() => { window.__pickReplies.push({ path: "", busy: true }); return 1; })()`);
+    await evalJs(pickBtn);
+    await sleep(400);
+    st = JSON.parse(await evalJs(inputState));
+    check("busy：toast 提示且不弹框",
+      st.toast.includes("已有一个选择窗口正在等待") && !st.open, JSON.stringify(st));
+
+    /* E) fallback（无 tkinter）：回落网页目录弹框 */
+    await evalJs(`(() => { window.__pickReplies.push({ path: "", fallback: true }); return 1; })()`);
+    await evalJs(pickBtn);
+    await sleep(900);
+    let m = JSON.parse(await evalJs(`JSON.stringify({
+      open: !document.getElementById("modal").classList.contains("hidden"),
+      title: (document.getElementById("modal-title") || {}).textContent || "",
+      path: (document.querySelector("#pk-body .pk-path") || {}).textContent || "",
+      rows: [...document.querySelectorAll("#pk-body .pk-row")].map(r => r.dataset.p),
+      bodyH: Math.round(document.getElementById("pk-body").getBoundingClientRect().height),
+      foot: (document.getElementById("modal-foot") || {}).textContent || "" })`));
+    const hOneRow = m.bodyH;
+    check("fallback：弹框打开且直读预填目录", m.open && m.path === sandbox, JSON.stringify(m).slice(0, 220));
+    check("子目录行：绝对路径 + 行内按钮", m.rows.length === 1 && m.rows[0] === join(sandbox, "a"),
+      JSON.stringify(m.rows));
     await evalJs(`(() => { document.querySelector("#pk-body .pk-row button").click(); return 1; })()`);
     await sleep(400);
-    const after = JSON.parse(await evalJs(`JSON.stringify({
-      v: document.getElementById("f-workdir").value,
-      open: !document.getElementById("modal").classList.contains("hidden"),
-      events: window.__wdEvents() })`));
-    check("「选这个」：写回绝对路径且弹框关闭",
-      after.v === join(sandbox, "a") && !after.open, JSON.stringify(after));
-    check("选定触发 input 事件（git 探测联动）", after.events >= 1, "events=" + after.events);
+    st = JSON.parse(await evalJs(inputState));
+    check("「选这个」：写回绝对路径且弹框关闭", st.v === join(sandbox, "a") && !st.open, JSON.stringify(st));
 
-    /* A2) 点输入框直接打开（本次用户要的主行为） */
-    await evalJs(`document.getElementById("f-workdir").click(); "ok"`);
-    await sleep(900);
-    m = JSON.parse(await evalJs(modalState));
-    check("点输入框：直接打开选择弹框（落在当前值目录）", m.open && m.path === join(sandbox, "a"),
-      JSON.stringify(m).slice(0, 220));
-
-    /* C) 上级 → 此电脑 → 盘符行 */
-    await evalJs(`(() => { const b = [...document.querySelectorAll("#pk-body button")]
-      .find(x => x.textContent === "上级"); if (b) b.click(); return 1; })()`);
+    /* E2) 弹框固定高度：多行盘符列表与单行目录等高（CSS 回归） */
+    await evalJs(`(() => { window.__pickReplies.push({ path: "", fallback: true }); return 1; })()`);
+    await evalJs(pickBtn);
+    await sleep(500);
+    await evalJs(`(async () => { await pickerBrowse("__drives__"); return 1; })()`);
     await sleep(700);
-    m = JSON.parse(await evalJs(modalState));
-    check("上级：回到 sandbox 且两行子目录可见", m.path === sandbox && m.rows.map(r => r.p).includes(join(sandbox, "a")),
-      JSON.stringify(m).slice(0, 220));
-    await evalJs(`(() => { const b = [...document.querySelectorAll("#pk-body button")]
-      .find(x => x.textContent === "此电脑"); if (b) b.click(); return 1; })()`);
-    await sleep(700);
-    m = JSON.parse(await evalJs(modalState));
-    check("此电脑：列出盘符行", m.path === "此电脑" && m.rows.some(r => /^[A-Za-z]:\\$/.test(r.p)),
-      JSON.stringify(m).slice(0, 220));
+    m = JSON.parse(await evalJs(`JSON.stringify({
+      path: (document.querySelector("#pk-body .pk-path") || {}).textContent || "",
+      rows: [...document.querySelectorAll("#pk-body .pk-row")].length,
+      bodyH: Math.round(document.getElementById("pk-body").getBoundingClientRect().height) })`));
+    check("盘符列表可用", m.path === "此电脑" && m.rows >= 1, JSON.stringify(m));
     check("弹框固定高度：多行盘符列表与单行目录等高", m.bodyH === hOneRow && m.bodyH > 300,
       "单行=" + hOneRow + " 盘符=" + m.bodyH);
+    await evalJs(`(async () => { await pickerBrowse(${JSON.stringify(sandbox)}); return 1; })()`);
+    await sleep(500);
+    await evalJs(`(() => { document.querySelector("#pk-body .pk-row button").click(); return 1; })()`);
+    await sleep(300);
 
-    /* C2) 使用当前目录：进入某盘根目录后收下 */
-    await evalJs(`(() => { const row = [...document.querySelectorAll("#pk-body .pk-row")]
-      .find(r => r.dataset.p === "C:\\\\"); if (row) row.click(); return 1; })()`);
-    await sleep(1200);
-    await evalJs(`(() => { const b = [...document.querySelectorAll("#modal-foot button")]
-      .find(x => x.textContent === "使用当前目录"); if (b) b.click(); return 1; })()`);
-    await sleep(400);
-    const useCur = JSON.parse(await evalJs(`JSON.stringify({
-      v: document.getElementById("f-workdir").value,
-      open: !document.getElementById("modal").classList.contains("hidden") })`));
-    check("进入 C:\\ 后「使用当前目录」：写回盘根且弹框关闭", useCur.v === "C:\\" && !useCur.open,
-      JSON.stringify(useCur));
-
-    /* D) i18n：英文模式按钮变英文 */
+    /* F) 英文模式：回落弹框标题/按钮翻译 */
     await evalJs(`localStorage.setItem("orch.lang","en");applyI18n&&applyI18n();
-      document.getElementById("f-workdir").click(); "ok"`);
+      window.__pickReplies.push({ path: "", fallback: true });
+      (() => { const b = [...document.querySelectorAll("button")]
+        .find(x => x.getAttribute("onclick") === "pickFolder('f-workdir')"); b.click(); return 1; })(); "ok"`);
     await sleep(900);
-    m = JSON.parse(await evalJs(modalState));
-    check("英文模式：弹框标题/按钮翻译",
+    m = JSON.parse(await evalJs(`JSON.stringify({
+      open: !document.getElementById("modal").classList.contains("hidden"),
+      title: (document.getElementById("modal-title") || {}).textContent || "",
+      foot: (document.getElementById("modal-foot") || {}).textContent || "" })`));
+    check("英文模式：回落弹框标题/按钮翻译",
       m.open && m.title === "Choose folder" && m.foot.includes("Use this folder"),
-      JSON.stringify({ title: m.title, foot: m.foot }));
+      JSON.stringify(m));
     await evalJs(`localStorage.setItem("orch.lang","zh"); "ok"`);
   } finally {
     try { if (ws) ws.close(); } catch (e) { /* ignore */ }

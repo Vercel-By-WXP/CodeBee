@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from core import automation, catalog, flows, jobs, manager, market, market_remote, registry, remote, settings, store
 from core import paths
 from core import health
+import pick_dialog
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +72,13 @@ class RequestBodyError(ValueError):
 # 侧栏「查看文件」/「目录浏览」跳过的噪音目录（与 store 的习惯一致）
 _SKIP_DIRS_SHARE = {".git", "node_modules", "__pycache__", ".venv", "venv",
                     ".idea", ".vscode", "_attachments"}
+
+# 原生「选择文件夹」对话框：Tk 必须活在自家进程的主线程里（HTTP 请求线程里
+# 建 root 在 macOS 上会崩，Windows 上反复建/销毁也不稳），pick_dialog.py
+# 同文件提供父端 ask_directory()（拉起自身为子进程，参数走 stdin、结果走
+# stdout），这里只持锁防重入。
+# 同时只允许一个原生对话框：对话框开着时第二个请求立即拿到 busy，不排队
+_PICK_LOCK = threading.Lock()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -484,6 +492,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/dir/save":
             # 「查看文件」弹窗编辑保存（本机 + 控制权 + 防穿越 + mtime 冲突检测）
             return self._api_dir_save()
+        if path == "/api/pick_folder":
+            return self._api_pick_folder()
         m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry|rename|continue)$", path)
         if m:
             if m.group(2) == "archive":
@@ -676,6 +686,13 @@ class Handler(BaseHTTPRequestHandler):
             from core import modelhub
             n, err = modelhub.refresh_models(self._body().get("id") or "")
             return self._json(200, {"ok": bool(n), "count": n, "message": err})
+        if path == "/api/models/add":
+            # 手工添加模型：厂商列表接口调不通时直接填模型名进列表
+            from core import modelhub
+            body = self._body()
+            n, err = modelhub.add_model_manual(body.get("id") or "",
+                                               body.get("name") or "")
+            return self._json(200, {"ok": not err, "count": n, "message": err})
         if path == "/api/models/refresh-all":
             from core import modelhub
             n = modelhub.refresh_all_async()
@@ -1065,6 +1082,26 @@ class Handler(BaseHTTPRequestHandler):
         parent = "" if p.parent == p else str(p.parent)
         return self._json(200, {"path": str(p), "parent": parent, "dirs": dirs})
 
+    def _api_pick_folder(self):
+        """系统原生「选择文件夹」对话框（工作目录「选择…」/点输入框用）。仅限本机：
+        对话框弹在服务所在机器上，远端触发等于替别人开窗。pick_dialog.ask_directory
+        拉起子进程弹真窗口，选中绝对路径直接回给前端回填；用户取消回空 path。
+        机器没有 tkinter 时 fallback=true，前端回落网页目录弹框，不失去选目录能力。"""
+        ip, fw = self._forwarded_ip()
+        if ip not in ("127.0.0.1", "::1") or fw:
+            return self._json(403, {"error": "目录选择仅限本机使用，请手动输入路径"})
+        body = self._body()
+        if not _PICK_LOCK.acquire(blocking=False):
+            return self._json(200, {"path": "", "busy": True})
+        try:
+            path, err, fb = pick_dialog.ask_directory(str(body.get("initial") or ""),
+                                                      str(body.get("title") or "选择文件夹"))
+        finally:
+            _PICK_LOCK.release()
+        if err:
+            return self._json(200, {"path": "", "fallback": fb, "error": err})
+        return self._json(200, {"path": path or ""})
+
     def _api_dir_scan(self):
         """侧栏文件夹「查看文件」：递归列出该工作目录下的全部文件（左侧文件页树形展示）。
 
@@ -1267,6 +1304,19 @@ class Handler(BaseHTTPRequestHandler):
                                 attachments=saved_paths)
         if not msg:
             return self._json(400, {"error": "运行不存在或消息非法"})
+        # 终态连载 run 收到递话：自动起答疑轮（op=qa）。此前消息只会躺在信箱里
+        # 无人消费——向已完结的连载任务「下达指令」= 石沉大海（2026-09-18 实案）
+        task = store.get_task(run.get("task_id") or "") if run.get("task_id") else None
+        if (task and task.get("serial")
+                and (run.get("status") or "") not in ("queued", "running")):
+            ok, err, new_run = store.retry_task(run["task_id"])
+            if ok:
+                store.update_run(new_run["id"], op="qa", qa_text=text)
+                self._enqueue_run(new_run["id"], run["task_id"],
+                                  {"kind": "orchestration", "run_id": new_run["id"],
+                                   "task_id": run["task_id"]})
+                return self._json(200, {"ok": True, "message": msg,
+                                        "qa_run": new_run["id"]})
         return self._json(200, {"ok": True, "message": msg})
 
     def _api_run_timeline(self, run_id):
@@ -1346,6 +1396,7 @@ class Handler(BaseHTTPRequestHandler):
                 "note": s.get("note") or "",
                 "run": run_id_of_step,
                 "log": s.get("log") or "",
+                "followups": s.get("followups") or [],
             })
 
         for r in runs:
@@ -1413,17 +1464,20 @@ class Handler(BaseHTTPRequestHandler):
         }
 
     def _api_direct_chat(self, run_id):
-        """直连对话追话：往已结束的 direct run 追加一条消息并自动续跑。
+        """追话：往已结束的 run 追加一条消息并自动续跑。
 
-        机制：消息入旧 run 信箱 → retry_task 起新 run（未消费消息自动继承）
+        直连任务：消息入旧 run 信箱 → retry_task 起新 run（未消费消息自动继承）
         → 入队编排 → _run_direct 看到信箱积压走续轮档（DIRECT_FOLLOWUP）。
-        仅 direct 引擎任务可用；运行中的 run 走既有 /messages（轮间注入）。
+        连载任务：走答疑档（op=qa）——单步只读回答，不再整本重跑（一句
+        「为啥没有第九章」触发全量重评+连环自动续跑，2026-09-18 实案）。
+        运行中的 run 走既有 /messages（轮间注入）。
         写接口已在 do_POST 统一做过设备控制。"""
         run = store.get_run(run_id)
         if not run:
             return self._json(404, {"error": "not found"})
         task = store.get_task(run.get("task_id") or "") if run.get("task_id") else None
-        if not task or task.get("engine") != "direct":
+        is_serial = bool(task and task.get("serial"))
+        if not task or (task.get("engine") != "direct" and not is_serial):
             return self._json(400, {"error": "该任务不是直连任务，请用「下达指令」"})
         if (run.get("status") or "") in ("queued", "running"):
             return self._json(400, {"error": "运行中：消息会随下一步自动送达，无需追话"})
@@ -1448,6 +1502,10 @@ class Handler(BaseHTTPRequestHandler):
         ok, err, new_run = store.retry_task(task["id"])
         if not ok:
             return self._json(400, {"error": err or "无法续跑"})
+        if is_serial:
+            # 答疑档：问题文本显式带上（真实调用失败会把信箱消息 drain 掉，
+            # 换将重试时不能丢问题）；retry_task 只认终态任务，active 已挡
+            store.update_run(new_run["id"], op="qa", qa_text=text)
         queued, qerr = self._enqueue_run(
             new_run["id"], task["id"],
             {"kind": "orchestration", "run_id": new_run["id"], "task_id": task["id"]})
@@ -1736,12 +1794,23 @@ def main():
     if n_mg:
         print("[CodeBee] 崩溃恢复：%d 个遗留管理操作标记为 failed（interrupted at startup）" % n_mg)
     try:
+        # 孤儿 CLI 清扫走后台线程：PowerShell Get-CimInstance 在部分机器上会慢满
+        # timeout（真实装机 60s，启动被白拖一分钟且无任何提示——看门狗堆栈抓到）。
+        # 清扫是尽力而为的旁路；60s timeout 保证它终会结束，但不能挡服务就绪。
         from core import manager as _mgr
-        n_z = _mgr.sweep_orphan_cli_processes()
-        if n_z:
-            # 服务重启孤儿化的 CLI 孙进程：僵尸 opencode 会劫持后续会话的项目根，
-            # 必须在恢复运行之前清掉（2026-09-17 mo-so「工作目录是 Temp」真凶）
-            print("[CodeBee] 崩溃恢复：清扫 %d 个孤儿 CLI 进程（opencode/codex）" % n_z)
+
+        def _sweep_async():
+            try:
+                n_z = _mgr.sweep_orphan_cli_processes()
+                if n_z:
+                    # 服务重启孤儿化的 CLI 孙进程：僵尸 opencode 会劫持后续会话
+                    # 的项目根（2026-09-17 mo-so「工作目录是 Temp」真凶）
+                    print("[CodeBee] 后台清扫：%d 个孤儿 CLI 进程（opencode/codex/kimi）"
+                          % n_z, flush=True)
+            except Exception:
+                pass
+        threading.Thread(target=_sweep_async, name="orphan-sweep",
+                         daemon=True).start()
     except Exception:
         pass
     from core import bookmeta

@@ -236,6 +236,30 @@ async function main() {
       await evalJs(escClose); await sleep(150);
     }
 
+    /* 3.5) 复制源=原文：正文是行号表格，innerText 会把行号列+制表符一起带出，
+     * fpCopySource 必须给不带行号的原文（md/json/diff 三种正文各验一次） */
+    await clickChip("chapter-01.md"); await sleep(900);
+    const mdCopy = await evalJs(`window.fpCopySource ? window.fpCopySource() : "(no-seam)"`);
+    check("md 复制源=文件原文（无行号/制表符）",
+      mdCopy === "第一章 试炼开始\n清晨的雾还没散。\n", JSON.stringify(mdCopy));
+    await evalJs(escClose); await sleep(150);
+    await clickChip("cover.json"); await sleep(900);
+    const jsonCopy = await evalJs(`window.fpCopySource()`);
+    check("json 复制源=美化多行（无行号）",
+      typeof jsonCopy === "string" && jsonCopy.includes('\n  "title"') && !/\d+\t/.test(jsonCopy),
+      JSON.stringify(jsonCopy));
+    await evalJs(escClose); await sleep(150);
+    await evalJs(`(() => { const b = [...document.querySelectorAll("#insp-git-main .insp-cf")]
+      .find(x => x.dataset.p === ${JSON.stringify("chapter-01.md")});
+      if (b) b.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); return 1; })()`);
+    await sleep(900);
+    const diffCopy = await evalJs(`window.fpCopySource()`);
+    check("diff 复制源=切片 diff（无行号槽）",
+      typeof diffCopy === "string" && diffCopy.startsWith("diff --git a/chapter-01.md") &&
+      diffCopy.includes("+第一章 试炼开始") && !/\d+\t/.test(diffCopy),
+      JSON.stringify(diffCopy));
+    await evalJs(escClose); await sleep(150);
+
     /* 4) 英文模式：按钮翻译 */
     await evalJs(`localStorage.setItem("orch.lang","en");applyI18n&&applyI18n(); "ok"`);
     await clickChip("chapter-01.md");

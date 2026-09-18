@@ -1,4 +1,6 @@
-/* 现场复现：直连 8765 打开工作目录选择弹框，抓控制台错误 + 弹框状态（只读操作）。 */
+/* 现场复现：直连 8765 打开工作目录选择，抓控制台错误 + 弹框状态（只读操作）。
+ * ⚠️ 2026-09-18 起主通道是系统原生对话框（/api/pick_folder）：跑本探针会在
+ * 服务所在机器上真弹一个 tkinter 目录窗口，无头环境请改用 ui_workdir_pick.mjs。 */
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";

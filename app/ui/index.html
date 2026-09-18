@@ -79,6 +79,7 @@
     <circle cx="19.9" cy="4.3" r="2" fill="currentColor" stroke="none"/>
     <circle cx="21.6" cy="8.9" r="2.3" fill="currentColor" stroke="none"/>
   </symbol>
+  <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></symbol>
   <!-- 任务类型图标（flows.py 预置流程 icon 字段引用；stroke=currentColor 黑白随主题） -->
   <symbol id="i-code" viewBox="0 0 24 24"><path d="m4 17 6-5-6-5"/><path d="M12 19h8"/></symbol>
   <symbol id="i-book-open" viewBox="0 0 24 24"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></symbol>
@@ -187,6 +188,7 @@
       <div data-i18n="外观" class="set-group">外观</div>
       <button class="set-item" data-sub="appearance" data-i18n="皮肤"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg>皮肤</button>
       <div data-i18n="软件" class="set-group">软件</div>
+      <button id="btn-guide" class="set-item" data-sub="__guide" data-i18n="使用引导"><svg class="ico" aria-hidden="true"><use href="#i-rocket"></use></svg>使用引导</button>
       <button id="btn-about" class="set-item" data-sub="about" data-i18n="关于与更新"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>关于与更新</button>
       <div data-i18n="远程" class="set-group">远程</div>
       <button id="btn-phone" class="set-item" data-sub="__phone" data-i18n="手机连接"><svg class="ico" aria-hidden="true"><use href="#i-phone"></use></svg>手机连接</button>
@@ -230,31 +232,37 @@
       <div class="panel wide composer">
         <div class="hero-row">
           <h2 class="hero" id="cmp-greet">上午好呀，有什么想让我帮忙的吗</h2>
-          <button type="button" id="btn-wizard" class="ghost small" data-i18n="✨ 向导创建" data-i18n-title="三问一确认：目标 → 类型 → 目录，预填进表单" title="三问一确认：目标 → 类型 → 目录，预填进表单" onclick="openTaskWizard()">✨ 向导创建</button>
         </div>
-        <p data-i18n="一句话目标即可 —— CodeBee 自动拆解、智能路由、执行、验证并跨厂商评审。" class="hint hero-sub">一句话目标即可 —— CodeBee 自动拆解、智能路由、执行、验证并跨厂商评审。</p>
         <div class="form">
-          <!-- 参考对话式工作台：工作目录是上下文，任务类型放到底部工具栏。
-               值真源仍是 #f-type / #f-workdir（既有 ID，联动与测试锚点全兼容）。 -->
+          <!-- Composer 大输入框：工作目录作为框内首行上下文；值真源仍是
+               #f-type / #f-workdir（既有 ID，联动与测试锚点全兼容）。
+               附件在左下、发送在右下；Enter 发送，Shift+Enter 换行 -->
+          <div class="cmp-box">
           <div class="cmp-pills">
             <div class="cmp-wd">
               <svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>
               <div class="input-row">
-                <input id="f-workdir" placeholder="留空则保存到默认路径；或填绝对路径，例 E:\GoOut\my-project" data-i18n-ph="留空则保存到默认路径；或填绝对路径，例 E:\GoOut\my-project">
-                <button data-i18n="选择…" class="ghost small" type="button" title="浏览本机目录选择" data-i18n-title="浏览本机目录选择" onclick="pickFolder('f-workdir')">选择…</button>
+                <input id="f-workdir" placeholder="工作目录 · 留空用默认" data-i18n-ph="工作目录 · 留空用默认">
+                <button data-i18n="选择…" class="ghost small wd-pick-btn" type="button" title="浏览本机目录选择" data-i18n-title="浏览本机目录选择" onclick="pickFolder('f-workdir')">选择…</button>
+                <button type="button" id="f-workdir-menu-btn" class="ghost small wd-menu-btn" aria-haspopup="listbox" aria-controls="wd-menu" title="最近使用的文件夹" data-i18n-title="最近使用的文件夹" onclick="toggleWdMenu(event)">
+                  <svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
+                </button>
               </div>
+              <!-- 最近文件夹下拉：点 ▾ 展开（toggleWdMenu 渲染），含浏览与「用默认路径」 -->
+              <div id="wd-menu" class="wd-menu hidden" role="listbox" aria-label="最近使用的文件夹" data-i18n-aria="最近使用的文件夹"></div>
+            </div>
+            <!-- 工作目录指向 git 仓库时出现（probeGit 显隐）：分支以小胶囊挂同一条上下文条，
+                 悬停看当前分支/脏区/检出说明（renderGitHint 写 title）；运行时检出任务分支 -->
+            <div class="field hidden" id="row-git">
+              <label data-i18n="代码版本"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>代码版本</label>
+              <select id="f-git-rev"></select>
+              <p class="hint" id="git-hint"></p>
             </div>
           </div>
+          <!-- 平时空（默认路径提示由 JS 写进占位符）；继续会话/克隆任务预填时这里落覆盖警告 -->
           <p class="hint cmp-hint" id="f-workdir-hint"></p>
-          <!-- 工作目录指向 git 仓库时出现（probeGit 显隐）：运行时检出任务分支 -->
-          <div class="field hidden" id="row-git">
-            <label data-i18n="代码版本"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>代码版本</label>
-            <select id="f-git-rev"></select>
-            <p class="hint" id="git-hint"></p>
-          </div>
-          <!-- Composer 大输入框：附件在左下、发送在右下；Enter 发送，Shift+Enter 换行 -->
-          <div class="cmp-box">
             <div class="cmp-context-note"><svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg><span data-i18n="描述目标即可，CodeBee 会自动拆解并执行">描述目标即可，CodeBee 会自动拆解并执行</span></div>
+            <div id="att-chips" class="att-chips" aria-live="polite"></div>
             <textarea id="f-goal" rows="3" placeholder="要完成什么，一句话即可" required data-i18n-ph="要完成什么，一句话即可"></textarea>
             <div class="cmp-bar">
               <div class="cmp-mode">
@@ -267,12 +275,9 @@
                   </button>
                   <div id="type-menu" class="type-menu hidden" role="listbox" aria-label="任务类型" data-i18n-aria="任务类型"></div>
                 </div>
-                <button type="button" class="ghost small" id="btn-flows-mgr" data-i18n="管理" data-i18n-title="管理任务类型：新增/编辑自定义流程" title="管理任务类型：新增/编辑自定义流程" onclick="openFlowsManager()">管理</button>
               </div>
               <div class="att-strip">
-                <button type="button" class="ghost small" id="btn-attach" title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/" data-i18n-title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/"><svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg><span data-i18n="附件">附件</span></button>
-                <span class="att-hint" data-i18n="也可直接粘贴截图">也可直接粘贴截图</span>
-                <div id="att-chips" class="att-chips"></div>
+                <button type="button" class="ghost small" id="btn-attach" title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/；也可直接粘贴截图" data-i18n-title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/；也可直接粘贴截图"><svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg><span data-i18n="附件">附件</span></button>
               </div>
               <div class="cmp-send">
                 <span id="create-msg" class="msg"></span>
@@ -361,6 +366,10 @@
       <!-- 运行详情：头部（标题/状态/操作/统计）+ 标签分区 + 贴底日志抽屉。
            分区内容的 hidden 语义不变（没数据整块收起）；标签页只切外层 pane。 -->
       <div id="run-detail" class="panel wide hidden">
+        <!-- 右栏一张卡：任务信息（返回/标题/状态/操作）+ 分区导航，发丝线分区；
+             日志控制台停靠卡片下方，不再横向盖住主区内容 -->
+        <div id="rd-railcol">
+        <div id="rd-rail">
         <div class="detail-head">
           <button id="btn-back" class="ghost" data-i18n="返回"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>返回</button>
           <h2 id="rd-title"></h2>
@@ -373,10 +382,27 @@
             <button data-i18n="继续连载" id="btn-continue" class="ghost hidden">继续连载</button>
             <button data-i18n="基于此任务新建" id="btn-newfrom" class="ghost hidden">基于此任务新建</button>
             <button data-i18n="删除记录" id="btn-delete" class="danger hidden">删除记录</button>
+            <button data-i18n="✉ 继续对话" id="btn-talk" class="ghost hidden" data-i18n-title="人工检查有问题？告诉主智能体，由它判断怎么引导执行" title="人工检查有问题？告诉主智能体，由它判断怎么引导执行">✉ 继续对话</button>
+            <button id="rd-more-toggle" class="rd-more-toggle" type="button" aria-label="更多任务信息" data-i18n-aria="更多任务信息" aria-expanded="false" aria-controls="rd-meta-popover" title="更多任务信息" data-i18n-title="更多任务信息">•••</button>
+          </div>
+          <!-- 人工干预（非直连任务）：运行中=递话入箱，下一步开始前送达主智能体；
+               已结束=发送后自动断点续跑，主智能体带着反馈重新规划/引导执行 -->
+          <div id="rd-talk" class="rd-talk hidden">
+            <div id="rd-talk-atts" class="rd-talk-atts"></div>
+            <textarea id="rd-talk-input" rows="3" placeholder="哪里不对、要改哪里？主智能体会据此判断并引导执行" data-i18n-ph="哪里不对、要改哪里？主智能体会据此判断并引导执行"></textarea>
+            <div class="rd-talk-bar">
+              <button id="rd-talk-attach" class="ghost" data-i18n="附件" data-i18n-title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB）；也可直接粘贴截图" title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB）；也可直接粘贴截图">附件</button>
+              <span id="rd-talk-hint" class="hint"></span>
+              <button id="rd-talk-send" class="primary small" data-i18n="递话">递话</button>
+            </div>
+            <input id="rd-talk-file" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.txt,.md,.markdown,.csv,.json,.log,.py,.js,.ts,.html,.css,.xml,.yml,.yaml,.toml,.pdf,.docx,.xlsx,.pptx" class="hidden">
+          </div>
+          <div id="rd-meta-popover" class="rd-meta-popover hidden" role="dialog" aria-label="任务信息" data-i18n-aria="任务信息">
+            <div class="rd-meta-popover-head"><span data-i18n="任务信息">任务信息</span><button id="rd-more-close" type="button" class="ghost" aria-label="关闭" data-i18n-aria="关闭">×</button></div>
+            <div id="rd-meta" class="stats rd-meta-strip"></div>
+            <div id="rd-overview" class="rd-overview hidden" aria-live="polite"></div>
           </div>
         </div>
-        <div id="rd-meta" class="stats rd-meta-strip"></div>
-        <div id="rd-overview" class="rd-overview hidden" aria-live="polite"></div>
         <div id="rd-tabs" class="rd-tabs" role="tablist" data-i18n-aria="详情分区">
           <button id="rd-tab-chat" class="rd-tab" role="tab" aria-controls="rd-pane-chat" aria-selected="false" tabindex="-1" data-tab="chat" data-i18n="对话"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-chat"></use></svg>对话<span class="rd-badge hidden"></span></button>
           <button id="rd-tab-hive" class="rd-tab" role="tab" aria-controls="rd-pane-hive" aria-selected="false" tabindex="-1" data-tab="hive" data-i18n="蜂巢"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-bee"></use></svg>蜂巢<span class="rd-badge hidden"></span></button>
@@ -389,6 +415,22 @@
         <!-- 直连任务「对话为主」导航：常规页签条收起（chat-mode），这里给按需打开
              其它分区的小按钮 + 非对话分区时的「返回对话」入口 -->
         <div id="rd-chat-nav" class="hidden"></div>
+        </div><!-- /rd-rail -->
+        <!-- 日志控制台：停靠右栏卡片下方（窄侧栏），点击蜂巢格/步骤的 CLI 日志在此展开；
+             顶边手柄可拖拽调高度（双击复位），运行中自动贴底跟随最新输出 -->
+        <div id="rd-log" class="logbox rd-logdrawer hidden">
+          <div id="rd-log-grip" class="rd-log-grip" data-i18n-title="拖拽调整高度；双击复位" title="拖拽调整高度；双击复位"></div>
+          <div class="log-live-bar">
+            <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
+            <span id="rd-log-step" class="rd-log-step" data-i18n-title="当前日志所属的步骤" title="当前日志所属的步骤"></span>
+            <span id="rd-log-live" class="log-live"></span>
+            <span id="rd-log-at" class="log-at"></span>
+            <span class="spacer"></span>
+            <button class="ghost rd-log-x" onclick="rdLogClose()" data-i18n-title="关闭日志" title="关闭日志"><svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg></button>
+          </div>
+          <pre id="rd-log-text"></pre>
+        </div>
+        </div><!-- /rd-railcol -->
         <div class="rd-main">
           <!-- 对话分区（直连任务默认）：用户消息与 CLI 输出混排的时间线 + 贴底追话框。
                运行中发出去走信箱（下一步送达）；已结束发出去走 /chat 自动续跑新一轮。 -->
@@ -396,6 +438,7 @@
             <div id="rd-chat" class="rd-chat hidden">
               <div id="rd-chat-flow" class="rd-chat-flow"></div>
               <div class="rd-chat-bar">
+                <div id="rd-chat-continue-note" class="rd-chat-continue-note hidden"><span class="continue-dot"></span><span data-i18n="本轮已完成，可以继续对话">本轮已完成，可以继续对话</span><button id="rd-chat-focus" type="button" class="ghost small" data-i18n="继续对话">继续对话</button></div>
                 <textarea id="rd-chat-input" rows="2" data-i18n-ph="继续说…（Enter 发送，Shift+Enter 换行；可直接粘贴截图）" placeholder="继续说…（Enter 发送，Shift+Enter 换行；可直接粘贴截图）"></textarea>
                 <div class="rd-chat-tools">
                   <button id="rd-chat-attach" class="ghost" data-i18n-title="添加附件" title="添加附件" data-i18n-aria="添加附件" aria-label="添加附件"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg></button>
@@ -447,18 +490,6 @@
           </div>
           <div id="rd-pane-bookmeta" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-bookmeta" data-pane="bookmeta">
             <div id="rd-bookmeta" class="rd-bookmeta hidden"></div>
-          </div>
-          <div id="rd-log" class="logbox rd-logdrawer hidden">
-            <div class="log-live-bar">
-              <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
-              <span id="rd-log-step" class="rd-log-step" data-i18n-title="当前日志所属的步骤" title="当前日志所属的步骤"></span>
-              <span id="rd-log-live" class="log-live"></span>
-              <span id="rd-log-at" class="log-at"></span>
-              <span class="spacer"></span>
-              <span class="hint" data-i18n="停在底部自动跟随新输出；上翻回看时不动">停在底部自动跟随新输出；上翻回看时不动</span>
-              <button class="ghost rd-log-x" onclick="rdLogClose()" data-i18n-title="关闭日志" title="关闭日志"><svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg></button>
-            </div>
-            <pre id="rd-log-text"></pre>
           </div>
         </div>
       </div>
@@ -668,6 +699,7 @@
           <div class="panel-head"><h2 data-i18n="关于与更新">关于与更新</h2></div>
           <div id="su-info" class="empty" data-i18n="加载中…">加载中…</div>
           <div class="input-row" style="margin-top:10px">
+            <button id="btn-welcome-replay" class="ghost small" onclick="welcomeOpen()"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="使用引导">使用引导</span></button>
             <button id="su-check" class="ghost small" onclick="suCheck()"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="检查更新">检查更新</span></button>
             <button id="su-apply" class="ghost small hidden" onclick="suApply()"><span data-i18n="升级到新版">升级到新版</span></button>
             <button id="su-restart" class="ghost small hidden" onclick="suRestart()"><span data-i18n="重启服务生效">重启服务生效</span></button>
@@ -884,6 +916,46 @@
       <span class="spacer"></span>
       <button data-i18n="取消" class="ghost" id="ask-no">取消</button>
       <button data-i18n="确定" class="primary" id="ask-yes">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 首次启动欢迎引导：产品能做什么 + 装完三步开工；「设置 → 关于与更新」可重开。
+     localStorage orch.welcomed 记账，只自动弹一次；令牌门在场时让位（见 maybeWelcome）。 -->
+<div id="welcome" class="welcome-wrap hidden">
+  <div class="welcome-mask" onclick="welcomeClose()"></div>
+  <div class="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+    <button class="welcome-x icon-btn" title="关闭" aria-label="关闭" data-i18n-title="关闭" data-i18n-aria="关闭" onclick="welcomeClose()">✕</button>
+    <div class="welcome-left">
+      <span class="welcome-badge" data-i18n="首次启动">首次启动</span>
+      <div class="welcome-brand">
+        <svg class="ico welcome-bee" aria-hidden="true"><use href="#i-bee"></use></svg>
+        <span class="brand-name">CodeBee</span>
+      </div>
+      <h1 id="welcome-title" data-i18n="欢迎使用 CodeBee">欢迎使用 CodeBee</h1>
+      <p class="welcome-sub" data-i18n="一群 AI 智能体自动分工：规划、实现、评审、打磨，直到交付成果。">一群 AI 智能体自动分工：规划、实现、评审、打磨，直到交付成果。</p>
+      <div class="welcome-steps">
+        <div class="wstep"><b>1</b><span data-i18n="添加模型供应商：设置 → 模型接入，填入 API Key">添加模型供应商：设置 → 模型接入，填入 API Key</span></div>
+        <div class="wstep"><b>2</b><span data-i18n="绑定 CLI 智能体：点「一键推荐绑定」自动配好">绑定 CLI 智能体：点「一键推荐绑定」自动配好</span></div>
+        <div class="wstep"><b>3</b><span data-i18n="新建任务：选工作目录、写目标，蜂群开工">新建任务：选工作目录、写目标，蜂群开工</span></div>
+      </div>
+      <div class="welcome-acts">
+        <button class="wl-btn primary" onclick="welcomeGo('models')"><span data-i18n="开始配置模型">开始配置模型</span><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>
+        <button class="wl-btn" onclick="welcomeGo('bindings')"><span data-i18n="绑定 CLI 智能体">绑定 CLI 智能体</span><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>
+        <button class="wl-btn ghost" onclick="welcomeClose()"><span data-i18n="先跳过，直接体验">先跳过，直接体验</span></button>
+      </div>
+      <p class="welcome-foot" data-i18n="可随时在「设置 → 关于与更新」重新打开本引导。">可随时在「设置 → 关于与更新」重新打开本引导。</p>
+    </div>
+    <div class="welcome-right">
+      <h2 data-i18n="把任务交给蜂群">把任务交给蜂群</h2>
+      <p class="wr-sub" data-i18n="多智能体分工协作，成果自动落盘。">多智能体分工协作，成果自动落盘。</p>
+      <ul class="wr-feats">
+        <li><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><div><b data-i18n="多智能体编排">多智能体编排</b><span data-i18n="规划 · 实现 · 评审 · 打磨，接棒交付">规划 · 实现 · 评审 · 打磨，接棒交付</span></div></li>
+        <li><svg class="ico" aria-hidden="true"><use href="#i-book-open"></use></svg><div><b data-i18n="连载写作">连载写作</b><span data-i18n="断点续跑 · 经验沉淀 · 作品资料">断点续跑 · 经验沉淀 · 作品资料</span></div></li>
+        <li><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg><div><b data-i18n="插件市场">插件市场</b><span data-i18n="600+ 技能，一键安装">600+ 技能，一键安装</span></div></li>
+        <li><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg><div><b data-i18n="版本工作台">版本工作台</b><span data-i18n="任务分支隔离，改动可审可合">任务分支隔离，改动可审可合</span></div></li>
+        <li><svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg><div><b data-i18n="自动化">自动化</b><span data-i18n="定时任务，无人值守">定时任务，无人值守</span></div></li>
+      </ul>
     </div>
   </div>
 </div>

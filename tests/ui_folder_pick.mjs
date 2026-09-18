@@ -1,4 +1,6 @@
-/* 工作目录「选择…」弹框 + 表单对齐核验。
+/* 工作目录「选择…」弹框 + 表单对齐核验（覆盖网页弹框回落通道）。
+ * 主通道是系统原生「选择文件夹」对话框（ui_workdir_pick.mjs 覆盖）；本页把
+ * /api/pick_folder stub 成 fallback=true，专验无 tkinter 机器的回落路径：
  *   A) 创建表单 grid-2 两列的 select 顶部对齐（label 等高修复）；
  *   B) /api/browse：缺省=主目录、指定目录=子目录列表、不存在=404、盘符列表可用；
  *   C) 页面流程：点「选择…」弹框打开 → 跳到目标目录 → 点子目录行「选这个」→
@@ -94,7 +96,20 @@ async function main() {
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(3500);
 
-    /* ---- A) Composer 胶囊行：类型按钮与目录胶囊同排顶部对齐（真源 #f-type 仍 hidden） ---- */
+    /* 本页只验网页弹框回落通道：原生 pick_folder 一律回 fallback=true */
+    await evalJs(`(() => {
+      const orig = window.fetch.bind(window);
+      window.fetch = (url, opts) => {
+        if (String(url).includes("/api/pick_folder")) {
+          return Promise.resolve(new Response(JSON.stringify({ path: "", fallback: true }),
+            { status: 200, headers: { "Content-Type": "application/json" } }));
+        }
+        return orig(url, opts);
+      };
+      return 1;
+    })()`);
+
+    /* ---- A) Composer 布局契约：目录=框内首行上下文，目标居中，类型/发送在底部工具条 ---- */
     const align = await evalJs(`(() => {
       const typeBtn = document.getElementById("f-type-btn");
       const wd = document.querySelector(".cmp-wd");
@@ -102,18 +117,19 @@ async function main() {
       const send = document.getElementById("btn-create");
       const tb = typeBtn && typeBtn.getBoundingClientRect();
       const wb = wd && wd.getBoundingClientRect();
+      const gb = goal && goal.getBoundingClientRect();
       return JSON.stringify({
         hasType: !!typeBtn, hasWd: !!wd, hasGoal: !!goal, hasSend: !!send,
         typeTop: tb ? Math.round(tb.top) : -1, wdTop: wb ? Math.round(wb.top) : -1,
-        sameRow: !!(tb && wb && Math.abs(tb.top - wb.top) < 6),
-        goalBelow: !!(tb && goal && goal.getBoundingClientRect().top > tb.bottom - 2),
+        wdInBoxFirst: !!(wb && gb && wd.closest(".cmp-box") && wb.top < gb.top),
+        typeBelowGoal: !!(tb && gb && tb.top > gb.bottom - 2),
         sendInBox: !!(send && send.closest(".cmp-box")),
       });
     })()`);
     const al = JSON.parse(align);
-    check("胶囊行四件套齐全", al.hasType && al.hasWd && al.hasGoal && al.hasSend, align);
-    check("类型/目录胶囊同排", al.sameRow, align);
-    check("目标框在胶囊行下方", al.goalBelow, align);
+    check("Composer 四件套齐全", al.hasType && al.hasWd && al.hasGoal && al.hasSend, align);
+    check("工作目录行在输入框内首行", al.wdInBoxFirst, align);
+    check("类型选择在目标框下方工具条", al.typeBelowGoal, align);
     check("发送按钮在 composer 框内", al.sendInBox, align);
 
     /* ---- B) /api/browse ---- */

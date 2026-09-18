@@ -71,6 +71,8 @@ async function main() {
       { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(3500);
+    // 首次启动欢迎引导会盖住真实触摸目标：记账关掉（引导自身由 ui_welcome.mjs 覆盖）
+    await evalJs(`localStorage.setItem("orch.welcomed","1"); try { welcomeClose(); } catch (e) {} "ok"`);
 
     check("窄屏默认收起抽屉", await evalJs(`document.body.classList.contains("side-collapsed")`) === true);
 

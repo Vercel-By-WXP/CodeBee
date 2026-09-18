@@ -1,8 +1,10 @@
 /* 新建任务「默认保存路径」核验（Edge headless + CDP，临时端口 18843）：
  * 工作目录不再用 localStorage「上次用过目录」预填——旧记忆会盖过设置里的默认路径。
- * 1) 首屏 f-workdir 留空，hint 显示「留空则保存到：<默认路径>」；
+ * 2026-09-18 起首屏改为「默认选中」：字段直接落默认路径（参考工作区选择器），
+ * 手动清空仍表示跟随默认；旧记忆依旧必须被忽略。
+ * 1) 首屏 f-workdir 值 == 默认路径（默认选中）；
  * 2) 旧版残留键 orch.workdir 启动即清理；
- * 3) 手工塞入旧记忆再刷新：字段仍留空、hint 仍指默认路径（旧记忆被忽略）。 */
+ * 3) 手工塞入旧记忆再刷新：字段仍等于默认路径，绝不被旧记忆盖写。 */
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -70,23 +72,20 @@ async function main() {
 
     const formState = `JSON.stringify((() => ({
       wd: document.getElementById("f-workdir").value,
-      hint: document.getElementById("f-workdir-hint").textContent,
+      menuHidden: document.getElementById("wd-menu").classList.contains("hidden"),
       stale: localStorage.getItem("orch.workdir") }))())`;
     let st = JSON.parse(await evalJs(formState));
-    check("首屏：工作目录字段留空（不预填旧记忆）", st.wd === "", JSON.stringify(st));
+    check("首屏：工作目录默认选中默认路径", st.wd === effective, JSON.stringify(st));
+    check("首屏：最近文件夹菜单默认收起", st.menuHidden === true, JSON.stringify(st));
     check("首屏：旧版 orch.workdir 残留键已清理", st.stale === null || st.stale === "", JSON.stringify(st));
-    check("首屏：hint 指向默认保存路径",
-      st.hint.includes("留空则保存到") && st.hint.includes(effective), JSON.stringify(st));
 
-    /* 旧记忆场景：塞入上次用过的目录 → 刷新后必须被忽略，字段仍留空走默认 */
+    /* 旧记忆场景：塞入上次用过的目录 → 刷新后必须被忽略，字段仍是默认路径 */
     await evalJs(`localStorage.setItem("orch.workdir", "E:\\\\stale-old-dir"); "ok"`);
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(3500);
     st = JSON.parse(await evalJs(formState));
-    check("刷新后：旧记忆不预填，字段仍留空", st.wd === "", JSON.stringify(st));
+    check("刷新后：旧记忆不预填，字段仍是默认路径", st.wd === effective, JSON.stringify(st));
     check("刷新后：旧记忆键被清理", st.stale === null || st.stale === "", JSON.stringify(st));
-    check("刷新后：hint 仍指向默认保存路径",
-      st.hint.includes("留空则保存到") && st.hint.includes(effective), JSON.stringify(st));
   } finally {
     try { if (ws) ws.close(); } catch (e) { /* ignore */ }
     try { if (edge) edge.kill(); } catch (e) { /* ignore */ }

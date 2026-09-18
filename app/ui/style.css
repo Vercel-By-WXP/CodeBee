@@ -2068,6 +2068,16 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
 .ti-check { flex: none; width: 15px; height: 15px; color: var(--accent); visibility: hidden; }
 .type-item.on { background: var(--panel2); }
 .type-item.on .ti-check { visibility: visible; }
+/* 菜单底部固定入口（管理任务类型…）：sticky 钉在滚动区底部，不随选项滚走 */
+.type-menu-foot {
+  position: sticky; bottom: -5px;
+  margin: 4px -5px -5px; padding: 3px 5px 4px;
+  background: var(--panel); border-top: 1px solid var(--border);
+}
+.type-menu-foot .type-item { min-height: 30px; color: var(--muted); }
+.type-menu-foot .type-item:hover { color: var(--text); }
+.type-menu-foot .ti-ico .ico { width: 15px; height: 15px; }
+.type-menu-foot .ti-name { font-weight: 550; font-size: 12px; }
 @media (max-width: 720px) {
   /* iOS Safari 聚焦输入控件 ≥16px 才不自动放大页面 */
   .type-pick { font-size: 16px; }
@@ -3363,9 +3373,8 @@ body::before {
 #mainwrap { background: transparent; }
 .topbar {
   min-height: 64px; padding: 12px 24px;
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(18px);
   position: sticky; top: 0; z-index: 10;
 }
 .page-title { font-family: var(--font-display); font-size: 16px; letter-spacing: .02em; }
@@ -4024,8 +4033,21 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
    新建任务像一个工作台入口：只突出上下文、目标和发送动作，
    详细参数继续留在「更多选项」里，不让配置表单抢走第一视线。
 ================================================================ */
+/* 首页高度不再自算视口（旧 min-height: calc(100vh - 64px) 与 main 自身上下
+   内边距相加恒定溢出 → 页面永远多出一条滚动条）。改为 main 挂 flex 把内容区
+   原样让给子页，composer 在其中垂直居中；内容超高（矮窗口）时 flex 不压缩，
+   main 照常滚动，其它子页不受影响。 */
+main:has(> #page-settings > #sub-tasks:not(.hidden)) {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 36px;
+}
+main:has(> #page-settings > #sub-tasks:not(.hidden)) > #page-settings { flex: 1 0 auto; }
+/* 运行记录/详情子页：详情面板定高一屏（顶距 92 + 底距 28 与其 height 公式对齐），
+   底部内边距收紧——否则文档高出一截，窗口滚动条又会回来 */
+main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
 #sub-tasks {
-  min-height: calc(100vh - 64px);
+  flex: 1 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4042,87 +4064,112 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
   justify-content: center;
   text-align: center;
   position: relative;
+  margin-bottom: 16px;
 }
+/* 问候语克制：一行轻量招呼即可，不抢输入框的第一视线 */
 #sub-tasks .hero {
-  font-size: clamp(23px, 2.6vw, 31px);
-  font-weight: 500;
-  letter-spacing: -.04em;
+  font-size: 20px;
+  font-weight: 550;
+  letter-spacing: -.01em;
 }
-#sub-tasks .hero-sub {
-  max-width: 560px;
-  margin: 8px auto 25px;
-  text-align: center;
-  font-size: 12.5px;
-  color: var(--muted);
-}
-#sub-tasks #btn-wizard {
-  position: absolute;
-  right: 0;
-  top: 1px;
-  opacity: .7;
-}
-#sub-tasks #btn-wizard:hover { opacity: 1; }
 #sub-tasks .form { gap: 10px; }
+/* 工作目录=框内首行上下文（.cmp-pills 已移入 .cmp-box）；
+   git 仓库场景下分支选择以小胶囊挂同一条上下文条（#row-git 移入） */
 #sub-tasks .cmp-pills {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 8px;
   width: 100%;
-  min-height: 34px;
+  min-height: 0;
   margin: 0;
-  padding: 0 12px 5px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
 }
-#sub-tasks .cmp-wd {
-  width: 100%;
-  min-height: 30px;
+#sub-tasks .cmp-pills .cmp-wd {
+  flex: 1 1 200px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  min-width: 0;
+  min-height: 28px;
   padding: 0;
   border: 0;
-  background: transparent;
   border-radius: 0;
-}
-#sub-tasks .cmp-wd > .ico { width: 14px; height: 14px; color: var(--muted); }
-#sub-tasks .cmp-wd input {
-  min-height: 28px;
-  padding: 3px 6px;
   background: transparent;
+}
+#sub-tasks .cmp-wd > .ico { flex: none; width: 14px; height: 14px; color: var(--muted); }
+#sub-tasks .cmp-wd .input-row { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
+#sub-tasks .cmp-wd input {
+  flex: 1;
+  min-width: 0;
+  min-height: 28px;
+  padding: 3px 2px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   color: var(--text);
   font-size: 12px;
+  text-overflow: ellipsis;
 }
 #sub-tasks .cmp-wd input::placeholder { color: var(--muted); }
 #sub-tasks .cmp-wd .ghost.small {
-  padding: 3px 8px;
+  flex: none;
+  min-height: 24px;
+  padding: 2px 7px;
   border: 0;
   background: transparent;
   color: var(--muted);
+  font-size: 11px;
 }
 #sub-tasks .cmp-wd .ghost.small:hover { color: var(--accent); background: var(--panel2); }
-#sub-tasks .cmp-hint { margin: -5px 12px 0; font-size: 11px; }
+/* 分支胶囊：替换原整块「代码版本」表单；详情（当前分支/脏区/检出说明）走悬停 title */
+#sub-tasks #row-git {
+  display: flex;
+  align-items: center;
+  flex: none;
+  max-width: 46%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+#sub-tasks #row-git label { display: none; }
+#sub-tasks #row-git .hint { display: none; }
+#sub-tasks #f-git-rev {
+  width: auto;
+  max-width: 230px;
+  min-height: 26px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--panel2);
+  color: var(--text);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+}
+#sub-tasks .cmp-hint { margin: 5px 4px 0; font-size: 11px; text-align: left; }
 #sub-tasks .cmp-box {
   width: 100%;
   margin-top: 0;
   padding: 0 12px 9px;
   border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
-  border-radius: 22px;
+  border-radius: 16px;
   background: color-mix(in srgb, var(--panel) 94%, transparent);
-  box-shadow: 0 10px 30px color-mix(in srgb, var(--text) 7%, transparent);
+  box-shadow: none;
 }
 #sub-tasks .cmp-box:focus-within {
   border-color: color-mix(in srgb, var(--accent) 68%, var(--border-strong));
-  box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 10%, transparent), 0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent);
 }
-#sub-tasks .cmp-context-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 7px 4px 0;
-  color: var(--muted);
-  font-size: 11px;
-}
-#sub-tasks .cmp-context-note .ico { width: 13px; height: 13px; color: var(--accent); opacity: .75; }
+/* 极简收敛：这行说明与顶部 hero 副标重复（同一句「自动拆解并执行」），
+   元素保留在 DOM（i18n/锚点兼容），仅不再占一行视觉噪音。 */
+#sub-tasks .cmp-context-note { display: none; }
 #sub-tasks .cmp-box textarea {
   min-height: 112px;
-  padding: 10px 4px 12px;
+  padding: 14px 4px 12px;
   font-size: 15px;
   line-height: 1.65;
   background: transparent;
@@ -4146,16 +4193,7 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
   font-size: 11.5px;
 }
 #sub-tasks .cmp-mode .type-pick:hover { background: color-mix(in srgb, var(--accent) 10%, var(--panel2)); }
-#sub-tasks .cmp-mode #btn-flows-mgr {
-  min-height: 29px;
-  padding: 4px 7px;
-  border: 0;
-  color: var(--muted);
-  font-size: 11px;
-}
-#sub-tasks .cmp-mode #btn-flows-mgr:hover { color: var(--accent); background: var(--panel2); }
 #sub-tasks .cmp-bar .att-strip { min-width: 0; flex: 1; margin: 0; }
-#sub-tasks .cmp-bar .att-strip .att-hint { font-size: 11px; color: var(--muted); }
 #sub-tasks .cmp-bar .att-strip > .ghost.small {
   min-height: 28px;
   padding: 4px 8px;
@@ -4170,11 +4208,9 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
   height: 31px;
   box-shadow: none;
 }
-#sub-tasks .cmp-quick {
-  justify-content: center;
-  gap: 6px;
-  margin: 13px 0 0;
-}
+/* 类型只留底部工具栏一个入口（胶囊+下拉菜单）：下方快捷 chips 与其内容重复，
+   不再展示；DOM 保留（测试做存在性计数，display:none 不影响）。 */
+#sub-tasks .cmp-quick { display: none; }
 #sub-tasks .cmp-chip {
   min-height: 28px;
   padding: 4px 10px;
@@ -4257,18 +4293,17 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
 .rd-overview-actions { display: flex; justify-content: flex-end; gap: 6px; grid-column: 1 / -1; }
 .rd-overview-actions button { padding: 5px 9px; font-size: 11.5px; }
 
-/* 直连详情只保留对话的呼吸感；代码/编排任务才展示概览。 */
-#run-detail.chat-mode #rd-overview { display: none !important; }
+/* 直连详情把概览放进右上角信息面板；主区仍然只留对话。 */
+#run-detail.chat-mode .rd-meta-popover #rd-overview:not(.hidden) { display: grid !important; }
 
-/* 日志是底部控制台，但对话输入必须始终可用：日志打开时让聊天区留出安全距离。 */
-#run-detail.chat-mode #rd-log.rd-logdrawer { bottom: 0; max-height: min(27vh, 260px); }
-#run-detail.chat-mode #rd-pane-chat .rd-chat { padding-bottom: min(27vh, 260px); }
-#run-detail.chat-mode #rd-log.rd-logdrawer pre { max-height: min(23vh, 220px); }
+/* 日志已停靠右栏卡片下方（见「详情页侧边栏重构」段），不再盖住对话区，
+   旧的 chat-mode 悬浮定位与聊天区让位 padding 全部退役（chat-log-open
+   类仍由 JS 维护，留作状态标记）。 */
 
 @media (max-width: 760px) {
-  #sub-tasks { min-height: calc(100vh - 56px); align-items: flex-start; }
-  #sub-tasks .composer { margin-top: 10vh; padding-inline: 8px; }
-  #sub-tasks #btn-wizard { position: static; margin-left: auto; }
+  /* 高度交给 main→#page-settings→#sub-tasks 的 flex 链（见上方说明），不再自算 100vh */
+  #sub-tasks { align-items: flex-start; }
+  #sub-tasks .composer { margin-top: 6vh; padding-inline: 8px; }
   #sub-tasks .hero-row { align-items: center; }
   #sub-tasks .cmp-context-note { font-size: 10.5px; }
   #sub-tasks .cmp-bar { flex-wrap: wrap; }
@@ -4279,6 +4314,520 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
   .rd-overview-title, .rd-overview-goal { white-space: normal; }
 }
 
+/* ================= 按需任务信息 + 新建任务图片附件 =================
+   详情首屏只保留标题、状态和主要操作；运行次数、步骤、成本、tokens、
+   错误与进度概览由右上角「···」按需展开，避免信息条把蜂巢/对话推远。 */
+#run-detail .detail-head { position: relative; }
+#run-detail .rd-more-toggle {
+  flex: none; width: 30px; height: 30px; padding: 0; border: 0;
+  border-radius: 8px; background: transparent; color: var(--muted);
+  font: 700 18px/1 var(--font-body); letter-spacing: 2px; cursor: pointer;
+  transition: background-color .15s, color .15s;
+}
+#run-detail .rd-more-toggle:hover,
+#run-detail .rd-more-toggle:focus-visible,
+#run-detail.rd-info-open .rd-more-toggle {
+  color: var(--text); background: var(--panel2); outline: none;
+}
+#run-detail .rd-meta-popover {
+  position: absolute; z-index: 30; top: calc(100% - 4px); right: 0;
+  width: min(470px, calc(100vw - 42px)); box-sizing: border-box;
+  padding: 12px 14px 14px; border: 1px solid var(--border-strong);
+  border-radius: 14px; background: var(--panel);
+  box-shadow: 0 16px 42px color-mix(in srgb, #000 26%, transparent);
+}
+#run-detail .rd-meta-popover.hidden { display: none !important; }
+.rd-meta-popover-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  min-height: 25px; color: var(--text); font-size: 12px; font-weight: 650;
+}
+.rd-meta-popover-head button {
+  width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px;
+  color: var(--muted); background: transparent; font-size: 18px; line-height: 1;
+}
+.rd-meta-popover-head button:hover,
+.rd-meta-popover-head button:focus-visible { color: var(--text); background: var(--panel2); outline: none; }
+#run-detail .rd-meta-popover .rd-meta-strip {
+  display: flex; align-items: center; gap: 6px 12px; margin: 8px 0 0;
+  padding: 0 0 10px; border-bottom: 1px solid var(--border);
+}
+#run-detail .rd-meta-popover .rd-meta-strip .stat {
+  min-height: 0; padding: 0; border: 0; border-radius: 0;
+  background: transparent; font-size: 11.5px;
+}
+#run-detail .rd-meta-popover .rd-meta-strip .stat.err {
+  flex-basis: 100%; max-width: 100%; padding-top: 6px;
+  border-top: 1px solid var(--border); color: var(--bad);
+  white-space: normal; overflow: visible; text-overflow: clip;
+}
+#run-detail .rd-meta-popover #rd-overview {
+  grid-template-columns: minmax(0, 1fr) auto; gap: 9px 16px;
+  margin: 10px 0 0; padding: 0; border: 0; background: transparent;
+}
+#run-detail .rd-meta-popover #rd-overview .rd-overview-kicker { display: none; }
+#run-detail .rd-meta-popover #rd-overview .rd-overview-title {
+  font-size: 13px; line-height: 1.35;
+}
+#run-detail .rd-meta-popover #rd-overview .rd-overview-goal {
+  margin-top: 3px; font-size: 11px; white-space: normal;
+}
+#run-detail .rd-meta-popover #rd-overview .rd-overview-state { min-width: 82px; }
+#run-detail .rd-meta-popover #rd-overview .rd-overview-state .state-value { font-size: 17px; }
+#run-detail .rd-meta-popover #rd-overview .rd-overview-facts { gap: 4px 12px; font-size: 11px; }
+#run-detail .rd-meta-popover #rd-overview .rd-overview-last {
+  padding-top: 7px; font-size: 11px; border-top-color: var(--border);
+}
+#run-detail .rd-meta-popover #rd-overview .rd-overview-actions { justify-content: flex-start; }
+#run-detail .rd-meta-popover #rd-overview .rd-overview-actions button { padding: 4px 8px; font-size: 11px; }
+
+/* 新建任务附件：图片有稳定的预览尺寸，普通文件继续使用轻量胶囊。 */
+#sub-tasks #att-chips {
+  display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px;
+  min-height: 0; margin: 3px 4px 0;
+}
+#sub-tasks #att-chips:empty { display: none; }
+#sub-tasks .att-chip.att-image {
+  position: relative; width: 88px; height: 88px; max-width: none; padding: 0;
+  overflow: visible; border-radius: 12px; background: var(--panel2);
+  border-color: var(--border); box-shadow: 0 2px 10px color-mix(in srgb, #000 10%, transparent);
+}
+#sub-tasks .att-chip.att-image img {
+  display: block; width: 100%; height: 100%; object-fit: cover;
+  border-radius: inherit; background: var(--panel2);
+}
+#sub-tasks .att-chip.att-image .att-image-name {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+#sub-tasks .att-chip.att-image .ax {
+  position: absolute; z-index: 2; top: -6px; right: -6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; border: 1px solid var(--panel);
+  border-radius: 50%; background: var(--text); color: var(--panel);
+  box-shadow: 0 2px 6px color-mix(in srgb, #000 18%, transparent);
+}
+#sub-tasks .att-chip.att-image .ax .ico { width: 11px; height: 11px; }
+#sub-tasks .att-chip.att-image .ax:hover,
+#sub-tasks .att-chip.att-image .ax:focus-visible { background: var(--bad); color: #fff; outline: none; }
+#sub-tasks .cmp-box > .att-chips + textarea { padding-top: 8px; }
+
+@media (max-width: 700px) {
+  #run-detail .rd-meta-popover {
+    left: 8px; right: 8px; width: auto; top: calc(100% + 2px);
+  }
+  #run-detail .rd-meta-popover #rd-overview { grid-template-columns: minmax(0, 1fr) auto; }
+  #sub-tasks .att-chip.att-image { width: 82px; height: 82px; }
+}
+
+/* ================= 详情页侧边栏重构 =================
+   右栏只有一张卡（#rd-rail）：任务信息（返回/标题/状态/操作）在上，
+   分区导航在下，中间发丝线分隔；主区只呈现当前工作内容。操作按钮
+   统一等宽两列小尺寸，靠颜色区分主次，不再长短不一。 */
+#run-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 23vw, 324px);
+  grid-template-areas: "main rail";
+  column-gap: clamp(22px, 3vw, 44px);
+  align-items: stretch;
+  /* 工作台定高：面板钉满一屏（顶距 92 = topbar 64 + main 上边距 28；底 28 呼吸），
+     蜂巢/步骤等长内容在主区内滚——窗口级滚动条从详情页彻底退役 */
+  height: calc(100vh - 120px);
+  min-height: 460px;
+  padding: 0 0 20px;
+}
+#rd-railcol {
+  grid-area: rail;
+  position: sticky;
+  top: 16px;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  max-height: calc(100vh - 110px);  /* 列最高一屏：内容少就缩回去，页面不滚进空白；
+       减 110 = 未吸顶时的自然顶距(topbar 64 + main 上内边距 28) + 底部呼吸 16px */
+  overflow: hidden;   /* 超出部分在列内裁掉/内部滚动，不再撑出页面滚动条 */
+}
+#rd-rail {
+  flex: 0 0 auto;     /* 卡片=紧凑导航：永不缩、永不滚（内部滚动条是「到处滚动条」的元凶）；
+                         列内空间不够时只让日志框收缩 */
+  min-height: 0;
+  overflow: hidden;   /* 内容 1px 超宽也不冒横向滚动条；••• 弹层自带内滚 */
+  padding: 14px 16px 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
+#rd-rail > .detail-head {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+#rd-rail > .detail-head::before {
+  content: "TASK DETAIL";
+  display: block;
+  margin-bottom: -2px;
+  color: var(--muted);
+  font: 600 10px/1 var(--mono);
+  letter-spacing: .14em;
+}
+#rd-rail > .detail-head > #btn-back {
+  order: 0;
+  align-self: flex-start;
+  min-height: 24px;
+  padding: 2px 7px;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+}
+#rd-rail > .detail-head > #btn-back:hover { color: var(--text); background: var(--panel2); }
+#rd-rail > .detail-head > #rd-title {
+  order: 1;
+  width: calc(100% - 26px);
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+#rd-rail > .detail-head > #rd-status {
+  order: 2;
+  align-self: flex-start;
+}
+/* 操作按钮：全部等宽两列小尺寸；主操作只靠颜色区分，不再跨列 */
+#rd-rail > .detail-head > .rd-actions {
+  order: 3;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  justify-content: stretch;
+  gap: 6px;
+  width: 100%;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+#rd-rail > .detail-head > .rd-actions button {
+  min-width: 0;
+  min-height: 27px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 6px;
+  border-radius: 8px;
+  font-size: 11.5px;
+}
+#rd-rail > .detail-head > .rd-actions #rd-more-toggle {
+  position: absolute;
+  top: 12px;
+  right: 0;
+  width: 26px;
+  min-height: 26px;
+  padding: 0;
+}
+#rd-rail > .detail-head > .rd-meta-popover {
+  position: static;
+  order: 5;
+  width: 100%;
+  margin: 0;
+  padding: 10px;
+  border-radius: 10px;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--panel2) 62%, transparent);
+  max-height: min(44vh, 400px);   /* 展开很长也不顶高卡片：弹层自己内滚 */
+  overflow-y: auto;
+}
+#rd-rail > #rd-tabs,
+#rd-rail > #rd-chat-nav {
+  min-width: 0;
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#rd-rail > #rd-tabs {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  overflow: visible;
+}
+#rd-rail > #rd-tabs .rd-tab {
+  width: 100%;
+  min-height: 30px;
+  justify-content: flex-start;
+  padding: 5px 8px;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 12px;
+}
+#rd-rail > #rd-tabs .rd-tab.active {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+}
+#rd-rail > #rd-tabs .rd-tab.active::after {
+  top: 6px;
+  right: 4px;
+  bottom: 6px;
+  left: auto;
+  width: 3px;
+  height: auto;
+  border-radius: 3px;
+}
+#rd-rail > #rd-tabs .rd-badge { margin-left: auto; }
+#rd-rail > #rd-chat-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+#rd-rail > #rd-chat-nav.hidden { display: none; }
+#rd-rail > #rd-chat-nav .cn-pills {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  margin: 0;
+}
+#rd-rail > #rd-chat-nav .cn-pill {
+  width: 100%;
+  justify-content: space-between;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 12px;
+}
+#rd-rail > #rd-chat-nav .cn-pill:hover,
+#rd-rail > #rd-chat-nav .cn-pill.on { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+#rd-rail > #rd-chat-nav .cn-back {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 12px;
+}
+#run-detail > .rd-main {
+  grid-area: main;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  padding-top: 2px;
+  overflow-y: auto;          /* 长内容（蜂巢泳道/步骤列表/报告）在主区内滚 */
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+#run-detail > .rd-main::-webkit-scrollbar { width: 8px; }
+#run-detail > .rd-main > .rd-pane { min-width: 0; }
+/* 日志控制台停靠右栏卡片下方（窄侧栏）：不再横向盖住主区内容。
+   position: static 让旧的 fixed/left/right 底部悬浮层全部失效。 */
+#run-detail #rd-log.rd-logdrawer {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 40vh;     /* 默认视口 40% 高（拖拽后为期望 px）；空间不足自动收缩，永不顶出窗口 */
+  min-height: 140px;
+  max-height: none;   /* 了断历史各层 max-height（42vh/30vh/32vh…），高度只听这里 */
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow: none;
+  backdrop-filter: none;
+  overflow: hidden;
+}
+#run-detail #rd-log.rd-logdrawer.hidden { display: none; }
+/* 顶边拖拽手柄：上拖变高、下拖变矮；双击复位为默认弹性高度 */
+.rd-log-grip {
+  flex: none;
+  height: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.rd-log-grip::before {
+  content: "";
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+  transition: background .15s;
+}
+.rd-log-grip:hover::before,
+.rd-log-grip:focus-visible::before { background: color-mix(in srgb, var(--accent) 60%, transparent); }
+body.rd-log-resizing { cursor: ns-resize; user-select: none; }
+#run-detail #rd-log.rd-logdrawer .log-live-bar {
+  flex: none;
+  flex-wrap: nowrap;          /* 窄栏也单行排布，不再把「已结束」折成竖排 */
+  min-height: 30px;
+  padding: 4px 8px;
+  gap: 6px;
+  font-size: 11px;
+}
+#run-detail #rd-log.rd-logdrawer .log-live-bar > .ico { flex: none; }
+#run-detail #rd-log.rd-logdrawer .rd-log-step {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#run-detail #rd-log.rd-logdrawer .log-live,
+#run-detail #rd-log.rd-logdrawer .log-at { flex: none; white-space: nowrap; }
+#run-detail #rd-log.rd-logdrawer .log-live-bar .hint { display: none; }
+#run-detail #rd-log.rd-logdrawer pre {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  padding: 8px 10px 10px;
+  font-size: 11.5px;
+  overflow: hidden auto;   /* 长行已自动换行，横向滚动条永不出现 */
+  scrollbar-width: thin;
+}
+#run-detail #rd-log.rd-logdrawer pre::-webkit-scrollbar { width: 8px; height: 0; }
+/* 递话面板（人工干预）：运行中=入箱随下一步送达；已结束=自动断点续跑 */
+.rd-talk {
+  order: 4;           /* 排在操作按钮（order 3）之后；信息弹层顺延为 5 */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;        /* 弹性列里显式占满，防内容把面板撑出卡片 */
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.rd-talk.hidden { display: none; }
+.rd-talk textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  flex: none;                 /* 面板内不被压缩成一条缝 */
+  resize: vertical;
+  height: 72px;
+  min-height: 72px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.rd-talk-atts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.rd-talk-atts:empty { display: none; }
+.rd-talk-bar { display: flex; align-items: center; gap: 8px; }
+.rd-talk-bar .hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
+.rd-talk-bar .primary.small { min-height: 26px; padding: 3px 12px; font-size: 11.5px; flex: none; }
+/* 直连任务保持「对话先行」，但侧栏仍然承载标题、状态和其它入口。 */
+main.chat-fill #run-detail.chat-mode {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 23vw, 324px);
+  grid-template-areas: "main rail";
+  height: 100%;
+  overflow: hidden;
+}
+main.chat-fill #run-detail.chat-mode > .rd-main { overflow: hidden; }
+
+@media (max-width: 980px) {
+  #run-detail,
+  main.chat-fill #run-detail.chat-mode {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    padding-bottom: 22px;
+  }
+  #rd-railcol {
+    position: relative;
+    top: auto;
+    width: 100%;
+    height: auto;
+    max-height: none;
+    margin-bottom: 12px;
+  }
+  #run-detail > .rd-main {
+    width: 100%;
+    overflow: visible;
+  }
+  main.chat-fill #run-detail.chat-mode > .rd-main { overflow: hidden; }
+}
+
+@media (max-width: 560px) {
+  #rd-rail { padding: 12px 13px 10px; border-radius: 12px; }
+  #rd-rail > .detail-head > #rd-title { font-size: 15px; }
+  #rd-rail > .detail-head > .rd-actions #rd-more-toggle { top: 10px; right: 0; }
+}
+
+/* 已结束直连任务的续聊提示：只占一行，输入框仍是唯一主操作。 */
+.rd-chat-continue-note {
+  display: flex; align-items: center; gap: 7px; min-height: 24px;
+  padding: 0 6px 2px; color: var(--muted); font-size: 11.5px;
+}
+.rd-chat-continue-note.hidden { display: none !important; }
+.rd-chat-continue-note .continue-dot {
+  width: 6px; height: 6px; flex: none; border-radius: 50%;
+  background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 12%, transparent);
+}
+.rd-chat-continue-note .ghost.small {
+  margin-left: auto; padding: 3px 8px; border: 0; font-size: 11px;
+  color: var(--accent); background: transparent;
+}
+.rd-chat-continue-note .ghost.small:hover { background: var(--panel2); }
+.rd-chat-tools .rd-hint {
+  flex: 1; min-width: 120px; overflow: hidden; color: var(--muted);
+  font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 蜂巢过程行：保留阶段泳道和状态色，把每个智能体从「卡片」收敛为可扫描的行。
+   点击区域仍覆盖整行，CLI 日志入口不变；这样蜂巢更接近 Codex 的留白和信息密度。 */
+#rd-hive-cells .lane-cells {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 0 18px;
+}
+#rd-hive-cells .hive-cell {
+  min-height: 68px; padding: 9px 4px 9px 12px;
+  border: 0; border-top: 1px solid var(--border); border-radius: 0;
+  background: transparent; box-shadow: none;
+}
+#rd-hive-cells .hive-cell::before {
+  top: 10px; bottom: 10px; left: 0; right: auto; width: 2px; height: auto;
+  border-radius: 999px; background: var(--border-strong); opacity: .72;
+}
+#rd-hive-cells .hive-cell.st-done::before { background: var(--ok); }
+#rd-hive-cells .hive-cell.st-failed::before { background: var(--bad); }
+#rd-hive-cells .hive-cell.st-timeout::before { background: var(--accent2); }
+#rd-hive-cells .hive-cell.st-cancelled::before { background: var(--warn); }
+#rd-hive-cells .hive-cell.st-running {
+  border-color: var(--border); background: color-mix(in srgb, var(--accent) 3%, transparent);
+}
+#rd-hive-cells .hive-cell:hover,
+#rd-hive-cells .hive-cell:focus-visible {
+  transform: none; background: color-mix(in srgb, var(--accent) 6%, transparent);
+  box-shadow: none; outline-offset: -2px;
+}
+#rd-hive-cells .hc-tail { background: transparent; padding: 2px 0 0; }
+#rd-hive-cells .hc-meta { margin-top: 5px; }
+
 /* 直连对话「建议追问」芯片（借鉴 freebuff suggest_followups）：挂在助手气泡尾部，
  * 点击回填输入框不直接发送，用户可改后再发 */
 .chat-fups { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -4287,3 +4836,205 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
   border-radius: 999px; padding: 4px 12px; font-size: 12.5px; cursor: pointer; opacity: .85;
 }
 .chat-fup-btn:hover { border-color: var(--accent, #888); color: var(--accent, inherit); opacity: 1; }
+
+/* ============ 工作目录「最近文件夹」下拉（参考工作区选择器：默认选中 + ▾ 菜单） ============ */
+#sub-tasks .cmp-pills { position: relative; }
+#sub-tasks .wd-menu-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: none; width: 22px; min-height: 24px; padding: 0; border: 0; border-radius: 6px;
+  background: transparent; color: var(--muted);
+}
+#sub-tasks .wd-menu-btn:hover,
+#sub-tasks .wd-menu-btn:focus-visible { color: var(--text); background: var(--panel2); outline: none; }
+#sub-tasks .wd-menu-btn .ico { width: 12px; height: 12px; }
+#sub-tasks .wd-menu {
+  position: absolute; z-index: 40; top: calc(100% + 6px); left: 8px;
+  width: min(300px, calc(100vw - 48px)); box-sizing: border-box;
+  padding: 5px; border: 1px solid var(--border-strong); border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 14px 38px color-mix(in srgb, #000 22%, transparent);
+}
+#sub-tasks .wd-menu.hidden { display: none !important; }
+.wd-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  min-height: 32px; padding: 5px 9px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text); font-size: 12.5px;
+  text-align: left; cursor: pointer; font-family: inherit;
+}
+.wd-item:hover, .wd-item:focus-visible { background: var(--panel2); outline: none; }
+.wd-item .ico { flex: none; width: 14px; height: 14px; color: var(--muted); }
+.wd-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wd-item.on { color: var(--accent); font-weight: 600; }
+.wd-item.on .ico { color: var(--accent); }
+.wd-item .wd-check { width: 13px; height: 13px; color: var(--accent); }
+.wd-item:disabled { opacity: .45; cursor: default; }
+.wd-item:disabled:hover { background: transparent; }
+.wd-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+
+/* ============ 分支胶囊：右停靠 + 「分支名 ▾」（点开原生下拉可换分支/标签/提交） ============ */
+#sub-tasks #row-git { margin-left: auto; }
+#sub-tasks #f-git-rev {
+  appearance: none; -webkit-appearance: none;
+  cursor: pointer; padding-right: 26px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888a8f' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+}
+#sub-tasks #f-git-rev:focus { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* ============ 上下文条精修：首屏只读「路径 ←→ 分支」，操作键悬停/聚焦现身 ============ */
+/* 路径区作为一整块芯片：悬停或聚焦时给软底，操作键随之浮现 */
+#sub-tasks .cmp-pills .cmp-wd {
+  min-height: 30px;
+  padding: 0 4px 0 6px;
+  border-radius: 10px;
+  transition: background-color .15s;
+}
+#sub-tasks .cmp-pills .cmp-wd:hover,
+#sub-tasks .cmp-pills .cmp-wd:focus-within {
+  background: color-mix(in srgb, var(--panel2) 62%, transparent);
+}
+/* 「选择…」默认隐去（功能在 ▾ 菜单和点击输入框里都有）；触屏设备与键盘聚焦不隐藏 */
+#sub-tasks .cmp-wd .wd-pick-btn {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s;
+}
+#sub-tasks .cmp-wd:hover .wd-pick-btn,
+#sub-tasks .cmp-wd:focus-within .wd-pick-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  #sub-tasks .cmp-wd .wd-pick-btn { opacity: 1; pointer-events: auto; }
+}
+/* 分支胶囊收紧：小一号、弱底色、悬停亮边 */
+#sub-tasks #f-git-rev {
+  min-height: 24px;
+  padding: 1px 24px 1px 10px;
+  font-size: 11px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--panel2) 58%, transparent);
+  transition: border-color .15s, background-color .15s;
+}
+#sub-tasks #f-git-rev:hover {
+  border-color: color-mix(in srgb, var(--border-strong) 80%, transparent);
+  background-color: var(--panel2);
+}
+
+/* ---------------------------------------------------------- 手工添加模型行
+ * 厂商列表接口调不通时的通路：填模型名直接进列表（后端打 manual 标记防刷新清掉）。 */
+.pm-add { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.pm-add input[type="text"] { flex: 1; max-width: 460px; }
+.pm-add button { flex: none; }
+
+/* ============ 「更多选项」面板精修：轻卡片 + 紧凑字段，向 composer 的克制看齐 ============ */
+#sub-tasks details#f-advanced .adv-body {
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+}
+#sub-tasks details#f-advanced .field > label {
+  min-height: 0;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--muted);
+}
+#sub-tasks details#f-advanced .field input,
+#sub-tasks details#f-advanced .field select,
+#sub-tasks details#f-advanced .field textarea {
+  min-height: 0;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--panel2) 45%, var(--panel));
+}
+#sub-tasks details#f-advanced .field textarea { min-height: 56px; }
+#sub-tasks details#f-advanced .grid-2,
+#sub-tasks details#f-advanced .grid-3 { gap: 10px 12px; }
+
+/* 手工添加行并入 pm-tools 单行：过滤靠左、计数随后、添加靠右（同排等高）。
+ * 不换行：面板窄时输入框收缩（min-width 兜底），换行会重现两行错排。
+ * 字号钉死同档（12.5px）：search/text 两种输入框继承链不同会渲染出大小差。 */
+.pm-tools input[type="search"],
+.pm-tools .pm-add input[type="text"],
+.pm-add > input[type="text"] { font-size: 12.5px; }
+.pm-tools .pm-add { flex: 0 1 auto; margin: 0 0 0 auto; }
+.pm-tools .pm-add input[type="text"] { flex: 0 1 auto; width: 300px; min-width: 140px; max-width: 42vw; }
+.pm-add button .ico { width: 14px; height: 14px; }
+
+/* ================= 页面滚动条细化（2026-09-18） =================
+   Windows 默认 17px 粗滚动条压在右栏边上很重；全局换成细圆角条。 */
+html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--accent) 32%, var(--border-strong)) transparent; }
+html::-webkit-scrollbar { width: 10px; height: 10px; }
+html::-webkit-scrollbar-thumb { border-radius: 999px; background: color-mix(in srgb, var(--accent) 30%, var(--border-strong)); }
+html::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--accent) 48%, var(--border-strong)); }
+html::-webkit-scrollbar-track { background: transparent; }
+
+/* ---- 首次启动欢迎引导：左列上手三步 + 右列能力一览（渐变随皮肤 accent） ---- */
+.welcome-wrap { position: fixed; inset: 0; z-index: 195; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.welcome-mask { position: absolute; inset: 0; background: rgba(0, 0, 0, .5); }
+.welcome-card {
+  position: relative; display: flex; width: min(880px, 100%); max-height: calc(100vh - 48px);
+  background: var(--bg); border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg); box-shadow: var(--shadow); overflow: hidden;
+}
+.welcome-x { position: absolute; top: 12px; right: 12px; z-index: 2; }
+.welcome-left {
+  flex: 1.15; min-width: 0; overflow: auto; padding: 30px 30px 20px;
+  display: flex; flex-direction: column; gap: 13px;
+}
+.welcome-badge {
+  align-self: flex-start; font-size: 11.5px; color: var(--muted);
+  border: 1px solid var(--border-strong); border-radius: 999px; padding: 3px 11px;
+}
+.welcome-brand { display: flex; align-items: center; gap: 10px; font-size: 23px; font-weight: 800; letter-spacing: .3px; }
+.welcome-brand .welcome-bee { width: 28px; height: 28px; color: var(--accent); stroke-width: 1.5; }
+.welcome-left h1 { margin: 0; font-size: 25px; line-height: 1.25; }
+.welcome-sub { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.welcome-steps { display: flex; flex-direction: column; gap: 9px; margin-top: 2px; }
+.wstep { display: flex; gap: 10px; align-items: flex-start; font-size: 12.8px; line-height: 1.55; }
+.wstep b {
+  flex: none; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11.5px; color: var(--accent);
+  background: var(--panel2); border: 1px solid var(--border-strong);
+}
+.welcome-acts { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.wl-btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+  padding: 11px 14px; font-family: inherit; font-size: 13.5px; font-weight: 600;
+  color: var(--text); background: var(--panel2);
+  border: 1px solid var(--border-strong); border-radius: var(--r-md); cursor: pointer;
+  transition: border-color .15s, filter .15s;
+}
+.wl-btn:hover { border-color: var(--accent); }
+.wl-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.wl-btn.primary:hover { filter: brightness(1.07); }
+.wl-btn.ghost { justify-content: center; font-weight: 500; background: transparent; border-color: transparent; color: var(--muted); }
+.wl-btn.ghost:hover { color: var(--text); border-color: transparent; }
+.welcome-foot { margin: auto 0 0; padding-top: 12px; color: var(--muted); font-size: 11.5px; }
+.welcome-right {
+  flex: .85; min-width: 0; padding: 30px 28px;
+  display: flex; flex-direction: column; justify-content: center; gap: 7px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 88%, #000), var(--accent2));
+  color: #fff;
+}
+.welcome-right h2 { margin: 0; font-size: 20px; letter-spacing: .3px; }
+.wr-sub { margin: 0 0 12px; font-size: 12.5px; opacity: .85; }
+.wr-feats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+.wr-feats li { display: flex; gap: 10px; align-items: flex-start; line-height: 1.5; }
+.wr-feats li .ico { flex: none; width: 17px; height: 17px; margin-top: 2px; opacity: .95; }
+.wr-feats b { display: block; font-size: 12.8px; }
+.wr-feats li div span { display: block; font-size: 12px; opacity: .82; }
+body.welcome-open { overflow: hidden; }
+@media (max-width: 720px) {
+  .welcome-right { display: none; }
+  .welcome-card { width: 100%; }
+}

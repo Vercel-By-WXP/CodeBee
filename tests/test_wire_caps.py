@@ -226,7 +226,8 @@ class TestAutoProtocol(BaseTest):
     def test_auto_without_probe_is_not_guessed(self):
         from app.core import modelhub
         modelhub._FILE = self.data_dir / "models.json"
-        # auto 且没探过：解析跳过（不猜协议），单模型测试明确报错
+        # auto 且没探过：解析跳过（不猜协议）；单模型测试先自带一次适配探测，
+        # 网关真不通（连不上）时探不出 wire，如实报错且不落 caps
         modelhub.upsert_provider({"name": "未探测网关", "base_url": "http://127.0.0.1:9/v1",
                                   "api_key": FAKE_KEY, "model": "m1"})
         pid = modelhub.providers()[0]["id"]
@@ -236,6 +237,46 @@ class TestAutoProtocol(BaseTest):
         t = modelhub.test_model(pid, "m1")
         self.assertFalse(t["ok"])
         self.assertIn("wire", t["error"])
+        self.assertEqual(modelhub.providers()[0].get("wire_caps"), None)
+
+    def test_auto_test_and_chat_self_probe(self):
+        """鸡生蛋解除：auto 未探测时单模型测试/直连对话自带一次适配探测，
+        探通即落盘放行；模型全停用也能借首个可见模型探（探针只是连通验证，
+        不要求模型参与编排）。"""
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        srv = _serve()
+        try:
+            base = "http://127.0.0.1:%d" % srv.server_address[1]
+            modelhub.upsert_provider({"name": "懒探网关", "base_url": base + "/v1",
+                                      "api_key": FAKE_KEY})
+            pid = [p for p in modelhub.providers() if p["name"] == "懒探网关"][0]["id"]
+            # 种一个全停用的模型列表：没有「启用模型」可挑
+            data = modelhub._load()
+            data["providers"][0]["models"] = [
+                {"name": "m1", "enabled": False, "priority": 1},
+                {"name": "m2", "enabled": False, "priority": 2}]
+            modelhub._save(data)
+            self.assertEqual(modelhub._protocol_candidates(
+                [p for p in modelhub.providers() if p["id"] == pid][0]), [])
+
+            t = modelhub.test_model(pid, "m1")
+            self.assertTrue(t["ok"], t.get("error"))
+            self.assertIn("openai",
+                          [p for p in modelhub.providers() if p["id"] == pid][0]
+                          .get("wire_caps") or {})
+
+            # 直连对话同样自带探测（第二个全新供应商验证）
+            modelhub.upsert_provider({"name": "懒探二号", "base_url": base + "/v1",
+                                      "api_key": FAKE_KEY})
+            pid2 = [p for p in modelhub.providers() if p["name"] == "懒探二号"][0]["id"]
+            c = modelhub.chat(pid2, "m2", "ping", max_tokens=1)
+            self.assertTrue(c["ok"], c.get("error"))
+            self.assertTrue(modelhub._protocol_candidates(
+                [p for p in modelhub.providers() if p["id"] == pid2][0]))
+        finally:
+            srv.shutdown()
+            srv.server_close()
 
     def test_auto_fetch_models_tries_both_shapes(self):
         from app.core import modelhub

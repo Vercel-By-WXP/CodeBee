@@ -270,7 +270,9 @@ def refresh_models(provider_id):
                         "priority": o.get("priority", 0),
                         "hidden": bool(o.get("hidden")),
                         # 模态声明同理：用户/预填设过的 image_in 刷新时不能被抹掉
-                        "image_in": bool(o.get("image_in"))}
+                        "image_in": bool(o.get("image_in")),
+                        # 手工添加的标记也要透传：它决定刷新时「不在列表里」是否保留
+                        "manual": bool(o.get("manual"))}
                 (hidden if item["hidden"] else existing).append(item)
             else:
                 fresh.append({"name": n, "enabled": True,
@@ -279,6 +281,10 @@ def refresh_models(provider_id):
         # 已删除但本次未返回的条目也保留，否则下次拉取会当作新模型“复活”
         hidden += [dict(o) for n, o in old.items()
                    if o.get("hidden") and n not in names]
+        # 手工添加但厂商列表里没有的模型同样保留（有的网关列表接口调不通或只返回
+        # 部分），否则一次成功的刷新会把用户手工接入的模型静默清掉。
+        existing += [dict(o) for n, o in old.items()
+                     if o.get("manual") and not o.get("hidden") and n not in names]
         # 顺序 = 既有启用（保持用户手动排序）+ 新模型（按强弱估分）+ 既有停用 + 已删除墓碑。
         # 启用块始终在停用块之前（顺带自愈历史数据）；新模型不能插到启用块前面，
         # 否则会顶掉手动顺序与「#1 即默认模型」语义。
@@ -303,6 +309,43 @@ def refresh_models(provider_id):
             pass
     threading.Thread(target=_bg_probe, name="wire-probe", daemon=True).start()
     return len(allm), ""
+
+
+def add_model_manual(provider_id, name):
+    """手工添加模型——厂商列表接口调不通（或只返回部分）时的通路。返回 (可见模型数, 错误)。
+
+    不要求密钥、不发网络请求：模型能不能用交给「测试连接」和编排时的换将去验证。
+    名字已存在且可见 → 不重复加；已存在但是删除墓碑 → 视同恢复。
+    打 manual 标记：之后刷新即使厂商列表里没有它也保留，不会被清掉。
+    新模型排在启用块末尾（不置顶、不抢 #1 默认模型），不改变既有排序语义。
+    """
+    name = (name or "").strip()
+    if not name:
+        return 0, "模型名不能为空"
+    if len(name) > 200 or any(c in name for c in "\r\n\t"):
+        return 0, "模型名不合法"
+    with _LOCK:
+        data = _load()
+        prov = _find_prov(data, provider_id)
+        if not prov:
+            return 0, "供应商不存在"
+        models = prov.get("models")
+        if models is None:
+            models = []
+            prov["models"] = models
+        target = next((m for m in models if m.get("name") == name), None)
+        if target and not target.get("hidden"):
+            return len(_ranked(models)), "模型已存在"
+        if target:
+            target["hidden"] = False
+            target["enabled"] = True
+            target["manual"] = True
+        else:
+            models.append({"name": name, "enabled": True,
+                           "image_in": _auto_image_in(name), "manual": True})
+        _promote(models)   # 启用块末尾：参与编排但不抢 #1 默认模型
+        _save(data)
+        return len(_ranked(models)), ""
 
 
 def refresh_all_async():
@@ -1985,6 +2028,23 @@ def _protocol_candidates(prov):
             if (caps.get(p) or {}).get("base")]
 
 
+def _ensure_wire_candidates(provider_id, prov, model_name=""):
+    """唯一协议场景（单模型测试/直连对话）的鸡生蛋解除：auto 供应商还没探出
+    wire_caps 时（导入后没探过/上次探挂了），带着手头模型先实测一轮再谈——
+    探到即落盘放行；返回 (候选, 失败原因 note)，仍探不出则 ([], note)。"""
+    protos = _protocol_candidates(prov)
+    if protos:
+        return protos, ""
+    note = ""
+    try:
+        _, note = probe_wire_caps(provider_id, prefer_model=model_name)
+    except Exception as e:
+        note = repr(e)[:160]
+    with _LOCK:
+        prov2 = next((p for p in providers() if p.get("id") == provider_id), None)
+    return (_protocol_candidates(prov2) if prov2 else []), (note or "")
+
+
 def bindable_protocols(agent_kind_or_id):
     """该 CLI 可绑定的 wire 协议（与 resolve_binding 的 allowed 一致）。
     供死链告警/失败文案解释「为什么绑不上」：claude 只认 anthropic，
@@ -2445,7 +2505,8 @@ def test_provider(provider_id):
 def test_model(provider_id, model_name, key_id=""):
     """单模型连通性测试：发一条 1 token 的最小对话。返回 {ok, latency_ms, error}。
 
-    auto 供应商逐条试实测过的 wire（显式协议只有一条）；多 KEY 供应商逐把试
+    auto 供应商逐条试实测过的 wire（显式协议只有一条；还没探过 wire_caps 就
+    先自带一次适配探测，见 _ensure_wire_candidates）；多 KEY 供应商逐把试
     （指定 key_id 则只测那把）。返回里带 protocol/key_id 说明这次是谁通的。
     """
     import time as _t
@@ -2454,9 +2515,10 @@ def test_model(provider_id, model_name, key_id=""):
         prov = next((p for p in providers() if p.get("id") == provider_id), None)
     if not prov or not prov.get("api_key"):
         return {"ok": False, "error": "供应商不存在或未配置密钥"}
-    protos = _protocol_candidates(prov)
+    protos, note = _ensure_wire_candidates(provider_id, prov, model_name)
     if not protos:
-        return {"ok": False, "error": "该供应商还没有可用 wire——先「获取模型列表」或手动指定格式"}
+        return {"ok": False,
+                "error": "没探到可用 wire——地址/密钥/模型名至少一项不通" + ("（%s）" % note if note else "")}
     if key_id:
         keys = [k for k in _provider_keys(prov) if k["id"] == key_id]
         if not keys:
@@ -2573,13 +2635,16 @@ def _probe_wire_once(base, api_key, target_proto, model, allow_private, timeout=
     return False, "", last
 
 
-def probe_wire_caps(provider_id):
+def probe_wire_caps(provider_id, prefer_model=""):
     """适配测试：实测该供应商的可用 wire，存进 wire_caps。返回 (caps, note)。
 
     显式协议的供应商只测「除原生外」的 wire（原生天然可用，不必花请求）；
     protocol="auto"（导入未指定格式）则把可注入 wire 全测一遍，caps 就是分类
     结果。之前通过、本次失败的条目移除（网关两面变动以实测为准）。google 不参与。
-    note 是给 UI 的补充说明（失败原因 / 未测原因），全通过时为空串。"""
+    prefer_model 优先作探针（单模型测试/直连对话带着手头模型来探）；否则用
+    手动填的模型 > 首个启用模型 > 首个可见模型——探针只是 1 token 连通验证，
+    全停用也能探，wire 能力是供应商级属性。note 是给 UI 的补充说明（失败原因 /
+    未测原因），全通过时为空串。"""
     import time as _t
     with _LOCK:
         prov = next((p for p in providers() if p.get("id") == provider_id), None)
@@ -2587,9 +2652,12 @@ def probe_wire_caps(provider_id):
         return {}, "供应商不存在"
     if not prov.get("api_key"):
         return {}, "该供应商未配置密钥"
-    model = prov.get("model") or next(
-        (m.get("name") for m in _ranked(prov.get("models") or [])
-         if m.get("name") and m.get("enabled", True)), "")
+    ranked = _ranked(prov.get("models") or [])
+    model = (prefer_model or prov.get("model") or next(
+        (m.get("name") for m in ranked
+         if m.get("name") and m.get("enabled", True)), ""))
+    if not model:
+        model = next((m.get("name") for m in ranked if m.get("name")), "")
     if not model:
         return {}, "没有可用模型名——先「获取模型列表」再测"
     native = prov.get("protocol")
@@ -2758,10 +2826,11 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_tt
     if not prov or not prov.get("api_key"):
         return {"ok": False, "text": "", "tokens": 0, "usage": None,
                 "error": "供应商不存在或未配置密钥"}
-    protos = _protocol_candidates(prov)
+    protos, note = _ensure_wire_candidates(provider_id, prov, model_name)
     if not protos:
         return {"ok": False, "text": "", "tokens": 0, "usage": None,
-                "error": "该供应商还没有可用 wire——先「获取模型列表」或手动指定格式"}
+                "error": "没探到可用 wire——地址/密钥/模型名至少一项不通"
+                         + ("（%s）" % note if note else "")}
     # 多 KEY：按「KEY 序 × 协议」展开逐条试。欠费的 KEY 先被跳过（切备用），
     # 冷却中的 KEY 一条都不剩时仍按原顺序试——比整家供应商不可用强。
     keys = _chain_keys(prov) or [{"key": prov.get("api_key") or "", "id": ""}]
