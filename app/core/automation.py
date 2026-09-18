@@ -378,6 +378,15 @@ def _tick():
             _fire(dict(t), now)
         except Exception:
             log.exception("automation: tick 处理任务 %s 异常，已跳过", tid)
+    # 定时发布联动（P2.5）：任务级 auto_publish 标记到点触发批量发布。
+    # 发布逻辑全在 publish/auto（护栏/幂等/单飞），这里只当调度宿主。
+    try:
+        from .publish import auto as _pub_auto
+        n = _pub_auto.fire_due()
+        if n:
+            log.info("automation: 定时发布触发 %d 个任务", n)
+    except Exception:
+        log.debug("automation: 定时发布检查跳过", exc_info=True)
 
 
 def _loop():

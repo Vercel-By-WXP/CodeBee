@@ -185,17 +185,70 @@ class TestPublishPending(unittest.TestCase):
         deadline = time.time() + timeout
         while time.time() < deadline:
             st = auto._running.get(task_id) or {}
-            if st.get("status") in ("done", "error"):
+            if st.get("status") in ("done", "error", "manual_pause"):
                 return dict(st)
             time.sleep(0.05)
         return dict(auto._running.get(task_id) or {})
 
-    def test_walks_all_chapters_in_order(self):
+    def _calibrate(self, plat="fanqie"):
+        """造 flows-<plat>.json 校准文件（auto_submit 直发的闸）。"""
+        import json as _json
+        paths.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
+        fp = paths.PUBLISH_DIR / ("flows-%s.json" % plat)
+        fp.write_text(_json.dumps({"upload_chapter": []}), encoding="utf-8")
+        self.addCleanup(lambda: fp.unlink(missing_ok=True))
+
+    def test_auto_submit_requires_calibration(self):
+        # 未校准（无 flows-fanqie.json）不许无人值守直发
+        ok, err = auto.publish_pending_async(self.task["id"], "fanqie",
+                                             auto_submit=True)
+        self.assertFalse(ok)
+        self.assertIn("校准", err)
+        self._calibrate()
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = _FakeUpload()
+        try:
+            ok, err = auto.publish_pending_async(self.task["id"], "fanqie",
+                                                 auto_submit=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(self.task["id"])
+            self.assertEqual(st.get("status"), "done")
+            self.assertEqual(st.get("done"), 3)
+        finally:
+            self.manager.upload_chapter_async = orig
+
+    def test_manual_mode_fills_one_then_pauses(self):
+        # 人工确认模式：填好一章停在 manual_pause，等用户浏览器提交后再发起
+        # （连发第二章会导航离开未提交的编辑器，把上一章内容丢掉）
         fake = _FakeUpload()
         orig = self.manager.upload_chapter_async
         self.manager.upload_chapter_async = fake
         try:
             ok, err = auto.publish_pending_async(self.task["id"], "fanqie")
+            self.assertTrue(ok, err)
+            st = self._wait_status(self.task["id"])
+            self.assertEqual(st.get("status"), "manual_pause")
+            self.assertEqual(st.get("done"), 1)
+            self.assertEqual(len(fake.calls), 1)
+            self.assertIn("提交", st.get("message") or "")
+            # 再发起一轮 → 发下一章（幂等台账已记第 1 章）
+            ok, _ = auto.publish_pending_async(self.task["id"], "fanqie")
+            self.assertTrue(ok)
+            st = self._wait_status(self.task["id"])
+            self.assertEqual(st.get("status"), "manual_pause")
+            self.assertEqual(st.get("done"), 1)
+            self.assertEqual(len(fake.calls), 2)
+        finally:
+            self.manager.upload_chapter_async = orig
+
+    def test_walks_all_chapters_in_order(self):
+        self._calibrate()                 # 直发模式的前置：流程已校准
+        fake = _FakeUpload()
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = fake
+        try:
+            ok, err = auto.publish_pending_async(self.task["id"], "fanqie",
+                                                 auto_submit=True)
             self.assertTrue(ok, err)
             st = self._wait_status(self.task["id"])
             self.assertEqual(st.get("status"), "done")
@@ -210,11 +263,14 @@ class TestPublishPending(unittest.TestCase):
             self.manager.upload_chapter_async = orig
 
     def test_stops_on_chapter_failure(self):
+        # 失败即停属直发模式的语义（人工模式一章一停，走不到第二章）
+        self._calibrate()
         fake = _FakeUpload(fail_at={2: "平台报错"})
         orig = self.manager.upload_chapter_async
         self.manager.upload_chapter_async = fake
         try:
-            ok, _ = auto.publish_pending_async(self.task["id"], "fanqie")
+            ok, _ = auto.publish_pending_async(self.task["id"], "fanqie",
+                                               auto_submit=True)
             self.assertTrue(ok)
             st = self._wait_status(self.task["id"])
             self.assertEqual(st.get("status"), "error")
@@ -235,7 +291,9 @@ class TestPublishPending(unittest.TestCase):
             self.assertFalse(ok2)
             self.assertIn("进行中", err2)
             st = self._wait_status(self.task["id"], timeout=15)
-            self.assertEqual(st.get("status"), "done")
+            # 人工模式一章一停：首轮以 manual_pause 收场（单飞闸已验）
+            self.assertEqual(st.get("status"), "manual_pause")
+            self.assertEqual(st.get("done"), 1)
         finally:
             self.manager.upload_chapter_async = orig
 
@@ -264,6 +322,82 @@ class TestPublishPending(unittest.TestCase):
         ok, err = auto.publish_pending_async(t["id"], "fanqie")
         self.assertFalse(ok)
         self.assertIn("待发", err)
+
+
+class TestAutoPublishDue(unittest.TestCase):
+    """P2.5 定时联动：norm 校验 / due_tasks 条件 / fire_due 触发幂等。"""
+
+    def setUp(self):
+        _reset_ledger()
+        auto._AP_FIRED = None            # 清「今日已触发」缓存
+        try:
+            (paths.PUBLISH_DIR / "auto_publish.json").unlink()
+        except OSError:
+            pass
+        self.task = store.create_task({"type": "direct", "goal": "定时发布任务",
+                                       "workdir": str(WD)})
+        ledger.save_book(self.task["id"], "fanqie", {"title": "定时书"})
+        self.calls = []
+        self._orig = auto.publish_pending_async
+        auto.publish_pending_async = \
+            lambda tid, plat, auto_submit=False: (self.calls.append(tid) or (True, ""))
+
+    def tearDown(self):
+        auto.publish_pending_async = self._orig
+        auto._AP_FIRED = None
+
+    def test_norm_validates(self):
+        ap, err = auto.norm_auto_publish({"platform": "fanqie", "time": "9:05"})
+        self.assertTrue(ap and ap["time"] == "09:05" and ap["enabled"] is False)
+        self.assertEqual(auto.norm_auto_publish({"platform": "xx", "time": "09:00"})[1],
+                         "platform 必须是 fanqie 或 qimao")
+        self.assertIn("超出", auto.norm_auto_publish({"platform": "fanqie", "time": "25:00"})[1])
+
+    def test_due_requires_time_passed_book_and_not_fired(self):
+        store.set_auto_publish(self.task["id"],
+                               {"enabled": True, "platform": "fanqie", "time": "00:01"})
+        late = time.strptime(TODAY + " 23:59", "%Y-%m-%d %H:%M")
+        self.assertEqual(len(auto.due_tasks(now=late)), 1)
+        # 未到点不触发
+        early = time.strptime(TODAY + " 00:00", "%Y-%m-%d %H:%M")
+        self.assertEqual(auto.due_tasks(now=early), [])
+        # 今日已触发过 → 不再 due
+        auto._mark_fired(self.task["id"], TODAY)
+        self.assertEqual(auto.due_tasks(now=late), [])
+        # enabled=false 不 due
+        auto._AP_FIRED = None
+        store.set_auto_publish(self.task["id"],
+                               {"enabled": False, "platform": "fanqie", "time": "00:01"})
+        self.assertEqual(auto.due_tasks(now=late), [])
+
+    def test_due_skips_unbound_platform(self):
+        # 没建过书的平台不触发（触发也只会被拒，还烧掉当日额度）
+        store.set_auto_publish(self.task["id"],
+                               {"enabled": True, "platform": "qimao", "time": "00:01"})
+        late = time.strptime(TODAY + " 23:59", "%Y-%m-%d %H:%M")
+        self.assertEqual(auto.due_tasks(now=late), [])
+
+    def test_fire_due_once_then_idempotent(self):
+        store.set_auto_publish(self.task["id"],
+                               {"enabled": True, "platform": "fanqie", "time": "00:01"})
+        late = time.strptime(TODAY + " 23:59", "%Y-%m-%d %H:%M")
+        self.assertEqual(auto.fire_due(now=late), 1)
+        self.assertEqual(self.calls, [self.task["id"]])
+        # 同日第二次 tick：已 fired，不再触发（连败护栏场景不被反复撞）
+        self.assertEqual(auto.fire_due(now=late), 0)
+        self.assertEqual(self.calls, [self.task["id"]])
+
+    def test_fire_due_records_failure_not_refire(self):
+        auto.publish_pending_async = lambda tid, plat, auto_submit=False: (False, "护栏拦截")
+        store.set_auto_publish(self.task["id"],
+                               {"enabled": True, "platform": "fanqie", "time": "00:01"})
+        late = time.strptime(TODAY + " 23:59", "%Y-%m-%d %H:%M")
+        self.assertEqual(auto.fire_due(now=late), 0)     # 触发失败不计成功
+        self.assertEqual(auto.fire_due(now=late), 0)     # 且当日不再重试
+        recs = [r for r in ledger.recent(task_id=self.task["id"])
+                if r.get("action") == "auto_fire"]
+        self.assertEqual(len(recs), 1)
+        self.assertFalse(recs[0]["ok"])
 
 
 if __name__ == "__main__":

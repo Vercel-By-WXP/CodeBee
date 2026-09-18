@@ -581,7 +581,7 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/publish/(fanqie|qimao)/(connect|disconnect|probe)$", path)
         if m:
             return self._api_publish_platform_op(m.group(1), m.group(2))
-        m = re.match(r"^/api/publish/task/([^/]+)/(create-book|chapter)$", path)
+        m = re.match(r"^/api/publish/task/([^/]+)/(create-book|chapter|auto-publish)$", path)
         if m:
             return self._api_publish_task_op(m.group(1), m.group(2))
         m = re.match(r"^/api/publish/task/([^/]+)/publish-all$", path)
@@ -1060,6 +1060,23 @@ class Handler(BaseHTTPRequestHandler):
         auto_submit = bool(body.get("auto_submit"))
         if op == "create-book":
             ok, err = pub.create_book_async(task_id, platform, auto_submit)
+        elif op == "auto-publish":
+            # 定时发布配置（P2.5）：enabled=false 也落（保留 time 供再开）；
+            # 校验/归一在 auto.norm_auto_publish，语义见 auto.py 头注
+            from core.publish import auto as pub_auto
+            body["platform"] = platform
+            if body.get("enabled"):
+                ap, ap_err = pub_auto.norm_auto_publish(body)
+                if not ap:
+                    return self._json(400, {"error": ap_err})
+            else:
+                ap, ap_err = pub_auto.norm_auto_publish(body)
+                if not ap:
+                    return self._json(400, {"error": ap_err})
+                ap["enabled"] = False
+            ok, err = store.set_auto_publish(task_id, ap), ""
+            if ok:
+                return self._json(200, {"ok": True, "auto_publish": ap})
         else:
             f = str(body.get("file") or "").strip()
             if not f:

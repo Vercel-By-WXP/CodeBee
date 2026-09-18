@@ -299,6 +299,26 @@ def set_book_meta(task_id, platform, entry):
     return True
 
 
+def set_auto_publish(task_id, ap):
+    """写任务的定时发布配置（auto.py 每日到点读它触发批量发布）。
+
+    校验在 publish/auto.norm_auto_publish（路由层先归一再落这里）；存 None
+    表示清除。bump_state 同 set_book_meta：前端卡片即时反映开关态。"""
+    if not _valid_id(task_id):
+        return False
+    with LOCK:
+        task = _TASKS.get(task_id)
+        if not task:
+            return False
+        if ap is None:
+            task.pop("auto_publish", None)
+        else:
+            task["auto_publish"] = ap
+        _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
+    bump_state()
+    return True
+
+
 def get_task(task_id):
     if not _valid_id(task_id):
         return None

@@ -3802,7 +3802,7 @@ function pbBlock(task, platform) {
   } else if (st === "connected") {
     btns += '<button class="ghost" onclick="pbDisconnect(\'' + platform + '\')" title="' + esc(t("关掉该平台的浏览器窗口（登录态保留）")) + '">' + t("断开") + "</button>";
   }
-  btns += '<button class="ghost" onclick="pbProbe(\'' + platform + '\')" title="' +
+  btns += '<button class="ghost pb-tool" onclick="pbProbe(\'' + platform + '\')" title="' +
     esc(t("dump 平台表单结构（校准自动填表用）")) + '">' + t("探测") + "</button>";
   if (book) {
     btns += '<span class="pb-book" title="' + esc(t("已在此平台创建的作品")) + '">' +
@@ -3819,16 +3819,20 @@ function pbBlock(task, platform) {
       btns += '<span class="pb-book">' + esc(t("自动发布中 ") + run.done + "/" + run.total) + "</span>";
     } else if (au.pending > 0) {
       btns += ' <button class="ghost" ' + (busy || !au.guard_ok ? "disabled" : "") +
-        ' title="' + esc(au.guard_ok ? t("按章号顺序逐章发布；每章填好表单停一次，由你人工提交") : au.guard_reason || "") + '"' +
+        ' title="' + esc(au.guard_ok ? t("按章号顺序逐章填稿（人工模式每点一次填一章，浏览器里提交后再点发下一章）") : au.guard_reason || "") + '"' +
         ' onclick="pbPublishAll(\'' + esc(task.id) + "', '" + platform + '\')">' +
         t("发布全部待发") + "（" + au.pending + "）</button>";
     }
     if (au.pending > 0 && !au.guard_ok) {
       btns += '<div class="pb-err">' + esc(au.guard_reason || t("护栏拦截")) + "</div>";
     }
-    if (run && run.status !== "running") {
+    if (run && run.status === "manual_pause") {
+      // 人工模式一轮只填一章：等用户在浏览器提交后再发起（连发会导航离开
+      // 未提交的编辑器丢稿）。message 是下一步指引，不是错误。
+      btns += '<div class="pb-hint">' + esc(run.message || t("已填好一章，请在浏览器确认提交")) + "</div>";
+    } else if (run && run.status !== "running") {
       const doneLine = run.status === "done"
-        ? t("自动发布完成：") + run.done + "/" + run.total
+        ? t("自动发布完成：") + run.done + "/" + run.total + (run.message ? "。" + run.message : "")
         : t("自动发布中断：") + (run.error || "");
       btns += '<div class="' + (run.status === "done" ? "pb-hint" : "pb-err") + '">' +
         esc(doneLine + "（" + (run.at || "") + "）") + "</div>";
@@ -3951,12 +3955,12 @@ window.pbPublishAll = async function (taskId, platform) {
   const au = (((S.pubAuto && S.pubAuto.books) || [])
     .find((b) => b.platform === platform)) || {};
   if (!au.pending) return;
-  if (!confirm(t("将按章号顺序发布全部待发章节（共 " + au.pending +
-    " 章）。每章填好表单停一次，由你在浏览器里人工提交；护栏（每日上限/连续失败暂停）生效。继续？"))) return;
+  if (!confirm(t("将从最靠前的待发章节开始填稿（共 " + au.pending +
+    " 章待发）。本轮只填一章并停在表单页，由你在浏览器里确认提交；提交后再点一次即发下一章。护栏（每日上限/连续失败暂停）生效。继续？"))) return;
   try {
     await api("/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
       { method: "POST", body: JSON.stringify({ platform }) });
-    toast(t("自动发布已开始——每章填好后请在浏览器窗口里确认提交"));
+    toast(t("正在填第一章稿——填好后请在浏览器窗口里确认提交"));
   } catch (e) { toast(t("自动发布失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };

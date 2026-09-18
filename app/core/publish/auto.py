@@ -116,7 +116,8 @@ def status(task_id):
         ok, why = guards(task_id, plat)
         books.append({"platform": plat, "bound": True,
                       "title": info.get("title") or "",
-                      "pending": len(pend), "guard_ok": ok, "guard_reason": why})
+                      "pending": len(pend), "guard_ok": ok, "guard_reason": why,
+                      "calibrated": calibrated(plat)})
     run = _running.get(task_id) or None
     if run:
         run = dict(run)
@@ -140,12 +141,30 @@ def _wait_idle(platform, timeout=IDLE_TIMEOUT_S):
     return False
 
 
+def calibrated(platform):
+    """该平台的发布流程是否已校准（data/publish/flows-<plat>.json 在场）。
+
+    内置默认表的选择器是「合理推测」；auto_submit 无人值守直发必须先经
+    真机校准（探测→写 flows 覆盖文件），否则填错表单还会自动提交出去。"""
+    from .. import paths
+    return (paths.PUBLISH_DIR / ("flows-%s.json" % platform)).is_file()
+
+
 def publish_pending_async(task_id, platform, auto_submit=False):
-    """把任务的全部待发章节按章号顺序发出（后台线程）。返回 (ok, err)。"""
+    """把任务的待发章节按章号顺序发出（后台线程）。返回 (ok, err)。
+
+    auto_submit=True（直发）逐章提交走完全程；False（人工确认）每轮只填
+    **一章**就停在 manual_pause——表单填好后提交权在用户，walker 若直接
+    填下一章会导航离开未提交的编辑器，把上一章内容丢掉（平台草稿自动
+    保存不可依赖）。用户在浏览器提交后再次发起即发下一章。"""
     from .. import store
     from . import ledger, manager
     if platform not in manager.PLATFORMS:
         return False, "未知平台"
+    if auto_submit and not calibrated(platform):
+        return False, ("自动提交模式需要先校准该平台发布流程：用「探测」按钮 dump "
+                       "表单后把真实步骤写进 data/publish/flows-%s.json（缺省选择器"
+                       "只是推测，未校准不许无人值守直发）" % platform)
     with _LOCK:
         cur = _running.get(task_id) or {}
         if cur.get("status") == "running":
@@ -201,9 +220,18 @@ def publish_pending_async(task_id, platform, auto_submit=False):
                     return
                 st["done"] += 1
                 st["last_chapter"] = item["chapter_no"]
+                if not auto_submit and st["done"] < st["total"]:
+                    # 人工确认模式：填好一章就停，等用户在浏览器提交后再发起
+                    st["status"] = "manual_pause"
+                    st["message"] = ("第 %d 章已填好，请在浏览器里确认提交；"
+                                     "提交后再点一次发布即发下一章（剩 %d 章）"
+                                     % (item["chapter_no"], st["total"] - st["done"]))
+                    return
                 if st["done"] < st["total"]:
                     time.sleep(PACE_S)
             st["status"] = "done"
+            if not auto_submit:
+                st["message"] = "第 %d 章已填好，请在浏览器里确认提交" % st["last_chapter"]
         except Exception as e:                 # 线程内绝不能悬挂无终态
             st["status"] = "error"
             st["error"] = "自动发布异常：%s" % e
@@ -213,3 +241,127 @@ def publish_pending_async(task_id, platform, auto_submit=False):
     threading.Thread(target=run, daemon=True,
                      name="pub-auto-%s" % platform).start()
     return True, ""
+
+
+# ---------------------------------------------------------------- 定时联动（P2.5）
+# 任务级标记 task.auto_publish = {enabled, platform, time:"HH:MM", auto_submit}
+# automation._tick 每 25s 调 fire_due()：到点且今日未触发 → publish_pending_async。
+# 「今日已触发」记在 data/publish/auto_publish.json（task_id → YYYY-MM-DD）：
+# 触发过就不再重试当日（护栏/单飞自身也防重），成败都等明天——连败退避
+# 场景下避免到点后每 25s 撞一次护栏。
+_AP_FILE = None            # paths.PUBLISH_DIR / "auto_publish.json"（导入惰性定）
+_AP_FIRED = None           # 内存缓存 {task_id: "YYYY-MM-DD"}
+_AP_LOCK = threading.RLock()   # 可重入：_mark_fired 持锁内调 _load_fired 再进同锁
+
+
+def _ap_file():
+    global _AP_FILE
+    if _AP_FILE is None:
+        from .. import paths
+        _AP_FILE = paths.PUBLISH_DIR / "auto_publish.json"
+    return _AP_FILE
+
+
+def _load_fired():
+    global _AP_FIRED
+    with _AP_LOCK:
+        if _AP_FIRED is None:
+            try:
+                import json
+                d = json.loads(_ap_file().read_text(encoding="utf-8"))
+                _AP_FIRED = d if isinstance(d, dict) else {}
+            except Exception:
+                _AP_FIRED = {}
+        return _AP_FIRED
+
+
+def _mark_fired(task_id, day):
+    import json
+    with _AP_LOCK:
+        fired = _load_fired()
+        fired[str(task_id)] = day
+        try:
+            _ap_file().parent.mkdir(parents=True, exist_ok=True)
+            tmp = _ap_file().with_suffix(".tmp")
+            tmp.write_text(json.dumps(fired, ensure_ascii=False, indent=1),
+                           encoding="utf-8")
+            tmp.replace(_ap_file())
+        except Exception:
+            pass                            # 记录失败：最坏是当日重复触发，护栏会拦
+
+
+def norm_auto_publish(ap):
+    """校验并归一 auto_publish 配置。非法返回 (None, 人话原因)。"""
+    from . import manager
+    if not isinstance(ap, dict):
+        return None, "auto_publish 必须是对象"
+    platform = str(ap.get("platform") or "").strip()
+    if platform not in manager.PLATFORMS:
+        return None, "platform 必须是 fanqie 或 qimao"
+    hhmm = str(ap.get("time") or "").strip()
+    import re
+    m = re.match(r"^(\d{1,2}):(\d{2})$", hhmm)
+    if not m:
+        return None, "time 必须是 24 小时制 HH:MM"
+    h, mi = int(m.group(1)), int(m.group(2))
+    if not (0 <= h <= 23 and 0 <= mi <= 59):
+        return None, "time 超出 0-23:00-59"
+    return {"enabled": bool(ap.get("enabled")),
+            "platform": platform,
+            "time": "%02d:%02d" % (h, mi),
+            "auto_submit": bool(ap.get("auto_submit")),
+            "at": time.strftime("%Y-%m-%d %H:%M:%S")}, ""
+
+
+def due_tasks(now=None):
+    """到期待触发的定时发布任务清单：[(task, auto_publish)]。
+
+    条件：enabled + 已在该平台建书 + 今日未触发 + 当前时间已过当日 time。
+    未建书的任务跳过（触发也只会被 publish_pending_async 拒绝，白记一次
+    fired 反而把当天额度烧掉）。"""
+    from .. import store
+    from . import ledger
+    now = now or time.localtime()
+    today = time.strftime("%Y-%m-%d", now)
+    hhmm_now = time.strftime("%H:%M", now)
+    fired = _load_fired()
+    out = []
+    for task in store.list_tasks(limit=10 ** 9):
+        ap = task.get("auto_publish")
+        if not isinstance(ap, dict) or not ap.get("enabled"):
+            continue
+        if str(ap.get("time") or "") <= hhmm_now and fired.get(task["id"]) != today:
+            plat = ap.get("platform")
+            if plat and ledger.book_for(task["id"], plat):
+                out.append((task, ap))
+    return out
+
+
+def fire_due(now=None):
+    """tick 入口：把所有到期的定时发布触发一轮。返回触发条数；单条异常不拖累其余。"""
+    from . import ledger                # 惰性导入（同模块惯例）：漏了会 NameError
+    now = now or time.localtime()       # 且被双层 except 双重静默成幽灵 0
+    today = time.strftime("%Y-%m-%d", now)
+    n = 0
+    for task, ap in due_tasks(now=now):
+        try:
+            ok, err = publish_pending_async(
+                task["id"], ap.get("platform"),
+                auto_submit=bool(ap.get("auto_submit")))
+            _mark_fired(task["id"], today)  # 成败都记：当日不重试
+            if ok:
+                ledger.record(ap.get("platform"), "auto_fire", task_id=task["id"],
+                              title="定时触发 %s" % (ap.get("time") or ""), ok=True)
+                n += 1
+            else:
+                ledger.record(ap.get("platform"), "auto_fire", task_id=task["id"],
+                              title="定时触发 %s" % (ap.get("time") or ""),
+                              ok=False, error=str(err)[:200])
+        except Exception as e:
+            try:
+                _mark_fired(task["id"], today)
+                ledger.record(ap.get("platform"), "auto_fire", task_id=task["id"],
+                              ok=False, error=str(e)[:200])
+            except Exception:
+                pass
+    return n
