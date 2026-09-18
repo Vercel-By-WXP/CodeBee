@@ -3173,19 +3173,34 @@ function drawTaskDetail(key, runs) {
   if (currentLog && !stepsMatch(runs, currentLog)) window.rdLogClose();
   // 报告：最新一次 run 的（缓存，轮询重画不重复拉取）
   const drawReport = async () => {
+    const hint = (msg) => {
+      if (S.detailTaskKey !== key) return;   // 拉取期间切了详情：别糊到别的任务上
+      $("rd-report").innerHTML = '<div class="hint">' + esc(msg) + "</div>";
+    };
     if (S.taskReport && S.taskReport.key === key && S.taskReport.runId === latest.id) {
       $("rd-report").innerHTML = S.taskReport.html; return;
     }
     if (latest.status === "done" || latest.report) {
       try {
-        const md = await fetch("/api/runs/" + encodeURIComponent(latest.id) + "/report").then((r) => r.text());
+        const r = await fetch("/api/runs/" + encodeURIComponent(latest.id) + "/report");
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const md = await r.text();
+        if (!md.trim()) throw new Error("empty");
         const html2 = md2html(md);
         if (S.detailTaskKey !== key) return;   // 拉取期间切了详情：过期报告不落缓存/不落盘
         S.taskReport = { key, runId: latest.id, html: html2 };
         $("rd-report").innerHTML = html2;
-      } catch (e) { /* 报告拉取失败静默，保留旧内容 */ }
+      } catch (e) {
+        // 拉取失败不再静默留白（手机端「报告空空」的来源之一）：给可见提示，
+        // 不落缓存，下一轮轮询签名变化时自动重试
+        hint(t("报告读取失败（") + ((e || {}).message || t("网络异常")) + t("），稍后自动重试"));
+      }
+    } else if (latest.status === "running" || latest.status === "queued") {
+      hint(t("本次运行进行中：报告结束后在这里生成，实时进度看「步骤」页签"));
     } else {
-      $("rd-report").innerHTML = '<div class="hint">' + t("运行结束后生成") + '</div>';
+      const st = { failed: "失败", cancelled: "已取消", timeout: "超时" }[latest.status] || latest.status || "";
+      hint(t("本次运行没有生成报告") + (st ? t("（状态：") + st + t("）") : "") +
+        t("；各步骤日志在「步骤」页签"));
     }
   };
   drawReport();
@@ -3528,13 +3543,28 @@ async function renderRunDetail() {
   applyStepFocus();
   // 报告
   if (run.status === "done" || run.report) {
-    const md = await fetch("/api/runs/" + encodeURIComponent(id) + "/report").then((r) => r.text());
-    // 报告拉取期间切了详情：过期报告/成品不落盘（A 的报告写进 B 详情的报告区）
-    if (S.detailRunId !== id || S.detailTaskKey) return;
-    $("rd-report").innerHTML = md2html(md);
+    try {
+      const r = await fetch("/api/runs/" + encodeURIComponent(id) + "/report");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const md = await r.text();
+      if (!md.trim()) throw new Error("empty");
+      // 报告拉取期间切了详情：过期报告/成品不落盘（A 的报告写进 B 详情的报告区）
+      if (S.detailRunId !== id || S.detailTaskKey) return;
+      $("rd-report").innerHTML = md2html(md);
+    } catch (e) {
+      // 拉取失败不再静默留白：给可见提示（下轮轮询重画会重试）
+      if (S.detailRunId === id && !S.detailTaskKey)
+        $("rd-report").innerHTML = '<div class="hint">' +
+          esc(t("报告读取失败（") + ((e || {}).message || t("网络异常")) + t("），稍后自动重试")) + "</div>";
+    }
     loadArtifacts(id);
   } else {
-    $("rd-report").innerHTML = '<div class="hint">' + t("运行结束后生成") + '</div>';
+    const st = { failed: "失败", cancelled: "已取消", timeout: "超时" }[run.status] || run.status || "";
+    $("rd-report").innerHTML = '<div class="hint">' +
+      (run.status === "running" || run.status === "queued"
+        ? esc(t("本次运行进行中：报告结束后在这里生成，实时进度看「步骤」页签"))
+        : esc(t("本次运行没有生成报告") + (st ? t("（状态：") + st + t("）") : "") + t("；各步骤日志在「步骤」页签"))) +
+      "</div>";
   }
   // 成品文件双入口同源：主栏「成果」分区 + 检查器成品 TAB（列表上下文），
   // 详情上下文检查器让位后主栏是唯一可见面
