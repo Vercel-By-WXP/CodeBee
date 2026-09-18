@@ -5042,3 +5042,10 @@ body.welcome-open { overflow: hidden; }
 /* 类型菜单项的成本/次数预估行（借鉴 omnigent pre-run estimate）：小字弱化，
  * 挂在描述下方；无同类样本的类型不显示 */
 .ti-est { color: var(--muted); font-size: 10.5px; opacity: .85; }
+
+/* 步骤卡「实际派发模型」小徽章（借鉴 gsd-pi routing provenance）：换将/链回退时
+ * 一眼看清这步到底打了哪个模型；老步骤无 model 字段不显示 */
+.step .st-model {
+  font-size: 10.5px; color: var(--muted); opacity: .9;
+  border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; line-height: 16px;
+}

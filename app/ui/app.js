@@ -3518,6 +3518,7 @@ async function renderRunDetail() {
     '<span class="n">' + String(s.n).padStart(2, "0") + "</span>" +
     '<span class="role">' + esc(s.role) + "</span>" +
     '<span class="who">' + esc(t(s.agent_label || s.agent)) + "</span>" +
+    (s.model ? '<span class="st-model" title="' + esc(t("实际派发模型")) + '">' + esc(s.model) + "</span>" : "") +
     '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
     '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
     statusChip(s.status) +

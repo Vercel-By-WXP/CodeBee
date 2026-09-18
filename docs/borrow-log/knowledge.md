@@ -58,3 +58,18 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 ### 复查记录
 - 2026-09-18 傍晚：freebuff/omnigent/agent-orchestrator/oh-my-claudecode/munder-difflin 全部活跃（push 09-17/18，star 微增），未做逐 commit 增量——下轮补
 - 2026-09-18 傍晚：grill-me-skill 无变化（push 2026-04-11）
+
+## 2026-09-18 夜·扩组第二轮（调研日 2026-09-18）
+
+- **orca**（stablyai，71.5k★）已深挖 | 桌面 ADE：手机伴侣 app（跑完通知+随时追话）、并行 worktree（一个 prompt 扇出 5 agent 各自 worktree，比完合并胜者）、Ghostty 级终端 | 手机伴侣≈我们 Tailscale 远程访问+通知；worktree 择优=Best-of-N 工程版（我们的赛马在内容引擎，代码引擎可借鉴 worktree 版）| 借鉴方向：代码任务 worktree 版 Best-of-N + 移动端体验
+- **gsd-pi**（open-gsd，1.2k★，gsd-2 7.8k★ 的继任）已深挖 | spec-driven：milestones→slices→tasks 三层结构、.gsd/ 本地项目记忆（需求/决策/计划/验证证据）、AUTO 状态条显示当前派发模型、hermes 停滞会话通知、消息保留模型路由溯源 | 三层结构≈编排者拆解；项目记忆≈经验库+圣经；停滞通知已有看门狗；**已抄：步骤卡模型路由溯源徽章**；差量：验证证据持久化（.gsd 的 validation evidence）| 已落地（溯源徽章）+ 借鉴方向（验证证据）
+- **trycua/cua**（23.1k★）| computer-use 2.0：开源驱动+跨 OS 舰队+基准 | 我们无 GUI 操控能力；建书资料抓取是 CDP 定制实现 | 不适用（暂）
+- **agent-os**（buildermethods，5.4k★）| 注入代码库标准+写更好 spec | spec 路线参考 | 待深挖
+- **conductor**（gemini-cli-extensions，3.7k★）| spec-driven 开发插件 | 轻量 spec 工作流参考 | 待深挖
+- **moai-adk**（modu-ai，1.2k★）| SPEC plan/run/sync + TRUST 分层 | spec+信任分层参考 | 待深挖
+- **OpenSandbox**（opensandbox-group，15.4k★）| 安全快速可扩展的 agent 沙箱运行时 | 我们的沙箱=CLI 自带；浏览器沙箱场景不同 | 参考
+- **helix**（helixml，809★）| 私有 agent 舰队+spec coding，每 agent 独享 GPU | 私有化部署路线 | 参考
+- **SWE-AF**（Agent-Field，1k★）| 自主软件工程舰队产生产级 PR | 类似 agent-orchestrator | 待深挖
+
+### 复查记录（逐 commit）
+- 2026-09-18 夜：orca 近期=工程化收尾（macOS 差分客户端加固/移动端 UI 重做/多 PR 行折行/UNSTABLE PR 可合并策略）——移动端与 PR 流成熟中；freebuff=私仓高频快照（每天 10+ 次 sync，无公开语义增量）；agent-orchestrator 当日 7 commit 均工程修复
