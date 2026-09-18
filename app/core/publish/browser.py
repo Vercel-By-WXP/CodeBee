@@ -342,6 +342,36 @@ class Page:
             raise BrowserError("点击失败：%s" % ((r or {}).get("err") or sel))
         return True
 
+    def real_click_text(self, text, scope="", contains=True, exact_fallback=True):
+        """按文本真实点击：JS 定位元素中心坐标 → CDP Input 派发鼠标事件序列。
+
+        qm-btn 一类自定义按钮只认真实事件序列（mousedown/mouseup/focus），
+        el.click() 对它们无效——建书「确认创建」/发章「立即发布」都栽在这。
+        返回 {ok, tag?, via}；找不到元素返回 {ok: False, err}。"""
+        r = self.call(
+            "(t,scope,c)=>{"
+            "const els=[...document.querySelectorAll(scope||'button,a,[role=button],span,li,[class*=btn]')];"
+            "let cands=els.filter(e=>{const x=(e.innerText||'').trim();"
+            "return x&&(c?x.includes(t):x===t);});"
+            "if(!cands.length&&c){cands=els.filter(e=>(e.innerText||'').trim()===t);}"
+            "if(!cands.length)return{ok:false,err:'nf'};"
+            "cands.sort((a,b)=>((a.innerText||'').trim().length)-((b.innerText||'').trim().length));"
+            "const el=cands[0];el.scrollIntoView({block:'center'});"
+            "const rc=el.getBoundingClientRect();"
+            "return{ok:true,x:Math.round(rc.x+rc.width/2),y:Math.round(rc.y+rc.height/2),"
+            "tag:el.tagName,cls:(el.className||'').toString().slice(0,30)};}",
+            str(text), scope or "", bool(contains))
+        if not (r or {}).get("ok"):
+            return {"ok": False, "err": "页面上找不到文本为「%s」的可点元素" % text}
+        x, y = r["x"], r["y"]
+        self.send("Input.dispatchMouseEvent",
+                  {"type": "mousePressed", "x": x, "y": y,
+                   "button": "left", "clickCount": 1}, timeout=8.0)
+        self.send("Input.dispatchMouseEvent",
+                  {"type": "mouseReleased", "x": x, "y": y,
+                   "button": "left", "clickCount": 1}, timeout=8.0)
+        return {"ok": True, "tag": r.get("tag"), "via": "input"}
+
     def screenshot(self, fp):
         """整页截图存证：发布每步之后落一张，出错可回看卡在哪一步。"""
         r = self.send("Page.captureScreenshot", {"format": "png", "fromSurface": True})

@@ -16,6 +16,8 @@ CONFIG = {
     "home": "https://zuozhe.qimao.com/",
     # 作品管理页：建书入口（「新建小说」按钮所在）；建书向导第二步表单在其下
     "book_manage": "https://zuozhe.qimao.com/front/book-manage",
+    # 编辑器顶栏明示「正文字数最少 1000 字」——不足时「立即发布」被静默拦截
+    "min_chapter_chars": 1000,
     "login_url_marks": ["login", "signin", "passport", "sso"],
 }
 

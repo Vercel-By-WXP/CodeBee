@@ -236,14 +236,14 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     if shot:
                         shot("ready-manual-submit")
                     return i + 1
-                if st.get("text"):                    # 按按钮文本提交（CSS 无 :contains）
+                if st.get("text"):                    # 按按钮文本提交
                     text = str(st["text"])
-                    note(i, "提交「%s」" % text)
+                    note(i, "提交「%s」（真实鼠标事件）" % text)
                     r = None
                     for _try in range(3):
-                        r = page.call(_click_text_js(), text,
-                                      st.get("scope") or "button,[class*=btn]",
-                                      False)
+                        r = page.real_click_text(
+                            text, st.get("scope") or "button,a,[class*=btn]",
+                            contains=True)
                         if (r or {}).get("ok"):
                             break
                         time.sleep(0.9)
