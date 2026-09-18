@@ -43,3 +43,18 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 只搜 2-3 组关键词会漏大量同类项目（2026-09-18 用户指正）：必须 ≥12 组关键词（含 token 节约专项组）+ sort=stars/updated 双轮 + created:>近半年新锐轮 + GitHub topic 页 + awesome 清单顺藤摸瓜 + Trending
 - skill 生态（topic:claude-skills、skills marketplace）是独立借鉴源：好 SKILL 的方法论蒸馏进经验库/内置技能，不限于代码功能
 - 已沉淀项目不等于免查：每轮复查增量，老项目的新版本常带新机制
+
+## 2026-09-18 傍晚试跑补充（调研日 2026-09-18）
+
+- **orca**（stablyai，71.5k★）| 并行 agent 舰队的 ADE | 待深挖（本轮最大遗漏，规模超过此前所有已调研项目）| 待深挖
+- **Whale**（usewhale，928★）| DeepSeek 终端 agent，~98% prompt 缓存命中 | 缓存利用路线的标杆案例 | 借鉴方向（token 专项）
+- **LLMLingua**（microsoft，6.7k★）| prompt 压缩（剪枝/替换降 token）| 可用于长上下文注入前的压缩；重依赖慎接 | 参考
+- **prompt-cache**（messkan，409★）| 语义缓存，降本 80% | 语义缓存=同义请求直接回缓存 | 借鉴方向（token 专项）
+- **claude-code-cache-fix**（433★）| 缓存回归致 20x 成本的真实案例 | 印证「缓存破坏=真金白银」；我们压缩时机设计已避开 | 已覆盖（设计层面）
+- **token-goat**（121★）| token 燃烧抑制器 | 思路参考 | 参考
+- **sandcastle**（mattpocock，8k★）| TS 沙箱编排 coding agents | 沙箱隔离与我们 CLI 沙箱思路互补 | 参考
+- **lazycodex**（3.5k★）| 复杂代码库的项目记忆+规划 | 项目记忆≈经验库+圣经，规划≈编排者 | 待深挖
+
+### 复查记录
+- 2026-09-18 傍晚：freebuff/omnigent/agent-orchestrator/oh-my-claudecode/munder-difflin 全部活跃（push 09-17/18，star 微增），未做逐 commit 增量——下轮补
+- 2026-09-18 傍晚：grill-me-skill 无变化（push 2026-04-11）

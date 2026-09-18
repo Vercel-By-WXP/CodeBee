@@ -53,19 +53,49 @@ function renderTypeOptions() {
 function renderTypeMenu() {
   const menu = $("type-menu");
   if (!menu || !S.flows) return;
-  menu.innerHTML = (S.flows || []).map((f) =>
-    '<button type="button" class="type-item" role="option" data-v="' + esc(f.id) + '" onclick="pickType(\'' + esc(f.id) + '\')">' +
+  menu.innerHTML = (S.flows || []).map((f) => {
+    const est = S.flowEstimates && S.flowEstimates[f.id];
+    return '<button type="button" class="type-item" role="option" data-v="' + esc(f.id) + '" onclick="pickType(\'' + esc(f.id) + '\')">' +
     '<span class="ti-ico" aria-hidden="true">' + flowIconHtml(f) + "</span>" +
     '<span class="ti-body"><span class="ti-name">' + esc(t(f.name)) +
     (f.builtin ? "" : '<em class="ti-tag">' + t("自定义") + "</em>") + "</span>" +
-    '<span class="ti-desc">' + esc(flowDesc(f)) + "</span></span>" +
+    '<span class="ti-desc">' + esc(flowDesc(f)) + "</span>" +
+    (est ? '<span class="ti-est">' + esc(t("≈{0} tokens · {1}次", fmtTok(est.median_tokens), est.samples)) + "</span>" : "") +
+    "</span>" +
     '<svg class="ico ti-check" aria-hidden="true"><use href="#i-check"></use></svg>' +
-    "</button>").join("")
+    "</button>";
+  }).join("")
     /* 底部固定入口：管理流程替代原工具条上的「管理」按钮（简化 composer 工具行） */
     + '<div class="type-menu-foot"><button type="button" class="type-item" onclick="manageFlowsFromMenu()">' +
     '<span class="ti-ico" aria-hidden="true"><svg class="ico"><use href="#i-gear"></use></svg></span>' +
     '<span class="ti-body"><span class="ti-name">' + esc(t("管理任务类型…")) + "</span></span></button></div>";
   syncTypeBtn();
+  fetchFlowEstimates();   // 异步回填预估行（就地更新，不重建菜单）
+}
+
+/* 类型菜单的成本/次数预估（借鉴 omnigent，数据源 /api/usage/estimate）：
+ * 拉到手后就地更新菜单项——菜单开着也不重建 DOM，不打断滚动/悬停 */
+async function fetchFlowEstimates() {
+  if (!S.flows) return;
+  const targets = S.flows.slice(0, 10);
+  const results = await Promise.all(targets.map(async (f) => {
+    try {
+      const d = await api("/api/usage/estimate?type=" + encodeURIComponent(f.id) + "&days=90");
+      return [f.id, (d && d.samples > 0) ? d : null];
+    } catch (e) { return [f.id, null]; }
+  }));
+  S.flowEstimates = Object.fromEntries(results.filter(([, d]) => d));
+  const menu = $("type-menu");
+  if (!menu) return;
+  menu.querySelectorAll(".type-item[data-v]").forEach((b) => {
+    const d = S.flowEstimates[b.dataset.v];
+    const body = b.querySelector(".ti-body");
+    if (!d || !body || body.querySelector(".ti-est")) return;
+    const est = document.createElement("span");
+    est.className = "ti-est";
+    est.textContent = t("≈{0} tokens · {1}次", fmtTok(d.median_tokens), d.samples);
+    body.appendChild(est);
+  });
 }
 window.manageFlowsFromMenu = function () {
   toggleTypeMenu(false);

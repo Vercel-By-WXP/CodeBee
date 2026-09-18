@@ -5038,3 +5038,7 @@ body.welcome-open { overflow: hidden; }
   .welcome-right { display: none; }
   .welcome-card { width: 100%; }
 }
+
+/* 类型菜单项的成本/次数预估行（借鉴 omnigent pre-run estimate）：小字弱化，
+ * 挂在描述下方；无同类样本的类型不显示 */
+.ti-est { color: var(--muted); font-size: 10.5px; opacity: .85; }
