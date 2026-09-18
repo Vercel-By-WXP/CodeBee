@@ -1,4 +1,4 @@
-# 关键词总库（最大版 · 97 组 + 雷达源）
+# 关键词总库（最大版 · 110 组 + 雷达源）
 
 > 夜间自动化检索的完整词库。规则：每晚跑 **常驻组全部 + 轮换池按星期选 1 批 + 雷达源全部**；
 > 双轮排序（sort=stars 与 sort=updated 或 created:>2026-03-01 新锐轮）；核心组翻页 page=2
@@ -51,11 +51,23 @@
 - q=model+router+OR+llm+router
 - q=智能体+编排
 
-### A7 写作场景（4 组，CodeBee 核心场景——2026-09-18 深夜新增，此前从未覆盖）
+### A7 写作场景（8 组，CodeBee 核心场景——2026-09-18 深夜新增，此前从未覆盖）
 - q=novel+writing+ai+OR+story+generation+ai
 - q=creative+writing+agent
 - q=long+form+writing+ai+OR+book+writing+agent
 - q=网文+AI+写作+OR+小说+生成
+- q=article+writing+ai+OR+blog+writing+agent（自媒体文章——对应我们的自媒体文章流程）
+- q=speech+writing+ai+OR+presentation+script+generator（演讲稿/口播脚本）
+- q=translation+agent+OR+ai+translation+workflow（翻译流程）
+- q=story+consistency+check+OR+long+document+consistency（长文一致性——连载圣经/全局评审）
+
+### A9 产品配套场景（6 组，覆盖 CodeBee 自有能力面——2026-09-18 深夜新增）
+- q=agent+scheduler+OR+cron+ai+tasks（定时自动化）
+- q=self+update+cli+OR+auto+update+mechanism（自更新）
+- q=rate+limit+backoff+llm+OR+429+retry+agent（限流退避）
+- q=onboarding+wizard+cli+OR+first+run+experience（首启向导）
+- q=webnovel+author+tools+OR+小说+作者+工具（平台作者工具——番茄/七猫建书）
+- q=ai+cover+image+generator+OR+book+cover+generation（封面图）
 
 ### A8 prompt/网关/质量（5 组，2026-09-18 深夜新增）
 - q=prompt+management+platform+OR+prompt+registry

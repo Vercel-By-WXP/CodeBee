@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import catalog, history, jobs, manager, modelhub, mocks, planner, registry, router, runner, skills, store, usage
+from . import aiflavor, catalog, history, jobs, manager, modelhub, mocks, planner, registry, router, runner, skills, store, usage
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -2429,6 +2429,11 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             _tpl(task, "critique_prompt", NOVEL_CRITIQUE_PROMPT))
             .replace("__DIMKEYS__", dimkey)
             .replace("__MANUSCRIPT__", manuscript or "（稿件为空！）"))
+        # AI 味确定性检测（借鉴 oh-story 去AI味）：客观参考线随评审下发，
+        # 命中才追加——评审官结合上下文判断是否真问题，脚本不直接扣分
+        _aiflavor_line = aiflavor.report_line(manuscript)
+        if _aiflavor_line:
+            crit_prompt += "\n\n## 确定性检测结果（供评审参考）\n" + _aiflavor_line
         for agent in critics:
             role = "critique-r%d" % r
             if agent.get("mode") == "mock":
