@@ -93,3 +93,24 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 ### 复查记录
 - 2026-09-18 深夜：paseo/superset/agentmemory/Vibe-Skills/Tracely 进待深挖队列；swarms/nexent/axonhub/smallcode/sia 定性完毕（参考/已覆盖）
+
+## 2026-09-18 深夜·新维度第四轮（调研日 2026-09-18）
+
+新维度词（评审/自我改进/长任务/人机协同/框架生态/协议/成本）收获：
+- **planning-with-files**（OthmanAdi，27k★）| AI 编码 agent 的持久化文件计划+长任务 | **直击 .spec 路线图**：计划落文件、跨会话续跑、断点可见 | 待深挖（高优）
+- **prime-agent**（PrimeIntellect-ai，21k★）| 自我改进 RLM agent+长自主任务 | 自我改进≈经验库自学习；长任务=连载断点续跑同向 | 待深挖
+- **cc-sdd**（gotalab，3.7k★）| 批准的 spec→长时自主实现 | spec 驱动+自主实现的衔接设计 | 待深挖
+- **pi-plans**（110★）| Pi CLI 的人机协同规划扩展（rough changes→计划→批准→执行）| **我们已接 pi**；人机协同规划=需求拷问模式的同路人 | 借鉴方向
+- **Yuxi**（xerrors，7.1k★）| 可私有部署多租户知识智能体平台（中文）：统一 RAG/知识图谱/多智能体/MCP/Skills/沙箱权限 | 中文生态最大发现（靠 q=智能体+平台 挖到）；私有部署+知识图谱方向参考 | 待深挖
+- **agent-client-protocol**（4.3k★）| 编辑器连接任意 agent 的协议 | 协议生态位参考（我们的编排面是产品不是协议）| 参考
+- **agentscope-java**（5.7k★）| 分布式生产级长运行 agent | 长任务工程化参考 | 参考
+- **aegra**（1.2k★）| LangGraph Platform 开源替代（自托管）| 框架平台自托管参考 | 参考
+- **argo**（827★）| Local Manus 桌面 | 通用 agent 桌面参考 | 参考
+- **mira**（303★）| 自托管 AI 代码评审：索引化 PR 评审/走查/漏洞 | 跨厂商评审可借鉴其索引化评审（增量而非全量）| 待深挖
+- **pr-af**（632★）| Code-Review-Bench 第一的开源评审器 | 评审基准化思路 | 参考
+- **pandaprobe**（787★）| agent 工程：traces/evals/metrics | 观测参考 | 参考
+- **Aegis**（370★）| agent 运行时策略执行+密码学审计链+HITL 审批 | 全权沙箱的治理增强方向 | 参考
+- **CrewAI-Studio**（1.4k★）| CrewAI 多平台 GUI | 框架 GUI 参考 | 参考
+
+### 复查记录
+- 2026-09-18 深夜：新维度词验证了扩词价值（planning-with-files 27k★ 此前完全没出现在任何词组里）；轮换组 A/B 机制与全部新词已固化进夜间自动化（48 组总库）
