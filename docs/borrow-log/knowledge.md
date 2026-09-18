@@ -1,0 +1,45 @@
+# 竞品模式库（knowledge.md）
+
+> 每轮调研深挖的项目在此沉淀：项目 | 亮点机制 | 与 CodeBee 对比 | 结论 | 上次调研日期。
+> **已沉淀项目每轮仍需复查**：老项目会更新——看近期 commits/releases/CHANGELOG 相对
+> 上次调研日的增量，有新机制就吸收更新；确实没变化写一行「YYYY-MM-DD 复查无增量」。
+> 知识库的作用是知道查过什么、从哪续查，不是免查金牌。新条目追加在文件尾部。
+> 结论取值：借鉴(进路线图) / 已落地 / 已覆盖 / 不适用 / 参考。
+
+## token 节约机制专项（每轮必查维度）
+
+目标：帮 CodeBee 用户省 token。已有机制（对照基准）：
+- 三段上下文压缩（compaction.py：工具结果剪枝→LLM 摘要→surface replace）
+- token_meter 压力表 + 换将超窗预检（step_runner 0.9 事前门）
+- 单次运行预算熔断（budget.max_tokens_per_run）
+- cascade 级联路由（easy 任务按 tier 升序走廉价模型）
+- 经验召回免重读（skills.relevance_top）
+- CLI 会话复用（免重发前缀）+ 连载前情提要
+
+待调研方向：prompt 缓存显式利用（cache 断点/热缓存不压缩）、语义结果缓存、
+diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价模型分流。
+
+## 2026-09-18 第三轮（调研日 2026-09-18）
+
+## 2026-09-18 第三轮
+
+- **omnigent**（omnigent-ai/omnigent，10.1k★）| 编排多 CLI 的元壳：每步前按「本步将用模型」容量重估并压缩、跨壳任务交接、聚合看板、pre-run 成本预估 | 换将超窗预检与成本预估已抄；跨壳交接≈我们的换将链；看板≈蜂巢 | 已落地/已覆盖
+- **agent-orchestrator**（Untrivial-ai，12.1k★）| planning→merge 全程监督、.spec/PROMPT.md 任务规格文件化、计划评审闸 | spec 文件化未抄（路线图）；计划闸≈编排者+待裁决 | 部分借鉴
+- **oh-my-claudecode**（39.2k★）| 团队化编排、安全围栏、自学习沉淀、PR 工作流、doctor 健康诊断 | 大多有对应物（经验库=自学习、diagnostics=doctor、评审闸=围栏） | 已覆盖
+- **munder-difflin**（7.5k★）| 同任务 N 克隆并行+评审择优+每任务 token 上限；LanceDB 向量经验检索 | 赛马已抄（连载+单稿）；预算熔断已有；向量检索未抄（重依赖，暂缓） | 已落地
+- **freebuff**（CodebuffAI/freebuff，12.3k★）| 每步按本步模型容量重估、缓存感知压缩、suggest_followups、best-of-n 多策略+败者精华回收、专职子 agent 分工（thinker/researcher-web/file-explorer 家族）| 预检/追问卡/赛马精华已抄；专职子 agent 分工未抄（路线图候选）；缓存感知按设计不需要 | 已落地/部分
+- **emdash**（5.8k★）| 并行编码 agent + worktree 隔离 + 外部集成面 | 隔离链已有；外部集成抄了 Webhook 思路 | 已覆盖
+- **edict**（cft0808，16.9k★）| 三省六部制分角色治理 + 实时看板 + 多模型 | 治理隐喻可参考；看板=蜂巢 | 参考
+- **grill-me-skill**（RobMitt，610★）| 需求拷问：一次一问、每题多选弹窗、能自答绝不问用户、沿决策树逐分支到达共识、收尾汇总决策 | 三问向导是固定题序，此为自适应树状追问升级；追问芯片机制现成可复用 | 借鉴（路线图：需求拷问模式）
+- **grill-for-unknowns**（nicobailon，219★）| 先找未知项、再拷问计划、达成实现前共识 | 与 grill-me 合并借鉴 | 借鉴（同上）
+
+## 前两轮（详见当日报告）
+
+- **Baton / Codeband / CodeCrew** | 隔离链、待裁决徽章、跨族评审硬规则、章节实时预览、bee.py CLI、README 小队叙事 | 全部已落地（第一轮清单①-⑥）
+- **第二轮 GitHub 全景** | 采访式向导（三问一确认）等 | 全部已落地
+
+## 检索经验（方法论沉淀）
+
+- 只搜 2-3 组关键词会漏大量同类项目（2026-09-18 用户指正）：必须 ≥12 组关键词（含 token 节约专项组）+ sort=stars/updated 双轮 + created:>近半年新锐轮 + GitHub topic 页 + awesome 清单顺藤摸瓜 + Trending
+- skill 生态（topic:claude-skills、skills marketplace）是独立借鉴源：好 SKILL 的方法论蒸馏进经验库/内置技能，不限于代码功能
+- 已沉淀项目不等于免查：每轮复查增量，老项目的新版本常带新机制

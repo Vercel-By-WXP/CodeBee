@@ -27,7 +27,10 @@ function flowIconHtml(f) {
 
 function flowDesc(f) {
   if (f.engine === "direct") return t("单智能体直达（快）");
-  return f.engine === "code" ? t("实现 → 验证 → 评审") : t("起草 → 多维评审 → 门禁");
+  if (f.engine === "code") return t("实现 → 验证 → 评审");
+  // 连载与单稿件同引擎，描述必须区分：连载强调逐章与断点续跑
+  if (f.serial) return t("大纲 → 逐章起草评审 → 合并（可续跑）");
+  return t("起草 → 多维评审 → 门禁");
 }
 
 function renderTypeOptions() {

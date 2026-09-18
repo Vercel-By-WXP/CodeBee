@@ -659,6 +659,7 @@
     "评审引擎": "Review engine",
     "实现 → 验证 → 评审": "Implement → verify → review",
     "起草 → 多维评审 → 门禁": "Draft → multi-dim review → gate",
+    "大纲 → 逐章起草评审 → 合并（可续跑）": "Outline → per-chapter draft & review → merge (resumable)",
     "实现": "Implement",
     "起草": "Draft",
     "大纲": "Outline",

@@ -4,21 +4,21 @@
 > *CodeBee*，码蜂：蜂后统筹（编排者）、侦察蜂定方向（规划/评审）、工蜂采蜜（实现）——
 > 一个蜂巢，多只蜜蜂，酿同一份蜜。
 
+[![npm version](https://img.shields.io/npm/v/codebee)](https://www.npmjs.com/package/codebee)
+[![python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 **AI 是引擎，你的经验是方向盘。** CodeBee 为你指挥一支跨厂商的执笔/编码小队：
-统一调度本机已装的 AI 编码 CLI（Codex CLI、[CC]、QwenCode、OpenCode、Aider……），
-提供 **目标 → 自动拆解 → 智能路由 → 执行 → 客观验证 → 跨厂商评审 → 自动修复/换将 → 汇总报告**
-的完整闭环。你不在时它们自动推进、自我打磨；需要你拍板的地方——质量闸门、
-任务分支的采纳与丢弃——它们会亮起「待裁决」等你，绝不静默替你决定。
+统一调度本机已装的 AI 编码 CLI（Codex CLI、Claude Code、Qwen Code、OpenCode、Aider、
+Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
+**目标 → 自动拆解 → 智能路由 → 执行 → 客观验证 → 跨厂商评审 → 自动修复/换将 → 汇总报告**
+的完整闭环。你不在时它们自动推进、自我打磨；需要你拍板的地方——质量闸门、任务分支的
+采纳与丢弃——它们会亮起「待裁决」等你，绝不静默替你决定。
 
-- **跨厂商对抗式评审**：评审者强制来自与作者不同的模型族——同族自评有同款盲区，
-  换一双"眼睛"才挑得出陈词滥调（无跨厂商可用时如实备注，绝不伪装）。
-- **产物隔离在任务分支**：指定代码版本的任务，产物提交在 `codebee/<task-id>` 分支上，
-  你的工作区始终干净；UI 或 `tools/bee.py` 里过目变更，一键「合并回原分支」或「丢弃」。
-- **多任务并发互不打扰**（1-6 可配）、**六种内置任务类型 + 自定义流程**；
-  「编排设置」可指定任意厂商的 API 模型作为**编排者**；CLI 可绑定**跨厂商模型链**。
-- 附带智能体管理台（检测 / 安装 / 升级 / 模型配置 / 编排开关，安装失败时 AI 自动诊断修复）。
+<img src="docs/screenshots/home.png" width="820" alt="CodeBee 主界面：极简新建任务 + 任务列表">
 
-零第三方依赖：纯 Python 标准库（3.8+），本地 Web 界面，数据全部落盘可回放。
+零第三方依赖：纯 Python 标准库（3.8+），本地 Web 界面，数据全部落盘可回放，
+不会把你的任务内容交给任何第三方。
 
 <!-- relnotes:start -->
 ### 最新版更新内容（v0.1.7）
@@ -29,153 +29,151 @@
 - 修复升级失败后页面永远卡在「正在升级…」，现在成功/失败都会正常提示
 <!-- relnotes:end -->
 
-## 作者侧命令行（可选）
+---
 
-不开浏览器也能过裁决队列（本机免令牌）：
+## 功能速览
 
-```bat
-python toolsee.py status            :: 任务总览（含待裁决标记）
-python toolsee.py pending           :: 待裁决队列（分支 / 变更文件）
-python toolsee.py diff    <task>    :: 看本次变更
-python toolsee.py approve <task>    :: 采纳——任务分支合并回原分支
-python toolsee.py discard <task>    :: 否决——删除任务分支（需输 yes）
-```
+### 🐝 蜂巢工作台：实时盯进度，像看蜂群干活
+
+运行详情按智能体分格，谁在采蜜一目了然：每只蜜蜂带忙碌动画，点一下直接看该 CLI
+的实时日志流；步骤卡片记录每一步的角色、耗时、token 与费用。
+
+<div>
+<img src="docs/screenshots/hive.png" width="400" align="top" alt="蜂巢工作台">
+<img src="docs/screenshots/run_steps.png" width="400" align="top" alt="步骤时间线与 CLI 日志">
+</div>
+
+### ⚔️ 跨厂商对抗式评审
+
+评审者强制来自与作者不同的模型族——同族自评有同款盲区，换一双"眼睛"才挑得出
+陈词滥调。评审按维度独立打分 + 提行级意见，不达标自动回炉修订；无跨厂商可用时
+如实备注，绝不伪装。
+
+<img src="docs/screenshots/bindings.png" width="820" alt="CLI 绑定：跨厂商模型链">
+
+### 🔗 模型链跨厂商降级
+
+「CLI 绑定」页把模型链配成 `主模型 → 备选 → 再备选`，每条自带供应商凭据注入
+（API key + 地址，只影响 CodeBee 发起的调用，不改写 CLI 全局配置）。主模型瞬态失败
+（503/限流）自动切下一条——可能是另一家厂商的模型。配额耗尽、供应商欠费也能自动接力。
+
+### 🧠 经验库：越跑越好，无需人工维护
+
+每次任务结束由编排者复盘评审暴露的问题，自动沉淀为教训并归类（情节逻辑 / 人物塑造 /
+节奏爽点 / 文笔风格 / 一致性 / 流程规范），下次同类任务自动注入提示词。内置规范包
+（如七猫签约标准）自动注入小说类任务；「插件市场」一键安装社区经验包。
+
+<div>
+<img src="docs/screenshots/skills.png" width="400" align="top" alt="经验库">
+<img src="docs/screenshots/market.png" width="400" align="top" alt="插件市场">
+</div>
+
+### 🛠 智能体管理台：检测 / 安装 / 升级 / 一键绑模型
+
+自动检测本机全部 CLI（含版本号），安装失败时 AI 读日志自动诊断给修正命令；「默认模型」
+写回各家 CLI 自己的配置文件；「一键绑定推荐模型」按协议适配与可用性自动配好跨厂商链。
+
+<img src="docs/screenshots/agents.png" width="820" alt="智能体管理：目录检测与一键绑定">
+
+### 📡 模型接入：十种来源聚合
+
+点「导入」扫描本机 CCSwitch / Claude Code / Codex CLI / ZCode / Qwen / Gemini /
+OpenCode / Continue / Cursor / Trae 十种工具的配置，一次带入全部供应商（自动拉取模型
+列表与价格表）；也支持手动添加任意 OpenAI / Anthropic 兼容网关。密钥只存本机。
+
+<img src="docs/screenshots/models.png" width="820" alt="模型接入：多来源供应商聚合">
+
+### 📊 用量台账：每一分钱都有账
+
+所有真实 LLM 调用（编排步骤、编排者直连、连通性冒烟、AI 修复）计入 append-only
+台账：总 tokens、成功率、累计费用、每日趋势（纯 SVG 零依赖），按工具 / 智能体 /
+模型 / 角色 / 任务类型五维排行，支持今天 / 近 7 天 / 近 30 天 / 全部。
+
+<img src="docs/screenshots/usage.png" width="820" alt="用量统计">
+
+### 更多内置能力
+
+- **14 种任务类型**：代码、小说、连载小说、文档、翻译、调研、演讲、短视频脚本、
+  周报、邮件、技术方案、简历，以及「直接执行」对话模式；全部支持自定义流程
+  （引擎 / 评审维度 / 阈值 / 轮数 / 提示词覆盖）；
+- **质量闸门与裁决**：评审失败≠0 分照过、降级大纲不开写、超时但已落盘的稿件照常
+  送评审；需要人拍板的事项进「待裁决」队列（徽章 + 提示音），`tools/bee.py`
+  命令行不开浏览器也能过裁决；
+- **产物隔离在任务分支**：指定代码版本的任务，产物提交在 `codebee/<task-id>`
+  分支上（工作区始终干净），详情页 Git 工作台看 diff，一键合并回原分支或丢弃；
+- **运行中指挥**：任务跑着也能递话——文字 / 截图 / 附件注入下一轮；
+- **对话模式**：不拆步骤、直接执行，时间线式对话页，随时追话续上下文；
+- **自动化**：定时任务复用真实运行链，到点自动开跑（错过的一次性任务不补跑）；
+- **多任务并发**：worker 池默认 3（1-6 可调），互不打扰；连载任务超时/中断自动
+  断点续跑；
+- **远程访问**：手机同一 WiFi 直开、Tailscale 外网可达、Cloudflare Tunnel 固定
+  域名——8 位访问令牌保护，多端实时同步（SSE），单设备控制权防互踩；
+- **7 套皮肤**（默认「深海」），每套自带日间 / 夜间两版，安装默认即 深海·日间 + 中文。
+
+---
 
 ## 快速开始
 
 **方式一：npm 安装（推荐，普通用户）**
 
 需要本机装有 [Node.js](https://nodejs.org) 与 [Python 3.8+](https://www.python.org/downloads/)
-（Windows 装 Python 时勾选 “Add python.exe to PATH”；macOS 可 `brew install python3`）。然后：
+（Windows 装 Python 时勾选 “Add python.exe to PATH”）。然后：
 
 ```bat
 npm install -g codebee
 codebee
 ```
 
-支持 Windows / macOS / Linux。`codebee` 命令会启动服务并自动打开浏览器
-（默认 `http://127.0.0.1:8765`）。
+`codebee` 命令会启动服务并自动打开浏览器（默认 `http://127.0.0.1:8765`）。
 **启动后那个命令行窗口就是服务本身**——保持开着别关，Ctrl+C 即退出。
-升级：`npm update -g codebee`，或在界面「设置 → 关于与更新」里一键升级。
+每一步启动进度都会实时打印，卡在哪一步一眼可见。
+
+升级：`npm update -g codebee`，或在界面「设置 → 关于与更新」里一键升级；
+发现新版本时页面会直接展示本次更新内容。
 
 数据存放在用户目录（Windows `%APPDATA%\CodeBee`，macOS/Linux `~/.codebee`），
-升级/重装不影响；老版本 Tutti 目录（`%APPDATA%\Tutti` / `~/.tutti`）会被自动沿用，无需迁移。
+升级/重装不影响；老版本 Tutti 目录（`%APPDATA%\Tutti`）会被自动沿用，无需迁移。
 
 **方式二：源码运行（开发者）**
 
 ```bat
 git clone https://github.com/Vercel-By-WXP/CodeBee.git
 cd CodeBee
-:: Windows
 start.bat
 :: 或
 python app\main.py --port 8765
 ```
 
-```bash
-# macOS / Linux
-./start.sh
-# 或
-python3 app/main.py --port 8765
-```
-
 自动打开 `http://127.0.0.1:8765`。源码模式数据落仓库 `data/` 目录。
 
-## 手机 / 远程访问
+## 作者侧命令行（可选）
 
-服务默认监听 `0.0.0.0`，启动时控制台会打印所有可用地址：
-
-```
-[CodeBee] 本机      http://127.0.0.1:8765
-[CodeBee] 局域网    http://192.168.x.x:8765/?token=xxxxxxxx   ← 手机同一 WiFi 直接打开
-[CodeBee] Tailscale http://100.x.x.x:8765/?token=xxxxxxxx     ← 外网随时随地访问
-```
-
-- **令牌**：远程访问受访问令牌保护（首次启动生成，存于 `data/remote.json`；本机 127.0.0.1 免令牌）。
-  手机打开上面带 `?token=` 的地址后自动记住，之后可直接输裸地址。令牌错误会弹出输入门，重新输入即可。
-- **多端同步**：所有设备看到同一份实时状态（SSE 推送，秒级），断线自动降级为轮询。
-- **控制权**：同一时刻只有一台设备能操作。空闲时执行任意操作会自动接管；其他设备变为只读，
-  顶栏胶囊显示「🔒 xx 控制中」，点一下可抢回。45 秒无操作自动释放，单设备使用完全无感。
-- **随时随地访问**：手机与电脑都安装 [Tailscale](https://tailscale.com) 并登录同一账号，
-  重启 CodeBee 后控制台会打印 Tailscale 地址，无需端口映射，流量端到端加密。
-- 只想本机使用：`python app\main.py --host 127.0.0.1`。
-
-### 公网访问（自己的域名 + Cloudflare Tunnel）
-
-有一台电脑常开时，可把 CodeBee 暴露到公网（示例域名换成自己的）：
+不开浏览器也能过裁决队列（本机免令牌）：
 
 ```bat
-:: 一次性配置：cloudflared 登录后创建隧道并绑定子域名
-cloudflared tunnel login
-cloudflared tunnel create codebee
-cloudflared tunnel route dns --overwrite-dns <隧道UUID> codebee.你的域名.com
-
-:: 之后日常启动（服务 + 隧道一键起）：
-start-public.bat
+python tools\bee.py status            :: 任务总览（含待裁决标记）
+python tools\bee.py pending           :: 待裁决队列（分支 / 变更文件）
+python tools\bee.py diff    <task>    :: 看本次变更
+python tools\bee.py approve <task>    :: 采纳——任务分支合并回原分支
+python tools\bee.py discard <task>    :: 否决——删除任务分支（需输 yes）
 ```
-
-- **`--trusted-proxy` 必须开启**：隧道都从本机（127.0.0.1）回源，不感知代理的话
-  公网请求会被当成"本机"而豁免令牌，等于把控制台裸奔到公网。开启后带转发头
-  （Cloudflare 强制注入 `CF-Connecting-IP`）的回源请求一律强制校验令牌，
-  真本机（不带转发头的 loopback）不受影响。
-- `--public-url` 让「手机连接」弹框的二维码直接给公网地址，出门扫码即用。
-- 公网暴露面 = 8 位访问令牌。想更强可叠加 [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/)
-  （零信任，给子域名再加一层邮箱验证码/SSO，免费档 50 用户）。
-- Cloudflare 免费版即可，无需公网 IP、无需备案（走 CF 海外边缘节点）、不开任何入站端口。
-
-### 公网访问（零配置临时隧道）
-
-装了 [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
-（`winget install Cloudflare.cloudflared`）后，**默认启动即自动建立 Cloudflare 临时隧道**：
-控制台打印一个随机的 `https://xxx.trycloudflare.com` 公网地址，出门扫码即用，
-不需要账号、域名和任何配置。每次重启地址会变（手机重新扫码即可）。
-
-- 已有 Cloudflare 隧道凭据的机器（`~/.cloudflared` 下有 `*.json`）不会自动起临时隧道
-  （此类机器上临时隧道不可用），请走上面的固定域名路径。
-- 局限：临时隧道不保证可用性与速度（官方定位测试用途），部分网络环境可能打不开；
-  要稳定请用固定域名。`--no-public-tunnel` 可彻底关闭该行为。
-- 打开即自动强制 `--trusted-proxy`：公网暴露 ⇆ 反代回源令牌校验，二者永不分离。
-
-## 极简输入 + 会话延续
-
-主表单只有 3 项：**类型、目标（一句话）、工作目录**（自动记住上次填写）。
-标题自动取目标首行；其余（上下文/验证命令/编排模式/实现者/评审组/轮数/阈值）全部收进"高级选项"折叠，默认全智能无需改动。
-
-**在已有会话上继续**：「继续会话」下拉列出本机**已安装且支持会话恢复**的 CLI
-（Codex CLI、[CC]、OpenCode、QwenCode、MiMo Code 等），选中后 CodeBee 扫描其本地会话
-（时间 / 项目 / 内容预览），挑一条即可延续那个会话的完整上下文——实现者自动指定为
-对应智能体，规划、实现、修复都在原会话上进行（评审仍用新鲜上下文避免偏见）。
-
-各家会话存放位置与恢复方式（2026-09 本机实测）：
-
-| CLI | 会话位置 | 恢复方式 |
-| --- | --- | --- |
-| Codex CLI | `~/.codex/sessions/**.jsonl` | `codex exec resume <sid>` |
-| [CC] | `~/.claude/projects/*/<sid>.jsonl` | `claude -p --resume <sid>` |
-| OpenCode | `~/.local/share/opencode/opencode.db`（SQLite） | `opencode run -s <sid>` |
-| QwenCode | `~/.qwen/projects/*/chats/<sid>.jsonl` | `qwen -r <sid>` |
-| MiMo Code | `~/.local/share/mimocode/mimocode.db`（SQLite） | `mimo run -s <sid>` |
-
-两点注意：续会话是**显式指定**，不要求该 CLI 在设置页开启「参与编排」；
-另外 OpenCode / QwenCode 按**当前目录**定位会话，所以续接时 CodeBee 会自动把 CLI
-启动目录切到该会话所属项目（表单里会提示具体路径），任务工作目录仍按你填的来。
-其他 generic 类 CLI 只要在 catalog 的 `orch.resume_argv_template` 里登记恢复参数
-（如 `["run", "-s", "{session}"]`）即可接入。
 
 ## 任务类型与自定义流程
 
 主表单的「类型」下拉即流程列表，点「管理」可新增/编辑自定义流程（引擎、评审维度、
-阈值、轮数、产出文件名、起草/评审提示词覆盖）。内置七种：
+阈值、轮数、产出文件名、起草/评审提示词覆盖）。内置 14 种：
 
 | 类型 | 引擎 | 流程 |
 |---|---|---|
+| 💬 直接执行 | direct | 不拆步骤直接跑，时间线对话页可追话续上下文 |
 | 💻 代码 | code | 实现 → 验证 → 跨厂商评审 → 自动修复/换将 |
 | 📖 小说 | review | 起草 → 多维评审（情节/人物/文笔/节奏/吸引力）→ 修订 → 发布门禁 |
-| 📚 连载小说 | review | 大纲 → 逐章起草/评审/修订 → 全局一致性评审 → 合并成书（可断点续跑/继续连载） |
+| 📚 连载小说 | review | 大纲 → 逐章起草/评审/修订 → 全局一致性评审 → 合并成书（断点续跑/继续连载） |
 | 📝 文档 | review | 起草 → 多维评审（准确性/结构/表达/实用）→ 修订 → 门禁 |
 | 🌐 翻译 | review | 起草 → 多维评审（忠实度/流畅度/术语/风格）→ 修订 → 门禁 |
 | 🔍 调研报告 | review | 起草 → 多维评审（全面性/深度/论据/结论）→ 修订 → 门禁 |
 | 🎤 演讲稿 | review | 起草 → 多维评审（主题/结构/感染力/语言）→ 修订 → 门禁 |
+| 🎬 短视频脚本 / 📅 周报 / ✉️ 邮件 / 📋 技术方案 / 📄 简历 | review | 各自专属评审维度 |
 
 两种引擎：
 - **code 引擎**：实现者在工作目录直接改代码 → 执行验证命令（确定性结果）→ 跨厂商评审
@@ -200,76 +198,92 @@ start-public.bat
 先用「↻ 重试任务」断点续跑补完本批（继承大纲与已完成章），再「继续连载」写
 下一批。「继续连载」只出现在连载任务上（带章节衔接语义）。
 
-### 基于此任务新建（所有任务通用）
+任何任务右键 → 「基于此任务新建」可把同款配置预填进新建表单（连载的章节衔接
+请用「继续连载」；沿用同一工作目录会覆盖原产出，表单会提醒）。
 
-任何任务（小说/文档/翻译/调研/演讲/代码/连载）右键 → 「基于此任务新建」，
-或任务/运行详情页点「基于此任务新建」：把该任务的类型/标题/目标/上下文/工作目录/
-编排与评审设置**预填进新建表单**，确认或修改后提交——适合「用同款配置开一篇新的」
-（换个题材再写一本、同目录跑下一份文档等）。它不做章节衔接：连载任务要接着
-上一批往下写，请用上面的「继续连载」。注意沿用同一工作目录时，新任务的成书
-文件（及连载的章节文件）会覆盖原产出，表单里会给出提醒。
+## 极简输入 + 会话延续
+
+主表单只有 3 项：**类型、目标（一句话）、工作目录**（自动记住上次填写）。
+标题自动取目标首行；其余（上下文/验证命令/编排模式/实现者/评审组/轮数/阈值）全部
+收进"高级选项"折叠，默认全智能无需改动。
+
+**在已有会话上继续**：「继续会话」下拉列出本机**已安装且支持会话恢复**的 CLI
+（Codex CLI、Claude Code、OpenCode、QwenCode、MiMo Code 等），选中后 CodeBee 扫描
+其本地会话（时间 / 项目 / 内容预览），挑一条即可延续那个会话的完整上下文——
+实现者自动指定为对应智能体，规划、实现、修复都在原会话上进行（评审仍用新鲜
+上下文避免偏见）。
+
+各家会话存放位置与恢复方式（2026-09 本机实测）：
+
+| CLI | 会话位置 | 恢复方式 |
+| --- | --- | --- |
+| Codex CLI | `~/.codex/sessions/**.jsonl` | `codex exec resume <sid>` |
+| Claude Code | `~/.claude/projects/*/<sid>.jsonl` | `claude -p --resume <sid>` |
+| OpenCode | `~/.local/share/opencode/opencode.db`（SQLite） | `opencode run -s <sid>` |
+| QwenCode | `~/.qwen/projects/*/chats/<sid>.jsonl` | `qwen -r <sid>` |
+| MiMo Code | `~/.local/share/mimocode/mimocode.db`（SQLite） | `mimo run -s <sid>` |
+
+两点注意：续会话是**显式指定**，不要求该 CLI 在设置页开启「参与编排」；
+headless 一次性调用的 CLI（如 DeepSeek Harness）不支持会话恢复，不出现在下拉里。
+
+## 手机 / 远程访问
+
+服务默认监听 `0.0.0.0`，启动时控制台会打印所有可用地址：
+
+```
+[CodeBee] 本机      http://127.0.0.1:8765
+[CodeBee] 局域网    http://192.168.x.x:8765/?token=xxxxxxxx   ← 手机同一 WiFi 直接打开
+[CodeBee] Tailscale http://100.x.x.x:8765/?token=xxxxxxxx     ← 外网随时随地访问
+```
+
+- **令牌**：远程访问受访问令牌保护（首次启动生成，存于 `data/remote.json`；本机
+  127.0.0.1 免令牌）。手机打开带 `?token=` 的地址后自动记住；令牌错误会弹输入门。
+- **多端同步**：所有设备看到同一份实时状态（SSE 推送，秒级），断线自动降级为轮询。
+- **控制权**：同一时刻只有一台设备能操作，空闲时任意操作自动接管，其他设备只读，
+  顶栏胶囊一键抢回；45 秒无操作自动释放。
+- **外网**：手机与电脑都装 [Tailscale](https://tailscale.com) 登录同一账号即随时随地访问。
+
+### 公网访问（自己的域名 + Cloudflare Tunnel）
+
+```bat
+:: 一次性配置：cloudflared 登录后创建隧道并绑定子域名
+cloudflared tunnel login
+cloudflared tunnel create codebee
+cloudflared tunnel route dns --overwrite-dns <隧道UUID> codebee.你的域名.com
+
+:: 之后日常启动（服务 + 隧道一键起）：
+start-public.bat
+```
+
+- 真本机（不带转发头的 loopback）不受影响。
+- `--public-url` 让「手机连接」弹框的二维码直接给公网地址。
+- 公网暴露面 = 8 位访问令牌；想更强可叠加 Cloudflare Access（零信任，免费档 50 用户）。
+- Cloudflare 免费版即可：无需公网 IP、无需备案、不开任何入站端口。
+
+### 公网访问（零配置临时隧道）
+
+装了 [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+（`winget install Cloudflare.cloudflared`）后，**默认启动即自动建立 Cloudflare 临时隧道**：
+控制台打印一个随机的 `https://xxx.trycloudflare.com` 公网地址，出门扫码即用。
+每次重启地址会变（手机重新扫码即可）。
+
+- 已有 Cloudflare 隧道凭据的机器（`~/.cloudflared` 下有 `*.json`）不会自动起临时隧道，
+  请走固定域名路径；`--no-public-tunnel` 可彻底关闭该行为。
+- 打开即自动强制 `--trusted-proxy`：公网暴露 ⇆ 反代回源令牌校验，二者永不分离。
 
 ## 多任务并发
 
 任务队列是可并发 worker 池（默认 3，设置页「编排设置」可调 1-6）：多个任务同时跑、
 互不打扰——每个任务独立线程，运行数据按 run 隔离，互不等待。并发数调小后多余线程
-在空闲检查点自行退出，调大即时补齐。串行模式（=1）也可用。
-
-## 用量统计
-
-「用量统计」设置页：所有真实 LLM 调用（编排各角色步骤、编排者直连 API、
-连通性冒烟与 AI 修复）都会记入 append-only 台账（`data/usage/usage-YYYYMM.jsonl`，
-按月分文件），mock 智能体与本地验证命令不计入。页面提供：
-
-- **KPI 总览**：总 tokens（输入/输出/缓存细分）、调用次数与成功率、累计费用（claude 报告值）、
-  单次均值、缓存命中率、活跃天数与累计调用时长，每张卡带语义图标；
-- **每日趋势**：输入/缓存/输出堆叠柱状图（纯 SVG，零依赖）；
-- **时间范围**：分段控件切换今天 / 近 7 天 / 近 30 天 / 全部，**默认「今天」**（最常关心当下消耗），
-  选择会记住，下次进入沿用；
-- **五个维度排行**：按工具（Codex CLI / [CC] / 编排者 API…）、按智能体、按模型、
-  按步骤角色（规划/实现/评审/修订…）、按任务类型，各带调用数、tokens、耗时、费用与成功率；
-- **最近调用明细**：时间、工具、智能体、模型、角色、成败、tokens 细分与单次费用。
-
-聚合接口：`GET /api/usage?days=N`（N=0 表示全部历史；按天序列自动补零可直接画图）。
-
-启动时会自动把**历史运行**里已记录的 token 与费用回填进台账（幂等，重复启动不重复计入），
-所以升级后第一次打开就能看到此前的用量，不会从零开始。历史运行只存了总量、没有输入/输出
-细分，因此这部分记录的细分显示为 0、模型列标注「(历史未记录)」，页面会给出说明；
-从新调用开始记录完整细分。
-
-## 皮肤 / 换肤
-
-设置页「皮肤」（顶栏右侧的调色盘胶囊也直接进这一页）内置 6 套皮肤，**默认「经典」就是原本的界面**，不换肤时观感与以前完全一致：
-
-| 皮肤 | 风格 |
-|---|---|
-| 经典 | 黑白灰 + 蓝色强调（默认，即原界面） |
-| 深海 | 藏青底色 + 天蓝强调 |
-| 森野 | 墨绿底色 + 青翠强调 |
-| 暖阳 | 暖棕底色 + 琥珀强调 |
-| 霓虹 | 暗紫底色 + 品红强调 |
-| 高对比 | 纯黑 / 纯白 + 硬边框、去阴影（弱视 / 强光环境） |
-
-每套皮肤都自带**日间与夜间两版**，所以顶栏原来的「夜间 / 日间」按钮继续可用，切明暗不会丢皮肤；
-皮肤页里也有同样的明暗分段控。点卡片即时生效，选择记在本机（`localStorage` 的 `orch.skin`，
-手机与电脑各自独立），首屏有预涂脚本，刷新不会闪一下默认配色。皮肤值缺失或非法时自动回落经典。
-
-实现上：一套皮肤=一份完整调色板，全部由 `app/ui/style.css` 顶部的同一组 CSS 变量描述
-（`html[data-skin="X"]` 与 `html[data-skin="X"][data-theme="light"]`），换肤只改变量，布局与组件样式不动；
-原先写死的几处强调色底纹（状态 chip、徽标、执行日志框等）已改成 `color-mix(var(--accent) …)`，
-所以新皮肤下不会出现串色。皮肤卡片上的配色预览由 JS 读 CSS 变量实时生成，不重复维护色值。
-
-**新增一套皮肤**：在 `style.css` 里照抄一组变量写 `html[data-skin="你的id"]` 与其
-`[data-theme="light"]` 版（两组都要写全同一组变量名），再在 `app/ui/app.js` 的 `SKINS`
-数组里加一行（id / 名字 / 一句描述）即可，其余（入口、预览、持久化、手机状态栏色）都自动生效。
-`node tests/ui_skin.mjs` 会校验「每个皮肤的日夜两版变量是否与经典完全对齐」，防止漏写变量。
+在空闲检查点自行退出，调大即时补齐。串行模式（=1）也可用。连载任务超时/中断自动
+断点续跑（延迟退避入队，防在网关限流墙上连续撞死）。
 
 ## 编排设置（编排者模型）
 
-「编排设置」设置页里可以给 **CodeBee 自己的智能体**指定一个厂商的模型
-（直连 API，不占 CLI 会话）：统一负责任务的**规划拆解、难度判定与写作大纲**。
-未启用或调用失败时自动回落为「最强可用 CLI 智能体」规划，流程永不阻塞。
-三种协议（anthropic / openai / google）都可作编排者；一键测试连通。
+「编排设置」页可给 **CodeBee 自己的智能体**指定一个厂商的模型（直连 API，不占
+CLI 会话）：统一负责任务的**规划拆解、难度判定与写作大纲**。未启用或调用失败时
+自动回落为「最强可用 CLI 智能体」规划，流程永不阻塞。三种协议（anthropic /
+openai / google）都可作编排者；一键测试连通。
 
 ## 两种智能体
 
@@ -277,8 +291,7 @@ start-public.bat
 - **mock 智能体**（演示智能体 A/B）：内置、零消耗，用于验证流程 / 演示 / 回归测试。
 
 mock 的评分逻辑是确定性的：第 1 轮故意略低于阈值、第 2 轮达标——用来验证发布门禁。
-mock 不出现在新建任务表单的「实现者/评审组」选择器里（手动编排不会误选）；仅当本机
-一个真实智能体都没有时才回退显示，自动路由与测试也仍会把它作为兜底。
+仅当本机一个真实智能体都没有时才回退显示在表单里。
 
 ## 模型接入（API 供应商）
 
@@ -294,36 +307,23 @@ mock 不出现在新建任务表单的「实现者/评审组」选择器里（�
   保存后自动拉取模型列表；地址若误填成 `.../v1/chat/completions` 会自动收敛为基址；
 - **协议**：`anthropic` 与 `openai` 可注入 CLI；`google`（Gemini）**仅登记**——
   可查看、可拉取模型列表，但不会出现在 CLI 绑定的下拉里；
-- **左侧供应商列表**：名称、协议、来源标签、已拉取的模型数；顶部「⟳ 全部刷新 / 导入 / ＋」；
-  每行左侧有勾选框（顶部「全选」），勾选后出现批量条：**启用 / 停用 / 删除**；
-- **停用供应商**：停用即「暂不参与编排」——运行时解析会跳过它，绑定回落为 CLI 默认
-  配置；地址/密钥/模型列表与已删除墓碑都保留，「全部刷新」也会跳过它，随时可再启用；
-- **右侧供应商详情**：
-  - **测试连接**：GET `/v1/models` 测供应商级连通性与延迟（显示
-    `✓ 连通 410ms · 16 个模型`）；
-  - **模型按协议分组**展示，每行 = 勾选框 + 优先级 #N + 模型名 + 价格 + **测试按钮**
-    （发一条 1-token 真实对话，显示 `✓ 850ms` 或 `✗ HTTP 402 欠费`）+
-    启停开关；
-  - **批量操作模型**：勾选任意多行（分组标题「全选」可整组选中）后，用上方批量条
-    **启用 / 停用 / 恢复 / 删除**所选模型；「已删除 N 个」展开后也能勾选并「恢复所选」；
-  - **拖动 ☰ 调整调用优先级**：组内拖拽即重排，#1 即默认模型；
-  - **删除模型**：每行「删除」把不用的模型移出优先级列表。删除是**标记隐藏而非
-    物理移除**——「获取模型列表 / 全部刷新 / 重新导入」都不会再把删掉的模型带回来；
-    分组底部「已删除 N 个 · 恢复全部」可找回（恢复后排在优先级末尾）。若删掉的正是
-    默认模型或难度映射，相关引用会同步清空，不会留下悬空的模型名；
-  - **批量的原子性**：所选里只要有一个模型名不存在、或对已删除的模型做启用/停用，
-    整个请求都不生效（不会改一半）；批量恢复与可见模型混选时，可见项直接跳过；
-  - 「编辑供应商配置」折叠区：改地址/密钥/难度模型映射；
+- **左侧供应商列表**：名称、协议、来源标签、已拉取的模型数；支持批量启用/停用/删除；
+  停用即「暂不参与编排」，配置与墓碑保留，随时可再启用；
+- **右侧供应商详情**：测试连接（连通性 + 延迟）；模型按协议分组、每行可测试
+  （1-token 真实对话，显示 `✓ 850ms` 或 `✗ HTTP 402 欠费`）与启停；批量操作原子生效；
+  拖动 ☰ 调整调用优先级；删除模型是标记隐藏而非物理移除（刷新/重导入不会带回来），
+  「已删除 N 个」可恢复；
 - **自动优先级**：新拉取的模型按名称启发式自动排序（pro/opus 强者靠前，
   mini/flash 便宜者靠后），手动调序后刷新会保留你的顺序；
+- **协议适配**：网关实际支持的 wire（responses / chat completions）可一键「适配测试」
+  实测登记；`protocol=auto` 的供应商按实测能力集自动归类；
 - **运行时语义**：「CLI 绑定」页的**模型链可跨厂商混搭**——每条自带该供应商的
   凭据注入（API key + 地址），第 1 条是主模型，其余按序降级：主模型瞬态失败
   （503/限流/无可用通道）自动切到下一条，**可能是另一家厂商的模型**（最多 3 条）；
-  链空则按供应商默认 / 难度路由自动选；调用失败若是瞬态错误**自动降级**；
-- **CLI 绑定**：claude 走 `ANTHROPIC_*` 环境变量、codex 走 `-c model_provider`
-  覆盖，运行时注入不改写 CLI 全局配置；密钥只存本机 `data/models.json`；
+  链空则按供应商默认 / 难度路由自动选；同厂商多密钥可配多把 KEY，欠费/冷却自动切备用；
 - **安全**：拉取与测试仅访问用户自己配置的 http/https 地址，解析 IP 做边界校验、
-  禁用重定向；内网自建网关（私网 IP）导入时自动放行 `allow_private`。
+  禁用重定向；内网自建网关（私网 IP）导入时自动放行 `allow_private`；
+  密钥只存本机 `data/models.json`。
 
 ## 智能编排（默认模式）
 
@@ -342,90 +342,74 @@ mock 不出现在新建任务表单的「实现者/评审组」选择器里（�
 "智能体管理"页提供：
 
 - **检测**：已装 / 未装、版本号（CLI `--version` / UWP AppxManifest / PowerShell）；
-- **安装 / 升级 / 卸载**：执行 catalog 里配置的命令，日志**实时流式落盘**（边跑边看，
-  不再等进程结束才出字）；**安装失败时 AI 自动诊断**——
-  真实智能体读取失败日志 + 本机环境（node/npm/pnpm 有无）给出修正命令，
-  只有命中白名单（`npm install` / `winget install` / `pip install` 前缀）才自动执行，否则留待人工确认；
-  卸载命令由安装命令自动推导（npm → `npm uninstall -g`、winget → `winget uninstall`、
-  pip → `pip uninstall -y`），无需在 catalog 里再维护一份、不会与安装命令不同步；
-  特殊渠道可在条目里显式写 `uninstall` 字段覆盖。卸载不可逆，点按钮会先摊开真实命令二次确认；
+- **安装 / 升级 / 卸载**：执行 catalog 里配置的命令，日志**实时流式落盘**（边跑边看）；
+  **安装失败时 AI 自动诊断**——真实智能体读取失败日志 + 本机环境给出修正命令，
+  只有命中白名单（`npm install` / `winget install` / `pip install` 前缀）才自动执行，
+  否则留待人工确认；卸载命令由安装命令自动推导，特殊渠道可显式覆盖；
 - **模型配置**：工具默认模型（写回各家配置文件，自动备份 `.bak`）；
-  CodeBee 编排运行时用哪个供应商 / 模型统一在「CLI 绑定」页配置
-  （`data/models.json` 的 `bindings`，含有序模型链与难度路由）；
+  CodeBee 编排运行时用哪个供应商 / 模型统一在「CLI 绑定」页配置；
 - **编排开关**：决定哪些 CLI 参与任务路由。
 
-Kimi Code / MiMo Code / Grok Build / Pi / DeepSeek Harness 的安装命令已内置（均取自各工具官方渠道）：
-Kimi Code 与 Pi 需要 Node ≥ 22.19，Grok Build 的官方可执行名是 `grok`（条目 id 仍为
-`grok-build`），MiMo Code 的无头调用是子命令 `mimo run "提示词"`（该 CLI 的 `-p` 是
-`--password`）。DeepSeek Harness 的可执行名是 `dsh`，无头调用走 `--profile headless`
-（细节见下表）。若某个条目的安装命令仍缺失，直接编辑 `data/catalog.json` 补上
-`install` 字段，保存后点"重新加载 catalog"即可；点"恢复默认 catalog"可回滚。
+Kimi Code / MiMo Code / Grok Build / Pi / DeepSeek Harness 的安装命令已内置（均取自
+各工具官方渠道）。若某个条目的安装命令缺失，直接编辑 `data/catalog.json` 补上
+`install` 字段保存后点"重新加载 catalog"即可；点"恢复默认 catalog"可回滚。
 
 ## 接入原理（已在本机实测）
 
 | CLI | 无头调用 | 输出解析 |
 |---|---|---|
-| Codex CLI | `codex exec --skip-git-repo-check --json -s <sandbox>`（stdin 传提示词；.cmd 垫片经 `cmd /c`） | JSONL 事件流：`item.completed`=回答，`turn.completed`=token 用量 |
-| Claude Code | `claude -p --output-format json`（stdin 传提示词；自动注入 `CLAUDE_CODE_GIT_BASH_PATH` 与输出上限） | 单个 JSON：`result` / `total_cost_usd` / `usage` |
-| DeepSeek Harness | `dsh --profile headless "<任务>"`（任务**只能**走位置参数：headless 应用只认 `[task...]` 与 `--help`，不支持 stdin 与 `--model`；`.cmd` 垫片经 `cmd /c`） | stdout 即最终回答纯文本；退出码 0=完成 / 1=错误（推理流另走 stderr） |
+| Codex CLI | `codex exec --skip-git-repo-check --json -s <sandbox>`（stdin 传提示词） | JSONL 事件流：`item.completed`=回答，`turn.completed`=token 用量 |
+| Claude Code | `claude -p --output-format json`（stdin 传提示词；自动注入 Git Bash 路径与输出上限） | 单个 JSON：`result` / `total_cost_usd` / `usage` |
+| DeepSeek Harness | `dsh --profile headless "<任务>"`（任务只能走位置参数） | stdout 即最终回答；退出码 0=完成 / 1=错误 |
 
-DeepSeek Harness 的三个特殊点（均已实测确认）：
-
-1. **模型不能靠 env/flag 指定**，只能由配置层决定。headless 应用只认 `[task...]` 与 `--help`，
-   `--model` 会被拒。所以 CodeBee 把模型写进 `~/.dsh/settings.yaml` 的
-   `agent-default-model.model`（该文件若不存在则由 CodeBee 按需创建）；
-2. **凭据走 env**：由「CLI 绑定」注入 `DEEPSEEK_API_KEY`，这是 dsh 凭据解析的最高优先级
-   （高于它自己的 `.credentials.yaml`），不会落盘；
-3. **端点优先级是「settings 高于 env」**：`~/.dsh/settings.yaml` 里若写了
-   `llm-deepseek.baseURL`，CodeBee 注入的 `DEEPSEEK_BASE_URL` 会被忽略；只有没写时才生效
-   （实测：settings 固定 `vsllm.cc` 时，把 env 指到一个不存在的域名，请求仍然打到 `vsllm.cc`）。
-
-由此带来一个必须注意的约束：绑定的供应商要和 dsh 实际使用的端点**配成一对**。若 dsh 的
-settings.yaml 已经把端点钉在别处，而你在「CLI 绑定」里绑了另一家网关的供应商，那个密钥会被
-发到你钉住的端点上，表现为鉴权失败。此时要么让两边端点一致，要么不绑供应商、让 dsh 用它自己的
-凭据。另外绑定只会选中 **openai 协议**的供应商（dsh 的适配器打的是 OpenAI 兼容的
-`/chat/completions`），anthropic 协议的网关会被跳过。headless 是「一次性任务」，不支持会话
-恢复，也不会出现在「继续会话」下拉里；超长提示词还受 Windows 命令行上限（约 32k 字符）约束
-——这也是所有 generic 类 CLI 的共有约束。
-
-所有子进程：并发读管道防死锁、超时/取消杀整棵进程树（`taskkill /T`）、stdout 全量落盘。
+- **模型指定因 CLI 而异**：codex/claude 支持运行时注入（env / `-c` 覆盖）；dsh 只认
+  `~/.dsh/settings.yaml` 的配置项，凭据走 `DEEPSEEK_API_KEY` 环境变量（不落盘）；
+  kimi/grok-build/mimo/pi/openclaw 的默认模型落点均已逐一实测内置，配置由 CodeBee
+  托管写入（自动备份）。
+- **协议闸门**：claude 只吃 anthropic wire、codex 只吃 openai responses、dsh 只吃
+  OpenAI 兼容 chat——不匹配的供应商在绑定与起跑前就会被剔除并提示，不会产生
+  「必然失败的注入组合」。
+- 所有子进程：并发读管道防死锁、超时/取消杀整棵进程树（`taskkill /T`）、stdout 全量
+  落盘；输出静默看门狗（默认 600s）防个别 CLI 卡死，超时自动换将接力。
 
 ## 目录约定
 
 ```
-data/
+data/（npm 安装：%APPDATA%\CodeBee 或 ~/.codebee；源码模式：仓库 data/）
   catalog.json          智能体目录（可手动编辑）
   orchestration.json    编排偏好（参与编排开关）
-  models.json           供应商 / CLI 绑定（跨厂商模型链）/ 编排者配置
+  models.json           供应商 / CLI 绑定（跨厂商模型链）/ 多 KEY
   flows.json            自定义任务流程
   settings.json         运行设置（最大并发数）
   tasks/*.json          任务
   runs/<run_id>/        每次运行：run.json、steps/*.log、report.md、error.log
   usage/                用量台账（usage-YYYYMM.jsonl，按月分文件，append-only）
+  skills.json           经验库（教训 + 规范包）
 ```
 
 安全约束（内置，勿绕过）：配置路径必须位于用户主目录内；任务工作目录必须是已存在的
-绝对路径；稿件文件名消毒后限制在工作目录内；步骤日志读取禁止目录穿越。
+绝对路径；稿件文件名消毒后限制在工作目录内；步骤日志读取禁止目录穿越；
+远程写操作需设备控制权 + 访问令牌。
 
 ## 测试
 
 ```bat
-cd tests && python -m unittest test_units test_pipeline test_flows test_binding_models test_binding_chain test_modelhub test_catalog_models test_orchestrator test_remote test_sessions test_auto test_usage -v
+cd tests && python -m unittest discover -p "test_*.py" -v
 python tests\e2e_service.py   :: 起真实服务的端到端（临时数据目录 + 独立端口，零配额）
-python tests\e2e_usage.py     :: 用量统计端到端（预置台账 → 聚合断言 → mock 不入账）
-node tests\ui_check.mjs      :: Edge headless + CDP 的 UI 交互验证（需本机服务在 18798）
-node tests\ui_check_usage.mjs :: 用量页 UI 验证（自起临时服务 + 种子数据 + 截图）
-node tests\ui_check_usage_icons.mjs :: 用量页图标/分段控件（SVG 图标、默认今天、选中态、主题跟随）
-node tests\ui_check_models_icons.mjs :: 模型页图标（刷新按钮加载态、拖拽手柄，对运行中服务只读）
-node tests\ui_probe_geometry.mjs :: 布局几何（重叠/裁切/越界/横向溢出，桌面 + 手机视口）
-node tests\ui_audit.mjs      :: 全页面体检（逐页可见性 + 空台账/有数据两套场景 + 控制台异常）
-node tests\ui_skin.mjs       :: 皮肤核验（调色板变量对齐 + 换肤/持久化/窄屏，需 18798 服务）
+node tests\ui_check.mjs       :: Edge headless + CDP 的 UI 交互验证
+node tests\ui_audit.mjs       :: 全页面体检（逐页可见性 + 控制台异常）
+node tests\ui_skin.mjs        :: 皮肤核验（调色板变量对齐 + 换肤/持久化）
 ```
 
-单元测试（解析器/消毒/穿越防护/mock 确定性/流程注册表/跨厂商链/编排者/并发池）+
-端到端（mock 全流程、门禁逻辑、验证失败拦截、服务级 API 全链路），全部不消耗真实配额。
+单元测试（解析器/消毒/穿越防护/mock 确定性/流程注册表/跨厂商链/编排者/并发池/
+自更新一致性）+ 端到端（mock 全流程、门禁逻辑、验证失败拦截、服务级 API 全链路），
+全部不消耗真实配额。
 
-## 后续路线
+## 更新日志
 
-- v2：多智能体并行 + 投票/辩论；成本预算；历史胜率反哺路由；
-- git worktree 隔离支持并行写同一仓库（并发任务已就绪，worktree 隔离待做）。
+见 [CHANGELOG.md](CHANGELOG.md)。应用内「设置 → 关于与更新」可检查更新、查看
+每次更新的内容并一键升级（npm 安装模式）。
+
+## License
+
+[MIT](LICENSE)
