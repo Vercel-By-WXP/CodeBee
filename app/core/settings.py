@@ -12,7 +12,7 @@ _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "settings.json"
 
 # default_workdir 为空表示未自定义，用 builtin_workdir() 回落
-DEFAULTS = {"max_concurrent_jobs": 3, "default_workdir": ""}
+DEFAULTS = {"max_concurrent_jobs": 3, "default_workdir": "", "hooks_token": ""}
 MIN_WORKERS, MAX_WORKERS = 1, 6
 
 
@@ -77,6 +77,8 @@ def save(patch):
             if err:
                 return cur, err
             cur["default_workdir"] = wd
+        if "hooks_token" in patch:
+            cur["hooks_token"] = str(patch.get("hooks_token") or "").strip()[:128]
         _FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = _FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")

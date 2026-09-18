@@ -4278,3 +4278,12 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
   #run-detail .rd-overview { grid-template-columns: minmax(0, 1fr) auto; padding-inline: 12px; }
   .rd-overview-title, .rd-overview-goal { white-space: normal; }
 }
+
+/* 直连对话「建议追问」芯片（借鉴 freebuff suggest_followups）：挂在助手气泡尾部，
+ * 点击回填输入框不直接发送，用户可改后再发 */
+.chat-fups { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chat-fup-btn {
+  border: 1px solid var(--border, #ccc); background: transparent; color: inherit;
+  border-radius: 999px; padding: 4px 12px; font-size: 12.5px; cursor: pointer; opacity: .85;
+}
+.chat-fup-btn:hover { border-color: var(--accent, #888); color: var(--accent, inherit); opacity: 1; }

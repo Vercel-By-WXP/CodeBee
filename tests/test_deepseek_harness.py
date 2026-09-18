@@ -296,7 +296,7 @@ class TestDshArgv(BaseTest):
 
     def test_build_call_shape(self):
         from app.core import runner
-        argv, stdin_text, _, _ = runner._build_call(
+        argv, stdin_text, _ = runner._build_call(
             self._agent(), "generic", "", False, "deepseek-flash", "写一段开场")
         # 命令段：Windows 上 dsh 是 .cmd 垫片 → resolve_command 包一层 cmd /c；
         # 未安装时退化为裸命令名。两种都接受，只锁「模板展开」的结果。

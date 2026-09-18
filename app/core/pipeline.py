@@ -353,12 +353,15 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     return res
 
 
-def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=None):
+def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=None,
+                      followups=False):
     """内置智能体步骤：直连模型 API + 工具循环（builtin_agent），不经 CLI 进程。
 
     与 _run_step 对齐的三件事：暂停/取消闸门、运行中指令 drain 注入、重复调用
     守门；结果同样经 _finish_step_result 落步骤（output=干净回答）并入用量台账。
-    日志只有「迭代/工具」摘要行——对话视图吃 output，日志抽屉看工具轨迹。"""
+    日志只有「迭代/工具」摘要行——对话视图吃 output，日志抽屉看工具轨迹。
+    followups=True 时从回答末尾解析「建议追问」块（直连对话专用协议）：
+    剥离出结构化列表落步骤记录，正文保持干净。"""
     _wait_gate(run_id, ev)
     step, log_abs = store.add_step(run_id, role, "builtin", "CodeBee", note=note)
     start = time.time()
@@ -387,6 +390,11 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
         lines.append(str(line))
 
     res = builtin_agent.run(bi, prompt, workdir, cancel_event=ev, log=_log, images=images)
+    if followups and res.get("ok"):
+        clean, fups = _parse_followups(res.get("text") or "")
+        if fups:
+            res["text"] = clean
+            res["followups"] = fups
     if log_abs:
         try:
             log_abs.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -499,7 +507,8 @@ def _finish_step_result(run_id, step, res, role, agent, start):
                       model=res.get("model"),
                       # 智能体的最终回答（runner 已从 JSONL 事件流里抽出 agent_message）。
                       # 对话视图直读这个；日志文件是全量事件流，塞进气泡就成了「看日志」。
-                      output=(res.get("text") or ""))
+                      output=(res.get("text") or ""),
+                      followups=res.get("followups"))
     if agent.get("mode") != "mock":
         _record_usage(run_id, role, agent, res, source="pipeline", step=step["n"])
     # 5F：step 级运行时断言（只告警不阻断）
@@ -942,7 +951,8 @@ __CONTEXT__
 
 ## 要求
 - 能改直接改、能写直接写（用工具，限本工作目录内），产出文件一律 UTF-8 编码。
-- 完成后直接给用户一段简短说明：做了什么、产出/修改了哪些文件。"""
+- 完成后直接给用户结论与答案，需要时顺带交代产出/修改了哪些文件；不要写「本轮做了什么」这类开场白。
+__FOLLOWUPS__"""
 
 BUILTIN_FOLLOWUP_PROMPT = """## 原始任务
 __GOAL__
@@ -952,7 +962,48 @@ __PREV__
 
 ## 要求
 - 优先回应用户的新消息（继续做/改/答疑均可），仍限本工作目录内，工具可用。
-- 回复直接说清本轮做了什么、答案是什么。"""
+- 直接给答案/结果，需要时再带一句改动说明；不要写「本轮做了什么」这类开场白，也不要「回复：」这类引导词。
+__FOLLOWUPS__"""
+
+# 追问建议协议（借鉴 freebuff 的 suggest_followups）：模型在正文后自带最多 3 条
+# 建议追问，后端解析成结构化字段、从正文剥离，前端渲染成可点芯片。省一次额外
+# 请求；模型不配合时自然没有芯片，无需兜底。
+FOLLOWUPS_PROTOCOL = """
+## 回复末尾协议
+正文全部写完之后，另起一段输出最多 3 条「建议追问」（用户最可能接着问的方向），格式严格如下；没有合适的方向就整个省略，绝不要输出空的或凑数的：
+<followups>
+10 字内的短标签 | 用户点击后会原样发送的完整消息（第一人称，一句话）
+</followups>"""
+
+
+def _parse_followups(text):
+    """从回答正文里解析并剥离 <followups> 块。返回 (干净正文, [建议列表])。
+
+    每行「标签 | 消息」（兼容全角｜），最多取 3 条，两端空白与空行忽略；
+    没有块或解析不出任何合法行时原样返回。"""
+    import re as _re
+    if not text or "<followups>" not in text:
+        return text, []
+    m = _re.search(r"<followups>\s*([\s\S]*?)</followups>", text)
+    if not m:
+        return text, []
+    out = []
+    for line in m.group(1).splitlines():
+        line = line.strip().lstrip("-•* ").strip()
+        if not line:
+            continue
+        parts = _re.split(r"[｜|]", line, 1)
+        if len(parts) != 2:
+            continue
+        label = parts[0].strip()
+        msg = parts[1].strip()
+        if not label or not msg:
+            continue
+        out.append({"label": label[:24], "prompt": msg[:200]})
+        if len(out) >= 3:
+            break
+    clean = (text[:m.start()] + text[m.end():]).strip()
+    return clean, out
 
 
 def _pending_messages(run_id):
@@ -1050,7 +1101,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
             if bi is not None:
                 prompt = (BUILTIN_DIRECT_PROMPT
                           .replace("__GOAL__", task["goal"])
-                          .replace("__CONTEXT__", task.get("context") or "（无）"))
+                          .replace("__CONTEXT__", task.get("context") or "（无）")
+                          .replace("__FOLLOWUPS__", FOLLOWUPS_PROTOCOL))
             else:
                 prompt = (DIRECT_PROMPT
                           .replace("__GOAL__", task["goal"])
@@ -1061,7 +1113,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
             if bi is not None:
                 prompt = (BUILTIN_FOLLOWUP_PROMPT
                           .replace("__GOAL__", task["goal"])
-                          .replace("__PREV__", (last_text or "（无）")[-3000:]))
+                          .replace("__PREV__", (last_text or "（无）")[-3000:])
+                          .replace("__FOLLOWUPS__", FOLLOWUPS_PROTOCOL))
             else:
                 prompt = DIRECT_FOLLOWUP_PROMPT.replace("__GOAL__", task["goal"])
                 if not sid and last_text:
@@ -1077,7 +1130,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
         before_n = len(_pending_messages(run_id))
         if bi is not None:
             res = _run_builtin_step(run_id, "direct" if first else "chat", bi, prompt,
-                                    step_wd, ev=ev, note=note, images=images)
+                                    step_wd, ev=ev, note=note, images=images,
+                                    followups=True)
         else:
             res = _run_step(run_id, "direct" if first else "chat", impl, prompt, step_wd,
                             readonly=False, ev=ev, note=note,
@@ -1870,72 +1924,40 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
 
     # ---- 3) 全局一致性评审（覆盖 1..end 全书：续写批次必须连同旧章一起查一致性）
     full_text = "\n\n".join(_read_chapter(workdir, i) for i in range(1, end + 1))
-    global_issues = []
-
-    def run_global_round(agent_list):
-        """一轮全局评审：返回 (出分评审数, 按维累计分)。失败/不可解析不得当成低分计入。"""
-        gmeans_acc, scored = {}, 0
-        for agent in agent_list:
-            if agent.get("mode") == "mock":
-                step, _ = store.add_step(run_id, "global-critique", agent["id"],
-                                         agent.get("label"))
-                time.sleep(0.15)
-                gj = {"scores": {d: 8.0 for d in dims},
-                      "issues": [], "summary": "（mock）全书结构完整，达到可签约水平"}
-                store.finish_step(run_id, step["n"], "done", summary="均分 8.0：（mock）全书达标",
-                                  duration_s=0.15)
-                scored += 1
-            else:
-                gtpl = SERIAL_GLOBAL_PROMPT
-                if bible:
-                    gtpl = gtpl.replace("## 全书目标", bible + "\n\n## 全书目标", 1)
-                res = _run_step(run_id, "global-critique", modelhub.bind_agent(agent, difficulty),
-                                (gtpl.replace("__DIMKEYS__", dimkey)
-                                 .replace("__GOAL__", task["goal"])
-                                 .replace("__MANUSCRIPT__", full_text[:60000])),
-                                workdir, readonly=True, ev=ev, timeout=2400)
-                gj = runner.extract_json(res.get("text") or "")
-                if isinstance(gj, dict) and isinstance(gj.get("scores"), dict) and gj.get("scores"):
-                    scored += 1
-                else:
-                    gj = {"scores": {}, "issues": [], "summary": "全局评审输出无法解析"}
-            global_issues.extend({"chapter": "全书", **it} for it in (gj.get("issues") or [])[:8])
-            for d in dims:
-                v = gj.get("scores", {}).get(d)
-                if v is not None:
-                    gmeans_acc.setdefault(d, []).append(float(v))
-            _check_cancel(ev)
-        return scored, gmeans_acc
-
-    gscored, gmeans_acc = run_global_round(critics)
-    # 「评不上」≠「评了低分」：全局评审全挂时先从其它真实智能体补位（对齐章级
-    # 评审者级 fallback）；补位后仍零分则判 run 失败——「无法评审」绝不能当成
-    # 「全局评审未通过」去盖「未达标」章（2026-09-18 假未达标案：codex 绑定链
-    # 全失效 + kimi 命令行超长，global_scores 为空被 _all_ge 判成不通过）。
-    # mock 评审总出分，不会误触；判失败不设 impl mock 例外（对齐章级中止）。
-    if not gscored:
-        tried = {a.get("id") for a in critics}
-        for spare in [a for a in (agents or [])
-                      if a.get("mode") == "real" and a.get("id") not in tried][:2]:
-            sc, acc = run_global_round([spare])
-            for d, xs in acc.items():
-                gmeans_acc.setdefault(d, []).extend(xs)
-            gscored += sc
-            if gscored:
-                break
-        if not gscored:
-            store.update_run(run_id, status="failed",
-                             error="全局一致性评审全部失败（评审模型不可用或输出不可解析），"
-                                   "已中止以免把「无法评审」误判为「未达标」。"
-                                   "各章稿件已全部落盘，修复评审链后续跑可直接收尾",
-                             ended_at=_now())
-            return
-    global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans_acc.items()}
+    global_means, global_issues = {}, []
+    for agent in critics:
+        role = "global-critique"
+        if agent.get("mode") == "mock":
+            step, _ = store.add_step(run_id, role, agent["id"], agent.get("label"))
+            time.sleep(0.15)
+            gj = {"scores": {d: 8.0 for d in dims},
+                  "issues": [], "summary": "（mock）全书结构完整，达到可签约水平"}
+            store.finish_step(run_id, step["n"], "done", summary="均分 8.0：（mock）全书达标",
+                              duration_s=0.15)
+        else:
+            gtpl = SERIAL_GLOBAL_PROMPT
+            if bible:
+                gtpl = gtpl.replace("## 全书目标", bible + "\n\n## 全书目标", 1)
+            res = _run_step(run_id, role, modelhub.bind_agent(agent, difficulty),
+                            (gtpl.replace("__DIMKEYS__", dimkey)
+                             .replace("__GOAL__", task["goal"])
+                             .replace("__MANUSCRIPT__", full_text[:60000])),
+                            workdir, readonly=True, ev=ev, timeout=2400)
+            gj = runner.extract_json(res.get("text") or "")
+            if not isinstance(gj, dict) or not isinstance(gj.get("scores"), dict):
+                gj = {"scores": {}, "issues": [], "summary": "全局评审输出无法解析"}
+        global_issues.extend({"chapter": "全书", **it} for it in (gj.get("issues") or [])[:8])
+        for d in dims:
+            v = gj.get("scores", {}).get(d)
+            if v is not None:
+                global_means.setdefault(d, []).append(float(v))
+        _check_cancel(ev)
+    global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in global_means.items()}
     global_pass = _all_ge(global_means, threshold)
 
     # ---- 3.5) 自驱打磨：全局评审不过 → 自动重改最弱章并重评（至多 2 轮，无需人工）
     polish_rounds = 0
-    while (not global_pass) and polish_rounds < 2 and chapter_scores and global_means:
+    while (not global_pass) and polish_rounds < 2 and chapter_scores:
         polish_rounds += 1
         weak = _weakest_chapters(chapter_scores, global_means, threshold, limit=2)
         if not weak:
@@ -1985,10 +2007,6 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         cj = {"scores": {}, "issues": [], "summary": "评审输出无法解析"}
                 cj_by_agent[agent["id"]] = cj
                 _check_cancel(ev)
-            # 重评全挂（本轮所有评审都解析不出分数）→ 保留该章原分与达标态：
-            # 拿「无法重评」覆盖真实分数，会把打磨前的好章误标 0 分、误判不达标
-            repolished = any(isinstance(c.get("scores"), dict) and c["scores"]
-                             for c in cj_by_agent.values())
             vals = {}
             for d in dims:
                 xs = [float(cj["scores"].get(d, 0)) for cj in cj_by_agent.values()
@@ -1996,22 +2014,38 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 vals[d] = round(sum(xs) / len(xs), 1) if xs else 0.0
             for c2 in chapter_scores:
                 if c2["chapter"] == i:
-                    if repolished:
-                        c2["means"] = vals
-                        c2["passed"] = bool(vals) and all(v >= threshold_ch for v in vals.values())
-                        c2["rounds"] = int(c2.get("rounds") or 1) + 1
-                        c2["polished"] = True
+                    c2["means"] = vals
+                    c2["passed"] = bool(vals) and all(v >= threshold_ch for v in vals.values())
+                    c2["rounds"] = int(c2.get("rounds") or 1) + 1
+                    c2["polished"] = True
                     c2["words"] = _wc(_read_chapter(workdir, i))
                     fixed.append(i)
             store.update_run(run_id, chapter_scores=chapter_scores)
             _check_cancel(ev)
-        # 重评全书一致性（同一评审闭包；本轮全挂则保留上一轮结论——评审链挂了
-        # 不代表书变差，不能拿「无法评审」覆盖真实分数）
+        # 重评全书一致性
         full_text = "\n\n".join(_read_chapter(workdir, i2) for i2 in range(1, end + 1))
-        gscored2, gmeans_acc2 = run_global_round(critics)
-        if gscored2:
-            global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans_acc2.items()}
-            global_pass = _all_ge(global_means, threshold)
+        gmeans, gissues = {}, []
+        for agent in critics:
+            if agent.get("mode") == "mock":
+                gj2 = {"scores": {d: 8.0 for d in dims}, "issues": [],
+                       "summary": "（mock）打磨后全书达标"}
+            else:
+                res3 = _run_step(run_id, "global-critique", modelhub.bind_agent(agent, difficulty),
+                                 (SERIAL_GLOBAL_PROMPT.replace("__DIMKEYS__", dimkey)
+                                  .replace("__GOAL__", task["goal"])
+                                  .replace("__MANUSCRIPT__", full_text[:60000])),
+                                 workdir, readonly=True, ev=ev, timeout=2400)
+                gj2 = runner.extract_json(res3.get("text") or "")
+                if not isinstance(gj2, dict) or not isinstance(gj2.get("scores"), dict):
+                    gj2 = {"scores": {}, "issues": [], "summary": "全局评审输出无法解析"}
+            global_issues.extend({"chapter": "全书", **it} for it in (gj2.get("issues") or [])[:8])
+            for d in dims:
+                v = gj2.get("scores", {}).get(d)
+                if v is not None:
+                    gmeans.setdefault(d, []).append(float(v))
+            _check_cancel(ev)
+        global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans.items()}
+        global_pass = _all_ge(global_means, threshold)
         store.finish_step(run_id, pstep["n"], "done" if global_pass else "failed",
                           summary="重改 %s；打磨后全局 %s（%s）" % (
                               "、".join("第 %d 章" % x for x in fixed),
@@ -2084,6 +2118,120 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                      ended_at=_now())
 
 
+# ---- Best-of-N 赛马起草（非连载单稿；借鉴 freebuff editor-multi-prompt + best-of-n-selector）----
+# 连载路径的同章赛马是另一套（_run_serial_review 的 n_variants 分支，逐变体全维度
+# 评分），互不影响。赛马与压缩会话互斥（同连载赛马的守卫）：并行 _run_step 会在
+# 同一 run 的会话事件流里交错，压缩面选择区域可能被搅乱。
+
+# 每路候选的写法策略（刻意制造多样性，不是同提示词跑 N 遍）；0 号不带策略=现状等价
+BESTOF_STRATEGIES = (
+    "",
+    "\n\n## 写法策略\n本稿以「场景与画面感」优先：多用具体可感的细节、动作与环境推进，少直接概括。",
+    "\n\n## 写法策略\n本稿以「对话与冲突」驱动：让人物在对话与碰撞中推进情节，节奏明快、信息密度高。",
+)
+
+BESTOF_SELECTOR_PROMPT = """你是终审编辑。同一个写作任务并行产生了多份候选稿，请对比选出最好的一份。
+
+## 任务目标
+__GOAL__
+
+## 对比要点（按重要性）
+贴合任务要求与评审维度 > 结构与可读性 > 语言质量 > 不跑题、不注水
+
+__CANDIDATES__
+
+## 输出
+只输出一个 JSON 对象，不要输出任何其他内容：
+{"pick": <选中候选的编号（从 0 开始的整数）>, "reason": "<一句话理由>", "improvements": "<落选稿里值得吸收进选中稿的具体优点，多条用分号隔开；没有就给空字符串>"}
+"""
+
+
+def _variant_name(ms_name, k):
+    """候选稿文件名：manuscript.md → manuscript.v0.md（无扩展名则尾部追加）。"""
+    m = re.search(r"(\.[^./\\]+)$", ms_name)
+    return (ms_name[:m.start()] + ".v%d" % k + m.group(1)) if m else (ms_name + ".v%d" % k)
+
+
+def _bestof_draft(run_id, task, impl, prompt_fn, ms_name, workdir, step_wd, ev,
+                  resume_ctx, difficulty, best_of, sel_agent, write_ms, note=""):
+    """非连载评审流的 Best-of-N 赛马起草。
+
+    N 路并行起草到各自变体文件（每路带不同写法策略）→ 终审选择器单次调用对比
+    择优并回收落选稿精华 → 胜者写回正式稿名。某路失败只弃那路；全败返回其中
+    一路的原始结果（保持原报错行为）；选择器失败/不可解析回落 0 号候选（等价
+    单稿行为）。选择结果与败者精华记入 run.bestof，变体文件保留供用户比对。"""
+    n = max(2, min(3, int(best_of)))
+    results = {}
+
+    def _one(kk):
+        vfile = _variant_name(ms_name, kk)
+        p = prompt_fn(vfile) + BESTOF_STRATEGIES[kk % len(BESTOF_STRATEGIES)]
+        r = _run_step(run_id, "draft-v%d" % kk,
+                      modelhub.bind_agent(impl, difficulty), p, step_wd,
+                      readonly=False, ev=ev,
+                      # 只有 0 号候选继承续会话（N 路共用同一 CLI 会话会互相践踏）
+                      resume=(resume_ctx["session"] if (resume_ctx and kk == 0) else None),
+                      images=_task_images(task, workdir),
+                      note=(note + " · " if note else "") + "候选 %d/%d" % (kk + 1, n))
+        txt = ""
+        try:
+            txt = _read_text_any_enc(os.path.join(workdir, vfile))
+        except Exception:
+            txt = ""
+        results[kk] = (vfile, r, (txt or "").strip())
+
+    threads = []
+    for kk in range(n):
+        th = threading.Thread(target=_one, args=(kk,),
+                              name="bestof-%s-v%d" % (run_id, kk), daemon=True)
+        threads.append(th)
+        th.start()
+    for th in threads:
+        th.join(3000)
+    _check_cancel(ev)
+
+    candidates = []
+    for kk in range(n):
+        vfile, r, txt = results.get(kk, (None, None, ""))
+        if r is not None and r.get("ok") and txt:
+            candidates.append({"k": kk, "file": vfile, "res": r, "text": txt})
+    if not candidates:
+        r = (results.get(0) or results.get(n - 1) or (None, None, ""))[1]
+        return (r or {"ok": False, "error": "全部候选起草失败"}), None
+
+    # 终审选择器：单次调用对比全部候选（结构化输出 + 败者精华回收）
+    cand_blocks = "\n\n".join(
+        "### 候选 %d\n\n%s" % (c["k"], c["text"]) for c in candidates)
+    sel_prompt = (BESTOF_SELECTOR_PROMPT
+                  .replace("__GOAL__", task["goal"])
+                  .replace("__CANDIDATES__", cand_blocks))
+    pick, reason, improvements = candidates[0]["k"], "", ""
+    sel_res = _run_step(run_id, "bestof-select",
+                        modelhub.bind_agent(sel_agent, difficulty),
+                        sel_prompt, workdir, readonly=True, ev=ev, note="候选择优")
+    cj = runner.extract_json(sel_res.get("text") or "") if sel_res.get("ok") else None
+    if isinstance(cj, dict):
+        try:
+            pk = int(cj.get("pick"))
+        except Exception:
+            pk = -1
+        if any(c["k"] == pk for c in candidates):
+            pick = pk
+            reason = str(cj.get("reason") or "")[:300]
+            improvements = str(cj.get("improvements") or "")[:600]
+    winner = next(c for c in candidates if c["k"] == pick)
+    winner["reason"] = reason
+    winner["improvements"] = improvements
+    write_ms(winner["text"])
+    store.update_run(run_id, bestof={
+        "pick": winner["k"], "file": winner["file"],
+        "candidates": [c["k"] for c in candidates],
+        "reason": reason, "improvements": improvements,
+        "selector": (sel_agent.get("id") or "") if isinstance(sel_agent, dict) else "",
+    })
+    return winner["res"], winner
+
+
 def _run_content_review(run, task, agents, ev, stats, mode):
     run_id = run["id"]
     workdir = task["workdir"]
@@ -2140,6 +2288,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         store.update_run(run_id, outline=outline)
 
     # 1) 起草
+    bestof_improvements = ""   # 赛马败者精华（真实路径由选择器填充；mock 路径恒空）
     if impl.get("mode") == "mock":
         step, log_abs = store.add_step(run_id, "draft", impl["id"], impl.get("label"), note=draft_note)
         write_ms(mocks.draft_manuscript(task, 1))
@@ -2151,16 +2300,32 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         except Exception:
             pass
     else:
-        prompt = (_tpl(task, "draft_prompt", NOVEL_DRAFT_PROMPT).replace("__FILE__", ms_name)
-                  .replace("__GOAL__", task["goal"])
-                  .replace("__CONTEXT__", task.get("context") or "（无）"))
-        if outline:
-            prompt += "\n\n## 编排者大纲（按要点组织稿件）\n" + \
-                      "\n".join("- " + i for i in outline["items"])
-        draft_res = _run_step(run_id, "draft", modelhub.bind_agent(impl, difficulty), prompt,
-                              step_wd, readonly=False, ev=ev, note=draft_note,
-                              resume=resume_ctx["session"] if resume_ctx else None,
-                              images=_task_images(task, workdir))
+        def _draft_prompt_for(vfile):
+            p = (_tpl(task, "draft_prompt", NOVEL_DRAFT_PROMPT).replace("__FILE__", vfile)
+                 .replace("__GOAL__", task["goal"])
+                 .replace("__CONTEXT__", task.get("context") or "（无）"))
+            if outline:
+                p += "\n\n## 编排者大纲（按要点组织稿件）\n" + \
+                     "\n".join("- " + i for i in outline["items"])
+            return p
+
+        best_of = max(1, min(3, int(task.get("best_of") or 1)))
+        if best_of >= 2 and not _compaction_enabled():
+            try:
+                sel_agent = critics[0]
+            except Exception:
+                sel_agent = impl
+            draft_res, _bw = _bestof_draft(
+                run_id, task, impl, _draft_prompt_for, ms_name, workdir, step_wd,
+                ev, resume_ctx, difficulty, best_of, sel_agent, write_ms,
+                note=draft_note)
+            bestof_improvements = (_bw or {}).get("improvements") or ""
+        else:
+            draft_res = _run_step(run_id, "draft", modelhub.bind_agent(impl, difficulty),
+                                  _draft_prompt_for(ms_name), step_wd, readonly=False,
+                                  ev=ev, note=draft_note,
+                                  resume=resume_ctx["session"] if resume_ctx else None,
+                                  images=_task_images(task, workdir))
         if not draft_res["ok"]:
             store.update_run(run_id, status="failed", error="起草失败: %s" % draft_res.get("error"),
                              ended_at=_now())
@@ -2219,6 +2384,11 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         majors = [i for i in issues_all if i.get("severity") == "major"][:8]
         for i in majors:
             crit_lines.append("- [%s] %s" % (i.get("dim", "?"), str(i.get("note", ""))[:120]))
+        if r == 1 and bestof_improvements:
+            # 败者精华回收（freebuff suggestedImprovements 的落地）：终审从落选
+            # 候选稿提炼的优点，首轮修订时与评审意见一并喂给作者
+            crit_lines.append("- [赛马精华] 终审择优时从落选候选稿提炼出值得吸收的优点：%s"
+                              % bestof_improvements[:400])
         if impl.get("mode") == "mock":
             step, log_abs = store.add_step(run_id, "revise-r%d" % r, impl["id"], impl.get("label"))
             write_ms(mocks.draft_manuscript(task, r + 1))

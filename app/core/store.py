@@ -146,6 +146,11 @@ def create_task(payload):
         except Exception:
             task["rounds"] = 2
         try:
+            # Best-of-N 赛马候选数（非连载单稿；连载走 serial.variants 的同章赛马）
+            task["best_of"] = max(1, min(3, int(payload.get("best_of") or flow.get("best_of") or 1)))
+        except Exception:
+            task["best_of"] = 1
+        try:
             task["threshold"] = max(1.0, min(10.0,
                                              float(payload.get("threshold") or flow.get("threshold") or 7.0)))
         except Exception:
@@ -1235,7 +1240,8 @@ def add_step(run_id, role, agent_id, agent_label, note=""):
 
 
 def finish_step(run_id, n, status, summary="", exit_code=None,
-                cost_usd=0.0, tokens=0.0, duration_s=None, model=None, output=None):
+                cost_usd=0.0, tokens=0.0, duration_s=None, model=None, output=None,
+                followups=None):
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -1254,6 +1260,8 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                     s["duration_s"] = round(duration_s, 1)
                 if output is not None:
                     s["output"] = str(output)[:6000]
+                if followups:
+                    s["followups"] = list(followups)[:3]
                 break
         run["cost_usd"] = round(run.get("cost_usd", 0.0) + cost_usd, 4)
         run["tokens"] = run.get("tokens", 0) + tokens

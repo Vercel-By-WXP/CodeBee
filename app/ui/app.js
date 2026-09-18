@@ -114,6 +114,7 @@ function onTypeChange() {
     if (flow.manuscript) $("f-manuscript").value = flow.manuscript;
     if (flow.rounds) $("f-rounds").value = flow.rounds;
     if (flow.threshold) $("f-threshold").value = flow.threshold;
+    if (flow.best_of) $("f-bestof").value = flow.best_of;
     const saved = ($("f-rubric").value || "").trim();
     if (!saved && flow.rubric) $("f-rubric").value = flow.rubric.join(", ");
     // 连载参数预填（用户可改/可清空 = 单稿件模式）
@@ -1863,6 +1864,7 @@ async function createTask() {
     payload.manuscript = $("f-manuscript").value.trim() || "manuscript.md";
     payload.rounds = parseInt($("f-rounds").value, 10) || 2;
     payload.threshold = parseFloat($("f-threshold").value) || 7.0;
+    payload.best_of = Math.max(1, Math.min(3, parseInt($("f-bestof").value, 10) || 1));
     const rubric = $("f-rubric").value.trim();
     if (rubric) payload.rubric = rubric.split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
     const ch = parseInt($("f-chapters").value, 10);
@@ -2431,6 +2433,7 @@ function newFromTask(id) {
     $("f-manuscript").value = tk.manuscript || "manuscript.md";
     $("f-rounds").value = tk.rounds || 2;
     $("f-threshold").value = (tk.threshold != null ? tk.threshold : 7.0);
+    $("f-bestof").value = tk.best_of || 1;
     $("f-rubric").value = (tk.rubric || []).join(", ");
     // 连载参数只带批次设置：不带 start_chapter/continues（那是「继续连载」的衔接语义）
     $("f-chapters").value = tk.serial ? tk.serial.chapters : "";
@@ -3924,6 +3927,8 @@ function renderGitWbMain(d, task) {
     '<button class="ghost"' + (noRemote || ro ? " disabled" : "") + ' onclick="gitWbFetch()">' + t("抓取") + "</button>" +
     '<button class="ghost"' + (noRemote || ro ? " disabled" : "") + ' onclick="gitWbPull()">' + t("拉取") + "</button>" +
     '<button class="ghost"' + (noRemote || ro ? " disabled" : "") + ' onclick="gitWbPush()">' + t("推送") + "</button>" +
+    '<button class="ghost"' + (noRemote || ro || d.detached ? " disabled" : "") + ' onclick="gitWbPrCreate()" title="' +
+    esc(t("推送当前分支并用 gh 创建 PR（目标分支自动取 main/master）")) + '">' + t("建 PR") + "</button>" +
     '<button class="ghost"' + (!hasChg || ro ? " disabled" : "") + ' onclick="gitWbStageAll()">' + t("全部暂存") + "</button>" +
     '<button class="ghost"' + (!hasChg || ro ? " disabled" : "") + ' onclick="gitWbStash()" title="' +
     esc(t("把未提交改动收进 stash（不含 _attachments）")) + '">' + t("收起改动") + "</button>" +
@@ -4016,6 +4021,13 @@ window.gitWbStageAll = function () { return _gitWbPost("stage_all", null, t("已
 window.gitWbFetch = function () { return _gitWbPost("fetch", null, t("已抓取远程更新")); };
 window.gitWbPull = function () { return _gitWbPost("pull", null, t("已拉取远程更新")); };
 window.gitWbPush = function () { return _gitWbPost("push", null, t("已推送到远程")); };
+window.gitWbPrCreate = async function () {
+  if (!await uiConfirm(t("把当前分支推送到远程并用 gh 创建 PR？（目标分支自动取 main/master）"), { ok: t("建 PR") })) return null;
+  const res = await _gitWbPost("pr_create", null,
+    (r) => (r && r.url ? t("PR 已创建：") + r.url : t("PR 已创建")));
+  if (res && res.url) window.open(res.url, "_blank", "noopener");
+  return res;
+};
 window.gitWbCheckout = function (br) {
   if (!br) return;
   return _gitWbPost("checkout", { branch: br }, t("已切换到 ") + br);
@@ -5332,8 +5344,15 @@ async function renderChat(run, active) {
           : "") +
         "</div></div>";
     }
-    // 协议尾行是给编排器判收的机器标记，不该出现在聊天正文里（真源在提示词约定）
-    const body = String(it.text || "").replace(/\n*DIRECT_DONE:.*\s*$/s, "").trim();
+    // 协议尾行是给编排器判收的机器标记，不该出现在聊天正文里（真源在提示词约定）；
+    // <followups> 块后端已剥并转成结构化字段，这里再兜一次底防老数据/漏剥；
+    // 开场「本轮做了什么：…」+「回复：」是模型复读协议措辞的元描述（提示词已禁，
+    // 这里兜历史数据），只剥消息开头的第一行
+    const body = String(it.text || "")
+      .replace(/^\s*本轮做了什么\s*[：:][^\n]*\n+(回复\s*[：:]\s*\n?)?/, "")
+      .replace(/\n*DIRECT_DONE:.*\s*$/s, "")
+      .replace(/\n*<followups>[\s\S]*?<\/followups>\s*$/s, "")
+      .trim();
     // 运行中还没有正文：三点打字动画（终态无正文才落「无文本输出」占位）
     const bodyHtml = body ? chatBodyHTML(body)
       : (it.status === "running"
@@ -5350,6 +5369,11 @@ async function renderChat(run, active) {
       (metaBad ? " · " + t(it.status === "failed" ? "失败" : "已取消") : "") + "</div>" +
       (it.log && it.run ? '<div class="chat-actions"><button class="chat-log-btn" type="button" data-chat-log-run="' +
         esc(it.run) + '" data-chat-log-rel="' + esc(it.log) + '" title="' + esc(t("查看日志")) + '">' + esc(t("CLI 日志")) + "</button></div>" : "") +
+      (Array.isArray(it.followups) && it.followups.length
+        ? '<div class="chat-fups">' + it.followups.map((f) =>
+          '<button type="button" class="chat-fup-btn" data-fup="' + esc(f.prompt || "") +
+          '" title="' + esc(f.prompt || "") + '">' + esc(f.label || "") + "</button>").join("") + "</div>"
+        : "") +
       "</div></div>";
   }).join("");
   // 时间线收尾的「执行结果」卡：run 终态后的确定性摘要（成没成/耗时/执行者/
@@ -5636,6 +5660,17 @@ function bindChat() {
   $("rd-chat-flow").addEventListener("click", (e) => {
     const logBtn = e.target.closest("[data-chat-log-run][data-chat-log-rel]");
     if (logBtn) { e.stopPropagation(); toggleLog(logBtn.dataset.chatLogRun, logBtn.dataset.chatLogRel); return; }
+    // 建议追问芯片：点击把整句回填输入框（不直接发送——用户可改后再发），焦点落输入框
+    const fup = e.target.closest(".chat-fup-btn[data-fup]");
+    if (fup) {
+      const ta = $("rd-chat-input");
+      if (ta) {
+        ta.value = fup.dataset.fup;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        ta.focus();
+      }
+      return;
+    }
     const file = e.target.closest(".chat-file-open[data-file-run]");
     if (file) {
       e.preventDefault();

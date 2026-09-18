@@ -436,9 +436,10 @@ class Handler(BaseHTTPRequestHandler):
         # 写操作需要控制权：空闲自动接管；他人持有时 423，由前端引导抢夺。
         # 例外（配置管理类操作全局生效，不被「哪台设备在操作」挡住，
         # 否则告警弹框里的按钮在多端场景会静默 423 失败）：
+        # /api/hooks/run 用自己的令牌鉴权（外部脚本没有设备控制权握手）。
         if path in ("/api/health/op", "/api/models/provider-op", "/api/models/model-op",
                     "/api/models/test-provider", "/api/models/test-model",
-                    "/api/models/probe-wire", "/api/models/key-op"):
+                    "/api/models/probe-wire", "/api/models/key-op", "/api/hooks/run"):
             pass                                    # 落到下方各自路由
         else:
             deny = self._deny_control()
@@ -446,6 +447,8 @@ class Handler(BaseHTTPRequestHandler):
                 return deny
         if path == "/api/tasks":
             return self._api_create_task()
+        if path == "/api/hooks/run":
+            return self._api_hook_run()
         if path == "/api/health/op":
             # 供应商健康告警的手动操作（silence 静默 / reset 手动恢复）
             from core import health
@@ -1487,12 +1490,15 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass  # 客户端断开是常态，线程随进程退出
 
-    def _api_create_task(self):
-        body = self._body()
+    def _create_and_start(self, body):
+        """建任务并起跑（UI /api/tasks 与外部 webhook /api/hooks/run 共用一条链）。
+
+        返回 (http_status, response_dict)；失败路径都已收口（run/任务状态不会
+        永久卡在排队中）。"""
         try:
             task = store.create_task(body)
         except ValueError as e:
-            return self._json(400, {"error": str(e)})
+            return 400, {"error": str(e)}
         run = None
         try:
             run = store.create_run("orchestration", task["title"], task_id=task["id"])
@@ -1513,13 +1519,52 @@ class Handler(BaseHTTPRequestHandler):
                 store.update_task_status(task["id"], "failed")
             except Exception:
                 log.exception("收口失败的任务状态失败 task=%s", task.get("id"))
-            return self._json(503, {"error": "运行记录创建失败，请稍后重试"})
+            return 503, {"error": "运行记录创建失败，请稍后重试"}
         queued, qerr = self._enqueue_run(
             run["id"], task["id"],
             {"kind": "orchestration", "run_id": run["id"], "task_id": task["id"]})
         if not queued:
-            return self._json(503, {"error": qerr, "run_id": run["id"]})
-        return self._json(200, {"task_id": task["id"], "run_id": run["id"]})
+            return 503, {"error": qerr, "run_id": run["id"]}
+        return 200, {"task_id": task["id"], "run_id": run["id"]}
+
+    def _api_create_task(self):
+        status, resp = self._create_and_start(self._body())
+        return self._json(status, resp)
+
+    def _api_hook_run(self):
+        """外部触发开任务（webhook，借鉴 emdash/mission-control 的外部集成面）。
+
+        POST /api/hooks/run，头 X-CodeBee-Token；体 {goal 必填, type, workdir,
+        context, title}。令牌取设置 hooks_token（data/settings.json，UI/文件均可
+        配置）：已配置则必须精确匹配；未配置仅放行本机回环。任务链与 UI 完全相同。"""
+        try:
+            tok = str(settings.load().get("hooks_token") or "")
+        except Exception:
+            tok = ""
+        given = (self.headers.get("X-CodeBee-Token") or "").strip()
+        if tok:
+            if given != tok:
+                return self._json(401, {"error": "令牌不匹配"})
+        else:
+            host = str(self.client_address[0]) if self.client_address else ""
+            if host not in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
+                return self._json(403, {
+                    "error": "未配置 hooks.token，仅允许本机触发；请先在设置中配置令牌"})
+        raw = self._body()
+        payload = {}
+        for k, cap in (("goal", 4000), ("context", 4000), ("type", 40),
+                       ("workdir", 300), ("title", 80)):
+            v = str(raw.get(k) or "").strip()
+            if v:
+                payload[k] = v[:cap]
+        if not payload.get("goal"):
+            return self._json(400, {"error": "goal 必填"})
+        if not payload.get("type"):
+            payload["type"] = "direct"
+        if not payload.get("title"):
+            payload["title"] = payload["goal"][:30]
+        status, resp = self._create_and_start(payload)
+        return self._json(status, resp)
 
     def _enqueue_run(self, run_id, task_id, job):
         """入队失败时把已持久化记录收口到 failed，避免 UI 永远显示排队中。"""

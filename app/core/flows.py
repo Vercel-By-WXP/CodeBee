@@ -23,7 +23,7 @@ ENGINES = ("code", "review", "direct")
 # 引擎默认参数：自定义流程留空时的兜底
 ENGINE_DEFAULTS = {
     "review": {"manuscript": "output.md", "rubric": ["内容", "结构", "表达"],
-               "threshold": 7.0, "rounds": 2},
+               "threshold": 7.0, "rounds": 2, "best_of": 1},
     "code": {"verify_command": ""},
     # direct：无参数——目标+附件即全部输入，跑完即止
 }
@@ -118,7 +118,7 @@ _ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 # 自定义流程的 icon 在 upsert_flow 里直接落盘，不走 overrides。
 _EDITABLE = ("name", "goal_hint", "note", "manuscript", "rubric",
              "threshold", "rounds", "serial", "draft_prompt", "critique_prompt",
-             "verify_command")
+             "verify_command", "best_of")
 
 
 def _read():
@@ -279,6 +279,10 @@ def upsert_flow(payload):
             flow["rounds"] = max(1, min(5, int(payload.get("rounds") or dflt["rounds"])))
         except Exception:
             flow["rounds"] = dflt["rounds"]
+        try:
+            flow["best_of"] = max(1, min(3, int(payload.get("best_of") or dflt.get("best_of") or 1)))
+        except Exception:
+            flow["best_of"] = 1
         serial = _norm_serial(payload.get("serial"))
         if serial:
             flow["serial"] = serial

@@ -121,6 +121,24 @@ class TokenMeter:
         cap = cap_table.get(m, cap_table.get("", 128_000))
         return self.used(run_id) / max(cap, 1)
 
+    def capacity(self, model: str = "") -> int:
+        """模型上下文容量（未命中用默认行）。"""
+        cap_table = self._capacity()
+        return cap_table.get(model or "", cap_table.get("", 128_000))
+
+    def last_context(self, run_id: str) -> int:
+        """最近一次调用的 input+output+reasoning——下个请求要重发的上下文锚点。
+
+        used() 是窗口累计（多次调用叠加，系统性偏大，适合做响应式预算闸）；
+        事前预检判断「这个请求会不会被拒」要用最近一次的真实上下文体量，
+        两者口径不同不可混用（借鉴 freebuff base-chat 每步容量重估）。"""
+        with self._lock:
+            window = self._windows.get(run_id)
+            if not window:
+                return 0
+            _, i, o, r, _ = window[-1]
+            return i + o + r
+
     def reset(self, run_id: str):
         with self._lock:
             self._windows.pop(run_id, None)

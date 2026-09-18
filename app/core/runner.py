@@ -18,7 +18,6 @@ import re
 import shutil
 import signal
 import subprocess
-import tempfile
 import threading
 import time
 
@@ -700,29 +699,12 @@ def _codex_sandbox(readonly):
     return "danger-full-access"
 
 
-def _prompt_to_file(prompt, workdir):
-    """超长提示词落盘（工作目录优先，保证评审 CLI 沙箱内可读），返回绝对路径。"""
-    try:
-        d = workdir if workdir and os.path.isdir(workdir) else None
-        fd, path = tempfile.mkstemp(prefix="tutti_prompt_", suffix=".md", dir=d)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(prompt)
-        return path
-    except Exception:
-        return None
-
-
-_ARGV_PROMPT_SAFE = 20000   # 字符。Windows CreateProcess 命令行上限 32767，留路径/参数余量
-
-
 def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=None):
-    """构建一次 CLI 调用的 (argv, stdin_text, prompt, tmp_files)。model 可为 None=CLI 默认。
-    images 为图片附件绝对路径：codex 用 -i 原生附图；其余 kind 忽略（调用方已过滤）。
-    tmp_files：为绕开命令行长度限制落盘的指令临时文件，调用方用完（进程结束后）删除。"""
+    """构建一次 CLI 调用的 (argv, stdin_text, prompt)。model 可为 None=CLI 默认。
+    images 为图片附件绝对路径：codex 用 -i 原生附图；其余 kind 忽略（调用方已过滤）。"""
     env = {}
     argv = None
     stdin_text = None
-    tmp_files = []
     imgs = [str(p) for p in (images or []) if p]
     if kind == "codex":
         cp = agent.get("codex_provider")
@@ -807,20 +789,7 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
         argv = _npm_shim_bypass(argv)
         if "{prompt}" not in tmpl:
             stdin_text = prompt  # 恢复模板不带 {prompt}：提示词走 stdin（mimo 实测支持）
-    # Windows CreateProcess 命令行上限 32767 字符：全局评审会把全书文本（约 6 万
-    # 字）嵌进 argv，直接 WinError 206 启动失败（2026-09-18 七猫甜宠案，kimi 实证）。
-    # 超长时落盘临时文件、参数位换成读文件指令——评审/作者 CLI 非交互模式均带
-    # 读文件工具（kimi 0.43 实测可读），读不到的调用输出不可解析，由评审全挂
-    # 防线兜底判失败，绝不静默降级。
-    if argv is not None and stdin_text is None and len(prompt) > _ARGV_PROMPT_SAFE \
-            and argv.count(prompt) == 1:
-        pf = _prompt_to_file(prompt, workdir)
-        if pf:
-            argv[argv.index(prompt)] = (
-                "[系统] 本次完整指令因命令行长度限制已写入文件：%s\n"
-                "请先用读文件工具完整读取该文件，然后把文件内容当作你的任务指令执行。" % pf)
-            tmp_files.append(pf)
-    return argv, stdin_text, prompt, tmp_files
+    return argv, stdin_text, prompt
 
 
 def _check_approval(agent):
@@ -930,22 +899,13 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             # 链内条目未注入供应商时不能沿用上一条（可能是另一家厂商）的 -c 覆盖
             del eff_agent["codex_provider"]
         for attempt in range(2):  # claude 偶发空响应（0 token）自动重试一次
-            argv, stdin_text, prompt_eff, tmp_files = _build_call(
-                eff_agent, kind, sid, readonly,
-                att["model"], prompt,
-                images=images if kind == "codex" else None,
-                workdir=workdir)
-            try:
-                res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
-                                  timeout=timeout, cancel_event=cancel_event, log_path=log_path,
-                                  stall_timeout=stall_t)
-            finally:
-                # 超长指令临时文件：CLI 进程已结束（管道已收），即刻清场不污染工作目录
-                for tf in tmp_files:
-                    try:
-                        os.remove(tf)
-                    except OSError:
-                        pass
+            argv, stdin_text, prompt_eff = _build_call(eff_agent, kind, sid, readonly,
+                                                       att["model"], prompt,
+                                                       images=images if kind == "codex" else None,
+                                                       workdir=workdir)
+            res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
+                              timeout=timeout, cancel_event=cancel_event, log_path=log_path,
+                              stall_timeout=stall_t)
             out = {"ok": res["ok"], "text": "", "json": None, "cost_usd": 0.0,
                    "tokens": 0, "usage": None, "error": "", "error_code": "",
                    "sid": "", "raw": res, "kind": kind, "model": att["model"]}

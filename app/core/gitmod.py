@@ -33,6 +33,11 @@ def _git(workdir, *args, timeout=20):
     return r
 
 
+def _gh(workdir, *args, timeout=60):
+    """GitHub CLI 调用（pr_create 用）；与 _git 同构，缺失时由调用方给可读错误。"""
+    return runner.run_process(argv=["gh", *args], cwd=str(workdir), timeout=timeout)
+
+
 def _attach_entry(line):
     """status --porcelain 的一行是否为任务附件目录下的未跟踪项（不算脏改动）。"""
     if not line.startswith("?? "):
@@ -837,7 +842,7 @@ def file_diff(workdir, path):
 # 写操作白名单：action → 是否需要 confirm（不可恢复类）
 _WB_ACTIONS = {"checkout", "fetch", "pull", "push", "stage", "unstage",
                "discard", "delete", "commit", "stage_all", "unstage_all",
-               "stash_push", "stash_pop", "stash_drop"}
+               "stash_push", "stash_pop", "stash_drop", "pr_create"}
 
 
 def _res(r, extra=None):
@@ -937,6 +942,45 @@ def workbench_op(workdir, action, params=None):
                 _git(wd, "reset", "-q", "--", "_attachments")   # 附件永不进提交
             return _res(r)
         return _res(_git(wd, "reset", "-q", timeout=60))
+
+    if action == "pr_create":
+        # 「创建 PR」（借鉴 agent-orchestrator 的 planning→merge 闭环）：当前分支
+        # 推到 origin 后用 gh CLI 建 PR。gh 未安装/未登录给可读错误，不静默降级。
+        if info.get("detached") or not str(info.get("branch") or "").strip():
+            return False, "游离 HEAD 状态不能建 PR，请先切换到任务分支", {}
+        if not (info.get("remotes") or []):
+            return False, "该仓库没有配置远程（git remote），无法创建 PR", {}
+        if not _gh(wd, "--version", timeout=15)["ok"]:
+            return False, "未安装 gh CLI（https://cli.github.com/）：安装并 gh auth login 后可用", {}
+        br = info["branch"].strip()
+        base = str(params.get("base") or "").strip()
+        if not base:
+            bset = set(info.get("branches") or []) | set(info.get("remote_branches") or [])
+            for cand in ("main", "master"):
+                if cand in bset:
+                    base = cand
+                    break
+        if not base or base == br:
+            return False, "无法确定 PR 目标分支（base），请显式指定 base 参数", {}
+        title = str(params.get("title") or "").strip()[:120] or ("PR: %s" % br)
+        body_text = str(params.get("body") or "").strip()[:2000]
+        r_push = _git(wd, "push", "-u", "origin", br, timeout=180)
+        if not r_push["ok"]:
+            return _res(r_push)
+        argv = ["pr", "create", "--base", base, "--head", br, "--title", title]
+        if body_text:
+            argv += ["--body", body_text]
+        else:
+            argv += ["--fill"]   # 无描述时让 gh 用提交记录自动生成
+        r = _gh(wd, *argv, timeout=120)
+        ok, err, _d = _res(r)
+        if not ok:
+            low = (err or "").lower()
+            if "gh auth" in low or "authentic" in low or "log in" in low:
+                return False, "gh 未登录：请先在本机运行 gh auth login", {}
+            return False, (err or "gh pr create 失败")[:300], {}
+        lines = [ln.strip() for ln in (r.get("stdout") or "").splitlines() if ln.strip()]
+        return True, "", {"url": lines[-1] if lines else "", "branch": br, "base": base}
 
     if action == "commit":
         msg = str(params.get("message") or "").strip()[:500]
