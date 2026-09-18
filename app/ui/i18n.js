@@ -681,6 +681,7 @@
     "建 PR": "Create PR",
     "推送当前分支并用 gh 创建 PR（目标分支自动取 main/master）": "Push current branch and create a PR with gh (base auto-detected: main/master)",
     "把当前分支推送到远程并用 gh 创建 PR？（目标分支自动取 main/master）": "Push current branch and create a PR with gh? (base auto-detected: main/master)",
+    "把当前分支推送到远程并用 gh 创建 PR？（目标分支自动取 main/master；提交信息框内容将作为 PR 标题）": "Push current branch and create a PR with gh? (base auto-detected: main/master; the commit message box will be used as the PR title)",
     "PR 已创建：": "PR created: ",
     "PR 已创建": "PR created",
     "背景信息、约束、相关文件（可空）": "Background, constraints, related files (optional)",

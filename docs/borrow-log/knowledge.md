@@ -73,3 +73,23 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 ### 复查记录（逐 commit）
 - 2026-09-18 夜：orca 近期=工程化收尾（macOS 差分客户端加固/移动端 UI 重做/多 PR 行折行/UNSTABLE PR 可合并策略）——移动端与 PR 流成熟中；freebuff=私仓高频快照（每天 10+ 次 sync，无公开语义增量）；agent-orchestrator 当日 7 commit 均工程修复
+
+## 2026-09-18 深夜·翻页扩查第三轮（调研日 2026-09-18）
+
+翻页纪律（核心组 page=2）+ evals/observability/MCP/handoff/router/中文 六组新词的收获：
+- **paseo**（getpaseo，17.6k★）| 桌面+手机编排多个编码 agent | 与 orca 同赛道（桌面+移动），移动端思路二证 | 待深挖
+- **superset**（superset-sh，14.4k★）| agentic IDE 编排 100+ coding agent 并行 | 超大舰队编排的 UI/调度思路 | 待深挖
+- **agentmemory**（rohitg00，28.6k★）| 面向编码 agent 的持久记忆（真实基准第一）| 我们经验库=教训型记忆；差量=结构化项目记忆（决策/事实分层）| 借鉴方向（已进路线图）
+- **swarms**（kyegomez，7.2k★）| 企业级多智能体编排框架 | 框架路线，与我们的产品路线定位不同 | 参考
+- **nexent**（ModelEngine-Group，5.9k★）| 零代码平台自动生成生产级 agent | 无代码方向参考 | 参考
+- **solace-agent-mesh**（SolaceLabs，4.9k★）| 事件驱动的多 agent 编排 | 事件驱动 vs 我们的流水线驱动，调度模型参考 | 待深挖
+- **Vibe-Skills**（3336★）| 智能 Skill 路由与工作流编排（+21.12pp 基准）| **Skill 路由思路可借鉴我们经验召回**：按任务特征选技能而非全量注入 | 借鉴方向
+- **Tracely-ai**（1.4k★）| trace 原生 CI/CD：生产失败变回归测试 | 失败→回归测试的闭环思路（我们错误台账可加「一键变测试」）| 借鉴方向
+- **workshop**（raindrop-ai，1.1k★）| 让编码 agent 自己写并跑 agent evals | 自评式质量闭环 | 待深挖
+- **axonhub**（5.2k★）| 开源 AI 网关：100+ LLM、内置故障转移 | 与我们绑定链换将同构，跨语言网关参考 | 参考
+- **smallcode**（2k★）| 为小模型优化的编码 agent（4B 活跃参数 87% 基准）| 小模型分流路线佐证（cascade 已有）| 已覆盖
+- **sia**（2.2k★）| 自我改进 AI 框架 | 与我们经验库自学习同向 | 参考
+- **oh-my-opencode-slim**（8.9k★）| 精调 OpenCode 多智能体套件·混模·自动委派 | opencode 生态编排参考 | 待深挖
+
+### 复查记录
+- 2026-09-18 深夜：paseo/superset/agentmemory/Vibe-Skills/Tracely 进待深挖队列；swarms/nexent/axonhub/smallcode/sia 定性完毕（参考/已覆盖）

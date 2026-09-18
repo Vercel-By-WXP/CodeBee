@@ -4099,8 +4099,13 @@ window.gitWbFetch = function () { return _gitWbPost("fetch", null, t("已抓取�
 window.gitWbPull = function () { return _gitWbPost("pull", null, t("已拉取远程更新")); };
 window.gitWbPush = function () { return _gitWbPost("push", null, t("已推送到远程")); };
 window.gitWbPrCreate = async function () {
-  if (!await uiConfirm(t("把当前分支推送到远程并用 gh 创建 PR？（目标分支自动取 main/master）"), { ok: t("建 PR") })) return null;
-  const res = await _gitWbPost("pr_create", null,
+  // 提交信息框有字时兼作 PR 标题（一处输入两用，不为 PR 单开输入框）
+  const mt = ((($("gwb-msg") || {}).value || "").trim());
+  const q = mt
+    ? t("把当前分支推送到远程并用 gh 创建 PR？（目标分支自动取 main/master；提交信息框内容将作为 PR 标题）")
+    : t("把当前分支推送到远程并用 gh 创建 PR？（目标分支自动取 main/master）");
+  if (!await uiConfirm(q, { ok: t("建 PR") })) return null;
+  const res = await _gitWbPost("pr_create", mt ? { title: mt.slice(0, 120) } : null,
     (r) => (r && r.url ? t("PR 已创建：") + r.url : t("PR 已创建")));
   if (res && res.url) window.open(res.url, "_blank", "noopener");
   return res;
