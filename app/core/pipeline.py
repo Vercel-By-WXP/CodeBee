@@ -730,6 +730,118 @@ def _format_issues(review_json, verify_pass, verify_failed_note):
 
 # ---------------------------------------------------------------- 代码流水线
 
+def _shortstat_files(diffstat_line):
+    """` 3 files changed, 10 insertions(+)` → 文件数（解析失败给大数排最后）。"""
+    import re as _re
+    m = _re.search(r"(\d+) files? changed", diffstat_line or "")
+    return int(m.group(1)) if m else 9999
+
+
+def _code_bestof(run, task, impl, difficulty, ev):
+    """代码任务 Best-of-N（借鉴 orca 并行 worktree 择优）。启用条件：best_of≥2、
+    无续会话、非手动指定实现者、工作目录是 git 仓库。
+
+    按基线（git_rev 或 HEAD）建 N 个临时 worktree → 各路并行跑实现子任务链 →
+    各跑验证命令 → 择优（验证通过 > 改动文件更少）→ 胜者 diff 应用回主工作区。
+    任一环节失败一律返回 False，由调用方回落原单路实现（绝不因赛马挡任务）。"""
+    from . import gitmod
+    run_id = run["id"]
+    n = max(2, min(3, int(task.get("best_of") or 1)))
+    wd = task["workdir"]
+    if not gitmod._git(wd, "rev-parse", "--is-inside-work-tree")["ok"]:
+        return False
+    base = task.get("git_rev") or ""
+    if base and not gitmod.valid_rev(base):
+        return False
+    base_rev = (gitmod._git(wd, "rev-parse", base)["stdout"].strip() if base
+                else gitmod._git(wd, "rev-parse", "HEAD")["stdout"].strip())
+    if not base_rev:
+        return False
+    wts = []
+    results = {}
+
+    def _cleanup():
+        for k, br, wt_path in wts:
+            gitmod._git(wd, "worktree", "remove", "--force", wt_path, timeout=60)
+            gitmod._git(wd, "branch", "-D", br, timeout=60)
+
+    try:
+        import tempfile
+        race_root = os.path.join(tempfile.gettempdir(), "codebee-race", run_id)
+        os.makedirs(race_root, exist_ok=True)
+        for k in range(n):
+            br = "codebee-race-%s-%d" % (run_id, k)
+            wt_path = os.path.join(race_root, "v%d" % k)
+            r = gitmod._git(wd, "worktree", "add", "--detach", wt_path, base_rev, timeout=120)
+            if not r["ok"]:
+                raise RuntimeError(r["stderr"] or "worktree add 失败")
+            wts.append((k, br, wt_path))
+
+        subtasks = [{"title": task.get("title") or task.get("goal") or "实现",
+                     "detail": task.get("goal") or ""}]
+
+        def _race_one(k, wt_path):
+            agt_b = modelhub.bind_agent(impl, difficulty)
+            res = None
+            for i, sub in enumerate(subtasks):
+                prompt = (CODE_IMPL_PROMPT
+                          .replace("__GOAL__", task["goal"])
+                          .replace("__SUBTASK__", sub["detail"] if sub["detail"] else sub["title"])
+                          .replace("__CONTEXT__", task.get("context") or "（无）")
+                          .replace("__VERIFY_HINT__", _verify_hint(task)))
+                res = _run_step(run_id, "race%d-impl" % k, agt_b, prompt, wt_path,
+                                readonly=False, ev=ev,
+                                note="赛马路 %d/%d（worktree 隔离）" % (k + 1, n),
+                                images=_task_images(task, wd), require_tools=True)
+                if not res["ok"]:
+                    break
+            v_pass = bool(res and res["ok"])
+            if v_pass and task.get("verify_command"):
+                r = runner.run_process(shell_cmd=task["verify_command"], cwd=wt_path,
+                                       timeout=600, cancel_event=ev)
+                v_pass = bool(r["ok"])
+            diffstat = (gitmod._git(wt_path, "diff", "--shortstat", base_rev)["stdout"] or "").strip()
+            results[k] = {"ok": bool(res and res["ok"]), "verify": v_pass,
+                          "wt": wt_path, "diffstat": diffstat}
+
+        threads = []
+        for k, br, wt_path in wts:
+            th = threading.Thread(target=_race_one, args=(k, wt_path),
+                                  name="codebestof-%s-%d" % (run_id, k), daemon=True)
+            threads.append(th)
+            th.start()
+        for th in threads:
+            th.join(3600)
+        _check_cancel(ev)
+
+        usable = [r for k, r in sorted(results.items()) if r["ok"] and r["verify"]]
+        if not usable:
+            return False   # 全败：回落单路实现（保持原有换将/报错行为）
+        usable.sort(key=lambda r: _shortstat_files(r["diffstat"]))
+        winner = usable[0]
+        diff = gitmod._git(winner["wt"], "diff", base_rev, timeout=120)
+        if diff["ok"] and diff["stdout"].strip():
+            apply_r = runner.run_process(
+                argv=["git", "apply", "--whitespace=nowarn"],
+                cwd=wd, timeout=60, stdin_text=diff["stdout"])
+            if not apply_r["ok"]:
+                return False
+        store.update_run(run_id, bestof={
+            "kind": "code-worktree", "candidates": len(results),
+            "winner_files": _shortstat_files(winner["diffstat"]),
+            "diffstat": winner["diffstat"],
+        })
+        return True
+    except Exception:
+        log.warning("code bestof aborted run=%s", run_id, exc_info=True)
+        return False
+    finally:
+        try:
+            _cleanup()
+        except Exception:
+            pass
+
+
 def _run_code(run, task, agents, ev, stats, mode):
     run_id = run["id"]
     workdir = task["workdir"]
@@ -841,6 +953,13 @@ def _run_code(run, task, agents, ev, stats, mode):
 
         ok, res = _run_one(impl_agent)
         if ok:
+            return True
+        # 单路实现失败：Best-of-N 赛马兜底（借鉴 orca worktree 择优）——多路并行
+        # 各自 worktree 隔离实现+验证，胜者 diff 回主工作区；失败回落走换将
+        if (mode == "auto" and impl_agent.get("mode") == "real"
+                and max(1, min(3, int(task.get("best_of") or 1))) >= 2
+                and resume_ctx is None
+                and _code_bestof(run, task, impl_agent, difficulty, ev)):
             return True
         # 实现步失败不立刻判死：2026-09-16 实测配额烧干时 5 连跑全在同一条 CLI 上
         # 失败收场，而健康的 opencode 一直在旁观望——跨 CLI 换将重试一次
