@@ -5071,26 +5071,26 @@ body.welcome-open { overflow: hidden; }
 .pb-hint { font-size: 11.5px; color: var(--muted); }
 .pb-ch-item { text-align: left; justify-content: flex-start; font-size: 12.5px; }
 
-/* 发布行按钮规格统一（2026-09-18 样式对齐）：bm-pub 是工具行，按钮收敛为
- * 12px 药丸（与字段行 .bm-copy 同族、比卡片头部按钮低一档）；主操作不用
- * 全局蓝底大按钮，降为 accent 描边——层级不抢「生成/重新生成」。
+/* 发布行按钮规格对齐（2026-09-18 二次校准）：几何探针实测卡片头部按钮
+ * （重新生成）= 12.5px / 9px 圆角 / 400 字重 / 5px 12px——发布行按钮完全
+ * 同规格，不再用药丸形与加重字重；主操作仅以 accent 描边区分层级。
  * 只作用于 .bm-pub 内，不动全局 button.primary/ghost。 */
 .bm-pub { gap: 6px 8px; }
 .bm-pub button {
-  font-size: 12px; line-height: 1; padding: 6px 13px; border-radius: 999px; font-weight: 500;
+  font-size: 12.5px; line-height: 1; padding: 5px 12px; border-radius: 9px; font-weight: 400;
 }
 .bm-pub button .ico { width: 13px; height: 13px; }
 .bm-pub button.primary {
   background: none;
   border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  color: var(--accent); font-weight: 600; padding: 5px 14px;
+  color: var(--accent); font-weight: 500; padding: 4px 13px;
 }
 .bm-pub button.primary:hover {
   filter: none; background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .bm-pub button.primary:disabled { background: none; }
 .bm-pub button.pb-tool {                 /* 探测等校准工具：最弱一档 */
-  color: var(--muted); border-color: transparent; background: none; padding: 6px 9px;
+  color: var(--muted); border-color: transparent; background: none; padding: 5px 9px;
 }
 .bm-pub button.pb-tool:hover { color: var(--accent); background: var(--panel2); }
 .bm-pub .pb-ch-item { padding: 5px 11px; }   /* 章稿列表项同规格 */
