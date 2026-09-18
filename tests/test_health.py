@@ -147,14 +147,27 @@ class TestPersistence(HealthBase):
 
     def test_reload_keeps_down_state(self):
         """重启（重新 init）后 down/告警状态保留。"""
-        from app.core import health
-        for _ in range(4):
-            health.report_failure("cavoti", "503")
-        health.init(data_dir=str(self.data_dir))  # 模拟重启
+        from app.core import health, modelhub
+        orig = modelhub.providers
+        modelhub.providers = lambda: [{"id": "prov-32", "name": "cavoti"}]
+        try:
+            for _ in range(4):
+                health.report_failure("cavoti", "503")
+            health.init(data_dir=str(self.data_dir))  # 模拟重启
+        finally:
+            modelhub.providers = orig
         snap = health.snapshot()
         cav = [p for p in snap["providers"] if p["provider"] == "cavoti"][0]
         self.assertEqual(cav["status"], "down")
         self.assertTrue(snap["any_alerting"])
+
+    def test_reload_drops_deleted_provider(self):
+        """供应商已从配置删除：重启（重新 init）时健康条目一并清掉（Z.ai 幽灵案）。"""
+        from app.core import health
+        health.report_failure("Z.ai - API Key", "429", provider_id="prov-z")
+        health.init(data_dir=str(self.data_dir))  # 模拟重启：models.json 里已无 prov-z
+        self.assertNotIn("Z.ai - API Key",
+                         {p["provider"] for p in health.snapshot()["providers"]})
 
 
 class TestProbeLoop(HealthBase):
@@ -191,8 +204,9 @@ class TestProbeLoop(HealthBase):
             with health._LOCK:
                 st = health._PROVIDERS["维云模型 YBJ"]
                 st["probe_next_at"] = 0
-            ok = health._probe_one(st)
+            ok, gone = health._probe_one(st)
             self.assertTrue(ok)
+            self.assertFalse(gone)
         finally:
             modelhub.chat = orig_chat
         health.report_success("维云模型 YBJ")
@@ -210,8 +224,9 @@ class TestProbeLoop(HealthBase):
         try:
             with health._LOCK:
                 st = health._PROVIDERS["cavoti"]
-            ok = health._probe_one(st)
+            ok, gone = health._probe_one(st)
             self.assertFalse(ok)
+            self.assertFalse(gone, "供应商还在（探活失败≠已删除）")
             self.assertEqual(health.snapshot()["providers"][0]["status"], "down")
         finally:
             modelhub.chat = orig_chat
@@ -230,5 +245,76 @@ class TestSnapshotShape(HealthBase):
         for k in ("provider", "status", "consecutive_failures", "last_error",
                   "alerting", "silenced", "first_fail_at"):
             self.assertIn(k, p)
+
+
+class TestGhostCleanup(HealthBase):
+    """供应商被删除后，健康记录要跟着清掉。
+
+    幽灵条目探不活也永远不会恢复，还会每轮把 last_fail_at 刷成「刚刚」，
+    健康页看起来像它一直在报错（Z.ai 删掉后仍显示 429 的误伤案，2026-09-18）。
+    """
+
+    def _seed(self, name="Z.ai - API Key", pid="prov-z"):
+        from app.core import health
+        health.report_failure(name, "<HTTPError 429: 'Too Many Requests'>",
+                              model="glm-4.5", provider_id=pid)
+        return name
+
+    def test_prune_drops_deleted_provider(self):
+        from app.core import health, modelhub
+        name = self._seed()
+        self.assertIn(name, health._PROVIDERS)
+        orig = modelhub.providers
+        modelhub.providers = lambda: [{"id": "prov-43", "name": "云知声"}]
+        try:
+            health._prune_missing()
+        finally:
+            modelhub.providers = orig
+        self.assertNotIn(name, health._PROVIDERS)
+
+    def test_prune_keeps_live_providers(self):
+        """id 或名字任一还能对上号的都保留（改名不清历史）。"""
+        from app.core import health, modelhub
+        self._seed("cavoti", "prov-32")
+        self._seed("renamed-provider", "prov-43")   # 改名但 id 还在 → 保留
+        orig = modelhub.providers
+        modelhub.providers = lambda: [
+            {"id": "prov-32", "name": "cavoti"},
+            {"id": "prov-43", "name": "云知声"},
+        ]
+        try:
+            health._prune_missing()
+        finally:
+            modelhub.providers = orig
+        self.assertIn("cavoti", health._PROVIDERS)
+        self.assertIn("renamed-provider", health._PROVIDERS)
+
+    def test_probe_one_flags_gone_provider(self):
+        from app.core import health, modelhub
+        st = {"name": "Z.ai - API Key", "provider_id": "prov-z",
+              "model": "glm-4.5", "status": "down"}
+        orig = modelhub.providers
+        modelhub.providers = lambda: []
+        try:
+            ok, gone = health._probe_one(st)
+        finally:
+            modelhub.providers = orig
+        self.assertFalse(ok)
+        self.assertTrue(gone, "已删除的供应商要标记 gone，让探针循环清掉记录")
+
+    def test_probe_failure_still_stamps_existing_provider(self):
+        """供应商还在、探活失败 → 保持原行为（刷新 last_fail_at）。"""
+        from app.core import health, modelhub
+        self._seed("cavoti", "prov-32")
+        orig_providers, orig_chat = modelhub.providers, modelhub.chat
+        modelhub.providers = lambda: [{"id": "prov-32", "name": "cavoti",
+                                       "api_key": "k", "endpoint": "http://x"}]
+        modelhub.chat = lambda *a, **k: {"ok": False}
+        try:
+            ok, gone = health._probe_one(health._PROVIDERS["cavoti"])
+        finally:
+            modelhub.providers, modelhub.chat = orig_providers, orig_chat
+        self.assertFalse(ok)
+        self.assertFalse(gone)
 
 

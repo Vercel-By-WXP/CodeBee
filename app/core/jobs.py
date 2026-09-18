@@ -160,8 +160,14 @@ def _maybe_auto_resume(run_id):
         ok, err, new_run = store.retry_task(task["id"])
         if not ok or not new_run:
             return False
+        # 退避窗口要让用户看得见：把「预定入队时刻」写到 run 上，前端据此显示
+        # 「将在 HH:MM 自动续跑」而不是笼统的排队中（run 在建好到入队之间会
+        # 以 queued 状态干等 AUTO_RESUME_DELAY_S 秒）。
+        import time as _t
+        resume_at = _t.strftime("%Y-%m-%d %H:%M:%S",
+                                _t.localtime(_t.time() + AUTO_RESUME_DELAY_S))
         store.update_run(new_run["id"], auto_resumes=int(run.get("auto_resumes") or 0) + 1,
-                         auto_resumed_from=run_id)
+                         auto_resumed_from=run_id, resume_enqueue_at=resume_at)
 
         def _enqueue():
             _QUEUE.put({"kind": "orchestration",

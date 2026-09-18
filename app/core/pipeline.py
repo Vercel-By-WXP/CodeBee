@@ -79,6 +79,35 @@ def _agents():
     return registry.effective_agents(catalog.load(), manager.detect_all())
 
 
+# 本轮运行的智能体池：execute_run 入口快照，_run_step 死链补位时扫描。
+# 直接调 _run_step 的场景（单测/内部工具）池为空 → 补位不触发，闸门语义不变。
+_CURRENT_AGENTS: list = []
+
+
+def _dead_binding_substitute(dead_id, resume=None):
+    """死链补位：原定 CLI 配了链但解析为空（供应商停删/无密钥/**协议不匹配**——
+    如 chat-only 供应商挂在只讲 responses 的 codex 链上）时，从同池找一个
+    「配置过且链还活着」的真实 CLI 顶上——用户配的其它供应商继续干活，
+    而不是整步判死。全池无活链才维持失败：死链闸门「绝不静默偷跑本机默认」
+    的语义不变，补位用的仍是用户显式配好的链。
+
+    resume 会话钉在原 CLI 上（会话跟人走），有 resume 时补位无意义，直接不找。
+    返回 bind_agent 之后的替代者，或 None。"""
+    if resume:
+        return None
+    from . import modelhub as _mh
+    for a in _CURRENT_AGENTS or []:
+        if a.get("id") == dead_id or a.get("mode") != "real":
+            continue
+        try:
+            cand = _mh.bind_agent(a, "default")
+        except Exception:
+            continue
+        if cand.get("binding_configured") and (cand.get("call_chain") or cand.get("env")):
+            return cand
+    return None
+
+
 def _pick(agents, agent_id):
     for a in agents:
         if a["id"] == agent_id:
@@ -290,13 +319,23 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     # · 从没配过链（binding_configured=False）：回落 CLI 本机默认照跑——
     #   用户根本没在 CodeBee 里配供应商，谈不到「烧自己配的配额」；判失败
     #   反而把用本地登录的普通用户全挡在门外（0.1.6 真实装机误伤案例）。
-    # · 配过链但全死（binding_configured=True）：本步判失败不静默降级——
-    #   宁可失败不偷跑本机默认；auto 流程实现步的既有换将会接手健康 CLI。
-    #   只记在步骤备注/错误里，不再产生全局健康告警胶囊（同上案例：红胶囊
-    #   吓不到也帮不到普通用户，2026-09-18 用户拍板移除）。
+    # · 配过链但全死（binding_configured=True）：先看同池有没有「配置过且链还
+    #   活着」的 CLI 可补位（评审补位的全步骤版——用户的其它供应商继续干活，
+    #   典型场景：chat-only 供应商挂在只讲 responses 的 codex 链上必然解析为
+    #   空，2026-09-18 重写任务 3/3 续跑全灭案）；全池无活链才判失败不静默
+    #   降级——宁可失败不偷跑本机默认。只记在步骤备注/错误里，不产生健康胶囊。
     dead_binding = (agent.get("mode") == "real"
                     and agent.get("binding_configured")
                     and not (agent.get("call_chain") or agent.get("env")))
+    if dead_binding:
+        sub = _dead_binding_substitute(agent.get("id"), resume=resume)
+        if sub is not None:
+            note = ((note + "；") if note else "") + (
+                "⚠ 原定 %s 绑定链全部失效，已补位 %s"
+                % (agent.get("label") or agent["id"],
+                   sub.get("label") or sub["id"]))
+            agent = sub
+            dead_binding = False
     dead_msg = _binding_dead_msg(agent) if dead_binding else ""
     if dead_binding:
         note = ((note + "；") if note else "") + "⚠ " + dead_msg
@@ -2515,6 +2554,8 @@ def execute_run(run_id):
         # 任务分支裁决状态：新一轮 run 产生新分支内容，重置回「待裁决」
         store.set_task_git_state(task["id"], "isolated")
     agents = _agents()
+    global _CURRENT_AGENTS
+    _CURRENT_AGENTS = agents
     # 续会话是对该 CLI 的显式指定：目标未启用编排时也注入本次运行（不影响路由池）
     want = ((task.get("resume") or {}).get("agent") or "").strip()
     if want and _pick(agents, want) is None:

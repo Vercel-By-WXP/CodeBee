@@ -2955,7 +2955,8 @@ function jumpToRun(id) {
  * 聚合该任务全部 run 的步骤；不允许任何行点了没反应。
  * 无主运行行（任务已删/管理运行，data-task 为空）→ 直开它自己的运行详情；
  * 已归档任务 → toast 指路（归档行先取消归档）；
- * 没跑过/排队中 → toast 说明（没有可展示的运行内容）。 */
+ * 从未跑过 → toast 说明；跑过但最新 run 排队中（自动续跑退避窗口）→ 照常开
+ * 任务详情，能回看历史轮次的步骤与日志。 */
 function sideRowActivate(det) {
   const taskId = det.dataset.task || "", runId = det.dataset.run || "";
   if (!taskId) {
@@ -2968,7 +2969,10 @@ function sideRowActivate(det) {
     toast(arch ? t("已归档任务：先在右键菜单里取消归档，再看任务详情") : t("任务不存在或已删除"), true);
     return;
   }
-  if (!inspEligible(taskId)) { toast(t("该任务还没跑过（或排队中），还没有任务详情"), true); return; }
+  if (!inspEligible(taskId)) {
+    const lr = ((S.state || {}).task_latest || {})[taskId];
+    if (!lr) { toast(t("该任务还没跑过，还没有任务详情"), true); return; }
+  }
   sideOpenTask(taskId);
 }
 
@@ -3044,21 +3048,32 @@ function drawTaskDetail(key, runs) {
   // 取消收尾把僵尸步骤落成「已取消」时要立即重画，不等条数变化；
   // 作品信息状态入签名：后台一键生成 running→done 要立刻反映到成果区面板
   const bmTask = ((S.state || {}).tasks || []).find((x) => x.id === key);
+  // 自动续跑退避相位入签名：预定入队时刻过了之后 chip 要从「将于 HH:MM」翻回「排队中」
+  const lr0 = runs[0] || {};
+  const resumePending = (lr0.resume_enqueue_at &&
+    Date.now() < Date.parse(String(lr0.resume_enqueue_at).replace(" ", "T"))) ? 1 : 0;
   const sig = JSON.stringify(runs.map((r) => [r.id, r.status, (r.steps || []).length,
     (r.steps || []).map((s) => s.status).join(""),
     (r.messages || []).length, (r.messages || []).filter((m) => !m.consumed).length])
-    .concat([JSON.stringify((bmTask || {}).book_meta || null)]));
+    .concat([JSON.stringify((bmTask || {}).book_meta || null), resumePending]));
   if (sig === S.taskSig) return;
   S.taskSig = sig;
   const latest = runs[0];                       // runs 新→旧
   const ordered = runs.slice();                 // 详情按最近运行优先，方便排查
   const totalSteps = runs.reduce((a, r) => a + (r.steps || []).length, 0);
   const active = runs.some((r) => r.status === "running" || r.status === "queued");
-  const st = active ? "running" : latest.status;
+  // 活跃态细分真实状态：排队里还分「等并发」和「自动续跑退避（预定 HH:MM 入队）」，
+  // 后者在 chip 上写明下一轮何时起跑，别让 5 分钟退避窗口看起来像卡死（Z.ai 误伤案）
+  const activeRun0 = runs.find((r) => r.status === "running" || r.status === "queued");
+  const st = activeRun0 ? activeRun0.status : latest.status;
+  const resumeIn = (st === "queued" && resumePending)
+    ? String(latest.resume_enqueue_at).slice(11, 16) : "";
   $("rd-title").textContent = latest.title || key;
   const chip = $("rd-status");
   chip.className = "chip " + st;
-  chip.textContent = { queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消") }[st] || st;
+  chip.textContent = resumeIn
+    ? t("将于 ") + resumeIn + t(" 自动续跑（第 ") + (Number(latest.auto_resumes) || 0) + t(" 次）")
+    : ({ queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消") }[st] || st);
   const bpt = $("btn-pause");
   if (bpt) bpt.classList.add("hidden");
   $("btn-delete").classList.add("hidden");
@@ -6023,11 +6038,20 @@ function protoLabel(p) {
  * 通过的 wire_caps（auto 供应商全靠它）。返回命中的协议名，不适配返回空串。
  * 与 modelhub._entry_endpoint 同规则——它同时就是「注入本 CLI 实际走的 wire」，
  * 勾选面板据此标死解析时会被跳过的条目。 */
-function provAdaptedProto(p, allow) {
+function provAdaptedProto(p, allow, kind) {
   if (!p) return "";
-  if (allow.indexOf(p.protocol) >= 0) return p.protocol;
+  // codex 0.154+ 只讲 responses wire：chat-only 端点（显式 wire_api=chat 或
+  // wire_caps 实测为 chat）对 codex 等于没有可用协议——与后端 resolve_binding
+  // 的剔除规则同源（2026-09-18 重写任务案：链显示健康、运行时必剔死的假象）
+  const codexOnly = /codex/.test(String(kind || "").toLowerCase());
+  const chatBlocked = (w) => codexOnly && (w || "responses") === "chat";
+  if (allow.indexOf(p.protocol) >= 0) {
+    if (chatBlocked(p.wire_api)) return "";
+    return p.protocol;
+  }
   const caps = p.wire_caps || {};
-  return allow.find((pr) => (caps[pr] || {}).base) || "";
+  return allow.find((pr) => (caps[pr] || {}).base
+    && !chatBlocked((caps[pr] || {}).wire_api)) || "";
 }
 
 /* CLI 允许注入的供应商 wire 协议——与 modelhub.resolve_binding 的 allowed 规则
@@ -6048,7 +6072,7 @@ function modelSelectHtml(id, current, kind) {
   const allow = bindAllowedProtocols(kind);
   const groups = modelGroups().filter((g) => {
     const p = (S.providers || []).find((x) => x.id === g.id);
-    return provAdaptedProto(p, allow);
+    return provAdaptedProto(p, allow, kind);
   });
   let opts = '<option value="">' + t("（未设置）") + '</option>';
   if (cur && !groups.some((g) => g.models.includes(cur))) {
@@ -6127,7 +6151,7 @@ function recommendFor(c) {
   const allow = bindAllowedProtocols(c.orch_kind || c.id);
   const badDefault = (p) => (p.models || []).some((m) => m.name === p.model &&
     (m.hidden || m.enabled === false));
-  const provs = (S.providers || []).filter((p) => !badDefault(p) && chainProvUsable(p, allow));
+  const provs = (S.providers || []).filter((p) => !badDefault(p) && chainProvUsable(p, allow, c.orch_kind || c.id));
   if (!provs.length) return null;
   const score = (p) => (allow.indexOf(p.protocol) >= 0 ? 0 : 1) * 1000 + (p.priority || 0);
   provs.sort((a, b) => score(a) - score(b));
@@ -6139,9 +6163,9 @@ function recommendFor(c) {
 
 /* 供应商对某 CLI 是否「推荐可用」：启用、协议适配，且至少有一把不在冷却期的
  * KEY（全冷却=欠费失效，推荐了也白推荐——解析层照样失败）。 */
-function chainProvUsable(p, allow) {
+function chainProvUsable(p, allow, kind) {
   if (!p || p.enabled === false) return false;
-  if (!provAdaptedProto(p, allow)) return false;
+  if (!provAdaptedProto(p, allow, kind)) return false;
   const ks = p.keys || [];
   if (!ks.length) return true; // 老数据单 KEY（api_key 镜像）：无 keys 结构视为可用
   return ks.some((k) => k.enabled !== false && !k.cooling);
@@ -6156,7 +6180,7 @@ function chainDeadReasons(c, chain) {
     const pv = (S.providers || []).find((p) => p.id === x.p);
     if (!pv) return t("供应商已删除");
     if (pv.enabled === false) return t("供应商已停用");
-    if (!provAdaptedProto(pv, allow)) return t("协议不匹配");
+    if (!provAdaptedProto(pv, allow, c.orch_kind)) return t("协议不匹配");
     const ks = pv.keys || [];
     if (ks.length && !ks.some((k) => k.enabled !== false && !k.cooling))
       return t("密钥全部冷却中");
@@ -6288,7 +6312,7 @@ function bindModelBox(c, provId) {
     ? st.chain.map((c2, i) => {
         const pname = c2.p ? provName(c2.p) : t("CLI 默认凭据");
         const pv = c2.p ? (S.providers || []).find((p) => p.id === c2.p) : null;
-        const adapted = provAdaptedProto(pv, allow);
+        const adapted = provAdaptedProto(pv, allow, c.orch_kind);
         const dead = c2.p && !adapted;
         // auto 供应商按实测 wire 注入是常态，说「自动」；显式协议靠适配才通的
         // 才叫「已适配」——两者含义不同，别混成一句。
@@ -6328,7 +6352,7 @@ function bindPanel(c) {
   const allow = bindAllowedProtocols(c.orch_kind);
   const all = modelGroups();
   // 原生协议匹配，或适配测试过 allow 里某条 wire 的供应商都可勾选
-  const groups = all.filter((g) => provAdaptedProto(g, allow));
+  const groups = all.filter((g) => provAdaptedProto(g, allow, c.orch_kind));
   const hiddenN = all.length - groups.length;
   if (!groups.length) {
     return '<div class="ohint">' + esc(all.length
@@ -6343,12 +6367,12 @@ function bindPanel(c) {
       '<div class="ogroup"><div class="ogname">' + esc(g.name) +
       ' <span class="tag">' + (g.protocol === "auto"
         ? t("自动 · 注入该厂商凭据")
-        : (provAdaptedProto(g, allow) === g.protocol
+        : (provAdaptedProto(g, allow, c.orch_kind) === g.protocol
            ? t("注入该厂商凭据") : t("已适配 · 注入该厂商凭据"))) + '</span></div>' +
       g.models.map((m) => {
         // 本供应商注入本 CLI 实际走的 wire（与后端 _entry_endpoint 同规则）；
         // 无命中 = 勾了也会被解析层整条跳过，标死防止白配
-        const wire = provAdaptedProto(g, allow);
+        const wire = provAdaptedProto(g, allow, c.orch_kind);
         const dead = !wire;
         const has = st.chain.some((x) => x.p === g.id && x.m === m);
         return '<label class="oitem' + (dead ? " dim" : "") + '"><input type="checkbox" value="' + esc(m) + '" data-p="' + esc(g.id) + '"' +

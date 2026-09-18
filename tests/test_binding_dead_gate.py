@@ -100,11 +100,121 @@ class TestBindingGate(HealthMixin):
         self.assertEqual(health.snapshot()["providers"], [])
 
 
+class TestDeadChainSubstitute(HealthMixin):
+    """死链补位（2026-09-18 重写任务 3/3 续跑全灭案）：
+
+    原定 CLI 配了链但解析为空（chat-only 供应商挂在只讲 responses 的 codex
+    链上必然如此）时，从同池找「配置过且链还活着」的真实 CLI 顶上，整步
+    不必判死；全池无活链才维持 ENV_BLOCK——闸门「绝不静默偷跑本机默认」
+    的语义不变，补位用的仍是用户显式配好的链。
+    """
+
+    _LIVE = {
+        "providers": [{"id": "p1", "name": "P1", "protocol": "openai",
+                       "base_url": "https://x.example/v1", "api_key": "k",
+                       "enabled": True, "models": [{"name": "m1", "enabled": True}]}],
+        "bindings": {"kimi-code": {"provider_id": "p1", "model": "m1",
+                                   "chain": [{"provider_id": "p1", "model": "m1"}],
+                                   "models": ["m1"]}},
+    }
+
+    def setUp(self):
+        super().setUp()
+        from app.core import pipeline
+        self._orig_pool = pipeline._CURRENT_AGENTS
+        pipeline._CURRENT_AGENTS = []
+
+    def tearDown(self):
+        from app.core import pipeline
+        pipeline._CURRENT_AGENTS = self._orig_pool
+        super().tearDown()
+
+    @staticmethod
+    def _capturing_spawn():
+        from app.core import pipeline
+        orig = pipeline._spawn_step
+        seen = {}
+
+        def fake(*a, **k):
+            seen["agent"] = k.get("agent")
+            return {"ok": True, "text": "done", "json": None, "cost_usd": 0.0,
+                    "tokens": 1, "usage": None, "error": "",
+                    "raw": {"exit_code": 0}}
+        pipeline._spawn_step = fake
+        return orig, seen
+
+    def test_dead_chain_substitutes_live_agent(self):
+        """codex 链全死 + 同池 kimi 有活链 → 补位跑成，步骤备注写明补位。"""
+        from app.core import modelhub as MH, pipeline, store
+        MH._FILE.write_text(json.dumps(self._LIVE), encoding="utf-8")
+        pipeline._CURRENT_AGENTS = [
+            {"id": "codex-cli", "label": "Codex CLI", "kind": "codex", "mode": "real"},
+            {"id": "kimi-code", "label": "Kimi Code", "kind": "kimi", "mode": "real"},
+        ]
+        run_id = self._run()
+        agent = {"id": "codex-cli", "label": "Codex CLI", "kind": "codex",
+                 "mode": "real", "binding_configured": True}   # 链解析为空
+        orig, seen = self._capturing_spawn()
+        try:
+            res = pipeline._run_step(run_id, "draft-c1", agent, "写第 3 章",
+                                     str(self.workdir), readonly=True, ev=None)
+        finally:
+            pipeline._spawn_step = orig
+        self.assertTrue(res["ok"], "同池有活链 CLI 时死链步骤应补位而非判死")
+        self.assertEqual((seen.get("agent") or {}).get("id"), "kimi-code",
+                         "实际执行应换到活链的 kimi")
+        step = (store.get_run(run_id).get("steps") or [])[0]
+        self.assertEqual(step["agent"], "kimi-code")
+        self.assertIn("补位", step.get("note") or "")
+        self.assertIn("Codex CLI", step.get("note") or "")
+
+    def test_dead_chain_without_live_substitute_still_fails(self):
+        """全池没有活链（其它 CLI 没配过绑定）→ 维持 ENV_BLOCK 判死。"""
+        from app.core import pipeline
+        from app.core.error_codes import ErrorCode
+        pipeline._CURRENT_AGENTS = [
+            {"id": "codex-cli", "label": "Codex CLI", "kind": "codex", "mode": "real"},
+            {"id": "kimi-code", "label": "Kimi Code", "kind": "kimi", "mode": "real"},
+        ]
+        run_id = self._run()
+        agent = {"id": "codex-cli", "label": "Codex CLI", "kind": "codex",
+                 "mode": "real", "binding_configured": True}
+        res = pipeline._run_step(run_id, "draft-c1", agent, "写第 3 章",
+                                 str(self.workdir), readonly=True, ev=None)
+        self.assertFalse(res["ok"], "全池无活链时不得补位，维持死链判失败")
+        self.assertEqual(res["error_code"], ErrorCode.ENV_BLOCK)
+
+    def test_resume_pins_agent_no_substitute(self):
+        """续会话钉在原 CLI 上：会话跟人走，补位没有意义，维持判死。"""
+        from app.core import modelhub as MH, pipeline
+        from app.core.error_codes import ErrorCode
+        MH._FILE.write_text(json.dumps(self._LIVE), encoding="utf-8")
+        pipeline._CURRENT_AGENTS = [
+            {"id": "codex-cli", "label": "Codex CLI", "kind": "codex", "mode": "real"},
+            {"id": "kimi-code", "label": "Kimi Code", "kind": "kimi", "mode": "real"},
+        ]
+        run_id = self._run()
+        agent = {"id": "codex-cli", "label": "Codex CLI", "kind": "codex",
+                 "mode": "real", "binding_configured": True}
+        res = pipeline._run_step(run_id, "chat", agent, "接着聊",
+                                 str(self.workdir), readonly=True, ev=None,
+                                 resume={"agent": "codex-cli", "session": "sess-1"})
+        self.assertFalse(res["ok"], "有 resume 会话时不补位")
+        self.assertEqual(res["error_code"], ErrorCode.ENV_BLOCK)
+
+
 class TestLegacyPillPurge(HealthMixin):
     """0.1.6 持久化的「绑定链·」静态条目：init 时必须清掉，别让旧状态常驻。"""
 
     def test_init_purges_legacy_static_entries(self):
-        from app.core import health
+        from app.core import health, modelhub as MH
+        # P1 在 models.json 里真实存在：重启清理（幽灵条目随 init 清掉）只清
+        # 配置里已不存在的供应商，真实供应商的健康状态要原样保留
+        MH._FILE.write_text(json.dumps({
+            "providers": [{"id": "p1", "name": "P1", "enabled": True,
+                           "models": [{"name": "m1", "enabled": True}]}],
+            "bindings": {},
+        }), encoding="utf-8")
         f = health._FILE if getattr(health, "_FILE", None) else None
         data = {"providers": {
             "绑定链·codex-cli": {"name": "绑定链·codex-cli", "provider_id": "",

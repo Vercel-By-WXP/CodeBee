@@ -168,3 +168,63 @@ class TestResumeInterrupted(BaseTest):
         self.assertEqual(jobs.resume_interrupted(), 1)
         runs = [r for r in store.list_runs(50) if r.get("task_id") == task["id"]]
         self.assertEqual(len(runs), 2, "普通中断的连载任务应被自动续跑")
+
+
+class TestAutoResumeBackoff(BaseTest):
+    """自动续跑退避窗口要可观测：重排出的新 run 记录预定入队时刻。
+
+    失败后延迟 AUTO_RESUME_DELAY_S 秒才真正入队（防网关限流撞墙），期间
+    run 以 queued 状态干等——前端靠 resume_enqueue_at 显示「将于 HH:MM
+    自动续跑」，而不是笼统的排队中（2026-09-18 重写任务误判案）。
+    """
+
+    def _seed_failed_serial_run(self, store, title, auto_resumes=0):
+        task = store.create_task({
+            "type": "serial_novel", "title": title, "goal": "写连载",
+            "workdir": str(self.workdir),
+            "serial": {"chapters": 3, "words_per_chapter": 800},
+        })
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="failed",
+                         error="评审全部失败", auto_resumes=auto_resumes)
+        return task, run
+
+    def test_failed_serial_run_records_resume_enqueue_at(self):
+        import time as _t
+        from app.core import jobs, store
+        task, run = self._seed_failed_serial_run(store, "backoff book")
+        before = _t.time()
+        captured = {}
+        orig_timer = jobs.threading.Timer
+
+        def fake_timer(interval, fn):
+            captured["interval"] = interval
+            class _T:                      # 不真起线程：退避到期行为不属本用例
+                daemon = False
+                def start(self):
+                    pass
+            return _T()
+
+        jobs.threading.Timer = fake_timer
+        try:
+            self.assertTrue(jobs._maybe_auto_resume(run["id"]))
+        finally:
+            jobs.threading.Timer = orig_timer
+        runs = [r for r in store.list_runs(50) if r.get("task_id") == task["id"]]
+        self.assertEqual(len(runs), 2)
+        new = next(r for r in runs if r["id"] != run["id"])
+        self.assertEqual(new["status"], "queued")
+        self.assertEqual(new["auto_resumes"], 1)
+        self.assertEqual(new["auto_resumed_from"], run["id"])
+        self.assertTrue(new.get("resume_enqueue_at"), "必须记录预定入队时刻")
+        ts = _t.mktime(_t.strptime(new["resume_enqueue_at"], "%Y-%m-%d %H:%M:%S"))
+        self.assertTrue(before + jobs.AUTO_RESUME_DELAY_S - 5 <= ts
+                        <= _t.time() + jobs.AUTO_RESUME_DELAY_S + 5)
+        self.assertEqual(captured.get("interval"), jobs.AUTO_RESUME_DELAY_S)
+        self.assertEqual(jobs._QUEUE.qsize(), 0, "退避窗口内任务不得提前入队")
+
+    def test_no_resume_after_max_reached(self):
+        from app.core import jobs, store
+        task, run = self._seed_failed_serial_run(
+            store, "maxed book", auto_resumes=jobs.AUTO_RESUME_MAX)
+        self.assertFalse(jobs._maybe_auto_resume(run["id"]))

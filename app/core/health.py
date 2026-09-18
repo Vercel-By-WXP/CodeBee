@@ -66,6 +66,10 @@ def init(data_dir=None):
             for k in stale:
                 _PROVIDERS.pop(k, None)
             _persist()
+        # 供应商已删除的幽灵条目启动即清；运行期新增的幽灵由探针在探活时
+        # 发现（gone 标记）随手清——探针循环里不做全量扫描，避免和测试
+        # 夹具/运行期建条目赛跑。
+        _prune_missing()
         if not _STARTED:
             _STARTED = True
             t = threading.Thread(target=_probe_loop, name="health-probe", daemon=True)
@@ -251,16 +255,20 @@ def down_names() -> set:
 # ---------------------------------------------------------------- 探针
 
 def _probe_one(st):
-    """对单个故障 provider 发轻量探活。返回是否恢复。"""
+    """对单个故障 provider 发轻量探活。返回 (ok, gone)：
+    ok=是否恢复；gone=供应商已从配置里删除（健康记录应随之清掉）。"""
     try:
         from . import modelhub
         pid = st.get("provider_id") or ""
         model = st.get("model") or ""
-        provs = {p.get("name"): p for p in modelhub.providers()}
-        prov = provs.get(st.get("name")) or (modelhub.providers() and next(
-            (p for p in modelhub.providers() if p.get("id") == pid), None))
-        if not prov or not prov.get("api_key"):
-            return False  # 供应商被停用/删除：无法探测，保持状态
+        plist = modelhub.providers()
+        provs = {p.get("name"): p for p in plist}
+        prov = provs.get(st.get("name")) or next(
+            (p for p in plist if pid and p.get("id") == pid), None)
+        if not prov:
+            return False, True   # 供应商已删除：探不了也不再是「没恢复」
+        if not prov.get("api_key"):
+            return False, False  # 供应商在但没密钥：无法探测，保持状态
         if not model:
             try:
                 names = modelhub._enabled_models(prov)
@@ -268,12 +276,36 @@ def _probe_one(st):
             except Exception:
                 model = ""
         if not model:
-            return False
+            return False, False
         res = modelhub.chat(prov["id"], model, "1", max_tokens=8, timeout=20)
-        return bool(res.get("ok"))
+        return bool(res.get("ok")), False
     except Exception as e:
         log.debug("probe %s error: %s", st.get("name"), e)
-        return False
+        return False, False
+
+
+def _prune_missing():
+    """供应商被删除后清掉它的健康记录。
+
+    幽灵条目探不活也永远不会恢复，还会每轮把 last_fail_at 刷成「刚刚」，
+    健康页看起来像它一直在报错（Z.ai 删掉后仍显示 429 的误伤案，2026-09-18）。
+    """
+    try:
+        from . import modelhub
+        plist = modelhub.providers()
+    except Exception:
+        return
+    ids = {p.get("id") for p in plist}
+    names = {p.get("name") for p in plist}
+    with _LOCK:
+        stale = [n for n, st in _PROVIDERS.items()
+                 if not ((st.get("provider_id") and st.get("provider_id") in ids)
+                         or st.get("name") in names)]
+        if stale:
+            for n in stale:
+                _PROVIDERS.pop(n, None)
+            _persist()
+            log.info("[health] 清除已删除供应商的健康记录：%s", ", ".join(stale))
 
 
 def _probe_loop():
@@ -290,8 +322,13 @@ def _probe_loop():
                     st["probe_next_at"] = _now() + backoff
                     st["probe_backoff_idx"] = idx + 1
             for name, st in targets:
-                ok = _probe_one(st)
-                if ok:
+                ok, gone = _probe_one(st)
+                if gone:
+                    with _LOCK:
+                        if _PROVIDERS.pop(name, None) is not None:
+                            _persist()
+                    log.info("[health] %s 已删除，健康记录随之清除", name)
+                elif ok:
                     report_success(name)
                     log.info("[health] 探针确认 %s 已恢复", name)
                 else:
