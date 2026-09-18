@@ -1870,40 +1870,72 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
 
     # ---- 3) 全局一致性评审（覆盖 1..end 全书：续写批次必须连同旧章一起查一致性）
     full_text = "\n\n".join(_read_chapter(workdir, i) for i in range(1, end + 1))
-    global_means, global_issues = {}, []
-    for agent in critics:
-        role = "global-critique"
-        if agent.get("mode") == "mock":
-            step, _ = store.add_step(run_id, role, agent["id"], agent.get("label"))
-            time.sleep(0.15)
-            gj = {"scores": {d: 8.0 for d in dims},
-                  "issues": [], "summary": "（mock）全书结构完整，达到可签约水平"}
-            store.finish_step(run_id, step["n"], "done", summary="均分 8.0：（mock）全书达标",
-                              duration_s=0.15)
-        else:
-            gtpl = SERIAL_GLOBAL_PROMPT
-            if bible:
-                gtpl = gtpl.replace("## 全书目标", bible + "\n\n## 全书目标", 1)
-            res = _run_step(run_id, role, modelhub.bind_agent(agent, difficulty),
-                            (gtpl.replace("__DIMKEYS__", dimkey)
-                             .replace("__GOAL__", task["goal"])
-                             .replace("__MANUSCRIPT__", full_text[:60000])),
-                            workdir, readonly=True, ev=ev, timeout=2400)
-            gj = runner.extract_json(res.get("text") or "")
-            if not isinstance(gj, dict) or not isinstance(gj.get("scores"), dict):
-                gj = {"scores": {}, "issues": [], "summary": "全局评审输出无法解析"}
-        global_issues.extend({"chapter": "全书", **it} for it in (gj.get("issues") or [])[:8])
-        for d in dims:
-            v = gj.get("scores", {}).get(d)
-            if v is not None:
-                global_means.setdefault(d, []).append(float(v))
-        _check_cancel(ev)
-    global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in global_means.items()}
+    global_issues = []
+
+    def run_global_round(agent_list):
+        """一轮全局评审：返回 (出分评审数, 按维累计分)。失败/不可解析不得当成低分计入。"""
+        gmeans_acc, scored = {}, 0
+        for agent in agent_list:
+            if agent.get("mode") == "mock":
+                step, _ = store.add_step(run_id, "global-critique", agent["id"],
+                                         agent.get("label"))
+                time.sleep(0.15)
+                gj = {"scores": {d: 8.0 for d in dims},
+                      "issues": [], "summary": "（mock）全书结构完整，达到可签约水平"}
+                store.finish_step(run_id, step["n"], "done", summary="均分 8.0：（mock）全书达标",
+                                  duration_s=0.15)
+                scored += 1
+            else:
+                gtpl = SERIAL_GLOBAL_PROMPT
+                if bible:
+                    gtpl = gtpl.replace("## 全书目标", bible + "\n\n## 全书目标", 1)
+                res = _run_step(run_id, "global-critique", modelhub.bind_agent(agent, difficulty),
+                                (gtpl.replace("__DIMKEYS__", dimkey)
+                                 .replace("__GOAL__", task["goal"])
+                                 .replace("__MANUSCRIPT__", full_text[:60000])),
+                                workdir, readonly=True, ev=ev, timeout=2400)
+                gj = runner.extract_json(res.get("text") or "")
+                if isinstance(gj, dict) and isinstance(gj.get("scores"), dict) and gj.get("scores"):
+                    scored += 1
+                else:
+                    gj = {"scores": {}, "issues": [], "summary": "全局评审输出无法解析"}
+            global_issues.extend({"chapter": "全书", **it} for it in (gj.get("issues") or [])[:8])
+            for d in dims:
+                v = gj.get("scores", {}).get(d)
+                if v is not None:
+                    gmeans_acc.setdefault(d, []).append(float(v))
+            _check_cancel(ev)
+        return scored, gmeans_acc
+
+    gscored, gmeans_acc = run_global_round(critics)
+    # 「评不上」≠「评了低分」：全局评审全挂时先从其它真实智能体补位（对齐章级
+    # 评审者级 fallback）；补位后仍零分则判 run 失败——「无法评审」绝不能当成
+    # 「全局评审未通过」去盖「未达标」章（2026-09-18 假未达标案：codex 绑定链
+    # 全失效 + kimi 命令行超长，global_scores 为空被 _all_ge 判成不通过）。
+    # mock 评审总出分，不会误触；判失败不设 impl mock 例外（对齐章级中止）。
+    if not gscored:
+        tried = {a.get("id") for a in critics}
+        for spare in [a for a in (agents or [])
+                      if a.get("mode") == "real" and a.get("id") not in tried][:2]:
+            sc, acc = run_global_round([spare])
+            for d, xs in acc.items():
+                gmeans_acc.setdefault(d, []).extend(xs)
+            gscored += sc
+            if gscored:
+                break
+        if not gscored:
+            store.update_run(run_id, status="failed",
+                             error="全局一致性评审全部失败（评审模型不可用或输出不可解析），"
+                                   "已中止以免把「无法评审」误判为「未达标」。"
+                                   "各章稿件已全部落盘，修复评审链后续跑可直接收尾",
+                             ended_at=_now())
+            return
+    global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans_acc.items()}
     global_pass = _all_ge(global_means, threshold)
 
     # ---- 3.5) 自驱打磨：全局评审不过 → 自动重改最弱章并重评（至多 2 轮，无需人工）
     polish_rounds = 0
-    while (not global_pass) and polish_rounds < 2 and chapter_scores:
+    while (not global_pass) and polish_rounds < 2 and chapter_scores and global_means:
         polish_rounds += 1
         weak = _weakest_chapters(chapter_scores, global_means, threshold, limit=2)
         if not weak:
@@ -1953,6 +1985,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         cj = {"scores": {}, "issues": [], "summary": "评审输出无法解析"}
                 cj_by_agent[agent["id"]] = cj
                 _check_cancel(ev)
+            # 重评全挂（本轮所有评审都解析不出分数）→ 保留该章原分与达标态：
+            # 拿「无法重评」覆盖真实分数，会把打磨前的好章误标 0 分、误判不达标
+            repolished = any(isinstance(c.get("scores"), dict) and c["scores"]
+                             for c in cj_by_agent.values())
             vals = {}
             for d in dims:
                 xs = [float(cj["scores"].get(d, 0)) for cj in cj_by_agent.values()
@@ -1960,38 +1996,22 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 vals[d] = round(sum(xs) / len(xs), 1) if xs else 0.0
             for c2 in chapter_scores:
                 if c2["chapter"] == i:
-                    c2["means"] = vals
-                    c2["passed"] = bool(vals) and all(v >= threshold_ch for v in vals.values())
-                    c2["rounds"] = int(c2.get("rounds") or 1) + 1
-                    c2["polished"] = True
+                    if repolished:
+                        c2["means"] = vals
+                        c2["passed"] = bool(vals) and all(v >= threshold_ch for v in vals.values())
+                        c2["rounds"] = int(c2.get("rounds") or 1) + 1
+                        c2["polished"] = True
                     c2["words"] = _wc(_read_chapter(workdir, i))
                     fixed.append(i)
             store.update_run(run_id, chapter_scores=chapter_scores)
             _check_cancel(ev)
-        # 重评全书一致性
+        # 重评全书一致性（同一评审闭包；本轮全挂则保留上一轮结论——评审链挂了
+        # 不代表书变差，不能拿「无法评审」覆盖真实分数）
         full_text = "\n\n".join(_read_chapter(workdir, i2) for i2 in range(1, end + 1))
-        gmeans, gissues = {}, []
-        for agent in critics:
-            if agent.get("mode") == "mock":
-                gj2 = {"scores": {d: 8.0 for d in dims}, "issues": [],
-                       "summary": "（mock）打磨后全书达标"}
-            else:
-                res3 = _run_step(run_id, "global-critique", modelhub.bind_agent(agent, difficulty),
-                                 (SERIAL_GLOBAL_PROMPT.replace("__DIMKEYS__", dimkey)
-                                  .replace("__GOAL__", task["goal"])
-                                  .replace("__MANUSCRIPT__", full_text[:60000])),
-                                 workdir, readonly=True, ev=ev, timeout=2400)
-                gj2 = runner.extract_json(res3.get("text") or "")
-                if not isinstance(gj2, dict) or not isinstance(gj2.get("scores"), dict):
-                    gj2 = {"scores": {}, "issues": [], "summary": "全局评审输出无法解析"}
-            global_issues.extend({"chapter": "全书", **it} for it in (gj2.get("issues") or [])[:8])
-            for d in dims:
-                v = gj2.get("scores", {}).get(d)
-                if v is not None:
-                    gmeans.setdefault(d, []).append(float(v))
-            _check_cancel(ev)
-        global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans.items()}
-        global_pass = _all_ge(global_means, threshold)
+        gscored2, gmeans_acc2 = run_global_round(critics)
+        if gscored2:
+            global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans_acc2.items()}
+            global_pass = _all_ge(global_means, threshold)
         store.finish_step(run_id, pstep["n"], "done" if global_pass else "failed",
                           summary="重改 %s；打磨后全局 %s（%s）" % (
                               "、".join("第 %d 章" % x for x in fixed),
