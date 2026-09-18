@@ -16,7 +16,7 @@ from __future__ import annotations
 CONFIG = {
     "id": "fanqie",
     "label": "番茄",
-    "home": "https://writer.fanqienovel.com/",
+    "home": "https://fanqienovel.com/main/writer/",   # 实测 writer. 子域不存在(DNS 000)；快照实抓为主站路径
     # 导航后 URL 含任一标记 → 未登录（跳到了登录/通行证页）
     "login_url_marks": ["login", "passport", "sso", "account/signin"],
 }
@@ -26,7 +26,7 @@ CONFIG = {
 # 「书名」「简介」这类 placeholder 语料最稳定）。
 CREATE_BOOK = [
     {"do": "navigate", "url": "{home}"},
-    {"do": "url_any", "any": ["writer.fanqienovel.com"]},
+    {"do": "url_any", "any": ["fanqienovel.com"]},
     {"do": "click_text", "text": "创建作品", "contains": True, "scope": "button,a,[role=button],span"},
     {"do": "probe", "note": "建书表单"},
     {"do": "wait", "sel": "input[placeholder*='书名'],input[placeholder*='作品名'],input[maxlength]", "timeout": 10},
@@ -45,7 +45,7 @@ CREATE_BOOK = [
 # book_name 由 manager 从作品登记（books.json）带入 values，click_text 复用。
 UPLOAD_CHAPTER = [
     {"do": "navigate", "url": "{home}"},
-    {"do": "url_any", "any": ["writer.fanqienovel.com"]},
+    {"do": "url_any", "any": ["fanqienovel.com"]},
     {"do": "click_text", "text": "{book_name}", "contains": True,
      "scope": "a,span,div[class*=title],div[class*=book]"},
     {"do": "click_text", "text": "新建章节", "contains": True, "scope": "button,a,[role=button],span"},
@@ -60,13 +60,13 @@ UPLOAD_CHAPTER = [
 # 登录态探测：打开后台首页，URL 被踢到登录页 → 未登录
 CHECK_LOGIN = [
     {"do": "navigate", "url": "{home}"},
-    {"do": "url_any", "any": ["writer.fanqienovel.com"]},
+    {"do": "url_any", "any": ["fanqienovel.com"]},
 ]
 
 # 表单探测（校准辅助）：开建书入口后 dump 全部可交互元素
 PROBE_FORM = [
     {"do": "navigate", "url": "{home}"},
-    {"do": "url_any", "any": ["writer.fanqienovel.com"]},
+    {"do": "url_any", "any": ["fanqienovel.com"]},
     {"do": "click_text", "text": "创建作品", "contains": True, "scope": "button,a,[role=button],span"},
     {"do": "probe", "note": "建书表单"},
 ]

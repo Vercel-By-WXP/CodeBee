@@ -126,13 +126,18 @@ def _open_page(plat):
 
 
 def _check_login(plat, page):
-    """打开后台首页看 URL 是否被踢到登录页。返回 (ok, 当前url)。"""
+    """打开后台首页看 URL 是否被踢到登录页。返回 (ok, 当前url)。
+
+    导航失败页（chrome-error://）不含登录标记，曾把「域名打不开」误判成
+    已登录——假 connected 的来源，先排除。"""
     mod = PLATFORMS[plat]
     try:
         page.navigate(mod.CONFIG["home"], timeout=30)
     except BrowserError as e:
         return False, str(e)
     url = str(page.url() or "")
+    if url.startswith("chrome-error://") or url.startswith("about:"):
+        return False, url                      # 页面没打开：网络/域名问题，不是登录态
     if any(m in url for m in mod.CONFIG["login_url_marks"]):
         return False, url
     return True, url
@@ -171,7 +176,7 @@ def connect(plat):
             try:
                 url = str(page.url() or "")
                 if url and not any(m in url for m in mod.CONFIG["login_url_marks"]) \
-                        and "about:blank" not in url:
+                        and "about:blank" not in url and "chrome-error" not in url:
                     # 用户登录完成（离开登录页）。再主动开一次首页做复核，
                     # 复核被踢回登录页说明只是中间跳转，继续等。
                     ok, _u = _check_login(plat, page)
