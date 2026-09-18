@@ -891,6 +891,8 @@ def _run_code(run, task, agents, ev, stats, mode):
         plan = {"source": "manual", "steps": [{"title": "实现任务", "detail": task["goal"]}]}
     store.update_run(run_id, plan=plan, difficulty=difficulty)
     subtasks = plan["steps"]
+    # 计划落盘（planning-with-files）：磁盘上的计划与 spec/evidence 同居任务档案
+    _write_task_plan(task, workdir, plan)
 
     # ---- 评审者（有会话延续时评审者仍用新鲜上下文，避免偏见）
     if mode == "auto":
@@ -923,12 +925,20 @@ def _run_code(run, task, agents, ev, stats, mode):
                 except Exception:
                     pass
             for i, sub in enumerate(subtasks):
+                # 子任务进度注入（planning-with-files 的每轮注入计划头）：多子任务时
+                # 让实现者知道全局位置与已完成项，防止长链目标漂移；单子任务零噪音
+                prog = ""
+                if len(subtasks) > 1:
+                    done_titles = "、".join(
+                        (s.get("title") or "")[:40] for s in subtasks[:i]) or "（无）"
+                    prog = ("\n\n## 计划进度（第 %d/%d 项）\n已完成：%s。当前接着做下面这一项，"
+                            "不要重做已完成的。" % (i + 1, len(subtasks), done_titles))
                 prompt = (CODE_IMPL_PROMPT
                           .replace("__GOAL__", task["goal"])
                           .replace("__SUBTASK__",
                                    sub["detail"] if sub["detail"] else sub["title"])
                           .replace("__CONTEXT__", task.get("context") or "（无）")
-                          .replace("__VERIFY_HINT__", _verify_hint(task)))
+                          .replace("__VERIFY_HINT__", _verify_hint(task))) + prog
                 role = "implement" if len(subtasks) == 1 else "implement-%d/%d" % (i + 1, len(subtasks))
                 res = _run_step(run_id, role, agt_b, prompt, step_wd,
                                 readonly=False, ev=ev,
@@ -2869,6 +2879,29 @@ def _evidence_lines_from_run(run_id, task):
                 bestof.get("kind") or "内容候选",
                 bestof.get("pick", bestof.get("winner_files", "?"))))
     return lines
+
+
+def _write_task_plan(task, workdir, plan):
+    """计划落盘 .codebee/task_plan.md（planning-with-files 精髓：计划活在磁盘上，
+    /clear、压缩、崩溃、续跑都不丢）。与 spec.md/evidence.md 同居任务档案；
+    失败静默——计划文件永远不能挡住任务执行。"""
+    try:
+        from pathlib import Path as _P
+        steps = (plan or {}).get("steps") or []
+        if not steps:
+            return ""   # 无步骤不产空计划文件
+        root = _P(workdir).resolve()
+        target = (root / ".codebee" / "task_plan.md").resolve()
+        if root not in target.parents:
+            return ""
+        target.parent.mkdir(parents=True, exist_ok=True)
+        lines = ["# 任务计划", "", "来源：%s" % (plan or {}).get("source", "?"), ""]
+        for i, s in enumerate((plan or {}).get("steps") or [], 1):
+            lines.append("%d. %s" % (i, str(s.get("detail") or s.get("title") or "")[:200]))
+        target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return str(target)
+    except Exception:
+        return ""
 
 
 def execute_run(run_id):

@@ -140,3 +140,12 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 **设计定稿**（四轮迭代被 Mimosa 策略拦截，架构本身可行）：挂 bookmeta.py（同款 generate_async 状态机写任务 cover_gen 字段）→ 调编排者供应商 OpenAI 兼容 `/images/generations`（模型候选 cogview-3-flash → cogview-4，env CODEBEE_IMAGE_MODEL 优先；竖版 768x1344 失败回落 1024x1024）→ 产物落 runs/<run_id>/cover.png（与 report 同款受管路径）→ UI 走 run 文件通道预览。SSRF 边界：仅 https+解析 IP 拒私网/环回/链路本地+禁重定向。
 **被拦原因**：扫描器策略性拒绝「网络下载→写盘」组合（无法证明下载字节无害）。**放行条件**：用户调整 Mimosa 策略或确认接受下载落盘风险后，按本设计重实现（预计 30 分钟）。路由图先挂「封面图生成（待安全放行）」。
+
+## 2026-09-19 夜间第一班（调研日 2026-09-19，周六·轮换批7）
+
+- **planning-with-files** 已深挖（26,981★）| 三文件 task_plan/findings/progress 分离、每轮 hook 注入计划头（goal+next+active phase）、SHA-256 防篡改、Stop gate 防提前收工、KV-cache 稳定注入（289ms/次）、盲测 3/3 胜、恢复 13.3 轮→5.0 轮 | **已抄两件**：task_plan.md 落盘（与 spec/evidence 同居 .codebee/）+ 子任务进度注入（多子任务时提示词带「第 i/N 项+已完成」防漂移）；findings.md（中间发现）与 Stop gate 暂不抄（连载章级进度已有对应物） | 已落地
+- **cognee**（topoteretes，30.8k★）| 开源 AI 记忆平台（知识图谱式）| agentmemory 同赛道更大体量；我们经验库=教训型，知识图谱路线暂缓（重依赖） | 参考
+- **agency-orchestrator**（jnMetaCode，2.3k★）| 一句话→一人公司 AI 专家→交付物（中文）| 与我们定位同向，中文产品化参考 | 待深挖
+- **deep-eye**（2.3k★）多供应商编排、**LocalAGI**（2k 本地自托管）| 网关/本地路线参考 | 参考
+- 复查：Yuxi 7094★（+）活跃；planning-with-files/prime-agent/pi-plans 均 09-18 活跃；cc-sdd 停更（05-20）——降级出待深挖队列
+- 新 CLI 本机探测（reasonix/fuxi/zero/empryo/goose/crush/herdr）：均未装，无新增接入
