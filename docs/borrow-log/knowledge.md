@@ -135,3 +135,8 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 ### 复查记录
 - 2026-09-18 深夜：A7/A8 组首跑；keywords.md 总库（97 组+雷达）建立
+
+## 封面图生成（设计就绪，待安全策略放行——2026-09-18 深夜）
+
+**设计定稿**（四轮迭代被 Mimosa 策略拦截，架构本身可行）：挂 bookmeta.py（同款 generate_async 状态机写任务 cover_gen 字段）→ 调编排者供应商 OpenAI 兼容 `/images/generations`（模型候选 cogview-3-flash → cogview-4，env CODEBEE_IMAGE_MODEL 优先；竖版 768x1344 失败回落 1024x1024）→ 产物落 runs/<run_id>/cover.png（与 report 同款受管路径）→ UI 走 run 文件通道预览。SSRF 边界：仅 https+解析 IP 拒私网/环回/链路本地+禁重定向。
+**被拦原因**：扫描器策略性拒绝「网络下载→写盘」组合（无法证明下载字节无害）。**放行条件**：用户调整 Mimosa 策略或确认接受下载落盘风险后，按本设计重实现（预计 30 分钟）。路由图先挂「封面图生成（待安全放行）」。
