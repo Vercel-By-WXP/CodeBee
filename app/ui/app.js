@@ -976,7 +976,9 @@ function renderProvDetail() {
   }
   const tp = (S.testProvState || {})[p.id];
   const tpHtml = tp ? (tp.ok
-    ? '<span class="badge ok">' + t("✓ 连通 ") + tp.latency_ms + "ms · " + tp.count + t(" 个模型") + "</span>"
+    ? '<span class="badge ok"' + (tp.note ? ' title="' + esc(tp.note) + '"' : "") + '>' +
+      t("✓ 连通 ") + tp.latency_ms + "ms" +
+      (tp.note ? " · " + t("无模型列表接口") : " · " + tp.count + t(" 个模型")) + "</span>"
     : '<span class="badge bad" title="' + esc(tp.error || "") + '">✗ ' + esc((tp.error || t("失败")).slice(0, 60)) + "</span>") : "";
   // 适配测试通过的 wire（同密钥实测可注入的另一条协议面）；形态随徽章标出
   const capTags = wireCapTags(p, "");
@@ -1515,6 +1517,7 @@ async function refreshProviderModels(id) {
   try {
     const r = await api("/api/models/refresh", { method: "POST", body: JSON.stringify({ id }) });
     if (!r.ok && r.message) toast(t("获取失败：") + r.message, true);
+    else if (r.note) toast(r.note);   // 网关无模型列表接口（404）：良性提示，不算失败
     else toast(t("已获取模型列表 · wire 适配测试后台进行中"));
   } catch (e) { toast(t("获取失败：") + e.message, true); }
   poll();
@@ -1821,6 +1824,26 @@ function renderClarify(questions, goal, resetSubmit) {
     ta.value = ta.value.trim() + (ta.value.includes(line) ? "" : (ta.value ? "\n" : "") + line);
     b.classList.add("picked");
     b.disabled = true;
+    // spec 分段签核（借鉴 superpowers「分段短块逐段消化」）：全部问题选完后
+    // 显示已确认摘要条 + 「确认开跑」——用户看一眼再动手，不蒙头就创建
+    const allPicked = questions.every((it) =>
+      Array.from(box.querySelectorAll(".cl-opt")).some(
+        (x) => x.dataset.q === it.q && x.classList.contains("picked")));
+    let bar = box.querySelector("#clarify-confirm");
+    if (allPicked && !bar) {
+      bar = document.createElement("div");
+      bar.id = "clarify-confirm";
+      bar.className = "cl-confirm";
+      bar.innerHTML = '<button type="button" class="primary small" id="clarify-go">' +
+        esc(t("已确认，开跑")) + "</button></div>";
+      box.appendChild(bar);
+      bar.querySelector("#clarify-go").addEventListener("click", () => {
+        box.classList.add("hidden");
+        box.innerHTML = "";
+        S.clarifyDone = true;
+        $("btn-create").click();
+      });
+    }
   }));
   function it0safe(q, o) { return q + "：" + o; }
   const skip = $("clarify-skip");

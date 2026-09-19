@@ -156,3 +156,13 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **cognee**（30.8k★）| 开源 AI 记忆平台（知识图谱式记忆）| 经验库=教训型；知识图谱重依赖暂缓 | 参考
 - **七猫榜单数据源（扫榜选材可行性）**：www.qimao.com/paihang/ **公开可抓**（200/106KB，书名+分类在 a 标签，页面含简介块）——扫榜选材的数据源落点确定：七猫派先行，番茄网页 DNS 不通+API 需 SecuritySign 签名（难，缓）
 - 插件市场六源连通：zcode 26/anthropic 310/anthropic-skills 5/claude-skills 99 OK；clawhub 网络不通；cocoloop 0 项——市场巡检纳入夜班常态
+
+## 2026-09-19 傍晚二班（调研日 2026-09-19）
+
+**重大盲区补漏**（agentic coding 组 sort=stars 首页一击命中 4 个巨型项目——此前十轮调研从未命中，说明「sort=stars 首页」这手牌此前低估）：
+- **superpowers**（obra，288,620★！）| 完整软件开发方法论 skill 框架：对话中 teased spec→**分段短块给用户逐段消化签核**→实现计划要「清晰到热情但没品味没判断力没项目上下文且讨厌测试的初级工程师也能照做」（**初级工程师测试**）→subagent 驱动开发（自主跑几小时不离计划）；17 种 harness 全覆盖 | **借鉴①：spec 分段签核**嫁接进需求拷问（问完→分段预览 spec→用户逐段确认→落 spec.md）；**借鉴②：计划清晰度「初级工程师测试」**写入编排者规划提示词；subagent 开发=我们实现链已有 | 借鉴（两项小件进路线图）
+- **ECC**（affaan-m，262,331★）| agent harness OS：skills 为主工作面+commands 兼容垫片；**「我想…→用这个面→哪个 agent」三列表**（I want to... / Use this surface / Agent used）是极好的任务类型组织范式 | 借鉴方向：类型菜单加「我想做什么」引导列 | 参考+待深挖
+- **ponytail**（142k★）|「让 AI 像最懒的资深开发一样思考」——最少代码解决问题哲学 | 与 YAGNI 同向 | 参考
+- **cc-switch**（133k★）| Claude Code/Codex/OpenCode 桌面 All-in-One 助手 | 与 agency-orchestrator 切换器同赛道 | 参考
+- **orca 复查**：72.2k★（+0.7k）持续领跑；paseo 17.7k/superset 14.4k（当日 push）均活跃
+- superset 消化：100+ agent 并行 worktree+live diff——与我们代码赛马同向，无新差量；paseo 消化：桌面+移动编排，移动端借鉴已记 orca 条
