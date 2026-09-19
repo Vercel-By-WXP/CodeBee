@@ -8,9 +8,10 @@
   busy           发布动作进行中（结束回 connected / error）
   error          最后一次动作失败（error 字段带人话原因，可重试）
 
-浏览器生命周期：每平台一个持久化 profile（data/publish/profiles/<id>），
-登录态落在 profile 里。服务重启后按 state.json 记住的调试端口 attach
-旧实例；实例已死才重新 launch——用户登录一次，之后无感。
+浏览器生命周期：每平台一个持久化 profile（~/.codebee/publish_profiles/<id>，
+仓库外——GB 级浏览器运行时数据不进仓库目录），登录态落在 profile 里。
+服务重启后按 state.json 记住的调试端口 attach 旧实例；实例已死才重新
+launch——用户登录一次，之后无感。
 
 与 bookmeta.generate_async 同款线程纪律：动作起后台线程即返回，前端靠
 view()（SSE/轮询）看进度；线程内任何异常都落终态，绝不悬挂。
@@ -80,7 +81,7 @@ def view():
         out[pid] = {"label": mod.CONFIG["label"], "status": s.get("status") or "none",
                     "at": s.get("at") or "", "error": s.get("error") or "",
                     "last_action": s.get("last_action") or "",
-                    "profile": str(paths.PUBLISH_DIR / "profiles" / pid)}
+                    "profile": str(_profile_dir(pid))}
     return {"platforms": out, "browser_found": bool(find_browser())}
 
 
@@ -96,8 +97,49 @@ def recover_orphans():
 
 
 # ---------------------------------------------------------------- 浏览器会话
+def _profiles_base():
+    """profile 存放根：用户主目录 ~/.codebee/publish_profiles（仓库外）。
+
+    浏览器 profile 是 GB 级运行时数据（缓存/扩展/字体），放仓库 data/ 里
+    会拖垮静态扫描/备份（639M→986M 实测淹没整仓安全扫描），且登录态
+    cookie 没必要进任何仓库周边流程。"""
+    from pathlib import Path as _P
+    return _P.home() / ".codebee" / "publish_profiles"
+
+
+def _migrate_legacy_profiles():
+    """一次性迁移：老位置 data/publish/profiles/<plat> 整体搬到新根（保登录态）。
+
+    新位置已有同名平台目录时跳过（老数据视为已废弃）；搬家失败静默——
+    大不了用户重扫一次码。"""
+    from pathlib import Path as _P
+    legacy = _P(paths.PUBLISH_DIR) / "profiles"
+    if not legacy.is_dir():
+        return
+    base = _profiles_base()
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return
+    for plat_dir in legacy.iterdir():
+        if not plat_dir.is_dir():
+            continue
+        dst = base / plat_dir.name
+        if dst.exists():
+            continue
+        try:
+            import shutil
+            shutil.move(str(plat_dir), str(dst))   # 跨盘（仓库盘→系统盘）也能搬
+        except OSError:
+            continue
+    try:
+        legacy.rmdir()                  # 空了才删得掉；还有残留就留给下次
+    except OSError:
+        pass
+
+
 def _profile_dir(plat):
-    return paths.PUBLISH_DIR / "profiles" / plat
+    return _profiles_base() / plat
 
 
 def _ensure_browser(plat):
@@ -452,3 +494,4 @@ def history(task_id=None, plat=None, limit=50):
 
 
 _load()
+_migrate_legacy_profiles()
