@@ -276,15 +276,25 @@ class Page:
         return self.evaluate("location.href")
 
     def navigate(self, url, timeout=30.0):
-        """导航并等文档就绪。SPA 路由可能不触发完整 load，readyState 轮询兜底。"""
+        """导航并等文档就绪。SPA 路由可能不触发完整 load，readyState 轮询兜底。
+
+        about:blank 起跳时 readyState 本就 complete——必须同时等 location
+        真正到达目标域，否则后续步骤打在空白页上（url_any 误报）。"""
+        from urllib.parse import urlparse as _up
         try:
             self.send("Page.navigate", {"url": url}, timeout=timeout)
         except BrowserError:
             pass                             # 老页面销毁时连接报错属正常，轮询兜底
+        host = _up(url).netloc
         deadline = time.time() + timeout
+        seen_url = False
         while time.time() < deadline:
             try:
-                if self.evaluate("document.readyState", timeout=3.0) == "complete":
+                href = self.evaluate("location.href", timeout=3.0) or ""
+                if not host or host in href:
+                    seen_url = True
+                if seen_url and self.evaluate("document.readyState", timeout=3.0) == "complete":
+                    time.sleep(0.5)          # SPA 首帧渲染余量
                     return
             except BrowserError:
                 pass                         # 导航间隙 evaluate 会短暂失败
@@ -310,24 +320,69 @@ class Page:
         """填输入框/文本域/富文本。
 
         React/Vue 受控组件直接赋 value 不触发框架状态，必须走原型链 native
-        setter 再补 input/change 事件；网文编辑器正文多为 contenteditable，
-        走 execCommand('insertText') 以触发其内部输入管道（先清空再插入）。"""
+        setter 再补 input/change 事件；富文本（章节正文）走 CDP
+        Input.insertText——execCommand('insertText') 对千字长文会截断
+        （真机实测 1020 字只进 615），insertText 走完整输入管道无此限。"""
+        text = str(text)
+        ce = None
+        for _try in range(24):                     # 编辑器慢加载 + class 动态 + edit-mask
+            ce = self.call(                        # 遮罩需真实点击激活后才可编辑
+                "(s)=>{const els=[...document.querySelectorAll(s)];"
+                "let best=null;for(const e of els){"
+                "if(!e.isContentEditable)continue;"
+                "const r=e.getBoundingClientRect();"
+                "if(r.width<=0)continue;"
+                "const a=r.width*r.height;"
+                "if(!best||a>best.a)best={e,a};}"
+                "if(best){"
+                "const el=best.e;"
+                "el.scrollIntoView({block:'center'});el.focus();"
+                "const r=document.createRange();r.selectNodeContents(el);"
+                "const g=getSelection();g.removeAllRanges();g.addRange(r);return {hit:true};}"
+                "const vis=els.filter(e=>e.getBoundingClientRect().width>0);"
+                "if(!vis.length)return null;"
+                "let big=vis[0];for(const e of vis){"
+                "const r=e.getBoundingClientRect();"
+                "if(r.width*r.height>big.getBoundingClientRect().width*big.getBoundingClientRect().height)big=e;}"
+                "const r=big.getBoundingClientRect();"
+                "return {hit:false,x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)};}", sel)
+            if ce is None:
+                break
+            if isinstance(ce, dict) and ce.get("hit"):
+                ce = True
+                break
+            if isinstance(ce, dict) and "x" in ce:      # 遮罩未揭：真实点击激活
+                self.send("Input.dispatchMouseEvent",
+                          {"type": "mousePressed", "x": ce["x"], "y": ce["y"],
+                           "button": "left", "clickCount": 1}, timeout=8.0)
+                self.send("Input.dispatchMouseEvent",
+                          {"type": "mouseReleased", "x": ce["x"], "y": ce["y"],
+                           "button": "left", "clickCount": 1}, timeout=8.0)
+                ce = False
+                time.sleep(0.8)
+                continue
+            ce = False
+            time.sleep(0.5)
+        if ce is True:                            # 富文本：焦点就位后键盘级插入
+            self.send("Input.insertText", {"text": text}, timeout=30.0)
+            n = self.call("(s)=>{const els=[...document.querySelectorAll(s)].filter(e=>e.isContentEditable);"
+                          "let n=0;for(const e of els)n=Math.max(n,(e.innerText||'').length);return n;}", sel)
+            if int(n or 0) < min(len(text), 20):
+                raise BrowserError("富文本插入不完整（%s/%d 字）" % (n, len(text)))
+            return True
+        if ce is None:
+            raise BrowserError("找不到输入框 %s" % sel)
         r = self.call(
             "(s,t)=>{const el=document.querySelector(s);if(!el)"
             "return{ok:false,err:'找不到输入框 '+s};"
             "el.scrollIntoView({block:'center'});el.focus();"
-            "if(el.isContentEditable){"
-            "const r=document.createRange();r.selectNodeContents(el);"
-            "const g=getSelection();g.removeAllRanges();g.addRange(r);"
-            "document.execCommand('insertText',false,t);"
-            "return{ok:el.textContent.length>=Math.min(t.length,10)};}"
             "const proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype"
             ":HTMLInputElement.prototype;"
             "const d=Object.getOwnPropertyDescriptor(proto,'value');"
             "(d&&d.set?d.set:function(v){el.value=v}).call(el,t);"
             "el.dispatchEvent(new Event('input',{bubbles:true}));"
             "el.dispatchEvent(new Event('change',{bubbles:true}));"
-            "return{ok:true};}", sel, str(text))
+            "return{ok:true};}", sel, text)
         if not (r or {}).get("ok"):
             raise BrowserError("填入失败：%s" % ((r or {}).get("err") or "目标不是可输入元素"))
         return True

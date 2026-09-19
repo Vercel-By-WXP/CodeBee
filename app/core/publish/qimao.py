@@ -95,3 +95,32 @@ def tag_groups(meta):
         if isinstance(v, list) and v:
             out.append((key, [str(x) for x in v]))
     return out
+
+
+def chapter_manage_url(book):
+    """章节管理页（上线验证用）：有 book_id 直达，否则回作品管理页。"""
+    bid = str((book or {}).get("book_id") or "")
+    if bid:                                   # 实测 .../front/book-manage/manage?id=
+        return CONFIG["book_manage"] + "/manage?id=" + bid
+    return CONFIG["book_manage"]
+
+
+def draft_url(book):
+    """草稿箱页（发章真发布链中转站）。"""
+    bid = str((book or {}).get("book_id") or "")
+    if bid:
+        return CONFIG["book_manage"] + "/draft?id=" + bid
+    return CONFIG["book_manage"]
+
+
+def editor_url(book):
+    """章节编辑器直达（绕开会开新 tab 的「上传章节」点击）。
+
+    缺 title 参数会被平台重定向回首页（真机实测），必须带上。"""
+    bid = str((book or {}).get("book_id") or "")
+    title = str((book or {}).get("title") or "")
+    if bid:
+        from urllib.parse import quote
+        return (CONFIG["book_manage"].rsplit("/", 1)[0]
+                + "/book-upload?id=" + bid + "&title=" + quote(title))
+    return CONFIG["book_manage"]

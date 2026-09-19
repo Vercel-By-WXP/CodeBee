@@ -1,0 +1,233 @@
+{
+ "_note": "七猫真机校准（2026-09-19 凌晨定稿）：建书=book-manage「新建小说」→站点弹层(click_match+确认)→information 表单(fill_label/radio/级联分类/tags 四组各1-3个+确定/主角名平铺/简介)；书名仅允许，：！？中文标点（·被拦）。发章=编辑器填好后「立即发布」落草稿箱（未签约书限制）→草稿行「立即发布」→「更正序号去发布」→「确认发布」三层弹窗→章节待审核。正文下限 1000 字（min_chapter_chars）。book-upload?id=<书id> 直达编辑器。",
+ "probe_form": [
+  {
+   "do": "navigate",
+   "url": "{book_manage}"
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "qimao.com"
+   ]
+  },
+  {
+   "do": "click_text",
+   "text": "新建小说",
+   "contains": true
+  },
+  {
+   "do": "click_match",
+   "any": [
+    "七猫中文网",
+    "网站特色"
+   ],
+   "max_len": 160
+  },
+  {
+   "do": "probe",
+   "note": "建书表单"
+  }
+ ],
+ "create_book": [
+  {
+   "do": "navigate",
+   "url": "{book_manage}"
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "qimao.com"
+   ]
+  },
+  {
+   "do": "click_text",
+   "text": "新建小说",
+   "contains": true
+  },
+  {
+   "do": "click_match",
+   "any": [
+    "七猫中文网",
+    "网站特色"
+   ],
+   "max_len": 400
+  },
+  {
+   "do": "click_text",
+   "text": "确认",
+   "scope": "button,[class*=btn]"
+  },
+  {
+   "do": "wait",
+   "sel": "textarea[placeholder*='作品名称']",
+   "timeout": 15
+  },
+  {
+   "do": "fill_label",
+   "label": "作品名称",
+   "key": "title"
+  },
+  {
+   "do": "radio",
+   "key": "target_reader",
+   "map": {
+    "男生": "0",
+    "女生": "1"
+   }
+  },
+  {
+   "do": "click",
+   "sel": "input[placeholder='请选择一级分类']"
+  },
+  {
+   "do": "click_text",
+   "text": "{category_main}",
+   "contains": true,
+   "scope": "li,span,[class*=dropdown] *,[class*=popper] *"
+  },
+  {
+   "do": "click",
+   "sel": "input[placeholder='请选择二级分类']"
+  },
+  {
+   "do": "click_text",
+   "text": "{category_sub}",
+   "contains": true,
+   "scope": "li,span,[class*=dropdown] *,[class*=popper] *"
+  },
+  {
+   "do": "click_text",
+   "text": "添加标签"
+  },
+  {
+   "do": "tags"
+  },
+  {
+   "do": "click_text",
+   "text": "确定",
+   "scope": "button,[class*=btn]"
+  },
+  {
+   "do": "fill_label",
+   "label": "主角名",
+   "key": "protagonist"
+  },
+  {
+   "do": "radio",
+   "key": "status",
+   "map": {
+    "连载中": "0",
+    "已完结": "1"
+   }
+  },
+  {
+   "do": "fill_label",
+   "label": "作品简介",
+   "key": "summary"
+  },
+  {
+   "do": "shot",
+   "name": "create-book-filled"
+  },
+  {
+   "do": "submit",
+   "text": "确认创建"
+  }
+ ],
+ "upload_chapter": [
+  {
+   "do": "navigate",
+   "url": "about:blank"
+  },
+  {
+   "do": "navigate",
+   "url": "{editor_url}"
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "qimao.com"
+   ]
+  },
+  {
+   "do": "wait",
+   "sel": "textarea[placeholder*='章节名称']",
+   "timeout": 20
+  },
+  {
+   "do": "fill",
+   "sel": "textarea[placeholder*='章节名称']",
+   "key": "chapter_title"
+  },
+  {
+   "do": "wait",
+   "sel": ".q-contenteditable",
+   "timeout": 12
+  },
+  {
+   "do": "fill",
+   "sel": ".q-contenteditable",
+   "key": "chapter_body"
+  },
+  {
+   "do": "shot",
+   "name": "chapter-filled"
+  },
+  {
+   "do": "click_real",
+   "text": "立即发布",
+   "tries": 25
+  },
+  {
+   "do": "navigate",
+   "url": "about:blank"
+  },
+  {
+   "do": "navigate",
+   "url": "{draft_url}"
+  },
+  {
+   "do": "wait",
+   "sel": ".el-table__row, tr",
+   "timeout": 25
+  },
+  {
+   "do": "click_in",
+   "scope_text": "{chapter_title}",
+   "text": "立即发布"
+  },
+  {
+   "do": "click_real",
+   "text": "更正序号去发布",
+   "tries": 20,
+   "optional": true
+  },
+  {
+   "do": "click_real",
+   "text": "确认发布",
+   "tries": 20,
+   "optional": true
+  },
+  {
+   "do": "verify",
+   "url": "{chapter_manage_url}",
+   "any": [
+    "{chapter_title}"
+   ],
+   "settle": 6
+  }
+ ],
+ "check_login": [
+  {
+   "do": "navigate",
+   "url": "{home}"
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "qimao.com"
+   ]
+  }
+ ]
+}

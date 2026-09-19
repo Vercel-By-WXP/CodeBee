@@ -122,6 +122,18 @@ def _ensure_browser(plat):
 
 def _open_page(plat):
     b = _ensure_browser(plat)
+    # 单标签纪律：平台点击（如「上传章节」）会开新 tab，流程引擎的 page
+    # 对象可能留在旧 tab 上填错页面（0 字草稿案的乱源）。每次动作前收拢
+    # 到一个 tab——发布是串行作业，多 tab 只会串台。
+    try:
+        for t in b.pages()[1:]:
+            try:
+                from .browser import _http_json
+                _http_json("http://127.0.0.1:%d/json/close/%s" % (b.port, t["id"]))
+            except Exception:
+                pass
+    except Exception:
+        pass
     return b, b.first_page(create=True)
 
 
@@ -145,14 +157,18 @@ def _check_login(plat, page):
 
 # ---------------------------------------------------------------- 流程加载
 def load_flow(plat, action):
-    """流程表：data/publish/flows-<plat>.json 覆盖内置默认（校准不改代码）。"""
-    fp = paths.PUBLISH_DIR / ("flows-%s.json" % plat)
-    try:
-        data = json.loads(fp.read_text(encoding="utf-8"))
-        if isinstance(data, dict) and isinstance(data.get(action), list):
-            return data[action]
-    except Exception:
-        pass
+    """流程表三层：data/publish/flows-<plat>.json（用户校准）→ 仓库校准模板
+    flows-<plat>-calibrated.json（真机验证过的基线，随代码分发）→ 平台模块
+    内置默认（待校准推测）。"""
+    from pathlib import Path
+    for fp in (paths.PUBLISH_DIR / ("flows-%s.json" % plat),
+               Path(__file__).with_name("flows-%s-calibrated.json" % plat)):
+        try:
+            data = json.loads(fp.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get(action), list):
+                return data[action]
+        except Exception:
+            pass
     return PLATFORMS[plat].FLOWS[action]
 
 
@@ -382,6 +398,11 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False):
     n_chars = len(body.replace("\n", "").replace(" ", ""))
     if n_chars < 100:
         return False, "正文过短（%d 字），疑似未完成章节" % n_chars
+    # 平台级下限（如七猫编辑器明示「最少 1000 字」：不足时发布被静默拦截）
+    min_chars = int(PLATFORMS[plat].CONFIG.get("min_chapter_chars") or 100)
+    if n_chars < min_chars:
+        return False, ("正文 %d 字未达该平台下限（%d 字），补足后再发"
+                       % (n_chars, min_chars))
     if n_chars > 30000:
         return False, "正文超长（%d 字），平台单章上限一般 2 万字" % n_chars
     done = ledger.published_chapters(task_id, plat)
@@ -395,6 +416,12 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False):
     mod = PLATFORMS[plat]
     values = {"chapter_title": title, "chapter_body": body,
               "book_name": book.get("title") or ""}
+    try:                                   # verify/draft 页 URL（流程占位）
+        values["chapter_manage_url"] = mod.chapter_manage_url(book)
+        values["draft_url"] = mod.draft_url(book)
+        values["editor_url"] = mod.editor_url(book)
+    except AttributeError:
+        pass
     logs = []
 
     def run():

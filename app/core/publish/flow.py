@@ -39,8 +39,10 @@ def _click_match_js():
             "return x && x.length<=maxLen && keys.every(k=>x.includes(k));});"
             "if(!hit.length)return{ok:false,err:'找不到同时含 '+keys.join('+')+' 的元素'};"
             "hit.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
-            "hit[0].scrollIntoView({block:'center'});hit[0].click();"
-            "return{ok:true,tag:hit[0].tagName};}")
+            "let el=hit[0];"
+            "const act=el.closest('a,button,[role=button],[class*=btn]')||el;"
+            "act.scrollIntoView({block:'center'});act.click();"
+            "return{ok:true,tag:act.tagName};}")
 
 
 def _fill_label_js():
@@ -104,6 +106,8 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 url = st["url"]
                 for k, v in config.items():
                     url = url.replace("{%s}" % k, str(v))
+                for k, v in (values or {}).items():   # editor_url/draft_url 等任务级占位
+                    url = url.replace("{%s}" % k, str(v))
                 note(i, "打开 %s" % url)
                 page.navigate(url)
             elif act == "wait":
@@ -137,9 +141,64 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     time.sleep(0.9)
                 if not (r or {}).get("ok"):
                     raise FlowError((r or {}).get("err") or text)
+            elif act == "click_real":
+                # 真实鼠标事件点击（CDP Input 派发）：qm-btn 等自定义按钮
+                # 只认真实事件序列，el.click() 无效。发布确认链全靠它。
+                text = str(st.get("text") or "")
+                for k, v in (values or {}).items():
+                    text = text.replace("{%s}" % k, str(v))
+                if not text:
+                    continue
+                note(i, "真实点击「%s」" % text)
+                r = None
+                for _try in range(int(st.get("tries") or 25)):
+                    r = page.real_click_text(text, st.get("scope") or
+                                             "a,button,[class*=btn]")
+                    if (r or {}).get("ok"):
+                        break
+                    time.sleep(0.4)
+                if not (r or {}).get("ok"):
+                    if st.get("optional"):
+                        note(i, "「%s」未出现，跳过（optional）" % text)
+                        continue
+                    raise FlowError((r or {}).get("err") or text)
+            elif act == "click_in":
+                # 先按 scope_text 定位容器（如书卡），再在容器内点 text 按钮。
+                # 解决「按钮与书名同卡片但不在彼此祖先链」的组合定位。
+                scope_t = str(st.get("scope_text") or "")
+                text = str(st.get("text") or "")
+                for k, v in (values or {}).items():
+                    scope_t = scope_t.replace("{%s}" % k, str(v))
+                    text = text.replace("{%s}" % k, str(v))
+                note(i, "在含「%s」的卡片内点「%s」" % (scope_t, text))
+                r = None
+                for _try in range(10):            # 表格异步渲染：重试窗口加长
+                    r = page.call(
+                        "(sc,t)=>{"
+                        "const cards=[...document.querySelectorAll('div,li,section,tr')].filter(e=>{"
+                        "const x=(e.innerText||'').trim();"
+                        "return x.includes(sc)&&x.length<600&&e.getBoundingClientRect().width>0;});"
+                        "if(!cards.length)return{ok:false,err:'找不到含'+sc+'的卡片'};"
+                        "cards.sort((a,b)=>(b.innerText||'').length-(a.innerText||'').length);"
+                        "const card=cards[0];"
+                        "const btns=[...card.querySelectorAll('a,button,[role=button],[class*=btn],span')].filter(e=>{"
+                        "const x=(e.innerText||'').trim();return x===t||x.includes(t)&&x.length<=t.length+6;});"
+                        "if(!btns.length)return{ok:false,err:'卡片内没有'+t};"
+                        "btns.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
+                        "let el=btns[0];"
+                        "const act=el.closest('a,button,[role=button],[class*=btn]')||el;"
+                        "act.scrollIntoView({block:'center'});act.click();"
+                        "return{ok:true};}", scope_t, text)
+                    if (r or {}).get("ok"):
+                        break
+                    time.sleep(0.9)
+                if not (r or {}).get("ok"):
+                    raise FlowError((r or {}).get("err") or "click_in 失败")
             elif act == "click_match":
                 # 关键词选块（站点卡片等）：点同时包含所有关键词的最小元素
                 keys = [str(x) for x in (st.get("any") or []) if str(x).strip()]
+                for k2, v2 in (values or {}).items():   # {book_name} 等动态值
+                    keys = [x.replace("{%s}" % k2, str(v2)) for x in keys]
                 note(i, "点击含 %s 的卡片" % keys)
                 r = None
                 for _try in range(4):               # 弹层渲染慢：找不到先等再试
@@ -253,6 +312,26 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     note(i, "提交 %s" % st.get("sel") or "")
                     page.wait_for(st["sel"], timeout=8)
                     page.click(st["sel"])
+            elif act == "verify":
+                # 上线验证：导航到验证页断言文本在场——防「流程完成但平台
+                # 静默未发布」的假成功（0 字草稿案）。url/any 支持 values 占位。
+                url = str(st.get("url") or "")
+                for k, v in (values or {}).items():
+                    url = url.replace("{%s}" % k, str(v))
+                note(i, "验证 %s" % url[:60])
+                page.navigate(url, timeout=30)
+                time.sleep(float(st.get("settle") or 4))
+                marks = [str(m) for m in (st.get("any") or [])]
+                body_txt = str(page.call(
+                    "()=>(document.body.innerText||'')", timeout=10) or "")
+                for m in marks:
+                    mk = m
+                    for k, v in (values or {}).items():
+                        mk = mk.replace("{%s}" % k, str(v))
+                    if mk not in body_txt:
+                        raise FlowError("上线验证失败：%s 页面上没有「%s」（章节未真正发布）"
+                                        % (url[:60], mk[:40]))
+                note(i, "验证通过")
             elif act == "url_any":
                 u = str(page.url() or "")
                 marks = st.get("any") or []
