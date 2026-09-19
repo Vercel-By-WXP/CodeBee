@@ -338,6 +338,10 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     note(i, "提交 %s" % st.get("sel") or "")
                     page.wait_for(st["sel"], timeout=8)
                     page.click(st["sel"])
+            elif act == "sleep":
+                # 固定等待（SPA 水合/动画缓冲）：比 wait 更钝但最可靠
+                time.sleep(float(st.get("s") or 1.0))
+                note(i, "等待 %.1fs" % float(st.get("s") or 1.0))
             elif act == "wait_gone":
                 # 等元素消失（弹层关闭动画对齐）：连发点击被关闭动画的
                 # mask 吞掉是多层弹窗流程的经典竞态

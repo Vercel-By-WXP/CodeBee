@@ -322,7 +322,7 @@ def create_book_async(task_id, plat, auto_submit=False):
             b, page = _open_page(plat)
             values = mod.values_create_book(data)
             steps = _with_tag_steps(load_flow(plat, "create_book"),
-                                    mod.tag_groups(data), values)
+                                    mod.tag_groups(data), values, mod)
             flow.run_flow(page, steps, values=values, config=mod.CONFIG,
                           auto_submit=auto_submit,
                           shot=lambda n: page.screenshot(ledger.shot_path(plat, task_id, n)),
@@ -339,8 +339,9 @@ def create_book_async(task_id, plat, auto_submit=False):
             except Exception:
                 pass
             ledger.record(plat, "create_book", task_id=task_id, title=book_name,
-                          book_id=book_id,
-                          ok=True, shot=str(ledger.shot_path(plat, task_id, "")))
+                          book_id=book_id, ok=True,
+                          error="\n".join(logs)[:2000],
+                          shot=str(ledger.shot_path(plat, task_id, "")))
             ledger.save_book(task_id, plat, {"book_id": book_id, "title": book_name})
             _set(plat, status="connected", error="")
         except Exception as e:
@@ -356,14 +357,16 @@ def create_book_async(task_id, plat, auto_submit=False):
     return True, ""
 
 
-def _with_tag_steps(steps, groups, values):
+def _with_tag_steps(steps, groups, values, mod=None):
     """标签走数据驱动：清单进 values["_tags"]（[组名, 标签] 对），由 flow 的
-    "tags" 步骤按组切换点选。组显示名映射来自平台模块 TAG_GROUP_LABELS
-    （缺省平台无映射时退化为纯标签）。兼容旧流程表（无 tags 步骤时插桩）。"""
-    from . import qimao as _qm
+    "tags" 步骤按组切换点选。组显示名映射来自**对应平台模块**的
+    TAG_GROUP_LABELS（曾硬编码 qimao——番茄任务 key 撞名被套上七猫组名，
+    插桩 text 变 list repr）。兼容旧流程表（无 tags 步骤时插桩）；流程表
+    已用 {tag_x} 占位（番茄式 click_real）时不插桩——占位由 values 自答。"""
     flat = []
+    labels = getattr(mod, "TAG_GROUP_LABELS", {}) if mod else {}
     for key, tags in groups or []:
-        grp = getattr(_qm, "TAG_GROUP_LABELS", {}).get(key, "")
+        grp = labels.get(key, "")
         flat.extend([grp, str(t)] if grp and str(t).strip() else str(t)
                     for t in tags if str(t).strip())
     if not flat:
@@ -371,6 +374,8 @@ def _with_tag_steps(steps, groups, values):
     if any(st.get("do") == "tags" for st in steps):
         values["_tags"] = flat
         return steps
+    if any("{tag_" in str(st.get("text") or "") for st in steps if st.get("text")):
+        return steps                  # 流程表自带标签占位（番茄式）：values 已就绪
     tag_steps = [{"do": "click_text", "text": str(t), "contains": False,
                   "scope": "[class*=tag] li,span,label,[class*=label]"}
                  for t in flat]

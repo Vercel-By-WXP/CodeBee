@@ -132,6 +132,10 @@
    "timeout": 20
   },
   {
+   "do": "sleep",
+   "s": 3
+  },
+  {
    "do": "click_real",
    "text": "{signing_mode}",
    "scope": "label.arco-radio,span.arco-radio,[class*=serial-radio]",
@@ -142,6 +146,13 @@
    "text": "{target_reader}",
    "scope": "label.arco-radio,span.arco-radio,[class*=serial-radio]",
    "tries": 8
+  },
+  {
+   "do": "click_real",
+   "text": "知道了",
+   "scope": "button",
+   "tries": 4,
+   "optional": true
   },
   {
    "do": "click_real",
