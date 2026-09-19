@@ -191,3 +191,12 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **gsd-browser**（265★，gsd 家族的浏览器自动化 CLI——为 agent 从零构建）| 我们 CDP 通道的替代思路参考 | 参考
 - refactor/tech-debt 组：无成熟标的（学生项目为主）——技术债治理赛道尚空
 - 复查：code-review-checklist 1084★ 稳定；ai-codereviewer 停更（2024-08）
+
+## 2026-09-20 02:00 第三班（批3：计划/spec/长任务）
+
+**spec-driven 两大头部全漏补齐**：
+- **spec-kit**（github 官方，137,935★）已深挖 | 三独立入口：①SDD（constitution 项目宪章一次定→specify→plan→tasks→implement→**converge 收敛循环**直到 Converged）②Bug fixing（**assess→fix→test 三段分离**——诊断/修复/验证各司其职，verdict=verified/partial/failed，缺验证≠成功修复）③Idea assessment（intake→research→define→shape→decuce——投资前证据决策 go/clarify/stop）。**Constitution 机制**：每项目一次定代码质量/测试/可维护性原则，所有后续特性共用 | **借鉴方向**：①**任务宪章**（constitution→工作目录 .codebee/constitution.md，作者定质量原则，每次 run 注入——比故事圣经更通用，代码/文章全类型可用）②converge 收敛判定（我们的评审循环已有类似；差量=显式「Converged」结论）③bug 三段分离（我们的 fix 轮已有 verify；差量=assess 独立段） | 借鉴（任务宪章先行）
+- **OpenSpec**（Fission-AI，69,546★）| SDD for AI coding assistants（另一大流派）| 待深挖
+- **get-shit-done**（gsd 家族原型，64,498★）| gsd-2/gsd-pi 的根仓库 | 参考
+- **PraisonAI**（9.1k★）24/7 AI Workforce；**TaskWeaver**（微软 6.2k★ code-first 计划执行）；**DeepResearchAgent**（SkyworkAI 3.5k★ 分层多 agent 调研——调研报告任务对标）| 均参考/待深挖
+- 复查：orca 72.5k★/superpowers 288.8k★/ECC 262.7k★ 全活跃（09-19 push）

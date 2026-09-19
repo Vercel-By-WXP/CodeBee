@@ -82,6 +82,9 @@ def _agents():
 # 本轮运行的智能体池：execute_run 入口快照，_run_step 死链补位时扫描。
 # 直接调 _run_step 的场景（单测/内部工具）池为空 → 补位不触发，闸门语义不变。
 _CURRENT_AGENTS: list = []
+# 本次 run 的任务宪章注入块（execute_run 起跑时从 .codebee/constitution.md 读入；
+# 步骤函数在各提示词组装点引用，空串=未配置零噪音）
+_RUN_CONSTITUTION = ""
 
 
 def _dead_binding_substitute(dead_id, resume=None):
@@ -797,7 +800,7 @@ def _code_bestof(run, task, impl, difficulty, ev):
             agt_b = modelhub.bind_agent(impl, difficulty)
             res = None
             for i, sub in enumerate(subtasks):
-                prompt = (CODE_IMPL_PROMPT
+                prompt = (_RUN_CONSTITUTION + CODE_IMPL_PROMPT
                           .replace("__GOAL__", task["goal"])
                           .replace("__SUBTASK__", sub["detail"] if sub["detail"] else sub["title"])
                           .replace("__CONTEXT__", task.get("context") or "（无）")
@@ -946,7 +949,7 @@ def _run_code(run, task, agents, ev, stats, mode):
                         (s.get("title") or "")[:40] for s in subtasks[:i]) or "（无）"
                     prog = ("\n\n## 计划进度（第 %d/%d 项）\n已完成：%s。当前接着做下面这一项，"
                             "不要重做已完成的。" % (i + 1, len(subtasks), done_titles))
-                prompt = (CODE_IMPL_PROMPT
+                prompt = (_RUN_CONSTITUTION + CODE_IMPL_PROMPT
                           .replace("__GOAL__", task["goal"])
                           .replace("__SUBTASK__",
                                    sub["detail"] if sub["detail"] else sub["title"])
@@ -1741,6 +1744,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     mods = _plot_modules(workdir)
     if mods:
         bible = (bible + "\n\n" + mods) if bible else mods
+    # 任务宪章（spec-kit constitution）：作者定的质量原则拼在注入块最前——
+    # 优先级最高的约束放最前面，写作者先读原则再读设定
+    if _RUN_CONSTITUTION:
+        bible = _RUN_CONSTITUTION + (bible or "")
 
 
     def crit_prompt_for(text, note=""):
@@ -2894,6 +2901,23 @@ def _run_serial_qa(run, task, agents, ev):
                      error="答疑失败（执行/评审链不可用）——" + "；".join(errors[-3:]))
 
 
+def _read_constitution(workdir):
+    """任务宪章（借鉴 spec-kit constitution）：工作目录 .codebee/constitution.md
+    （作者手工维护的质量原则——代码规范/文风/测试要求）。存在且非空时返回注入块，
+    每次 run 的所有智能体提示词都会带上；否则返回 ""（零配置零噪音）。"""
+    p = os.path.abspath(os.path.join(str(workdir or ""), ".codebee", "constitution.md"))
+    if not _inside(workdir, p) or not os.path.isfile(p):
+        return ""
+    try:
+        txt = _read_text_any_enc(p)[:6000].strip()
+    except OSError:
+        return ""
+    if not txt:
+        return ""
+    return ("## 项目宪章（constitution.md：本项目一切产出的质量原则，优先级最高，"
+            "与其他要求冲突时以宪章为准）\n\n" + txt + "\n\n")
+
+
 def _write_task_spec(task, workdir):
     """任务规格落盘 .codebee/spec.md（借鉴 agent-orchestrator 的 .spec/PROMPT.md 与
     planning-with-files 的文件化计划）：任务定义随工作目录留存、随任务分支版本化，
@@ -3051,6 +3075,11 @@ def execute_run(run_id):
     # 任务规格文件化（借鉴 planning-with-files/agent-orchestrator）：任何任务都在
     # 工作目录留一份 .codebee/spec.md——原始意图可见、随任务分支版本化
     _write_task_spec(task, task["workdir"])
+    # 任务宪章（借鉴 spec-kit constitution）：工作目录 .codebee/constitution.md
+    # 是作者定下的质量原则（代码规范/文风/测试要求），每次 run 注入所有智能体
+    # 提示词——代码/文章/翻译全类型通用，一次定义持续生效。缺省零噪音。
+    global _RUN_CONSTITUTION
+    _RUN_CONSTITUTION = _read_constitution(task["workdir"])
     agents = _agents()
     global _CURRENT_AGENTS
     _CURRENT_AGENTS = agents
