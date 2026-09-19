@@ -5153,3 +5153,21 @@ body.welcome-open { overflow: hidden; }
 .zt-mr-row .zt-num { width: 110px; flex: none; }
 .zt-mr-row .zt-mr-side { width: 110px; flex: none; }
 .zt-mr-row .zt-mr-account { flex: 1; min-width: 140px; max-width: 300px; }
+
+/* ---------------- 禅道·窄屏（追加于文件尾防并行重排） ---------------- */
+/* ≤900px：档案卡网格塌单列（标签在上、输入全宽），与 .grid-2 的断点口径一致 */
+@media (max-width: 900px) {
+  .zt-grid { grid-template-columns: 1fr; gap: 4px; }
+  .zt-grid input[type="text"], .zt-grid input[type="password"],
+  .zt-grid input[type="number"], .zt-grid select { max-width: none; }
+}
+/* ≤640px：模块路由行换行——模块/端一行，转给谁独占一行，删除按钮随行 */
+@media (max-width: 640px) {
+  .zt-mr-row { flex-wrap: wrap; }
+  .zt-mr-row .zt-num { flex: 1 1 30%; min-width: 86px; }
+  .zt-mr-row .zt-mr-side { flex: 1 1 30%; min-width: 96px; }
+  .zt-mr-row .zt-mr-account { flex: 1 1 100%; max-width: none; order: 5; }
+}
+
+/* 需求拷问「已确认，开跑」条（借鉴 superpowers 分段签核）：全部问题选完出现 */
+.cl-confirm { margin-top: 10px; text-align: right; }
