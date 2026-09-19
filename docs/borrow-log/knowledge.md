@@ -208,3 +208,9 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **12-factor-agents**（humanlayer，26.3k★）| 构建 LLM 软件的 12 条原则 | 工程原则参考（值得单独深挖提炼） | 待深挖
 - 深研赛道（调研报告任务对标）：khoj（37.4k）/gpt-researcher（29.5k）/dexter（27.6k 金融深研）/阿里通义 DeepResearch（20k）——**我们的调研报告任务可对标 gpt-researcher 的迭代深研**（多轮搜索-阅读-综合循环） | 待深挖
 - 复查：langchain 146.7k/langgraph 42k/eliza 19.4k 均活跃
+
+### 2026-09-20 06:00 第五班（批7：中文网关/本地/小说生成）
+- **unsloth**（76.4k★）本地训练/运行 LLM 与扩散模型（GGUF/MLX）| 本地路线工具参考 | 参考
+- **anything-llm**（66.2k★）自托管全栈 AI 工作站 | 本地优先参考 | 参考
+- **openhuman**（39.9k★）本地优先记忆+agent 编排 harness | 待深挖
+- 中文网关组无新发现（one-api 替代品多为小项目）；中文小说平台组空结果——**词组太窄，改为「小说 AI 平台」方向已由 A7 覆盖**
