@@ -1823,6 +1823,19 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 if t:
                     tails.append("（第 %d 章结尾）…%s" % (j, t[-260:].strip()))
             prev = "\n".join(tails) or "（无）"
+            # findings 中期记忆（借鉴 agentmemory 持久记忆）：此前各章的关键事实
+            # 追加在 .codebee/findings.md，注入时只取前一章之前的记录（当章发现
+            # 会在当章评审后追加进来）。300+ 章长篇的前情只看近 2 章不够，
+            # findings 填补中期记忆空洞。失败静默。
+            try:
+                fd_p = os.path.join(workdir, ".codebee", "findings.md")
+                if os.path.isfile(fd_p):
+                    fd_txt = _read_text_any_enc(fd_p)
+                    if fd_txt:
+                        # 截到 3000 字防无限膨胀；只在尾部追加时自动增长，注入头固定
+                        prev += "\n\n## 此前章节发现摘要\n" + fd_txt[:3000]
+            except Exception:
+                pass
 
         # 评审-修订（每章至多 1 轮修订）
         rounds_used = 1
@@ -2232,6 +2245,22 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                "words": _wc(_read_chapter(workdir, i))})
         # 每章即时持久化：长篇中断/超时后可断点续跑，不丢已完成章的分数
         store.update_run(run_id, chapter_scores=chapter_scores)
+        # findings 沉淀（借鉴 agentmemory 持久记忆）：章节标题+要点追加到
+        # .codebee/findings.md——后续章节起草时随圣经/模块库注入，弥补
+        # 前情提要只看近 2 章结尾的中期记忆空洞。失败静默。
+        try:
+            fd_p = os.path.join(workdir, ".codebee", "findings.md")
+            os.makedirs(os.path.dirname(fd_p), exist_ok=True)
+            header_needed = not os.path.isfile(fd_p)
+            with open(fd_p, "a", encoding="utf-8") as f:
+                if header_needed:
+                    f.write("# 章节发现（每章评审达标后自动追加，供后续章节参考）\n\n")
+                f.write("- 第%d章《%s》：%s（%d 字，%s）\n" % (
+                    i, ch["title"],
+                    ch.get("beats") or "按大纲推进", chapter_scores[-1]["words"],
+                    "%.1f 分" % means.get("情节", 0.0) if means else "无评分"))
+        except Exception:
+            pass
 
     # ---- 3) 全局一致性评审（覆盖 1..end 全书：续写批次必须连同旧章一起查一致性）
     full_text = "\n\n".join(_read_chapter(workdir, i) for i in range(1, end + 1))
