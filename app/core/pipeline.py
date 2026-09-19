@@ -1465,7 +1465,10 @@ def _story_bible(workdir):
     if not txt:
         return ""
     return ("## 故事圣经（story-bible.md：人物/世界观/伏笔台账，本书一切写作与评审以此为准，"
-            "与其冲突处以圣经为准）\n\n" + txt)
+            "与其冲突处以圣经为准）\n\n"
+            "**连续性锁**（借鉴 drama-skills）：人物外貌/性格口头禅/物品/能力等需要跨章一致"
+            "的设定，写作时原样沿用圣经中的表述（可整句贴入正文），不要同义改写——每章用词"
+            "一致读者才不会出戏。\n\n" + txt)
 
 
 def _plot_modules(workdir):
@@ -2397,10 +2400,25 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     fixed.append(i)
             store.update_run(run_id, chapter_scores=chapter_scores)
             _check_cancel(ev)
+        if not fixed:
+            # 最弱章重改全部失败（供应商拥堵/流断等）→ 章稿没有任何变化，
+            # 继续跑全书重评只会白烧评审链，组长步骤一挂「工作中」就是几十
+            # 分钟（2026-09-19 实案：polish-c18/c11 双败后仍进全书重评，
+            # 单个评审 35 分钟，用户侧只见打磨 2/3 久卡不动）。直接收尾。
+            store.finish_step(run_id, pstep["n"], "failed",
+                              summary="重改未成功（%s 全部失败），本轮打磨中止；"
+                                      "已落盘章稿不受影响"
+                                      % "、".join("第 %d 章" % c["chapter"] for c in weak))
+            break
         # 重评全书一致性（同一评审闭包；本轮全挂则保留上一轮结论——评审链挂了
         # 不代表书变差，不能拿「无法评审」覆盖真实分数）
-        full_text = "\n\n".join(_read_chapter(workdir, i2) for i2 in range(1, end + 1))
-        gscored2, gmeans_acc2 = run_global_round(critics)
+        try:
+            full_text = "\n\n".join(_read_chapter(workdir, i2) for i2 in range(1, end + 1))
+            gscored2, gmeans_acc2 = run_global_round(critics)
+        except BaseException:
+            store.finish_step(run_id, pstep["n"], "failed",
+                              summary="打磨后全书重评异常中止，已落盘章稿不受影响")
+            raise
         if gscored2:
             global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans_acc2.items()}
             global_pass = _all_ge(global_means, threshold)
