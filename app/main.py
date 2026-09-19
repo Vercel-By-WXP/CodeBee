@@ -2096,7 +2096,8 @@ def main():
     except OSError as e:
         # Windows 的 SO_REUSEADDR 允许两个进程同时 LISTEN 同一端口（请求随机
         # 分发，表现为"时好时坏"）；加独占锁后双起在这里干净失败并指路。
-        import os
+        # （此处不能局部 import os：会让 os 变 main() 的局部名，后面 2127 行
+        #  的 os.name 直接 UnboundLocalError——顶部已有全局导入，直接用）
         hint = ""
         if os.name == "nt":
             hint = ("（Windows 排查：netstat -ano | findstr :%d 找到 PID，"
@@ -2148,9 +2149,21 @@ def main():
         print("[CodeBee] 远程访问受令牌保护；手机打开一次带 token 的地址后会记住。")
     if not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open("http://127.0.0.1:%d" % args.port)).start()
+    if os.name != "nt":
+        # POSIX 的 SIGTERM（kill <pid>）/SIGHUP（关终端窗口）默认动作是立即
+        # 终止进程：atexit 不跑，快速隧道的 cloudflared 子进程会变孤儿。转成
+        # SystemExit 走正常退出路径；Ctrl+C 的 KeyboardInterrupt 本就触发
+        # atexit，无需登记。Windows 语义不同，不碰。
+        import signal as _signal
+
+        def _graceful_exit(signum, frame):
+            raise SystemExit(0)
+
+        _signal.signal(_signal.SIGTERM, _graceful_exit)
+        _signal.signal(_signal.SIGHUP, _graceful_exit)
     try:
         httpd.serve_forever()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         print("\n[CodeBee] 已退出")
 
 
