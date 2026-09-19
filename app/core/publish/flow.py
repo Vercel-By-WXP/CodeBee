@@ -194,6 +194,27 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     time.sleep(0.9)
                 if not (r or {}).get("ok"):
                     raise FlowError((r or {}).get("err") or "click_in 失败")
+            elif act == "click_arrow":
+                # 展开下拉按钮组（番茄「下一步▾」）：点目标按钮组右缘 10px
+                note(i, "展开下拉箭头")
+                r = page.call(
+                    "(t)=>{"
+                    "const vis=e=>e.getBoundingClientRect().width>0;"
+                    "const btn=[...document.querySelectorAll('button')].find(e=>"
+                    "vis(e)&&(e.innerText||'').trim().includes(t));"
+                    "if(!btn)return{ok:false,err:'按钮未找到'};"
+                    "const host=btn.closest('[class*=group],[class*=dropdown]')||btn.parentElement;"
+                    "const r=host.getBoundingClientRect();"
+                    "return{ok:true,x:Math.round(r.x+r.width-10),y:Math.round(r.y+r.height/2)};}", str(st.get("target") or "下一步"))
+                if not (r or {}).get("ok"):
+                    raise FlowError((r or {}).get("err") or "箭头定位失败")
+                page.send("Input.dispatchMouseEvent",
+                          {"type": "mousePressed", "x": r["x"], "y": r["y"],
+                           "button": "left", "clickCount": 1}, timeout=8.0)
+                page.send("Input.dispatchMouseEvent",
+                          {"type": "mouseReleased", "x": r["x"], "y": r["y"],
+                           "button": "left", "clickCount": 1}, timeout=8.0)
+                time.sleep(float(st.get("settle") or 1.2))
             elif act == "click_match":
                 # 关键词选块（站点卡片等）：点同时包含所有关键词的最小元素
                 keys = [str(x) for x in (st.get("any") or []) if str(x).strip()]

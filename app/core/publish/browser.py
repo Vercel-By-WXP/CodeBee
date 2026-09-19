@@ -281,6 +281,13 @@ class Page:
         about:blank 起跳时 readyState 本就 complete——必须同时等 location
         真正到达目标域，否则后续步骤打在空白页上（url_any 误报）。"""
         from urllib.parse import urlparse as _up
+        if url == "about:blank":             # 中转页：无需等加载（页面忙时会假超时）
+            try:
+                self.send("Page.navigate", {"url": url}, timeout=5.0)
+            except BrowserError:
+                pass
+            time.sleep(0.4)
+            return
         try:
             self.send("Page.navigate", {"url": url}, timeout=timeout)
         except BrowserError:

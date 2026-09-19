@@ -96,3 +96,19 @@ def tag_groups(meta):
         if isinstance(v, list) and v:
             out.append((key, [str(x) for x in v]))
     return out
+
+
+def editor_url(book):
+    """章节编辑器直达（真机实测）：/main/writer/<book_id>/publish/。"""
+    bid = str((book or {}).get("book_id") or "")
+    if bid:
+        return "https://fanqienovel.com/main/writer/%s/publish/" % bid
+    return CONFIG["home"]
+
+
+def chapter_manage_url(book):
+    """章节管理页（上线验证用）。"""
+    bid = str((book or {}).get("book_id") or "")
+    if bid:
+        return "https://fanqienovel.com/main/writer/chapter-manage/" + bid
+    return CONFIG["home"] + "book-manage"
