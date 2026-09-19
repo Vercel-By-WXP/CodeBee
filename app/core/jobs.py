@@ -449,6 +449,11 @@ def _worker():
                         _maybe_auto_resume(run_id)   # 连载失败自动续跑（继承已完成章）
                     except Exception:
                         pass
+                    try:
+                        from . import notify
+                        notify.push_run_async(run_id)   # 结果推群（借鉴 agency-orchestrator --notify）
+                    except Exception:
+                        pass
                 _QUEUE.task_done()
     finally:
         with _pool_lock:
