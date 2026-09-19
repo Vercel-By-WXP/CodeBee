@@ -182,3 +182,12 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **graphiti**（getzep，31k★）| 实时知识图谱 for AI agents | 与 cognee 同赛道 | 参考
 - 批2：Agent_Memory_Techniques（1k★，30 本 notebook 记忆技术）、agent-apprenticeship（1.6k★，任务循环+技能习得生态）、mengram（人类式三层记忆）、KIP（知识交互协议）、RLCF（社区反馈强化学习）——均参考级
 - A10 全类型其他组：邮件/汇报/对话记忆组无新可借鉴标的（低星学生项目为主）——**短剧组是大鱼**
+
+## 2026-09-20 00:00 第二班（周日批1：代码质量与评审）
+
+- **pr-af**（Agent-Field，634★）已深挖 | Martian Code-Review-Bench 38 PR 上 **#1 开源评审器（golden recall 0.706/42 工具对比）**：任务定制评审计划→spawn 专职评审 agent→**findings 锚定代码证据**→**challenge 质疑结果**（评审的评审）→便宜模型榨出更多有效评审智能；**模型分级**（常规 PR 用 DeepSeek 级/深度用 GLM-5.2/重大用 Opus 级）成本 10× 低于闭源 | **借鉴方向（代码任务）**：①评审 findings 要求「锚定代码行证据」（我们评审输出可加 evidence 行号要求）②challenge 二次质疑（跨族评审已有——可加「对已发现问题质疑复核」环节）③按 PR 重要性分级模型（难度分级路由已有 difficulty——可加「评审深度随 diff 规模分级」） | 借鉴方向（三项小件）
+- **mira**（305★）自托管 AI 代码评审（索引化 PR 审查/走查/漏洞）——此前已入待深挖，保持
+- **pr-lint-action**（72★）PR 标题规范 GitHub Action | 轻参考
+- **gsd-browser**（265★，gsd 家族的浏览器自动化 CLI——为 agent 从零构建）| 我们 CDP 通道的替代思路参考 | 参考
+- refactor/tech-debt 组：无成熟标的（学生项目为主）——技术债治理赛道尚空
+- 复查：code-review-checklist 1084★ 稳定；ai-codereviewer 停更（2024-08）

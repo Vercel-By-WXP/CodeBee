@@ -660,6 +660,11 @@ CODE_REVIEW_PROMPT = """你是代码评审员（不要修改任何文件）。�
   "summary": "一句话结论"
 }
 
+## 评审要求（findings 锚定证据）
+每个 issue 的 detail 必须给出「文件名:行号」（从 diff 的 hunk 头 @@ -a,b +c,d @@ 与上下文推算），
+并引用该处一行关键代码作为依据——没有证据定位的问题不要报，宁可少报不报猜测。
+（借鉴 pr-af：findings grounded in code evidence 是评审可信度的根。）
+
 ## 任务目标
 __GOAL__
 
