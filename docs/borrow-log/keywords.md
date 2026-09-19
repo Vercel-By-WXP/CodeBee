@@ -1,4 +1,4 @@
-# 关键词总库（最大版 · 110 组 + 雷达源）
+# 关键词总库（全类型覆盖版 · 130 组 + 雷达源）
 
 > 夜间自动化检索的完整词库。规则：每晚跑 **常驻组全部 + 轮换池按星期选 1 批 + 雷达源全部**；
 > 双轮排序（sort=stars 与 sort=updated 或 created:>2026-03-01 新锐轮）；核心组翻页 page=2
@@ -75,6 +75,18 @@
 - q=one-api+alternative+OR+llm+api+gateway
 - q=hallucination+detection+OR+llm+output+validation
 - q=structured+output+agent+OR+schema+guard+llm
+
+### A10 全类型写作/对话/代码（10 组，2026-09-19 新增——覆盖全部预置任务类型）
+- q=ai+email+writing+OR+business+email+generator（商务邮件）
+- q=weekly+report+ai+OR+work+report+generator（工作汇报/月报）
+- q=short+video+script+ai+OR+tiktok+script+generator（短视频脚本）
+- q=ai+translation+quality+OR+translation+agent（翻译质量）
+- q=chatbot+memory+OR+conversational+agent+memory（对话记忆/追问芯片）
+- q=ai+code+generation+OR+code+completion+agent（代码生成/补全）
+- q=ai+code+refactoring+OR+code+improvement+agent（代码重构/优化）
+- q=ai+documentation+generator+OR+doc+writing+agent（文档生成）
+- q=ai+presentation+slides+generator（演示文稿/汇报 PPT）
+- q=ai+search+agent+OR+deep+research+agent（调研报告/deep research）
 
 ## B. 轮换池（56 组，按星期选批：周日=批1 … 周六=批7）
 
