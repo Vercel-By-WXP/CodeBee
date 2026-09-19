@@ -15,8 +15,8 @@
     {"do": "shot", "name": "chapter-filled"},
     {"do": "click_real", "text": "下一步", "scope": "button", "tries": 15},
     {"do": "click_arrow", "note": "展开下一步下拉（箭头在按钮组右缘）"},
-    {"do": "click_real", "text": "定时发布", "tries": 12, "optional": True},
-    {"do": "click_real", "text": "发布", "tries": 12, "optional": True},
+    {"do": "click_real", "text": "定时发布", "tries": 12, "optional": true},
+    {"do": "click_real", "text": "发布", "tries": 12, "optional": true},
     {"do": "verify", "url": "{chapter_manage_url}", "any": ["{chapter_title}"], "settle": 6}
   ],
   "probe_form": [
