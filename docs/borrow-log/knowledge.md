@@ -200,3 +200,11 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **get-shit-done**（gsd 家族原型，64,498★）| gsd-2/gsd-pi 的根仓库 | 参考
 - **PraisonAI**（9.1k★）24/7 AI Workforce；**TaskWeaver**（微软 6.2k★ code-first 计划执行）；**DeepResearchAgent**（SkyworkAI 3.5k★ 分层多 agent 调研——调研报告任务对标）| 均参考/待深挖
 - 复查：orca 72.5k★/superpowers 288.8k★/ECC 262.7k★ 全活跃（09-19 push）
+
+## 2026-09-20 04:00 第四班（批5：检索/知识/浏览器）
+
+- **BrowserSkill**（Tencent，5.7k★）已深挖 | **让 agent 用真实登录态浏览器不打扰用户**：①复用已登录状态（无需测试账号）②任务跑在独立可见 Agent Window（用户浏览器不受扰）③**「借标签页-还标签页」显式协议**（要用哪个 tab 明说，用完归还，其余不碰）④内置 human-in-loop（验证码/登录/确认弹窗时请人接管后继续）；bsk CLI 任何能调 shell 的 agent 可用；沙箱 agent 有 BSK_HOME 持久 daemon 方案 | **与我们 CDP 通道对比**：我们接管整个 Edge（用户不能同时用）；BrowserSkill 的「独立 Agent Window+借还标签页」体验更好——**借鉴方向：发布通道的浏览器会话改用独立窗口实例**（短期）+「借还标签页」语义（长期） | 借鉴方向
+- **Agent-Reach**（Panniantong，83,412★）| 给 agent 一键装上互联网能力（替你选好/装好/体检好接入方式，换代不用操心）| **「接入方式会换代你不用操心」的抽象层思路**=我们绑定页的协议适配 wire_caps 同向；本体是工具聚合器 | 参考
+- **12-factor-agents**（humanlayer，26.3k★）| 构建 LLM 软件的 12 条原则 | 工程原则参考（值得单独深挖提炼） | 待深挖
+- 深研赛道（调研报告任务对标）：khoj（37.4k）/gpt-researcher（29.5k）/dexter（27.6k 金融深研）/阿里通义 DeepResearch（20k）——**我们的调研报告任务可对标 gpt-researcher 的迭代深研**（多轮搜索-阅读-综合循环） | 待深挖
+- 复查：langchain 146.7k/langgraph 42k/eliza 19.4k 均活跃

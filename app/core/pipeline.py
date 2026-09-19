@@ -1404,9 +1404,24 @@ __GOAL__
 ## 背景与上下文
 __CONTEXT__
 
+## 评审维度（写前自查）
+__RUBRIC__
+（按这些维度组织内容重点——评审会按它们打分）
+
 ## 要求
 - 只修改 `__FILE__` 这一个文件；保持 Markdown 结构。
 - 完成后用 3 句话说明本轮写了什么。"""
+
+# 调研报告类稿件的追加要求（借鉴 gpt-researcher 迭代深研）：有网络/读文件工具时
+# 多源交叉验证，单源结论降权——调研的可信度来自证据链而非文采
+RESEARCH_APPENDIX = """
+
+## 调研要求（证据链）
+- 有联网/检索工具就先搜集资料再写：同一关键结论至少两个独立来源交叉验证，
+  单源信息要标注「仅单一来源」。
+- 引用来源在文中用行内链接或脚注标明（域名即可，不编造 URL）。
+- 区分「事实」与「观点」：数据/时间/版本号给来源，预测/评价标明是分析。
+- 结构建议：结论先行 → 分层论证 → 风险与局限（说明哪些结论证据不足）。"""
 
 NOVEL_REVISE_PROMPT = """你是一名专业作者。请根据下方汇总评审意见修订稿件文件：`__FILE__`（直接写入该文件）。文件必须以 UTF-8 编码保存（PowerShell 写文件显式加 -Encoding UTF8，禁止依赖默认编码）。
 
@@ -2689,13 +2704,19 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         except Exception:
             pass
     else:
+        is_research = task.get("type") == "research"
+
         def _draft_prompt_for(vfile):
             p = (_tpl(task, "draft_prompt", NOVEL_DRAFT_PROMPT).replace("__FILE__", vfile)
                  .replace("__GOAL__", task["goal"])
-                 .replace("__CONTEXT__", task.get("context") or "（无）"))
+                 .replace("__CONTEXT__", task.get("context") or "（无）")
+                 .replace("__RUBRIC__", "、".join(dims) if dims else "（按流程默认维度）"))
             if outline:
                 p += "\n\n## 编排者大纲（按要点组织稿件）\n" + \
                      "\n".join("- " + i for i in outline["items"])
+            if is_research:
+                # 调研报告追加证据链要求（gpt-researcher 借鉴）
+                p += RESEARCH_APPENDIX
             return p
 
         best_of = max(1, min(3, int(task.get("best_of") or 1)))
