@@ -7682,6 +7682,136 @@ function autoTemplate(tplId) {
   if (tp) autoForm(null, tp);
 }
 
+/* ---------------------------------------------------------- 禅道 Bug 自动修复 */
+/* /api/zentao → {config(脱敏), claims, last_scan, next_scan, last_error}。
+ * 进页拉一次回填表单；保存/测试/扫描各自 POST 后重拉。 */
+
+async function loadZentao() {
+  let v = null;
+  try { v = await api("/api/zentao"); } catch (e) { v = null; }
+  S.zentao = v;
+  const cfg = (v && v.config) || {};
+  const set = (id, val) => { const el = $(id); if (el) el.value = val == null ? "" : val; };
+  set("zt-base-url", cfg.base_url);
+  set("zt-account", cfg.account);
+  const pw = $("zt-password");
+  if (pw) { pw.value = ""; pw.placeholder = cfg.has_password ? t("已保存（不改就留空）") : ""; }
+  set("zt-products", (cfg.products || []).join(","));
+  set("zt-assigned", cfg.assigned_to);
+  const sev = $("zt-sev"); if (sev) sev.value = String(cfg.severity_cap || 0);
+  set("zt-workdir", cfg.workdir);
+  set("zt-gitrev", cfg.git_rev);
+  set("zt-verify", cfg.verify_command);
+  const tg = (id, on) => { const el = $(id); if (el) el.checked = !!on; };
+  tg("zt-autoresolve", cfg.auto_resolve);
+  tg("zt-automerge", cfg.auto_merge);
+  tg("zt-poll", cfg.poll_enabled);
+  set("zt-interval", cfg.interval_hours || 2);
+  renderZentaoStatus();
+  renderZentaoClaims();
+}
+
+function zentaoStateTag(st) {
+  const MAP = {
+    fixing: ["修复中", "zt-tag-fix"],
+    resolved: ["已解决", "zt-tag-ok"],
+    merge_failed: ["合并失败", "zt-tag-warn"],
+    commented: ["已评论留人工", "zt-tag-warn"],
+    resolve_failed: ["回写失败", "zt-tag-warn"],
+    done_manual: ["待人工确认", "zt-tag-warn"],
+    lost: ["记录丢失", "zt-tag-err"],
+  };
+  const m = MAP[st] || [st || "?", ""];
+  return '<span class="tag ' + m[1] + '">' + t(m[0]) + "</span>";
+}
+
+function renderZentaoStatus() {
+  const box = $("zentao-status");
+  if (!box) return;
+  const v = S.zentao;
+  if (!v) { box.innerHTML = t("加载失败：服务未连接"); return; }
+  const cfg = v.config || {};
+  const parts = [];
+  parts.push(cfg.poll_enabled
+    ? (t("定时扫描已开启，每 ") + (cfg.interval_hours || 2) + t(" 小时一次")
+       + (v.next_scan ? t("，下次 ") + esc(v.next_scan) : ""))
+    : t("定时扫描未开启（仍可手动「立即扫描」）"));
+  if (v.last_scan) parts.push(t("上次扫描 ") + esc(v.last_scan));
+  box.innerHTML = parts.map(esc).join(" · ") +
+    (v.last_error ? '<span class="zt-err">' + t("最近错误：") + esc(v.last_error) + "</span>" : "");
+}
+
+function renderZentaoClaims() {
+  const box = $("zentao-claims");
+  if (!box) return;
+  const claims = (S.zentao && S.zentao.claims) || [];
+  box.innerHTML = claims.map((c) =>
+    '<div class="card"><div class="head"><span class="name">#' + esc(c.bug_id) + " " + esc(c.title || "") + "</span>" +
+    zentaoStateTag(c.state) + "</div>" +
+    '<div class="auto-meta">' +
+    "<span>" + t("修复任务：") + '<a href="#" onclick="zentaoOpenTask(\'' + esc(c.task_id || "") + '\');return false;">' + esc(c.task_id || "?") + "</a></span>" +
+    (c.claimed_at ? "<span>" + t("认领于 ") + esc(c.claimed_at) + "</span>" : "") +
+    "</div>" +
+    (c.note ? '<div class="note">' + esc(c.note) + "</div>" : "") +
+    "</div>"
+  ).join("") || '<div class="empty">' + t("还没有认领过 Bug——配置好连接与产品 ID 后点「立即扫描」。") + "</div>";
+}
+
+function zentaoOpenTask(taskId) {
+  const c = ((S.zentao && S.zentao.claims) || []).find((x) => x.task_id === taskId);
+  if (c && c.run_id) { openRun(c.run_id); return; }
+  switchTab("tasks");
+}
+
+/* 表单 → 保存配置。password 只在用户输入了才提交（空 = 保持已存密码）。 */
+async function saveZentao() {
+  const val = (id) => (($(id).value || "").trim());
+  const products = val("zt-products").split(/[,，\s]+/).filter(Boolean).map(Number);
+  const payload = {
+    base_url: val("zt-base-url"),
+    account: val("zt-account"),
+    products,
+    assigned_to: val("zt-assigned"),
+    severity_cap: parseInt($("zt-sev").value, 10) || 0,
+    workdir: val("zt-workdir"),
+    git_rev: val("zt-gitrev"),
+    verify_command: val("zt-verify"),
+    auto_resolve: $("zt-autoresolve").checked,
+    auto_merge: $("zt-automerge").checked,
+    poll_enabled: $("zt-poll").checked,
+    interval_hours: parseInt($("zt-interval").value, 10) || 2,
+  };
+  const pw = ($("zt-password").value || "").trim();
+  if (pw) payload.password = pw;
+  try {
+    await api("/api/zentao/config", { method: "POST", body: JSON.stringify(payload) });
+  } catch (e) { toast(t("保存失败：") + e.message, true); return; }
+  toast(t("禅道配置已保存"));
+  loadZentao();
+}
+
+async function testZentao() {
+  const val = (id) => (($(id).value || "").trim());
+  const body = { base_url: val("zt-base-url"), account: val("zt-account") };
+  const pw = ($("zt-password").value || "").trim();
+  if (pw) body.password = pw;
+  let r;
+  try {
+    r = await api("/api/zentao/test", { method: "POST", body: JSON.stringify(body) });
+  } catch (e) { toast(e.message, true); return; }
+  toast(r.message || (r.ok ? t("连接成功") : t("连接失败")), !r.ok);
+}
+
+async function scanZentao() {
+  let r;
+  try {
+    r = await api("/api/zentao/scan", { method: "POST", body: "{}" });
+  } catch (e) { toast(e.message, true); return; }
+  if (r.error) toast(r.error, true);
+  else toast(t("扫描完成，新认领 ") + (r.claimed || 0) + t(" 个 Bug"));
+  loadZentao();
+}
+
 /* ---------------------------------------------------------- 插件市场 */
 /* /api/market → {catalog, categories(闭集)}；搜索/分类/状态全在本地过滤。
  * 外部目录（/api/market/remote）只读缓存不联网；联网拉取仅在用户点「拉取更新」。 */
@@ -8424,7 +8554,7 @@ async function suStartupCheck() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { tasks: "任务", runs: "运行记录", automation: "自动化", usage: "用量统计", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", skills: "经验库", market: "插件市场", orch: "编排设置", appearance: "皮肤", about: "关于与更新" };
+const TAB_TITLES = { tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", usage: "用量统计", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", skills: "经验库", market: "插件市场", orch: "编排设置", appearance: "皮肤", about: "关于与更新" };
 const SET_TABS = new Set(Object.keys(TAB_TITLES));   // 设置导航里的子页（__phone 是弹框，不算）
 
 function tabTitle(name) {
@@ -9083,6 +9213,7 @@ function switchTab(name) {
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
   if (name === "automation") { loadAutomation(); startAutoPoll(); }   // 进自动化页：拉取 + 页面可见时每 8s 轮询
   else stopAutoPoll();   // 离开自动化页（或切到别的子页）即停表
+  if (name === "zentao") loadZentao();   // 进禅道页：拉配置与修复记录回填表单
   if (name === "market") loadMarket();   // 进插件市场页拉取目录
   if (name === "usage") { syncUsageRange(); loadUsage(); }   // 进用量页：对齐范围选中态并拉取
   if (name === "appearance") renderAppearance();   // 进皮肤页：按当前皮肤/明暗重画卡片
@@ -9580,6 +9711,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // 自动化页：刷新 / 新建 / 三段筛选（本地过滤）
   $("btn-auto-refresh").addEventListener("click", loadAutomation);
   $("btn-auto-new").addEventListener("click", () => autoForm());
+  // 禅道页：测试连接 / 立即扫描 / 保存配置
+  $("btn-zentao-test").addEventListener("click", testZentao);
+  $("btn-zentao-scan").addEventListener("click", scanZentao);
+  $("btn-zentao-save").addEventListener("click", saveZentao);
   $("auto-filter").addEventListener("click", (e) => {
     const b = e.target.closest("[data-f]");
     if (!b) return;

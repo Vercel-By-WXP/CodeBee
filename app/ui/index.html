@@ -177,6 +177,7 @@
       <button class="set-item active" data-sub="tasks" data-i18n="任务"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg>任务</button>
       <button class="set-item" data-sub="runs" data-i18n="运行记录"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>运行记录</button>
       <button class="set-item" data-sub="automation" data-i18n="自动化"><svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>自动化</button>
+      <button class="set-item" data-sub="zentao" data-i18n="禅道"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>禅道</button>
       <button class="set-item" data-sub="usage" data-i18n="用量统计"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg>用量统计</button>
       <div data-i18n="配置" class="set-group">配置</div>
       <button class="set-item" data-sub="agents" data-i18n="智能体管理"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg>智能体管理</button>
@@ -517,6 +518,53 @@
         <div id="auto-list" class="cards"></div>
         <h3 data-i18n="定时任务模板" class="sec-title">定时任务模板</h3>
         <div id="auto-tpl" class="cards auto-tpl-grid"></div>
+      </div>
+      </div>
+
+      <!-- 禅道：Bug 自动扫描修复 -->
+      <div id="sub-zentao" class="subpage hidden">
+      <div class="panel wide">
+        <div class="panel-head">
+          <h2 data-i18n="禅道 Bug 自动修复">禅道 Bug 自动修复</h2>
+          <div class="actions">
+            <button id="btn-zentao-test" class="ghost small" title="用当前表单里的连接信息试连禅道" data-i18n-title="用当前表单里的连接信息试连禅道"><span data-i18n="测试连接">测试连接</span></button>
+            <button id="btn-zentao-scan" class="primary small" title="立刻扫一遍激活 Bug 并对账回写" data-i18n-title="立刻扫一遍激活 Bug 并对账回写"><span data-i18n="立即扫描">立即扫描</span></button>
+          </div>
+        </div>
+        <p data-i18n="定时扫描禅道的激活 Bug，自动创建代码修复任务（实现→验证→评审→修复）；跑完自动合并代码、resolve Bug 并把报告评论回禅道，群机器人同步通知。" class="hint">定时扫描禅道的激活 Bug，自动创建代码修复任务（实现→验证→评审→修复）；跑完自动合并代码、resolve Bug 并把报告评论回禅道，群机器人同步通知。</p>
+        <div id="zentao-status" class="hint zt-status"></div>
+        <h3 data-i18n="禅道连接" class="sec-title">禅道连接</h3>
+        <div class="zt-grid">
+          <label data-i18n="禅道地址">禅道地址</label><input id="zt-base-url" type="text" placeholder="https://zentao.example.com（子目录部署带子目录）">
+          <label data-i18n="账号">账号</label><input id="zt-account" type="text" placeholder="建议建专用账号（如 codebee）收 Bug">
+          <label data-i18n="密码">密码</label><input id="zt-password" type="password" placeholder="" autocomplete="new-password">
+          <label data-i18n="产品 ID">产品 ID</label><input id="zt-products" type="text" placeholder="逗号分隔，如 1,2（禅道产品页 URL 里的 product= 数字）">
+          <label data-i18n="只认领指派给">只认领指派给</label><input id="zt-assigned" type="text" placeholder="禅道账号名，空 = 不按指派过滤">
+          <label data-i18n="严重度上限">严重度上限</label>
+          <select id="zt-sev">
+            <option value="0" data-i18n="不限">不限</option>
+            <option value="1">1（最严重）</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4（最轻）</option>
+          </select>
+        </div>
+        <h3 data-i18n="修复任务" class="sec-title">修复任务</h3>
+        <div class="zt-grid">
+          <label data-i18n="工作目录">工作目录</label><input id="zt-workdir" type="text" placeholder="空 = 跟随默认保存路径">
+          <label data-i18n="基线分支">基线分支</label><input id="zt-gitrev" type="text" placeholder="如 main：每个修复检出任务分支，跑完可自动合并；空 = 直接改工作目录">
+          <label data-i18n="验证命令">验证命令</label><input id="zt-verify" type="text" placeholder="如 npm test：实现完成后先跑它把关；空 = 靠评审把关">
+        </div>
+        <h3 data-i18n="自动化" class="sec-title">自动化</h3>
+        <div class="zt-grid zt-grid-toggles">
+          <label class="toggle" title="修复任务评审通过后，自动到禅道 resolve（fixed）并回评论"><input id="zt-autoresolve" type="checkbox"><span data-i18n="自动 resolve Bug">自动 resolve Bug</span></label>
+          <label class="toggle" title="把任务分支自动合并回基线分支（需配置基线分支；合并失败不 resolve，留人工）"><input id="zt-automerge" type="checkbox"><span data-i18n="自动合并代码">自动合并代码</span></label>
+          <label class="toggle" title="按下面的间隔定时扫描；关掉后仍可手动「立即扫描」"><input id="zt-poll" type="checkbox"><span data-i18n="定时扫描">定时扫描</span></label>
+          <label data-i18n="扫描间隔（小时）">扫描间隔（小时）</label><input id="zt-interval" type="number" min="1" max="168" step="1">
+        </div>
+        <div class="ops"><button id="btn-zentao-save" class="primary small"><span data-i18n="保存配置">保存配置</span></button></div>
+        <h3 data-i18n="修复记录" class="sec-title">修复记录</h3>
+        <div id="zentao-claims"></div>
       </div>
       </div>
 

@@ -448,6 +448,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/automation":
                 return self._json(200, {"tasks": automation.list_tasks(),
                                         "templates": automation.templates()})
+            if path == "/api/zentao":
+                from core import zentao
+                return self._json(200, zentao.view())
             m = re.match(r"^/api/automation/([^/]+)$", path)
             if m:
                 t = automation.get_task(m.group(1))
@@ -966,6 +969,25 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "task": t, "run_id": run_id or ""})
             ok = automation.delete(tid)
             return self._json(200, {"ok": True}) if ok else self._json(404, {"error": "not found"})
+        if path == "/api/zentao/config":
+            from core import zentao
+            try:
+                cfg = zentao.save_config(self._body())
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+            return self._json(200, {"ok": True, "config": cfg})
+        if path == "/api/zentao/test":
+            from core import zentao
+            body = self._body()
+            pw = str(body.get("password") or "").strip()
+            ok, msg = zentao.test_connection(
+                base_url=body.get("base_url"), account=body.get("account"),
+                password=pw or None)     # 空 = 用已保存密码
+            return self._json(200, {"ok": ok, "message": msg})
+        if path == "/api/zentao/scan":
+            from core import zentao
+            res = zentao.scan_now()      # 网络操作同步做（ThreadingHTTPServer 不堵别的请求）
+            return self._json(200, dict(res, ok=bool(res.get("ok"))))
         # 外部目录路由必须在通配的 market/<id>/(install|remove) 之前——
         # 否则 "remote" 会被当成包名吞掉
         if path == "/api/market/remote/refresh":
@@ -2051,6 +2073,13 @@ def main():
     n_auto = automation.start()   # 自动化：加载定时任务并拉起调度线程（错过的一次性任务不补跑）
     if n_auto:
         print("[CodeBee] 自动化：%d 个定时任务已加载" % n_auto)
+    try:
+        from core import zentao
+        n_zt = zentao.start()   # 禅道集成：加载扫描配置与认领台账（调度挂在 automation tick）
+        if n_zt:
+            print("[CodeBee] 禅道集成：%d 条认领记录已加载" % n_zt)
+    except Exception:
+        pass
     tok = remote.token()
     import atexit
     import os as _os
@@ -2095,14 +2124,17 @@ def main():
               % (remote.PUBLIC_URL, tok))
     elif not args.no_public_tunnel and args.host != "127.0.0.1":
         if remote.has_local_creds():
+            extra = "，或 start-public.bat" if os.name == "nt" else ""
             print("[CodeBee] （检测到已有 Cloudflare 隧道凭据：临时隧道在此类机器上不可用，"
-                  "请用 --public-url 配固定域名，或 start-public.bat）")
+                  "请用 --public-url 配固定域名%s）" % extra)
         elif remote.start_quick_tunnel(args.port, _announce_public):
             print("[CodeBee] 正在建立 Cloudflare 快速隧道（公网地址几秒后打印；"
                   "若打不开说明当前网络不支持，可改用固定域名或 Tailscale）…")
         else:
+            cf = ("winget install Cloudflare.cloudflared" if os.name == "nt"
+                  else "brew install cloudflared")
             print("[CodeBee] （未检测到 cloudflared，跳过公网隧道；"
-                  "winget install Cloudflare.cloudflared 后重启即可获得公网地址）")
+                  "%s 后重启即可获得公网地址）" % cf)
     atexit.register(remote.stop_quick_tunnel)
     if args.host != "127.0.0.1":
         lan = remote.lan_ip()

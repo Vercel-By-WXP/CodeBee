@@ -387,6 +387,13 @@ def _tick():
             log.info("automation: 定时发布触发 %d 个任务", n)
     except Exception:
         log.debug("automation: 定时发布检查跳过", exc_info=True)
+    # 禅道 Bug 扫描联动：fire_due 内部自节流（未启用/没到点零开销），
+    # 对账回写也在同一入口，这里只当调度宿主（同定时发布模式）。
+    try:
+        from . import zentao as _zentao
+        _zentao.fire_due()
+    except Exception:
+        log.debug("automation: 禅道扫描跳过", exc_info=True)
 
 
 def _loop():
