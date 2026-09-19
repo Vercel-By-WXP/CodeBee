@@ -7683,8 +7683,8 @@ function autoTemplate(tplId) {
 }
 
 /* ---------------------------------------------------------- 禅道 Bug 自动修复 */
-/* /api/zentao → {config(脱敏), claims, last_scan, next_scan, last_error}。
- * 进页拉一次回填表单；保存/测试/扫描各自 POST 后重拉。 */
+/* /api/zentao → {config(脱敏，含 product_profiles), claims, last_scan, next_scan, last_error}。
+ * 产品档案卡：结构增删走「先采集 DOM 回 S.ztProfiles → 改 → 重渲染」，保住已输入值。 */
 
 async function loadZentao() {
   let v = null;
@@ -7696,33 +7696,178 @@ async function loadZentao() {
   set("zt-account", cfg.account);
   const pw = $("zt-password");
   if (pw) { pw.value = ""; pw.placeholder = cfg.has_password ? t("已保存（不改就留空）") : ""; }
-  set("zt-products", (cfg.products || []).join(","));
-  set("zt-assigned", cfg.assigned_to);
-  const sev = $("zt-sev"); if (sev) sev.value = String(cfg.severity_cap || 0);
-  set("zt-workdir", cfg.workdir);
-  set("zt-gitrev", cfg.git_rev);
-  set("zt-verify", cfg.verify_command);
   const tg = (id, on) => { const el = $(id); if (el) el.checked = !!on; };
+  tg("zt-triageai", cfg.triage_ai);
   tg("zt-autoresolve", cfg.auto_resolve);
   tg("zt-automerge", cfg.auto_merge);
   tg("zt-poll", cfg.poll_enabled);
   set("zt-interval", cfg.interval_hours || 2);
+  S.ztProfiles = JSON.parse(JSON.stringify(cfg.product_profiles || []));
+  renderZentaoProfiles();
   renderZentaoStatus();
   renderZentaoClaims();
 }
+
+/* ---- 产品档案：渲染与采集 ---- */
+
+const ZT_SIDES = ["backend", "frontend"];
+
+function ztRepoHtml(i, side) {
+  const cn = side === "backend" ? t("后端") : t("前端");
+  const p = (S.ztProfiles[i] || {});
+  const repo = (p.repos || {})[side] || {};
+  const hint = (p.repo_hints || {})[side] || "";
+  return '<label>' + cn + t("仓库·工作目录") + '</label><input class="zt-p-wd" data-side="' + side + '" value="' + esc(repo.workdir || "") + '" placeholder="' + t("空 = 不用该端") + '">' +
+    '<label>' + cn + t("仓库·基线分支") + '</label><input class="zt-p-rev" data-side="' + side + '" value="' + esc(repo.git_rev || "") + '" placeholder="' + t("如 main；空 = 直接改工作目录") + '">' +
+    '<label>' + cn + t("仓库·验证命令") + '</label><input class="zt-p-verify" data-side="' + side + '" value="' + esc(repo.verify_command || "") + '" placeholder="' + t("如 npm test；空 = 靠评审把关") + '">' +
+    '<label>' + cn + t("仓库·一句话描述") + '</label><input class="zt-p-hint" data-side="' + side + '" value="' + esc(hint) + '" placeholder="' + t("给 AI 排查看，如：Vue3 管理台前端") + '">';
+}
+
+function ztProfCardHtml(p, i) {
+  const ours = p.our_sides || [];
+  const routes = p.module_routes || [];
+  const SIDE_OPTS = [["backend", "后端"], ["frontend", "前端"], ["both", "双端"], ["not_ours", "非我方"]];
+  const rows = routes.map((r, j) =>
+    '<div class="zt-mr-row" data-j="' + j + '">' +
+    '<input class="zt-mr-module zt-num" list="zt-mods-' + i + '" placeholder="' + t("模块 ID") + '" value="' + esc(r.module || "") + '">' +
+    '<select class="zt-mr-side">' + SIDE_OPTS.map((o) =>
+      '<option value="' + o[0] + '"' + (r.side === o[0] ? " selected" : "") + ">" + t(o[1]) + "</option>").join("") + "</select>" +
+    '<input class="zt-mr-account" placeholder="' + t("转给谁（禅道账号，可空）") + '" value="' + esc(r.account || "") + '">' +
+    '<button class="ghost small" onclick="ztMrDel(' + i + "," + j + ')">' + t("删") + "</button>" +
+    "</div>").join("");
+  const owners = p.owners || {};
+  return '<div class="card zt-prof" data-i="' + i + '"><div class="head">' +
+    '<span class="name">' + t("产品") + ' <input class="zt-p-product zt-num" type="number" min="1" value="' + esc(p.product || "") + '" placeholder="ID"></span>' +
+    '<button class="danger small" onclick="ztProfDel(' + i + ')">' + t("删除产品") + "</button></div>" +
+    '<div class="zt-grid">' +
+    '<label data-i18n="只认领指派给">只认领指派给</label><input class="zt-p-assigned" value="' + esc(p.assigned_to || "") + '" placeholder="' + t("禅道账号名，空 = 不按指派过滤") + '">' +
+    '<label data-i18n="严重度上限">严重度上限</label><select class="zt-p-sev">' +
+    [0, 1, 2, 3, 4].map((n) => '<option value="' + n + '"' + (Number(p.severity_cap || 0) === n ? " selected" : "") + ">" +
+      (n === 0 ? t("不限") : n + (n === 1 ? t("（最严重）") : "")) + "</option>").join("") + "</select>" +
+    "</div>" +
+    '<div class="zt-ours"><span>' + t("我方端（自动修）：") + "</span>" +
+    ZT_SIDES.map((s) =>
+      '<label class="toggle"><input type="checkbox" class="zt-p-ours" data-side="' + s + '"' + (ours.indexOf(s) >= 0 ? " checked" : "") + "><span>" +
+      (s === "backend" ? t("后端") : t("前端")) + "</span></label>").join("") +
+    '<span class="hint">' + t("都不勾 = 该产品只排查转派，不自动修") + "</span></div>" +
+    '<div class="zt-grid">' + ZT_SIDES.map((s) => ztRepoHtml(i, s)).join("") + "</div>" +
+    '<div class="zt-grid">' +
+    '<label data-i18n="后端负责人">后端负责人</label><input class="zt-p-owner" data-side="backend" value="' + esc(owners.backend || "") + '" placeholder="' + t("禅道账号，转派/升级用") + '">' +
+    '<label data-i18n="前端负责人">前端负责人</label><input class="zt-p-owner" data-side="frontend" value="' + esc(owners.frontend || "") + '" placeholder="' + t("禅道账号，转派/升级用") + '">' +
+    '<label data-i18n="非我方转派给">非我方转派给</label><input class="zt-p-owner" data-side="not_ours" value="' + esc(owners.not_ours || "") + '" placeholder="' + t("空 = 指回报告人") + '">' +
+    "</div>" +
+    '<div class="zt-mrs"><div class="zt-mr-head">' + t("模块路由（模块 → 端/人，排查优先级最高）") +
+    '<button class="ghost small" onclick="ztFetchMods(' + i + ')">' + t("拉取模块清单") + "</button>" +
+    '<button class="ghost small" onclick="ztMrAdd(' + i + ')">' + t("＋ 加路由") + "</button></div>" +
+    (rows || '<div class="hint">' + t("未配路由——模块不在路由里的 Bug 走 AI 排查") + "</div>") +
+    '<datalist id="zt-mods-' + i + '"></datalist>' +
+    "</div></div>";
+}
+
+function renderZentaoProfiles() {
+  const box = $("zt-profiles");
+  if (!box) return;
+  box.innerHTML = (S.ztProfiles || []).map((p, i) => ztProfCardHtml(p, i)).join("") ||
+    '<div class="empty">' + t("还没有产品档案——点「＋ 添加产品」，填产品 ID 与两端仓库。") + "</div>";
+}
+
+/* DOM 卡片 → profiles 数组（结构变化前采集，保住已输入值） */
+function ztHarvestProfiles() {
+  return Array.from(document.querySelectorAll("#zt-profiles .zt-prof")).map((card) => {
+    const gv = (sel) => { const el = card.querySelector(sel); return el ? (el.value || "").trim() : ""; };
+    const routes = Array.from(card.querySelectorAll(".zt-mr-row")).map((row) => ({
+      module: parseInt((row.querySelector(".zt-mr-module").value || ""), 10) || 0,
+      side: row.querySelector(".zt-mr-side").value,
+      account: (row.querySelector(".zt-mr-account").value || "").trim(),
+    })).filter((r) => r.module > 0);
+    return {
+      product: parseInt(gv(".zt-p-product"), 10) || 0,
+      assigned_to: gv(".zt-p-assigned"),
+      severity_cap: parseInt(gv(".zt-p-sev"), 10) || 0,
+      our_sides: Array.from(card.querySelectorAll(".zt-p-ours:checked")).map((el) => el.dataset.side),
+      repos: {
+        backend: { workdir: gv('.zt-p-wd[data-side="backend"]'), git_rev: gv('.zt-p-rev[data-side="backend"]'), verify_command: gv('.zt-p-verify[data-side="backend"]') },
+        frontend: { workdir: gv('.zt-p-wd[data-side="frontend"]'), git_rev: gv('.zt-p-rev[data-side="frontend"]'), verify_command: gv('.zt-p-verify[data-side="frontend"]') },
+      },
+      repo_hints: {
+        backend: gv('.zt-p-hint[data-side="backend"]'),
+        frontend: gv('.zt-p-hint[data-side="frontend"]'),
+      },
+      owners: {
+        backend: gv('.zt-p-owner[data-side="backend"]'),
+        frontend: gv('.zt-p-owner[data-side="frontend"]'),
+        not_ours: gv('.zt-p-owner[data-side="not_ours"]'),
+      },
+      module_routes: routes,
+    };
+  });
+}
+
+function ztProfAdd() {
+  S.ztProfiles = ztHarvestProfiles();
+  S.ztProfiles.push({ product: 0, assigned_to: "", severity_cap: 0, our_sides: ["backend"],
+    repos: { backend: {}, frontend: {} }, repo_hints: { backend: "", frontend: "" },
+    owners: { backend: "", frontend: "", not_ours: "" }, module_routes: [] });
+  renderZentaoProfiles();
+}
+
+function ztProfDel(i) {
+  S.ztProfiles = ztHarvestProfiles();
+  S.ztProfiles.splice(i, 1);
+  renderZentaoProfiles();
+}
+
+function ztMrAdd(i) {
+  S.ztProfiles = ztHarvestProfiles();
+  (S.ztProfiles[i].module_routes = S.ztProfiles[i].module_routes || []).push({ module: "", side: "backend", account: "" });
+  renderZentaoProfiles();
+}
+
+function ztMrDel(i, j) {
+  S.ztProfiles = ztHarvestProfiles();
+  S.ztProfiles[i].module_routes.splice(j, 1);
+  renderZentaoProfiles();
+}
+
+async function ztFetchMods(i) {
+  const pid = parseInt(($("zt-profiles").querySelectorAll(".zt-prof")[i]?.querySelector(".zt-p-product").value) || "", 10);
+  if (!pid) { toast(t("先填产品 ID 再拉模块清单"), true); return; }
+  let r;
+  try {
+    r = await api("/api/zentao/modules", { method: "POST", body: JSON.stringify({ product: pid }) });
+  } catch (e) { toast(e.message, true); return; }
+  if (!r.ok) { toast(r.error || t("拉取失败"), true); return; }
+  const dl = $("zt-mods-" + i);
+  if (dl) dl.innerHTML = (r.modules || []).map((m) =>
+    '<option value="' + esc(m.id) + '">' + esc(m.name || "") + "</option>").join("");
+  toast(t("模块清单已拉到 ") + (r.modules || []).length + t(" 条，输入框可下拉选择"));
+}
+
+/* ---- 状态行 / 修复记录 ---- */
 
 function zentaoStateTag(st) {
   const MAP = {
     fixing: ["修复中", "zt-tag-fix"],
     resolved: ["已解决", "zt-tag-ok"],
+    transferred: ["已转派", "zt-tag-fix"],
+    escalated: ["已升级转派", "zt-tag-warn"],
     merge_failed: ["合并失败", "zt-tag-warn"],
     commented: ["已评论留人工", "zt-tag-warn"],
     resolve_failed: ["回写失败", "zt-tag-warn"],
     done_manual: ["待人工确认", "zt-tag-warn"],
+    need_manual: ["需人工", "zt-tag-warn"],
     lost: ["记录丢失", "zt-tag-err"],
   };
   const m = MAP[st] || [st || "?", ""];
   return '<span class="tag ' + m[1] + '">' + t(m[0]) + "</span>";
+}
+
+function zentaoTriText(c) {
+  const tri = c.triage || {};
+  if (!tri.side) return "";
+  const NAME = { backend: "后端问题", frontend: "前端问题", both: "双端问题", not_ours: "非我方", unknown: "待人工" };
+  const by = tri.by === "rule" ? t("模块路由") : tri.by === "ai" ? "AI" : "";
+  return t("排查：") + t(NAME[tri.side] || tri.side) + (by ? "（" + by + "）" : "");
 }
 
 function renderZentaoStatus() {
@@ -7745,37 +7890,35 @@ function renderZentaoClaims() {
   const box = $("zentao-claims");
   if (!box) return;
   const claims = (S.zentao && S.zentao.claims) || [];
-  box.innerHTML = claims.map((c) =>
-    '<div class="card"><div class="head"><span class="name">#' + esc(c.bug_id) + " " + esc(c.title || "") + "</span>" +
-    zentaoStateTag(c.state) + "</div>" +
-    '<div class="auto-meta">' +
-    "<span>" + t("修复任务：") + '<a href="#" onclick="zentaoOpenTask(\'' + esc(c.task_id || "") + '\');return false;">' + esc(c.task_id || "?") + "</a></span>" +
-    (c.claimed_at ? "<span>" + t("认领于 ") + esc(c.claimed_at) + "</span>" : "") +
-    "</div>" +
-    (c.note ? '<div class="note">' + esc(c.note) + "</div>" : "") +
-    "</div>"
-  ).join("") || '<div class="empty">' + t("还没有认领过 Bug——配置好连接与产品 ID 后点「立即扫描」。") + "</div>";
+  box.innerHTML = claims.map((c) => {
+    const tasks = (c.tasks || []).map((tk) =>
+      "<span>【" + (tk.side === "frontend" ? t("前端") : t("后端")) + "】" +
+      '<a href="#" onclick="zentaoOpenRun(\'' + esc(tk.run_id || "") + '\');return false;">' + esc(tk.task_id || "?") + "</a></span>").join("");
+    return '<div class="card"><div class="head"><span class="name">#' + esc(c.bug_id) + " " + esc(c.title || "") + "</span>" +
+      zentaoStateTag(c.state) + "</div>" +
+      '<div class="auto-meta">' +
+      (zentaoTriText(c) ? "<span>" + esc(zentaoTriText(c)) + "</span>" : "") +
+      (tasks || "") +
+      (c.claimed_at ? "<span>" + t("认领于 ") + esc(c.claimed_at) + "</span>" : "") +
+      "</div>" +
+      (c.note ? '<div class="note">' + esc(c.note) + "</div>" : "") +
+      "</div>";
+  }).join("") || '<div class="empty">' + t("还没有认领过 Bug——配置好连接与产品档案后点「立即扫描」。") + "</div>";
 }
 
-function zentaoOpenTask(taskId) {
-  const c = ((S.zentao && S.zentao.claims) || []).find((x) => x.task_id === taskId);
-  if (c && c.run_id) { openRun(c.run_id); return; }
+function zentaoOpenRun(runId) {
+  if (runId) { openRun(runId); return; }
   switchTab("tasks");
 }
 
 /* 表单 → 保存配置。password 只在用户输入了才提交（空 = 保持已存密码）。 */
 async function saveZentao() {
   const val = (id) => (($(id).value || "").trim());
-  const products = val("zt-products").split(/[,，\s]+/).filter(Boolean).map(Number);
   const payload = {
     base_url: val("zt-base-url"),
     account: val("zt-account"),
-    products,
-    assigned_to: val("zt-assigned"),
-    severity_cap: parseInt($("zt-sev").value, 10) || 0,
-    workdir: val("zt-workdir"),
-    git_rev: val("zt-gitrev"),
-    verify_command: val("zt-verify"),
+    product_profiles: ztHarvestProfiles(),
+    triage_ai: $("zt-triageai").checked,
     auto_resolve: $("zt-autoresolve").checked,
     auto_merge: $("zt-automerge").checked,
     poll_enabled: $("zt-poll").checked,
@@ -9715,6 +9858,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-zentao-test").addEventListener("click", testZentao);
   $("btn-zentao-scan").addEventListener("click", scanZentao);
   $("btn-zentao-save").addEventListener("click", saveZentao);
+  $("btn-zentao-addprofile").addEventListener("click", ztProfAdd);
   $("auto-filter").addEventListener("click", (e) => {
     const b = e.target.closest("[data-f]");
     if (!b) return;

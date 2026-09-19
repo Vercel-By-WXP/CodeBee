@@ -5140,3 +5140,16 @@ body.welcome-open { overflow: hidden; }
 .zt-tag-warn { color: var(--warn, #b45309); border-color: var(--warn, #b45309); }
 .zt-tag-err { color: var(--danger, #dc2626); border-color: var(--danger, #dc2626); }
 .zt-tag-fix { color: var(--accent); border-color: var(--accent); }
+
+/* ---------------- 禅道·产品档案卡（追加于文件尾防并行重排） ---------------- */
+.zt-prof .head .zt-num { width: 90px; }
+.zt-num { max-width: 120px; }
+.zt-ours { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 8px 0 4px; font-size: 12.5px; color: var(--muted); }
+.zt-ours .toggle { margin: 0; }
+.zt-mrs { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 8px; }
+.zt-mr-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+.zt-mr-head button { margin-left: auto; }
+.zt-mr-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.zt-mr-row .zt-num { width: 110px; flex: none; }
+.zt-mr-row .zt-mr-side { width: 110px; flex: none; }
+.zt-mr-row .zt-mr-account { flex: 1; min-width: 140px; max-width: 300px; }

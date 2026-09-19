@@ -1,6 +1,7 @@
-/* 禅道 Bug 自动修复设置页 UI 验证：自起临时服务（TUTTI_DATA 隔离 + 种子 zentao.json）+ Edge headless。
- * 覆盖：设置导航出现「禅道」入口、进页回填表单、保存配置落库（脱敏）、
- * 表单回读、立即扫描对不可达地址优雅报错（last_error 可见）、认领卡片渲染。
+/* 禅道·产品档案 UI 验证：自起临时服务（TUTTI_DATA 隔离 + 种子 zentao.json v2）+ Edge headless。
+ * 覆盖：设置导航「禅道」入口、档案卡渲染（产品/负责人/模块路由）、修复记录的
+ * 排查徽章与任务链接、保存配置落库（含档案结构与脱敏）、增删产品/路由、
+ * 立即扫描对不可达地址优雅报错。
  * 结束清理浏览器/服务进程、临时目录。 */
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -25,16 +26,23 @@ async function main() {
   const tmp = mkdtempSync(join(tmpdir(), "tutti-uizentao-"));
   const dataDir = join(tmp, "data");
   mkdirSync(dataDir, { recursive: true });
-  // 种子：一条认领记录 + 已配好的连接（密码脱敏验证用）
+  // 种子：产品档案 + 一条带排查结论的认领（v2 形状）
   writeFileSync(join(dataDir, "zentao.json"), JSON.stringify({
-    version: 1,
+    version: 2,
     config: { base_url: "http://127.0.0.1:18949", account: "coder", password: "secret",
-              products: [7], assigned_to: "coder", severity_cap: 0, workdir: "",
-              git_rev: "", verify_command: "", auto_resolve: true, auto_merge: true,
-              poll_enabled: false, interval_hours: 2 },
-    claims: { "501": { bug_id: 501, product: "7", title: "种子 Bug：登录 500",
-                       task_id: "t-seed-1", run_id: "r-seed-1", state: "fixing",
-                       note: "", attempts: 0, claimed_at: "2026-09-19 08:00:00" } },
+      product_profiles: [{ product: 7, assigned_to: "coder", severity_cap: 0,
+        our_sides: ["backend"],
+        repos: { backend: { workdir: "", git_rev: "main", verify_command: "" },
+                 frontend: { workdir: "", git_rev: "", verify_command: "" } },
+        repo_hints: { backend: "Spring Boot 服务", frontend: "" },
+        owners: { backend: "be1", frontend: "fe1", not_ours: "" },
+        module_routes: [{ module: 99, side: "backend", account: "" }] }],
+      auto_resolve: true, auto_merge: true, triage_ai: true,
+      poll_enabled: false, interval_hours: 2 },
+    claims: { "501": { bug_id: 501, product: 7, title: "种子 Bug：登录 500",
+        triage: { side: "backend", reason: "模块 #99 路由规则", by: "rule", account: "" },
+        tasks: [{ side: "backend", task_id: "t-seed-1", run_id: "r-seed-1", state: "fixing" }],
+        state: "fixing", note: "", attempts: 0, claimed_at: "2026-09-19 08:00:00" } },
     last_scan: "2026-09-19 08:00:00", next_scan: "", last_error: "",
   }, null, 1), "utf-8");
 
@@ -101,62 +109,83 @@ async function main() {
     await sleep(2500);
     await evalJs(`poll(); "ok"`);
     await waitFor(`typeof S === "object" && S !== null && S.state !== null`);
-    // 首启欢迎引导若弹出则先关掉（真实路径）
     await evalJs(`if (typeof welcomeClose === "function" &&
       !document.getElementById("welcome").classList.contains("hidden")) welcomeClose(); "ok"`);
     await sleep(300);
 
-    // ① 设置导航出现「禅道」入口；点击进子页
-    const navBtn = await evalJs(
-      `!!document.querySelector(".set-item[data-sub='zentao']")`);
-    check("① 设置导航有「禅道」入口", navBtn === true);
+    // ① 设置导航入口 + 进子页
+    check("① 设置导航有「禅道」入口",
+      (await evalJs(`!!document.querySelector(".set-item[data-sub='zentao']")`)) === true);
     await evalJs(`switchTab("zentao"); "ok"`);
-    await sleep(600);
-    const pageOn = await evalJs(`JSON.stringify({
-      sub: !document.getElementById("sub-zentao").classList.contains("hidden"),
-      title: document.getElementById("page-title").textContent
-    })`, true);
-    const pn = JSON.parse(pageOn || "{}");
-    check("① 点击进入禅道子页", pn.sub === true, pageOn);
-    check("① 页标题切到禅道", String(pn.title || "").indexOf("禅道") >= 0, pageOn);
+    const pageOn = await waitFor(
+      `!document.getElementById("sub-zentao").classList.contains("hidden")`, 8000);
+    check("① 点击进入禅道子页", pageOn === true);
 
-    // ② 进页回填：种子配置与认领卡可见
-    await waitFor(`typeof S.zentao === "object" && S.zentao !== null`);
-    const filled = JSON.parse(await evalJs(`JSON.stringify({
-      url: document.getElementById("zt-base-url").value,
-      acct: document.getElementById("zt-account").value,
-      prods: document.getElementById("zt-products").value,
-      claimCard: document.getElementById("zentao-claims").textContent.indexOf("种子 Bug") >= 0,
-      stateTag: document.getElementById("zentao-claims").textContent.indexOf("修复中") >= 0
-    })`, true));
-    check("② 表单回填地址/账号/产品", filled.url === "http://127.0.0.1:18949" &&
-      filled.acct === "coder" && filled.prods === "7", JSON.stringify(filled));
-    check("② 种子认领卡渲染（含状态徽章）", filled.claimCard && filled.stateTag, JSON.stringify(filled));
-    const pwPlaceholder = await evalJs(
-      `document.getElementById("zt-password").placeholder`);
-    check("② 已存密码时输入框留空不回显", pwPlaceholder.indexOf("已保存") >= 0, pwPlaceholder);
+    // ② 产品档案卡 + 修复记录渲染
+    await waitFor(`typeof S.zentao === "object" && S.zentao !== null && (S.zentao.config||{}).product_profiles`);
+    const prof = await evalJs(`(() => {
+      const card = document.querySelector("#zt-profiles .zt-prof");
+      if (!card) return null;
+      return JSON.stringify({
+        count: document.querySelectorAll("#zt-profiles .zt-prof").length,
+        product: card.querySelector(".zt-p-product").value,
+        rev: card.querySelector('.zt-p-rev[data-side="backend"]').value,
+        fe: card.querySelector('.zt-p-owner[data-side="frontend"]').value,
+        routes: card.querySelectorAll(".zt-mr-row").length,
+        routeModule: (card.querySelector(".zt-mr-module") || {}).value,
+        hint: card.querySelector('.zt-p-hint[data-side="backend"]').value
+      });
+    })()`, true);
+    const pf = JSON.parse(prof || "{}");
+    check("② 档案卡渲染（产品/分支/负责人/路由/提示）",
+      pf.count === 1 && pf.product === "7" && pf.rev === "main" && pf.fe === "fe1" &&
+      pf.routes === 1 && pf.routeModule === "99" && pf.hint === "Spring Boot 服务", prof);
+    const pwPlaceholder = await evalJs(`document.getElementById("zt-password").placeholder`);
+    check("② 已存密码不回显", String(pwPlaceholder || "").indexOf("已保存") >= 0, pwPlaceholder);
+    const claim = await waitFor(`(() => {
+      const t = document.getElementById("zentao-claims").textContent;
+      return t.indexOf("种子 Bug") >= 0 && t.indexOf("修复中") >= 0 && t.indexOf("排查：后端问题") >= 0;
+    })()`, 8000);
+    check("② 修复记录含排查徽章与状态", claim === true);
 
-    // ③ 保存配置：改产品/开轮询/设密码 → 后端落库且脱敏
-    await evalJs(`document.getElementById("zt-products").value = "1,2";
-      document.getElementById("zt-password").value = "newpw";
-      document.getElementById("zt-poll").checked = true;
-      document.getElementById("zt-interval").value = "3"; saveZentao(); "ok"`);
-    const saved = await waitFor(`api("/api/zentao").then(v =>
-      JSON.stringify(v.config.products)==="[1,2]" && v.config.poll_enabled===true &&
-      v.config.interval_hours===3 && v.config.has_password===true && v.config.password==="")`, 8000);
-    check("③ 保存后后端配置落库且 password 脱敏", saved === true);
-    const pollOn = await waitFor(
-      `document.getElementById("zentao-status").textContent.indexOf("定时扫描已开启") >= 0`, 8000);
-    check("③ 状态行显示定时扫描已开启", pollOn === true);
+    // ③ 档案卡编辑：加路由（填模块 88→前端）+ 改全局开关 → 保存落库
+    await evalJs(`ztMrAdd(0);
+      const rows = document.querySelectorAll("#zt-profiles .zt-prof")[0].querySelectorAll(".zt-mr-row");
+      const last = rows[rows.length - 1];
+      last.querySelector(".zt-mr-module").value = "88";
+      last.querySelector(".zt-mr-side").value = "frontend";
+      last.querySelector(".zt-mr-account").value = "fe2"; saveZentao(); "ok"`);
+    const saved = await waitFor(`api("/api/zentao").then(v => {
+      const p = (v.config.product_profiles || [])[0] || {};
+      return p.product === 7 && (p.module_routes || []).length === 2 &&
+        JSON.stringify(p.owners) === JSON.stringify({ backend: "be1", frontend: "fe1", not_ours: "" }) &&
+        v.config.has_password === true && v.config.password === "" &&
+        v.config.triage_ai === true;
+    })`, 10000);
+    check("③ 保存后档案结构落库（路由×2 + 负责人 + 脱敏）", saved === true);
 
-    // ④ 立即扫描对不可达地址优雅报错（连接拒绝 → last_error 上屏）
+    // ④ 加第二个产品 → 保存 → 后端 2 份档案；删除一份 → 回到 1
+    await evalJs(`ztProfAdd();
+      const cards = document.querySelectorAll("#zt-profiles .zt-prof");
+      cards[cards.length - 1].querySelector(".zt-p-product").value = "8";
+      saveZentao(); "ok"`);
+    const two = await waitFor(`api("/api/zentao").then(v =>
+      (v.config.product_profiles || []).length === 2 &&
+      v.config.product_profiles[1].product === 8)`, 10000);
+    check("④ 添加产品并保存（档案×2）", two === true);
+    await evalJs(`ztProfDel(1); saveZentao(); "ok"`);
+    const one = await waitFor(`api("/api/zentao").then(v =>
+      (v.config.product_profiles || []).length === 1)`, 10000);
+    check("④ 删除产品并保存（回到×1）", one === true);
+
+    // ⑤ 立即扫描对不可达地址优雅报错
     await evalJs(`document.getElementById("zt-base-url").value = "http://127.0.0.1:9";
       document.getElementById("zt-password").value = ""; saveZentao(); "ok"`);
     await sleep(600);
     await evalJs(`scanZentao(); "ok"`);
     const errShown = await waitFor(
       `document.getElementById("zentao-status").textContent.indexOf("最近错误") >= 0`, 15000);
-    check("④ 扫描不可达地址 → 最近错误上屏", errShown === true);
+    check("⑤ 扫描不可达地址 → 最近错误上屏", errShown === true);
 
     console.log(results.every((r) => r.ok) ? "\n全部通过" : "\n存在失败项");
   } finally {

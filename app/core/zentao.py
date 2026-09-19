@@ -1,33 +1,37 @@
 # -*- coding: utf-8 -*-
-"""禅道 Bug 自动修复对接：定时扫描激活 Bug → 自动建 CodeBee 修复任务 → 跑完回写。
+"""禅道 Bug 自动修复对接：多产品档案 + 排查定责路由 + 转派流转。
 
 数据落盘 <data>/zentao.json（tmp + os.replace 原子写；TUTTI_DATA 环境变量感知）。
 修复走与 /api/tasks 完全相同的链路（store.create_task → store.create_run →
 jobs.enqueue，code 引擎=实现→验证→评审→修复），不自造运行器。调度挂在
-automation._tick（同 publish/auto.fire_due 模式：这里只当被调度者），内部按
-interval_hours 节流；停机不追赶，重启后从下一个周期继续。
+automation._tick（同 publish/auto.fire_due 模式），内部按 interval_hours 节流。
 
 禅道 REST API v1（开源版 15.x+；请求头 Token: <token>）：
   POST {base}/api.php/v1/tokens               {account, password} → {token}
   GET  {base}/api.php/v1/products/{pid}/bugs  分页 {bugs:[...], page, total, limit}
   GET  {base}/api.php/v1/bugs/{id}            单查（回写前确认状态防谎报）
   POST {base}/api.php/v1/bugs/{id}/resolve    {resolution, resolvedBuild, comment, assignedTo}
-  PUT  {base}/api.php/v1/bugs/{id}            {comment}（修复失败说明用，容错）
+  PUT  {base}/api.php/v1/bugs/{id}            {assignedTo, comment}（转派/失败说明）
 
-认领范围（防呆）：products（产品 ID 列表，列表接口按产品维度，必填）+
-assigned_to（只认领指派给该账号的 bug，可选）+ severity_cap（严重度上限，
-1 最严重，0=不限）。三者 AND；过滤全空 = 一条也不认领。
+产品档案（product_profiles）：每产品一份 {指派过滤, 严重度, 我方端 our_sides,
+后端/前端仓库(workdir/git_rev/verify_command), repo_hints, 负责人 owners,
+模块路由 module_routes}。老版扁平配置（products+单仓库）load 时自动迁移。
 
-claim 生命周期（claims[bug_id].state）：
-  fixing → run done：auto_merge 且有任务分支 → 先 merge（失败=merge_failed 留
-           人工，绝不谎报 resolved）→ resolve(fixed)+报告评论+指回报告人 → resolved
-         → run failed/cancelled：PUT 评论说明 + 群通知 → commented（留人工）
-  resolve API 连续失败 3 次 → resolve_failed（终态，群通知）
+排查（_triage）：模块路由按 bug.module 精确匹配优先 → AI 兜底（triage_ai 开时
+modelhub 单次调用，bookmeta 同款配方）→ unknown。判定 side ∈
+backend | frontend | both | not_ours | unknown。
 
-出网边界（SSRF 防护，_guard_url）：本模块的请求目标完全来自用户自己配置的
-禅道地址——禅道多部署在内网，因此私网/环回按设计放行；但强制 http(s) 协议、
-解析主机并阻断云元数据与链路本地地址、禁跟随重定向。config 只有本机持有
-令牌的用户能改，攻击面与「用户自己在浏览器里打开禅道」等价。
+流转规则（转派目标只认排查结论，与 bug 当前 assignedTo 无关——测试提错人也
+照样改派）：
+  我方端问题    → 建修复任务；成功=合并+resolve(fixed)+报告评论+指回报告人
+  双端/我方一端 → 我方端修完（合并落库）后转派另一端负责人+评论，不 resolve
+  纯对方端问题  → 不建任务，直接转派该端负责人+排查结论评论
+  非我方        → 转派报告人（或 owners.not_ours）+评论；只转派不解决
+  unknown       → 不碰 bug，need_manual + 群通知（下轮扫描 bug 仍激活则重排查）
+  修复任务失败  → 评论尝试记录 + 转派该端负责人（模块路由 account > 端负责人）
+
+出网边界（SSRF 防护，_guard_url）：请求目标来自用户自配禅道地址——内网按设计
+放行；强制 http(s)、解析主机并阻断云元数据/链路本地地址、禁跟随重定向。
 """
 from __future__ import annotations
 
@@ -52,45 +56,60 @@ log = logging.getLogger(__name__)
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "zentao.json"
 _STATE = {
-    "config": {},        # 持久配置（见 _CFG_DEFAULTS）
-    "claims": {},        # str(bug_id) → claim dict
-    "last_scan": "",     # 上次实际扫描时间
-    "next_scan": "",     # 下次扫描时间（fire_due 节流闸）
-    "last_error": "",    # 最近一次扫描/回写的人话错误
+    "config": {},        # 持久配置（_CFG_DEFAULTS）
+    "claims": {},        # str(bug_id) → claim dict（v2：含 triage/tasks）
+    "last_scan": "",
+    "next_scan": "",
+    "last_error": "",
 }
 _LOADED = False
 
-TOKEN_TTL = 23 * 3600          # token 缓存上限（禅道 token 跟随会话过期，宁早勿晚）
+TOKEN_TTL = 23 * 3600
 HTTP_TIMEOUT = 15
-PAGE_LIMIT = 100               # 列表分页大小；总上限 500 条防失控
+PAGE_LIMIT = 100
 MAX_BUGS = 500
-RESOLVE_MAX_ATTEMPTS = 3       # resolve 连续失败次数上限（超过即终态留人工）
-RETRY_DELAY_MIN = 30           # 扫描失败后的重试间隔（分钟）；成功按 interval_hours
-INTERVAL_MIN, INTERVAL_MAX = 1, 168   # interval_hours 合法区间（小时）
+RESOLVE_MAX_ATTEMPTS = 3
+RETRY_DELAY_MIN = 30
+INTERVAL_MIN, INTERVAL_MAX = 1, 168
+
+SIDES = ("backend", "frontend")
+TRIAGE_SIDES = ("backend", "frontend", "both", "not_ours")   # unknown 单列
+SIDE_CN = {"backend": "后端", "frontend": "前端"}
 
 _CFG_DEFAULTS = {
-    "base_url": "",            # 禅道根地址，如 https://zentao.example.com（子目录部署带子目录）
-    "account": "",             # 专用账号（建议建 codebee 账号收 bug）
+    "base_url": "",
+    "account": "",
     "password": "",
-    "products": [],            # 产品 ID 列表（int）；列表接口按产品维度，必填
-    "assigned_to": "",         # 只认领指派给该账号的 bug；空=不按指派过滤
-    "severity_cap": 0,         # 严重度上限（1 最严重）；0=不限
-    "workdir": "",             # 修复任务的工作目录（空=跟随默认保存路径）
-    "git_rev": "",             # 基线分支/提交（检出任务分支 tutti/<id>；空=直改工作目录）
-    "verify_command": "",      # 验证命令（code 引擎跑完实现先跑它；空=靠评审把关）
-    "auto_resolve": True,      # 修复达标后自动 resolve bug（fixed + 报告评论 + 指回报告人）
-    "auto_merge": True,        # 自动把任务分支合并回基线分支（仅配置了 git_rev 时生效）
-    "poll_enabled": False,     # 定时扫描总开关
-    "interval_hours": 2,       # 扫描间隔（小时）
+    "product_profiles": [],    # 产品档案列表（_norm_profile 形状）
+    "auto_resolve": True,
+    "auto_merge": True,
+    "triage_ai": True,         # 模块路由未命中时用 AI 兜底排查
+    "poll_enabled": False,
+    "interval_hours": 2,
 }
 
-_UPDATABLE = tuple(_CFG_DEFAULTS.keys())
+_REPO_DEFAULTS = {"workdir": "", "git_rev": "", "verify_command": ""}
+
+_PROFILE_DEFAULTS = {
+    "product": 0,              # 产品 ID（必填唯一）
+    "assigned_to": "",         # 只认领指派给该账号的 bug；空=不按指派过滤
+    "severity_cap": 0,         # 严重度上限（1 最严重）；0=不限
+    "our_sides": ["backend"],  # 我方端（CodeBee 自动修）；空=纯排查转派不修
+    "repos": {"backend": dict(_REPO_DEFAULTS), "frontend": dict(_REPO_DEFAULTS)},
+    "repo_hints": {"backend": "", "frontend": ""},   # AI 排查时的一句仓库描述
+    "owners": {"backend": "", "frontend": "", "not_ours": ""},
+    "module_routes": [],       # [{module:int, side:backend|frontend|both|not_ours, account:""}]
+}
+
+_UPDATABLE = ("base_url", "account", "password", "product_profiles",
+              "auto_resolve", "auto_merge", "triage_ai",
+              "poll_enabled", "interval_hours")
 
 
 # ---------------------------------------------------------------- 出网边界（SSRF）
 
 _META_HOSTS = {"metadata.google.internal", "metadata.goog"}
-_NO_REDIRECT = None            # 进程内缓存：禁重定向的 opener
+_NO_REDIRECT = None
 
 
 def _no_redirect_opener():
@@ -99,7 +118,7 @@ def _no_redirect_opener():
     if _NO_REDIRECT is None:
         class _Stop(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
-                return None      # 返回 None → urllib 抛 HTTPError，由调用方报人话
+                return None
         _NO_REDIRECT = urllib.request.build_opener(
             _Stop(), urllib.request.HTTPSHandler(context=tlsctx.context()))
     return _NO_REDIRECT
@@ -122,7 +141,7 @@ def _guard_url(url):
         raise ZenError("不允许访问云元数据地址")
     try:
         infos = socket.getaddrinfo(host, None)
-    except OSError as e:
+    except OSError:
         raise ZenError("禅道主机解析失败：%s" % host)
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
@@ -138,9 +157,58 @@ def _guard_url(url):
 def _save_locked():
     _FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"version": 1, **_STATE},
+    tmp.write_text(json.dumps({"version": 2, **_STATE},
                               ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(str(tmp), str(_FILE))
+
+
+def _normalize_claim(d):
+    """claim 归一：v1 单任务形状（task_id/run_id）→ v2 tasks 数组。"""
+    c = dict(d) if isinstance(d, dict) else {}
+    if isinstance(c.get("tasks"), list) and c["tasks"]:
+        tasks = [dict(t) for t in c["tasks"] if isinstance(t, dict)]
+    else:
+        tasks = [{"side": "backend", "task_id": c.get("task_id") or "",
+                  "run_id": c.get("run_id") or "", "state": "fixing"}] \
+            if (c.get("task_id") or c.get("run_id")) else []
+    c["tasks"] = tasks
+    c.setdefault("triage", {"side": "", "reason": "", "by": "", "account": ""})
+    if not isinstance(c.get("triage"), dict):
+        c["triage"] = {"side": "", "reason": "", "by": "", "account": ""}
+    c.setdefault("note", "")
+    c.setdefault("attempts", 0)
+    return c
+
+
+def _migrate_legacy(cfg):
+    """老扁平配置（products+单仓库）→ product_profiles。就地改写返回。"""
+    if cfg.get("product_profiles"):
+        return cfg
+    products = cfg.get("products") or []
+    if not isinstance(products, list) or not products:
+        return cfg
+    try:
+        pids = [int(p) for p in products if str(p).strip()]
+    except (TypeError, ValueError):
+        return cfg
+    backend = dict(_REPO_DEFAULTS)
+    for k in _REPO_DEFAULTS:
+        backend[k] = str(cfg.get(k) or "")
+    our = ["backend"]
+    if not backend["workdir"]:
+        our = []          # 老配置连工作目录都没配：纯路由
+    for pid in pids:
+        cfg.setdefault("product_profiles", []).append({
+            "product": pid,
+            "assigned_to": str(cfg.get("assigned_to") or ""),
+            "severity_cap": int(cfg.get("severity_cap") or 0),
+            "our_sides": list(our),
+            "repos": {"backend": backend, "frontend": dict(_REPO_DEFAULTS)},
+            "repo_hints": {"backend": "", "frontend": ""},
+            "owners": {"backend": "", "frontend": "", "not_ours": ""},
+            "module_routes": [],
+        })
+    return cfg
 
 
 def load(force=False):
@@ -154,12 +222,18 @@ def load(force=False):
         except Exception:
             data = {}
         cfg = data.get("config") if isinstance(data, dict) else None
+        # 老扁平配置先迁移成产品档案（老键 products/workdir/... 不在新 defaults 里，
+        # 必须在按 _CFG_DEFAULTS 过滤之前完成迁移）
+        if isinstance(cfg, dict) and not cfg.get("product_profiles"):
+            cfg = _migrate_legacy(dict(cfg))
         merged = dict(_CFG_DEFAULTS)
         if isinstance(cfg, dict):
             merged.update({k: v for k, v in cfg.items() if k in _CFG_DEFAULTS})
         claims = data.get("claims") if isinstance(data, dict) else None
         _STATE["config"] = merged
-        _STATE["claims"] = claims if isinstance(claims, dict) else {}
+        _STATE["claims"] = {str(k): _normalize_claim(v)
+                            for k, v in (claims or {}).items()} \
+            if isinstance(claims, dict) else {}
         _STATE["last_scan"] = str(data.get("last_scan") or "") if isinstance(data, dict) else ""
         _STATE["next_scan"] = str(data.get("next_scan") or "") if isinstance(data, dict) else ""
         _STATE["last_error"] = str(data.get("last_error") or "") if isinstance(data, dict) else ""
@@ -179,13 +253,51 @@ def _cfg():
     return cfg
 
 
+def _profiles(cfg=None):
+    out = []
+    for p in (cfg or _cfg()).get("product_profiles") or []:
+        prof = dict(_PROFILE_DEFAULTS)
+        prof.update({k: v for k, v in (p or {}).items() if k in _PROFILE_DEFAULTS})
+        repos = dict(_PROFILE_DEFAULTS["repos"])
+        for side in SIDES:
+            r = dict(_REPO_DEFAULTS)
+            r.update({k: v for k, v in ((prof.get("repos") or {}).get(side) or {}).items()
+                      if k in _REPO_DEFAULTS})
+            repos[side] = r
+        prof["repos"] = repos
+        hints = dict(_PROFILE_DEFAULTS["repo_hints"])
+        for side in SIDES:
+            hints[side] = str((prof.get("repo_hints") or {}).get(side) or "")
+        prof["repo_hints"] = hints
+        owners = dict(_PROFILE_DEFAULTS["owners"])
+        for k in owners:
+            owners[k] = str((prof.get("owners") or {}).get(k) or "").strip()
+        prof["owners"] = owners
+        prof["our_sides"] = [s for s in SIDES if s in (prof.get("our_sides") or [])]
+        prof["module_routes"] = [r for r in (prof.get("module_routes") or [])
+                                 if isinstance(r, dict)]
+        out.append(prof)
+    return out
+
+
+def _profile_for(cfg, product_id):
+    try:
+        pid = int(product_id or 0)
+    except (TypeError, ValueError):
+        return None
+    for p in _profiles(cfg):
+        if p["product"] == pid:
+            return p
+    return None
+
+
 # ---------------------------------------------------------------- 禅道客户端
 
 class ZenError(Exception):
     """禅道接口错误（message 人话，可直接展示）。"""
 
 
-_TOKEN = {"v": "", "at": 0.0}   # 进程内 token 缓存（账号维度不区分：单实例单配置）
+_TOKEN = {"v": "", "at": 0.0}
 
 
 def _reset_token():
@@ -246,11 +358,8 @@ def _token(cfg, force=False):
 def _api(method, path, cfg=None, body=None):
     """调禅道 API。返回 dict（非 dict 响应返回 {}）。401/403 自动重取 token 重试一次。"""
     c = cfg or _cfg()
-    need_auth = True
     for attempt in (1, 2):
-        headers = {"Accept": "application/json"}
-        if need_auth:
-            headers["Token"] = _token(c, force=(attempt == 2))
+        headers = {"Accept": "application/json", "Token": _token(c, force=(attempt == 2))}
         url = _guard_url(_api_base(c.get("base_url")) + path)
         data = None
         if body is not None:
@@ -260,7 +369,7 @@ def _api(method, path, cfg=None, body=None):
         try:
             with _no_redirect_opener().open(req, timeout=HTTP_TIMEOUT) as r:
                 out = json.loads((r.read() or b"{}").decode("utf-8", "replace"))
-            return out if isinstance(out, dict) else {}
+            return out if isinstance(out, dict) else {"_list": out}
         except urllib.error.HTTPError as e:
             raw = ""
             try:
@@ -293,7 +402,7 @@ def _acct(v):
 
 
 def _strip_html(raw):
-    """steps 字段是富文本 HTML：剥标签转纯文本（禅道编辑器产物，保真即可不必优雅）。"""
+    """steps 字段是富文本 HTML：剥标签转纯文本。"""
     txt = str(raw or "")
     txt = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", txt)
     txt = re.sub(r"(?i)<br\s*/?>|</p>|</li>|</div>|</tr>", "\n", txt)
@@ -311,21 +420,12 @@ def _severity(bug):
         return 0
 
 
-def _claimable(bug, cfg):
-    """认领过滤：active + 产品 + 指派 + 严重度（AND）。防呆：过滤全空不认领。"""
+def _claimable(bug, profile):
+    """认领过滤：active + 指派 + 严重度（产品由档案本身界定）。"""
     if str(bug.get("status") or "") != "active":
         return False
-    products = [int(p) for p in (cfg.get("products") or []) if str(p).strip()]
-    assigned = str(cfg.get("assigned_to") or "").strip()
-    cap = int(cfg.get("severity_cap") or 0)
-    if not products and not assigned:
-        return False
-    if products:
-        try:
-            if int(bug.get("product") or 0) not in products:
-                return False
-        except (TypeError, ValueError):
-            return False
+    assigned = str(profile.get("assigned_to") or "").strip()
+    cap = int(profile.get("severity_cap") or 0)
     if assigned and _acct(bug.get("assignedTo")) != assigned:
         return False
     if cap and _severity(bug) > cap:
@@ -353,8 +453,29 @@ def list_bugs(cfg, product_id):
     return out[:MAX_BUGS]
 
 
+def fetch_modules(product_id):
+    """拉产品模块清单（模块路由配置辅助）。接口不存在/失败报人话，提示手填 ID。"""
+    _ensure_loaded()
+    cfg = _cfg()
+    try:
+        d = _api("GET", "/products/%s/modules" % product_id, cfg=cfg)
+    except ZenError as e:
+        return {"ok": False,
+                "error": "%s——也可能你的禅道没有该接口：请在禅道产品视图 URL 里查模块 ID 手工填写" % e}
+    items = d.get("_list") if isinstance(d.get("_list"), list) else d.get("modules")
+    out = []
+    for m in items or []:
+        if isinstance(m, dict) and m.get("id"):
+            out.append({"id": m.get("id"), "name": str(m.get("name") or "")})
+        elif isinstance(m, dict) and str(m.get("id") or "") == "" and m.get("name"):
+            continue
+    if not out:
+        return {"ok": False, "error": "模块清单为空或响应形状不认识——请手工填模块 ID"}
+    return {"ok": True, "modules": out[:200]}
+
+
 def test_connection(base_url=None, account=None, password=None):
-    """连接测试：取 token + 拉第一个产品的 bug 列表（配置了产品时）。返回 (ok, 人话结果)。"""
+    """连接测试：取 token + 拉第一个产品的 bug 列表（有档案时）。返回 (ok, 人话结果)。"""
     c = _cfg()
     base_url = str(base_url if base_url is not None else c.get("base_url") or "").strip()
     account = str(account if account is not None else c.get("account") or "").strip()
@@ -366,27 +487,99 @@ def test_connection(base_url=None, account=None, password=None):
     except ZenError as e:
         return False, str(e)
     try:
-        products = [str(p) for p in (c.get("products") or []) if str(p).strip()]
-        if products:
+        profiles = _profiles(c)
+        if profiles:
             bugs = list_bugs({"base_url": base_url, "account": account, "password": password},
-                             products[0])
-            return True, "连接成功，产品 %s 可访问（当前 %d 条 bug 在列表里）" % (products[0], len(bugs))
+                             profiles[0]["product"])
+            return True, "连接成功，产品 %s 可访问（当前 %d 条 bug 在列表里）" % (
+                profiles[0]["product"], len(bugs))
     except ZenError as e:
         return False, "令牌拿到了，但拉 bug 列表失败：%s" % e
-    return True, "连接成功（未配产品 ID，跳过列表探测）"
+    return True, "连接成功（未配产品档案，跳过列表探测）"
+
+
+# ---------------------------------------------------------------- 排查（triage）
+
+def _ai_triage(bug, profile):
+    """AI 兜底排查：单次 LLM 调用判端。不可用/解析失败返回 None（bookmeta 同款配方）。"""
+    try:
+        from . import modelhub, runner
+        orch = modelhub.resolve_orchestrator()
+        if not orch:
+            return None
+        prov, model = orch
+        repos = profile.get("repos") or {}
+        hints = profile.get("repo_hints") or {}
+
+        def _repo_desc(side):
+            hint = str(hints.get(side) or "").strip()
+            if hint:
+                return hint
+            wd = str((repos.get(side) or {}).get("workdir") or "").strip()
+            if wd:
+                return "目录 " + Path(wd).name
+            return "（未配置）"
+
+        lines = ["你是缺陷分诊员：根据缺陷描述判断问题属于哪个仓库端。", "",
+                 "【缺陷】#%s %s" % (bug.get("id"), str(bug.get("title") or ""))]
+        steps = _strip_html(bug.get("steps"))
+        if steps:
+            lines.append(steps[:3000])
+        lines.append("")
+        lines.append("【仓库背景】后端仓库：%s；前端仓库：%s" % (_repo_desc("backend"),
+                                                        _repo_desc("frontend")))
+        lines.append("")
+        lines.append('只输出 JSON（不要别的文字）：{"side": "backend|frontend|both|not_ours", '
+                     '"reason": "一句话依据"}')
+        lines.append("判定口径：backend=纯后端问题；frontend=纯前端问题；both=两端都要改；"
+                     "not_ours=与这两个仓库无关（第三方服务/环境/需求变更/数据问题等）。")
+        res = modelhub.chat(prov["id"], model, "\n".join(lines), max_tokens=500,
+                            timeout=90)
+        if not res.get("ok"):
+            log.warning("zentao: AI 排查失败：%s", res.get("error"))
+            return None
+        data = runner.extract_json(res.get("text") or "")
+        side = str((data or {}).get("side") or "").strip().lower()
+        if side not in TRIAGE_SIDES:
+            return None
+        return {"side": side, "reason": str((data or {}).get("reason") or "")[:300]}
+    except Exception:
+        log.debug("zentao: AI 排查异常", exc_info=True)
+        return None
+
+
+def _triage(bug, profile, cfg):
+    """排查定责：模块路由 > AI > unknown。返回 {side, reason, by, account}。"""
+    mid = str(bug.get("module") or "")
+    if mid:
+        for r in profile.get("module_routes") or []:
+            try:
+                if int(r.get("module") or 0) != int(mid):
+                    continue
+            except (TypeError, ValueError):
+                continue
+            side = str(r.get("side") or "")
+            if side in TRIAGE_SIDES:
+                return {"side": side, "reason": "模块 #%s 路由规则" % mid,
+                        "by": "rule", "account": str(r.get("account") or "").strip()}
+    if cfg.get("triage_ai"):
+        res = _ai_triage(bug, profile)
+        if res:
+            res["by"] = "ai"
+            res["account"] = ""
+            return res
+    return {"side": "unknown", "reason": "模块未命中路由且 AI 排查不可用", "by": "fallback",
+            "account": ""}
 
 
 # ---------------------------------------------------------------- 修复任务拉起
 
-def _workdir(cfg):
-    wd = str(cfg.get("workdir") or "").strip()
-    if wd:
-        return wd
-    return settings.default_workdir()
+def _repo_of(profile, side):
+    return (profile.get("repos") or {}).get(side) or dict(_REPO_DEFAULTS)
 
 
-def _goal_text(bug):
-    """bug → 修复目标提示词。只描述事实 + 约束，不带任何解决方案臆测。"""
+def _goal_text(bug, side=None):
+    """bug → 修复目标提示词。side 给出时附端约束。"""
     bid = bug.get("id")
     lines = ["修复禅道 Bug #%s：%s" % (bid, str(bug.get("title") or "").strip())]
     steps = _strip_html(bug.get("steps"))
@@ -400,6 +593,8 @@ def _goal_text(bug):
         meta.append("严重度 %s（1 最严重）" % sev)
     if pri:
         meta.append("优先级 %s" % pri)
+    if str(bug.get("module") or "").strip():
+        meta.append("模块 #%s" % bug["module"])
     env = " / ".join(x for x in (str(bug.get("os") or "").strip(),
                                  str(bug.get("browser") or "").strip()) if x)
     if env:
@@ -411,21 +606,27 @@ def _goal_text(bug):
         lines.append("")
         lines.append("【元信息】" + "；".join(meta))
     lines.append("")
-    lines.append("【要求】只修这个 bug，不做无关重构；改动最小化；"
-                 "修完自查不引入回归。完成后给出修改说明。")
+    lines.append("【要求】只修这个 bug，不做无关重构；改动最小化；修完自查不引入回归。")
+    if side in SIDES:
+        lines.append("【端约束】本任务只负责【%s】部分；%s部分由别人处理，不要越界改动。"
+                     % (SIDE_CN[side],
+                        SIDE_CN["frontend" if side == "backend" else "backend"]))
+    lines.append("完成后给出修改说明。")
     return "\n".join(lines)
 
 
-def _launch_fix(bug, cfg):
-    """为一个 bug 建修复任务并入队。与 automation._launch_run 同一条链。返回 (task, run)。"""
+def _launch_fix(bug, profile, side, cfg):
+    """为一个 bug 的某一端建修复任务并入队。与 automation._launch_run 同一条链。"""
     bid = bug.get("id")
-    title = ("[禅道#%s] %s" % (bid, str(bug.get("title") or "").strip())).strip()[:60]
-    payload = {"type": "code", "title": title, "goal": _goal_text(bug),
-               "workdir": _workdir(cfg)}
-    if str(cfg.get("git_rev") or "").strip():
-        payload["git_rev"] = str(cfg["git_rev"]).strip()
-    if str(cfg.get("verify_command") or "").strip():
-        payload["verify_command"] = str(cfg["verify_command"]).strip()
+    repo = _repo_of(profile, side)
+    wd = str(repo.get("workdir") or "").strip() or settings.default_workdir()
+    title = ("[禅道#%s][%s] %s" % (bid, SIDE_CN.get(side, side),
+                                   str(bug.get("title") or "").strip())).strip()[:60]
+    payload = {"type": "code", "title": title, "goal": _goal_text(bug, side), "workdir": wd}
+    if str(repo.get("git_rev") or "").strip():
+        payload["git_rev"] = str(repo["git_rev"]).strip()
+    if str(repo.get("verify_command") or "").strip():
+        payload["verify_command"] = str(repo["verify_command"]).strip()
     task = store.create_task(payload)
     run = store.create_run("orchestration", task["title"], task_id=task["id"])
     store.update_task_status(task["id"], "queued")
@@ -433,61 +634,98 @@ def _launch_fix(bug, cfg):
     return task, run
 
 
-# ---------------------------------------------------------------- 对账回写
+# ---------------------------------------------------------------- 回写文本
 
-def _diffstat(workdir, claim):
-    """任务分支相对基线的改动统计（人话一行）。拿不到返回空串（尽力而为）。"""
+def _diffstat(workdir, task_id):
+    """任务分支相对基线的改动统计（人话一行）。拿不到返回空串。"""
     try:
         from . import gitmod, runner
-        task = store.get_task(claim.get("task_id") or "")
-        if task is None:
-            return ""
-        br = gitmod.branch_name(task["id"])
-        r = runner.run_process(
-            argv=["git", "-C", workdir, "diff", "--shortstat", "HEAD..." + br],
-            timeout=20)
-        if r.get("ok"):
-            return (r.get("stdout") or "").strip()
+        if task_id and workdir:
+            br = gitmod.branch_name(task_id)
+            r = runner.run_process(
+                argv=["git", "-C", workdir, "diff", "--shortstat", "HEAD..." + br],
+                timeout=20)
+            if r.get("ok"):
+                return (r.get("stdout") or "").strip()
     except Exception:
         log.debug("zentao: diffstat 失败", exc_info=True)
     return ""
 
 
-def _report_text(claim, run, task, cfg):
-    """回写评论：只写确定性事实（状态/验证/合并/改动统计），不抄模型输出。"""
-    bid = claim.get("bug_id")
-    lines = ["【CodeBee 自动修复报告】", "Bug：#%s %s" % (bid, claim.get("title") or "")]
-    lines.append("修复任务：%s" % (task.get("title") if task else claim.get("task_id") or "?"))
-    git = run.get("git") or {}
+def _fix_summary(claim, run, profile, side):
+    """我方某一端的修复摘要（转派评论与 resolve 报告共用的事实部分）。"""
+    lines = []
+    git = (run or {}).get("git") or {}
     commit = str(git.get("commit") or "").strip()
     from_branch = str(git.get("from_branch") or "").strip()
+    tid = _task_of(claim, side).get("task_id") or ""
     if commit:
-        lines.append("代码提交：%s" % commit)
-    if from_branch:
-        lines.append("已合并回基线分支 %s（自动裁决）" % from_branch)
-    elif task is not None and task.get("git_rev"):
-        lines.append("代码在任务分支上，待人工到任务详情页「版本」页签裁决合并")
-    stat = _diffstat(_workdir(cfg), claim)
+        lines.append("【%s】修复提交 %s%s" % (SIDE_CN.get(side, side), commit,
+                     "（已合并回 %s）" % from_branch if from_branch else ""))
+    stat = _diffstat(str(_repo_of(profile, side).get("workdir") or ""), tid)
     if stat:
-        lines.append("改动统计：%s" % stat)
-    v = run.get("verdict") or {}
+        lines.append("【%s】改动统计：%s" % (SIDE_CN.get(side, side), stat))
+    v = (run or {}).get("verdict") or {}
     if v:
-        lines.append("验证结论：%s" % ("通过（评审达标）" if v.get("pass") or v.get("publishable")
-                                       else "完成"))
+        lines.append("【%s】验证结论：%s" % (SIDE_CN.get(side, side),
+                     "通过（评审达标）" if v.get("pass") or v.get("publishable") else "完成"))
+    return lines
+
+
+def _task_of(claim, side):
+    for t in claim.get("tasks") or []:
+        if t.get("side") == side:
+            return t
+    return {}
+
+
+def _report_text(claim, runs, profile, cfg):
+    """resolve 评论：确定性事实（逐端汇总）。"""
+    tri = claim.get("triage") or {}
+    lines = ["【CodeBee 自动修复报告】",
+             "Bug：#%s %s" % (claim.get("bug_id"), claim.get("title") or "")]
+    if tri.get("side"):
+        lines.append("排查结论：%s问题（%s）" % (tri.get("side"),
+                                               tri.get("reason") or tri.get("by") or "按规则"))
+    for t in claim.get("tasks") or []:
+        lines.extend(_fix_summary(claim, runs.get(t.get("run_id")), profile, t.get("side")))
     lines.append("（本条由 CodeBee 禅道集成自动回写）")
     return "\n".join(lines)
 
 
-def _fail_text(claim, run):
-    why = str(run.get("error") or "").strip() or ("运行状态 " + str(run.get("status") or ""))
-    return ("【CodeBee 自动修复未成功】\nBug：#%s %s\n原因：%s\n"
-            "已在 CodeBee 留下修复任务（%s），可人工续跑或接管；本 bug 保持待处理。"
-            % (claim.get("bug_id"), claim.get("title") or "", why[:400],
-               claim.get("task_id") or "?"))
+def _transfer_text(claim, profile, fixed_runs, target_side):
+    """转派评论：排查结论 + 我方已做工作 + 请对方继续。"""
+    tri = claim.get("triage") or {}
+    lines = ["【CodeBee 排查转派】",
+             "Bug：#%s %s" % (claim.get("bug_id"), claim.get("title") or ""),
+             "排查结论：%s问题——%s" % (SIDE_CN.get(target_side, target_side),
+                                      tri.get("reason") or tri.get("by") or "按规则")]
+    for side, run in (fixed_runs or []):
+        lines.extend(_fix_summary(claim, run, profile, side))
+    lines.append("请%s负责人接手处理；本 bug 保持激活，处理完请按正常流程解决。"
+                 % SIDE_CN.get(target_side, target_side))
+    lines.append("（本条由 CodeBee 禅道集成自动回写）")
+    return "\n".join(lines)
 
+
+def _fail_text(claim, failed_tasks, runs):
+    tri = claim.get("triage") or {}
+    lines = ["【CodeBee 自动修复未成功】",
+             "Bug：#%s %s" % (claim.get("bug_id"), claim.get("title") or "")]
+    if tri.get("side"):
+        lines.append("排查结论：%s（%s）" % (tri.get("side"), tri.get("reason") or ""))
+    for t in failed_tasks:
+        r = runs.get(t.get("run_id")) or {}
+        why = str(r.get("error") or "").strip() or ("运行状态 " + str(r.get("status") or ""))
+        lines.append("【%s】失败：%s" % (SIDE_CN.get(t.get("side"), t.get("side")), why[:300]))
+    lines.append("CodeBee 修复任务：%s（可人工续跑或接管）；本 bug 保持待处理。"
+                 % "、".join(t.get("task_id") or "?" for t in claim.get("tasks") or []))
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------- 禅道写回动作
 
 def _bug_opened_by(cfg, bug_id):
-    """回指报告人用：拉当前 bug 详情取 openedBy；拿不到返回空串（不指派）。"""
     try:
         d = _api("GET", "/bugs/%s" % bug_id, cfg=cfg)
         return _acct(d.get("openedBy"))
@@ -496,7 +734,7 @@ def _bug_opened_by(cfg, bug_id):
 
 
 def _ensure_resolved(cfg, bug_id, comment, assign_to):
-    """resolve（幂等）：已是 resolved/closed 视为成功，不再重复 resolve。"""
+    """resolve（幂等）：已是 resolved/closed 视为成功。"""
     cur = _api("GET", "/bugs/%s" % bug_id, cfg=cfg)
     if str(cur.get("status") or "") in ("resolved", "closed"):
         return True
@@ -507,14 +745,12 @@ def _ensure_resolved(cfg, bug_id, comment, assign_to):
     return True
 
 
-def _comment_only(cfg, bug_id, text):
-    """修复失败说明（容错）：PUT comment 字段；接口不支持/失败也无所谓（群通知兜底）。"""
-    try:
-        _api("PUT", "/bugs/%s" % bug_id, cfg=cfg, body={"comment": text})
-        return True
-    except ZenError as e:
-        log.warning("zentao: bug %s 评论失败（群通知兜底）：%s", bug_id, e)
-        return False
+def _transfer(cfg, bug_id, target, comment):
+    """转派：PUT assignedTo+comment（bug 保持激活）。target 空=只评论。抛 ZenError。"""
+    body = {"comment": comment}
+    if target:
+        body["assignedTo"] = target
+    _api("PUT", "/bugs/%s" % bug_id, cfg=cfg, body=body)
 
 
 def _notify(text):
@@ -543,29 +779,83 @@ def _set_claim(bid, **patch):
         _save_locked()
 
 
-def _finish_ok(claim, run, task, cfg):
-    """run done 的回写：先合并（可选）再 resolve（可选）。状态推进与群通知。"""
+def _route_account(profile, tri, side):
+    """转派/升级目标：模块路由 account > 端负责人。"""
+    if tri and tri.get("account"):
+        return str(tri["account"]).strip()
+    return str((profile.get("owners") or {}).get(side) or "").strip()
+
+
+# ---------------------------------------------------------------- 对账回写
+
+def _finish_ok(claim, cfg):
+    """我方任务全部 done：合并 → （需要则）转派 → 否则 resolve。"""
     bid = str(claim.get("bug_id"))
-    merged = False
-    if task is not None and task.get("git_rev"):
-        if cfg.get("auto_merge"):
-            ok, err, _info = _merge_branch(_workdir(cfg), task)
+    profile = _profile_for(cfg, claim.get("product")) or {}
+    tri = claim.get("triage") or {}
+    tasks = claim.get("tasks") or []
+    runs = {t.get("run_id"): store.get_run(t.get("run_id") or "") for t in tasks}
+    # 1) 逐任务合并（任一失败即停：不转派不 resolve，绝不带着没落库的修复转派）
+    if cfg.get("auto_merge"):
+        for t in tasks:
+            task = store.get_task(t.get("task_id") or "")
+            if task is None or not task.get("git_rev"):
+                continue
+            ok, err, _info = _merge_branch(str(_repo_of(profile, t.get("side")).get("workdir")
+                                               or settings.default_workdir()), task)
             if not ok:
                 _set_claim(bid, state="merge_failed",
-                           note="任务分支合并失败：%s（bug 未 resolve，留人工处理）" % err)
-                _notify("🐛❌ 禅道 Bug #%s 修复代码合并失败：%s\n修复任务：%s"
-                        % (bid, err, claim.get("task_id") or "?"))
+                           note="【%s】任务分支合并失败：%s（不转派不 resolve，留人工）"
+                                % (SIDE_CN.get(t.get("side"), t.get("side")), err))
+                _notify("🐛❌ 禅道 Bug #%s 的%s修复代码合并失败：%s\n修复任务：%s"
+                        % (bid, SIDE_CN.get(t.get("side"), ""), err, t.get("task_id") or "?"))
                 return
-            merged = True
-        # auto_merge 关：代码留任务分支人工裁决，bug 是否 resolve 跟随 auto_resolve
+    # 2) 需要转派的端 = 判定端 - 我方端（both 且我方只管一端时非空）
+    verdict_sides = ([tri["side"]] if tri.get("side") in SIDES
+                     else list(SIDES) if tri.get("side") == "both" else [])
+    other_sides = [s for s in verdict_sides if s not in (profile.get("our_sides") or [])]
+    if other_sides:
+        targets = {}
+        for s in other_sides:
+            tgt = _route_account(profile, tri, s)
+            if not tgt:
+                _set_claim(bid, state="need_manual",
+                           note="我方已修完，但未配置%s负责人，无法转派——请人工转派" % SIDE_CN[s])
+                _notify("🐛⚠️ 禅道 Bug #%s 我方部分已修完，但未配置%s负责人，请人工转派"
+                        % (bid, SIDE_CN[s]))
+                return
+            targets[s] = tgt
+        fixed_runs = [(t.get("side"), runs.get(t.get("run_id"))) for t in tasks]
+        for s in other_sides:
+            try:
+                _transfer(cfg, bid, targets[s], _transfer_text(claim, profile, fixed_runs, s))
+            except ZenError as e:
+                attempts = int(claim.get("attempts") or 0) + 1
+                if attempts >= RESOLVE_MAX_ATTEMPTS:
+                    _set_claim(bid, attempts=attempts, state="resolve_failed",
+                               note="转派连续 %d 次失败：%s" % (attempts, e))
+                    _notify("🐛⚠️ 禅道 Bug #%s 修完但转派失败：%s" % (bid, e))
+                else:
+                    _set_claim(bid, attempts=attempts, state="fixing",
+                               note="转派第 %d 次失败，下轮重试：%s" % (attempts, e))
+                return
+        _set_claim(bid, state="transferred",
+                   note="我方（%s）已修完并合并，转派给 %s"
+                        % ("/".join(SIDE_CN.get(t.get("side"), "") for t in tasks),
+                           "、".join(SIDE_CN[s] + ":" + targets[s] for s in other_sides)))
+        _notify("🐛🔁 禅道 Bug #%s 我方已修完，转派 %s\n%s"
+                % (bid, "、".join(SIDE_CN[s] + ":" + targets[s] for s in other_sides),
+                   claim.get("title") or ""))
+        return
+    # 3) 全部我方端：resolve（幂等）+ 指回报告人
     if not cfg.get("auto_resolve"):
         _set_claim(bid, state="done_manual",
                    note="修复完成；auto_resolve 已关，请人工确认后到禅道解决 bug")
         return
-    report = _report_text(claim, run, task, cfg)
-    opened = _bug_opened_by(cfg, claim.get("bug_id"))
+    report = _report_text(claim, runs, profile, cfg)
+    opened = _bug_opened_by(cfg, bid)
     try:
-        _ensure_resolved(cfg, claim.get("bug_id"), report, opened)
+        _ensure_resolved(cfg, bid, report, opened)
     except ZenError as e:
         attempts = int(claim.get("attempts") or 0) + 1
         if attempts >= RESOLVE_MAX_ATTEMPTS:
@@ -576,86 +866,226 @@ def _finish_ok(claim, run, task, cfg):
             _set_claim(bid, attempts=attempts, state="fixing",
                        note="resolve 第 %d 次失败，下轮重试：%s" % (attempts, e))
         return
-    _set_claim(bid, state="resolved",
-               note="已 resolve(fixed)%s%s" % ("，已合并回 " + str((run.get("git") or {}).get("from_branch") or "")
-                                              if merged else "",
-                                              "，指回报告人 " + opened if opened else ""))
+    _set_claim(bid, state="resolved", note="已 resolve(fixed)%s"
+               % ("，指回报告人 " + opened if opened else ""))
     _notify("🐛✅ 禅道 Bug #%s 已修复并 resolve\n%s\n修复任务：%s"
-            % (bid, claim.get("title") or "", claim.get("task_id") or "?"))
+            % (bid, claim.get("title") or "", "、".join(t.get("task_id") or "" for t in tasks)))
+
+
+def _finish_failed(claim, cfg):
+    """我方任一任务失败：评论尝试记录 + 转派该端负责人（有配则转）。"""
+    bid = str(claim.get("bug_id"))
+    profile = _profile_for(cfg, claim.get("product")) or {}
+    tasks = claim.get("tasks") or []
+    runs = {t.get("run_id"): store.get_run(t.get("run_id") or "") for t in tasks}
+    failed = [t for t in tasks
+              if str((runs.get(t.get("run_id")) or {}).get("status") or "") not in
+              ("queued", "running", "done")]
+    text = _fail_text(claim, failed, runs)
+    # 升级目标：取第一个失败端的路由账号/负责人
+    target = ""
+    for t in failed:
+        target = _route_account(profile, claim.get("triage") or {}, t.get("side"))
+        if target:
+            break
+    try:
+        _transfer(cfg, bid, target, text)
+        note = "已评论说明%s" % ("并转派 %s" % target if target else "")
+        state = "escalated" if target else "commented"
+    except ZenError as e:
+        log.warning("zentao: bug %s 失败评论未送达（群通知兜底）：%s", bid, e)
+        note = "修复失败，评论未送达：%s" % e
+        state = "commented"
+    _set_claim(bid, state=state, note=note)
+    _notify("🐛❌ 禅道 Bug #%s 自动修复未成功%s\n%s\n修复任务：%s"
+            % (bid, ("，已转派 " + target) if target else "",
+               claim.get("title") or "", "、".join(t.get("task_id") or "" for t in tasks)))
 
 
 def _reconcile(cfg):
-    """对账：fixing 中的 claim 查 run 终态并回写。单条异常只跳过该条。"""
+    """对账：fixing 中的 claim 查各 run 终态并回写。单条异常只跳过该条。"""
     with _LOCK:
         fixing = [dict(c) for c in _STATE["claims"].values() if c.get("state") == "fixing"]
     for claim in fixing:
         bid = str(claim.get("bug_id"))
         try:
-            run = store.get_run(claim.get("run_id") or "")
-            if run is None:
+            tasks = claim.get("tasks") or []
+            runs = {t.get("run_id"): store.get_run(t.get("run_id") or "") for t in tasks}
+            if any(r is None for r in runs.values()):
                 _set_claim(bid, state="lost", note="运行记录不存在（可能被清理）")
                 continue
-            st = str(run.get("status") or "")
-            if st in ("queued", "running"):
+            states = [str((r or {}).get("status") or "") for r in runs.values()]
+            if any(s in ("queued", "running") for s in states):
                 continue
-            task = store.get_task(claim.get("task_id") or "")
-            if st == "done":
-                _finish_ok(claim, run, task, cfg)
-            else:   # failed / cancelled
-                _comment_only(cfg, claim.get("bug_id"), _fail_text(claim, run))
-                _set_claim(bid, state="commented",
-                           note="修复未成功（%s），已评论说明，留人工" % st)
-                _notify("🐛❌ 禅道 Bug #%s 自动修复未成功（%s），已在禅道留评论\n修复任务：%s"
-                        % (bid, st, claim.get("task_id") or "?"))
+            if all(s == "done" for s in states):
+                _finish_ok(claim, cfg)
+            else:
+                _finish_failed(claim, cfg)
         except Exception:
             log.exception("zentao: claim %s 对账异常，跳过", bid)
 
 
 # ---------------------------------------------------------------- 扫描主流程
 
-def _scan(cfg):
-    """拉全部配置产品的 bug，认领新 bug 建修复任务。返回认领数。"""
-    seen = _STATE["claims"]
-    claimed = 0
-    wd = Path(_workdir(cfg))
-    if not wd.is_absolute():
-        raise ZenError("工作目录必须是绝对路径：%s" % wd)
-    products = [str(p).strip() for p in (cfg.get("products") or []) if str(p).strip()]
-    if not products:
-        raise ZenError("未配置产品 ID——禅道列表接口按产品维度，请先在配置里填产品 ID")
-    for pid in products:
-        for bug in list_bugs(cfg, pid):
-            if not _claimable(bug, cfg):
-                continue
-            bid = str(bug.get("id") or "")
-            if not bid or bid in seen:
-                continue
-            try:
-                task, run = _launch_fix(bug, cfg)
-            except Exception as e:
-                log.warning("zentao: bug %s 建修复任务失败：%s", bid, e)
-                _STATE["last_error"] = "Bug #%s 建任务失败：%s" % (bid, e)
-                continue
+def _sides_to_fix(profile, tri):
+    """判定端 ∩ 我方端。"""
+    tri_side = tri.get("side")
+    verdict_sides = [tri_side] if tri_side in SIDES else (list(SIDES) if tri_side == "both" else [])
+    return [s for s in verdict_sides if s in (profile.get("our_sides") or [])]
+
+
+def _route_one(bug, profile, cfg, notify=True):
+    """认领一个 bug：排查 → 分流（建任务/转派/留人工）。notify=False 用于
+    need_manual 存量的重排查（仍无解时不重复群通知）。返回动作文案或 None。"""
+    bid = str(bug.get("id") or "")
+    tri = _triage(bug, profile, cfg)
+    base_claim = {
+        "bug_id": bug.get("id"), "product": profile.get("product"),
+        "title": str(bug.get("title") or "")[:120],
+        "triage": tri, "tasks": [], "state": "fixing", "note": "",
+        "attempts": 0, "claimed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    opened = _acct(bug.get("openedBy"))
+
+    if tri["side"] == "unknown":
+        base_claim["state"] = "need_manual"
+        base_claim["note"] = tri.get("reason") or "排查失败，留人工"
+        with _LOCK:
+            _STATE["claims"][bid] = base_claim
+            _save_locked()
+        if notify:
+            _notify("🐛❓ 禅道 Bug #%s 排查不出归属端（%s），留人工\n%s"
+                    % (bid, tri.get("reason") or "", bug.get("title") or ""))
+        return "need_manual"
+
+    if tri["side"] == "not_ours":
+        target = tri.get("account") or str(profile.get("owners").get("not_ours") or "") \
+            or opened
+        text = ("【CodeBee 排查转派】\nBug：#%s %s\n排查结论：非我方两个仓库的问题——%s\n"
+                "转回 %s 核实处理。\n（本条由 CodeBee 禅道集成自动回写）"
+                % (bid, bug.get("title") or "", tri.get("reason") or "按规则",
+                   target or "报告人"))
+        try:
+            _transfer(cfg, bid, target, text)
+            note = "非我方，已转派 %s" % (target or "（未指派，仅评论）")
+        except ZenError as e:
+            base_claim.update({"state": "need_manual", "note": "非我方转派失败：%s" % e})
             with _LOCK:
-                _STATE["claims"][bid] = {
-                    "bug_id": bug.get("id"), "product": pid,
-                    "title": str(bug.get("title") or "")[:120],
-                    "task_id": task["id"], "run_id": run["id"],
-                    "state": "fixing", "note": "",
-                    "attempts": 0, "claimed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                }
+                _STATE["claims"][bid] = base_claim
                 _save_locked()
+            _notify("🐛⚠️ 禅道 Bug #%s 判定非我方但转派失败：%s" % (bid, e))
+            return "need_manual"
+        base_claim.update({"state": "transferred", "note": note})
+        with _LOCK:
+            _STATE["claims"][bid] = base_claim
+            _save_locked()
+        _notify("🐛↩️ 禅道 Bug #%s 判定非我方，已转派 %s\n%s"
+                % (bid, target or "报告人", bug.get("title") or ""))
+        return "transferred"
+
+    sides = _sides_to_fix(profile, tri)
+    if not sides:
+        # 纯对方端问题（含测试指错到我方账号的）：直接转派正确负责人
+        other = tri["side"] if tri["side"] in SIDES else None
+        if other is None:            # both 但我方两端都没配：整单转不了，留人工
+            base_claim["state"] = "need_manual"
+            base_claim["note"] = "双端问题但产品档案未配置我方端，请人工处理"
+            with _LOCK:
+                _STATE["claims"][bid] = base_claim
+                _save_locked()
+            _notify("🐛❓ 禅道 Bug #%s 为双端问题但未配我方端，留人工" % bid)
+            return "need_manual"
+        target = _route_account(profile, tri, other)
+        if not target:
+            base_claim["state"] = "need_manual"
+            base_claim["note"] = "判定为%s问题，但未配置%s负责人，无法转派" % (
+                SIDE_CN[other], SIDE_CN[other])
+            with _LOCK:
+                _STATE["claims"][bid] = base_claim
+                _save_locked()
+            _notify("🐛⚠️ 禅道 Bug #%s 判定为%s问题但未配负责人，请人工转派"
+                    % (bid, SIDE_CN[other]))
+            return "need_manual"
+        text = _transfer_text({"bug_id": bug.get("id"), "title": bug.get("title") or "",
+                               "triage": tri, "tasks": []}, profile, [], other)
+        try:
+            _transfer(cfg, bid, target, text)
+        except ZenError as e:
+            base_claim["state"] = "need_manual"
+            base_claim["note"] = "%s转派失败：%s" % (SIDE_CN[other], e)
+            with _LOCK:
+                _STATE["claims"][bid] = base_claim
+                _save_locked()
+            _notify("🐛⚠️ 禅道 Bug #%s 判定%s问题但转派失败：%s" % (bid, SIDE_CN[other], e))
+            return "need_manual"
+        base_claim.update({"state": "transferred",
+                           "note": "%s问题（测试原指派 %s），已转派 %s"
+                                   % (SIDE_CN[other], _acct(bug.get("assignedTo")) or "?", target)})
+        with _LOCK:
+            _STATE["claims"][bid] = base_claim
+            _save_locked()
+        _notify("🐛🔁 禅道 Bug #%s 判定%s问题，已转派 %s（原指派 %s）\n%s"
+                % (bid, SIDE_CN[other], target, _acct(bug.get("assignedTo")) or "?",
+                   bug.get("title") or ""))
+        return "transferred"
+
+    # 我方端：逐端建修复任务（任一端建不起来 → 整单留人工，不做半截修复）
+    tasks = []
+    try:
+        for side in sides:
+            task, run = _launch_fix(bug, profile, side, cfg)
+            tasks.append({"side": side, "task_id": task["id"], "run_id": run["id"],
+                          "state": "fixing"})
+    except Exception as e:
+        log.warning("zentao: bug %s 建修复任务失败：%s", bid, e)
+        base_claim["state"] = "need_manual"
+        base_claim["note"] = "建修复任务失败：%s" % e
+        with _LOCK:
+            _STATE["claims"][bid] = base_claim
+            _save_locked()
+        _notify("🐛⚠️ 禅道 Bug #%s 建修复任务失败：%s" % (bid, e))
+        return "need_manual"
+    base_claim["tasks"] = tasks
+    with _LOCK:
+        _STATE["claims"][bid] = base_claim
+        _save_locked()
+    _notify("🐛🔍 认领禅道 Bug #%s（%s问题·%s）：%s\n修复任务：%s"
+            % (bid, tri["side"], "由规则" if tri.get("by") == "rule" else "AI 判定",
+               bug.get("title") or "", "、".join(t["task_id"] for t in tasks)))
+    return "fixing"
+
+
+def _scan(cfg):
+    """按产品档案逐个拉 bug：认领新 bug + 重试 need_manual 的存量。返回认领数。"""
+    claimed = 0
+    profiles = _profiles(cfg)
+    if not profiles:
+        raise ZenError("未配置产品档案——请先在设置页添加产品并配置仓库")
+    for profile in profiles:
+        bugs = list_bugs(cfg, profile["product"])
+        by_id = {str(b.get("id") or ""): b for b in bugs}
+        with _LOCK:
+            seen = set(_STATE["claims"].keys())
+            retry_ids = [k for k, c in _STATE["claims"].items()
+                         if c.get("state") == "need_manual" and k in by_id
+                         and str(by_id[k].get("status") or "") == "active"]
+        for bug in bugs:
+            bid = str(bug.get("id") or "")
+            if not bid or bid in seen or not _claimable(bug, profile):
+                continue
+            _route_one(bug, profile, cfg)
             claimed += 1
-            _notify("🐛🔍 认领禅道 Bug #%s：%s\n修复任务已排队：%s"
-                    % (bid, bug.get("title") or "", task["id"]))
+        # need_manual 重排查（bug 仍激活才出现在列表里）
+        for bid in retry_ids:
+            with _LOCK:
+                if _STATE["claims"].get(bid, {}).get("state") != "need_manual":
+                    continue
+            _route_one(by_id[bid], profile, cfg, notify=False)
     return claimed
 
 
 def _poll(force=False):
-    """一次完整轮询：对账回写 + （到点/强制时）扫描认领。返回摘要 dict。
-
-    异常不外抛：记 last_error 返回 ok=False，绝不影响 automation 调度线程。
-    """
+    """一次完整轮询：对账回写 + （到点/强制时）扫描认领。异常不外抛。"""
     _ensure_loaded()
     with _LOCK:
         cfg = _cfg()
@@ -709,12 +1139,12 @@ def fire_due():
 
 
 def scan_now():
-    """手动「立即扫描」：绕过轮询闸与节流。返回 _poll 摘要。"""
+    """手动「立即扫描」：绕过轮询闸与节流。"""
     return _poll(force=True)
 
 
 def start():
-    """服务启动接线：加载状态。若启用轮询但 next_scan 缺失，下一个 tick 即扫描。"""
+    """服务启动接线：加载状态（含老配置迁移）。"""
     n = load()
     with _LOCK:
         cfg = _STATE.get("config") or {}
@@ -726,24 +1156,87 @@ def start():
 
 # ---------------------------------------------------------------- 配置管理
 
-def _norm_products(v):
+def _norm_profile(p, idx):
+    if not isinstance(p, dict):
+        raise ValueError("产品档案 #%d 必须是对象" % idx)
+    try:
+        pid = int(p.get("product") or 0)
+    except (TypeError, ValueError):
+        raise ValueError("产品档案 #%d 的产品 ID 必须是整数" % idx)
+    if pid <= 0:
+        raise ValueError("产品档案 #%d 缺产品 ID" % idx)
+    prof = dict(_PROFILE_DEFAULTS)
+    prof["product"] = pid
+    prof["assigned_to"] = str(p.get("assigned_to") or "").strip()
+    try:
+        prof["severity_cap"] = max(0, min(4, int(p.get("severity_cap") or 0)))
+    except (TypeError, ValueError):
+        prof["severity_cap"] = 0
+    our = [s for s in SIDES if s in (p.get("our_sides") or [])]
+    prof["our_sides"] = our
+    repos = {"backend": dict(_REPO_DEFAULTS), "frontend": dict(_REPO_DEFAULTS)}
+    raw_repos = p.get("repos") if isinstance(p.get("repos"), dict) else {}
+    for side in SIDES:
+        r = raw_repos.get(side) if isinstance(raw_repos.get(side), dict) else {}
+        wd = str(r.get("workdir") or "").strip()
+        if wd:
+            rp = Path(wd).expanduser()
+            if not rp.is_absolute():
+                raise ValueError("产品 %d 的%s工作目录必须是绝对路径" % (pid, SIDE_CN[side]))
+            wd = str(rp)
+        repos[side] = {"workdir": wd,
+                       "git_rev": str(r.get("git_rev") or "").strip(),
+                       "verify_command": str(r.get("verify_command") or "").strip()}
+    # 工作目录留空合法：扫描时回落「默认保存路径」（_launch_fix 同口径），不在此拦截
+    prof["repos"] = repos
+    hints = {}
+    raw_hints = p.get("repo_hints") if isinstance(p.get("repo_hints"), dict) else {}
+    for side in SIDES:
+        hints[side] = str(raw_hints.get(side) or "").strip()
+    prof["repo_hints"] = hints
+    owners = {}
+    raw_owners = p.get("owners") if isinstance(p.get("owners"), dict) else {}
+    for k in ("backend", "frontend", "not_ours"):
+        owners[k] = str(raw_owners.get(k) or "").strip()
+    prof["owners"] = owners
+    routes = []
+    for r in (p.get("module_routes") or []):
+        if not isinstance(r, dict):
+            continue
+        try:
+            mid = int(r.get("module") or 0)
+        except (TypeError, ValueError):
+            raise ValueError("产品 %d 的模块路由：模块 ID 必须是整数" % pid)
+        if mid <= 0:
+            continue
+        side = str(r.get("side") or "")
+        if side not in TRIAGE_SIDES:
+            raise ValueError("产品 %d 的模块路由 side 必须是 %s 之一"
+                             % (pid, "/".join(TRIAGE_SIDES)))
+        routes.append({"module": mid, "side": side,
+                       "account": str(r.get("account") or "").strip()})
+    prof["module_routes"] = routes
+    return prof
+
+
+def _norm_profiles(v):
     if v is None:
         return None
     if not isinstance(v, list):
-        raise ValueError("products 必须是产品 ID 数组")
-    out = []
-    for x in v:
-        try:
-            n = int(x)
-        except (TypeError, ValueError):
-            raise ValueError("产品 ID 必须是整数：%r" % (x,))
-        if n > 0:
-            out.append(n)
+        raise ValueError("product_profiles 必须是数组")
+    out, seen = [], set()
+    for i, p in enumerate(v):
+        prof = _norm_profile(p, i)
+        if prof["product"] in seen:
+            raise ValueError("产品 %d 配置重复" % prof["product"])
+        seen.add(prof["product"])
+        out.append(prof)
     return out
 
 
 def save_config(patch):
-    """部分更新配置（password 缺省或空串=不改）。校验失败抛 ValueError。返回脱敏视图。"""
+    """部分更新配置（password 缺省或空串=不改；product_profiles 整体替换）。
+    校验失败抛 ValueError。返回脱敏视图的 config。"""
     _ensure_loaded()
     patch = patch if isinstance(patch, dict) else {}
     with _LOCK:
@@ -756,37 +1249,26 @@ def save_config(patch):
                 v = str(v or "").strip().rstrip("/")
                 if v and not v.startswith(("http://", "https://")):
                     raise ValueError("禅道地址必须以 http:// 或 https:// 开头")
-            elif k in ("account", "assigned_to", "workdir", "git_rev", "verify_command"):
+            elif k == "account":
                 v = str(v or "").strip()
-                if k == "workdir" and v:
-                    p = Path(v).expanduser()
-                    if not p.is_absolute():
-                        raise ValueError("工作目录必须是绝对路径")
-                    v = str(p)
             elif k == "password":
                 v = str(v or "")
                 if not v:
-                    continue          # 空 = 不修改密码
-            elif k == "products":
-                v = _norm_products(v)
+                    continue
+            elif k == "product_profiles":
+                v = _norm_profiles(v)
                 if v is None:
                     continue
-            elif k == "severity_cap":
-                try:
-                    v = max(0, min(4, int(v)))
-                except (TypeError, ValueError):
-                    raise ValueError("severity_cap 必须是 0-4 的整数")
             elif k == "interval_hours":
                 try:
                     v = max(INTERVAL_MIN, min(INTERVAL_MAX, int(v)))
                 except (TypeError, ValueError):
                     raise ValueError("interval_hours 必须是 %d-%d 的整数"
                                      % (INTERVAL_MIN, INTERVAL_MAX))
-            elif k in ("auto_resolve", "auto_merge", "poll_enabled"):
+            elif k in ("auto_resolve", "auto_merge", "triage_ai", "poll_enabled"):
                 v = bool(v)
             cfg[k] = v
         _STATE["config"] = cfg
-        # 轮询节奏变化即刻生效：下一拍即按新节奏扫描
         if cfg.get("poll_enabled"):
             _STATE["next_scan"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         _save_locked()

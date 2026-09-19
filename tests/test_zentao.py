@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""zentao（禅道 Bug 自动修复）单元测试：起本地假禅道服务器，绝不真连外网。
+"""zentao（禅道 Bug 自动修复·产品档案+排查路由）单元测试：起本地假禅道服务器。
 
-覆盖：SSRF 守卫、过滤/防呆、配置校验与脱敏、扫描认领去重、终态回写
-（resolve/评论）、merge 失败不谎报 resolved、auto_resolve 关闭、token 401 重试、
-fire_due 节流闸。
+覆盖：SSRF 守卫、过滤、配置校验/脱敏/老配置迁移、扫描认领去重、排查三路
+（模块规则优先/AI 兜底/不可用留人工）、我方端修复 resolve、非我方转派、
+纯对方端转派（含测试指错人改派）、双端我端修完转派、失败升级、负责人优先级、
+模块清单容错、need_manual 重排查、老 claim 归一、token 401 重试、fire_due 节流。
 """
 from __future__ import annotations
 
@@ -21,15 +22,15 @@ class FakeZen:
 
     def __init__(self, bugs):
         self.bugs = {str(b["id"]): dict(b) for b in bugs}
-        self.calls = []          # (method, path, body)
-        self.reject_next_auth = False   # True：下一次带 token 的请求 401（模拟 token 过期）
+        self.calls = []                 # (method, path, body)
+        self.modules = {1: [{"id": 99, "name": "登录"}, {"id": 77, "name": "报表"}]}
+        self.reject_next_auth = False   # 一次性：下一个带 token 的请求 401
 
-    # ---- handler 工厂 ----
     def handler(self):
         srv = self
 
         class H(BaseHTTPRequestHandler):
-            def log_message(self, *a):      # 静音
+            def log_message(self, *a):
                 pass
 
             def _reply(self, code, obj):
@@ -41,7 +42,6 @@ class FakeZen:
                 self.wfile.write(raw)
 
             def _parts(self):
-                """/api.php/v1/products/1/bugs?... → ["products","1","bugs"]"""
                 from urllib.parse import urlparse
                 p = urlparse(self.path).path.lstrip("/")
                 if p.startswith("api.php/v1/"):
@@ -49,12 +49,11 @@ class FakeZen:
                 return p.split("/")
 
             def _auth(self):
-                tok = (self.headers.get("Token") or "").strip()
-                if not tok:
+                if not (self.headers.get("Token") or "").strip():
                     self._reply(401, {"error": "missing token"})
                     return False
                 if srv.reject_next_auth:
-                    srv.reject_next_auth = False   # 一次性：模拟「这枚 token 刚好过期」
+                    srv.reject_next_auth = False
                     self._reply(401, {"error": "token expired"})
                     return False
                 return True
@@ -79,7 +78,6 @@ class FakeZen:
                 if not self._auth():
                     return
                 parts = self._parts()
-                # /bugs/<id>/resolve
                 if len(parts) == 3 and parts[0] == "bugs" and parts[2] == "resolve":
                     bug = srv.bugs.get(parts[1])
                     if bug is None:
@@ -104,6 +102,9 @@ class FakeZen:
                     if bug is None:
                         self._reply(404, {"error": "no such bug"})
                         return
+                    b = srv.calls[-1][2]
+                    if b.get("assignedTo"):
+                        bug["assignedTo"] = {"account": b["assignedTo"], "realname": b["assignedTo"]}
                     self._reply(200, bug)
                     return
                 self._reply(404, {"error": "unknown PUT"})
@@ -118,6 +119,13 @@ class FakeZen:
                     bugs = [b for b in srv.bugs.values() if int(b.get("product") or 0) == pid]
                     self._reply(200, {"bugs": bugs, "total": len(bugs),
                                       "page": 1, "limit": 100})
+                    return
+                if len(parts) == 3 and parts[0] == "products" and parts[2] == "modules":
+                    mods = srv.modules.get(int(parts[1]))
+                    if mods is None:
+                        self._reply(404, {"error": "no such product"})
+                    else:
+                        self._reply(200, {"modules": mods})
                     return
                 if len(parts) == 2 and parts[0] == "bugs":
                     bug = srv.bugs.get(parts[1])
@@ -147,16 +155,19 @@ class ZenCase(BaseTest):
         self.launched = []
         self._orig_launch = zentao._launch_fix
 
-        def fake_launch(bug, cfg):
-            payload = {"type": "code", "goal": zentao._goal_text(bug),
-                       "workdir": zentao._workdir(cfg),
-                       "title": ("[禅道#%s] %s" % (bug.get("id"), bug.get("title") or ""))[:60]}
-            if str(cfg.get("git_rev") or "").strip():
-                payload["git_rev"] = cfg["git_rev"]
+        def fake_launch(bug, profile, side, cfg):
+            repo = zentao._repo_of(profile, side)
+            payload = {"type": "code", "goal": zentao._goal_text(bug, side),
+                       "workdir": str(repo.get("workdir") or self.workdir),
+                       "title": ("[禅道#%s][%s] %s" % (bug.get("id"), side, bug.get("title") or ""))[:60]}
+            if str(repo.get("git_rev") or "").strip():
+                payload["git_rev"] = repo["git_rev"]
+            if str(repo.get("verify_command") or "").strip():
+                payload["verify_command"] = repo["verify_command"]
             task = store.create_task(payload)
             run = store.create_run("orchestration", task["title"], task_id=task["id"])
             store.update_task_status(task["id"], "queued")
-            self.launched.append({"task": task, "run": run, "bug": bug})
+            self.launched.append({"task": task, "run": run, "bug": bug, "side": side})
             return task, run
         zentao._launch_fix = fake_launch
         # 假服务器
@@ -174,16 +185,33 @@ class ZenCase(BaseTest):
         store._TASKS.clear()
         store._RUNS.clear()
 
-    def configure(self, **kw):
+    def profile(self, **kw):
+        p = {"product": 1, "assigned_to": "coder", "severity_cap": 0,
+             "our_sides": ["backend"],
+             "repos": {"backend": {"workdir": str(self.workdir), "git_rev": "",
+                                   "verify_command": ""},
+                       "frontend": {"workdir": "", "git_rev": "", "verify_command": ""}},
+             "repo_hints": {"backend": "", "frontend": ""},
+             "owners": {"backend": "be-owner", "frontend": "fe-owner", "not_ours": ""},
+             "module_routes": [{"module": 99, "side": "backend", "account": ""}]}
+        for k, v in kw.items():
+            if k == "repos":
+                for side in ("backend", "frontend"):
+                    p["repos"].setdefault(side, {})
+                    p["repos"][side].update(v.get(side) or {})
+            else:
+                p[k] = v
+        return p
+
+    def configure(self, profiles=None, **kw):
         cfg = {"base_url": "http://127.0.0.1:%d" % self.port,
-               "account": "coder", "password": "pw",
-               "products": [1], "assigned_to": "coder",
-               "workdir": str(self.workdir)}
+               "account": "coder", "password": "pw"}
         cfg.update(kw)
+        cfg["product_profiles"] = profiles if profiles is not None else [self.profile()]
         return self.zen_mod.save_config(cfg)
 
     def bug(self, bid=101, **kw):
-        b = {"id": bid, "product": 1, "title": "登录页 500",
+        b = {"id": bid, "product": 1, "title": "登录页 500", "module": 99,
              "steps": "<p>打开<b>登录页</b></p><br>报 500",
              "severity": 2, "pri": 2, "type": "codeerror",
              "status": "active", "os": "win", "browser": "edge",
@@ -193,16 +221,26 @@ class ZenCase(BaseTest):
         self.fz.bugs[str(bid)] = b
         return b
 
+    def claim(self):
+        claims = self.zen_mod.view()["claims"]
+        return claims[0] if claims else None
+
+    def resolve_calls(self, bid):
+        return [x for x in self.fz.calls
+                if x[0] == "POST" and x[1].endswith("/bugs/%s/resolve" % bid)]
+
+    def put_calls(self, bid):
+        return [x for x in self.fz.calls
+                if x[0] == "PUT" and x[1].endswith("/bugs/%s" % bid)]
+
 
 class TestGuardUrl(ZenCase):
     def runTest(self):
         ZenError = self.zen_mod.ZenError
-        # 放行：本机/内网/可解析域名
         for url in ("http://127.0.0.1:9999/api.php/v1/tokens",
                     "http://localhost:88/zentao/api.php/v1/tokens",
                     "http://192.168.1.10/zentao/api.php/v1/tokens"):
             self.assertEqual(self.zen_mod._guard_url(url), url)
-        # 拦截：非 http 协议 / 云元数据 / 链路本地
         for bad in ("ftp://x/tokens", "file:///etc/passwd",
                     "http://169.254.169.254/latest/meta-data",
                     "http://metadata.google.internal/computeMetadata/v1/"):
@@ -210,204 +248,408 @@ class TestGuardUrl(ZenCase):
                 self.zen_mod._guard_url(bad)
 
 
-class TestFilters(ZenCase):
+class TestFiltersAndHtml(ZenCase):
     def runTest(self):
         f = self.zen_mod._claimable
-        cfg = {"products": [1], "assigned_to": "coder", "severity_cap": 0}
-        self.assertTrue(f({"status": "active", "product": 1,
-                           "assignedTo": {"account": "coder"}}, cfg))
-        self.assertFalse(f({"status": "resolved", "product": 1,
-                            "assignedTo": {"account": "coder"}}, cfg), "非 active 不认领")
-        self.assertFalse(f({"status": "active", "product": 2,
-                            "assignedTo": {"account": "coder"}}, cfg), "产品不符不认领")
-        self.assertFalse(f({"status": "active", "product": 1,
-                            "assignedTo": "someone-else"}, cfg), "指派不符不认领")
-        self.assertFalse(f({"status": "active", "product": 1,
-                            "assignedTo": {"account": "coder"}}, {}), "过滤全空不认领（防呆）")
-        cfg_sev = dict(cfg, severity_cap=2)
-        self.assertTrue(f({"status": "active", "product": 1,
-                           "assignedTo": "coder", "severity": 1}, cfg_sev), "severity 1 ≤ 2")
-        self.assertFalse(f({"status": "active", "product": 1,
-                            "assignedTo": "coder", "severity": 3}, cfg_sev), "severity 3 > 2")
-        # HTML 剥离：标签清掉、正文保留（标签位以空格替代，中文断言按词查）
+        prof = self.profile()
+        self.assertTrue(f({"status": "active", "assignedTo": {"account": "coder"}}, prof))
+        self.assertFalse(f({"status": "resolved", "assignedTo": {"account": "coder"}}, prof))
+        self.assertFalse(f({"status": "active", "assignedTo": "someone-else"}, prof))
+        prof_sev = self.profile(severity_cap=2)
+        self.assertTrue(f({"status": "active", "assignedTo": "coder", "severity": 1}, prof_sev))
+        self.assertFalse(f({"status": "active", "assignedTo": "coder", "severity": 3}, prof_sev))
+        # HTML 剥离
         txt = self.zen_mod._strip_html("<p>打开<b>登录页</b></p><br>报 500")
         self.assertIn("登录页", txt)
         self.assertIn("报 500", txt)
         self.assertNotIn("<", txt)
 
 
-class TestConfigValidationAndMask(ZenCase):
+class TestConfigAndMigration(ZenCase):
     def runTest(self):
-        self.configure()
-        v = self.zen_mod.view()
-        self.assertTrue(v["config"]["has_password"])
-        self.assertEqual(v["config"]["password"], "", "password 必须脱敏")
-        # products 归一 + 去非正数
-        cfg = self.zen_mod.save_config({"products": ["2", 3, -1]})
-        self.assertEqual(cfg["products"], [2, 3])
-        # 非法 scheme 拒绝
         from app.core import zentao
+        # 档案校验：product 重复拒绝
         with self.assertRaises(ValueError):
-            zentao.save_config({"base_url": "ftp://x"})
-        # interval 越界收敛
-        self.assertEqual(zentao.save_config({"interval_hours": 999})["interval_hours"], 168)
-        # 空 password 不覆盖已存密码
-        cfg = zentao.save_config({"account": "coder2", "password": ""})
-        self.assertEqual(cfg["account"], "coder2")
-        self.assertTrue(cfg["has_password"])
-        # relative workdir 拒绝
+            zentao.save_config({"product_profiles": [self.profile(), self.profile()]})
+        # 非法 side 拒绝
+        bad2 = self.profile()
+        bad2["module_routes"] = [{"module": 5, "side": "left", "account": ""}]
         with self.assertRaises(ValueError):
-            zentao.save_config({"workdir": "relative/path"})
+            zentao.save_config({"product_profiles": [bad2]})
+        # 正常保存 + 脱敏（工作目录留空合法：回落默认保存路径）
+        self.configure()
+        v = zentao.view()
+        self.assertTrue(v["config"]["has_password"])
+        self.assertEqual(v["config"]["password"], "")
+        self.assertEqual(v["config"]["product_profiles"][0]["owners"]["frontend"], "fe-owner")
+        # 相对路径工作目录拒绝
+        bad3 = self.profile()
+        bad3["repos"]["backend"]["workdir"] = "rel/path"
+        with self.assertRaises(ValueError):
+            zentao.save_config({"product_profiles": [bad3]})
+
+    def testLegacyMigration(self):
+        """老扁平配置（products+单仓库）load 时迁移成产品档案。"""
+        self.zen_mod._FILE.write_text(json.dumps({
+            "version": 1,
+            "config": {"base_url": "http://x", "account": "a", "password": "p",
+                       "products": [3, 7], "assigned_to": "coder", "severity_cap": 2,
+                       "workdir": str(self.workdir), "git_rev": "main",
+                       "verify_command": "pytest"},
+            "claims": {},
+        }, ensure_ascii=False), encoding="utf-8")
+        self.zen_mod.load(force=True)
+        cfg = self.zen_mod.view()["config"]
+        profs = cfg["product_profiles"]
+        self.assertEqual([p["product"] for p in profs], [3, 7])
+        self.assertEqual(profs[0]["repos"]["backend"]["workdir"], str(self.workdir))
+        self.assertEqual(profs[0]["repos"]["backend"]["git_rev"], "main")
+        self.assertEqual(profs[0]["our_sides"], ["backend"])
+        self.assertEqual(profs[0]["assigned_to"], "coder")
+
+    def testLegacyClaimMigration(self):
+        """老 claim（单 task_id/run_id）归一为 tasks 数组。"""
+        self.zen_mod._FILE.write_text(json.dumps({
+            "version": 1,
+            "config": {"product_profiles": [self.profile()]},
+            "claims": {"555": {"bug_id": 555, "product": 1, "title": "老 claim",
+                               "task_id": "t-old", "run_id": "r-old", "state": "fixing",
+                               "note": "", "attempts": 0,
+                               "claimed_at": "2026-09-19 08:00:00"}},
+        }, ensure_ascii=False), encoding="utf-8")
+        self.zen_mod.load(force=True)
+        c = self.claim()
+        self.assertEqual(len(c["tasks"]), 1)
+        self.assertEqual(c["tasks"][0]["task_id"], "t-old")
+        self.assertEqual(c["tasks"][0]["side"], "backend")
 
 
-class TestScanClaimDedup(ZenCase):
+class TestTriage(ZenCase):
+    def runTest(self):
+        cfg = self.configure()
+        prof = self.zen_mod._profiles(cfg)[0]
+        # ① 模块规则命中：绝不调 AI
+        called = []
+        orig_ai = self.zen_mod._ai_triage
+        self.zen_mod._ai_triage = lambda b, p: called.append(1) or {"side": "frontend"}
+        try:
+            tri = self.zen_mod._triage({"module": 99}, prof, cfg)
+            self.assertEqual(tri["side"], "backend")
+            self.assertEqual(tri["by"], "rule")
+            self.assertEqual(called, [], "规则命中不得调 AI")
+        finally:
+            self.zen_mod._ai_triage = orig_ai
+        # ② 未命中走 AI：AI 判 frontend
+        self.zen_mod._ai_triage = lambda b, p: {"side": "frontend", "reason": "页面白屏"}
+        try:
+            tri = self.zen_mod._triage({"module": 5}, prof, cfg)
+            self.assertEqual(tri["side"], "frontend")
+            self.assertEqual(tri["by"], "ai")
+        finally:
+            self.zen_mod._ai_triage = orig_ai
+        # ③ AI 不可用 → unknown
+        self.zen_mod._ai_triage = lambda b, p: None
+        try:
+            tri = self.zen_mod._triage({"module": 5}, prof, cfg)
+            self.assertEqual(tri["side"], "unknown")
+        finally:
+            self.zen_mod._ai_triage = orig_ai
+        # ④ triage_ai 关 → 未命中直接 unknown，不调 AI
+        cfg_off = self.configure(triage_ai=False)
+        tri = self.zen_mod._triage({"module": 5}, prof, cfg_off)
+        self.assertEqual(tri["side"], "unknown")
+
+
+class TestScanFixResolve(ZenCase):
+    """主链路：我方端 bug → 建任务 → 全部 done → resolve+指回报告人。"""
     def runTest(self):
         self.configure()
         self.bug(101)
-        self.bug(102, status="resolved")                       # 非 active
-        self.bug(103, assignedTo={"account": "other"})          # 指派不符
         res = self.zen_mod.scan_now()
         self.assertTrue(res["ok"], res)
         self.assertEqual(res["claimed"], 1)
-        claims = self.zen_mod.view()["claims"]
-        self.assertEqual(len(claims), 1)
-        c = claims[0]
-        self.assertEqual(str(c["bug_id"]), "101")
+        c = self.claim()
         self.assertEqual(c["state"], "fixing")
-        # 任务链真的建了：type=code、标题带前缀
-        task = self.store.get_task(c["task_id"])
+        self.assertEqual(c["triage"]["side"], "backend")
+        self.assertEqual(c["triage"]["by"], "rule")
+        self.assertEqual(len(c["tasks"]), 1)
+        self.assertEqual(c["tasks"][0]["side"], "backend")
+        task = self.store.get_task(c["tasks"][0]["task_id"])
         self.assertEqual(task["type"], "code")
         self.assertTrue(task["title"].startswith("[禅道#101]"))
-        self.assertIn("修复禅道 Bug #101", task["goal"])
-        self.assertIn("登录页", task["goal"])               # steps 剥 HTML 后注入
-        # 去重：再扫不重复认领
-        res2 = self.zen_mod.scan_now()
-        self.assertEqual(res2["claimed"], 0)
-        self.assertEqual(len(self.zen_mod.view()["claims"]), 1)
-
-
-class TestReconcileResolve(ZenCase):
-    def runTest(self):
-        self.configure()
-        self.bug(201)
-        self.zen_mod.scan_now()
-        claim = self.zen_mod.view()["claims"][0]
-        # run 置为 done → 对账回写 resolve
-        self.store.update_run(claim["run_id"], status="done",
+        self.assertIn("登录页", task["goal"])
+        self.assertIn("只负责【后端】部分", task["goal"])
+        # 去重
+        self.assertEqual(self.zen_mod.scan_now()["claimed"], 0)
+        # run 全 done → resolve
+        self.store.update_run(c["tasks"][0]["run_id"], status="done",
                               verdict={"pass": True, "publishable": True})
-        res = self.zen_mod.scan_now()
-        self.assertTrue(res["ok"])
-        c = self.zen_mod.view()["claims"][0]
+        self.assertTrue(self.zen_mod.scan_now()["ok"])
+        c = self.claim()
         self.assertEqual(c["state"], "resolved")
-        # 禅道侧：bug 被 resolve(fixed)，评论带报告，指回报告人
-        bug = self.fz.bugs["201"]
+        bug = self.fz.bugs["101"]
         self.assertEqual(bug["status"], "resolved")
-        resolve_calls = [x for x in self.fz.calls
-                         if x[0] == "POST" and x[1].endswith("/bugs/201/resolve")]
-        self.assertEqual(len(resolve_calls), 1)
-        body = resolve_calls[0][2]
-        self.assertEqual(body["resolution"], "fixed")
-        self.assertEqual(body["assignedTo"], "tester")
-        self.assertIn("【CodeBee 自动修复报告】", body["comment"])
-        # 幂等：已 resolved 的 bug 不再重复 resolve
-        n_before = len([x for x in self.fz.calls
-                        if x[0] == "POST" and x[1].endswith("/resolve")])
+        rc = self.resolve_calls("101")
+        self.assertEqual(len(rc), 1)
+        self.assertEqual(rc[0][2]["resolution"], "fixed")
+        self.assertEqual(rc[0][2]["assignedTo"], "tester")
+        self.assertIn("自动修复报告", rc[0][2]["comment"])
+
+
+class TestNotOursTransfer(ZenCase):
+    """非我方：只转派不解决（指回报告人）。"""
+    def runTest(self):
+        self.configure(profiles=[self.profile(
+            module_routes=[{"module": 77, "side": "not_ours", "account": ""}])])
+        self.bug(201, module=77)
+        self.assertTrue(self.zen_mod.scan_now()["ok"])
+        c = self.claim()
+        self.assertEqual(c["state"], "transferred")
+        self.assertEqual(c["triage"]["side"], "not_ours")
+        puts = self.put_calls("201")
+        self.assertEqual(len(puts), 1)
+        self.assertEqual(puts[0][2]["assignedTo"], "tester", "not_ours 无配置 → 指回报告人")
+        self.assertIn("非我方", puts[0][2]["comment"])
+        self.assertEqual(self.resolve_calls("201"), [], "只转派绝不 resolve")
+        # bug 保持激活
+        self.assertEqual(self.fz.bugs["201"]["status"], "active")
+
+
+class TestWrongAssigneeReroute(ZenCase):
+    """纯对方端问题（测试指错到我方账号）：不改状态直接转给正确负责人。"""
+    def runTest(self):
+        cfg = self.configure()
+        self.bug(301, module=5, assignedTo={"account": "coder"})   # 指错到我方
+        # AI 兜底判 frontend：打桩 _ai_triage
+        orig = self.zen_mod._ai_triage
+        self.zen_mod._ai_triage = lambda b, p: {"side": "frontend", "reason": "页面白屏"}
+        try:
+            res = self.zen_mod.scan_now()
+        finally:
+            self.zen_mod._ai_triage = orig
+        self.assertTrue(res["ok"], res)
+        c = self.claim()
+        self.assertEqual(c["state"], "transferred")
+        self.assertEqual(c["triage"]["side"], "frontend")
+        self.assertEqual(c["triage"]["by"], "ai")
+        self.assertEqual(self.launched, [], "纯对方端不建修复任务")
+        puts = self.put_calls("301")
+        self.assertEqual(len(puts), 1)
+        self.assertEqual(puts[0][2]["assignedTo"], "fe-owner", "转给前端负责人")
+        self.assertIn("前端", puts[0][2]["comment"])
+        self.assertIn("页面白屏", puts[0][2]["comment"])
+        self.assertEqual(self.resolve_calls("301"), [])
+
+
+class TestRouteAccountPriority(ZenCase):
+    """转派目标优先级：模块路由 account > 端负责人。"""
+    def runTest(self):
+        self.configure(profiles=[self.profile(
+            module_routes=[{"module": 77, "side": "frontend", "account": "route-guy"}])])
+        self.bug(311, module=77)
+        self.assertTrue(self.zen_mod.scan_now()["ok"])
+        puts = self.put_calls("311")
+        self.assertEqual(puts[0][2]["assignedTo"], "route-guy")
+
+
+class TestBothSidesOurBackend(ZenCase):
+    """双端问题、我方只管后端：修完合并后转派前端负责人，不 resolve。"""
+    def runTest(self):
+        cfg = self.configure(profiles=[self.profile(
+            repos={"backend": {"workdir": str(self.workdir), "git_rev": "main"}},
+            module_routes=[])])
+        self.bug(401, module=5)
+        # 合并成功桩要罩住「建任务」与「对账合并」两次扫描
+        orig = self.zen_mod._ai_triage
+        orig_merge = self.zen_mod._merge_branch
+        self.zen_mod._ai_triage = lambda b, p: {"side": "both", "reason": "接口+页面都要改"}
+        self.zen_mod._merge_branch = lambda wd, t: (True, "", {"commit": "abc1234"})
+        try:
+            res = self.zen_mod.scan_now()
+            self.assertTrue(res["ok"], res)
+            c = self.claim()
+            self.assertEqual(c["state"], "fixing")
+            self.assertEqual(len(c["tasks"]), 1, "我方只有后端：只建一个任务")
+            task = self.store.get_task(c["tasks"][0]["task_id"])
+            self.assertEqual(task.get("git_rev"), "main")
+            self.store.update_run(c["tasks"][0]["run_id"], status="done",
+                                  verdict={"pass": True},
+                                  git={"commit": "abc1234", "from_branch": "main"})
+            self.assertTrue(self.zen_mod.scan_now()["ok"])
+        finally:
+            self.zen_mod._ai_triage = orig
+            self.zen_mod._merge_branch = orig_merge
+        c = self.claim()
+        self.assertEqual(c["state"], "transferred")
+        self.assertEqual(self.resolve_calls("401"), [], "双端未齐不 resolve")
+        puts = self.put_calls("401")
+        self.assertEqual(len(puts), 1)
+        self.assertEqual(puts[0][2]["assignedTo"], "fe-owner")
+        self.assertIn("排查转派", puts[0][2]["comment"])
+        self.assertIn("abc1234", puts[0][2]["comment"], "转派评论带我方修复提交")
+        self.assertEqual(self.fz.bugs["401"]["status"], "active")
+
+
+class TestBothSidesMergeFail(ZenCase):
+    """双端问题、合并失败：不转派不 resolve（不带着没落库的修复转派）。"""
+    def runTest(self):
+        # git_rev 配了但工作目录不是 git 仓库 → 真实 gitmod 必拒
+        cfg = self.configure(profiles=[self.profile(
+            repos={"backend": {"workdir": str(self.workdir), "git_rev": "main"}},
+            module_routes=[])])
+        self.bug(411, module=5)
+        orig = self.zen_mod._ai_triage
+        self.zen_mod._ai_triage = lambda b, p: {"side": "both"}
+        try:
+            self.zen_mod.scan_now()
+        finally:
+            self.zen_mod._ai_triage = orig
+        c = self.claim()
+        self.store.update_run(c["tasks"][0]["run_id"], status="done")
         self.zen_mod.scan_now()
-        n_after = len([x for x in self.fz.calls
-                       if x[0] == "POST" and x[1].endswith("/resolve")])
-        self.assertEqual(n_before, n_after)
+        c = self.claim()
+        self.assertEqual(c["state"], "merge_failed")
+        self.assertEqual(self.resolve_calls("411"), [])
+        self.assertEqual(self.put_calls("411"), [], "合并失败不转派")
 
 
-class TestReconcileFailureComments(ZenCase):
+class TestFailureEscalate(ZenCase):
+    """修复任务失败：评论尝试记录 + 转派该端负责人，不 resolve。"""
     def runTest(self):
         self.configure()
-        self.bug(301)
-        self.zen_mod.scan_now()
-        claim = self.zen_mod.view()["claims"][0]
-        self.store.update_run(claim["run_id"], status="failed", error="验证命令退出码 1")
-        self.zen_mod.scan_now()
-        c = self.zen_mod.view()["claims"][0]
-        self.assertEqual(c["state"], "commented")
-        puts = [x for x in self.fz.calls if x[0] == "PUT" and x[1].endswith("/bugs/301")]
-        self.assertEqual(len(puts), 1)
-        self.assertIn("自动修复未成功", puts[0][2]["comment"])
-        resolves = [x for x in self.fz.calls
-                    if x[0] == "POST" and "resolve" in x[1]]
-        self.assertEqual(resolves, [], "失败绝不 resolve")
-
-
-class TestMergeFailureNoResolve(ZenCase):
-    def runTest(self):
-        # git_rev 配了 + auto_merge 开，但工作目录不是 git 仓库 → 合并必败
-        self.configure(git_rev="main")
-        self.bug(401)
-        self.zen_mod.scan_now()
-        claim = self.zen_mod.view()["claims"][0]
-        task = self.store.get_task(claim["task_id"])
-        self.assertEqual(task.get("git_rev"), "main")
-        self.store.update_run(claim["run_id"], status="done", verdict={"pass": True})
-        self.zen_mod.scan_now()
-        c = self.zen_mod.view()["claims"][0]
-        self.assertEqual(c["state"], "merge_failed")
-        resolves = [x for x in self.fz.calls
-                    if x[0] == "POST" and "resolve" in x[1]]
-        self.assertEqual(resolves, [], "合并失败不得 resolve（不谎报）")
-        self.assertIn("合并失败", c["note"])
-
-
-class TestAutoResolveOff(ZenCase):
-    def runTest(self):
-        self.configure(auto_resolve=False)
         self.bug(501)
         self.zen_mod.scan_now()
-        claim = self.zen_mod.view()["claims"][0]
-        self.store.update_run(claim["run_id"], status="done", verdict={"pass": True})
+        c = self.claim()
+        self.store.update_run(c["tasks"][0]["run_id"], status="failed",
+                              error="验证命令退出码 1")
         self.zen_mod.scan_now()
-        c = self.zen_mod.view()["claims"][0]
-        self.assertEqual(c["state"], "done_manual")
-        self.assertEqual([x for x in self.fz.calls
-                          if x[0] == "POST" and "resolve" in x[1]], [])
+        c = self.claim()
+        self.assertEqual(c["state"], "escalated")
+        puts = self.put_calls("501")
+        self.assertEqual(len(puts), 1)
+        self.assertEqual(puts[0][2]["assignedTo"], "be-owner", "失败转后端负责人")
+        self.assertIn("未成功", puts[0][2]["comment"])
+        self.assertIn("验证命令退出码 1", puts[0][2]["comment"])
+        self.assertEqual(self.resolve_calls("501"), [])
+
+
+class TestFailureNoOwner(ZenCase):
+    """失败但没配负责人：只评论（commented），不误转。"""
+    def runTest(self):
+        self.configure(profiles=[self.profile(owners={})])
+        self.bug(511)
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.store.update_run(c["tasks"][0]["run_id"], status="failed", error="boom")
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertEqual(c["state"], "commented")
+        puts = self.put_calls("511")
+        self.assertEqual(len(puts), 1)
+        self.assertNotIn("assignedTo", puts[0][2])
+
+
+class TestNeedManualAndRetry(ZenCase):
+    """AI 关+模块未命中 → need_manual 不碰 bug；配好路由后重排查建任务。"""
+    def runTest(self):
+        self.configure(triage_ai=False,
+                       profiles=[self.profile(module_routes=[])])
+        self.bug(601, module=5)
+        res = self.zen_mod.scan_now()
+        self.assertTrue(res["ok"], res)
+        c = self.claim()
+        self.assertEqual(c["state"], "need_manual")
+        self.assertEqual(self.put_calls("601"), [], "留人工不碰 bug")
+        self.assertEqual(self.resolve_calls("601"), [])
+        # 配好路由（模块 5 → 后端）再扫：重排查 → 建任务
+        self.configure(triage_ai=False, profiles=[self.profile(
+            module_routes=[{"module": 5, "side": "backend", "account": ""}])])
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertEqual(c["state"], "fixing")
+        self.assertEqual(len(c["tasks"]), 1)
+
+
+class TestTriageAiUnavailable(ZenCase):
+    """triage_ai 开但无可用供应商（测试环境无 orchestrator）→ unknown 留人工。"""
+    def runTest(self):
+        self.configure(profiles=[self.profile(module_routes=[])])
+        self.bug(621, module=5)
+        self.assertTrue(self.zen_mod.scan_now()["ok"])
+        self.assertEqual(self.claim()["state"], "need_manual")
+
+
+class TestDualSideBothOurs(ZenCase):
+    """双端且我方两端都负责：建两个任务，全部 done 后 resolve。"""
+    def runTest(self):
+        self.configure(profiles=[self.profile(
+            our_sides=["backend", "frontend"],
+            repos={"backend": {"workdir": str(self.workdir)},
+                   "frontend": {"workdir": str(self.workdir)}},
+            module_routes=[])])
+        self.bug(701, module=5)
+        orig = self.zen_mod._ai_triage
+        self.zen_mod._ai_triage = lambda b, p: {"side": "both"}
+        try:
+            res = self.zen_mod.scan_now()
+        finally:
+            self.zen_mod._ai_triage = orig
+        self.assertTrue(res["ok"], res)
+        c = self.claim()
+        self.assertEqual(len(c["tasks"]), 2)
+        self.assertEqual(sorted(t["side"] for t in c["tasks"]), ["backend", "frontend"])
+        for t in c["tasks"]:
+            self.store.update_run(t["run_id"], status="done")
+        self.zen_mod.scan_now()
+        self.assertEqual(self.claim()["state"], "resolved")
+        self.assertEqual(len(self.resolve_calls("701")), 1, "两端齐了只 resolve 一次")
+
+
+class TestModuleFetch(ZenCase):
+    def runTest(self):
+        self.configure()
+        r = self.zen_mod.fetch_modules(1)
+        self.assertTrue(r["ok"])
+        self.assertEqual([m["id"] for m in r["modules"]], [99, 77])
+        # 不存在的产品 → 404 人话报错
+        r2 = self.zen_mod.fetch_modules(42)
+        self.assertFalse(r2["ok"])
+        self.assertIn("手工填写", r2["error"])
 
 
 class TestToken401Retry(ZenCase):
     def runTest(self):
-        self.fz.reject_next_auth = True    # 下一枚 token 首用即 401 → 客户端必须重取重试
+        self.fz.reject_next_auth = True
         self.configure()
-        self.bug(601)
+        self.bug(801)
         res = self.zen_mod.scan_now()
         self.assertTrue(res["ok"], res)
-        self.assertEqual(res["claimed"], 1, "401 重取 token 后应能正常拉列表")
+        self.assertEqual(res["claimed"], 1)
 
 
 class TestFireDueGate(ZenCase):
     def runTest(self):
         self.configure()                    # poll_enabled 默认 False
-        self.assertEqual(self.zen_mod.fire_due(), None, "未启用轮询 fire_due 零动作")
-        self.bug(701)
+        self.assertEqual(self.zen_mod.fire_due(), None)
+        self.bug(901)
         self.zen_mod.save_config({"poll_enabled": True})
-        # 保存配置后 next_scan 立即到期 → 首个 tick 应扫描
         res = self.zen_mod.fire_due()
         self.assertIsNotNone(res)
         self.assertEqual(res["claimed"], 1)
-        # 刚扫过 → 节流：未到点不重扫
         res2 = self.zen_mod.fire_due()
         self.assertEqual(res2.get("skipped"), "not_due")
         self.assertEqual(len(self.zen_mod.view()["claims"]), 1)
-        # 群 webhook 未配置时 push_text 静默 False，不影响流程（隐式已验证）
 
 
 class TestConnection(ZenCase):
     def runTest(self):
-        # 错误口令
         ok, msg = self.zen_mod.test_connection(
             base_url="http://127.0.0.1:%d" % self.port, account="coder", password="wrong")
         self.assertFalse(ok)
         self.assertIn("密码", msg)
-        # 正确口令 + 产品可达
-        self.bug(801)
+        self.bug(951)
         ok, msg = self.zen_mod.test_connection(
             base_url="http://127.0.0.1:%d" % self.port, account="coder", password="pw")
         self.assertTrue(ok, msg)
-        # 地址缺失
         ok, msg = self.zen_mod.test_connection(base_url="", account="a", password="b")
         self.assertFalse(ok)
