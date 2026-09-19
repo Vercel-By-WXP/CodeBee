@@ -988,6 +988,11 @@ class Handler(BaseHTTPRequestHandler):
             from core import zentao
             res = zentao.scan_now()      # 网络操作同步做（ThreadingHTTPServer 不堵别的请求）
             return self._json(200, dict(res, ok=bool(res.get("ok"))))
+        if path == "/api/zentao/modules":
+            from core import zentao
+            pid = (self._body() or {}).get("product")
+            res = zentao.fetch_modules(pid)
+            return self._json(200, dict(res, ok=bool(res.get("ok"))))
         # 外部目录路由必须在通配的 market/<id>/(install|remove) 之前——
         # 否则 "remote" 会被当成包名吞掉
         if path == "/api/market/remote/refresh":
@@ -1982,6 +1987,13 @@ def main():
     def _step(msg):
         print("[CodeBee] %s (%.1fs)" % (msg, time.time() - _t0), flush=True)
 
+    _ver = ""
+    try:
+        _pj = Path(__file__).resolve().parents[1] / "package.json"
+        _ver = str(json.loads(_pj.read_text(encoding="utf-8")).get("version") or "")
+    except Exception:
+        pass
+    print("[CodeBee] v%s" % (_ver or "?"), flush=True)
     _step("正在准备数据目录…")
     paths.ensure_dirs()
     from core import attachments

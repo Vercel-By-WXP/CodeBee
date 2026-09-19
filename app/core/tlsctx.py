@@ -46,3 +46,19 @@ def context():
     if _CTX is None:
         _CTX = _build()
     return _CTX
+
+
+def humanize(err_text):
+    """证书验证失败 → 可行动的人话提示（非证书类错误原样返回）。
+
+    兜底 CA 仍验证失败只剩两类真实原因：本机代理对 HTTPS 做 TLS 拦截
+    （其根证书只在系统钥匙串/浏览器里，Python 的静态 CA 束不认），或极端
+    环境连 /etc/ssl/cert.pem 都没有。SSL_CERT_FILE 是 OpenSSL 标准逃生门，
+    create_default_context() 本就吃它，无需额外代码。"""
+    text = str(err_text or "")
+    if "CERTIFICATE_VERIFY_FAILED" not in text:
+        return text
+    return (text + " —— 证书验证仍失败：① 若开着代理/安全软件且开启了 HTTPS 拦截，"
+            "关掉拦截，或把其根证书导出后设环境变量 SSL_CERT_FILE 指向它再启动；"
+            "② 确认系统存在 /etc/ssl/cert.pem；③ 刚升级过 CodeBee 的话，"
+            "旧服务进程可能还在跑——关掉终端窗口重开")

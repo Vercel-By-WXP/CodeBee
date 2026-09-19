@@ -251,9 +251,9 @@ def _fetch_models_http(base_url, api_key, protocol, allow_private=False):
                     last_err = (url + " 无模型列表接口（HTTP 404）——"
                                 "模型以导入/手动添加为准，不影响对话调用")
                 else:
-                    last_err = "%s → HTTP %s" % (url, e.code)
+                    last_err = tlsctx.humanize("%s → HTTP %s" % (url, e.code))
             except Exception as e:
-                last_err = "%s → %r" % (url, e)
+                last_err = tlsctx.humanize("%s → %r" % (url, e))
     return None, last_err
 
 
@@ -2405,7 +2405,7 @@ def _post_json_http(url, headers, body, allow_private, timeout=20):
             raw = resp.read(1024 * 1024)
         return resp.status, json.loads(raw.decode("utf-8", "replace")), ""
     except Exception as e:
-        return 0, None, repr(e)[:300]
+        return 0, None, tlsctx.humanize(repr(e)[:300])
 
 
 def _sse_parse(proto, obj):
@@ -2506,7 +2506,7 @@ def _post_sse_http(url, headers, body, allow_private, timeout, proto, on_delta):
                 if sum(len(s) for s in parts) > 2 * 1024 * 1024:   # 防失控
                     break
     except Exception as e:
-        return 0, "", None, repr(e)[:300]
+        return 0, "", None, tlsctx.humanize(repr(e)[:300])
     text = "".join(parts)
     if not usage.get("total"):
         usage["total"] = usage.get("input", 0) + usage.get("output", 0) + usage.get("cached", 0)

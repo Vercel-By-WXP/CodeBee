@@ -106,3 +106,15 @@ class TestTlsCtx(BaseTest):
         self.assertIn("p1", out["note"])             # 无名条目回落 pid 展示
         nokey = [p for p in out["providers"] if not p.get("api_key")]
         self.assertEqual([p["source_id"] for p in nokey], ["zcode:p1"])
+
+    def test_humanize_cert_verify_failure(self):
+        """兜底 CA 仍验证失败 → 给出 SSL_CERT_FILE 逃生门与重启提示；其余原样。"""
+        from app.core import tlsctx
+        raw = ("URLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] "
+               "certificate verify failed: unable to get local issuer certificate'))")
+        h = tlsctx.humanize(raw)
+        self.assertIn("CERTIFICATE_VERIFY_FAILED", h)
+        self.assertIn("SSL_CERT_FILE", h)
+        self.assertIn("重开", h)
+        self.assertEqual(tlsctx.humanize("HTTP 404"), "HTTP 404")
+        self.assertEqual(tlsctx.humanize(""), "")
