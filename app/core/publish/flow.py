@@ -109,7 +109,8 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 for k, v in (values or {}).items():   # editor_url/draft_url 等任务级占位
                     url = url.replace("{%s}" % k, str(v))
                 note(i, "打开 %s" % url)
-                page.navigate(url)
+                # 重页（编辑器/管理列表）可按步放宽；缺省 45s（30s 对慢网偏紧）
+                page.navigate(url, timeout=float(st.get("timeout") or 45))
             elif act == "wait":
                 note(i, "等待 %s" % st["sel"])
                 page.wait_for(st["sel"], timeout=float(st.get("timeout") or 12))
