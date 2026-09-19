@@ -580,6 +580,11 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/tasks/([^/]+)/book-meta$", path)
         if m:
             return self._api_book_meta_generate(m.group(1))
+        m = re.match(r"^/api/tasks/([^/]+)/cover$", path)
+        if m:
+            from core import covergen
+            ok, err = covergen.start(m.group(1))
+            return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
         m = re.match(r"^/api/publish/(fanqie|qimao)/(connect|disconnect|probe)$", path)
         if m:
             return self._api_publish_platform_op(m.group(1), m.group(2))

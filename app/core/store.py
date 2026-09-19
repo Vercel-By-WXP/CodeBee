@@ -299,6 +299,22 @@ def set_book_meta(task_id, platform, entry):
     return True
 
 
+def set_cover_gen(task_id, entry):
+    """写任务的封面生成状态（cover_gen = {status, file?, run_id?, model?, error?, at}）。
+
+    与 set_book_meta 同理必须 bump_state（SSE 推送翻卡片）。任务不存在返回 False。"""
+    if not _valid_id(task_id):
+        return False
+    with LOCK:
+        task = _TASKS.get(task_id)
+        if not task:
+            return False
+        task["cover_gen"] = entry
+        _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
+    bump_state()
+    return True
+
+
 def set_auto_publish(task_id, ap):
     """写任务的定时发布配置（auto.py 每日到点读它触发批量发布）。
 

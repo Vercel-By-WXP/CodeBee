@@ -3852,6 +3852,27 @@ function renderBookMetaPanel(task) {
       pbBlock(task, p.id) +
       "</div>";
   }).join("") + "</div>";
+  // 封面卡（covergen，借鉴 oh-story 封面图环节）：curl 落盘运行目录，done 后可点开预览
+  const cg = task.cover_gen || {};
+  const cgSt = cg.status || "";
+  let cgBody = "";
+  if (cgSt === "running") {
+    cgBody = '<div class="bm-empty"><svg class="ico spin" aria-hidden="true"><use href="#i-refresh"/></svg> ' + esc(t("生成中…")) + "</div>";
+  } else if (cgSt === "done") {
+    cgBody = '<div class="bm-empty">' + esc(t("封面已生成（cover.png），在「成果」页签查看")) + "</div>";
+  } else if (cgSt === "failed") {
+    cgBody = '<div class="bm-errhint">' + esc(cg.error || t("生成失败")) + "</div>";
+  } else {
+    cgBody = '<div class="bm-empty">' + esc(t("生成竖版封面插画，产出 cover.png")) + "</div>";
+  }
+  const cgBusy = taskBusy || cgSt === "running";
+  const cgAction = cgSt === "running"
+    ? '<button class="ghost" disabled><svg class="ico spin" aria-hidden="true"><use href="#i-refresh"/></svg>' + t("生成中…") + "</button>"
+    : '<button class="primary" onclick="coverGen(\'' + esc(task.id) + '\')">' +
+      (cgSt === "failed" ? t("重试") : t("生成封面")) + "</button>";
+  html += '<div class="bm-cards"><div class="bm-card st-' + (cgSt || "new") + '">' +
+    '<div class="bm-card-head"><span class="bm-plat-name"><svg class="ico" aria-hidden="true"><use href="#i-book-open"/></svg>' + esc(t("封面图")) + "</span>" +
+    bmStatusChip(cgSt) + '<span class="flex1"></span>' + cgAction + "</div>" + cgBody + "</div></div>";
   box.classList.remove("hidden");
   box.innerHTML = html;
   // TAB 徽章：已生成平台数（生成中显示 ●，随下次轮询刷新）
@@ -3872,6 +3893,16 @@ window.bmGen = async function (taskId, platform) {
     toast(t("已开始生成，完成后这里会自动更新"));
     await refreshState(); render();   // 立即翻到「生成中」，不等 SSE 推送/下一轮轮询
   } catch (e) { toast(t("生成失败：") + e.message, true); }
+};
+
+/* 封面图生成（covergen）：curl 子进程直接落盘运行目录，Python 不经手图像字节 */
+window.coverGen = async function (taskId) {
+  try {
+    await api("/api/tasks/" + encodeURIComponent(taskId) + "/cover",
+      { method: "POST", body: "{}" });
+    toast(t("已开始生成封面，完成后这里会自动更新"));
+    await refreshState(); render();
+  } catch (e) { toast(t("封面生成失败：") + e.message, true); }
 };
 
 window.bmCopyBtn = function (btn) {
