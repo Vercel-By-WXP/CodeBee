@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, catalog, history, jobs, manager, modelhub, mocks, planner, registry, router, runner, skills, store, usage
+from . import aiflavor, catalog, history, jobs, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, usage
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -1292,15 +1292,21 @@ def _run_direct(run, task, agents, ev, stats, mode):
     while True:
         _wait_gate(run_id, ev)
         if first:
-            if bi is not None:
-                prompt = (BUILTIN_DIRECT_PROMPT
-                          .replace("__GOAL__", task["goal"])
-                          .replace("__CONTEXT__", task.get("context") or "（无）")
-                          .replace("__FOLLOWUPS__", FOLLOWUPS_PROTOCOL))
-            else:
-                prompt = (DIRECT_PROMPT
-                          .replace("__GOAL__", task["goal"])
-                          .replace("__CONTEXT__", task.get("context") or "（无）"))
+            prompt = ""
+            if task.get("type") == "rank_scan" and bi is not None:
+                # 扫榜选材（借鉴 oh-story 扫榜）：抓七猫排行榜公开数据注入，
+                # AI 做选题洞察；抓取失败回落普通直连提示词
+                prompt = paihang.rank_scan_prompt(task.get("goal") or "") or ""
+            if not prompt:
+                if bi is not None:
+                    prompt = (BUILTIN_DIRECT_PROMPT
+                              .replace("__GOAL__", task["goal"])
+                              .replace("__CONTEXT__", task.get("context") or "（无）")
+                              .replace("__FOLLOWUPS__", FOLLOWUPS_PROTOCOL))
+                else:
+                    prompt = (DIRECT_PROMPT
+                              .replace("__GOAL__", task["goal"])
+                              .replace("__CONTEXT__", task.get("context") or "（无）"))
             note = route.get("implementer", "")
             images = _task_images(task, workdir)
         else:

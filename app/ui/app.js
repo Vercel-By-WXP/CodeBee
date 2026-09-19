@@ -26,6 +26,7 @@ function flowIconHtml(f) {
 }
 
 function flowDesc(f) {
+  if (f.id === "rank_scan") return t("抓七猫榜 → AI 选题洞察");
   if (f.engine === "direct") return t("单智能体直达（快）");
   if (f.engine === "code") return t("实现 → 验证 → 评审");
   // 连载与单稿件同引擎，描述必须区分：连载强调逐章与断点续跑

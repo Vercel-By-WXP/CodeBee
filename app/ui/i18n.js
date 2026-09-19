@@ -900,6 +900,7 @@
     "启用中": "Enabled",
     "设为主模型": "Set as primary model",
     "单智能体直达（快）": "Single-agent direct (fast)",
+    "抓七猫榜 → AI 选题洞察": "Scan Qimao rankings → AI topic insights",
     "新增函数补用例": "Add tests for new functions",
     "同类加函数任务，只要verify_pass=false即不得因review_pass=true或高分判定通过；必须将verify失败原因作为修复输入。": "For similar add-a-function tasks, verify_pass=false blocks acceptance regardless of review_pass or high scores; the verify failure details are the input to the next fix.",
     "凡主角获取越权信息或关键证据（系统记录、录音、账目），必须当章或前文落实来源链（人脉、留底、委托调查），并让角色当场追问一句'东西哪来的'；无来源的特权查询与来历不明的证据一律禁止上稿。": "Whenever the protagonist obtains privileged information or key evidence (system records, recordings, ledgers), establish the source chain in the same or an earlier chapter and have a character ask \"where did this come from\" on the spot; unsourced privileged queries and evidence of unknown origin are banned from the manuscript.",
