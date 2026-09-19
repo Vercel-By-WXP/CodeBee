@@ -78,6 +78,39 @@ def _free_port():
     return port
 
 
+def _debug_ports_for_profile(user_data_dir):
+    """扫描本机浏览器进程命令行，返回使用该 profile 的主实例的调试端口。
+
+    跨平台：Windows 走 wmic（PS 启动太慢），POSIX 走 ps。只认主进程
+    （--type= 子进程没有调试端口）。路径按小写+正反斜杠归一后比对。"""
+    import subprocess as _sp
+    try:
+        if sys.platform == "win32":
+            out = _sp.check_output(
+                ["wmic", "process", "where", "Name='msedge.exe'", "get", "CommandLine"],
+                stderr=_sp.DEVNULL, timeout=12).decode("utf-8", "replace")
+            lines = out.splitlines()
+        else:
+            out = _sp.check_output(["ps", "-axo", "command"], timeout=12).decode()
+            lines = [l for l in out.splitlines()
+                     if "msedge" in l or "chrome" in l or "chromium" in l]
+    except Exception:
+        return []
+    key = str(user_data_dir).replace("\\", "/").strip("/").lower()
+    ports = []
+    for ln in lines:
+        ln = ln.strip()
+        if not ln or "--type=" in ln or "--remote-debugging-port=" not in ln:
+            continue
+        norm = ln.replace("\\\\", "/").replace("\\", "/").lower()
+        if key not in norm:
+            continue
+        m = re.search(r"--remote-debugging-port=(\d+)", ln)
+        if m:
+            ports.append(int(m.group(1)))
+    return ports
+
+
 class Browser:
     """一个浏览器子进程（一个 profile 一个实例）+ 它的调试端口。"""
 
@@ -106,7 +139,24 @@ class Browser:
         except OSError as e:
             raise BrowserError("浏览器启动失败：%s" % e)
         if not self._wait_ready(15.0):
-            raise BrowserError("浏览器调试端口 15 秒内没就绪（可能被安全软件拦截）")
+            # Edge 对已有实例的 profile：新进程转交参数后秒退（stdout 会打
+            # 「正在现有浏览器会话中打开」），调试端口是老实例自己的（甚至
+            # 自选的，真机实测指定 59852 实际跑 56394）。等自己指定的端口必然
+            # 超时——先扫进程命令行找该 profile 的真端口接管（含隐藏的后台
+            # 常驻实例：Edge「启动加速/后台运行」的进程锁着 profile 不可见）。
+            for p in _debug_ports_for_profile(self.user_data_dir):
+                if p != self.port and port_alive(p, timeout=2.0):
+                    self.port = p
+                    self.proc = None         # 老实例不是本对象起的：close 不杀它
+                    return
+            if self.proc.poll() == 0:
+                raise BrowserError(
+                    "浏览器把启动请求转给了已在运行的会话（该平台浏览器有隐藏的"
+                    "后台实例占着档案）——请在任务管理器结束所有 Edge 进程，"
+                    "或重启电脑后重试；登录态不受影响")
+            raise BrowserError(
+                "浏览器调试端口 15 秒内没就绪：该平台可能已有浏览器实例在跑但"
+                "端口探测不到——关掉它的所有窗口后重试，或重启电脑后首次连接")
 
     # ------------------------------------------------------------ 生命周期
     def _wait_ready(self, timeout):
