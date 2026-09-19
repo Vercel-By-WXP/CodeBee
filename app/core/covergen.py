@@ -2,11 +2,14 @@
 """封面图生成：调供应商图像 API 产出竖版封面插画，curl 直接落盘到运行目录。
 
 接口形状：OpenAI 兼容 POST {base}/images/generations（Z.ai cogview 系列、
-多数聚合网关都支持，默认返回图片 URL）。模型解析：环境变量
-CODEBEE_IMAGE_MODEL 优先，否则逐个试候选（cogview-3-flash → cogview-4），
-第一个 2xx 的胜出；同一模型先试竖版尺寸再回落方图。
+多数聚合网关都支持，默认返回图片 URL）。端点选取：编排者供应商的 openai 面
+（显式协议或 wire_caps 实测出的另一协议面）优先，其余开了 openai 面的供应商
+按优先级自动跟上——编排者走 anthropic 面不再挡封面。图像模型：环境变量
+CODEBEE_IMAGE_MODEL 优先，其次供应商模型清单里认得出的图像模型（关键词），
+否则逐个试默认候选（cogview-3-flash → cogview-4），第一个 2xx 的胜出；
+同一模型先试竖版尺寸再回落方图。
 状态机与建书生成同款（running/done/failed 写任务 cover_gen 字段，
-bump_state 推 SSE）。仅支持 openai 协议供应商。
+bump_state 推 SSE）。
 
 安全边界：
 - 图像 URL 仅接受 https，解析后 IP 命中私网/环回/链路本地一律拒绝
@@ -26,6 +29,9 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 _IMAGE_CANDIDATES = ("cogview-3-flash", "cogview-4")
+# 模型清单里认得出的图像模型关键词（命中即列为候选，保持清单序）
+_IMAGE_MODEL_KEYWORDS = ("cogview", "dall-e", "gpt-image", "flux", "kolors",
+                         "seedream", "stable-diffusion", "hidream", "imagen")
 _SIZES = ("768x1344", "1024x1024")   # 竖版优先，方图兜底
 
 
@@ -48,6 +54,59 @@ def _pick_key(prov):
     if keys and keys[0].get("key"):
         return keys[0]["key"]
     return prov.get("api_key") or ""
+
+
+def _openai_face(prov):
+    """该供应商可用的 openai 面地址：显式 openai 协议用本体；其余只认 wire_caps
+    里实测通过的 openai 面——两协议面的路径不同（Z.ai：/api/anthropic vs
+    /api/paas/v4），靠猜必错，与绑定链「只挑实测 wire」同纪律。"""
+    proto = str(prov.get("protocol") or "openai")
+    base = str(prov.get("base_url") or "").rstrip("/")
+    if proto == "openai" and base:
+        return base
+    cap = (prov.get("wire_caps") or {}).get("openai") or {}
+    return str(cap.get("base") or "").rstrip("/")
+
+
+def _image_models(prov):
+    """图像模型候选序：环境变量 CODEBEE_IMAGE_MODEL > 供应商模型清单里关键词
+    命中的图像模型（保持清单序）> 默认候选 cogview（Z.ai 免费档先行）。"""
+    models = []
+    env_model = os.environ.get("CODEBEE_IMAGE_MODEL", "").strip()
+    if env_model:
+        models.append(env_model)
+    for m in (prov.get("models") or []):
+        name = str((m.get("name") if isinstance(m, dict) else m) or "").strip()
+        low = name.lower()
+        if name and any(k in low for k in _IMAGE_MODEL_KEYWORDS) and name not in models:
+            models.append(name)
+    models.extend(m for m in _IMAGE_CANDIDATES if m not in models)
+    return models
+
+
+def _candidates():
+    """图像端点候选 [{label, base, key, allow_private, prov}]：编排者供应商排
+    最前（它的 openai 面无论是显式还是适配实测），其余开了 openai 面且启用
+    的供应商按列表优先级跟上；同一（地址+密钥）只收一次。"""
+    from . import modelhub
+    orch = modelhub.resolve_orchestrator()
+    first = [orch[0]] if orch else []
+    first_ids = {p.get("id") for p in first}
+    rest = [p for p in modelhub.providers() if p.get("id") not in first_ids]
+    out, seen = [], set()
+    for prov in first + rest:
+        if not prov.get("enabled", True) or not prov.get("api_key"):
+            continue
+        base = _openai_face(prov)
+        key = _pick_key(prov)
+        if not base or not key or (base, key) in seen:
+            continue
+        seen.add((base, key))
+        out.append({"label": prov.get("name") or prov.get("id") or "供应商",
+                    "base": base, "key": key,
+                    "allow_private": bool(prov.get("allow_private")),
+                    "prov": prov})
+    return out
 
 
 def _safe_image_url(url):
@@ -109,52 +168,44 @@ def _call_images(base, key, model, prompt, size, allow_private):
 
 def make_cover(run_id, task):
     """同步生成封面到运行目录。成功/失败返回 entry dict（写任务 cover_gen 用）。"""
-    from . import builtin_agent, modelhub, paths
+    from . import builtin_agent, paths
     try:
-        orch = modelhub.resolve_orchestrator()
-        if not orch:
-            raise RuntimeError("未配置编排者供应商（编排设置）")
-        prov, _m = orch
-        if str(prov.get("protocol") or "openai") not in ("openai", ""):
-            raise RuntimeError("封面生成仅支持 openai 协议供应商")
-        base = str(prov.get("base_url") or "").rstrip("/")
-        key = _pick_key(prov)
-        if not base or not key:
-            raise RuntimeError("供应商缺少 base_url 或密钥")
-        allow_private = bool(prov.get("allow_private"))
+        cands = _candidates()
+        if not cands:
+            raise RuntimeError(
+                "没有可用的 openai 协议图像接口（扫了全部供应商的 openai 面，"
+                "含适配测试实测出的）。可到模型管理页对网关跑一次适配测试补出 "
+                "openai 面，或设环境变量 CODEBEE_IMAGE_MODEL 指定图像模型后重试")
         prompt = _cover_prompt(task)
-        models = []
-        env_model = os.environ.get("CODEBEE_IMAGE_MODEL", "").strip()
-        if env_model:
-            models.append(env_model)
-        models.extend(m for m in _IMAGE_CANDIDATES if m not in models)
         last_err = ""
-        for model in models:
-            for size in _SIZES:
-                item, err = _call_images(base, key, model, prompt, size, allow_private)
-                if item is None:
-                    last_err = err
-                    continue
-                img_url = str(item.get("url") or "")
-                if not img_url:
-                    last_err = "该供应商未返回图片 URL（仅内嵌数据），暂不支持"
-                    continue
-                try:
-                    safe_url = _safe_image_url(img_url)
-                except ValueError as e:
-                    last_err = str(e)
-                    continue
-                out_dir = paths.RUNS_DIR / str(run_id)
-                out_dir.mkdir(parents=True, exist_ok=True)
-                out = out_dir / "cover.png"
-                try:
-                    _curl_to(safe_url, out)
-                except RuntimeError as e:
-                    last_err = str(e)
-                    continue
-                return {"status": "done", "file": "cover.png", "run_id": str(run_id),
-                        "model": model, "size": size,
-                        "at": time.strftime("%Y-%m-%d %H:%M:%S")}
+        for cand in cands:
+            for model in _image_models(cand["prov"]):
+                for size in _SIZES:
+                    item, err = _call_images(cand["base"], cand["key"], model,
+                                             prompt, size, cand["allow_private"])
+                    if item is None:
+                        last_err = err
+                        continue
+                    img_url = str(item.get("url") or "")
+                    if not img_url:
+                        last_err = "该供应商未返回图片 URL（仅内嵌数据），暂不支持"
+                        continue
+                    try:
+                        safe_url = _safe_image_url(img_url)
+                    except ValueError as e:
+                        last_err = str(e)
+                        continue
+                    out_dir = paths.RUNS_DIR / str(run_id)
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    out = out_dir / "cover.png"
+                    try:
+                        _curl_to(safe_url, out)
+                    except RuntimeError as e:
+                        last_err = str(e)
+                        continue
+                    return {"status": "done", "file": "cover.png", "run_id": str(run_id),
+                            "provider": cand["label"], "model": model, "size": size,
+                            "at": time.strftime("%Y-%m-%d %H:%M:%S")}
         raise RuntimeError(last_err or "图像接口无可用模型")
     except Exception as e:
         return {"status": "failed", "error": str(e)[:300],

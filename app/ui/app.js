@@ -3879,7 +3879,8 @@ function renderBookMetaPanel(task) {
   if (cgSt === "running") {
     cgBody = '<div class="bm-empty"><svg class="ico spin" aria-hidden="true"><use href="#i-refresh"/></svg> ' + esc(t("生成中…")) + "</div>";
   } else if (cgSt === "done") {
-    cgBody = '<div class="bm-empty">' + esc(t("封面已生成（cover.png），在「成果」页签查看")) + "</div>";
+    cgBody = '<div class="bm-empty">' + esc(t("封面已生成（cover.png），在「成果」页签查看")) +
+      (cg.model ? " · " + esc([cg.model, cg.provider].filter(Boolean).join(" · ")) : "") + "</div>";
   } else if (cgSt === "failed") {
     cgBody = '<div class="bm-errhint">' + esc(cg.error || t("生成失败")) + "</div>";
   } else {
