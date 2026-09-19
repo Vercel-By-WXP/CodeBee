@@ -900,6 +900,7 @@ function renderProvList() {
       '<div class="pi-body"><div class="pi-top"><div class="pi-name">' + esc(p.name) + "</div>" +
       '<span class="pi-n">' + st + "</span></div>" +
       '<div class="pi-meta"><span class="tag">' + esc(protoLabel(p)) + "</span>" +
+      (p.protocol === "auto" ? "" : wireCapTags(p, p.protocol)) +
       ((p.keys || []).length > 1 ? '<span class="tag">' + t("%1 把密钥").replace("%1", (p.keys || []).length) + "</span>" : "") +
       (off ? '<span class="tag">' + t("已停用") + "</span>" : "") +
       "</div></div></div>";
@@ -977,10 +978,8 @@ function renderProvDetail() {
   const tpHtml = tp ? (tp.ok
     ? '<span class="badge ok">' + t("✓ 连通 ") + tp.latency_ms + "ms · " + tp.count + t(" 个模型") + "</span>"
     : '<span class="badge bad" title="' + esc(tp.error || "") + '">✗ ' + esc((tp.error || t("失败")).slice(0, 60)) + "</span>") : "";
-  // 适配测试通过的 wire（同密钥实测可注入的另一条协议面）
-  const capTags = Object.entries(p.wire_caps || {}).map(([pr, cap]) =>
-    '<span class="tag ok" title="' + esc(t("适配测试通过：同密钥实测支持该协议注入") +
-      (cap.checked_at ? " · " + cap.checked_at : "")) + '">' + esc(pr) + " ✓</span>").join("");
+  // 适配测试通过的 wire（同密钥实测可注入的另一条协议面）；形态随徽章标出
+  const capTags = wireCapTags(p, "");
   const pb = (S.probeState || {})[p.id];
   const pbHtml = !pb ? "" : (pb.busy
     ? '<span class="badge">' + esc(t("适配测试中…")) + "</span>"
@@ -1161,6 +1160,24 @@ async function duplicateProvider(pid) {
   poll();
 }
 
+/* 多 wire 网关的「另一条协议面」徽章：适配测试实测通过、又不是当前分组的 wire。
+ * 同一份模型列表在两条 wire 上都能注入（解析走适配端点），列表不重复摆两份，
+ * 但得把另一面亮出来——否则页面看上去只有一种协议能用，OpenAI 面永远被忽略。
+ * 形态必须标出：chat 形态除 codex 外都能用（codex 0.154+ 只讲 responses），
+ * 不标的话模型接入页一片 ✓、codex 链上却 ⚠ 协议不匹配，两个页面自相矛盾。 */
+function wireCapTags(p, excludeProto) {
+  return Object.keys((p || {}).wire_caps || {}).filter((pr) => pr !== excludeProto).map((pr) => {
+    const cap = (p.wire_caps || {})[pr] || {};
+    const chat = (cap.wire_api || "responses") === "chat";
+    const tip = (chat
+      ? t("适配测试实测：该面为 chat 形态——除 codex 外的 openai 系 CLI 可用；codex 只讲 responses，链上注入会被跳过")
+      : t("适配测试实测：同密钥也可走 {0} wire——这组模型同样可注入 {0} 系 CLI（codex/dsh 等），运行时自动走适配端点", pr)) +
+      (cap.checked_at ? " · " + cap.checked_at : "");
+    return '<span class="tag ok" title="' + esc(tip) + '">' +
+      esc(pr) + " ✓" + (chat ? " · chat" : "") + "</span>";
+  }).join("");
+}
+
 /* 模型分组区 HTML（全量重绘与过滤重绘共用；过滤时暂停拖拽排序） */
 function provModelGroupsHtml(p) {
   const kw = ((S.modelFilter || {})[p.id] || "").trim().toLowerCase();
@@ -1187,6 +1204,7 @@ function provModelGroupsHtml(p) {
       '<label class="pcheck-all"><input type="checkbox"' + (allSel ? " checked" : "") +
       ' onchange="toggleGroupSel(\'' + esc(p.id) + '\', \'' + esc(g) + '\', this.checked)">' + t("全选") + '</label>' +
       esc(g) + t(" 协议 · ") + gm.length + t(" 个") +
+      wireCapTags(p, g) +
       (kw ? t("（过滤中，拖拽排序暂停）") : t("（拖动 ☰ 调序；启用的排最前）")) + "</div>";
     for (const m of gm) html += provModelRow(p.id, m, g);
     html += "</div>";
@@ -6548,6 +6566,17 @@ function provAdaptedProto(p, allow, kind) {
     && !chatBlocked((caps[pr] || {}).wire_api)) || "";
 }
 
+/* 死因细化：协议适配失败里最常见的一种是「openai 面实测只探到 chat 形态」
+ * （codex 0.154+ 只讲 responses，其余 CLI 不受影响）。按真实死因说话——
+ * 模型接入页明明亮着 openai ✓，链上却笼统说「协议不匹配」，看着就像自相矛盾。 */
+function chatShapedFace(pv, allow) {
+  if (!pv) return false;
+  const chat = (w) => (w || "responses") === "chat";
+  if (allow.indexOf(pv.protocol) >= 0 && chat(pv.wire_api)) return true;
+  const caps = pv.wire_caps || {};
+  return allow.some((pr) => (caps[pr] || {}).base && chat((caps[pr] || {}).wire_api));
+}
+
 /* CLI 允许注入的供应商 wire 协议——与 modelhub.resolve_binding 的 allowed 规则
  * 保持一致（codex 只吃 openai wire、claude 只吃 anthropic、dsh 只吃 OpenAI
  * 兼容端点，其余两种皆可）。后端会跳过不匹配的链条目，这里在选择层就挡住。 */
@@ -6674,7 +6703,10 @@ function chainDeadReasons(c, chain) {
     const pv = (S.providers || []).find((p) => p.id === x.p);
     if (!pv) return t("供应商已删除");
     if (pv.enabled === false) return t("供应商已停用");
-    if (!provAdaptedProto(pv, allow, c.orch_kind)) return t("协议不匹配");
+    if (!provAdaptedProto(pv, allow, c.orch_kind))
+      return chatShapedFace(pv, allow)
+        ? t("openai 面仅 chat 形态（codex 只讲 responses）")
+        : t("协议不匹配");
     const ks = pv.keys || [];
     if (ks.length && !ks.some((k) => k.enabled !== false && !k.cooling))
       return t("密钥全部冷却中");
@@ -6820,7 +6852,9 @@ function bindModelBox(c, provId) {
           "<b>" + (i === 0 ? t("主") : t("备")) + "</b>" + esc(pname) + " · " + esc(c2.m) +
           (modelHasImage(c2.p, c2.m)
             ? ' <span class="tag ok" title="' + esc(t("支持图片输入")) + '">' + t("图") + "</span>" : "") +
-          (dead ? ' <span class="hint warn">⚠ ' + esc(t("协议不匹配，解析时跳过")) + "</span>" : badge) +
+          (dead ? ' <span class="hint warn">⚠ ' + esc(chatShapedFace(pv, allow)
+            ? t("openai 面仅 chat 形态（codex 只讲 responses），解析时跳过")
+            : t("协议不匹配，解析时跳过")) + "</span>" : badge) +
           (i > 0 ? '<button class="mini" data-m="' + esc(c2.m) + '" data-p="' + esc(c2.p) +
                   '" title="' + t("设为主模型") + '" onclick="bindPromote(\'' + esc(c.id) + '\', this)">' +
                   '<svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg></button>' : "") +

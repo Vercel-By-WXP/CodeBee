@@ -55,9 +55,11 @@ async function main() {
         models: [{ name: "claude-x", enabled: true, priority: 1 }] },
       { id: "prov-wb", name: "网关B", protocol: "openai", base_url: `http://127.0.0.1:${gwPort}/v1`,
         api_key: "sk-test-bbbbbbbbbbbbbbbb", enabled: true, model: "gpt-y",
+        allow_private: true,
         models: [{ name: "gpt-y", enabled: true, priority: 1 }] },
       { id: "prov-wc", name: "网关C", protocol: "auto", base_url: `http://127.0.0.1:${gwPort}/v1`,
         api_key: "sk-test-cccccccccccccccc", enabled: true, model: "gpt-z",
+        allow_private: true,
         models: [{ name: "gpt-z", enabled: true, priority: 1 }] },
     ],
     bindings: { "claude-code": { chain: [
@@ -206,7 +208,39 @@ async function main() {
     const wb = (caps.providers || []).find((p) => p.id === "prov-wb");
     check("wire_caps 落盘（anthropic 面）", !!(wb && wb.wire_caps && wb.wire_caps.anthropic &&
       wb.wire_caps.anthropic.base), JSON.stringify(wb && wb.wire_caps));
+
+    // 2b) 适配面徽章要落到模型列表与供应商卡片上——只留在详情头的话，
+    // 列表看上去永远只有原生协议一种面（2026-09-19 用户反馈：OpenAI 面不可见）
+    const gtWb = await evalJs(
+      `(document.querySelector("#pm-groups .pgroup-title")||{textContent:""}).textContent`);
+    check("模型分组标题出现另一条 wire 徽章（anthropic ✓）",
+      gtWb.includes("anthropic ✓"), gtWb);
+    const listWb = await evalJs(`document.getElementById("prov-list").textContent`);
+    check("供应商卡片出现另一条 wire 徽章", listWb.includes("anthropic ✓"),
+      listWb.slice(0, 200));
+    await evalJs(`selectProvider("prov-wc"); "ok"`);
+    await sleep(600);
+    const gtWc = await evalJs(
+      `(document.querySelector("#pm-groups .pgroup-title")||{textContent:""}).textContent`);
+    check("auto 供应商分组标题亮出两条实测 wire",
+      gtWc.includes("anthropic ✓") && gtWc.includes("openai ✓"), gtWc);
     await shot("wire-adapt-models.png");
+
+    // 2c) chat 形态的适配面要标「· chat」、codex 死因要点名 chat 形态——
+    // 否则模型接入页 ✓ 与绑定页 ⚠ 协议不匹配互相打脸（2026-09-19 维云案：
+    // 网关 /responses 开始要求 workspaceid，探针落到 chat 形态）
+    await evalJs(`(function(){ var pa=S.providers.find(function(x){return x.id==="prov-wa";});
+      pa.wire_caps={openai:{base:"https://x.test/v1", wire_api:"chat"}}; })(); S.modelsSig=null; renderModels(); "ok"`);
+    await sleep(500);
+    const cardChat = await evalJs(`document.getElementById("prov-list").textContent`);
+    check("chat 形态徽章标出「· chat」", cardChat.includes("openai ✓ · chat"),
+      cardChat.slice(0, 200));
+    const deadChat = await evalJs(
+      `String((chainDeadReasons({orch_kind:"codex"}, [{p:"prov-wa", m:"claude-x"}])[0]) || "")`);
+    check("codex 死因细化为「chat 形态」文案", deadChat.includes("chat 形态"), deadChat);
+    await evalJs(`(function(){ var pa=S.providers.find(function(x){return x.id==="prov-wa";});
+      delete pa.wire_caps.openai; })(); S.modelsSig=null; renderModels(); "ok"`);
+    await sleep(300);
 
     // 3) 绑定页：同一条链的 ⚠ 变「✓ 已适配」；真源 /api/models 同步
     await evalJs(`switchTab("bindings"); poll(); "ok"`);
