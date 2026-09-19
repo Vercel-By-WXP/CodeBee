@@ -1572,6 +1572,8 @@
     "重新生成": "Regenerate",
     "重新生成会覆盖现有内容": "Regenerating overwrites the existing content",
     "生成失败": "Generation failed",
+    "分享页": "Share page",
+    "生成自包含分享页（单文件 HTML），可直接发给他人查看任务成果": "Generate a self-contained share page (single-file HTML) to send to others",
     "封面图": "Cover image",
     "生成封面": "Generate cover",
     "重试": "Retry",

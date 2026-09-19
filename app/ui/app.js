@@ -3574,6 +3574,7 @@ async function renderRunDetail() {
   $("btn-cancel").classList.toggle("hidden", !active);
   S.cancelTargetRunId = active ? run.id : null;
   $("btn-delete").classList.toggle("hidden", active);
+  $("btn-share").classList.toggle("hidden", active);   // 分享页：结束后可生成自包含 HTML
   $("btn-retry").classList.toggle("hidden", !(run.task_id && (run.status === "failed" || run.status === "cancelled")));
   $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
   const rcTask = ((S.state || {}).tasks || []).find((x) => x.id === run.task_id);
@@ -9394,6 +9395,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (g) g.focus();   // 焦点直接落到目标框，改完即可提交
   });
   $("btn-delete").addEventListener("click", () => { if (S.detailRunId) deleteRun(S.detailRunId); });
+  // 分享页：新窗口打开自包含 HTML（零依赖离线可看，可直接另存/转发）
+  $("btn-share").addEventListener("click", () => {
+    if (S.detailRunId) window.open("/api/runs/" + encodeURIComponent(S.detailRunId) + "/share",
+      "_blank", "noopener");
+  });
   $("btn-theme").addEventListener("click", toggleTheme);
   $("btn-notify-toggle").addEventListener("click", toggleNotifySound);
   // 命令面板：侧栏搜索行 / Ctrl+K 唤起（函数若尚未落地，跳过而不炸整个初始化）

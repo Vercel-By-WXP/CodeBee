@@ -304,6 +304,17 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, "（报告尚未生成）", "text/markdown; charset=utf-8")
                 return self._send(200, p.read_text(encoding="utf-8", errors="replace"),
                                   "text/markdown; charset=utf-8")
+            m = re.match(r"^/api/runs/([^/]+)/share$", path)
+            if m:
+                from core import share_page
+                run = store.get_run(m.group(1))
+                if not run:
+                    return self._json(404, {"error": "not found"})
+                task = store.get_task(run.get("task_id") or "") if run.get("task_id") else None
+                rp = paths.RUNS_DIR / m.group(1) / "report.md"
+                report = rp.read_text(encoding="utf-8", errors="replace") if rp.is_file() else ""
+                html = share_page.render_share_html(run, task, report)
+                return self._send(200, html, "text/html; charset=utf-8")
             m = re.match(r"^/api/runs/([^/]+)/files$", path)
             if m:
                 run = store.get_run(m.group(1))
