@@ -149,3 +149,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **deep-eye**（2.3k★）多供应商编排、**LocalAGI**（2k 本地自托管）| 网关/本地路线参考 | 参考
 - 复查：Yuxi 7094★（+）活跃；planning-with-files/prime-agent/pi-plans 均 09-18 活跃；cc-sdd 停更（05-20）——降级出待深挖队列
 - 新 CLI 本机探测（reasonix/fuxi/zero/empryo/goose/crush/herdr）：均未装，无新增接入
+
+## 2026-09-19 傍晚续班（调研日 2026-09-19）
+
+- **agency-orchestrator** 已深挖（2.3k★，中文）| 一句话→自动组队（276 专家）→流水线交付；**结果群推送**（--notify：钉钉/飞书/企微按域名自动适配，"配合 cron 就是定点交活"）、可分享自包含报告页（ao report）、验收标准 acceptance 字段、社区工作流模板、Claude 服务商安全切换+急救 | **已抄：群推送 notify.py**（域名自动适配+curl POST+收尾异步推，设置 notify_webhook）；分享报告页/验收标准进待深挖 | 已落地
+- **cognee**（30.8k★）| 开源 AI 记忆平台（知识图谱式记忆）| 经验库=教训型；知识图谱重依赖暂缓 | 参考
+- **七猫榜单数据源（扫榜选材可行性）**：www.qimao.com/paihang/ **公开可抓**（200/106KB，书名+分类在 a 标签，页面含简介块）——扫榜选材的数据源落点确定：七猫派先行，番茄网页 DNS 不通+API 需 SecuritySign 签名（难，缓）
+- 插件市场六源连通：zcode 26/anthropic 310/anthropic-skills 5/claude-skills 99 OK；clawhub 网络不通；cocoloop 0 项——市场巡检纳入夜班常态
