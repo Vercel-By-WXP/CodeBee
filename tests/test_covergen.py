@@ -145,8 +145,65 @@ class CoverCandidateTests(BaseTest):
                                return_value=[peer, off, orch, noface]):
             cands = covergen._candidates()
         # 编排者置顶（用实测 openai 面），显式 openai 的备选跟上；停用/无面不收
-        self.assertEqual([(c["label"], c["base"]) for c in cands],
-                         [("编排", "https://a/v4"), ("备胎", "https://b/v1")])
+        self.assertEqual([(c["label"], tuple(c["bases"])) for c in cands],
+                         [("编排", ("https://a/v4",)), ("备胎", ("https://b/v1",))])
+
+    def test_image_bases_canon_first_for_bigmodel(self):
+        from app.core import covergen
+        # wire_caps 面是 chat 代理路径（anthropic 面）：规范图像面在前省一轮假 200
+        p = {"protocol": "anthropic", "base_url": "https://open.bigmodel.cn/api/anthropic",
+             "api_key": "k", "wire_caps": {"openai": {"base": "https://open.bigmodel.cn/api/anthropic"}}}
+        self.assertEqual(covergen._image_bases(p),
+                         ["https://open.bigmodel.cn/api/paas/v4",
+                          "https://open.bigmodel.cn/api/anthropic"])
+        # face 本身就是规范面：去重只剩一条
+        p2 = {"protocol": "openai", "base_url": "https://open.bigmodel.cn/api/paas/v4",
+              "api_key": "k"}
+        self.assertEqual(covergen._image_bases(p2),
+                         ["https://open.bigmodel.cn/api/paas/v4"])
+        # 无 face 但主机命中规范表（没探过 wire_caps 的智谱户也能出图）
+        p3 = {"protocol": "anthropic", "base_url": "https://open.bigmodel.cn/api/anthropic",
+              "api_key": "k"}
+        self.assertEqual(covergen._image_bases(p3),
+                         ["https://open.bigmodel.cn/api/paas/v4"])
+
+    def test_call_images_rejects_success_false_envelope(self):
+        from unittest import mock
+        from app.core import covergen
+        # 智谱 anthropic 面：HTTP 200 + {"success":false,"msg":"404 NOT_FOUND"}
+        with mock.patch.object(covergen, "_post_images",
+                               return_value=(200, {"code": 500, "msg": "404 NOT_FOUND",
+                                                   "success": False}, "")):
+            item, err = covergen._call_images("https://x", "k", "cogview-3-flash",
+                                              "p", "1024x1024", False)
+        self.assertIsNone(item)
+        self.assertEqual(err, "404 NOT_FOUND")
+
+    def test_post_images_reads_httperror_body(self):
+        from unittest import mock
+        import io
+        import urllib.error
+        from app.core import covergen
+
+        class FakeResp(io.BytesIO):
+            code = 503
+
+            def __init__(self, body):
+                super().__init__(body.encode("utf-8"))
+
+        err = urllib.error.HTTPError("https://x/v1/images/generations", 503, "Service Unavailable",
+                                     {}, FakeResp('{"error":{"code":"model_not_found","message":'
+                                                  '"No available channel for model cogview-3-flash"}}'))
+        opener = mock.MagicMock()
+        opener.open.side_effect = err
+        from app.core import modelhub
+        with mock.patch.object(modelhub, "_validate_host",
+                               return_value=("x", "")), \
+             mock.patch.object(modelhub, "_opener", return_value=opener):
+            status, data, msg = covergen._post_images("https://x/v1/images/generations",
+                                                      "k", {}, False, 10)
+        self.assertEqual(status, 503)
+        self.assertIn("No available channel", msg)   # 真因直达封面卡，不再是光秃 503
 
     def test_image_models_keyword_scan(self):
         from app.core import covergen

@@ -4,7 +4,11 @@
 接口形状：OpenAI 兼容 POST {base}/images/generations（Z.ai cogview 系列、
 多数聚合网关都支持，默认返回图片 URL）。端点选取：编排者供应商的 openai 面
 （显式协议或 wire_caps 实测出的另一协议面）优先，其余开了 openai 面的供应商
-按优先级自动跟上——编排者走 anthropic 面不再挡封面。图像模型：环境变量
+按优先级自动跟上——编排者走 anthropic 面不再挡封面。已知主机会补规范图像面
+（智谱 anthropic 面 key 同源，图像只走 /api/paas/v4；实测 face 对图像回
+HTTP 200+失败信封，规范面放前面省一轮空试）。错误信息带响应体真因（聚合
+网关「无可用渠道」不再吞成光秃 HTTPError）。
+图像模型：环境变量
 CODEBEE_IMAGE_MODEL 优先，其次供应商模型清单里认得出的图像模型（关键词），
 否则逐个试默认候选（cogview-3-flash → cogview-4），第一个 2xx 的胜出；
 同一模型先试竖版尺寸再回落方图。
@@ -19,11 +23,14 @@ bump_state 推 SSE）。
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import socket
 import threading
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -56,6 +63,14 @@ def _pick_key(prov):
     return prov.get("api_key") or ""
 
 
+# 已知主机的规范图像面：wire_caps 记的 openai 面只保 chat 可用，图像端点在
+# 各家规范路径上（真案：智谱 anthropic 面 key 同源可出图，但 wire_caps 面的
+# /api/anthropic 路径对图像返回 HTTP 200+失败信封，必须走 /api/paas/v4）。
+_CANON_IMAGE_FACE = {
+    "open.bigmodel.cn": "https://open.bigmodel.cn/api/paas/v4",
+}
+
+
 def _openai_face(prov):
     """该供应商可用的 openai 面地址：显式 openai 协议用本体；其余只认 wire_caps
     里实测通过的 openai 面——两协议面的路径不同（Z.ai：/api/anthropic vs
@@ -66,6 +81,23 @@ def _openai_face(prov):
         return base
     cap = (prov.get("wire_caps") or {}).get("openai") or {}
     return str(cap.get("base") or "").rstrip("/")
+
+
+def _image_bases(prov):
+    """该供应商可试的图像端点（去重保序）：已知主机的规范图像面在前——
+    实测 face 若恰好是 chat 代理路径（智谱 anthropic 面），对图像必是假 200；
+    规范面直接出图省一轮空试。无规范表的其余主机仍用实测 face。"""
+    from urllib.parse import urlparse
+    face = _openai_face(prov)
+    host = urlparse(face or str(prov.get("base_url") or "")).hostname or ""
+    canon = _CANON_IMAGE_FACE.get(host) or ""
+    bases = [b for b in (canon, face) if b]
+    seen, out = set(), []
+    for b in bases:
+        if b not in seen:
+            seen.add(b)
+            out.append(b)
+    return out
 
 
 def _image_models(prov):
@@ -85,9 +117,9 @@ def _image_models(prov):
 
 
 def _candidates():
-    """图像端点候选 [{label, base, key, allow_private, prov}]：编排者供应商排
-    最前（它的 openai 面无论是显式还是适配实测），其余开了 openai 面且启用
-    的供应商按列表优先级跟上；同一（地址+密钥）只收一次。"""
+    """图像端点候选 [{label, bases, key, allow_private, prov}]：编排者供应商排
+    最前，其余启用且配了密钥的供应商按列表优先级跟上；每家可试端点见
+    _image_bases（实测 face + 已知主机规范面）；同一（端点组+密钥）只收一次。"""
     from . import modelhub
     orch = modelhub.resolve_orchestrator()
     first = [orch[0]] if orch else []
@@ -97,13 +129,16 @@ def _candidates():
     for prov in first + rest:
         if not prov.get("enabled", True) or not prov.get("api_key"):
             continue
-        base = _openai_face(prov)
+        bases = _image_bases(prov)
         key = _pick_key(prov)
-        if not base or not key or (base, key) in seen:
+        if not bases or not key:
             continue
-        seen.add((base, key))
+        sig = (tuple(bases), key)
+        if sig in seen:
+            continue
+        seen.add(sig)
         out.append({"label": prov.get("name") or prov.get("id") or "供应商",
-                    "base": base, "key": key,
+                    "bases": bases, "key": key,
                     "allow_private": bool(prov.get("allow_private")),
                     "prov": prov})
     return out
@@ -145,25 +180,55 @@ def _curl_to(url, out_path):
         raise RuntimeError("下载内容过小或为空")
 
 
+def _post_images(url, key, body, allow_private, timeout):
+    """图像接口专用 POST：非 2xx 也读响应体真因。_post_json_http 对 HTTPError
+    直接返回 (0, None, repr)，聚合网关的「无可用渠道」会被吞成光秃
+    HTTPError 503；复用同一套 SSRF 校验与出站 TLS 上下文。"""
+    from . import modelhub, tlsctx
+    _host, herr = modelhub._validate_host(url, allow_private)
+    if _host is None:
+        return 0, None, herr
+    try:
+        req = urllib.request.Request(url, method="POST",
+                                     headers={"Authorization": "Bearer " + key,
+                                              "Content-Type": "application/json"},
+                                     data=json.dumps(body).encode("utf-8"))
+        with modelhub._opener().open(req, timeout=timeout) as resp:
+            return resp.status, json.loads(resp.read(1024 * 1024).decode("utf-8", "replace")), ""
+    except urllib.error.HTTPError as e:
+        raw = e.read(65536).decode("utf-8", "replace")
+        try:
+            data = json.loads(raw)
+        except Exception:
+            data = None
+        msg = ""
+        if isinstance(data, dict):
+            msg = str((data.get("error") or {}).get("message")
+                      or data.get("message") or data.get("msg") or "")
+        if not msg:
+            msg = "HTTP %s %s" % (e.code, getattr(e, "reason", "") or "")
+        return e.code, data, msg[:300]
+    except Exception as e:
+        return 0, None, tlsctx.humanize(repr(e)[:300])
+
+
 def _call_images(base, key, model, prompt, size, allow_private):
     """POST /images/generations。返回 (data_item dict, 错误串)；data_item 含 url 或 b64_json。"""
-    from . import builtin_agent
     url = base.rstrip("/") + "/images/generations"
-    status, data, err = builtin_agent._post_json(
-        url,
-        {"Authorization": "Bearer " + key, "Content-Type": "application/json"},
-        {"model": model, "prompt": prompt, "size": size},
-        allow_private, 180)
+    status, data, err = _post_images(url, key,
+                                     {"model": model, "prompt": prompt, "size": size},
+                                     allow_private, 180)
     if status == 0:
         return None, err or "网络错误"
     if 200 <= status < 300:
+        if isinstance(data, dict) and data.get("success") is False:
+            # 智谱 anthropic 面对未知子路径回 HTTP 200+失败信封，按失败处理
+            return None, str(data.get("msg") or "供应商返回失败信封")
         items = (data or {}).get("data") or []
         if items and isinstance(items[0], dict):
             return items[0], ""
         return None, "响应缺少 data[0]"
-    last = str((data or {}).get("error", {}).get("message", "") if isinstance(data, dict) else "") \
-        or err or ("HTTP %s" % status)
-    return None, last
+    return None, err or ("HTTP %s" % status)
 
 
 def make_cover(run_id, task):
@@ -179,33 +244,34 @@ def make_cover(run_id, task):
         prompt = _cover_prompt(task)
         last_err = ""
         for cand in cands:
-            for model in _image_models(cand["prov"]):
-                for size in _SIZES:
-                    item, err = _call_images(cand["base"], cand["key"], model,
-                                             prompt, size, cand["allow_private"])
-                    if item is None:
-                        last_err = err
-                        continue
-                    img_url = str(item.get("url") or "")
-                    if not img_url:
-                        last_err = "该供应商未返回图片 URL（仅内嵌数据），暂不支持"
-                        continue
-                    try:
-                        safe_url = _safe_image_url(img_url)
-                    except ValueError as e:
-                        last_err = str(e)
-                        continue
-                    out_dir = paths.RUNS_DIR / str(run_id)
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                    out = out_dir / "cover.png"
-                    try:
-                        _curl_to(safe_url, out)
-                    except RuntimeError as e:
-                        last_err = str(e)
-                        continue
-                    return {"status": "done", "file": "cover.png", "run_id": str(run_id),
-                            "provider": cand["label"], "model": model, "size": size,
-                            "at": time.strftime("%Y-%m-%d %H:%M:%S")}
+            for base in cand["bases"]:
+                for model in _image_models(cand["prov"]):
+                    for size in _SIZES:
+                        item, err = _call_images(base, cand["key"], model,
+                                                 prompt, size, cand["allow_private"])
+                        if item is None:
+                            last_err = err
+                            continue
+                        img_url = str(item.get("url") or "")
+                        if not img_url:
+                            last_err = "该供应商未返回图片 URL（仅内嵌数据），暂不支持"
+                            continue
+                        try:
+                            safe_url = _safe_image_url(img_url)
+                        except ValueError as e:
+                            last_err = str(e)
+                            continue
+                        out_dir = paths.RUNS_DIR / str(run_id)
+                        out_dir.mkdir(parents=True, exist_ok=True)
+                        out = out_dir / "cover.png"
+                        try:
+                            _curl_to(safe_url, out)
+                        except RuntimeError as e:
+                            last_err = str(e)
+                            continue
+                        return {"status": "done", "file": "cover.png", "run_id": str(run_id),
+                                "provider": cand["label"], "model": model, "size": size,
+                                "at": time.strftime("%Y-%m-%d %H:%M:%S")}
         raise RuntimeError(last_err or "图像接口无可用模型")
     except Exception as e:
         return {"status": "failed", "error": str(e)[:300],
