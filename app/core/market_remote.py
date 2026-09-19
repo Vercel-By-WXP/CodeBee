@@ -36,7 +36,7 @@ import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import market
+from . import market, tlsctx
 
 _LOCK = market._LOCK   # 安装/记账与 market 共用一把锁，避免交叉写 market.json
 
@@ -157,10 +157,13 @@ def _fetch(url, cap=_CAP_MANIFEST):
         return b"".join(chunks)
 
     try:
-        return _read(lambda: urllib.request.urlopen(req, timeout=30))   # 默认 opener：含系统代理
+        return _read(lambda: urllib.request.urlopen(
+            req, timeout=30, context=tlsctx.context()))   # 默认 opener：含系统代理
     except (urllib.error.HTTPError, urllib.error.URLError):
         # 直连重试：ProxyHandler({}) 显式清空代理
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+            urllib.request.HTTPSHandler(context=tlsctx.context()))
         return _read(lambda: opener.open(req, timeout=30))
 
 

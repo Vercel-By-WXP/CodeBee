@@ -48,6 +48,30 @@ class TestRepairWhitelist(BaseTest):
         for p in jobs.AI_REPAIR_ALLOW:
             self.assertIn(p.strip(), rendered)
 
+    def test_platform_allowlists(self):
+        """白名单按平台取渠道：Mac 放行 brew/python3、拒 winget/py 启动器。"""
+        from app.core import jobs
+        self.assertTrue(jobs._repair_command_allowed(
+            "brew install node", platform="darwin"))
+        self.assertTrue(jobs._repair_command_allowed(
+            "python3 -m pip install -U x", platform="darwin"))
+        self.assertFalse(jobs._repair_command_allowed(
+            "winget install x", platform="darwin"))
+        self.assertFalse(jobs._repair_command_allowed(
+            "py -3.13 -m pip install x", platform="darwin"))
+        # Windows 侧维持原表
+        self.assertTrue(jobs._repair_command_allowed(
+            "winget install x", platform="win32"))
+        self.assertTrue(jobs._repair_command_allowed(
+            "py -3.13 -m pip install x", platform="win32"))
+
+    def test_prompt_os_placeholder(self):
+        """提示词平台占位符按平台填充（不再写死 Windows）。"""
+        from app.core import jobs
+        self.assertIn("__OS__", jobs.AI_REPAIR_PROMPT)
+        self.assertEqual(jobs._repair_os_label("win32"), "Windows")
+        self.assertEqual(jobs._repair_os_label("darwin"), "macOS")
+
 
 class TestFileLockError(BaseTest):
 

@@ -136,6 +136,40 @@ codebee
 数据存放在用户目录（Windows `%APPDATA%\CodeBee`，macOS/Linux `~/.codebee`），
 升级/重装不影响；老版本 Tutti 目录（`%APPDATA%\Tutti`）会被自动沿用，无需迁移。
 
+### macOS：npm 全局安装报 EACCES（permission denied）
+
+官方 pkg 安装的 Node，全局目录 `/usr/local/lib/node_modules` 归 root，直接
+`npm install -g codebee` 会报
+`EACCES: permission denied, mkdir '/usr/local/lib/node_modules/codebee'`。
+**不要用 sudo 装**：装完目录归 root，应用内「一键升级」（以普通用户跑
+`npm install -g codebee@latest`）之后每次都会撞同样的权限错误。
+正确做法是把 npm 全局目录改到用户目录下，一次配好、安装与自动升级都畅通：
+
+```bash
+mkdir -p ~/.npm-global
+npm config set prefix "~/.npm-global"
+echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+npm install -g codebee
+```
+
+默认 shell 是 bash 的话，把第 3 行的 `~/.zshrc` 换成 `~/.bash_profile`。
+用 Homebrew 装的 Node（prefix 在 `/opt/homebrew`）没有这个问题，可直接安装。
+验证 `which codebee` 指向 `~/.npm-global/bin/codebee` 即配置成功。
+
+### macOS：HTTPS 请求报 SSL 证书错误（CERTIFICATE_VERIFY_FAILED）
+
+python.org 安装的 Python 不读 macOS 系统钥匙串，本机又没有可用的 CA 束时，
+「获取模型列表 / 适配测试 / 插件市场」等所有 HTTPS 检测会报
+`certificate verify failed: unable to get local issuer certificate`。
+CodeBee 已内置兜底：出站请求自动加载 certifi 与 macOS 系统证书束
+（`/etc/ssl/cert.pem`），多数机器无需任何操作。若仍报错，补齐证书后重试：
+
+```bash
+python3 -m pip install --upgrade certifi   # CodeBee 自动采用，装完即生效
+# 或：Finder → 应用程序 → Python 3.x → 双击 Install Certificates.command
+```
+
 **方式二：源码运行（开发者）**
 
 ```bat

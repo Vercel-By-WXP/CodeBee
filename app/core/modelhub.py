@@ -41,7 +41,7 @@ import threading
 import time
 import urllib.request
 
-from . import paths
+from . import paths, tlsctx
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -49,6 +49,13 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+def _opener():
+    """出站 opener：禁重定向 + tlsctx 兜底 CA（macOS python.org 版 Python
+    缺系统证书，默认上下文验证必挂——见 tlsctx 模块 docstring）。"""
+    return urllib.request.build_opener(
+        _NoRedirect, urllib.request.HTTPSHandler(context=tlsctx.context()))
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "models.json"
@@ -206,11 +213,11 @@ def _fetch_models_http(base_url, api_key, protocol, allow_private=False):
     else:
         urls = std
     last_err = ""
-    opener = urllib.request.build_opener(_NoRedirect)
+    opener = _opener()
     for url in urls:
-        host_info = _validate_host(url, allow_private)
-        if host_info is None:
-            last_err = host_info[1]
+        host, herr = _validate_host(url, allow_private)
+        if host is None:
+            last_err = herr
             continue
         # auto 不知道是哪条 wire，鉴权头也按两种都试（google 那种单独补上）
         hdrs = _auth_header_variants(api_key, protocol)
@@ -237,6 +244,14 @@ def _fetch_models_http(base_url, api_key, protocol, allow_private=False):
                 if names:
                     return names, ""
                 last_err = url + " 返回 200 但未解析到模型"
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    # zcode-plan / open.bigmodel.cn 等 anthropic 形网关没有
+                    # GET /models——404 与密钥无关，模型以导入/手填为准
+                    last_err = (url + " 无模型列表接口（HTTP 404）——"
+                                "模型以导入/手动添加为准，不影响对话调用")
+                else:
+                    last_err = "%s → HTTP %s" % (url, e.code)
             except Exception as e:
                 last_err = "%s → %r" % (url, e)
     return None, last_err
@@ -1512,6 +1527,7 @@ def _src_zcode():
     default_model = str(d.get("model") or "")
     tail = default_model.split("/", 1)[1] if "/" in default_model else default_model
     bad = []
+    nokey = []
     for pid, p in (d.get("provider") or {}).items():
         if not isinstance(p, dict):
             continue
@@ -1523,13 +1539,23 @@ def _src_zcode():
                    "zcode", "zcode:%s" % pid,
                    model=(tail if tail in names else ""), models=names)
         if pr:
+            if not pr.get("api_key"):
+                nokey.append(str(p.get("name") or pid))
             out["providers"].append(pr)
         else:
             bad.append(str(p.get("name") or pid))
+    notes = []
     if bad:
-        out["note"] = "跳过 {0} 个（缺合法 baseURL）：{1}".format(
-            len(bad), "、".join(bad[:4]))
-        out["note_args"] = [len(bad), "、".join(bad[:4])]
+        notes.append("跳过 {0} 个（缺合法 baseURL）：{1}".format(
+            len(bad), "、".join(bad[:4])))
+    if nokey:
+        # ZCode 的 builtin Plan 条目（zcode.z.ai/api/v1/zcode-plan 等）密钥不入
+        # config.json（实测 credentials.json 里的 OAuth token 也不能直接当 API
+        # key 用）——静默导入空密钥条目只会让用户在拉列表/适配测试时一头雾水
+        notes.append("{0} 个未带出密钥——请在「模型接入」页手填：{1}".format(
+            len(nokey), "、".join(nokey[:4])))
+    if notes:
+        out["note"] = "；".join(notes)
     return out
 
 
@@ -2368,14 +2394,14 @@ def _post_json_http(url, headers, body, allow_private, timeout=20):
     p = urllib.parse.urlsplit(url)
     if p.scheme not in ("http", "https"):
         return 0, None, "协议必须是 http/https"
-    host_info = _validate_host(url, allow_private)
-    if host_info is None:
-        return 0, None, host_info[1]
+    host, herr = _validate_host(url, allow_private)
+    if host is None:
+        return 0, None, herr
     try:
         req = urllib.request.Request(url, method="POST",
                                      headers=dict(headers, **{"Content-Type": "application/json"}),
                                      data=json.dumps(body).encode("utf-8"))
-        with urllib.request.build_opener(_NoRedirect).open(req, timeout=timeout) as resp:
+        with _opener().open(req, timeout=timeout) as resp:
             raw = resp.read(1024 * 1024)
         return resp.status, json.loads(raw.decode("utf-8", "replace")), ""
     except Exception as e:
@@ -2440,15 +2466,16 @@ def _post_sse_http(url, headers, body, allow_private, timeout, proto, on_delta):
     p = urllib.parse.urlsplit(url)
     if p.scheme not in ("http", "https"):
         return 0, "", None, "协议必须是 http/https"
-    if _validate_host(url, allow_private) is None:
-        return 0, "", None, "目标地址校验未通过"
+    host, herr = _validate_host(url, allow_private)
+    if host is None:
+        return 0, "", None, herr
     parts, usage = [], {}
     resp_status = 0
     try:
         req = urllib.request.Request(url, method="POST",
                                      headers=dict(headers, **{"Content-Type": "application/json"}),
                                      data=json.dumps(body).encode("utf-8"))
-        with urllib.request.build_opener(_NoRedirect).open(req, timeout=timeout) as resp:
+        with _opener().open(req, timeout=timeout) as resp:
             resp_status = resp.status
             if not 200 <= resp.status < 300:
                 raw = resp.read(65536).decode("utf-8", "replace")

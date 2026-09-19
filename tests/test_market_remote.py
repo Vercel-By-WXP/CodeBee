@@ -469,7 +469,7 @@ class TestFetchProxyFallback(BaseTest):
             def __exit__(self, *a):
                 return False
 
-        def proxied_boom(req, timeout=None):
+        def proxied_boom(req, timeout=None, context=None):
             calls.append("proxied")
             raise urllib.error.HTTPError(req.full_url, 404, "Not Found", None, None)
 
@@ -490,7 +490,8 @@ class TestFetchProxyFallback(BaseTest):
         # 体量超限：ValueError 直抛，不重试
         calls.clear()
         with mock.patch.object(mr.urllib.request, "urlopen",
-                               side_effect=lambda req, timeout=None: FakeResp(b"x" * 999)), \
+                               side_effect=lambda req, timeout=None,
+                                       context=None: FakeResp(b"x" * 999)), \
                 mock.patch.object(mr.urllib.request, "build_opener",
                                   return_value=DirectOpener()):
             with self.assertRaises(ValueError):

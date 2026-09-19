@@ -29,7 +29,7 @@ import time
 import urllib.request
 import zipfile
 
-from . import errorlog, paths, settings
+from . import errorlog, paths, settings, tlsctx
 
 # 端点：部署后把 CloudBase HTTP 函数 URL 填到这里（见 cloudfunctions/telemetry-collect/）
 ENDPOINT = os.environ.get("TUTTI_TELEMETRY_URL", "").strip()
@@ -107,7 +107,8 @@ def _post(url, payload):
             headers={"Content-Type": "application/json",
                      "User-Agent": "CodeBee-Telemetry/1"},
             method="POST")
-        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S,
+                                    context=tlsctx.context()) as resp:
             return int(resp.status or 0)
     except Exception:
         return 0

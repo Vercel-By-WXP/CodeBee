@@ -5,11 +5,13 @@
 隔离，store 层有全局锁。目标并发数可在设置页调整；调小后多余线程在取到
 新任务前自行退出，调大即时补齐。安装/升级失败时自动触发 AI 诊断修复：
 由真实智能体读取失败日志与本机环境给出修正命令；仅当命令命中白名单前缀
-（npm/winget/pip 安装类）才自动执行，否则把建议命令记录在运行记录里等人工确认。
+（npm/winget/brew/pip 安装类，按平台取对应渠道）才自动执行，否则把建议命令
+记录在运行记录里等人工确认。
 """
 from __future__ import annotations
 
 import queue
+import sys
 import threading
 import traceback
 
@@ -27,10 +29,11 @@ WATCHDOG_INTERVAL_S = 60   # 队列看门狗巡检周期
 WATCHDOG_STALE_S = 120     # queued 超过该秒数视为掉队（正常入队到被拿起 ≤5s）
 _watchdog_started = False
 
-AI_REPAIR_PROMPT = """你是环境工程师。在 Windows 上执行下面的安装命令失败了，请诊断原因并给出修正命令。
+AI_REPAIR_PROMPT = """你是环境工程师。在 __OS__ 上执行下面的安装命令失败了，请诊断原因并给出修正命令。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {"diagnosis": "失败原因（一句话）", "command": "修正后的完整安装命令", "safe": true/false}
-硬性约束：command 只能是本机包管理器的安装命令，前缀必须是 __ALLOW__ 之一。
+硬性约束：command 只能是本机包管理器的安装命令，前缀必须是 __ALLOW__ 之一，且不要带 sudo
+（命令非交互执行，sudo 会挂死；brew/npm 本身也拒绝 sudo）。
 给不出符合约束的安全命令时，safe 设为 false 且 command 留空。
 
 ## 失败的命令
@@ -43,14 +46,29 @@ __LOG__
 __ENV__"""
 
 # AI 修复命令白名单：只放行包管理器的安装类命令（提示词里的前缀清单由它生成，
-# 两处永远不会漂移）
-AI_REPAIR_ALLOW = ("npm install ", "winget install", "py -3.13 -m pip install",
-                   "uv tool install")
+# 两处永远不会漂移）。按平台分组：winget/py 启动器是 Windows 独有，brew/python3
+# 是 macOS/Linux 渠道——Mac 上不放行 brew 的话，AI 给出正确的修正命令也会被拒。
+_AI_REPAIR_ALLOW_WIN = ("npm install ", "winget install", "py -3.13 -m pip install",
+                        "uv tool install")
+_AI_REPAIR_ALLOW_UNIX = ("npm install ", "brew install", "python3 -m pip install",
+                         "uv tool install")
+AI_REPAIR_ALLOW = _AI_REPAIR_ALLOW_WIN  # 兼容旧引用：Windows 本机即此表
 
 
-def _repair_command_allowed(cmd):
+def _repair_os_label(platform=None):
+    return {"win32": "Windows", "darwin": "macOS"}.get(platform or sys.platform, "Linux")
+
+
+def _repair_allow(platform=None):
+    if (platform or sys.platform) == "win32":
+        return _AI_REPAIR_ALLOW_WIN
+    return _AI_REPAIR_ALLOW_UNIX
+
+
+def _repair_command_allowed(cmd, platform=None):
     cmd = (cmd or "").strip()
-    return cmd.startswith(AI_REPAIR_ALLOW) and "|" not in cmd and "&" not in cmd and ">" not in cmd
+    return (cmd.startswith(_repair_allow(platform)) and "|" not in cmd
+            and "&" not in cmd and ">" not in cmd)
 
 
 def configure(max_workers):
@@ -592,17 +610,21 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
     except Exception:
         log_tail = "（日志不可读）"
     import shutil
+    is_win = sys.platform == "win32"
     env_lines = [
-        "OS: Windows",
+        "OS: %s" % _repair_os_label(),
         "node: %s" % (shutil.which("node") or "缺失"),
         "npm: %s" % (shutil.which("npm") or "缺失"),
         "pnpm: %s" % (shutil.which("pnpm") or "缺失"),
-        "python: %s" % (shutil.which("python") or "缺失"),
+        "python: %s" % (shutil.which("python3" if not is_win else "python") or "缺失"),
     ]
+    if not is_win:
+        env_lines.append("brew: %s" % (shutil.which("brew") or "缺失"))
     prompt = (AI_REPAIR_PROMPT.replace("__CMD__", failed_cmd or "（未知）")
               .replace("__LOG__", log_tail)
               .replace("__ENV__", "\n".join(env_lines))
-              .replace("__ALLOW__", " / ".join(p.strip() for p in AI_REPAIR_ALLOW)))
+              .replace("__OS__", _repair_os_label())
+              .replace("__ALLOW__", " / ".join(p.strip() for p in _repair_allow())))
     step, log_abs = store.add_step(run_id, "ai-repair", agent["id"], agent.get("label"),
                                    note="自动诊断修复")
     res = runner.run_agent(agent, prompt, readonly=True, timeout=300,
