@@ -90,8 +90,12 @@ def _npm_shim_bypass(argv):
 
 
 def _kill_tree(pid):
-    """杀整棵进程树。Windows 用 taskkill /T；POSIX 靠 spawn 时的
-    start_new_session（子进程自成一个进程组，pgid==pid）用 killpg 连孙带杀。"""
+    """杀整棵进程树。Windows：先 TerminateProcess 直接杀根进程（毫秒级，绝不
+    挂），再 taskkill /T 兜底扫子孙（短等待，卡死即放弃——真实案例 2026-09-19：
+    某些机器状态下 taskkill /F /T 对普通进程也挂死 30s+，等满 15s 超时会让每次
+    超时杀进程都卡 20s，看门狗/超时全被拖死；漏杀的孙进程由启动孤儿清扫兜底）。
+    POSIX 靠 spawn 时的 start_new_session（子进程自成一个进程组，pgid==pid）
+    用 killpg 连孙带杀。"""
     if os.name != "nt":
         try:
             os.killpg(pid, signal.SIGKILL)
@@ -103,10 +107,21 @@ def _kill_tree(pid):
         except Exception:
             pass
         return
+    # Windows 没有 signal.SIGKILL（直接引用会 AttributeError）；os.kill 带任意
+    # 信号值都走 TerminateProcess，用 SIGTERM
     try:
-        subprocess.run(
+        os.kill(pid, signal.SIGTERM)   # Windows 语义 = TerminateProcess，只杀根进程
+    except OSError:
+        pass                           # 根进程可能已被 taskkill 抢先杀掉
+    except Exception:
+        pass
+    try:
+        tk = subprocess.Popen(
             ["taskkill", "/F", "/T", "/PID", str(pid)],
-            capture_output=True, creationflags=CREATE_NO_WINDOW, timeout=15)
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, close_fds=True,   # 不继承被杀进程的管道句柄，否则 EOF 永不来、drain 烧满超时
+            creationflags=CREATE_NO_WINDOW)
+        tk.wait(timeout=1.2)           # 健康机器 <1s；卡死就不再陪等（后台自行结束）
     except Exception:
         pass
 
