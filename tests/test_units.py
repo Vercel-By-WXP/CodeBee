@@ -360,11 +360,16 @@ class TestUninstallDerive(BaseTest):
              "winget uninstall -e --id Anthropic.ClaudeCode"),
             ("py -3.13 -m pip install -U aider-chat",
              "py -3.13 -m pip uninstall -y aider-chat"),
+            # brew 渠道（2026-09-19 Mac 适配：AI 修复白名单放行 brew install）
+            ("brew install node",
+             "brew uninstall node"),
+            ("brew install --cask firefox",
+             "brew uninstall firefox"),
         ]
         for install, want in cases:
             self.assertEqual(catalog.derive_uninstall(install), want, install)
         # 认不出的渠道返回 None（由显式 uninstall 字段兜底）
-        self.assertIsNone(catalog.derive_uninstall("brew install foo"))
+        self.assertIsNone(catalog.derive_uninstall("scoop install foo"))
         self.assertIsNone(catalog.derive_uninstall(""))
         self.assertIsNone(catalog.derive_uninstall(None))
         # 显式配置优先于推导
@@ -405,8 +410,13 @@ class TestMgmtUninstall(BaseTest):
             self.assertTrue(res["ok"])
             self.assertEqual(seen["cmd"], "npm uninstall -g @scope/probe")
             self.assertEqual(res["command"], "npm uninstall -g @scope/probe")
+            # brew 渠道已可推导（2026-09-19 Mac 适配），反例换真正认不出的渠道
+            mac = manager.run_mgmt_command({"id": "m", "install": "brew install node"},
+                                           "uninstall")
+            self.assertTrue(mac["ok"])
+            self.assertEqual(seen["cmd"], "brew uninstall node")
             # 推不出命令时明确报错，不执行空命令
-            bad = manager.run_mgmt_command({"id": "y", "install": "brew install z"},
+            bad = manager.run_mgmt_command({"id": "y", "install": "scoop install z"},
                                            "uninstall")
             self.assertFalse(bad["ok"])
             self.assertIn("uninstall", bad["error"])

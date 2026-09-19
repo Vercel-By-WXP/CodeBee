@@ -16,9 +16,10 @@ _DENY_RE = re.compile(r"(KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL)", re.IGNOR
 
 # 白名单：精确匹配（不分大小写），用于覆盖黑名单。
 _ALLOW_EXACT = frozenset({
-    # 系统/环境
-    "PATH", "PATHEXT", "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE", "USERDNSDOMAIN",
-    "HOMEPATH", "HOMEDRIVE",
+    # 系统/环境（TEMP/TMP/PATHEXT 等是 Windows 名，TMPDIR 是 macOS 每用户
+    # 临时目录——三边各留各的，多出的名字在别的平台上不存在、无副作用）
+    "PATH", "PATHEXT", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR",
+    "USERPROFILE", "USERDNSDOMAIN", "HOMEPATH", "HOMEDRIVE",
     "LANG", "LC_ALL", "LC_CTYPE",
     "HOME", "SHELL", "TERM", "PYTHONIOENCODING",
     "PYTHONPATH", "PYTHONUNBUFFERED",
@@ -38,6 +39,7 @@ _ALLOW_PREFIX = (
     "TUTTI_", "ALLINONE_", "DSH_",
     "LANG", "LC_",  # locale 系列
     "PYTHON",       # PYTHONPATH / PYTHONIOENCODING 等
+    "XDG_",         # XDG_CONFIG_HOME 等（macOS/Linux CLI 认它找配置/缓存落点）
     "CHROME", "EDGE", "PLAYWRIGHT",  # 本机测试工具
 )
 

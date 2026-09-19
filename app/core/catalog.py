@@ -248,7 +248,7 @@ def npm_pkg_name(cmd):
 
 
 def derive_uninstall(cmd):
-    """从安装命令推导卸载命令（npm / winget / pip 三种本机渠道）。
+    """从安装命令推导卸载命令（npm / winget / pip / uv / brew 本机渠道）。
 
     卸载命令不单独维护一份，避免与安装命令不同步；认不出渠道返回 None，
     此时条目可显式配置 uninstall 字段覆盖。
@@ -275,6 +275,14 @@ def derive_uninstall(cmd):
         pkgs = [t for t in m.group(1).split() if not t.startswith("-")]
         if pkgs:
             return "uv tool uninstall %s" % pkgs[-1]
+    m = re.search(r"brew\s+install\b(.*)$", c)
+    if m:
+        # brew uninstall 按名字自动识别 formula/cask，--cask 这类 flag 丢了也
+        # 能卸对（Mac 渠道，AI 修复白名单已放行 brew install，编辑安装命令
+        # 也会填这种形态）
+        pkgs = [t for t in m.group(1).split() if not t.startswith("-")]
+        if pkgs:
+            return "brew uninstall %s" % pkgs[0]
     return None
 
 
