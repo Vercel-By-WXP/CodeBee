@@ -146,6 +146,8 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 # 真实鼠标事件点击（CDP Input 派发）：qm-btn 等自定义按钮
                 # 只认真实事件序列，el.click() 无效。发布确认链全靠它。
                 text = str(st.get("text") or "")
+                for k, v in (values or {}).items():   # {target_reader} 等动态值
+                    text = text.replace("{%s}" % k, str(v))
                 for k, v in (values or {}).items():
                     text = text.replace("{%s}" % k, str(v))
                 if not text:
@@ -154,7 +156,9 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 r = None
                 for _try in range(int(st.get("tries") or 25)):
                     r = page.real_click_text(text, st.get("scope") or
-                                             "a,button,[class*=btn]")
+                                             "a,button,[class*=btn]",
+                                             y_min=st.get("y_min"),
+                                             y_max=st.get("y_max"))
                     if (r or {}).get("ok"):
                         break
                     time.sleep(0.4)
@@ -334,6 +338,22 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     note(i, "提交 %s" % st.get("sel") or "")
                     page.wait_for(st["sel"], timeout=8)
                     page.click(st["sel"])
+            elif act == "wait_gone":
+                # 等元素消失（弹层关闭动画对齐）：连发点击被关闭动画的
+                # mask 吞掉是多层弹窗流程的经典竞态
+                sel = st["sel"]
+                note(i, "等待 %s 消失" % sel)
+                deadline = time.time() + float(st.get("timeout") or 10)
+                while time.time() < deadline:
+                    try:
+                        if not page.exists(sel, timeout=1.0):
+                            break
+                    except BrowserError:
+                        break
+                    time.sleep(0.4)
+                else:
+                    raise FlowError("等待 %s 消失超时" % sel)
+                note(i, "已消失")
             elif act == "verify":
                 # 上线验证：导航到验证页断言文本在场——防「流程完成但平台
                 # 静默未发布」的假成功（0 字草稿案）。url/any 支持 values 占位。

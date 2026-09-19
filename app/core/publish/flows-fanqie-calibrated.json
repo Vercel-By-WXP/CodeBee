@@ -1,37 +1,313 @@
 {
-  "_note": "番茄真机校准（2026-09-19 凌晨实测编辑器全结构；登录态随浏览器崩溃丢失，发布按钮链最后一步待登录后复验）：编辑器=/main/writer/<book_id>/publish/ 直达；章节号=input.serial-input（纯数字）；标题=div.serial-editor-input-hint input（≥5字，30字上限）；正文=.ProseMirror（ProseMirror 编辑器，≥1000字）；「下一步」=button（保存+校验，右侧箭头展开下拉菜单含「定时发布」）；建书入口=book-manage 页「创建新书」（表单未实测）。",
-  "check_login": [
-    {"do": "navigate", "url": "{home}"},
-    {"do": "url_any", "any": ["fanqienovel.com"]}
-  ],
-  "upload_chapter": [
-    {"do": "navigate", "url": "about:blank"},
-    {"do": "navigate", "url": "{editor_url}"},
-    {"do": "url_any", "any": ["fanqienovel.com"]},
-    {"do": "wait", "sel": ".ProseMirror", "timeout": 20},
-    {"do": "fill", "sel": "input.serial-input, input.byte-input", "key": "chapter_no"},
-    {"do": "fill", "sel": "div.serial-editor-input-hint input", "key": "chapter_title"},
-    {"do": "fill", "sel": ".ProseMirror", "key": "chapter_body"},
-    {"do": "shot", "name": "chapter-filled"},
-    {"do": "click_real", "text": "下一步", "scope": "button", "tries": 15},
-    {"do": "click_arrow", "note": "展开下一步下拉（箭头在按钮组右缘）"},
-    {"do": "click_real", "text": "定时发布", "tries": 12, "optional": true},
-    {"do": "click_real", "text": "发布", "tries": 12, "optional": true},
-    {"do": "verify", "url": "{chapter_manage_url}", "any": ["{chapter_title}"], "settle": 6}
-  ],
-  "probe_form": [
-    {"do": "navigate", "url": "about:blank"},
-    {"do": "navigate", "url": "https://fanqienovel.com/main/writer/book-manage"},
-    {"do": "url_any", "any": ["fanqienovel.com"]},
-    {"do": "click_text", "text": "创建新书", "contains": true},
-    {"do": "probe", "note": "建书表单（待登录后校准）"}
-  ],
-  "create_book": [
-    {"do": "navigate", "url": "about:blank"},
-    {"do": "navigate", "url": "https://fanqienovel.com/main/writer/book-manage"},
-    {"do": "url_any", "any": ["fanqienovel.com"]},
-    {"do": "click_text", "text": "创建新书", "contains": true},
-    {"do": "probe", "note": "建书表单"},
-    {"do": "shot", "name": "create-book-form"}
-  ]
+ "_note": "番茄真机校准（2026-09-19 定稿，建书+发章结构全部实测）：编辑器=/main/writer/<book_id>/publish/ 直达（章节号 input.serial-input 纯数字；标题 div.serial-editor-input-hint input ≥5字/30上限；正文 .ProseMirror ≥1000字；「下一步」保存校验后按钮组右缘箭头展开下拉含「定时发布」）。建书=/main/writer/create 直达表单：radio 签约模式/目标读者（label 真实点击）→ 阅读标签 select（y<430）弹层 arco-anchor 切主分类/主题/角色/情节 + 标签云点击 + 确认 → 内容标签 select（y>430）弹层 情感/人设/世界观 同构 → 名称/主角1/主角2/简介 → 立即创建 → 跳 book-info/<id>。",
+ "check_login": [
+  {
+   "do": "navigate",
+   "url": "about:blank"
+  },
+  {
+   "do": "navigate",
+   "url": "{home}"
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "fanqienovel.com"
+   ]
+  }
+ ],
+ "upload_chapter": [
+  {
+   "do": "navigate",
+   "url": "about:blank"
+  },
+  {
+   "do": "navigate",
+   "url": "{editor_url}"
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "fanqienovel.com"
+   ]
+  },
+  {
+   "do": "wait",
+   "sel": ".ProseMirror",
+   "timeout": 20
+  },
+  {
+   "do": "fill",
+   "sel": "input.serial-input, input.byte-input",
+   "key": "chapter_no"
+  },
+  {
+   "do": "fill",
+   "sel": "div.serial-editor-input-hint input",
+   "key": "chapter_title"
+  },
+  {
+   "do": "fill",
+   "sel": ".ProseMirror",
+   "key": "chapter_body"
+  },
+  {
+   "do": "shot",
+   "name": "chapter-filled"
+  },
+  {
+   "do": "click_real",
+   "text": "下一步",
+   "scope": "button",
+   "tries": 15
+  },
+  {
+   "do": "click_arrow",
+   "target": "下一步"
+  },
+  {
+   "do": "click_real",
+   "text": "定时发布",
+   "tries": 12,
+   "optional": true
+  },
+  {
+   "do": "click_real",
+   "text": "发布",
+   "tries": 12,
+   "optional": true
+  },
+  {
+   "do": "verify",
+   "url": "{chapter_manage_url}",
+   "any": [
+    "{chapter_title}"
+   ],
+   "settle": 6
+  }
+ ],
+ "probe_form": [
+  {
+   "do": "navigate",
+   "url": "about:blank"
+  },
+  {
+   "do": "navigate",
+   "url": "https://fanqienovel.com/main/writer/create"
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "fanqienovel.com"
+   ]
+  },
+  {
+   "do": "wait",
+   "sel": "input[placeholder='请输入作品名称']",
+   "timeout": 20
+  },
+  {
+   "do": "probe",
+   "note": "建书表单"
+  }
+ ],
+ "create_book": [
+  {
+   "do": "navigate",
+   "url": "about:blank"
+  },
+  {
+   "do": "navigate",
+   "url": "https://fanqienovel.com/main/writer/create"
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "fanqienovel.com"
+   ]
+  },
+  {
+   "do": "wait",
+   "sel": "input[placeholder='请输入作品名称']",
+   "timeout": 20
+  },
+  {
+   "do": "click_real",
+   "text": "{signing_mode}",
+   "scope": "label.arco-radio,span.arco-radio,[class*=serial-radio]",
+   "tries": 8
+  },
+  {
+   "do": "click_real",
+   "text": "{target_reader}",
+   "scope": "label.arco-radio,span.arco-radio,[class*=serial-radio]",
+   "tries": 8
+  },
+  {
+   "do": "click_real",
+   "text": "请选择作品标签",
+   "scope": "[class*=select-view],div,span",
+   "y_max": 430,
+   "tries": 10
+  },
+  {
+   "do": "click_real",
+   "text": "{category}",
+   "scope": ".category-modal span,.category-modal div,.category-modal li",
+   "tries": 8
+  },
+  {
+   "do": "click_real",
+   "text": "主题",
+   "scope": ".category-modal .arco-anchor-link",
+   "tries": 8
+  },
+  {
+   "do": "click_real",
+   "text": "{tag_theme}",
+   "scope": ".category-modal span,.category-modal div,.category-modal li",
+   "y_min": 140,
+   "tries": 8,
+   "optional": true
+  },
+  {
+   "do": "click_real",
+   "text": "角色",
+   "scope": ".category-modal .arco-anchor-link",
+   "tries": 8
+  },
+  {
+   "do": "click_real",
+   "text": "{tag_role}",
+   "scope": ".category-modal span,.category-modal div,.category-modal li",
+   "y_min": 140,
+   "tries": 8,
+   "optional": true
+  },
+  {
+   "do": "click_real",
+   "text": "情节",
+   "scope": ".category-modal .arco-anchor-link",
+   "tries": 8
+  },
+  {
+   "do": "click_real",
+   "text": "{tag_plot}",
+   "scope": ".category-modal span,.category-modal div,.category-modal li",
+   "y_min": 140,
+   "tries": 8,
+   "optional": true
+  },
+  {
+   "do": "click_real",
+   "text": "确认",
+   "scope": ".category-modal button",
+   "tries": 8
+  },
+  {
+   "do": "wait_gone",
+   "sel": ".category-modal",
+   "timeout": 25
+  },
+  {
+   "do": "click_real",
+   "text": "请选择作品标签",
+   "scope": "[class*=select-view],div,span",
+   "tries": 15
+  },
+  {
+   "do": "click_real",
+   "text": "情感",
+   "scope": ".category-modal .arco-anchor-link",
+   "tries": 8
+  },
+  {
+   "do": "click_real",
+   "text": "{tag_content_emotion}",
+   "scope": ".category-modal span,.category-modal div,.category-modal li",
+   "y_min": 140,
+   "tries": 8,
+   "optional": true
+  },
+  {
+   "do": "click_real",
+   "text": "人设",
+   "scope": ".category-modal .arco-anchor-link",
+   "tries": 8
+  },
+  {
+   "do": "click_real",
+   "text": "{tag_content_character}",
+   "scope": ".category-modal span,.category-modal div,.category-modal li",
+   "y_min": 140,
+   "tries": 8,
+   "optional": true
+  },
+  {
+   "do": "click_real",
+   "text": "世界观",
+   "scope": ".category-modal .arco-anchor-link",
+   "tries": 8
+  },
+  {
+   "do": "click_real",
+   "text": "{tag_content_world}",
+   "scope": ".category-modal span,.category-modal div,.category-modal li",
+   "y_min": 140,
+   "tries": 8,
+   "optional": true
+  },
+  {
+   "do": "click_real",
+   "text": "确认",
+   "scope": ".category-modal button",
+   "tries": 8
+  },
+  {
+   "do": "wait_gone",
+   "sel": ".category-modal",
+   "timeout": 25
+  },
+  {
+   "do": "fill",
+   "sel": "input[placeholder='请输入作品名称']",
+   "key": "title"
+  },
+  {
+   "do": "fill",
+   "sel": "input[placeholder='请输入主角名1']",
+   "key": "protagonist"
+  },
+  {
+   "do": "fill",
+   "sel": "input[placeholder='请输入主角名2']",
+   "key": "protagonist2"
+  },
+  {
+   "do": "fill",
+   "sel": "textarea[placeholder*='请输入50-500字']",
+   "key": "summary"
+  },
+  {
+   "do": "shot",
+   "name": "create-book-filled"
+  },
+  {
+   "do": "click_real",
+   "text": "立即创建",
+   "scope": "button",
+   "tries": 10
+  },
+  {
+   "do": "wait",
+   "sel": "body",
+   "timeout": 10
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "book-info"
+   ]
+  }
+ ]
 }

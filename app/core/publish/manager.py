@@ -327,10 +327,21 @@ def create_book_async(task_id, plat, auto_submit=False):
                           auto_submit=auto_submit,
                           shot=lambda n: page.screenshot(ledger.shot_path(plat, task_id, n)),
                           log=logs.append)
+            # book_id：创建成功后平台跳书籍详情/编辑器，从 URL 提取
+            # （番茄 book-info/<id>；七猫 information?id=<id>）。
+            # 提取不到就先用书名登记，发章按书名找书。
+            book_id = ""
+            try:
+                m_url = re.search(r"book-info/(\d+)|information\?id=(\d+)",
+                                  str(page.url() or ""))
+                if m_url:
+                    book_id = m_url.group(1) or m_url.group(2)
+            except Exception:
+                pass
             ledger.record(plat, "create_book", task_id=task_id, title=book_name,
+                          book_id=book_id,
                           ok=True, shot=str(ledger.shot_path(plat, task_id, "")))
-            # book_id 拿不到（DOM 深链未知）：先用书名登记，发章按书名找书
-            ledger.save_book(task_id, plat, {"book_id": "", "title": book_name})
+            ledger.save_book(task_id, plat, {"book_id": book_id, "title": book_name})
             _set(plat, status="connected", error="")
         except Exception as e:
             _set(plat, status="error", error="建书失败：%s" % e)

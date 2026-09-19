@@ -454,25 +454,32 @@ class Page:
             raise BrowserError("点击失败：%s" % ((r or {}).get("err") or sel))
         return True
 
-    def real_click_text(self, text, scope="", contains=True, exact_fallback=True):
+    def real_click_text(self, text, scope="", contains=True, exact_fallback=True,
+                        y_min=None, y_max=None):
         """按文本真实点击：JS 定位元素中心坐标 → CDP Input 派发鼠标事件序列。
 
         qm-btn 一类自定义按钮只认真实事件序列（mousedown/mouseup/focus），
         el.click() 对它们无效——建书「确认创建」/发章「立即发布」都栽在这。
+        y_min/y_max 限定元素纵向范围（区分同名 select、限制弹层内点击）。
         返回 {ok, tag?, via}；找不到元素返回 {ok: False, err}。"""
         r = self.call(
-            "(t,scope,c)=>{"
-            "const els=[...document.querySelectorAll(scope||'button,a,[role=button],span,li,[class*=btn]')];"
+            "(t,scope,c,y0,y1)=>{"
+            "const vis=e=>e.getBoundingClientRect().width>0;"
+            "const els=[...document.querySelectorAll(scope||'button,a,[role=button],span,li,[class*=btn]')].filter(vis);"
             "let cands=els.filter(e=>{const x=(e.innerText||'').trim();"
             "return x&&(c?x.includes(t):x===t);});"
             "if(!cands.length&&c){cands=els.filter(e=>(e.innerText||'').trim()===t);}"
+            "if(y0!==null)cands=cands.filter(e=>e.getBoundingClientRect().y>=y0);"
+            "if(y1!==null)cands=cands.filter(e=>e.getBoundingClientRect().y<=y1);"
             "if(!cands.length)return{ok:false,err:'nf'};"
             "cands.sort((a,b)=>((a.innerText||'').trim().length)-((b.innerText||'').trim().length));"
             "const el=cands[0];el.scrollIntoView({block:'center'});"
             "const rc=el.getBoundingClientRect();"
             "return{ok:true,x:Math.round(rc.x+rc.width/2),y:Math.round(rc.y+rc.height/2),"
             "tag:el.tagName,cls:(el.className||'').toString().slice(0,30)};}",
-            str(text), scope or "", bool(contains))
+            str(text), scope or "", bool(contains),
+            int(y_min) if y_min is not None else None,
+            int(y_max) if y_max is not None else None)
         if not (r or {}).get("ok"):
             return {"ok": False, "err": "页面上找不到文本为「%s」的可点元素" % text}
         x, y = r["x"], r["y"]

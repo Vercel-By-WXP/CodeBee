@@ -75,15 +75,29 @@ FLOWS = {"create_book": CREATE_BOOK, "upload_chapter": UPLOAD_CHAPTER,
          "check_login": CHECK_LOGIN, "probe_form": PROBE_FORM}
 
 
+def _first(meta, key):
+    v = meta.get(key)
+    return str(v[0]).strip() if isinstance(v, list) and v else str(v or "").strip()
+
+
 def values_create_book(meta):
-    """bookmeta 字段 → 建书表单值。标签/分类逐项点击由流程按 values.tags 展开
-    （manager 组装时把 tags 列表拍平成 click_text 步骤追加）。"""
+    """bookmeta 字段 → 建书表单值。标签弹层的分区点选用单值字段
+    （每组选 1 个最稳：番茄主题/角色/情节各≤2、内容组各有上限），
+    数组全量点选由 tag_groups 路径兼容。"""
     return {
         "title": (meta.get("book_name") or "").strip(),
         "summary": (meta.get("summary") or "").strip(),
         "protagonist": (meta.get("protagonist_1") or "").strip(),
+        "protagonist2": (meta.get("protagonist_2") or "").strip(),
         "signing_mode": (meta.get("signing_mode") or "连载模式").strip(),
         "category": (meta.get("category") or "").strip(),
+        "target_reader": (meta.get("target_reader") or "男频").strip(),
+        "tag_theme": _first(meta, "tags_theme"),
+        "tag_role": _first(meta, "tags_role"),
+        "tag_plot": _first(meta, "tags_plot"),
+        "tag_content_emotion": _first(meta, "content_emotion"),
+        "tag_content_character": _first(meta, "content_character"),
+        "tag_content_world": _first(meta, "content_world"),
     }
 
 

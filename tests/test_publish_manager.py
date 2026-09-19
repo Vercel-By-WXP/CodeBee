@@ -93,8 +93,13 @@ def test_flow_override():
     fp.write_text(json.dumps(ov), encoding="utf-8")
     steps2 = manager.load_flow("fanqie", "check_login")
     expect(steps2[0]["url"] == "https://example.com/", "覆盖生效")
-    expect(manager.load_flow("fanqie", "create_book")[0]["url"] == "{home}",
-           "未覆盖的 action 仍走内置")
+    # 未覆盖的 action 走三层回落：data 只覆盖 check_login，create_book
+    # 应落 calibrated 模板（真机校准基线）而非 py 内置推测
+    cb = manager.load_flow("fanqie", "create_book")
+    expect(cb and cb[0].get("do") == "navigate", "未覆盖 action 仍可读")
+    expect(not any(s.get("url") == "https://example.com/" for s in cb
+                   if s.get("do") == "navigate"),
+           "data 覆盖不串 action")
 
 
 def test_tag_steps_insert():
