@@ -1485,6 +1485,49 @@ def _plot_modules(workdir):
             "鼓励化用，不要照抄原句）\n\n" + txt)
 
 
+def _shrink_context_block(sk_block, bible, budget=12000):
+    """分层上下文降级（长提示词在容量受限通道上会挂起/秒拒，2026-09-17 讯飞实测）。
+
+    四层优先级：故事圣经（最高，设定冲突以它为准）> 剧情模块库 > 经验库 > 大纲/前情
+    （后两者在提示词正文里，永不动）。超预算时按优先级保序截断：
+    - 圣经截断保整段（按二级标题边界，无边界才硬截）
+    - 模块库截断保整模块（按「## 」标题边界）
+    - 经验库直接硬截（条目本身短，损失最小）
+    返回 (新 sk_block, 降级说明)。无降级返回原样。"""
+    total = len(sk_block or "") + len(bible or "")
+    if total <= budget:
+        return sk_block, bible, ""
+    notes = []
+    # 1) 先压经验库到 4K（条目短、损失最小）
+    if len(sk_block or "") > 4000:
+        sk_block = sk_block[:4000] + "\n\n（经验库已因上下文容量限制精简）"
+        notes.append("经验库→4K")
+        if len(sk_block) + len(bible or "") <= budget:
+            return sk_block, bible, "；".join(notes)
+    # 2) 模块库按模块边界截断
+    if bible and "## 剧情模块库" in bible:
+        head, sep, mods = bible.partition("## 剧情模块库")
+        mods = sep + mods
+        keep = mods[:6000]
+        cut = keep.rfind("\n## ")
+        if cut > 200:
+            keep = keep[:cut]
+        bible = head + keep + "\n\n（模块库已因上下文容量限制精简）"
+        notes.append("模块库→边界截断")
+        if len(sk_block) + len(bible) <= budget:
+            return sk_block, bible, "；".join(notes)
+    # 3) 圣经按二级标题边界截断到预算
+    if bible:
+        budget_left = max(2000, budget - len(sk_block or ""))
+        keep = bible[:budget_left]
+        cut = keep.rfind("\n## ")
+        if cut > 500:
+            keep = keep[:cut]
+        bible = keep + "\n\n（圣经已因上下文容量限制精简）"
+        notes.append("圣经→边界截断")
+    return sk_block, bible, "；".join(notes)
+
+
 def _critic_lens(critics, agent):
     """该评审的专属视角；单评审/手动指定时不播种（无从轮换，也别稀释注意力）。"""
     try:
@@ -1929,10 +1972,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         time.sleep(30 * draft_attempt)   # 30s / 60s 退避
                     if draft_attempt and len(prompt) > 12000 and sk_block and sk_block in prompt:
                         # 长提示词在容量受限通道（讯飞托管 35B 等）上会挂起/秒拒
-                        # ——降级重试：经验库块截到 4K 字，保留大纲/前情/本章要点
-                        # （2026-09-17 七猫实测：全量 30KB 对讯飞必挂）
-                        use_prompt = prompt.replace(
-                            sk_block, sk_block[:4000] + "\n\n（经验库已因通道容量限制精简）")
+                        # ——分层降级：经验库→4K、模块库按模块边界、圣经按二级标题
+                        # 边界，保大纲/前情/本章要点（2026-09-17 七猫实测：全量
+                        # 30KB 对讯飞必挂）
+                        sk2, bible2, _note = _shrink_context_block(sk_block, bible, budget=12000)
+                        use_prompt = prompt.replace(sk_block, sk2).replace(bible, bible2)
                     res = _run_step(run_id, "draft-c%d" % i, modelhub.bind_agent(impl, difficulty), use_prompt,
                                     step_wd, readonly=False, ev=ev, timeout=2400,
                                     resume=resume_ctx["session"] if resume_ctx else None,
