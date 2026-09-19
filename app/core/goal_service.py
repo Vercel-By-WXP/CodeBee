@@ -86,9 +86,18 @@ def get(goal_id: str):
         return dict(g) if g else None
 
 
-def create(title: str, description: str = "", *, rounds_max: int = 5,
+def create(title: str, description: str = "", *, rounds_max: int | None = None,
            metadata: dict | None = None) -> dict:
-    """创建新 goal。已有未完结 goal 时拒绝（单一当前目标，仿 dsh）。"""
+    """创建新 goal。已有未完结 goal 时拒绝（单一当前目标，仿 dsh）。
+
+    rounds_max 缺省读 settings_v2 orchestrator.max_goal_rounds（读不到回落 5）。"""
+    if rounds_max is None:
+        try:
+            from .settings_schema import get as ss_get, register_default_namespaces
+            register_default_namespaces()
+            rounds_max = int(ss_get("orchestrator", "max_goal_rounds") or 5)
+        except Exception:
+            rounds_max = 5
     with _LOCK:
         cur = current()
         if cur is not None:

@@ -149,6 +149,12 @@ def revision(ns):
         return _REVISIONS.get(ns, 0)
 
 
+def names():
+    """已注册 namespace 清单（GET /api/settings-v2 用）。"""
+    with _LOCK:
+        return sorted(_NAMESPACES)
+
+
 def mutate(ns, ops, expected_revision=None):
     """写一组操作。ops = [{"op":"set","path":..., "value":...}, ...]。
 
@@ -189,15 +195,22 @@ def mutate(ns, ops, expected_revision=None):
 
 
 def describe(ns, redact_secrets=True):
-    """给 UI 的视图：默认把 redact 字段替换为 __REDACTED__（不泄露真值）。"""
+    """给 UI 的视图：默认把 redact 字段替换为 __REDACTED__（不泄露真值）。
+
+    fields 带回字段元数据（类型/说明/choices/clamp），前端调参卡按 schema
+    渲染控件，schema 变更零前端改动。"""
     with _LOCK:
         vals = json.loads(json.dumps(_VALUES.get(ns, {})))  # deep copy
         ndef = _NAMESPACES.get(ns) or {"fields": {}}
+        fields = [{"path": f.path, "type": f.ftype, "description": f.description,
+                   "choices": f.choices, "clamp": f.clamp}
+                  for f in ndef["fields"].values()]
     for f in ndef["fields"].values():
         if f.redact and redact_secrets:
             if _get_path(vals, f.path) not in (None, ""):
                 _set_path(vals, f.path, "__REDACTED__")
-    return {"ns": ns, "revision": _REVISIONS.get(ns, 0), "values": vals}
+    return {"ns": ns, "revision": _REVISIONS.get(ns, 0), "values": vals,
+            "fields": fields}
 
 
 # ---- 默认 namespace（编排阈值的 schema 化存放处；pipeline 可渐进接入） ----

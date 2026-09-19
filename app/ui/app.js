@@ -8007,7 +8007,76 @@ async function loadSettings() {
       queueGitProbe();   // 目录在场即探测代码版本，点亮分支胶囊
     }
   } catch (e) { /* 忽略 */ }
+  loadSettingsV2();   // 引擎调参卡独立拉取（挂了不影响基础设置）
 }
+
+/* ---------------- settings_v2 引擎调参卡（schema 驱动） ----------------
+ * /api/settings-v2 拉 describe（含字段元数据），按 namespace 渲染控件；
+ * 保存走 /api/settings-v2/<ns> mutate（expected_revision CAS，409=别处已改，
+ * 自动重拉最新值）。schema 变更零前端改动。 */
+async function loadSettingsV2() {
+  const box = $("set-v2-card");
+  if (!box) return;
+  let v2 = null;
+  try { v2 = await api("/api/settings-v2"); } catch (e) { box.innerHTML = ""; return; }
+  S.settingsV2 = v2;
+  const NS_LABEL = { orchestrator: t("编排引擎"), budget: t("预算"), cascade: t("级联路由") };
+  let html = "<label>" + esc(t("引擎调参（schema 化设置，立即生效）")) + "</label>";
+  for (const ns of Object.keys(v2.namespaces || {})) {
+    const d = v2.namespaces[ns] || {};
+    html += '<div class="set-v2-ns" data-ns="' + esc(ns) + '" data-rev="' + (d.revision || 0) + '">' +
+      '<div class="set-v2-ns-h">' + esc(NS_LABEL[ns] || ns) +
+      '<span class="flex1"></span><span class="set-v2-rev">rev ' + (d.revision || 0) + "</span></div>";
+    for (const f of (d.fields || [])) {
+      const iid = "setv2-" + esc(ns) + "-" + f.path.replace(/\./g, "-");
+      const val = f.path.split(".").reduce((o, k) => (o && o[k] !== undefined) ? o[k] : undefined, d.values || {});
+      const cur = val === undefined ? "" : val;
+      let inp;
+      if (f.type === "bool") {
+        inp = '<input id="' + iid + '" type="checkbox"' + (cur ? " checked" : "") + ">";
+      } else if (f.type === "int" || f.type === "float") {
+        const step = f.type === "float" ? "0.01" : "1";
+        inp = '<input id="' + iid + '" type="number" step="' + step + '" value="' + esc(String(cur)) + '"' +
+          (f.clamp ? ' min="' + f.clamp[0] + '" max="' + f.clamp[1] + '"' : "") + ' style="max-width:140px">';
+      } else {
+        inp = '<input id="' + iid + '" type="text" value="' + esc(String(cur)) + '">';
+      }
+      html += '<div class="set-v2-row">' + inp +
+        '<span class="set-v2-lb" title="' + esc(f.description || f.path) + '">' + esc(f.description || f.path) + "</span></div>";
+    }
+    html += '<div class="input-row" style="margin-top:6px"><button class="ghost small" onclick="saveSettingsV2(\'' + esc(ns) + '\')">' + t("保存") + "</button>" +
+      '<span class="set-v2-msg msg"></span></div></div>';
+  }
+  box.innerHTML = html;
+}
+
+window.saveSettingsV2 = async function (ns) {
+  const v2 = S.settingsV2 || {};
+  const d = (v2.namespaces || {})[ns];
+  const box = document.querySelector('.set-v2-ns[data-ns="' + ns + '"]');
+  if (!d || !box) return;
+  const ops = [];
+  for (const f of (d.fields || [])) {
+    const iid = "setv2-" + ns + "-" + f.path.replace(/\./g, "-");
+    const el = document.getElementById(iid);
+    if (!el) continue;
+    if (f.type === "bool") ops.push({ op: "set", path: f.path, value: el.checked });
+    else if (f.type === "int" || f.type === "float") ops.push({ op: "set", path: f.path, value: Number(el.value) });
+    else ops.push({ op: "set", path: f.path, value: el.value });
+  }
+  const msg = box.querySelector(".set-v2-msg");
+  try {
+    const r = await api("/api/settings-v2/" + ns, {
+      method: "POST", body: JSON.stringify({ ops, expected_revision: d.revision || 0 }) });
+    if (msg) { msg.className = "set-v2-msg msg ok"; msg.textContent = t("已保存 rev ") + r.revision; }
+    loadSettingsV2();
+  } catch (e) {
+    if (/期望 rev/.test(String(e.message))) {
+      if (msg) { msg.className = "set-v2-msg msg err"; msg.textContent = t("配置已被别处修改，已刷新，请重试"); }
+      loadSettingsV2();
+    } else if (msg) { msg.className = "set-v2-msg msg err"; msg.textContent = e.message; }
+  }
+};
 
 /* 保存默认保存路径；可选把旧默认路径下的现有任务目录迁移到新路径 */
 async function saveDefaultWorkdir() {

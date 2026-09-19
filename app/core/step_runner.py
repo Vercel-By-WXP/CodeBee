@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 
-from .compaction import maybe_compact
+from .compaction import maybe_compact, DEFAULT_PRESSURE_THRESHOLD
 from .error_codes import ErrorCode
 
 log = logging.getLogger(__name__)
@@ -26,6 +26,23 @@ _OVERFLOW_CODES = {ErrorCode.CONTEXT_OVERFLOW, ErrorCode.MAX_TOKENS}
 # 大概率被供应商拒。只拦「大概率必死」，不提前压缩平时的高压（used() 是累计
 # 口径，比真实上下文偏大；0.8 的响应式阈值语义与此不同，勿混用）。
 _PRECHECK_RATIO = 0.9
+
+
+def _v2_compaction_tuning():
+    """settings_v2 orchestrator.compaction 微调 → (threshold|None, retain|None)。
+
+    None = 未配置（走 maybe_compact 的模块默认）；读取/注册失败静默回落。
+    retain 允许 0（尾部不保留），与 None（未配置）语义不同，勿合并。"""
+    try:
+        from .settings_schema import get as ss_get, register_default_namespaces
+        register_default_namespaces()
+        c = (ss_get("orchestrator") or {}).get("compaction") or {}
+        th = c.get("pressure_threshold")
+        rt = c.get("retain_tail_tokens")
+        return (float(th) if th else None,
+                int(rt) if rt is not None else None)
+    except Exception:
+        return None, None
 
 
 def execute_step(session, run_agent_fn, prompt, *, model: str = "",
@@ -47,9 +64,14 @@ def execute_step(session, run_agent_fn, prompt, *, model: str = "",
     Returns:
         (result, retried: bool)
     """
+    v2_th, v2_rt = _v2_compaction_tuning()
     compact_kwargs = {}
     if retain_tail_tokens is not None:
         compact_kwargs["retain_tail_tokens"] = retain_tail_tokens
+    elif v2_rt is not None:
+        compact_kwargs["retain_tail_tokens"] = v2_rt
+    if v2_th is not None:
+        compact_kwargs["threshold"] = v2_th
     if llm_caller is not None and model:
         try:
             from .token_meter import token_meter

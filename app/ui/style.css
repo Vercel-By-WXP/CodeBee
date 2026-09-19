@@ -5113,3 +5113,13 @@ body.welcome-open { overflow: hidden; }
 }
 .cl-opt:hover { border-color: var(--accent); color: var(--accent); opacity: 1; }
 .cl-opt.picked { border-color: var(--accent); color: var(--accent); opacity: .75; cursor: default; }
+
+/* ---------------- settings_v2 引擎调参卡（schema 驱动，追加于文件尾防并行重排） ---------------- */
+#set-v2-card { margin-top: 14px; }
+.set-v2-ns { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.set-v2-ns-h { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 6px; }
+.set-v2-rev { font-size: 11px; color: var(--muted); font-weight: 400; }
+.set-v2-row { display: flex; align-items: center; gap: 10px; margin: 5px 0; }
+.set-v2-row input[type="number"], .set-v2-row input[type="text"] { width: 140px; }
+.set-v2-lb { font-size: 12px; color: var(--muted); }
+.set-v2-msg { font-size: 12px; }

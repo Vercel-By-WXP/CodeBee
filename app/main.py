@@ -235,6 +235,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, skills.view())
             if path == "/api/settings":
                 return self._json(200, dict(settings.load(), **jobs.workers_info()))
+            if path == "/api/settings-v2":
+                # schema 化设置全貌（secret 已脱敏；前端调参卡直读）
+                from core import settings_schema as ss2
+                ss2.register_default_namespaces()
+                return self._json(200, {"namespaces": {
+                    ns: ss2.describe(ns) for ns in ss2.names()}})
             if path == "/api/selfupdate":
                 from core import selfupdate
                 return self._json(200, selfupdate.check(
@@ -814,6 +820,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": err, "settings": view})
             n = jobs.configure(view["max_concurrent_jobs"])
             return self._json(200, {"ok": True, "settings": view, "workers": n})
+        m = re.match(r"^/api/settings-v2/([a-z_-]+)$", path)
+        if m:
+            # schema 化设置写入口：{ops:[{op:"set",path,value}], expected_revision?}
+            # 带 expected_revision 做 CAS，冲突 409（前端据此重拉重试）
+            from core import settings_schema as ss2
+            ns = m.group(1)
+            body = self._body() or {}
+            try:
+                rev = ss2.mutate(ns, body.get("ops") or [],
+                                 expected_revision=body.get("expected_revision"))
+            except ss2.SettingsConflictError as e:
+                return self._json(409, {"error": str(e), "revision": ss2.revision(ns)})
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+            return self._json(200, {"ok": True, "revision": rev,
+                                    "values": ss2.describe(ns)["values"]})
         if path == "/api/settings/default-workdir":
             body = self._body()
             old = settings.default_workdir()

@@ -168,8 +168,16 @@ def _resume_workdir(resume_ctx, fallback):
 
 
 def _compaction_enabled():
-    """Phase 2 灰度开关：环境变量 TUTTI_COMPACTION=1 启用上下文压缩（默认关）。"""
-    return os.environ.get("TUTTI_COMPACTION") == "1"
+    """Phase 2 灰度开关：环境变量 TUTTI_COMPACTION=1 或设置页
+    settings_v2 orchestrator.compaction.enabled 任一开启即生效（默认关）。"""
+    if os.environ.get("TUTTI_COMPACTION") == "1":
+        return True
+    try:
+        from .settings_schema import get as ss_get, register_default_namespaces
+        register_default_namespaces()
+        return bool(ss_get("orchestrator", "compaction.enabled"))
+    except Exception:
+        return False
 
 
 _sessions_cache = {}
