@@ -150,7 +150,7 @@
 
 ## C. 雷达源（每轮全过）
 
-- awesome 清单：awesome-agent-orchestration、awesome-claude-skills、awesome-harness-engineering、awesome-mcp、awesome-cli-coding-agents、awesome-ai-agents、awesome-llm-apps、awesome-claude-code
+- awesome 清单：awesome-agent-orchestration、awesome-claude-skills、awesome-harness-engineering、awesome-mcp、awesome-cli-coding-agents、awesome-ai-agents、awesome-llm-apps、awesome-claude-code（54k★）、VoltAgent/awesome-agent-skills（34.6k★ 1000+ skills）、buildwithclaude（3.5k★ 枢纽）
 - GitHub Trending（weekly，ai/agent 类）
 - topic 页：multi-agent-orchestration、ai-agents、claude-code、agent-framework、claude-skills、llm-agents、ai-coding-assistant、mcp
 - 发行渠道：npm search（agent orchestrator / claude code）、pypi（agent orchestrator）各扫一页

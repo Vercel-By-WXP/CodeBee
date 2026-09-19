@@ -166,3 +166,9 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **cc-switch**（133k★）| Claude Code/Codex/OpenCode 桌面 All-in-One 助手 | 与 agency-orchestrator 切换器同赛道 | 参考
 - **orca 复查**：72.2k★（+0.7k）持续领跑；paseo 17.7k/superset 14.4k（当日 push）均活跃
 - superset 消化：100+ agent 并行 worktree+live diff——与我们代码赛马同向，无新差量；paseo 消化：桌面+移动编排，移动端借鉴已记 orca 条
+
+### 2026-09-19 晚三班补录
+- **awesome-claude-code**（hesreallyhim，54,298★）与 **VoltAgent/awesome-agent-skills**（34,587★，1000+ 官方+社区 skills 精选）——两个 skills 生态巨型雷达源此前未入库；已纳入 keywords.md 雷达源清单（awesome 清单节）与夜班雷达
+- **buildwithclaude**（3.5k★）：Skills/Agents/Commands/Hooks/Plugins/Marketplace 单一入口枢纽——插件市场巡检的补充源
+- **vsync**（61★）：MCP/Skills/Agents/Commands 跨 CLI 同步——多 CLI 配置同步方向参考
+- 并行代理同期完成**封面真机 E2E 闭环**（ece1a02：三真案修复，cogview-3-flash 768x1344 竖版 182KB 实出图）——封面图功能全通
