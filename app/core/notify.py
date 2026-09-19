@@ -71,7 +71,10 @@ def push_run_async(run_id):
 
 
 def push_run(run_id):
-    """组装 run 结果摘要并推送（webhook 未配置时静默跳过）。"""
+    """组装 run 结果摘要并推送（webhook 未配置时静默跳过）。
+
+    摘要末尾附分享页路径（notify_base_url 设置非空时拼完整链接，否则只给
+    run_id 供在本机 CodeBee 界面查找）。"""
     hook = _webhook()
     if not hook:
         return False
@@ -90,6 +93,13 @@ def push_run(run_id):
     if v.get("overall") is not None:
         lines.append("综合评分 %.1f（%s）" % (
             float(v["overall"]), "达标" if v.get("publishable") else "未达标"))
+    try:
+        from .settings import load as _sload
+        base = str(_sload().get("notify_base_url") or "").strip().rstrip("/")
+        if base:
+            lines.append("📄 详情：%s/api/runs/%s/share" % (base, run_id))
+    except Exception:
+        pass
     return push_text("\n".join(lines))
 
 

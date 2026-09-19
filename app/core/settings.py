@@ -18,7 +18,7 @@ _FILE = paths.DATA_DIR / "settings.json"
 # 成功发章上限、平台连续失败几次后暂停自动发布（publish/auto.py 读取）
 DEFAULTS = {"max_concurrent_jobs": 6, "default_workdir": "", "hooks_token": "",
             "telemetry_errors": True, "publish_daily_cap": 10,
-            "publish_fail_streak": 3, "notify_webhook": ""}
+            "publish_fail_streak": 3, "notify_webhook": "", "notify_base_url": ""}
 # 并发上限 12：worker 只是拉起 CLI 子进程的调度位，跨任务无共享资源；
 # 同任务单飞守卫在 jobs 层。默认 6 对齐「多任务并行不排队」的使用预期。
 MIN_WORKERS, MAX_WORKERS = 1, 12
@@ -101,6 +101,8 @@ def save(patch):
                 return cur, "publish_fail_streak 必须是 1-10 的整数"
         if "notify_webhook" in patch:
             cur["notify_webhook"] = str(patch.get("notify_webhook") or "").strip()[:300]
+        if "notify_base_url" in patch:
+            cur["notify_base_url"] = str(patch.get("notify_base_url") or "").strip()[:200]
         _FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = _FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
