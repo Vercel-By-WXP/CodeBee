@@ -214,3 +214,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **anything-llm**（66.2k★）自托管全栈 AI 工作站 | 本地优先参考 | 参考
 - **openhuman**（39.9k★）本地优先记忆+agent 编排 harness | 待深挖
 - 中文网关组无新发现（one-api 替代品多为小项目）；中文小说平台组空结果——**词组太窄，改为「小说 AI 平台」方向已由 A7 覆盖**
+
+## 2026-09-20 08:00 第六班（批2：学习记忆+技能库）
+
+- **OpenSpec**（Fission-AI，69.5k★）已深挖 | 哲学「fluid not rigid / iterative not waterfall / brownfield not just greenfield」；**四段工作流**：/opsx:explore（对话探索技术路径——先看代码库再给最干净方案让用户拍板）→ propose（proposal.md+specs+design.md+tasks.md 四件套）→ apply（逐任务执行勾选）→ **archive（归档到 changes/archive/日期-名称/，specs 更新为正式需求）**；**SHALL 场景化 spec**：`## Requirement: X / The app SHALL... / #### Scenario: WHEN...THEN...` 纯 Markdown 可读可审 | **借鉴方向**：①explore 探索段（我们需求拷问是问需求，缺「先看代码库再给方案」的探索轮——适合代码任务编排者前置）②archive 归档语义（任务档案三件套缺「归档/规格升格」概念——.codebee/ 完成后可升格为正式 spec） | 借鉴方向（两项）
+- **scientific-agent-skills**（K-Dense-AI，45.6k★）| #1 科学 agent skills 库 | 市场雷达新源 | 参考
+- **text-to-cad**（16.1k★）/ **AI-Research-SKILLs**（12.9k★）/ **stitch-skills**（8.3k★）/ **anbeime/skill**（7k★ 中文技能商店——收录最全更新最快）/ **GPT-Image2-Skill**（5.5k★）| skill 生态大库五连——插件市场 B 专项的潜在接入源（anbeime 中文尤其贴合） | 待深挖
+- 批2 复查：Agent_Memory_Techniques/agent-apprenticeship 无增量
