@@ -1162,6 +1162,27 @@ def as_scores(gj):
     return gj if isinstance(gj, dict) else None
 
 
+def extract_scores_from_text(text):
+    """评审解析第四道网（借鉴 BAML 的宽容提取）：模型把分数写成散文键值对
+    完全不出 JSON 时（2026-09-18 真实案例：kimi 正文提分），从文本直接抓
+    「维度：N 分」模式。返回 scores dict 或 {}。"""
+    if not text:
+        return {}
+    scores = {}
+    for m in re.finditer(
+            r"[\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z0-9 ]{0,11}"
+            r"[:：]\s*(\d{1,2}(?:\.\d)?)\s*分?", text):
+        dim = m.group(0).rsplit(":", 1)[0].rsplit("：", 1)[0].strip()
+        try:
+            val = float(m.group(1))
+        except ValueError:
+            continue
+        if not dim or dim in scores or not (1.0 <= val <= 10.0):
+            continue
+        scores[dim] = round(val, 1)
+    return scores if len(scores) >= 3 else {}
+
+
 def scores_from_prose(text, dims):
     """评审解析第三道网：agentic CLI 有时把 JSON 写进文件、stdout 只留中文
     总结（「情节 8 / 人物 8 / …」）。JSON 全灭后按维度名从正文提分；

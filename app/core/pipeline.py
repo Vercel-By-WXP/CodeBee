@@ -1647,6 +1647,10 @@ def _critique_json(res, dims):
     if isinstance(gj, dict) and isinstance(gj.get("scores"), dict) and gj.get("scores"):
         return gj
     prose = runner.scores_from_prose(text, dims)
+    if not prose:
+        # 第四道网（BAML 借鉴）：维度名没命中时按「X：N 分」模式泛化抓取——
+        # 自定义 rubric 改了维度措辞而模型用了自己的说法时仍能救回
+        prose = runner.extract_scores_from_text(text)
     if prose:
         return {"scores": prose, "issues": [], "summary": text[:400]}
     return {"scores": {}, "issues": [],
