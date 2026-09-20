@@ -236,3 +236,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **cordum**（508★）|「AI agent 的动作防火墙」——危险操作前策略+人审 | 与我们 auto_submit=false 纪律同向 | 参考
 - kill-switch 组：avakill/state-harness/halt 小而美——token 螺旋检测/注定失败任务早杀与我们预算熔断+停滞看门狗同向，无新差量
 - 复查：archestra 4.3k 活跃（09-20 push）
+
+### 2026-09-20 12:00 第八班（批6：框架/平台/SDK）
+- **agents-cli**（google 官方，5.9k★）已深挖 | 「把你的编码助手变成 agent 构建专家」——CLI+skills 让 Claude Code/Codex/Antigravity 获得企业级 agent 构建/部署/治理能力（Gemini Enterprise Agent Platform 上的 skills 下发）；`npx skills add google/agents-cli` | **与我们关系**：同是「给 CLI 下发 skills 增能」路线的官方实现——验证了我们 skills 市场方向；其「平台 skills 包」概念可借鉴 | 参考
+- **Mastra**（28.2k★）| TS 现代框架 | 框架参考
+- **agentcn**（shadcn-labs，473★）|「shadcn/ui 但给 agent 用」——组件化 agent 构建 | 参考
+- **aegra**（1.2k★）LangGraph 平台开源替代 | 复查活跃
+- 批6 其他：voice SDK/数据工作台等垂直，无直接差量
