@@ -226,3 +226,13 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - anbeime/skill 评估：元聚合器（聚合 VoltAgent/awesome 上游），SKILL_SOURCES.json 无描述需二跳解析，与我们已有雷达重合——**不入市场源，降级雷达参考**
 - VoltAgent/awesome-agent-skills 34.6k 逐类扫描：anthropics 官方 17 skills 与市场已有源重合（docx/pptx/pdf 已可装）；社区部分垂直小众（SEO/营销/CFO/材料模拟）；**结论：按需挑装而非批量接入**——市场六源+官方源已覆盖主流量，新装留给用户按需触发
 - B 专项沉淀教训入经验库：市场源接入判断三问（①与我们已有源重合度②有描述可直读吗③用户会主动搜吗）——回答不好就不接，雷达跟踪即可
+
+### 2026-09-20 10:00 第七班（批4：治理/安全/HITL）
+- **BAML**（BoundaryML，9.2k★）|「agent 的编程语言」——结构化输出 typed prompt 工程 | 参考+待深挖（结构化输出 schema 与我们 JSON 解析网互补）
+- **Plano**（katanemo，7.1k★）| AI 原生代理服务器/数据平面：智能 LLM 路由 | 网关参考
+- **mcp-context-forge**（IBM，4.5k★）| AI 网关+注册表+代理（MCP/A2A/REST 前置）| MCP 网关参考
+- **OpenAgentsControl**（4.9k★）| plan-first 工作流+approval 执行 | HITL 参考
+- **failproofai**（3.8k★）| agent harness 观测+强制（capture every run and rule）| 观测参考
+- **cordum**（508★）|「AI agent 的动作防火墙」——危险操作前策略+人审 | 与我们 auto_submit=false 纪律同向 | 参考
+- kill-switch 组：avakill/state-harness/halt 小而美——token 螺旋检测/注定失败任务早杀与我们预算熔断+停滞看门狗同向，无新差量
+- 复查：archestra 4.3k 活跃（09-20 push）
