@@ -6474,6 +6474,7 @@ function bindVoiceInput() {
         if (e.results[i].isFinal) text += e.results[i][0].transcript;
       }
       if (text) {
+        text = voiceFixup(text);
         ta.value = (ta.value ? ta.value.replace(/\s+$/, "") + " " : "") + text;
         ta.dispatchEvent(new Event("input", { bubbles: true }));
       }
@@ -6483,6 +6484,24 @@ function bindVoiceInput() {
     try { rec.start(); on = true; btn.classList.add("live"); }
     catch (e) { toast(t("语音不可用，请检查麦克风权限"), true); }
   });
+}
+
+/* 语音识别结果纠偏（借鉴 lexicon 个人词典）：设置里维护的专有名词表
+ * （localStorage orch.voice_terms，一行一个「错误→正确」或直接「术语」），
+ * 识别结果做逐词替换。人名/书名/项目名是识别高频错位，词表是最小可用解。 */
+function voiceFixup(text) {
+  let terms = [];
+  try {
+    const raw = localStorage.getItem("orch.voice_terms") || "";
+    terms = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+  } catch (e) {}
+  for (const t of terms) {
+    const m = t.split("→");
+    if (m.length === 2 && m[0].trim() && m[1].trim()) {
+      text = text.split(m[0].trim()).join(m[1].trim());
+    }
+  }
+  return text;
 }
 
 /* ---------------------------------------------------------- 外观：皮肤 + 明暗（换肤） */
