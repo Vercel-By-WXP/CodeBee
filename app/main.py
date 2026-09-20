@@ -233,6 +233,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/skills":
                 from core import skills
                 return self._json(200, skills.view())
+            if path == "/api/knowledge":
+                from core import knowledge
+                return self._json(200, knowledge.view())
             if path == "/api/settings":
                 return self._json(200, dict(settings.load(), **jobs.workers_info()))
             if path == "/api/settings-v2":
@@ -304,6 +307,17 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, "（报告尚未生成）", "text/markdown; charset=utf-8")
                 return self._send(200, p.read_text(encoding="utf-8", errors="replace"),
                                   "text/markdown; charset=utf-8")
+            m = re.match(r"^/api/runs/([^/]+)/cover$", path)
+            if m:
+                # 封面图在运行目录而非任务工作目录，「成果」扫描够不着它，
+                # 前端封面卡内嵌缩略图走这条专用通道（文件名固定无穿越面）
+                run = store.get_run(m.group(1))
+                if not run:
+                    return self._json(404, {"error": "not found"})
+                p = paths.RUNS_DIR / m.group(1) / "cover.png"
+                if not p.is_file():
+                    return self._json(404, {"error": "封面尚未生成"})
+                return self._send(200, p.read_bytes(), "image/png")
             m = re.match(r"^/api/runs/([^/]+)/share$", path)
             if m:
                 from core import share_page
@@ -738,6 +752,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/models/refresh":
             from core import modelhub
             n, err = modelhub.refresh_models(self._body().get("id") or "")
+            if modelhub.is_no_list_note(err):
+                # 网关无 /models 列表接口（zcode-plan 等）：预期情况按成功回报，
+                # 前端给中性提示而非红色「获取失败」
+                return self._json(200, {"ok": True, "count": 0, "note": err})
             return self._json(200, {"ok": bool(n), "count": n, "message": err})
         if path == "/api/models/add":
             # 手工添加模型：厂商列表接口调不通时直接填模型名进列表
@@ -819,6 +837,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/skills/learn":
             from core import skills
             n = skills.learn_from_run((self._body().get("run_id") or ""))
+            return self._json(200, {"ok": True, "learned": n})
+        if path == "/api/knowledge/op":
+            from core import knowledge
+            body = self._body()
+            err = knowledge.entry_op(body.get("id") or "", body.get("op") or "",
+                                     fields=body.get("fields"))
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
+        if path == "/api/knowledge/learn":
+            from core import knowledge
+            n = knowledge.learn_from_run((self._body().get("run_id") or ""))
             return self._json(200, {"ok": True, "learned": n})
         m = re.match(r"^/api/flows/([^/]+)/reset$", path)
         if m:

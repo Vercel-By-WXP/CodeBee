@@ -98,11 +98,12 @@ class TestNorm(unittest.TestCase):
                            "qimao", "")
         self.assertEqual(m["category_main"], "古代言情")
         self.assertEqual(m["category_sub"], "宫闱宅斗")
-        # 级联不匹配 → 二级清空
+        # 二级不属于所给一级 → 跨一级反查官方目录纠正（同为女生频道）
         m2 = bookmeta._norm({"book_name": "x", "summary": "s", "target_reader": "女生",
                              "category_main": "古代言情", "category_sub": "总裁豪门"},
                             "qimao", "")
-        self.assertEqual(m2["category_sub"], "")
+        self.assertEqual(m2["category_main"], "现代言情")
+        self.assertEqual(m2["category_sub"], "总裁豪门")
         # 一级分类必须在真实表内，且按频道隔离：男生频道没有「古代言情」
         m3 = bookmeta._norm({"book_name": "x", "summary": "s", "target_reader": "男生",
                              "category_main": "古代言情"}, "qimao", "")
@@ -111,6 +112,20 @@ class TestNorm(unittest.TestCase):
                              "category_main": "玄幻奇幻", "category_sub": "东方玄幻"},
                             "qimao", "")
         self.assertEqual((m4["category_main"], m4["category_sub"]), ("玄幻奇幻", "东方玄幻"))
+        # 真案（2026-09-19 山里有人喊我）：一级空 + 女生专属二级「现实故事」
+        # 配了男生频道 → 反查纠正频道与一级，三者自洽
+        m5 = bookmeta._norm({"book_name": "x", "summary": "s", "target_reader": "男生",
+                             "category_main": "", "category_sub": "现实故事"},
+                            "qimao", "")
+        self.assertEqual(m5["target_reader"], "女生")
+        self.assertEqual(m5["category_main"], "现实主义")
+        self.assertEqual(m5["category_sub"], "现实故事")
+        # 全目录都没有的二级 → 清空，不硬填表单选不出的词
+        m6 = bookmeta._norm({"book_name": "x", "summary": "s", "target_reader": "男生",
+                             "category_main": "都市", "category_sub": "编造二级"},
+                            "qimao", "")
+        self.assertEqual(m6["category_sub"], "")
+        self.assertEqual(m6["category_main"], "都市")
         self.assertEqual(len(cat.QIMAO_MAIN_CATEGORIES), 17)   # 男生11 + 女生6（官方全量）
 
     def test_qimao_four_tag_groups(self):
@@ -165,6 +180,41 @@ class TestNorm(unittest.TestCase):
         self.assertIn("必选1-3个", blk_q)
         # 频道隔离：女生频道不出现男生一级
         self.assertNotIn("玄幻奇幻", blk_q)
+
+
+class TestValuesCreateBook(unittest.TestCase):
+    """执行端 values 兜底：已落库的坏数据（一级空/频道错配）按官方目录对齐。
+
+    真案 2026-09-19：任务 t-20260918-143825-5243 七猫 bookmeta 里
+    category_main="" + category_sub="现实故事" + target_reader=男生，
+    一级 click_text 静默跳过 → 死在「页面上找不到文本为『现实故事』的
+    可点元素」。"""
+
+    def test_fixes_real_broken_meta(self):
+        from core.publish import qimao
+        v = qimao.values_create_book({
+            "book_name": "山里有人喊我", "target_reader": "男生",
+            "category_main": "", "category_sub": "现实故事",
+            "status": "连载中"})
+        self.assertEqual(v["target_reader"], "女生")
+        self.assertEqual(v["category_main"], "现实主义")
+        self.assertEqual(v["category_sub"], "现实故事")
+
+    def test_self_consistent_meta_untouched(self):
+        from core.publish import qimao
+        v = qimao.values_create_book({
+            "book_name": "x", "target_reader": "男生",
+            "category_main": "奇闻异事", "category_sub": "恐怖灵异"})
+        self.assertEqual(v["target_reader"], "男生")
+        self.assertEqual((v["category_main"], v["category_sub"]),
+                         ("奇闻异事", "恐怖灵异"))
+
+    def test_unknown_sub_cleared(self):
+        from core.publish import qimao
+        v = qimao.values_create_book({
+            "book_name": "x", "target_reader": "男生",
+            "category_main": "都市", "category_sub": "不存在的分类"})
+        self.assertEqual(v["category_sub"], "")
 
 
 class TestMarkdown(unittest.TestCase):

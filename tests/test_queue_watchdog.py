@@ -110,6 +110,35 @@ class QueueWatchdogTest(BaseTest):
             pipeline.execute_run = orig
         self.assertEqual(calls, [], "running 的重复 job 必须被跳过，绝不双跑")
 
+    def test_requeue_mgmt_stale_backfills(self):
+        """mgmt（CLI 安装/升级）超龄 queued 同样补队，job 带 entry_id/op
+        （2026-09-19 三连升级排队无人接案：worker 起失败/入队丢失后，
+        看门狗此前只认 orchestration，mgmt 永远「排队中」还堵去重闸）。"""
+        from app.core import store, jobs
+        run = store.create_run("mgmt", "升级 codex", entry_id="codex", op="upgrade")
+        store.update_run(run["id"], status="queued",
+                         created_at=_time.strftime(
+                             "%Y-%m-%d %H:%M:%S", _time.localtime(_time.time() - 600)))
+        self.assertEqual(jobs.requeue_pending(max_age_s=120), 1, "mgmt 超龄僵尸必须补")
+        item = jobs._QUEUE.get_nowait()
+        jobs._QUEUE.task_done()
+        self.assertEqual(item["run_id"], run["id"])
+        self.assertEqual(item["kind"], "mgmt")
+        self.assertEqual(item["entry_id"], "codex")
+        self.assertEqual(item["op"], "upgrade")
+
+    def test_requeue_mgmt_skips_entry_with_active_run(self):
+        """同条目已有 running 的 mgmt 时，另一个 queued 副本不补（去重闸语义）。"""
+        from app.core import store, jobs
+        live = store.create_run("mgmt", "升级 codex（在跑）", entry_id="codex", op="upgrade")
+        store.update_run(live["id"], status="running")
+        dup = store.create_run("mgmt", "升级 codex（排队副本）", entry_id="codex", op="upgrade")
+        store.update_run(dup["id"], status="queued",
+                         created_at=_time.strftime(
+                             "%Y-%m-%d %H:%M:%S", _time.localtime(_time.time() - 600)))
+        self.assertEqual(jobs.requeue_pending(max_age_s=120), 0,
+                         "同条目已有活跃 run 的排队副本不得补")
+
     def test_update_run_running_backfills_task(self):
         """run 起跑同步任务状态：任务不再永远显示排队中。"""
         from app.core import store
@@ -119,6 +148,29 @@ class QueueWatchdogTest(BaseTest):
         store.update_run(run["id"], status="running")
         self.assertEqual(store.get_task(task["id"])["status"], "running",
                          "run 置 running 时任务必须跟 running")
+
+    def test_terminal_run_reaps_running_steps(self):
+        """run 落终态时还挂 running 的步骤统一收尸为 failed
+        （打磨组长被取消/异常打断残留假 running 的通用防线）。"""
+        from app.core import store
+        task = _mk_serial_task("终态收尸")
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        s1, _ = store.add_step(run["id"], "polish-r1", "a", "A")
+        s2, _ = store.add_step(run["id"], "polish-c1", "a", "A")
+        store.finish_step(run["id"], s2["n"], "done", summary="正常收尾")
+        store.update_run(run["id"], status="running")   # running 期不收尸
+        cur = store.get_run(run["id"])
+        st1 = next(x for x in cur["steps"] if x["n"] == s1["n"])
+        self.assertEqual(st1["status"], "running", "running 期不得误收")
+        store.update_run(run["id"], status="cancelled")
+        cur = store.get_run(run["id"])
+        st1 = next(x for x in cur["steps"] if x["n"] == s1["n"])
+        st2 = next(x for x in cur["steps"] if x["n"] == s2["n"])
+        self.assertEqual(st1["status"], "cancelled",
+                         "终态后残留 running 必须收尸（与启动清扫语义对齐）")
+        self.assertTrue(st1.get("ended_at"))
+        self.assertIn("未正常收尾", st1.get("summary") or "")
+        self.assertEqual(st2["status"], "done", "已收尾的步骤不得被覆盖")
 
     def test_concurrency_clamp_and_default(self):
         """并发钳制上限 12；新环境默认 6；存量 3 读出仍是 3（不强迁）。"""

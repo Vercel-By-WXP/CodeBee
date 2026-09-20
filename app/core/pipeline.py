@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, catalog, history, jobs, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, usage
+from . import aiflavor, catalog, history, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, usage
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -1777,6 +1777,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % sk, 1)
         if bible:
             tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % bible, 1)
+        kb = knowledge.block_for(task)
+        if kb:
+            tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % kb, 1)
         return tpl.replace("__DIMKEYS__", dimkey).replace(
             "__MANUSCRIPT__", text or "（稿件为空！）")
 
@@ -1974,6 +1977,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             sk_block, _ = skills.block_for(task, stable_order=True)
             if bible:
                 sk_block = (sk_block + "\n\n" + bible) if sk_block else bible
+            kb_block = knowledge.block_for(task)
+            if kb_block:
+                sk_block = (sk_block + "\n\n" + kb_block) if sk_block else kb_block
             scope = ("本章 = 大纲第 %d 章" % i) if start == 1 else (
                 "本批为第 %d–%d 章，下列按全书章号列出各章要点" % (start, end))
 
@@ -3188,5 +3194,10 @@ def execute_run(run_id):
         try:
             if store.get_run(run_id):
                 skills.learn_async(run_id)
+        except Exception:
+            pass
+        # 知识库闭环：从产出材料提炼可复用知识条目（草稿态，人工转正后参与注入）
+        try:
+            knowledge.learn_async(run_id)
         except Exception:
             pass

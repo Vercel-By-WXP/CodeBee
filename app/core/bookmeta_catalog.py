@@ -155,6 +155,22 @@ QIMAO_CATS = {
 QIMAO_MAIN_CATEGORIES = [m for ch in QIMAO_CATS.values() for m in ch]
 QIMAO_CASCADE = {m: subs for ch in QIMAO_CATS.values() for m, subs in ch.items()}
 
+
+def qimao_locate_sub(sub):
+    """二级分类跨频道反查：返回 (频道, 一级分类)，目录里没有则 None。
+
+    级联表单的二级选项集随频道变化，「现实故事」（女生·现实主义）
+    等词被编排者配到男生频道时，只能从官方全目录反查出真实归属，
+    供规整层纠正 target_reader/category_main 错配。"""
+    sub = (sub or "").strip()
+    if not sub:
+        return None
+    for ch, mains in QIMAO_CATS.items():
+        for main, subs in mains.items():
+            if sub in subs:
+                return ch, main
+    return None
+
 # 七猫·作品标签四组（男女生频道同池），每组必选 1-3 个
 QIMAO_TAG_GROUPS = {
     "风格": ["热血", "轻松", "暗黑", "现实题材", "虐恋", "治愈", "甜宠", "悬疑", "种田", "清穿", "宅斗", "宫斗", "中短篇", "青春", "军事", "爽文", "恐怖", "烧脑", "正剧", "商战", "权谋", "励志", "搞笑", "日常", "短篇", "短故事", "买股文", "第一人称", "纯爱", "快节奏", "反套路", "新疆现实题材", "国安现实题材"],

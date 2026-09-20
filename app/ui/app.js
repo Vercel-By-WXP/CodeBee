@@ -412,7 +412,7 @@ function runStatusText(run) {
   if (st === "queued" && run && run.resume_enqueue_at) {
     const at = Date.parse(String(run.resume_enqueue_at).replace(" ", "T"));
     if (!isNaN(at) && Date.now() < at)
-      return t("将于 ") + String(run.resume_enqueue_at).slice(11, 16) + t(" 自动续跑");
+      return t("将于 {0} 自动续跑", String(run.resume_enqueue_at).slice(11, 16));
   }
   return { queued: t("排队中"), running: t("运行中"), done: t("完成"),
     failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") }[st] || st;
@@ -822,6 +822,11 @@ function renderBindings() {
   if (sig === S.bindSig) return;
   S.bindSig = sig;
   syncSaveAllBtn();
+  if (!targets.length) {
+    bbox.innerHTML = '<div class="empty">' + t("还没有装好的 CLI 智能体（codex / claude / kimi 等）。") +
+      '<a href="#" onclick="return helpOpenTopic(\'quickstart\')">' + t("看看快速上手") + '</a></div>';
+    return;
+  }
   bbox.innerHTML = targets.map((c) => {
     const b = (S.bindings || {})[c.id] || {};
     const opts = '<option value="">' + t("不绑定（用 CLI 自身的凭据与配置）") + '</option>' + bindable.map((p) => {
@@ -971,7 +976,8 @@ function renderProvDetail() {
   const p = (S.providers || []).find((x) => x.id === S.selProv);
   if (!p) {
     box.innerHTML = '<div class="empty">' + t("左侧选择供应商；还没有供应商时点左上角「导入」，") +
-      t("可从 CCSwitch / Codex / Claude Code / ZCode / Qwen / Gemini / OpenCode / Continue / Cursor / Trae 扫描带入。") + '</div>';
+      t("可从 CCSwitch / Codex / Claude Code / ZCode / Qwen / Gemini / OpenCode / Continue / Cursor / Trae 扫描带入。") +
+      '<br><a href="#" onclick="return helpOpenTopic(\'models\')">' + t("还没配过模型？看「模型接入与绑定」帮助") + '</a></div>';
     return;
   }
   const tp = (S.testProvState || {})[p.id];
@@ -1673,7 +1679,7 @@ async function openImportDialog() {
       '<input type="checkbox" value="' + esc(s.id) + '"' + (ok ? " checked" : " disabled") +
       (ok ? ' onchange="updateImportSelHint()"' : "") + ">" +
       '<div class="src-main">' +
-      '<div class="src-name">' + esc(s.name) + status + "</div>" +
+      '<div class="src-name">' + esc(t(s.name)) + status + "</div>" +
       '<div class="src-desc">' + esc(t(s.desc)) + "</div>" +
       '<div class="src-path">' + esc((s.paths || []).join("  ·  ")) + "</div>" +
       (s.note ? '<div class="src-note">' + esc(t.apply(null, [s.note].concat(s.note_args || []))) + "</div>" : "") +
@@ -3307,12 +3313,12 @@ function drawTaskDetail(key, runs) {
       } catch (e) {
         // 拉取失败不再静默留白（手机端「报告空空」的来源之一）：给可见提示，
         // 不落缓存，下一轮轮询签名变化时自动重试
-        hint(t("报告读取失败（") + ((e || {}).message || t("网络异常")) + t("），稍后自动重试"));
+        hint(t("报告读取失败（{0}），稍后自动重试", (e || {}).message || t("网络异常")));
       }
     } else if (latest.status === "running" || latest.status === "queued") {
       hint(t("本次运行进行中：报告结束后在这里生成，实时进度看「步骤」页签"));
     } else {
-      const st = { failed: "失败", cancelled: "已取消", timeout: "超时" }[latest.status] || latest.status || "";
+      const st = { failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") }[latest.status] || latest.status || "";
       hint(t("本次运行没有生成报告") + (st ? t("（状态：") + st + t("）") : "") +
         t("；各步骤日志在「步骤」页签"));
     }
@@ -3671,11 +3677,11 @@ async function renderRunDetail() {
       // 拉取失败不再静默留白：给可见提示（下轮轮询重画会重试）
       if (S.detailRunId === id && !S.detailTaskKey)
         $("rd-report").innerHTML = '<div class="hint">' +
-          esc(t("报告读取失败（") + ((e || {}).message || t("网络异常")) + t("），稍后自动重试")) + "</div>";
+          esc(t("报告读取失败（{0}），稍后自动重试", (e || {}).message || t("网络异常"))) + "</div>";
     }
     loadArtifacts(id);
   } else {
-    const st = { failed: "失败", cancelled: "已取消", timeout: "超时" }[run.status] || run.status || "";
+    const st = { failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") }[run.status] || run.status || "";
     $("rd-report").innerHTML = '<div class="hint">' +
       (run.status === "running" || run.status === "queued"
         ? esc(t("本次运行进行中：报告结束后在这里生成，实时进度看「步骤」页签"))
@@ -3840,6 +3846,7 @@ function renderBookMetaPanel(task) {
   let html = '<div class="bm-head"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>' +
     '<span class="sec-title">' + t("作品信息") + "</span>" +
     '<span class="hint">' + esc(t("按发布平台生成建书表单资料，逐字段复制过去")) + "</span>" +
+    '<button class="hhelp" data-help-topic="publish" title="' + esc(t("这是什么？点开看帮助")) + '" aria-label="' + esc(t("帮助")) + '"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>' +
     '<span class="flex1"></span>';
   if (taskBusy) html += '<span class="bm-warn">' + esc(t("任务运行中，生成将在本轮结束后可用")) + "</span>";
   html += "</div>";
@@ -3895,15 +3902,24 @@ function renderBookMetaPanel(task) {
       pbBlock(task, p.id) +
       "</div>";
   }).join("") + "</div>";
-  // 封面卡（covergen，借鉴 oh-story 封面图环节）：curl 落盘运行目录，done 后可点开预览
+  // 封面卡（covergen，借鉴 oh-story 封面图环节）：curl 落盘运行目录，
+  // done 后卡片内直接嵌缩略图（/api/runs/<id>/cover 专用通道），点开新页看大图
   const cg = task.cover_gen || {};
   const cgSt = cg.status || "";
   let cgBody = "";
   if (cgSt === "running") {
     cgBody = '<div class="bm-empty"><svg class="ico spin" aria-hidden="true"><use href="#i-refresh"/></svg> ' + esc(t("生成中…")) + "</div>";
+  } else if (cgSt === "done" && cg.run_id) {
+    const covUrl = "/api/runs/" + encodeURIComponent(cg.run_id) + "/cover" +
+      (cg.at ? "?ts=" + encodeURIComponent(cg.at) : "");   // at 当缓存戳，重生成后缩略图跟着换
+    cgBody = '<div class="bm-cover-wrap">' +
+      '<a href="' + esc(urlAuth(covUrl)) + '" target="_blank" rel="noopener" title="' + esc(t("点击查看大图")) + '">' +
+      '<img class="bm-cover-img" src="' + esc(urlAuth(covUrl)) + '" alt="cover.png" ' +
+      'onerror="this.closest(&quot;.bm-cover-wrap&quot;).classList.add(&quot;noimg&quot;)"></a>' +
+      '<span class="bm-cover-fallback">' + esc(t("cover.png 已不在运行目录")) + "</span>" +
+      '<div class="bm-cover-meta">' + esc([cg.model, cg.provider, cg.size].filter(Boolean).join(" · ")) + "</div></div>";
   } else if (cgSt === "done") {
-    cgBody = '<div class="bm-empty">' + esc(t("封面已生成（cover.png），在「成果」页签查看")) +
-      (cg.model ? " · " + esc([cg.model, cg.provider].filter(Boolean).join(" · ")) : "") + "</div>";
+    cgBody = '<div class="bm-empty">' + esc(t("封面已生成，但缺少运行记录归属")) + "</div>";
   } else if (cgSt === "failed") {
     cgBody = '<div class="bm-errhint">' + esc(cg.error || t("生成失败")) + "</div>";
   } else {
@@ -4118,7 +4134,7 @@ window.pbUploadChapter = async function (taskId, platform) {
 };
 
 window.pbSendChapter = async function (taskId, platform, relName) {
-  if (!confirm(t("将把《" + relName + "》填进平台章节编辑器，填好后由你人工提交。继续？"))) return;
+  if (!confirm(t("将把《{0}》填进平台章节编辑器，填好后由你人工提交。继续？", relName))) return;
   try {
     await api("/api/publish/task/" + encodeURIComponent(taskId) + "/chapter",
       { method: "POST", body: JSON.stringify({ platform, file: relName }) });
@@ -4133,8 +4149,7 @@ window.pbPublishAll = async function (taskId, platform) {
   const au = (((S.pubAuto && S.pubAuto.books) || [])
     .find((b) => b.platform === platform)) || {};
   if (!au.pending) return;
-  if (!confirm(t("将从最靠前的待发章节开始填稿（共 " + au.pending +
-    " 章待发）。本轮只填一章并停在表单页，由你在浏览器里确认提交；提交后再点一次即发下一章。护栏（每日上限/连续失败暂停）生效。继续？"))) return;
+  if (!confirm(t("将从最靠前的待发章节开始填稿（共 {0} 章待发）。本轮只填一章并停在表单页，由你在浏览器里确认提交；提交后再点一次即发下一章。护栏（每日上限/连续失败暂停）生效。继续？", au.pending))) return;
   try {
     await api("/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
       { method: "POST", body: JSON.stringify({ platform }) });
@@ -4270,6 +4285,7 @@ function _renderGitSnapshot(run, task) {
   let html =
     '<div class="git-head"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>' +
     '<span class="sec-title">' + t("代码版本隔离") + '</span>' +
+    '<button class="hhelp" data-help-topic="code" title="' + esc(t("这是什么？点开看帮助")) + '" aria-label="' + esc(t("帮助")) + '"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>' +
     '<code class="git-branch" title="' + esc(t("任务分支：产物提交在此，原分支未受影响")) + '">' + esc(g.branch) + "</code>";
   const addT = ch.add_total, delT = ch.del_total;
   if (addT != null && delT != null) {
@@ -4365,7 +4381,8 @@ function renderGitWbMain(d, task) {
   sel += "</select>";
   let html =
     '<div class="git-head"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>' +
-    '<span class="sec-title">' + t("Git 工作台") + "</span>" + sel +
+    '<span class="sec-title">' + t("Git 工作台") + "</span>" +
+    '<button class="hhelp" data-help-topic="code" title="' + esc(t("这是什么？点开看帮助")) + '" aria-label="' + esc(t("帮助")) + '"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>' + sel +
     '<code class="git-branch" title="HEAD">' + esc(d.head || "") + "</code>" +
     (d.upstream ? '<span class="gm" title="' + esc(d.upstream) + '">↑' + (d.ahead || 0) + " ↓" + (d.behind || 0) + "</span>" : "") +
     '<span class="flex1"></span>' +
@@ -7505,6 +7522,126 @@ async function skillLessonOp(id, op) {
   loadSkills();
 }
 
+/* ---------------------------------------------------------- 知识库 */
+/* 运行产出自动提炼（草稿→人工转正）+ 手动新建的个人知识库；
+ * 进页拉一次，操作后重拉，搜索/状态/标签过滤全在客户端。 */
+let KB = { data: null, q: "", tag: "", status: "" };
+
+async function loadKnowledge() {
+  try { KB.data = await api("/api/knowledge"); } catch (e) { KB.data = null; }
+  renderKnowledge();
+}
+
+function renderKnowledge() {
+  const box = $("kb-cards");
+  if (!box || !KB.data) return;
+  const entries = KB.data.entries || [];
+  // 状态 chips：全部 / 草稿 / 已转正（转正=人工确认过、参与注入）
+  const stBox = $("kb-status-chips");
+  if (stBox) {
+    const cnt = (s) => s ? entries.filter((x) => (x.status || "draft") === s).length : entries.length;
+    stBox.innerHTML = [["", "全部"], ["draft", "草稿"], ["approved", "已转正"]].map((p) =>
+      '<button class="cat-chip' + (KB.status === p[0] ? " active" : "") + '" onclick="kbSetFilter(\'status\',\'' + p[0] + '\')">' +
+      esc(t(p[1])) + "<b>" + cnt(p[0]) + "</b></button>").join("");
+  }
+  const tags = KB.data.tags || [];
+  const tagBox = $("kb-tag-chips");
+  if (tagBox) {
+    tagBox.innerHTML = tags.length
+      ? '<button class="cat-chip' + (!KB.tag ? " active" : "") + '" onclick="kbSetFilter(\'tag\',\'\')">' + esc(t("全部标签")) + "</button>" +
+        tags.map((tg) => '<button class="cat-chip' + (KB.tag === tg ? " active" : "") +
+          '" onclick="kbSetFilter(\'tag\',\'' + esc(tg) + '\')">' + esc(tg) + "<b>" + (KB.data.tag_counts[tg] || 0) + "</b></button>").join("")
+      : "";
+  }
+  let shown = entries;
+  if (KB.status) shown = shown.filter((x) => (x.status || "draft") === KB.status);
+  if (KB.tag) shown = shown.filter((x) => (x.tags || []).includes(KB.tag));
+  if (KB.q) shown = shown.filter((x) =>
+    (x.title || "").toLowerCase().includes(KB.q) || (x.body || "").toLowerCase().includes(KB.q) ||
+    (x.tags || []).some((tg) => tg.toLowerCase().includes(KB.q)));
+  const cnt = $("kb-count");
+  if (cnt) cnt.textContent = shown.length ? shown.length + t(" / 共 ") + entries.length + t(" 条") : t("（暂无）");
+  box.innerHTML = shown.map(kbCard).join("") ||
+    '<div class="empty">' + t("还没有知识条目——完成一次产出型任务后自动提炼（草稿态待转正），也可以点右上角手动新建。") + "</div>";
+}
+
+function kbCard(x) {
+  const draft = (x.status || "draft") !== "approved";
+  return '<div class="card' + (x.enabled === false ? " off" : "") + '" data-kb-id="' + esc(x.id) + '"><div class="head">' +
+    '<span class="name">' + esc(x.title) + "</span>" +
+    (draft ? '<span class="tag warn">' + esc(t("草稿")) + "</span>" : '<span class="tag ok">' + esc(t("已转正")) + "</span>") +
+    (x.stale ? '<span class="tag" title="' + esc(t("事实较旧，注入时会标注可能过期")) + '">' + esc(t("可能过期")) + "</span>" : "") +
+    '<span class="tag">' + esc(x.scope === "*" ? t("通用") : x.scope) + "</span>" +
+    (x.tags || []).map((tg) => '<span class="tag" onclick="kbSetFilter(\'tag\',\'' + esc(tg) + '\')" title="' + esc(t("只看该标签")) + '">' + esc(tg) + "</span>").join("") +
+    (x.seen > 1 ? '<span class="tag">' + t("出现 ") + x.seen + t(" 次") + "</span>" : "") +
+    (x.hits ? '<span class="tag">' + t("已注入 ") + x.hits + t(" 次") + "</span>" : "") +
+    (x.enabled === false ? '<span class="tag">' + t("已停用") + "</span>" : "") + "</div>" +
+    '<div class="note">' + esc(x.body) + "</div>" +
+    '<div class="facts">' + (x.as_of ? t("事实截至 ") + esc(x.as_of) : "") +
+    (x.source ? (x.as_of ? " · " : "") + '<a href="#" onclick="openRun(\'' + esc(x.source) + '\');return false">' + t("来源运行") + "</a>" : "") + "</div>" +
+    '<div class="ops">' +
+    (draft ? '<button class="ghost small" onclick="kbOp(\'' + esc(x.id) + '\', \'approve\')">' + t("转正") + "</button>" : "") +
+    '<button class="ghost small" onclick="kbEditOpen(\'' + esc(x.id) + '\')">' + t("编辑") + "</button>" +
+    '<button class="ghost small" onclick="kbOp(\'' + esc(x.id) + '\', \'' + (x.enabled === false ? "enable" : "disable") + '\')">' + (x.enabled === false ? t("启用") : t("停用")) + "</button>" +
+    '<button class="danger small" onclick="kbOp(\'' + esc(x.id) + '\', \'delete\')">' + t("删除") + "</button>" +
+    "</div></div>";
+}
+
+function kbSetFilter(k, v) {
+  KB[k] = v || "";
+  renderKnowledge();   // 客户端过滤，无需重拉
+}
+
+function kbSearch(v) {
+  KB.q = String(v || "").trim().toLowerCase();
+  renderKnowledge();
+}
+
+async function kbOp(id, op) {
+  if (op === "delete" && !await uiConfirm(t("删除这条知识？转正条目不再注入，删除后不可恢复。"), { ok: t("删除"), danger: true })) return;
+  try { await api("/api/knowledge/op", { method: "POST", body: JSON.stringify({ id, op }) }); }
+  catch (e) { toast(e.message, true); return; }
+  loadKnowledge();
+}
+
+function kbFormOpen(x) {   // x 为空 = 新建（保存即转正），否则编辑（不改状态）
+  const isNew = !x;
+  openModal(isNew ? t("新建知识条目") : t("编辑知识条目"),
+    '<div class="form">' +
+    '<div class="field"><label>' + t("标题") + ' <span class="req">*</span></label><input id="kb-f-title" value="' + esc(x ? x.title || "" : "") + '"></div>' +
+    '<div class="field"><label>' + t("正文") + ' <span class="req">*</span></label><textarea id="kb-f-body" rows="5">' + esc(x ? x.body || "" : "") + "</textarea></div>" +
+    '<div class="grid-2">' +
+    '<div class="field"><label>' + t("标签（逗号分隔）") + '</label><input id="kb-f-tags" value="' + esc((x ? x.tags || [] : []).join(", ")) + '" data-i18n-ph="例：番茄, 签约" placeholder="例：番茄, 签约"></div>' +
+    '<div class="field"><label>' + t("事实截至") + '</label><input id="kb-f-asof" value="' + esc(x ? x.as_of || "" : "") + '" placeholder="YYYY-MM-DD"></div>' +
+    "</div>" +
+    '<div class="field"><label>' + t("适用范围（任务类型，* 为通用）") + '</label><input id="kb-f-scope" value="' + esc(x ? x.scope || "*" : "*") + '" placeholder="novel / serial_novel / code / *"></div>' +
+    "</div>",
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + "</button>" +
+    '<button onclick="kbFormSave(' + (isNew ? "" : "'" + esc(x.id) + "'") + ')">' + t("保存") + "</button>");
+}
+
+async function kbFormSave(id) {
+  const fields = {
+    title: $("kb-f-title").value.trim(),
+    body: $("kb-f-body").value.trim(),
+    tags: $("kb-f-tags").value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+    scope: $("kb-f-scope").value.trim() || "*",
+    as_of: $("kb-f-asof").value.trim(),
+  };
+  if (!fields.title || !fields.body) { toast(t("标题与正文不能为空"), true); return; }
+  try {
+    await api("/api/knowledge/op", { method: "POST", body: JSON.stringify(id
+      ? { id, op: "edit", fields }
+      : { op: "create", fields }) });
+  } catch (e) { toast(e.message, true); return; }
+  closeModal();
+  loadKnowledge();
+}
+
+function kbEditOpen(id) {
+  kbFormOpen((KB.data && KB.data.entries || []).find((x) => x.id === id));
+}
+
 /* ---------------------------------------------------------- 自动化（定时任务） */
 /* 进页拉一次 + 每次操作后重拉 + 页面可见时每 8s 轮询（离页停表）。
  * 后端 /api/automation → {tasks, templates}；任务/模板操作走子路径。 */
@@ -8177,7 +8314,7 @@ function mkrCardHtml(p) {
   const meta = [p.author, p.version ? "v" + p.version : ""].filter(Boolean).join(" · ");
   return '<div class="card mk-card' + (p.compat === "blocked" ? " blocked" : "") + '"><div class="head">' +
     '<span class="name">' + esc(t(p.title || p.name)) + "</span>" +
-    '<span class="tag mk-src">' + esc(p.source_name || "") + "</span>" +
+    '<span class="tag mk-src">' + esc(t(p.source_name || "")) + "</span>" +
     (p.category ? '<span class="tag">' + esc(p.category) + "</span>" : "") +
     "</div>" +
     '<div class="note">' + esc(t(p.desc || "")) + "</div>" +
@@ -8200,7 +8337,7 @@ function renderMarketRemote() {
   if (srcSel && !srcSel.options.length) {
     srcSel.innerHTML = '<option value="">' + t("全部来源") + "</option>" +
       (data.sources || []).map((s) =>
-        '<option value="' + esc(s.id) + '">' + esc(s.name) + t("（") + s.count + t("）") + "</option>").join("");
+        '<option value="' + esc(s.id) + '">' + esc(t(s.name)) + t("（") + s.count + t("）") + "</option>").join("");
   }
   const times = (data.sources || []).map((s) => s.fetched_at).filter(Boolean);
   const meta = $("mkr-meta");
@@ -8255,7 +8392,7 @@ async function mkrRefresh() {
       const keep = srcSel.value;
       srcSel.innerHTML = '<option value="">' + t("全部来源") + "</option>" +
         (r.sources || []).map((s) =>
-          '<option value="' + esc(s.id) + '">' + esc(s.name) + t("（") + s.count + t("）") + "</option>").join("");
+          '<option value="' + esc(s.id) + '">' + esc(t(s.name)) + t("（") + s.count + t("）") + "</option>").join("");
       srcSel.value = keep;
     }
     mkrLoadPage(true);
@@ -8375,7 +8512,7 @@ async function loadSettingsV2() {
         inp = '<input id="' + iid + '" type="text" value="' + esc(String(cur)) + '">';
       }
       html += '<div class="set-v2-row">' + inp +
-        '<span class="set-v2-lb" title="' + esc(f.description || f.path) + '">' + esc(f.description || f.path) + "</span></div>";
+        '<span class="set-v2-lb" title="' + esc(t(f.description || f.path)) + '">' + esc(t(f.description || f.path)) + "</span></div>";
     }
     html += '<div class="input-row" style="margin-top:6px"><button class="ghost small" onclick="saveSettingsV2(\'' + esc(ns) + '\')">' + t("保存") + "</button>" +
       '<span class="set-v2-msg msg"></span></div></div>';
@@ -8553,13 +8690,158 @@ function maybeWhatsnew() {
   }
 }
 
-/* ===== 首次启动欢迎引导：产品是什么 + 装完三步开工 =====
- * localStorage orch.welcomed 记账，只自动弹一次；「关于与更新」页可手动重开。
- * 令牌门在场时让位（远端新设备先输令牌，下次启动引导照常弹）。 */
-function welcomeOpen() {
+/* ===== 帮助中心（首启欢迎引导升级版）：左目录右内容 =====
+ * 首启自动弹（orch.welcomed 记账只弹一次，徽章「首次启动」，落在「快速上手」章）；
+ * 手动开（设置导航/关于页/Ctrl+K）徽章「帮助中心」。加新章 = HELP_CHAPTERS
+ * 追加一条 + helpChapterBody 加一个分支；todo:true 的章自动渲染「整理中」占位。 */
+var HELP_CHAPTERS = [
+  { id: "quickstart", icon: "i-rocket",        label: "快速上手" },
+  { id: "models",     icon: "i-blocks",        label: "模型接入与绑定" },
+  { id: "features",   icon: "i-bee",           label: "功能一览" },
+  { id: "serial",     icon: "i-book-open",     label: "连载创作流程" },
+  { id: "publish",    icon: "i-clapper",       label: "发布上架" },
+  { id: "code",       icon: "i-git-branch",    label: "代码任务与版本" },
+  { id: "auto",       icon: "i-calendar-days", label: "自动化与技能市场" },
+  { id: "faq",        icon: "i-search",        label: "常见问题" },
+];
+var helpCur = "quickstart";
+var helpFirst = false;   // 本次打开是否首启自动弹（决定徽章文案；语言切换时也要用）
+
+function helpChapterBody(id) {
+  if (id === "quickstart") {
+    return '<div class="welcome-steps">' +
+      '<div class="wstep"><b>1</b><span>' + t("添加模型供应商：设置 → 模型接入，填入 API Key") + '</span></div>' +
+      '<div class="wstep"><b>2</b><span>' + t("绑定 CLI 智能体：点「一键推荐绑定」自动配好") + '</span></div>' +
+      '<div class="wstep"><b>3</b><span>' + t("新建任务：选工作目录、写目标，蜂群开工") + '</span></div>' +
+      '</div>' +
+      '<p class="help-note">' + t("任务跑起来后，详情页能看到步骤、蜂巢、成果文件与 Git 版本；「直接执行」类任务还能像聊天一样边跑边追加消息。") + '</p>' +
+      '<div class="welcome-acts">' +
+      '<button class="wl-btn primary" onclick="welcomeGo(\'models\')"><span>' + t("开始配置模型") + '</span><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>' +
+      '<button class="wl-btn" onclick="welcomeGo(\'bindings\')"><span>' + t("绑定 CLI 智能体") + '</span><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>' +
+      '<button class="wl-btn ghost" onclick="welcomeClose()"><span>' + t("先跳过，直接体验") + '</span></button>' +
+      '</div>';
+  }
+  if (id === "models") {
+    return '<h3 class="help-h3">' + t("第一步：添加供应商") + '</h3>' +
+      '<p class="help-p">' + t("「设置 → 模型接入 → 添加供应商」：填名称、API Key、接口地址（一般用默认）。保存后点「获取模型列表」自动拉取该厂商的模型；网关不提供列表接口时直接手工填模型名即可。同一厂商可配多把 Key，按顺序轮换，某把欠费自动切下一把。") + '</p>' +
+      '<h3 class="help-h3">' + t("第二步：认识协议徽章") + '</h3>' +
+      '<p class="help-p">' + t("新供应商默认自动识别协议，保存后在后台实测支持哪些调用形态，结果以徽章标在卡片上。带「· chat」表示该模型只适合站内直连对话；codex 这类只讲 responses 协议的 CLI 用不了它，绑定页会自动剔除，不用自己排查。") + '</p>' +
+      '<h3 class="help-h3">' + t("第三步：绑定 CLI 智能体") + '</h3>' +
+      '<p class="help-p">' + t("「设置 → CLI 绑定」给每个智能体配一条模型链，运行时按顺序故障转移。「一键推荐绑定」只填空缺，不覆盖手工配置；删除或停用厂商后链会自动补绑。") + '</p>' +
+      '<h3 class="help-h3">' + t("报错速查") + '</h3>' +
+      '<ul class="help-list">' +
+      '<li><b>401</b><span>' + t("Key 无效或过期——检查或更换 Key。") + '</span></li>' +
+      '<li><b>404</b><span>' + t("模型名不对；若发生在「获取模型列表」，是网关不提供列表接口，能正常对话就不用管。") + '</span></li>' +
+      '<li><b>503</b><span>' + t("该模型当前无可用渠道——查余额或换一个模型。") + '</span></li>' +
+      '<li><b>' + t("冷却中") + '</b><span>' + t("这把 Key 连续失败被暂停 30 分钟，到期自动恢复，也可在密钥旁手动重置。") + '</span></li>' +
+      '</ul>' +
+      '<p class="help-note">' + t("想零成本先跑通：挑有免费档位的厂商配一个模型，跑通第一个任务后再按需加码。") + '</p>';
+  }
+  if (id === "features") {
+    return '<ul class="help-feats">' +
+      '<li><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><div><b>' + t("多智能体编排") + '</b><span>' + t("规划 · 实现 · 评审 · 打磨，接棒交付") + '</span></div></li>' +
+      '<li><svg class="ico" aria-hidden="true"><use href="#i-book-open"></use></svg><div><b>' + t("连载写作") + '</b><span>' + t("断点续跑 · 经验沉淀 · 作品资料") + '</span></div></li>' +
+      '<li><svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg><div><b>' + t("发布上架") + '</b><span>' + t("一键发布到番茄、七猫，含封面与作品资料") + '</span></div></li>' +
+      '<li><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg><div><b>' + t("版本工作台") + '</b><span>' + t("任务分支隔离，改动可审可合") + '</span></div></li>' +
+      '<li><svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg><div><b>' + t("自动化") + '</b><span>' + t("定时任务，无人值守") + '</span></div></li>' +
+      '<li><svg class="ico" aria-hidden="true"><use href="#i-library"></use></svg><div><b>' + t("经验库") + '</b><span>' + t("内置规范包 + 自动沉淀教训，越用越顺手") + '</span></div></li>' +
+      '<li><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg><div><b>' + t("插件市场") + '</b><span>' + t("600+ 技能，一键安装") + '</span></div></li>' +
+      '</ul>';
+  }
+  if (id === "serial") {
+    return '<h3 class="help-h3">' + t("开一本新书") + '</h3>' +
+      '<p class="help-p">' + t("新建任务选「连载写作」类型，目标里写清书名、题材和计划篇幅（如「都市异能，先写 20 章」）。目标写得太笼统时，蜂群会先反问几个澄清问题再开工。开书前会先准备作品资料：书简介与分类标签可一键生成，按平台官方选项实抓，不用自己去查规则。") + '</p>' +
+      '<h3 class="help-h3">' + t("每章怎么跑") + '</h3>' +
+      '<p class="help-p">' + t("大纲确认后分章推进：起草 → 跨厂商评审 → 打磨 → 定稿。评审不过会自动换将重写，不带着问题过关；需要你拍板的地方会亮起「待裁决」。写作时详情页可实时预览章节，蜂巢页每个智能体一格，点开能看谁在干什么。") + '</p>' +
+      '<h3 class="help-h3">' + t("中断了怎么办") + '</h3>' +
+      '<p class="help-p">' + t("任务随时可续跑：已写章节都落了盘，续跑接着往下写，不会从头再来。单章失败会自动退避重试，任务状态里会显示「将于 HH:MM 自动续跑」，不用盯着等。") + '</p>' +
+      '<h3 class="help-h3">' + t("递话与经验") + '</h3>' +
+      '<p class="help-p">' + t("跑的过程中可以在详情页给蜂群递话（文字/截图/附件），下一轮生效。每轮结束复盘官会把踩过的坑沉淀进经验库，后续任务自动复用，越用越顺手。") + '</p>';
+  }
+  if (id === "publish") {
+    return '<h3 class="help-h3">' + t("第一次发布前：登录平台") + '</h3>' +
+      '<p class="help-p">' + t("目前支持番茄小说与七猫。第一次发布会引导你在浏览器里登录平台账号（扫码或账密），登录态保存在本机，之后发布免登录；过期了重新登一次即可。") + '</p>' +
+      '<h3 class="help-h3">' + t("建书：资料与封面") + '</h3>' +
+      '<p class="help-p">' + t("连载任务的建书面板里，作品简介、分类标签可以按平台官方选项一键生成；封面点「生成封面」自动出竖版图（cover.png 落在任务运行目录）。") + '</p>' +
+      '<h3 class="help-h3">' + t("发章与确认") + '</h3>' +
+      '<p class="help-p">' + t("章稿定稿后一键发布：自动填标题正文、处理平台的各类弹层，但提交前会停下来让你确认——绝不静默替你上架。发布完成后任务详情里能看到结果与章节链接。") + '</p>' +
+      '<h3 class="help-h3">' + t("发布失败") + '</h3>' +
+      '<p class="help-p">' + t("平台改版或登录态过期会导致失败，失败信息会写明原因。重新登录后再点重试即可；反复失败可以到 GitHub 提 Issue 附上失败截图。") + '</p>';
+  }
+  if (id === "code") {
+    return '<h3 class="help-h3">' + t("代码任务怎么跑") + '</h3>' +
+      '<p class="help-p">' + t("新建任务选开发类类型，目标写清楚要做什么（可以附需求文档、截图，附件会进入上下文）。蜂群先出计划再实现：实现 → 客观验证 → 跨厂商评审 → 修复，单路实现失败还有多候选赛马——各候选在隔离的 worktree 里各写各的，择优采纳。跑的过程中可以在详情页递话（文字/截图），下一轮生效。") + '</p>' +
+      '<h3 class="help-h3">' + t("任务分支隔离：你的工作区不受影响") + '</h3>' +
+      '<p class="help-p">' + t("启用代码版本隔离的任务会检出独立的任务分支（codebee/任务ID），所有改动只落在那条分支上，你当前的分支和未提交的改动完全不动——开跑前工作区有脏改动会先帮你收起（stash），跑完自动还原。") + '</p>' +
+      '<h3 class="help-h3">' + t("版本裁决：合并还是丢弃") + '</h3>' +
+      '<p class="help-p">' + t("任务跑完后，「版本」页签会亮起「待裁决」等你拍板：先看变更清单，双击文件能看 diff；满意点「合并」，任务分支合回基线分支；不满意点「丢弃」，分支和工作现场自动清场。中途停下的任务也会留好提交，可以继续跑完再裁决。合并与丢弃绝不静默替你决定。") + '</p>' +
+      '<h3 class="help-h3">' + t("哪里看细节") + '</h3>' +
+      '<p class="help-p">' + t("「蜂巢」页签看每个智能体实时在干什么（点格子看实时日志）；「步骤」页签看任务拆解、每步实际用的模型、耗时与失败原因，评审分数与打磨记录也在这里。") + '</p>';
+  }
+  if (id === "auto") {
+    return '<h3 class="help-h3">' + t("定时任务") + '</h3>' +
+      '<p class="help-p">' + t("设置 → 自动化：把任意任务类型挂上时间表（每天/每周固定时刻），到点自动按真实运行链开跑，结果照常落盘。配合群机器人（钉钉/飞书/企微自动适配）可以把完成状态推到群里。") + '</p>' +
+      '<h3 class="help-h3">' + t("禅道 Bug 自动修复") + '</h3>' +
+      '<p class="help-p">' + t("设置 → 禅道：配好地址与产品档案后，定时扫描激活 Bug，按模块路由 / AI 排查定责（前端/后端/双端/非我方）；我方端的 Bug 自动创建代码修复任务，修完自动合并、resolve 并回写报告到群里；测试指错人的也会按排查结论改派。合并失败不 resolve 不转派，留人工兜底。") + '</p>' +
+      '<h3 class="help-h3">' + t("技能市场") + '</h3>' +
+      '<p class="help-p">' + t("设置 → 插件市场：600+ 技能一键安装，来源包括内置库和 ZCode、Anthropic 等多个外部目录。装上的技能会注入智能体能力，按任务类型生效。") + '</p>' +
+      '<h3 class="help-h3">' + t("用量台账") + '</h3>' +
+      '<p class="help-p">' + t("设置 → 用量统计：每次调用的模型、token 与费用按多个维度聚合展示，历史运行会在启动时自动回填——每个任务花了多少，一目了然。") + '</p>';
+  }
+  if (id === "faq") {
+    return '<div class="help-qa"><b>' + t("点「获取模型列表」报 404？") + '</b><p>' + t("部分网关不提供模型列表接口，属正常现象；只要能正常对话就不用管，模型名手工填即可。") + '</p></div>' +
+      '<div class="help-qa"><b>' + t("报 503 / 无可用渠道？") + '</b><p>' + t("该模型当前没有可用渠道，最常见是余额耗尽。查一下余额或换个模型；同一厂商配了多把 Key 会自动轮换。") + '</p></div>' +
+      '<div class="help-qa"><b>' + t("「冷却中」是什么意思？") + '</b><p>' + t("一把 Key 连续失败会被暂停 30 分钟，防止反复撞墙烧钱，到期自动恢复；也可以在密钥旁手动重置。") + '</p></div>' +
+      '<div class="help-qa"><b>' + t("任务一直显示「排队」？") + '</b><p>' + t("本地默认最多 6 个任务同时跑，排满就排队。排队时可以打开详情看前面还有几个；个别卡死的任务，看门狗会自动清理补队。") + '</p></div>' +
+      '<div class="help-qa"><b>' + t("状态里写着「将于 HH:MM 自动续跑」？") + '</b><p>' + t("这一步失败了，正在退避等待自动重试，到点会接着跑，不需要手动干预；等不及也可以在详情页手动重试。") + '</p></div>' +
+      '<div class="help-qa"><b>' + t("生成的文件在哪？") + '</b><p>' + t("写作类任务的章节、封面、报告都落在任务的运行目录，详情页「成果」页签可浏览和预览。代码类任务则在仓库的任务分支上改代码，详情页「版本」里审阅后再合并。") + '</p></div>' +
+      '<div class="help-qa"><b>' + t("忘了令牌 / 手机打不开页面？") + '</b><p>' + t("服务启动日志里有带令牌的完整访问地址；远程设备必须用带令牌的 URL 打开（或在令牌门里输入一次），否则会一直要求授权。") + '</p></div>' +
+      '<div class="help-qa"><b>' + t("升级后数据会丢吗？") + '</b><p>' + t("不会。任务、配置、用量台账都在独立的数据目录里，升级只替换程序本体；老版本装新版会自动沿用原数据目录。") + '</p></div>' +
+      '<div class="help-qa"><b>' + t("页面打不开 / 服务起不来？") + '</b><p>' + t("多半是默认端口 8765 被旧进程占着：结束旧的 python 进程，或启动时用 --port 换个端口。还不行就到 GitHub 提 Issue。") + '</p></div>';
+  }
+  const ch = HELP_CHAPTERS.find((c) => c.id === id);
+  if (ch && ch.todo) {
+    return '<div class="help-todo"><b>' + t(ch.label || "") + '</b><p>' +
+      t("本章节正在整理，可先看「快速上手」与「模型接入与绑定」，或到 GitHub 提 Issue 提问。") + '</p></div>';
+  }
+  return "";
+}
+
+function renderHelp() {
+  const toc = $("help-toc");
+  if (toc) {
+    toc.innerHTML = HELP_CHAPTERS.map((c) =>
+      '<button class="hitem' + (c.id === helpCur ? " active" : "") + (c.todo ? " todo" : "") +
+      '" data-ch="' + c.id + '" onclick="helpGo(\'' + c.id + '\')">' +
+      '<svg class="ico" aria-hidden="true"><use href="#' + c.icon + '"></use></svg><span>' + t(c.label) + '</span>' +
+      (c.todo ? '<em class="h-todo">' + t("整理中") + '</em>' : "") +
+      '</button>').join("");
+  }
+  const body = $("help-body");
+  if (body) {
+    body.innerHTML = helpChapterBody(helpCur);
+  }
+}
+function setHelpChapter(id) {
+  helpCur = HELP_CHAPTERS.some((c) => c.id === id) ? id : "quickstart";
+  renderHelp();
+}
+function helpGo(id) { setHelpChapter(id); }
+function paintHelpChrome() {
+  const badge = $("welcome-badge");
+  if (badge) badge.textContent = t(helpFirst ? "首次启动" : "帮助中心");
+  const title = $("welcome-title");
+  if (title) title.textContent = t(helpFirst ? "欢迎使用 CodeBee" : "帮助中心");
+}
+function welcomeOpen(opts) {
   const w = $("welcome");
   if (!w) return;
   if (!$("token-gate").classList.contains("hidden")) return;
+  helpFirst = !!(opts && opts.firstRun);
+  if (helpFirst) helpCur = "quickstart";
+  else if (opts && opts.topic && HELP_CHAPTERS.some((c) => c.id === opts.topic)) helpCur = opts.topic;
+  paintHelpChrome();
+  renderHelp();
   w.classList.remove("hidden");
   document.body.classList.add("welcome-open");
 }
@@ -8577,11 +8859,22 @@ function welcomeGo(tab) {
 function maybeWelcome() {
   let seen = "";
   try { seen = localStorage.getItem("orch.welcomed"); } catch (e) { /* ignore */ }
-  if (!seen) welcomeOpen();
+  if (!seen) welcomeOpen({ firstRun: true });
 }
 window.welcomeOpen = welcomeOpen;
 window.welcomeClose = welcomeClose;
 window.welcomeGo = welcomeGo;
+window.helpGo = helpGo;
+// 空状态里的「看帮助」链接用：打开帮助中心对应章并吞掉默认跳转
+window.helpOpenTopic = function (topic) { welcomeOpen({ topic: topic }); return false; };
+
+/* 就地帮助问号：页面里任何 .hhelp（data-help-topic）点击直达帮助中心对应章。
+ * 事件委托挂在 document 上，动态渲染出来的问号无需逐个接线。 */
+document.addEventListener("click", (e) => {
+  const btn = e.target && e.target.closest ? e.target.closest(".hhelp") : null;
+  if (!btn) return;
+  welcomeOpen({ topic: btn.dataset.helpTopic });
+});
 
 function renderSu() {
   const info = $("su-info");
@@ -8686,7 +8979,7 @@ async function suCheck() {
   finally { if (b) b.disabled = false; }
   if (!s) { toast(t("检查更新失败：服务未连接"), true); return; }
   if (s.has_update) toast(t("发现新版本 v") + s.latest + t("，点「升级到新版」即可"));
-  else if (s.note) toast(s.note);
+  else if (s.note) toast(t(s.note));
   else toast(t("已是最新版"));
 }
 
@@ -8755,7 +9048,7 @@ async function suStartupCheck() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", usage: "用量统计", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", skills: "经验库", market: "插件市场", orch: "编排设置", appearance: "皮肤", about: "关于与更新" };
+const TAB_TITLES = { tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", usage: "用量统计", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", appearance: "皮肤", about: "关于与更新" };
 const SET_TABS = new Set(Object.keys(TAB_TITLES));   // 设置导航里的子页（__phone 是弹框，不算）
 
 function tabTitle(name) {
@@ -8919,6 +9212,11 @@ function setLangBtn(lang) {
   paintArchToggle();
   syncSideExpandBtn();
   renderCodePreviews();   // 预览徽章是动态文案：语言切换时若停在皮肤页要跟着换
+  // 帮助中心若开着：徽章/标题/目录/正文跟着换语言重画
+  if (!$("welcome").classList.contains("hidden")) {
+    paintHelpChrome();
+    renderHelp();
+  }
   // 重画还在缓存里的页面标题
   const title = $("page-title");
   if (title && S.tab) title.textContent = tabTitle(S.tab);
@@ -9397,7 +9695,7 @@ function collapseDrawerIfMobile() {
 
 function switchTab(name) {
   if (name === "__phone") { openPhoneConnect(); return; }  // 手机连接是弹框，不切页
-  if (name === "__guide") { welcomeOpen(); return; }       // 使用引导是弹层，不切页（设置导航「软件」组）
+  if (name === "__guide") { welcomeOpen(); return; }       // 帮助中心是弹层，不切页（设置导航「软件」组）
   // 导航收进「设置」：进设置后左栏整体换成设置导航，内容铺满
   S.tab = name;
   if (SET_TABS.has(name)) localStorage.setItem("orch.setTab", name);
@@ -9412,6 +9710,7 @@ function switchTab(name) {
   if (name === "agents") autoCheckUpdates();   // 进目录页自动查各 CLI 新版本
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排设置页拉取配置
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
+  if (name === "knowledge") loadKnowledge();   // 进知识库页拉取条目
   if (name === "automation") { loadAutomation(); startAutoPoll(); }   // 进自动化页：拉取 + 页面可见时每 8s 轮询
   else stopAutoPoll();   // 离开自动化页（或切到别的子页）即停表
   if (name === "zentao") loadZentao();   // 进禅道页：拉配置与修复记录回填表单
@@ -9884,6 +10183,7 @@ document.addEventListener("DOMContentLoaded", () => {
         && e.target.tagName !== "TEXTAREA") { _askClose(true); return; }
     // 文件内容弹窗(240) 夹在 ask(250) 与 modal(200) 之间，Esc 同样逐层关
     if (e.key === "Escape" && filePopIsOpen()) { window.filePopClose(); return; }
+    if (e.key === "F1") { e.preventDefault(); welcomeOpen(); return; }   // F1 = 帮助中心（浏览器帮助被拦下）
     if (e.key === "Escape" && !$("welcome").classList.contains("hidden")) { welcomeClose(); return; }
     if (e.key === "Escape" && !$("modal").classList.contains("hidden")) closeModal();
     // 日志抽屉：Esc 收起（最底层，放在弹窗之后）
@@ -9979,10 +10279,11 @@ function cmdkOps() {
     { icon: "i-calendar-days", label: t("自动化"), run: () => switchTab("automation") },
     { icon: "i-blocks", label: t("插件市场"), run: () => switchTab("market") },
     { icon: "i-book", label: t("经验库"), run: () => switchTab("skills") },
+    { icon: "i-sigma", label: t("知识库"), run: () => switchTab("knowledge") },
     { icon: "i-cpu", label: t("智能体管理"), run: () => switchTab("agents") },
     { icon: "i-chart", label: t("用量统计"), run: () => switchTab("usage") },
     { icon: "i-gear", label: t("设置"), run: () => enterSettings() },
-    { icon: "i-bee", label: t("使用引导"), run: () => welcomeOpen() },
+    { icon: "i-bee", label: t("帮助中心"), run: () => welcomeOpen() },
     { icon: "i-phone", label: t("手机连接"), run: () => switchTab("__phone") },
   ];
 }

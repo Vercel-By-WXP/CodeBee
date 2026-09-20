@@ -1,7 +1,7 @@
-/* 首次启动欢迎引导 UI 验证：自起临时服务 + Edge headless。
- * 覆盖：首启自动弹出、关闭才记账 orch.welcomed、主按钮直达「模型接入」、
+/* 帮助中心（首启欢迎引导升级版）UI 验证：自起临时服务 + Edge headless。
+ * 覆盖：首启自动弹出（徽章首次启动）、关闭才记账 orch.welcomed、主按钮直达「模型接入」、
  * 刷新后不再弹、「关于与更新」的「使用引导」可重开、Esc / 点遮罩可关、
- * 英文词条命中（data-i18n 应用）。
+ * 英文词条命中、章节导航（目录 7 项 / 切章 / 四章实文）、就地帮助问号直达对应章。
  * 结束清理浏览器/服务进程、临时目录。 */
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
@@ -11,7 +11,11 @@ import { fileURLToPath } from "node:url";
 
 const PORT = 18902;
 const SERVICE = "http://127.0.0.1:" + PORT;
-const CDP_PORT = Number(process.env.TUTTI_TEST_CDP || 9362);
+/* CDP 口默认随机（20000-39999）：固定口在多代理并行跑同款测试时会收敛到同一口，
+ * Windows 又允许 IPv4/IPv6 双绑——后起的一方会连上别人的浏览器，读到别人的
+ * profile（orch.welcomed 已有值 → 首启组断言假红）。TUTTI_TEST_CDP 可显式钉死。 */
+const CDP_PORT = Number(process.env.TUTTI_TEST_CDP || (20000 + Math.floor(Math.random() * 20000)));
+console.log("（CDP 口：%s）", CDP_PORT);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 
@@ -96,6 +100,8 @@ async function main() {
     const wVisible = await evalJs(
       `!document.getElementById("welcome").classList.contains("hidden")`);
     check("① 首启自动弹出欢迎引导", wVisible === true);
+    check("① 首启徽章显示「首次启动」",
+      (await evalJs(`document.getElementById("welcome-badge").textContent`)) === "首次启动");
     check("① 打开期间未提前记账（关闭才写 orch.welcomed）",
       (await evalJs(`localStorage.getItem("orch.welcomed")`)) === null);
 
@@ -126,7 +132,7 @@ async function main() {
     await evalJs(`document.getElementById("btn-welcome-replay").click(); "ok"`);
     const replay = await evalJs(
       `!document.getElementById("welcome").classList.contains("hidden")`);
-    check("④ 关于页「使用引导」可重开", replay === true);
+    check("④ 关于页「帮助中心」可重开", replay === true);
 
     // ⑤ Esc 可关
     await evalJs(
@@ -143,20 +149,20 @@ async function main() {
     check("⑥ 点遮罩关闭引导",
       (await evalJs(`document.getElementById("welcome").classList.contains("hidden")`)) === true);
 
-    // ⑦ 命令面板（Ctrl+K 菜单）也含「使用引导」入口，点击可开
+    // ⑦ 命令面板（Ctrl+K 菜单）也含「帮助中心」入口，点击可开
     await evalJs(`cmdkOpen(); "ok"`);
     await sleep(300);
     const cmdItem = `Array.from(document.querySelectorAll("#cmdk-list .cmdk-item"))
-      .find(x => x.textContent.indexOf("使用引导") >= 0)`;
-    check("⑦ 命令面板含「使用引导」入口",
+      .find(x => x.textContent.indexOf("帮助中心") >= 0)`;
+    check("⑦ 命令面板含「帮助中心」入口",
       (await evalJs(`!!(${cmdItem})`)) === true);
     await evalJs(`(${cmdItem} || {}).click?.(); "ok"`);
     await sleep(300);
-    check("⑦ 点命令面板项打开引导",
+    check("⑦ 点命令面板项打开帮助中心",
       (await evalJs(`!document.getElementById("welcome").classList.contains("hidden")`)) === true);
     await evalJs(`welcomeClose(); "ok"`);
 
-    // ⑧ 设置导航「使用引导」入口（软件分组，火箭图标；点击弹层不切子页）
+    // ⑧ 设置导航「帮助中心」入口（软件分组，火箭图标；点击弹层不切子页）
     await evalJs(`switchTab("about"); "ok"`);
     await sleep(400);
     const navGuide = JSON.parse(await evalJs(`JSON.stringify({
@@ -164,17 +170,31 @@ async function main() {
       icon: !!document.querySelector("#btn-guide use[href='#i-rocket']"),
       label: ((document.getElementById("btn-guide") || {}).textContent || "").trim()
     })`));
-    check("⑧ 设置导航「使用引导」项存在（火箭图标）",
-      navGuide.has && navGuide.icon && navGuide.label.indexOf("使用引导") >= 0, JSON.stringify(navGuide));
+    check("⑧ 设置导航「帮助中心」项存在（火箭图标）",
+      navGuide.has && navGuide.icon && navGuide.label.indexOf("帮助中心") >= 0, JSON.stringify(navGuide));
     await evalJs(`document.getElementById("btn-guide").click(); "ok"`);
     await sleep(300);
     const afterNav = JSON.parse(await evalJs(`JSON.stringify({
       welcome: !document.getElementById("welcome").classList.contains("hidden"),
       stillAbout: !document.getElementById("sub-about").classList.contains("hidden")
     })`));
-    check("⑧ 点「使用引导」打开欢迎层且不切子页",
+    check("⑧ 点「帮助中心」打开弹层且不切子页",
       afterNav.welcome && afterNav.stillAbout, JSON.stringify(afterNav));
     await evalJs(`welcomeClose(); "ok"`);
+
+    // ⑫ F1 快捷键打开帮助中心（再按 Esc 关闭）
+    await evalJs(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "F1" })); "ok"`);
+    await sleep(200);
+    const f1 = JSON.parse(await evalJs(`JSON.stringify({
+      open: !document.getElementById("welcome").classList.contains("hidden"),
+      badge: document.getElementById("welcome-badge").textContent
+    })`));
+    check("⑫ F1 打开帮助中心（徽章=帮助中心）",
+      f1.open === true && f1.badge === "帮助中心", JSON.stringify(f1));
+    await evalJs(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); "ok"`);
+    await sleep(200);
+    check("⑫ Esc 再关",
+      (await evalJs(`document.getElementById("welcome").classList.contains("hidden")`)) === true);
 
     // ⑨ 英文词条命中：切 en 后标题与主按钮走字典
     await evalJs(`localStorage.setItem("orch.lang","en"); "ok"`);
@@ -189,9 +209,83 @@ async function main() {
       btn: document.querySelector("#welcome .wl-btn.primary span").textContent.trim(),
       badge: document.querySelector(".welcome-badge").textContent.trim()
     })`));
-    check("⑦ 英文词条命中（标题/按钮/徽章）",
-      en.title === "Welcome to CodeBee" && en.btn === "Set up models" && en.badge === "First launch",
+    check("⑨ 英文词条命中（手动打开：标题/徽章=Help center，主按钮=Set up models）",
+      en.title === "Help center" && en.btn === "Set up models" && en.badge === "Help center",
       JSON.stringify(en));
+
+    // ⑩ 帮助中心章节导航（中文）：目录 7 项、默认快速上手、章切换、整理中占位
+    await evalJs(`localStorage.setItem("orch.lang","zh"); "ok"`);
+    await send("Page.navigate", { url: SERVICE + "/" });
+    await sleep(2500);
+    await evalJs(`poll(); "ok"`);
+    await waitFor(`typeof S === "object" && S !== null && S.state !== null`);
+    await evalJs(`welcomeOpen(); "ok"`);
+    await sleep(300);
+    const toc1 = JSON.parse(await evalJs(`JSON.stringify({
+      n: document.querySelectorAll("#help-toc .hitem").length,
+      first: (document.querySelector("#help-toc .hitem.active") || { dataset: {} }).dataset.ch || "",
+      badge: document.getElementById("welcome-badge").textContent
+    })`));
+    check("⑩ 目录 8 项、默认落在快速上手、徽章「帮助中心」",
+      toc1.n === 8 && toc1.first === "quickstart" && toc1.badge === "帮助中心", JSON.stringify(toc1));
+    await evalJs(`helpGo("models"); "ok"`);
+    await sleep(200);
+    const chModels = JSON.parse(await evalJs(`JSON.stringify({
+      active: (document.querySelector("#help-toc .hitem.active") || { dataset: {} }).dataset.ch || "",
+      body: document.getElementById("help-body").textContent
+    })`));
+    check("⑩ 「模型接入与绑定」章：正文含一键推荐绑定/报错速查",
+      chModels.active === "models" && chModels.body.indexOf("一键推荐绑定") >= 0 &&
+        chModels.body.indexOf("报错速查") >= 0,
+      String(chModels.body).slice(0, 80));
+    const ch5 = JSON.parse(await evalJs(`JSON.stringify(
+      ["serial", "publish", "code", "auto", "faq"].map((id) => {
+        helpGo(id);
+        return { id, txt: document.getElementById("help-body").textContent };
+      })
+    )`));
+    const kw = { serial: "大纲", publish: "番茄", code: "待裁决", auto: "定时", faq: "自动续跑" };
+    check("⑩ 连载/发布/代码/自动化/FAQ 五章均为实文（无整理中占位）",
+      ch5.every((c) => c.txt.indexOf(kw[c.id]) >= 0 && c.txt.indexOf("正在整理") < 0),
+      JSON.stringify(ch5.map((c) => ({ id: c.id, head: String(c.txt).slice(0, 30) }))));
+    check("⑩ auto 章含禅道小节",
+      ch5.find((c) => c.id === "auto").txt.indexOf("禅道") >= 0);
+    await evalJs(`helpGo("features"); "ok"`);
+    await sleep(200);
+    const featsTxt = String(await evalJs(`document.getElementById("help-body").textContent`));
+    check("⑩ 功能一览章含插件市场与经验库条目",
+      featsTxt.indexOf("插件市场") >= 0 && featsTxt.indexOf("经验库") >= 0);
+    await evalJs(`welcomeClose(); "ok"`);
+
+    // ⑪ 就地帮助问号：设置子页 .hhelp（事件委托）直达帮助中心对应章
+    await evalJs(`switchTab("models"); "ok"`);
+    await sleep(400);
+    const hints = JSON.parse(await evalJs(`JSON.stringify({
+      models: !!document.querySelector('#sub-models .hhelp[data-help-topic="models"]'),
+      bindings: !!document.querySelector('#sub-bindings .hhelp[data-help-topic="models"]'),
+      auto: !!document.querySelector('#sub-automation .hhelp[data-help-topic="auto"]'),
+      market: !!document.querySelector('#sub-market .hhelp[data-help-topic="auto"]'),
+      zentao: !!document.querySelector('#sub-zentao .hhelp[data-help-topic="auto"]'),
+      usage: !!document.querySelector('#sub-usage .hhelp[data-help-topic="auto"]'),
+      agents: !!document.querySelector('#sub-agents .hhelp[data-help-topic="models"]'),
+      skills: !!document.querySelector('#sub-skills .hhelp[data-help-topic="features"]'),
+      hive: !!document.querySelector('#rd-hive .hhelp[data-help-topic="serial"]')
+    })`));
+    check("⑪ 九处问号就位（models/bindings/自动化/市场/禅道/用量/目录/经验库/蜂巢）",
+      hints.models && hints.bindings && hints.auto && hints.market && hints.zentao && hints.usage && hints.agents && hints.skills && hints.hive, JSON.stringify(hints));
+    const probe = JSON.parse(await evalJs(`JSON.stringify((() => {
+      const b = document.querySelector('#sub-models .hhelp');
+      if (!b) return { open: false, ch: "", badge: "" };
+      b.click();
+      return {
+        open: !document.getElementById("welcome").classList.contains("hidden"),
+        ch: (document.querySelector("#help-toc .hitem.active") || { dataset: {} }).dataset.ch || "",
+        badge: document.getElementById("welcome-badge").textContent
+      };
+    })())`));
+    check("⑪ 点问号打开帮助中心并落到对应章（徽章=帮助中心）",
+      probe.open === true && probe.ch === "models" && probe.badge === "帮助中心", JSON.stringify(probe));
+    await evalJs(`welcomeClose(); "ok"`);
 
   } finally {
     try { ws && ws.close(); } catch (e) { /* ignore */ }

@@ -274,9 +274,16 @@ def _norm(data, platform, goal=""):
     channel = cat.QIMAO_CATS.get(reader) or {}
     c_main = _in_table(data.get("category_main"), list(channel))
     c_sub = _name(data.get("category_sub"), 10)
-    subs = channel.get(c_main)
-    if subs and c_sub not in subs:
-        c_sub = ""     # 级联不匹配清空（二级必须挂在一级下）
+    if c_sub and not (c_main and c_sub in (channel.get(c_main) or [])):
+        # 一级/二级不自洽（一级空、或二级不属于该频道——如女生专属的
+        # 「现实故事」配了男生频道）：跨频道反查官方目录纠正，频道与
+        # 一级跟着二级走（表单级联的选项集以此为准）；全目录都没有
+        # 才清空——表单选不出的词不硬填
+        loc = cat.qimao_locate_sub(c_sub)
+        if loc:
+            reader, c_main = loc
+        else:
+            c_sub = ""
     # 作品标签四组（官方每组必选 1-3）：逐组过滤 + 截到 3；老数据 tags 并入
     legacy_tags = data.get("tags") if isinstance(data.get("tags"), list) else []
     groups = {}

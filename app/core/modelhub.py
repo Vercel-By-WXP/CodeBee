@@ -192,6 +192,18 @@ def _validate_host(url, allow_private):
     return host, ""
 
 
+# 「候选列表端点全部 404」的良性提示固定后缀。zcode-plan 等 anthropic 形网关
+# 没有 GET /models：404 与密钥无关、不影响对话调用。调用方用 is_no_list_note()
+# 把它归为预期情况（成功 + 提示），不算失败、不记 KEY 错误。
+_NO_LIST_SUFFIX = ("无模型列表接口（HTTP 404）——"
+                   "模型以导入/手动添加为准，不影响对话调用")
+
+
+def is_no_list_note(err):
+    """404≠密钥错≠网络断：网关本来就没有 /models 列表接口，属良性结果。"""
+    return bool(err) and err.endswith(_NO_LIST_SUFFIX)
+
+
 def _fetch_models_http(base_url, api_key, protocol, allow_private=False):
     """GET {base}/models 拉取模型列表。返回 (names, err)。
 
@@ -199,6 +211,8 @@ def _fetch_models_http(base_url, api_key, protocol, allow_private=False):
     google 走 /v1beta/models，返回项形如 {"name": "models/gemini-x"}。
     protocol="auto"（导入时未指定格式）两条 URL 形状都试——anthropic 与 openai
     的取列表路径本就相同，多试 google 那条只是让 auto 名副其实。
+    全部候选端点皆 404 → err 携带 _NO_LIST_SUFFIX 的良性提示（is_no_list_note
+    判真），不是失败；混入任何真错误（500/401/连不上）则报真错误。
     """
     import urllib.parse
     base = (base_url or "").rstrip("/")
@@ -213,6 +227,7 @@ def _fetch_models_http(base_url, api_key, protocol, allow_private=False):
     else:
         urls = std
     last_err = ""
+    last_404 = ""   # 最后一条 404；全部尝试皆 404 时它是良性结果而非失败
     opener = _opener()
     for url in urls:
         host, herr = _validate_host(url, allow_private)
@@ -248,13 +263,13 @@ def _fetch_models_http(base_url, api_key, protocol, allow_private=False):
                 if e.code == 404:
                     # zcode-plan / open.bigmodel.cn 等 anthropic 形网关没有
                     # GET /models——404 与密钥无关，模型以导入/手填为准
-                    last_err = (url + " 无模型列表接口（HTTP 404）——"
-                                "模型以导入/手动添加为准，不影响对话调用")
+                    last_404 = url + " " + _NO_LIST_SUFFIX
                 else:
                     last_err = tlsctx.humanize("%s → HTTP %s" % (url, e.code))
             except Exception as e:
                 last_err = tlsctx.humanize("%s → %r" % (url, e))
-    return None, last_err
+    # 真错误压过良性 404：500/401/连不上任一出现，就不能报「无列表接口」
+    return None, last_err or last_404
 
 
 def refresh_models(provider_id):
@@ -2533,6 +2548,11 @@ def test_provider(provider_id):
             note_key_ok(provider_id, kk.get("id") or "")
             return {"ok": True, "latency_ms": int((_t.time() - t0) * 1000),
                     "count": len(names), "error": "", "key_id": kk.get("id") or ""}
+        if is_no_list_note(err):
+            # 网关没有 /models：HTTP 往返已证连通，与 KEY 无关——不计失败、
+            # 不记 KEY 错误；密钥真伪交「单模型测试」的 1 token 真对话去验
+            return {"ok": True, "latency_ms": int((_t.time() - t0) * 1000),
+                    "count": 0, "error": "", "note": err, "key_id": kk.get("id") or ""}
         last = err
         note_key_error(provider_id, kk.get("id") or "", err)
     return {"ok": False, "latency_ms": int((_t.time() - t0) * 1000), "error": last}

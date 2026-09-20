@@ -33,6 +33,7 @@ async function evalJs(expr) {
 const I18N_IGNORE = [
   /^中文$/, /^中文 \/ English$/, /^样式核验-/,
   /^跳过 \d+ 条（缺地址或格式不识别）/, /^跳过 \d+ 个（缺合法 baseURL）/,
+  /^跳过 \d+ 个（缺合法 baseURL）：/, /^\d+ 个未带出密钥——请在「模型接入」页手填：/,
 ];
 
 // 收集当前页残留中文：遍历文本节点 + title/placeholder/aria-label 属性（隐藏元素不计）

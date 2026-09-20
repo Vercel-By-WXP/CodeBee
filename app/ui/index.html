@@ -35,6 +35,7 @@
 <!-- ================= 图标精灵：统一线性图标（stroke=currentColor，随主题与 hover 自动变色） ================= -->
 <svg id="icon-sprite" aria-hidden="true" focusable="false">
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.8-4.8"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
   <symbol id="i-chevrons-d" viewBox="0 0 24 24"><path d="m6 6 6 6 6-6"/><path d="m6 13 6 6 6-6"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-tasks" viewBox="0 0 24 24"><path d="M3 6h11"/><path d="M3 12h11"/><path d="M3 18h7"/><path d="m16.5 16.5 2 2 4-4"/></symbol>
@@ -184,12 +185,13 @@
       <button class="set-item" data-sub="models" data-i18n="模型接入"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>模型接入</button>
       <button class="set-item" data-sub="bindings" data-i18n="CLI 绑定"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg>CLI 绑定</button>
       <button class="set-item" data-sub="skills" data-i18n="经验库"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg>经验库</button>
+      <button class="set-item" data-sub="knowledge" data-i18n="知识库"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg>知识库</button>
       <button class="set-item" data-sub="market" data-i18n="插件市场"><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg>插件市场</button>
       <button class="set-item" data-sub="orch" data-i18n="编排设置"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg>编排设置</button>
       <div data-i18n="外观" class="set-group">外观</div>
       <button class="set-item" data-sub="appearance" data-i18n="皮肤"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg>皮肤</button>
       <div data-i18n="软件" class="set-group">软件</div>
-      <button id="btn-guide" class="set-item" data-sub="__guide" data-i18n="使用引导"><svg class="ico" aria-hidden="true"><use href="#i-rocket"></use></svg>使用引导</button>
+      <button id="btn-guide" class="set-item" data-sub="__guide" data-i18n="帮助中心"><svg class="ico" aria-hidden="true"><use href="#i-rocket"></use></svg>帮助中心</button>
       <button id="btn-about" class="set-item" data-sub="about" data-i18n="关于与更新"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>关于与更新</button>
       <div data-i18n="远程" class="set-group">远程</div>
       <button id="btn-phone" class="set-item" data-sub="__phone" data-i18n="手机连接"><svg class="ico" aria-hidden="true"><use href="#i-phone"></use></svg>手机连接</button>
@@ -456,7 +458,7 @@
           </div>
           <div id="rd-pane-hive" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-hive" data-pane="hive">
             <div id="rd-hive" class="rd-hive hidden">
-              <div class="sec-title"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="蜂巢工作台">蜂巢工作台</span><span id="rd-hive-sub" class="tag"></span></div>
+              <div class="sec-title"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="蜂巢工作台">蜂巢工作台</span><span id="rd-hive-sub" class="tag"></span><button class="hhelp" data-help-topic="serial" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button></div>
               <div id="rd-hive-cells" class="hive-cells"></div>
             </div>
             <!-- 运行中指挥信箱：renderDirector 只认活跃 run，渲染时摘掉 hidden；
@@ -504,6 +506,7 @@
       <div class="panel wide">
         <div class="panel-head">
           <h2 data-i18n="自动化">自动化</h2>
+          <button class="hhelp" data-help-topic="auto" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
           <div class="actions">
             <button id="btn-auto-refresh" class="ghost small" title="重新拉取任务列表" data-i18n-title="重新拉取任务列表"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="刷新">刷新</span></button>
             <button id="btn-auto-new" class="primary small" title="创建一个按计划自动运行的任务" data-i18n-title="创建一个按计划自动运行的任务"><span data-i18n="新建定时任务">新建定时任务</span></button>
@@ -526,6 +529,7 @@
       <div class="panel wide">
         <div class="panel-head">
           <h2 data-i18n="禅道 Bug 自动修复">禅道 Bug 自动修复</h2>
+          <button class="hhelp" data-help-topic="auto" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
           <div class="actions">
             <button id="btn-zentao-test" class="ghost small" title="用当前表单里的连接信息试连禅道" data-i18n-title="用当前表单里的连接信息试连禅道"><span data-i18n="测试连接">测试连接</span></button>
             <button id="btn-zentao-scan" class="primary small" title="立刻扫一遍激活 Bug 并对账回写" data-i18n-title="立刻扫一遍激活 Bug 并对账回写"><span data-i18n="立即扫描">立即扫描</span></button>
@@ -535,16 +539,16 @@
         <div id="zentao-status" class="hint zt-status"></div>
         <h3 data-i18n="禅道连接" class="sec-title">禅道连接</h3>
         <div class="zt-grid">
-          <label data-i18n="禅道地址">禅道地址</label><input id="zt-base-url" type="text" placeholder="https://zentao.example.com（子目录部署带子目录）">
-          <label data-i18n="账号">账号</label><input id="zt-account" type="text" placeholder="建议建专用账号（如 codebee）收 Bug">
+          <label data-i18n="禅道地址">禅道地址</label><input id="zt-base-url" type="text" placeholder="https://zentao.example.com（子目录部署带子目录）" data-i18n-ph="https://zentao.example.com（子目录部署带子目录）">
+          <label data-i18n="账号">账号</label><input id="zt-account" type="text" placeholder="建议建专用账号（如 codebee）收 Bug" data-i18n-ph="建议建专用账号（如 codebee）收 Bug">
           <label data-i18n="密码">密码</label><input id="zt-password" type="password" placeholder="" autocomplete="new-password">
         </div>
         <h3 data-i18n="自动化" class="sec-title">自动化</h3>
         <div class="zt-grid zt-grid-toggles">
-          <label class="toggle" title="模块路由没命中时，用 AI 读 Bug 描述判端（前端/后端/双端/非我方）；关掉则未命中模块的 Bug 留人工"><input id="zt-triageai" type="checkbox"><span data-i18n="AI 排查兜底">AI 排查兜底</span></label>
-          <label class="toggle" title="修复任务评审通过后，自动到禅道 resolve（fixed）并回评论"><input id="zt-autoresolve" type="checkbox"><span data-i18n="自动 resolve Bug">自动 resolve Bug</span></label>
-          <label class="toggle" title="把任务分支自动合并回基线分支（需配置基线分支；合并失败不 resolve 不转派，留人工）"><input id="zt-automerge" type="checkbox"><span data-i18n="自动合并代码">自动合并代码</span></label>
-          <label class="toggle" title="按下面的间隔定时扫描；关掉后仍可手动「立即扫描」"><input id="zt-poll" type="checkbox"><span data-i18n="定时扫描">定时扫描</span></label>
+          <label class="toggle" title="模块路由没命中时，用 AI 读 Bug 描述判端（前端/后端/双端/非我方）；关掉则未命中模块的 Bug 留人工" data-i18n-title="模块路由没命中时，用 AI 读 Bug 描述判端（前端/后端/双端/非我方）；关掉则未命中模块的 Bug 留人工"><input id="zt-triageai" type="checkbox"><span data-i18n="AI 排查兜底">AI 排查兜底</span></label>
+          <label class="toggle" title="修复任务评审通过后，自动到禅道 resolve（fixed）并回评论" data-i18n-title="修复任务评审通过后，自动到禅道 resolve（fixed）并回评论"><input id="zt-autoresolve" type="checkbox"><span data-i18n="自动 resolve Bug">自动 resolve Bug</span></label>
+          <label class="toggle" title="把任务分支自动合并回基线分支（需配置基线分支；合并失败不 resolve 不转派，留人工）" data-i18n-title="把任务分支自动合并回基线分支（需配置基线分支；合并失败不 resolve 不转派，留人工）"><input id="zt-automerge" type="checkbox"><span data-i18n="自动合并代码">自动合并代码</span></label>
+          <label class="toggle" title="按下面的间隔定时扫描；关掉后仍可手动「立即扫描」" data-i18n-title="按下面的间隔定时扫描；关掉后仍可手动「立即扫描」"><input id="zt-poll" type="checkbox"><span data-i18n="定时扫描">定时扫描</span></label>
           <label data-i18n="扫描间隔（小时）">扫描间隔（小时）</label><input id="zt-interval" type="number" min="1" max="168" step="1">
         </div>
         <div class="ops"><button id="btn-zentao-save" class="primary small"><span data-i18n="保存配置">保存配置</span></button></div>
@@ -562,6 +566,7 @@
       <div class="panel wide">
         <div class="panel-head">
           <h2 data-i18n="使用统计">使用统计<span class="badge2" data-i18n="应用用量">应用用量</span></h2>
+          <button class="hhelp" data-help-topic="auto" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
           <div class="actions" id="usage-ranges">
             <div class="seg" role="group" aria-label="时间范围" data-i18n-aria="时间范围">
               <button data-i18n="今天" class="seg-btn active" data-days="1">今天</button>
@@ -602,6 +607,7 @@
       <div class="panel wide">
         <div class="panel-head">
           <h2 data-i18n="智能体目录">智能体目录</h2>
+          <button class="hhelp" data-help-topic="models" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
           <div class="actions">
             <button data-i18n="一键绑定推荐模型" id="btn-catalog-autobind" class="ghost">一键绑定推荐模型</button>
             <button data-i18n="重新加载 catalog" id="btn-reload-catalog" class="ghost">重新加载 catalog</button>
@@ -623,6 +629,7 @@
           <aside class="prov-side">
             <div class="prov-side-head">
               <span data-i18n="供应商">供应商</span>
+              <button class="hhelp" data-help-topic="models" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
               <span class="prov-side-ops">
                 <button id="btn-refresh-models" class="icon-btn" title="全部重新拉取模型列表" aria-label="全部重新拉取模型列表" data-i18n-aria="全部重新拉取模型列表" data-i18n-title="全部重新拉取模型列表"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg></button>
                 <button data-i18n="导入" id="btn-import" class="ghost small" title="从本机各 AI 工具导入供应商" data-i18n-title="从本机各 AI 工具导入供应商">导入</button>
@@ -641,6 +648,7 @@
       <div id="sub-bindings" class="subpage hidden">
         <div class="panel wide">
           <div class="panel-head"><h2 data-i18n="CLI 绑定">CLI 绑定</h2>
+            <button class="hhelp" data-help-topic="models" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
             <button id="btn-autobind" class="ghost small" onclick="autoBindAll()" data-i18n="一键推荐绑定">一键推荐绑定</button>
             <button id="btn-saveall-bind" class="ghost small hidden" onclick="saveAllBindings()" data-i18n="全部保存">全部保存</button>
           </div>
@@ -652,7 +660,8 @@
       <!-- 经验库 -->
       <div id="sub-skills" class="subpage hidden">
         <div class="panel wide">
-          <div class="panel-head"><h2 data-i18n="经验库">经验库</h2></div>
+          <div class="panel-head"><h2 data-i18n="经验库">经验库</h2>
+            <button class="hhelp" data-help-topic="features" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button></div>
           <p class="hint"><span data-i18n="系统自己的经验沉淀：">系统自己的经验沉淀：</span><b data-i18n="内置规范包">内置规范包</b><span data-i18n="（如七猫签约标准，自动注入小说类任务的规划与评审提示词） 与">（如七猫签约标准，自动注入小说类任务的规划与评审提示词）
             与</span><b data-i18n="运行中自动学到的教训">运行中自动学到的教训</b><span data-i18n="（每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。">（每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。</span></p>
           <h3 data-i18n="内置规范包" class="sec-title">内置规范包</h3>
@@ -663,11 +672,28 @@
         </div>
       </div>
 
+      <!-- 知识库：运行产出自动整理的知识条目 + 个人知识管理 -->
+      <div id="sub-knowledge" class="subpage hidden">
+        <div class="panel wide">
+          <div class="panel-head"><h2 data-i18n="知识库">知识库</h2>
+            <button class="ghost small" onclick="kbFormOpen(null)"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg><span data-i18n="新建条目">新建条目</span></button></div>
+          <p class="hint"><span data-i18n="运行产出自动整理成的可复用知识：">运行产出自动整理成的可复用知识：</span><b data-i18n="自动提炼（草稿）">自动提炼（草稿）</b><span data-i18n="——每次任务结束由编排者从产出材料里提炼知识条目，你确认「转正」后才参与注入；">——每次任务结束由编排者从产出材料里提炼知识条目，你确认「转正」后才参与注入；</span><b data-i18n="手动新建（直接转正）">手动新建（直接转正）</b><span data-i18n="——也是你自己的知识管理库。转正条目按任务类型与相关性自动注入同类任务的规划与评审提示词。">——也是你自己的知识管理库。转正条目按任务类型与相关性自动注入同类任务的规划与评审提示词。</span></p>
+          <div class="kb-toolbar">
+            <input id="kb-search" data-i18n-ph="搜索标题 / 正文 / 标签" placeholder="搜索标题 / 正文 / 标签" oninput="kbSearch(this.value)">
+            <div class="cat-chips" id="kb-status-chips"></div>
+          </div>
+          <div class="cat-chips" id="kb-tag-chips"></div>
+          <h3 class="sec-title"><span data-i18n="知识条目">知识条目</span> <span class="tag" id="kb-count"></span></h3>
+          <div id="kb-cards" class="cards"></div>
+        </div>
+      </div>
+
       <!-- 插件市场：经验包一键安装 + 外部生态目录 -->
       <div id="sub-market" class="subpage hidden">
       <div class="panel wide">
         <div class="panel-head">
           <h2 data-i18n="插件市场">插件市场</h2>
+          <button class="hhelp" data-help-topic="auto" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
           <span id="mk-count" class="pm-count"></span>
         </div>
         <p data-i18n="用经验包为 CodeBee 扩展写作与工程守则，一键装进经验库。安装即生效，无需手动调用：运行任务时，经验库按插件标注的「适用」自动把内容注入该类任务的提示词；可随时到「经验库」页启用、停用或卸载。" class="hint">用经验包为 CodeBee 扩展写作与工程守则，一键装进经验库。安装即生效，无需手动调用：运行任务时，经验库按插件标注的「适用」自动把内容注入该类任务的提示词；可随时到「经验库」页启用、停用或卸载。</p>
@@ -740,7 +766,7 @@
           <div class="panel-head"><h2 data-i18n="关于与更新">关于与更新</h2></div>
           <div id="su-info" class="empty" data-i18n="加载中…">加载中…</div>
           <div class="input-row" style="margin-top:10px">
-            <button id="btn-welcome-replay" class="ghost small" onclick="welcomeOpen()"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="使用引导">使用引导</span></button>
+            <button id="btn-welcome-replay" class="ghost small" onclick="welcomeOpen()"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="帮助中心">帮助中心</span></button>
             <button id="su-check" class="ghost small" onclick="suCheck()"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="检查更新">检查更新</span></button>
             <button id="su-apply" class="ghost small hidden" onclick="suApply()"><span data-i18n="升级到新版">升级到新版</span></button>
             <button id="su-restart" class="ghost small hidden" onclick="suRestart()"><span data-i18n="重启服务生效">重启服务生效</span></button>
@@ -961,42 +987,26 @@
   </div>
 </div>
 
-<!-- 首次启动欢迎引导：产品能做什么 + 装完三步开工；「设置 → 关于与更新」可重开。
-     localStorage orch.welcomed 记账，只自动弹一次；令牌门在场时让位（见 maybeWelcome）。 -->
+<!-- 帮助中心（首启欢迎引导升级版）：左目录右内容；首启自动弹落在「快速上手」章。
+     localStorage orch.welcomed 记账，只自动弹一次；令牌门在场时让位（见 maybeWelcome）。
+     章节清单在 app.js HELP_CHAPTERS——加新章只需追加一条 + helpChapterBody 加分支。 -->
 <div id="welcome" class="welcome-wrap hidden">
   <div class="welcome-mask" onclick="welcomeClose()"></div>
   <div class="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
     <button class="welcome-x icon-btn" title="关闭" aria-label="关闭" data-i18n-title="关闭" data-i18n-aria="关闭" onclick="welcomeClose()">✕</button>
-    <div class="welcome-left">
-      <span class="welcome-badge" data-i18n="首次启动">首次启动</span>
+    <div class="help-rail">
+      <span class="welcome-badge" id="welcome-badge">首次启动</span>
       <div class="welcome-brand">
         <svg class="ico welcome-bee" aria-hidden="true"><use href="#i-bee"></use></svg>
         <span class="brand-name">CodeBee</span>
       </div>
+      <nav class="help-toc" id="help-toc" aria-label="帮助目录" data-i18n-aria="帮助目录"></nav>
+      <p class="welcome-foot" data-i18n="可随时按 F1，或在「设置 → 关于与更新」重新打开本帮助中心。">可随时按 F1，或在「设置 → 关于与更新」重新打开本帮助中心。</p>
+    </div>
+    <div class="help-main">
       <h1 id="welcome-title" data-i18n="欢迎使用 CodeBee">欢迎使用 CodeBee</h1>
       <p class="welcome-sub" data-i18n="一群 AI 智能体自动分工：规划、实现、评审、打磨，直到交付成果。">一群 AI 智能体自动分工：规划、实现、评审、打磨，直到交付成果。</p>
-      <div class="welcome-steps">
-        <div class="wstep"><b>1</b><span data-i18n="添加模型供应商：设置 → 模型接入，填入 API Key">添加模型供应商：设置 → 模型接入，填入 API Key</span></div>
-        <div class="wstep"><b>2</b><span data-i18n="绑定 CLI 智能体：点「一键推荐绑定」自动配好">绑定 CLI 智能体：点「一键推荐绑定」自动配好</span></div>
-        <div class="wstep"><b>3</b><span data-i18n="新建任务：选工作目录、写目标，蜂群开工">新建任务：选工作目录、写目标，蜂群开工</span></div>
-      </div>
-      <div class="welcome-acts">
-        <button class="wl-btn primary" onclick="welcomeGo('models')"><span data-i18n="开始配置模型">开始配置模型</span><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>
-        <button class="wl-btn" onclick="welcomeGo('bindings')"><span data-i18n="绑定 CLI 智能体">绑定 CLI 智能体</span><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>
-        <button class="wl-btn ghost" onclick="welcomeClose()"><span data-i18n="先跳过，直接体验">先跳过，直接体验</span></button>
-      </div>
-      <p class="welcome-foot" data-i18n="可随时在「设置 → 关于与更新」重新打开本引导。">可随时在「设置 → 关于与更新」重新打开本引导。</p>
-    </div>
-    <div class="welcome-right">
-      <h2 data-i18n="把任务交给蜂群">把任务交给蜂群</h2>
-      <p class="wr-sub" data-i18n="多智能体分工协作，成果自动落盘。">多智能体分工协作，成果自动落盘。</p>
-      <ul class="wr-feats">
-        <li><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><div><b data-i18n="多智能体编排">多智能体编排</b><span data-i18n="规划 · 实现 · 评审 · 打磨，接棒交付">规划 · 实现 · 评审 · 打磨，接棒交付</span></div></li>
-        <li><svg class="ico" aria-hidden="true"><use href="#i-book-open"></use></svg><div><b data-i18n="连载写作">连载写作</b><span data-i18n="断点续跑 · 经验沉淀 · 作品资料">断点续跑 · 经验沉淀 · 作品资料</span></div></li>
-        <li><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg><div><b data-i18n="插件市场">插件市场</b><span data-i18n="600+ 技能，一键安装">600+ 技能，一键安装</span></div></li>
-        <li><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg><div><b data-i18n="版本工作台">版本工作台</b><span data-i18n="任务分支隔离，改动可审可合">任务分支隔离，改动可审可合</span></div></li>
-        <li><svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg><div><b data-i18n="自动化">自动化</b><span data-i18n="定时任务，无人值守">定时任务，无人值守</span></div></li>
-      </ul>
+      <div class="help-body" id="help-body"></div>
     </div>
   </div>
 </div>

@@ -215,9 +215,12 @@ def _post_images(url, key, body, allow_private, timeout):
 def _call_images(base, key, model, prompt, size, allow_private):
     """POST /images/generations。返回 (data_item dict, 错误串)；data_item 含 url 或 b64_json。"""
     url = base.rstrip("/") + "/images/generations"
-    status, data, err = _post_images(url, key,
-                                     {"model": model, "prompt": prompt, "size": size},
-                                     allow_private, 180)
+    body = {"model": model, "prompt": prompt, "size": size}
+    if os.environ.get("CODEBEE_IMAGE_WATERMARK", "").strip() != "1":
+        # 智谱缺省 watermark=true，图上强制「AI生成」显式角标+隐式数字水印；
+        # 实测传 false 被 200 接受。CODEBEE_IMAGE_WATERMARK=1 恢复供应商默认。
+        body["watermark"] = False
+    status, data, err = _post_images(url, key, body, allow_private, 180)
     if status == 0:
         return None, err or "网络错误"
     if 200 <= status < 300:

@@ -621,11 +621,23 @@ def update_run(run_id, expected_status=None, **fields):
         if expected_status is not None and run.get("status") != expected_status:
             return None
         run.update(fields)
+        # 终态收尸：run 已结束却还挂 queued/running 的步骤统一落 cancelled，
+        # 语义与 recover_orphaned_runs 的启动清扫对齐（那套清跨进程遗留，
+        # 这套在落终态瞬间即时收口——打磨组长被取消/异常打断时 UI 不闪
+        # 假「工作中」）。run 终态后不可能还有步骤在真跑。
+        st = fields.get("status")
+        if st in ("done", "failed", "cancelled"):
+            end_s = time.strftime("%H:%M:%S")
+            for s in run["steps"]:
+                if s.get("status") in ("queued", "running"):
+                    s["status"] = "cancelled"
+                    s["ended_at"] = s.get("ended_at") or end_s
+                    if not s.get("summary"):
+                        s["summary"] = "步骤未正常收尾（终态自动恢复）"
         _save_json(paths.RUNS_DIR / run_id / "run.json", run)
         # 状态回填：起跑与结束都同步任务状态。只回填终态的话，run 在跑、
         # 任务永远显示「排队中」（2026-09-18 实案：「# 重写·续」run 已 running
         # 写了一小时，任务卡 queued，用户以为卡死连点重试）。
-        st = fields.get("status")
         if st in ("running", "done", "failed", "cancelled"):
             tid = run.get("task_id")
             task = _TASKS.get(tid) if tid else None

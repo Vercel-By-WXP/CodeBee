@@ -883,6 +883,74 @@ class TestImportCrossSourceDedupe(BaseTest):
             (modelhub.CLAUDE_SETTINGS, modelhub.ZCODE_CONFIG, modelhub.CODEX_DIR) = orig
 
 
+class TestNoListGateway(BaseTest):
+    """无 /models 列表接口的网关（zcode-plan 等）：404 是良性结果，不是失败。
+
+    获取模型列表 → 返回带 _NO_LIST_SUFFIX 的提示（端点据此回 ok+note）；
+    测试连接 → 连通 + 提示，且不得记 KEY 错误（404≠密钥错）。
+    """
+
+    def runTest(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+
+        class _Gw(BaseHTTPRequestHandler):
+            """全部请求回 404（log_404=True）或 500（模拟真错误混入）。"""
+            log_404 = True
+
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                body = b'{"error":"x"}'
+                self.send_response(404 if _Gw.log_404 else 500)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        srv = HTTPServer(("127.0.0.1", 0), _Gw)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        base = "http://127.0.0.1:%d" % srv.server_address[1]
+        try:
+            # 全部候选端点皆 404 → 良性提示，is_no_list_note 判真
+            names, err = modelhub._fetch_models_http(base, FAKE_KEY, "openai", True)
+            self.assertIsNone(names)
+            self.assertTrue(modelhub.is_no_list_note(err), err)
+            # 混入真错误（500）→ 报真错误，不冒充良性
+            _Gw.log_404 = False
+            names, err = modelhub._fetch_models_http(base, FAKE_KEY, "openai", True)
+            self.assertIsNone(names)
+            self.assertFalse(modelhub.is_no_list_note(err), err)
+        finally:
+            srv.shutdown()
+
+        # 刷新与测试连接路径：良性 404 → 提示不失败，且不记 KEY 错误
+        modelhub.upsert_provider({"name": "P", "protocol": "openai",
+                                  "base_url": "https://p.test/v1", "api_key": FAKE_KEY})
+        pid = modelhub.providers()[0]["id"]
+        modelhub.key_op(pid, "add", key=FAKE_KEY2)   # 落成显式 keys 数组
+        benign = "https://p.test/models " + modelhub._NO_LIST_SUFFIX
+        orig = modelhub._fetch_models_http
+        try:
+            modelhub._fetch_models_http = lambda *a, **k: (None, benign)
+            n, err = modelhub.refresh_models(pid)
+            self.assertEqual((n, err), (0, benign))
+            self.assertTrue(modelhub.is_no_list_note(err))
+            res = modelhub.test_provider(pid)
+            self.assertTrue(res["ok"])
+            self.assertEqual(res["note"], benign)
+            self.assertFalse(modelhub.providers()[0]["keys"][0].get("last_error"))
+            # 真错误照旧：测试连接判失败并记账 KEY
+            modelhub._fetch_models_http = lambda *a, **k: (None, "HTTP 500 内部错误")
+            res = modelhub.test_provider(pid)
+            self.assertFalse(res["ok"])
+            self.assertIn("500", modelhub.providers()[0]["keys"][0]["last_error"])
+        finally:
+            modelhub._fetch_models_http = orig
+
+
 if __name__ == "__main__":
     import unittest as _u
     _u.main()

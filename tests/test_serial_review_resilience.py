@@ -197,3 +197,113 @@ class TestLongPromptGoesToFile(BaseTest):
             codex, "codex", "", True, None, long_prompt, workdir=None)
         self.assertEqual(stdin_text, long_prompt)        # stdin 型照旧走管道
         self.assertEqual(tmp, [])
+
+class TestPolishLeaderFinishes(SerialReviewBase):
+    """打磨组长（polish-rN）收尾回归（2026-09-19 假 running 实案）。
+
+    组长的 finish_step 原来在整个「子章重改循环+全书重评」之后：子章双败
+    （stream disconnected）后代码仍进全书重评，单个评审挂 35 分钟，UI 只见
+    打磨 2/3 久卡「工作中」。锁定两个行为：
+    1. 子章全部重改失败 → 组长立即 failed 收尾，不再发起全书重评；
+    2. 打磨后的全书重评抛异常 → 组长也要落终态，绝不留假 running。
+
+    impl 必须是 real 模式（mock 打磨恒成功走不到病根），因此大纲与 _run_step
+    都要接假件：大纲不走 _run_step，real 模式会真外呼（测试挂死教训）。
+    """
+
+    def _run_with(self, task, run, agents, critics, impl, fake_step):
+        from app.core import pipeline
+        orig_step = pipeline._run_step
+        orig_outline = pipeline.planner.make_serial_outline
+
+        def fake_outline(t, author_agent=None, workdir=None, ev=None, log_path=None):
+            n = int((t.get("serial") or {}).get("chapters") or 2)
+            return {"book_title": "回归书", "source": "llm(fake)",
+                    "chapters": [{"title": "第 %d 章" % (k + 1), "beats": "剧情",
+                                  "hook": "钩子"} for k in range(n)]}
+
+        pipeline.planner.make_serial_outline = fake_outline
+        pipeline._run_step = fake_step
+        try:
+            return pipeline._run_serial_review(
+                run, task, agents, None, {}, "manual", critics, impl, {}, None, "default")
+        finally:
+            pipeline._run_step = orig_step
+            pipeline.planner.make_serial_outline = orig_outline
+
+    @staticmethod
+    def _dead_res():
+        return {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+                "tokens": 0, "error": "stream disconnected", "raw": {}, "sid": ""}
+
+    @staticmethod
+    def _seed_chapter(workdir, i):
+        from app.core import pipeline
+        pipeline._write_chapter(workdir, i, "山" * 500)
+
+    def test_all_rewrites_dead_leader_fails_without_global_rereview(self):
+        """子章重改全败 → 组长 failed + 跳过全书重评（评审链只跑第一轮）。"""
+        from app.core import pipeline, store
+        task, run = self._make()
+        agents, critics, _ = self._agents()
+        impl = {"id": "impl-r", "mode": "real", "kind": "generic",
+                "command": "x", "label": "Impl R"}
+        n_global = {"n": 0}
+
+        def fake_step(run_id, role, agent, prompt, workdir, readonly, ev, *a, **kw):
+            if role.startswith("draft-c"):
+                self._seed_chapter(workdir, int(role.split("c")[-1]))
+                return _ok()
+            if role.startswith("critique-c"):
+                return _ok(GOOD)          # 章级达标：不进章级修订分支
+            if role == "global-critique":
+                n_global["n"] += 1
+                return _ok(WEAK)          # 全局低分 → 触发打磨
+            if role.startswith("polish-c"):
+                return self._dead_res()   # ★ 重改全败（本次实案病根）
+            return _ok()
+
+        self._run_with(task, run, agents, critics, impl, fake_step)
+
+        run = store.get_run(run["id"])
+        leader = next(s for s in run["steps"] if s["role"] == "polish-r1")
+        self.assertEqual(leader["status"], "failed",
+                         "重改全败后组长必须收尾，不得挂 running")
+        self.assertIn("重改未成功", leader.get("summary") or "")
+        self.assertEqual(n_global["n"], len(critics),
+                         "章稿没变就不得再烧一轮全书重评（bug 存在时会翻倍）")
+        self.assertEqual(run["status"], "done", run.get("error"))
+
+    def test_global_rereview_crash_still_finishes_leader(self):
+        """打磨后全书重评抛异常 → 组长落 failed 终态，异常照常上抛。"""
+        from app.core import store
+        task, run = self._make()
+        agents, critics, _ = self._agents()
+        impl = {"id": "impl-r", "mode": "real", "kind": "generic",
+                "command": "x", "label": "Impl R"}
+        n_global = {"n": 0}
+
+        def fake_step(run_id, role, agent, prompt, workdir, readonly, ev, *a, **kw):
+            if role.startswith("draft-c"):
+                self._seed_chapter(workdir, int(role.split("c")[-1]))
+                return _ok()
+            if role.startswith("critique-c"):
+                return _ok(GARBAGE if "打磨后" in prompt else GOOD)
+            if role == "global-critique":
+                n_global["n"] += 1
+                if n_global["n"] > len(critics):   # 第一轮=评审员数；超出即重评轮
+                    raise RuntimeError("评审管道爆炸")
+                return _ok(WEAK)
+            if role.startswith("polish-c"):
+                self._seed_chapter(workdir, int(role.split("c")[-1]))
+                return _ok()              # 重改成功 → fixed 非空 → 进重评
+            return _ok()
+
+        self.assertRaises(RuntimeError, self._run_with,
+                          task, run, agents, critics, impl, fake_step)
+
+        run = store.get_run(run["id"])
+        leader = next(s for s in run["steps"] if s["role"] == "polish-r1")
+        self.assertEqual(leader["status"], "failed",
+                         "重评异常时组长也必须收尾，不得留假 running")
+        self.assertIn("异常中止", leader.get("summary") or "")

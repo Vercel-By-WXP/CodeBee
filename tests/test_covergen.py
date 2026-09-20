@@ -179,6 +179,28 @@ class CoverCandidateTests(BaseTest):
         self.assertIsNone(item)
         self.assertEqual(err, "404 NOT_FOUND")
 
+    def test_call_images_default_no_watermark_and_env_toggle(self):
+        from unittest import mock
+        from app.core import covergen
+        seen = {}
+
+        def fake_post(url, key, body, allow_private, timeout):
+            seen["body"] = body
+            return 200, {"data": [{"url": "https://x/a.png"}]}, ""
+
+        with mock.patch.object(covergen, "_post_images", side_effect=fake_post):
+            covergen._call_images("https://x", "k", "cogview-3-flash", "p",
+                                  "1024x1024", False)
+            self.assertIs(seen["body"].get("watermark"), False)
+            covergen._call_images("https://x", "k", "cogview-4", "p",
+                                  "1024x1024", False)
+            self.assertIs(seen["body"].get("watermark"), False)
+        with mock.patch.dict(os.environ, {"CODEBEE_IMAGE_WATERMARK": "1"}):
+            with mock.patch.object(covergen, "_post_images", side_effect=fake_post):
+                covergen._call_images("https://x", "k", "cogview-3-flash", "p",
+                                      "1024x1024", False)
+        self.assertNotIn("watermark", seen["body"])
+
     def test_post_images_reads_httperror_body(self):
         from unittest import mock
         import io

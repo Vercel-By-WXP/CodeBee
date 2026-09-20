@@ -77,13 +77,28 @@ TAG_GROUP_LABELS = {"tags_style": "风格", "tags_role": "角色",
 
 
 def values_create_book(meta):
+    from .. import bookmeta_catalog as cat
+    target_reader = (meta.get("target_reader") or "").strip()
+    category_main = (meta.get("category_main") or "").strip()
+    category_sub = (meta.get("category_sub") or "").strip()
+    # 旧数据兜底：二级有值但一级空/与二级不自洽（如女生专属的「现实故事」
+    # 配了男生频道）会让一级 click_text 静默跳过、死在流程中段——按官方
+    # 目录跨频道反查对齐，频道与一级跟着二级走
+    if category_sub and not (category_main and
+                             category_sub in (cat.QIMAO_CATS.get(target_reader)
+                                              or {}).get(category_main, [])):
+        loc = cat.qimao_locate_sub(category_sub)
+        if loc:
+            target_reader, category_main = loc
+        else:
+            category_sub = ""
     return {
         "title": (meta.get("book_name") or "").strip(),
         "summary": (meta.get("summary") or "").strip(),
         "protagonist": (meta.get("protagonist_1") or "").strip(),
-        "target_reader": (meta.get("target_reader") or "").strip(),
-        "category_main": (meta.get("category_main") or "").strip(),
-        "category_sub": (meta.get("category_sub") or "").strip(),
+        "target_reader": target_reader,
+        "category_main": category_main,
+        "category_sub": category_sub,
         "status": (meta.get("status") or "连载中").strip(),
     }
 

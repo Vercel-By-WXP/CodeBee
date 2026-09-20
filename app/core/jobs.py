@@ -382,11 +382,15 @@ def _in_resume_backoff(run, now=None):
 
 
 def requeue_pending(limit=10, max_age_s=None):
-    """把遗留的 queued 编排运行重新入队（启动补队与运行期巡检共用）。
+    """把遗留的 queued 运行重新入队（启动补队与运行期巡检共用）。
 
     队列在内存里，进程一死排队项就没人管了（2026-09-18 七猫 r-162724
     排队僵尸案：续跑副本 created 后服务重启，Timer 随进程蒸发，运行永远
     停在「排队中」）。同任务已有在跑/排队的不重复补。
+    mgmt 同样纳入：CLI 安装/升级 job 也只存在于内存队列，worker 线程
+    起失败（杀软挂起 Thread.start）或入队丢失后永远「排队中」，还堵住
+    同条目去重闸（2026-09-19 三连 CLI 升级排队无人接案）。selfupgrade
+    不补——升级本体有进程替换语义，自动重排不可控。
 
     max_age_s：巡检模式只补「卡了超过该秒数」的，刚入队的正常排队不掺和；
     None（启动模式）全量补。resume_enqueue_at 未到点的续跑副本两种模式都
@@ -400,18 +404,27 @@ def requeue_pending(limit=10, max_age_s=None):
         for run in store.list_runs(200):
             if n >= limit:
                 break
-            if run.get("status") != "queued" or run.get("kind") != "orchestration":
+            kind = run.get("kind")
+            if run.get("status") != "queued" or kind not in ("orchestration", "mgmt"):
                 continue
-            if not run.get("task_id") or not _recent(run):
-                continue
-            if _in_resume_backoff(run):
-                continue   # 退避窗口内的续跑副本：到点 Timer 自会入队
             if max_age_s is not None and _age_s(run) < max_age_s:
                 continue
-            if _task_active_run(run["task_id"], exclude_run_id=run["id"]):
-                continue   # 同任务已有更活跃的运行，别再排一份
-            _QUEUE.put({"kind": "orchestration", "run_id": run["id"],
-                        "task_id": run["task_id"]})
+            if kind == "orchestration":
+                if not run.get("task_id") or not _recent(run):
+                    continue
+                if _in_resume_backoff(run):
+                    continue   # 退避窗口内的续跑副本：到点 Timer 自会入队
+                if _task_active_run(run["task_id"], exclude_run_id=run["id"]):
+                    continue   # 同任务已有更活跃的运行，别再排一份
+            else:
+                eid = run.get("entry_id")
+                if eid:
+                    other = store.active_mgmt_run(eid)
+                    if other and other.get("id") != run["id"]:
+                        continue   # 同条目已有更活跃的 run，去重闸语义收敛
+            _QUEUE.put({"kind": kind, "run_id": run["id"],
+                        "task_id": run.get("task_id"),
+                        "entry_id": run.get("entry_id"), "op": run.get("op")})
             n += 1
     except Exception:
         pass
