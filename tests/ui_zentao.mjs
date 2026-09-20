@@ -46,6 +46,14 @@ async function main() {
     last_scan: "2026-09-19 08:00:00", next_scan: "", last_error: "",
   }, null, 1), "utf-8");
 
+  // 并行测试双绑防线：Windows SO_REUSEADDR 允许两个进程同时 listen 同一端口——
+  // 若并行代理也在跑本套件，请求会在两个服务间漂移，②-④b 全绿但 ⑤ 时序错乱假失败。
+  // 起服务前先探一次：已有监听 = 错开再跑。
+  try { await fetch(SERVICE + "/api/state");
+    console.error("端口 " + PORT + " 已被占用（可能有并行测试在跑同款临时服务），错开再跑");
+    process.exit(2);
+  } catch (e) { /* 空闲，继续 */ }
+
   const svc = spawn("python", ["-X", "utf8", join(ROOT, "app", "main.py"),
     "--port", String(PORT), "--no-browser", "--host", "127.0.0.1"], {
     cwd: ROOT, stdio: "ignore",
@@ -148,6 +156,58 @@ async function main() {
     })()`, 8000);
     check("② 修复记录含排查徽章与状态", claim === true);
 
+    // ②b 仓库·工作目录行：「选择…」按钮 + 占位文案讲真话 + 点选回填同一行（pick_folder 已 stub 防真弹窗）
+    await evalJs(`(() => {
+      const orig = window.fetch.bind(window);
+      window.fetch = (url, opts) => {
+        if (String(url).includes("/api/pick_folder")) {
+          return Promise.resolve(new Response(JSON.stringify(
+            { path: "E:\\\\mockrepo" }),
+            { status: 200, headers: { "Content-Type": "application/json" } }));
+        }
+        return orig(url, opts);
+      };
+      return 1;
+    })()`);
+    const wdRow = await evalJs(`(() => {
+      const card = document.querySelector("#zt-profiles .zt-prof");
+      const rows = card.querySelectorAll(".zt-wd-row");
+      const be = rows[0] || null;
+      return JSON.stringify({
+        count: rows.length,
+        hasBtn: be ? !!be.querySelector("button") : false,
+        ph: be && be.querySelector(".zt-p-wd") ? be.querySelector(".zt-p-wd").placeholder : "",
+        val: be && be.querySelector(".zt-p-wd") ? be.querySelector(".zt-p-wd").value : ""
+      });
+    })()`, true);
+    const wr = JSON.parse(wdRow || "{}");
+    check("②b 工作目录行渲染（前后端各一行·带选择按钮）",
+      wr.count === 2 && wr.hasBtn === true, wdRow);
+    check("②b 占位文案改为「空 = 用默认保存路径」",
+      wr.ph === "空 = 用默认保存路径", wdRow);
+    // 几何回归：档案卡里所有值输入（含工作目录行）不得溢出卡片右缘（窄卡裁切案）
+    const geo = await evalJs(`(() => {
+      const card = document.querySelector("#zt-profiles .zt-prof");
+      const cb = card.getBoundingClientRect();
+      let worst = -999, cnt = 0, worstSel = "";
+      for (const el of card.querySelectorAll(".zt-grid input, .zt-grid select, .zt-wd-row")) {
+        const b = el.getBoundingClientRect();
+        if (b.width === 0) continue;
+        cnt++;
+        if (b.right - cb.right > worst) { worst = b.right - cb.right; worstSel = el.className; }
+      }
+      return JSON.stringify({ cnt, worst: Math.round(worst), worstSel, cardW: Math.round(cb.width) });
+    })()`, true);
+    const g = JSON.parse(geo || "{}");
+    check("②b 档案卡值输入不溢出卡片右缘", g.cnt >= 10 && g.worst <= 2, geo);
+    await evalJs(`ztWdPick(document.querySelector("#zt-profiles .zt-prof .zt-wd-row button")); "ok"`);
+    await sleep(500);
+    const wdFilled = await evalJs(
+      `document.querySelector("#zt-profiles .zt-prof .zt-wd-row .zt-p-wd").value`);
+    check("②b 点「选择…」→ 回填同一行输入框（元素目标链路）", wdFilled === "E:\\mockrepo", wdFilled);
+    await evalJs(`const w = document.querySelector("#zt-profiles .zt-prof .zt-wd-row .zt-p-wd");
+      w.value = ""; w.dispatchEvent(new Event("input", { bubbles: true })); "ok"`);
+
     // ③ 档案卡编辑：加路由（填模块 88→前端）+ 改全局开关 → 保存落库
     await evalJs(`ztMrAdd(0);
       const rows = document.querySelectorAll("#zt-profiles .zt-prof")[0].querySelectorAll(".zt-mr-row");
@@ -178,14 +238,50 @@ async function main() {
       (v.config.product_profiles || []).length === 1)`, 10000);
     check("④ 删除产品并保存（回到×1）", one === true);
 
+    // ④b 清单就位 → 产品字段变下拉（保留已选 7）、负责人挂账号 datalist
+    const selInfo = await evalJs(`(() => {
+      S.ztProducts = [{id:7,name:"产品柒",status:"normal"},{id:8,name:"产品捌",status:"closed"}];
+      S.ztUsers = [{account:"coder",realname:"码蜂"},{account:"fe1",realname:"前端壹"}];
+      const dl = document.getElementById("zt-users");
+      dl.innerHTML = S.ztUsers.map((u) =>
+        '<option value="' + u.account + '">' + (u.realname || "") + '</option>').join("");
+      S.ztProfiles = ztHarvestProfiles();
+      renderZentaoProfiles();
+      const sel = document.querySelector("#zt-profiles .zt-prof .zt-p-product");
+      return JSON.stringify({tag: sel.tagName, val: sel.value,
+        ownerList: !!document.querySelector('.zt-p-owner[list="zt-users"]'),
+        dlOpts: dl.options.length});
+    })()`, true);
+    const si = JSON.parse(selInfo || "{}");
+    check("④b 清单就位 → 产品下拉（保留7）+ 负责人挂账号下拉",
+      si.tag === "SELECT" && si.val === "7" && si.ownerList === true && si.dlOpts === 2, selInfo);
+    await evalJs(`S.ztProducts = []; S.ztUsers = []; renderZentaoProfiles(); "ok"`);
+
     // ⑤ 立即扫描对不可达地址优雅报错
+    await evalJs(`(() => {
+      window.__ztnet = [];
+      const orig = window.fetch.bind(window);
+      window.fetch = (url, opts) => orig(url, opts).then((r) => {
+        if (String(url).indexOf("/api/zentao") >= 0) {
+          const c = r.clone();
+          c.text().then((tx) => window.__ztnet.push(String(url) + " " + r.status + " " + tx.slice(0, 120)));
+        }
+        return r;
+      });
+      return 1;
+    })()`);
     await evalJs(`document.getElementById("zt-base-url").value = "http://127.0.0.1:9";
       document.getElementById("zt-password").value = ""; saveZentao(); "ok"`);
     await sleep(600);
     await evalJs(`scanZentao(); "ok"`);
     const errShown = await waitFor(
       `document.getElementById("zentao-status").textContent.indexOf("最近错误") >= 0`, 15000);
-    check("⑤ 扫描不可达地址 → 最近错误上屏", errShown === true);
+    const zdump = await evalJs(`JSON.stringify({
+      status: document.getElementById("zentao-status").textContent.slice(0, 220),
+      lastErr: (S.zentao || {}).last_error || "",
+      baseUrl: (S.zentao && S.zentao.config || {}).base_url,
+      net: window.__ztnet || [] })`);
+    check("⑤ 扫描不可达地址 → 最近错误上屏", errShown === true, zdump);
 
     console.log(results.every((r) => r.ok) ? "\n全部通过" : "\n存在失败项");
   } finally {

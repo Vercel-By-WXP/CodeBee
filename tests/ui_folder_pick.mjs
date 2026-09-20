@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const SERVICE = "http://127.0.0.1:18798";
 const PORT = 18798;
-const CDP_PORT = 9339;
+const CDP_PORT = Number(process.env.TUTTI_TEST_CDP || 9339);
 const EDGE = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -155,10 +155,23 @@ async function main() {
       title: document.getElementById("modal-title").textContent,
       rows: document.querySelectorAll("#pk-body .pk-row").length,
       path: (document.querySelector("#pk-body .pk-path") || {}).textContent,
+      curVal: document.getElementById("f-workdir").value,
     })`);
     const op = JSON.parse(opened);
+    // 新契约：composer 预填默认保存路径（loadSettings 选中态），「选择…」从当前值目录开始
+    check("弹框打开且从输入框当前目录开始",
+      op.title === "选择文件夹" && op.rows >= 0 && op.path === op.curVal, opened);
+    // 清空输入再点开 → 仍从「此电脑」开始（留空=跟随默认的口径不变）
+    await evalJs(`(() => { const i = document.getElementById("f-workdir"); i.value = "";
+      i.closest(".input-row").querySelector("button").click(); return 1; })()`);
+    await sleep(800);
+    const reopened = await evalJs(`JSON.stringify({
+      rows: document.querySelectorAll("#pk-body .pk-row").length,
+      path: (document.querySelector("#pk-body .pk-path") || {}).textContent,
+    })`);
+    const or2 = JSON.parse(reopened);
     // 「此电脑」页本身就是盘符列表，不再显示「此电脑」按钮；盘符行 data-p 以 :\ 结尾
-    check("弹框打开且列出盘符", op.title === "选择文件夹" && op.rows > 0 && op.path === "此电脑", opened);
+    check("清空输入点开 → 从此电脑列出盘符", or2.rows > 0 && or2.path === "此电脑", reopened);
 
     /* ---- C2) 跳到 sandbox → 点 a 行「选这个」→ 输入框写回 ---- */
     await evalJs(`(async () => { await pickerBrowse(${JSON.stringify(sandbox)}); return 1; })()`);

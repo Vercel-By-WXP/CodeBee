@@ -5373,3 +5373,15 @@ body.welcome-open { overflow: hidden; }
 
 /* ---------------- 群摘要·摘要卡「转知识库」按钮（追加于文件尾防并行重排） ---------------- */
 .bee-digest-head .bee-to-kb { margin-left: auto; flex: none; }
+
+/* ---------------- 禅道·档案卡窄卡溢出修复（追加于文件尾防并行重排） ----------------
+ * 病根：值列 minmax(240px,560px) + 标签列 150px + gap 最少 404px，档案卡实宽 ~385px，
+ * 值列整体被卡片右缘裁掉；且仓库三件套 input 无 type 属性，吃不到 width:100% 规则。
+ * 修法：标签列改 auto（随最长标签），值列下限降到 160px 可收缩；六类值输入显式占满列宽。 */
+@media (min-width: 901px) {
+  .zt-grid { grid-template-columns: auto minmax(160px, 560px); }
+}
+.zt-grid .zt-p-wd, .zt-grid .zt-p-rev, .zt-grid .zt-p-verify,
+.zt-grid .zt-p-hint, .zt-grid .zt-p-assigned, .zt-grid .zt-p-owner {
+  width: 100%; max-width: 560px;
+}
