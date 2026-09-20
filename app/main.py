@@ -642,6 +642,9 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/publish/task/([^/]+)/(create-book|chapter|auto-publish)$", path)
         if m:
             return self._api_publish_task_op(m.group(1), m.group(2))
+        m = re.match(r"^/api/publish/task/([^/]+)/register-book$", path)
+        if m:
+            return self._api_publish_register_book(m.group(1))
         m = re.match(r"^/api/publish/task/([^/]+)/publish-all$", path)
         if m:
             return self._api_publish_auto(m.group(1))
@@ -1035,6 +1038,21 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/wxdigest/seen":
             from core import wxdigest
             return self._json(200, {"ok": True, "view": wxdigest.seen_clear()})
+        if path == "/api/wxdigest/groups":
+            from core import wxdigest
+            try:
+                groups = wxdigest.refresh_groups()   # sidecar 调用，秒级到几十秒（ThreadingHTTPServer 不堵）
+            except Exception as e:
+                return self._json(500, {"error": str(e)})
+            return self._json(200, {"ok": True, "groups": groups})
+        if path == "/api/wxdigest/to-knowledge":
+            from core import wxdigest
+            body = self._body()
+            try:
+                entry = wxdigest.digest_to_knowledge(str(body.get("id") or ""))
+            except Exception as e:
+                return self._json(400, {"error": str(e)})
+            return self._json(200, {"ok": True, "entry": entry})
         if path == "/api/cleanup":
             # op=run 立即清理（include_profiles=true 连浏览器缓存一起清，
             # 平台登录态会丢需重新扫码）；否则只重扫预估不落盘
@@ -1096,7 +1114,14 @@ class Handler(BaseHTTPRequestHandler):
             ok, msg = zentao.test_connection(
                 base_url=body.get("base_url"), account=body.get("account"),
                 password=pw or None)     # 空 = 用已保存密码
-            return self._json(200, {"ok": ok, "message": msg})
+            res = {"ok": ok, "message": msg}
+            if ok:
+                # 子路径部署被自动探测补全时回传有效地基，前端回填表单提醒保存
+                eff = zentao.resolved_base_url(body.get("base_url")) or \
+                    zentao.resolved_base_url(zentao.view()["config"].get("base_url"))
+                if eff:
+                    res["base_url"] = eff
+            return self._json(200, res)
         if path == "/api/zentao/scan":
             from core import zentao
             res = zentao.scan_now()      # 网络操作同步做（ThreadingHTTPServer 不堵别的请求）
@@ -1106,6 +1131,12 @@ class Handler(BaseHTTPRequestHandler):
             pid = (self._body() or {}).get("product")
             res = zentao.fetch_modules(pid)
             return self._json(200, dict(res, ok=bool(res.get("ok"))))
+        if path == "/api/zentao/products":
+            from core import zentao
+            return self._json(200, zentao.fetch_products())
+        if path == "/api/zentao/users":
+            from core import zentao
+            return self._json(200, zentao.fetch_users())
         # 外部目录路由必须在通配的 market/<id>/(install|remove) 之前——
         # 否则 "remote" 会被当成包名吞掉
         if path == "/api/market/remote/refresh":
@@ -1273,6 +1304,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": err or "操作失败"})
         return self._json(200, {"ok": True, "started": True})
 
+    def _api_publish_register_book(self, task_id):
+        """人工登记平台已有作品（建书流程没走通/手工建书后的补账口）。"""
+        from core import store
+        from core.publish import manager as pub
+        if not store.get_task(task_id):
+            return self._json(404, {"error": "任务不存在"})
+        body = self._body() or {}
+        ok, err = pub.register_book(task_id, (body.get("platform") or "").strip(),
+                                    str(body.get("title") or ""),
+                                    book_id=str(body.get("book_id") or ""))
+        if not ok:
+            return self._json(400, {"error": err or "登记失败"})
+        return self._json(200, {"ok": True})
+
     def _api_publish_auto(self, task_id):
         """批量发布全部待发章节（publish/auto.py）。
 
@@ -1412,7 +1457,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {
             "ok": True, "ts": int(time.time()), "port": PORT,
             "settings": {"pet_enabled": bool(st.get("pet_enabled", True)),
-                         "pet_mode": str(st.get("pet_mode") or "always")},
+                         "pet_mode": str(st.get("pet_mode") or "always"),
+                         "pet_skin": str(st.get("pet_skin") or "plush")},
             "workers": {"running": n_run, "queued": n_q},
             "tasks": rows,
             "digest": dg,
@@ -2244,6 +2290,13 @@ def main():
     n_lc = skills.migrate_lesson_categories()  # 分类字段上线前的教训按关键词回填（幂等，带备份）
     if n_lc:
         print("[CodeBee] 经验库：%d 条历史教训已自动归类" % n_lc)
+    try:
+        from core import knowledge
+        n_kd = knowledge.migrate_drafts_approved()  # 草稿闸门退役：历史草稿一次性转正（幂等）
+        if n_kd:
+            print("[CodeBee] 知识库：%d 条历史草稿已转正（默认直接参与注入）" % n_kd)
+    except Exception:
+        pass
     from core import usage
     _step("正在回填用量台账…")
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）

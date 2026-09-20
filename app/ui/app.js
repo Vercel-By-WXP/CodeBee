@@ -2478,10 +2478,13 @@ async function webPickFolder(targetId, cur) {
   await pickerBrowse(cur || "__drives__");
 }
 
+// 目标可以是输入框 id，也可以直接是元素（禅道档案卡等工作目录输入框无 id）
+const pickTargetEl = (tgt) => (typeof tgt === "string" ? $(tgt) : tgt) || null;
+
 window.pickFolder = async function (targetId, fromClick) {
   if (fromClick && pickerSt.local === false) return;   // 远端已确认被拒：点击不打扰
   pickerSt.target = targetId;
-  const cur = (($(targetId) || {}).value || "").trim();
+  const cur = ((pickTargetEl(targetId) || {}).value || "").trim();
   let r = null;
   try {
     r = await api("/api/pick_folder", { method: "POST",
@@ -2505,10 +2508,10 @@ window.pickParentP = () => pickerBrowse(pickerSt.parent || "__drives__");
 window.pickDrivesP = () => pickerBrowse("__drives__");
 window.pickerCwd = () => pickerSt.cwd;
 // 取消/选定后把焦点还给输入框：点框弹出选择是常态，想手输的人取消后能直接打字
-window.pkRefocus = () => { const el = $(pickerSt.target); if (el) el.focus(); };
+window.pkRefocus = () => { const el = pickTargetEl(pickerSt.target); if (el) el.focus(); };
 window.pickUseP = (p) => {
   if (!p || p === "此电脑") { toast(t("请先进入一个具体目录"), true); return; }
-  const el = $(pickerSt.target);
+  const el = pickTargetEl(pickerSt.target);
   if (el) {
     el.value = p;
     // 程序化赋值不触发原生事件：手动补，让 git 探测等既有联动照常走
@@ -7602,13 +7605,16 @@ function renderKnowledge() {
   const box = $("kb-cards");
   if (!box || !KB.data) return;
   const entries = KB.data.entries || [];
-  // 状态 chips：全部 / 草稿 / 已转正（转正=人工确认过、参与注入）
+  const drafts = entries.filter((x) => (x.status || "draft") !== "approved").length;
+  // 状态 chips 只在还有草稿时出现（默认直接转正后草稿是例外态，不值得常驻占位）；
+  // chips 隐藏时同步清掉残留的草稿过滤态，否则列表会被看不见的过滤器扣成空
+  if (KB.status === "draft" && !drafts) KB.status = "";
   const stBox = $("kb-status-chips");
   if (stBox) {
     const cnt = (s) => s ? entries.filter((x) => (x.status || "draft") === s).length : entries.length;
-    stBox.innerHTML = [["", "全部"], ["draft", "草稿"], ["approved", "已转正"]].map((p) =>
+    stBox.innerHTML = drafts ? [["", "全部"], ["draft", "草稿"], ["approved", "已转正"]].map((p) =>
       '<button class="cat-chip' + (KB.status === p[0] ? " active" : "") + '" onclick="kbSetFilter(\'status\',\'' + p[0] + '\')">' +
-      esc(t(p[1])) + "<b>" + cnt(p[0]) + "</b></button>").join("");
+      esc(t(p[1])) + "<b>" + cnt(p[0]) + "</b></button>").join("") : "";
   }
   const tags = KB.data.tags || [];
   const tagBox = $("kb-tag-chips");
@@ -7628,15 +7634,17 @@ function renderKnowledge() {
   const cnt = $("kb-count");
   if (cnt) cnt.textContent = shown.length ? shown.length + t(" / 共 ") + entries.length + t(" 条") : t("（暂无）");
   box.innerHTML = shown.map(kbCard).join("") ||
-    '<div class="empty">' + t("还没有知识条目——完成一次产出型任务后自动提炼（草稿态待转正），也可以点右上角手动新建。") + "</div>";
+    '<div class="empty">' + t("还没有知识条目——完成一次产出型任务后自动提炼并直接转正，也可以点右上角手动新建。") + "</div>";
 }
 
 function kbCard(x) {
   const draft = (x.status || "draft") !== "approved";
   // 标题独占首行（.name 不再被标签挤成省略号）；状态徽章与可点标签合并为
   // 标题下方的单行元信息区，视觉层级：标题 > 状态/标签 > 正文 > 元信息 > 操作。
+  // 默认即转正：approved 不再挂「已转正」徽章（全员都有 = 没有信息量），
+  // 只把例外态「草稿」标出来（琥珀圆点）。
   const badges =
-    (draft ? '<span class="tag warn">' + esc(t("草稿")) + "</span>" : '<span class="tag ok">' + esc(t("已转正")) + "</span>") +
+    (draft ? '<span class="tag warn"><span class="cdot"></span>' + esc(t("草稿")) + "</span>" : "") +
     (x.stale ? '<span class="tag" title="' + esc(t("事实较旧，注入时会标注可能过期")) + '">' + esc(t("可能过期")) + "</span>" : "") +
     '<span class="tag">' + esc(x.scope === "*" ? t("通用") : x.scope) + "</span>" +
     (x.seen > 1 ? '<span class="tag">' + t("出现 ") + x.seen + t(" 次") + "</span>" : "") +
@@ -8008,12 +8016,19 @@ function ztProdChanged(el) {
   if (i >= 0) ztFetchMods(i, true);
 }
 
+/* 工作目录「选择…」：复用全局 pickFolder（原生对话框→网页目录弹框回落），回填同一行的输入框 */
+function ztWdPick(btn) {
+  window.pickFolder(btn.closest(".zt-wd-row").querySelector(".zt-p-wd"), true);
+}
+
 function ztRepoHtml(i, side) {
   const cn = side === "backend" ? t("后端") : t("前端");
   const p = (S.ztProfiles[i] || {});
   const repo = (p.repos || {})[side] || {};
   const hint = (p.repo_hints || {})[side] || "";
-  return '<label>' + cn + t("仓库·工作目录") + '</label><input class="zt-p-wd" data-side="' + side + '" value="' + esc(repo.workdir || "") + '" placeholder="' + t("空 = 不用该端") + '">' +
+  return '<label>' + cn + t("仓库·工作目录") + '</label><span class="zt-wd-row">' +
+    '<input class="zt-p-wd" data-side="' + side + '" value="' + esc(repo.workdir || "") + '" placeholder="' + t("空 = 用默认保存路径") + '">' +
+    '<button class="ghost small" type="button" title="' + t("浏览本机目录选择") + '" onclick="ztWdPick(this)">' + t("选择…") + "</button></span>" +
     '<label>' + cn + t("仓库·基线分支") + '</label><input class="zt-p-rev" data-side="' + side + '" value="' + esc(repo.git_rev || "") + '" placeholder="' + t("如 main；空 = 直接改工作目录") + '">' +
     '<label>' + cn + t("仓库·验证命令") + '</label><input class="zt-p-verify" data-side="' + side + '" value="' + esc(repo.verify_command || "") + '" placeholder="' + t("如 npm test；空 = 靠评审把关") + '">' +
     '<label>' + cn + t("仓库·一句话描述") + '</label><input class="zt-p-hint" data-side="' + side + '" value="' + esc(hint) + '" placeholder="' + t("给 AI 排查看，如：Vue3 管理台前端") + '">';
@@ -8601,6 +8616,7 @@ async function loadSettings() {
     const pet = $("set-pet");
     if (pet && S.settings) pet.checked = S.settings.pet_enabled !== false;
     syncPetModeSeg();
+    syncPetSkinSeg();
     const wd = $("set-workdir"), hint = $("set-workdir-hint");
     if (wd && S.settings) wd.value = S.settings.default_workdir_effective || "";
     if (hint && S.settings) {
@@ -9098,6 +9114,24 @@ async function savePetMode(mode) {
     syncPetModeSeg();
   } catch (e) {
     syncPetModeSeg();   // 弹回当前真值
+    toast(e.message || t("保存失败"), true);
+  }
+}
+
+/* 桌面蜜蜂形象：落 settings，蜜蜂轮询到 pet_skin 变化原位换肤（不用重启） */
+function syncPetSkinSeg() {
+  const skin = (S.settings && S.settings.pet_skin) || "plush";
+  document.querySelectorAll("#pet-skin [data-pskin]").forEach((b) =>
+    b.classList.toggle("active", b.dataset.pskin === skin));
+}
+async function savePetSkin(skin) {
+  try {
+    const r = await api("/api/settings", { method: "POST", body: JSON.stringify({ pet_skin: skin }) });
+    S.settings = r.settings;
+    syncPetSkinSeg();
+    toast(t("蜜蜂换好新装了"));
+  } catch (e) {
+    syncPetSkinSeg();
     toast(e.message || t("保存失败"), true);
   }
 }
@@ -10423,6 +10457,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const b = e.target.closest("[data-pmode]");
     if (b) savePetMode(b.dataset.pmode);
   });
+  // 桌面蜜蜂形象：毛绒 / 机械
+  $("pet-skin").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-pskin]");
+    if (b) savePetSkin(b.dataset.pskin);
+  });
   // 代码设置：任何一行改动都全量落偏好再刷新预览（值都来自控件自身，不会弹回）
   for (const id of ["cs-theme-light", "cs-theme-dark", "cs-linenum", "cs-wrap", "cs-size"]) {
     const el = $(id);
@@ -10765,7 +10804,7 @@ function bindCmdK() {
  * 右下角悬浮蜜蜂：未读摘要徽章+气泡；面板看各群摘要、配置监控文件夹。
  * 桌面蜜蜂 pet.py 的网页侧搭档；未启用且无数据时整坞隐藏（不占视线）。
  * 60s 轮询 /api/wxdigest；打开面板即 POST seen 清零未读。 */
-const Bee = { view: null, lastUnseen: 0, bubT: 0 };
+const Bee = { view: null, lastUnseen: 0, bubT: 0, selGroups: null };
 
 function beeShow(el, on) { if (el) el.classList.toggle("hidden", !on); }
 function beePanelOpen() { const p = $("bee-panel"); return !!p && !p.classList.contains("hidden"); }
@@ -10820,6 +10859,12 @@ function beeRenderPanel() {
   if (!v) return;
   const cfg = v.config || {};
   $("bee-enabled").checked = !!cfg.enabled;
+  $("bee-reader").checked = !!cfg.reader_enabled;
+  beeShow($("bee-reader-box"), !!cfg.reader_enabled);
+  if (document.activeElement !== $("bee-reader-py")) $("bee-reader-py").value = cfg.reader_python || "";
+  if (!Bee.selGroups) Bee.selGroups = (cfg.groups || []).slice();
+  const n = Bee.selGroups.length;
+  $("bee-groups-btn").textContent = t("选择要监听的群（") + n + "）";
   if (document.activeElement !== $("bee-dir")) $("bee-dir").value = cfg.watch_dir || "";
   if (document.activeElement !== $("bee-interval")) $("bee-interval").value = cfg.interval_minutes || 30;
   if (document.activeElement !== $("bee-maxchars")) $("bee-maxchars").value = cfg.max_chars || 12000;
@@ -10836,10 +10881,84 @@ function beeRenderPanel() {
     list.innerHTML = v.digests.map((d) =>
       '<div class="bee-digest">' +
       '<div class="bee-digest-head"><span class="bee-tag">' + esc(d.group) + "</span>" +
-      '<span class="bee-meta">' + esc(d.created_at || "") + " · " + Number(d.count || 0) + t(" 条") + "</span></div>" +
+      '<span class="bee-meta">' + esc(d.created_at || "") + " · " + Number(d.count || 0) + t(" 条") + "</span>" +
+      '<span class="spacer"></span>' +
+      '<button class="ghost small bee-to-kb" data-did="' + esc(d.id || "") + '">' + t("转知识库") + "</button></div>" +
       '<div class="bee-text">' + esc(d.text || "") + "</div></div>"
     ).join("");
   }
+  if (!$("bee-list").dataset.kbBound) {
+    $("bee-list").dataset.kbBound = "1";
+    $("bee-list").addEventListener("click", async (e) => {
+      const btn = e.target.closest(".bee-to-kb");
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      try {
+        await api("/api/wxdigest/to-knowledge", { method: "POST",
+          body: JSON.stringify({ id: btn.dataset.did }) });
+        btn.textContent = t("已转入");
+        toast(t("已转入知识库（草稿态，转正后才会注入任务提示词）"));
+      } catch (err) {
+        btn.disabled = false;
+        toast(t("转入失败：") + (err.message || err), true);
+      }
+    });
+  }
+}
+
+/* ---- 微信直连：群选择器（347 个群必须可搜索） ---- */
+function beeRenderGroups() {
+  const box = $("bee-groups-list");
+  if (!box) return;
+  const q = ($("bee-groups-search").value || "").trim().toLowerCase();
+  const cache = (Bee.view && Bee.view.reader_groups_cache) || [];
+  const sel = new Set(Bee.selGroups.map((g) => g.username));
+  const rows = cache.filter((g) =>
+    !q || (g.name || "").toLowerCase().includes(q) || (g.username || "").toLowerCase().includes(q));
+  if (!cache.length) {
+    box.innerHTML = '<div class="bee-empty">' + esc(t("群列表为空，点「刷新群列表」")) + "</div>";
+    return;
+  }
+  box.innerHTML = rows.map((g) => {
+    const on = sel.has(g.username);
+    return '<label class="bee-g' + (on ? " on" : "") + '">' +
+      '<input type="checkbox" data-gu="' + esc(g.username) + '" data-gn="' + esc(g.name) + '"' + (on ? " checked" : "") + ">" +
+      "<span>" + esc(g.name || g.username) + "</span>" +
+      (g.member_count ? '<span class="bee-meta">' + esc(g.member_count) + "</span>" : "") +
+      "</label>";
+  }).join("") || '<div class="bee-empty">' + esc(t("没有匹配的群")) + "</div>";
+}
+
+function beeBindGroups() {
+  const list = $("bee-groups-list");
+  if (!list || list.dataset.beeBound) return;
+  list.dataset.beeBound = "1";
+  list.addEventListener("change", (e) => {
+    const cb = e.target.closest("input[data-gu]");
+    if (!cb) return;
+    const gu = cb.dataset.gu, gn = cb.dataset.gn || gu;
+    const i = Bee.selGroups.findIndex((g) => g.username === gu);
+    if (cb.checked && i < 0) Bee.selGroups.push({ username: gu, name: gn });
+    if (!cb.checked && i >= 0) Bee.selGroups.splice(i, 1);
+    $("bee-groups-btn").textContent = t("选择要监听的群（") + Bee.selGroups.length + "）";
+    cb.closest(".bee-g").classList.toggle("on", cb.checked);
+  });
+}
+
+async function beeRefreshGroups() {
+  const btn = $("bee-groups-refresh");
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const old = btn.textContent;
+  btn.textContent = t("刷新中…");
+  try {
+    const r = await api("/api/wxdigest/groups", { method: "POST", body: "{}", timeout: 180000 });
+    if (Bee.view) Bee.view.reader_groups_cache = r.groups || [];
+    toast(t("群列表已更新：") + (r.groups || []).length);
+  } catch (e) { toast(t("刷新失败：") + (e.message || e), true); }
+  btn.disabled = false;
+  btn.textContent = old;
+  beeRenderGroups();
 }
 
 async function beeSave() {
@@ -10849,8 +10968,12 @@ async function beeSave() {
       watch_dir: $("bee-dir").value.trim(),
       interval_minutes: Number($("bee-interval").value || 30),
       max_chars: Number($("bee-maxchars").value || 12000),
+      reader_enabled: $("bee-reader").checked,
+      reader_python: $("bee-reader-py").value.trim(),
+      groups: Bee.selGroups || [],
     }) });
     if (Bee.view) Bee.view.config = r.config;
+    Bee.selGroups = null;   // 下次渲染用保存后的值重建勾选态
     toast(t("群摘要设置已保存"));
     beeRefresh();
   } catch (e) { toast(t("保存失败：") + (e.message || e), true); }
@@ -10882,6 +11005,18 @@ async function beeScan() {
     $("bee-save").addEventListener("click", beeSave);
     $("bee-scan-btn").addEventListener("click", beeScan);
     $("bee-dir-pick").addEventListener("click", () => window.pickFolder("bee-dir", true));
+    $("bee-reader").addEventListener("change", () => beeShow($("bee-reader-box"), $("bee-reader").checked));
+    $("bee-groups-btn").addEventListener("click", () => {
+      const box = $("bee-groups-box");
+      const open = box.classList.contains("hidden");
+      beeShow(box, open);
+      if (!open) return;
+      beeBindGroups();
+      beeRenderGroups();
+      if (!((Bee.view || {}).reader_groups_cache || []).length) beeRefreshGroups();
+    });
+    $("bee-groups-search").addEventListener("input", beeRenderGroups);
+    $("bee-groups-refresh").addEventListener("click", beeRefreshGroups);
     beeRefresh();
     setInterval(beeRefresh, 60000);
   };

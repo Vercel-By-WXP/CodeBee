@@ -558,7 +558,7 @@ body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-righ
 
 /* 左栏的「设置」导航（设置模式下替换任务树） */
 .side-main { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.side-settings { display: none; flex-direction: column; flex: 1; min-height: 0; gap: 2px; overflow-y: auto; }
+.side-settings { display: none; flex-direction: column; flex: 1; min-height: 0; gap: 2px; overflow-y: auto; overflow-x: hidden; }
 body.settings-mode .side-main { display: none; }
 body.settings-mode .side-settings { display: flex; }
 .set-back {
@@ -3376,7 +3376,8 @@ body::before {
 .side-search { min-height: 38px; border-radius: 10px; background: color-mix(in srgb, var(--panel) 68%, transparent); }
 .side-quick { margin-top: 8px; }
 .qitem, .set-item { border-radius: 10px; min-height: 36px; transition: background .16s ease, color .16s ease, transform .16s ease; }
-.qitem:hover, .set-item:hover { transform: translateX(2px); }
+/* 悬停位移只留给 .qitem：.set-item 所在的设置导航是独立滚动容器，右移 2px 会顶出横向滚动条 */
+.qitem:hover { transform: translateX(2px); }
 .qitem.active, .set-item.active { background: color-mix(in srgb, var(--accent) 13%, var(--panel)); color: var(--text); }
 .side-label { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; font-weight: 700; }
 .side-tasks { padding-top: 3px; }
@@ -5245,7 +5246,13 @@ body.welcome-open { overflow: hidden; }
  * 这里只在知识库作用域内重排，不动共用类，避免波及经验库/市场等页面。 */
 /* min(380px,100%)：窄屏（手机端面板不足 380px）时退化为单列，不横向溢出 */
 #kb-cards { grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr)); }
-#kb-cards .card { display: flex; flex-direction: column; }
+#kb-cards .card { display: flex; flex-direction: column; position: relative; overflow: hidden; }
+/* 卡片顶部主题色渐变发丝线：随皮肤换色，给页面一点识别度（正式克制，不做整卡重底） */
+#kb-cards .card::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 60%, transparent), transparent 72%);
+  opacity: .8; pointer-events: none;
+}
 #kb-cards .card .head { display: block; margin-bottom: 8px; }
 /* 标题独占首行，最多两行后省略（比单行截断可读得多） */
 #kb-cards .card .name {
@@ -5256,8 +5263,20 @@ body.welcome-open { overflow: hidden; }
 /* 状态徽章与用户标签合并为标题下方的单行元信息区（换行自适应），既不让标签抢
  * 标题宽度，也不额外多占一行 */
 #kb-cards .kb-meta { display: flex; flex-wrap: wrap; gap: 6px; }
-#kb-cards .kb-meta .tag.kt { cursor: pointer; transition: color .14s, border-color .14s; }
-#kb-cards .kb-meta .tag.kt:hover { color: var(--accent); border-color: var(--accent); }
+/* 用户标签：淡主题色底，与灰调状态徽章区分出「可点、是检索入口」 */
+#kb-cards .kb-meta .tag.kt {
+  cursor: pointer; transition: color .14s, border-color .14s, background-color .14s;
+  color: color-mix(in srgb, var(--accent) 78%, var(--text));
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel2));
+}
+#kb-cards .kb-meta .tag.kt:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel2));
+}
+/* 草稿徽章的琥珀圆点（默认直接转正后，草稿是唯一要标出来的例外态） */
+#kb-cards .kb-meta .tag .cdot { background: currentColor; width: 7px; height: 7px; }
 #kb-cards .card .note { margin-bottom: 8px; }
 #kb-cards .card .facts { margin-bottom: 0; }
 #kb-cards .card .facts .sep { margin: 0 5px; }
@@ -5320,6 +5339,7 @@ body.welcome-open { overflow: hidden; }
 /* 登记已有作品：内联表单行（无书卡的补救口，2026-09-20） */
 .pb-reg { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .pb-reg input { flex: 1 1 150px; min-width: 0; font-size: 12.5px; padding: 5px 10px; }
+
 /* 数据与备份页：清理预估行 + 消息块内的警示色（2026-09-20） */
 .cl-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 0;
   border-bottom: 1px solid var(--line, rgba(128,128,128,.15)); }
@@ -5328,3 +5348,28 @@ body.welcome-open { overflow: hidden; }
 .cl-row .tag { white-space: nowrap; }
 .msg .bad { color: var(--bad); }
 .msg .ok { color: var(--ok, #4ade80); }
+
+/* —— 群摘要·微信直连（群选择器，2026-09-20）—— */
+#bee-reader-box { display: flex; flex-direction: column; gap: 8px;
+  border-left: 2px solid var(--border-strong); padding-left: 10px; }
+#bee-reader-box input[type="text"] { width: 100%; }
+.bee-groups-head { display: flex; gap: 6px; }
+.bee-groups-head input { flex: 1; min-width: 0; }
+.bee-groups-list { max-height: 220px; overflow: auto; display: flex;
+  flex-direction: column; gap: 2px; border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 4px; }
+.bee-g { display: flex; align-items: center; gap: 8px; padding: 3px 6px;
+  border-radius: 6px; cursor: pointer; font-size: 12.5px; }
+.bee-g:hover { background: var(--panel2); }
+.bee-g.on { background: rgba(245, 185, 66, .12); }
+.bee-g span:first-of-type { flex: 1; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.bee-g input { flex: none; }
+
+/* ---------------- 禅道·仓库工作目录行（追加于文件尾防并行重排） ---------------- */
+.zt-wd-row { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 560px; }
+.zt-wd-row .zt-p-wd { flex: 1; min-width: 0; }
+.zt-wd-row button { flex: none; }
+
+/* ---------------- 群摘要·摘要卡「转知识库」按钮（追加于文件尾防并行重排） ---------------- */
+.bee-digest-head .bee-to-kb { margin-left: auto; flex: none; }

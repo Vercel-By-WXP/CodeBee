@@ -557,7 +557,11 @@
         <h3 data-i18n="产品档案" class="sec-title">产品档案</h3>
         <p data-i18n="每个产品一份档案：我方端（自动修）、两端仓库与负责人、模块路由（模块 → 端/人，排查优先级最高）。" class="hint">每个产品一份档案：我方端（自动修）、两端仓库与负责人、模块路由（模块 → 端/人，排查优先级最高）。</p>
         <div id="zt-profiles" class="cards"></div>
-        <div class="ops"><button id="btn-zentao-addprofile" class="ghost small"><span data-i18n="＋ 添加产品">＋ 添加产品</span></button></div>
+        <div class="ops">
+          <button id="btn-zentao-fetchcat" class="ghost small" title="从禅道拉产品与账号清单：产品 ID、负责人变下拉选择（需连接可用）" data-i18n-title="从禅道拉产品与账号清单：产品 ID、负责人变下拉选择（需连接可用）"><span data-i18n="拉取清单">拉取清单</span></button>
+          <button id="btn-zentao-addprofile" class="ghost small"><span data-i18n="＋ 添加产品">＋ 添加产品</span></button>
+        </div>
+        <datalist id="zt-users"></datalist>
         <h3 data-i18n="修复记录" class="sec-title">修复记录</h3>
         <div id="zentao-claims"></div>
       </div>
@@ -679,7 +683,7 @@
         <div class="panel wide">
           <div class="panel-head"><h2 data-i18n="知识库">知识库</h2>
             <button class="ghost small" onclick="kbFormOpen(null)"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg><span data-i18n="新建条目">新建条目</span></button></div>
-          <p class="hint"><span data-i18n="运行产出自动整理成的可复用知识：">运行产出自动整理成的可复用知识：</span><b data-i18n="自动提炼（草稿）">自动提炼（草稿）</b><span data-i18n="——每次任务结束由编排者从产出材料里提炼知识条目，你确认「转正」后才参与注入；">——每次任务结束由编排者从产出材料里提炼知识条目，你确认「转正」后才参与注入；</span><b data-i18n="手动新建（直接转正）">手动新建（直接转正）</b><span data-i18n="——也是你自己的知识管理库。转正条目按任务类型与相关性自动注入同类任务的规划与评审提示词。">——也是你自己的知识管理库。转正条目按任务类型与相关性自动注入同类任务的规划与评审提示词。</span></p>
+          <p class="hint"><span data-i18n="运行产出自动整理成的可复用知识：">运行产出自动整理成的可复用知识：</span><span data-i18n="任务结束由编排者从产出材料自动提炼，默认直接转正参与注入；也可以手动新建——同时是你自己的知识管理库。条目按任务类型与相关性自动注入同类任务的规划与评审提示词。">任务结束由编排者从产出材料自动提炼，默认直接转正参与注入；也可以手动新建——同时是你自己的知识管理库。条目按任务类型与相关性自动注入同类任务的规划与评审提示词。</span></p>
           <div class="kb-toolbar">
             <input id="kb-search" data-i18n-ph="搜索标题 / 正文 / 标签" placeholder="搜索标题 / 正文 / 标签" oninput="kbSearch(this.value)">
             <div class="cat-chips" id="kb-status-chips"></div>
@@ -876,7 +880,11 @@
             <button class="seg-btn" data-pmode="always" data-i18n="常驻显示">常驻显示</button>
             <button class="seg-btn" data-pmode="tasks_only" data-i18n="仅任务运行时出现">仅任务运行时出现</button>
           </div>
-          <p class="hint" data-i18n="左键点蜜蜂打开 CodeBee，右键有菜单，按住可拖动；蜜蜂跑在独立小进程里，关掉服务它会自己回巢。">左键点蜜蜂打开 CodeBee，右键有菜单，按住可拖动；蜜蜂跑在独立小进程里，关掉服务它会自己回巢。</p>
+          <div id="pet-skin" class="seg" role="group" aria-label="蜜蜂形象" data-i18n-aria="蜜蜂形象">
+            <button class="seg-btn" data-pskin="plush" data-i18n="毛绒蜜蜂">毛绒蜜蜂</button>
+            <button class="seg-btn" data-pskin="robot" data-i18n="机械蜜蜂">机械蜜蜂</button>
+          </div>
+          <p class="hint" data-i18n="左键点蜜蜂打开 CodeBee，右键有菜单（可换形象），按住可拖动；蜜蜂跑在独立小进程里，关掉服务它会自己回巢。">左键点蜜蜂打开 CodeBee，右键有菜单（可换形象），按住可拖动；蜜蜂跑在独立小进程里，关掉服务它会自己回巢。</p>
         </div>
 
         <!-- 代码设置：主题/行号/换行/字号只管代码内容，存本设备（与皮肤同一套语汇） -->
@@ -1102,6 +1110,21 @@
   <div id="bee-list" class="bee-list"></div>
   <div id="bee-cfg" class="bee-cfg hidden">
     <label class="toggle"><input id="bee-enabled" type="checkbox"> <span data-i18n="启用定时扫描">启用定时扫描</span></label>
+    <label class="toggle"><input id="bee-reader" type="checkbox"> <span data-i18n="从本机微信自动拉取（微信直连）">从本机微信自动拉取（微信直连）</span></label>
+    <div id="bee-reader-box" class="hidden">
+      <span class="bee-lab" data-i18n="64 位 Python 路径（需装 wechatauto-replica）">64 位 Python 路径（需装 wechatauto-replica）</span>
+      <input id="bee-reader-py" type="text" spellcheck="false" data-i18n-ph="例如 C:\Users\HP\anaconda3\envs\wxprobe\python.exe" placeholder="例如 C:\Users\HP\anaconda3\envs\wxprobe\python.exe">
+      <div class="bee-dir-row">
+        <button id="bee-groups-btn" class="ghost small" data-i18n="选择要监听的群（0）">选择要监听的群（0）</button>
+      </div>
+      <div id="bee-groups-box" class="hidden">
+        <div class="bee-groups-head">
+          <input id="bee-groups-search" type="text" spellcheck="false" data-i18n-ph="搜索群名" placeholder="搜索群名">
+          <button id="bee-groups-refresh" class="ghost small" data-i18n="刷新群列表">刷新群列表</button>
+        </div>
+        <div id="bee-groups-list" class="bee-groups-list"></div>
+      </div>
+    </div>
     <span class="bee-lab" data-i18n="监控文件夹">监控文件夹</span>
     <div class="bee-dir-row">
       <input id="bee-dir" type="text" spellcheck="false" placeholder="D:\wx-exports">
@@ -1113,7 +1136,7 @@
     </div>
     <div id="bee-status" class="bee-status"></div>
     <button id="bee-save" class="primary small" data-i18n="保存设置">保存设置</button>
-    <p class="bee-note" data-i18n="把导出的群聊记录 txt 放进监控文件夹（文件名=群名，每条以「2024-01-01 12:34 发送者」开头），蜜蜂定时增量生成摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。">把导出的群聊记录 txt 放进监控文件夹（文件名=群名，每条以「2024-01-01 12:34 发送者」开头），蜜蜂定时增量生成摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。</p>
+    <p class="bee-note" data-i18n="导出 txt 丢进监控文件夹，或开启微信直连由蜜蜂自动拉取；按间隔增量生成每群摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。">导出 txt 丢进监控文件夹，或开启微信直连由蜜蜂自动拉取；按间隔增量生成每群摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。</p>
   </div>
 </div>
 

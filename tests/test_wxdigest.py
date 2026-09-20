@@ -4,6 +4,7 @@ fire_due 节流、配置校验、view/seen、pet 喂食与 pet.py 纯函数。
 模型调用全程打桩（_summarize / builtin_agent），不出网。"""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from base import BaseTest
@@ -371,6 +372,162 @@ class TestBacklogContinuation(WxDigestBase):
         self.assertEqual(1, r1["made"])
         self.assertEqual(0, r2["made"], "装得下就不该有 pending 余量")
         self.assertEqual(1, len(calls))
+
+
+def _load_sidecar():
+    """3.8 解释器直接 import tools/wx_reader.py 的纯函数（语法保持 3.8 兼容）。"""
+    import importlib.util
+    from app.core import paths
+    p = paths.ROOT / "tools" / "wx_reader.py"
+    spec = importlib.util.spec_from_file_location("wx_reader", str(p))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestWxReaderSidecar(BaseTest):
+    """sidecar 纯函数：文件名清洗、前缀剥离、成员表、行格式、类型占位、状态读写。"""
+
+    def setUp(self):
+        super().setUp()
+        self.wr = _load_sidecar()
+
+    def test_sanitize_filename(self):
+        self.assertEqual("产品_群", self.wr.sanitize_filename('产品/群'))
+        for ch in '\\/:*?"<>|':
+            self.assertNotIn(ch, self.wr.sanitize_filename("a" + ch + "b"))
+        self.assertEqual("unnamed", self.wr.sanitize_filename(""))
+        self.assertEqual("unnamed", self.wr.sanitize_filename(None))
+
+    def test_strip_sender_prefix(self):
+        self.assertEqual("你好", self.wr.strip_sender_prefix("wxid_abc:\n你好", "wxid_abc"))
+        self.assertEqual("hi", self.wr.strip_sender_prefix("wxid_abc: hi", "wxid_abc"))
+        # 前缀与发送者不一致（引用/转发）→ 不剥，保留原文
+        self.assertEqual("other:\n内容", self.wr.strip_sender_prefix("other:\n内容", "wxid_abc"))
+        self.assertEqual("", self.wr.strip_sender_prefix(None, "x"))
+
+    def test_member_map_remark_first(self):
+        m = self.wr.member_map([
+            {"username": "a", "nick_name": "昵称", "remark": "备注"},
+            {"username": "b", "nick_name": "只有昵称"},
+            "脏数据", {"username": ""},
+        ])
+        self.assertEqual({"a": "备注", "b": "只有昵称"}, m)
+
+    def test_format_line_shape(self):
+        import time as _t
+        line = self.wr.format_line(1618570805, "三姑", "内容")
+        self.assertTrue(line.startswith("2021-04-16 "), line)
+        self.assertIn(" 三姑\n内容\n", line)
+
+    def test_type_placeholder(self):
+        self.assertIsNone(self.wr.type_placeholder("文本"))          # 文本走正文
+        self.assertEqual("[图片]", self.wr.type_placeholder("图片"))
+        self.assertEqual("[文件]", self.wr.type_placeholder("文件/链接/卡片"))
+        self.assertIsNone(self.wr.type_placeholder("系统消息"))       # 系统消息不入正文
+        self.assertEqual("[表情]", self.wr.type_placeholder("动画表情"))
+        self.assertIsNone(self.wr.type_placeholder(""))
+
+    def test_state_roundtrip(self):
+        st = self.tmp / "state.json"
+        self.assertEqual({}, self.wr.load_state(st))                 # 缺文件兜底空
+        self.wr.save_state(st, {"a@chatroom": {"since_seq": 5, "name": "A"}})
+        self.assertEqual(5, self.wr.load_state(st)["a@chatroom"]["since_seq"])
+
+
+class TestReaderWiring(WxDigestBase):
+    """wxdigest ↔ sidecar 接线：配置往返、_poll 先拉后扫、失败不吞文件夹扫描。"""
+
+    def test_config_roundtrip_and_inbox_default(self):
+        cfg = self.wx.save_config({
+            "reader_enabled": True, "reader_python": "C:/py312/python.exe",
+            "groups": [{"username": "a@chatroom", "name": "A群", "junk": 1},
+                       "脏数据", {"name": "没username的不要"}]})
+        self.assertTrue(cfg["reader_enabled"])
+        self.assertEqual("C:/py312/python.exe", cfg["reader_python"])
+        self.assertEqual([{"username": "a@chatroom", "name": "A群"}], cfg["groups"])
+        # 直连开启且没设监控文件夹 → 自动落 inbox
+        self.assertTrue(cfg["watch_dir"])
+        self.assertTrue(Path(cfg["watch_dir"]).is_dir())
+
+    def test_poll_invokes_reader_then_scans(self):
+        _mk_export(self.watch, "普通.txt", TXT_NOHEAD)   # 文件夹里已有一条导出
+        self.wx.save_config({"enabled": True, "watch_dir": str(self.watch),
+                             "reader_enabled": True,
+                             "reader_python": str(self.tmp / "py312.exe"),
+                             "groups": [{"username": "g@chatroom", "name": "直连群"}]})
+        seen = {}
+
+        def fake_run_reader(cfg):
+            seen["cfg"] = dict(cfg)
+            # sidecar 模拟：往监控文件夹追加直连群的导出
+            _mk_export(self.wx.inbox_dir() if False else Path(cfg["watch_dir"]),
+                       "直连群.txt", "2024-09-03 10:00:00 成员甲\n直连消息\n")
+            return 1
+
+        self.wx._run_reader = fake_run_reader
+        self.wx._summarize = lambda cfg, g, w, watch: ("s", {"model": "m", "provider_name": "p"})
+        r = self.wx._poll(force=True)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual("直连群", seen["cfg"]["groups"][0]["name"])
+        # 直连拉来的导出被统一扫描并摘要
+        self.assertEqual({"直连群", "普通"}, {d["group"] for d in self.wx.view()["digests"]})
+
+    def test_reader_failure_does_not_block_folder_scan(self):
+        _mk_export(self.watch, "普通.txt", TXT_NOHEAD)
+        self.wx.save_config({"enabled": True, "watch_dir": str(self.watch),
+                             "reader_enabled": True, "reader_python": "",
+                             "groups": [{"username": "g@chatroom", "name": "G"}]})
+
+        def boom(cfg):
+            raise RuntimeError("微信直连已启用，但 64 位 Python 路径无效（reader_python）")
+
+        self.wx._run_reader = boom
+        self.wx._summarize = lambda cfg, g, w, watch: ("s", {"model": "m", "provider_name": "p"})
+        r = self.wx._poll(force=True)
+        self.assertFalse(r["ok"])
+        self.assertIn("微信直连", r["error"])
+        self.assertIn("Python", r["error"])
+        # 文件夹扫描照常产出
+        self.assertEqual(["普通"], [d["group"] for d in self.wx.view()["digests"]])
+
+
+class TestDigestToKnowledge(WxDigestBase):
+    """摘要 → 知识库（草稿态）：找不到报错、正文/标签/来源正确、指纹去重。"""
+
+    def setUp(self):
+        super().setUp()
+        from app.core import knowledge
+        knowledge._FILE = self.data_dir / "knowledge.json"
+        self.kb = knowledge
+        # 造一条已落台账的摘要
+        self.wx._DIR.mkdir(parents=True, exist_ok=True)
+        self.rec = {"id": "dtest01", "group": "项目群", "from_ts": "2026-09-20 09:00:00",
+                    "to_ts": "2026-09-20 10:00:00", "count": 5,
+                    "text": "- 总览：定了用方案A", "created_at": "2026-09-20 10:30:00",
+                    "model": "m", "provider": "p", "source": "项目群.txt"}
+        with open(str(self.wx._digests_path()), "a", encoding="utf-8") as f:
+            f.write(json.dumps(self.rec, ensure_ascii=False) + "\n")
+
+    def test_to_knowledge_creates_draft(self):
+        entry = self.wx.digest_to_knowledge("dtest01")
+        self.assertEqual("draft", entry["status"])
+        self.assertEqual("*", entry["scope"])
+        self.assertIn("项目群", entry["title"])
+        self.assertIn("2026-09-20", entry["title"])
+        self.assertIn("方案A", entry["body"])
+        self.assertIn("微信群", entry["tags"])
+        self.assertEqual("群摘要", entry["source"])
+        # 知识库页可见（list_entries）
+        rows = self.kb.list_entries(scope="*")
+        self.assertEqual(1, len(rows))
+
+    def test_to_knowledge_dedup_and_missing(self):
+        self.wx.digest_to_knowledge("dtest01")
+        again = self.wx.digest_to_knowledge("dtest01")   # 同 scope+标题 → 指纹去重
+        self.assertEqual(1, len(self.kb.list_entries(scope="*")))
+        with self.assertRaises(RuntimeError):
+            self.wx.digest_to_knowledge("不存在的id")
 
 
 class TestPetPureFunctions(BaseTest):

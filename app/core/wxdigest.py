@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -33,8 +34,9 @@ _FILE = paths.DATA_DIR / "wxdigest.json"
 _DIR = paths.DATA_DIR / "wxdigest"           # digests.jsonl 追加式台账
 _STATE = {
     "config": {},       # 持久配置（_CFG_DEFAULTS）
-    "cursors": {},      # 群名 → {last_ts, sender, hash, mtime, size}
+    "cursors": {},      # 群名 → {last_ts, sender, hash, mtime, size, pending}
     "unseen": 0,        # 未读摘要数（蜂徽章）
+    "groups_cache": [], # sidecar --list-groups 的群列表缓存（选群 UI 用）
     "last_scan": "",
     "next_scan": "",
     "last_error": "",
@@ -49,11 +51,101 @@ VIEW_DIGESTS = 100           # view() 返回的摘要条数上限（最新在前
 
 _CFG_DEFAULTS = {
     "enabled": False,
-    "watch_dir": "",         # 监控文件夹（绝对路径）
+    "watch_dir": "",         # 监控文件夹（绝对路径；微信直连开启时可留空→自动用 inbox）
     "interval_minutes": 30,  # 扫描节流
     "max_chars": 12000,      # 单窗正文字符上限（喂给模型）
+    # —— 微信直连（sidecar 读取器，64 位 Python ≥3.9 + wechatauto-replica）——
+    "reader_enabled": False,
+    "reader_python": "",     # 64 位解释器路径（如 conda wxprobe 环境的 python.exe）
+    "groups": [],            # 监听的群 [{"username": "...@chatroom", "name": "群名"}]
 }
-_UPDATABLE = ("enabled", "watch_dir", "interval_minutes", "max_chars")
+_UPDATABLE = ("enabled", "watch_dir", "interval_minutes", "max_chars",
+              "reader_enabled", "reader_python", "groups")
+
+READER_SCRIPT = paths.ROOT / "tools" / "wx_reader.py"
+READER_TIMEOUT = 150       # sidecar 单次调用上限（含 WeChatDB 初始化 ~6-25s）
+CREATE_NO_WINDOW = 0x08000000  # Windows 下别让 sidecar 每拍弹控制台
+
+
+def _norm_groups(v):
+    """groups 配置规整：只留 username/name 两个字段的非空对象列表。"""
+    if not isinstance(v, list):
+        raise ValueError("groups 必须是列表")
+    out = []
+    for g in v:
+        if isinstance(g, dict) and str(g.get("username") or "").strip():
+            out.append({"username": str(g["username"]).strip(),
+                        "name": str(g.get("name") or g["username"]).strip()})
+    return out
+
+
+def inbox_dir():
+    """微信直连的默认落地目录（reader 开启且未设 watch_dir 时用）。"""
+    d = _DIR / "inbox"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _run_reader(cfg):
+    """调 sidecar 拉一轮增量到监控文件夹。返回拉到的条数；失败抛 RuntimeError。"""
+    import subprocess
+    rp = str(cfg.get("reader_python") or "").strip()
+    if not rp or not Path(rp).expanduser().exists():
+        raise RuntimeError("微信直连已启用，但 64 位 Python 路径无效（reader_python）")
+    if not READER_SCRIPT.exists():
+        raise RuntimeError("sidecar 脚本缺失：%s" % READER_SCRIPT)
+    watch = str(cfg.get("watch_dir") or "").strip() or str(inbox_dir())
+    groups = _norm_groups(cfg.get("groups"))
+    if not groups:
+        raise RuntimeError("微信直连已启用，但还没选择要监听的群")
+    _DIR.mkdir(parents=True, exist_ok=True)
+    gf, rf = _DIR / "reader_groups.json", _DIR / "reader_result.json"
+    gf.write_text(json.dumps(groups, ensure_ascii=False), encoding="utf-8")
+    cmd = [rp, str(READER_SCRIPT), "--pull", "--out", watch,
+           "--state", str(_DIR / "reader_state.json"),
+           "--groups-file", str(gf), "--result", str(rf)]
+    try:
+        subprocess.run(cmd, timeout=READER_TIMEOUT, capture_output=True,
+                       creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("微信读取器超时（%ds），微信可能在忙" % READER_TIMEOUT)
+    try:
+        res = json.loads(rf.read_text(encoding="utf-8"))
+    except Exception:
+        raise RuntimeError("微信读取器无有效输出（检查 reader_python 是否装了 wechatauto-replica）")
+    if not res.get("ok"):
+        raise RuntimeError("微信读取失败：%s" % "；".join(res.get("errors") or ["未知错误"]))
+    return int(res.get("count") or 0)
+
+
+def refresh_groups():
+    """调 sidecar --list-groups 刷新群列表缓存（前端「刷新群列表」按钮）。返回群列表。"""
+    import subprocess
+    _ensure_loaded()
+    with _LOCK:
+        cfg = _cfg()
+        rp = str(cfg.get("reader_python") or "").strip()
+    if not rp or not Path(rp).expanduser().exists():
+        raise RuntimeError("请先在设置里填 64 位 Python 路径（需装 wechatauto-replica）")
+    _DIR.mkdir(parents=True, exist_ok=True)
+    rf = _DIR / "groups_cache.json"
+    cmd = [rp, str(READER_SCRIPT), "--list-groups", "--result", str(rf)]
+    try:
+        subprocess.run(cmd, timeout=READER_TIMEOUT, capture_output=True,
+                       creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("读取群列表超时（%ds）" % READER_TIMEOUT)
+    try:
+        res = json.loads(rf.read_text(encoding="utf-8"))
+    except Exception:
+        raise RuntimeError("群列表无有效输出（检查 reader_python 环境）")
+    if not res.get("ok"):
+        raise RuntimeError("读取群列表失败")
+    groups = res.get("groups") or []
+    with _LOCK:
+        _STATE["groups_cache"] = groups
+        _save_locked()
+    return groups
 
 _PROMPT = """你是 CodeBee 的群聊摘要助手。下面是微信群「%s」的一段聊天记录（共 %d 条）。请输出中文摘要，格式：
 - 一句话总览
@@ -349,6 +441,18 @@ def _poll(force=False):
             except ValueError:
                 pass
     err = ""
+    reader_n = 0
+    if cfg.get("reader_enabled"):
+        # 微信直连：先让 sidecar 把增量拉成导出 txt，再走统一的文件夹扫描。
+        # 拉取失败不吞掉文件夹扫描——已落盘的内容照常摘要。
+        try:
+            reader_n = _run_reader(cfg)
+            if reader_n:
+                log.info("wxdigest: 微信直连拉到 %d 条新消息", reader_n)
+        except Exception as e:
+            msg = "微信直连：%s" % e
+            err = msg
+            log.warning("wxdigest: %s", msg)
     watch = str(cfg.get("watch_dir") or "").strip()
     if not watch:
         err = "未设置监控文件夹"
@@ -401,6 +505,12 @@ def save_config(patch):
                 v = str(v or "").strip()
                 if v and not Path(v).expanduser().is_absolute():
                     raise ValueError("监控文件夹必须是绝对路径")
+            elif k == "reader_python":
+                v = str(v or "").strip()
+            elif k == "groups":
+                v = _norm_groups(v)
+            elif k == "reader_enabled":
+                v = bool(v)
             elif k == "interval_minutes":
                 try:
                     v = max(INTERVAL_MIN, min(INTERVAL_MAX, int(v)))
@@ -415,6 +525,9 @@ def save_config(patch):
             elif k == "enabled":
                 v = bool(v)
             cfg[k] = v
+        # 微信直连开启且没设监控文件夹：自动落到 inbox（sidecar 的写入目标）
+        if cfg.get("reader_enabled") and not str(cfg.get("watch_dir") or "").strip():
+            cfg["watch_dir"] = str(inbox_dir())
         _STATE["config"] = cfg
         if cfg.get("enabled"):
             _STATE["next_scan"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -441,7 +554,8 @@ def view():
         has_model = False
     return {"config": cfg, "groups": cursors, "digests": _read_digests(),
             "unseen": unseen, "last_scan": last_scan, "next_scan": next_scan,
-            "last_error": last_err, "has_model": has_model}
+            "last_error": last_err, "has_model": has_model,
+            "reader_groups_cache": list(_STATE.get("groups_cache") or [])}
 
 
 def seen_clear():
@@ -451,6 +565,31 @@ def seen_clear():
         _STATE["unseen"] = 0
         _save_locked()
     return view()
+
+
+def digest_to_knowledge(digest_id):
+    """把一条摘要转入知识库（草稿态）：人工在知识库页转正后才注入任务提示词。
+
+    scope 默认 "*"（全局）；转正时可在知识库页改成具体任务类型。同
+    scope+标题指纹去重，重复点击只更新 seen 不重复建条。返回知识条目。"""
+    _ensure_loaded()
+    rec = None
+    for d in _read_digests(500):
+        if d.get("id") == digest_id:
+            rec = d
+            break
+    if not rec:
+        raise RuntimeError("摘要不存在或已超出可查范围")
+    from . import knowledge
+    title = "「%s」%s 摘要" % (rec.get("group") or "?",
+                              str(rec.get("to_ts") or rec.get("created_at") or "")[:10])
+    entry = knowledge.upsert_entry(
+        scope="*", title=title, body=str(rec.get("text") or ""),
+        tags=["微信群", str(rec.get("group") or "")][:5],
+        source="群摘要", status="draft")
+    if not entry:
+        raise RuntimeError("知识条目写入失败（标题或正文为空）")
+    return entry
 
 
 def pet_digest():
@@ -512,6 +651,7 @@ def _save_locked():
     tmp = {"version": 1, "config": _STATE.get("config") or {},
            "cursors": _STATE.get("cursors") or {},
            "unseen": int(_STATE.get("unseen") or 0),
+           "groups_cache": _STATE.get("groups_cache") or [],
            "last_scan": _STATE.get("last_scan") or "",
            "next_scan": _STATE.get("next_scan") or "",
            "last_error": _STATE.get("last_error") or ""}
@@ -522,10 +662,15 @@ def _normalize(d):
     d = d if isinstance(d, dict) else {}
     cfg = dict(_CFG_DEFAULTS)
     cfg.update(d.get("config") or {})
+    try:
+        cache = [g for g in (d.get("groups_cache") or []) if isinstance(g, dict)]
+    except Exception:
+        cache = []
     return {"config": cfg,
             "cursors": {str(k): dict(v) for k, v in (d.get("cursors") or {}).items()
                         if isinstance(v, dict)},
             "unseen": int(d.get("unseen") or 0),
+            "groups_cache": cache,
             "last_scan": str(d.get("last_scan") or ""),
             "next_scan": str(d.get("next_scan") or ""),
             "last_error": str(d.get("last_error") or "")}
@@ -560,5 +705,6 @@ def _test_reset():
         _STATE["config"] = dict(_CFG_DEFAULTS)
         _STATE["cursors"] = {}
         _STATE["unseen"] = 0
+        _STATE["groups_cache"] = []
         _STATE["last_scan"] = _STATE["next_scan"] = _STATE["last_error"] = ""
         globals()["_LOADED"] = True
