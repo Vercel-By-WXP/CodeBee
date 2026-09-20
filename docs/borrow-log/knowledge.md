@@ -319,3 +319,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **CCteam-creator**（306★）| Claude Code 多 agent 团队编排 skill | 参考
 - SDD 新锐全为学生/练习项目——spec-kit(138k)+OpenSpec(69.5k) 已覆盖
 - 复查：planning-with-files 27,021★（+36）活跃
+
+### 2026-09-21 04:00 第十七班（批5：检索/知识/浏览器）
+- **evalscope**（modelscope，3.5k★）| 阿里模型评测框架（LLM/VLM 高效评测）| A 专项相关：我们缺自评测 | 参考
+- **EnterpriseRAG-Bench**（562★）| 企业内部文档 RAG 基准 | 调研报告任务的质量标尺参考 | 参考
+- **oya-browser**（202★）| 浏览器控制平面：一个 API 跨 Oya Cloud/Browserbase/自托管 | BrowserSkill 同域再验证 | 参考
+- **lexicon**（新）| voice-to-agents 个人词典（YAML 一个文件）| 语音输入的词表纠偏思路（人名/术语定制）——**可借鉴语音输入加自定义词表** | 借鉴方向（小）
+- 浏览器/本地知识库组：学生项目为主，无重大标的
