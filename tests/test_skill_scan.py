@@ -1,20 +1,15 @@
 # -*- coding: utf-8 -*-
-"""skill 装前危险模式扫描（skill_scan，借鉴 NVIDIA SkillSpector）单测。
+"""skill 装前危险模式扫描（skill_scan）单测。
 
-测试用的"危险样例"全部以字符串拼接构造（样例本身不可执行），只喂给
-扫描器当输入文本验证命中，绝不在测试里真实执行。
+跑法：python -m unittest discover -s tests -p "test_skill_scan.py" -v
 """
 from __future__ import annotations
 
 from base import BaseTest
 
 
-def _ev():           # 拼出 "value = ev" + "al(user_input)" 的样本文本
+def _ev():
     return "value = ev" + "al(user_input)\nprint(value)"
-
-
-def _multi_ev():     # 三处同类命中的样本
-    return "\n".join("a%d = ev" % i + "al(x)" for i in range(3))
 
 
 class SkillScanTests(BaseTest):
@@ -61,7 +56,7 @@ class SkillScanTests(BaseTest):
         self.assertEqual(skill_scan.scan_summary("纯文本"), "")
 
     def test_category_dedup(self):
-        fs = self._scan(_multi_ev())
+        fs = self._scan("\n".join("a%d = ev" % i + "al(x)" for i in range(3)))
         evs = [f for f in fs if f["category"] == "代码执行"]
         self.assertEqual(len(evs), 1)
 
