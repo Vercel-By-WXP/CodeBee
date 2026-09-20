@@ -13,7 +13,10 @@ from base import BaseTest
 
 
 class TestSelfUpdate(BaseTest):
-    def runTest(self):
+    # 注意：类里一旦存在任何 test_ 方法，unittest discovery 就不再收集 runTest
+    # （loadTestsFromTestCase 只在 test_ 名单为空时才回退到 runTest）——核心守卫
+    # 必须挂在 test_ 前缀方法下，否则整组断言静默失跑。
+    def test_core_guards(self):
         import app.core.selfupdate as su
 
         # 0) 发布名一致性：_PKG_NAME 必须等于 package.json 的 name（防品牌重命名漏改）
@@ -89,6 +92,74 @@ class TestSelfUpdate(BaseTest):
         self.assertFalse(cwd2 == root or root in cwd2.parents)
         self.assertTrue(Path(popen_kw["args"][1]).is_absolute())
         self.assertTrue(str(popen_kw["args"][1]).endswith("main.py"))
+
+    def test_ebusy_retry_and_friendly_error(self):
+        """EBUSY/EPERM（包目录被占用）自动重试 + 人话错误映射；其他错误不重试。"""
+        import tempfile
+        import app.core.selfupdate as su
+        from app.core import runner as _runner
+
+        ebusy = ("npm error code EBUSY\nnpm error syscall rename\n"
+                 "npm error EBUSY: resource busy or locked, rename "
+                 "'D:\\x\\node_modules\\codebee' -> 'D:\\x\\node_modules\\.cb-1'\n")
+        calls, sleeps = [], []
+
+        def _fake(argv=None, cwd=None, timeout=None, log_path=None, **kw):
+            calls.append(log_path)
+            if log_path:
+                with open(log_path, "ab") as fh:
+                    fh.write(ebusy.encode("utf-8"))
+            return {"ok": False, "exit_code": 1, "stdout": "", "stderr": ebusy,
+                    "timed_out": False, "cancelled": False}
+
+        def _ok_after_retries(argv=None, cwd=None, timeout=None, log_path=None, **kw):
+            calls.append(log_path)
+            done = len(calls) >= 3
+            return {"ok": done, "exit_code": 0,
+                    "stdout": "", "stderr": "" if done else ebusy,
+                    "timed_out": False, "cancelled": False}
+
+        with mock.patch.object(su.time, "sleep", side_effect=sleeps.append):
+            # a) 前两次 EBUSY、第三次成功：共 3 次 npm，两次退避 5s/15s，日志有重试说明
+            log1 = Path(tempfile.mkdtemp(dir=str(self.tmp))) / "a.log"
+            calls.clear()
+            with mock.patch.object(_runner, "run_process", side_effect=_ok_after_retries):
+                su._CHECK_CACHE["result"] = {"stale": True}
+                res = su.run_upgrade("r1", str(log1))
+            self.assertTrue(res["ok"])
+            self.assertEqual(len(calls), 3)
+            self.assertEqual(sleeps, [5, 15])
+            self.assertIsNone(su._CHECK_CACHE["result"])  # 成功后查新缓存已过期
+            log_text = log1.read_text(encoding="utf-8")
+            self.assertIn("第 1/2 次", log_text)
+            self.assertIn("第 2/2 次", log_text)
+
+            # b) 三连 EBUSY：不 ok，错误是人话结论（300 字内可见），且非裸 npm 输出
+            log2 = Path(tempfile.mkdtemp(dir=str(self.tmp))) / "b.log"
+            calls.clear()
+            with mock.patch.object(_runner, "run_process", side_effect=_fake):
+                res = su.run_upgrade("r2", str(log2))
+            self.assertFalse(res["ok"])
+            self.assertEqual(len(calls), 3)
+            self.assertIn("被其他程序占用", res["error"])
+            self.assertIn("已自动重试 2 次", res["error"])
+            self.assertNotIn("npm error", res["error"][:300])  # 裸输出不进摘要头部
+
+            # c) 非占用类失败（如网络）：不重试，错误透传原始输出
+            net_err = "npm error network request to https://registry.npmjs.org failed"
+            calls.clear()
+
+            def _net_fail(argv=None, cwd=None, timeout=None, log_path=None, **kw):
+                calls.append(log_path)
+                return {"ok": False, "exit_code": 1, "stdout": "", "stderr": net_err,
+                        "timed_out": False, "cancelled": False}
+
+            with mock.patch.object(_runner, "run_process", side_effect=_net_fail):
+                res = su.run_upgrade("r3", None)
+            self.assertFalse(res["ok"])
+            self.assertEqual(len(calls), 1)
+            self.assertIn("network", res["error"])
+            self.assertNotIn("被其他程序占用", res["error"])
 
     def test_enqueue_failure_closes_upgrade_run(self):
         import app.core.selfupdate as su

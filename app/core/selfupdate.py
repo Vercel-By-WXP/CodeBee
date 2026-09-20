@@ -189,18 +189,59 @@ def apply_upgrade():
     return {"run_id": run["id"]}
 
 
+_LOCKED_RE = re.compile(r"\b(EBUSY|EPERM)\b")
+_RETRY_DELAYS = (5, 15)   # 目录被占用时自动重试前的等待秒数（暂时性占用多在此窗口内释放）
+
+
+def _locked_error(res):
+    """npm 失败输出是否为「包目录被占用」类（EBUSY/EPERM）——值得等一等重试。"""
+    blob = ((res or {}).get("stderr") or "") + ((res or {}).get("stdout") or "")
+    return bool(_LOCKED_RE.search(blob[-4000:]))
+
+
+def _log_note(log_path, text):
+    """向步骤日志追加一行进度说明（run_process 以 append 模式写同一文件）。"""
+    if not log_path:
+        return
+    try:
+        with open(log_path, "ab") as fh:
+            fh.write(("\n===== %s =====\n" % text).encode("utf-8", "replace"))
+    except Exception:
+        pass
+
+
 def run_upgrade(run_id, log_path):
-    """worker 线程里执行升级命令（run/step 生命周期由 jobs 层管）。"""
-    res = runner.run_process(
-        argv=_npm_argv("install", "-g", _PKG_NAME + "@latest"),
-        # Windows 上 npm 换版本靠把包目录整体改名（codebee → .codebee-xxx）；
-        # cwd 若落在本包内，目录被自身进程占用，rename 必报 EBUSY——钉在包外
-        cwd=str(Path.home()), timeout=900, log_path=log_path)
+    """worker 线程里执行升级命令（run/step 生命周期由 jobs 层管）。
+
+    包目录被其他进程占用（EBUSY/EPERM：打开包目录的资源管理器/终端窗口、
+    杀毒或索引扫描）是升级失败的最常见原因，且多为暂时性——自动重试
+    _RETRY_DELAYS 轮，仍败则给人话结论（原始 npm 输出在步骤日志里可查）。"""
+    res = {}
+    for attempt, delay in enumerate((0,) + _RETRY_DELAYS):
+        if delay:
+            _log_note(log_path, "目录被占用（EBUSY/EPERM），%d 秒后自动重试（第 %d/%d 次）"
+                      % (delay, attempt, len(_RETRY_DELAYS)))
+            time.sleep(delay)
+        res = runner.run_process(
+            argv=_npm_argv("install", "-g", _PKG_NAME + "@latest"),
+            # Windows 上 npm 换版本靠把包目录整体改名（codebee → .codebee-xxx）；
+            # cwd 若落在本包内，目录被自身进程占用，rename 必报 EBUSY——钉在包外
+            cwd=str(Path.home()), timeout=900, log_path=log_path)
+        if res["ok"] or not _locked_error(res):
+            break
     if res["ok"]:
         with _LOCK:  # 装完即过期查新缓存，重启后自然拿到新版本
             _CHECK_CACHE["result"] = None
-    return {"ok": res["ok"], "exit_code": res["exit_code"],
-            "error": "" if res["ok"] else (res["stderr"][-800:] or "退出码 %s" % res["exit_code"])}
+        return {"ok": True, "exit_code": res["exit_code"], "error": ""}
+    stderr = res["stderr"] or ""
+    if _locked_error(res):
+        err = ("升级失败：codebee 安装目录被其他程序占用（已自动重试 %d 次未恢复）。"
+               "常见占用：打开包目录的资源管理器窗口/终端、杀毒或索引扫描。"
+               "请关闭相关窗口后回版本页重试；仍不行可退出 CodeBee 后手动执行 "
+               "npm install -g %s@latest。" % (len(_RETRY_DELAYS), _PKG_NAME))
+    else:
+        err = stderr[-800:] or "退出码 %s" % res["exit_code"]
+    return {"ok": False, "exit_code": res["exit_code"], "error": err}
 
 
 def _port_free(port):
