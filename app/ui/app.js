@@ -9256,6 +9256,8 @@ function setLangBtn(lang) {
   renderCodePreviews();   // 预览徽章是动态文案：语言切换时若停在皮肤页要跟着换
   // 数据与备份页的清理预估/状态是 JS 动态生成的：停在那一页时也要跟着换语言
   if (S.tab === "data") loadDataPage();
+  // 数据与备份页的清理预估/状态是 JS 动态生成的：停在那一页时也要跟着换语言
+  if (S.tab === "data") loadDataPage();
   // 帮助中心若开着：徽章/标题/目录/正文跟着换语言重画
   if (!$("welcome").classList.contains("hidden")) {
     paintHelpChrome();
