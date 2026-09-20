@@ -221,3 +221,8 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **scientific-agent-skills**（K-Dense-AI，45.6k★）| #1 科学 agent skills 库 | 市场雷达新源 | 参考
 - **text-to-cad**（16.1k★）/ **AI-Research-SKILLs**（12.9k★）/ **stitch-skills**（8.3k★）/ **anbeime/skill**（7k★ 中文技能商店——收录最全更新最快）/ **GPT-Image2-Skill**（5.5k★）| skill 生态大库五连——插件市场 B 专项的潜在接入源（anbeime 中文尤其贴合） | 待深挖
 - 批2 复查：Agent_Memory_Techniques/agent-apprenticeship 无增量
+
+### 2026-09-20 08:00 第六班 B 专项结论
+- anbeime/skill 评估：元聚合器（聚合 VoltAgent/awesome 上游），SKILL_SOURCES.json 无描述需二跳解析，与我们已有雷达重合——**不入市场源，降级雷达参考**
+- VoltAgent/awesome-agent-skills 34.6k 逐类扫描：anthropics 官方 17 skills 与市场已有源重合（docx/pptx/pdf 已可装）；社区部分垂直小众（SEO/营销/CFO/材料模拟）；**结论：按需挑装而非批量接入**——市场六源+官方源已覆盖主流量，新装留给用户按需触发
+- B 专项沉淀教训入经验库：市场源接入判断三问（①与我们已有源重合度②有描述可直读吗③用户会主动搜吗）——回答不好就不接，雷达跟踪即可
