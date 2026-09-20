@@ -42,17 +42,53 @@ _IMAGE_MODEL_KEYWORDS = ("cogview", "dall-e", "gpt-image", "flux", "kolors",
 _SIZES = ("768x1344", "1024x1024")   # 竖版优先，方图兜底
 
 
+def _chapter_facts(workdir, limit=3):
+    """从最新章节抽取视觉事实（借鉴 poster-v2 的 novel fact extraction）：
+    人物/场景/关键意象的原文片段——封面元素来自真实剧情而非干瘪题材词。
+    读不到章节（单稿/未开写）返回空串，提示词回落题材+简介。"""
+    if not workdir:
+        return ""
+    import glob as _glob
+    try:
+        chapters = sorted(_glob.glob(str(workdir) + "/chapter-*.md"))
+        if not chapters:
+            return ""
+        facts = []
+        for p in chapters[-limit:]:
+            try:
+                with open(p, encoding="utf-8", errors="replace") as f:
+                    txt = f.read(4000)
+                # 取开头（多为场景/人物动作）+ 关键句粗筛
+                head = " ".join(txt.split("\n")[1:6])
+                if head.strip():
+                    facts.append(head.strip()[:200])
+            except OSError:
+                continue
+        return "\n".join(facts)[:900]
+    except Exception:
+        return ""
+
+
 def _cover_prompt(task):
-    """从任务与建书资料拼图像提示词：场景氛围向，不要文字（平台会自行压字）。"""
+    """从任务与建书资料拼图像提示词：场景氛围向，不要文字（平台会自行压字）。
+
+    素材优先级：章节事实抽取（真实剧情的人物/场景/意象）> 题材+简介。
+    poster-v2 借鉴：视觉元素来自 novel facts 才有「这是这本书的封面」的辨识度。"""
     bm = ((task.get("book_meta") or {}).get("fanqie") or {}).get("data") or {}
     if not isinstance(bm, dict):
         bm = {}
     title = bm.get("书名") or task.get("title") or ""
     genre = bm.get("类型") or bm.get("分类") or ""
     brief = (bm.get("一句话简介") or bm.get("简介") or task.get("goal") or "")
-    return ("竖版小说封面插画，画面中不要出现任何文字。题材：%s %s。故事梗概：%s。"
-            "商业网文封面质感：主体人物或核心场景突出，色彩浓郁有冲击力，"
-            "构图上方留白便于后期压标题。" % (genre, title, str(brief)[:300]))
+    facts = _chapter_facts(task.get("workdir") or "")
+    base = ("竖版小说封面插画，画面中不要出现任何文字。题材：%s %s。故事梗概：%s。"
+            % (genre, title, str(brief)[:300]))
+    if facts:
+        base += ("\n\n以下是最新的剧情片段（从中提取主要人物形象、标志性场景与核心意象"
+                 "作为画面主体——让封面一眼可辨「这是这本书」）：\n%s" % facts)
+    base += ("\n商业网文封面质感：主体人物或核心场景突出，色彩浓郁有冲击力，"
+             "构图上方留白便于后期压标题。")
+    return base
 
 
 def _pick_key(prov):
