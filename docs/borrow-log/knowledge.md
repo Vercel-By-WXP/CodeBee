@@ -333,3 +333,13 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **北斗 beidou**（新）| AI 网文创作工作台全栈 | 学生级，雷达跟踪
 - 本地推理组：llama.cpp 自托管站系列（gputier）——本地权重跑 Claude Code | 参考
 - 路由组：无新标的（既有 model-hotel/one-api 覆盖）
+
+## 2026-09-21 04:30 用户点名调研：leftopen
+
+- **leftopen**（SonghaiFan，38★，macOS 菜单栏+CLI）已深挖 | **"See what your tools left running on localhost, and gently close them"**：检测本机被工具遗留的监听端口→识别所属项目→温和关闭。三个核心机制：①**项目归属推断**（从进程工作目录向上走到 .git/package.json/pyproject.toml/Cargo.toml/go.mod 或 .app——全局 npm/python -m/独立服务也识别，极少看到裸 node/python）②**本地 vs LAN 区分**（127.0.0.1 vs 0.0.0.0/LAN 地址的安全边界）③**温和关闭**（关闭前显示进程其他端口，关闭瞬间重验 PID+启动时间，只发 SIGTERM 绝不 SIGKILL 绝不杀系统进程）；CLI 与 GUI 同引擎同推理同安全规则；零 daemon 零 Dock 图标零 telemetry
+
+**与 CodeBee 关系**：
+- 我们 **_kill_tree 已由并行代理重写**（TerminateProcess 优先+taskkill 短等待兜底），但**缺项目归属推断**——孤儿进程清理按 PID/进程名杀，不知道该进程属于哪个项目/用户
+- **借鉴方向（待实施）**：①孤儿清理加**项目归属探测**（读 /proc/<pid>/cwd 或 Windows 等效，向上走找到项目根，避免误杀用户 dev server）②**端口归属可见化**（扫描器报「端口 3000 属于 project-A 的 dev server」而非裸 node）③**安全关闭协议**（SIGTERM only + PID 重验——与并行代理的 _kill_tree 重写方向一致但更保守）
+
+**落地路径**：不改 runner.py（并行代理域）——新增 `app/core/portscan.py` 独立模块，供「启动收尸」和「诊断面板」调用
