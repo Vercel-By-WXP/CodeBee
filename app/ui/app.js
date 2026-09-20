@@ -6326,6 +6326,40 @@ function bindChat() {
     const chip = e.target.closest("[data-att-id]");
     if (chip) window.chatPendingPopup(chip.dataset.attId, chip.dataset.attName);
   });
+  // 语音输入（借鉴 paseo voice control）：Web Speech API 口述转文字填入输入框。
+  // 仅浏览器支持时显示按钮（Chrome/Edge）；识别结果追加到光标处，不自动发送。
+  bindVoiceInput();
+}
+
+function bindVoiceInput() {
+  const btn = $("rd-chat-voice");
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!btn || !SR) return;   // 浏览器不支持：按钮保持 hidden
+  btn.classList.remove("hidden");
+  let rec = null, on = false;
+  const ta = $("rd-chat-input");
+  btn.addEventListener("click", () => {
+    if (on) { try { rec.stop(); } catch (e) {} return; }
+    rec = new SR();
+    rec.lang = (getLang() === "en") ? "en-US" : "zh-CN";
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.onresult = (e) => {
+      if (!ta) return;
+      let text = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) text += e.results[i][0].transcript;
+      }
+      if (text) {
+        ta.value = (ta.value ? ta.value.replace(/\s+$/, "") + " " : "") + text;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    };
+    rec.onend = () => { on = false; btn.classList.remove("live"); };
+    rec.onerror = () => { on = false; btn.classList.remove("live"); };
+    try { rec.start(); on = true; btn.classList.add("live"); }
+    catch (e) { toast(t("语音不可用，请检查麦克风权限"), true); }
+  });
 }
 
 /* ---------------------------------------------------------- 外观：皮肤 + 明暗（换肤） */
