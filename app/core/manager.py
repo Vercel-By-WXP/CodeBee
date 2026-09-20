@@ -859,6 +859,21 @@ def _toml_top_set(text, key, value):
     return eol.join(lines).rstrip("\r\n") + eol, True
 
 
+_TEST_HOST_SUFFIXES = (".test", ".example", ".invalid", ".localhost")
+
+
+def _is_dead_endpoint(base):
+    """明显打不通的测试/保留地址（*.test、*.example、example.com 等）。
+    这类端点落进 config.toml 后 codex 每次请求都撞死墙——2026-09-20
+    orch/p1.test 残留反复劫持全局配置的事故教训：宁可不写，不写必死端点。"""
+    host = (base or "").split("://", 1)[-1].split("/", 1)[0].split("@")[-1]
+    host = host.split(":")[0].lower().rstrip(".")
+    if not host:
+        return True
+    return (host in ("example.com", "example.org", "example.net", "localhost")
+            or host.endswith(_TEST_HOST_SUFFIXES))
+
+
 def _sync_codex_settings(entry, model, cp):
     """codex 专属：把绑定供应商与模型写进 ~/.codex/config.toml
     （[model_providers.orch] 段 + 顶层 model_provider/model）。
@@ -867,6 +882,8 @@ def _sync_codex_settings(entry, model, cp):
     没有 config.toml 里的 provider 段，绑定模型根本无处可用；而 model 单写
     不写 provider 会指到 codex 自带 openai 官方端点上（401）。与编排的
     _codex_provider_args 同构，但落 config 文件。返回错误串或 None。"""
+    if _is_dead_endpoint(cp.get("base_url")):
+        return "供应商端点 %r 是测试/保留地址，拒绝写入 config.toml" % (cp.get("base_url"),)
     path = _config_path(entry)
     if not path:
         return "codex 配置路径无效"
@@ -1459,6 +1476,12 @@ def sync_runtime_config(agent):
                     break
         if entry is None or not (entry.get("config") or {}).get("path"):
             return
+        if entry["id"] in ("codex-cli", "codex"):
+            return   # codex 绝不在运行防线上落盘（2026-09-20 orch 劫持事故）：
+                     # 编排步骤走 runner 的 -c 一次性注入，不依赖 config.toml；
+                     # 在这里写盘会把全局 ~/.codex/config.toml 的 model_provider
+                     # 顶掉（CC Switch / 用户手动选的供应商被劫持）。交互 TUI
+                     # 场景由 launch() 自行同步，且端点防线在 _sync_codex_settings。
         from . import modelhub
         binding = modelhub.resolve_binding(entry["id"]) or {}
         model = (binding.get("model") or "").strip()
