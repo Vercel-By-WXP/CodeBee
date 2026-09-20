@@ -2202,7 +2202,8 @@
     "发布浏览器 profile 已迁往用户主目录，旧位置属废弃残留": "Publishing browser profiles have moved to the user home; the old location is abandoned residue",
     "导出与导入前自动备份的旧 zip": "Old zips from exports and pre-import auto-backups",
     "只保留每个日志的末尾 1MB": "Keeps only the last 1MB of each log",
-    "含平台登录态，清理后发布时需重新扫码登录": "Contains platform logins; re-scan the QR code to publish after clearing",  };
+    "含平台登录态，清理后发布时需重新扫码登录": "Contains platform logins; re-scan the QR code to publish after clearing",
+  };
 
   // ---------- 工具 ----------
   function getLang() {

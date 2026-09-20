@@ -9254,6 +9254,8 @@ function setLangBtn(lang) {
   paintArchToggle();
   syncSideExpandBtn();
   renderCodePreviews();   // 预览徽章是动态文案：语言切换时若停在皮肤页要跟着换
+  // 数据与备份页的清理预估/状态是 JS 动态生成的：停在那一页时也要跟着换语言
+  if (S.tab === "data") loadDataPage();
   // 帮助中心若开着：徽章/标题/目录/正文跟着换语言重画
   if (!$("welcome").classList.contains("hidden")) {
     paintHelpChrome();
@@ -9946,7 +9948,7 @@ function switchTab(name) {
   else stopAutoPoll();   // 离开自动化页（或切到别的子页）即停表
   if (name === "zentao") loadZentao();   // 进禅道页：拉配置与修复记录回填表单
   if (name === "market") loadMarket();   // 进插件市场页拉取目录
-if (name === "data") loadDataPage();   // 进数据与备份页：清理配置/状态/可清理预估
+  if (name === "data") loadDataPage();   // 进数据与备份页：清理配置/状态/可清理预估
   if (name === "usage") { syncUsageRange(); loadUsage(); }   // 进用量页：对齐范围选中态并拉取
   if (name === "appearance") renderAppearance();   // 进皮肤页：按当前皮肤/明暗重画卡片
   if (name === "appearance") renderCodeSettings();  // 代码设置行 + 双主题预览卡同步当前值

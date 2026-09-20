@@ -243,3 +243,11 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **agentcn**（shadcn-labs，473★）|「shadcn/ui 但给 agent 用」——组件化 agent 构建 | 参考
 - **aegra**（1.2k★）LangGraph 平台开源替代 | 复查活跃
 - 批6 其他：voice SDK/数据工作台等垂直，无直接差量
+
+## 2026-09-20 14:00 第九班（批1：代码质量与评审）
+
+- **SkillSpector**（NVIDIA，17,861★）已深挖 | **AI agent skills 安全扫描器**：装前答「这个 skill 安全吗」——71 漏洞模式×17 类（提示注入/数据外泄/提权/供应链/过度自主/工具滥用/memory 投毒/反拒答/触发滥用…）；两段式（静态+LLM 语义）；OSV.dev 实时 CVE；0-100 风险分+建议；基线误报抑制。**研究数据触目：31,132 skill 中 26.1% 含漏洞、5.2% 疑似恶意**。NVIDIA Verified Skills 流水线（扫描→评估→签名→目录）| **与我们市场安全对比**：我们有白名单闸门+SSRF 防护+剥离式检查——**差量=模式库细度与风险评分**。**借鉴方向：市场装前扫描增强**（安装前静态扫危险模式：eval/exec/反连 URL/env 读取外发，给风险提示行——纯本地静态规则，够小够实） | 借鉴方向（装前扫描）
+- **Tencent/AI-Infra-Guard**（6.5k★）AI 红队平台（Agent Scan/Skill Scan）| 同赛道参考
+- **vuls**（12.3k★）无 agent 漏扫（Linux/容器/WordPress）| 基础设施侧，非我们域
+- 复查：superpowers 288.9k/oh-story 7.0k/drama-skills 2.1k 活跃
+- pr-review 组新锐无新标的（学生项目/模板为主）
