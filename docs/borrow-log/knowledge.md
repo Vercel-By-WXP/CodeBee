@@ -312,3 +312,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **agent-skills**（tech-leads-club，6.5k★）| 安全验证的专业 skills 注册表 | 与我们市场安全层同向 | 参考
 - **mcp-gateway-registry**（934★）企业级 MCP 网关+注册表 | 参考
 - 复查：LibreChat 44.5k 活跃
+
+### 2026-09-21 02:00 第十六班（批3：计划/spec/长任务）
+- **genie**（automagik-dev，338★）已深挖 | 「Wishes in, PRs out」——**interviews→plans→parallel dispatch→acceptance review→merge-ready**；轻量三面（签名二进制+skills+可选 Orca 插件）；cosign 签名+SLSA 溯源；per-repo SQLite 单文件；**interviews 用户进 plan**（=我们的需求拷问+grill-me 同路，验证方向）| 参考+方向验证
+- **markdown-memory**（25★）| 跨平台文件式持久记忆桥 | pi-mem 同路再验证 | 参考
+- **CCteam-creator**（306★）| Claude Code 多 agent 团队编排 skill | 参考
+- SDD 新锐全为学生/练习项目——spec-kit(138k)+OpenSpec(69.5k) 已覆盖
+- 复查：planning-with-files 27,021★（+36）活跃
