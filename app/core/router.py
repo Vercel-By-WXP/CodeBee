@@ -13,6 +13,13 @@ CAPABILITY = {
 MAX_REPAIR_ROUNDS = 2  # 自动修复循环上限
 
 
+def _task_type(ttype):
+    """兼容旧调用的字符串与新任务规格对象。"""
+    if isinstance(ttype, dict):
+        return str(ttype.get("type") or ttype.get("dimension") or "direct")
+    return str(ttype or "direct")
+
+
 def _binding_bonus(agent_id, dispatch_mode=False):
     """绑定链可用性加分/减分：链上有可用条目 +8，解析为空 -25。2026-09-16 实测：
     静态能力基线让配额烧干的 codex 永远压过健康备用 CLI，绑定空的 CLI 更是连
@@ -48,6 +55,7 @@ def score(agent, role, ttype, stats=None):
     quota_tokens_per_hour 的智能体，本小时用量越接近配额分越低
     （封顶 -45，足以盖过历史加分），满额后仅在没有其他选择时才会被选中。"""
     stats = stats or {}
+    ttype = _task_type(ttype)
     base = CAPABILITY.get(agent.get("kind"), 60)
     use_dispatch = bool(agent.get("_dispatch_task_type") or
                         agent.get("dispatch_enabled"))
@@ -96,6 +104,33 @@ def pick(agents, role, ttype, stats=None, exclude=()):
     if best is None:
         return None, ""
     return best[1], best_reason
+
+
+def route_plan(agents, role, task_spec, stats=None, exclude=()):
+    """生成可审计的候选排序，供运行详情展示和后续 fallback 使用。"""
+    if stats is None:
+        stats = history.agent_stats()
+    # 与 pick 保持同一候选池；绑定/健康扣分仍由 score 和 modelhub 负责，
+    # 诊断不能悄悄排除实际可能被选中的 mock 或备用 CLI。
+    pool = list(agents or [])
+    rows = []
+    for index, agent in enumerate(pool):
+        if agent.get("id") in exclude:
+            continue
+        candidate = dict(agent)
+        if isinstance(task_spec, dict):
+            candidate["_dispatch_task_type"] = task_spec.get("type") or "direct"
+            candidate["_dispatch_role"] = role
+        total, reason = score(candidate, role, task_spec, stats)
+        rows.append({"agent_id": agent.get("id") or "",
+                     "label": agent.get("label") or agent.get("id") or "",
+                     "kind": agent.get("kind") or "generic",
+                     "score": round(total, 1), "reason": reason,
+                     "order": index})
+    rows.sort(key=lambda x: (-x["score"], x["order"]))
+    return {"role": role, "selected": rows[0]["agent_id"] if rows else "",
+            "candidates": rows,
+            "fallback": [x["agent_id"] for x in rows[1:]]}
 
 
 def pick_reviewer(agents, impl, ttype, stats=None):

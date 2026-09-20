@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, catalog, history, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, usage
+from . import aiflavor, catalog, history, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -3280,6 +3280,18 @@ def execute_run(run_id):
         store.update_run(run_id, expected_status="running", status="failed",
                          error="找不到任务 %s" % run.get("task_id"), ended_at=_now())
         return
+    # 统一任务编译：旧字段继续供各引擎读取，规格作为运行级诊断与调度输入落盘。
+    task_spec = task_compile.compile_task(task)
+    store.update_run(run_id, task_spec=task_spec,
+                     task_spec_summary=task_compile.summary(task_spec),
+                     difficulty=task_spec["difficulty"])
+    task = dict(task)
+    task["_compiled_spec"] = task_spec
+    # 运行内统一使用编译后的难度；store 中历史任务常带 difficulty=auto，
+    # 不能让这个兼容值覆盖 easy/default/hard 的模型调度决策。
+    task["difficulty"] = task_spec["difficulty"]
+    # 同理，历史任务可能保存非法/过期 engine；执行以编译后的流程引擎为准。
+    task["engine"] = task_spec["engine"]
     # 代码版本检出：任务指定了基线版本时，先检出任务分支 tutti/<task-id> 再跑流水线。
     # 显式意图不容静默降级——仓库缺失/脏工作区/引用不存在一律中止运行并报错，
     # 绝不带着用户未提交改动切分支、也不悄悄退回当前 HEAD。
@@ -3319,6 +3331,11 @@ def execute_run(run_id):
     for _agent in agents:
         if isinstance(_agent, dict):
             _agent["_dispatch_task_type"] = task.get("type") or "direct"
+    store.update_run(run_id, route_plan={
+        "task": task_spec,
+        "implement": router.route_plan(agents, "implement", task_spec, stats),
+        "review": router.route_plan(agents, "review", task_spec, stats),
+    })
     mode = task.get("mode") or ("manual" if task.get("implementer") else "auto")
     store.update_run(run_id, mode=mode)
     # engine 决定流水线：code=实现/验证/评审/修复；review=起草/多维评审/修订/门禁；

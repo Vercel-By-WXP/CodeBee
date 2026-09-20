@@ -21,6 +21,10 @@ class TestNovelPipeline(BaseTest):
 
         run = store.get_run(run["id"])
         self.assertEqual(run["status"], "done", run.get("error"))
+        self.assertEqual(run["task_spec"]["type"], "novel")
+        self.assertEqual(run["task_spec"]["engine"], "review")
+        self.assertIn("implement", run["route_plan"])
+        self.assertIn("candidates", run["route_plan"]["implement"])
         self.assertTrue(run["verdict"]["publishable"])       # mock 第 2 轮必须达标
         self.assertEqual(run["verdict"]["rounds_used"], 2)   # 第 1 轮不达标 → 走了修订
         roles = [s["role"] for s in run["steps"]]
