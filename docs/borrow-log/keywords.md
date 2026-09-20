@@ -168,3 +168,4 @@
 - 发行渠道：npm search（agent orchestrator / claude code）、pypi（agent orchestrator）各扫一页
 - 框架周边搜：q=langgraph+platform / crewai+studio / autogen+studio 类；竞品名周边：q=orca+alternative、q=claude+flow+OR+ruflo 生态
 - 自家 CLI 名周边搜：q=codex+manager、q=claude+code+manager+OR+wrapper、q=opencode+suite、q=kimi+cli、q=grok+cli
+- 禅道/项目管理/工单周边搜：q=zentaophp+OR+zentao+ai、q=bug+triage+agent+OR+issue+auto+assign、q=jira+ai+agent+OR+linear+ai+agent（竞品：禅道集成 7951ca5 已落地，持续盯增量）

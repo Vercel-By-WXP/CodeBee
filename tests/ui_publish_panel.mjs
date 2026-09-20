@@ -6,7 +6,7 @@
  * 5) 点章稿 → confirm 自动通过 → POST /api/publish/task/<id>/chapter
  *    body={platform, file} 被正确发出（stub fetch 捕获，不打真浏览器）。 */
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -205,6 +205,49 @@ async function main() {
       check("POST body：platform=fanqie file=第1章 风起.md",
         body.platform === "fanqie" && body.file === "第1章 风起.md", post.body);
     }
+
+    /* 6) 登记已有作品：未建书卡（qimao）出现入口 → 表单开合 → POST body 正确
+     * → 真实后端落 books.json（Node 侧直打，绕开页面 stub）。 */
+    const s4 = JSON.parse(await evalJs(`(async () => {
+      const rows = [...document.querySelectorAll(".bm-pub")];
+      const reg = [...rows[1].querySelectorAll("button")].find(b => b.textContent.includes("登记已有作品"));
+      if (!reg) return JSON.stringify({ err: "no-register-btn", html: rows[1].innerHTML.slice(0, 300) });
+      const form = document.getElementById("pb-reg-qimao");
+      const hiddenBefore = form.classList.contains("hidden");
+      reg.click();
+      const shownAfter = !form.classList.contains("hidden");
+      document.getElementById("pb-reg-title-qimao").value = "同事手建的书";
+      document.getElementById("pb-reg-id-qimao").value = "12345";
+      reg.click();
+      const hiddenAgain = form.classList.contains("hidden");
+      reg.click();
+      [...rows[1].querySelectorAll("button")].find(b => b.textContent.includes("确认登记")).click();
+      await new Promise(r => setTimeout(r, 700));
+      return JSON.stringify({ hiddenBefore, shownAfter, hiddenAgain, posts: window.__pbPosts });
+    })()`));
+    check("未建书卡有「登记已有作品」且内联表单可开合",
+      s4.hiddenBefore && s4.shownAfter && s4.hiddenAgain, JSON.stringify(s4));
+    const rpost = (s4.posts || []).find(p => p.url.includes("/register-book"));
+    check("登记 POST 已发出（页面通道）", !!rpost, JSON.stringify(s4.posts));
+    if (rpost) {
+      const body = JSON.parse(rpost.body || "{}");
+      check("登记 POST body：platform=qimao title/book_id 正确",
+        body.platform === "qimao" && body.title === "同事手建的书" && body.book_id === "12345", rpost.body);
+    }
+    const real1 = await (await fetch(SERVICE + "/api/publish/task/pub-t1/register-book", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform: "qimao", title: "真机登记书", book_id: "888" }),
+    })).json();
+    const real2 = await (await fetch(SERVICE + "/api/publish/task/pub-t1/register-book", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform: "qimao", title: "   " }),
+    })).json();
+    check("真实后端：登记成功 / 空书名 400 人话报错",
+      real1.ok === true && (real2.error || "").includes("作品名"), JSON.stringify({ real1, real2 }));
+    const booksOnDisk = JSON.parse(readFileSync(join(dataDir, "publish", "books.json"), "utf-8"));
+    check("books.json 已登记（发一章闸门数据源就位）",
+      ((booksOnDisk["pub-t1"] || {}).qimao || {}).title === "真机登记书"
+      && booksOnDisk["pub-t1"].qimao.book_id === "888", JSON.stringify(booksOnDisk).slice(0, 200));
   } finally {
     try { ws && ws.close(); } catch (e) { }
     try { edge && edge.kill(); } catch (e) { }

@@ -8,3 +8,4 @@ Thumbs.db
 .zcode/
 tests/_shots/
 /tests
+.aider*

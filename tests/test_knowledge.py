@@ -78,6 +78,27 @@ class TestKnowledgeStore(BaseTest):
         self.assertEqual(knowledge.learn_from_run(run["id"]), 0)
 
 
+class TestKnowledgeMigrate(BaseTest):
+    def runTest(self):
+        from app.core import knowledge
+        knowledge._FILE = self.data_dir / "knowledge.json"
+
+        # 1) 草稿闸门退役：历史 draft 一次性转正（幂等）
+        knowledge.upsert_entry("novel", "老草稿一", "内容一", status="draft")
+        knowledge.upsert_entry("novel", "老草稿二", "内容二", status="draft")
+        knowledge.upsert_entry("novel", "已是转正", "内容三", status="approved")
+        n = knowledge.migrate_drafts_approved()
+        self.assertEqual(n, 2)
+        self.assertEqual(knowledge.view()["drafts"], 0)
+        # 幂等：没有 draft 时零写入
+        self.assertEqual(knowledge.migrate_drafts_approved(), 0)
+
+        # 2) 空库幂等
+        for x in knowledge.list_entries():
+            knowledge.entry_op(x["id"], "delete")
+        self.assertEqual(knowledge.migrate_drafts_approved(), 0)
+
+
 class TestKnowledgeInject(BaseTest):
     def runTest(self):
         from app.core import knowledge

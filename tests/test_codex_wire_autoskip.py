@@ -93,13 +93,15 @@ class TestCodexSyncChatGuard(BaseTest):
                                "codebee-test-codex-%d.toml" % os.getpid())
         entry = {"id": "codex-cli", "config": {"path": scratch}}
         try:
+            # 域名用 .internal：7b8c2d5 起 *.test/*.example 等是死端点，
+            # 会被 _is_dead_endpoint 先拒掉，轮不到 chat 守卫出场
             err = manager._sync_codex_settings(
-                entry, "m1", {"name": "orch", "base_url": "https://c.example/v2",
+                entry, "m1", {"name": "orch", "base_url": "https://c.internal/v2",
                               "env_key": "ORCH_API_KEY", "wire_api": "chat"})
             self.assertTrue(err and "chat" in err)
             self.assertFalse(os.path.exists(scratch), "chat wire 不得落盘")
             err2 = manager._sync_codex_settings(
-                entry, "m1", {"name": "orch", "base_url": "https://r.example/v1",
+                entry, "m1", {"name": "orch", "base_url": "https://r.internal/v1",
                               "env_key": "ORCH_API_KEY", "wire_api": "responses"})
             self.assertIsNone(err2)
             self.assertTrue(os.path.exists(scratch))

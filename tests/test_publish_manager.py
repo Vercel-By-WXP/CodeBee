@@ -121,6 +121,105 @@ def test_recover_orphans():
     expect(manager.view()["platforms"]["qimao"]["status"] == "connected", "connected 不动")
 
 
+def test_register_existing_book():
+    """登记已有作品：手工建书/流程没走通后的补账口，三道闸 + 覆盖更新。"""
+    from core import paths
+    paths.TASKS_DIR.mkdir(parents=True, exist_ok=True)
+    tid = "t-reg"
+    (paths.TASKS_DIR / (tid + ".json")).write_text(
+        json.dumps({"id": tid, "title": "登记回归", "status": "done"}), encoding="utf-8")
+    expect(manager.register_book(tid, "nope", "书X")[0] is False, "未知平台拒绝")
+    expect(manager.register_book("no-such", "qimao", "书X")[0] is False, "任务不存在拒绝")
+    expect(manager.register_book(tid, "qimao", "   ")[0] is False, "空书名拒绝（发章按书名找书）")
+    ok, err = manager.register_book(tid, "qimao", "同事手建的书")
+    expect(ok and err == "", "登记成功：%s" % err)
+    b = ledger.book_for(tid, "qimao")
+    expect(bool(b) and b["title"] == "同事手建的书" and b["book_id"] == "",
+           "台账读回（book_id 选填）：%s" % b)
+    manager.register_book(tid, "qimao", "同事手建的书", book_id="12345")
+    b2 = ledger.book_for(tid, "qimao")
+    expect(b2["book_id"] == "12345", "重复登记覆盖更新（纠错口）")
+
+
+def test_login_timeout_final_recheck():
+    """等扫码超时的终审：profile 登录态还在（用户只是关了窗口）→ 翻
+    connected 不冤判；复核也过不了才维持超时错误。"""
+    manager._set("qimao", status="waiting_login", error="")
+    orig = (manager._open_page, manager._check_login)
+    manager._open_page = lambda p: (None, None)
+    manager._check_login = lambda p, pg: (True, "https://zuozhe.qimao.com/")
+    try:
+        expect(manager._finalize_login_wait("qimao") is True, "复核通过返回 True")
+        v = manager.view()["platforms"]["qimao"]
+        expect(v["status"] == "connected" and v["error"] == "", "终审翻 connected：%s" % v)
+    finally:
+        manager._open_page, manager._check_login = orig
+
+    manager._set("qimao", status="waiting_login", error="")
+
+    def _boom(p):
+        raise Exception("浏览器不可用")
+
+    manager._open_page = _boom
+    try:
+        expect(manager._finalize_login_wait("qimao") is False, "复核失败返回 False")
+        v = manager.view()["platforms"]["qimao"]
+        expect(v["status"] == "error" and "超时" in v["error"], "维持超时错误文案：%s" % v)
+    finally:
+        manager._open_page, manager._check_login = orig
+
+
+def test_upgrade_selfheal_stale_timeout():
+    """旧版遗留的「等待登录超时」假错误，升级后启动自愈：attach 到活实例
+    且登录态在 → 翻 connected；attach 不到维持原错误（绝不 launch 弹窗）。"""
+    from core.publish.browser import BrowserError
+
+    class _Dead:
+        @staticmethod
+        def attach(port):
+            raise BrowserError("端口 %s 上没有活着的浏览器" % port)
+
+    manager._set("qimao", status="error", port=4999,
+                 error="等待登录超时（15 分钟），请重新点连接")
+    orig = (manager.Browser, manager._check_login)
+    manager.Browser = _Dead
+    try:
+        n = manager.recover_orphans()
+        expect(n == 0, "error 态不计入重启收尸计数：%d" % n)
+        manager._recheck_stale_errors(["qimao"])      # 同步调，免线程竞态
+        v = manager.view()["platforms"]["qimao"]
+        expect(v["status"] == "error" and "等待登录超时" in v["error"],
+               "attach 不到维持原错误：%s" % v)
+    finally:
+        manager.Browser, manager._check_login = orig
+        manager._browsers.pop("qimao", None)
+
+    class _FakePage:
+        pass
+
+    class _FakeB:
+        def first_page(self, create=True):
+            return _FakePage()
+
+    class _Alive:
+        @staticmethod
+        def attach(port):
+            return _FakeB()
+
+    manager._set("qimao", status="error", port=4999,
+                 error="等待登录超时（15 分钟），请重新点连接")
+    manager.Browser = _Alive
+    manager._check_login = lambda p, pg: (True, "https://zuozhe.qimao.com/")
+    try:
+        manager._recheck_stale_errors(["qimao"])
+        v = manager.view()["platforms"]["qimao"]
+        expect(v["status"] == "connected" and v["error"] == "",
+               "假超时自愈翻 connected：%s" % v)
+    finally:
+        manager.Browser, manager._check_login = orig
+        manager._browsers.pop("qimao", None)
+
+
 def main():
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

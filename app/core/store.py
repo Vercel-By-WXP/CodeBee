@@ -1136,7 +1136,26 @@ def retry_task(task_id):
                                if s.get("status") == "done"
                                and (s.get("role") or "").startswith("draft-c")
                                and str(s.get("role")).split("c")[-1].isdigit()})
-                if done:
+                v_scores = (prev.get("verdict") or {}).get("chapter_scores") or []
+                # 重写未达标章：上一遍完整跑完但质量未过线（verdict.publishable
+                # =False）时，未过线章的成稿与分数都不进继承——流水线对缺继承
+                # 的章走正常起草+评审，等于只重写这几章；已过线章照常复用不烧
+                # token。大纲始终继承（全章未过线时 done 清空也继承），保住全书
+                # 结构——这正是「重写未达标章」按钮（前端 done+未达标态放行
+                # retry）区别于断点续跑的语义。
+                redo = set()
+                if (prev.get("verdict") or {}).get("publishable") is False:
+                    redo = {int(c["chapter"]) for c in v_scores
+                            if not c.get("passed") and c.get("chapter") is not None}
+                if redo:
+                    done = [n for n in done if n not in redo]
+                    v_scores = [c for c in v_scores if c.get("passed")]
+                if done or redo:
+                    if redo:
+                        scores = v_scores          # 未达标重写：只带已过线章的分数
+                    else:
+                        scores = ((prev.get("verdict") or {}).get("chapter_scores")
+                                  or prev.get("chapter_scores") or [])
                     run["inherit"] = {
                         "outline": outline,
                         "done_chapters": done,
@@ -1144,8 +1163,7 @@ def retry_task(task_id):
                         # failed/cancelled 的 run 没有 verdict，退回每章实时
                         # 落账的 chapter_scores——否则多轮失败恢复会把全部
                         # 已过线章节重新评审（实测一晚白烧数百万 token）
-                        "chapter_scores": ((prev.get("verdict") or {}).get("chapter_scores")
-                                           or prev.get("chapter_scores") or []),
+                        "chapter_scores": scores,
                     }
                     break
         task["status"] = "queued"

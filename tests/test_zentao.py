@@ -25,6 +25,14 @@ class FakeZen:
         self.calls = []                 # (method, path, body)
         self.modules = {1: [{"id": 99, "name": "登录"}, {"id": 77, "name": "报表"}]}
         self.reject_next_auth = False   # 一次性：下一个带 token 的请求 401
+        self.products = {1: {"id": 1, "name": "产品一", "status": "normal"},
+                         2: {"id": 2, "name": "产品二", "status": "closed"}}
+        self.users = [{"account": "coder", "realname": "码蜂"},
+                      {"account": "tester", "realname": "测试君"}]
+        self.subpath = False    # True=只认 /zentao/api.php/v1（一键安装包子路径部署）
+        self.old = False        # True=只讲老版 module-method JSON 接口（REST 全 404）
+        self.old_sid = ""
+        self.old_session_n = 0
 
     def handler(self):
         srv = self
@@ -41,11 +49,30 @@ class FakeZen:
                 self.end_headers()
                 self.wfile.write(raw)
 
+            def _redirect_html(self):
+                raw = ("<html><meta charset='utf-8'/><script>self.location="
+                       "'/zentao/user-login-td.html';</script>").encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def _js_html(self, locate):
+                raw = ("<html><meta charset='utf-8'/><script>parent.location='" +
+                       locate + "';</script>").encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
             def _parts(self):
                 from urllib.parse import urlparse
                 p = urlparse(self.path).path.lstrip("/")
-                if p.startswith("api.php/v1/"):
-                    p = p[len("api.php/v1/"):]
+                pre = "zentao/api.php/v1/" if srv.subpath else "api.php/v1/"
+                if p.startswith(pre):
+                    p = p[len(pre):]
                 return p.split("/")
 
             def _auth(self):
@@ -67,8 +94,48 @@ class FakeZen:
                     return {}
 
             def do_POST(self):
+                if srv.old:
+                    from urllib.parse import urlparse, parse_qs
+                    n = int(self.headers.get("Content-Length") or 0)
+                    raw = self.rfile.read(n) if n else b""
+                    form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "replace")).items()}
+                    srv.calls.append(("POST", self.path, form))
+                    p = urlparse(self.path).path.lstrip("/")
+                    if p == "zentao/user-login.json":
+                        if form.get("account") == "coder" and form.get("password") == "pw":
+                            # 真机形状：user 在响应顶层、data 为 null（2026-09-20 实测）
+                            self._reply(200, {"status": "success", "data": None,
+                                              "user": {"account": "coder", "realname": "码蜂"}})
+                        else:
+                            self._reply(200, {"status": "failed",
+                                              "reason": "登录失败，请检查您的用户名或密码是否填写正确。"})
+                        return
+                    m = None
+                    for pre in ("zentao/bug-assignTo-", "zentao/bug-resolve-"):
+                        if p.startswith(pre):
+                            m = p[len(pre):].split(".")[0]
+                            break
+                    if m:
+                        bug = srv.bugs.get(m)
+                        if bug is None:
+                            self._reply(404, {"error": "no such bug"})
+                            return
+                        if form.get("assignedTo"):
+                            bug["assignedTo"] = [form["assignedTo"], form["assignedTo"]]
+                        if p.startswith("zentao/bug-resolve-"):
+                            bug["status"] = "resolved"
+                            bug["resolution"] = form.get("resolution") or "fixed"
+                        # 真机形状：老禅道 POST 动作成功回 js::locate HTML（2026-09-20 实测）
+                        self._js_html("/zentao/bug-view-%s.json" % m)
+                        return
+                    self._reply(404, {"error": "unknown old POST %s" % self.path})
+                    return
                 srv.calls.append(("POST", self.path, self._body()))
                 if self.path.endswith("/tokens"):
+                    want = "/zentao/api.php/v1" if srv.subpath else "/api.php/v1"
+                    if self.path[:-len("/tokens")] != want:
+                        self._reply(404, {"error": "no such route"})
+                        return
                     b = srv.calls[-1][2]
                     if b.get("account") == "coder" and b.get("password") == "pw":
                         self._reply(200, {"token": "T-%d" % len(srv.calls)})
@@ -111,9 +178,60 @@ class FakeZen:
 
             def do_GET(self):
                 srv.calls.append(("GET", self.path, None))
+                if srv.old:
+                    from urllib.parse import urlparse
+                    p = urlparse(self.path).path.lstrip("/")
+                    if p == "zentao/api-getsessionid.json":
+                        srv.old_session_n += 1
+                        srv.old_sid = "S%d" % srv.old_session_n
+                        self._reply(200, {"status": "success", "data": json.dumps(
+                            {"sessionName": "zentaosid", "sessionID": srv.old_sid,
+                             "rand": 1234})})
+                        return
+                    # 未登录 → 登录页重定向 HTML（非 JSON，适配层按会话死处理）
+                    if ("zentaosid=" + srv.old_sid) not in self.path:
+                        self._redirect_html()
+                        return
+                    if p.startswith("zentao/bug-browse-"):
+                        seg = p.split(".")[0][len("zentao/bug-browse-"):]
+                        pid = int(seg.split("-")[0])     # 兼容路径参数形态 bug-browse-13-0-unclosed-…
+                        bugs = [b for b in srv.bugs.values() if int(b.get("product") or 0) == pid]
+                        for b in bugs:
+                            b["assignedTo"] = ["coder", "码蜂"]      # 老版数组形态
+                        self._reply(200, {"status": "success", "data": json.dumps(
+                            {"bugs": bugs,
+                             "pager": {"recTotal": len(bugs), "recPerPage": 100, "pageID": 1}})})
+                        return
+                    if p.startswith("zentao/bug-view-"):
+                        bid = p[len("zentao/bug-view-"):].split(".")[0]
+                        bug = srv.bugs.get(bid)
+                        if bug is None:
+                            self._reply(404, {"error": "no such bug"})
+                            return
+                        self._reply(200, {"status": "success", "data": json.dumps({"bug": bug})})
+                        return
+                    if p == "zentao/api-getmodel-product-getpairs.json":
+                        pairs = {str(k): v["name"] for k, v in srv.products.items()}
+                        self._reply(200, {"status": "success", "data": json.dumps(pairs)})
+                        return
+                    if p == "zentao/api-getmodel-user-getpairs.json":
+                        self._reply(200, {"status": "success", "data": json.dumps(
+                            {u["account"]: u["realname"] for u in srv.users})})
+                        return
+                    self._reply(404, {"error": "unknown old GET %s" % self.path})
+                    return
                 if not self._auth():
                     return
                 parts = self._parts()
+                if parts == ["products"]:
+                    plist = list(srv.products.values())
+                    self._reply(200, {"products": plist, "total": len(plist),
+                                      "page": 1, "limit": 100})
+                    return
+                if parts == ["users"]:
+                    self._reply(200, {"users": srv.users, "total": len(srv.users),
+                                      "page": 1, "limit": 100})
+                    return
                 if len(parts) == 3 and parts[0] == "products" and parts[2] == "bugs":
                     pid = int(parts[1])
                     bugs = [b for b in srv.bugs.values() if int(b.get("product") or 0) == pid]
@@ -653,3 +771,66 @@ class TestConnection(ZenCase):
         self.assertTrue(ok, msg)
         ok, msg = self.zen_mod.test_connection(base_url="", account="a", password="b")
         self.assertFalse(ok)
+
+
+class TestCatalogFetch(ZenCase):
+    """产品/账号清单：下拉选择辅助。"""
+    def runTest(self):
+        self.configure()
+        r = self.zen_mod.fetch_products()
+        self.assertTrue(r["ok"], r)
+        self.assertEqual([(p["id"], p["name"]) for p in r["products"]],
+                         [(1, "产品一"), (2, "产品二")])
+        r2 = self.zen_mod.fetch_users()
+        self.assertTrue(r2["ok"], r2)
+        self.assertEqual([u["account"] for u in r2["users"]], ["coder", "tester"])
+        self.fz.products = {}
+        r3 = self.zen_mod.fetch_products()
+        self.assertFalse(r3["ok"])
+        self.assertIn("产品", r3["error"])
+
+
+class TestSubpathAutodetect(ZenCase):
+    """根路径 REST 404 → 自动补 /zentao 子路径（一键安装包形态）。"""
+    def runTest(self):
+        self.fz.subpath = True
+        base = "http://127.0.0.1:%d" % self.port
+        self.configure(base_url=base)           # 用户填的根路径，没带子目录
+        self.bug(851)
+        res = self.zen_mod.scan_now()
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["claimed"], 1)
+        self.assertEqual(self.zen_mod.resolved_base_url(base), base + "/zentao")
+
+
+class TestOldJsonApi(ZenCase):
+    """REST 只认应用 code（老版禅道）→ 自动切老版 JSON 接口：会话+账密登录。
+    账号字段用老版数组形态，顺带验证 _acct 兼容。"""
+    def runTest(self):
+        self.fz.old = True
+        base = "http://127.0.0.1:%d" % self.port
+        self.configure(base_url=base)
+        ok, msg = self.zen_mod.test_connection()
+        self.assertTrue(ok, msg)
+        self.assertIn("老版", msg)
+        r = self.zen_mod.fetch_products()
+        self.assertTrue(r["ok"], r)
+        self.assertEqual([(p["id"], p["name"]) for p in r["products"]],
+                         [(1, "产品一"), (2, "产品二")])
+        r2 = self.zen_mod.fetch_users()
+        self.assertTrue(r2["ok"], r2)
+        self.assertEqual([u["account"] for u in r2["users"]], ["coder", "tester"])
+        self.bug(861)
+        bugs = self.zen_mod.list_bugs(self.zen_mod._cfg(), 1)
+        self.assertTrue(bugs)
+        self.assertEqual(self.zen_mod._acct(bugs[0].get("assignedTo")), "coder")
+        # 写回三通道：转派（PUT→bug-assignTo js::HTML）+ resolve（→bug-resolve js::HTML）
+        c = self.zen_mod._cfg()
+        self.zen_mod._transfer(c, 861, "tester", "转派通道测试")
+        v = self.zen_mod._call("GET", "/bugs/861", cfg=c)
+        self.assertEqual(self.zen_mod._acct(v.get("assignedTo")), "tester")
+        self.assertEqual(str(v.get("status")), "active")
+        self.zen_mod._ensure_resolved(c, 861, "resolve 通道测试", None)
+        v2 = self.zen_mod._call("GET", "/bugs/861", cfg=c)
+        self.assertEqual(str(v2.get("status")), "resolved")
+        self.assertEqual(str(v2.get("resolution")), "fixed")

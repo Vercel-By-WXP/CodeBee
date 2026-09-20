@@ -152,6 +152,89 @@ class TestQualityGates(BaseTest):
         self.assertTrue(ok, err)
         self.assertTrue((r4.get("inherit") or {}).get("outline"), "正常大纲应被继承")
 
+    def test_retry_rewrites_unqualified_chapters(self):
+        """上一遍完整跑完但未达标 → 未过线章的成稿与分数不进继承，
+        重试只重写重评这几章；达标收尾与全章未过线的行为各自锁定。"""
+        from unittest import mock
+        from app.core import store
+        # run id 尾段是随机数，同秒创建的 run 字典序不定；继承取「最新一遍」，
+        # 这里把 id 钉成递增序列，保证 prev_runs 的新旧序与创建序一致。
+        seq = {"n": 0}
+
+        def _seq_id(prefix):
+            seq["n"] += 1
+            return "%s-20260920-000000-%04d" % (prefix, seq["n"])
+
+        with mock.patch.object(store, "_new_id", _seq_id):
+            self._rewrite_unqualified_body(store)
+
+    def _rewrite_unqualified_body(self, store):
+        task = store.create_task({
+            "type": "serial_novel", "title": "闸门-重写未达标章", "mode": "auto",
+            "goal": "写一部短篇连载", "workdir": str(self.workdir),
+            "serial": {"chapters": 3, "words_per_chapter": 800},
+        })
+
+        def _score(ch, mean, passed):
+            return {"chapter": ch, "title": "第 %d 章" % ch,
+                    "means": {"情节": mean}, "passed": passed,
+                    "rounds": 1, "words": 800}
+
+        def _seed_prev():
+            r = store.create_run("orchestration", task["title"], task_id=task["id"])
+            store.update_run(r["id"], outline={
+                "book_title": "书", "source": "template",
+                "chapters": [{"title": "第 %d 章" % i, "beats": "空", "hook": ""}
+                             for i in (1, 2, 3)]})
+            for i in (1, 2, 3):
+                s, _ = store.add_step(r["id"], "draft-c%d" % i, "mock", "mock")
+                store.finish_step(r["id"], s["n"], "done", summary="x", duration_s=0.1)
+            return r
+
+        # 上一遍：第 2 章未过线，整轮未达标收尾 → 第 2 章出继承，1/3 章保留
+        r1 = _seed_prev()
+        store.update_run(r1["id"], status="done", verdict={
+            "serial": True, "publishable": False, "overall": 6.9,
+            "chapter_scores": [_score(1, 7.5, True), _score(2, 6.0, False),
+                               _score(3, 7.4, True)]},
+            ended_at="2026-09-20 00:00:00")
+        ok, err, r2 = store.retry_task(task["id"])
+        self.assertTrue(ok, err)
+        inh = r2.get("inherit") or {}
+        self.assertEqual(inh.get("done_chapters"), [1, 3], "未过线的第 2 章不应进继承")
+        self.assertEqual([c["chapter"] for c in inh.get("chapter_scores") or []],
+                         [1, 3], "未过线章的分数也不应带进继承")
+        self.assertTrue(inh.get("outline"))
+        store.update_run(r2["id"], status="failed", ended_at="2026-09-20 00:00:01")
+
+        # 对照：达标收尾 → 全部章照常继承（断点续跑行为不变）
+        r3 = _seed_prev()
+        store.update_run(r3["id"], status="done", verdict={
+            "serial": True, "publishable": True, "overall": 7.8,
+            "chapter_scores": [_score(1, 7.5, True), _score(2, 7.6, True),
+                               _score(3, 7.4, True)]},
+            ended_at="2026-09-20 00:00:02")
+        ok, err, r4 = store.retry_task(task["id"])
+        self.assertTrue(ok, err)
+        inh4 = r4.get("inherit") or {}
+        self.assertEqual(inh4.get("done_chapters"), [1, 2, 3])
+        self.assertEqual(len(inh4.get("chapter_scores") or []), 3)
+        store.update_run(r4["id"], status="failed", ended_at="2026-09-20 00:00:03")
+
+        # 全章未过线 → done 清空但仍继承大纲：全书重写、结构不丢
+        r5 = _seed_prev()
+        store.update_run(r5["id"], status="done", verdict={
+            "serial": True, "publishable": False, "overall": 5.0,
+            "chapter_scores": [_score(1, 5.0, False), _score(2, 5.1, False),
+                               _score(3, 4.9, False)]},
+            ended_at="2026-09-20 00:00:04")
+        ok, err, r6 = store.retry_task(task["id"])
+        self.assertTrue(ok, err)
+        inh6 = r6.get("inherit") or {}
+        self.assertEqual(inh6.get("done_chapters"), [])
+        self.assertEqual(inh6.get("chapter_scores"), [])
+        self.assertTrue(inh6.get("outline"))
+
 
 if __name__ == "__main__":
     unittest.main()

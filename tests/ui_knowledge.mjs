@@ -1,10 +1,12 @@
 /* 知识库页核验：Edge headless + CDP（临时服务端口 18841，CDP 9347）。
+ * 基线=默认直接转正（服务启动迁移会把种子 draft 转掉，故种子全 approved）：
  * 1) /api/knowledge 透出 entries/tags/tag_counts/drafts + stale 标记；
- * 2) 设置导航有「知识库」入口，子页卡片/状态 chips（全部/草稿/已转正）/标签 chips/计数齐；
- * 3) 草稿 chip 过滤 + 「转正」流转（API drafts 1→0）；
- * 4) 搜索框标题命中过滤；标签 chip 过滤与还原；
- * 5) 新建弹框保存 → 直接转正入库（total+1、approved）；
- * 6) 编辑不改状态；删除回收（total 还原）。 */
+ * 2) 设置导航「知识库」入口；无草稿时状态 chips 整区隐藏、卡片无状态徽章；
+ * 3) 中途种回一条 draft（兼容路径）：草稿徽章带琥珀圆点 + 转正按钮 + chips 重现；
+ * 4) 转正流转：drafts 1→0，chips 再隐藏且残留过滤态自动清除（列表不空）；
+ * 5) 搜索 / 标签过滤；撇号标签不截断内联 onclick（jsq）；
+ * 6) 版式：标题独占行、元信息行、操作钉底对齐、标签区限高；
+ * 7) 新建（直接转正）/ 编辑不改状态 / 删除回收。 */
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,23 +27,27 @@ const check = (name, cond, detail = "") => {
 };
 
 const NOW = "2026-09-20 10:00:00";
-const seedEntry = (id, scope, title, body, tags, status, as_of, hits, seen) => ({
+const E = (id, scope, title, body, tags, status, as_of, hits, seen) => ({
   id, scope, title, body, tags, status, enabled: true, as_of, hits, seen,
   kind: "knowledge", revisions: [], source: "", created_at: NOW, updated_at: NOW,
 });
 const SEED = {
   entries: [
-    seedEntry("kb-a1", "novel", "番茄签约模式", "连载与完本两种模式，建书时选定。", ["番茄", "签约"], "approved", "2026-09-01", 1, 1),
-    seedEntry("kb-a2", "novel", "七猫频道级联", "一级分类决定频道，二级须匹配。", ["七猫"], "draft", "2026-08-15", 0, 1),
-    seedEntry("kb-a3", "*", "旧平台规则", "早已过期的示例规则。", ["规则"], "approved", "2000-01-01", 2, 3),
+    E("kb-a1", "novel", "番茄签约模式", "连载与完本两种模式，建书时选定。", ["番茄", "签约"], "approved", "2026-09-01", 1, 1),
+    E("kb-a2", "novel", "七猫频道级联", "一级分类决定频道，二级须匹配。", ["七猫"], "approved", "2026-08-15", 0, 1),
+    E("kb-a3", "*", "旧平台规则", "早已过期的示例规则。", ["规则"], "approved", "2000-01-01", 2, 3),
   ],
+};
+const DRAFT_SEED = {
+  entries: [...SEED.entries, E("kb-d1", "novel", "草稿回归条目", "迁移后手工种回的草稿。", ["回归"], "draft", "2026-09-19", 0, 1)],
 };
 
 async function main() {
   const tmp = mkdtempSync(join(tmpdir(), "tutti-kb-"));
   const dataDir = join(tmp, "data");
+  const kbFile = join(dataDir, "knowledge.json");
   mkdirSync(dataDir, { recursive: true });
-  writeFileSync(join(dataDir, "knowledge.json"), JSON.stringify(SEED), "utf-8");
+  writeFileSync(kbFile, JSON.stringify(SEED), "utf-8");
 
   let svc = null, edge = null, ws = null;
   try {
@@ -57,9 +63,9 @@ async function main() {
     }
     check("临时服务启动", up);
 
-    /* 1) API 透出 */
+    /* 1) API：种子全 approved，启动迁移零写入 */
     const api0 = await (await fetch(SERVICE + "/api/knowledge")).json();
-    check("/api/knowledge total/drafts", api0.total === 3 && api0.drafts === 1,
+    check("/api/knowledge total=3 drafts=0（启动迁移已把 draft 归零）", api0.total === 3 && api0.drafts === 0,
       JSON.stringify({ total: api0.total, drafts: api0.drafts }));
     check("/api/knowledge tags 聚合", (api0.tags || []).includes("番茄") && (api0.tags || []).includes("七猫"),
       JSON.stringify(api0.tags));
@@ -94,7 +100,7 @@ async function main() {
     await sleep(3500);
     await evalJs(`window.alert=()=>true;window.uiConfirm=async()=>true;`);
 
-    /* 2) 入口 + 子页骨架 */
+    /* 2) 入口 + 无草稿基线：状态 chips 隐藏、卡片无状态徽章 */
     const s0 = JSON.parse(await evalJs(`(async () => {
       const nav = !!document.querySelector('.set-item[data-sub="knowledge"]');
       switchTab("knowledge");
@@ -102,26 +108,48 @@ async function main() {
       const chips = [...document.querySelectorAll("#kb-status-chips .cat-chip")].map(c => c.textContent.trim());
       const tagChips = [...document.querySelectorAll("#kb-tag-chips .cat-chip")].map(c => c.textContent.trim());
       const cards = [...document.querySelectorAll("#kb-cards .card")];
-      const badges = cards.map(c => (c.querySelector(".tag.warn, .tag.ok") || {}).textContent);
-      const stale = cards.filter(c => [...c.querySelectorAll(".tag")].some(tg => tg.textContent === "可能过期")).length;
       return JSON.stringify({
         nav, nCards: cards.length, chips, tagChips,
+        noWarnBadge: cards.every(c => !c.querySelector(".tag.warn")),
         count: (document.getElementById("kb-count") || {}).textContent,
-        badges, stale,
+        stale: cards.filter(c => [...c.querySelectorAll(".tag")].some(tg => tg.textContent === "可能过期")).length,
         hasSearch: !!document.getElementById("kb-search"),
       });
     })()`));
     check("设置导航有「知识库」入口", s0.nav === true, s0.nav);
-    check("状态 chips 全部3/草稿1/已转正2", /全部\s*3/.test(s0.chips.join("|")) &&
-      /草稿\s*1/.test(s0.chips.join("|")) && /已转正\s*2/.test(s0.chips.join("|")), JSON.stringify(s0.chips));
+    check("无草稿时状态 chips 整区隐藏", s0.chips.length === 0, JSON.stringify(s0.chips));
     check("标签 chips 含全部标签+4 个标签（a1 双标签各自成 chip）", s0.tagChips.length === 5 && s0.tagChips[0].startsWith("全部标签"),
       JSON.stringify(s0.tagChips));
-    check("3 张卡片 + 草稿/已转正徽章齐", s0.nCards === 3 && s0.badges.filter(b => b === "草稿").length === 1 &&
-      s0.badges.filter(b => b === "已转正").length === 2, JSON.stringify(s0.badges));
+    check("3 张卡片且全部无状态徽章（默认转正后无信息量）", s0.nCards === 3 && s0.noWarnBadge === true,
+      JSON.stringify({ nCards: s0.nCards, noWarnBadge: s0.noWarnBadge }));
     check("过期条目带「可能过期」徽章", s0.stale === 1, String(s0.stale));
     check("搜索框在位 + 计数 3 / 共 3 条", s0.hasSearch && /3\s*\/\s*共\s*3/.test(s0.count || ""), s0.count);
 
-    /* 3) 草稿过滤 + 转正流转 */
+    /* 3) 种回一条 draft（兼容路径）：徽章琥珀点 + 转正按钮 + chips 重现 */
+    writeFileSync(kbFile, JSON.stringify(DRAFT_SEED), "utf-8");
+    await evalJs(`(async () => { location.reload(); })()`);
+    await sleep(3500);
+    await evalJs(`window.alert=()=>true;window.uiConfirm=async()=>true;`);
+    const sD = JSON.parse(await evalJs(`(async () => {
+      switchTab("knowledge");
+      await new Promise(r => setTimeout(r, 1500));
+      const chips = [...document.querySelectorAll("#kb-status-chips .cat-chip")].map(c => c.textContent.trim());
+      const cards = [...document.querySelectorAll("#kb-cards .card")];
+      const dc = cards.find(c => c.querySelector(".name").textContent === "草稿回归条目");
+      const wb = dc && dc.querySelector(".tag.warn");
+      return JSON.stringify({
+        chips,
+        hasDraftCard: !!dc,
+        dotInDraft: !!(wb && wb.querySelector(".cdot")),
+        hasApprove: !!dc && [...dc.querySelectorAll("button")].some(b => b.textContent === "转正"),
+      });
+    })()`));
+    check("种回 draft 后状态 chips 重现（全部4/草稿1/已转正3）",
+      /全部\s*4/.test(sD.chips.join("|")) && /草稿\s*1/.test(sD.chips.join("|")) &&
+      /已转正\s*3/.test(sD.chips.join("|")), JSON.stringify(sD.chips));
+    check("草稿卡带琥珀圆点徽章 + 转正按钮", sD.hasDraftCard && sD.dotInDraft && sD.hasApprove, JSON.stringify(sD));
+
+    /* 4) 草稿过滤 + 转正流转 */
     const s1 = JSON.parse(await evalJs(`(async () => {
       [...document.querySelectorAll("#kb-status-chips .cat-chip")].find(c => c.textContent.includes("草稿")).click();
       await new Promise(r => setTimeout(r, 400));
@@ -132,16 +160,17 @@ async function main() {
       await new Promise(r => setTimeout(r, 1200));
       return JSON.stringify({ title, after: document.querySelectorAll("#kb-cards .card").length });
     })()`));
-    check("草稿 chip 只剩「七猫频道级联」且带转正按钮", s1.title === "七猫频道级联", JSON.stringify(s1));
+    check("草稿 chip 只剩「草稿回归条目」且带转正按钮", s1.title === "草稿回归条目", JSON.stringify(s1));
     const api1 = await (await fetch(SERVICE + "/api/knowledge")).json();
     check("转正后 drafts 1→0", api1.drafts === 0, JSON.stringify({ drafts: api1.drafts }));
-    check("转正后草稿 chip 下空", s1.after === 0, String(s1.after));
-    await evalJs(`(async () => {
-      [...document.querySelectorAll("#kb-status-chips .cat-chip")].find(c => c.textContent.includes("全部")).click();
-      await new Promise(r => setTimeout(r, 300));
-    })()`);
+    const s1b = JSON.parse(await evalJs(`JSON.stringify({
+      chipsGone: document.querySelectorAll("#kb-status-chips .cat-chip").length === 0,
+      cards: document.querySelectorAll("#kb-cards .card").length,
+    })`));
+    check("转正后状态 chips 区隐藏且列表不空（过滤态自动清除）", s1b.chipsGone === true && s1b.cards === 4,
+      JSON.stringify(s1b));
 
-    /* 4) 搜索 + 标签过滤 */
+    /* 5) 搜索 + 标签过滤 + 撇号标签转义 */
     const s2 = JSON.parse(await evalJs(`(async () => {
       const inp = document.getElementById("kb-search");
       inp.value = "番茄";
@@ -157,28 +186,18 @@ async function main() {
       const tagHit = document.querySelectorAll("#kb-cards .card").length;
       [...document.querySelectorAll("#kb-tag-chips .cat-chip")].find(c => c.textContent.includes("全部标签")).click();
       await new Promise(r => setTimeout(r, 300));
-      return JSON.stringify({ hit, restored, tagHit });
-    })()`));
-    check("搜索「番茄」命中 1 条，清空还原 3 条", s2.hit === 1 && s2.restored === 3, JSON.stringify(s2));
-    check("标签 chip「七猫」命中 1 条并可还原", s2.tagHit === 1, JSON.stringify(s2));
-
-    /* 4b) 含撇号的标签不截断内联 onclick（jsq 转义）
-     * 注意：写接口需设备控制权，裸 fetch 是「另一台设备」会被 423 拦截，
-     * 必须走页面内的 api()（与真实 UI 同一条控制权通道）。 */
-    const sEsc = JSON.parse(await evalJs(`(async () => {
       const created = await api("/api/knowledge/op", { method: "POST", body: JSON.stringify({
         op: "create", fields: { title: "撇号标签条目", body: "验证转义。", scope: "code", tags: ["it's", "a'b"] },
       }) }).then(() => true).catch(() => false);
       await loadKnowledge();
       await new Promise(r => setTimeout(r, 600));
-      const cards = [...document.querySelectorAll("#kb-cards .card")];
-      const c = cards.find(x => x.querySelector(".name").textContent === "撇号标签条目");
+      const cards2 = [...document.querySelectorAll("#kb-cards .card")];
+      const c = cards2.find(x => x.querySelector(".name").textContent === "撇号标签条目");
       const tags = [...(c ? c.querySelectorAll(".tag") : [])].filter(tg => tg.getAttribute("onclick"));
-      const target = tags.find(tg => tg.textContent === "it's");
-      if (target) target.click();
+      const tgt = tags.find(tg => tg.textContent === "it's");
+      if (tgt) tgt.click();
       await new Promise(r => setTimeout(r, 500));
-      const filtered = [...document.querySelectorAll("#kb-cards .card")];
-      const filteredTitles = filtered.map(x => x.querySelector(".name").textContent);
+      const filteredTitles = [...document.querySelectorAll("#kb-cards .card")].map(x => x.querySelector(".name").textContent);
       kbSetFilter("tag", "");
       await new Promise(r => setTimeout(r, 300));
       const id = (KB.data.entries || []).find(x => x.title === "撇号标签条目").id;
@@ -187,17 +206,19 @@ async function main() {
       await new Promise(r => setTimeout(r, 600));
       return JSON.stringify({
         created, tagTexts: tags.map(tg => tg.textContent), filteredTitles,
-        afterCleanup: (KB.data.entries || []).length,
+        afterCleanup: (KB.data.entries || []).length, hit, restored, tagHit,
       });
     })()`));
-    check("含撇号标签条目创建成功", sEsc.created === true, JSON.stringify(sEsc));
-    check("撇号标签渲染完整（未被截断）", (sEsc.tagTexts || []).includes("it's") && (sEsc.tagTexts || []).includes("a'b"),
-      JSON.stringify(sEsc.tagTexts));
-    check("点撇号标签能正确过滤（onclick 未语法错）", (sEsc.filteredTitles || []).length === 1 &&
-      sEsc.filteredTitles[0] === "撇号标签条目", JSON.stringify(sEsc.filteredTitles));
-    check("撇号用例清理干净（回到 3 条）", sEsc.afterCleanup === 3, String(sEsc.afterCleanup));
+    check("搜索「番茄」命中 1 条，清空还原 4 条", s2.hit === 1 && s2.restored === 4, JSON.stringify(s2));
+    check("标签 chip「七猫」命中 1 条并可还原", s2.tagHit === 1, JSON.stringify(s2));
+    check("含撇号标签条目创建成功", s2.created === true, JSON.stringify(s2));
+    check("撇号标签渲染完整（未被截断）", (s2.tagTexts || []).includes("it's") && (s2.tagTexts || []).includes("a'b"),
+      JSON.stringify(s2.tagTexts));
+    check("点撇号标签能正确过滤（onclick 未语法错）", (s2.filteredTitles || []).length === 1 &&
+      s2.filteredTitles[0] === "撇号标签条目", JSON.stringify(s2.filteredTitles));
+    check("撇号用例清理干净（回到 4 条）", s2.afterCleanup === 4, String(s2.afterCleanup));
 
-    /* 5) 新建弹框 → 保存即转正 */
+    /* 6) 新建弹框 → 保存即转正（转正不再挂徽章，以非草稿态判定） */
     const s3 = JSON.parse(await evalJs(`(async () => {
       kbFormOpen(null);
       await new Promise(r => setTimeout(r, 300));
@@ -214,18 +235,13 @@ async function main() {
         modalGone: document.getElementById("modal").classList.contains("hidden"),
         nCards: cards.length,
         created: !!nc,
-        approved: !!nc && !!nc.querySelector(".tag.ok"),
+        approved: !!nc && !nc.querySelector(".tag.warn"),   // 非草稿即转正（转正不再挂徽章）
       });
     })()`));
     check("新建弹框保存后关框 + 新卡片在列", s3.modalGone && s3.created, JSON.stringify(s3));
-    check("手动新建直接「已转正」", s3.approved === true, JSON.stringify(s3));
-    const api2 = await (await fetch(SERVICE + "/api/knowledge")).json();
-    const created = (api2.entries || []).find((x) => x.title === "UI 新建条目");
-    check("API total 3→4，新条 scope=code/tags 齐全", api2.total === 4 && created &&
-      created.scope === "code" && (created.tags || []).join(",") === "测试,UI",
-      JSON.stringify({ total: api2.total, e: created && { scope: created.scope, tags: created.tags } }));
+    check("手动新建直接转正（无草稿徽章）", s3.approved === true, JSON.stringify(s3));
 
-    /* 6) 版式：标题独占行不截断 / 徽章与标签分行 / 操作行钉底对齐 / 标签区限高 */
+    /* 7) 版式：标题独占行 / 元信息行 / 操作钉底对齐 / 标签区限高 */
     const sLayout = JSON.parse(await evalJs(`(async () => {
       await api("/api/knowledge/op", { method: "POST", body: JSON.stringify({
         op: "create", fields: {
@@ -244,7 +260,6 @@ async function main() {
       const ops = target.querySelector(".ops");
       const cardR = target.getBoundingClientRect(), opsR = ops.getBoundingClientRect();
       const nmR = nm.getBoundingClientRect(), mtR = meta.getBoundingClientRect();
-      // 同一行卡片（top 相近）的按钮底边是否对齐
       const sameRow = cards.filter(c => Math.abs(c.getBoundingClientRect().top - cardR.top) < 4);
       const gaps = sameRow.map(c => {
         const r = c.querySelector(".ops").getBoundingClientRect(), cr = c.getBoundingClientRect();
@@ -255,19 +270,19 @@ async function main() {
       const res = {
         nameText: nm.textContent,
         nameClamp: getComputedStyle(nm).webkitLineClamp,
-        // 标题未被省略号截断：渲染宽度撑满卡片内容区（独占行）
         nameFillsRow: Math.abs(nmR.width - (cardR.width - 32)) < 24,
         metaBelowName: mtR.top >= nmR.bottom - 1,
-        metaHoldsBadgesAndTags: !!meta.querySelector(".tag.warn, .tag.ok") &&
-          !!meta.querySelector(".tag.kt"),
+        metaHoldsBadgesAndTags: !!meta.querySelector(".tag.kt") &&
+          [...meta.querySelectorAll(".tag")].some(tg => !tg.classList.contains("kt")) &&
+          meta.querySelectorAll(".tag.kt").length >= 5,   // 后端 tags 上限 6
         metaWrapsUnderTitle: mtR.height <= 60 && mtR.width > nmR.width * 0.9,
         opsPinned: Math.round(cardR.bottom - opsR.bottom) <= 18,
         opsGapsEqual: new Set(gaps).size === 1,
         opsGaps: gaps,
         chipMaxH: cs.maxHeight,
         chipOverflow: cs.overflowY,
+        hairline: getComputedStyle(target, "::before").height,
       };
-      // 清理本用例新增条目
       const id = (KB.data.entries || []).find(x => x.title.indexOf("签约模式分为") >= 0).id;
       await api("/api/knowledge/op", { method: "POST", body: JSON.stringify({ id, op: "delete" }) });
       await loadKnowledge();
@@ -278,16 +293,16 @@ async function main() {
     check("长标题完整渲染（未被省略号截断）", sLayout.nameText.indexOf("签约模式分为") >= 0 &&
       sLayout.nameFillsRow === true, JSON.stringify(sLayout));
     check("标题两行截断策略生效（-webkit-line-clamp:2）", sLayout.nameClamp === "2", sLayout.nameClamp);
-    check("状态徽章与可点标签合并到标题下方元信息行（换行自适应）", sLayout.metaBelowName === true &&
+    check("元信息行在标题下方：8 个可点标签 + 状态 tag 同行", sLayout.metaBelowName === true &&
       sLayout.metaHoldsBadgesAndTags === true && sLayout.metaWrapsUnderTitle === true, JSON.stringify(sLayout));
     check("操作行钉底且同行卡片底边对齐", sLayout.opsPinned === true && sLayout.opsGapsEqual === true,
       JSON.stringify(sLayout.opsGaps));
     check("标签 chips 区限高可滚动", sLayout.chipMaxH === "82px" && sLayout.chipOverflow === "auto",
       sLayout.chipMaxH + "/" + sLayout.chipOverflow);
-    check("版式用例清理干净（回到 4：3 条种子 + 上一步新建）", sLayout.afterCleanup === 4, String(sLayout.afterCleanup));
+    check("卡片顶部主题色发丝线在位", sLayout.hairline === "2px", sLayout.hairline);
+    check("版式用例清理干净（回到 4：4 条存量 + 上一步新建待删）", sLayout.afterCleanup === 5, String(sLayout.afterCleanup));
 
-
-    /* 7) 编辑不改状态 + 删除回收 */
+    /* 8) 编辑不改状态 + 删除回收 */
     const s4 = JSON.parse(await evalJs(`(async () => {
       kbEditOpen("kb-a1");
       await new Promise(r => setTimeout(r, 300));
@@ -302,10 +317,12 @@ async function main() {
     const a1 = (api3.entries || []).find((x) => x.id === "kb-a1");
     check("编辑后正文更新且状态仍 approved", a1 && a1.body === "编辑后的正文。" && a1.status === "approved",
       JSON.stringify(a1 && { body: a1.body, status: a1.status }));
+    const api2before = await (await fetch(SERVICE + "/api/knowledge")).json();
+    const created = (api2before.entries || []).find((x) => x.title === "UI 新建条目");
     await evalJs(`kbOp(${JSON.stringify(created.id)}, "delete")`);
     await sleep(900);
     const api4 = await (await fetch(SERVICE + "/api/knowledge")).json();
-    check("删除后 total 回到 3", api4.total === 3, String(api4.total));
+    check("删除后 total 回到 4", api4.total === 4, String(api4.total));
 
     const fails = results.filter((r) => !r.ok);
     console.log(fails.length ? "\n✗ " + fails.length + " 项未过" : "\n全部通过");

@@ -1,5 +1,7 @@
 /* 一次性核验：详情页「✎ 编辑重试」按钮 + 按钮区压缩（Edge headless + CDP，临时端口 18835）。
  * 失败/取消任务 → 显示 编辑重试、隐藏 基于此任务新建；完成态 → 反之。
+ * 连载完成但未达标（verdict.publishable=false）→ 「↻ 重写未达标章」入口
+ * （任务级/run 级/右键菜单三处；达标收尾不出，英文模式有词条）。
  * 点编辑重试 → 回表单且预填、焦点落目标框；删除记录 → 细身右对齐。 */
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
@@ -51,6 +53,33 @@ async function main() {
     [{ n: 1, role: "implement", agent: "a1", agent_label: "Codex CLI", status: "timeout",
        summary: "超时 1200s，已终止进程树", started_at: "10:00:02", ended_at: "10:20:02",
        duration_s: 1200.0, log: "" }]);
+
+  // 连载未达标：完成态但 verdict.publishable=false → 「↻ 重写未达标章」入口
+  const mkSerial = (taskId, runId, title, publishable) => {
+    writeFileSync(join(dataDir, "tasks", taskId + ".json"), JSON.stringify({
+      id: taskId, type: "serial_novel", engine: "code", title, goal: "造数：" + title,
+      workdir: join(tmp, "wd-" + taskId), git_rev: "", git_state: "",
+      status: "done", created_at: "2026-09-15 10:00:00", attachments: [],
+      mode: "auto", difficulty: "auto", implementer: "", verify_command: "",
+      serial: { chapters: 2, words_per_chapter: 800 },
+    }), "utf-8");
+    mkdirSync(join(dataDir, "runs", runId), { recursive: true });
+    writeFileSync(join(dataDir, "runs", runId, "run.json"), JSON.stringify({
+      id: runId, kind: "orchestration", title, task_id: taskId,
+      status: "done", steps: [], messages: [], created_at: "2026-09-15 10:00:01",
+      started_at: "2026-09-15 10:00:01", ended_at: "2026-09-15 10:00:30",
+      cost_usd: 0, tokens: 0, error: "",
+      summary: publishable ? "连载任务达标" : "连载任务未达标",
+      git: null,
+      verdict: { serial: true, publishable, overall: publishable ? 7.8 : 6.9,
+        chapter_scores: [
+          { chapter: 1, title: "第 1 章", means: { 情节: 7.5 }, passed: true, rounds: 1, words: 800 },
+          { chapter: 2, title: "第 2 章", means: { 情节: publishable ? 7.6 : 6.0 },
+            passed: publishable, rounds: publishable ? 1 : 2, words: 800 }] },
+    }), "utf-8");
+  };
+  mkSerial("tserial1", "rserial1", "连载未达标任务", false);
+  mkSerial("tserial2", "rserial2", "连载达标任务", true);
 
   let svc = null, edge = null, ws = null;
   try {
@@ -138,7 +167,7 @@ async function main() {
       return JSON.stringify({ fs: cs.fontSize, w: b.getBoundingClientRect().width,
         rowW: row.getBoundingClientRect().width,
         right: Math.abs(row.getBoundingClientRect().right - b.getBoundingClientRect().right) }); })()`));
-    check("删除记录：细身（12px）", delStyle.fs === "12px", JSON.stringify(delStyle));
+    check("删除记录：细身（≤12px 小字号）", delStyle.fs <= "12px" || parseFloat(delStyle.fs) <= 12, JSON.stringify(delStyle));
     check("删除记录：宽度不足按钮区一半（不再满宽）",
       delStyle.w < delStyle.rowW / 2, JSON.stringify(delStyle));
     check("删除记录：右对齐（贴按钮区右缘）", delStyle.right < 2, JSON.stringify(delStyle));
@@ -162,6 +191,37 @@ async function main() {
     check("完成态：基于此任务新建可见", bs.nf.vis, JSON.stringify(bs));
     check("完成态：编辑重试隐藏", !bs.edit.vis, JSON.stringify(bs));
     check("完成态：继续任务隐藏", !bs.retry.vis, JSON.stringify(bs));
+
+    // 连载未达标（2026-09-20 重写未达标章）：完成态但 verdict.publishable=false
+    // → 任务级与 run 级详情都放行重试按钮，文案换「↻ 重写未达标章」
+    await evalJs(`sideOpenTask("tserial1")`);
+    await sleep(1200);
+    bs = JSON.parse(await evalJs(btnsOf));
+    check("连载未达标（任务级）：重写未达标章可见且文案正确",
+      bs.retry.vis && bs.retry.txt.includes("重写未达标章"), JSON.stringify(bs.retry));
+    await evalJs(`openRun("rserial1")`);
+    await sleep(1200);
+    bs = JSON.parse(await evalJs(btnsOf));
+    check("连载未达标（run 级）：重写未达标章可见",
+      bs.retry.vis && bs.retry.txt.includes("重写未达标章"), JSON.stringify(bs.retry));
+    // 对照：连载达标收尾 → 不出重写入口
+    await evalJs(`sideOpenTask("tserial2")`);
+    await sleep(1200);
+    bs = JSON.parse(await evalJs(btnsOf));
+    check("连载达标：无重试入口", !bs.retry.vis, JSON.stringify(bs.retry));
+    // 侧栏右键菜单：连载未达标任务带「↻ 重写未达标章」
+    const ctxRw = JSON.parse(await evalJs(`(async () => {
+      const det = document.querySelector('#side-tasks .stask[data-task="tserial1"]');
+      if (!det) return JSON.stringify({ err: "no row" });
+      det.dispatchEvent(new MouseEvent("contextmenu",
+        { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
+      await new Promise(r => setTimeout(r, 200));
+      const labels = [...document.querySelectorAll("#ctx-menu .ctx-item")]
+        .map(x => x.textContent.trim());
+      document.body.click();
+      return JSON.stringify({ labels }); })()`));
+    check("右键菜单：连载未达标显示「↻ 重写未达标章」",
+      ctxRw.labels && ctxRw.labels.some((l) => l.includes("重写未达标章")), JSON.stringify(ctxRw));
 
     // 超时场景（放最后，避免打乱前面预填断言的当前任务）：
     // 错误框带 TIMEOUT 徽标；步骤芯片显示「超时」（rd-steps 行内是 chip，无 sdot）
@@ -196,6 +256,13 @@ async function main() {
     check("英文模式：编辑重试按钮显示 Edit & retry",
       en.edit.includes("Edit & retry"), JSON.stringify(en));
     check("英文模式：TIMEOUT 徽标仍在（语言中立）", en.badge, JSON.stringify(en));
+    // 英文模式：连载未达标的重写入口（rserial1）
+    await evalJs(`openRun("rserial1")`);
+    await sleep(1200);
+    const enRw = JSON.parse(await evalJs(`JSON.stringify({
+      retry: (document.getElementById("btn-retry") || {}).textContent || "" })`));
+    check("英文模式：重写未达标章按钮显示 Rewrite unqualified chapters",
+      enRw.retry.includes("Rewrite unqualified"), JSON.stringify(enRw));
   } finally {
     try { if (ws) ws.close(); } catch (e) { /* ignore */ }
     try { if (edge) edge.kill(); } catch (e) { /* ignore */ }

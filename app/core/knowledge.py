@@ -6,8 +6,10 @@
   - 知识（knowledge）记「已知是这样」——领域事实/平台规则/结论/方法论，
     来源=run 产出材料（调研报告/文档）。两者输入源不同，提炼互不双写。
 
-质量闸门：自动提炼的条目一律落 draft（草稿态），人工「转正」后才参与注入——
-垃圾知识进了提示词比没有知识更糟；手动新建即视为已确认（直接 approved）。
+质量闸门：条目默认直接转正（approved）参与注入——用户拍板：人工把关太重，
+提炼提示词里的「只保留有明确复用价值的」约束兜质量。status 字段保留 draft
+枚举向后兼容，手动新建同样直接 approved；migrate_drafts_approved() 在启动时
+把历史草稿一次性转正。
 
 注入纪律（与教训反着来）：教训是全量小注（top-8），知识默认不注入——
 scope 命中且库里有 approved 条目才成块，按与任务目标的相关性取 top，
@@ -342,7 +344,7 @@ def learn_from_run(run_id):
                 as_of = _now()[:10]
             if upsert_entry(task.get("type") or "*", x["title"], x["body"],
                             tags=x.get("tags"), source=run_id,
-                            as_of=as_of, status="draft"):
+                            as_of=as_of, status="approved"):
                 n += 1
     except Exception:
         return n
@@ -357,6 +359,23 @@ def learn_async(run_id):
         except Exception:
             pass
     threading.Thread(target=_run, name="kb-learn", daemon=True).start()
+
+
+def migrate_drafts_approved():
+    """一次性迁移：草稿闸门退役（默认直接转正），把历史 draft 全部转正。
+
+    幂等——没有 draft 时零写入。返回转正条数。"""
+    with _LOCK:
+        data = _load()
+        items = data.get("entries") or []
+        dirty = [x for x in items if (x.get("status") or "draft") != "approved"]
+        if not dirty:
+            return 0
+        for x in dirty:
+            x["status"] = "approved"
+            x["updated_at"] = _now()
+        _save(data)
+        return len(dirty)
 
 
 def view():

@@ -86,14 +86,54 @@ def view():
 
 
 def recover_orphans():
-    """启动收尸：waiting_login / busy 的线程随进程重启死掉，统一改判 error。"""
+    """启动收尸：waiting_login / busy 的线程随进程重启死掉，统一改判 error。
+
+    升级自愈：旧版「等扫码窗口一关就冤判超时」留下的 error（error 文案带
+    「等待登录超时」）排队后台复核——profile 登录态还在的直接翻 connected，
+    别让升级完还挂着旧冤案；attach 不到活实例就维持原样（用户点重连时
+    新终审逻辑自会兜住）。"""
     _load()
     n = 0
+    stale = []
     for plat in PLATFORMS:
-        if _st(plat).get("status") in ("waiting_login", "busy"):
+        s = _st(plat)
+        if s.get("status") in ("waiting_login", "busy"):
             _set(plat, status="error", error="上次操作随服务重启中断，请重试")
             n += 1
+        elif s.get("status") == "error" and "等待登录超时" in (s.get("error") or ""):
+            stale.append(plat)
+    if stale:
+        threading.Thread(target=_recheck_stale_errors, args=(stale,),
+                         daemon=True, name="pub-stale-recheck").start()
     return n
+
+
+def _recheck_stale_errors(plats):
+    """旧版假超时的后台复核：只 attach 还活着的浏览器实例（绝不 launch——
+    升级重启时静默弹窗口吓人），登录态复核过了翻 connected；否则不动。"""
+    for plat in plats:
+        if _st(plat).get("status") != "error":
+            continue                  # 用户已先行操作（重连/断开），别覆盖
+        port = _st(plat).get("port") or 0
+        if not port:
+            continue
+        try:
+            b = Browser.attach(int(port))
+        except Exception:
+            continue                  # 实例已死：不 launch，维持原错误
+        with LOCK:
+            _browsers[plat] = b
+        page = b.first_page(create=False)
+        if page is None:
+            continue
+        try:
+            ok, _u = _check_login(plat, page)
+        except Exception:
+            continue
+        if ok and _st(plat).get("status") == "error":
+            _set(plat, status="connected", error="",
+                 last_login=time.strftime("%m-%d %H:%M"))
+            ledger.record(plat, "connect", ok=True)
 
 
 # ---------------------------------------------------------------- 浏览器会话
@@ -245,11 +285,29 @@ def connect(plat):
             except (BrowserError, Exception):
                 pass                        # 页面被用户关掉等：继续等到超时
             time.sleep(5)
-        _set(plat, status="error", error="等待登录超时（15 分钟），请重新点连接")
+        _finalize_login_wait(plat)
 
     threading.Thread(target=wait_login, daemon=True,
                      name="pub-login-%s" % plat).start()
     return True, ""
+
+
+def _finalize_login_wait(plat):
+    """等扫码超时后的终审：用户可能已在本窗口登录后把窗口关了（profile
+    里登录态还在），attach-or-launch 重拉页面再复核一次，别急着冤判
+    超时——「明明登录着却报超时」是发布卡死感的最大来源。复核也过不了
+    才落超时错误。返回 True 表示复核通过（已判 connected）。"""
+    try:
+        _b, page = _open_page(plat)
+        ok, _u = _check_login(plat, page)
+    except Exception:
+        ok = False
+    if ok:
+        _set(plat, status="connected", last_login=time.strftime("%m-%d %H:%M"))
+        ledger.record(plat, "connect", ok=True)
+    else:
+        _set(plat, status="error", error="等待登录超时（15 分钟），请重新点连接")
+    return ok
 
 
 def disconnect(plat):
@@ -354,6 +412,25 @@ def create_book_async(task_id, plat, auto_submit=False):
 
     threading.Thread(target=run, daemon=True,
                      name="pub-book-%s" % plat).start()
+    return True, ""
+
+
+# ---------------------------------------------------------------- 动作：登记已有作品
+def register_book(task_id, plat, title, book_id=""):
+    """人工登记平台已有作品：建书流程没走通、或用户纯手工在平台上建的
+    书，补进台账让卡片翻到「已建书·发一章」，避免再点「创建作品」造出
+    重复书。只动本地台账不碰浏览器；发章按书名找书，title 必填，
+    book_id 选填（有直达 URL 时填）。已登记会覆盖更新（兼纠错口）。"""
+    from .. import store
+    if plat not in PLATFORMS:
+        return False, "未知平台"
+    if not store.get_task(task_id):
+        return False, "任务不存在"
+    title = (title or "").strip()
+    if not title:
+        return False, "作品名必填（发章按作品名在平台找书）"
+    ledger.save_book(task_id, plat, {"book_id": str(book_id or "").strip(),
+                                     "title": title[:120]})
     return True, ""
 
 

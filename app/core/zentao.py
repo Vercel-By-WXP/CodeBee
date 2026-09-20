@@ -12,6 +12,10 @@ automation._tick（同 publish/auto.fire_due 模式），内部按 interval_hour
   GET  {base}/api.php/v1/bugs/{id}            单查（回写前确认状态防谎报）
   POST {base}/api.php/v1/bugs/{id}/resolve    {resolution, resolvedBuild, comment, assignedTo}
   PUT  {base}/api.php/v1/bugs/{id}            {assignedTo, comment}（转派/失败说明）
+  GET  {base}/api.php/v1/products|users       产品/账号清单（前端下拉辅助）
+
+地址自适应：根路径 tokens 404 时自动试 {base}/zentao/api.php/v1（官方一键安装包
+默认子路径部署），探测成功缓存在 _APIBASE（key=用户填的原始地址）。
 
 产品档案（product_profiles）：每产品一份 {指派过滤, 严重度, 我方端 our_sides,
 后端/前端仓库(workdir/git_rev/verify_command), repo_hints, 负责人 owners,
@@ -36,6 +40,7 @@ backend | frontend | both | not_ours | unknown。
 from __future__ import annotations
 
 import html as _html
+import hashlib
 import ipaddress
 import json
 import logging
@@ -45,6 +50,7 @@ import socket
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -298,6 +304,14 @@ class ZenError(Exception):
 
 
 _TOKEN = {"v": "", "at": 0.0}
+# 原始地址 → 探测成功的 api 基址（一键安装包常部署在 /zentao 子路径下，自动补探）
+_APIBASE = {}
+# 通道自适应：原始地址 → "rest"（≥15 REST v1）/ "old"（老版 module-method JSON 接口）
+_MODE = {}
+_OLD = {"api": "", "sid": "", "at": 0.0}
+_OLD_FORM = {"form": ""}      # 命中的密码形态 "plain" | "md5chain"，缓存避免重复试
+_REST_LAST_ERR = {"msg": ""}
+_OLD_TTL = 20 * 60
 
 
 def _reset_token():
@@ -305,53 +319,94 @@ def _reset_token():
     _TOKEN["at"] = 0.0
 
 
-def _api_base(base_url):
+def resolved_base_url(base_url):
+    """探测成功后的有效地基（含自动补出的子路径）；没探测过返回空串。"""
+    b = str(base_url or "").strip().rstrip("/")
+    hit = _APIBASE.get(b) or (_OLD.get("api") if _MODE.get(b) == "old" else "")
+    if not hit:
+        return ""
+    return re.sub(r"/api\.php/v1$", "", hit)
+
+
+def _raw_base(base_url):
     b = str(base_url or "").strip().rstrip("/")
     if not b:
         raise ZenError("禅道地址未配置")
     if not b.startswith(("http://", "https://")):
         raise ZenError("禅道地址必须以 http:// 或 https:// 开头")
+    return b
+
+
+def _api_base(base_url):
+    b = _raw_base(base_url)
+    hit = _APIBASE.get(b)
+    if hit:
+        return hit
     return b + "/api.php/v1"
 
 
-def _fetch_token(base_url, account, password):
-    """获取新 token 并缓存。失败抛 ZenError。"""
-    url = _guard_url(_api_base(base_url) + "/tokens")
-    body = json.dumps({"account": str(account or ""), "password": str(password or "")},
-                      ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(url, data=body, method="POST", headers={
-        "Content-Type": "application/json", "Accept": "application/json"})
-    try:
-        with _no_redirect_opener().open(req, timeout=HTTP_TIMEOUT) as r:
-            data = json.loads((r.read() or b"{}").decode("utf-8", "replace"))
-    except urllib.error.HTTPError as e:
+def _base_candidates(b):
+    """api 基址候选：用户填的根路径 → 官方一键安装包常见的 /zentao 子路径。"""
+    out, seen = [], set()
+    for c in (b + "/api.php/v1", b + "/zentao/api.php/v1"):
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
+
+
+def _rest_login(base_url, account, password):
+    """REST v1 通道取 token。成功返回 token（缓存基址）；
+    通道不可用（404 / 只认应用 code 的 200 信封）返回 None；
+    账密被 REST 明确拒绝（401/403）或网络/守卫失败抛 ZenError。"""
+    b = _raw_base(base_url)
+    for api in _base_candidates(b):
+        url = _guard_url(api + "/tokens")
+        body = json.dumps({"account": str(account or ""), "password": str(password or "")},
+                          ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(url, data=body, method="POST", headers={
+            "Content-Type": "application/json", "Accept": "application/json"})
         try:
-            detail = json.loads((e.read() or b"").decode("utf-8", "replace"))
-            msg = (detail.get("error") or "") if isinstance(detail, dict) else ""
-        except Exception:
-            msg = ""
-        if e.code in (401, 403):
-            raise ZenError("禅道账号或密码不对（%s）%s" % (e.code, msg))
-        raise ZenError("禅道返回 %s：%s" % (e.code, msg or "获取令牌失败"))
-    except ZenError:
-        raise
-    except Exception as e:
-        raise ZenError("连不上禅道（%s）——请检查地址与网络" % e)
-    tok = ""
-    if isinstance(data, dict):
-        tok = str(data.get("token") or "")
-        if not tok and isinstance(data.get("data"), dict):
-            tok = str(data["data"].get("token") or "")
-    if not tok:
-        raise ZenError("禅道响应里没有 token——请确认版本 ≥15 且已开启 REST API")
-    _TOKEN["v"] = tok
-    _TOKEN["at"] = time.time()
-    return tok
+            with _no_redirect_opener().open(req, timeout=HTTP_TIMEOUT) as r:
+                data = json.loads((r.read() or b"{}").decode("utf-8", "replace"))
+        except urllib.error.HTTPError as e:
+            try:
+                detail = json.loads((e.read() or b"").decode("utf-8", "replace"))
+                msg = (detail.get("error") or "") if isinstance(detail, dict) else ""
+            except Exception:
+                msg = ""
+            if e.code in (401, 403):
+                raise ZenError("禅道账号或密码不对（%s）%s" % (e.code, msg))
+            if e.code == 404:
+                _REST_LAST_ERR["msg"] = "REST 接口不存在（404）"
+                continue        # 换下一个候选基址
+            raise ZenError("禅道返回 %s：%s" % (e.code, msg or "获取令牌失败"))
+        except ZenError:
+            raise
+        except Exception as e:
+            raise ZenError("连不上禅道（%s）——请检查地址与网络" % e)
+        tok = ""
+        if isinstance(data, dict):
+            tok = str(data.get("token") or "")
+            if not tok and isinstance(data.get("data"), dict):
+                tok = str(data["data"].get("token") or "")
+        if tok:
+            _APIBASE[b] = api
+            _TOKEN["v"] = tok
+            _TOKEN["at"] = time.time()
+            return tok
+        # HTTP 200 但没有 token：REST 在但不认账密（如只认应用 code 的部署）
+        _REST_LAST_ERR["msg"] = "REST 接口不认账密（%s）" % (
+            str(data.get("errmsg") or data.get("error") or "响应里没有 token"))
+    return None
 
 
 def _token(cfg, force=False):
     if force or not _TOKEN["v"] or time.time() - _TOKEN["at"] > TOKEN_TTL:
-        return _fetch_token(cfg.get("base_url"), cfg.get("account"), cfg.get("password"))
+        tok = _rest_login(cfg.get("base_url"), cfg.get("account"), cfg.get("password"))
+        if not tok:
+            raise ZenError(_REST_LAST_ERR.get("msg") or "REST 通道不可用")
+        return tok
     return _TOKEN["v"]
 
 
@@ -394,10 +449,317 @@ def _api(method, path, cfg=None, body=None):
     raise ZenError("禅道认证失败（token 两次获取后仍被拒绝，检查账号权限）")
 
 
+# ---------------------------------------------------------------- 老版 JSON 接口适配
+# 禅道 15 以前的经典入口：/zentao/api-getsessionid.json 取会话 → user-login.json
+# 账密登录（Cookie zentaosid）→ {module}-{method}-{参数}.json 调业务。响应是双层
+# 信封 {"status","data":"<json 字符串>"}。有的部署 REST 只认应用 code，账密只能
+# 走这条通道，故在 _call 里自动探测分路。REST 路径在这里翻译成老接口形态。
+
+def _old_parse(raw):
+    """老信封解析。非 JSON（多半是登录重定向 HTML）返回 None = 会话死/不可用。"""
+    try:
+        outer = json.loads(raw.decode("utf-8", "replace"))
+    except Exception:
+        return None
+    if isinstance(outer, dict) and isinstance(outer.get("data"), str):
+        try:
+            outer["data"] = json.loads(outer["data"])
+        except Exception:
+            pass
+    return outer if isinstance(outer, dict) else None
+
+
+def _old_fail(outer):
+    """status=failed / result=fail → 人话错误文本；成功返回空串。"""
+    if not isinstance(outer, dict):
+        return ""
+    if outer.get("status") == "failed" or outer.get("result") == "fail":
+        return str(outer.get("reason") or outer.get("message")
+                   or outer.get("error") or "调用失败")
+    return ""
+
+
+def _old_get(api, path):
+    url = _guard_url(api + path)
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    with _no_redirect_opener().open(req, timeout=HTTP_TIMEOUT) as r:
+        return r.read() or b""
+
+
+def _old_post(api, path, form):
+    url = _guard_url(api + path)
+    data = urllib.parse.urlencode(form or {}).encode("utf-8")
+    req = urllib.request.Request(url, data=data, method="POST", headers={
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json"})
+    with _no_redirect_opener().open(req, timeout=HTTP_TIMEOUT) as r:
+        return r.read() or b""
+
+
+def _old_session(api):
+    """取新会话。返回 (sid, rand)；通道不可用返回 None。"""
+    try:
+        raw = _old_get(api, "/api-getsessionid.json")
+    except urllib.error.HTTPError:
+        return None
+    except ZenError:
+        raise
+    except Exception as e:
+        raise ZenError("连不上禅道（%s）——请检查地址与网络" % e)
+    outer = _old_parse(raw)
+    if not outer or not isinstance(outer.get("data"), dict):
+        return None
+    d = outer["data"]
+    return str(d.get("sessionID") or ""), str(d.get("rand") or "")
+
+
+def _old_probe_authed(api, sid):
+    """登录成功的兜底判据：带会话调需登录端点拿得到 JSON 信封（未登录会被
+    重定向到登录页 HTML，解析出来是 None）。"""
+    try:
+        raw = _old_get(api, "/my-index.json?zentaosid=" + sid)
+    except Exception:
+        return False
+    return _old_parse(raw) is not None
+
+
+def _old_identify(api, sid, rand, account, password, form):
+    """老接口账密登录。返回 (ok, 人话错误)。form=plain|md5chain。"""
+    pw = str(password or "")
+    if form == "md5chain":
+        pw = hashlib.md5((hashlib.md5(pw.encode("utf-8")).hexdigest()
+                          + str(rand)).encode("utf-8")).hexdigest()
+    try:
+        raw = _old_post(api, "/user-login.json?zentaosid=" + sid,
+                        {"account": str(account or ""), "password": pw})
+    except Exception as e:
+        return False, "连不上禅道（%s）" % e
+    outer = _old_parse(raw)
+    if outer is None:
+        return False, "登录响应不可识别"
+    err = _old_fail(outer)
+    if err:
+        return False, err
+    # 成功响应形状各版本不一：user 可能在 data 里（老）或顶层（实测某老版部署）
+    d = outer.get("data")
+    if (isinstance(d, dict) and isinstance(d.get("user"), dict)) \
+            or isinstance(outer.get("user"), dict) or _old_probe_authed(api, sid):
+        return True, ""
+    return False, "登录未被接受（账号或密码不对，或账号被锁）"
+
+
+def _old_login(cfg, rest_err=""):
+    """老接口通道登录（带 /zentao 子路径候选）。成功置 _OLD 缓存与密码形态。"""
+    b = _raw_base(cfg.get("base_url"))
+    account, password = cfg.get("account"), cfg.get("password")
+    cands, seen = [], set()
+    for c in (b + "/zentao", b):
+        if c not in seen:
+            seen.add(c)
+            cands.append(c)
+    last = ""
+    for api in cands:
+        sess = _old_session(api)
+        if not sess:
+            continue
+        sid, rand = sess
+        forms = [_OLD_FORM["form"] or "plain", "md5chain", "plain"]
+        tried = set()
+        for form in [f for f in forms if not (f in tried or tried.add(f))]:
+            ok, err = _old_identify(api, sid, rand, account, password, form)
+            if ok:
+                _OLD.update(api=api, sid=sid, at=time.time())
+                _OLD_FORM["form"] = form
+                _MODE[b] = "old"
+                return
+            last = err
+        break       # 同一台服务，账密结果与子路径无关，别再烧尝试次数
+    if not last:
+        raise ZenError("禅道老版接口不可用（会话接口无响应——地址若是子目录部署要带上子目录）"
+                       + ("；%s" % rest_err if rest_err else ""))
+    if "账号" in last or "密码" in last or "锁定" in last:
+        raise ZenError(last)
+    raise ZenError("禅道老接口登录失败：%s" % last)
+
+
+def _old_call(method, path, cfg, body=None):
+    """老接口执行：翻译 REST 路径 → module-method.json，返回 REST 同形状的 dict。"""
+    b = _raw_base(cfg.get("base_url"))
+    if _MODE.get(b) != "old" or not _OLD["sid"] or time.time() - _OLD["at"] > _OLD_TTL:
+        _old_login(cfg)
+    parts = urllib.parse.urlsplit(path)
+    q = dict(urllib.parse.parse_qsl(parts.query))
+    p = parts.path
+    for attempt in (1, 2):
+        try:
+            return _old_route(_OLD["api"], method, p, q, body)
+        except _OldSessionDead:
+            if attempt == 2:
+                break
+            _OLD["sid"] = ""
+            _old_login(cfg)
+        except urllib.error.HTTPError as e:
+            raise ZenError("禅道老接口 %s（%s）调用失败" % (p, e.code))
+    raise ZenError("禅道会话两次登录后仍失效（检查账号权限）")
+
+
+class _OldSessionDead(Exception):
+    pass
+
+
+def _pairs_to_list(pairs, id_key, name_key):
+    """{id/name: 值} 形态的 pairs → [{id,name}] 列表（值可能为串或对象）。"""
+    out = []
+    for k, v in (pairs or {}).items():
+        if isinstance(v, dict):
+            item = dict(v)
+            item.setdefault(id_key, k)
+        else:
+            item = {id_key: k, name_key: v}
+        out.append(item)
+    return out
+
+
+def _old_route(api, method, p, q, body):
+    """路径翻译 + 请求 + 归一。会话死抛 _OldSessionDead。"""
+
+    def go(raw, translator=None):
+        outer = _old_parse(raw)
+        if outer is None:
+            txt = raw.decode("utf-8", "replace")
+            if "user-login" in txt:
+                raise _OldSessionDead()     # 登录重定向 = 会话死
+            # 其余 HTML 是 js::locate/alert 回包（老禅道 POST 动作成功就回这种）
+            return {"_js": True}
+        err = _old_fail(outer)
+        if err:
+            raise ZenError("禅道老接口%s：%s" % (translator or "", err))
+        return outer.get("data")
+
+    def get(path):
+        try:
+            raw = _old_get(api, path + ("&" if "?" in path else "?")
+                           + "zentaosid=" + _OLD["sid"])
+        except urllib.error.HTTPError as e:
+            raw = e.read() or b""
+            if _old_parse(raw) is None:
+                raise _OldSessionDead()     # 非 JSON：多半被重定向到登录页
+        return raw
+
+    def post(path, form):
+        try:
+            raw = _old_post(api, path + ("&" if "?" in path else "?")
+                            + "zentaosid=" + _OLD["sid"], form)
+        except urllib.error.HTTPError as e:
+            raw = e.read() or b""
+            if e.code in (401, 403) or _old_parse(raw) is None:
+                raise _OldSessionDead()
+        return raw
+
+    m = re.match(r"^/products/(\d+)/bugs$", p)
+    if m and method == "GET":
+        pid = m.group(1)
+        page = max(1, int(q.get("page") or 1))
+        out, total, seen_ids = [], 0, set()
+        # 翻页用路径参数形态（实测部分老版不认 query 翻页参数）：带 branch 段；
+        # 若 recPerPage 没生效（老版本无 branch 段会错位解析）回落 query 形态。
+        branch_form = True
+        for pg in range(page, page + 6):     # 去重兜底：翻页参数不被认时不会死循环
+            if branch_form:
+                pathq = "/bug-browse-%s-0-unclosed-0-id_desc-0-%d-%d.json" % (pid, PAGE_LIMIT, pg)
+            else:
+                pathq = "/bug-browse-%s.json?browseType=unclosed&orderBy=id_desc" \
+                        "&recPerPage=%d&pagerID=%d" % (pid, PAGE_LIMIT, pg)
+            d = go(get(pathq), "（拉 bug 列表）")
+            if branch_form and isinstance(d, dict):
+                try:
+                    got = int((d.get("pager") or {}).get("recPerPage") or 0)
+                except (TypeError, ValueError):
+                    got = 0
+                if got != PAGE_LIMIT:
+                    branch_form = False
+                    continue                 # 形态没对上：换 query 形态重拉本页
+            if not isinstance(d, dict):
+                break
+            bugs = d.get("bugs") if isinstance(d.get("bugs"), list) else []
+            fresh = [x for x in bugs if isinstance(x, dict)
+                     and str(x.get("id")) not in seen_ids]
+            for x in fresh:
+                seen_ids.add(str(x.get("id")))
+            out.extend(fresh)
+            try:
+                total = int((d.get("pager") or {}).get("recTotal") or 0)
+            except (TypeError, ValueError, AttributeError):
+                total = 0
+            if not fresh or (total and len(out) >= total) or len(out) >= MAX_BUGS:
+                break
+        return {"bugs": out[:MAX_BUGS], "total": total or len(out)}
+
+    m = re.match(r"^/products/(\d+)/modules$", p)
+    if m and method == "GET":
+        d = go(get("/tree-browse-%s-module.json" % m.group(1)), "（拉模块清单）")
+        items = []
+        if isinstance(d, dict):
+            items = d.get("sons") or d.get("modules") or []
+        elif isinstance(d, list):
+            items = d
+        return {"_list": [x for x in items if isinstance(x, dict) and x.get("id")]}
+
+    if p == "/products" and method == "GET":
+        d = go(get("/api-getmodel-product-getpairs.json"), "（拉产品清单）")
+        pairs = d.get("products") if isinstance(d, dict) and isinstance(d.get("products"), dict) else d
+        return {"_list": _pairs_to_list(pairs, "id", "name")}
+
+    if p == "/users" and method == "GET":
+        d = go(get("/api-getmodel-user-getpairs.json"), "（拉账号清单）")
+        return {"_list": _pairs_to_list(d, "account", "realname")}
+
+    m = re.match(r"^/bugs/(\d+)$", p)
+    if m and method == "GET":
+        d = go(get("/bug-view-%s.json" % m.group(1)), "（查 bug）")
+        return d.get("bug") if isinstance(d, dict) and isinstance(d.get("bug"), dict) else d
+
+    m = re.match(r"^/bugs/(\d+)/resolve$", p)
+    if m and method == "POST":
+        form = {k: str(v or "") for k, v in (body or {}).items()}
+        go(post("/bug-resolve-%s.json" % m.group(1), form), "（resolve）")
+        return {"ok": True}
+
+    m = re.match(r"^/bugs/(\d+)$", p)
+    if m and method == "PUT":
+        form = {k: str(v or "") for k, v in (body or {}).items() if k in ("assignedTo", "comment")}
+        go(post("/bug-assignTo-%s.json" % m.group(1), form), "（转派）")
+        return {"ok": True}
+
+    raise ZenError("禅道老接口不认识该调用：%s %s（请升级禅道到 ≥15 用 REST 接口）"
+                   % (method, p))
+
+
+def _call(method, path, cfg=None, body=None):
+    """统一入口：REST v1 优先；通道探明后按模式分发（账密不被 REST 接受时自动
+    切老版 JSON 接口）。所有业务调用都走这里，拿到的都是 REST 形状。"""
+    c = cfg or _cfg()
+    b = _raw_base(c.get("base_url"))
+    mode = _MODE.get(b)
+    if not mode:
+        tok = _rest_login(b, c.get("account"), c.get("password"))
+        if tok:
+            _MODE[b] = mode = "rest"
+        else:
+            _old_login(c, _REST_LAST_ERR.get("msg", ""))
+            mode = "old"
+    if mode == "rest":
+        return _api(method, path, cfg=c, body=body)
+    return _old_call(method, path, c, body=body)
+
+
 def _acct(v):
-    """assignedTo/openedBy 兼容：新版返回 {account,...} 用户对象，老版直接是账号串。"""
+    """assignedTo/openedBy 兼容：新版是 {account,...} 用户对象，老版可能是
+    [账号, 姓名] 数组或账号串。"""
     if isinstance(v, dict):
         return str(v.get("account") or "").strip()
+    if isinstance(v, (list, tuple)) and v:
+        return str(v[0] or "").strip()
     return str(v or "").strip()
 
 
@@ -437,8 +799,8 @@ def list_bugs(cfg, product_id):
     """拉一个产品下的 bug（分页，总量封顶 MAX_BUGS）。返回原始 bug dict 列表。"""
     out = []
     for page in range(1, 6):
-        d = _api("GET", "/products/%s/bugs?page=%d&limit=%d" % (product_id, page, PAGE_LIMIT),
-                 cfg=cfg)
+        d = _call("GET", "/products/%s/bugs?page=%d&limit=%d" % (product_id, page, PAGE_LIMIT),
+                  cfg=cfg)
         bugs = d.get("bugs") if isinstance(d, dict) else None
         if not isinstance(bugs, list):
             raise ZenError("禅道 bug 列表响应形状不对（预期 bugs 数组）")
@@ -458,7 +820,7 @@ def fetch_modules(product_id):
     _ensure_loaded()
     cfg = _cfg()
     try:
-        d = _api("GET", "/products/%s/modules" % product_id, cfg=cfg)
+        d = _call("GET", "/products/%s/modules" % product_id, cfg=cfg)
     except ZenError as e:
         return {"ok": False,
                 "error": "%s——也可能你的禅道没有该接口：请在禅道产品视图 URL 里查模块 ID 手工填写" % e}
@@ -474,28 +836,127 @@ def fetch_modules(product_id):
     return {"ok": True, "modules": out[:200]}
 
 
+def _list_items(d, key):
+    """禅道 REST v1 清单响应形状兼容：{key:[...]} / 裸数组(_list) / {id:{...}} 字典。"""
+    if not isinstance(d, dict):
+        return None
+    if isinstance(d.get(key), list):
+        return d[key]
+    if isinstance(d.get("_list"), list):
+        return d["_list"]
+    vals = [v for v in d.values() if isinstance(v, dict) and v.get("id")]
+    return vals or None
+
+
+def fetch_products():
+    """拉产品清单（产品 ID 下拉选择辅助）。接口不存在/失败返回 ok:False+人话。"""
+    _ensure_loaded()
+    cfg = _cfg()
+    out, total = [], 0
+    try:
+        page = 1
+        while page <= 3:
+            d = _call("GET", "/products?page=%d&limit=100" % page, cfg=cfg)
+            items = _list_items(d, "products")
+            if not items:
+                break
+            out.extend(it for it in items
+                       if isinstance(it, dict) and str(it.get("id") or "") != "")
+            try:
+                total = int(d.get("total") or 0)
+            except (TypeError, ValueError, AttributeError):
+                total = 0
+            if not total or len(out) >= total:
+                break
+            page += 1
+    except ZenError as e:
+        return {"ok": False, "error": "%s——请先「测试连接」确认地址与账号可用" % e}
+    if not out:
+        return {"ok": False, "error": "禅道里没有产品，或响应形状不认识（REST API 需 ≥15）"}
+    seen, uniq = set(), []
+    for m in out:
+        try:
+            pid = int(m["id"])
+        except (TypeError, ValueError):
+            pid = m["id"]
+        if pid in seen:
+            continue
+        seen.add(pid)
+        uniq.append({"id": pid, "name": str(m.get("name") or ""),
+                     "status": str(m.get("status") or "")})
+    uniq.sort(key=lambda x: str(x["id"]))
+    return {"ok": True, "products": uniq[:500]}
+
+
+def fetch_users():
+    """拉禅道账号清单（负责人/转派下拉辅助）。失败返回 ok:False，前端仍可手填。"""
+    _ensure_loaded()
+    cfg = _cfg()
+    try:
+        d = _call("GET", "/users?limit=1000", cfg=cfg)
+    except ZenError as e:
+        return {"ok": False, "error": "%s——账号清单拉不到，仍可手填账号" % e}
+    items = None
+    if isinstance(d, dict):
+        if isinstance(d.get("users"), list):
+            items = d["users"]
+        elif isinstance(d.get("_list"), list):
+            items = d["_list"]
+        else:
+            items = []
+            for k, v in d.items():      # {账号: 用户} 字典形状
+                if not isinstance(v, dict):
+                    continue
+                u = dict(v)
+                u.setdefault("account", str(k))
+                items.append(u)
+    out, seen = [], set()
+    for u in items or []:
+        if not isinstance(u, dict):
+            continue
+        acct = str(u.get("account") or "").strip()
+        if not acct or acct in seen:
+            continue
+        seen.add(acct)
+        out.append({"account": acct, "realname": str(u.get("realname") or "")})
+    if not out:
+        return {"ok": False, "error": "账号清单为空或响应形状不认识——仍可手填账号"}
+    out.sort(key=lambda x: x["account"])
+    return {"ok": True, "users": out[:500]}
+
+
 def test_connection(base_url=None, account=None, password=None):
-    """连接测试：取 token + 拉第一个产品的 bug 列表（有档案时）。返回 (ok, 人话结果)。"""
+    """连接测试：探明通道登录 + 拉第一个产品的 bug 列表（有档案时）。返回 (ok, 人话结果)。"""
     c = _cfg()
     base_url = str(base_url if base_url is not None else c.get("base_url") or "").strip()
     account = str(account if account is not None else c.get("account") or "").strip()
     password = str(password if password is not None else c.get("password") or "").strip()
     if not (base_url and account and password):
         return False, "地址、账号、密码都要填全"
+    b = base_url.strip().rstrip("/")
+    probe = {"base_url": b, "account": account, "password": password}
     try:
-        _fetch_token(base_url, account, password)
+        tok = _rest_login(b, account, password)
     except ZenError as e:
         return False, str(e)
+    if tok:
+        _MODE[b] = "rest"
+    else:
+        try:
+            _old_login(probe, _REST_LAST_ERR.get("msg", ""))
+            _MODE[b] = "old"
+        except ZenError as e:
+            return False, str(e)
+    tag = "老版 JSON 接口" if _MODE.get(b) == "old" else "REST v1"
     try:
         profiles = _profiles(c)
         if profiles:
-            bugs = list_bugs({"base_url": base_url, "account": account, "password": password},
-                             profiles[0]["product"])
-            return True, "连接成功，产品 %s 可访问（当前 %d 条 bug 在列表里）" % (
-                profiles[0]["product"], len(bugs))
+            bugs = list_bugs(probe, profiles[0]["product"])
+            return True, "连接成功（%s），产品 %s 可访问（当前 %d 条 bug 在列表里）" % (
+                tag, profiles[0]["product"], len(bugs))
     except ZenError as e:
-        return False, "令牌拿到了，但拉 bug 列表失败：%s" % e
-    return True, "连接成功（未配产品档案，跳过列表探测）"
+        return False, "登录成功（%s），但拉 bug 列表失败：%s" % (tag, e)
+    return True, "连接成功（%s；未配产品档案，跳过列表探测）" % tag
 
 
 # ---------------------------------------------------------------- 排查（triage）
@@ -727,7 +1188,7 @@ def _fail_text(claim, failed_tasks, runs):
 
 def _bug_opened_by(cfg, bug_id):
     try:
-        d = _api("GET", "/bugs/%s" % bug_id, cfg=cfg)
+        d = _call("GET", "/bugs/%s" % bug_id, cfg=cfg)
         return _acct(d.get("openedBy"))
     except ZenError:
         return ""
@@ -735,13 +1196,13 @@ def _bug_opened_by(cfg, bug_id):
 
 def _ensure_resolved(cfg, bug_id, comment, assign_to):
     """resolve（幂等）：已是 resolved/closed 视为成功。"""
-    cur = _api("GET", "/bugs/%s" % bug_id, cfg=cfg)
+    cur = _call("GET", "/bugs/%s" % bug_id, cfg=cfg)
     if str(cur.get("status") or "") in ("resolved", "closed"):
         return True
     body = {"resolution": "fixed", "resolvedBuild": "trunk", "comment": comment}
     if assign_to:
         body["assignedTo"] = assign_to
-    _api("POST", "/bugs/%s/resolve" % bug_id, cfg=cfg, body=body)
+    _call("POST", "/bugs/%s/resolve" % bug_id, cfg=cfg, body=body)
     return True
 
 
@@ -750,7 +1211,7 @@ def _transfer(cfg, bug_id, target, comment):
     body = {"comment": comment}
     if target:
         body["assignedTo"] = target
-    _api("PUT", "/bugs/%s" % bug_id, cfg=cfg, body=body)
+    _call("PUT", "/bugs/%s" % bug_id, cfg=cfg, body=body)
 
 
 def _notify(text):
@@ -1299,4 +1760,9 @@ def _test_reset():
         _STATE["claims"] = {}
         _STATE["last_scan"] = _STATE["next_scan"] = _STATE["last_error"] = ""
         _reset_token()
+        _APIBASE.clear()
+        _MODE.clear()
+        _OLD.update(api="", sid="", at=0.0)
+        _OLD_FORM["form"] = ""
+        _REST_LAST_ERR["msg"] = ""
         globals()["_LOADED"] = True
