@@ -254,3 +254,8 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 ### 2026-09-20 16:00 第十班（批3：计划/spec/长任务·GitHub push 443 持续抖动，API 通道可用）
 - **paseo** 深挖完毕（17,675★）| daemon+多客户端架构（桌面/iOS/Android/web/CLI 连同一 daemon）；**Settings→Pair Device 手机配对**（E2E 加密 relay，可拒走 TCP/Tailscale 直连）；**语音控制**（口述任务/语音讨论 hands-free）；插件 TypeScript 生态（npm/Git/本地目录） | **对比我们**：Tailscale+令牌≈其直连模式；差量=①语音输入（手机远程页可加 Web Speech API 口述——小而实）②设备配对 UX（我们手动带 token URL，它扫码级体验）| 借鉴方向：语音输入进对话页
+
+### 2026-09-20 16:00 写作场景新锐轮（第11班前哨）
+- **mr-li-writer-skill**（5★，新）| 去 AI 味中文长文写作 skill（先评估后写作）| 与我们 aiflavor 检测同向；其「先评估再写」两段式可借鉴进我们的去AI味流程 | 参考
+- **platform-writing-skills-cn**（新）| 中文多平台内容工作流 agent skills | 与我们 13 种预置类型中的文章/汇报同域 | 参考
+- 写作场景新锐轮持续有中文写作 skill 产出——A7 组保留高优
