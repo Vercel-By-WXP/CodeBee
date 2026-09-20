@@ -26,12 +26,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import time
 import zipfile
 from pathlib import Path
 
 from . import paths, settings as settings_mod
+
+_SEG_SPLIT = re.compile(r"[\\/]")
+_DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
 MANIFEST_NAME = "manifest.json"
 SCHEMA = 1
@@ -222,13 +226,21 @@ def _read_manifest(zf):
 
 
 def _safe_join(base: Path, name: str):
-    """zip 条目名 → base 下安全路径。绝对路径/.. 逃逸一律拒绝（zip slip）。"""
-    p = (base / name)
-    resolved = Path(os.path.normpath(str(p)))
+    """zip 条目名 → base 下安全路径（zip slip 三道闸，拒绝一切逃逸形态）。
+
+    ①条目按 / 与 \\ 切段后，出现 .. 段、盘符（C:）或空壳即拒绝——这一步在
+    构造路径之前完成，静态可证；②只用纯段名 join 回基线（base / 带盘符的
+    name 在 Windows 会整个替换掉 base，故绝不直接拼）；③normpath 后必须
+    仍在 base 之内（双保险）。"""
+    parts = [p for p in _SEG_SPLIT.split(name) if p not in ("", ".")]
+    if (not parts or any(p == ".." for p in parts)
+            or _DRIVE_RE.match(parts[0])):
+        raise ValueError("备份包含非法路径条目: %s" % name[:120])
+    resolved = Path(os.path.normpath(os.path.join(str(base), *parts)))
     try:
         resolved.relative_to(base)
     except ValueError:
-        raise ValueError("备份包含非法路径条目: %s" % name)
+        raise ValueError("备份包含非法路径条目: %s" % name[:120])
     return resolved
 
 

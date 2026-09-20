@@ -191,6 +191,49 @@ class BackupImportTest(BaseTest):
         self.assertEqual(f("E:\\GoOut", pairs), ("/new", True))
         self.assertEqual(f("普通文本", pairs), ("普通文本", False))
 
+    def test_zip_slip_entries_rejected_atomically(self):
+        """恶意备份包：.. 逃逸/反斜杠逃逸/盘符绝对路径一律整体拒绝，盘上零落笔。"""
+        import zipfile as zfmod
+        evil = self.out_dir / "evil.zip"
+        entries = {
+            "manifest.json": json.dumps({
+                "app": "codebee", "schema": 1, "exported_at": "2026-01-01 00:00:00",
+                "data_dir": "E:\\old", "default_workdir": "E:\\old\\ws",
+                "counts": {}, "external_workdirs": [],
+            }).encode("utf-8"),
+            "data/../../evil.txt": b"x",
+            "data/tasks/..\\..\\evil2.txt": b"x",
+            "workspace/../../evil3.txt": b"x",
+            "data/C:/Windows/evil4.txt": b"x",
+        }
+        with zfmod.ZipFile(str(evil), "w") as z:
+            for name, body in entries.items():
+                z.writestr(name, body)
+
+        new_data = self._rebind_new_machine("machine-z")
+        new_ws = self.tmp / "machine-z-ws"
+        new_ws.mkdir()
+        self.settings._FILE = new_data / "settings.json"
+        self.settings.save({"default_workdir": str(new_ws)})
+
+        pv = self.backup.inspect_backup(evil)      # 预览不落盘、能列出条目
+        self.assertEqual(pv["data_files"], 3)      # 3 条 data/* + 1 条 workspace/*
+        with self.assertRaises(ValueError):
+            self.backup.apply_import(evil, mode="merge")
+        # 盘上零落笔：数据目录、工作区、临时目录上层都不该出现 evil*
+        for probe in (new_data, new_ws, self.tmp, self.tmp.parent):
+            self.assertEqual([p.name for p in probe.glob("evil*")], [],
+                             str(probe))
+        # 单元级：_safe_join 对每种逃逸形态都要拒绝
+        from app.core import backup as B
+        for name in ("../evil", "a/../../evil", "a\\..\\..\\evil",
+                     "C:/evil", "C:\\evil"):
+            with self.assertRaises(ValueError):
+                B._safe_join(new_data, name)
+        # UNC/绝对形态被切段驯化：必须落在 base 之内而非盘外
+        p = B._safe_join(new_data, "\\\\srv\\share\\x")
+        self.assertTrue(str(p).lower().startswith(str(new_data.resolve()).lower()))
+
 
 def paths_runs_dir():
     from app.core import paths
