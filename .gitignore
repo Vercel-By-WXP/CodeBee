@@ -9,3 +9,5 @@ Thumbs.db
 tests/_shots/
 /tests
 .aider*
+tmp_wm_*.png
+tmp_*
