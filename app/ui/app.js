@@ -9090,7 +9090,7 @@ async function suStartupCheck() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", usage: "用量统计", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", appearance: "皮肤", about: "关于与更新" };
+const TAB_TITLES = { tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", usage: "用量统计", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
 const SET_TABS = new Set(Object.keys(TAB_TITLES));   // 设置导航里的子页（__phone 是弹框，不算）
 
 function tabTitle(name) {
@@ -9730,6 +9730,195 @@ function fallbackCopy(text, done) {
   ta.remove();
 }
 
+/* ------------------------------------------------ 数据与备份（导出/导入/每日清理） */
+
+let _biMode = "merge";       // 导入方式：merge 合并 | replace 替换
+let _biPreview = null;       // 预览通过后暂存，确认导入时复用（防跳过预览直接导）
+
+async function loadDataPage() {
+  try {
+    const d = await api("/api/cleanup");
+    if ($("set-cleanup")) $("set-cleanup").checked = !!(d.config && d.config.enabled);
+    if ($("set-cleanup-days")) $("set-cleanup-days").value = (d.config && d.config.retention_days) || 14;
+    renderCleanupState(d.state);
+    renderCleanupPlan(d.plan);
+  } catch (e) { /* 静默：列表拉不到不挡页面其余功能 */ }
+}
+
+function renderCleanupState(st) {
+  const el = $("cl-state");
+  if (!el) return;
+  if (!st || !st.last_run) { el.textContent = t("尚未清理过（每天自动一次）"); return; }
+  el.textContent = t("上次清理：") + st.last_run + "，" + t("释放") + " " + fmtSize(st.last_freed || 0)
+    + ((st.last_result && st.last_result.errors && st.last_result.errors.length)
+      ? "，" + t("有") + " " + st.last_result.errors.length + " " + t("项被占用跳过") : "");
+}
+
+function renderCleanupPlan(plan) {
+  const el = $("cl-plan");
+  if (!el) return;
+  const items = (plan && plan.items) || [];
+  if (!items.length) { el.innerHTML = '<p class="hint">' + esc(t("没有可清理的垃圾，很干净")) + "</p>"; return; }
+  el.innerHTML = items.map((it) =>
+    '<div class="cl-row"><b>' + esc(t(it.label)) + '</b><span class="hint">' + esc(t(it.note || ""))
+    + '</span><span class="tag">' + esc(fmtSize(it.bytes)) + "</span></div>").join("")
+    + '<p class="hint">' + esc(t("共可释放约")) + " " + esc(fmtSize(plan.total_bytes || 0)) + "</p>";
+}
+
+window.exportBackup = async function () {
+  const btn = $("bk-go");
+  const old = btn ? btn.innerHTML : "";
+  if (btn) { btn.disabled = true; btn.innerHTML = "<span>" + esc(t("正在打包…")) + "</span>"; }
+  try {
+    const r = await api("/api/data/export", { method: "POST", timeout: 600000,
+      body: JSON.stringify({ target_dir: (($("bk-target") || {}).value || "").trim(),
+                             include_logs: $("bk-logs").checked }) });
+    const ext = (r.external_workdirs || []);
+    $("bk-result").innerHTML = '<span class="ok">' + esc(t("已导出")) + "：" + esc(r.path)
+      + "（" + esc(fmtSize(r.size || 0)) + "，" + esc(t("任务")) + " " + (r.tasks || 0)
+      + " · " + esc(t("运行记录")) + " " + (r.runs || 0) + "）</span>"
+      + (ext.length ? '<div><span class="bad">' + esc(t("以下外部目录不在备份里，需自行拷贝："))
+        + esc(ext.join("、")) + "</span></div>" : "")
+      + '<button class="ghost small" onclick="copyText(this)" data-copy="' + esc(r.path) + '">'
+      + esc(t("复制路径")) + "</button>";
+  } catch (e) {
+    $("bk-result").innerHTML = '<span class="bad">' + esc(e.message || String(e)) + "</span>";
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = old; }
+  }
+};
+
+/* 通用「复制到剪贴板」：data-copy 属性携带文本（导出路径等） */
+window.copyText = async function (btn) {
+  const text = btn.getAttribute("data-copy") || "";
+  try { await navigator.clipboard.writeText(text); toast(t("已复制")); }
+  catch (e) { fallbackCopy(text, () => toast(t("已复制"))); }
+};
+
+window.pickBackupFile = async function () {
+  const cur = (($("bi-path") || {}).value || "").trim();
+  const initial = cur ? cur.replace(/[\\/][^\\/]*$/, "") : "";
+  let r = null;
+  try {
+    r = await api("/api/pick_file", { method: "POST",
+      body: JSON.stringify({ initial, title: t("选择备份包") }) });
+  } catch (e) {
+    if (/仅限本机/.test(e.message || "")) { toast(t("文件选择仅限本机使用，请手动输入路径"), true); return; }
+    toast(t("操作失败：") + (e.message || e), true);
+    return;
+  }
+  if (r.busy) { toast(t("已有一个选择窗口正在等待"), true); return; }
+  if (r.error) { toast(t("本机没有可用的文件选择器，请手动输入 zip 路径"), true); return; }
+  if (r.path) { $("bi-path").value = r.path; inspectBackup(); }
+};
+
+window.inspectBackup = async function () {
+  const p = (($("bi-path") || {}).value || "").trim();
+  if (!p) { toast(t("请先选择备份包"), true); return; }
+  _biPreview = null;
+  $("bi-apply").classList.add("hidden");
+  $("bi-restart").classList.add("hidden");
+  $("bi-preview").innerHTML = esc(t("正在读取备份包…"));
+  try {
+    const r = await api("/api/data/import", { method: "POST",
+      body: JSON.stringify({ op: "inspect", path: p }) });
+    _biPreview = r.preview;
+    renderBackupPreview(r.preview);
+  } catch (e) {
+    $("bi-preview").innerHTML = '<span class="bad">' + esc(e.message || String(e)) + "</span>";
+  }
+};
+
+function renderBackupPreview(pv) {
+  const el = $("bi-preview");
+  if (!el) return;
+  const rows = [];
+  rows.push('<b>' + esc(t("备份时间")) + "：</b>" + esc(pv.exported_at || "-")
+    + (pv.version ? " · v" + esc(pv.version) : ""));
+  rows.push(esc(t("任务")) + " " + (pv.tasks == null ? "-" : pv.tasks)
+    + " · " + esc(t("运行记录")) + " " + (pv.runs == null ? "-" : pv.runs)
+    + " · " + esc(t("数据文件")) + " " + (pv.data_files == null ? "-" : pv.data_files)
+    + (pv.workspace_files ? " · " + esc(t("工作目录文件")) + " " + pv.workspace_files : ""));
+  if (pv.include_logs === false) rows.push('<span class="hint">' + esc(t("备份不含运行过程日志")) + "</span>");
+  if (pv.remap_needed) rows.push(esc(t("路径重映射")) + "：" + esc(pv.old_workdir || pv.old_data_dir)
+    + " → " + esc(pv.cur_workdir));
+  if ((pv.external_workdirs || []).length)
+    rows.push('<span class="bad">' + esc(t("以下外部目录不在备份里，需自行拷贝："))
+      + esc(pv.external_workdirs.join("、")) + "</span>");
+  if ((pv.busy_runs || []).length)
+    rows.push('<span class="bad">' + esc(t("有任务正在运行或排队，先等它们结束再导入")) + "</span>");
+  el.innerHTML = rows.map((s) => "<div>" + s + "</div>").join("");
+  if (!(pv.busy_runs || []).length) $("bi-apply").classList.remove("hidden");
+}
+
+window.applyBackupImport = async function () {
+  if (!_biPreview) return;
+  const replaceMode = _biMode === "replace";
+  const ok = await uiConfirm(replaceMode
+    ? t("替换导入会先清空本机数据目录，再整体落入备份内容（当前数据已自动留了反悔备份）。确定继续？")
+    : t("确认导入该备份包？同名任务与配置将被覆盖。"),
+    { danger: replaceMode, ok: t("确认导入") });
+  if (!ok) return;
+  const btn = $("bi-apply");
+  const old = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = "<span>" + esc(t("正在导入…")) + "</span>";
+  try {
+    const r = await api("/api/data/import", { method: "POST", timeout: 600000,
+      body: JSON.stringify({ op: "apply", path: (($("bi-path") || {}).value || "").trim(),
+                             mode: _biMode, remap: $("bi-remap").checked }) });
+    const rm = r.remap || {};
+    $("bi-preview").innerHTML = '<span class="ok">' + esc(replaceMode ? t("替换导入完成") : t("合并导入完成"))
+      + "：</span>" + esc(t("数据文件")) + " " + (r.data_files || 0)
+      + " · " + esc(t("工作目录文件")) + " " + (r.workspace_files || 0)
+      + (rm.applied ? " · " + esc(t("已重映射")) + " " + rm.files + " " + esc(t("个文件中的")) + " " + rm.values + " " + esc(t("处路径")) : "")
+      + '<div class="hint">' + esc(t("导入前的本机数据备份在")) + " " + esc(r.backup_path || "-") + "</div>"
+      + ((r.external_workdirs || []).length
+        ? '<div><span class="bad">' + esc(t("以下外部目录不在备份里，需自行拷贝："))
+          + esc(r.external_workdirs.join("、")) + "</span></div>" : "")
+      + '<div class="ok">' + esc(t("请重启服务使导入的数据全部生效")) + "</div>";
+    $("bi-apply").classList.add("hidden");
+    $("bi-restart").classList.remove("hidden");
+  } catch (e) {
+    $("bi-preview").innerHTML = '<span class="bad">' + esc(e.message || String(e)) + "</span>";
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = old;
+  }
+};
+
+async function saveCleanupSettings() {
+  const days = parseInt($("set-cleanup-days").value, 10);
+  try {
+    await api("/api/settings", { method: "POST", body: JSON.stringify({
+      cleanup_enabled: $("set-cleanup").checked,
+      cleanup_retention_days: isNaN(days) ? 14 : days }) });
+    toast(t("清理设置已保存"));
+    loadDataPage();   // 保留天数变了，重扫可清理预估
+  } catch (e) { toast(t("操作失败：") + (e.message || e), true); }
+}
+
+window.runCleanup = async function (includeProfiles) {
+  if (includeProfiles) {
+    const ok = await uiConfirm(t("清理发布浏览器缓存会丢失平台登录态，下次发布需要重新扫码。确定清理？"),
+      { danger: true, ok: t("仍然清理") });
+    if (!ok) return;
+  }
+  const btn = includeProfiles ? null : $("cl-run");
+  const old = btn ? btn.innerHTML : "";
+  if (btn) { btn.disabled = true; btn.innerHTML = "<span>" + esc(t("正在清理…")) + "</span>"; }
+  try {
+    const r = await api("/api/cleanup", { method: "POST", timeout: 300000,
+      body: JSON.stringify({ op: "run", include_profiles: !!includeProfiles }) });
+    toast(t("清理完成，释放") + " " + fmtSize((r.result && r.result.freed) || 0));
+    loadDataPage();
+  } catch (e) { toast(t("操作失败：") + (e.message || e), true); }
+  finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = old; }
+  }
+};
+window.saveCleanupSettings = saveCleanupSettings;
+
 /* 手机端（<900px）抽屉收起：点导航/任何侧栏可点项后都应收回，别挡内容 */
 function collapseDrawerIfMobile() {
   if (window.innerWidth < 900) document.body.classList.add("side-collapsed");
@@ -9757,6 +9946,7 @@ function switchTab(name) {
   else stopAutoPoll();   // 离开自动化页（或切到别的子页）即停表
   if (name === "zentao") loadZentao();   // 进禅道页：拉配置与修复记录回填表单
   if (name === "market") loadMarket();   // 进插件市场页拉取目录
+if (name === "data") loadDataPage();   // 进数据与备份页：清理配置/状态/可清理预估
   if (name === "usage") { syncUsageRange(); loadUsage(); }   // 进用量页：对齐范围选中态并拉取
   if (name === "appearance") renderAppearance();   // 进皮肤页：按当前皮肤/明暗重画卡片
   if (name === "appearance") renderCodeSettings();  // 代码设置行 + 双主题预览卡同步当前值
@@ -10187,6 +10377,13 @@ document.addEventListener("DOMContentLoaded", () => {
         !e.target.closest("#wd-menu, #f-workdir-menu-btn")) wdMenu.classList.add("hidden");
   });
   $("set-workdir").addEventListener("click", () => window.pickFolder("set-workdir", true));
+  // 数据与备份页：导入方式 seg（合并/替换），纯前端状态，导入时随请求带上
+  $("bi-mode").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-bimode]");
+    if (!b) return;
+    _biMode = b.dataset.bimode;
+    document.querySelectorAll("#bi-mode .seg-btn").forEach((x) => x.classList.toggle("active", x === b));
+  });
   $("f-git-rev").addEventListener("change", renderGitHint);
   if ($("f-workdir").value) queueGitProbe();  // 回填的目录：进页面即探测代码版本
   $("f-type").addEventListener("change", onTypeChange);

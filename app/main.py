@@ -480,6 +480,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"task": t}) if t else self._json(404, {"error": "not found"})
             if path == "/api/market":
                 return self._json(200, market.view())
+            if path == "/api/cleanup":
+                # 数据与备份页：清理配置 + 上次清理状态 + 当前可清理预估
+                from core import cleanup
+                try:
+                    return self._json(200, cleanup.status())
+                except Exception:
+                    log.exception("cleanup: status 失败")
+                    return self._json(500, {"error": "清理状态生成失败"})
             if path == "/api/market/remote":
                 q = parse_qs(urlparse(self.path).query)
                 return self._json(200, market_remote.view(
@@ -1027,6 +1035,60 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/wxdigest/seen":
             from core import wxdigest
             return self._json(200, {"ok": True, "view": wxdigest.seen_clear()})
+        if path == "/api/cleanup":
+            # op=run 立即清理（include_profiles=true 连浏览器缓存一起清，
+            # 平台登录态会丢需重新扫码）；否则只重扫预估不落盘
+            from core import cleanup
+            body = self._body()
+            try:
+                if body.get("op") == "run":
+                    r = cleanup.run_cleanup(
+                        include_profiles=bool(body.get("include_profiles")))
+                    return self._json(200, {"ok": True, "result": r})
+                return self._json(200, {"ok": True,
+                                        "plan": cleanup.plan(
+                                            include_profiles=bool(
+                                                body.get("include_profiles")))})
+            except Exception as e:
+                log.exception("cleanup: 执行失败")
+                return self._json(500, {"error": "清理执行失败：%s" % e})
+        if path == "/api/data/export":
+            # 整机备份导出：数据目录 + 任务工作目录打包 zip（含密钥，提示用户妥善保管）
+            from core import backup
+            body = self._body()
+            try:
+                info = backup.export_data(
+                    target_dir=str(body.get("target_dir") or ""),
+                    include_logs=body.get("include_logs", True),
+                    include_workspace=body.get("include_workspace", True))
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+            except Exception as e:
+                log.exception("backup: 导出失败")
+                return self._json(500, {"error": "导出失败：%s" % e})
+            return self._json(200, {"ok": True, **info})
+        if path == "/api/data/import":
+            # op=inspect 预览（不落盘）；op=apply 应用（merge/replace + 路径重映射）
+            from core import backup
+            body = self._body()
+            try:
+                if body.get("op") == "apply":
+                    r = backup.apply_import(
+                        str(body.get("path") or ""),
+                        mode=str(body.get("mode") or "merge"),
+                        remap=body.get("remap", True),
+                        include_workspace=body.get("include_workspace", True))
+                    return self._json(200, {"ok": True, **r})
+                return self._json(200, {"ok": True,
+                                        "preview": backup.inspect_backup(
+                                            str(body.get("path") or ""))})
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+            except Exception as e:
+                log.exception("backup: 导入失败")
+                return self._json(500, {"error": "导入失败：%s" % e})
+        if path == "/api/pick_file":
+            return self._api_pick_file()
         if path == "/api/zentao/test":
             from core import zentao
             body = self._body()
@@ -1370,6 +1432,24 @@ class Handler(BaseHTTPRequestHandler):
         try:
             path, err, fb = pick_dialog.ask_directory(str(body.get("initial") or ""),
                                                       str(body.get("title") or "选择文件夹"))
+        finally:
+            _PICK_LOCK.release()
+        if err:
+            return self._json(200, {"path": "", "fallback": fb, "error": err})
+        return self._json(200, {"path": path or ""})
+
+    def _api_pick_file(self):
+        """系统原生「选择文件」对话框（导入备份包用）。仅限本机，同 _api_pick_folder；
+        没有 tkinter 时 fallback=true（本场景没有网页回落，前端提示手输路径）。"""
+        ip, fw = self._forwarded_ip()
+        if ip not in ("127.0.0.1", "::1") or fw:
+            return self._json(403, {"error": "文件选择仅限本机使用，请手动输入路径"})
+        body = self._body()
+        if not _PICK_LOCK.acquire(blocking=False):
+            return self._json(200, {"path": "", "busy": True})
+        try:
+            path, err, fb = pick_dialog.ask_file(str(body.get("initial") or ""),
+                                                 str(body.get("title") or "选择文件"))
         finally:
             _PICK_LOCK.release()
         if err:

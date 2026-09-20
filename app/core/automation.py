@@ -403,6 +403,16 @@ def _tick():
                      r.get("made"), r.get("error") or "-")
     except Exception:
         log.debug("automation: 群摘要扫描跳过", exc_info=True)
+    # 每日垃圾清理联动：启用且当天没清过才真跑（fire_due 自节流，同上）。
+    try:
+        from . import cleanup as _cleanup
+        r = _cleanup.fire_due()
+        if r and (r.get("freed") or r.get("errors")):
+            log.info("automation: 每日清理完成 释放 %.1f MB%s",
+                     r.get("freed", 0) / 1048576.0,
+                     ("，%d 项失败" % len(r.get("errors") or [])) if r.get("errors") else "")
+    except Exception:
+        log.debug("automation: 每日清理跳过", exc_info=True)
 
 
 def _loop():

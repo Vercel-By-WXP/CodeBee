@@ -19,10 +19,13 @@ _FILE = paths.DATA_DIR / "settings.json"
 # pet_enabled / pet_mode：桌面蜜蜂（app/pet.py）开关与显示模式。关闭后看护线程
 # 不再拉起、在岗蜜蜂轮询到 false 自行退出；mode=always 常驻，tasks_only 仅任务
 # 运行时出现（空闲 90s 隐身）。
+# cleanup_enabled / cleanup_retention_days：每日垃圾清理（core/cleanup.py）——
+# 运行过程日志/发布截图/bak 残留等超期自动清理；retention 为保留天数。
 DEFAULTS = {"max_concurrent_jobs": 6, "default_workdir": "", "hooks_token": "",
             "telemetry_errors": True, "publish_daily_cap": 10,
             "publish_fail_streak": 3, "notify_webhook": "", "notify_base_url": "",
-            "pet_enabled": True, "pet_mode": "always"}
+            "pet_enabled": True, "pet_mode": "always",
+            "cleanup_enabled": True, "cleanup_retention_days": 14}
 # 并发上限 12：worker 只是拉起 CLI 子进程的调度位，跨任务无共享资源；
 # 同任务单飞守卫在 jobs 层。默认 6 对齐「多任务并行不排队」的使用预期。
 MIN_WORKERS, MAX_WORKERS = 1, 12
@@ -114,6 +117,15 @@ def save(patch):
             if pm not in ("always", "tasks_only"):
                 return cur, "pet_mode 只能是 always 或 tasks_only"
             cur["pet_mode"] = pm
+        if "cleanup_enabled" in patch:
+            cur["cleanup_enabled"] = bool(patch.get("cleanup_enabled"))
+        if "cleanup_retention_days" in patch:
+            try:
+                cur["cleanup_retention_days"] = int(patch.get("cleanup_retention_days"))
+            except (TypeError, ValueError):
+                return cur, "cleanup_retention_days 必须是整数"
+            if not 1 <= cur["cleanup_retention_days"] <= 365:
+                return cur, "cleanup_retention_days 取值 1-365"
         _FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = _FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")

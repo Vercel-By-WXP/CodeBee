@@ -188,6 +188,8 @@
       <button class="set-item" data-sub="knowledge" data-i18n="知识库"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg>知识库</button>
       <button class="set-item" data-sub="market" data-i18n="插件市场"><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg>插件市场</button>
       <button class="set-item" data-sub="orch" data-i18n="编排设置"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg>编排设置</button>
+      <div data-i18n="数据" class="set-group">数据</div>
+      <button class="set-item" data-sub="data" data-i18n="数据与备份"><svg class="ico" aria-hidden="true"><use href="#i-library"></use></svg>数据与备份</button>
       <div data-i18n="外观" class="set-group">外观</div>
       <button class="set-item" data-sub="appearance" data-i18n="皮肤"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg>皮肤</button>
       <div data-i18n="软件" class="set-group">软件</div>
@@ -757,6 +759,66 @@
           </div>
           <div id="set-v2-card" class="field"></div>
           <div id="settings-msg" class="msg"></div>
+        </div>
+      </div>
+
+      <!-- 数据与备份（导出/导入/每日清理） -->
+      <div id="sub-data" class="subpage hidden">
+        <div class="panel wide">
+          <div class="panel-head">
+            <h2 data-i18n="备份与搬家">备份与搬家</h2>
+            <button class="hhelp" data-help-topic="auto" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
+          </div>
+          <p class="hint" data-i18n="换电脑或换路径安装时，把全部数据打包带走：模型/密钥/绑定等全部配置、任务与运行记录、经验库、知识库、发布台账，以及各任务工作目录里的手稿与成品文件。导入时自动把旧机器的路径改写成新机器的路径。">换电脑或换路径安装时，把全部数据打包带走：模型/密钥/绑定等全部配置、任务与运行记录、经验库、知识库、发布台账，以及各任务工作目录里的手稿与成品文件。导入时自动把旧机器的路径改写成新机器的路径。</p>
+          <p class="hint" data-i18n="注意：备份包含 API 密钥，请妥善保管；发布平台的浏览器登录态不在备份里（体积 GB 级），导入后发布时需重新扫码。不在默认保存路径下的外部目录（如单独指定的代码仓库）不会打包，导入后会在预览里点名提醒。">注意：备份包含 API 密钥，请妥善保管；发布平台的浏览器登录态不在备份里（体积 GB 级），导入后发布时需重新扫码。不在默认保存路径下的外部目录（如单独指定的代码仓库）不会打包，导入后会在预览里点名提醒。</p>
+          <div class="field">
+            <label data-i18n="导出位置（默认「下载」文件夹）">导出位置（默认「下载」文件夹）</label>
+            <div class="input-row">
+              <input id="bk-target" type="text" placeholder="默认保存到「下载」文件夹" data-i18n-ph="默认保存到「下载」文件夹">
+              <button class="ghost small" type="button" onclick="pickFolder('bk-target')" data-i18n="选择…">选择…</button>
+              <button id="bk-go" class="ghost small" type="button" onclick="exportBackup()"><svg class="ico" aria-hidden="true"><use href="#i-library"></use></svg><span data-i18n="导出全部数据">导出全部数据</span></button>
+            </div>
+            <label class="toggle" style="margin-top:6px"><input id="bk-logs" type="checkbox" checked> <span data-i18n="包含运行过程日志（备份更大，但历史日志可完整回看）">包含运行过程日志（备份更大，但历史日志可完整回看）</span></label>
+            <div id="bk-result" class="msg"></div>
+          </div>
+        </div>
+        <div class="panel wide">
+          <div class="panel-head"><h2 data-i18n="恢复（导入备份包）">恢复（导入备份包）</h2></div>
+          <p class="hint" data-i18n="选择之前导出的备份包，先预览确认再导入。导入会覆盖同名任务与配置；当前数据会先自动备份一份到数据目录 imports/ 下，导入后需重启服务生效。">选择之前导出的备份包，先预览确认再导入。导入会覆盖同名任务与配置；当前数据会先自动备份一份到数据目录 imports/ 下，导入后需重启服务生效。</p>
+          <div class="field">
+            <div class="input-row">
+              <input id="bi-path" type="text" placeholder="备份包 zip 路径" data-i18n-ph="备份包 zip 路径">
+              <button class="ghost small" type="button" onclick="pickBackupFile()" data-i18n="选择备份包…">选择备份包…</button>
+              <button id="bi-inspect" class="ghost small" type="button" onclick="inspectBackup()"><span data-i18n="预览">预览</span></button>
+            </div>
+            <div id="bi-mode" class="seg" style="margin-top:8px" role="group" aria-label="导入方式" data-i18n-aria="导入方式">
+              <button class="seg-btn active" data-bimode="merge" data-i18n="合并导入">合并导入</button>
+              <button class="seg-btn" data-bimode="replace" data-i18n="替换导入">替换导入</button>
+            </div>
+            <p class="hint" data-i18n="合并导入：保留本机现有数据，备份包里的同名条目覆盖进来。替换导入：先清空本机数据目录再整体落入（宠物锁与历史导入备份除外）——只在想把新机器变成备份包原样时使用。">合并导入：保留本机现有数据，备份包里的同名条目覆盖进来。替换导入：先清空本机数据目录再整体落入（宠物锁与历史导入备份除外）——只在想把新机器变成备份包原样时使用。</p>
+            <label class="toggle"><input id="bi-remap" type="checkbox" checked> <span data-i18n="路径重映射（换电脑/换路径时把旧路径改写为新路径，推荐开启）">路径重映射（换电脑/换路径时把旧路径改写为新路径，推荐开启）</span></label>
+            <div id="bi-preview" class="msg"></div>
+            <div class="input-row" style="margin-top:8px">
+              <button id="bi-apply" class="ghost small hidden" type="button" onclick="applyBackupImport()"><span data-i18n="确认导入">确认导入</span></button>
+              <button id="bi-restart" class="ghost small hidden" type="button" onclick="suRestart()"><span data-i18n="重启服务生效">重启服务生效</span></button>
+            </div>
+          </div>
+        </div>
+        <div class="panel wide">
+          <div class="panel-head"><h2 data-i18n="每日清理">每日清理</h2></div>
+          <p class="hint" data-i18n="每天自动清理运行过程日志、发布截图、配置备份残留等可再生数据（保留运行记录与结果报告），防止磁盘越积越满。手稿、任务记录、经验库等用户数据永不清理。">每天自动清理运行过程日志、发布截图、配置备份残留等可再生数据（保留运行记录与结果报告），防止磁盘越积越满。手稿、任务记录、经验库等用户数据永不清理。</p>
+          <label class="toggle"><input id="set-cleanup" type="checkbox"> <span data-i18n="启用每日自动清理">启用每日自动清理</span></label>
+          <div class="input-row" style="margin-top:6px">
+            <label data-i18n="保留天数">保留天数</label>
+            <input id="set-cleanup-days" type="number" min="1" max="365" style="width:80px">
+            <button class="ghost small" type="button" onclick="saveCleanupSettings()" data-i18n="保存">保存</button>
+            <button id="cl-run" class="ghost small" type="button" onclick="runCleanup(false)"><span data-i18n="立即清理">立即清理</span></button>
+          </div>
+          <div id="cl-state" class="hint"></div>
+          <div id="cl-plan"></div>
+          <div class="input-row" style="margin-top:8px">
+            <button class="ghost small" type="button" onclick="runCleanup(true)"><span data-i18n="清理发布浏览器缓存（需重新扫码登录）">清理发布浏览器缓存（需重新扫码登录）</span></button>
+          </div>
         </div>
       </div>
 

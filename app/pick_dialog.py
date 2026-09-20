@@ -47,6 +47,33 @@ def ask_directory(initial="", title="选择文件夹"):
     return str(data.get("path") or ""), "", False
 
 
+def ask_file(initial="", title="选择文件"):
+    """父端入口：拉起子进程弹原生「选择文件」对话框（导入备份包用）。
+    返回 (path, error, fallback)，语义与 ask_directory 一致。"""
+    if not Path(__file__).exists():
+        return "", "pick_dialog.py 缺失", True
+    req = json.dumps({"mode": "file", "initial": initial, "title": title}).encode("utf-8")
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
+    try:
+        if os.name == "nt":
+            cp = subprocess.run([sys.executable, _SELF], input=req,
+                                capture_output=True, timeout=600, env=env,
+                                creationflags=CREATE_NO_WINDOW)
+        else:
+            cp = subprocess.run([sys.executable, _SELF], input=req,
+                                capture_output=True, timeout=600, env=env)
+    except Exception as e:
+        return "", str(e), True
+    if cp.returncode != 0:
+        err = (cp.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        return "", (err[-1] if err else "native picker unavailable"), True
+    try:
+        data = json.loads((cp.stdout or b"").decode("utf-8", "replace") or "{}")
+    except Exception:
+        return "", "对话框输出无法解析", True
+    return str(data.get("path") or ""), "", False
+
+
 def main():
     req = {}
     try:
@@ -62,12 +89,17 @@ def main():
         root.attributes("-topmost", True)   # 别被全屏浏览器盖住
     except Exception:
         pass
-    kw = {"title": req.get("title") or "选择文件夹"}
+    is_file = req.get("mode") == "file"
+    kw = {"title": req.get("title") or ("选择文件" if is_file else "选择文件夹")}
     init = req.get("initial") or ""
     if init and os.path.isdir(init):
         kw["initialdir"] = init
     try:
-        path = filedialog.askdirectory(**kw) or ""
+        if is_file:
+            kw["filetypes"] = [("备份包", "*.zip"), ("全部文件", "*.*")]
+            path = filedialog.askopenfilename(**kw) or ""
+        else:
+            path = filedialog.askdirectory(**kw) or ""
     except Exception:
         sys.exit(1)
     sys.stdout.write(json.dumps({"path": path}))
