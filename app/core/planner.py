@@ -116,9 +116,15 @@ def _log_usage(source, role, task, res, agent=None, tool="", model="", provider=
 
 CODE_PLAN_PROMPT = """你是技术负责人。请把下面的开发目标拆解为 __N__ 个以内、按顺序执行的子任务，
 并判定任务难度。只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"difficulty": "easy 或 hard", "subtasks": [{"title": "简短标题", "detail": "具体要做什么，给执行工程师的直接指令"}]}
+{"difficulty": "easy 或 hard", "subtasks": [{"title": "简短标题", "detail": "具体要做什么，给执行工程师的直接指令", "files": ["涉及的文件路径"]}]}
 难度判定：常规增删改查/小函数/格式调整 = easy；跨模块改动/架构调整/复杂算法/安全相关 = hard。
 子任务粒度要可独立验证；最后一个子任务必须包含整体联调/收尾。
+
+## 先探索再计划（重要，借鉴 OpenSpec explore）
+拆解之前先用你的读文件/搜索工具**实际查看工作目录**，找到目标相关的真实文件与函数，再据此拆解。
+detail 必须点名真实存在的文件路径；files 列出该子任务会改动的文件（新建的写目标路径）。
+**没探索过就不要凭想象编路径**——计划的可执行性取决于它对真实代码库的贴合度。
+若工作目录为空（全新项目），files 写计划新建的文件路径。
 
 ## 开发目标
 __GOAL__
@@ -370,7 +376,10 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
 
 
 def _norm_subtasks(data):
-    """规范化 LLM 计划输出；不合规返回 None。"""
+    """规范化 LLM 计划输出；不合规返回 None。
+
+    files 字段（OpenSpec explore 借鉴）：计划锚定的真实文件清单，透传给执行步
+    让实现者知道改动面（缺失/非法时留空，向后兼容旧计划）。"""
     if not isinstance(data, dict):
         return None
     subs = data.get("subtasks")
@@ -384,7 +393,13 @@ def _norm_subtasks(data):
         detail = str(s.get("detail") or "").strip()
         if not title:
             continue
-        steps.append({"title": title[:60], "detail": detail[:1500]})
+        step = {"title": title[:60], "detail": detail[:1500]}
+        files = s.get("files")
+        if isinstance(files, list):
+            clean = [str(f).strip()[:200] for f in files if str(f).strip()][:10]
+            if clean:
+                step["files"] = clean
+        steps.append(step)
     return steps or None
 
 

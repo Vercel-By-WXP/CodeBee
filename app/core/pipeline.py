@@ -633,6 +633,7 @@ __GOAL__
 
 ## 本步指令
 __SUBTASK__
+__FILES__
 
 ## 背景与上下文
 __CONTEXT__
@@ -692,6 +693,16 @@ def _verify_hint(task):
     if task.get("verify_command"):
         return "- 完成后请自查：`%s` 应当通过。" % task["verify_command"]
     return ""
+
+
+def _files_hint(sub):
+    """计划锚定文件清单（OpenSpec explore 借鉴）：计划里带了 files 就明示改动面，
+    让实现者知道该动哪些文件、不必全盘摸索。无 files 时返回空串（旧计划兼容）。"""
+    files = (sub or {}).get("files")
+    if not isinstance(files, list) or not files:
+        return ""
+    return "\n- 本步涉及文件（计划已锚定，先读再改）：" + "、".join(
+        "`%s`" % str(f) for f in files[:10])
 
 
 def _run_verify(run_id, task, workdir, ev):
@@ -804,6 +815,7 @@ def _code_bestof(run, task, impl, difficulty, ev):
                 prompt = (_RUN_CONSTITUTION + CODE_IMPL_PROMPT
                           .replace("__GOAL__", task["goal"])
                           .replace("__SUBTASK__", sub["detail"] if sub["detail"] else sub["title"])
+                          .replace("__FILES__", _files_hint(sub))
                           .replace("__CONTEXT__", task.get("context") or "（无）")
                           .replace("__VERIFY_HINT__", _verify_hint(task)))
                 res = _run_step(run_id, "race%d-impl" % k, agt_b, prompt, wt_path,
@@ -954,6 +966,7 @@ def _run_code(run, task, agents, ev, stats, mode):
                           .replace("__GOAL__", task["goal"])
                           .replace("__SUBTASK__",
                                    sub["detail"] if sub["detail"] else sub["title"])
+                          .replace("__FILES__", _files_hint(sub))
                           .replace("__CONTEXT__", task.get("context") or "（无）")
                           .replace("__VERIFY_HINT__", _verify_hint(task))) + prog
                 role = "implement" if len(subtasks) == 1 else "implement-%d/%d" % (i + 1, len(subtasks))

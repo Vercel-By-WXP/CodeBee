@@ -156,18 +156,6 @@ def cancel(run_id):
     ev = CANCELS.get(run_id)
     if ev:
         ev.set()
-        # 强制终止语义：置位事件后立刻把 running 落成 cancelled 终态，
-        # UI 即刻翻牌，不等流水线走到下一个检查点（CLI 子进程树由取消
-        # 事件在 run_process 的 0.4s 轮询里秒杀；内置智能体生成中的 HTTP
-        # 由取消等待方放弃）。expected_status 守卫保证已正常结束的运行
-        # 不被误改；流水线随后照常收尾，终态幂等。
-        try:
-            from . import store
-            store.update_run(run_id, expected_status="running",
-                             status="cancelled", ended_at=_now(),
-                             error="用户主动取消")
-        except Exception:
-            pass
         return True
     # 事件不存在=任务还在队列里没被 worker 拿起：直接落终态（取消事件在
     # worker 起跑时才创建，排队任务点取消会在这里漏掉——起跑后再杀一遍）。
@@ -588,13 +576,12 @@ def _do_mgmt(job, ev):
                           cost_usd=res.get("cost_usd", 0.0), tokens=res.get("tokens", 0))
     else:
         store.finish_step(run_id, step["n"], "failed", summary="未知操作 %s" % op)
-    # 以步骤状态汇总 run 状态；expected_status 守卫：用户已强制终止的运行
-    # 保持 cancelled，不被步骤汇总改写成 failed（被杀的步骤记的就是非 done）
+    # 以步骤状态汇总 run 状态
     run = store.get_run(run_id)
     statuses = [s["status"] for s in (run.get("steps") if run else [])] or ["failed"]
     final = "done" if all(s == "done" for s in statuses) else "failed"
     suffix = "（AI 修复成功）" if ok and len((run.get("steps") if run else [])) > 1 else ""
-    store.update_run(run_id, expected_status="running", status=final, ended_at=_now(),
+    store.update_run(run_id, status=final, ended_at=_now(),
                      summary=("%s %s %s%s" % (entry.get("name"), op,
                                               "完成" if final == "done" else "失败", suffix)))
 
@@ -613,9 +600,7 @@ def _do_selfupgrade(job):
                       summary="升级完成，点「重启」生效" if res["ok"]
                       else ("升级失败: " + res["error"][:300]),
                       exit_code=res.get("exit_code"))
-    # expected_status 守卫：用户已强制终止的运行保持 cancelled，不被改写
-    store.update_run(run_id, expected_status="running",
-                     status="done" if res["ok"] else "failed", ended_at=_now(),
+    store.update_run(run_id, status="done" if res["ok"] else "failed", ended_at=_now(),
                      summary="CodeBee selfupgrade %s" % ("完成" if res["ok"] else "失败"))
 
 
