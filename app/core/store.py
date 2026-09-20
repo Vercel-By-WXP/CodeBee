@@ -448,8 +448,13 @@ def load_all():
                 # 错误串（`[91m[1mError:`、U+FFFD 乱码墙），读盘时统一洗一遍——
                 # 老运行不必等重跑才干净（2026-09-20「咋还有乱码」实测）
                 _sanitize_run_text(r)
-                # 队列不跨进程持久化：磁盘上仍是 queued/running 的运行必是上次进程中断的残骸
-                if r.get("status") in ("queued", "running"):
+                # 直接执行线程不跨进程：running 与无截止时间的 queued 是上次
+                # 进程中断残骸。带 resume_enqueue_at 的 queued 是有意的自动续跑
+                # 退避，保留给 jobs.restore_deferred_resumes 重建 Timer。
+                interrupted = (r.get("status") == "running" or
+                               (r.get("status") == "queued" and
+                                not r.get("resume_enqueue_at")))
+                if interrupted:
                     r["status"] = "failed"
                     r["error"] = r.get("error") or "服务重启中断，可重试"
                     _save_json(p, r)
@@ -510,7 +515,8 @@ def get_run(run_id):
 def list_runs(limit=60):
     with LOCK:
         ids = sorted(_RUNS.keys(), reverse=True)
-        return [_RUNS[i] for i in ids[:limit]]
+        selected = ids if limit is None else ids[:limit]
+        return [_RUNS[i] for i in selected]
 
 
 def latest_run_by_task():

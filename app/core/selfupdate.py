@@ -176,16 +176,15 @@ def apply_upgrade():
     try:
         jobs.enqueue({"kind": "selfupgrade", "run_id": run["id"]})
     except Exception:
-        # The run is already durable when enqueue fails. Close it explicitly so
-        # the upgrade panel cannot remain in a misleading queued state.
-        log.exception("selfupdate: 升级任务入队失败 run=%s", run["id"])
+        # run 已持久化；启动失败时显式收口，版本页不能停在误导性的待启动状态。
+        log.exception("selfupdate: 升级任务启动失败 run=%s", run["id"])
         try:
             store.update_run(run["id"], status="failed",
-                             error="升级任务入队失败，请稍后重试",
+                             error="升级任务启动失败，本次未排队，请稍后重试",
                              ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
         except Exception:
             log.exception("selfupdate: 升级运行失败收口失败 run=%s", run["id"])
-        return {"error": "升级任务入队失败，请稍后重试", "run_id": run["id"]}
+        return {"error": "升级任务启动失败，本次未排队，请稍后重试", "run_id": run["id"]}
     return {"run_id": run["id"]}
 
 
@@ -210,7 +209,7 @@ def _log_note(log_path, text):
         pass
 
 
-def run_upgrade(run_id, log_path):
+def run_upgrade(run_id, log_path, cancel_event=None):
     """worker 线程里执行升级命令（run/step 生命周期由 jobs 层管）。
 
     包目录被其他进程占用（EBUSY/EPERM：打开包目录的资源管理器/终端窗口、
@@ -218,15 +217,26 @@ def run_upgrade(run_id, log_path):
     _RETRY_DELAYS 轮，仍败则给人话结论（原始 npm 输出在步骤日志里可查）。"""
     res = {}
     for attempt, delay in enumerate((0,) + _RETRY_DELAYS):
+        if cancel_event is not None and cancel_event.is_set():
+            return {"ok": False, "exit_code": None, "error": "用户主动取消",
+                    "cancelled": True}
         if delay:
             _log_note(log_path, "目录被占用（EBUSY/EPERM），%d 秒后自动重试（第 %d/%d 次）"
                       % (delay, attempt, len(_RETRY_DELAYS)))
-            time.sleep(delay)
+            if cancel_event is not None and cancel_event.wait(delay):
+                return {"ok": False, "exit_code": None, "error": "用户主动取消",
+                        "cancelled": True}
+            if cancel_event is None:
+                time.sleep(delay)
         res = runner.run_process(
             argv=_npm_argv("install", "-g", _PKG_NAME + "@latest"),
             # Windows 上 npm 换版本靠把包目录整体改名（codebee → .codebee-xxx）；
             # cwd 若落在本包内，目录被自身进程占用，rename 必报 EBUSY——钉在包外
-            cwd=str(Path.home()), timeout=900, log_path=log_path)
+            cwd=str(Path.home()), timeout=900, log_path=log_path,
+            cancel_event=cancel_event)
+        if res.get("cancelled"):
+            return {"ok": False, "exit_code": res.get("exit_code"),
+                    "error": "用户主动取消", "cancelled": True}
         if res["ok"] or not _locked_error(res):
             break
     if res["ok"]:

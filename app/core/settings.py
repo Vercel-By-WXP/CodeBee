@@ -21,7 +21,7 @@ _FILE = paths.DATA_DIR / "settings.json"
 # 运行时出现（空闲 90s 隐身）。
 # cleanup_enabled / cleanup_retention_days：每日垃圾清理（core/cleanup.py）——
 # 运行过程日志/发布截图/bak 残留等超期自动清理；retention 为保留天数。
-DEFAULTS = {"max_concurrent_jobs": 6, "default_workdir": "", "hooks_token": "",
+DEFAULTS = {"max_concurrent_jobs": 12, "default_workdir": "", "hooks_token": "",
             "telemetry_errors": True, "publish_daily_cap": 10,
             "publish_fail_streak": 3, "notify_webhook": "", "notify_base_url": "",
             "pet_enabled": True, "pet_mode": "always", "pet_skin": "plush",
@@ -29,8 +29,8 @@ DEFAULTS = {"max_concurrent_jobs": 6, "default_workdir": "", "hooks_token": "",
 # 桌宠形象白名单（与 app/pet.py 的 SKINS 对齐；这里不 import pet 模块，避免
 # core 反向依赖 app 根目录脚本）
 PET_SKINS = ("plush", "robot")
-# 并发上限 12：worker 只是拉起 CLI 子进程的调度位，跨任务无共享资源；
-# 同任务单飞守卫在 jobs 层。默认 6 对齐「多任务并行不排队」的使用预期。
+# 并发保护上限 12：任务有空位即直接启动，满载明确返回忙，不进入等待队列；
+# 同任务单飞守卫在 jobs 层。默认取上限，对齐「默认不排队」的使用预期。
 MIN_WORKERS, MAX_WORKERS = 1, 12
 
 

@@ -166,7 +166,7 @@ class TestDueTrigger(AutomationCase):
         self.assertEqual(self.calls[0]["workdir"], str(self.workdir))
         cur = self.aut.get_task(t["id"])
         self.assertEqual(cur["run_count"], 1)
-        self.assertEqual(cur["last_status"], "queued")
+        self.assertEqual(cur["last_status"], "started")
         self.assertTrue(cur["last_run"])
         # 触发后 next_run 推进到未来，立刻再 tick 不会重复触发
         self.assertGreater(_dt(cur["next_run"]), datetime.now())
@@ -205,7 +205,7 @@ class TestLaunchFailureKeepsAlive(AutomationCase):
         self.force_due(t["id"])
         self.aut._tick()
         cur = self.aut.get_task(t["id"])
-        self.assertEqual(cur["last_status"], "queued")
+        self.assertEqual(cur["last_status"], "started")
         self.assertEqual(len(self.calls), 1)
 
 
@@ -232,7 +232,7 @@ class TestRunNow(AutomationCase):
         self.assertEqual(run_id, "r-fake-1")
         self.assertEqual(len(self.calls), 1)
         self.assertEqual(cur["run_count"], 1)
-        self.assertEqual(cur["last_status"], "queued")
+        self.assertEqual(cur["last_status"], "started")
         self.assertTrue(cur["last_run"])
         self.assertEqual(cur["next_run"], before)   # run_now 不影响计划
         self.assertGreater(_dt(before), datetime.now())
@@ -364,7 +364,7 @@ class TestRealLaunchChain(AutomationCase):
             # 显式 flow + 空 workdir：跟随默认保存路径（settings 兜底，自动创建）
             t2 = self.make(name="周报", flow="code", workdir="")
             cur, _rid = self.aut.run_now(t2["id"])
-            self.assertEqual(cur["last_status"], "queued")
+            self.assertEqual(cur["last_status"], "started")
             self.assertEqual(len(enqueued), 2)
             task2 = store_mod.get_task(enqueued[1]["task_id"])
             self.assertEqual(task2["type"], "code")

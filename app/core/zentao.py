@@ -1077,7 +1077,7 @@ def _goal_text(bug, side=None):
 
 
 def _launch_fix(bug, profile, side, cfg):
-    """为一个 bug 的某一端建修复任务并入队。与 automation._launch_run 同一条链。"""
+    """为一个 bug 的某一端建修复任务并立即启动。"""
     bid = bug.get("id")
     repo = _repo_of(profile, side)
     wd = str(repo.get("workdir") or "").strip() or settings.default_workdir()
@@ -1088,11 +1088,31 @@ def _launch_fix(bug, profile, side, cfg):
         payload["git_rev"] = str(repo["git_rev"]).strip()
     if str(repo.get("verify_command") or "").strip():
         payload["verify_command"] = str(repo["verify_command"]).strip()
-    task = store.create_task(payload)
-    run = store.create_run("orchestration", task["title"], task_id=task["id"])
-    store.update_task_status(task["id"], "queued")
-    jobs.enqueue({"kind": "orchestration", "run_id": run["id"], "task_id": task["id"]})
-    return task, run
+    task = None
+    run = None
+    try:
+        task = store.create_task(payload)
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_task_status(task["id"], "queued")
+        jobs.enqueue({"kind": "orchestration", "run_id": run["id"],
+                      "task_id": task["id"]})
+        return task, run
+    except Exception:
+        log.exception("zentao: 修复任务启动失败 bug=%s side=%s task=%s run=%s",
+                      bid, side, (task or {}).get("id"), (run or {}).get("id"))
+        if run:
+            try:
+                store.update_run(run["id"], status="failed",
+                                 error="禅道修复任务启动失败，本次未排队，请稍后重试",
+                                 ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+            except Exception:
+                log.exception("zentao: 修复运行失败收口失败 run=%s", run.get("id"))
+        if task:
+            try:
+                store.update_task_status(task["id"], "failed")
+            except Exception:
+                log.exception("zentao: 修复任务失败收口失败 task=%s", task.get("id"))
+        raise
 
 
 # ---------------------------------------------------------------- 回写文本

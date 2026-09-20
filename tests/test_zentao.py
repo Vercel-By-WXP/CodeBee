@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest import mock
 
 from base import BaseTest
 
@@ -512,6 +513,25 @@ class TestScanFixResolve(ZenCase):
         self.assertEqual(rc[0][2]["resolution"], "fixed")
         self.assertEqual(rc[0][2]["assignedTo"], "tester")
         self.assertIn("自动修复报告", rc[0][2]["comment"])
+
+
+class TestLaunchFailureClosesRun(ZenCase):
+    """执行器拒绝启动时，禅道任务和运行都必须立即失败，不能留下 queued。"""
+    def runTest(self):
+        from app.core import jobs
+        self.zen_mod._launch_fix = self._orig_launch
+        bug = self.bug(102)
+        profile = self.profile()
+        with mock.patch.object(jobs, "enqueue", side_effect=jobs.JobsBusyError("busy")):
+            with self.assertRaises(jobs.JobsBusyError):
+                self.zen_mod._launch_fix(bug, profile, "backend", {})
+        self.assertEqual(len(self.store._TASKS), 1)
+        self.assertEqual(len(self.store._RUNS), 1)
+        task = next(iter(self.store._TASKS.values()))
+        run = next(iter(self.store._RUNS.values()))
+        self.assertEqual(task["status"], "failed")
+        self.assertEqual(run["status"], "failed")
+        self.assertIn("本次未排队", run.get("error") or "")
 
 
 class TestNotOursTransfer(ZenCase):

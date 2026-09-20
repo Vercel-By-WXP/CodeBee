@@ -2,7 +2,7 @@
 """任务流程（类型）注册表 + 运行设置 + 并发执行测试。
 
 覆盖：内置 6 类、自定义流程 CRUD（内置不可改删）、create_task 固化流程参数、
-自定义 review 流程跑通 mock 全流程、并发 worker 池多任务互不打扰、缩容。
+自定义 review 流程跑通 mock 全流程、直接并发执行多任务互不打扰、并发保护。
 """
 from __future__ import annotations
 
@@ -127,8 +127,8 @@ class TestSettingsAndConcurrency(BaseTest):
         from app.core import jobs, settings
         settings._FILE = self.data_dir / "settings.json"
 
-        # 1) 设置读写与边界校验（默认 6：2026-09-18 起对齐「多任务并行不排队」）
-        self.assertEqual(settings.load()["max_concurrent_jobs"], 6)
+        # 1) 设置读写与边界校验（默认 12：直接启动，不设等待队列）
+        self.assertEqual(settings.load()["max_concurrent_jobs"], 12)
         view, err = settings.save({"max_concurrent_jobs": 5})
         self.assertIsNone(err)
         self.assertEqual(view["max_concurrent_jobs"], 5)
@@ -175,7 +175,7 @@ class TestSettingsAndConcurrency(BaseTest):
         ev1.set()
         self.assertFalse(ev2.is_set())
 
-        # 4) 缩容：目标并发调小后，空闲的多余线程在检查点退出
+        # 4) 调小保护上限只影响后续任务，不打断已经完成/运行中的任务
         jobs.configure(1)
         deadline = time.time() + 12   # worker 空转检查点 5s 一次
         while time.time() < deadline:

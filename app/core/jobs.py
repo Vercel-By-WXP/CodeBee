@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""任务队列：可并发 worker 池（默认 3，1-6 可配）执行编排任务与管理操作。
+"""任务执行器：直接启动、无等待队列地执行编排任务与管理操作。
 
-多个任务同时跑、互不打扰：每个 job 一条独立线程，run/step 数据按 run_id
-隔离，store 层有全局锁。目标并发数可在设置页调整；调小后多余线程在取到
-新任务前自行退出，调大即时补齐。安装/升级失败时自动触发 AI 诊断修复：
+每个 job 一条独立线程，run/step 数据按 run_id 隔离，store 层有全局锁。
+设置中的并发数是保护上限：有空位就立即启动，满载则明确失败并提示稍后重试，
+绝不把任务留在内存队列里无限等待。安装/升级失败时自动触发 AI 诊断修复：
 由真实智能体读取失败日志与本机环境给出修正命令；仅当命令命中白名单前缀
 （npm/winget/brew/pip 安装类，按平台取对应渠道）才自动执行，否则把建议命令
 记录在运行记录里等人工确认。
@@ -15,19 +15,26 @@ import sys
 import threading
 import traceback
 
+# 仅保留给旧测试/诊断代码观察；生产 enqueue 永远不向这里写入。
 _QUEUE = queue.Queue()
 CANCELS = {}
 _started = False
-_alive = 0            # 活跃 worker 线程数
-_target = 3           # 目标并发数（settings.max_concurrent_jobs）
+_alive = 0            # 已获执行位、尚未结束的 job 数
+_target = 12          # 并发保护上限（settings.max_concurrent_jobs）
 _pool_lock = threading.Lock()
+_idle_cond = threading.Condition(_pool_lock)
+_timer_lock = threading.Lock()
+_deferred_timers = {}
 _seq = 0
-MAX_POOL = 12         # 并发上限：每个 job 只是拉起 CLI 子进程，跨任务并行无共享
-                      # 资源（同任务单飞另有守卫），照竞品（emdash/munder-difflin
-                      # 高并行环境）放开到 12
-WATCHDOG_INTERVAL_S = 60   # 队列看门狗巡检周期
-WATCHDOG_STALE_S = 120     # queued 超过该秒数视为掉队（正常入队到被拿起 ≤5s）
-_watchdog_started = False
+MAX_POOL = 12
+
+
+class JobsBusyError(RuntimeError):
+    """并发保护位已满；调用方应稍后重试，不得排队。"""
+
+
+class DuplicateJobError(RuntimeError):
+    """同一 run 已启动或结束，拒绝重复执行。"""
 
 AI_REPAIR_PROMPT = """你是环境工程师。在 __OS__ 上执行下面的安装命令失败了，请诊断原因并给出修正命令。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
@@ -72,34 +79,14 @@ def _repair_command_allowed(cmd, platform=None):
 
 
 def configure(max_workers):
-    """设置目标并发数（1-12）：扩容立即补线程，缩容由空闲线程自行退出。"""
+    """设置并发保护上限（1-12）；只影响后续启动，不中断已运行任务。"""
     global _target
     _target = max(1, min(MAX_POOL, int(max_workers)))
-    if _started:
-        _resize()
     return _target
 
 
-def _resize():
-    global _seq
-    with _pool_lock:
-        # 上限 50 次尝试：Thread.start() 返回到 _worker 真正执行之间有调度间隙，
-        # 极端环境下（杀软挂起新线程）_alive 迟迟不涨，无界循环会转着圈造线程。
-        attempts = 0
-        while _alive < _target and attempts < 50:
-            attempts += 1
-            _seq += 1
-            try:
-                threading.Thread(target=_worker, name="job-worker-%d" % _seq,
-                                 daemon=True).start()
-            except RuntimeError:
-                break  # 资源受限起不了新线程：保持现有 worker，不影响任务执行
-
-
 def start_worker():
-    """标记队列可用并加载并发配置。worker 线程**不在启动期创建**（真实装机
-    案例：某些杀软环境下启动期 Thread.start() 挂死，进程停在任务队列一步），
-    推迟到首次 enqueue 时由 _ensure_workers 创建——服务就绪不再依赖线程。"""
+    """加载并发保护配置；线程只在真实任务到达时创建。"""
     global _started
     if _started:
         return
@@ -110,46 +97,205 @@ def start_worker():
         return
     except Exception:
         pass
-    configure(3)
+    configure(12)
 
 
 def enqueue(job):
+    """立即为 job 预留执行位并启动独立线程；从不进入等待队列。
+
+    返回前先把持久化 run 从 queued 原子切到 running，因此 HTTP/自动化调用方
+    不会看到“已接受但仍排队”。满载、重复 run、线程创建失败都会明确抛错；
+    满载与启动失败还会就地把 run 收口为 failed，任何入口都不会留下僵尸。
+    """
+    global _alive, _seq
     if not _started:
         start_worker()
-    _ensure_workers()
-    _QUEUE.put(job)
+    if not isinstance(job, dict):
+        raise ValueError("job 必须是对象")
+    run_id = job.get("run_id")
+    if not run_id:
+        raise ValueError("job.run_id 必填")
 
+    from . import store
+    current = store.get_run(run_id)
+    if current:
+        # 先 CAS 认领持久化 run，再碰并发位。若先占位，两个调用可能分别看到
+        # “容量已满”和“状态已变化”，把唯一 run 误收口为 failed 且无人执行。
+        changed = store.update_run(run_id, expected_status="queued",
+                                   status="running", started_at=_now(),
+                                   dispatch_mode="direct")
+        if changed is None:
+            latest = store.get_run(run_id) or current
+            raise DuplicateJobError("运行 %s 当前状态为 %s，拒绝重复启动" %
+                                    (run_id, latest.get("status")))
+    cancel_event_for(run_id)
 
-def _ensure_workers():
-    """队列里积压超过空闲 worker 数时补线程（惰性扩容，替代启动期预建）。
-    看门狗线程同样惰性起：与 worker 一样不在启动期 Thread.start()（杀软
-    挂起新线程的真实装机案例，见 start_worker 注释），首队到达时一起补。"""
-    global _watchdog_started
+    # CAS 认领后检查并发保护位。_alive 在 Thread.start 前递增，消除旧实现中线程尚未
+    # 回写 alive、扩容循环一次造出几十条 worker 的竞态。
     with _pool_lock:
-        pending = _QUEUE.qsize()
-        need = max(_target, 1) - _alive + pending
-        if not _watchdog_started:
-            _watchdog_started = True
-            threading.Thread(target=_watchdog, name="job-watchdog",
-                             daemon=True).start()
-    if need > 0:
-        _resize()
+        if _alive >= _target:
+            busy_limit = _target
+        else:
+            busy_limit = 0
+            _alive += 1
+            _seq += 1
+            seq = _seq
+    if busy_limit:
+        CANCELS.pop(run_id, None)
+        _close_unstarted(job, "当前运行任务已达并发保护上限（%d）；本次未排队，请稍后重试" % busy_limit,
+                         statuses=("running",))
+        raise JobsBusyError("当前运行任务已达并发保护上限（%d），本次未排队" % busy_limit)
+
+    try:
+        threading.Thread(target=_run_job, args=(dict(job),),
+                         name="job-direct-%d" % seq, daemon=True).start()
+    except Exception:
+        _release_slot()
+        CANCELS.pop(run_id, None)
+        _close_unstarted(job, "任务执行线程启动失败；本次未排队，请稍后重试",
+                         statuses=("queued", "running"))
+        raise
+
+    return True
 
 
-def _watchdog():
-    """队列看门狗：周期把卡死的 queued 编排运行补回队列。
+def _release_slot():
+    global _alive
+    with _idle_cond:
+        _alive = max(0, _alive - 1)
+        if _alive == 0:
+            _idle_cond.notify_all()
 
-    job 队列在内存里，任何一次入队丢失（2026-09-18 实案：r-20260918-211920
-    排队 1 小时无人接手、进程未重启则启动补队永远不跑）都会让 UI 永远
-    「排队中」。这里每分钟自愈一次；重复入队由 worker 出队守卫（非 queued
-    跳过）与同任务单飞守卫兜底，幂等。巡检自身异常绝不退出。"""
+
+def wait_for_idle(timeout=10):
+    """测试/停机辅助：等待所有直接执行任务结束。"""
     import time as _t
-    while True:
-        _t.sleep(WATCHDOG_INTERVAL_S)
+    end = _t.time() + max(0, float(timeout))
+    with _idle_cond:
+        while _alive:
+            left = end - _t.time()
+            if left <= 0:
+                return False
+            _idle_cond.wait(min(left, 0.2))
+        return True
+
+
+def _close_unstarted(job, message, statuses=("queued",)):
+    """无法启动时统一收口 run/task，供所有入口复用。"""
+    try:
+        from . import store
+        run_id = job.get("run_id")
+        run = store.get_run(run_id) if run_id else None
+        if run and run.get("status") in statuses:
+            store.update_run(run_id, expected_status=run.get("status"), status="failed",
+                             error=message, ended_at=_now())
+    except Exception:
+        pass
+
+
+def _schedule_enqueue(job, delay_s):
+    """按明确截止时间延迟启动；同一 run 只保留一个 Timer。"""
+    run_id = job.get("run_id")
+    if not run_id:
+        return False
+
+    def _fire():
+        with _timer_lock:
+            _deferred_timers.pop(run_id, None)
         try:
-            requeue_pending(limit=6, max_age_s=WATCHDOG_STALE_S)
+            enqueue(job)
+        except Exception:
+            # enqueue 会把未启动 run 收口为 failed；Timer 线程不外抛。
+            pass
+
+    with _timer_lock:
+        old = _deferred_timers.get(run_id)
+        if old is not None:
+            return False
+        timer = threading.Timer(max(0.0, float(delay_s)), _fire)
+        timer.daemon = True
+        _deferred_timers[run_id] = timer
+        try:
+            timer.start()
+        except Exception:
+            _deferred_timers.pop(run_id, None)
+            _close_unstarted(job, "自动续跑定时器启动失败，请手动重试")
+            raise
+    return True
+
+
+def restore_deferred_resumes(limit=None, now=None):
+    """重建重启前的自动续跑退避 Timer；返回成功恢复的数量。"""
+    import time as _t
+    try:
+        from . import store
+    except Exception:
+        return 0
+    now = _t.time() if now is None else float(now)
+    restored = 0
+    for run in store.list_runs(None):
+        if limit is not None and restored >= limit:
+            break
+        if run.get("status") != "queued" or run.get("kind") != "orchestration":
+            continue
+        at = str(run.get("resume_enqueue_at") or "")
+        if not at:
+            continue
+        try:
+            due = _t.mktime(_t.strptime(at, "%Y-%m-%d %H:%M:%S"))
+        except Exception:
+            due = now
+        job = {"kind": "orchestration", "run_id": run["id"],
+               "task_id": run.get("task_id")}
+        if _schedule_enqueue(job, max(0.0, due - now)):
+            restored += 1
+    return restored
+
+
+def _run_job(job):
+    """直接执行线程入口；无 get/put 等待阶段。"""
+    run_id = job.get("run_id")
+    ev = cancel_event_for(run_id) if run_id else threading.Event()
+    try:
+        # enqueue 已把 run 原子切为 running。线程真正得到调度时再检查一次，
+        # 用户若在两者之间取消，直接跳过，避免取消后仍进入流水线。
+        if run_id:
+            from . import store
+            r0 = store.get_run(run_id)
+            if r0 and r0.get("status") != "running":
+                return
+            if job.get("kind") == "orchestration" and _yield_duplicate(run_id):
+                return
+        if job.get("kind") == "orchestration":
+            from . import pipeline
+            pipeline.execute_run(run_id)
+        elif job.get("kind") == "mgmt":
+            _do_mgmt(job, ev)
+        elif job.get("kind") == "selfupgrade":
+            _do_selfupgrade(job, ev)
+        else:
+            raise ValueError("未知任务类型 %r" % job.get("kind"))
+    except Exception:
+        try:
+            from . import store
+            err = traceback.format_exc()
+            store.update_run(run_id, expected_status="running", status="failed",
+                             error=err[-1500:], ended_at=_now())
         except Exception:
             pass
+    finally:
+        if run_id:
+            CANCELS.pop(run_id, None)
+            try:
+                _maybe_auto_resume(run_id)
+            except Exception:
+                pass
+            try:
+                from . import notify
+                notify.push_run_async(run_id)
+            except Exception:
+                pass
+        _release_slot()
 
 
 def cancel(run_id):
@@ -169,26 +315,34 @@ def cancel(run_id):
         except Exception:
             pass
         return True
-    # 事件不存在=任务还在队列里没被 worker 拿起：直接落终态（取消事件在
-    # worker 起跑时才创建，排队任务点取消会在这里漏掉——起跑后再杀一遍）。
+    # 事件不存在也可能撞在 enqueue 已把 run 切成 running、尚未来得及登记
+    # CANCELS 的极短窗口。无论 queued/running 都直接落终态，不能让取消丢失。
     try:
         from . import store
         run = store.get_run(run_id)
         if not run:
             return False
-        if run.get("status") == "queued":
-            store.update_run(run_id, expected_status="queued", status="cancelled",
-                             ended_at=_now())
-            return True
-        if run.get("status") == "running" and run.get("cancelled_by_user"):
-            return True   # 上一轮取消已标记，等起跑时的兜底检查收口
+        status = run.get("status")
+        if status in ("queued", "running"):
+            changed = store.update_run(run_id, expected_status=status,
+                                       status="cancelled", ended_at=_now(),
+                                       error="用户主动取消",
+                                       cancelled_by_user=True)
+            if changed is not None:
+                with _timer_lock:
+                    timer = _deferred_timers.pop(run_id, None)
+                if timer is not None:
+                    timer.cancel()
+                return True
+            latest = store.get_run(run_id) or {}
+            return latest.get("status") == "cancelled"
     except Exception:
         pass
     return False
 
 
 def cancel_event_for(run_id):
-    ev = CANCELS.get(run_id)   # get-or-create：排队期置位的取消不因重建事件而丢失
+    ev = CANCELS.get(run_id)
     if ev is None:
         ev = threading.Event()
         CANCELS[run_id] = ev
@@ -229,7 +383,7 @@ def _err_signature(err):
 def _maybe_auto_resume(run_id):
     """连载任务失败自动续跑：继承已完成章继续，最多 AUTO_RESUME_MAX 次。
 
-    真实长篇单次运行常因供应商拥堵超时中断；这里在 worker 收尾时自动重排一次
+    真实长篇单次运行常因供应商拥堵超时中断；这里在执行线程收尾时自动续跑一次
     续跑（store.retry_task 会带上 inherit），让整个流程真正无人值守。
     同因连撞止损：续跑副本再失败时与本次失败的错误签名比对（2026-09-18
     重写任务 kimi 403 欠费案），一模一样说明退避没换来不同结果，直接落
@@ -262,21 +416,16 @@ def _maybe_auto_resume(run_id):
         ok, err, new_run = store.retry_task(task["id"])
         if not ok or not new_run:
             return False
-        # 退避窗口要让用户看得见：把「预定入队时刻」写到 run 上，前端据此显示
-        # 「将在 HH:MM 自动续跑」而不是笼统的排队中（run 在建好到入队之间会
-        # 以 queued 状态干等 AUTO_RESUME_DELAY_S 秒）。
+        # 退避窗口要让用户看得见：把「预定启动时刻」写到 run 上，前端据此显示
+        # 「将在 HH:MM 自动续跑」。这不是容量排队，且等待期间不占执行位。
         import time as _t
         resume_at = _t.strftime("%Y-%m-%d %H:%M:%S",
                                 _t.localtime(_t.time() + AUTO_RESUME_DELAY_S))
         store.update_run(new_run["id"], auto_resumes=int(run.get("auto_resumes") or 0) + 1,
                          auto_resumed_from=run_id, resume_enqueue_at=resume_at)
 
-        def _enqueue():
-            _QUEUE.put({"kind": "orchestration",
-                        "run_id": new_run["id"], "task_id": task["id"]})
-        t = threading.Timer(AUTO_RESUME_DELAY_S, _enqueue)
-        t.daemon = True
-        t.start()
+        _schedule_enqueue({"kind": "orchestration", "run_id": new_run["id"],
+                           "task_id": task["id"]}, AUTO_RESUME_DELAY_S)
         return True
     except Exception:
         return False
@@ -339,15 +488,19 @@ def resume_interrupted(limit=3):
             store.update_run(new_run["id"],
                              auto_resumes=int(run.get("auto_resumes") or 0) + 1,
                              auto_resumed_from=run["id"])
-            _QUEUE.put({"kind": "orchestration", "run_id": new_run["id"], "task_id": task["id"]})
-            n += 1
+            try:
+                enqueue({"kind": "orchestration", "run_id": new_run["id"],
+                         "task_id": task["id"]})
+                n += 1
+            except Exception:
+                pass
     except Exception:
         return n
     return n
 
 
 def _yield_duplicate(run_id):
-    """同任务单飞（worker 出队时把关）：系统续跑副本出队时若同任务已有
+    """同任务单飞（执行线程入口把关）：系统续跑副本启动时若同任务已有
     运行排队/在跑，取消自己让位——恢复副本与原轮并行跑只会双烧评审。
     用户轮不在此拦（retry_task 建轮时已拒运行中任务）。返回 True 表示
     本运行已落 cancelled，不要执行。"""
@@ -394,17 +547,14 @@ def _in_resume_backoff(run, now=None):
 
 
 def requeue_pending(limit=10, max_age_s=None):
-    """把遗留的 queued 运行重新入队（启动补队与运行期巡检共用）。
+    """直接启动遗留的 queued 运行（启动恢复与运行期巡检共用）。
 
-    队列在内存里，进程一死排队项就没人管了（2026-09-18 七猫 r-162724
-    排队僵尸案：续跑副本 created 后服务重启，Timer 随进程蒸发，运行永远
-    停在「排队中」）。同任务已有在跑/排队的不重复补。
-    mgmt 同样纳入：CLI 安装/升级 job 也只存在于内存队列，worker 线程
-    起失败（杀软挂起 Thread.start）或入队丢失后永远「排队中」，还堵住
-    同条目去重闸（2026-09-19 三连 CLI 升级排队无人接案）。selfupgrade
+    兼容旧版本曾持久化的排队状态，以及续跑 Timer 随进程消失的历史情况。
+    同任务已有在跑/等待续跑的不重复启动。mgmt 同样纳入，避免旧的排队记录
+    堵住同条目去重闸。selfupgrade
     不补——升级本体有进程替换语义，自动重排不可控。
 
-    max_age_s：巡检模式只补「卡了超过该秒数」的，刚入队的正常排队不掺和；
+    max_age_s：巡检模式只接管「卡了超过该秒数」的，刚创建的退避记录不掺和；
     None（启动模式）全量补。resume_enqueue_at 未到点的续跑副本两种模式都
     跳过——重启不该把退避窗口烧掉。返回补队条数。"""
     try:
@@ -434,82 +584,37 @@ def requeue_pending(limit=10, max_age_s=None):
                     other = store.active_mgmt_run(eid)
                     if other and other.get("id") != run["id"]:
                         continue   # 同条目已有更活跃的 run，去重闸语义收敛
-            _QUEUE.put({"kind": kind, "run_id": run["id"],
-                        "task_id": run.get("task_id"),
-                        "entry_id": run.get("entry_id"), "op": run.get("op")})
-            n += 1
+            try:
+                enqueue({"kind": kind, "run_id": run["id"],
+                         "task_id": run.get("task_id"),
+                         "entry_id": run.get("entry_id"), "op": run.get("op")})
+                n += 1
+            except (JobsBusyError, DuplicateJobError):
+                # 满载时 enqueue 已明确收口；重复 run 已由另一个执行方接管。
+                continue
+            except Exception:
+                continue
     except Exception:
         pass
     return n
 
 
-def _worker():
-    global _alive
-    with _pool_lock:
-        _alive += 1
-    try:
-        while True:
-            with _pool_lock:
-                if _alive > _target:   # 缩容：多余的线程在空闲检查点自行退出
-                    return
-            try:
-                job = _QUEUE.get(timeout=5)  # 定期醒来检查并发数是否被调小
-            except queue.Empty:
-                continue
-            run_id = job.get("run_id")
-            ev = cancel_event_for(run_id) if run_id else threading.Event()
-            try:
-                # 出队后状态闸：非 queued 一律跳过。排队期取消的（cancel 已
-                # 直接落终态）不再进流水线；running/done/failed 的是看门狗
-                # 重排/双入队产生的重复副本——另一 worker 已在跑或已跑完，
-                # 再 execute_run 会把同一运行执行两次。查不到的 run（测试
-                # mock）不拦，保持原行为。
-                if run_id:
-                    from . import store
-                    r0 = store.get_run(run_id)
-                    if r0 and r0.get("status") != "queued":
-                        continue   # task_done 由 finally 统一收口，不能在此重复
-                    if job.get("kind") == "orchestration" and _yield_duplicate(run_id):
-                        continue   # 同任务单飞：续跑副本让位（已落 cancelled）
-                if job.get("kind") == "orchestration":
-                    from . import pipeline
-                    pipeline.execute_run(run_id)
-                elif job.get("kind") == "mgmt":
-                    _do_mgmt(job, ev)
-                elif job.get("kind") == "selfupgrade":
-                    _do_selfupgrade(job)
-            except Exception:
-                try:
-                    from . import store
-                    err = traceback.format_exc()
-                    store.update_run(run_id, status="failed", error=err[-1500:], ended_at=_now())
-                except Exception:
-                    pass
-            finally:
-                if run_id:
-                    CANCELS.pop(run_id, None)
-                    try:
-                        _maybe_auto_resume(run_id)   # 连载失败自动续跑（继承已完成章）
-                    except Exception:
-                        pass
-                    try:
-                        from . import notify
-                        notify.push_run_async(run_id)   # 结果推群（借鉴 agency-orchestrator --notify）
-                    except Exception:
-                        pass
-                _QUEUE.task_done()
-    finally:
-        with _pool_lock:
-            _alive -= 1
-
-
 def workers_info():
     with _pool_lock:
-        return {"target": _target, "alive": _alive, "queued": _QUEUE.qsize()}
+        return {"target": _target, "alive": _alive, "queued": 0,
+                "available": max(0, _target - _alive), "mode": "direct"}
 
 
 def _drain_test_queue():
-    """测试辅助：清空内存队列并结清未决 join（生产代码勿调）。"""
+    """测试辅助：清空兼容队列并取消未决 Timer（生产代码勿调）。"""
+    with _timer_lock:
+        timers = list(_deferred_timers.values())
+        _deferred_timers.clear()
+    for timer in timers:
+        try:
+            timer.cancel()
+        except Exception:
+            pass
     while True:
         try:
             _QUEUE.get_nowait()
@@ -528,15 +633,19 @@ def _do_mgmt(job, ev):
     run_id = job["run_id"]
     entry = catalog.by_id(job.get("entry_id"))
     op = job.get("op") or ""
-    store.update_run(run_id, status="running", started_at=_now())
+    if ev.is_set() or (store.get_run(run_id) or {}).get("status") != "running":
+        return
     if entry is None:
-        store.update_run(run_id, status="failed", error="catalog 中找不到 %s" % job.get("entry_id"),
+        store.update_run(run_id, expected_status="running", status="failed",
+                         error="catalog 中找不到 %s" % job.get("entry_id"),
                          ended_at=_now())
         return
     step, log_abs = store.add_step(run_id, op or "mgmt", entry["id"], entry.get("name", entry["id"]))
     ok = False
     if op in ("install", "upgrade", "uninstall"):
         res = manager.run_mgmt_command(entry, op, cancel_event=ev, log_path=str(log_abs))
+        if ev.is_set() or (store.get_run(run_id) or {}).get("status") != "running":
+            return
         ok = res["ok"]
         # 文件占用类失败（Windows 文件锁 EBUSY/EPERM）给人话结论并跳过 AI 修复：
         # 修复智能体面对文件锁只会给出 taskkill 全杀 node 之类白名单必拒的危险
@@ -562,7 +671,8 @@ def _do_mgmt(job, ev):
         agent = next((a for a in agents if a["id"] == entry["id"]), None)
         if agent is None:
             store.finish_step(run_id, step["n"], "failed", summary="该智能体未安装或未启用编排")
-            store.update_run(run_id, status="failed", error="未启用", ended_at=_now())
+            store.update_run(run_id, expected_status="running", status="failed",
+                             error="未启用", ended_at=_now())
             return
         res = _r.run_agent(agent, "连通性测试：请只回复两个字：OK",
                            readonly=True,
@@ -570,6 +680,8 @@ def _do_mgmt(job, ev):
                            # token 技能上下文，首 token 常超 180s（2026-09-17 实测
                            # 网关裸探 8s 就回，慢在 CLI 自身启动与上下文）。
                            timeout=300, cancel_event=ev, log_path=str(log_abs))
+        if ev.is_set() or (store.get_run(run_id) or {}).get("status") != "running":
+            return
         ok = res["ok"] and "OK" in (res.get("text") or "").upper()
         try:
             _usage.record(source="smoke", run_id=run_id, step=step["n"], role="smoke",
@@ -599,16 +711,19 @@ def _do_mgmt(job, ev):
                                               "完成" if final == "done" else "失败", suffix)))
 
 
-def _do_selfupgrade(job):
+def _do_selfupgrade(job, ev):
     """CodeBee 自升级：在 mgmt run 里跑 npm install -g @latest，日志实时落盘。"""
     from . import selfupdate, store
     run_id = job["run_id"]
-    store.update_run(run_id, status="running", started_at=_now())
+    if ev.is_set() or (store.get_run(run_id) or {}).get("status") != "running":
+        return
     step, log_abs = store.add_step(run_id, "selfupgrade", "__self__", "CodeBee")
     try:
-        res = selfupdate.run_upgrade(run_id, str(log_abs))
+        res = selfupdate.run_upgrade(run_id, str(log_abs), cancel_event=ev)
     except Exception as e:
         res = {"ok": False, "exit_code": None, "error": repr(e)}
+    if ev.is_set() or (store.get_run(run_id) or {}).get("status") != "running":
+        return
     store.finish_step(run_id, step["n"], "done" if res["ok"] else "failed",
                       summary="升级完成，点「重启」生效" if res["ok"]
                       else ("升级失败: " + res["error"][:300]),

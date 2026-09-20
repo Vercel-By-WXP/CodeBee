@@ -907,7 +907,8 @@ def _run_code(run, task, agents, ev, stats, mode):
     else:
         impl, route["implementer"] = router.pick(agents, "implement", "code", stats)
     if impl is None:
-        store.update_run(run_id, status="failed", error="没有可用智能体", ended_at=_now())
+        store.update_run(run_id, expected_status="running", status="failed",
+                         error="没有可用智能体", ended_at=_now())
         return
 
     # ---- 规划
@@ -1043,7 +1044,8 @@ def _run_code(run, task, agents, ev, stats, mode):
                 res_err = "实现步骤失败（无其他真实 CLI 可换将）: %s" % res.get("error")
         else:
             res_err = "实现步骤失败: %s" % res.get("error")
-        store.update_run(run_id, status="failed", error=res_err, ended_at=_now())
+        store.update_run(run_id, expected_status="running", status="failed",
+                         error=res_err, ended_at=_now())
         return False
 
     def review_and_score():
@@ -1153,7 +1155,7 @@ def _run_code(run, task, agents, ev, stats, mode):
         _write_project_memory(task, workdir, _mem_lines)
     except Exception:
         pass
-    store.update_run(run_id, status="done", verdict=verdict,
+    store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
                      summary="代码任务%s（验证%s / 评审%s%s）" % (
                          "通过" if overall_pass else "未通过",
                          "通过" if verify_pass else "未通过",
@@ -1321,7 +1323,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
     else:
         impl, route["implementer"] = router.pick(agents, "implement", task["type"], stats)
     if impl is None and bi is None:
-        store.update_run(run_id, status="failed", error="没有可用智能体", ended_at=_now())
+        store.update_run(run_id, expected_status="running", status="failed",
+                         error="没有可用智能体", ended_at=_now())
         return
     difficulty = task.get("difficulty") or "default"
     step_wd = _resume_workdir(resume_ctx, workdir) if resume_ctx else workdir
@@ -1395,7 +1398,7 @@ def _run_direct(run, task, agents, ev, stats, mode):
                             readonly=False, ev=ev, note=note,
                             resume=sid or None, images=images)
         if not res["ok"]:
-            store.update_run(run_id, status="failed",
+            store.update_run(run_id, expected_status="running", status="failed",
                              error="执行失败: %s" % res.get("error"), ended_at=_now())
             return
         turns += 1
@@ -1427,7 +1430,7 @@ def _run_direct(run, task, agents, ev, stats, mode):
         report += ["## 最近一轮输出", "", last_text[-5000:], ""]
     store.write_report(run_id, "\n".join(report))
     _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
-    store.update_run(run_id, status="done", verdict=verdict,
+    store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
                      summary="直连完成（%d 轮）：%s" % (turns, last_text[:160]),
                      ended_at=_now())
 
@@ -1910,7 +1913,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         # 历史遗留：降级/模板大纲被继承时，真实任务宁可中止重生成，也不按空模板写全书
         if (outline.get("degraded") or outline.get("source") == "template") \
                 and impl.get("mode") != "mock":
-            store.update_run(run_id, status="failed",
+            store.update_run(run_id, expected_status="running", status="failed",
                              error="继承的大纲为降级模板（无真实情节），已中止以重新生成大纲",
                              ended_at=_now())
             return
@@ -1933,7 +1936,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             store.finish_step(run_id, outline_step["n"], "failed",
                               summary="大纲降级：%s" % (outline.get("degraded_reason") or "编排者不可用"),
                               duration_s=None)
-            store.update_run(run_id, status="failed",
+            store.update_run(run_id, expected_status="running", status="failed",
                              error="%s，已中止以免按空模板写全书"
                                    % (outline.get("degraded_reason") or "编排者不可用"),
                              ended_at=_now())
@@ -2202,7 +2205,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     time.sleep(3)   # 落盘竞态宽限：CLI 崩溃退出前写的文件可能晚于
                     good, txt = _chapter_state()   # 退出检查零点几秒才可见（c34 实测）
                 if not good:
-                    store.update_run(run_id, status="failed",
+                    store.update_run(run_id, expected_status="running", status="failed",
                                      error="第 %d 章起草失败: %s" % (i, (res or {}).get("error")), ended_at=_now())
                     return
                 if not res["ok"]:
@@ -2286,7 +2289,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     if scored_variants:
                         break
                 if not scored_variants:
-                    store.update_run(run_id, status="failed",
+                    store.update_run(run_id, expected_status="running", status="failed",
                                      error="第 %d 章赛马全部变体起草失败" % i, ended_at=_now())
                     return
                 scored_variants.sort(key=lambda v: (-v["avg"], v["variant"]))
@@ -2297,7 +2300,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         os.replace(os.path.join(workdir, win["file"]),
                                    os.path.join(workdir, ch_file))
                     except OSError as e:
-                        store.update_run(run_id, status="failed",
+                        store.update_run(run_id, expected_status="running", status="failed",
                                          error="第 %d 章赛马收卷失败: %r" % (i, e), ended_at=_now())
                         return
                 for v in scored_variants[1:]:
@@ -2345,7 +2348,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             if not scored:
                 # 「评不上」≠「评了 0 分」：全部评审失败时中止本轮，
                 # 让自动续跑换个时机重试，而不是以 0 分误判章稿质量。
-                store.update_run(run_id, status="failed",
+                store.update_run(run_id, expected_status="running", status="failed",
                                  error="第 %d 章评审全部失败（评审模型不可用或输出不可解析），"
                                        "已中止以免以 0 分误判质量" % i, ended_at=_now())
                 return
@@ -2476,7 +2479,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             if gscored:
                 break
         if not gscored:
-            store.update_run(run_id, status="failed",
+            store.update_run(run_id, expected_status="running", status="failed",
                              error="全局一致性评审全部失败（评审模型不可用或输出不可解析），"
                                    "已中止以免把「无法评审」误判为「未达标」。"
                                    "各章稿件已全部落盘，修复评审链后续跑可直接收尾",
@@ -2645,7 +2648,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         lines.append("（无 major 问题）")
     store.write_report(run_id, "\n".join(lines))
     _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
-    store.update_run(run_id, status="done", verdict=verdict,
+    store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
                      summary="连载任务%s（%s，约 %d 字，综合 %.1f）" % (
                          "达标" if publishable else "未达标", scope_txt,
                          total_words, overall),
@@ -2792,7 +2795,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         impl, route["author"] = router.pick(agents, "implement", task_type, stats)
         critics, route["critics"] = router.pick_critics(agents, task_type, stats, impl=impl)
     if impl is None:
-        store.update_run(run_id, status="failed", error="没有可用智能体", ended_at=_now())
+        store.update_run(run_id, expected_status="running", status="failed",
+                         error="没有可用智能体", ended_at=_now())
         return
     if resume_ctx is not None and mode == "auto":
         critics, route["critics"] = router.pick_critics(
@@ -2871,7 +2875,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                                   resume=resume_ctx["session"] if resume_ctx else None,
                                   images=_task_images(task, workdir))
         if not draft_res["ok"]:
-            store.update_run(run_id, status="failed", error="起草失败: %s" % draft_res.get("error"),
+            store.update_run(run_id, expected_status="running", status="failed",
+                             error="起草失败: %s" % draft_res.get("error"),
                              ended_at=_now())
             return
 
@@ -3003,7 +3008,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     lines += ["", "## 稿件位置", "", "`%s`" % ms_path, ""]
     store.write_report(run_id, "\n".join(lines))
     _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
-    store.update_run(run_id, status="done", verdict=verdict,
+    store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
                      summary="评审任务%s（综合 %.1f）" % ("达标" if publishable else "未达标", overall),
                      ended_at=_now())
 
@@ -3048,13 +3053,13 @@ def _run_serial_qa(run, task, agents, ev):
         res = _run_step(run_id, "qa", modelhub.bind_agent(agent, "default"),
                         prompt, workdir, readonly=True, ev=ev, timeout=1200)
         if res.get("ok") and (res.get("text") or "").strip():
-            store.update_run(run_id, status="done", ended_at=_now(),
+            store.update_run(run_id, expected_status="running", status="done", ended_at=_now(),
                              verdict={"qa": True,
                                       "answered_by": agent.get("id")})
             return
         errors.append("%s：%s" % (agent.get("id"),
                                   (res.get("error") or "无输出")[:120]))
-    store.update_run(run_id, status="failed", ended_at=_now(),
+    store.update_run(run_id, expected_status="running", status="failed", ended_at=_now(),
                      error="答疑失败（执行/评审链不可用）——" + "；".join(errors[-3:]))
 
 
@@ -3262,10 +3267,18 @@ def execute_run(run_id):
                          error="排队期间被取消")
         return
     task = store.get_task(run.get("task_id"))
-    store.update_run(run_id, status="running", started_at=_now())
+    # 生产 enqueue 已完成 queued→running 认领；测试/兼容调用也可能直接从
+    # queued 进入。按初读状态做 CAS 起跑确认：取消若恰好落在读取之后，当前
+    # 状态已是 cancelled，写入会失败并立即退出，不产生 Git/文件副作用。
+    initial_status = run.get("status")
+    if initial_status not in ("queued", "running"):
+        return
+    if store.update_run(run_id, expected_status=initial_status, status="running",
+                        started_at=_now()) is None:
+        return
     if task is None:
-        store.update_run(run_id, status="failed", error="找不到任务 %s" % run.get("task_id"),
-                         ended_at=_now())
+        store.update_run(run_id, expected_status="running", status="failed",
+                         error="找不到任务 %s" % run.get("task_id"), ended_at=_now())
         return
     # 代码版本检出：任务指定了基线版本时，先检出任务分支 tutti/<task-id> 再跑流水线。
     # 显式意图不容静默降级——仓库缺失/脏工作区/引用不存在一律中止运行并报错，
@@ -3276,8 +3289,8 @@ def execute_run(run_id):
         ok, err, gitinfo = gitmod.prepare_checkout(
             task["workdir"], task["git_rev"], task["id"])
         if not ok:
-            store.update_run(run_id, status="failed", error="代码版本检出失败：%s" % err,
-                             ended_at=_now())
+            store.update_run(run_id, expected_status="running", status="failed",
+                             error="代码版本检出失败：%s" % err, ended_at=_now())
             return
         git_ctx = gitinfo
         store.update_run(run_id, git=gitinfo)
@@ -3338,7 +3351,8 @@ def execute_run(run_id):
                 impl, route["author"] = router.pick(agents, "implement", task["type"], stats)
                 critics, route["critics"] = router.pick_critics(agents, task["type"], stats, impl=impl)
             if impl is None:
-                store.update_run(run_id, status="failed", error="没有可用智能体", ended_at=_now())
+                store.update_run(run_id, expected_status="running", status="failed",
+                                 error="没有可用智能体", ended_at=_now())
                 return
             if resume_ctx is not None and mode == "auto":
                 critics, route["critics"] = router.pick_critics(agents, task["type"], stats, impl=impl)
@@ -3348,11 +3362,12 @@ def execute_run(run_id):
             else:
                 _run_content_review(run, task, agents, ev, stats, mode)
     except Cancelled:
-        store.update_run(run_id, status="cancelled", ended_at=_now())
+        store.update_run(run_id, expected_status="running",
+                         status="cancelled", ended_at=_now())
     except Exception as e:
         import traceback
-        store.update_run(run_id, status="failed", error=repr(e)[:500],
-                         ended_at=_now())
+        store.update_run(run_id, expected_status="running", status="failed",
+                         error=repr(e)[:500], ended_at=_now())
         try:
             err_path = store.run_dir(run_id) / "error.log"
             if _inside(str(store.run_dir(run_id).parent), str(err_path)):

@@ -42,6 +42,7 @@ class SerialReviewBase(BaseTest):
             "implementer": "mock-a", "critics": ["c1", "c2"],
         })
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running")
         return task, run
 
     def _agents(self, extra_ids=()):

@@ -426,13 +426,13 @@ function jsq(s) {
 }
 
 function statusChip(st) {
-  const zh = { queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") };
+  const zh = { queued: t("正在启动"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") };
   return '<span class="chip ' + esc(st) + '">' + (zh[st] || esc(st)) + "</span>";
 }
 
 /* 运行状态文案（传 run 对象）：退避窗口内的续跑副本写明「将于 HH:MM 自动
  * 续跑」，别让 5 分钟等待看起来像卡死/资源排队（2026-09-18 重写任务误判案）。
- * 到点后翻回「排队中」——页面轮询重渲染时 Date.now() 已过预定时刻。 */
+ * 到点后翻回「正在启动」——页面轮询重渲染时 Date.now() 已过预定时刻。 */
 function runStatusText(run) {
   const st = String((run && run.status) || "");
   if (st === "queued" && run && run.resume_enqueue_at) {
@@ -440,7 +440,7 @@ function runStatusText(run) {
     if (!isNaN(at) && Date.now() < at)
       return t("将于 {0} 自动续跑", String(run.resume_enqueue_at).slice(11, 16));
   }
-  return { queued: t("排队中"), running: t("运行中"), done: t("完成"),
+  return { queued: t("正在启动"), running: t("运行中"), done: t("完成"),
     failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") }[st] || st;
 }
 
@@ -3266,7 +3266,7 @@ function drawTaskDetail(key, runs) {
   // 取消收尾把僵尸步骤落成「已取消」时要立即重画，不等条数变化；
   // 作品信息状态入签名：后台一键生成 running→done 要立刻反映到成果区面板
   const bmTask = ((S.state || {}).tasks || []).find((x) => x.id === key);
-  // 自动续跑退避相位入签名：预定入队时刻过了之后 chip 要从「将于 HH:MM」翻回「排队中」
+  // 自动续跑退避相位入签名：预定启动时刻过了之后 chip 翻为「正在启动」
   const lr0 = runs[0] || {};
   const resumePending = (lr0.resume_enqueue_at &&
     Date.now() < Date.parse(String(lr0.resume_enqueue_at).replace(" ", "T"))) ? 1 : 0;
@@ -3280,8 +3280,8 @@ function drawTaskDetail(key, runs) {
   const ordered = runs.slice();                 // 详情按最近运行优先，方便排查
   const totalSteps = runs.reduce((a, r) => a + (r.steps || []).length, 0);
   const active = runs.some((r) => r.status === "running" || r.status === "queued");
-  // 活跃态细分真实状态：排队里还分「等并发」和「自动续跑退避（预定 HH:MM 入队）」，
-  // 后者在 chip 上写明下一轮何时起跑，别让 5 分钟退避窗口看起来像卡死（Z.ai 误伤案）
+  // 活跃态细分真实状态：queued 仅用于自动续跑退避或创建到起跑的瞬时状态；
+  // 前者在 chip 上写明下一轮何时起跑，避免退避窗口看起来像卡死。
   const activeRun0 = runs.find((r) => r.status === "running" || r.status === "queued");
   const st = activeRun0 ? activeRun0.status : latest.status;
   const resumeIn = (st === "queued" && resumePending)
@@ -3291,7 +3291,7 @@ function drawTaskDetail(key, runs) {
   chip.className = "chip " + st;
   chip.textContent = resumeIn
     ? t("将于 ") + resumeIn + t(" 自动续跑（第 ") + (Number(latest.auto_resumes) || 0) + t(" 次）")
-    : ({ queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消") }[st] || st);
+    : ({ queued: t("正在启动"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消") }[st] || st);
   const bpt = $("btn-pause");
   if (bpt) bpt.classList.add("hidden");
   $("btn-delete").classList.add("hidden");
@@ -7825,11 +7825,11 @@ function autoTplPace(tp) {
   });
 }
 
-/* last_status → 徽章：queued=正常灰、error=红「拉起失败」、missed=黄「已错过」 */
+/* last_status → 徽章：started=正常灰、error=红「拉起失败」、missed=黄「已错过」 */
 function autoStatusTag(tsk) {
   if (tsk.last_status === "error") return '<span class="tag auto-tag-err">' + t("拉起失败") + "</span>";
   if (tsk.last_status === "missed") return '<span class="tag auto-tag-miss">' + t("已错过") + "</span>";
-  if (tsk.last_status === "queued") return '<span class="tag">' + t("正常") + "</span>";
+  if (tsk.last_status === "started" || tsk.last_status === "queued") return '<span class="tag">' + t("正常") + "</span>";
   return "";
 }
 
@@ -9005,7 +9005,7 @@ function helpChapterBody(id) {
     return '<div class="help-qa"><b>' + t("点「获取模型列表」报 404？") + '</b><p>' + t("部分网关不提供模型列表接口，属正常现象；只要能正常对话就不用管，模型名手工填即可。") + '</p></div>' +
       '<div class="help-qa"><b>' + t("报 503 / 无可用渠道？") + '</b><p>' + t("该模型当前没有可用渠道，最常见是余额耗尽。查一下余额或换个模型；同一厂商配了多把 Key 会自动轮换。") + '</p></div>' +
       '<div class="help-qa"><b>' + t("「冷却中」是什么意思？") + '</b><p>' + t("一把 Key 连续失败会被暂停 30 分钟，防止反复撞墙烧钱，到期自动恢复；也可以在密钥旁手动重置。") + '</p></div>' +
-      '<div class="help-qa"><b>' + t("任务一直显示「排队」？") + '</b><p>' + t("本地默认最多 6 个任务同时跑，排满就排队。排队时可以打开详情看前面还有几个；个别卡死的任务，看门狗会自动清理补队。") + '</p></div>' +
+      '<div class="help-qa"><b>' + t("任务一直显示「排队」？") + '</b><p>' + t("新任务默认立即运行，不会排队；达到并发保护上限时本次会直接失败并提示稍后重试。只有自动续跑退避会显示预定时间；历史版本遗留的排队记录会由恢复机制立即接管或收口。") + '</p></div>' +
       '<div class="help-qa"><b>' + t("状态里写着「将于 HH:MM 自动续跑」？") + '</b><p>' + t("这一步失败了，正在退避等待自动重试，到点会接着跑，不需要手动干预；等不及也可以在详情页手动重试。") + '</p></div>' +
       '<div class="help-qa"><b>' + t("生成的文件在哪？") + '</b><p>' + t("写作类任务的章节、封面、报告都落在任务的运行目录，详情页「成果」页签可浏览和预览。代码类任务则在仓库的任务分支上改代码，详情页「版本」里审阅后再合并。") + '</p></div>' +
       '<div class="help-qa"><b>' + t("忘了令牌 / 手机打不开页面？") + '</b><p>' + t("服务启动日志里有带令牌的完整访问地址；远程设备必须用带令牌的 URL 打开（或在令牌门里输入一次），否则会一直要求授权。") + '</p></div>' +
@@ -10066,7 +10066,7 @@ function renderBackupPreview(pv) {
     rows.push('<span class="bad">' + esc(t("以下外部目录不在备份里，需自行拷贝："))
       + esc(pv.external_workdirs.join("、")) + "</span>");
   if ((pv.busy_runs || []).length)
-    rows.push('<span class="bad">' + esc(t("有任务正在运行或排队，先等它们结束再导入")) + "</span>");
+    rows.push('<span class="bad">' + esc(t("有任务正在运行或等待自动续跑，先等它们结束再导入")) + "</span>");
   el.innerHTML = rows.map((s) => "<div>" + s + "</div>").join("");
   if (!(pv.busy_runs || []).length) $("bi-apply").classList.remove("hidden");
 }

@@ -292,7 +292,7 @@ def _recover_after_restart():
 
 def _launch_run(t):
     """拉起一次真实编排运行：与 main.py 的 /api/tasks 走同一条链路
-    （store.create_task → store.create_run → jobs 入队），返回 run_id。
+    （store.create_task → store.create_run → jobs 直接启动），返回 run_id。
     测试可把本函数打成 stub，绝不真调 LLM/CLI。"""
     payload = {"type": t.get("flow") or DEFAULT_FLOW,
                "title": ("%s %s" % (t.get("name") or "定时任务",
@@ -309,15 +309,15 @@ def _launch_run(t):
                       "task_id": task["id"]})
         return run["id"]
     except Exception:
-        # A scheduler failure must not leave a task/run that looks queued forever.
+        # 启动失败必须收口，不能留下看似仍在启动的任务/run。
         # Keep the public error generic; the detailed traceback stays in the
         # service log and the run record remains useful for diagnostics.
-        log.exception("automation: 运行入队失败 task=%s run=%s",
+        log.exception("automation: 运行启动失败 task=%s run=%s",
                       (task or {}).get("id"), (run or {}).get("id"))
         if run:
             try:
                 store.update_run(run["id"], status="failed",
-                                 error="任务入队失败，请稍后重试",
+                                 error="任务启动失败，本次未排队，请稍后重试",
                                  ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
             except Exception:
                 log.exception("automation: 运行失败收口失败 run=%s", run.get("id"))
@@ -334,7 +334,7 @@ def _launch_run(t):
 def _fire(snapshot, now):
     """触发一个到期任务：拉起运行并推进 last_run/next_run/run_count/last_status。
     once 触发完自动停用。拉起失败只记 error，next_run 照常推进（下个周期重试）。"""
-    status = "queued"
+    status = "started"
     try:
         _launch_run(snapshot)
     except Exception as e:
@@ -527,7 +527,7 @@ def run_now(tid):
         return None, None
     now = datetime.now()
     run_id = ""
-    status = "queued"
+    status = "started"
     try:
         with _LOCK:
             snapshot = dict(_TASKS[tid])

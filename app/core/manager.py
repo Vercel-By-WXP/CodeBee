@@ -1637,7 +1637,7 @@ def _open_when_ready(port, url, log_path, timeout=30):
 # ---------------------------------------------------------------- 安装/升级
 
 def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
-    """执行 install/upgrade/uninstall 命令（在任务队列里跑，日志实时落盘）。"""
+    """执行 install/upgrade/uninstall 命令（由任务执行器异步运行，日志实时落盘）。"""
     if op == "uninstall":
         cmd = catalog.uninstall_command(entry)
         if not cmd:

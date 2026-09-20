@@ -186,6 +186,31 @@ class TestCancelStepFinalize(BaseTest):
         self.assertEqual(run["status"], "cancelled")
         self.assertFalse(run.get("steps"), "不得产生任何步骤——流水线没跑")
 
+    def test_cancel_between_run_read_and_start_confirmation_stays_cancelled(self):
+        """取消落在 execute_run 初读之后，CAS 起跑确认必须立即退出。"""
+        from app.core import jobs, pipeline, store
+        task = store.create_task({"type": "direct", "goal": "取消竞态",
+                                  "workdir": str(self.workdir)})
+        rid = store.create_run("orchestration", task["title"],
+                               task_id=task["id"])["id"]
+        store.update_run(rid, status="running")
+        jobs.cancel_event_for(rid)
+        original_get_task = store.get_task
+
+        def cancel_then_get(task_id):
+            store.update_run(rid, cancelled_by_user=True)
+            self.assertTrue(jobs.cancel(rid))
+            return original_get_task(task_id)
+
+        try:
+            store.get_task = cancel_then_get
+            pipeline.execute_run(rid)
+        finally:
+            store.get_task = original_get_task
+        run = store.get_run(rid)
+        self.assertEqual(run["status"], "cancelled")
+        self.assertFalse(run.get("steps"))
+
     def test_cancel_running_run_force_finalizes(self):
         """运行中点取消：立即落 cancelled 终态（含步骤收尸），不等流水线收口。
 
@@ -276,3 +301,28 @@ class TestCancelStepFinalize(BaseTest):
         # 复现收尾写入口径：CAS 应拒绝（当前非 running）
         store.update_run(rid, expected_status="running", status="failed", ended_at="t2")
         self.assertEqual((store.get_run(rid) or {}).get("status"), "cancelled")
+
+    def test_mgmt_missing_entry_cannot_clobber_cancelled(self):
+        """管理任务初检后的取消不能被 catalog 缺项分支改成 failed。"""
+        from app.core import jobs, store
+        rid = store.create_run("mgmt", "缺失条目取消")["id"]
+        store.update_run(rid, status="running")
+        ev = jobs.cancel_event_for(rid)
+        original_get = store.get_run
+        reads = {"n": 0}
+
+        def cancel_after_initial_check(run_id):
+            reads["n"] += 1
+            value = original_get(run_id)
+            if reads["n"] == 1:
+                store.update_run(rid, cancelled_by_user=True)
+                jobs.cancel(rid)
+            return value
+
+        try:
+            store.get_run = cancel_after_initial_check
+            jobs._do_mgmt({"kind": "mgmt", "run_id": rid,
+                           "entry_id": "missing-entry", "op": "upgrade"}, ev)
+        finally:
+            store.get_run = original_get
+        self.assertEqual(store.get_run(rid)["status"], "cancelled")

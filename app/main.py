@@ -972,7 +972,7 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/catalog/([^/]+)/launch$", path)
         if m:
             # 一键打开（web 类起服务+开浏览器 / console 类新终端窗口）。
-            # 即时返回不走任务队列；body 可传 {"open": false} 供测试免开浏览器
+            # 即时返回不走任务执行器；body 可传 {"open": false} 供测试免开浏览器
             entry = catalog.by_id(m.group(1))
             if not entry:
                 return self._json(404, {"error": "catalog 中无此条目"})
@@ -1713,9 +1713,13 @@ class Handler(BaseHTTPRequestHandler):
             ok, err, new_run = store.retry_task(run["task_id"])
             if ok:
                 store.update_run(new_run["id"], op="qa", qa_text=text)
-                self._enqueue_run(new_run["id"], run["task_id"],
-                                  {"kind": "orchestration", "run_id": new_run["id"],
-                                   "task_id": run["task_id"]})
+                started, start_err = self._enqueue_run(
+                    new_run["id"], run["task_id"],
+                    {"kind": "orchestration", "run_id": new_run["id"],
+                     "task_id": run["task_id"]})
+                if not started:
+                    return self._json(503, {"error": start_err,
+                                            "run_id": new_run["id"]})
                 return self._json(200, {"ok": True, "message": msg,
                                         "qa_run": new_run["id"]})
         return self._json(200, {"ok": True, "message": msg})
@@ -2100,15 +2104,17 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(status, resp)
 
     def _enqueue_run(self, run_id, task_id, job):
-        """入队失败时把已持久化记录收口到 failed，避免 UI 永远显示排队中。"""
+        """立即启动失败时收口到 failed；系统默认没有等待队列。"""
         try:
             jobs.enqueue(job)
             return True, ""
-        except Exception:
+        except Exception as exc:
             # 不把异常文本（本机路径、命令行参数、供应商响应）返回给客户端；
             # 详细堆栈只进服务端日志，run 记录也保留稳定的用户可读文案。
             log.exception("任务入队失败 run=%s task=%s", run_id, task_id)
-            err = "任务入队失败，请稍后重试"
+            busy = isinstance(exc, jobs.JobsBusyError)
+            err = ("当前运行任务已达并发保护上限，本次未排队，请稍后重试"
+                   if busy else "任务启动失败，请稍后重试")
             try:
                 closed = store.update_run(run_id, status="failed", error=err,
                                           ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
@@ -2161,8 +2167,7 @@ def _state_payload(client_id="", ver=None):
         "control": remote.control_view(client_id),
         # 供应商健康/告警（顶栏横幅数据源；有告警时 bump_state 会推给所有端）
         "health": health.snapshot(),
-        # 任务队列观测（worker 池目标/存活 + 队列深度）：排队问题排障一眼定位
-        # 是「并发满载在等」还是「job 蒸发没人管」（后者由看门狗 2 分钟自愈）
+        # 直接执行观测：并发保护上限、运行数和可用位；queued 恒为 0。
         "jobs": jobs.workers_info(),
     }
 
@@ -2355,14 +2360,17 @@ def main():
         telemetry.start_background()  # 匿名错误回传+版本 ping（默认开可关；未配端点自动休眠，延迟 45s 不挡启动）
     except Exception:
         pass
-    _step("正在启动任务队列…")
+    _step("正在启动任务执行器…")
     jobs.start_worker()
+    n_wait = jobs.restore_deferred_resumes()
+    if n_wait:
+        print("[CodeBee] 已恢复 %d 个定时退避中的自动续跑任务" % n_wait)
     n_resume = jobs.resume_interrupted()   # 启动恢复：服务被杀中断的连载任务自动续跑
     if n_resume:
         print("[CodeBee] 已自动恢复 %d 个中断的连载任务（断点续跑）" % n_resume)
-    n_rq = jobs.requeue_pending()   # 启动补队：队列在内存里，重启会让排队项变僵尸
+    n_rq = jobs.requeue_pending()   # 兼容旧版本遗留的无退避 queued 记录
     if n_rq:
-        print("[CodeBee] 已重新入队 %d 个遗留排队运行" % n_rq)
+        print("[CodeBee] 已直接启动 %d 个遗留运行" % n_rq)
     _step("正在启动自动化调度…")
     n_auto = automation.start()   # 自动化：加载定时任务并拉起调度线程（错过的一次性任务不补跑）
     if n_auto:

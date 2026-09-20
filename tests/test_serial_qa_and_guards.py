@@ -94,6 +94,7 @@ class TestSerialQaRound(BaseTest):
             "implementer": "impl-a", "critics": ["c1"],
         })
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running")
         return task, run
 
     def test_qa_done_by_critic(self):
@@ -211,12 +212,12 @@ class TestRecoveryGuards(BaseTest):
         store.update_run(stuck["id"], status="queued")
         done = store.create_run("orchestration", task["title"], task_id=task["id"])
         store.update_run(done["id"], status="done")
+        from unittest import mock
         got = []
-        while not jobs._QUEUE.empty():
-            got.append(jobs._QUEUE.get_nowait())
-        n = jobs.requeue_pending()
+        with mock.patch.object(jobs, "enqueue", side_effect=got.append):
+            n = jobs.requeue_pending()
         self.assertEqual(n, 1, "只补 queued 的编排运行，done/failed 不补")
-        item = jobs._QUEUE.get_nowait()
+        item = got[0]
         self.assertEqual(item["run_id"], stuck["id"])
         self.assertEqual(item["kind"], "orchestration")
 
