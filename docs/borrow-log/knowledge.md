@@ -251,3 +251,6 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **vuls**（12.3k★）无 agent 漏扫（Linux/容器/WordPress）| 基础设施侧，非我们域
 - 复查：superpowers 288.9k/oh-story 7.0k/drama-skills 2.1k 活跃
 - pr-review 组新锐无新标的（学生项目/模板为主）
+
+### 2026-09-20 16:00 第十班（批3：计划/spec/长任务·GitHub push 443 持续抖动，API 通道可用）
+- **paseo** 深挖完毕（17,675★）| daemon+多客户端架构（桌面/iOS/Android/web/CLI 连同一 daemon）；**Settings→Pair Device 手机配对**（E2E 加密 relay，可拒走 TCP/Tailscale 直连）；**语音控制**（口述任务/语音讨论 hands-free）；插件 TypeScript 生态（npm/Git/本地目录） | **对比我们**：Tailscale+令牌≈其直连模式；差量=①语音输入（手机远程页可加 Web Speech API 口述——小而实）②设备配对 UX（我们手动带 token URL，它扫码级体验）| 借鉴方向：语音输入进对话页
