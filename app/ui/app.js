@@ -5596,12 +5596,12 @@ async function cancelRun() {
   // 任务级详情没有 S.detailRunId，取消目标用渲染时钉好的 cancelTargetRunId
   const rid = S.detailRunId || S.cancelTargetRunId;
   if (!rid) return;
-  if (!await uiConfirm(t("确定取消该运行？"), { ok: t("确定") })) return;
+  if (!await uiConfirm(t("确定取消该运行？运行将立即强制终止。"), { ok: t("确定") })) return;
   let r;
   try {
     r = await api("/api/runs/" + encodeURIComponent(rid) + "/cancel", { method: "POST" });
   } catch (e) { toast(t("取消失败：网络异常"), true); return; }
-  toast(r && r.ok ? t("已请求取消，运行将在当前调用停止后终止") : t("该运行已结束，无需取消"));
+  toast(r && r.ok ? t("已强制终止运行") : t("该运行已结束，无需取消"));
 }
 
 /* ---------------------------------------------------- 运行中指挥（消息信箱） */

@@ -16,6 +16,7 @@ import io
 import json
 import mimetypes
 import os
+import threading
 from pathlib import Path
 
 from . import modelhub, runner
@@ -321,6 +322,32 @@ def _post_json(url, headers, body, allow_private, timeout):
     return modelhub._post_json_http(url, headers, body, allow_private, timeout=timeout)
 
 
+def _post_interruptible(url, headers, body, allow_private, timeout, cancel_event):
+    """可打断的模型调用：cancel_event 置位即刻放弃等待返回。
+
+    单次生成最长可跑满 timeout，取消不能陪跑到自然结束——HTTP 交给守护
+    线程自行收尾（响应被丢弃，socket 随线程结束释放），主流程立即返回。
+    服务端仍会把这次生成跑完（token 已花），但任务本身即刻终止。"""
+    box = {}
+
+    def _go():
+        try:
+            box["r"] = _post_json(url, headers, body, allow_private, timeout)
+        except Exception as e:
+            box["r"] = (0, None, repr(e))
+
+    th = threading.Thread(target=_go, daemon=True)
+    th.start()
+    if cancel_event is None:
+        th.join(timeout + 10)
+    else:
+        while th.is_alive() and not cancel_event.wait(0.5):
+            pass
+    if cancel_event is not None and cancel_event.is_set():
+        return 0, None, "已取消"
+    return box.get("r") or (0, None, "无响应")
+
+
 def _m_openai(m):
     """内部消息 → openai 消息。tool_results: [(call_id, 结果文本)]。"""
     if m["role"] == "assistant":
@@ -507,7 +534,12 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
             for kk in keys:
                 url, headers, body = _build_request(proto, pbase, kk["key"], model,
                                                     system, msgs, tools_ok)
-                status, data, err = _post_json(url, headers, body, allow_private, timeout)
+                status, data, err = _post_interruptible(url, headers, body,
+                                                        allow_private, timeout,
+                                                        cancel_event)
+                if cancel_event is not None and cancel_event.is_set():
+                    # 取消先于一切记账：健康 KEY 不能因被放弃的请求背上冷却
+                    return _fail("已取消")
                 if status == 0 or not (200 <= status < 300):
                     msg = ""
                     if isinstance(data, dict):
