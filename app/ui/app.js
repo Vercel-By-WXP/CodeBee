@@ -2348,6 +2348,12 @@ function taskContextItems(det) {
     const sTask = ((S.state || {}).tasks || []).find((x) => x.id === taskId);
     if (sTask && sTask.serial && st !== "running" && st !== "queued")
       items.push({ label: t("继续连载（新任务）"), fn: () => continueSerial(taskId) });
+    // 连载完整跑完但未达标：给「重写未达标章」，与详情页按钮同源
+    // （task_latest 全量下发最近一次 run，verdict 就在里面）
+    const lrTask = ((S.state || {}).task_latest || {})[taskId];
+    if (sTask && sTask.serial && lrTask && lrTask.status === "done"
+      && lrTask.verdict && lrTask.verdict.publishable === false)
+      items.push({ label: t("↻ 重写未达标章"), fn: () => retryTask(taskId) });
     items.push({ label: t("重命名任务"), fn: () => renameTask(taskId) });
     const archived = archivedTaskIds().has(taskId);
     items.push({ label: archived ? t("取消归档") : t("归档"), fn: () => archiveTask(taskId, !archived) });
@@ -3188,6 +3194,23 @@ function setEditRetry(taskId, status, taskExists) {
   if (bn) bn.classList.toggle("hidden", !taskExists || failedish);
 }
 
+/* 重试按钮三态：失败/取消 → 「↻ 继续任务」（断点续跑语义）；连载任务完整跑完
+ * 但质量未达标（verdict.publishable=false）→ 「↻ 重写未达标章」——后端 retry
+ * 会把未过线章从继承清单剔除，只重写重评这几章（store.retry_task 未达标分支）；
+ * 其余状态隐藏。 */
+function setRetryBtn(run, task) {
+  const b = $("btn-retry");
+  if (!b) return;
+  const failedish = !!run.task_id && (run.status === "failed" || run.status === "cancelled");
+  const rewrite = !!(run.task_id && task && task.serial && run.status === "done"
+    && run.verdict && run.verdict.publishable === false);
+  b.classList.toggle("hidden", !(failedish || rewrite));
+  b.textContent = rewrite ? t("↻ 重写未达标章") : t("↻ 继续任务");
+  b.title = rewrite
+    ? t("只重写上一遍未过线的章节，已过线章节沿用成稿与评分")
+    : t("再跑一次这个任务；连载任务会断点续跑，已完成章节不重写");
+}
+
 /* 任务级详情：聚合该任务所有 run 的步骤。
  * 有任务档案的从 /api/tasks/<id>/runs 拉全量——前端 run 窗口只有最近 40 条，
  * 窗口外的历史会被算丢；无主运行组（管理操作/任务已删）仍用窗口数据。
@@ -3247,7 +3270,7 @@ function drawTaskDetail(key, runs) {
   const bpt = $("btn-pause");
   if (bpt) bpt.classList.add("hidden");
   $("btn-delete").classList.add("hidden");
-  $("btn-retry").classList.toggle("hidden", !(latest.task_id && (latest.status === "failed" || latest.status === "cancelled")));
+  setRetryBtn(latest, bmTask);
   $("btn-talk").classList.toggle("hidden", !(latest.task_id && !chatEngineIsDirect(latest)));
   setEditRetry(latest.task_id, latest.status,
     !!((S.state || {}).tasks || []).some((x) => x.id === latest.task_id));
@@ -3632,9 +3655,9 @@ async function renderRunDetail() {
   S.cancelTargetRunId = active ? run.id : null;
   $("btn-delete").classList.toggle("hidden", active);
   $("btn-share").classList.toggle("hidden", active);   // 分享页：结束后可生成自包含 HTML
-  $("btn-retry").classList.toggle("hidden", !(run.task_id && (run.status === "failed" || run.status === "cancelled")));
   $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
   const rcTask = ((S.state || {}).tasks || []).find((x) => x.id === run.task_id);
+  setRetryBtn(run, rcTask);
   $("btn-continue").classList.toggle("hidden",
     !(rcTask && rcTask.serial && run.status !== "running" && run.status !== "queued"));
   setEditRetry(run.task_id, run.status, !!rcTask);
@@ -4044,11 +4067,25 @@ function pbBlock(task, platform) {
   } else {
     btns += '<button class="primary" ' + (busy ? "disabled" : "") +
       ' onclick="pbCreateBook(\'' + esc(task.id) + "', '" + platform + '\')">' + t("创建作品") + "</button>";
+    btns += '<button class="ghost" onclick="pbRegToggle(\'' + platform + '\')" title="' +
+      esc(t("作品已在平台建好（建书流程没走通或手工建的）？补登记后直接发章，不会在平台新建")) + '">' + t("登记已有作品") + "</button>";
+  }
+  let extra = "";
+  if (st === "error" && !book && ps.last_action === "create_book") {
+    extra += '<div class="pb-hint">' + esc(t("若作品其实已在平台建好，点「登记已有作品」补登记，勿重复创建")) + "</div>";
+  }
+  if (!book) {
+    extra += '<div class="pb-reg hidden" id="pb-reg-' + platform + '">' +
+      '<input id="pb-reg-title-' + platform + '" placeholder="' + esc(t("平台上的作品名（必填）")) + '">' +
+      '<input id="pb-reg-id-' + platform + '" placeholder="' + esc(t("作品ID（选填，管理页URL里有）")) + '">' +
+      '<button class="ghost" onclick="pbRegister(\'' + esc(task.id) + "', '" + platform + '\')">' + t("确认登记") + "</button>" +
+      "</div>";
   }
   return '<div class="bm-pub">' +
     '<span class="pb-badge ' + cls + '">' + esc(t(label)) + "</span>" +
     btns +
     (st === "error" && ps.error ? '<div class="pb-err">' + esc(ps.error) + "</div>" : "") +
+    extra +
     '<div class="pb-chapters hidden" id="pb-ch-' + platform + '"></div>' +
     "</div>";
 }
@@ -4113,6 +4150,25 @@ window.pbCreateBook = async function (taskId, platform) {
       { method: "POST", body: JSON.stringify({ platform }) });
     toast(t("正在自动填写建书表单…（完成后请在浏览器里确认提交）"));
   } catch (e) { toast(t("建书失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbRegToggle = function (platform) {
+  const box = $("pb-reg-" + platform);
+  if (box) box.classList.toggle("hidden");
+};
+
+window.pbRegister = async function (taskId, platform) {
+  const title = (($("pb-reg-title-" + platform) || {}).value || "").trim();
+  const bookId = (($("pb-reg-id-" + platform) || {}).value || "").trim();
+  if (!title) { toast(t("请填写平台上的作品名"), true); return; }
+  try {
+    await api("/api/publish/task/" + encodeURIComponent(taskId) + "/register-book",
+      { method: "POST", body: JSON.stringify({ platform: platform, title: title, book_id: bookId }) });
+    toast(t("已登记，可直接发章"));
+    const box = $("pb-reg-" + platform);
+    if (box) box.classList.add("hidden");
+  } catch (e) { toast(t("登记失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
 
@@ -7577,18 +7633,25 @@ function renderKnowledge() {
 
 function kbCard(x) {
   const draft = (x.status || "draft") !== "approved";
-  return '<div class="card' + (x.enabled === false ? " off" : "") + '" data-kb-id="' + esc(x.id) + '"><div class="head">' +
-    '<span class="name">' + esc(x.title) + "</span>" +
+  // 标题独占首行（.name 不再被标签挤成省略号）；状态徽章与可点标签合并为
+  // 标题下方的单行元信息区，视觉层级：标题 > 状态/标签 > 正文 > 元信息 > 操作。
+  const badges =
     (draft ? '<span class="tag warn">' + esc(t("草稿")) + "</span>" : '<span class="tag ok">' + esc(t("已转正")) + "</span>") +
     (x.stale ? '<span class="tag" title="' + esc(t("事实较旧，注入时会标注可能过期")) + '">' + esc(t("可能过期")) + "</span>" : "") +
     '<span class="tag">' + esc(x.scope === "*" ? t("通用") : x.scope) + "</span>" +
-    (x.tags || []).map((tg) => '<span class="tag" onclick="kbSetFilter(\'tag\',\'' + jsq(tg) + '\')" title="' + t("只看该标签") + '">' + esc(tg) + "</span>").join("") +
     (x.seen > 1 ? '<span class="tag">' + t("出现 ") + x.seen + t(" 次") + "</span>" : "") +
     (x.hits ? '<span class="tag">' + t("已注入 ") + x.hits + t(" 次") + "</span>" : "") +
-    (x.enabled === false ? '<span class="tag">' + t("已停用") + "</span>" : "") + "</div>" +
+    (x.enabled === false ? '<span class="tag">' + t("已停用") + "</span>" : "");
+  const tags = (x.tags || []).map((tg) =>
+    '<span class="tag kt" onclick="kbSetFilter(\'tag\',\'' + jsq(tg) + '\')" title="' + t("只看该标签") + '">' + esc(tg) + "</span>").join("");
+  return '<div class="card' + (x.enabled === false ? " off" : "") + '" data-kb-id="' + esc(x.id) + '">' +
+    '<div class="head">' +
+    '<span class="name">' + esc(x.title) + "</span>" +
+    '<span class="kb-meta">' + badges + tags + "</span></div>" +
     '<div class="note">' + esc(x.body) + "</div>" +
     '<div class="facts">' + (x.as_of ? t("事实截至 ") + esc(x.as_of) : "") +
-    (x.source ? (x.as_of ? " · " : "") + '<a href="#" onclick="openRun(\'' + esc(x.source) + '\');return false">' + t("来源运行") + "</a>" : "") + "</div>" +
+    (x.source ? (x.as_of ? '<span class="sep">·</span>' : "") +
+      '<a href="#" onclick="openRun(\'' + esc(x.source) + '\');return false">' + t("来源运行") + "</a>" : "") + "</div>" +
     '<div class="ops">' +
     (draft ? '<button class="ghost small" onclick="kbOp(\'' + esc(x.id) + '\', \'approve\')">' + t("转正") + "</button>" : "") +
     '<button class="ghost small" onclick="kbEditOpen(\'' + esc(x.id) + '\')">' + t("编辑") + "</button>" +
@@ -7911,11 +7974,39 @@ async function loadZentao() {
   renderZentaoProfiles();
   renderZentaoStatus();
   renderZentaoClaims();
+  if (cfg.base_url && cfg.has_password) ztFetchCatalog(true);   // 静默拉清单：产品/账号就位即变下拉
 }
 
 /* ---- 产品档案：渲染与采集 ---- */
 
 const ZT_SIDES = ["backend", "frontend"];
+
+/* 产品字段双形态：拉到清单 → 下拉选；没拉到（连接不可用/老版无接口）→ 保留手填 ID */
+function ztProductField(p) {
+  const cur = p.product || "";
+  const list = S.ztProducts || [];
+  if (!list.length)
+    return '<input class="zt-p-product zt-num" type="number" min="1" value="' + esc(cur) +
+      '" placeholder="ID" title="' + t("配好连接后点「拉取清单」变下拉选择") + '">';
+  const opts = [];
+  if (cur && !list.some((x) => String(x.id) === String(cur)))
+    opts.push('<option value="' + esc(cur) + '" selected>#' + esc(cur) + t("（手填）") + "</option>");
+  opts.push('<option value=""' + (cur ? "" : " selected") + " disabled>" + t("— 选产品 —") + "</option>");
+  for (const x of list) {
+    const label = "#" + x.id + " " + (x.name || "") +
+      (x.status && x.status !== "normal" ? t("（已关闭）") : "");
+    opts.push('<option value="' + esc(x.id) + '"' +
+      (String(cur) === String(x.id) ? " selected" : "") + ">" + esc(label) + "</option>");
+  }
+  return '<select class="zt-p-product" onchange="ztProdChanged(this)">' + opts.join("") + "</select>";
+}
+
+/* 选了产品 → 静默拉该产品的模块清单装进 datalist（模块路由也能下拉） */
+function ztProdChanged(el) {
+  const card = el.closest(".zt-prof");
+  const i = Array.from(document.querySelectorAll("#zt-profiles .zt-prof")).indexOf(card);
+  if (i >= 0) ztFetchMods(i, true);
+}
 
 function ztRepoHtml(i, side) {
   const cn = side === "backend" ? t("后端") : t("前端");
@@ -7937,15 +8028,15 @@ function ztProfCardHtml(p, i) {
     '<input class="zt-mr-module zt-num" list="zt-mods-' + i + '" placeholder="' + t("模块 ID") + '" value="' + esc(r.module || "") + '">' +
     '<select class="zt-mr-side">' + SIDE_OPTS.map((o) =>
       '<option value="' + o[0] + '"' + (r.side === o[0] ? " selected" : "") + ">" + t(o[1]) + "</option>").join("") + "</select>" +
-    '<input class="zt-mr-account" placeholder="' + t("转给谁（禅道账号，可空）") + '" value="' + esc(r.account || "") + '">' +
+    '<input class="zt-mr-account" list="zt-users" placeholder="' + t("转给谁（禅道账号，可空）") + '" value="' + esc(r.account || "") + '">' +
     '<button class="ghost small" onclick="ztMrDel(' + i + "," + j + ')">' + t("删") + "</button>" +
     "</div>").join("");
   const owners = p.owners || {};
   return '<div class="card zt-prof" data-i="' + i + '"><div class="head">' +
-    '<span class="name">' + t("产品") + ' <input class="zt-p-product zt-num" type="number" min="1" value="' + esc(p.product || "") + '" placeholder="ID"></span>' +
+    '<span class="name">' + t("产品") + " " + ztProductField(p) + "</span>" +
     '<button class="danger small" onclick="ztProfDel(' + i + ')">' + t("删除产品") + "</button></div>" +
     '<div class="zt-grid">' +
-    '<label data-i18n="只认领指派给">只认领指派给</label><input class="zt-p-assigned" value="' + esc(p.assigned_to || "") + '" placeholder="' + t("禅道账号名，空 = 不按指派过滤") + '">' +
+    '<label data-i18n="只认领指派给">只认领指派给</label><input class="zt-p-assigned" list="zt-users" value="' + esc(p.assigned_to || "") + '" placeholder="' + t("禅道账号名，空 = 不按指派过滤") + '">' +
     '<label data-i18n="严重度上限">严重度上限</label><select class="zt-p-sev">' +
     [0, 1, 2, 3, 4].map((n) => '<option value="' + n + '"' + (Number(p.severity_cap || 0) === n ? " selected" : "") + ">" +
       (n === 0 ? t("不限") : n + (n === 1 ? t("（最严重）") : "")) + "</option>").join("") + "</select>" +
@@ -7957,9 +8048,9 @@ function ztProfCardHtml(p, i) {
     '<span class="hint">' + t("都不勾 = 该产品只排查转派，不自动修") + "</span></div>" +
     '<div class="zt-grid">' + ZT_SIDES.map((s) => ztRepoHtml(i, s)).join("") + "</div>" +
     '<div class="zt-grid">' +
-    '<label data-i18n="后端负责人">后端负责人</label><input class="zt-p-owner" data-side="backend" value="' + esc(owners.backend || "") + '" placeholder="' + t("禅道账号，转派/升级用") + '">' +
-    '<label data-i18n="前端负责人">前端负责人</label><input class="zt-p-owner" data-side="frontend" value="' + esc(owners.frontend || "") + '" placeholder="' + t("禅道账号，转派/升级用") + '">' +
-    '<label data-i18n="非我方转派给">非我方转派给</label><input class="zt-p-owner" data-side="not_ours" value="' + esc(owners.not_ours || "") + '" placeholder="' + t("空 = 指回报告人") + '">' +
+    '<label data-i18n="后端负责人">后端负责人</label><input class="zt-p-owner" list="zt-users" data-side="backend" value="' + esc(owners.backend || "") + '" placeholder="' + t("禅道账号，转派/升级用") + '">' +
+    '<label data-i18n="前端负责人">前端负责人</label><input class="zt-p-owner" list="zt-users" data-side="frontend" value="' + esc(owners.frontend || "") + '" placeholder="' + t("禅道账号，转派/升级用") + '">' +
+    '<label data-i18n="非我方转派给">非我方转派给</label><input class="zt-p-owner" list="zt-users" data-side="not_ours" value="' + esc(owners.not_ours || "") + '" placeholder="' + t("空 = 指回报告人") + '">' +
     "</div>" +
     '<div class="zt-mrs"><div class="zt-mr-head">' + t("模块路由（模块 → 端/人，排查优先级最高）") +
     '<button class="ghost small" onclick="ztFetchMods(' + i + ')">' + t("拉取模块清单") + "</button>" +
@@ -8034,18 +8125,45 @@ function ztMrDel(i, j) {
   renderZentaoProfiles();
 }
 
-async function ztFetchMods(i) {
-  const pid = parseInt(($("zt-profiles").querySelectorAll(".zt-prof")[i]?.querySelector(".zt-p-product").value) || "", 10);
-  if (!pid) { toast(t("先填产品 ID 再拉模块清单"), true); return; }
+async function ztFetchMods(i, silent) {
+  const pidEl = $("zt-profiles").querySelectorAll(".zt-prof")[i]?.querySelector(".zt-p-product");
+  const pid = parseInt((pidEl && pidEl.value) || "", 10);
+  if (!pid) {
+    if (!silent) toast(t("先选产品再拉模块清单"), true);
+    return;
+  }
   let r;
   try {
     r = await api("/api/zentao/modules", { method: "POST", body: JSON.stringify({ product: pid }) });
-  } catch (e) { toast(e.message, true); return; }
-  if (!r.ok) { toast(r.error || t("拉取失败"), true); return; }
+  } catch (e) { if (!silent) toast(e.message, true); return; }
+  if (!r.ok) { if (!silent) toast(r.error || t("拉取失败"), true); return; }
   const dl = $("zt-mods-" + i);
   if (dl) dl.innerHTML = (r.modules || []).map((m) =>
     '<option value="' + esc(m.id) + '">' + esc(m.name || "") + "</option>").join("");
-  toast(t("模块清单已拉到 ") + (r.modules || []).length + t(" 条，输入框可下拉选择"));
+  if (!silent) toast(t("模块清单已拉到 ") + (r.modules || []).length + t(" 条，输入框可下拉选择"));
+}
+
+/* 拉产品/账号清单：产品 ID 变下拉，负责人/转派账号挂 datalist。silent=进页自动拉 */
+async function ztFetchCatalog(silent) {
+  const grab = (url) => api(url, { method: "POST", body: "{}" })
+    .catch((e) => ({ ok: false, error: e.message }));
+  const [pr, ur] = await Promise.all([grab("/api/zentao/products"), grab("/api/zentao/users")]);
+  if (pr && pr.ok) S.ztProducts = pr.products || [];
+  if (ur && ur.ok) S.ztUsers = ur.users || [];
+  const dl = $("zt-users");
+  if (dl) dl.innerHTML = (S.ztUsers || []).map((u) =>
+    '<option value="' + esc(u.account) + '">' + esc(u.realname || "") + "</option>").join("");
+  const prodOk = pr && pr.ok && (pr.products || []).length > 0;
+  if (prodOk) {           // 产品下拉就位（先采集已填值再重渲染）
+    S.ztProfiles = ztHarvestProfiles();
+    renderZentaoProfiles();
+  }
+  if (silent) return;
+  const got = [];
+  if (prodOk) got.push((pr.products || []).length + t(" 个产品"));
+  if (ur && ur.ok) got.push((ur.users || []).length + t(" 个账号"));
+  if (got.length) toast(t("已拉到 ") + got.join(t("、")) + t("，产品/负责人已是下拉选择"));
+  else toast((pr && pr.error) || (ur && ur.error) || t("拉取失败——先「测试连接」确认可用"), true);
 }
 
 /* ---- 状态行 / 修复记录 ---- */
@@ -8148,6 +8266,14 @@ async function testZentao() {
     r = await api("/api/zentao/test", { method: "POST", body: JSON.stringify(body) });
   } catch (e) { toast(e.message, true); return; }
   toast(r.message || (r.ok ? t("连接成功") : t("连接失败")), !r.ok);
+  if (r.ok && r.base_url) {          // 子路径部署被自动补全：回填输入框提醒保存
+    const inp = $("zt-base-url");
+    const cur = (inp.value || "").trim().replace(/\/+$/, "");
+    if (inp && r.base_url !== cur) {
+      inp.value = r.base_url;
+      toast(t("地址已自动补全子路径，记得「保存配置」"));
+    }
+  }
 }
 
 async function scanZentao() {
@@ -9254,8 +9380,6 @@ function setLangBtn(lang) {
   paintArchToggle();
   syncSideExpandBtn();
   renderCodePreviews();   // 预览徽章是动态文案：语言切换时若停在皮肤页要跟着换
-  // 数据与备份页的清理预估/状态是 JS 动态生成的：停在那一页时也要跟着换语言
-  if (S.tab === "data") loadDataPage();
   // 数据与备份页的清理预估/状态是 JS 动态生成的：停在那一页时也要跟着换语言
   if (S.tab === "data") loadDataPage();
   // 帮助中心若开着：徽章/标题/目录/正文跟着换语言重画
@@ -10462,6 +10586,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-auto-new").addEventListener("click", () => autoForm());
   // 禅道页：测试连接 / 立即扫描 / 保存配置
   $("btn-zentao-test").addEventListener("click", testZentao);
+  $("btn-zentao-fetchcat").addEventListener("click", () => ztFetchCatalog(false));
   $("btn-zentao-scan").addEventListener("click", scanZentao);
   $("btn-zentao-save").addEventListener("click", saveZentao);
   $("btn-zentao-addprofile").addEventListener("click", ztProfAdd);

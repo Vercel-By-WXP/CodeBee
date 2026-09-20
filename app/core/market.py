@@ -218,9 +218,19 @@ def install_files(pack_id, name, files, extra=None):
     """通用安装入口：任意 {安装相对路径: 文本内容} 写进用户包目录并记账。
     内置市场包（install）与外部目录插件（market_remote）共用这一条落地通道，
     避让 / 安装标记 / market.json 记账 / 幂等纪律完全一致；extra 追加进记账记录
-    （如外部插件的来源与版本）。"""
+    （如外部插件的来源与版本）。
+
+    装前静态扫描（借鉴 NVIDIA SkillSpector）：安装内容扫危险模式，风险行写进
+    返回值与记账——提示不拦阻（用户仍可装），但危险必须被看见。"""
     if not files or not any(str(v).strip() for v in files.values()):
         return None, "包内容为空: %s" % pack_id
+    # 装前扫描：全文件合并扫一遍（纯内存静态规则）
+    scan_note = ""
+    try:
+        from . import skill_scan
+        scan_note = skill_scan.scan_summary("\n".join(str(v) for v in files.values()))
+    except Exception:
+        scan_note = ""
     with _LOCK:
         udir = _user_pack_dir()
         reg = _load_registry()
@@ -249,12 +259,14 @@ def install_files(pack_id, name, files, extra=None):
             except OSError as e:
                 return None, "写入用户技能库失败: %s" % e
             record = {"file": target, "files": written, "installed_at": _now()}
+            if scan_note:
+                record["scan"] = scan_note   # 危险模式扫描结果随包记账
             if extra:
                 record.update(extra)
             installed[pack_id] = record
         _save_registry(reg)
     return {"ok": True, "id": pack_id, "name": name, "file": target,
-            "already": already}, None
+            "already": already, "scan": scan_note}, None
 
 
 def remove(pack_id):
