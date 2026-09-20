@@ -1631,7 +1631,8 @@ def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
         # 2026-09-18 dsh 案）。
         refresh_update_async(entry)
     return {"ok": res["ok"], "exit_code": res["exit_code"], "command": cmd,
-            "error": "" if res["ok"] else (res["stderr"][-800:] or "退出码 %s" % res["exit_code"])}
+            "error": "" if res["ok"] else (runner.clean_cli_text(res["stderr"])[-800:]
+                                           or "退出码 %s" % res["exit_code"])}
 
 
 def refresh_update_async(entry):

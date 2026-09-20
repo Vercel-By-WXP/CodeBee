@@ -410,6 +410,28 @@ def migrate_task_workdirs(old_root, new_root):
     return moved, skipped
 
 
+def _sanitize_run_text(r):
+    """就地清洗 run 与各步骤里的 CLI 文本字段（错误串/摘要/输出）。
+
+    写入侧与读盘侧共用：runner 已经把 ANSI/覆写/乱码墙洗过一遍，这里兜住
+    「错误串是我们自己拼的」「历史数据是旧版本写的」两条漏网路径。只动字符串
+    值，不碰结构——清洗是幂等的，重复调用无副作用。"""
+    for k in ("error", "summary"):
+        v = r.get(k)
+        if isinstance(v, str) and v:
+            r[k] = runner.clean_cli_text(v)
+    for s in r.get("steps") or []:
+        if not isinstance(s, dict):
+            continue
+        for k in ("summary", "error"):
+            v = s.get(k)
+            if isinstance(v, str) and v:
+                s[k] = runner.clean_cli_text(v)
+        # output 是智能体正文：只剥 ANSI（同 finish_step 的口径）
+        if isinstance(s.get("output"), str) and s["output"]:
+            s["output"] = runner.strip_ansi(s["output"])
+
+
 def load_all():
     with LOCK:
         for p in paths.TASKS_DIR.glob("*.json"):
@@ -422,6 +444,10 @@ def load_all():
             try:
                 r = json.loads(p.read_text(encoding="utf-8"))
                 r.pop("cancel_event", None)
+                # 存量清洗：早期版本把 CLI 的 ANSI 转义/控制字符原样写进了摘要与
+                # 错误串（`[91m[1mError:`、U+FFFD 乱码墙），读盘时统一洗一遍——
+                # 老运行不必等重跑才干净（2026-09-20「咋还有乱码」实测）
+                _sanitize_run_text(r)
                 # 队列不跨进程持久化：磁盘上仍是 queued/running 的运行必是上次进程中断的残骸
                 if r.get("status") in ("queued", "running"):
                     r["status"] = "failed"
@@ -620,6 +646,11 @@ def update_run(run_id, expected_status=None, **fields):
             return None
         if expected_status is not None and run.get("status") != expected_status:
             return None
+        for k in ("error", "summary"):
+            if isinstance(fields.get(k), str):
+                # 错误串多是我们自己拼的 CLI 尾巴（含 ANSI/覆写/乱码墙）：
+                # 落内存前洗一遍，UI/台账读到的就是干净文本
+                fields[k] = runner.clean_cli_text(fields[k])
         run.update(fields)
         # 终态收尸：run 已结束却还挂 queued/running 的步骤统一落 cancelled，
         # 语义与 recover_orphaned_runs 的启动清扫对齐（那套清跨进程遗留，
@@ -1333,7 +1364,9 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
             if s["n"] == n:
                 s["status"] = status
                 s["ended_at"] = time.strftime("%H:%M:%S")
-                s["summary"] = summary
+                # 步骤摘要是 CLI 文本的汇聚点（失败时=错误尾巴，成功时=智能体结论）：
+                # 落盘前统一清洗，避免 ANSI/覆写/乱码墙进 UI 与报告
+                s["summary"] = runner.clean_cli_text(summary)
                 s["exit_code"] = exit_code
                 s["cost_usd"] = round(cost_usd, 4)
                 s["tokens"] = tokens
@@ -1342,7 +1375,9 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                 if duration_s is not None:
                     s["duration_s"] = round(duration_s, 1)
                 if output is not None:
-                    s["output"] = str(output)[:6000]
+                    # output 是智能体正文（对话气泡直读）：只剥 ANSI，不做噪声折叠
+                    # ——正文里的装饰性长串是作者写的，不能替它省略
+                    s["output"] = runner.strip_ansi(str(output))[:6000]
                 if followups:
                     s["followups"] = list(followups)[:3]
                 break
@@ -1497,9 +1532,10 @@ def read_step_log(run_id, rel_path, tail=paths.LOG_TAIL_CHARS, pretty=False):
             text = "...(已截断)...\n" + runner.tail_decoded(data, tail)
         else:
             text = runner.decode_output(data)
-        # 折叠遥测刷屏（时间戳不同的重复 WARN）；pretty 再把 codex JSONL
-        # 事件流翻译成【消息】【命令】等可读行，日志抽屉直读"蜂在干什么"
-        text = runner.collapse_dup_lines(text)
+        # 先洗终端噪声（ANSI/覆写/乱码墙），再折叠遥测刷屏（时间戳不同的重复
+        # WARN）；pretty 最后把 codex JSONL 事件流翻译成【消息】【命令】等可读行
+        # ——顺序不能反：乱码墙会挤掉折叠分组，翻译也会把 ANSI 当正文
+        text = runner.collapse_dup_lines(runner.clean_cli_text(text))
         if pretty:
             text = runner.pretty_cli_log(text)
         return text

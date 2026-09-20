@@ -634,7 +634,10 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
     if agent is None or agent.get("mode") != "real":
         return False  # 无真实智能体可用，维持原失败
     try:
-        log_tail = runner.tail_decoded(orig_log.read_bytes(), 2000) if orig_log.exists() else "（无输出）"
+        # 日志尾巴喂进 AI 修复提示词：先洗终端噪声，否则 ANSI 转义/乱码墙会被
+        # 模型当成"日志原文"照抄进修复推理里
+        log_tail = runner.clean_cli_text(
+            runner.tail_decoded(orig_log.read_bytes(), 2000)) if orig_log.exists() else "（无输出）"
     except Exception:
         log_tail = "（日志不可读）"
     import shutil

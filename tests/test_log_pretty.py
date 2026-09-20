@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+import json
+
 from base import BaseTest
 
 _WARN = ("2026-09-15T09:53:04.%06dZ  WARN codex_otel::events::session_telemetry: "
@@ -118,3 +120,98 @@ class TestReadStepLogPretty(BaseTest):
 
         # 路径穿越防护仍在
         self.assertEqual(store.read_step_log(run_id, "../secret.txt"), "")
+
+
+class TestMixedEncodingDecode(BaseTest):
+    """混合编码日志：我方 UTF-8 审计头 + CLI 自家 GBK 输出同处一文件。
+
+    2026-09-20 实案：整块 UTF-8 解码失败 → 整块 GBK 也失败（头的 UTF-8 字节
+    在 GBK 里非法）→ 落到 replace 兜底，整篇铺成 U+FFFD 墙，详情页卡片显示成
+    一片 ◆；另一种落法是整块回退 GBK，把头部中文全变乱码。逐行解码两边都保住。
+    """
+
+    def runTest(self):
+        from app.core import runner
+        head = "===== 下达 =====\n指令：不要复述正文。\n--- 输出 ---\n".encode("utf-8")
+        body = ("Can't initialize prompt toolkit\r\n"
+                + "─" * 78 + "\r\n"
+                + "litellm.BadRequestError: LLM Provider NOT provided\r\n").encode("gbk")
+        raw = head + body
+
+        out = runner.decode_output(raw)
+        self.assertNotIn("\ufffd", out)          # 不再有乱码墙
+        self.assertIn("不要复述正文", out)         # UTF-8 头部保住
+        self.assertIn("─" * 78, out)             # GBK 正文也解出来了
+        self.assertIn("LLM Provider NOT provided", out)
+
+        # 成串图元在清洗阶段折叠（保留行首 3 个做视觉提示），正文照旧
+        clean = runner.clean_cli_text(out)
+        self.assertNotIn("─" * 8, clean)
+        self.assertIn("───…", clean)
+        self.assertIn("不要复述正文", clean)
+        self.assertIn("LLM Provider NOT provided", clean)
+
+
+class TestCleanCliText(BaseTest):
+    """终端噪声清洗：ANSI 转义 / 裸 \\r 覆写 / 控制字符 / U+FFFD 乱码墙。"""
+
+    def runTest(self):
+        from app.core import runner
+
+        # ANSI 颜色/加粗：清洗后 E 不可见只剩 `[91m[1mError:` 的老毛病
+        ansi = "\x1b[91m\x1b[1mError: \x1b[0m{\"name\": \"UnknownError\"}"
+        self.assertEqual(runner.strip_ansi(ansi), 'Error: {"name": "UnknownError"}')
+        self.assertEqual(runner.clean_cli_text(ansi), 'Error: {"name": "UnknownError"}')
+        # 行首被截断的裸残尾（切片割断 ESC 后留下的 `[91m`）也要止血
+        self.assertEqual(runner.strip_ansi("[91m[0mError: x"), "Error: x")
+        # 正文里合法的 [1m] 引用不动（只清行首真残尾）
+        self.assertEqual(runner.strip_ansi("见 [1m] 注"), "见 [1m] 注")
+        # OSC（窗口标题）也要剥掉
+        self.assertEqual(runner.strip_ansi("\x1b]0;title\x07ok"), "ok")
+
+        # \r 覆写：进度条/旋转动画只留该行最终形态；\r\n 是行结束符，不能当覆写
+        self.assertEqual(runner.clean_cli_text("10%\r55%\r100%\n"), "100%\n")
+        out = runner.clean_cli_text("Are you running \r\ncmd.exe?\r\n")
+        self.assertEqual(out, "Are you running \ncmd.exe?\n")
+
+        # 乱码墙给一句人话，控制字符清掉
+        self.assertIn("无法解码", runner.clean_cli_text("\ufffd" * 40))
+        self.assertEqual(runner.clean_cli_text("a\x00b\x07c"), "abc")
+
+        # 幂等：清洗过的文本再洗不变
+        once = runner.clean_cli_text("\x1b[33m" + "█" * 40 + "\ufffd" * 20 + "\r\nok")
+        self.assertEqual(runner.clean_cli_text(once), once)
+
+
+class TestStepSummarySanitized(BaseTest):
+    """落盘/读盘两侧都要挡：ANSI 与乱码墙不能进摘要（详情页卡片直读它）。"""
+
+    def runTest(self):
+        from app.core import paths, store
+        run = store.create_run("serial", "t")
+        store.add_step(run["id"], "critique", "aider", "通用评审")
+        store.finish_step(run["id"], 1, "failed",
+                          summary="退出码 1；stderr/stdout: \x1b[91mError: \x1b[0m" + "█" * 40)
+        s = store.get_run(run["id"])["steps"][0]
+        self.assertNotIn("\x1b", s["summary"])
+        self.assertNotIn("█" * 8, s["summary"])
+        self.assertIn("Error:", s["summary"])
+
+        # 存量数据（旧版本写进 run.json 的）在 load_all 读盘时洗一遍
+        rp = paths.RUNS_DIR / "r-legacy-1" / "run.json"
+        rp.parent.mkdir(parents=True)
+        rp.write_text(json.dumps({
+            "id": "r-legacy-1", "task_id": "t", "kind": "serial", "status": "failed",
+            "error": "\x1b[91mboom\x1b[0m" + "\ufffd" * 30,
+            "steps": [{"n": 1, "role": "draft", "status": "failed",
+                       "summary": "\x1b[1m" + "─" * 60, "output": "\x1b[32m正文\x1b[0m"},
+                      "字符串步骤也要能过（不崩）"],
+        }, ensure_ascii=False), encoding="utf-8")
+        store.load_all()
+        legacy = store.get_run("r-legacy-1")
+        self.assertEqual(legacy["error"], "boom" + "…（30 个字符无法解码：CLI 输出不是 UTF-8/GBK）")
+        st = legacy["steps"][0]
+        self.assertNotIn("\x1b", st["summary"])
+        self.assertNotIn("─" * 8, st["summary"])
+        # output 是智能体正文：只剥 ANSI，不做噪声折叠
+        self.assertEqual(st["output"], "正文")

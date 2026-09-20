@@ -163,8 +163,26 @@ def _pipe_reader(stream, chunks, log_fh, stamp=None):
                 pass
 
 
+def _decode_line(blob):
+    """单行解码：UTF-8 → GBK → replace（与 decode_output 同一编码纪律）。"""
+    try:
+        return blob.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return blob.decode("gbk")
+    except UnicodeDecodeError:
+        return blob.decode("utf-8", "replace")
+
+
 def decode_output(data):
-    """子进程输出解码：UTF-8 严格解码失败时回退 GBK（中文 Windows 控制台）。"""
+    """子进程输出解码：UTF-8 严格解码失败时回退 GBK（中文 Windows 控制台）。
+
+    整块 UTF-8 与整块 GBK 都失败时逐行兜底——日志文件是混合编码（我方 UTF-8
+    审计头 + CLI 自家 GBK 输出），整块回退会把能读的部分一起牺牲：要么头部中文
+    变乱码，要么整篇落进 replace 分支铺成 U+FFFD 墙（2026-09-20 aider 日志实证，
+    详情页卡片显示成一片 ◆）。逐行解码两边都保住（GBK/UTF-8 的多字节序列都不
+    含 0x0A，按行切不会切坏字符）。"""
     if not data:
         return ""
     try:
@@ -174,7 +192,8 @@ def decode_output(data):
     try:
         return data.decode("gbk")
     except UnicodeDecodeError:
-        return data.decode("utf-8", "replace")
+        pass
+    return "\n".join(_decode_line(ln) for ln in data.split(b"\n"))
 
 
 def read_text_any_enc(path):
@@ -199,6 +218,64 @@ def tail_decoded(data, tail):
     while i < len(chunk) and i < 3 and (chunk[i] & 0xC0) == 0x80:
         i += 1
     return decode_output(chunk[i:])
+
+
+# 终端控制序列：CSI（颜色/光标/清行，`\x1b[91m`）、OSC（窗口标题）、其余两字符转义
+_ANSI_RE = re.compile(
+    r"\x1b\[[0-9;?]*[ -/]*[@-~]"
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?"
+    r"|\x1b[@-Z\\-_]"
+)
+# 被切片/前端截断掉 ESC 的「裸序列」残尾（`[91m`、`[0m`）：只在行首止血，
+# 正文里合法的 [数字+字母]（如 [1m] 引用）不动——后面紧跟 `]` 的不算残尾
+_ANSI_HEAD_RE = re.compile(r"^\[[0-9;?]{1,6}[A-Za-z](?!\])")
+# CLI 拿来做进度条/画框/旋转动画的图元，成串出现时人读不出任何信息
+_NOISE_RUN_RE = re.compile(r"([\u2500-\u259f\u25a0-\u25ff\u2800-\u28ff])\1{7,}")
+# 解不出来的字节（replace 兜底）成串即「乱码墙」——多数等宽字体把 U+FFFD 画成
+# 带问号的菱形，一屏看起来就是 ◆◆◆◆
+_FFFD_RUN_RE = re.compile(r"\ufffd{3,}")
+_CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def strip_ansi(text):
+    """剥掉 ANSI 转义序列（颜色/光标/进度），并清掉行首被截断的裸序列残尾。"""
+    if not text:
+        return ""
+    out = _ANSI_RE.sub("", text)
+    # 残尾可能连着几个（`[91m[0mError:`），一次替换只够消掉最前面那个
+    while True:
+        nxt = "\n".join(_ANSI_HEAD_RE.sub("", ln) for ln in out.split("\n"))
+        if nxt == out:
+            return out
+        out = nxt
+
+
+def clean_cli_text(text):
+    """CLI 原始输出 → 人类可读文本（只用于错误摘要/日志展示，不碰模型正文）。
+
+    终端噪声四种，都是实测踩过的：
+    1. ANSI 转义：`\\x1b[91m\\x1b[1mError:` 在浏览器里渲染成 `[91m[1mError:`；
+    2. 裸 `\\r` 覆写：进度条/旋转动画反复回退改写同一行，原样展示会叠成一片；
+       `\\r\\n` 是行结束符不是覆写，先归一化再按覆写取「该行最终形态」；
+    3. 画线/进度图元成串（`────…`、`████…`）与 U+FFFD 乱码墙（编码不可解）；
+    4. 剩余控制字符。
+    """
+    if not text:
+        return ""
+    out = strip_ansi(text).replace("\r\n", "\n")
+    if "\r" in out:
+        lines = []
+        for ln in out.split("\n"):
+            if "\r" in ln:
+                parts = ln.split("\r")
+                ln = next((p for p in reversed(parts) if p.strip()), parts[-1])
+            lines.append(ln)
+        out = "\n".join(lines)
+    out = _CTRL_RE.sub("", out)
+    out = _FFFD_RUN_RE.sub(
+        lambda m: "…（%d 个字符无法解码：CLI 输出不是 UTF-8/GBK）" % len(m.group(0)), out)
+    out = _NOISE_RUN_RE.sub(lambda m: m.group(1) * 3 + "…", out)
+    return re.sub(r"\n{4,}", "\n\n\n", out)
 
 
 _TS_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.,]+Z?\s*")
@@ -600,7 +677,11 @@ _TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
               # 「非瞬态不降级」，导致跨厂商链上健康的后继模型从未被尝试。
               "unknown model", "1211", "connection error", "econnrefused",
               "connection aborted", "initialize", "reset by peer",
-              "channel is closed", "no route to host")
+              "channel is closed", "no route to host",
+              # 2026-09-20 连载评审实测：codex 网关断流（stream disconnected）
+              # 与 opencode 服务端 500（Unexpected server error）都是「重试/换将
+              # 就可能活」的瞬态病，旧表判成终态导致整链早死
+              "stream disconnected", "unexpected server error")
 
 
 def _transient_error(err):
@@ -809,8 +890,21 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
         stdin_text = prompt
     elif kind == "aider":
         argv = resolve_command(agent["command"]) + [
-            "--yes-always", "--no-auto-commits", "--no-check-update", "--message", prompt]
+            "--yes-always", "--no-auto-commits", "--no-check-update",
+            # 网关自定义模型名（glm-5.1 等）litellm 全都不认识，警告页+建议列表
+            # 纯属刷屏（2026-09-20 实测占满步骤日志头部）
+            "--no-show-model-warnings", "--message", prompt]
         if model:
+            # litellm 靠 provider 前缀路由，裸模型名直接报
+            # "LLM Provider NOT provided"。前缀按本条尝试实际注入的端点协议定：
+            # ANTHROPIC_BASE_URL=anthropic 面（Bigmodel 等）、OPENAI_API_BASE=
+            # openai 兼容面；都没有=CLI 本机默认场景，模型名保持用户原样
+            envd = agent.get("env") or {}
+            if "/" not in model:
+                if envd.get("ANTHROPIC_BASE_URL"):
+                    model = "anthropic/" + model
+                elif envd.get("OPENAI_API_BASE"):
+                    model = "openai/" + model
             argv += ["--model", model]
     else:  # generic：模板把 {prompt}/{session} 嵌进参数（注意 cmd 行长度限制）
         tmpl = agent.get("argv_template") or ["-p", "{prompt}"]
@@ -968,7 +1062,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 # stderr 与 stdout 都要进错误串：codex 把 "Reading prompt from
                 # stdin..." 打在 stderr，真正的配额/限流错误全在 stdout 的 JSONL
                 # 里——只取其一会让 _quota_error/_transient_error 判空。
-                tail = ((res["stderr"] or "") + "\n" + (res["stdout"] or "")).strip()[-600:]
+                # 先洗后切：切片会割断 ANSI 序列，留下 `[91m` 这种裸残尾直接进 UI
+                tail = clean_cli_text(
+                    ((res["stderr"] or "") + "\n" + (res["stdout"] or ""))[-4000:]).strip()[-600:]
                 head = ("输出停滞 %ss（stall timed out，疑似卡死已提前终止）" % stall_t
                         if res.get("stalled")
                         else "超时" if res["timed_out"]
@@ -1025,7 +1121,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     out["error"] = "codex: %s" % fm
                     out["error_code"] = ErrorCode.VENDOR_ERROR
                 elif not out["text"]:  # 事件流解析失败时退化为取 stdout 尾部
-                    out["text"] = res["stdout"][-2000:]
+                    out["text"] = clean_cli_text(res["stdout"][-2000:])
                 if require_tools and out["ok"] and _codex_work_events(res["stdout"]) == 0:
                     # 实现步空转闸：exit 0 + 有话但零动手 → 判拒绝（fatal 语义正确，
                     # 不把谎报的「已改完」静默传给下游；auto 模式换将逻辑按 ok 触发，
@@ -1060,7 +1156,10 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     out["error_code"] = _classify_failure(
                         res, kind="claude", parsed=parsed, attempt_done=True)
             else:
-                out["text"] = res["stdout"].strip()
+                # generic（aider/opencode/kimi…）的 stdout 就是终端转录：ANSI 颜色、
+                # \r 进度条、画线框全在里面。不清洗的话它同时污染两处——步骤摘要
+                # （详情页卡片显示成 ◆/─ 墙）与评审 JSON 解析（转义混进正文）
+                out["text"] = clean_cli_text(res["stdout"]).strip()
                 if not out["text"]:
                     out["error_code"] = _classify_failure(res, kind=kind, empty_output=True)
             break

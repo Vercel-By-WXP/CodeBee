@@ -240,7 +240,8 @@ def run_upgrade(run_id, log_path):
                "请关闭相关窗口后回版本页重试；仍不行可退出 CodeBee 后手动执行 "
                "npm install -g %s@latest。" % (len(_RETRY_DELAYS), _PKG_NAME))
     else:
-        err = stderr[-800:] or "退出码 %s" % res["exit_code"]
+        # npm 的进度条/颜色转义与中文 Windows 的 GBK 输出都进过这里，先洗再用
+        err = runner.clean_cli_text(stderr)[-800:] or "退出码 %s" % res["exit_code"]
     return {"ok": False, "exit_code": res["exit_code"], "error": err}
 
 

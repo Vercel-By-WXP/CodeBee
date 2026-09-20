@@ -835,6 +835,12 @@ def _is_codex_target(target):
     return (target or "").strip().lower() in ("codex-cli", "codex", "codex-code")
 
 
+def _is_aider_target(target):
+    """aider 的绑定键与 orch.kind 同名（catalog id=aider）；兜底前缀匹配防变体。"""
+    t = (target or "").strip().lower()
+    return t == "aider" or t.startswith("aider-")
+
+
 def note_codex_wire_dead(provider_id, minutes=30):
     """codex 撞上 wire 不兼容的供应商 → 供应商级冷却（自动绕开的记账位）。
 
@@ -2037,8 +2043,18 @@ def _chain_entry_env(prov, model, target="", endpoint=None, key="", key_id="",
                       "ANTHROPIC_AUTH_TOKEN": use_key}
         if model:
             out["env"]["ANTHROPIC_MODEL"] = model
+        if _is_aider_target(target):
+            # aider（litellm）不认 AUTH_TOKEN，只认 ANTHROPIC_API_KEY——缺了它
+            # 直接报 LLM Provider NOT provided（2026-09-20 连载评审 aider 全灭根因）。
+            # claude 绝不注入：x-api-key 与 Bearer 两种鉴权头网关挑食，不能混。
+            out["env"]["ANTHROPIC_API_KEY"] = use_key
     else:
         out["env"] = {"ORCH_API_KEY": use_key}
+        if _is_aider_target(target):
+            # litellm 的 openai 通道读这对 env；base 语义与 codex chat wire 一致
+            # （调用方拼 /chat/completions）
+            out["env"]["OPENAI_API_KEY"] = use_key
+            out["env"]["OPENAI_API_BASE"] = base
         wire_api = endpoint[2] if endpoint else prov.get("wire_api", "responses")
         out["codex_provider"] = {
             "name": "orch", "base_url": base,
