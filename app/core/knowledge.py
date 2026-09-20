@@ -2,9 +2,9 @@
 """知识库（Knowledge）：运行产出自动整理形成的可复用知识 + 个人知识管理入口。
 
 与经验库（skills.py）的分工边界：
-  - 教训（lessons）记「别这么做」——负面规则，来源=评审暴露的问题（verdict/issues）；
-  - 知识（knowledge）记「已知是这样」——领域事实/平台规则/结论/方法论，
-    来源=run 产出材料（调研报告/文档）。两者输入源不同，提炼互不双写。
+  - 经验（lessons）记「下次怎么做」——流程规范、实践方法和评审暴露的教训；
+  - 知识（knowledge）记「已知是什么」——领域事实、外部规则和可验证结论。
+运行产出中的实践方法会分流进经验库，事实才进入知识库，避免同一方法双写。
 
 质量闸门：条目默认直接转正（approved）参与注入——用户拍板：人工把关太重，
 提炼提示词里的「只保留有明确复用价值的」约束兜质量。status 字段保留 draft
@@ -243,10 +243,13 @@ def _bump_hits(ids):
 # ---------------------------------------------------------------- 自动整理
 
 KNOWLEDGE_PROMPT = """你是编排系统的知识管理员。下面是一次任务的目标与它的产出材料（调研报告/文档等）。
-请从产出中提炼**可长期复用的知识条目**：领域事实、平台规则、结论、方法论。
-注意：只提炼事实性/结论性内容；「下次要避免什么」这类负面教训由另一个复盘流程负责，你不要写。
+请从产出中提炼可长期复用的内容，并明确分成两类：
+- fact：回答「是什么」，只含领域事实、外部规则和可验证结论，进入知识库；
+- practice：回答「怎么做」，含流程、操作方法和正向实践，进入经验库；此类必须填写 category。
+「下次要避免什么」这类负面教训由评审复盘流程负责，不要重复提炼。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"entries": [{"title": "≤20 字的知识标题", "body": "具体结论（≤200 字，自含上下文，脱离本次任务也能看懂）", "tags": ["1-3 个检索标签"], "as_of": "YYYY-MM-DD（事实采集日）"}]}
+{"entries": [{"kind": "fact 或 practice", "title": "≤20 字的标题", "body": "具体内容（≤200 字，自含上下文，脱离本次任务也能看懂）", "category": "practice 的经验分类", "tags": ["1-3 个检索标签"], "as_of": "YYYY-MM-DD（fact 的事实采集日）"}]}
+category 只能从以下枚举选择：__CATEGORIES__。
 最多 3 条，只保留有明确复用价值的；产出里没有值得沉淀的就返回空数组。
 
 ## 任务类型
@@ -298,7 +301,7 @@ def _pick_material(run):
 
 
 def learn_from_run(run_id):
-    """运行结束后由编排者从产出材料提炼知识条目（草稿态）。返回写入条数。
+    """运行结束后从产出提炼事实与实践并分流入库。返回总写入条数。
 
     知识没有便宜的兜底路径：无编排者/无产出/非真实运行（mock）一律静默跳过，
     宁缺毋滥——教训库的规则兜底搬到这里只会制造垃圾知识。只有正常跑完（done）
@@ -326,6 +329,7 @@ def learn_from_run(run_id):
             return 0
         prov, model = orch
         prompt = (KNOWLEDGE_PROMPT
+                  .replace("__CATEGORIES__", "、".join(skills.LESSON_CATEGORIES))
                   .replace("__TYPE__", str(task.get("type")))
                   .replace("__GOAL__", (task.get("goal") or "")[:600])
                   .replace("__MATERIAL__", material))
@@ -338,6 +342,14 @@ def learn_from_run(run_id):
             return 0
         for x in raw[:3]:
             if not (isinstance(x, dict) and x.get("title") and x.get("body")):
+                continue
+            kind = str(x.get("kind") or "fact").strip().lower()
+            if kind == "practice":
+                if skills.upsert_lesson(task.get("type") or "*", x["title"],
+                                        x["body"], source=run_id,
+                                        category=x.get("category"),
+                                        dim="%s %s" % (x["title"], x["body"])):
+                    n += 1
                 continue
             as_of = str(x.get("as_of") or "").strip()
             if not re.match(r"^\d{4}-\d{2}-\d{2}$", as_of):

@@ -40,6 +40,15 @@ class TestRelevanceInjection(BaseTest):
         # 不超上限：原样返回（保 hits 语义）
         self.assertEqual(skills.relevance_top(lessons[:2], task, 8), lessons[:2])
 
+    def test_relevance_tie_prefers_lesson_hits(self):
+        from app.core import skills
+        lessons = [
+            {"id": "l-low", "title": "登录规则", "content": "检查登录", "hits": 1},
+            {"id": "l-high", "title": "登录规则", "content": "检查登录", "hits": 8},
+        ]
+        out = skills.relevance_top(lessons, {"goal": "检查登录问题"}, 1)
+        self.assertEqual(out[0]["id"], "l-high")
+
     def test_block_for_uses_relevance_when_over_limit(self):
         from app.core import skills
         # 造 10 条教训，其中 1 条与任务强相关、其余不含任务词

@@ -30,8 +30,10 @@ import http.client
 import json
 import math
 import os
+import queue
 import random
 import sys
+import threading
 import time
 import webbrowser
 from pathlib import Path
@@ -39,7 +41,8 @@ from pathlib import Path
 # --------------------------------------------------------------- 纯逻辑（可测试）
 
 ACTIVE_STATUSES = ("queued", "running")
-BAD_STATUSES = ("failed", "cancelled")
+GOOD_STATUSES = ("done",)
+BAD_STATUSES = ("failed", "cancelled", "timeout")
 POLL_MS = 4000          # 轮询间隔
 POLL_TIMEOUT = 2.5      # 单次拉取超时（秒）
 MAX_MISS = 15           # 连续拉不到服务 N 次后自离（约 1 分钟，防孤儿常驻）
@@ -49,20 +52,32 @@ HOVER_MS = 250          # 指针轮询周期
 HOVER_DELAY_MS = 350    # 悬停多久后才弹任务清单（扫过不弹）
 
 
+def _safe_int(value, default=0, minimum=0):
+    """外部状态里的计数可能是空值或脏字符串；统一兜底并限制为非负数。"""
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        number = int(default)
+    return max(minimum, number)
+
+
 def parse_snapshot(raw):
     """把 /api/pet_state 响应裁成蜜蜂关心的最小集。字段缺失一律兜底，不抛。"""
     raw = raw if isinstance(raw, dict) else {}
-    st = raw.get("settings") or {}
+    st = raw.get("settings") if isinstance(raw.get("settings"), dict) else {}
+    workers = raw.get("workers") if isinstance(raw.get("workers"), dict) else {}
+    digest = raw.get("digest") if isinstance(raw.get("digest"), dict) else {}
+    task_rows = raw.get("tasks") if isinstance(raw.get("tasks"), list) else []
     tasks = []
-    for t in (raw.get("tasks") or [])[:300]:
+    for t in task_rows[:300]:
         if not isinstance(t, dict):
             continue
         tasks.append({
             "id": str(t.get("id") or ""),
             "title": str(t.get("title") or t.get("id") or ""),
             "run_status": str(t.get("run_status") or ""),
-            "steps_done": int(t.get("steps_done") or 0),
-            "steps_total": int(t.get("steps_total") or 0),
+            "steps_done": _safe_int(t.get("steps_done")),
+            "steps_total": _safe_int(t.get("steps_total")),
             "step_current": str(t.get("step_current") or ""),
             "error": str(t.get("error") or ""),
         })
@@ -73,15 +88,14 @@ def parse_snapshot(raw):
             "pet_skin": str(st.get("pet_skin") or DEFAULT_SKIN),
         },
         "workers": {
-            "running": int((raw.get("workers") or {}).get("running") or 0),
-            "queued": int((raw.get("workers") or {}).get("queued") or 0),
+            "running": _safe_int(workers.get("running")),
+            "queued": _safe_int(workers.get("queued")),
         },
         "tasks": tasks,
         "digest": {
-            "unseen": int((raw.get("digest") or {}).get("unseen") or 0),
-            "latest": (raw.get("digest") or {}).get("latest")
-                      if isinstance((raw.get("digest") or {}).get("latest"), dict)
-                      else None,
+            "unseen": _safe_int(digest.get("unseen")),
+            "latest": digest.get("latest")
+                      if isinstance(digest.get("latest"), dict) else None,
         },
     }
 
@@ -105,10 +119,12 @@ def derive_state(prev_active_ids, tasks):
         by_id = {t["id"]: t for t in tasks}
         for tid in prev_active_ids:
             t = by_id.get(tid)
-            if t is None or t["run_status"] not in BAD_STATUSES:
-                info["good"].append(t or {"id": tid, "title": tid})
-            else:
+            if t is None:
+                continue
+            if t["run_status"] in BAD_STATUSES:
                 info["bad"].append(t)
+            elif t["run_status"] in GOOD_STATUSES:
+                info["good"].append(t)
         if info["bad"]:
             return "alert", info
         if info["good"]:
@@ -276,7 +292,10 @@ def _http_json(port, path, body=None):
             method = "POST"
         conn.request(method, path, body=payload, headers=headers)
         resp = conn.getresponse()
-        return json.loads(resp.read().decode("utf-8"))
+        data = resp.read()
+        if not 200 <= resp.status < 300:
+            raise RuntimeError("CodeBee API 返回 HTTP %d" % resp.status)
+        return json.loads(data.decode("utf-8"))
     finally:
         conn.close()
 
@@ -405,6 +424,14 @@ class PetApp:
         self.hop_until = 0.0                        # 冒气泡时的蹦跶动作截止
         self.next_chatter = time.time() + random.uniform(90, 240)
         self.seen_digests = 0   # 本轮已通知过的摘要未读数（涨了才报，不重复轰炸）
+        self._polling = False
+        self._poll_results = queue.Queue(maxsize=1)
+        self._settings_lock = threading.Lock()
+        self._settings_pending = {}
+        self._settings_desired = {}
+        self._settings_confirmed = {}
+        self._settings_seq = 0
+        self._settings_worker_running = False
 
         if self.frames:
             self._build_sprite()
@@ -583,10 +610,7 @@ class PetApp:
             return
         self.skin = skin
         self._save_cfg(skin=skin)
-        try:
-            _http_json(self.port, "/api/settings", body={"pet_skin": skin})
-        except Exception:
-            pass
+        self._post_settings({"pet_skin": skin})
         self._rebuild_sprite()
 
     def _rebuild_sprite(self):
@@ -841,16 +865,92 @@ class PetApp:
         else:
             self._show([self.pbar_bg, self.pbar_fg], False)
 
-    # ---- 数据轮询（4s 一拍）----
+    def _post_settings(self, body):
+        """合并并串行发送设置，保证快速连点时最后一次选择最终生效。"""
+        patch = dict(body or {})
+        if not patch:
+            return
+        with self._settings_lock:
+            self._settings_seq += 1
+            seq = self._settings_seq
+            for key, value in patch.items():
+                self._settings_pending[key] = (seq, value)
+                self._settings_desired[key] = (seq, value)
+            if self._settings_worker_running:
+                return
+            self._settings_worker_running = True
+
+        def send():
+            while True:
+                with self._settings_lock:
+                    if not self._settings_pending:
+                        self._settings_worker_running = False
+                        return
+                    current = dict(self._settings_pending)
+                    self._settings_pending.clear()
+                try:
+                    _http_json(self.port, "/api/settings",
+                               body={key: item[1] for key, item in current.items()})
+                    with self._settings_lock:
+                        for key, item in current.items():
+                            self._settings_confirmed[key] = max(
+                                item[0], self._settings_confirmed.get(key, 0))
+                except Exception:
+                    # 新值优先；失败的旧值只补回尚未被新点击覆盖的键。
+                    with self._settings_lock:
+                        for key, item in current.items():
+                            self._settings_pending.setdefault(key, item)
+                    time.sleep(1.0)
+        threading.Thread(target=send, name="pet-settings", daemon=True).start()
+
+    def _reconcile_desired_settings(self, snap, confirmed_at_poll_start):
+        """只覆盖写入确认前已发出的旧轮询；确认后的快照以服务端为准。"""
+        with self._settings_lock:
+            for key, item in list(self._settings_desired.items()):
+                seq, value = item
+                if confirmed_at_poll_start.get(key, 0) >= seq:
+                    del self._settings_desired[key]
+                else:
+                    snap["settings"][key] = value
+
+    # ---- 数据轮询（4s 一拍；网络请求不占 Tk 主线程）----
     def _tick(self):
         self._touch_lock()
-        snap = None
+        if self._polling:
+            return
+        self._polling = True
+        with self._settings_lock:
+            confirmed_at_poll_start = dict(self._settings_confirmed)
+
+        def fetch():
+            snap = None
+            error = None
+            try:
+                snap = parse_snapshot(_http_json(self.port, "/api/pet_state"))
+            except Exception as exc:
+                error = exc
+            try:
+                self._poll_results.put_nowait(
+                    (snap, error, confirmed_at_poll_start))
+            except queue.Full:
+                pass
+
+        threading.Thread(target=fetch, name="pet-poll", daemon=True).start()
+        self.root.after(50, self._collect_poll)
+
+    def _collect_poll(self):
         try:
-            snap = parse_snapshot(_http_json(self.port, "/api/pet_state"))
-            self.miss = 0
-        except Exception:
+            snap, error, confirmed_at_poll_start = self._poll_results.get_nowait()
+        except queue.Empty:
+            self.root.after(50, self._collect_poll)
+            return
+        self._polling = False
+        if error is not None:
             self.miss += 1
+        else:
+            self.miss = 0
         if snap is not None:
+            self._reconcile_desired_settings(snap, confirmed_at_poll_start)
             if not snap["settings"]["pet_enabled"]:
                 return self._bye()
             self.snap = snap
@@ -1187,10 +1287,7 @@ class PetApp:
         return m
 
     def _set_mode(self, mode):
-        try:
-            _http_json(self.port, "/api/settings", body={"pet_mode": mode})
-        except Exception:
-            pass
+        self._post_settings({"pet_mode": mode})
 
     def _set_lang(self, lang):
         self.lang = lang

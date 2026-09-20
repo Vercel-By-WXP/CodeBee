@@ -390,52 +390,14 @@ def relevance_top(lessons, task, limit):
     if not probe:
         return lessons[:limit]
 
-    def rank(x):
-        grams = _text_bigrams(x.get("title")) | _text_bigrams(x.get("content"))
-        return (-len(probe & grams), x.get("id") or "")
-
     # 使用反馈闭环（pmb「量化记忆真实帮助」借鉴）：被选中次数多的教训排前
-    hits = _load_hits()
     def rank(x):
         grams = _text_bigrams(x.get("title")) | _text_bigrams(x.get("content"))
         overlap = -len(probe & grams)
         lid = x.get("id") or ""
-        return (overlap, -hits.get(lid, 0), lid)
+        return (overlap, -int(x.get("hits") or 0), lid)
 
     return sorted(lessons, key=rank)[:limit]
-
-
-def _hits_path():
-    return paths.DATA_DIR / "skill_hits.json"
-
-
-def _load_hits():
-    """读取教训使用计数（{lesson_id: 次数}）。文件缺失/损坏返回空 dict。"""
-    try:
-        p = _hits_path()
-        if p.is_file():
-            import json
-            return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        pass
-    return {}
-
-
-def _bump_hits(ids):
-    """注入后递增使用计数并持久化（fire-and-forget，失败静默）。"""
-    try:
-        import json
-        p = _hits_path()
-        hits = _load_hits()
-        for lid in ids:
-            if lid:
-                hits[lid] = hits.get(lid, 0) + 1
-        p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(".tmp")
-        tmp.write_text(json.dumps(hits, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(p)
-    except Exception:
-        pass
 
 
 def block_for(task, scope_override=None, *, stable_order=False):
@@ -448,7 +410,7 @@ def block_for(task, scope_override=None, *, stable_order=False):
     前缀缓存（同一任务 8 章应看到完全相同的技能块）。内容不变，只稳排序。
     """
     scope = scope_override or task.get("type") or "*"
-    parts, used = [], []
+    parts, used, lesson_ids = [], [], []
 
     for p in all_packs():
         if scope not in p["scopes"] and "*" not in p["scopes"]:
@@ -474,6 +436,7 @@ def block_for(task, scope_override=None, *, stable_order=False):
         for x in lessons:
             lines.append("- **%s**：%s" % (x["title"], x["content"]))
             used.append(x["id"])
+            lesson_ids.append(x["id"])
         parts.append("### 【本项目已沉淀的教训（历史评审反复出现，务必规避）】\n" + "\n".join(lines))
 
     if not parts:
@@ -481,10 +444,8 @@ def block_for(task, scope_override=None, *, stable_order=False):
     text = "## 经验库（写作/工程规范 + 历史教训，必须遵守）\n\n" + "\n\n".join(parts)
     if len(text) > MAX_INJECT_CHARS:
         text = text[:MAX_INJECT_CHARS] + "\n…（已截断）"
-    if used:
-        _bump_hits(used)   # 使用反馈闭环：被选中的教训递增计数，下次排序升权
-    if used:
-        bump_hits(used)
+    if lesson_ids:
+        bump_hits(lesson_ids)  # 包 id 不参与教训热度，命中数据只保留一份真源
     return text, used
 
 

@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import sys
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -68,11 +70,19 @@ class TestPetLogic(unittest.TestCase):
         self.assertEqual(st, "alert")
         self.assertEqual(len(info["bad"]), 1)
 
-    def test_vanished_task_treated_as_good(self):
-        # 任务被删除（快照里没了）不应让蜜蜂永远举牌
+    def test_vanished_task_is_not_treated_as_success(self):
+        # 快照短暂缺行或任务被删除时，没有明确 done 就不能误报完工。
         st, info = pet.derive_state({"t-gone"}, [])
-        self.assertEqual(st, "cheer")
-        self.assertEqual(info["good"][0]["id"], "t-gone")
+        self.assertEqual(st, "sleep")
+        self.assertEqual(info["good"], [])
+
+    def test_timeout_counts_as_bad_and_unknown_is_ignored(self):
+        st, info = pet.derive_state({"t-timeout"}, [_task("t-timeout", "timeout")])
+        self.assertEqual(st, "alert")
+        self.assertEqual([x["id"] for x in info["bad"]], ["t-timeout"])
+        st2, info2 = pet.derive_state({"t-odd"}, [_task("t-odd", "mystery")])
+        self.assertEqual(st2, "sleep")
+        self.assertEqual(info2["good"], [])
 
     def test_ancient_failure_never_alerts(self):
         # 上轮就没在跑的失败任务与差分无关——三年前的失败不举牌
@@ -91,6 +101,13 @@ class TestPetLogic(unittest.TestCase):
         self.assertEqual(snap["workers"]["running"], 2)
         self.assertEqual(len(snap["tasks"]), 1)
         self.assertEqual(snap["tasks"][0]["run_status"], "1")
+        dirty = pet.parse_snapshot({"settings": "bad", "workers": [], "digest": "bad",
+                                    "tasks": [{"id": "x", "steps_done": "bad",
+                                               "steps_total": -3}]})
+        self.assertEqual(dirty["workers"], {"running": 0, "queued": 0})
+        self.assertEqual(dirty["digest"]["unseen"], 0)
+        self.assertEqual(dirty["tasks"][0]["steps_done"], 0)
+        self.assertEqual(dirty["tasks"][0]["steps_total"], 0)
 
     def test_tooltip_lines_active_first_capped(self):
         tasks = [_task("t-%d" % i, "running", done=i, total=10, cur="写第%d章" % i)
@@ -221,6 +238,64 @@ class TestPetEndpoint(unittest.TestCase):
         self.assertEqual(payload["settings"],
                          {"pet_enabled": True, "pet_mode": "always",
                           "pet_skin": "plush"})
+
+
+class TestPetHttp(unittest.TestCase):
+    def test_non_2xx_response_raises(self):
+        response = mock.Mock(status=500)
+        response.read.return_value = b'{"ok": false}'
+        conn = mock.Mock()
+        conn.getresponse.return_value = response
+        with mock.patch.object(pet.http.client, "HTTPConnection", return_value=conn):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 500"):
+                pet._http_json(8765, "/api/pet_state")
+        conn.close.assert_called_once()
+
+    def test_settings_writer_is_serial_and_latest_value_wins(self):
+        app = object.__new__(pet.PetApp)
+        app.port = 8765
+        app._settings_lock = threading.Lock()
+        app._settings_pending = {}
+        app._settings_desired = {}
+        app._settings_confirmed = {}
+        app._settings_seq = 0
+        app._settings_worker_running = False
+        first_started = threading.Event()
+        release_first = threading.Event()
+        second_done = threading.Event()
+        calls = []
+
+        def fake_http(_port, _path, body=None):
+            calls.append(dict(body or {}))
+            if len(calls) == 1:
+                first_started.set()
+                release_first.wait(2)
+            else:
+                second_done.set()
+            return {"ok": True}
+
+        with mock.patch.object(pet, "_http_json", side_effect=fake_http):
+            app._post_settings({"pet_mode": "always"})
+            self.assertTrue(first_started.wait(1))
+            app._post_settings({"pet_mode": "tasks_only"})
+            release_first.set()
+            self.assertTrue(second_done.wait(2))
+
+        self.assertEqual(calls, [{"pet_mode": "always"},
+                                 {"pet_mode": "tasks_only"}])
+        deadline = time.time() + 1
+        while app._settings_worker_running and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertFalse(app._settings_worker_running)
+        # 写入确认前发出的旧轮询不能把最后一次点击覆盖掉。
+        stale = pet.parse_snapshot({"settings": {"pet_mode": "always"}})
+        app._reconcile_desired_settings(stale, {})
+        self.assertEqual(stale["settings"]["pet_mode"], "tasks_only")
+        # 写入确认后新发起的轮询恢复服务端权威，允许网页设置页再次改值。
+        external = pet.parse_snapshot({"settings": {"pet_mode": "always"}})
+        app._reconcile_desired_settings(external, dict(app._settings_confirmed))
+        self.assertEqual(external["settings"]["pet_mode"], "always")
+        self.assertEqual(app._settings_desired, {})
 
 
 if __name__ == "__main__":

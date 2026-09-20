@@ -6,6 +6,8 @@
 """
 from __future__ import annotations
 
+from unittest import mock
+
 from base import BaseTest
 
 
@@ -149,6 +151,42 @@ class TestKnowledgeInject(BaseTest):
         for x in knowledge.list_entries():
             knowledge.entry_op(x["id"], "delete")
         self.assertEqual(knowledge.block_for({"type": "novel", "goal": "写小说"}), "")
+
+
+class TestKnowledgeLearningSplit(BaseTest):
+    """产出里的事实进知识库，实践进经验库，旧模型缺 kind 仍按事实兼容。"""
+
+    def runTest(self):
+        from app.core import knowledge, modelhub, skills, store
+        task = store.create_task({"type": "novel", "title": "沉淀分流",
+                                  "goal": "总结写作调研", "workdir": str(self.workdir)})
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        step, _ = store.add_step(run["id"], "research", "codex", "Codex")
+        store.finish_step(run["id"], step["n"], "done", summary="完成调研")
+        store.update_run(run["id"], status="done")
+
+        response = {"ok": True, "text": """```json
+{"entries": [
+  {"kind": "fact", "title": "缓存事实", "body": "供应商支持前缀缓存。", "as_of": "2026-09-21"},
+  {"kind": "practice", "title": "章末钩子", "body": "每章结尾设置悬念以提升追读。", "category": "节奏爽点"},
+  {"title": "兼容旧条目", "body": "旧模型未返回 kind 时仍保存为事实。"}
+]}
+```"""}
+        with mock.patch.object(knowledge, "_pick_material", return_value="调研正文"), \
+             mock.patch.object(modelhub, "resolve_orchestrator",
+                               return_value=({"id": "p1"}, "m1")), \
+             mock.patch.object(modelhub, "chat", return_value=response) as chat:
+            self.assertEqual(knowledge.learn_from_run(run["id"]), 3)
+
+        prompt = chat.call_args.args[2]
+        self.assertIn("fact", prompt)
+        self.assertIn("practice", prompt)
+        self.assertIn("节奏爽点", prompt)
+        self.assertEqual({x["title"] for x in knowledge.list_entries("novel")},
+                         {"缓存事实", "兼容旧条目"})
+        lessons = skills.list_lessons("novel")
+        self.assertEqual([x["title"] for x in lessons], ["章末钩子"])
+        self.assertEqual(lessons[0]["category"], "节奏爽点")
 
 
 if __name__ == "__main__":

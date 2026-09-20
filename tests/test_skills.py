@@ -66,6 +66,9 @@ class TestLessons(BaseTest):
         self.assertIn("节奏拖沓", block)
         self.assertIn(a["id"], used)
         self.assertEqual(skills.list_lessons("serial_novel")[0]["hits"], 1)
+        self.assertFalse((self.data_dir / "skill_hits.json").exists())
+        # 经验包 id 仍返回给调用方，但不会混进 lesson 命中统计。
+        self.assertIn("qimao-signing", used)
         # 高频排前
         skills.upsert_lesson("serial_novel", "视角漂移", "严禁上帝视角")
         got = skills.list_lessons("serial_novel")
