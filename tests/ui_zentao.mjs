@@ -200,6 +200,15 @@ async function main() {
     })()`, true);
     const g = JSON.parse(geo || "{}");
     check("②b 档案卡值输入不溢出卡片右缘", g.cnt >= 10 && g.worst <= 2, geo);
+    // 几何回归：禅道连接卡输入框必须紧跟 150px 标签列（auto 标签列会在宽卡吞自由空间，
+    // 把输入框推到页面中部——已踩）。偏移 = 卡左缘到输入框左缘，150 列 + gap + 内边距应 ≤240
+    const geo2 = await evalJs(`(() => {
+      const inp = document.getElementById("zt-base-url");
+      const cb = document.getElementById("sub-zentao").getBoundingClientRect();
+      return JSON.stringify({ off: Math.round(inp.getBoundingClientRect().left - cb.left) });
+    })()`, true);
+    const g2 = JSON.parse(geo2 || "{}");
+    check("②b 连接卡输入框紧跟标签列（不被推到中部）", g2.off > 100 && g2.off <= 240, geo2);
     await evalJs(`ztWdPick(document.querySelector("#zt-profiles .zt-prof .zt-wd-row button")); "ok"`);
     await sleep(500);
     const wdFilled = await evalJs(

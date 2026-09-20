@@ -5377,11 +5377,16 @@ body.welcome-open { overflow: hidden; }
 /* ---------------- 禅道·档案卡窄卡溢出修复（追加于文件尾防并行重排） ----------------
  * 病根：值列 minmax(240px,560px) + 标签列 150px + gap 最少 404px，档案卡实宽 ~385px，
  * 值列整体被卡片右缘裁掉；且仓库三件套 input 无 type 属性，吃不到 width:100% 规则。
- * 修法：标签列改 auto（随最长标签），值列下限降到 160px 可收缩；六类值输入显式占满列宽。 */
+ * 修法：标签列保持固定 150px（auto 会吞掉宽卡片的剩余自由空间，把禅道连接/自动化卡
+ * 的输入框推到页面中部、开关行被拉宽——已踩，勿改回），仅把值列下限降为可收缩；
+ * :not 排除开关行（zt-grid-toggles 有自己的 auto-fill 口径）。 */
 @media (min-width: 901px) {
-  .zt-grid { grid-template-columns: auto minmax(160px, 560px); }
+  .zt-grid:not(.zt-grid-toggles) { grid-template-columns: 150px minmax(0, 560px); }
 }
 .zt-grid .zt-p-wd, .zt-grid .zt-p-rev, .zt-grid .zt-p-verify,
 .zt-grid .zt-p-hint, .zt-grid .zt-p-assigned, .zt-grid .zt-p-owner {
   width: 100%; max-width: 560px;
 }
+
+/* 对话页语音输入按钮（借鉴 paseo voice）：识别中高亮呼吸 */
+#rd-chat-voice.live { color: var(--bad); animation: cb-rise .6s ease infinite alternate; }
