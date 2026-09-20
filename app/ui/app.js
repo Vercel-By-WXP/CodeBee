@@ -13,6 +13,12 @@ async function loadFlows() {
   renderTypeOptions();
 }
 
+function invalidateFlowRubricDraft(flowId) {
+  if (S.flowRubricDrafts) delete S.flowRubricDrafts[flowId];
+  const rubric = $("f-rubric");
+  if (rubric && rubric.dataset.flowId === flowId) rubric.dataset.flowId = "";
+}
+
 function flowById(id) {
   return (S.flows || []).find((f) => f.id === id) || null;
 }
@@ -78,7 +84,7 @@ function renderTypeMenu() {
  * 拉到手后就地更新菜单项——菜单开着也不重建 DOM，不打断滚动/悬停 */
 async function fetchFlowEstimates() {
   if (!S.flows) return;
-  const targets = S.flows.slice(0, 10);
+  const targets = S.flows;
   const results = await Promise.all(targets.map(async (f) => {
     try {
       const d = await api("/api/usage/estimate?type=" + encodeURIComponent(f.id) + "&days=90");
@@ -157,8 +163,18 @@ function onTypeChange() {
     if (flow.rounds) $("f-rounds").value = flow.rounds;
     if (flow.threshold) $("f-threshold").value = flow.threshold;
     if (flow.best_of) $("f-bestof").value = flow.best_of;
-    const saved = ($("f-rubric").value || "").trim();
-    if (!saved && flow.rubric) $("f-rubric").value = flow.rubric.join(", ");
+    const rubric = $("f-rubric");
+    const previousFlow = rubric.dataset.flowId || "";
+    if (!S.flowRubricDrafts) S.flowRubricDrafts = {};
+    if (previousFlow && previousFlow !== flow.id) {
+      S.flowRubricDrafts[previousFlow] = rubric.value;
+    }
+    if (previousFlow !== flow.id) {
+      rubric.value = Object.prototype.hasOwnProperty.call(S.flowRubricDrafts, flow.id)
+        ? S.flowRubricDrafts[flow.id]
+        : (flow.rubric || []).join(", ");
+      rubric.dataset.flowId = flow.id;
+    }
     // 连载参数预填（用户可改/可清空 = 单稿件模式）
     if (flow.serial) {
       if (!$("f-chapters").value) $("f-chapters").value = flow.serial.chapters || "";
@@ -7417,7 +7433,8 @@ function openFlowsManager() {
   const rows = flows.map((f) =>
     '<div class="item"><div class="t"><span class="name">' + flowIconHtml(f) + " " + esc(t(f.name)) +
     '</span><span class="tag">' + esc(f.id) + "</span>" +
-    '<span class="tag">' + (f.engine === "code" ? t("代码引擎") : t("评审引擎")) + "</span>" +
+    '<span class="tag">' + (f.engine === "code" ? t("代码引擎")
+      : f.engine === "direct" ? t("直连引擎") : t("评审引擎")) + "</span>" +
     (f.serial ? '<span class="tag">' + t("连载 ") + f.serial.chapters + t(" 章") + "</span>" : "") +
     (f.builtin ? '<span class="tag ok">' + t("预置") + '</span>' : '<span class="tag">' + t("自定义") + '</span>') +
     (f.edited ? '<span class="tag">' + t("已改") + '</span>' : "") +
@@ -7440,6 +7457,7 @@ async function flowReset(fid) {
   if (!await uiConfirm(t("把「") + fid + t("」恢复为内置默认配置？"), { ok: t("恢复") })) return;
   try { await api("/api/flows/" + encodeURIComponent(fid) + "/reset", { method: "POST" }); }
   catch (e) { toast(t("恢复失败：") + e.message, true); return; }
+  invalidateFlowRubricDraft(fid);
   await loadFlows();
   openFlowsManager();
   toast(t("已恢复默认"));
@@ -7456,7 +7474,8 @@ function flowForm(fid) {
     '<div class="grid-2">' +
     '<div class="field"><label>' + t("名称 ") + '<span class="req">*</span></label><input id="fl-name" value="' +
       esc(f ? f.name : "") + '" placeholder="' + t("例：播客脚本") + '"></div>' +
-    '<div class="field"><label>' + t("引擎 ") + '<span class="req">*</span></label><select id="fl-engine"' +
+    '<div class="field"><label>' + t("引擎 ") + '<span class="req">*</span></label><select id="fl-engine" data-fid="' +
+      esc(f ? f.id : "") + '"' +
       (engLocked ? " disabled" : "") + '>' +
       '<option value="review"' + (engine === "review" ? " selected" : "") + '>' + t("评审引擎（起草 → 多维评审 → 修订 → 门禁）") + '</option>' +
       '<option value="code"' + (engine === "code" ? " selected" : "") + '>' + t("代码引擎（实现 → 验证 → 评审 → 修复）") + '</option>' +
@@ -7530,6 +7549,7 @@ async function saveFlow() {
     await api("/api/flows", { method: "POST", body: JSON.stringify(payload) });
   } catch (e) { toast(t("保存失败：") + e.message, true); return; }
   closeModal();
+  invalidateFlowRubricDraft(id);
   await loadFlows();
   openFlowsManager();
   toast(t("流程已保存"));

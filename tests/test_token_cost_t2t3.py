@@ -108,6 +108,87 @@ class TestBudgetGate(BudgetBase):
         self.assertTrue(res["ok"])
         self.assertEqual(len(calls), 1)
 
+    def test_real_first_step_usage_blocks_second_step_on_direct_paths(self):
+        """默认 compaction=false 与 resume 路径都必须累计真实 runner usage。"""
+        from app.core import pipeline, runner
+        from app.core.token_meter import token_meter
+
+        self._cap(50)
+        original_run = runner.run_agent
+        original_compaction = pipeline._compaction_enabled
+        calls = []
+
+        def fake_run(agent, prompt, **kwargs):
+            calls.append((prompt, kwargs.get("resume")))
+            return {
+                "ok": True, "text": "done", "json": None, "cost_usd": 0.0,
+                "tokens": 60, "usage": {"input": 40, "output": 20},
+                "error": "", "error_code": "", "sid": "s1",
+                "raw": {"exit_code": 0}, "kind": "generic", "model": "m1",
+            }
+
+        try:
+            runner.run_agent = fake_run
+            pipeline._compaction_enabled = lambda: False
+            for resume in (None, "existing-session"):
+                run_id = "r-direct-%s" % ("resume" if resume else "fresh")
+                token_meter.reset(run_id)
+                first = pipeline._spawn_step(
+                    run_id, "draft", {"kind": "generic", "mode": "real"}, "p1",
+                    None, True, None, 10, resume, {"n": 1}, None)
+                second = pipeline._spawn_step(
+                    run_id, "review", {"kind": "generic", "mode": "real"}, "p2",
+                    None, True, None, 10, resume, {"n": 2}, None)
+                self.assertTrue(first["ok"])
+                self.assertEqual(token_meter.used(run_id), 60)
+                self.assertFalse(second["ok"])
+                self.assertEqual(second["error_code"], "ENV_BLOCK")
+        finally:
+            runner.run_agent = original_run
+            pipeline._compaction_enabled = original_compaction
+
+        self.assertEqual([item[0] for item in calls], ["p1", "p1"])
+
+    def test_compaction_path_records_each_real_call_once(self):
+        """压缩执行器内的首次调用和重试各记一次，外层不得重复累计。"""
+        from app.core import pipeline, runner, step_runner
+        from app.core.token_meter import token_meter
+
+        original_run = runner.run_agent
+        original_compaction = pipeline._compaction_enabled
+        original_execute = step_runner.execute_step
+
+        def fake_run(agent, prompt, **kwargs):
+            return {
+                "ok": True, "text": "done", "json": None, "cost_usd": 0.0,
+                "tokens": 60, "usage": {"input": 40, "output": 20},
+                "error": "", "error_code": "", "sid": "s1",
+                "raw": {"exit_code": 0}, "kind": "generic", "model": "m1",
+            }
+
+        try:
+            runner.run_agent = fake_run
+            pipeline._compaction_enabled = lambda: True
+            for retries, expected in ((0, 60), (1, 120)):
+                def fake_execute(session, run_agent_fn, prompt, **kwargs):
+                    result = run_agent_fn(prompt)
+                    for _ in range(retries):
+                        result = run_agent_fn(prompt)
+                    return result, bool(retries)
+
+                step_runner.execute_step = fake_execute
+                run_id = "r-compaction-%d" % retries
+                token_meter.reset(run_id)
+                result = pipeline._spawn_step(
+                    run_id, "draft", {"kind": "generic", "mode": "real"}, "p1",
+                    None, True, None, 10, None, {"n": 1}, None)
+                self.assertTrue(result["ok"])
+                self.assertEqual(token_meter.used(run_id), expected)
+        finally:
+            runner.run_agent = original_run
+            pipeline._compaction_enabled = original_compaction
+            step_runner.execute_step = original_execute
+
 
 class TestChatExactCache(BudgetBase):
     """modelhub.chat 精确缓存：cache_ttl>0 命中不发网；创作调用不开缓存。"""

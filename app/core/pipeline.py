@@ -502,6 +502,7 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
                     "error_code": ErrorCode.ENV_BLOCK, "sid": "",
                     "raw": {"exit_code": None}, "kind": agent.get("kind", "generic"),
                     "model": agent.get("model")}
+    usage_recorded = False
     if _compaction_enabled() and not resume:
         # Phase 2（1D）：撑爆 → 压缩 → 守门重试；同时把 usage 累进 token_meter（1C）
         session = _get_session(session_run_id)
@@ -511,6 +512,7 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
                            images=images, require_tools=require_tools)
 
         def _call(p, **kw):
+            nonlocal usage_recorded
             # 模型可见即已记录（§1A 不变量）：入参/出参先落 session 日志
             session.append("user_message", {"content": p, "role": role},
                            turn_id=str(step["n"]))
@@ -523,6 +525,7 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
                 from .token_meter import token_meter
                 token_meter.accumulate(session_run_id, r.get("usage"),
                                        model=r.get("model") or "")
+                usage_recorded = True
             except Exception:
                 pass
             return r
@@ -534,6 +537,15 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
         res = runner.run_agent(agent, prompt, workdir=workdir, readonly=readonly,
                                timeout=timeout, cancel_event=ev, log_path=str(log_abs),
                                resume=resume, images=images, require_tools=require_tools)
+    # 默认关闭压缩和 resume 都走直通分支，也必须把真实 usage 送进预算表；否则
+    # 下一步永远看到 used=0，max_tokens_per_run 只是一个无效设置。
+    if not usage_recorded:
+        try:
+            from .token_meter import token_meter
+            token_meter.accumulate(session_run_id, res.get("usage"),
+                                   model=res.get("model") or "")
+        except Exception:
+            pass
     return res
 
 
@@ -1410,7 +1422,7 @@ def _pick_reviewer_legacy(agents, impl):
 
 # ---------------------------------------------------------------- review 引擎（小说/文档/翻译/调研…通用）
 
-NOVEL_DRAFT_PROMPT = """你是一名专业作者。请在当前工作目录中撰写/修订稿件文件：`__FILE__`（直接写入该文件）。文件必须以 UTF-8 编码保存（PowerShell 写文件显式加 -Encoding UTF8，禁止依赖默认编码）。
+NOVEL_DRAFT_PROMPT = """你是__ROLE__。请在当前工作目录中撰写/修订稿件文件：`__FILE__`（直接写入该文件）。文件必须以 UTF-8 编码保存（PowerShell 写文件显式加 -Encoding UTF8，禁止依赖默认编码）。
 
 ## 写作任务
 __GOAL__
@@ -1426,6 +1438,69 @@ __RUBRIC__
 - 只修改 `__FILE__` 这一个文件；保持 Markdown 结构。
 - 完成后用 3 句话说明本轮写了什么。"""
 
+# review 引擎共用执行骨架，但交付物不能只靠 rubric 猜格式。每个内置类型给出
+# 最小成品契约，起草和修订都注入；自定义流程继续使用通用回退，避免强加结构。
+CONTENT_DELIVERY_CONTRACTS = {
+    "novel": ("小说作者", [
+        "遵守用户给定的题材、篇幅、视角和风格；未给出的核心设定不要擅自扩张。",
+        "用场景、行动和对话推进冲突，人物动机与前后因果保持一致。",
+    ]),
+    "article": ("平台内容主编", [
+        "标题、开头钩子、正文层级和结尾行动建议要适配目标平台与读者。",
+        "事实、数据和引语不得编造；缺少来源时明确标注待核实。",
+    ]),
+    "video_script": ("短视频编导", [
+        "按镜头或时间段写清画面、口播、字幕/音效与预计时长，前 3 秒给出钩子。",
+        "每个画面都应可实际拍摄或制作，结尾给出自然的互动或转化动作。",
+    ]),
+    "doc": ("技术文档编辑", [
+        "先明确读者、目的和前置条件，再按可执行步骤组织正文。",
+        "命令、参数、示例与限制必须一致；无法确认的内容明确标注。",
+    ]),
+    "translation": ("专业译者与审校", [
+        "忠实保留原文含义、语气、数字、专名、占位符、链接和 Markdown 结构，不增译或漏译。",
+        "术语译法全文一致；歧义或无法确认的专名保留原文并加简短译注。",
+    ]),
+    "research": ("研究分析师", [
+        "围绕决策问题组织证据、对比、结论与可执行建议，避免资料堆砌。",
+        "结论必须能回溯到来源；证据不足处明确写出不确定性和验证办法。",
+    ]),
+    "speech": ("演讲撰稿人", [
+        "按场合、听众和时长控制篇幅，使用适合现场说出的短句与自然转场。",
+        "开场建立关系，主体围绕一个核心信息展开，结尾给出清晰收束或号召。",
+    ]),
+    "weekly_report": ("业务汇报顾问", [
+        "按成果与影响、关键数据、问题阻塞、下步行动（负责人/时间）组织内容。",
+        "只使用用户提供或可核验的数据；缺失数字保留待补项，不虚构业绩。",
+    ]),
+    "email": ("商务沟通顾问", [
+        "包含明确主题、称呼、来意、必要背景、请求/下一步和得体落款。",
+        "语气匹配双方关系；日期、承诺、附件与联系人不得凭空补造。",
+    ]),
+    "tech_proposal": ("解决方案架构师", [
+        "覆盖现状与目标、约束、候选方案对比、推荐架构、实施阶段、风险与回滚、验收指标。",
+        "区分已知事实、假设和待验证项；成本收益给出计算口径而非虚构数字。",
+    ]),
+    "resume": ("招聘与简历顾问", [
+        "围绕目标岗位提炼真实经历，用行动、结果和技能关键词表达岗位匹配度。",
+        "不得虚构经历、公司、学历、指标或技术栈；缺少量化数据时保留待补提示。",
+    ]),
+}
+
+
+def _content_role(task):
+    """返回内置类型的专业角色；自定义 review 流程使用中性角色。"""
+    spec = CONTENT_DELIVERY_CONTRACTS.get(str(task.get("type") or ""))
+    return spec[0] if spec else "内容交付专家"
+
+
+def _content_contract(task):
+    """把类型成品约束渲染为稳定提示块；无内置契约时不额外注入。"""
+    spec = CONTENT_DELIVERY_CONTRACTS.get(str(task.get("type") or ""))
+    if not spec:
+        return ""
+    return "\n\n## 本类型交付约束\n" + "\n".join("- " + item for item in spec[1])
+
 # 调研报告类稿件的追加要求（借鉴 gpt-researcher 迭代深研）：有网络/读文件工具时
 # 多源交叉验证，单源结论降权——调研的可信度来自证据链而非文采
 RESEARCH_APPENDIX = """
@@ -1438,7 +1513,7 @@ RESEARCH_APPENDIX = """
 - 结构硬性要求：报告第一段必须是「**核心结论**」三行以内的要点摘要（结论先行），
   之后才展开分层论证 → 风险与局限（说明哪些结论证据不足）。"""
 
-NOVEL_REVISE_PROMPT = """你是一名专业作者。请根据下方汇总评审意见修订稿件文件：`__FILE__`（直接写入该文件）。文件必须以 UTF-8 编码保存（PowerShell 写文件显式加 -Encoding UTF8，禁止依赖默认编码）。
+NOVEL_REVISE_PROMPT = """你是__ROLE__。请根据下方汇总评审意见修订稿件文件：`__FILE__`（直接写入该文件）。文件必须以 UTF-8 编码保存（PowerShell 写文件显式加 -Encoding UTF8，禁止依赖默认编码）。
 
 ## 原始写作任务
 __GOAL__
@@ -2689,13 +2764,15 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         impl, _ = _pick_implementer(agents, task.get("implementer"))
         critics = _pick_critics_manual(agents, task)
     else:
-        impl, route["author"] = router.pick(agents, "implement", "novel", stats)
-        critics, route["critics"] = router.pick_critics(agents, "novel", stats, impl=impl)
+        task_type = task.get("type") or "novel"
+        impl, route["author"] = router.pick(agents, "implement", task_type, stats)
+        critics, route["critics"] = router.pick_critics(agents, task_type, stats, impl=impl)
     if impl is None:
         store.update_run(run_id, status="failed", error="没有可用智能体", ended_at=_now())
         return
     if resume_ctx is not None and mode == "auto":
-        critics, route["critics"] = router.pick_critics(agents, "novel", stats, impl=impl)
+        critics, route["critics"] = router.pick_critics(
+            agents, task.get("type") or "novel", stats, impl=impl)
 
     # ---- 规划（小说为模板计划）
     _wait_gate(run_id, ev)
@@ -2739,6 +2816,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
 
         def _draft_prompt_for(vfile):
             p = (_tpl(task, "draft_prompt", NOVEL_DRAFT_PROMPT).replace("__FILE__", vfile)
+                 .replace("__ROLE__", _content_role(task))
                  .replace("__GOAL__", task["goal"])
                  .replace("__CONTEXT__", task.get("context") or "（无）")
                  .replace("__RUBRIC__", "、".join(dims) if dims else "（按流程默认维度）"))
@@ -2748,6 +2826,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             if is_research:
                 # 调研报告追加证据链要求（gpt-researcher 借鉴）
                 p += RESEARCH_APPENDIX
+            p += _content_contract(task)
             return p
 
         best_of = max(1, min(3, int(task.get("best_of") or 1)))
@@ -2847,8 +2926,10 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 pass
         else:
             prompt = (NOVEL_REVISE_PROMPT.replace("__FILE__", ms_name)
+                      .replace("__ROLE__", _content_role(task))
                       .replace("__GOAL__", task["goal"])
                       .replace("__CRITIQUE__", "\n".join(crit_lines)))
+            prompt += _content_contract(task)
             _run_step(run_id, "revise-r%d" % r, modelhub.bind_agent(impl, difficulty), prompt,
                       workdir, readonly=False, ev=ev,
                       resume=resume_ctx["session"] if resume_ctx else None)

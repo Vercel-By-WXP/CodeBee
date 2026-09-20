@@ -21,7 +21,7 @@ FAKE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures_fake_c
 
 class TestResumeE2E(BaseTest):
     def runTest(self):
-        from app.core import catalog, jobs, paths, pipeline, registry, store
+        from app.core import catalog, jobs, paths, pipeline, registry, runner, store
 
         # 会话所属项目目录（真实存在，才能被 _resume_workdir 采纳）
         session_dir = self.tmp / "session-project"
@@ -66,7 +66,9 @@ class TestResumeE2E(BaseTest):
         run_rec = store.get_run(run["id"])
         log_abs = paths.RUNS_DIR / run["id"] / run_rec["steps"][0]["log"]
         self.assertTrue(log_abs.exists(), "假 CLI 未被调用（无步骤日志）")
-        body = log_abs.read_text(encoding="utf-8")
+        # 日志会保留 CLI 原始字节（中文 Windows CLI 可能输出 GBK）；读取口径与
+        # 产品详情页一致，走 UTF-8 → GBK → replace 的兼容解码链。
+        body = runner.read_text_any_enc(log_abs)
         # 子进程 cwd 必须是会话项目目录（不是任务工作目录）
         self.assertIn("cwd=%s" % str(session_dir), body)
         self.assertNotIn("cwd=%s" % str(task_wd), body)

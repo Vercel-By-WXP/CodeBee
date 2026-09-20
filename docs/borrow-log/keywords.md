@@ -1,11 +1,11 @@
 # 关键词总库（全类型覆盖版 · 130 组 + 雷达源）
 
-> 夜间自动化检索的完整词库。规则：每晚跑 **常驻组全部 + 轮换池按星期选 1 批 + 雷达源全部**；
+> 夜间自动化检索的完整词库。规则：每轮跑 **常驻组全部 + 轮换池按当前小时数对 7 取模选 1 批（余 0=批7）+ 雷达源全部**；
 > 双轮排序（sort=stars 与 sort=updated 或 created:>2026-03-01 新锐轮）；核心组翻页 page=2
 >（满页才翻，最多 page=3）；GitHub API 未认证限流 10 次/分，请求间 sleep 6-8 秒；
 > 结果高度重合即跳余页省配额。新增关键词直接编辑本文件并在行尾标注（谁/何时/为何）。
 
-## A. 常驻组（每晚全跑，41 组）
+## A. 常驻组（每轮全跑，61 组）
 
 ### A1 核心编排（8 组，翻页）
 - q=multi-agent+orchestration
@@ -88,9 +88,9 @@
 - q=ai+presentation+slides+generator（演示文稿/汇报 PPT）
 - q=ai+search+agent+OR+deep+research+agent（调研报告/deep research）
 
-## B. 轮换池（56 组，按星期选批：周日=批1 … 周六=批7）
+## B. 轮换池（69 组，按当前小时选批：小时 % 7，余 1=批1 … 余 6=批6，余 0=批7；如 08 点→批1、10 点→批3）
 
-### 批1（周日）代码质量与评审
+### 批1：代码质量与评审
 - q=code+review+agent+OR+ai+code+reviewer
 - q=pr+review+bot+github
 - q=github+action+ai+review
@@ -99,8 +99,10 @@
 - q=test+generation+agent+OR+ai+testing+agent
 - q=regression+test+generation+ai
 - q=refactor+agent+OR+tech+debt+agent
+- q=secure+code+review+agent+OR+security+review+bot（2026-09-20 补：代码安全评审）
+- q=api+test+generation+agent+OR+integration+test+agent（2026-09-20 补：接口/集成测试）
 
-### 批2（周一）学习记忆与自我改进
+### 批2：学习记忆与自我改进
 - q=self+improving+agent+OR+agent+reflexion
 - q=agent+episodic+memory
 - q=project+memory+coding+agent
@@ -109,8 +111,10 @@
 - q=experience+reuse+agent
 - q=agent+self+correction
 - q=skill+library+agent
+- q=conversation+memory+compression+OR+memory+summarization+agent（2026-09-20 补：对话记忆压缩）
+- q=agent+skill+learning+OR+automatic+skill+discovery（2026-09-20 补：技能自动沉淀）
 
-### 批3（周二）计划/spec/长任务
+### 批3：计划/spec/长任务
 - q=long+running+agent+OR+persistent+planning+agent（可 stars:>200）
 - q=spec+driven+development
 - q=plan+and+execute+agent
@@ -119,8 +123,10 @@
 - q=project+planning+ai+agent
 - q=autonomous+long+horizon+agent
 - q=worktree+parallel+agent
+- q=agent+checkpoint+resume+OR+workflow+recovery+agent（2026-09-20 补：长任务断点恢复）
+- q=acceptance+criteria+agent+OR+requirements+validation+agent（2026-09-20 补：验收标准与需求核验）
 
-### 批4（周三）治理/安全/人机协同
+### 批4：治理/安全/人机协同
 - q=human+in+the+loop+ai+agent
 - q=agent+approval+workflow
 - q=agent+governance
@@ -129,8 +135,10 @@
 - q=agent+audit+trail
 - q=agent+kill+switch
 - q=agent+risk+control
+- q=prompt+injection+defense+agent+OR+indirect+prompt+injection（2026-09-20 补：工具输入安全）
+- q=agent+policy+evaluation+OR+guardrail+benchmark（2026-09-20 补：治理规则评测）
 
-### 批5（周四）检索/知识/浏览器
+### 批5：检索/知识/浏览器
 - q=agent+rag
 - q=deep+research+agent
 - q=browser+use+agent+OR+browser+automation+ai
@@ -139,8 +147,10 @@
 - q=document+understanding+agent
 - q=data+extraction+agent
 - q=competitive+intelligence+agent
+- q=citation+verification+agent+OR+source+grounding+agent（2026-09-20 补：调研引用核验）
+- q=knowledge+base+quality+OR+rag+evaluation+agent（2026-09-20 补：知识库质量）
 
-### 批6（周五）框架/平台/SDK 生态
+### 批6：框架/平台/SDK 生态
 - q=langgraph+platform+OR+langgraph+deploy
 - q=crewai+studio+OR+crewai+platform
 - q=autogen+platform+OR+autogen+studio
@@ -149,8 +159,10 @@
 - q=mastra+agent
 - q=pydanticai+agent
 - q=semantic+kernel+agent
+- q=agent+interoperability+protocol+OR+agent+to+agent+protocol（2026-09-20 补：跨代理协议）
+- q=agent+framework+benchmark+OR+multi-agent+framework+comparison（2026-09-20 补：框架横评）
 
-### 批7（周六）中文/网关/本地/办公
+### 批7：中文/网关/本地/办公
 - q=数字员工+OR+大模型+编排
 - q=one-api+alternative
 - q=模型中转+OR+api+网关+大模型
@@ -159,6 +171,7 @@
 - q=self+hosted+agent+platform
 - q=rpa+ai+agent
 - q=小说生成+ai+OR+ai+写作+平台
+- q=office+document+agent+OR+办公+智能体+工作流（2026-09-20 补：办公文档自动化）
 
 ## C. 雷达源（每轮全过）
 
