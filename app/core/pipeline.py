@@ -3032,9 +3032,26 @@ def _write_task_evidence(run_id, task, workdir, summary_lines):
             for ln in summary_lines:
                 f.write("- %s\n" % str(ln)[:300])
             f.write("\n")
+        _archive_stamp(run_id, task, workdir, summary_lines)
         return path
     except Exception:
         return ""
+
+
+def _archive_stamp(run_id, task, workdir, summary_lines):
+    """归档戳（借鉴 OpenSpec archive）：evidence 落盘后向 spec.md 尾部追加
+    「已完成」快照行——spec 从「意图」升格为「意图+交付记录」的活档案。
+    失败静默。"""
+    try:
+        spec = os.path.join(workdir, ".codebee", "spec.md")
+        if not os.path.isfile(spec):
+            return
+        with open(spec, "a", encoding="utf-8") as f:
+            f.write("\n---\n**✅ 已交付** · %s · run %s\n%s\n" % (
+                _now(), run_id,
+                "\n".join("- %s" % str(ln)[:160] for ln in summary_lines[:5])))
+    except Exception:
+        return
 
 
 def _evidence_lines_from_run(run_id, task):
