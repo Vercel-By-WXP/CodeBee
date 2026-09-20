@@ -310,7 +310,8 @@ def _wait_gate(run_id, ev):
             return
         if ev is not None and ev.is_set():
             return
-        time.sleep(1.0)
+        # ev.wait 睡等：取消置位即刻醒来，不必耗满 1s 轮询间隔
+        (ev.wait(1.0) if ev is not None else time.sleep(1.0))
 
 
 def _binding_dead_msg(agent):
@@ -2020,9 +2021,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 use_prompt = prompt
                 for draft_attempt in range(3):
                     if draft_attempt:
-                        if ev is not None and ev.is_set():
-                            break
-                        time.sleep(30 * draft_attempt)   # 30s / 60s 退避
+                        # 30s / 60s 退避；ev.wait 睡等可被取消即刻唤醒
+                        if ev is not None:
+                            if ev.wait(30 * draft_attempt):
+                                break
+                        else:
+                            time.sleep(30 * draft_attempt)
                     if draft_attempt and len(prompt) > 12000 and sk_block and sk_block in prompt:
                         # 长提示词在容量受限通道（讯飞托管 35B 等）上会挂起/秒拒
                         # ——分层降级：经验库→4K、模块库按模块边界、圣经按二级标题
@@ -2107,9 +2111,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 for race_round in range(2):
                     # 全变体失败（网关突发限流）→ 60s 退避重赛一轮，别一章判死
                     if race_round:
-                        if ev is not None and ev.is_set():
-                            break
-                        time.sleep(60)
+                        # ev.wait 睡等可被取消即刻唤醒
+                        if ev is not None:
+                            if ev.wait(60):
+                                break
+                        else:
+                            time.sleep(60)
                         for kk in range(n_variants):
                             # 清上一轮残稿：防陈旧半成品被本轮评分误认成新成品
                             try:
