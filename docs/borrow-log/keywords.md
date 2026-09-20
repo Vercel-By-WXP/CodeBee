@@ -1,4 +1,4 @@
-# 关键词总库（全类型覆盖版 · 130 组 + 雷达源）
+# 关键词总库（全类型覆盖版 · 140 组 + 雷达源）
 
 > 夜间自动化检索的完整词库。规则：每轮跑 **常驻组全部 + 轮换池按当前小时数对 7 取模选 1 批（余 0=批7）+ 雷达源全部**；
 > 双轮排序（sort=stars 与 sort=updated 或 created:>2026-03-01 新锐轮）；核心组翻页 page=2
@@ -87,6 +87,20 @@
 - q=ai+documentation+generator+OR+doc+writing+agent（文档生成）
 - q=ai+presentation+slides+generator（演示文稿/汇报 PPT）
 - q=ai+search+agent+OR+deep+research+agent（调研报告/deep research）
+
+### A11 项目记忆与档案（5 组，2026-09-20 新增——任务档案/结构化记忆方向对标 agentmemory/OpenSpec）
+- q=persistent+memory+coding+agent+OR+agent+facts+store（持久事实记忆）
+- q=ai+decision+log+OR+architecture+decision+records（决策记录 ADR）
+- q=findings+file+OR+discovery+log+agent（发现记录 PWF）
+- q=spec+archive+OR+specification+versioning（spec 归档/版本化）
+- q=project+constitution+OR+coding+standards+auto（项目宪章/规范注入）
+
+### A12 发布与平台（5 组，2026-09-20 新增——发布上架全流程对标）
+- q=web+novel+publish+automation（网文自动发布）
+- q=story+to+video+pipeline+OR+novel+adaptation（小说→短剧/漫画改编）
+- q=multi+platform+content+publishing+agent（多平台内容分发）
+- q=reader+feedback+analysis+ai（读者反馈分析）
+- q=chapter+hook+optimization+OR+serial+pacing（章节钩子/节奏优化）
 
 ## B. 轮换池（69 组，按当前小时选批：小时 % 7，余 1=批1 … 余 6=批6，余 0=批7；如 08 点→批1、10 点→批3）
 
