@@ -2,13 +2,15 @@
 """桌面蜜蜂（桌宠）：CodeBee 服务的一只常驻小蜜蜂，浮在桌面角落实时汇报蜂群动态。
 
 参考 Codex Pets 的产品形态（/pet 唤起、随 agent 状态变化），但形象固定为
-CodeBee 蜜蜂（与 UI 蜂巢工作台同一品牌语言）。实现要点：
+CodeBee 蜜蜂。实现要点：
 
 - 独立进程：Tk 必须独占自家进程主线程（pick_dialog.py 同款哲学），由 main.py
   的看护线程按设置拉起；轮询 /api/pet_state 取任务近况，服务关了蜜蜂自己离开。
-- 零依赖：tkinter 标准库自绘蜜蜂（canvas 矢量卡通风：圆润身体、大眼双高光、
-  腮红、软阴影、星光点缀），不引任何第三方包；纯逻辑（状态推导）放模块顶层
-  不碰 tkinter，测试直接 import。
+- 两种渲染：优先「精灵模式」——app/pet_bee.png（tools/_gen_pet_sprite.py 从
+  用户提供的手绘毛绒蜜蜂生成）+ Pillow 运行时做动画帧（工作=左右倾斜摆、
+  庆祝=原地旋转、睡觉=调暗降饱和、失联=灰化）；机器没有 Pillow 或素材缺失
+  时回落「手绘模式」——canvas 矢量卡通蜜蜂（零依赖兜底，npm 分发用户可能
+  装不了 PIL）。
 - 状态机：sleep（打盹）/ work（振翅）/ cheer（翻滚庆祝）/ alert（警示抖动），
   由「上一轮活跃任务集合 vs 本轮结果」的差分推出，不需要后端记事件流。
 - 悬停任务清单走指针轮询而不是 Enter/Leave：-transparentcolor 的透明像素在
@@ -217,7 +219,10 @@ def _http_json(port, path, body=None):
 # 透明键色：窗口里凡是这个颜色都变透明（Windows -transparentcolor）。
 # 用罕见深色，蜜蜂配色不会撞上。
 KEY = "#010203"
-WIN_W, WIN_H = 170, 150
+KEY_RGB = (1, 2, 3)
+WIN_W, WIN_H = 170, 150          # 手绘回落模式的窗口尺寸
+SPRITE_FILE = Path(__file__).resolve().parent / "pet_bee.png"
+SPRITE_DISP_H = 118              # 精灵显示高度（宽等比）
 
 
 def _pid_alive(pid):
@@ -243,7 +248,7 @@ def _pid_alive(pid):
 
 
 class PetApp:
-    """蜜蜂窗口：一只卡通风矢量蜜蜂 + 状态机动画 + 悬停任务清单 + 右键菜单。"""
+    """蜜蜂窗口：蜜蜂本体（精灵/手绘）+ 状态机动画 + 悬停任务清单 + 右键菜单。"""
 
     def __init__(self, port, data_dir, lang="zh"):
         self.port = port
@@ -265,9 +270,19 @@ class PetApp:
                 pass
         self.root.configure(bg=KEY)
 
-        self.cv = tk.Canvas(self.root, width=WIN_W, height=WIN_H,
+        # 精灵帧要在 root 建好之后再做（ImageTk.PhotoImage 依赖 Tk 解释器）
+        self.frames = self._load_frames()
+        if self.frames:
+            fw = max(f.width() for lst in self.frames.values() for f in lst)
+            fh = max(f.height() for lst in self.frames.values() for f in lst)
+            self.win_w, self.win_h = int(fw) + 16, int(fh) + 32
+        else:
+            self.win_w, self.win_h = WIN_W, WIN_H
+
+        self.cv = tk.Canvas(self.root, width=self.win_w, height=self.win_h,
                             bg=KEY, highlightthickness=0, bd=0)
         self.cv.pack()
+        self.spr = None
 
         # 运行态
         self.snap = None
@@ -287,7 +302,10 @@ class PetApp:
         self._tip_pending = None
         self.seen_digests = 0   # 本轮已通知过的摘要未读数（涨了才报，不重复轰炸）
 
-        self._build_bee()
+        if self.frames:
+            self._build_sprite()
+        else:
+            self._build_canvas_bee()
         self._restore_pos(cfg)
         self._bind_input()
         self._apply_state("sleep", force=True)
@@ -318,16 +336,16 @@ class PetApp:
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
         if not (isinstance(x, int) and isinstance(y, int)):
-            x, y = sw - WIN_W - 18, sh - WIN_H - 64   # 默认右下角，托盘上方
-        x = max(0, min(int(x), sw - WIN_W))
-        y = max(0, min(int(y), sh - WIN_H - 40))      # 底部留 40px 给任务栏
+            x, y = sw - self.win_w - 18, sh - self.win_h - 64  # 右下角，托盘上方
+        x = max(0, min(int(x), sw - self.win_w))
+        y = max(0, min(int(y), sh - self.win_h - 40))          # 底部留给任务栏
         self.root.geometry("+%d+%d" % (x, y))
 
     def _clamp_pos(self):
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
-        x = max(0, min(self.root.winfo_x(), sw - WIN_W))
-        y = max(0, min(self.root.winfo_y(), sh - WIN_H - 40))
+        x = max(0, min(self.root.winfo_x(), sw - self.win_w))
+        y = max(0, min(self.root.winfo_y(), sh - self.win_h - 40))
         self.root.geometry("+%d+%d" % (x, y))
 
     # ---- 单实例锁：心跳文件，别的蜜蜂 60s 内摸过就退让 ----
@@ -362,9 +380,114 @@ class PetApp:
         except Exception:
             pass
 
-    # ---- 蜜蜂绘制（卡通风：圆润身体 + 大眼双高光 + 腮红 + 软阴影 + 星光）----
-    # 画件分两类：随蜜蜂整体平移的进 self.bee；贴地不动的（影子/进度条）单独存。
-    def _build_bee(self):
+    # ---- 精灵模式：app/pet_bee.png + Pillow 运行时动画帧 ----
+    def _load_frames(self):
+        """做各状态帧；Pillow/素材缺失回 None（手绘回落），绝不抛。"""
+        try:
+            from PIL import Image, ImageEnhance, ImageTk
+        except Exception:
+            return None
+        try:
+            base0 = Image.open(SPRITE_FILE).convert("RGBA")
+            w0, h0 = base0.size
+            disp_w = max(1, round(w0 * SPRITE_DISP_H / h0))
+            base = base0.resize((disp_w, SPRITE_DISP_H), Image.LANCZOS)
+
+            def flat(img):
+                """合成到键色底：羽化边缘自然过渡，键色即透明，无需真 alpha。"""
+                bg = Image.new("RGBA", img.size, KEY_RGB + (255,))
+                bg.alpha_composite(img)
+                return bg.convert("RGB")
+
+            def bake(img):
+                """RGB → PhotoImage；近键色噪点（旋转/缩放的 AA 碎点）归键。"""
+                px = img.load()
+                w, h = img.size
+                for yy in range(h):
+                    for xx in range(w):
+                        r, g, b = px[xx, yy]
+                        if abs(r - 1) + abs(g - 2) + abs(b - 3) < 12:
+                            px[xx, yy] = KEY_RGB
+                return ImageTk.PhotoImage(img)
+
+            rot = lambda a: flat(base.rotate(a, resample=Image.BICUBIC,
+                                             expand=True))
+            frames = {
+                "alert": [bake(flat(base))],
+                "sleep": [bake(ImageEnhance.Brightness(
+                    ImageEnhance.Color(flat(base)).enhance(0.7)
+                ).enhance(0.55))],
+                "dead": [bake(ImageEnhance.Brightness(
+                    flat(base).convert("L").convert("RGB")).enhance(0.6))],
+                "work": [bake(rot(a)) for a in (-8, -4, 0, 4, 8)],
+                "cheer": [bake(rot(a)) for a in range(0, 360, 30)],
+            }
+            return frames
+        except Exception:
+            return None
+
+    # ---- 蜜蜂绘制（精灵模式：贴图 + 状态点缀画件）----
+    def _build_sprite(self):
+        cv = self.cv
+        cx, cy = self.win_w // 2, self.win_h // 2 - 4
+        self._spr_c = (cx, cy)
+        self.spr = cv.create_image(cx, cy, image=self.frames["alert"][0],
+                                   anchor="center")
+        hw, hh = self.win_w / 2, self.win_h / 2
+        # 状态点缀（与手绘模式同名同职责，_apply_state 共用）
+        self.badge = cv.create_oval(cx + hw - 30, cy - hh + 6,
+                                    cx + hw - 10, cy - hh + 26,
+                                    fill="#4A90D9", outline="#FFFFFF", width=2)
+        self.badge_txt = cv.create_text(cx + hw - 20, cy - hh + 16, text="",
+                                        fill="#FFFFFF",
+                                        font=("Segoe UI", 10, "bold"))
+        self.speed = [cv.create_line(cx - hw + 8, cy - 14, cx - hw + 26,
+                                     cy - 14, fill="#A9C3E2", width=3,
+                                     capstyle="round"),
+                      cv.create_line(cx - hw + 4, cy + 2, cx - hw + 22,
+                                     cy + 2, fill="#A9C3E2", width=3,
+                                     capstyle="round")]
+        self.zzz = [cv.create_text(cx + hw - 34, cy - hh + 32, text="z",
+                                   fill="#8A93A6",
+                                   font=("Segoe UI", 11, "italic bold")),
+                    cv.create_text(cx + hw - 22, cy - hh + 20, text="Z",
+                                   fill="#A5AEC0",
+                                   font=("Segoe UI", 13, "italic bold"))]
+        self.zzz_base = [cv.coords(z) for z in self.zzz]
+
+        def star(x, y):
+            return (x, y - 7, x + 2, y - 2, x + 7, y, x + 2, y + 2,
+                    x, y + 7, x - 2, y + 2, x - 7, y, x - 2, y - 2)
+
+        self.spark = [cv.create_polygon(star(cx - hw + 12, cy - hh + 26),
+                                        fill="#FFD54D", outline="",
+                                        smooth=True),
+                      cv.create_polygon(star(cx + hw - 14, cy + hh - 34),
+                                        fill="#FFE08A", outline="",
+                                        smooth=True)]
+        for grp in (self.speed, self.zzz, self.spark):
+            for i in grp:
+                cv.itemconfigure(i, state="hidden")
+        cv.itemconfigure(self.badge, state="hidden")
+        cv.itemconfigure(self.badge_txt, state="hidden")
+        # 贴地件：影子 + 进度条
+        self._shadow_c = (cx, self.win_h - 20, self.win_h - 9)
+        self.shadow = cv.create_oval(cx - 36, self.win_h - 20, cx + 36,
+                                     self.win_h - 9, fill="#232E3B",
+                                     outline="", stipple="gray25")
+        self.pbar_bg = cv.create_rectangle(cx - 34, self.win_h - 8,
+                                           cx + 34, self.win_h - 2,
+                                           fill="#202A36", outline="#3A4654")
+        self.pbar_fg = cv.create_rectangle(cx - 33, self.win_h - 7,
+                                           cx - 32, self.win_h - 3,
+                                           fill="#7ED07E", outline="")
+        cv.itemconfigure(self.pbar_bg, state="hidden")
+        cv.itemconfigure(self.pbar_fg, state="hidden")
+        self.ox = self.oy = 0.0
+        self._t0 = time.time()
+
+    # ---- 蜜蜂绘制（手绘回落：canvas 矢量卡通）----
+    def _build_canvas_bee(self):
         cv = self.cv
         self.bee = []
 
@@ -427,7 +550,7 @@ class PetApp:
                                        outline="#241A14", width=2))
         self.head_gloss = add(cv.create_oval(112, 58, 130, 70, fill="#5A463C",
                                              outline="", stipple="gray50"))
-        # 睁眼（大眼 + 每只双高光，萌点全在这）
+        # 睁眼（大眼 + 每只双高光）
         self.eye_open = [
             add(cv.create_oval(112, 66, 130, 90, fill="#FFFFFF", outline="")),
             add(cv.create_oval(116, 72, 128, 88, fill="#241A14", outline="")),
@@ -479,6 +602,7 @@ class PetApp:
                                        font=("Segoe UI", 13, "italic bold"))),
                     add(cv.create_text(151, 26, text="z", fill="#DDE3EC",
                                        font=("Segoe UI", 10, "italic bold")))]
+        self.zzz_base = [cv.coords(z) for z in self.zzz]
 
         def star(x, y):
             return (x, y - 7, x + 2, y - 2, x + 7, y, x + 2, y + 2,
@@ -505,6 +629,7 @@ class PetApp:
                          for i in (self.body, self.belly)}
 
         # —— 贴地件（不随蜜蜂移动）——
+        self._shadow_c = (88, 126, 137)
         self.shadow = cv.create_oval(52, 126, 124, 137, fill="#232E3B",
                                      outline="", stipple="gray25")
         self.pbar_bg = cv.create_rectangle(46, 139, 128, 147, fill="#202A36",
@@ -519,37 +644,50 @@ class PetApp:
         self._t0 = time.time()
 
     def _move_bee(self, dx, dy):
-        if dx or dy:
+        if not (dx or dy):
+            return
+        if self.frames:
+            self.cv.move(self.spr, dx, dy)      # 精灵：整张贴图平移
+        else:
             for i in self.bee:
                 self.cv.move(i, dx, dy)
-            self.ox += dx
-            self.oy += dy
+        self.ox += dx
+        self.oy += dy
 
     def _show(self, ids, on):
         for i in ids:
             self.cv.itemconfigure(i, state=("normal" if on else "hidden"))
 
-    # ---- 状态套用：切换眼睛/翅膀/嘴/徽章/进度条 ----
+    # ---- 状态套用：精灵选帧交给 _animate；这里切点缀画件 ----
     def _apply_state(self, st, force=False):
         if st == self.state and not force:
             return
         self.state = st
         cv = self.cv
-        # 翅膀：睡收翅；警示下压定住；飞行两帧由 _flap 接管
-        flying = st in ("work", "cheer")
-        self._show(self.wing_rest, st in ("sleep", "dead"))
-        if not flying:
-            self._show(self.wing_up, False)
-            self._show(self.wing_down, st == "alert")
-        # 眼睛
-        self._show(self.eye_open, st in ("work", "alert", "dead"))
-        self._show(self.eye_closed, st in ("sleep", "dead"))
-        self._show(self.eye_happy, st == "cheer")
-        # 嘴：警示惊呼小圆嘴，其余微笑
-        cv.itemconfigure(self.smile,
-                         state=("hidden" if st == "alert" else "normal"))
-        self._show([self.mouth_o], st == "alert")
-        # 徽章
+        if not self.frames:
+            # —— 手绘模式专属：翅膀 / 眼睛 / 嘴 / 失联灰化 ——
+            flying = st in ("work", "cheer")
+            self._show(self.wing_rest, st in ("sleep", "dead"))
+            if not flying:
+                self._show(self.wing_up, False)
+                self._show(self.wing_down, st == "alert")
+            self._show(self.eye_open, st in ("work", "alert", "dead"))
+            self._show(self.eye_closed, st in ("sleep", "dead"))
+            self._show(self.eye_happy, st == "cheer")
+            cv.itemconfigure(self.smile,
+                             state=("hidden" if st == "alert" else "normal"))
+            self._show([self.mouth_o], st == "alert")
+            if st == "dead" and not self.dead_visual:
+                self.dead_visual = True
+                cv.itemconfigure(self.body, fill="#B9B9B9")
+                cv.itemconfigure(self.belly, fill="#A6A6A6")
+                cv.itemconfigure(self.gloss, state="hidden")
+            elif st != "dead" and self.dead_visual:
+                self.dead_visual = False
+                cv.itemconfigure(self.body, fill=self._palette[self.body])
+                cv.itemconfigure(self.belly, fill=self._palette[self.belly])
+                cv.itemconfigure(self.gloss, state="normal")
+        # —— 共同：徽章 / 速度线 / Zzz / 星光 / 进度条 ——
         n_active = 0
         if self.snap:
             n_active = len(self.snap.get("active_ids") or [])
@@ -561,13 +699,15 @@ class PetApp:
         elif st == "alert":
             cv.itemconfigure(self.badge, fill="#D9484A", state="normal")
             cv.itemconfigure(self.badge_txt, text="!", state="normal")
+        elif st == "dead":
+            cv.itemconfigure(self.badge, fill="#8A93A6", state="normal")
+            cv.itemconfigure(self.badge_txt, text="?", state="normal")
         else:
             cv.itemconfigure(self.badge, state="hidden")
             cv.itemconfigure(self.badge_txt, state="hidden")
         self._show(self.speed, False)
         self._show(self.zzz, False)
         self._show(self.spark, False)
-        # 进度条只在工作且有步骤进度时显示
         prog = []
         if st == "work" and self.snap:
             prog = [t for t in self.snap["tasks"]
@@ -576,24 +716,15 @@ class PetApp:
             done = sum(t["steps_done"] for t in prog)
             total = sum(t["steps_total"] for t in prog)
             ratio = max(0.0, min(1.0, done / float(total)))
+            x0 = (self.win_w // 2) - 34
             cv.itemconfigure(self.pbar_bg, state="normal")
             cv.itemconfigure(self.pbar_fg, state="normal")
-            cv.coords(self.pbar_fg, 47, 140, 47 + 80 * ratio, 146)
+            cv.coords(self.pbar_bg, x0, self.win_h - 8, x0 + 68,
+                      self.win_h - 2)
+            cv.coords(self.pbar_fg, x0 + 1, self.win_h - 7,
+                      x0 + 1 + 66 * ratio, self.win_h - 3)
         else:
             self._show([self.pbar_bg, self.pbar_fg], False)
-        # 服务失联灰化（按记账原色还原）
-        if st == "dead" and not self.dead_visual:
-            self.dead_visual = True
-            cv.itemconfigure(self.body, fill="#B9B9B9")
-            cv.itemconfigure(self.belly, fill="#A6A6A6")
-            cv.itemconfigure(self.gloss, state="hidden")
-            cv.itemconfigure(self.badge, fill="#8A93A6", state="normal")
-            cv.itemconfigure(self.badge_txt, text="?", state="normal")
-        elif st != "dead" and self.dead_visual:
-            self.dead_visual = False
-            cv.itemconfigure(self.body, fill=self._palette[self.body])
-            cv.itemconfigure(self.belly, fill=self._palette[self.belly])
-            cv.itemconfigure(self.gloss, state="normal")
 
     # ---- 数据轮询（4s 一拍）----
     def _tick(self):
@@ -672,10 +803,8 @@ class PetApp:
         st = self.state
         if st == "work":
             tx, ty = math.sin(t * 2.1) * 4.0, math.sin(t * 4.2) * 5.0
-            self._flap()
         elif st == "cheer":
             tx, ty = math.cos(t * 5.0) * 12.0, math.sin(t * 5.0) * 9.0
-            self._flap()
         elif st == "alert":
             tx = 3.0 if int(t * 5) % 2 else -3.0
             ty = 0.0
@@ -683,19 +812,37 @@ class PetApp:
             tx, ty = 0.0, 0.0
         else:   # sleep：坐得低一点，呼吸式微沉浮
             tx, ty = 0.0, 5.0 + math.sin(t * 1.2) * 1.5
-        self._move_bee(tx - self.ox, ty - self.oy)
+        if self.frames:
+            # —— 精灵选帧：单帧状态直接用；work 来回摆；cheer 顺时针转 ——
+            if st in ("sleep", "dead", "alert"):
+                img = self.frames[st][0]
+            elif st == "work":
+                lst = self.frames["work"]
+                k = int(t * 10) % (2 * (len(lst) - 1))
+                img = lst[k if k < len(lst) else 2 * (len(lst) - 1) - k]
+            else:
+                img = self.frames["cheer"][int(t * 10) % 12]
+            if self.spr is not None:
+                self.cv.itemconfigure(self.spr, image=img)
+            self._move_bee(tx - self.ox, ty - self.oy)
+        else:
+            if st in ("work", "cheer"):
+                self._flap()
+            self._move_bee(tx - self.ox, ty - self.oy)
         # 影子跟着高度呼吸：飞得越高影子越窄
+        scx, sy1, sy2 = self._shadow_c
         w = max(40.0, 72.0 - (5.0 - ty) * 2.0)
-        self.cv.coords(self.shadow, 88 - w / 2, 126, 88 + w / 2, 137)
+        self.cv.coords(self.shadow, scx - w / 2, sy1, scx + w / 2, sy2)
         if st == "sleep":
-            phase = int(t * 1.6) % 4
+            n = len(self.zzz)
+            phase = int(t * 1.6) % (n + 1)
             for i, z in enumerate(self.zzz):
-                self.cv.itemconfigure(z, state=("normal" if i < min(phase, 3)
+                self.cv.itemconfigure(z, state=("normal" if i < phase
                                                 else "hidden"))
-            rise = (t * 8) % 12
-            self.cv.coords(self.zzz[0], 124, 48 - rise * 0.4)
-            self.cv.coords(self.zzz[1], 138, 36 - rise * 0.4)
-            self.cv.coords(self.zzz[2], 151, 26 - rise * 0.4)
+            rise = (t * 8) % 10
+            for k, z in enumerate(self.zzz):
+                self.cv.coords(z, self.zzz_base[k][0],
+                               self.zzz_base[k][1] - rise * 0.4)
         if st == "cheer":
             on = int(t * 6) % 2
             for i, s in enumerate(self.spark):
@@ -719,7 +866,8 @@ class PetApp:
             px, py = self.root.winfo_pointerx(), self.root.winfo_pointery()
             wx, wy = self.root.winfo_x(), self.root.winfo_y()
             inside = (not self.hidden and
-                      wx <= px < wx + WIN_W and wy <= py < wy + WIN_H)
+                      wx <= px < wx + self.win_w and
+                      wy <= py < wy + self.win_h)
         except Exception:
             inside = False
         if inside and not self._hover:
@@ -791,7 +939,7 @@ class PetApp:
             tw, th = self._tip.winfo_width(), self._tip.winfo_height()
             wx, wy = self.root.winfo_x(), self.root.winfo_y()
             sw = self.root.winfo_screenwidth()
-            x = wx + WIN_W + 8
+            x = wx + self.win_w + 8
             if x + tw > sw - 4:
                 x = max(4, wx - tw - 8)
             y = max(4, min(wy + 2, self.root.winfo_screenheight() - th - 40))
@@ -824,7 +972,7 @@ class PetApp:
                  bd=1, relief="solid",
                  font=("Microsoft YaHei UI", 9), justify="left",
                  wraplength=230, padx=8, pady=5).pack()
-        x = self.root.winfo_x() + WIN_W - 40
+        x = self.root.winfo_x() + self.win_w - 40
         y = max(0, self.root.winfo_y() - 8)
         bub.update_idletasks()
         if x + bub.winfo_width() > self.root.winfo_screenwidth():
