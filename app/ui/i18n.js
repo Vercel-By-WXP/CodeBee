@@ -1273,6 +1273,7 @@
     "安装中…": "Installing…",
     "正在下载安装，插件包较大时需要约一分钟…": "Downloading and installing — large plugin packages can take about a minute…",
     "请求超时，请重试或检查网络": "Request timed out — try again or check your network",
+    "操作处理中": "Working on it",
     "该插件含脚本/钩子/MCP 组件，仅支持纯技能类插件": "Contains scripts/hooks/MCP components — only pure skill plugins are supported",
     " 个供应商（google 等协议）仅登记，不支持注入 CLI，未出现在上面的下拉中。": " provider(s) (google etc.) are registry-only, can't inject into CLIs, and are hidden from the dropdown above.",
     " 个降级备选）。": " fallback(s)).",

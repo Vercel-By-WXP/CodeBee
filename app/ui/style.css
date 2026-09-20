@@ -5392,3 +5392,33 @@ body.welcome-open { overflow: hidden; }
 #rd-chat-voice.live { color: var(--bad); animation: cb-rise .6s ease infinite alternate; }
 /* 设置导航标题保持单行，避免较长标题在手机抽屉里增高并把末尾入口推离视口。 */
 .side-settings .set-item { white-space: nowrap; }
+
+/* ---------------- 请求即时反馈（统一 api 写操作，追加于文件尾防并行重排） ---------------- */
+.request-progress {
+  position: fixed; z-index: 320; top: 0; left: 0; width: 34%; height: 2px;
+  background: var(--accent); opacity: 0; pointer-events: none;
+  transform: translateX(-110%);
+}
+.request-progress.active {
+  opacity: 1;
+  animation: request-progress-run 1.15s ease-in-out infinite;
+}
+@keyframes request-progress-run {
+  0% { transform: translateX(-110%); }
+  70% { transform: translateX(185%); }
+  100% { transform: translateX(300%); }
+}
+button.request-busy {
+  position: relative; pointer-events: none; cursor: wait;
+}
+button.request-busy::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px;
+  margin: -8px 0 0 -8px; border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; animation: request-busy-spin .7s linear infinite;
+}
+button.request-busy > * { opacity: .18; }
+@keyframes request-busy-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .request-progress.active { animation: none; transform: translateX(95%); }
+  button.request-busy::after { animation-duration: 1.4s; }
+}

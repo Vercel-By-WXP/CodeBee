@@ -297,6 +297,93 @@ function urlAuth(u) {
 }
 
 /* ---------------------------------------------------------- 工具 */
+let _requestBusyCount = 0;
+let _lastActionButton = null;
+let _lastActionAt = 0;
+const _requestBusyButtons = new WeakMap();
+
+/* 记录发起请求的按钮。写请求统一在 api() 里挂忙碌态，避免每个业务入口各写一套；
+ * 确认框的按钮不覆盖原始操作按钮，但会续期，使“确认后执行”仍反馈在原按钮上。 */
+document.addEventListener("click", (e) => {
+  const btn = e.target && e.target.closest ? e.target.closest("button") : null;
+  if (!btn) return;
+  if (btn.classList.contains("request-busy")) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
+  _lastActionAt = performance.now();
+  if (!btn.closest("#ask")) _lastActionButton = btn;
+}, true);
+
+function requestBusyStart(opts) {
+  const method = String((opts && opts.method) || "GET").toUpperCase();
+  if (opts && opts.busy === false) return null;
+  if ((method === "GET" || method === "HEAD") && !(opts && opts.busy)) return null;
+
+  _requestBusyCount++;
+  let bar = $("request-progress");
+  if (!bar && document.body) {
+    bar = document.createElement("div");
+    bar.id = "request-progress";
+    bar.className = "request-progress";
+    bar.setAttribute("role", "status");
+    bar.setAttribute("aria-label", t("操作处理中"));
+    bar.setAttribute("aria-hidden", "true");
+    document.body.appendChild(bar);
+  }
+  if (bar) {
+    bar.classList.add("active");
+    bar.setAttribute("aria-hidden", "false");
+  }
+
+  let btn = opts && opts.busyElement;
+  if (typeof btn === "string") btn = document.querySelector(btn);
+  if (!btn && performance.now() - _lastActionAt < 2000) btn = _lastActionButton;
+  if (!btn || !document.documentElement.contains(btn)) btn = null;
+  if (btn) {
+    let state = _requestBusyButtons.get(btn);
+    if (!state) {
+      state = {
+        count: 0,
+        ariaBusy: btn.getAttribute("aria-busy"),
+        ariaDisabled: btn.getAttribute("aria-disabled"),
+      };
+      _requestBusyButtons.set(btn, state);
+    }
+    state.count++;
+    btn.classList.add("request-busy");
+    btn.setAttribute("aria-busy", "true");
+    btn.setAttribute("aria-disabled", "true");
+  }
+  return { button: btn };
+}
+
+function requestBusyEnd(token) {
+  if (!token) return;
+  _requestBusyCount = Math.max(0, _requestBusyCount - 1);
+  const btn = token.button;
+  const state = btn && _requestBusyButtons.get(btn);
+  if (state) {
+    state.count--;
+    if (state.count <= 0) {
+      btn.classList.remove("request-busy");
+      if (state.ariaBusy === null) btn.removeAttribute("aria-busy");
+      else btn.setAttribute("aria-busy", state.ariaBusy);
+      if (state.ariaDisabled === null) btn.removeAttribute("aria-disabled");
+      else btn.setAttribute("aria-disabled", state.ariaDisabled);
+      _requestBusyButtons.delete(btn);
+    }
+  }
+  if (_requestBusyCount === 0) {
+    const bar = $("request-progress");
+    if (bar) {
+      bar.classList.remove("active");
+      bar.setAttribute("aria-hidden", "true");
+    }
+  }
+}
+
 async function api(path, opts) {
   opts = opts || {};
   // 可选超时：长请求（如外部插件下载）传 opts.timeout，网络卡死时也能
@@ -306,21 +393,30 @@ async function api(path, opts) {
     ctrl = new AbortController();
     var timer = setTimeout(() => ctrl.abort(), opts.timeout);
   }
-  let res;
+  const busyToken = requestBusyStart(opts);
+  const fetchOpts = Object.assign({}, opts);
+  delete fetchOpts.timeout;
+  delete fetchOpts.busy;
+  delete fetchOpts.busyElement;
   try {
-    res = await fetch(path, Object.assign({ headers: authHeaders() }, opts, ctrl ? { signal: ctrl.signal } : {}));
-  } catch (e) {
-    if (ctrl && e.name === "AbortError") throw new Error(t("请求超时，请重试或检查网络"));
-    throw e;
+    let res;
+    try {
+      res = await fetch(path, Object.assign({ headers: authHeaders() }, fetchOpts,
+        ctrl ? { signal: ctrl.signal } : {}));
+    } catch (e) {
+      if (ctrl && e.name === "AbortError") throw new Error(t("请求超时，请重试或检查网络"));
+      throw e;
+    }
+    if (res.status === 401) { showTokenGate(t("令牌不正确或已更换，请重新输入")); throw new Error(t("需要访问令牌")); }
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* ignore */ }
+    if (res.status === 423 && data && data.control) setControl(data.control);
+    if (!res.ok) throw new Error((data && data.error) || ("HTTP " + res.status));
+    return data;
   } finally {
     if (timer) clearTimeout(timer);
+    requestBusyEnd(busyToken);
   }
-  if (res.status === 401) { showTokenGate(t("令牌不正确或已更换，请重新输入")); throw new Error(t("需要访问令牌")); }
-  let data = null;
-  try { data = await res.json(); } catch (e) { /* ignore */ }
-  if (res.status === 423 && data && data.control) setControl(data.control);
-  if (!res.ok) throw new Error((data && data.error) || ("HTTP " + res.status));
-  return data;
 }
 
 /* 轻提示：3.5s 自动消失 */
@@ -783,7 +879,7 @@ async function ctrlClick() {
 function startCtrlHeartbeat() {
   setInterval(() => {
     if (S.control && S.control.mine) {
-      api("/api/control/heartbeat", { method: "POST", body: "{}" })
+      api("/api/control/heartbeat", { method: "POST", body: "{}", busy: false })
         .then((d) => setControl(d.control)).catch(() => {});
     }
   }, 15000);
@@ -1687,7 +1783,7 @@ async function openImportDialog() {
     '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>');
   let data;
   try {
-    data = await api("/api/models/sources");
+    data = await api("/api/models/sources", { busy: true });
   } catch (e) {
     $("modal-body").innerHTML = '<div class="msg bad">' + t("扫描失败：") + esc(e.message) + "</div>";
     return;
@@ -2586,7 +2682,7 @@ async function retryTask(id) {
 async function continueSerial(id) {
   let info;
   try {
-    info = await api("/api/tasks/" + encodeURIComponent(id) + "/continue-info");
+    info = await api("/api/tasks/" + encodeURIComponent(id) + "/continue-info", { busy: true });
   } catch (e) { toast(t("无法续写：") + e.message, true); return; }
   if (!info || !info.can) {
     toast(t("无法续写：") + ((info && info.reason) || t("当前状态不支持")), true);
@@ -6796,7 +6892,7 @@ function updateChip(c) {
 async function autoCheckUpdates() {
   if (Date.now() - (S.updateCheckAt || 0) < 5 * 60 * 1000) return;
   S.updateCheckAt = Date.now();
-  try { await api("/api/catalog/check-updates", { method: "POST" }); } catch (e) { /* 忽略 */ }
+  try { await api("/api/catalog/check-updates", { method: "POST", busy: false }); } catch (e) { /* 忽略 */ }
   poll();
 }
 
@@ -6954,7 +7050,7 @@ async function autoRebindSoon() {
       if (!act) continue;
       const b = (S.bindings || {})[c.id] || {};
       try {
-        await api("/api/models/binding", { method: "POST", body: JSON.stringify({
+        await api("/api/models/binding", { method: "POST", busy: false, body: JSON.stringify({
           agent_id: c.id, provider_id: act[0].p,
           chain: act.map((x) => ({ provider_id: x.p, model: x.m })),
           difficulty_routing: !!b.difficulty_routing }) });
@@ -8882,7 +8978,7 @@ function suLastUpgradeRun() {
 
 async function loadSelfupdate(force) {
   try {
-    SU = await api("/api/selfupdate" + (force ? "?force=1" : ""));
+    SU = await api("/api/selfupdate" + (force ? "?force=1" : ""), { busy: !!force });
   } catch (e) { SU = null; }
   renderSu();
   maybeWhatsnew();
@@ -9198,6 +9294,7 @@ async function savePetSkin(skin) {
 async function exportDiagBundle() {
   const b = $("diag-export");
   if (b) b.disabled = true;
+  const busyToken = requestBusyStart({ method: "GET", busy: true, busyElement: b });
   try {
     const r = await fetch("/api/diagnostics/bundle", { headers: authHeaders() });
     if (!r.ok) throw new Error("HTTP " + r.status);
@@ -9213,6 +9310,7 @@ async function exportDiagBundle() {
   } catch (e) {
     toast(t("诊断包导出失败：") + e.message, true);
   } finally {
+    requestBusyEnd(busyToken);
     if (b) b.disabled = false;
   }
 }
@@ -9220,7 +9318,7 @@ async function exportDiagBundle() {
 /* 一键反馈 Issue：拉脱敏摘要 → 预填 GitHub Issue 新建页（用户亲手提交，不自动回传） */
 async function reportIssue() {
   try {
-    const s = await api("/api/diagnostics/issue-summary");
+    const s = await api("/api/diagnostics/issue-summary", { busy: true });
     const url = "https://github.com/Vercel-By-WXP/CodeBee/issues/new" +
       "?title=" + encodeURIComponent(s.title || "") +
       "&body=" + encodeURIComponent(s.body || "");
