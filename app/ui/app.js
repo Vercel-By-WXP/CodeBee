@@ -399,6 +399,16 @@ function esc(s) {
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+/* 内联 onclick 里的字符串字面量转义。esc 不够用：它把 ' 编成 &#39;，浏览器
+ * 解码属性值后 JS 仍看到一个裸引号，用户自建标签含撇号就会截断字面量
+ * （语法错误或参数错位）。这里先做 HTML 属性转义再叠 JS 反斜杠转义。 */
+function jsq(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
 function statusChip(st) {
   const zh = { queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") };
   return '<span class="chip ' + esc(st) + '">' + (zh[st] || esc(st)) + "</span>";
@@ -7550,7 +7560,7 @@ function renderKnowledge() {
     tagBox.innerHTML = tags.length
       ? '<button class="cat-chip' + (!KB.tag ? " active" : "") + '" onclick="kbSetFilter(\'tag\',\'\')">' + esc(t("全部标签")) + "</button>" +
         tags.map((tg) => '<button class="cat-chip' + (KB.tag === tg ? " active" : "") +
-          '" onclick="kbSetFilter(\'tag\',\'' + esc(tg) + '\')">' + esc(tg) + "<b>" + (KB.data.tag_counts[tg] || 0) + "</b></button>").join("")
+          '" onclick="kbSetFilter(\'tag\',\'' + jsq(tg) + '\')">' + esc(tg) + "<b>" + (KB.data.tag_counts[tg] || 0) + "</b></button>").join("")
       : "";
   }
   let shown = entries;
@@ -7572,7 +7582,7 @@ function kbCard(x) {
     (draft ? '<span class="tag warn">' + esc(t("草稿")) + "</span>" : '<span class="tag ok">' + esc(t("已转正")) + "</span>") +
     (x.stale ? '<span class="tag" title="' + esc(t("事实较旧，注入时会标注可能过期")) + '">' + esc(t("可能过期")) + "</span>" : "") +
     '<span class="tag">' + esc(x.scope === "*" ? t("通用") : x.scope) + "</span>" +
-    (x.tags || []).map((tg) => '<span class="tag" onclick="kbSetFilter(\'tag\',\'' + esc(tg) + '\')" title="' + esc(t("只看该标签")) + '">' + esc(tg) + "</span>").join("") +
+    (x.tags || []).map((tg) => '<span class="tag" onclick="kbSetFilter(\'tag\',\'' + jsq(tg) + '\')" title="' + t("只看该标签") + '">' + esc(tg) + "</span>").join("") +
     (x.seen > 1 ? '<span class="tag">' + t("出现 ") + x.seen + t(" 次") + "</span>" : "") +
     (x.hits ? '<span class="tag">' + t("已注入 ") + x.hits + t(" 次") + "</span>" : "") +
     (x.enabled === false ? '<span class="tag">' + t("已停用") + "</span>" : "") + "</div>" +
@@ -7611,7 +7621,7 @@ function kbFormOpen(x) {   // x 为空 = 新建（保存即转正），否则编
     '<div class="field"><label>' + t("标题") + ' <span class="req">*</span></label><input id="kb-f-title" value="' + esc(x ? x.title || "" : "") + '"></div>' +
     '<div class="field"><label>' + t("正文") + ' <span class="req">*</span></label><textarea id="kb-f-body" rows="5">' + esc(x ? x.body || "" : "") + "</textarea></div>" +
     '<div class="grid-2">' +
-    '<div class="field"><label>' + t("标签（逗号分隔）") + '</label><input id="kb-f-tags" value="' + esc((x ? x.tags || [] : []).join(", ")) + '" data-i18n-ph="例：番茄, 签约" placeholder="例：番茄, 签约"></div>' +
+    '<div class="field"><label>' + t("标签（逗号分隔）") + '</label><input id="kb-f-tags" value="' + esc((x ? x.tags || [] : []).join(", ")) + '" placeholder="' + t("例：番茄, 签约") + '"></div>' +
     '<div class="field"><label>' + t("事实截至") + '</label><input id="kb-f-asof" value="' + esc(x ? x.as_of || "" : "") + '" placeholder="YYYY-MM-DD"></div>' +
     "</div>" +
     '<div class="field"><label>' + t("适用范围（任务类型，* 为通用）") + '</label><input id="kb-f-scope" value="' + esc(x ? x.scope || "*" : "*") + '" placeholder="novel / serial_novel / code / *"></div>' +

@@ -426,11 +426,14 @@ def _resolve_author(task):
 
 def make_book_meta(task, platform, author_agent=None, log_path=None):
     """生成一个平台的作品信息。返回 (meta dict, source 字符串)；模板兜底永远有返回。"""
-    from . import modelhub, planner, runner, skills  # 惰性导入，同 planner
+    from . import knowledge, modelhub, planner, runner, skills  # 惰性导入，同 planner
     material, outline = _collect_material(task)
     schema = {"fanqie": FANQIE_SCHEMA, "qimao": QIMAO_SCHEMA}.get(platform) or ""
     plat_label = PLATFORMS[platform]["label"]
     sk_block, _ = skills.block_for(task)
+    kb_block = knowledge.block_for(task)
+    if kb_block:
+        sk_block = (sk_block + "\n\n" + kb_block) if sk_block else kb_block
     goal = task.get("goal") or ""
     # 真实选项注入：分类/标签表按平台与读者频段给全（模型只能从表里选）
     options = (_fq_options_block(goal) if platform == "fanqie" else _qm_options_block(goal))

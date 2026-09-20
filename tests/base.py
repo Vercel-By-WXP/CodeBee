@@ -43,6 +43,8 @@ class BaseTest(unittest.TestCase):
         _fl._FILE = self.data_dir / "flows.json"
         import app.core.skills as _sk
         _sk._FILE = self.data_dir / "skills.json"
+        import app.core.knowledge as _kb
+        _kb._FILE = self.data_dir / "knowledge.json"
         from app.core import skills as _sk2
         with _sk2._LOCK:
             _sk2._user_pack_cache.clear()

@@ -12,7 +12,7 @@ import os
 import re
 import time
 
-from . import modelhub, runner, skills, usage
+from . import knowledge, modelhub, runner, skills, usage
 
 MAX_SUBTASKS = 4
 DEFAULT_OUTLINE_TIMEOUT = 900   # 8 章大纲 + 经验包注入是重生成任务，300s 实测不够
@@ -274,6 +274,9 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
     wpc = int(serial.get("words_per_chapter") or 2500)
     start = int(serial.get("start_chapter") or 1)
     sk_block, _ = skills.block_for(task)
+    kb_block = knowledge.block_for(task)
+    if kb_block:
+        sk_block = (sk_block + "\n\n" + kb_block) if sk_block else kb_block
     prev_title = ""
     if start > 1:
         prev_lines, done, prev_title, prev_tail = _prev_serial_story(task)

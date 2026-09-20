@@ -299,11 +299,14 @@ def learn_from_run(run_id):
     """运行结束后由编排者从产出材料提炼知识条目（草稿态）。返回写入条数。
 
     知识没有便宜的兜底路径：无编排者/无产出/非真实运行（mock）一律静默跳过，
-    宁缺毋滥——教训库的规则兜底搬到这里只会制造垃圾知识。
+    宁缺毋滥——教训库的规则兜底搬到这里只会制造垃圾知识。只有正常跑完（done）
+    的运行才提炼：失败/取消的运行产物是半成品，据此沉淀的知识会污染知识库。
     """
     from . import store
     run = store.get_run(run_id)
     if not run:
+        return 0
+    if (run.get("status") or "") != "done":
         return 0
     task = store.get_task(run.get("task_id")) if run.get("task_id") else None
     if not task:
