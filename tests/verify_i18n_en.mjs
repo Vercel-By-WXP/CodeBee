@@ -121,7 +121,7 @@ async function collectChinese(where) {
   // 主区任务页
   await sweep("tasks");
   // 顶栏各子页（switchTab 是全局导航）
-  const subtabs = ["runs", "automation", "usage", "agents", "models", "bindings", "skills", "market", "orch", "appearance", "about"];
+  const subtabs = ["runs", "automation", "usage", "agents", "models", "bindings", "skills", "knowledge", "market", "orch", "appearance", "about"];
   for (const st of subtabs) {
     await sweep(st, [() => evalJs(`(typeof switchTab === 'function' ? (switchTab(${JSON.stringify(st)}), 'ok') : 'no-nav:' + typeof switchTab)`)]);
   }

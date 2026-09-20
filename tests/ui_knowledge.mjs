@@ -225,7 +225,69 @@ async function main() {
       created.scope === "code" && (created.tags || []).join(",") === "测试,UI",
       JSON.stringify({ total: api2.total, e: created && { scope: created.scope, tags: created.tags } }));
 
-    /* 6) 编辑不改状态 + 删除回收 */
+    /* 6) 版式：标题独占行不截断 / 徽章与标签分行 / 操作行钉底对齐 / 标签区限高 */
+    const sLayout = JSON.parse(await evalJs(`(async () => {
+      await api("/api/knowledge/op", { method: "POST", body: JSON.stringify({
+        op: "create", fields: {
+          title: "番茄平台签约模式分为连载模式与完本模式两种且建书时必须选定其一",
+          body: "比较长的正文用于撑高卡片，验证同一行卡片高度一致且按钮底部对齐。",
+          scope: "serial_novel",
+          tags: ["番茄", "签约", "平台规则", "建书", "连载", "完本", "选题", "上架"],
+        } }),
+      });
+      await loadKnowledge();
+      await new Promise(r => setTimeout(r, 700));
+      const cards = [...document.querySelectorAll("#kb-cards .card")];
+      const target = cards.find(c => c.querySelector(".name").textContent.indexOf("签约模式分为") >= 0);
+      const nm = target.querySelector(".name");
+      const meta = target.querySelector(".kb-meta");
+      const ops = target.querySelector(".ops");
+      const cardR = target.getBoundingClientRect(), opsR = ops.getBoundingClientRect();
+      const nmR = nm.getBoundingClientRect(), mtR = meta.getBoundingClientRect();
+      // 同一行卡片（top 相近）的按钮底边是否对齐
+      const sameRow = cards.filter(c => Math.abs(c.getBoundingClientRect().top - cardR.top) < 4);
+      const gaps = sameRow.map(c => {
+        const r = c.querySelector(".ops").getBoundingClientRect(), cr = c.getBoundingClientRect();
+        return Math.round(cr.bottom - r.bottom);
+      });
+      const chipBox = document.getElementById("kb-tag-chips");
+      const cs = getComputedStyle(chipBox);
+      const res = {
+        nameText: nm.textContent,
+        nameClamp: getComputedStyle(nm).webkitLineClamp,
+        // 标题未被省略号截断：渲染宽度撑满卡片内容区（独占行）
+        nameFillsRow: Math.abs(nmR.width - (cardR.width - 32)) < 24,
+        metaBelowName: mtR.top >= nmR.bottom - 1,
+        metaHoldsBadgesAndTags: !!meta.querySelector(".tag.warn, .tag.ok") &&
+          !!meta.querySelector(".tag.kt"),
+        metaWrapsUnderTitle: mtR.height <= 60 && mtR.width > nmR.width * 0.9,
+        opsPinned: Math.round(cardR.bottom - opsR.bottom) <= 18,
+        opsGapsEqual: new Set(gaps).size === 1,
+        opsGaps: gaps,
+        chipMaxH: cs.maxHeight,
+        chipOverflow: cs.overflowY,
+      };
+      // 清理本用例新增条目
+      const id = (KB.data.entries || []).find(x => x.title.indexOf("签约模式分为") >= 0).id;
+      await api("/api/knowledge/op", { method: "POST", body: JSON.stringify({ id, op: "delete" }) });
+      await loadKnowledge();
+      await new Promise(r => setTimeout(r, 600));
+      res.afterCleanup = (KB.data.entries || []).length;
+      return JSON.stringify(res);
+    })()`));
+    check("长标题完整渲染（未被省略号截断）", sLayout.nameText.indexOf("签约模式分为") >= 0 &&
+      sLayout.nameFillsRow === true, JSON.stringify(sLayout));
+    check("标题两行截断策略生效（-webkit-line-clamp:2）", sLayout.nameClamp === "2", sLayout.nameClamp);
+    check("状态徽章与可点标签合并到标题下方元信息行（换行自适应）", sLayout.metaBelowName === true &&
+      sLayout.metaHoldsBadgesAndTags === true && sLayout.metaWrapsUnderTitle === true, JSON.stringify(sLayout));
+    check("操作行钉底且同行卡片底边对齐", sLayout.opsPinned === true && sLayout.opsGapsEqual === true,
+      JSON.stringify(sLayout.opsGaps));
+    check("标签 chips 区限高可滚动", sLayout.chipMaxH === "82px" && sLayout.chipOverflow === "auto",
+      sLayout.chipMaxH + "/" + sLayout.chipOverflow);
+    check("版式用例清理干净（回到 4：3 条种子 + 上一步新建）", sLayout.afterCleanup === 4, String(sLayout.afterCleanup));
+
+
+    /* 7) 编辑不改状态 + 删除回收 */
     const s4 = JSON.parse(await evalJs(`(async () => {
       kbEditOpen("kb-a1");
       await new Promise(r => setTimeout(r, 300));

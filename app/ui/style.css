@@ -5236,6 +5236,37 @@ body.welcome-open { overflow: hidden; }
 /* —— 知识库：工具行（搜索框 + 状态过滤 chips 同排）—— */
 .kb-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 2px; }
 .kb-toolbar input { flex: 1 1 220px; min-width: 180px; }
+/* 工具行内的 chips 不再各带 12px 下边距（否则这一行上下不对称） */
+.kb-toolbar .cat-chips { margin: 0; flex: none; }
+
+/* —— 知识库卡片版式（2026-09-20）——
+ * 共用 .card 的标题为 nowrap+ellipsis（为短标题的教训卡设计），知识条目标题长、
+ * 又带多个标签，而标签是 flex:none——它先把整行宽度吃掉，标题被压成「多AI…」。
+ * 这里只在知识库作用域内重排，不动共用类，避免波及经验库/市场等页面。 */
+/* min(380px,100%)：窄屏（手机端面板不足 380px）时退化为单列，不横向溢出 */
+#kb-cards { grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr)); }
+#kb-cards .card { display: flex; flex-direction: column; }
+#kb-cards .card .head { display: block; margin-bottom: 8px; }
+/* 标题独占首行，最多两行后省略（比单行截断可读得多） */
+#kb-cards .card .name {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; white-space: normal; text-overflow: clip;
+  font-size: 14.5px; line-height: 1.45; margin-bottom: 8px;
+}
+/* 状态徽章与用户标签合并为标题下方的单行元信息区（换行自适应），既不让标签抢
+ * 标题宽度，也不额外多占一行 */
+#kb-cards .kb-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+#kb-cards .kb-meta .tag.kt { cursor: pointer; transition: color .14s, border-color .14s; }
+#kb-cards .kb-meta .tag.kt:hover { color: var(--accent); border-color: var(--accent); }
+#kb-cards .card .note { margin-bottom: 8px; }
+#kb-cards .card .facts { margin-bottom: 0; }
+#kb-cards .card .facts .sep { margin: 0 5px; }
+/* 操作行钉底并加发丝分隔线：同一行卡片按钮横向对齐，网格不再参差 */
+#kb-cards .card .ops {
+  margin-top: auto; padding-top: 11px; border-top: 1px solid var(--border);
+}
+/* 标签 chips 可能有几十个：限高两行内滚动，别把条目挤到屏幕外 */
+#kb-tag-chips { max-height: 82px; overflow-y: auto; }
 
 /* —— 群摘要蜜蜂坞（右下角悬浮蜜蜂 + 面板，core/wxdigest.py 的网页侧）—— */
 #bee-dock { position: fixed; right: 18px; bottom: 18px; z-index: 160;
