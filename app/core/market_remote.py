@@ -32,6 +32,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
@@ -94,6 +95,7 @@ _CAP_UNPACKED = 120 * 1024 * 1024
 _CAP_FILES = 500
 _CAP_FILE_TEXT = 512 * 1024
 _CAP_TOTAL_TEXT = 4 * 1024 * 1024
+_MAX_REDIRECTS = 3
 
 
 def _cache_dir():
@@ -138,10 +140,44 @@ def _fetch(url, cap=_CAP_MANIFEST):
     CDN 文件返回 404/篡改，直连正常；反过来需要代理的网络第一段就成功）。
     体量超限属确定性错误，不重试。"""
     assert_public_url(url)
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "CodeBee-Market/1.0",
-        "Accept": "*/*",
-    })
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    def _close_quietly(resp):
+        try:
+            resp.close()
+        except Exception:
+            pass
+
+    def _open(opener, target):
+        """逐跳 GET；重定向目标在发起下一跳前重新过 SSRF 网关。"""
+        current = target
+        for hop in range(_MAX_REDIRECTS + 1):
+            assert_public_url(current)
+            req = urllib.request.Request(current, headers={
+                "User-Agent": "CodeBee-Market/1.0",
+                "Accept": "*/*",
+            })
+            try:
+                resp = opener.open(req, timeout=30)
+                code = getattr(resp, "status", getattr(resp, "code", 200))
+            except urllib.error.HTTPError as e:
+                code, resp = e.code, e
+            if code not in (301, 302, 303, 307, 308):
+                if isinstance(resp, urllib.error.HTTPError):
+                    raise resp
+                return resp
+            location = resp.headers.get("Location")
+            if not location:
+                _close_quietly(resp)
+                raise ValueError("重定向缺少 Location: %s" % current)
+            _close_quietly(resp)
+            current = urllib.parse.urljoin(current, location)
+            if hop >= _MAX_REDIRECTS:
+                raise ValueError("重定向次数超过上限: %s" % target)
+        raise ValueError("重定向失败: %s" % target)
 
     def _read(open_fn):
         with open_fn() as resp:
@@ -157,14 +193,16 @@ def _fetch(url, cap=_CAP_MANIFEST):
         return b"".join(chunks)
 
     try:
-        return _read(lambda: urllib.request.urlopen(
-            req, timeout=30, context=tlsctx.context()))   # 默认 opener：含系统代理
-    except (urllib.error.HTTPError, urllib.error.URLError):
-        # 直连重试：ProxyHandler({}) 显式清空代理
+        # 默认 opener 仍读取系统代理，但显式禁用自动重定向。
         opener = urllib.request.build_opener(
-            urllib.request.ProxyHandler({}),
+            _NoRedirect(), urllib.request.HTTPSHandler(context=tlsctx.context()))
+        return _read(lambda: _open(opener, url))
+    except (urllib.error.HTTPError, urllib.error.URLError):
+        # 直连重试：ProxyHandler({}) 显式清空代理；每一跳仍经过 SSRF 校验。
+        opener = urllib.request.build_opener(
+            _NoRedirect(), urllib.request.ProxyHandler({}),
             urllib.request.HTTPSHandler(context=tlsctx.context()))
-        return _read(lambda: opener.open(req, timeout=30))
+        return _read(lambda: _open(opener, url))
 
 
 # ---------------------------------------------------------------- 清单解析
@@ -777,11 +815,17 @@ def _download_git(entry, tmp):
     if shutil.which("git") is None:
         raise ValueError("本机没有 git，无法安装 git-subdir 来源的插件")
     inst = entry["install"]
+    # 非 GitHub 来源没有 codeload/jsdelivr 的安全收口，必须在 clone 前
+    # 复用同一公网 HTTPS 网关，避免 git 自己跟随重定向或访问内网。
+    assert_public_url(inst.get("url") or "")
     dst = tmp / "git"
     sub = str(inst.get("path") or "").replace("\\", "/")
     if sub.startswith("/") or ":" in sub or ".." in _rel_parts(sub):
         raise ValueError("插件子目录路径可疑: %s" % inst.get("path"))
-    cmd = ["git", "clone", "--depth", "1", "--single-branch", "--quiet"]
+    # git 会自行跟随 HTTP 重定向，而重定向目标无法再经过 assert_public_url；
+    # ��装来源宁可明确失败，也不能让 clone 跳进内网。
+    cmd = ["git", "-c", "http.followRedirects=false", "clone",
+           "--depth", "1", "--single-branch", "--quiet"]
     if inst.get("ref"):
         cmd += ["--branch", inst["ref"]]
     cmd += [inst["url"], str(dst)]

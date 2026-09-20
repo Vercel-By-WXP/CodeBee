@@ -469,34 +469,88 @@ class TestFetchProxyFallback(BaseTest):
             def __exit__(self, *a):
                 return False
 
-        def proxied_boom(req, timeout=None, context=None):
-            calls.append("proxied")
-            raise urllib.error.HTTPError(req.full_url, 404, "Not Found", None, None)
-
-        class DirectOpener:
+        class FakeOpener:
+            def __init__(self, label, response=None):
+                self.label = label
+                self.response = response
             def open(self, req, timeout=None):
-                calls.append("direct")
-                return FakeResp(b"hello")
+                calls.append(self.label)
+                if isinstance(self.response, Exception):
+                    raise self.response
+                return self.response
 
         # 代理 404 → 直连成功
-        with mock.patch.object(mr.urllib.request, "urlopen", side_effect=proxied_boom), \
-                mock.patch.object(mr.urllib.request, "build_opener",
-                                  return_value=DirectOpener()) as bo:
+        boom = urllib.error.HTTPError(url, 404, "Not Found", None, None)
+        with mock.patch.object(mr.urllib.request, "build_opener", side_effect=[
+                FakeOpener("proxied", boom), FakeOpener("direct", FakeResp(b"hello"))]) as bo:
             data = mr._fetch(url, cap=100)
         self.assertEqual(data, b"hello")
         self.assertEqual(calls, ["proxied", "direct"])
-        bo.assert_called_once()          # 直连 opener 必须带 ProxyHandler({})
+        self.assertEqual(bo.call_count, 2)
+        self.assertTrue(any(isinstance(h, urllib.request.ProxyHandler)
+                            for h in bo.call_args_list[1].args))
 
         # 体量超限：ValueError 直抛，不重试
         calls.clear()
-        with mock.patch.object(mr.urllib.request, "urlopen",
-                               side_effect=lambda req, timeout=None,
-                                       context=None: FakeResp(b"x" * 999)), \
-                mock.patch.object(mr.urllib.request, "build_opener",
-                                  return_value=DirectOpener()):
+        with mock.patch.object(mr.urllib.request, "build_opener",
+                               return_value=FakeOpener("proxied", FakeResp(b"x" * 999))) as bo:
             with self.assertRaises(ValueError):
                 mr._fetch(url, cap=10)
-            self.assertEqual(calls, [])   # 没走到直连重试
+            self.assertEqual(calls, ["proxied"])
+            bo.assert_called_once()       # 确定性错误不走直连重试
+
+
+class TestFetchRedirectSsrf(BaseTest):
+    """每一跳重定向都重新过公网校验，且限制重定向深度。"""
+
+    def runTest(self):
+        from app.core import market_remote as mr
+
+        class RedirectError(urllib.error.HTTPError):
+            def __init__(self, url, location):
+                super().__init__(url, 302, "Found", {"Location": location}, None)
+
+        class RedirectOpener:
+            def __init__(self, locations):
+                self.locations = list(locations)
+                self.calls = []
+            def open(self, req, timeout=None):
+                self.calls.append(req.full_url)
+                return_value = self.locations.pop(0)
+                if isinstance(return_value, Exception):
+                    raise return_value
+                return return_value
+
+        start = "https://93.184.216.34/start"
+        private = "https://127.0.0.1/secret"
+        opener = RedirectOpener([RedirectError(start, private)])
+        with mock.patch.object(mr.urllib.request, "build_opener", return_value=opener):
+            with self.assertRaisesRegex(ValueError, "拒绝非公网地址"):
+                mr._fetch(start)
+        self.assertEqual(opener.calls, [start])
+
+        # 四次重定向超过上限，不能发起第五跳。
+        locations = []
+        urls = ["https://93.184.216.34/r%d" % i for i in range(5)]
+        for i in range(4):
+            locations.append(RedirectError(urls[i], urls[i + 1]))
+        opener = RedirectOpener(locations)
+        with mock.patch.object(mr.urllib.request, "build_opener", return_value=opener):
+            with self.assertRaisesRegex(ValueError, "重定向次数超过上限"):
+                mr._fetch(urls[0])
+        self.assertEqual(opener.calls, urls[:4])
+
+
+class TestGitSourceSsrf(BaseTest):
+    def runTest(self):
+        from app.core import market_remote as mr
+
+        entry = {"install": {"url": "https://127.0.0.1/repo.git", "path": ""}}
+        with mock.patch.object(mr.shutil, "which", return_value="git"), \
+                mock.patch.object(mr.subprocess, "run") as run:
+            with self.assertRaisesRegex(ValueError, "拒绝非公网地址"):
+                mr._download_git(entry, Path(tempfile.mkdtemp()))
+        run.assert_not_called()
 
 
 class TestMarketRemoteGhFiles(BaseTest):

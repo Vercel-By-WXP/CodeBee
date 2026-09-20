@@ -181,9 +181,9 @@
       <button class="set-item" data-sub="zentao" data-i18n="禅道"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>禅道</button>
       <button class="set-item" data-sub="usage" data-i18n="用量统计"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg>用量统计</button>
       <div data-i18n="配置" class="set-group">配置</div>
-      <button class="set-item" data-sub="agents" data-i18n="智能体管理"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg>智能体管理</button>
+      <button class="set-item" data-sub="agents" data-i18n="本机智能体"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg>本机智能体</button>
       <button class="set-item" data-sub="models" data-i18n="模型接入"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>模型接入</button>
-      <button class="set-item" data-sub="bindings" data-i18n="CLI 绑定"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg>CLI 绑定</button>
+      <button class="set-item" data-sub="bindings" data-i18n="模型调度（可选）"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg>模型调度（可选）</button>
       <button class="set-item" data-sub="skills" data-i18n="经验库"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg>经验库</button>
       <button class="set-item" data-sub="knowledge" data-i18n="知识库"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg>知识库</button>
       <button class="set-item" data-sub="market" data-i18n="插件市场"><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg>插件市场</button>
@@ -616,12 +616,12 @@
           <h2 data-i18n="智能体目录">智能体目录</h2>
           <button class="hhelp" data-help-topic="models" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
           <div class="actions">
-            <button data-i18n="一键绑定推荐模型" id="btn-catalog-autobind" class="ghost">一键绑定推荐模型</button>
+            <button data-i18n="写入推荐默认模型（可选）" id="btn-catalog-autobind" class="ghost">写入推荐默认模型（可选）</button>
             <button data-i18n="重新加载 catalog" id="btn-reload-catalog" class="ghost">重新加载 catalog</button>
             <button data-i18n="恢复默认 catalog" id="btn-reset-catalog" class="ghost">恢复默认 catalog</button>
           </div>
         </div>
-        <p class="hint"><span data-i18n="启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 CLI 自己的配置文件（CodeBee 之外也生效），CodeBee 编排运行时用哪个供应商 / 模型请到「CLI 绑定」页配置。点「一键绑定推荐模型」可为默认模型还空着的智能体自动填入推荐；厂商 / 模型停用或启用后也会自动补绑一次。安装命令不明的条目可直接编辑">启用「参与编排」后，该智能体会出现在任务表单与评审组中。进入本页会自动检查各 CLI 是否有新版本；「默认模型」写入 CLI 自己的配置文件（CodeBee 之外也生效），CodeBee 编排运行时用哪个供应商 / 模型请到「CLI 绑定」页配置。点「一键绑定推荐模型」可为默认模型还空着的智能体自动填入推荐；厂商 / 模型停用或启用后也会自动补绑一次。安装命令不明的条目可直接编辑</span> <code>data/catalog.json</code> <span data-i18n="后点重新加载。">后点重新加载。</span></p>
+        <p class="hint"><span data-i18n="这里管理本机 CLI 的安装、版本、启停、冒烟测试和 CLI 自己的默认模型。CodeBee 运行任务时默认自动推荐厂商与模型，无需绑定；只有需要固定厂商、模型或降级顺序时，才到「模型调度（可选）」页指定。安装命令不明的条目可直接编辑">这里管理本机 CLI 的安装、版本、启停、冒烟测试和 CLI 自己的默认模型。CodeBee 运行任务时默认自动推荐厂商与模型，无需绑定；只有需要固定厂商、模型或降级顺序时，才到「模型调度（可选）」页指定。安装命令不明的条目可直接编辑</span> <code>data/catalog.json</code> <span data-i18n="后点重新加载。">后点重新加载。</span></p>
         <h3 data-i18n="已安装" class="sec-title">已安装</h3>
         <div id="ag-installed" class="cards"></div>
         <h3 data-i18n="可安装" class="sec-title">可安装</h3>
@@ -651,15 +651,15 @@
       </div>
       </div>
 
-      <!-- CLI 绑定 -->
+      <!-- 模型调度（可选） -->
       <div id="sub-bindings" class="subpage hidden">
         <div class="panel wide">
-          <div class="panel-head"><h2 data-i18n="CLI 绑定">CLI 绑定</h2>
+          <div class="panel-head"><h2 data-i18n="模型调度（可选）">模型调度（可选）</h2>
             <button class="hhelp" data-help-topic="models" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
-            <button id="btn-autobind" class="ghost small" onclick="autoBindAll()" data-i18n="一键推荐绑定">一键推荐绑定</button>
+            <button id="btn-autobind" class="ghost small" onclick="autoBindAll()" data-i18n="生成推荐指定方案">生成推荐指定方案</button>
             <button id="btn-saveall-bind" class="ghost small hidden" onclick="saveAllBindings()" data-i18n="全部保存">全部保存</button>
           </div>
-          <p data-i18n="CodeBee 编排运行时的模型都在这里配：模型链可跨厂商混搭——每条自带供应商注入（API key + 地址），第 1 条是主模型、其余按顺序降级，瞬态错误自动切到下一条（可能是另一家厂商）。链空则按供应商默认 / 难度自动选。只影响 CodeBee 发起的调用，不改写 CLI 全局配置（要改默认模型请到「智能体管理」页）。" class="hint">CodeBee 编排运行时的模型都在这里配：模型链可跨厂商混搭——每条自带供应商注入（API key + 地址），第 1 条是主模型、其余按顺序降级，瞬态错误自动切到下一条（可能是另一家厂商）。链空则按供应商默认 / 难度自动选。只影响 CodeBee 发起的调用，不改写 CLI 全局配置（要改默认模型请到「智能体管理」页）。</p>
+          <p data-i18n="默认无需绑定：CodeBee 会按任务类型、步骤角色、难度、成本、协议兼容性和健康状态动态推荐厂商与模型，并在无可用供应商时回落 CLI 自身配置。只有需要固定厂商、模型或跨厂商降级顺序时才在这里指定；显式指定会覆盖自动推荐，但不改写 CLI 全局配置。" class="hint">默认无需绑定：CodeBee 会按任务类型、步骤角色、难度、成本、协议兼容性和健康状态动态推荐厂商与模型，并在无可用供应商时回落 CLI 自身配置。只有需要固定厂商、模型或跨厂商降级顺序时才在这里指定；显式指定会覆盖自动推荐，但不改写 CLI 全局配置。</p>
           <div id="binding-list" class="cards"></div>
         </div>
       </div>

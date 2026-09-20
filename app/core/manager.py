@@ -35,6 +35,13 @@ _WRITABLE_FORMATS = ("toml-line", "toml-section", "json", "json-path", "jsonc",
                      "yaml-line")
 
 
+def _read_text(path, preserve_newlines=False):
+    """读取文本并及时关闭句柄；改写配置前可保留原始换行符。"""
+    newline = "" if preserve_newlines else None
+    with open(path, encoding="utf-8", errors="replace", newline=newline) as fh:
+        return fh.read()
+
+
 def _expand(p):
     return os.path.abspath(os.path.expanduser(os.path.expandvars(p)))
 
@@ -475,7 +482,7 @@ def read_model(entry):
     if not path or not os.path.isfile(path) or not cfg.get("format"):
         return None
     try:
-        text = open(path, encoding="utf-8", errors="replace").read()
+        text = _read_text(path)
     except Exception:
         return None
     if cfg["format"] == "toml-line":
@@ -547,7 +554,7 @@ def write_model(entry, model):
             # mimo（mimocode.jsonc）有注释，整体重解析会丢注释——复用
             # _jsonc_set 做就地片段改写（只动目标键，其余原样保留）
             keys = (cfg.get("model_key") or "model").split(".")
-            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            text = _read_text(path, preserve_newlines=True)
             new_text, ok = _jsonc_set(text, tuple(keys),
                                       json.dumps(model, ensure_ascii=False))
             if not ok:
@@ -555,7 +562,7 @@ def write_model(entry, model):
                         "error": "jsonc 结构异常，未能就地写入 %s（已避免覆盖）" % path}
             Path(path).write_bytes(new_text.encode("utf-8"))
         elif fmt == "toml-line":
-            text = open(path, encoding="utf-8", errors="replace").read()
+            text = _read_text(path)
             new_line = 'model = "%s"' % model
             if re.search(r'(?m)^\s*model\s*=\s*"[^"]*"', text):
                 text = re.sub(r'(?m)^\s*model\s*=\s*"[^"]*"', new_line, text)
@@ -563,19 +570,19 @@ def write_model(entry, model):
                 text = text.rstrip("\n") + "\n" + new_line + "\n"
             Path(path).write_bytes(text.encode("utf-8"))
         elif fmt == "toml-section":
-            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            text = _read_text(path, preserve_newlines=True)
             text = _toml_write_value(text, *_dotted_key(cfg), value=model)
             Path(path).write_bytes(text.encode("utf-8"))
         elif fmt == "yaml-line":
             # newline="" 关掉通用换行转换：文本层面看不出 \r\n 就会被静默改写成 LF，
             # 用户的 Windows 配置不该因为写个模型名而整篇换行符被替换
-            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            text = _read_text(path, preserve_newlines=True)
             text = _yaml_write_value(text, *_yaml_model_path(cfg), value=model)
             Path(path).write_bytes(text.encode("utf-8"))
         elif fmt == "json-path":
             # openclaw（agents.defaults.model.primary）：默认模型藏在嵌套对象里，
             # 且 openclaw 对未知顶层键直接拒绝启动——绝不能写顶层 "model"
-            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            text = _read_text(path, preserve_newlines=True)
             try:
                 data = json.loads(text) if text.strip() else {}
             except Exception:
@@ -597,7 +604,7 @@ def write_model(entry, model):
                 json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
         else:
             try:
-                data = json.loads(open(path, encoding="utf-8", errors="replace").read())
+                data = json.loads(_read_text(path))
             except FileNotFoundError:
                 return {"ok": False,
                         "error": "配置文件尚未生成（%s 首次运行后才有），暂无法写入" % path}
@@ -655,7 +662,7 @@ def _launch_log_path(entry):
 def _best_url(log_path, port):
     """从启动日志提取该端口的信任 URL（含 token 优先）。无日志/未匹配返回 None。"""
     try:
-        text = open(str(log_path), encoding="utf-8", errors="replace").read()
+        text = _read_text(str(log_path))
     except Exception:
         return None
     urls = re.findall(r"https?://[^\s\"'<>]+", text)
@@ -755,7 +762,7 @@ def _sync_dsh_settings(entry, model, base_url):
         return "dsh 配置路径越出用户主目录，已拒绝"
     try:
         if os.path.isfile(path):
-            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            text = _read_text(path, preserve_newlines=True)
         else:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             text = ""
@@ -778,7 +785,7 @@ def _dsh_selfcheck_model(entry):
     if not path or not os.path.isfile(path):
         return None, ""
     try:
-        text = open(path, encoding="utf-8", errors="replace", newline="").read()
+        text = _read_text(path, preserve_newlines=True)
     except Exception:
         return None, ""
     cur = _yaml_read_value(text, "agent-default-model", "model")
@@ -802,7 +809,7 @@ def _dsh_key_present():
         return True
     try:
         envfile = os.path.join(os.path.expanduser("~"), ".dsh", ".env")
-        return "DEEPSEEK_API_KEY" in open(envfile, encoding="utf-8", errors="replace").read()
+        return "DEEPSEEK_API_KEY" in _read_text(envfile)
     except Exception:
         return False
 
@@ -908,7 +915,7 @@ def _sync_codex_settings(entry, model, cp):
              ("wire_api", q(cp.get("wire_api", "responses")))]
     try:
         if os.path.isfile(path):
-            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            text = _read_text(path, preserve_newlines=True)
         else:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             text = ""
@@ -1115,7 +1122,7 @@ def _sync_settings_env(path, updates, remove_keys=()):
     不覆盖；改动前 .bak。返回错误串或 None。path 必须已过主目录围栏校验。"""
     try:
         if os.path.isfile(path):
-            text = open(path, encoding="utf-8", errors="replace").read()
+            text = _read_text(path)
             try:
                 data = json.loads(text)
             except Exception:
@@ -1235,7 +1242,7 @@ def _sync_opencode_settings(entry, model, prov):
                 errs.append("路径越出主目录：%s" % path)
                 continue
             if os.path.isfile(path):
-                text = open(path, encoding="utf-8", errors="replace", newline="").read()
+                text = _read_text(path, preserve_newlines=True)
             else:
                 Path(path).parent.mkdir(parents=True, exist_ok=True)
                 text = ""
@@ -1326,7 +1333,7 @@ def _sync_kimi_settings(entry, model, prov):
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             text = ""
             if os.path.isfile(path):
-                text = open(path, encoding="utf-8", errors="replace", newline="").read()
+                text = _read_text(path, preserve_newlines=True)
                 shutil.copyfile(path, path + ".bak")
             # 移除旧托管块与旧顶层键（防重复/防键落进别的表）
             text = _re.sub(r"# >>> CodeBee managed.*?# <<< CodeBee managed <<<\n?",
@@ -1403,7 +1410,7 @@ def _sync_agent_injection(entry, binding):
     if entry["id"] in _NO_CHANNEL_HINT:
         if binding.get("env"):
             return "已按绑定注入 env，但该 CLI 未必认 CodeBee 的凭据通道，打开后若要求登录请在其界面内登录"
-        return "未绑定可用供应商：打开后需在其自带界面登录；要打开即用请到「CLI 绑定」页绑定"
+        return "未指定可用供应商：打开后使用 CLI 自带登录；需要固定注入请到「模型调度（可选）」页指定"
     return None
 
 
@@ -1523,7 +1530,7 @@ def launch(entry, open_browser=True):
     notes = _sync_launch_model(entry, binding)
     if is_dsh and not (binding.get("env") or {}) and not _dsh_key_present():
         notes.append("未发现 dsh 密钥：打开后可能需在 dsh 内登录配置；"
-                     "要打开即用，请到「CLI 绑定」页给 DeepSeek Harness 绑定 openai 协议供应商")
+                     "要打开即用，请到「模型调度（可选）」页给 DeepSeek Harness 指定 openai 协议供应商")
     name = entry.get("name", entry["id"])
     kind = (launch.get("kind") or "console").lower()
     extra = ("；".join(notes)) if notes else ""

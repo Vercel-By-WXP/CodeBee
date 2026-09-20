@@ -321,7 +321,7 @@ def _binding_dead_msg(agent):
         return modelhub.binding_dead_msg(agent.get("id") or "")
     except Exception:
         return ("绑定链全部失效，本步判失败、不回落 CLI 本机默认——"
-                "请在「CLI 绑定」页为该 CLI 绑定已启用的供应商")
+                "请在「模型调度（可选）」页为该 CLI 指定已启用的供应商")
 
 
 def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None, require_tools=False):
@@ -961,8 +961,13 @@ def _run_code(run, task, agents, ev, stats, mode):
                     register_default_namespaces()
                     if ss_get("cascade", "enabled"):
                         from . import capability
+                        mh_data = modelhub._load()
                         agt_b = capability.cascade_reorder(
-                            agt_b, capability.make_tier_lookup(modelhub.providers()))
+                            agt_b, capability.make_tier_lookup(modelhub.providers()),
+                            providers=modelhub.providers(),
+                            pricing=mh_data.get("pricing") or {},
+                            difficulty=difficulty, task_type=task.get("type") or "code",
+                            role="implement")
                 except Exception:
                     pass
             for i, sub in enumerate(subtasks):
@@ -3240,6 +3245,11 @@ def execute_run(run_id):
         if extra:
             agents.append(extra)
     stats = history.agent_stats()
+    # 运行级任务画像：所有后续 bind_agent 调用共享同一预置类型，
+    # 模型级联因此覆盖 direct/code/review/serial/translation 等全部引擎。
+    for _agent in agents:
+        if isinstance(_agent, dict):
+            _agent["_dispatch_task_type"] = task.get("type") or "direct"
     mode = task.get("mode") or ("manual" if task.get("implementer") else "auto")
     store.update_run(run_id, mode=mode)
     # engine 决定流水线：code=实现/验证/评审/修复；review=起草/多维评审/修订/门禁；

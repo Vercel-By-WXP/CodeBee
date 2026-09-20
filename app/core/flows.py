@@ -187,6 +187,11 @@ def _apply_overrides(base, ov):
                 f["rounds"] = max(1, min(5, int(v)))
             except Exception:
                 pass
+        elif k == "best_of":
+            try:
+                f["best_of"] = max(1, min(3, int(v)))
+            except Exception:
+                pass
         elif k in ("manuscript", "verify_command"):
             s = re.sub(r"[\\/]+", "_", str(v or "")).strip()
             s = re.sub(r"\.{2,}", "_", s).lstrip(".")

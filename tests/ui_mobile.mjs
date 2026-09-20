@@ -58,7 +58,9 @@ async function main() {
     };
     const clickAt = async (sel) => {
       const box = JSON.parse(await evalJs(`(() => {
-        const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect();
+        const el = document.querySelector(${JSON.stringify(sel)});
+        el.scrollIntoView({ block: "center", inline: "center" });
+        const r = el.getBoundingClientRect();
         return JSON.stringify({ x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) });
       })()`));
       for (const type of ["mousePressed", "mouseReleased"]) {
@@ -106,7 +108,7 @@ async function main() {
       title: document.getElementById("page-title").textContent
     })`));
     check("点设置导航图标切换子页并收起抽屉",
-      afterNav.collapsed && afterNav.title === "CLI 绑定", JSON.stringify(afterNav));
+      afterNav.collapsed && afterNav.title === "模型调度（可选）", JSON.stringify(afterNav));
 
     // 手机连接图标同理（先回任务视图：设置模式下 .side-main 整体隐藏，该图标不可点）
     await evalJs(`document.getElementById("btn-set-back").click(); document.body.classList.remove("side-collapsed"); "ok"`);
@@ -135,7 +137,7 @@ async function main() {
       title: document.getElementById("page-title").textContent
     })`));
     check("设置导航里的手机连接走弹框（不切子页）",
-      viaNav.modal && viaNav.title === "CLI 绑定", JSON.stringify(viaNav));
+      viaNav.modal && viaNav.title === "模型调度（可选）", JSON.stringify(viaNav));
 
     /* 编排者供应商指示：窄屏抽屉里也要可用，且文字过长不能撑破侧栏 */
     await evalJs(`closeModal(); exitSettings(); document.body.classList.remove("side-collapsed"); "ok"`);

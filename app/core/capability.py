@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import re
 
+from .dispatch import TYPE_DIMENSIONS
+
 # 能力维度（先固化清单，schema 见设计稿）
 DIMS = ("writing", "coding", "reasoning", "vision")
 
@@ -33,6 +35,9 @@ def classify_task_type(task) -> str:
     explicit = str((task or {}).get("task_type") or "").strip().lower()
     if explicit in DIMS:
         return explicit
+    preset = str((task or {}).get("type") or "").strip().lower()
+    if preset in TYPE_DIMENSIONS:
+        return TYPE_DIMENSIONS[preset]
     text = "%s %s" % ((task or {}).get("type") or "",
                       (task or {}).get("goal") or "")
     scores = {}
@@ -92,7 +97,8 @@ def resolve_binding_by_task(task, providers, bindings):
 TIER_ORDER = {"budget": 0, "standard": 1, "premium": 2}
 
 
-def cascade_reorder(agent, tier_of):
+def cascade_reorder(agent, tier_of, *, providers=None, pricing=None,
+                    difficulty="easy", task_type="", role=""):
     """FrugalGPT 式便宜优先：easy 任务把 call_chain 按 tier 升序稳定重排。
 
     agent 来自 modelhub.bind_agent（可能带 call_chain）；tier_of(chain_entry)
@@ -102,6 +108,14 @@ def cascade_reorder(agent, tier_of):
     chain = (agent or {}).get("call_chain") or []
     if len(chain) < 2:
         return agent
+    if providers is not None and (task_type or role):
+        from .dispatch import rank_model_entries
+        ranked, _decisions = rank_model_entries(
+            chain, {p.get("id"): p for p in providers or []},
+            pricing or {}, difficulty, task_type, role)
+        out = dict(agent)
+        out["call_chain"] = ranked
+        return out
 
     def key(entry):
         return TIER_ORDER.get(tier_of(entry) or "standard", 1)

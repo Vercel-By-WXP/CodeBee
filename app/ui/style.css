@@ -5390,3 +5390,5 @@ body.welcome-open { overflow: hidden; }
 
 /* 对话页语音输入按钮（借鉴 paseo voice）：识别中高亮呼吸 */
 #rd-chat-voice.live { color: var(--bad); animation: cb-rise .6s ease infinite alternate; }
+/* 设置导航标题保持单行，避免较长标题在手机抽屉里增高并把末尾入口推离视口。 */
+.side-settings .set-item { white-space: nowrap; }

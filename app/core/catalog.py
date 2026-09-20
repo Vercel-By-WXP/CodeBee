@@ -154,7 +154,7 @@ DEFAULT_CATALOG = [
         "note": "DeepSeek 官方 agent harness（dsh，profile 插件架构）；无头是「一次性任务」——"
                 "答完即退、无交互后续、不支持会话恢复；任务只走位置参数（超长提示词受 Windows "
                 "命令行上限约 32k 约束）；模型写进 ~/.dsh/settings.yaml 的 agent-default-model.model；"
-                "密钥由「CLI 绑定」注入 DEEPSEEK_API_KEY（优先级最高）；端点注入 DEEPSEEK_BASE_URL，"
+                "密钥由运行时自动调度或「模型调度（可选）」注入 DEEPSEEK_API_KEY（优先级最高）；端点注入 DEEPSEEK_BASE_URL，"
                 "但若 settings.yaml 已固定 llm-deepseek.baseURL，则以它为准（settings 高于 env）",
         "detect": {"cli": "dsh"},
         "orch": {"kind": "generic", "command": "dsh",

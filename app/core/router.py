@@ -2,7 +2,7 @@
 """智能路由：能力基线 × 历史胜率 × 角色约束 → 选智能体，并给出可解释的理由。"""
 from __future__ import annotations
 
-from . import history
+from . import dispatch, history
 
 # 各类智能体的能力基线（0-100）。真实 CLI 里官方双雄最高。
 CAPABILITY = {
@@ -13,13 +13,17 @@ CAPABILITY = {
 MAX_REPAIR_ROUNDS = 2  # 自动修复循环上限
 
 
-def _binding_bonus(agent_id):
+def _binding_bonus(agent_id, dispatch_mode=False):
     """绑定链可用性加分/减分：链上有可用条目 +8，解析为空 -25。2026-09-16 实测：
     静态能力基线让配额烧干的 codex 永远压过健康备用 CLI，绑定空的 CLI 更是连
     用户配置的模型都没用上——先按「能不能按配置跑起来」校准。2026-09-17 起
     空链步骤在 pipeline 直接判失败（不再静默回落本机默认），此处只管排序。"""
     try:
         from . import modelhub
+        pref = modelhub._binding_for(agent_id)
+        configured = bool(modelhub._binding_chain(pref) or pref.get("provider_id"))
+        if not configured:
+            return 0.0 if dispatch_mode else -25.0
         b = modelhub.resolve_binding(agent_id)
         return 8.0 if (b and b.get("call_chain")) else -25.0
     except Exception:
@@ -45,14 +49,20 @@ def score(agent, role, ttype, stats=None):
     （封顶 -45，足以盖过历史加分），满额后仅在没有其他选择时才会被选中。"""
     stats = stats or {}
     base = CAPABILITY.get(agent.get("kind"), 60)
-    bb = _binding_bonus(agent.get("id"))
+    use_dispatch = bool(agent.get("_dispatch_task_type") or
+                        agent.get("dispatch_enabled"))
+    bb = _binding_bonus(agent.get("id"), dispatch_mode=use_dispatch)
     btxt = ""
     if bb > 0:
         btxt = "，绑定链可用（+%s）" % bb
     elif bb < 0:
         btxt = "，绑定链为空：相关步骤将判失败（%s）" % bb
     hb = _history_bonus(stats, agent.get("id"), ttype)
-    total = base + bb + hb
+    # 保持公开 score() 的历史绝对分值；运行级候选由 pipeline 标记画像后
+    # 才启用能力亲和度，避免旧插件/测试调用被新权重悄然改变。
+    affinity, affinity_txt = (dispatch.agent_affinity(agent.get("kind"), ttype, role)
+                              if use_dispatch else (0.0, "兼容模式"))
+    total = base + bb + hb + affinity
     hs = (stats.get(agent.get("id")) or {}).get(ttype)
     htxt = ("，历史 %d/%d 胜（%s）" % (hs["wins"], hs["runs"], "%+.1f" % hb)) if hs else "，无历史记录"
     quota_txt = ""
@@ -69,7 +79,8 @@ def score(agent, role, ttype, stats=None):
             if penalty:
                 total += penalty
                 quota_txt = "，本小时 %d/%d tokens（%s）" % (used, quota, penalty)
-    return total, "能力基线 %d%s%s%s，总分 %s" % (base, btxt, htxt, quota_txt, round(total, 1))
+    return total, "能力基线 %d，%s%s%s%s，总分 %s" % (
+        base, affinity_txt, btxt, htxt, quota_txt, round(total, 1))
 
 
 def pick(agents, role, ttype, stats=None, exclude=()):

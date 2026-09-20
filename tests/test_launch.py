@@ -526,7 +526,7 @@ class TestLaunchPick(BaseTest):
         self.assertIsNone(pick)
         self.assertIn("Z.ai", note)
         self.assertIn("停用", note)
-        self.assertIn("CLI 绑定", note)  # 可操作指引
+        self.assertIn("模型调度", note)  # 可操作指引
 
     def test_protocol_mismatch_reported(self):
         """只有协议不匹配的可用供应商：明确说不匹配而非静默。"""
@@ -541,7 +541,7 @@ class TestLaunchPick(BaseTest):
         from app.core import modelhub
         pick, note = modelhub.launch_pick("claude-code", ("anthropic",))
         self.assertIsNone(pick)
-        self.assertIn("未绑定", note)
+        self.assertIn("未指定", note)
 
 
 class TestClaudeSync(BaseTest):
@@ -740,7 +740,7 @@ class TestOpencodeSync(BaseTest):
                                lambda *a, **k: mock.MagicMock()):
             res = manager.launch(ge, open_browser=False)
         self.assertTrue(res["ok"], res)
-        self.assertIn("未绑定可用供应商", res["message"])
+        self.assertIn("未指定可用供应商", res["message"])
 
 
 class TestQwenSync(BaseTest):

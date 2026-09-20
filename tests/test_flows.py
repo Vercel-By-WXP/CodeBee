@@ -46,9 +46,12 @@ class TestFlows(BaseTest):
         self.assertEqual(upd["name"], "播客脚本V2")
         # 预置流程现在可编辑（改后带 edited 标记），可一键恢复默认；不可删除
         edited, err = flows.upsert_flow({"id": "novel", "name": "小说", "engine": "review",
-                                         "threshold": 8.5, "rubric": ["情节", "人物"]})
+                                         "threshold": 8.5, "rubric": ["情节", "人物"],
+                                         "best_of": "9"})
         self.assertIsNone(err, err)
         self.assertEqual(edited["threshold"], 8.5)
+        self.assertEqual(edited["best_of"], 3)
+        self.assertIsInstance(flows.get_flow("novel")["best_of"], int)
         self.assertTrue(edited["edited"])
         self.assertEqual(flows.get_flow("novel")["rubric"], ["情节", "人物"])
         self.assertTrue(flows.delete_flow("novel"))          # 预置流程不可删除

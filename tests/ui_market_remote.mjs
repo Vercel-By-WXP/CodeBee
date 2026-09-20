@@ -147,8 +147,8 @@ async function main() {
     check("卡片带来源徽章（ZCode 官方 ×4）", badges.length === 4 && badges.every((b) => b.includes("ZCode")), badges.join("|"));
     const srcOpts = await evalJs(`document.getElementById("mkr-source").options.length`);
     const srcLabels = await evalJs(`[...document.getElementById("mkr-source").options].map(o => o.textContent).join("|")`);
-    check("来源下拉=全部+5 个已知源（未拉取的计数 0 也列出）",
-      srcOpts === 6 && srcLabels.includes("ZCode 官方") && srcLabels.includes("ClawHub"),
+    check("来源下拉=全部+6 个已知源（未拉取的计数 0 也列出）",
+      srcOpts === 7 && srcLabels.includes("ZCode 官方") && srcLabels.includes("ClawHub"),
       srcLabels);
 
     // 3) 剥离式安装：mcp/hooks 关键词不再灰显（安装时自动剥离）；

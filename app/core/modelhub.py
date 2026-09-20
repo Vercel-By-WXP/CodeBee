@@ -1066,6 +1066,20 @@ def _binding_chain(b):
     return [{"provider_id": pid, "model": n} for n in names]
 
 
+def _binding_for(agent_kind_or_id):
+    """取 CLI 绑定，仅允许两组历史别名互通。
+
+    旧写法把所有非 codex 标识都回落到 claude-code，导致 opencode/qwen 等
+    未配置时误继承 Claude 的显式绑定并触发死链闸门。
+    """
+    key = str(agent_kind_or_id or "")
+    all_bindings = bindings()
+    if key in all_bindings:
+        return all_bindings[key] or {}
+    alias = {"codex": "codex-cli", "claude": "claude-code"}.get(key)
+    return (all_bindings.get(alias) or {}) if alias else {}
+
+
 def set_binding(agent_id, provider_id=None, model=None, models=None,
                 difficulty_routing=None, chain=None):
     """写一条 CLI 绑定。chain=[{provider_id, model}] 是跨厂商模型链（唯一真源），
@@ -1973,7 +1987,7 @@ def _model_image_in(prov, model):
     return False
 
 
-def bind_agent(agent, difficulty="default"):
+def bind_agent(agent, difficulty="default", task_type="", role=""):
     """按绑定生成应用了供应商/模型覆盖的 agent 副本；无绑定时原样返回。
 
     binding_configured：该 CLI 是否配过绑定链（配没配与解析结果分开带出——
@@ -1987,13 +2001,21 @@ def bind_agent(agent, difficulty="default"):
         manager.sync_runtime_config(agent)
     except Exception:
         pass
+    task_type = task_type or agent.get("_dispatch_task_type") or ""
+    role = role or agent.get("_dispatch_role") or ""
     rid = agent.get("id")
-    b = bindings().get(rid) or bindings().get(
-        "codex-cli" if rid == "codex" else "claude-code") or {}
-    configured = bool(_binding_chain(b))
+    b = _binding_for(rid)
+    # provider_id 即使没有显式模型链也代表用户锁定了供应商；空 bindings
+    # 才是“完全交给系统推荐”的默认模式。
+    configured = bool(_binding_chain(b) or b.get("provider_id"))
     r = resolve_binding(rid, difficulty) or resolve_binding(agent.get("kind"), difficulty)
+    binding_mode = "explicit" if configured else "auto"
+    if not r and not configured:
+        r = recommend_binding(rid, difficulty, task_type=task_type, role=role)
+        binding_mode = "auto" if r else "cli_default"
     a = dict(agent)
     a["binding_configured"] = configured
+    a["binding_mode"] = binding_mode
     if not r:
         return a
     merged = dict(agent.get("env") or {})
@@ -2007,6 +2029,26 @@ def bind_agent(agent, difficulty="default"):
         a["codex_provider"] = r["codex_provider"]
     if r.get("call_chain"):
         a["call_chain"] = r["call_chain"]
+    # 统一级联入口：代码、写作、调研等所有流程都复用同一套模型链排序。
+    # 默认关闭，保留用户手工链顺序；开启后仅 easy 任务按成本/档位优先。
+    routing_enabled = bool((b or {}).get("difficulty_routing"))
+    if difficulty in ("easy", "hard"):
+        try:
+            from .settings_schema import get as ss_get, register_default_namespaces
+            register_default_namespaces()
+            cascade_enabled = bool(ss_get("cascade", "enabled"))
+            if (routing_enabled or cascade_enabled) and a.get("call_chain"):
+                from . import capability
+                data = _load()
+                from . import dispatch
+                entries, decisions = dispatch.rank_model_entries(
+                    a.get("call_chain") or [],
+                    {p.get("id"): p for p in data.get("providers") or []},
+                    data.get("pricing") or {}, difficulty, task_type, role)
+                a["call_chain"] = entries
+                a["dispatch_decisions"] = decisions
+        except Exception:
+            pass
     return a
 
 
@@ -2131,7 +2173,7 @@ def binding_dead_msg(cli_id):
         protos = ()
     hint = ("该 CLI 仅接受 %s 协议的已启用供应商；" % "、".join(protos)) if protos else ""
     return ("绑定链全部失效（链上供应商已停用/删除/无密钥，或模型已停用），"
-            "本步判失败、不回落 CLI 本机默认——%s请在「CLI 绑定」页为该 CLI 绑定已启用的供应商" % hint)
+            "本步判失败、不回落 CLI 本机默认——%s请在「模型调度（可选）」页为该 CLI 指定已启用的供应商" % hint)
 
 
 def resolve_binding(agent_kind_or_id, difficulty="default"):
@@ -2142,8 +2184,7 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     → 整体回落 CLI 默认（None）。纯链条目（无供应商）不注入 env，只传 -m。
     难度路由只在无显式链时生效。
     """
-    b = bindings().get(agent_kind_or_id) or bindings().get(
-        "codex-cli" if agent_kind_or_id == "codex" else "claude-code") or {}
+    b = _binding_for(agent_kind_or_id)
     chain = _binding_chain(b)
     provs = {p.get("id"): p for p in providers()}
     routing = bool(b.get("difficulty_routing"))
@@ -2198,6 +2239,16 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
                 break
         if not entries:
             return None
+        # 显式难度路由开启时，解析层就是唯一排序真源；关闭时保持手工链顺序。
+        if routing and tier in ("easy", "hard"):
+            try:
+                from . import dispatch
+                data = _load()
+                entries, _decisions = dispatch.rank_model_entries(
+                    entries, {p.get("id"): p for p in data.get("providers") or []},
+                    data.get("pricing") or {}, tier, "", "")
+            except Exception:
+                pass
         head = entries[0]
         out = {"model": head["model"], "env": head["env"], "provider": head.get("provider"),
                # model_fallbacks 是「换模型」的列表（runner 无链时的回退用）：
@@ -2253,6 +2304,89 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     return out
 
 
+def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role=""):
+    """按当前可用供应商临时生成推荐链，不写入用户 bindings。
+
+    这是默认调度路径：只有没有显式 provider_id/chain 时才由 bind_agent 调用。
+    推荐结果仍经过 CLI 协议、供应商启停、密钥、健康状态和模型启停过滤，
+    再按任务类型、难度、档位和价格排序。没有可用供应商时返回 None，调用方
+    继续使用 CLI 自带登录态与默认模型。
+    """
+    allowed = bindable_protocols(agent_kind_or_id)
+    try:
+        from . import health
+        down_set = health.down_names()
+    except Exception:
+        down_set = set()
+    data = _load()
+    provs = {p.get("id"): p for p in data.get("providers") or []}
+    candidates = []
+    for prov in data.get("providers") or []:
+        pid = (prov.get("id") or "").strip()
+        if not pid or not prov.get("enabled", True) or not prov.get("api_key"):
+            continue
+        if prov.get("name") in down_set:
+            continue
+        ep = _entry_endpoint(prov, allowed)
+        if not ep:
+            continue
+        if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
+            continue
+        names = [m.get("name") for m in _enabled_models(prov)
+                 if isinstance(m, dict) and m.get("name")]
+        if not names and prov.get("model"):
+            names = [str(prov.get("model"))]
+        # 候选阶段不能先截前三个：便宜档往往排在供应商列表后面，easy 任务
+        # 需要看到完整启用列表后再按成本与档位评分。最终调用链仍受上限约束。
+        for model in names:
+            candidates.append({"provider_id": pid, "model": model})
+    if not candidates:
+        return None
+    from . import dispatch
+    ranked, decisions = dispatch.rank_model_entries(
+        candidates, provs, data.get("pricing") or {}, difficulty,
+        task_type=task_type, role=role, force=True)
+    entries, entry_decisions = [], []
+    decision_by_model = {
+        (d.get("provider_id") or "", d.get("model") or ""): d
+        for d in decisions}
+    for item in ranked[:MAX_CHAIN_ATTEMPTS]:
+        prov = provs.get(item.get("provider_id"))
+        if not prov:
+            continue
+        ep = _entry_endpoint(prov, allowed)
+        if not ep:
+            continue
+        pid = item.get("provider_id") or ""
+        # 与显式绑定完全同口径：同一模型按可用 KEY 展开，runner 才能在首 KEY
+        # 欠费/失效时记账冷却并尝试下一把。最终尝试数仍受硬上限约束。
+        for kk in _chain_keys(prov):
+            entries.append(_chain_entry_env(
+                prov, item.get("model") or "", target=agent_kind_or_id,
+                endpoint=ep, key=kk["key"], key_id=kk.get("id") or "",
+                provider_id=pid))
+            entry_decisions.append(decision_by_model.get(
+                (pid, item.get("model") or ""), {}))
+            if len(entries) >= MAX_CHAIN_ATTEMPTS:
+                break
+        if len(entries) >= MAX_CHAIN_ATTEMPTS:
+            break
+    if not entries:
+        return None
+    head = entries[0]
+    out = {"model": head["model"], "env": head["env"],
+           "provider": head.get("provider"),
+           "model_fallbacks": list(dict.fromkeys(
+               e["model"] for e in entries[1:]
+               if e.get("model") and e["model"] != head["model"])),
+           "call_chain": [dict(e) for e in entries],
+           "dispatch_decisions": entry_decisions,
+           "binding_mode": "auto"}
+    if head.get("codex_provider"):
+        out["codex_provider"] = head["codex_provider"]
+    return out
+
+
 def launch_pick(agent_id, protocols):
     """「一键打开」专属选链：绑定链里第一个「已启用+有密钥+协议匹配」的供应商。
 
@@ -2294,13 +2428,13 @@ def launch_pick(agent_id, protocols):
         mismatch = True
     if disabled:
         return None, ("绑定链里的 %s 已停用或无密钥：打开后需在其自带界面登录；"
-                      "要打开即用请在「CLI 绑定」页启用"
+                      "要打开即用请在「模型调度（可选）」页启用"
                       % "、".join(dict.fromkeys(disabled)))
     if mismatch:
         return None, ("当前绑定的供应商协议与该 CLI 不匹配：打开后需在其自带界面登录；"
-                      "要打开即用请在「CLI 绑定」页换绑可注入协议的供应商")
-    return None, ("未绑定供应商：打开后需在其自带界面登录；"
-                  "要打开即用请到「CLI 绑定」页绑定")
+                      "要打开即用请在「模型调度（可选）」页改为可注入协议的供应商")
+    return None, ("未指定供应商：打开后使用该 CLI 自带的登录与配置；"
+                  "需要固定注入时请到「模型调度（可选）」页指定")
 
 
 def migrate_orch_models():

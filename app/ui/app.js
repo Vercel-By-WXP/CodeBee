@@ -632,7 +632,7 @@ async function healthOp(op) {
 async function healthDisableModel(pid, model) {
   if (!pid || !model) { closeModal(); return; }
   const yes = await uiConfirm(
-    t("确认禁用模型 {0}？链降级将自动跳过它，其余模型不受影响；可在 CLI 绑定页重新启用。").replace("{0}", pid + " · " + model),
+    t("确认禁用模型 {0}？链降级将自动跳过它，其余模型不受影响；可在模型调度页重新启用。").replace("{0}", pid + " · " + model),
     { title: t("禁用模型"), danger: true, ok: t("禁用") });
   if (!yes) return;
   try {
@@ -657,7 +657,7 @@ async function healthDisableModel(pid, model) {
 async function healthDisableProvider(pid) {
   if (!pid) { closeModal(); return; }
   const yes = await uiConfirm(
-    t("确认禁用该厂商？禁用后链降级自动跳过它，恢复后可在 CLI 绑定页重新启用。"),
+    t("确认禁用该厂商？禁用后链降级自动跳过它，恢复后可在模型调度页重新启用。"),
     { title: t("禁用厂商"), danger: true, ok: t("禁用") });
   if (!yes) return;
   try {
@@ -855,7 +855,7 @@ function renderBindings() {
   }
   bbox.innerHTML = targets.map((c) => {
     const b = (S.bindings || {})[c.id] || {};
-    const opts = '<option value="">' + t("不绑定（用 CLI 自身的凭据与配置）") + '</option>' + bindable.map((p) => {
+    const opts = '<option value="">' + t("自动推荐（推荐）") + '</option>' + bindable.map((p) => {
       const adaptedOnly = p.protocol !== "anthropic" && p.protocol !== "openai";
       return '<option value="' + esc(p.id) + '"' + (b.provider_id === p.id ? " selected" : "") + ">" +
         esc(p.name) + t("（") + esc(protoLabel(p)) + (adaptedOnly ? t(" · 已适配") : "") +
@@ -879,13 +879,13 @@ function renderBindings() {
     return '<div class="card"><div class="head"><span class="name">' + esc(c.name) + "</span>" +
       '<span class="tag">' + esc(c.orch_kind) + "</span></div>" +
       '<div class="field"><label>' + t("供应商") + '</label><select id="bindprov-' + esc(c.id) + '">' + opts + "</select></div>" +
-      '<p class="hint">' + t("绑定后编排调用会注入该供应商的 API key 与地址；不绑定则只按下方模型链传 -m 参数。") + '</p>' +
+      '<p class="hint">' + t("默认不需要绑定：系统会按任务类型、难度、成本与健康状态自动推荐可用模型；只有需要固定厂商、模型或降级顺序时才在这里绑定。绑定后编排调用会注入该供应商的 API key 与地址；完全未指定时保持自动调度，没有兼容可用供应商才使用 CLI 自身配置。") + '</p>' +
       bindModelBox(c, b.provider_id) + offWarn + protoWarn + chainWarn +
       '<div class="ops"><label class="toggle"><input type="checkbox" id="binddiff-' + esc(c.id) + '"' +
       (b.difficulty_routing ? " checked" : "") + '>' + t(" 按难度自动选模型（简单/困难）") + '</label>' +
       '<button class="ghost small" onclick="saveBinding(\'' + esc(c.id) + '\')">' + t("保存") + '</button></div></div>';
   }).join("") +
-    (!targets.length ? '<p class="hint">' + t("还没有已安装且可编排的 CLI——先到「智能体管理」页安装并启用。") + '</p>' : "") +
+    (!targets.length ? '<p class="hint">' + t("还没有已安装且可编排的 CLI——先到「本机智能体」页安装并启用。") + '</p>' : "") +
     (nonBindable ? '<p class="hint">' + t("另有 ") + nonBindable +
       t(" 个供应商（google 等协议）仅登记，不支持注入 CLI，未出现在上面的下拉中。") + '</p>' : "");
 }
@@ -974,7 +974,7 @@ async function batchProvOp(op) {
   const tips = {
     enable: t("启用所选 ") + ids.length + t(" 个供应商？"),
     disable: t("停用所选 ") + ids.length + t(" 个供应商？\n停用后其绑定会回落为 CLI 默认；配置与模型列表都保留，可随时再启用。"),
-    delete: t("删除所选 ") + ids.length + t(" 个供应商？\n相关 CLI 绑定会自动解绑，此操作不可撤销。"),
+    delete: t("删除所选 ") + ids.length + t(" 个供应商？\n相关显式模型调度会自动解除，此操作不可撤销。"),
   };
   if (!await uiConfirm(tips[op] || (t("执行「") + op + t("」？")))) return;
   try {
@@ -1780,11 +1780,15 @@ async function doImport() {
 
 async function saveBinding(id) {
   const st = bindSelById(id);
+  const provSel = $("bindprov-" + id);
   // 主供应商跟链首走：模型链是唯一真源，链首非空时供应商下拉必须与之一致
   // （下拉是旧状态时把旧值发上去，后端「显式指定」就会盖回停用的旧供应商）。
-  const headP = st.chain.length ? st.chain[0].p : "";
-  const provSel = $("bindprov-" + id);
-  if (provSel && provSel.value !== (headP || "")) provSel.value = headP || "";
+  // 空链时保留下拉选择：这是“只锁定供应商，模型按该供应商默认/难度选”的
+  // 合法显式覆盖，不能重置成自动模式。
+  const headP = st.chain.length ? st.chain[0].p : (provSel ? provSel.value : "");
+  if (st.chain.length && provSel && provSel.value !== (headP || "")) {
+    provSel.value = headP || "";
+  }
   try {
     await api("/api/models/binding", { method: "POST", body: JSON.stringify({
       agent_id: id, provider_id: provSel ? provSel.value : "",
@@ -1926,7 +1930,8 @@ async function createTask() {
     msg.textContent = t("目标有点简短，先问几个问题…");
     try {
       const cq = await api("/api/tasks/clarify", {
-        method: "POST", body: JSON.stringify({ goal: payload.goal, type: payload.type }) });
+        method: "POST", timeout: 75000,
+        body: JSON.stringify({ goal: payload.goal, type: payload.type }) });
       const qs = (cq && cq.questions) || [];
       if (qs.length) {
         S.clarifyDone = true;            // 本轮已采访；再点发送直接创建
@@ -1984,7 +1989,8 @@ async function createTask() {
     if (critics.length) payload.critics = critics;
   }
   try {
-    const r = await api("/api/tasks", { method: "POST", body: JSON.stringify(payload) });
+    const r = await api("/api/tasks", { method: "POST", timeout: 30000,
+      body: JSON.stringify(payload) });
     msg.textContent = t("已创建，跳转运行页…");
     // 先把新任务刷进 state 再跳：chatEngineIsDirect 靠 S.state.tasks 判引擎，
     // 不刷的话对话页签不会就绪，自动选卡落不到「对话」
@@ -6057,12 +6063,17 @@ function chatResultHTML(run, res) {
   if (res.turns) meta.push(res.turns + " " + t("轮对话"));
   if (res.duration_s != null) meta.push(chatDurTxt(res.duration_s));
   const files = res.files || [];
-  const chips = files.map((f) =>
-    '<a class="file-chip chat-file-open" href="' + urlAuth("/api/runs/" + encodeURIComponent(run.id) + "/file?name=" +
-    encodeURIComponent(f.name)) + '" target="_blank" rel="noopener" title="' +
-    esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(run.id) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
-    '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
-    '<span class="p">' + esc(f.name) + "</span><i>" + fmtSize(f.size) + "</i></a>").join("");
+  const chips = files.map((f) => {
+    const fUrl = urlAuth("/api/runs/" + encodeURIComponent(run.id) + "/file?name=" + encodeURIComponent(f.name));
+    return '<div class="file-chip has-actions">' +
+      '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
+      '<span class="p" title="' + esc(f.name + " · " + fmtSize(f.size)) + '">' + esc(f.name) + "</span>" +
+      '<span class="fsz">' + fmtSize(f.size) + "</span>" +
+      '<span class="fbtns">' +
+      '<button type="button" class="chip-btn" title="' + esc(t("预览")) + '" onclick="artPopup(\'' + esc(run.id) + "', '" + esc(f.name) + "', " + (Number(f.size) || 0) + ')"><svg class="ico" aria-hidden="true"><use href="#i-file-text"/></svg></button>' +
+      '<a class="chip-btn" href="' + fUrl + '" download="' + esc(f.name) + '" title="' + esc(t("下载")) + '"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"/></svg></a>' +
+      "</span></div>";
+  }).join("");
   return '<div class="chat-row">' +
     '<span class="chat-avatar" aria-hidden="true"><svg class="ico"><use href="' + icon + '"></use></svg></span>' +
     '<div class="chat-result' + (ok ? "" : bad ? " bad" : " off") + '">' +
@@ -6877,12 +6888,11 @@ function chainDeadReasons(c, chain) {
   return dead;
 }
 
-/* 单条绑定链的推荐修复动作：需要改返回新链，不动返回 null。
- * 空链 → 预填推荐；整条死透（或只有链首且已死）→ 重推荐；链首死但链内还有
- * 活的备选 → 新链首插最前（原降级序保留，推荐项已在链内则升首去重）。 */
-function bindRepairAction(c, st) {
+/* 单条显式绑定链的推荐修复动作：需要改返回新链，不动返回 null。
+ * 空链代表默认自动调度，不能悄悄写成持久绑定；已有链失效时才推荐替代链。 */
+function bindRepairAction(c, st, includeEmpty) {
   const rec = recommendFor(c);
-  if (!st.chain.length) return rec ? [rec] : null;
+  if (!st.chain.length) return includeEmpty && rec ? [rec] : null;
   const dead = chainDeadReasons(c, st.chain);
   const allDead = dead.every((d) => d);
   const headDead = dead[0] !== ""; // 空 p = CLI 默认凭据，是有意配置不算死
@@ -6897,7 +6907,7 @@ function autoBindAll() {
   let filled = 0, skipped = 0, noProv = 0, refilled = 0;
   for (const c of targets) {
     const st = bindSelById(c.id);
-    const act = bindRepairAction(c, st);
+    const act = bindRepairAction(c, st, true);
     if (!act) {
       // 没动它：分清「健康链无需推荐」和「没有可推荐的」两种落空
       if (!st.chain.length) { noProv++; continue; }
@@ -6926,9 +6936,8 @@ function autoBindAll() {
   }
 }
 
-/* 厂商/模型停用·启用·删除后自动补一次推荐绑定（2026-09-17 用户拍板）：
- * 绑定链——空链预填、死链重推荐、死链首插新首，与「一键推荐绑定」同规则，
- * 但直接落盘（自动场景没有人工确认环节）；目录页——空默认模型直填。
+/* 厂商/模型停用·启用·删除后自动修复显式绑定：
+ * 空链保持自动调度，不写入绑定；已有链失效时才直接落盘替代链。
  * 没有合适的推荐就保持原样，什么都不绑。绑定页上用户手改中的草稿（dirty）
  * 不碰；一处都没改成静默返回，不打扰停用/启用的操作反馈。 */
 let _autoRebindRunning = false, _autoRebindAgain = false;
@@ -6941,7 +6950,7 @@ async function autoRebindSoon() {
     for (const c of (S.catalog || []).filter((x) => x.installed && x.orch_kind)) {
       const st = bindSelById(c.id);
       if (st.dirty) continue;   // 用户手改中，不覆盖草稿
-      const act = bindRepairAction(c, st);
+      const act = bindRepairAction(c, st, false);
       if (!act) continue;
       const b = (S.bindings || {})[c.id] || {};
       try {
@@ -6952,17 +6961,6 @@ async function autoRebindSoon() {
         st.chain = act; st.dirty = false; st.key = chainKey(act);
         fixed++;
       } catch (e) { /* 单条失败不打断，等下次变更再补 */ }
-    }
-    for (const c of (S.catalog || []).filter((x) =>
-        x.installed && x.config_writable && !fmtModel(x.model))) {
-      const rec = recommendFor(c);
-      if (!rec) continue;
-      try {
-        const r = await api("/api/catalog/" + encodeURIComponent(c.id) + "/model",
-          { method: "POST", body: JSON.stringify({ model: rec.m }) });
-        c.model = r.model || rec.m;
-        fixed++;
-      } catch (e) { /* 同上 */ }
     }
     if (fixed) {
       S.catSig = null; S.bindSig = null;
@@ -7024,7 +7022,7 @@ function bindModelBox(c, provId) {
       }).join("")
     : '<span class="hint">' + t("未设置") + (provId
         ? t("（按供应商/难度自动解析——供应商协议不匹配或被停用时解析为空，相关步骤将判失败）")
-        : t("（用 CLI 默认模型——不会注入任何供应商凭据）")) + "</span>";
+        : t("（自动推荐厂商与模型；没有兼容可用供应商时才使用 CLI 自身配置）")) + "</span>";
   return '<div class="field"><label>' + t("运行时模型链（跨厂商，最多 ") + MAX_ORCH_MODELS + t(" 条）") + "</label>" +
     '<div class="orch-row">' + chips +
     '<button class="ghost small" onclick="bindToggle(\'' + esc(c.id) + '\')">' +
@@ -8490,7 +8488,11 @@ function mkrDebounce() {
 
 /* 拉一页：reset=清空已累积列表（首进/搜索/换来源/刷新后）。 */
 async function mkrLoadPage(reset) {
-  if (S.mkrLoading) return;
+  // 翻页保持单飞；搜索/换来源/刷新属于重置请求，可以抢占旧请求。
+  // 旧响应回来时由 requestKey 丢弃，不能覆盖用户刚选的新条件。
+  if (S.mkrLoading && !reset) return;
+  const requestKey = (S.mkrRequestKey || 0) + 1;
+  S.mkrRequestKey = requestKey;
   if (reset) { S.mkrAll = []; S.mkrOffset = 0; }
   const q = (($("mkr-search") || {}).value || "").trim();
   const srcSel = $("mkr-source");
@@ -8500,6 +8502,7 @@ async function mkrLoadPage(reset) {
   S.mkrLoading = true;
   let data = null;
   try { data = await api(url); } catch (e) { data = null; }
+  if (requestKey !== S.mkrRequestKey) return;
   S.mkrLoading = false;
   if (!data) { S.marketRemote = null; S.mkrAll = null; renderMarketRemote(); return; }
   S.marketRemote = data;
@@ -8587,7 +8590,8 @@ async function mkrRefresh() {
   const old = btn.textContent;
   btn.textContent = t("拉取中…");
   try {
-    const r = await api("/api/market/remote/refresh", { method: "POST", body: "{}" });
+    const r = await api("/api/market/remote/refresh", {
+      method: "POST", timeout: 120000, body: "{}" });
     const bad = (r.refresh || []).filter((x) => !x.ok);
     if (bad.length) toast(t("部分来源拉取失败：") + bad.map((x) => x.error || x.id).join(t("；")), true);
     else toast(t("拉取成功"));
@@ -8920,13 +8924,13 @@ function helpChapterBody(id) {
   if (id === "quickstart") {
     return '<div class="welcome-steps">' +
       '<div class="wstep"><b>1</b><span>' + t("添加模型供应商：设置 → 模型接入，填入 API Key") + '</span></div>' +
-      '<div class="wstep"><b>2</b><span>' + t("绑定 CLI 智能体：点「一键推荐绑定」自动配好") + '</span></div>' +
+      '<div class="wstep"><b>2</b><span>' + t("启用本机智能体：运行时默认自动推荐模型") + '</span></div>' +
       '<div class="wstep"><b>3</b><span>' + t("新建任务：选工作目录、写目标，蜂群开工") + '</span></div>' +
       '</div>' +
       '<p class="help-note">' + t("任务跑起来后，详情页能看到步骤、蜂巢、成果文件与 Git 版本；「直接执行」类任务还能像聊天一样边跑边追加消息。") + '</p>' +
       '<div class="welcome-acts">' +
       '<button class="wl-btn primary" onclick="welcomeGo(\'models\')"><span>' + t("开始配置模型") + '</span><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>' +
-      '<button class="wl-btn" onclick="welcomeGo(\'bindings\')"><span>' + t("绑定 CLI 智能体") + '</span><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>' +
+      '<button class="wl-btn" onclick="welcomeGo(\'bindings\')"><span>' + t("模型调度（可选）") + '</span><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>' +
       '<button class="wl-btn ghost" onclick="welcomeClose()"><span>' + t("先跳过，直接体验") + '</span></button>' +
       '</div>';
   }
@@ -8935,8 +8939,8 @@ function helpChapterBody(id) {
       '<p class="help-p">' + t("「设置 → 模型接入 → 添加供应商」：填名称、API Key、接口地址（一般用默认）。保存后点「获取模型列表」自动拉取该厂商的模型；网关不提供列表接口时直接手工填模型名即可。同一厂商可配多把 Key，按顺序轮换，某把欠费自动切下一把。") + '</p>' +
       '<h3 class="help-h3">' + t("第二步：认识协议徽章") + '</h3>' +
       '<p class="help-p">' + t("新供应商默认自动识别协议，保存后在后台实测支持哪些调用形态，结果以徽章标在卡片上。带「· chat」表示该模型只适合站内直连对话；codex 这类只讲 responses 协议的 CLI 用不了它，绑定页会自动剔除，不用自己排查。") + '</p>' +
-      '<h3 class="help-h3">' + t("第三步：绑定 CLI 智能体") + '</h3>' +
-      '<p class="help-p">' + t("「设置 → CLI 绑定」给每个智能体配一条模型链，运行时按顺序故障转移。「一键推荐绑定」只填空缺，不覆盖手工配置；删除或停用厂商后链会自动补绑。") + '</p>' +
+      '<h3 class="help-h3">' + t("第三步：启用本机智能体") + '</h3>' +
+      '<p class="help-p">' + t("无需预先绑定模型。CodeBee 默认按任务类型、难度、成本和健康状态自动推荐；需要固定厂商、模型或降级顺序时，再到「设置 → 模型调度（可选）」指定。") + '</p>' +
       '<h3 class="help-h3">' + t("报错速查") + '</h3>' +
       '<ul class="help-list">' +
       '<li><b>401</b><span>' + t("Key 无效或过期——检查或更换 Key。") + '</span></li>' +
@@ -9304,7 +9308,7 @@ async function suStartupCheck() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", usage: "用量统计", agents: "智能体管理", models: "模型接入", bindings: "CLI 绑定", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
+const TAB_TITLES = { tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
 const SET_TABS = new Set(Object.keys(TAB_TITLES));   // 设置导航里的子页（__phone 是弹框，不算）
 
 function tabTitle(name) {
@@ -10746,7 +10750,7 @@ function cmdkOps() {
     { icon: "i-blocks", label: t("插件市场"), run: () => switchTab("market") },
     { icon: "i-book", label: t("经验库"), run: () => switchTab("skills") },
     { icon: "i-sigma", label: t("知识库"), run: () => switchTab("knowledge") },
-    { icon: "i-cpu", label: t("智能体管理"), run: () => switchTab("agents") },
+    { icon: "i-cpu", label: t("本机智能体"), run: () => switchTab("agents") },
     { icon: "i-chart", label: t("用量统计"), run: () => switchTab("usage") },
     { icon: "i-gear", label: t("设置"), run: () => enterSettings() },
     { icon: "i-bee", label: t("帮助中心"), run: () => welcomeOpen() },

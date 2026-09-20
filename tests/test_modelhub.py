@@ -175,6 +175,136 @@ class TestModelPriorityRouting(BaseTest):
         ms = {m["name"]: m["priority"] for m in modelhub.providers()[0]["models"]}
         self.assertLess(ms["gpt-x-mini"], ms["gpt-x"])            # mini 上移一位
 
+    def test_explicit_chain_difficulty_routing_reorders_only_when_enabled(self):
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({"name": "P", "protocol": "openai",
+                                  "base_url": "https://p.test/v1", "api_key": FAKE_KEY})
+        pid = modelhub.providers()[0]["id"]
+        modelhub.set_binding("codex-cli", chain=[
+            {"provider_id": pid, "model": "premium"},
+            {"provider_id": pid, "model": "cheap"}],
+            difficulty_routing=False)
+        data = modelhub._load()
+        data["providers"][0]["tier"] = "standard"
+        data["providers"][0]["models"] = [
+            {"name": "premium", "tier": "premium", "priority": 1},
+            {"name": "cheap", "tier": "budget", "priority": 2}]
+        modelhub._save(data)
+        self.assertEqual(modelhub.resolve_binding("codex-cli", "easy")["model"], "premium")
+        modelhub.set_binding("codex-cli", difficulty_routing=True)
+        self.assertEqual(modelhub.resolve_binding("codex-cli", "easy")["model"], "cheap")
+
+    def test_unbound_agent_uses_runtime_recommendation_without_persisting(self):
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({"name": "Budget", "protocol": "openai",
+                                  "base_url": "https://budget.test/v1",
+                                  "api_key": FAKE_KEY, "tier": "budget"})
+        modelhub.upsert_provider({"name": "Premium", "protocol": "openai",
+                                  "base_url": "https://premium.test/v1",
+                                  "api_key": FAKE_KEY2, "tier": "premium"})
+        data = modelhub._load()
+        data["providers"][0]["models"] = [
+            {"name": "cheap", "enabled": True, "priority": 1,
+             "tier": "budget"}]
+        data["providers"][1]["models"] = [
+            {"name": "strong", "enabled": True, "priority": 1,
+             "tier": "premium"}]
+        modelhub._save(data)
+        agent = {"id": "codex-cli", "kind": "codex", "mode": "real"}
+
+        easy = modelhub.bind_agent(agent, "easy", task_type="code")
+        hard = modelhub.bind_agent(agent, "hard", task_type="code")
+
+        self.assertEqual(easy["binding_mode"], "auto")
+        self.assertFalse(easy["binding_configured"])
+        self.assertEqual(easy["model"], "cheap")
+        self.assertEqual(hard["model"], "strong")
+        self.assertEqual(modelhub.bindings(), {}, "自动推荐不得落盘成显式绑定")
+
+    def test_unbound_recommendation_expands_keys_and_skips_cooled_key(self):
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({"name": "Multi key", "protocol": "openai",
+                                  "base_url": "https://multi.test/v1",
+                                  "api_key": FAKE_KEY, "model": "m1"})
+        pid = modelhub.providers()[0]["id"]
+        modelhub.key_op(pid, "add", key=FAKE_KEY2, label="backup")
+        agent = {"id": "codex-cli", "kind": "codex", "mode": "real"}
+
+        first = modelhub.bind_agent(agent, "easy", task_type="code")
+        self.assertEqual([e["key_id"] for e in first["call_chain"]], ["k1", "k2"])
+        self.assertEqual([e["env"]["ORCH_API_KEY"] for e in first["call_chain"]],
+                         [FAKE_KEY, FAKE_KEY2])
+
+        modelhub.note_key_error(pid, "k1", "HTTP 402 insufficient balance")
+        second = modelhub.bind_agent(agent, "easy", task_type="code")
+        self.assertEqual([e["key_id"] for e in second["call_chain"]], ["k2"])
+        self.assertEqual(modelhub.bindings(), {}, "多 KEY 自动推荐同样不得落盘")
+
+    def test_explicit_binding_overrides_runtime_recommendation(self):
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({"name": "Chosen", "protocol": "openai",
+                                  "base_url": "https://chosen.test/v1",
+                                  "api_key": FAKE_KEY, "model": "chosen"})
+        modelhub.upsert_provider({"name": "Other", "protocol": "openai",
+                                  "base_url": "https://other.test/v1",
+                                  "api_key": FAKE_KEY2, "model": "other"})
+        chosen = modelhub.providers()[0]["id"]
+        modelhub.set_binding("codex-cli", provider_id=chosen, model="chosen")
+        out = modelhub.bind_agent(
+            {"id": "codex-cli", "kind": "codex", "mode": "real"},
+            "hard", task_type="code")
+        self.assertEqual(out["binding_mode"], "explicit")
+        self.assertTrue(out["binding_configured"])
+        self.assertEqual(out["model"], "chosen")
+
+    def test_provider_only_binding_is_explicit_override(self):
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({"name": "Chosen", "protocol": "openai",
+                                  "base_url": "https://chosen.test/v1",
+                                  "api_key": FAKE_KEY, "model": "provider-default"})
+        chosen = modelhub.providers()[0]["id"]
+        modelhub.set_binding("codex-cli", provider_id=chosen, chain=[])
+        out = modelhub.bind_agent(
+            {"id": "codex-cli", "kind": "codex", "mode": "real"},
+            "default", task_type="code")
+        self.assertEqual(out["binding_mode"], "explicit")
+        self.assertTrue(out["binding_configured"])
+        self.assertEqual(out["model"], "provider-default")
+
+    def test_unrelated_cli_does_not_inherit_claude_binding(self):
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({"name": "Claude gateway", "protocol": "anthropic",
+                                  "base_url": "https://claude.test/v1",
+                                  "api_key": FAKE_KEY, "model": "claude-x"})
+        pid = modelhub.providers()[0]["id"]
+        modelhub.set_binding("claude-code", provider_id=pid, model="claude-x")
+
+        self.assertIsNone(modelhub.resolve_binding("opencode"))
+        out = modelhub.bind_agent(
+            {"id": "opencode", "kind": "opencode", "mode": "real"},
+            "default", task_type="code")
+        self.assertFalse(out["binding_configured"])
+        self.assertNotEqual(out.get("binding_mode"), "explicit")
+
+    def test_unbound_agent_falls_back_to_cli_default_when_no_compatible_provider(self):
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({"name": "Anthropic only", "protocol": "anthropic",
+                                  "base_url": "https://anthropic.test/v1",
+                                  "api_key": FAKE_KEY, "model": "claude-x"})
+        out = modelhub.bind_agent(
+            {"id": "codex-cli", "kind": "codex", "mode": "real"},
+            "default", task_type="code")
+        self.assertEqual(out["binding_mode"], "cli_default")
+        self.assertFalse(out["binding_configured"])
+        self.assertNotIn("call_chain", out)
+
 
 class TestModelDelete(BaseTest):
     """删除模型 = 标记隐藏：从路由/列表中消失，且刷新不会把它带回来。"""

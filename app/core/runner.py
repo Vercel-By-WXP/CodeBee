@@ -76,7 +76,8 @@ def _npm_shim_bypass(argv):
             and str(argv[2]).lower().endswith((".cmd", ".bat")):
         shim = argv[2]
         try:
-            text = open(shim, encoding="utf-8", errors="replace").read()
+            with open(shim, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
         except Exception:
             return argv
         m = re.search(r'%_prog%"\s+"?%dp0%(\\[^"\n]+?\.(?:mjs|js))"?', text)
