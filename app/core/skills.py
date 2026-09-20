@@ -394,7 +394,48 @@ def relevance_top(lessons, task, limit):
         grams = _text_bigrams(x.get("title")) | _text_bigrams(x.get("content"))
         return (-len(probe & grams), x.get("id") or "")
 
+    # 使用反馈闭环（pmb「量化记忆真实帮助」借鉴）：被选中次数多的教训排前
+    hits = _load_hits()
+    def rank(x):
+        grams = _text_bigrams(x.get("title")) | _text_bigrams(x.get("content"))
+        overlap = -len(probe & grams)
+        lid = x.get("id") or ""
+        return (overlap, -hits.get(lid, 0), lid)
+
     return sorted(lessons, key=rank)[:limit]
+
+
+def _hits_path():
+    return paths.DATA_DIR / "skill_hits.json"
+
+
+def _load_hits():
+    """读取教训使用计数（{lesson_id: 次数}）。文件缺失/损坏返回空 dict。"""
+    try:
+        p = _hits_path()
+        if p.is_file():
+            import json
+            return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _bump_hits(ids):
+    """注入后递增使用计数并持久化（fire-and-forget，失败静默）。"""
+    try:
+        import json
+        p = _hits_path()
+        hits = _load_hits()
+        for lid in ids:
+            if lid:
+                hits[lid] = hits.get(lid, 0) + 1
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(hits, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(p)
+    except Exception:
+        pass
 
 
 def block_for(task, scope_override=None, *, stable_order=False):
@@ -440,6 +481,8 @@ def block_for(task, scope_override=None, *, stable_order=False):
     text = "## 经验库（写作/工程规范 + 历史教训，必须遵守）\n\n" + "\n\n".join(parts)
     if len(text) > MAX_INJECT_CHARS:
         text = text[:MAX_INJECT_CHARS] + "\n…（已截断）"
+    if used:
+        _bump_hits(used)   # 使用反馈闭环：被选中的教训递增计数，下次排序升权
     if used:
         bump_hits(used)
     return text, used
