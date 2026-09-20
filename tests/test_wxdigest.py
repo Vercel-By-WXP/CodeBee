@@ -36,9 +36,18 @@ class WxDigestBase(BaseTest):
         self.wx = wxdigest
         wxdigest._FILE = self.data_dir / "wxdigest.json"
         wxdigest._DIR = self.data_dir / "wxdigest"
+        # 打桩替换的是模块级 _summarize/builtin_agent 属性，会跨测试类泄漏
+        # （unittest 按类名字母序跑）；每例先存原函数，tearDown 还原。
+        self._orig = (wxdigest._summarize, wxdigest.builtin_agent.resolve,
+                      wxdigest.builtin_agent.run)
         wxdigest._test_reset()
         self.watch = self.tmp / "wx-exports"
         self.watch.mkdir()
+
+    def tearDown(self):
+        (self.wx._summarize, self.wx.builtin_agent.resolve,
+         self.wx.builtin_agent.run) = self._orig
+        super().tearDown()
 
 
 class TestParse(WxDigestBase):
@@ -221,6 +230,124 @@ class TestScheduleAndApi(WxDigestBase):
         self.assertIn("监控文件夹", r["error"])
 
 
+class TestSummarizeWiring(WxDigestBase):
+    """_summarize 真实路径（前面各测都打桩 _summarize，这里打桩 builtin_agent）：
+    提示词含群名与消息、workdir 落监控目录、返回文本进台账、失败抛错、无模型报错。"""
+
+    def _stub_agent(self, ret=None):
+        calls = {}
+
+        def fake_run(bi, prompt, workdir=None, **kw):
+            calls.update({"bi": bi, "prompt": prompt, "workdir": workdir, "kw": kw})
+            return ret if ret is not None else {
+                "ok": True, "text": "- 总览：测试摘要", "usage": {}, "error": ""}
+
+        self.wx.builtin_agent.resolve = lambda: {
+            "prov": {"id": "p1", "name": "网关"}, "model": "test-model",
+            "provider_id": "p1", "provider_name": "网关"}
+        self.wx.builtin_agent.run = fake_run
+        return calls
+
+    def test_prompt_and_wiring(self):
+        _mk_export(self.watch, "接线群.txt", TXT_NOHEAD)
+        self.wx.save_config({"enabled": True, "watch_dir": str(self.watch)})
+        calls = self._stub_agent()
+        r = self.wx._poll(force=True)
+        self.assertTrue(r["ok"], r)
+        self.assertIn("接线群", calls["prompt"])          # 群名进提示词
+        self.assertIn("今天上线新版本", calls["prompt"])   # 消息正文进提示词
+        self.assertEqual(str(self.watch), calls["workdir"])  # 工作目录=监控文件夹
+        self.assertEqual("test-model", calls["bi"]["model"])
+        d = self.wx.view()["digests"][0]
+        self.assertIn("测试摘要", d["text"])
+        self.assertEqual("test-model", d["model"])       # 模型名落台账
+        self.assertEqual("网关", d["provider"])
+
+    def test_model_failure_raises_keeps_cursor(self):
+        _mk_export(self.watch, "失败群.txt", TXT_NOHEAD)
+        self.wx.save_config({"enabled": True, "watch_dir": str(self.watch)})
+        self._stub_agent(ret={"ok": False, "text": "", "error": "HTTP 429 限流"})
+        r = self.wx._poll(force=True)
+        self.assertFalse(r["ok"])
+        self.assertIn("HTTP 429", r["error"])
+        self.assertEqual(0, len(self.wx.view()["digests"]))
+
+    def test_empty_summary_raises(self):
+        _mk_export(self.watch, "空答群.txt", TXT_NOHEAD)
+        self.wx.save_config({"enabled": True, "watch_dir": str(self.watch)})
+        self._stub_agent(ret={"ok": True, "text": "   ", "error": ""})
+        r = self.wx._poll(force=True)
+        self.assertFalse(r["ok"])
+        self.assertIn("空摘要", r["error"])
+
+    def test_no_model_configured(self):
+        _mk_export(self.watch, "无模型群.txt", TXT_NOHEAD)
+        self.wx.save_config({"enabled": True, "watch_dir": str(self.watch)})
+        self.wx.builtin_agent.resolve = lambda: None
+        r = self.wx._poll(force=True)
+        self.assertFalse(r["ok"])
+        self.assertIn("绑定", r["error"])
+
+
+class TestBacklogContinuation(WxDigestBase):
+    """新增消息超过一窗时，余量必须下拍接着摘——文件没变也不能被 mtime 短路吃掉。
+    （首扫只摘尾部不回溯历史是设计如此，不在此列。）"""
+
+    def _stub_ok(self):
+        calls = []
+
+        def fake(cfg, group, window, watch):
+            calls.append((len(window), window[0]["ts"], window[-1]["ts"]))
+            return "摘要%d条" % len(window), {"model": "m", "provider_name": "p"}
+
+        self.wx._summarize = fake
+        return calls
+
+    def _drain(self, limit=30):
+        """连扫到不再产出（force 绕过节流），返回 (拍数, 摘要调用列表)。"""
+        ticks = 0
+        for _ in range(limit):
+            r = self.wx._poll(force=True)
+            if not r["made"]:
+                break
+            ticks += 1
+        return ticks
+
+    def test_new_burst_summarized_over_multiple_ticks(self):
+        # 先建游标：小文件一拍落定
+        _mk_export(self.watch, "长群.txt", TXT_NOHEAD)
+        self.wx.save_config({"enabled": True, "watch_dir": str(self.watch)})
+        self.wx._STATE["config"]["max_chars"] = 300
+        calls = self._stub_ok()
+        self.assertEqual(1, self._drain())
+        calls.clear()
+        # 追加 40 条新消息（远超一窗）：必须跨多拍摘完，不漏不重
+        extra = "".join("2024-09-02 09:%02d:%02d 用户%d\n新消息正文第%d条\n"
+                        % (i // 60, i % 60, i, i) for i in range(40))
+        fp = self.watch / "长群.txt"
+        fp.write_bytes((TXT_NOHEAD + extra).encode("utf-8"))
+        ticks = self._drain()
+        self.assertGreater(ticks, 1, "应分多拍：%s" % calls)
+        # 40 条新消息全部被摘要，且各窗首尾严格衔接（不漏不重）
+        self.assertEqual(40, sum(c[0] for c in calls),
+                         "应覆盖全部 40 条新消息：%s" % calls)
+        for prev, nxt in zip(calls, calls[1:]):
+            self.assertLess(prev[2], nxt[1], "续窗应接在上一窗之后：%s" % calls)
+        # 摘完即清 pending：再扫不再产出
+        self.assertEqual(0, self.wx._poll(force=True)["made"])
+        self.assertFalse(self.wx._STATE["cursors"]["长群"].get("pending"))
+
+    def test_fits_in_one_tick_no_pending(self):
+        _mk_export(self.watch, "短群.txt", TXT_NOHEAD)
+        self.wx.save_config({"enabled": True, "watch_dir": str(self.watch)})
+        calls = self._stub_ok()
+        r1 = self.wx._poll(force=True)
+        r2 = self.wx._poll(force=True)
+        self.assertEqual(1, r1["made"])
+        self.assertEqual(0, r2["made"], "装得下就不该有 pending 余量")
+        self.assertEqual(1, len(calls))
+
+
 class TestPetPureFunctions(BaseTest):
     def test_parse_snapshot_digest_passthrough(self):
         import sys
@@ -257,6 +384,45 @@ class TestPetPureFunctions(BaseTest):
         lines = pet.tooltip_lines(snap, "zh")
         self.assertIn("2", lines[0])
         self.assertEqual(1, len(lines))
+
+    def test_digest_alert_rise_fire_once(self):
+        import sys
+        sys.path.insert(0, str(self._paths.APP_DIR))
+        import pet
+        seen, fire = pet.digest_alert(0, {"unseen": 2})
+        self.assertTrue(fire)
+        self.assertEqual(2, seen)
+        # 未读没涨：不重复轰炸
+        seen2, fire2 = pet.digest_alert(seen, {"unseen": 2})
+        self.assertFalse(fire2)
+        self.assertEqual(2, seen2)
+        # 又涨了：再报
+        seen3, fire3 = pet.digest_alert(seen2, {"unseen": 3})
+        self.assertTrue(fire3)
+        self.assertEqual(3, seen3)
+
+    def test_digest_alert_resets_after_read(self):
+        """用户开面板清零后，下一条新摘要必须还能提醒（曾因只增不减而永不提醒）。"""
+        import sys
+        sys.path.insert(0, str(self._paths.APP_DIR))
+        import pet
+        seen, _ = pet.digest_alert(0, {"unseen": 5})
+        self.assertEqual(5, seen)
+        # 网页端点开面板 → unseen 归零 → 基准跟着归零
+        seen, fire = pet.digest_alert(seen, {"unseen": 0})
+        self.assertEqual(0, seen)
+        self.assertFalse(fire)
+        # 新摘要从 1 起：1 > 0 → 必须提醒
+        seen, fire = pet.digest_alert(seen, {"unseen": 1})
+        self.assertTrue(fire, "清零后新摘要应能再提醒")
+        self.assertEqual(1, seen)
+
+    def test_digest_alert_tolerates_dirty_payload(self):
+        import sys
+        sys.path.insert(0, str(self._paths.APP_DIR))
+        import pet
+        for bad in (None, {}, {"unseen": None}, {"unseen": "x"}):
+            self.assertEqual((0, False), pet.digest_alert(3, bad), "脏载荷不应炸：%r" % (bad,))
 
 
 if __name__ == "__main__":

@@ -191,6 +191,28 @@ def digest_bubble_text(digest, lang="zh"):
     return LANG.get(lang, LANG["zh"])["digest"] % (group, first or "…")
 
 
+def digest_alert(prev_seen, digest):
+    """未读摘要是否该报一次（纯函数）：返回 (新的 prev_seen, 是否提醒)。
+
+    只增不减地比较会漏报：用户在网页点开面板会把 unseen 清零，之后新摘要
+    从 1 起涨，永远小于历史峰值 → 再也不提醒。故未读归零时把基准一起归零。
+    轮询回调里抛异常会中断整个 tick，故脏载荷一律当 0 处理。
+    """
+    try:
+        un = int((digest or {}).get("unseen") or 0)
+    except (TypeError, ValueError):
+        un = 0
+    try:
+        prev = int(prev_seen or 0)
+    except (TypeError, ValueError):
+        prev = 0
+    if un <= 0:
+        return 0, False
+    if un > prev:
+        return un, True
+    return prev, False
+
+
 def _http_json(port, path, body=None):
     """本机 API 调用：GET 拉 /api/pet_state，POST 改设置（127.0.0.1 免令牌）。
 
@@ -755,9 +777,8 @@ class PetApp:
             # 群摘要喂食：未读数涨了才报一次（气泡 9s），睡觉被打断就欢腾一下；
             # tasks_only 模式下把报摘要当作「忙」，隐身中的蜜蜂会因此现身。
             dg = snap.get("digest") or {}
-            un = int(dg.get("unseen") or 0)
-            if un > self.seen_digests:
-                self.seen_digests = un
+            self.seen_digests, notify = digest_alert(self.seen_digests, dg)
+            if notify:
                 self._show_bubble(digest_bubble_text(dg, self.lang), secs=9.0)
                 self.last_busy = now
                 if st == "sleep":

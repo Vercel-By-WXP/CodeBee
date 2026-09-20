@@ -268,14 +268,15 @@ def _process_file(fp, cfg):
     if not msgs:
         return 0
     if cur.get("last_ts"):
-        window, _rest = _window_from_head(_new_since(msgs, cur),
-                                          cfg.get("max_chars"))
+        window, rest = _window_from_head(_new_since(msgs, cur),
+                                         cfg.get("max_chars"))
     else:
-        window = _tail_window(msgs, cfg.get("max_chars"))
-        _rest = []
+        # 首次接入：只摘尾部一窗（不回溯历史），故无余量
+        window, rest = _tail_window(msgs, cfg.get("max_chars")), []
     if not window:
         new_cur = cur
-        new_cur.update({"mtime": st.st_mtime, "size": st.st_size})
+        new_cur.update({"mtime": st.st_mtime, "size": st.st_size,
+                        "pending": False})
         with _LOCK:
             _STATE["cursors"][group] = new_cur
             _save_locked()
@@ -291,19 +292,24 @@ def _process_file(fp, cfg):
            "source": fp.name}
     with _LOCK:
         new_cur = _cursor_from(last)
-        new_cur.update({"mtime": st.st_mtime, "size": st.st_size})
+        # pending：本窗装不下的余量还在文件里，文件没变也要继续摘（否则余量
+        # 会被上面的 mtime 短路永久吃掉——新增消息超过一窗时必现）。
+        new_cur.update({"mtime": st.st_mtime, "size": st.st_size,
+                        "pending": bool(rest)})
         _STATE["cursors"][group] = new_cur
         _STATE["unseen"] = int(_STATE.get("unseen") or 0) + 1
         _append_digest(rec)
         _save_locked()
-    log.info("wxdigest: 群「%s」新摘要（%d 条消息 → %d 字）",
-             group, len(window), len(summary))
+    log.info("wxdigest: 群「%s」新摘要（%d 条消息 → %d 字%s）",
+             group, len(window), len(summary),
+             "，余量 %d 条待续摘" % len(rest) if rest else "")
     return 1
 
 
 def _pending_expect(cur):
-    """文件未变但上次摘要失败（游标没有 mtime 落账）→ 仍要重试。"""
-    return not cur.get("mtime")
+    """文件没变也不能跳过的两种情况：上次摘要失败（游标没 mtime 落账）、
+    上窗有装不下的余量（pending）。"""
+    return (not cur.get("mtime")) or bool(cur.get("pending"))
 
 
 def _poll(force=False):
