@@ -8462,6 +8462,9 @@ async function loadSettings() {
     if (inp && S.settings) inp.value = S.settings.max_concurrent_jobs;
     const tel = $("set-telemetry");
     if (tel && S.settings) tel.checked = S.settings.telemetry_errors !== false;
+    const pet = $("set-pet");
+    if (pet && S.settings) pet.checked = S.settings.pet_enabled !== false;
+    syncPetModeSeg();
     const wd = $("set-workdir"), hint = $("set-workdir-hint");
     if (wd && S.settings) wd.value = S.settings.default_workdir_effective || "";
     if (hint && S.settings) {
@@ -8930,6 +8933,35 @@ async function saveTelemetry(on) {
   } catch (e) {
     const tel = $("set-telemetry");
     if (tel) tel.checked = !on;   // 存失败弹回旧值，不让 UI 与后端各说各话
+    toast(e.message || t("保存失败"), true);
+  }
+}
+
+/* 桌面蜜蜂：开关与显示模式都落 settings（唯一真源），蜜蜂子进程轮询到变化
+ * 自行启停——开=true 时看护线程 5s 内拉起，false 时在岗蜜蜂下一个轮询自离。 */
+function syncPetModeSeg() {
+  const mode = (S.settings && S.settings.pet_mode) || "always";
+  document.querySelectorAll("#pet-mode [data-pmode]").forEach((b) =>
+    b.classList.toggle("active", b.dataset.pmode === mode));
+}
+async function savePet(on) {
+  try {
+    const r = await api("/api/settings", { method: "POST", body: JSON.stringify({ pet_enabled: !!on }) });
+    S.settings = r.settings;
+    toast(on ? t("蜜蜂已放出，就落在桌面右下角") : t("蜜蜂已回巢"));
+  } catch (e) {
+    const pet = $("set-pet");
+    if (pet) pet.checked = !on;   // 存失败弹回旧值，不让 UI 与后端各说各话
+    toast(e.message || t("保存失败"), true);
+  }
+}
+async function savePetMode(mode) {
+  try {
+    const r = await api("/api/settings", { method: "POST", body: JSON.stringify({ pet_mode: mode }) });
+    S.settings = r.settings;
+    syncPetModeSeg();
+  } catch (e) {
+    syncPetModeSeg();   // 弹回当前真值
     toast(e.message || t("保存失败"), true);
   }
 }
@@ -10057,6 +10089,11 @@ document.addEventListener("DOMContentLoaded", () => {
   $("lang-mode").addEventListener("click", (e) => {
     const b = e.target.closest("[data-lang]");
     if (b) setLangBtn(b.dataset.lang);
+  });
+  // 桌面蜜蜂显示模式：常驻 / 仅任务运行时
+  $("pet-mode").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-pmode]");
+    if (b) savePetMode(b.dataset.pmode);
   });
   // 代码设置：任何一行改动都全量落偏好再刷新预览（值都来自控件自身，不会弹回）
   for (const id of ["cs-theme-light", "cs-theme-dark", "cs-linenum", "cs-wrap", "cs-size"]) {

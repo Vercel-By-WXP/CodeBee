@@ -808,6 +808,13 @@
           </div>
           <h3 class="sec-title"><span data-i18n="皮肤">皮肤</span> <span class="tag" id="skin-cur"></span></h3>
           <div id="skin-grid" class="skin-grid"></div>
+          <h3 class="sec-title" data-i18n="桌面蜜蜂">桌面蜜蜂</h3>
+          <label class="toggle"><input id="set-pet" type="checkbox" onchange="savePet(this.checked)"> <span data-i18n="在桌面角落养一只蜜蜂，实时汇报蜂群动态">在桌面角落养一只蜜蜂，实时汇报蜂群动态</span></label>
+          <div id="pet-mode" class="seg" role="group" aria-label="显示模式" data-i18n-aria="显示模式">
+            <button class="seg-btn" data-pmode="always" data-i18n="常驻显示">常驻显示</button>
+            <button class="seg-btn" data-pmode="tasks_only" data-i18n="仅任务运行时出现">仅任务运行时出现</button>
+          </div>
+          <p class="hint" data-i18n="左键点蜜蜂打开 CodeBee，右键有菜单，按住可拖动；蜜蜂跑在独立小进程里，关掉服务它会自己回巢。">左键点蜜蜂打开 CodeBee，右键有菜单，按住可拖动；蜜蜂跑在独立小进程里，关掉服务它会自己回巢。</p>
         </div>
 
         <!-- 代码设置：主题/行号/换行/字号只管代码内容，存本设备（与皮肤同一套语汇） -->

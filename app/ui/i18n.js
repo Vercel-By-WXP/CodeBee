@@ -2090,6 +2090,16 @@
     "把任务分支自动合并回基线分支（需配置基线分支；合并失败不 resolve 不转派，留人工）": "Auto-merge the task branch back into the baseline branch (baseline branch must be configured; if the merge fails it won't resolve or reassign — stays with a human)",
     "按下面的间隔定时扫描；关掉后仍可手动「立即扫描」": "Scan on the interval below; when off, \"Scan now\" still works manually",
     "帮助目录": "Help contents",
+
+    // —— 桌面蜜蜂 ——
+    "桌面蜜蜂": "Desktop Bee",
+    "在桌面角落养一只蜜蜂，实时汇报蜂群动态": "Keep a bee in a corner of your desktop that reports hive activity in real time",
+    "常驻显示": "Always visible",
+    "仅任务运行时出现": "Only when tasks run",
+    "左键点蜜蜂打开 CodeBee，右键有菜单，按住可拖动；蜜蜂跑在独立小进程里，关掉服务它会自己回巢。": "Left-click the bee to open CodeBee, right-click for a menu, drag to move it. The bee runs in its own tiny process and flies home when the service stops.",
+    "蜜蜂已放出，就落在桌面右下角": "Bee released — it lands near the bottom-right of your desktop",
+    "蜜蜂已回巢": "The bee has flown back to the hive",
+    "显示模式": "Display mode",
   };
 
   // ---------- 工具 ----------

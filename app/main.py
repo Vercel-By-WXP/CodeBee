@@ -264,6 +264,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "catalog": manager.catalog_view()})
             if path == "/api/runs":
                 return self._json(200, {"runs": store.list_runs()})
+            if path == "/api/pet_state":
+                return self._api_pet_state()
             if path == "/api/usage":
                 from core import usage
                 q = parse_qs(urlparse(self.path).query)
@@ -1286,6 +1288,47 @@ class Handler(BaseHTTPRequestHandler):
         parent = "" if p.parent == p else str(p.parent)
         return self._json(200, {"path": str(p), "parent": parent, "dirs": dirs})
 
+    def _api_pet_state(self):
+        """桌面蜜蜂（app/pet.py 子进程）的喂食端点：任务近况最小集 + 相关设置。
+
+        数据与 /api/runs 同源（latest_run_by_task 全量扫描，内存操作），但只裁
+        出桌宠需要的字段；每任务一条（封顶 200），蜜蜂在进程内自行差分出
+        「刚完工/刚出事」。设置随响应回传，蜜蜂轮询到 pet_enabled=false 自行
+        退出——关闭桌宠不需要专门的信号通道。
+        """
+        st = settings.load()
+        rows = []
+        n_run = n_q = 0
+        latest = store.latest_run_by_task()
+        for tid in sorted(latest.keys(), reverse=True)[:200]:
+            run = latest[tid]
+            task = store.get_task(tid) or {}
+            rs = str(run.get("status") or "")
+            if rs == "running":
+                n_run += 1
+            elif rs == "queued":
+                n_q += 1
+            steps = run.get("steps") or []
+            cur = next((s for s in steps if s.get("status") == "running"), None)
+            rows.append({
+                "id": tid,
+                "title": str(task.get("title") or tid),
+                "type": str(task.get("type") or ""),
+                "run_status": rs,
+                "steps_done": sum(1 for s in steps if s.get("status") == "done"),
+                "steps_total": len(steps),
+                "step_current": str((cur.get("summary") or cur.get("agent_label")
+                                     or "") if cur else ""),
+                "error": str(run.get("error") or "")[:160],
+            })
+        return self._json(200, {
+            "ok": True, "ts": int(time.time()), "port": PORT,
+            "settings": {"pet_enabled": bool(st.get("pet_enabled", True)),
+                         "pet_mode": str(st.get("pet_mode") or "always")},
+            "workers": {"running": n_run, "queued": n_q},
+            "tasks": rows,
+        })
+
     def _api_pick_folder(self):
         """系统原生「选择文件夹」对话框（工作目录「选择…」/点输入框用）。仅限本机：
         对话框弹在服务所在机器上，远端触发等于替别人开窗。pick_dialog.ask_directory
@@ -1983,6 +2026,53 @@ class ThreadedServer(ThreadingHTTPServer):
         super().server_bind()
 
 
+# ---------------------------------------------------------------- 桌面蜜蜂
+
+_PET_PROC = None   # 蜜蜂子进程句柄（看护线程专用，别的线程别碰）
+
+
+def _spawn_pet(port):
+    """拉起桌面蜜蜂子进程（app/pet.py：tkinter 自绘，死活不影响服务）。"""
+    global _PET_PROC
+    pet_py = Path(__file__).resolve().parent / "pet.py"
+    if not pet_py.exists():
+        return
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
+    # CREATE_NO_WINDOW 同 pick_dialog：控制台宿主下不给蜜蜂弹黑框
+    kw = {"creationflags": 0x08000000} if os.name == "nt" else {}
+    try:
+        _PET_PROC = subprocess.Popen(
+            [sys.executable, str(pet_py), "--port", str(port),
+             "--data-dir", str(paths.DATA_DIR)], env=env, **kw)
+        print("[CodeBee] 桌面蜜蜂已起飞（右键蜜蜂可设置；设置页可关闭）", flush=True)
+    except Exception as e:
+        print("[CodeBee] 桌面蜜蜂未能起飞（不影响其他功能）：%s" % e, flush=True)
+
+
+def _start_pet_keeper(port):
+    """蜜蜂看护线程：按设置自愈拉起（崩溃/被杀 5s 内补位）。
+
+    TUTTI_PET_DISABLED=1 完全静默（测试/无桌面环境）；关闭走设置
+    pet_enabled=false——蜜蜂轮询到后自离，看护线程也不再拉起，不存在
+    「关了又复活」。子进程与服务的生命周期解耦：服务被杀蜜蜂 1 分钟内
+    自灭（MAX_MISS），不留孤儿窗口。
+    """
+    if os.environ.get("TUTTI_PET_DISABLED") == "1":
+        return
+
+    def _loop():
+        while True:
+            try:
+                if settings.load().get("pet_enabled", True):
+                    if _PET_PROC is None or _PET_PROC.poll() is not None:
+                        _spawn_pet(port)
+            except Exception:
+                pass
+            time.sleep(5)
+
+    threading.Thread(target=_loop, name="pet-keeper", daemon=True).start()
+
+
 def main():
     parser = argparse.ArgumentParser(description="CodeBee 多智能体编排台")
     parser.add_argument("--host", default="0.0.0.0",
@@ -2160,6 +2250,7 @@ def main():
         faulthandler.cancel_dump_traceback_later()  # 启动完成，看门狗退役（否则运行期每 20s 误报堆栈）
     except Exception:
         pass
+    _start_pet_keeper(args.port)   # 桌面蜜蜂：端口就绪后放出（设置可关；测试可禁）
     if remote.PUBLIC_URL:
         print("[CodeBee] 公网     %s/?token=%s   ← 任何网络可访问（反代回源已强制校验令牌）"
               % (remote.PUBLIC_URL, tok))
