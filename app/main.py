@@ -24,6 +24,7 @@ from core import automation, catalog, flows, jobs, manager, market, market_remot
 from core import paths
 from core import health
 import pick_dialog
+import pet
 
 log = logging.getLogger(__name__)
 
@@ -2218,7 +2219,10 @@ def _start_pet_keeper(port):
             try:
                 if settings.load().get("pet_enabled", True):
                     if _PET_PROC is None or _PET_PROC.poll() is not None:
-                        _spawn_pet(port)
+                        # 全机唯一蜜蜂：别的服务实例（不同数据目录）已养蜂时
+                        # 不再拉起，否则桌面会出现多只（用户实测踩坑）
+                        if not pet.global_lock_held():
+                            _spawn_pet(port)
             except Exception:
                 pass
             time.sleep(5)

@@ -96,20 +96,30 @@ class TestPetLogic(unittest.TestCase):
         tasks = [_task("t-%d" % i, "running", done=i, total=10, cur="写第%d章" % i)
                  for i in range(10)]
         rows = pet.tooltip_lines(pet.parse_snapshot({"tasks": tasks}))
-        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(rows), 6)   # 清单上限 6 行，防撑成一堵墙
         self.assertTrue(rows[0].startswith("● t-0"))
         self.assertIn("写第0章", rows[0])
         self.assertIn("0/10", rows[0])
 
-    def test_tooltip_lines_queued_between_running_and_failed(self):
+    def test_tooltip_lines_only_active_and_queued(self):
+        # 历史失败项曾把清单刷成一堵墙（用户实测十几条 ✘）——失败由警示
+        # 气泡点名，悬停清单只列进行中/排队
         tasks = [_task("t-a", "running", done=1, total=2, cur="写稿"),
                  _task("t-b", "queued"),
-                 _task("t-c", "failed")]
+                 _task("t-c", "failed"),
+                 _task("t-d", "done")]
         rows = pet.tooltip_lines(pet.parse_snapshot({"tasks": tasks}))
         self.assertTrue(rows[0].startswith("● t-a"))
         self.assertTrue(rows[1].startswith("○ t-b"))
         self.assertIn(pet.LANG["zh"]["queued"], rows[1])
-        self.assertTrue(rows[2].startswith("✘ t-c"))
+        self.assertEqual(len(rows), 2)   # 失败/完成都不进清单
+
+    def test_tooltip_lines_truncate_long_title(self):
+        t = _task("t-x", "running", cur="写稿")
+        t["title"] = "很长的任务标题很长很长很长很长很长很长很长很长"
+        rows = pet.tooltip_lines(pet.parse_snapshot({"tasks": [t]}))
+        self.assertTrue(rows[0].startswith("● 很长的任务标题"))
+        self.assertIn("…", rows[0])
 
     def test_tooltip_lines_empty_shows_all_clear(self):
         rows = pet.tooltip_lines(pet.parse_snapshot({}))
@@ -136,6 +146,16 @@ class TestPetSettings(BaseTest):
         cur, err = settings.save({"pet_mode": "bogus"})
         self.assertIsNotNone(err)
         self.assertEqual(cur["pet_mode"], "tasks_only")   # 非法值不改现状
+
+    def test_pet_skin_roundtrip_and_validation(self):
+        view, err = settings.save({"pet_skin": "robot"})
+        self.assertIsNone(err)
+        self.assertEqual(view["pet_skin"], "robot")
+        view = settings.load()
+        self.assertEqual(view["pet_skin"], "robot")
+        cur, err = settings.save({"pet_skin": "bogus"})
+        self.assertIsNotNone(err)
+        self.assertEqual(cur["pet_skin"], "robot")
 
 
 class TestPetEndpoint(unittest.TestCase):
@@ -173,7 +193,8 @@ class TestPetEndpoint(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["port"], main_module.PORT)
         self.assertEqual(payload["settings"],
-                         {"pet_enabled": True, "pet_mode": "tasks_only"})
+                         {"pet_enabled": True, "pet_mode": "tasks_only",
+                          "pet_skin": "plush"})   # 未配置时兜底默认形象
         self.assertEqual(payload["workers"], {"running": 1, "queued": 1})
         ids = [t["id"] for t in payload["tasks"]]
         self.assertEqual(ids, ["t-3", "t-2", "t-1"])   # id 含时间戳，倒序=新在前
@@ -196,9 +217,10 @@ class TestPetEndpoint(unittest.TestCase):
             handler._api_pet_state()
         _, payload = handler.responses[0]
         self.assertEqual(payload["tasks"][0]["title"], "t-9")
-        # 设置缺省也兜底为开+常驻
+        # 设置缺省也兜底为开+常驻+默认形象
         self.assertEqual(payload["settings"],
-                         {"pet_enabled": True, "pet_mode": "always"})
+                         {"pet_enabled": True, "pet_mode": "always",
+                          "pet_skin": "plush"})
 
 
 if __name__ == "__main__":
