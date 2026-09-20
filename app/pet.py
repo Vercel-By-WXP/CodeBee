@@ -6,10 +6,15 @@ CodeBee 蜜蜂（与 UI 蜂巢工作台同一品牌语言）。实现要点：
 
 - 独立进程：Tk 必须独占自家进程主线程（pick_dialog.py 同款哲学），由 main.py
   的看护线程按设置拉起；轮询 /api/pet_state 取任务近况，服务关了蜜蜂自己离开。
-- 零依赖：tkinter 标准库自绘蜜蜂（canvas 矢量 + 帧动画），不引任何第三方包；
-  纯逻辑（状态推导）放模块顶层不碰 tkinter，测试直接 import。
+- 零依赖：tkinter 标准库自绘蜜蜂（canvas 矢量卡通风：圆润身体、大眼双高光、
+  腮红、软阴影、星光点缀），不引任何第三方包；纯逻辑（状态推导）放模块顶层
+  不碰 tkinter，测试直接 import。
 - 状态机：sleep（打盹）/ work（振翅）/ cheer（翻滚庆祝）/ alert（警示抖动），
   由「上一轮活跃任务集合 vs 本轮结果」的差分推出，不需要后端记事件流。
+- 悬停任务清单走指针轮询而不是 Enter/Leave：-transparentcolor 的透明像素在
+  Windows 上是点击穿透的，Tk 收不到那片区域的进入/离开事件（蜜蜂还在动，
+  事件时序更乱）；每 250ms 查一次指针是否落在窗口包围盒内，稳定且把整个
+  窗口都变成热区。
 - 设置真源是 data/settings.json（pet_enabled / pet_mode），蜜蜂轮询到关闭指令
   自行退出；「关闭桌宠」菜单就是写这个设置，看护线程因此不会把它复活。
 
@@ -37,6 +42,8 @@ POLL_TIMEOUT = 2.5      # 单次拉取超时（秒）
 MAX_MISS = 15           # 连续拉不到服务 N 次后自离（约 1 分钟，防孤儿常驻）
 MOOD_HOLD_S = 12.0      # cheer/alert 表情最低持续
 IDLE_HIDE_S = 90.0      # tasks_only 模式：空闲多久后隐身
+HOVER_MS = 250          # 指针轮询周期
+HOVER_DELAY_MS = 350    # 悬停多久后才弹任务清单（扫过不弹）
 
 
 def parse_snapshot(raw):
@@ -106,7 +113,7 @@ def derive_state(prev_active_ids, tasks):
 
 
 def tooltip_lines(snap, lang="zh"):
-    """悬停气泡的任务行：未读摘要在最上，其后活跃、失败次之，最多 8 行。"""
+    """悬停清单的任务行：未读摘要在最上，其后进行中、排队、失败，最多 8 行。"""
     L = LANG.get(lang, LANG["zh"])
     rows = []
     dg = snap.get("digest") or {}
@@ -114,12 +121,15 @@ def tooltip_lines(snap, lang="zh"):
     if n_dg > 0:
         rows.append(L["digest_tip"] % n_dg)
     for t in snap["tasks"]:
-        if t["run_status"] in ACTIVE_STATUSES:
+        if t["run_status"] == "running":
             prog = ""
             if t["steps_total"]:
                 prog = "  %d/%d" % (t["steps_done"], t["steps_total"])
             step = (" · " + t["step_current"]) if t["step_current"] else ""
             rows.append("● %s%s%s" % (t["title"], step, prog))
+    for t in snap["tasks"]:
+        if t["run_status"] == "queued":
+            rows.append("○ %s（%s）" % (t["title"], L["queued"]))
     for t in snap["tasks"]:
         if t["run_status"] in BAD_STATUSES:
             rows.append("✘ %s" % t["title"])
@@ -135,6 +145,9 @@ LANG = {
         "lang": "语言",
         "close": "关闭桌宠（设置里可重开）",
         "all_clear": "蜂群闲着，都在打盹…",
+        "title": "蜂群动态",
+        "n_running": "%d 个进行中",
+        "queued": "排队中",
         "cheer": "🎉 %d 个任务完工！",
         "alert": "⚠️ 「%s」出岔子了，点我看看",
         "bye": "蜜蜂回巢啦",
@@ -149,6 +162,9 @@ LANG = {
         "lang": "Language",
         "close": "Close the bee (re-enable in Settings)",
         "all_clear": "Hive is resting…",
+        "title": "Hive activity",
+        "n_running": "%d running",
+        "queued": "queued",
         "cheer": "🎉 %d task(s) done!",
         "alert": "⚠️ \"%s\" ran into trouble",
         "bye": "Back to the hive",
@@ -201,7 +217,7 @@ def _http_json(port, path, body=None):
 # 透明键色：窗口里凡是这个颜色都变透明（Windows -transparentcolor）。
 # 用罕见深色，蜜蜂配色不会撞上。
 KEY = "#010203"
-WIN_W, WIN_H = 156, 138
+WIN_W, WIN_H = 170, 150
 
 
 def _pid_alive(pid):
@@ -227,7 +243,7 @@ def _pid_alive(pid):
 
 
 class PetApp:
-    """蜜蜂窗口：一只 canvas 矢量蜜蜂 + 状态机动画 + 悬停提示 + 右键菜单。"""
+    """蜜蜂窗口：一只卡通风矢量蜜蜂 + 状态机动画 + 悬停任务清单 + 右键菜单。"""
 
     def __init__(self, port, data_dir, lang="zh"):
         self.port = port
@@ -267,6 +283,8 @@ class PetApp:
         self._bubble = None
         self._bubble_until = 0.0
         self._tip = None
+        self._hover = False
+        self._tip_pending = None
         self.seen_digests = 0   # 本轮已通知过的摘要未读数（涨了才报，不重复轰炸）
 
         self._build_bee()
@@ -275,6 +293,7 @@ class PetApp:
         self._apply_state("sleep", force=True)
         self.root.after(200, self._tick)
         self.root.after(100, self._animate)
+        self.root.after(HOVER_MS, self._hover_tick)
 
     # ---- 配置（位置+语言，蜜蜂私有，不进 settings.json）----
     def _load_cfg(self):
@@ -343,99 +362,157 @@ class PetApp:
         except Exception:
             pass
 
-    # ---- 蜜蜂绘制（动画只平移整组，坐标锚定初始布局）----
+    # ---- 蜜蜂绘制（卡通风：圆润身体 + 大眼双高光 + 腮红 + 软阴影 + 星光）----
+    # 画件分两类：随蜜蜂整体平移的进 self.bee；贴地不动的（影子/进度条）单独存。
     def _build_bee(self):
         cv = self.cv
-        self.bee = []          # 随身体一起平移的画件 id
+        self.bee = []
 
         def add(item_id):
             self.bee.append(item_id)
             return item_id
 
-        # 翅膀两帧（振翅动画切换）+ 收翅（睡觉）
-        self.wing_a = [add(cv.create_oval(58, 22, 84, 52, fill="#DCEBFF",
-                                          outline="#8FA8C8", stipple="gray50")),
-                       add(cv.create_oval(82, 26, 108, 56, fill="#EAF3FF",
-                                          outline="#8FA8C8", stipple="gray50"))]
-        self.wing_b = [add(cv.create_oval(56, 36, 82, 56, fill="#DCEBFF",
-                                          outline="#8FA8C8", stipple="gray50")),
-                       add(cv.create_oval(84, 40, 110, 60, fill="#EAF3FF",
-                                          outline="#8FA8C8", stipple="gray50"))]
-        self.wing_rest = [add(cv.create_oval(60, 46, 78, 58, fill="#C9D8EA",
-                                             outline="#8FA8C8", stipple="gray50")),
-                          add(cv.create_oval(88, 46, 104, 57, fill="#D8E4F0",
-                                             outline="#8FA8C8", stipple="gray50"))]
+        # —— 翅膀（三套：振翅上/下帧 + 睡觉收翅；画在身体后面）——
+        WING_A, WING_B, WING_EDGE = "#D9EAFF", "#E8F2FF", "#9FB9D8"
+        self.wing_up = [add(cv.create_oval(54, 22, 92, 62, fill=WING_A,
+                                           outline=WING_EDGE, width=2,
+                                           stipple="gray50")),
+                        add(cv.create_oval(84, 26, 124, 66, fill=WING_B,
+                                           outline=WING_EDGE, width=2,
+                                           stipple="gray50"))]
+        self.wing_down = [add(cv.create_oval(48, 40, 90, 72, fill=WING_A,
+                                             outline=WING_EDGE, width=2,
+                                             stipple="gray50")),
+                          add(cv.create_oval(86, 42, 128, 74, fill=WING_B,
+                                             outline=WING_EDGE, width=2,
+                                             stipple="gray50"))]
+        self.wing_rest = [add(cv.create_oval(62, 46, 88, 62, fill="#C4D6EA",
+                                             outline=WING_EDGE, width=1,
+                                             stipple="gray50")),
+                          add(cv.create_oval(90, 46, 116, 62, fill="#D2E0EE",
+                                             outline=WING_EDGE, width=1,
+                                             stipple="gray50"))]
 
-        # 身体
-        self.body = add(cv.create_oval(46, 50, 108, 90, fill="#FFC93C",
-                                       outline="#5A3D00", width=2))
-        add(cv.create_oval(60, 52, 74, 88, fill="#3A2A00", outline=""))
-        add(cv.create_oval(80, 52, 94, 88, fill="#3A2A00", outline=""))
-        # 尾针 + 腿
-        add(cv.create_polygon(46, 64, 34, 70, 46, 76, fill="#5A3D00", outline=""))
-        add(cv.create_line(58, 90, 53, 99, fill="#5A3D00", width=2))
-        add(cv.create_line(72, 90, 70, 100, fill="#5A3D00", width=2))
-        add(cv.create_line(88, 90, 91, 99, fill="#5A3D00", width=2))
-        # 头（右侧）+ 触角
-        self.head = add(cv.create_oval(96, 54, 126, 84, fill="#2E2A25",
-                                       outline="#17130F", width=2))
-        add(cv.create_line(106, 55, 101, 42, fill="#2E2A25", width=2))
-        add(cv.create_line(116, 55, 121, 42, fill="#2E2A25", width=2))
-        add(cv.create_oval(98, 39, 104, 45, fill="#2E2A25", outline=""))
-        add(cv.create_oval(118, 39, 124, 45, fill="#2E2A25", outline=""))
-        # 眼睛三套：睁（工作/警示）/ 闭（睡）/ 弯弯（开心）
-        self.eye_open = [add(cv.create_oval(106, 63, 114, 71, fill="#FFFFFF",
-                                            outline="")),
-                         add(cv.create_oval(110, 66, 114, 70, fill="#141414",
-                                            outline=""))]
-        self.eye_closed = [add(cv.create_line(104, 67, 112, 67, fill="#FFFFFF",
-                                              width=2)),
-                           add(cv.create_line(116, 67, 122, 67, fill="#FFFFFF",
-                                              width=2))]
-        self.eye_happy = [add(cv.create_arc(104, 63, 112, 73, start=0,
-                                            extent=180, style="arc",
-                                            outline="#FFFFFF", width=2)),
-                           add(cv.create_arc(116, 63, 124, 73, start=0,
-                                             extent=180, style="arc",
-                                             outline="#FFFFFF", width=2))]
-        # 嘴：默认微笑，警示时收小成「o」
-        self.mouth = add(cv.create_arc(106, 72, 118, 82, start=200, extent=140,
-                                       style="arc", outline="#FFFFFF", width=2))
-        # 状态徽章（右上角）
-        self.badge = add(cv.create_oval(126, 30, 148, 52, fill="#4A90D9",
+        # —— 身体（基色 → 肚底暗色 → 环纹 → 顶部高光 → 外轮廓收边盖住接缝）——
+        self.leg1 = add(cv.create_line(68, 112, 63, 126, fill="#6B4A16",
+                                       width=3, capstyle="round"))
+        self.leg2 = add(cv.create_line(100, 112, 97, 126, fill="#6B4A16",
+                                       width=3, capstyle="round"))
+        self.stinger = add(cv.create_polygon(40, 82, 22, 88, 40, 94,
+                                             fill="#6B4A16", outline="",
+                                             smooth=True))
+        self.body = add(cv.create_oval(36, 58, 136, 118, fill="#FFD75E",
+                                       outline=""))
+        self.belly = add(cv.create_oval(40, 86, 132, 116, fill="#F0B93C",
+                                        outline=""))
+        self.stripe1 = add(cv.create_oval(58, 61, 76, 115, fill="#4A3220",
+                                          outline=""))
+        self.stripe2 = add(cv.create_oval(84, 61, 102, 115, fill="#4A3220",
+                                          outline=""))
+        self.gloss = add(cv.create_oval(44, 62, 92, 80, fill="#FFE79A",
+                                        outline="", stipple="gray50"))
+        self.body_edge = add(cv.create_oval(36, 58, 136, 118, fill="",
+                                            outline="#6B4A16", width=2))
+
+        # —— 触角（画在头前面但接头藏进头圆，曲线比直线柔）——
+        add(cv.create_line(120, 60, 114, 44, 110, 36, fill="#3A2C25",
+                           width=2, smooth=True, capstyle="round"))
+        add(cv.create_line(138, 60, 146, 44, 150, 36, fill="#3A2C25",
+                           width=2, smooth=True, capstyle="round"))
+        add(cv.create_oval(104, 30, 116, 42, fill="#3A2C25", outline=""))
+        add(cv.create_oval(144, 30, 156, 42, fill="#3A2C25", outline=""))
+
+        # —— 头 + 脸 ——
+        self.head = add(cv.create_oval(106, 54, 154, 102, fill="#3A2C25",
+                                       outline="#241A14", width=2))
+        self.head_gloss = add(cv.create_oval(112, 58, 130, 70, fill="#5A463C",
+                                             outline="", stipple="gray50"))
+        # 睁眼（大眼 + 每只双高光，萌点全在这）
+        self.eye_open = [
+            add(cv.create_oval(112, 66, 130, 90, fill="#FFFFFF", outline="")),
+            add(cv.create_oval(116, 72, 128, 88, fill="#241A14", outline="")),
+            add(cv.create_oval(118, 74, 123, 79, fill="#FFFFFF", outline="")),
+            add(cv.create_oval(125, 83, 127, 86, fill="#FFFFFF", outline="")),
+            add(cv.create_oval(132, 66, 150, 90, fill="#FFFFFF", outline="")),
+            add(cv.create_oval(136, 72, 148, 88, fill="#241A14", outline="")),
+            add(cv.create_oval(138, 74, 143, 79, fill="#FFFFFF", outline="")),
+            add(cv.create_oval(145, 83, 147, 86, fill="#FFFFFF", outline="")),
+        ]
+        # 闭眼（睡觉 ⌣）/ 弯弯眼（开心 ∩）
+        self.eye_closed = [
+            add(cv.create_arc(112, 72, 130, 86, start=180, extent=180,
+                              style="arc", outline="#E8D8C8", width=2)),
+            add(cv.create_arc(132, 72, 150, 86, start=180, extent=180,
+                              style="arc", outline="#E8D8C8", width=2)),
+        ]
+        self.eye_happy = [
+            add(cv.create_arc(112, 72, 130, 86, start=0, extent=180,
+                              style="arc", outline="#E8D8C8", width=2)),
+            add(cv.create_arc(132, 72, 150, 86, start=0, extent=180,
+                              style="arc", outline="#E8D8C8", width=2)),
+        ]
+        # 腮红 + 嘴（微笑 / 惊呼小圆嘴）
+        self.blush = [
+            add(cv.create_oval(106, 90, 120, 98, fill="#E88A7D", outline="",
+                               stipple="gray50")),
+            add(cv.create_oval(142, 90, 156, 98, fill="#E88A7D", outline="",
+                               stipple="gray50")),
+        ]
+        self.smile = add(cv.create_arc(124, 86, 138, 96, start=200, extent=140,
+                                       style="arc", outline="#E8D8C8",
+                                       width=2))
+        self.mouth_o = add(cv.create_oval(127, 88, 135, 96, fill="#241A14",
+                                          outline=""))
+
+        # —— 状态点缀 ——
+        self.badge = add(cv.create_oval(146, 22, 166, 42, fill="#4A90D9",
                                         outline="#FFFFFF", width=2))
-        self.badge_txt = add(cv.create_text(137, 41, text="", fill="#FFFFFF",
+        self.badge_txt = add(cv.create_text(156, 32, text="", fill="#FFFFFF",
                                             font=("Segoe UI", 10, "bold")))
-        # 速度线（工作中）
-        self.speed = [add(cv.create_line(28, 58, 42, 58, fill="#9DB7D4", width=2)),
-                      add(cv.create_line(22, 70, 40, 70, fill="#9DB7D4", width=2))]
-        # Zzz（睡觉）
-        self.zzz = [add(cv.create_text(120, 52, text="z", fill="#8A93A6",
-                                       font=("Segoe UI", 11, "bold"))),
-                    add(cv.create_text(130, 42, text="Z", fill="#A5AEC0",
-                                       font=("Segoe UI", 13, "bold")))]
-        # 星光（庆祝）
-        self.spark = [add(cv.create_text(36, 34, text="✦", fill="#FFD54D",
-                                         font=("Segoe UI", 12))),
-                      add(cv.create_text(120, 26, text="✦", fill="#FFF3C4",
-                                         font=("Segoe UI", 10))),
-                      add(cv.create_text(52, 100, text="✦", fill="#FFD54D",
-                                         font=("Segoe UI", 9))),
-                      add(cv.create_text(132, 88, text="✦", fill="#FFF3C4",
-                                         font=("Segoe UI", 11)))]
-        for grp in (self.wing_a, self.wing_b, self.eye_closed, self.eye_happy,
-                    self.speed, self.zzz, self.spark):
+        self.speed = [add(cv.create_line(14, 72, 32, 72, fill="#A9C3E2",
+                                         width=3, capstyle="round")),
+                      add(cv.create_line(8, 88, 30, 88, fill="#A9C3E2",
+                                         width=3, capstyle="round"))]
+        self.zzz = [add(cv.create_text(124, 48, text="z", fill="#B9C2D0",
+                                       font=("Segoe UI", 11, "italic bold"))),
+                    add(cv.create_text(138, 36, text="Z", fill="#CBD4E0",
+                                       font=("Segoe UI", 13, "italic bold"))),
+                    add(cv.create_text(151, 26, text="z", fill="#DDE3EC",
+                                       font=("Segoe UI", 10, "italic bold")))]
+
+        def star(x, y):
+            return (x, y - 7, x + 2, y - 2, x + 7, y, x + 2, y + 2,
+                    x, y + 7, x - 2, y + 2, x - 7, y, x - 2, y - 2)
+
+        self.spark = [add(cv.create_polygon(star(24, 40), fill="#FFE08A",
+                                            outline="", smooth=True)),
+                      add(cv.create_polygon(star(40, 104), fill="#FFD54D",
+                                            outline="", smooth=True)),
+                      add(cv.create_polygon(star(150, 108), fill="#FFE08A",
+                                            outline="", smooth=True)),
+                      add(cv.create_polygon(star(160, 60), fill="#FFF3C4",
+                                            outline="", smooth=True))]
+
+        for grp in (self.wing_up, self.wing_down, self.eye_closed,
+                    self.eye_happy, [self.mouth_o], self.speed, self.zzz,
+                    self.spark):
             for i in grp:
                 cv.itemconfigure(i, state="hidden")
         cv.itemconfigure(self.badge, state="hidden")
         cv.itemconfigure(self.badge_txt, state="hidden")
-        # 进度条（固定底部，不随蜜蜂晃）
-        self.pbar_bg = cv.create_rectangle(40, 120, 116, 126, fill="#1E2630",
-                                           outline="#39434F")
-        self.pbar_fg = cv.create_rectangle(41, 121, 42, 125, fill="#6FCF6F",
+        # 失联灰化要按原色还原，先把基色记账
+        self._palette = {i: cv.itemcget(i, "fill")
+                         for i in (self.body, self.belly)}
+
+        # —— 贴地件（不随蜜蜂移动）——
+        self.shadow = cv.create_oval(52, 126, 124, 137, fill="#232E3B",
+                                     outline="", stipple="gray25")
+        self.pbar_bg = cv.create_rectangle(46, 139, 128, 147, fill="#202A36",
+                                           outline="#3A4654")
+        self.pbar_fg = cv.create_rectangle(47, 140, 48, 146, fill="#7ED07E",
                                            outline="")
-        for i in (self.pbar_bg, self.pbar_fg):
-            cv.itemconfigure(i, state="hidden")
+        cv.itemconfigure(self.pbar_bg, state="hidden")
+        cv.itemconfigure(self.pbar_fg, state="hidden")
 
         # 动画游标
         self.ox = self.oy = 0.0
@@ -452,25 +529,26 @@ class PetApp:
         for i in ids:
             self.cv.itemconfigure(i, state=("normal" if on else "hidden"))
 
-    # ---- 状态套用：切换眼睛/翅膀/徽章/进度条 ----
+    # ---- 状态套用：切换眼睛/翅膀/嘴/徽章/进度条 ----
     def _apply_state(self, st, force=False):
         if st == self.state and not force:
             return
         self.state = st
         cv = self.cv
-        # 翅膀：睡/灰收翅；警示用 B 帧定住；飞行动画帧由 _flap 接管
+        # 翅膀：睡收翅；警示下压定住；飞行两帧由 _flap 接管
+        flying = st in ("work", "cheer")
         self._show(self.wing_rest, st in ("sleep", "dead"))
-        if st in ("work", "cheer"):
-            self._show(self.wing_a, True)
-            self._show(self.wing_b, False)
-        elif st == "alert":
-            self._show(self.wing_a, False)
-            self._show(self.wing_b, True)
+        if not flying:
+            self._show(self.wing_up, False)
+            self._show(self.wing_down, st == "alert")
         # 眼睛
         self._show(self.eye_open, st in ("work", "alert", "dead"))
         self._show(self.eye_closed, st in ("sleep", "dead"))
         self._show(self.eye_happy, st == "cheer")
-        cv.itemconfigure(self.mouth, extent=140 if st != "alert" else 60)
+        # 嘴：警示惊呼小圆嘴，其余微笑
+        cv.itemconfigure(self.smile,
+                         state=("hidden" if st == "alert" else "normal"))
+        self._show([self.mouth_o], st == "alert")
         # 徽章
         n_active = 0
         if self.snap:
@@ -500,18 +578,22 @@ class PetApp:
             ratio = max(0.0, min(1.0, done / float(total)))
             cv.itemconfigure(self.pbar_bg, state="normal")
             cv.itemconfigure(self.pbar_fg, state="normal")
-            cv.coords(self.pbar_fg, 41, 121, 41 + 74 * ratio, 125)
+            cv.coords(self.pbar_fg, 47, 140, 47 + 80 * ratio, 146)
         else:
             self._show([self.pbar_bg, self.pbar_fg], False)
-        # 服务失联灰化
+        # 服务失联灰化（按记账原色还原）
         if st == "dead" and not self.dead_visual:
             self.dead_visual = True
             cv.itemconfigure(self.body, fill="#B9B9B9")
+            cv.itemconfigure(self.belly, fill="#A6A6A6")
+            cv.itemconfigure(self.gloss, state="hidden")
             cv.itemconfigure(self.badge, fill="#8A93A6", state="normal")
             cv.itemconfigure(self.badge_txt, text="?", state="normal")
         elif st != "dead" and self.dead_visual:
             self.dead_visual = False
-            cv.itemconfigure(self.body, fill="#FFC93C")
+            cv.itemconfigure(self.body, fill=self._palette[self.body])
+            cv.itemconfigure(self.belly, fill=self._palette[self.belly])
+            cv.itemconfigure(self.gloss, state="normal")
 
     # ---- 数据轮询（4s 一拍）----
     def _tick(self):
@@ -553,6 +635,8 @@ class PetApp:
             snap["active_ids"] = list(self.prev_active)
             self._apply_state(st)
             self._sync_visibility(st)
+            if self._tip is not None and self._hover:
+                self._tip_update()
         if self.miss >= MAX_MISS:
             return self._bye()
         if self.miss >= 2:
@@ -578,6 +662,7 @@ class PetApp:
             self.hidden = True
             try:
                 self.root.withdraw()
+                self._tip_hide()
             except Exception:
                 pass
 
@@ -586,25 +671,31 @@ class PetApp:
         t = time.time() - self._t0
         st = self.state
         if st == "work":
-            tx, ty = math.sin(t * 2.1) * 3.0, math.sin(t * 4.2) * 4.0
+            tx, ty = math.sin(t * 2.1) * 4.0, math.sin(t * 4.2) * 5.0
             self._flap()
         elif st == "cheer":
-            tx, ty = math.cos(t * 5.0) * 10.0, math.sin(t * 5.0) * 8.0
+            tx, ty = math.cos(t * 5.0) * 12.0, math.sin(t * 5.0) * 9.0
             self._flap()
         elif st == "alert":
             tx = 3.0 if int(t * 5) % 2 else -3.0
             ty = 0.0
         elif st == "dead":
             tx, ty = 0.0, 0.0
-        else:   # sleep：呼吸式微沉浮
-            tx, ty = 0.0, math.sin(t * 1.2) * 1.2
+        else:   # sleep：坐得低一点，呼吸式微沉浮
+            tx, ty = 0.0, 5.0 + math.sin(t * 1.2) * 1.5
         self._move_bee(tx - self.ox, ty - self.oy)
+        # 影子跟着高度呼吸：飞得越高影子越窄
+        w = max(40.0, 72.0 - (5.0 - ty) * 2.0)
+        self.cv.coords(self.shadow, 88 - w / 2, 126, 88 + w / 2, 137)
         if st == "sleep":
-            phase = int(t * 2) % 3
+            phase = int(t * 1.6) % 4
             for i, z in enumerate(self.zzz):
-                self.cv.itemconfigure(z, state=("normal" if i <= phase
+                self.cv.itemconfigure(z, state=("normal" if i < min(phase, 3)
                                                 else "hidden"))
-            self.cv.coords(self.zzz[0], 120 + phase * 5, 52 - phase * 8)
+            rise = (t * 8) % 12
+            self.cv.coords(self.zzz[0], 124, 48 - rise * 0.4)
+            self.cv.coords(self.zzz[1], 138, 36 - rise * 0.4)
+            self.cv.coords(self.zzz[2], 151, 26 - rise * 0.4)
         if st == "cheer":
             on = int(t * 6) % 2
             for i, s in enumerate(self.spark):
@@ -619,10 +710,99 @@ class PetApp:
 
     def _flap(self):
         self._flap_a = not self._flap_a
-        self._show(self.wing_a, self._flap_a)
-        self._show(self.wing_b, not self._flap_a)
+        self._show(self.wing_up, self._flap_a)
+        self._show(self.wing_down, not self._flap_a)
 
-    # ---- 气泡 / 悬停 / 菜单 ----
+    # ---- 悬停任务清单（指针轮询：透明像素点击穿透，Enter/Leave 收不全）----
+    def _hover_tick(self):
+        try:
+            px, py = self.root.winfo_pointerx(), self.root.winfo_pointery()
+            wx, wy = self.root.winfo_x(), self.root.winfo_y()
+            inside = (not self.hidden and
+                      wx <= px < wx + WIN_W and wy <= py < wy + WIN_H)
+        except Exception:
+            inside = False
+        if inside and not self._hover:
+            self._hover = True
+            self._tip_pending = self.root.after(HOVER_DELAY_MS, self._tip_show)
+        elif not inside and self._hover:
+            self._hover = False
+            if self._tip_pending:
+                try:
+                    self.root.after_cancel(self._tip_pending)
+                except Exception:
+                    pass
+                self._tip_pending = None
+            self._tip_hide()
+        self.root.after(HOVER_MS, self._hover_tick)
+
+    def _tip_show(self):
+        self._tip_pending = None
+        if not self._hover:
+            return
+        if self._tip is None:
+            tk = self.tk
+            tip = tk.Toplevel(self.root)
+            tip.overrideredirect(True)
+            try:
+                tip.attributes("-topmost", True)
+                tip.configure(bg="#1B2430")
+            except Exception:
+                pass
+            self._tip_head = tk.Label(tip, text=self._tip_header(),
+                                      bg="#1B2430", fg="#9FB9D8",
+                                      font=("Microsoft YaHei UI", 8))
+            self._tip_head.pack(anchor="w", padx=10, pady=(6, 0))
+            self._tip_body = tk.Label(tip, text="", bg="#1B2430",
+                                      fg="#ECF2F8",
+                                      font=("Microsoft YaHei UI", 9),
+                                      justify="left", wraplength=280)
+            self._tip_body.pack(anchor="w", padx=10, pady=(2, 8))
+            self._tip = tip
+        self._tip_update()
+        try:
+            self._tip.deiconify()
+            self._tip.lift()
+        except Exception:
+            pass
+
+    def _tip_header(self):
+        n = 0
+        if self.snap:
+            n = sum(1 for t in self.snap["tasks"]
+                    if t["run_status"] in ACTIVE_STATUSES)
+        return (self._L("title") + " · " + self._L("n_running") % n) if n \
+            else self._L("title")
+
+    def _tip_update(self):
+        if self._tip is None:
+            return
+        body = "\n".join(tooltip_lines(self.snap or {"tasks": []}, self.lang))
+        try:
+            self._tip_head.configure(text=self._tip_header())
+            self._tip_body.configure(text=body)
+            self._tip_place()
+        except Exception:
+            pass
+
+    def _tip_place(self):
+        try:
+            self._tip.update_idletasks()
+            tw, th = self._tip.winfo_width(), self._tip.winfo_height()
+            wx, wy = self.root.winfo_x(), self.root.winfo_y()
+            sw = self.root.winfo_screenwidth()
+            x = wx + WIN_W + 8
+            if x + tw > sw - 4:
+                x = max(4, wx - tw - 8)
+            y = max(4, min(wy + 2, self.root.winfo_screenheight() - th - 40))
+            self._tip.geometry("+%d+%d" % (x, y))
+        except Exception:
+            pass
+
+    def _tip_hide(self):
+        self._destroy_win("_tip")
+
+    # ---- 气泡 / 菜单 ----
     def _bubble(self, kind, info):
         if kind == "cheer":
             text = self._L("cheer") % max(1, len(info["good"]))
@@ -668,31 +848,6 @@ class PetApp:
         except Exception:
             pass
         setattr(self, attr, None)
-
-    def _tooltip(self, show):
-        if not show:
-            self._destroy_win("_tip")
-            return
-        if getattr(self, "_tip", None) is not None or not self.snap:
-            return
-        lines = tooltip_lines(self.snap, self.lang)
-        tk = self.tk
-        tip = tk.Toplevel(self.root)
-        tip.overrideredirect(True)
-        try:
-            tip.attributes("-topmost", True)
-        except Exception:
-            pass
-        tk.Label(tip, text="\n".join(lines), bg="#222C38", fg="#ECF2F8",
-                 bd=1, relief="solid", font=("Microsoft YaHei UI", 9),
-                 justify="left", padx=8, pady=5).pack()
-        x = self.root.winfo_x() + WIN_W + 6
-        y = max(0, self.root.winfo_y() + 8)
-        tip.update_idletasks()
-        if x + tip.winfo_width() > self.root.winfo_screenwidth():
-            x = self.root.winfo_x() - tip.winfo_width() - 6
-        tip.geometry("+%d+%d" % (max(0, x), y))
-        self._tip = tip
 
     def _menu(self):
         mode = "always"
@@ -750,8 +905,6 @@ class PetApp:
         cv.bind("<ButtonRelease-1>", self._on_release)
         cv.bind("<Button-3>", lambda e: self._menu().tk_popup(e.x_root,
                                                               e.y_root))
-        cv.bind("<Enter>", lambda e: self._tooltip(True))
-        cv.bind("<Leave>", lambda e: self._tooltip(False))
         self.root.protocol("WM_DELETE_WINDOW", self._bye)
 
     def _on_press(self, e):

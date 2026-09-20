@@ -101,6 +101,16 @@ class TestPetLogic(unittest.TestCase):
         self.assertIn("写第0章", rows[0])
         self.assertIn("0/10", rows[0])
 
+    def test_tooltip_lines_queued_between_running_and_failed(self):
+        tasks = [_task("t-a", "running", done=1, total=2, cur="写稿"),
+                 _task("t-b", "queued"),
+                 _task("t-c", "failed")]
+        rows = pet.tooltip_lines(pet.parse_snapshot({"tasks": tasks}))
+        self.assertTrue(rows[0].startswith("● t-a"))
+        self.assertTrue(rows[1].startswith("○ t-b"))
+        self.assertIn(pet.LANG["zh"]["queued"], rows[1])
+        self.assertTrue(rows[2].startswith("✘ t-c"))
+
     def test_tooltip_lines_empty_shows_all_clear(self):
         rows = pet.tooltip_lines(pet.parse_snapshot({}))
         self.assertEqual(rows, [pet.LANG["zh"]["all_clear"]])
