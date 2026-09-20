@@ -228,12 +228,18 @@ def main():
     ap.add_argument("--groups-file", default="")
     ap.add_argument("--result", required=True, help="结果 JSON 落点（stdout 不可靠）")
     args = ap.parse_args()
-    if args.list_groups:
-        cmd_list_groups(args.result)
-    elif args.pull:
-        cmd_pull(args.out, args.state, args.groups_file, args.result)
-    else:
-        ap.error("需要 --list-groups 或 --pull")
+    try:
+        if args.list_groups:
+            cmd_list_groups(args.result)
+        elif args.pull:
+            cmd_pull(args.out, args.state, args.groups_file, args.result)
+        else:
+            ap.error("需要 --list-groups 或 --pull")
+    except Exception as e:
+        # 顶层异常也落 result：微信未登录/DB 锁住等真实原因必须透传给主程序
+        _write_result(args.result, {"ok": False, "errors": [str(e)],
+                                    "groups": [], "pulled": {}, "count": 0})
+        return 1
     return 0
 
 

@@ -10864,7 +10864,7 @@ function beeRenderPanel() {
   if (document.activeElement !== $("bee-reader-py")) $("bee-reader-py").value = cfg.reader_python || "";
   if (!Bee.selGroups) Bee.selGroups = (cfg.groups || []).slice();
   const n = Bee.selGroups.length;
-  $("bee-groups-btn").textContent = t("选择要监听的群（") + n + "）";
+  $("bee-groups-btn").textContent = t("选择要监听的群（{0}）", n);
   if (document.activeElement !== $("bee-dir")) $("bee-dir").value = cfg.watch_dir || "";
   if (document.activeElement !== $("bee-interval")) $("bee-interval").value = cfg.interval_minutes || 30;
   if (document.activeElement !== $("bee-maxchars")) $("bee-maxchars").value = cfg.max_chars || 12000;
@@ -10940,7 +10940,7 @@ function beeBindGroups() {
     const i = Bee.selGroups.findIndex((g) => g.username === gu);
     if (cb.checked && i < 0) Bee.selGroups.push({ username: gu, name: gn });
     if (!cb.checked && i >= 0) Bee.selGroups.splice(i, 1);
-    $("bee-groups-btn").textContent = t("选择要监听的群（") + Bee.selGroups.length + "）";
+    $("bee-groups-btn").textContent = t("选择要监听的群（{0}）", Bee.selGroups.length);
     cb.closest(".bee-g").classList.toggle("on", cb.checked);
   });
 }

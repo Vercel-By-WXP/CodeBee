@@ -434,6 +434,25 @@ class TestWxReaderSidecar(BaseTest):
         self.wr.save_state(st, {"a@chatroom": {"since_seq": 5, "name": "A"}})
         self.assertEqual(5, self.wr.load_state(st)["a@chatroom"]["since_seq"])
 
+    def test_main_crash_writes_result(self):
+        """sidecar 顶层异常也必须落 result（微信未登录等真实原因透传给主程序）。"""
+        import sys
+        res = self.tmp / "result.json"
+        gf = self.tmp / "g.json"
+        gf.write_text("[]", encoding="utf-8")
+        old = sys.argv
+        sys.argv = ["wx_reader.py", "--pull", "--out", str(self.tmp),
+                    "--state", str(self.tmp / "state.json"),
+                    "--groups-file", str(gf), "--result", str(res)]
+        try:
+            rc = self.wr.main()   # 测试解释器没装 wechatauto → cmd_pull 内 ImportError
+        finally:
+            sys.argv = old
+        self.assertEqual(1, rc)
+        d = json.loads(res.read_text(encoding="utf-8"))
+        self.assertFalse(d["ok"])
+        self.assertTrue(d["errors"], "崩溃原因必须写进 errors")
+
 
 class TestReaderWiring(WxDigestBase):
     """wxdigest ↔ sidecar 接线：配置往返、_poll 先拉后扫、失败不吞文件夹扫描。"""
@@ -461,7 +480,7 @@ class TestReaderWiring(WxDigestBase):
         def fake_run_reader(cfg):
             seen["cfg"] = dict(cfg)
             # sidecar 模拟：往监控文件夹追加直连群的导出
-            _mk_export(self.wx.inbox_dir() if False else Path(cfg["watch_dir"]),
+            _mk_export(Path(cfg["watch_dir"]),
                        "直连群.txt", "2024-09-03 10:00:00 成员甲\n直连消息\n")
             return 1
 

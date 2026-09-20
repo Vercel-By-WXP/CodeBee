@@ -2154,7 +2154,7 @@
     "从本机微信自动拉取（微信直连）": "Pull automatically from local WeChat (direct connection)",
     "64 位 Python 路径（需装 wechatauto-replica）": "64-bit Python path (with wechatauto-replica installed)",
     "例如 C:\\Users\\HP\\anaconda3\\envs\\wxprobe\\python.exe": "e.g. C:\\Users\\HP\\anaconda3\\envs\\wxprobe\\python.exe",
-    "选择要监听的群（": "Pick groups to watch (",
+    "选择要监听的群（{0}）": "Pick groups to watch ({0})",
     "刷新群列表": "Refresh group list",
     "搜索群名": "Search group name",
     "群列表为空，点「刷新群列表」": "Group list is empty — click \"Refresh group list\"",
