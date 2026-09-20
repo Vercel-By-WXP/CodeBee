@@ -76,7 +76,7 @@ BUILTIN_FLOWS = [
      "note": "起草 → 多维评审 → 修订循环 → 发布门禁"},
     {"id": "rank_scan", "name": "扫榜选材", "icon": "i-chart", "engine": "direct", "builtin": True,
      "goal_hint": "想写哪个方向（一句话，可留空默认分析总榜热门题材）",
-     "note": "抓取七猫排行榜公开数据 → AI 提炼热门题材/人设/差异化切入点（快档直出报告）"},
+     "note": "抓取七猫+番茄排行榜公开数据 → AI 提炼跨平台热门题材/人设/差异化切入点（快档直出报告）"},
     {"id": "research", "name": "调研报告", "icon": "i-file-search", "engine": "review", "builtin": True,
      "manuscript": "report.md",
      "rubric": ["全面性", "深度", "论据可靠", "可读性", "结论质量"],
