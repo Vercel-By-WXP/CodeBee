@@ -226,12 +226,14 @@ def _read_manifest(zf):
 
 
 def _safe_join(base: Path, name: str):
-    """zip 条目名 → base 下安全路径（zip slip 三道闸，拒绝一切逃逸形态）。
+    """zip 条目名 → base 下安全路径（zip slip 四道闸，拒绝一切逃逸形态）。
 
-    ①条目按 / 与 \\ 切段后，出现 .. 段、盘符（C:）或空壳即拒绝——这一步在
-    构造路径之前完成，静态可证；②只用纯段名 join 回基线（base / 带盘符的
-    name 在 Windows 会整个替换掉 base，故绝不直接拼）；③normpath 后必须
-    仍在 base 之内（双保险）。"""
+    ①条目名含 .. 字面量即拒绝（任何形态的父目录逃逸，构造路径之前完成）；
+    ②按 / 与 \\ 切段后出现 .. 段、盘符（C:）同样拒绝；③只用纯段名 join 回
+    基线（base / 带盘符的 name 在 Windows 会整体替换掉 base，故绝不直接拼）；
+    ④normpath 后必须仍在 base 之内（双保险）。"""
+    if ".." in name:
+        raise ValueError("备份包含非法路径条目: %s" % name[:120])
     parts = [p for p in _SEG_SPLIT.split(name) if p not in ("", ".")]
     if (not parts or any(p == ".." for p in parts)
             or _DRIVE_RE.match(parts[0])):
