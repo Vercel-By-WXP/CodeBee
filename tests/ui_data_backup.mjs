@@ -141,6 +141,28 @@ async function main() {
     check("状态行显示尚未清理", await waitFor(
       `document.getElementById("cl-state").textContent.includes("尚未清理过")`));
 
+    // 1b) 英文模式：类目名/标题/按钮都要有译文（i18n 词典收尾一旦坏掉，
+    //     这里立刻暴露成「整页回落中文」）。走真实切换路径 pickLang→setLangBtn，
+    //     顺带验证「停在本页切语言，动态渲染的清理面板会跟着重画」。
+    await evalJs(`pickLang("en"); "ok"`);
+    await sleep(700);
+    const enNav = await evalJs(`document.querySelector('[data-sub="data"]').textContent`);
+    const enPage = await evalJs(`document.getElementById("sub-data").textContent`);
+    const enPlan = await evalJs(`document.getElementById("cl-plan").textContent`);
+    check("英文模式：导航项译出（Data & Backup）", enNav.includes("Data & Backup"), enNav);
+    check("英文模式：页内标题/按钮译出",
+      enPage.includes("Backup & Migration") && enPage.includes("Export all data")
+      && enPage.includes("Daily cleanup"), enPage.slice(0, 160));
+    check("英文模式：清理类目名译出（Run process logs）",
+      enPlan.includes("Run process logs"), enPlan.slice(0, 160));
+    check("切语言后停在本页动态面板同步重画（无中文残留）",
+      !/[\u4e00-\u9fa5]/.test(enPlan), enPlan.slice(0, 160));
+    await evalJs(`pickLang("zh"); "ok"`);
+    await sleep(500);
+    check("切回中文正常回落",
+      (await evalJs(`document.querySelector('[data-sub="data"]').textContent`))
+        .includes("数据与备份"));
+
     // 2) 立即清理：垃圾消失、记录与报告保留、状态行更新
     await evalJs(`runCleanup(false); "ok"`);
     check("清理完成状态行更新", await waitFor(
@@ -187,6 +209,14 @@ async function main() {
     check("导入前反悔备份已生成", preImports.length === 1, preImports.join(","));
     check("种子任务仍在（合并覆盖同 id）",
       existsSync(join(dataDir, "tasks", "t-20200101-000000-0001.json")));
+    // 清理后计划区转为「无垃圾」：英文模式下该提示同样不能回落中文
+    await evalJs(`pickLang("en"); "ok"`);
+    await sleep(600);
+    const enEmpty = await evalJs(`document.getElementById("cl-plan").textContent`);
+    check("英文模式：清理区无中文回落（空态也译出）",
+      enEmpty.trim().length > 0 && !/[\u4e00-\u9fa5]/.test(enEmpty), enEmpty.slice(0, 120));
+    await evalJs(`pickLang("zh"); "ok"`);
+    await sleep(400);
     await shot("data-backup.png");
 
     ws.close();
