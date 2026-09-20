@@ -913,6 +913,11 @@ def _run_code(run, task, agents, ev, stats, mode):
     # ---- 规划
     if mode == "auto":
         _wait_gate(run_id, ev)
+        # 项目记忆注入（借鉴 agentmemory 持久记忆）：同工作目录此前代码任务留下的
+        # 架构事实，让规划器不再对代码库一无所知
+        _pm = _read_project_memory(workdir)
+        if _pm:
+            task = dict(task, context=((task.get("context") or "") + "\n\n" + _pm)[:8000])
         plan_step, plan_log = store.add_step(run_id, "plan", impl["id"], impl.get("label"),
                                              note=route.get("implementer", ""))
         plan = planner.make_code_plan(_steered_task(run_id, task),
@@ -1134,6 +1139,20 @@ def _run_code(run, task, agents, ev, stats, mode):
     lines += ["", "## 评审总评", "", review_json.get("summary", ""), ""]
     store.write_report(run_id, "\n".join(lines))
     _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
+    # 项目记忆沉淀（借鉴 agentmemory 持久记忆）：代码任务成功后提取架构事实
+    # （改动文件/验收结果/修复轮数），追加到 .codebee/project-memory.md——
+    # 同目录后续 code 任务规划前自动注入，让编排者「知道这个代码库的脾气」
+    try:
+        _diff = _git_diff(workdir)
+        _files_touched = sorted(set(re.findall(
+            r"(?:^|\n)diff --git a/(\S+) b/(\S+)", _diff or "")))
+        _touched_str = "、".join(sorted(set(b for _, b in _files_touched)))[:500] if _files_touched else ""
+        _mem_lines = ["改动文件：%s" % (_touched_str or "（无 diff）"),
+                      "验收：%s" % ("通过" if verify_pass else "未通过"),
+                      "修复轮数：%d" % (len(repairs) - 1)]
+        _write_project_memory(task, workdir, _mem_lines)
+    except Exception:
+        pass
     store.update_run(run_id, status="done", verdict=verdict,
                      summary="代码任务%s（验证%s / 评审%s%s）" % (
                          "通过" if overall_pass else "未通过",
@@ -3054,6 +3073,43 @@ def _read_constitution(workdir):
         return ""
     return ("## 项目宪章（constitution.md：本项目一切产出的质量原则，优先级最高，"
             "与其他要求冲突时以宪章为准）\n\n" + txt + "\n\n")
+
+
+def _write_project_memory(task, workdir, lines):
+    """项目记忆持久化（借鉴 agentmemory）：代码任务成功后把架构事实追加到
+    .codebee/project-memory.md——同目录后续 code 任务规划前自动注入，
+    让编排者「知道这个代码库的脾气」而非每次从零摸索。失败静默。"""
+    if not lines:
+        return ""
+    try:
+        pm = os.path.join(workdir, ".codebee", "project-memory.md")
+        os.makedirs(os.path.dirname(pm), exist_ok=True)
+        header_needed = not os.path.isfile(pm)
+        with open(pm, "a", encoding="utf-8") as f:
+            if header_needed:
+                f.write("# 项目记忆（每次代码任务完成后自动追加，供后续任务参考）\n\n")
+            f.write("### %s · %s\n" % (task.get("title") or "", _now()))
+            for ln in lines:
+                f.write("- %s\n" % str(ln)[:300])
+            f.write("\n")
+        return pm
+    except Exception:
+        return ""
+
+
+def _read_project_memory(workdir, cap=4000):
+    """读取项目记忆供规划提示词注入。超出上限截断到最新条目。"""
+    p = os.path.join(workdir or "", ".codebee", "project-memory.md")
+    if not _inside(workdir, p) or not os.path.isfile(p):
+        return ""
+    try:
+        txt = _read_text_any_enc(p)[:cap].strip()
+    except OSError:
+        return ""
+    if not txt:
+        return ""
+    return ("## 项目记忆（此前代码任务在此工作目录留下的架构事实，"
+            "规划时优先参考）\n\n" + txt + "\n\n")
 
 
 def _write_task_spec(task, workdir):
