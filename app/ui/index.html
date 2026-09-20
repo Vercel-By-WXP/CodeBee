@@ -1018,6 +1018,43 @@
   </div>
 </div>
 
+<!-- 群摘要蜜蜂坞（右下角悬浮蜜蜂）：桌面蜜蜂 pet.py 的网页侧搭档。
+     未读摘要时徽章+气泡提醒，点开面板看各群摘要/配置监控文件夹；
+     未启用且无数据时整坞隐藏（不占视线）。后端 core/wxdigest.py。 -->
+<div id="bee-dock" class="hidden">
+  <div id="bee-bubble" class="hidden"></div>
+  <button id="bee-fab" aria-label="群摘要" data-i18n-aria="群摘要" data-i18n-title="群摘要" title="群摘要">
+    <svg class="ico ico-lg" aria-hidden="true"><use href="#i-bee"></use></svg>
+    <span id="bee-badge" class="hidden"></span>
+  </button>
+</div>
+<div id="bee-panel" class="hidden" role="dialog" aria-label="群摘要" data-i18n-aria="群摘要">
+  <div class="bee-head">
+    <svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg>
+    <b data-i18n="群摘要">群摘要</b>
+    <span class="spacer"></span>
+    <button id="bee-cfg-btn" class="icon-btn" aria-label="设置" data-i18n-aria="设置" data-i18n-title="设置" title="设置"><svg class="ico" aria-hidden="true"><use href="#i-gear"></use></svg></button>
+    <button id="bee-scan-btn" class="icon-btn" aria-label="立即扫描" data-i18n-aria="立即扫描" data-i18n-title="立即扫描" title="立即扫描"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg></button>
+    <button id="bee-x" class="icon-btn" aria-label="关闭" data-i18n-aria="关闭" data-i18n-title="关闭" title="关闭">✕</button>
+  </div>
+  <div id="bee-list" class="bee-list"></div>
+  <div id="bee-cfg" class="bee-cfg hidden">
+    <label class="toggle"><input id="bee-enabled" type="checkbox"> <span data-i18n="启用定时扫描">启用定时扫描</span></label>
+    <span class="bee-lab" data-i18n="监控文件夹">监控文件夹</span>
+    <div class="bee-dir-row">
+      <input id="bee-dir" type="text" spellcheck="false" placeholder="D:\wx-exports">
+      <button id="bee-dir-pick" class="ghost small" data-i18n-title="浏览…" title="浏览…">…</button>
+    </div>
+    <div class="bee-row2">
+      <label><span data-i18n="间隔（分钟）">间隔（分钟）</span><input id="bee-interval" type="number" min="5" max="1440"></label>
+      <label><span data-i18n="窗口字数">窗口字数</span><input id="bee-maxchars" type="number" min="4000" max="60000" step="1000"></label>
+    </div>
+    <div id="bee-status" class="bee-status"></div>
+    <button id="bee-save" class="primary small" data-i18n="保存设置">保存设置</button>
+    <p class="bee-note" data-i18n="把导出的群聊记录 txt 放进监控文件夹（文件名=群名，每条以「2024-01-01 12:34 发送者」开头），蜜蜂定时增量生成摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。">把导出的群聊记录 txt 放进监控文件夹（文件名=群名，每条以「2024-01-01 12:34 发送者」开头），蜜蜂定时增量生成摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。</p>
+  </div>
+</div>
+
 <script src="qrcode.js"></script>
 <script src="i18n.js"></script>
 <script src="app.js"></script>

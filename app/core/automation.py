@@ -394,6 +394,15 @@ def _tick():
         _zentao.fire_due()
     except Exception:
         log.debug("automation: 禅道扫描跳过", exc_info=True)
+    # 微信群摘要联动：监控文件夹增量扫描（fire_due 自节流，同上）。
+    try:
+        from . import wxdigest as _wxd
+        r = _wxd.fire_due()
+        if r and not r.get("skipped") and (r.get("made") or r.get("error")):
+            log.info("automation: 群摘要扫描完成 made=%s err=%s",
+                     r.get("made"), r.get("error") or "-")
+    except Exception:
+        log.debug("automation: 群摘要扫描跳过", exc_info=True)
 
 
 def _loop():

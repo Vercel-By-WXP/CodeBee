@@ -2100,6 +2100,29 @@
     "蜜蜂已放出，就落在桌面右下角": "Bee released — it lands near the bottom-right of your desktop",
     "蜜蜂已回巢": "The bee has flown back to the hive",
     "显示模式": "Display mode",
+
+    // —— 群摘要蜜蜂坞（wxdigest）——
+    "群摘要": "Group Digests",
+    "启用定时扫描": "Enable scheduled scanning",
+    "监控文件夹": "Watched folder",
+    "间隔（分钟）": "Interval (min)",
+    "窗口字数": "Window size (chars)",
+    "保存设置": "Save settings",
+    "浏览…": "Browse…",
+    "把导出的群聊记录 txt 放进监控文件夹（文件名=群名，每条以「2024-01-01 12:34 发送者」开头），蜜蜂定时增量生成摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。": "Drop exported chat-record .txt files into the watched folder (file name = group name; each message starts with \"2024-01-01 12:34 Sender\") and the bee summarizes new messages on schedule. Records stay local; summary requests are sent to the currently bound model, and the desktop bee will notify you of new digests.",
+    "嗡！新群摘要好了：": "Buzz! New digests are ready: ",
+    "上次扫描：": "Last scan: ",
+    "下次：": "Next: ",
+    "未配置可用模型，请先到「绑定」页设置": "No usable model configured — set one up on the Bindings page first",
+    "还没有摘要": "No digests yet",
+    " 条": " msg(s)",
+    "群摘要设置已保存": "Digest settings saved",
+    "保存失败：": "Save failed: ",
+    "扫描完成，生成": "Scan finished — ",
+    " 条新摘要": " new digest(s)",
+    "扫描完成，暂无新内容": "Scan finished — nothing new",
+    "扫描有问题：": "Scan issue: ",
+    "扫描失败：": "Scan failed: ",
   };
 
   // ---------- 工具 ----------

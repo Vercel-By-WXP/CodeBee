@@ -10424,3 +10424,135 @@ function bindCmdK() {
     if (it) cmdkRun(Number(it.dataset.i) || 0);
   });
 }
+
+/* ------------------------------------------------ 群摘要蜜蜂坞（core/wxdigest.py）
+ * 右下角悬浮蜜蜂：未读摘要徽章+气泡；面板看各群摘要、配置监控文件夹。
+ * 桌面蜜蜂 pet.py 的网页侧搭档；未启用且无数据时整坞隐藏（不占视线）。
+ * 60s 轮询 /api/wxdigest；打开面板即 POST seen 清零未读。 */
+const Bee = { view: null, lastUnseen: 0, bubT: 0 };
+
+function beeShow(el, on) { if (el) el.classList.toggle("hidden", !on); }
+function beePanelOpen() { const p = $("bee-panel"); return !!p && !p.classList.contains("hidden"); }
+
+async function beeRefresh() {
+  let v;
+  try { v = await api("/api/wxdigest"); } catch (e) { return; }   // 静默：不打扰主流程
+  Bee.view = v;
+  const on = !!(v.config && v.config.enabled) ||
+    (v.digests && v.digests.length) || v.unseen > 0;
+  beeShow($("bee-dock"), on);
+  beeShow($("bee-badge"), v.unseen > 0);
+  if (v.unseen > 0) $("bee-badge").textContent = v.unseen > 99 ? "99+" : String(v.unseen);
+  if (v.unseen > Bee.lastUnseen && !beePanelOpen()) {   // 新摘要到：气泡 6s
+    const b = $("bee-bubble");
+    const names = [...new Set((v.digests || []).slice(0, v.unseen).map((d) => d.group))];
+    b.textContent = t("嗡！新群摘要好了：") + (names.join(t("、")) || "…");
+    beeShow(b, true);
+    clearTimeout(Bee.bubT);
+    Bee.bubT = setTimeout(() => beeShow(b, false), 6000);
+  }
+  Bee.lastUnseen = v.unseen;
+  if (beePanelOpen()) beeRenderPanel();
+}
+
+function beeToggle(force) {
+  const p = $("bee-panel");
+  if (!p) return;
+  const open = force !== undefined ? force : p.classList.contains("hidden");
+  beeShow(p, open);
+  if (open) {
+    const v = Bee.view || {};
+    const hasData = (v.digests || []).length > 0;
+    beeShow($("bee-cfg"), !hasData);   // 没数据时首开直落配置（可发现性）
+    beeRenderPanel();
+    beeMarkSeen();
+  }
+}
+
+async function beeMarkSeen() {
+  try {
+    const r = await api("/api/wxdigest/seen", { method: "POST", body: "{}" });
+    Bee.view = r.view;
+    Bee.lastUnseen = 0;
+    beeShow($("bee-badge"), false);
+    beeRenderPanel();
+  } catch (e) { /* ignore */ }
+}
+
+function beeRenderPanel() {
+  const v = Bee.view;
+  if (!v) return;
+  const cfg = v.config || {};
+  $("bee-enabled").checked = !!cfg.enabled;
+  if (document.activeElement !== $("bee-dir")) $("bee-dir").value = cfg.watch_dir || "";
+  if (document.activeElement !== $("bee-interval")) $("bee-interval").value = cfg.interval_minutes || 30;
+  if (document.activeElement !== $("bee-maxchars")) $("bee-maxchars").value = cfg.max_chars || 12000;
+  const bits = [];
+  if (v.last_scan) bits.push(t("上次扫描：") + v.last_scan);
+  if (v.next_scan && cfg.enabled) bits.push(t("下次：") + v.next_scan);
+  if (v.last_error) bits.push("⚠ " + v.last_error);
+  if (!v.has_model) bits.push("⚠ " + t("未配置可用模型，请先到「绑定」页设置"));
+  $("bee-status").textContent = bits.join("　");
+  const list = $("bee-list");
+  if (!(v.digests || []).length) {
+    list.innerHTML = '<div class="bee-empty">' + esc(t("还没有摘要")) + "</div>";
+  } else {
+    list.innerHTML = v.digests.map((d) =>
+      '<div class="bee-digest">' +
+      '<div class="bee-digest-head"><span class="bee-tag">' + esc(d.group) + "</span>" +
+      '<span class="bee-meta">' + esc(d.created_at || "") + " · " + Number(d.count || 0) + t(" 条") + "</span></div>" +
+      '<div class="bee-text">' + esc(d.text || "") + "</div></div>"
+    ).join("");
+  }
+}
+
+async function beeSave() {
+  try {
+    const r = await api("/api/wxdigest/config", { method: "POST", body: JSON.stringify({
+      enabled: $("bee-enabled").checked,
+      watch_dir: $("bee-dir").value.trim(),
+      interval_minutes: Number($("bee-interval").value || 30),
+      max_chars: Number($("bee-maxchars").value || 12000),
+    }) });
+    if (Bee.view) Bee.view.config = r.config;
+    toast(t("群摘要设置已保存"));
+    beeRefresh();
+  } catch (e) { toast(t("保存失败：") + (e.message || e), true); }
+}
+
+async function beeScan() {
+  const btn = $("bee-scan-btn");
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const r = await api("/api/wxdigest/scan", { method: "POST", body: "{}", timeout: 300000 });
+    if (r.ok && r.made) toast(t("扫描完成，生成") + " " + r.made + t(" 条新摘要"));
+    else if (r.ok) toast(t("扫描完成，暂无新内容"));
+    else toast(t("扫描有问题：") + (r.error || ""), true);
+    beeRefresh();
+  } catch (e) { toast(t("扫描失败：") + (e.message || e), true); }
+  btn.disabled = false;
+}
+
+(function () {
+  const boot = () => {
+    if (!$("bee-fab")) return;
+    $("bee-fab").addEventListener("click", () => beeToggle());
+    $("bee-x").addEventListener("click", () => beeToggle(false));
+    $("bee-cfg-btn").addEventListener("click", () => {
+      const c = $("bee-cfg");
+      beeShow(c, c.classList.contains("hidden"));
+    });
+    $("bee-save").addEventListener("click", beeSave);
+    $("bee-scan-btn").addEventListener("click", beeScan);
+    $("bee-dir-pick").addEventListener("click", () => window.pickFolder("bee-dir", true));
+    beeRefresh();
+    setInterval(beeRefresh, 60000);
+  };
+  // 错开首屏：令牌门/状态首帧先走，群摘要轮询晚 2s 再起
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(boot, 2000));
+  } else {
+    setTimeout(boot, 2000);
+  }
+})();

@@ -5236,3 +5236,56 @@ body.welcome-open { overflow: hidden; }
 /* —— 知识库：工具行（搜索框 + 状态过滤 chips 同排）—— */
 .kb-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 2px; }
 .kb-toolbar input { flex: 1 1 220px; min-width: 180px; }
+
+/* —— 群摘要蜜蜂坞（右下角悬浮蜜蜂 + 面板，core/wxdigest.py 的网页侧）—— */
+#bee-dock { position: fixed; right: 18px; bottom: 18px; z-index: 160;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+#bee-fab { position: relative; width: 46px; height: 46px; border-radius: 50%;
+  border: 1px solid var(--border-strong); background: var(--panel); color: var(--text);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow); animation: beeBreath 3.2s ease-in-out infinite; }
+#bee-fab:hover { border-color: var(--warn); }
+#bee-fab .ico-lg { width: 26px; height: 26px; color: var(--warn); }
+#bee-badge { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px;
+  padding: 0 4px; border-radius: 9px; background: var(--bad); color: #fff;
+  font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+#bee-bubble { max-width: 260px; background: var(--panel); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 12px;
+  padding: 8px 12px; font-size: 12.5px; box-shadow: var(--shadow); }
+@keyframes beeBreath { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { #bee-fab { animation: none; } }
+#bee-panel { position: fixed; right: 18px; bottom: 72px; width: 380px;
+  max-width: calc(100vw - 36px); max-height: min(560px, 72vh); z-index: 161;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg); box-shadow: var(--shadow); }
+.bee-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  border-bottom: 1px solid var(--border); }
+.bee-head b { font-size: 14px; }
+.bee-head .spacer { flex: 1; }
+.bee-list { overflow: auto; padding: 10px 12px; display: flex;
+  flex-direction: column; gap: 10px; min-height: 46px; }
+.bee-digest { border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 10px; }
+.bee-digest-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.bee-tag { background: rgba(245, 185, 66, .16); color: var(--warn);
+  border-radius: 6px; padding: 1px 8px; font-size: 12px; font-weight: 600; }
+.bee-meta { font-size: 11.5px; color: var(--muted); }
+.bee-text { font-size: 12.5px; line-height: 1.55; white-space: pre-wrap;
+  word-break: break-word; color: var(--text); }
+.bee-empty { color: var(--muted); font-size: 12.5px; text-align: center; padding: 16px 0; }
+.bee-cfg { border-top: 1px solid var(--border); padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 8px; overflow: auto; }
+.bee-lab { font-size: 12.5px; color: var(--muted); }
+.bee-dir-row { display: flex; gap: 6px; }
+.bee-dir-row input { flex: 1; min-width: 0; }
+.bee-row2 { display: flex; gap: 12px; flex-wrap: wrap; }
+.bee-row2 label { display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: var(--muted); }
+.bee-row2 input { width: 84px; }
+.bee-status { font-size: 11.5px; color: var(--muted); min-height: 15px; line-height: 1.5; }
+.bee-note { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin: 0; }
+#bee-cfg .primary { align-self: flex-start; }
+
+/* 登记已有作品：内联表单行（无书卡的补救口，2026-09-20） */
+.pb-reg { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pb-reg input { flex: 1 1 150px; min-width: 0; font-size: 12.5px; padding: 5px 10px; }

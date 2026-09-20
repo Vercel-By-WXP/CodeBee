@@ -467,6 +467,13 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/zentao":
                 from core import zentao
                 return self._json(200, zentao.view())
+            if path == "/api/wxdigest":
+                from core import wxdigest
+                try:
+                    return self._json(200, wxdigest.view())
+                except Exception:
+                    log.exception("wxdigest: view 失败")
+                    return self._json(500, {"error": "群摘要视图生成失败"})
             m = re.match(r"^/api/automation/([^/]+)$", path)
             if m:
                 t = automation.get_task(m.group(1))
@@ -1006,6 +1013,20 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._json(400, {"error": str(e)})
             return self._json(200, {"ok": True, "config": cfg})
+        if path == "/api/wxdigest/config":
+            from core import wxdigest
+            try:
+                cfg = wxdigest.save_config(self._body())
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+            return self._json(200, {"ok": True, "config": cfg})
+        if path == "/api/wxdigest/scan":
+            from core import wxdigest
+            res = wxdigest.scan_now()    # 含模型调用，同步做（ThreadingHTTPServer 不堵别的请求）
+            return self._json(200, dict(res, ok=bool(res.get("ok"))))
+        if path == "/api/wxdigest/seen":
+            from core import wxdigest
+            return self._json(200, {"ok": True, "view": wxdigest.seen_clear()})
         if path == "/api/zentao/test":
             from core import zentao
             body = self._body()
@@ -1321,12 +1342,18 @@ class Handler(BaseHTTPRequestHandler):
                                      or "") if cur else ""),
                 "error": str(run.get("error") or "")[:160],
             })
+        try:
+            from core import wxdigest as _wxd   # 群摘要喂食：未读数+最新一条（失败兜底零值）
+            dg = _wxd.pet_digest()
+        except Exception:
+            dg = {"unseen": 0, "latest": None}
         return self._json(200, {
             "ok": True, "ts": int(time.time()), "port": PORT,
             "settings": {"pet_enabled": bool(st.get("pet_enabled", True)),
                          "pet_mode": str(st.get("pet_mode") or "always")},
             "workers": {"running": n_run, "queued": n_q},
             "tasks": rows,
+            "digest": dg,
         })
 
     def _api_pick_folder(self):
@@ -2208,6 +2235,13 @@ def main():
         n_zt = zentao.start()   # 禅道集成：加载扫描配置与认领台账（调度挂在 automation tick）
         if n_zt:
             print("[CodeBee] 禅道集成：%d 条认领记录已加载" % n_zt)
+    except Exception:
+        pass
+    try:
+        from core import wxdigest
+        n_wx = wxdigest.start()   # 群摘要：加载监控配置与游标（调度挂在 automation tick）
+        if n_wx:
+            print("[CodeBee] 群摘要：%d 个群游标已加载" % n_wx)
     except Exception:
         pass
     tok = remote.token()
