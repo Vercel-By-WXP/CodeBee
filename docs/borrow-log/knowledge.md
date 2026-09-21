@@ -454,3 +454,17 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - A 组复查：oh-my-claudecode 39.3k/orca 74.2k/omnigent 10.2k/claude-code-router 37.4k/freellmapi 27.8k 全活跃
 
 **✅ 本班落地**：压缩摘要真正替换 CLI 请求上下文（最老待深挖项清账）——实锤 derive_messages() 零消费方：压缩折叠 session surface 后重试仍发原 prompt+续旧 resume 会话，摘要只进审计日志、CLI 上下文一点没小（重试必再爆）。修复：溢出重试改用 session 派生转录（折叠摘要+近尾消息，24k 上限）+ 本步指令缺失显式补尾 + **弃 resume**（旧会话本体仍是膨胀态）；test_step_runner 断言升级+新增 drops_resume 用例，压缩域 29 项回归绿
+
+### 2026-09-22 00:00 第二十四班（批7：中文/网关/本地/办公 + 全类型雷达）
+
+- **openhuman**（tinyhumansai，40,002★，新巨型标）入库 | 「开源 agent harness：local-first 记忆+编排+工作流」——本地优先的完整 harness 形态，与 unsloth/anything-llm 同列本地三巨头 | 深挖排队
+- **iflytek/astron-agent 9,022★ + astron-rpa 5,551★**（讯飞开源）入库 | 企业级 agentic workflow 平台 + Agent-ready RPA 套件（商用友好协议）| 国内大厂 agent 化 RPA 的标杆参照 | 参考
+- **Yuxi**（xerrors，7,158★）入库 | 可私有部署多租户知识智能体平台（统一 RAG/知识图谱/多智能体/MCP+Skills/沙盒权限）| 中文自托管全家桶对标 | 参考
+- **cognee**（30,886★）复查 | 开源 AI 记忆平台（跨会话持久长期记忆）| 记忆域大盘 | 参考
+- **BidCraft 标书匠**（18★，新）| 对话式标书编制：招标文件解析→标段选择→标书编写→知识库提炼→对话式改稿（LangGraph）| **新任务类型灵感：标书/投标文件**——我们的文档族没覆盖，进 keywords 备选 | 雷达
+- comfy-agent（25★）：本地优先 ComfyUI 短剧工坊（10MB 零依赖 exe）| 短剧赛道补充 | 雷达
+- 网关新锐：1Panel-Gateway（71★，统一接入/智能路由/合规审计——企业 AI 落地管控链）/FailoverAI（图/视频/LLM 可靠性网关）/CosyRedactGateway（脱敏网关）| 参考
+- 本地大盘复查：unsloth 76.5k/anything-llm 66.3k/agenticSeek 27.3k/khoj 37.5k 全活跃
+- B7 中文搜索组（数字员工/中转/小说平台/办公/中文编排）API 返回空——中文关键词命中弱，靠雷达-中文新锐补位
+
+**✅ 本班落地**：T2.2 幂等调用精确缓存补全接线（§07 token-cost 收尾）——连通测试此前已接 24h；本轮补编排者三处：连载大纲（尝试 1 TTL 1h、**尝试 2 故意旁路**保「换样本」语义）/代码计划 1h/评审大纲 1h——断点续跑与重跑同任务时规划调用直接命中，省一次全量编排者调用。test_planner_cache_wiring 3 项

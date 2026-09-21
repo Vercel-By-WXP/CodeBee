@@ -327,9 +327,14 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
             # 否则 stop_reason=max_tokens、正文为空（实测 2048 全被思考吞掉）
             # 流式回调把增量实时写进步骤日志，直连生成不再是一行标题的黑箱
             cb = _log_streamer(log_path)
+            # §07 T2.2 幂等精确缓存（TTL 1h）：断点续跑/重跑同任务时大纲
+            # prompt 逐字节相同，命中省一次全量规划调用。第 2 次尝试故意
+            # 旁路缓存——首试 ok 但 JSON 不合法时，重试要的是「再抽一次样
+            # 本」而不是同一份坏文本。
             res = modelhub.chat(prov["id"], model, prompt,
                                 max_tokens=16000, timeout=300, on_delta=cb,
-                                reasoning_effort=_reasoning_effort(task))
+                                reasoning_effort=_reasoning_effort(task),
+                                cache_ttl=3600 if _attempt == 1 else 0)
             cb.flush()
             _log_usage("outline", "outline", task, res, model=model,
                        provider=prov.get("name", prov.get("id", "")),
@@ -496,13 +501,15 @@ def _fallback_code_plan(task, note):
 
 def _orch_code_plan(task, prov, model, log_path=None):
     cb = _log_streamer(log_path)
+    # §07 T2.2：代码计划同任务同 prompt（断点续跑/重试），TTL 1h 精确缓存
     res = modelhub.chat(prov["id"], model,
                         (CODE_PLAN_PROMPT.replace("__N__", str(MAX_SUBTASKS))
                          .replace("__GOAL__", task["goal"])
                          .replace("__CONTEXT__", task.get("context") or "（无）")
                          .replace("__VERIFY__", task.get("verify_command") or "（未配置）")),
                         max_tokens=8000, timeout=300, on_delta=cb,
-                        reasoning_effort=_reasoning_effort(task))
+                        reasoning_effort=_reasoning_effort(task),
+                        cache_ttl=3600)
     cb.flush()
     _log_usage("plan", "plan", task, res, model=model,
                provider=prov.get("name", prov.get("id", "")))
@@ -531,7 +538,8 @@ def make_review_outline(task):
                          .replace("__GOAL__", task["goal"])
                          .replace("__CONTEXT__", task.get("context") or "（无）")),
                         max_tokens=8000, timeout=300,
-                        reasoning_effort=_reasoning_effort(task))
+                        reasoning_effort=_reasoning_effort(task),
+                        cache_ttl=3600)   # §07 T2.2：同任务重试幂等，TTL 1h
     _log_usage("outline", "outline", task, res, model=model,
                provider=prov.get("name", prov.get("id", "")))
     if not res["ok"]:
