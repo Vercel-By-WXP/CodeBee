@@ -590,6 +590,7 @@ async function api(path, opts) {
   delete fetchOpts.busy;
   delete fetchOpts.busyElement;
   delete fetchOpts.operation;
+  delete fetchOpts._ctrlRetry;
   try {
     let res;
     try {
@@ -602,7 +603,27 @@ async function api(path, opts) {
     if (res.status === 401) { showTokenGate(t("令牌不正确或已更换，请重新输入")); throw new Error(t("需要访问令牌")); }
     let data = null;
     try { data = await res.json(); } catch (e) { /* ignore */ }
-    if (res.status === 423 && data && data.control) setControl(data.control);
+    if (res.status === 423 && data && data.control) {
+      setControl(data.control);
+      // 手机端接管闭环（用户实测反馈：423 连点全失败不知道怎么办）：
+      // 他人持有时弹「接管并重试」确认，确认后抢夺控制权并自动重试一次。
+      // uiConfirm 弹窗互斥防堆叠；重试标记防递归；GET 轮询不会走到这里。
+      const holder = data.control.holder || "";
+      if (!opts._ctrlRetry && !opts.silent && !api._ctrlPrompting && holder) {
+        api._ctrlPrompting = true;
+        try {
+          if (await uiConfirm(t("「{0}」正在控制，接管后自动重试「{1}」？",
+            holder, operationLabel(path, { ...opts, operation: true }) || t("提交操作")),
+            { ok: t("接管并重试") })) {
+            await ctrlAction("acquire", true);
+            api._ctrlPrompting = false;
+            return api(path, Object.assign({}, opts, { _ctrlRetry: true }));
+          }
+        } finally {
+          api._ctrlPrompting = false;
+        }
+      }
+    }
     if (!res.ok) throw new Error((data && data.error) || ("HTTP " + res.status));
     operationFinish(operationToken, "done");
     return data;

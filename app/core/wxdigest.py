@@ -131,17 +131,25 @@ def refresh_groups():
     _DIR.mkdir(parents=True, exist_ok=True)
     rf = _DIR / "groups_cache.json"
     cmd = [rp, str(READER_SCRIPT), "--list-groups", "--result", str(rf)]
+    stderr = b""
     try:
-        subprocess.run(cmd, timeout=READER_TIMEOUT, capture_output=True,
-                       creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
+        r = subprocess.run(cmd, timeout=READER_TIMEOUT, capture_output=True,
+                           creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
+        stderr = r.stderr or b""
     except subprocess.TimeoutExpired:
         raise RuntimeError("读取群列表超时（%ds）" % READER_TIMEOUT)
     try:
         res = json.loads(rf.read_text(encoding="utf-8"))
     except Exception:
-        raise RuntimeError("群列表无有效输出（检查 reader_python 环境）")
+        # 带上 sidecar stderr 尾部：依赖缺失/解释器位数不对/脚本异常的真因
+        # 不再被「无有效输出」一句吞掉（用户实测排障反馈）
+        detail = (stderr or b"").decode("utf-8", "replace").strip()[-300:]
+        raise RuntimeError("群列表无有效输出（检查 reader_python 环境）%s"
+                           % ("：" + detail if detail else ""))
     if not res.get("ok"):
-        raise RuntimeError("读取群列表失败")
+        errs = "；".join(str(x) for x in (res.get("errors") or [])) or \
+               str(res.get("error") or "未知错误")
+        raise RuntimeError("读取群列表失败：%s" % errs[:300])
     groups = res.get("groups") or []
     with _LOCK:
         _STATE["groups_cache"] = groups

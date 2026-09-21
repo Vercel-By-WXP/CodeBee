@@ -409,6 +409,8 @@
     "%（失败 ": "% (failed ",
     "「": "\"",
     "」将变为只读。": "\" will become read-only.",
+    "「{0}」正在控制，接管后自动重试「{1}」？": "\"{0}\" is in control. Take over and retry \"{1}\"?",
+    "接管并重试": "Take over & retry",
     "」恢复为内置默认配置？": "\" restored to built-in defaults?",
     "{0} 正在控制（点击接管）": "{0} is in control (click to take over)",
     "」？已有任务不受影响。": "\"? Existing tasks are not affected.",
