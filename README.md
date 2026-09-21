@@ -23,10 +23,24 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 <!-- relnotes:start -->
 ### ✨ 新功能 · New
 
-- 升级后蜜蜂自动换新装：服务重启后旧蜜蜂自动让位，新蜜蜂带新形象上线。
-- After upgrading, the desktop bee swaps itself for the new look: the old bee steps aside when the service restarts.
+- 微信直连配置更省事：「扫描」自动找本机 Python（标注位数与依赖状态，点选即用），选中后可一键安装 wechatauto-replica。
+- WeChat setup is now effortless: a Scan button finds local Pythons (with bitness and dependency badges), and one click installs wechatauto-replica.
+
+- 桌面蜜蜂右键新增「群摘要」：直达群摘要面板，已打开的页面只聚焦不重复开。
+- The desktop bee's right-click menu now has "Group Digests" — it focuses the existing page instead of opening a duplicate.
+
+- 没装 Pillow 的电脑上蜜蜂也会显示新形象贴图了（修复手绘丑蜜蜂问题）。
+- Bees now show the new artwork even without Pillow installed (fixes the ugly hand-drawn fallback).
 
 ### 🛠 问题修复 · Fixes
+
+- 禅道自动化开关与扫描间隔紧凑排成一行。
+- ZenTao automation toggles and the scan interval now fit on one tidy row.
+
+### 上一版亮点 · Previous release
+
+- 升级后蜜蜂自动换新装：服务重启后旧蜜蜂自动让位，新蜜蜂带新形象上线。
+- After upgrading, the desktop bee swaps itself for the new look: the old bee steps aside when the service restarts.
 
 - 去掉蜜蜂底部的任务进度条，窗口更干净。
 - Removed the task progress bar under the desktop bee for a cleaner look.
