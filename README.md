@@ -23,6 +23,9 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 <!-- relnotes:start -->
 ### 🛠 问题修复 · Fixes
 
+- 断点续跑/重跑更省钱：同任务再次生成大纲或计划直接命中精确缓存（1 小时内），不重复花全量规划调用；格式不合规的重试仍重新生成。
+- Resuming or re-running a task now hits an exact cache for outline/plan regeneration (within 1 hour), skipping a full planning call; format-failure retries still regenerate.
+
 - 修复长任务上下文撑爆后重试仍失败：压缩摘要此前只写日志、没真正替换发往模型的上下文；现在重试用「压缩摘要+最近消息」重建请求并放弃膨胀的旧会话，超长任务能真正续跑。
 - Fixed long-task overflow retries failing again: compaction summaries used to go only to logs. Retries now rebuild the request from the summary plus recent messages and drop the bloated old session.
 
