@@ -5508,3 +5508,16 @@ button.request-busy > * { opacity: .18; }
 @media (prefers-reduced-motion: reduce) {
   .op-pill.running .ico, .op-row.running .op-state { animation: none; }
 }
+
+/* 关于与更新：版本信息面板常态样式（加载中才挂 .empty 居中虚线皮肤；
+   renderSu 填充内容后移除 empty，改用这里的左对齐阅读样式——用户反馈） */
+#su-info {
+  padding: 12px 14px;
+  border: 1px solid var(--border, rgba(128, 128, 128, .25));
+  border-radius: 8px;
+  background: var(--bg-soft, rgba(128, 128, 128, .06));
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.6;
+}
+#su-info.empty { text-align: center; }

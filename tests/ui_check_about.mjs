@@ -105,8 +105,15 @@ async function main() {
       checkDisabled: document.getElementById("su-check").disabled
     })`));
     check("sub-about 面板显示且页签标题正确", page.visible && /关于与更新/.test(page.title), page.title);
-    check("版本信息渲染（当前版本 v0.1.0 + 开发仓库模式）",
-      /v0\.1\.0/.test(page.info) && /开发仓库/.test(page.info), page.info);
+    // 版本信息填充真实内容后必须摘掉 .empty 居中皮肤，左对齐阅读（用户反馈）
+    const align = await evalJs(`JSON.stringify({
+      empty: document.getElementById("su-info").classList.contains("empty"),
+      align: getComputedStyle(document.getElementById("su-info")).textAlign
+    })`);
+    const a3 = JSON.parse(align);
+    check("版本信息左对齐（.empty 已摘除）", a3.empty === false && a3.align === "left", align);
+    check("版本信息渲染（当前版本号 + 开发仓库模式，不锁死具体版本）",
+      /v\d+\.\d+\.\d+/.test(page.info) && /开发仓库/.test(page.info), page.info);
     check("repo 模式 note 提示 git pull", /git pull/.test(page.note), page.note);
     check("repo 模式升级按钮隐藏（永不自动升级防覆盖）", page.applyHidden && page.restartHidden);
     check("检查更新按钮可用", page.checkDisabled === false);
@@ -165,9 +172,10 @@ async function main() {
 
     check("浏览器控制台无 JS 错误", consoleErrors.length === 0, consoleErrors.join(" | "));
 
-    // 7) 服务端复核：/api/selfupdate 与页面渲染一致
+    // 7) 服务端复核：/api/selfupdate 与页面渲染一致（版本号不锁死，随仓库演进而变）
     const su = await fetch(SERVICE + "/api/selfupdate").then((r) => r.json());
-    check("服务端 mode=repo / current=0.1.0 / 无更新", su.mode === "repo" && su.current === "0.1.0" && su.has_update === false,
+    check("服务端 mode=repo / current 为合法版本号 / 无更新",
+      su.mode === "repo" && /^\d+\.\d+\.\d+$/.test(su.current || "") && su.has_update === false,
       JSON.stringify(su));
 
     ws.close();
