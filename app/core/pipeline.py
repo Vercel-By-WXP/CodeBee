@@ -1091,9 +1091,24 @@ def _run_code(run, task, agents, ev, stats, mode):
 
     def review_and_score():
         verify_pass, verify_ran = _run_verify(run_id, task, workdir, ev)
+        # gate 验证（借鉴 pi-subagents 的 gate:"npm test"）：verify 失败时先跳过
+        # 模型评审直接进修复轮——评审此时只能复述「验证没过」，白烧一次调用。
+        # 连续失败 >=2 轮后恢复评审参与诊断（模型能看出编译错误之外的病灶）。
+        if not verify_pass and verify_ran:
+            verify_fail_streak[0] += 1
+            if verify_fail_streak[0] < 2:
+                return {"pass": False, "scores": {},
+                        "issues": [{"severity": "high", "title": "验证命令未通过",
+                                    "detail": "验证命令 `%s` 未通过：先修复使验证转绿，无需等评审。"
+                                              % task.get("verify_command")}],
+                        "summary": "gate：验证未通过，跳过模型评审直接修复"}, verify_pass, verify_ran
+        else:
+            verify_fail_streak[0] = 0
         # 先让确定性验证落盘，再执行模型评审；终态判断会同时使用两份证据。
         review_json = _run_review(run_id, task, workdir, modelhub.bind_agent(reviewer, difficulty), ev)
         return review_json, verify_pass, verify_ran
+
+    verify_fail_streak = [0]   # gate：verify 连败计数（>=2 轮恢复评审参与诊断）
 
     attempt_note = route.get("implementer", "") if mode == "auto" else ""
     round_no = 0
@@ -1707,6 +1722,43 @@ def _plot_modules(workdir):
             "鼓励化用，不要照抄原句）\n\n" + txt)
 
 
+LEDGER_FILE = os.path.join(".codebee", "resource-ledger.md")
+_LEDGER_MAX_CHARS = 6000   # 账本注入上限：太老的状态让评审官收敛 recent 优先
+
+
+def _parse_tagged_lines(text, tag):
+    """从模型回复提取 <tag>...</tag> 块的非空行列表（缺失/空块返回 []）。"""
+    m = re.search(r"<%s>([\s\S]*?)</%s>" % (tag, tag), text or "")
+    if not m:
+        return []
+    return [ln.strip(" -*") for ln in m.group(1).splitlines() if ln.strip(" -*")]
+
+
+def _append_ledger(workdir, chapter, lines):
+    """资源账本追加：本章评审提炼的道具/伤情/承诺/伏笔增量，供下章起草注入。"""
+    p = os.path.abspath(os.path.join(str(workdir or ""), LEDGER_FILE))
+    if not _inside(workdir, p):
+        raise ValueError("ledger 路径越界")
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "a", encoding="utf-8") as f:
+        if f.tell() == 0:
+            f.write("# 资源账本（每章评审自动追加：道具/伤情/承诺/伏笔的现状，"
+                    "写新章前必须核对，防止跨章穿帮）\n\n")
+        f.write("## 第 %d 章\n%s\n" % (chapter, "\n".join("- " + x for x in lines)))
+
+
+def _read_ledger(workdir):
+    """读取资源账本注入文本（截至上一章）。不存在返回「（暂无记录）」。"""
+    p = os.path.abspath(os.path.join(str(workdir or ""), LEDGER_FILE))
+    if not _inside(workdir, p) or not os.path.isfile(p):
+        return "（暂无记录，本章建立的新道具/伤情/承诺/伏笔会被账本自动登记）"
+    try:
+        txt = _read_text_any_enc(p)[-_LEDGER_MAX_CHARS:].strip()
+    except OSError:
+        return "（暂无记录）"
+    return txt or "（暂无记录）"
+
+
 def _shrink_context_block(sk_block, bible, budget=12000):
     """分层上下文降级（长提示词在容量受限通道上会挂起/秒拒，2026-09-17 讯飞实测）。
 
@@ -1792,6 +1844,9 @@ __OUTLINE__
 
 ## 前情提要（此前各章结尾摘录，衔接用）
 __PREV__
+
+## 资源账本（道具/伤情/承诺/伏笔的现状登记，写本章前必须核对）
+__LEDGER__
 
 - 写完文件后，最终回复只输出一行：`第 __I__ 章完成（约 __WORDS__ 字）`——不要在回复里复述或解释正文。"""
 
@@ -1992,12 +2047,15 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         bible = task["context"] + ("\n\n" + bible if bible else "")
 
 
-    def crit_prompt_for(text, note=""):
+    def crit_prompt_for(text, note="", event_check=""):
         tpl = _ensure_critique_placeholders(
             _tpl(task, "critique_prompt", NOVEL_CRITIQUE_PROMPT))
         if note:
             tpl = tpl.replace("你是严格的评审",
                               "你是严格的评审（背景：%s，请结合全书目标评审本章节）" % note, 1)
+        if event_check:
+            # 逐项目标审稿（借鉴 AI-Novel-Writer v1.1）：本章大纲要点逐项核对
+            tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % event_check, 1)
         # stable_order：评审分轮次调用，hits 中途变化会打碎前缀缓存（§07 T1.2'）
         sk, _ = skills.block_for(task, stable_order=True)
         if sk:
@@ -2074,6 +2132,22 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         i = start + k - 1        # 全书章号：文件名/步骤角色/评分记录都按全书编号
         ch = outline["chapters"][k - 1]
         ch_file = "chapter-%02d.md" % i
+        # 逐项目标审稿（借鉴 AI-Novel-Writer）：本章大纲要点随评审下发，评审
+        # 以 <event_check> 回逐项判定；资源账本（借鉴角色资源账本）以 <ledger>
+        # 回本章道具/伤情/承诺/伏笔增量，评审达标后追加账本文件供下章注入。
+        event_block = (
+            "## 本章大纲核对（逐项目标审稿）\n"
+            "本章按大纲应完成：\n- 剧情要点：%s\n- 章末钩子：%s\n"
+            "评审时逐项判定「已完成 / 未完成 / 待核实」，判定必须引用正文证据"
+            "（原文短句或位置），写在回复末尾的 <event_check> 块内（每项一行）。"
+            "「铺垫了但没发生」不算已完成；未完成的项必须反映到对应维度评分。\n"
+            "另在 <event_check> 块之后输出 <ledger> 块（没有新变化就整个省略）："
+            "逐行列出本章新出现或状态变化的 道具/伤情/承诺/伏笔，格式："
+            "类型|名称|现状（一句话）。\n\n"
+            % (ch.get("beats") or "按大纲推进", ch.get("hook") or "留下悬念"))
+        ev_check_lines = [[]]     # 每章重置：第一份非空评审的逐项判定
+        ledger_lines = []         # 本章全部评审的账本增量并集
+        ledger_txt = _read_ledger(workdir)   # 截至上一章的资源账本（起草注入）
         prev = ""
         draft_sid = ""  # §07 T1.1：本轮 draft/复用章的会话 id（revise 复用；reuse 时为空）
         if i > 1:
@@ -2101,8 +2175,14 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         rounds_used = 1
         means = {}
 
-        def run_critique(text, rnd, note_extra="", critic_sids=None):
-            """一轮多维评审：返回 (cj_by_agent, scored)。变体赛马与主循环共用。"""
+        # 逐项目标审稿 + 资源账本的每章聚合桶（run_critique 内解析填充；
+        # event_check 取第一份非空，ledger 全评审增量求并）
+        ev_check_lines = [[]]
+        ledger_lines = []
+
+        def run_critique(text, rnd, note_extra="", critic_sids=None, event_check=""):
+            """一轮多维评审：返回 (cj_by_agent, scored)。变体赛马与主循环共用。
+            event_check：本章大纲核对块（逐项目标审稿），随评审下发并回收标记块。"""
             cj_map, sids = {}, dict(critic_sids or {})
             scored = 0   # 真正给出分数的评审数；失败/不可解析不得当成 0 分计入
             for agent in critics:
@@ -2125,12 +2205,20 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                         note=("小说第 %d 章" % i) + (
                                             "｜你的专属评审视角：%s（其他评审会覆盖其余视角，"
                                             "请深挖你的镜头，但所有维度仍需打分）" % lens)
-                                        if lens else "") + note_extra,
+                                        if lens else "",
+                                        event_check=event_check) + note_extra,
                                     workdir, readonly=True, ev=ev,
                                     resume=sids.get(agent["id"]))
                     cj = _critique_json(res, dims)
                     if cj.get("scores"):
                         scored += 1
+                    # 逐项目标审稿 + 资源账本：解析评审回复里的标记块（借鉴
+                    # AI-Novel-Writer 逐项核对/角色资源账本）。多评审取第一份
+                    # 非空即可，聚合时已在前两处赋值处去重。
+                    evl = _parse_tagged_lines(res.get("text"), "event_check")
+                    if evl and not ev_check_lines[0]:
+                        ev_check_lines[0] = evl
+                    ledger_lines.extend(_parse_tagged_lines(res.get("text"), "ledger"))
                     # §07 T1.1：记录该评审的会话 id（第 2 轮复用）
                     csid = _resume_sid(agent, res.get("sid"))
                     if csid:
@@ -2150,7 +2238,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     res = _run_step(run_id, role, modelhub.bind_agent(spare, difficulty),
                                     crit_prompt_for(
                                         text,
-                                        note="小说第 %d 章" % i) + note_extra,
+                                        note="小说第 %d 章" % i,
+                                        event_check=event_check) + note_extra,
                                     workdir, readonly=True, ev=ev)
                     cj = runner.extract_json(res.get("text") or "")
                     if isinstance(cj, dict) and isinstance(cj.get("scores"), dict) \
@@ -2222,6 +2311,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         .replace("__GOAL__", task["goal"])
                         .replace("__OUTLINE__", outline_txt)
                         .replace("__PREV__", prev)
+                        .replace("__LEDGER__", ledger_txt)
                         .replace("__TITLE__", ch["title"])
                         .replace("__BEATS__", ch["beats"] or "按大纲推进")
                         .replace("__HOOK__", ch.get("hook") or "留下悬念")
@@ -2474,7 +2564,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             if rnd == 1 and race_cj is not None:
                 cj_by_agent, scored = race_cj, race_scored
             else:
-                cj_by_agent, scored, sids_now = run_critique(text, rnd, critic_sids=critic_sids)
+                cj_by_agent, scored, sids_now = run_critique(
+                    text, rnd, critic_sids=critic_sids, event_check=event_block)
                 critic_sids.update(sids_now)
             if not scored:
                 # 「评不上」≠「评了 0 分」：全部评审失败时中止本轮，
@@ -2538,12 +2629,23 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 impl, implement_reason="章节修订：%s" %
                 (impl.get("label") or impl.get("id")))
             _check_cancel(ev)
-        chapter_scores.append({"chapter": i, "title": ch["title"], "means": means,
-                               "passed": bool(means) and all(v >= threshold_ch for v in means.values()),
-                               "rounds": rounds_used,
-                               "words": _wc(_read_chapter(workdir, i))})
+        cs_new = {"chapter": i, "title": ch["title"], "means": means,
+                  "passed": bool(means) and all(v >= threshold_ch for v in means.values()),
+                  "rounds": rounds_used,
+                  "words": _wc(_read_chapter(workdir, i))}
+        if ev_check_lines[0]:
+            cs_new["event_check"] = ev_check_lines[0][:8]   # 逐项目标审稿结果
+        chapter_scores.append(cs_new)
         # 每章即时持久化：长篇中断/超时后可断点续跑，不丢已完成章的分数
         store.update_run(run_id, chapter_scores=chapter_scores)
+        # 资源账本（借鉴角色资源账本）：评审提出的道具/伤情/承诺/伏笔增量
+        # 追加到 .codebee/resource-ledger.md，下一章起草时注入，防跨章穿帮。
+        # 失败静默——账本是增强不是硬依赖。
+        if ledger_lines:
+            try:
+                _append_ledger(workdir, i, ledger_lines)
+            except Exception:
+                pass
         # findings 沉淀（借鉴 agentmemory 持久记忆）：章节标题+要点追加到
         # .codebee/findings.md——后续章节起草时随圣经/模块库注入，弥补
         # 前情提要只看近 2 章结尾的中期记忆空洞。失败静默。

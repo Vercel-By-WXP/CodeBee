@@ -2,10 +2,15 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {} };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, lastPrefs: null };
 
 /* ---------------------------------------------------------- 任务类型（流程） */
 async function loadFlows() {
+  // 偏好记忆（借鉴 chinese-novelist-skill）：并行拉最近一次的任务参数，
+  // renderTypeOptions/onTypeChange 用它预填类型与轮数/阈值等（拉失败不挡首屏）
+  api("/api/prefs").then((r) => { S.lastPrefs = (r && r.prefs) || {}; })
+    .then(() => renderTypeOptions())
+    .catch(() => {});
   try {
     const r = await api("/api/flows");
     S.flows = r.flows || [];
@@ -43,11 +48,12 @@ function flowDesc(f) {
 function renderTypeOptions() {
   const sel = $("f-type");
   if (!sel || !S.flows) return;
-  const prev = sel.value;
-  sel.innerHTML = (S.flows || []).map((f) => {
+  const prev = sel.value;  sel.innerHTML = (S.flows || []).map((f) => {
     return '<option value="' + esc(f.id) + '">' + esc(t(f.name)) + t("（") + flowDesc(f) + (f.builtin ? "" : t(" · 自定义")) + t("）") + "</option>";
   }).join("");
   if (prev && flowById(prev)) sel.value = prev;
+  // 偏好记忆：上次创建用的类型优先于出厂默认「直接执行」（老数据/已删流程回落）
+  else if (S.lastPrefs && S.lastPrefs.type && flowById(S.lastPrefs.type)) sel.value = S.lastPrefs.type;
   // 首屏默认落在「直接执行」（快档位：单 CLI 直达，无拆解/评审）；
   // 老数据或该流程被删时保持首项，不硬造一个不存在的值
   else if (flowById("direct")) sel.value = "direct";
@@ -160,9 +166,11 @@ function onTypeChange() {
   if (goal && flow && flow.goal_hint) goal.placeholder = t(flow.goal_hint);
   if (isReview && flow) {
     if (flow.manuscript) $("f-manuscript").value = flow.manuscript;
-    if (flow.rounds) $("f-rounds").value = flow.rounds;
-    if (flow.threshold) $("f-threshold").value = flow.threshold;
-    if (flow.best_of) $("f-bestof").value = flow.best_of;
+    // 偏好记忆（借鉴 chinese-novelist-skill）：上次创建用过的参数优先于流程出厂默认
+    const lp = S.lastPrefs || {};
+    $("f-rounds").value = lp.rounds || flow.rounds || 2;
+    $("f-threshold").value = (lp.threshold != null ? lp.threshold : (flow.threshold || 7.0));
+    $("f-bestof").value = lp.best_of || flow.best_of || 1;
     const rubric = $("f-rubric");
     const previousFlow = rubric.dataset.flowId || "";
     if (!S.flowRubricDrafts) S.flowRubricDrafts = {};
@@ -175,10 +183,10 @@ function onTypeChange() {
         : (flow.rubric || []).join(", ");
       rubric.dataset.flowId = flow.id;
     }
-    // 连载参数预填（用户可改/可清空 = 单稿件模式）
+    // 连载参数预填（用户可改/可清空 = 单稿件模式）；偏好记忆的最近值优先
     if (flow.serial) {
-      if (!$("f-chapters").value) $("f-chapters").value = flow.serial.chapters || "";
-      if (!$("f-words-per-ch").value) $("f-words-per-ch").value = flow.serial.words_per_chapter || "";
+      if (!$("f-chapters").value) $("f-chapters").value = lp.chapters || flow.serial.chapters || "";
+      if (!$("f-words-per-ch").value) $("f-words-per-ch").value = lp.words_per_chapter || flow.serial.words_per_chapter || "";
     } else clearSerialFields();
   } else {
     // 隐藏控件仍保留 DOM 值；换流程时清理，避免章节/圣经状态污染下一次提交。

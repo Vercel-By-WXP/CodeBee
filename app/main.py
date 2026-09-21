@@ -308,6 +308,10 @@ class Handler(BaseHTTPRequestHandler):
                 # 一键反馈 Issue 的预填摘要（标题+正文，全程脱敏，用户亲手提交）
                 from core import telemetry
                 return self._json(200, telemetry.issue_report(days=30))
+            if path == "/api/prefs":
+                # 偏好记忆：上次创建任务的类型/参数（新建表单预填用）
+                from core import prefs
+                return self._json(200, {"prefs": prefs.load()})
             if path == "/api/ports":
                 # 端口占用诊断（借鉴 leftopen）：谁在听、PID/进程/项目归属、
                 # 是否仅本机。?port=N 只看单端口。只读，不碰任何进程。
@@ -2051,7 +2055,15 @@ class Handler(BaseHTTPRequestHandler):
         return 200, {"task_id": task["id"], "run_id": run["id"]}
 
     def _api_create_task(self):
-        status, resp = self._create_and_start(self._body())
+        body = self._body()
+        status, resp = self._create_and_start(body)
+        if status == 200:
+            # 偏好记忆（借鉴 chinese-novelist-skill）：记住本次选择，下次新建预填
+            try:
+                from core import prefs
+                prefs.record(body)
+            except Exception:
+                pass
         return self._json(status, resp)
 
     def _api_task_clarify(self):
