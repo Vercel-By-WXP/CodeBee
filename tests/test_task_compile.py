@@ -50,6 +50,15 @@ class TestTaskCompile(BaseTest):
         self.assertEqual(plan["fallback"][0], "claude")
         self.assertTrue(plan["candidates"][0]["reason"])
 
+        actual = router.route_plan(
+            agents, "review", spec, {}, selected=agents[2],
+            participants=[agents[2], agents[0]], selection_reason="跨厂商评审")
+        self.assertEqual(actual["selected"], "claude")
+        self.assertEqual(actual["participants"], ["claude", "mock"])
+        self.assertNotIn("claude", actual["fallback"])
+        self.assertNotIn("mock", actual["fallback"])
+        self.assertEqual(actual["selection_reason"], "跨厂商评审")
+
 
 if __name__ == "__main__":
     import unittest

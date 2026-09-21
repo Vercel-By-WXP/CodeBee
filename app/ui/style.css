@@ -5422,3 +5422,37 @@ button.request-busy > * { opacity: .18; }
   .request-progress.active { animation: none; transform: translateX(95%); }
   button.request-busy::after { animation-duration: 1.4s; }
 }
+
+/* ---------------- 任务画像与调度审计（追加于文件尾） ----------------
+ * 编译后的任务画像与实际路由默认只展示主选，候选评分按需展开。 */
+.rd-routing {
+  margin: 0 0 16px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--panel) 82%, var(--panel2));
+  min-width: 0; overflow: hidden;
+}
+.rd-routing-head, .rd-route-role-head {
+  display: flex; align-items: baseline; gap: 10px; min-width: 0;
+}
+.rd-routing-head { margin-bottom: 6px; }
+.rd-routing-title { color: var(--text); font-size: 12.5px; font-weight: 700; }
+.rd-routing-spec { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-routing-caps { color: var(--muted); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.rd-routing-caps span { margin-right: 5px; }
+.rd-route-roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.rd-route-role { min-width: 0; padding-top: 8px; border-top: 1px solid var(--border); }
+.rd-route-role-head b { color: var(--muted); font-size: 11px; font-weight: 600; }
+.rd-route-role-head span { color: var(--text); font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-route-fallback { margin-top: 4px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.rd-route-selection { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.rd-route-candidates { margin-top: 6px; font-size: 11px; }
+.rd-route-candidates summary { cursor: pointer; color: var(--accent); user-select: none; }
+.rd-route-row { display: grid; grid-template-columns: 42px minmax(86px, 140px) minmax(0, 1fr); gap: 7px; align-items: baseline; margin-top: 5px; min-width: 0; }
+.rd-route-score { color: var(--text); font-family: var(--mono); text-align: right; }
+.rd-route-agent { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-route-reason { color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .rd-route-roles { grid-template-columns: 1fr; }
+  .rd-route-row { grid-template-columns: 38px minmax(72px, 1fr); }
+  .rd-route-reason { grid-column: 2; }
+}

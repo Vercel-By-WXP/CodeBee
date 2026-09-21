@@ -25,6 +25,9 @@ class TestNovelPipeline(BaseTest):
         self.assertEqual(run["task_spec"]["engine"], "review")
         self.assertIn("implement", run["route_plan"])
         self.assertIn("candidates", run["route_plan"]["implement"])
+        self.assertEqual(run["route_plan"]["implement"]["selected"], "mock-a")
+        self.assertEqual(run["route_plan"]["review"]["participants"],
+                         ["mock-a", "mock-b"])
         self.assertTrue(run["verdict"]["publishable"])       # mock 第 2 轮必须达标
         self.assertEqual(run["verdict"]["rounds_used"], 2)   # 第 1 轮不达标 → 走了修订
         roles = [s["role"] for s in run["steps"]]
@@ -78,6 +81,8 @@ class TestCodePipeline(BaseTest):
         self.assertEqual(r1["status"], "done", r1.get("error"))
         self.assertTrue(r1["verdict"]["pass"])
         self.assertTrue(r1["verdict"]["verify_pass"])
+        self.assertEqual(r1["route_plan"]["implement"]["selected"], "mock-a")
+        self.assertTrue(r1["route_plan"]["review"]["selected"])
         self.assertTrue((self.workdir / "mock-impl.txt").is_file())
 
         # 验证失败 → 整体不通过（即使 mock 评审说 pass）
@@ -88,6 +93,223 @@ class TestCodePipeline(BaseTest):
         self.assertEqual(r2["status"], "done", r2.get("error"))
         self.assertFalse(r2["verdict"]["pass"])
         self.assertFalse(r2["verdict"]["verify_pass"])
+
+
+class TestCodeFallbackRoute(BaseTest):
+    def runTest(self):
+        import threading
+        from unittest.mock import patch
+        from app.core import pipeline, store, task_compile
+
+        agents = [
+            {"id": "primary", "label": "Primary", "kind": "codex", "mode": "real"},
+            {"id": "fallback", "label": "Fallback", "kind": "opencode", "mode": "real"},
+        ]
+        task = store.create_task({
+            "type": "code", "title": "换将路由", "goal": "完成代码任务",
+            "workdir": str(self.workdir), "verify_command": "exit 0",
+        })
+        task = dict(task)
+        task["difficulty"] = "default"
+        task["engine"] = "code"
+        task["_compiled_spec"] = task_compile.compile_task(task)
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running")
+
+        def fake_step(_run_id, _role, agent, *_args, **_kwargs):
+            return {"ok": agent["id"] == "fallback", "error": "primary failed",
+                    "text": "", "sid": ""}
+
+        plan = {"source": "test", "steps": [{"title": "实现", "detail": "实现"}]}
+        review = {"pass": True, "scores": {"正确性": 9}, "issues": []}
+        with patch.object(pipeline.planner, "make_code_plan", return_value=plan), \
+                patch.object(pipeline.modelhub, "bind_agent", side_effect=lambda a, *_: a), \
+                patch.object(pipeline, "_run_step", side_effect=fake_step), \
+                patch.object(pipeline, "_run_review", return_value=review), \
+                patch.object(pipeline, "_run_verify", return_value=(True, True)):
+            pipeline._run_code(run, task, agents, threading.Event(), {}, "auto")
+
+        saved = store.get_run(run["id"])
+        self.assertEqual(saved["status"], "done", saved.get("error"))
+        self.assertEqual(saved["route_plan"]["implement"]["selected"], "fallback")
+        self.assertEqual(saved["route_plan"]["implement"]["participants"], ["fallback"])
+        self.assertNotIn("fallback", saved["route_plan"]["implement"]["fallback"])
+
+
+class TestCodeFallbackThenPrimaryRepairRoute(BaseTest):
+    def runTest(self):
+        import threading
+        from unittest.mock import patch
+        from app.core import pipeline, store, task_compile
+
+        primary = {"id": "primary", "label": "Primary", "kind": "codex",
+                   "mode": "real"}
+        fallback = {"id": "fallback", "label": "Fallback", "kind": "opencode",
+                    "mode": "real"}
+        agents = [primary, fallback]
+        task = store.create_task({
+            "type": "code", "title": "兜底后修复回切", "goal": "完成代码任务",
+            "workdir": str(self.workdir), "verify_command": "exit 0",
+        })
+        task = dict(task)
+        task["difficulty"] = "default"
+        task["engine"] = "code"
+        task["_compiled_spec"] = task_compile.compile_task(task)
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running")
+        primary_implements = [0]
+
+        def fake_step(_run_id, role, agent, *_args, **_kwargs):
+            if role == "implement" and agent["id"] == "primary":
+                primary_implements[0] += 1
+                return {"ok": False, "error": "primary initial failed",
+                        "text": "", "sid": ""}
+            return {"ok": True, "error": "", "text": "", "sid": ""}
+
+        reviews = [
+            {"pass": False, "scores": {"正确性": 5}, "issues": []},
+            {"pass": True, "scores": {"正确性": 9}, "issues": []},
+        ]
+        plan = {"source": "test", "steps": [{"title": "实现", "detail": "实现"}]}
+        with patch.object(pipeline.planner, "make_code_plan", return_value=plan), \
+                patch.object(pipeline.modelhub, "bind_agent", side_effect=lambda a, *_: a), \
+                patch.object(pipeline, "_run_step", side_effect=fake_step), \
+                patch.object(pipeline, "_run_review", side_effect=reviews), \
+                patch.object(pipeline, "_run_verify", return_value=(True, True)):
+            pipeline._run_code(run, task, agents, threading.Event(), {}, "auto")
+
+        saved = store.get_run(run["id"])
+        self.assertEqual(saved["status"], "done", saved.get("error"))
+        self.assertTrue(saved["verdict"]["pass"])
+        self.assertEqual(primary_implements[0], 1)
+        self.assertEqual(saved["route_plan"]["implement"]["selected"], "primary")
+        self.assertIn("修复轮", saved["route_plan"]["implement"]["selection_reason"])
+
+
+class TestSerialFallbackRouteReturnsToPrimary(BaseTest):
+    def runTest(self):
+        from unittest.mock import patch
+        from app.core import pipeline, store, task_compile
+
+        class NoWaitEvent:
+            @staticmethod
+            def is_set():
+                return False
+
+            @staticmethod
+            def wait(_seconds):
+                return False
+
+        primary = {"id": "author-a", "label": "Author A", "kind": "codex",
+                   "mode": "real", "command": "a"}
+        backup = {"id": "author-b", "label": "Author B", "kind": "opencode",
+                  "mode": "real", "command": "b"}
+        critic = {"id": "mock-b", "label": "Mock critic", "kind": "mock",
+                  "mode": "mock", "command": ""}
+        agents = [primary, backup, critic]
+        task = store.create_task({
+            "type": "serial_novel", "title": "作者回切", "goal": "写两章",
+            "workdir": str(self.workdir), "threshold": 5.0,
+            "serial": {"chapters": 2, "words_per_chapter": 300},
+        })
+        task = dict(task)
+        task["difficulty"] = "default"
+        task["_compiled_spec"] = task_compile.compile_task(task)
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running")
+
+        outline = {"book_title": "测试书", "source": "test", "chapters": [
+            {"title": "第一章", "beats": "起", "hook": "钩子"},
+            {"title": "第二章", "beats": "承", "hook": "钩子"},
+        ]}
+
+        def fake_step(_run_id, role, agent, *_args, **_kwargs):
+            if role == "draft-c1" and agent["id"] == "author-a":
+                return {"ok": False, "error": "primary unavailable", "text": "", "sid": ""}
+            if role.startswith("draft-c"):
+                chapter = int(role.split("c", 1)[1].split("-", 1)[0])
+                pipeline._write_chapter(str(self.workdir), chapter, "山" * 400)
+            elif role.startswith("revise-c"):
+                chapter = int(role.split("c", 1)[1])
+                pipeline._write_chapter(str(self.workdir), chapter, "海" * 400)
+            return {"ok": True, "error": "", "text": "", "sid": ""}
+
+        with patch.object(pipeline.planner, "make_serial_outline", return_value=outline), \
+                patch.object(pipeline.modelhub, "bind_agent", side_effect=lambda a, *_: a), \
+                patch.object(pipeline, "_run_step", side_effect=fake_step), \
+                patch.object(pipeline.time, "sleep", return_value=None):
+            pipeline._run_serial_review(
+                run, task, agents, NoWaitEvent(), {}, "auto", [critic],
+                primary, {"author": "初始主选", "critics": "mock 评审"},
+                None, "default")
+
+        saved = store.get_run(run["id"])
+        self.assertEqual(saved["status"], "done", saved.get("error"))
+        self.assertEqual(saved["route_plan"]["implement"]["selected"], "author-a")
+        self.assertEqual(saved["route_plan"]["implement"]["participants"],
+                         ["author-a", "author-b"])
+
+
+class TestSerialDelayedFallbackRoute(BaseTest):
+    def runTest(self):
+        from unittest.mock import patch
+        from app.core import pipeline, store, task_compile
+
+        class NoWaitEvent:
+            @staticmethod
+            def is_set():
+                return False
+
+            @staticmethod
+            def wait(_seconds):
+                return False
+
+        primary = {"id": "author-a", "label": "Author A", "kind": "codex",
+                   "mode": "real", "command": "a"}
+        backup = {"id": "author-b", "label": "Author B", "kind": "opencode",
+                  "mode": "real", "command": "b"}
+        critic = {"id": "mock-b", "label": "Mock critic", "kind": "mock",
+                  "mode": "mock", "command": ""}
+        agents = [primary, backup, critic]
+        task = store.create_task({
+            "type": "serial_novel", "title": "延迟落盘归因", "goal": "写一章",
+            "workdir": str(self.workdir), "threshold": 5.0,
+            "serial": {"chapters": 1, "words_per_chapter": 300},
+        })
+        task = dict(task)
+        task["difficulty"] = "default"
+        task["_compiled_spec"] = task_compile.compile_task(task)
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running")
+        outline = {"book_title": "测试书", "source": "test", "chapters": [
+            {"title": "第一章", "beats": "起", "hook": "钩子"},
+        ]}
+
+        def fake_step(_run_id, role, agent, *_args, **_kwargs):
+            if role.startswith("draft-c"):
+                return {"ok": False, "error": "%s delayed" % agent["id"],
+                        "text": "", "sid": ""}
+            return {"ok": True, "error": "", "text": "", "sid": ""}
+
+        def delayed_write(seconds):
+            if seconds == 3:
+                pipeline._write_chapter(str(self.workdir), 1, "山" * 400)
+
+        with patch.object(pipeline.planner, "make_serial_outline", return_value=outline), \
+                patch.object(pipeline.modelhub, "bind_agent", side_effect=lambda a, *_: a), \
+                patch.object(pipeline, "_run_step", side_effect=fake_step), \
+                patch.object(pipeline.time, "sleep", side_effect=delayed_write):
+            pipeline._run_serial_review(
+                run, task, agents, NoWaitEvent(), {}, "auto", [critic],
+                primary, {"author": "初始主选", "critics": "mock 评审"},
+                None, "default")
+
+        saved = store.get_run(run["id"])
+        self.assertEqual(saved["status"], "done", saved.get("error"))
+        self.assertEqual(saved["route_plan"]["implement"]["selected"], "author-b")
+        self.assertIn("章节起草换将", saved["route_plan"]["implement"]["selection_reason"])
+        self.assertEqual(saved["route_plan"]["implement"]["participants"],
+                         ["author-a", "author-b"])
 
 
 if __name__ == "__main__":

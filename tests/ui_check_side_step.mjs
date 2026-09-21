@@ -10,10 +10,11 @@ import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomInt } from "node:crypto";
 
-const PORT = 18797;
+const PORT = randomInt(20000, 28000);
 const SERVICE = "http://127.0.0.1:" + PORT;
-const CDP_PORT = 9352;
+const CDP_PORT = randomInt(30000, 38000);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const EDGE = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -235,6 +236,30 @@ async function main() {
     check("回归：管理面板「完整运行」仍能打开运行详情",
       inSettings.detailVisible === true, JSON.stringify(inSettings));
 
+    const routing = await js(`(() => {
+      const box = document.getElementById("rd-routing");
+      return {
+        visible: !!box && !box.classList.contains("hidden"),
+        text: (box || {}).textContent || "",
+        roles: box ? box.querySelectorAll(".rd-route-role").length : 0,
+        candidates: box ? box.querySelectorAll(".rd-route-candidates").length : 0,
+        overflow: box ? box.scrollWidth > box.clientWidth + 1 : false,
+      };
+    })()`);
+    check("运行详情：显示任务画像与实际调度", routing.visible && routing.roles >= 2 &&
+      routing.text.includes("任务画像与调度"), JSON.stringify(routing));
+    check("运行详情：候选评分可展开且容器无横向溢出",
+      routing.candidates >= 2 && !routing.overflow, JSON.stringify(routing));
+
+    const legacyHidden = await js(`(() => {
+      renderRouting({ id: "legacy-run" });
+      const box = document.getElementById("rd-routing");
+      const hidden = box.classList.contains("hidden") && !box.innerHTML;
+      renderRouting(S.lastRun);
+      return hidden;
+    })()`);
+    check("旧运行无路由计划时安全隐藏", legacyHidden === true, String(legacyHidden));
+
     // ===== 任务级详情（「查看全部 N 步」）：重试一次造第 2 条 run → 聚合两跑全部步骤 =====
     const runInfo = (await (await fetch(SERVICE + "/api/runs/" + runId)).json()).run;
     const ret = await (await fetch(SERVICE + "/api/tasks/" + encodeURIComponent(runInfo.task_id) + "/retry",
@@ -271,6 +296,12 @@ async function main() {
     check("任务级详情：汇总行含运行次数与总步数",
       /运行\s*2\s*次/.test(taskView.meta.replace(/\s+/g, " ")) && taskView.meta.includes(String(expectSteps)),
       taskView.meta.slice(0, 120));
+    const taskRouting = await js(`(() => ({
+      visible: !document.getElementById("rd-routing").classList.contains("hidden"),
+      text: document.getElementById("rd-routing").textContent || "",
+    }))()`);
+    check("任务级详情：沿用最新一轮实际调度", taskRouting.visible &&
+      taskRouting.text.includes("任务画像与调度"), JSON.stringify(taskRouting));
 
     // 返回仍回任务页
     await js(`document.getElementById("btn-back").click(); "ok"`);

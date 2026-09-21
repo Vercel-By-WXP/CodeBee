@@ -883,6 +883,29 @@ def _code_bestof(run, task, impl, difficulty, ev):
             pass
 
 
+def _record_actual_route(run_id, task, agents, stats, implementer,
+                         implementers=(), reviewer=None, critics=(), implement_reason="",
+                         review_reason="", direct=False):
+    """把引擎实际选中的执行者/评审者回写到可解释路由计划。"""
+    spec = task.get("_compiled_spec") or task_compile.compile_task(task)
+    impl_plan = router.route_plan(
+        agents, "implement", spec, stats, selected=implementer,
+        participants=implementers,
+        selection_reason=implement_reason)
+    if direct:
+        review_plan = {"role": "review", "selected": "", "participants": [],
+                       "selection_reason": "", "candidates": [], "fallback": []}
+    else:
+        review_group = list(critics or ())
+        actual_reviewer = reviewer or (review_group[0] if review_group else None)
+        review_plan = router.route_plan(
+            agents, "review", spec, stats, selected=actual_reviewer,
+            participants=review_group, selection_reason=review_reason)
+    store.update_run(run_id, route_plan={
+        "task": spec, "implement": impl_plan, "review": review_plan,
+    })
+
+
 def _run_code(run, task, agents, ev, stats, mode):
     run_id = run["id"]
     workdir = task["workdir"]
@@ -946,6 +969,9 @@ def _run_code(run, task, agents, ev, stats, mode):
         reviewer, route["reviewer"] = router.pick_reviewer(agents, impl, "code", stats)
     else:
         reviewer, route["reviewer"] = _pick_reviewer_legacy(agents, impl)
+    _record_actual_route(run_id, task, agents, stats, impl, reviewer=reviewer,
+                         implement_reason=route.get("implementer", ""),
+                         review_reason=route.get("reviewer", ""))
     store.update_run(run_id, route=route)
 
     def implement_all(impl_agent, prefix_note):
@@ -1038,6 +1064,11 @@ def _run_code(run, task, agents, ev, stats, mode):
                 ok2, res = _run_one(other)
                 if ok2:
                     store.update_run(run_id, error="", route_note=note)
+                    _record_actual_route(
+                        run_id, task, agents, stats, other,
+                        implementers=[other], reviewer=reviewer,
+                        implement_reason=note,
+                        review_reason=route.get("reviewer", ""))
                     return True
                 res_err = "%s；换将后仍失败：%s" % (note, (res.get("error") or "")[:200])
             else:
@@ -1074,6 +1105,13 @@ def _run_code(run, task, agents, ev, stats, mode):
                             note="自动修复第 %d 轮" % round_no,
                             resume=resume_ctx["session"] if resume_ctx else impl_sid[0],
                             require_tools=True)
+            if res["ok"]:
+                _record_actual_route(
+                    run_id, task, agents, stats, impl,
+                    implementers=[impl], reviewer=reviewer,
+                    implement_reason="修复轮由 %s 完成" %
+                    (impl.get("label") or impl.get("id")),
+                    review_reason=route.get("reviewer", ""))
             if impl.get("mode") == "mock" and res["ok"]:
                 pass  # mock 不产生真实变更
         review_json, verify_pass, verify_ran = review_and_score()
@@ -1097,6 +1135,11 @@ def _run_code(run, task, agents, ev, stats, mode):
                     impl["id"], other["id"], round_no + 1, other_reason)
                 store.update_run(run_id, error="")
                 impl = other
+                _record_actual_route(
+                    run_id, task, agents, stats, impl,
+                    implementers=[impl], reviewer=reviewer,
+                    implement_reason=note,
+                    review_reason=route.get("reviewer", ""))
                 switched = True
                 round_no += 1
                 continue
@@ -1326,6 +1369,13 @@ def _run_direct(run, task, agents, ev, stats, mode):
         store.update_run(run_id, expected_status="running", status="failed",
                          error="没有可用智能体", ended_at=_now())
         return
+    actual_impl = impl or {
+        "id": "builtin:%s:%s" % (bi.get("provider_id") or "provider", bi.get("model") or "model"),
+        "label": "CodeBee · %s" % (bi.get("model") or bi.get("provider_name") or "内置模型"),
+        "kind": "builtin",
+    }
+    _record_actual_route(run_id, task, agents, stats, actual_impl,
+                         implement_reason=route.get("implementer", ""), direct=True)
     difficulty = task.get("difficulty") or "default"
     step_wd = _resume_workdir(resume_ctx, workdir) if resume_ctx else workdir
     store.update_run(run_id, route=route, difficulty=difficulty)
@@ -1860,6 +1910,31 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     """连载流水线：大纲 → 逐章起草/评审/修订 → 全局一致性评审 → 合并成书。"""
     import json as _json
     run_id = run["id"]
+    actual_implementers = [impl]
+    actual_critics = list(critics)
+    current_impl = [impl]
+    current_impl_reason = [route.get("author", "")]
+    current_review_reason = [route.get("critics", "")]
+
+    def refresh_actual_route(primary_impl=None, implement_reason=None,
+                             review_reason=None):
+        if primary_impl is not None:
+            current_impl[0] = primary_impl
+        if implement_reason is not None:
+            current_impl_reason[0] = implement_reason
+        if review_reason is not None:
+            current_review_reason[0] = review_reason
+        _record_actual_route(
+            run_id, task, agents, stats, current_impl[0],
+            implementers=actual_implementers, critics=actual_critics,
+            implement_reason=current_impl_reason[0],
+            review_reason=current_review_reason[0])
+
+    def remember_agent(bucket, agent):
+        if agent and not any(x.get("id") == agent.get("id") for x in bucket):
+            bucket.append(agent)
+
+    refresh_actual_route(impl)
     workdir = task["workdir"]
     # 续会话步骤的 CLI 启动目录（稿件读写仍用 workdir）
     step_wd = _resume_workdir(resume_ctx, workdir) if resume_ctx else workdir
@@ -2051,6 +2126,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                             and cj.get("scores"):
                         cj_map[spare["id"]] = cj
                         scored += 1
+                        remember_agent(actual_critics, spare)
+                        refresh_actual_route(
+                            review_reason="章节评审补位：%s" %
+                            (spare.get("label") or spare.get("id")))
                         issues_all.extend({"chapter": i, **it}
                                           for it in (cj.get("issues") or [])[:6])
                         break
@@ -2135,6 +2214,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 good = False
                 txt = ""
                 use_prompt = prompt
+                chapter_impl = impl
+                chapter_reason = route.get("author", "")
+                last_attempt_impl = impl
+                last_attempt_reason = chapter_reason
                 for draft_attempt in range(3):
                     if draft_attempt:
                         # 30s / 60s 退避；ev.wait 睡等可被取消即刻唤醒
@@ -2185,6 +2268,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         if not (other and other.get("mode") == "real"):
                             break
                         tried.add(other["id"])
+                        last_attempt_impl = other
+                        last_attempt_reason = "章节起草换将：%s" % (
+                            other_reason or other.get("label") or other.get("id"))
                         res = _run_step(run_id, "draft-c%d" % i,
                                         modelhub.bind_agent(other, difficulty), use_prompt,
                                         step_wd, readonly=False, ev=ev, timeout=2400,
@@ -2201,13 +2287,20 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                 pass
                         if good:
                             draft_sid = ""   # 换将作者无本任会话，revise 另起
+                            chapter_impl = last_attempt_impl
+                            chapter_reason = last_attempt_reason
                 if not good:
                     time.sleep(3)   # 落盘竞态宽限：CLI 崩溃退出前写的文件可能晚于
                     good, txt = _chapter_state()   # 退出检查零点几秒才可见（c34 实测）
+                    if good:
+                        chapter_impl = last_attempt_impl
+                        chapter_reason = last_attempt_reason
                 if not good:
                     store.update_run(run_id, expected_status="running", status="failed",
                                      error="第 %d 章起草失败: %s" % (i, (res or {}).get("error")), ended_at=_now())
                     return
+                remember_agent(actual_implementers, chapter_impl)
+                refresh_actual_route(chapter_impl, implement_reason=chapter_reason)
                 if not res["ok"]:
                     # 成品是文件不是退出码：CLI 超时但章稿已完整落盘（终章长文实测
                     # 反复出现——文件写完、收尾声明没等到）就送评审门把关，别整章作废
@@ -2294,6 +2387,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     return
                 scored_variants.sort(key=lambda v: (-v["avg"], v["variant"]))
                 win = scored_variants[0]
+                win_agent = next((a for a in pool if a.get("id") == win["agent"]), None)
+                if win_agent is not None:
+                    remember_agent(actual_implementers, win_agent)
+                    refresh_actual_route(
+                        win_agent,
+                        implement_reason="同章多稿赛马胜出：%s" %
+                        (win_agent.get("label") or win_agent.get("id")))
                 # 收敛：赢家转正，败稿删除；胜者评审结果直接作为第 1 轮（不重评）
                 if win["file"] != ch_file:
                     try:
@@ -2401,6 +2501,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 _run_step(run_id, "revise-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
                           step_wd, readonly=False, ev=ev, timeout=2400,
                           resume=resume_ctx["session"] if resume_ctx else draft_sid)
+            remember_agent(actual_implementers, impl)
+            refresh_actual_route(
+                impl, implement_reason="章节修订：%s" %
+                (impl.get("label") or impl.get("id")))
             _check_cancel(ev)
         chapter_scores.append({"chapter": i, "title": ch["title"], "means": means,
                                "passed": bool(means) and all(v >= threshold_ch for v in means.values()),
@@ -2477,6 +2581,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 gmeans_acc.setdefault(d, []).extend(xs)
             gscored += sc
             if gscored:
+                remember_agent(actual_critics, spare)
+                refresh_actual_route(
+                    review_reason="全局评审补位：%s" %
+                    (spare.get("label") or spare.get("id")))
                 break
         if not gscored:
             store.update_run(run_id, expected_status="running", status="failed",
@@ -2526,6 +2634,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                 resume=resume_ctx["session"] if resume_ctx else None)
                 if not res["ok"]:
                     continue
+            remember_agent(actual_implementers, impl)
+            refresh_actual_route(
+                impl, implement_reason="全局打磨：%s" %
+                (impl.get("label") or impl.get("id")))
             # 重评该章
             cj_by_agent = {}
             for agent in critics:
@@ -2798,9 +2910,16 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         store.update_run(run_id, expected_status="running", status="failed",
                          error="没有可用智能体", ended_at=_now())
         return
-    if resume_ctx is not None and mode == "auto":
-        critics, route["critics"] = router.pick_critics(
-            agents, task.get("type") or "novel", stats, impl=impl)
+    if resume_ctx is not None:
+        if mode == "auto":
+            critics, route["critics"] = router.pick_critics(
+                agents, task.get("type") or "novel", stats, impl=impl)
+        else:
+            critics = _pick_critics_manual(agents, task)
+
+    _record_actual_route(run_id, task, agents, stats, impl, critics=critics,
+                         implement_reason=route.get("author", ""),
+                         review_reason=route.get("critics", ""))
 
     # ---- 规划（小说为模板计划）
     _wait_gate(run_id, ev)
@@ -3371,8 +3490,12 @@ def execute_run(run_id):
                 store.update_run(run_id, expected_status="running", status="failed",
                                  error="没有可用智能体", ended_at=_now())
                 return
-            if resume_ctx is not None and mode == "auto":
-                critics, route["critics"] = router.pick_critics(agents, task["type"], stats, impl=impl)
+            if resume_ctx is not None:
+                if mode == "auto":
+                    critics, route["critics"] = router.pick_critics(
+                        agents, task["type"], stats, impl=impl)
+                else:
+                    critics = _pick_critics_manual(agents, task)
             if task.get("serial"):
                 _run_serial_review(run, task, agents, ev, stats, mode,
                                    critics, impl, route, resume_ctx, difficulty)

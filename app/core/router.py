@@ -106,8 +106,9 @@ def pick(agents, role, ttype, stats=None, exclude=()):
     return best[1], best_reason
 
 
-def route_plan(agents, role, task_spec, stats=None, exclude=()):
-    """生成可审计的候选排序，供运行详情展示和后续 fallback 使用。"""
+def route_plan(agents, role, task_spec, stats=None, exclude=(), selected=None,
+               participants=(), selection_reason=""):
+    """生成可审计的候选排序，并可用实际选路覆盖评分预选结果。"""
     if stats is None:
         stats = history.agent_stats()
     # 与 pick 保持同一候选池；绑定/健康扣分仍由 score 和 modelhub 负责，
@@ -128,9 +129,25 @@ def route_plan(agents, role, task_spec, stats=None, exclude=()):
                      "score": round(total, 1), "reason": reason,
                      "order": index})
     rows.sort(key=lambda x: (-x["score"], x["order"]))
-    return {"role": role, "selected": rows[0]["agent_id"] if rows else "",
+    selected_id = (selected or {}).get("id") if isinstance(selected, dict) else ""
+    if selected_id and not any(x["agent_id"] == selected_id for x in rows):
+        rows.append({"agent_id": selected_id,
+                     "label": selected.get("label") or selected_id,
+                     "kind": selected.get("kind") or "builtin",
+                     "score": 0.0, "reason": selection_reason or "实际选路",
+                     "order": len(rows)})
+    chosen = selected_id or (rows[0]["agent_id"] if rows else "")
+    participant_ids = []
+    for agent in participants or ():
+        agent_id = agent.get("id") if isinstance(agent, dict) else str(agent or "")
+        if agent_id and agent_id not in participant_ids:
+            participant_ids.append(agent_id)
+    active_ids = participant_ids or ([chosen] if chosen else [])
+    return {"role": role, "selected": chosen, "participants": participant_ids,
+            "selection_reason": selection_reason,
             "candidates": rows,
-            "fallback": [x["agent_id"] for x in rows[1:]]}
+            "fallback": [x["agent_id"] for x in rows
+                         if x["agent_id"] not in active_ids]}
 
 
 def pick_reviewer(agents, impl, ttype, stats=None):

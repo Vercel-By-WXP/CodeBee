@@ -3420,6 +3420,7 @@ function drawTaskDetail(key, runs) {
     '<span class="stat">tokens <b>' + sum("tokens") + "</b></span>" +
     (latest.error ? '<span class="stat err">' + errTag(latest.error) + esc(latest.error.slice(0, 200)) + "</span>" : "");
   $("rd-plan").classList.add("hidden");
+  renderRouting(latest);
   let html = "";
   ordered.forEach((r, i) => {
     const runNo = runs.length - i;
@@ -3800,6 +3801,7 @@ async function renderRunDetail() {
     '<span class="stat tasksum hidden" id="rd-meta-task"></span>';
   if (S.detailSide) fillMetaTask(S.detailSide.stats || {});   // 缓存命中：轮询重画不闪丢累计组
   renderPlan(run);
+  renderRouting(run);
   // 详情页优先展示最近一步，排查运行中的任务时无需滚到底部；
   // 蜂巢泳道仍按原始流程顺序呈现，避免破坏阶段语义。
   $("rd-steps").innerHTML = (run.steps || []).slice().reverse().map((s) =>
@@ -5442,6 +5444,75 @@ function renderPlan(run) {
       '<div class="step plan"><span class="n">' + String(i + 1).padStart(2, "0") + "</span>" +
       '<span class="role">' + esc(s.title || "") + "</span>" +
       '<span class="sum">' + esc(s.detail || "") + "</span></div>").join("") + "</div>" + routeHtml;
+}
+
+/* 运行详情的统一调度审计：任务画像和实际选路来自同一次编译结果。
+ * 旧运行没有 task_spec/route_plan 时保持隐藏，避免把历史数据伪装成当前决策。 */
+function renderRouting(run) {
+  let box = $("rd-routing");
+  if (!box) {
+    const steps = $("rd-steps");
+    if (!steps || !steps.parentNode) return;
+    box = document.createElement("div");
+    box.id = "rd-routing";
+    box.className = "rd-routing hidden";
+    steps.parentNode.insertBefore(box, steps);
+  }
+  const spec = run && run.task_spec;
+  const plan = run && run.route_plan;
+  if (!spec || !plan) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+  const type = spec.type || "direct";
+  const difficulty = spec.difficulty || "default";
+  const dimension = spec.dimension || "reasoning";
+  const caps = Array.isArray(spec.capabilities) ? spec.capabilities.filter(Boolean) : [];
+  const typeLabel = ((flowById(type) || {}).name) || type;
+  const difficultyLabel = t(({ easy: "简单", default: "标准", hard: "困难" })[difficulty] || difficulty);
+  const dimensionLabel = t(({ coding: "编码", writing: "写作", reasoning: "推理", vision: "视觉" })[dimension] || dimension);
+  const capLabels = {
+    coding: "编码", writing: "写作", reasoning: "推理", vision: "视觉",
+    filesystem: "文件读写", verification: "验证", long_context: "长上下文",
+    continuity: "连续性", attachments: "附件",
+  };
+  const capsText = caps.length ? caps.map((x) => t(capLabels[x] || x)).join(t("、")) : t("通用能力");
+  const selectedLabel = (entry) => entry && (entry.label || entry.agent_id || "") || t("未选定");
+  const roleBlock = (key, title) => {
+    const route = plan[key] || {};
+    const candidates = Array.isArray(route.candidates) ? route.candidates : [];
+    if (!route.selected && !candidates.length) return "";
+    const selected = candidates.find((x) => x.agent_id === route.selected) || candidates[0];
+    const participants = Array.isArray(route.participants) ? route.participants : [];
+    const activeIds = participants.length ? participants.slice() : (route.selected ? [route.selected] : []);
+    if (route.selected && activeIds.includes(route.selected)) {
+      activeIds.splice(activeIds.indexOf(route.selected), 1);
+      activeIds.unshift(route.selected);
+    }
+    const activeLabels = activeIds.map((id) => {
+      const item = candidates.find((x) => x.agent_id === id);
+      return selectedLabel(item || { agent_id: id });
+    }).filter(Boolean);
+    const fallback = Array.isArray(route.fallback) ? route.fallback : [];
+    const fallbackLabels = fallback.map((id) => {
+      const item = candidates.find((x) => x.agent_id === id);
+      return selectedLabel(item || { agent_id: id });
+    }).filter(Boolean);
+    const rows = candidates.map((x) =>
+      '<div class="rd-route-row"><span class="rd-route-score">' + esc(Number(x.score || 0).toFixed(1)) +
+      '</span><span class="rd-route-agent">' + esc(selectedLabel(x)) + '</span><span class="rd-route-reason">' +
+      esc(x.reason || "") + '</span></div>').join("");
+    return '<div class="rd-route-role"><div class="rd-route-role-head"><b>' + esc(title) +
+      '</b><span>' + esc(activeLabels.join(" + ") || selectedLabel(selected)) + '</span></div>' +
+      (route.selection_reason ? '<div class="rd-route-selection">' + esc(route.selection_reason) + '</div>' : "") +
+      (fallbackLabels.length ? '<div class="rd-route-fallback">' + esc(t("降级：")) + esc(fallbackLabels.join(" → ")) + '</div>' : "") +
+      (rows ? '<details class="rd-route-candidates"><summary>' + esc(t("查看候选评分")) + '</summary>' + rows + '</details>' : "") +
+      '</div>';
+  };
+  const roles = [roleBlock("implement", t("执行")), roleBlock("review", t("评审"))].filter(Boolean).join("");
+  if (!roles) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+  box.classList.remove("hidden");
+  box.innerHTML = '<div class="rd-routing-head"><span class="rd-routing-title">' + esc(t("任务画像与调度")) +
+    '</span><span class="rd-routing-spec">' + esc(t("{0} · {1} · {2}", t(typeLabel), difficultyLabel, dimensionLabel)) + '</span></div>' +
+    '<div class="rd-routing-caps"><span>' + esc(t("需要：")) + '</span>' + esc(capsText) + '</div>' +
+    '<div class="rd-route-roles">' + roles + '</div>';
 }
 /* 日志框顶部状态条：运行中 → ● 实时（呼吸点 + 最后刷新时间）；结束 → 灰字已结束。
  * 没有它，用户分不清"日志在刷但 CLI 暂无输出"和"刷新坏了"——两者长得一模一样。 */
