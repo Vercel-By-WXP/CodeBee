@@ -21,6 +21,11 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 不会把你的任务内容交给任何第三方。
 
 <!-- relnotes:start -->
+### 🛠 问题修复 · Fixes
+
+- 修复长任务上下文撑爆后重试仍失败：压缩摘要此前只写日志、没真正替换发往模型的上下文；现在重试用「压缩摘要+最近消息」重建请求并放弃膨胀的旧会话，超长任务能真正续跑。
+- Fixed long-task overflow retries failing again: compaction summaries used to go only to logs. Retries now rebuild the request from the summary plus recent messages and drop the bloated old session.
+
 ### ✨ 新功能 · New
 
 - 新建任务输入框焕新：编排模式、思考程度、「厂商/模型」选择器收进输入框工具行右侧（左附件、右偏好+发送的主流布局）；对话模型点开是「厂商 → 模型」两级菜单，选中打勾、底部「管理模型」直达，pill 显示「厂商/模型」组合名。
