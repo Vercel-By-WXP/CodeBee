@@ -23,6 +23,9 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 <!-- relnotes:start -->
 ### ✨ 新功能 · New
 
+- 连载任务详情新增「章节评审」卡片：每章维度评分（低分标红）与达标状态，大纲要点逐项核对结果红绿灰直读。
+- Serial runs now show a Chapter Reviews card: per-chapter dimension scores (low ones in red) plus beat-by-beat checks color-coded green/red/gray.
+
 - 群摘要搬进正式页面：设置 →「微信群聊汇报」里配置与摘要列表一体呈现，右下角悬浮小窗已移除；桌面蜜蜂右键「群摘要」直达。
 - Group digests now live on a proper settings page (config + digest list in one place); the floating bottom-right widget is gone, and the desktop bee links straight to it.
 
