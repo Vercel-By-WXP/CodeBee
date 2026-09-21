@@ -23,6 +23,16 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 <!-- relnotes:start -->
 ### ✨ 新功能 · New
 
+- 顶栏新增统一操作状态中心：创建、删除、绑定、插件等写操作会显示进行中、完成或失败状态，并保留时间与错误原因。
+- A unified operation center now shows create, delete, binding, and plugin actions as running, completed, or failed, with timestamps and error details.
+
+### 🛠 问题修复 · Fixes
+
+- 后台维护、澄清探测和轮询请求默认静默，移动端状态弹层自适应屏幕并支持减少动画。
+- Background maintenance, clarification probes, and polling stay quiet by default; the mobile operation panel adapts to the viewport and respects reduced-motion settings.
+
+### 上一版亮点 · Previous release
+
 - 文档类任务更专业：汇报先给结论、邮件先答复再铺陈、技术方案从问题开场并保留被否决的真实备选、文档验收标准可逐条勾选。
 - Smarter document tasks: reports lead with conclusions, emails answer first, proposals open at the problem and keep a real rejected alternative, docs get testable acceptance criteria.
 
