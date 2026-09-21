@@ -21,7 +21,15 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 不会把你的任务内容交给任何第三方。
 
 <!-- relnotes:start -->
+### ✨ 新功能 · New
+
+- 升级后蜜蜂自动换新装：服务重启后旧蜜蜂自动让位，新蜜蜂带新形象上线。
+- After upgrading, the desktop bee swaps itself for the new look: the old bee steps aside when the service restarts.
+
 ### 🛠 问题修复 · Fixes
+
+- 去掉蜜蜂底部的任务进度条，窗口更干净。
+- Removed the task progress bar under the desktop bee for a cleaner look.
 
 - 「关于与更新」页的版本信息与更新说明改为左对齐阅读，不再整块居中。
 - The version info and release notes on the About page are now left-aligned for easier reading.
