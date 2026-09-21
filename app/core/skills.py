@@ -330,7 +330,10 @@ def upsert_lesson(scope, title, content, source="", category=None, dim=None):
         it = {"id": lid, "scope": scope, "title": title, "content": content,
               "source": source, "hits": 0, "seen": 1, "enabled": True,
               "category": cat,
-              "created_at": _now(), "kind": "lesson"}
+              "created_at": _now(),
+              # 稳定 token（procedure=程序性做法 / lesson=规避性教训）；
+              # 展示层 view() 翻译成「做法/教训」，持久层不用中文防改文案伤数据
+              "kind": ("procedure" if title.startswith("做法：") else "lesson")}
         items.append(it)
         _save(data)
         return it
@@ -676,8 +679,18 @@ def learn_async(run_id):
 
 def view():
     """经验库总览（给 UI/API）。categories：闭集枚举 + 实际出现过的分类，
-    counts 给每类条数，供 UI 下拉过滤与计数显示。"""
-    lessons = list_lessons()
+    counts 给每类条数，供 UI 下拉过滤与计数显示。
+    lessons 每条带展示 kind：「做法」（程序性记忆）/「教训」（规避性）——
+    UI 用不同徽章区分（openhuman 记忆可视化借鉴）。持久层是稳定 token
+    （procedure/lesson，老数据可能缺失），此处统一翻译+派生兜底。"""
+    def _kind(x):
+        k = x.get("kind")
+        if k == "procedure":
+            return "做法"
+        if k == "lesson":
+            return "教训"
+        return "做法" if str(x.get("title") or "").startswith("做法：") else "教训"
+    lessons = [{**x, "kind": _kind(x)} for x in list_lessons()]
     counts = {}
     for x in lessons:
         c = x.get("category") or LESSON_UNCATEGORIZED

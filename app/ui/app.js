@@ -8431,6 +8431,7 @@ function renderSkills() {
   $("skill-lessons").innerHTML = shown.map((x) =>
     '<div class="card' + (x.enabled === false ? " off" : "") + '"><div class="head">' +
     '<span class="name">' + esc(t(x.title)) + "</span>" +
+    (x.kind === "做法" ? '<span class="tag ok" title="' + t("已验证有效的做法（程序性记忆）") + '">' + t("做法") + "</span>" : "") +
     (x.category ? '<span class="tag cat" style="color:' + (CAT_COLOR[x.category] || "var(--muted)") + '" ' +
       'onclick="skillCatFilter(\'' + esc(x.category) + '\')" title="' + t("只看该类") + '">' + esc(t(x.category)) + "</span>" : "") +
     '<span class="tag">' + esc(x.scope === "*" ? t("通用") : x.scope) + "</span>" +

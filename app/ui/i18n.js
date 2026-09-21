@@ -1517,6 +1517,8 @@
     "知道了": "Got it",
     "新版本更新内容": "What's new in the new version",
     "已注入 ": "injected ",
+    "做法": "Best practice",
+    "已验证有效的做法（程序性记忆）": "Verified working procedure (procedural memory)",
     "已清除 ": "Cleared ",
     "已禁用厂商 {0}：链降级自动跳过，绑定页可重新启用": "Provider {0} disabled: chain fallback skips it — re-enable on the Bindings page",
     "已禁用模型 {0} · {1}，链降级自动跳过；绑定页可重新启用": "Model {0} · {1} disabled: chain fallback skips it — re-enable on the Bindings page",

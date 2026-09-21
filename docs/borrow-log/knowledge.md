@@ -490,3 +490,13 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - A 组复查全活跃无增量事故
 
 **✅ 本班落地**：程序性记忆 MVP（mengram「从做中学」借鉴）——LEARN_PROMPT 从「只提炼规避性教训」扩展为两类：①需规避的教训（来自问题）②**已验证有效的做法**（一次通过且高分时把「这次做对了什么」提炼成可复用步骤，title 以「做法：」开头）+「一次通过的高分运行优先提炼做法」指引；一次通过的运行本就进学习链（verdict 在场即学），此前 prompt 只问问题导致 clean-pass 学不到东西。test_procedural_learn 3 项（prompt 契约/pass 运行入库「做法：」/upsert 幂等）
+
+### 2026-09-22 06:00 第二十七班（批6 复跑 + openhuman 深挖）
+
+- **openhuman**（40k★）深挖完成 | 三支柱：🧠 记忆（**Memory Tree**：SQLite 评分 Markdown 树 + Obsidian 镜像可编辑，拒绝「向量汤黑盒」；100+ OAuth/5000+ MCP/90000+ Skills；**TokenJuice 工具输出压缩 80%**）/🕸️ 编排（工作流画布提案-人工审-保存；**分裂脑**：快反射 agent 分流 + 深推理核心派工舰队）/🔬 深研执行（15 消息通道+原生邮件 IMAP IDLE；每 run 可回放带真实 per-call 成本）| **与 CodeBee 对比**：我们有压缩（compaction）/预算/回放（usage 台账）/审批（待裁决）——差量=Memory Tree 的「评分树+可编辑镜像」与 TokenJuice 的「工具输出预压缩」（我们只压会话不压工具输出）| 借鉴方向（工具输出预压缩）进待深挖
+- **a2aproject/A2A**（Google 官方，25,882★ 新巨型标）入库 | Agent2Agent 开放协议正式仓库——跨 agent 互操作协议从库实现升到官方主体 | 雷达
+- **sia**（hexo-ai，2,159★）入库 | **Self Improving AI 框架**：自主改进任意 AI 系统的性能（模型/agent）| 与我们自学习闭环同向，方法待深挖 | 待深挖
+- **llm-as-a-verifier**（3,253★）| 通用细粒度反馈框架（无需求文档也行）| 评审域参考 | 参考
+- 复查：agentops 5.8k/AssetOpsBench 2.3k 活跃；批6 其余标的与上轮重合
+
+**✅ 本班落地**：经验库 kind 标记落地（openhuman 记忆可视化借鉴）——持久层稳定 token（procedure/lesson，并行代理同域撞车统一收编：upsert 写 token、view() 翻译「做法/教训」+老数据派生兜底）；UI 教训卡「做法」绿徽章+悬停说明。test_lesson_kind 2 项
