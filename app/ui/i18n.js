@@ -1281,6 +1281,8 @@
     "约 ": "about ",
     "字": "chars",
     "已内置": "Built-in",
+    "已启用": "Enabled",
+    "已停用（不再注入任务提示词）": "Disabled — no longer injected into task prompts",
     "没有符合条件插件": "No plugins match the filters",
     "该插件已安装过": "Already installed",
     "安装成功，运行任务时自动注入提示词；可到「经验库」启停或查看": "Installed — auto-injected into prompts when tasks run; enable/disable or view it in the skill library",
@@ -2474,6 +2476,13 @@
     scope.querySelectorAll("[data-i18n-aria]").forEach((el) => {
       el.setAttribute("aria-label", t(el.dataset.i18nAria));
     });
+    // 编排 pill 短名取自 option 文本，重译后要跟着换语言
+    if (typeof window.syncCmpSelFace === "function") {
+      ["f-mode", "f-thinking"].forEach((id) => window.syncCmpSelFace(id));
+    }
+    if (typeof window.cmpDirectBtnSync === "function") {
+      window.cmpDirectBtnSync();   // 「自动推荐/推荐」等词也要换语言
+    }
   }
 
   // 暴露

@@ -294,7 +294,37 @@
               <div class="att-strip">
                 <button type="button" class="ghost small" id="btn-attach" title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/；也可直接粘贴截图" data-i18n-title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/；也可直接粘贴截图"><svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg><span data-i18n="附件">附件</span></button>
               </div>
+              <!-- 右组（参考主流输入框）：编排/思考/对话模型偏好 + 发送。
+                   pill 用透明原生 select 覆盖，点哪儿都弹原生下拉；短名由
+                   syncCmpSelFace 同步。2026-09-21 用户拍板「整理到对话框里」。 -->
               <div class="cmp-send">
+                <span class="cmp-sel" data-i18n-title="编排模式" title="编排模式">
+                  <select id="f-mode" class="cmp-sel-native" aria-label="编排模式" data-i18n-aria="编排模式">
+                    <option data-i18n="自动（推荐）：按任务类型与风险动态决定步骤" value="auto">自动（推荐）：按任务类型与风险动态决定步骤</option>
+                    <option data-i18n="快速：少步骤优先，先做确定性验收" value="fast">快速：少步骤优先，先做确定性验收</option>
+                    <option data-i18n="专家：完整规划、多评审、失败修复与换将" value="expert">专家：完整规划、多评审、失败修复与换将</option>
+                    <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
+                  </select>
+                  <span class="cmp-sel-face" id="f-mode-face">自动</span>
+                  <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+                </span>
+                <span class="cmp-sel" data-i18n-title="思考程度" title="思考程度">
+                  <select id="f-thinking" class="cmp-sel-native" aria-label="思考程度" data-i18n-aria="思考程度">
+                    <option data-i18n="标准：平衡质量与速度" value="standard" selected>标准：平衡质量与速度</option>
+                    <option data-i18n="自动：随任务难度调整" value="auto">自动：随任务难度调整</option>
+                    <option data-i18n="快速：少推理、优先响应" value="low">快速：少推理、优先响应</option>
+                    <option data-i18n="深度：更多推理与检查" value="high">深度：更多推理与检查</option>
+                  </select>
+                  <span class="cmp-sel-face" id="f-thinking-face">标准</span>
+                  <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+                </span>
+                <!-- 厂商/模型 pill（仅「直接执行」类型显示）：点开厂商→模型两级
+                     钻取菜单，选定写回隐藏 select 真源 -->
+                <span class="cmp-sel hidden" id="f-direct-wrap" data-i18n-title="对话模型（可选）" title="对话模型（可选）">
+                  <button type="button" class="cmp-sel-face cmp-sel-btn" id="f-direct-btn" onclick="toggleModelMenu()" aria-haspopup="menu" aria-controls="cmp-model-menu">自动推荐</button>
+                  <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+                  <div id="cmp-model-menu" class="type-menu hidden" role="menu" aria-label="对话模型" data-i18n-aria="对话模型"></div>
+                </span>
                 <span id="create-msg" class="msg"></span>
                 <button id="btn-create" class="primary round" title="创建并运行" data-i18n-title="创建并运行" aria-label="创建并运行" data-i18n-aria="创建并运行"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg></button>
               </div>
@@ -305,31 +335,6 @@
           <div id="cmp-quick" class="cmp-quick" role="group" aria-label="常用类型" data-i18n-aria="常用类型"></div>
           <!-- 开跑前成本预估（refreshEstimate 填充；无同类样本时保持隐藏） -->
           <p class="hint cmp-estimate hidden" id="cmp-estimate"></p>
-          <!-- 编排偏好贴输入框（用户拍板「放上来」：不再折叠进更多选项） -->
-          <div class="cmp-prefs" id="cmp-prefs">
-            <div class="field">
-              <label data-i18n="编排模式">编排模式</label>
-              <select id="f-mode">
-                <option data-i18n="自动（推荐）：按任务类型与风险动态决定步骤" value="auto">自动（推荐）：按任务类型与风险动态决定步骤</option>
-                <option data-i18n="快速：少步骤优先，先做确定性验收" value="fast">快速：少步骤优先，先做确定性验收</option>
-                <option data-i18n="专家：完整规划、多评审、失败修复与换将" value="expert">专家：完整规划、多评审、失败修复与换将</option>
-                <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
-              </select>
-            </div>
-            <div class="field">
-              <label data-i18n="思考程度">思考程度</label>
-              <select id="f-thinking">
-                <option data-i18n="标准：平衡质量与速度" value="standard" selected>标准：平衡质量与速度</option>
-                <option data-i18n="自动：随任务难度调整" value="auto">自动：随任务难度调整</option>
-                <option data-i18n="快速：少推理、优先响应" value="low">快速：少推理、优先响应</option>
-                <option data-i18n="深度：更多推理与检查" value="high">深度：更多推理与检查</option>
-              </select>
-            </div>
-            <div id="f-direct-model" class="field hidden"><label data-i18n="对话模型（可选）">对话模型（可选）</label><div class="grid-2">
-              <select id="f-direct-provider" aria-label="对话厂商" data-i18n-aria="对话厂商"><option data-i18n="自动推荐">自动推荐</option></select>
-              <select id="f-direct-model-name" aria-label="对话模型" data-i18n-aria="对话模型"><option data-i18n="随厂商推荐">随厂商推荐</option></select>
-            </div><p class="hint" data-i18n="只对本次对话生效，不会修改全局绑定；指定渠道不可用时会明确报错。">只对本次对话生效，不会修改全局绑定；指定渠道不可用时会明确报错。</p></div>
-          </div>
           <!-- 需求拷问采访卡（renderClarify 渲染；goal 模糊时出现，跳过=直接创建） -->
           <div id="clarify-box" class="clarify-box hidden"></div>
           <div class="field hidden" id="row-resume-session">
@@ -341,6 +346,11 @@
           <details id="f-advanced">
             <summary data-i18n="更多选项">更多选项</summary>
             <div class="adv-body">
+              <!-- 对话模型（可选）是低频高级项：只对「直接执行」类型生效，收在这 -->
+              <div id="f-direct-model" class="field hidden"><label data-i18n="对话模型（可选）">对话模型（可选）</label><div class="grid-2">
+                <select id="f-direct-provider" aria-label="对话厂商" data-i18n-aria="对话厂商"><option data-i18n="自动推荐">自动推荐</option></select>
+                <select id="f-direct-model-name" aria-label="对话模型" data-i18n-aria="对话模型"><option data-i18n="随厂商推荐">随厂商推荐</option></select>
+              </div><p class="hint" data-i18n="只对本次对话生效，不会修改全局绑定；指定渠道不可用时会明确报错。">只对本次对话生效，不会修改全局绑定；指定渠道不可用时会明确报错。</p></div>
               <div class="grid-2">
                 <div class="field">
                   <label data-i18n="继续会话">继续会话</label>

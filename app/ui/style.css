@@ -5616,18 +5616,24 @@ button.request-busy > * { opacity: .18; }
 .ch-ev.ok { border-left-color: var(--ok); color: inherit; }
 .ch-ev.bad { border-left-color: var(--bad); color: inherit; }
 
-/* composer 内编排偏好行：编排模式/思考程度/对话模型贴着输入框（2026-09-21
- * 用户拍板「放上来」，不再折叠进「更多选项」）。字段横向紧凑排布，窄屏换行。 */
-.cmp-prefs { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 6px 2px 2px; }
-.cmp-prefs > .field { display: flex; align-items: center; gap: 8px; flex: 1 1 260px;
-  min-width: 0; margin: 0; }
-.cmp-prefs > .field > label { white-space: nowrap; flex: none; margin: 0;
-  font-size: 12.5px; color: var(--muted); }
-.cmp-prefs > .field > select { flex: 1 1 auto; min-width: 0; width: auto; }
-/* 对话模型（可选）默认整行：label + 双下拉 + 说明文字 */
-.cmp-prefs > #f-direct-model { flex: 1 1 100%; align-items: center; }
-.cmp-prefs > #f-direct-model > .grid-2 { flex: 1 1 auto; min-width: 0; }
-.cmp-prefs > #f-direct-model > .hint { flex: 1 1 100%; margin: 0; }
+/* composer 工具行「编排模式/思考程度」pill（2026-09-21 用户拍板「整理到对话
+ * 框里面去」）：透明原生 select 覆盖整颗 pill，点哪儿都是原生下拉；face 只显示
+ * 选项短前缀（syncCmpSelFace 同步），视觉与「直接执行」类型 pill 同一语汇。 */
+.cmp-sel { position: relative; display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px;
+  font-size: 12.5px; color: var(--muted); background: transparent;
+  white-space: nowrap; user-select: none; }
+.cmp-sel:hover { border-color: var(--border-strong); color: var(--text); }
+.cmp-sel-face { max-width: 88px; overflow: hidden; text-overflow: ellipsis; }
+.cmp-sel .chev { width: 13px; height: 13px; transform: rotate(90deg); opacity: .65; flex: none; }
+.cmp-sel-native { position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer; border: none; margin: 0; }
+.cmp-sel-btn { appearance: none; background: none; border: none; padding: 0;
+  font: inherit; color: inherit; cursor: pointer; }
+/* 「厂商/模型」组合名比单档选项长：放宽截断（其他 pill 保持 88px 短名） */
+#f-direct-wrap .cmp-sel-btn { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+/* 厂商/模型钻取菜单：脱离 pill 宽度限制（type-menu 默认 left/right 撑满父级） */
+#cmp-model-menu { left: 0; right: auto; min-width: 250px; }
 
 /* 插件市场：内置/已安装/可安装分区标题与已装启停开关（对齐 ZCode 形态） */
 #mk-grid .sec-title { margin: 14px 0 6px; }
@@ -5640,3 +5646,10 @@ button.request-busy > * { opacity: .18; }
 .mk-card .switch input::after { content: ""; position: absolute; top: 2px; left: 2px;
   width: 15px; height: 15px; border-radius: 50%; background: #fff; transition: left .15s; }
 .mk-card .switch input:checked::after { left: 17px; }
+
+/* 插件市场分区模式：外层转块级，标题不当格子排（此前 h3 塞进 grid 导致
+   标题/卡片错位——用户截图反馈「样式乱了」）；每组自带独立 grid。 */
+#mk-grid.mk-grouped { display: block; }
+#mk-grid.mk-grouped .mk-grid { display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+#mk-grid.mk-grouped .sec-title { margin: 16px 0 8px; }

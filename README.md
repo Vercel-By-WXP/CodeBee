@@ -23,8 +23,8 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 <!-- relnotes:start -->
 ### ✨ 新功能 · New
 
-- 编排模式 / 思考程度 / 对话模型从「更多选项」提到输入框正下方，随开随用。
-- Orchestration mode, reasoning level and chat model now sit right under the input box instead of being folded away.
+- 新建任务输入框焕新：编排模式、思考程度、「厂商/模型」选择器收进输入框工具行右侧（左附件、右偏好+发送的主流布局）；对话模型点开是「厂商 → 模型」两级菜单，选中打勾、底部「管理模型」直达，pill 显示「厂商/模型」组合名。
+- The composer was refreshed: orchestration mode, reasoning level and a "provider/model" picker now sit on the input box's right side (attachments left, preferences + send right, like mainstream AI input boxes). The model picker opens a provider → model cascading menu with checkmarks and a shortcut to model management.
 
 - 经验库越用越准：教训按任务结局自动记胜负，真正帮上忙的经验优先注入、帮倒忙的被挤出——随真实运行自我提纯。
 - The lesson library now tracks outcomes: lessons that helped a task pass gain weight, ones that failed to prevent issues fade — it self-refines with every run.

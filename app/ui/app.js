@@ -80,8 +80,103 @@ function applyTaskPreferenceDefaults() {
   if (thinking && ["auto", "low", "standard", "high"].includes(lp.thinking)) thinking.value = lp.thinking;
   const manual = $("f-manual-only");
   if (manual && mode) manual.classList.toggle("hidden", mode.value !== "manual");
+  syncCmpSelFace("f-mode");
+  syncCmpSelFace("f-thinking");
   S.prefsApplied = true;
 }
+
+/* composer 内「编排模式/思考程度」pill 的短名：原生 select 透明覆盖在 pill 上，
+ * face 只显示选项的短前缀（「自动（推荐）：…」→「自动」），值真源仍是 select。 */
+function cmpSelShort(text) {
+  return (String(text || "").split(/[：:]/)[0]
+    .replace(/[（(].*?[）)]/g, "").trim()) || "";
+}
+
+function syncCmpSelFace(id) {
+  const sel = $(id), face = $(id + "-face");
+  if (!sel || !face) return;
+  const opt = sel.options[sel.selectedIndex];
+  face.textContent = cmpSelShort(opt && opt.textContent) || sel.value;
+}
+window.syncCmpSelFace = syncCmpSelFace;   // applyI18n 重译 option 后同步短名
+
+/* ---- 对话模型 pill：厂商 → 模型两级钻取菜单（ChatGPT 选择器同款语汇）。
+ * 真源仍是 f-direct-provider / f-direct-model-name 两个隐藏 select，
+ * 菜单只改它们的值——既有提交流 / onTypeChange 显隐 / 测试全兼容。 */
+let cmpModelProv = "";   // ""=厂商级；否则=已钻入的厂商 id（模型级）
+
+function cmpDirectBtnSync() {
+  const btn = $("f-direct-btn");
+  if (!btn) return;
+  const pv = $("f-direct-provider").value, mv = $("f-direct-model-name").value;
+  if (!pv) { btn.textContent = t("自动推荐"); return; }
+  const p = directProviders().find((x) => x.id === pv);
+  btn.textContent = (p ? (p.name || p.id) : pv) + (mv ? "/" + mv : "/" + t("推荐"));
+}
+
+function cmpModelMenuRender() {
+  const menu = $("cmp-model-menu");
+  if (!menu) return;
+  const pv = $("f-direct-provider").value, mv = $("f-direct-model-name").value;
+  const chk = '<svg class="ico ti-check" aria-hidden="true"><use href="#i-check"></use></svg>';
+  const arr = '<svg class="ico ti-check" aria-hidden="true"><use href="#i-chevron-r"></use></svg>';
+  if (!cmpModelProv) {
+    menu.innerHTML =
+      '<button type="button" class="type-item" data-p="" data-m=""><span class="ti-body"><span class="ti-name">' +
+        t("自动推荐") + "</span></span>" + (!pv ? chk : "") + "</button>" +
+      directProviders().map((p) =>
+        '<button type="button" class="type-item" data-p="' + esc(p.id) + '"><span class="ti-body"><span class="ti-name">' +
+        esc(p.name || p.id) + "</span></span>" + (pv === p.id ? chk : arr) + "</button>").join("") +
+      '<div class="type-menu-foot"><button type="button" class="type-item" data-manage="1"><span class="ti-body"><span class="ti-name">' +
+        t("管理模型…") + "</span></span></button></div>";
+  } else {
+    const p = directProviders().find((x) => x.id === cmpModelProv);
+    const names = p ? (p.models || []).filter((m) => m.enabled !== false && !m.hidden)
+      .map((m) => m.name).filter(Boolean) : [];
+    menu.innerHTML =
+      '<button type="button" class="type-item" data-back="1"><span class="ti-body"><span class="ti-name">‹ ' +
+        esc(p ? (p.name || p.id) : cmpModelProv) + "</span></span></button>" +
+      '<button type="button" class="type-item" data-p="' + esc(cmpModelProv) + '" data-m=""><span class="ti-body"><span class="ti-name">' +
+        t("随厂商推荐") + "</span></span>" + (pv === cmpModelProv && !mv ? chk : "") + "</button>" +
+      names.map((n) =>
+        '<button type="button" class="type-item" data-p="' + esc(cmpModelProv) + '" data-m="' + esc(n) + '"><span class="ti-body"><span class="ti-name">' +
+        esc(n) + "</span></span>" + (pv === cmpModelProv && mv === n ? chk : "") + "</button>").join("");
+  }
+}
+
+function toggleModelMenu(force) {
+  const menu = $("cmp-model-menu");
+  if (!menu) return;
+  const show = force !== undefined ? force : menu.classList.contains("hidden");
+  if (show) { cmpModelProv = ""; cmpModelMenuRender(); }
+  menu.classList.toggle("hidden", !show);
+}
+window.toggleModelMenu = toggleModelMenu;
+
+(function () {
+  const menu = $("cmp-model-menu");
+  if (!menu || menu.dataset.cmpBound) return;
+  menu.dataset.cmpBound = "1";
+  menu.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-p],[data-back],[data-manage]");
+    if (!b) return;
+    if (b.dataset.manage) { toggleModelMenu(false); switchTab("models"); return; }
+    if (b.dataset.back) { cmpModelProv = ""; cmpModelMenuRender(); return; }
+    if (b.dataset.m === undefined) { cmpModelProv = b.dataset.p; cmpModelMenuRender(); return; }
+    // 选定：写回隐藏 select 真源（提交流/回归测试全走原路径）
+    $("f-direct-provider").value = b.dataset.p;
+    $("f-direct-model-name").value = b.dataset.m;
+    cmpDirectBtnSync();
+    toggleModelMenu(false);
+  });
+  document.addEventListener("click", (e) => {
+    const wrap = $("f-direct-wrap");
+    if (wrap && !wrap.contains(e.target)) toggleModelMenu(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") toggleModelMenu(false);
+  });
+})();
 
 /* 类型选择的可见层：带黑白图标的按钮 + 弹出菜单。原生 <option> 渲染不了 SVG，
  * 所以隐藏 select 只当值真源（既有联动/测试全部照旧），外观全靠这层。 */
@@ -179,7 +274,9 @@ function onTypeChange() {
   if (codeOnly) codeOnly.classList.toggle("hidden", isReview || isDirect);
   if (reviewOnly) reviewOnly.classList.toggle("hidden", !isReview);
   if ($("f-direct-model")) $("f-direct-model").classList.toggle("hidden", !isDirect);
-  if (isDirect) renderDirectModelPicker();
+  const dwrap = $("f-direct-wrap");
+  if (dwrap) dwrap.classList.toggle("hidden", !isDirect);
+  if (isDirect) { renderDirectModelPicker(); cmpDirectBtnSync(); }
   const bibleCreate = $("bible-create-field");
   const isSerialReview = isReview && !!(flow && flow.serial);
   if (bibleCreate) bibleCreate.classList.toggle("hidden", !isSerialReview);
@@ -240,6 +337,7 @@ function renderDirectModelPicker() {
   ms.innerHTML = '<option value="">' + t("随厂商推荐") + '</option>' + names.map((name) =>
     '<option value="' + esc(name) + '">' + esc(name) + "</option>").join("");
   if (oldModel && names.includes(oldModel)) ms.value = oldModel;
+  cmpDirectBtnSync();   // 工具行 pill 文字跟随真源
 }
 
 function recommendTaskType(goal) {
@@ -8978,11 +9076,12 @@ function mkCardHtml(p, section) {
   else if (p.installed) ops = '<span class="tag ok">' + t("已安装") + "</span>" +
     '<button class="ghost small" onclick="mkRemove(\'' + esc(p.id) + '\')">' + t("卸载") + "</button>";
   else ops = '<button class="primary small" onclick="mkInstall(\'' + esc(p.id) + '\')">' + t("安装") + "</button>";
-  // 已装插件卡片直接给启停开关（对齐 ZCode 插件管理形态：启停不用去经验库翻）
+  // 已装插件卡片直接给启停开关（对齐 ZCode 插件管理形态：启停不用去经验库翻）。
+  // 注意传 pack_id（user-哈希）而非市场 id——启停记账在 skills 用户包上
   const toggle = p.installed
     ? '<label class="switch" title="' + (p.enabled ? t("已启用") : t("已停用")) + '">' +
       '<input type="checkbox"' + (p.enabled ? " checked" : "") +
-      ' onchange="mkTogglePack(\'' + esc(p.id) + '\', this.checked)"></label>'
+      ' onchange="mkTogglePack(\'' + esc(p.pack_id || p.id) + '\', this.checked)"></label>'
     : "";
   const sec = section ? '<span class="tag mk-sec">' + esc(section) + "</span>" : "";
   return '<div class="card mk-card"><div class="head">' +
@@ -9034,21 +9133,22 @@ function renderMarket() {
     (p.name || "").toLowerCase().indexOf(q) >= 0 || (p.desc || "").toLowerCase().indexOf(q) >= 0);
   const cnt = $("mk-count");
   if (cnt && mkActiveView() === "local") cnt.textContent = t("共 ") + items.length + t(" 个");
-  // 分区渲染（对齐 ZCode 插件管理形态）：内置 / 已安装 / 可安装三组，
-  // 各组小标题+卡片；「全部」以外状态只出命中的那组
+  // 分区渲染（对齐 ZCode 插件管理形态）：内置 / 已安装 / 可安装三组。
+  // #mk-grid 本身是 grid 容器，直接塞 h3 会把标题当格子排（样式乱）——
+  // 分区模式给外层加 .mk-grouped 转块级，每组自带独立 .mk-grid。
   if (st === "all" && !cat && !q) {
     const builtin = items.filter((p) => p.builtin);
     const inst = items.filter((p) => !p.builtin && p.installed);
     const avail = items.filter((p) => !p.builtin && !p.installed);
-    const sec = (title, list) => list.length
-      ? '<h3 class="sec-title">' + title + " " + list.length + "</h3>" +
-        '<div class="mk-grid">' + list.map((p) => mkCardHtml(p, t(title))).join("") + "</div>"
-      : "";
-    grid.innerHTML =
-      sec(t("内置"), builtin) + sec(t("已安装"), inst) + sec(t("可安装"), avail) ||
+    const sec = (title, list) => !list.length ? "" :
+      '<h3 class="sec-title">' + esc(t(title)) + ' <span class="tag">' + list.length + "</span></h3>" +
+      '<div class="mk-grid">' + list.map((p) => mkCardHtml(p)).join("") + "</div>";
+    grid.classList.add("mk-grouped");
+    grid.innerHTML = sec(t("内置"), builtin) + sec(t("已安装"), inst) + sec(t("可安装"), avail) ||
       '<div class="empty">' + t("没有符合条件插件") + "</div>";
     return;
   }
+  grid.classList.remove("mk-grouped");
   grid.innerHTML = items.map((p) => mkCardHtml(p)).join("") || '<div class="empty">' + t("没有符合条件插件") + "</div>";
 }
 
@@ -11321,6 +11421,9 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-git-rev").addEventListener("change", renderGitHint);
   if ($("f-workdir").value) queueGitProbe();  // 回填的目录：进页面即探测代码版本
   $("f-type").addEventListener("change", onTypeChange);
+  // 编排模式/思考程度 pill：选项变化同步短名（含语言切换后的 option 文本变化）
+  $("f-mode").addEventListener("change", () => syncCmpSelFace("f-mode"));
+  $("f-thinking").addEventListener("change", () => syncCmpSelFace("f-thinking"));
   // 类型菜单点外面收起（Escape 同收）；按钮自身点击由 toggleTypeMenu 负责
   document.addEventListener("click", (e) => {
     const menu = $("type-menu"), btn = $("f-type-btn");
