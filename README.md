@@ -23,13 +23,24 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 <!-- relnotes:start -->
 ### ✨ 新功能 · New
 
-- 顶栏新增统一操作状态中心：创建、删除、绑定、插件等写操作会显示进行中、完成或失败状态，并保留时间与错误原因。
-- A unified operation center now shows create, delete, binding, and plugin actions as running, completed, or failed, with timestamps and error details.
+- 连载任务防穿帮：新增「资源账本」——每章评审自动登记新出现的道具、伤情、承诺与伏笔，写下一章前自动注入提醒核对。
+- Serial tasks now keep a resource ledger: props, injuries, promises, and plot threads are tracked per chapter and injected before writing the next one.
+
+- 连载评审逐项核对：每章按大纲要点逐项判定「已完成/未完成/待核实」并引用正文证据，铺垫不再被当成已完成。
+- Chapter reviews now check every outline beat against the actual text — foreshadowing no longer counts as done.
+
+- 新建任务记住你的偏好：上次选择的任务类型、轮数、阈值、章节数等下次自动预填（只记参数，不记内容）。
+- The new-task form now remembers your last-used type, rounds, threshold, and chapter settings (parameters only, never content).
 
 ### 🛠 问题修复 · Fixes
 
-- 后台维护、澄清探测和轮询请求默认静默，移动端状态弹层自适应屏幕并支持减少动画。
-- Background maintenance, clarification probes, and polling stay quiet by default; the mobile operation panel adapts to the viewport and respects reduced-motion settings.
+- 代码任务提速：验证命令失败时先直接修复再评审（首轮不再白跑一次评审），连续失败两轮后才请评审参与诊断。
+- Code tasks get faster: when verification fails, the agent fixes first and review joins only after repeated failures.
+
+### 上一版亮点 · Previous release
+
+- 顶栏新增统一操作状态中心：创建、删除、绑定、插件等写操作会显示进行中、完成或失败状态，并保留时间与错误原因。
+- A unified operation center now shows create, delete, binding, and plugin actions as running, completed, or failed, with timestamps and error details.
 
 ### 上一版亮点 · Previous release
 
