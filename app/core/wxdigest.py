@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import threading
 import time
 from datetime import datetime, timedelta
@@ -708,3 +709,142 @@ def _test_reset():
         _STATE["groups_cache"] = []
         _STATE["last_scan"] = _STATE["next_scan"] = _STATE["last_error"] = ""
         globals()["_LOADED"] = True
+
+
+# ---- 64 位 Python 自动扫描 + wechatauto-replica 一键安装（2026-09-21 用户诉求：
+#      别让用户手填解释器路径、别让用户自己开 conda 装依赖）----
+
+_PY_SCAN = {"scanning": False, "done": True, "results": []}
+_PY_INSTALL = {"running": False, "ok": None, "python": "", "log": []}
+_REPLICA_PKG = "wechatauto-replica"
+
+
+def _candidate_pythons():
+    """收集本机候选解释器路径（去重、存在性过滤）。只列不判，位数/依赖交给探测。"""
+    import glob
+    cands = []
+
+    def _add(p):
+        p = str(p).strip().strip('"')
+        if p and os.path.isfile(p) and p.lower().endswith((".exe",)) is not False:
+            if p not in cands and "python" in os.path.basename(p).lower():
+                cands.append(p)
+
+    if os.name == "nt":
+        home = os.environ.get("USERPROFILE") or ""
+        patterns = [
+            os.path.join(home, "anaconda3", "envs", "*", "python.exe"),
+            os.path.join(home, "miniconda3", "envs", "*", "python.exe"),
+            os.path.join(home, ".conda", "envs", "*", "python.exe"),
+            os.path.join(os.environ.get("LOCALAPPDATA") or "", "Programs",
+                         "Python", "*", "python.exe"),
+            r"C:\Python*\python.exe",
+            os.path.join(home, "AppData", "Local", "anaconda3", "python.exe"),
+            os.path.join(home, "anaconda3", "python.exe"),
+            os.path.join(home, "miniconda3", "python.exe"),
+        ]
+        for pat in patterns:
+            for p in glob.glob(pat):
+                _add(p)
+        try:
+            r = subprocess.run(["cmd", "/c", "where", "python"],
+                               capture_output=True, timeout=15)
+            for ln in r.stdout.decode("utf-8", "replace").splitlines():
+                _add(ln)
+        except Exception:
+            pass
+    else:
+        import glob as _g
+        for pat in ("/usr/bin/python3*", "/usr/local/bin/python3*",
+                    os.path.expanduser("~/.conda/envs/*/bin/python3"),
+                    os.path.expanduser("~/miniconda3/envs/*/bin/python3"),
+                    os.path.expanduser("~/anaconda3/envs/*/bin/python3")):
+            for p in _g.glob(pat):
+                _add(p)
+    return cands[:24]
+
+
+def _probe_python(py):
+    """探测解释器：返回 {path, version, bits} 或 None（跑不动/不是 python）。"""
+    try:
+        r = subprocess.run(
+            [py, "-c", "import sys,struct;print('%d.%d'%sys.version_info[:2],"
+                       "struct.calcsize('P')*8)"],
+            capture_output=True, timeout=20,
+            creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
+        out = (r.stdout or b"").decode("utf-8", "replace").strip()
+        ver, bits = out.split()
+        return {"path": py, "version": ver, "bits": int(bits)}
+    except Exception:
+        return None
+
+
+def _has_replica(py):
+    """该环境是否已装 wechatauto-replica（pip show 探测，失败视为未装）。"""
+    try:
+        r = subprocess.run([py, "-m", "pip", "show", _REPLICA_PKG],
+                           capture_output=True, timeout=60,
+                           creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def scan_pythons():
+    """启动后台扫描（幂等：扫描中重复调用直接忽略）。返回当前状态。"""
+    if _PY_SCAN["scanning"]:
+        return dict(_PY_SCAN)
+
+    def _run():
+        _PY_SCAN.update(scanning=True, done=False, results=[])
+        found = []
+        for py in _candidate_pythons():
+            info = _probe_python(py)
+            if not info:
+                continue
+            info["has_replica"] = _has_replica(py)
+            found.append(info)
+        # 排序：64 位优先 → 已装 replica 优先 → 版本新优先 → 路径短优先
+        found.sort(key=lambda x: (x["bits"] < 64, not x["has_replica"],
+                                  x["version"], len(x["path"])), reverse=False)
+        found.sort(key=lambda x: (x["bits"] >= 64, x["has_replica"]))
+        _PY_SCAN.update(scanning=False, done=True, results=found)
+
+    threading.Thread(target=_run, name="wx-py-scan", daemon=True).start()
+    return dict(_PY_SCAN)
+
+
+def pythons_status():
+    return dict(_PY_SCAN)
+
+
+def install_replica(py):
+    """一键安装 wechatauto-replica 到指定解释器（后台 pip，状态可轮询）。"""
+    py = str(py or "").strip()
+    if not py or not os.path.isfile(py):
+        return {"ok": False, "error": "解释器路径无效"}
+    if _PY_INSTALL["running"]:
+        return {"ok": False, "error": "已有安装在跑，请等它结束"}
+
+    def _run():
+        _PY_INSTALL.update(running=True, ok=None, python=py, log=[])
+        try:
+            r = subprocess.run(
+                [py, "-m", "pip", "install", _REPLICA_PKG],
+                capture_output=True, timeout=900,
+                creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
+            ok = r.returncode == 0
+            tail = ((r.stderr or b"").decode("utf-8", "replace")
+                    or (r.stdout or b"").decode("utf-8", "replace"))[-1500:]
+        except Exception as e:
+            ok, tail = False, str(e)[:500]
+        _PY_INSTALL.update(running=False, ok=ok, log=tail.strip().splitlines()[-25:])
+        if ok:
+            scan_pythons()   # 装完自动重扫，has_replica 标记即时生效
+
+    threading.Thread(target=_run, name="wx-replica-install", daemon=True).start()
+    return {"ok": True}
+
+
+def install_status():
+    return dict(_PY_INSTALL)

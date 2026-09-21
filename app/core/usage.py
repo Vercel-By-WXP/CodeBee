@@ -655,11 +655,19 @@ def summary(days=30, recent_limit=30):
     }
 
 
-def estimate(task_type="", days=90):
-    """同类任务开跑前成本预估（借鉴 omnigent 的 pre-run estimate；数据源就是本台账）。
+_DURATION_BASELINES = {
+    "direct": 90, "rank_scan": 240, "email": 180, "weekly_report": 240,
+    "translation": 240, "speech": 360, "video_script": 360, "article": 480,
+    "doc": 480, "resume": 420, "code": 600, "tech_proposal": 720,
+    "research": 900, "novel": 720, "serial_novel": 2400,
+}
+
+
+def estimate(task_type="", days=90, mode="auto", thinking="standard", rounds=None):
+    """同类任务开跑前成本与耗时预估（数据源为本地用量台账）。
 
     同一 run 的多条步骤记录加总为一个样本，优先用成功 run，给中位数/平均/P90。
-    task_type 为空=全类型。无样本时 samples=0，前端不展示。"""
+    无历史样本时使用流程级保守基线；模式与思考程度只做透明倍率修正。"""
     span = max(1, min(3650, int(days or 90)))
     with LOCK:
         records = _iter_records(span)
@@ -671,23 +679,52 @@ def estimate(task_type="", days=90):
         rid = str(r.get("run_id") or "")
         if not rid:
             continue
-        g = runs.setdefault(rid, {"tokens": 0, "cost": 0.0, "ok": False})
+        g = runs.setdefault(rid, {"tokens": 0, "cost": 0.0,
+                                  "duration": 0.0, "ok": False})
         g["tokens"] += _num(r, "total")
         g["cost"] += _parse_float(r.get("cost_usd"))
+        g["duration"] += max(0.0, _parse_float(r.get("duration_s")))
         if r.get("ok"):
             g["ok"] = True
     ok_runs = [g for g in runs.values() if g["ok"]]
     basis = ok_runs or list(runs.values())
+    mode_factor = {"fast": 0.60, "auto": 1.0, "expert": 1.65,
+                   "manual": 1.0}.get(str(mode or "auto"), 1.0)
+    thinking_factor = {"low": 0.78, "standard": 1.0, "high": 1.45,
+                       "auto": 1.0}.get(str(thinking or "standard"), 1.0)
+    factor = mode_factor * thinking_factor
+    try:
+        if rounds is not None and int(rounds) > 2:
+            factor *= 1.0 + min(3, int(rounds) - 2) * 0.18
+    except (TypeError, ValueError):
+        pass
     if not basis:
-        return {"task_type": task_type or "", "days": span, "samples": 0}
+        baseline = _DURATION_BASELINES.get(task_type, 480)
+        median_s = max(30, int(baseline * factor))
+        return {"task_type": task_type or "", "days": span, "samples": 0,
+                "estimated_duration_s": median_s,
+                "p90_duration_s": max(median_s + 30, int(median_s * 1.7)),
+                "duration_source": "baseline"}
     toks = sorted(g["tokens"] for g in basis)
     costs = sorted(g["cost"] for g in basis)
+    durations = sorted(g["duration"] for g in basis if g["duration"] > 0)
     n = len(toks)
     mid = n // 2
     med = toks[mid] if n % 2 else (toks[mid - 1] + toks[mid]) / 2.0
     med_c = costs[mid] if n % 2 else (costs[mid - 1] + costs[mid]) / 2.0
     import datetime
     import math
+    if durations:
+        dn = len(durations)
+        dmid = dn // 2
+        dmed = (durations[dmid] if dn % 2
+                else (durations[dmid - 1] + durations[dmid]) / 2.0)
+        dp90 = durations[max(0, min(dn - 1, math.ceil(0.9 * dn) - 1))]
+        duration_source = "history"
+    else:
+        dmed = _DURATION_BASELINES.get(task_type, 480)
+        dp90 = dmed * 1.7
+        duration_source = "baseline"
     return {
         "task_type": task_type or "",
         "days": span,
@@ -698,5 +735,9 @@ def estimate(task_type="", days=90):
         "p90_tokens": toks[max(0, min(n - 1, math.ceil(0.9 * n) - 1))],
         "avg_cost_usd": round(sum(costs) / n, 4),
         "median_cost_usd": round(med_c, 4),
+        "estimated_duration_s": max(30, int(dmed * factor)),
+        "p90_duration_s": max(60, int(dp90 * factor)),
+        "duration_samples": len(durations),
+        "duration_source": duration_source,
         "since": (datetime.date.today() - datetime.timedelta(days=span - 1)).isoformat(),
     }

@@ -178,6 +178,7 @@
       <button class="set-item active" data-sub="tasks" data-i18n="任务"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg>任务</button>
       <button class="set-item" data-sub="runs" data-i18n="运行记录"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>运行记录</button>
       <button class="set-item" data-sub="automation" data-i18n="自动化"><svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>自动化</button>
+      <button class="set-item" data-sub="__wxdigest" data-i18n="微信群聊汇报"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg>微信群聊汇报</button>
       <button class="set-item" data-sub="zentao" data-i18n="禅道"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>禅道</button>
       <button class="set-item" data-sub="usage" data-i18n="用量统计"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg>用量统计</button>
       <div data-i18n="配置" class="set-group">配置</div>
@@ -328,9 +329,23 @@
               <div class="field">
                 <label data-i18n="编排模式">编排模式</label>
                 <select id="f-mode">
-                  <option data-i18n="智能（推荐）：自动拆解 + 智能路由 + 失败自动修复/换将" value="auto">智能（推荐）：自动拆解 + 智能路由 + 失败自动修复/换将</option>
+                  <option data-i18n="自动（推荐）：按任务类型与风险动态决定步骤" value="auto">自动（推荐）：按任务类型与风险动态决定步骤</option>
+                  <option data-i18n="快速：少步骤优先，先做确定性验收" value="fast">快速：少步骤优先，先做确定性验收</option>
+                  <option data-i18n="专家：完整规划、多评审、失败修复与换将" value="expert">专家：完整规划、多评审、失败修复与换将</option>
                   <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
                 </select>
+              </div>
+              <div class="grid-2">
+                <div class="field"><label data-i18n="思考程度">思考程度</label><select id="f-thinking">
+                  <option data-i18n="标准：平衡质量与速度" value="standard" selected>标准：平衡质量与速度</option>
+                  <option data-i18n="自动：随任务难度调整" value="auto">自动：随任务难度调整</option>
+                  <option data-i18n="快速：少推理、优先响应" value="low">快速：少推理、优先响应</option>
+                  <option data-i18n="深度：更多推理与检查" value="high">深度：更多推理与检查</option>
+                </select></div>
+                <div id="f-direct-model" class="field hidden"><label data-i18n="对话模型（可选）">对话模型（可选）</label><div class="grid-2">
+                  <select id="f-direct-provider" aria-label="对话厂商" data-i18n-aria="对话厂商"><option data-i18n="自动推荐">自动推荐</option></select>
+                  <select id="f-direct-model-name" aria-label="对话模型" data-i18n-aria="对话模型"><option data-i18n="随厂商推荐">随厂商推荐</option></select>
+                </div><p class="hint" data-i18n="只对本次对话生效，不会修改全局绑定；指定渠道不可用时会明确报错。">只对本次对话生效，不会修改全局绑定；指定渠道不可用时会明确报错。</p></div>
               </div>
 
               <div id="f-code-only">
@@ -557,12 +572,12 @@
           <label data-i18n="密码">密码</label><input id="zt-password" type="password" placeholder="" autocomplete="new-password">
         </div>
         <h3 data-i18n="自动化" class="sec-title">自动化</h3>
-        <div class="zt-grid zt-grid-toggles">
+        <div class="zt-grid zt-grid-toggles zt-auto-options">
           <label class="toggle" title="模块路由没命中时，用 AI 读 Bug 描述判端（前端/后端/双端/非我方）；关掉则未命中模块的 Bug 留人工" data-i18n-title="模块路由没命中时，用 AI 读 Bug 描述判端（前端/后端/双端/非我方）；关掉则未命中模块的 Bug 留人工"><input id="zt-triageai" type="checkbox"><span data-i18n="AI 排查兜底">AI 排查兜底</span></label>
           <label class="toggle" title="修复任务评审通过后，自动到禅道 resolve（fixed）并回评论" data-i18n-title="修复任务评审通过后，自动到禅道 resolve（fixed）并回评论"><input id="zt-autoresolve" type="checkbox"><span data-i18n="自动 resolve Bug">自动 resolve Bug</span></label>
           <label class="toggle" title="把任务分支自动合并回基线分支（需配置基线分支；合并失败不 resolve 不转派，留人工）" data-i18n-title="把任务分支自动合并回基线分支（需配置基线分支；合并失败不 resolve 不转派，留人工）"><input id="zt-automerge" type="checkbox"><span data-i18n="自动合并代码">自动合并代码</span></label>
           <label class="toggle" title="按下面的间隔定时扫描；关掉后仍可手动「立即扫描」" data-i18n-title="按下面的间隔定时扫描；关掉后仍可手动「立即扫描」"><input id="zt-poll" type="checkbox"><span data-i18n="定时扫描">定时扫描</span></label>
-          <label data-i18n="扫描间隔（小时）">扫描间隔（小时）</label><input id="zt-interval" type="number" min="1" max="168" step="1">
+          <label class="zt-interval-field"><span data-i18n="扫描间隔（小时）">扫描间隔（小时）</span><input id="zt-interval" type="number" min="1" max="168" step="1"></label>
         </div>
         <div class="ops"><button id="btn-zentao-save" class="primary small"><span data-i18n="保存配置">保存配置</span></button></div>
         <h3 data-i18n="产品档案" class="sec-title">产品档案</h3>
@@ -1107,10 +1122,10 @@
 
 <!-- 群摘要蜜蜂坞（右下角悬浮蜜蜂）：桌面蜜蜂 pet.py 的网页侧搭档。
      未读摘要时徽章+气泡提醒，点开面板看各群摘要/配置监控文件夹；
-     未启用且无数据时整坞隐藏（不占视线）。后端 core/wxdigest.py。 -->
-<div id="bee-dock" class="hidden">
+     未配置时也保持入口可见，避免功能存在却无处开启。后端 core/wxdigest.py。 -->
+<div id="bee-dock">
   <div id="bee-bubble" class="hidden"></div>
-  <button id="bee-fab" aria-label="群摘要" data-i18n-aria="群摘要" data-i18n-title="群摘要" title="群摘要">
+  <button id="bee-fab" aria-label="微信群聊汇报" data-i18n-aria="微信群聊汇报" data-i18n-title="微信群聊汇报" title="微信群聊汇报">
     <svg class="ico ico-lg" aria-hidden="true"><use href="#i-bee"></use></svg>
     <span id="bee-badge" class="hidden"></span>
   </button>
@@ -1130,7 +1145,13 @@
     <label class="toggle"><input id="bee-reader" type="checkbox"> <span data-i18n="从本机微信自动拉取（微信直连）">从本机微信自动拉取（微信直连）</span></label>
     <div id="bee-reader-box" class="hidden">
       <span class="bee-lab" data-i18n="64 位 Python 路径（需装 wechatauto-replica）">64 位 Python 路径（需装 wechatauto-replica）</span>
-      <input id="bee-reader-py" type="text" spellcheck="false" data-i18n-ph="例如 C:\Users\HP\anaconda3\envs\wxprobe\python.exe" placeholder="例如 C:\Users\HP\anaconda3\envs\wxprobe\python.exe">
+      <div class="bee-dir-row">
+        <input id="bee-reader-py" type="text" spellcheck="false" style="flex:1" data-i18n-ph="例如 C:\Users\HP\anaconda3\envs\wxprobe\python.exe" placeholder="例如 C:\Users\HP\anaconda3\envs\wxprobe\python.exe">
+        <button id="bee-py-scan" class="ghost small" data-i18n="扫描">扫描</button>
+      </div>
+      <div id="bee-py-cands" class="bee-py-cands hidden"></div>
+      <button id="bee-py-install" class="ghost small hidden" data-i18n="一键安装 wechatauto-replica">一键安装 wechatauto-replica</button>
+      <span id="bee-py-status" class="hint"></span>
       <div class="bee-dir-row">
         <button id="bee-groups-btn" class="ghost small" data-i18n="选择要监听的群（0）">选择要监听的群（0）</button>
       </div>

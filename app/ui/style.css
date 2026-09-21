@@ -5521,3 +5521,65 @@ button.request-busy > * { opacity: .18; }
   line-height: 1.6;
 }
 #su-info.empty { text-align: center; }
+
+/* ---------------- 禅道·添加产品与自动化布局（追加于文件尾） ---------------- */
+.zt-prof .head .name {
+  display: flex; flex: 1 1 280px; min-width: 0; align-items: center; gap: 8px;
+  overflow: visible; white-space: normal;
+}
+.zt-prof .head .zt-p-product {
+  width: min(360px, 100%); min-width: 180px; flex: 1 1 240px;
+}
+.zt-auto-options {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 18px; align-items: start;
+}
+@media (min-width: 901px) {
+  .zt-auto-options { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+.zt-auto-options > .toggle {
+  min-height: 38px; margin: 0; align-self: end;
+}
+.zt-auto-options .zt-interval-field {
+  display: grid; grid-template-columns: 1fr; gap: 6px; min-width: 0;
+  color: var(--muted); font-size: 12.5px;
+}
+.zt-auto-options .zt-interval-field input {
+  width: 100%; max-width: none; box-sizing: border-box;
+}
+@media (max-width: 640px) {
+  .zt-auto-options { grid-template-columns: 1fr 1fr; }
+  .zt-auto-options .zt-interval-field { grid-column: 1 / -1; }
+  .zt-prof .head .zt-p-product { min-width: 0; }
+}
+
+/* 禅道自动化开关行：紧凑排成一行（四开关 + 扫描间隔同行，窄屏自动换行；
+   间隔输入改行内「标签+输入」，不再独占一格上下分层——用户反馈排成一行） */
+.zt-auto-options {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 8px 22px; grid-template-columns: none;
+}
+.zt-auto-options > .toggle { min-height: 0; margin: 0; align-self: auto; }
+.zt-auto-options .zt-interval-field {
+  display: inline-flex; align-items: center; gap: 8px;
+  grid-template-columns: none; min-width: 0;
+  margin-left: auto; color: var(--muted); font-size: 12.5px;
+}
+.zt-auto-options .zt-interval-field input { width: 72px; }
+@media (max-width: 900px) {
+  .zt-auto-options .zt-interval-field { margin-left: 0; }
+}
+
+/* 蜜蜂坞微信直连：Python 扫描候选列表（样式对齐 bee-cfg 卡片内风格） */
+.bee-py-cands {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 168px; overflow: auto; margin: 6px 0;
+}
+.bee-py-item {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  padding: 6px 8px; border: 1px solid var(--border, rgba(128,128,128,.25));
+  border-radius: 6px; background: transparent; cursor: pointer; color: inherit;
+}
+.bee-py-item.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.bee-py-path { font-size: 12px; word-break: break-all; }
+.bee-py-meta { font-size: 11px; opacity: .65; }

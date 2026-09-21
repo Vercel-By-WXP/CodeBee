@@ -168,6 +168,7 @@ def _short(text, limit=22):
 LANG = {
     "zh": {
         "open": "打开 CodeBee",
+        "digest": "群摘要",
         "mode": "显示模式",
         "always": "常驻显示",
         "tasks_only": "仅任务运行时出现",
@@ -197,6 +198,7 @@ LANG = {
     },
     "en": {
         "open": "Open CodeBee",
+        "digest": "Group Digests",
         "mode": "Display mode",
         "always": "Always visible",
         "tasks_only": "Only when tasks run",
@@ -360,6 +362,119 @@ def global_lock_held():
     return False
 
 
+# 浏览器进程白名单：找已打开的 CodeBee 窗口时只认这些主进程的顶层窗口，
+# 避免把桌宠自身（标题也是 CodeBee）或 start-public.bat 起的「CodeBee」
+# 控制台窗口误当成浏览器置前。
+_BROWSER_EXES = {
+    "msedge.exe", "chrome.exe", "chromium.exe", "firefox.exe",
+    "iexplore.exe", "opera.exe", "brave.exe", "vivaldi.exe",
+    "browser.exe", "waterfox.exe", "palemoon.exe", "seamonkey.exe",
+    "centbrowser.exe", "360chrome.exe", "qqbrowser.exe",
+    "sogouexplorer.exe", "maxthon.exe",
+}
+
+
+petWindow = None
+
+
+def _window_process_name(hwnd):
+    """取顶层窗口所属进程的可执行文件名（小写）；失败返回空串。"""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if not pid.value:
+            return ""
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        # PROCESS_QUERY_LIMITED_INFORMATION=0x1000：只需取映像路径
+        h = kernel32.OpenProcess(0x1000, False, pid.value)
+        if not h:
+            return ""
+        try:
+            buf = ctypes.create_unicode_buffer(1024)
+            size = wintypes.DWORD(1024)
+            if kernel32.QueryFullProcessImageNameW(h, 0, buf,
+                                                   ctypes.byref(size)):
+                return Path(buf.value).name.lower()
+        finally:
+            kernel32.CloseHandle(h)
+    except Exception:
+        pass
+    return ""
+
+
+def _find_codebee_window(port, ignore_hwnd=None):
+    """查找当前端口对应的 CodeBee 浏览器顶层窗口，找不到返回 None。"""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        EnumWindowsProc = ctypes.WINFUNCTYPE(
+            wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        found = []
+
+        def _cb(hwnd, _lp):
+            if hwnd == ignore_hwnd or not user32.IsWindowVisible(hwnd):
+                return True
+            if _window_process_name(hwnd) not in _BROWSER_EXES:
+                return True
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return True
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            title = buf.value
+            # 页面启动时把端口写入 document.title。只匹配当前服务端口，避免
+            # 把标题里碰巧含 CodeBee 的文档/仓库页或另一套本地实例抢到前台。
+            if "CodeBee" in title and ("[%s]" % int(port)) in title:
+                found.append(hwnd)
+            return True
+
+        user32.EnumWindows(EnumWindowsProc(_cb), 0)
+        if not found:
+            return None
+        return found[0]
+    except Exception:
+        return None
+
+
+def _show_pet_window(port, ignore_hwnd=None):
+    """复用桌宠拉起的 CodeBee 浏览器窗口；窗口已关闭时返回 False。"""
+    global petWindow
+    try:
+        if os.name != "nt":
+            return False
+        import ctypes
+        user32 = ctypes.windll.user32
+        if petWindow and user32.IsWindow(petWindow):
+            if user32.IsIconic(petWindow):
+                user32.ShowWindow(petWindow, 9)   # SW_RESTORE
+            user32.SetForegroundWindow(petWindow)
+            return True
+        petWindow = None
+        hwnd = _find_codebee_window(port, ignore_hwnd)
+        if not hwnd:
+            return False
+        petWindow = hwnd
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, 9)
+        user32.SetForegroundWindow(hwnd)
+        return True
+    except Exception:
+        return False
+
+
+def openPetWindow(port, ignore_hwnd=None, url=None):
+    """打开 CodeBee 网页：Windows 先置前已打开的窗口（用户拍板「已打开就不重复
+    开」），找不到才用默认浏览器新开。url 可带锚点（如 #bee=1 直达蜜蜂坞）。"""
+    if os.name == "nt" and _show_pet_window(port, ignore_hwnd):
+        return
+    webbrowser.open(url or ("http://127.0.0.1:%d" % port))
+
+
 class PetApp:
     """蜜蜂窗口：蜜蜂本体（精灵/手绘）+ 状态机动画 + 悬停任务清单 + 右键菜单。"""
 
@@ -515,7 +630,26 @@ class PetApp:
         try:
             from PIL import Image, ImageEnhance, ImageTk
         except Exception:
-            return None
+            # 无 Pillow：用 Tk 原生 PhotoImage 直接贴 PNG（Tk 8.6+ 原生解码，
+            # 零依赖）——此前直接回落手绘蜂，普通用户 npm 装完没有 Pillow，
+            # 看到的永远是手绘丑蜂（同事「还是老的丑蜜蜂」的真凶）。
+            # 限制：无平滑缩放/旋转，动画帧退化为静态贴图 + 位移点缀。
+            fname = SKINS.get(skin, SKINS[DEFAULT_SKIN])[0]
+            try:
+                img = self.tk.PhotoImage(file=str(SPRITE_DIR / fname))
+            except Exception:
+                return None
+            h0 = max(1, img.height())
+            disp_h = max(60, int(SPRITE_DISP_H * SIZES.get(self.size_key, 1.0)))
+            scale = disp_h / h0
+            if scale < 0.9:
+                k = max(1, round(1 / scale))
+                img = img.subsample(k, k)
+            elif scale > 1.1:
+                k = max(1, round(scale))
+                img = img.zoom(k, k)
+            return {"alert": [img], "sleep": [img], "dead": [img],
+                    "work": [img], "cheer": [img]}
         fname = SKINS.get(skin, SKINS[DEFAULT_SKIN])[0]
         try:
             base0 = Image.open(SPRITE_DIR / fname).convert("RGBA")
@@ -564,7 +698,6 @@ class PetApp:
         return int(fw) + 8, int(fh) + 4
 
     # ---- 蜜蜂绘制（精灵模式：贴图 + 状态点缀画件）----
-    # 用户拍板去掉：右上徽章、左侧速度线、底部影子（真机截图圈删）——
     # 用户拍板去掉：右上徽章、左侧速度线、底部影子（真机截图圈删）、
     # 底部任务进度条（2026-09-21 真机截图圈删）——
     # 窗口贴着蜂体开，点缀只留睡觉 Zzz / 庆祝星光。
@@ -1230,6 +1363,7 @@ class PetApp:
         self._lang_var.set(self.lang)
         m = self.tk.Menu(self.root, tearoff=0)
         m.add_command(label=self._L("open"), command=self._open_ui)
+        m.add_command(label=self._L("digest"), command=self._open_digest)
         m.add_separator()
         m.add_command(label="◎ " + self._L("mode"), state="disabled")
         m.add_radiobutton(label="    " + self._L("always"),
@@ -1273,11 +1407,19 @@ class PetApp:
         self.lang = lang
         self._save_cfg(lang=lang)
 
-    def _open_ui(self):
+    def _open_ui(self, hash_part=""):
         try:
-            webbrowser.open("http://127.0.0.1:%d" % self.port)
+            if hash_part:
+                openPetWindow(self.port, self.root.winfo_id(),
+                              url="http://127.0.0.1:%d/%s" % (self.port, hash_part))
+            else:
+                openPetWindow(self.port, self.root.winfo_id())
         except Exception:
             pass
+
+    def _open_digest(self):
+        """群摘要：打开网页并自动展开蜜蜂坞面板（样式与网页端统一）。"""
+        self._open_ui("#bee=1")
 
     def _bind_input(self):
         # 菜单变量须先于 _menu 存在

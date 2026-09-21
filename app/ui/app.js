@@ -1,6 +1,9 @@
 /* CodeBee 前端（无依赖；状态走 SSE 实时推送，断线自动降级轮询） */
 "use strict";
 
+// 桌宠通过窗口标题里的端口识别并复用当前 CodeBee 实例。
+document.title = "CodeBee [" + (location.port || (location.protocol === "https:" ? "443" : "80")) + "]";
+
 const $ = (id) => document.getElementById(id);
 const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, lastPrefs: null };
 
@@ -155,6 +158,8 @@ function onTypeChange() {
   // 直连：验证命令与评审参数都不适用，两块一起收起（目标+附件即全部输入）
   if (codeOnly) codeOnly.classList.toggle("hidden", isReview || isDirect);
   if (reviewOnly) reviewOnly.classList.toggle("hidden", !isReview);
+  if ($("f-direct-model")) $("f-direct-model").classList.toggle("hidden", !isDirect);
+  if (isDirect) renderDirectModelPicker();
   const bibleCreate = $("bible-create-field");
   const isSerialReview = isReview && !!(flow && flow.serial);
   if (bibleCreate) bibleCreate.classList.toggle("hidden", !isSerialReview);
@@ -194,6 +199,46 @@ function onTypeChange() {
   }
   renderImplSelects();
   refreshEstimate();
+}
+
+function directProviders() {
+  return (S.providers || []).filter((p) => p.enabled !== false && p.api_key);
+}
+
+function renderDirectModelPicker() {
+  const ps = $("f-direct-provider"), ms = $("f-direct-model-name");
+  if (!ps || !ms) return;
+  const prev = ps.value;
+  const provs = directProviders();
+  ps.innerHTML = '<option value="">' + t("自动推荐") + '</option>' + provs.map((p) =>
+    '<option value="' + esc(p.id) + '">' + esc(p.name || p.id) + "</option>").join("");
+  if (prev && provs.some((p) => p.id === prev)) ps.value = prev;
+  const p = provs.find((x) => x.id === ps.value);
+  const oldModel = ms.value;
+  const names = p ? (p.models || []).filter((m) => m.enabled !== false && !m.hidden)
+    .map((m) => m.name).filter(Boolean) : [];
+  ms.innerHTML = '<option value="">' + t("随厂商推荐") + '</option>' + names.map((name) =>
+    '<option value="' + esc(name) + '">' + esc(name) + "</option>").join("");
+  if (oldModel && names.includes(oldModel)) ms.value = oldModel;
+}
+
+function recommendTaskType(goal) {
+  const s = String(goal || "").toLowerCase();
+  const rules = [
+    ["code", /(代码|bug|报错|修复|重构|接口|数据库|前端|后端|python|javascript|typescript|java|go\b|git)/i],
+    ["translation", /(翻译|译成|translate|translation|中译英|英译中)/i],
+    ["email", /(邮件|email|e-mail|回信|邀约信|商务函)/i],
+    ["weekly_report", /(周报|月报|述职|工作汇报|工作总结)/i],
+    ["video_script", /(短视频|口播|分镜|抖音|视频脚本)/i],
+    ["speech", /(演讲稿|发言稿|致辞|演讲)/i],
+    ["tech_proposal", /(技术方案|架构方案|选型方案|实施方案)/i],
+    ["research", /(调研报告|竞品调研|市场调研|深度研究)/i],
+    ["serial_novel", /(连载|续写.*章|网文|长篇小说)/i],
+    ["novel", /(小说|故事|短篇|章节)/i],
+    ["article", /(公众号|自媒体|文章|博客|小红书)/i],
+  ];
+  const hit = rules.find((x) => x[1].test(s));
+  return hit && flowById(hit[0]) ? hit[0] : "";
 }
 
 /* 快捷类型 chips（Composer 框下方）：内置流程一键选定，选中态跟 #f-type 走 */
@@ -919,6 +964,9 @@ async function poll() {
     S.providers = models.providers; S.bindings = models.bindings;
     S.modelCatalog = models.catalog || [];
     S.sourceNames = models.source_names || S.sourceNames || {};
+    if ($("f-direct-model") && !$('f-direct-model').classList.contains("hidden")) {
+      renderDirectModelPicker();
+    }
     // 供应商集合/启停/密钥变了才重拉编排者：否则「生效中」状态点会在停用厂商后失真
     const provSig = JSON.stringify((S.providers || []).map((p) => [p.id, p.enabled, !!p.api_key]));
     if (provSig !== S.provSig) { S.provSig = provSig; loadOrchestrator(); }
@@ -2145,6 +2193,7 @@ async function createTask() {
     goal: $("f-goal").value.trim(),
     context: $("f-context").value.trim(),
     workdir: $("f-workdir").value.trim(),
+    thinking: $("f-thinking").value,
   };
   if (!payload.goal) {
     msg.className = "msg err";
@@ -2153,6 +2202,22 @@ async function createTask() {
     resetSubmit();
     return;
   }
+  if (payload.type === "direct" && !S.typeSuggestionDone) {
+    const suggested = recommendTaskType(payload.goal);
+    if (suggested) {
+      const flow = flowById(suggested) || {};
+      resetSubmit();
+      const yes = await uiConfirm(
+        t("这个需求更适合「{0}」流程，能使用对应的规划与质量门禁。是否切换后执行？")
+          .replace("{0}", t(flow.name || suggested)),
+        { title: t("推荐任务类型"), ok: t("切换类型") });
+      S.typeSuggestionDone = true;
+      if (yes) pickType(suggested);
+      $("btn-create").click();
+      return;
+    }
+  }
+  S.typeSuggestionDone = false;
   // 需求拷问闸（借鉴 grill-me）：goal 很短且没写背景时先问 1-3 个澄清问题；
   // 采访失败/无问题照常创建——是增强不是闸门
   if (payload.goal.length < 12 && !payload.context && !S.clarifyDone) {
@@ -2198,6 +2263,8 @@ async function createTask() {
     payload.verify_command = $("f-verify").value.trim();
   } else if (_eng === "direct") {
     // 直连：目标+附件即全部输入，不带验证/评审参数
+    payload.direct_provider_id = $("f-direct-provider").value;
+    payload.direct_model = $("f-direct-model-name").value;
   } else {
     payload.manuscript = $("f-manuscript").value.trim() || "manuscript.md";
     payload.rounds = parseInt($("f-rounds").value, 10) || 2;
@@ -2863,11 +2930,19 @@ function newFromTask(id) {
   $("f-workdir").value = tk.workdir || "";
   S.atts = []; renderAttachChips();  // 附件清单不继承：同目录引用已随 context 保留
   queueGitProbe();  // 工作目录变了，重新探测代码版本
-  $("f-mode").value = tk.mode === "manual" ? "manual" : "auto";
+  $("f-mode").value = ["fast", "expert", "manual"].includes(tk.mode) ? tk.mode : "auto";
+  $("f-thinking").value = ["low", "standard", "high"].includes(tk.thinking)
+    ? tk.thinking : "auto";
+  $("f-manual-only").classList.toggle("hidden", $("f-mode").value !== "manual");
   renderImplSelects();
   if (tk.implementer) $("f-impl").value = tk.implementer;
   if (flow && flow.engine === "code") {
     $("f-verify").value = tk.verify_command || "";
+  } else if (flow && flow.engine === "direct") {
+    renderDirectModelPicker();
+    $("f-direct-provider").value = tk.direct_provider_id || "";
+    renderDirectModelPicker();
+    $("f-direct-model-name").value = tk.direct_model || "";
   } else {
     $("f-manuscript").value = tk.manuscript || "manuscript.md";
     $("f-rounds").value = tk.rounds || 2;
@@ -8513,16 +8588,29 @@ function ztHarvestProfiles() {
   });
 }
 
-function ztProfAdd() {
+async function ztProfAdd() {
   S.ztProfiles = ztHarvestProfiles();
-  S.ztProfiles.push({ product: 0, assigned_to: "", severity_cap: 0, our_sides: ["backend"],
+  // 新档案必须来自禅道产品清单。先拉清单，再自动选第一个尚未配置的产品，
+  // 避免生成 product=0 的空卡，用户随后保存才看到“缺产品 ID”。
+  if (!(S.ztProducts || []).length) {
+    if (!($("zt-base-url") && $("zt-base-url").value.trim())) {
+      toast(t("请先测试并保存禅道连接，再添加产品"), true);
+      return;
+    }
+    await ztFetchCatalog(false);
+    S.ztProfiles = ztHarvestProfiles();
+  }
+  const used = new Set(S.ztProfiles.map((p) => String(p.product || "")));
+  const next = (S.ztProducts || []).find((p) => p.id && !used.has(String(p.id)));
+  if (!next) {
+    toast(t((S.ztProducts || []).length ? "禅道产品均已添加" : "未拉到可用产品，请先测试连接"), true);
+    return;
+  }
+  S.ztProfiles.push({ product: Number(next.id), assigned_to: "", severity_cap: 0, our_sides: ["backend"],
     repos: { backend: {}, frontend: {} }, repo_hints: { backend: "", frontend: "" },
     owners: { backend: "", frontend: "", not_ours: "" }, module_routes: [] });
   renderZentaoProfiles();
-  // 首次添加时自动拉清单，避免用户只能盲填产品 ID；拉不到仍保留手填回退。
-  if (!(S.ztProducts || []).length && $("zt-base-url") && $("zt-base-url").value.trim()) {
-    ztFetchCatalog(false);
-  }
+  ztFetchMods(S.ztProfiles.length - 1, true);
 }
 
 function ztProfDel(i) {
@@ -8672,6 +8760,13 @@ function ztFormPayload() {
 
 async function saveZentao() {
   const payload = ztFormPayload();
+  if ((payload.product_profiles || []).some((p) => !p.product)) {
+    toast(t("请选择禅道产品后再保存"), true);
+    const empty = Array.from(document.querySelectorAll("#zt-profiles .zt-p-product"))
+      .find((el) => !parseInt(el.value || "", 10));
+    if (empty) empty.focus();
+    return;
+  }
   try {
     await api("/api/zentao/config", { method: "POST", body: JSON.stringify(payload) });
   } catch (e) { toast(t("保存失败：") + e.message, true); return; }
@@ -10601,6 +10696,11 @@ function collapseDrawerIfMobile() {
 function switchTab(name) {
   if (name === "__phone") { openPhoneConnect(); return; }  // 手机连接是弹框，不切页
   if (name === "__guide") { welcomeOpen(); return; }       // 帮助中心是弹层，不切页（设置导航「软件」组）
+  if (name === "__wxdigest") {                              // 群聊汇报沿用全局蜜蜂面板
+    beeRefresh().finally(() => beeToggle(true));
+    collapseDrawerIfMobile();
+    return;
+  }
   // 导航收进「设置」：进设置后左栏整体换成设置导航，内容铺满
   S.tab = name;
   if (SET_TABS.has(name)) localStorage.setItem("orch.setTab", name);
@@ -11087,6 +11187,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-mode").addEventListener("change", () => {
     $("f-manual-only").classList.toggle("hidden", $("f-mode").value !== "manual");
   });
+  $("f-direct-provider").addEventListener("change", renderDirectModelPicker);
   $("f-type").dispatchEvent(new Event("change"));
   cmpGreeting();   // 问候语按时段刷新（切语言/回任务页也会重算）
   $("btn-reload-catalog").addEventListener("click", async () => {
@@ -11314,7 +11415,7 @@ function bindCmdK() {
 
 /* ------------------------------------------------ 群摘要蜜蜂坞（core/wxdigest.py）
  * 右下角悬浮蜜蜂：未读摘要徽章+气泡；面板看各群摘要、配置监控文件夹。
- * 桌面蜜蜂 pet.py 的网页侧搭档；未启用且无数据时整坞隐藏（不占视线）。
+ * 桌面蜜蜂 pet.py 的网页侧搭档；入口始终可见，未配置时也能直接打开设置。
  * 60s 轮询 /api/wxdigest；打开面板即 POST seen 清零未读。 */
 const Bee = { view: null, lastUnseen: 0, bubT: 0, selGroups: null };
 
@@ -11325,9 +11426,7 @@ async function beeRefresh() {
   let v;
   try { v = await api("/api/wxdigest"); } catch (e) { return; }   // 静默：不打扰主流程
   Bee.view = v;
-  const on = !!(v.config && v.config.enabled) ||
-    (v.digests && v.digests.length) || v.unseen > 0;
-  beeShow($("bee-dock"), on);
+  beeShow($("bee-dock"), true);
   beeShow($("bee-badge"), v.unseen > 0);
   if (v.unseen > 0) $("bee-badge").textContent = v.unseen > 99 ? "99+" : String(v.unseen);
   if (v.unseen > Bee.lastUnseen && !beePanelOpen()) {   // 新摘要到：气泡 6s
@@ -11529,8 +11628,17 @@ async function beeScan() {
     });
     $("bee-groups-search").addEventListener("input", beeRenderGroups);
     $("bee-groups-refresh").addEventListener("click", beeRefreshGroups);
+    // 64 位 Python 自动扫描 + 一键安装 wechatauto-replica（借鉴用户诉求：
+    // 别手填解释器路径、别自己开 conda 装依赖）
+    $("bee-py-scan").addEventListener("click", beePyScan);
+    $("bee-py-install").addEventListener("click", beePyInstall);
     beeRefresh();
     setInterval(beeRefresh, 60000);
+    // 桌宠右键「群摘要」直达：URL 带 #bee=1 时自动展开蜜蜂坞面板
+    if (/bee=1/.test(location.hash)) {
+      setTimeout(() => beeToggle(true), 800);
+      history.replaceState(null, "", location.pathname + location.search);
+    }
   };
   // 错开首屏：令牌门/状态首帧先走，群摘要轮询晚 2s 再起
   if (document.readyState === "loading") {
@@ -11539,3 +11647,93 @@ async function beeScan() {
     setTimeout(boot, 2000);
   }
 })();
+
+/* ---- 64 位 Python 扫描/一键安装（蜜蜂坞微信直连配置）---- */
+let beePyTimer = null;
+async function beePyScan() {
+  const btn = $("bee-py-scan"), box = $("bee-py-cands");
+  if (!btn) return;
+  btn.disabled = true;
+  try { await api("/api/wxdigest/pythons/scan", { method: "POST", body: "{}" }); }
+  catch (e) { toast(t("扫描失败：") + (e.message || e), true); btn.disabled = false; return; }
+  box.classList.remove("hidden");
+  box.innerHTML = '<span class="hint">' + esc(t("正在扫描本机 Python…")) + "</span>";
+  beePyTimer = setInterval(async () => {
+    try {
+      const st = await api("/api/wxdigest/pythons");
+      if (st.scanning) return;
+      clearInterval(beePyTimer); beePyTimer = null;
+      btn.disabled = false;
+      beePyRender(st.results || []);
+    } catch (e) { /* 轮询失败下一拍再试 */ }
+  }, 1500);
+}
+function beePyRender(list) {
+  const box = $("bee-py-cands"), st = $("bee-py-status"), ib = $("bee-py-install");
+  if (!box) return;
+  if (!list.length) { box.innerHTML = '<span class="hint">' + esc(t("没有找到可用的 Python，请手动填写路径")) + "</span>"; return; }
+  const cur = ($("bee-reader-py").value || "").trim();
+  box.innerHTML = list.map((p, idx) => {
+    const tag = p.has_replica ? t("已装 wechatauto-replica") : t("未装依赖");
+    const cls = "bee-py-item" + (p.path === cur ? " on" : "");
+    return '<button type="button" class="' + cls + '" data-i="' + idx + '">' +
+      '<span class="bee-py-path">' + esc(p.path) + "</span>" +
+      '<span class="bee-py-meta">' + esc("Py" + p.version + " · " + p.bits + "bit · " + tag) + "</span></button>";
+  }).join("");
+  box.querySelectorAll(".bee-py-item").forEach((b) => {
+    b.addEventListener("click", () => {
+      const p = list[Number(b.dataset.i)];
+      $("bee-reader-py").value = p.path;
+      box.querySelectorAll(".bee-py-item").forEach((x) => x.classList.remove("on"));
+      b.classList.add("on");
+      beePyInstallVisibility(p);
+    });
+  });
+  // 默认选中：当前输入框命中的；否则第一个已装依赖的 64 位
+  const hit = list.find((p) => p.path === cur) ||
+    list.find((p) => p.bits >= 64 && p.has_replica) ||
+    list.find((p) => p.bits >= 64);
+  if (hit) {
+    $("bee-reader-py").value = hit.path;
+    beePyInstallVisibility(hit);
+    const btn = box.querySelector('.bee-py-item[data-i="' + list.indexOf(hit) + '"]');
+    if (btn) btn.classList.add("on");
+  }
+}
+function beePyInstallVisibility(p) {
+  const ib = $("bee-py-install"), st = $("bee-py-status");
+  if (!ib) return;
+  const need = p && p.bits >= 64 && !p.has_replica;
+  ib.classList.toggle("hidden", !need);
+  if (st && !need) st.textContent = "";
+}
+async function beePyInstall() {
+  const py = ($("bee-reader-py").value || "").trim();
+  if (!py) { toast(t("请先选择或填写 Python 路径"), true); return; }
+  const ib = $("bee-py-install"), st = $("bee-py-status");
+  ib.disabled = true;
+  if (st) st.textContent = t("正在安装 wechatauto-replica…（约 1-3 分钟）");
+  try { await api("/api/wxdigest/replica/install", { method: "POST", body: JSON.stringify({ python: py }) }); }
+  catch (e) {
+    toast(t("安装失败：") + (e.message || e), true);
+    ib.disabled = false;
+    return;
+  }
+  const timer = setInterval(async () => {
+    try {
+      const s = await api("/api/wxdigest/replica/status");
+      if (!s.running) {
+        clearInterval(timer); timer = null;
+        ib.disabled = false;
+        if (s.ok) {
+          if (st) st.textContent = t("安装完成，依赖已就绪");
+          toast(t("wechatauto-replica 安装完成"));
+        } else {
+          if (st) st.textContent = (s.log || []).slice(-3).join(" ").slice(0, 200);
+          toast(t("安装失败，详见状态行"), true);
+        }
+        beePyScan();   // 重扫刷新 has_replica 标记
+      }
+    } catch (e) { /* 轮询失败下一拍再试 */ }
+  }, 3000);
+}

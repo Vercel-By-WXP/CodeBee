@@ -28,6 +28,24 @@
     // —— 表单字段/标签 ——
 
     // —— 智能/手动 模式 ——
+    "编排模式": "Orchestration mode",
+    "自动（推荐）：按任务类型与风险动态决定步骤": "Auto (recommended): adapt steps to task type and risk",
+    "快速：少步骤优先，先做确定性验收": "Fast: fewer steps with deterministic checks first",
+    "专家：完整规划、多评审、失败修复与换将": "Expert: full planning, reviews, repairs, and fallback agents",
+    "手动：自行指定实现者与评审组": "Manual: choose implementer and reviewers",
+    "思考程度": "Reasoning effort",
+    "自动：随任务难度调整": "Auto: adapt to task difficulty",
+    "快速：少推理、优先响应": "Fast: less reasoning, faster response",
+    "标准：平衡质量与速度": "Standard: balance quality and speed",
+    "深度：更多推理与检查": "Deep: more reasoning and checks",
+    "对话模型（可选）": "Chat model (optional)",
+    "对话厂商": "Chat provider",
+    "对话模型": "Chat model",
+    "随厂商推荐": "Provider default",
+    "只对本次对话生效，不会修改全局绑定；指定渠道不可用时会明确报错。": "Applies only to this chat and does not change global bindings. An unavailable selected route returns an explicit error.",
+    "推荐任务类型": "Recommended task type",
+    "切换类型": "Switch type",
+    "这个需求更适合「{0}」流程，能使用对应的规划与质量门禁。是否切换后执行？": "This request fits the {0} workflow, which provides matching planning and quality gates. Switch before running?",
 
     // —— 引擎/角色 ——
 
@@ -1894,6 +1912,18 @@
     "反馈摘要生成失败：": "Failed to build issue summary: ",
     "端口占用": "Port Usage",
     "扫描本机端口": "Scan local ports",
+    "扫描": "Scan",
+    "一键安装 wechatauto-replica": "Install wechatauto-replica",
+    "已装 wechatauto-replica": "replica installed",
+    "未装依赖": "dependency missing",
+    "正在扫描本机 Python…": "Scanning local Pythons…",
+    "没有找到可用的 Python，请手动填写路径": "No usable Python found — please fill in the path manually",
+    "请先选择或填写 Python 路径": "Pick or type a Python path first",
+    "正在安装 wechatauto-replica…（约 1-3 分钟）": "Installing wechatauto-replica… (1-3 minutes)",
+    "安装完成，依赖已就绪": "Installed — dependency ready",
+    "安装失败，详见状态行": "Install failed — see status line",
+    "扫描失败：": "Scan failed: ",
+    "安装失败：": "Install failed: ",
     "谁占着端口、属于哪个项目一目了然；「仅本机」的端口外网不可达。关闭只发温和信号，系统进程与本服务自身拒绝关闭。": "See at a glance which process holds each port and which project it belongs to; \"local only\" ports are unreachable from outside. Close sends a gentle termination signal only — system processes and this service itself are refused.",
     "端口": "Port",
     "进程": "Process",
@@ -2005,6 +2035,10 @@
     "还没有认领过 Bug——配置好连接与产品档案后点「立即扫描」。": "No bugs claimed yet — set up connection and product profiles, then click \"Scan Now\".",
     "还没有产品档案——点「＋ 添加产品」，填产品 ID 与两端仓库。": "No product profiles yet — click \"＋ Add product\" and fill the product ID and repos.",
     "还没有产品档案——先测试连接，再从禅道选择产品，无需自己查 ID。": "No product profiles yet — test the connection, then select a product from ZenTao; no ID lookup needed.",
+    "请先测试并保存禅道连接，再添加产品": "Test and save the ZenTao connection before adding a product.",
+    "禅道产品均已添加": "All ZenTao products have already been added.",
+    "未拉到可用产品，请先测试连接": "No available products were found. Test the connection first.",
+    "请选择禅道产品后再保存": "Select a ZenTao product before saving.",
     "先填产品 ID 再拉模块清单": "Fill the product ID before fetching modules",
     "先选产品再拉模块清单": "Pick a product before fetching modules",
     "拉取失败": "Fetch failed",
@@ -2200,6 +2234,7 @@
 
     // —— 群摘要蜜蜂坞（wxdigest）——
     "群摘要": "Group Digests",
+    "微信群聊汇报": "WeChat Group Reports",
     "启用定时扫描": "Enable scheduled scanning",
     "监控文件夹": "Watched folder",
     "间隔（分钟）": "Interval (min)",

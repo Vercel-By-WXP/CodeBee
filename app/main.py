@@ -284,7 +284,12 @@ class Handler(BaseHTTPRequestHandler):
                     edays = max(1, min(3650, int((q.get("days") or ["90"])[0])))
                 except ValueError:
                     edays = 90
-                return self._json(200, usage.estimate(task_type=ttype, days=edays))
+                mode = (q.get("mode") or ["auto"])[0][:16]
+                thinking = (q.get("thinking") or ["standard"])[0][:16]
+                rounds = (q.get("rounds") or [None])[0]
+                return self._json(200, usage.estimate(
+                    task_type=ttype, days=edays, mode=mode,
+                    thinking=thinking, rounds=rounds))
             if path == "/api/dispatch/replay":
                 from core import dispatch_log
                 q = parse_qs(urlparse(self.path).query)
@@ -313,6 +318,13 @@ class Handler(BaseHTTPRequestHandler):
                 # 偏好记忆：上次创建任务的类型/参数（新建表单预填用）
                 from core import prefs
                 return self._json(200, {"prefs": prefs.load()})
+            if path == "/api/wxdigest/pythons":
+                # 64 位 Python 候选（蜜蜂坞微信直连配置）：扫描后台跑，此端点轮询
+                from core import wxdigest
+                return self._json(200, wxdigest.pythons_status())
+            if path == "/api/wxdigest/replica/status":
+                from core import wxdigest
+                return self._json(200, wxdigest.install_status())
             if path == "/api/ports":
                 # 端口占用诊断（借鉴 leftopen）：谁在听、PID/进程/项目归属、
                 # 是否仅本机。?port=N 只看单端口。只读，不碰任何进程。
@@ -1080,6 +1092,15 @@ class Handler(BaseHTTPRequestHandler):
             from core import wxdigest
             res = wxdigest.scan_now()    # 含模型调用，同步做（ThreadingHTTPServer 不堵别的请求）
             return self._json(200, dict(res, ok=bool(res.get("ok"))))
+        if path == "/api/wxdigest/pythons/scan":
+            # 64 位 Python 自动扫描（后台线程，GET /api/wxdigest/pythons 轮询）
+            from core import wxdigest
+            return self._json(200, wxdigest.scan_pythons())
+        if path == "/api/wxdigest/replica/install":
+            # 一键安装 wechatauto-replica 到指定解释器（后台 pip，状态可轮询）
+            from core import wxdigest
+            res = wxdigest.install_replica(self._body().get("python"))
+            return self._json(200 if res.get("ok") else 400, res)
         if path == "/api/wxdigest/seen":
             from core import wxdigest
             return self._json(200, {"ok": True, "view": wxdigest.seen_clear()})
