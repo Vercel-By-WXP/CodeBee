@@ -1418,8 +1418,9 @@ def _sync_launch_model(entry, binding):
     """打开前把「CLI 绑定」页选中的模型落到该 CLI 自己的配置文件——保证
     交互/网页版启动即选中绑定模型（绑定页是运行时模型唯一真源，目录页的
     「默认模型」只是手动快照，会滞后）。dsh 额外同步端点与 models 目录；
-    codex 额外落 provider 段（交互 TUI 只认 config.toml，不认编排的 -c 覆盖
-    与 ORCH_API_KEY env）。返回给用户看的同步笔记列表。"""
+    codex 已改为不落盘（2026-09-21 起：全局 model_provider 归 CC Switch/
+    用户管理，编排任务的绑定走 runner 的 -c 一次性注入）。返回给用户
+    看的同步笔记列表。"""
     notes = []
     model = (binding.get("model") or "").strip()
     prov = binding.get("provider") or {}
@@ -1427,6 +1428,14 @@ def _sync_launch_model(entry, binding):
     is_dsh = entry["id"] in ("deepseek-harness", "dsh")
     is_codex = entry["id"] in ("codex-cli", "codex")
     cp = binding.get("codex_provider")
+    if is_codex:
+        # codex 全局配置不落盘（2026-09-21 用户决策）：全局 model_provider 交还
+        # CC Switch/用户手动管理，一键打开不再顶掉外部选择。编排任务不受影响
+        # ——runner 的 -c 一次性注入仍带绑定供应商；交互 TUI 打开即用外部当前
+        # 配置，想用绑定供应商起编排任务即可。
+        notes.append("codex 配置保持外部管理（绑定 %s 仅用于编排 -c 注入，未写 config.toml）"
+                     % (cp.get("name") or "orch"))
+        return notes
     if model and fmt in _WRITABLE_FORMATS:
         w = write_model(entry, model)
         notes.append("模型已同步为 %s" % w["model"] if w.get("ok")
