@@ -291,7 +291,8 @@ function onTypeChange() {
   // 直连：验证命令与评审参数都不适用，两块一起收起（目标+附件即全部输入）
   if (codeOnly) codeOnly.classList.toggle("hidden", isReview || isDirect);
   if (reviewOnly) reviewOnly.classList.toggle("hidden", !isReview);
-  if ($("f-direct-model")) $("f-direct-model").classList.toggle("hidden", !isDirect);
+  // 对话模型选择已收进工具行 pill：更多选项里的旧块永久隐藏（select 真源保留）
+  if ($("f-direct-model")) $("f-direct-model").classList.add("hidden");
   const dwrap = $("f-direct-wrap");
   if (dwrap) dwrap.classList.toggle("hidden", !isDirect);
   if (isDirect) { renderDirectModelPicker(); cmpDirectBtnSync(); }

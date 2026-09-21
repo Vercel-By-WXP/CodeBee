@@ -110,26 +110,30 @@ async function main() {
     })()`));
     check("菜单打开且列厂商", menu1.open && menu1.items > 0, JSON.stringify(menu1));
     check("菜单底部「管理模型」入口", menu1.manage);
-    // 钻入第一个厂商（若有）
+    // 钻入第一个厂商：点厂商即带出推荐模型（厂商+模型一起定）
     const drilled = await evalJs(`(() => {
       const first = document.querySelector("#cmp-model-menu [data-p]:not([data-m])");
       if (!first) return "no-prov";
       first.click();
       const m = document.getElementById("cmp-model-menu");
       return JSON.stringify({ back: !!m.querySelector("[data-back]"),
-        models: m.querySelectorAll("[data-m]").length });
+        models: m.querySelectorAll("[data-m]").length,
+        pv: document.getElementById("f-direct-provider").value,
+        mv: document.getElementById("f-direct-model-name").value,
+        btn: document.getElementById("f-direct-btn").textContent });
     })()`);
     if (drilled !== "no-prov") {
       const d = JSON.parse(drilled);
       check("钻入厂商列模型", d.back && d.models >= 1, drilled);
-      // 选「随厂商推荐」→ 真源 provider 写入、按钮文字带厂商名
+      check("点厂商即带出推荐模型（真源已写）", d.pv !== "" && d.mv !== "", drilled);
+      check("按钮显示「厂商/模型」组合名", /\/.+/.test(d.btn) && d.btn !== "自动推荐", d.btn);
+      // 选「随厂商推荐」→ 收菜单
       await evalJs(`document.querySelector("#cmp-model-menu [data-m]").click(); 1`);
       const done = JSON.parse(await evalJs(`JSON.stringify({
         pv: document.getElementById("f-direct-provider").value,
         btn: document.getElementById("f-direct-btn").textContent,
         closed: document.getElementById("cmp-model-menu").classList.contains("hidden") })`));
       check("选定写回 provider 真源", done.pv !== "", done.pv);
-      check("按钮文字含厂商名", /\/(推荐|)/.test(done.btn) && done.btn !== "自动推荐", done.btn);
       check("选完菜单收起", done.closed);
     } else {
       console.log("    （本机无可用厂商，跳过钻取断言）");

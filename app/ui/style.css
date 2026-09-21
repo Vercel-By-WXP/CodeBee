@@ -5653,3 +5653,21 @@ button.request-busy > * { opacity: .18; }
 #mk-grid.mk-grouped .mk-grid { display: grid; gap: 12px;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 #mk-grid.mk-grouped .sec-title { margin: 16px 0 8px; }
+
+/* 首页 composer 图片附件缩略图：与任务页同款 88×88 卡（此前样式只写在
+ * #sub-tasks 作用域，首页 img 按原始尺寸渲染直接压住输入文字——2026-09-21
+ * 用户实测「有遮挡」）。删除钮右上角悬浮。 */
+.att-chip.att-image { position: relative; width: 88px; height: 88px; max-width: none;
+  padding: 0; overflow: visible; border-radius: 12px; background: var(--panel2);
+  border-color: var(--border); box-shadow: 0 2px 10px color-mix(in srgb, #000 10%, transparent); }
+.att-chip.att-image img { display: block; width: 100%; height: 100%; object-fit: cover;
+  border-radius: inherit; background: var(--panel2); }
+.att-chip.att-image .att-image-name { position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0);
+  white-space: nowrap; border: 0; }
+.att-chip.att-image .ax { position: absolute; z-index: 2; top: -6px; right: -6px;
+  display: inline-flex; align-items: center; justify-content: center; width: 20px;
+  height: 20px; padding: 0; border: 1px solid var(--panel); border-radius: 50%;
+  background: var(--panel); color: var(--muted); }
+.att-chip.att-image .ax:hover { background: var(--bad); color: #fff; }
+.att-chip.att-image .ax .ico { width: 11px; height: 11px; }
