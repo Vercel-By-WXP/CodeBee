@@ -51,6 +51,9 @@ async function main() {
     await send("Page.enable");
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(4000);
+    // 临时数据目录=首启：欢迎层模态遮罩会拦截一切真实点击（正常模态行为），
+    // 先关掉再测，否则真实坐标点击全被 welcome-mask 吃掉
+    await evalJs(`(function () { if (window.welcomeClose) welcomeClose(); return "ok"; })()`);
 
     // 1) pill 就位与短名
     const st = JSON.parse(await evalJs(`JSON.stringify({
@@ -110,33 +113,73 @@ async function main() {
     })()`));
     check("菜单打开且列厂商", menu1.open && menu1.items > 0, JSON.stringify(menu1));
     check("菜单底部「管理模型」入口", menu1.manage);
-    // 钻入第一个厂商：点厂商即带出推荐模型（厂商+模型一起定）
-    const drilled = await evalJs(`(() => {
-      const first = document.querySelector("#cmp-model-menu [data-p]:not([data-m])");
-      if (!first) return "no-prov";
-      first.click();
+    // 真实坐标点击（CDP 鼠标事件走 hit-testing，能暴露透明遮挡/命中失败——
+    // 程序化 .click() 会绕过这些，2026-09-21 用户真机「点厂商没反应」排查用）
+    const pt = JSON.parse(await evalJs(`(() => {
+      const b = document.querySelector("#cmp-model-menu [data-p='prov-a']");
+      const r = b.getBoundingClientRect();
+      const el = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      const chain = [];
+      let n = el;
+      while (n && n !== document.body) {
+        chain.push(n.tagName + (n.id ? "#" + n.id : "") +
+          (n.className && typeof n.className === "string" ? "." + n.className.split(" ").join(".") : ""));
+        n = n.parentElement;
+      }
+      return JSON.stringify({ x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2),
+        topEl: (el || {}).tagName, topId: (el || {}).id || "",
+        topCls: String((el || {}).className || "").slice(0, 80), chain: chain.slice(0, 5) });
+    })()`));
+    console.log("    命中链:", (pt.chain || []).join("  <-  "));
+    check("厂商项中心命中的是自身（无遮挡）", pt.topEl === "BUTTON" || pt.topEl === "SPAN",
+      JSON.stringify(pt));
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x: pt.x, y: pt.y, button: "left", clickCount: 1 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: pt.x, y: pt.y, button: "left", clickCount: 1 });
+    await sleep(300);
+    const realClick = JSON.parse(await evalJs(`(() => {
       const m = document.getElementById("cmp-model-menu");
-      return JSON.stringify({ back: !!m.querySelector("[data-back]"),
-        models: m.querySelectorAll("[data-m]").length,
+      return JSON.stringify({ intoModels: !!m.querySelector("[data-back]"),
         pv: document.getElementById("f-direct-provider").value,
-        mv: document.getElementById("f-direct-model-name").value,
         btn: document.getElementById("f-direct-btn").textContent });
-    })()`);
-    if (drilled !== "no-prov") {
-      const d = JSON.parse(drilled);
-      check("钻入厂商列模型", d.back && d.models >= 1, drilled);
-      check("点厂商即带出推荐模型（真源已写）", d.pv !== "" && d.mv !== "", drilled);
-      check("按钮显示「厂商/模型」组合名", /\/.+/.test(d.btn) && d.btn !== "自动推荐", d.btn);
-      // 选「随厂商推荐」→ 收菜单
-      await evalJs(`document.querySelector("#cmp-model-menu [data-m]").click(); 1`);
-      const done = JSON.parse(await evalJs(`JSON.stringify({
-        pv: document.getElementById("f-direct-provider").value,
-        btn: document.getElementById("f-direct-btn").textContent,
-        closed: document.getElementById("cmp-model-menu").classList.contains("hidden") })`));
-      check("选定写回 provider 真源", done.pv !== "", done.pv);
-      check("选完菜单收起", done.closed);
+    })()`));
+    check("真实坐标点厂商 → 钻取+带出模型", realClick.intoModels && realClick.pv === "prov-a" && /模型一/.test(realClick.btn),
+      JSON.stringify(realClick));
+    // 真实点击已在模型级：验证「随厂商推荐」选定 → 写回真源 → 收菜单
+    if (realClick.intoModels) {
+      const pick = await evalJs(`(() => {
+        const b = document.querySelector("#cmp-model-menu [data-m]");
+        if (!b) return "no-item";
+        b.click();
+        return JSON.stringify({
+          pv: document.getElementById("f-direct-provider").value,
+          mv: document.getElementById("f-direct-model-name").value,
+          btn: document.getElementById("f-direct-btn").textContent,
+          closed: document.getElementById("cmp-model-menu").classList.contains("hidden") });
+      })()`);
+      if (pick !== "no-item") {
+        const d = JSON.parse(pick);
+        check("选定写回 provider 真源", d.pv === "prov-a", d.pv);
+        check("选完菜单收起", d.closed === true, String(d.closed));
+      }
     } else {
-      console.log("    （本机无可用厂商，跳过钻取断言）");
+      // 真实点击未钻入（理论不该发生）：回落程序化 click 兜底验证逻辑本身
+      const drilled = await evalJs(`(() => {
+        const first = document.querySelector("#cmp-model-menu [data-p]:not([data-m])");
+        if (!first) return "no-prov";
+        first.click();
+        const m = document.getElementById("cmp-model-menu");
+        return JSON.stringify({ back: !!m.querySelector("[data-back]"),
+          models: m.querySelectorAll("[data-m]").length,
+          pv: document.getElementById("f-direct-provider").value,
+          mv: document.getElementById("f-direct-model-name").value,
+          btn: document.getElementById("f-direct-btn").textContent });
+      })()`);
+      if (drilled !== "no-prov") {
+        const d = JSON.parse(drilled);
+        check("（回落）程序化钻取厂商列模型", d.back && d.models >= 1, drilled);
+        check("（回落）点厂商即带出推荐模型", d.pv !== "" && d.mv !== "", drilled);
+        await evalJs(`document.querySelector("#cmp-model-menu [data-m]").click(); 1`);
+      }
     }
   } finally {
     try { proc.kill(); } catch (e) {}
