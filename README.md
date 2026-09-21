@@ -21,6 +21,11 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 不会把你的任务内容交给任何第三方。
 
 <!-- relnotes:start -->
+### ✨ 新功能 · New
+
+- 经验库越用越准：教训按任务结局自动记胜负，真正帮上忙的经验优先注入、帮倒忙的被挤出——随真实运行自我提纯。
+- The lesson library now tracks outcomes: lessons that helped a task pass gain weight, ones that failed to prevent issues fade — it self-refines with every run.
+
 ### 🛠 问题修复 · Fixes
 
 - 手机端操作被「其他设备正在控制」挡住时，弹出「接管并重试」——一键接管并自动重做刚才的操作。
