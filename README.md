@@ -21,11 +21,27 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 不会把你的任务内容交给任何第三方。
 
 <!-- relnotes:start -->
-### 最新版更新内容（v0.1.23）
+### ✨ 新功能 · New
 
-- 端口占用诊断：启动失败自动指认占用者（PID/进程/项目归属）；设置页可扫描本机全部监听端口并温和关闭（系统进程与 CodeBee 自身拒关）
-- 经验库预算纪律：通配技能包单包限额、项目教训保底注入——再多的通配包也挤不掉你沉淀的教训
-- AI 味检测新增叙事架构层：顿悟说教/情绪身体化/成长式收束等措辞改写不掉的架构级指纹，随评审下发情节结构追问
+- 升级完成后自动重启生效，不用再手动点「重启服务」；页面几秒后自动恢复。有任务在跑时不会自动重启，会提示稍后手动重启。
+- Updates finish on their own: after upgrading, the service restarts itself — no manual restart needed. If tasks are running, it waits and tells you instead.
+
+- 启动时若端口被上次没退干净的旧实例占用，自动清场后再启动，不再报错让用户手动排查。
+- At startup, a stale instance holding the port is cleared automatically instead of failing with a "port occupied" error.
+
+- 运行详情页新增「归档任务」按钮：任务结束后可直接归档/取消归档，不用再找右键菜单。
+- The run detail page now has an "Archive Task" button — no need to hunt for the right-click menu.
+
+### 🛠 问题修复 · Fixes
+
+- 修复任务附件偶尔被智能体无视：现在要求动手前必须先读附件，结论要建立在附件内容上；读不了会明确说明缺了什么。
+- Fixed task attachments occasionally being ignored: agents must now read attachments first and base their answers on them, or clearly say what's missing.
+
+- 修复桌面蜜蜂「关不掉」：右键「关闭桌宠」现在真正关闭，不再自动复活。
+- Fixed the desktop bee not closing: the Close menu item now really closes it instead of reviving.
+
+- 修复桌面蜜蜂「拖不动」：拖动此前绑定了一个窗口上不存在的方法，现已修复并更跟手。
+- Fixed the desktop bee not draggable: dragging was bound to a method that doesn't exist on the window; now fixed and smooth.
 <!-- relnotes:end -->
 
 ---
