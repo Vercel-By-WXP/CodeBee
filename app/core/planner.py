@@ -115,9 +115,11 @@ def _log_usage(source, role, task, res, agent=None, tool="", model="", provider=
         pass
 
 CODE_PLAN_PROMPT = """你是技术负责人。请把下面的开发目标拆解为 __N__ 个以内、按顺序执行的子任务，
-并判定任务难度。只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"difficulty": "easy 或 hard", "subtasks": [{"title": "简短标题", "detail": "具体要做什么，给执行工程师的直接指令", "files": ["涉及的文件路径"]}]}
+并判定任务难度和后续质量步骤。只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
+{"difficulty": "easy 或 hard", "workflow": {"review_required": true, "max_repair_rounds": 0, "allow_switch": false}, "subtasks": [{"title": "简短标题", "detail": "具体要做什么，给执行工程师的直接指令", "files": ["涉及的文件路径"]}]}
 难度判定：常规增删改查/小函数/格式调整 = easy；跨模块改动/架构调整/复杂算法/安全相关 = hard。
+质量步骤判定：涉及安全、数据迁移、并发、权限、公共 API 或跨模块改动时必须评审；
+有明确自动验收的低风险小改可不做模型评审。max_repair_rounds 取 0-2，只有复杂任务才建议换将。
 子任务粒度要可独立验证；最后一个子任务必须包含整体联调/收尾。
 
 ## 先探索再计划（重要，借鉴 OpenSpec explore）
@@ -136,8 +138,11 @@ __CONTEXT__
 __VERIFY__"""
 
 REVIEW_OUTLINE_PROMPT = """你是内容主编。请为下面的创作任务拟一份写作大纲（要点列表，3-8 条），
+并按内容风险建议后续质量步骤。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"outline": ["要点1", "要点2", ...]}
+{"outline": ["要点1", "要点2", ...], "workflow": {"reviewers": 1, "review_rounds": 1}}
+reviewers 取 1-2，review_rounds 取 1-3；研究报告、技术方案、长文和高发布门槛应增加，
+普通邮件、短翻译、工作汇报等低风险短内容保持 1。
 
 ## 创作任务
 __GOAL__
@@ -323,7 +328,8 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
             # 流式回调把增量实时写进步骤日志，直连生成不再是一行标题的黑箱
             cb = _log_streamer(log_path)
             res = modelhub.chat(prov["id"], model, prompt,
-                                max_tokens=16000, timeout=300, on_delta=cb)
+                                max_tokens=16000, timeout=300, on_delta=cb,
+                                reasoning_effort=_reasoning_effort(task))
             cb.flush()
             _log_usage("outline", "outline", task, res, model=model,
                        provider=prov.get("name", prov.get("id", "")),
@@ -408,12 +414,51 @@ def _plan_difficulty(data):
     return d if d in ("easy", "hard") else None
 
 
+def _plan_workflow(data):
+    """规范化规划器给出的后续步骤建议；最终安全下限由任务编译器裁决。"""
+    raw = (data or {}).get("workflow")
+    if not isinstance(raw, dict):
+        return None
+    out = {}
+    if isinstance(raw.get("review_required"), bool):
+        out["review_required"] = raw["review_required"]
+    try:
+        if "max_repair_rounds" in raw:
+            out["max_repair_rounds"] = max(0, min(2, int(raw["max_repair_rounds"])))
+    except (TypeError, ValueError):
+        pass
+    if isinstance(raw.get("allow_switch"), bool):
+        out["allow_switch"] = raw["allow_switch"]
+    return out or None
+
+
 def _orchestrator():
     """编排者可用时返回 (provider, model)，否则 None。"""
     try:
         return modelhub.resolve_orchestrator()
     except Exception:
         return None
+
+
+def _reasoning_effort(task):
+    """把任务级思考程度映射为直连编排者支持的 reasoning 参数。"""
+    task = task if isinstance(task, dict) else {}
+    selected = str(task.get("thinking") or "standard").strip().lower()
+    if selected in ("low", "standard", "high"):
+        return {"low": "low", "standard": "medium", "high": "high"}[selected]
+    mode = str(task.get("mode") or "auto").lower()
+    difficulty = str(task.get("difficulty") or "auto").lower()
+    ttype = str(task.get("type") or "").lower()
+    try:
+        threshold = float(task.get("threshold") or 7.0)
+    except (TypeError, ValueError):
+        threshold = 7.0
+    if mode == "fast" or difficulty == "easy" or threshold <= 6.0:
+        return "low"
+    if (mode == "expert" or difficulty == "hard" or threshold >= 8.5
+            or ttype in ("research", "tech_proposal", "serial_novel")):
+        return "high"
+    return "medium"
 
 
 def make_code_plan(task, planner_agent, workdir, ev=None, resume=None, log_path=None):
@@ -439,7 +484,8 @@ def make_code_plan(task, planner_agent, workdir, ev=None, resume=None, log_path=
     steps = _norm_subtasks(data)
     if steps:
         return {"source": "llm(%s)" % planner_agent["id"], "steps": steps,
-                "difficulty": _plan_difficulty(data)}
+                "difficulty": _plan_difficulty(data),
+                "workflow": _plan_workflow(data)}
     return _fallback_code_plan(task, "LLM 计划解析失败，退化为单步模板")
 
 
@@ -455,7 +501,8 @@ def _orch_code_plan(task, prov, model, log_path=None):
                          .replace("__GOAL__", task["goal"])
                          .replace("__CONTEXT__", task.get("context") or "（无）")
                          .replace("__VERIFY__", task.get("verify_command") or "（未配置）")),
-                        max_tokens=8000, timeout=300, on_delta=cb)
+                        max_tokens=8000, timeout=300, on_delta=cb,
+                        reasoning_effort=_reasoning_effort(task))
     cb.flush()
     _log_usage("plan", "plan", task, res, model=model,
                provider=prov.get("name", prov.get("id", "")))
@@ -469,7 +516,8 @@ def _orch_code_plan(task, prov, model, log_path=None):
         _append_log(log_path, "编排者计划返回内容无法解析为子任务，回退 CLI")
         return None
     return {"source": "编排者(%s · %s)" % (prov.get("name", prov["id"]), model),
-            "steps": steps, "difficulty": _plan_difficulty(data)}
+            "steps": steps, "difficulty": _plan_difficulty(data),
+            "workflow": _plan_workflow(data)}
 
 
 def make_review_outline(task):
@@ -482,7 +530,8 @@ def make_review_outline(task):
                         (REVIEW_OUTLINE_PROMPT
                          .replace("__GOAL__", task["goal"])
                          .replace("__CONTEXT__", task.get("context") or "（无）")),
-                        max_tokens=8000, timeout=300)
+                        max_tokens=8000, timeout=300,
+                        reasoning_effort=_reasoning_effort(task))
     _log_usage("outline", "outline", task, res, model=model,
                provider=prov.get("name", prov.get("id", "")))
     if not res["ok"]:
@@ -492,8 +541,20 @@ def make_review_outline(task):
     if not isinstance(outline, list):
         return None
     items = [str(x).strip()[:120] for x in outline if str(x).strip()][:8]
+    if not items:
+        return None
+    workflow = data.get("workflow") if isinstance(data.get("workflow"), dict) else {}
+    try:
+        reviewers = max(1, min(2, int(workflow.get("reviewers") or 1)))
+    except (TypeError, ValueError):
+        reviewers = 1
+    try:
+        review_rounds = max(1, min(3, int(workflow.get("review_rounds") or 1)))
+    except (TypeError, ValueError):
+        review_rounds = 1
     return {"source": "编排者(%s · %s)" % (prov.get("name", prov["id"]), model),
-            "items": items} if items else None
+            "items": items,
+            "workflow": {"reviewers": reviewers, "review_rounds": review_rounds}}
 
 
 def make_novel_plan(task, author, critics):

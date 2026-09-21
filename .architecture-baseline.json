@@ -521,27 +521,27 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/modelhub.py 3160 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/modelhub.py 3173 行（上限 1200，历史最高 0）",
       "file": "app/core/modelhub.py",
-      "lines": 3160
+      "lines": 3173
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/pipeline.py 3611 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/pipeline.py 3807 行（上限 1200，历史最高 0）",
       "file": "app/core/pipeline.py",
-      "lines": 3611
+      "lines": 3807
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/runner.py 1307 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/runner.py 1378 行（上限 1200，历史最高 0）",
       "file": "app/core/runner.py",
-      "lines": 1307
+      "lines": 1378
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/store.py 1587 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/store.py 1643 行（上限 1200，历史最高 0）",
       "file": "app/core/store.py",
-      "lines": 1587
+      "lines": 1643
     },
     {
       "kind": "lines",
@@ -551,9 +551,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/main.py 2555 行（上限 1200，历史最高 0）",
+      "text": "lines: app/main.py 2596 行（上限 1200，历史最高 0）",
       "file": "app/main.py",
-      "lines": 2555
+      "lines": 2596
     },
     {
       "kind": "lines",

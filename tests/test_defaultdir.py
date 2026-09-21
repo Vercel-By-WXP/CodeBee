@@ -103,6 +103,11 @@ class TestRunArtifacts(BaseTest):
             f = wd / d / "cron-lock"
             f.parent.mkdir(exist_ok=True)
             f.write_text("proc", encoding="utf-8")
+        # 根目录里的 CLI 历史、评审 JSON 和临时长提示词也不是交付成果
+        for name in (".aider.chat.history.md", ".aider.input.history",
+                     "chapter_2_review.json", "draft.review.json",
+                     "tutti_prompt_123.txt"):
+            (wd / name).write_text("process", encoding="utf-8")
         # 构建产物目录（target/build/dist…）里的文件是工具链再生成的，不是成品
         for d in ("target/surefire-reports", "build/classes", "dist", "src/main/generated"):
             f = wd / d / "Foo.class" if d != "src/main/generated" else wd / d / "Gen.java"
@@ -118,6 +123,11 @@ class TestRunArtifacts(BaseTest):
         self.assertNotIn(".git/x", names)
         self.assertNotIn(".mimocode/cron-lock", names)
         self.assertNotIn(".zcode/cron-lock", names)
+        self.assertNotIn(".aider.chat.history.md", names)
+        self.assertNotIn(".aider.input.history", names)
+        self.assertNotIn("chapter_2_review.json", names)
+        self.assertNotIn("draft.review.json", names)
+        self.assertNotIn("tutti_prompt_123.txt", names)
         self.assertTrue(not any(n.startswith(("target/", "build/", "dist/")) for n in names),
                         "构建产物泄漏: %s" % [n for n in names if n.startswith(("target/", "build/", "dist/"))])
 

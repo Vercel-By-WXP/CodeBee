@@ -12,6 +12,27 @@ from app.core import paths, runner, store, usage
 
 class TestUsageLedger(BaseTest):
 
+    def test_estimate_has_baseline_without_history_and_respects_controls(self):
+        base = usage.estimate(task_type="code", mode="auto", thinking="standard")
+        fast = usage.estimate(task_type="code", mode="fast", thinking="low")
+        expert = usage.estimate(task_type="code", mode="expert", thinking="high")
+        self.assertEqual(base["samples"], 0)
+        self.assertEqual(base["duration_source"], "baseline")
+        self.assertGreater(base["estimated_duration_s"], fast["estimated_duration_s"])
+        self.assertGreater(expert["estimated_duration_s"], base["estimated_duration_s"])
+        self.assertGreaterEqual(base["p90_duration_s"], base["estimated_duration_s"])
+
+    def test_create_run_persists_eta_for_live_ui(self):
+        store.set_run_estimator(usage.estimate)
+        task = store.create_task({
+            "type": "email", "goal": "写一封简短的项目确认邮件",
+            "workdir": str(self.workdir), "mode": "fast", "thinking": "low",
+        })
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        self.assertGreater(run["estimated_duration_s"], 0)
+        self.assertGreaterEqual(run["estimated_p90_s"], run["estimated_duration_s"])
+        self.assertEqual(run["estimate_source"], "baseline")
+
     def test_record_and_summary(self):
         usage.record(source="pipeline", run_id="r-1", task_id="t-1", task_type="code",
                      role="implement", agent="codex-cli", agent_label="Codex CLI",

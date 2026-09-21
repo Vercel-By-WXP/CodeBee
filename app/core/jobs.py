@@ -86,6 +86,17 @@ def configure(max_workers):
     return _target
 
 
+def capacity_status():
+    """返回当前并发槽状态，供会产生管理记录的入口做无副作用预检。"""
+    with _pool_lock:
+        return {
+            "accepting": not _restart_drain and _alive < _target,
+            "active": _alive,
+            "limit": _target,
+            "restarting": _restart_drain,
+        }
+
+
 def start_worker():
     """加载并发保护配置；线程只在真实任务到达时创建。"""
     global _started
@@ -309,6 +320,18 @@ def _run_job(job):
             pass
     finally:
         if run_id:
+            # 执行线程退出就是生命周期的最后边界。流水线分支若意外提前 return、
+            # 或内部吞掉异常却漏写终态，旧逻辑会让 run/task 永久停在 running。
+            try:
+                from . import store
+                latest = store.get_run(run_id)
+                if latest and latest.get("status") == "running":
+                    store.update_run(
+                        run_id, expected_status="running", status="failed",
+                        ended_at=_now(),
+                        error="执行流程已退出但未写入完成状态，已自动标记失败；可重试")
+            except Exception:
+                pass
             CANCELS.pop(run_id, None)
             try:
                 _maybe_auto_resume(run_id)

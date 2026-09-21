@@ -11,6 +11,7 @@ CAPABILITY = {
 }
 
 MAX_REPAIR_ROUNDS = 2  # 自动修复循环上限
+AUTO_CRITIC_LIMIT = 2  # 自动内容评审只取综合分前两名；手工模式仍尊重完整名单
 
 
 def _task_type(ttype):
@@ -62,7 +63,9 @@ def _online_bonus(agent, role, ttype):
         rate = float(metrics.get("success_rate") or 0.0)
         success_score = max(-8.0, min(8.0, (rate - 0.75) * 24.0))
         p95 = max(0.0, float(metrics.get("p95_duration_s") or 0.0))
-        latency_score = -min(6.0, max(0.0, (p95 - 45.0) / 10.0))
+        # 旧上限 -6 抵不过 CLI 静态能力 10 分差，P95 两三分钟的模型仍会
+        # 压过十几秒的健康模型。加大惩罚，让真实延迟足以改变自动选择。
+        latency_score = -min(18.0, max(0.0, (p95 - 30.0) / 7.0))
         cost = max(0.0, float(metrics.get("avg_cost_usd") or 0.0))
         cost_score = -min(4.0, max(0.0, (cost - 0.01) / 0.01))
         total = round(success_score + latency_score + cost_score, 1)
@@ -200,13 +203,17 @@ def pick_reviewer(agents, impl, ttype, stats=None):
 
 
 def pick_critics(agents, ttype, stats=None, impl=None):
-    """小说评审组：全部真实智能体（排除作者本人——自评是最典型的同族盲区）；
-    面板与作者同厂商时在路由依据里明示，供用户决定是否补充其他厂商。
-    没有任何真实智能体时用内置 mock。"""
+    """自动内容评审组选综合分前两名（排除作者本人）。
+
+    旧逻辑让全部已启用 CLI 串行参与每章和全局评审；一条慢/失效链就会把
+    任务拖长数分钟。两名保留交叉判断并封顶默认调用数；手工模式不走这里。
+    """
     stats = stats or history.agent_stats()
     real = [a for a in agents if a.get("mode") == "real" and (not impl or a["id"] != impl["id"])]
     if real:
-        note = "全部真实智能体参与（按历史表现自动选择）"
+        ranked = sorted(real, key=lambda a: score(a, "review", ttype, stats)[0], reverse=True)
+        real = ranked[:AUTO_CRITIC_LIMIT]
+        note = "按成功率与延迟选择前 %d 名评审（共 %d 名候选）" % (len(real), len(ranked))
         if impl and impl.get("mode") == "real" \
                 and all(a.get("kind") == impl.get("kind") for a in real):
             note += "；评审组与作者同为 %s，建议启用其他厂商 CLI 交叉评审" % impl.get("kind")

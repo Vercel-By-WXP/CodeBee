@@ -153,7 +153,7 @@ class TestCodeFallbackThenPrimaryRepairRoute(BaseTest):
         })
         task = dict(task)
         task["context"] = "ATTACHMENT-CONTEXT-REQUIRED"
-        task["difficulty"] = "default"
+        task["difficulty"] = "hard"
         task["engine"] = "code"
         task["_compiled_spec"] = task_compile.compile_task(task)
         run = store.create_run("orchestration", task["title"], task_id=task["id"])

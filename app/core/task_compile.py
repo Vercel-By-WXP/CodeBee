@@ -69,6 +69,9 @@ def compile_task(task):
         "dimension": dimension,
         "difficulty": difficulty,
         "difficulty_reason": difficulty_reason,
+        "thinking": (str(raw.get("thinking") or "standard").lower()
+                     if str(raw.get("thinking") or "standard").lower()
+                     in ("auto", "low", "standard", "high") else "auto"),
         "capabilities": _capabilities(raw, dimension, engine),
         "deliverable": deliverable,
         "quality_dimensions": rubric,
@@ -85,3 +88,112 @@ def summary(spec):
         spec.get("type") or "direct", spec.get("engine") or "direct",
         spec.get("difficulty") or "default",
         "、".join(spec.get("capabilities") or []) or "通用")
+
+
+def code_workflow(task, difficulty, plan=None, mode="auto", planned=True):
+    """把难度、验收能力和规划建议收敛成代码任务的实际步骤策略。
+
+    自动模式允许低风险任务走短链；手动模式与高风险任务保留完整质量门禁。
+    规划器只能在安全边界内减少步骤，不能让无确定性验证的任务跳过评审。
+    """
+    task = task if isinstance(task, Mapping) else {}
+    rec = (plan or {}).get("workflow") if isinstance(plan, Mapping) else None
+    rec = rec if isinstance(rec, Mapping) else {}
+    has_verify = bool(str(task.get("verify_command") or "").strip())
+    risk_text = " ".join(str(task.get(k) or "") for k in ("title", "goal", "context")).lower()
+    high_risk = bool(any(k in risk_text for k in (
+        "安全", "权限", "鉴权", "认证", "加密", "密钥", "注入", "迁移", "数据库",
+        "并发", "竞态", "支付", "架构", "公共接口", "public api", "公共 api",
+        "breaking change", "security", "permission", "auth", "migration",
+        "concurrency", "architecture")))
+    fast_mode = mode == "fast"
+    expert_mode = mode == "expert"
+    easy_auto = (mode == "auto" and difficulty == "easy") or fast_mode
+
+    review_required = True
+    max_repairs = 2
+    allow_switch = True
+    reason = "复杂或手动任务使用完整质量门禁"
+    if easy_auto:
+        review_required = high_risk or not has_verify
+        max_repairs = 1
+        allow_switch = False
+        reason = ("低风险任务以确定性验证代替模型评审"
+                  if has_verify else "低风险任务无验证命令，保留一次模型评审")
+        if isinstance(rec.get("review_required"), bool):
+            review_required = high_risk or rec["review_required"] or not has_verify
+        try:
+            if "max_repair_rounds" in rec:
+                max_repairs = max(1 if not has_verify else 0,
+                                  min(1, int(rec["max_repair_rounds"])))
+        except (TypeError, ValueError):
+            pass
+    elif expert_mode or (mode == "auto" and difficulty == "hard"):
+        review_required = True
+        max_repairs = 2
+        allow_switch = True
+        try:
+            if "max_repair_rounds" in rec:
+                max_repairs = max(1, min(2, int(rec["max_repair_rounds"])))
+        except (TypeError, ValueError):
+            pass
+        if isinstance(rec.get("allow_switch"), bool):
+            allow_switch = rec["allow_switch"]
+        reason = "复杂任务保留规划、验证与模型评审"
+
+    return {
+        "planning": "llm" if planned else "inline",
+        "implementation_steps": len((plan or {}).get("steps") or []) or 1,
+        "verification": has_verify,
+        "review_required": review_required,
+        "reviewers": 1 if review_required else 0,
+        "max_repair_rounds": max_repairs,
+        "allow_switch": allow_switch,
+        "reason": reason,
+    }
+
+
+def content_workflow(task, difficulty, plan=None, mode="auto"):
+    """为非连载内容任务生成动态大纲/评审/修订策略。"""
+    task = task if isinstance(task, Mapping) else {}
+    ttype = str(task.get("type") or "doc")
+    requested_rounds = max(1, min(5, int(task.get("rounds") or 2)))
+    rec = (plan or {}).get("workflow") if isinstance(plan, Mapping) else None
+    rec = rec if isinstance(rec, Mapping) else {}
+    light_types = {"email", "weekly_report", "translation"}
+    deep_types = {"novel", "research", "tech_proposal"}
+
+    if mode == "fast":
+        return {"outline": False, "reviewers": 1, "review_rounds": 1,
+                "reason": "快速模式省略独立大纲，仅保留一次快速评审"}
+    if mode == "expert":
+        return {"outline": True, "reviewers": 2,
+                "review_rounds": min(requested_rounds, 3),
+                "reason": "专家模式启用完整大纲、多评审与修订门禁"}
+    if mode != "auto":
+        return {"outline": True, "reviewers": 0,
+                "review_rounds": requested_rounds,
+                "reason": "手动模式尊重用户指定的评审组与轮数"}
+
+    if ttype in light_types and difficulty != "hard":
+        return {"outline": False, "reviewers": 1, "review_rounds": 1,
+                "reason": "轻量内容省略独立大纲，只做一次快速评审"}
+
+    outline = ttype in deep_types or difficulty == "hard"
+    reviewers = 2 if outline else 1
+    review_rounds = min(requested_rounds, 2 if outline else 1)
+    try:
+        if "reviewers" in rec:
+            reviewers = max(1, min(2, int(rec["reviewers"])))
+        if "review_rounds" in rec:
+            review_rounds = max(1, min(requested_rounds, 3,
+                                       int(rec["review_rounds"])))
+    except (TypeError, ValueError):
+        pass
+    # 深度类型至少保留一轮评审，但允许规划器把双评审降成一名；高门槛强制双评审。
+    if float(task.get("threshold") or 7.0) >= 8.5:
+        reviewers = 2
+    return {"outline": outline, "reviewers": reviewers,
+            "review_rounds": review_rounds,
+            "reason": ("深度内容保留大纲和多轮质量门禁" if outline
+                       else "标准内容使用单评审短链")}

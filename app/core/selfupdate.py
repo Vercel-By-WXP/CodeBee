@@ -179,6 +179,13 @@ def apply_upgrade(port=None):
     if install_mode() != "npm":
         return {"error": "当前安装方式不支持自动升级（见版本页说明）"}
     from . import store, jobs
+    capacity = jobs.capacity_status()
+    if not capacity["accepting"]:
+        if capacity["restarting"]:
+            return {"error": "服务正在完成升级重启，请稍后再试"}
+        return {"error": "当前有 %d 个任务运行，已达并发保护上限（%d）；"
+                         "升级未启动且不会排队，请在任务结束后重试"
+                         % (capacity["active"], capacity["limit"])}
     try:
         run = store.create_run(
             "mgmt", "升级 CodeBee 本体（npm install -g %s@latest）" % _PKG_NAME,
@@ -188,16 +195,23 @@ def apply_upgrade(port=None):
         return {"error": "升级任务创建失败，请稍后重试"}
     try:
         jobs.enqueue({"kind": "selfupgrade", "run_id": run["id"]})
-    except Exception:
+    except Exception as exc:
         # run 已持久化；启动失败时显式收口，版本页不能停在误导性的待启动状态。
-        log.exception("selfupdate: 升级任务启动失败 run=%s", run["id"])
+        if isinstance(exc, jobs.JobsBusyError):
+            message = "升级未启动：%s" % str(exc)
+            log.warning("selfupdate: 升级任务因并发满载未启动 run=%s: %s",
+                        run["id"], exc)
+        else:
+            log.exception("selfupdate: 升级任务启动失败 run=%s", run["id"])
+            # 仅并发保护类错误可直接展示；其他内部异常继续隐藏实现细节。
+            message = "升级任务启动失败，本次未排队，请稍后重试"
         try:
             store.update_run(run["id"], status="failed",
-                             error="升级任务启动失败，本次未排队，请稍后重试",
+                             error=message,
                              ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
         except Exception:
             log.exception("selfupdate: 升级运行失败收口失败 run=%s", run["id"])
-        return {"error": "升级任务启动失败，本次未排队，请稍后重试", "run_id": run["id"]}
+        return {"error": message, "run_id": run["id"]}
     return {"run_id": run["id"]}
 
 

@@ -50,6 +50,40 @@ class TestTaskCompile(BaseTest):
         self.assertEqual(hard["difficulty"], "hard")
         self.assertEqual(easy["difficulty"], "easy")
 
+    def test_code_workflow_uses_short_chain_only_with_deterministic_verification(self):
+        from app.core import task_compile
+        easy = task_compile.code_workflow(
+            {"verify_command": "pytest -q"}, "easy",
+            plan={"steps": [{"title": "实现"}], "workflow": {
+                "review_required": False, "max_repair_rounds": 0,
+                "allow_switch": False}}, planned=False)
+        self.assertEqual(easy["planning"], "inline")
+        self.assertFalse(easy["review_required"])
+        self.assertEqual(easy["reviewers"], 0)
+        self.assertEqual(easy["max_repair_rounds"], 0)
+
+        no_verify = task_compile.code_workflow(
+            {}, "easy", plan={"workflow": {"review_required": False}})
+        self.assertTrue(no_verify["review_required"])
+        self.assertEqual(no_verify["reviewers"], 1)
+
+        hard = task_compile.code_workflow(
+            {"verify_command": "pytest -q"}, "hard",
+            plan={"steps": [{}, {}, {}], "workflow": {
+                "review_required": False, "max_repair_rounds": 0,
+                "allow_switch": False}})
+        self.assertTrue(hard["review_required"])
+        self.assertEqual(hard["max_repair_rounds"], 1)
+        self.assertFalse(hard["allow_switch"])
+        self.assertEqual(hard["implementation_steps"], 3)
+
+        architecture = task_compile.code_workflow(
+            {"goal": "调整公共架构接口", "verify_command": "pytest -q"}, "easy",
+            plan={"workflow": {"review_required": False, "max_repair_rounds": 0}},
+            mode="fast", planned=False)
+        self.assertTrue(architecture["review_required"])
+        self.assertEqual(architecture["reviewers"], 1)
+
     def test_route_plan_is_explainable_and_keeps_fallbacks(self):
         from app.core import router, task_compile
         spec = task_compile.compile_task({"type": "code", "goal": "修复 bug"})

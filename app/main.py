@@ -2386,6 +2386,7 @@ def main():
     except Exception:
         pass
     from core import usage
+    store.set_run_estimator(usage.estimate)
     _step("正在回填用量台账…")
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）
     if n_bf:
@@ -2536,7 +2537,8 @@ def main():
 
     print("[CodeBee] 本机     http://127.0.0.1:%d" % args.port, flush=True)
     print("[CodeBee] 数据目录 %s" % paths.DATA_DIR, flush=True)
-    print("[CodeBee] ✔ 已就绪，浏览器即将自动打开；不要关闭本窗口。", flush=True)
+    # Windows 的默认 GBK 控制台无法编码部分符号，启动日志必须保持控制台安全。
+    print("[CodeBee] [OK] 已就绪，浏览器即将自动打开；不要关闭本窗口。", flush=True)
     try:
         import faulthandler
         faulthandler.cancel_dump_traceback_later()  # 启动完成，看门狗退役（否则运行期每 20s 误报堆栈）

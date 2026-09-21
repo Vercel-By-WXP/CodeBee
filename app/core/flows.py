@@ -36,7 +36,7 @@ BUILTIN_FLOWS = [
      "note": "CodeBee 直连模型 API 干活（无 CLI 进程），无可用供应商时回退本机 CLI；无拆解/评审（快）"},
     {"id": "code", "name": "代码", "icon": "i-code", "engine": "code", "builtin": True,
      "goal_hint": "要实现/修复什么（一句话）",
-     "note": "实现 → 验证命令 → 跨厂商评审 → 自动修复/换将"},
+     "note": "按难度动态编排：简单任务走实现+验证短链，复杂任务增加规划、评审、修复与换将"},
     {"id": "novel", "name": "小说", "icon": "i-book-open", "engine": "review", "builtin": True,
      "manuscript": "manuscript.md",
      "rubric": ["情节", "人物", "文笔", "节奏", "吸引力"],

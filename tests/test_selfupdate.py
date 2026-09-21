@@ -177,6 +177,34 @@ class TestSelfUpdate(BaseTest):
         update_run.assert_called_once()
         self.assertEqual(update_run.call_args.kwargs["status"], "failed")
 
+    def test_busy_upgrade_explains_concurrency_limit(self):
+        import app.core.selfupdate as su
+        from app.core import jobs, store
+
+        run = {"id": "m-busy"}
+        reason = "当前运行任务已达并发保护上限（6）；本次未排队，请稍后重试"
+        with mock.patch.object(su, "install_mode", return_value="npm"), \
+             mock.patch.object(store, "create_run", return_value=run), \
+             mock.patch.object(jobs, "enqueue", side_effect=jobs.JobsBusyError(reason)), \
+             mock.patch.object(store, "update_run") as update_run:
+            result = su.apply_upgrade()
+
+        self.assertIn("并发保护上限（6）", result["error"])
+        self.assertEqual(update_run.call_args.kwargs["error"], result["error"])
+
+    def test_full_capacity_rejects_upgrade_without_creating_failed_run(self):
+        import app.core.selfupdate as su
+        from app.core import jobs, store
+
+        with mock.patch.object(su, "install_mode", return_value="npm"), \
+             mock.patch.object(jobs, "capacity_status", return_value={
+                 "accepting": False, "active": 6, "limit": 6, "restarting": False}), \
+             mock.patch.object(store, "create_run") as create_run:
+            result = su.apply_upgrade()
+
+        self.assertIn("升级未启动且不会排队", result["error"])
+        create_run.assert_not_called()
+
     def test_auto_relaunch_requires_changed_version_and_idle_workers(self):
         import app.core.selfupdate as su
         from app.core import jobs

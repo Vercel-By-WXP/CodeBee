@@ -6,7 +6,7 @@
   监听 tools/post-execute，按 (tool, canonical_args) 跟踪，3/5/8 阈值注入 user-message 提醒。
 
 Tutti 的 "tool" 对应到 "step role"，"canonical_args" 对应到 prompt 模板指纹。
-阈值更宽松（5/10/15），因 Tutti 步骤级别比 dsh 工具调用粗。
+步骤级调用代价远高于普通工具调用，因此第 3 次提醒、第 5 次强制停止。
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ import time
 log = logging.getLogger(__name__)
 
 # 渐进阈值：第 N 次命中时给提醒；最后一次及以上时强制停止。
-DEFAULT_THRESHOLDS = (5, 10, 15)
+DEFAULT_THRESHOLDS = (3, 5)
 
 REMINDER_TEMPLATE = (
     "⚠️ 提醒：上一步使用了几乎相同的输入（已连续 {count} 次调用 {role}）。"

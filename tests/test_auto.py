@@ -39,6 +39,13 @@ class TestPlannerFallback(BaseTest):
             {"title": "A", "detail": "do a"}, {"title": "B", "detail": "do b"}]})
         self.assertEqual(len(steps), 2)
         self.assertIsNone(planner._norm_subtasks({"foo": 1}))
+        workflow = planner._plan_workflow({"workflow": {
+            "review_required": False, "max_repair_rounds": 9,
+            "allow_switch": True}})
+        self.assertEqual(workflow, {"review_required": False,
+                                    "max_repair_rounds": 2,
+                                    "allow_switch": True})
+        self.assertIsNone(planner._plan_workflow({"workflow": "bad"}))
         novel = planner.make_novel_plan(
             {"threshold": 7.0, "rounds": 2, "rubric": ["情节"]},
             {"id": "mock-a", "label": "A"}, [{"id": "mock-b", "label": "B"}])
@@ -50,7 +57,7 @@ class TestAutoCodeRepairLoop(BaseTest):
         from app.core import pipeline, store
         # 验证永远失败：应触发 2 轮自动修复 + 换将，最终仍失败但记录完整
         task = store.create_task({
-            "type": "code", "title": "修复循环", "goal": "g",
+            "type": "code", "title": "修复循环", "goal": "重构并发架构并修复安全问题",
             "workdir": str(self.workdir), "mode": "auto",
             "verify_command": "exit 1",
         })
@@ -88,6 +95,13 @@ class TestAutoCodeHappyPath(BaseTest):
         self.assertTrue(v["pass"])
         self.assertEqual(len(v["repairs"]), 1)            # 只有 initial 一轮，无修复
         self.assertFalse(v["switched"])
+        self.assertTrue(v["review_skipped"])
+        self.assertEqual(v["workflow"]["planning"], "inline")
+        self.assertEqual(v["workflow"]["reviewers"], 0)
+        roles = [s["role"] for s in run["steps"]]
+        self.assertNotIn("plan", roles)
+        self.assertNotIn("review", roles)
+        self.assertEqual(roles, ["implement", "verify"])
 
 
 class TestAutoNovel(BaseTest):

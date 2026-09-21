@@ -53,6 +53,7 @@ class TestModelHub(BaseTest):
         agent = {"id": "claude-code", "kind": "claude", "mode": "real", "command": "claude"}
         b = modelhub.bind_agent(agent, "hard")
         self.assertEqual(b["model"], "test-max")
+        self.assertEqual(b["reasoning_effort"], "high")
         self.assertIn("ANTHROPIC_BASE_URL", b["env"])
         self.assertNotIn("env", agent)
 
@@ -221,6 +222,8 @@ class TestModelPriorityRouting(BaseTest):
         self.assertFalse(easy["binding_configured"])
         self.assertEqual(easy["model"], "cheap")
         self.assertEqual(hard["model"], "strong")
+        self.assertEqual(easy["reasoning_effort"], "low")
+        self.assertEqual(hard["reasoning_effort"], "high")
         self.assertEqual(modelhub.bindings(), {}, "自动推荐不得落盘成显式绑定")
 
     def test_unbound_recommendation_expands_keys_and_skips_cooled_key(self):

@@ -10,6 +10,28 @@ from base import BaseTest
 
 
 class TestOnlineRouting(BaseTest):
+    def test_auto_critics_cap_and_prefer_low_latency(self):
+        from app.core import router
+
+        agents = [
+            {"id": "author", "kind": "codex", "mode": "real"},
+            {"id": "slow", "kind": "opencode", "mode": "real"},
+            {"id": "fast", "kind": "opencode", "mode": "real"},
+            {"id": "medium", "kind": "opencode", "mode": "real"},
+        ]
+
+        def metrics(**kwargs):
+            p95 = {"slow": 180.0, "fast": 8.0, "medium": 20.0}.get(
+                kwargs.get("agent"), 10.0)
+            return {"samples": 6, "successes": 6, "success_rate": 1.0,
+                    "p95_duration_s": p95, "avg_cost_usd": 0.001}
+
+        with patch("app.core.usage.routing_stats", side_effect=metrics):
+            critics, note = router.pick_critics(
+                agents, "serial_novel", {}, impl=agents[0])
+        self.assertEqual([x["id"] for x in critics], ["fast", "medium"])
+        self.assertIn("前 2 名", note)
+
     def test_usage_stats_smooths_percentiles_and_cost(self):
         from app.core import usage
 
@@ -294,10 +316,11 @@ class TestCodeVerificationOrder(BaseTest):
             return {"pass": True, "scores": {"正确性": 9}, "issues": []}
 
         with patch.object(pipeline.planner, "make_code_plan",
-                          return_value={"source": "test", "steps": [{"title": "实现", "detail": "实现"}]}), \
+                          return_value={"source": "test", "steps": [{"title": "实现", "detail": "实现"}]}) as make_plan, \
                 patch.object(pipeline.modelhub, "bind_agent", side_effect=lambda a, *_: a), \
                 patch.object(pipeline, "_run_step", return_value={"ok": True, "text": "", "raw": {}}), \
                 patch.object(pipeline, "_run_verify", side_effect=verify), \
                 patch.object(pipeline, "_run_review", side_effect=review):
-            pipeline._run_code(run, task, [agent], threading.Event(), {}, "auto")
+            pipeline._run_code(run, task, [agent], threading.Event(), {}, "expert")
+        make_plan.assert_called_once()
         self.assertEqual(calls[:2], ["verify", "review"])

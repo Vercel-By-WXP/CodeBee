@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+from unittest import mock
+
 from base import BaseTest
 
 
@@ -27,6 +29,9 @@ class TestAiderCallShape(BaseTest):
         i = argv.index("--model")
         self.assertEqual(argv[i + 1], "anthropic/glm-5.1")
         self.assertIn("--no-show-model-warnings", argv)   # 网关模型警告刷屏闸
+        self.assertIn("--no-gitignore", argv)             # 无头执行不改用户仓库
+        self.assertIn("--no-pretty", argv)                # Windows 服务无控制台
+        self.assertIn("--no-stream", argv)
 
         # openai 兼容面条目 → openai/ 前缀
         agent2 = {"id": "aider", "kind": "aider", "mode": "real", "command": "aider",
@@ -40,6 +45,18 @@ class TestAiderCallShape(BaseTest):
         agent4 = {"id": "aider", "kind": "aider", "mode": "real", "command": "aider", "env": {}}
         argv4, _, _, _ = R._build_call(agent4, "aider", "", True, "glm-5.1", "p")
         self.assertEqual(argv4[argv4.index("--model") + 1], "glm-5.1")
+
+    def test_corrupt_git_repo_is_reported_before_aider_starts(self):
+        from app.core import runner as R
+
+        ok = mock.Mock(returncode=0, stdout=".git\n", stderr="")
+        bad = mock.Mock(returncode=128, stdout="", stderr="missing pack-a52.idx")
+        with mock.patch.object(R.os.path, "isdir", return_value=True), \
+             mock.patch.object(R.os.path, "exists", return_value=True), \
+             mock.patch.object(R.subprocess, "run", side_effect=[ok, bad]):
+            issue = R._git_repo_issue("C:/broken")
+        self.assertIn("Git 仓库损坏", issue)
+        self.assertIn("git fsck", issue)
 
 
 class TestAiderChainEnv(BaseTest):

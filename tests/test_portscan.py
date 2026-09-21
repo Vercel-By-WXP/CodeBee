@@ -83,6 +83,5 @@ class TestClosePortGuard(BaseTest):
             self.assertIn("pid", ports[0])
             self.assertIn("local_only", ports[0])
 
-
 if __name__ == "__main__":
     unittest.main()

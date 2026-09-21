@@ -39,11 +39,40 @@ _SYSTEM_PROMPT = """你是 CodeBee 的内置执行智能体，直接完成用户
 - 回答用户的语言与用户一致（默认中文）。直接给结论和内容，不要输出任何机器标记或协议行。"""
 
 
-def resolve():
+def resolve(provider_id="", model="", difficulty="default"):
     """选内置智能体可用的 (provider, model)：编排者配置优先，否则首个可用供应商。
 
     返回 {prov, model, provider_id, provider_name} 或 None（无可用供应商 → 调用方
     回退 CLI 路径）。"""
+    provider_id = str(provider_id or "").strip()
+    model = str(model or "").strip()
+    if provider_id:
+        for p in modelhub.providers():
+            if p.get("id") != provider_id or not p.get("enabled", True) or not p.get("api_key"):
+                continue
+            selected = model
+            if selected:
+                try:
+                    enabled_names = [m.get("name") for m in modelhub._enabled_models(p)]
+                except Exception:
+                    enabled_names = []
+                if selected not in enabled_names:
+                    return None
+            if not selected:
+                selected = (p.get("model_hard") if difficulty == "hard" else
+                            p.get("model_easy") if difficulty == "easy" else
+                            p.get("model") or "").strip()
+            if not selected:
+                try:
+                    names = modelhub._enabled_models(p)
+                except Exception:
+                    names = []
+                selected = names[0]["name"] if names else ""
+            if selected:
+                return {"prov": p, "model": selected,
+                        "provider_id": p.get("id") or "",
+                        "provider_name": p.get("name") or p.get("id") or ""}
+        return None
     orch = None
     try:
         orch = modelhub.resolve_orchestrator()
@@ -57,7 +86,9 @@ def resolve():
     for p in modelhub.providers():
         if not p.get("enabled", True) or not p.get("api_key"):
             continue
-        m = (p.get("model") or "").strip()
+        m = ((p.get("model_hard") if difficulty == "hard" else
+              p.get("model_easy") if difficulty == "easy" else
+              p.get("model")) or "").strip()
         if not m:
             try:
                 names = modelhub._enabled_models(p)
@@ -534,6 +565,11 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
             for kk in keys:
                 url, headers, body = _build_request(proto, pbase, kk["key"], model,
                                                     system, msgs, tools_ok)
+                effort = str(bi.get("reasoning_effort") or "").strip().lower()
+                # reasoning_effort 是 OpenAI wire 字段；Anthropic thinking 使用
+                # 另一套对象结构，向兼容网关硬塞该字段会直接得到 400。
+                if effort in ("low", "medium", "high") and proto == "openai":
+                    body["reasoning_effort"] = effort
                 status, data, err = _post_interruptible(url, headers, body,
                                                         allow_private, timeout,
                                                         cancel_event)

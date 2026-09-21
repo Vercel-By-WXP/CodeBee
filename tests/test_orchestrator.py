@@ -99,6 +99,11 @@ class TestOrchestrator(BaseTest):
             self.assertTrue(req["auth"].endswith(FAKE_KEY[-6:]))
             self.assertEqual(req["body"]["model"], "gpt-x")
             self.assertEqual(req["body"]["messages"][0]["content"], "测试消息")
+            self.assertNotIn("reasoning_effort", req["body"])
+            res = modelhub.chat(pid, "gpt-x", "深度消息", timeout=10,
+                                reasoning_effort="high")
+            self.assertTrue(res["ok"], res.get("error"))
+            self.assertEqual(srv.requests[-1]["body"]["reasoning_effort"], "high")
             # 错误模型/供应商：不存在时明确报错而不是崩
             bad = modelhub.chat("nope", "m", "x")
             self.assertFalse(bad["ok"])
@@ -112,8 +117,10 @@ class TestOrchestrator(BaseTest):
         def fake_resolve():
             return ({"id": "p1", "name": "编排网关"}, "orch-x")
 
+        seen = []
         def fake_chat(pid, model, prompt, **kw):
             calls["chat"] += 1
+            seen.append(kw.get("reasoning_effort"))
             return {"ok": True, "text": '```json\n{"difficulty": "hard", "subtasks": '
                                         '[{"title": "A", "detail": "da"}, '
                                         '{"title": "B", "detail": "db"}]}\n```',
@@ -123,12 +130,14 @@ class TestOrchestrator(BaseTest):
         modelhub.resolve_orchestrator = fake_resolve
         modelhub.chat = fake_chat
         try:
-            task = {"goal": "做个功能", "context": "", "verify_command": "exit 0"}
+            task = {"goal": "做个功能", "context": "", "verify_command": "exit 0",
+                    "thinking": "high", "mode": "auto"}
             plan = planner.make_code_plan(task, {"id": "mock-a", "mode": "mock"}, ".")
             self.assertEqual(calls["chat"], 1)          # 编排者优先：不问 CLI
             self.assertTrue(plan["source"].startswith("编排者("))
             self.assertEqual(plan["difficulty"], "hard")
             self.assertEqual(len(plan["steps"]), 2)
+            self.assertEqual(seen[0], "high")
             # 编排者失败 → 回落 CLI（mock → 模板）
             def bad_chat(*a, **k):
                 return {"ok": False, "text": "", "tokens": 0, "error": "boom"}

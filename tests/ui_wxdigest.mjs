@@ -1,7 +1,7 @@
-/* 群摘要蜜蜂坞核验：Edge headless + CDP（临时服务端口 18961）。
- * 1) 未读徽章：dock 显示在右下角、徽章计数 2；
- * 2) 点蜜蜂 → 面板开、摘要卡 2 张（群名/正文可见）、打开即 seen 清零（徽章消失+后端归零）；
- * 3) 齿轮 → 配置表单：启用勾选、间隔 30，改监控目录保存 → 后端生效（无弹回）；
+/* 群摘要设置页核验：Edge headless + CDP（临时服务端口 18961）。
+ * 1) 设置入口可见，点击进入正式群摘要页；
+ * 2) 摘要卡 2 张（群名/正文可见），进入页面即 seen 清零；
+ * 3) 配置表单：启用勾选、间隔 30，改监控目录保存 → 后端生效（无弹回）；
  * 4) 立即扫描：无新内容时 toast 完成、后端 last_scan 落账；
  * 5) pet_state 喂食：digest.unseen/latest 透出（桌面蜜蜂的数据源）。 */
 import { spawn } from "node:child_process";
@@ -128,49 +128,31 @@ async function main() {
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(5000);   // 蜜蜂坞 boot 错开首屏 2s + 首次刷新
 
-    /* 1) dock 可见 + 右下角 + 徽章 2 */
-    const s1 = await evalJs(`(() => {
-      const dock = document.getElementById("bee-dock");
-      const fab = document.getElementById("bee-fab");
-      const badge = document.getElementById("bee-badge");
-      if (!dock || !fab) return JSON.stringify({ missing: true });
-      const r = fab.getBoundingClientRect();
-      return JSON.stringify({
-        hidden: dock.classList.contains("hidden"),
-        nearBR: (innerWidth - r.right) < 60 && (innerHeight - r.bottom) < 60,
-        badge: badge.classList.contains("hidden") ? "" : badge.textContent,
-      });
-    })()`);
-    const d1 = JSON.parse(s1);
-    check("dock 显示且在右下角", !d1.hidden && d1.nearBR, s1);
-    check("未读徽章 = 2", d1.badge === "2", s1);
+    check("设置导航有微信群聊汇报入口",
+      await evalJs(`!!document.querySelector('.set-item[data-sub="__wxdigest"]')`) === true);
 
-    /* 2) 点蜜蜂 → 面板开 + 摘要卡 + seen 清零 */
-    await evalJs(`document.getElementById("bee-fab").click()`);
+    /* 1-2) 点击设置入口 → 正式页面 + 摘要卡 + seen 清零 */
+    await evalJs(`document.querySelector('.set-item[data-sub="__wxdigest"]').click()`);
     await sleep(900);
     const s2 = await evalJs(`(() => {
-      const panel = document.getElementById("bee-panel");
+      const panel = document.getElementById("sub-__wxdigest");
       const cards = [...document.querySelectorAll("#bee-list .bee-digest")];
       return JSON.stringify({
         open: !panel.classList.contains("hidden"),
         cards: cards.length,
         firstGroup: cards[0]?.querySelector(".bee-tag")?.textContent,
         hasText: !!cards[0]?.querySelector(".bee-text")?.textContent.includes("发版"),
-        badgeGone: document.getElementById("bee-badge").classList.contains("hidden"),
-        cfgHidden: document.getElementById("bee-cfg").classList.contains("hidden"),
+        cfgShown: !document.getElementById("bee-cfg").classList.contains("hidden"),
       });
     })()`);
     const d2 = JSON.parse(s2);
-    check("面板打开且摘要卡 2 张", d2.open && d2.cards === 2, s2);
+    check("群摘要页打开且摘要卡 2 张", d2.open && d2.cards === 2, s2);
     check("最新摘要在前（产品群/正文可见）", d2.firstGroup === "产品群" && d2.hasText, s2);
-    check("打开即 seen：徽章消失", d2.badgeGone, s2);
-    check("有数据时默认展示列表不落配置", d2.cfgHidden, s2);
+    check("配置与摘要在同一页面", d2.cfgShown, s2);
     const v2 = await (await jf("/api/wxdigest")).json();
-    check("后端 unseen 归零", v2.unseen === 0, String(v2.unseen));
+    check("进入页面即 seen：后端 unseen 归零", v2.unseen === 0, String(v2.unseen));
 
-    /* 3) 齿轮 → 配置表单 + 保存改监控目录（无弹回） */
-    await evalJs(`document.getElementById("bee-cfg-btn").click()`);
-    await sleep(200);
+    /* 3) 配置表单 + 保存改监控目录（无弹回） */
     const s3 = await evalJs(`(() => {
       const cfg = document.getElementById("bee-cfg");
       return JSON.stringify({

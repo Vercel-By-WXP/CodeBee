@@ -119,6 +119,7 @@ async function main() {
     check("点 English 即时切英文（data-lang=en）", en.lang === "en", JSON.stringify(en));
     check("localStorage 记忆 orch.lang=en", en.stored === "en", en.stored);
     check("浏览器标题变英文", /Multi-agent/.test(en.title), en.title);
+    check("英文标题保留当前端口供桌宠复用", en.title.includes("[" + PORT + "]"), en.title);
     check("选完下拉自动收起", en.menuClosed === true);
     check("静态文案已翻（页签标题）", /Task|Tasks/i.test(en.sample), en.sample);
 
@@ -159,6 +160,7 @@ async function main() {
     })`));
     check("切回中文（data-lang=zh + 记忆）", zh.lang === "zh" && zh.stored === "zh", JSON.stringify(zh));
     check("标题还原中文", /多智能体/.test(zh.title), zh.title);
+    check("中文标题保留当前端口供桌宠复用", zh.title.includes("[" + PORT + "]"), zh.title);
 
     check("浏览器控制台无 JS 错误", consoleErrors.length === 0, consoleErrors.join(" | "));
     ws.close();

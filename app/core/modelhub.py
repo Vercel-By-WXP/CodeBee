@@ -2016,6 +2016,12 @@ def bind_agent(agent, difficulty="default", task_type="", role=""):
     a = dict(agent)
     a["binding_configured"] = configured
     a["binding_mode"] = binding_mode
+    # 统一思考档位：支持该能力的 CLI（当前 Codex）会把它下发为原生参数；
+    # 其他 CLI 仍通过 difficulty 的模型路由获得相同的快/标准/深思语义。
+    explicit_thinking = str(agent.get("_thinking") or "").strip().lower()
+    a["reasoning_effort"] = ({"low": "low", "standard": "medium", "high": "high"}
+                              .get(explicit_thinking)
+                              or {"easy": "low", "hard": "high"}.get(difficulty, "medium"))
     if not r:
         return a
     merged = dict(agent.get("env") or {})
@@ -2997,16 +3003,17 @@ def resolve_orchestrator():
     return prov, model
 
 
-def _chat_cache_path(provider_id, model_name, prompt, max_tokens):
+def _chat_cache_path(provider_id, model_name, prompt, max_tokens, reasoning_effort=""):
     """§07 T2.2：精确匹配响应缓存的落盘路径（只缓存 ok 的幂等调用）。"""
     import hashlib as _h
-    key = "|".join([str(provider_id), str(model_name), str(max_tokens), str(prompt)])
+    key = "|".join([str(provider_id), str(model_name), str(max_tokens),
+                    str(reasoning_effort or ""), str(prompt)])
     name = _h.sha256(key.encode("utf-8")).hexdigest()[:24]
     return paths.DATA_DIR / "chat_cache" / (name + ".json")
 
 
 def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_ttl=0,
-         on_delta=None):
+         on_delta=None, reasoning_effort=""):
     """直连供应商 API 做一次对话（编排者规划 / 连通性测试）。
 
     支持 anthropic / openai / google 三种协议；复用 SSRF 防护。
@@ -3020,7 +3027,8 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_tt
     """
     if cache_ttl > 0:
         try:
-            cache_path = _chat_cache_path(provider_id, model_name, prompt, max_tokens)
+            cache_path = _chat_cache_path(provider_id, model_name, prompt, max_tokens,
+                                          reasoning_effort)
             if cache_path.is_file():
                 age = time.time() - cache_path.stat().st_mtime
                 if age <= cache_ttl:
@@ -3067,6 +3075,9 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_tt
                 headers = {"Authorization": "Bearer " + use_key}
             body = {"model": model_name, "max_tokens": max_tokens,
                     "messages": [{"role": "user", "content": prompt}]}
+            effort = str(reasoning_effort or "").strip().lower()
+            if proto == "openai" and effort in ("low", "medium", "high"):
+                body["reasoning_effort"] = effort
         return url, headers, body
 
     last_err = ""
@@ -3150,7 +3161,8 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_tt
     # §07 T2.2：cache_ttl>0 时落盘缓存（仅 ok 结果，原子写）
     if cache_ttl > 0:
         try:
-            cache_path = _chat_cache_path(provider_id, model_name, prompt, max_tokens)
+            cache_path = _chat_cache_path(provider_id, model_name, prompt, max_tokens,
+                                          reasoning_effort)
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             tmp = cache_path.with_suffix(".tmp")
             import json as _json

@@ -18,7 +18,7 @@ class GateVerifyTests(BaseTest):
         from app.core import pipeline, store
         task = store.create_task({
             "type": "code", "title": "gate 验证", "goal": "g",
-            "workdir": str(self.workdir), "mode": "auto",
+            "workdir": str(self.workdir), "mode": "expert",
             "verify_command": "exit 1",
         })
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
@@ -43,7 +43,7 @@ class GateVerifyTests(BaseTest):
         from app.core import pipeline, store
         task = store.create_task({
             "type": "code", "title": "gate 放行", "goal": "g",
-            "workdir": str(self.workdir), "mode": "auto",
+            "workdir": str(self.workdir), "mode": "expert",
             "verify_command": "exit 0",
         })
         run = store.create_run("orchestration", task["title"], task_id=task["id"])

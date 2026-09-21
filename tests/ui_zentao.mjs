@@ -233,15 +233,22 @@ async function main() {
     })`, 10000);
     check("③ 保存后档案结构落库（路由×2 + 负责人 + 脱敏）", saved === true);
 
-    // ④ 加第二个产品 → 保存 → 后端 2 份档案；删除一份 → 回到 1
-    await evalJs(`ztProfAdd();
-      const cards = document.querySelectorAll("#zt-profiles .zt-prof");
-      cards[cards.length - 1].querySelector(".zt-p-product").value = "8";
-      saveZentao(); "ok"`);
+    // ④ 加第二个产品自动选首个未配置项 → 保存；全部已添加时不再生成 product=0 空卡
+    await evalJs(`S.ztProducts = [{id:7,name:"产品柒",status:"normal"},
+      {id:8,name:"产品捌",status:"closed"}]; renderZentaoProfiles(); "ok"`);
+    await evalJs(`(async () => { await ztProfAdd(); await saveZentao(); return "ok"; })()`, true);
     const two = await waitFor(`api("/api/zentao").then(v =>
       (v.config.product_profiles || []).length === 2 &&
       v.config.product_profiles[1].product === 8)`, 10000);
-    check("④ 添加产品并保存（档案×2）", two === true);
+    check("④ 添加产品自动选中首个未配置产品（档案×2）", two === true);
+    const noEmpty = await evalJs(`(async () => {
+      await ztProfAdd();
+      return JSON.stringify({ count: document.querySelectorAll("#zt-profiles .zt-prof").length,
+        values: Array.from(document.querySelectorAll("#zt-profiles .zt-p-product")).map((x) => x.value) });
+    })()`, true);
+    const ne = JSON.parse(noEmpty || "{}");
+    check("④ 产品均已添加时不创建 product=0 空卡",
+      ne.count === 2 && ne.values.every((x) => Number(x) > 0), noEmpty);
     await evalJs(`ztProfDel(1); saveZentao(); "ok"`);
     const one = await waitFor(`api("/api/zentao").then(v =>
       (v.config.product_profiles || []).length === 1)`, 10000);
@@ -264,6 +271,20 @@ async function main() {
     const si = JSON.parse(selInfo || "{}");
     check("④b 清单就位 → 产品下拉（保留7）+ 负责人挂账号下拉",
       si.tag === "SELECT" && si.val === "7" && si.ownerList === true && si.dlOpts === 2, selInfo);
+    const layout = await evalJs(`(() => {
+      const auto = document.querySelector(".zt-auto-options");
+      const interval = document.querySelector(".zt-interval-field");
+      const input = document.getElementById("zt-interval");
+      const product = document.querySelector("#zt-profiles .zt-p-product");
+      const ab = auto.getBoundingClientRect(), ib = interval.getBoundingClientRect();
+      const nb = input.getBoundingClientRect(), pb = product.getBoundingClientRect();
+      return JSON.stringify({ autoH: Math.round(ab.height), intervalH: Math.round(ib.height),
+        numberInside: nb.left >= ib.left - 1 && nb.right <= ib.right + 1,
+        productW: Math.round(pb.width), productVisible: pb.right <= innerWidth + 1 });
+    })()`, true);
+    const ly = JSON.parse(layout || "{}");
+    check("④b 自动化选项与扫描间隔成组对齐", ly.autoH < 100 && ly.numberInside, layout);
+    check("④b 产品名称下拉有可读宽度且未溢出", ly.productW >= 180 && ly.productVisible, layout);
     await evalJs(`S.ztProducts = []; S.ztUsers = []; renderZentaoProfiles(); "ok"`);
 
     // ⑤ 立即扫描对不可达地址优雅报错

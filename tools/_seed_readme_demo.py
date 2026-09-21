@@ -141,7 +141,50 @@ lessons = [
 for scope, title, content, dim, cat in lessons:
     skills.upsert_lesson(scope, title, content, source="演示数据", dim=dim)
 
+# ---- 知识库（草稿自动转正；事实带账龄 as_of）----
+from core import knowledge  # noqa: E402
+k_entries = [
+    ("网文", "番茄推荐机制要点", "新书期 30 天内完读率>30% 进二级推荐池；前三章黄金一章决定留存；"
+     "每日 2 更稳定比爆发 5 更更利于推荐。", ["番茄", "推荐", "运营"], "2026-09 榜单复盘"),
+    ("网文", "七猫签约偏好", "女频现实题材签约率高；单章 2000-3000 字；签约后全勤 400 字/日门槛；"
+     "保底+分成二选一。", ["七猫", "签约"], "2026-09 官方沙龙"),
+    ("编码", "网关 5xx 退避参数", "503/504 退避 60/120/240s 三档；连续 3 次同错误码才换将，"
+     "避免烧穿备用 KEY。", ["网关", "退避"], "2026-09 实测"),
+]
+for scope, title, body, tags, src in k_entries:
+    knowledge.upsert_entry(scope, title, body, tags=tags, source=src, status="approved")
+
+# ---- 自动化定时任务 ----
+from core import automation  # noqa: E402
+try:
+    automation.create({"name": "每日竞品调研", "kind": "daily", "time": "00:30",
+                       "flow": "research", "enabled": True,
+                       "prompt": "抓取七猫+番茄排行榜，提炼跨平台热门题材与人设切入点",
+                       "workdir": WD})
+except Exception as e:
+    print("automation A skip:", e)
+try:
+    automation.create({"name": "每周数据周报", "kind": "weekly", "weekday": 1,
+                       "time": "09:00", "flow": "weekly_report", "enabled": True,
+                       "prompt": "汇总本周用量台账与任务成败率，产出周报",
+                       "workdir": WD})
+except Exception as e:
+    print("automation B skip:", e)
+
+# ---- 作品信息（连载任务 · 七猫）----
+try:
+    store.set_book_meta(tA["id"], "qimao", {
+        "status": "done",
+        "data": {"title": "深海蜜途", "category_main": "女生频道",
+                 "category_sub": "现实故事", "target_reader": "女 18-30",
+                 "intro": "潜水教练与海洋生物学家的双线深海叙事。", "sign_mode": "连载模式"},
+        "at": now})
+except Exception:
+    pass
+
 print("seeded:",
       "tasks=", len(store.list_tasks(50)),
       "runs=", len(store.list_runs(50)),
-      "lessons=", len(skills.list_lessons()))
+      "lessons=", len(skills.list_lessons()),
+      "knowledge=", len(knowledge.list_entries()),
+      "automation=", len(automation.list_tasks()))

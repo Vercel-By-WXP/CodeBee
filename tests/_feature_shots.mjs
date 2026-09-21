@@ -5,7 +5,7 @@ import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const BASE = "http://127.0.0.1:19910";
+const BASE = "http://127.0.0.1:19921";
 const CDP_PORT = 9347;
 const OUT = new URL("../docs/screenshots/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const EDGE = [
@@ -67,8 +67,8 @@ async function main() {
     const nav = async (js, name, waitMs, tag) => {
       await evalJs(js);
       await sleep(waitMs);
-      await dump(tag);
-      await shot(name);
+      if (tag) await dump(tag);
+      if (name) await shot(name);
     };
 
     await send("Page.enable");
@@ -106,6 +106,33 @@ async function main() {
       await nav(`switchTab("runs"); openRun(${JSON.stringify(runB)});
                  (document.querySelector('#rd-tabs .rd-tab[data-tab="report"]')||{click(){}}).click();`,
       "report", 2800, "report");
+    }
+    // 11 知识库
+    await nav(`switchTab("knowledge");`, "knowledge", 2200, "knowledge");
+    // 12 自动化
+    await nav(`switchTab("automation");`, "automation", 2200, "automation");
+    // 13 帮助中心（多章弹层，落在快速上手章）
+    await evalJs(`welcomeOpen({ topic: "quickstart" });`);
+    await sleep(1800);
+    console.log("[help-diag]", await evalJs(`(() => { const w = $("welcome");
+      return JSON.stringify({ cls: w.className, vis: !w.classList.contains("hidden"),
+        head: w.innerText.slice(0, 150).split("\\n").join(" | ") }); })()`));
+    await shot("help");
+    await evalJs(`welcomeClose();`);
+    await sleep(300);
+    // 14 作品信息（连载任务 · 七猫建书资料）
+    if (runA) {
+      await evalJs(`switchTab("runs"); openRun(${JSON.stringify(runA)});`);
+      await sleep(2400);
+      await evalJs(`(document.querySelector('#rd-tabs .rd-tab[data-tab="bookmeta"]')||{click(){}}).click();`);
+      await sleep(2200);
+      console.log("[bookmeta-diag]", await evalJs(`(() => {
+        const b = document.querySelector('#rd-tabs .rd-tab[data-tab="bookmeta"]');
+        const p = document.querySelector("#rd-pane-bookmeta");
+        return JSON.stringify({ tab: !!b, sel: b && b.getAttribute("aria-selected"),
+          pane: p && !p.classList.contains("hidden"),
+          head: p ? p.innerText.slice(0, 150).split("\\n").join(" | ") : "NO-PANE" }); })()`));
+      await shot("bookmeta");
     }
     ws.close();
   } finally {

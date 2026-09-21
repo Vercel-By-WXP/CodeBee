@@ -928,6 +928,10 @@ def _run_code(run, task, agents, ev, stats, mode):
     # ---- 难度（影响模型选择）：用户指定 > 启发式 > 规划器判定
     difficulty = task.get("difficulty") or "auto"
     explicit = difficulty in ("easy", "hard")
+    if mode == "fast":
+        difficulty, explicit = "easy", True
+    elif mode == "expert":
+        difficulty, explicit = "hard", True
     if not explicit:
         difficulty = modelhub.classify_difficulty(task["goal"], task.get("verify_command"))
 
@@ -944,14 +948,21 @@ def _run_code(run, task, agents, ev, stats, mode):
                          error="没有可用智能体", ended_at=_now())
         return
 
-    # ---- 规划
-    if mode == "auto":
+    # 项目记忆既给规划器，也给快速路径的实现者；不能因省掉独立规划而漏掉。
+    user_context_len = len(task.get("context") or "")
+    project_memory = _read_project_memory(workdir)
+    if project_memory:
+        task = dict(task, context=(task.get("context") or "") + "\n\n" + project_memory)
+
+    # ---- 规划。低风险短任务直接把目标作为单步计划，省掉一次独立模型调用；
+    # 附件或较长的用户背景仍先规划，避免快速路径漏读约束。
+    fast_path = (mode == "fast" or
+                 (mode == "auto" and difficulty == "easy"
+                  and not task.get("attachments")
+                  and user_context_len < 600))
+    planned = False
+    if mode in ("auto", "expert") and not fast_path:
         _wait_gate(run_id, ev)
-        # 项目记忆注入（借鉴 agentmemory 持久记忆）：同工作目录此前代码任务留下的
-        # 架构事实，让规划器不再对代码库一无所知
-        _pm = _read_project_memory(workdir)
-        if _pm:
-            task = dict(task, context=(task.get("context") or "") + "\n\n" + _pm)
         plan_step, plan_log = store.add_step(run_id, "plan", impl["id"], impl.get("label"),
                                              note=route.get("implementer", ""))
         plan = planner.make_code_plan(_steered_task(run_id, task),
@@ -967,21 +978,39 @@ def _run_code(run, task, agents, ev, stats, mode):
                               plan["source"], difficulty,
                               "；".join(s["title"] for s in plan["steps"])[:160]),
                           duration_s=0.1 if impl.get("mode") == "mock" else None)
+        planned = True
+    elif fast_path:
+        plan = {
+            "source": "dynamic-fast-path",
+            "difficulty": "easy",
+            "steps": [{"title": "直接实现并自检", "detail": task["goal"]}],
+            "workflow": {
+                "review_required": not bool(task.get("verify_command")),
+                "max_repair_rounds": 1,
+                "allow_switch": False,
+            },
+        }
     else:
         plan = {"source": "manual", "steps": [{"title": "实现任务", "detail": task["goal"]}]}
-    store.update_run(run_id, plan=plan, difficulty=difficulty)
+    workflow = task_compile.code_workflow(
+        task, difficulty, plan=plan, mode=mode, planned=planned)
+    store.update_run(run_id, plan=plan, difficulty=difficulty, workflow=workflow)
     subtasks = plan["steps"]
     # 计划落盘（planning-with-files）：磁盘上的计划与 spec/evidence 同居任务档案
     _write_task_plan(task, workdir, plan)
 
     # ---- 评审者（有会话延续时评审者仍用新鲜上下文，避免偏见）
-    if mode == "auto":
+    if not workflow["review_required"]:
+        reviewer = None
+        route["reviewer"] = workflow["reason"]
+    elif mode in ("auto", "expert"):
         reviewer, route["reviewer"] = router.pick_reviewer(agents, impl, "code", stats)
     else:
         reviewer, route["reviewer"] = _pick_reviewer_legacy(agents, impl)
     _record_actual_route(run_id, task, agents, stats, impl, reviewer=reviewer,
                          implement_reason=route.get("implementer", ""),
-                         review_reason=route.get("reviewer", ""))
+                         review_reason=route.get("reviewer", ""),
+                         direct=not workflow["review_required"])
     store.update_run(run_id, route=route)
 
     def implement_all(impl_agent, prefix_note):
@@ -1078,7 +1107,8 @@ def _run_code(run, task, agents, ev, stats, mode):
                         run_id, task, agents, stats, other,
                         implementers=[other], reviewer=reviewer,
                         implement_reason=note,
-                        review_reason=route.get("reviewer", ""))
+                        review_reason=route.get("reviewer", ""),
+                        direct=not workflow["review_required"])
                     return True
                 res_err = "%s；换将后仍失败：%s" % (note, (res.get("error") or "")[:200])
             else:
@@ -1091,6 +1121,17 @@ def _run_code(run, task, agents, ev, stats, mode):
 
     def review_and_score():
         verify_pass, verify_ran = _run_verify(run_id, task, workdir, ev)
+        if not workflow["review_required"]:
+            return {
+                "pass": verify_pass,
+                "scores": {},
+                "issues": ([] if verify_pass else [{
+                    "severity": "high", "title": "验证命令未通过",
+                    "detail": "动态短链省略模型评审，先修复确定性验证失败。",
+                }]),
+                "summary": "低风险短链：确定性验证%s，模型评审已省略。" %
+                           ("通过" if verify_pass else "未通过"),
+            }, verify_pass, verify_ran
         # gate 验证（借鉴 pi-subagents 的 gate:"npm test"）：verify 失败时先跳过
         # 模型评审直接进修复轮——评审此时只能复述「验证没过」，白烧一次调用。
         # 连续失败 >=2 轮后恢复评审参与诊断（模型能看出编译错误之外的病灶）。
@@ -1138,7 +1179,8 @@ def _run_code(run, task, agents, ev, stats, mode):
                     implementers=[impl], reviewer=reviewer,
                     implement_reason="修复轮由 %s 完成" %
                     (impl.get("label") or impl.get("id")),
-                    review_reason=route.get("reviewer", ""))
+                    review_reason=route.get("reviewer", ""),
+                    direct=not workflow["review_required"])
             if impl.get("mode") == "mock" and res["ok"]:
                 pass  # mock 不产生真实变更
         review_json, verify_pass, verify_ran = review_and_score()
@@ -1149,10 +1191,10 @@ def _run_code(run, task, agents, ev, stats, mode):
             "passed": passed})
         if passed:
             break
-        if round_no < router.MAX_REPAIR_ROUNDS and not switched:
+        if round_no < workflow["max_repair_rounds"] and not switched:
             round_no += 1
             continue
-        if mode == "auto" and not switched:
+        if mode == "auto" and workflow["allow_switch"] and not switched:
             ex = (impl["id"],)
             if impl.get("mode") == "real":
                 ex += ("mock-a", "mock-b")  # 真实实现者失败时不降级到 mock
@@ -1166,7 +1208,8 @@ def _run_code(run, task, agents, ev, stats, mode):
                     run_id, task, agents, stats, impl,
                     implementers=[impl], reviewer=reviewer,
                     implement_reason=note,
-                    review_reason=route.get("reviewer", ""))
+                    review_reason=route.get("reviewer", ""),
+                    direct=not workflow["review_required"])
                 switched = True
                 round_no += 1
                 continue
@@ -1178,18 +1221,28 @@ def _run_code(run, task, agents, ev, stats, mode):
     verdict = {
         "type": "code", "engine": "code", "pass": overall_pass, "mode": mode,
         "verify_ran": verify_ran, "verify_pass": verify_pass,
-        "review_pass": bool(review_json.get("pass")),
+        "review_pass": (bool(review_json.get("pass"))
+                        if workflow["review_required"] else None),
+        "review_skipped": not workflow["review_required"],
         "scores": scores, "overall_score": overall_score,
         "issues": review_json.get("issues") or [],
-        "reviewer": reviewer["id"],
+        "reviewer": reviewer["id"] if reviewer else "",
         "route": route, "repairs": repairs, "switched": switched,
+        "workflow": workflow,
     }
 
     lines = [
         "# 代码任务报告：%s" % task["title"], "",
         "- 结论：**%s**" % ("✅ 通过" if overall_pass else "❌ 未通过"),
         "- 编排模式：%s　实现者：%s　评审者：%s" % (
-            "智能" if mode == "auto" else "手动", impl.get("label"), reviewer.get("label")),
+            {"auto": "自动", "fast": "快速", "expert": "专家",
+             "manual": "手动"}.get(mode, mode), impl.get("label"),
+            reviewer.get("label") if reviewer else "按验证结果省略"),
+        "- 动态步骤：规划 %s；实现 %d 步；验证 %s；评审 %d 人；最多修复 %d 轮；换将 %s" % (
+            "独立执行" if workflow["planning"] == "llm" else "并入实现",
+            workflow["implementation_steps"], "有" if workflow["verification"] else "无",
+            workflow["reviewers"], workflow["max_repair_rounds"],
+            "允许" if workflow["allow_switch"] else "关闭"),
         "- 验证命令：%s → %s" % (task.get("verify_command") or "（未配置）",
                                  "通过" if verify_pass else "未通过"),
         "- 综合评分：%s　修复/换将：%s" % (
@@ -1229,7 +1282,8 @@ def _run_code(run, task, agents, ev, stats, mode):
                      summary="代码任务%s（验证%s / 评审%s%s）" % (
                          "通过" if overall_pass else "未通过",
                          "通过" if verify_pass else "未通过",
-                         "通过" if review_json.get("pass") else "未通过",
+                         (("通过" if review_json.get("pass") else "未通过")
+                          if workflow["review_required"] else "按策略省略"),
                          "，%d 轮修复" % (len(repairs) - 1) if len(repairs) > 1 else ""),
                      ended_at=_now())
 
@@ -1379,12 +1433,27 @@ def _run_direct(run, task, agents, ev, stats, mode):
     route = {}
     resume_ctx = _valid_resume(task, agents)
     bi = None
-    if resume_ctx is None and not (mode == "manual" and task.get("implementer")):
+    direct_provider = (task.get("direct_provider_id") or "").strip()
+    direct_model = (task.get("direct_model") or "").strip()
+    direct_difficulty = ("hard" if task.get("thinking") == "high" else
+                         "easy" if task.get("thinking") == "low" else "default")
+    if resume_ctx is None and direct_provider:
+        bi = builtin_agent.resolve(direct_provider, direct_model, direct_difficulty)
+        if bi is None:
+            store.update_run(run_id, expected_status="running", status="failed",
+                             error="指定的对话厂商或模型不可用，请改用自动推荐或检查配置",
+                             ended_at=_now())
+            return
+    elif resume_ctx is None and not (mode == "manual" and task.get("implementer")):
         try:
-            bi = builtin_agent.resolve()
+            bi = builtin_agent.resolve(difficulty=("hard" if task.get("thinking") == "high"
+                                                   else "easy" if task.get("thinking") == "low"
+                                                   else "default"))
         except Exception:
             bi = None
     if bi is not None:
+        bi["reasoning_effort"] = {"low": "low", "standard": "medium", "high": "high"}.get(
+            task.get("thinking"), "medium")
         impl = None
         route["implementer"] = "CodeBee（%s · %s）" % (bi["provider_name"], bi["model"])
     elif resume_ctx is not None:
@@ -2873,7 +2942,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                  "通过" if chapters_pass else "未通过",
                  "通过" if global_pass else "未通过"),
              "- 编排模式：%s　作者：%s　评审组：%s" % (
-                 "智能" if mode == "auto" else "手动",
+                 {"auto": "自动", "fast": "快速", "expert": "专家",
+                  "manual": "手动"}.get(mode, mode),
                  impl.get("label"), "、".join(a.get("label") for a in critics)),
              "", "## 各章得分（章阈值 %.1f）" % threshold_ch, "",
              "| 章 | 标题 | " + " | ".join(dims) + " | 均分 | 达标 | 轮次 | 字数 |",
@@ -3029,6 +3099,11 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     step_wd = _resume_workdir(resume_ctx, workdir) if resume_ctx else workdir
     difficulty = task.get("difficulty") or (
         "hard" if threshold >= 8.5 else "easy" if threshold <= 6 else "default")
+    if mode == "fast":
+        difficulty = "easy"
+    elif mode == "expert":
+        difficulty = "hard"
+    workflow = task_compile.content_workflow(task, difficulty, mode=mode)
 
     # ---- 路由
     if resume_ctx is not None:
@@ -3046,11 +3121,15 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                          error="没有可用智能体", ended_at=_now())
         return
     if resume_ctx is not None:
-        if mode == "auto":
+        if mode != "manual":
             critics, route["critics"] = router.pick_critics(
                 agents, task.get("type") or "novel", stats, impl=impl)
         else:
             critics = _pick_critics_manual(agents, task)
+
+    critic_pool = list(critics)
+    if mode != "manual":
+        critics = critic_pool[:workflow["reviewers"]]
 
     _record_actual_route(run_id, task, agents, stats, impl, critics=critics,
                          implement_reason=route.get("author", ""),
@@ -3059,7 +3138,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     # ---- 规划（小说为模板计划）
     _wait_gate(run_id, ev)
     plan = planner.make_novel_plan(_steered_task(run_id, task), impl, critics)
-    store.update_run(run_id, plan=plan, route=route, difficulty=difficulty)
+    store.update_run(run_id, plan=plan, route=route, difficulty=difficulty,
+                     workflow=workflow)
 
     ms_path = os.path.join(workdir, ms_name)
 
@@ -3073,13 +3153,21 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         except Exception:
             return ""
 
-    draft_note = route.get("author", "") if mode == "auto" else ""
+    draft_note = route.get("author", "") if mode != "manual" else ""
 
     # 编排者大纲：只对真实执行有意义；失败静默退回无大纲（喂入带指令的任务副本）
     outline = (planner.make_review_outline(_steered_task(run_id, task))
-               if impl.get("mode") != "mock" else None)
+               if workflow["outline"] and impl.get("mode") != "mock" else None)
     if outline:
-        store.update_run(run_id, outline=outline)
+        workflow = task_compile.content_workflow(
+            task, difficulty, plan=outline, mode=mode)
+        if mode != "manual":
+            critics = critic_pool[:workflow["reviewers"]]
+        store.update_run(run_id, outline=outline, workflow=workflow)
+        _record_actual_route(run_id, task, agents, stats, impl, critics=critics,
+                             implement_reason=route.get("author", ""),
+                             review_reason=route.get("critics", ""))
+    rounds = workflow["review_rounds"]
 
     # 1) 起草
     bestof_improvements = ""   # 赛马败者精华（真实路径由选择器填充；mock 路径恒空）
@@ -3228,6 +3316,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         "overall": overall, "mode": mode,
         "threshold": threshold, "rounds_used": history_rounds[-1]["round"] if history_rounds else 0,
         "scores": final_means, "history": history_rounds, "route": route,
+        "workflow": workflow,
     }
 
     # 3) 报告
@@ -3237,8 +3326,12 @@ def _run_content_review(run, task, agents, ev, stats, mode):
              % ("✅ 达到发布标准" if publishable else "❌ 未达标，建议再修",
                 overall, threshold, verdict["rounds_used"]),
              "- 编排模式：%s　起草/修订：%s　评审组：%s" % (
-                 "智能" if mode == "auto" else "手动",
-                 impl.get("label"), "、".join(a.get("label") for a in critics))]
+                 {"auto": "自动", "fast": "快速", "expert": "专家",
+                  "manual": "手动"}.get(mode, mode),
+                 impl.get("label"), "、".join(a.get("label") for a in critics)),
+             "- 动态步骤：大纲 %s；评审 %d 人；最多 %d 轮（%s）" % (
+                 "启用" if workflow["outline"] else "省略",
+                 len(critics), rounds, workflow["reason"])]
     if route:
         lines.append("")
         lines.append("## 路由依据")
@@ -3589,6 +3682,7 @@ def execute_run(run_id):
     for _agent in agents:
         if isinstance(_agent, dict):
             _agent["_dispatch_task_type"] = task.get("type") or "direct"
+            _agent["_thinking"] = task.get("thinking") or "auto"
     store.update_run(run_id, route_plan={
         "task": task_spec,
         "implement": router.route_plan(agents, "implement", task_spec, stats),

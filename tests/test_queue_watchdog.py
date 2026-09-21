@@ -66,6 +66,25 @@ class QueueWatchdogTest(BaseTest):
             release.set()
             self.assertTrue(jobs.wait_for_idle(3))
 
+    def test_worker_exit_without_terminal_state_is_closed_as_failed(self):
+        """流水线漏写终态直接返回时，线程出口必须收尸，不能永久 running。"""
+        from app.core import jobs, store, pipeline
+        task = store.create_task({
+            "type": "direct", "title": "线程出口收尸", "goal": "直接执行",
+            "workdir": "", "serial": None})
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+
+        jobs.configure(12)
+        with mock.patch.object(pipeline, "execute_run", return_value=None):
+            jobs.enqueue({"kind": "orchestration", "run_id": run["id"],
+                          "task_id": task["id"]})
+            self.assertTrue(jobs.wait_for_idle(3))
+
+        closed = store.get_run(run["id"])
+        self.assertEqual(closed["status"], "failed")
+        self.assertIn("未写入完成状态", closed["error"])
+        self.assertEqual(store.get_task(task["id"])["status"], "failed")
+
     def test_concurrency_full_rejects_instead_of_queueing(self):
         """满载时明确报忙，不把第二个任务留成一直排队。"""
         from app.core import jobs, store, pipeline

@@ -103,7 +103,9 @@ def _online_model_bonus(entry, task_type, role):
         rate = float(metrics.get("success_rate") or 0.0)
         success_score = max(-6.0, min(6.0, (rate - 0.75) * 18.0))
         p95 = max(0.0, float(metrics.get("p95_duration_s") or 0.0))
-        latency_score = -min(4.0, max(0.0, (p95 - 45.0) / 12.0))
+        # 模型链也必须让真实延迟影响排序，不能让 P95 数分钟的链靠静态质量分
+        # 长期压在十几秒的健康链前面。
+        latency_score = -min(12.0, max(0.0, (p95 - 30.0) / 8.0))
         cost = max(0.0, float(metrics.get("avg_cost_usd") or 0.0))
         cost_score = -min(3.0, max(0.0, (cost - 0.01) / 0.01))
         total = round(success_score + latency_score + cost_score, 2)

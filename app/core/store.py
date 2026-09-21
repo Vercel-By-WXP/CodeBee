@@ -104,7 +104,7 @@ def create_task(payload):
     if not wd.is_dir():
         raise ValueError("工作目录不存在: %s" % workdir)
     mode = payload.get("mode")
-    if mode not in ("auto", "manual"):
+    if mode not in ("auto", "fast", "expert", "manual"):
         mode = "manual" if payload.get("implementer") else "auto"
     difficulty = payload.get("difficulty")
     if difficulty not in ("auto", "easy", "hard", "default"):
@@ -121,6 +121,14 @@ def create_task(payload):
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "status": "created",
     }
+    thinking = str(payload.get("thinking") or "standard").strip().lower()
+    task["thinking"] = thinking if thinking in ("auto", "low", "standard", "high") else "auto"
+    if flow["engine"] == "direct":
+        task["direct_provider_id"] = _text(payload.get("direct_provider_id"),
+                                            "direct_provider_id")[:80]
+        task["direct_model"] = _text(payload.get("direct_model"), "direct_model")[:160]
+        if task["direct_model"] and not task["direct_provider_id"]:
+            raise ValueError("指定对话模型时必须同时指定厂商")
     # 代码版本：仅当引用合法才固化（流水线执行前据此检出任务分支）
     from . import gitmod
     git_rev = _text(payload.get("git_rev"), "git_rev")
@@ -478,6 +486,15 @@ def load_all():
 
 # ---------------------------------------------------------------- 运行（含管理操作）
 
+_RUN_ESTIMATOR = None
+
+
+def set_run_estimator(estimator):
+    """由应用入口注入 ETA 估算器，保持存储层不反向依赖用量模块。"""
+    global _RUN_ESTIMATOR
+    _RUN_ESTIMATOR = estimator if callable(estimator) else None
+
+
 def create_run(kind, title, task_id=None, entry_id=None, op=None):
     run = {
         "id": _new_id("r" if kind == "orchestration" else "m"),
@@ -490,6 +507,18 @@ def create_run(kind, title, task_id=None, entry_id=None, op=None):
         "cost_usd": 0.0, "tokens": 0, "error": "",
         "verdict": None, "summary": "",
     }
+    if kind == "orchestration" and task_id:
+        task = get_task(task_id) or {}
+        try:
+            eta = _RUN_ESTIMATOR(
+                task_type=task.get("type") or "", mode=task.get("mode") or "auto",
+                thinking=task.get("thinking") or "standard",
+                rounds=task.get("rounds"))
+            run["estimated_duration_s"] = eta.get("estimated_duration_s")
+            run["estimated_p90_s"] = eta.get("p90_duration_s")
+            run["estimate_source"] = eta.get("duration_source")
+        except Exception:
+            pass
     rdir = paths.RUNS_DIR / run["id"]
     (rdir / "steps").mkdir(parents=True, exist_ok=True)
     with LOCK:
@@ -821,6 +850,30 @@ _BUILD_DIRS = {
     "__MACOSX",
 }
 
+# CLI 自身的历史/评审中间件不属于用户成果。它们通常落在工作目录根部，
+# 只按隐藏目录过滤会漏掉 Aider 的 .aider.* 与流程生成的 *_review.json。
+_PROCESS_ARTIFACT_NAMES = {
+    ".aider.chat.history.md", ".aider.input.history", ".aider.input.history.md",
+    ".aider.tags.cache.v4", ".aider.tags.cache.v3", ".aider.conf.yml",
+}
+_PROCESS_ARTIFACT_SUFFIXES = ("_review.json", ".review.json")
+_PROCESS_ARTIFACT_PREFIXES = ("tutti_prompt_", "_tutti_prompt_")
+
+
+def _is_process_artifact(rel_name):
+    """判断工作目录文件是否为 CLI/评审过程产物，而非可交付成果。"""
+    name = str(rel_name or "").replace("\\", "/")
+    base = name.rsplit("/", 1)[-1].lower()
+    if base in _PROCESS_ARTIFACT_NAMES:
+        return True
+    if base.startswith(".") and base.startswith(".aider"):
+        return True
+    if base.endswith(_PROCESS_ARTIFACT_SUFFIXES):
+        return True
+    if base.startswith(_PROCESS_ARTIFACT_PREFIXES):
+        return True
+    return False
+
 
 def task_first_start(task_id, fallback=""):
     """该任务最早一次运行的开始时间（含回退：任务创建时间 → 指定回退值）。"""
@@ -880,7 +933,10 @@ def run_artifacts(run_id, limit=200):
                 continue
             if st.st_mtime < t0:
                 continue
-            files.append({"name": str(p.relative_to(root)).replace("\\", "/"),
+            rel_name = str(p.relative_to(root)).replace("\\", "/")
+            if _is_process_artifact(rel_name):
+                continue
+            files.append({"name": rel_name,
                           "size": st.st_size, "mtime": int(st.st_mtime)})
             if len(files) >= 800:  # 防超大目录拖垮接口；截断后再排序取最新
                 break

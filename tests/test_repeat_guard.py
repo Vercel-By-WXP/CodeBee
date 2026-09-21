@@ -38,6 +38,15 @@ class TestPromptFingerprint(BaseTest):
 
 class TestRepeatGuardBasic(BaseTest):
 
+    def test_default_guard_stops_on_fifth_identical_step(self):
+        from app.core.repeat_guard import RepeatGuard
+        guard = RepeatGuard()
+        result = None
+        for _ in range(5):
+            result = guard.check("run-default", "review", "same prompt")
+        self.assertTrue(result["should_stop"])
+        self.assertIn("强制停止", result["reminder"])
+
     def test_first_call_no_reminder(self):
         from app.core.repeat_guard import RepeatGuard
         g = RepeatGuard()

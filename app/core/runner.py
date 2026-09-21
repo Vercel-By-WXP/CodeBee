@@ -67,6 +67,45 @@ def resolve_command(command):
     return [path]
 
 
+def _git_repo_issue(workdir):
+    """返回工作目录 Git 仓库的可读性问题；无 Git 仓库时返回空串。
+
+    Aider 会在启动后自行读取索引。索引包缺失时它通常先写入 .gitignore，
+    再在深层调用中才报错，用户会误以为任务卡住；提前做一次廉价预检能把
+    错误变成可操作的任务失败信息。
+    """
+    if not workdir or not os.path.isdir(workdir):
+        return ""
+    git_dir = os.path.join(workdir, ".git")
+    if not os.path.exists(git_dir):
+        return ""
+    try:
+        probe = subprocess.run(
+            ["git", "-C", workdir, "rev-parse", "--git-dir"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "Git 命令不可用，无法读取仓库；请安装 Git 或改用非 Aider 实现器"
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout or "仓库元数据不可读").strip()
+        return "Git 仓库不可读：%s；请先执行 git fsck/恢复 .git 对象后重试" % detail[-300:]
+    try:
+        probe = subprocess.run(
+            ["git", "-C", workdir, "status", "--porcelain", "--untracked-files=no"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, timeout=8, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return "Git 仓库检查超时；请先执行 git status/git fsck 修复后重试"
+    except OSError:
+        return "Git 命令不可用，无法读取仓库；请安装 Git 或改用非 Aider 实现器"
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout or "仓库对象或索引不可读").strip()
+        return "Git 仓库损坏或对象缺失：%s；请先执行 git fsck 并恢复仓库后重试" % detail[-300:]
+    return ""
+
+
 def _npm_shim_bypass(argv):
     """generic 类 CLI 把提示词嵌进 argv；经 cmd /c 重解析时引号/特殊字符会把
     提示词截烂（kimi 实测：模型只看到 UTF-8 须知、任务本体整段丢失）。识别
@@ -846,6 +885,7 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
     imgs = [str(p) for p in (images or []) if p]
     if kind == "codex":
         cp = agent.get("codex_provider")
+        reasoning = str(agent.get("reasoning_effort") or "").strip().lower()
         if sid:
             # resume 子命令不支持 -s 也不支持 --full-auto（0.154 实测：
             # "unexpected argument '--full-auto'"）——读/写模式都用 -c sandbox_mode
@@ -865,6 +905,8 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
                 argv += ["-m", model]
             if cp:
                 argv += _codex_provider_args(cp)
+        if reasoning in ("low", "medium", "high", "xhigh"):
+            argv += ["-c", 'model_reasoning_effort="%s"' % reasoning]
         # codex exec 与 exec resume 都支持 -i：图片直接附到 prompt（exec resume 的
         # -i 附在恢复后发送的首条消息上，即本次 stdin prompt）
         for p in imgs:
@@ -915,6 +957,7 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
     elif kind == "aider":
         argv = resolve_command(agent["command"]) + [
             "--yes-always", "--no-auto-commits", "--no-check-update",
+            "--no-gitignore", "--no-pretty", "--no-stream",
             # 网关自定义模型名（glm-5.1 等）litellm 全都不认识，警告页+建议列表
             # 纯属刷屏（2026-09-20 实测占满步骤日志头部）
             "--no-show-model-warnings", "--message", prompt]
@@ -1011,6 +1054,13 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     if orch_timeout_ms:
         timeout = float(orch_timeout_ms) / 1000.0
     kind = agent.get("kind", "generic")
+    if kind == "aider":
+        repo_issue = _git_repo_issue(workdir)
+        if repo_issue:
+            return {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+                    "tokens": 0, "usage": None, "error": repo_issue,
+                    "error_code": ErrorCode.VENDOR_ERROR, "raw": None,
+                    "kind": kind, "model": agent.get("model")}
     if kind == "codex":
         stall_t = _stall_timeout("TUTTI_CODEX_STALL_TIMEOUT", 600)
     elif kind == "claude":
