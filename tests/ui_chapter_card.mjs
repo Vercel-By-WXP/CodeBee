@@ -1,7 +1,7 @@
 /* 连载章节评审卡（renderChapterScores，含 event_check 逐项核对展示）浏览器内单测。
  * 直接以假 run 调渲染函数断言 DOM——不造任务/不起编排，稳且快。 */
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   const dataDir = mkdtempSync(join(tmpdir(), "tutti-cscard-"));
+  writeFileSync(join(dataDir, "last-prefs.json"), JSON.stringify({
+    type: "serial_novel", mode: "expert", thinking: "high"
+  }), "utf8");
   const svc = spawn("python", ["app/main.py", "--port", String(PORT),
     "--no-browser", "--no-public-tunnel"],
     { cwd: ROOT, env: { ...process.env, TUTTI_DATA: dataDir }, stdio: "ignore" });
@@ -73,6 +76,15 @@ async function main() {
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(4000);
 
+    const restoredPrefs = JSON.parse(await evalJs(`JSON.stringify({
+      type: document.getElementById("f-type").value,
+      mode: document.getElementById("f-mode").value,
+      thinking: document.getElementById("f-thinking").value
+    })`));
+    check("新建任务恢复上次类型、模式与思考程度",
+      restoredPrefs.type === "serial_novel" && restoredPrefs.mode === "expert" && restoredPrefs.thinking === "high",
+      JSON.stringify(restoredPrefs));
+
     // 1) 无 chapter_scores 的 run → 卡片隐藏
     const hidden0 = await evalJs(`renderChapterScores({}); document.getElementById("rd-chapters").classList.contains("hidden")`);
     check("非连载 run 卡片隐藏", hidden0 === true);
@@ -105,7 +117,29 @@ async function main() {
     check("维度徽标渲染（低分标红）", out.dims === 3 && out.lowDims === 1);
     check("正文含核对文案与章题", out.text.includes("逐项目标核对") && out.text.includes("玄铁令"), out.text.slice(0, 80));
 
-    // 3) 英文态词条不空（切语言重渲染）
+    // 3) 用户通常从侧栏进入任务级详情；章节卡不能只在单次运行详情可见
+    const taskDetail = await evalJs(`
+      (() => {
+        const original = window.renderChapterScores;
+        let calls = 0;
+        window.renderChapterScores = (run) => { calls++; original(run); };
+        S.taskSig = "";
+        S.detailTaskKey = "task-serial";
+        S.state = { tasks: [{ id: "task-serial", serial: { chapters: 2 }, status: "done" }], runs: [] };
+        drawTaskDetail("task-serial", [{
+          id: "run-serial", task_id: "task-serial", title: "连载任务", status: "done",
+          created_at: "2026-09-21 16:00:00", steps: [], messages: [], chapter_scores: [
+            { chapter: 1, title: "开篇", means: { "情节": 8 }, passed: true, words: 2200 }
+          ]
+        }]);
+        window.renderChapterScores = original;
+        return JSON.stringify({ calls, visible: !document.getElementById("rd-chapters").classList.contains("hidden") });
+      })()`);
+    const taskDetailResult = JSON.parse(taskDetail);
+    check("任务级详情同样渲染章节评审卡", taskDetailResult.calls === 1 && taskDetailResult.visible,
+      JSON.stringify(taskDetailResult));
+
+    // 4) 英文态词条不空（切语言重渲染）
     const en = await evalJs(`
       (() => {
         window.setLang && window.setLang("en");

@@ -10,7 +10,7 @@ function codebeeDocumentTitle(lang) {
 document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, lastPrefs: null };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, lastPrefs: null, prefsApplied: false };
 
 /* ---------------------------------------------------------- 任务类型（流程） */
 async function loadFlows() {
@@ -65,8 +65,20 @@ function renderTypeOptions() {
   // 首屏默认落在「直接执行」（快档位：单 CLI 直达，无拆解/评审）；
   // 老数据或该流程被删时保持首项，不硬造一个不存在的值
   else if (flowById("direct")) sel.value = "direct";
+  applyTaskPreferenceDefaults();
   renderTypeMenu();
   onTypeChange();
+}
+
+function applyTaskPreferenceDefaults() {
+  if (S.prefsApplied || !S.lastPrefs) return;
+  const lp = S.lastPrefs;
+  const mode = $("f-mode"), thinking = $("f-thinking");
+  if (mode && ["auto", "fast", "expert", "manual"].includes(lp.mode)) mode.value = lp.mode;
+  if (thinking && ["auto", "low", "standard", "high"].includes(lp.thinking)) thinking.value = lp.thinking;
+  const manual = $("f-manual-only");
+  if (manual && mode) manual.classList.toggle("hidden", mode.value !== "manual");
+  S.prefsApplied = true;
 }
 
 /* 类型选择的可见层：带黑白图标的按钮 + 弹出菜单。原生 <option> 渲染不了 SVG，
@@ -3693,6 +3705,7 @@ function drawTaskDetail(key, runs) {
     (latest.error ? '<span class="stat err">' + errTag(latest.error) + esc(latest.error.slice(0, 200)) + "</span>" : "");
   $("rd-plan").classList.add("hidden");
   renderRouting(latest);
+  renderChapterScores(latest);
   let html = "";
   ordered.forEach((r, i) => {
     const runNo = runs.length - i;
@@ -11754,6 +11767,7 @@ function beePyRender(list) {
     b.addEventListener("click", () => {
       const p = list[Number(b.dataset.i)];
       $("bee-reader-py").value = p.path;
+      Bee.pyDirty = true;
       box.querySelectorAll(".bee-py-item").forEach((x) => x.classList.remove("on"));
       b.classList.add("on");
       beePyInstallVisibility(p);
@@ -11765,6 +11779,7 @@ function beePyRender(list) {
     list.find((p) => p.bits >= 64);
   if (hit) {
     $("bee-reader-py").value = hit.path;
+    if (hit.path !== cur) Bee.pyDirty = true;
     beePyInstallVisibility(hit);
     const btn = box.querySelector('.bee-py-item[data-i="' + list.indexOf(hit) + '"]');
     if (btn) btn.classList.add("on");

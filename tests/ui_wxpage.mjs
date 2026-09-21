@@ -97,7 +97,7 @@ async function main() {
     const candList = cand ? JSON.parse(cand) : [];
     console.log("    候选:", candList.join(" ┃ ").slice(0, 200));
 
-    // 3) 点选候选 → 输入框回填；保存设置 → 轮询不再冲掉（dirty 守卫）
+    // 3) 点选候选 → 输入框回填；即使保存前撞上轮询也不被旧配置冲掉
     const picked = await evalJs(`
       (() => {
         const first = document.querySelector("#bee-py-cands .bee-py-item");
@@ -107,6 +107,10 @@ async function main() {
         return inp.value || "empty";
       })()`);
     check("点选候选回填输入框", picked !== "no-cand" && picked !== "empty" && picked.length > 4, picked);
+    await evalJs(`beeRefresh(); "ok"`);
+    await sleep(1200);
+    const keptBeforeSave = await evalJs(`document.getElementById("bee-reader-py").value`);
+    check("保存前轮询不冲掉已选路径", keptBeforeSave === picked, keptBeforeSave + " vs " + picked);
     await evalJs(`document.getElementById("bee-save").click(); "ok"`);
     await sleep(1200);
     await evalJs(`beeRefresh(); "ok"`);

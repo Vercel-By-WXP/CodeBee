@@ -15,10 +15,14 @@ from . import paths
 _LOCK = threading.Lock()
 
 SAVE_KEYS = ("type", "rounds", "threshold", "best_of", "chapters",
-             "words_per_chapter", "variants")
+             "words_per_chapter", "variants", "mode", "thinking")
 _LIMITS = {"rounds": (1, 5), "threshold": (1.0, 10.0), "best_of": (1, 3),
            "chapters": (1, 2000), "words_per_chapter": (200, 20000),
            "variants": (1, 3)}
+_CHOICES = {
+    "mode": ("auto", "fast", "expert", "manual"),
+    "thinking": ("auto", "low", "standard", "high"),
+}
 
 
 def _file():
@@ -51,6 +55,11 @@ def record(payload):
                 v = str(v)[:32]
                 if v:
                     cur["type"] = v
+                continue
+            if key in _CHOICES:
+                v = str(v).strip().lower()
+                if v in _CHOICES[key]:
+                    cur[key] = v
                 continue
             c = _clamp(key, v)
             if c is not None:

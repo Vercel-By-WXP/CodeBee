@@ -9,11 +9,14 @@ class PrefsTests(BaseTest):
     def test_record_and_load(self):
         from app.core import prefs
         prefs.record({"type": "serial_novel", "rounds": 3, "threshold": 8.0,
+                      "mode": "expert", "thinking": "high",
                       "goal": "绝不能记进来的目标内容", "title": "标题也不记"})
         p = prefs.load()
         self.assertEqual(p["type"], "serial_novel")
         self.assertEqual(p["rounds"], 3)
         self.assertEqual(p["threshold"], 8.0)
+        self.assertEqual(p["mode"], "expert")
+        self.assertEqual(p["thinking"], "high")
         self.assertNotIn("goal", p)     # 只记参数不记内容
         self.assertNotIn("title", p)
 
@@ -36,7 +39,7 @@ class PrefsTests(BaseTest):
     def test_garbage_payload_ignored(self):
         from app.core import prefs
         prefs.record(None)
-        prefs.record({"rounds": "abc"})            # 非法值被丢弃
+        prefs.record({"rounds": "abc", "mode": "turbo", "thinking": "maximum"})
         self.assertEqual(prefs.load(), {})
 
     def test_serial_params_roundtrip(self):

@@ -29,6 +29,12 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 - 微信群列表拉取失败时会显示读取器的真实报错（依赖缺失/位数不对/微信未登录一眼可辨）。
 - WeChat group-list failures now surface the reader's real error (missing dependency, wrong bitness, or WeChat not logged in).
 
+- 连载章节评审在任务级详情与单次运行详情都可见；新建任务会记住上次的编排模式和思考程度。
+- Chapter reviews now appear in both task and run details; new tasks also remember the last orchestration mode and reasoning level.
+
+- 扫描 Python 后即使保存前遇到后台刷新，刚选中的路径也不会再被冲掉。
+- A Python selected by Scan now survives background refreshes even before settings are saved.
+
 ### ✨ 新功能 · New
 
 - 创建任务支持快速/自动/专家/手动编排与独立思考程度；代码、写作、翻译、邮件、汇报、调研等全类型按风险动态选择步骤。
