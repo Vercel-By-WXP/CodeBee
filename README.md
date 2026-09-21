@@ -23,10 +23,25 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 <!-- relnotes:start -->
 ### ✨ 新功能 · New
 
+- 编排模式 / 思考程度 / 对话模型从「更多选项」提到输入框正下方，随开随用。
+- Orchestration mode, reasoning level and chat model now sit right under the input box instead of being folded away.
+
 - 经验库越用越准：教训按任务结局自动记胜负，真正帮上忙的经验优先注入、帮倒忙的被挤出——随真实运行自我提纯。
 - The lesson library now tracks outcomes: lessons that helped a task pass gain weight, ones that failed to prevent issues fade — it self-refines with every run.
 
 ### 🛠 问题修复 · Fixes
+
+- 端口诊断的「关闭」真能关掉了：温和信号无效自动升级强杀，以「端口确实释放」为准，不再假报成功。
+- Port diagnostics "Close" now really closes: gentle signal escalates to forced kill when ignored, and success is only reported once the port is actually released.
+
+- 群摘要：选好 Python 直接刷新不再误报「请先填路径」；新建的群也会出现在监听列表；蜜蜂气泡「点我细看」真能点了。
+- Digests: refreshing right after picking a Python no longer nags "path required"; brand-new groups show up in the picker; the bee bubble "click to read" actually navigates now.
+
+- 禅道：「测试并保存连接」不再卡按钮几十秒；兼容更多老版禅道的模块/产品清单形状；操作状态显示具体操作名。
+- ZenTao: "Test & save" no longer holds the button for tens of seconds; more legacy ZenTao module/product list shapes are supported; the operation panel shows concrete action names.
+
+- 设置页「代码设置」恢复横排布局（此前被章节评审卡样式意外覆盖）。
+- Settings → Code display restores its row layout after an accidental style override from the chapter-review card.
 
 - 手机端操作被「其他设备正在控制」挡住时，弹出「接管并重试」——一键接管并自动重做刚才的操作。
 - When a mobile action is blocked by another device in control, a "Take over & retry" prompt appears — one tap retakes control and redoes the action.

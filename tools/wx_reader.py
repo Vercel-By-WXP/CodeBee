@@ -121,12 +121,26 @@ def cmd_list_groups(result_path):
     _quiet_lib_logs()
     import wechatauto
     db = wechatauto.WeChatDB()
-    groups = []
+    groups, seen = [], set()
     for g in db.get_groups():
         if isinstance(g, dict) and g.get("username"):
             groups.append({"username": g["username"],
                            "name": g.get("name") or g["username"],
                            "member_count": str(g.get("member_count") or "")})
+            seen.add(g["username"])
+    # 新群兜底（2026-09-21 用户实测「缺一个新建的群」）：刚建的群可能还没
+    # 落进 chat_room/contact，但只要有过消息就在会话列表里——合并补进，
+    # 昵称未同步时先显示 wxid，微信同步后「刷新群列表」即见真名。
+    try:
+        for s in db.get_sessions(200):
+            u = str((s or {}).get("username") or "")
+            if u.endswith("@chatroom") and u not in seen:
+                groups.append({"username": u,
+                               "name": db.get_nickname(u) or u,
+                               "member_count": ""})
+                seen.add(u)
+    except Exception:
+        pass   # 会话库不可用不影响主清单
     _write_result(result_path, {"ok": True, "groups": groups, "count": len(groups)})
 
 

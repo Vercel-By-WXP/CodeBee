@@ -305,6 +305,31 @@
           <div id="cmp-quick" class="cmp-quick" role="group" aria-label="常用类型" data-i18n-aria="常用类型"></div>
           <!-- 开跑前成本预估（refreshEstimate 填充；无同类样本时保持隐藏） -->
           <p class="hint cmp-estimate hidden" id="cmp-estimate"></p>
+          <!-- 编排偏好贴输入框（用户拍板「放上来」：不再折叠进更多选项） -->
+          <div class="cmp-prefs" id="cmp-prefs">
+            <div class="field">
+              <label data-i18n="编排模式">编排模式</label>
+              <select id="f-mode">
+                <option data-i18n="自动（推荐）：按任务类型与风险动态决定步骤" value="auto">自动（推荐）：按任务类型与风险动态决定步骤</option>
+                <option data-i18n="快速：少步骤优先，先做确定性验收" value="fast">快速：少步骤优先，先做确定性验收</option>
+                <option data-i18n="专家：完整规划、多评审、失败修复与换将" value="expert">专家：完整规划、多评审、失败修复与换将</option>
+                <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
+              </select>
+            </div>
+            <div class="field">
+              <label data-i18n="思考程度">思考程度</label>
+              <select id="f-thinking">
+                <option data-i18n="标准：平衡质量与速度" value="standard" selected>标准：平衡质量与速度</option>
+                <option data-i18n="自动：随任务难度调整" value="auto">自动：随任务难度调整</option>
+                <option data-i18n="快速：少推理、优先响应" value="low">快速：少推理、优先响应</option>
+                <option data-i18n="深度：更多推理与检查" value="high">深度：更多推理与检查</option>
+              </select>
+            </div>
+            <div id="f-direct-model" class="field hidden"><label data-i18n="对话模型（可选）">对话模型（可选）</label><div class="grid-2">
+              <select id="f-direct-provider" aria-label="对话厂商" data-i18n-aria="对话厂商"><option data-i18n="自动推荐">自动推荐</option></select>
+              <select id="f-direct-model-name" aria-label="对话模型" data-i18n-aria="对话模型"><option data-i18n="随厂商推荐">随厂商推荐</option></select>
+            </div><p class="hint" data-i18n="只对本次对话生效，不会修改全局绑定；指定渠道不可用时会明确报错。">只对本次对话生效，不会修改全局绑定；指定渠道不可用时会明确报错。</p></div>
+          </div>
           <!-- 需求拷问采访卡（renderClarify 渲染；goal 模糊时出现，跳过=直接创建） -->
           <div id="clarify-box" class="clarify-box hidden"></div>
           <div class="field hidden" id="row-resume-session">
@@ -326,27 +351,6 @@
                 <div class="field"><label data-i18n="任务标题">任务标题</label><input id="f-title" placeholder="可空，自动取目标首行" data-i18n-ph="可空，自动取目标首行"></div>
               </div>
               <div class="field"><label data-i18n="上下文">上下文</label><textarea id="f-context" rows="2" placeholder="背景信息、约束、相关文件（可空）" data-i18n-ph="背景信息、约束、相关文件（可空）"></textarea></div>
-              <div class="field">
-                <label data-i18n="编排模式">编排模式</label>
-                <select id="f-mode">
-                  <option data-i18n="自动（推荐）：按任务类型与风险动态决定步骤" value="auto">自动（推荐）：按任务类型与风险动态决定步骤</option>
-                  <option data-i18n="快速：少步骤优先，先做确定性验收" value="fast">快速：少步骤优先，先做确定性验收</option>
-                  <option data-i18n="专家：完整规划、多评审、失败修复与换将" value="expert">专家：完整规划、多评审、失败修复与换将</option>
-                  <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
-                </select>
-              </div>
-              <div class="grid-2">
-                <div class="field"><label data-i18n="思考程度">思考程度</label><select id="f-thinking">
-                  <option data-i18n="标准：平衡质量与速度" value="standard" selected>标准：平衡质量与速度</option>
-                  <option data-i18n="自动：随任务难度调整" value="auto">自动：随任务难度调整</option>
-                  <option data-i18n="快速：少推理、优先响应" value="low">快速：少推理、优先响应</option>
-                  <option data-i18n="深度：更多推理与检查" value="high">深度：更多推理与检查</option>
-                </select></div>
-                <div id="f-direct-model" class="field hidden"><label data-i18n="对话模型（可选）">对话模型（可选）</label><div class="grid-2">
-                  <select id="f-direct-provider" aria-label="对话厂商" data-i18n-aria="对话厂商"><option data-i18n="自动推荐">自动推荐</option></select>
-                  <select id="f-direct-model-name" aria-label="对话模型" data-i18n-aria="对话模型"><option data-i18n="随厂商推荐">随厂商推荐</option></select>
-                </div><p class="hint" data-i18n="只对本次对话生效，不会修改全局绑定；指定渠道不可用时会明确报错。">只对本次对话生效，不会修改全局绑定；指定渠道不可用时会明确报错。</p></div>
-              </div>
 
               <div id="f-code-only">
                 <div class="field"><label data-i18n="验证命令">验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）" data-i18n-ph="例：python -m pytest -q（可空=只评审）"></div>
@@ -797,7 +801,7 @@
       <!-- 群摘要（正式设置子页：配置与摘要一体，替代原右下角悬浮蜜蜂坞） -->
       <div id="sub-__wxdigest" class="subpage hidden">
         <div class="panel wide">
-          <div class="panel-head"><h2 data-i18n="群摘要">群摘要</h2><span class="spacer"></span><button id="bee-scan-btn" class="ghost small" data-i18n="立即扫描" data-i18n-title="立即扫描" title="立即扫描"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="立即扫描">立即扫描</span></button></div>
+          <div class="panel-head"><h2 data-i18n="群摘要">群摘要</h2><span class="spacer"></span><button id="bee-scan-btn" class="ghost small" data-i18n-title="立即扫描" title="立即扫描"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="立即扫描">立即扫描</span></button></div>
           <p class="hint" data-i18n="导出 txt 丢进监控文件夹，或开启微信直连由蜜蜂自动拉取；按间隔增量生成每群摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。">导出 txt 丢进监控文件夹，或开启微信直连由蜜蜂自动拉取；按间隔增量生成每群摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。</p>
           <div id="bee-cfg" class="bee-cfg">
             <label class="toggle"><input id="bee-enabled" type="checkbox"> <span data-i18n="启用定时扫描">启用定时扫描</span></label>

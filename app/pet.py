@@ -1090,7 +1090,8 @@ class PetApp:
             dg = snap.get("digest") or {}
             self.seen_digests, notify = digest_alert(self.seen_digests, dg)
             if notify:
-                self._show_bubble(digest_bubble_text(dg, self.lang), secs=9.0)
+                self._show_bubble(digest_bubble_text(dg, self.lang), secs=9.0,
+                                  action="digest")
                 self.last_busy = now
                 if st == "sleep":
                     self.mood_kind, self.mood_until = "cheer", now + MOOD_HOLD_S
@@ -1257,8 +1258,14 @@ class PetApp:
             self._tip_body = tk.Label(tip, text="", bg="#1B2430",
                                       fg="#ECF2F8",
                                       font=("Microsoft YaHei UI", 9),
-                                      justify="left", wraplength=280)
+                                      justify="left", wraplength=280,
+                                      cursor="hand2")
             self._tip_body.pack(anchor="w", padx=10, pady=(2, 8))
+            # 点清单即打开网页（含群摘要「点我细看」行——此前清单窗没有任何
+            # 点击绑定，文案写着「点我细看」点了却没反应，用户实测反馈）
+            for w in (self._tip_head, self._tip_body):
+                w.bind("<ButtonPress-1>",
+                       lambda e: self._open_ui("#goto=__wxdigest"))
             self._tip = tip
         self._tip_update()
         try:
@@ -1312,11 +1319,14 @@ class PetApp:
             text = self._L("alert") % bad.get("title", "?")
         self._show_bubble(text)
 
-    def _show_bubble(self, text, secs=5.0, force=False):
+    def _show_bubble(self, text, secs=5.0, force=False, action=""):
+        """action：气泡承诺的「点我细看」要兑现（2026-09-21 用户实测点不动——
+        气泡窗口没绑点击，蜜蜂左键也只开首页）。digest=直达群摘要页。"""
         if not force and time.time() < self.quiet_until:
             return   # 「安静一会」期间不碎碎念（系统确认语用 force 放行）
         self._destroy_win("_bubble")
         self.hop_until = time.time() + 0.7   # 冒泡蹦一下，像在说话
+        self._bubble_action = action
         tk = self.tk
         bub = tk.Toplevel(self.root)
         bub.overrideredirect(True)
@@ -1324,10 +1334,14 @@ class PetApp:
             bub.attributes("-topmost", True)
         except Exception:
             pass
-        tk.Label(bub, text=text, bg="#FFF8E1", fg="#4A3200",
-                 bd=1, relief="solid",
-                 font=("Microsoft YaHei UI", 9), justify="left",
-                 wraplength=230, padx=8, pady=5).pack()
+        lab = tk.Label(bub, text=text, bg="#FFF8E1", fg="#4A3200",
+                       bd=1, relief="solid",
+                       font=("Microsoft YaHei UI", 9), justify="left",
+                       wraplength=230, padx=8, pady=5, cursor="hand2")
+        lab.pack()
+        # 气泡本体可点：点了按承诺跳转（点蜜蜂也走同一逻辑，见 _on_release）
+        for w in (bub, lab):
+            w.bind("<Button-1>", lambda e: self._bubble_click())
         x = self.root.winfo_x() + self.win_w - 40
         y = max(0, self.root.winfo_y() - 8)
         bub.update_idletasks()
@@ -1337,6 +1351,29 @@ class PetApp:
         self._bubble = bub
         self._bubble_until = time.time() + secs
         self.root.after(int(secs * 1000), self._hide_bubble)
+
+    def _bubble_action_live(self):
+        """最近一条气泡是否还在展示期且带跳转承诺。"""
+        if time.time() > getattr(self, "_bubble_until", 0):
+            return ""
+        return getattr(self, "_bubble_action", "") or ""
+
+    def _bubble_click(self):
+        # 点了立刻消失并清展示期（_hide_bubble 是到点才收的延迟逻辑，别用）；
+        # 先记 action 再清——_open_by_bubble_action 读的就是这个展示期
+        action = self._bubble_action_live()
+        self._destroy_win("_bubble")
+        self._bubble_until = 0
+        if action == "digest":
+            self._open_digest()
+        else:
+            self._open_ui()
+
+    def _open_by_bubble_action(self):
+        if self._bubble_action_live() == "digest":
+            self._open_digest()
+        else:
+            self._open_ui()
 
     def _hide_bubble(self):
         if time.time() < self._bubble_until:
@@ -1476,7 +1513,8 @@ class PetApp:
             self._clamp_pos()
             self._save_cfg(x=self.root.winfo_x(), y=self.root.winfo_y())
         else:
-            self._open_ui()
+            # 展示期内气泡承诺过「点我细看」就兑现（digest 直达），否则开首页
+            self._open_by_bubble_action()
 
     def _bye(self, write_setting=False):
         """退出。write_setting=True（右键菜单「关闭桌宠」）先把 pet_enabled=False

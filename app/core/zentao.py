@@ -620,6 +620,33 @@ def _pairs_to_list(pairs, id_key, name_key):
     return out
 
 
+def _module_items(d):
+    """老版模块树形状兼容（2026-09-21 真机反馈「响应形状不认识」）：
+    sons/modules 数组、{id: {name,...}} 字典、children/sons 嵌套树，统一
+    递归展开成 [{id,name}] 平铺清单（id=0 是树根容器，跳过）。"""
+    out = []
+
+    def walk(node):
+        if isinstance(node, list):
+            for x in node:
+                walk(x)
+        elif isinstance(node, dict):
+            if node.get("id") not in (None, "", 0):
+                out.append(node)
+                for k in ("children", "sons"):
+                    if isinstance(node.get(k), (list, dict)):
+                        walk(node[k])
+            else:
+                for v in node.values():
+                    walk(v)
+
+    if isinstance(d, dict):
+        walk(d.get("sons") or d.get("modules") or d.get("tree") or d)
+    elif isinstance(d, list):
+        walk(d)
+    return out
+
+
 def _old_route(api, method, p, q, body):
     """路径翻译 + 请求 + 归一。会话死抛 _OldSessionDead。"""
 
@@ -698,16 +725,14 @@ def _old_route(api, method, p, q, body):
     m = re.match(r"^/products/(\d+)/modules$", p)
     if m and method == "GET":
         d = go(get("/tree-browse-%s-module.json" % m.group(1)), "（拉模块清单）")
-        items = []
-        if isinstance(d, dict):
-            items = d.get("sons") or d.get("modules") or []
-        elif isinstance(d, list):
-            items = d
-        return {"_list": [x for x in items if isinstance(x, dict) and x.get("id")]}
+        return {"_list": [x for x in _module_items(d) if isinstance(x, dict) and x.get("id")]}
 
     if p == "/products" and method == "GET":
         d = go(get("/api-getmodel-product-getpairs.json"), "（拉产品清单）")
-        pairs = d.get("products") if isinstance(d, dict) and isinstance(d.get("products"), dict) else d
+        prods = d.get("products") if isinstance(d, dict) else None
+        if isinstance(prods, list):     # 部分老版回数组形状 [{id,name,...}]
+            return {"_list": [x for x in prods if isinstance(x, dict) and x.get("id")]}
+        pairs = prods if isinstance(prods, dict) else d
         return {"_list": _pairs_to_list(pairs, "id", "name")}
 
     if p == "/users" and method == "GET":

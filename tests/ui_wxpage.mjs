@@ -82,6 +82,8 @@ async function main() {
     check("群摘要子页显示（正式页面）", page.visible);
     check("扫描按钮在位", page.hasScan);
     check("右下角悬浮坞已移除", page.dockGone);
+    const scanBtnTxt = await evalJs(`document.getElementById("bee-scan-btn").textContent`);
+    check("「立即扫描」按钮文案不重复", (String(scanBtnTxt).match(/立即扫描/g) || []).length === 1, scanBtnTxt);
 
     // 2) 点「扫描」→ 轮询候选出现（真机真扫，本机至少有一个 python）
     await evalJs(`document.getElementById("bee-py-scan").click(); "ok"`);
@@ -111,33 +113,51 @@ async function main() {
     await sleep(1200);
     const keptBeforeSave = await evalJs(`document.getElementById("bee-reader-py").value`);
     check("保存前轮询不冲掉已选路径", keptBeforeSave === picked, keptBeforeSave + " vs " + picked);
+
+    // 3.5) 不点保存直接点「刷新群列表」：路径与直连开关应先被静默落盘
+    //   （2026-09-21 用户实测「填了 64 位 Python 仍报请先填」——后端读的是
+    //   已保存配置，前端必须先把表单存了再刷新）
+    await evalJs(`
+      (() => {
+        const rd = document.getElementById("bee-reader");
+        rd.checked = true; rd.dispatchEvent(new Event("change", { bubbles: true }));
+        document.getElementById("bee-groups-refresh").click();
+        return "ok";
+      })()`);
+    await sleep(3000);
+    const silent = await evalJs(`(async () => {
+      try {
+        const d = await api("/api/wxdigest");
+        return JSON.stringify({ py: (d.config || {}).reader_python || "",
+                                on: !!(d.config || {}).reader_enabled });
+      } catch (e) { return "{}"; }
+    })()`);
+    const silentCfg = JSON.parse(silent || "{}");
+    check("未点保存直接刷新：路径已静默落盘", silentCfg.py === picked, silentCfg.py + " vs " + picked);
+    check("未点保存直接刷新：直连开关已静默落盘", silentCfg.on === true, String(silentCfg.on));
+
+    // 刷新响应：真 sidecar（无登录态时秒回人话错误；最坏 150s 超时）
+    let groupResp = "";
+    for (let i = 0; i < 175 && !groupResp; i++) {
+      await sleep(1000);
+      groupResp = await evalJs(`(() => {
+        const t = document.getElementById("toast")?.textContent || "";
+        const list = document.getElementById("bee-groups-list")?.textContent || "";
+        return /刷新群列表失败|读取群列表|微信|失败|错误|群列表已更新/.test(t + list) || list.length > 20 ? (t + "‖" + list).slice(0, 200) : "";
+      })()`);
+    }
+    // 环境依赖微信登录态：能拿到「人话错误」或真群列表都算链路通
+    check("刷新群列表有响应（错误为人话/或真列表）", !!groupResp, groupResp || "175s 无响应");
+    check("刷新不再误报「请先填 64 位 Python 路径」", !/请先在设置里填/.test(groupResp), groupResp);
+    if (groupResp) console.log("    群列表响应:", groupResp.slice(0, 160));
+
+    // 4) 显式点「保存设置」→ 保存后轮询也不冲掉已选路径
     await evalJs(`document.getElementById("bee-save").click(); "ok"`);
     await sleep(1200);
     await evalJs(`beeRefresh(); "ok"`);
     await sleep(1500);
     const kept = await evalJs(`document.getElementById("bee-reader-py").value`);
     check("保存后轮询不冲掉已选路径", kept === picked, kept + " vs " + picked);
-
-    // 4) 勾选微信直连 → 「刷新群列表」有响应（真 sidecar：错误也说明链路通）
-    await evalJs(`
-      (async () => {
-        const rd = document.getElementById("bee-reader");
-        rd.checked = true; rd.dispatchEvent(new Event("change", { bubbles: true }));
-        document.getElementById("bee-groups-refresh").click();
-        return "ok";
-      })()`);
-    let groupResp = "";
-    for (let i = 0; i < 20 && !groupResp; i++) {
-      await sleep(1000);
-      groupResp = await evalJs(`(() => {
-        const t = document.getElementById("toast")?.textContent || "";
-        const list = document.getElementById("bee-groups-list")?.textContent || "";
-        return /刷新群列表失败|读取群列表|微信|失败|错误/.test(t + list) || list.length > 20 ? (t + "‖" + list).slice(0, 200) : "";
-      })()`);
-    }
-    // 环境依赖微信登录态：能拿到「人话错误」或真群列表都算链路通
-    check("刷新群列表有响应（错误为人话/或真列表）", !!groupResp, groupResp || "60s 无响应");
-    if (groupResp) console.log("    群列表响应:", groupResp.slice(0, 160));
 
     // 5) 桌宠直达锚点：#goto=__wxdigest 自动切子页（新页面验证）
     await send("Page.navigate", { url: SERVICE + "/#goto=__wxdigest" });

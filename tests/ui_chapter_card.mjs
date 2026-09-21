@@ -101,12 +101,12 @@ async function main() {
         return JSON.stringify({
           visible: !box.classList.contains("hidden"),
           text: box.textContent,
-          nRows: box.querySelectorAll(".cs-row").length,
-          nFail: box.querySelectorAll(".cs-row.fail").length,
-          nOk: box.querySelectorAll(".cs-ev.ok").length,
-          nBad: box.querySelectorAll(".cs-ev.bad").length,
-          dims: box.querySelectorAll(".cs-dim").length,
-          lowDims: box.querySelectorAll(".cs-dim.low").length,
+          nRows: box.querySelectorAll(".ch-row").length,
+          nFail: box.querySelectorAll(".ch-row.fail").length,
+          nOk: box.querySelectorAll(".ch-ev.ok").length,
+          nBad: box.querySelectorAll(".ch-ev.bad").length,
+          dims: box.querySelectorAll(".ch-dim").length,
+          lowDims: box.querySelectorAll(".ch-dim.low").length,
           head: box.querySelector(".sec-title .tag").textContent
         });
       })()`));

@@ -545,9 +545,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/zentao.py 1788 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/zentao.py 1813 行（上限 1200，历史最高 0）",
       "file": "app/core/zentao.py",
-      "lines": 1788
+      "lines": 1813
     },
     {
       "kind": "lines",
@@ -557,9 +557,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/pet.py 1443 行（上限 1200，历史最高 0）",
+      "text": "lines: app/pet.py 1602 行（上限 1200，历史最高 0）",
       "file": "app/pet.py",
-      "lines": 1443
+      "lines": 1602
     }
   ]
 }

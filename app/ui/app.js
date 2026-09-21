@@ -59,7 +59,9 @@ function renderTypeOptions() {
   const prev = sel.value;  sel.innerHTML = (S.flows || []).map((f) => {
     return '<option value="' + esc(f.id) + '">' + esc(t(f.name)) + t("（") + flowDesc(f) + (f.builtin ? "" : t(" · 自定义")) + t("）") + "</option>";
   }).join("");
-  if (prev && flowById(prev)) sel.value = prev;
+  // 保住用户手动选择（typeTouched）；出厂默认 direct 不算选择——prefs 迟到
+  // 竞态下要让位给偏好记忆，否则「上次类型」永远恢复不了（高负载下实测）
+  if (prev && flowById(prev) && (S.typeTouched || prev !== "direct")) sel.value = prev;
   // 偏好记忆：上次创建用的类型优先于出厂默认「直接执行」（老数据/已删流程回落）
   else if (S.lastPrefs && S.lastPrefs.type && flowById(S.lastPrefs.type)) sel.value = S.lastPrefs.type;
   // 首屏默认落在「直接执行」（快档位：单 CLI 直达，无拆解/评审）；
@@ -153,6 +155,7 @@ function toggleTypeMenu(force) {
 }
 
 function pickType(id) {
+  S.typeTouched = true;   // 用户手动选过：flows 重渲染时优先保住，不让位偏好记忆
   const sel = $("f-type");
   if (sel && sel.value !== id) {
     sel.value = id;
@@ -412,6 +415,16 @@ function operationLabel(path, opts) {
     [/\/market\//, "更新插件"],
     [/\/models\/binding$/, "更新智能体绑定"],
     [/\/models\//, "更新模型配置"],
+    [/\/zentao\/test$/, "测试禅道连接"],
+    [/\/zentao\/products$/, "拉取禅道产品"],
+    [/\/zentao\/users$/, "拉取禅道账号"],
+    [/\/zentao\/modules$/, "拉取模块清单"],
+    [/\/zentao\/scan$/, "禅道扫描 Bug"],
+    [/\/zentao\/config$/, "保存禅道配置"],
+    [/\/wxdigest\/groups$/, "刷新群列表"],
+    [/\/wxdigest\/scan$/, "扫描群摘要"],
+    [/\/wxdigest\/config$/, "保存群摘要设置"],
+    [/\/ports\/close$/, "关闭端口进程"],
   ];
   const hit = rules.find((it) => it[0].test(clean));
   return t(hit ? hit[1] : "提交操作");
@@ -5733,20 +5746,20 @@ function renderChapterScores(run) {
     cs.map((c) => {
       const means = c.means || {};
       const dims = Object.keys(means).map((d) =>
-        '<span class="cs-dim' + (means[d] >= 7 ? "" : " low") + '">' + esc(d) + " " + means[d] + "</span>").join("");
+        '<span class="ch-dim' + (means[d] >= 7 ? "" : " low") + '">' + esc(d) + " " + means[d] + "</span>").join("");
       const ev = (c.event_check || []).map((line) => {
         const ok = /已完成/.test(line), bad = /未完成/.test(line);
-        return '<div class="cs-ev' + (ok ? " ok" : bad ? " bad" : "") + '">' + esc(line) + "</div>";
+        return '<div class="ch-ev' + (ok ? " ok" : bad ? " bad" : "") + '">' + esc(line) + "</div>";
       }).join("");
-      return '<div class="cs-row' + (c.passed ? "" : " fail") + '">' +
-        '<div class="cs-head"><b>' + esc(t("第") + " " + c.chapter + " " + t("章")) + '</b>' +
-        '<span class="cs-title">' + esc(c.title || "") + "</span>" +
+      return '<div class="ch-row' + (c.passed ? "" : " fail") + '">' +
+        '<div class="ch-head"><b>' + esc(t("第") + " " + c.chapter + " " + t("章")) + '</b>' +
+        '<span class="ch-title">' + esc(c.title || "") + "</span>" +
         '<span class="tag">' + (c.passed ? t("达标") : t("未达标")) + "</span>" +
         (c.reused ? '<span class="tag">' + t("沿用") + "</span>" : "") +
-        '<span class="cs-meta">' + Number(c.words || 0) + t(" 字") +
+        '<span class="ch-meta">' + Number(c.words || 0) + t(" 字") +
         (c.rounds > 1 ? " · " + c.rounds + t(" 轮") : "") + "</span></div>" +
-        (dims ? '<div class="cs-dims">' + dims + "</div>" : "") +
-        (ev ? '<div class="cs-evs"><span class="hint">' + t("逐项目标核对：") + "</span>" + ev + "</div>" : "") +
+        (dims ? '<div class="ch-dims">' + dims + "</div>" : "") +
+        (ev ? '<div class="ch-evs"><span class="hint">' + t("逐项目标核对：") + "</span>" + ev + "</div>" : "") +
         "</div>";
     }).join("");
 }
@@ -8904,14 +8917,14 @@ async function testZentao() {
     }
   }
   if (r.ok) {
-    try {
-      // 测试成功即保存当前连接并拉产品清单，用户无需再理解“先保存再拉取”的顺序。
-      await api("/api/zentao/config", { method: "POST", operation: false,
-        body: JSON.stringify(ztFormPayload()) });
-      await loadZentao();
-      await ztFetchCatalog(true);
-      toast(t("连接成功，已保存；现在可直接从禅道选择产品"));
-    } catch (e) { toast(t("连接成功，但保存配置失败：") + e.message, true); }
+    // 测试成功即保存当前连接；产品/账号清单后台拉（真机禅道慢，await 会把
+    // 确认按钮按住几十秒——「保存为啥要这么久」根因），拉到后下拉自动就位。
+    api("/api/zentao/config", { method: "POST", operation: false,
+      body: JSON.stringify(ztFormPayload()) })
+      .then(() => loadZentao())
+      .catch(() => {});
+    toast(t("连接成功，已保存；正在拉取产品清单…"));
+    ztFetchCatalog(true).catch(() => {});
   }
 }
 
@@ -8959,19 +8972,39 @@ function mkCharsText(n) {
   return t("约 ") + n + " " + t("字");
 }
 
-function mkCardHtml(p) {
+function mkCardHtml(p, section) {
   let ops;
   if (p.builtin) ops = '<button class="ghost small" disabled>' + t("已内置") + "</button>";
   else if (p.installed) ops = '<span class="tag ok">' + t("已安装") + "</span>" +
     '<button class="ghost small" onclick="mkRemove(\'' + esc(p.id) + '\')">' + t("卸载") + "</button>";
   else ops = '<button class="primary small" onclick="mkInstall(\'' + esc(p.id) + '\')">' + t("安装") + "</button>";
+  // 已装插件卡片直接给启停开关（对齐 ZCode 插件管理形态：启停不用去经验库翻）
+  const toggle = p.installed
+    ? '<label class="switch" title="' + (p.enabled ? t("已启用") : t("已停用")) + '">' +
+      '<input type="checkbox"' + (p.enabled ? " checked" : "") +
+      ' onchange="mkTogglePack(\'' + esc(p.id) + '\', this.checked)"></label>'
+    : "";
+  const sec = section ? '<span class="tag mk-sec">' + esc(section) + "</span>" : "";
   return '<div class="card mk-card"><div class="head">' +
     '<span class="name">' + esc(t(p.name)) + "</span>" +
-    '<span class="tag">' + esc(t(p.category || "")) + "</span>" +
+    '<span class="tag">' + esc(t(p.category || "")) + "</span>" + sec +
     "</div>" +
     '<div class="note">' + esc(t(p.desc || "")) + "</div>" +
     '<div class="mk-meta"><span title="' + esc(t("运行该类型任务时自动注入提示词，无需手动调用")) + '">' + t("适用：") + esc(mkScopeText(p.scopes)) + "</span><span>" + esc(mkCharsText(p.chars)) + "</span></div>" +
-    '<div class="ops">' + ops + "</div></div>";
+    '<div class="ops">' + ops + toggle + "</div></div>";
+}
+
+/* 已装插件启停：走经验库包启停（同一条链），停用后该插件不再注入任务提示词 */
+async function mkTogglePack(id, enabled) {
+  try {
+    await api("/api/skills/pack-op", { method: "POST",
+      body: JSON.stringify({ id, op: enabled ? "enable" : "disable" }) });
+    toast(enabled ? t("已启用") : t("已停用（不再注入任务提示词）"));
+    loadMarket();
+  } catch (e) {
+    toast(e.message || t("操作失败"), true);
+    loadMarket();
+  }
 }
 
 function renderMarket() {
@@ -9001,7 +9034,22 @@ function renderMarket() {
     (p.name || "").toLowerCase().indexOf(q) >= 0 || (p.desc || "").toLowerCase().indexOf(q) >= 0);
   const cnt = $("mk-count");
   if (cnt && mkActiveView() === "local") cnt.textContent = t("共 ") + items.length + t(" 个");
-  grid.innerHTML = items.map(mkCardHtml).join("") || '<div class="empty">' + t("没有符合条件插件") + "</div>";
+  // 分区渲染（对齐 ZCode 插件管理形态）：内置 / 已安装 / 可安装三组，
+  // 各组小标题+卡片；「全部」以外状态只出命中的那组
+  if (st === "all" && !cat && !q) {
+    const builtin = items.filter((p) => p.builtin);
+    const inst = items.filter((p) => !p.builtin && p.installed);
+    const avail = items.filter((p) => !p.builtin && !p.installed);
+    const sec = (title, list) => list.length
+      ? '<h3 class="sec-title">' + title + " " + list.length + "</h3>" +
+        '<div class="mk-grid">' + list.map((p) => mkCardHtml(p, t(title))).join("") + "</div>"
+      : "";
+    grid.innerHTML =
+      sec(t("内置"), builtin) + sec(t("已安装"), inst) + sec(t("可安装"), avail) ||
+      '<div class="empty">' + t("没有符合条件插件") + "</div>";
+    return;
+  }
+  grid.innerHTML = items.map((p) => mkCardHtml(p)).join("") || '<div class="empty">' + t("没有符合条件插件") + "</div>";
 }
 
 async function mkInstall(id) {
@@ -9879,10 +9927,10 @@ async function scanPorts() {
 }
 
 async function closePort(port) {
-  if (!confirm(t("向占用端口 %1 的进程发送温和关闭信号？（系统进程会被拒绝）").replace("%1", port))) return;
+  if (!confirm(t("结束占用端口 %1 的进程？先温和关闭，无效会自动强制结束（系统进程会被拒绝）").replace("%1", port))) return;
   try {
     const r = await api("/api/ports/close", { method: "POST", body: JSON.stringify({ port }) });
-    toast(r.message || (r.ok ? t("已发送关闭信号") : t("未能关闭")), !r.ok);
+    toast(r.message || (r.ok ? t("已关闭") : t("未能关闭")), !r.ok);
     scanPorts();
   } catch (e) {
     toast(e.message || t("关闭失败"), true);
@@ -11649,16 +11697,24 @@ async function beeRefreshGroups() {
   const old = btn.textContent;
   btn.textContent = t("刷新中…");
   try {
+    // 后端 refresh_groups 读的是已保存配置的 reader_python；用户选完候选
+    // 直接点刷新（不点保存）时服务端还是旧值——先静默落盘再刷新
+    // （「填了路径仍报请先填」根因）
+    if (!(await beeSaveCore())) { return; }
     const r = await api("/api/wxdigest/groups", { method: "POST", body: "{}", timeout: 180000 });
     if (Bee.view) Bee.view.reader_groups_cache = r.groups || [];
     toast(t("群列表已更新：") + (r.groups || []).length);
   } catch (e) { toast(t("刷新失败：") + (e.message || e), true); }
-  btn.disabled = false;
-  btn.textContent = old;
-  beeRenderGroups();
+  finally {
+    btn.disabled = false;
+    btn.textContent = old;
+    beeRenderGroups();
+  }
 }
 
-async function beeSave() {
+async function beeSaveCore() {
+  /* 把表单当前值落到服务端；成功返回 true，失败已 toast。不碰勾选态
+     （beeSave 的 selGroups 置空依赖随后的 beeRefresh 重建，这里没有）。 */
   try {
     const r = await api("/api/wxdigest/config", { method: "POST", body: JSON.stringify({
       enabled: $("bee-enabled").checked,
@@ -11670,11 +11726,16 @@ async function beeSave() {
       groups: Bee.selGroups || [],
     }) });
     if (Bee.view) Bee.view.config = r.config;
-    Bee.selGroups = null;   // 下次渲染用保存后的值重建勾选态
-    Bee.pyDirty = false;    // 保存成功：服务端值与所见一致，恢复轮询回填
-    toast(t("群摘要设置已保存"));
-    beeRefresh();
-  } catch (e) { toast(t("保存失败：") + (e.message || e), true); }
+    Bee.pyDirty = false;   // 保存成功：服务端值与所见一致，恢复轮询回填
+    return true;
+  } catch (e) { toast(t("保存失败：") + (e.message || e), true); return false; }
+}
+
+async function beeSave() {
+  if (!(await beeSaveCore())) return;
+  Bee.selGroups = null;   // 下次渲染用保存后的值重建勾选态
+  toast(t("群摘要设置已保存"));
+  beeRefresh();
 }
 
 async function beeScan() {
@@ -11682,13 +11743,15 @@ async function beeScan() {
   if (!btn || btn.disabled) return;
   btn.disabled = true;
   try {
+    // 微信直连拉取依赖 reader_python，先静默落盘（同 beeRefreshGroups）
+    if (!(await beeSaveCore())) { return; }
     const r = await api("/api/wxdigest/scan", { method: "POST", body: "{}", timeout: 300000 });
     if (r.ok && r.made) toast(t("扫描完成，生成") + " " + r.made + t(" 条新摘要"));
     else if (r.ok) toast(t("扫描完成，暂无新内容"));
     else toast(t("扫描有问题：") + (r.error || ""), true);
     beeRefresh();
   } catch (e) { toast(t("扫描失败：") + (e.message || e), true); }
-  btn.disabled = false;
+  finally { btn.disabled = false; }
 }
 
 (function () {

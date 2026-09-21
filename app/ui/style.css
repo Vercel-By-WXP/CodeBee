@@ -5597,19 +5597,46 @@ button.request-busy > * { opacity: .18; }
 #sub-__wxdigest .bee-list { max-height: 52vh; overflow: auto; }
 #sub-__wxdigest .bee-groups-list { max-height: 240px; }
 
-/* 连载章节评审卡：均分徽标 + 逐项目标审稿（event_check）行级红绿 */
+/* 连载章节评审卡：均分徽标 + 逐项目标审稿（event_check）行级红绿。
+ * 类名用 ch- 前缀——曾撞代码设置的 .cs-row（后加载覆盖成纵向卡片，
+ * 设置页「代码设置」整列变居中竖排，2026-09-21 用户反馈）。 */
 .rd-chapters { margin: 8px 0; }
-.cs-row { border: 1px solid var(--border, rgba(128,128,128,.22)); border-radius: 8px;
+.ch-row { border: 1px solid var(--border, rgba(128,128,128,.22)); border-radius: 8px;
   padding: 8px 10px; margin: 6px 0; display: flex; flex-direction: column; gap: 4px; }
-.cs-row.fail { border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
-.cs-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.cs-title { color: var(--muted); font-size: 12.5px; }
-.cs-meta { margin-left: auto; color: var(--muted); font-size: 12px; }
-.cs-dims { display: flex; gap: 6px; flex-wrap: wrap; }
-.cs-dim { font-size: 11.5px; padding: 1px 8px; border-radius: 999px;
+.ch-row.fail { border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.ch-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ch-title { color: var(--muted); font-size: 12.5px; }
+.ch-meta { margin-left: auto; color: var(--muted); font-size: 12px; }
+.ch-dims { display: flex; gap: 6px; flex-wrap: wrap; }
+.ch-dim { font-size: 11.5px; padding: 1px 8px; border-radius: 999px;
   background: color-mix(in srgb, var(--ok) 12%, transparent); }
-.cs-dim.low { background: color-mix(in srgb, var(--bad) 14%, transparent); }
-.cs-evs { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
-.cs-ev { padding-left: 10px; border-left: 2px solid var(--border); color: var(--muted); }
-.cs-ev.ok { border-left-color: var(--ok); color: inherit; }
-.cs-ev.bad { border-left-color: var(--bad); color: inherit; }
+.ch-dim.low { background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.ch-evs { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.ch-ev { padding-left: 10px; border-left: 2px solid var(--border); color: var(--muted); }
+.ch-ev.ok { border-left-color: var(--ok); color: inherit; }
+.ch-ev.bad { border-left-color: var(--bad); color: inherit; }
+
+/* composer 内编排偏好行：编排模式/思考程度/对话模型贴着输入框（2026-09-21
+ * 用户拍板「放上来」，不再折叠进「更多选项」）。字段横向紧凑排布，窄屏换行。 */
+.cmp-prefs { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 6px 2px 2px; }
+.cmp-prefs > .field { display: flex; align-items: center; gap: 8px; flex: 1 1 260px;
+  min-width: 0; margin: 0; }
+.cmp-prefs > .field > label { white-space: nowrap; flex: none; margin: 0;
+  font-size: 12.5px; color: var(--muted); }
+.cmp-prefs > .field > select { flex: 1 1 auto; min-width: 0; width: auto; }
+/* 对话模型（可选）默认整行：label + 双下拉 + 说明文字 */
+.cmp-prefs > #f-direct-model { flex: 1 1 100%; align-items: center; }
+.cmp-prefs > #f-direct-model > .grid-2 { flex: 1 1 auto; min-width: 0; }
+.cmp-prefs > #f-direct-model > .hint { flex: 1 1 100%; margin: 0; }
+
+/* 插件市场：内置/已安装/可安装分区标题与已装启停开关（对齐 ZCode 形态） */
+#mk-grid .sec-title { margin: 14px 0 6px; }
+.mk-sec { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.mk-card .switch { display: inline-flex; align-items: center; cursor: pointer; }
+.mk-card .switch input { appearance: none; width: 34px; height: 19px;
+  border-radius: 999px; background: var(--border, rgba(128,128,128,.4));
+  position: relative; cursor: pointer; transition: background .15s; margin: 0; }
+.mk-card .switch input:checked { background: var(--accent); }
+.mk-card .switch input::after { content: ""; position: absolute; top: 2px; left: 2px;
+  width: 15px; height: 15px; border-radius: 50%; background: #fff; transition: left .15s; }
+.mk-card .switch input:checked::after { left: 17px; }
