@@ -349,3 +349,15 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - `app/main.py`：①端口绑定失败自动指认占用者（PID/进程/项目，替代手跑 netstat+tasklist 两连）②GET /api/ports（只读诊断，?port=N 过滤，self 标记）③POST /api/ports/close（设备控制权守卫内，越界 400）
 - `app/ui/`：设置页「帮助改进 CodeBee」面板新增「端口占用」区——扫描表格（端口/进程/项目/仅本机/本服务徽章），非自身进程给「关闭」钮，confirm 后温和关闭并重扫
 - 测试：test_portscan.py 8 项（归属/解析/去重/守卫/真机冒烟）+ ui_ports.mjs 12 项（随机高位端口+随机 CDP 口防并行双绑；自身关闭 409 人话 toast 全链路）
+
+### 2026-09-21 08:33 第十九班（批1：代码质量与评审 + 全类型雷达）
+
+- **sepia**（Nanako0129，2,714★）已深挖 | **De-AI writing at the layer that actually gives AI away**：基于 StoryScope 研究（61,608 篇小说，2026）——**AI 小说 93.2% 靠叙事架构特征检出，人工改写措辞后检出率仅 95.5%→93.9%**（架构级指纹改不掉）；三遍协议：叙事架构→语篇流→表面措辞（市面 humanizer 全在第三层）；**架构级 tells：主题由叙述者说破/单线因果整洁/情绪只写身体感觉/无真实世界指涉/线性时间/成长式收束**；30 特征诊断 rubric+分模型指纹（Claude/GPT/Gemini/DeepSeek/Kimi 两层）；**职场文体分场合规则**（PR 回复：先答再引 file:line 不 reflex praise 篇幅∝利害；postmortem：对人宽容对机制无情+时间戳+死胡同+归属行动项；技术文章：从问题开场+一个真实死胡同+一个明确观点+带条件的数字）| **与我们 aiflavor 对比**：我们只有措辞层（18 套话模式）——**架构层是真空**| **✅ 已落地**：aiflavor.py 新增 `narrative_analyze()` 三类可确定性检测的架构信号（顿悟说教/情绪身体化/成长式收束[只扫尾 600 字]），报告行随评审下发带情节结构追问；职场文体规则进待深挖（报告/邮件评审 prompt 增强）
+- **pi-subagents**（tintinweb，1,196★）已深挖 | pi 的 Claude Code 风格子代理编排：隔离会话/后台并发/中途 steering/会话恢复/自定义 agent 类型(.pi/agents/*.md)/嵌套子代理(allowlist 特权边界)/**@mention 子代理一等公民**/`SubagentWorkflow` 确定性 JS 编排（agent()/parallel()/pipeline() 无栅栏流水线，vm 沙箱禁 Date.now/random/eval）/`gate:"npm test"` **用命令验证子代理而非再问模型**/优雅回合上限（硬中止前先 wrap-up 警告出干净部分结果）/git worktree 隔离+完成自动提交分支/事件总线+跨扩展 RPC/定时子代理（cron，PID 锁持久化）| **dsh 有社区适配器**（#258：pi host API→原生 DSH agents）| **与我们对比**：我们=多 CLI 编排台（pi 是被编排对象之一），子代理语义在 CLI 内部；**可借鉴**：①确定性 gate 验证（跑测试代替模型复查——省 token 且更硬）②wrap-up 警告代替直接强杀（与用户「取消=强杀」拍板冲突，只记录不实施）| 借鉴方向（gate 验证进待深挖）
+- **hermes-conductor**（forcewake，75★）已深挖 | **"Zero trust in self-reports"**：18 生产看板/367 卡片/566 次派发的实战蒸馏——**编排者只路由不干活**（route-only profile）+ 每个 CLI 独立 worktree 泳道 + **diff/tests/commits 由控制者验证，绝不信任代理自己的汇报** + canonical 集成分支+证据 | **与我们对比**：我们已有事件流计数鉴别谎报（零工具判 VENDOR_REFUSAL）——方向一致；差量=worktree 泳道级并行（我们任务分支隔离链已有，跨厂商并行评审已有）| 方向验证
+- **tale**（tale-project，29★，Elixir OTP）| AI 聊天+项目+知识+自动化一体工作台；**Arena 模式**（同题双模型并排对比+投票）| 我们 Best-of-N 已有赛马，UI 并排对比可参考 | 参考
+- **alibaba/open-code-review**（38,383★）| 阿里规模化实战：**确定性规则+AI 混合架构**代码评审 | 验证我们「确定性检测行+模型评审」两层路线 | 方向验证
+- 短剧赛道（A12 组）：**huobao-drama 15,368★**（一句话→成片全自动）、Toonflow 15,824★ 复查（+9k 增量活跃）、drama-skills 2,119★ 复查、wind-comic 581★（新，单行文本→成品短剧多代理管线）| 短剧改编是 CodeBee 连载→视频的远期方向，雷达跟踪
+- A11 记忆组新锐：**memsearch**（zilliztech，2,626★）Markdown+向量统一记忆层（Claude Code/Codex/DSH）、**archgate/cli**（68★）**ADR 当可执行规则**（与人同守+与 AI 同守——我们宪章是提示词级，可执行规则是差量）、tigerless-labs/agent-memory 959★（Markdown 真源+本地排序检索）| 参考/待深挖
+- A3 缓存组：vCache 79★（语义提示缓存系统）、adaptive-llm-gateway 12★（包月订阅→网关复用）、weave-os/router 4,546★（"<50ms 路由省 40-70%"）| prompt 缓存路线图既定，无新机制
+- oh-my-claudecode 39,273★ 复查（+2k 活跃）、orca 73,593★ 复查（活跃）、omnigent 10,119★ 复查、edict 16,903★ 复查、HKUDS/DeepCode 16,602★（新入雷达：agent harness&loop 工程）、novel 域 narralume 114★（开源中文长篇写作工作室，理念与我们近似）/vellium 134★（本地优先桌面工作台）

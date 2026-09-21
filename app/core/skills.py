@@ -38,6 +38,7 @@ def _user_pack_dir():
 
 MAX_INJECT_CHARS = 9000      # 单次注入上限（防止提示词爆炸；七猫+番茄双平台包并存后上调）
 MAX_LESSONS_INJECT = 8       # 注入的自动教训条数上限
+WILDCARD_PACK_CHAR_CAP = 2400  # wildcard（scope=*）包单包注入预算：市场通配技能动辄数万字，全文注入会挤掉项目教训
 
 # 自动教训的问题分类：闭集枚举，对齐评审维度。沉淀时由复盘官归类（兜底路径按评审
 # 维度关键词映射），UI 据此分类过滤查看。刻意保持小而稳，避免类别爆炸让过滤失去意义。
@@ -408,6 +409,11 @@ def block_for(task, scope_override=None, *, stable_order=False):
     stable_order=True（docs/migration/07-token-cost.md T1.2'）：教训按 id 排序
     而非 hits——hits 在任务中途变化会让技能块字节级不稳定，打碎供应商的
     前缀缓存（同一任务 8 章应看到完全相同的技能块）。内容不变，只稳排序。
+
+    预算纪律（2026-09-21 巡检实锤引入）：wildcard（scope=*）包动辄数万字，
+    39 个全文注入会先把 9000 字全局上限吃光，项目教训排在末尾被整段截掉。
+    两道预算：①wildcard 包单包限额（定向命中的包不受限）；②教训保底——
+    包区最多吃到「全局上限 − 教训长度」，教训永远完整注入。
     """
     scope = scope_override or task.get("type") or "*"
     parts, used, lesson_ids = [], [], []
@@ -420,6 +426,9 @@ def block_for(task, scope_override=None, *, stable_order=False):
         txt = pack_text(p).strip()
         if not txt and not p.get("persona"):
             continue
+        # wildcard 包（仅靠 * 命中，非定向）单包限预算；定向命中不限，走全局
+        if scope not in p["scopes"] and len(txt) > WILDCARD_PACK_CHAR_CAP:
+            txt = txt[:WILDCARD_PACK_CHAR_CAP] + "\n…（本包超出通配注入预算已截断，完整内容见技能库）"
         # 3B：persona 独立成块（角色设定与规范正文分开，模型更易区分 obey 层级）
         if p.get("persona"):
             parts.append("### 【角色设定：%s】\n%s" % (p["name"], str(p["persona"]).strip()))
@@ -429,6 +438,7 @@ def block_for(task, scope_override=None, *, stable_order=False):
 
     lessons = relevance_top(list_lessons(scope, only_enabled=True), task,
                             MAX_LESSONS_INJECT)
+    lesson_part = ""
     if lessons:
         if stable_order:
             lessons.sort(key=lambda x: x.get("id") or "")
@@ -437,11 +447,19 @@ def block_for(task, scope_override=None, *, stable_order=False):
             lines.append("- **%s**：%s" % (x["title"], x["content"]))
             used.append(x["id"])
             lesson_ids.append(x["id"])
-        parts.append("### 【本项目已沉淀的教训（历史评审反复出现，务必规避）】\n" + "\n".join(lines))
+        lesson_part = ("### 【本项目已沉淀的教训（历史评审反复出现，务必规避）】\n"
+                       + "\n".join(lines))
 
-    if not parts:
+    if not parts and not lesson_part:
         return "", []
-    text = "## 经验库（写作/工程规范 + 历史教训，必须遵守）\n\n" + "\n\n".join(parts)
+
+    header = "## 经验库（写作/工程规范 + 历史教训，必须遵守）\n\n"
+    budget = max(600, MAX_INJECT_CHARS - len(lesson_part))
+    body = "\n\n".join(parts)
+    if len(body) > budget:
+        body = body[:budget] + "\n…（包区已按预算截断，优先保住项目教训）"
+    body = (body + "\n\n" + lesson_part) if (body and lesson_part) else (body or lesson_part)
+    text = header + body
     if len(text) > MAX_INJECT_CHARS:
         text = text[:MAX_INJECT_CHARS] + "\n…（已截断）"
     if lesson_ids:
