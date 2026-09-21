@@ -23,6 +23,14 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 <!-- relnotes:start -->
 ### ✨ 新功能 · New
 
+- 群摘要搬进正式页面：设置 →「微信群聊汇报」里配置与摘要列表一体呈现，右下角悬浮小窗已移除；桌面蜜蜂右键「群摘要」直达。
+- Group digests now live on a proper settings page (config + digest list in one place); the floating bottom-right widget is gone, and the desktop bee links straight to it.
+
+### 🛠 问题修复 · Fixes
+
+- 修复「选不中 Python」：自动刷新不再冲掉你刚选好但还没保存的路径。
+- Fixed "can't pick a Python": background refresh no longer wipes a freshly chosen but unsaved path.
+
 - 微信直连配置更省事：「扫描」自动找本机 Python（标注位数与依赖状态，点选即用），选中后可一键安装 wechatauto-replica。
 - WeChat setup is now effortless: a Scan button finds local Pythons (with bitness and dependency badges), and one click installs wechatauto-replica.
 
