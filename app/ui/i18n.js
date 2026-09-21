@@ -1867,6 +1867,23 @@
     "一键反馈 Issue": "Report Issue",
     "已打开 GitHub 反馈页，内容已预填，可直接提交（也可附上诊断包 zip）": "GitHub issue page opened with the report pre-filled — submit it, and feel free to attach the diagnostics zip",
     "反馈摘要生成失败：": "Failed to build issue summary: ",
+    "端口占用": "Port Usage",
+    "扫描本机端口": "Scan local ports",
+    "谁占着端口、属于哪个项目一目了然；「仅本机」的端口外网不可达。关闭只发温和信号，系统进程与本服务自身拒绝关闭。": "See at a glance which process holds each port and which project it belongs to; \"local only\" ports are unreachable from outside. Close sends a gentle termination signal only — system processes and this service itself are refused.",
+    "端口": "Port",
+    "进程": "Process",
+    "项目": "Project",
+    "仅本机": "local only",
+    "本服务": "this service",
+    "关闭": "Close",
+    "没有发现监听端口": "No listening ports found",
+    "扫描失败：": "Scan failed: ",
+    "向占用端口 %1 的进程发送温和关闭信号？（系统进程会被拒绝）": "Send a gentle close signal to the process holding port %1? (system processes are refused)",
+    "已发送关闭信号": "Close signal sent",
+    "未能关闭": "Could not close",
+    "关闭失败": "Close failed",
+
+
 
     // —— 禅道 Bug 自动修复 ——
     "禅道": "ZenTao",

@@ -9348,6 +9348,64 @@ async function reportIssue() {
   }
 }
 
+/* 端口占用诊断（借鉴 leftopen）：谁占着端口、属于哪个项目；可温和关闭 */
+async function scanPorts() {
+  const box = $("ports-list");
+  if (!box) return;
+  const b = $("ports-scan");
+  if (b) b.disabled = true;
+  try {
+    const r = await api("/api/ports");
+    const ports = r.ports || [];
+    if (!ports.length) { box.innerHTML = '<span class="hint">' + esc(t("没有发现监听端口")) + "</span>"; return; }
+    box.innerHTML = "";
+    const tbl = document.createElement("table");
+    tbl.style.width = "100%";
+    tbl.style.fontSize = "12px";
+    tbl.style.borderCollapse = "collapse";
+    const th = (s) => '<th style="text-align:left;padding:4px 8px;opacity:.7">' + esc(s) + "</th>";
+    tbl.innerHTML = "<thead><tr>" + th(t("端口")) + th(t("进程")) + th(t("项目")) + th("") + "</tr></thead>";
+    const tb = document.createElement("tbody");
+    for (const p of ports) {
+      const tr = document.createElement("tr");
+      const td = (s) => '<td style="padding:4px 8px;border-top:1px solid var(--border)">' + s + "</td>";
+      tr.innerHTML =
+        td(p.port + (p.local_only ? ' <span class="pill">' + esc(t("仅本机")) + "</span>" : "") + (p.self ? ' <span class="pill">' + esc(t("本服务")) + "</span>" : "")) +
+        td(esc((p.process || "?") + (p.pid ? " · pid " + p.pid : ""))) +
+        td(p.project ? esc(p.project) : "-") +
+        "<td></td>";
+      const act = tr.lastElementChild;
+      if (!p.self && p.pid) {
+        const btn = document.createElement("button");
+        btn.className = "ghost small";
+        btn.textContent = t("关闭");
+        btn.onclick = () => closePort(p.port);
+        act.appendChild(btn);
+      }
+      tb.appendChild(tr);
+    }
+    tbl.appendChild(tb);
+    box.appendChild(tbl);
+  } catch (e) {
+    box.innerHTML = '<span class="hint">' + esc(t("扫描失败：") + (e.message || e)) + "</span>";
+  } finally {
+    if (b) b.disabled = false;
+  }
+}
+
+async function closePort(port) {
+  if (!confirm(t("向占用端口 %1 的进程发送温和关闭信号？（系统进程会被拒绝）").replace("%1", port))) return;
+  try {
+    const r = await api("/api/ports/close", { method: "POST", body: JSON.stringify({ port }) });
+    toast(r.message || (r.ok ? t("已发送关闭信号") : t("未能关闭")), !r.ok);
+    scanPorts();
+  } catch (e) {
+    toast(e.message || t("关闭失败"), true);
+  }
+}
+
+
+
 async function suCheck() {
   const b = $("su-check");
   if (b) b.disabled = true;

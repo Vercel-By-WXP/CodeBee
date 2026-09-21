@@ -849,6 +849,12 @@
             <button id="issue-report" class="ghost small" onclick="reportIssue()"><svg class="ico" aria-hidden="true"><use href="#i-mail"></use></svg><span data-i18n="一键反馈 Issue">一键反馈 Issue</span></button>
           </div>
           <p data-i18n="生成一个 zip（近 30 天错误记录 + 用量统计 + 版本环境信息，已剥离敏感数据），反馈问题时可附在 Issue 里。" class="hint">生成一个 zip（近 30 天错误记录 + 用量统计 + 版本环境信息，已剥离敏感数据），反馈问题时可附在 Issue 里。</p>
+          <h3 data-i18n="端口占用" class="sec-title">端口占用</h3>
+          <div class="input-row" style="margin-top:8px">
+            <button id="ports-scan" class="ghost small" onclick="scanPorts()"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="扫描本机端口">扫描本机端口</span></button>
+          </div>
+          <p data-i18n="谁占着端口、属于哪个项目一目了然；「仅本机」的端口外网不可达。关闭只发温和信号，系统进程与本服务自身拒绝关闭。" class="hint">谁占着端口、属于哪个项目一目了然；「仅本机」的端口外网不可达。关闭只发温和信号，系统进程与本服务自身拒绝关闭。</p>
+          <div id="ports-list" style="margin-top:6px"></div>
         </div>
       </div>
 

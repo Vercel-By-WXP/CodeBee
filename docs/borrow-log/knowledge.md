@@ -343,3 +343,9 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **借鉴方向（待实施）**：①孤儿清理加**项目归属探测**（读 /proc/<pid>/cwd 或 Windows 等效，向上走找到项目根，避免误杀用户 dev server）②**端口归属可见化**（扫描器报「端口 3000 属于 project-A 的 dev server」而非裸 node）③**安全关闭协议**（SIGTERM only + PID 重验——与并行代理的 _kill_tree 重写方向一致但更保守）
 
 **落地路径**：不改 runner.py（并行代理域）——新增 `app/core/portscan.py` 独立模块，供「启动收尸」和「诊断面板」调用
+
+**✅ 已落地（2026-09-20）**：
+- `app/core/portscan.py`：跨平台端口→PID→进程→**项目归属推断**（CWD 向上走标志文件；家目录及以上算环境噪音不算项目——真机实测 Temp 进程会误报归属到家目录，已加护栏）；本地 vs LAN 区分（local_only）；温和关闭（SIGTERM/taskkill 无 /F，关前重验 PID，系统进程/自身服务拒关）
+- `app/main.py`：①端口绑定失败自动指认占用者（PID/进程/项目，替代手跑 netstat+tasklist 两连）②GET /api/ports（只读诊断，?port=N 过滤，self 标记）③POST /api/ports/close（设备控制权守卫内，越界 400）
+- `app/ui/`：设置页「帮助改进 CodeBee」面板新增「端口占用」区——扫描表格（端口/进程/项目/仅本机/本服务徽章），非自身进程给「关闭」钮，confirm 后温和关闭并重扫
+- 测试：test_portscan.py 8 项（归属/解析/去重/守卫/真机冒烟）+ ui_ports.mjs 12 项（随机高位端口+随机 CDP 口防并行双绑；自身关闭 409 人话 toast 全链路）

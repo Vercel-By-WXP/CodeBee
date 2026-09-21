@@ -296,6 +296,18 @@ class Handler(BaseHTTPRequestHandler):
                 # 一键反馈 Issue 的预填摘要（标题+正文，全程脱敏，用户亲手提交）
                 from core import telemetry
                 return self._json(200, telemetry.issue_report(days=30))
+            if path == "/api/ports":
+                # 端口占用诊断（借鉴 leftopen）：谁在听、PID/进程/项目归属、
+                # 是否仅本机。?port=N 只看单端口。只读，不碰任何进程。
+                from core import portscan
+                q = parse_qs(urlparse(self.path).query)
+                ports = portscan.listening_ports()
+                focus = (q.get("port") or [""])[0]
+                if focus.isdigit():
+                    ports = [p for p in ports if p["port"] == int(focus)]
+                for p in ports:
+                    p["self"] = p.get("pid") == os.getpid()
+                return self._json(200, {"ports": ports})
             m = re.match(r"^/api/runs/([^/]+)$", path)
             if m:
                 run = store.get_run(m.group(1))
@@ -560,6 +572,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "health": health.snapshot()})
         if path == "/api/attachments":
             return self._api_add_attachment()
+        if path == "/api/ports/close":
+            # 温和关闭端口占用进程（借鉴 leftopen）：SIGTERM only、关前重验
+            # PID 绑定；系统进程/自身服务在 portscan 内拒关。设备控制权守卫
+            # 已在上方统一生效（不在豁免清单里）。
+            from core import portscan
+            body = self._body()
+            try:
+                cport = int(body.get("port") or 0)
+            except (TypeError, ValueError):
+                return self._json(400, {"error": "port 必须是数字"})
+            if not (1 <= cport <= 65535):
+                return self._json(400, {"error": "port 越界"})
+            ok, msg = portscan.close_port(cport)
+            return self._json(200 if ok else 409,
+                              {"ok": ok, "message": msg,
+                               "error": None if ok else msg})
         if path == "/api/dir/save":
             # 「查看文件」弹窗编辑保存（本机 + 控制权 + 防穿越 + mtime 冲突检测）
             return self._api_dir_save()
@@ -2412,6 +2440,20 @@ def main():
             hint = ("（Windows 排查：netstat -ano | findstr :%d 找到 PID，"
                     "tasklist /FI \"PID eq <PID>\" 看是谁；旧进程杀掉或换 --port）"
                     % args.port)
+        # 端口占用自动指认（借鉴 leftopen 38★）：直接报出 PID/进程/项目归属，
+        # 用户不用再手跑 netstat+tasklist 两连。识别不出时回落上面的手工指路。
+        try:
+            from core import portscan as _ps
+            for _h in _ps.listening_ports():
+                if _h.get("port") != args.port:
+                    continue
+                _who = _h.get("process") or "未知进程"
+                _proj = ("，项目 %s" % _h["project"]) if _h.get("project") else ""
+                hint = ("占用者：PID %d（%s%s）；旧进程杀掉或换 --port 重启"
+                        % (_h.get("pid") or 0, _who, _proj))
+                break
+        except Exception:
+            pass
         raise SystemExit("[CodeBee] 端口 %d 已被占用，无法启动：%s %s"
                          % (args.port, e, hint))
 
