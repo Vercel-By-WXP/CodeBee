@@ -2026,7 +2026,8 @@ async function createTask() {
     msg.textContent = t("目标有点简短，先问几个问题…");
     try {
       const cq = await api("/api/tasks/clarify", {
-        method: "POST", timeout: 75000,
+        // 澄清只是增强，不能让建任务被模型调用拖住；超时后直接按原目标开跑。
+        method: "POST", timeout: 8000,
         body: JSON.stringify({ goal: payload.goal, type: payload.type }) });
       const qs = (cq && cq.questions) || [];
       if (qs.length) {
@@ -2034,7 +2035,10 @@ async function createTask() {
         renderClarify(qs, payload.goal, resetSubmit);
         return;
       }
-    } catch (e) { /* 澄清失败照常创建 */ }
+    } catch (e) {
+      // 澄清服务不可用或超时不阻塞主流程，明确告诉用户已经自动继续。
+      msg.textContent = t("澄清响应较慢，已直接创建任务…");
+    }
   }
   S.clarifyDone = false;
   if (!payload.workdir) delete payload.workdir;  // 留空 → 服务端用「默认保存路径」（编排设置可改）
@@ -2378,6 +2382,7 @@ async function deleteTask(id) {
   if (!await uiConfirm(t("删除该任务及其全部运行记录（含日志与报告）？不可恢复。"), { ok: t("删除"), danger: true })) return;
   let gone = false;
   try {
+    toast(t("正在删除任务…"));
     await api("/api/tasks/" + encodeURIComponent(id) + "/delete", { method: "POST" });
   } catch (e) {
     // 任务已不在（他端删过 / 重复点）：不报错晾着，照常把视图清掉
@@ -3796,11 +3801,11 @@ async function renderRunDetail() {
   S.cancelTargetRunId = active ? run.id : null;
   $("btn-delete").classList.toggle("hidden", active);
   $("btn-share").classList.toggle("hidden", active);   // 分享页：结束后可生成自包含 HTML
+  $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
+  const rcTask = ((S.state || {}).tasks || []).find((x) => x.id === run.task_id);
   // 归档按钮：非运行中任务可归档/取消归档（此前只有侧栏右键菜单入口，
   // 用户反馈「归档按钮不见了」——补显式入口，文案随状态切换）
   syncArchBtn(rcTask, active);
-  $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
-  const rcTask = ((S.state || {}).tasks || []).find((x) => x.id === run.task_id);
   setRetryBtn(run, rcTask);
   $("btn-continue").classList.toggle("hidden",
     !(rcTask && rcTask.serial && run.status !== "running" && run.status !== "queued"));

@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 
@@ -34,6 +35,10 @@ FIELDS = ("ts", "day", "run_id", "step", "task_id", "task_type", "role", "agent"
 
 def _month_file(day):
     return paths.USAGE_DIR / ("usage-%s.jsonl" % day[:7].replace("-", ""))
+
+
+def _quality_file(day):
+    return paths.USAGE_DIR / ("routing-quality-%s.jsonl" % day[:7].replace("-", ""))
 
 
 def _parse_int(v):
@@ -97,6 +102,9 @@ def record(source="", run_id="", task_id="", task_type="", role="", step=0,
             paths.USAGE_DIR.mkdir(parents=True, exist_ok=True)
             with open(_month_file(rec["day"]), "a", encoding="utf-8") as f:
                 f.write(line + "\n")
+            _ROUTING_CACHE["data"].clear()
+            _ROUTING_RECORDS_CACHE.clear()
+            _HOURLY_CACHE["ts"] = 0.0
     except Exception:
         pass
 
@@ -198,6 +206,9 @@ def _tool_of(agent_id):
 
 _HOURLY_CACHE = {"ts": 0.0, "val": {}}
 _HOURLY_TTL = 60.0   # 秒：路由调用频繁但台账追加低频，60s 缓存足够新鲜
+_ROUTING_CACHE = {"data": {}}
+_ROUTING_RECORDS_CACHE = {}
+_ROUTING_TTL = 15.0
 
 
 def agent_tokens_recent(agent, hours=1):
@@ -236,7 +247,10 @@ def _iter_records(days):
         import datetime
         d = (datetime.date.today() - datetime.timedelta(days=int(days) - 1)).isoformat()
         since_day = d
+    since_month = since_day[:7].replace("-", "") if since_day else ""
     for p in files:
+        if since_month and p.stem.rsplit("-", 1)[-1] < since_month:
+            continue
         try:
             for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
                 line = line.strip()
@@ -256,8 +270,196 @@ def _iter_records(days):
     return out
 
 
+def _iter_quality_records(days):
+    """读取独立质量台账；不混入用量统计的调用数、token 和成本。"""
+    out = []
+    try:
+        files = sorted(paths.USAGE_DIR.glob("routing-quality-*.jsonl")) \
+            if paths.USAGE_DIR.is_dir() else []
+    except Exception:
+        return out
+    since_day = ""
+    if days:
+        import datetime
+        since_day = (datetime.date.today()
+                     - datetime.timedelta(days=int(days) - 1)).isoformat()
+    since_month = since_day[:7].replace("-", "") if since_day else ""
+    for path in files:
+        if since_month and path.stem.rsplit("-", 1)[-1] < since_month:
+            continue
+        try:
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                try:
+                    row = json.loads(line)
+                except Exception:
+                    continue
+                if isinstance(row, dict) and (not since_day or row.get("day", "") >= since_day):
+                    out.append(row)
+        except Exception:
+            continue
+    return out
+
+
+def _routing_records(days):
+    """同一轮候选评分共享一次台账解析，避免每个候选重复扫全盘。"""
+    key = (str(paths.USAGE_DIR), int(days))
+    now = time.time()
+    with LOCK:
+        cached = _ROUTING_RECORDS_CACHE.get(key)
+        if cached and now - cached[0] <= _ROUTING_TTL:
+            return list(cached[1]), list(cached[2])
+    calls, quality = _iter_records(days), _iter_quality_records(days)
+    with LOCK:
+        _ROUTING_RECORDS_CACHE[key] = (now, list(calls), list(quality))
+    return calls, quality
+
+
+def record_quality_for_run(run_id, quality_ok, agent=""):
+    """把验收结论归因到最终实际产出者，不重复计入用量。"""
+    try:
+        run_id = str(run_id or "")[:64]
+        if not run_id:
+            return 0
+        calls = [r for r in _iter_records(2)
+                 if r.get("run_id") == run_id and r.get("ok") is True]
+        prefixes = ("implement", "fix", "draft", "revise", "polish", "direct", "author")
+        calls = [r for r in calls if str(r.get("role") or "").lower().startswith(prefixes)]
+        agent = str(agent or "")[:40]
+        unique = {}
+        for row in calls:
+            key = tuple(str(row.get(k) or "") for k in
+                        ("task_id", "task_type", "role", "agent", "model", "provider"))
+            unique[key] = row
+        if not unique:
+            return 0
+        existing = {(r.get("run_id"), r.get("role"), r.get("agent"),
+                     r.get("model"), r.get("provider"))
+                    for r in _iter_quality_records(2)}
+        day = time.strftime("%Y-%m-%d")
+        rows = []
+        for row in unique.values():
+            identity = (run_id, row.get("role"), row.get("agent"),
+                        row.get("model"), row.get("provider"))
+            if identity in existing:
+                continue
+            # 成功调用不等于产出通过。换将前的实现者即使传输成功，也已被质量
+            # 门淘汰，必须留下负样本；最终实际产出者才继承本次验收结论。
+            row_quality_ok = bool(quality_ok)
+            if agent and str(row.get("agent") or "") != agent:
+                row_quality_ok = False
+            rows.append({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "day": day,
+                         "run_id": run_id, "task_id": row.get("task_id") or "",
+                         "task_type": row.get("task_type") or "unknown",
+                         "role": row.get("role") or "unknown",
+                         "agent": row.get("agent") or "unknown",
+                         "model": row.get("model") or "(默认)",
+                         "provider": row.get("provider") or "",
+                         "quality_ok": row_quality_ok})
+        if not rows:
+            return 0
+        with LOCK:
+            paths.USAGE_DIR.mkdir(parents=True, exist_ok=True)
+            with open(_quality_file(day), "a", encoding="utf-8") as handle:
+                for row in rows:
+                    handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+            _ROUTING_CACHE["data"].clear()
+            _ROUTING_RECORDS_CACHE.clear()
+        return len(rows)
+    except Exception:
+        return 0
+
+
 def _num(r, key):
     return _parse_int(r.get(key))
+
+
+def _percentile(values, percentile):
+    """线性插值百分位，空样本返回 0。"""
+    if not values:
+        return 0.0
+    ordered = sorted(float(v) for v in values)
+    if len(ordered) == 1:
+        return round(ordered[0], 2)
+    pos = (len(ordered) - 1) * float(percentile)
+    lo = int(math.floor(pos))
+    hi = int(math.ceil(pos))
+    if lo == hi:
+        return round(ordered[lo], 2)
+    return round(ordered[lo] + (ordered[hi] - ordered[lo]) * (pos - lo), 2)
+
+
+def routing_stats(task_type="", role="", agent="", model="", provider="",
+                  days=90, min_samples=3):
+    """返回路由用的近期真实运行指标。
+
+    只读取脱敏用量台账；精确维度样本不足时依次回退到任务+角色、任务、
+    全局，成功率使用 Beta(3, 1) 平滑，避免单次失败永久压低新候选。
+    """
+    try:
+        task_type = str(task_type or "")[:32]
+        role = str(role or "")[:40]
+        agent = str(agent or "")[:40]
+        model = str(model or "")[:80]
+        provider = str(provider or "")[:60]
+        days = max(0, int(days))
+        min_samples = max(1, int(min_samples))
+    except (TypeError, ValueError):
+        days, min_samples = 90, 3
+    # DATA_DIR 可在测试、多实例或运行时配置切换；纳入缓存键，避免跨目录
+    # 复用另一套台账的线上指标。
+    key = (str(paths.DATA_DIR), task_type, role, agent, model, provider,
+           days, min_samples)
+    now = time.time()
+    with LOCK:
+        cached = _ROUTING_CACHE["data"].get(key)
+        if cached and now - cached[0] <= _ROUTING_TTL:
+            return dict(cached[1])
+    records, quality_records = _routing_records(days)
+
+    def matches(record, filters):
+        return all(str(record.get(field) or "") == value
+                   for field, value in filters.items() if value)
+
+    # 先保留所有已提供的维度；后续逐层放宽，确保模型和 CLI 都能共享一套查询。
+    exact = {"task_type": task_type, "role": role, "agent": agent,
+             "model": model, "provider": provider}
+    fallbacks = [(exact, "exact")]
+    task_role = {"task_type": task_type, "role": role}
+    if task_role != exact:
+        fallbacks.append((task_role, "task-role"))
+    if task_type:
+        fallbacks.append(({"task_type": task_type}, "task"))
+    fallbacks.append(({}, "global"))
+    selected, label = [], "global"
+    for filters, candidate_label in fallbacks:
+        candidate = [r for r in records if matches(r, filters)]
+        if len(candidate) >= min_samples or (candidate_label == "global" and candidate):
+            selected, label = candidate, candidate_label
+            break
+    chosen_filters = next((filters for filters, candidate_label in fallbacks
+                           if candidate_label == label), {})
+    quality_selected = [r for r in quality_records if matches(r, chosen_filters)]
+    success_rows = quality_selected or selected
+    success_key = "quality_ok" if quality_selected else "ok"
+    successes = sum(1 for r in success_rows if bool(r.get(success_key)))
+    durations = [max(0.0, _parse_float(r.get("duration_s"))) for r in selected]
+    costs = [max(0.0, _parse_float(r.get("cost_usd"))) for r in selected]
+    samples = len(selected)
+    success_samples = len(success_rows)
+    result = {
+        "samples": samples,
+        "quality_samples": len(quality_selected),
+        "success_samples": success_samples,
+        "successes": successes,
+        "success_rate": round((successes + 3.0) / (success_samples + 4.0), 4),
+        "p50_duration_s": _percentile(durations, 0.50),
+        "p95_duration_s": _percentile(durations, 0.95),
+        "avg_cost_usd": round(sum(costs) / samples, 6) if samples else 0.0,
+        "fallback": label,
+    }
+    with LOCK:
+        _ROUTING_CACHE["data"][key] = (now, dict(result))
+    return result
 
 
 def _group(records, key):

@@ -152,14 +152,18 @@ class TestCodeFallbackThenPrimaryRepairRoute(BaseTest):
             "workdir": str(self.workdir), "verify_command": "exit 0",
         })
         task = dict(task)
+        task["context"] = "ATTACHMENT-CONTEXT-REQUIRED"
         task["difficulty"] = "default"
         task["engine"] = "code"
         task["_compiled_spec"] = task_compile.compile_task(task)
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
         store.update_run(run["id"], status="running")
         primary_implements = [0]
+        fix_prompts = []
 
         def fake_step(_run_id, role, agent, *_args, **_kwargs):
+            if role.startswith("fix-"):
+                fix_prompts.append(_args[0])
             if role == "implement" and agent["id"] == "primary":
                 primary_implements[0] += 1
                 return {"ok": False, "error": "primary initial failed",
@@ -182,8 +186,43 @@ class TestCodeFallbackThenPrimaryRepairRoute(BaseTest):
         self.assertEqual(saved["status"], "done", saved.get("error"))
         self.assertTrue(saved["verdict"]["pass"])
         self.assertEqual(primary_implements[0], 1)
+        self.assertTrue(fix_prompts)
+        self.assertIn("ATTACHMENT-CONTEXT-REQUIRED", fix_prompts[0])
         self.assertEqual(saved["route_plan"]["implement"]["selected"], "primary")
         self.assertIn("修复轮", saved["route_plan"]["implement"]["selection_reason"])
+
+
+class TestProjectMemoryKeepsAttachmentContext(BaseTest):
+    def runTest(self):
+        """项目记忆只限制自身长度，不能截断已有附件正文或结束标记。"""
+        import base64
+        import threading
+        from unittest.mock import patch
+        from app.core import attachments, pipeline, store, task_compile
+
+        meta = attachments.save_pending(
+            "long-spec.txt", base64.b64encode(("附件要求" * 1800).encode()).decode())
+        task = store.create_task({"type": "code", "title": "长附件", "goal": "实现需求",
+                                  "workdir": str(self.workdir), "attachments": [meta["id"]]})
+        memory = self.workdir / ".codebee" / "project-memory.md"
+        memory.parent.mkdir()
+        memory.write_text("历史架构事实" * 1000, encoding="utf-8")
+        task = dict(task, difficulty="default", _compiled_spec=task_compile.compile_task(task))
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running")
+        seen = {}
+
+        def plan(task_arg, *_args, **_kwargs):
+            seen["context"] = task_arg["context"]
+            return {"source": "test", "steps": [{"title": "实现", "detail": "实现"}]}
+
+        agents = self.mock_agents()
+        with patch.object(pipeline.planner, "make_code_plan", side_effect=plan), \
+                patch.object(pipeline, "_run_review", return_value={"pass": True, "issues": []}), \
+                patch.object(pipeline, "_run_verify", return_value=(True, False)):
+            pipeline._run_code(run, task, agents, threading.Event(), {}, "auto")
+        self.assertIn("<!-- codebee-attachments:end -->", seen["context"])
+        self.assertIn("历史架构事实", seen["context"])
 
 
 class TestSerialFallbackRouteReturnsToPrimary(BaseTest):

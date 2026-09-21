@@ -37,6 +37,19 @@ class TestTaskCompile(BaseTest):
         self.assertEqual(task_compile.compile_task({"type": "code", "engine": "legacy"})[
             "engine"], "code")
 
+    def test_malformed_internal_payloads_keep_compilable_defaults(self):
+        from app.core import task_compile
+        self.assertEqual(task_compile.compile_task(None)["type"], "direct")
+        self.assertEqual(task_compile.compile_task({"type": "doc", "rubric": object()})[
+            "quality_dimensions"], ["准确性", "结构清晰", "表达流畅", "实用价值"])
+
+    def test_compiled_difficulty_is_used_by_review_helpers(self):
+        from app.core import task_compile
+        hard = task_compile.compile_task({"type": "article", "threshold": 9.0})
+        easy = task_compile.compile_task({"type": "article", "threshold": 5.0})
+        self.assertEqual(hard["difficulty"], "hard")
+        self.assertEqual(easy["difficulty"], "easy")
+
     def test_route_plan_is_explainable_and_keeps_fallbacks(self):
         from app.core import router, task_compile
         spec = task_compile.compile_task({"type": "code", "goal": "修复 bug"})

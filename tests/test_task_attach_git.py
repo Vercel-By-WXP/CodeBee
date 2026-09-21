@@ -174,6 +174,68 @@ class TestAttachmentInCreateTask(BaseTest):
         self.assertTrue((self.workdir / "_attachments" / "spec.md").is_file())
 
 
+class TestAttachmentContextRead(BaseTest):
+    def runTest(self):
+        """文本附件创建后应把有限正文带入任务上下文，避免模型只看到路径。"""
+        from app.core import attachments, store
+        body = "# 真实验收要求\n必须读取附件后再输出。\n" + ("x" * 20000)
+        meta = attachments.save_pending("requirements.md",
+                                        base64.b64encode(body.encode()).decode())
+        task = store.create_task({"type": "direct", "goal": "按需求执行",
+                                  "workdir": str(self.workdir),
+                                  "attachments": [meta["id"]]})
+        self.assertIn("## 附件正文（已读取）", task["context"])
+        self.assertIn("真实验收要求", task["context"])
+        self.assertIn("不可信资料", task["context"])
+        self.assertLess(len(task["context"]), 16000)
+
+
+class TestAttachmentContextBinaryAndImage(BaseTest):
+    def runTest(self):
+        """图片/二进制附件不能静默消失，必须在上下文中留下处理状态。"""
+        from app.core import attachments, store
+        image = attachments.save_pending("screen.png",
+                                         base64.b64encode(b"\x89PNG\r\n\x1a\n").decode())
+        task = store.create_task({"type": "direct", "goal": "按截图处理",
+                                  "workdir": str(self.workdir),
+                                  "attachments": [image["id"]]})
+        self.assertIn("_attachments/screen.png", task["context"])
+        self.assertIn("图片由原生图片输入传入", task["context"])
+
+
+class TestAttachmentContextEncodingAndMerge(BaseTest):
+    def runTest(self):
+        """GB18030 正文可读，用户自己的同名 Markdown 标题不能被迁移逻辑删除。"""
+        from app.core import attachments
+        target = self.workdir / "_attachments" / "gbk.txt"
+        target.parent.mkdir()
+        target.write_bytes("中文附件要求：保留术语".encode("gb18030"))
+        item = {"path": "_attachments/gbk.txt", "name": "gbk.txt",
+                "mime": "text/plain", "size": target.stat().st_size}
+        user_context = "前言\n## 附件材料\n这是用户正文\n## 尾部要求\n必须保留"
+        merged = attachments.merge_context(user_context, [item], str(self.workdir))
+        self.assertIn("中文附件要求：保留术语", merged)
+        self.assertIn("## 附件材料\n这是用户正文", merged)
+        self.assertIn("## 尾部要求\n必须保留", merged)
+
+
+class TestAttachmentLegacyContextAtStart(BaseTest):
+    def runTest(self):
+        """历史任务空 context 的附件块位于字符串开头时应只保留一份。"""
+        from app.core import attachments
+        target = self.workdir / "_attachments" / "old.txt"
+        target.parent.mkdir()
+        target.write_text("最新正文", encoding="utf-8")
+        item = {"path": "_attachments/old.txt", "name": "old.txt",
+                "mime": "text/plain", "size": target.stat().st_size}
+        legacy = ("## 附件材料（位于工作目录 _attachments/，可直接读取）\n"
+                  "- _attachments/old.txt（文件，8B）\n"
+                  "绝不允许不读附件就凭空作答。")
+        merged = attachments.merge_context(legacy, [item], str(self.workdir))
+        self.assertEqual(merged.count("## 附件材料（位于"), 1)
+        self.assertIn("最新正文", merged)
+
+
 class TestGitmodValidRev(BaseTest):
     def runTest(self):
         from app.core import gitmod

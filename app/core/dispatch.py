@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """统一调度评分：任务画像、CLI 亲和度与模型链排序。
 
-本模块只做纯计算，不读写配置和运行状态。调用方先完成协议、启停、健康、
-密钥等硬约束过滤，再把可用候选交给这里评分；相同分数保持用户原顺序。
+调用方先完成协议、启停、健康、密钥等硬约束过滤，再把可用候选交给这里评分；
+静态能力与近期用量台账只提供软信号，相同分数保持用户原顺序。
 """
 from __future__ import annotations
 
@@ -89,6 +89,33 @@ def _price_score(pricing, model, difficulty):
     return score, "估算价 %.3g（%+.1f）" % (blended, score)
 
 
+def _online_model_bonus(entry, task_type, role):
+    """把真实运行指标作为模型链软信号，硬约束仍由调用方负责。"""
+    try:
+        from . import usage
+        metrics = usage.routing_stats(
+            task_type=task_type, role=role,
+            provider=entry.get("provider_id") or "",
+            model=entry.get("model") or "")
+        samples = int(metrics.get("samples") or 0)
+        if not samples:
+            return 0.0, ""
+        rate = float(metrics.get("success_rate") or 0.0)
+        success_score = max(-6.0, min(6.0, (rate - 0.75) * 18.0))
+        p95 = max(0.0, float(metrics.get("p95_duration_s") or 0.0))
+        latency_score = -min(4.0, max(0.0, (p95 - 45.0) / 12.0))
+        cost = max(0.0, float(metrics.get("avg_cost_usd") or 0.0))
+        cost_score = -min(3.0, max(0.0, (cost - 0.01) / 0.01))
+        total = round(success_score + latency_score + cost_score, 2)
+        success_samples = int(metrics.get("success_samples") or samples)
+        reason = ("在线 %d/%d 验收成功（%+.1f），P95 %.1fs（%+.1f），均价 $%.4f（%+.1f）"
+                  % (int(metrics.get("successes") or 0), success_samples,
+                     success_score, p95, latency_score, cost, cost_score))
+        return total, reason
+    except Exception:
+        return 0.0, ""
+
+
 def score_model_entry(entry, providers, pricing, difficulty, task_type="", role=""):
     """给已通过硬约束的模型链条目评分，返回 (score, explanation)。"""
     provider = (providers or {}).get(entry.get("provider_id")) \
@@ -115,10 +142,12 @@ def score_model_entry(entry, providers, pricing, difficulty, task_type="", role=
     vision_score = 0.0
     if dim == "vision":
         vision_score = 24.0 if meta.get("image_in") else -24.0
-    total = quality + tier_score + price_score + strength_score + vision_score
-    reason = ("质量 %+.1f，档位 %s %+.1f，%s，能力 %s %+.1f"
+    online_score, online_reason = _online_model_bonus(entry, task_type, role)
+    total = quality + tier_score + price_score + strength_score + vision_score + online_score
+    reason = ("质量 %+.1f，档位 %s %+.1f，%s，能力 %s %+.1f%s%s"
               % (quality, tier, tier_score, price_reason, dim,
-                 strength_score + vision_score))
+                 strength_score + vision_score,
+                 "，" if online_reason else "", online_reason))
     return round(total, 2), reason
 
 

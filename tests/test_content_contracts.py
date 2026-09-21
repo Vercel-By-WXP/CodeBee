@@ -66,6 +66,28 @@ class ContentContractTests(BaseTest):
         self.assertTrue(any(call.args[2] == "translation" for call in pick.call_args_list))
         self.assertTrue(any(call.args[1] == "translation" for call in pick_critics.call_args_list))
 
+    def test_venue_rules_from_sepia(self):
+        """sepia 分场合规则（2026-09-21 借鉴）：四类文档契约带体裁硬规则。"""
+        from app.core import pipeline
+
+        weekly = pipeline._content_contract({"type": "weekly_report"})
+        self.assertIn("第一段先给本期最重要的结论", weekly)      # 结论先行
+        self.assertIn("不指名甩锅", weekly)                      # 对机制严格
+
+        email = pipeline._content_contract({"type": "email"})
+        self.assertIn("先给结论或答复", email)                    # 先答再铺陈
+        self.assertIn("篇幅与事情轻重成正比", email)              # 篇幅∝利害
+
+        proposal = pipeline._content_contract({"type": "tech_proposal"})
+        self.assertIn("从要解决的问题开场", proposal)              # 问题开场
+        self.assertIn("真实分析过又被否决的方向", proposal)        # 真实死胡同
+        self.assertIn("明确表态的推荐意见", proposal)              # 明确观点
+        self.assertIn("带适用条件与计算口径", proposal)            # 带条件数字
+
+        doc = pipeline._content_contract({"type": "doc"})
+        self.assertIn("标题写结果或结论", doc)                     # 标题=结果
+        self.assertIn("可测试的验收标准", doc)                     # 验收可测试
+
 
 if __name__ == "__main__":
     import unittest

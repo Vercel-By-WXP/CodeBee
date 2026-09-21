@@ -56,6 +56,53 @@ class TestDirectAttachmentInput(BaseTest):
         self.assertEqual(store.get_run(run["id"])["status"], "done")
 
 
+class TestDirectAttachmentPrompt(BaseTest):
+    def runTest(self):
+        """直连首轮 prompt 必须包含附件正文与强制读取约束。"""
+        import base64
+        from unittest.mock import patch
+        from app.core import attachments, pipeline, store
+
+        meta = attachments.save_pending("brief.txt",
+                                        base64.b64encode("按附件中的数字回答：42".encode()).decode())
+        task = store.create_task({"type": "direct", "title": "带文本附件",
+                                  "goal": "回答附件问题", "workdir": str(self.workdir),
+                                  "attachments": [meta["id"]]})
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        seen = {}
+
+        def fake_step(run_id, role, agent, prompt, workdir, readonly, ev, **kwargs):
+            seen["prompt"] = prompt
+            return {"ok": True, "text": "已按附件回答", "sid": "", "usage": None,
+                    "cost_usd": 0.0, "tokens": 0, "error": "", "raw": {"exit_code": 0}}
+
+        pipeline._agents = self.mock_agents
+        with patch.object(pipeline, "_run_step", side_effect=fake_step):
+            pipeline.execute_run(run["id"])
+        self.assertIn("按附件中的数字回答：42", seen["prompt"])
+        self.assertIn("必须先用读文件工具逐个打开查看", seen["prompt"])
+
+
+class TestRuntimeAttachmentPrompt(BaseTest):
+    def runTest(self):
+        """运行中追加的文本附件在下一步骤送达时也应携带正文。"""
+        from app.core import pipeline, store
+
+        rel = "_attachments/live-note.txt"
+        target = self.workdir / rel
+        target.parent.mkdir()
+        target.write_text("运行中补充：最终结果必须包含 ABC-123", encoding="utf-8")
+        task = store.create_task({"type": "direct", "title": "运行中附件",
+                                  "goal": "先回答", "workdir": str(self.workdir)})
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.add_message(run["id"], "参考补充文件", attachments=[rel])
+        block, images = pipeline._drain_directives(run["id"], str(self.workdir),
+                                                   role="direct", step_n=1)
+        self.assertEqual(images, [])
+        self.assertIn("ABC-123", block)
+        self.assertIn("## 附件正文（已读取）", block)
+
+
 class TestDirectMailboxTurn(BaseTest):
     def runTest(self):
         """轮间递话：首步执行期间用户递话 → 首步 drain 送达 + 循环末尾续一轮。

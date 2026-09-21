@@ -1,0 +1,565 @@
+{
+  "version": 1,
+  "violations": [
+    {
+      "kind": "cycle",
+      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> errorlog"
+    },
+    {
+      "kind": "cycle",
+      "text": "cycle: health -> modelhub -> health"
+    },
+    {
+      "kind": "cycle",
+      "text": "cycle: jobs -> pipeline -> jobs"
+    },
+    {
+      "kind": "cycle",
+      "text": "cycle: manager -> modelhub -> manager"
+    },
+    {
+      "kind": "cycle",
+      "text": "cycle: manager -> runner -> manager"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: automation(L2) -> flows(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: automation(L2) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: automation(L2) -> store(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: backup(L2) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: backup(L2) -> settings(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: backup(L2) -> store(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: bookmeta(L2) -> bookmeta_catalog(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: bookmeta(L2) -> catalog(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: bookmeta(L2) -> knowledge(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: bookmeta(L2) -> modelhub(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: bookmeta(L2) -> planner(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: bookmeta(L2) -> registry(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: bookmeta(L2) -> router(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: bookmeta(L2) -> skills(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: bookmeta(L2) -> store(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: catalog(L1) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: cleanup(L2) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: cleanup(L2) -> settings(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: cleanup(L2) -> store(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: covergen(L1) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: covergen(L1) -> tlsctx(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: dispatch_log(L99) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: errorlog(L2) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: gitmod(L2) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: goal_service(L1) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: goal_service(L1) -> settings_schema(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: health(L1) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: jobs(L2) -> catalog(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: jobs(L2) -> notify(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: jobs(L2) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: jobs(L2) -> registry(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: jobs(L2) -> router(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: jobs(L2) -> settings(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: jobs(L2) -> store(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: jobs(L2) -> usage(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: knowledge(L1) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: manager(L2) -> catalog(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: manager(L2) -> modelhub(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: manager(L2) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: manager(L2) -> registry(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: market(L1) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: market_remote(L1) -> tlsctx(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: modelhub(L1) -> capability(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: modelhub(L1) -> dispatch(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: modelhub(L1) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: modelhub(L1) -> settings_schema(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: modelhub(L1) -> tlsctx(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: notify(L1) -> settings(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> aiflavor(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> attachments(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> builtin_agent(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> capability(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> catalog(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> diagnostics(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> error_codes(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> errorlog(L2) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> gitmod(L2) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> health(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> history(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> jobs(L2) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> knowledge(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> manager(L2) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> modelhub(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> paihang(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> planner(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> registry(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> repeat_guard(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> router(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> runner(L2) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> session_log(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> settings_schema(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> skills(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> step_runner(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> store(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> task_compile(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> token_meter(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: pipeline(L3) -> usage(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: planner(L1) -> settings_schema(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: planner(L1) -> usage(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: portguard(L99) -> runner(L2) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: publish(L2) -> browser(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: publish(L2) -> ledger(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: publish.auto(L2) -> ledger(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: publish.browser(L2) -> ws(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: publish.flow(L2) -> browser(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: publish.manager(L2) -> browser(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: publish.manager(L2) -> fanqie(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: publish.manager(L2) -> flow(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: publish.manager(L2) -> ledger(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: publish.manager(L2) -> qimao(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: router(L1) -> dispatch(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: router(L1) -> usage(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: runner(L2) -> env_scrub(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: runner(L2) -> error_codes(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: runner(L2) -> modelhub(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: selfupdate(L2) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: selfupdate(L2) -> remote(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: selfupdate(L2) -> store(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: skills(L1) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: step_runner(L1) -> compaction(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: step_runner(L1) -> error_codes(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: step_runner(L1) -> settings_schema(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: step_runner(L1) -> token_meter(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: store(L1) -> attachments(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: store(L1) -> flows(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: store(L1) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: store(L1) -> settings(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: task_compile(L1) -> dispatch(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: task_compile(L1) -> flows(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: telemetry(L2) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: telemetry(L2) -> settings(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: telemetry(L2) -> tlsctx(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: telemetry(L2) -> usage(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: wxdigest(L2) -> builtin_agent(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: wxdigest(L2) -> knowledge(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: wxdigest(L2) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: zentao(L2) -> modelhub(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: zentao(L2) -> notify(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: zentao(L2) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: zentao(L2) -> settings(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: zentao(L2) -> store(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: zentao(L2) -> tlsctx(L0) 反向依赖"
+    },
+    {
+      "kind": "lines",
+      "text": "lines: app/core/manager.py 1851 行（上限 1200，历史最高 0）",
+      "file": "app/core/manager.py",
+      "lines": 1851
+    },
+    {
+      "kind": "lines",
+      "text": "lines: app/core/modelhub.py 3160 行（上限 1200，历史最高 0）",
+      "file": "app/core/modelhub.py",
+      "lines": 3160
+    },
+    {
+      "kind": "lines",
+      "text": "lines: app/core/pipeline.py 3611 行（上限 1200，历史最高 0）",
+      "file": "app/core/pipeline.py",
+      "lines": 3611
+    },
+    {
+      "kind": "lines",
+      "text": "lines: app/core/runner.py 1307 行（上限 1200，历史最高 0）",
+      "file": "app/core/runner.py",
+      "lines": 1307
+    },
+    {
+      "kind": "lines",
+      "text": "lines: app/core/store.py 1587 行（上限 1200，历史最高 0）",
+      "file": "app/core/store.py",
+      "lines": 1587
+    },
+    {
+      "kind": "lines",
+      "text": "lines: app/core/zentao.py 1788 行（上限 1200，历史最高 0）",
+      "file": "app/core/zentao.py",
+      "lines": 1788
+    },
+    {
+      "kind": "lines",
+      "text": "lines: app/main.py 2555 行（上限 1200，历史最高 0）",
+      "file": "app/main.py",
+      "lines": 2555
+    },
+    {
+      "kind": "lines",
+      "text": "lines: app/pet.py 1443 行（上限 1200，历史最高 0）",
+      "file": "app/pet.py",
+      "lines": 1443
+    }
+  ]
+}

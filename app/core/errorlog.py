@@ -15,12 +15,12 @@
 from __future__ import annotations
 
 import json
-import re
 import threading
 import time
 import uuid
 
 from . import paths
+from .redact import scrub_text
 
 LOCK = threading.RLock()
 
@@ -33,48 +33,6 @@ DETAIL_LIMIT = 600
 
 
 # ---------------------------------------------------------------- 脱敏
-
-# 常见密钥形态：OpenAI 系 sk- 前缀、Bearer 令牌、显式 key/secret/token 赋值
-_KEY_PATTERNS = (
-    (re.compile(r"\bsk-[A-Za-z0-9_-]{8,}"), "[key]"),
-    (re.compile(r"\b(?:Bearer|bearer)\s+\S+"), "Bearer [key]"),
-    # 赋值/JSON 两种形态都要吃：api_key=xxx、api_key: "xxx"（冒号前可有闭引号）
-    (re.compile(r"(?i)\b((?:api[_-]?|access[_-]?|secret[_-]?|auth[_-]?)(?:key|token|secret))"
-                r"""["']?\s*[:=，,]\s*["']?[A-Za-z0-9._~+/=-]{8,}"""), r"\1[key]"),
-    # 裸长十六进制/64 位串（可能是凭据指纹）
-    (re.compile(r"\b[0-9a-fA-F]{40,}\b"), "[token]"),
-)
-
-# 绝对路径：Windows 盘符路径、UNC、POSIX 家目录——剥掉盘符/用户名只留尾部结构
-_PATH_PATTERNS = (
-    (re.compile(r"(?i)\b[A-Z]:\\(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\r\n]*"),
-     lambda m: "[path]" + m.group(0).split("\\")[-1]),
-    (re.compile(r"(?i)\b(?:\\\\[^\\\s]+\\[^\s]+)"), "[path]"),
-    (re.compile(r"(?:/Users/|/home/|~)[^\s\"':]+"), lambda m: "[path]" + m.group(0).rsplit("/", 1)[-1]),
-)
-
-
-def scrub_text(text, limit=DETAIL_LIMIT):
-    """自由文本 → 可安全落台账/上传的摘录：剥密钥、剥绝对路径、截断。
-
-    顺序有讲究：先剥密钥（可能出现在路径或赋值串里），再剥路径，最后截断。
-    任何输入（None/非字符串）都安全。
-    """
-    if not isinstance(text, str):
-        text = "" if text is None else str(text)
-    out = text
-    for pat, rep in _KEY_PATTERNS:
-        out = pat.sub(rep, out)
-    for pat, rep in _PATH_PATTERNS:
-        try:
-            out = pat.sub(rep, out)
-        except Exception:
-            pass
-    out = out.strip()
-    if len(out) > limit:
-        out = out[:limit] + "…"
-    return out
-
 
 def _coerce_str(v, limit):
     return str(v or "")[:limit]

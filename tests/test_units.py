@@ -186,6 +186,7 @@ class TestTaskArchiveDelete(BaseTest):
         self.assertTrue(ok, err)
         self.assertIsNone(store.get_task(t2["id"]))
         self.assertIsNone(store.get_run(r2["id"]))
+        # 删除接口先 rename 脱离可见路径，递归清理在后台进行，不阻塞请求。
         self.assertFalse((self._paths.RUNS_DIR / r2["id"]).exists())
         self.assertEqual([r["id"] for r in store.list_runs(10)], [r1["id"]])
 

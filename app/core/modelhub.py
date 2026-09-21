@@ -2021,6 +2021,8 @@ def bind_agent(agent, difficulty="default", task_type="", role=""):
     merged = dict(agent.get("env") or {})
     merged.update(r.get("env") or {})
     a["env"] = merged
+    if r.get("provider"):
+        a["provider"] = r["provider"]
     if r.get("model"):
         a["model"] = r["model"]
     if r.get("model_fallbacks"):

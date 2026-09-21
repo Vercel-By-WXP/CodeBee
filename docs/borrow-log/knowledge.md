@@ -361,3 +361,23 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - A11 记忆组新锐：**memsearch**（zilliztech，2,626★）Markdown+向量统一记忆层（Claude Code/Codex/DSH）、**archgate/cli**（68★）**ADR 当可执行规则**（与人同守+与 AI 同守——我们宪章是提示词级，可执行规则是差量）、tigerless-labs/agent-memory 959★（Markdown 真源+本地排序检索）| 参考/待深挖
 - A3 缓存组：vCache 79★（语义提示缓存系统）、adaptive-llm-gateway 12★（包月订阅→网关复用）、weave-os/router 4,546★（"<50ms 路由省 40-70%"）| prompt 缓存路线图既定，无新机制
 - oh-my-claudecode 39,273★ 复查（+2k 活跃）、orca 73,593★ 复查（活跃）、omnigent 10,119★ 复查、edict 16,903★ 复查、HKUDS/DeepCode 16,602★（新入雷达：agent harness&loop 工程）、novel 域 narralume 114★（开源中文长篇写作工作室，理念与我们近似）/vellium 134★（本地优先桌面工作台）
+
+## 2026-09-21 10:30 用户点名调研：zai-org/ZCode 开源
+
+- **ZCode**（zai-org，361★首日，Apache-2.0，TypeScript monorepo）已深挖 | Z.ai 官方 coding agent harness 开源：Electron 桌面 + Web + TUI + Agent CLI（`zcode` 命令三态分流：无参进 TUI / --web 进 Web / 其余给 Agent CLI）；apps/zcode-cli 是普通目录非 submodule；`ZCODE_DATA_BASE_DIR` 数据基目录；远程 SSH/WSL 经 SFTP 上传资源；打包出 tar.gz+sha256+latest.json+install.sh 走自建下载根
+- **真金在治理体系而非功能**：
+  - **architecture-policy.yaml + scripts/architecture-check.mjs + .architecture-baseline.json**：机器可执行架构守护——模块 id/roots/managed 标记/publicEntrypoints/owner；全局 maxFileLines 400/maxContractLines 300/maxPublicMethods 12/forbidCycles/forbidDeepImports；**基线哲学=存量 violations 快照豁免、增量零容忍**；`architecture:check --changed` 只查变更文件
+  - **AGENTS.md 宪章**：「新增或修改行为前先更新对应 spec」「未明确要求修改代码就先调查原因」「报告真实结果，不将已有失败写成通过」「修复 bug 用中文注释说明原因和修复依据」「发现设计缺陷先与用户对齐，不不断增加兜底分支」——与我们五道关/教训库理念同源，验证方向
+  - **architecture-governance SKILL**：先跑架构检查→再读目标模块受控上下文（`architecture:context <module-id>` 模块阅读包）
+- **与 CodeBee 关系**：zcode CLI 本机无独立可执行（桌面版宿主，未进 PATH）——按「先实测再入目录」纪律不接 catalog，入雷达待装后实测
+- **直接会话适配复查**：源码入口支持 `zcode -p <prompt> --output-format json|stream-json --resume <id> --cwd <dir>`，可映射 CodeBee 的 direct 首轮/续轮/工作目录/结构化输出；但 CLI package 仍是 `private: true`，本机无 `zcode`，公共可复现安装链未成立。接入三问结论为「重合高、整仓不可轻量直读、用户会搜但当前会死链」，所以不进 catalog；待官方二进制发行后只接 CLI 协议，不复制 Electron/Web/TUI/会话库。Apache-2.0 复用时必须保留 LICENSE、NOTICE/归属及修改声明
+- **可蒸馏方法论**：会话状态机（running/compacting/goalVerifying/completed）用形式化候选动作验证；工具执行按 schema 校验→PreToolUse→权限→执行→PostToolUse 收口；SessionStart/UserPromptSubmit/Stop hooks 有次数上限；项目记忆与会话记录分层。CodeBee 已落地架构基线，本轮将状态机/权限链列入 direct 会话后续路线图，避免用整仓复制换来双运行时
+- **✅ 已落地（2026-09-21）**：架构基线守护 Python 版——`architecture-policy.json`（四层单向依赖：L0 基座/L1 领域/L2 编排/L3 入口）+ `scripts/architecture_check.py`（AST 建图/三色 DFS 找环/层序单向/行数历史最高基线/`--changed` 模式/`--update-baseline`）+ `.architecture-baseline.json`（首检 136 条存量：5 条真实 import 环 + 123 层序 + 8 千行文件）+ test_architecture_check.py 7 项（新环必抓/存量豁免/行数增长必抓/基线更新幂等/changed 全图环检测/真仓冒烟）。此后每轮自动化提交前跑 `--changed`，架构漂移机器把关
+
+## 2026-09-21 在线路由反馈闭环
+
+- **真实运行指标参与推荐** | 成功率、P95 延迟、平均成本按任务类型/角色/CLI/provider/model 聚合，精确样本不足逐层回退；Beta(3,1) 平滑避免新候选被一次失败永久压低 | CodeBee 原有静态能力、配额和历史胜负，缺少可解释的在线校准 | **已落地；只作软评分，硬约束与显式绑定优先** | 2026-09-21
+- **脱敏调度回放** | 记录候选、分数、选择理由、降级链、验证/评审结果，跨运行复盘路由是否有效 | 旧 route_plan 只保存在单个 run 中，难做长期比较 | **已落地 `/api/dispatch/replay`；禁止保存 prompt、正文、密钥与文件内容** | 2026-09-21
+- **升级后自动生效** | npm 升级成功后仅在版本变化且无其他任务运行时自动重启；端口未知或系统忙则明确回落手动重启 | 旧流程安装完成但进程仍跑旧代码，容易出现“升级了却没生效” | **已落地** | 2026-09-21
+- **启动端口清场边界** | 只对命令行精确匹配本包 `app/main.py` 的旧 CodeBee 杀树；其他占用者只报告 PID，不发送信号 | 自动关闭任意占用端口的服务会误伤用户开发进程 | **已落地** | 2026-09-21
+- **附件消费闭环** | 上传落盘后，文本/代码与 Office 伴生文本按总计 1 万字符、单文件 6000 字符预读进 prompt；图片走原生视觉输入；PDF/旧 Office 等不可预读格式显式标状态；修复/修订轮再次携带附件上下文 | 旧实现只给 `_attachments/` 路径并期待模型主动读，快档、换将、无会话修订会直接忽略；GBK 还可能被误判 UTF-16 | **已落地；附件正文按不可信资料隔离，不能覆盖系统规则** | 2026-09-21

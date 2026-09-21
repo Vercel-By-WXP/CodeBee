@@ -246,10 +246,8 @@ def create_task(payload):
                 raise ValueError("附件落盘失败: %s" % e)
         if items:
             task["attachments"] = items
-            blk = att_mod.context_block(items)
-            # 复制清单场景下 context 已含附件块（随旧任务沿用），别重复追加
-            if blk and "## 附件材料" not in task["context"]:
-                task["context"] = (task["context"] + blk).strip()
+            task["context"] = att_mod.merge_context(
+                task["context"], items, workdir=str(wd))
     with LOCK:
         _TASKS[task["id"]] = task
         _save_json(paths.TASKS_DIR / (task["id"] + ".json"), task)
@@ -688,6 +686,28 @@ def run_dir(run_id):
     return paths.RUNS_DIR / run_id
 
 
+def _schedule_run_dir_cleanup(run_id):
+    """把运行目录快速移出可见路径，再后台删除大日志目录。
+
+    删除任务/运行记录不能让 HTTP 请求同步递归扫描数千个日志文件。
+    同盘 rename 是 O(1)，原路径立即消失；后台失败也不会影响内存状态。
+    """
+    source = paths.RUNS_DIR / str(run_id)
+    if not source.exists():
+        return
+    target = paths.RUNS_DIR / (".deleting-%s-%s" % (run_id, secrets.token_hex(4)))
+    try:
+        source.rename(target)
+    except OSError:
+        target = source
+
+    def _remove():
+        shutil.rmtree(target, ignore_errors=True)
+
+    threading.Thread(target=_remove, name="codebee-delete-%s" % run_id[:12],
+                     daemon=True).start()
+
+
 def delete_run(run_id):
     """删除一条运行记录（内存 + 磁盘目录）。返回 (ok, 错误信息)。"""
     if not _valid_id(run_id):
@@ -699,7 +719,7 @@ def delete_run(run_id):
         if run.get("status") in ("queued", "running"):
             return False, "运行中的记录不能删除，请先取消"
         del _RUNS[run_id]
-    shutil.rmtree(paths.RUNS_DIR / run_id, ignore_errors=True)
+    _schedule_run_dir_cleanup(run_id)
     bump_state()
     return True, ""
 
@@ -1032,7 +1052,7 @@ def delete_runs(run_ids):
                 skipped += 1
                 continue
             del _RUNS[rid]
-        shutil.rmtree(paths.RUNS_DIR / rid, ignore_errors=True)
+        _schedule_run_dir_cleanup(rid)
         deleted += 1
     if deleted:
         bump_state()
@@ -1051,7 +1071,7 @@ def clear_runs():
         for rid in targets:
             del _RUNS[rid]
     for rid in targets:
-        shutil.rmtree(paths.RUNS_DIR / rid, ignore_errors=True)
+        _schedule_run_dir_cleanup(rid)
     bump_state()
     return len(targets), skipped
 
@@ -1091,7 +1111,7 @@ def delete_task(task_id):
         for rid in run_ids:
             _RUNS.pop(rid, None)
     for rid in run_ids:
-        shutil.rmtree(paths.RUNS_DIR / rid, ignore_errors=True)
+        _schedule_run_dir_cleanup(rid)
     (paths.TASKS_DIR / (task_id + ".json")).unlink(missing_ok=True)
     bump_state()
     return True, ""

@@ -284,6 +284,18 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     edays = 90
                 return self._json(200, usage.estimate(task_type=ttype, days=edays))
+            if path == "/api/dispatch/replay":
+                from core import dispatch_log
+                q = parse_qs(urlparse(self.path).query)
+                try:
+                    limit = max(1, min(1000, int((q.get("limit") or ["100"])[0])))
+                except (TypeError, ValueError):
+                    limit = 100
+                events = dispatch_log.replay(
+                    run_id=(q.get("run_id") or [""])[0],
+                    task_type=(q.get("task_type") or [""])[0],
+                    limit=limit)
+                return self._json(200, {"events": events, "count": len(events)})
             if path == "/api/diagnostics/bundle":
                 # 诊断包（zip）：脱敏错误台账 + 用量台账 + 环境元信息，供用户贴 Issue
                 from core import telemetry
@@ -748,7 +760,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, res) if res.get("error") else self._json(200, dict(res, ok=True))
         if path == "/api/selfupdate/restart":
             from core import selfupdate
-            global PORT
             if not selfupdate.relaunch(PORT):
                 return self._json(400, {"error": "重启参数非法"})
             def _bye():
@@ -2066,8 +2077,9 @@ class Handler(BaseHTTPRequestHandler):
                   "每个问题给出 2-4 个最常见的选项。只输出 JSON 数组，不要输出其他内容：\n"
                   '[{"q": "问题", "options": ["选项1", "选项2"]}]' % (ttype, goal[:200]))
         try:
+            # 澄清是可选增强，不能占住创建请求；主流程有自己的执行超时。
             res = builtin_agent.run(bi, prompt, os.getcwd() if hasattr(os, "getcwd") else ".",
-                                    timeout=60)
+                                    timeout=8)
             import json as _json
             arr = None
             text = (res.get("text") or "").strip()

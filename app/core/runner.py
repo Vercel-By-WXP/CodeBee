@@ -770,6 +770,7 @@ def _resolve_attempts(agent):
     if chain:
         return [{"model": (e.get("model") or "").strip() or None,
                  "env": dict(e.get("env") or {}),
+                 "provider": e.get("provider") or {},
                  "from_chain": True,
                  "own_cp": "codex_provider" in e,
                  "codex_provider": e.get("codex_provider"),
@@ -778,8 +779,12 @@ def _resolve_attempts(agent):
     base_model = agent.get("model")
     fb = [m for m in (agent.get("model_fallbacks") or []) if m and m != base_model]
     models_to_try = ([base_model] if base_model else []) + fb
-    return [{"model": m or None, "env": {}, "from_chain": False, "own_cp": False,
-             "codex_provider": None, "provider_id": "", "key_id": ""}
+    provider = agent.get("provider") or {}
+    return [{"model": m or None, "env": {}, "provider": provider,
+             "from_chain": False, "own_cp": False,
+             "codex_provider": None,
+             "provider_id": provider.get("id") if isinstance(provider, dict) else "",
+             "key_id": ""}
             for m in (models_to_try or [None])[:3]]
 
 
@@ -1058,7 +1063,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                         pass
             out = {"ok": res["ok"], "text": "", "json": None, "cost_usd": 0.0,
                    "tokens": 0, "usage": None, "error": "", "error_code": "",
-                   "sid": "", "raw": res, "kind": kind, "model": att["model"]}
+                   "sid": "", "raw": res, "kind": kind, "model": att["model"],
+                   "provider_id": att.get("provider_id") or "",
+                   "provider": att.get("provider") or {}}
             if not res["ok"]:
                 # stderr 与 stdout 都要进错误串：codex 把 "Reading prompt from
                 # stdin..." 打在 stderr，真正的配额/限流错误全在 stdout 的 JSONL

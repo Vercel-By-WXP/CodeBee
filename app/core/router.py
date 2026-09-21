@@ -50,6 +50,31 @@ def _history_bonus(stats, agent_id, ttype):
     return round(18.0 * win_rate + min(6.0, runs) - loss_penalty, 1)
 
 
+def _online_bonus(agent, role, ttype):
+    """近期真实运行信号：成功率、P95 延迟和均价只作软加减分。"""
+    try:
+        from . import usage
+        metrics = usage.routing_stats(task_type=ttype, role=role,
+                                      agent=agent.get("id") or "")
+        samples = int(metrics.get("samples") or 0)
+        if not samples:
+            return 0.0, ""
+        rate = float(metrics.get("success_rate") or 0.0)
+        success_score = max(-8.0, min(8.0, (rate - 0.75) * 24.0))
+        p95 = max(0.0, float(metrics.get("p95_duration_s") or 0.0))
+        latency_score = -min(6.0, max(0.0, (p95 - 45.0) / 10.0))
+        cost = max(0.0, float(metrics.get("avg_cost_usd") or 0.0))
+        cost_score = -min(4.0, max(0.0, (cost - 0.01) / 0.01))
+        total = round(success_score + latency_score + cost_score, 1)
+        success_samples = int(metrics.get("success_samples") or samples)
+        reason = ("，在线 %d/%d 验收成功（%+.1f），P95 %.1fs（%+.1f），均价 $%.4f（%+.1f）"
+                  % (int(metrics.get("successes") or 0), success_samples,
+                     success_score, p95, latency_score, cost, cost_score))
+        return total, reason
+    except Exception:
+        return 0.0, ""
+
+
 def score(agent, role, ttype, stats=None):
     """返回 (总分, 理由字符串)。配额惩罚：catalog 里配了
     quota_tokens_per_hour 的智能体，本小时用量越接近配额分越低
@@ -66,11 +91,12 @@ def score(agent, role, ttype, stats=None):
     elif bb < 0:
         btxt = "，绑定链为空：相关步骤将判失败（%s）" % bb
     hb = _history_bonus(stats, agent.get("id"), ttype)
+    online, online_txt = _online_bonus(agent, role, ttype)
     # 保持公开 score() 的历史绝对分值；运行级候选由 pipeline 标记画像后
     # 才启用能力亲和度，避免旧插件/测试调用被新权重悄然改变。
     affinity, affinity_txt = (dispatch.agent_affinity(agent.get("kind"), ttype, role)
                               if use_dispatch else (0.0, "兼容模式"))
-    total = base + bb + hb + affinity
+    total = base + bb + hb + affinity + online
     hs = (stats.get(agent.get("id")) or {}).get(ttype)
     htxt = ("，历史 %d/%d 胜（%s）" % (hs["wins"], hs["runs"], "%+.1f" % hb)) if hs else "，无历史记录"
     quota_txt = ""
@@ -87,8 +113,8 @@ def score(agent, role, ttype, stats=None):
             if penalty:
                 total += penalty
                 quota_txt = "，本小时 %d/%d tokens（%s）" % (used, quota, penalty)
-    return total, "能力基线 %d，%s%s%s%s，总分 %s" % (
-        base, affinity_txt, btxt, htxt, quota_txt, round(total, 1))
+    return total, "能力基线 %d，%s%s%s%s%s，总分 %s" % (
+        base, affinity_txt, btxt, htxt, online_txt, quota_txt, round(total, 1))
 
 
 def pick(agents, role, ttype, stats=None, exclude=()):

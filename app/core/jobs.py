@@ -20,6 +20,7 @@ _QUEUE = queue.Queue()
 CANCELS = {}
 _started = False
 _alive = 0            # 已获执行位、尚未结束的 job 数
+_restart_drain = False  # 升级重启前原子停止接单；不排队、不打断已运行任务
 _target = 12          # 并发保护上限（settings.max_concurrent_jobs）
 _pool_lock = threading.Lock()
 _idle_cond = threading.Condition(_pool_lock)
@@ -133,7 +134,9 @@ def enqueue(job):
     # CAS 认领后检查并发保护位。_alive 在 Thread.start 前递增，消除旧实现中线程尚未
     # 回写 alive、扩容循环一次造出几十条 worker 的竞态。
     with _pool_lock:
-        if _alive >= _target:
+        if _restart_drain:
+            busy_limit = -1
+        elif _alive >= _target:
             busy_limit = _target
         else:
             busy_limit = 0
@@ -142,9 +145,13 @@ def enqueue(job):
             seq = _seq
     if busy_limit:
         CANCELS.pop(run_id, None)
-        _close_unstarted(job, "当前运行任务已达并发保护上限（%d）；本次未排队，请稍后重试" % busy_limit,
+        if busy_limit < 0:
+            message = "服务正在完成升级重启；本次未排队，请稍后重试"
+        else:
+            message = "当前运行任务已达并发保护上限（%d）；本次未排队，请稍后重试" % busy_limit
+        _close_unstarted(job, message,
                          statuses=("running",))
-        raise JobsBusyError("当前运行任务已达并发保护上限（%d），本次未排队" % busy_limit)
+        raise JobsBusyError(message)
 
     try:
         threading.Thread(target=_run_job, args=(dict(job),),
@@ -178,6 +185,23 @@ def wait_for_idle(timeout=10):
                 return False
             _idle_cond.wait(min(left, 0.2))
         return True
+
+
+def begin_restart_drain():
+    """升级任务已退出执行位且没有用户任务时，原子停止接单。"""
+    global _restart_drain
+    with _pool_lock:
+        if _restart_drain or _alive != 0:
+            return False
+        _restart_drain = True
+        return True
+
+
+def cancel_restart_drain():
+    """重启未执行或失败时恢复接单。"""
+    global _restart_drain
+    with _pool_lock:
+        _restart_drain = False
 
 
 def _close_unstarted(job, message, statuses=("queued",)):
@@ -602,11 +626,13 @@ def requeue_pending(limit=10, max_age_s=None):
 def workers_info():
     with _pool_lock:
         return {"target": _target, "alive": _alive, "queued": 0,
-                "available": max(0, _target - _alive), "mode": "direct"}
+                "available": 0 if _restart_drain else max(0, _target - _alive),
+                "mode": "restart-drain" if _restart_drain else "direct"}
 
 
 def _drain_test_queue():
     """测试辅助：清空兼容队列并取消未决 Timer（生产代码勿调）。"""
+    cancel_restart_drain()
     with _timer_lock:
         timers = list(_deferred_timers.values())
         _deferred_timers.clear()

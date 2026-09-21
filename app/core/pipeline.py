@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, catalog, history, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage
+from . import aiflavor, attachments, catalog, dispatch_log, history, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -53,11 +53,7 @@ def _inside(dirpath, target):
 
 def _task_images(task, workdir):
     """任务的图片附件绝对路径（仅 codex 原生 -i 用）。无附件/异常返回空列表。"""
-    try:
-        from . import attachments as att_mod
-        return att_mod.image_paths(task, workdir)
-    except Exception:
-        return []
+    return attachments.image_paths(task, workdir)
 
 
 def _ms_name(raw):
@@ -252,25 +248,8 @@ def _drain_directives(run_id, workdir, role=None, step_n=None):
     if _is_review_role(role):
         lines.append("本步为评审步骤：请把上述用户意见作为评分依据之一，"
                      "在相应维度的分数与 issues 中明确体现（引用用户原话）。")
-    imgs = []
-    for m in msgs:
-        stamp = m.get("created_at") or ""
-        sender = m.get("sender") or "用户"
-        text = (m.get("text") or "").strip()
-        lines.append("- [%s %s] %s" % (stamp, sender, text) if text
-                     else "- [%s %s]（附件指令，见下方文件）" % (stamp, sender))
-        for rel in (m.get("attachments") or []):
-            rel = str(rel)
-            low = rel.lower()
-            if low.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")):
-                ap = os.path.join(workdir or "", rel) if workdir else rel
-                if workdir and os.path.isfile(ap):
-                    imgs.append(ap)
-                    lines.append("  · 图片附件：%s（请查看图片内容）" % rel)
-                else:
-                    lines.append("  · 图片附件：%s" % rel)
-            else:
-                lines.append("  · 文件附件：%s（位于工作目录，可直接读取）" % rel)
+    msg_lines, imgs = attachments.directive_lines(msgs, workdir)
+    lines.extend(msg_lines)
     return "\n".join(lines), imgs
 
 
@@ -609,6 +588,9 @@ def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
     try:
         run = store.get_run(run_id) or {}
         task = store.get_task(run.get("task_id")) if run.get("task_id") else None
+        provider = res.get("provider") or agent.get("provider") or {}
+        provider_id = provider.get("id") if isinstance(provider, dict) else ""
+        provider_name = provider.get("name") if isinstance(provider, dict) else ""
         usage.record(
             source=source, run_id=run_id, step=step,
             task_id=run.get("task_id") or "",
@@ -617,13 +599,14 @@ def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
             agent_label=agent.get("label", ""),
             tool=agent.get("kind", ""),
             model=res.get("model") or "",
+            provider=res.get("provider_id") or provider_id or provider_name or "",
             ok=bool(res.get("ok")),
             duration_s=float(res.get("raw", {}).get("duration") or 0.0),
             cost_usd=float(res.get("cost_usd") or 0.0),
             usage=res.get("usage"))
         # 告警模块：CLI 调用成功/失败上报（provider 名与 usage 台账一致）
         from . import health
-        prov = agent.get("provider") or {}
+        prov = res.get("provider") or agent.get("provider") or {}
         prov_name = (prov.get("name") if isinstance(prov, dict) else "") or ""
         if prov_name:
             if res.get("ok"):
@@ -747,6 +730,8 @@ def _run_review(run_id, task, workdir, reviewer, ev):
               .replace("__GOAL__", task["goal"])
               .replace("__VERIFY__", task.get("verify_command") or "（未配置）")
               .replace("__DIFF__", diff or "（无法获取 git diff，请综合任务目标谨慎评审）"))
+    if task.get("context"):
+        prompt += "\n\n## 原始背景与附件要求\n" + task["context"]
     res = _run_step(run_id, "review", reviewer, prompt, workdir, readonly=True, ev=ev,
                     images=_task_images(task, workdir))
     if reviewer.get("mode") == "mock":
@@ -904,6 +889,31 @@ def _record_actual_route(run_id, task, agents, stats, implementer,
     store.update_run(run_id, route_plan={
         "task": spec, "implement": impl_plan, "review": review_plan,
     })
+    task_id = task.get("id") or (store.get_run(run_id) or {}).get("task_id") or ""
+    difficulty = (task.get("difficulty") or "auto")
+    for plan in (impl_plan, review_plan):
+        dispatch_log.record_event(
+            run_id=run_id, task_id=task_id, task_type=spec.get("type") or "",
+            difficulty=difficulty, role=plan.get("role") or "",
+            phase="selected", selected=plan.get("selected") or "",
+            participants=plan.get("participants") or (),
+            candidates=plan.get("candidates") or (),
+            fallback=plan.get("fallback") or (),
+            selection_reason=plan.get("selection_reason") or "")
+
+
+def _record_dispatch_completed(run_id, task, result, verify_pass=None, review_pass=None):
+    """记录运行终态，供调度回放与线上指标复盘使用。"""
+    try:
+        spec = task.get("_compiled_spec") or task_compile.compile_task(task)
+        dispatch_log.record_event(
+            run_id=run_id,
+            task_id=task.get("id") or (store.get_run(run_id) or {}).get("task_id") or "",
+            task_type=spec.get("type") or "", difficulty=task.get("difficulty") or "auto",
+            role="", phase="completed", result=result,
+            verify_pass=verify_pass, review_pass=review_pass)
+    except Exception:
+        pass
 
 
 def _run_code(run, task, agents, ev, stats, mode):
@@ -941,7 +951,7 @@ def _run_code(run, task, agents, ev, stats, mode):
         # 架构事实，让规划器不再对代码库一无所知
         _pm = _read_project_memory(workdir)
         if _pm:
-            task = dict(task, context=((task.get("context") or "") + "\n\n" + _pm)[:8000])
+            task = dict(task, context=(task.get("context") or "") + "\n\n" + _pm)
         plan_step, plan_log = store.add_step(run_id, "plan", impl["id"], impl.get("label"),
                                              note=route.get("implementer", ""))
         plan = planner.make_code_plan(_steered_task(run_id, task),
@@ -1080,8 +1090,9 @@ def _run_code(run, task, agents, ev, stats, mode):
         return False
 
     def review_and_score():
-        review_json = _run_review(run_id, task, workdir, modelhub.bind_agent(reviewer, difficulty), ev)
         verify_pass, verify_ran = _run_verify(run_id, task, workdir, ev)
+        # 先让确定性验证落盘，再执行模型评审；终态判断会同时使用两份证据。
+        review_json = _run_review(run_id, task, workdir, modelhub.bind_agent(reviewer, difficulty), ev)
         return review_json, verify_pass, verify_ran
 
     attempt_note = route.get("implementer", "") if mode == "auto" else ""
@@ -1100,6 +1111,7 @@ def _run_code(run, task, agents, ev, stats, mode):
                       .replace("__GOAL__", task["goal"])
                       .replace("__ISSUES__", issues_txt)
                       .replace("__VERIFY_HINT__", _verify_hint(task)))
+            prompt = attachments.append_task_context(prompt, task)
             res = _run_step(run_id, "fix-r%d" % round_no, modelhub.bind_agent(impl, difficulty),
                             prompt, workdir, readonly=False, ev=ev,
                             note="自动修复第 %d 轮" % round_no,
@@ -1420,6 +1432,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
                     prompt = (DIRECT_PROMPT
                               .replace("__GOAL__", task["goal"])
                               .replace("__CONTEXT__", task.get("context") or "（无）"))
+            if task.get("attachments") and "codebee-attachments:start" not in prompt:
+                prompt += "\n\n## 用户背景与附件\n" + (task.get("context") or "")
             note = route.get("implementer", "")
             images = _task_images(task, workdir)
         else:
@@ -1535,6 +1549,9 @@ CONTENT_DELIVERY_CONTRACTS = {
     "doc": ("技术文档编辑", [
         "先明确读者、目的和前置条件，再按可执行步骤组织正文。",
         "命令、参数、示例与限制必须一致；无法确认的内容明确标注。",
+        # sepia 分场合规则（工单/文档体裁）：标题=结果、验收可测试、链接不重复
+        "标题写结果或结论（「如何迁移 X」优于「X 说明」），正文链接原文不整段复述。",
+        "涉及需求或变更时给出可测试的验收标准（能被逐条勾选判定通过/不通过）。",
     ]),
     "translation": ("专业译者与审校", [
         "忠实保留原文含义、语气、数字、专名、占位符、链接和 Markdown 结构，不增译或漏译。",
@@ -1551,14 +1568,24 @@ CONTENT_DELIVERY_CONTRACTS = {
     "weekly_report": ("业务汇报顾问", [
         "按成果与影响、关键数据、问题阻塞、下步行动（负责人/时间）组织内容。",
         "只使用用户提供或可核验的数据；缺失数字保留待补项，不虚构业绩。",
+        # sepia 分场合规则（postmortem 体裁）：先给结论；对机制严格不指名甩锅
+        "第一段先给本期最重要的结论或结果，再展开支撑细节，不按时间流水铺陈。",
+        "问题与阻塞直说机制原因，不带情绪也不指名甩锅；行动项必须落到负责人与时间。",
     ]),
     "email": ("商务沟通顾问", [
         "包含明确主题、称呼、来意、必要背景、请求/下一步和得体落款。",
         "语气匹配双方关系；日期、承诺、附件与联系人不得凭空补造。",
+        # sepia 分场合规则（PR 回复体裁）：先答再铺陈；篇幅与利害成正比
+        "第一句/第一段先给结论或答复（对方要做什么、答应还是不答应），再给必要背景。",
+        "请求具体到动作与截止时间；篇幅与事情轻重成正比，删掉礼节性空话与自我表扬。",
     ]),
     "tech_proposal": ("解决方案架构师", [
         "覆盖现状与目标、约束、候选方案对比、推荐架构、实施阶段、风险与回滚、验收指标。",
         "区分已知事实、假设和待验证项；成本收益给出计算口径而非虚构数字。",
+        # sepia 分场合规则（技术文章体裁）：从问题开场/真实死胡同/明确观点/带条件数字
+        "从要解决的问题开场（不是从背景科普铺陈），让读者第一段就知道为什么非做不可。",
+        "候选对比里至少保留一个真实分析过又被否决的方向，写清否决理由，不搞陪衬方案。",
+        "必须有明确表态的推荐意见和取舍逻辑；关键数字一律带适用条件与计算口径。",
     ]),
     "resume": ("招聘与简历顾问", [
         "围绕目标岗位提炼真实经历，用行动、结果和技能关键词表达岗位匹配度。",
@@ -1961,6 +1988,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     # 优先级最高的约束放最前面，写作者先读原则再读设定
     if _RUN_CONSTITUTION:
         bible = _RUN_CONSTITUTION + (bible or "")
+    if task.get("context"):
+        bible = task["context"] + ("\n\n" + bible if bible else "")
 
 
     def crit_prompt_for(text, note=""):
@@ -2500,6 +2529,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__GOAL__", task["goal"])
                           .replace("__CRITIQUE__", "\n".join(crit_lines))
                           .replace("__WORDS__", str(wpc)))
+                prompt = attachments.append_task_context(prompt, task)
                 _run_step(run_id, "revise-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
                           step_wd, readonly=False, ev=ev, timeout=2400,
                           resume=resume_ctx["session"] if resume_ctx else draft_sid)
@@ -2631,6 +2661,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__GOAL__", task["goal"])
                           .replace("__CRITIQUE__", crit)
                           .replace("__WORDS__", str(wpc)))
+                prompt = attachments.append_task_context(prompt, task)
                 res = _run_step(run_id, "polish-c%d" % i, modelhub.bind_agent(impl, difficulty),
                                 prompt, workdir, readonly=False, ev=ev, timeout=2400,
                                 resume=resume_ctx["session"] if resume_ctx else None)
@@ -3012,6 +3043,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             _tpl(task, "critique_prompt", NOVEL_CRITIQUE_PROMPT))
             .replace("__DIMKEYS__", dimkey)
             .replace("__MANUSCRIPT__", manuscript or "（稿件为空！）"))
+        if task.get("context"):
+            crit_prompt += "\n\n## 原始任务背景与附件参考\n" + task["context"]
         # AI 味确定性检测（借鉴 oh-story 去AI味）：客观参考线随评审下发，
         # 命中才追加——评审官结合上下文判断是否真问题，脚本不直接扣分
         _aiflavor_line = aiflavor.report_line(manuscript)
@@ -3080,6 +3113,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                       .replace("__GOAL__", task["goal"])
                       .replace("__CRITIQUE__", "\n".join(crit_lines)))
             prompt += _content_contract(task)
+            prompt = attachments.append_task_context(prompt, task)
             _run_step(run_id, "revise-r%d" % r, modelhub.bind_agent(impl, difficulty), prompt,
                       workdir, readonly=False, ev=ev,
                       resume=resume_ctx["session"] if resume_ctx else None)
@@ -3407,6 +3441,7 @@ def execute_run(run_id):
                      task_spec_summary=task_compile.summary(task_spec),
                      difficulty=task_spec["difficulty"])
     task = dict(task)
+    task = attachments.refresh_task(task, task.get("workdir") or "")
     task["_compiled_spec"] = task_spec
     # 运行内统一使用编译后的难度；store 中历史任务常带 difficulty=auto，
     # 不能让这个兼容值覆盖 easy/default/hard 的模型调度决策。
@@ -3517,6 +3552,33 @@ def execute_run(run_id):
         except Exception:
             pass
     finally:
+        # 全类型统一写调度终态与质量反馈。调用成功只代表传输可靠；真正用于
+        # 在线推荐的成功率以 verify/review/publishable 等验收结果为准。
+        try:
+            final_run = store.get_run(run_id) or {}
+            final_status = final_run.get("status") or ""
+            if final_status in ("done", "failed"):
+                final_verdict = final_run.get("verdict") or {}
+                if "pass" in final_verdict:
+                    quality_ok = bool(final_verdict.get("pass"))
+                elif "publishable" in final_verdict:
+                    quality_ok = bool(final_verdict.get("publishable"))
+                else:
+                    quality_ok = final_status == "done"
+                _record_dispatch_completed(
+                    run_id, task, "passed" if quality_ok else "failed",
+                    verify_pass=final_verdict.get("verify_pass"),
+                    review_pass=final_verdict.get(
+                        "review_pass", final_verdict.get("publishable")))
+                final_agent = (((final_run.get("route_plan") or {})
+                                .get("implement") or {}).get("selected") or "")
+                if final_agent.startswith("builtin:"):
+                    final_agent = "builtin"
+                usage.record_quality_for_run(run_id, quality_ok, agent=final_agent)
+            elif final_status == "cancelled":
+                _record_dispatch_completed(run_id, task, "cancelled")
+        except Exception:
+            pass
         # 任务分支收尾（git_rev 隔离链的第二半）：先只读快照本 run 的全部变更
         # 落 run 记录供人审，再把产物提交到 tutti/<task-id> 并切回原分支。
         # 放 finally：done/failed/cancelled/异常一律保存现场；收尾自身绝不抛错，
