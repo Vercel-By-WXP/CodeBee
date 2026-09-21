@@ -21,6 +21,11 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 不会把你的任务内容交给任何第三方。
 
 <!-- relnotes:start -->
+### ✨ 新功能 · New
+
+- 新任务类型「标书编制」：上传招标文件，AI 按评分标准逐条应答起草投标文件；资质不虚构（缺失标注待补）、应答先结论、全文自查废标风险项。
+- New "Bid Document" task type: upload the tender file and the AI drafts point-by-point responses against scoring criteria — no fabricated credentials, conclusion-first answers, and a full disqualification-risk sweep.
+
 ### 🛠 问题修复 · Fixes
 
 - 断点续跑/重跑更省钱：同任务再次生成大纲或计划直接命中精确缓存（1 小时内），不重复花全量规划调用；格式不合规的重试仍重新生成。
