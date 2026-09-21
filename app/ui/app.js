@@ -3315,6 +3315,24 @@ function setEditRetry(taskId, status, taskExists) {
   if (bn) bn.classList.toggle("hidden", !taskExists || failedish);
 }
 
+/* 详情页归档按钮：非运行中显示；已归档任务显示「取消归档」。
+ * 点击走 archiveTask（与右键菜单同一链路：取消归档会自动恢复侧栏目录显示）。 */
+function syncArchBtn(task, active) {
+  const b = $("btn-arch");
+  if (!b) return;
+  const show = !!task && !active;
+  b.classList.toggle("hidden", !show);
+  if (!show) return;
+  const archived = !!task.archived;
+  b.textContent = archived ? t("取消归档") : t("归档任务");
+  b.onclick = async () => {
+    try {
+      await archiveTask(task.id, !archived);
+      b.textContent = archived ? t("归档任务") : t("取消归档");
+    } catch (e) { /* archiveTask 内部已 toast */ }
+  };
+}
+
 /* 重试按钮三态：失败/取消 → 「↻ 继续任务」（断点续跑语义）；连载任务完整跑完
  * 但质量未达标（verdict.publishable=false）→ 「↻ 重写未达标章」——后端 retry
  * 会把未过线章从继承清单剔除，只重写重评这几章（store.retry_task 未达标分支）；
@@ -3346,6 +3364,7 @@ function renderTaskDetail() {
   if (bc) bc.classList.toggle("hidden",
     !(tk && tk.serial && tk.status !== "running" && tk.status !== "queued"));
   setEditRetry(tk ? tk.id : "", tk ? tk.status : "", !!tk);
+  syncArchBtn(tk, tk && (tk.status === "running" || tk.status === "queued"));
   const isTask = ((S.state || {}).tasks || []).some((t2) => t2.id === key);
   if (isTask) {
     api("/api/tasks/" + encodeURIComponent(key) + "/runs")
@@ -3777,6 +3796,9 @@ async function renderRunDetail() {
   S.cancelTargetRunId = active ? run.id : null;
   $("btn-delete").classList.toggle("hidden", active);
   $("btn-share").classList.toggle("hidden", active);   // 分享页：结束后可生成自包含 HTML
+  // 归档按钮：非运行中任务可归档/取消归档（此前只有侧栏右键菜单入口，
+  // 用户反馈「归档按钮不见了」——补显式入口，文案随状态切换）
+  syncArchBtn(rcTask, active);
   $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
   const rcTask = ((S.state || {}).tasks || []).find((x) => x.id === run.task_id);
   setRetryBtn(run, rcTask);
@@ -9287,7 +9309,7 @@ function renderSu() {
       t("　") + "<a href=\"#\" onclick=\"event.preventDefault();suApply()\">" + t("立即升级") + "</a></b></p>";
     if (SU.notes) {
       html += "<div class=\"hint\"><b>" + t("新版本更新内容") + t("：") + "</b>" +
-        "<pre class=\"su-notes\">" + esc(SU.notes) + "</pre></div>";
+        renderRelnotes(SU.notes) + "</div>";
     }
   } else if (SU.mode === "npm" && !SU.note) {
     html += "<p class=\"hint\">" + t("已是最新版。") + "</p>";
@@ -9301,6 +9323,31 @@ function renderSu() {
   const last = suLastUpgradeRun();
   $("su-restart").classList.toggle("hidden", !(last && last.status === "done"));
   renderUpdPill();
+}
+
+/* 更新说明分类渲染：### 行渲染为小节标题，- 行渲染为条目（对照主流产品的
+ * 更新日志样式：问题修复/新功能分组，一眼看懂）。全部 esc 后拼接。 */
+function renderRelnotes(txt) {
+  const lines = String(txt || "").replace(/\r/g, "").split("\n");
+  let html = "", inList = false;
+  const closeList = () => { if (inList) { html += "</div>"; inList = false; } };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^#{2,4}\s+/.test(line)) {
+      closeList();
+      html += "<p style=\"margin:6px 0 2px\"><b>" + esc(line.replace(/^#{2,4}\s+/, "")) + "</b></p>";
+    } else if (/^[-*]\s+/.test(line)) {
+      if (!inList) { html += "<div style=\"margin:2px 0 2px 4px\">"; inList = true; }
+      html += "<div style=\"display:flex;gap:6px\"><span style=\"opacity:.6\">·</span>" +
+        "<span style=\"flex:1\">" + esc(line.replace(/^[-*]\s+/, "")) + "</span></div>";
+    } else {
+      closeList();
+      html += "<p style=\"margin:2px 0\">" + esc(line) + "</p>";
+    }
+  }
+  closeList();
+  return html || ("<pre class=\"su-notes\">" + esc(txt) + "</pre>");
 }
 
 /* 顶栏左上角常驻更新胶囊：有新版才出现（同版本被忽略后不再出现），

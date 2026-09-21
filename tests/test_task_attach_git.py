@@ -59,6 +59,9 @@ class TestAttachmentCommit(BaseTest):
         blk = attachments.context_block(items)
         self.assertIn("_attachments/notes.md", blk)
         self.assertIn("_attachments/shot.png", blk)
+        # 硬约束语气（2026-09-21 用户实测「附件没读」修复）：要求先读再处理
+        self.assertIn("必须先用读文件工具", blk)
+        self.assertIn("视为未完成任务", blk)
         imgs = attachments.image_paths({"attachments": items}, str(self.workdir))
         self.assertEqual(len(imgs), 1)
         self.assertTrue(imgs[0].endswith("shot.png"))

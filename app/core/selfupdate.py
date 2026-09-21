@@ -161,8 +161,21 @@ def check(force=False):
     return out
 
 
-def apply_upgrade():
-    """发起升级：建 mgmt run 异步跑 npm install -g @latest。返回 {run_id} 或 {error}。"""
+_PENDING_PORT = None   # apply_upgrade 记下的服务端口，升级成功后自动重启用
+
+
+def apply_upgrade(port=None):
+    """发起升级：建 mgmt run 异步跑 npm install -g @latest。返回 {run_id} 或 {error}。
+
+    port=服务端口：升级成功且版本真变时会自动就地重启（用户拍板 2026-09-21：
+    升级完不该再要求手动点「重启服务生效」——旧进程滞留是 unknown api/界面
+    闪烁/老宠物一类「升级了没生效」事故的总根子）。拿不到端口或运行环境不
+    具备时自动跳过，回落版本页的手动重启按钮。"""
+    global _PENDING_PORT
+    try:
+        _PENDING_PORT = int(port) if port else None
+    except (TypeError, ValueError):
+        _PENDING_PORT = None
     if install_mode() != "npm":
         return {"error": "当前安装方式不支持自动升级（见版本页说明）"}
     from . import store, jobs
@@ -209,12 +222,57 @@ def _log_note(log_path, text):
         pass
 
 
+def _maybe_auto_relaunch(old_pkg, log_path):
+    """升级成功后的自动重启（三道守卫，任一不满足就回落手动按钮）：
+    ①知道服务端口（apply_upgrade 传入）；②版本真的变了（同版本重装不折腾）；
+    ③没有用户任务在跑（jobs._alive 只剩本升级任务自己）——正在干活的任务
+    不能被升级重启打断，此时留给用户挑自己合适的时间手动重启。"""
+    import threading
+    from . import jobs
+    if not _PENDING_PORT:
+        _log_note(log_path, "未记录服务端口，跳过自动重启——请在版本页手动重启生效")
+        return
+    new_pkg = package_version()
+    if not old_pkg or new_pkg == old_pkg:
+        _log_note(log_path, "版本未变化（%s），无需重启" % (new_pkg or "?"))
+        return
+    if getattr(jobs, "_alive", 0) > 1:
+        _log_note(log_path, "检测到还有 %d 个任务在运行，不自动重启——"
+                  "完成后请在版本页手动点「重启服务生效」" % (jobs._alive - 1))
+        return
+    port = _PENDING_PORT
+
+    def _go():
+        drain_started = False
+        try:
+            time.sleep(3.0)   # 留出日志收尾/浏览器看到「升级完成」的窗口
+            drain_started = jobs.begin_restart_drain()
+            if not drain_started:
+                _log_note(log_path, "延时窗口内有新任务进入，不自动重启——"
+                          "完成后请在版本页手动点「重启服务生效」")
+                return
+            _log_note(log_path, "自动重启服务以应用新版本 %s …" % new_pkg)
+            if relaunch(port):
+                self_quit()
+        except Exception:
+            log.exception("selfupdate: 自动重启失败，请在版本页手动重启")
+        finally:
+            # 正常 self_quit 会直接结束进程；若拉起失败、异常或测试替身返回，必须
+            # 释放停止接单闸，避免当前实例永久拒绝新任务。
+            if drain_started:
+                jobs.cancel_restart_drain()
+    threading.Thread(target=_go, name="selfupdate-relaunch",
+                     daemon=True).start()
+
+
 def run_upgrade(run_id, log_path, cancel_event=None):
     """worker 线程里执行升级命令（run/step 生命周期由 jobs 层管）。
 
     包目录被其他进程占用（EBUSY/EPERM：打开包目录的资源管理器/终端窗口、
     杀毒或索引扫描）是升级失败的最常见原因，且多为暂时性——自动重试
-    _RETRY_DELAYS 轮，仍败则给人话结论（原始 npm 输出在步骤日志里可查）。"""
+    _RETRY_DELAYS 轮，仍败则给人话结论（原始 npm 输出在步骤日志里可查）。
+    成功且版本真变时自动重启服务（_maybe_auto_relaunch，守卫见其 docstring）。"""
+    old_pkg = package_version()
     res = {}
     for attempt, delay in enumerate((0,) + _RETRY_DELAYS):
         if cancel_event is not None and cancel_event.is_set():
@@ -242,6 +300,7 @@ def run_upgrade(run_id, log_path, cancel_event=None):
     if res["ok"]:
         with _LOCK:  # 装完即过期查新缓存，重启后自然拿到新版本
             _CHECK_CACHE["result"] = None
+        _maybe_auto_relaunch(old_pkg, log_path)
         return {"ok": True, "exit_code": res["exit_code"], "error": ""}
     stderr = res["stderr"] or ""
     if _locked_error(res):

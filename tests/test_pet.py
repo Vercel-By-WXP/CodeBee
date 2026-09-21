@@ -241,6 +241,35 @@ class TestPetEndpoint(unittest.TestCase):
 
 
 class TestPetHttp(unittest.TestCase):
+    def test_user_close_disables_pet_and_destroys_window(self):
+        app = object.__new__(pet.PetApp)
+        app._post_settings = mock.Mock()
+        app._save_cfg = mock.Mock()
+        app.root = mock.Mock()
+        app.root.winfo_x.return_value = 10
+        app.root.winfo_y.return_value = 20
+        with mock.patch.object(pet, "global_lock_path",
+                               return_value=Path("missing-pet.lock")):
+            app._bye(write_setting=True)
+        app._post_settings.assert_called_once_with({"pet_enabled": False})
+        app.root.destroy.assert_called_once_with()
+
+    def test_drag_uses_screen_delta_and_coalesced_geometry(self):
+        app = object.__new__(pet.PetApp)
+        app._press = None
+        app._moved = False
+        app._drag_to = None
+        app._drag_pending = False
+        app.root = mock.Mock()
+        app.root.winfo_x.return_value = 100
+        app.root.winfo_y.return_value = 200
+        app.root.after.side_effect = lambda _delay, callback: callback()
+        app._on_press(mock.Mock(x_root=10, y_root=20))
+        app._on_motion(mock.Mock(x_root=35, y_root=50))
+        app.root.after.assert_called_once()
+        app.root.geometry.assert_called_once_with("+125+230")
+        self.assertTrue(app._moved)
+
     def test_non_2xx_response_raises(self):
         response = mock.Mock(status=500)
         response.read.return_value = b'{"ok": false}'

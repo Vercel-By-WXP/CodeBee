@@ -1283,7 +1283,8 @@ class PetApp:
                           command=lambda: self._set_lang("en"),
                           variable=self._lang_var, value="en")
         m.add_separator()
-        m.add_command(label=self._L("close"), command=self._bye)
+        m.add_command(label=self._L("close"),
+                      command=lambda: self._bye(write_setting=True))
         return m
 
     def _set_mode(self, mode):
@@ -1308,6 +1309,8 @@ class PetApp:
         cv = self.cv
         self._press = None
         self._moved = False
+        self._drag_to = None
+        self._drag_pending = False
         cv.bind("<ButtonPress-1>", self._on_press)
         cv.bind("<B1-Motion>", self._on_motion)
         cv.bind("<ButtonRelease-1>", self._on_release)
@@ -1316,22 +1319,32 @@ class PetApp:
         self.root.protocol("WM_DELETE_WINDOW", self._bye)
 
     def _on_press(self, e):
-        self._press = e
+        # 窗口拖动起点：屏幕坐标 + 窗口原点一起记（scan_mark/scan_dragto 是
+        # canvas 系 widget 的子命令，顶层窗口没有——此前绑定在这里的拖动
+        # 实际全部抛 AttributeError 被 except 吞掉，表现为「拖不动」）
+        self._press = (e.x_root, e.y_root, self.root.winfo_x(), self.root.winfo_y())
         self._moved = False
-        try:
-            self.root.scan_mark(e.x_root, e.y_root)   # Tk 内置 C 级拖动，跟手
-        except Exception:
-            pass
 
     def _on_motion(self, e):
         if not self._press:
             return
-        if (abs(e.x - self._press.x) + abs(e.y - self._press.y) > 4):
+        px, py, wx, wy = self._press
+        if (abs(e.x_root - px) + abs(e.y_root - py) > 4):
             self._moved = True
-        # 逐事件 geometry() 会把透明层窗拖成PPT（每次回调都走 Python+重排）；
-        # scan_dragto 在 C 里完成同样的移动，丝滑
+        # geometry 逐事件会卡成 PPT；这里合并到 ~60fps 节流（事件风暴只在
+        # 节流窗内记终点，一次 geometry 落位），实测跟手且不吃 CPU
+        self._drag_to = (wx + (e.x_root - px), wy + (e.y_root - py))
+        if self._drag_pending:
+            return
+        self._drag_pending = True
+        self.root.after(16, self._apply_drag)
+
+    def _apply_drag(self):
+        self._drag_pending = False
+        if not self._drag_to:
+            return
         try:
-            self.root.scan_dragto(e.x_root, e.y_root, 1)
+            self.root.geometry("+%d+%d" % self._drag_to)
         except Exception:
             pass
 
@@ -1344,7 +1357,17 @@ class PetApp:
         else:
             self._open_ui()
 
-    def _bye(self):
+    def _bye(self, write_setting=False):
+        """退出。write_setting=True（右键菜单「关闭桌宠」）先把 pet_enabled=False
+        写回服务端设置——否则看护/下次启动都会按设置里的 enabled 把蜜蜂复活，
+        用户点关闭等于没关（2026-09-21 用户实测「宠物关不了」的根因：菜单
+        关闭只销毁窗口不落设置，与注释宣称的契约相反）。服务端 pet_enabled
+        已为 False 的自离路径（轮询发现/miss 超限）无需再写。"""
+        if write_setting:
+            try:
+                self._post_settings({"pet_enabled": False})
+            except Exception:
+                pass
         try:
             self._save_cfg(x=self.root.winfo_x(), y=self.root.winfo_y())
         except Exception:

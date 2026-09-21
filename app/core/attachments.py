@@ -305,7 +305,11 @@ def commit_to_workdir(workdir, ids):
 
 
 def context_block(items):
-    """附件清单文本，追加到任务 context。相对 workdir，重试/续跑同目录仍有效。"""
+    """附件清单文本，追加到任务 context。相对 workdir，重试/续跑同目录仍有效。
+
+    硬约束语气（2026-09-21 用户实测修复）：此前只写「请在处理目标时参考」，
+    快档模型会无视清单不去读附件、直接按目标空答——现在明确要求动手前先读，
+    读不了的也要明说，不允许静默忽略。"""
     if not items:
         return ""
     lines = ["", "## 附件材料（位于工作目录 _attachments/，可直接读取）"]
@@ -315,7 +319,11 @@ def context_block(items):
         if a.get("text_path"):
             line += "，正文文本版见 %s（优先读它）" % a["text_path"]
         lines.append(line)
-    lines.append("请在处理目标时参考以上附件；图片附件可直接查看内容。")
+    lines.append("以上附件是任务的必要输入：开始处理目标前，必须先用读文件工具"
+                 "逐个打开查看（有正文文本版的优先读文本版），并让结论明确建立在"
+                 "附件内容之上。没有附件内容支撑的回答视为未完成任务。确实无法"
+                 "读取的（如无读图工具时的图片），必须在回答里说明缺了哪份附件、"
+                 "需要用户补充什么——绝不允许不读附件就凭空作答。")
     return "\n".join(lines)
 
 

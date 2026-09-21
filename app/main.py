@@ -741,7 +741,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/selfupdate/apply":
             from core import selfupdate
             try:
-                res = selfupdate.apply_upgrade()
+                res = selfupdate.apply_upgrade(PORT)
             except Exception:
                 log.exception("自更新任务创建失败")
                 return self._json(503, {"error": "升级任务创建失败，请稍后重试"})
@@ -2435,27 +2435,47 @@ def main():
         # 分发，表现为"时好时坏"）；加独占锁后双起在这里干净失败并指路。
         # （此处不能局部 import os：会让 os 变 main() 的局部名，后面 2127 行
         #  的 os.name 直接 UnboundLocalError——顶部已有全局导入，直接用）
-        hint = ""
-        if os.name == "nt":
-            hint = ("（Windows 排查：netstat -ano | findstr :%d 找到 PID，"
-                    "tasklist /FI \"PID eq <PID>\" 看是谁；旧进程杀掉或换 --port）"
-                    % args.port)
-        # 端口占用自动指认（借鉴 leftopen 38★）：直接报出 PID/进程/项目归属，
-        # 用户不用再手跑 netstat+tasklist 两连。识别不出时回落上面的手工指路。
+        # 端口占用自动清场（用户拍板 2026-09-21）：升级/重启最常见的占用者是
+        # 没退干净的 CodeBee 自家旧实例——先杀再起，别让用户手动 netstat+taskkill。
+        # 判定（main.py 完整路径/npm 打包路径）与清场在 core.portguard。
+        from core import portscan as _ps, portguard as _pg
+        _hint = ""
         try:
-            from core import portscan as _ps
-            for _h in _ps.listening_ports():
-                if _h.get("port") != args.port:
-                    continue
-                _who = _h.get("process") or "未知进程"
-                _proj = ("，项目 %s" % _h["project"]) if _h.get("project") else ""
-                hint = ("占用者：PID %d（%s%s）；旧进程杀掉或换 --port 重启"
-                        % (_h.get("pid") or 0, _who, _proj))
-                break
+            _cleared, _hint = _pg.clear_stale_port(
+                args.port, paths.APP_DIR / "main.py")
         except Exception:
-            pass
-        raise SystemExit("[CodeBee] 端口 %d 已被占用，无法启动：%s %s"
-                         % (args.port, e, hint))
+            _cleared, _hint = False, ""
+        if _cleared:
+            try:
+                print("[CodeBee] 端口 %d 被旧实例占用，已自动清场，正在重新绑定…"
+                      % args.port, flush=True)
+                time.sleep(1.0)   # 让被清进程的监听 socket 完全释放
+                httpd = ThreadedServer((args.host, args.port), Handler)
+            except OSError:
+                httpd = None
+        else:
+            httpd = None
+        if httpd is None:
+            # 清场没成：带占用者指认退出（识别不出回落手工排查提示）
+            hint = ""
+            if os.name == "nt":
+                hint = ("（Windows 排查：netstat -ano | findstr :%d 找到 PID，"
+                        "tasklist /FI \"PID eq <PID>\" 看是谁；旧进程杀掉或换 --port）"
+                        % args.port)
+            try:
+                for _h in _ps.listening_ports():
+                    if _h.get("port") != args.port:
+                        continue
+                    _who = _h.get("process") or "未知进程"
+                    _proj = ("，项目 %s" % _h["project"]) if _h.get("project") else ""
+                    hint = ("占用者：PID %d（%s%s）%s"
+                            % (_h.get("pid") or 0, _who, _proj,
+                               ("；" + _hint) if _hint else "；旧进程杀掉或换 --port 重启"))
+                    break
+            except Exception:
+                pass
+            raise SystemExit("[CodeBee] 端口 %d 已被占用，无法启动：%s %s"
+                             % (args.port, e, hint))
 
     def _announce_public(url):
         print("[CodeBee] 公网     %s/?token=%s" % (url, tok))

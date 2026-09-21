@@ -176,3 +176,36 @@ class TestSelfUpdate(BaseTest):
         self.assertNotIn("private worker path", result["error"])
         update_run.assert_called_once()
         self.assertEqual(update_run.call_args.kwargs["status"], "failed")
+
+    def test_auto_relaunch_requires_changed_version_and_idle_workers(self):
+        import app.core.selfupdate as su
+        from app.core import jobs
+
+        su._PENDING_PORT = 8765
+        with mock.patch.object(su, "package_version", return_value="0.1.24"), \
+             mock.patch.object(jobs, "_alive", 2), \
+             mock.patch.object(su, "relaunch") as relaunch:
+            su._maybe_auto_relaunch("0.1.23", None)
+        relaunch.assert_not_called()
+
+        started = []
+
+        class ImmediateThread:
+            def __init__(self, target, **_kwargs):
+                self.target = target
+
+            def start(self):
+                started.append(True)
+                self.target()
+
+        with mock.patch.object(su, "package_version", return_value="0.1.24"), \
+             mock.patch.object(jobs, "_alive", 0), \
+             mock.patch("threading.Thread", ImmediateThread), \
+             mock.patch.object(su.time, "sleep"), \
+             mock.patch.object(su, "relaunch", return_value=True) as relaunch, \
+             mock.patch.object(su, "self_quit") as self_quit:
+            su._maybe_auto_relaunch("0.1.23", None)
+        self.assertEqual(started, [True])
+        relaunch.assert_called_once_with(8765)
+        self_quit.assert_called_once_with()
+        su._PENDING_PORT = None
