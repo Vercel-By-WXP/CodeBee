@@ -23,6 +23,9 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 <!-- relnotes:start -->
 ### ✨ 新功能 · New
 
+- 文档类任务更专业：汇报先给结论、邮件先答复再铺陈、技术方案从问题开场并保留被否决的真实备选、文档验收标准可逐条勾选。
+- Smarter document tasks: reports lead with conclusions, emails answer first, proposals open at the problem and keep a real rejected alternative, docs get testable acceptance criteria.
+
 - 升级完成后自动重启生效，不用再手动点「重启服务」；页面几秒后自动恢复。有任务在跑时不会自动重启，会提示稍后手动重启。
 - Updates finish on their own: after upgrading, the service restarts itself — no manual restart needed. If tasks are running, it waits and tells you instead.
 
