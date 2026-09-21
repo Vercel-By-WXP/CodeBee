@@ -165,16 +165,18 @@ window.toggleModelMenu = toggleModelMenu;
     if (b.dataset.m === undefined) {
       // 点厂商 = 厂商+推荐模型一起定（用户反馈「只选了厂商」）：带出该厂商
       // 排序最前的模型并展开模型级菜单，可立即改选；已是当前厂商则只钻取。
-      // 注意先 renderDirectModelPicker 重建模型 options，再赋值才生效。
+      // 顺序关键：先 picker 重建 options 再赋值——select.value 对不存在的
+      // option 会静默忽略（真机「没法选模型」根因之一）
       const pid = b.dataset.p;
       if ($("f-direct-provider").value !== pid) {
+        renderDirectModelPicker();
         $("f-direct-provider").value = pid;
         renderDirectModelPicker();
         const p = directProviders().find((x) => x.id === pid);
-        const names = p ? (p.models || []).filter((m) => m.enabled !== false && !m.hidden)
+        const names = p ? (p.models || []).filter((m) => !m.hidden)
           .map((m) => m.name).filter(Boolean) : [];
         const ms = $("f-direct-model-name");
-        if (names.length && names.includes(names[0])) ms.value = names[0];
+        if (names.length && names[0]) ms.value = names[0];
         cmpDirectBtnSync();
       }
       cmpModelProv = pid;
@@ -338,6 +340,7 @@ function onTypeChange() {
 }
 
 function directProviders() {
+  /* 停用厂商不列出（用户拍板 2026-09-21「停用的不弄出来」）；只列启用且有 key 的 */
   return (S.providers || []).filter((p) => p.enabled !== false && p.api_key);
 }
 
@@ -351,7 +354,7 @@ function renderDirectModelPicker() {
   if (prev && provs.some((p) => p.id === prev)) ps.value = prev;
   const p = provs.find((x) => x.id === ps.value);
   const oldModel = ms.value;
-  const names = p ? (p.models || []).filter((m) => m.enabled !== false && !m.hidden)
+  const names = p ? (p.models || []).filter((m) => !m.hidden)
     .map((m) => m.name).filter(Boolean) : [];
   ms.innerHTML = '<option value="">' + t("随厂商推荐") + '</option>' + names.map((name) =>
     '<option value="' + esc(name) + '">' + esc(name) + "</option>").join("");
@@ -1145,9 +1148,10 @@ async function poll() {
     S.providers = models.providers; S.bindings = models.bindings;
     S.modelCatalog = models.catalog || [];
     S.sourceNames = models.source_names || S.sourceNames || {};
-    if ($("f-direct-model") && !$('f-direct-model').classList.contains("hidden")) {
-      renderDirectModelPicker();
-    }
+    // /api/models 到手即重建对话模型选项（无条件）：旧逻辑只在「更多选项」
+    // 旧块可见时重建——旧块隐藏后选项永远只有「自动推荐」，厂商写值全部
+    // 静默失效（2026-09-21 用户实测「没法选模型」根因）
+    renderDirectModelPicker();
     // 供应商集合/启停/密钥变了才重拉编排者：否则「生效中」状态点会在停用厂商后失真
     const provSig = JSON.stringify((S.providers || []).map((p) => [p.id, p.enabled, !!p.api_key]));
     if (provSig !== S.provSig) { S.provSig = provSig; loadOrchestrator(); }
@@ -6610,7 +6614,10 @@ async function renderChat(run, active) {
         let rel = typeof a === "string" ? a : ((a && (a.path || a.name)) || nm);
         rel = String(rel).replace(/\\/g, "/");
         if (!rel.startsWith("_attachments/")) rel = "_attachments/" + rel.split("/").pop();
-        return { nm, rel };
+        const isImg = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(nm);
+        const src = isImg && chatRunId
+          ? "/api/runs/" + encodeURIComponent(chatRunId) + "/file?name=" + encodeURIComponent(rel) : "";
+        return { nm, rel, img: src };
       }).filter(Boolean);
       return '<div class="chat-row me">' +
         '<div class="chat-bubble me">' +
@@ -6619,8 +6626,11 @@ async function renderChat(run, active) {
         esc(it.text || t("（仅附件）")) +
         (atts.length
           ? '<div class="chat-atts">' + atts.map((a) =>
-              '<span class="att-chip2 att-open" data-att="' + esc(a.rel) +
-              '" title="' + esc(t("点击查看")) + '">' + esc(a.nm) + "</span>").join("") + "</div>"
+              (a.img
+                ? '<span class="att-open chat-img" data-att="' + esc(a.rel) + '" title="' + esc(a.nm) + '">' +
+                  '<img src="' + esc(a.img) + '" alt="' + esc(a.nm) + '" loading="lazy" draggable="false"></span>'
+                : '<span class="att-chip2 att-open" data-att="' + esc(a.rel) +
+                  '" title="' + esc(t("点击查看")) + '">' + esc(a.nm) + "</span>")).join("") + "</div>"
           : "") +
         "</div></div>";
     }
@@ -6883,6 +6893,14 @@ async function chatUploadFiles(files) {
       const r = await api("/api/attachments", { method: "POST",
         body: JSON.stringify({ name: f.name, data: b64 }) });
       chatAtts.push(r.attachment); drawChatAtts();
+      // 图片能力前置提醒：模型 image_in 未开启时收不到图（内置智能体会降级为
+      // 纯文本，模型只能回复「读不到」——与其事后看模型解释，不如发图时提一句）
+      if (/^image\//i.test(String(f.type || "")) || /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name || "")) {
+        if (!window._chatImgTipShown) {
+          window._chatImgTipShown = true;
+          toast(t("已添加图片。若当前模型未开启「图」输入（模型接入页可开），模型将看不到这张图"));
+        }
+      }
     } catch (e) { toast(t("附件上传失败：") + f.name + " — " + e.message, true); }
   }
 }

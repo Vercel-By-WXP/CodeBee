@@ -5671,3 +5671,10 @@ button.request-busy > * { opacity: .18; }
   background: var(--panel); color: var(--muted); }
 .att-chip.att-image .ax:hover { background: var(--bad); color: #fff; }
 .att-chip.att-image .ax .ico { width: 11px; height: 11px; }
+
+/* 对话气泡图片附件缩略图（2026-09-21 用户反馈：图片只显示文件名要点开才见）：
+ * 96×96 圆角卡，点击仍走 att-open 弹大图 */
+.chat-img { display: inline-block; cursor: zoom-in; }
+.chat-img img { display: block; width: 96px; height: 96px; object-fit: cover;
+  border-radius: 10px; border: 1px solid var(--border); background: var(--panel2); }
+.chat-atts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }

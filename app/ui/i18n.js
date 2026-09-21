@@ -291,6 +291,7 @@
     "指令已入箱，将在下一个步骤下达": "Directive queued — it will be delivered with the next step",
     "发送失败：": "Send failed: ",
     "附件上传失败：": "Upload failed: ",
+    "已添加图片。若当前模型未开启「图」输入（模型接入页可开），模型将看不到这张图": "Image added. If the model doesn't have the image-input badge on (enable it on the Models page), it won't see this picture",
     "读取文件失败": "Failed to read file",
     "：超过 8MB，已跳过": ": over 8MB, skipped",
     "附件最多 ": "Max ",
