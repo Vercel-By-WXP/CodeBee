@@ -1419,7 +1419,7 @@ class PetApp:
 
     def _open_digest(self):
         """群摘要：打开网页并自动展开蜜蜂坞面板（样式与网页端统一）。"""
-        self._open_ui("#bee=1")
+        self._open_ui("#goto=__wxdigest")
 
     def _bind_input(self):
         # 菜单变量须先于 _menu 存在

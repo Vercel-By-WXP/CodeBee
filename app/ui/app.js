@@ -2,7 +2,12 @@
 "use strict";
 
 // 桌宠通过窗口标题里的端口识别并复用当前 CodeBee 实例。
-document.title = "CodeBee [" + (location.port || (location.protocol === "https:" ? "443" : "80")) + "]";
+function codebeeDocumentTitle(lang) {
+  const brand = lang === "en" ? "CodeBee · Multi-agent Orchestrator" : "CodeBee · 多智能体编排台";
+  const port = location.port || (location.protocol === "https:" ? "443" : "80");
+  return brand + " [" + port + "]";
+}
+document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
 const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, lastPrefs: null };
@@ -272,8 +277,8 @@ function cmpGreeting() {
     : "晚上好呀，有什么想让我帮忙的吗");
 }
 
-/* 开跑前成本预估（借鉴 omnigent 的 pre-run estimate）：读台账同类任务给量级参考。
- * 无样本/请求失败都保持隐藏；快速切类型用序号丢弃过期响应。 */
+/* 开跑前成本与耗时预估（借鉴 omnigent 的 pre-run estimate）：优先读同类台账，
+ * 无历史时显示流程基线；快速切类型用序号丢弃过期响应。 */
 let _estSeq = 0;
 async function refreshEstimate() {
   const el = $("cmp-estimate");
@@ -281,13 +286,26 @@ async function refreshEstimate() {
   if (!el) return;
   const seq = ++_estSeq;
   try {
-    const d = await api("/api/usage/estimate?type=" + encodeURIComponent(flowId) + "&days=90");
+    const mode = ($("f-mode") || {}).value || "auto";
+    const thinking = ($("f-thinking") || {}).value || "standard";
+    const rounds = ($("f-rounds") || {}).value || "";
+    const query = new URLSearchParams({ type: flowId, days: "90", mode, thinking });
+    if (rounds) query.set("rounds", rounds);
+    const d = await api("/api/usage/estimate?" + query.toString());
     if (seq !== _estSeq) return;
-    if (!d || !(d.samples > 0)) { el.classList.add("hidden"); el.textContent = ""; return; }
-    const tk = "≈" + fmtTok(d.median_tokens) + " tokens";
-    const tail = "（" + t("近{0}天 · {1}次同类", d.days || 90, d.samples) + "）";
-    const cost = (d.median_cost_usd || 0) > 0 ? " · ≈$" + (d.median_cost_usd).toFixed(2) : "";
-    el.textContent = t("预估：≈{0}{1}", tk, cost) + tail;
+    if (!d || !(d.estimated_duration_s > 0)) {
+      el.classList.add("hidden"); el.textContent = ""; return;
+    }
+    const duration = chatDurTxt(d.estimated_duration_s);
+    const p90 = chatDurTxt(d.p90_duration_s || d.estimated_duration_s);
+    const source = d.samples > 0
+      ? t("近{0}天 · {1}次同类", d.days || 90, d.samples)
+      : t("暂无同类历史，按流程基线估算");
+    const tokenPart = d.samples > 0 && d.median_tokens != null
+      ? " · ≈" + fmtTok(d.median_tokens) + " tokens" : "";
+    const cost = (d.median_cost_usd || 0) > 0 ? " · ≈$" + Number(d.median_cost_usd).toFixed(2) : "";
+    el.textContent = t("预计完成约 {0}，保守不超过 {1}", duration, p90) +
+      tokenPart + cost + "（" + source + "）";
     el.classList.remove("hidden");
   } catch (e) {
     if (seq === _estSeq) { el.classList.add("hidden"); el.textContent = ""; }
@@ -4032,7 +4050,8 @@ async function renderRunDetail() {
     '<span class="stat">' + t("创建 ") + '<b>' + esc(run.created_at) + "</b></span>" +
     '<span class="stat">' + t("成本 ") + '<b>$' + Number(run.cost_usd || 0).toFixed(3) + "</b></span>" +
     '<span class="stat">tokens <b>' + (run.tokens || 0) + "</b></span>" +
-    (run.mode ? '<span class="stat">' + t("模式 ") + '<b>' + (run.mode === "auto" ? t("智能") : t("手动")) + "</b></span>" : "") +
+    (run.mode ? '<span class="stat">' + t("模式 ") + '<b>' + ({auto: t("自动"), fast: t("快速"), expert: t("专家"), manual: t("手动")}[run.mode] || esc(run.mode)) + "</b></span>" : "") +
+    (runEtaText(run) ? '<span class="stat eta">' + esc(runEtaText(run)) + "</span>" : "") +
     (run.error ? '<span class="stat err">' + errTag(run.error) + esc(run.error.slice(0, 200)) + "</span>" : "") +
     '<span class="stat tasksum hidden" id="rd-meta-task"></span>';
   if (S.detailSide) fillMetaTask(S.detailSide.stats || {});   // 缓存命中：轮询重画不闪丢累计组
@@ -6513,6 +6532,29 @@ function runDurationSeconds(run) {
   return Number.isFinite(a) && Number.isFinite(b) && b >= a ? (b - a) / 1000 : null;
 }
 
+function runEtaText(run) {
+  if (!run || !Number.isFinite(Number(run.estimated_duration_s))) return "";
+  const estimate = Math.max(1, Number(run.estimated_duration_s));
+  const p90 = Math.max(estimate, Number(run.estimated_p90_s) || estimate);
+  const active = run.status === "running" || run.status === "queued";
+  if (!active) return t("预计完成约 {0}", chatDurTxt(Math.round(estimate)));
+  if (run.status === "queued" || !run.started_at) {
+    return t("预计完成约 {0}，保守不超过 {1}",
+      chatDurTxt(Math.round(estimate)), chatDurTxt(Math.round(p90)));
+  }
+  const started = Date.parse(String(run.started_at).replace(" ", "T"));
+  if (!Number.isFinite(started)) return "";
+  const elapsed = Math.max(0, (Date.now() - started) / 1000);
+  if (elapsed < estimate) {
+    return t("预计剩余约 {0}", chatDurTxt(Math.max(1, Math.round(estimate - elapsed))));
+  }
+  if (elapsed < p90) {
+    return t("已超过常规预估，仍在保守区间内（约剩 {0}）",
+      chatDurTxt(Math.max(1, Math.round(p90 - elapsed))));
+  }
+  return t("已超过保守预估，正在继续执行，可查看步骤日志");
+}
+
 function runOutcomeSummary(run) {
   if (!run) return "";
   const last = (run.steps || []).slice().reverse().find((s) => s.output || s.summary);
@@ -6579,6 +6621,7 @@ function renderDetailOverview(run, runs, task) {
   const lastText = last ? String(last.summary || last.output || last.note || "").replace(/\s+/g, " ").trim().slice(0, 240) : "";
   const executor = run.executor || run.implementer || (last && (last.agent_label || last.agent)) || "";
   const duration = runDurationSeconds(run);
+  const etaText = runEtaText(run);
   const goal = (task && task.goal) || run.goal || run.title || "";
   const actions = [];
   if (total) actions.push('<button type="button" class="ghost" data-overview-tab="steps">' + esc(t("查看步骤")) + "</button>");
@@ -6599,6 +6642,7 @@ function renderDetailOverview(run, runs, task) {
       '<span><b>' + settled + "/" + total + '</b> ' + esc(t("步骤已完成")) + '</span>' +
       (executor ? '<span>' + esc(t("执行者")) + ' <b>' + esc(executor) + '</b></span>' : "") +
       (duration != null ? '<span>' + esc(t("耗时")) + ' <b>' + esc(chatDurTxt(duration < 1 ? Number(duration.toFixed(1)) : Math.round(duration))) + '</b></span>' : "") +
+      (etaText ? '<span class="rd-eta">' + esc(etaText) + '</span>' : "") +
     '</div>' +
     (lastText ? '<div class="rd-overview-last"><b>' + esc(t("最近一步")) + '</b><span>' + esc(lastText) + '</span></div>' : "") +
     (actions.length ? '<div class="rd-overview-actions">' + actions.join("") + '</div>' : "");
@@ -9857,7 +9901,7 @@ async function suStartupCheck() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
+const TAB_TITLES = { tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", __wxdigest: "群摘要", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
 const SET_TABS = new Set(Object.keys(TAB_TITLES));   // 设置导航里的子页（__phone 是弹框，不算）
 
 function tabTitle(name) {
@@ -10013,7 +10057,7 @@ function setLangBtn(lang) {
   S.catSig = ""; S.modelsSig = ""; S.bindSig = ""; S.orchSig = ""; S.sideSig = ""; S.taskSig = ""; S.mgmt = {};
   syncLangMode();
   // 浏览器标签标题
-  document.title = (lang === "en" ? "CodeBee · Multi-agent Orchestrator" : "CodeBee · 多智能体编排台");
+  document.title = codebeeDocumentTitle(lang);
   applyI18n();
   render();
   cmpGreeting();   // 问候语跟随语言重算
@@ -10696,11 +10740,6 @@ function collapseDrawerIfMobile() {
 function switchTab(name) {
   if (name === "__phone") { openPhoneConnect(); return; }  // 手机连接是弹框，不切页
   if (name === "__guide") { welcomeOpen(); return; }       // 帮助中心是弹层，不切页（设置导航「软件」组）
-  if (name === "__wxdigest") {                              // 群聊汇报沿用全局蜜蜂面板
-    beeRefresh().finally(() => beeToggle(true));
-    collapseDrawerIfMobile();
-    return;
-  }
   // 导航收进「设置」：进设置后左栏整体换成设置导航，内容铺满
   S.tab = name;
   if (SET_TABS.has(name)) localStorage.setItem("orch.setTab", name);
@@ -10719,6 +10758,7 @@ function switchTab(name) {
   if (name === "automation") { loadAutomation(); startAutoPoll(); }   // 进自动化页：拉取 + 页面可见时每 8s 轮询
   else stopAutoPoll();   // 离开自动化页（或切到别的子页）即停表
   if (name === "zentao") loadZentao();   // 进禅道页：拉配置与修复记录回填表单
+  if (name === "__wxdigest") { beeRefresh(); beeMarkSeen(); }   // 进群摘要页：拉取视图并清未读
   if (name === "market") loadMarket();   // 进插件市场页拉取目录
   if (name === "data") loadDataPage();   // 进数据与备份页：清理配置/状态/可清理预估
   if (name === "usage") { syncUsageRange(); loadUsage(); }   // 进用量页：对齐范围选中态并拉取
@@ -11186,7 +11226,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("f-mode").addEventListener("change", () => {
     $("f-manual-only").classList.toggle("hidden", $("f-mode").value !== "manual");
+    refreshEstimate();
   });
+  $("f-thinking").addEventListener("change", refreshEstimate);
+  $("f-rounds").addEventListener("change", refreshEstimate);
   $("f-direct-provider").addEventListener("change", renderDirectModelPicker);
   $("f-type").dispatchEvent(new Event("change"));
   cmpGreeting();   // 问候语按时段刷新（切语言/回任务页也会重算）
@@ -11413,46 +11456,20 @@ function bindCmdK() {
   });
 }
 
-/* ------------------------------------------------ 群摘要蜜蜂坞（core/wxdigest.py）
- * 右下角悬浮蜜蜂：未读摘要徽章+气泡；面板看各群摘要、配置监控文件夹。
- * 桌面蜜蜂 pet.py 的网页侧搭档；入口始终可见，未配置时也能直接打开设置。
- * 60s 轮询 /api/wxdigest；打开面板即 POST seen 清零未读。 */
-const Bee = { view: null, lastUnseen: 0, bubT: 0, selGroups: null };
+/* ------------------------------------------------ 群摘要页（core/wxdigest.py）
+ * 设置 → 群摘要：配置监控文件夹/微信直连 + 各群摘要列表（替代原右下角悬浮
+ * 蜜蜂坞——用户拍板去掉悬浮组件，配置与总结统一进页面）。桌面蜜蜂 pet.py
+ * 右键「群摘要」直达本页。进页/60s 轮询 /api/wxdigest；进页 POST seen 清未读。 */
+const Bee = { view: null, lastUnseen: 0, bubT: 0, selGroups: null, pyDirty: false };
 
 function beeShow(el, on) { if (el) el.classList.toggle("hidden", !on); }
-function beePanelOpen() { const p = $("bee-panel"); return !!p && !p.classList.contains("hidden"); }
 
 async function beeRefresh() {
   let v;
   try { v = await api("/api/wxdigest"); } catch (e) { return; }   // 静默：不打扰主流程
   Bee.view = v;
-  beeShow($("bee-dock"), true);
-  beeShow($("bee-badge"), v.unseen > 0);
-  if (v.unseen > 0) $("bee-badge").textContent = v.unseen > 99 ? "99+" : String(v.unseen);
-  if (v.unseen > Bee.lastUnseen && !beePanelOpen()) {   // 新摘要到：气泡 6s
-    const b = $("bee-bubble");
-    const names = [...new Set((v.digests || []).slice(0, v.unseen).map((d) => d.group))];
-    b.textContent = t("嗡！新群摘要好了：") + (names.join(t("、")) || "…");
-    beeShow(b, true);
-    clearTimeout(Bee.bubT);
-    Bee.bubT = setTimeout(() => beeShow(b, false), 6000);
-  }
   Bee.lastUnseen = v.unseen;
-  if (beePanelOpen()) beeRenderPanel();
-}
-
-function beeToggle(force) {
-  const p = $("bee-panel");
-  if (!p) return;
-  const open = force !== undefined ? force : p.classList.contains("hidden");
-  beeShow(p, open);
-  if (open) {
-    const v = Bee.view || {};
-    const hasData = (v.digests || []).length > 0;
-    beeShow($("bee-cfg"), !hasData);   // 没数据时首开直落配置（可发现性）
-    beeRenderPanel();
-    beeMarkSeen();
-  }
+  beeRenderPanel();
 }
 
 async function beeMarkSeen() {
@@ -11460,7 +11477,6 @@ async function beeMarkSeen() {
     const r = await api("/api/wxdigest/seen", { method: "POST", body: "{}" });
     Bee.view = r.view;
     Bee.lastUnseen = 0;
-    beeShow($("bee-badge"), false);
     beeRenderPanel();
   } catch (e) { /* ignore */ }
 }
@@ -11472,7 +11488,10 @@ function beeRenderPanel() {
   $("bee-enabled").checked = !!cfg.enabled;
   $("bee-reader").checked = !!cfg.reader_enabled;
   beeShow($("bee-reader-box"), !!cfg.reader_enabled);
-  if (document.activeElement !== $("bee-reader-py")) $("bee-reader-py").value = cfg.reader_python || "";
+  // 用户手动改过路径（选候选/输入）后轮询不再回填覆盖——否则 60s 一冲，
+  // 选择根本存不进去（「选不中 Python」根因之一）
+  if (!Bee.pyDirty && document.activeElement !== $("bee-reader-py"))
+    $("bee-reader-py").value = cfg.reader_python || "";
   if (!Bee.selGroups) Bee.selGroups = (cfg.groups || []).slice();
   const n = Bee.selGroups.length;
   $("bee-groups-btn").textContent = t("选择要监听的群（{0}）", n);
@@ -11585,6 +11604,7 @@ async function beeSave() {
     }) });
     if (Bee.view) Bee.view.config = r.config;
     Bee.selGroups = null;   // 下次渲染用保存后的值重建勾选态
+    Bee.pyDirty = false;    // 保存成功：服务端值与所见一致，恢复轮询回填
     toast(t("群摘要设置已保存"));
     beeRefresh();
   } catch (e) { toast(t("保存失败：") + (e.message || e), true); }
@@ -11606,13 +11626,7 @@ async function beeScan() {
 
 (function () {
   const boot = () => {
-    if (!$("bee-fab")) return;
-    $("bee-fab").addEventListener("click", () => beeToggle());
-    $("bee-x").addEventListener("click", () => beeToggle(false));
-    $("bee-cfg-btn").addEventListener("click", () => {
-      const c = $("bee-cfg");
-      beeShow(c, c.classList.contains("hidden"));
-    });
+    if (!$("bee-save")) return;
     $("bee-save").addEventListener("click", beeSave);
     $("bee-scan-btn").addEventListener("click", beeScan);
     $("bee-dir-pick").addEventListener("click", () => window.pickFolder("bee-dir", true));
@@ -11632,11 +11646,13 @@ async function beeScan() {
     // 别手填解释器路径、别自己开 conda 装依赖）
     $("bee-py-scan").addEventListener("click", beePyScan);
     $("bee-py-install").addEventListener("click", beePyInstall);
+    // 用户手动改过路径（选候选/输入）后置脏：轮询不再回填覆盖
+    $("bee-reader-py").addEventListener("input", () => { Bee.pyDirty = true; });
     beeRefresh();
     setInterval(beeRefresh, 60000);
-    // 桌宠右键「群摘要」直达：URL 带 #bee=1 时自动展开蜜蜂坞面板
-    if (/bee=1/.test(location.hash)) {
-      setTimeout(() => beeToggle(true), 800);
+    // 桌宠右键「群摘要」直达：URL 带 #goto=__wxdigest 时切到群摘要子页
+    if (/goto=__wxdigest/.test(location.hash)) {
+      setTimeout(() => switchTab("__wxdigest"), 800);
       history.replaceState(null, "", location.pathname + location.search);
     }
   };

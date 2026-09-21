@@ -5583,3 +5583,16 @@ button.request-busy > * { opacity: .18; }
 .bee-py-item.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .bee-py-path { font-size: 12px; word-break: break-all; }
 .bee-py-meta { font-size: 11px; opacity: .65; }
+
+/* 任务耗时预估：使用独立中性色，超出常规预估时仍保持可读，不制造失败误报。 */
+.cmp-estimate { line-height: 1.55; color: var(--muted); }
+.rd-meta-strip .stat.eta,
+.rd-overview-facts .rd-eta {
+  color: var(--accent); border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+/* 群摘要设置子页：配置与摘要列表适配宽面板（替代原右下角悬浮蜜蜂坞） */
+#sub-__wxdigest .bee-cfg { display: flex; flex-direction: column; gap: 10px; }
+#sub-__wxdigest .bee-list { max-height: 52vh; overflow: auto; }
+#sub-__wxdigest .bee-groups-list { max-height: 240px; }

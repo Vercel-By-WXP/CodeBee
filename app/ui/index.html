@@ -792,6 +792,51 @@
         </div>
       </div>
 
+      <!-- 群摘要（正式设置子页：配置与摘要一体，替代原右下角悬浮蜜蜂坞） -->
+      <div id="sub-__wxdigest" class="subpage hidden">
+        <div class="panel wide">
+          <div class="panel-head"><h2 data-i18n="群摘要">群摘要</h2><span class="spacer"></span><button id="bee-scan-btn" class="ghost small" data-i18n="立即扫描" data-i18n-title="立即扫描" title="立即扫描"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="立即扫描">立即扫描</span></button></div>
+          <p class="hint" data-i18n="导出 txt 丢进监控文件夹，或开启微信直连由蜜蜂自动拉取；按间隔增量生成每群摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。">导出 txt 丢进监控文件夹，或开启微信直连由蜜蜂自动拉取；按间隔增量生成每群摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。</p>
+          <div id="bee-cfg" class="bee-cfg">
+            <label class="toggle"><input id="bee-enabled" type="checkbox"> <span data-i18n="启用定时扫描">启用定时扫描</span></label>
+            <label class="toggle"><input id="bee-reader" type="checkbox"> <span data-i18n="从本机微信自动拉取（微信直连）">从本机微信自动拉取（微信直连）</span></label>
+            <div id="bee-reader-box" class="hidden">
+              <span class="bee-lab" data-i18n="64 位 Python 路径（需装 wechatauto-replica）">64 位 Python 路径（需装 wechatauto-replica）</span>
+              <div class="bee-dir-row">
+                <input id="bee-reader-py" type="text" spellcheck="false" style="flex:1" data-i18n-ph="例如 C:\Users\HP\anaconda3\envs\wxprobe\python.exe" placeholder="例如 C:\Users\HP\anaconda3\envs\wxprobe\python.exe">
+                <button id="bee-py-scan" class="ghost small" data-i18n="扫描">扫描</button>
+              </div>
+              <div id="bee-py-cands" class="bee-py-cands hidden"></div>
+              <button id="bee-py-install" class="ghost small hidden" data-i18n="一键安装 wechatauto-replica">一键安装 wechatauto-replica</button>
+              <span id="bee-py-status" class="hint"></span>
+              <div class="bee-dir-row">
+                <button id="bee-groups-btn" class="ghost small" data-i18n="选择要监听的群（0）">选择要监听的群（0）</button>
+              </div>
+              <div id="bee-groups-box" class="hidden">
+                <div class="bee-groups-head">
+                  <input id="bee-groups-search" type="text" spellcheck="false" data-i18n-ph="搜索群名" placeholder="搜索群名">
+                  <button id="bee-groups-refresh" class="ghost small" data-i18n="刷新群列表">刷新群列表</button>
+                </div>
+                <div id="bee-groups-list" class="bee-groups-list"></div>
+              </div>
+            </div>
+            <span class="bee-lab" data-i18n="监控文件夹">监控文件夹</span>
+            <div class="bee-dir-row">
+              <input id="bee-dir" type="text" spellcheck="false" placeholder="D:\wx-exports">
+              <button id="bee-dir-pick" class="ghost small" data-i18n-title="浏览…" title="浏览…">…</button>
+            </div>
+            <div class="bee-row2">
+              <label><span data-i18n="间隔（分钟）">间隔（分钟）</span><input id="bee-interval" type="number" min="5" max="1440"></label>
+              <label><span data-i18n="窗口字数">窗口字数</span><input id="bee-maxchars" type="number" min="4000" max="60000" step="1000"></label>
+            </div>
+            <div id="bee-status" class="bee-status"></div>
+            <button id="bee-save" class="primary small" data-i18n="保存设置">保存设置</button>
+          </div>
+          <h3 data-i18n="摘要列表" class="sec-title">摘要列表</h3>
+          <div id="bee-list" class="bee-list bee-list-page"></div>
+        </div>
+      </div>
+
       <!-- 数据与备份（导出/导入/每日清理） -->
       <div id="sub-data" class="subpage hidden">
         <div class="panel wide">
@@ -1117,64 +1162,6 @@
       <p class="welcome-sub" data-i18n="一群 AI 智能体自动分工：规划、实现、评审、打磨，直到交付成果。">一群 AI 智能体自动分工：规划、实现、评审、打磨，直到交付成果。</p>
       <div class="help-body" id="help-body"></div>
     </div>
-  </div>
-</div>
-
-<!-- 群摘要蜜蜂坞（右下角悬浮蜜蜂）：桌面蜜蜂 pet.py 的网页侧搭档。
-     未读摘要时徽章+气泡提醒，点开面板看各群摘要/配置监控文件夹；
-     未配置时也保持入口可见，避免功能存在却无处开启。后端 core/wxdigest.py。 -->
-<div id="bee-dock">
-  <div id="bee-bubble" class="hidden"></div>
-  <button id="bee-fab" aria-label="微信群聊汇报" data-i18n-aria="微信群聊汇报" data-i18n-title="微信群聊汇报" title="微信群聊汇报">
-    <svg class="ico ico-lg" aria-hidden="true"><use href="#i-bee"></use></svg>
-    <span id="bee-badge" class="hidden"></span>
-  </button>
-</div>
-<div id="bee-panel" class="hidden" role="dialog" aria-label="群摘要" data-i18n-aria="群摘要">
-  <div class="bee-head">
-    <svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg>
-    <b data-i18n="群摘要">群摘要</b>
-    <span class="spacer"></span>
-    <button id="bee-cfg-btn" class="icon-btn" aria-label="设置" data-i18n-aria="设置" data-i18n-title="设置" title="设置"><svg class="ico" aria-hidden="true"><use href="#i-gear"></use></svg></button>
-    <button id="bee-scan-btn" class="icon-btn" aria-label="立即扫描" data-i18n-aria="立即扫描" data-i18n-title="立即扫描" title="立即扫描"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg></button>
-    <button id="bee-x" class="icon-btn" aria-label="关闭" data-i18n-aria="关闭" data-i18n-title="关闭" title="关闭">✕</button>
-  </div>
-  <div id="bee-list" class="bee-list"></div>
-  <div id="bee-cfg" class="bee-cfg hidden">
-    <label class="toggle"><input id="bee-enabled" type="checkbox"> <span data-i18n="启用定时扫描">启用定时扫描</span></label>
-    <label class="toggle"><input id="bee-reader" type="checkbox"> <span data-i18n="从本机微信自动拉取（微信直连）">从本机微信自动拉取（微信直连）</span></label>
-    <div id="bee-reader-box" class="hidden">
-      <span class="bee-lab" data-i18n="64 位 Python 路径（需装 wechatauto-replica）">64 位 Python 路径（需装 wechatauto-replica）</span>
-      <div class="bee-dir-row">
-        <input id="bee-reader-py" type="text" spellcheck="false" style="flex:1" data-i18n-ph="例如 C:\Users\HP\anaconda3\envs\wxprobe\python.exe" placeholder="例如 C:\Users\HP\anaconda3\envs\wxprobe\python.exe">
-        <button id="bee-py-scan" class="ghost small" data-i18n="扫描">扫描</button>
-      </div>
-      <div id="bee-py-cands" class="bee-py-cands hidden"></div>
-      <button id="bee-py-install" class="ghost small hidden" data-i18n="一键安装 wechatauto-replica">一键安装 wechatauto-replica</button>
-      <span id="bee-py-status" class="hint"></span>
-      <div class="bee-dir-row">
-        <button id="bee-groups-btn" class="ghost small" data-i18n="选择要监听的群（0）">选择要监听的群（0）</button>
-      </div>
-      <div id="bee-groups-box" class="hidden">
-        <div class="bee-groups-head">
-          <input id="bee-groups-search" type="text" spellcheck="false" data-i18n-ph="搜索群名" placeholder="搜索群名">
-          <button id="bee-groups-refresh" class="ghost small" data-i18n="刷新群列表">刷新群列表</button>
-        </div>
-        <div id="bee-groups-list" class="bee-groups-list"></div>
-      </div>
-    </div>
-    <span class="bee-lab" data-i18n="监控文件夹">监控文件夹</span>
-    <div class="bee-dir-row">
-      <input id="bee-dir" type="text" spellcheck="false" placeholder="D:\wx-exports">
-      <button id="bee-dir-pick" class="ghost small" data-i18n-title="浏览…" title="浏览…">…</button>
-    </div>
-    <div class="bee-row2">
-      <label><span data-i18n="间隔（分钟）">间隔（分钟）</span><input id="bee-interval" type="number" min="5" max="1440"></label>
-      <label><span data-i18n="窗口字数">窗口字数</span><input id="bee-maxchars" type="number" min="4000" max="60000" step="1000"></label>
-    </div>
-    <div id="bee-status" class="bee-status"></div>
-    <button id="bee-save" class="primary small" data-i18n="保存设置">保存设置</button>
-    <p class="bee-note" data-i18n="导出 txt 丢进监控文件夹，或开启微信直连由蜜蜂自动拉取；按间隔增量生成每群摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。">导出 txt 丢进监控文件夹，或开启微信直连由蜜蜂自动拉取；按间隔增量生成每群摘要。记录只存本地；摘要请求会发给当前绑定的模型，桌面小蜜蜂会提醒新摘要。</p>
   </div>
 </div>
 
