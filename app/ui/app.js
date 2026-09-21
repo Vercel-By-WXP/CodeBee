@@ -4057,6 +4057,7 @@ async function renderRunDetail() {
   if (S.detailSide) fillMetaTask(S.detailSide.stats || {});   // 缓存命中：轮询重画不闪丢累计组
   renderPlan(run);
   renderRouting(run);
+  renderChapterScores(run);
   // 详情页优先展示最近一步，排查运行中的任务时无需滚到底部；
   // 蜂巢泳道仍按原始流程顺序呈现，避免破坏阶段语义。
   $("rd-steps").innerHTML = (run.steps || []).slice().reverse().map((s) =>
@@ -5682,6 +5683,38 @@ function stepsMatch(runs, current) {
   if (!current) return false;
   return (runs || []).some((r) => String(r.id || "") === String(current.runId || "") &&
     (r.steps || []).some((s) => s.log === current.rel));
+}
+
+/* 连载章节评审卡：每章均分/是否达标/字数 + 逐项目标审稿结果（event_check，
+ * 借鉴 AI-Novel-Writer：大纲要点逐项判定+正文证据）。非连载 run 无
+ * chapter_scores 保持隐藏。 */
+function renderChapterScores(run) {
+  const box = $("rd-chapters");
+  if (!box) return;
+  const cs = run && run.chapter_scores;
+  if (!Array.isArray(cs) || !cs.length) { box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  box.innerHTML = '<h3 class="sec-title">' + t("章节评审") +
+    '<span class="tag">' + cs.filter((c) => c.passed).length + "/" + cs.length + " " + t("达标") + "</span></h3>" +
+    cs.map((c) => {
+      const means = c.means || {};
+      const dims = Object.keys(means).map((d) =>
+        '<span class="cs-dim' + (means[d] >= 7 ? "" : " low") + '">' + esc(d) + " " + means[d] + "</span>").join("");
+      const ev = (c.event_check || []).map((line) => {
+        const ok = /已完成/.test(line), bad = /未完成/.test(line);
+        return '<div class="cs-ev' + (ok ? " ok" : bad ? " bad" : "") + '">' + esc(line) + "</div>";
+      }).join("");
+      return '<div class="cs-row' + (c.passed ? "" : " fail") + '">' +
+        '<div class="cs-head"><b>' + esc(t("第") + " " + c.chapter + " " + t("章")) + '</b>' +
+        '<span class="cs-title">' + esc(c.title || "") + "</span>" +
+        '<span class="tag">' + (c.passed ? t("达标") : t("未达标")) + "</span>" +
+        (c.reused ? '<span class="tag">' + t("沿用") + "</span>" : "") +
+        '<span class="cs-meta">' + Number(c.words || 0) + t(" 字") +
+        (c.rounds > 1 ? " · " + c.rounds + t(" 轮") : "") + "</span></div>" +
+        (dims ? '<div class="cs-dims">' + dims + "</div>" : "") +
+        (ev ? '<div class="cs-evs"><span class="hint">' + t("逐项目标核对：") + "</span>" + ev + "</div>" : "") +
+        "</div>";
+    }).join("");
 }
 
 function renderPlan(run) {
