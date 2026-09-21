@@ -443,3 +443,14 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 复查：oh-my-claudecode/orca/omnigent/claude-code-router 活跃；小说三竞品无增量
 
 **✅ 本班落地**：教训 outcome 加权（tradememory「按结局加权召回」借鉴）——block_for 支持 run_id 登记注入教训；learn_from_run 收尾按 verdict.pass 回写 won/lost（过审在场教训 won+1=真帮上忙，失败 lost+1=没防住）；relevance_top 同相关性下 karma 优先于 hits——好教训在排序中胜出、坏教训被挤出 top-k。test_skill_outcome 5 项（登记/幂等/lost/真实链路/排序/有界）
+
+### 2026-09-21 22:00 第二十三班（批1：代码质量与评审 + 全类型雷达）
+
+- **SkillForge**（tripleyak，897★）新入库 | **证据驱动的技能创建**：给 Claude Code/Codex 造 skill 时先建 baseline、装完自动验证「技能真的有效」——skill 不是写完就算，要证明其工作 | **与我们市场对比**：装前有 SkillSpector 危险扫描，但没有「装后有效性验证」——差量明确，进待深挖 | 借鉴方向（技能装后冒烟验证）
+- **gsd-browser**（gsd-build，265★）| 为 AI agent 从零造的原生浏览器自动化 CLI（Chrome DevTools Protocol）| 与我们 CDP 发布通道同协议族 | 雷达
+- **py-lintro**（新）| AI 评审引擎+15 linter 统一编排（CLI/Action/MCP 三态）| 确定性+AI 混合又一致方向 | 参考
+- video-debug（skill）：从录屏抽关键帧调试 UI bug——与我们截图诊断思路可交叉 | 雷达
+- 复查：SkillSpector 17.9k/alibaba open-code-review 39k（+600）/mira/pr-af 稳定；B1 组无重大新标的
+- A 组复查：oh-my-claudecode 39.3k/orca 74.2k/omnigent 10.2k/claude-code-router 37.4k/freellmapi 27.8k 全活跃
+
+**✅ 本班落地**：压缩摘要真正替换 CLI 请求上下文（最老待深挖项清账）——实锤 derive_messages() 零消费方：压缩折叠 session surface 后重试仍发原 prompt+续旧 resume 会话，摘要只进审计日志、CLI 上下文一点没小（重试必再爆）。修复：溢出重试改用 session 派生转录（折叠摘要+近尾消息，24k 上限）+ 本步指令缺失显式补尾 + **弃 resume**（旧会话本体仍是膨胀态）；test_step_runner 断言升级+新增 drops_resume 用例，压缩域 29 项回归绿

@@ -101,7 +101,33 @@ def execute_step(session, run_agent_fn, prompt, *, model: str = "",
         log.info("overflow but no compaction progress (gen %s->%s), no retry",
                  gen0, gen1)
         return result, False
-    # 压缩生效：surface 已折叠，重新派生消息后用同一 prompt 重试一次
-    log.info("compaction advanced gen %s->%s, retrying step", gen0, gen1)
-    result2 = run_agent_fn(prompt, **kwargs)
+    # 压缩生效：surface 已折叠。**真正替换 CLI 请求上下文**（2026-09-21
+    # 清最老待深挖项：此前重试仍发原 prompt + 续旧 resume 会话——摘要只进
+    # 审计日志，CLI 看到的上下文一点没小，重试必然再爆）：
+    # ①重试 prompt 改用 session 派生转录（折叠摘要 + 近尾消息，体量骤降）；
+    # ②弃 resume（旧会话本体仍是膨胀态，续上就前功尽弃）。
+    msgs = []
+    try:
+        msgs = session.derive_messages()
+    except Exception:
+        log.debug("derive_messages failed on retry", exc_info=True)
+    kwargs2 = dict(kwargs)
+    if msgs:
+        transcript = "\n\n".join("[%s] %s" % (m.get("role"), m.get("content"))
+                                 for m in msgs)
+        if len(transcript) > 24_000:
+            transcript = transcript[-24_000:]
+        retry_prompt = transcript
+        # 本步指令必须在场：被折叠/截断掉就显式补在尾部（缺失指令比重复严重）
+        tail = transcript[-2000:]
+        if prompt[:400] not in tail:
+            retry_prompt = transcript + "\n\n" + prompt
+        kwargs2.pop("resume", None)
+        log.info("compaction advanced gen %s->%s, retrying with derived "
+                 "context (%d msgs, resume dropped)", gen0, gen1, len(msgs))
+        result2 = run_agent_fn(retry_prompt, **kwargs2)
+    else:
+        log.info("compaction advanced gen %s->%s but no surface derived, "
+                 "retrying same prompt", gen0, gen1)
+        result2 = run_agent_fn(prompt, **kwargs)
     return result2, True

@@ -101,13 +101,16 @@ class TestExecuteStepOverflowRetry(BaseTest):
         super().tearDown()
 
     def test_overflow_compact_retry(self):
-        """撑爆 → 压缩前进 generation → 同一 prompt 重试一次。"""
+        """撑爆 → 压缩前进 generation → 用派生转录重试一次（真替换上下文）。
+
+        2026-09-21 起：重试 prompt = session 派生消息（含折叠摘要 + 近尾），
+        并显式补回本步指令；不再是同一个原 prompt——那只会再爆一次。"""
         from app.core.step_runner import execute_step
         s = _big_session()
         calls = []
 
         def runner(prompt, **k):
-            calls.append(prompt)
+            calls.append((prompt, k))
             if len(calls) == 1:
                 return _overflow_result()
             return _ok_result("第二轮成功")
@@ -120,10 +123,30 @@ class TestExecuteStepOverflowRetry(BaseTest):
         self.assertTrue(res["ok"])
         self.assertTrue(retried)
         self.assertEqual(len(calls), 2)
-        # 复用同一 prompt（不重新渲染）
-        self.assertEqual(calls[0], calls[1])
+        # 重试 prompt 用派生转录（含压缩摘要标记），且本步指令补在尾部
+        retry_prompt = calls[1][0]
+        self.assertIn("系统压缩摘要", retry_prompt)
+        self.assertIn("原prompt", retry_prompt)
+        self.assertNotEqual(calls[0][0], retry_prompt)
         # generation 前进了
         self.assertGreaterEqual(s.replace_generation(), 1)
+
+    def test_retry_drops_resume(self):
+        """重试弃 resume：kwargs 里的旧会话 id 不再透传（CLI 旧会话仍是膨胀态）。"""
+        from app.core.step_runner import execute_step
+        s = _big_session()
+        calls = []
+
+        def runner(prompt, **k):
+            calls.append(k)
+            if len(calls) == 1:
+                return _overflow_result()
+            return _ok_result()
+
+        execute_step(s, runner, "指令", llm_caller=lambda m: "摘要",
+                     retain_tail_tokens=500, resume="old-sess-1")
+        self.assertEqual(calls[0].get("resume"), "old-sess-1")
+        self.assertNotIn("resume", calls[1])
 
     def test_no_compaction_progress_no_retry(self):
         """撑爆但内容全在尾预算内（压缩无区域）→ 不重试。"""
