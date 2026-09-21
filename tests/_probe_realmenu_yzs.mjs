@@ -52,6 +52,19 @@ async function main() {
     await send("Page.enable");
     await send("Page.navigate", { url: SERVICE + "/?token=" + TOKEN });
     await sleep(5000);
+    // 埋点（导航后才有菜单节点）：跟踪 hidden 类变化与点击流
+    await evalJs(`(function () {
+      const m = document.getElementById("cmp-model-menu");
+      window.__menuLog = [];
+      new MutationObserver(() => {
+        window.__menuLog.push("hidden=" + m.classList.contains("hidden") + " @" + performance.now().toFixed(0));
+      }).observe(m, { attributes: true, attributeFilter: ["class"] });
+      document.addEventListener("click", (e) => {
+        window.__menuLog.push("docclick " + (e.target.tagName || "?") + "." + String(e.target.className || "").slice(0, 30) + " @" + performance.now().toFixed(0));
+      }, true);
+      return 1;
+    })()`);
+    await sleep(5000);
     await evalJs(`(function () { if (window.welcomeClose) welcomeClose(); return 1; })()`);
     await evalJs(`(function () { if (typeof switchTab === "function") switchTab("tasks"); return 1; })()`);
     await sleep(800);
@@ -88,6 +101,49 @@ async function main() {
         btn: document.getElementById("f-direct-btn").textContent });
     })()`));
     console.log("点云知声后:", JSON.stringify(after, null, 1));
+    console.log("事件日志:", JSON.stringify(await evalJs("window.__menuLog || []")));
+    if (!after.back) { console.log("未钻入模型级，停"); return; }
+    // 第二步：真实点击一个具体模型（跳过第一项「随厂商推荐」空值）
+    const mpick = JSON.parse(await evalJs(`(() => {
+      const m = document.getElementById("cmp-model-menu");
+      const items = Array.from(m.querySelectorAll("[data-m]"));
+      const b = items.find((x) => x.dataset.m && x.dataset.m !== "");
+      if (!b) return JSON.stringify({ all: items.map((x) => x.dataset.m), mVisible: !m.classList.contains("hidden") });
+      b.scrollIntoView({ block: "nearest" });
+      const r = b.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return JSON.stringify({ x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2),
+        name: b.dataset.m, hitTag: hit ? hit.tagName : "NONE", hitSame: hit ? b.contains(hit) : false,
+        allCount: items.length,
+        rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+        clipChain: (() => {
+          const out = [];
+          let n = b.parentElement;
+          while (n && n !== document.body) {
+            const st = getComputedStyle(n);
+            if (/(hidden|clip|auto|scroll)/.test(st.overflow + st.overflowX + st.overflowY)) {
+              const rr = n.getBoundingClientRect();
+              out.push(n.tagName + (n.id ? "#" + n.id : "") + "." + String(n.className).split(" ").join(".").slice(0, 40) +
+                " ovf=" + st.overflow + "/" + st.overflowY + " rect=" + Math.round(rr.left) + "," + Math.round(rr.top) + "→" + Math.round(rr.right) + "," + Math.round(rr.bottom));
+            }
+            n = n.parentElement;
+          }
+          return out;
+        })(),
+        menuRect: (() => { const rr = document.getElementById("cmp-model-menu").getBoundingClientRect();
+          return Math.round(rr.left) + "," + Math.round(rr.top) + "→" + Math.round(rr.right) + "," + Math.round(rr.bottom); })() });
+    })()`));
+    console.log("目标模型项:", JSON.stringify(mpick));
+    if (!mpick.x) return;
+    if (mpick.hitSame === false) console.log("⚠ 模型项被遮挡，命中:", mpick.hitTag);
+    await realClick(mpick.x, mpick.y);
+    await sleep(600);
+    const final = JSON.parse(await evalJs(`JSON.stringify({
+      pv: document.getElementById("f-direct-provider").value,
+      mv: document.getElementById("f-direct-model-name").value,
+      btn: document.getElementById("f-direct-btn").textContent,
+      closed: document.getElementById("cmp-model-menu").classList.contains("hidden") })`));
+    console.log("点模型后:", JSON.stringify(final, null, 1));
     console.log("浏览器异常/错误:", events.length ? "\n  " + events.slice(0, 5).join("\n  ") : "无");
   } finally {
     try { proc.kill(); } catch (e) {}

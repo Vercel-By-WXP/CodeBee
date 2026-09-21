@@ -539,9 +539,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/store.py 1643 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/store.py 1680 行（上限 1200，历史最高 0）",
       "file": "app/core/store.py",
-      "lines": 1643
+      "lines": 1680
     },
     {
       "kind": "lines",
@@ -551,9 +551,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/main.py 2596 行（上限 1200，历史最高 0）",
+      "text": "lines: app/main.py 2599 行（上限 1200，历史最高 0）",
       "file": "app/main.py",
-      "lines": 2596
+      "lines": 2599
     },
     {
       "kind": "lines",

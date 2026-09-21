@@ -158,34 +158,34 @@ window.toggleModelMenu = toggleModelMenu;
   if (!menu || menu.dataset.cmpBound) return;
   menu.dataset.cmpBound = "1";
   menu.addEventListener("click", (e) => {
+    // 钻取/选定都在菜单内完成：阻止冒泡到 document 的「点外面收起」——
+    // innerHTML 重写后 e.target 是已脱离 DOM 的旧节点，wrap.contains 会误判
+    // false 而把刚钻取的菜单收掉（真机「点厂商没反应」根因）
+    e.stopPropagation();
     const b = e.target.closest("[data-p],[data-back],[data-manage]");
     if (!b) return;
     if (b.dataset.manage) { toggleModelMenu(false); switchTab("models"); return; }
     if (b.dataset.back) { cmpModelProv = ""; cmpModelMenuRender(); return; }
     if (b.dataset.m === undefined) {
-      // 点厂商 = 厂商+推荐模型一起定（用户反馈「只选了厂商」）：带出该厂商
-      // 排序最前的模型并展开模型级菜单，可立即改选；已是当前厂商则只钻取。
-      // 顺序关键：先 picker 重建 options 再赋值——select.value 对不存在的
-      // option 会静默忽略（真机「没法选模型」根因之一）
-      const pid = b.dataset.p;
-      if ($("f-direct-provider").value !== pid) {
-        renderDirectModelPicker();
-        $("f-direct-provider").value = pid;
-        renderDirectModelPicker();
-        const p = directProviders().find((x) => x.id === pid);
-        const names = p ? (p.models || []).filter((m) => !m.hidden)
-          .map((m) => m.name).filter(Boolean) : [];
-        const ms = $("f-direct-model-name");
-        if (names.length && names[0]) ms.value = names[0];
-        cmpDirectBtnSync();
-      }
-      cmpModelProv = pid;
+      // 点厂商 = 只钻取到模型级（用户拍板 2026-09-21：模型必须亲手点，
+      // 不要自动带推荐）。真源不动——用户点了具体模型才写 provider/model。
+      cmpModelProv = b.dataset.p;
       cmpModelMenuRender();
       return;
     }
-    // 选定：写回隐藏 select 真源（提交流/回归测试全走原路径）
+    // 选定：写回隐藏 select 真源（提交流/回归测试全走原路径）。顺序关键：
+    // 先让 provider 的 option 就位再赋值，否则 select.value 静默失效（真机
+    // 「没法选模型」根因：options 由 poll 重建，可能仍是残缺态）
+    renderDirectModelPicker();
     $("f-direct-provider").value = b.dataset.p;
+    renderDirectModelPicker();
     $("f-direct-model-name").value = b.dataset.m;
+    if ($("f-direct-model-name").value !== b.dataset.m) {
+      const opt = document.createElement("option");
+      opt.value = b.dataset.m;
+      $("f-direct-model-name").appendChild(opt);
+      $("f-direct-model-name").value = b.dataset.m;
+    }
     cmpDirectBtnSync();
     toggleModelMenu(false);
   });
@@ -6581,6 +6581,12 @@ async function renderChat(run, active) {
   const continueNote = $("rd-chat-continue-note");
   if (continueNote) continueNote.classList.toggle("hidden", !!active);
   if (chatRunId !== run.id) { chatRunId = run.id; chatAtts = []; drawChatAtts(); chatSig = ""; }
+  // 三件套回填：任务对象来自 S.state（渲染时已就位）；只在任务未在跑时回显，
+  // 防止轮询把用户正在改的值弹回（select change 重绘弹回教训）
+  if (run.status !== "running" && run.status !== "queued" && S.state) {
+    const task = (S.state.tasks || []).find((x) => x.id === run.task_id);
+    if (task) rdPrefsFill(task);
+  }
   const sig = run.id + "|" + run.status + "|" + (run.steps || []).length +
     "|" + ((run.messages || []).length);
   if (sig === chatSig) return;   // 轮询重画去抖：内容没变不重建 DOM（保住输入焦点）
@@ -6856,15 +6862,145 @@ function renderDetailOverview(run, runs, task) {
   box.classList.remove("hidden");
 }
 
+/* 对话条三件套：与任务参数双向同步（2026-09-21 用户反馈「这里面也需要同步改」）。
+ * 回填自当前任务；改动即写任务（空闲态），发送 /chat 前再兜底同步一次。 */
+let rdPrefsTaskId = "";
+let rdModelPv = "", rdModelMv = "";   // 对话条当前模型选择（厂商 id + 模型名）
+
+function rdPrefsFill(task) {
+  if (!task) return;
+  const set1 = (id, v, allow) => { const el = $(id); if (el && allow.includes(v)) el.value = v; };
+  set1("rd-mode", task.mode, ["auto", "fast", "expert", "manual"]);
+  set1("rd-thinking", task.thinking, ["auto", "low", "standard", "high"]);
+  if (rdPrefsTaskId !== task.id) {
+    rdPrefsTaskId = task.id;
+    rdModelPv = task.direct_provider_id || "";
+    rdModelMv = task.direct_model || "";
+  }
+  ["rd-mode", "rd-thinking"].forEach((id) => syncCmpSelFace(id));
+  rdModelFaceSync();
+}
+
+function rdModelFaceSync() {
+  const face = $("rd-model-btn");
+  if (!face) return;
+  if (!rdModelPv) { face.textContent = t("自动推荐"); return; }
+  const p = directProviders().find((x) => x.id === rdModelPv);
+  face.textContent = (p ? (p.name || p.id) : rdModelPv) +
+    (rdModelMv ? "/" + rdModelMv : "/" + t("推荐"));
+}
+
+/* 对话条模型菜单（与新建 composer 的 cmp-model-menu 同款两级钻取，独立实例） */
+let rdMenuProv = "";
+
+function rdModelMenuRender() {
+  const menu = $("rd-model-menu");
+  if (!menu) return;
+  const chk = '<svg class="ico ti-check" aria-hidden="true"><use href="#i-check"></use></svg>';
+  const arr = '<svg class="ico ti-check" aria-hidden="true"><use href="#i-chevron-r"></use></svg>';
+  if (!rdMenuProv) {
+    menu.innerHTML =
+      '<button type="button" class="type-item" data-p="" data-m=""><span class="ti-body"><span class="ti-name">' +
+        t("自动推荐") + "</span></span>" + (!rdModelPv ? chk : "") + "</button>" +
+      directProviders().map((p) =>
+        '<button type="button" class="type-item" data-p="' + esc(p.id) + '"><span class="ti-body"><span class="ti-name">' +
+        esc(p.name || p.id) + "</span></span>" + (rdModelPv === p.id ? chk : arr) + "</button>").join("") +
+      '<div class="type-menu-foot"><button type="button" class="type-item" data-manage="1"><span class="ti-body"><span class="ti-name">' +
+        t("管理模型…") + "</span></span></button></div>";
+  } else {
+    const p = directProviders().find((x) => x.id === rdMenuProv);
+    const names = p ? (p.models || []).filter((m) => !m.hidden)
+      .map((m) => m.name).filter(Boolean) : [];
+    menu.innerHTML =
+      '<button type="button" class="type-item" data-back="1"><span class="ti-body"><span class="ti-name">‹ ' +
+        esc(p ? (p.name || p.id) : rdMenuProv) + "</span></span></button>" +
+      '<button type="button" class="type-item" data-p="' + esc(rdMenuProv) + '" data-m=""><span class="ti-body"><span class="ti-name">' +
+        t("随厂商推荐") + "</span></span>" + (rdModelPv === rdMenuProv && !rdModelMv ? chk : "") + "</button>" +
+      names.map((n) =>
+        '<button type="button" class="type-item" data-p="' + esc(rdMenuProv) + '" data-m="' + esc(n) + '"><span class="ti-body"><span class="ti-name">' +
+        esc(n) + "</span></span>" + (rdModelPv === rdMenuProv && rdModelMv === n ? chk : "") + "</button>").join("");
+  }
+}
+
+function toggleRdModelMenu(force) {
+  const menu = $("rd-model-menu");
+  if (!menu) return;
+  const show = force !== undefined ? force : menu.classList.contains("hidden");
+  if (show) { rdMenuProv = ""; rdModelMenuRender(); }
+  menu.classList.toggle("hidden", !show);
+}
+window.toggleRdModelMenu = toggleRdModelMenu;
+
+(function () {
+  const menu = $("rd-model-menu");
+  if (!menu || menu.dataset.rdBound) return;
+  menu.dataset.rdBound = "1";
+  menu.addEventListener("click", (e) => {
+    e.stopPropagation();   // 同 cmp-model-menu：防「点外面收起」误判（DOM 重写竞态）
+    const b = e.target.closest("[data-p],[data-back],[data-manage]");
+    if (!b) return;
+    if (b.dataset.manage) { toggleRdModelMenu(false); switchTab("models"); return; }
+    if (b.dataset.back) { rdMenuProv = ""; rdModelMenuRender(); return; }
+    if (b.dataset.m === undefined) { rdMenuProv = b.dataset.p; rdModelMenuRender(); return; }
+    rdModelPv = b.dataset.p;
+    rdModelMv = b.dataset.m;
+    rdModelFaceSync();
+    toggleRdModelMenu(false);
+    rdPrefsPush("model");
+  });
+  document.addEventListener("click", (e) => {
+    const wrap = $("rd-model-wrap");
+    if (wrap && !wrap.contains(e.target)) toggleRdModelMenu(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") toggleRdModelMenu(false);
+  });
+})();
+
+async function rdPrefsPush(what) {
+  // what: mode|thinking|model（变更源）；写任务参数（空闲态才允许）
+  const task = (S.lastRun && S.lastRun.task_id && S.state &&
+    (S.state.tasks || []).find((x) => x.id === S.lastRun.task_id)) || null;
+  if (!task) return;
+  const patch = {};
+  if (what === "mode") patch.mode = $("rd-mode").value;
+  if (what === "thinking") patch.thinking = $("rd-thinking").value;
+  if (what === "model") {
+    patch.direct_provider_id = rdModelPv;
+    patch.direct_model = rdModelMv;
+  }
+  try {
+    await api("/api/tasks/" + encodeURIComponent(task.id) + "/params", {
+      method: "POST", operation: false, body: JSON.stringify(patch) });
+  } catch (e) { /* 运行中/网络失败不打断对话，发送前还有兜底 */ }
+}
+
+async function rdPrefsPushAll() {
+  // 发送前兜底：三个一起推（/chat 开新一轮前调用；失败静默——值已在前端，
+  // 下一轮 poll 的回填也不会覆盖用户刚选的值）
+  await Promise.all([rdPrefsPush("mode"), rdPrefsPush("thinking"), rdPrefsPush("model")]);
+}
+
 function drawChatAtts() {
   const box = $("rd-chat-att-list");
   if (!box) return;
-  // 点名字开预览（待提交区原文走 /api/attachments/<id>），× 才是移除
-  box.innerHTML = chatAtts.map((a, i) =>
-    '<span class="att-chip2 att-view" data-att-id="' + esc(a.id || "") +
-    '" data-att-name="' + esc(a.name) + '" title="' + esc(t("点击查看")) + '">' + esc(a.name) +
-    '<b onclick="chatRemoveAtt(' + i + ')" title="' + esc(t("移除")) + '">×' +
-    '</b></span>').join("");
+  // 点名字开预览（待提交区原文走 /api/attachments/<id>），× 才是移除。
+  // 图片直接展示缩略图（2026-09-21 用户反馈「图片要展示出来」）
+  box.innerHTML = chatAtts.map((a, i) => {
+    const isImg = /^image\//i.test(String(a.mime || "")) ||
+      /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(a.name || "");
+    if (isImg && a.id) {
+      const src = "/api/attachments/" + encodeURIComponent(a.id) + qsAuth();
+      return '<span class="att-view rd-att-thumb" data-att-id="' + esc(a.id) +
+        '" data-att-name="' + esc(a.name) + '" title="' + esc(a.name) + '">' +
+        '<img src="' + esc(src) + '" alt="' + esc(a.name) + '" loading="lazy" draggable="false">' +
+        '<b onclick="chatRemoveAtt(' + i + ')" title="' + esc(t("移除")) + '">×</b></span>';
+    }
+    return '<span class="att-chip2 att-view" data-att-id="' + esc(a.id || "") +
+      '" data-att-name="' + esc(a.name) + '" title="' + esc(t("点击查看")) + '">' + esc(a.name) +
+      '<b onclick="chatRemoveAtt(' + i + ')" title="' + esc(t("移除")) + '">×' +
+      '</b></span>';
+  }).join("");
 }
 window.chatRemoveAtt = function (i) { chatAtts.splice(i, 1); drawChatAtts(); };
 
@@ -6923,6 +7059,8 @@ window.chatSend = async function () {
       });
       toast(t("已排队：随下一步一起送达"));
     } else {
+      // 空闲态发送：先把三件套落到任务（变更即推失败时的兜底），再开新一轮
+      await rdPrefsPushAll();
       const r = await api("/api/runs/" + encodeURIComponent(chatRunId) + "/chat", {
         method: "POST",
         body: JSON.stringify({ text, attachments: chatAtts.map((a) => a.id) }),
@@ -7015,6 +7153,9 @@ function bindChat() {
     const chip = e.target.closest("[data-att-id]");
     if (chip) window.chatPendingPopup(chip.dataset.attId, chip.dataset.attName);
   });
+  // 对话条三件套：改动即写任务参数（空闲态），face 跟随
+  $("rd-mode").addEventListener("change", () => { syncCmpSelFace("rd-mode"); rdPrefsPush("mode"); });
+  $("rd-thinking").addEventListener("change", () => { syncCmpSelFace("rd-thinking"); rdPrefsPush("thinking"); });
   // 语音输入（借鉴 paseo voice control）：Web Speech API 口述转文字填入输入框。
   // 仅浏览器支持时显示按钮（Chrome/Edge）；识别结果追加到光标处，不自动发送。
   bindVoiceInput();

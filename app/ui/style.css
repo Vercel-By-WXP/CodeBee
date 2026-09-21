@@ -5632,8 +5632,11 @@ button.request-busy > * { opacity: .18; }
   font: inherit; color: inherit; cursor: pointer; }
 /* 「厂商/模型」组合名比单档选项长：放宽截断（其他 pill 保持 88px 短名） */
 #f-direct-wrap .cmp-sel-btn { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
-/* 厂商/模型钻取菜单：脱离 pill 宽度限制（type-menu 默认 left/right 撑满父级） */
-#cmp-model-menu { left: 0; right: auto; min-width: 250px; }
+/* 厂商/模型钻取菜单：脱离 pill 宽度限制（type-menu 默认 left/right 撑满父级）。
+ * 向上弹+z-index 提到 95：composer 靠页面底部，向下展开会被右栏 aside 盖住
+ * （真机实测 elementFromPoint 命中 ASIDE——2026-09-21「选不了模型」） */
+#cmp-model-menu { left: 0; right: auto; min-width: 250px; z-index: 95;
+  top: auto; bottom: calc(100% + 6px); }
 
 /* 插件市场：内置/已安装/可安装分区标题与已装启停开关（对齐 ZCode 形态） */
 #mk-grid .sec-title { margin: 14px 0 6px; }
@@ -5678,3 +5681,18 @@ button.request-busy > * { opacity: .18; }
 .chat-img img { display: block; width: 96px; height: 96px; object-fit: cover;
   border-radius: 10px; border: 1px solid var(--border); background: var(--panel2); }
 .chat-atts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+/* 对话输入条待发图片：小缩略卡（2026-09-21 用户反馈「图片要展示出来」）。
+ * 44×44 内嵌在 rd-att-list 行内，不越出 chat-bar 边框；× 悬浮右上角 */
+.rd-att-list .rd-att-thumb { position: relative; width: 44px; height: 44px; padding: 0;
+  border: 1px solid var(--border-strong); border-radius: 8px; overflow: visible;
+  display: inline-flex; align-items: center; justify-content: center; cursor: zoom-in; }
+.rd-att-list .rd-att-thumb img { width: 100%; height: 100%; object-fit: cover;
+  border-radius: 7px; display: block; }
+.rd-att-list .rd-att-thumb b { position: absolute; top: -7px; right: -7px; z-index: 2;
+  width: 16px; height: 16px; border-radius: 50%; background: var(--panel);
+  border: 1px solid var(--border-strong); display: inline-flex; align-items: center;
+  justify-content: center; font-size: 11px; line-height: 1; }
+/* 气泡图片缩略图：限制在气泡内（曾压住输入框边框线——2026-09-21 用户反馈） */
+.chat-img img { box-sizing: border-box; }
+.chat-bubble { overflow-wrap: anywhere; }

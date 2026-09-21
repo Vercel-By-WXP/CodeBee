@@ -622,7 +622,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_dir_save()
         if path == "/api/pick_folder":
             return self._api_pick_folder()
-        m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry|rename|continue)$", path)
+        m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry|rename|continue|params)$", path)
         if m:
             if m.group(2) == "archive":
                 body = self._body()
@@ -677,6 +677,9 @@ class Handler(BaseHTTPRequestHandler):
                                         "run_id": run["id"]})
             elif m.group(2) == "rename":
                 ok, err = store.rename_task(m.group(1), self._body().get("title"))
+            elif m.group(2) == "params":
+                # 对话条三件套（mode/thinking/direct 模型）随发随改：只许空闲态改
+                ok, err = store.update_task_params(m.group(1), self._body())
             else:
                 ok, err = store.delete_task(m.group(1))
             return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})

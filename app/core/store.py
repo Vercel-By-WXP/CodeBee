@@ -1431,6 +1431,43 @@ def rename_task(task_id, title):
     return True, ""
 
 
+def update_task_params(task_id, patch):
+    """更新任务编排参数（对话条三件套：mode/thinking/direct_provider_id/direct_model）。
+    只在任务未在跑时生效——运行中改参数不会影响当前执行，静默跳过避免误导。"""
+    if not _valid_id(task_id):
+        return False, "非法的任务 ID"
+    with LOCK:
+        task = _TASKS.get(task_id)
+        if not task:
+            return False, "任务不存在"
+        if task.get("status") in ("queued", "running"):
+            return False, "任务运行中，参数不可改"
+        changed = False
+        mode = str((patch or {}).get("mode") or "").strip()
+        if mode in ("auto", "fast", "expert", "manual"):
+            if task.get("mode") != mode:
+                task["mode"] = mode
+                changed = True
+        thinking = str((patch or {}).get("thinking") or "").strip()
+        if thinking in ("auto", "low", "standard", "high"):
+            if task.get("thinking") != thinking:
+                task["thinking"] = thinking
+                changed = True
+        if task.get("engine") == "direct":
+            pv = str((patch or {}).get("direct_provider_id") or "").strip()[:80]
+            mv = str((patch or {}).get("direct_model") or "").strip()[:160]
+            if mv and not pv:
+                return False, "指定对话模型时必须同时指定厂商"
+            if task.get("direct_provider_id") != pv or task.get("direct_model") != mv:
+                task["direct_provider_id"] = pv
+                task["direct_model"] = mv
+                changed = True
+        if changed:
+            _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
+            bump_state()
+    return True, ""
+
+
 def add_step(run_id, role, agent_id, agent_label, note=""):
     with LOCK:
         run = _RUNS.get(run_id)

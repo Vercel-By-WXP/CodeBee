@@ -492,6 +492,33 @@
                   <button id="rd-chat-voice" class="ghost hidden" data-i18n-title="语音输入（口述转文字填入输入框）" title="语音输入（口述转文字填入输入框）" data-i18n-aria="语音输入" aria-label="语音输入"><svg class="ico" aria-hidden="true"><use href="#i-mic"></use></svg></button>
                   <span id="rd-chat-att-list" class="rd-att-list"></span>
                   <span id="rd-chat-hint" class="rd-hint"></span>
+                  <!-- 对话条三件套（2026-09-21 用户反馈「这里面也需要同步改」）：与
+                       新建 composer 同款 pill；改动即写任务参数（空闲态），发送立即生效 -->
+                  <span class="cmp-sel" data-i18n-title="编排模式" title="编排模式">
+                    <select id="rd-mode" class="cmp-sel-native" aria-label="编排模式" data-i18n-aria="编排模式">
+                      <option data-i18n="自动：按任务类型与风险动态决定步骤" value="auto">自动：按任务类型与风险动态决定步骤</option>
+                      <option data-i18n="快速：少步骤优先，先做确定性验收" value="fast">快速：少步骤优先，先做确定性验收</option>
+                      <option data-i18n="专家：完整规划、多评审、失败修复与换将" value="expert">专家：完整规划、多评审、失败修复与换将</option>
+                      <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
+                    </select>
+                    <span class="cmp-sel-face" id="rd-mode-face">自动</span>
+                    <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+                  </span>
+                  <span class="cmp-sel" data-i18n-title="思考程度" title="思考程度">
+                    <select id="rd-thinking" class="cmp-sel-native" aria-label="思考程度" data-i18n-aria="思考程度">
+                      <option data-i18n="标准：平衡质量与速度" value="standard" selected>标准：平衡质量与速度</option>
+                      <option data-i18n="自动：随任务难度调整" value="auto">自动：随任务难度调整</option>
+                      <option data-i18n="快速：少推理、优先响应" value="low">快速：少推理、优先响应</option>
+                      <option data-i18n="深度：更多推理与检查" value="high">深度：更多推理与检查</option>
+                    </select>
+                    <span class="cmp-sel-face" id="rd-thinking-face">标准</span>
+                    <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+                  </span>
+                  <span class="cmp-sel" id="rd-model-wrap" data-i18n-title="对话模型" title="对话模型">
+                    <button type="button" class="cmp-sel-face cmp-sel-btn" id="rd-model-btn" onclick="toggleRdModelMenu()" aria-haspopup="menu" aria-controls="rd-model-menu">自动推荐</button>
+                    <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+                    <div id="rd-model-menu" class="type-menu hidden" role="menu" aria-label="对话模型" data-i18n-aria="对话模型"></div>
+                  </span>
                   <button id="rd-chat-send" class="primary round" data-i18n-title="发送" title="发送" data-i18n-aria="发送" aria-label="发送"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg></button>
                 </div>
                 <input id="rd-chat-file" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.txt,.md,.markdown,.csv,.json,.log,.py,.js,.ts,.html,.css,.xml,.yml,.yaml,.toml,.pdf,.docx,.xlsx,.pptx" class="hidden" />
