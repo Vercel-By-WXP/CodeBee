@@ -21,6 +21,11 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 不会把你的任务内容交给任何第三方。
 
 <!-- relnotes:start -->
+### 🛠 问题修复 · Fixes
+
+- 「关于与更新」页的版本信息与更新说明改为左对齐阅读，不再整块居中。
+- The version info and release notes on the About page are now left-aligned for easier reading.
+
 ### ✨ 新功能 · New
 
 - 连载任务防穿帮：新增「资源账本」——每章评审自动登记新出现的道具、伤情、承诺与伏笔，写下一章前自动注入提醒核对。
