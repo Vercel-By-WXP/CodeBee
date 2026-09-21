@@ -21,6 +21,14 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 不会把你的任务内容交给任何第三方。
 
 <!-- relnotes:start -->
+### 🛠 问题修复 · Fixes
+
+- 手机端操作被「其他设备正在控制」挡住时，弹出「接管并重试」——一键接管并自动重做刚才的操作。
+- When a mobile action is blocked by another device in control, a "Take over & retry" prompt appears — one tap retakes control and redoes the action.
+
+- 微信群列表拉取失败时会显示读取器的真实报错（依赖缺失/位数不对/微信未登录一眼可辨）。
+- WeChat group-list failures now surface the reader's real error (missing dependency, wrong bitness, or WeChat not logged in).
+
 ### ✨ 新功能 · New
 
 - 创建任务支持快速/自动/专家/手动编排与独立思考程度；代码、写作、翻译、邮件、汇报、调研等全类型按风险动态选择步骤。
