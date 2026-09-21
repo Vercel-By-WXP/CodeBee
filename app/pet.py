@@ -82,6 +82,8 @@ def parse_snapshot(raw):
             "error": str(t.get("error") or ""),
         })
     return {
+        # boot：服务进程启动标识（值变化=服务换人，本宠让位给新服务的蜜蜂）
+        "boot": raw.get("boot") or None,
         "settings": {
             "pet_enabled": bool(st.get("pet_enabled", True)),
             "pet_mode": str(st.get("pet_mode") or "always"),
@@ -309,7 +311,6 @@ KEY_RGB = (1, 2, 3)
 WIN_W, WIN_H = 170, 150          # 手绘回落模式的窗口尺寸
 SPRITE_DIR = Path(__file__).resolve().parent
 SPRITE_DISP_H = 112              # 精灵显示高度（宽等比）
-PROG_H = 16                      # 底部进度条预留高度（有进度时才显示）
 
 
 def _pid_alive(pid):
@@ -406,6 +407,7 @@ class PetApp:
         # 运行态
         self.snap = None
         self.miss = 0
+        self.boot = None    # 首次见到的服务 boot 标识；变化=服务换进程，本宠让位
         self.prev_active = set()
         self.mood_kind, self.mood_until = "", 0.0
         self.last_busy = time.time()
@@ -559,18 +561,20 @@ class PetApp:
     def _size_for(self, frames):
         fw = max(f.width() for lst in frames.values() for f in lst)
         fh = max(f.height() for lst in frames.values() for f in lst)
-        return int(fw) + 8, int(fh) + PROG_H + 4
+        return int(fw) + 8, int(fh) + 4
 
     # ---- 蜜蜂绘制（精灵模式：贴图 + 状态点缀画件）----
     # 用户拍板去掉：右上徽章、左侧速度线、底部影子（真机截图圈删）——
-    # 窗口贴着蜂体开，点缀只留睡觉 Zzz / 庆祝星光 / 底部进度条。
+    # 用户拍板去掉：右上徽章、左侧速度线、底部影子（真机截图圈删）、
+    # 底部任务进度条（2026-09-21 真机截图圈删）——
+    # 窗口贴着蜂体开，点缀只留睡觉 Zzz / 庆祝星光。
     def _build_sprite(self):
         cv = self.cv
-        cx, cy = self.win_w // 2, (self.win_h - PROG_H) // 2 + 2
+        cx, cy = self.win_w // 2, self.win_h // 2 + 2
         self._spr_c = (cx, cy)
         self.spr = cv.create_image(cx, cy, image=self.frames["alert"][0],
                                    anchor="center")
-        hw, hh = self.win_w / 2, (self.win_h - PROG_H) / 2
+        hw, hh = self.win_w / 2, self.win_h / 2
         self.zzz = [cv.create_text(cx + hw - 12, cy - hh + 14, text="z",
                                    fill="#8A93A6",
                                    font=("Segoe UI", 11, "italic bold")),
@@ -592,15 +596,6 @@ class PetApp:
         for grp in (self.zzz, self.spark):
             for i in grp:
                 cv.itemconfigure(i, state="hidden")
-        # 底部进度条（工作且有步骤进度才出现）
-        self.pbar_bg = cv.create_rectangle(cx - 34, self.win_h - 7,
-                                           cx + 34, self.win_h - 2,
-                                           fill="#202A36", outline="#3A4654")
-        self.pbar_fg = cv.create_rectangle(cx - 33, self.win_h - 6,
-                                           cx - 32, self.win_h - 3,
-                                           fill="#7ED07E", outline="")
-        cv.itemconfigure(self.pbar_bg, state="hidden")
-        cv.itemconfigure(self.pbar_fg, state="hidden")
         self.ox = self.oy = 0.0
         self._t0 = time.time()
 
@@ -788,14 +783,6 @@ class PetApp:
         self._palette = {i: cv.itemcget(i, "fill")
                          for i in (self.body, self.belly)}
 
-        # —— 贴地件：进度条（用户拍板去掉影子）——
-        self.pbar_bg = cv.create_rectangle(46, 139, 128, 147, fill="#202A36",
-                                           outline="#3A4654")
-        self.pbar_fg = cv.create_rectangle(47, 140, 48, 146, fill="#7ED07E",
-                                           outline="")
-        cv.itemconfigure(self.pbar_bg, state="hidden")
-        cv.itemconfigure(self.pbar_fg, state="hidden")
-
         # 动画游标
         self.ox = self.oy = 0.0
         self._t0 = time.time()
@@ -844,26 +831,9 @@ class PetApp:
                 cv.itemconfigure(self.body, fill=self._palette[self.body])
                 cv.itemconfigure(self.belly, fill=self._palette[self.belly])
                 cv.itemconfigure(self.gloss, state="normal")
-        # —— 共同：Zzz / 星光 / 进度条（徽章与速度线已按用户要求移除）——
+        # —— 共同：Zzz / 星光（徽章、速度线、进度条均已按用户要求移除）——
         self._show(self.zzz, False)
         self._show(self.spark, False)
-        prog = []
-        if st == "work" and self.snap:
-            prog = [t for t in self.snap["tasks"]
-                    if t["run_status"] == "running" and t["steps_total"]]
-        if prog:
-            done = sum(t["steps_done"] for t in prog)
-            total = sum(t["steps_total"] for t in prog)
-            ratio = max(0.0, min(1.0, done / float(total)))
-            x0 = (self.win_w // 2) - 34
-            cv.itemconfigure(self.pbar_bg, state="normal")
-            cv.itemconfigure(self.pbar_fg, state="normal")
-            cv.coords(self.pbar_bg, x0, self.win_h - 7, x0 + 68,
-                      self.win_h - 2)
-            cv.coords(self.pbar_fg, x0 + 1, self.win_h - 6,
-                      x0 + 1 + 66 * ratio, self.win_h - 3)
-        else:
-            self._show([self.pbar_bg, self.pbar_fg], False)
 
     def _post_settings(self, body):
         """合并并串行发送设置，保证快速连点时最后一次选择最终生效。"""
@@ -950,6 +920,15 @@ class PetApp:
         else:
             self.miss = 0
         if snap is not None:
+            # 服务换人检测（升级重启同端口场景）：boot 与首次见到的不一致，
+            # 说明响应来自新进程——本进程是旧代码的遗老，立即让位，新服务的
+            # 看护会 spawn 带新形象的新蜜蜂（旧形象常驻的根因修复）。
+            boot = snap.get("boot")
+            if boot:
+                if self.boot is None:
+                    self.boot = boot
+                elif boot != self.boot:
+                    return self._bye()
             self._reconcile_desired_settings(snap, confirmed_at_poll_start)
             if not snap["settings"]["pet_enabled"]:
                 return self._bye()

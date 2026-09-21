@@ -52,6 +52,7 @@ def _utf8_bytes(data):
         return data.decode("utf-8", "replace").encode("utf-8")
 
 PORT = 8765  # main() 启动时更新；/api/connect 组装扫码地址用
+_BOOT_TS = time.time()  # 服务进程启动时间戳：/api/pet_state 下发，蜜蜂据此识别「服务换人了」并让位
 
 # 写接口统一限制 JSON 请求体，避免误传文件或异常客户端把 worker 线程和
 # 内存拖垮。16 MiB 足够覆盖任务上下文、故事圣经和附件清单（附件本体走
@@ -1468,6 +1469,7 @@ class Handler(BaseHTTPRequestHandler):
         「刚完工/刚出事」。设置随响应回传，蜜蜂轮询到 pet_enabled=false 自行
         退出——关闭桌宠不需要专门的信号通道。
         """
+        global _BOOT_TS
         st = settings.load()
         rows = []
         n_run = n_q = 0
@@ -1500,6 +1502,10 @@ class Handler(BaseHTTPRequestHandler):
             dg = {"unseen": 0, "latest": None}
         return self._json(200, {
             "ok": True, "ts": int(time.time()), "port": PORT,
+            # boot：本服务进程的启动时间戳。蜜蜂记住首次见到的值，值变了说明
+            # 服务换了个进程（升级重启）——旧蜜蜂自行退场让新服务 spawn 新蜜蜂
+            # （旧形象常驻的根因：同端口轮询永远正常，旧进程从不自离）。
+            "boot": _BOOT_TS,
             "settings": {"pet_enabled": bool(st.get("pet_enabled", True)),
                          "pet_mode": str(st.get("pet_mode") or "always"),
                          "pet_skin": str(st.get("pet_skin") or "plush")},
