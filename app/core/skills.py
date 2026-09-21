@@ -391,17 +391,25 @@ def relevance_top(lessons, task, limit):
     if not probe:
         return lessons[:limit]
 
-    # 使用反馈闭环（pmb「量化记忆真实帮助」借鉴）：被选中次数多的教训排前
+    # 使用反馈闭环（pmb「量化记忆真实帮助」+ tradememory「按结局加权召回」）：
+    # 相关性优先；同分比 outcome 胜负（注入后任务过审 +1 / 未过 -1），再比 hits。
     def rank(x):
         grams = _text_bigrams(x.get("title")) | _text_bigrams(x.get("content"))
         overlap = -len(probe & grams)
+        karma = int(x.get("won") or 0) - int(x.get("lost") or 0)
         lid = x.get("id") or ""
-        return (overlap, -int(x.get("hits") or 0), lid)
+        return (overlap, -karma, -int(x.get("hits") or 0), lid)
 
     return sorted(lessons, key=rank)[:limit]
 
 
-def block_for(task, scope_override=None, *, stable_order=False):
+# 运行级注入登记（outcome 加权用）：run_id → 注入的教训 id 列表。
+# 容量有界防泄漏；run 收尾 learn_from_run 时消费清除。
+_INJECTED = {}
+_INJECTED_MAX = 200
+
+
+def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
     """生成注入提示词的经验块。命中即计数。返回 (文本, 命中的 id 列表)。
 
     3A：内置包 + 用户自建包都参与 scope 匹配；3B：带 persona 的包先注入
@@ -414,6 +422,9 @@ def block_for(task, scope_override=None, *, stable_order=False):
     39 个全文注入会先把 9000 字全局上限吃光，项目教训排在末尾被整段截掉。
     两道预算：①wildcard 包单包限额（定向命中的包不受限）；②教训保底——
     包区最多吃到「全局上限 − 教训长度」，教训永远完整注入。
+
+    run_id（tradememory 借鉴·outcome 加权）：登记本次注入的教训，run 收尾
+    按结局（过审 +1 / 未过 -1）回写 won/lost——好教训在排序中胜出。
     """
     scope = scope_override or task.get("type") or "*"
     parts, used, lesson_ids = [], [], []
@@ -464,7 +475,33 @@ def block_for(task, scope_override=None, *, stable_order=False):
         text = text[:MAX_INJECT_CHARS] + "\n…（已截断）"
     if lesson_ids:
         bump_hits(lesson_ids)  # 包 id 不参与教训热度，命中数据只保留一份真源
+        if run_id:
+            with _LOCK:
+                if len(_INJECTED) >= _INJECTED_MAX:
+                    _INJECTED.clear()   # 有界兜底：登记超量整体作废（丢信号不丢内存）
+                _INJECTED[str(run_id)] = list(lesson_ids)
     return text, used
+
+
+def note_outcome(run_id, passed):
+    """run 收尾回写注入教训的胜负（tradememory outcome 加权）。
+
+    passed=True → won+1（这条教训在场时任务过审）；False → lost+1。
+    只清算登记在案的教训；幂等（同一 run 消费后清除登记）。"""
+    rid = str(run_id or "")
+    if not rid:
+        return
+    with _LOCK:
+        ids = _INJECTED.pop(rid, None)
+        if not ids:
+            return
+        data = _load()
+        idset = set(ids)
+        for it in (data.get("lessons") or []):
+            if it.get("id") in idset:
+                key = "won" if passed else "lost"
+                it[key] = int(it.get(key) or 0) + 1
+        _save(data)
 
 
 def bump_hits(ids):
@@ -569,6 +606,14 @@ def learn_from_run(run_id, use_orchestrator=True):
     run = store.get_run(run_id)
     if not run:
         return 0
+    # outcome 加权（tradememory）：本 run 注入过的教训按结局记胜负——
+    # 失败 run 说明在场教训没防住这个问题（lost+1），过审则 won+1。
+    # 放最前：无论后续是否沉淀新教训，胜负都要落账。
+    try:
+        verdict = run.get("verdict") or {}
+        note_outcome(run_id, bool(verdict.get("pass")))
+    except Exception:
+        pass
     task = store.get_task(run.get("task_id")) if run.get("task_id") else None
     if not task:
         return 0

@@ -2126,7 +2126,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             # 逐项目标审稿（借鉴 AI-Novel-Writer v1.1）：本章大纲要点逐项核对
             tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % event_check, 1)
         # stable_order：评审分轮次调用，hits 中途变化会打碎前缀缓存（§07 T1.2'）
-        sk, _ = skills.block_for(task, stable_order=True)
+        sk, _ = skills.block_for(task, stable_order=True, run_id=run_id)
         if sk:
             tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % sk, 1)
         if bible:
@@ -2363,7 +2363,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                               duration_s=0.2)
         else:
             # stable_order：同一任务 8 个章节的技能块必须字节级一致（§07 T1.2' 前缀缓存）
-            sk_block, _ = skills.block_for(task, stable_order=True)
+            sk_block, _ = skills.block_for(task, stable_order=True, run_id=run_id)
             if bible:
                 sk_block = (sk_block + "\n\n" + bible) if sk_block else bible
             kb_block = knowledge.block_for(task)

@@ -428,3 +428,18 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 复查：oh-my-claudecode 39,284★/orca 74,133★/omnigent 10,130★/claude-code-router 37,358★/freellmapi 27,732★ 全活跃；chinese-novelist-skill 等小说三竞品无增量
 
 **✅ 本班落地**：连载「章节评审卡」前端展示（renderChapterScores）——详情页步骤区新增卡片：每章均分徽标（低分标红）/达标计数/未达标红框/字数轮数，**逐项目标审稿结果（event_check）行级红绿灰展示**（已完成=绿/未完成=红/待核实=灰）；ui_chapter_card.mjs 10 项（含英文词条）；第二十班落的 event_check 数据从此用户可见
+
+### 2026-09-21 20:01 第二十二班（批6：框架/平台/SDK 生态 + 全类型雷达）
+
+- **strands-agents/harness-sdk**（7,386★，AWS Strands 系）新入雷达 | 「Build an agent harness and control it end-to-end」——harness SDK 化（Python/TS），端到端控制 agent harness | 我们=编排台不是 SDK，但「harness 可编程化」方向值得关注 | 参考
+- **aegra**（1,213★）| LangGraph Platform 开源替代：自托管 agent 后端 | 自托管路线参考 | 参考
+- **agents-towards-production**（NirDiamant，21,483★）复查 | 原型→企业级 agent 教程库 | 学习材料 | 参考
+- **CrewAI-Studio**（1,359★）/pandaprobe（786★，agent 工程平台：traces/evals/metrics）| GUI/可观测配套 | 参考
+- **agentcn**（shadcn-labs，473★）| 「shadcn/ui, but for building agents」——agent UI 组件库 | 前端参考 | 参考
+- **Patter**（1,060★）开源语音 AI SDK（Vapi/Retell 替身）| 语音方向雷达（我们语音输入已落地）| 雷达
+- **AntSK**（1,327★，.Net9+SK 知识库问答）/semantix（651★，自进化 semantic kernel）| SK 生态中文标的 | 参考
+- **A2A 协议族**：python-a2a 1,009★（Google A2A Python 库）/a2a-rust（v1.0.0 spec 类型安全）| 跨代理协议成熟中——我们单机编排暂无跨进程协商需求 | 雷达
+- 生态大盘：vercel/ai 26.9k/mastra 28.2k/dify 156.7k/langflow 155.1k 活跃；system-prompts-and-models-of-ai-tools 143.8k（各家系统提示词全集，我们提示词工程的参照库）；ponytail 143.5k（「最懒高级工程师思维」人格——巨型星数的提示词项目，人格/风格域奇观）
+- 复查：oh-my-claudecode/orca/omnigent/claude-code-router 活跃；小说三竞品无增量
+
+**✅ 本班落地**：教训 outcome 加权（tradememory「按结局加权召回」借鉴）——block_for 支持 run_id 登记注入教训；learn_from_run 收尾按 verdict.pass 回写 won/lost（过审在场教训 won+1=真帮上忙，失败 lost+1=没防住）；relevance_top 同相关性下 karma 优先于 hits——好教训在排序中胜出、坏教训被挤出 top-k。test_skill_outcome 5 项（登记/幂等/lost/真实链路/排序/有界）
