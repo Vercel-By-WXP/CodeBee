@@ -162,7 +162,25 @@ window.toggleModelMenu = toggleModelMenu;
     if (!b) return;
     if (b.dataset.manage) { toggleModelMenu(false); switchTab("models"); return; }
     if (b.dataset.back) { cmpModelProv = ""; cmpModelMenuRender(); return; }
-    if (b.dataset.m === undefined) { cmpModelProv = b.dataset.p; cmpModelMenuRender(); return; }
+    if (b.dataset.m === undefined) {
+      // 点厂商 = 厂商+推荐模型一起定（用户反馈「只选了厂商」）：带出该厂商
+      // 排序最前的模型并展开模型级菜单，可立即改选；已是当前厂商则只钻取。
+      // 注意先 renderDirectModelPicker 重建模型 options，再赋值才生效。
+      const pid = b.dataset.p;
+      if ($("f-direct-provider").value !== pid) {
+        $("f-direct-provider").value = pid;
+        renderDirectModelPicker();
+        const p = directProviders().find((x) => x.id === pid);
+        const names = p ? (p.models || []).filter((m) => m.enabled !== false && !m.hidden)
+          .map((m) => m.name).filter(Boolean) : [];
+        const ms = $("f-direct-model-name");
+        if (names.length && names.includes(names[0])) ms.value = names[0];
+        cmpDirectBtnSync();
+      }
+      cmpModelProv = pid;
+      cmpModelMenuRender();
+      return;
+    }
     // 选定：写回隐藏 select 真源（提交流/回归测试全走原路径）
     $("f-direct-provider").value = b.dataset.p;
     $("f-direct-model-name").value = b.dataset.m;
@@ -11449,6 +11467,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-thinking").addEventListener("change", refreshEstimate);
   $("f-rounds").addEventListener("change", refreshEstimate);
   $("f-direct-provider").addEventListener("change", renderDirectModelPicker);
+  $("f-direct-model-name").addEventListener("change", cmpDirectBtnSync);   // 更多选项里改模型也要同步 pill
   $("f-type").dispatchEvent(new Event("change"));
   cmpGreeting();   // 问候语按时段刷新（切语言/回任务页也会重算）
   $("btn-reload-catalog").addEventListener("click", async () => {
