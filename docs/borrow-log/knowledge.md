@@ -468,3 +468,18 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - B7 中文搜索组（数字员工/中转/小说平台/办公/中文编排）API 返回空——中文关键词命中弱，靠雷达-中文新锐补位
 
 **✅ 本班落地**：T2.2 幂等调用精确缓存补全接线（§07 token-cost 收尾）——连通测试此前已接 24h；本轮补编排者三处：连载大纲（尝试 1 TTL 1h、**尝试 2 故意旁路**保「换样本」语义）/代码计划 1h/评审大纲 1h——断点续跑与重跑同任务时规划调用直接命中，省一次全量编排者调用。test_planner_cache_wiring 3 项
+
+### 2026-09-22 02:01 第二十五班（批2：学习记忆与自我改进 + 全类型雷达）
+
+- **codegraph**（colbymchenry，71,711★ 巨型标）入库 | **预索引代码知识图谱**：代码变更自动同步，给 Claude Code/Codex/Cursor/OpenCode 供给仓库级结构认知 | 与我们知识库互补（我们存经验教训/竞品知识，不做代码结构索引）| 参考/边界清晰
+- **graphiti 31.1k / cognee 30.9k** 复查 | 实时知识图谱/持久记忆平台双雄 | 记忆域大盘稳定
+- **Agent_Memory_Techniques**（NirDiamant，1,069★）| 30 个可跑的 agent 记忆 Jupyter notebook（buffer/向量库/知识图谱）| 学习材料 | 参考
+- **MemRL**（172★，论文）| **运行时强化学习作用于情景记忆**——agent 自进化新路线（与我们的 outcome 加权同向但走 RL）| 参考
+- **mengram**（201★）| 人类式三段记忆：semantic/episodic/**procedural（经验驱动的程序性知识，从做中学）**| 程序性记忆是我们空白 | 雷达
+- **pro-workflow**（rohitg00，2,875★）| Claude Code 从你的纠正中学习：**自纠错记忆跨 50+ 会话复利** | 与我们教训库同路，规模参照 | 参考
+- **projectmem**（830★）| 记录 issues/attempts/fixes/decisions，**在 agent 重蹈覆辙前警告它** | 「事前警告」角度与我们的注入式教训互补 | 雷达
+- **prax-agent**（273★）| 自改进运行时：test-verify-fix 循环+纠正检测+跨会话 | 参考
+- **KIP**（82★）| Knowledge Interaction Protocol——持久记忆与学习的开放协议 | 雷达
+- A 组复查：全活跃无增量事故
+
+**✅ 本班落地**：新增「标书编制」任务类型（BidCraft 标书匠灵感清账）——bid_doc 流程（5 评审维度：应答完整性/合规符合度/方案针对性/评分点覆盖/商务清晰度，门槛 7.5 上调）；CONTENT_DELIVERY_CONTRACTS「投标经理」契约（逐条对齐评分标准+资质不虚构标注待补+应答先结论+**废标风险项自查**——sepia 投标文体）；dispatch 归 writing 维度；中英文案齐。test_bid_flow 3 项

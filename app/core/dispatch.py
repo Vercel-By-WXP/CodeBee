@@ -25,6 +25,7 @@ TYPE_DIMENSIONS = {
     "email": "writing",
     "tech_proposal": "reasoning",
     "resume": "writing",
+    "bid_doc": "writing",   # 标书：正文应答写作量大（合规判断由契约规则约束）
     "zentao": "coding",
 }
 
