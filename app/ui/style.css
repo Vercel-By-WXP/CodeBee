@@ -5456,3 +5456,55 @@ button.request-busy > * { opacity: .18; }
   .rd-route-row { grid-template-columns: 38px minmax(72px, 1fr); }
   .rd-route-reason { grid-column: 2; }
 }
+
+/* ---------------- 统一操作状态中心（所有用户触发的写请求） ---------------- */
+.op-wrap { position: relative; }
+.op-pill { min-width: 118px; justify-content: center; }
+.op-pill.running { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.op-pill.failed { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 55%, var(--border)); }
+.op-pill.done { color: var(--ok); }
+.op-pill.running .ico { animation: op-center-spin 1.1s linear infinite; }
+@keyframes op-center-spin { to { transform: rotate(-360deg); } }
+.op-center {
+  position: absolute; z-index: 140; top: calc(100% + 9px); right: 0;
+  width: min(370px, calc(100vw - 24px)); max-height: min(480px, calc(100vh - 88px));
+  overflow: hidden; border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--panel); box-shadow: var(--shadow-lg);
+}
+.op-center.hidden { display: none; }
+.op-center-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 48px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--border);
+}
+.op-center-head b { font-size: 13px; }
+.op-list { max-height: min(430px, calc(100vh - 140px)); overflow: auto; }
+.op-row {
+  display: grid; grid-template-columns: 10px minmax(0, 1fr) 28px; gap: 9px;
+  align-items: start; min-height: 52px; padding: 10px 9px 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.op-row:last-child { border-bottom: 0; }
+.op-state { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--ok); }
+.op-row.running .op-state { background: var(--accent); animation: pulse 1.1s ease-in-out infinite; }
+.op-row.failed .op-state { background: var(--bad); }
+.op-copy { min-width: 0; }
+.op-copy > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.op-copy b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.op-copy span { flex: none; color: var(--muted); font-size: 10.5px; }
+.op-copy p {
+  margin: 4px 0 0; color: var(--bad); font-size: 11px; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.op-dismiss {
+  width: 26px; height: 26px; padding: 5px; border: 0; border-radius: 6px;
+  color: var(--muted); background: transparent; cursor: pointer;
+}
+.op-dismiss:hover { color: var(--text); background: var(--panel2); }
+@media (max-width: 720px) {
+  .op-pill { min-width: 34px; width: 34px; height: 32px; padding: 5px; }
+  .op-pill #op-pill-text { display: none; }
+  .op-center { position: fixed; top: 58px; right: 8px; width: calc(100vw - 16px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .op-pill.running .ico, .op-row.running .op-state { animation: none; }
+}

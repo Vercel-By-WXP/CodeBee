@@ -301,6 +301,124 @@ let _requestBusyCount = 0;
 let _lastActionButton = null;
 let _lastActionAt = 0;
 const _requestBusyButtons = new WeakMap();
+const _operations = [];
+let _operationSeq = 0;
+
+function operationLabel(path, opts) {
+  if (opts && opts.operation === false) return "";
+  if (opts && typeof opts.operation === "string") return t(opts.operation);
+  if (opts && opts.busy === false && opts.operation !== true) return "";
+  const method = String((opts && opts.method) || "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD") return "";
+  // 只自动记录刚由用户点击触发的写操作；后台维护请求需显式传 operation 才显示。
+  if (!(opts && opts.operation === true) && performance.now() - _lastActionAt >= 2000) return "";
+  const clean = String(path || "").split("?")[0];
+  const rules = [
+    [/^\/api\/tasks$/, "创建任务"],
+    [/\/tasks\/[^/]+\/delete$/, "删除任务"],
+    [/\/tasks\/[^/]+\/archive$/, "归档任务"],
+    [/\/tasks\/[^/]+\/retry$/, "重试任务"],
+    [/\/tasks\/[^/]+\/continue$/, "创建续写任务"],
+    [/\/tasks\/[^/]+\/rename$/, "重命名任务"],
+    [/\/runs\/[^/]+\/cancel$/, "取消运行"],
+    [/\/runs\/[^/]+\/delete$/, "删除运行"],
+    [/\/runs\/(delete-batch|clear)$/, "清理运行记录"],
+    [/\/attachments(?:\/[^/]+)?$/, "上传附件"],
+    [/\/selfupdate\/apply$/, "升级 CodeBee"],
+    [/\/market\//, "更新插件"],
+    [/\/models\/binding$/, "更新智能体绑定"],
+    [/\/models\//, "更新模型配置"],
+  ];
+  const hit = rules.find((it) => it[0].test(clean));
+  return t(hit ? hit[1] : "提交操作");
+}
+
+function operationStart(path, opts) {
+  const label = operationLabel(path, opts);
+  if (!label) return null;
+  const op = { id: ++_operationSeq, label, status: "running", at: Date.now(), error: "" };
+  _operations.unshift(op);
+  if (_operations.length > 12) _operations.length = 12;
+  renderOperationCenter();
+  return op.id;
+}
+
+function operationFinish(id, status, error) {
+  if (!id) return;
+  const op = _operations.find((it) => it.id === id);
+  if (!op) return;
+  op.status = status;
+  op.error = String(error || "").slice(0, 240);
+  op.endedAt = Date.now();
+  renderOperationCenter();
+}
+
+function operationTime(ts) {
+  try { return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+  catch (e) { return ""; }
+}
+
+function renderOperationCenter() {
+  const button = $("btn-ops");
+  const list = $("op-list");
+  if (!button || !list) return;
+  button.classList.toggle("hidden", !_operations.length);
+  const running = _operations.filter((it) => it.status === "running").length;
+  const failed = _operations.filter((it) => it.status === "failed").length;
+  button.classList.toggle("running", running > 0);
+  button.classList.toggle("failed", !running && failed > 0);
+  button.classList.toggle("done", !running && !failed && _operations.length > 0);
+  const pill = $("op-pill-text");
+  if (pill) pill.textContent = running ? t("{0} 项处理中").replace("{0}", running)
+    : failed ? t("{0} 项失败").replace("{0}", failed) : t("操作完成");
+  list.innerHTML = _operations.map((op) => {
+    const status = op.status === "running" ? t("处理中")
+      : op.status === "failed" ? t("失败") : t("已完成");
+    const remove = op.status === "running" ? "" :
+      '<button type="button" class="op-dismiss" aria-label="' + esc(t("移除")) +
+      '" title="' + esc(t("移除")) + '" onclick="dismissOperation(event,' + op.id + ')">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></button>';
+    return '<div class="op-row ' + op.status + '"><span class="op-state" aria-hidden="true"></span>' +
+      '<div class="op-copy"><div><b>' + esc(op.label) + '</b><span>' + esc(status) + " · " +
+      esc(operationTime(op.endedAt || op.at)) + '</span></div>' +
+      (op.error ? '<p title="' + esc(op.error) + '">' + esc(op.error) + "</p>" : "") +
+      "</div>" + remove + "</div>";
+  }).join("");
+}
+
+function toggleOperationCenter(force) {
+  const panel = $("op-center");
+  const button = $("btn-ops");
+  if (!panel || !button) return;
+  const open = force === undefined ? panel.classList.contains("hidden") : !!force;
+  panel.classList.toggle("hidden", !open);
+  button.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function clearFinishedOperations() {
+  for (let i = _operations.length - 1; i >= 0; i--) {
+    if (_operations[i].status === "done") _operations.splice(i, 1);
+  }
+  renderOperationCenter();
+  if (!_operations.length) toggleOperationCenter(false);
+}
+
+function dismissOperation(event, id) {
+  if (event) event.stopPropagation();
+  const i = _operations.findIndex((it) => it.id === id && it.status !== "running");
+  if (i >= 0) _operations.splice(i, 1);
+  renderOperationCenter();
+  if (!_operations.length) toggleOperationCenter(false);
+}
+
+window.toggleOperationCenter = toggleOperationCenter;
+window.clearFinishedOperations = clearFinishedOperations;
+window.dismissOperation = dismissOperation;
+
+document.addEventListener("click", (e) => {
+  const wrap = $("op-wrap");
+  if (wrap && !wrap.contains(e.target)) toggleOperationCenter(false);
+});
 
 /* 记录发起请求的按钮。写请求统一在 api() 里挂忙碌态，避免每个业务入口各写一套；
  * 确认框的按钮不覆盖原始操作按钮，但会续期，使“确认后执行”仍反馈在原按钮上。 */
@@ -394,10 +512,12 @@ async function api(path, opts) {
     var timer = setTimeout(() => ctrl.abort(), opts.timeout);
   }
   const busyToken = requestBusyStart(opts);
+  const operationToken = operationStart(path, opts);
   const fetchOpts = Object.assign({}, opts);
   delete fetchOpts.timeout;
   delete fetchOpts.busy;
   delete fetchOpts.busyElement;
+  delete fetchOpts.operation;
   try {
     let res;
     try {
@@ -412,7 +532,11 @@ async function api(path, opts) {
     try { data = await res.json(); } catch (e) { /* ignore */ }
     if (res.status === 423 && data && data.control) setControl(data.control);
     if (!res.ok) throw new Error((data && data.error) || ("HTTP " + res.status));
+    operationFinish(operationToken, "done");
     return data;
+  } catch (e) {
+    operationFinish(operationToken, "failed", e && e.message ? e.message : e);
+    throw e;
   } finally {
     if (timer) clearTimeout(timer);
     requestBusyEnd(busyToken);
@@ -2027,7 +2151,7 @@ async function createTask() {
     try {
       const cq = await api("/api/tasks/clarify", {
         // 澄清只是增强，不能让建任务被模型调用拖住；超时后直接按原目标开跑。
-        method: "POST", timeout: 8000,
+        method: "POST", timeout: 8000, operation: false,
         body: JSON.stringify({ goal: payload.goal, type: payload.type }) });
       const qs = (cq && cq.questions) || [];
       if (qs.length) {
@@ -2089,7 +2213,7 @@ async function createTask() {
     if (critics.length) payload.critics = critics;
   }
   try {
-    const r = await api("/api/tasks", { method: "POST", timeout: 30000,
+    const r = await api("/api/tasks", { method: "POST", timeout: 30000, operation: "创建任务",
       body: JSON.stringify(payload) });
     msg.textContent = t("已创建，跳转运行页…");
     // 先把新任务刷进 state 再跳：chatEngineIsDirect 靠 S.state.tasks 判引擎，
@@ -2383,7 +2507,8 @@ async function deleteTask(id) {
   let gone = false;
   try {
     toast(t("正在删除任务…"));
-    await api("/api/tasks/" + encodeURIComponent(id) + "/delete", { method: "POST" });
+    await api("/api/tasks/" + encodeURIComponent(id) + "/delete",
+      { method: "POST", operation: "删除任务" });
   } catch (e) {
     // 任务已不在（他端删过 / 重复点）：不报错晾着，照常把视图清掉
     if (!/任务不存在/.test(e.message)) { toast(t("删除失败：") + e.message, true); return; }

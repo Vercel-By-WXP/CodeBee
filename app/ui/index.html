@@ -214,6 +214,15 @@
       <div id="health-banner" class="health-banner hidden" onclick="healthBannerClick()" title="供应商健康告警" aria-label="供应商健康告警" data-i18n-title="供应商健康告警" data-i18n-aria="供应商健康告警"></div>
       <div class="top-actions">
         <button id="ctrl-pill" class="pill ctrl icon-only hidden" onclick="ctrlClick()" title="多端控制权" aria-label="多端控制权" data-i18n-aria="多端控制权" data-i18n-title="多端控制权"><svg class="ico" aria-hidden="true"><use href="#i-unlock"></use></svg></button>
+        <div id="op-wrap" class="op-wrap">
+          <button id="btn-ops" class="pill op-pill hidden" type="button" onclick="toggleOperationCenter()" title="操作状态" aria-label="操作状态" aria-haspopup="dialog" aria-expanded="false" aria-controls="op-center" data-i18n-title="操作状态" data-i18n-aria="操作状态">
+            <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg><span id="op-pill-text"></span>
+          </button>
+          <div id="op-center" class="op-center hidden" role="dialog" aria-label="操作状态" data-i18n-aria="操作状态">
+            <div class="op-center-head"><b data-i18n="操作状态">操作状态</b><button type="button" class="ghost small" onclick="clearFinishedOperations()" data-i18n="清除已完成">清除已完成</button></div>
+            <div id="op-list" class="op-list" aria-live="polite"></div>
+          </div>
+        </div>
         <!-- 语言快捷切换：语言名用母语写死（中文/English），刻意不做 i18n——任何母语的人都要能读懂并选中 -->
         <div class="lang-wrap">
           <button id="btn-lang" class="pill icon-only" type="button" onclick="toggleLangMenu()" title="语言 / Language" aria-label="切换语言" aria-haspopup="listbox" aria-controls="lang-menu" data-i18n-title="语言 / Language" data-i18n-aria="切换语言"><svg class="ico" aria-hidden="true"><use href="#i-globe"></use></svg></button>

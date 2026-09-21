@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 18823;
-const CDP_PORT = 9383;
+const CDP_PORT = 9397;
 const SERVICE = `http://127.0.0.1:${PORT}`;
 const EDGE = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -73,18 +73,23 @@ async function main() {
     const busy = await js(`({
       button: document.getElementById("feedback-test").classList.contains("request-busy"),
       aria: document.getElementById("feedback-test").getAttribute("aria-busy"),
-      progress: document.getElementById("request-progress").classList.contains("active"), calls: window.__calls
+      progress: document.getElementById("request-progress").classList.contains("active"), calls: window.__calls,
+      operationVisible: !document.getElementById("btn-ops").classList.contains("hidden"),
+      operationRunning: document.querySelector("#op-list .op-row.running") !== null
     })`);
     assert(busy.button && busy.aria === "true" && busy.progress, "点击后没有立即显示请求反馈");
+    assert(busy.operationVisible && busy.operationRunning, "用户写操作没有进入操作状态中心");
     await js(`document.getElementById("feedback-test").click(); true`);
     assert(await js(`window.__calls`) === 1, "忙碌期间重复点击仍发送了请求");
     await js(`window.__resolveRequest(); new Promise((resolve) => setTimeout(resolve, 30))`);
     const restored = await js(`({
       button: document.getElementById("feedback-test").classList.contains("request-busy"),
       aria: document.getElementById("feedback-test").hasAttribute("aria-busy"),
-      progress: document.getElementById("request-progress").classList.contains("active")
+      progress: document.getElementById("request-progress").classList.contains("active"),
+      operationDone: document.querySelector("#op-list .op-row.done") !== null
     })`);
     assert(!restored.button && !restored.aria && !restored.progress, "请求完成后忙碌态没有恢复");
+    assert(restored.operationDone, "请求完成后操作状态没有变为已完成");
 
     await js(`(() => {
       window.fetch = () => new Promise((resolve) => {
@@ -114,6 +119,15 @@ async function main() {
     await js(`window.__rejectRequest(); new Promise((resolve) => setTimeout(resolve, 30))`);
     assert(!await js(`document.getElementById("feedback-test").classList.contains("request-busy")`),
       "请求异常后忙碌态没有恢复");
+    assert(await js(`document.querySelector("#op-list .op-row.failed") !== null`),
+      "失败请求没有保留失败状态");
+
+    const beforeQuiet = await js(`document.querySelectorAll("#op-list .op-row").length`);
+    await js(`window.fetch = () => Promise.reject(new Error("clarify"));
+      api("/clarify", { method: "POST", operation: false, body: "{}" }).catch(() => {});
+      new Promise((resolve) => setTimeout(resolve, 50))`);
+    assert(await js(`document.querySelectorAll("#op-list .op-row").length`) === beforeQuiet,
+      "operation:false 请求不应进入操作状态中心");
 
     await js(`(() => {
       window.__backgroundResolves = [];
@@ -125,9 +139,11 @@ async function main() {
     })()`);
     const quiet = await js(`({
       button: document.getElementById("feedback-test").classList.contains("request-busy"),
-      progress: document.getElementById("request-progress").classList.contains("active")
+      progress: document.getElementById("request-progress").classList.contains("active"),
+      operationCount: document.querySelectorAll("#op-list .op-row").length
     })`);
-    assert(!quiet.button && !quiet.progress, "后台 GET/POST 误触发了操作反馈");
+    assert(!quiet.button && !quiet.progress && quiet.operationCount === beforeQuiet,
+      "后台 GET/POST 误触发了操作反馈: " + JSON.stringify({ beforeQuiet, quiet }));
     await js(`window.__backgroundResolves.forEach((resolve) => resolve());
       new Promise((resolve) => setTimeout(resolve, 30))`);
     console.log("请求即时反馈、防连点、后台静默与异常恢复：通过");
