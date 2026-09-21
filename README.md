@@ -23,6 +23,14 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 <!-- relnotes:start -->
 ### ✨ 新功能 · New
 
+- 创建任务支持快速/自动/专家/手动编排与独立思考程度；代码、写作、翻译、邮件、汇报、调研等全类型按风险动态选择步骤。
+- 新建对话默认系统推荐，也可只对当前对话指定厂商/模型；创建前和运行中显示 ETA/P90 与剩余时间。
+- New tasks support Fast/Auto/Expert/Manual orchestration and an independent reasoning level; every task type adapts its workflow to risk.
+- Conversations use the system recommendation by default, with optional per-conversation provider/model selection plus ETA/P90 visibility.
+
+- 修复 Windows 控制台启动崩溃、损坏 Git 仓库导致 Aider 长时间等待、Anthropic 接口收到不兼容思考字段，以及桌宠语言切换后重复开窗。
+- Fixed Windows console startup crashes, Aider stalls on unreadable Git repositories, incompatible Anthropic reasoning fields, and duplicate pet windows after language changes.
+
 - 连载任务详情新增「章节评审」卡片：每章维度评分（低分标红）与达标状态，大纲要点逐项核对结果红绿灰直读。
 - Serial runs now show a Chapter Reviews card: per-chapter dimension scores (low ones in red) plus beat-by-beat checks color-coded green/red/gray.
 
