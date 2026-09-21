@@ -319,7 +319,8 @@ function operationLabel(path, opts) {
   const method = String((opts && opts.method) || "GET").toUpperCase();
   if (method === "GET" || method === "HEAD") return "";
   // 只自动记录刚由用户点击触发的写操作；后台维护请求需显式传 operation 才显示。
-  if (!(opts && opts.operation === true) && performance.now() - _lastActionAt >= 2000) return "";
+  if (!(opts && opts.operation === true) &&
+      (!_lastActionAt || performance.now() - _lastActionAt >= 2000)) return "";
   const clean = String(path || "").split("?")[0];
   const rules = [
     [/^\/api\/tasks$/, "创建任务"],
@@ -8477,7 +8478,7 @@ function renderZentaoProfiles() {
   const box = $("zt-profiles");
   if (!box) return;
   box.innerHTML = (S.ztProfiles || []).map((p, i) => ztProfCardHtml(p, i)).join("") ||
-    '<div class="empty">' + t("还没有产品档案——点「＋ 添加产品」，填产品 ID 与两端仓库。") + "</div>";
+    '<div class="empty">' + t("还没有产品档案——先测试连接，再从禅道选择产品，无需自己查 ID。") + "</div>";
 }
 
 /* DOM 卡片 → profiles 数组（结构变化前采集，保住已输入值） */
@@ -8518,6 +8519,10 @@ function ztProfAdd() {
     repos: { backend: {}, frontend: {} }, repo_hints: { backend: "", frontend: "" },
     owners: { backend: "", frontend: "", not_ours: "" }, module_routes: [] });
   renderZentaoProfiles();
+  // 首次添加时自动拉清单，避免用户只能盲填产品 ID；拉不到仍保留手填回退。
+  if (!(S.ztProducts || []).length && $("zt-base-url") && $("zt-base-url").value.trim()) {
+    ztFetchCatalog(false);
+  }
 }
 
 function ztProfDel(i) {
@@ -8648,7 +8653,7 @@ function zentaoOpenRun(runId) {
 }
 
 /* 表单 → 保存配置。password 只在用户输入了才提交（空 = 保持已存密码）。 */
-async function saveZentao() {
+function ztFormPayload() {
   const val = (id) => (($(id).value || "").trim());
   const payload = {
     base_url: val("zt-base-url"),
@@ -8662,6 +8667,11 @@ async function saveZentao() {
   };
   const pw = ($("zt-password").value || "").trim();
   if (pw) payload.password = pw;
+  return payload;
+}
+
+async function saveZentao() {
+  const payload = ztFormPayload();
   try {
     await api("/api/zentao/config", { method: "POST", body: JSON.stringify(payload) });
   } catch (e) { toast(t("保存失败：") + e.message, true); return; }
@@ -8686,6 +8696,16 @@ async function testZentao() {
       inp.value = r.base_url;
       toast(t("地址已自动补全子路径，记得「保存配置」"));
     }
+  }
+  if (r.ok) {
+    try {
+      // 测试成功即保存当前连接并拉产品清单，用户无需再理解“先保存再拉取”的顺序。
+      await api("/api/zentao/config", { method: "POST", operation: false,
+        body: JSON.stringify(ztFormPayload()) });
+      await loadZentao();
+      await ztFetchCatalog(true);
+      toast(t("连接成功，已保存；现在可直接从禅道选择产品"));
+    } catch (e) { toast(t("连接成功，但保存配置失败：") + e.message, true); }
   }
 }
 
@@ -9439,6 +9459,9 @@ function renderSu() {
   const info = $("su-info");
   if (!info) return;
   if (!SU) { info.textContent = t("无法获取版本信息（服务未连接）"); return; }
+  // 真实内容就绪后摘掉「空状态」皮肤：.empty 是居中+虚线框的加载占位样式，
+  // 版本信息与更新说明都应该左对齐阅读（用户反馈「能不能左对齐」）
+  info.classList.remove("empty");
   const modeTxt = t(SU_MODE_TXT[SU.mode] || "未知安装方式");
   const cur = SU.current ? "v" + SU.current : t("（未同步版本号）");
   let html = "<p class=\"hint\">" + t("当前版本") + t("：") + "<b>" + cur + "</b>" + t("　·　") + t("安装方式") + t("：") + modeTxt + "</p>";

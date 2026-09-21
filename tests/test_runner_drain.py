@@ -107,3 +107,24 @@ class TestRunProcessDrainsOnTimeout(BaseTest):
         # 2 秒内能读到多行
         self.assertIn("line0", res["stdout"],
                       f"stdout was: {res['stdout'][:200]!r}")
+
+
+class TestRunProcessRepeatedFatalOutput(BaseTest):
+    """有持续错误输出的无限重连也应提前终止，不能因为一直有输出避开静默看门狗。"""
+
+    def test_repeated_network_error_aborts(self):
+        from app.core.runner import run_process
+        child_script = (
+            "import time\n"
+            "for i in range(20):\n"
+            " print('Reconnecting... waiting for network', flush=True)\n"
+            " time.sleep(.1)\n"
+        )
+        started = time.time()
+        res = run_process(
+            argv=[sys.executable, "-c", child_script], timeout=30,
+            repeat_abort=("Reconnecting... waiting for network", 5))
+        self.assertTrue(res["timed_out"])
+        self.assertFalse(res["ok"])
+        self.assertLess(time.time() - started, 10)
+        self.assertIn("同一网络错误重复 5 次", res["stderr"])

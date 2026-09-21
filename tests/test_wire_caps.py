@@ -160,6 +160,11 @@ class TestWireCaps(BaseTest):
         # Z.ai 双端点：anthropic 面 → openai 面的已知映射排候选首位
         cands = modelhub._wire_base_candidates("https://api.z.ai/api/anthropic", "openai")
         self.assertEqual(cands[0], "https://api.z.ai/api/paas/v4")
+        # 智谱同样分开提供 anthropic/openai 两个入口，不能在 anthropic base
+        # 后面硬拼 /responses（会让 Codex 无限重连）。
+        glm = modelhub._wire_base_candidates(
+            "https://open.bigmodel.cn/api/anthropic", "openai")
+        self.assertEqual(glm[0], "https://open.bigmodel.cn/api/paas/v4")
         # 常规 openai base → anthropic 候选去掉 /v1
         self.assertEqual(modelhub._wire_base_candidates("https://x.test/v1", "anthropic"),
                          ["https://x.test"])

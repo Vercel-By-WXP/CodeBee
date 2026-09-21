@@ -2784,6 +2784,7 @@ def test_model(provider_id, model_name, key_id=""):
 # 这类网关两种 wire 挂在不同路径，同 base 探测必 404，只能按已知映射补候选。
 _KNOWN_WIRE_BASES = (
     (("api.z.ai",), "/api/anthropic", "https://api.z.ai/api/paas/v4"),
+    (("open.bigmodel.cn",), "/api/anthropic", "https://open.bigmodel.cn/api/paas/v4"),
 )
 
 

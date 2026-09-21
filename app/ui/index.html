@@ -544,7 +544,7 @@
           <h2 data-i18n="禅道 Bug 自动修复">禅道 Bug 自动修复</h2>
           <button class="hhelp" data-help-topic="auto" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
           <div class="actions">
-            <button id="btn-zentao-test" class="ghost small" title="用当前表单里的连接信息试连禅道" data-i18n-title="用当前表单里的连接信息试连禅道"><span data-i18n="测试连接">测试连接</span></button>
+            <button id="btn-zentao-test" class="ghost small" title="测试成功后自动保存连接并拉取产品列表" data-i18n-title="测试成功后自动保存连接并拉取产品列表"><span data-i18n="测试并保存连接">测试并保存连接</span></button>
             <button id="btn-zentao-scan" class="primary small" title="立刻扫一遍激活 Bug 并对账回写" data-i18n-title="立刻扫一遍激活 Bug 并对账回写"><span data-i18n="立即扫描">立即扫描</span></button>
           </div>
         </div>
@@ -566,11 +566,11 @@
         </div>
         <div class="ops"><button id="btn-zentao-save" class="primary small"><span data-i18n="保存配置">保存配置</span></button></div>
         <h3 data-i18n="产品档案" class="sec-title">产品档案</h3>
-        <p data-i18n="每个产品一份档案：我方端（自动修）、两端仓库与负责人、模块路由（模块 → 端/人，排查优先级最高）。" class="hint">每个产品一份档案：我方端（自动修）、两端仓库与负责人、模块路由（模块 → 端/人，排查优先级最高）。</p>
+        <p data-i18n="先测试连接，再点「从禅道添加产品」直接选择产品；无需自己查 ID。每个产品只需配置我方仓库，负责人和模块路由均可稍后补充。" class="hint">先测试连接，再点「从禅道添加产品」直接选择产品；无需自己查 ID。每个产品只需配置我方仓库，负责人和模块路由均可稍后补充。</p>
         <div id="zt-profiles" class="cards"></div>
         <div class="ops">
-          <button id="btn-zentao-fetchcat" class="ghost small" title="从禅道拉产品与账号清单：产品 ID、负责人变下拉选择（需连接可用）" data-i18n-title="从禅道拉产品与账号清单：产品 ID、负责人变下拉选择（需连接可用）"><span data-i18n="拉取清单">拉取清单</span></button>
-          <button id="btn-zentao-addprofile" class="ghost small"><span data-i18n="＋ 添加产品">＋ 添加产品</span></button>
+          <button id="btn-zentao-fetchcat" class="ghost small" title="重新从禅道拉取产品与账号" data-i18n-title="重新从禅道拉取产品与账号"><span data-i18n="刷新产品列表">刷新产品列表</span></button>
+          <button id="btn-zentao-addprofile" class="primary small"><span data-i18n="＋ 从禅道添加产品">＋ 从禅道添加产品</span></button>
         </div>
         <datalist id="zt-users"></datalist>
         <h3 data-i18n="修复记录" class="sec-title">修复记录</h3>

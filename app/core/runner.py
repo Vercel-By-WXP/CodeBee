@@ -399,13 +399,16 @@ def pretty_cli_log(text, max_event_chars=4000):
 
 def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None,
-                stall_timeout=0):
+                stall_timeout=0, repeat_abort=None):
     """通用子进程执行：并发读管道防死锁；超时/取消杀整棵进程树。
 
     stall_timeout：停滞看门狗（秒，0=关闭）——超过该时长 stdout/stderr 无任何
     新输出即判卡死，提前杀树返回（timed_out=True + stalled=True）。只对输出
     持续流动的 CLI 开（codex JSONL 事件流）；claude json 到结束才一次性输出，
     开了会把正常长任务误杀。
+
+    repeat_abort：可选 (marker, count)。同一致命错误达到次数即提前杀树，处理
+    CLI 自身不断打印重连消息、因此永远触发不了静默看门狗的假运行。
 
     返回 {ok, exit_code, stdout, stderr, duration, cancelled, timed_out, stalled}。
     """
@@ -468,7 +471,7 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                         pass
             threading.Thread(target=_feed, daemon=True).start()
         start = time.time()
-        cancelled = timed_out = stalled = False
+        cancelled = timed_out = stalled = repeat_aborted = False
         while True:
             try:
                 proc.wait(timeout=0.4)
@@ -493,6 +496,19 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 _kill_tree(proc.pid)
                 _drain_streams(proc, t_out, t_err, timeout=5)
                 break
+            if repeat_abort:
+                try:
+                    marker, limit = repeat_abort
+                    recent = decode_output(b"".join(out_chunks)[-8000:] +
+                                           b"\n" + b"".join(err_chunks)[-8000:])
+                    if marker and recent.count(str(marker)) >= int(limit):
+                        repeat_aborted = True
+                        timed_out = True
+                        _kill_tree(proc.pid)
+                        _drain_streams(proc, t_out, t_err, timeout=5)
+                        break
+                except (TypeError, ValueError):
+                    pass
         duration = round(time.time() - start, 1)
         t_out.join(timeout=5)
         t_err.join(timeout=5)
@@ -507,6 +523,8 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 pass
         if cancelled:
             stderr += "\n[已被用户取消]"
+        elif repeat_aborted:
+            stderr += "\n[同一网络错误重复 %s 次，已提前终止进程树]" % repeat_abort[1]
         elif stalled:
             stderr += "\n[输出停滞 %ss，已终止进程树]" % stall_timeout
         elif timed_out:
@@ -1051,9 +1069,11 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 images=images if kind == "codex" else None,
                 workdir=workdir)
             try:
+                repeat_guard = (("Reconnecting... waiting for network", 5)
+                                if kind == "codex" else None)
                 res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
                                   timeout=timeout, cancel_event=cancel_event, log_path=log_path,
-                                  stall_timeout=stall_t)
+                                  stall_timeout=stall_t, repeat_abort=repeat_guard)
             finally:
                 # 超长指令临时文件：CLI 进程已结束（管道已收），即刻清场不污染工作目录
                 for tf in tmp_files:
@@ -1092,7 +1112,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 if kind == "codex" and att.get("provider_id"):
                     el = out["error"].lower()
                     if (("wire_api" in el and "no longer supported" in el)
-                            or "no route matched" in el):
+                            or "no route matched" in el
+                            or "同一网络错误重复" in out["error"]):
                         # codex 撞 chat-only 供应商（0.154 只讲 responses）：
                         # 自动冷却该供应商 30 分钟，链展开/路由绑定分随之
                         # 自动绕开——不用人工改绑定（2026-09-17 mo-so 实测）
