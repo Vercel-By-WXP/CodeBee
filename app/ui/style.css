@@ -5708,3 +5708,7 @@ button.request-busy > * { opacity: .18; }
   padding: 1px 7px; border-radius: 6px; }
 .chat-act:hover { background: color-mix(in srgb, var(--text) 8%, transparent);
   color: var(--text); }
+
+/* 屏蔽顶部滑动加载线（用户拍板 2026-09-22）：后台/长请求（如禅道内网不可达
+   15-30s）会让线一直滑，观感差；操作反馈由「操作状态」中心承担，不丢信息 */
+#request-progress { display: none !important; }

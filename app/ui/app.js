@@ -9090,7 +9090,10 @@ async function ztFetchMods(i, silent) {
 
 /* 拉产品/账号清单：产品 ID 变下拉，负责人/转派账号挂 datalist。silent=进页自动拉 */
 async function ztFetchCatalog(silent) {
-  const grab = (url) => api(url, { method: "POST", body: "{}" })
+  // 后台拉清单：静默（不画顶部滑动线、不挂按钮转圈）+ 前端 45s 超时——
+  // 禅道内网不可达时此前会挂住页面加载指示十几二十秒（用户实测反馈）
+  const grab = (url) => api(url, { method: "POST", body: "{}",
+    timeout: 45000, busy: false, silent: true })
     .catch((e) => ({ ok: false, error: e.message }));
   const [pr, ur] = await Promise.all([grab("/api/zentao/products"), grab("/api/zentao/users")]);
   if (pr && pr.ok) S.ztProducts = pr.products || [];
