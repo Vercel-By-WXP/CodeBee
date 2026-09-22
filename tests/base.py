@@ -22,6 +22,12 @@ class BaseTest(unittest.TestCase):
         self.data_dir = self.tmp / "data"
         self.workdir = self.tmp / "work"
         self.workdir.mkdir()
+        # 测试实例防毒闸的配套：TUTTI_DATA 指向本用例临时目录，让
+        # manager.tmp_data_no_home_write() 生效——进程内单测若触发
+        # launch/自愈/autobind 同步，也会被拦下不写真实 ~/.claude 等
+        # CLI 配置（2026-09-22 a.test 毒入真实 settings.json 实案）。
+        self._old_tutti_data = __import__("os").environ.get("TUTTI_DATA")
+        __import__("os").environ["TUTTI_DATA"] = str(self.data_dir)
         # 先重定向，再做任何 app 模块导入（见下方 _FILE 重绑注释）
         paths.DATA_DIR = self.data_dir
         paths.TASKS_DIR = self.data_dir / "tasks"
@@ -67,6 +73,11 @@ class BaseTest(unittest.TestCase):
             pipeline._agents = self._pipeline_agents_backup
         except Exception:
             pass
+        os_env = __import__("os").environ
+        if self._old_tutti_data is None:
+            os_env.pop("TUTTI_DATA", None)
+        else:
+            os_env["TUTTI_DATA"] = self._old_tutti_data
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def mock_agents(self):

@@ -15,6 +15,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -44,6 +45,31 @@ def _read_text(path, preserve_newlines=False):
 
 def _expand(p):
     return os.path.abspath(os.path.expanduser(os.path.expandvars(p)))
+
+
+def _under(path, root):
+    try:
+        return os.path.commonpath([os.path.realpath(path), root]) == root
+    except ValueError:
+        return False
+
+
+def tmp_data_no_home_write():
+    """测试实例防毒闸：TUTTI_DATA 指向系统临时目录、且进程主目录仍是真实
+    主目录时，一切对真实 CLI 配置的写入都应拒绝。
+
+    一次性测试服务的 models.json 里全是 a.test/sk-test 夹具，忘设假 HOME 的
+    测试一旦触发 launch/自愈/autobind 同步，就会把夹具毒进真实
+    ~/.claude/settings.json（2026-09-22 实案：claude 步骤全体 ENOTFOUND，
+    下一次测试又覆盖回来，形成「越测越坏」循环）。已设假 HOME 的测试不受
+    影响——假 HOME 本身就在临时目录下。
+    """
+    td = (os.environ.get("TUTTI_DATA") or "").strip()
+    if not td:
+        return False
+    tmp = tempfile.gettempdir()
+    home = os.path.abspath(os.path.expanduser("~"))
+    return _under(td, tmp) and not _under(home, tmp)
 
 
 def _safe_config_path(raw):
@@ -521,6 +547,9 @@ def read_model(entry):
 def write_model(entry, model):
     """写入默认模型（改动前自动备份 .bak）。支持 toml-line / toml-section /
     json / json-path / jsonc / yaml-line。"""
+    if tmp_data_no_home_write():
+        return {"ok": False,
+                "error": "测试数据目录（TUTTI_DATA 在临时目录）不写真实 CLI 配置，已拦截"}
     path = _config_path(entry)
     cfg = entry.get("config") or {}
     fmt = cfg.get("format")
@@ -891,6 +920,8 @@ def _sync_codex_settings(entry, model, cp):
     _codex_provider_args 同构，但落 config 文件。返回错误串或 None。"""
     if _is_dead_endpoint(cp.get("base_url")):
         return "供应商端点 %r 是测试/保留地址，拒绝写入 config.toml" % (cp.get("base_url"),)
+    if tmp_data_no_home_write():
+        return "测试数据目录（TUTTI_DATA 在临时目录）不写真实 CLI 配置，已拦截"
     path = _config_path(entry)
     if not path:
         return "codex 配置路径无效"
@@ -1120,6 +1151,8 @@ def _sync_settings_env(path, updates, remove_keys=()):
     """把键值对写进目标 settings.json 的 env 段（claude/qwen 等同构：交互 TUI
     启动时把该段合并进进程环境）。只动 env 相关键，其余内容保留；坏 JSON 中止
     不覆盖；改动前 .bak。返回错误串或 None。path 必须已过主目录围栏校验。"""
+    if tmp_data_no_home_write():
+        return "测试数据目录（TUTTI_DATA 在临时目录）不写真实 CLI 配置，已拦截"
     try:
         if os.path.isfile(path):
             text = _read_text(path)
