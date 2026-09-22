@@ -192,21 +192,38 @@ def sweep_orphan_cli_processes():
 
 
 def detect_all(force=False):
-    """检测全部条目。检测（慢磁盘 IO）在锁外跑：shutil.which/isfile 在
-    Windows 上遇到断链的 PATH 项可能卡数秒，持锁会把所有并发请求堵死
-    （曾导致 SSE 多连接时服务假死）。等待方有界等待 30s 后拿旧结果。
-    """
+    """检测全部条目。快照用途（force=False）热路径永不等检测：缓存新鲜直接
+    返回；过期返回旧快照、同时把刷新踢到后台线程（stale-while-revalidate）。
+
+    检测是慢磁盘 IO：shutil.which/isfile 在 Windows 上遇到断链的 PATH 项
+    可能卡数秒。此前「领队请求自己跑检测、其余请求 ev.wait(30) 排队」，每
+    60s 缓存周期都有一个 /api/catalog、/api/state（含 SSE 推送）一起卡数秒
+    的窗口；前端无超时轮询把浏览器 6 连接池塞满后整个界面假死（2026-09-22
+    用户实测「左栏点不动、右栏不刷新」）。冷启动首轮与 force=True（显式
+    重载/安装回调）仍同步跑拿新鲜结果。"""
     with _LOCK:
         if not force and _STATE["detected"] and time.time() - _STATE["detect_ts"] < 60:
             return _STATE["detected"]
         ev = _STATE["detect_ev"]
-        lead = ev is None  # 我是本次检测的执行者
+        lead = ev is None  # 我是本次刷新的发起人
         if lead:
             ev = _STATE["detect_ev"] = threading.Event()
+        cold = not _STATE["detected"]   # 冷启动首轮：还没有任何快照
     if not lead:
-        ev.wait(30)  # 检测完成或超时；两种情况都拿当前最新快照
+        if not cold:
+            return dict(_STATE["detected"])   # 过期快照也比卡请求强
+        ev.wait(30)  # 冷启动窗口内并发首查：等首轮检测完成（一次性）
         with _LOCK:
             return dict(_STATE["detected"])
+    if not cold and not force:
+        threading.Thread(target=_detect_refresh, args=(ev,),
+                         name="catalog-detect", daemon=True).start()
+        return dict(_STATE["detected"])
+    return _detect_refresh(ev)
+
+
+def _detect_refresh(ev):
+    """跑一轮全量检测并落快照；完成后置时间戳、清在飞标记、放行等待者。"""
     try:
         detected = {}
         for entry in catalog.load():
@@ -217,12 +234,12 @@ def detect_all(force=False):
         if detected:
             with _LOCK:
                 _STATE["detected"] = detected
+        return dict(_STATE["detected"])
     finally:
         with _LOCK:
             _STATE["detect_ts"] = time.time()
             _STATE["detect_ev"] = None
         ev.set()
-    return detected
 
 
 def _uwp_version(package_dir):
