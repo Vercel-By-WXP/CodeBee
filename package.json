@@ -9,6 +9,7 @@
   "files": [
     "app",
     "bin",
+    "tools/wx_reader.py",
     "CHANGELOG.md",
     "README.md",
     "LICENSE"
