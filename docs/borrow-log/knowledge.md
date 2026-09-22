@@ -530,3 +530,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 1. **叙事节奏/钩子确定性检测**（web-novel-pacing-analyzer 借鉴）：aiflavor 新增 `pacing_analyze`（段落淤积/超长段/对话占比/开篇 300 字冲突信号/章末 200 字悬念信号）+ `inject_into_prompt` 统一注入入口；只对叙事类流程下发，命中才追加，不扣分。
 2. **连载逐章评审补挂确定性检测**（产品巡检发现）：`_run_serial_review` 的评审提示词此前**从未**带上 AI 味/叙事架构/节奏检测行——连载是旗舰场景却整条漏挂（单稿件评审一直有）。修复后连载逐章与打磨评审同样拿到参考线。
 
+
+### 2026-09-22 14:36 第二十九班（批7 复跑 + 间隔分钟化确认）
+
+- 批7 复跑：主体重合。新锐（皆小）：three-man-team 951★（Architect/Builder/Reviewer 三人组 token 优化——我们 plan/implement/review 同构，雷达）/vnx-orchestration 61★（治理优先+回执）/agent-lord（Durable orchestration: dispatch/continue/recover/handoff/audit）| 雷达
+- **✅ 禅道扫描间隔分钟化确认**（用户「默认是5分钟吧」核实）：后端 interval_minutes 全迁（默认 5 分钟/最小 5/最大 7 天，老 interval_hours 自动换算：默认 2h→5min、非默认×60）、前端「扫描间隔 N 分钟 min=5 step=5」、i18n 齐——已在 HEAD（并行代理落地），本轮验证无 hours 残留（自动化任务的 interval_hours 是另一特性，单位本就是小时）
+- D 项里程碑：教训 78→**85 条**（+7）——程序性记忆「做法：」+outcome 加权上线后自学习环路开始复利
+- 基线分支 datalist 下拉（ztRevFill）与模块清单形状兼容（响应顶层键提示）确认已在 HEAD
