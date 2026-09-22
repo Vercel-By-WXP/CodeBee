@@ -8884,6 +8884,8 @@ function renderSkills() {
     '<span class="tag">' + esc(x.scope === "*" ? t("通用") : x.scope) + "</span>" +
     (x.seen > 1 ? '<span class="tag">' + t("出现 ") + x.seen + t(" 次") + "</span>" : "") +
     (x.hits ? '<span class="tag">' + t("已注入 ") + x.hits + t(" 次") + "</span>" : "") +
+    (x.won > 0 ? '<span class="tag ok" title="' + t("注入后任务过审的次数（真实帮上忙）") + '">' + t("有效 ") + x.won + "</span>" : "") +
+    (x.lost > 0 ? '<span class="tag" style="color:var(--bad)" title="' + t("注入后任务仍失败的次数（没防住）") + '">' + t("失守 ") + x.lost + "</span>" : "") +
     (x.enabled === false ? '<span class="tag">' + t("已停用") + "</span>" : "") + "</div>" +
     '<div class="note">' + esc(t(x.content)) + "</div>" +
     '<div class="ops">' +

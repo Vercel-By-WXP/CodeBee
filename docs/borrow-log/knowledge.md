@@ -580,3 +580,13 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 雷达-评审/测试新锐组无重大新标的
 
 **✅ 本班落地**：市场装后冒烟验证（SkillForge 证据驱动借鉴）——install_files 尾部新增 smoke：装完清缓存走 skills 真实解析链，校验「包能加载/名字对得上/正文非空」，写盘成功≠技能可用（frontmatter 缺失此前要到下次任务注入才静默丢失）；smoke 随返回值+market.json 记账，提示不拦阻（与危险扫描同纪律）。test_market_smoke 4 项
+
+### 2026-09-23 00:01 第三十三班（批7：中文/网关/本地/办公）
+
+- **krillinai/OpenCreator**（12,193★，前 KrillinAI）新入库 | 创作者 AI 工作台（Codex 驱动）：视频/图片/语音/数字人 | **万星级创作平台**——我们短视频脚本→成片的远期对标 | 深挖排队
+- **Narcooo/inkos**（10,016★）新入库 | **Story Creation AI Agent**：小说/剧本/翻译/互动游戏/IP 内容多形态创作 | 与我们写作域正面重叠的万星新竞品（中文）——深挖排队，重点看其多形态流水线与我们的流程差异
+- andrewyng/translation-agent（翻译组命中）复查 | 参照实现 | 参考
+- ensemblr（8★）：Pi+Claude Code 桌面编排，每条工作流独立 git worktree+agent 可交接——worktree-per-lane 与我们任务分支隔离同路 | 雷达
+- B7 中文关键词组仍命中弱；A 组全活跃无增量事故
+
+**✅ 本班落地**：教训 karma 可见化——outcome 加权已上线但 won/lost 对用户不可见：教训卡新增「有效 N」（绿，注入后任务过审=真实帮上忙）与「失守 N」（红，注入后仍失败=没防住）徽章（悬停有说明），老数据无字段不渲染不炸；test_karma_view 2 项（写入→view 透交通路+karma 参与排序端到端）
