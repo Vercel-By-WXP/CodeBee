@@ -508,7 +508,7 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 **✅ 本班落地**：read_file 头尾保留中段省略（**TokenJuice 差量清账**，openhuman 借鉴）——超 64KB 文本文件从「纯截头」改为头 44k+尾 16k+中段省略标注：日志/代码的报错与结论常在文件尾部，纯截头把最关键的信息丢了；尾段多字节残缺剥头防乱码；工具描述同步。test_read_elide 4 项 + 既有截断断言升级
 
-### 2026-09-22 12:00 第二十九班（批5：检索/知识/浏览器 + 全类型雷达）
+### 2026-09-22 12:00 第二十九班·甲（批5：检索/知识/浏览器 + 全类型雷达）
 
 - **multica-ai/multica**（51,033★，Go，新巨型标）入库 | **「Agents that show up on the board」**：把工作派给 AI 编码 agent 的方式和派给同事一样——agent 认领 issue、汇报进度、抛出阻塞、交回待评审；自托管、支持 26 种 agent CLI、无锁定 | **与 CodeBee 对比**：我们=任务类型先行（13 种预置流程 × 多智能体编排）；multica=看板先行（issue 为中心，agent 是「会出现在看板上的队友」）。差量=**看板/issue 视角的任务组织**（我们已有蜂巢工作台与运行详情，但没有「agent 主动汇报阻塞/进度」的反向通道——我们只有指挥信箱单向递话）| 参考（看板视角可作 UI 远期方向；「agent 汇报阻塞」与我们「待裁决」同向）| 2026-09-22
 - **sandbaseai/sandbase-harness**（649★，Apache-2.0，TS）入库 | 本地优先自托管 agent runtime + MCP bridge：沙箱会话（local/Docker/K8s worker）、**凭据保险库**、权限策略与审批、审计与回放（resumable event streams）、本地 Console；本地 SQLite+文件，无强制托管控制面 | **与 CodeBee 对比**：我们的沙箱=CLI 自带（全权模式），凭据=config.json 明文，审计=usage 台账+错误台账，回放=运行详情。差量=**凭据保险库**（密钥集中托管而非明文落配置）与**可续传事件流**（我们在进程崩溃后靠 run 状态恢复，事件流不续传）| 参考/待深挖（凭据保险库独立成项）| 2026-09-22
@@ -526,7 +526,7 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **Deijine/zentao-legacy-mcp**（★新锐）/ **easysoft/zentao-cli**（59★，官方）/ **zl2237/test-defect-retrospective**（1★）/ **yanfd/astrbot_plugin_zentao_report** | 禅道生态四例：**老版 session API 的跨客户端 MCP（87 工具、跨实体全文检索）** / 官方 CLI / **缺陷复盘 skill（禅道导出→产品/研发/测试三视角报告）** / 每日缺陷日报插件 | **与我们禅道集成对比**：我们做「扫描→建任务→修复→合并→resolve→回写+通知」闭环；差量=**缺陷复盘报告**（按产品/研发/测试出复盘）与**跨实体全文检索** | 借鉴方向（复盘报告列入待深挖）| 2026-09-22
 - **zhayujie/CowAgent**（47,064★）/ **ruvnet/ruflo**（73,016★）/ **EverMind-AI/Raven**（3,946★）/ **bytedance/deer-flow**（82,823★）/ **nexu-io/open-design**（97,499★）/ **openai/swarm**（22k★）| harness/编排大盘复查：CowAgent（41k→47k，**多通道超级助手**，chatgpt-on-wechat 血脉——验证我们微信通道方向）；ruflo（73k，认知 swarm）；Raven（**Harness of Harnesses + Raven Evolver 拿 benchmark 评候选 harness 改动**——用基准评估「harness 自身改动」的思路）；deer-flow（82.8k，长跨度 SuperAgent + 沙箱）；open-design（97.5k，DeepSeek Harness 设计插件，本地优先桌面）；swarm（22k 教育框架，已停更）| 大盘活跃；Raven 的 evolver 思路与我们「教训 outcome 加权」同向但更重 | 参考 | 2026-09-22
 
-**✅ 本班落地**（两件，见当日报告「12:00 第二十九班」）：
+**✅ 本班落地**（两件，见当日报告「12:00 第二十九班·甲」）：
 1. **叙事节奏/钩子确定性检测**（web-novel-pacing-analyzer 借鉴）：aiflavor 新增 `pacing_analyze`（段落淤积/超长段/对话占比/开篇 300 字冲突信号/章末 200 字悬念信号）+ `inject_into_prompt` 统一注入入口；只对叙事类流程下发，命中才追加，不扣分。
 2. **连载逐章评审补挂确定性检测**（产品巡检发现）：`_run_serial_review` 的评审提示词此前**从未**带上 AI 味/叙事架构/节奏检测行——连载是旗舰场景却整条漏挂（单稿件评审一直有）。修复后连载逐章与打磨评审同样拿到参考线。
 
