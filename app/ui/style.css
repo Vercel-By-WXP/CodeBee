@@ -5565,9 +5565,11 @@ button.request-busy > * { opacity: .18; }
 /* 禅道自动化开关行：四个开关做成并列胶囊（选中态用强调色淡染，一眼看出开了哪些），
    扫描间隔靠右成组「标签 + 圆角输入框（内嵌单位）」。窄屏自动换行、间隔独占一行。
    （此前 grid 版与 flex 版叠了两层，后者已全量覆盖前者，此处合并成单块） */
+/* 禅道页小节标题收边距（全局 24px/12px 在这块 12px 高的小标题上下显得空） */
+#sub-zentao .sec-title { margin: 14px 0 8px; }
 .zt-auto-options {
   display: flex; flex-wrap: wrap; align-items: center;
-  gap: 10px 12px; grid-template-columns: none; margin: 8px 0 4px;
+  gap: 10px 12px; grid-template-columns: none; margin: 0 0 4px;
 }
 .zt-auto-options > .toggle {
   display: inline-flex; align-items: center; gap: 8px;
