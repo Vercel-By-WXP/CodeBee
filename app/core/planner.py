@@ -114,13 +114,16 @@ def _log_usage(source, role, task, res, agent=None, tool="", model="", provider=
     except Exception:
         pass
 
-CODE_PLAN_PROMPT = """你是技术负责人。请把下面的开发目标拆解为 __N__ 个以内、按顺序执行的子任务，
-并判定任务难度和后续质量步骤。只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
+CODE_PLAN_PROMPT = """你是技术负责人。请先判定任务难度，再按难度拆解为按顺序执行的子任务，
+并给出后续质量步骤。只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {"difficulty": "easy 或 hard", "workflow": {"review_required": true, "max_repair_rounds": 0, "allow_switch": false}, "subtasks": [{"title": "简短标题", "detail": "具体要做什么，给执行工程师的直接指令", "files": ["涉及的文件路径"]}]}
-难度判定：常规增删改查/小函数/格式调整 = easy；跨模块改动/架构调整/复杂算法/安全相关 = hard。
+难度判定：宁易勿难，绝大多数任务都是 easy——常规增删改查/小函数/格式调整/单点 bug 修复/
+配置调整 = easy；只有跨模块改动/架构调整/复杂算法/安全相关才算 hard，拿不准时一律按 easy。
 质量步骤判定：涉及安全、数据迁移、并发、权限、公共 API 或跨模块改动时必须评审；
 有明确自动验收的低风险小改可不做模型评审。max_repair_rounds 取 0-2，只有复杂任务才建议换将。
-子任务粒度要可独立验证；最后一个子任务必须包含整体联调/收尾。
+子任务拆分：easy 一律只拆 1 个子任务——一个子任务把目标完整做完并自检通过即收尾，
+禁止拆出独立的核查/联调/收尾子任务；只有 hard 才允许多个子任务（至多 __N__ 个），
+粒度要可独立验证，且最后一个子任务必须包含整体联调/收尾。
 
 ## 先探索再计划（重要，借鉴 OpenSpec explore）
 拆解之前先用你的读文件/搜索工具**实际查看工作目录**，找到目标相关的真实文件与函数，再据此拆解。
@@ -527,7 +530,13 @@ def _norm_subtasks(data):
             if clean:
                 step["files"] = clean
         steps.append(step)
-    return steps or None
+    if not steps:
+        return None
+    # easy 任务执行层钉死单子任务：编排者提示词不服从多拆时，截掉只留首步
+    # （联调/收尾要求仅对 hard 生效，easy 单步自检即收尾）。
+    if _plan_difficulty(data) == "easy":
+        steps = steps[:1]
+    return steps
 
 
 def _plan_difficulty(data):
