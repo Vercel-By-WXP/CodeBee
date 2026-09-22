@@ -823,16 +823,16 @@ class TestQwenSync(BaseTest):
         self.assertIn("维云", res["message"])  # 链首 anthropic 被跳过，注入链上首个 openai
         data = json.loads(self.settings.read_text(encoding="utf-8"))
         self.assertEqual(data["env"]["OPENAI_BASE_URL"], "https://vsllm.cc/v1")
-        # 反转：openai 供应商停用 → 不降级错注入；链上剩余 anthropic 与 openai
-        # 各有提示（停用点名优先于协议不匹配，此处命中点名）
+        # 反转：openai 供应商停用 → 停用即出调度（4e89532），链上维云条目
+        # 被剔除；剩余 Z.ai 与 openai 协议不匹配 → 明确提示而非错注入
         modelhub.providers_op([byname["维云"]], "disable")
         with mock.patch.object(manager, "detect_entry", return_value={"installed": True}), \
              mock.patch.object(manager.subprocess, "Popen",
                                lambda *a, **k: mock.MagicMock()):
             res2 = manager.launch(qe, open_browser=False)
-        self.assertIn("停用", res2["message"])
-        self.assertIn("维云", res2["message"])
+        self.assertIn("不匹配", res2["message"])
         self.assertNotIn("已注入", res2["message"])
+        self.assertNotIn("维云", res2["message"], "停用即出调度：链上条目应已被剔除")
 
     def test_catalog_config_patch_fixes_qwencode(self):
         """老 data/catalog.json 里 qwencode 的 format=json（legacy model 无效）：

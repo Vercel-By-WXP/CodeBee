@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -779,6 +780,8 @@ def _sync_dsh_settings(entry, model, base_url):
     端点不同步不行——settings 优先级高于 env，密钥会发给旧端点；
     models 列表不同步不行——dsh web 的模型下拉只列它，缺条目就选不中。
     返回错误串或 None。"""
+    if tmp_data_no_home_write():
+        return "测试数据目录（TUTTI_DATA 在临时目录）不写真实 CLI 配置，已拦截"
     path = _config_path(entry)
     if not path:
         return "dsh 配置路径无效"
@@ -1246,6 +1249,8 @@ def _sync_opencode_settings(entry, model, prov):
     没 key）。写入所有已存在的候选文件（避免新文件遮蔽旧文件的读取优先级），
     全不存在时建 catalog 登记的那个。纯 JSON 走整体读改写；带注释的 JSONC 走
     文本级就地 patch（保留注释）。返回错误串或 None。"""
+    if tmp_data_no_home_write():
+        return "测试数据目录（TUTTI_DATA 在临时目录）不写真实 CLI 配置，已拦截"
     npm = "@ai-sdk/anthropic" if prov.get("protocol") == "anthropic" else "@ai-sdk/openai-compatible"
     base = prov.get("base_url") or ""
     if prov.get("protocol") == "anthropic" and not base.rstrip("/").endswith("/v1"):
@@ -1356,7 +1361,9 @@ def _sync_kimi_settings(entry, model, prov):
     yolo/defaultPermissionMode（camelCase）+ [providers.<id>]（type/apiKey/
     baseUrl）+ [models.<别名>]（provider/model/maxContextSize 必填）。无人值守
     要 yolo——否则工具调用逐个要审批，headless 全被拒。文本级托管块（标记注释
-    之间）幂等重写，用户自有内容保留在外。"""
+    之间）幂等重写，用户自有内容保留在外。返回错误串或 None。"""
+    if tmp_data_no_home_write():
+        return "测试数据目录（TUTTI_DATA 在临时目录）不写真实 CLI 配置，已拦截"
     import re as _re
     top_keys = ("defaultProvider", "defaultModel", "yolo", "defaultPermissionMode")
     targets = [os.path.abspath(os.path.expanduser("~/.kimi-code/config.toml"))]
@@ -1514,7 +1521,19 @@ def _sync_launch_model(entry, binding):
 # （draft-c12 等），CLI 身份在 kind 里；目录型智能体的 id 就是条目 id。
 _KIND_ENTRY = {"codex": "codex-cli", "claude": "claude-code",
                "qwen": "qwencode", "opencode": "opencode", "aider": "aider"}
-_RUNTIME_SYNC = {"fps": {}, "lock": threading.Lock()}
+_RUNTIME_SYNC = {"fps": {}, "files": {}, "lock": threading.Lock()}
+
+
+def _runtime_cfg_hash(entry):
+    """CLI 自家配置文件的内容指纹；文件不存在返回 None。"""
+    try:
+        p = _safe_config_path((entry.get("config") or {}).get("path"))
+        if p and os.path.isfile(p):
+            with open(p, "rb") as fh:
+                return hashlib.sha256(fh.read()).hexdigest()
+    except Exception:
+        pass
+    return None
 
 
 def sync_runtime_config(agent):
@@ -1557,10 +1576,16 @@ def sync_runtime_config(agent):
         fp = (model, repr(sorted(env.items())),
               repr(binding.get("codex_provider") or "")[:300])
         with _RUNTIME_SYNC["lock"]:
-            if _RUNTIME_SYNC["fps"].get(entry["id"]) == fp:
+            if (_RUNTIME_SYNC["fps"].get(entry["id"]) == fp
+                    and _RUNTIME_SYNC["files"].get(entry["id"]) == _runtime_cfg_hash(entry)):
                 return
+            # 绑定没变≠文件没变：指纹命中但文件被外部改写（测试毒写/手工编辑
+            # 托管段）时必须按绑定重写——2026-09-22 kimi 实案：测试夹具毒入
+            # ~/.kimi-code/config.toml（x.example 不可解析），换将步骤因指纹
+            # 命中跳过重写，kimi 带毒配置静默退出码 1
             _sync_launch_model(entry, binding)
             _RUNTIME_SYNC["fps"][entry["id"]] = fp
+            _RUNTIME_SYNC["files"][entry["id"]] = _runtime_cfg_hash(entry)
     except Exception:
         pass
 
