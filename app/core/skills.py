@@ -295,7 +295,11 @@ def list_lessons(scope=None, only_enabled=False, category=None):
                  if (x.get("category") or LESSON_UNCATEGORIZED) == category]
     if only_enabled:
         items = [x for x in items if x.get("enabled", True)]
-    items.sort(key=lambda x: (-int(x.get("hits") or 0), -int(x.get("seen") or 1),
+    # karma 感知排序（UI 列表用；注入排序在 relevance_top 不走这里）：
+    # 有效教训（won-lost 高）排最前——经验库页首屏即「真实帮上忙的」，
+    # 其次按注入热度；失守多的自然沉底（不隐藏——降权不删除）。
+    items.sort(key=lambda x: (-(int(x.get("won") or 0) - int(x.get("lost") or 0)),
+                              -int(x.get("hits") or 0), -int(x.get("seen") or 1),
                               x.get("created_at") or ""))
     return items
 

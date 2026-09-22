@@ -599,3 +599,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 复查：codegraph 71.7k/graphiti 31.1k 活跃
 
 **✅ 本班落地**：知识库过期条目降权（inkos 检索保留来源/位置的启发）——block_for rank 在相关性与 id 之间插入 stale 惩罚位：同等相关性下可能过期的事实排新鲜事实之后（top-k 截断时旧知识先出局），高相关旧条仍压过新条（相关性优先不变）。test_kb_stale_rank 3 项
+
+### 2026-09-23 04:01 第三十五班（批3 词组：计划/spec/长任务——轮换标签与小时有偏差已注记）
+
+- 批3 主体重合（spec-kit 138.4k/OpenSpec 69.9k/GSD 64.5k/agent-os 5.4k/spec-workflow-mcp 4.3k 均已入库复查活跃）。新锐小标：polyglot（worktree+PostgreSQL+确定性闸门）/ai_launcher（15+ CLI 命令甲板）| 雷达
+- A 组复查全活跃无增量事故
+
+**✅ 本班落地**：教训列表 karma 感知排序（list_lessons）——UI 列表首键改为 won-lost（有效教训居首、净失守沉底不删除），hits/seen 降为次级键；注入排序（relevance_top）不受影响（相关性仍第一优先，单独测试锁死）。test_lesson_karma_order 3 项 + skills 域回归 19 项绿
