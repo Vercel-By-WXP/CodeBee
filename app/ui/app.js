@@ -1146,9 +1146,19 @@ async function refreshState() {
   applyState(await api("/api/state"));
 }
 
+let _pollBusy = false;
 async function poll() {
+  // 上一轮还没回来就跳过本轮：服务端偶发卡顿（如目录探测）时，无超时的
+  // 轮询会每 2s 叠两条连接，塞满浏览器 6 连接池后连点击的请求都排不上队
+  // ——整个界面（左栏+右栏）一起假死（2026-09-22 用户实测）。在飞保护 +
+  // 15s 超时保证任何时刻最多占两条连接，卡完即自愈。
+  if (_pollBusy) return;
+  _pollBusy = true;
   try {
-    const [cat, models] = await Promise.all([api("/api/catalog"), api("/api/models")]);
+    const [cat, models] = await Promise.all([
+      api("/api/catalog", { timeout: 15000 }),
+      api("/api/models", { timeout: 15000 }),
+    ]);
     S.catalog = cat.catalog;
     S.catalogChecking = !!cat.checking;
     S.providers = models.providers; S.bindings = models.bindings;
@@ -1168,6 +1178,8 @@ async function poll() {
       $("conn").textContent = t("连接失败");
       $("conn").className = "conn bad";
     }
+  } finally {
+    _pollBusy = false;
   }
 }
 
@@ -5768,6 +5780,28 @@ window.artPopup = async function (runId, name, size) {
   return _fpPreviewUrl("/api/runs/" + encodeURIComponent(runId) + "/file?name=" + encodeURIComponent(name), name, size);
 };
 
+/* 对话结果卡「运行展示」：HTML 成品在弹窗里真跑——复用 /preview 只读挂载
+ * （令牌走路径段，style.css/script.js 相对子资源照常加载）；拿不到挂载信息
+ * （非网页成品/工作目录不在了）回落源码预览，按钮永远不会点了没反应。 */
+window.artRunPopup = async function (runId, name, size) {
+  const nm = String(name).split("/").pop();
+  _fpSaveCtx = null; _fpRawText = ""; _fpDirty = false; _fpCopyText = null;
+  const dl = urlAuth("/api/runs/" + encodeURIComponent(runId) + "/file?name=" + encodeURIComponent(name));
+  _fpOpen(nm, size ? "<i>" + esc(fmtSize(size)) + "</i>" : "",
+    '<a class="ghost" href="' + dl + '" download="' + esc(nm) + '">' + esc(t("下载")) + "</a>");
+  let app = null;
+  try { app = await api("/api/runs/" + encodeURIComponent(runId) + "/preview"); }
+  catch (e) { /* 挂载不可用：走回落 */ }
+  if (!filePopIsOpen()) return;
+  if (app && app.ok && app.base) {
+    _fpSetBody('<iframe class="fp-frame" src="' + esc(urlAuth(app.base + name)) +
+      '" title="' + esc(t("运行预览")) +
+      '" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads"></iframe>');
+    return;
+  }
+  return _fpPreviewUrl("/api/runs/" + encodeURIComponent(runId) + "/file?name=" + encodeURIComponent(name), name, size);
+};
+
 /* 文件浏览页点文件：中央弹窗预览工作目录里的文件（dir=根目录，name=相对路径）。
  * 带 save 上下文 → 弹窗内可直接编辑并保存回该文件。 */
 window.dirFilePopup = async function (dir, name, size) {
@@ -6820,6 +6854,7 @@ let chatSig = "";
 let chatLiveSig = "";        // 时间线实时增量签名（思考/正文长度变才重建 DOM）
 let chatLiveTimer = null;    // 运行中快轮询句柄（1.2s，见 scheduleChatLive）
 let chatLiveRunId = null;
+let chatForceBottom = false; // 发送消息后强制贴底一次（不管当时滚到哪，都要看到自己刚发的内容与回复）
 
 function chatEngineIsDirect(run) {
   const st = S.state || {};
@@ -7056,8 +7091,11 @@ function drawChatFlow(run, data, active) {
   if (hint) hint.textContent = active
     ? t("运行中：新消息会排队，本轮回答完后依次送达")
     : t("已结束：发送后将自动开新一轮接着做");
-  // 贴底跟随：用户滚到底部附近才自动滚到最新输出，回看历史不打扰
-  const stick = flow.scrollHeight - flow.scrollTop - flow.clientHeight < 80;
+  // 贴底跟随：用户滚到底部附近才自动滚到最新输出，回看历史不打扰；
+  // 刚发送过消息则强制贴底一次（用户要看到自己发的消息与正在来的回复）
+  const stick = chatForceBottom ||
+    flow.scrollHeight - flow.scrollTop - flow.clientHeight < 80;
+  chatForceBottom = false;
   // 思考过程面板（.ct-body 自带滚动条）逐帧整体重建会丢滚动位置——重绘前
   // 记住「贴底 or 用户上滑到哪」，重绘后恢复：贴底则一直跟最新（2026-09-22
   // 用户诉求），上滑回看历史思维链则保持位置不被打扰。
@@ -7081,12 +7119,14 @@ function drawChatFlow(run, data, active) {
 
 /* 执行结果卡（时间线收尾）：run 终态后的确定性摘要——成没成、跑多久、谁执行
  * 的、产出了哪些文件，全部产品明示，不依赖模型自觉交代。失败给「查看执行步骤」
- * 入口；文件 chip 复用成品预览通道（artPopup）。 */
+ * 入口；文件 chip 复用成品预览通道（artPopup）。
+ * 措辞说「本轮」不说「任务」：追话每轮都落一张卡，卡头喊「任务完成」会被读成
+ * 又建了一个新任务（2026-09-22 用户反馈：其实一直都在同一个任务里）。 */
 function chatResultHTML(run, res) {
   const ok = res.status === "done";
   const bad = res.status === "failed";
   const icon = ok ? "#i-check" : "#i-x";
-  const label = ok ? t("任务完成") : (bad ? t("任务失败") : t("已取消"));
+  const label = ok ? t("本轮完成") : (bad ? t("本轮失败") : t("已取消"));
   const meta = [];
   if (res.executor) meta.push(esc(res.executor));
   if (res.turns) meta.push(res.turns + " " + t("轮对话"));
@@ -7094,11 +7134,18 @@ function chatResultHTML(run, res) {
   const files = res.files || [];
   const chips = files.map((f) => {
     const fUrl = urlAuth("/api/runs/" + encodeURIComponent(run.id) + "/file?name=" + encodeURIComponent(f.name));
+    // 网页成品给「运行」：弹窗里 iframe 真跑（源码弹窗看不出页面长什么样，
+    // 用户要的是「看到东西跑起来」——与详情页「预览」页签同款挂载）
+    const fExt = _fpExt(f.name);
+    const runBtn = (fExt === "html" || fExt === "htm")
+      ? '<button type="button" class="chip-btn" title="' + esc(t("运行展示")) +
+        '" onclick="artRunPopup(\'' + esc(run.id) + "', '" + esc(f.name) + "', " + (Number(f.size) || 0) + ')"><svg class="ico" aria-hidden="true"><use href="#i-rocket"/></svg></button>'
+      : "";
     return '<div class="file-chip has-actions">' +
       '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
       '<span class="p" title="' + esc(f.name + " · " + fmtSize(f.size)) + '">' + esc(f.name) + "</span>" +
       '<span class="fsz">' + fmtSize(f.size) + "</span>" +
-      '<span class="fbtns">' +
+      '<span class="fbtns">' + runBtn +
       '<button type="button" class="chip-btn" title="' + esc(t("预览")) + '" onclick="artPopup(\'' + esc(run.id) + "', '" + esc(f.name) + "', " + (Number(f.size) || 0) + ')"><svg class="ico" aria-hidden="true"><use href="#i-file-text"/></svg></button>' +
       '<a class="chip-btn" href="' + fUrl + '" download="' + esc(f.name) + '" title="' + esc(t("下载")) + '"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"/></svg></a>' +
       "</span></div>";
@@ -7471,6 +7518,9 @@ window.chatSend = async function () {
     ta.style.height = "";
     chatAtts = []; drawChatAtts();
     chatSig = "";   // 强制重画时间线
+    chatForceBottom = true;   // 发完滚到最新：看到自己刚发的消息与正在来的回复
+    const fl = $("rd-chat-flow");
+    if (fl) fl.scrollTop = fl.scrollHeight;   // 重画前先即时贴底，视觉零跳动
     if (active) {
       const d = await api("/api/runs/" + encodeURIComponent(chatRunId));
       if (d.run) renderChat(d.run, d.run.status === "running" || d.run.status === "queued");

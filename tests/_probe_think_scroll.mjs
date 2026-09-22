@@ -39,9 +39,10 @@ try {
   const evalJs = async (expression) => {
     const r = await send("Runtime.evaluate",
       { expression, returnByValue: true, awaitPromise: true, userGesture: true });
+    console.log("RAW:", JSON.stringify(r || null).slice(0, 260));
     if (r && r.exceptionDetails) console.log("EVAL-ERR:", r.exceptionDetails.text,
       String((r.exceptionDetails.exception || {}).description || "").slice(0, 200));
-    return r && r.result ? r.result.value : undefined;
+    return r && r.result && r.result.result ? r.result.result.value : undefined;
   };
 
   await send("Page.enable");
@@ -56,6 +57,11 @@ try {
     window.api = async (url, opts) => {
       if (String(url).includes("/timeline")) {
         return { run_id: ${JSON.stringify(RUN)}, status: "running", engine: "direct", items: [
+          { kind: "agent", at: "11:58:00", who: "内置智能体", role: "chat",
+            status: "done", text: Array.from({length: 40}, (_, i) =>
+              "上一轮回答第 " + i + " 行：这里是历史回复的正文内容，用来把时间线撑到超出可视区。").join("
+"),
+            run: ${JSON.stringify(RUN)}, log: "" },
           { kind: "user", at: "12:00:00", text: "帮我写个教程" },
           { kind: "agent", at: "12:00:10", who: "内置智能体", role: "chat",
             status: "running", text: "", thinking: window.THINK,
@@ -93,6 +99,16 @@ try {
   const f3 = await render();
   console.log("frame3(scroll back to bottom):", JSON.stringify(f3),
     "=> PINNED-BOTTOM:", !!(f3 && f3.sh - f3.top - f3.ch < 4));
+
+  // 帧4：模拟「用户发送消息」——时间线滚到顶部读历史后 chatForceBottom 置位，
+  // 下一次重绘必须强制把【外层时间线】贴底（不管先前位置）；思考面板内滚条不受影响
+  await evalJs(`(() => { const fl = document.getElementById("rd-chat-flow");
+    fl.scrollTop = 0; chatForceBottom = true; })();`);
+  const f4 = await render();
+  console.log("flow-diag:", await evalJs(`(() => { const fl = document.getElementById("rd-chat-flow");
+    return JSON.stringify({ top: Math.round(fl.scrollTop), sh: fl.scrollHeight, ch: fl.clientHeight }); })()`));
+  console.log("frame4(force bottom after send):", JSON.stringify(f4),
+    "=> outer timeline follows via chatForceBottom (see flow-diag)");
 
   ws.close();
 } finally {
