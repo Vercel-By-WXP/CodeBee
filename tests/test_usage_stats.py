@@ -73,6 +73,19 @@ class UsageStatsTest(BaseTest):
         # all_by_day：全历史、不补零、与范围无关
         all_days = {r["day"]: r["tokens"] for r in s["all_by_day"]}
         self.assertEqual(all_days.get(d(40)), 5000)
+
+        # by_day 逐日原始真值：概览页的环比是把 60 天日序列对半切算出来的，
+        # 依赖逐日的 ok / duration_s —— 少一个字段前端就只能拿总量硬凑，
+        # 所以这里按字段存在性 + 取值双保险（补零天给 0 而不是缺键）。
+        by_day = {r["day"]: r for r in s["by_day"]}
+        for k in ("ok", "duration_s"):
+            self.assertIn(k, by_day[d(0)], "by_day 每日条目缺字段：" + k)
+        self.assertEqual(by_day[d(0)]["ok"], 3)              # 今天 3 条全成功
+        self.assertAlmostEqual(by_day[d(0)]["duration_s"], 160.0, places=1)
+        self.assertEqual(by_day[d(1)]["ok"], 1)
+        # 无数据日补零：字段齐全、值为 0（不是缺键，前端才不用做 undefined 兜底）
+        self.assertEqual(by_day[d(3)]["ok"], 0)
+        self.assertEqual(by_day[d(3)]["duration_s"], 0)
         self.assertEqual(len(s["all_by_day"]), 5)
 
         # days=0 全部范围

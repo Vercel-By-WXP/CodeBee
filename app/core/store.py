@@ -24,6 +24,12 @@ LOCK = threading.RLock()
 _TASKS = {}
 _RUNS = {}
 
+# 流式实时落盘的节流表：(run_id, 步骤号) -> 上次落盘时刻。步骤收尾即清，
+# 长跑也不会无限增长（finish_step 里调 clear_stream_state）。
+_STREAM_LOCK = threading.Lock()
+_STREAM_TS = {}
+LIVE_TEXT_MAX = 20000   # 单步骤实时思考/正文的保留上限（与 builtin_agent 同口径）
+
 # ---------------------------------------------------------------- 状态版本（SSE 事件驱动）
 # 任何落盘写都算状态变化：SSE 连接等版本号变化才构建/推送全量状态，
 # 空闲时连接零开销（此前每连接每 0.8s 盲构建全量 payload，多端并发会放大成假死）
@@ -1533,9 +1539,58 @@ def add_step(run_id, role, agent_id, agent_label, note=""):
         return step, log_abs
 
 
+def stream_step(run_id, n, thinking=None, text=None, activity=None, min_secs=0.6):
+    """步骤运行中实时落一段「思考过程/正文/活动」——对话时间线边跑边打印。
+
+    直连对话此前整轮只有三点打字动画（32 秒黑箱，用户 2026-09-22 反馈）；
+    模型的思维链与正文在流式回调里到达，这里节流落盘（默认 0.6s 一次），
+    前端 2s 轮询一次读到的就是「它正在想什么」。
+
+    节流按步骤记忆上次落盘时刻；收尾时 finish_step 会写入最终值并清掉
+    live 标记。返回是否真的落盘（调用方可据此决定要不要做下一步）。
+    """
+    key = (run_id, int(n))
+    now = time.time()
+    with _STREAM_LOCK:
+        last = _STREAM_TS.get(key, 0)
+        if min_secs and now - last < min_secs:
+            return False
+        _STREAM_TS[key] = now
+    with LOCK:
+        run = _RUNS.get(run_id)
+        if not run:
+            return False
+        for s in run["steps"]:
+            if s["n"] != n:
+                continue
+            if thinking is not None:
+                s["thinking"] = str(thinking)[-LIVE_TEXT_MAX:]
+            if text is not None:
+                s["stream"] = str(text)[-LIVE_TEXT_MAX:]
+            if activity:
+                acts = list(s.get("activity") or [])
+                if not acts or acts[-1] != activity:
+                    acts.append(str(activity)[:200])
+                s["activity"] = acts[-8:]
+            s["live"] = int(s.get("live") or 0) + 1   # 前端重绘签名（内容变即刷新）
+            _save_json(paths.RUNS_DIR / run_id / "run.json", run)
+            return True
+    return False
+
+
+def clear_stream_state(run_id=None, n=None):
+    """清掉流式节流状态（步骤收尾/测试收场用），避免字典随长跑无限增长。"""
+    with _STREAM_LOCK:
+        if run_id is None:
+            _STREAM_TS.clear()
+            return
+        for key in [k for k in _STREAM_TS if k[0] == run_id and (n is None or k[1] == n)]:
+            _STREAM_TS.pop(key, None)
+
+
 def finish_step(run_id, n, status, summary="", exit_code=None,
                 cost_usd=0.0, tokens=0.0, duration_s=None, model=None, output=None,
-                followups=None):
+                followups=None, thinking=None):
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -1558,12 +1613,20 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                     # output 是智能体正文（对话气泡直读）：只剥 ANSI，不做噪声折叠
                     # ——正文里的装饰性长串是作者写的，不能替它省略
                     s["output"] = runner.strip_ansi(str(output))[:6000]
+                if thinking is not None:
+                    s["thinking"] = runner.strip_ansi(str(thinking))[:LIVE_TEXT_MAX]
                 if followups:
                     s["followups"] = list(followups)[:3]
+                # 收尾即清运行中态：stream/activity/live 只是过程快照，留着会让
+                # 前端把「已结束」的步骤仍当实时流渲染（也白占 run.json 体积）
+                s.pop("stream", None)
+                s.pop("activity", None)
+                s.pop("live", None)
                 break
         run["cost_usd"] = round(run.get("cost_usd", 0.0) + cost_usd, 4)
         run["tokens"] = run.get("tokens", 0) + tokens
         _save_json(paths.RUNS_DIR / run_id / "run.json", run)
+    clear_stream_state(run_id, n)
 
 
 # ---------------------------------------------------------------- 运行中指挥（消息信箱）

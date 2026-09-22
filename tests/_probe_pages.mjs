@@ -64,15 +64,20 @@ async function main() {
       return JSON.stringify({ rows: texts, treeSample: tree, searchVisible: vis(document.querySelector(".side-search")) }, null, 1);
     })()`));
 
-    console.log("=== 点快捷入口 ===");
+    console.log("=== 点快捷入口（左栏任务树应保持不变）===");
     console.log(await evalJs(`(async () => {
+      const shell = () => ({
+        settingsMode: document.body.classList.contains("settings-mode"),
+        sideMain: getComputedStyle(document.querySelector(".side-main")).display,
+      });
       document.querySelector("#btn-q-automation").click();
       await new Promise(r => setTimeout(r, 1200));
       const autoOpen = !document.querySelector("#sub-automation").classList.contains("hidden");
-      document.querySelector("#btn-q-market").click();
+      const afterAuto = shell();
+      document.querySelector("#btn-q-runs").click();
       await new Promise(r => setTimeout(r, 1200));
-      const marketOpen = !document.querySelector("#sub-market").classList.contains("hidden");
-      return JSON.stringify({ autoOpen, marketOpen });
+      const runsOpen = !document.querySelector("#sub-runs").classList.contains("hidden");
+      return JSON.stringify({ autoOpen, afterAuto, runsOpen });
     })()`));
 
     console.log("=== 命令面板 ===");
@@ -98,10 +103,15 @@ async function main() {
       return JSON.stringify({ open1, items0, labels1, empty1, closed });
     })()`));
 
-    console.log("=== 进入设置 → 自动化 ===");
+    console.log("=== 进入设置 → 任务 ===");
     await evalJs(`document.querySelector("#btn-settings").click()`);
     await sleep(1200);
-    await evalJs(`[...document.querySelectorAll(".set-item")].find((b) => b.dataset.sub === "automation")?.click()`);
+    await evalJs(`[...document.querySelectorAll(".set-item")].find((b) => b.dataset.sub === "tasks")?.click()`);
+    await sleep(1200);
+    console.log("=== 退出设置，由快捷导航进自动化 ===");
+    await evalJs(`document.querySelector("#btn-set-back").click()`);
+    await sleep(600);
+    await evalJs(`document.querySelector("#btn-q-automation").click()`);
     await sleep(1500);
     console.log(await evalJs(`(() => {
       const p = document.querySelector("#sub-automation");

@@ -6917,7 +6917,7 @@ async function renderChat(run, active) {
   box.classList.remove("hidden");
   const continueNote = $("rd-chat-continue-note");
   if (continueNote) continueNote.classList.toggle("hidden", !!active);
-  if (chatRunId !== run.id) { chatRunId = run.id; chatAtts = []; drawChatAtts(); chatSig = ""; }
+  if (chatRunId !== run.id) { chatRunId = run.id; chatAtts = []; drawChatAtts(); chatSig = ""; chatLiveSig = ""; }
   // 三件套回填：任务对象来自 S.state（渲染时已就位）；只在任务未在跑时回显，
   // 防止轮询把用户正在改的值弹回（select change 重绘弹回教训）
   if (run.status !== "running" && run.status !== "queued" && S.state) {
@@ -6945,11 +6945,14 @@ function drawChatFlow(run, data, active) {
   const items = (data && data.items) || [];
   const flow = $("rd-chat-flow");
   if (!flow) return;
-  // 增量闸门：思考/正文实时流式期间只有 live 长度在变，没变就不重建 DOM
-  //（保滚动位置与展开态；重建整块 innerHTML 会把折叠块弹回默认）
-  const liveSig = items.reduce((a, it) => a + "|" + (it.live || 0) +
-    ":" + String(it.thinking || "").length + ":" + String(it.stream || "").length +
-    ":" + (it.activity || []).length, "");
+  // 增量闸门：时间线任何可见输入（状态/正文/思考/实时流/活动/追问/已送达）
+  // 都没变才跳过重建——保滚动位置与折叠态。维度少了不行：只看 live 长度的话，
+  // 没开思考的 CLI 步骤 running→done 两态签名相同，气泡会永远停在打字动画
+  const liveSig = items.reduce((a, it) => a + "|" + (it.kind || "") + ":" +
+    (it.status || "") + ":" + String(it.text || "").length + ":" +
+    String(it.thinking || "").length + ":" + String(it.stream || "").length + ":" +
+    (it.activity || []).length + ":" + (it.followups || []).length +
+    ":" + (it.consumed ? 1 : 0), "") + "|" + ((data && data.result) ? "r" : "");
   if (liveSig === chatLiveSig && flow.childElementCount) return;
   chatLiveSig = liveSig;
   // 时间显示统一收敛到 HH:MM（日期在 meta 条里，全量戳塞气泡就是噪音）；

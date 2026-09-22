@@ -38,7 +38,7 @@ async function main() {
         owners: { backend: "be1", frontend: "fe1", not_ours: "" },
         module_routes: [{ module: 99, side: "backend", account: "" }] }],
       auto_resolve: true, auto_merge: true, triage_ai: true,
-      poll_enabled: false, interval_hours: 2 },
+      poll_enabled: false, interval_hours: 2 },   // 老键（小时）：加载时迁成分钟
     claims: { "501": { bug_id: 501, product: 7, title: "种子 Bug：登录 500",
         triage: { side: "backend", reason: "模块 #99 路由规则", by: "rule", account: "" },
         tasks: [{ side: "backend", task_id: "t-seed-1", run_id: "r-seed-1", state: "fixing" }],
@@ -280,10 +280,17 @@ async function main() {
       const nb = input.getBoundingClientRect(), pb = product.getBoundingClientRect();
       return JSON.stringify({ autoH: Math.round(ab.height), intervalH: Math.round(ib.height),
         numberInside: nb.left >= ib.left - 1 && nb.right <= ib.right + 1,
-        productW: Math.round(pb.width), productVisible: pb.right <= innerWidth + 1 });
+        productW: Math.round(pb.width), productVisible: pb.right <= innerWidth + 1,
+        unit: (document.querySelector(".zt-iv-unit") || {}).textContent || "",
+        ivVal: input.value, ivMin: input.getAttribute("min"),
+        chips: document.querySelectorAll(".zt-auto-options > .toggle").length,
+        chipH: Math.round((document.querySelector(".zt-auto-options > .toggle") || {getBoundingClientRect:()=>({height:0})}).getBoundingClientRect().height) });
     })()`, true);
     const ly = JSON.parse(layout || "{}");
     check("④b 自动化选项与扫描间隔成组对齐", ly.autoH < 100 && ly.numberInside, layout);
+    check("④b 扫描间隔用分钟：单位文案+最小值 5+老小时键迁移(2h→120min)",
+      ly.unit === "分钟" && ly.ivMin === "5" && ly.ivVal === "120", layout);
+    check("④b 四个开关渲染为等高胶囊", ly.chips === 4 && ly.chipH >= 26 && ly.chipH <= 44, layout);
     check("④b 产品名称下拉有可读宽度且未溢出", ly.productW >= 180 && ly.productVisible, layout);
     await evalJs(`S.ztProducts = []; S.ztUsers = []; renderZentaoProfiles(); "ok"`);
 

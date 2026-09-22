@@ -86,24 +86,30 @@ class TestCodexSyncChatGuard(BaseTest):
 
     def runTest(self):
         import os
-        import tempfile as tf
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
         from app.core import manager
-        # 围栏要求配置路径在真实用户主目录内——用完即删的临时同名文件
-        scratch = os.path.join(os.path.expanduser("~"),
-                               "codebee-test-codex-%d.toml" % os.getpid())
+        # 防毒闸（011023c）放行形态：假 HOME 在临时目录下（resolve+parents 守卫），
+        # 配置文件落在假家——chat 拒写 / responses 落盘的原语义照常验证。
+        home_p = Path(tempfile.mkdtemp(prefix="cb-fakehome-"))
+        scratch = str(home_p / ("codebee-test-codex-%d.toml" % os.getpid()))
         entry = {"id": "codex-cli", "config": {"path": scratch}}
         try:
             # 域名用 .internal：7b8c2d5 起 *.test/*.example 等是死端点，
             # 会被 _is_dead_endpoint 先拒掉，轮不到 chat 守卫出场
-            err = manager._sync_codex_settings(
-                entry, "m1", {"name": "orch", "base_url": "https://c.internal/v2",
-                              "env_key": "ORCH_API_KEY", "wire_api": "chat"})
-            self.assertTrue(err and "chat" in err)
-            self.assertFalse(os.path.exists(scratch), "chat wire 不得落盘")
-            err2 = manager._sync_codex_settings(
-                entry, "m1", {"name": "orch", "base_url": "https://r.internal/v1",
-                              "env_key": "ORCH_API_KEY", "wire_api": "responses"})
-            self.assertIsNone(err2)
+            with mock.patch("app.core.manager.os.path.expanduser",
+                            lambda p: str(home_p) if p == "~" else p):
+                err = manager._sync_codex_settings(
+                    entry, "m1", {"name": "orch", "base_url": "https://c.internal/v2",
+                                  "env_key": "ORCH_API_KEY", "wire_api": "chat"})
+                self.assertTrue(err and "chat" in err)
+                self.assertFalse(os.path.exists(scratch), "chat wire 不得落盘")
+                err2 = manager._sync_codex_settings(
+                    entry, "m1", {"name": "orch", "base_url": "https://r.internal/v1",
+                                  "env_key": "ORCH_API_KEY", "wire_api": "responses"})
+                self.assertIsNone(err2)
             self.assertTrue(os.path.exists(scratch))
             body = open(scratch, encoding="utf-8").read()
             self.assertIn('wire_api = "responses"', body)

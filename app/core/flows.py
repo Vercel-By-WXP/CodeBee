@@ -13,7 +13,7 @@ import json
 import re
 import threading
 
-from . import paths
+from . import paths, volumes
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "flows.json"
@@ -149,10 +149,19 @@ def _norm_serial(serial):
     if not isinstance(serial, dict) or not serial.get("chapters"):
         return None
     try:
-        return {"chapters": max(2, min(20, int(serial["chapters"]))),
-                "words_per_chapter": max(500, min(8000, int(serial.get("words_per_chapter") or 2500)))}
+        out = {"chapters": max(2, min(20, int(serial["chapters"]))),
+               "words_per_chapter": max(500, min(8000, int(serial.get("words_per_chapter") or 2500)))}
     except Exception:
         return None
+    # 分卷（可选）：显式卷表优先，其次每卷章数。流程模板里可以预置，
+    # 任务级 payload 仍可覆盖/关闭（0 = 不分卷）。
+    spec = volumes.norm_spec(serial.get("volumes"))
+    if spec:
+        out["volumes"] = spec
+    per = volumes.norm_per(serial.get("volume_chapters"))
+    if per:
+        out["volume_chapters"] = per
+    return out
 
 
 def _norm_rubric(rubric):

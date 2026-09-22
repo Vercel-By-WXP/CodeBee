@@ -4,7 +4,7 @@
 数据落盘 <data>/zentao.json（tmp + os.replace 原子写；TUTTI_DATA 环境变量感知）。
 修复走与 /api/tasks 完全相同的链路（store.create_task → store.create_run →
 jobs.enqueue，code 引擎=实现→验证→评审→修复），不自造运行器。调度挂在
-automation._tick（同 publish/auto.fire_due 模式），内部按 interval_hours 节流。
+automation._tick（同 publish/auto.fire_due 模式），内部按 interval_minutes 节流。
 
 禅道 REST API v1（开源版 15.x+；请求头 Token: <token>）：
   POST {base}/api.php/v1/tokens               {account, password} → {token}
@@ -76,7 +76,9 @@ PAGE_LIMIT = 100
 MAX_BUGS = 500
 RESOLVE_MAX_ATTEMPTS = 3
 RETRY_DELAY_MIN = 30
-INTERVAL_MIN, INTERVAL_MAX = 1, 168
+INTERVAL_MIN, INTERVAL_MAX = 5, 10080   # 扫描间隔（分钟）：5 分钟 ~ 7 天
+INTERVAL_DEFAULT = 5
+_LEGACY_INTERVAL_HOURS_DEFAULT = 2      # 老配置 interval_hours 缺省值（迁移用）
 
 SIDES = ("backend", "frontend")
 TRIAGE_SIDES = ("backend", "frontend", "both", "not_ours")   # unknown 单列
@@ -91,7 +93,7 @@ _CFG_DEFAULTS = {
     "auto_merge": True,
     "triage_ai": True,         # 模块路由未命中时用 AI 兜底排查
     "poll_enabled": False,
-    "interval_hours": 2,
+    "interval_minutes": INTERVAL_DEFAULT,
 }
 
 _REPO_DEFAULTS = {"workdir": "", "git_rev": "", "verify_command": ""}
@@ -109,7 +111,7 @@ _PROFILE_DEFAULTS = {
 
 _UPDATABLE = ("base_url", "account", "password", "product_profiles",
               "auto_resolve", "auto_merge", "triage_ai",
-              "poll_enabled", "interval_hours")
+              "poll_enabled", "interval_minutes")
 
 
 # ---------------------------------------------------------------- 出网边界（SSRF）
@@ -232,6 +234,17 @@ def load(force=False):
         # 必须在按 _CFG_DEFAULTS 过滤之前完成迁移）
         if isinstance(cfg, dict) and not cfg.get("product_profiles"):
             cfg = _migrate_legacy(dict(cfg))
+        # 老配置用 interval_hours（小时），新配置改用 interval_minutes（分钟）：
+        # 用户没动过间隔（还是老默认 2 小时）就跟随新默认 5 分钟；真改过的按小时换算保留。
+        if isinstance(cfg, dict) and "interval_minutes" not in cfg \
+                and "interval_hours" in cfg:
+            try:
+                hours = int(cfg.get("interval_hours") or _LEGACY_INTERVAL_HOURS_DEFAULT)
+            except (TypeError, ValueError):
+                hours = _LEGACY_INTERVAL_HOURS_DEFAULT
+            cfg = dict(cfg)
+            mins = INTERVAL_DEFAULT if hours == _LEGACY_INTERVAL_HOURS_DEFAULT else hours * 60
+            cfg["interval_minutes"] = max(INTERVAL_MIN, min(INTERVAL_MAX, mins))
         merged = dict(_CFG_DEFAULTS)
         if isinstance(cfg, dict):
             merged.update({k: v for k, v in cfg.items() if k in _CFG_DEFAULTS})
@@ -623,7 +636,8 @@ def _pairs_to_list(pairs, id_key, name_key):
 def _module_items(d):
     """老版模块树形状兼容（2026-09-21 真机反馈「响应形状不认识」）：
     sons/modules 数组、{id: {name,...}} 字典、children/sons 嵌套树，统一
-    递归展开成 [{id,name}] 平铺清单（id=0 是树根容器，跳过）。"""
+    递归展开成 [{id,name}] 平铺清单（id=0 是树根容器，跳过）；全数字键的
+    {id: 名字} 扁平映射也认（部分版本的模块摘要形状）。"""
     out = []
 
     def walk(node):
@@ -637,11 +651,19 @@ def _module_items(d):
                     if isinstance(node.get(k), (list, dict)):
                         walk(node[k])
             else:
+                if node and all(str(k).isdigit() for k in node.keys()):
+                    flat = [{"id": k, "name": str(v)}
+                            for k, v in node.items() if str(v or "").strip()]
+                    if flat:
+                        out.extend(flat)
+                        return
                 for v in node.values():
                     walk(v)
 
     if isinstance(d, dict):
-        walk(d.get("sons") or d.get("modules") or d.get("tree") or d)
+        # tree 优先：真机 tree=带 children 的完整嵌套树，sons 只有顶层扁平表
+        # （走 sons 会漏子模块）
+        walk(d.get("tree") or d.get("sons") or d.get("modules") or d)
     elif isinstance(d, list):
         walk(d)
     return out
@@ -724,8 +746,27 @@ def _old_route(api, method, p, q, body):
 
     m = re.match(r"^/products/(\d+)/modules$", p)
     if m and method == "GET":
-        d = go(get("/tree-browse-%s-module.json" % m.group(1)), "（拉模块清单）")
-        return {"_list": [x for x in _module_items(d) if isinstance(x, dict) and x.get("id")]}
+        # 2026-09-22 真机实探：该版模块行 type=story，viewType=module 查出空树
+        # （status 仍 success）——「响应形状不认识」的真根因。改按 bug 视图拉
+        # （bug 表单模块下拉用的就是这棵树），story/case 兜底。
+        pid = m.group(1)
+        last, saw_js = None, False
+        for vt in ("bug", "story", "case"):
+            d = go(get("/tree-browse-%s-%s.json" % (pid, vt)), "（拉模块清单）")
+            last = d
+            if isinstance(d, dict) and d.get("_js"):
+                saw_js = True            # 接口回了页面脚本：换视图再试
+                continue
+            items = [x for x in _module_items(d) if isinstance(x, dict) and x.get("id")]
+            if items:
+                return {"_list": items}
+        if saw_js:
+            raise ZenError("禅道老接口（拉模块清单）：回了页面脚本而不是数据"
+                           "（模块树接口不在或被重定向）——请在禅道产品视图 URL 里查模块 ID 手工填写")
+        keys = ",".join(sorted(str(k) for k in last.keys())) \
+            if isinstance(last, dict) else type(last).__name__
+        raise ZenError("该产品模块树为空（bug/story/case 三个视图都没拉到模块，"
+                       "响应顶层键：%s）——请到禅道确认产品下建过模块，或手工填模块 ID" % keys)
 
     if p == "/products" and method == "GET":
         d = go(get("/api-getmodel-product-getpairs.json"), "（拉产品清单）")
@@ -847,8 +888,12 @@ def fetch_modules(product_id):
     try:
         d = _call("GET", "/products/%s/modules" % product_id, cfg=cfg)
     except ZenError as e:
-        return {"ok": False,
-                "error": "%s——也可能你的禅道没有该接口：请在禅道产品视图 URL 里查模块 ID 手工填写" % e}
+        msg = str(e)
+        # 只有「接口不存在」类错误才补「没有该接口」提示；老通道自己报的
+        # 空树/脚本回包已带人话结论，别再叠一层误导
+        if "404" in msg or "不认识" in msg:
+            msg += "——也可能你的禅道没有该接口：请在禅道产品视图 URL 里查模块 ID 手工填写"
+        return {"ok": False, "error": msg}
     # 形状兼容器（{_list} / {modules:[...]} / {id:{...}} 字典 / 裸数组）
     items = _list_items(d, "modules")
     if items is None:
@@ -858,6 +903,11 @@ def fetch_modules(product_id):
         if isinstance(m, dict) and m.get("id"):
             out.append({"id": m.get("id"), "name": str(m.get("name") or "")})
     if not out:
+        if isinstance(d, dict) and set(d.keys()) == {"_list"}:
+            # 自家归一包装（裸数组进 _api/_old_route 时打的包）：空清单=
+            # 产品真没模块，不是形状问题，别拿顶层键吓人
+            return {"ok": False,
+                    "error": "禅道回了空模块清单（该产品可能没建模块）——请手工填模块 ID"}
         # 带响应形状摘要帮排查（顶层键名，不吐正文——用户实测反馈
         # 「响应形状不认识」却看不到真实形状，没法报修）
         keys = ",".join(sorted(str(k) for k in d.keys())) if isinstance(d, dict) else type(d).__name__
@@ -1627,7 +1677,7 @@ def _poll(force=False):
         err = "扫描失败：%s" % e
         log.warning("zentao: %s", err)
     now = datetime.now()
-    delay = timedelta(hours=max(INTERVAL_MIN, int(cfg.get("interval_hours") or 2)))
+    delay = timedelta(minutes=max(INTERVAL_MIN, int(cfg.get("interval_minutes") or INTERVAL_DEFAULT)))
     if err:
         delay = timedelta(minutes=RETRY_DELAY_MIN)
     with _LOCK:
@@ -1770,11 +1820,11 @@ def save_config(patch):
                 v = _norm_profiles(v)
                 if v is None:
                     continue
-            elif k == "interval_hours":
+            elif k == "interval_minutes":
                 try:
                     v = max(INTERVAL_MIN, min(INTERVAL_MAX, int(v)))
                 except (TypeError, ValueError):
-                    raise ValueError("interval_hours 必须是 %d-%d 的整数"
+                    raise ValueError("interval_minutes 必须是 %d-%d 的整数"
                                      % (INTERVAL_MIN, INTERVAL_MAX))
             elif k in ("auto_resolve", "auto_merge", "triage_ai", "poll_enabled"):
                 v = bool(v)

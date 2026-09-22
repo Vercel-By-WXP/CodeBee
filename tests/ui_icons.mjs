@@ -8,8 +8,12 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SERVICE = "http://127.0.0.1:18798";
-const CDP_PORT = 9334;
+// 端口可用 TUTTI_TEST_PORT / TUTTI_TEST_CDP 覆盖：18798 是共享端口（多代理并跑时
+// 可能被别人的残留服务双绑，量到的就不是本工作树的前端），CDP 口相撞更会让两个
+// Edge 互相驱动对方页面。归属存疑时先换端口复跑一遍再判定。
+const PORT = Number(process.env.TUTTI_TEST_PORT) || 18798;
+const SERVICE = "http://127.0.0.1:" + PORT;
+const CDP_PORT = Number(process.env.TUTTI_TEST_CDP) || 9334;
 const EDGE = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",

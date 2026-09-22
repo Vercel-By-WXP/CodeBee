@@ -2442,6 +2442,18 @@ def launch_pick(agent_id, protocols):
     protocols = tuple(p for p in (protocols or ()) if p)
     b = bindings().get(agent_id) or {}
     chain = _binding_chain(b)
+    if not chain and str(b.get("provider_id") or "").strip():
+        # 只锁定了供应商、没排链也没选模型的绑定：与 resolve_binding 的无链分支
+        # 同语义补一条，打开前才有凭据可注入。否则这类绑定永远「未指定供应商」，
+        # CLI 自家配置里的残留（a.test 占位案）等不到自愈覆盖——2026-09-22
+        # claude ENOTFOUND 四连败实测，settings.json 毒端点靠它长期存活。
+        _pid = str(b.get("provider_id")).strip()
+        _prov = {p.get("id"): p for p in providers()}.get(_pid)
+        _model = str(b.get("model") or "").strip()
+        if _prov and not _model:
+            _names = [m["name"] for m in _enabled_models(_prov)]
+            _model = _prov.get("model") or (_names[0] if _names else "")
+        chain = [{"provider_id": _pid, "model": _model}]
     provs = {p.get("id"): p for p in providers()}
     disabled, mismatch = [], False
     for item in chain:

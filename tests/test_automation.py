@@ -312,6 +312,98 @@ class TestRestartRecovery(AutomationCase):
         self.assertGreater(_dt(d["next_run"]), datetime.now())
 
 
+class TestRunPrefs(AutomationCase):
+    """运行偏好（编排模式/思考程度/对话模型）：与 Composer 同字段，创建/编辑可改。"""
+
+    def runTest(self):
+        # 默认值：不传就是 Composer 的默认档，历史任务加载后同样落这两档
+        t0 = self.make(name="默认档")
+        self.assertEqual(t0["mode"], "auto")
+        self.assertEqual(t0["thinking"], "standard")
+        self.assertEqual(t0["direct_provider_id"], "")
+        self.assertEqual(t0["direct_model"], "")
+
+        # 显式选择：原样落盘（不是只在内存里）
+        t = self.make(name="专家档", mode="expert", thinking="high")
+        self.assertEqual(t["mode"], "expert")
+        self.assertEqual(t["thinking"], "high")
+        with self.aut._LOCK:
+            self.aut._TASKS.clear()
+            self.aut._LOADED = False
+        self.aut.load()
+        self.assertEqual(self.aut.get_task(t["id"])["mode"], "expert")
+        self.assertEqual(self.aut.get_task(t["id"])["thinking"], "high")
+
+        # 脏值收敛到默认，不抛异常：偏好不是配置，不该把保存卡死
+        t1 = self.make(name="脏值", mode="bogus", thinking="deep")
+        self.assertEqual(t1["mode"], "auto")
+        self.assertEqual(t1["thinking"], "standard")
+
+        # 非 direct 流程：模型字段一律清空（换流程后残留绑定不得静默生效）
+        t2 = self.make(name="非直连", flow="doc",
+                       direct_provider_id="prov-x", direct_model="model-y")
+        self.assertEqual(t2["direct_provider_id"], "")
+        self.assertEqual(t2["direct_model"], "")
+
+        # direct 流程：保留；只有模型没有厂商 → 明确报错（不许猜厂商）
+        t3 = self.make(name="直连", flow="direct",
+                       direct_provider_id="prov-x", direct_model="model-y")
+        self.assertEqual(t3["direct_provider_id"], "prov-x")
+        self.assertEqual(t3["direct_model"], "model-y")
+        with self.assertRaises(ValueError):
+            self.make(name="悬空模型", flow="direct", direct_model="model-y")
+
+        # 编辑：偏好可改；把流程从 direct 换成 review 时残留模型被清掉
+        up = self.aut.update(t3["id"], {"mode": "fast", "thinking": "low"})
+        self.assertEqual(up["mode"], "fast")
+        self.assertEqual(up["thinking"], "low")
+        up2 = self.aut.update(t3["id"], {"flow": "doc"})
+        self.assertEqual(up2["direct_provider_id"], "")
+        self.assertEqual(up2["direct_model"], "")
+        # 未触及偏好的编辑不动它们
+        up3 = self.aut.update(t3["id"], {"name": "改个名"})
+        self.assertEqual(up3["mode"], "fast")
+        self.assertEqual(up3["thinking"], "low")
+
+
+class TestRunPrefsThroughLaunchChain(AutomationCase):
+    """偏好要真的走到运行里：走真实 _launch_run，只 stub jobs.enqueue。"""
+
+    def runTest(self):
+        from app.core import jobs as jobs_mod
+        from app.core import store as store_mod
+        enqueued = []
+        orig_enqueue = jobs_mod.enqueue
+        jobs_mod.enqueue = lambda job: enqueued.append(job)
+        self.aut._launch_run = self._orig_launch   # 换回真实启动链
+        try:
+            t = self.make(name="专家巡检", kind="daily", time="09:00",
+                          mode="expert", thinking="high")
+            self.aut.run_now(t["id"])
+            task = store_mod.get_task(enqueued[0]["task_id"])
+            self.assertEqual(task["mode"], "expert")
+            self.assertEqual(task["thinking"], "high")
+
+            # 直连流程：厂商/模型随 payload 透传进任务（与手动建任务等价）
+            t2 = self.make(name="直连巡检", kind="daily", time="09:00", flow="direct",
+                           direct_provider_id="prov-x", direct_model="model-y")
+            self.aut.run_now(t2["id"])
+            task2 = store_mod.get_task(enqueued[1]["task_id"])
+            self.assertEqual(task2["type"], "direct")
+            self.assertEqual(task2["direct_provider_id"], "prov-x")
+            self.assertEqual(task2["direct_model"], "model-y")
+
+            # 非直连流程：不带 direct_* 进 payload（create_task 里那两个键只认 direct）
+            t3 = self.make(name="文档巡检", kind="daily", time="09:00", flow="doc")
+            self.aut.run_now(t3["id"])
+            task3 = store_mod.get_task(enqueued[2]["task_id"])
+            self.assertEqual(task3["type"], "doc")
+            self.assertNotIn("direct_provider_id", task3)
+        finally:
+            jobs_mod.enqueue = orig_enqueue
+            self.aut._launch_run = self._fake_launch
+
+
 class TestTemplates(AutomationCase):
     def runTest(self):
         ts = self.aut.templates()

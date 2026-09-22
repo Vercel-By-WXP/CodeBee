@@ -32,6 +32,7 @@ class FakeZen:
                       {"account": "tester", "realname": "测试君"}]
         self.subpath = False    # True=只认 /zentao/api.php/v1（一键安装包子路径部署）
         self.old = False        # True=只讲老版 module-method JSON 接口（REST 全 404）
+        self.old_modules_js = False   # True=tree-browse 回 js::HTML（接口不在形状）
         self.old_sid = ""
         self.old_session_n = 0
 
@@ -218,6 +219,30 @@ class FakeZen:
                     if p == "zentao/api-getmodel-user-getpairs.json":
                         self._reply(200, {"status": "success", "data": json.dumps(
                             {u["account"]: u["realname"] for u in srv.users})})
+                        return
+                    if p.startswith("zentao/tree-browse-"):
+                        # 真机形状（2026-09-22 实探）：module 视图 status=success
+                        # 但树为空；bug/story 视图才回完整嵌套树
+                        seg = p.split(".")[0][len("zentao/tree-browse-"):]
+                        pid, vt = seg.split("-")[0], seg.split("-")[1]
+                        if srv.old_modules_js:
+                            self._js_html("/zentao/tree-browse-%s-bug.json" % pid)
+                            return
+                        if vt == "module":
+                            self._reply(200, {"status": "success", "data": json.dumps(
+                                {"sons": [], "tree": [], "viewType": "module",
+                                 "modules": ""})})
+                            return
+                        mods = srv.modules.get(int(pid)) or []
+                        tree = [{"id": m["id"], "name": m["name"], "parent": "0",
+                                 "children": []} for m in mods]
+                        if tree:
+                            tree[0]["children"] = [{"id": int("%d0" % tree[0]["id"]),
+                                                    "name": tree[0]["name"] + "/子",
+                                                    "parent": tree[0]["id"],
+                                                    "children": []}]
+                        self._reply(200, {"status": "success", "data": json.dumps(
+                            {"sons": tree, "tree": tree, "viewType": vt})})
                         return
                     self._reply(404, {"error": "unknown old GET %s" % self.path})
                     return
@@ -854,3 +879,31 @@ class TestOldJsonApi(ZenCase):
         v2 = self.zen_mod._call("GET", "/bugs/861", cfg=c)
         self.assertEqual(str(v2.get("status")), "resolved")
         self.assertEqual(str(v2.get("resolution")), "fixed")
+
+
+class TestModuleFetchOld(ZenCase):
+    """老通道拉模块清单（2026-09-22 真机报错「响应顶层键: _list」）：
+    该版禅道 module 视图回 success+空树（模块行 type=story），必须回落
+    bug 视图（bug 表单模块下拉用的就是这棵树）。"""
+    def runTest(self):
+        self.fz.old = True
+        base = "http://127.0.0.1:%d" % self.port
+        self.configure(base_url=base)
+        r = self.zen_mod.fetch_modules(1)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual([m["id"] for m in r["modules"]], [99, 990, 77],
+                         "module 视图空树要回落 bug 视图，且递归展开 children")
+        # 三个视图都空 → 人话「模块树为空」，不是「形状不认识」也不是「没有该接口」
+        self.fz.modules = {}
+        r2 = self.zen_mod.fetch_modules(2)
+        self.assertFalse(r2["ok"])
+        self.assertIn("空", r2["error"])
+        self.assertIn("手工填", r2["error"])
+        self.assertNotIn("没有该接口", r2["error"])
+        self.assertNotIn("_list", r2["error"])
+        # 接口回 js::HTML（接口不在/被重定向）→ 点名脚本回包
+        self.fz.modules = {1: [{"id": 99, "name": "登录"}]}
+        self.fz.old_modules_js = True
+        r3 = self.zen_mod.fetch_modules(1)
+        self.assertFalse(r3["ok"])
+        self.assertIn("脚本", r3["error"])

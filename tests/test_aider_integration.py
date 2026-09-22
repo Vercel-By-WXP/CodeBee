@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+import shutil
+import subprocess
 from unittest import mock
 
 from base import BaseTest
@@ -46,6 +48,20 @@ class TestAiderCallShape(BaseTest):
         argv4, _, _, _ = R._build_call(agent4, "aider", "", True, "glm-5.1", "p")
         self.assertEqual(argv4[argv4.index("--model") + 1], "glm-5.1")
 
+    def test_no_fancy_input_keeps_prompt_toolkit_noise_out_of_logs(self):
+        """无头执行没有控制台：不关花式输入，aider 会打一行 prompt toolkit 报错。
+
+        那行排在输出最前，而 UI 的失败摘要只取头部（runner._build_call 之后的
+        `tail` 切片）→ 真错误被噪声顶掉（2026-09-22 mo-so 实案整条失败原因显示
+        成这句）。--no-fancy-input 让它不建 PromptSession，噪声从源头消失。
+        """
+        from app.core import runner as R
+
+        agent = {"id": "aider", "kind": "aider", "mode": "real",
+                 "command": "aider", "env": {}}
+        argv, _, _, _ = R._build_call(agent, "aider", "", True, "glm-5.1", "p")
+        self.assertIn("--no-fancy-input", argv)
+
     def test_corrupt_git_repo_is_reported_before_aider_starts(self):
         from app.core import runner as R
 
@@ -57,6 +73,59 @@ class TestAiderCallShape(BaseTest):
             issue = R._git_repo_issue("C:/broken")
         self.assertIn("Git 仓库损坏", issue)
         self.assertIn("git fsck", issue)
+
+    def test_orphan_pack_without_idx_is_reported(self):
+        """pack 缺同名 .idx：git 本体只警告跳过，aider 的 gitdb 直接整步失败。
+
+        2026-09-22 mo-so 实案：pack-a52e675e.pack 没有 .idx（内容在别的包里
+        还有一份），git status/fsck/rev-parse 全绿所以旧预检放行，aider 换将后
+        跑满 14 分钟才报「Unable to list files in git repo」；报错头还是
+        prompt toolkit 噪声，用户看不到真正病因。这里按同样形状造坏：一个
+        健康的包 + 一份没有 .idx 的冗余包。
+        """
+        from app.core import runner as R
+
+        real = self.workdir / "repo"
+        real.mkdir()
+        subprocess.run(["git", "init", "-q", str(real)], check=True)
+        (real / "a.txt").write_text("hi\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(real), "add", "a.txt"], check=True)
+        subprocess.run(["git", "-C", str(real), "-c", "user.email=t@t",
+                        "-c", "user.name=t", "commit", "-qm", "init"], check=True)
+        subprocess.run(["git", "-C", str(real), "gc", "-q"], check=True)
+
+        pack_dir = real / ".git" / "objects" / "pack"
+        good = sorted(pack_dir.glob("pack-*.pack"))
+        self.assertTrue(good, "git gc 后应至少有一个 pack")
+        # 复制一份带新名字的冗余包，但不复制 .idx —— 正是 mo-so 的坏法
+        orphan = pack_dir / ("pack-" + "f" * 40 + ".pack")
+        shutil.copyfile(str(good[0]), str(orphan))
+
+        # 前提：git 本体对这个坏包不敏感（否则旧预检早就拦下了）
+        st = subprocess.run(["git", "-C", str(real), "status", "--porcelain",
+                             "--untracked-files=no"],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        self.assertEqual(st.returncode, 0, "本用例要复现的正是 git status 放行的情形")
+
+        issue = R._git_repo_issue(str(real))
+        self.assertIn("pack 索引缺失", issue)
+        self.assertIn(orphan.name, issue)
+        self.assertIn("git index-pack", issue)
+
+        # 按提示重建索引后必须放行（修复动作真的有效）
+        subprocess.run(["git", "-C", str(pack_dir), "index-pack", orphan.name],
+                       check=True, stdout=subprocess.DEVNULL)
+        self.assertEqual(R._git_repo_issue(str(real)), "")
+
+    def test_orphan_pack_probe_is_quiet_on_healthy_repo(self):
+        """健康仓库不得误报（全量套跑里每个 aider 步骤都会走这个预检）。"""
+        from app.core import runner as R
+
+        real = self.workdir / "healthy"
+        real.mkdir()
+        self.assertEqual(R._git_repo_issue(str(real)), "")  # 非 git 目录
+        subprocess.run(["git", "init", "-q", str(real)], check=True)
+        self.assertEqual(R._git_repo_issue(str(real)), "")  # 空仓库
 
 
 class TestAiderChainEnv(BaseTest):
@@ -97,3 +166,8 @@ class TestTransientNewPatterns(BaseTest):
         # kimi 连接错误旧表就认（回归护栏）
         self.assertTrue(R._transient_error(
             "error: failed to run prompt: provider.connection_error: Connection error."))
+        # 2026-09-22 mo-so 实案：claude 端点 DNS 解析失败（ENOTFOUND）被判成
+        # 终态，跨厂商链上健康的后继模型从未被尝试就跳去换将别的 CLI
+        self.assertTrue(R._transient_error(
+            "claude 返回 is_error: API Error: Can't reach the API server — "
+            "check your internet or DNS (ENOTFOUND)"))

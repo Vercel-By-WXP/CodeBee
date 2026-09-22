@@ -585,18 +585,22 @@ def summary(days=30, recent_limit=30):
             d = (now - datetime.timedelta(days=span - 1 - i)).isoformat()
             g = day_groups.get(d, {})
             by_day.append({"day": d, "calls": g.get("calls", 0),
+                           "ok": g.get("ok", 0),
                            "tokens": g.get("tokens", 0),
                            "input": g.get("input", 0), "output": g.get("output", 0),
                            "cached": g.get("cached", 0),
                            "cache_rate": g.get("cache_rate", 0.0),
+                           "duration_s": g.get("duration_s", 0.0),
                            "cost_usd": round(g.get("cost_usd", 0.0), 4)})
     else:
         for d in sorted(day_groups):
             g = day_groups[d]
-            by_day.append({"day": d, "calls": g["calls"], "tokens": g["tokens"],
+            by_day.append({"day": d, "calls": g["calls"], "ok": g["ok"],
+                           "tokens": g["tokens"],
                            "input": g["input"], "output": g["output"],
                            "cached": g.get("cached", 0),
                            "cache_rate": g.get("cache_rate", 0.0),
+                           "duration_s": g.get("duration_s", 0.0),
                            "cost_usd": g["cost_usd"]})
 
     # 按日按模型 tokens（范围内；与 by_day 同一天序列，无数据天给空表）

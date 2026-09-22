@@ -10,7 +10,12 @@ store.create_run → jobs.enqueue）拉起一次真实运行，不自己造运�
 任务模型：
   {id, name, prompt, workdir, kind: daily|interval|weekly|once, time: "HH:MM",
    interval_hours, weekday(0-6 周一=0), run_at(once 用, ISO), flow(编排流程 id),
+   mode(编排模式), thinking(思考程度), direct_provider_id/direct_model(仅 direct 流程),
    enabled, created_at, last_run, next_run, run_count, last_status}
+
+运行偏好（mode/thinking/对话模型）与新建任务 Composer 的三颗胶囊同一套取值，
+到点拉起时原样透传给 store.create_task——定时任务不是另一条执行链，用户在这里
+选的编排强度与模型偏好必须与手动建任务完全等价。
 
 重启语义：错过的 once 不补跑（启动恢复时直接停用）；daily/weekly/interval
 重算 next_run 到下一个未来时刻即可，不追赶停机期间错过的周期。
@@ -48,17 +53,24 @@ KINDS = ("daily", "interval", "weekly", "once")
 INTERVAL_MIN, INTERVAL_MAX = 1, 720   # interval_hours 合法区间（小时）
 DEFAULT_FLOW = "doc"  # 未指定编排流程时的兜底：review 引擎产出文档，适配巡检/整理类提示词
 
+# 运行偏好取值（必须与 store.create_task 的口径一致，否则到点拉起时被静默改档）
+MODES = ("auto", "fast", "expert", "manual")
+THINKINGS = ("auto", "low", "standard", "high")
+
 _TIME_RE = re.compile(r"\s*(\d{1,2}):(\d{1,2})\s*")
 
 # 字段缺省（加载历史文件/脏数据时兜底；enabled 兜底为 False，绝不意外触发）
 _DEFAULTS = {"id": "", "name": "", "prompt": "", "workdir": "", "kind": "", "time": "",
              "interval_hours": 0, "weekday": -1, "run_at": "", "flow": "",
+             "mode": "auto", "thinking": "standard",
+             "direct_provider_id": "", "direct_model": "",
              "enabled": False, "created_at": "", "last_run": "", "next_run": "",
              "run_count": 0, "last_status": ""}
 
 # 允许通过 update() 修改的字段（id/created_at/run_count 等运行痕迹不可改）
 _UPDATABLE = ("name", "prompt", "workdir", "kind", "time", "interval_hours",
-              "weekday", "run_at", "flow", "enabled")
+              "weekday", "run_at", "flow", "mode", "thinking",
+              "direct_provider_id", "direct_model", "enabled")
 
 
 # ---------------------------------------------------------------- 时间工具
@@ -206,6 +218,37 @@ def _apply_schedule(t, check_flow=True):
         t["flow"] = DEFAULT_FLOW
 
 
+def _flow_engine(flow_id):
+    """流程引擎名（查不到返回空串）。"""
+    from . import flows as flows_mod
+    f = flows_mod.get_flow(str(flow_id or "").strip())
+    return (f or {}).get("engine") or ""
+
+
+def _apply_run_prefs(t):
+    """校验并归一运行偏好（编排模式/思考程度/对话模型），就地改写 t。必须在
+    _apply_schedule 之后调用——只有那里才把 flow 归一成最终值。
+
+    mode/thinking 非法值一律收敛到默认（auto/standard），不抛异常：这两个是
+    「偏好」不是「配置」，脏值不该把保存卡死。对话模型只在流程引擎为 direct
+    时有意义：非 direct 流程一律清空，避免换流程后残留的模型绑定在下一次
+    触发时静默生效（用户看不到却在生效的配置，比没有更糟）。direct 流程下
+    「有模型没厂商」则明确报错——猜一个厂商等于把模型请求打到别家。
+    """
+    mode = str(t.get("mode") or "").strip().lower()
+    t["mode"] = mode if mode in MODES else "auto"
+    thinking = str(t.get("thinking") or "").strip().lower()
+    t["thinking"] = thinking if thinking in THINKINGS else "standard"
+    pid = str(t.get("direct_provider_id") or "").strip()[:80]
+    model = str(t.get("direct_model") or "").strip()[:160]
+    if _flow_engine(t.get("flow")) != "direct":
+        t["direct_provider_id"], t["direct_model"] = "", ""
+        return
+    if model and not pid:
+        raise ValueError("指定对话模型时必须同时选择厂商")
+    t["direct_provider_id"], t["direct_model"] = pid, model
+
+
 # ---------------------------------------------------------------- 持久化
 
 def _list_locked():
@@ -298,7 +341,15 @@ def _launch_run(t):
                "title": ("%s %s" % (t.get("name") or "定时任务",
                                     time.strftime("%m-%d %H:%M"))).strip()[:40],
                "goal": t.get("prompt") or "",
-               "workdir": (t.get("workdir") or "").strip()}
+               "workdir": (t.get("workdir") or "").strip(),
+               # 运行偏好与 Composer 同一套字段：create_task 里已支持，透传即可
+               "mode": t.get("mode") or "auto",
+               "thinking": t.get("thinking") or "standard"}
+    # direct 流程才有对话模型；非 direct 流程这两个键连传都不传（避免碰 store
+    # 里「有模型没厂商就报错」的校验，也避免给别的引擎塞无意义字段）
+    if t.get("direct_provider_id"):
+        payload["direct_provider_id"] = t["direct_provider_id"]
+        payload["direct_model"] = t.get("direct_model") or ""
     task = None
     run = None
     try:
@@ -470,6 +521,7 @@ def create(payload):
     t["kind"] = payload.get("kind") or "daily"
     _validate_core(t)
     _apply_schedule(t)
+    _apply_run_prefs(t)     # 依赖 _apply_schedule 归一后的 flow 判引擎
     t["next_run"] = compute_next_run(t)
     with _LOCK:
         _TASKS[t["id"]] = t
@@ -492,6 +544,7 @@ def update(tid, patch):
                 merged[k] = patch[k]
         _validate_core(merged, check_workdir=("workdir" in patch))
         _apply_schedule(merged, check_flow=("flow" in patch))
+        _apply_run_prefs(merged)   # 改了 flow 就重判：非 direct 流程清掉残留模型
         merged["next_run"] = compute_next_run(merged)
         _TASKS[tid] = merged
         _save_locked()

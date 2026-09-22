@@ -67,6 +67,36 @@ def resolve_command(command):
     return [path]
 
 
+def _orphan_pack_files(workdir):
+    """列出缺少同名 .idx 的 pack 文件名（无则空列表）。
+
+    Git 本体扫目录时发现 pack 没有对应 .idx，只打一行 warning 就跳过该包，
+    所以 git status/fsck 全都正常；aider 走的 gitpython/gitdb 却按
+    pack-*.pack 逐个打开同名 .idx，缺一次就抛 FileNotFoundError，被它记成
+    「is your git repo corrupted?」——2026-09-22 mo-so 实案：pack-a52e675e
+    .idx 缺失，aider 换将后跑满 14 分钟才失败，报错头还是 prompt toolkit 噪声。
+    """
+    try:
+        probe = subprocess.run(
+            ["git", "-C", workdir, "rev-parse", "--git-path", "objects/pack"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    rel = (probe.stdout or "").strip()
+    if probe.returncode != 0 or not rel:
+        return []
+    pack_dir = rel if os.path.isabs(rel) else os.path.join(workdir, rel)
+    try:
+        names = set(os.listdir(pack_dir))
+    except OSError:
+        return []
+    return sorted(n for n in names
+                  if n.startswith("pack-") and n.endswith(".pack")
+                  and (n[:-len(".pack")] + ".idx") not in names)
+
+
 def _git_repo_issue(workdir):
     """返回工作目录 Git 仓库的可读性问题；无 Git 仓库时返回空串。
 
@@ -103,6 +133,15 @@ def _git_repo_issue(workdir):
     if probe.returncode != 0:
         detail = (probe.stderr or probe.stdout or "仓库对象或索引不可读").strip()
         return "Git 仓库损坏或对象缺失：%s；请先执行 git fsck 并恢复仓库后重试" % detail[-300:]
+    # git status 对「pack 缺 .idx」不敏感（只 warning 跳过该包），必须单独查：
+    # aider 的 gitdb 按 pack-*.pack 逐个开同名 .idx，缺一个就整步失败。
+    orphans = _orphan_pack_files(workdir)
+    if orphans:
+        return ("Git 仓库 pack 索引缺失：%s 没有同名 .idx（git 本体只警告跳过，"
+                "Aider 的 gitdb 会直接报「Unable to list files in git repo」）。"
+                "修复：在 %s 目录对每个 pack 执行 `git index-pack <pack文件>` "
+                "重建索引，或临时改用 Codex/Claude 实现器。"
+                % (", ".join(orphans[:3]), os.path.join(".git", "objects", "pack")))
     return ""
 
 
@@ -187,20 +226,32 @@ def _pipe_reader(stream, chunks, log_fh, stamp=None):
     在长命令（npm 安装等）上等于"进程结束才一次性返回"，日志面板全程空白。
     read1() 只要有数据就返回，日志才能真正边跑边看。
     stamp：共享 [最后输出时刻]，停滞看门狗据此判定进程是否卡死。
+    关闭也归本线程：EOF（或杀树后的异常）后自关。主线程绝不能 close()——
+    close 要抢 BufferedReader 的锁，而锁被还在 read1 等 EOF 的本线程攥着，
+    孙进程漏杀时它攥着管道到自然死，主线程就陪锁到天荒地老（2026-09-22
+    run_command 超时杀 ping 实测：taskkill /T 失手 → close 卡满命令时长）。
     """
-    while True:
-        b = stream.read1(65536)
-        if not b:
-            break
-        chunks.append(b)
-        if stamp is not None:
-            stamp[0] = time.time()
-        if log_fh:
-            try:
-                log_fh.write(b)
-                log_fh.flush()
-            except Exception:
-                pass
+    try:
+        while True:
+            b = stream.read1(65536)
+            if not b:
+                break
+            chunks.append(b)
+            if stamp is not None:
+                stamp[0] = time.time()
+            if log_fh:
+                try:
+                    log_fh.write(b)
+                    log_fh.flush()
+                except Exception:
+                    pass
+    except Exception:
+        pass                   # 杀树瞬间句柄作废：ValueError/OSError 都算正常收场
+    finally:
+        try:
+            stream.close()
+        except Exception:
+            pass
 
 
 def _decode_line(blob):
@@ -625,12 +676,14 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         exit_code = proc.returncode
         stdout = decode_output(b"".join(out_chunks))
         stderr = decode_output(b"".join(err_chunks))
-        for stream in (proc.stdin, proc.stdout, proc.stderr):
-            try:
-                if stream:
-                    stream.close()
-            except Exception:
-                pass
+        # stdout/stderr 的 close 已归 _pipe_reader 自线程（EOF 后自关）：这里再
+        # close 会抢 read1 手里的锁，孙进程漏杀攥着管道时就死等（见其 docstring）。
+        # stdin 无读线程，_feed 写完自关；这里兜底一次（DEVNULL 时本就无事）。
+        try:
+            if proc.stdin:
+                proc.stdin.close()
+        except Exception:
+            pass
         if cancelled:
             stderr += "\n[已被用户取消]"
         elif repeat_aborted:
@@ -810,7 +863,12 @@ _TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
               # 2026-09-20 连载评审实测：codex 网关断流（stream disconnected）
               # 与 opencode 服务端 500（Unexpected server error）都是「重试/换将
               # 就可能活」的瞬态病，旧表判成终态导致整链早死
-              "stream disconnected", "unexpected server error")
+              "stream disconnected", "unexpected server error",
+              # 2026-09-22 mo-so 实案：claude 报 "Can't reach the API server —
+              # check your internet or DNS (ENOTFOUND)"，一家端点解析不到不代表
+              # 跨厂商链上别家也不通，旧表判成终态直接跳去换将别的 CLI
+              "enotfound", "getaddrinfo", "name or service not known",
+              "name resolution")
 
 
 def _transient_error(err):
@@ -829,6 +887,37 @@ _QUOTA = ("insufficient", "quota", "balance", "credit", "billing", "arrears",
 def _quota_error(err):
     err = (err or "").lower()
     return any(k in err for k in _QUOTA)
+
+
+# 限流（429）专项：与一般瞬态不同，它是「等一个窗口就常能自愈」的病——
+# 2026-09-22 四连败实测：claude ENOTFOUND 换将 codex 后仍与同一上游撞 429，
+# 链上无第三条路时整步立刻判死；而限流窗口通常按分钟计，原地等一个窗口
+# 再试一次，好过把整轮 run 直接烧成 failed（欠费不同源，不适用宽限）。
+_RATE_LIMIT = ("429", "rate limit", "too many requests", "限流")
+RATE_LIMIT_GRACE_S = 45      # 宽限等待时长：限流窗口通常按分钟计，等一个再试
+RATE_LIMIT_GRACE_N = 1       # 每步宽限次数：只兜一次，防限流长拖整轮时间
+
+
+def _rate_limited(err):
+    err = (err or "").lower()
+    return any(k in err for k in _RATE_LIMIT)
+
+
+def _grace_wait(cancel_event, seconds, log_path=None, why=""):
+    """链尾限流宽限等待：小片睡眠随时响应取消。返回 False=已取消（别再重试）。"""
+    if log_path:
+        try:
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write("\n[限流宽限] %s：等待 %ds 后原地重试一次\n"
+                         % (why or "上游限流（429）", seconds))
+        except Exception:
+            pass
+    end = time.time() + seconds
+    while time.time() < end:
+        if cancel_event is not None and cancel_event.is_set():
+            return False
+        time.sleep(min(3, max(0.5, end - time.time())))
+    return cancel_event is None or not cancel_event.is_set()
 
 
 def _report_key(att, out):
@@ -1046,6 +1135,12 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
         argv = resolve_command(agent["command"]) + [
             "--yes-always", "--no-auto-commits", "--no-check-update",
             "--no-gitignore", "--no-pretty", "--no-stream",
+            # 无头执行没有 Windows 控制台，aider 建 PromptSession 抛错并打一行
+            # "Can't initialize prompt toolkit: No Windows console found..."
+            # （非致命，但它排在输出最前，UI 失败摘要只取头部 → 真错误被顶掉，
+            # 2026-09-22 mo-so 实案整条失败原因显示成这句噪声）。关掉花式输入
+            # 就不再建 PromptSession，噪声从源头消失。
+            "--no-fancy-input",
             # 网关自定义模型名（glm-5.1 等）litellm 全都不认识，警告页+建议列表
             # 纯属刷屏（2026-09-20 实测占满步骤日志头部）
             "--no-show-model-warnings", "--message", prompt]
@@ -1185,6 +1280,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
 
     attempts = _resolve_attempts(agent)
     out = None
+    grace_left = RATE_LIMIT_GRACE_N  # 链尾限流宽限预算：整链撞 429 时原地等一个窗口再试一次
     for ai, att in enumerate(attempts):
         env = dict(base_env)
         env.update(att["env"])
@@ -1332,6 +1428,14 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             break
         _report_key(att, out)
         if out["ok"] or ai == len(attempts) - 1:
+            if (not out["ok"] and grace_left > 0 and _rate_limited(out.get("error"))
+                    and not (cancel_event is not None and cancel_event.is_set())):
+                # 链尾限流宽限：enumerate 活列表——把链尾这条 append 回去，
+                # 下一轮迭代就是「原地重试一次」；再撞限流时预算已耗尽照常判死。
+                grace_left -= 1
+                if _grace_wait(cancel_event, RATE_LIMIT_GRACE_S, log_path=log_path):
+                    attempts.append(att)
+                    continue
             return out
         # 瞬态网络错误 → 换下一条；欠费/配额耗尽同样换（可能是同厂商的备用 KEY，
         # 也可能是另一家厂商）——账单断了死磕同一把 KEY 没有任何意义。

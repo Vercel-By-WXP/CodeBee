@@ -12,7 +12,7 @@ import os
 import re
 import time
 
-from . import knowledge, modelhub, runner, skills, usage
+from . import knowledge, modelhub, runner, skills, usage, volumes
 
 MAX_SUBTASKS = 4
 DEFAULT_OUTLINE_TIMEOUT = 900   # 8 章大纲 + 经验包注入是重生成任务，300s 实测不够
@@ -155,12 +155,13 @@ SERIAL_OUTLINE_PROMPT = """你是网文主编，熟悉签约平台（番茄/七�
 __SKILLS__
 请为下面的小说目标设计一份连载大纲：共 __N__ 章，每章约 __W__ 字。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"book_title": "书名", "chapters": [{"title": "章节标题", "beats": "本章剧情要点（50-120字：事件/冲突/推进）", "hook": "章末钩子（一句话）"}]}
+{"book_title": "书名", "chapters": [{"title": "章节标题", "beats": "本章剧情要点（50-120字：事件/冲突/推进）", "hook": "章末钩子（一句话）"}]__VOLUMES_KEY__}
 硬性要求：
 - 第 1-3 章是黄金三章：第 1 章开篇即冲突+人设立住，第 3 章末留大钩子；
 - 每章有明确冲突与剧情推进，禁止水字数的日常流水账；
 - 结局必须闭环（完本感），主角有成长弧光；
 - 题材健康，无违规内容，符合平台签约调性。
+__VOLUMES__
 
 ## 小说目标
 __GOAL__
@@ -173,12 +174,13 @@ SERIAL_CONTINUE_OUTLINE_PROMPT = """你是网文主编，熟悉签约平台（�
 __SKILLS__
 这是一部长篇连载的续写：全书已完成前 __DONE__ 章，现在请规划第 __START__–__END__ 章
 （本批共 __N__ 章，每章约 __W__ 字）。只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"book_title": "书名（与前文保持一致）", "chapters": [{"title": "章节标题", "beats": "本章剧情要点（50-120字：事件/冲突/推进）", "hook": "章末钩子（一句话）"}]}
+{"book_title": "书名（与前文保持一致）", "chapters": [{"title": "章节标题", "beats": "本章剧情要点（50-120字：事件/冲突/推进）", "hook": "章末钩子（一句话）"}]__VOLUMES_KEY__}
 硬性要求：
 - 第 1 章直接衔接前文（见下方前情），不得跳线、不得重启设定、不得复述前文；
 - 主线沿既有脉络推进，新冲突尽量从已埋伏笔中生长，人物性格与前文一致；
 - 每章有明确冲突与剧情推进，禁止水字数的日常流水账；
 - 题材健康，无违规内容，符合平台签约调性。
+__VOLUMES__
 
 ## 前情大纲（已完成章节，章号为全书章号）
 __PREV_OUTLINE__
@@ -192,8 +194,23 @@ __GOAL__
 ## 背景与上下文
 __CONTEXT__"""
 
+# 分卷指令块：插进大纲提示词。卷边界（哪几章属于哪一卷）已由全书章号确定，
+# 是本书的不变量——模型只负责起卷名、写卷弧光，不得改动边界。不分卷时整块为空。
+_VOLUMES_BLOCK = """
+## 分卷结构（必须遵守）
+本书按下列卷组织（**卷边界已按全书章号确定，是本书的不变量：不要改动章号区间、
+不要新增或合并卷**）：
+__VOL_PLAN__
 
-def _norm_chapters(data, n):
+请为**本批写作涉及的卷**补全卷名与卷弧光（已给卷名的必须原样沿用，一个字都不要改）：
+- 卷名：4-12 字；已给的（如《卷一 少年初入江湖》）照抄，未给的由你命名。
+- 卷弧光：本卷的主线冲突、人物成长、卷末必须达到的高潮或转折（50-150 字）。
+- 各卷弧光要能串成全书主线：前卷埋的钩子在后卷回收，卷末是本卷最高潮。
+JSON 增加 "volumes" 字段，键为卷号字符串：
+"volumes": {"1": {"title": "卷一 少年初入江湖", "arc": "…"}, "2": {"title": "…", "arc": "…"}}"""
+
+
+def _norm_chapters(data, n, vol_per=0, vol_start=1, vol_plan=None):
     """规范化连载大纲输出；不合规返回 None。"""
     if not isinstance(data, dict):
         return None
@@ -215,12 +232,20 @@ def _norm_chapters(data, n):
     while len(out) < n:             # 缺的章补模板位
         out.append({"title": "第 %d 章" % (len(out) + 1), "beats": "按全书目标推进剧情",
                     "hook": ""})
-    return {"book_title": str(data.get("book_title") or "").strip()[:40], "chapters": out[:n]}
+    res = {"book_title": str(data.get("book_title") or "").strip()[:40], "chapters": out[:n]}
+    # 分卷：只收本批真正用到的卷的卷名/卷弧光（模型可能多写或乱写卷号，一律按
+    # 本批章号范围过滤）。卷边界不在这里——它由 volumes.build_plan 从章号推导。
+    if vol_plan:
+        named = volumes.norm_volumes(data.get("volumes"), vol_per, vol_start, n)
+        if named:
+            res["volumes"] = named
+    return res
 
 
 def _prev_serial_story(task):
     """续写大纲的前情素材：沿 serial.continues 链收集已完成各章大纲（标全书章号）
-    + 最新一章结尾（衔接锚点）+ 既有书名。返回 (前情文本, 已完成章数, 书名, 最新章结尾)。"""
+    + 最新一章结尾（衔接锚点）+ 既有书名 + 既有卷名。
+    返回 (前情文本, 已完成章数, 书名, 最新章结尾, 卷名表)。"""
     from . import store  # 惰性导入：store 不依赖 planner，避免测试环境导入顺序问题
     chain, seen, cur = [], set(), task
     while len(chain) < 10:
@@ -231,7 +256,7 @@ def _prev_serial_story(task):
         seen.add(prev["id"])
         chain.append(prev)
         cur = prev
-    lines, book_title = [], ""
+    lines, book_title, volnames = [], "", {}
     for prev in reversed(chain):            # 旧 → 新，前情按章号顺序铺开
         try:
             ps = int((prev.get("serial") or {}).get("start_chapter") or 1)
@@ -246,6 +271,7 @@ def _prev_serial_story(task):
         if not outline:
             continue
         book_title = book_title or str(outline.get("book_title") or "")
+        volnames.update(outline.get("volumes") or {})
         for k, c in enumerate(outline["chapters"]):
             lines.append("第 %d 章《%s》：%s" % (ps + k, c.get("title", ""),
                                                str(c.get("beats") or "")[:120]))
@@ -269,7 +295,52 @@ def _prev_serial_story(task):
                     tail = b.decode("utf-8", "replace")[-500:].strip()
     except OSError:
         pass
-    return "\n".join(lines), max(best_i, 0), book_title, tail
+    return "\n".join(lines), max(best_i, 0), book_title, tail, volnames
+
+
+def _chain_volume_names(task):
+    """沿 serial.continues 链收集各批次大纲里的卷名/卷弧光（旧 → 新，后者覆盖）。
+    续写批次合并成书时要给全书（含此前各批）的卷都写上标题，那些卷的命名记在
+    更早的批次任务上，本批 run 的 outline 里没有。失败静默返回 {}。"""
+    from . import store  # 惰性导入：与 _prev_serial_story 同一理由
+    names, seen, cur = {}, set(), task
+    chain = []
+    while cur and len(chain) < 20:
+        tid = str(cur.get("id") or "")
+        if not tid or tid in seen:
+            break
+        seen.add(tid)
+        chain.append(cur)
+        nxt = str((cur.get("serial") or {}).get("continues") or "")
+        cur = store.get_task(nxt) if nxt else None
+    for t in reversed(chain):        # 旧 → 新：新批次的命名覆盖旧批次
+        try:
+            for r in store.task_runs(t["id"]):
+                o = r.get("outline") or {}
+                if isinstance(o.get("volumes"), dict):
+                    names.update(o["volumes"])
+        except Exception:
+            continue
+    return names
+
+
+def book_volume_plan(task, outline, upto):
+    """本书的卷规划表：显式卷表/每卷章数（serial）→ 规划表 → 合并卷名
+    （本批大纲 + 沿链更早批次）→ 保证覆盖到第 upto 章。
+
+    卷边界由 volumes.build_plan 从章号确定性推导，因此同一份卷配置在任何
+    批次都给出同一张表（续写不会重切卷）；模型/用户只提供卷名与卷弧光。
+    不分卷返回 []——调用方据此决定是否插卷标题、卷末约束。"""
+    serial = task.get("serial") or {}
+    plan = volumes.build_plan(serial.get("volumes"),
+                              volumes.norm_per(serial.get("volume_chapters")),
+                              upto=upto)
+    if not plan:
+        return []
+    named = dict(_chain_volume_names(task))
+    if isinstance(outline, dict):
+        named.update(outline.get("volumes") or {})
+    return volumes.merge_titles(plan, named)
 
 
 def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path=None):
@@ -289,15 +360,36 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
     if kb_block:
         sk_block = (sk_block + "\n\n" + kb_block) if sk_block else kb_block
     prev_title = ""
+    # 分卷规划表：显式卷表 → 每卷章数，皆无则不分卷（整块提示词为空）。
+    # 卷边界由章号确定性推导，本批写不到的高章号也要铺出来（upto=start+n-1）。
+    vol_per = volumes.norm_per(serial.get("volume_chapters"))
+    vol_plan = volumes.build_plan(serial.get("volumes"), vol_per,
+                                  upto=start + n - 1)
+    prev_volnames = {}
     if start > 1:
-        prev_lines, done, prev_title, prev_tail = _prev_serial_story(task)
+        prev_lines, done, prev_title, prev_tail, prev_volnames = _prev_serial_story(task)
         done = max(done, start - 1)
+        # 前批已命名的卷名回填进规划表：续写批次沿用同一卷名，不会给同一卷改名
+        if vol_plan:
+            vol_plan = volumes.merge_titles(vol_plan, prev_volnames)
+    else:
+        prev_lines = prev_tail = ""
+    if vol_plan:
+        vol_block = (_VOLUMES_BLOCK
+                     .replace("__VOL_PLAN__", volumes.fmt_plan(vol_plan,
+                                                               upto=start + n - 1)))
+        vol_key = ', "volumes": {"<卷号>": {"title": "<卷名>", "arc": "<卷弧光>"}}'
+    else:
+        vol_block, vol_key = "", ""
+    if start > 1:
         prompt = (SERIAL_CONTINUE_OUTLINE_PROMPT
                   .replace("__SKILLS__", sk_block)
                   .replace("__DONE__", str(done))
                   .replace("__START__", str(start))
                   .replace("__END__", str(start + n - 1))
                   .replace("__N__", str(n)).replace("__W__", str(wpc))
+                  .replace("__VOLUMES_KEY__", vol_key)
+                  .replace("__VOLUMES__", vol_block)
                   .replace("__PREV_OUTLINE__", prev_lines or "（无大纲记录，请依据下方最新一章结尾与小说目标衔接）")
                   .replace("__PREV_TAIL__", prev_tail or "（无）")
                   .replace("__GOAL__", task["goal"])
@@ -305,8 +397,25 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
     else:
         prompt = (SERIAL_OUTLINE_PROMPT.replace("__SKILLS__", sk_block)
                   .replace("__N__", str(n)).replace("__W__", str(wpc))
+                  .replace("__VOLUMES_KEY__", vol_key)
+                  .replace("__VOLUMES__", vol_block)
                   .replace("__GOAL__", task["goal"])
                   .replace("__CONTEXT__", task.get("context") or "（无）"))
+
+    def _norm(data):
+        """规范化大纲 + 收卷名。卷边界不采信模型，只采信它给的卷名/卷弧光。"""
+        o = _norm_chapters(data, n, vol_per=vol_per, vol_start=start,
+                           vol_plan=vol_plan)
+        if o and vol_plan and not o.get("volumes"):
+            # 模型没给卷名时，用规划表里已有的（用户给的/前批命名的）兜底，
+            # 保证成书卷标题不空
+            have = {str(e["vol"]): {"title": e.get("title") or "",
+                                    "arc": e.get("arc") or ""}
+                    for e in vol_plan if (e.get("title") or e.get("arc"))}
+            if have:
+                o["volumes"] = have
+        return o
+
     # 续写批次打上全书章号标记；书名缺省时沿用前文
     def _mark(o):
         if o and start > 1:
@@ -347,7 +456,7 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
                             % (_attempt, (res.get("error") or "未知错误")[:300]))
             orch_errors.append(str(res.get("error") or "返回内容无法解析为大纲"))
             data = runner.extract_json(res.get("text") or "") if res["ok"] else None
-            outline = _norm_chapters(data, n)
+            outline = _norm(data)
             if outline:
                 outline["source"] = "编排者(%s)" % label
                 return _mark(outline)
@@ -367,7 +476,7 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
         if not res["ok"]:
             _append_log(log_path, "作者 CLI 失败：%s" % (res.get("error") or "")[:300])
             reason_tail = (res.get("error") or reason_tail)[:200]
-        outline = _norm_chapters(runner.extract_json(res.get("text") or ""), n)
+        outline = _norm(runner.extract_json(res.get("text") or ""))
         if outline:
             outline["source"] = "llm(%s)" % author_agent["id"]
             return _mark(outline)
@@ -380,6 +489,13 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
     chapters = [{"title": "第 %d 章" % (start + i), "beats": "按全书目标推进剧情，保持冲突与钩子",
                  "hook": ""} for i in range(n)]
     out = {"book_title": prev_title, "chapters": chapters, "source": "template"}
+    if vol_plan:
+        # 分卷是结构性的、与情节无关：兜底模板也给卷名（用户给的/前批命名的），
+        # 这样成书卷标题与章-卷归属在降级情况下依然成立。
+        have = {str(e["vol"]): {"title": e.get("title") or "", "arc": e.get("arc") or ""}
+                for e in vol_plan if (e.get("title") or e.get("arc"))}
+        if have:
+            out["volumes"] = have
     if author_agent and author_agent.get("mode") != "mock":
         out["degraded"] = True
         out["degraded_reason"] = "编排者/作者模型均未返回可用大纲（%s）" % reason_tail

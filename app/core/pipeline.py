@@ -419,7 +419,25 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
     def _log(line):
         lines.append(str(line))
 
-    res = builtin_agent.run(bi, prompt, workdir, cancel_event=ev, log=_log, images=images)
+    # 思考过程可视化（2026-09-22 用户诉求）：模型的思维链/正文/工具活动边收边
+    # 落进步骤记录（store.stream_step 内部节流），对话时间线 2s 轮询即能读到
+    # 「它正在想什么」——此前整轮只有三点打字动画。
+    live = {"thinking": "", "text": ""}
+
+    def _on_reason(chunk):
+        live["thinking"] += chunk or ""
+        store.stream_step(run_id, step["n"], thinking=live["thinking"])
+
+    def _on_stream(acc):
+        live["text"] = acc or ""
+        store.stream_step(run_id, step["n"], text=live["text"])
+
+    def _on_activity(line):
+        store.stream_step(run_id, step["n"], activity=str(line or "")[:200])
+
+    res = builtin_agent.run(bi, prompt, workdir, cancel_event=ev, log=_log, images=images,
+                            on_reason=_on_reason, on_stream=_on_stream,
+                            on_activity=_on_activity)
     if followups and res.get("ok"):
         clean, fups = _parse_followups(res.get("text") or "")
         if fups:
@@ -427,6 +445,10 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
             res["followups"] = fups
     if log_abs:
         try:
+            # 思考过程同时进步骤日志（日志抽屉与对话气泡同源，便于事后复盘）
+            think = (res.get("reasoning") or "").strip()
+            if think:
+                lines.append("[思考过程]\n" + think)
             log_abs.write_text("\n".join(lines) + "\n", encoding="utf-8")
         except Exception:
             pass
@@ -550,7 +572,9 @@ def _finish_step_result(run_id, step, res, role, agent, start):
                       # 智能体的最终回答（runner 已从 JSONL 事件流里抽出 agent_message）。
                       # 对话视图直读这个；日志文件是全量事件流，塞进气泡就成了「看日志」。
                       output=(res.get("text") or ""),
-                      followups=res.get("followups"))
+                      followups=res.get("followups"),
+                      # 思考过程（内置智能体流式抓取）：落进步骤记录，对话气泡折叠展示
+                      thinking=res.get("reasoning") or None)
     # 错误台账：失败/超时各记一条结构化记录（遥测与诊断包的数据源）。
     # 用户主动取消不入账——那不是产品问题；detail 只存脱敏后的失败摘录。
     if status in ("failed", "timeout"):

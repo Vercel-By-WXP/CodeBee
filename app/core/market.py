@@ -170,23 +170,48 @@ def installed_ids():
 
 def view():
     """市场目录（给 UI/API）：{catalog: [...], categories: [...]}。
-    每项带 installed: bool；skills 内置包 installed=True 且 installable=False。"""
+    每项带 installed: bool + enabled: bool（已装包的启停态，卡片开关直接
+    切换，不用再去经验库翻——对齐 ZCode 插件管理形态）。
+    注意 id 双轨：市场 id（git-workflow）≠ skills 用户包 id（user-哈希），
+    启停态要经安装记录的 file 路径映射到真实用户包再查。"""
     installed = installed_ids()
+    reg = _load_registry().get("installed") or {}
+    ups = skills.user_packs()
+
+    def _lookup(pack_id, is_builtin):
+        """返回 (enabled, 可启停的真实包 id)。内置即市场 id；市场包装成的
+        用户包 id 是 user-哈希，必须经安装记录的 file 路径映射。"""
+        if is_builtin:
+            return skills._pack_enabled(pack_id), pack_id
+        rec = reg.get(pack_id) or {}
+        fhint = str(rec.get("file") or "").replace("\\", "/")
+        for up in ups:
+            f = str(up.get("file") or "").replace("\\", "/")
+            if fhint and (f == fhint or f.endswith("/" + fhint)):
+                return skills._pack_enabled(up["id"]), up["id"]
+        return True, pack_id
+
     items = []
     for p in skills.BUILTIN_PACKS:            # 已内置：已存在，不可安装
         meta = _BUILTIN_META.get(p["id"]) or {}
+        en, pid = _lookup(p["id"], True)
         items.append({"id": p["id"], "name": p["name"],
                       "desc": meta.get("desc") or p.get("note") or "",
                       "category": meta.get("category") or skills.LESSON_UNCATEGORIZED,
                       "scopes": list(p.get("scopes") or ["*"]),
                       "builtin": True, "installed": True, "installable": False,
+                      "enabled": en, "pack_id": pid,
                       "chars": len(skills.pack_text(p))})
     for p in BUILTIN_PACKS:                   # 可安装市场包
         files = p.get("files") or {}
+        inst = p["id"] in installed
+        en, pid = _lookup(p["id"], False) if inst else (False, p["id"])
         items.append({"id": p["id"], "name": p["name"], "desc": p["desc"],
                       "category": p["category"], "scopes": list(p["scopes"]),
-                      "builtin": False, "installed": p["id"] in installed,
-                      "installable": True, "files": sorted(files),
+                      "builtin": False, "installed": inst,
+                      "installable": True,
+                      "enabled": en, "pack_id": pid,
+                      "files": sorted(files),
                       "chars": sum(len(v) for v in files.values())})
     cats = list(skills.LESSON_CATEGORIES)     # 闭集全枚举先给全（UI 下拉不缺项）
     for it in items:

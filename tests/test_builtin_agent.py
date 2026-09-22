@@ -419,3 +419,67 @@ class TestBuiltinGoogleParse(BaseTest):
         self.assertEqual(text, "回答")
         self.assertEqual(calls, [])
         self.assertEqual(usage["total"], 5)
+
+
+class TestBuiltinRunCommand(BaseTest):
+    """run_command 全信任执行：退出码/输出回灌/超时杀树/取消杀树/头尾截断。"""
+
+    def _run(self, args, cancel_event=None):
+        import os
+        from app.core import builtin_agent
+        return builtin_agent._tool_run_command(str(self.workdir), args,
+                                               cancel_event=cancel_event)
+
+    def test_basics(self):
+        import os
+        import time as _t
+        # 工具表注册进两种 wire
+        from app.core import builtin_agent
+        self.assertIn("run_command",
+                      [t["function"]["name"] for t in builtin_agent._openai_tools()])
+        self.assertIn("run_command",
+                      [t["name"] for t in builtin_agent._anthropic_tools()])
+        # 空命令拒绝
+        self.assertIn("命令为空", self._run({"command": "  "}))
+        # echo + 退出码 0
+        out = self._run({"command": "cmd /c echo bee_ok" if os.name == "nt"
+                         else "echo bee_ok"})
+        self.assertIn("退出码: 0", out)
+        self.assertIn("bee_ok", out)
+        # 非零退出码照实回传
+        out = self._run({"command": "cmd /c exit 3" if os.name == "nt" else "exit 3"})
+        self.assertIn("退出码: 3", out)
+        # 工作目录即命令 cwd
+        out = self._run({"command": "cd" if os.name == "nt" else "pwd"})
+        self.assertIn(os.path.abspath(str(self.workdir)).lower(),
+                      out.replace('"', "").lower())
+        # 超时杀树：timeout_sec 钳最小 5s；杀树+管道收尾有 10s 级上限，
+        # 绝不该跑满命令本身（120s）。阈值放宽到 40s 容忍慢盘/AV 扫描。
+        t0 = _t.time()
+        out = self._run({"command": "ping -n 120 127.0.0.1" if os.name == "nt"
+                         else "sleep 120", "timeout_sec": 3})
+        self.assertIn("超时", out)
+        self.assertLess(_t.time() - t0, 40)
+
+    def test_cancel_kills_tree(self):
+        import os
+        import threading
+        ev = threading.Event()
+        timer = threading.Timer(0.8, ev.set)
+        timer.start()
+        try:
+            out = self._run({"command": "ping -n 120 127.0.0.1"
+                             if os.name == "nt" else "sleep 120"}, cancel_event=ev)
+        finally:
+            timer.cancel()
+        self.assertIn("已取消", out)
+        self.assertIn("退出码", out)   # 照常返回结构化结果，工具循环能继续
+
+    def test_output_head_tail_cap(self):
+        import os
+        big = ("cmd /c for /l %i in (1,1,3000) do @echo "
+               "0123456789012345678901234567890123456789" if os.name == "nt"
+               else "yes 0123456789012345678901234567890123456789 | head -c 120000")
+        out = self._run({"command": big})
+        self.assertIn("中段省略", out)
+        self.assertLess(len(out), 64 * 1024)   # 头 24K + 尾 8K + 标注，远小于原 120K
