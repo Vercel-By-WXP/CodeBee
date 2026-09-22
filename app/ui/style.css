@@ -5696,3 +5696,15 @@ button.request-busy > * { opacity: .18; }
 /* 气泡图片缩略图：限制在气泡内（曾压住输入框边框线——2026-09-21 用户反馈） */
 .chat-img img { box-sizing: border-box; }
 .chat-bubble { overflow-wrap: anywhere; }
+
+/* 对话气泡悬停动作（复制/编辑重发，2026-09-22）：默认隐没在元信息行，
+ * 悬停该条消息才浮现，不与正文抢注意力 */
+.chat-meta { display: flex; align-items: center; gap: 6px; }
+.chat-acts2 { margin-left: auto; display: inline-flex; gap: 2px;
+  opacity: 0; transition: opacity .15s; }
+.chat-row:hover .chat-acts2 { opacity: 1; }
+.chat-act { appearance: none; border: none; background: transparent;
+  color: var(--muted); font: inherit; font-size: 11px; cursor: pointer;
+  padding: 1px 7px; border-radius: 6px; }
+.chat-act:hover { background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text); }

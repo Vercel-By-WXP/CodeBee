@@ -6530,6 +6530,17 @@ function bindDirector() {
  * 进程，运行中递的话只在下一步生效。 */
 let chatRunId = null;
 let chatAtts = [];
+let chatTimelineItems = [];   // renderChat 每次重建时间线时刷新；复制/编辑重发按索引回查
+
+/* 聊天正文协议清洗：剥 DIRECT_DONE/<followups> 尾巴与「本轮做了什么」复读头。
+ * 渲染与「复制」共用同一口径——复制出来的就是看到的内容。 */
+function chatCleanText(raw) {
+  return String(raw || "")
+    .replace(/^\s*本轮做了什么\s*[：:][^\n]*\n+(回复\s*[：:]\s*\n?)?/, "")
+    .replace(/\n*DIRECT_DONE:.*\s*$/s, "")
+    .replace(/\n*<followups>[\s\S]*?<\/followups>\s*$/s, "")
+    .trim();
+}
 let chatSig = "";
 
 function chatEngineIsDirect(run) {
@@ -6608,7 +6619,8 @@ async function renderChat(run, active) {
   const attName = (a) => { const p = typeof a === "string" ? a
     : ((a && (a.name || a.path)) || "");
     return String(p).split(/[\\/]/).pop() || ""; };
-  let html = items.map((it) => {
+  chatTimelineItems = items;   // 复制/编辑重发按索引回查（见 rd-chat-flow 委托）
+  let html = items.map((it, idx) => {
     if (it.kind === "user") {
       // 用户消息：右侧浅灰圆角块，元信息在块内顶部。
       // 附件胶囊可点开预览：data-att 带 _attachments/ 相对路径（老数据裸文件名
@@ -6625,10 +6637,15 @@ async function renderChat(run, active) {
           ? "/api/runs/" + encodeURIComponent(chatRunId) + "/file?name=" + encodeURIComponent(rel) : "";
         return { nm, rel, img: src };
       }).filter(Boolean);
+      // 悬停动作：复制原文 / 编辑重发（载入输入框改完再发，2026-09-22 用户诉求）
+      const acts = '<span class="chat-acts2">' +
+        '<button type="button" class="chat-act" data-cact="copy" data-ci="' + idx + '">' + esc(t("复制")) + "</button>" +
+        '<button type="button" class="chat-act" data-cact="edit" data-ci="' + idx + '">' + esc(t("编辑")) + "</button>" +
+        "</span>";
       return '<div class="chat-row me">' +
         '<div class="chat-bubble me">' +
         '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
-        (it.consumed ? "" : " · " + t("待送达")) + "</div>" +
+        (it.consumed ? "" : " · " + t("待送达")) + acts + "</div>" +
         esc(it.text || t("（仅附件）")) +
         (atts.length
           ? '<div class="chat-atts">' + atts.map((a) =>
@@ -6644,11 +6661,7 @@ async function renderChat(run, active) {
     // <followups> 块后端已剥并转成结构化字段，这里再兜一次底防老数据/漏剥；
     // 开场「本轮做了什么：…」+「回复：」是模型复读协议措辞的元描述（提示词已禁，
     // 这里兜历史数据），只剥消息开头的第一行
-    const body = String(it.text || "")
-      .replace(/^\s*本轮做了什么\s*[：:][^\n]*\n+(回复\s*[：:]\s*\n?)?/, "")
-      .replace(/\n*DIRECT_DONE:.*\s*$/s, "")
-      .replace(/\n*<followups>[\s\S]*?<\/followups>\s*$/s, "")
-      .trim();
+    const body = chatCleanText(it.text);
     // 运行中还没有正文：三点打字动画（终态无正文才落「无文本输出」占位）
     const bodyHtml = body ? chatBodyHTML(body)
       : (it.status === "running"
@@ -6656,13 +6669,17 @@ async function renderChat(run, active) {
         : esc(t("（本轮无文本输出）")));
     // 元信息只留 名字+时间（+失败标记）：路由/供应商细节属于「步骤」页签，塞这里就是噪音
     const metaBad = it.status === "failed" || it.status === "cancelled";
+    // 智能体回复：头像 + 整幅正文（不套气泡框），元信息小字落在正文下方；
+    // 悬停可复制回答原文（协议清洗后）
+    const actsA = body ? '<span class="chat-acts2">' +
+      '<button type="button" class="chat-act" data-cact="copy" data-ci="' + idx + '">' + esc(t("复制")) + "</button></span>" : "";
     // 智能体回复：头像 + 整幅正文（不套气泡框），元信息小字落在正文下方
     return '<div class="chat-row">' +
       '<span class="chat-avatar" aria-hidden="true"><svg class="ico"><use href="#i-bee"></use></svg></span>' +
       '<div class="chat-bubble agent">' +
       '<div class="chat-body">' + bodyHtml + "</div>" +
       '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
-      (metaBad ? " · " + t(it.status === "failed" ? "失败" : "已取消") : "") + "</div>" +
+      (metaBad ? " · " + t(it.status === "failed" ? "失败" : "已取消") : "") + actsA + "</div>" +
       (it.log && it.run ? '<div class="chat-actions"><button class="chat-log-btn" type="button" data-chat-log-run="' +
         esc(it.run) + '" data-chat-log-rel="' + esc(it.log) + '" title="' + esc(t("查看日志")) + '">' + esc(t("CLI 日志")) + "</button></div>" : "") +
       (Array.isArray(it.followups) && it.followups.length
@@ -7142,6 +7159,27 @@ function bindChat() {
     if (file) {
       e.preventDefault();
       artPopup(file.dataset.fileRun, file.dataset.fileName || "", Number(file.dataset.fileSize) || 0);
+      return;
+    }
+    // 复制 / 编辑重发（2026-09-22 用户诉求：已发送的对话可复制修改再次发送）。
+    // 编辑=原文载入输入框，用户改完按发送即再次发出（不静默自动重发）
+    const act = e.target.closest("[data-cact]");
+    if (act) {
+      const it = chatTimelineItems[Number(act.dataset.ci)];
+      if (!it) return;
+      const txt = it.kind === "user" ? String(it.text || "") : chatCleanText(it.text);
+      if (act.dataset.cact === "copy") {
+        copyText(txt);
+        toast(t("已复制"));
+      } else if (act.dataset.cact === "edit") {
+        const ta = $("rd-chat-input");
+        if (ta && txt) {
+          ta.value = txt;
+          ta.focus();
+          ta.selectionStart = ta.selectionEnd = ta.value.length;
+          toast(t("已载入原文，可修改后发送"));
+        }
+      }
       return;
     }
     const chip = e.target.closest(".att-open");

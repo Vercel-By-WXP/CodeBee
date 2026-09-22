@@ -21,6 +21,11 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 不会把你的任务内容交给任何第三方。
 
 <!-- relnotes:start -->
+### ✨ 新功能 · New
+
+- 对话时间线支持复制与编辑重发：自己发的消息悬停出现「复制 / 编辑」，编辑载入原文改完再发；智能体回答悬停可复制（自动剥协议尾）。
+- Chat timeline messages now support copy & edit-to-resend: hover your own message for Copy / Edit (edit loads the original into the input box); agent replies offer Copy with protocol tails stripped.
+
 ### 🛠 问题修复 · Fixes
 
 - 智能体读超大文件不再只给开头：保留开头 44KB+结尾 16KB、中段标注省略——文件末尾的报错与结论不再被截掉，结尾中文不乱码。
