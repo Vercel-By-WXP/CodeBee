@@ -108,6 +108,72 @@ class TestProviderKeys(BaseTest):
         self.assertEqual(len(cc), 1)
         self.assertEqual(cc[0]["key_id"], "k1")           # 冷却没到期也得有人顶
 
+    def test_ratelimit_429_cools_key_and_switches(self):
+        """429/中文超限文案同样进冷却切备用（2026-09-22 首选超限不切备用实案）。
+
+        codex「exceeded retry limit...429 Too Many Requests」原靠 exceeded 命中；
+        智谱原生「并发数超过限制」「每分钟Token数已超过上限」与 claude 的
+        rate_limit_error 此前只记错不冷却——每个新步骤都从超限的首选 KEY 重新烧起。
+        """
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        pid = self._one(modelhub)
+        modelhub.key_op(pid, "add", key=FAKE_K2)
+        modelhub.set_binding("claude-code", chain=[{"provider_id": pid, "model": "m1"}])
+        cases = ("HTTP 429 并发数超过限制",
+                 "codex: exceeded retry limit, last status: 429 Too Many Requests",
+                 "claude 返回 is_error: API Error: 429 rate_limit_error")
+        for err in cases:
+            modelhub.key_op(pid, "reset", key_id="k1")
+            modelhub.key_op(pid, "reset", key_id="k2")
+            modelhub.note_key_error(pid, "k1", err)
+            view = modelhub.provider_view()[0]["keys"]
+            self.assertTrue(view[0]["cooling"], err)                    # 进冷却
+            self.assertEqual(modelhub.providers()[0]["api_key"], FAKE_K2, err)  # 镜像切备用
+            cc = modelhub.resolve_binding("claude-code")["call_chain"]
+            self.assertEqual([e["key_id"] for e in cc], ["k2"], err)    # 链上跳过
+        # 超时类不属于 KEY 的锅：只记错，不冷却（原有语义不变）
+        modelhub.key_op(pid, "reset", key_id="k1")
+        modelhub.note_key_error(pid, "k1", "超时；stderr/stdout: ...")
+        self.assertFalse(modelhub.provider_view()[0]["keys"][0]["cooling"])
+
+    def test_runner_quota_table_in_sync(self):
+        """runner 的独立 _QUOTA 副本与 modelhub 同源：新增文案两边都要认。"""
+        from app.core import modelhub, runner
+        for err in ("HTTP 429 并发数超过限制",
+                    "API Error: 429 rate_limit_error",
+                    "codex: exceeded retry limit, last status: 429 Too Many Requests"):
+            self.assertTrue(modelhub._quota_error(err), err)
+            self.assertTrue(runner._quota_error(err), err)
+
+    def test_fallback_model_entries_carry_key_id(self):
+        """无显式链时换模型的回退条目也带 key_id：失败时 runner 才能记账冷却。
+
+        此前回退条目不带 key_id，_report_key 直接早退——同厂商换模型的重试
+        完全不记 KEY 账。
+        """
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        pid = self._one(modelhub)
+        data = modelhub._load()
+        prov = data["providers"][0]
+        prov["models"] = [{"name": "m1", "priority": 1}, {"name": "m2", "priority": 2}]
+        modelhub._save(data)
+        modelhub.key_op(pid, "add", key=FAKE_K2)
+        # 只钉供应商、不写 models：models=[] 会同步清掉 provider_id（同链重建），
+        # 这样 chain 保持空走无链分支，回退模型来自供应商级启用模型列表
+        modelhub.set_binding("claude-code", provider_id=pid)
+        cc = modelhub.resolve_binding("claude-code")["call_chain"]
+        # 主模型按 KEY 展开（m1×k1、m1×k2），回退模型条目带首选可用 KEY 的 id
+        self.assertEqual([(e["model"], e.get("key_id")) for e in cc],
+                         [("m1", "k1"), ("m1", "k2"), ("m2", "k1")])
+        self.assertEqual(cc[2]["env"]["ANTHROPIC_AUTH_TOKEN"], FAKE_K1)
+        # 首选超限进冷却后：主模型与回退模型都跟镜像切到 k2
+        modelhub.note_key_error(pid, "k1", "HTTP 429 并发数超过限制")
+        cc2 = modelhub.resolve_binding("claude-code")["call_chain"]
+        self.assertEqual([(e["model"], e.get("key_id")) for e in cc2],
+                         [("m1", "k2"), ("m2", "k2")])
+
     def test_disable_key_excluded(self):
         from app.core import modelhub
         modelhub._FILE = self.data_dir / "models.json"

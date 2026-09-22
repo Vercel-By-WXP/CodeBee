@@ -683,9 +683,13 @@ def provider_view():
 _KEY_COOLDOWN_S = 30 * 60      # 欠费类失败后的冷却时长
 MAX_PROVIDER_KEYS = 8          # 单厂商 KEY 上限
 MAX_CHAIN_ATTEMPTS = 8         # 链展开后的尝试上限（模型 × KEY）
-# 欠费/配额类失败：换 KEY 有意义（同厂商另一账号还能用），与瞬态网络错误分开记
+# 欠费/配额/限流类失败：换 KEY 有意义（同厂商另一账号=另一份额度与并发桶），
+# 与瞬态网络错误分开记。429 限流文案一并纳入——只记错不冷却会让每个新步骤都
+# 从超限的首选 KEY 重新烧起（2026-09-22 首选超限不切备用实案）。
 _QUOTA_HINTS = ("insufficient", "quota", "balance", "credit", "billing", "arrears",
-                "payment required", "402", "欠费", "余额", "额度", "exceeded")
+                "payment required", "402", "欠费", "余额", "额度", "exceeded",
+                "too many requests", "rate limit", "rate_limit", "http 429",
+                "并发", "超过限")
 
 
 def _quota_error(err):
@@ -2328,11 +2332,13 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
         entries.append(_chain_entry_env(prov, model, target=agent_kind_or_id,
                                         endpoint=ep, key=kk["key"],
                                         key_id=kk.get("id") or "", provider_id=pid))
+    mk = (chain_keys or [{}])[0]   # 回退模型沿用首选可用 KEY：失败也要能记账冷却
     for n in fallbacks:
         if len(entries) >= MAX_CHAIN_ATTEMPTS:
             break
         entries.append(_chain_entry_env(prov, n, target=agent_kind_or_id,
-                                        endpoint=ep, provider_id=pid))
+                                        endpoint=ep, key=mk.get("key") or "",
+                                        key_id=mk.get("id") or "", provider_id=pid))
     head = entries[0]
     out = {"model": model, "env": head["env"], "provider": prov,
            "model_fallbacks": fallbacks,

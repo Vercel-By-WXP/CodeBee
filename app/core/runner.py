@@ -818,10 +818,12 @@ def _transient_error(err):
     return any(k in err for k in _TRANSIENT)
 
 
-# 欠费/配额耗尽：换 KEY 与换厂商都该继续（同厂商另一账号往往还能用）。
+# 欠费/配额/限流耗尽：换 KEY 与换厂商都该继续（同厂商另一账号往往还能用）。
 # 与 modelhub._QUOTA_HINTS 同源，这里独立一份避免 core 模块间循环依赖。
 _QUOTA = ("insufficient", "quota", "balance", "credit", "billing", "arrears",
-          "payment required", "402", "欠费", "余额", "额度", "exceeded")
+          "payment required", "402", "欠费", "余额", "额度", "exceeded",
+          "too many requests", "rate limit", "rate_limit", "http 429",
+          "并发", "超过限")
 
 
 def _quota_error(err):
