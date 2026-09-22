@@ -5,6 +5,8 @@
 >（满页才翻，最多 page=3）；GitHub API 限流：**认证调用（gh api）搜索接口是 30 次/分**——
 > 2026-09-22 实测无间隔连打必然一批 403（本轮 85 组首轮撞限、补跑才拿到），
 > **一律间隔 sleep 4 秒起**；未认证脚本调用仍是 10 次/分、间隔 6-8 秒；
+> 2026-09-22 补：**WebSearch 通道同样限流——并行多查必 429，串行单发可过**；被限即顺延下一词组、勿原地重试；
+> gh api 不可用时（如本机 Bash 被劫持/WebFetch 域名校验全拦）降级走 WebSearch 串行，翻页与双轮排序纪律不适用、报告如实记录；
 > 结果高度重合即跳余页省配额。新增关键词直接编辑本文件并在行尾标注（谁/何时/为何）。
 
 ## A. 常驻组（每轮全跑，78 组）
@@ -126,6 +128,7 @@
 - q=refactor+agent+OR+tech+debt+agent
 - q=secure+code+review+agent+OR+security+review+bot（2026-09-20 补：代码安全评审）
 - q=api+test+generation+agent+OR+integration+test+agent（2026-09-20 补：接口/集成测试）
+- q=ast+based+code+editing+agent+OR+symbol+level+code+edit（2026-09-22 补：Empryo「编辑符号而非字符串」AST 手术方向）
 
 ### 批2：学习记忆与自我改进
 - q=self+improving+agent+OR+agent+reflexion
@@ -150,6 +153,7 @@
 - q=worktree+parallel+agent
 - q=agent+checkpoint+resume+OR+workflow+recovery+agent（2026-09-20 补：长任务断点恢复）
 - q=acceptance+criteria+agent+OR+requirements+validation+agent（2026-09-20 补：验收标准与需求核验）
+- q=requirement+elicitation+agent+OR+spec+interview+ai（2026-09-22 补：Wiggum「AI 面试生成 spec」——需求拷问族第 4 验证）
 
 ### 批4：治理/安全/人机协同
 - q=human+in+the+loop+ai+agent
@@ -201,7 +205,8 @@
 ## C. 雷达源（每轮全过）
 
 - awesome 清单：awesome-agent-orchestration、awesome-claude-skills、awesome-harness-engineering、awesome-mcp、awesome-cli-coding-agents、awesome-ai-agents、awesome-llm-apps、awesome-claude-code（54k★）、VoltAgent/awesome-agent-skills（34.6k★ 1000+ skills）、buildwithclaude（3.5k★ 枢纽）
-- GitHub Trending（weekly，ai/agent 类）
+- awesome 清单补充（2026-09-22）：RUC-NLPIR/Awesome-Long-Horizon-Agents（长程 agent 路线图）、TeleAI-UAGI/Awesome-Agent-Memory（记忆域地图）、caramaschiHG/awesome-ai-agents-2026（300+ 资源月更）
+- GitHub Trending（weekly，ai/agent 类）；直抓被拦时的替身（2026-09-22 补）：ossinsight.io、trendshift.io
 - topic 页：multi-agent-orchestration、ai-agents、claude-code、agent-framework、claude-skills、llm-agents、ai-coding-assistant、mcp
 - 发行渠道：npm search（agent orchestrator / claude code）、pypi（agent orchestrator）各扫一页
 - 框架周边搜：q=langgraph+platform / crewai+studio / autogen+studio 类；竞品名周边：q=orca+alternative、q=claude+flow+OR+ruflo 生态
