@@ -23,6 +23,8 @@ from . import modelhub, runner
 
 MAX_TOOL_ITERS = 16          # 单步工具循环上限（防模型打转）
 READ_MAX_BYTES = 64 * 1024   # read_file 单次读取上限
+READ_HEAD_BYTES = 44 * 1024  # TokenJuice 借鉴（openhuman）：超限文件头尾保留、
+READ_TAIL_BYTES = 16 * 1024  # 中段省略——日志/代码的报错常在尾部，纯截头会丢关键信息
 LIST_MAX_ENTRIES = 200
 MAX_IMAGES = 8                 # 单次最多随消息传几张图（请求体防爆）
 IMAGE_MAX_EDGE = 1568          # 长边上限（视觉模型通行建议值，超出等比缩）
@@ -268,7 +270,32 @@ def _tool_read_file(workdir, args):
         return "（文件不存在: %s）" % rel
     data = p.read_bytes()[:READ_MAX_BYTES + 1]
     truncated = len(data) > READ_MAX_BYTES
-    head = data[:READ_MAX_BYTES]
+    if truncated:
+        # 头尾保留、中段省略（TokenJuice 借鉴）：头 44k 给结构/开头上下文，
+        # 尾 16k 给报错/结论（日志与代码的关键信息常在末尾），中段标注省略量
+        try:
+            size = p.stat().st_size
+        except OSError:
+            size = len(data)
+        with open(p, "rb") as fh:
+            head = fh.read(READ_HEAD_BYTES)
+            fh.seek(max(0, size - READ_TAIL_BYTES))
+            tail = fh.read(READ_TAIL_BYTES)
+        head = _trim_partial_utf8(head)
+        # 尾段开头的残缺多字节序列剥头（对偶于 _trim_partial_utf8 剥尾）
+        while tail:
+            try:
+                tail.decode("utf-8")
+                break
+            except UnicodeDecodeError:
+                tail = tail[1:]
+        text = runner.decode_output(head) \
+            + "\n…（中段省略 %d 字节；头 %dKB + 尾 %dKB 保留）\n" % (
+                max(0, size - READ_HEAD_BYTES - READ_TAIL_BYTES),
+                READ_HEAD_BYTES // 1024, READ_TAIL_BYTES // 1024) \
+            + runner.decode_output(tail)
+        return "…（文件超 64KB，已头尾保留读取）\n" + text
+    head = data
     if not head:
         return "（空文件）"
     if _looks_binary(head):
@@ -284,10 +311,8 @@ def _tool_read_file(workdir, args):
         return ("（二进制文件，无法按文本读取: %s — %s，%d B。read_file 只支持文本文件；"
                 "请如实告知用户该文件内容无法以文本方式查看，不要反复重读。）"
                 % (rel, fmt, size))
-    if truncated:
-        head = _trim_partial_utf8(head)
     text = runner.decode_output(head)
-    return ("…（超过 64KB 已截断）\n" if truncated else "") + text
+    return text
 
 
 def _tool_write_file(workdir, args):
@@ -307,7 +332,7 @@ def _tool_write_file(workdir, args):
 TOOLS_SPEC = [
     {"name": "list_files", "description": "列出工作目录（或其子目录）下的文件",
      "args": {"path": "子目录相对路径，留空=根目录"}},
-    {"name": "read_file", "description": "读取工作目录内一个文本文件（UTF-8/GBK 自动识别，超 64KB 截断；图片等二进制文件无法读取）",
+    {"name": "read_file", "description": "读取工作目录内一个文本文件（UTF-8/GBK 自动识别，超 64KB 时保留开头与结尾、中段省略；图片等二进制文件无法读取）",
      "args": {"path": "文件相对路径"}},
     {"name": "write_file", "description": "把文本内容写入工作目录内一个文件（UTF-8，父目录自动创建）",
      "args": {"path": "文件相对路径", "content": "完整文本内容"}},
