@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """直接调度 + 遗留排队恢复 + 状态同步回归。
 
-锁定五个行为：
-1. 新任务立即启动，不进入内存等待队列；并发满载时明确拒绝而非排队；
+锁定六个行为：
+1. 新任务立即启动，不进入内存等待队列；满载时 orchestration 任务回滚
+   queued 等下一个空位自动补跑（2026-09-22 纸枪对话实案：满载秒判失败
+   逼用户原话重发，侧栏堆同题重复任务），升级排水与其余 kind 仍明确拒绝；
 2. 巡检模式（max_age_s）：刚入队的正常排队不补，卡死超过阈值的补——
    看门狗每 60s 自愈一次「job 蒸发」型僵尸（r-20260918-211920 实案：
    排队 1 小时无人接手、进程不重启则永远没人管）；
@@ -12,7 +14,8 @@
    job 直接跳过——看门狗重排与原 job 并存时同一运行绝不执行两次；
 5. run 起跑（status=running）同步任务状态：run 在跑、任务却永远显示
    「排队中」（「# 重写·续」卡 queued 实际已写一小时实案）；
-6. 并发保护上限为 12，默认 12；达到上限时立即返回忙，不产生 queued 僵尸。
+6. 并发保护上限为 12，默认 12；满载排队封顶 BUSY_WAIT_MAX 拍，超时判
+   失败且原因可读，绝不留永久排队。
 """
 from __future__ import annotations
 
@@ -85,13 +88,99 @@ class QueueWatchdogTest(BaseTest):
         self.assertIn("未写入完成状态", closed["error"])
         self.assertEqual(store.get_task(task["id"])["status"], "failed")
 
-    def test_concurrency_full_rejects_instead_of_queueing(self):
-        """满载时明确报忙，不把第二个任务留成一直排队。"""
+    def test_concurrency_full_queues_orchestration_then_autostarts(self):
+        """满载不再秒判失败：orchestration 回滚 queued，空位释放后自动起跑。"""
         from app.core import jobs, store, pipeline
         t1 = _mk_serial_task("占满并发")
-        t2 = _mk_serial_task("不得排队")
+        t2 = _mk_serial_task("排队等位")
         r1 = store.create_run("orchestration", t1["title"], task_id=t1["id"])
         r2 = store.create_run("orchestration", t2["title"], task_id=t2["id"])
+        entered = threading.Event()
+        second_started = threading.Event()
+        release = threading.Event()
+
+        def fake_execute(run_id):
+            if run_id == r1["id"]:
+                entered.set()
+                release.wait(3)
+            else:
+                second_started.set()
+
+        jobs.start_worker()
+        jobs.configure(1)
+        try:
+            with mock.patch.object(pipeline, "execute_run", side_effect=fake_execute), \
+                 mock.patch.object(jobs, "BUSY_WAIT_S", 0.05):
+                jobs.enqueue({"kind": "orchestration", "run_id": r1["id"],
+                              "task_id": t1["id"]})
+                self.assertTrue(entered.wait(2))
+                with self.assertRaises(jobs.DuplicateJobError):
+                    jobs.enqueue({"kind": "orchestration", "run_id": r1["id"],
+                                  "task_id": t1["id"]})
+                self.assertEqual(store.get_run(r1["id"])["status"], "running",
+                                 "满载时重复请求也不能误伤正在运行的任务")
+                # 满载：不向调用方抛忙，run/任务同步回排队，等空位自动补跑
+                self.assertTrue(jobs.enqueue({"kind": "orchestration",
+                                              "run_id": r2["id"], "task_id": t2["id"]}))
+                self.assertEqual(store.get_run(r2["id"])["status"], "queued",
+                                 "满载转排队，不得就地判失败")
+                self.assertEqual(store.get_task(t2["id"])["status"], "queued",
+                                 "任务状态同步回排队，别顶着旧终态")
+                self.assertEqual(jobs._QUEUE.qsize(), 0)
+                release.set()
+                self.assertTrue(second_started.wait(5),
+                                "空位释放后补跑 Timer 应自动起跑第二个任务")
+                self.assertTrue(jobs.wait_for_idle(5))
+        finally:
+            release.set()
+            jobs.configure(12)
+
+    def test_concurrency_full_gives_up_after_max_waits(self):
+        """排队等待封顶：等满 BUSY_WAIT_MAX 拍仍无空位才判失败，原因可读。"""
+        from app.core import jobs, store, pipeline
+        t1 = _mk_serial_task("长期占位")
+        t2 = _mk_serial_task("等待超时")
+        r1 = store.create_run("orchestration", t1["title"], task_id=t1["id"])
+        r2 = store.create_run("orchestration", t2["title"], task_id=t2["id"])
+        entered = threading.Event()
+        release = threading.Event()
+
+        def fake_execute(_run_id):
+            entered.set()
+            release.wait(5)
+
+        jobs.start_worker()
+        jobs.configure(1)
+        try:
+            with mock.patch.object(pipeline, "execute_run", side_effect=fake_execute), \
+                 mock.patch.object(jobs, "BUSY_WAIT_S", 0.05), \
+                 mock.patch.object(jobs, "BUSY_WAIT_MAX", 2):
+                jobs.enqueue({"kind": "orchestration", "run_id": r1["id"],
+                              "task_id": t1["id"]})
+                self.assertTrue(entered.wait(2))
+                jobs.enqueue({"kind": "orchestration", "run_id": r2["id"],
+                              "task_id": t2["id"]})
+                deadline = _time.time() + 5
+                while _time.time() < deadline:
+                    if store.get_run(r2["id"])["status"] == "failed":
+                        break
+                    _time.sleep(0.05)
+                closed = store.get_run(r2["id"])
+                self.assertEqual(closed["status"], "failed",
+                                 "超时后必须收口，别留永久排队")
+                self.assertIn("排队等待超时", closed.get("error") or "")
+                self.assertEqual(store.get_task(t2["id"])["status"], "failed")
+                self.assertTrue(jobs.wait_for_idle(5))
+        finally:
+            release.set()
+            jobs.configure(12)
+
+    def test_concurrency_full_mgmt_and_drain_still_fail_fast(self):
+        """mgmt 满载与升级排水维持快速失败原语义。"""
+        from app.core import jobs, store, pipeline
+        t1 = _mk_serial_task("占满并发")
+        r1 = store.create_run("orchestration", t1["title"], task_id=t1["id"])
+        mg = store.create_run("mgmt", "管理操作")
         entered = threading.Event()
         release = threading.Event()
 
@@ -101,24 +190,32 @@ class QueueWatchdogTest(BaseTest):
 
         jobs.start_worker()
         jobs.configure(1)
-        with mock.patch.object(pipeline, "execute_run", side_effect=fake_execute):
-            jobs.enqueue({"kind": "orchestration", "run_id": r1["id"],
-                          "task_id": t1["id"]})
-            self.assertTrue(entered.wait(2))
-            with self.assertRaises(jobs.DuplicateJobError):
+        try:
+            with mock.patch.object(pipeline, "execute_run", side_effect=fake_execute):
                 jobs.enqueue({"kind": "orchestration", "run_id": r1["id"],
                               "task_id": t1["id"]})
-            self.assertEqual(store.get_run(r1["id"])["status"], "running",
-                             "满载时重复请求也不能误伤正在运行的任务")
-            with self.assertRaises(jobs.JobsBusyError):
-                jobs.enqueue({"kind": "orchestration", "run_id": r2["id"],
-                              "task_id": t2["id"]})
-            self.assertEqual(jobs._QUEUE.qsize(), 0)
-            self.assertEqual(store.get_run(r2["id"])["status"], "failed",
-                             "满载拒绝必须立即收口，不留下 queued")
+                self.assertTrue(entered.wait(2))
+                with self.assertRaises(jobs.JobsBusyError):
+                    jobs.enqueue({"kind": "mgmt", "run_id": mg["id"]})
+                self.assertEqual(store.get_run(mg["id"])["status"], "failed",
+                                 "mgmt 满载维持就地收口")
+                release.set()
+                self.assertTrue(jobs.wait_for_idle(3))
+                # 排水必须在执行位清空后开启（begin_restart_drain 要求 alive==0）
+                jobs.begin_restart_drain()
+                try:
+                    r3 = store.create_run("orchestration", "排水期提交",
+                                          task_id=t1["id"])
+                    with self.assertRaises(jobs.JobsBusyError):
+                        jobs.enqueue({"kind": "orchestration", "run_id": r3["id"],
+                                      "task_id": t1["id"]})
+                    self.assertEqual(store.get_run(r3["id"])["status"], "failed",
+                                     "排水期不排队，就地收口")
+                finally:
+                    jobs.cancel_restart_drain()
+        finally:
             release.set()
-            self.assertTrue(jobs.wait_for_idle(3))
-        jobs.configure(12)
+            jobs.configure(12)
 
     def test_concurrent_duplicate_claim_never_fails_owner(self):
         """同一 run 两个启动请求并发到达：一个执行，一个判重复，不得判满载。"""

@@ -2,8 +2,11 @@
 """任务执行器：直接启动、无等待队列地执行编排任务与管理操作。
 
 每个 job 一条独立线程，run/step 数据按 run_id 隔离，store 层有全局锁。
-设置中的并发数是保护上限：有空位就立即启动，满载则明确失败并提示稍后重试，
-绝不把任务留在内存队列里无限等待。安装/升级失败时自动触发 AI 诊断修复：
+设置中的并发数是保护上限：有空位就立即启动。满载时 orchestration 任务
+（用户/自动化任务）回滚 queued 排队等下一个空位——补跑 Timer 到点重试，
+封顶 BUSY_WAIT_MAX 拍，超时才判失败（满载秒判失败会逼用户原话重发，
+侧栏堆同题重复任务，2026-09-22 纸枪对话实案）；升级排水与其余 kind
+仍明确失败并提示稍后重试。安装/升级失败时自动触发 AI 诊断修复：
 由真实智能体读取失败日志与本机环境给出修正命令；仅当命令命中白名单前缀
 （npm/winget/brew/pip 安装类，按平台取对应渠道）才自动执行，否则把建议命令
 记录在运行记录里等人工确认。
@@ -28,6 +31,8 @@ _timer_lock = threading.Lock()
 _deferred_timers = {}
 _seq = 0
 MAX_POOL = 12
+BUSY_WAIT_S = 15.0    # 满载排队后的补跑轮询间隔（秒）；测试可调小
+BUSY_WAIT_MAX = 40    # 补跑拍数封顶：15s × 40 = 10 分钟，超时才判失败
 
 
 class JobsBusyError(RuntimeError):
@@ -112,23 +117,16 @@ def start_worker():
     configure(12)
 
 
-def enqueue(job):
-    """立即为 job 预留执行位并启动独立线程；从不进入等待队列。
+def _try_start_once(job):
+    """CAS 认领持久化 run → 占并发位 → 起执行线程，一次直接启动尝试。
 
-    返回前先把持久化 run 从 queued 原子切到 running，因此 HTTP/自动化调用方
-    不会看到“已接受但仍排队”。满载、重复 run、线程创建失败都会明确抛错；
-    满载与启动失败还会就地把 run 收口为 failed，任何入口都不会留下僵尸。
-    """
+    返回 True=已起跑；False=并发位满载未启动（run 停在 running，由调用方
+    决定回滚排队还是收口失败）。run 已非 queued（被取消/接管/收口）时抛
+    DuplicateJobError；线程创建失败就地收口后原样上抛。升级排水在这里视作
+    满载的一种（返回 False），快速失败还是排队的语义由调用方区分。"""
     global _alive, _seq
-    if not _started:
-        start_worker()
-    if not isinstance(job, dict):
-        raise ValueError("job 必须是对象")
-    run_id = job.get("run_id")
-    if not run_id:
-        raise ValueError("job.run_id 必填")
-
     from . import store
+    run_id = job.get("run_id")
     current = store.get_run(run_id)
     if current:
         # 先 CAS 认领持久化 run，再碰并发位。若先占位，两个调用可能分别看到
@@ -145,24 +143,16 @@ def enqueue(job):
     # CAS 认领后检查并发保护位。_alive 在 Thread.start 前递增，消除旧实现中线程尚未
     # 回写 alive、扩容循环一次造出几十条 worker 的竞态。
     with _pool_lock:
-        if _restart_drain:
-            busy_limit = -1
-        elif _alive >= _target:
-            busy_limit = _target
+        if _restart_drain or _alive >= _target:
+            busy = True
         else:
-            busy_limit = 0
+            busy = False
             _alive += 1
             _seq += 1
             seq = _seq
-    if busy_limit:
+    if busy:
         CANCELS.pop(run_id, None)
-        if busy_limit < 0:
-            message = "服务正在完成升级重启；本次未排队，请稍后重试"
-        else:
-            message = "当前运行任务已达并发保护上限（%d）；本次未排队，请稍后重试" % busy_limit
-        _close_unstarted(job, message,
-                         statuses=("running",))
-        raise JobsBusyError(message)
+        return False
 
     try:
         threading.Thread(target=_run_job, args=(dict(job),),
@@ -173,7 +163,42 @@ def enqueue(job):
         _close_unstarted(job, "任务执行线程启动失败；本次未排队，请稍后重试",
                          statuses=("queued", "running"))
         raise
+    return True
 
+
+def enqueue(job):
+    """立即为 job 预留执行位并启动独立线程；从不进入内存等待队列。
+
+    返回前先把持久化 run 从 queued 原子切到 running，因此 HTTP/自动化调用方
+    不会看到“已接受但仍排队”。满载时 orchestration 任务转排队等待空位（对
+    调用方视作受理成功，见 _requeue_await_slot）；重复 run、线程创建失败、
+    升级排水满载都会明确抛错，并就地把 run 收口为 failed，任何入口都不会
+    留下无人认领的僵尸。
+    """
+    if not _started:
+        start_worker()
+    if not isinstance(job, dict):
+        raise ValueError("job 必须是对象")
+    run_id = job.get("run_id")
+    if not run_id:
+        raise ValueError("job.run_id 必填")
+
+    if not _try_start_once(job):
+        if _restart_drain:
+            # 升级排水：接单通道已在关闭，排队只会排进一次注定重启的进程——
+            # 照旧快速失败。
+            message = "服务正在完成升级重启；本次未排队，请稍后重试"
+            _close_unstarted(job, message,
+                             statuses=("running",))
+            raise JobsBusyError(message)
+        if str(job.get("kind") or "") != "orchestration" or not _requeue_await_slot(job):
+            # mgmt 与回滚失败（run 已被取消/收口）维持快速失败原语义；
+            # orchestration 已转排队，对调用方视作受理成功。
+            message = ("当前运行任务已达并发保护上限（%d）；本次未排队，请稍后重试"
+                       % _target)
+            _close_unstarted(job, message,
+                             statuses=("running",))
+            raise JobsBusyError(message)
     return True
 
 
@@ -226,6 +251,72 @@ def _close_unstarted(job, message, statuses=("queued",)):
                              error=message, ended_at=_now())
     except Exception:
         pass
+
+
+def _requeue_await_slot(job, waits_left=None):
+    """满载转排队：run 回滚 queued 并挂补跑 Timer，等下一个并发空位。
+
+    只服务 orchestration 任务（用户/自动化任务）。enqueue 起手已把 run CAS
+    成 running，这里再 CAS 回 queued（清 started_at，别让「排队中」顶着起跑
+    时间），并同步任务状态回排队。返回 True=已转排队（调用方视作受理成功，
+    不再向调用方抛忙）；False=回滚失败（run 已被取消/收口），走原快速失败
+    路径。取消/重启/超时的收口：
+    - 用户取消 → run 已非 running，回滚 CAS 落空，或补跑 enqueue 撞
+      DuplicateJobError，链条自然断掉；
+    - 服务重启 → Timer 随进程消失，启动时 requeue_pending() 接管 queued 记录；
+    - 等满 BUSY_WAIT_MAX 拍仍无空位 → 判失败并给出可读原因。
+    """
+    run_id = job.get("run_id")
+    if waits_left is None:
+        waits_left = BUSY_WAIT_MAX
+    try:
+        from . import store
+        changed = store.update_run(run_id, expected_status="running",
+                                   status="queued", started_at="")
+        if changed is None:
+            return False
+        if job.get("task_id"):
+            try:
+                store.update_task_status(job["task_id"], "queued")
+            except Exception:
+                pass
+    except Exception:
+        return False
+
+    def _fire():
+        # 补跑心跳：直接尝试一次启动（不走 enqueue 的排队分支，否则每拍都会
+        # 带着全新重试额度重新入队，封顶永远打不中）。仍满载则续下一拍。
+        with _timer_lock:
+            _deferred_timers.pop(run_id, None)
+        try:
+            started = _try_start_once(job)
+        except DuplicateJobError:
+            return   # 已被取消/接管/收口：补跑链到此为止
+        except Exception:
+            return   # 线程启动失败等异常路径已就地收口，不续棒
+        if started:
+            return
+        if _restart_drain:
+            _close_unstarted(job, "服务正在完成升级重启；本次未排队，请稍后重试",
+                             statuses=("running",))
+        elif waits_left > 0:
+            _requeue_await_slot(job, waits_left - 1)
+        else:
+            _close_unstarted(job, "并发位已满，排队等待超时仍未起跑，请稍后重试",
+                             statuses=("running",))
+
+    with _timer_lock:
+        if run_id in _deferred_timers:
+            return True   # 已有补跑在等：别叠 Timer（防与续跑退避串台）
+        timer = threading.Timer(max(0.0, float(BUSY_WAIT_S)), _fire)
+        timer.daemon = True
+        _deferred_timers[run_id] = timer
+        try:
+            timer.start()
+        except Exception:
+            _deferred_timers.pop(run_id, None)
+            return False
+    return True
 
 
 def _schedule_enqueue(job, delay_s):

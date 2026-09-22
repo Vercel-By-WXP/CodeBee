@@ -6065,3 +6065,12 @@ button.request-busy > * { opacity: .18; }
   #run-list .item .rt { gap: 0; }
 }
 
+
+/* ---------- 对话结果卡「运行展示」弹窗：file-pop 内嵌运行视图 iframe ----------
+ * 弹窗正文是 overflow:auto 的纵排容器（不同于 .pv-body 的 flex 填满），
+ * 给 iframe 显式高度即可；白底与 .pv-frame 同口径——生成的页面多为浅色，
+ * 深色皮肤下也不该透出暗底把内容染脏。 */
+#file-pop .fp-frame {
+  display: block; width: 100%; height: min(72vh, 660px);
+  border: none; border-radius: 10px; background: #fff;
+}
