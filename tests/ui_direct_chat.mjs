@@ -12,9 +12,11 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SERVICE = "http://127.0.0.1:18798";
-const PORT = 18798;
-const CDP_PORT = 9336;
+// 端口可用 TUTTI_TEST_PORT / TUTTI_TEST_CDP 覆盖：并行跑测试时固定口会被
+// 残留服务/Edge 双绑（同 CDP 口互相驱动对方页面，症状像产品 bug）
+const SERVICE = "http://127.0.0.1:" + (Number(process.env.TUTTI_TEST_PORT) || 18798);
+const PORT = Number(process.env.TUTTI_TEST_PORT) || 18798;
+const CDP_PORT = Number(process.env.TUTTI_TEST_CDP) || 9336;
 const EDGE = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",

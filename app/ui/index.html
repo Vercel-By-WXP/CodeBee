@@ -125,6 +125,7 @@
         <button class="qitem" id="btn-q-runs" data-page="runs" title="运行记录" data-i18n-title="运行记录">
           <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
           <span data-i18n="运行记录">运行记录</span>
+          <span class="nav-badge hidden" id="nav-badge-runs"></span>
         </button>
         <button class="qitem" id="btn-q-automation" data-page="automation" title="自动化" data-i18n-title="自动化">
           <svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>
@@ -149,6 +150,20 @@
         </div>
         <div id="side-tasks" class="side-tasks"></div>
       </div>
+      <!-- 底部用量条：陈列真实台账数字（本月调用/花费 + 近 14 天走势）。
+           刻意不做「用量 68%」那种百分比进度条——CodeBee 没有套餐配额，
+           硬编一个分母就是假数；这里给的都是能直接核对的真值。 -->
+      <button id="side-usage" class="side-usage" type="button" onclick="switchTab('usage')"
+              title="本月用量与费用（点击看完整统计）" data-i18n-title="本月用量与费用（点击看完整统计）">
+        <span class="su-top">
+          <span class="su-label" data-i18n="本月用量">本月用量</span>
+          <span class="su-cost" id="su-cost">—</span>
+        </span>
+        <span class="su-mid">
+          <span class="su-tok" id="su-tok">—</span>
+          <span class="su-spark" id="su-spark"></span>
+        </span>
+      </button>
       <div class="side-foot">
         <button id="btn-settings" class="foot-btn" title="设置" aria-label="设置" data-i18n-aria="设置" data-i18n-title="设置">
           <svg class="ico ico-lg" aria-hidden="true"><use href="#i-gear"></use></svg>
@@ -218,7 +233,12 @@
         <svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span id="upd-pill-txt"></span>
         <span class="upd-x" role="button" onclick="event.stopPropagation();updDismiss()" title="忽略此版本" aria-label="忽略此版本" data-i18n-title="忽略此版本" data-i18n-aria="忽略此版本"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></span>
       </button>
-      <div data-i18n="任务" id="page-title" class="page-title">任务</div>
+      <div class="page-title-wrap">
+        <!-- 面包屑父级（设置子页显示「组名」，主栏页隐藏）；page-title 本体
+             保持纯页名——多处测试断言它的 textContent 精确等于页名，不能并入 -->
+        <span id="crumb-root" class="crumb-root hidden" aria-hidden="true"></span>
+        <div data-i18n="任务" id="page-title" class="page-title">任务</div>
+      </div>
       <div id="health-banner" class="health-banner hidden" onclick="healthBannerClick()" title="供应商健康告警" aria-label="供应商健康告警" data-i18n-title="供应商健康告警" data-i18n-aria="供应商健康告警"></div>
       <div class="top-actions">
         <button id="ctrl-pill" class="pill ctrl icon-only hidden" onclick="ctrlClick()" title="多端控制权" aria-label="多端控制权" data-i18n-aria="多端控制权" data-i18n-title="多端控制权"><svg class="ico" aria-hidden="true"><use href="#i-unlock"></use></svg></button>
@@ -511,6 +531,7 @@
           <button id="rd-tab-hive" class="rd-tab" role="tab" aria-controls="rd-pane-hive" aria-selected="false" tabindex="-1" data-tab="hive" data-i18n="蜂巢"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-bee"></use></svg>蜂巢<span class="rd-badge hidden"></span></button>
           <button id="rd-tab-steps" class="rd-tab" role="tab" aria-controls="rd-pane-steps" aria-selected="false" tabindex="-1" data-tab="steps" data-i18n="步骤"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-tasks"></use></svg>步骤<span class="rd-badge hidden"></span></button>
           <button id="rd-tab-result" class="rd-tab" role="tab" aria-controls="rd-pane-result" aria-selected="false" tabindex="-1" data-tab="result" data-i18n="成果"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-file-text"></use></svg>成果<span class="rd-badge hidden"></span></button>
+          <button id="rd-tab-preview" class="rd-tab" role="tab" aria-controls="rd-pane-preview" aria-selected="false" tabindex="-1" data-tab="preview" data-i18n="预览"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-clapper"></use></svg>预览<span class="rd-badge hidden"></span></button>
           <button id="rd-tab-git" class="rd-tab" role="tab" aria-controls="rd-pane-git" aria-selected="false" tabindex="-1" data-tab="git" data-i18n="Git"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>Git<span class="rd-badge hidden"></span></button>
           <button id="rd-tab-bible" class="rd-tab" role="tab" aria-controls="rd-pane-bible" aria-selected="false" tabindex="-1" data-tab="bible" data-i18n="圣经"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-book"></use></svg>圣经<span class="rd-badge hidden"></span></button>
           <button id="rd-tab-bookmeta" class="rd-tab" role="tab" aria-controls="rd-pane-bookmeta" aria-selected="false" tabindex="-1" data-tab="bookmeta" data-i18n="作品信息"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-idcard"></use></svg>作品信息<span class="rd-badge hidden"></span></button>
@@ -615,6 +636,24 @@
             <div id="rd-report" class="report"></div>
             <div id="rd-arts" class="rd-arts hidden"></div>
           </div>
+          <!-- 网页成品预览：左「运行」实时 iframe + 右各代码文件（借鉴对话式编程
+               产品的预览窗）。入口 HTML 由后端从工作目录成品里挑，页签条在此渲染。 -->
+          <div id="rd-pane-preview" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-preview" data-pane="preview">
+            <div id="rd-preview" class="rd-preview hidden">
+              <div class="pv-head">
+                <div id="rd-pv-tabs" class="pv-tabs" role="tablist" data-i18n-aria="预览视图"></div>
+                <span class="pv-spacer"></span>
+                <button id="rd-pv-reload" class="ghost small" data-i18n-title="重新加载预览" title="重新加载预览">
+                  <svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="刷新">刷新</span>
+                </button>
+                <a id="rd-pv-open" class="ghost small" target="_blank" rel="noopener" data-i18n-title="在新窗口打开预览" title="在新窗口打开预览">
+                  <svg class="ico" aria-hidden="true"><use href="#i-globe"></use></svg><span data-i18n="打开新窗口">打开新窗口</span>
+                </a>
+              </div>
+              <div id="rd-pv-body" class="pv-body"></div>
+              <div id="rd-pv-hint" class="pv-hint hidden"></div>
+            </div>
+          </div>
           <div id="rd-pane-git" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-git" data-pane="git">
             <div id="rd-git" class="rd-git hidden"></div>
           </div>
@@ -694,7 +733,7 @@
           <label class="toggle" title="修复任务评审通过后，自动到禅道 resolve（fixed）并回评论" data-i18n-title="修复任务评审通过后，自动到禅道 resolve（fixed）并回评论"><input id="zt-autoresolve" type="checkbox"><span data-i18n="自动 resolve Bug">自动 resolve Bug</span></label>
           <label class="toggle" title="把任务分支自动合并回基线分支（需配置基线分支；合并失败不 resolve 不转派，留人工）" data-i18n-title="把任务分支自动合并回基线分支（需配置基线分支；合并失败不 resolve 不转派，留人工）"><input id="zt-automerge" type="checkbox"><span data-i18n="自动合并代码">自动合并代码</span></label>
           <label class="toggle" title="按下面的间隔定时扫描；关掉后仍可手动「立即扫描」" data-i18n-title="按下面的间隔定时扫描；关掉后仍可手动「立即扫描」"><input id="zt-poll" type="checkbox"><span data-i18n="定时扫描">定时扫描</span></label>
-          <label class="zt-interval-field"><span data-i18n="扫描间隔（小时）">扫描间隔（小时）</span><input id="zt-interval" type="number" min="1" max="168" step="1"></label>
+          <label class="zt-interval-field" for="zt-interval" title="定时扫描的间隔，最小 5 分钟" data-i18n-title="定时扫描的间隔，最小 5 分钟"><span class="zt-iv-label" data-i18n="扫描间隔">扫描间隔</span><span class="zt-iv-box"><input id="zt-interval" type="number" min="5" max="10080" step="5"><span class="zt-iv-unit" data-i18n="分钟">分钟</span></span></label>
         </div>
         <div class="ops"><button id="btn-zentao-save" class="primary small"><span data-i18n="保存配置">保存配置</span></button></div>
         <h3 data-i18n="产品档案" class="sec-title">产品档案</h3>

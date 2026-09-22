@@ -9,8 +9,10 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SERVICE_PORT = 18823;
-const CDP_PORT = 9356;
+// 端口可用 TUTTI_TEST_PORT / TUTTI_TEST_CDP 覆盖：并行跑测试时固定口会被
+// 残留 Edge/服务双绑（同 CDP 口互相驱动对方页面，症状像产品 bug）
+const SERVICE_PORT = Number(process.env.TUTTI_TEST_PORT) || 18823;
+const CDP_PORT = Number(process.env.TUTTI_TEST_CDP) || 9356;
 const SERVICE = `http://127.0.0.1:${SERVICE_PORT}`;
 const RUN_ID = "r-20990102-000000-0003";
 const LOG_REL = "steps/02-draft-mock-a.log";
@@ -102,8 +104,13 @@ async function main() {
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.id && pending.has(msg.id)) pending.get(msg.id)(msg);
-      if (msg.method === "Runtime.exceptionThrown")
-        consoleErrors.push(msg.params.exceptionDetails.text);
+      if (msg.method === "Runtime.exceptionThrown") {
+        const d = msg.params.exceptionDetails || {};
+        consoleErrors.push((d.text || "Uncaught") + " @ " +
+          ((d.url || (d.stackTrace && d.stackTrace.callFrames[0] && d.stackTrace.callFrames[0].url) || "?")
+            + ":" + ((d.lineNumber ?? 0) + 1)) +
+          (d.exception && d.exception.description ? " | " + String(d.exception.description).slice(0, 220) : ""));
+      }
       if (msg.method === "Runtime.consoleAPICalled" && msg.params.type === "error")
         consoleErrors.push(String(msg.params.args.map((a) => a.value).join(" ")));
     };
@@ -143,10 +150,11 @@ async function main() {
         artsInResult: !!document.querySelector('.rd-pane[data-pane="result"] #rd-arts'),
       };
     })()`);
-    // 对话分区只对直连任务可见，非直连（本用例是连载小说）应与 git 一同隐藏
+    // 对话分区只对直连任务可见，非直连（本用例是连载小说）应与 git 一同隐藏；
+    // 预览分区只对有网页成品的任务可见（本用例无 index.html → 一同隐藏）
     check("分区条：蜂巢/步骤/成果/圣经在场，版本（无 git）与对话（非直连）隐藏",
       ["hive", "steps", "result", "git", "bible"].every((k) => strip.ids.includes(k)) &&
-      strip.hiddenIds.split(",").sort().join(",") === "chat,git",
+      strip.hiddenIds.split(",").sort().join(",") === "chat,git,preview",
       JSON.stringify([strip.ids, strip.hiddenIds]));
     check("终态（done）自动落「蜂巢」分区", strip.active === "hive", strip.active);
     check("成果分区含成品文件（章节 + 圣经）且在 result pane 内",

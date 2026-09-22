@@ -46,6 +46,16 @@
     "推荐任务类型": "Recommended task type",
     "切换类型": "Switch type",
     "这个需求更适合「{0}」流程，能使用对应的规划与质量门禁。是否切换后执行？": "This request fits the {0} workflow, which provides matching planning and quality gates. Switch before running?",
+    // 自动化卡片上的偏好标签（短名与胶囊面同步取用）
+    "自动": "Auto",
+    "快速": "Fast",
+    "专家": "Expert",
+    "自动推荐": "Auto-recommended",
+    "编排模式：": "Orchestration mode: ",
+    "思考程度：": "Reasoning effort: ",
+    "对话模型：": "Chat model: ",
+    "只对「直接执行」类流程生效；留「自动推荐」时按系统路由挑模型。": "Applies only to the Direct execution workflow; leave it on Auto-recommended to let routing pick the model.",
+    "选择对话模型前请先选厂商": "Choose a provider before picking a chat model",
 
     // —— 引擎/角色 ——
 
@@ -196,6 +206,15 @@
     "发送": "Send",
     "继续说…（Enter 发送，Shift+Enter 换行；可直接粘贴截图）": "Keep typing… (Enter to send, Shift+Enter for a new line; paste screenshots directly)",
     "成果": "Results",
+    "运行预览": "Live preview",
+    "运行视图": "Run",
+    "实时运行入口页面": "Run the entry page live",
+    "预览视图": "Preview views",
+    "重新加载预览": "Reload the preview",
+    "打开新窗口": "Open in new window",
+    "在新窗口打开预览": "Open the preview in a new window",
+    "预览工作目录：": "Previewing working directory: ",
+    "正在读取文件…": "Reading file…",
     "版本": "Code",
     "圣经": "Bible",
     "详情分区": "Detail sections",
@@ -323,6 +342,9 @@
     "继续执行": "Resume",
     "正在执行…": "Working…",
     "（本轮无文本输出）": "(no text output this turn)",
+    "思考过程": "Thinking",
+    "实时": "live",
+    "字": "chars",
     "也可直接粘贴截图": "or paste a screenshot directly",
     "添加附件": "Add attachment",
     "添加附件：截图/文本/代码/PDF 等，创建任务时落盘到工作目录 _attachments/": "Add attachments — screenshots/text/code/PDF; saved to the task workdir under _attachments/ on creation",
@@ -455,8 +477,8 @@
     "CLI 绑定": "CLI bindings",
     "模型调度（可选）": "Model routing (optional)",
     "自动推荐（推荐）": "Automatic recommendation (recommended)",
-    "确认禁用模型 {0}？链降级将自动跳过它，其余模型不受影响；可在模型调度页重新启用。": "Disable model {0}? Fallback routing will skip it; other models are unaffected. You can re-enable it under Model routing.",
-    "确认禁用该厂商？禁用后链降级自动跳过它，恢复后可在模型调度页重新启用。": "Disable this provider? Fallback routing will skip it. You can re-enable it under Model routing.",
+    "确认禁用模型 {0}？调度链里它的条目会自动移除，其余模型不受影响；可在模型调度页重新启用。": "Disable model {0}? Its entry will be removed from the routing chain automatically; other models are unaffected. You can re-enable it under Model routing.",
+    "确认禁用该厂商？调度链里它的条目会自动移除，恢复后可在模型调度页重新启用。": "Disable this provider? Its entries will be removed from the routing chains automatically. You can re-enable it under Model routing.",
     " 个供应商？\n相关显式模型调度会自动解除，此操作不可撤销。": " providers?\nRelated explicit model routing overrides will be removed. This cannot be undone.",
     "编排设置": "Orchestrator",
     "经验库": "Skill library",
@@ -758,6 +780,19 @@
     "评审维度（逗号分隔，可自定义）": "Review dimensions (comma-separated; custom OK)",
     "连载模式：章节数（空 = 单稿件一次成文）": "Serial: chapters (blank = single draft)",
     "每章约字数": "Approx. words per chapter",
+    // —— 分卷（卷结构：大纲规划 / 写作注入 / 成书分割 / UI 分组）——
+    "分卷：每卷章数（空 = 不分卷）": "Volumes: chapters per volume (blank = no volumes)",
+    "分卷：指定卷结构（可选，优先于每卷章数）": "Volumes: explicit structure (optional; overrides chapters per volume)",
+    "例：20（卷边界按全书章号自动推导）": "e.g. 20 (boundaries derived from book-wide chapter numbers)",
+    "例：第一卷 少年初入江湖 20章；第二卷 风云再起 16章": "e.g. Vol 1 The Young Wanderer 20 ch; Vol 2 Storm Rising 16 ch",
+    "每卷一行或分号分隔：卷名 + 章数（或第1-20章）。也可以在任务目标里直接这样写，会自动识别": "One per line or separated by semicolons: volume name + chapter count (or ch.1-20). You can also write this in the task goal — it is detected automatically.",
+    "分卷：每卷章数（留空 = 不分卷）": "Volumes: chapters per volume (blank = no volumes)",
+    "卷": "Vol",
+    "未分卷": "No volumes",
+    "其他文件": "Other files",
+    "分卷（卷结构）": "Volumes",
+    "长篇建议分卷。两种给法：填「每卷章数」（默认预填 20，清空 = 不分卷），系统按全书章号自动切卷；或者直接写明各卷——在「指定卷结构」框里，也可以在任务目标里写「第一卷 少年初入江湖 第1-20章；卷二 风云再起 21-40章」，会自动识别。给了卷名的会原样沿用，不会被改写。": "Long books should be split into volumes. Two ways: set \"chapters per volume\" (prefilled with 20; blank = no volumes) and boundaries are derived from book-wide chapter numbers, or spell the volumes out — in the \"explicit structure\" field, or straight in the task goal as \"Vol 1 The Young Wanderer ch.1-20; Vol 2 Storm Rising ch.21-40\", which is detected automatically. Volume names you supply are kept verbatim.",
+    "分卷会贯穿全程：大纲按卷给卷名与卷弧光（本卷主线冲突与卷末高潮）；每章起草和评审都带着「第几卷第几章」，靠近卷末会提醒收拢支线、卷末章必须写出本卷高潮与卷末钩子；成书自动插入「第 X 卷《卷名》」分隔；详情页章节卡与发布页清单按卷分组，发章时一卷一卷地发。卷边界只看全书章号，所以续写批次会自动接上同一卷，不会把一卷劈成两半。": "Volumes apply end to end: the outline names each volume and its arc (the volume's main conflict and its climax); every chapter is drafted and reviewed knowing which volume and position it sits at, so chapters near a volume's end stop opening new threads and the final chapter of a volume must deliver that volume's climax and closing hook; the merged book gets \"Vol N: Title\" separators; and both the chapter review cards and the publish list are grouped by volume, so you can publish one volume at a time. Boundaries depend only on book-wide chapter numbers, so a continuation batch joins the same volume instead of cutting one in half.",
     "实现者": "Implementer",
     "评审组": "Reviewers",
     "管理": "Manage",
@@ -1077,7 +1112,6 @@
     "已为 %1 个智能体写入推荐模型，%2 个失败。": "Wrote recommended models to %1 agent(s), %2 failed.",
     "已为 %1 个智能体写入推荐模型（原配置已自动备份 .bak）。": "Wrote recommended models to %1 agent(s) (original configs backed up as .bak).",
     "推荐模型写入失败：": "Failed to write recommended models: ",
-    "厂商/模型变动，已自动重绑 %1 处。": "Providers/models changed — %1 binding(s) auto-rebound.",
     "已保存 %1 个 CLI 的绑定。": "Saved bindings for %1 CLI(s).",
     "未安装": "Not installed",
     "有新版本 ": "New version ",
@@ -1521,8 +1555,8 @@
     "做法": "Best practice",
     "已验证有效的做法（程序性记忆）": "Verified working procedure (procedural memory)",
     "已清除 ": "Cleared ",
-    "已禁用厂商 {0}：链降级自动跳过，绑定页可重新启用": "Provider {0} disabled: chain fallback skips it — re-enable on the Bindings page",
-    "已禁用模型 {0} · {1}，链降级自动跳过；绑定页可重新启用": "Model {0} · {1} disabled: chain fallback skips it — re-enable on the Bindings page",
+    "已禁用厂商 {0}：调度链已自动移除它的条目，绑定页可重新启用": "Provider {0} disabled: its entries were removed from the routing chains — re-enable on the Bindings page",
+    "已禁用模型 {0} · {1}，调度链已自动移除它；绑定页可重新启用": "Model {0} · {1} disabled: its entry was removed from the routing chain — re-enable on the Bindings page",
     "已静默 {0} 的告警（恢复后自动重新武装）": "Muted {0}'s alert (auto-rearms on recovery)",
     "开始升级": "Start upgrade",
     "当前状态不支持": "Not supported in the current state",
@@ -2004,10 +2038,13 @@
     "自动 resolve Bug": "Auto-resolve bugs",
     "自动合并代码": "Auto-merge code",
     "定时扫描": "Scheduled scan",
-    "扫描间隔（小时）": "Scan interval (hours)",
+    "扫描间隔": "Scan interval",
+    "分钟": "min",
+    "定时扫描的间隔，最小 5 分钟": "Interval between scheduled scans; 5 minutes minimum",
     "已保存（不改就留空）": "Saved (leave blank to keep)",
     "定时扫描已开启，每 ": "Scheduled scan on, every ",
     " 小时一次": " h",
+    " 分钟一次": " min",
     "，下次 ": ", next ",
     "定时扫描未开启（仍可手动「立即扫描」）": "Scheduled scan off (manual \"Scan Now\" still works)",
     "上次扫描 ": "Last scan ",
@@ -2415,6 +2452,39 @@
     "导出与导入前自动备份的旧 zip": "Old zips from exports and pre-import auto-backups",
     "只保留每个日志的末尾 1MB": "Keeps only the last 1MB of each log",
     "含平台登录态，清理后发布时需重新扫码登录": "Contains platform logins; re-scan the QR code to publish after clearing",
+
+    // —— 概览首页 & KPI 卡 ——
+    "工作台": "Workspace",
+    "概览": "Overview",
+    "用量趋势": "Usage trend",
+    "快捷入口": "Quick actions",
+    "最近运行": "Recent runs",
+    "查看全部": "View all",
+    "执行次数": "Runs",
+    "成功率": "Success rate",
+    "Token 消耗": "Tokens used",
+    "上期": "Previous",
+    "日均 ": "Daily avg ",
+    "成功 ": "OK ",
+    "较上期": "vs prev",
+    "与上一个同长周期相比": "Compared with the previous period of equal length",
+    "近 30 天执行 ": "Last 30 days: ",
+    " · 消耗 ": " · used ",
+    " tokens · 费用 ": " tokens · cost ",
+    " · 当前 ": " · ",
+    " 个任务运行中": " task(s) running now",
+    "暂无用量记录。跑一个任务后这里会出现统计。": "No usage yet. Stats appear here once you run a task.",
+    "描述目标，交给智能体执行": "Describe a goal and let agents run it",
+    "项目资料与沉淀": "Project docs and notes",
+    "装技能扩展能力": "Install skills to extend",
+    "定时与周期执行": "Scheduled and recurring runs",
+
+    // —— 侧栏常驻：用量条 + 计数徽章 ——
+    "本月用量": "This month",
+    "本月用量与费用（点击看完整统计）": "Usage and cost this month (click for full stats)",
+    "本月还没有调用": "No runs this month yet",
+    " tokens · ": " tokens · ",
+    "正在运行或排队 ": "Running or queued: ",
   };
 
   // ---------- 工具 ----------
@@ -2494,10 +2564,17 @@
     });
     // 编排 pill 短名取自 option 文本，重译后要跟着换语言
     if (typeof window.syncCmpSelFace === "function") {
-      ["f-mode", "f-thinking"].forEach((id) => window.syncCmpSelFace(id));
+      // au-* 是自动化弹框里的偏好胶囊：弹框未开时这两个 id 不在 DOM 里，
+      // syncCmpSelFace 对缺失元素直接返回，无需额外守卫
+      ["f-mode", "f-thinking", "au-mode", "au-thinking"].forEach((id) => window.syncCmpSelFace(id));
     }
     if (typeof window.cmpDirectBtnSync === "function") {
       window.cmpDirectBtnSync();   // 「自动推荐/推荐」等词也要换语言
+    }
+    // 顶栏标题不走 data-i18n（页名随当前页变，静态属性给不了），换语言后在这里补画；
+    // 组名读的是左栏导航文本，此时已被上面的重译扫过，拿到的是新语言的组名
+    if (typeof window.renderPageCrumb === "function") {
+      window.renderPageCrumb();
     }
   }
 

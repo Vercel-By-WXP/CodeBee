@@ -30,7 +30,7 @@ if os.environ.get("TUTTI_ISOLATE_HOME", "").strip() == "1":
     os.environ["USERPROFILE"] = _fake_home
     os.environ["HOME"] = _fake_home
 
-from core import automation, catalog, flows, jobs, manager, market, market_remote, registry, remote, settings, store
+from core import automation, catalog, flows, jobs, manager, market, market_remote, preview, registry, remote, settings, store
 from core import paths
 from core import health
 import pick_dialog
@@ -206,6 +206,10 @@ class Handler(BaseHTTPRequestHandler):
         # 静态页不设防（无敏感信息）：远程裸地址打开时由前端令牌门引导输入
         if path in ("/", "/index.html"):
             return self._static("index.html")
+        # 运行预览：工作目录里网页成品的只读挂载，供 iframe/新窗口直接打开。
+        # 令牌走路径段（子资源继承不了查询串），鉴权复用 remote.request_authed。
+        if path == preview.BASE or path.startswith(preview.BASE + "/"):
+            return self._api_preview(path)
         if path.startswith("/api/"):
             if not self._authed():
                 return self._json(401, {"error": "需要访问令牌（启动 CodeBee 时控制台会显示）"})
@@ -400,6 +404,10 @@ class Handler(BaseHTTPRequestHandler):
                     files = []
                 return self._json(200, {"workdir": wd, "files": files,
                                         "task_id": run.get("task_id") or ""})
+            m = re.match(r"^/api/runs/([^/]+)/preview$", path)
+            if m:
+                # 网页成品预览：入口 HTML + 同目录代码文件（前端渲染「预览」页签）
+                return self._json(200, preview.list_app(m.group(1), remote.token()))
             m = re.match(r"^/api/tasks/([^/]+)/side$", path)
             if m:
                 # 任务检查器（右缘停靠列）专用：轻量聚合、可轮询，不带 diff 文本
@@ -1902,6 +1910,7 @@ class Handler(BaseHTTPRequestHandler):
             body = s.get("output") or ""
             if not body:
                 body = s.get("summary") or ""
+            running = (s.get("status") or "") == "running"
             items.append({
                 "kind": "agent",
                 "at": s.get("ended_at") or s.get("started_at") or "",
@@ -1914,6 +1923,13 @@ class Handler(BaseHTTPRequestHandler):
                 "run": run_id_of_step,
                 "log": s.get("log") or "",
                 "followups": s.get("followups") or [],
+                # 思考过程（2026-09-22 用户诉求）：内置智能体流式抓的思维链随步骤
+                # 落库，收尾保留；运行中另有 stream（正文实时预览）与 activity
+                # （工具活动行）——前端边跑边打印，不再只有三点打字动画。
+                "thinking": s.get("thinking") or "",
+                "stream": (s.get("stream") or "") if running else "",
+                "activity": (s.get("activity") or []) if running else [],
+                "live": s.get("live") or 0,
             })
 
         for r in runs:
@@ -2278,6 +2294,45 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "not found"})
         suffix = p.suffix.lower()
         self._send(200, p.read_bytes(), MIME.get(suffix, "application/octet-stream"))
+
+    # ------------------------------------------------------------ 运行预览
+    def _api_preview(self, path):
+        """GET /preview/<run_id>/<令牌>/<相对路径>：工作目录网页成品的只读挂载。
+
+        令牌放路径段而不是查询串：iframe 里的 style.css / script.js 是浏览器按
+        文档 URL 相对解析的，查询串不会被子资源继承（令牌会掉）。
+        """
+        rest = path[len(preview.BASE):].lstrip("/")
+        parts = rest.split("/")
+        if len(parts) < 2:
+            return self._json(404, {"error": "not found"})
+        run_id, tok = unquote(parts[0]), unquote(parts[1])
+        rel = unquote("/".join(parts[2:]))
+        # 令牌直接交给 remote.request_authed：与 /api/* 同一把尺子（本机豁免、
+        # 代理下带转发头的 loopback 算远程），不另写一套鉴权
+        ip, fw = self._forwarded_ip()
+        if not remote.request_authed(ip, fw, tok, self.headers.get("X-CodeBee-Token") or ""):
+            return self._json(401, {"error": "需要访问令牌（启动 CodeBee 时控制台会显示）"})
+        if not rel or rel.endswith("/"):
+            # 目录地址（/<令牌>/ 或 /<令牌>/web/）：回落到该目录的入口页
+            app = preview.list_app(run_id, tok)
+            if not app.get("ok"):
+                return self._json(404, {"error": "没有可预览的页面"})
+            rel = app["entry"]
+            if not self._preview_dir_ok(path, rel):
+                return self._json(404, {"error": "not found"})
+        data, ctype, err = preview.serve(run_id, rel, tok)
+        if err:
+            return self._json(404, {"error": err})
+        return self._send(200, data, ctype)
+
+    def _preview_dir_ok(self, path, entry):
+        """目录请求只允许回落到该目录自己的入口（/x/ 只解析 x/index.html），
+        免得 /sub/ 悄悄把根入口当子目录入口发出去。"""
+        want = urlparse(path).path[len(preview.BASE):].strip("/").split("/")[2:]
+        want = "/".join(unquote(p) for p in want if p)
+        edir = entry.rsplit("/", 1)[0] if "/" in entry else ""
+        return want == edir
 
 
 def _state_payload(client_id="", ver=None):

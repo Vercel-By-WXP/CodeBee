@@ -10,7 +10,7 @@ function codebeeDocumentTitle(lang) {
 document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, lastPrefs: null, prefsApplied: false };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined };
 
 /* ---------------------------------------------------------- 任务类型（流程） */
 async function loadFlows() {
@@ -1093,12 +1093,12 @@ async function healthOp(op) {
   }
 }
 
-/* 模型级禁用：链降级（resolve_binding 的 _model_bindable）会自动跳过它。
+/* 模型级禁用：绑定链里它的条目由后端自动剔除（modelhub 停用即出调度）。
    只对出问题的那一格生效——厂商其它模型照常可用。 */
 async function healthDisableModel(pid, model) {
   if (!pid || !model) { closeModal(); return; }
   const yes = await uiConfirm(
-    t("确认禁用模型 {0}？链降级将自动跳过它，其余模型不受影响；可在模型调度页重新启用。").replace("{0}", pid + " · " + model),
+    t("确认禁用模型 {0}？调度链里它的条目会自动移除，其余模型不受影响；可在模型调度页重新启用。").replace("{0}", pid + " · " + model),
     { title: t("禁用模型"), danger: true, ok: t("禁用") });
   if (!yes) return;
   try {
@@ -1113,8 +1113,7 @@ async function healthDisableModel(pid, model) {
     S.modelCatalog = models.catalog || [];
     S.provSig = "";
     closeModal(); render(); loadOrchestrator();
-    toast(t("已禁用模型 {0} · {1}，链降级自动跳过；绑定页可重新启用").replace("{0}", pid).replace("{1}", model));
-    autoRebindSoon();
+    toast(t("已禁用模型 {0} · {1}，调度链已自动移除它；绑定页可重新启用").replace("{0}", pid).replace("{1}", model));
   } catch (e) {
     toast(t("操作失败：") + e.message, true);
   }
@@ -1123,7 +1122,7 @@ async function healthDisableModel(pid, model) {
 async function healthDisableProvider(pid) {
   if (!pid) { closeModal(); return; }
   const yes = await uiConfirm(
-    t("确认禁用该厂商？禁用后链降级自动跳过它，恢复后可在模型调度页重新启用。"),
+    t("确认禁用该厂商？调度链里它的条目会自动移除，恢复后可在模型调度页重新启用。"),
     { title: t("禁用厂商"), danger: true, ok: t("禁用") });
   if (!yes) return;
   try {
@@ -1137,8 +1136,7 @@ async function healthDisableProvider(pid) {
     S.providers = models.providers; S.bindings = models.bindings;
     S.provSig = "";
     closeModal(); render(); loadOrchestrator();
-    toast(t("已禁用厂商 {0}：链降级自动跳过，绑定页可重新启用").replace("{0}", pid));
-    autoRebindSoon();
+    toast(t("已禁用厂商 {0}：调度链已自动移除它的条目，绑定页可重新启用").replace("{0}", pid));
   } catch (e) {
     toast(t("操作失败：") + e.message, true);
   }
@@ -1450,7 +1448,6 @@ async function batchProvOp(op) {
   try {
     await api("/api/models/provider-op", { method: "POST",
       body: JSON.stringify({ ids, op }) });
-    if (op !== "duplicate") autoRebindSoon();
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   S.selProvs = {};
   S.modelsSig = null;
@@ -1641,7 +1638,6 @@ async function keyOpCall(pid, op, keyId, key, label) {
   try {
     await api("/api/models/key-op", { method: "POST",
       body: JSON.stringify({ provider_id: pid, op, key_id: keyId, key, label }) });
-    autoRebindSoon();   // 密钥启停/删除/解冻会改变厂商「推荐可用」判定，自动补绑一次
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   // 操作期间轮询照跑（uiPrompt 弹框不阻塞轮询），S.modelsSig 还是旧值：必须
   // 清签名强制重绘，否则 KEY 写盘成功界面也看不到。
@@ -1870,7 +1866,6 @@ async function modelOp(pid, name, op) {
   try {
     await api("/api/models/model-op", { method: "POST",
       body: JSON.stringify({ provider_id: pid, name, op }) });
-    autoRebindSoon();   // 模型停用/启用/删除会改变推荐源与死链判定，自动补绑一次
     const s = modelSel(pid);            // 单行操作后同步清掉该行勾选
     if (s[name]) { delete modelSelSet(pid)[name]; }
   } catch (e) { toast(t("操作失败：") + e.message, true); }
@@ -1937,7 +1932,6 @@ async function batchModelOp(pid, op) {
   try {
     await api("/api/models/model-op", { method: "POST",
       body: JSON.stringify({ provider_id: pid, names, op }) });
-    autoRebindSoon();
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   clearModelSel(pid);
   poll();
@@ -1956,7 +1950,6 @@ async function toggleProviderEnabled(pid, enabled) {
   try {
     await api("/api/models/provider-op", { method: "POST",
       body: JSON.stringify({ ids: [pid], op: off ? "enable" : "disable" }) });
-    autoRebindSoon();
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   S.modelsSig = null;
   poll();
@@ -1981,7 +1974,6 @@ async function refreshAllModels() {
     btn.title = t("全部重新拉取模型列表");
   }, 1500);
   setTimeout(poll, 2500);
-  setTimeout(autoRebindSoon, 8000);   // 模型列表落盘后推荐源才完整，补绑一次
 }
 
 /* 手工添加模型：有的厂商列表接口调不通（或只返回部分），直接填模型名也能进列表。
@@ -2010,7 +2002,6 @@ async function addModelManual(pid) {
     toast(t("已添加模型 ") + name);
     S.modelsSig = null;   // 新模型落盘后签名必变，这里主动置空确保立刻重绘
     poll();
-    setTimeout(autoRebindSoon, 4000);   // 模型可用后推荐源更完整，补绑一次
   } catch (e) { toast(t("添加失败：") + e.message, true); }
 }
 
@@ -2023,7 +2014,6 @@ async function refreshProviderModels(id) {
     else toast(t("已获取模型列表 · wire 适配测试后台进行中"));
   } catch (e) { toast(t("获取失败：") + e.message, true); }
   poll();
-  setTimeout(autoRebindSoon, 4000);   // 模型列表落盘后补绑一次（后台 wire 探测同步进行）
 }
 
 /* 供应商编辑卡：协议可选「自动」；显式选定时它是主协议（用于需要唯一协议的
@@ -2079,7 +2069,6 @@ async function delProvider(id) {
   try {
     await api("/api/models/provider-op", { method: "POST",
       body: JSON.stringify({ ids: [id], op: "delete" }) });
-    autoRebindSoon();
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   if (S.selModels) delete S.selModels[id];
   if (S.selProvs) delete S.selProvs[id];
@@ -2143,7 +2132,6 @@ async function doAddProvider() {
     S.modelsSig = null;
     closeModal();
     poll();
-    autoRebindSoon();   // 新增即启用：马上给空链/死链一次推荐机会
     if (p && body.api_key) refreshProviderModels(p.id);  // 有密钥才自动拉模型列表
   } catch (e) {
     res.textContent = t("保存失败：") + e.message;
@@ -2239,7 +2227,7 @@ async function doImport() {
     btn.textContent = t("完成");
     btn.disabled = false;
     btn.onclick = closeModal;
-    if (r.imported) { S.selProv = null; S.modelsSig = null; poll(); autoRebindSoon(); }
+    if (r.imported) { S.selProv = null; S.modelsSig = null; poll(); }
   } catch (e) {
     $("import-result").innerHTML = '<div class="msg bad">' + t("导入失败：") + esc(e.message) + "</div>";
     btn.disabled = false; btn.textContent = t("导入选中");
@@ -3358,17 +3346,22 @@ function renderRunList() {
     "</div>";
   box.innerHTML = tools + runs.map((r) => {
     const can = runDeletable(r);
+    // 行结构照参考站的「主副标题 + 右侧状态与相对时间」：标题与摘要竖排成一块，
+    // 状态点用侧栏同款字形（staskGlyph），时间用相对档（完整时间戳挪进悬停提示）
+    const sub = String(r.summary || r.error || (r.steps ? r.steps.length + t(" 个步骤") : "")).trim();
     return '<div class="item" onclick="openRun(\'' + esc(r.id) + '\')">' +
       '<div class="t">' +
       '<input type="checkbox" class="rcheck"' + (S.selRuns[r.id] ? " checked" : "") + (can ? "" : " disabled") +
       ' title="' + (can ? t("勾选以批量删除") : t("运行中的记录不可删除，请先取消")) + '"' +
       ' onclick="event.stopPropagation()" onchange="toggleRunSel(\'' + esc(r.id) + '\', this.checked)">' +
-      runKindTag(r.kind) +
-      '<span class="name">' + esc(r.title) + "</span>" +
+      '<span class="rglyph">' + staskGlyph(r.status || "") + "</span>" +
+      '<div class="rt">' +
+      '<span class="name">' + esc(r.title) + runKindTag(r.kind) + "</span>" +
+      (sub ? '<span class="desc">' + esc(t(sub)) + "</span>" : "") +
+      "</div>" +
       '<span class="chip ' + esc(r.status || "") + '">' + esc(runStatusText(r)) + "</span>" +
-      '<span class="time">' + esc(r.created_at) + "</span>" +
-      '<button class="danger small" title="' + t("删除该记录") + '" onclick="event.stopPropagation(); deleteRun(\'' + esc(r.id) + '\')">' + t("删除") + '</button></div>' +
-      '<div class="desc">' + esc(t(r.summary || r.error || (r.steps ? r.steps.length + t(" 个步骤") : ""))) + "</div></div>";
+      '<span class="time" title="' + esc(r.created_at) + '">' + esc(relTime(r.created_at)) + "</span>" +
+      '<button class="danger small" title="' + t("删除该记录") + '" onclick="event.stopPropagation(); deleteRun(\'' + esc(r.id) + '\')">' + t("删除") + '</button></div></div>';
   }).join("");
 }
 
@@ -3655,8 +3648,7 @@ function showDetailInMain() {
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-runs"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.remove("active"));
   document.body.classList.remove("settings-mode");
-  const title = $("page-title");
-  if (title) title.textContent = t("运行详情");
+  renderPageCrumb();
   collapseDrawerIfMobile();
   syncInspectorVis();    // 从设置子页点进运行详情：任务上下文，检查器跟着回来
 }
@@ -3667,7 +3659,7 @@ function showDetailInMain() {
 function jumpToRun(id) {
   S.focusStep = 0;
   S.focusDone = false;
-  if (document.body.classList.contains("settings-mode")) switchTab("runs");
+  if (document.body.classList.contains("settings-mode")) switchTab("runs", "settings");   // 已在设置里：留在设置侧栏
   else showDetailInMain();
   openRun(id);
 }
@@ -3923,6 +3915,7 @@ function drawTaskDetail(key, runs) {
   };
   drawReport();
   loadArtifacts(latest.id);   // 成品文件双入口同源：主栏「成果」分区 + 检查器（列表上下文）
+  renderPreview(latest.id);   // 网页成品预览：入口页 + 可运行 iframe（无成品则整块隐藏）
   // 任务级详情：git 面板吃任务级 side（实时/最新快照），side 未到先以最新 run 快照落位
   const tk = ((S.state || {}).tasks || []).find((x) => x.id === key);
   S.lastRunTask = tk || null;
@@ -3996,6 +3989,7 @@ async function clearRuns() {
 async function openRun(id, pinTab) {
   S.detailRunId = id;
   S.detailTaskKey = null;
+  renderPageCrumb();   // 标题「运行详情」；必须在赋值后画——showDetailInMain 先于本函数跑，那边画不到
   rdTabReset(pinTab || null);   // sideOpenRun 带步骤号时钉住步骤分区
   document.querySelector("#sub-runs .panel:first-child").classList.add("hidden");
   $("run-detail").classList.remove("hidden");
@@ -4015,14 +4009,22 @@ function closeRun() {
   detailSideReset();
   $("run-detail").classList.add("hidden");
   renderChatNav();   // 解除 main.chat-fill（对话为主的固定高度），恢复外层滚动
-  if (document.body.classList.contains("settings-mode")) {
+  if (document.body.classList.contains("settings-mode") || S.mainPage === "runs") {
+    // 回运行列表：设置导航里点进来的，或主栏本就停在运行记录页（快捷导航/概览的入口）
     document.querySelector("#sub-runs .panel:first-child").classList.remove("hidden");
+    renderPageCrumb();   // 详情关了，标题从「运行详情」回到当前页名
+  } else if (S.mainPage) {
+    // 主栏停在别的快捷导航页（概览/自动化）：返回点开详情前那一页，左栏任务树不动
+    switchTab(S.mainPage, "main");
   } else {
-    // 从主视图（侧栏点任务行）进来的详情：返回直接回任务页，不露出运行列表
+    // 从主视图（侧栏点任务行）进来的详情：返回直接回任务页，不露出运行列表。
+    // S.tab 还停在 "runs"（showDetailInMain 设的），视图既然回到任务页就一并归位，
+    // 否则标题会拿 "runs" 的页名显示成「运行记录」
+    S.tab = "tasks";
     document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-tasks"));
     document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", b.dataset.sub === "tasks"));
-    const title = $("page-title");
-    if (title) title.textContent = tabTitle("tasks");
+    document.querySelectorAll(".qitem").forEach((b) => b.classList.remove("active"));
+    renderPageCrumb();
   }
   syncInspectorVis();    // 离开详情：回设置运行列表时检查器按各上下文规则重新落位
 }
@@ -4059,13 +4061,14 @@ function rdTabAvail() {
     git: !$("rd-git").classList.contains("hidden"),
     bible: !$("rd-bible").classList.contains("hidden"),
     bookmeta: !$("rd-bookmeta").classList.contains("hidden"),
+    preview: !$("rd-preview").classList.contains("hidden"),
   };
 }
 
 function applyRdTabs() {
   const avail = rdTabAvail();
   if (!S.rdTab || !avail[S.rdTab]) {
-    S.rdTab = ["chat", "hive", "steps", "result", "git", "bible", "bookmeta"]
+    S.rdTab = ["chat", "hive", "steps", "result", "preview", "git", "bible", "bookmeta"]
       .find((k) => avail[k]) || "steps";
   }
   document.querySelectorAll("#rd-tabs .rd-tab").forEach((b) => {
@@ -4105,10 +4108,10 @@ function renderChatNav() {
   if (mainEl) mainEl.classList.toggle("chat-fill", direct);
   if (!direct) { nav.classList.add("hidden"); nav.innerHTML = ""; return; }
   const labels = { hive: t("蜂巢"), steps: t("步骤"), result: t("成果"),
-    git: "Git", bible: t("圣经"), bookmeta: t("作品信息") };
+    preview: t("预览"), git: "Git", bible: t("圣经"), bookmeta: t("作品信息") };
   const avail = rdTabAvail();
   let pills = "";
-  for (const k of ["hive", "steps", "result", "git", "bible", "bookmeta"]) {
+  for (const k of ["preview", "hive", "steps", "result", "git", "bible", "bookmeta"]) {
     if (!avail[k]) continue;
     // 徽章直接镜像隐藏页签上的（蜂巢在岗数/步骤数/待裁决/成果数），不另设状态源
     const badge = document.querySelector('#rd-tabs .rd-tab[data-tab="' + k + '"] .rd-badge');
@@ -4150,16 +4153,18 @@ function rdTabBadges() {
   set("git", c.gitState === "isolated" ? t("待裁决") : "", "verdict");
 }
 
-/* ctx 可省略：省略时只刷新可用性/徽章/pane（renderHive/renderGitPanel 等收尾调用）。
- * 带 ctx 时先做自动选卡判断，再落徽章。 */
+/* ctx 可省略：省略时沿用上次的 _rdCtx 做自动选卡判断（renderHive/renderGitPanel/
+ * renderPreview 等收尾调用——预览可用性是异步翻过来的，翻过来这次必须重选卡）。 */
 function rdTabsSync(ctx) {
   if (ctx) S._rdCtx = ctx;
-  if (ctx && !S.rdTabPin) {
-    // 对话页签可用性入签名：刚建的任务要等 state 刷进来 direct 才判定成立，
-    // chat 从不可用变可用时必须触发一次重新选卡（否则落在步骤/蜂巢不跳对话）
+  const c = ctx || S._rdCtx || {};
+  if (!S.rdTabPin) {
     const chatAvail = $("rd-chat") && !$("rd-chat").classList.contains("hidden");
-    const sig = (S.detailTaskKey || S.detailRunId || "") + "|" + (ctx.status || "") +
-      "|" + (ctx.gitState || "") + "|" + (ctx.running ? 1 : 0) + "|" + (chatAvail ? 1 : 0);
+    // 预览可用性入签名：网页成品是跑完才落盘的，从不可用变可用时要重选一次卡
+    const pvAvail = $("rd-preview") && !$("rd-preview").classList.contains("hidden");
+    const sig = (S.detailTaskKey || S.detailRunId || "") + "|" + (c.status || "") +
+      "|" + (c.gitState || "") + "|" + (c.running ? 1 : 0) + "|" + (chatAvail ? 1 : 0) +
+      "|" + (pvAvail ? 1 : 0);
     if (S.rdTabSig !== sig) {
       S.rdTabSig = sig;
       const avail = rdTabAvail();
@@ -4167,13 +4172,17 @@ function rdTabsSync(ctx) {
       // 直连任务的主问题是「继续聊什么、上一轮回答是什么」——默认把对话
       // 放在第一视线；编排/代码任务才默认落蜂巢，先看阶段与在岗步骤。
       // 没跑到终态时成果分区是空的，避免打开详情先看到白板。
-      const finishing = !ctx.running && ["done", "failed", "cancelled", "timeout"].includes(ctx.status);
+      const finishing = !c.running && ["done", "failed", "cancelled", "timeout"].includes(c.status);
       S.rdTab = (direct && avail.chat ? "chat" : null)
+        // 跑出了能打开的网页成品：第一视线给「预览」——这正是用户做完一个
+        // 前端任务最想看到的（借鉴对话式编程产品：跑完先看东西跑起来）。
+        // 直连任务的对话、待裁决的版本仍排在它前面：那两个是"要用户说话/动手"。
+        || (finishing && avail.preview ? "preview" : null)
         || (avail.hive ? "hive" : null)
         || (avail.chat ? "chat" : null)
-        || (ctx.running ? (avail.hive ? "hive" : "steps")
-          : (ctx.gitState === "isolated" && avail.git ? "git"
-            : (ctx.hasResult && finishing ? "result" : "steps")));
+        || (c.running ? (avail.hive ? "hive" : "steps")
+          : (c.gitState === "isolated" && avail.git ? "git"
+            : (c.hasResult && finishing ? "result" : "steps")));
     }
   }
   applyRdTabs();
@@ -4198,6 +4207,7 @@ function rdTabReset(pin) {
   S.rdTabSig = "";
   S.rdTabPin = !!pin;
   S._rdCtx = {};
+  pvReset();   // 预览也随详情目标清空：别家的 iframe/页签绝不带到新详情
   syncChatLogSpace(false);
   setRdMetaOpen(false);
 }
@@ -4292,6 +4302,9 @@ async function renderRunDetail() {
         : esc(t("本次运行没有生成报告") + (st ? t("（状态：") + st + t("）") : "") + t("；各步骤日志在「步骤」页签"))) +
       "</div>";
   }
+  // 网页成品预览：与成果同源双入口都走这里；无成功报告时也要重新判定可用性
+  // （换到没有网页成品的 run 必须把「预览」页签收起来，别留着上一家的 iframe）
+  renderPreview(id);
   // 成品文件双入口同源：主栏「成果」分区 + 检查器成品 TAB（列表上下文），
   // 详情上下文检查器让位后主栏是唯一可见面
   S.lastRunTask = rcTask || null;
@@ -5280,7 +5293,7 @@ window.toggleInspector = function () {
   openInspector(key);
 };
 
-/* 检查器只属于「列表快捷预览」上下文：设置子页、新建表单、运行/任务详情一律收起。
+/* 检查器只属于「列表快捷预览」上下文：设置子页、快捷导航页、新建表单、运行/任务详情一律收起。
  * 详情页已铺开全部信息（蜂巢/步骤/成果/版本/圣经/指挥），检查器留着只会同屏
  * 出现两份标题/成品/Git——让它让位，但不丢选中，回到列表上下文自动滑回 */
 function syncInspectorVis() {
@@ -5292,11 +5305,12 @@ function syncInspectorVis() {
   // 主视图下正在看「要完成什么？」新建表单：不是任务上下文，不自动滑出。
   // （本函数只在模式切换时调用，不在轮询里——用户在表单页手动点树里的任务，
   //   openInspector 直接开，不会被这里关掉）
-  const onComposer = !document.body.classList.contains("settings-mode") &&
+  const onComposer = !S.mainPage && !document.body.classList.contains("settings-mode") &&
     !$("sub-tasks").classList.contains("hidden");
   // 主栏正开着运行/任务详情：详情页是全功能视图，检查器同屏只会重复
   const onDetail = !$("run-detail").classList.contains("hidden");
-  if (document.body.classList.contains("settings-mode") || onComposer || onDetail ||
+  // 主栏停在快捷导航页（概览/运行记录/自动化）：同设置子页，检查器让位不抢版面
+  if (document.body.classList.contains("settings-mode") || S.mainPage || onComposer || onDetail ||
       !S.inspKey || runsGone) {
     document.body.classList.remove("inspector-open");
     insp.classList.add("hidden");
@@ -5882,6 +5896,131 @@ async function loadArtifacts(runId) {
   if (box) box.innerHTML = head + '<div class="file-chips">' + chips + "</div>";
   if (mainBox) { mainBox.classList.remove("hidden");
     mainBox.innerHTML = head + '<div class="file-chips">' + chips + "</div>"; }
+}
+
+/* ---------------- 网页成品预览（借鉴对话式编程产品的预览窗） ----------------
+ * 代码任务跑完，用户要的是「看到东西跑起来」，而不是逐个点开文件读代码。
+ * 左「运行」= 入口 HTML 的 iframe（后端 /preview/<run>/<令牌>/ 只读挂载工作
+ * 目录，令牌走路径段让 style.css / script.js 这些相对子资源也带上）；
+ * 右各文件页签 = 源码视图（复用 codeBlockHTML：行号+高亮，与成果预览同款）。
+ * 「刷新」重挂 iframe（改完文件不用退出详情页），「打开新窗口」给真全屏。
+ * 页签在无网页成品时整体隐藏（见 rdTabAvail），不打扰小说/普通任务。 */
+let pvRunId = null;      // 当前预览归属的 run（换 run 必须重挑入口与页签）
+let pvApp = null;        // 后端 /api/runs/<id>/preview 的返回（入口 + 文件清单 + base）
+let pvView = "run";      // "run" = 运行视图；否则是文件名
+let pvCodeSig = "";      // 代码视图去抖签名（轮询重画不重取同一个文件）
+
+function pvReset() {
+  pvRunId = null; pvApp = null; pvView = "run"; pvCodeSig = "";
+}
+
+/* 预览 iframe 的地址：base 已带令牌与尾部斜杠，相对路径交给 <base href> 解析 */
+function pvRunUrl() {
+  if (!pvApp || !pvApp.base) return "";
+  return urlAuth(pvApp.base + (pvApp.entry || ""));
+}
+
+function pvTabsHTML() {
+  const f = (pvApp && pvApp.files) || [];
+  const mk = (key, label, title) =>
+    '<button class="pv-tab' + (pvView === key ? " on" : "") + '" role="tab" ' +
+    'aria-selected="' + (pvView === key ? "true" : "false") + '" data-pv="' + esc(key) + '" ' +
+    'title="' + esc(title || label) + '">' + esc(label) + "</button>";
+  let h = mk("run", t("运行视图"), t("实时运行入口页面"));
+  for (const it of f) h += mk(it.name, it.name.split("/").pop(), it.name);
+  return h;
+}
+
+function pvBodyHTML() {
+  if (!pvApp || !pvApp.ok) return "";
+  if (pvView === "run") {
+    // 每次重挂 iframe 都换 src 尾参，绕开浏览器缓存：用户点「刷新」就是要看新代码
+    const src = pvRunUrl();
+    return '<iframe class="pv-frame" id="rd-pv-frame" src="' + esc(src) +
+      '" title="' + esc(t("运行预览")) + '" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads"></iframe>';
+  }
+  return '<div class="pv-code"><div class="fp-vp" id="rd-pv-code">' +
+    '<div class="fp-hint">' + esc(t("正在读取文件…")) + "</div></div></div>";
+}
+
+async function pvLoadCode(name) {
+  const el = $("rd-pv-code");
+  if (!el) return;
+  const url = "/api/runs/" + encodeURIComponent(pvRunId) + "/file?name=" + encodeURIComponent(name);
+  try {
+    const r = await fetch(urlAuth(url), { headers: authHeaders() });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const text = await r.text();
+    if (!el.isConnected || pvView !== name) return;   // 拉取期间切走了：过期响应不落盘
+    el.innerHTML = codeBlockHTML(text);
+  } catch (e) {
+    if (el.isConnected && pvView === name)
+      el.innerHTML = '<div class="fp-hint">' + esc(t("内容读取失败：") + (e.message || e)) + "</div>";
+  }
+}
+
+function pvDraw() {
+  const box = $("rd-preview");
+  if (!box) return;
+  if (!pvApp || !pvApp.ok) {
+    box.classList.add("hidden");
+    // iframe 一并摘掉：hidden 只是不可见，留在 DOM 里旧页面还在跑（定时器/
+    // 音频不会停）；换成无预览的 run 时更不能留上一家的残影
+    const body = $("rd-pv-body");
+    if (body) body.innerHTML = "";
+    return;
+  }
+  box.classList.remove("hidden");
+  $("rd-pv-tabs").innerHTML = pvTabsHTML();
+  const open = $("rd-pv-open");
+  if (open) open.href = urlAuth(pvRunUrl());
+  $("rd-pv-body").innerHTML = pvBodyHTML();
+  const hint = $("rd-pv-hint");
+  if (hint) {
+    // 工作目录路径给出来：预览的是哪个目录一目了然（与「成果」同款可点复制）
+    hint.innerHTML = '<span data-i18n-x>' + esc(t("预览工作目录：")) + "</span>" +
+      '<span class="pv-wd" title="' + esc(t("点击复制")) + '" onclick="copyText(this.textContent)">' +
+      esc(pvApp.workdir || "") + "</span>";
+    hint.classList.remove("hidden");
+  }
+  if (pvView !== "run") { pvCodeSig = pvView; pvLoadCode(pvView); }
+}
+
+window.pvGo = function (view) {
+  pvView = view;
+  pvCodeSig = "";
+  pvDraw();
+};
+window.pvReload = function () {
+  // 重挂 iframe：加时间戳绕缓存；代码视图则重取当前文件
+  if (pvView === "run") {
+    const f = $("rd-pv-frame");
+    if (f) f.src = urlAuth(pvRunUrl()) + (String(pvRunUrl()).includes("?") ? "&" : "?") + "_=" + Date.now();
+  } else {
+    pvLoadCode(pvView);
+  }
+};
+
+async function renderPreview(runId) {
+  const box = $("rd-preview");
+  if (!box) return;
+  if (!runId) { box.classList.add("hidden"); rdTabsSync(); return; }
+  if (pvRunId !== runId) { pvRunId = runId; pvApp = null; pvView = "run"; pvCodeSig = ""; }
+  let d = null;
+  try { d = await api("/api/runs/" + encodeURIComponent(runId) + "/preview"); }
+  catch (e) { d = null; }
+  // 过期闸门：拉取期间切了详情就丢弃响应（同 loadArtifacts 的双入口闸门）
+  if (pvRunId !== runId) return;
+  if (!$("run-detail") || $("run-detail").classList.contains("hidden")) { rdTabsSync(); return; }
+  pvApp = d || { ok: false };
+  const badge = document.querySelector('#rd-tabs .rd-tab[data-tab="preview"] .rd-badge');
+  if (badge) {
+    const n = pvApp && pvApp.ok ? (pvApp.files || []).length : 0;
+    badge.textContent = n ? String(n) : "";
+    badge.className = "rd-badge" + (n ? "" : " hidden");
+  }
+  pvDraw();
+  rdTabsSync();   // 预览可用性（rdTabAvail 认 #rd-preview 的显隐）随之更新
 }
 
 window.copyText = function (t) {
@@ -6678,6 +6817,9 @@ function chatCleanText(raw) {
     .trim();
 }
 let chatSig = "";
+let chatLiveSig = "";        // 时间线实时增量签名（思考/正文长度变才重建 DOM）
+let chatLiveTimer = null;    // 运行中快轮询句柄（1.2s，见 scheduleChatLive）
+let chatLiveRunId = null;
 
 function chatEngineIsDirect(run) {
   const st = S.state || {};
@@ -6685,6 +6827,54 @@ function chatEngineIsDirect(run) {
   const task = all.find((x) => x.id === (run && run.task_id));
   return !!((task && task.engine === "direct") ||
     (!task && run && (run.engine === "direct" || run.type === "direct")));
+}
+
+/* 思考过程块（2026-09-22 用户诉求「把思考过程打印出来」）：内置智能体流式抓的
+ * 模型思维链 + 工具活动。运行中=常开实时块（逐句长出来）；结束后=折叠摘要
+ * （点开回看），不再让整轮只有三点打字动画。thinking 最长 2 万字（后端已截）。 */
+function chatThinkHTML(it) {
+  const running = it.status === "running";
+  const think = String(it.thinking || "").trim();
+  const acts = running ? (it.activity || []).slice(-4) : [];
+  if (!think && !acts.length) return "";
+  const shown = think.length > 12000 ? "…" + think.slice(-12000) : think;
+  if (running) {
+    return '<div class="chat-think live" data-think-live="1">' +
+      '<div class="ct-head"><span class="ct-dot" aria-hidden="true"></span>' +
+      esc(t("思考过程")) + '<span class="ct-live">' + esc(t("实时")) + "</span></div>" +
+      (shown ? '<div class="ct-body">' + esc(shown) + "</div>" : "") +
+      (acts.length ? '<div class="ct-acts">' +
+        acts.map((a) => "<div>" + esc(a) + "</div>").join("") + "</div>" : "") +
+      "</div>";
+  }
+  return '<details class="chat-think"><summary>' + esc(t("思考过程")) +
+    '<span class="ct-len">' + think.length + " " + esc(t("字")) + "</span></summary>" +
+    '<div class="ct-body">' + esc(think) + "</div></details>";
+}
+
+/* 运行中直连对话的快轮询：SSE/轮询最密 2s、闲时 8s，思考是逐句吐的——
+ * 1.2s 直拉时间线把增量打印出来。run 终态、切详情、分区隐藏即停。 */
+function stopChatLive() {
+  if (chatLiveTimer) { clearInterval(chatLiveTimer); chatLiveTimer = null; }
+  chatLiveRunId = null;
+}
+
+function scheduleChatLive(runId) {
+  if (chatLiveTimer && chatLiveRunId === runId) return;
+  stopChatLive();
+  chatLiveRunId = runId;
+  chatLiveTimer = setInterval(async () => {
+    const run = S.lastRun;
+    const flow = $("rd-chat-flow");
+    if (!run || run.id !== runId || !flow ||
+        !$("run-detail") || $("run-detail").classList.contains("hidden") ||
+        (run.status !== "running" && run.status !== "queued")) return stopChatLive();
+    try {
+      const data = await api("/api/runs/" + encodeURIComponent(runId) + "/timeline");
+      if (!S.lastRun || S.lastRun.id !== runId) return;   // 拉取期间切了详情
+      drawChatFlow(run, data, true);
+    } catch (e) { /* 网络抖动保留上一帧 */ }
+  }, 1200);
 }
 
 /* 对话正文：``` 围栏渲染成真代码块（复用 codeBlockHTML：行号+高亮+代码主题），
@@ -6742,12 +6932,26 @@ async function renderChat(run, active) {
   let data = null;
   try { data = await api("/api/runs/" + encodeURIComponent(run.id) + "/timeline"); }
   catch (e) { data = null; }
-  const items = (data && data.items) || [];
   if (!$("run-detail") || $("run-detail").classList.contains("hidden")) return;
   // 过期闸门：run 级（renderRunDetail）与任务级（drawTaskDetail）都经 S.lastRun
   // 指向当前详情正在展示的那条 run——拉取期间切了详情就丢弃响应
   if (!S.lastRun || S.lastRun.id !== runForFetch) return;
+  drawChatFlow(run, data, active);
+}
+
+/* 时间线渲染本体（renderChat 与运行中快轮询共用）：items → 气泡流。
+ * force=true 时跳过增量签名闸门（快轮询拿到的一定是新帧）。 */
+function drawChatFlow(run, data, active) {
+  const items = (data && data.items) || [];
   const flow = $("rd-chat-flow");
+  if (!flow) return;
+  // 增量闸门：思考/正文实时流式期间只有 live 长度在变，没变就不重建 DOM
+  //（保滚动位置与展开态；重建整块 innerHTML 会把折叠块弹回默认）
+  const liveSig = items.reduce((a, it) => a + "|" + (it.live || 0) +
+    ":" + String(it.thinking || "").length + ":" + String(it.stream || "").length +
+    ":" + (it.activity || []).length, "");
+  if (liveSig === chatLiveSig && flow.childElementCount) return;
+  chatLiveSig = liveSig;
   // 时间显示统一收敛到 HH:MM（日期在 meta 条里，全量戳塞气泡就是噪音）；
   // 附件兼容 字符串路径 / {name|path} 对象 两种形态（对象直接拼会成 [object Object]）
   const chatTime = (v) => { const s = String(v || "");
@@ -6798,11 +7002,14 @@ async function renderChat(run, active) {
     // 开场「本轮做了什么：…」+「回复：」是模型复读协议措辞的元描述（提示词已禁，
     // 这里兜历史数据），只剥消息开头的第一行
     const body = chatCleanText(it.text);
-    // 运行中还没有正文：三点打字动画（终态无正文才落「无文本输出」占位）
+    // 运行中还没有正文：先给思考过程块（有思维链/工具活动时），正文位退化为
+    // 实时预览（stream 累计值）；两者皆无才是三点打字动画（终态无正文才落占位）
+    const liveText = it.status === "running" ? String(it.stream || "").trim() : "";
     const bodyHtml = body ? chatBodyHTML(body)
+      : (liveText ? '<div class="chat-body chat-live-text">' + esc(liveText.slice(-4000)) + "</div>"
       : (it.status === "running"
         ? '<span class="chat-typing" aria-label="' + esc(t("正在执行…")) + '"><i></i><i></i><i></i></span>'
-        : esc(t("（本轮无文本输出）")));
+        : esc(t("（本轮无文本输出）"))));
     // 元信息只留 名字+时间（+失败标记）：路由/供应商细节属于「步骤」页签，塞这里就是噪音
     const metaBad = it.status === "failed" || it.status === "cancelled";
     // 智能体回复：头像 + 整幅正文（不套气泡框），元信息小字落在正文下方；
@@ -6813,6 +7020,7 @@ async function renderChat(run, active) {
     return '<div class="chat-row">' +
       '<span class="chat-avatar" aria-hidden="true"><svg class="ico"><use href="#i-bee"></use></svg></span>' +
       '<div class="chat-bubble agent">' +
+      chatThinkHTML(it) +
       '<div class="chat-body">' + bodyHtml + "</div>" +
       '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
       (metaBad ? " · " + t(it.status === "failed" ? "失败" : "已取消") : "") + actsA + "</div>" +
@@ -6834,8 +7042,14 @@ async function renderChat(run, active) {
   if (hint) hint.textContent = active
     ? t("运行中：新消息会排队，本轮回答完后依次送达")
     : t("已结束：发送后将自动开新一轮接着做");
+  // 贴底跟随：用户滚到底部附近才自动滚到最新输出，回看历史不打扰
+  const stick = flow.scrollHeight - flow.scrollTop - flow.clientHeight < 80;
   flow.innerHTML = html || '<div class="hint">' + esc(t("还没有对话内容")) + "</div>";
-  flow.scrollTop = flow.scrollHeight;
+  if (stick) flow.scrollTop = flow.scrollHeight;
+  // 有运行中的直连步骤 → 快轮询把思考过程/正文增量打印出来；终态即停
+  const hasRunning = items.some((it) => it.kind === "agent" && it.status === "running");
+  if (active && hasRunning && run && run.id) scheduleChatLive(run.id);
+  else stopChatLive();
 }
 
 /* 执行结果卡（时间线收尾）：run 终态后的确定性摘要——成没成、跑多久、谁执行
@@ -7932,43 +8146,9 @@ function autoBindAll() {
   }
 }
 
-/* 厂商/模型停用·启用·删除后自动修复显式绑定：
- * 空链保持自动调度，不写入绑定；已有链失效时才直接落盘替代链。
- * 没有合适的推荐就保持原样，什么都不绑。绑定页上用户手改中的草稿（dirty）
- * 不碰；一处都没改成静默返回，不打扰停用/启用的操作反馈。 */
-let _autoRebindRunning = false, _autoRebindAgain = false;
-async function autoRebindSoon() {
-  if (_autoRebindRunning) { _autoRebindAgain = true; return; }
-  _autoRebindRunning = true;
-  try {
-    await poll();   // 拿停用/启用落盘后的最新 providers / bindings / catalog
-    let fixed = 0;
-    for (const c of (S.catalog || []).filter((x) => x.installed && x.orch_kind)) {
-      const st = bindSelById(c.id);
-      if (st.dirty) continue;   // 用户手改中，不覆盖草稿
-      const act = bindRepairAction(c, st, false);
-      if (!act) continue;
-      const b = (S.bindings || {})[c.id] || {};
-      try {
-        await api("/api/models/binding", { method: "POST", busy: false, body: JSON.stringify({
-          agent_id: c.id, provider_id: act[0].p,
-          chain: act.map((x) => ({ provider_id: x.p, model: x.m })),
-          difficulty_routing: !!b.difficulty_routing }) });
-        st.chain = act; st.dirty = false; st.key = chainKey(act);
-        fixed++;
-      } catch (e) { /* 单条失败不打断，等下次变更再补 */ }
-    }
-    if (fixed) {
-      S.catSig = null; S.bindSig = null;
-      render();
-      toast(t("厂商/模型变动，已自动重绑 %1 处。").replace("%1", fixed));
-    }
-  } catch (e) { /* 自动补绑失败静默：不打断用户的停用/启用操作 */ }
-  finally {
-    _autoRebindRunning = false;
-    if (_autoRebindAgain) { _autoRebindAgain = false; autoRebindSoon(); }
-  }
-}
+/* 厂商/模型停用·删除后不再自动改写绑定链（2026-09-22 用户拍板：不要去动
+ * 模型调度）——后端在停用/删除时已把死条目从链里剔除（modelhub._prune_binding_chains），
+ * 空链回落 CLI 默认；要补推荐用「一键推荐绑定」手动来。 */
 
 async function saveAllBindings() {
   const targets = (S.catalog || []).filter((c) => c.installed && c.orch_kind);
@@ -9142,7 +9322,7 @@ async function loadZentao() {
   tg("zt-autoresolve", cfg.auto_resolve);
   tg("zt-automerge", cfg.auto_merge);
   tg("zt-poll", cfg.poll_enabled);
-  set("zt-interval", cfg.interval_hours || 2);
+  set("zt-interval", cfg.interval_minutes || 5);
   S.ztProfiles = JSON.parse(JSON.stringify(cfg.product_profiles || []));
   renderZentaoProfiles();
   renderZentaoStatus();
@@ -9513,6 +9693,13 @@ function zentaoTriText(c) {
   return t("排查：") + t(NAME[tri.side] || tri.side) + (by ? "（" + by + "）" : "");
 }
 
+/* 扫描间隔（分钟）→ 人类可读：整小时显示「2 小时」，否则「5 分钟」 */
+function ztIntervalText(mins) {
+  const n = Math.max(1, parseInt(mins, 10) || 5);
+  if (n % 60 === 0) return (n / 60) + t(" 小时一次");
+  return n + t(" 分钟一次");
+}
+
 function renderZentaoStatus() {
   const box = $("zentao-status");
   if (!box) return;
@@ -9521,7 +9708,7 @@ function renderZentaoStatus() {
   const cfg = v.config || {};
   const parts = [];
   parts.push(cfg.poll_enabled
-    ? (t("定时扫描已开启，每 ") + (cfg.interval_hours || 2) + t(" 小时一次")
+    ? (t("定时扫描已开启，每 ") + ztIntervalText(cfg.interval_minutes)
        + (v.next_scan ? t("，下次 ") + esc(v.next_scan) : ""))
     : t("定时扫描未开启（仍可手动「立即扫描」）"));
   if (v.last_scan) parts.push(t("上次扫描 ") + esc(v.last_scan));
@@ -9565,7 +9752,7 @@ function ztFormPayload() {
     auto_resolve: $("zt-autoresolve").checked,
     auto_merge: $("zt-automerge").checked,
     poll_enabled: $("zt-poll").checked,
-    interval_hours: parseInt($("zt-interval").value, 10) || 2,
+    interval_minutes: Math.max(5, parseInt($("zt-interval").value, 10) || 5),
   };
   const pw = ($("zt-password").value || "").trim();
   if (pw) payload.password = pw;
@@ -10281,6 +10468,9 @@ function helpChapterBody(id) {
       '<p class="help-p">' + t("新建任务选「连载写作」类型，目标里写清书名、题材和计划篇幅（如「都市异能，先写 20 章」）。目标写得太笼统时，蜂群会先反问几个澄清问题再开工。开书前会先准备作品资料：书简介与分类标签可一键生成，按平台官方选项实抓，不用自己去查规则。") + '</p>' +
       '<h3 class="help-h3">' + t("每章怎么跑") + '</h3>' +
       '<p class="help-p">' + t("大纲确认后分章推进：起草 → 跨厂商评审 → 打磨 → 定稿。评审不过会自动换将重写，不带着问题过关；需要你拍板的地方会亮起「待裁决」。写作时详情页可实时预览章节，蜂巢页每个智能体一格，点开能看谁在干什么。") + '</p>' +
+      '<h3 class="help-h3">' + t("分卷（卷结构）") + '</h3>' +
+      '<p class="help-p">' + t("长篇建议分卷。两种给法：填「每卷章数」（默认预填 20，清空 = 不分卷），系统按全书章号自动切卷；或者直接写明各卷——在「指定卷结构」框里，也可以在任务目标里写「第一卷 少年初入江湖 第1-20章；卷二 风云再起 21-40章」，会自动识别。给了卷名的会原样沿用，不会被改写。") + '</p>' +
+      '<p class="help-p">' + t("分卷会贯穿全程：大纲按卷给卷名与卷弧光（本卷主线冲突与卷末高潮）；每章起草和评审都带着「第几卷第几章」，靠近卷末会提醒收拢支线、卷末章必须写出本卷高潮与卷末钩子；成书自动插入「第 X 卷《卷名》」分隔；详情页章节卡与发布页清单按卷分组，发章时一卷一卷地发。卷边界只看全书章号，所以续写批次会自动接上同一卷，不会把一卷劈成两半。") + '</p>' +
       '<h3 class="help-h3">' + t("中断了怎么办") + '</h3>' +
       '<p class="help-p">' + t("任务随时可续跑：已写章节都落了盘，续跑接着往下写，不会从头再来。单章失败会自动退避重试，任务状态里会显示「将于 HH:MM 自动续跑」，不用盯着等。") + '</p>' +
       '<h3 class="help-h3">' + t("递话与经验") + '</h3>' +
@@ -10718,6 +10908,29 @@ function tabTitle(name) {
   return t(TAB_TITLES[name]) || t("设置");
 }
 
+/* 顶栏标题 + 面包屑：页名永远落在 #page-title（多处测试断言它的 textContent
+ * 精确等于页名，所以组名绝不能并进去），父级组名单独放 #crumb-root。
+ * 组名从左栏设置导航现读——找选中项上方最近的分组标签，HTML 增删导航项时
+ * 这里自动跟上，不需要维护一份硬编码映射。全页统一切标题只走这一个函数。 */
+function renderPageCrumb() {
+  const el = $("page-title");
+  if (!el) return;
+  const crumb = $("crumb-root");
+  const inDetail = !!(S.detailRunId || S.detailTaskKey);   // 详情自成语境，不挂父级
+  let group = "";
+  if (!inDetail && document.body.classList.contains("settings-mode")) {
+    const active = document.querySelector(".side-settings .set-item.active");
+    let n = active ? active.previousElementSibling : null;
+    while (n && !(n.classList && n.classList.contains("set-group"))) n = n.previousElementSibling;
+    if (n) group = (n.textContent || "").trim();
+  }
+  if (crumb) {
+    crumb.textContent = group;
+    crumb.classList.toggle("hidden", !group);
+  }
+  el.textContent = inDetail ? t("运行详情") : tabTitle(S.tab);
+}
+
 /* 左栏两套导航各管哪些页，一律从 index.html 现读——HTML 改了 JS 自动跟上，
  * 不再各存一份常量、两处漂移：
  *   .side-quick    快捷导航（概览/运行记录/自动化）→ main 形态：只换主栏内容，左栏任务树不动
@@ -10898,9 +11111,8 @@ function setLangBtn(lang) {
     paintHelpChrome();
     renderHelp();
   }
-  // 重画还在缓存里的页面标题
-  const title = $("page-title");
-  if (title && S.tab) title.textContent = tabTitle(S.tab);
+  // 重画还在缓存里的页面标题（语言切换后组名也要跟着换）
+  renderPageCrumb();
   // 同步顶栏的连接状态文案（applyI18n 不会处理 textContent 写入的）
   const cn = $("conn");
   if (cn) {
@@ -11559,11 +11771,79 @@ function ovRenderRecent() {
 }
 
 /* 运行状态经 SSE 推来：停在概览页时只重画依赖 runs 的两处（概览语 + 最近运行），
- * 不重新拉用量（台账不会因为一次运行状态变化就变） */
+ * 不重新拉用量（台账不会因为一次运行状态变化就变）。
+ * 侧栏常驻件（用量条 + 计数徽章）不跟着 S.tab 走，每次状态推送都要顺手刷新。 */
 function ovMaybeRefresh() {
-  if (S.tab !== "overview") return;
-  ovRenderHead();
-  ovRenderRecent();
+  if (S.tab === "overview") {
+    ovRenderHead();
+    ovRenderRecent();
+  }
+  sideUsageRefresh();
+}
+
+/* ---------------------------------------------------------- 侧栏常驻：用量条 + 计数徽章 */
+/* 用量条的数字来自真实台账，口径写死为「本月」（自然月，从 1 号起）。
+ * 刻意不做「用量 68%」那种进度条：CodeBee 没有套餐配额，没有分母可除，
+ * 编一个上限出来就是假数。这里陈列的是能直接去用量页核对的事实。 */
+async function sideUsageLoad() {
+  if (S.sideUsage && S.sideUsageAt && Date.now() - S.sideUsageAt < 60000) return;  // 1 分钟节流
+  try {
+    const u = await api("/api/usage?days=30");
+    S.sideUsage = u || null;
+    S.sideUsageAt = Date.now();
+  } catch (e) { /* 拉不到就保留上次的值，不把侧栏清空 */ }
+  sideUsageRender();
+}
+
+function sideUsageRefresh() {
+  sideUsageRender();          // 计数徽章靠 S.state，同步重画
+  sideUsageLoad();            // 台账按节流异步补
+}
+
+function sideUsageRender() {
+  sideUsageRenderRuns();
+  const box = $("side-usage");
+  if (!box) return;
+  const u = S.sideUsage;
+  const tok = $("su-tok"), cost = $("su-cost"), spark = $("su-spark");
+  if (!tok || !cost || !spark) return;
+  if (!u || !u.by_day || !u.by_day.length) {
+    tok.textContent = t("本月还没有调用");
+    cost.textContent = "";
+    spark.innerHTML = "";
+    return;
+  }
+  // 口径=自然月：days=31 只是取数窗口（任一自然月的已过天数都不超过它），
+  // 展示前必须按当前年月再滤一遍——不滤的话月初那几天会把上个月的尾巴算进"本月"，
+  // 标签写着本月、数字却是滚动 30 天，就是假口径
+  const now = new Date();
+  const ym = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+  const monthDays = u.by_day.filter((d) => String(d.day || "").slice(0, 7) === ym);
+  const sum = (k) => monthDays.reduce((s, d) => s + (Number(d[k]) || 0), 0);
+  const calls = sum("calls");
+  if (!calls) {
+    tok.textContent = t("本月还没有调用");
+    cost.textContent = "";
+    spark.innerHTML = "";
+    return;
+  }
+  tok.textContent = fmtTok(sum("tokens")) + t(" tokens · ") + fmtTok(calls) + t(" 次");
+  cost.textContent = fmtUsd(sum("cost_usd"));
+  // 走势不受月界影响：近 14 天日序列，只是节奏参考，by_day 连续补零直接取尾
+  const days = u.by_day.slice(-14).map((d) => d.tokens || 0);
+  spark.innerHTML = days.length > 1 ? kpiSparkSvg(days, "accent") : "";
+}
+
+/* 计数徽章：挂在「运行记录」快捷导航项上，数当前在跑 + 排队的 run 数。
+ * 数据取自 S.state.runs（SSE 推送），不额外请求；为 0 时收起徽章不留空位。 */
+function sideUsageRenderRuns() {
+  const el = $("nav-badge-runs");
+  if (!el) return;
+  const runs = (S.state && S.state.runs) || [];
+  const n = runs.filter((r) => r.status === "running" || r.status === "queued").length;
+  el.textContent = n > 99 ? "99+" : String(n);
+  el.classList.toggle("hidden", n === 0);
+  el.title = n ? t("正在运行或排队 ") + n + t(" 个任务") : "";
 }
 
 /* ---------------------------------------------------------- 手机连接（扫码） */
@@ -11823,7 +12103,9 @@ function collapseDrawerIfMobile() {
   if (window.innerWidth < 900) document.body.classList.add("side-collapsed");
 }
 
-function switchTab(name) {
+/* 切页：主栏换成目标子页。shell 决定左栏形态——"main" 保持任务树、"settings" 换成
+ * 设置导航，缺省按目标页归哪套导航自动选（见 mainPageSubs/settingsNavSubs）。 */
+function switchTab(name, shell) {
   if (name === "__phone") { openPhoneConnect(); return; }  // 手机连接是弹框，不切页
   if (name === "__guide") { welcomeOpen(); return; }       // 帮助中心是弹层，不切页（设置导航「软件」组）
   // 形态由目标页决定：快捷导航页（概览/运行记录/自动化）走 main——只换主栏内容、
@@ -11839,8 +12121,7 @@ function switchTab(name) {
   document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", !inMain && b.dataset.sub === name));
   document.querySelectorAll(".qitem").forEach((b) => b.classList.toggle("active", inMain && b.dataset.page === name));
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-" + name));
-  const title = $("page-title");
-  if (title) title.textContent = tabTitle(name);
+  renderPageCrumb();   // 页名 + 面包屑组名一起刷新（组名从左栏导航现读）
   if (name === "runs" && !S.detailRunId) closeRun();
   if (name === "agents") autoCheckUpdates();   // 进目录页自动查各 CLI 新版本
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排设置页拉取配置
@@ -11862,26 +12143,29 @@ function switchTab(name) {
   syncInspectorVis();    // 检查器只属于任务上下文：进设置子页自动收起
 }
 
-/* 退出设置：左栏恢复任务树，内容回到任务页 */
+/* 退出设置/回到新建任务表单：左栏恢复任务树，主栏回到任务页 */
 function exitSettings() {
   S.tab = "tasks";
+  S.mainPage = "";   // 主栏回到表单：不再是快捷导航页
   stopAutoPoll();   // 离开设置视图：自动化页轮询一并停掉
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-settings"));
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-tasks"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", b.dataset.sub === "tasks"));
+  document.querySelectorAll(".qitem").forEach((b) => b.classList.remove("active"));
   document.body.classList.remove("settings-mode");
   document.body.classList.remove("files-mode");
   cmpGreeting();   // 回到任务页：问候语刷新
-  const title = $("page-title");
-  if (title) title.textContent = tabTitle("tasks");
+  renderPageCrumb();
   collapseDrawerIfMobile();
   syncInspectorVis();    // 回到新建表单：不是任务上下文，检查器收起（点运行详情才会滑回）
 }
 
-/* 侧栏底部齿轮：直接进设置（左栏换成设置导航，不再弹菜单）。回到上次看的那页，默认编排设置 */
+/* 侧栏底部齿轮：直接进设置（左栏换成设置导航，不再弹菜单）。回到上次看的那页，默认编排设置。
+ * 只认设置导航里真实存在的子页——概览/运行记录/自动化已升为快捷导航，落回它们会停在
+ * 一个没有导航项高亮的设置页。 */
 function enterSettings() {
   const saved = localStorage.getItem("orch.setTab") || "";
-  switchTab(SET_TABS.has(saved) ? saved : "orch");
+  switchTab(settingsNavSubs().has(saved) ? saved : "orch", "settings");
 }
 
 window.openRun = openRun;
@@ -11909,6 +12193,7 @@ window.mgmt = mgmt;
 window.switchTab = switchTab;
 window.setUsageDays = setUsageDays;
 window.setOvDays = setOvDays;
+window.renderPageCrumb = renderPageCrumb;   // i18n.js 换语言后补画标题用
 window.jumpToRun = jumpToRun;
 window.saveProvider = saveProvider;
 window.delProvider = delProvider;
@@ -12023,6 +12308,14 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   bindArtifactClicks($("rd-arts"));
   bindArtifactClicks($("insp-artifacts"));
+  // 预览子页签（运行 / 各文件）：委托一次，页签条整块重画也不用重绑
+  const pvTabs = $("rd-pv-tabs");
+  if (pvTabs) pvTabs.addEventListener("click", (e) => {
+    const b = e.target.closest(".pv-tab");
+    if (b && b.dataset.pv) window.pvGo(b.dataset.pv);
+  });
+  const pvReload = $("rd-pv-reload");
+  if (pvReload) pvReload.addEventListener("click", () => window.pvReload());
   // 动态详情区统一用 data 属性委托，日志路径/文件名不再拼进 inline JS。
   const detailOverview = $("rd-overview");
   if (detailOverview) detailOverview.addEventListener("click", (e) => {
@@ -12176,6 +12469,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-notify-toggle").addEventListener("click", toggleNotifySound);
   // 命令面板：侧栏搜索行 / Ctrl+K 唤起（函数若尚未落地，跳过而不炸整个初始化）
   if (typeof bindCmdK === "function") bindCmdK();
+  // 侧栏常驻用量条：首屏先取一次台账（之后由 applyState 的节流刷新接手）
+  sideUsageRefresh();
   // 文件夹全部展开/收起（写回 localStorage，与手点单个 folder 同一套持久化）
   $("btn-side-expand").addEventListener("click", () => {
     const dlist = Array.from($("side-tasks").querySelectorAll("details.sdir"));
@@ -12230,10 +12525,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.target.closest("button, summary, .stask")) collapseDrawerIfMobile();
   });
   $("btn-new-task").addEventListener("click", exitSettings);
-  // 主侧栏快捷入口：直达概览 / 自动化 / 插件市场（switchTab 自己会切设置模式并挂载页面）
-  $("btn-q-overview").addEventListener("click", () => switchTab("overview"));
-  $("btn-q-automation").addEventListener("click", () => switchTab("automation"));
-  $("btn-q-market").addEventListener("click", () => switchTab("market"));
+  // 侧栏快捷导航：主栏换成目标页，左栏任务树不动（shell="main"）。
+  // 页面清单以 index.html .side-quick 的 data-page 为准，这里逐项绑 id。
+  $("btn-q-overview").addEventListener("click", () => switchTab("overview", "main"));
+  $("btn-q-runs").addEventListener("click", () => switchTab("runs", "main"));
+  $("btn-q-automation").addEventListener("click", () => switchTab("automation", "main"));
   bindCtxMenus();
   bindInspector();
   if (window.innerWidth < 900) document.body.classList.add("side-collapsed");
