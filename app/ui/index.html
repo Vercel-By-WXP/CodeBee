@@ -379,7 +379,7 @@
                     <option data-i18n="专家：完整规划、多评审、失败修复与换将" value="expert">专家：完整规划、多评审、失败修复与换将</option>
                     <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
                   </select>
-                  <span class="cmp-sel-face" id="f-mode-face">自动</span>
+                  <span class="cmp-sel-face" id="f-mode-face" data-i18n="自动">自动</span>
                   <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
                 </span>
                 <span class="cmp-sel" data-i18n-title="思考程度" title="思考程度">
@@ -389,13 +389,13 @@
                     <option data-i18n="快速：少推理、优先响应" value="low">快速：少推理、优先响应</option>
                     <option data-i18n="深度：更多推理与检查" value="high">深度：更多推理与检查</option>
                   </select>
-                  <span class="cmp-sel-face" id="f-thinking-face">标准</span>
+                  <span class="cmp-sel-face" id="f-thinking-face" data-i18n="标准">标准</span>
                   <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
                 </span>
                 <!-- 厂商/模型 pill（仅「直接执行」类型显示）：点开厂商→模型两级
                      钻取菜单，选定写回隐藏 select 真源 -->
                 <span class="cmp-sel hidden" id="f-direct-wrap" data-i18n-title="对话模型（可选）" title="对话模型（可选）">
-                  <button type="button" class="cmp-sel-face cmp-sel-btn" id="f-direct-btn" onclick="toggleModelMenu()" aria-haspopup="menu" aria-controls="cmp-model-menu">自动推荐</button>
+                  <button type="button" class="cmp-sel-face cmp-sel-btn" id="f-direct-btn" onclick="toggleModelMenu()" aria-haspopup="menu" aria-controls="cmp-model-menu" data-i18n="自动推荐">自动推荐</button>
                   <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
                   <div id="cmp-model-menu" class="type-menu hidden" role="menu" aria-label="对话模型" data-i18n-aria="对话模型"></div>
                 </span>
@@ -578,7 +578,7 @@
                       <option data-i18n="专家：完整规划、多评审、失败修复与换将" value="expert">专家：完整规划、多评审、失败修复与换将</option>
                       <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
                     </select>
-                    <span class="cmp-sel-face" id="rd-mode-face">自动</span>
+                    <span class="cmp-sel-face" id="rd-mode-face" data-i18n="自动">自动</span>
                     <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
                   </span>
                   <span class="cmp-sel" data-i18n-title="思考程度" title="思考程度">
@@ -588,11 +588,11 @@
                       <option data-i18n="快速：少推理、优先响应" value="low">快速：少推理、优先响应</option>
                       <option data-i18n="深度：更多推理与检查" value="high">深度：更多推理与检查</option>
                     </select>
-                    <span class="cmp-sel-face" id="rd-thinking-face">标准</span>
+                    <span class="cmp-sel-face" id="rd-thinking-face" data-i18n="标准">标准</span>
                     <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
                   </span>
                   <span class="cmp-sel" id="rd-model-wrap" data-i18n-title="对话模型" title="对话模型">
-                    <button type="button" class="cmp-sel-face cmp-sel-btn" id="rd-model-btn" onclick="toggleRdModelMenu()" aria-haspopup="menu" aria-controls="rd-model-menu">自动推荐</button>
+                    <button type="button" class="cmp-sel-face cmp-sel-btn" id="rd-model-btn" onclick="toggleRdModelMenu()" aria-haspopup="menu" aria-controls="rd-model-menu" data-i18n="自动推荐">自动推荐</button>
                     <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
                     <div id="rd-model-menu" class="type-menu hidden" role="menu" aria-label="对话模型" data-i18n-aria="对话模型"></div>
                   </span>
@@ -1309,7 +1309,7 @@
   <div class="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
     <button class="welcome-x icon-btn" title="关闭" aria-label="关闭" data-i18n-title="关闭" data-i18n-aria="关闭" onclick="welcomeClose()">✕</button>
     <div class="help-rail">
-      <span class="welcome-badge" id="welcome-badge">首次启动</span>
+      <span class="welcome-badge" id="welcome-badge" data-i18n="首次启动">首次启动</span>
       <div class="welcome-brand">
         <svg class="ico welcome-bee" aria-hidden="true"><use href="#i-bee"></use></svg>
         <span class="brand-name">CodeBee</span>
