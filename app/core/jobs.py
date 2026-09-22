@@ -6,7 +6,10 @@
 （用户/自动化任务）回滚 queued 排队等下一个空位——补跑 Timer 到点重试，
 封顶 BUSY_WAIT_MAX 拍，超时才判失败（满载秒判失败会逼用户原话重发，
 侧栏堆同题重复任务，2026-09-22 纸枪对话实案）；升级排水与其余 kind
-仍明确失败并提示稍后重试。安装/升级失败时自动触发 AI 诊断修复：
+仍明确失败并提示稍后重试。并发保护保护的是本机资源（CLI 子进程数），
+与各 API 厂商的限流无关——厂商侧 429 由 runner 冷却换将兜底。direct
+对话（内置智能体直连 API，本机几乎零开销）走独立轻量池，不与编排任务
+抢全局槽。安装/升级失败时自动触发 AI 诊断修复：
 由真实智能体读取失败日志与本机环境给出修正命令；仅当命令命中白名单前缀
 （npm/winget/brew/pip 安装类，按平台取对应渠道）才自动执行，否则把建议命令
 记录在运行记录里等人工确认。
@@ -25,12 +28,14 @@ _started = False
 _alive = 0            # 已获执行位、尚未结束的 job 数
 _restart_drain = False  # 升级重启前原子停止接单；不排队、不打断已运行任务
 _target = 12          # 并发保护上限（settings.max_concurrent_jobs）
+_chat_alive = 0       # 轻量池：direct 对话在跑数（独立于全局池计数）
 _pool_lock = threading.Lock()
 _idle_cond = threading.Condition(_pool_lock)
 _timer_lock = threading.Lock()
 _deferred_timers = {}
 _seq = 0
-MAX_POOL = 12
+MAX_POOL = 24
+CHAT_POOL = 4         # 轻量池上限：direct 对话直连 API 本机开销极小，4 个足够
 BUSY_WAIT_S = 15.0    # 满载排队后的补跑轮询间隔（秒）；测试可调小
 BUSY_WAIT_MAX = 40    # 补跑拍数封顶：15s × 40 = 10 分钟，超时才判失败
 
@@ -85,7 +90,7 @@ def _repair_command_allowed(cmd, platform=None):
 
 
 def configure(max_workers):
-    """设置并发保护上限（1-12）；只影响后续启动，不中断已运行任务。"""
+    """设置并发保护上限（1-24）；只影响后续启动，不中断已运行任务。"""
     global _target
     _target = max(1, min(MAX_POOL, int(max_workers)))
     return _target
@@ -117,6 +122,23 @@ def start_worker():
     configure(12)
 
 
+def _job_is_light(run):
+    """direct 对话走轻量池：内置智能体直连模型 API，本机无 CLI 子进程，
+    开销与编排任务（每步起一个 CLI）差几个量级，不该抢全局槽。判定按
+    run 所属任务的 type，入口侧零改动（自动化/webhook 等新入口自动跟随）。
+    run 缺失或类型未知时保守走全局池。direct 极少数回落 CLI 的场景，轻量
+    池上限也只有 CHAT_POOL 个，本机压力可控。"""
+    try:
+        task_id = (run or {}).get("task_id")
+        if not task_id:
+            return False
+        from . import store
+        task = store.get_task(task_id)
+        return str((task or {}).get("type") or "") == "direct"
+    except Exception:
+        return False
+
+
 def _try_start_once(job):
     """CAS 认领持久化 run → 占并发位 → 起执行线程，一次直接启动尝试。
 
@@ -124,7 +146,7 @@ def _try_start_once(job):
     决定回滚排队还是收口失败）。run 已非 queued（被取消/接管/收口）时抛
     DuplicateJobError；线程创建失败就地收口后原样上抛。升级排水在这里视作
     满载的一种（返回 False），快速失败还是排队的语义由调用方区分。"""
-    global _alive, _seq
+    global _alive, _chat_alive, _seq
     from . import store
     run_id = job.get("run_id")
     current = store.get_run(run_id)
@@ -140,14 +162,23 @@ def _try_start_once(job):
                                     (run_id, latest.get("status")))
     cancel_event_for(run_id)
 
-    # CAS 认领后检查并发保护位。_alive 在 Thread.start 前递增，消除旧实现中线程尚未
-    # 回写 alive、扩容循环一次造出几十条 worker 的竞态。
+    # CAS 认领后检查并发保护位。占位在 Thread.start 前递增，消除旧实现中线程尚未
+    # 回写 alive、扩容循环一次造出几十条 worker 的竞态。direct 对话占轻量池，
+    # 其余任务占全局池；job["light"] 随副本传给执行线程，结束时按原池释放。
+    light = _job_is_light(current)
     with _pool_lock:
-        if _restart_drain or _alive >= _target:
+        if _restart_drain:
             busy = True
+        elif light:
+            busy = _chat_alive >= CHAT_POOL
+            if not busy:
+                _chat_alive += 1
+                job["light"] = True
         else:
-            busy = False
-            _alive += 1
+            busy = _alive >= _target
+            if not busy:
+                _alive += 1
+        if not busy:
             _seq += 1
             seq = _seq
     if busy:
@@ -158,7 +189,7 @@ def _try_start_once(job):
         threading.Thread(target=_run_job, args=(dict(job),),
                          name="job-direct-%d" % seq, daemon=True).start()
     except Exception:
-        _release_slot()
+        _release_slot(job)
         CANCELS.pop(run_id, None)
         _close_unstarted(job, "任务执行线程启动失败；本次未排队，请稍后重试",
                          statuses=("queued", "running"))
@@ -202,20 +233,24 @@ def enqueue(job):
     return True
 
 
-def _release_slot():
-    global _alive
+def _release_slot(job=None):
+    """释放执行位：按 job 的 light 标记归还对应池，两池全空才唤醒等待方。"""
+    global _alive, _chat_alive
     with _idle_cond:
-        _alive = max(0, _alive - 1)
-        if _alive == 0:
+        if job is not None and job.get("light"):
+            _chat_alive = max(0, _chat_alive - 1)
+        else:
+            _alive = max(0, _alive - 1)
+        if _alive == 0 and _chat_alive == 0:
             _idle_cond.notify_all()
 
 
 def wait_for_idle(timeout=10):
-    """测试/停机辅助：等待所有直接执行任务结束。"""
+    """测试/停机辅助：等待所有直接执行任务（含轻量池）结束。"""
     import time as _t
     end = _t.time() + max(0, float(timeout))
     with _idle_cond:
-        while _alive:
+        while _alive or _chat_alive:
             left = end - _t.time()
             if left <= 0:
                 return False
@@ -433,7 +468,7 @@ def _run_job(job):
                 notify.push_run_async(run_id)
             except Exception:
                 pass
-        _release_slot()
+        _release_slot(job)
 
 
 def cancel(run_id):
@@ -739,7 +774,9 @@ def requeue_pending(limit=10, max_age_s=None):
 
 def workers_info():
     with _pool_lock:
-        return {"target": _target, "alive": _alive, "queued": 0,
+        return {"target": _target, "alive": _alive,
+                "chat_alive": _chat_alive, "chat_pool": CHAT_POOL,
+                "queued": 0,
                 "available": 0 if _restart_drain else max(0, _target - _alive),
                 "mode": "restart-drain" if _restart_drain else "direct"}
 

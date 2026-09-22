@@ -571,3 +571,12 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 自检：上轮 2 处 codex 防毒闸失败已被并行代理修复（aea5632），全量 1267 项全绿
 
 **✅ 本班落地**：教训库近似题合并（与知识库昨日同款防膨胀对齐）——upsert_lesson 此前只做精确同题指纹合并，自动复盘每次 done 运行都跑，「节奏拖沓」与「节奏拖沓问题」各占一条；现在同 scope 标题 bigram 包含度 ≥0.8 归并（与 knowledge._title_sim 同口径），合并语义与精确同题一致（分类不降级/seen+1/内容取新），<4 字符短题只认精确。test_lesson_near_dup 6 项（归并/不相似分离/跨 scope/短题/「做法：」前缀不误并/分类不降级）
+
+### 2026-09-22 22:02 第三十二班（批1 复跑：代码质量与评审）
+
+- **awslabs/cli-agent-orchestrator**（1,334★，AWS 官方）新入库 | 多 CLI 编排（Claude Code/Kiro/Codex…）tmux 隔离协调 | 大厂第二家进场编排（微软 toolkit 后），方向再验证 | 参考
+- **Enderfga/claw-orchestrator**（580★）| 五 CLI 统一运行时：持久会话+多代理 | 参考
+- B1 主体重合（SkillSpector/open-code-review/mira 均已入库）；DeepCode 16.6k 复查活跃
+- 雷达-评审/测试新锐组无重大新标的
+
+**✅ 本班落地**：市场装后冒烟验证（SkillForge 证据驱动借鉴）——install_files 尾部新增 smoke：装完清缓存走 skills 真实解析链，校验「包能加载/名字对得上/正文非空」，写盘成功≠技能可用（frontmatter 缺失此前要到下次任务注入才静默丢失）；smoke 随返回值+market.json 记账，提示不拦阻（与危险扫描同纪律）。test_market_smoke 4 项

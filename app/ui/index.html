@@ -927,12 +927,12 @@
           <p data-i18n="「编排者」是 CodeBee 自己的智能体：直连 API 供应商的模型（不占 CLI 会话），统一负责任务规划拆解、难度判定与写作大纲。未启用或调用失败时自动回落为「最强可用 CLI 智能体」规划，流程永不阻塞。" class="hint">「编排者」是 CodeBee 自己的智能体：直连 API 供应商的模型（不占 CLI 会话），统一负责任务规划拆解、难度判定与写作大纲。未启用或调用失败时自动回落为「最强可用 CLI 智能体」规划，流程永不阻塞。</p>
           <div id="orch-config"></div>
           <h3 data-i18n="运行设置" class="sec-title">运行设置</h3>
-          <div class="field"><label data-i18n="并发保护上限（默认立即运行）">并发保护上限（默认立即运行）</label>
+          <div class="field"><label data-i18n="编排并发上限（本机资源保护）">编排并发上限（本机资源保护）</label>
             <div class="input-row">
-              <input id="set-workers" type="number" min="1" max="12" value="12">
+              <input id="set-workers" type="number" min="1" max="24" value="12">
               <button data-i18n="保存" class="ghost small" onclick="saveSettings()">保存</button>
             </div>
-            <p data-i18n="任务默认立即运行，不进入等待队列；达到上限时会明确提示稍后重试。同一任务仍单飞，自动续跑的退避等待不占执行位。" class="hint">任务默认立即运行，不进入等待队列；达到上限时会明确提示稍后重试。同一任务仍单飞，自动续跑的退避等待不占执行位。</p>
+            <p data-i18n="编排类任务按此上限执行，满载自动转入「排队中」并每 15 秒尝试补跑（最长 10 分钟），不判失败。此上限保护的是本机资源（CLI 子进程数），与各 API 厂商的限流无关——多厂商并行不必为厂商额度调大它；direct 对话走独立轻量通道，不占此额度。自动续跑的退避等待不占执行位。" class="hint">编排类任务按此上限执行，满载自动转入「排队中」并每 15 秒尝试补跑（最长 10 分钟），不判失败。此上限保护的是本机资源（CLI 子进程数），与各 API 厂商的限流无关——多厂商并行不必为厂商额度调大它；direct 对话走独立轻量通道，不占此额度。自动续跑的退避等待不占执行位。</p>
           </div>
           <div class="field"><label data-i18n="默认保存路径（新建任务未指定工作目录时使用；支持 ~）">默认保存路径（新建任务未指定工作目录时使用；支持 ~）</label>
             <div class="input-row">

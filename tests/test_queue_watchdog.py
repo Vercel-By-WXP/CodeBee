@@ -14,8 +14,10 @@
    job 直接跳过——看门狗重排与原 job 并存时同一运行绝不执行两次；
 5. run 起跑（status=running）同步任务状态：run 在跑、任务却永远显示
    「排队中」（「# 重写·续」卡 queued 实际已写一小时实案）；
-6. 并发保护上限为 12，默认 12；满载排队封顶 BUSY_WAIT_MAX 拍，超时判
-   失败且原因可读，绝不留永久排队。
+6. 并发保护上限钳到 24（MAX_POOL），默认 12；满载排队封顶 BUSY_WAIT_MAX
+   拍，超时判失败且原因可读，绝不留永久排队；
+7. direct 对话走独立轻量池（CHAT_POOL）：全局池满载仍立即起跑；轻量池
+   满载同样回滚排队自动补跑；释放按原池归还，两池计数互不污染。
 """
 from __future__ import annotations
 
@@ -33,6 +35,13 @@ def _mk_serial_task(label="看门狗"):
         "type": "serial_novel", "title": label, "goal": "写一章",
         "workdir": "", "serial": {"chapters": 2, "words_per_chapter": 100,
                                   "start_chapter": 1}})
+
+
+def _mk_direct_task(label="轻量对话"):
+    from app.core import store
+    return store.create_task({
+        "type": "direct", "title": label, "goal": "直接执行",
+        "workdir": "", "serial": None})
 
 
 class QueueWatchdogTest(BaseTest):
@@ -213,6 +222,96 @@ class QueueWatchdogTest(BaseTest):
                                      "排水期不排队，就地收口")
                 finally:
                     jobs.cancel_restart_drain()
+        finally:
+            release.set()
+            jobs.configure(12)
+
+    def test_direct_chat_runs_when_global_pool_full(self):
+        """全局池满载时 direct 对话走轻量池立即起跑，两池计数互不污染。"""
+        from app.core import jobs, store, pipeline
+        t1 = _mk_serial_task("占满全局")
+        td = _mk_direct_task("轻量对话")
+        r1 = store.create_run("orchestration", t1["title"], task_id=t1["id"])
+        rd = store.create_run("orchestration", td["title"], task_id=td["id"])
+        entered = threading.Event()
+        chat_entered = threading.Event()
+        release = threading.Event()
+
+        def fake_execute(run_id):
+            if run_id == r1["id"]:
+                entered.set()
+                release.wait(3)
+            else:
+                chat_entered.set()
+                release.wait(3)   # 挂住：两池计数断言需要确定的时序
+
+        jobs.start_worker()
+        jobs.configure(1)
+        try:
+            with mock.patch.object(pipeline, "execute_run", side_effect=fake_execute):
+                jobs.enqueue({"kind": "orchestration", "run_id": r1["id"],
+                              "task_id": t1["id"]})
+                self.assertTrue(entered.wait(2))
+                # 全局池已满（serial 排队语义），direct 对话不排队直接起跑
+                self.assertTrue(jobs.enqueue({"kind": "orchestration",
+                                              "run_id": rd["id"],
+                                              "task_id": td["id"]}))
+                self.assertTrue(chat_entered.wait(2),
+                                "全局池满载时 direct 对话应走轻量池立即起跑")
+                self.assertEqual(store.get_run(rd["id"])["status"], "running",
+                                 "direct 不得因全局池满载被收口排队/失败")
+                info = jobs.workers_info()
+                self.assertEqual(info["alive"], 1, "全局池只记 serial 任务")
+                self.assertEqual(info["chat_alive"], 1, "轻量池独立计数")
+                release.set()
+                self.assertTrue(jobs.wait_for_idle(3))
+                info = jobs.workers_info()
+                self.assertEqual(info["alive"], 0, "serial 释放只清全局池")
+                self.assertEqual(info["chat_alive"], 0, "direct 释放只清轻量池")
+        finally:
+            release.set()
+            jobs.configure(12)
+
+    def test_direct_chat_light_pool_full_queues_then_autostarts(self):
+        """轻量池满载（CHAT_POOL 个）时 direct 对话回滚排队，空位后自动补跑。"""
+        from app.core import jobs, store, pipeline
+        holders = []
+        for i in range(jobs.CHAT_POOL):
+            t = _mk_direct_task("轻量占位-%d" % i)
+            r = store.create_run("orchestration", t["title"], task_id=t["id"])
+            holders.append(r)
+        tq = _mk_direct_task("轻量排队")
+        rq = store.create_run("orchestration", tq["title"], task_id=tq["id"])
+        release = threading.Event()
+        requeued_started = threading.Event()
+
+        def fake_execute(run_id):
+            if run_id == rq["id"]:
+                requeued_started.set()
+            release.wait(3)
+
+        jobs.start_worker()
+        jobs.configure(12)
+        try:
+            with mock.patch.object(pipeline, "execute_run", side_effect=fake_execute), \
+                 mock.patch.object(jobs, "BUSY_WAIT_S", 0.05):
+                for r in holders:
+                    self.assertTrue(jobs.enqueue({"kind": "orchestration",
+                                                  "run_id": r["id"],
+                                                  "task_id": r.get("task_id")}))
+                self.assertEqual(jobs._chat_alive, jobs.CHAT_POOL,
+                                 "轻量池应被 direct 对话占满")
+                self.assertEqual(jobs._alive, 0, "direct 不占全局池")
+                # 轻量池满：下一个 direct 排队而非判失败
+                self.assertTrue(jobs.enqueue({"kind": "orchestration",
+                                              "run_id": rq["id"],
+                                              "task_id": tq["id"]}))
+                self.assertEqual(store.get_run(rq["id"])["status"], "queued",
+                                 "轻量池满载同样转排队")
+                release.set()
+                self.assertTrue(requeued_started.wait(5),
+                                "轻量池空位释放后补跑 Timer 应自动起跑")
+                self.assertTrue(jobs.wait_for_idle(5))
         finally:
             release.set()
             jobs.configure(12)
@@ -477,9 +576,9 @@ class QueueWatchdogTest(BaseTest):
         self.assertEqual(st2["status"], "done", "已收尾的步骤不得被覆盖")
 
     def test_concurrency_clamp_and_default(self):
-        """并发保护钳到 12；新环境默认 12；显式配置仍按用户值生效。"""
+        """并发保护钳到 24（MAX_POOL）；新环境默认 12；显式配置仍按用户值生效。"""
         from app.core import jobs, settings
-        self.assertEqual(jobs.configure(99), 12)
+        self.assertEqual(jobs.configure(99), 24)
         self.assertEqual(jobs.configure(1), 1)
         fresh = settings.DEFAULTS["max_concurrent_jobs"]
         self.assertEqual(fresh, 12)

@@ -290,8 +290,34 @@ def install_files(pack_id, name, files, extra=None):
                 record.update(extra)
             installed[pack_id] = record
         _save_registry(reg)
+    # 装后冒烟验证（SkillForge 证据驱动借鉴）：装完重新走 skills 的解析链，
+    # 证明该包能被加载、名字对得上、正文非空——写盘成功 ≠ 技能可用，
+    # frontmatter 缺失/正文为空都能在这里当场暴露，而不是下次任务注入时静默丢失。
+    smoke = ""
+    try:
+        with skills._LOCK:
+            skills._user_pack_cache.clear()
+            skills._user_dir_mtime["ts"] = 0.0
+            skills._user_dir_mtime["ids"] = None
+        up = next((p for p in skills.user_packs()
+                   if str(p.get("file") or "").replace("\\", "/").endswith("/" + target)), None)
+        if up is None:
+            smoke = "装后冒烟未找到已装包（解析失败？）"
+        elif (up.get("name") or "").strip() != name.strip():
+            smoke = "装后冒烟名字不符：%s ≠ %s" % (up.get("name"), name)
+        elif not str(up.get("body") or "").strip():
+            smoke = "装后冒烟正文为空"
+        else:
+            smoke = "ok:%d字" % len(str(up.get("body") or ""))
+    except Exception as e:
+        smoke = "装后冒烟异常: %s" % str(e)[:120]
+    with _LOCK:
+        reg = _load_registry()
+        if pack_id in (reg.get("installed") or {}):
+            reg["installed"][pack_id]["smoke"] = smoke
+            _save_registry(reg)
     return {"ok": True, "id": pack_id, "name": name, "file": target,
-            "already": already, "scan": scan_note}, None
+            "already": already, "scan": scan_note, "smoke": smoke}, None
 
 
 def remove(pack_id):

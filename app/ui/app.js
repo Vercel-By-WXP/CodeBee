@@ -10438,7 +10438,7 @@ async function saveSettings() {
       max_concurrent_jobs: parseInt($("set-workers").value, 10),
       claude_config_sync: !$("set-claude-sync") || $("set-claude-sync").checked }) });
     S.settings = r.settings;
-    if (msg) { msg.className = "msg ok"; msg.textContent = t("已保存：最大并发 ") + r.workers + t(" 个任务"); }
+    if (msg) { msg.className = "msg ok"; msg.textContent = t("已保存：编排并发上限 ") + r.workers; }
   } catch (e) {
     if (msg) { msg.className = "msg err"; msg.textContent = e.message; }
   }
@@ -10587,7 +10587,7 @@ function helpChapterBody(id) {
     return '<div class="help-qa"><b>' + t("点「获取模型列表」报 404？") + '</b><p>' + t("部分网关不提供模型列表接口，属正常现象；只要能正常对话就不用管，模型名手工填即可。") + '</p></div>' +
       '<div class="help-qa"><b>' + t("报 503 / 无可用渠道？") + '</b><p>' + t("该模型当前没有可用渠道，最常见是余额耗尽。查一下余额或换个模型；同一厂商配了多把 Key 会自动轮换。") + '</p></div>' +
       '<div class="help-qa"><b>' + t("「冷却中」是什么意思？") + '</b><p>' + t("一把 Key 连续失败会被暂停 30 分钟，防止反复撞墙烧钱，到期自动恢复；也可以在密钥旁手动重置。") + '</p></div>' +
-      '<div class="help-qa"><b>' + t("任务一直显示「排队」？") + '</b><p>' + t("新任务默认立即运行，不会排队；达到并发保护上限时本次会直接失败并提示稍后重试。只有自动续跑退避会显示预定时间；历史版本遗留的排队记录会由恢复机制立即接管或收口。") + '</p></div>' +
+      '<div class="help-qa"><b>' + t("任务一直显示「排队」？") + '</b><p>' + t("编排任务满载（达到并发上限）时自动转入「排队中」，每 15 秒尝试补跑，最长等 10 分钟，超时才判失败；排队不占额外资源，取消随时可停。direct 对话走独立轻量通道，不占编排并发额度。自动续跑的退避等待会显示预定恢复时间；服务重启遗留的排队记录由恢复机制立即接管或收口。") + '</p></div>' +
       '<div class="help-qa"><b>' + t("状态里写着「将于 HH:MM 自动续跑」？") + '</b><p>' + t("这一步失败了，正在退避等待自动重试，到点会接着跑，不需要手动干预；等不及也可以在详情页手动重试。") + '</p></div>' +
       '<div class="help-qa"><b>' + t("生成的文件在哪？") + '</b><p>' + t("写作类任务的章节、封面、报告都落在任务的运行目录，详情页「成果」页签可浏览和预览。代码类任务则在仓库的任务分支上改代码，详情页「版本」里审阅后再合并。") + '</p></div>' +
       '<div class="help-qa"><b>' + t("忘了令牌 / 手机打不开页面？") + '</b><p>' + t("服务启动日志里有带令牌的完整访问地址；远程设备必须用带令牌的 URL 打开（或在令牌门里输入一次），否则会一直要求授权。") + '</p></div>' +

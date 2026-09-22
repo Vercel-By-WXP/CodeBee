@@ -33,9 +33,10 @@ DEFAULTS = {"max_concurrent_jobs": 12, "default_workdir": "", "hooks_token": "",
 # 桌宠形象白名单（与 app/pet.py 的 SKINS 对齐；这里不 import pet 模块，避免
 # core 反向依赖 app 根目录脚本）
 PET_SKINS = ("plush", "robot")
-# 并发保护上限 12：任务有空位即直接启动，满载明确返回忙，不进入等待队列；
-# 同任务单飞守卫在 jobs 层。默认取上限，对齐「默认不排队」的使用预期。
-MIN_WORKERS, MAX_WORKERS = 1, 12
+# 并发保护上限 24：编排任务有空位即直接启动，满载回滚 queued 排队自动补跑，
+# 不秒判失败；同任务单飞守卫在 jobs 层。该上限保护的是本机资源（CLI 子进程
+# 数），与各 API 厂商的限流无关；direct 对话走 jobs 轻量池不占此额度。
+MIN_WORKERS, MAX_WORKERS = 1, 24
 
 
 def builtin_workdir():
