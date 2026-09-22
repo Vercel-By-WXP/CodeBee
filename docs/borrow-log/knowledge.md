@@ -546,3 +546,28 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - B2 组主体与上轮重合（memgram/MemRL/pro-workflow/projectmem 均已入库）
 
 **✅ 本班落地**：知识库近似题合并（自动学习防膨胀）——upsert_entry 此前只做精确同题指纹去重，「X 优化」与「X 优化指南」各建一条；现在同 scope 标题 bigram **包含度**（交集/较短者）≥0.8 归并为同一条（用包含度而非 Jaccard：追加后缀形态 Jaccard 只有 0.71 被漏，包含度=1.0），合并/修订语义与精确同题完全一致（approved 保护不打折）；<4 字符短题只认精确（bigram 噪声大）。test_kb_near_dup 6 项（度量界/归并/不相似分离/跨 scope/短题/approved 保护）
+
+### 2026-09-22 18:30 前后 第三十一班（批3 补位：计划/spec/长任务——搜索通道受限班，详见当日报告「通道说明」）
+
+- **Azure/co-op-translator**（微软官方）| 文档本地化自动化：**检测源内容变更→只更新过期翻译**，保 Markdown/Notebook 链接与结构 | 我们翻译是单次全文流程，「源文变更触发增量重译」是空白概念（但属文档本地化场景，与我们单文档翻译有距离）| 参考 | 2026-09-22
+- **Mem0**（48k+★，此前未入册）| 最流行开源记忆框架（import 即用：add/get/search，跨会话个性化记忆）| 记忆域大盘补齐——框架级重依赖，不改我们「文件真源+可版本化」路线 | 参考 | 2026-09-22
+- **Postiz**（gitroomhq/postiz-app）| 自托管开源多平台发布（X/Bluesky/LinkedIn/Discord 等，agentic 排期统一看板）| 多平台分发被产品化的成熟样本；我们发布通道只到浏览器会话，账号类自动发布有封号风险维持不做 | 参考 | 2026-09-22
+- **Empryo**（引擎 soulforge v2）| graph-powered coding agent：「**编辑符号而非字符串**」——AST 手术+全量 LSP+tree-sitter 代码图，65+ AST 操作带回滚 | 我们代码任务走 CLI 自带编辑；AST 级编辑是候选 CLI 里机制差异化最大者 | 雷达（装后实测重点，不盲接入）| 2026-09-22
+- **ZenTao CLI 原厂 AI Skills**（easysoft 官方，2026-04 发布）| 官方命令行一键装进 Claude/Cursor，自然语言管理禅道+原厂 Skills；同发 zentao-vscode-integration（需求/任务/Bug 跳转+关联 Commit Message）| 禅道官方押注 AI agent 通道——验证我们「扫描→建任务→修复→回写」闭环方向；「缺陷复盘报告」待深挖项维持 | 方向验证 | 2026-09-22
+- **SWE-EVO**（arXiv 基准）/ **AgentGym-RL**（ICLR 2026）| 长程演化基准（7 个开源项目 release notes 构造多步演化任务）/ 多轮 RL 训练长程决策 agent | 评测与训练路线参照；我们缺自评测（evalscope 已记）| 参考 | 2026-09-22
+- **「Safe to Resume?」**（arXiv 2026-08）| 校验 checkpoint/restore 恢复后**不重复副作用**的执行连续性验证 | 与 CONTINUUM 幂等账本待深挖同向——「禅道回写/通知/发布等外部动作缺统一幂等键」的第三处佐证 | 方向验证（幂等账本待深挖维持）| 2026-09-22
+- **Wiggum CLI** | 扫库→**AI 面试生成 spec**→自主编码循环（Claude Code/Codex 驱动）| 需求拷问方向第 4 个独立验证（grill-me/pi-plans/genie 之后）| 方向验证 | 2026-09-22
+- **小说域四小标**：AuthorAgent（MIT Node 本地全书流水线）/ NovelGenerator（前提→逐章成稿）/ OpenWrite（自有 API key 长篇平台）/ Inkfluence（跨章角色一致性，商业）| 圣经+前情+一致性评审已覆盖其卖点 | 已覆盖 | 2026-09-22
+- **短视频成片链**：NarratoAI（文案→剪辑→配音→字幕）/ Pixelle-Video（阿里 9.5k+，主题→成片）/ MoneyPrinterTurbo（热点→脚本→素材→渲染）| 脚本只是链条第一环——「脚本→成片」与小说→短剧同族远期方向 | 雷达 | 2026-09-22
+- **Reasonix 前缀缓存印证** | DeepSeek 自动前缀缓存对**字节稳定前缀**给 ~30× 折扣——该 CLI 专门设计尊重字节稳定前缀 | 我们「注入点固定在待评审稿件之前保前缀缓存稳定」设计获第三方印证 | 已覆盖（设计层面）| 2026-09-22
+- **supply-chain 投毒潮**（2026-05-11 Shai-Hulud 蠕虫：170+ npm 包、窃取 Claude/Kiro agent 配置；Anthropic 披露评估中模型发布恶意 PyPI 包）| AI agent 工具链成供应链攻击重点目标 | **「市场装前扫描」（SkillSpector 借鉴）路线图项的外部证据再 +1** | 参考（安全）| 2026-09-22
+
+#### 复查记录（搜索通道，星数为第三方口径近似）
+- 2026-09-22：orca v1.4.206（09-20 发版）活跃、GitHub 周榜 Top10（09-12~18）、支持 25+ CLI；superpowers 仍是技能生态引用第一框架；oh-my-claudecode「Teams-first」活跃；claude-flow(ruflo) npm 近 5 天有更新；spec-kit 复查活跃（Discussion #152 争论 spec 演进/唯一真源——与任务档案「归档/升格」路线同题）；OpenClaw 9k→60k+（2026 增速之王，保持未装候选）；生态事实：claude-code-sdk 更名 claude-agent-sdk（2026-06，旧包停更）；读者反馈分析二次确认仍空白赛道
+
+### 2026-09-22 20:01 第三十一班（批6 复跑：框架/平台/SDK 生态）
+
+- 批6 复跑：主体重合（A2A 官方 25.9k/vercel-ai/mastra/dify 复查活跃）。新锐皆小标：chipping-orchestrator（盯 GitHub issue 自动 spawn Claude/Codex）/flotilla（wave 编排：批量独立可抓 issue 批次派发）/ha-paseo（Home Assistant 插件形态编排三 CLI——编排器进场居智能家居，形态新奇）| 雷达
+- 自检：上轮 2 处 codex 防毒闸失败已被并行代理修复（aea5632），全量 1267 项全绿
+
+**✅ 本班落地**：教训库近似题合并（与知识库昨日同款防膨胀对齐）——upsert_lesson 此前只做精确同题指纹合并，自动复盘每次 done 运行都跑，「节奏拖沓」与「节奏拖沓问题」各占一条；现在同 scope 标题 bigram 包含度 ≥0.8 归并（与 knowledge._title_sim 同口径），合并语义与精确同题一致（分类不降级/seen+1/内容取新），<4 字符短题只认精确。test_lesson_near_dup 6 项（归并/不相似分离/跨 scope/短题/「做法：」前缀不误并/分类不降级）

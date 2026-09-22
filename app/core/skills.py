@@ -300,11 +300,26 @@ def list_lessons(scope=None, only_enabled=False, category=None):
     return items
 
 
+def _title_containment(a, b):
+    """标题近似度：字符 bigram 包含度（交集/较短者）。与 knowledge._title_sim
+    同款度量（追加后缀形态 Jaccard 漏、包含度=1.0），教训/知识去重口径一致。"""
+    ga, gb = _text_bigrams(a), _text_bigrams(b)
+    if not ga or not gb:
+        return 0.0
+    return len(ga & gb) / float(min(len(ga), len(gb)))
+
+
+_LESSON_NEAR_DUP = 0.8   # 同 scope 教训标题包含度 ≥0.8 视为同一条（近似题合并）
+
+
 def upsert_lesson(scope, title, content, source="", category=None, dim=None):
     """写入/合并一条教训：同 scope 同标题视为同一条（seen+1，内容取新的）。
 
     category 为闭集枚举之一（见 LESSON_CATEGORIES）；输入非法时退到 dim 关键词映射，
     仍归不出则落「未分类」。id 仍只按 scope+标题哈希，故老教训再沉淀会合并而非分裂。
+    近似题合并（与知识库同款防膨胀）：自动复盘每次 done 运行都跑，「节奏拖沓」与
+    「节奏拖沓问题」会各占一条；同 scope 标题包含度 ≥0.8 也视为同一条，合并语义
+    与精确同题一致。<4 字符短题只认精确（bigram 噪声大）。
     """
     title = str(title or "").strip()[:60]
     content = str(content or "").strip()[:1200]
@@ -315,18 +330,27 @@ def upsert_lesson(scope, title, content, source="", category=None, dim=None):
     with _LOCK:
         data = _load()
         items = data.setdefault("lessons", [])
-        for it in items:
-            if it.get("id") == lid:
-                it["content"] = content
-                it["seen"] = int(it.get("seen") or 1) + 1
-                it["updated_at"] = _now()
-                # 合并时不降级已有分类：除非本次归到了明确类别，或该条原本没有分类
-                if cat != LESSON_UNCATEGORIZED or not it.get("category"):
-                    it["category"] = cat
-                if source:
-                    it["source"] = source
-                _save(data)
-                return it
+        hit = next((x for x in items if x.get("id") == lid), None)
+        if hit is None and len(title) >= 4:
+            for x in items:
+                if x.get("scope") != scope:
+                    continue
+                xt = str(x.get("title") or "")
+                if len(xt) >= 4 and _title_containment(title, xt) >= _LESSON_NEAR_DUP:
+                    hit = x
+                    break
+        if hit is not None:
+            it = hit
+            it["content"] = content
+            it["seen"] = int(it.get("seen") or 1) + 1
+            it["updated_at"] = _now()
+            # 合并时不降级已有分类：除非本次归到了明确类别，或该条原本没有分类
+            if cat != LESSON_UNCATEGORIZED or not it.get("category"):
+                it["category"] = cat
+            if source:
+                it["source"] = source
+            _save(data)
+            return it
         it = {"id": lid, "scope": scope, "title": title, "content": content,
               "source": source, "hits": 0, "seen": 1, "enabled": True,
               "category": cat,
