@@ -483,3 +483,55 @@ class TestBuiltinRunCommand(BaseTest):
         out = self._run({"command": big})
         self.assertIn("中段省略", out)
         self.assertLess(len(out), 64 * 1024)   # 头 24K + 尾 8K + 标注，远小于原 120K
+
+
+class TestDirectAgentCli(BaseTest):
+    """直接对话手动指定 CLI（2026-09-23）：direct_agent 压过模型绑定与自动推荐。"""
+
+    def test_mock_cli_executes_direct_task(self):
+        """direct_agent=mock-a → 走 CLI 步骤路径（非 builtin），路由标注手动指定。"""
+        from app.core import pipeline, store
+        task = store.create_task({
+            "type": "direct", "title": "点名 CLI", "goal": "讲个笑话",
+            "workdir": str(self.workdir), "direct_agent": "mock-a",
+        })
+        self.assertEqual(task.get("direct_agent"), "mock-a")
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        pipeline._agents = self.mock_agents
+        pipeline.execute_run(run["id"])
+        run = store.get_run(run["id"])
+        self.assertEqual(run["status"], "done", run.get("error"))
+        self.assertEqual(run["verdict"]["impl"], "mock-a")
+        self.assertIn("手动指定 CLI", run["route"]["implementer"])
+        step = run["steps"][0]
+        self.assertEqual(step["agent"], "mock-a")
+
+    def test_unavailable_cli_fails_clearly(self):
+        """direct_agent 指向未安装 CLI → 运行即刻失败并说明原因（不静默换人）。"""
+        from app.core import pipeline, store
+        task = store.create_task({
+            "type": "direct", "title": "点名幽灵", "goal": "你好",
+            "workdir": str(self.workdir), "direct_agent": "ghost-cli-xyz",
+        })
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        pipeline._agents = self.mock_agents
+        pipeline.execute_run(run["id"])
+        run = store.get_run(run["id"])
+        self.assertEqual(run["status"], "failed")
+        self.assertIn("ghost-cli-xyz", run.get("error") or "")
+        self.assertIn("不可用", run.get("error") or "")
+
+    def test_params_set_and_clear_direct_agent(self):
+        """params 接口可改/可清 direct_agent（空闲态）；清空回内置智能体路径。"""
+        from app.core import store
+        task = store.create_task({
+            "type": "direct", "title": "参数改CLI", "goal": "你好",
+            "workdir": str(self.workdir),
+        })
+        self.assertNotIn("direct_agent", task)
+        ok, err = store.update_task_params(task["id"], {"direct_agent": "mock-b"})
+        self.assertTrue(ok, err)
+        self.assertEqual(store.get_task(task["id"]).get("direct_agent"), "mock-b")
+        ok, err = store.update_task_params(task["id"], {"direct_agent": ""})
+        self.assertTrue(ok, err)
+        self.assertEqual(store.get_task(task["id"]).get("direct_agent"), "")

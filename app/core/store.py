@@ -135,6 +135,11 @@ def create_task(payload):
         task["direct_model"] = _text(payload.get("direct_model"), "direct_model")[:160]
         if task["direct_model"] and not task["direct_provider_id"]:
             raise ValueError("指定对话模型时必须同时指定厂商")
+        # 手动指定执行 CLI（2026-09-23）：优先级高于模型绑定——运行时走该 CLI
+        # 的会话链而非内置智能体。存 id（如 codex-cli），可用性在运行时校验
+        da = _text(payload.get("direct_agent"), "direct_agent")[:80]
+        if da:
+            task["direct_agent"] = da
     # 代码版本：仅当引用合法才固化（流水线执行前据此检出任务分支）
     from . import gitmod
     git_rev = _text(payload.get("git_rev"), "git_rev")
@@ -1510,6 +1515,12 @@ def update_task_params(task_id, patch):
             if task.get("direct_provider_id") != pv or task.get("direct_model") != mv:
                 task["direct_provider_id"] = pv
                 task["direct_model"] = mv
+                changed = True
+            # 执行 CLI 可改/可清（清空 = 回内置智能体或模型绑定）；与模型绑定
+            # 允许共存，运行时 CLI 优先
+            av = str((patch or {}).get("direct_agent") or "").strip()[:80]
+            if task.get("direct_agent") != av and (av or task.get("direct_agent")):
+                task["direct_agent"] = av
                 changed = True
         if changed:
             _save_json(paths.TASKS_DIR / (task_id + ".json"), task)

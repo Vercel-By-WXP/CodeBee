@@ -192,6 +192,37 @@ class TestUpdateCacheInvalidation(BaseTest):
         self.assertEqual(rechecked, [], "失败不触发复检")
 
 
+class TestQwenStallPatch(BaseTest):
+    """qwencode 停滞看门狗配置的幂等迁移（2026-09-22 qwen MCP 收尾死锁案）。"""
+
+    def test_missing_stall_backfilled(self):
+        """老清单里 qwencode 无 stall_timeout_s → load 时补 900。"""
+        from app.core import catalog
+        entries = [{"id": "qwencode", "orch": {"kind": "qwen", "command": "qwen"}}]
+        catalog._apply_stall_patch(entries)
+        self.assertEqual(entries[0]["orch"]["stall_timeout_s"], 900)
+
+    def test_user_value_untouched(self):
+        """用户手写过的值（含显式 0 关闭）不覆盖。"""
+        from app.core import catalog
+        entries = [{"id": "qwencode",
+                    "orch": {"kind": "qwen", "command": "qwen", "stall_timeout_s": 0}}]
+        catalog._apply_stall_patch(entries)
+        self.assertEqual(entries[0]["orch"]["stall_timeout_s"], 0)
+
+    def test_other_entries_untouched(self):
+        from app.core import catalog
+        entries = [{"id": "mimo", "orch": {"kind": "generic", "command": "mimo"}}]
+        catalog._apply_stall_patch(entries)
+        self.assertNotIn("stall_timeout_s", entries[0]["orch"])
+
+    def test_default_catalog_carries_stall(self):
+        """内置默认清单里 qwencode 自带 stall（新装用户不走补丁也有看门狗）。"""
+        from app.core import catalog
+        qw = next(e for e in catalog.DEFAULT_CATALOG if e.get("id") == "qwencode")
+        self.assertEqual(qw["orch"]["stall_timeout_s"], 900)
+
+
 class TestAiderChannelPatch(BaseTest):
 
     def test_pip_form_migrated(self):

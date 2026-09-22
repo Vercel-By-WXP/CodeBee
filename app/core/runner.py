@@ -1276,9 +1276,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     elif kind == "claude":
         stall_t = _stall_timeout("TUTTI_CLAUDE_STALL_TIMEOUT", 600)
     else:
-        # 数据驱动：catalog orch.stall_timeout_s——给 kimi 这类边写边吐进度行的
-        # CLI 配置后，静默挂死 10 分钟即杀（不必耗满总超时）；qwen/mimo 这类
-        # 结束才一次性输出的留 0（开了必误杀），靠总超时兜底
+        # 数据驱动：catalog orch.stall_timeout_s——给 kimi/qwen 这类评审用
+        # CLI 配置后，静默挂死即杀（qwen 900s：2026-09-22 MCP 收尾死锁案）；
+        # mimo 等结束才一次性输出的仍留 0（开了必误杀），靠总超时兜底
         try:
             stall_t = max(0, int((agent.get("orch") or {}).get("stall_timeout_s") or 0))
         except Exception:

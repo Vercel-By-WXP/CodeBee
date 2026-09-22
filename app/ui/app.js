@@ -105,28 +105,59 @@ window.syncCmpSelFace = syncCmpSelFace;   // applyI18n 重译 option 后同步�
  * 菜单只改它们的值——既有提交流 / onTypeChange 显隐 / 测试全兼容。 */
 let cmpModelProv = "";   // ""=厂商级；否则=已钻入的厂商 id（模型级）
 
+/* 可指定为对话执行者的真实 CLI（手动指定 CLI，2026-09-23）：
+ * state.agents 即 effective_agents（已装+启用编排），mode=real 排掉 mock */
+function realCliAgents() {
+  return ((S.state && S.state.agents) || []).filter((a) => a && a.mode === "real");
+}
+
+function cmpDirectAgentVal() {
+  const el = $("f-direct-agent");
+  return el ? String(el.value || "").trim() : "";
+}
+
 function cmpDirectBtnSync() {
   const btn = $("f-direct-btn");
   if (!btn) return;
+  const av = cmpDirectAgentVal();
+  if (av) {
+    const a = realCliAgents().find((x) => x.id === av);
+    btn.textContent = (a ? (a.label || a.id) : av) + " · CLI";
+    return;
+  }
   const pv = $("f-direct-provider").value, mv = $("f-direct-model-name").value;
   if (!pv) { btn.textContent = t("自动推荐"); return; }
   const p = directProviders().find((x) => x.id === pv);
   btn.textContent = (p ? (p.name || p.id) : pv) + (mv ? "/" + mv : "/" + t("推荐"));
 }
 
+/* 菜单里「指定 CLI」分组（两级菜单复用同一段，差别只在真源变量）：
+ * entriesHtml(选中id, 空文案) 返回分组 HTML；空列表返回 "" */
+function cliMenuSectionHtml(selectedId) {
+  const clis = realCliAgents();
+  if (!clis.length) return "";
+  const chk = '<svg class="ico ti-check" aria-hidden="true"><use href="#i-check"></use></svg>';
+  return '<div class="type-menu-cap">' + t("指定 CLI") + "</div>" +
+    clis.map((a) =>
+      '<button type="button" class="type-item" data-cli="' + esc(a.id) + '"><span class="ti-body"><span class="ti-name">' +
+      esc(a.label || a.id) + "</span></span>" + (selectedId === a.id ? chk : "") + "</button>").join("");
+}
+
 function cmpModelMenuRender() {
   const menu = $("cmp-model-menu");
   if (!menu) return;
   const pv = $("f-direct-provider").value, mv = $("f-direct-model-name").value;
+  const av = cmpDirectAgentVal();
   const chk = '<svg class="ico ti-check" aria-hidden="true"><use href="#i-check"></use></svg>';
   const arr = '<svg class="ico ti-check" aria-hidden="true"><use href="#i-chevron-r"></use></svg>';
   if (!cmpModelProv) {
     menu.innerHTML =
       '<button type="button" class="type-item" data-p="" data-m=""><span class="ti-body"><span class="ti-name">' +
-        t("自动推荐") + "</span></span>" + (!pv ? chk : "") + "</button>" +
+        t("自动推荐") + "</span></span>" + (!pv && !av ? chk : "") + "</button>" +
       directProviders().map((p) =>
         '<button type="button" class="type-item" data-p="' + esc(p.id) + '"><span class="ti-body"><span class="ti-name">' +
-        esc(p.name || p.id) + "</span></span>" + (pv === p.id ? chk : arr) + "</button>").join("") +
+        esc(p.name || p.id) + "</span></span>" + (pv === p.id && !av ? chk : arr) + "</button>").join("") +
+      cliMenuSectionHtml(av) +
       '<div class="type-menu-foot"><button type="button" class="type-item" data-manage="1"><span class="ti-body"><span class="ti-name">' +
         t("管理模型…") + "</span></span></button></div>";
   } else {
@@ -162,10 +193,17 @@ window.toggleModelMenu = toggleModelMenu;
     // innerHTML 重写后 e.target 是已脱离 DOM 的旧节点，wrap.contains 会误判
     // false 而把刚钻取的菜单收掉（真机「点厂商没反应」根因）
     e.stopPropagation();
-    const b = e.target.closest("[data-p],[data-back],[data-manage]");
+    const b = e.target.closest("[data-p],[data-back],[data-manage],[data-cli]");
     if (!b) return;
     if (b.dataset.manage) { toggleModelMenu(false); switchTab("models"); return; }
     if (b.dataset.back) { cmpModelProv = ""; cmpModelMenuRender(); return; }
+    if (b.dataset.cli !== undefined) {
+      // 手动指定执行 CLI：写真源即可，模型绑定保留在任务上（运行时 CLI 优先）
+      $("f-direct-agent").value = b.dataset.cli;
+      cmpDirectBtnSync();
+      toggleModelMenu(false);
+      return;
+    }
     if (b.dataset.m === undefined) {
       // 点厂商 = 只钻取到模型级（用户拍板 2026-09-21：模型必须亲手点，
       // 不要自动带推荐）。真源不动——用户点了具体模型才写 provider/model。
@@ -175,7 +213,9 @@ window.toggleModelMenu = toggleModelMenu;
     }
     // 选定：写回隐藏 select 真源（提交流/回归测试全走原路径）。顺序关键：
     // 先让 provider 的 option 就位再赋值，否则 select.value 静默失效（真机
-    // 「没法选模型」根因：options 由 poll 重建，可能仍是残缺态）
+    // 「没法选模型」根因：options 由 poll 重建，可能仍是残缺态）。
+    // 选定模型/自动推荐同时清除 CLI 指定（三者互斥，模型生效=走内置智能体）
+    $("f-direct-agent").value = "";
     renderDirectModelPicker();
     $("f-direct-provider").value = b.dataset.p;
     renderDirectModelPicker();
@@ -2466,9 +2506,11 @@ async function createTask() {
   if (_eng === "code") {
     payload.verify_command = $("f-verify").value.trim();
   } else if (_eng === "direct") {
-    // 直连：目标+附件即全部输入，不带验证/评审参数
+    // 直连：目标+附件即全部输入，不带验证/评审参数；direct_agent 为空时走
+    // 内置智能体/模型绑定（后端按空串处理）
     payload.direct_provider_id = $("f-direct-provider").value;
     payload.direct_model = $("f-direct-model-name").value;
+    payload.direct_agent = cmpDirectAgentVal();
   } else {
     payload.manuscript = $("f-manuscript").value.trim() || "manuscript.md";
     payload.rounds = parseInt($("f-rounds").value, 10) || 2;
@@ -3153,6 +3195,8 @@ function newFromTask(id) {
     $("f-direct-provider").value = tk.direct_provider_id || "";
     renderDirectModelPicker();
     $("f-direct-model-name").value = tk.direct_model || "";
+    $("f-direct-agent").value = tk.direct_agent || "";
+    cmpDirectBtnSync();
   } else {
     $("f-manuscript").value = tk.manuscript || "manuscript.md";
     $("f-rounds").value = tk.rounds || 2;
@@ -7318,6 +7362,7 @@ function renderDetailOverview(run, runs, task) {
  * 回填自当前任务；改动即写任务（空闲态），发送 /chat 前再兜底同步一次。 */
 let rdPrefsTaskId = "";
 let rdModelPv = "", rdModelMv = "";   // 对话条当前模型选择（厂商 id + 模型名）
+let rdModelAgent = "";                // 手动指定的执行 CLI（空 = 不指定）
 
 function rdPrefsFill(task) {
   if (!task) return;
@@ -7328,6 +7373,7 @@ function rdPrefsFill(task) {
     rdPrefsTaskId = task.id;
     rdModelPv = task.direct_provider_id || "";
     rdModelMv = task.direct_model || "";
+    rdModelAgent = task.direct_agent || "";
   }
   ["rd-mode", "rd-thinking"].forEach((id) => syncCmpSelFace(id));
   rdModelFaceSync();
@@ -7336,6 +7382,11 @@ function rdPrefsFill(task) {
 function rdModelFaceSync() {
   const face = $("rd-model-btn");
   if (!face) return;
+  if (rdModelAgent) {
+    const a = realCliAgents().find((x) => x.id === rdModelAgent);
+    face.textContent = (a ? (a.label || a.id) : rdModelAgent) + " · CLI";
+    return;
+  }
   if (!rdModelPv) { face.textContent = t("自动推荐"); return; }
   const p = directProviders().find((x) => x.id === rdModelPv);
   face.textContent = (p ? (p.name || p.id) : rdModelPv) +
@@ -7353,10 +7404,11 @@ function rdModelMenuRender() {
   if (!rdMenuProv) {
     menu.innerHTML =
       '<button type="button" class="type-item" data-p="" data-m=""><span class="ti-body"><span class="ti-name">' +
-        t("自动推荐") + "</span></span>" + (!rdModelPv ? chk : "") + "</button>" +
+        t("自动推荐") + "</span></span>" + (!rdModelPv && !rdModelAgent ? chk : "") + "</button>" +
       directProviders().map((p) =>
         '<button type="button" class="type-item" data-p="' + esc(p.id) + '"><span class="ti-body"><span class="ti-name">' +
-        esc(p.name || p.id) + "</span></span>" + (rdModelPv === p.id ? chk : arr) + "</button>").join("") +
+        esc(p.name || p.id) + "</span></span>" + (rdModelPv === p.id && !rdModelAgent ? chk : arr) + "</button>").join("") +
+      cliMenuSectionHtml(rdModelAgent) +
       '<div class="type-menu-foot"><button type="button" class="type-item" data-manage="1"><span class="ti-body"><span class="ti-name">' +
         t("管理模型…") + "</span></span></button></div>";
   } else {
@@ -7389,13 +7441,21 @@ window.toggleRdModelMenu = toggleRdModelMenu;
   menu.dataset.rdBound = "1";
   menu.addEventListener("click", (e) => {
     e.stopPropagation();   // 同 cmp-model-menu：防「点外面收起」误判（DOM 重写竞态）
-    const b = e.target.closest("[data-p],[data-back],[data-manage]");
+    const b = e.target.closest("[data-p],[data-back],[data-manage],[data-cli]");
     if (!b) return;
     if (b.dataset.manage) { toggleRdModelMenu(false); switchTab("models"); return; }
     if (b.dataset.back) { rdMenuProv = ""; rdModelMenuRender(); return; }
+    if (b.dataset.cli !== undefined) {
+      rdModelAgent = b.dataset.cli;
+      rdModelFaceSync();
+      toggleRdModelMenu(false);
+      rdPrefsPush("model");
+      return;
+    }
     if (b.dataset.m === undefined) { rdMenuProv = b.dataset.p; rdModelMenuRender(); return; }
     rdModelPv = b.dataset.p;
     rdModelMv = b.dataset.m;
+    rdModelAgent = "";   // 选定模型/自动推荐：CLI 指定随之清除（互斥）
     rdModelFaceSync();
     toggleRdModelMenu(false);
     rdPrefsPush("model");
@@ -7420,6 +7480,7 @@ async function rdPrefsPush(what) {
   if (what === "model") {
     patch.direct_provider_id = rdModelPv;
     patch.direct_model = rdModelMv;
+    patch.direct_agent = rdModelAgent;
   }
   try {
     await api("/api/tasks/" + encodeURIComponent(task.id) + "/params", {
@@ -9116,6 +9177,11 @@ function autoPrefTags(tsk) {
   }
   if (tsk.thinking && tsk.thinking !== "standard" && TH[tsk.thinking]) {
     out.push(t("思考程度") + t("：") + t(TH[tsk.thinking]));
+  }
+  if (tsk.direct_agent) {
+    const a = realCliAgents().find((x) => x.id === tsk.direct_agent) ||
+      ((S.state && S.state.agents) || []).find((x) => x.id === tsk.direct_agent);
+    out.push(t("执行 CLI") + t("：") + (a ? (a.label || a.id) : tsk.direct_agent));
   }
   if (tsk.direct_provider_id) {
     const p = directProviders().find((x) => x.id === tsk.direct_provider_id);

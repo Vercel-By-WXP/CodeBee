@@ -6076,3 +6076,13 @@ button.request-busy > * { opacity: .18; }
   display: block; width: 100%; height: min(72vh, 660px);
   border: none; border-radius: 10px; background: #fff;
 }
+
+/* 对话模型菜单里的 CLI 分组标题（2026-09-23 手动指定 CLI）：与底部
+ * 「管理模型…」同款弱化字重，但不可点，仅作分组界碑。 */
+.type-menu-cap {
+  padding: 7px 14px 3px;
+  font-size: 11px; font-weight: 600; letter-spacing: .04em;
+  color: var(--muted);
+  border-top: 1px solid var(--line, rgba(127,127,127,.18));
+  margin-top: 4px;
+}

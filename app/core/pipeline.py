@@ -1481,11 +1481,31 @@ def _run_direct(run, task, agents, ev, stats, mode):
     route = {}
     resume_ctx = _valid_resume(task, agents)
     bi = None
+    impl = None
     direct_provider = (task.get("direct_provider_id") or "").strip()
     direct_model = (task.get("direct_model") or "").strip()
+    direct_agent = (task.get("direct_agent") or "").strip()
     direct_difficulty = ("hard" if task.get("thinking") == "high" else
                          "easy" if task.get("thinking") == "low" else "default")
-    if resume_ctx is None and direct_provider:
+    if resume_ctx is None and direct_agent:
+        # 手动指定执行 CLI（2026-09-23）：用户点名压过一切自动（模型绑定/
+        # 自动推荐/路由）。目标未启用编排时按续会话语义注入（installed_agent
+        # 无视启停开关）——显式指定不该被「参与编排」开关否决。
+        impl = _pick(agents, direct_agent)
+        if impl is None:
+            extra = registry.installed_agent(direct_agent, catalog.load(),
+                                             manager.detect_all())
+            if extra:
+                agents.append(extra)
+                impl = extra
+        if impl is None:
+            store.update_run(run_id, expected_status="running", status="failed",
+                             error="指定的执行 CLI「%s」不可用（未安装或未检测到），"
+                                   "请在对话条改回自动推荐，或到目录页先安装" % direct_agent,
+                             ended_at=_now())
+            return
+        route["implementer"] = "%s（手动指定 CLI）" % (impl.get("label") or impl.get("id"))
+    elif resume_ctx is None and direct_provider:
         bi = builtin_agent.resolve(direct_provider, direct_model, direct_difficulty)
         if bi is None:
             store.update_run(run_id, expected_status="running", status="failed",
@@ -1507,6 +1527,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
     elif resume_ctx is not None:
         impl = resume_ctx["agent"]
         route["implementer"] = resume_ctx["note"]
+    elif impl is not None:
+        pass          # 手动指定 CLI 已就位（route 亦已写）
     elif mode == "manual":
         impl, _ = _pick_implementer(agents, task.get("implementer"))
     else:

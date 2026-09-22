@@ -128,3 +128,41 @@ class TestRunProcessRepeatedFatalOutput(BaseTest):
         self.assertFalse(res["ok"])
         self.assertLess(time.time() - started, 10)
         self.assertIn("同一网络错误重复 5 次", res["stderr"])
+
+
+class TestRunProcessStallWatchdog(BaseTest):
+    """静默挂死（进程活着、输出归零）由 stall_timeout 提前收尸。
+
+    2026-09-22 qwen 全书总评实案：CLI 吐完评审内容后卡在 MCP 收尾死锁，
+    stall=0 时只能干等 2400s 总超时。"""
+
+    def test_silent_hang_killed_by_stall(self):
+        from app.core.runner import run_process
+        child_script = (
+            "import time\n"
+            "print('boot ok', flush=True)\n"
+            "time.sleep(60)\n"
+        )
+        started = time.time()
+        res = run_process(
+            argv=[sys.executable, "-c", child_script], timeout=30,
+            stall_timeout=2)
+        self.assertTrue(res["stalled"])
+        self.assertTrue(res["timed_out"])
+        self.assertFalse(res["ok"])
+        elapsed = time.time() - started
+        self.assertGreaterEqual(elapsed, 1.5)      # 确实等了一段静默才杀
+        self.assertLess(elapsed, 10)               # 远小于总超时
+        self.assertIn("输出停滞 2s", res["stderr"])
+        self.assertIn("boot ok", res["stdout"])    # 杀前已输出内容不丢
+
+    def test_qwen_agent_carries_stall_from_catalog(self):
+        """qwen 的看门狗配置真源在 catalog orch.stall_timeout_s（runner 侧读取）。"""
+        from app.core import catalog
+        qw = next(e for e in catalog.DEFAULT_CATALOG if e.get("id") == "qwencode")
+        self.assertEqual(int(qw["orch"].get("stall_timeout_s") or 0), 900)
+        # 存量老数据形态：补丁补齐为 900
+        entries = [{"id": "qwencode",
+                    "orch": {"kind": "qwen", "command": "qwen"}}]
+        catalog._apply_stall_patch(entries)
+        self.assertEqual(entries[0]["orch"]["stall_timeout_s"], 900)

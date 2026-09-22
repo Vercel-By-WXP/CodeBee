@@ -64,7 +64,10 @@ DEFAULT_CATALOG = [
         "note": "通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入"
                 "写 settings.json 的 env 段（OPENAI_*，qwen 存在即优先 openai 兼容通道）",
         "detect": {"cli": "qwen"},
-        "orch": {"kind": "qwen", "command": "qwen"},
+        # stall_timeout_s：静默 15 分钟即杀（2026-09-22 全书总评实案：qwen 吐完
+        # 评审内容后卡在 MCP 收尾死锁，输出归零但进程活着，stall=0 时只能干等
+        # 2400s 总超时；900s 取「评审模型调用常见上限 5 分钟」的 3 倍，防误杀）
+        "orch": {"kind": "qwen", "command": "qwen", "stall_timeout_s": 900},
         # settings.json 顶层 "model" 已是 legacy（qwen 忽略并告警，新格式是
         # model.name）——模型落盘由打开注入器写 OPENAI_MODEL env 负责，
         # 这里不再走 write_model
@@ -316,6 +319,21 @@ def _apply_config_patch(entries):
             e["config"] = dict(patch)
 
 
+def _apply_stall_patch(entries):
+    """存量数据幂等补齐：qwencode 补 stall_timeout_s=900（2026-09-22 实案）。
+
+    data/catalog.json 生成后不会再随版本重写，老清单里的 qwencode 没有
+    停滞看门狗配置（当时按「结束才一次性输出」留 0）；实际验证 qwen 评审
+    会先流式吐内容再卡死在 MCP 收尾，静默看门狗能兜住。用户手写过该字段的
+    不覆盖（包括显式写 0 关闭的）。"""
+    for e in entries:
+        if e.get("id") != "qwencode":
+            continue
+        orch = e.get("orch")
+        if isinstance(orch, dict) and "stall_timeout_s" not in orch:
+            orch["stall_timeout_s"] = 900
+
+
 def _apply_install_patch(entries):
     # Aider 渠道整体迁移到 uv tool（跨平台、含存量数据幂等修正）：anaconda 的
     # py -3.13 装 aider 必挂在 numpy 源码构建（老 setuptools 引用 py3.12 已删除
@@ -371,6 +389,7 @@ def load(force=False):
         _apply_launch_patch(entries)
         _apply_config_patch(entries)
         _apply_install_patch(entries)
+        _apply_stall_patch(entries)
         _CACHE["entries"] = entries
         return entries
 
