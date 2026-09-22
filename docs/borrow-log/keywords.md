@@ -1,11 +1,13 @@
-# 关键词总库（全类型覆盖版 · 140 组 + 雷达源）
+# 关键词总库（全类型覆盖版 · 147 组 + 雷达源）
 
 > 夜间自动化检索的完整词库。规则：每轮跑 **常驻组全部 + 轮换池按当前小时数对 7 取模选 1 批（余 0=批7）+ 雷达源全部**；
 > 双轮排序（sort=stars 与 sort=updated 或 created:>2026-03-01 新锐轮）；核心组翻页 page=2
->（满页才翻，最多 page=3）；GitHub API 未认证限流 10 次/分，请求间 sleep 6-8 秒；
+>（满页才翻，最多 page=3）；GitHub API 限流：**认证调用（gh api）搜索接口是 30 次/分**——
+> 2026-09-22 实测无间隔连打必然一批 403（本轮 85 组首轮撞限、补跑才拿到），
+> **一律间隔 sleep 4 秒起**；未认证脚本调用仍是 10 次/分、间隔 6-8 秒；
 > 结果高度重合即跳余页省配额。新增关键词直接编辑本文件并在行尾标注（谁/何时/为何）。
 
-## A. 常驻组（每轮全跑，71 组）
+## A. 常驻组（每轮全跑，78 组）
 
 ### A1 核心编排（8 组，翻页）
 - q=multi-agent+orchestration
@@ -101,6 +103,15 @@
 - q=multi+platform+content+publishing+agent（多平台内容分发）
 - q=reader+feedback+analysis+ai（读者反馈分析）
 - q=chapter+hook+optimization+OR+serial+pacing（章节钩子/节奏优化）
+
+### A13 多 CLI 面板 / 用量指标 / 运行守卫（7 组，2026-09-22 新增——本轮实测命中一整簇同形态竞品与「不信任自报」护栏族）
+- q=agent+dashboard+OR+multi+agent+cli+panel（多 CLI 统一面板/看板——OmniTerm/adhdev/CPA-Manager-Plus 一簇）
+- q=claude+code+web+ui+OR+codex+web+terminal（Web 形态的多 CLI 界面）
+- q=llm+usage+metrics+OR+token+throughput+dashboard（用量/速度/缓存命中指标——opencode-metrics 方向）
+- q=agent+credential+vault+OR+secret+management+agent（凭据保险库——sandbase-harness 方向）
+- q=agent+out+of+scope+edit+OR+scope+creep+agent+OR+half+finished+agent（越范围/半成品守卫——agent-delegate/scopebond 族）
+- q=proof+gated+completion+OR+agent+self+report+trust（证据门禁/不信任自报——2026 下半年共识信号）
+- q=defect+retrospective+ai+OR+bug+postmortem+agent（缺陷复盘——禅道生态 test-defect-retrospective 方向）
 
 ## B. 轮换池（69 组，按当前小时选批：小时 % 7，余 1=批1 … 余 6=批6，余 0=批7；如 08 点→批1、10 点→批3）
 
