@@ -21,6 +21,11 @@ Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
 不会把你的任务内容交给任何第三方。
 
 <!-- relnotes:start -->
+### 🛠 问题修复 · Fixes
+
+- 智能体读超大文件不再只给开头：保留开头 44KB+结尾 16KB、中段标注省略——文件末尾的报错与结论不再被截掉，结尾中文不乱码。
+- Reading oversized files no longer keeps only the head: 44KB head + 16KB tail with the middle elided — end-of-file errors and conclusions survive, and trailing Chinese text stays intact.
+
 ### ✨ 新功能 · New
 
 - 经验库新增「有效做法」记忆：高分一次通过的任务会把「做对了什么」提炼成可复用步骤，下次同类任务自动注入照做；绿色「做法」徽章一眼区分。
