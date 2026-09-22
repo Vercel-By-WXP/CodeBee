@@ -606,3 +606,36 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - A 组复查全活跃无增量事故
 
 **✅ 本班落地**：教训列表 karma 感知排序（list_lessons）——UI 列表首键改为 won-lost（有效教训居首、净失守沉底不删除），hits/seen 降为次级键；注入排序（relevance_top）不受影响（相关性仍第一优先，单独测试锁死）。test_lesson_karma_order 3 项 + skills 域回归 19 项绿
+
+### 2026-09-23 06:00 第三十七班（批6：框架/平台/SDK + A1 深度轮首跑——ZCode 排程班，含 34/35 班欠账补录）
+
+- **mattpocock/skills**（267,590★）| Matt Pocock 工程师技能库（.agents 目录直出）| superpowers（290.1k）首次出现同量级挑战者，技能生态双巨头格局 | 大盘
+- **affaan-m/ECC**（265,116★）| harness 性能优化系统（skills+instincts+memory+security+research-first）| 「instincts（直觉层）」= 介于教训与技能之间的自动触发层，概念新 | 待深挖
+- **NousResearch/hermes-agent**（247,983★）| 「The agent that grows with you」官方 agent | 成长叙事大厂印证（记忆+个性长期演进）| 参考
+- **deepseek-ai/deepseek-harness**（233,179★）| DeepSeek 官方 harness「Everything is a Plugin」| dsh 已接——官方开源，插件体系可对照 | E 生态事实
+- **anomalyco/opencode**（209,332★）| opencode 现于 anomalyco org 名下 | 已接通道上游变动持续跟踪 | 生态事实
+- **sickn33/agentic-awesome-skills**（46,784★）+ **K-Dense-AI/scientific-agent-skills**（46,116★）| 本地 agent 优先技能控制面 / 科学技能第一库 | 技能生态 4 万级新库×2 | 大盘
+- **googleworkspace/cli**（31,100★）+ larksuite/cli 17.4k | Google/飞书官方 CLI 明示 built for agents | 办公巨头集体开 agent CLI | 生态事实
+- **Hmbown/Codewhale**（41,030★）Rust 终端 agent + **herdrdev/herdr**（40,177★）跃升 | E 候选 +1 / 星数跃升（均未装防死链）| 候选雷达
+- **musistudio/claude-code-router**（37,375★）| 本地控制面：跨模型路由+能力融合+工具编排 | 绑定链/网关同域头部 | 参考
+- **tashfeenahmed/freellmapi**（27,987★）| 34 家免费供应商 635 端点一个 /v1 | 免费通道聚合，配额稳定性存疑 | 待深挖
+- **Tencent/AI-Infra-Guard**（6,550★）+ NVIDIA/SkillSpector 18,070★ + msoedov/agentic_security 2,004★ | Agent/Skills/MCP 扫描同族三例（两家大厂+一家安全厂）| 市场「装前扫描」路线外部证据 +3 | 方向验证
+- **FailproofAI/failproofai**（5,113★）| harness 可观测+策略强制 | 「不信任自报」族 +1 | 方向验证
+- **bytebase/bytebase**（14,503★）| 「Database governance built for humans and agents」| 传统 DevOps 工具给 agent 留治理位的信号 | 参考
+- **cordum-io/cordum**（508★）| 「action firewall」风险工具调用前置策略与人工审批 | 与全权沙箱+零工具闸互补（事后鉴别 vs 事前拦截）| 借鉴方向（高危工具前置审批，远期）
+- **strands-agents/harness-sdk**（7,551★，今日推）| 「Build an agent harness and control it end-to-end」开源 SDK | AWS 系 strands 押注 harness 概念 | E 生态事实
+- **google/agents-cli**（5,980★，今日推）| Google 官方 agent CLI+skills | 巨头 CLI+skills 生态再 +1 | E 生态事实
+- **the-open-engine/zeroshot**（1,858★，今日推）| 「Independent executor–verifier orchestration」执行-验证分离 | 与跨厂商评审/不信任自报同族，且是 A1u 新锐轮首个有分量命中（深度轮价值实证）| 方向验证
+- **NirDiamant/agents-towards-production**（21,487★）| 生产级 GenAI agent 教程全集 | 方法论库 | 参考
+- 小标速记：omnigent 10.2k（meta-harness）/ cc-haha 14.7k（桌面工作台）/ huobao-drama 15.4k（短剧成片）/ opensquilla 7k（智能密度）/ wigolo 5.4k（本地调研 MCP）/ univer 15k（office harness）/ zenstory-ai/oh-story-claudecode 7.1k（已借鉴来源产品化爆发）/ aegra 1.2k（LangGraph Platform 开源替身）/ agentscope-runtime 872（沙箱+A2A 运行时）/ agentcn 476（shadcn for agents）/ dapr-agents 749
+- 复查：mastra 28.3k/vercel-ai 26.9k/spec-kit 138.4k/OpenSpec 69.9k/GSD 64.5k/codegraph 71.8k/graphiti 31.1k/cognee 30.9k/axonhub 5.3k 复查活跃；中文组噪声结论四度验证
+
+**✅ 本班落地**：scan 脚本双轮排序+A1 翻页（35 班已落，本班深度轮首跑 109 组 520 条零失败实证）；knowledge.md 34/35/37 班增量欠账本条补清
+
+### 2026-09-23 06:01 第三十六班（批6：框架/平台/SDK 生态 + OpenCreator 深挖）
+
+- **OpenCreator（12,193★，前 KrillinAI，Apache-2.0）深挖完成** | 创作者 AI 工作台：**Codex 原生复用**（不自建 agent 循环，直接复用 Codex 的模型/推理/工具调用/会话/Skills/MCP——只加稳定本地 Runtime+可视化工作台+桌面壳）；双模式（可视化工具/Agent 对话）共享一个状态机；**版本化**（每次修订新版本保留旧设置产出供对比）；yt-dlp 等运行时组件托管更新（失败保旧版）；创作模板可复用 | **与 CodeBee 对比**：我们多 CLI 异构编排+跨厂商评审是它没有的；它的「版本化对比」与「模板库」值得借鉴 | 借鉴方向：版本化（我们的 run 历史已有雏形）进待深挖
+- 批6 主体重合（spec-kit 138k 一类不在本批；A2A 官方 25.9k/vercel-ai 26.9k/mastra 28.2k 复查活跃）。新锐小标：godmode/claude-codex-bridge/windows-agent-orchestrator（Windows 专用编排）| 雷达
+- A 组全活跃无增量事故
+
+**✅ 本班落地**：偏好记忆补全 direct 对话模型字段——SAVE_KEYS 新增 direct_provider/direct_model/direct_thinking（厂商 id/模型名截断 64、推理档闭集校验、空串不覆盖），direct 用户下次新建沿用上次手选；test_prefs 扩至 8 项

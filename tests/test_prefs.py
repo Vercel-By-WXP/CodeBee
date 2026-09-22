@@ -51,6 +51,32 @@ class PrefsTests(BaseTest):
         self.assertEqual(p["words_per_chapter"], 3000)
         self.assertEqual(p["variants"], 2)
 
+    def test_direct_model_prefs_recorded(self):
+        """direct 类型对话模型偏好（2026-09-23 补全）：厂商/模型/推理档被记住。"""
+        from app.core import prefs
+        prefs.record({"type": "direct", "direct_provider": "prov-a",
+                      "direct_model": "glm-5.3", "direct_thinking": "high"})
+        p = prefs.load()
+        self.assertEqual(p["direct_provider"], "prov-a")
+        self.assertEqual(p["direct_model"], "glm-5.3")
+        self.assertEqual(p["direct_thinking"], "high")
+
+    def test_direct_string_fields_truncated_and_blank_ignored(self):
+        """字符串截断 64；空串不覆盖已有值（清空不等于改选）。"""
+        from app.core import prefs
+        prefs.record({"direct_provider": "p" * 100, "direct_model": ""})
+        p = prefs.load()
+        self.assertEqual(p["direct_provider"], "p" * 64)
+        self.assertNotIn("direct_model", p)   # 空串被忽略
+
+    def test_direct_thinking_choice_validated(self):
+        """推理档走闭集校验：非法值丢弃。"""
+        from app.core import prefs
+        prefs.record({"direct_thinking": "ultra"})
+        self.assertNotIn("direct_thinking", prefs.load())
+        prefs.record({"direct_thinking": "LOW"})    # 大小写归一
+        self.assertEqual(prefs.load()["direct_thinking"], "low")
+
 
 if __name__ == "__main__":
     unittest.main()

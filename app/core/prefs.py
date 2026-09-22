@@ -15,14 +15,19 @@ from . import paths
 _LOCK = threading.Lock()
 
 SAVE_KEYS = ("type", "rounds", "threshold", "best_of", "chapters",
-             "words_per_chapter", "variants", "mode", "thinking")
+             "words_per_chapter", "variants", "mode", "thinking",
+             # direct 类型的对话模型偏好（2026-09-23 补全偏好记忆覆盖面）：
+             # 厂商 id/模型名/推理档——下次新建 direct 任务沿用上次手选
+             "direct_provider", "direct_model", "direct_thinking")
 _LIMITS = {"rounds": (1, 5), "threshold": (1.0, 10.0), "best_of": (1, 3),
            "chapters": (1, 2000), "words_per_chapter": (200, 20000),
            "variants": (1, 3)}
 _CHOICES = {
     "mode": ("auto", "fast", "expert", "manual"),
     "thinking": ("auto", "low", "standard", "high"),
+    "direct_thinking": ("auto", "low", "standard", "high"),
 }
+_STR_KEYS = ("type", "direct_provider", "direct_model")   # 自由字符串截断白名单
 
 
 def _file():
@@ -51,10 +56,10 @@ def record(payload):
             v = payload.get(key)
             if v is None:
                 continue
-            if key == "type":
-                v = str(v)[:32]
+            if key in _STR_KEYS:
+                v = str(v).strip()[:64]
                 if v:
-                    cur["type"] = v
+                    cur[key] = v
                 continue
             if key in _CHOICES:
                 v = str(v).strip().lower()
