@@ -537,3 +537,12 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **✅ 禅道扫描间隔分钟化确认**（用户「默认是5分钟吧」核实）：后端 interval_minutes 全迁（默认 5 分钟/最小 5/最大 7 天，老 interval_hours 自动换算：默认 2h→5min、非默认×60）、前端「扫描间隔 N 分钟 min=5 step=5」、i18n 齐——已在 HEAD（并行代理落地），本轮验证无 hours 残留（自动化任务的 interval_hours 是另一特性，单位本就是小时）
 - D 项里程碑：教训 78→**85 条**（+7）——程序性记忆「做法：」+outcome 加权上线后自学习环路开始复利
 - 基线分支 datalist 下拉（ztRevFill）与模块清单形状兼容（响应顶层键提示）确认已在 HEAD
+
+### 2026-09-22 16:03 第三十班（批2 复跑：学习记忆与自我改进）
+
+- **happier**（happier-dev，1,702★）新入库 | Web/桌面/移动三端客户端+编排器（Codex/Claude Code/OpenCode/Pi/Cursor/Grok/Antigravity 七 CLI）| 多端形态对标（我们 Web+桌宠，无移动端编排面——手机连接是只读远控）| 参考
+- **loop-engineering**（cobusgreyling，11,278★ +1.2k 增量）复查活跃 | loop 工程实用模式/starters/CLI 工具集 | 方法论库持续吸收 | 参考
+- 新锐小标：cantos-plugin（自改进多代理一键插件）/agent-queue（Discord 管理 agent 队列+自动恢复）/Himmel（managed harness：hooks/guardrails/slash）| 雷达
+- B2 组主体与上轮重合（memgram/MemRL/pro-workflow/projectmem 均已入库）
+
+**✅ 本班落地**：知识库近似题合并（自动学习防膨胀）——upsert_entry 此前只做精确同题指纹去重，「X 优化」与「X 优化指南」各建一条；现在同 scope 标题 bigram **包含度**（交集/较短者）≥0.8 归并为同一条（用包含度而非 Jaccard：追加后缀形态 Jaccard 只有 0.71 被漏，包含度=1.0），合并/修订语义与精确同题完全一致（approved 保护不打折）；<4 字符短题只认精确（bigram 噪声大）。test_kb_near_dup 6 项（度量界/归并/不相似分离/跨 scope/短题/approved 保护）

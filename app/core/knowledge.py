@@ -82,12 +82,29 @@ def list_entries(scope=None, status=None, tag=None, only_enabled=False):
     return items
 
 
+def _title_sim(a, b):
+    """标题近似度：字符 bigram 的包含度（交集 / 较短者，中文友好零分词）。
+    用包含度而非 Jaccard：「X」vs「X 指南」的较短者完全被包含 →1.0，
+    Jaccard 却因并集分母只有 0.71——追加后缀是自动提炼最常见的重复形态。
+    复用 skills 的 bigram 工具，口径与教训库一致。"""
+    ga, gb = skills._text_bigrams(a), skills._text_bigrams(b)
+    if not ga or not gb:
+        return 0.0
+    return len(ga & gb) / float(min(len(ga), len(gb)))
+
+
+_NEAR_DUP_SIM = 0.8    # 同 scope 标题包含度 ≥0.8 视为同一条（近似题合并）
+
+
 def upsert_entry(scope, title, body, tags=None, source="", source_file="",
                  as_of=None, status="draft"):
     """写入/合并一条知识。同 scope 同标题视为同一条（指纹去重）：
     - 已有条目是 approved 且新条是 draft：不覆盖正文（人工确认过的内容优先），
       新内容记入 revisions 作为修订候选，seen+1；
     - 其余情况（已有是 draft，或新条是 approved）：正文取新。
+    近似题合并（自动学习防膨胀）：同 scope 标题 bigram 包含度 ≥0.8 也
+    视为同一条——自动提炼每次 done 运行都跑，「X 优化」与「X 优化指南」
+    会各建一条把库撑爆；归并走与精确同题完全相同的合并/修订语义。
     返回条目；title/body 为空返回 None。"""
     title = str(title or "").strip()[:80]
     body = str(body or "").strip()[:1500]
@@ -100,9 +117,19 @@ def upsert_entry(scope, title, body, tags=None, source="", source_file="",
     with _LOCK:
         data = _load()
         items = data.setdefault("entries", [])
-        for it in items:
-            if it.get("id") != kid:
-                continue
+        hit = next((x for x in items if x.get("id") == kid), None)
+        if hit is None:
+            # 近似题扫描（精确未命中才做；<4 字符标题噪声大，只认精确同题）
+            if len(title) >= 4:
+                for x in items:
+                    if x.get("scope") != scope:
+                        continue
+                    xt = str(x.get("title") or "")
+                    if len(xt) >= 4 and _title_sim(title, xt) >= _NEAR_DUP_SIM:
+                        hit = x
+                        break
+        if hit is not None:
+            it = hit
             it["seen"] = int(it.get("seen") or 1) + 1
             if status == "approved" or it.get("status") != "approved":
                 it["body"] = body
