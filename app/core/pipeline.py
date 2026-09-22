@@ -2160,6 +2160,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         kb = knowledge.block_for(task)
         if kb:
             tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % kb, 1)
+        # 确定性检测（AI 味/叙事架构/节奏）此前只挂在单稿件评审上，连载逐章
+        # 从未拿到——逐章节奏与钩子恰恰最需要这条参考线（命中才追加，不扣分）
+        tpl = aiflavor.inject_into_prompt(tpl, text, task.get("type"))
         return tpl.replace("__DIMKEYS__", dimkey).replace(
             "__MANUSCRIPT__", text or "（稿件为空！）")
 
@@ -3341,11 +3344,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         if task.get("context"):
             crit_prompt += "\n\n## 原始任务背景与附件参考\n" + task["context"]
         # AI 味确定性检测（借鉴 oh-story 去AI味）：客观参考线随评审下发，
-        # 命中才追加——评审官结合上下文判断是否真问题，脚本不直接扣分。
-        # kind 传任务类型：节奏检测只对叙事类流程（小说/连载/短视频脚本）有意义。
-        _aiflavor_line = aiflavor.report_line(manuscript, task.get("type"))
-        if _aiflavor_line:
-            crit_prompt += "\n\n## 确定性检测结果（供评审参考）\n" + _aiflavor_line
+        # 命中才追加——评审官结合上下文判断是否真问题，脚本不直接扣分
+        crit_prompt = aiflavor.inject_into_prompt(crit_prompt, manuscript, task.get("type"))
         for agent in critics:
             role = "critique-r%d" % r
             if agent.get("mode") == "mock":

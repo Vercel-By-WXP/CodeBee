@@ -6,6 +6,7 @@ data/
 Thumbs.db
 .ui-shots/
 .zcode/
+.codebee/
 tests/_shots/
 .aider*
 tmp_wm_*.png

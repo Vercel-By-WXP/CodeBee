@@ -507,3 +507,26 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - A 组复查全活跃无增量事故
 
 **✅ 本班落地**：read_file 头尾保留中段省略（**TokenJuice 差量清账**，openhuman 借鉴）——超 64KB 文本文件从「纯截头」改为头 44k+尾 16k+中段省略标注：日志/代码的报错与结论常在文件尾部，纯截头把最关键的信息丢了；尾段多字节残缺剥头防乱码；工具描述同步。test_read_elide 4 项 + 既有截断断言升级
+
+### 2026-09-22 12:00 第二十九班（批5：检索/知识/浏览器 + 全类型雷达）
+
+- **multica-ai/multica**（51,033★，Go，新巨型标）入库 | **「Agents that show up on the board」**：把工作派给 AI 编码 agent 的方式和派给同事一样——agent 认领 issue、汇报进度、抛出阻塞、交回待评审；自托管、支持 26 种 agent CLI、无锁定 | **与 CodeBee 对比**：我们=任务类型先行（13 种预置流程 × 多智能体编排）；multica=看板先行（issue 为中心，agent 是「会出现在看板上的队友」）。差量=**看板/issue 视角的任务组织**（我们已有蜂巢工作台与运行详情，但没有「agent 主动汇报阻塞/进度」的反向通道——我们只有指挥信箱单向递话）| 参考（看板视角可作 UI 远期方向；「agent 汇报阻塞」与我们「待裁决」同向）| 2026-09-22
+- **sandbaseai/sandbase-harness**（649★，Apache-2.0，TS）入库 | 本地优先自托管 agent runtime + MCP bridge：沙箱会话（local/Docker/K8s worker）、**凭据保险库**、权限策略与审批、审计与回放（resumable event streams）、本地 Console；本地 SQLite+文件，无强制托管控制面 | **与 CodeBee 对比**：我们的沙箱=CLI 自带（全权模式），凭据=config.json 明文，审计=usage 台账+错误台账，回放=运行详情。差量=**凭据保险库**（密钥集中托管而非明文落配置）与**可续传事件流**（我们在进程崩溃后靠 run 状态恢复，事件流不续传）| 参考/待深挖（凭据保险库独立成项）| 2026-09-22
+- **GDWhisper/OmniTerm**（10★，新锐）| 「一个浏览器标签页看住并驱动每一个 AI 编码 agent」——Claude Code / Codex CLI / opencode / pi / omp / qoder / Antigravity 的 Web UI，tmux 支撑的会话 | **与 CodeBee 同形态的直接新锐竞品**（多 CLI 统一 Web 面）；我们的差异在「任务类型 × 流程 × 评审门禁」，它的差异在「tmux 会话直连终端」| 雷达（同形态持续跟踪）| 2026-09-22
+- **copse-dev/agent-pane**（1★，AGPL-3.0，Electron）| 桌面 AI 编码助手：agent 对话 + Monaco 编辑器 + 终端 + git 变更 + 内嵌浏览器同屏；**「看见工作而不只是答案」**（工具活动/diff/命令/子代理/失败都留在对话里）；无法安全应用的编辑**等用户批准**；越出沙箱的动作先问；可复用已有的 Cursor skills/MCP | **与 CodeBee 对比**：我们的详情页有步骤/日志/蜂巢/版本页签，但对话与编辑器/终端不同屏；差量=**应用不了的编辑排队等批准**（我们审批停在任务级「待裁决」，不到文件级）| 参考 | 2026-09-22
+- **laika56/agent-delegate**（★新锐，护栏）| 无人值守编码 agent 的守卫：抓 **exit-0-但无改动**、**越范围编辑（out-of-scope edits）**、**半成品收工** | **与我们对比**：exit-0-无改动=我们的实现步零工具闸（VENDOR_REFUSAL，已落地）；差量=**越范围编辑检测**（对照任务声明的文件范围，改了范围外的文件就报）与**半成品检测**（声明完成但留 TODO/未接线）| 借鉴方向（越范围检测，代码任务）| 2026-09-22
+- **avouro-com/scopebond** / **firstbitelabsllc/shadow** / **SanHsien/agent-cortex** / **floccose-burner9185/wow-harness**（均新锐）| 同族四例：范围检查点阻断越界编辑 / 「一个持久计划 + 原子认领 + 证据门禁的完成」/ 交付层「Candidate-Verification-Independent Review-CompletionRecord，**不接受 agent 自报完成**」/ 用自动验证+严格评审门禁+完成强制治理 Claude Code | **共同信号：2026 下半年编码 agent 的共识是「不信任自报」**——与我们事件流计数鉴别谎报、跨厂商评审、待裁决完全同向；差量集中在「证据门禁」的具体形态 | 方向验证 | 2026-09-22
+- **naman159/continuum**（新锐）| 长文写作 agent 的**记忆层**（与 planning-with-files 同族的写作特化） | 与我们圣经+前情提要同域；无新机制 | 参考 | 2026-09-22
+- **xinghe-labs/novel-studio**（新锐）| 长篇小说的**零依赖 Python 工作流引擎 + 事务性 canon**（transactional canonical）| **「事务性正典」思路值得记**：世界观改动要么全量生效要么回滚——我们圣经是整篇重写（无事务概念）| 参考 | 2026-09-22
+- **dungnotnull/web-novel-pacing-analyzer**（4★）已落地 | 连载作品的章级**节奏审计**：章节节奏、**钩子密度**、留存风险 | 与我们 aiflavor 同路（确定性统计 → 评审参考线）；**已抄**：pacing_analyze（段落淤积/对话占比/开篇抓力/章末钩子）| 已落地 | 2026-09-22
+- **jackela/Novel-Engine**（6★）| 自托管 AI 小说工作室：**volume-aware drafting with beats**、常驻协作 | 与我们刚落的「分卷」同向（分卷边界+卷弧光）——验证方向 | 参考 | 2026-09-22
+- **existential-birds/beagle**（83★）/ **hashgraph-online/awesome-ai-plugins**（319★）/ **adqr5270/skill-manager** / **wingsky-1/dsh-plugin-hub** | skills/插件聚合清单与同步器 | 三问（重合度/可直读性/用户会搜吗）回答不好——**不接市场，雷达跟踪**（与上轮 anbeime/skill 结论一致）| 参考 | 2026-09-22
+- **nxxxsooo/opencode-metrics**（4★）| OpenCode TUI 每会话侧栏指标：**tokens/sec、TTFT（首字延迟）、token 数与缓存命中** | 与我们用量台账对比：我们有 token 数与费用，**缺「速度与缓存命中率」这两个用户可直接感知的量**；token_meter 已记 cached 但未在 UI 露出 | 借鉴方向（用量页加 缓存命中率/平均首字延迟）| 2026-09-22
+- **seakee/CPA-Manager-Plus**（3,565★）/ **vilmire/adhdev**（97★）/ **0xAI-Builders/comandos**（6★）/ **kalvinh8169/szpont-machen** | 自托管 AI 网关用量看板 / Agent Dashboard Hub（单面板监控控制多个编码 agent）/ 本地优先终端任务控制台 / **管理多 CLI 会话（追踪、token 用量、续跑、归档）** | 与我们同域的「多 CLI 面板 + 用量」竞品群；szpont-machen 的「会话归档」角度与我们运行历史同向 | 雷达 | 2026-09-22
+- **Deijine/zentao-legacy-mcp**（★新锐）/ **easysoft/zentao-cli**（59★，官方）/ **zl2237/test-defect-retrospective**（1★）/ **yanfd/astrbot_plugin_zentao_report** | 禅道生态四例：**老版 session API 的跨客户端 MCP（87 工具、跨实体全文检索）** / 官方 CLI / **缺陷复盘 skill（禅道导出→产品/研发/测试三视角报告）** / 每日缺陷日报插件 | **与我们禅道集成对比**：我们做「扫描→建任务→修复→合并→resolve→回写+通知」闭环；差量=**缺陷复盘报告**（按产品/研发/测试出复盘）与**跨实体全文检索** | 借鉴方向（复盘报告列入待深挖）| 2026-09-22
+- **zhayujie/CowAgent**（47,064★）/ **ruvnet/ruflo**（73,016★）/ **EverMind-AI/Raven**（3,946★）/ **bytedance/deer-flow**（82,823★）/ **nexu-io/open-design**（97,499★）/ **openai/swarm**（22k★）| harness/编排大盘复查：CowAgent（41k→47k，**多通道超级助手**，chatgpt-on-wechat 血脉——验证我们微信通道方向）；ruflo（73k，认知 swarm）；Raven（**Harness of Harnesses + Raven Evolver 拿 benchmark 评候选 harness 改动**——用基准评估「harness 自身改动」的思路）；deer-flow（82.8k，长跨度 SuperAgent + 沙箱）；open-design（97.5k，DeepSeek Harness 设计插件，本地优先桌面）；swarm（22k 教育框架，已停更）| 大盘活跃；Raven 的 evolver 思路与我们「教训 outcome 加权」同向但更重 | 参考 | 2026-09-22
+
+**✅ 本班落地**（两件，见当日报告「12:00 第二十九班」）：
+1. **叙事节奏/钩子确定性检测**（web-novel-pacing-analyzer 借鉴）：aiflavor 新增 `pacing_analyze`（段落淤积/超长段/对话占比/开篇 300 字冲突信号/章末 200 字悬念信号）+ `inject_into_prompt` 统一注入入口；只对叙事类流程下发，命中才追加，不扣分。
+2. **连载逐章评审补挂确定性检测**（产品巡检发现）：`_run_serial_review` 的评审提示词此前**从未**带上 AI 味/叙事架构/节奏检测行——连载是旗舰场景却整条漏挂（单稿件评审一直有）。修复后连载逐章与打磨评审同样拿到参考线。
+

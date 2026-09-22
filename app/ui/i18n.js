@@ -1588,7 +1588,7 @@
     "评分点覆盖": "Scoring coverage",
     "商务清晰度": "Commercial clarity",
     "扫榜选材": "Rank Scan for Topics",
-    "抓取七猫排行榜公开数据 → AI 提炼热门题材/人设/差异化切入点（快档直出报告）": "Grabs public Qimao ranking data → AI distills hot genres / character archetypes / differentiation angles (fast lane, report straight out)",
+    "抓取七猫+番茄排行榜公开数据 → AI 提炼跨平台热门题材/人设/差异化切入点（快档直出报告）": "Grabs public Qimao + Fanqie ranking data → AI distills cross-platform hot genres / character archetypes / differentiation angles (fast lane, report straight out)",
     "想写哪个方向（一句话，可留空默认分析总榜热门题材）": "Which direction to write (one sentence; leave empty to analyze the overall hot genres)",
 
     // —— 插件市场远程来源名（market_remote.py）——
@@ -1612,6 +1612,7 @@
     "要解决什么问题、约束条件（工期/技术栈/预算）、给谁评审": "Problem to solve, constraints (timeline / stack / budget), who reviews it",
     "目标岗位 + 个人经历（可贴旧简历附件），几年经验投什么职级": "Target role + experience (attach the old resume), years of experience and the level you're applying for",
     "实现 → 验证命令 → 跨厂商评审 → 自动修复/换将": "Implement → verify command → cross-provider review → auto-fix / swap agent",
+    "按难度动态编排：简单任务走实现+验证短链，复杂任务增加规划、评审、修复与换将": "Orchestrated by difficulty: simple tasks take a short implement-and-verify path; complex ones add planning, review, fixing and agent swapping",
     "CodeBee 直连模型 API 干活（无 CLI 进程），无可用供应商时回退本机 CLI；无拆解/评审（快）": "CodeBee runs directly to the model API (no CLI process); when no usable provider exists, falls back to the local CLI; no decomposition/review (fast)",
     "起草 → 多维评审 → 修订循环 → 发布门禁": "Draft → multi-dim review → revision loop → publish gate",
     "大纲 → 逐章起草 → 每章多维评审修订 → 全局一致性评审 → 合并（可断点续跑）": "Outline → chapter-by-chapter drafting → per-chapter multi-dim review & revision → global consistency review → merge (resumable)",
