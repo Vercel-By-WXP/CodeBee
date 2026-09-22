@@ -400,8 +400,21 @@ def pretty_cli_log(text, max_event_chars=4000):
     --json 模式下 stdout 全是机器事件（thread/turn/item…），智能体真正在说的
     话被埋在转义 JSON 里；这里逐行翻译成【消息】【思考】【命令】，让日志抽屉
     读到的是「蜂在干什么」。解析失败或未识别的事件类型原样保留，不吞内容。
+
+    claude stream-json 同场翻译（2026-09-22 真实案：3.2MB 步骤日志 15828 条
+    thinking_tokens 心跳，每 SSE 分片一条、数值只涨 1~2）：思考心跳按邻近组
+    折成一行；init/api_retry/assistant/result 翻译成可读行——api_retry 是
+    429/断连诊断金矿，逐条保留不折叠。只影响抽屉显示，原始日志与解析不动。
     """
     out = []
+    hb = [0, 0]   # claude 思考心跳邻近组：[条数, 最大估算 tokens]
+    msg_seen = [False]   # 是否已出过【消息】（防 result 再重复一遍正文）
+
+    def _flush_thinking():
+        if hb[0]:
+            out.append("— 思考中（心跳 ×%d 已折叠，估算 ~%d tokens）—" % (hb[0], hb[1]))
+            hb[0] = hb[1] = 0
+
     for ln in (text or "").splitlines():
         s = ln.strip()
         ev = None
@@ -410,10 +423,68 @@ def pretty_cli_log(text, max_event_chars=4000):
                 ev = json.loads(s)
             except Exception:
                 ev = None
+        if isinstance(ev, dict) and ev.get("type") == "system" \
+                and (ev.get("subtype") or "") == "thinking_tokens":
+            try:
+                n = int(ev.get("estimated_tokens") or 0)
+            except Exception:
+                n = 0
+            hb[0] += 1
+            if n > hb[1]:
+                hb[1] = n
+            continue
+        _flush_thinking()
         if not isinstance(ev, dict):
             out.append(ln)
             continue
         typ = ev.get("type") or ""
+        if typ == "system":   # claude 其余系统事件
+            sub = ev.get("subtype") or ""
+            if sub == "init":
+                out.append("— 会话启动（model=%s）—" % (ev.get("model") or "?"))
+            elif sub == "api_retry":
+                out.append("— API 重试 %s/%s（等 %sms）：%s —" % (
+                    ev.get("attempt", "?"), ev.get("max_retries", "?"),
+                    ev.get("retry_delay_ms", "?"), ev.get("error") or "?"))
+            else:
+                out.append(ln)   # 未知 subtype 原样保留，不吞内容
+            continue
+        if typ == "assistant":   # claude 正文/思考/工具调用都在 content 块里
+            for blk in ((ev.get("message") or {}).get("content") or []):
+                if not isinstance(blk, dict):
+                    continue
+                bt = blk.get("type") or ""
+                if bt == "thinking":
+                    th = " ".join(str(blk.get("thinking") or "").split())
+                    if th:
+                        out.append("【思考】" + th[:200])
+                elif bt == "text":
+                    tx = str(blk.get("text") or "")
+                    if tx:
+                        out.append("【消息】" + tx[:max_event_chars])
+                        msg_seen[0] = True
+                elif bt == "tool_use":
+                    out.append("【命令】%s %s" % (
+                        blk.get("name") or "?",
+                        json.dumps(blk.get("input") or "", ensure_ascii=False)[:200]))
+            continue
+        if typ in ("user", "stream_event"):
+            continue   # claude 工具回包/流片段是过程噪音
+        if typ == "result":   # claude 收尾：统计一行；报错带原因
+            u = ev.get("usage") or {}
+            if ev.get("is_error"):
+                out.append("— 完成（报错）：" + str(ev.get("result") or "")[:300] + " —")
+            else:
+                cost = ev.get("total_cost_usd")
+                if not msg_seen[0]:
+                    tx = str(ev.get("result") or "")
+                    if tx:   # 旧单 JSON 模式没有 assistant 事件，正文在这补上
+                        out.append("【消息】" + tx[:max_event_chars])
+                        msg_seen[0] = True
+                out.append("— 完成（tokens 入 %s / 出 %s，%s）—" % (
+                    u.get("input_tokens", "?"), u.get("output_tokens", "?"),
+                    ("$%.2f" % cost) if isinstance(cost, (int, float)) else "?"))
+            continue
         if typ in ("thread.started", "turn.started"):
             continue
         if typ == "turn.completed":

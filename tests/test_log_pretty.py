@@ -93,6 +93,44 @@ class TestPrettyCliLog(BaseTest):
         # 纯文本日志（claude/generic 等）原样通过
         self.assertEqual(runner.pretty_cli_log("普通输出\n第二行"), "普通输出\n第二行")
 
+        # claude stream-json：思考心跳邻近组折叠成一行，其余事件翻译
+        # （2026-09-22 真实案：3.2MB 日志 15828 条心跳刷屏）
+        claude_raw = "\n".join(
+            ['{"type":"system","subtype":"init","cwd":"E:\\\\x","session_id":"s1",'
+             '"model":"glm-5.3-flash","tools":["Bash"]}']
+            + [json.dumps({"type": "system", "subtype": "thinking_tokens",
+                           "estimated_tokens": 2300 + i, "estimated_tokens_delta": 2,
+                           "session_id": "s1", "uuid": "u%d" % i})
+               for i in range(50)]
+            + ['{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,'
+               '"retry_delay_ms":550,"error":"unknown","session_id":"s1"}',
+               '{"type":"assistant","message":{"content":[{"type":"thinking",'
+               '"thinking":"先想一下结构"},{"type":"text","text":"正文第一段"}]}}',
+               '{"type":"user","message":{"content":[{"type":"tool_result",'
+               '"content":"ok"}]}}',
+               '{"type":"result","subtype":"success","is_error":false,'
+               '"result":"正文第一段","total_cost_usd":0.6089,'
+               '"usage":{"input_tokens":41751,"output_tokens":16000}}'])
+        c_out = runner.pretty_cli_log(claude_raw)
+        self.assertIn("— 会话启动（model=glm-5.3-flash）—", c_out)
+        self.assertIn("— 思考中（心跳 ×50 已折叠，估算 ~2349 tokens）—", c_out)
+        self.assertNotIn("thinking_tokens", c_out)                 # 心跳原行不再出现
+        self.assertIn("— API 重试 1/10（等 550ms）：unknown —", c_out)
+        self.assertIn("【思考】先想一下结构", c_out)
+        self.assertIn("【消息】正文第一段", c_out)
+        self.assertEqual(c_out.count("【消息】"), 1)                # result 不重复正文
+        self.assertNotIn('"type":"user"', c_out)                   # 工具回包噪音删除
+        self.assertIn("— 完成（tokens 入 41751 / 出 16000，$0.61）—", c_out)
+        seq = [c_out.index(x) for x in ("— 会话启动", "— 思考中", "— API 重试",
+                                        "【思考】", "【消息】", "— 完成")]
+        self.assertEqual(seq, sorted(seq))                          # 时序不乱
+
+        # 旧单 JSON 模式（无 assistant 事件）：正文从 result 补上，不丢答案
+        old_raw = json.dumps({"type": "result", "is_error": False,
+                              "result": "旧模式正文", "total_cost_usd": 0.5,
+                              "usage": {"input_tokens": 10, "output_tokens": 20}})
+        self.assertIn("【消息】旧模式正文", runner.pretty_cli_log(old_raw))
+
 
 class TestReadStepLogPretty(BaseTest):
     def runTest(self):
