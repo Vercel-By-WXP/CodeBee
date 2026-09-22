@@ -540,6 +540,95 @@ class TestScanFixResolve(ZenCase):
         self.assertIn("自动修复报告", rc[0][2]["comment"])
 
 
+class TestReconcileFollowsRetry(ZenCase):
+    """对账认任务最新 run：首跑失败后人工重试成功，回写按成功走（#27697 案）。"""
+    def runTest(self):
+        import time as _t
+        self.configure()
+        self.bug(110)
+        self.zen_mod.scan_now()
+        c = self.claim()
+        tid = c["tasks"][0]["task_id"]
+        old_rid = c["tasks"][0]["run_id"]
+        self.store.update_run(old_rid, status="failed", error="网络抖动")
+        _t.sleep(1.05)   # run id 是秒级时间戳+随机后缀，确保重试 run 排序更新
+        r2 = self.store.create_run("orchestration", "人工重试", task_id=tid)
+        self.store.update_run(r2["id"], status="done", verdict={"pass": True})
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertEqual(c["state"], "resolved")
+        self.assertEqual(c["tasks"][0]["run_id"], r2["id"], "claim 换绑到重试 run")
+        self.assertEqual(len(self.resolve_calls("110")), 1)
+
+
+class TestResolveGateUncommitted(ZenCase):
+    """没基线的任务：工作区有未提交的已跟踪改动 → 拦 resolve 转人工（落库闸）。"""
+    def runTest(self):
+        from app.core import runner as _r
+        repo = self.tmp / "repo"
+        repo.mkdir()
+
+        def git(*args):
+            r = _r.run_process(argv=["git", "-C", str(repo)] + list(args), timeout=30)
+            self.assertTrue(r["ok"], r)
+            return r
+
+        git("init")
+        (repo / "a.txt").write_text("v1\n", encoding="utf-8")
+        git("add", "a.txt")
+        git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init")
+        (repo / "a.txt").write_text("v2 改了没提交\n", encoding="utf-8")
+        self.configure(profiles=[self.profile(repos={"backend": {"workdir": str(repo)}})])
+        self.bug(111)
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.store.update_run(c["tasks"][0]["run_id"], status="done",
+                              verdict={"pass": True})
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertEqual(c["state"], "done_manual")
+        self.assertIn("未提交", c["note"])
+        self.assertEqual(self.resolve_calls("111"), [])
+
+
+class TestLaunchAutoBaseline(ZenCase):
+    """档案没配基线：落单自动取工作目录 HEAD，修复走任务分支隔离。"""
+    def runTest(self):
+        from app.core import jobs, runner as _r
+        repo = self.tmp / "repo2"
+        repo.mkdir()
+        for args in (["init"],
+                     ["-c", "user.email=t@t", "-c", "user.name=t",
+                      "commit", "--allow-empty", "-m", "init"]):
+            r = _r.run_process(argv=["git", "-C", str(repo)] + args, timeout=30)
+            self.assertTrue(r["ok"], r)
+        head = _r.run_process(argv=["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
+                              timeout=20)["stdout"].strip()
+        self.zen_mod._launch_fix = self._orig_launch
+        with mock.patch.object(jobs, "enqueue"):
+            task, run = self.zen_mod._launch_fix(
+                self.bug(112), self.profile(repos={"backend": {"workdir": str(repo)}}),
+                "backend", {})
+        self.assertEqual(task["git_rev"], head)
+        self.store.update_run(run["id"], status="failed")   # 收口，别留 queued
+
+
+class TestBootReconcile(ZenCase):
+    """重启补对账：fixing 挂单在 start() 后被兜底收口，不等下个 tick。"""
+    def runTest(self):
+        self.configure()
+        self.bug(113)
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.store.update_run(c["tasks"][0]["run_id"], status="failed", error="断网")
+        self.zen_mod.start()
+        timer = self.zen_mod._BOOT_TIMER
+        self.assertIsNotNone(timer, "有 fixing 挂单时安排补对账")
+        self.addCleanup(timer.cancel)
+        self.zen_mod._boot_reconcile()
+        self.assertEqual(self.claim()["state"], "escalated")
+
+
 class TestLaunchFailureClosesRun(ZenCase):
     """执行器拒绝启动时，禅道任务和运行都必须立即失败，不能留下 queued。"""
     def runTest(self):

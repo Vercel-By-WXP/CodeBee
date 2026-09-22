@@ -34,6 +34,12 @@ backend | frontend | both | not_ours | unknown。
   unknown       → 不碰 bug，need_manual + 群通知（下轮扫描 bug 仍激活则重排查）
   修复任务失败  → 评论尝试记录 + 转派该端负责人（模块路由 account > 端负责人）
 
+落库纪律：修复任务落单即带基线（档案配了用档案，没配取工作目录当前 HEAD）
+走任务分支隔离，修完的代码自动提交在任务分支上，对账合并后才算落库；
+resolve 前再验一遍——没基线的任务改动只在工作区，有未提交的已跟踪改动
+不 resolve（转 done_manual 人工收口），auto_merge 关闭同理。
+对账（_reconcile）认任务最新一次运行：人工重试换 run 不影响回写判断。
+
 出网边界（SSRF 防护，_guard_url）：请求目标来自用户自配禅道地址——内网按设计
 放行；强制 http(s)、解析主机并阻断云元数据/链路本地地址、禁跟随重定向。
 """
@@ -69,6 +75,7 @@ _STATE = {
     "last_error": "",
 }
 _LOADED = False
+_BOOT_TIMER = None     # 启动补对账的兜底 Timer（测试里要能拿到并取消）
 
 TOKEN_TTL = 23 * 3600
 HTTP_TIMEOUT = 15
@@ -1164,8 +1171,14 @@ def _launch_fix(bug, profile, side, cfg):
     title = ("[禅道#%s][%s] %s" % (bid, SIDE_CN.get(side, side),
                                    str(bug.get("title") or "").strip())).strip()[:60]
     payload = {"type": "code", "title": title, "goal": _goal_text(bug, side), "workdir": wd}
-    if str(repo.get("git_rev") or "").strip():
-        payload["git_rev"] = str(repo["git_rev"]).strip()
+    base = str(repo.get("git_rev") or "").strip()
+    if not base:
+        # 档案没配基线就取落单时点的 HEAD：让修复走任务分支隔离——修完自动
+        # 提交在任务分支上，对账合并才真正落库，resolve 才站得住（#27697 案：
+        # 无基线任务修完只躺在工作区，闭环永远不会替你提交）。
+        base = _head_rev(wd)
+    if base:
+        payload["git_rev"] = base
     if str(repo.get("verify_command") or "").strip():
         payload["verify_command"] = str(repo["verify_command"]).strip()
     task = None
@@ -1330,6 +1343,42 @@ def _merge_branch(workdir, task):
         return False, "合并异常：%s" % e, None
 
 
+def _head_rev(workdir):
+    """工作目录当前 HEAD 短哈希（作任务隔离基线）。非仓库/拿不到返回空串。"""
+    try:
+        from . import gitmod, runner
+        r = runner.run_process(
+            argv=["git", "-C", str(workdir), "rev-parse", "--short", "HEAD"], timeout=20)
+        if r.get("ok"):
+            rev = (r.get("stdout") or "").strip()
+            if rev and gitmod.valid_rev(rev):
+                return rev
+    except Exception:
+        log.debug("zentao: 读取 HEAD 失败", exc_info=True)
+    return ""
+
+
+def _uncommitted(workdir):
+    """工作目录里有没有未提交的已跟踪改动（untracked 不算——CLI 噪音文件太多）。
+
+    返回 (是否脏, 人话明细)。目录不是 git 仓库视为不脏（无提交语义，放行）。
+    """
+    try:
+        from . import runner
+        if not workdir:
+            return False, ""
+        r = runner.run_process(
+            argv=["git", "-C", str(workdir), "status", "--porcelain", "-uno", "--", "."],
+            timeout=20)
+        if r.get("ok"):
+            dirty = [ln.strip() for ln in (r.get("stdout") or "").splitlines() if ln.strip()]
+            if dirty:
+                return True, "未提交改动 %d 处（如 %s）" % (len(dirty), dirty[0][:80])
+    except Exception:
+        log.debug("zentao: 工作区状态检查失败", exc_info=True)
+    return False, ""
+
+
 def _set_claim(bid, **patch):
     with _LOCK:
         c = _STATE["claims"].get(str(bid))
@@ -1357,20 +1406,38 @@ def _finish_ok(claim, cfg):
     tasks = claim.get("tasks") or []
     runs = {t.get("run_id"): store.get_run(t.get("run_id") or "") for t in tasks}
     # 1) 逐任务合并（任一失败即停：不转派不 resolve，绝不带着没落库的修复转派）
-    if cfg.get("auto_merge"):
-        for t in tasks:
-            task = store.get_task(t.get("task_id") or "")
-            if task is None or not task.get("git_rev"):
-                continue
-            ok, err, _info = _merge_branch(str(_repo_of(profile, t.get("side")).get("workdir")
-                                               or settings.default_workdir()), task)
-            if not ok:
-                _set_claim(bid, state="merge_failed",
-                           note="【%s】任务分支合并失败：%s（不转派不 resolve，留人工）"
-                                % (SIDE_CN.get(t.get("side"), t.get("side")), err))
-                _notify("🐛❌ 禅道 Bug #%s 的%s修复代码合并失败：%s\n修复任务：%s"
-                        % (bid, SIDE_CN.get(t.get("side"), ""), err, t.get("task_id") or "?"))
-                return
+    if not cfg.get("auto_merge"):
+        _set_claim(bid, state="done_manual",
+                   note="修复完成；auto_merge 已关，请人工合并落库后到禅道解决 bug")
+        return
+    for t in tasks:
+        task = store.get_task(t.get("task_id") or "")
+        if task is None or not task.get("git_rev"):
+            continue
+        ok, err, _info = _merge_branch(str(_repo_of(profile, t.get("side")).get("workdir")
+                                           or settings.default_workdir()), task)
+        if not ok:
+            _set_claim(bid, state="merge_failed",
+                       note="【%s】任务分支合并失败：%s（不转派不 resolve，留人工）"
+                            % (SIDE_CN.get(t.get("side"), t.get("side")), err))
+            _notify("🐛❌ 禅道 Bug #%s 的%s修复代码合并失败：%s\n修复任务：%s"
+                    % (bid, SIDE_CN.get(t.get("side"), ""), err, t.get("task_id") or "?"))
+            return
+    # 1.5) 落库闸：没基线的任务不走任务分支隔离，改动只躺在工作区——带着
+    # 未提交的已跟踪改动点 resolve 是对禅道撒谎（#27697 案），拦下转人工。
+    for t in tasks:
+        task = store.get_task(t.get("task_id") or "")
+        if task is None or task.get("git_rev"):
+            continue
+        dirty, detail = _uncommitted(str(_repo_of(profile, t.get("side")).get("workdir")
+                                         or settings.default_workdir()))
+        if dirty:
+            _set_claim(bid, state="done_manual",
+                       note="修复完成但工作区有未提交改动（%s），已阻止自动 resolve"
+                            "——请人工提交后到禅道解决" % detail)
+            _notify("🐛⚠️ 禅道 Bug #%s 修复完成但未提交落库，已阻止自动 resolve\n%s"
+                    % (bid, claim.get("title") or ""))
+            return
     # 2) 需要转派的端 = 判定端 - 我方端（both 且我方只管一端时非空）
     verdict_sides = ([tri["side"]] if tri.get("side") in SIDES
                      else list(SIDES) if tri.get("side") == "both" else [])
@@ -1463,6 +1530,25 @@ def _finish_failed(claim, cfg):
                claim.get("title") or "", "、".join(t.get("task_id") or "" for t in tasks)))
 
 
+def _refresh_claim_runs(claim):
+    """把 claim.tasks 的 run_id 对齐到各任务最新一次运行，返回 (tasks, 是否换绑)。
+
+    领单时钉住的 run 失败后，人工重试会换新 run——对账只认旧 run 会把已经
+    成功的修复判成失败（2026-09-22 #27697 误报失败评论案）。
+    """
+    fresh, changed = [], False
+    for t in claim.get("tasks") or []:
+        tid = str(t.get("task_id") or "")
+        if tid:
+            runs = store.task_runs(tid)
+            rid = str((runs[0].get("id") if runs else "") or "")
+            if rid and rid != t.get("run_id"):
+                t = dict(t, run_id=rid)
+                changed = True
+        fresh.append(t)
+    return fresh, changed
+
+
 def _reconcile(cfg):
     """对账：fixing 中的 claim 查各 run 终态并回写。单条异常只跳过该条。"""
     with _LOCK:
@@ -1470,7 +1556,10 @@ def _reconcile(cfg):
     for claim in fixing:
         bid = str(claim.get("bug_id"))
         try:
-            tasks = claim.get("tasks") or []
+            tasks, moved = _refresh_claim_runs(claim)
+            if moved:
+                _set_claim(bid, tasks=tasks)
+                claim = dict(claim, tasks=tasks)
             runs = {t.get("run_id"): store.get_run(t.get("run_id") or "") for t in tasks}
             if any(r is None for r in runs.values()):
                 _set_claim(bid, state="lost", note="运行记录不存在（可能被清理）")
@@ -1704,14 +1793,34 @@ def scan_now():
     return _poll(force=True)
 
 
+def _boot_reconcile():
+    """服务重启后补一次对账：上个进程死亡窗口里的终态变化别等下个 tick
+    （#27697 案：服务死窗 7 小时，失败转派被拖到重启后才发现）。"""
+    try:
+        _ensure_loaded()
+        with _LOCK:
+            cfg = _cfg()
+        _reconcile(cfg)
+    except Exception:
+        log.exception("zentao: 启动补对账失败")
+
+
 def start():
     """服务启动接线：加载状态（含老配置迁移）。"""
+    global _BOOT_TIMER
     n = load()
     with _LOCK:
         cfg = _STATE.get("config") or {}
         if cfg.get("poll_enabled") and not _STATE.get("next_scan"):
             _STATE["next_scan"] = time.strftime("%Y-%m-%d %H:%M:%S")
             _save_locked()
+        pending = any(c.get("state") == "fixing" for c in _STATE["claims"].values())
+    if pending:
+        if _BOOT_TIMER is not None:
+            _BOOT_TIMER.cancel()
+        _BOOT_TIMER = threading.Timer(3.0, _boot_reconcile)
+        _BOOT_TIMER.daemon = True
+        _BOOT_TIMER.start()
     return n
 
 
