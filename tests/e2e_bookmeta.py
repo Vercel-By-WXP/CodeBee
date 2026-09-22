@@ -59,11 +59,15 @@ def main():
     wd.mkdir(parents=True)
     (wd / "chapter-001.md").write_text("# 第一章\n\n开局即冲突。", encoding="utf-8")
     (wd / "story-bible.md").write_text("# 圣经\n\n主角：陈砚。", encoding="utf-8")
+    # launch/绑定同步会直写 ~/.claude 等真实 CLI 配置（2026-09-22 a.test 假
+    # 供应商毒入真 settings.json 案）——测试服务主目录整体指向假 home
+    fake_home = tempfile.mkdtemp(prefix="tutti-home-")
     srv = subprocess.Popen([sys.executable, "app/main.py", "--port", str(PORT)],
                            cwd=str(ROOT), stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL,
                            env=dict(os.environ, TUTTI_DATA=data,
-                            TUTTI_BOOKMETA_TEMPLATE_ONLY="1"))
+                            TUTTI_BOOKMETA_TEMPLATE_ONLY="1",
+                            USERPROFILE=fake_home, HOME=fake_home))
     try:
         up = False
         for _ in range(60):

@@ -20,6 +20,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+# 测试主目录隔离（TUTTI_ISOLATE_HOME=1）：必须先于 core.* 导入生效——
+# modelhub/manager 在 import 期就绑定 ~ 路径。launch/运行前防线会直写
+# ~/.claude 等真实 CLI 配置（2026-09-22 a.test 毒配置案），测试服务一律带上
+# 本开关，绝不落真实用户目录。
+if os.environ.get("TUTTI_ISOLATE_HOME", "").strip() == "1":
+    import tempfile as _tempfile
+    _fake_home = _tempfile.mkdtemp(prefix="tutti-home-")
+    os.environ["USERPROFILE"] = _fake_home
+    os.environ["HOME"] = _fake_home
+
 from core import automation, catalog, flows, jobs, manager, market, market_remote, registry, remote, settings, store
 from core import paths
 from core import health

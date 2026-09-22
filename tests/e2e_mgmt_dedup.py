@@ -63,6 +63,9 @@ def main():
         "install": "ping -n 3 127.0.0.1", "upgrade": "ping -n 3 127.0.0.1",
         "default_enabled": False}], ensure_ascii=False), encoding="utf-8")
     env = dict(os.environ, TUTTI_DATA=str(data_dir), PYTHONPATH=str(ROOT))
+    # launch/绑定同步会直写 ~/.claude 等真实 CLI 配置（2026-09-22 a.test 假
+    # 供应商毒入真 settings.json 案）——测试服务主目录整体指向假 home
+    env["USERPROFILE"] = env["HOME"] = tempfile.mkdtemp(prefix="tutti-home-")
     proc = subprocess.Popen([PY, "-X", "utf8", str(ROOT / "app" / "main.py"),
                              "--port", str(PORT), "--no-browser", "--host", "127.0.0.1"],
                             env=env, cwd=str(ROOT),

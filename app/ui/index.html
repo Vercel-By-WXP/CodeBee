@@ -904,6 +904,10 @@
             <label class="toggle" style="margin-top:6px"><input id="set-workdir-migrate" type="checkbox"> <span data-i18n="保存时把「旧默认路径下」的现有任务目录迁移到新路径（运行中的跳过；手动指定的目录不受影响）">保存时把「旧默认路径下」的现有任务目录迁移到新路径（运行中的跳过；手动指定的目录不受影响）</span></label>
             <p class="hint" id="set-workdir-hint"></p>
           </div>
+          <div class="field"><label data-i18n="打开/运行前直写 claude 配置">打开/运行前直写 claude 配置</label>
+            <label class="toggle" style="margin-top:6px"><input id="set-claude-sync" type="checkbox"> <span data-i18n="把绑定供应商写进 ~/.claude/settings.json（一键打开与每次运行前）">把绑定供应商写进 ~/.claude/settings.json（一键打开与每次运行前）</span></label>
+            <p data-i18n="开启后 CodeBee 会覆盖 cc-switch 等工具对交互 claude 的手选配置。关闭后交互 claude 配置归你手动管理；编排步骤改用一次性注入，模型路由不受影响。" class="hint">开启后 CodeBee 会覆盖 cc-switch 等工具对交互 claude 的手选配置。关闭后交互 claude 配置归你手动管理；编排步骤改用一次性注入，模型路由不受影响。</p>
+          </div>
           <div id="set-v2-card" class="field"></div>
           <div id="settings-msg" class="msg"></div>
         </div>

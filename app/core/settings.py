@@ -25,7 +25,11 @@ DEFAULTS = {"max_concurrent_jobs": 12, "default_workdir": "", "hooks_token": "",
             "telemetry_errors": True, "publish_daily_cap": 10,
             "publish_fail_streak": 3, "notify_webhook": "", "notify_base_url": "",
             "pet_enabled": True, "pet_mode": "always", "pet_skin": "plush",
-            "cleanup_enabled": True, "cleanup_retention_days": 14}
+            "cleanup_enabled": True, "cleanup_retention_days": 14,
+            # claude_config_sync：打开/运行前防线是否直写 ~/.claude/settings.json。
+            # 关闭后交互 claude 配置归用户手动管理（cc-switch 等），编排步骤经
+            # runner 一次性 --settings 注入绑定链，路由不受影响（manager 读取）
+            "claude_config_sync": True}
 # 桌宠形象白名单（与 app/pet.py 的 SKINS 对齐；这里不 import pet 模块，避免
 # core 反向依赖 app 根目录脚本）
 PET_SKINS = ("plush", "robot")
@@ -127,6 +131,8 @@ def save(patch):
             cur["pet_skin"] = ps
         if "cleanup_enabled" in patch:
             cur["cleanup_enabled"] = bool(patch.get("cleanup_enabled"))
+        if "claude_config_sync" in patch:
+            cur["claude_config_sync"] = bool(patch.get("claude_config_sync"))
         if "cleanup_retention_days" in patch:
             try:
                 cur["cleanup_retention_days"] = int(patch.get("cleanup_retention_days"))

@@ -66,6 +66,9 @@ def main():
     git("branch", "dev", cwd=str(work))
 
     env = dict(os.environ, TUTTI_DATA=str(data_dir), PYTHONPATH=str(ROOT))
+    # launch/绑定同步会直写 ~/.claude 等真实 CLI 配置（2026-09-22 a.test 假
+    # 供应商毒入真 settings.json 案）——测试服务主目录整体指向假 home
+    env["USERPROFILE"] = env["HOME"] = tempfile.mkdtemp(prefix="tutti-home-")
     # 任务直接种盘（status=done）：建任务接口会自动入队一次运行，无智能体时
     # 终态时间不可控（并行负载下曾卡 queued 60s+）；种盘让写操作守卫的
     # 「任务空闲」前置完全确定。

@@ -932,6 +932,21 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
             # 模型以为环境受限谎报「被策略拦截」躺平（同 codex 沙箱误判案）。
             # 默认跳过全部权限检查（2026-09-17 用户拍板），env 可收回旧行为。
             argv += ["--dangerously-skip-permissions"]
+        # 绑定链 env 落一次性 --settings：claude CLI 里用户 settings.json 的 env
+        # 会覆盖进程 env（2026-09-22 双监听器实测），光靠 run_process 的 env 注入，
+        # 链首供应商会被用户配置顶掉（a.test 毒配置案的放大器）。--settings 的
+        # 优先级高于用户 settings.json（同日实测），临时文件进程结束随 tmp_files 删。
+        ant = {k: v for k, v in (agent.get("env") or {}).items()
+               if k.startswith("ANTHROPIC_")}
+        if ant:
+            try:
+                fd, sp = tempfile.mkstemp(prefix="tutti_claude_settings_", suffix=".json")
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump({"env": ant}, f)
+                argv += ["--settings", sp]
+                tmp_files.append(sp)
+            except Exception:
+                pass   # 落盘失败退回纯 env 注入（旧路径），不拦运行
         stdin_text = prompt
     elif kind == "opencode":
         argv = resolve_command(agent["command"]) + ["run"]

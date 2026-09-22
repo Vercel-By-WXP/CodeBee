@@ -33,7 +33,9 @@ async function main() {
   try {
     svc = spawn("python", ["-X", "utf8", join(ROOT, "app", "main.py"), "--port", String(PORT),
       "--no-browser", "--host", "127.0.0.1"], {
-      env: { ...process.env, TUTTI_DATA: dataDir, PYTHONPATH: ROOT },
+      // TUTTI_ISOLATE_HOME：launch/绑定同步会直写 ~/.claude 等真实 CLI 配置
+      //（2026-09-22 a.test 毒配置案），UI 测试服务主目录必须隔离
+      env: { ...process.env, TUTTI_DATA: dataDir, PYTHONPATH: ROOT, TUTTI_ISOLATE_HOME: "1" },
       cwd: ROOT, stdio: "ignore",
     });
     let up = false;

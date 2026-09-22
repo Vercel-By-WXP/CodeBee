@@ -1390,10 +1390,23 @@ def _sync_kimi_settings(entry, model, prov):
     return "；".join(errs) or None
 
 
+def _claude_sync_enabled():
+    """「直写 claude 配置」开关（settings 的 claude_config_sync，默认开）。
+    关闭 = ~/.claude/settings.json 归用户手动管理（cc-switch 等），打开/运行前
+    防线一律不落盘；编排步骤经 runner 一次性 --settings 注入绑定链，不受影响。"""
+    try:
+        from . import settings
+        return settings.load().get("claude_config_sync", True)
+    except Exception:
+        return True
+
+
 def sync_cli_config_now(agent_id):
     """运行期自愈：CLI 本体没配置（如 kimi「No model configured」）→ 立即把
     绑定注入其自家配置，换将/下轮即可用。返回给日志的备注（空=无事发生）。"""
     try:
+        if agent_id == "claude-code" and not _claude_sync_enabled():
+            return "按设置跳过直写 ~/.claude 配置（编排步骤经一次性 --settings 注入，不受影响）"
         from . import modelhub
         entry = next((a for a in catalog.load() if a.get("id") == agent_id), None)
         if not entry:
@@ -1430,6 +1443,8 @@ def _sync_agent_injection(entry, binding):
     spec = _AGENT_INJECTORS.get(entry["id"])
     if spec:
         protocols, injector = spec
+        if entry["id"] == "claude-code" and not _claude_sync_enabled():
+            return "按设置跳过直写 ~/.claude 配置（交互 TUI 保持手动管理；编排步骤经一次性 --settings 注入不受影响）"
         pick, note = modelhub.launch_pick(entry["id"], protocols)
         if pick:
             prov = pick["provider"]

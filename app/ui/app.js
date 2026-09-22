@@ -9985,6 +9985,8 @@ async function loadSettings() {
     if (tel && S.settings) tel.checked = S.settings.telemetry_errors !== false;
     const pet = $("set-pet");
     if (pet && S.settings) pet.checked = S.settings.pet_enabled !== false;
+    const cs = $("set-claude-sync");
+    if (cs && S.settings) cs.checked = S.settings.claude_config_sync !== false;
     syncPetModeSeg();
     syncPetSkinSeg();
     const wd = $("set-workdir"), hint = $("set-workdir-hint");
@@ -10169,7 +10171,8 @@ async function saveSettings() {
   const msg = $("settings-msg");
   try {
     const r = await api("/api/settings", { method: "POST", body: JSON.stringify({
-      max_concurrent_jobs: parseInt($("set-workers").value, 10) }) });
+      max_concurrent_jobs: parseInt($("set-workers").value, 10),
+      claude_config_sync: !$("set-claude-sync") || $("set-claude-sync").checked }) });
     S.settings = r.settings;
     if (msg) { msg.className = "msg ok"; msg.textContent = t("已保存：最大并发 ") + r.workers + t(" 个任务"); }
   } catch (e) {
