@@ -234,7 +234,10 @@ def block_for(task):
             grams = (skills._text_bigrams(x.get("title"))
                      | skills._text_bigrams(x.get("body"))
                      | set(x.get("tags") or []))
-            return (-len(probe & grams), x.get("id") or "")
+            # 过期降权（inkos 检索保留来源/位置的启发）：同等相关性下，
+            # 可能过期的事实排在新鲜事实之后——旧知识不该压过新知识
+            return (-len(probe & grams), 1 if _is_stale(x.get("as_of")) else 0,
+                    x.get("id") or "")
         entries = sorted(entries, key=rank)
     else:
         entries.sort(key=lambda x: x.get("id") or "")
