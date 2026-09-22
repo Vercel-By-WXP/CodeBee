@@ -2323,50 +2323,92 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
 
         def run_critique(text, rnd, note_extra="", critic_sids=None, event_check=""):
             """一轮多维评审：返回 (cj_by_agent, scored)。变体赛马与主循环共用。
-            event_check：本章大纲核对块（逐项目标审稿），随评审下发并回收标记块。"""
+            event_check：本章大纲核对块（逐项目标审稿），随评审下发并回收标记块。
+
+            多评审并发跑（2026-09-22）：评审占运行总时长的六成以上，而各评审之间
+            互不依赖（同一份稿件、各自视角），串行等待纯属浪费——每位评审的墙上
+            时间直接叠加。与「同章多稿赛马」「best-of 候选」同一套线程范式（那两处
+            早已多线程调用 _run_step）。共享结构的写入全部收敛到 join 之后按
+            critics 原顺序合并，保证与串行版逐字节同结果（ev_check 取第一份非空、
+            issues/ledger 的先后顺序都不变），只在耗时上取并行收益。"""
             cj_map, sids = {}, dict(critic_sids or {})
             scored = 0   # 真正给出分数的评审数；失败/不可解析不得当成 0 分计入
-            for agent in critics:
-                role = "critique-c%d" % i
+            role = "critique-c%d" % i
+            results = {}
+            # 绑定解析提前到主线程：bind_agent 会把链首同步进 CLI 自家配置（写盘），
+            # 多线程同时调它有写盘竞争。解析结果随线程参数传入，线程内只做调用。
+            bound = [modelhub.bind_agent(a, difficulty) for a in critics]
+
+            def _critique_one(idx, agent):
+                """单评审执行体（线程内只做调用与解析，不改共享结构）。
+
+                异常不吞：记进 results 由主线程按原顺序重抛——串行版的
+                Cancelled/管道异常语义（上抛打断本 run）必须原样保留。"""
+                try:
+                    _critique_one_inner(idx, agent)
+                except BaseException as exc:      # noqa: BLE001（含 Cancelled）
+                    results[idx] = {"error": exc}
+
+            def _critique_one_inner(idx, agent):
                 if agent.get("mode") == "mock":
                     step, log_abs = store.add_step(run_id, role, agent["id"], agent.get("label"))
                     time.sleep(0.15)
                     cj = mocks.critique(agent["id"], rnd, dims, threshold_ch)
-                    scored += 1
                     store.finish_step(run_id, step["n"], "done",
                                       summary="均分 %.1f：%s" % (
                                           sum(cj["scores"].values()) / max(1, len(dims)),
                                           cj["summary"]),
                                       duration_s=0.15)
-                else:
-                    lens = _critic_lens(critics, agent)
-                    res = _run_step(run_id, role, modelhub.bind_agent(agent, difficulty),
-                                    crit_prompt_for(
-                                        text,
-                                        note=("小说第 %d 章" % i) + (
-                                            "｜你的专属评审视角：%s（其他评审会覆盖其余视角，"
-                                            "请深挖你的镜头，但所有维度仍需打分）" % lens)
-                                        if lens else "",
-                                        event_check=event_check) + note_extra,
-                                    workdir, readonly=True, ev=ev,
-                                    resume=sids.get(agent["id"]))
-                    cj = _critique_json(res, dims)
-                    if cj.get("scores"):
-                        scored += 1
-                    # 逐项目标审稿 + 资源账本：解析评审回复里的标记块（借鉴
-                    # AI-Novel-Writer 逐项核对/角色资源账本）。多评审取第一份
-                    # 非空即可，聚合时已在前两处赋值处去重。
-                    evl = _parse_tagged_lines(res.get("text"), "event_check")
-                    if evl and not ev_check_lines[0]:
-                        ev_check_lines[0] = evl
-                    ledger_lines.extend(_parse_tagged_lines(res.get("text"), "ledger"))
+                    results[idx] = {"agent": agent, "cj": cj, "evl": [],
+                                    "ledger": [], "sid": None}
+                    return
+                lens = _critic_lens(critics, agent)
+                res = _run_step(run_id, role, bound[idx],
+                                crit_prompt_for(
+                                    text,
+                                    note=("小说第 %d 章" % i) + (
+                                        "｜你的专属评审视角：%s（其他评审会覆盖其余视角，"
+                                        "请深挖你的镜头，但所有维度仍需打分）" % lens)
+                                    if lens else "",
+                                    event_check=event_check) + note_extra,
+                                workdir, readonly=True, ev=ev,
+                                resume=sids.get(agent["id"]))
+                results[idx] = {
+                    "agent": agent, "cj": _critique_json(res, dims),
+                    # 逐项目标审稿 + 资源账本：标记块先各存各的，join 后按序合并
+                    "evl": _parse_tagged_lines(res.get("text"), "event_check"),
+                    "ledger": _parse_tagged_lines(res.get("text"), "ledger"),
                     # §07 T1.1：记录该评审的会话 id（第 2 轮复用）
-                    csid = _resume_sid(agent, res.get("sid"))
-                    if csid:
-                        sids[agent["id"]] = csid
+                    "sid": _resume_sid(agent, res.get("sid")),
+                }
+
+            threads = []
+            for idx, agent in enumerate(critics):
+                th = threading.Thread(target=_critique_one, args=(idx, agent),
+                                      name="crit-%s-c%d-%d" % (run_id, i, idx), daemon=True)
+                threads.append(th)
+                th.start()
+            for th in threads:
+                th.join(3000)
+            _check_cancel(ev)
+
+            # join 后按原顺序合并（确定性：与串行版结果一致）
+            for idx in range(len(critics)):
+                r = results.get(idx)
+                if r is None:
+                    continue     # 该评审线程超时未回，按「没出分」处理
+                if "error" in r:
+                    raise r["error"]     # 还原串行版的异常上抛语义
+                agent, cj = r["agent"], r["cj"]
+                if cj.get("scores"):
+                    scored += 1
+                if r["evl"] and not ev_check_lines[0]:
+                    ev_check_lines[0] = r["evl"]
+                ledger_lines.extend(r["ledger"])
+                if r["sid"]:
+                    sids[agent["id"]] = r["sid"]
                 cj_map[agent["id"]] = cj
                 issues_all.extend({"chapter": i, **it} for it in (cj.get("issues") or [])[:6])
-                _check_cancel(ev)
 
             # 评审者级 fallback：名单内评审全挂（网关抖动/CLI 故障）时，
             # 从其它已启用真实智能体补位至多 2 个（排除 mock 与已试过的），
@@ -2481,6 +2523,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 chapter_reason = route.get("author", "")
                 last_attempt_impl = impl
                 last_attempt_reason = chapter_reason
+                prev_prompt = None      # 上一次实际下发的提示词
+                prev_timed_out = False  # 上一次是否「超时/停滞」收场
                 for draft_attempt in range(3):
                     if draft_attempt:
                         # 30s / 60s 退避；ev.wait 睡等可被取消即刻唤醒
@@ -2496,11 +2540,20 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         # 30KB 对讯飞必挂）
                         sk2, bible2, _note = _shrink_context_block(sk_block, bible, budget=12000)
                         use_prompt = prompt.replace(sk_block, sk2).replace(bible, bible2)
+                    # 超时重试必须有新变量才值得做（2026-09-22）：提示词与上次逐字节
+                    # 相同、上次又是超时/停滞收场时，重试只是把同一个超时再烧一遍
+                    # （2400s × N）。此时直接跳出交替换将——换 CLI/模型才是新机会。
+                    # 注意保留「缩上下文重试」：提示词真的变小了（缩块生效）就照试，
+                    # 那是针对「提示词过大挂起」的有效降级。
+                    if prev_timed_out and use_prompt == prev_prompt:
+                        break
                     res = _run_step(run_id, "draft-c%d" % i, modelhub.bind_agent(impl, difficulty), use_prompt,
                                     step_wd, readonly=False, ev=ev, timeout=2400,
                                     resume=resume_ctx["session"] if resume_ctx else None,
                                     images=_task_images(task, workdir),
                                     note=("起草重试 %d/2（网关限流退避）" % draft_attempt) if draft_attempt else "")
+                    prev_prompt = use_prompt
+                    prev_timed_out = bool((res.get("raw") or {}).get("timed_out"))
                     good, txt = _chapter_state()
                     if good:
                         break
@@ -2821,9 +2874,23 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     global_issues = []
 
     def run_global_round(agent_list):
-        """一轮全局评审：返回 (出分评审数, 按维累计分)。失败/不可解析不得当成低分计入。"""
+        """一轮全局评审：返回 (出分评审数, 按维累计分)。失败/不可解析不得当成低分计入。
+
+        多评审并发（2026-09-22，同章级评审并发）：各自读同一份全书文本、互不依赖，
+        串行只是把等待时间叠起来。共享结构仍在 join 后按原顺序合并，结果与串行一致。"""
         gmeans_acc, scored = {}, 0
-        for agent in agent_list:
+        results = {}
+        # 绑定解析提前到主线程（线程内不做会写盘的 bind_agent）
+        bound = [modelhub.bind_agent(a, difficulty) for a in agent_list]
+
+        def _global_one(idx, agent):
+            """异常不吞：记进 results 由主线程按原顺序重抛（保留串行语义）。"""
+            try:
+                _global_one_inner(idx, agent)
+            except BaseException as exc:      # noqa: BLE001（含 Cancelled）
+                results[idx] = {"error": exc}
+
+        def _global_one_inner(idx, agent):
             if agent.get("mode") == "mock":
                 step, _ = store.add_step(run_id, "global-critique", agent["id"],
                                          agent.get("label"))
@@ -2832,25 +2899,41 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                       "issues": [], "summary": "（mock）全书结构完整，达到可签约水平"}
                 store.finish_step(run_id, step["n"], "done", summary="均分 8.0：（mock）全书达标",
                                   duration_s=0.15)
+                results[idx] = gj
+                return
+            gtpl = SERIAL_GLOBAL_PROMPT
+            if bible:
+                gtpl = gtpl.replace("## 全书目标", bible + "\n\n## 全书目标", 1)
+            res = _run_step(run_id, "global-critique", bound[idx],
+                            (gtpl.replace("__DIMKEYS__", dimkey)
+                             .replace("__GOAL__", task["goal"])
+                             .replace("__MANUSCRIPT__", full_text[:60000])),
+                            workdir, readonly=True, ev=ev, timeout=2400)
+            results[idx] = _critique_json(res, dims)
+
+        threads = []
+        for idx, agent in enumerate(agent_list):
+            th = threading.Thread(target=_global_one, args=(idx, agent),
+                                  name="gcrit-%s-%d" % (run_id, idx), daemon=True)
+            threads.append(th)
+            th.start()
+        for th in threads:
+            th.join(3000)
+        _check_cancel(ev)
+
+        for idx in range(len(agent_list)):
+            gj = results.get(idx)
+            if gj is None:
+                continue
+            if "error" in gj:
+                raise gj["error"]     # 还原串行版的异常上抛语义
+            if gj.get("scores"):
                 scored += 1
-            else:
-                gtpl = SERIAL_GLOBAL_PROMPT
-                if bible:
-                    gtpl = gtpl.replace("## 全书目标", bible + "\n\n## 全书目标", 1)
-                res = _run_step(run_id, "global-critique", modelhub.bind_agent(agent, difficulty),
-                                (gtpl.replace("__DIMKEYS__", dimkey)
-                                 .replace("__GOAL__", task["goal"])
-                                 .replace("__MANUSCRIPT__", full_text[:60000])),
-                                workdir, readonly=True, ev=ev, timeout=2400)
-                gj = _critique_json(res, dims)
-                if gj.get("scores"):
-                    scored += 1
             global_issues.extend({"chapter": "全书", **it} for it in (gj.get("issues") or [])[:8])
             for d in dims:
                 v = gj.get("scores", {}).get(d)
                 if v is not None:
                     gmeans_acc.setdefault(d, []).append(float(v))
-            _check_cancel(ev)
         return scored, gmeans_acc
 
     gscored, gmeans_acc = run_global_round(critics)
