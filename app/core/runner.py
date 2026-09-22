@@ -903,6 +903,33 @@ def _rate_limited(err):
     return any(k in err for k in _RATE_LIMIT)
 
 
+# 审计日志错误行探针：只认强信号，避免把回显提示词里的普通词当错误
+_LOG_ERR_HINT = re.compile(
+    r"(429|402|rate[_ ]?limit|quota|余额|欠费|insufficient|billing|arrears"
+    r"|ENOTFOUND|ECONNREFUSED|failed to run prompt|api_error|overloaded)",
+    re.I)
+
+
+def _augment_error_from_log(out, log_path, limit=300):
+    """stdout/stderr 尾段没有错误信号时，从流式审计日志里补最后一条错误行。
+    真错误有时只走流式管道（kimi 撞 429 时捕获输出只剩启动横幅），不补的
+    话路由层与用户都只看到「退出码 1；stderr/stdout: kimi version 2.0.2」。"""
+    if not log_path or not out.get("error"):
+        return
+    try:
+        with open(log_path, "rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - 8192))
+            blob = fh.read().decode("utf-8", "ignore")
+    except OSError:
+        return
+    hits = [ln.strip() for ln in blob.splitlines() if _LOG_ERR_HINT.search(ln)]
+    if not hits:
+        return
+    out["error"] = (out["error"] + "；日志错误行: " + hits[-1][:limit])[-800:]
+
+
 def _grace_wait(cancel_event, seconds, log_path=None, why=""):
     """链尾限流宽限等待：小片睡眠随时响应取消。返回 False=已取消（别再重试）。"""
     if log_path:
@@ -1370,6 +1397,13 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                 pass
                     except Exception:
                         pass
+                if not (_quota_error(out["error"]) or _transient_error(out["error"])
+                        or _rate_limited(out["error"])):
+                    # 尾段清洗后没有错误信号而流式审计日志里有：补日志错误行。
+                    # 2026-09-22 实测 kimi 撞 429 时 stderr/stdout 只剩启动横幅
+                    # （真错误只走了流式管道），路由层看不到配额关键词，换将
+                    # 判死因全靠猜。
+                    _augment_error_from_log(out, log_path)
                 out["error_code"] = _classify_failure(res, kind=kind)
                 break
             if kind == "codex":

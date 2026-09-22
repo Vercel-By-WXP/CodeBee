@@ -1114,29 +1114,53 @@ def _run_code(run, task, agents, ev, stats, mode):
                 and _code_bestof(run, task, impl_agent, difficulty, ev)):
             return True
         # 实现步失败不立刻判死：2026-09-16 实测配额烧干时 5 连跑全在同一条 CLI 上
-        # 失败收场，而健康的 opencode 一直在旁观望——跨 CLI 换将重试一次
-        # （mode=manual 尊重用户指定，不换）。
+        # 失败收场，而健康的 opencode 一直在旁观望——跨 CLI 换将重试
+        # （mode=manual 尊重用户指定，不换）。2026-09-22 续修：配额/限流类死亡
+        # 是确定性秒死，允许继续走查候选名单（同上游让位异上游）；其余死因
+        # （超时等）仍只换一次，防着在坏候选上再烧一整个超时。
         if mode == "auto" and impl_agent.get("mode") == "real":
-            ex = {impl_agent["id"], "mock-a", "mock-b"}
-            other, other_reason = router.pick(agents, "implement", "code", stats,
-                                              exclude=ex)
-            if other is not None and other.get("mode") == "real":
+            tried = {impl_agent["id"], "mock-a", "mock-b"}
+            notes = []
+            dead_ups = []  # 配额死亡候选的上游集合：换将优先异上游
+            prev_id = impl_agent["id"]
+            other = None
+            while True:
+                other, other_reason = router.pick_switch_candidate(
+                    agents, "implement", "code", stats,
+                    exclude=tried, dead_upstreams=dead_ups)
+                if other is None or other.get("mode") != "real":
+                    other = None
+                    break
                 note = "实现步失败自动换将 %s → %s：%s。失败原因：%s" % (
-                    impl_agent["id"], other["id"], other_reason,
+                    prev_id, other["id"], other_reason,
                     (res.get("error") or "")[:200])
                 ok2, res = _run_one(other)
                 if ok2:
-                    store.update_run(run_id, error="", route_note=note)
+                    route_note = "；".join(notes + [note])
+                    store.update_run(run_id, error="", route_note=route_note)
                     _record_actual_route(
                         run_id, task, agents, stats, other,
                         implementers=[other], reviewer=reviewer,
-                        implement_reason=note,
+                        implement_reason=route_note,
                         review_reason=route.get("reviewer", ""),
                         direct=not workflow["review_required"])
                     return True
-                res_err = "%s；换将后仍失败：%s" % (note, (res.get("error") or "")[:200])
+                notes.append(note)
+                tried.add(other["id"])
+                prev_id = other["id"]
+                if runner._quota_error(res.get("error") or ""):
+                    ups = router.agent_upstreams(other["id"])
+                    if ups:
+                        dead_ups.append(ups)
+                else:
+                    break  # 非配额死因：只换一次就收手
+            tail_err = (res.get("error") or "")[:200]
+            if notes:
+                res_err = "；".join(notes) + "；换将后仍失败：%s" % tail_err
+            elif other is None:
+                res_err = "实现步骤失败（无其他真实 CLI 可换将）: %s" % tail_err
             else:
-                res_err = "实现步骤失败（无其他真实 CLI 可换将）: %s" % res.get("error")
+                res_err = "实现步骤失败: %s" % tail_err
         else:
             res_err = "实现步骤失败: %s" % res.get("error")
         store.update_run(run_id, expected_status="running", status="failed",

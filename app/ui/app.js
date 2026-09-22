@@ -1172,6 +1172,15 @@ async function poll() {
     const provSig = JSON.stringify((S.providers || []).map((p) => [p.id, p.enabled, !!p.api_key]));
     if (provSig !== S.provSig) { S.provSig = provSig; loadOrchestrator(); }
     if (!S.sseLive) await refreshState();
+    else if (S._lastSseAt && Date.now() - S._lastSseAt > 60000 && !document.hidden) {
+      // SSE 静默看门狗：连接半死时 EventSource 不报错、sseLive 恒真、上面
+      // 的拉取被跳过——侧栏会冻在几分钟前的快照，而详情卡自拉自新，两头
+      // 对不上（2026-09-22 详情「完成」侧栏「在跑」实案）。60s 没有任何
+      // 推送就主动拉一次全量兜底；拉完把基准推后，别每 8s 都拉。后台页签
+      // 没人看，不烧这份流量。
+      S._lastSseAt = Date.now();
+      await refreshState();
+    }
     render();
   } catch (e) {
     if (!S.sseLive || !S.es) {
@@ -1196,10 +1205,12 @@ function startSSE() {
     S.es = es;
     es.onopen = () => {
       S.sseLive = true;
+      S._lastSseAt = Date.now();
       schedulePolling();
       poll();
     };
     es.onmessage = (ev) => {
+      S._lastSseAt = Date.now();
       try { applyState(JSON.parse(ev.data)); render(); } catch (e) { /* ignore */ }
     };
     es.onerror = () => {

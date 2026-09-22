@@ -64,6 +64,10 @@ def _utf8_bytes(data):
 PORT = 8765  # main() 启动时更新；/api/connect 组装扫码地址用
 _BOOT_TS = time.time()  # 服务进程启动时间戳：/api/pet_state 下发，蜜蜂据此识别「服务换人了」并让位
 
+# SSE 空闲心跳间隔（秒）：长 CLI 步骤期间状态零变化，注释行心跳保持中间层
+# 不掐空闲流、半死连接尽早显形（EventSource 不派发注释事件，纯链路层探活）
+SSE_PING_S = 15.0
+
 # 写接口统一限制 JSON 请求体，避免误传文件或异常客户端把 worker 线程和
 # 内存拖垮。16 MiB 足够覆盖任务上下文、故事圣经和附件清单（附件本体走
 # 独立上传接口）。
@@ -2084,30 +2088,49 @@ class Handler(BaseHTTPRequestHandler):
     def _api_events(self):
         """SSE 事件驱动：等 store 状态版本变化才构建/推送，空闲连接几乎零开销
         （此前每连接每 0.8s 盲构建全量 payload，多端并发会把 detect 的慢 IO
-        放大成服务假死）。每 ~2s 醒一次顺带检查控制权变化。"""
+        放大成服务假死）。每 ~2s 醒一次；空闲超过 SSE_PING_S 发注释行心跳。"""
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Accel-Buffering", "no")  # 防 nginx/隧道缓冲 SSE
         self.end_headers()
+        try:
+            # 半死连接（对端消失/网络黑洞）的写会无限挂起钉死线程；给足量
+            # 超时让它必然显形成异常 → 线程退出 → 客户端断流重连自愈
+            self.connection.settimeout(300)
+        except Exception:
+            pass
         cid = self._client_id()
         ver = store.state_version()
         sent_ctrl = None
-        n = 0
+        last_send = 0.0
         try:
+            # 连接即推一次当前全量状态：客户端重连（服务重启/网络闪断）后
+            # 不必等下一次状态变化才知道真实进度。长 CLI 步骤一跑十来分钟
+            # 期间一次 bump 都没有，等推送就是等个寂寞（2026-09-22 详情
+            # 「完成」侧栏「在跑」实案）。此前靠 sent_ctrl=None 首轮必不等
+            # 的巧合工作，这里改成显式行为。
+            payload = json.dumps(_state_payload(cid, ver), ensure_ascii=False)
+            self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
+            self.wfile.flush()
+            sent_ctrl = remote.control_view(cid)
+            last_send = time.time()
             while True:
                 ver = store.wait_state_change(ver, 2.0)
                 ctrl = remote.control_view(cid)
                 if ver == store.state_version() and ctrl == sent_ctrl:
+                    # 空闲心跳：真发出去的字节让中间层不掐空闲流，也让半死
+                    # 连接在下一次写时尽早报错（注释行，EventSource 不派发事件）
+                    if time.time() - last_send >= SSE_PING_S:
+                        self.wfile.write(b": ping\n\n")
+                        self.wfile.flush()
+                        last_send = time.time()
                     continue  # 超时醒来且无变化
                 payload = json.dumps(_state_payload(cid, ver), ensure_ascii=False)
                 self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
                 self.wfile.flush()
                 sent_ctrl = ctrl
-                n += 1
-                if n % 20 == 0:  # ~40s 一次注释行：探活兼防中间层断开空闲连接
-                    self.wfile.write(b": ping\n\n")
-                    self.wfile.flush()
+                last_send = time.time()
         except Exception:
             pass  # 客户端断开是常态，线程随进程退出
 

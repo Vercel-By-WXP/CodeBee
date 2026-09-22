@@ -36,6 +36,10 @@ IMAGE_JPEG_BYTES = 3500 * 1024   # 缩放后仍超此大小 → 转 JPEG q85
 IMAGE_MAX_BYTES = 5 * 1024 * 1024   # 单张最终字节硬上限（超出剔除并日志）
 THINK_MAX_CHARS = 20000        # 单次生成保留的思考正文上限（防超长思维链撑爆 run.json）
 STREAM_MAX_CHARS = 20000       # 运行中实时回答的保留上限（与 THINK_MAX_CHARS 同口径）
+BASE_MAX_TOKENS = 8000         # 单次生成输出预算（推理模型的思考 token 也计入此额度）
+MAX_TOKENS_CAP = 16000         # 思考撑爆预算后的提额上限（每轮 run 只提一次）
+THINK_EXHAUST_MIN_CHARS = 1500  # 零正文时思考达到此长度 ≈ 思考占满输出预算
+EMPTY_TEXT_MAX_STREAK = 3      # 连续零正文轮数上限（防同参数盲重试烧穿预算）
 
 CMD_DEFAULT_TIMEOUT = 600    # run_command 默认超时（与 CLI 停滞看门狗同口径）
 CMD_MAX_TIMEOUT = 1800       # 上限：模型传 timeout_sec 超过即钳到这
@@ -777,7 +781,8 @@ def _m_anthropic(m):
     return {"role": "user", "content": [{"type": "text", "text": m.get("content") or ""}]}
 
 
-def _build_request(proto, base, use_key, model, system, msgs, with_tools, stream=False):
+def _build_request(proto, base, use_key, model, system, msgs, with_tools, stream=False,
+                   max_tokens=BASE_MAX_TOKENS):
     """按协议构造 (url, headers, body)。msgs 为内部统一形状。
 
     stream=True 时按协议打开流式：google 换 :streamGenerateContent?alt=sse，
@@ -803,13 +808,13 @@ def _build_request(proto, base, use_key, model, system, msgs, with_tools, stream
                              "parts": parts})
         body = {"contents": contents,
                 "systemInstruction": {"parts": [{"text": system}]},
-                "generationConfig": {"maxOutputTokens": 8000}}
+                "generationConfig": {"maxOutputTokens": max_tokens}}
         return url, headers, body
     path = "/messages" if proto == "anthropic" else "/chat/completions"
     url = (base + path) if base.endswith("/v1") else (base + "/v1" + path)
     if proto == "anthropic":
         headers = {"x-api-key": use_key, "anthropic-version": "2023-06-01"}
-        body = {"model": model, "max_tokens": 8000, "system": system,
+        body = {"model": model, "max_tokens": max_tokens, "system": system,
                 "messages": [_m_anthropic(m) for m in msgs]}
         if with_tools:
             body["tools"] = _anthropic_tools()
@@ -825,7 +830,7 @@ def _build_request(proto, base, use_key, model, system, msgs, with_tools, stream
             msgs_wire.extend(w)
         else:
             msgs_wire.append(w)
-    body = {"model": model, "max_tokens": 8000,
+    body = {"model": model, "max_tokens": max_tokens,
             "messages": [{"role": "system", "content": system}] + msgs_wire}
     if with_tools:
         body["tools"] = _openai_tools()
@@ -934,6 +939,9 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
     last_err = ""
     ok = False
     reasons = []            # 各迭代的思考正文（按迭代顺序拼接，供步骤记录展示）
+    max_tokens = BASE_MAX_TOKENS   # 思考占满预算时提额重试（跨迭代保持，见空正文分支）
+    escalated = False       # 本轮 run 是否已提额（只提一次，防无限翻倍）
+    empty_streak = 0        # 连续零正文轮数（拿到正文/工具即清零）
 
     def _fire(cb, *cb_args):
         if cb is None:
@@ -964,108 +972,175 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
             return _fail("已取消")
         reasons.append("")   # 每轮迭代各占一段思考（跨轮拼接时分段，join 时滤空段）
         done = False
-        for proto, pbase in candidates:
-            keys = modelhub._chain_keys(prov) or [{"key": prov.get("api_key") or "", "id": ""}]
-            for kk in keys:
-                url, headers, body = _build_request(proto, pbase, kk["key"], model,
-                                                    system, msgs, tools_ok)
-                sbody = None
-                if stream:
-                    # 流式体单独构造（+stream / include_usage）；非流式体留给回落重发
-                    _, _, sbody = _build_request(proto, pbase, kk["key"], model,
-                                                 system, msgs, tools_ok, stream=True)
-                effort = str(bi.get("reasoning_effort") or "").strip().lower()
-                # reasoning_effort 是 OpenAI wire 字段；Anthropic thinking 使用
-                # 另一套对象结构，向兼容网关硬塞该字段会直接得到 400。
-                if effort in ("low", "medium", "high") and proto == "openai":
-                    body["reasoning_effort"] = effort
-                    if sbody is not None:
-                        sbody["reasoning_effort"] = effort
-                text, calls, usage = "", [], {}
-                streamed = False
-                if sbody is not None:
-                    part = _post_sse_stream(
-                        url, headers, sbody, allow_private, timeout, proto,
-                        on_reason=_take_reason, on_text=on_stream,
-                        cancel_event=cancel_event)
-                    if part["error"] == "已取消":
-                        return _fail("已取消")
-                    if not part["error"] and part["events"]:
-                        # 网关确实按流回了：正文/工具取增量累加结果
-                        text, calls = part["text"], part["calls"]
-                        usage = part["usage"]
-                        streamed = True
-                        if not reasons or not reasons[-1]:
-                            # 调用方没挂实时回调（无可视化诉求）时思考只在
-                            # 累加器里：这里兜底收进结果，落库口径一致
-                            _take_reason(part["reasoning"])
-                    else:
-                        # 零事件（网关忽略 stream）或流式这一步失败（不认 stream 参数、
-                        # 断流等）：都退回同一条 wire 的非流式重发——比直接判死这家
-                        # 供应商稳妥；非流式也失败才走下面的记账/换链。
-                        last_err = part["error"]
-                if not streamed:
-                    status, data, err = _post_interruptible(url, headers, body,
-                                                            allow_private, timeout,
-                                                            cancel_event)
-                    if cancel_event is not None and cancel_event.is_set():
-                        # 取消先于一切记账：健康 KEY 不能因被放弃的请求背上冷却
-                        return _fail("已取消")
-                    if status == 0 or not (200 <= status < 300):
-                        msg = ""
-                        if isinstance(data, dict):
-                            e = data.get("error")
-                            msg = e.get("message", "") if isinstance(e, dict) else str(e)
-                        last_err = err or ("HTTP %s %s" % (status, str(msg)[:200]))
+        reBump = False         # 本轮要提额重试（同一迭代重跑，不烧迭代数）
+        stopit = False         # 本轮判死（连续零正文），直接终局不再空转
+        for _bump in range(2):                      # 第 2 圈 = 提额后的同轮重试
+            for proto, pbase in candidates:
+                keys = modelhub._chain_keys(prov) or [{"key": prov.get("api_key") or "", "id": ""}]
+                for kk in keys:
+                    got = False        # 本 KEY 拿到了响应（区别于 HTTP 失败换下家）
+                    stripped = False   # thinking 对象被网关 400 拒后已摘除重发
+                    while True:
+                        url, headers, body = _build_request(
+                            proto, pbase, kk["key"], model, system, msgs,
+                            tools_ok, max_tokens=max_tokens)
+                        sbody = None
+                        if stream:
+                            # 流式体单独构造（+stream / include_usage）；非流式体留给回落重发
+                            _, _, sbody = _build_request(
+                                proto, pbase, kk["key"], model, system, msgs,
+                                tools_ok, stream=True, max_tokens=max_tokens)
+                        effort = str(bi.get("reasoning_effort") or "").strip().lower()
+                        # reasoning_effort 是 OpenAI wire 字段；Anthropic thinking 使用
+                        # 另一套对象结构，向兼容网关硬塞该字段会直接得到 400。
+                        if effort in ("low", "medium", "high") and proto == "openai":
+                            body["reasoning_effort"] = effort
+                            if sbody is not None:
+                                sbody["reasoning_effort"] = effort
+                        if effort in ("low", "medium") and proto == "anthropic" \
+                                and not stripped:
+                            # 「思考程度」此前只对 openai 面生效；GLM 这类推理模型
+                            # 在 Anthropic 兼容面上默认全功率思考，能把 max_tokens
+                            # 整个烧光（2026-09-22 glm-5.3-flash 47 分钟零正文案）。
+                            # low/medium 显式给思考预算，high 留默认（模型自决=放开想）。
+                            body["thinking"] = {
+                                "type": "enabled",
+                                "budget_tokens": 1024 if effort == "low" else 4096}
+                            if sbody is not None:
+                                sbody["thinking"] = dict(body["thinking"])
+                        text, calls, usage = "", [], {}
+                        streamed = False
+                        if sbody is not None:
+                            part = _post_sse_stream(
+                                url, headers, sbody, allow_private, timeout, proto,
+                                on_reason=_take_reason, on_text=on_stream,
+                                cancel_event=cancel_event)
+                            if part["error"] == "已取消":
+                                return _fail("已取消")
+                            if not part["error"] and part["events"]:
+                                # 网关确实按流回了：正文/工具取增量累加结果
+                                text, calls = part["text"], part["calls"]
+                                usage = part["usage"]
+                                streamed = True
+                                if not reasons or not reasons[-1]:
+                                    # 调用方没挂实时回调（无可视化诉求）时思考只在
+                                    # 累加器里：这里兜底收进结果，落库口径一致
+                                    _take_reason(part["reasoning"])
+                            else:
+                                # 零事件（网关忽略 stream）或流式这一步失败（不认 stream 参数、
+                                # 断流等）：都退回同一条 wire 的非流式重发——比直接判死这家
+                                # 供应商稳妥；非流式也失败才走下面的记账/换链。
+                                last_err = part["error"]
+                        if not streamed:
+                            status, data, err = _post_interruptible(url, headers, body,
+                                                                    allow_private, timeout,
+                                                                    cancel_event)
+                            if cancel_event is not None and cancel_event.is_set():
+                                # 取消先于一切记账：健康 KEY 不能因被放弃的请求背上冷却
+                                return _fail("已取消")
+                            if status == 0 or not (200 <= status < 300):
+                                msg = ""
+                                if isinstance(data, dict):
+                                    e = data.get("error")
+                                    msg = e.get("message", "") if isinstance(e, dict) else str(e)
+                                if status == 400 and isinstance(body.get("thinking"), dict) \
+                                        and "thinking" in str(msg).lower() and not stripped:
+                                    # 网关不认 thinking 对象：摘掉同 KEY 立即重发，
+                                    # 别让「思考程度」偏好把健康 KEY 送进冷却
+                                    body.pop("thinking", None)
+                                    if sbody is not None:
+                                        sbody.pop("thinking", None)
+                                    stripped = True
+                                    continue
+                                last_err = err or ("HTTP %s %s" % (status, str(msg)[:200]))
+                                try:
+                                    modelhub.note_key_error(bi["provider_id"], kk.get("id") or "", last_err)
+                                except Exception:
+                                    pass
+                                break            # 换下一个 KEY
+                            text, calls, usage = _parse_reply(proto, data)
+                            # 非流式响应里的思考字段：补发一次，可视化与流式路径同形
+                            _take_reason(_reason_from_message(proto, data))
                         try:
-                            modelhub.note_key_error(bi["provider_id"], kk.get("id") or "", last_err)
+                            modelhub.note_key_ok(bi["provider_id"], kk.get("id") or "")
                         except Exception:
                             pass
-                        continue
-                    text, calls, usage = _parse_reply(proto, data)
-                    # 非流式响应里的思考字段：补发一次，可视化与流式路径同形
-                    _take_reason(_reason_from_message(proto, data))
-                try:
-                    modelhub.note_key_ok(bi["provider_id"], kk.get("id") or "")
-                except Exception:
-                    pass
-                usage = _norm_usage(usage)
-                for k in total_usage:
-                    total_usage[k] += int(usage.get(k) or 0)
-                iters = it
-                if calls:
-                    if log:
-                        log("[迭代 %d] %s 请求工具: %s" % (
-                            it, model, ", ".join(c["name"] for c in calls)))
-                    _fire(on_activity, "请求工具: " + "、".join(c["name"] for c in calls))
-                    results = []
-                    for c in calls:
-                        out = _exec_tool(workdir, c["name"], c["args"], cancel_event)
+                        usage = _norm_usage(usage)
+                        for k in total_usage:
+                            total_usage[k] += int(usage.get(k) or 0)
+                        iters = it
+                        got = True
+                        break
+                    if not got:
+                        continue                 # 本 KEY 失败，换下一个
+                    if calls:
                         if log:
-                            brief = out if len(out) <= 120 else out[:120] + "…"
-                            log("[工具] %s → %s" % (c["name"], brief.replace("\n", " ⏎ ")))
-                        _fire(on_activity, "%s %s" % (
-                            c["name"], str(c["args"].get("path")
-                                           or c["args"].get("command") or "")[:80]))
-                        results.append((c["id"], out))
-                    msgs.append({"role": "assistant", "content": text, "tool_calls": calls})
-                    msgs.append({"role": "tool_results", "tool_results": results})
-                    done = True
-                    break
-                if (text or "").strip():
+                            log("[迭代 %d] %s 请求工具: %s" % (
+                                it, model, ", ".join(c["name"] for c in calls)))
+                        _fire(on_activity, "请求工具: " + "、".join(c["name"] for c in calls))
+                        results = []
+                        for c in calls:
+                            out = _exec_tool(workdir, c["name"], c["args"], cancel_event)
+                            if log:
+                                brief = out if len(out) <= 120 else out[:120] + "…"
+                                log("[工具] %s → %s" % (c["name"], brief.replace("\n", " ⏎ ")))
+                            _fire(on_activity, "%s %s" % (
+                                c["name"], str(c["args"].get("path")
+                                               or c["args"].get("command") or "")[:80]))
+                            results.append((c["id"], out))
+                        msgs.append({"role": "assistant", "content": text, "tool_calls": calls})
+                        msgs.append({"role": "tool_results", "tool_results": results})
+                        empty_streak = 0
+                        done = True
+                        break
+                    if (text or "").strip():
+                        if log:
+                            log("[迭代 %d] 最终回答（%d 字）" % (it, len(text)))
+                        ok = True
+                        empty_streak = 0
+                        done = True
+                        break
+                    # —— 零正文零工具：分辨「思考占满输出预算」还是「模型真没说话」。
+                    # 推理模型的思考计入 max_tokens：想满了流会正常收，正文却是空的。
+                    rlen = len(reasons[-1] or "")
+                    out_tok = int(usage.get("output") or 0)
+                    exhausted = (rlen >= THINK_EXHAUST_MIN_CHARS
+                                 or out_tok >= int(max_tokens * 0.9))
+                    empty_streak += 1
+                    if exhausted and not escalated:
+                        # 同轮提额重试一次：8K 想不完的 16K 大多就想完了
+                        escalated = True
+                        old = max_tokens
+                        max_tokens = min(max_tokens * 2, MAX_TOKENS_CAP)
+                        last_err = ("模型思考占满输出预算（max_tokens=%d，思考 %d 字零正文）"
+                                    % (old, rlen))
+                        if log:
+                            log("[第 %d 轮] 思考 %d 字仍无正文/工具 → max_tokens %d→%d 同轮重试"
+                                % (it, rlen, old, max_tokens))
+                        _fire(on_activity, "思考占满输出预算，提高输出预算重试")
+                        reBump = True
+                        break
+                    if empty_streak >= EMPTY_TEXT_MAX_STREAK:
+                        last_err = ("模型思考连续占满输出预算（max_tokens 已提到 %d 仍无正文）"
+                                    % max_tokens) if exhausted else \
+                            ("模型连续 %d 轮零正文零工具" % empty_streak)
+                        done = True
+                        stopit = True
+                        break
+                    last_err = "模型未返回文本"
                     if log:
-                        log("[迭代 %d] 最终回答（%d 字）" % (it, len(text)))
-                    ok = True
+                        log("[第 %d 轮] 模型零正文零工具（思考 %d 字），重试" % (it, rlen))
+                    _fire(on_activity, "模型零正文，重试")
                     done = True
                     break
-                last_err = "模型未返回文本"
-                done = True
-                break
-            if done:
-                break
+                if done or reBump:
+                    break
+            if reBump:
+                continue        # 同一迭代用新预算重来
+            break               # 非提额路径一锤定音
         if not done:
             break   # 所有 wire/KEY 都失败
-        if ok:
+        if ok or stopit:
             break
     if not ok and not text:
         return _fail(last_err or "工具循环达上限仍无最终回答")

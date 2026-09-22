@@ -2,6 +2,9 @@
 """智能路由：能力基线 × 历史胜率 × 角色约束 → 选智能体，并给出可解释的理由。"""
 from __future__ import annotations
 
+import os
+import re
+
 from . import dispatch, history
 
 # 各类智能体的能力基线（0-100）。真实 CLI 里官方双雄最高。
@@ -22,20 +25,28 @@ def _task_type(ttype):
 
 
 def _binding_bonus(agent_id, dispatch_mode=False):
-    """绑定链可用性加分/减分：链上有可用条目 +8，解析为空 -25。2026-09-16 实测：
-    静态能力基线让配额烧干的 codex 永远压过健康备用 CLI，绑定空的 CLI 更是连
-    用户配置的模型都没用上——先按「能不能按配置跑起来」校准。2026-09-17 起
-    空链步骤在 pipeline 直接判失败（不再静默回落本机默认），此处只管排序。"""
+    """绑定链可用性加分/减分：解析出的调用链有备胎（≥2 条）+8；单条 = 单点
+    无降级空间 +0；解析为空 -25。2026-09-16 实测：静态能力基线让配额烧干的
+    codex 永远压过健康备用 CLI，绑定空的 CLI 更是连用户配置的模型都没用上
+    ——先按「能不能按配置跑起来」校准。2026-09-22 续修：单条链（含空链+
+    仅 provider_id 的旧数据）拿过 +8 是信号失真——2026-09-22 智谱余额清零
+    实测「绑定链可用」的 claude/kimi 全是单点，无一家有第二口气。返回
+    (分值, 理由文本)。"""
     try:
         from . import modelhub
         pref = modelhub._binding_for(agent_id)
         configured = bool(modelhub._binding_chain(pref) or pref.get("provider_id"))
         if not configured:
-            return 0.0 if dispatch_mode else -25.0
+            return (0.0, "") if dispatch_mode else (-25.0, "，绑定链为空：相关步骤将判失败（-25.0）")
         b = modelhub.resolve_binding(agent_id)
-        return 8.0 if (b and b.get("call_chain")) else -25.0
+        n = len((b or {}).get("call_chain") or [])
+        if n >= 2:
+            return 8.0, "，绑定链可用（+8.0）"
+        if n == 1:
+            return 0.0, "，绑定单点无备胎（+0）"
+        return -25.0, "，绑定链为空：相关步骤将判失败（-25.0）"
     except Exception:
-        return 0.0
+        return 0.0, ""
 
 
 def _history_bonus(stats, agent_id, ttype):
@@ -87,12 +98,7 @@ def score(agent, role, ttype, stats=None):
     base = CAPABILITY.get(agent.get("kind"), 60)
     use_dispatch = bool(agent.get("_dispatch_task_type") or
                         agent.get("dispatch_enabled"))
-    bb = _binding_bonus(agent.get("id"), dispatch_mode=use_dispatch)
-    btxt = ""
-    if bb > 0:
-        btxt = "，绑定链可用（+%s）" % bb
-    elif bb < 0:
-        btxt = "，绑定链为空：相关步骤将判失败（%s）" % bb
+    bb, btxt = _binding_bonus(agent.get("id"), dispatch_mode=use_dispatch)
     hb = _history_bonus(stats, agent.get("id"), ttype)
     online, online_txt = _online_bonus(agent, role, ttype)
     # 保持公开 score() 的历史绝对分值；运行级候选由 pipeline 标记画像后
@@ -133,6 +139,85 @@ def pick(agents, role, ttype, stats=None, exclude=()):
     if best is None:
         return None, ""
     return best[1], best_reason
+
+
+# 空链 CLI 的真实上游在各自本机配置里（注册表里的 provider_id 是 UI 残留，
+# 2026-09-22 实测 qwencode 注册表指 prov-36 本机却指公司网关）。正则探针
+# 只为换将时识别「同上游」，读不到就算未知——未知不参与剔除，宁白试不误杀。
+_LOCAL_ENDPOINT_PROBES = (
+    ("kimi-code", "~/.kimi-code/config.toml", r'baseUrl\s*=\s*"([^"]+)"'),
+    ("claude-code", "~/.claude/settings.json", r'"ANTHROPIC_BASE_URL"\s*:\s*"([^"]+)"'),
+    ("qwencode", "~/.qwen/settings.json", r'"OPENAI_BASE_URL"\s*:\s*"([^"]+)"'),
+    ("opencode", "~/.config/opencode/opencode.json", r'"baseURL"\s*:\s*"([^"]+)"'),
+    ("opencode", "~/.config/opencode/opencode.jsonc", r'"baseURL"\s*:\s*"([^"]+)"'),
+    ("codex-cli", "~/.codex/config.toml", r'base_url\s*=\s*"([^"]+)"'),
+)
+
+
+def _host_of(url):
+    """上游归一：只留 host:port。/api/anthropic 与 /v1 的路径差异不算换上游。"""
+    m = re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://([^/?#]+)", str(url or "").strip())
+    return m.group(1).lower() if m else ""
+
+
+def agent_upstreams(agent_id):
+    """候选实际会用到的上游集合（host:port 归一）。显式链 > CLI 本机配置
+    端点；两者都拿不到返回空集 = 未知。"""
+    ups = set()
+    try:
+        from . import modelhub
+        pref = modelhub._binding_for(agent_id)
+        chain = modelhub._binding_chain(pref)
+        provs = {p.get("id"): p for p in modelhub.providers()}
+        if chain:
+            for item in chain:
+                pid = (item.get("provider_id") or "").strip()
+                h = _host_of((provs.get(pid) or {}).get("base_url"))
+                if h:
+                    ups.add(h)
+    except Exception:
+        pass
+    if not ups:
+        for aid, path, pat in _LOCAL_ENDPOINT_PROBES:
+            if aid != agent_id:
+                continue
+            try:
+                with open(os.path.expanduser(path), "r", encoding="utf-8",
+                          errors="ignore") as fh:
+                    txt = fh.read()
+            except OSError:
+                continue
+            for m in re.finditer(pat, txt):
+                h = _host_of(m.group(1))
+                if h:
+                    ups.add(h)
+    return ups
+
+
+def pick_switch_candidate(agents, role, ttype, stats, exclude=(),
+                          dead_upstreams=()):
+    """换将选将。配额类死亡背景下：与死者同上游的候选依次让位，直到找到
+    异上游/上游未知的候选（2026-09-22 实案：kimi 与 claude 同骑智谱，0.1 分
+    之差把异上游 qwencode 压在下面，换将=换壳不换命）。异上游耗尽后同上游
+    候选捡回分数最高者——聊胜于无。"""
+    exclude = set(exclude)
+    best, reason = pick(agents, role, ttype, stats, exclude=exclude)
+    if best is None or not dead_upstreams:
+        return best, reason
+    deferred = []
+    while best is not None:
+        ups = agent_upstreams(best.get("id"))
+        if not (ups and any(ups & dead for dead in dead_upstreams)):
+            break  # 异上游或上游未知：就用它
+        deferred.append((best, reason))
+        best, reason = pick(agents, role, ttype, stats, exclude=exclude | {
+            x.get("id") for x, _ in deferred})
+    if best is None and deferred:
+        best, reason = deferred[0]  # 异上游全灭：同上游里挑最高的顶上
+    elif deferred:
+        reason = ("%s（%s 与死者同上游，延后让位异上游候选）"
+                  % (reason, deferred[-1][0].get("id")))
+    return best, reason
 
 
 def route_plan(agents, role, task_spec, stats=None, exclude=(), selected=None,
