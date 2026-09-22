@@ -447,7 +447,7 @@ async function refreshEstimate() {
       ? " · ≈" + fmtTok(d.median_tokens) + " tokens" : "";
     const cost = (d.median_cost_usd || 0) > 0 ? " · ≈$" + Number(d.median_cost_usd).toFixed(2) : "";
     el.textContent = t("预计完成约 {0}，保守不超过 {1}", duration, p90) +
-      tokenPart + cost + "（" + source + "）";
+      tokenPart + cost + t("（") + source + t("）");
     el.classList.remove("hidden");
   } catch (e) {
     if (seq === _estSeq) { el.classList.add("hidden"); el.textContent = ""; }
@@ -2957,7 +2957,7 @@ function pickerRender(r) {
     (atDrives ? "" :
       '<button class="ghost small" onclick="pickDrivesP()">' + esc(t("此电脑")) + "</button>" +
       (pickerSt.parent ? '<button class="ghost small" onclick="pickParentP()">' + esc(t("上级")) + "</button>" : "")) +
-    '<span class="pk-path" title="' + esc(r.path) + '">' + esc(r.path) + "</span></div>" +
+    '<span class="pk-path" title="' + esc(r.path === "此电脑" ? t("此电脑") : r.path) + '">' + esc(r.path === "此电脑" ? t("此电脑") : r.path) + "</span></div>" +
     '<div class="pk-list">' + (rows || '<div class="pk-empty hint">' + esc(t("（没有子目录）")) + "</div>") + "</div>";
 }
 
@@ -3144,11 +3144,11 @@ function newFromTask(id) {
     $("f-vol-chapters").value = tk.serial && tk.serial.volume_chapters ? tk.serial.volume_chapters : "";
     $("f-vol-spec").value = tk.serial && Array.isArray(tk.serial.volumes)
       ? tk.serial.volumes.map((v) => {
-          const ttl = (v && v.title) || "未命名";
-          if (v && v.start && v.end) return ttl + " 第" + v.start + "-" + v.end + "章";
-          if (v && v.chapters) return ttl + " " + v.chapters + "章";
+          const ttl = (v && v.title) || t("未命名");
+          if (v && v.start && v.end) return ttl + " " + t("第") + v.start + "-" + v.end + t("章");
+          if (v && v.chapters) return ttl + " " + t("第") + v.chapters + t("章");
           return ttl;
-        }).join("；")
+        }).join(t("；"))
       : "";
     const want = new Set(tk.critics || []);
     $("f-critics").querySelectorAll("input").forEach((i) => { i.checked = want.has(i.value); });
@@ -4620,7 +4620,7 @@ function pbBlock(task, platform) {
       esc(t("已建书：") + (book.title || "")) + "</span>";
     btns += ' <button class="primary" ' + (busy ? "disabled" : "") +
       ' onclick="pbUploadChapter(\'' + esc(task.id) + "', '" + platform + '\')">' +
-      t("发一章") + (nCh ? "（已发 " + nCh + "）" : "") + "</button>";
+      t("发一章") + (nCh ? t("（已发 ") + nCh + t("）") : "") + "</button>";
     // 批量发布（publish/auto.py）：待发清单 + 护栏 + 进度都来自 /pending 视图
     const au = (((S.pubAuto && S.pubAuto.books) || [])
       .find((b) => b.platform === platform)) || {};
@@ -4632,7 +4632,7 @@ function pbBlock(task, platform) {
       btns += ' <button class="ghost" ' + (busy || !au.guard_ok ? "disabled" : "") +
         ' title="' + esc(au.guard_ok ? t("按章号顺序逐章填稿（人工模式每点一次填一章，浏览器里提交后再点发下一章）") : au.guard_reason || "") + '"' +
         ' onclick="pbPublishAll(\'' + esc(task.id) + "', '" + platform + '\')">' +
-        t("发布全部待发") + "（" + au.pending + "）</button>";
+        t("发布全部待发") + t("（") + au.pending + t("）") + "</button>";
     }
     if (au.pending > 0 && !au.guard_ok) {
       btns += '<div class="pb-err">' + esc(au.guard_reason || t("护栏拦截")) + "</div>";
@@ -4643,10 +4643,10 @@ function pbBlock(task, platform) {
       btns += '<div class="pb-hint">' + esc(run.message || t("已填好一章，请在浏览器确认提交")) + "</div>";
     } else if (run && run.status !== "running") {
       const doneLine = run.status === "done"
-        ? t("自动发布完成：") + run.done + "/" + run.total + (run.message ? "。" + run.message : "")
+        ? t("自动发布完成：") + run.done + "/" + run.total + (run.message ? t("。") + run.message : "")
         : t("自动发布中断：") + (run.error || "");
       btns += '<div class="' + (run.status === "done" ? "pb-hint" : "pb-err") + '">' +
-        esc(doneLine + "（" + (run.at || "") + "）") + "</div>";
+        esc(doneLine + t("（") + (run.at || "") + t("）")) + "</div>";
     }
   } else {
     btns += '<button class="primary" ' + (busy ? "disabled" : "") +
@@ -4801,7 +4801,7 @@ window.pbUploadChapter = async function (taskId, platform) {
     if (g) g.files.push(f); else rest.push(f);
   });
   box.innerHTML = hint + groups.filter((g) => g.files.length).map((g) => {
-    const label = t("第") + " " + g.v.vol + " " + t("卷") + (g.v.title ? " 《" + g.v.title + "》" : "");
+    const label = t("第") + " " + g.v.vol + " " + t("卷") + (g.v.title ? " " + t("《") + g.v.title + t("》") : "");
     return '<div class="pb-vol"><div class="pb-vol-head">' + esc(label) + "</div>" +
       g.files.map(item).join("") + "</div>";
   }).join("") + (rest.length ? '<div class="pb-vol"><div class="pb-vol-head">' +
@@ -6145,7 +6145,7 @@ function renderChapterScores(run) {
   box.innerHTML = head + groups.map((g) => {
     const title = volTitles[g.vol] || "";
     const nPass = g.rows.filter((c) => c.passed).length;
-    const label = g.vol ? (t("第") + " " + g.vol + " " + t("卷") + (title ? " 《" + title + "》" : "")) : t("未分卷");
+    const label = g.vol ? (t("第") + " " + g.vol + " " + t("卷") + (title ? " " + t("《") + title + t("》") : "")) : t("未分卷");
     return '<div class="ch-vol"><div class="ch-vol-head"><b>' + esc(label) + "</b>" +
       '<span class="tag">' + nPass + "/" + g.rows.length + " " + t("达标") + "</span>" +
       '<span class="ch-meta">' + t("第 ") + g.rows[0].chapter + "–" +
@@ -6831,7 +6831,18 @@ function chatEngineIsDirect(run) {
 
 /* 思考过程块（2026-09-22 用户诉求「把思考过程打印出来」）：内置智能体流式抓的
  * 模型思维链 + 工具活动。运行中=常开实时块（逐句长出来）；结束后=折叠摘要
- * （点开回看），不再让整轮只有三点打字动画。thinking 最长 2 万字（后端已截）。 */
+ * （点开回看），不再让整轮只有三点打字动画。thinking 最长 2 万字（后端已截）。
+ * 活动行是后端烤死的中文标签（activity 落库进步骤记录，老 run 也是中文），
+ * 只能在渲染时翻：前缀命中「请求工具: 」就换字典词条，其余原样放行。 */
+function chatActLine(a) {
+  const s = String(a || "");
+  const PRE = "请求工具: ";
+  if (s.startsWith(PRE)) {
+    return t("请求工具") + ": " + s.slice(PRE.length).replace(/、/g, t("、"));
+  }
+  return s;
+}
+
 function chatThinkHTML(it) {
   const running = it.status === "running";
   const think = String(it.thinking || "").trim();
@@ -6844,7 +6855,7 @@ function chatThinkHTML(it) {
       esc(t("思考过程")) + '<span class="ct-live">' + esc(t("实时")) + "</span></div>" +
       (shown ? '<div class="ct-body">' + esc(shown) + "</div>" : "") +
       (acts.length ? '<div class="ct-acts">' +
-        acts.map((a) => "<div>" + esc(a) + "</div>").join("") + "</div>" : "") +
+        acts.map((a) => "<div>" + esc(chatActLine(a)) + "</div>").join("") + "</div>" : "") +
       "</div>";
   }
   return '<details class="chat-think"><summary>' + esc(t("思考过程")) +
@@ -7047,8 +7058,21 @@ function drawChatFlow(run, data, active) {
     : t("已结束：发送后将自动开新一轮接着做");
   // 贴底跟随：用户滚到底部附近才自动滚到最新输出，回看历史不打扰
   const stick = flow.scrollHeight - flow.scrollTop - flow.clientHeight < 80;
+  // 思考过程面板（.ct-body 自带滚动条）逐帧整体重建会丢滚动位置——重绘前
+  // 记住「贴底 or 用户上滑到哪」，重绘后恢复：贴底则一直跟最新（2026-09-22
+  // 用户诉求），上滑回看历史思维链则保持位置不被打扰。
+  const prevThink = flow.querySelector('[data-think-live="1"] .ct-body');
+  const thinkPin = prevThink
+    ? prevThink.scrollHeight - prevThink.scrollTop - prevThink.clientHeight < 24
+    : true;
+  const thinkTop = prevThink ? prevThink.scrollTop : 0;
   flow.innerHTML = html || '<div class="hint">' + esc(t("还没有对话内容")) + "</div>";
   if (stick) flow.scrollTop = flow.scrollHeight;
+  const newThink = flow.querySelector('[data-think-live="1"] .ct-body');
+  if (newThink) {
+    if (thinkPin) newThink.scrollTop = newThink.scrollHeight;
+    else newThink.scrollTop = Math.min(thinkTop, newThink.scrollHeight);
+  }
   // 有运行中的直连步骤 → 快轮询把思考过程/正文增量打印出来；终态即停
   const hasRunning = items.some((it) => it.kind === "agent" && it.status === "running");
   if (active && hasRunning && run && run.id) scheduleChatLive(run.id);
@@ -7087,7 +7111,7 @@ function chatResultHTML(run, res) {
     (meta.length ? '<div class="cr-meta">' + meta.join(" · ") + "</div>" : "") +
     (bad && res.error ? '<div class="cr-err">' + esc(res.error) + "</div>" : "") +
     '<div class="cr-files">' + (chips
-      ? '<div class="cr-files-title">' + esc(t("产出文件")) + "（" + files.length + "）</div>" +
+      ? '<div class="cr-files-title">' + esc(t("产出文件")) + t("（") + files.length + t("）") + "</div>" +
         '<div class="file-chips">' + chips + "</div>"
       : '<div class="cr-files-title">' + esc(t("无文件产出")) + "</div>") + "</div>" +
     (bad ? '<button class="ghost cr-steps" onclick="rdChatNavGo(\'steps\')">' +
@@ -8419,7 +8443,7 @@ async function catAutoBindAll() {
       done++;
     } catch (e) {
       failed++;
-      if (!firstErr) firstErr = c.name + "：" + e.message;
+      if (!firstErr) firstErr = c.name + t("：") + e.message;
     }
   }
   S.catSig = null;
@@ -9025,14 +9049,14 @@ function autoPrefTags(tsk) {
   const TH = { auto: "自动", low: "快速", standard: "标准", high: "深度" };
   const out = [];
   if (tsk.mode && tsk.mode !== "auto" && MODE[tsk.mode]) {
-    out.push(t("编排模式") + "：" + t(MODE[tsk.mode]));
+    out.push(t("编排模式") + t("：") + t(MODE[tsk.mode]));
   }
   if (tsk.thinking && tsk.thinking !== "standard" && TH[tsk.thinking]) {
-    out.push(t("思考程度") + "：" + t(TH[tsk.thinking]));
+    out.push(t("思考程度") + t("：") + t(TH[tsk.thinking]));
   }
   if (tsk.direct_provider_id) {
     const p = directProviders().find((x) => x.id === tsk.direct_provider_id);
-    out.push(t("对话模型") + "：" + (p ? (p.name || p.id) : tsk.direct_provider_id) +
+    out.push(t("对话模型") + t("：") + (p ? (p.name || p.id) : tsk.direct_provider_id) +
       "/" + (tsk.direct_model || t("随厂商推荐")));
   }
   return out.map((s) => '<span class="tag">' + esc(s) + "</span>").join("");
@@ -9725,7 +9749,7 @@ function renderZentaoClaims() {
   const claims = (S.zentao && S.zentao.claims) || [];
   box.innerHTML = claims.map((c) => {
     const tasks = (c.tasks || []).map((tk) =>
-      "<span>【" + (tk.side === "frontend" ? t("前端") : t("后端")) + "】" +
+      "<span>" + t("【") + (tk.side === "frontend" ? t("前端") : t("后端")) + t("】") +
       '<a href="#" onclick="zentaoOpenRun(\'' + esc(tk.run_id || "") + '\');return false;">' + esc(tk.task_id || "?") + "</a></span>").join("");
     return '<div class="card"><div class="head"><span class="name">#' + esc(c.bug_id) + " " + esc(c.title || "") + "</span>" +
       zentaoStateTag(c.state) + "</div>" +
@@ -11931,9 +11955,9 @@ function renderCleanupState(st) {
   const el = $("cl-state");
   if (!el) return;
   if (!st || !st.last_run) { el.textContent = t("尚未清理过（每天自动一次）"); return; }
-  el.textContent = t("上次清理：") + st.last_run + "，" + t("释放") + " " + fmtSize(st.last_freed || 0)
+  el.textContent = t("上次清理：") + st.last_run + t("，") + t("释放") + " " + fmtSize(st.last_freed || 0)
     + ((st.last_result && st.last_result.errors && st.last_result.errors.length)
-      ? "，" + t("有") + " " + st.last_result.errors.length + " " + t("项被占用跳过") : "");
+      ? t("，") + t("有") + " " + st.last_result.errors.length + " " + t("项被占用跳过") : "");
 }
 
 function renderCleanupPlan(plan) {
@@ -11956,9 +11980,9 @@ window.exportBackup = async function () {
       body: JSON.stringify({ target_dir: (($("bk-target") || {}).value || "").trim(),
                              include_logs: $("bk-logs").checked }) });
     const ext = (r.external_workdirs || []);
-    $("bk-result").innerHTML = '<span class="ok">' + esc(t("已导出")) + "：" + esc(r.path)
-      + "（" + esc(fmtSize(r.size || 0)) + "，" + esc(t("任务")) + " " + (r.tasks || 0)
-      + " · " + esc(t("运行记录")) + " " + (r.runs || 0) + "）</span>"
+    $("bk-result").innerHTML = '<span class="ok">' + esc(t("已导出")) + t("：") + esc(r.path)
+      + t("（") + esc(fmtSize(r.size || 0)) + t("，") + esc(t("任务")) + " " + (r.tasks || 0)
+      + " · " + esc(t("运行记录")) + " " + (r.runs || 0) + t("）") + "</span>"
       + (ext.length ? '<div><span class="bad">' + esc(t("以下外部目录不在备份里，需自行拷贝："))
         + esc(ext.join("、")) + "</span></div>" : "")
       + '<button class="ghost small" onclick="copyText(this)" data-copy="' + esc(r.path) + '">'
@@ -12015,18 +12039,18 @@ function renderBackupPreview(pv) {
   const el = $("bi-preview");
   if (!el) return;
   const rows = [];
-  rows.push('<b>' + esc(t("备份时间")) + "：</b>" + esc(pv.exported_at || "-")
+  rows.push('<b>' + esc(t("备份时间")) + t("：") + "</b>" + esc(pv.exported_at || "-")
     + (pv.version ? " · v" + esc(pv.version) : ""));
   rows.push(esc(t("任务")) + " " + (pv.tasks == null ? "-" : pv.tasks)
     + " · " + esc(t("运行记录")) + " " + (pv.runs == null ? "-" : pv.runs)
     + " · " + esc(t("数据文件")) + " " + (pv.data_files == null ? "-" : pv.data_files)
     + (pv.workspace_files ? " · " + esc(t("工作目录文件")) + " " + pv.workspace_files : ""));
   if (pv.include_logs === false) rows.push('<span class="hint">' + esc(t("备份不含运行过程日志")) + "</span>");
-  if (pv.remap_needed) rows.push(esc(t("路径重映射")) + "：" + esc(pv.old_workdir || pv.old_data_dir)
+  if (pv.remap_needed) rows.push(esc(t("路径重映射")) + t("：") + esc(pv.old_workdir || pv.old_data_dir)
     + " → " + esc(pv.cur_workdir));
   if ((pv.external_workdirs || []).length)
     rows.push('<span class="bad">' + esc(t("以下外部目录不在备份里，需自行拷贝："))
-      + esc(pv.external_workdirs.join("、")) + "</span>");
+      + esc(pv.external_workdirs.join(t("、"))) + "</span>");
   if ((pv.busy_runs || []).length)
     rows.push('<span class="bad">' + esc(t("有任务正在运行或等待自动续跑，先等它们结束再导入")) + "</span>");
   el.innerHTML = rows.map((s) => "<div>" + s + "</div>").join("");
@@ -12051,13 +12075,13 @@ window.applyBackupImport = async function () {
                              mode: _biMode, remap: $("bi-remap").checked }) });
     const rm = r.remap || {};
     $("bi-preview").innerHTML = '<span class="ok">' + esc(replaceMode ? t("替换导入完成") : t("合并导入完成"))
-      + "：</span>" + esc(t("数据文件")) + " " + (r.data_files || 0)
+      + t("：") + "</span>" + esc(t("数据文件")) + " " + (r.data_files || 0)
       + " · " + esc(t("工作目录文件")) + " " + (r.workspace_files || 0)
       + (rm.applied ? " · " + esc(t("已重映射")) + " " + rm.files + " " + esc(t("个文件中的")) + " " + rm.values + " " + esc(t("处路径")) : "")
       + '<div class="hint">' + esc(t("导入前的本机数据备份在")) + " " + esc(r.backup_path || "-") + "</div>"
       + ((r.external_workdirs || []).length
         ? '<div><span class="bad">' + esc(t("以下外部目录不在备份里，需自行拷贝："))
-          + esc(r.external_workdirs.join("、")) + "</span></div>" : "")
+          + esc(r.external_workdirs.join(t("、"))) + "</span></div>" : "")
       + '<div class="ok">' + esc(t("请重启服务使导入的数据全部生效")) + "</div>";
     $("bi-apply").classList.add("hidden");
     $("bi-restart").classList.remove("hidden");
