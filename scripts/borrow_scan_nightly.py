@@ -109,11 +109,22 @@ def main():
         queries = QUERIES + BATCHES[b]
         print("PROGRESS full scan: A=%d + B%d=%d" % (len(QUERIES), b, len(BATCHES[b])),
               file=sys.stderr)
+        # keywords.md 检索纪律「双轮排序 + 核心组翻页」：A1 核心编排组每轮追加
+        # sort=updated 新锐轮与 stars page=2 翻页（单遍扫描不知道 page1 是否满页，
+        # page2 重复项由汇总端按 full_name 去重，宁多查不漏新锐）。
+        for g, q in [x for x in QUERIES if x[0] == "A1"]:
+            queries.append(("A1u", q))
+            queries.append(("A1p2", q))
     total = len(queries)
     for i, (grp, q) in enumerate(queries, 1):
+        if grp == "A1u":
+            api_path = "search/repositories?q=%s&sort=updated&per_page=5"
+        elif grp == "A1p2":
+            api_path = "search/repositories?q=%s&sort=stars&per_page=5&page=2"
+        else:
+            api_path = "search/repositories?q=%s&sort=stars&per_page=5"
         cmdline = ["gh", "api", "-X", "GET",
-                   "search/repositories?q=%s&sort=stars&per_page=5"
-                   % urllib.parse.quote(q, safe="+"),
+                   api_path % urllib.parse.quote(q, safe="+"),
                    "--jq", '.items[] | {f:.full_name,s:.stargazers_count,p:.pushed_at,d:(.description // "")[0:160]}']
         try:
             r = subprocess.run(cmdline, capture_output=True, text=True,
