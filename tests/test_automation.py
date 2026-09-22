@@ -246,6 +246,33 @@ class TestRunNow(AutomationCase):
         self.assertEqual(cur["next_run"], before)
 
 
+class TestRunNowIntervalAnchor(AutomationCase):
+    """2026-09-23 实案回归：interval 手动触发不得挪 last_run 锚点——
+    22:28 手动跑一轮 + 23:43 服务重启，重启重算按新锚点滚出 00:28，
+    抹掉了本该 23:53 触发的档期。interval 的 last_run 只由调度触发推进。"""
+
+    def runTest(self):
+        t = self.make(kind="interval", interval_hours=2, time=None)
+        with self.aut._LOCK:
+            rec = self.aut._TASKS[t["id"]]
+            rec["created_at"] = "2026-09-22 13:00:00"
+            rec["last_run"] = "2026-09-22 19:53:55"
+            rec["next_run"] = "2026-09-22 23:53:55"
+        cur, run_id = self.aut.run_now(t["id"])
+        self.assertEqual(run_id, "r-fake-1")
+        self.assertEqual(cur["run_count"], 1)
+        self.assertEqual(cur["last_status"], "started")
+        # 锚点不动：手动触发不写 last_run
+        self.assertEqual(cur["last_run"], "2026-09-22 19:53:55")
+        # 实案重放：23:43:58 重启重算，锚点仍是 19:53 → 23:53 档期滚得回来
+        self.assertEqual(self.aut.compute_next_run(cur, _dt("2026-09-22 23:43:58")),
+                         "2026-09-22 23:53:55")
+        # 其余 kind（next_run 由 time/weekday 决定）：last_run 照旧写，展示上次执行
+        d = self.make()
+        cur2, _ = self.aut.run_now(d["id"])
+        self.assertTrue(cur2["last_run"])
+
+
 class TestDelete(AutomationCase):
     def runTest(self):
         t = self.make()

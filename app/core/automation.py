@@ -592,7 +592,13 @@ def run_now(tid):
         t = _TASKS.get(tid)
         if t is None:
             return None, None
-        t["last_run"] = _fmt_dt(now)
+        # interval 任务的 last_run 是 next_run 的计算锚点（compute_next_run 按
+        # last_run + N 小时向前滚），手动触发写进来会让重启重算把档期整体后移
+        # ——2026-09-23 实案：22:28 手动跑一轮 + 23:43 服务重启，本该 23:53
+        # 触发的档期被抹成 00:28。interval 只让调度触发推进 last_run；其余
+        # kind 的 next_run 由 time/weekday 决定，last_run 仅作展示，照旧写。
+        if t.get("kind") != "interval":
+            t["last_run"] = _fmt_dt(now)
         t["run_count"] = int(t.get("run_count") or 0) + 1
         t["last_status"] = status
         _save_locked()

@@ -41,7 +41,10 @@ class TestCodexWireAutoSkip(BaseTest):
         prov = next(p for p in MH._load()["providers"] if p["id"] == "prov-x")
         self.assertTrue(MH.codex_wire_blocked(prov))
         self.assertIsNone(MH.resolve_binding("codex-cli"))
-        self.assertEqual(router._binding_bonus("codex-cli"), -25.0)
+        # 2026-09-23 适配：_binding_bonus 改返回 (分值, 理由文本) 元组（50ba081）
+        score, why = router._binding_bonus("codex-cli")
+        self.assertEqual(score, -25.0)
+        self.assertIn("绑定链为空", why)
 
 
 class TestCodexChatPreSkip(BaseTest):
