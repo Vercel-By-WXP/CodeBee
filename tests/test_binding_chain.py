@@ -100,6 +100,50 @@ class TestCrossProviderChain(BaseTest):
         modelhub.providers_op([pa], "delete")
         self.assertIsNone(modelhub.resolve_orchestrator())
 
+    def test_disable_prunes_chain_entries(self):
+        """停用即出调度（2026-09-22 拍板）：停用厂商/模型直接把条目从落盘链
+        剔除，不靠运行时降级默默跳过占位；重新启用不回填；厂商默认模型与
+        配置保留（停用可逆），与删除的连引用清空区分开。"""
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        pa, pb = _two_providers(modelhub)
+        data = modelhub._load()
+        for p in data["providers"]:
+            if p["id"] == pb:
+                p["models"] = [{"name": "gpt-y", "enabled": True, "priority": 1},
+                               {"name": "gpt-z", "enabled": True, "priority": 2}]
+                p["model"] = "gpt-y"   # 厂商默认模型：停用不该动它（可逆）
+        modelhub._save(data)
+
+        modelhub.set_binding("codex-cli", chain=[
+            {"provider_id": pa, "model": "claude-x"},
+            {"provider_id": pb, "model": "gpt-y"},
+            {"provider_id": pb, "model": "gpt-z"}])
+
+        # 停用模型 gpt-y：只摘 (pb, gpt-y) 一条，兼容冗余同步，默认模型保留
+        self.assertIsNone(modelhub.model_op(pb, "gpt-y", "disable"))
+        b = modelhub.bindings()["codex-cli"]
+        self.assertEqual(b["chain"], [{"provider_id": pa, "model": "claude-x"},
+                                      {"provider_id": pb, "model": "gpt-z"}])
+        self.assertEqual(b["model"], "claude-x")
+        prov_b = next(p for p in modelhub.providers() if p["id"] == pb)
+        self.assertEqual(prov_b.get("model") or "", "gpt-y")
+        # 重新启用模型：不回填
+        self.assertIsNone(modelhub.model_op(pb, "gpt-y", "enable"))
+        self.assertEqual(modelhub.bindings()["codex-cli"]["chain"],
+                         [{"provider_id": pa, "model": "claude-x"},
+                          {"provider_id": pb, "model": "gpt-z"}])
+
+        # 停用厂商 pa：条目出链，主供应商跟随新链首
+        self.assertEqual(modelhub.providers_op([pa], "disable"), (1, ""))
+        b2 = modelhub.bindings()["codex-cli"]
+        self.assertEqual(b2["chain"], [{"provider_id": pb, "model": "gpt-z"}])
+        self.assertEqual(b2["provider_id"], pb)
+        # 重新启用厂商：链不回填
+        modelhub.providers_op([pa], "enable")
+        self.assertEqual(modelhub.bindings()["codex-cli"]["chain"],
+                         [{"provider_id": pb, "model": "gpt-z"}])
+
     def test_delete_model_clears_chain_entry(self):
         from app.core import modelhub
         modelhub._FILE = self.data_dir / "models.json"

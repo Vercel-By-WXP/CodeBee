@@ -448,6 +448,30 @@ def _drop_model_refs(data, prov, name):
             _sync_chain_refs(b)
 
 
+def _prune_binding_chains(data, prov_ids=(), pairs=()):
+    """停用即出调度：把指向已停用供应商/模型的条目从所有绑定链里剔除。
+
+    与删除的清引用（_drop_model_refs / providers_op delete）不同，停用可逆，
+    只摘链上死条目，不动主供应商 provider_id 与厂商默认模型——重新启用后
+    原样恢复。链上剔除不回填：调度页所见即所绑，不靠运行时降级默默跳过
+    占位死条目（2026-09-22 用户拍板：禁用就直接去掉，自动就行）。
+    """
+    ids = {i for i in (prov_ids or ()) if i}
+    prs = {(p, m) for p, m in (pairs or ()) if p and m}
+    if not ids and not prs:
+        return
+    for b in (data.get("bindings") or {}).values():
+        chain = b.get("chain")
+        if not chain:
+            continue
+        kept = [c for c in chain
+                if (c.get("provider_id") or "") not in ids
+                and (c.get("provider_id") or "", c.get("model") or "") not in prs]
+        if len(kept) != len(chain):
+            b["chain"] = kept
+            _sync_chain_refs(b)
+
+
 _MODEL_OPS = ("enable", "disable", "delete", "restore")
 
 
@@ -475,6 +499,7 @@ def _apply_model_op(data, prov, models, name, op):
         if not target.get("enabled", True):
             return False, ""
         target["enabled"] = False
+        _prune_binding_chains(data, pairs=[(prov.get("id"), name)])
     elif op == "delete":
         if target.get("hidden"):
             return False, ""
@@ -494,6 +519,8 @@ def model_ops(provider_id, names, op):
 
     先整体校验再落盘：任一名不存在、或 enable/disable 选中了已删除的模型，
     整个请求都不生效，避免只改一半。全部改动合并为一次写盘。
+    disable 即出调度：命中的 (供应商, 模型) 条目自动从所有绑定链剔除，
+    不回填；delete 走 _drop_model_refs 连默认模型引用一起清。
     restore 与可见模型混选时，可见项直接跳过（不算失败），便于「恢复所选」。
     """
     names = list(dict.fromkeys(n for n in (names or []) if n))
@@ -938,8 +965,9 @@ def upsert_provider(entry):
 def providers_op(ids, op):
     """批量供应商操作（enable | disable | delete | duplicate）。返回 (改动数, 错误)。
 
-    停用只影响 Tutti 编排时的运行时解析（resolve_binding 返回空 → 回落 CLI 默认），
-    不清除配置，也不影响绑定引用，随时可再启用。
+    停用即出调度：绑定链里它的条目自动剔除（_prune_binding_chains），配置与
+    模型列表保留，随时可再启用；已剔除的链条目不回填。运行时解析本来就会
+    跳过停用供应商，这里把落盘链一并清掉，调度页所见即所绑。
     duplicate 复制一条（同地址同密钥的第二个账号/新网关），副本不带绑定引用。
     """
     ids = list(dict.fromkeys(i for i in (ids or []) if i))
@@ -998,6 +1026,8 @@ def providers_op(ids, op):
                     p["enabled"] = want
                     changed += 1
             if changed:
+                if not want:
+                    _prune_binding_chains(data, prov_ids=ids)
                 # 启用置顶：本次选中的启用者排最前，其余启用跟随，停用的殿后；
                 # 排序稳定，各块内部保持原有顺序。落盘重排，列表页看到的就是它。
                 sel = set(ids)
