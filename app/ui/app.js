@@ -6167,7 +6167,11 @@ async function toggleLog(runId, rel) {
       (S.detailTaskKey && S.lastRun && S.lastRun.task_id === S.detailTaskKey) ||
       ((S.inspData || {}).run || {}).id === runId;
     if (!owned) return;
-    pre.textContent = r.log || t("（等待输出…）");
+    // 占位符跟状态走：运行中才「等待输出」，终态没产出就是「无输出」——
+    // 否则内置合成器这类不落 CLI 日志的步骤结束后，一直挂「等待输出…」
+    // 假装还在产字（2026-09-22 merge 卡已结束却等待输出案）
+    pre.textContent = r.log ||
+      (r.step_status === "running" ? t("（等待输出…）") : t("（无输出）"));
     box.classList.remove("hidden");
     syncChatLogSpace(true);
     currentLog = { runId, rel };
@@ -6186,7 +6190,9 @@ async function toggleLog(runId, rel) {
         if (currentLog && currentLog.runId === runId && currentLog.rel === rel) {
           // 贴底跟随：用户滚到底部附近才自动滚到最新输出，回看历史不打扰
           const stick = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 48;
-          pre.textContent = rr.log || t("（等待输出…）");
+          // 最后一帧常在步骤翻终态后才拉到：此刻仍无输出就该换「无输出」
+          pre.textContent = rr.log ||
+            (rr.step_status === "running" ? t("（等待输出…）") : t("（无输出）"));
           if (stick) pre.scrollTop = pre.scrollHeight;
           logLiveBadge(true);   // 每帧都打时间戳：内容没变也能证明通道活着
           if (rr.step_status && rr.step_status !== "running") {

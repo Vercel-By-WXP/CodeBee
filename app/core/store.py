@@ -547,6 +547,9 @@ def create_run(kind, title, task_id=None, entry_id=None, op=None):
             _RUNS.pop(run["id"], None)
             raise
         _RUNS[run["id"]] = run
+    # 新 run（排队/起跑）必须唤醒 SSE：否则侧栏 task_latest 感知不到
+    # 「最新一次运行」已易主，字形/时间停在上一轮（2026-09-22 侧栏假在跑案）
+    bump_state()
     return run
 
 
@@ -737,7 +740,13 @@ def update_run(run_id, expected_status=None, **fields):
                                     "error": str(run.get("error") or "")[:300]}}).start()
             except Exception:
                 pass
-        return run
+    # 每次成功写入都唤醒 SSE：run 的状态/步骤变化从前只能靠无关操作
+    # （自动化落盘、删记录）顺带广播，空闲时侧栏 task_latest 会冻在
+    # 「在跑」直到下一次无关 bump（2026-09-22 侧栏假在跑案）。
+    # 调用都是步骤级边界，不会形成推送风暴；CAS 拒绝/无此 run 的早退
+    # 路径不动版本号。
+    bump_state()
+    return run
 
 
 def run_dir(run_id):

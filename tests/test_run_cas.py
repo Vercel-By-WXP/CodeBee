@@ -102,3 +102,45 @@ class TestRecoverUsesCAS(BaseTest):
                              status="failed", ended_at="x")
         self.assertIsNone(r)
         self.assertEqual(store.get_run(run["id"])["status"], "failed")
+
+
+class TestStateVersionBump(BaseTest):
+    """run 生命周期必须唤醒 SSE（bump_state）。SSE 存活的前端不轮询
+    /api/state，全靠版本号变化收推送：run 状态变化不 bump，侧栏
+    task_latest 就冻在旧快照——详情页已「完成」、侧栏还转「在跑」
+    （2026-09-22 第二十九班实案，空闲时可无限期不同步）。"""
+
+    def test_create_and_update_bump(self):
+        from app.core import store
+        ver0 = store.state_version()
+        run = store.create_run("orchestration", "t")
+        self.assertGreater(store.state_version(), ver0)
+        ver1 = store.state_version()
+        self.assertTrue(store.update_run(run["id"], status="running"))
+        self.assertGreater(store.state_version(), ver1)
+
+    def test_terminal_bump_and_zombie_step_finalize(self):
+        """落终态必然 bump；挂着的 running 步骤同一次写入里被收尸。"""
+        from app.core import store
+        run = store.create_run("orchestration", "t")
+        store.update_run(run["id"], status="running", steps=[
+            {"role": "outline", "status": "done"},
+            {"role": "draft", "status": "running"},
+        ])
+        ver = store.state_version()
+        self.assertTrue(store.update_run(run["id"], status="done"))
+        self.assertGreater(store.state_version(), ver)
+        steps = store.get_run(run["id"])["steps"]
+        self.assertEqual(steps[1]["status"], "cancelled")
+
+    def test_rejected_or_missing_write_no_bump(self):
+        """没写进去就不算状态变化：CAS 拒绝 / run 不存在都不 bump，
+        否则陈旧 worker 的无效重试会打成推送风暴。"""
+        from app.core import store
+        run = store.create_run("orchestration", "t")
+        store.update_run(run["id"], status="running")
+        ver = store.state_version()
+        self.assertIsNone(store.update_run(run["id"], expected_status="queued",
+                                           status="done"))
+        self.assertIsNone(store.update_run("r-nonexistent-0000", status="done"))
+        self.assertEqual(store.state_version(), ver)
