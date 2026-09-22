@@ -5715,13 +5715,17 @@ button.request-busy > * { opacity: .18; }
 
 /* 钩子管理卡片（设置 → 钩子，2026-09-22）：名称/事件/开关一行，命令整行，
  * 底部超时+测试。mono 字体命令输入便于读路径 */
-.hook-card .hook-head { display: flex; align-items: center; gap: 10px; }
-.hook-card .hook-head .hook-name { flex: 1 1 140px; min-width: 0; }
-.hook-card .hook-head .hook-event { flex: none; }
-.hook-card .hook-cmd { width: 100%; margin-top: 10px; font-family: var(--mono); font-size: 12px; }
-.hook-card .hook-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.hook-card .hook-timeout { width: 64px; }
-.hook-card .hook-test-out { flex: 1 1 auto; min-width: 0; overflow: hidden;
+.hook-card { display: flex; flex-direction: column; gap: 10px; }
+.hook-card .hook-row { display: flex; align-items: center; gap: 10px; }
+.hook-card .hook-name { flex: 1 1 auto; min-width: 180px; }
+.hook-card .hook-event { flex: none; width: 150px; }
+.hook-card .hook-cmd { width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 12px; }
+.hook-card .hook-foot { flex-wrap: wrap; }
+.hook-card .hook-foot .switch { display: inline-flex; align-items: center; gap: 6px; }
+.hook-card .hook-foot .switch em { font-style: normal; font-size: 12.5px; color: var(--muted); }
+.hook-card .hook-foot-lab { font-size: 12.5px; color: var(--muted); }
+.hook-card .hook-timeout { width: 64px; flex: none; }
+.hook-card .hook-test-out { flex: 1 1 160px; min-width: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
 .hook-card .switch { display: inline-flex; align-items: center; cursor: pointer; }
 .hook-card .switch input { appearance: none; width: 34px; height: 19px; border-radius: 999px;
@@ -5868,3 +5872,16 @@ button.request-busy > * { opacity: .18; }
   .kpi.has-spark .kpi-s { padding-right: 0; }
 }
 
+
+/* 分卷：章节评审卡按卷分组（.ch-vol 卷头 + 卷内容器）。卷头是一条细分隔线
+ * 加卷名/卷内达标数/章号区间；不分卷时完全不渲染，视觉与分卷前一致。 */
+.ch-vol { margin: 10px 0 14px; }
+.ch-vol-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 4px 2px 6px; border-bottom: 1px solid var(--border, rgba(128,128,128,.22)); }
+.ch-vol-head b { font-size: 13px; letter-spacing: .01em; }
+.ch-vol > .ch-row { margin: 6px 0 0 10px; }
+
+/* 分卷：发布页章节清单按卷分组（.pb-vol 卷头 + 其下章节按钮）。 */
+.pb-vol { margin: 8px 0 12px; }
+.pb-vol-head { font-size: 12.5px; color: var(--muted); padding: 2px 2px 6px;
+  border-bottom: 1px solid var(--border, rgba(128,128,128,.22)); margin-bottom: 6px; }

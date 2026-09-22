@@ -114,18 +114,21 @@
         <span class="ss-label" data-i18n="搜索">搜索</span>
         <span class="kbd" aria-hidden="true">Ctrl K</span>
       </button>
+      <!-- 快捷导航：只放最常用的全局页（data-page 是页面 id 真源）。
+           点它们只换主栏内容，左栏任务树原地不动（app.js switchTab 的 main 形态）；
+           对应入口已从下面设置导航移除，同一页不再两处重复。 -->
       <div class="side-quick">
-        <button class="qitem" id="btn-q-overview" title="概览" data-i18n-title="概览">
+        <button class="qitem" id="btn-q-overview" data-page="overview" title="概览" data-i18n-title="概览">
           <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
           <span data-i18n="概览">概览</span>
         </button>
-        <button class="qitem" id="btn-q-automation" title="自动化" data-i18n-title="自动化">
+        <button class="qitem" id="btn-q-runs" data-page="runs" title="运行记录" data-i18n-title="运行记录">
+          <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
+          <span data-i18n="运行记录">运行记录</span>
+        </button>
+        <button class="qitem" id="btn-q-automation" data-page="automation" title="自动化" data-i18n-title="自动化">
           <svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>
           <span data-i18n="自动化">自动化</span>
-        </button>
-        <button class="qitem" id="btn-q-market" title="插件市场" data-i18n-title="插件市场">
-          <svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg>
-          <span data-i18n="插件市场">插件市场</span>
         </button>
       </div>
       <div class="side-section tasks">
@@ -178,12 +181,9 @@
       <button id="btn-set-back" class="set-back" data-i18n="返回 CodeBee">
         <svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>返回 CodeBee
       </button>
-      <div data-i18n="工作台" class="set-group">工作台</div>
-      <button class="set-item" data-sub="overview" data-i18n="概览"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>概览</button>
+      <!-- 概览 / 运行记录 / 自动化已升为左栏快捷导航（见 .side-quick），此处不再重复挂条目 -->
       <div data-i18n="编排" class="set-group">编排</div>
       <button class="set-item active" data-sub="tasks" data-i18n="任务"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg>任务</button>
-      <button class="set-item" data-sub="runs" data-i18n="运行记录"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>运行记录</button>
-      <button class="set-item" data-sub="automation" data-i18n="自动化"><svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>自动化</button>
       <button class="set-item" data-sub="hooks" data-i18n="钩子"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg>钩子</button>
       <button class="set-item" data-sub="__wxdigest" data-i18n="微信群聊汇报"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg>微信群聊汇报</button>
       <button class="set-item" data-sub="zentao" data-i18n="禅道"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>禅道</button>
@@ -436,7 +436,9 @@
                   <div class="field"><label data-i18n="连载模式：章节数（空 = 单稿件一次成文）">连载模式：章节数（空 = 单稿件一次成文）</label><input id="f-chapters" type="number" min="2" max="20" placeholder="例：8（逐章起草+评审+修订）" data-i18n-ph="例：8（逐章起草+评审+修订）"></div>
                   <div class="field"><label data-i18n="每章约字数">每章约字数</label><input id="f-words-per-ch" type="number" min="500" max="8000" step="100" placeholder="例：2500" data-i18n-ph="例：2500"></div>
                   <div class="field"><label data-i18n="同章赛马稿件数">同章赛马稿件数</label><input id="f-variants" type="number" min="1" max="3" step="1" placeholder="1 = 关闭（2-3 每章多稿择优，更贵）" data-i18n-ph="1 = 关闭（2-3 每章多稿择优，更贵）"></div>
+                  <div class="field"><label data-i18n="分卷：每卷章数（空 = 不分卷）">分卷：每卷章数（空 = 不分卷）</label><input id="f-vol-chapters" type="number" min="2" max="200" step="1" placeholder="例：20（卷边界按全书章号自动推导）" data-i18n-ph="例：20（卷边界按全书章号自动推导）"></div>
                 </div>
+                <div class="field" id="f-vol-spec-field"><label data-i18n="分卷：指定卷结构（可选，优先于每卷章数）">分卷：指定卷结构（可选，优先于每卷章数）</label><input id="f-vol-spec" placeholder="例：第一卷 少年初入江湖 20章；第二卷 风云再起 16章" data-i18n-ph="例：第一卷 少年初入江湖 20章；第二卷 风云再起 16章" data-i18n-title="每卷一行或分号分隔：卷名 + 章数（或第1-20章）。也可以在任务目标里直接这样写，会自动识别" title="每卷一行或分号分隔：卷名 + 章数（或第1-20章）。也可以在任务目标里直接这样写，会自动识别"></div>
               </div>
 
               <div id="f-manual-only" class="hidden">

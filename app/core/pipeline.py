@@ -1807,45 +1807,11 @@ def _plot_modules(workdir):
             "鼓励化用，不要照抄原句）\n\n" + txt)
 
 
-def _chain_volume_names(task):
-    """沿 serial.continues 链收集各批次大纲里的卷名/卷弧光（旧 → 新，后者覆盖）。
-    续写批次合并成书时要给全书（含此前各批）的卷都写上标题，那些卷的命名记在
-    更早的批次任务上，本批 run 的 outline 里没有。失败静默返回 {}。"""
-    from . import store as _store
-    names, seen, cur = {}, set(), task
-    chain = []
-    while cur and len(chain) < 20:
-        tid = str(cur.get("id") or "")
-        if not tid or tid in seen:
-            break
-        seen.add(tid)
-        chain.append(cur)
-        nxt = str((cur.get("serial") or {}).get("continues") or "")
-        cur = _store.get_task(nxt) if nxt else None
-    for t in reversed(chain):        # 旧 → 新：新批次的命名覆盖旧批次
-        try:
-            for r in _store.task_runs(t["id"]):
-                o = r.get("outline") or {}
-                if isinstance(o.get("volumes"), dict):
-                    names.update(o["volumes"])
-        except Exception:
-            continue
-    return names
-
-
 def _book_volume_plan(task, outline, upto):
-    """本书的卷规划表：显式卷表/每卷章数（serial）→ 规划表 → 合并卷名
-    （本批大纲 + 沿链更早批次）→ 保证覆盖到第 upto 章。
-    不分卷返回 []；调用方据此决定是否插卷标题/卷末约束。"""
-    serial = task.get("serial") or {}
-    per = volumes.norm_per(serial.get("volume_chapters"))
-    plan = volumes.build_plan(serial.get("volumes"), per, upto=upto)
-    if not plan:
-        return []
-    named = dict(_chain_volume_names(task))
-    if isinstance(outline, dict):
-        named.update(outline.get("volumes") or {})
-    return volumes.merge_titles(plan, named)
+    """本书的卷规划表（卷边界+卷名+卷弧光）。实现见 planner.book_volume_plan
+    ——放在 planner 是因为它要沿 serial.continues 链读历史 run 的卷名，属
+    「大纲/命名」职责；此处保留薄封装便于连载流程阅读。"""
+    return planner.book_volume_plan(task, outline, upto)
 
 
 LEDGER_FILE = os.path.join(".codebee", "resource-ledger.md")
@@ -3375,8 +3341,9 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         if task.get("context"):
             crit_prompt += "\n\n## 原始任务背景与附件参考\n" + task["context"]
         # AI 味确定性检测（借鉴 oh-story 去AI味）：客观参考线随评审下发，
-        # 命中才追加——评审官结合上下文判断是否真问题，脚本不直接扣分
-        _aiflavor_line = aiflavor.report_line(manuscript)
+        # 命中才追加——评审官结合上下文判断是否真问题，脚本不直接扣分。
+        # kind 传任务类型：节奏检测只对叙事类流程（小说/连载/短视频脚本）有意义。
+        _aiflavor_line = aiflavor.report_line(manuscript, task.get("type"))
         if _aiflavor_line:
             crit_prompt += "\n\n## 确定性检测结果（供评审参考）\n" + _aiflavor_line
         for agent in critics:

@@ -218,11 +218,10 @@ def create_task(payload):
                 # 不会因分批而错位。
                 vol_spec = volumes.norm_spec(serial.get("volumes"))
                 if not vol_spec:
-                    # 表单没填卷表时，从目标/上下文文字里识别用户手写的
-                    # 「第一卷 少年初入江湖 第1-20章」式分卷信息（保守识别，
-                    # 认不出就返回空，绝不会把普通文字误判成分卷）。
-                    vol_spec = volumes.parse_spec_text(goal) \
-                        or volumes.parse_spec_text(serial.get("volumes_text")) \
+                    # 否则从文字里识别：表单「指定卷结构」框 > 任务目标 > 上下文。
+                    # 保守识别——认不出返回空，绝不把普通文字误判成分卷。
+                    vol_spec = volumes.parse_spec_text(serial.get("volumes_text")) \
+                        or volumes.parse_spec_text(goal) \
                         or volumes.parse_spec_text(task.get("context") or "")
                 if vol_spec:
                     s["volumes"] = vol_spec

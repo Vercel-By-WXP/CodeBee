@@ -10,7 +10,7 @@ function codebeeDocumentTitle(lang) {
 document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, lastPrefs: null, prefsApplied: false };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, lastPrefs: null, prefsApplied: false };
 
 /* ---------------------------------------------------------- 任务类型（流程） */
 async function loadFlows() {
@@ -301,7 +301,8 @@ function onTypeChange() {
   const bibleCreate = $("bible-create-field");
   const isSerialReview = isReview && !!(flow && flow.serial);
   if (bibleCreate) bibleCreate.classList.toggle("hidden", !isSerialReview);
-  const clearSerialFields = () => ["f-chapters", "f-words-per-ch", "f-variants", "f-bible"].forEach((id) => {
+  const clearSerialFields = () => ["f-chapters", "f-words-per-ch", "f-variants", "f-bible",
+    "f-vol-chapters", "f-vol-spec"].forEach((id) => {
     const el = $(id);
     if (el) el.value = "";
   });
@@ -330,6 +331,12 @@ function onTypeChange() {
     if (flow.serial) {
       if (!$("f-chapters").value) $("f-chapters").value = lp.chapters || flow.serial.chapters || "";
       if (!$("f-words-per-ch").value) $("f-words-per-ch").value = lp.words_per_chapter || flow.serial.words_per_chapter || "";
+      // 分卷开箱即用：没填过就预填一个常见每卷章数（用户可改；清空 = 不分卷）。
+      // 卷边界由后端按全书章号推导，续写批次自动接上同一卷。
+      if (!$("f-vol-chapters").value && !$("f-vol-spec").value) {
+        $("f-vol-chapters").value = (lp.volume_chapters != null && lp.volume_chapters !== "")
+          ? lp.volume_chapters : (flow.serial.volume_chapters || 20);
+      }
     } else clearSerialFields();
   } else {
     // 隐藏控件仍保留 DOM 值；换流程时清理，避免章节/圣经状态污染下一次提交。
@@ -2465,6 +2472,12 @@ async function createTask() {
         words_per_chapter: parseInt($("f-words-per-ch").value, 10) || 2500,
         variants: Math.max(1, Math.min(3, parseInt($("f-variants").value, 10) || 1)),
       };
+      // 分卷：显式卷结构文本优先（后端解析成卷表），否则用每卷章数。
+      // 两个都留空 = 不分卷（后端收到 0/缺字段即不分卷）。
+      const volSpec = ($("f-vol-spec") || {}).value ? $("f-vol-spec").value.trim() : "";
+      const volPer = parseInt(($("f-vol-chapters") || {}).value, 10);
+      if (volSpec) payload.serial.volumes_text = volSpec;
+      else if (volPer >= 2) payload.serial.volume_chapters = volPer;
     } else if (flow.serial) {
       // 显式 null 覆盖 serial_novel 的流程默认，空章节就是单稿件。
       payload.serial = null;
@@ -3139,6 +3152,16 @@ function newFromTask(id) {
     $("f-chapters").value = tk.serial ? tk.serial.chapters : "";
     $("f-words-per-ch").value = tk.serial ? tk.serial.words_per_chapter : "";
     $("f-variants").value = tk.serial && tk.serial.variants ? tk.serial.variants : "";
+    // 分卷：还原每卷章数；指定卷结构还原成可读文本（卷名 + 章数/章号范围）
+    $("f-vol-chapters").value = tk.serial && tk.serial.volume_chapters ? tk.serial.volume_chapters : "";
+    $("f-vol-spec").value = tk.serial && Array.isArray(tk.serial.volumes)
+      ? tk.serial.volumes.map((v) => {
+          const ttl = (v && v.title) || "未命名";
+          if (v && v.start && v.end) return ttl + " 第" + v.start + "-" + v.end + "章";
+          if (v && v.chapters) return ttl + " " + v.chapters + "章";
+          return ttl;
+        }).join("；")
+      : "";
     const want = new Set(tk.critics || []);
     $("f-critics").querySelectorAll("input").forEach((i) => { i.checked = want.has(i.value); });
     // 同目录同稿件名再开一篇会覆盖旧产出——提醒但不阻止（有意重写也合理）
@@ -4726,8 +4749,11 @@ window.pbUploadChapter = async function (taskId, platform) {
   if (!box.classList.contains("hidden")) { box.classList.add("hidden"); return; }
   box.classList.remove("hidden");
   box.innerHTML = '<div class="pb-loading">' + esc(t("正在列出章节文件…")) + "</div>";
-  let wd = "";
-  try { const tk = ((S.state || {}).tasks || []).find((x) => x.id === taskId); wd = (tk && tk.workdir) || ""; } catch (e) { /* 兜底空 */ }
+  let wd = "", pubTask = null;
+  try {
+    pubTask = ((S.state || {}).tasks || []).find((x) => x.id === taskId);
+    wd = (pubTask && pubTask.workdir) || "";
+  } catch (e) { /* 兜底空 */ }
   if (!wd) { box.innerHTML = '<div class="pb-err">' + esc(t("找不到任务工作目录")) + "</div>"; return; }
   let files = [];
   try {
@@ -4740,11 +4766,33 @@ window.pbUploadChapter = async function (taskId, platform) {
   }
   if (!files.length) { box.innerHTML = '<div class="pb-err">' + esc(t("工作目录里没有 .md 章稿")) + "</div>"; return; }
   files.sort((a, b) => (a.name > b.name ? 1 : -1));
-  box.innerHTML = '<div class="pb-hint">' + esc(t("选一章发送（表单填好后停，人工确认提交）；已成功发过的章会被台账拦下：")) + "</div>" +
-    files.map((f) =>
-      '<button class="ghost pb-ch-item" onclick="pbSendChapter(\'' + esc(taskId) + "', '" + platform +
-      '\',\'' + esc(f.name) + '\')" title="' + esc(f.name) + '">' + esc(f.name.split("/").pop()) + "</button>"
-    ).join("");
+  const item = (f) =>
+    '<button class="ghost pb-ch-item" onclick="pbSendChapter(\'' + esc(taskId) + "', '" + platform +
+    '\',\'' + esc(f.name) + '\')" title="' + esc(f.name) + '">' + esc(f.name.split("/").pop()) + "</button>";
+  const hint = '<div class="pb-hint">' + esc(t("选一章发送（表单填好后停，人工确认提交）；已成功发过的章会被台账拦下：")) + "</div>";
+  // 最高章号：让卷规划表铺到最后一章（否则超出显式卷表的章节会掉进「其他」）
+  let maxCh = 0;
+  files.forEach((f) => {
+    const n = chapterNumOf(f.name);
+    if (n > maxCh) maxCh = n;
+  });
+  const plan = volumePlanOf(pubTask, maxCh);
+  if (!plan.length) { box.innerHTML = hint + files.map(item).join(""); return; }
+  // 分卷：按卷分组列出可发章节（章号取自 chapter-NN.md）。未落入卷的文件归「其他」。
+  const groups = plan.map((v) => ({ v: v, files: [] }));
+  const rest = [];
+  files.forEach((f) => {
+    const n = chapterNumOf(f.name);
+    if (!n) { rest.push(f); return; }
+    const g = groups.find((x) => n >= x.v.first && (x.v.last == null || n <= x.v.last));
+    if (g) g.files.push(f); else rest.push(f);
+  });
+  box.innerHTML = hint + groups.filter((g) => g.files.length).map((g) => {
+    const label = t("第") + " " + g.v.vol + " " + t("卷") + (g.v.title ? " 《" + g.v.title + "》" : "");
+    return '<div class="pb-vol"><div class="pb-vol-head">' + esc(label) + "</div>" +
+      g.files.map(item).join("") + "</div>";
+  }).join("") + (rest.length ? '<div class="pb-vol"><div class="pb-vol-head">' +
+    esc(t("其他文件")) + "</div>" + rest.map(item).join("") + "</div>" : "");
 };
 
 window.pbSendChapter = async function (taskId, platform, relName) {
@@ -5854,36 +5902,117 @@ function stepsMatch(runs, current) {
     (r.steps || []).some((s) => s.log === current.rel));
 }
 
+/* 从章稿文件名取全书章号：chapter-07.md → 7；非章稿（或解析不出）返回 0。
+ * 只认「chapter-数字.md」这一约定（与后端 _CH_FILE_RE 一致）。 */
+function chapterNumOf(name) {
+  const base = String(name || "").split("/").pop();
+  if (!/^chapter-\d{1,4}\.md$/i.test(base)) return 0;
+  const digits = base.slice("chapter-".length, -3);
+  const n = parseInt(digits, 10);
+  return n > 0 ? n : 0;
+}
+
+/* 分卷规划表（前端只读副本）：把任务的 serial 分卷配置还原成
+ * [{vol, title, first, last}]，供发布页按卷分组列章。后端 volumes.py 是唯一
+ * 真源（写作与成书都走它）；这里只做「列清单」这一用途的最小推导，取不到
+ * 分卷配置时返回 []（调用方退化为平铺列表）。
+ *   serial.volumes        显式卷表：[{title, chapters|start/end}]（优先）
+ *   serial.volume_chapters 每卷章数：等长切卷（兜底）
+ * last=null 表示开放到书末。 */
+function volumePlanOf(task, upto) {
+  const s = (task || {}).serial || {};
+  const spec = Array.isArray(s.volumes) ? s.volumes : [];
+  let per = parseInt(s.volume_chapters, 10);
+  if (!(per >= 2)) per = 0;
+  if (!spec.length && !per) return [];
+  const plan = [];
+  let prevLast = 0;
+  const push = (title, first, last) => plan.push({ vol: plan.length + 1, title: title || "", first: first, last: last });
+  for (const it of spec) {
+    if (!it) continue;
+    const first = (it.start > 0) ? it.start : prevLast + 1;
+    let last = null;
+    if (it.end > 0) last = it.end;
+    else if (it.chapters > 0) last = first + it.chapters - 1;
+    if (last != null && last < first) last = first;
+    push(it.title, first, last);
+    if (last == null) return plan;     // 开放卷：后面不再有卷
+    prevLast = last;
+  }
+  // 显式卷表用尽后按每卷章数（或末卷长度）续卷，保证覆盖到 upto（与后端
+  // volumes.build_plan 同规则）——否则第 21 章起会掉进「其他文件」分组。
+  const fb = per || (plan.length && plan[plan.length - 1].last != null
+    ? plan[plan.length - 1].last - plan[plan.length - 1].first + 1 : 0);
+  if (fb > 0) {
+    let cursor = prevLast + 1;
+    const limit = (upto > 0) ? upto : (plan.length ? prevLast : fb);
+    while (cursor <= limit && plan.length < 200) {
+      push("", cursor, cursor + fb - 1);
+      cursor += fb;
+    }
+  }
+  return plan;
+}
+
+
 /* 连载章节评审卡：每章均分/是否达标/字数 + 逐项目标审稿结果（event_check，
  * 借鉴 AI-Novel-Writer：大纲要点逐项判定+正文证据）。非连载 run 无
- * chapter_scores 保持隐藏。 */
+ * chapter_scores 保持隐藏。
+ * 分卷：章节卡按卷分组显示（卷名来自 run.volumes / chapter_scores[].vol_title），
+ * 不分卷时退化为原来的平铺列表，视觉零变化。 */
 function renderChapterScores(run) {
   const box = $("rd-chapters");
   if (!box) return;
   const cs = run && run.chapter_scores;
   if (!Array.isArray(cs) || !cs.length) { box.classList.add("hidden"); return; }
   box.classList.remove("hidden");
-  box.innerHTML = '<h3 class="sec-title">' + t("章节评审") +
-    '<span class="tag">' + cs.filter((c) => c.passed).length + "/" + cs.length + " " + t("达标") + "</span></h3>" +
-    cs.map((c) => {
-      const means = c.means || {};
-      const dims = Object.keys(means).map((d) =>
-        '<span class="ch-dim' + (means[d] >= 7 ? "" : " low") + '">' + esc(d) + " " + means[d] + "</span>").join("");
-      const ev = (c.event_check || []).map((line) => {
-        const ok = /已完成/.test(line), bad = /未完成/.test(line);
-        return '<div class="ch-ev' + (ok ? " ok" : bad ? " bad" : "") + '">' + esc(line) + "</div>";
-      }).join("");
-      return '<div class="ch-row' + (c.passed ? "" : " fail") + '">' +
-        '<div class="ch-head"><b>' + esc(t("第") + " " + c.chapter + " " + t("章")) + '</b>' +
-        '<span class="ch-title">' + esc(c.title || "") + "</span>" +
-        '<span class="tag">' + (c.passed ? t("达标") : t("未达标")) + "</span>" +
-        (c.reused ? '<span class="tag">' + t("沿用") + "</span>" : "") +
-        '<span class="ch-meta">' + Number(c.words || 0) + t(" 字") +
-        (c.rounds > 1 ? " · " + c.rounds + t(" 轮") : "") + "</span></div>" +
-        (dims ? '<div class="ch-dims">' + dims + "</div>" : "") +
-        (ev ? '<div class="ch-evs"><span class="hint">' + t("逐项目标核对：") + "</span>" + ev + "</div>" : "") +
-        "</div>";
+  // 卷名表：优先 run.volumes（全书卷规划），退到章节自带的 vol_title
+  const volTitles = {};
+  (run.volumes || []).forEach((v) => { volTitles[v.vol] = v.title || ""; });
+  cs.forEach((c) => {
+    if (c.vol && c.vol_title && !volTitles[c.vol]) volTitles[c.vol] = c.vol_title;
+  });
+  const rowHtml = (c) => {
+    const means = c.means || {};
+    const dims = Object.keys(means).map((d) =>
+      '<span class="ch-dim' + (means[d] >= 7 ? "" : " low") + '">' + esc(d) + " " + means[d] + "</span>").join("");
+    const ev = (c.event_check || []).map((line) => {
+      const ok = /已完成/.test(line), bad = /未完成/.test(line);
+      return '<div class="ch-ev' + (ok ? " ok" : bad ? " bad" : "") + '">' + esc(line) + "</div>";
     }).join("");
+    return '<div class="ch-row' + (c.passed ? "" : " fail") + '">' +
+      '<div class="ch-head"><b>' + esc(t("第") + " " + c.chapter + " " + t("章")) + '</b>' +
+      '<span class="ch-title">' + esc(c.title || "") + "</span>" +
+      '<span class="tag">' + (c.passed ? t("达标") : t("未达标")) + "</span>" +
+      (c.reused ? '<span class="tag">' + t("沿用") + "</span>" : "") +
+      '<span class="ch-meta">' + Number(c.words || 0) + t(" 字") +
+      (c.rounds > 1 ? " · " + c.rounds + t(" 轮") : "") + "</span></div>" +
+      (dims ? '<div class="ch-dims">' + dims + "</div>" : "") +
+      (ev ? '<div class="ch-evs"><span class="hint">' + t("逐项目标核对：") + "</span>" + ev + "</div>" : "") +
+      "</div>";
+  };
+  const head = '<h3 class="sec-title">' + t("章节评审") +
+    '<span class="tag">' + cs.filter((c) => c.passed).length + "/" + cs.length + " " + t("达标") + "</span></h3>";
+  const hasVol = cs.some((c) => c.vol);
+  if (!hasVol) { box.innerHTML = head + cs.map(rowHtml).join(""); return; }
+  // 按卷分组（章号顺序，卷内保持原序）
+  const groups = [];
+  cs.forEach((c) => {
+    const v = c.vol || 0;
+    let g = groups.find((x) => x.vol === v);
+    if (!g) { g = { vol: v, rows: [] }; groups.push(g); }
+    g.rows.push(c);
+  });
+  box.innerHTML = head + groups.map((g) => {
+    const title = volTitles[g.vol] || "";
+    const nPass = g.rows.filter((c) => c.passed).length;
+    const label = g.vol ? (t("第") + " " + g.vol + " " + t("卷") + (title ? " 《" + title + "》" : "")) : t("未分卷");
+    return '<div class="ch-vol"><div class="ch-vol-head"><b>' + esc(label) + "</b>" +
+      '<span class="tag">' + nPass + "/" + g.rows.length + " " + t("达标") + "</span>" +
+      '<span class="ch-meta">' + t("第 ") + g.rows[0].chapter + "–" +
+      g.rows[g.rows.length - 1].chapter + t(" 章") + "</span></div>" +
+      g.rows.map(rowHtml).join("") + "</div>";
+  }).join("");
 }
 
 function renderPlan(run) {
@@ -8355,6 +8484,7 @@ function flowForm(fid) {
     '<div class="field"><label>' + t("连载章节数（留空 = 单稿件）") + '</label><input id="fl-chapters" type="number" min="2" max="20" value="' + (f && f.serial ? f.serial.chapters : "") + '" placeholder="' + t("例：8") + '"></div>' +
     '<div class="field"><label>' + t("每章约字数") + '</label><input id="fl-words-per-ch" type="number" min="500" max="8000" step="100" value="' + (f && f.serial ? f.serial.words_per_chapter : "") + '" placeholder="' + t("例：2500") + '"></div>' +
     '<div class="field"><label>' + t("同章赛马稿件数") + '</label><input id="fl-variants" type="number" min="1" max="3" step="1" value="' + (f && f.serial ? (f.serial.variants || 1) : 1) + '" placeholder="' + t("1 = 关闭") + '"></div>' +
+    '<div class="field"><label>' + t("分卷：每卷章数（留空 = 不分卷）") + '</label><input id="fl-vol-chapters" type="number" min="2" max="200" step="1" value="' + (f && f.serial && f.serial.volume_chapters ? f.serial.volume_chapters : "") + '" placeholder="' + t("例：20") + '"></div>' +
     "</div>" +
     '<div class="field"><label>' + t("起草提示词（可选，占位符 __FILE__ __GOAL__ __CONTEXT__ __SKILLS__）") + '</label><textarea id="fl-draft" rows="3" placeholder="' + t("留空 = 内置通用模板") + '">' + esc(f && f.draft_prompt ? f.draft_prompt : "") + "</textarea></div>" +
     '<div class="field"><label>' + t("评审提示词（可选，占位符 __DIMKEYS__ __MANUSCRIPT__）") + '</label><textarea id="fl-critique" rows="3" placeholder="' + t("留空 = 内置通用模板") + '">' + esc(f && f.critique_prompt ? f.critique_prompt : "") + "</textarea></div>" +
@@ -8394,11 +8524,15 @@ async function saveFlow() {
     const rb = $("fl-rubric").value.split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
     if (rb.length) payload.rubric = rb;
     const ch = parseInt($("fl-chapters").value, 10);
-    if (ch >= 2) payload.serial = {
-      chapters: ch,
-      words_per_chapter: parseInt($("fl-words-per-ch").value, 10) || 2500,
-      variants: Math.max(1, Math.min(3, parseInt($("fl-variants").value, 10) || 1)),
-    };
+    if (ch >= 2) {
+      payload.serial = {
+        chapters: ch,
+        words_per_chapter: parseInt($("fl-words-per-ch").value, 10) || 2500,
+        variants: Math.max(1, Math.min(3, parseInt($("fl-variants").value, 10) || 1)),
+      };
+      const vp = parseInt(($("fl-vol-chapters") || {}).value, 10);
+      if (vp >= 2) payload.serial.volume_chapters = vp;   // 流程默认分卷（任务级可覆盖）
+    }
     const dp = $("fl-draft").value.trim();
     if (dp) payload.draft_prompt = dp;
     const cp = $("fl-critique").value.trim();
@@ -8695,6 +8829,26 @@ function autoStatusTag(tsk) {
   return "";
 }
 
+/* 运行偏好标签：只显示「偏离默认」的那些（编排默认 auto、思考默认 standard），
+ * 否则每张卡都挂两颗没有信息量的胶囊，反而盖住真正要看的节奏与流程 */
+function autoPrefTags(tsk) {
+  const MODE = { auto: "自动", fast: "快速", expert: "专家", manual: "手动" };
+  const TH = { auto: "自动", low: "快速", standard: "标准", high: "深度" };
+  const out = [];
+  if (tsk.mode && tsk.mode !== "auto" && MODE[tsk.mode]) {
+    out.push(t("编排模式") + "：" + t(MODE[tsk.mode]));
+  }
+  if (tsk.thinking && tsk.thinking !== "standard" && TH[tsk.thinking]) {
+    out.push(t("思考程度") + "：" + t(TH[tsk.thinking]));
+  }
+  if (tsk.direct_provider_id) {
+    const p = directProviders().find((x) => x.id === tsk.direct_provider_id);
+    out.push(t("对话模型") + "：" + (p ? (p.name || p.id) : tsk.direct_provider_id) +
+      "/" + (tsk.direct_model || t("随厂商推荐")));
+  }
+  return out.map((s) => '<span class="tag">' + esc(s) + "</span>").join("");
+}
+
 function autoCardHtml(tsk) {
   const flow = tsk.flow ? flowById(tsk.flow) : null;
   return '<div class="card' + (tsk.enabled ? "" : " off") + '"><div class="head">' +
@@ -8704,7 +8858,8 @@ function autoCardHtml(tsk) {
     ' onchange="autoToggle(\'' + esc(tsk.id) + '\', this.checked)"><span>' + (tsk.enabled ? t("启用中") : t("已停用")) + "</span></label>" +
     "</div>" +
     '<div class="auto-kind">' + esc(autoKindText(tsk)) +
-    (flow ? '<span class="tag">' + t("流程：") + esc(t(flow.name)) + "</span>" : "") + "</div>" +
+    (flow ? '<span class="tag">' + t("流程：") + esc(t(flow.name)) + "</span>" : "") +
+    autoPrefTags(tsk) + "</div>" +
     '<div class="auto-prompt">' + esc(tsk.prompt) + "</div>" +
     '<div class="auto-meta">' +
     (tsk.enabled && tsk.next_run ? "<span>" + t("下次运行 ") + esc(tsk.next_run) + "</span>" : "") +
@@ -8747,6 +8902,8 @@ async function autoForm(task, tpl) {
   const f = task || {};
   const kind = f.kind || (tpl && tpl.suggested_kind) || "daily";
   const curFlow = f.flow || (tpl && tpl.suggested_flow) || "";
+  const mode = f.mode || "auto";
+  const thinking = f.thinking || "standard";
   const wdOpts = AUTO_WD.map((w, i) =>
     '<option value="' + i + '"' + (Number(f.weekday) === i || (!task && tpl && tpl.suggested_weekday === i) ? " selected" : "") + ">" + t(w) + "</option>").join("");
   const runAt = f.run_at ? String(f.run_at).replace(" ", "T").slice(0, 16) : "";
@@ -8770,6 +8927,18 @@ async function autoForm(task, tpl) {
         '<option value="' + esc(fl.id) + '"' + (fl.id === curFlow ? " selected" : "") + ">" + esc(t(fl.name)) + "</option>").join("") +
       "</select></div>" +
     "</div>" +
+    /* 运行偏好：与新建任务 Composer 的三颗胶囊同一套取值（编排模式/思考程度/
+       对话模型），到点拉起的运行与手动建的任务完全等价 */
+    '<div class="grid-2">' +
+    '<div class="field"><label>' + t("编排模式") + "</label>" +
+      autoPillHtml("au-mode", AUTO_MODES, mode) + "</div>" +
+    '<div class="field"><label>' + t("思考程度") + "</label>" +
+      autoPillHtml("au-thinking", AUTO_THINKINGS, thinking) + "</div>" +
+    "</div>" +
+    '<div id="au-model-field" class="field hidden"><label>' + t("对话模型（可选）") + '</label><div class="grid-2">' +
+      '<select id="au-direct-provider" aria-label="' + t("对话厂商") + '"></select>' +
+      '<select id="au-direct-model-name" aria-label="' + t("对话模型") + '"></select>' +
+      '</div><p class="hint">' + t("只对「直接执行」类流程生效；留「自动推荐」时按系统路由挑模型。") + "</p></div>" +
     '<div class="grid-2">' +
     '<div class="field au-fld" data-k="time"><label>' + t("时间") + '</label><input id="au-time" type="time" value="' +
       esc(f.time || (tpl && tpl.suggested_time) || "09:00") + '"></div>' +
@@ -8789,6 +8958,71 @@ async function autoForm(task, tpl) {
     kindSel.addEventListener("change", autoFormSyncKind);
     autoFormSyncKind();
   }
+  ["au-mode", "au-thinking"].forEach((id) => {
+    const sel = $(id);
+    if (sel) sel.addEventListener("change", () => syncCmpSelFace(id));
+    syncCmpSelFace(id);   // 弹框是动态插入的：选项文字要在这里同步一次
+  });
+  renderAuModelPicker(f.direct_provider_id || "", f.direct_model || "");
+  const flowSel = $("au-flow");
+  if (flowSel) {
+    flowSel.addEventListener("change", autoFormSyncFlow);
+    autoFormSyncFlow();
+  }
+}
+
+/* 运行偏好取值（真源 = automation.py 的 MODES/THINKINGS，选项文案与 Composer 共用） */
+const AUTO_MODES = [
+  { v: "auto", label: "自动（推荐）：按任务类型与风险动态决定步骤" },
+  { v: "fast", label: "快速：少步骤优先，先做确定性验收" },
+  { v: "expert", label: "专家：完整规划、多评审、失败修复与换将" },
+  { v: "manual", label: "手动：自行指定实现者与评审组" },
+];
+const AUTO_THINKINGS = [
+  { v: "standard", label: "标准：平衡质量与速度" },
+  { v: "auto", label: "自动：随任务难度调整" },
+  { v: "low", label: "快速：少推理、优先响应" },
+  { v: "high", label: "深度：更多推理与检查" },
+];
+
+/* 偏好胶囊：外观与 Composer 同款（透明原生 select 铺满整颗，短名由
+ * syncCmpSelFace 从选中 option 文本截取——语言切换后短名跟着换） */
+function autoPillHtml(id, opts, cur) {
+  return '<span class="cmp-sel"><select id="' + id + '" class="cmp-sel-native" aria-label="' +
+    esc(id === "au-mode" ? t("编排模式") : t("思考程度")) + '">' +
+    opts.map((o) => '<option value="' + o.v + '"' + (o.v === cur ? " selected" : "") +
+      ' data-i18n="' + esc(o.label) + '">' + esc(t(o.label)) + "</option>").join("") +
+    '</select><span class="cmp-sel-face" id="' + id + '-face"></span>' +
+    '<svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg></span>';
+}
+
+/* 对话模型（仅 direct 流程）：复用 Composer 的厂商/模型数据源与重建规则 */
+function renderAuModelPicker(pid, model) {
+  const ps = $("au-direct-provider"), ms = $("au-direct-model-name");
+  if (!ps || !ms) return;
+  const provs = directProviders();
+  const keepP = pid != null ? pid : ps.value;
+  ps.innerHTML = '<option value="">' + t("自动推荐") + "</option>" + provs.map((p) =>
+    '<option value="' + esc(p.id) + '">' + esc(p.name || p.id) + "</option>").join("");
+  ps.value = provs.some((p) => p.id === keepP) ? keepP : "";
+  const fillModels = (keepM) => {
+    const p = provs.find((x) => x.id === ps.value);
+    const names = p ? (p.models || []).filter((m) => !m.hidden)
+      .map((m) => m.name).filter(Boolean) : [];
+    ms.innerHTML = '<option value="">' + t("随厂商推荐") + "</option>" + names.map((name) =>
+      '<option value="' + esc(name) + '">' + esc(name) + "</option>").join("");
+    ms.value = names.includes(keepM) ? keepM : "";
+  };
+  fillModels(model != null ? model : ms.value);
+  // 换厂商 = 旧模型名多半不在新厂商名录里：回「随厂商推荐」，不留悬空值
+  ps.onchange = () => fillModels("");
+}
+
+/* 流程 → 对话模型字段显隐：只有 direct 引擎流程用得上（其余流程模型由系统路由） */
+function autoFormSyncFlow() {
+  const flow = flowById(($("au-flow") || {}).value);
+  const box = $("au-model-field");
+  if (box) box.classList.toggle("hidden", !(flow && flow.engine === "direct"));
 }
 
 /* 类型 → 字段联动：daily/weekly→时间；weekly→星期几；interval→N 小时；once→未来时间 */
@@ -8813,6 +9047,17 @@ async function saveAutoForm(id) {
   if (!prompt) { toast(t("请填写执行内容"), true); return; }
   const kind = $("au-kind").value;
   const payload = { name, prompt, workdir: ($("au-workdir").value || "").trim(), kind, flow: $("au-flow").value };
+  // 运行偏好：与 Composer 同名字段，后端 _apply_run_prefs 再归一一次
+  payload.mode = $("au-mode") ? $("au-mode").value : "";
+  payload.thinking = $("au-thinking") ? $("au-thinking").value : "";
+  if (!$("au-model-field") || !$("au-model-field").classList.contains("hidden")) {
+    payload.direct_provider_id = $("au-direct-provider") ? $("au-direct-provider").value : "";
+    payload.direct_model = $("au-direct-model-name") ? $("au-direct-model-name").value : "";
+    if (payload.direct_model && !payload.direct_provider_id) {
+      toast(t("选择对话模型前请先选厂商"), true);
+      return;
+    }
+  }
   if (kind === "daily" || kind === "weekly") payload.time = $("au-time").value;
   if (kind === "weekly") payload.weekday = parseInt($("au-weekday").value, 10);
   if (kind === "interval") payload.interval_hours = parseInt($("au-interval").value, 10) || 0;
@@ -9158,26 +9403,26 @@ function renderHooks() {
   if (!box) return;
   const list = S.hooks || [];
   if (empty) empty.classList.toggle("hidden", list.length > 0);
+  const evLabel = { task_start: t("任务开始"), message_submit: t("消息送达"), run_end: t("运行结束") };
   box.innerHTML = list.map((h, i) => {
-    const evName = { task_start: t("任务开始"), message_submit: t("消息送达"), run_end: t("运行结束") }[h.event] || h.event;
     return '<div class="card hook-card" data-i="' + i + '">' +
-      '<div class="hook-head">' +
-      '<input class="hook-name" value="' + esc(h.name || "") + '" placeholder="' + esc(t("名称")) + '" data-hf="name">' +
+      '<div class="hook-row">' +
+      '<input class="hook-name" value="' + esc(h.name || "") + '" placeholder="' + esc(t("钩子名称")) + '" data-hf="name">' +
       '<select class="hook-event" data-hf="event">' +
       ["task_start", "message_submit", "run_end"].map((ev) =>
         '<option value="' + ev + '"' + (h.event === ev ? " selected" : "") + ">" +
-        esc({ task_start: t("任务开始"), message_submit: t("消息送达"), run_end: t("运行结束") }[ev]) + "</option>").join("") +
+        esc(evLabel[ev]) + "</option>").join("") +
       "</select>" +
-      '<label class="switch" title="' + esc(t("启用")) + '"><input type="checkbox" data-hf="enabled"' +
-      (h.enabled ? " checked" : "") + '><span></span></label>' +
-      '<button type="button" class="ghost small" onclick="removeHook(' + i + ')">' + t("删除") + "</button>" +
       "</div>" +
       '<input class="hook-cmd mono" value="' + esc(h.cmd || "") + '" placeholder="' +
-      esc(t('命令，例：python E:\\proj\\hook.py --event {event}')) + '" data-hf="cmd">' +
-      '<div class="hook-foot">' +
-      '<span class="hint">' + esc(t("超时（秒）")) + '</span><input class="hook-timeout" type="number" min="1" max="120" value="' +
-      Number(h.timeout_s || 10) + '" data-hf="timeout_s">' +
+      esc(t('命令：python D:\\proj\\hook.py（stdin 收 JSON，stdout 回 {"inject":"文本"}）')) + '" data-hf="cmd">' +
+      '<div class="hook-row hook-foot">' +
+      '<label class="switch" title="' + esc(t("启用")) + '"><input type="checkbox" data-hf="enabled"' +
+      (h.enabled ? " checked" : "") + '><span></span><em>' + esc(t("启用")) + '</em></label>' +
+      '<span class="hook-foot-lab">' + esc(t("超时（秒）")) + '</span>' +
+      '<input class="hook-timeout" type="number" min="1" max="120" value="' + Number(h.timeout_s || 10) + '" data-hf="timeout_s">' +
       '<button type="button" class="ghost small" data-hook-test="' + i + '">' + t("测试") + "</button>" +
+      '<button type="button" class="ghost small" onclick="removeHook(' + i + ')">' + t("删除") + "</button>" +
       '<span class="hint hook-test-out"></span>' +
       "</div></div>";
   }).join("");
@@ -10458,10 +10703,26 @@ async function suStartupCheck() {
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
 const TAB_TITLES = { overview: "概览", tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", __wxdigest: "群摘要", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
-const SET_TABS = new Set(Object.keys(TAB_TITLES));   // 设置导航里的子页（__phone 是弹框，不算）
+const SET_TABS = new Set(Object.keys(TAB_TITLES));   // 全部设置子页（__phone 是弹框，不算）
 
 function tabTitle(name) {
   return t(TAB_TITLES[name]) || t("设置");
+}
+
+/* 左栏两套导航各管哪些页，一律从 index.html 现读——HTML 改了 JS 自动跟上，
+ * 不再各存一份常量、两处漂移：
+ *   .side-quick    快捷导航（概览/运行记录/自动化）→ main 形态：只换主栏内容，左栏任务树不动
+ *   .side-settings 设置导航                        → settings 形态：左栏整体换成设置导航
+ * 同一个页只应挂在其中一边（重复挂就是两处入口）。 */
+function mainPageSubs() {
+  const s = new Set();
+  document.querySelectorAll(".side-quick .qitem").forEach((b) => { if (b.dataset.page) s.add(b.dataset.page); });
+  return s;
+}
+function settingsNavSubs() {
+  const s = new Set();
+  document.querySelectorAll(".side-settings .set-item").forEach((b) => { if (b.dataset.sub) s.add(b.dataset.sub); });
+  return s;
 }
 
 
@@ -11556,13 +11817,18 @@ function collapseDrawerIfMobile() {
 function switchTab(name) {
   if (name === "__phone") { openPhoneConnect(); return; }  // 手机连接是弹框，不切页
   if (name === "__guide") { welcomeOpen(); return; }       // 帮助中心是弹层，不切页（设置导航「软件」组）
-  // 导航收进「设置」：进设置后左栏整体换成设置导航，内容铺满
+  // 形态由目标页决定：快捷导航页（概览/运行记录/自动化）走 main——只换主栏内容、
+  // 左栏任务树原地不动；其余页进设置导航。调用方可用 shell 显式覆盖（如已在设置里
+  // 点运行详情，仍要留在设置侧栏）。用户主动进设置时左栏一定会换成设置导航。
+  const inMain = (shell || (mainPageSubs().has(name) ? "main" : "settings")) === "main";
   S.tab = name;
-  if (SET_TABS.has(name)) localStorage.setItem("orch.setTab", name);
-  document.body.classList.add("settings-mode");
-  document.body.classList.remove("files-mode");   // 文件浏览页与设置导航互斥，别叠在左栏
+  S.mainPage = inMain ? name : "";   // 主栏停在哪个全局页；closeRun 靠它回到点开详情前那一页
+  if (settingsNavSubs().has(name)) localStorage.setItem("orch.setTab", name);
+  document.body.classList.toggle("settings-mode", !inMain);
+  document.body.classList.remove("files-mode");   // 文件浏览页与两套导航都互斥，别叠在左栏
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-settings"));
-  document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", b.dataset.sub === name));
+  document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", !inMain && b.dataset.sub === name));
+  document.querySelectorAll(".qitem").forEach((b) => b.classList.toggle("active", inMain && b.dataset.page === name));
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-" + name));
   const title = $("page-title");
   if (title) title.textContent = tabTitle(name);
