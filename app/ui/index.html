@@ -115,6 +115,10 @@
         <span class="kbd" aria-hidden="true">Ctrl K</span>
       </button>
       <div class="side-quick">
+        <button class="qitem" id="btn-q-overview" title="概览" data-i18n-title="概览">
+          <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
+          <span data-i18n="概览">概览</span>
+        </button>
         <button class="qitem" id="btn-q-automation" title="自动化" data-i18n-title="自动化">
           <svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>
           <span data-i18n="自动化">自动化</span>
@@ -174,10 +178,13 @@
       <button id="btn-set-back" class="set-back" data-i18n="返回 CodeBee">
         <svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>返回 CodeBee
       </button>
+      <div data-i18n="工作台" class="set-group">工作台</div>
+      <button class="set-item" data-sub="overview" data-i18n="概览"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>概览</button>
       <div data-i18n="编排" class="set-group">编排</div>
       <button class="set-item active" data-sub="tasks" data-i18n="任务"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg>任务</button>
       <button class="set-item" data-sub="runs" data-i18n="运行记录"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>运行记录</button>
       <button class="set-item" data-sub="automation" data-i18n="自动化"><svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>自动化</button>
+      <button class="set-item" data-sub="hooks" data-i18n="钩子"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg>钩子</button>
       <button class="set-item" data-sub="__wxdigest" data-i18n="微信群聊汇报"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg>微信群聊汇报</button>
       <button class="set-item" data-sub="zentao" data-i18n="禅道"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>禅道</button>
       <button class="set-item" data-sub="usage" data-i18n="用量统计"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg>用量统计</button>
@@ -243,6 +250,53 @@
     <main>
     <!-- ================= 设置页（导航在左栏，内容为居中窄栏） ================= -->
     <section id="page-settings" class="page">
+      <!-- 概览首页：日期 → 一句话概览 → KPI 卡 → 趋势 + 快捷入口 → 最近运行。
+           全页数据来自真实台账（/api/usage）与运行记录（/api/state），无占位假数。 -->
+      <div id="sub-overview" class="subpage hidden">
+        <div class="ov-head">
+          <div class="ov-head-text">
+            <div id="ov-date" class="ov-eyebrow"></div>
+            <h1 id="ov-title" class="ov-title" data-i18n="概览">概览</h1>
+            <p id="ov-sub" class="ov-sub"></p>
+          </div>
+          <div class="ov-head-act">
+            <button class="ghost" onclick="switchTab('runs')">
+              <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg><span data-i18n="运行记录">运行记录</span>
+            </button>
+            <button class="primary" onclick="exitSettings()">
+              <svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg><span data-i18n="新建任务">新建任务</span>
+            </button>
+          </div>
+        </div>
+        <div id="ov-kpis" class="ov-kpis"></div>
+        <div class="ov-row">
+          <div class="panel ov-trend">
+            <div class="panel-head">
+              <h2 data-i18n="用量趋势">用量趋势</h2>
+              <div class="actions" id="ov-ranges">
+                <div class="seg" role="group" aria-label="时间范围" data-i18n-aria="时间范围">
+                  <button class="seg-btn active" data-days="7" data-i18n="近 7 天" onclick="setOvDays(7)">近 7 天</button>
+                  <button class="seg-btn" data-days="30" data-i18n="近 30 天" onclick="setOvDays(30)">近 30 天</button>
+                </div>
+              </div>
+            </div>
+            <div id="ov-trend-body" class="ov-trend-body"></div>
+          </div>
+          <div class="panel ov-quick">
+            <div class="panel-head"><h2 data-i18n="快捷入口">快捷入口</h2></div>
+            <div id="ov-quick-body" class="ov-quick-body"></div>
+          </div>
+        </div>
+        <div class="panel wide ov-recent">
+          <div class="panel-head">
+            <h2 data-i18n="最近运行">最近运行</h2>
+            <div class="actions">
+              <button class="ghost small" onclick="switchTab('runs')" data-i18n="查看全部">查看全部</button>
+            </div>
+          </div>
+          <div id="ov-recent-body" class="ov-recent-body"></div>
+        </div>
+      </div>
       <div id="sub-tasks" class="subpage">
       <div class="panel wide composer">
         <div class="hero-row">
@@ -592,6 +646,24 @@
         <div id="auto-list" class="cards"></div>
         <h3 data-i18n="定时任务模板" class="sec-title">定时任务模板</h3>
         <div id="auto-tpl" class="cards auto-tpl-grid"></div>
+      </div>
+      </div>
+
+      <!-- 钩子：任务生命周期事件挂本机命令（stdin JSON / stdout 注入） -->
+      <div id="sub-hooks" class="subpage hidden">
+      <div class="panel wide">
+        <div class="panel-head">
+          <h2 data-i18n="钩子">钩子</h2>
+          <div class="actions">
+            <button id="btn-hooks-add" class="primary small" title="加一条钩子" data-i18n-title="加一条钩子"><span data-i18n="新建钩子">新建钩子</span></button>
+          </div>
+        </div>
+        <p class="hint" data-i18n="在任务生命周期的关键点执行本机命令：命令从标准输入收到 JSON（事件与任务上下文），标准输出回 {&quot;inject&quot;: &quot;文本&quot;} 即把文本注入提示词（run_end 的输出被忽略，适合回写知识库）。命令按空格分词执行，不支持管道；失败或超时自动跳过，绝不挡主流程。">在任务生命周期的关键点执行本机命令：命令从标准输入收到 JSON（事件与任务上下文），标准输出回 {"inject": "文本"} 即把文本注入提示词（run_end 的输出被忽略，适合回写知识库）。命令按空格分词执行，不支持管道；失败或超时自动跳过，绝不挡主流程。</p>
+        <div id="hooks-list" class="cards"></div>
+        <div id="hooks-empty" class="empty hidden" data-i18n="还没有钩子——点「新建钩子」在任务开始 / 消息送达 / 运行结束时挂你自己的脚本。">还没有钩子——点「新建钩子」在任务开始 / 消息送达 / 运行结束时挂你自己的脚本。</div>
+        <div class="actions" style="margin-top:10px">
+          <button id="btn-hooks-save" class="primary small" title="保存全部钩子" data-i18n-title="保存全部钩子"><span data-i18n="保存钩子">保存钩子</span></button>
+        </div>
       </div>
       </div>
 

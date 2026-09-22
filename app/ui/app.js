@@ -1002,6 +1002,7 @@ function applyState(d) {
   $("conn").textContent = t("已连接");
   $("conn").className = "conn ok";
   restoreInspector();   // 刷新后恢复上次打开的检查器（只在已开时为空操作）
+  ovMaybeRefresh();     // 停在概览页时：概览语与最近运行跟着这次状态一起刷新
 }
 
 /* ---------------------------------------------------------- 供应商健康告警横幅 */
@@ -8931,7 +8932,31 @@ function ztProdChanged(el) {
 
 /* 工作目录「选择…」：复用全局 pickFolder（原生对话框→网页目录弹框回落），回填同一行的输入框 */
 function ztWdPick(btn) {
-  window.pickFolder(btn.closest(".zt-wd-row").querySelector(".zt-p-wd"), true);
+  const inp = btn.closest(".zt-wd-row").querySelector(".zt-p-wd");
+  window.pickFolder(inp, true);
+  // 选完目录顺手拉该仓库的分支清单，基线分支变下拉可选
+  const card = btn.closest(".zt-prof");
+  const side = inp.dataset.side;
+  if (card && side) setTimeout(() => ztRevFill(card, side), 400);
+}
+
+/* 基线分支下拉（datalist）：从仓库工作目录拉本地分支列表。
+ * 复用 /api/git/info（只读探测，仅限本机）；拉不到就保持手填，不报错打扰。 */
+function ztRevFill(card, side, force) {
+  if (!card) return;
+  const wd = (card.querySelector(".zt-p-wd") || {}).value || "";
+  const rev = card.querySelector(".zt-p-rev");
+  const dl = card.querySelector('datalist[data-side="' + side + '"]');
+  if (!rev || !dl) return;
+  if (!wd.trim()) { dl.innerHTML = ""; return; }
+  if (!force && dl.options.length) return;   // 已有清单不重拉
+  api("/api/git/info?workdir=" + encodeURIComponent(wd.trim()))
+    .then((r) => {
+      if (!r || !r.repo) return;
+      dl.innerHTML = (r.branches || []).map((b) =>
+        '<option value="' + esc(b) + '">').join("");
+    })
+    .catch(() => {});
 }
 
 function ztRepoHtml(i, side) {
@@ -8942,7 +8967,10 @@ function ztRepoHtml(i, side) {
   return '<label>' + cn + t("仓库·工作目录") + '</label><span class="zt-wd-row">' +
     '<input class="zt-p-wd" data-side="' + side + '" value="' + esc(repo.workdir || "") + '" placeholder="' + t("空 = 用默认保存路径") + '">' +
     '<button class="ghost small" type="button" title="' + t("浏览本机目录选择") + '" onclick="ztWdPick(this)">' + t("选择…") + "</button></span>" +
-    '<label>' + cn + t("仓库·基线分支") + '</label><input class="zt-p-rev" data-side="' + side + '" value="' + esc(repo.git_rev || "") + '" placeholder="' + t("如 main；空 = 直接改工作目录") + '">' +
+    '<label>' + cn + t("仓库·基线分支") + '</label><span class="zt-wd-row">' +
+    '<input class="zt-p-rev" data-side="' + side + '" list="zt-rev-' + i + '-' + side + '" value="' + esc(repo.git_rev || "") + '" placeholder="' + t("如 main；空 = 直接改工作目录") + '" onfocus="ztRevFill(this.closest(\'.zt-prof\'), \'' + side + '\')">' +
+    '<button class="ghost small" type="button" title="' + t("刷新分支列表") + '" onclick="ztRevFill(this.closest(\'.zt-prof\'), \'' + side + '\', true)">▾</button>' +
+    '<datalist id="zt-rev-' + i + '-' + side + '" data-side="' + side + '"></datalist></span>' +
     '<label>' + cn + t("仓库·验证命令") + '</label><input class="zt-p-verify" data-side="' + side + '" value="' + esc(repo.verify_command || "") + '" placeholder="' + t("如 npm test；空 = 靠评审把关") + '">' +
     '<label>' + cn + t("仓库·一句话描述") + '</label><input class="zt-p-hint" data-side="' + side + '" value="' + esc(hint) + '" placeholder="' + t("给 AI 排查看，如：Vue3 管理台前端") + '">';
 }
@@ -9113,6 +9141,99 @@ async function ztFetchCatalog(silent) {
   if (got.length) toast(t("已拉到 ") + got.join(t("、")) + t("，产品/负责人已是下拉选择"));
   else toast((pr && pr.error) || (ur && ur.error) || t("拉取失败——先「测试连接」确认可用"), true);
 }
+
+/* ---------------------------------------------------------- 钩子（任务生命周期） */
+/* 设置 → 钩子：task_start / message_submit / run_end 三事件挂本机命令。
+ * stdin 收 JSON、stdout 回 {"inject"} 或纯文本即注入；失败超时静默跳过。 */
+function loadHooksPanel() {
+  api("/api/hooks").then((d) => {
+    S.hooks = d.hooks || [];
+    S.hookEvents = d.events || [];
+    renderHooks();
+  }).catch((e) => toast(t("加载失败：") + (e.message || e), true));
+}
+
+function renderHooks() {
+  const box = $("hooks-list"), empty = $("hooks-empty");
+  if (!box) return;
+  const list = S.hooks || [];
+  if (empty) empty.classList.toggle("hidden", list.length > 0);
+  box.innerHTML = list.map((h, i) => {
+    const evName = { task_start: t("任务开始"), message_submit: t("消息送达"), run_end: t("运行结束") }[h.event] || h.event;
+    return '<div class="card hook-card" data-i="' + i + '">' +
+      '<div class="hook-head">' +
+      '<input class="hook-name" value="' + esc(h.name || "") + '" placeholder="' + esc(t("名称")) + '" data-hf="name">' +
+      '<select class="hook-event" data-hf="event">' +
+      ["task_start", "message_submit", "run_end"].map((ev) =>
+        '<option value="' + ev + '"' + (h.event === ev ? " selected" : "") + ">" +
+        esc({ task_start: t("任务开始"), message_submit: t("消息送达"), run_end: t("运行结束") }[ev]) + "</option>").join("") +
+      "</select>" +
+      '<label class="switch" title="' + esc(t("启用")) + '"><input type="checkbox" data-hf="enabled"' +
+      (h.enabled ? " checked" : "") + '><span></span></label>' +
+      '<button type="button" class="ghost small" onclick="removeHook(' + i + ')">' + t("删除") + "</button>" +
+      "</div>" +
+      '<input class="hook-cmd mono" value="' + esc(h.cmd || "") + '" placeholder="' +
+      esc(t('命令，例：python E:\\proj\\hook.py --event {event}')) + '" data-hf="cmd">' +
+      '<div class="hook-foot">' +
+      '<span class="hint">' + esc(t("超时（秒）")) + '</span><input class="hook-timeout" type="number" min="1" max="120" value="' +
+      Number(h.timeout_s || 10) + '" data-hf="timeout_s">' +
+      '<button type="button" class="ghost small" data-hook-test="' + i + '">' + t("测试") + "</button>" +
+      '<span class="hint hook-test-out"></span>' +
+      "</div></div>";
+  }).join("");
+}
+
+window.removeHook = function (i) {
+  (S.hooks || []).splice(i, 1);
+  renderHooks();
+};
+
+function hookHarvest() {
+  return Array.from(document.querySelectorAll("#hooks-list .hook-card")).map((card) => {
+    const gv = (f) => card.querySelector('[data-hf="' + f + '"]');
+    return { id: (S.hooks || [])[Number(card.dataset.i)]?.id || "",
+      name: gv("name").value.trim(), event: gv("event").value,
+      cmd: gv("cmd").value.trim(), enabled: gv("enabled").checked,
+      timeout_s: Number(gv("timeout_s").value || 10) };
+  });
+}
+
+function bindHooksPanel() {
+  if ($("btn-hooks-add").dataset.bound) return;
+  $("btn-hooks-add").dataset.bound = "1";
+  $("btn-hooks-add").addEventListener("click", () => {
+    S.hooks = S.hooks || [];
+    S.hooks.push({ id: "hk-" + Date.now(), name: "", event: "task_start",
+      cmd: "", enabled: true, timeout_s: 10 });
+    renderHooks();
+  });
+  $("btn-hooks-save").addEventListener("click", async () => {
+    try {
+      const r = await api("/api/hooks/save", { method: "POST",
+        body: JSON.stringify({ hooks: hookHarvest() }) });
+      S.hooks = r.hooks || [];
+      renderHooks();
+      toast(t("钩子已保存"));
+    } catch (e) { toast(t("保存失败：") + (e.message || e), true); }
+  });
+  $("hooks-list").addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-hook-test]");
+    if (!btn) return;
+    const card = btn.closest(".hook-card");
+    const gv = (f) => card.querySelector('[data-hf="' + f + '"]');
+    const out = card.querySelector(".hook-test-out");
+    btn.disabled = true;
+    out.textContent = t("运行中…");
+    try {
+      const r = await api("/api/hooks/test", { method: "POST",
+        body: JSON.stringify({ cmd: gv("cmd").value.trim(), event: gv("event").value,
+          timeout_s: Number(gv("timeout_s").value || 10) }) });
+      out.textContent = (r.ok ? "✓ " : "✗ ") + String(r.output || "").slice(0, 120);
+    } catch (e2) { out.textContent = "✗ " + (e2.message || e2); }
+    btn.disabled = false;
+  });
+}
+bindHooksPanel();
 
 /* ---- 状态行 / 修复记录 ---- */
 
@@ -10336,7 +10457,7 @@ async function suStartupCheck() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", __wxdigest: "群摘要", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
+const TAB_TITLES = { overview: "概览", tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", __wxdigest: "群摘要", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
 const SET_TABS = new Set(Object.keys(TAB_TITLES));   // 设置导航里的子页（__phone 是弹框，不算）
 
 function tabTitle(name) {
@@ -10519,12 +10640,57 @@ function setLangBtn(lang) {
   }
 }
 
-/* 卡片标签：图标 + 名称（图标用精灵表，stroke=currentColor 自动跟随主题） */
-function kpiCard(label, value, sub, wide, icon) {
-  const ico = icon ? '<svg class="ico" aria-hidden="true"><use href="#' + icon + '"></use></svg>' : "";
-  return '<div class="kpi' + (wide ? " wide" : "") + '"><div class="kpi-v">' + value +
-    '</div><div class="kpi-l">' + ico + esc(label) + "</div>" +
-    (sub ? '<div class="kpi-s">' + esc(sub) + "</div>" : "") + "</div>";
+/* KPI 卡：图标块 + 环比徽章 + 数值 + 标签 + 副行 + 迷你走势图。
+ * opts 全部可选；不传时回落成旧版布局（图标内联在标签行），老调用点无需改动。
+ *   tone:  图标块/走势图色相（accent|ok|warn|bad|calm）
+ *   delta: { pct:Number, invert?:true } 环比；invert 给花钱类指标（涨了显示告警色）
+ *   spark: [Number,...] 迷你走势序列 */
+function kpiCard(label, value, sub, wide, icon, opts) {
+  opts = opts || {};
+  const tone = opts.tone || "accent";
+  const ico = icon ? '<span class="kpi-ico t-' + esc(tone) + '">' +
+    '<svg class="ico" aria-hidden="true"><use href="#' + esc(icon) + '"></use></svg></span>' : "";
+  const delta = kpiDelta(opts.delta);
+  const top = (ico || delta) ? '<div class="kpi-top">' + ico + delta + "</div>" : "";
+  const spark = (opts.spark && opts.spark.length > 1)
+    ? '<div class="kpi-spark">' + kpiSparkSvg(opts.spark, tone) + "</div>" : "";
+  return '<div class="kpi' + (wide ? " wide" : "") + (top ? " has-top" : "") +
+    (spark ? " has-spark" : "") + '">' + top +
+    '<div class="kpi-v">' + value + "</div>" +
+    '<div class="kpi-l">' + (top ? "" : ico) + esc(label) + "</div>" +
+    (sub ? '<div class="kpi-s">' + esc(sub) + "</div>" : "") + spark + "</div>";
+}
+
+/* 环比徽章：涨跌用颜色区分，不用箭头字符（几何字形跨平台宽度不一）。 
+ * 花钱类指标要 invert——费用涨 20% 不是好事，不能标绿。 */
+function kpiDelta(d) {
+  if (!d || typeof d.pct !== "number" || !isFinite(d.pct)) return "";
+  const pct = d.pct;
+  const flat = Math.abs(pct) < 0.05;
+  const dir = flat ? "flat" : (pct > 0 ? "up" : "down");
+  const happy = d.invert ? (dir === "down") : (dir === "up");
+  const cls = flat ? "flat" : (happy ? "good" : "bad");
+  const sign = pct > 0 ? "+" : "";
+  return '<span class="kpi-delta ' + cls + '" title="' +
+    esc(t("与上一个同长周期相比")) + '">' + esc(t("较上期")) + " " +
+    esc(sign + pct.toFixed(1) + "%") + "</span>";
+}
+
+/* 迷你走势图：折线 + 面积。preserveAspectRatio=none 让图随卡宽拉伸，
+ * 折线靠 vector-effect 保住描边不被横向拉粗。 */
+function kpiSparkSvg(vals, tone) {
+  const w = 88, h = 26, n = vals.length;
+  const max = Math.max.apply(null, vals), min = Math.min.apply(null, vals);
+  const span = Math.max(1, max - min);
+  const px = (i) => (n <= 1 ? w : i * w / (n - 1));
+  const py = (v) => h - 3 - (v - min) * (h - 8) / span;
+  const line = vals.map((v, i) => px(i).toFixed(1) + "," + py(v).toFixed(1)).join(" ");
+  const area = "0," + h + " " + line + " " + w + "," + h;
+  return '<svg class="kspark t-' + esc(tone) + '" viewBox="0 0 ' + w + " " + h +
+    '" preserveAspectRatio="none" aria-hidden="true" focusable="false">' +
+    '<polygon class="ks-area" points="' + area + '"></polygon>' +
+    '<polyline class="ks-line" points="' + line +
+    '" vector-effect="non-scaling-stroke"></polyline></svg>';
 }
 
 /* 单日没有趋势可言，一根孤柱悬在空白里很难看：改画全宽的
@@ -10878,20 +11044,28 @@ function renderUsage() {
   // 回填记录只有总量、没有输入/输出细分：细分全为 0 时说明当前范围只有历史数据，
   // 不提示的话「输入 0 · 输出 0」会被误读成统计坏了
   const noBreakdown = tot.tokens > 0 && !tot.input && !tot.output && !tot.cached;
+  // 迷你走势取范围内逐日真值（by_day 已连续补零）；单日范围只有一格，kpiCard 自动不出图。
+  // 用量页不做环比：范围由用户任选（含「全部」），没有等长上一期可比，硬算会是假数。
+  const dayTok = (u.by_day || []).map((d) => d.tokens || 0);
+  const dayDur = (u.by_day || []).map((d) => d.duration_s || 0);
   $("usage-kpis").innerHTML = [
     kpiCard(t("累计 Token 数"), fmtTok(tot.tokens),
       t("调用 ") + fmtTok(tot.calls) + t(" 次 · 成功率 ") +
       (tot.calls ? Math.round(tot.ok * 100 / tot.calls) : 0) + "% · " +
       t("失败 ") + fmtTok(tot.failed || 0) + t(" · ") + fmtUsd(tot.cost_usd),
-      true, "i-sigma"),
+      true, "i-sigma", { tone: "accent", spark: dayTok }),
     kpiCard(t("峰值 Token 数"), fmtTok(tot.peak_tokens),
-      t("单日最高 · 日均 ") + fmtTok(activeDays ? tot.tokens / activeDays : 0), false, "i-gauge"),
+      t("单日最高 · 日均 ") + fmtTok(activeDays ? tot.tokens / activeDays : 0),
+      false, "i-gauge", { tone: "warn" }),
     kpiCard(t("最长单次时长"), fmtDur(tot.max_duration_s),
-      t("累计调用 ") + fmtDur(tot.duration_s), false, "i-history"),
+      t("累计调用 ") + fmtDur(tot.duration_s), false, "i-history",
+      { tone: "calm", spark: dayDur }),
     kpiCard(t("当前连续天数"), fmtTok(tot.streak_current) + t(" 天"),
-      t("范围内活跃 ") + fmtTok(activeDays) + t(" 天"), false, "i-calendar-days"),
+      t("范围内活跃 ") + fmtTok(activeDays) + t(" 天"), false, "i-calendar-days",
+      { tone: "ok" }),
     kpiCard(t("最长连续天数"), fmtTok(tot.streak_longest) + t(" 天"),
-      t("缓存命中率 ") + (tot.cache_rate || 0) + "%", false, "i-calendar-days"),
+      t("缓存命中率 ") + (tot.cache_rate || 0) + "%", false, "i-calendar-days",
+      { tone: "ok" }),
   ].join("");
   const note = $("usage-note");
   if (note) {
@@ -10914,6 +11088,213 @@ function renderUsage() {
 }
 
 
+
+/* ---------------------------------------------------------- 概览首页 */
+/* 数据全部来自真实台账与运行记录，没有任何占位假数：
+ *   - /api/usage?days=60 一次拿两期：by_day 是连续补零的日序列，前 30 天=上期、
+ *     后 30 天=本期，环比在本地对半切算出来，不额外发请求、不加后端端点；
+ *   - 最近运行取 S.state.runs（SSE 推送，天然实时，不需要自己轮询）。
+ * 周期固定 60 天而不是可调：环比必须有等长的上一期，做成可选范围就得再拉一次。 */
+const OV_PERIOD = 30;               // 一期长度（上期 / 本期各 30 天）
+const OV_DAYS_KEY = "orch.ovDays";  // 趋势图范围（7 / 30），与用量页的范围各自独立
+let _ovSeq = 0;                     // 请求序号：重入/切走时丢弃过期响应
+
+function ovDays() {
+  if (S.ovDays === undefined || S.ovDays === null || S.ovDays === "") {
+    let saved = null;
+    try { saved = localStorage.getItem(OV_DAYS_KEY); } catch (e) { /* 隐私模式忽略 */ }
+    S.ovDays = Number(saved) === 30 ? 30 : 7;
+  }
+  return S.ovDays === 30 ? 30 : 7;
+}
+
+function setOvDays(n) {
+  S.ovDays = Number(n) === 30 ? 30 : 7;
+  try { localStorage.setItem(OV_DAYS_KEY, String(S.ovDays)); } catch (e) { /* 隐私模式忽略 */ }
+  syncOvRanges();
+  renderOverviewTrend();
+}
+
+function syncOvRanges() {
+  const cur = ovDays();
+  document.querySelectorAll("#ov-ranges [data-days]").forEach((b) =>
+    b.classList.toggle("active", Number(b.dataset.days) === cur));
+}
+
+async function loadOverview() {
+  const seq = ++_ovSeq;
+  const kp = $("ov-kpis");
+  if (kp) kp.innerHTML = '<p class="hint">' + t("加载中…") + "</p>";
+  try {
+    const u = await api("/api/usage?days=" + (OV_PERIOD * 2));
+    if (seq !== _ovSeq) return;      // 期间已切走/重入：过期响应不落盘
+    S.ovUsage = u;
+  } catch (e) {
+    if (seq !== _ovSeq) return;
+    S.ovUsage = null;
+  }
+  renderOverview();
+}
+
+/* 日序列对半切：前一半=上期，后一半=本期。服务刚装不久、总天数不足两期时
+ * 上期为空数组，环比自然不显示（而不是拿不足一期的数据硬算出一个假百分比）。 */
+function ovSplit(byDay) {
+  const days = byDay || [];
+  const cut = Math.max(0, days.length - OV_PERIOD);
+  return { prev: days.slice(0, cut), cur: days.slice(cut) };
+}
+
+function ovSum(rows, k) {
+  return (rows || []).reduce((s, r) => s + (Number(r[k]) || 0), 0);
+}
+
+/* 环比：上期为 0 时不显示——除零得到 Infinity，硬算出来是假数 */
+function ovDelta(cur, prev, invert) {
+  if (!prev) return null;
+  return { pct: (cur - prev) * 100 / prev, invert: !!invert };
+}
+
+/* 日期眉标：跟随界面语言排版（en 走 en-US），拿不到就回落空串不阻塞渲染 */
+function ovDateText() {
+  try {
+    return new Date().toLocaleDateString(getLang() === "en" ? "en-US" : "zh-CN",
+      { weekday: "long", month: "long", day: "numeric" });
+  } catch (e) { return ""; }
+}
+
+function renderOverview() {
+  ovRenderHead();
+  ovRenderKpis();
+  syncOvRanges();
+  renderOverviewTrend();
+  ovRenderQuick();
+  ovRenderRecent();
+}
+
+function ovRenderHead() {
+  const dateEl = $("ov-date");
+  if (dateEl) dateEl.textContent = ovDateText();
+  const sub = $("ov-sub");
+  if (!sub) return;
+  const u = S.ovUsage;
+  if (!u || !u.totals) { sub.textContent = ""; return; }
+  const cur = ovSplit(u.by_day).cur;
+  const calls = ovSum(cur, "calls"), ok = ovSum(cur, "ok");
+  const rate = calls ? Math.round(ok * 100 / calls) : 0;
+  let s = t("近 30 天执行 ") + fmtTok(calls) + t(" 次 · 成功率 ") + rate + "%" +
+    t(" · 消耗 ") + fmtTok(ovSum(cur, "tokens")) + t(" tokens · 费用 ") + fmtUsd(ovSum(cur, "cost_usd"));
+  const running = ((S.state && S.state.runs) || []).filter((r) => r.status === "running").length;
+  if (running) s += t(" · 当前 ") + running + t(" 个任务运行中");
+  sub.textContent = s;
+}
+
+function ovRenderKpis() {
+  const box = $("ov-kpis");
+  if (!box) return;
+  const u = S.ovUsage;
+  if (!u || !u.totals) {
+    box.innerHTML = '<p class="hint">' + t("暂无用量记录。跑一个任务后这里会出现统计。") + "</p>";
+    return;
+  }
+  const { prev, cur } = ovSplit(u.by_day);
+  const C = { calls: ovSum(cur, "calls"), ok: ovSum(cur, "ok"),
+    tok: ovSum(cur, "tokens"), cost: ovSum(cur, "cost_usd") };
+  const P = { calls: ovSum(prev, "calls"), ok: ovSum(prev, "ok"),
+    tok: ovSum(prev, "tokens"), cost: ovSum(prev, "cost_usd") };
+  const cRate = C.calls ? C.ok * 100 / C.calls : 0;
+  const pRate = P.calls ? P.ok * 100 / P.calls : 0;
+  // 两个「日均」按真实活跃天数算：刚装不久只跑了 3 天，除以 30 会得到一个
+  // 看着像「用量很低」的假平均值
+  const activeDays = Math.max(1, cur.filter((d) => (d.calls || 0) > 0).length);
+  box.innerHTML = [
+    kpiCard(t("执行次数"), fmtTok(C.calls),
+      t("成功 ") + fmtTok(C.ok) + t(" · 失败 ") + fmtTok(Math.max(0, C.calls - C.ok)),
+      false, "i-tasks",
+      { tone: "accent", delta: ovDelta(C.calls, P.calls),
+        spark: cur.map((d) => d.calls || 0) }),
+    // 成功率环比给「百分点差」：98.7% 比 96.3% 高 2.4 个点，写成 (+2.4/96.3)=+2.5%
+    // 反而绕；kpiDelta 输出的 +X.X% 在这里就是百分点，读起来是对的
+    kpiCard(t("成功率"), C.calls ? cRate.toFixed(1) + "%" : "—",
+      t("上期 ") + (P.calls ? pRate.toFixed(1) + "%" : "—"),
+      false, "i-clip-check",
+      { tone: "ok", delta: (P.calls && C.calls) ? { pct: cRate - pRate } : null,
+        spark: cur.map((d) => ((d.calls || 0) ? (d.ok || 0) * 100 / d.calls : 0)) }),
+    kpiCard(t("Token 消耗"), fmtTok(C.tok),
+      t("日均 ") + fmtTok(C.tok / activeDays),
+      false, "i-sigma",
+      { tone: "calm", delta: ovDelta(C.tok, P.tok),
+        spark: cur.map((d) => d.tokens || 0) }),
+    kpiCard(t("费用"), fmtUsd(C.cost),
+      t("日均 ") + fmtUsd(C.cost / activeDays),
+      false, "i-coin",
+      { tone: "warn", delta: ovDelta(C.cost, P.cost, true),
+        spark: cur.map((d) => d.cost_usd || 0) }),
+  ].join("");
+}
+
+/* 趋势复用用量页同一套折线（Top5 模型 + 其他），只是把日序列截到所选范围 */
+function renderOverviewTrend() {
+  const box = $("ov-trend-body");
+  if (!box) return;
+  const u = S.ovUsage;
+  if (!u || !u.by_day || !u.by_day.length) {
+    box.innerHTML = '<p class="hint">' + t("（暂无数据）") + "</p>";
+    return;
+  }
+  const byDay = u.by_day.slice(-ovDays());
+  const modelOfDay = {};
+  (u.by_day_model || []).forEach((d) => { modelOfDay[d.day] = d.models || {}; });
+  box.innerHTML = usageMultilineSvg(byDay,
+    byDay.map((d) => ({ day: d.day, models: modelOfDay[d.day] || {} })));
+}
+
+function ovRenderQuick() {
+  const box = $("ov-quick-body");
+  if (!box) return;
+  const items = [
+    { key: "tasks", icon: "i-plus", label: t("新建任务"), sub: t("描述目标，交给智能体执行") },
+    { key: "knowledge", icon: "i-sigma", label: t("知识库"), sub: t("项目资料与沉淀") },
+    { key: "market", icon: "i-blocks", label: t("插件市场"), sub: t("装技能扩展能力") },
+    { key: "automation", icon: "i-calendar-days", label: t("自动化"), sub: t("定时与周期执行") },
+  ];
+  box.innerHTML = items.map((it) =>
+    '<button class="ov-q" type="button" onclick="switchTab(\'' + it.key + '\')">' +
+    '<span class="ov-q-ico"><svg class="ico" aria-hidden="true"><use href="#' + it.icon + '"></use></svg></span>' +
+    '<span class="ov-q-text"><b>' + esc(it.label) + "</b><i>" + esc(it.sub) + "</i></span>" +
+    '<span class="ov-q-go" aria-hidden="true"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg></span>' +
+    "</button>").join("");
+}
+
+/* 最近运行：状态点复用侧栏那套字形（staskGlyph），行样式照参考站的
+ * 「图标 + 主副标题 + 右侧状态与相对时间」。点击走 jumpToRun——
+ * 它会先切到运行记录页再开详情；在概览页直接 openRun 会把详情开在错的分区上。 */
+function ovRenderRecent() {
+  const box = $("ov-recent-body");
+  if (!box) return;
+  const runs = ((S.state && S.state.runs) || []).slice(0, 5);
+  if (!runs.length) { box.innerHTML = '<div class="empty">' + t("暂无运行记录") + "</div>"; return; }
+  box.innerHTML = runs.map((r) => {
+    const st = String(r.status || "");
+    const sub = String(r.summary || r.error || "").trim();
+    return '<button class="ov-run" type="button" onclick="jumpToRun(\'' + esc(r.id) + '\')">' +
+      '<span class="ov-run-ico">' + staskGlyph(st) + "</span>" +
+      '<span class="ov-run-main"><b>' + esc(r.title || "") + "</b>" +
+      (sub ? "<i>" + esc(sub.length > 90 ? sub.slice(0, 89) + "…" : sub) + "</i>" : "") +
+      "</span>" +
+      '<span class="ov-run-meta">' +
+      '<span class="chip ' + esc(st) + '">' + esc(runStatusText(r)) + "</span>" +
+      '<span class="ov-run-time">' + esc(relTime(r.created_at)) + "</span>" +
+      "</span></button>";
+  }).join("");
+}
+
+/* 运行状态经 SSE 推来：停在概览页时只重画依赖 runs 的两处（概览语 + 最近运行），
+ * 不重新拉用量（台账不会因为一次运行状态变化就变） */
+function ovMaybeRefresh() {
+  if (S.tab !== "overview") return;
+  ovRenderHead();
+  ovRenderRecent();
+}
 
 /* ---------------------------------------------------------- 手机连接（扫码） */
 /* ZCode 桌面端式样：大二维码居中，地址+复制在下方；多来源（Tailscale/局域网）用 chips 切换 */
@@ -11192,11 +11573,13 @@ function switchTab(name) {
   if (name === "knowledge") loadKnowledge();   // 进知识库页拉取条目
   if (name === "automation") { loadAutomation(); startAutoPoll(); }   // 进自动化页：拉取 + 页面可见时每 8s 轮询
   else stopAutoPoll();   // 离开自动化页（或切到别的子页）即停表
+  if (name === "hooks") loadHooksPanel();   // 进钩子页：拉配置渲染管理列表
   if (name === "zentao") loadZentao();   // 进禅道页：拉配置与修复记录回填表单
   if (name === "__wxdigest") { beeRefresh(); beeMarkSeen(); }   // 进群摘要页：拉取视图并清未读
   if (name === "market") loadMarket();   // 进插件市场页拉取目录
   if (name === "data") loadDataPage();   // 进数据与备份页：清理配置/状态/可清理预估
   if (name === "usage") { syncUsageRange(); loadUsage(); }   // 进用量页：对齐范围选中态并拉取
+  if (name === "overview") { ovDays(); loadOverview(); }   // 进概览页：对齐趋势范围并拉两期台账
   if (name === "appearance") renderAppearance();   // 进皮肤页：按当前皮肤/明暗重画卡片
   if (name === "appearance") renderCodeSettings();  // 代码设置行 + 双主题预览卡同步当前值
   if (name === "about") loadSelfupdate(false);     // 进关于页：拉版本与更新状态
@@ -11250,6 +11633,8 @@ window.bindPromote = bindPromote;
 window.mgmt = mgmt;
 window.switchTab = switchTab;
 window.setUsageDays = setUsageDays;
+window.setOvDays = setOvDays;
+window.jumpToRun = jumpToRun;
 window.saveProvider = saveProvider;
 window.delProvider = delProvider;
 window.openAddProviderDialog = openAddProviderDialog;
@@ -11570,7 +11955,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.target.closest("button, summary, .stask")) collapseDrawerIfMobile();
   });
   $("btn-new-task").addEventListener("click", exitSettings);
-  // 主侧栏快捷入口：直达自动化 / 插件市场（switchTab 自己会切设置模式并挂载页面）
+  // 主侧栏快捷入口：直达概览 / 自动化 / 插件市场（switchTab 自己会切设置模式并挂载页面）
+  $("btn-q-overview").addEventListener("click", () => switchTab("overview"));
   $("btn-q-automation").addEventListener("click", () => switchTab("automation"));
   $("btn-q-market").addEventListener("click", () => switchTab("market"));
   bindCtxMenus();

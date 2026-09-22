@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import paths, runner
+from . import paths, runner, volumes
 
 LOCK = threading.RLock()
 _TASKS = {}
@@ -212,6 +212,23 @@ def create_task(payload):
                     v = 1
                 if v > 1:
                     s["variants"] = v
+                # 分卷：显式卷表优先（新建任务时用户明确给出的分卷信息），
+                # 其次每卷章数等长切卷。卷边界一律由 volumes 模块从「章号」
+                # 确定性推导——续写批次沿用同一份卷表/每卷章数即自动接上同一卷，
+                # 不会因分批而错位。
+                vol_spec = volumes.norm_spec(serial.get("volumes"))
+                if not vol_spec:
+                    # 表单没填卷表时，从目标/上下文文字里识别用户手写的
+                    # 「第一卷 少年初入江湖 第1-20章」式分卷信息（保守识别，
+                    # 认不出就返回空，绝不会把普通文字误判成分卷）。
+                    vol_spec = volumes.parse_spec_text(goal) \
+                        or volumes.parse_spec_text(serial.get("volumes_text")) \
+                        or volumes.parse_spec_text(task.get("context") or "")
+                if vol_spec:
+                    s["volumes"] = vol_spec
+                vper = volumes.norm_per(serial.get("volume_chapters"))
+                if vper:
+                    s["volume_chapters"] = vper
                 task["serial"] = s
     critics = payload.get("critics")
     if isinstance(critics, list) and critics:
@@ -708,6 +725,19 @@ def update_run(run_id, expected_status=None, **fields):
             if task:
                 task["status"] = st
                 _save_json(paths.TASKS_DIR / (tid + ".json"), task)
+        if st in ("done", "failed", "cancelled"):
+            # run_end 钩子（2026-09-22）：终态即触发，后台跑副作用型脚本
+            # （回写知识库等）；失败/超时静默，绝不拖慢收尾路径
+            try:
+                import threading
+                from . import hooks
+                threading.Thread(
+                    target=hooks.run_event, args=("run_end",), daemon=True,
+                    kwargs={"task_id": run.get("task_id") or "", "run_id": run_id,
+                            "ctx": {"status": st, "title": run.get("title") or "",
+                                    "error": str(run.get("error") or "")[:300]}}).start()
+            except Exception:
+                pass
         return run
 
 
@@ -1371,6 +1401,11 @@ def continue_task(task_id, chapters=None):
     }
     if serial.get("variants"):   # 赛马配置随链条沿用
         payload["serial"]["variants"] = serial["variants"]
+    # 分卷配置随链条沿用：卷边界必须跨批次稳定，否则同一卷会被续写批次重切
+    if serial.get("volumes"):
+        payload["serial"]["volumes"] = serial["volumes"]
+    if serial.get("volume_chapters"):
+        payload["serial"]["volume_chapters"] = serial["volume_chapters"]
     for key in ("draft_prompt", "critique_prompt"):  # 自定义提示词覆盖一并沿用
         if task.get(key):
             payload[key] = task[key]
@@ -1532,6 +1567,38 @@ def _ensure_messages(run):
     if "messages" not in run or not isinstance(run.get("messages"), list):
         run["messages"] = []
     return run["messages"]
+
+
+def append_run_inject(run_id, text):
+    """追加钩子注入文本到 run.hook_inject（message_submit 钩子通道）。
+    直连轮间组装提示词时消费一次并清零。返回 bool。"""
+    text = str(text or "").strip()
+    if not text:
+        return False
+    with LOCK:
+        run = _RUNS.get(run_id)
+        if not run:
+            return False
+        old = str(run.get("hook_inject") or "")
+        run["hook_inject"] = (old + ("\n\n" if old and text else "") + text)[:4000]
+        _save_json(paths.RUNS_DIR / run_id / "run.json", run)
+        return True
+
+
+def pop_run_inject(run_id):
+    """取出并清空 hook_inject（直连轮间提示词头一次性消费）。"""
+    with LOCK:
+        run = _RUNS.get(run_id)
+        if not run:
+            return ""
+        txt = str(run.get("hook_inject") or "")
+        if txt and "hook_inject" in run:
+            run["hook_inject"] = ""
+            try:
+                _save_json(paths.RUNS_DIR / run_id / "run.json", run)
+            except Exception:
+                pass
+        return txt
 
 
 def add_message(run_id, text, sender="本机", attachments=None):

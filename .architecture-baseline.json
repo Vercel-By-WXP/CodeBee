@@ -527,9 +527,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/pipeline.py 3807 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/pipeline.py 3937 行（上限 1200，历史最高 0）",
       "file": "app/core/pipeline.py",
-      "lines": 3807
+      "lines": 3937
     },
     {
       "kind": "lines",
@@ -539,21 +539,21 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/store.py 1680 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/store.py 1747 行（上限 1200，历史最高 0）",
       "file": "app/core/store.py",
-      "lines": 1680
+      "lines": 1747
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/zentao.py 1813 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/zentao.py 1818 行（上限 1200，历史最高 0）",
       "file": "app/core/zentao.py",
-      "lines": 1813
+      "lines": 1818
     },
     {
       "kind": "lines",
-      "text": "lines: app/main.py 2599 行（上限 1200，历史最高 0）",
+      "text": "lines: app/main.py 2637 行（上限 1200，历史最高 0）",
       "file": "app/main.py",
-      "lines": 2599
+      "lines": 2637
     },
     {
       "kind": "lines",

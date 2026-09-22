@@ -318,6 +318,11 @@ class Handler(BaseHTTPRequestHandler):
                 # 偏好记忆：上次创建任务的类型/参数（新建表单预填用）
                 from core import prefs
                 return self._json(200, {"prefs": prefs.load()})
+            if path == "/api/hooks":
+                # 任务生命周期钩子配置（本机设置；只读列表）
+                from core import hooks
+                return self._json(200, {"hooks": hooks.load_list(),
+                                        "events": list(hooks.EVENTS)})
             if path == "/api/wxdigest/pythons":
                 # 64 位 Python 候选（蜜蜂坞微信直连配置）：扫描后台跑，此端点轮询
                 from core import wxdigest
@@ -577,6 +582,21 @@ class Handler(BaseHTTPRequestHandler):
                 return deny
         if path == "/api/tasks":
             return self._api_create_task()
+        if path == "/api/hooks/save":
+            # 生命周期钩子配置整表保存（本机设置）
+            from core import hooks
+            try:
+                items = hooks.save_list((self._body() or {}).get("hooks"))
+                return self._json(200, {"ok": True, "hooks": items})
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+        if path == "/api/hooks/test":
+            # 设置页「测试」：手动跑一条钩子看输出（不写配置）
+            from core import hooks
+            body = self._body() or {}
+            ok, out = hooks.test_one(body.get("cmd") or "", body.get("event") or "task_start",
+                                     body.get("timeout_s"))
+            return self._json(200, {"ok": ok, "output": out})
         if path == "/api/tasks/clarify":
             return self._api_task_clarify()
         if path == "/api/hooks/run":
@@ -1778,6 +1798,15 @@ class Handler(BaseHTTPRequestHandler):
                                 attachments=saved_paths)
         if not msg:
             return self._json(400, {"error": "运行不存在或消息非法"})
+        # message_submit 钩子（2026-09-22）：stdout 注入文本随下一轮提示词头送达
+        try:
+            from core import hooks as _hooks
+            hook_txt = _hooks.run_event("message_submit", text=text,
+                                        task_id=run.get("task_id") or "", run_id=run_id)
+            if hook_txt:
+                store.append_run_inject(run_id, hook_txt)
+        except Exception:
+            pass   # 钩子故障绝不挡消息投递
         # 终态连载 run 收到递话：自动起答疑轮（op=qa）。此前消息只会躺在信箱里
         # 无人消费——向已完结的连载任务「下达指令」= 石沉大海（2026-09-18 实案）
         task = store.get_task(run.get("task_id") or "") if run.get("task_id") else None
@@ -1980,6 +2009,15 @@ class Handler(BaseHTTPRequestHandler):
         ok, err, new_run = store.retry_task(task["id"])
         if not ok:
             return self._json(400, {"error": err or "无法续跑"})
+        # message_submit 钩子（2026-09-22）：注入文本转入新 run 的提示词头通道
+        try:
+            from core import hooks as _hooks
+            hook_txt = _hooks.run_event("message_submit", text=text,
+                                        task_id=task["id"], run_id=new_run["id"])
+            if hook_txt:
+                store.append_run_inject(new_run["id"], hook_txt)
+        except Exception:
+            pass
         if is_serial:
             # 答疑档：问题文本显式带上（真实调用失败会把信箱消息 drain 掉，
             # 换将重试时不能丢问题）；retry_task 只认终态任务，active 已挡

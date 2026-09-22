@@ -849,15 +849,20 @@ def fetch_modules(product_id):
     except ZenError as e:
         return {"ok": False,
                 "error": "%s——也可能你的禅道没有该接口：请在禅道产品视图 URL 里查模块 ID 手工填写" % e}
-    items = d.get("_list") if isinstance(d.get("_list"), list) else d.get("modules")
+    # 形状兼容器（{_list} / {modules:[...]} / {id:{...}} 字典 / 裸数组）
+    items = _list_items(d, "modules")
+    if items is None:
+        items = d.get("_list") if isinstance(d.get("_list"), list) else None
     out = []
     for m in items or []:
         if isinstance(m, dict) and m.get("id"):
             out.append({"id": m.get("id"), "name": str(m.get("name") or "")})
-        elif isinstance(m, dict) and str(m.get("id") or "") == "" and m.get("name"):
-            continue
     if not out:
-        return {"ok": False, "error": "模块清单为空或响应形状不认识——请手工填模块 ID"}
+        # 带响应形状摘要帮排查（顶层键名，不吐正文——用户实测反馈
+        # 「响应形状不认识」却看不到真实形状，没法报修）
+        keys = ",".join(sorted(str(k) for k in d.keys())) if isinstance(d, dict) else type(d).__name__
+        return {"ok": False,
+                "error": "模块清单为空或响应形状不认识（响应顶层键：%s）——请手工填模块 ID" % (keys or "非字典")}
     return {"ok": True, "modules": out[:200]}
 
 

@@ -5712,3 +5712,159 @@ button.request-busy > * { opacity: .18; }
 /* 屏蔽顶部滑动加载线（用户拍板 2026-09-22）：后台/长请求（如禅道内网不可达
    15-30s）会让线一直滑，观感差；操作反馈由「操作状态」中心承担，不丢信息 */
 #request-progress { display: none !important; }
+
+/* 钩子管理卡片（设置 → 钩子，2026-09-22）：名称/事件/开关一行，命令整行，
+ * 底部超时+测试。mono 字体命令输入便于读路径 */
+.hook-card .hook-head { display: flex; align-items: center; gap: 10px; }
+.hook-card .hook-head .hook-name { flex: 1 1 140px; min-width: 0; }
+.hook-card .hook-head .hook-event { flex: none; }
+.hook-card .hook-cmd { width: 100%; margin-top: 10px; font-family: var(--mono); font-size: 12px; }
+.hook-card .hook-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.hook-card .hook-timeout { width: 64px; }
+.hook-card .hook-test-out { flex: 1 1 auto; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.hook-card .switch { display: inline-flex; align-items: center; cursor: pointer; }
+.hook-card .switch input { appearance: none; width: 34px; height: 19px; border-radius: 999px;
+  background: var(--border, rgba(128,128,128,.4)); position: relative; cursor: pointer;
+  transition: background .15s; margin: 0; }
+.hook-card .switch input:checked { background: var(--accent); }
+.hook-card .switch input::after { content: ""; position: absolute; top: 2px; left: 2px;
+  width: 15px; height: 15px; border-radius: 50%; background: #fff; transition: left .15s; }
+.hook-card .switch input:checked::after { left: 17px; }
+
+/* ==========================================================================
+   概览首页 + KPI 卡三件套（2026-09-22）
+   配色一律走变量（--accent/--ok/--warn/--bad/--accent2），所以 7 套皮肤
+   与日间/夜间都自动成立，无需为皮肤另写规则。
+   ========================================================================== */
+
+/* ---------- KPI 卡：图标块 / 环比徽章 / 迷你走势 ---------- */
+/* .kpi 定位上下文：走势图绝对定位钉在右下角 */
+.kpi { position: relative; }
+.kpi.has-top { padding-top: 11px; }
+.kpi-top {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 9px;
+}
+/* 图标独立成块（淡彩底 + 本色图标），不再是标签行里的装饰性小图标 */
+.kpi-ico {
+  width: 26px; height: 26px; flex: none; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.kpi-ico .ico { width: 15px; height: 15px; stroke-width: 2; }
+.kpi-ico.t-accent { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.kpi-ico.t-ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.kpi-ico.t-warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.kpi-ico.t-bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.kpi-ico.t-calm { color: var(--accent2); background: color-mix(in srgb, var(--accent2) 14%, transparent); }
+
+.kpi-delta {
+  flex: none; font-size: 11px; font-weight: 600; white-space: nowrap;
+  padding: 2px 8px; border-radius: 999px;
+}
+.kpi-delta.good { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.kpi-delta.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.kpi-delta.flat { color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, transparent); }
+
+/* 走势图钉在右下；副行文字给它让位（.kpi-s 本就 nowrap + 省略号） */
+.kpi.has-spark { padding-bottom: 34px; }
+.kpi.has-spark .kpi-s { padding-right: 80px; }
+.kpi-spark { position: absolute; right: 10px; bottom: 8px; width: 72px; height: 24px; }
+.kspark { display: block; width: 100%; height: 100%; overflow: visible; }
+.kspark .ks-line { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.kspark .ks-area { stroke: none; opacity: .16; }
+.kspark.t-accent .ks-line { stroke: var(--accent); }
+.kspark.t-accent .ks-area { fill: var(--accent); }
+.kspark.t-ok .ks-line { stroke: var(--ok); }
+.kspark.t-ok .ks-area { fill: var(--ok); }
+.kspark.t-warn .ks-line { stroke: var(--warn); }
+.kspark.t-warn .ks-area { fill: var(--warn); }
+.kspark.t-bad .ks-line { stroke: var(--bad); }
+.kspark.t-bad .ks-area { fill: var(--bad); }
+.kspark.t-calm .ks-line { stroke: var(--accent2); }
+.kspark.t-calm .ks-area { fill: var(--accent2); }
+
+/* ---------- 概览页版式 ---------- */
+/* #sub-overview 本身就是 .subpage（纵向 flex + 20px 间距），
+   所以下列各块不再自带外边距，避免出现双倍留白 */
+.ov-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+.ov-eyebrow { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+.ov-title { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+.ov-sub { margin: 9px 0 0; color: var(--muted); font-size: 13px; }
+.ov-head-act { display: flex; gap: 8px; flex: none; }
+.ov-head-act button { display: inline-flex; align-items: center; gap: 6px; }
+.ov-head-act .ico { width: 14px; height: 14px; }
+
+.ov-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.ov-row {
+  display: grid; gap: 12px; align-items: start;
+  grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr);
+}
+
+/* ---------- 快捷入口：图标块 + 主副标题 + 右上箭头 ---------- */
+.ov-quick-body { display: flex; flex-direction: column; gap: 2px; }
+.ov-q {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  text-align: left; background: none; border: none; cursor: pointer;
+  color: var(--text); font-family: inherit; padding: 8px 9px; border-radius: 10px;
+  transition: background-color .15s;
+}
+.ov-q:hover { background: var(--panel2); }
+.ov-q-ico {
+  width: 28px; height: 28px; flex: none; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent);
+}
+.ov-q-ico .ico { width: 15px; height: 15px; stroke-width: 2; }
+.ov-q-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.ov-q-text b { font-size: 13px; font-weight: 600; }
+.ov-q-text i {
+  font-size: 11.5px; font-style: normal; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* ↗ 复用 i-arrow-up 旋转 45°，不再单加一个精灵图标 */
+.ov-q-go { flex: none; display: inline-flex; color: var(--muted); opacity: .5; transform: rotate(45deg); }
+.ov-q:hover .ov-q-go { opacity: .9; }
+/* 四行各自分色：一列同色图标太平 */
+.ov-q:nth-child(2) .ov-q-ico { color: var(--accent2); background: color-mix(in srgb, var(--accent2) 13%, transparent); }
+.ov-q:nth-child(3) .ov-q-ico { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
+.ov-q:nth-child(4) .ov-q-ico { color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+
+/* ---------- 最近运行：发丝线分隔的行 ---------- */
+.ov-recent-body { display: flex; flex-direction: column; }
+.ov-recent .panel-head { margin-bottom: 8px; }
+.ov-run {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  text-align: left; background: none; border: none; cursor: pointer;
+  color: var(--text); font-family: inherit; padding: 11px 8px;
+  border-top: 1px solid var(--border); transition: background-color .15s;
+}
+.ov-run:first-child { border-top: none; }
+.ov-run:hover { background: var(--panel2); }
+.ov-run-ico { flex: none; width: 16px; display: inline-flex; align-items: center; justify-content: center; }
+.ov-run-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ov-run-main b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-run-main i {
+  font-size: 11.5px; font-style: normal; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ov-run-meta { flex: none; display: flex; align-items: center; gap: 10px; }
+.ov-run-time { min-width: 54px; text-align: right; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+
+/* ---------- 窄屏：KPI 两列 → 一列，趋势与快捷入口改纵向 ---------- */
+@media (max-width: 1080px) {
+  .ov-kpis { grid-template-columns: repeat(2, 1fr); }
+  .ov-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .ov-kpis { grid-template-columns: 1fr; }
+  .ov-head { flex-direction: column; align-items: flex-start; }
+  /* 窄屏放不下并排：走势图落到卡片底部通栏，副行不再让位 */
+  .kpi-spark { position: static; width: 100%; margin-top: 8px; }
+  .kpi.has-spark { padding-bottom: 12px; }
+  .kpi.has-spark .kpi-s { padding-right: 0; }
+}
+

@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, attachments, catalog, dispatch_log, history, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage
+from . import aiflavor, attachments, catalog, dispatch_log, history, hooks, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -1539,6 +1539,14 @@ def _run_direct(run, task, agents, ev, stats, mode):
         # drain 的路径消息永远不消费，只看非空会空转到轮数上限。
         # 比较步骤前后的未消费数即可区分。
         before_n = len(_pending_messages(run_id))
+        # 钩子注入（message_submit / task_start 通道）：一次性消费拼提示词头
+        hook_head = ""
+        try:
+            hook_head = store.pop_run_inject(run_id)
+        except Exception:
+            pass
+        if hook_head:
+            prompt = ("## 项目钩子注入\n" + hook_head + "\n\n" + prompt)
         if bi is not None:
             res = _run_builtin_step(run_id, "direct" if first else "chat", bi, prompt,
                                     step_wd, ev=ev, note=note, images=images,
@@ -1799,6 +1807,47 @@ def _plot_modules(workdir):
             "鼓励化用，不要照抄原句）\n\n" + txt)
 
 
+def _chain_volume_names(task):
+    """沿 serial.continues 链收集各批次大纲里的卷名/卷弧光（旧 → 新，后者覆盖）。
+    续写批次合并成书时要给全书（含此前各批）的卷都写上标题，那些卷的命名记在
+    更早的批次任务上，本批 run 的 outline 里没有。失败静默返回 {}。"""
+    from . import store as _store
+    names, seen, cur = {}, set(), task
+    chain = []
+    while cur and len(chain) < 20:
+        tid = str(cur.get("id") or "")
+        if not tid or tid in seen:
+            break
+        seen.add(tid)
+        chain.append(cur)
+        nxt = str((cur.get("serial") or {}).get("continues") or "")
+        cur = _store.get_task(nxt) if nxt else None
+    for t in reversed(chain):        # 旧 → 新：新批次的命名覆盖旧批次
+        try:
+            for r in _store.task_runs(t["id"]):
+                o = r.get("outline") or {}
+                if isinstance(o.get("volumes"), dict):
+                    names.update(o["volumes"])
+        except Exception:
+            continue
+    return names
+
+
+def _book_volume_plan(task, outline, upto):
+    """本书的卷规划表：显式卷表/每卷章数（serial）→ 规划表 → 合并卷名
+    （本批大纲 + 沿链更早批次）→ 保证覆盖到第 upto 章。
+    不分卷返回 []；调用方据此决定是否插卷标题/卷末约束。"""
+    serial = task.get("serial") or {}
+    per = volumes.norm_per(serial.get("volume_chapters"))
+    plan = volumes.build_plan(serial.get("volumes"), per, upto=upto)
+    if not plan:
+        return []
+    named = dict(_chain_volume_names(task))
+    if isinstance(outline, dict):
+        named.update(outline.get("volumes") or {})
+    return volumes.merge_titles(plan, named)
+
+
 LEDGER_FILE = os.path.join(".codebee", "resource-ledger.md")
 _LEDGER_MAX_CHARS = 6000   # 账本注入上限：太老的状态让评审官收敛 recent 优先
 
@@ -1913,6 +1962,7 @@ __OUTLINE__
 
 ---
 ## 本章任务（执行这一条即可）
+__VOLUME__
 - 撰写本书第 __I__ 章，把本章正文写入文件 `__FILE__`（直接写入该文件，只写本章）。文件必须以 UTF-8 编码保存：PowerShell 一律显式加 `-Encoding UTF8`（如 `Set-Content -Path __FILE__ -Encoding UTF8`），禁止依赖系统默认编码，否则中文会乱码。
 - 章节标题：__TITLE__
 - 剧情要点：__BEATS__
@@ -1932,6 +1982,8 @@ SERIAL_REVISE_PROMPT = """你是一名网文作者。第 __I__ 章没有通过�
 ## 全书目标
 __GOAL__
 
+## 本卷上下文
+__VOLUME__
 ## 本章评审意见
 __CRITIQUE__
 
@@ -2201,6 +2253,34 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                 ("（章末钩子：%s）" % c.get("hook")) if c.get("hook") else "")
         for k, c in enumerate(outline["chapters"]))
 
+    # 分卷规划表（本书级、由章号确定性推导）：覆盖到本批末章即可。写成
+    # 全书顶层字段，UI/报告/发布页直接读，不必重算。
+    vol_plan = _book_volume_plan(task, outline, end)
+    if vol_plan:
+        store.update_run(run_id, volumes=vol_plan)
+
+    def vol_block_for(chapter):
+        """单章的卷上下文：写作时知道自己身处哪一卷、卷内第几章、是否卷末。
+        不分卷返回 ""（提示词零噪音）。"""
+        ent = volumes.find(vol_plan, chapter) if vol_plan else None
+        if not ent:
+            return ""
+        pos, total = volumes.position(vol_plan, chapter)
+        title = ("《%s》" % ent["title"]) if ent.get("title") else "（本卷待命名）"
+        lines = ["- 本卷：第 %d 卷 %s" % (ent["vol"], title)]
+        if total:
+            lines.append("- 本卷位置：第 %d 章 / 共 %d 章" % (pos, total))
+        else:
+            lines.append("- 本卷位置：第 %d 章" % pos)
+        if ent.get("arc"):
+            lines.append("- 本卷弧光（本卷写作须服务这条主线）：%s" % ent["arc"])
+        if total and pos == total:
+            lines.append("- **本章是卷末章**：必须收束本卷主线冲突，写出本卷最高潮，"
+                         "并在结尾留下牵出下一卷的大钩子（卷末是最重要的读者留存点）。")
+        elif total and pos >= max(1, total - 1):
+            lines.append("- 本章临近卷末：开始向本卷高潮收拢，不要再铺新的支线。")
+        return "\n".join(lines) + "\n"
+
     chapter_scores = []          # [{chapter,title,means,passed,rounds,words}]
     issues_all = []
 
@@ -2209,6 +2289,20 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         i = start + k - 1        # 全书章号：文件名/步骤角色/评分记录都按全书编号
         ch = outline["chapters"][k - 1]
         ch_file = "chapter-%02d.md" % i
+        # 分卷上下文：评审时也带着「这是第几卷第几章、是不是卷末」——
+        # 卷末章要按卷弧度收束，不符的章节不该靠全书评分才发现。
+        _vpos, _vtotal = volumes.position(vol_plan, i) if vol_plan else (0, 0)
+        vol_review_block = ""
+        if vol_plan and _vpos:
+            _vent = volumes.find(vol_plan, i)
+            _vt = ("《%s》" % _vent["title"]) if (_vent and _vent.get("title")) else ""
+            vol_review_block = (
+                "本卷上下文：第 %d 卷%s，本章是卷内第 %d%s 章。%s\n"
+                % (_vent["vol"], _vt, _vpos,
+                   ("/%d" % _vtotal) if _vtotal else "",
+                   "**卷末章**：须核对本卷主线是否收束、高潮是否到位、卷末钩子是否立住。"
+                   if (_vtotal and _vpos == _vtotal)
+                   else "核对本章是否服务于本卷主线弧光。"))
         # 逐项目标审稿（借鉴 AI-Novel-Writer）：本章大纲要点随评审下发，评审
         # 以 <event_check> 回逐项判定；资源账本（借鉴角色资源账本）以 <ledger>
         # 回本章道具/伤情/承诺/伏笔增量，评审达标后追加账本文件供下章注入。
@@ -2220,8 +2314,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             "「铺垫了但没发生」不算已完成；未完成的项必须反映到对应维度评分。\n"
             "另在 <event_check> 块之后输出 <ledger> 块（没有新变化就整个省略）："
             "逐行列出本章新出现或状态变化的 道具/伤情/承诺/伏笔，格式："
-            "类型|名称|现状（一句话）。\n\n"
-            % (ch.get("beats") or "按大纲推进", ch.get("hook") or "留下悬念"))
+            "类型|名称|现状（一句话）。\n%s\n"
+            % (ch.get("beats") or "按大纲推进", ch.get("hook") or "留下悬念",
+               vol_review_block))
         ev_check_lines = [[]]     # 每章重置：第一份非空评审的逐项判定
         ledger_lines = []         # 本章全部评审的账本增量并集
         ledger_txt = _read_ledger(workdir)   # 截至上一章的资源账本（起草注入）
@@ -2384,6 +2479,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 return (SERIAL_CHAPTER_PROMPT
                         .replace("__SKILLS__", sk_block)
                         .replace("__SCOPE__", scope)
+                        .replace("__VOLUME__", vol_block_for(i))
                         .replace("__I__", str(i)).replace("__FILE__", vfile)
                         .replace("__GOAL__", task["goal"])
                         .replace("__OUTLINE__", outline_txt)
@@ -2632,6 +2728,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             cs = dict(inh_scores[i])
             cs.setdefault("chapter", i)
             cs["reused"] = True
+            _vent = volumes.find(vol_plan, i) if vol_plan else None
+            if _vent:
+                cs["vol"] = _vent["vol"]
+                if _vent.get("title"):
+                    cs["vol_title"] = _vent["title"]
             chapter_scores.append(cs)
             store.update_run(run_id, chapter_scores=chapter_scores)
             continue
@@ -2695,6 +2796,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 prompt = (SERIAL_REVISE_PROMPT
                           .replace("__I__", str(i)).replace("__FILE__", ch_file)
                           .replace("__GOAL__", task["goal"])
+                          .replace("__VOLUME__", vol_block_for(i))
                           .replace("__CRITIQUE__", "\n".join(crit_lines))
                           .replace("__WORDS__", str(wpc)))
                 prompt = attachments.append_task_context(prompt, task)
@@ -2710,6 +2812,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                   "passed": bool(means) and all(v >= threshold_ch for v in means.values()),
                   "rounds": rounds_used,
                   "words": _wc(_read_chapter(workdir, i))}
+        _vent = volumes.find(vol_plan, i) if vol_plan else None
+        if _vent:
+            cs_new["vol"] = _vent["vol"]                     # 章节卡按卷分组用
+            if _vent.get("title"):
+                cs_new["vol_title"] = _vent["title"]
         if ev_check_lines[0]:
             cs_new["event_check"] = ev_check_lines[0][:8]   # 逐项目标审稿结果
         chapter_scores.append(cs_new)
@@ -2838,6 +2945,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 prompt = (SERIAL_REVISE_PROMPT
                           .replace("__I__", str(i)).replace("__FILE__", "chapter-%02d.md" % i)
                           .replace("__GOAL__", task["goal"])
+                          .replace("__VOLUME__", vol_block_for(i))
                           .replace("__CRITIQUE__", crit)
                           .replace("__WORDS__", str(wpc)))
                 prompt = attachments.append_task_context(prompt, task)
@@ -2918,14 +3026,29 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     ms_name = _ms_name(task.get("manuscript"))
     book_title = outline.get("book_title") or task["title"]
     parts = ["# %s" % book_title, ""]
+    # 分卷标题：卷首章之前插「第 X 卷 《卷名》」分隔（全书 1..end 都插，续写
+    # 批次合并时上一批的卷标题也一并补上，不会只在首批出现）
+    vol_heads = {}
+    if vol_plan:
+        for _ent in vol_plan:
+            if _ent["first"] <= end:
+                vol_heads[_ent["first"]] = _ent
     for i in range(1, end + 1):     # 合并全书：续写时包含上一批已写好的章
+        head = vol_heads.get(i)
+        if head:
+            vol_title = ("第 %d 卷 《%s》" % (head["vol"], head["title"])) \
+                if head.get("title") else ("第 %d 卷" % head["vol"])
+            parts.append("## %s" % vol_title)
+            parts.append("")
         parts.append(_read_chapter(workdir, i).strip())
         parts.append("")
     with _ms_io(workdir, ms_name, "w") as f:
         f.write("\n".join(parts))
     total_words = _wc("\n".join(parts))
     store.finish_step(run_id, step["n"], "done",
-                      summary="已合并 %d 章为 %s（约 %d 字）" % (n, ms_name, total_words),
+                      summary="已合并 %d 章为 %s（约 %d 字%s）" % (
+                          n, ms_name, total_words,
+                          "，分 %d 卷" % len(vol_heads) if vol_heads else ""),
                       duration_s=0.1)
 
     chapters_pass = all(c["passed"] for c in chapter_scores)
@@ -2940,11 +3063,19 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         "chapter_scores": chapter_scores, "global_scores": global_means,
         "global_pass": global_pass, "route": route,
     }
+    if vol_plan:
+        verdict["volumes"] = vol_plan
     scope_txt = ("续写第 %d–%d 章，衔接前文 %d 章" % (start, end, start - 1)) if start > 1 \
         else ("共 %d 章" % n)
     lines = ["# 连载小说评审报告：%s" % task["title"], "",
              "- 书名：%s（%s / 约 %d 字，合并为 `%s`）" % (
                  book_title, scope_txt, total_words, ms_name),
+             "- 分卷：%s" % ("；".join(
+                 ("第 %d 卷《%s》第 %d–%d 章" % (v["vol"], v.get("title") or "未命名",
+                                                v["first"],
+                                                v["last"] if v["last"] is not None else end))
+                 for v in vol_heads.values()) if vol_heads
+                 else ("未分卷（可设置「每卷章数」，或在目标里写明卷结构）")),
              "- 结论：**%s**（各章门禁 %s / 全局评审 %s）" % (
                  "✅ 达到发布标准" if publishable else "❌ 未达标",
                  "通过" if chapters_pass else "未通过",
@@ -3698,6 +3829,20 @@ def execute_run(run_id):
     })
     mode = task.get("mode") or ("manual" if task.get("implementer") else "auto")
     store.update_run(run_id, mode=mode)
+    # 任务生命周期钩子（task_start，2026-09-22）：stdout 注入文本并入任务上下文
+    # ——context 在全引擎提示词都有 __CONTEXT__ 占位，一处并入全覆盖
+    try:
+        hook_txt = hooks.run_event("task_start",
+                                   ctx={"title": task.get("title") or "",
+                                        "type": task.get("type") or "",
+                                        "mode": mode, "goal": task.get("goal") or ""},
+                                   task_id=task.get("id") or "", run_id=run_id)
+        if hook_txt:
+            task["context"] = ((task.get("context") or "") + "\n\n" +
+                               t("## 项目钩子注入（task_start）\n") + hook_txt).strip()
+            store.update_run(run_id, hook_inject=hook_txt[:400])
+    except Exception:
+        pass   # 外部钩子故障绝不挡主流程
     # engine 决定流水线：code=实现/验证/评审/修复；review=起草/多维评审/修订/门禁；
     # direct=单 CLI 直达（无拆解/评审，信箱续轮即对话）
     engine = task.get("engine") or ("code" if task["type"] == "code" else "review")
