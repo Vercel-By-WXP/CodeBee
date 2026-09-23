@@ -831,10 +831,21 @@ def _run_review(run_id, task, workdir, reviewer, ev):
     if reviewer.get("mode") == "mock":
         return mocks.review(task, True)
     parsed = runner.extract_json(res.get("text") or "")
-    if not isinstance(parsed, dict):
-        return {"pass": False, "scores": {}, "issues": [],
-                "summary": "评审输出无法解析为 JSON：%s" % (res.get("text") or "")[:200]}
-    return parsed
+    if isinstance(parsed, dict):
+        return parsed
+    # 评审 JSON 解析失败 → 第 5 道网（借鉴连载评审的 extract_scores_from_text）：
+    # 模型偶尔在 JSON 前后加说明文字或格式不合法，但分数仍散落在文本中。
+    # 此前直接判「无法解析」→ pass=False 空分 → 白白触发修复轮（修复者
+    # 只拿到一条报错文本，无从修起）。先尝试从原文提取分数；至少拿到分
+    # 数就能正确判定过/不过，避免把「格式错」当「质量差」误触发修复。
+    scores = runner.extract_scores_from_text(res.get("text") or "")
+    if scores:
+        # 有分无 issue：不触发修复循环（没有可修的具体问题），只记录
+        passed = all(float(v) >= 7.0 for v in scores.values())
+        return {"pass": passed, "scores": scores, "issues": [],
+                "summary": "评审 JSON 解析失败，分数从原文提取（issues 不可用）"}
+    return {"pass": False, "scores": {}, "issues": [],
+            "summary": "评审输出无法解析为 JSON：%s" % (res.get("text") or "")[:200]}
 
 
 def _format_issues(review_json, verify_pass, verify_failed_note):
