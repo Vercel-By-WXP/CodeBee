@@ -639,3 +639,11 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - A 组全活跃无增量事故
 
 **✅ 本班落地**：偏好记忆补全 direct 对话模型字段——SAVE_KEYS 新增 direct_provider/direct_model/direct_thinking（厂商 id/模型名截断 64、推理档闭集校验、空串不覆盖），direct 用户下次新建沿用上次手选；test_prefs 扩至 8 项
+
+### 2026-09-23 08:02 第三十八班（批1：代码质量与评审）
+
+- 批1 复跑主体重合（SkillSpector/open-code-review/mira 均已入库）。新锐小标：fleet-harness/waspflow/claude-lane-stack/codegen_orchestrator | 雷达
+- A 组全活跃无增量事故
+
+**✅ 本班落地**：**多线剧情推演 MVP**（inkos 借鉴，待深挖榜首清账）——`core/branching.py`：serial.branches=2-3 时写章前**一次编排者调用**生成 N 条方向互异的分支节拍计划+自荐 pick 择优，选中分支替换本章 BEATS/HOOK 注入起草（**计划级赛马**——比 prose 级 Best-of-N 省一个数量级 token）；全部分支连同取舍理由追加 `.codebee/branch-plans.md` 审计（✅ 标择优）；失败/无编排者/N<2 静默回落原大纲节拍（增强不是闸门）；store 归一 branches 参数（1=默认关不落键、越界钳 3 同 variants 口径）。test_branching 6 项
+- claude-lane-stack 117★（一人 AI coding 工厂：Claude PM + 多 CLI writers 持久对话）| 雷达

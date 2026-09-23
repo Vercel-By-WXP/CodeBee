@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, attachments, catalog, dispatch_log, history, hooks, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage, volumes
+from . import aiflavor, attachments, branching, catalog, dispatch_log, history, hooks, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -2556,6 +2556,20 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             scope = ("本章 = 大纲第 %d 章" % i) if start == 1 else (
                 "本批为第 %d–%d 章，下列按全书章号列出各章要点" % (start, end))
 
+            # 多线剧情推演（inkos 借鉴 2026-09-23）：serial.branches>=2 时
+            # 写章前一次编排者调用生成 N 条分支节拍、自荐择优，选中分支替换
+            # 本章 BEATS/HOOK（计划级赛马，省 prose 级开销）；失败静默走原大纲。
+            branch_beats = branch_hook = None
+            try:
+                n_branch = max(1, min(3, int(serial.get("branches") or 1)))
+                if n_branch >= 2:
+                    got = branching.plan_branches(
+                        run_id, task, i, task["goal"], outline_txt, prev, n_branch)
+                    if got:
+                        branch_beats, branch_hook = got
+            except Exception:
+                branch_beats = None
+
             def _draft_prompt(vfile):
                 return (SERIAL_CHAPTER_PROMPT
                         .replace("__SKILLS__", sk_block)
@@ -2567,8 +2581,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         .replace("__PREV__", prev)
                         .replace("__LEDGER__", ledger_txt)
                         .replace("__TITLE__", ch["title"])
-                        .replace("__BEATS__", ch["beats"] or "按大纲推进")
-                        .replace("__HOOK__", ch.get("hook") or "留下悬念")
+                        .replace("__BEATS__", branch_beats or ch["beats"] or "按大纲推进")
+                        .replace("__HOOK__", branch_hook or ch.get("hook") or "留下悬念")
                         .replace("__WORDS__", str(wpc)))
 
             n_variants = max(1, min(3, int(serial.get("variants") or 1)))

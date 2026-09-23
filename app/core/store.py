@@ -223,6 +223,15 @@ def create_task(payload):
                     v = 1
                 if v > 1:
                     s["variants"] = v
+                # 多线剧情推演（inkos 借鉴 2026-09-23）：2-3 = 写章前生成
+                # N 条分支节拍计划择优注入（计划级赛马，省 prose 级开销）；
+                # 越界钳到 3（与 variants 同口径：上限仍可用，1=不启用不落键）
+                try:
+                    br = max(1, min(3, int(serial.get("branches") or 1)))
+                except Exception:
+                    br = 1
+                if br > 1:
+                    s["branches"] = br
                 # 分卷：显式卷表优先（新建任务时用户明确给出的分卷信息），
                 # 其次每卷章数等长切卷。卷边界一律由 volumes 模块从「章号」
                 # 确定性推导——续写批次沿用同一份卷表/每卷章数即自动接上同一卷，
