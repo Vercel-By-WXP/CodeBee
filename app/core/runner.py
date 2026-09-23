@@ -29,6 +29,7 @@ from .error_codes import ErrorCode
 # 置 0 则两边通用（remote.py 同款守卫）。
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 DEFAULT_TIMEOUT = 1200  # 单步 20 分钟
+MAX_ATTEMPT_TIMEOUT_S = 60  # 单模型上游最多等 1 分钟，随后换模型/供应商
 
 _BASH_CANDIDATES = [
     r"D:\Git\usr\bin\bash.exe",
@@ -774,8 +775,8 @@ def _codex_fail_msg(stdout):
     2026-09-16 实测：配额/限流只出现在 error 与 turn.failed 事件里，旧解析器
     两者都丢——进程退出码非 0 时错误串里只剩 "Reading prompt from stdin..."，
     _quota_error/_transient_error 判不出可降级，健康后继模型从未被尝试。
-    Reconnecting... 是 CLI 内部重试噪音（可能自愈），不取；turn.failed 是
-    终态优先于裸 error（后者取最后一条兜底）。
+    Reconnecting... 是 CLI 内部重试噪音（可能自愈），不取作终态错误；重复
+    重连由进程看门狗提前中断。turn.failed 优先于裸 error（后者取最后一条兜底）。
     """
     terminal, last_err = "", ""
     for line in (stdout or "").splitlines():
@@ -917,21 +918,15 @@ def _refusal_error(err):
     return any(k in err for k in _REFUSAL)
 
 
-def _fail_sig(err):
-    """错误串的病根特征（剥掉输出尾段/数字/会话 id 等易变片段），供换将
-    循环做同因连撞止损。与 jobs._err_signature 同思路的轻量版，避免 core
-    模块环。超时错误的尾段是每次被杀时刻的输出快照，必然不同，签名只取
-    头部（；分隔符之前）。"""
-    s = str(err or "")
-    for sep in ("；stderr/stdout", "；日志错误行"):
-        i = s.find(sep)
-        if i > 0:
-            s = s[:i]
-            break
-    s = re.sub(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
-               "<sid>", s)
-    s = re.sub(r"\d+", "N", s)
-    return re.sub(r"\s+", " ", s).strip()[:200]
+def _attempt_upstream(att):
+    """返回尝试项的上游身份；同一 host 换模型/供应商别名不重复烧超时。"""
+    provider = (att or {}).get("provider") or {}
+    base_url = str(provider.get("base_url") or "").strip()
+    match = re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://([^/?#]+)", base_url)
+    if match:
+        return match.group(1).lower()
+    provider_id = str((att or {}).get("provider_id") or "").strip()
+    return "provider:" + provider_id if provider_id else "unknown"
 
 
 def _claude_drift_note(att_model, parsed):
@@ -993,11 +988,11 @@ def _grace_wait(cancel_event, seconds, log_path=None, why=""):
                          % (why or "上游限流（429）", seconds))
         except Exception:
             pass
-    end = time.time() + seconds
-    while time.time() < end:
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
         if cancel_event is not None and cancel_event.is_set():
             return False
-        time.sleep(min(3, max(0.5, end - time.time())))
+        time.sleep(min(3, max(0.5, end - time.monotonic())))
     return cancel_event is None or not cancel_event.is_set()
 
 
@@ -1310,14 +1305,16 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
 
     模型尝试顺序来自 _resolve_attempts：跨厂商链（每条独立 env）或
     主模型 + 降级备选；瞬态/配额/超时/上游拒答换下一条，取消与解析
-    失败不降级；超时连续两次同签名即止损（同一慢上游换壳无用）。
+    失败不降级；同一上游超时两次即跳过该上游剩余模型。
 
-    5E：catalog `orch.timeout_ms`（毫秒）优先于 caller 传入的 timeout。
+    5E：catalog `orch.timeout_ms`（毫秒）优先于 caller 传入的 timeout；
+    但单个模型/上游调用硬封顶 60 秒，超时即试链上下一家。
     """
     # 5E：catalog orch.timeout_ms 优先
     orch_timeout_ms = (agent.get("orch") or {}).get("timeout_ms")
     if orch_timeout_ms:
         timeout = float(orch_timeout_ms) / 1000.0
+    timeout = min(float(timeout), MAX_ATTEMPT_TIMEOUT_S)
     kind = agent.get("kind", "generic")
     if kind == "aider":
         repo_issue = _git_repo_issue(workdir)
@@ -1363,8 +1360,13 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     attempts = _resolve_attempts(agent)
     out = None
     grace_left = RATE_LIMIT_GRACE_N  # 链尾限流宽限预算：整链撞 429 时原地等一个窗口再试一次
-    prev_sig = ""  # 上一次尝试的失败签名：同因连撞止损用
+    timed_out_upstreams = {}  # 同一上游两次超时后跳过剩余模型
+    skipped_upstreams = set()
     for ai, att in enumerate(attempts):
+        upstream = _attempt_upstream(att)
+        if upstream in skipped_upstreams:
+            continue
+        model_deadline = att.get("_deadline") or (time.monotonic() + timeout)
         env = dict(base_env)
         env.update(att["env"])
         if kind == "codex":
@@ -1380,24 +1382,31 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             # 链内条目未注入供应商时不能沿用上一条（可能是另一家厂商）的 -c 覆盖
             del eff_agent["codex_provider"]
         for attempt in range(2):  # claude 偶发空响应（0 token）自动重试一次
-            argv, stdin_text, prompt_eff, tmp_files = _build_call(
-                eff_agent, kind, sid, readonly,
-                att["model"], prompt,
-                images=images if kind == "codex" else None,
-                workdir=workdir)
-            try:
-                repeat_guard = (("Reconnecting... waiting for network", 5)
-                                if kind == "codex" else None)
-                res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
-                                  timeout=timeout, cancel_event=cancel_event, log_path=log_path,
-                                  stall_timeout=stall_t, repeat_abort=repeat_guard)
-            finally:
-                # 超长指令临时文件：CLI 进程已结束（管道已收），即刻清场不污染工作目录
-                for tf in tmp_files:
-                    try:
-                        os.remove(tf)
-                    except OSError:
-                        pass
+            remaining = model_deadline - time.monotonic()
+            if remaining <= 0:
+                res = {"ok": False, "exit_code": None, "stdout": "", "stderr": "",
+                       "duration": timeout, "cancelled": False, "timed_out": True,
+                       "stalled": False}
+            else:
+                argv, stdin_text, prompt_eff, tmp_files = _build_call(
+                    eff_agent, kind, sid, readonly,
+                    att["model"], prompt,
+                    images=images if kind == "codex" else None,
+                    workdir=workdir)
+                try:
+                    repeat_guard = (("Reconnecting...", 2)
+                                    if kind == "codex" else None)
+                    res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
+                                      timeout=min(timeout, remaining), cancel_event=cancel_event,
+                                      log_path=log_path, stall_timeout=stall_t,
+                                      repeat_abort=repeat_guard)
+                finally:
+                    # 超长指令临时文件：CLI 进程已结束（管道已收），即刻清场不污染工作目录
+                    for tf in tmp_files:
+                        try:
+                            os.remove(tf)
+                        except OSError:
+                            pass
             out = {"ok": res["ok"], "text": "", "json": None, "cost_usd": 0.0,
                    "tokens": 0, "usage": None, "error": "", "error_code": "",
                    "sid": "", "raw": res, "kind": kind, "model": att["model"],
@@ -1527,13 +1536,17 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             break
         _report_key(att, out)
         if out["ok"] or ai == len(attempts) - 1:
+            remaining = model_deadline - time.monotonic()
             if (not out["ok"] and grace_left > 0 and _rate_limited(out.get("error"))
+                    and remaining > 2
                     and not (cancel_event is not None and cancel_event.is_set())):
                 # 链尾限流宽限：enumerate 活列表——把链尾这条 append 回去，
                 # 下一轮迭代就是「原地重试一次」；再撞限流时预算已耗尽照常判死。
                 grace_left -= 1
-                if _grace_wait(cancel_event, RATE_LIMIT_GRACE_S, log_path=log_path):
-                    attempts.append(att)
+                grace_s = min(RATE_LIMIT_GRACE_S, remaining - 1)
+                if _grace_wait(cancel_event, grace_s, log_path=log_path):
+                    retry = dict(att, _deadline=model_deadline)
+                    attempts.append(retry)
                     continue
             return out
         # 换将闸门：什么失败值得烧链上下一个候选。
@@ -1550,16 +1563,15 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                         or _refusal_error(out.get("error"))
                         or raw.get("timed_out"))):
             return out  # 取消/解析失败等真终态不降级
-        # 超时同因连撞止损：头部签名（超时/输出停滞）连续相同就收手——
+        # 同一上游的模型连续两次超时就收手——
         # 链上候选绑同一上游时换将=换壳不换命（2026-09-22 429 集群教训；
-        # 2026-09-23 夜班实案同一慢上游连烧 3×20 分钟全超时零产出），最坏
-        # 情况从 N×步超时压到 2×。其余瞬态/拒答仍按链长全部尝试：各家病根
+        # 2026-09-23 夜班实案同一慢上游连烧 3×20 分钟全超时零产出），最多
+        # 两个模型预算后转向其他上游。其余瞬态/拒答仍按链长全部尝试：各家病根
         # 不同，每个候选都值得一次机会。
         if raw.get("timed_out"):
-            sig = _fail_sig(out.get("error"))
-            if sig and sig == prev_sig:
-                return out
-            prev_sig = sig
+            timed_out_upstreams[upstream] = timed_out_upstreams.get(upstream, 0) + 1
+            if timed_out_upstreams[upstream] >= 2:
+                skipped_upstreams.add(upstream)
     return out
 
 

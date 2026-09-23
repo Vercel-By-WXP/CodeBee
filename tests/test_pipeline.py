@@ -351,6 +351,122 @@ class TestSerialDelayedFallbackRoute(BaseTest):
                          ["author-a", "author-b"])
 
 
+class TestContentDraftCliFallback(BaseTest):
+    def setUp(self):
+        super().setUp()
+        from app.core import pipeline
+        self.pipeline = pipeline
+        self.primary = {"id": "claude-code", "label": "Claude Code",
+                        "kind": "claude", "mode": "real"}
+        self.backup = {"id": "codex-cli", "label": "Codex CLI",
+                       "kind": "codex", "mode": "real"}
+        self.task = {"type": "doc", "title": "报告", "goal": "写报告",
+                     "workdir": str(self.workdir)}
+
+    def _retry(self, mode="auto", first=None, resume_ctx=None):
+        from unittest.mock import patch
+        p = self.pipeline
+        first = first or {
+            "ok": False,
+            "error": "codex: stream disconnected before completion",
+            "raw": {"timed_out": False, "cancelled": False},
+        }
+        with patch.object(p.router, "pick_switch_candidate",
+                          return_value=(self.backup, "异厂商备用")) as pick, \
+                patch.object(p.router, "agent_upstreams", return_value=set()), \
+                patch.object(p.modelhub, "bind_agent", side_effect=lambda a, *_: a), \
+                patch.object(p, "_run_step", return_value={
+                    "ok": True, "text": "报告正文", "error": "", "raw": {}}) as run_step:
+            result = p._retry_content_draft_with_cli(
+                run_id="r-test", task=self.task, agents=[self.primary, self.backup],
+                impl=self.primary, difficulty="default", mode=mode, stats={},
+                prompt="写报告", workdir=str(self.workdir),
+                step_wd=str(self.workdir), ev=None, resume_ctx=resume_ctx,
+                draft_note="原路由", draft_res=first)
+        return result, pick, run_step
+
+    def test_auto_mode_switches_cli_after_codex_stream_disconnect(self):
+        (result, impl, note), pick, run_step = self._retry()
+        self.assertTrue(result["ok"])
+        self.assertEqual(impl["id"], "codex-cli")
+        self.assertIn("claude-code → codex-cli", note)
+        self.assertEqual(run_step.call_args.args[1], "draft")
+        self.assertIs(run_step.call_args.args[2], self.backup)
+        pick.assert_called_once()
+
+    def test_manual_mode_does_not_switch_cli(self):
+        (result, impl, _), pick, run_step = self._retry(mode="manual")
+        self.assertFalse(result["ok"])
+        self.assertEqual(impl["id"], "claude-code")
+        pick.assert_not_called()
+        run_step.assert_not_called()
+
+    def test_user_cancellation_does_not_switch_cli(self):
+        cancelled = {"ok": False, "error": "cancelled",
+                     "raw": {"timed_out": False, "cancelled": True}}
+        (result, impl, _), pick, run_step = self._retry(first=cancelled)
+        self.assertTrue(result["raw"]["cancelled"])
+        self.assertEqual(impl["id"], "claude-code")
+        pick.assert_not_called()
+        run_step.assert_not_called()
+
+    def test_resume_session_stays_with_its_original_cli(self):
+        (result, impl, _), pick, run_step = self._retry(
+            resume_ctx={"agent": self.primary, "session": "session-1"})
+        self.assertFalse(result["ok"])
+        self.assertEqual(impl["id"], "claude-code")
+        pick.assert_not_called()
+        run_step.assert_not_called()
+
+    def test_review_pipeline_records_switched_author_and_excludes_self_from_critics(self):
+        import json
+        import threading
+        from unittest.mock import patch
+        from app.core import store
+
+        primary = self.primary
+        backup = self.backup
+        agents = [primary, backup]
+        task = dict(self.task, rubric=["accuracy"], threshold=7, rounds=1,
+                    difficulty="easy", manuscript="report.md")
+        run = store.create_run("orchestration", "报告", task_id="task-draft-fallback")
+        store.update_run(run["id"], status="running")
+        used_as_critic = []
+
+        def critics(_agents, _ttype, _stats, impl=None):
+            candidate = primary if impl is backup else backup
+            return [candidate], "cross-CLI critic"
+
+        def run_step(_run_id, role, agent, *_args, **_kwargs):
+            if role == "draft" and agent is primary:
+                return {"ok": False, "error": "stream disconnected", "raw": {}}
+            if role == "draft":
+                (self.workdir / "report.md").write_text("草稿", encoding="utf-8")
+                return {"ok": True, "text": "草稿", "raw": {}}
+            used_as_critic.append(agent["id"])
+            return {"ok": True, "text": json.dumps({
+                "scores": {"accuracy": 9}, "issues": [], "summary": "通过"}),
+                "raw": {}}
+
+        with patch.object(self.pipeline.router, "pick", return_value=(primary, "primary")), \
+                patch.object(self.pipeline.router, "pick_critics", side_effect=critics), \
+                patch.object(self.pipeline.router, "pick_switch_candidate",
+                             return_value=(backup, "备用 CLI")), \
+                patch.object(self.pipeline.router, "agent_upstreams", return_value=set()), \
+                patch.object(self.pipeline.modelhub, "bind_agent",
+                             side_effect=lambda agent, *_args, **_kwargs: agent), \
+                patch.object(self.pipeline, "_run_step", side_effect=run_step):
+            self.pipeline._run_content_review(run, task, agents, threading.Event(), {}, "auto")
+
+        saved = store.get_run(run["id"])
+        self.assertEqual(saved["status"], "done", saved.get("error"))
+        self.assertEqual(saved["route_plan"]["implement"]["selected"], "codex-cli")
+        self.assertEqual(saved["route_plan"]["review"]["participants"], ["claude-code"])
+        self.assertIn("Codex CLI", saved["plan"]["steps"][0]["detail"])
+        self.assertIn("Claude Code", saved["plan"]["steps"][1]["detail"])
+        self.assertEqual(used_as_critic, ["claude-code"])
+
+
 if __name__ == "__main__":
     import unittest as _u
     _u.main()

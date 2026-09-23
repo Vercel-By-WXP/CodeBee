@@ -120,7 +120,10 @@ class TestTimeoutWalk(BaseTest):
         self.assertEqual(calls, ["slow", "fast"])
 
         # 2) 同因连撞止损：三条链全超时 → 第 3 条不再烧（2 次收手）
-        out, calls = _run(_agent(("m1", "m2", "m3")),
+        same_vendor = _agent(("m1", "m2", "m3"))
+        for item in same_vendor["call_chain"]:
+            item["provider_id"] = "same-provider"
+        out, calls = _run(same_vendor,
                           [_timeout(), _timeout(), _timeout()])
         self.assertFalse(out["ok"])
         self.assertEqual(calls, ["m1", "m2"])
@@ -137,10 +140,113 @@ class TestTimeoutWalk(BaseTest):
         self.assertFalse(out["ok"])
         self.assertEqual(calls, ["m1"])
 
+
+class TestAttemptBudget(BaseTest):
+    def test_each_model_attempt_is_capped_and_different_upstreams_are_tried(self):
+        import app.core.runner as R
+        agent = _agent(("slow-a", "slow-b", "fast-c"))
+        agent["orch"] = {"timeout_ms": 2400000}
+        for item, provider_id in zip(agent["call_chain"], ("p-a", "p-b", "p-c")):
+            item["provider_id"] = provider_id
+            item["provider"] = {"id": provider_id, "base_url": "https://%s.example" % provider_id}
+        calls = []
+        results = [_timeout(), _timeout(), _claude_result("FAST-C-OK")]
+
+        def fake(argv=None, **kwargs):
+            argv = list(argv or [])
+            calls.append({"model": argv[argv.index("--model") + 1],
+                          "timeout": kwargs.get("timeout")})
+            return results[len(calls) - 1]
+
+        with mock.patch.object(R, "run_process", side_effect=fake):
+            out = R.run_agent(agent, "hi", readonly=True, timeout=2400)
+
+        self.assertTrue(out["ok"], out.get("error"))
+        self.assertEqual([c["model"] for c in calls], ["slow-a", "slow-b", "fast-c"])
+        self.assertEqual([c["timeout"] for c in calls], [60, 60, 60])
+
+    def test_same_upstream_timeout_skips_remaining_models_then_tries_another_vendor(self):
+        agent = _agent(("slow-a", "slow-b", "slow-c", "fast-d"))
+        for item, provider_id in zip(agent["call_chain"], ("p-a", "p-a", "p-a", "p-b")):
+            item["provider_id"] = provider_id
+            item["provider"] = {"id": provider_id, "base_url": "https://%s.example" % provider_id}
+        stalled = dict(_timeout(), stalled=True)
+        out, calls = _run(agent, [_timeout(), stalled,
+                                  _claude_result("FAST-D-OK")])
+        self.assertTrue(out["ok"], out.get("error"))
+        self.assertEqual(calls, ["slow-a", "slow-b", "fast-d"])
+
         # 5) 取消不降级：即使尾段带 503 字样（被杀时刻的输出快照）
         out, calls = _run(_agent(("m1", "m2")), [_cancelled()])
         self.assertFalse(out["ok"])
         self.assertEqual(calls, ["m1"])
+
+    def test_claude_empty_response_retry_uses_remaining_model_budget(self):
+        import app.core.runner as R
+        agent = _agent(("empty", "next"))
+        clock = [0.0]
+        timeouts = []
+        results = [_claude_result(""), _timeout(), _claude_result("NEXT-OK")]
+
+        def now():
+            return clock[0]
+
+        def fake(argv=None, **kwargs):
+            timeouts.append(kwargs["timeout"])
+            clock[0] += 55
+            return results[len(timeouts) - 1]
+
+        with mock.patch.object(R.time, "monotonic", side_effect=now), \
+                mock.patch.object(R, "run_process", side_effect=fake):
+            out = R.run_agent(agent, "hi", readonly=True, timeout=2400)
+
+        self.assertTrue(out["ok"], out.get("error"))
+        self.assertEqual(timeouts, [60, 5, 60])
+
+    def test_codex_repeated_stream_disconnect_aborts_early_then_falls_back(self):
+        import json
+        import app.core.runner as R
+
+        agent = {"id": "codex-cli", "kind": "codex", "mode": "real",
+                 "command": "codex", "call_chain": [
+                     {"model": "broken-stream", "provider_id": "p-a", "env": {}},
+                     {"model": "healthy", "provider_id": "p-b", "env": {}},
+                 ]}
+        reconnect = json.dumps({
+            "type": "error",
+            "message": "Reconnecting... 1/5 (stream disconnected before completion: "
+                       "stream closed before response.completed)",
+        })
+        aborted = {"ok": False, "exit_code": None,
+                   "stdout": reconnect + "\n" + reconnect,
+                   "stderr": "[same network error repeated 2 times]",
+                   "duration": 3, "cancelled": False, "timed_out": True,
+                   "stalled": False}
+        success = {"ok": True, "exit_code": 0,
+                   "stdout": "\n".join([
+                       json.dumps({"type": "item.completed", "item": {
+                           "type": "agent_message", "text": "fallback response"}}),
+                       json.dumps({"type": "turn.completed", "usage": {}}),
+                   ]),
+                   "stderr": "", "duration": 1, "cancelled": False,
+                   "timed_out": False, "stalled": False}
+        built_models, process_calls = [], []
+
+        def build(_agent, _kind, _sid, _readonly, model, _prompt, **_kwargs):
+            built_models.append(model)
+            return (["codex"], "prompt", "prompt", [])
+
+        def process(**kwargs):
+            process_calls.append(kwargs)
+            return aborted if len(process_calls) == 1 else success
+
+        with mock.patch.object(R, "_build_call", side_effect=build), \
+                mock.patch.object(R, "run_process", side_effect=process):
+            out = R.run_agent(agent, "hi", readonly=True, timeout=600)
+
+        self.assertTrue(out["ok"], out.get("error"))
+        self.assertEqual(built_models, ["broken-stream", "healthy"])
+        self.assertEqual(process_calls[0]["repeat_abort"], ("Reconnecting...", 2))
 
 
 if __name__ == "__main__":

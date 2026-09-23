@@ -942,6 +942,72 @@ def _record_dispatch_completed(run_id, task, result, verify_pass=None, review_pa
         pass
 
 
+def _retry_content_draft_with_cli(run_id, task, agents, impl, difficulty, mode,
+                                  stats, prompt, workdir, step_wd, ev, resume_ctx,
+                                  draft_note, draft_res):
+    """Auto content tasks may try another configured CLI after a draft failure.
+
+    Model/provider failover has already been exhausted inside run_agent. Keep
+    manual execution, user cancellation and resumed sessions pinned to the
+    user's explicit choice.
+    """
+    raw = draft_res.get("raw") or {}
+    if (mode == "manual" or impl.get("mode") != "real" or resume_ctx
+            or raw.get("cancelled") or draft_res.get("error_code") == "CANCELLED"):
+        return draft_res, impl, draft_note
+
+    tried = {impl.get("id")}
+    failures = ["%s：%s" % (impl.get("id") or "CLI",
+                            (draft_res.get("error") or "起草失败")[:180])]
+    dead_upstreams = []
+    first_upstreams = router.agent_upstreams(impl.get("id"))
+    if first_upstreams:
+        dead_upstreams.append(first_upstreams)
+    current = impl
+    last_impl = impl
+    last_result = draft_res
+    last_note = draft_note
+
+    while True:
+        _check_cancel(ev)
+        candidate, reason = router.pick_switch_candidate(
+            agents, "implement", task.get("type") or "novel", stats,
+            exclude=tried, dead_upstreams=dead_upstreams)
+        if candidate is None or candidate.get("id") in tried:
+            break
+        tried.add(candidate.get("id"))
+        if candidate.get("mode") != "real":
+            continue
+
+        why = (last_result.get("error") or "起草失败")[:180]
+        switch_note = ("起草自动换 CLI：%s → %s（%s）；前序失败：%s" % (
+            current.get("id") or "CLI", candidate.get("id") or "CLI",
+            reason or "自动路由", why))
+        attempt_note = (draft_note + "；" if draft_note else "") + switch_note
+        bound = modelhub.bind_agent(candidate, difficulty)
+        last_result = _run_step(
+            run_id, "draft", bound, prompt, step_wd, readonly=False, ev=ev,
+            note=attempt_note, images=_task_images(task, workdir))
+        last_impl = candidate
+        last_note = attempt_note
+        if last_result.get("ok"):
+            return last_result, candidate, attempt_note
+
+        failures.append("%s：%s" % (candidate.get("id") or "CLI",
+                                    (last_result.get("error") or "起草失败")[:180]))
+        if (last_result.get("raw") or {}).get("cancelled"):
+            break
+        ups = router.agent_upstreams(candidate.get("id"))
+        if ups:
+            dead_upstreams.append(ups)
+        current = candidate
+
+    if last_impl is not impl:
+        last_result = dict(last_result)
+        last_result["error"] = "CLI 自动切换均失败：%s" % "；".join(failures[-4:])
+    return last_result, last_impl, last_note
+
+
 def _run_code(run, task, agents, ev, stats, mode):
     run_id = run["id"]
     workdir = task["workdir"]
@@ -3493,6 +3559,27 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                                   ev=ev, note=draft_note,
                                   resume=resume_ctx["session"] if resume_ctx else None,
                                   images=_task_images(task, workdir))
+        if not draft_res["ok"]:
+            draft_res, actual_impl, fallback_note = _retry_content_draft_with_cli(
+                run_id, task, agents, impl, difficulty, mode, stats,
+                _draft_prompt_for(ms_name), workdir, step_wd, ev, resume_ctx,
+                draft_note, draft_res)
+            if actual_impl.get("id") != impl.get("id"):
+                impl = actual_impl
+                draft_note = fallback_note
+                route["author"] = fallback_note
+                if mode != "manual":
+                    critic_pool, route["critics"] = router.pick_critics(
+                        agents, task.get("type") or "novel", stats, impl=impl)
+                    critics = critic_pool[:workflow["reviewers"]]
+                plan = planner.make_novel_plan(_steered_task(run_id, task), impl, critics)
+                store.update_run(run_id, route=route, plan=plan)
+                _record_actual_route(
+                    run_id, task, agents, stats, impl, critics=critics,
+                    implement_reason=route.get("author", ""),
+                    review_reason=route.get("critics", ""))
+            if draft_res.get("raw", {}).get("cancelled"):
+                _check_cancel(ev)
         if not draft_res["ok"]:
             store.update_run(run_id, expected_status="running", status="failed",
                              error="起草失败: %s" % draft_res.get("error"),
