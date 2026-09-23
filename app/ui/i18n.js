@@ -500,6 +500,8 @@
     "转正": "Approve",
     "可能过期": "Possibly stale",
     "事实较旧，注入时会标注可能过期": "Fact is old; injection marks it as possibly stale",
+    "有据": "Sourced",
+    "产出材料中有明确来源或数据支撑": "Has explicit sources or data backing in the output material",
     "只看该标签": "Filter by tag",
     "来源运行": "Source run",
     "事实截至 ": "As of ",

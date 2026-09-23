@@ -9573,6 +9573,7 @@ function kbCard(x) {
   const badges =
     (draft ? '<span class="tag warn"><span class="cdot"></span>' + esc(t("草稿")) + "</span>" : "") +
     (x.stale ? '<span class="tag" title="' + esc(t("事实较旧，注入时会标注可能过期")) + '">' + esc(t("可能过期")) + "</span>" : "") +
+    (x.confidence === "high" ? '<span class="tag ok" title="' + esc(t("产出材料中有明确来源或数据支撑")) + '">' + esc(t("有据")) + "</span>" : "") +
     '<span class="tag">' + esc(x.scope === "*" ? t("通用") : x.scope) + "</span>" +
     (x.seen > 1 ? '<span class="tag">' + t("出现 ") + x.seen + t(" 次") + "</span>" : "") +
     (x.hits ? '<span class="tag">' + t("已注入 ") + x.hits + t(" 次") + "</span>" : "") +

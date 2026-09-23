@@ -681,3 +681,11 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 批4 复跑主体重合。A 组全活跃无增量事故
 
 **✅ 本班落地**：skill_scan 模式补齐与三档风险（SkillSpector 71 模式的渐进补齐）——新增 3 条危险模式：`child_process`（Node.js 子进程）、`base64 解码`（混淆载荷，归数据外发高危类）、**AI 助手配置目录触碰**（.claude/.zcode/.kimi-code/.codebee——篡改系统提示词或模型绑定的入口，我们生态特有）；risk_label 新增**中风险**档（两个中危类同时命中：网络请求+环境读取、提示注入+越权人格等组合），单中危仍为注意、高危类命中仍直接高风险。test_skill_scan_v2 9 项
+
+### 2026-09-23 20:03 第四十四班（批6：框架/平台/SDK 生态）
+
+- **google/agents-cli 5,979★**（Google 官方）新入库 | "The CLI and skills that turn any coding assistant into an expert at creating, evaluating, and deploying AI agents"——把任何 coding 助手变成 agent 创建/评估/部署专家的 CLI+Skills | Google 继 toolkit 后第二个官方编排入口 | 参考
+- 批6 复跑主体重合（A2A 官方 25.9k→+20/agentops 5.8k 复查活跃）；a2a-wrapper 37★ 新增（JSON 配置把 AI 后端变 A2A 兼容 agent）| 雷达
+- A 组全活跃无增量事故
+
+**✅ 本班落地**：知识库页 confidence「有据」绿徽章——UI 侧收口（上两轮后端 confidence 分级+注入标注的最后一环）：knowledge.view() 已透传 confidence 字段，UI kbCard 对 confidence=high 的条目加绿徽章「有据」+悬停说明；medium 不标（默认零噪音）、老数据无字段不加不炸
