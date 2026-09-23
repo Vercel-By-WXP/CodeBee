@@ -3860,6 +3860,16 @@ function runNeedsRetry(run) {
     v.verify_pass === false || v.review_pass === false;
 }
 
+function retrySnapshotForTask(taskId, task, latestSummary) {
+  const summary = latestSummary || {};
+  if (task && (task.status === "running" || task.status === "queued"))
+    return { task_id: taskId, status: task.status };
+  if (runNeedsRetry(summary)) return summary;
+  if (task && ["failed", "cancelled", "timeout"].includes(task.status))
+    return { task_id: taskId, status: task.status };
+  return summary;
+}
+
 /* 重试按钮三态：失败/取消/质量未通过 → 「↻ 继续任务」（断点续跑语义）；连载任务完整跑完
  * 但质量未达标（verdict.publishable=false）→ 「↻ 重写未达标章」——后端 retry
  * 会把未过线章从继承清单剔除，只重写重评这几章（store.retry_task 未达标分支）；
@@ -3872,10 +3882,13 @@ function setRetryBtn(run, task) {
     && run.verdict && run.verdict.publishable === false);
   b.classList.toggle("hidden", !(retryable || rewrite));
   b.textContent = rewrite ? t("↻ 重写未达标章")
-    : (run.status === "done" ? t("↻ 重试任务") : t("↻ 继续任务"));
+    : (run.status === "done" ? t("↻ 重试任务")
+      : run.status === "timeout" ? t("↻ 从超时进度继续") : t("↻ 继续任务"));
   b.title = rewrite
     ? t("只重写上一遍未过线的章节，已过线章节沿用成稿与评分")
-    : t("再跑一次这个任务；连载任务会断点续跑，已完成章节不重写");
+    : run.status === "timeout"
+      ? t("从最近一次已保存的大纲和已完成章节断点续跑")
+      : t("再跑一次这个任务；连载任务会断点续跑，已完成章节不重写");
 }
 
 /* 任务级详情：聚合该任务所有 run 的步骤。
@@ -3891,6 +3904,8 @@ function renderTaskDetail() {
   const bc = $("btn-continue");
   if (bc) bc.classList.toggle("hidden",
     !(tk && tk.serial && tk.status !== "running" && tk.status !== "queued"));
+  const latestSummary = ((S.state || {}).task_latest || {})[key] || {};
+  setRetryBtn(retrySnapshotForTask(key, tk, latestSummary), tk);
   setEditRetry(tk ? tk.id : "", tk ? tk.status : "", !!tk);
   syncArchBtn(tk, tk && (tk.status === "running" || tk.status === "queued"));
   const isTask = ((S.state || {}).tasks || []).some((t2) => t2.id === key);
@@ -12666,7 +12681,13 @@ document.addEventListener("DOMContentLoaded", () => {
     new MutationObserver(sync).observe(sub, { attributes: true, attributeFilter: ["class"] });
     sync();
   })();
-  $("btn-retry").addEventListener("click", () => { const r = S.lastRun; if (r && r.task_id) retryTask(r.task_id); });
+  $("btn-retry").addEventListener("click", () => {
+    const r = S.lastRun;
+    const taskId = (r && r.task_id) ||
+      (((S.state || {}).tasks || []).some((task) => task.id === S.detailTaskKey)
+        ? S.detailTaskKey : "");
+    if (taskId) retryTask(taskId);
+  });
   /* 日志控制台高度：顶边手柄拖拽调整（localStorage 记忆），双击复位为默认弹性高度 */
   (() => {
     const grip = $("rd-log-grip"), box = $("rd-log");
