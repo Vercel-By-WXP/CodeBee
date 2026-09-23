@@ -22,8 +22,8 @@ class TaskPlanFileTests(BaseTest):
         text = (self.workdir / ".codebee" / "task_plan.md").read_text(encoding="utf-8")
         self.assertIn("# 任务计划", text)
         self.assertIn("orchestrator", text)
-        self.assertIn("1. 先建目录", text)
-        self.assertIn("2. 实现核心", text)
+        self.assertIn("1. [ ] 先建目录", text)   # 活计划：checkbox 形态（2026-09-24 起）
+        self.assertIn("2. [ ] 实现核心", text)
 
     def test_empty_plan_silent(self):
         from app.core import pipeline

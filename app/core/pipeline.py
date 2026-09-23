@@ -1247,6 +1247,7 @@ def _run_code(run, task, agents, ev, stats, mode):
                           .replace("__CONTEXT__", task.get("context") or "（无）")
                           .replace("__VERIFY_HINT__", _verify_hint(task))) + prog
                 role = "implement" if len(subtasks) == 1 else "implement-%d/%d" % (i + 1, len(subtasks))
+                mark_task_plan(workdir, i + 1, "run")   # 活计划：起跑即标进行中
                 res = _run_step(run_id, role, agt_b, prompt, step_wd,
                                 readonly=False, ev=ev,
                                 note=prefix_note if i == 0 else "",
@@ -1265,7 +1266,9 @@ def _run_code(run, task, agents, ev, stats, mode):
                     except Exception:
                         pass
                 if not res["ok"]:
+                    mark_task_plan(workdir, i + 1, "fail")
                     return False, res
+                mark_task_plan(workdir, i + 1, "done")
             return True, res
 
         ok, res = _run_one(impl_agent)
@@ -4106,12 +4109,45 @@ def _write_task_plan(task, workdir, plan):
             return ""
         target.parent.mkdir(parents=True, exist_ok=True)
         lines = ["# 任务计划", "", "来源：%s" % (plan or {}).get("source", "?"), ""]
+        # checkbox 形态：mark_task_plan 按行号翻 [x]/[!]/[>]，断点一眼可见
         for i, s in enumerate((plan or {}).get("steps") or [], 1):
-            lines.append("%d. %s" % (i, str(s.get("detail") or s.get("title") or "")[:200]))
+            lines.append("%d. [ ] %s" % (i, str(s.get("detail") or s.get("title") or "")[:200]))
         target.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return str(target)
     except Exception:
         return ""
+
+
+_PLAN_MARK = {"done": "x", "fail": "!", "run": ">"}
+
+
+def mark_task_plan(workdir, index, status):
+    """活计划回写：把 .codebee/task_plan.md 第 index 项（1 基）的勾选框
+    翻成 [x]（完成）/[!]（失败）/[>]（进行中）。planning-with-files 的断点
+    可见性：计划文件随执行实时推进，崩溃/换将/续跑时看文件即知走到哪步。
+    幂等覆盖（换将重试成功 [!]→[x]）；失败静默——回写绝不挡执行。"""
+    try:
+        from pathlib import Path as _P
+        import re as _re
+        mark = _PLAN_MARK.get(str(status))
+        idx = int(index)
+        if not mark or idx < 1 or not workdir:
+            return False
+        root = _P(workdir).resolve()
+        target = (root / ".codebee" / "task_plan.md").resolve()
+        if root not in target.parents or not target.is_file():
+            return False
+        pat = _re.compile(r"^(\d+)\. \[[ x!>]\] ")
+        lines = target.read_text("utf-8").splitlines()
+        for k, ln in enumerate(lines):
+            m = pat.match(ln)
+            if m and int(m.group(1)) == idx:
+                lines[k] = "%d. [%s] %s" % (idx, mark, ln[m.end():])
+                target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                return True
+        return False
+    except Exception:
+        return False
 
 
 def _workdir_blocker(task, run_id):

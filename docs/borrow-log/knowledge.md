@@ -143,7 +143,7 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 ## 2026-09-19 夜间第一班（调研日 2026-09-19，周六·轮换批7）
 
-- **planning-with-files** 已深挖（26,981★）| 三文件 task_plan/findings/progress 分离、每轮 hook 注入计划头（goal+next+active phase）、SHA-256 防篡改、Stop gate 防提前收工、KV-cache 稳定注入（289ms/次）、盲测 3/3 胜、恢复 13.3 轮→5.0 轮 | **已抄两件**：task_plan.md 落盘（与 spec/evidence 同居 .codebee/）+ 子任务进度注入（多子任务时提示词带「第 i/N 项+已完成」防漂移）；findings.md（中间发现）与 Stop gate 暂不抄（连载章级进度已有对应物） | 已落地
+- **planning-with-files** 已深挖（26,981★）| 三文件 task_plan/findings/progress 分离、每轮 hook 注入计划头（goal+next+active phase）、SHA-256 防篡改、Stop gate 防提前收工、KV-cache 稳定注入（289ms/次）、盲测 3/3 胜、恢复 13.3 轮→5.0 轮 | **已抄三件**：task_plan.md 落盘（与 spec/evidence 同居 .codebee/）+ 子任务进度注入（多子任务时提示词带「第 i/N 项+已完成」防漂移）+ 活计划回写（09-24：checkbox 随执行翻 [x]/[!]/[>]，断点可见）；findings.md（中间发现）与 Stop gate 暂不抄（连载章级进度已有对应物） | 已落地
 - **cognee**（topoteretes，30.8k★）| 开源 AI 记忆平台（知识图谱式）| agentmemory 同赛道更大体量；我们经验库=教训型，知识图谱路线暂缓（重依赖） | 参考
 - **agency-orchestrator**（jnMetaCode，2.3k★）| 一句话→一人公司 AI 专家→交付物（中文）| 与我们定位同向，中文产品化参考 | 待深挖
 - **deep-eye**（2.3k★）多供应商编排、**LocalAGI**（2k 本地自托管）| 网关/本地路线参考 | 参考
@@ -701,3 +701,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 批7 复跑主体重合。A 组全活跃无增量事故
 
 **✅ 本班落地**：branching 压力守卫——多线推演在 token 压力 >0.7 时自动跳过（每次推演是额外 4000 max_tokens 编排者调用；长篇后期预算紧张时推演是第一个该省的增强，压缩守卫先跑、推演不跑，省下的预算留给正文章稿）；n=1 短路最前不碰 meter；meter 异常不拦（守卫不因自身故障炸掉推演）。顺带清理 plan_branches 重复的 n<2 检查。test_branch_pressure 4 项
+
+### 2026-09-24 02:00 第四十七班（批2：学习记忆与自我改进）
+
+- 批2 复跑主体重合（vs 并行复查道 521 条采集口径一致）；scientific-agent-skills/pm-skills 已录参考级
+- **ARIS**（wanshuiyin/Auto-claude-code-research-in-sleep，16.5k★）| 睡眠中自动 ML 调研：跨模型评审循环+想法发现+实验自动化，纯 Markdown skills | 与我们 ZCode 自迭代循环同构（他们做 ML 科研、我们做产品迭代）；跨模型评审循环与我们跨厂商评审同向，值得下轮深挖其循环结构 | 待深挖
+
+**✅ 本班落地**：活计划回写（planning-with-files 第三件）——task_plan.md 从静态清单升级为随执行推进的活文档：落盘改 checkbox 形态（`1. [ ] 标题`），子任务起跑标 `[>]`、成功翻 `[x]`、失败标 `[!]`（换将重试成功 `[!]`→`[x]` 幂等覆盖）；崩溃/续跑/换将时看文件即知断点。回写失败静默绝不挡执行。test_task_plan_live 5 项 + 旧契约 3 项同步
