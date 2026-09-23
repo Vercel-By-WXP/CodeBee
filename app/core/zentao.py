@@ -66,6 +66,7 @@ from . import jobs, paths, settings, store, tlsctx
 log = logging.getLogger(__name__)
 
 _LOCK = threading.RLock()
+_SCAN_LOCK = threading.Lock()  # 手动/定时扫描单飞，避免重复拉取和重复认领
 _FILE = paths.DATA_DIR / "zentao.json"
 _STATE = {
     "config": {},        # 持久配置（_CFG_DEFAULTS）
@@ -868,12 +869,20 @@ def _claimable(bug, profile):
     return True
 
 
-def list_bugs(cfg, product_id):
-    """拉一个产品下的 bug（分页，总量封顶 MAX_BUGS）。返回原始 bug dict 列表。"""
+def list_bugs(cfg, product_id, profile=None):
+    """拉一个产品下的激活 bug（分页，总量封顶 MAX_BUGS）。
+
+    REST v1 支持时把状态/指派人过滤下推给禅道，减少无关 bug 的分页传输；
+    本地的 _claimable 仍保留，兼容老接口或禅道忽略未知查询参数的情况。
+    """
     out = []
     for page in range(1, 6):
-        d = _call("GET", "/products/%s/bugs?page=%d&limit=%d" % (product_id, page, PAGE_LIMIT),
-                  cfg=cfg)
+        query = {"page": page, "limit": PAGE_LIMIT, "status": "active"}
+        assigned = str((profile or {}).get("assigned_to") or "").strip()
+        if assigned:
+            query["assignedTo"] = assigned
+        d = _call("GET", "/products/%s/bugs?%s" % (
+            product_id, urllib.parse.urlencode(query)), cfg=cfg)
         bugs = d.get("bugs") if isinstance(d, dict) else None
         if not isinstance(bugs, list):
             raise ZenError("禅道 bug 列表响应形状不对（预期 bugs 数组）")
@@ -1038,7 +1047,7 @@ def test_connection(base_url=None, account=None, password=None):
     try:
         profiles = _profiles(c)
         if profiles:
-            bugs = list_bugs(probe, profiles[0]["product"])
+            bugs = list_bugs(probe, profiles[0]["product"], profiles[0])
             return True, "连接成功（%s），产品 %s 可访问（当前 %d 条 bug 在列表里）" % (
                 tag, profiles[0]["product"], len(bugs))
     except ZenError as e:
@@ -1712,7 +1721,7 @@ def _scan(cfg):
     if not profiles:
         raise ZenError("未配置产品档案——请先在设置页添加产品并配置仓库")
     for profile in profiles:
-        bugs = list_bugs(cfg, profile["product"])
+        bugs = list_bugs(cfg, profile["product"], profile)
         by_id = {str(b.get("id") or ""): b for b in bugs}
         with _LOCK:
             seen = set(_STATE["claims"].keys())
@@ -1735,6 +1744,17 @@ def _scan(cfg):
 
 
 def _poll(force=False):
+    """执行一次扫描；同一进程内只允许一个扫描实例。"""
+    if not _SCAN_LOCK.acquire(blocking=False):
+        return {"ok": False, "claimed": 0, "reconciled": False,
+                "error": "扫描正在进行，请稍候", "skipped": "in_progress"}
+    try:
+        return _poll_unlocked(force=force)
+    finally:
+        _SCAN_LOCK.release()
+
+
+def _poll_unlocked(force=False):
     """一次完整轮询：对账回写 + （到点/强制时）扫描认领。异常不外抛。"""
     _ensure_loaded()
     with _LOCK:

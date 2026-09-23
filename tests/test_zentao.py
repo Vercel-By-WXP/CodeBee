@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 from unittest import mock
 
 from base import BaseTest
@@ -181,7 +182,6 @@ class FakeZen:
             def do_GET(self):
                 srv.calls.append(("GET", self.path, None))
                 if srv.old:
-                    from urllib.parse import urlparse
                     p = urlparse(self.path).path.lstrip("/")
                     if p == "zentao/api-getsessionid.json":
                         srv.old_session_n += 1
@@ -261,6 +261,19 @@ class FakeZen:
                 if len(parts) == 3 and parts[0] == "products" and parts[2] == "bugs":
                     pid = int(parts[1])
                     bugs = [b for b in srv.bugs.values() if int(b.get("product") or 0) == pid]
+                    query = parse_qs(urlparse(self.path).query)
+                    status = (query.get("status") or [""])[0]
+                    assigned = (query.get("assignedTo") or [""])[0]
+                    if status:
+                        bugs = [b for b in bugs if str(b.get("status") or "") == status]
+                    if assigned:
+                        def acct(value):
+                            if isinstance(value, dict):
+                                return str(value.get("account") or "")
+                            if isinstance(value, (list, tuple)) and value:
+                                return str(value[0] or "")
+                            return str(value or "")
+                        bugs = [b for b in bugs if acct(b.get("assignedTo")) == assigned]
                     self._reply(200, {"bugs": bugs, "total": len(bugs),
                                       "page": 1, "limit": 100})
                     return
@@ -407,6 +420,27 @@ class TestFiltersAndHtml(ZenCase):
         self.assertIn("登录页", txt)
         self.assertIn("报 500", txt)
         self.assertNotIn("<", txt)
+
+
+class TestServerSideBugFilters(ZenCase):
+    def runTest(self):
+        """REST 列表请求先按激活状态/指派人过滤，仍保留本地兜底过滤。"""
+        self.configure()
+        cfg = self.zen_mod._cfg()
+        profile = self.zen_mod._profiles(cfg)[0]
+        self.bug(121)
+        self.bug(122, assignedTo={"account": "someone-else"})
+        self.bug(123, status="resolved")
+
+        bugs = self.zen_mod.list_bugs(cfg, 1, profile)
+
+        self.assertEqual([b["id"] for b in bugs], [121])
+        calls = [path for method, path, _ in self.fz.calls
+                 if method == "GET" and "/products/1/bugs" in path]
+        self.assertEqual(len(calls), 1)
+        query = parse_qs(urlparse(calls[0]).query)
+        self.assertEqual(query.get("status"), ["active"])
+        self.assertEqual(query.get("assignedTo"), ["coder"])
 
 
 class TestConfigAndMigration(ZenCase):
@@ -891,6 +925,42 @@ class TestFireDueGate(ZenCase):
         res2 = self.zen_mod.fire_due()
         self.assertEqual(res2.get("skipped"), "not_due")
         self.assertEqual(len(self.zen_mod.view()["claims"]), 1)
+
+
+class TestScanSingleFlight(ZenCase):
+    def runTest(self):
+        """手动扫描与定时扫描不能并行重复拉取/认领同一批 Bug。"""
+        self.configure()
+        entered = threading.Event()
+        release = threading.Event()
+        second_done = threading.Event()
+        second_result = []
+
+        def slow_scan(_cfg):
+            entered.set()
+            self.assertTrue(release.wait(2), "slow scan did not get released")
+            return 0
+
+        try:
+            with mock.patch.object(self.zen_mod, "_scan", side_effect=slow_scan):
+                first = threading.Thread(target=self.zen_mod.scan_now, daemon=True)
+                first.start()
+                self.assertTrue(entered.wait(1), "first scan did not start")
+
+                def run_second():
+                    second_result.append(self.zen_mod.scan_now())
+                    second_done.set()
+
+                second = threading.Thread(target=run_second, daemon=True)
+                second.start()
+                self.assertTrue(second_done.wait(1), "second scan waited for the first scan")
+                self.assertEqual(second_result[0].get("skipped"), "in_progress")
+        finally:
+            release.set()
+            if "first" in locals():
+                first.join(2)
+            if "second" in locals():
+                second.join(2)
 
 
 class TestConnection(ZenCase):
