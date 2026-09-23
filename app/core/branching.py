@@ -83,12 +83,7 @@ def _append_audit(workdir, chapter, branches, pick):
     if not workdir:
         return
     try:
-        p = os.path.abspath(os.path.join(str(workdir), ".codebee",
-                                         "branch-plans.md"))
-        root = os.path.abspath(str(workdir))
-        if root not in p.split(os.sep)[:-len([".codebee", "branch-plans.md"])]:
-            if not p.startswith(root + os.sep):
-                return
+        p = _audit_path(workdir)
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "a", encoding="utf-8") as f:
             if f.tell() == 0:
@@ -101,5 +96,35 @@ def _append_audit(workdir, chapter, branches, pick):
                     str(b.get("hook") or "")[:60],
                     str(b.get("why") or "")[:120]))
             f.write("\n")
+    except Exception:
+        pass
+
+
+def _audit_path(workdir):
+    """审计文件路径（越界拒绝：workdir 必须存在的目录）。"""
+    from pathlib import Path
+    root = Path(workdir).resolve()
+    if not root.is_dir():
+        raise ValueError("workdir 必须是已存在的目录")
+    return root / ".codebee" / "branch-plans.md"
+
+
+def mark_stale(workdir, chapter):
+    """正史重写后旧推演标过期（inkos 借鉴：分支计划随正史失效）。
+
+    修订步骤改写章稿后，本章的分支计划节头追加「（已过期，正史已重写）」——
+    防止后续翻看审计时把旧推演当成当前正史的来源。失败静默。"""
+    if not workdir:
+        return
+    try:
+        p = _audit_path(workdir)
+        if not p.is_file():
+            return
+        txt = p.read_text(encoding="utf-8", errors="replace")
+        header = "## 第 %d 章\n" % chapter
+        stale_header = "## 第 %d 章（已过期，正史已重写）\n" % chapter
+        if header in txt and stale_header not in txt:
+            p.write_text(txt.replace(header, stale_header, 1),
+                         encoding="utf-8")
     except Exception:
         pass

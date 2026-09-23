@@ -668,3 +668,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - A 组全活跃无增量事故
 
 **✅ 本班落地**：知识注入置信标注（上轮 confidence 分级的注入侧收口）——block_for 对 high 置信条目追加「［有据］」标记，模型据以分配采信权重；medium 不标（默认噪音为零）、low 早已在学习口丢弃；老数据无字段不炸。test_kb_conf_mark 2 项
+
+### 2026-09-23 16:01 第四十二班（批2：学习记忆与自我改进）
+
+- 批2 复跑主体重合（mengram/MemRL/pro-workflow/projectmem 均已入库）。A 组全活跃
+- 新锐小标：kyros-ai 94★（Memory OS：3 行代码给 agent 安全自纠持久记忆）| 雷达
+
+**✅ 本班落地**：**分支计划过期标记**（inkos 借鉴第三点清账）——branching.mark_stale：章节修订（revise-c）改写正史后，本章在 .codebee/branch-plans.md 的节头追加「（已过期，正史已重写）」——防止后续翻看审计时把旧推演当成当前正史的来源（inkos「正史变化后旧推演标过期」同款语义）；幂等（重复标记不叠加）、只影响目标章、失败静默、标记后新推演照常追加（重跑场景）。_append_audit 顺带改 pathlib 守卫。test_branch_stale 4 项
