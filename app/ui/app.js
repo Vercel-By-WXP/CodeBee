@@ -10193,12 +10193,16 @@ function renderZentaoStatus() {
     (v.last_error ? '<span class="zt-err">' + t("最近错误：") + esc(v.last_error) + "</span>" : "");
 }
 
-/* bug 详情页地址：后端回传探测出的 web 根（含 /zentao 子路径），
-   GET 形态 index.php?m=bug&f=view&bugID=N 对老版/新版、PATH_INFO 开关都通用。 */
+/* bug 详情页地址：后端回传探测出的 web 根（含 /zentao 子路径）与路由形态
+   bug_style。默认伪静态 bug-view-N.html（官方默认；2026-09-23 真机实证
+   伪静态部署对 GET 式链接不路由），探到 GET 形态部署才回退查询串形态。 */
 function zentaoBugUrl(c) {
-  const base = String((S.zentao || {}).bug_base || "").replace(/\/+$/, "");
+  const z = S.zentao || {};
+  const base = String(z.bug_base || "").replace(/\/+$/, "");
   if (!base || !c.bug_id) return "";
-  return base + "/index.php?m=bug&f=view&bugID=" + encodeURIComponent(c.bug_id);
+  if (z.bug_style === "get")
+    return base + "/index.php?m=bug&f=view&bugID=" + encodeURIComponent(c.bug_id);
+  return base + "/bug-view-" + encodeURIComponent(c.bug_id) + ".html";
 }
 
 function renderZentaoClaims() {

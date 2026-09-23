@@ -36,6 +36,7 @@ class FakeZen:
         self.old_modules_js = False   # True=tree-browse 回 js::HTML（接口不在形状）
         self.old_sid = ""
         self.old_session_n = 0
+        self.web_style = ""     # ""=根路径不特殊应答；"pathinfo"/"get"=按形态回登录跳转
 
     def handler(self):
         srv = self
@@ -181,6 +182,11 @@ class FakeZen:
 
             def do_GET(self):
                 srv.calls.append(("GET", self.path, None))
+                if srv.web_style and urlparse(self.path).path.rstrip("/") in ("", "/zentao"):
+                    # web 根按配置的路由形态回登录跳转（bug 链接形态探测的目标应答）
+                    self._js_html("/zentao/user-login-td.html" if srv.web_style == "pathinfo"
+                                  else "index.php?m=user&f=login")
+                    return
                 if srv.old:
                     p = urlparse(self.path).path.lstrip("/")
                     if p == "zentao/api-getsessionid.json":
@@ -526,6 +532,30 @@ class TestBugWebBase(ZenCase):
         self.zen_mod.save_config({"base_url": "", "account": "coder", "password": "pw",
                                   "product_profiles": [self.profile()]})
         self.assertEqual(self.zen_mod.view()["bug_base"], "")
+
+
+class TestBugLinkStyle(ZenCase):
+    def runTest(self):
+        """bug 详情链接形态：默认伪静态 bug-view-N.html（真机 2026-09-23 实证
+        伪静态部署对 GET 式链接不路由），探测到 GET 形态部署才回退查询串。"""
+        self.configure()
+        base = "http://127.0.0.1:%d" % self.port
+        # 没探出来（假服务器根路径 401）→ probe 空串，view 按官方默认伪静态
+        self.assertEqual(self.zen_mod.probe_web_style(base), "")
+        self.assertEqual(self.zen_mod.view()["bug_style"], "pathinfo")
+        # 根路径回伪静态登录跳转 → 探出 pathinfo 并进 view()
+        self.fz.web_style = "pathinfo"
+        self.assertEqual(self.zen_mod.probe_web_style(base), "pathinfo")
+        self.assertEqual(self.zen_mod.view()["bug_style"], "pathinfo")
+        # 探出后缓存生效：假服务器换形态，不清缓存维持原判
+        self.fz.web_style = "get"
+        self.assertEqual(self.zen_mod.probe_web_style(base), "pathinfo")
+        # 清缓存重探 → get；view() 跟着标 get
+        self.zen_mod._WEBSTYLE.clear()
+        self.assertEqual(self.zen_mod.probe_web_style(base), "get")
+        self.assertEqual(self.zen_mod.view()["bug_style"], "get")
+        # 非法地址探不出来，不抛
+        self.assertEqual(self.zen_mod.probe_web_style("ftp://x"), "")
 
 
 class TestTriage(ZenCase):

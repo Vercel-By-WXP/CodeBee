@@ -329,6 +329,10 @@ _TOKEN = {"v": "", "at": 0.0}
 _APIBASE = {}
 # 通道自适应：原始地址 → "rest"（≥15 REST v1）/ "old"（老版 module-method JSON 接口）
 _MODE = {}
+# web 端路由形态：原始地址 → "pathinfo"（伪静态 bug-view-N.html，官方默认）
+# / "get"（index.php?m=bug&f=view&bugID=N）。bug 详情链接用（2026-09-23 真机实证
+# 伪静态部署对 GET 式链接不路由）。
+_WEBSTYLE = {}
 _OLD = {"api": "", "sid": "", "at": 0.0}
 _OLD_FORM = {"form": ""}      # 命中的密码形态 "plain" | "md5chain"，缓存避免重复试
 _REST_LAST_ERR = {"msg": ""}
@@ -347,6 +351,37 @@ def resolved_base_url(base_url):
     if not hit:
         return ""
     return re.sub(r"/api\.php/v1$", "", hit)
+
+
+def probe_web_style(base_url):
+    """探测禅道 web 端路由形态（bug 详情链接用）：GET web 根（裸根 + 常见 /zentao
+    子路径都试），看登录跳转里是伪静态路由（user-login-xxx.html）还是 GET 式
+    （index.php?m=user）。尽力而为：任何网络/守卫异常回空串，绝不影响登录与
+    扫描主流程；探出即缓存。"""
+    try:
+        b = _raw_base(base_url)
+    except ZenError:
+        return ""
+    if _WEBSTYLE.get(b):
+        return _WEBSTYLE[b]
+    style = ""
+    for root in (b + "/", b + "/zentao/"):
+        body = ""
+        try:
+            req = urllib.request.Request(_guard_url(root), headers={"Accept": "text/html"})
+            with _no_redirect_opener().open(req, timeout=HTTP_TIMEOUT) as r:
+                body = (r.read(65536) or b"").decode("utf-8", "replace")
+        except Exception:
+            body = ""
+        if "user-login-" in body or re.search(r"[a-z]+-view-\d+[^\"]*\.html", body):
+            style = "pathinfo"
+        elif "index.php?m=" in body:
+            style = "get"
+        if style:
+            break
+    if style:
+        _WEBSTYLE[b] = style
+    return style
 
 
 def _raw_base(base_url):
@@ -415,6 +450,7 @@ def _rest_login(base_url, account, password):
             _APIBASE[b] = api
             _TOKEN["v"] = tok
             _TOKEN["at"] = time.time()
+            probe_web_style(b)      # bug 链接形态探测，失败不影响登录
             return tok
         # HTTP 200 但没有 token：REST 在但不认账密（如只认应用 code 的部署）
         _REST_LAST_ERR["msg"] = "REST 接口不认账密（%s）" % (
@@ -592,6 +628,7 @@ def _old_login(cfg, rest_err=""):
                 _OLD.update(api=api, sid=sid, at=time.time())
                 _OLD_FORM["form"] = form
                 _MODE[b] = "old"
+                probe_web_style(b)  # bug 链接形态探测，失败不影响登录
                 return
             last = err
         break       # 同一台服务，账密结果与子路径无关，别再烧尝试次数
@@ -2010,6 +2047,13 @@ def bug_web_base(cfg=None):
     return b if b.startswith(("http://", "https://")) else ""
 
 
+def bug_link_style(cfg=None):
+    """bug 详情链接形态：探测缓存优先，没探出来按伪静态（官方默认形态）。"""
+    c = dict(cfg) if cfg else _cfg()
+    b = str(c.get("base_url") or "").strip().rstrip("/")
+    return _WEBSTYLE.get(b) or "pathinfo"
+
+
 def view():
     """前端视图：配置脱敏（password 只回是否已设）+ claims 列表（新在前）。"""
     _ensure_loaded()
@@ -2023,6 +2067,7 @@ def view():
                         key=lambda c: str(c.get("claimed_at") or ""), reverse=True)
         return {"config": cfg,
                 "bug_base": bug_base,
+                "bug_style": bug_link_style(cfg),
                 "claims": [dict(c) for c in claims],
                 "last_scan": _STATE.get("last_scan") or "",
                 "next_scan": _STATE.get("next_scan") or "",
@@ -2037,6 +2082,7 @@ def _test_reset():
         _STATE["last_scan"] = _STATE["next_scan"] = _STATE["last_error"] = ""
         _reset_token()
         _APIBASE.clear()
+        _WEBSTYLE.clear()
         _MODE.clear()
         _OLD.update(api="", sid="", at=0.0)
         _OLD_FORM["form"] = ""

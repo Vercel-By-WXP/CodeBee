@@ -158,7 +158,8 @@ async function main() {
     })()`, 8000);
     check("② 修复记录含排查徽章与状态（孤儿 run 被 boot 对账判「记录丢失」）", claim === true);
 
-    // ②c bug 号一键直达禅道详情：无探测缓存时回落 base_url 拼 GET 形态链接（新老版通用）
+    // ②c bug 号一键直达禅道详情：默认伪静态 bug-view-N.html（官方默认；真机
+    // 2026-09-23 实证伪静态部署对 GET 式链接不路由）；探到 GET 形态才回退查询串
     const bugLink = await evalJs(`(() => {
       const a = document.querySelector("#zentao-claims .zt-bug-link");
       if (!a) return "";
@@ -166,10 +167,21 @@ async function main() {
         title: a.title, text: a.textContent.slice(0, 40) });
     })()`, true);
     const bl = JSON.parse(bugLink || "{}");
-    check("②c bug 号是链接：新页签打开禅道 bug 详情（GET 形态回落 base_url）",
-      bl.href === "http://127.0.0.1:18949/index.php?m=bug&f=view&bugID=501" &&
+    check("②c bug 号是链接：新页签打开禅道 bug 详情（默认伪静态 bug-view-N.html）",
+      bl.href === "http://127.0.0.1:18949/bug-view-501.html" &&
       bl.target === "_blank" && bl.title.indexOf("禅道") >= 0 &&
       bl.text.indexOf("#501") >= 0 && bl.text.indexOf("种子 Bug") >= 0, bugLink);
+    const getForm = await evalJs(`(() => {
+      S.zentao.bug_style = "get";
+      renderZentaoClaims();
+      const a = document.querySelector("#zentao-claims .zt-bug-link");
+      const href = a ? a.getAttribute("href") : "";
+      S.zentao.bug_style = "pathinfo";
+      renderZentaoClaims();
+      return href;
+    })()`, true);
+    check("②c 探到 GET 形态部署回退查询串链接",
+      getForm === "http://127.0.0.1:18949/index.php?m=bug&f=view&bugID=501", getForm);
 
     // ②b 仓库·工作目录行：「选择…」按钮 + 占位文案讲真话 + 点选回填同一行（pick_folder 已 stub 防真弹窗）
     await evalJs(`(() => {
