@@ -9240,11 +9240,15 @@ function autoTplPace(tp) {
   });
 }
 
-/* last_status → 徽章：started=正常灰、error=红「拉起失败」、missed=黄「已错过」 */
+/* last_status → 徽章：started=正常灰、error=红「拉起失败」、missed=黄「已错过」；
+ * done/failed/cancelled=运行终态（2026-09-23 回写接线后会出现，失败必须可见） */
 function autoStatusTag(tsk) {
   if (tsk.last_status === "error") return '<span class="tag auto-tag-err">' + t("拉起失败") + "</span>";
   if (tsk.last_status === "missed") return '<span class="tag auto-tag-miss">' + t("已错过") + "</span>";
   if (tsk.last_status === "started" || tsk.last_status === "queued") return '<span class="tag">' + t("正常") + "</span>";
+  if (tsk.last_status === "failed") return '<span class="tag auto-tag-err">' + t("上次失败") + "</span>";
+  if (tsk.last_status === "cancelled") return '<span class="tag auto-tag-miss">' + t("已取消") + "</span>";
+  if (tsk.last_status === "done") return '<span class="tag">' + t("已完成") + "</span>";
   return "";
 }
 

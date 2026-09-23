@@ -1277,6 +1277,7 @@
     "拉起失败": "Launch failed",
     "已错过": "Missed",
     "正常": "OK",
+    "上次失败": "Last run failed",
     "启用 / 停用": "Enable / disable",
     "流程：": "Flow: ",
     "下次运行 ": "Next run ",
