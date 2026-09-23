@@ -4114,6 +4114,23 @@ def _write_task_plan(task, workdir, plan):
         return ""
 
 
+def _workdir_blocker(task, run_id):
+    """同工作目录互斥：返回占用该目录的运行中/排队任务（无则 None）。
+    任务计划/项目记忆/任务分支检出都是工作目录级共享状态，并行会互相覆盖
+    （2026-09-23 禅道双单实案），故同目录只允许一个任务在跑。"""
+    wd = (task.get("workdir") or "").rstrip("/\\")
+    if not wd:
+        return None
+    for t in store.list_tasks(200):
+        if (t.get("id") == task.get("id")
+                or t.get("status") not in ("running", "queued")
+                or (t.get("workdir") or "").rstrip("/\\") != wd):
+            continue
+        if jobs._task_active_run(t.get("id"), exclude_run_id=run_id):
+            return t
+    return None
+
+
 def execute_run(run_id):
     run = store.get_run(run_id)
     if not run:
@@ -4157,23 +4174,35 @@ def execute_run(run_id):
     task["difficulty"] = task_spec["difficulty"]
     # 同理，历史任务可能保存非法/过期 engine；执行以编译后的流程引擎为准。
     task["engine"] = task_spec["engine"]
-    # 同工作目录并行检测：任务计划(.codebee/task_plan.md)、项目记忆与任务分支
-    # 检出都是工作目录级共享状态，两任务同目录并行会互相覆盖/干扰（2026-09-23
-    # 禅道双单实案：A 的评审 diff 混进 B 的任务计划）。只留警告不阻断——
-    # 确有把握互不冲突的用户可以忽略。
+    # 同工作目录互斥（2026-09-23 用户拍板「不能并行就要限制」）：任务计划
+    # (.codebee/task_plan.md)、项目记忆与任务分支检出都是工作目录级共享状态，
+    # 两任务同目录并行会互相覆盖/干扰（禅道双单实案：A 的评审 diff 混进 B 的
+    # 任务计划）。后来者回滚 queued 并挂 60s 重试 Timer——先来者完成后的
+    # 下一拍自动放行（「将于 HH:MM 自动续跑」对用户可见）。
     try:
-        _wd = (task.get("workdir") or "").rstrip("/\\")
-        _others = [t for t in store.list_tasks(200)
-                   if t.get("id") != task.get("id")
-                   and (t.get("workdir") or "").rstrip("/\\") == _wd
-                   and t.get("status") in ("running", "queued") and _wd]
-        if _others:
-            _names = "、".join((t.get("title") or t.get("id") or "")[:24]
-                               for t in _others[:3])
-            store.update_run(run_id, warnings=[
-                "工作目录与运行中任务并行：%s——任务计划/项目记忆/分支检出会互相干扰，建议错开或使用独立工作目录" % _names])
+        _blocker = _workdir_blocker(task, run_id)
+        if True:
+            _wd = (task.get("workdir") or "").rstrip("/\\")
+            if _blocker is not None:
+                _resume_at = time.strftime("%Y-%m-%d %H:%M:%S",
+                                           time.localtime(time.time() + 60))
+                store.update_run(run_id, expected_status="running", status="queued",
+                                 started_at="", resume_enqueue_at=_resume_at,
+                                 warnings=["工作目录被运行中任务「%s」占用，排队等待（每 60 秒自动重试）"
+                                           % ((_blocker.get("title") or _blocker.get("id") or "")[:24])])
+                try:
+                    store.update_task_status(task.get("id"), "queued")
+                except Exception:
+                    pass
+                jobs._schedule_enqueue(
+                    {"kind": "orchestration", "run_id": run_id,
+                     "task_id": task.get("id")}, 60)
+                print("[CodeBee] 工作目录被「%s」占用：%s 排队等待，60 秒后自动重试"
+                      % ((_blocker.get("title") or _blocker.get("id") or "")[:24],
+                         task.get("title") or task.get("id")), flush=True)
+                return
     except Exception:
-        pass
+        pass   # 检测失败不挡主流程
     # 代码版本检出：任务指定了基线版本时，先检出任务分支 tutti/<task-id> 再跑流水线。
     # 显式意图不容静默降级——仓库缺失/脏工作区/引用不存在一律中止运行并报错，
     # 绝不带着用户未提交改动切分支、也不悄悄退回当前 HEAD。
