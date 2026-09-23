@@ -714,3 +714,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 批4 复查：agent-governance-toolkit/OpenAgentsControl/archestra/edict/bytebase/tradememory-protocol 均已录无增量；boundary-bench（27★ 沙箱策略基准）/memoryops-ai（21★ 治理型记忆运行时）星体量小，雷达跟踪不立项
 
 **✅ 本班落地**：skill_scan 治理向补强——四组静态特征：①dropper（curl|wget 管道进 shell；PowerShell Invoke-Expression/iex/DownloadString）②持久化新类别（crontab/schtasks/LaunchAgents/注册表 Run 键，直接入高风险档）③外传信道（pastebin.com/webhook.site/requestbin/pipedream/ngrok 隧道/trycloudflare）④挖矿（stratum+tcp/xmrig/cryptonight）。模式只认实际命令面，中文叙述词零误报。test_skill_scan_governance 6 项
+
+### 2026-09-24 06:00 第四十九班（批6：框架/平台/SDK 生态）
+
+- 批6 复查：mastra/vercel-ai/agents-towards-production/harness-sdk/agents-cli/agentops/axonhub/AntSK 均已录无增量
+- **ARIS 家族**深挖升级（16.5k★ 主仓+三卫星仓）：主仓=执行者驾驶+独立评审（同构我们）；**HERO-Anti-OverDefense=已落地**（四形态反过度防御块入 IMPL/FIX 提示词）；Anti-Autoresearch（61 完整性信号→确定性取证报告）待深挖——与我们评审解析/证据锚定同向；ARIS-Monitor（等待批准时亮红灯小挂件）与手机端 423 接管提醒同域 | 已落地一件
+
+**✅ 本班落地**：HERO 反过度防御块——CODE_IMPL_PROMPT 全量版（点名四形态：哈希/校验和、层层边界分支、自造评分标准/闸门、顺手加固；「只约束提出不约束检查」语义边界；真实风险写进总结由人决定）+ CODE_FIX_PROMPT 紧凑版。评审提示词刻意不加（评审的检查面不受约束）。test_anti_over 4 项
