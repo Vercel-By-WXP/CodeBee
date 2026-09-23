@@ -6104,3 +6104,15 @@ button.request-busy > * { opacity: .18; }
   margin-top: 2px; font-size: 10.5px; font-style: italic; color: var(--muted);
   opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* 运行级警告（同工作目录并行等） */
+.outcome-warn {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(217, 119, 6, .45);
+  border-radius: 8px;
+  background: rgba(217, 119, 6, .08);
+  color: #b45309;
+  font-size: 12px;
+  line-height: 1.5;
+}

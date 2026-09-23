@@ -818,6 +818,12 @@ def _run_verify(run_id, task, workdir, ev):
     return ok, True
 
 
+# 评审器鉴权/致命故障签名：命中即「评审未执行」，不得伪装成质量未通过
+_AUTH_RE = re.compile(
+    r"Invalid API Key|invalid api key|API [Kk]ey 不可用|API key not valid|"
+    r"unauthorized|Unauthorized|401 Unauthorized|鉴权失败|认证失败", re.I)
+
+
 def _run_review(run_id, task, workdir, reviewer, ev):
     diff = _git_diff(workdir)
     prompt = (CODE_REVIEW_PROMPT
@@ -830,6 +836,15 @@ def _run_review(run_id, task, workdir, reviewer, ev):
                     images=_task_images(task, workdir))
     if reviewer.get("mode") == "mock":
         return mocks.review(task, True)
+    # 评审器自身故障 ≠ 评审未通过：2026-09-23 禅道双单实案——评审器 Key 失效
+    # （mimo 退出码 0 但输出 Invalid API Key），被解析成「评审未通过」整晚空转
+    # 修复轮。鉴权/崩溃签名命中时返回 reviewer_error，调用方以明确错误收口。
+    _head = (res.get("text") or "")[:2000]
+    _auth_hit = bool(_AUTH_RE.search(_head)) or bool((res.get("raw") or {}).get("auth_error"))
+    if not res.get("ok") or _auth_hit:
+        _why = (res.get("error") or "").strip() or _head[:200]
+        return {"pass": False, "scores": {}, "issues": [], "reviewer_error": True,
+                "summary": "评审器执行失败（评审未执行）：%s" % _why[:280]}
     parsed = runner.extract_json(res.get("text") or "")
     if isinstance(parsed, dict):
         return parsed
@@ -1398,6 +1413,13 @@ def _run_code(run, task, agents, ev, stats, mode):
             if impl.get("mode") == "mock" and res["ok"]:
                 pass  # mock 不产生真实变更
         review_json, verify_pass, verify_ran = review_and_score()
+        if review_json.get("reviewer_error"):
+            # 评审器故障（Key 失效/崩溃）：没有可修的质量问题，修复轮与换将
+            # 都无意义（换将也走同一个失效网关）——以明确错误收口，原因可见。
+            _why = (review_json.get("summary") or "评审器执行失败")[:300]
+            store.update_run(run_id, expected_status="running", status="failed",
+                             ended_at=_now(), error="评审器故障（评审未执行）：%s" % _why)
+            return
         passed = verify_pass and bool(review_json.get("pass"))
         repairs.append({"round": round_no, "kind": "switch" if switched else (
             "initial" if round_no == 0 else "repair"),
@@ -4135,6 +4157,23 @@ def execute_run(run_id):
     task["difficulty"] = task_spec["difficulty"]
     # 同理，历史任务可能保存非法/过期 engine；执行以编译后的流程引擎为准。
     task["engine"] = task_spec["engine"]
+    # 同工作目录并行检测：任务计划(.codebee/task_plan.md)、项目记忆与任务分支
+    # 检出都是工作目录级共享状态，两任务同目录并行会互相覆盖/干扰（2026-09-23
+    # 禅道双单实案：A 的评审 diff 混进 B 的任务计划）。只留警告不阻断——
+    # 确有把握互不冲突的用户可以忽略。
+    try:
+        _wd = (task.get("workdir") or "").rstrip("/\\")
+        _others = [t for t in store.list_tasks(200)
+                   if t.get("id") != task.get("id")
+                   and (t.get("workdir") or "").rstrip("/\\") == _wd
+                   and t.get("status") in ("running", "queued") and _wd]
+        if _others:
+            _names = "、".join((t.get("title") or t.get("id") or "")[:24]
+                               for t in _others[:3])
+            store.update_run(run_id, warnings=[
+                "工作目录与运行中任务并行：%s——任务计划/项目记忆/分支检出会互相干扰，建议错开或使用独立工作目录" % _names])
+    except Exception:
+        pass
     # 代码版本检出：任务指定了基线版本时，先检出任务分支 tutti/<task-id> 再跑流水线。
     # 显式意图不容静默降级——仓库缺失/脏工作区/引用不存在一律中止运行并报错，
     # 绝不带着用户未提交改动切分支、也不悄悄退回当前 HEAD。

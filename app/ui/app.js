@@ -7834,6 +7834,8 @@ function renderRunOutcome(run, runs, aggregate) {
   const active = status === "running" || status === "queued";
   const bad = status === "failed" || status === "cancelled" || status === "timeout";
   const label = runStatusText(run);
+  // 运行级警告（如：工作目录与运行中任务并行——计划/记忆/分支检出互相干扰）
+  const warns = Array.isArray(run.warnings) ? run.warnings.filter(Boolean) : [];
   const icon = status === "done" ? "#i-check" : bad ? "#i-x" : "#i-gauge";
   const duration = runDurationSeconds(run);
   const latest = steps.slice().reverse().find((s) => s.agent_label || s.agent || s.role);
@@ -7854,6 +7856,7 @@ function renderRunOutcome(run, runs, aggregate) {
       (meta.length ? '<div class="outcome-meta">' + meta.join("") + "</div>" : "") +
     "</div>" +
     (summary ? '<div class="outcome-summary">' + esc(summary) + "</div>" : "") +
+    (warns.length ? '<div class="outcome-warn">' + warns.map((w) => "⚠ " + esc(w)).join("<br>") + "</div>" : "") +
     (run.error ? '<div class="outcome-error">' + esc(run.error) + "</div>" : "") +
     (total ? '<div class="outcome-actions"><button class="ghost" type="button" onclick="rdChatNavGo(\'steps\')">' + esc(t("查看执行步骤")) + "</button></div>" : "")
   );
