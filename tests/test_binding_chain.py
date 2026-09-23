@@ -163,6 +163,39 @@ class TestCrossProviderChain(BaseTest):
         self.assertEqual(b["chain"], [{"provider_id": pa, "model": "claude-x"}])
         self.assertEqual(b["model"], "claude-x")
 
+    def test_codex_rejects_stale_anthropic_endpoint_as_openai_wire(self):
+        """旧的 wire_caps 不得把 Anthropic 专用路径伪装成 Codex responses。"""
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub._save({
+            "providers": [{
+                "id": "prov-bigmodel", "name": "Bigmodel", "protocol": "anthropic",
+                "base_url": "https://open.bigmodel.cn/api/anthropic",
+                "api_key": FAKE_KEY_A, "enabled": True,
+                # 历史错误探测留下的能力：地址仍是 Anthropic 面，却被记为
+                # Codex 的 responses wire。
+                "wire_caps": {"openai": {
+                    "base": "https://open.bigmodel.cn/api/anthropic",
+                    "wire_api": "responses",
+                }},
+            }],
+            "bindings": {"codex-cli": {
+                "chain": [{"provider_id": "prov-bigmodel", "model": "glm-5.3-flash"}],
+                "models": ["glm-5.3-flash"],
+            }},
+        })
+
+        self.assertIsNone(modelhub.resolve_binding("codex-cli"))
+
+    def test_known_anthropic_endpoint_is_not_probed_as_openai(self):
+        from app.core import modelhub
+
+        self.assertEqual(
+            modelhub._wire_base_candidates(
+                "https://open.bigmodel.cn/api/anthropic", "openai"),
+            ["https://open.bigmodel.cn/api/paas/v4"],
+        )
+
 
 class TestChainMigration(BaseTest):
     def runTest(self):

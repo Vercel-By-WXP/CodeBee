@@ -2156,11 +2156,14 @@ def _entry_endpoint(prov, allowed):
     """
     proto = prov.get("protocol")
     if proto in allowed:
-        return proto, prov.get("base_url"), prov.get("wire_api", "responses")
+        base = prov.get("base_url")
+        if not _wire_endpoint_compatible(proto, base):
+            return None
+        return proto, base, prov.get("wire_api", "responses")
     caps = prov.get("wire_caps") or {}
     for p in allowed:
         cap = caps.get(p) or {}
-        if cap.get("base"):
+        if cap.get("base") and _wire_endpoint_compatible(p, cap["base"]):
             return p, cap["base"], cap.get("wire_api") or "responses"
     return None
 
@@ -2172,10 +2175,12 @@ def _protocol_candidates(prov):
     调用方逐个试、全失败才报错——不猜一条去发请求。"""
     proto = (prov or {}).get("protocol")
     if proto in _PROTOCOLS:
-        return [(proto, (prov or {}).get("base_url") or "")]
+        base = (prov or {}).get("base_url") or ""
+        return ([(proto, base)] if _wire_endpoint_compatible(proto, base) else [])
     caps = (prov or {}).get("wire_caps") or {}
     return [(p, caps[p]["base"]) for p in _WIRE_PREFERENCE
-            if (caps.get(p) or {}).get("base")]
+            if (caps.get(p) or {}).get("base")
+            and _wire_endpoint_compatible(p, (caps.get(p) or {}).get("base"))]
 
 
 def _ensure_wire_candidates(provider_id, prov, model_name=""):
@@ -2193,6 +2198,26 @@ def _ensure_wire_candidates(provider_id, prov, model_name=""):
     with _LOCK:
         prov2 = next((p for p in providers() if p.get("id") == provider_id), None)
     return (_protocol_candidates(prov2) if prov2 else []), (note or "")
+
+
+def _wire_endpoint_compatible(proto, base_url):
+    """Reject an endpoint whose URL path contradicts the selected wire.
+
+    Some providers expose an Anthropic API under a path containing ``anthropic``
+    and may have stale ``wire_caps`` from an earlier probe that recorded that
+    same URL as OpenAI/Responses.  Codex then retries forever because it sends
+    Responses events to the Anthropic route.  A path marker is a conservative
+    local guard; normal shared roots such as ``https://host/v1`` remain valid
+    for both protocols.
+    """
+    if proto != "openai" or not base_url:
+        return True
+    try:
+        import urllib.parse
+        path = (urllib.parse.urlsplit(str(base_url)).path or "").lower()
+    except Exception:
+        return True
+    return re.search(r"(?:^|/)anthropic(?:/|$)", path) is None
 
 
 def bindable_protocols(agent_kind_or_id):
@@ -2851,6 +2876,10 @@ def _wire_base_candidates(base_url, target_proto):
         cands = [base if base.endswith("/v1") else base + "/v1"]
         if not base.endswith("/v1"):
             cands.append(base)
+        # `/api/anthropic` 是 Anthropic 专用入口，不要把它拼成
+        # `/api/anthropic[/v1]/responses` 再误记为 Codex 能力。
+        if not _wire_endpoint_compatible(target_proto, base):
+            cands = []
     else:
         # anthropic 习惯：CLI 在 base 后拼 /v1/messages，base 本身不含 /v1
         cands = [base[:-3] if base.endswith("/v1") else base]
