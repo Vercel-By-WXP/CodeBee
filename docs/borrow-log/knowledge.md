@@ -708,3 +708,9 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **ARIS**（wanshuiyin/Auto-claude-code-research-in-sleep，16.5k★）| 睡眠中自动 ML 调研：跨模型评审循环+想法发现+实验自动化，纯 Markdown skills | 与我们 ZCode 自迭代循环同构（他们做 ML 科研、我们做产品迭代）；跨模型评审循环与我们跨厂商评审同向，值得下轮深挖其循环结构 | 待深挖
 
 **✅ 本班落地**：活计划回写（planning-with-files 第三件）——task_plan.md 从静态清单升级为随执行推进的活文档：落盘改 checkbox 形态（`1. [ ] 标题`），子任务起跑标 `[>]`、成功翻 `[x]`、失败标 `[!]`（换将重试成功 `[!]`→`[x]` 幂等覆盖）；崩溃/续跑/换将时看文件即知断点。回写失败静默绝不挡执行。test_task_plan_live 5 项 + 旧契约 3 项同步
+
+### 2026-09-24 04:00 第四十八班（批4：治理/安全/人机协同）
+
+- 批4 复查：agent-governance-toolkit/OpenAgentsControl/archestra/edict/bytebase/tradememory-protocol 均已录无增量；boundary-bench（27★ 沙箱策略基准）/memoryops-ai（21★ 治理型记忆运行时）星体量小，雷达跟踪不立项
+
+**✅ 本班落地**：skill_scan 治理向补强——四组静态特征：①dropper（curl|wget 管道进 shell；PowerShell Invoke-Expression/iex/DownloadString）②持久化新类别（crontab/schtasks/LaunchAgents/注册表 Run 键，直接入高风险档）③外传信道（pastebin.com/webhook.site/requestbin/pipedream/ngrok 隧道/trycloudflare）④挖矿（stratum+tcp/xmrig/cryptonight）。模式只认实际命令面，中文叙述词零误报。test_skill_scan_governance 6 项
