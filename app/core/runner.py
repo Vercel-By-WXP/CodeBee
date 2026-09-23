@@ -29,7 +29,6 @@ from .error_codes import ErrorCode
 # 置 0 则两边通用（remote.py 同款守卫）。
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 DEFAULT_TIMEOUT = 1200  # 单步 20 分钟
-MAX_ATTEMPT_TIMEOUT_S = 60  # 无进展时单模型最多等 1 分钟
 DEFAULT_STREAM_ACTIVITY_TIMEOUT_S = 180  # 流式 CLI 的活动延长窗口
 
 _BASH_CANDIDATES = [
@@ -1486,8 +1485,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     失败不降级；同一上游超时两次即跳过该上游剩余模型。
 
     5E：catalog `orch.timeout_ms`（毫秒）优先于 caller 传入的 timeout；
-    单模型无进展时最多等 60 秒，持续 stream 活动交由 stall_timeout 看门狗
-    收口。deadline 是
+    单模型时限由该配置或 caller timeout 决定，任务 deadline 可进一步收紧；
+    持续 stream 活动交由 stall_timeout 看门狗收口。deadline 是
     任务共享的 ``time.monotonic()`` 绝对截止时刻；传入后所有模型、空响应
     重试和限流宽限共用同一剩余预算。
     """
@@ -1512,7 +1511,6 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                         "deadline_exceeded": True, "duration": 0.0},
                 "kind": agent.get("kind", "generic"), "model": None,
                 "attempts": []}
-    timeout = min(timeout, MAX_ATTEMPT_TIMEOUT_S)
     kind = agent.get("kind", "generic")
     if kind == "aider":
         repo_issue = _git_repo_issue(workdir)
@@ -1608,8 +1606,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         upstream = _attempt_upstream(att)
         if upstream in skipped_upstreams:
             continue
-        # 有任务 deadline 时，所有候选共享同一个截止时刻；没有 deadline
-        # 的历史直接调用保留「每个候选最多 60 秒」的旧语义。
+        # 有任务 deadline 时，所有候选共享同一个截止时刻；否则每个候选
+        # 使用 catalog 配置或 caller 提供的单模型时限。
         model_deadline = (att.get("_deadline") or deadline or
                           (time.monotonic() + timeout))
         env = dict(base_env)

@@ -142,7 +142,7 @@ class TestTimeoutWalk(BaseTest):
 
 
 class TestAttemptBudget(BaseTest):
-    def test_each_model_attempt_is_capped_and_different_upstreams_are_tried(self):
+    def test_configured_attempt_budget_reaches_each_model_and_different_upstreams_are_tried(self):
         import app.core.runner as R
         agent = _agent(("slow-a", "slow-b", "fast-c"))
         agent["orch"] = {"timeout_ms": 2400000}
@@ -163,7 +163,8 @@ class TestAttemptBudget(BaseTest):
 
         self.assertTrue(out["ok"], out.get("error"))
         self.assertEqual([c["model"] for c in calls], ["slow-a", "slow-b", "fast-c"])
-        self.assertEqual([c["timeout"] for c in calls], [60, 60, 60])
+        for call in calls:
+            self.assertAlmostEqual(call["timeout"], 2400)
 
     def test_same_upstream_timeout_skips_remaining_models_then_tries_another_vendor(self):
         agent = _agent(("slow-a", "slow-b", "slow-c", "fast-d"))
@@ -201,7 +202,7 @@ class TestAttemptBudget(BaseTest):
             out = R.run_agent(agent, "hi", readonly=True, timeout=2400)
 
         self.assertTrue(out["ok"], out.get("error"))
-        self.assertEqual(timeouts, [60, 5, 60])
+        self.assertEqual(timeouts, [2400, 2345, 2400])
 
     def test_codex_repeated_stream_disconnect_aborts_early_then_falls_back(self):
         import json

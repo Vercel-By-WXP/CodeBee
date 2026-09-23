@@ -50,6 +50,51 @@ class TestPerVendorTimeout(BaseTest):
         finally:
             os.unlink(tmp)
 
+    def test_configured_timeout_above_one_minute_is_not_clipped(self):
+        """Per-agent budgets above one minute must reach the process runner unchanged."""
+        from unittest.mock import patch
+        from app.core import runner
+
+        agent = {
+            "kind": "generic",
+            "command": sys.executable,
+            "argv_template": [str(FIXTURES / "fixtures_role_cli.py"), "{prompt}"],
+            "mode": "real",
+            "orch": {"timeout_ms": 120_000},
+        }
+        process_result = {
+            "ok": True, "stdout": "done", "stderr": "", "exit_code": 0,
+            "duration": 0.01, "timed_out": False, "cancelled": False,
+            "stalled": False, "deadline_exceeded": False,
+        }
+        with patch("app.core.runner.run_process", return_value=process_result) as run:
+            out = runner.run_agent(agent, "hi", readonly=True, timeout=30)
+
+        self.assertTrue(out["ok"])
+        self.assertEqual(run.call_args.kwargs["timeout"], 120)
+
+    def test_caller_timeout_above_one_minute_is_not_clipped(self):
+        """Without an agent override, the caller's step budget is respected."""
+        from unittest.mock import patch
+        from app.core import runner
+
+        agent = {
+            "kind": "generic",
+            "command": sys.executable,
+            "argv_template": [str(FIXTURES / "fixtures_role_cli.py"), "{prompt}"],
+            "mode": "real",
+        }
+        process_result = {
+            "ok": True, "stdout": "done", "stderr": "", "exit_code": 0,
+            "duration": 0.01, "timed_out": False, "cancelled": False,
+            "stalled": False, "deadline_exceeded": False,
+        }
+        with patch("app.core.runner.run_process", return_value=process_result) as run:
+            out = runner.run_agent(agent, "hi", readonly=True, timeout=120)
+
+        self.assertTrue(out["ok"])
+        self.assertEqual(run.call_args.kwargs["timeout"], 120)
+
     def test_caller_timeout_when_orch_missing(self):
         """caller 显式传 30s、orch 无 timeout → 用 30s。"""
         from app.core import runner
