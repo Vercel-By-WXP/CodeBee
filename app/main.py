@@ -367,6 +367,12 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 run = store.get_run(m.group(1))
                 return self._json(200, {"run": run}) if run else self._json(404, {"error": "not found"})
+            m = re.match(r"^/api/runs/([^/]+)/messages$", path)
+            if m:
+                run = store.get_run(m.group(1))
+                if not run:
+                    return self._json(404, {"error": "not found"})
+                return self._json(200, {"messages": run.get("messages") or []})
             m = re.match(r"^/api/runs/([^/]+)/report$", path)
             if m:
                 run = store.get_run(m.group(1))
@@ -419,6 +425,10 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 # 任务检查器（右缘停靠列）专用：轻量聚合、可轮询，不带 diff 文本
                 return self._api_task_side(m.group(1))
+            m = re.match(r"^/api/tasks/([^/]+)/detail$", path)
+            if m:
+                task = store.get_task(m.group(1))
+                return self._json(200, {"task": task}) if task else self._json(404, {"error": "not found"})
             m = re.match(r"^/api/tasks/([^/]+)/runs$", path)
             if m:
                 # 任务级详情用：该任务全部 run（含 steps），不受前端 run 窗口限制
@@ -2365,22 +2375,52 @@ def _state_payload(client_id="", ver=None):
     agents = registry.effective_agents(catalog.load(), manager.detect_all())
     if ver is None:
         ver = store.state_version()
+    runs = store.list_runs(40)
+    latest = store.latest_run_by_task()
     return {
         "v": ver,
         "agents": agents,
         "tasks": store.list_tasks(30, archived=False),
-        "archived_tasks": store.list_tasks(30, archived=True),
+        # 归档任务默认隐藏；目标/上下文可能很大，只有查看或恢复时再按需读取。
+        "archived_tasks": [_state_task_summary(t) for t in store.list_tasks(30, archived=True)],
         # 每个任务的最近一次运行（不受 runs 窗口限制）：侧栏靠它展示各任务真实近况
-        "task_latest": store.latest_run_by_task(),
+        "task_latest": {tid: _state_run_summary(run) for tid, run in latest.items()},
         # 每个任务的运行次数/步骤总数（全量）：侧栏「查看全部」的计数来源
         "task_stats": store.task_run_stats(),
-        "runs": store.list_runs(40),
+        # 列表与 SSE 只带摘要；日志、模型输出、计划、消息正文等走详情 API。
+        "runs": [_state_run_summary(run) for run in runs],
         "control": remote.control_view(client_id),
         # 供应商健康/告警（顶栏横幅数据源；有告警时 bump_state 会推给所有端）
         "health": health.snapshot(),
         # 直接执行观测：并发保护上限、运行数和可用位；queued 恒为 0。
         "jobs": jobs.workers_info(),
     }
+
+
+def _state_task_summary(task):
+    """归档任务的最小索引；大字段由 /api/tasks/<id>/detail 按需读取。"""
+    fields = ("id", "title", "type", "engine", "workdir", "status",
+              "created_at", "archived", "git_state", "serial")
+    return {key: task[key] for key in fields if key in task}
+
+
+def _state_run_summary(run):
+    """列表/SSE 投影，不重复携带运行详情中的大字段。"""
+    fields = ("id", "task_id", "kind", "op", "title", "status", "created_at",
+              "started_at", "ended_at", "summary", "error", "paused", "direct_session",
+              "auto_resumes", "resume_enqueue_at", "cost_usd", "tokens")
+    summary = {key: run[key] for key in fields if key in run}
+    summary["step_count"] = len(run.get("steps") or [])
+    messages = run.get("messages") or []
+    summary["message_count"] = len(messages)
+    summary["pending_message_count"] = sum(1 for message in messages if not message.get("consumed"))
+    verdict = run.get("verdict") or {}
+    if isinstance(verdict, dict):
+        checks = ("pass", "publishable", "verify_pass", "review_pass")
+        compact = {key: verdict[key] for key in checks if key in verdict}
+        if compact:
+            summary["verdict"] = compact
+    return summary
 
 
 class ThreadedServer(ThreadingHTTPServer):

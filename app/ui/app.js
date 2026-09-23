@@ -817,6 +817,11 @@ async function api(path, opts) {
       }
     }
     if (!res.ok) throw new Error((data && data.error) || ("HTTP " + res.status));
+    const method = String(fetchOpts.method || "GET").toUpperCase();
+    if (method !== "GET") {
+      if (String(path).startsWith("/api/catalog/")) S._catalogLoaded = false;
+      if (String(path).startsWith("/api/models/")) S._modelsLoaded = false;
+    }
     operationFinish(operationToken, "done");
     return data;
   } catch (e) {
@@ -1183,7 +1188,46 @@ async function healthDisableProvider(pid) {
 }
 
 async function refreshState() {
-  applyState(await api("/api/state"));
+  applyState(await api("/api/state", { timeout: 15000, busy: false, operation: false }));
+}
+
+let _lookupRefresh = null;
+async function refreshPollLookups(force) {
+  if (_lookupRefresh) return _lookupRefresh;
+  const now = Date.now();
+  const loadCatalog = !!force || !S._catalogLoaded || now - (S._catalogAt || 0) >= 60000;
+  const loadModels = !!force || !S._modelsLoaded || now - (S._modelsAt || 0) >= 30000;
+  if (!loadCatalog && !loadModels) return;
+  if (loadCatalog) S._catalogAt = now;
+  if (loadModels) S._modelsAt = now;
+  _lookupRefresh = (async () => {
+    try {
+      const [cat, models] = await Promise.all([
+        loadCatalog ? api("/api/catalog", { timeout: 15000 }) : Promise.resolve(null),
+        loadModels ? api("/api/models", { timeout: 15000 }) : Promise.resolve(null),
+      ]);
+      if (cat) {
+        S.catalog = cat.catalog;
+        S.catalogChecking = !!cat.checking;
+        S._catalogLoaded = true;
+      }
+      if (models) {
+        S.providers = models.providers; S.bindings = models.bindings;
+        S.modelCatalog = models.catalog || [];
+        S.sourceNames = models.source_names || S.sourceNames || {};
+        S._modelsLoaded = true;
+        renderDirectModelPicker();
+        const provSig = JSON.stringify((S.providers || []).map((p) => [p.id, p.enabled, !!p.api_key]));
+        if (provSig !== S.provSig) { S.provSig = provSig; loadOrchestrator(); }
+      }
+      render();
+    } catch (e) {
+      if (loadCatalog) S._catalogAt = 0;
+      if (loadModels) S._modelsAt = 0;
+    }
+  })();
+  try { await _lookupRefresh; }
+  finally { _lookupRefresh = null; }
 }
 
 let _pollBusy = false;
@@ -1195,22 +1239,8 @@ async function poll() {
   if (_pollBusy) return;
   _pollBusy = true;
   try {
-    const [cat, models] = await Promise.all([
-      api("/api/catalog", { timeout: 15000 }),
-      api("/api/models", { timeout: 15000 }),
-    ]);
-    S.catalog = cat.catalog;
-    S.catalogChecking = !!cat.checking;
-    S.providers = models.providers; S.bindings = models.bindings;
-    S.modelCatalog = models.catalog || [];
-    S.sourceNames = models.source_names || S.sourceNames || {};
-    // /api/models 到手即重建对话模型选项（无条件）：旧逻辑只在「更多选项」
-    // 旧块可见时重建——旧块隐藏后选项永远只有「自动推荐」，厂商写值全部
-    // 静默失效（2026-09-21 用户实测「没法选模型」根因）
-    renderDirectModelPicker();
-    // 供应商集合/启停/密钥变了才重拉编排者：否则「生效中」状态点会在停用厂商后失真
-    const provSig = JSON.stringify((S.providers || []).map((p) => [p.id, p.enabled, !!p.api_key]));
-    if (provSig !== S.provSig) { S.provSig = provSig; loadOrchestrator(); }
+    // 状态先独立拉取并渲染；目录/模型是低频数据，后台刷新不能挡住任务树和点击。
+    if (!document.hidden) refreshPollLookups(false);
     if (!S.sseLive) await refreshState();
     else if (S._lastSseAt && Date.now() - S._lastSseAt > 60000 && !document.hidden) {
       // SSE 静默看门狗：连接半死时 EventSource 不报错、sseLive 恒真、上面
@@ -1234,7 +1264,7 @@ async function poll() {
 
 function schedulePolling() {
   clearInterval(S.pollTimer);
-  S.pollTimer = setInterval(poll, S.sseLive ? 8000 : 2000);
+  S.pollTimer = setInterval(() => { if (!document.hidden) poll(); }, S.sseLive ? 8000 : 2000);
 }
 
 /* SSE：状态变化即时推送；断开自动重连，重连失败降级为 2s 轮询 */
@@ -2817,12 +2847,16 @@ function showResumeHint() {
 
 async function archiveTask(id, archived) {
   try {
+    let restored = null;
+    if (!archived && archivedTaskIds().has(id)) {
+      restored = await loadTaskForPrefill(id);
+    }
     await api("/api/tasks/" + encodeURIComponent(id) + "/archive",
       { method: "POST", body: JSON.stringify({ archived: !!archived }) });
     // 取消归档时把任务工作目录从「已移除目录」里捞回来：用户点时钟开关找回
     // 归档任务再取消归档，直觉上文件夹就该回侧栏（否则只能靠在该目录新建任务）。
     if (!archived) {
-      const t0 = ((S.state || {}).tasks || []).concat(((S.state || {}).archived_tasks) || [])
+      const t0 = restored || ((S.state || {}).tasks || []).concat(((S.state || {}).archived_tasks) || [])
         .find((x) => x.id === id);
       if (t0 && t0.workdir) unhideSideDir(t0.workdir);
     }
@@ -2835,9 +2869,11 @@ async function archiveTask(id, archived) {
       const i0 = from.findIndex((x) => x.id === id);
       if (i0 >= 0) {
         const t0 = from.splice(i0, 1)[0];
-        t0.archived = !!archived;
+        const moved = restored || t0;
+        moved.archived = !!archived;
+        if (!archived && restored) _taskDetailCache.set(id, restored);
         const to = archived ? (st.archived_tasks = st.archived_tasks || []) : (st.tasks = st.tasks || []);
-        to.push(t0);
+        to.push(moved);
       }
       S.sideSig = "";
     }
@@ -2875,6 +2911,9 @@ async function deleteTask(id) {
     if (goneRuns.size) st.runs = (st.runs || []).filter((r) => !goneRuns.has(r.id));
     S.sideSig = "";   // 任务条目少了签名理应变化；显式清掉，不赌签名算法
   }
+  _taskDetailCache.delete(id);
+  _taskRunsCache.delete(id);
+  _taskRunsAt.delete(id);
   render();
   poll();
   if (gone) toast(t("任务已删除"));
@@ -3198,10 +3237,44 @@ window.continueSerial = continueSerial;
 /* 基于此任务新建（通用，不限连载）：把旧任务的类型/目标/目录/评审设置预填进
  * 新建表单，确认或修改后提交——「接着写下一批章节」请用连载任务的「继续连载」，
  * 那里才带章节衔接；这里开的是一个全新任务。 */
+const _taskDetailCache = new Map();
+const _taskDetailInflight = new Map();
+const _taskRunsCache = new Map();
+const _taskRunsInflight = new Map();
+const _taskRunsAt = new Map();
+const _runMessagesCache = new Map();
+const _runMessagesInflight = new Map();
+
+async function loadTaskForPrefill(id) {
+  const active = ((S.state || {}).tasks || []).find((x) => x.id === id);
+  if (active) return active;
+  const cached = _taskDetailCache.get(id);
+  if (cached) return cached;
+  if (_taskDetailInflight.has(id)) return _taskDetailInflight.get(id);
+  const request = api("/api/tasks/" + encodeURIComponent(id) + "/detail",
+    { timeout: 15000, busy: true, operation: "读取任务详情" })
+    .then((data) => {
+      if (!data || !data.task) throw new Error(t("任务不存在或已删除"));
+      _taskDetailCache.set(id, data.task);
+      return data.task;
+    })
+    .finally(() => _taskDetailInflight.delete(id));
+  _taskDetailInflight.set(id, request);
+  return request;
+}
+
 function newFromTask(id) {
+  newFromTaskAsync(id);
+}
+
+async function newFromTaskAsync(id) {
   // 局部变量不能叫 t：会遮蔽 i18n 函数 t()，下面的文案调用会直接 TypeError
-  const tk = ((S.state || {}).tasks || []).find((x) => x.id === id);
-  if (!tk) { toast(t("任务不存在或已删除"), true); return; }
+  let tk;
+  try {
+    const inState = ((S.state || {}).tasks || []).some((x) => x.id === id);
+    if (!inState && !_taskDetailCache.has(id)) toast(t("正在读取任务详情…"));
+    tk = await loadTaskForPrefill(id);
+  } catch (e) { toast(t("读取任务详情失败：") + e.message, true); return; }
   exitSettings();   // 回到新建任务表单
   const flow = flowById(tk.type);
   if (flow && $("f-type").value !== tk.type) {
@@ -3449,7 +3522,7 @@ function renderRunList() {
     const can = runDeletable(r);
     // 行结构照参考站的「主副标题 + 右侧状态与相对时间」：标题与摘要竖排成一块，
     // 状态点用侧栏同款字形（staskGlyph），时间用相对档（完整时间戳挪进悬停提示）
-    const sub = String(r.summary || r.error || (r.steps ? r.steps.length + t(" 个步骤") : "")).trim();
+    const sub = String(r.summary || r.error || (r.step_count ? r.step_count + t(" 个步骤") : "")).trim();
     return '<div class="item" onclick="openRun(\'' + esc(r.id) + '\')">' +
       '<div class="t">' +
       '<input type="checkbox" class="rcheck"' + (S.selRuns[r.id] ? " checked" : "") + (can ? "" : " disabled") +
@@ -3805,6 +3878,7 @@ window.sideOpenRun = function (id, n) {
 /* 打开任务级详情：任务可能被续跑/重试过多次，步骤分散在多条 run 里。
  * 按时间顺序列出该任务全部 run 的全部步骤，run 之间加分隔条。 */
 window.sideOpenTask = function (key) {
+  S.lastRun = null;
   S.detailTaskKey = key;
   S.detailRunId = null;
   S.focusStep = 0;
@@ -3815,6 +3889,9 @@ window.sideOpenTask = function (key) {
   $("run-detail").classList.remove("hidden");
   document.querySelector("#sub-runs .panel:first-child").classList.add("hidden");
   detailSideReset();     // 换详情目标：任务级 side 缓存作废，等首拉
+  S.rdTab = "steps";
+  S.rdTabSig = "";
+  applyRdTabs();
   syncInspectorVis();    // 详情已铺开：检查器让位（选中保留，返回列表自动滑回）
   renderTaskDetail();
 };
@@ -3910,12 +3987,73 @@ function renderTaskDetail() {
   syncArchBtn(tk, tk && (tk.status === "running" || tk.status === "queued"));
   const isTask = ((S.state || {}).tasks || []).some((t2) => t2.id === key);
   if (isTask) {
-    api("/api/tasks/" + encodeURIComponent(key) + "/runs")
-      .then((d) => { if (S.detailTaskKey === key) drawTaskDetail(key, d.runs || []); })
-      .catch((e) => { /* 拉取失败静默，等下一轮轮询重试；401 已由 api() 弹令牌门 */ });
+    loadTaskRuns(key, latestSummary);
     return;
   }
   drawTaskDetail(key, ((S.state || {}).runs || []).filter((r) => (r.task_id || r.id) === key));
+}
+
+function loadTaskRuns(key, latestSummary) {
+  const cached = _taskRunsCache.get(key);
+  if (cached && cached.length && latestSummary && cached[0].id === latestSummary.id) {
+    const detailVerdict = cached[0].verdict;
+    Object.assign(cached[0], latestSummary);
+    if (detailVerdict) cached[0].verdict = Object.assign({}, latestSummary.verdict || {}, detailVerdict);
+    drawTaskDetail(key, cached);
+  }
+  const latest = cached && cached[0];
+  const hasNewRun = !!(latestSummary && latestSummary.id && (!latest || latestSummary.id !== latest.id));
+  const active = !!(latestSummary && ["running", "queued"].includes(latestSummary.status));
+  const minAge = active ? 2000 : 12000;
+  if (_taskRunsInflight.has(key) ||
+      (!hasNewRun && cached && Date.now() - (_taskRunsAt.get(key) || 0) < minAge)) return;
+  if (!cached) {
+    const task = ((S.state || {}).tasks || []).find((x) => x.id === key);
+    $("rd-title").textContent = (task && task.title) || key;
+    const chip = $("rd-status");
+    chip.className = "chip queued";
+    chip.textContent = t("加载中…");
+    $("rd-steps").innerHTML = '<div class="hint" role="status">' + esc(t("正在加载任务详情…")) + "</div>";
+  }
+  _taskRunsAt.set(key, Date.now());
+  const refreshLatestOnly = !!(cached && cached.length && latestSummary && cached[0].id === latestSummary.id);
+  const url = refreshLatestOnly
+    ? "/api/runs/" + encodeURIComponent(latestSummary.id)
+    : "/api/tasks/" + encodeURIComponent(key) + "/runs";
+  const request = api(url, { timeout: 20000 })
+    .then((data) => {
+      let runs = (data && data.runs) || [];
+      if (refreshLatestOnly && data && data.run) {
+        runs = cached.slice();
+        runs[0] = data.run;
+      }
+      _taskRunsCache.delete(key);
+      _taskRunsCache.set(key, runs);
+      while (_taskRunsCache.size > 1) {
+        const oldest = _taskRunsCache.keys().next().value;
+        _taskRunsCache.delete(oldest);
+        _taskRunsAt.delete(oldest);
+      }
+      if (S.detailTaskKey === key) {
+        if (runs.length) drawTaskDetail(key, runs);
+        else {
+          $("rd-status").textContent = t("暂无运行步骤");
+          $("rd-steps").innerHTML = '<div class="empty">' + esc(t("暂无运行步骤")) + "</div>";
+        }
+      }
+    })
+    .catch((e) => {
+      _taskRunsAt.set(key, 0);
+      if (S.detailTaskKey === key && !_taskRunsCache.has(key)) {
+        const chip = $("rd-status");
+        chip.className = "chip failed";
+        chip.textContent = t("加载失败");
+        $("rd-steps").innerHTML = '<div class="hint">' + esc(t("加载失败：")) + esc(e.message) +
+          ' <button type="button" class="ghost small" onclick="renderTaskDetail()">' + esc(t("重试")) + "</button></div>";
+      }
+    })
+    .finally(() => _taskRunsInflight.delete(key));
+  _taskRunsInflight.set(key, request);
 }
 
 function drawTaskDetail(key, runs) {
@@ -3930,7 +4068,9 @@ function drawTaskDetail(key, runs) {
     Date.now() < Date.parse(String(lr0.resume_enqueue_at).replace(" ", "T"))) ? 1 : 0;
   const sig = JSON.stringify(runs.map((r) => [r.id, r.status, (r.steps || []).length,
     (r.steps || []).map((s) => s.status).join(""),
-    (r.messages || []).length, (r.messages || []).filter((m) => !m.consumed).length])
+    (r.messages || []).length, (r.messages || []).filter((m) => !m.consumed).length,
+    r.message_count, r.pending_message_count,
+    r.summary, r.error, r.cost_usd, r.tokens, JSON.stringify(r.verdict || {})])
     .concat([JSON.stringify((bmTask || {}).book_meta || null), resumePending]));
   if (sig === S.taskSig) return;
   S.taskSig = sig;
@@ -6833,7 +6973,40 @@ function renderDirector(run, active) {
   if (!run || !active) { box.classList.add("hidden"); return; }
   if (dirRunId !== run.id) { dirRunId = run.id; dirAtts = []; drawDirAtts(); }
   box.classList.remove("hidden");
-  const msgs = run.messages || [];
+  const cached = _runMessagesCache.get(run.id);
+  const expectedCount = run.message_count == null ? null : Number(run.message_count);
+  const expectedPending = run.pending_message_count == null ? null : Number(run.pending_message_count);
+  const runMessages = Array.isArray(run.messages) ? run.messages : null;
+  const runPending = runMessages ? runMessages.filter((m) => !m.consumed).length : null;
+  const runMessagesCurrent = !!runMessages && (expectedCount == null ||
+    (runMessages.length === expectedCount && runPending === expectedPending));
+  const msgs = runMessagesCurrent ? runMessages : (cached ? cached.messages : []);
+  if (runMessagesCurrent) {
+    const pending = msgs.filter((m) => !m.consumed).length;
+    _runMessagesCache.set(run.id, { messages: msgs, count: msgs.length, pending });
+  }
+  if (expectedCount != null) {
+    const messageCache = _runMessagesCache.get(run.id);
+    if (!messageCache || messageCache.count !== expectedCount || messageCache.pending !== expectedPending) {
+      if (!_runMessagesInflight.has(run.id)) {
+        const request = api("/api/runs/" + encodeURIComponent(run.id) + "/messages", { timeout: 10000 })
+          .then((data) => {
+            if (dirRunId !== run.id || !S.lastRun || S.lastRun.id !== run.id) return;
+            const messages = (data && data.messages) || [];
+            _runMessagesCache.clear();
+            _runMessagesCache.set(run.id, {
+              messages, count: messages.length,
+              pending: messages.filter((m) => !m.consumed).length,
+            });
+            renderDirector(Object.assign({}, S.lastRun, { messages }),
+              S.lastRun.status === "running" || S.lastRun.status === "queued");
+          })
+          .catch(() => {})
+          .finally(() => _runMessagesInflight.delete(run.id));
+        _runMessagesInflight.set(run.id, request);
+      }
+    }
+  }
   const mb = $("rd-msgs");
   mb.innerHTML = msgs.map((m) =>
     '<div class="rd-msg' + (m.consumed ? " m-consumed" : "") + '">' +
