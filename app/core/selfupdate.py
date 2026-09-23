@@ -355,6 +355,14 @@ def relaunch(port):
     port = int(port)
     if port < 1 or port > 65535:
         return False
+    from .manager import tmp_data_no_home_write
+    if tmp_data_no_home_write():
+        # 测试实例防毒闸的延伸：TUTTI_DATA 在临时目录的进程绝不拉起真实
+        # 端口服务——relaunch 的目标端口往往是 8765（真实服务所在），
+        # 新实例启动清场会把生产服务当「自家旧实例」杀掉（2026-09-23 实案）
+        log.warning("relaunch 拒绝：测试实例（TUTTI_DATA 在临时目录）"
+                    "不得拉起真实端口服务")
+        return False
     subprocess.Popen(
         [sys.executable, str(paths.APP_DIR / "main.py"), "--port", str(port),
          "--wait-port", "--no-browser"],

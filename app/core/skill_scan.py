@@ -19,14 +19,19 @@ _PATTERNS = [
     (r"\beval\s*\(", "代码执行", "动态 eval 执行任意代码"),
     (r"\bexec\s*\(", "代码执行", "exec 执行任意代码"),
     (r"subprocess|os\.system|Popen", "代码执行", "起子进程执行命令"),
+    (r"child_process", "代码执行", "Node.js 子进程（可能执行任意命令）"),
     # 数据外发
     (r"https?://(?!api\.|docs\.|github\.com|raw\.githubusercontent)[a-z0-9.-]+/(upload|collect|track|ingest|webhook|callback)",
      "数据外发", "向非常规端点上传/回调数据"),
     (r"requests\.post|urllib\.request|fetch\s*\(", "网络请求", "发起网络请求（确认目标可信）"),
+    (r"base64.{0,10}(decode|b64decode|atob)", "数据外发",
+     "base64 解码（可能隐藏混淆载荷）"),
     # 敏感信息读取
     (r"os\.environ|process\.env|getenv", "环境读取", "读取环境变量（可能带走密钥）"),
     (r"\.ssh/|\.aws/|\.npmrc|\.gitconfig|credentials|\.env\b", "敏感文件", "触碰凭据/密钥文件路径"),
     (r"keychain|credential manager|dpapi", "敏感文件", "访问系统凭据库"),
+    (r"\.claude/|\.zcode/|\.kimi-code/|\.codebee/", "敏感文件",
+     "触碰 AI 助手配置目录（可能篡改系统提示词或模型绑定）"),
     # 提示注入特征
     (r"(ignore|disregard|forget).{0,30}(previous|above|prior|all).{0,20}(instruction|prompt|rule)",
      "提示注入", "指令覆盖话术（试图无视既有规则）"),
@@ -65,13 +70,17 @@ def scan_text(text, max_findings=12):
 def risk_label(findings):
     """发现列表 → 风险标签（装前提示行用）。
 
-    高危（代码执行/敏感文件/可疑意图）任一命中 = 高风险；否则有发现 = 注意；
-    空 = 干净。"""
+    三级：高危（代码执行/敏感文件/可疑意图/数据外发/base64 解码）任一
+    命中 = 高风险；中危类（网络请求/环境读取/提示注入/越权人格）≥2 类
+    同时命中 = 中风险；有发现 = 注意；空 = 干净。"""
     if not findings:
         return ""
     cats = {f["category"] for f in findings}
     if cats & {"代码执行", "敏感文件", "可疑意图", "数据外发"}:
         return "⚠ 高风险"
+    medium_cats = cats & {"网络请求", "环境读取", "提示注入", "越权人格"}
+    if len(medium_cats) >= 2:
+        return "⚠ 中风险"
     return "△ 注意"
 
 

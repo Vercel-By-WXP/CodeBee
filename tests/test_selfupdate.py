@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest import mock
 
@@ -85,7 +86,17 @@ class TestSelfUpdate(BaseTest):
         orig_popen = su.subprocess.Popen
         su.subprocess.Popen = _FakePopen
         try:
-            self.assertTrue(su.relaunch(8765))
+            # 011023c/防毒闸延伸：测试实例（TUTTI_DATA 在临时目录）拒绝 relaunch——
+            # 真实执行过 relaunch(8765)，启动清场把生产服务当旧实例杀掉后鸠占鹊巢
+            # （2026-09-23 实案：8765 被测试服务占用，用户真实数据消失）
+            self.assertFalse(su.relaunch(8765))
+            # 生产形态（清掉 TUTTI_DATA）：闸放行，验证拉起参数
+            saved_td = os.environ.pop("TUTTI_DATA", None)
+            try:
+                self.assertTrue(su.relaunch(8765))
+            finally:
+                if saved_td is not None:
+                    os.environ["TUTTI_DATA"] = saved_td
         finally:
             su.subprocess.Popen = orig_popen
         cwd2 = Path(popen_kw["cwd"]).resolve()

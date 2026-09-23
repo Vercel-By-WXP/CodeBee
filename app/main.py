@@ -2541,6 +2541,19 @@ def main():
                         help="自更新重启用：先等旧实例释放端口再启动（Windows 双 LISTEN 防护）")
     args = parser.parse_args()
 
+    # 测试实例禁止使用默认端口 8765（2026-09-23 实案：代理测试忘带 --port，
+    # 启动清场把真实服务当旧实例杀掉后鸠占鹊巢）。测试请显式指定独立端口。
+    try:
+        from core.manager import tmp_data_no_home_write as _tdnhw
+    except Exception:
+        _tdnhw = None
+    if _tdnhw and _tdnhw() and args.port == 8765 and "--port" not in sys.argv:
+        raise SystemExit("[CodeBee] 测试实例禁止使用默认端口 8765（会与真实服务冲突），"
+                         "请显式指定 --port <独立端口>")
+    if _tdnhw and _tdnhw() and args.port == 8765:
+        print("[CodeBee] ⚠ 测试实例正占用默认端口 8765——真实服务将无法启动；"
+              "请改用独立端口", flush=True)
+
     # 启动每步都落一行进度（flush 强制落屏）：冷启动在慢盘/杀软扫描下可能几十秒，
     # 不打印会让用户以为卡死（真实案例：npm 装完首启只看到横幅像挂了）。
     # 看门狗：任何阶段卡超过 20 秒，自动把所有线程堆栈打到控制台（每 20s 重复）——
@@ -2702,8 +2715,16 @@ def main():
         from core import portscan as _ps, portguard as _pg
         _hint = ""
         try:
-            _cleared, _hint = _pg.clear_stale_port(
-                args.port, paths.APP_DIR / "main.py")
+            from core.manager import tmp_data_no_home_write
+            if tmp_data_no_home_write():
+                # 测试实例不清场：TUTTI_DATA 在临时目录的进程若占用了真实
+                # 端口（如 8765），清场会误杀生产服务（2026-09-23 实案）
+                _cleared, _hint = False, "测试实例不执行端口清场"
+            else:
+                _cleared, _hint = _pg.clear_stale_port(
+                    args.port, paths.APP_DIR / "main.py")
+        except Exception:
+            _cleared, _hint = False, 
         except Exception:
             _cleared, _hint = False, ""
         if _cleared:
