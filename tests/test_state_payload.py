@@ -11,6 +11,66 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 
 
 class TestStatePayload(BaseTest):
+    def _direct_result(self, run):
+        from unittest import mock
+
+        from app import main
+
+        with mock.patch.object(main.store, "run_artifacts", return_value=("", [])):
+            return main.Handler._direct_result(None, run, "direct")
+
+    def test_direct_result_uses_precise_step_time_when_run_timestamps_share_a_second(self):
+        run = {
+            "id": "r-duration", "status": "failed",
+            "started_at": "2026-09-23 12:00:00",
+            "ended_at": "2026-09-23 12:00:00",
+            "steps": [
+                {"status": "done", "duration_s": 25.4},
+                {"status": "timeout", "duration_s": 60.8},
+            ],
+        }
+
+        result = self._direct_result(run)
+
+        self.assertEqual(result["duration_s"], 86.2)
+
+    def test_direct_result_prefers_precise_run_duration(self):
+        run = {
+            "id": "r-duration", "status": "failed",
+            "started_at": "2026-09-23 12:00:00",
+            "ended_at": "2026-09-23 12:00:00",
+            "duration_s": 86.45,
+            "steps": [{"status": "timeout", "duration_s": 60.8}],
+        }
+
+        result = self._direct_result(run)
+
+        self.assertEqual(result["duration_s"], 86.45)
+
+    def test_direct_result_repairs_zero_duration_from_recorded_steps(self):
+        run = {
+            "id": "r-duration", "status": "failed",
+            "started_at": "2026-09-23 12:00:00",
+            "ended_at": "2026-09-23 12:00:00",
+            "duration_s": 0,
+            "steps": [{"status": "timeout", "duration_s": 60.8}],
+        }
+
+        result = self._direct_result(run)
+
+        self.assertEqual(result["duration_s"], 60.8)
+
+    def test_direct_result_keeps_timestamp_fallback_without_step_durations(self):
+        run = {
+            "id": "r-duration", "status": "failed",
+            "started_at": "2026-09-23 12:00:00",
+            "ended_at": "2026-09-23 12:00:05",
+        }
+
+        result = self._direct_result(run)
+
+        self.assertEqual(result["duration_s"], 5)
+
     def test_state_snapshot_omits_run_details_and_chat_messages(self):
         from unittest import mock
 

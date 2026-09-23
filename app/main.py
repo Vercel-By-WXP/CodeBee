@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import re
 import socket
@@ -1988,6 +1989,13 @@ class Handler(BaseHTTPRequestHandler):
         verdict = latest.get("verdict") or {}
         route = latest.get("route") or {}
 
+        def _seconds(value):
+            try:
+                value = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return None
+            return value if math.isfinite(value) and value >= 0 else None
+
         def _sec(a, b):
             try:
                 return max(0, int(time.mktime(time.strptime(b, "%Y-%m-%d %H:%M:%S")) -
@@ -1995,6 +2003,28 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return None
         t0 = latest.get("started_at") or latest.get("created_at")
+        # Run timestamps are stored only to whole seconds; two timestamps in the
+        # same second therefore produce a misleading 0 even when a CLI step ran
+        # for a minute. Prefer the precise persisted duration, then the sum of
+        # step durations, and use wall-clock timestamps only as a legacy fallback.
+        duration_s = _seconds(latest.get("duration_s"))
+        step_durations = []
+        for step in latest.get("steps") or []:
+            if isinstance(step, dict):
+                value = _seconds(step.get("duration_s"))
+                if value is not None:
+                    step_durations.append(value)
+        step_duration_s = round(sum(step_durations), 1) if step_durations else None
+        if duration_s is None or duration_s == 0:
+            if step_duration_s is not None and step_duration_s > 0:
+                duration_s = step_duration_s
+            else:
+                timestamp_duration_s = (_sec(t0, latest.get("ended_at") or "")
+                                        if t0 and latest.get("ended_at") else None)
+                if timestamp_duration_s is not None:
+                    duration_s = timestamp_duration_s
+                elif step_duration_s is not None:
+                    duration_s = step_duration_s
         wd, files = "", []
         try:
             wd, files = store.run_artifacts(latest.get("id") or "", limit=12)
@@ -2007,8 +2037,7 @@ class Handler(BaseHTTPRequestHandler):
             "error": (latest.get("error") or "") if st in ("failed", "timeout") else "",
             "executor": route.get("implementer") or verdict.get("impl") or "",
             "turns": verdict.get("turns") or 0,
-            "duration_s": _sec(t0, latest.get("ended_at") or "")
-                if t0 and latest.get("ended_at") else None,
+            "duration_s": duration_s,
             "workdir": wd,
             "files": files,
         }
