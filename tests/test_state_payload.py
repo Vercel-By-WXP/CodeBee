@@ -195,6 +195,65 @@ class TestStatePayload(BaseTest):
 
         self.assertEqual(payload["runs"], [run])
 
+    def test_task_run_details_support_pagination(self):
+        import json
+        import threading
+        from http.server import ThreadingHTTPServer
+        from unittest import mock
+
+        from app import main
+
+        runs = [{"id": "r-%d" % i, "steps": [{"n": 1}], "cost_usd": 0.5,
+                 "tokens": 100} for i in range(5, 0, -1)]
+        server = ThreadingHTTPServer(("127.0.0.1", 0), main.Handler)
+        server.daemon_threads = True
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        with mock.patch.object(main.remote, "request_authed", return_value=True), \
+             mock.patch.object(main.store, "get_task", return_value={"id": "t-1"}), \
+             mock.patch.object(main.store, "task_runs_page", return_value={
+                 "runs": runs[2:4], "total": 5, "offset": 2, "has_more": True,
+                 "totals": {"steps": 5, "settled_steps": 5, "cost_usd": 2.5, "tokens": 500},
+             }):
+            url = "http://127.0.0.1:%d/api/tasks/t-1/runs?limit=2&offset=2" % server.server_port
+            with __import__("urllib.request").request.urlopen(url) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+
+        self.assertEqual(payload["runs"], runs[2:4])
+        self.assertEqual(payload["total"], 5)
+        self.assertEqual(payload["offset"], 2)
+        self.assertTrue(payload["has_more"])
+        self.assertEqual(payload["totals"], {
+            "steps": 5, "settled_steps": 5, "cost_usd": 2.5, "tokens": 500,
+        })
+
+    def test_task_runs_page_copies_only_requested_runs_and_returns_totals(self):
+        from unittest import mock
+
+        from app.core import store
+
+        runs = {
+            "r-5": {"id": "r-5", "task_id": "t-1", "cost_usd": 0.5, "tokens": 100,
+                    "steps": [{"status": "done"}, {"status": "running"}]},
+            "r-4": {"id": "r-4", "task_id": "t-1", "cost_usd": 1.0, "tokens": 200,
+                    "steps": [{"status": "queued"}]},
+            "r-3": {"id": "r-3", "task_id": "t-1", "cost_usd": 1.0, "tokens": 200,
+                    "steps": [{"status": "done"}]},
+        }
+        with mock.patch.object(store, "_RUNS", runs):
+            page = store.task_runs_page("t-1", offset=1, limit=1)
+
+        self.assertEqual([run["id"] for run in page["runs"]], ["r-4"])
+        self.assertIsNot(page["runs"][0], runs["r-4"])
+        self.assertEqual(page["total"], 3)
+        self.assertTrue(page["has_more"])
+        self.assertEqual(page["totals"], {
+            "steps": 4, "settled_steps": 2, "cost_usd": 2.5, "tokens": 500,
+        })
+
     def test_archived_task_detail_can_be_fetched_on_demand(self):
         import json
         import threading

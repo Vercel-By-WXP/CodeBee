@@ -435,7 +435,15 @@ class Handler(BaseHTTPRequestHandler):
                 # 任务级详情用：该任务全部 run（含 steps），不受前端 run 窗口限制
                 if not store.get_task(m.group(1)):
                     return self._json(404, {"error": "not found"})
-                return self._json(200, {"runs": store.task_runs(m.group(1))})
+                query = parse_qs(urlparse(self.path).query)
+                if "limit" not in query:
+                    return self._json(200, {"runs": store.task_runs(m.group(1))})
+                try:
+                    limit = max(1, min(20, int((query.get("limit") or [3])[0])))
+                    offset = max(0, int((query.get("offset") or [0])[0]))
+                except (TypeError, ValueError):
+                    return self._json(400, {"error": "invalid pagination"})
+                return self._json(200, store.task_runs_page(m.group(1), offset, limit))
             m = re.match(r"^/api/tasks/([^/]+)/bible$", path)
             if m:
                 # 故事圣经：查看（无令牌豁免走 _authed 已过；本机免令牌）

@@ -648,3 +648,85 @@ body::after { box-shadow: inset 0 0 100px #020708aa; }
   .rail-trend, .rail-models { flex-basis: auto; min-height: 166px; }
   .rail-recent { min-height: 300px; }
 }
+
+/* ---------------------------------------------------------------- v3：稳定桌面密度与侧栏边界 */
+@media (min-width: 1051px) {
+  #board {
+    padding-top: 16px;
+    padding-bottom: 18px;
+    grid-template-rows: 154px 90px minmax(0, 1fr);
+    gap: 12px;
+  }
+  .overview-copy { padding: 20px 24px 16px; }
+  .overview-foot {
+    gap: 14px;
+    flex-wrap: wrap;
+    padding-top: 9px;
+    border-top: 1px solid #304249;
+  }
+  .signal-chip {
+    min-width: 0;
+    padding: 4px 8px;
+    border: 1px solid #82d3a233;
+    border-radius: 4px;
+    background: #82d3a20a;
+    white-space: nowrap;
+  }
+  .overview.has-alert .signal-chip {
+    border-color: #ea7e783b;
+    background: #ea7e780b;
+  }
+  .overview-note { white-space: nowrap; }
+  .overview-aside { padding: 18px 22px; }
+  .aside-divider { margin: 11px 0 7px; }
+  .aside-row { gap: 12px; padding: 3px 0; }
+  .aside-row span { min-width: 0; }
+  .aside-row b { flex: none; }
+
+  #rail {
+    display: grid;
+    grid-template-rows: minmax(142px, .85fr) minmax(188px, 1.15fr) minmax(180px, 1.25fr);
+    gap: 10px;
+  }
+  .rail-card {
+    min-height: 0;
+    overflow: hidden;
+    padding: 14px 16px;
+    border-radius: 9px;
+  }
+  .rail-trend, .rail-models { flex: initial; }
+  .rail-head { align-items: center; }
+  .rail-head h3 { margin-top: 4px; }
+  .trend { height: 72px; gap: 8px; padding-top: 10px; }
+  .models { gap: 7px; margin-top: 11px; }
+  .model-row { grid-template-columns: minmax(84px, 1fr) minmax(34px, 1.2fr) 46px; gap: 8px; }
+  .model-row .nm { font-size: 10.5px; }
+  .model-row .vl { white-space: nowrap; }
+  #recent { margin-top: 10px; }
+  .r-row { padding: 7px 0; }
+}
+
+@media (min-width: 1051px) and (max-height: 820px) {
+  body { overflow: auto; }
+  #board {
+    height: auto;
+    min-height: calc(100vh - 64px);
+    grid-template-rows: 150px 88px minmax(470px, 1fr);
+  }
+}
+
+@media (max-width: 1050px) {
+  #rail {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto minmax(190px, 1fr);
+    gap: 12px;
+  }
+  .rail-trend, .rail-models { min-height: 180px; }
+  .rail-recent { grid-column: 1 / -1; min-height: 280px; }
+}
+
+@media (max-width: 720px) {
+  #rail { display: flex; }
+  .rail-trend, .rail-models { min-height: 166px; }
+}

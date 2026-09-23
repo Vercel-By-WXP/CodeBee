@@ -661,6 +661,37 @@ def task_runs(task_id):
     return runs
 
 
+def task_runs_page(task_id, offset=0, limit=3):
+    """分页读取任务运行，只复制当前页；全量轻统计在详情打开时按需计算。"""
+    with LOCK:
+        runs = [r for r in _RUNS.values() if r.get("task_id") == task_id]
+    runs.sort(key=lambda run: run["id"], reverse=True)
+    page = [dict(run) for run in runs[offset:offset + limit]]
+    total_steps = settled_steps = total_tokens = 0
+    total_cost = 0.0
+    for run in runs:
+        steps = run.get("steps") or []
+        total_steps += len(steps)
+        settled_steps += sum(1 for step in steps
+                             if step.get("status") not in ("running", "queued"))
+        try:
+            total_cost += float(run.get("cost_usd") or 0)
+        except (TypeError, ValueError):
+            pass
+        try:
+            total_tokens += int(run.get("tokens") or 0)
+        except (TypeError, ValueError):
+            pass
+    return {
+        "runs": page,
+        "total": len(runs),
+        "offset": offset,
+        "has_more": offset + len(page) < len(runs),
+        "totals": {"steps": total_steps, "settled_steps": settled_steps,
+                   "cost_usd": total_cost, "tokens": total_tokens},
+    }
+
+
 def task_side(task_id):
     """任务检查器（右缘停靠列）的轻量聚合：最新 run 摘要 + 进度步骤 +
     git 分支/裁决状态 + 变更行级统计 + 成品文件。
