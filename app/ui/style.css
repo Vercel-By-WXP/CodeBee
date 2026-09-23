@@ -4809,6 +4809,11 @@ main.chat-fill #run-detail.chat-mode > .rd-main { overflow: hidden; }
     max-height: none;
     margin-bottom: 12px;
   }
+  #rd-rail > .detail-head > .rd-actions #btn-delete {
+    grid-column: auto;
+    justify-self: stretch;
+    width: 100%;
+  }
   #run-detail > .rd-main {
     width: 100%;
     overflow: visible;
