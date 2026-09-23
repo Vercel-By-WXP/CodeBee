@@ -3,7 +3,7 @@
 "use strict";
 
 const $ = (s) => document.querySelector(s);
-const t = (k) => (window.t ? window.t(k) : k);   // i18n.js 先于本脚本加载
+const t = (...a) => (window.t ? window.t(...a) : a[0]);   // i18n.js 先于本脚本加载；透传占位符参数（{0}/{1}）
 const POLL_MS = 4000;
 
 // URL ?lang=en|zh 可覆盖语言（i18n.js 已按 localStorage 自动 apply 过一次，
