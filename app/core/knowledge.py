@@ -97,7 +97,7 @@ _NEAR_DUP_SIM = 0.8    # 同 scope 标题包含度 ≥0.8 视为同一条（近�
 
 
 def upsert_entry(scope, title, body, tags=None, source="", source_file="",
-                 as_of=None, status="draft"):
+                 as_of=None, status="draft", confidence=None):
     """写入/合并一条知识。同 scope 同标题视为同一条（指纹去重）：
     - 已有条目是 approved 且新条是 draft：不覆盖正文（人工确认过的内容优先），
       新内容记入 revisions 作为修订候选，seen+1；
@@ -145,6 +145,8 @@ def upsert_entry(scope, title, body, tags=None, source="", source_file="",
             it["tags"] = (it.get("tags") or [])[:8]
             if as_of:
                 it["as_of"] = str(as_of)[:10]
+            if confidence:   # 合并时也可提升/回落置信度（high 覆盖 medium 合理）
+                it["confidence"] = confidence
             if source:
                 it["source"] = source
             if source_file:
@@ -156,6 +158,7 @@ def upsert_entry(scope, title, body, tags=None, source="", source_file="",
               "tags": tags, "status": status, "enabled": True,
               "source": source, "source_file": source_file,
               "as_of": str(as_of or _now()[:10])[:10],
+              "confidence": confidence or "medium",
               "revisions": [], "hits": 0, "seen": 1,
               "created_at": _now(), "updated_at": _now(), "kind": "knowledge"}
         items.append(it)
@@ -277,10 +280,17 @@ KNOWLEDGE_PROMPT = """你是编排系统的知识管理员。下面是一次任�
 - fact：回答「是什么」，只含领域事实、外部规则和可验证结论，进入知识库；
 - practice：回答「怎么做」，含流程、操作方法和正向实践，进入经验库；此类必须填写 category。
 「下次要避免什么」这类负面教训由评审复盘流程负责，不要重复提炼。
+
+**可信度分级（引用核验借鉴）**：每条 fact 必须给出 confidence：
+- "high"：产出材料中有明确来源/数据支撑（引用了来源、给了数字口径）；
+- "medium"：材料内部自洽但未标来源（模型整理所得）；
+- "low"：你不确定、可能过时或与材料其他部分矛盾——这类宁可不要，直接丢弃。
+fact 缺 confidence 视为 medium。
+
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"entries": [{"kind": "fact 或 practice", "title": "≤20 字的标题", "body": "具体内容（≤200 字，自含上下文，脱离本次任务也能看懂）", "category": "practice 的经验分类", "tags": ["1-3 个检索标签"], "as_of": "YYYY-MM-DD（fact 的事实采集日）"}]}
+{"entries": [{"kind": "fact 或 practice", "title": "≤20 字的标题", "body": "具体内容（≤200 字，自含上下文，脱离本次任务也能看懂）", "category": "practice 的经验分类", "tags": ["1-3 个检索标签"], "as_of": "YYYY-MM-DD（fact 的事实采集日）", "confidence": "high/medium/low（fact 必填）"}]}
 category 只能从以下枚举选择：__CATEGORIES__。
-最多 3 条，只保留有明确复用价值的；产出里没有值得沉淀的就返回空数组。
+最多 3 条，只保留有明确复用价值的；low 置信的直接丢弃；产出里没有值得沉淀的就返回空数组。
 
 ## 任务类型
 __TYPE__
@@ -381,12 +391,19 @@ def learn_from_run(run_id):
                                         dim="%s %s" % (x["title"], x["body"])):
                     n += 1
                 continue
+            # 可信度分级（引用核验借鉴）：low 直接丢弃（宁缺毋滥），
+            # 其余归一 high/medium 并随条目落盘；缺失视为 medium
+            conf = str(x.get("confidence") or "medium").strip().lower()
+            if conf not in ("high", "medium"):
+                if conf == "low":
+                    continue
+                conf = "medium"
             as_of = str(x.get("as_of") or "").strip()
             if not re.match(r"^\d{4}-\d{2}-\d{2}$", as_of):
                 as_of = _now()[:10]
             if upsert_entry(task.get("type") or "*", x["title"], x["body"],
                             tags=x.get("tags"), source=run_id,
-                            as_of=as_of, status="approved"):
+                            as_of=as_of, status="approved", confidence=conf):
                 n += 1
     except Exception:
         return n

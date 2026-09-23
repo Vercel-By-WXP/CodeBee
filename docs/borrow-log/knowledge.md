@@ -654,3 +654,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - A 组全活跃无增量事故
 
 **✅ 本班落地**：**章节安全落盘**（inkos 安全章节工作区借鉴，待深挖第二项清账）——`core/chaptersafe.py`：atomic_write_chapter 走 **tmp 写入 + os.replace 原子改名**，写一半崩溃/磁盘满不会留下半章正文冒充成稿（断点续跑按「文件够长」判定，半文件会被误当合法稿复用——正是 inkos「杜绝状态推进正文未落」的同款语义）；失败清理 tmp 残渣后原样抛出；路径守卫 resolve+parents+workdir 必须存在。pipeline._write_chapter 委托（6 处调用点零改动）。test_chaptersafe 5 项（落盘回读/覆盖/越界拒绝/委托生效/**磁盘满模拟旧稿完好**）
+
+### 2026-09-23 12:01 第四十班（批5：检索/知识/浏览器）
+
+- 批5 复跑主体重合（dify/ragflow/Agent-Reach 等均已入库）。新锐小标：klaus（K8s 内编排 Claude 的 Go 封装）/symphony（专家指挥家+轻量协调者多模型插件）/neutron（自托管长会话 harness）| 雷达
+- A 组全活跃无增量事故
+
+**✅ 本班落地**：知识库 confidence 可信度分级（引用核验借鉴）——KNOWLEDGE_PROMPT 要求每条事实给出 high（有来源/数字口径）/medium（自洽未标来源）/low（不确定或矛盾）三级置信；**low 直接丢弃**（宁缺毋滥），缺失视为 medium；confidence 随条目落盘，近似/同题合并时 high 可覆盖 medium（有据版本吸收无据版本）。test_kb_confidence 4 项（落盘/合并升级/learn 丢 low+归一/prompt 契约）
