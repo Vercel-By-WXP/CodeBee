@@ -532,6 +532,8 @@
     "运行中": "Running",
     "排队中": "Queued",
     "完成": "Done",
+    "完成·未达标": "Done · unqualified",
+    "·未达标": " · unqualified",
     "失败": "Failed",
     "已取消": "Cancelled",
     "提交中…": "Submitting…",

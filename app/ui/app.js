@@ -988,8 +988,13 @@ function runStatusText(run) {
     if (!isNaN(at) && Date.now() < at)
       return t("将于 {0} 自动续跑", String(run.resume_enqueue_at).slice(11, 16));
   }
-  return { queued: t("排队中"), running: t("运行中"), done: t("完成"),
+  const txt = { queued: t("排队中"), running: t("运行中"), done: t("完成"),
     failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") }[st] || st;
+  // 「跑完」≠「通过」：done 但评审未过（verdict.pass=false）必须一眼可辨——
+  // 此前一律显示「完成」，用户以为修好了（2026-09-23 禅道双单实案反馈）
+  if (st === "done" && run && run.verdict && run.verdict.pass === false)
+    return txt + t("·未达标");
+  return txt;
 }
 
 /* 运行错误来源徽标：错误文案以「超时」打头（runner 统一格式）时标 TIMEOUT，
@@ -4773,7 +4778,8 @@ async function renderRunDetail() {
   if (!rdCurrent(id, token) || fetchSeq !== S._rdFetchSeq) return;   // 拉取期间已切走/被更新请求取代
   $("rd-title").textContent = run.title;
   const chip = $("rd-status");
-  chip.className = "chip " + run.status;
+  chip.className = "chip " + run.status +
+    (run.status === "done" && run.verdict && run.verdict.pass === false ? " unqualified" : "");
   chip.textContent = runStatusText(run);
   const active = run.status === "queued" || run.status === "running";
   $("btn-cancel").classList.toggle("hidden", !active);

@@ -1260,6 +1260,51 @@ def _opencode_config_candidates(entry):
     return out
 
 
+def _sync_mimo_settings(entry, model, prov):
+    """mimo（opencode 系）专属：把绑定供应商落进 mimocode.jsonc 的
+    provider.codebee 块。mimo 不读任何 env key（内嵌文档明示
+    MIMO_API_KEY is never read），唯一凭据通道是配置内 provider.options.apiKey
+    ——此前只有模型名提示，绑定后照样裸奔：2026-09-24 禅道双单实案，评审器
+    连续 20+ 轮全灭在 Invalid API Key，而 Key 本身是好的。
+    只吃 OpenAI 兼容端点；anthropic 协议供应商明确拒绝（不猜 wire）。"""
+    if tmp_data_no_home_write():
+        return "测试数据目录（TUTTI_DATA 在临时目录）不写真实 CLI 配置，已拦截"
+    if str(prov.get("protocol") or "").lower() != "openai":
+        return ("mimo 只吃 OpenAI 兼容端点，供应商 %s 是 %s 协议——请绑 openai 协议供应商"
+                % (prov.get("name") or prov.get("id") or "?", prov.get("protocol") or "?"))
+    key = str(prov.get("api_key") or "")
+    if not key:
+        ks = prov.get("keys") or []
+        key = str((ks[0] or {}).get("key") or "") if ks else ""
+    base = str(prov.get("base_url") or "").rstrip("/")
+    if not key or not base:
+        return "供应商缺少 API 地址或密钥，无法写入 mimo 配置"
+    path = _config_path(entry)
+    if not path:
+        return "mimo 配置路径无效"
+    try:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        text = ""
+        if os.path.isfile(path):
+            text = _read_text(path, preserve_newlines=True)
+            shutil.copyfile(path, path + ".bak")
+        block = {"npm": "@ai-sdk/openai-compatible",
+                 "options": {"baseURL": base, "apiKey": key},
+                 "models": {model: {}}}
+        new_text, ok = _jsonc_set(text, ("provider", "codebee"),
+                                  json.dumps(block, ensure_ascii=False))
+        if not ok:
+            return "mimocode.jsonc 结构异常，未能写入 provider 块（已避免覆盖）"
+        new_text, ok = _jsonc_set(new_text, ("model",),
+                                  json.dumps("codebee/" + model))
+        if not ok:
+            return "mimocode.jsonc 结构异常，未能写入 model（已避免覆盖）"
+        Path(path).write_bytes(new_text.encode("utf-8"))
+        return None
+    except OSError as e:
+        return "写入 mimocode.jsonc 失败：%s" % str(e)[:80]
+
+
 def _sync_opencode_settings(entry, model, prov):
     """opencode 专属：把绑定供应商写进其配置的 provider.orch 段 + 顶层 model
     （opencode 交互 TUI 只认自家配置文件里的凭据，ORCH_API_KEY env 对它等于
@@ -1451,12 +1496,13 @@ _AGENT_INJECTORS = {
     "opencode": (("anthropic", "openai"), _sync_opencode_settings),
     "qwencode": (("openai",), _sync_qwen_settings),
     "kimi-code": (("openai", "anthropic"), _sync_kimi_settings),
+    "mimo-code": (("openai",), _sync_mimo_settings),
 }
 
 # 无专属注入通道的专有协议 CLI：env 注入大概率无效，打开时明确告知而非静默废
-# （mimo 系 opencode 衍生但配置路径未实证，先按提示类；grok 吃 XAI_API_KEY 但
+# （mimo 已实证配置注入：provider.codebee 块（apiKey 走 options）；grok 吃 XAI_API_KEY 但
 # 无端点 env 可指中转，openai 协议供应商也用不上）
-_NO_CHANNEL_HINT = ("grok-build", "pi", "mimo-code")
+_NO_CHANNEL_HINT = ("grok-build", "pi")   # mimo 已有 provider 块注入（2026-09-24）
 
 
 def _sync_agent_injection(entry, binding):
