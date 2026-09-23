@@ -20,12 +20,23 @@ _PATTERNS = [
     (r"\bexec\s*\(", "代码执行", "exec 执行任意代码"),
     (r"subprocess|os\.system|Popen", "代码执行", "起子进程执行命令"),
     (r"child_process", "代码执行", "Node.js 子进程（可能执行任意命令）"),
+    (r"(?:curl|wget)[^\n|]*\|\s*(?:ba|z|da)?sh\b", "代码执行",
+     "下载内容直接管道进 shell 执行（dropper 特征）"),
+    (r"Invoke-Expression|\biex\s*\(|DownloadString", "代码执行",
+     "PowerShell 下载执行（dropper 特征）"),
     # 数据外发
     (r"https?://(?!api\.|docs\.|github\.com|raw\.githubusercontent)[a-z0-9.-]+/(upload|collect|track|ingest|webhook|callback)",
      "数据外发", "向非常规端点上传/回调数据"),
     (r"requests\.post|urllib\.request|fetch\s*\(", "网络请求", "发起网络请求（确认目标可信）"),
     (r"base64.{0,10}(decode|b64decode|atob)", "数据外发",
      "base64 解码（可能隐藏混淆载荷）"),
+    (r"pastebin\.com|webhook\.site|requestbin|pipedream\.net|"
+     r"ngrok\.(io|app|dev)|trycloudflare\.com", "数据外发",
+     "常见外传/中转信道（pastebin、ngrok 隧道、webhook.site 等）"),
+    # 持久化与挖矿（治理巡检 09-24 补：装后驻留与资源盗用的静态特征）
+    (r"\bcrontab\b|schtasks|LaunchAgents|CurrentVersion\\Run|StartupItems",
+     "持久化", "注册定时任务/自启动项（持久化驻留特征）"),
+    (r"stratum\+tcp|xmrig|cryptonight", "可疑意图", "加密货币挖矿特征"),
     # 敏感信息读取
     (r"os\.environ|process\.env|getenv", "环境读取", "读取环境变量（可能带走密钥）"),
     (r"\.ssh/|\.aws/|\.npmrc|\.gitconfig|credentials|\.env\b", "敏感文件", "触碰凭据/密钥文件路径"),
@@ -70,13 +81,13 @@ def scan_text(text, max_findings=12):
 def risk_label(findings):
     """发现列表 → 风险标签（装前提示行用）。
 
-    三级：高危（代码执行/敏感文件/可疑意图/数据外发/base64 解码）任一
+    三级：高危（代码执行/敏感文件/可疑意图/数据外发/持久化）任一
     命中 = 高风险；中危类（网络请求/环境读取/提示注入/越权人格）≥2 类
     同时命中 = 中风险；有发现 = 注意；空 = 干净。"""
     if not findings:
         return ""
     cats = {f["category"] for f in findings}
-    if cats & {"代码执行", "敏感文件", "可疑意图", "数据外发"}:
+    if cats & {"代码执行", "敏感文件", "可疑意图", "数据外发", "持久化"}:
         return "⚠ 高风险"
     medium_cats = cats & {"网络请求", "环境读取", "提示注入", "越权人格"}
     if len(medium_cats) >= 2:
