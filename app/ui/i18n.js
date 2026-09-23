@@ -2535,6 +2535,7 @@
     "思考": "Thinking",
     "连接断开": "Connection lost",
     "进入大屏": "Enter board",
+    "任务大屏": "Mission board",
     "模型待定": "Model pending",
     "异常": "down",
     "令牌不正确或已变更": "Token incorrect or changed",

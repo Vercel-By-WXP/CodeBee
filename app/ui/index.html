@@ -252,6 +252,8 @@
             <div id="op-list" class="op-list" aria-live="polite"></div>
           </div>
         </div>
+        <!-- 任务驾驶舱大屏：新标签页打开 /board.html，令牌与主界面共用 localStorage（orch.token） -->
+        <button id="btn-board" class="pill icon-only" type="button" onclick="openBoard()" title="任务大屏" aria-label="任务大屏" data-i18n-title="任务大屏" data-i18n-aria="任务大屏"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg></button>
         <!-- 语言快捷切换：语言名用母语写死（中文/English），刻意不做 i18n——任何母语的人都要能读懂并选中 -->
         <div class="lang-wrap">
           <button id="btn-lang" class="pill icon-only" type="button" onclick="toggleLangMenu()" title="语言 / Language" aria-label="切换语言" aria-haspopup="listbox" aria-controls="lang-menu" data-i18n-title="语言 / Language" data-i18n-aria="切换语言"><svg class="ico" aria-hidden="true"><use href="#i-globe"></use></svg></button>

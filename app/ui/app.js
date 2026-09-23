@@ -11327,6 +11327,12 @@ function pickLang(lang) {
 window.toggleLangMenu = toggleLangMenu;
 window.pickLang = pickLang;
 
+/* 顶栏大屏入口：新标签页打开任务驾驶舱；同源共享 orch.token，board 页免二次输令牌 */
+function openBoard() {
+  window.open("/board.html", "_blank", "noopener");
+}
+window.openBoard = openBoard;
+
 function setLangBtn(lang) {
   if (getLang() === lang) return;
   setLang(lang);
