@@ -502,6 +502,32 @@ class TestConfigAndMigration(ZenCase):
         self.assertEqual(c["tasks"][0]["side"], "backend")
 
 
+class TestBugWebBase(ZenCase):
+    def runTest(self):
+        """view() 带 bug_base：探测出的子路径地基优先，没探测过回落原始地址。"""
+        self.configure()
+        base = "http://127.0.0.1:%d" % self.port
+        v = self.zen_mod.view()
+        self.assertEqual(v["bug_base"], base)
+        # 老接口探测命中 /zentao 子路径 → web 根带子路径（用户真机形态）
+        self.zen_mod._MODE[base] = "old"
+        self.zen_mod._OLD["api"] = base + "/zentao"
+        self.assertEqual(self.zen_mod.view()["bug_base"], base + "/zentao")
+        # REST 根探测命中 → 剥掉 api.php/v1 尾巴
+        self.zen_mod._MODE.clear()
+        self.zen_mod._OLD.update(api="", sid="", at=0.0)
+        self.zen_mod._APIBASE[base] = base + "/api.php/v1"
+        self.assertEqual(self.zen_mod.view()["bug_base"], base)
+        # 误把 REST 根存进了配置且未探测 → 回落也剥尾巴；非法值回空
+        self.zen_mod._APIBASE.clear()
+        self.zen_mod.save_config({"base_url": base + "/api.php/v1", "account": "coder",
+                                  "password": "pw", "product_profiles": [self.profile()]})
+        self.assertEqual(self.zen_mod.view()["bug_base"], base)
+        self.zen_mod.save_config({"base_url": "", "account": "coder", "password": "pw",
+                                  "product_profiles": [self.profile()]})
+        self.assertEqual(self.zen_mod.view()["bug_base"], "")
+
+
 class TestTriage(ZenCase):
     def runTest(self):
         cfg = self.configure()

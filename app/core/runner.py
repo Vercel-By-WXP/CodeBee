@@ -30,6 +30,7 @@ from .error_codes import ErrorCode
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 DEFAULT_TIMEOUT = 1200  # 单步 20 分钟
 MAX_ATTEMPT_TIMEOUT_S = 60  # 无进展时单模型最多等 1 分钟
+DEFAULT_STREAM_ACTIVITY_TIMEOUT_S = 180  # 流式 CLI 的活动延长窗口
 
 _BASH_CANDIDATES = [
     r"D:\Git\usr\bin\bash.exe",
@@ -240,6 +241,10 @@ def _pipe_reader(stream, chunks, log_fh, stamp=None):
             chunks.append(b)
             if stamp is not None:
                 stamp[0] = time.time()
+                if len(stamp) > 1:
+                    stamp[1] = True
+                if len(stamp) > 2:
+                    stamp[2] = time.monotonic()
             if log_fh:
                 try:
                     log_fh.write(b)
@@ -601,13 +606,17 @@ def _normalize_abort_markers(value):
 def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None,
                 stall_timeout=0, repeat_abort=None, deadline=None,
-                abort_markers=None):
+                abort_markers=None, activity_timeout=0):
     """通用子进程执行：并发读管道防死锁；超时/取消杀整棵进程树。
 
     stall_timeout：停滞看门狗（秒，0=关闭）——超过该时长 stdout/stderr 无任何
     新输出即判卡死，提前杀树返回（timed_out=True + stalled=True）。只对输出
     持续流动的 CLI 开（codex JSONL 事件流）；claude json 到结束才一次性输出，
     开了会把正常长任务误杀。
+
+    activity_timeout：基础 timeout 到期后，最近仍有真实输出的流式 CLI 允许继续
+    运行的最长静默窗口（秒，0=关闭）。它独立于 stall_timeout，避免环境把
+    停滞看门狗设为 0 后，Claude/Codex 又在基础超时处被硬杀；总延长仍有上限。
 
     repeat_abort：可选 (marker, count)，也接受多个 ``(marker, count)``；同一
     致命错误达到次数即提前杀树，处理 CLI 自身不断打印重连消息、因此永远
@@ -636,6 +645,10 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         timeout = max(0.0, float(timeout))
     except (TypeError, ValueError):
         timeout = float(DEFAULT_TIMEOUT)
+    try:
+        activity_timeout = max(0.0, float(activity_timeout))
+    except (TypeError, ValueError):
+        activity_timeout = 0.0
     if deadline is not None and time.monotonic() >= deadline:
         return {"ok": False, "exit_code": None, "stdout": "",
                 "stderr": "[任务总时限已到，未启动子进程]", "duration": 0.0,
@@ -679,7 +692,7 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                     "cancelled": False, "timed_out": False, "stalled": False,
                     "deadline_exceeded": False, "abort_marker": None}
         out_chunks, err_chunks = [], []
-        stamp = [time.time()]   # 最后输出时刻（两条管道共同刷新）
+        stamp = [time.time(), False, time.monotonic()]  # [墙钟、是否有输出、单调时钟]
         t_out = threading.Thread(target=_pipe_reader, args=(proc.stdout, out_chunks, log_fh, stamp), daemon=True)
         t_err = threading.Thread(target=_pipe_reader, args=(proc.stderr, err_chunks, log_fh, stamp), daemon=True)
         t_out.start()
@@ -697,6 +710,7 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                         pass
             threading.Thread(target=_feed, daemon=True).start()
         start = time.time()
+        start_mono = time.monotonic()
         cancelled = timed_out = stalled = repeat_aborted = False
         deadline_exceeded = False
         abort_marker = None
@@ -717,11 +731,14 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 _kill_tree(proc.pid)
                 _drain_streams(proc, t_out, t_err, timeout=5)
                 break
-            if time.time() - start > timeout:
+            elapsed = time.monotonic() - start_mono
+            if elapsed > timeout:
                 # Claude/Codex 的工具循环可能持续吐 stream-json 事件而迟迟
-                # 不给最终 result。只要仍有活动，交给 stall_timeout 作为静默
-                # 上限；无输出的挂死仍按原单模型 timeout 快速换将。
-                active = stall_timeout and time.time() - stamp[0] < stall_timeout
+                # 不给最终 result。活动延长与 stall 看门狗分离：无输出的挂死
+                # 仍按原单模型 timeout 快速换将，收到过输出则最多再给一个活动窗口。
+                active = (activity_timeout > 0 and stamp[1]
+                          and time.monotonic() - stamp[2] < activity_timeout
+                          and elapsed < timeout + activity_timeout)
                 if not active:
                     timed_out = True
                     _kill_tree(proc.pid)
@@ -788,6 +805,10 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
             "duration": duration, "cancelled": cancelled, "timed_out": timed_out,
             "stalled": stalled, "deadline_exceeded": deadline_exceeded,
             "abort_marker": abort_marker,
+            "activity_extended": bool(activity_timeout and stamp[1]
+                                       and duration > timeout),
+            "activity_timeout": activity_timeout,
+            "last_output_age": max(0.0, time.time() - stamp[0]),
         }
     finally:
         if log_fh:
@@ -1359,7 +1380,9 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
             # simple generic adapters and test shims that read stdin. CLI tools
             # that intentionally use argv still receive the bounded file hint.
             if kind == "generic" and stdin_text is None and len(tmpl) > 1:
-                stdin_text = prompt
+                # 模板明确将提示词放进 argv 时，原文只保存在文件里；同时再
+                # 写入 stdin 会让部分包装器重复读取，也无法解决 Windows 命令行上限。
+                stdin_text = None
             tmp_files.append(pf)
     return argv, stdin_text, prompt, tmp_files
 
@@ -1389,6 +1412,14 @@ def _stall_timeout(env_name, default):
     错误按超时归类走既有换模型/换将链路。只对事件流持续流动的 CLI 启用
     （codex JSONL / claude stream-json）；qwen/opencode/generic 结束才一次性
     输出，开了会误杀正常长任务，仍靠总超时兜底。env 可调，0=关闭。"""
+    try:
+        return max(0, int(os.environ.get(env_name, str(default))))
+    except Exception:
+        return default
+
+
+def _activity_timeout(env_name, default=DEFAULT_STREAM_ACTIVITY_TIMEOUT_S):
+    """流式 CLI 的活动延长窗口，独立于停滞看门狗配置。"""
     try:
         return max(0, int(os.environ.get(env_name, str(default))))
     except Exception:
@@ -1473,8 +1504,10 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     "kind": kind, "model": agent.get("model"), "attempts": []}
     if kind == "codex":
         stall_t = _stall_timeout("TUTTI_CODEX_STALL_TIMEOUT", 600)
+        activity_t = _activity_timeout("TUTTI_CODEX_ACTIVITY_TIMEOUT")
     elif kind == "claude":
         stall_t = _stall_timeout("TUTTI_CLAUDE_STALL_TIMEOUT", 600)
+        activity_t = _activity_timeout("TUTTI_CLAUDE_ACTIVITY_TIMEOUT")
     else:
         # 数据驱动：catalog orch.stall_timeout_s——给 kimi/qwen 这类评审用
         # CLI 配置后，静默挂死即杀（qwen 900s：2026-09-22 MCP 收尾死锁案）；
@@ -1483,6 +1516,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             stall_t = max(0, int((agent.get("orch") or {}).get("stall_timeout_s") or 0))
         except Exception:
             stall_t = 0
+        activity_t = 0
     # 5G：approval NEVER 一线（无人值守不静默降级）
     ok, reason = _check_approval(agent)
     if not ok:
@@ -1582,6 +1616,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                       timeout=min(timeout, remaining), deadline=deadline,
                                       cancel_event=cancel_event,
                                       log_path=log_path, stall_timeout=stall_t,
+                                      activity_timeout=activity_t,
                                       repeat_abort=repeat_guard,
                                       abort_markers=stream_abort_markers)
                 finally:

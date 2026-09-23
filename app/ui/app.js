@@ -2949,8 +2949,11 @@ function taskContextItems(det) {
     items.push({ label: t("复制工作目录路径"), fn: () => revealPath("tasks", taskId, false) });
     if (runId) items.push({ label: t("复制日志目录路径"), fn: () => revealPath("runs", runId, false) });
     const st = det.dataset.status || "";
-    if (st === "failed" || st === "cancelled") items.push({ label: t("↻ 继续任务"), fn: () => retryTask(taskId) });
-    items.push({ label: (st === "failed" || st === "cancelled") ? t("✎ 编辑重试") : t("基于此任务新建"),
+    const latestTaskRun = ((S.state || {}).task_latest || {})[taskId] || {};
+    const retryable = runNeedsRetry(latestTaskRun) ||
+      st === "failed" || st === "cancelled" || st === "timeout";
+    if (retryable) items.push({ label: t("↻ 继续任务"), fn: () => retryTask(taskId) });
+    items.push({ label: retryable ? t("✎ 编辑重试") : t("基于此任务新建"),
       fn: () => newFromTask(taskId) });
     const sTask = ((S.state || {}).tasks || []).find((x) => x.id === taskId);
     if (sTask && sTask.serial && st !== "running" && st !== "queued")
@@ -3821,7 +3824,7 @@ window.openRunInRuns = function (id) { jumpToRun(id); };
  * 「编辑重试」——同一预填行为（newFromTask），标签贴合「改完再跑」的意图；
  * 其余状态维持原标签。两按钮互斥出现，按钮区不因新增功能多占一行。 */
 function setEditRetry(taskId, status, taskExists) {
-  const failedish = !!taskId && (status === "failed" || status === "cancelled");
+  const failedish = !!taskId && (status === "failed" || status === "cancelled" || status === "timeout");
   const be = $("btn-editretry");
   if (be) be.classList.toggle("hidden", !failedish);
   const bn = $("btn-newfrom");
@@ -3846,18 +3849,30 @@ function syncArchBtn(task, active) {
   };
 }
 
-/* 重试按钮三态：失败/取消 → 「↻ 继续任务」（断点续跑语义）；连载任务完整跑完
+/* 质量未通过的代码任务也必须能重试：代码流水线会把「实现完成但验收未通过」
+ * 收在 done + verdict.pass=false，不能因此把唯一的重试入口隐藏。 */
+function runNeedsRetry(run) {
+  if (!run || !run.task_id) return false;
+  if (["failed", "cancelled", "timeout"].includes(run.status)) return true;
+  if (run.status !== "done") return false;
+  const v = run.verdict || {};
+  return v.pass === false || v.publishable === false ||
+    v.verify_pass === false || v.review_pass === false;
+}
+
+/* 重试按钮三态：失败/取消/质量未通过 → 「↻ 继续任务」（断点续跑语义）；连载任务完整跑完
  * 但质量未达标（verdict.publishable=false）→ 「↻ 重写未达标章」——后端 retry
  * 会把未过线章从继承清单剔除，只重写重评这几章（store.retry_task 未达标分支）；
  * 其余状态隐藏。 */
 function setRetryBtn(run, task) {
   const b = $("btn-retry");
   if (!b) return;
-  const failedish = !!run.task_id && (run.status === "failed" || run.status === "cancelled");
+  const retryable = runNeedsRetry(run);
   const rewrite = !!(run.task_id && task && task.serial && run.status === "done"
     && run.verdict && run.verdict.publishable === false);
-  b.classList.toggle("hidden", !(failedish || rewrite));
-  b.textContent = rewrite ? t("↻ 重写未达标章") : t("↻ 继续任务");
+  b.classList.toggle("hidden", !(retryable || rewrite));
+  b.textContent = rewrite ? t("↻ 重写未达标章")
+    : (run.status === "done" ? t("↻ 重试任务") : t("↻ 继续任务"));
   b.title = rewrite
     ? t("只重写上一遍未过线的章节，已过线章节沿用成稿与评分")
     : t("再跑一次这个任务；连载任务会断点续跑，已完成章节不重写");
@@ -9958,6 +9973,14 @@ function renderZentaoStatus() {
     (v.last_error ? '<span class="zt-err">' + t("最近错误：") + esc(v.last_error) + "</span>" : "");
 }
 
+/* bug 详情页地址：后端回传探测出的 web 根（含 /zentao 子路径），
+   GET 形态 index.php?m=bug&f=view&bugID=N 对老版/新版、PATH_INFO 开关都通用。 */
+function zentaoBugUrl(c) {
+  const base = String((S.zentao || {}).bug_base || "").replace(/\/+$/, "");
+  if (!base || !c.bug_id) return "";
+  return base + "/index.php?m=bug&f=view&bugID=" + encodeURIComponent(c.bug_id);
+}
+
 function renderZentaoClaims() {
   const box = $("zentao-claims");
   if (!box) return;
@@ -9966,7 +9989,13 @@ function renderZentaoClaims() {
     const tasks = (c.tasks || []).map((tk) =>
       "<span>" + t("【") + (tk.side === "frontend" ? t("前端") : t("后端")) + t("】") +
       '<a href="#" onclick="zentaoOpenRun(\'' + esc(tk.run_id || "") + '\');return false;">' + esc(tk.task_id || "?") + "</a></span>").join("");
-    return '<div class="card"><div class="head"><span class="name">#' + esc(c.bug_id) + " " + esc(c.title || "") + "</span>" +
+    const bugUrl = zentaoBugUrl(c);
+    const name = "#" + esc(c.bug_id) + " " + esc(c.title || "");
+    const headName = bugUrl
+      ? '<a class="zt-bug-link" href="' + esc(bugUrl) + '" target="_blank" rel="noopener" title="' +
+        esc(t("在禅道中打开 Bug 详情")) + '">' + name + "</a>"
+      : name;
+    return '<div class="card"><div class="head"><span class="name">' + headName + "</span>" +
       zentaoStateTag(c.state) + "</div>" +
       '<div class="auto-meta">' +
       (zentaoTriText(c) ? "<span>" + esc(zentaoTriText(c)) + "</span>" : "") +

@@ -344,12 +344,12 @@ def _requeue_await_slot(job, waits_left=None):
             return
         if _restart_drain:
             _close_unstarted(job, "服务正在完成升级重启；本次未排队，请稍后重试",
-                             statuses=("running",))
+                             statuses=("queued", "running"))
         elif waits_left > 0:
             _requeue_await_slot(job, waits_left - 1)
         else:
             _close_unstarted(job, "并发位已满，排队等待超时仍未起跑，请稍后重试",
-                             statuses=("running",))
+                             statuses=("queued", "running"))
 
     with _timer_lock:
         if run_id in _deferred_timers:

@@ -150,11 +150,26 @@ async function main() {
       pf.routes === 1 && pf.routeModule === "99" && pf.hint === "Spring Boot 服务", prof);
     const pwPlaceholder = await evalJs(`document.getElementById("zt-password").placeholder`);
     check("② 已存密码不回显", String(pwPlaceholder || "").indexOf("已保存") >= 0, pwPlaceholder);
+    // 种子 claim 是 fixing + 孤儿 run_id：start() 会在启动 3 秒后跑 boot 对账
+    // （#27697 死窗案补的），把查无此 run 的 claim 判成 lost——断言按该确定性行为走。
     const claim = await waitFor(`(() => {
       const t = document.getElementById("zentao-claims").textContent;
-      return t.indexOf("种子 Bug") >= 0 && t.indexOf("修复中") >= 0 && t.indexOf("排查：后端问题") >= 0;
+      return t.indexOf("种子 Bug") >= 0 && t.indexOf("记录丢失") >= 0 && t.indexOf("排查：后端问题") >= 0;
     })()`, 8000);
-    check("② 修复记录含排查徽章与状态", claim === true);
+    check("② 修复记录含排查徽章与状态（孤儿 run 被 boot 对账判「记录丢失」）", claim === true);
+
+    // ②c bug 号一键直达禅道详情：无探测缓存时回落 base_url 拼 GET 形态链接（新老版通用）
+    const bugLink = await evalJs(`(() => {
+      const a = document.querySelector("#zentao-claims .zt-bug-link");
+      if (!a) return "";
+      return JSON.stringify({ href: a.getAttribute("href"), target: a.target,
+        title: a.title, text: a.textContent.slice(0, 40) });
+    })()`, true);
+    const bl = JSON.parse(bugLink || "{}");
+    check("②c bug 号是链接：新页签打开禅道 bug 详情（GET 形态回落 base_url）",
+      bl.href === "http://127.0.0.1:18949/index.php?m=bug&f=view&bugID=501" &&
+      bl.target === "_blank" && bl.title.indexOf("禅道") >= 0 &&
+      bl.text.indexOf("#501") >= 0 && bl.text.indexOf("种子 Bug") >= 0, bugLink);
 
     // ②b 仓库·工作目录行：「选择…」按钮 + 占位文案讲真话 + 点选回填同一行（pick_folder 已 stub 防真弹窗）
     await evalJs(`(() => {
@@ -181,8 +196,8 @@ async function main() {
       });
     })()`, true);
     const wr = JSON.parse(wdRow || "{}");
-    check("②b 工作目录行渲染（前后端各一行·带选择按钮）",
-      wr.count === 2 && wr.hasBtn === true, wdRow);
+    check("②b 工作目录行渲染（前后端各两行：目录+基线分支·带选择按钮）",
+      wr.count === 4 && wr.hasBtn === true, wdRow);
     check("②b 占位文案改为「空 = 用默认保存路径」",
       wr.ph === "空 = 用默认保存路径", wdRow);
     // 几何回归：档案卡里所有值输入（含工作目录行）不得溢出卡片右缘（窄卡裁切案）
@@ -288,8 +303,8 @@ async function main() {
     })()`, true);
     const ly = JSON.parse(layout || "{}");
     check("④b 自动化选项与扫描间隔成组对齐", ly.autoH < 100 && ly.numberInside, layout);
-    check("④b 扫描间隔用分钟：单位文案+最小值 5+老小时键迁移(2h→120min)",
-      ly.unit === "分钟" && ly.ivMin === "5" && ly.ivVal === "120", layout);
+    check("④b 扫描间隔用分钟：老默认2h跟随新默认5分钟+最小值 5",
+      ly.unit === "分钟" && ly.ivMin === "5" && ly.ivVal === "5", layout);
     check("④b 四个开关渲染为等高胶囊", ly.chips === 4 && ly.chipH >= 26 && ly.chipH <= 44, layout);
     check("④b 产品名称下拉有可读宽度且未溢出", ly.productW >= 180 && ly.productVisible, layout);
     await evalJs(`S.ztProducts = []; S.ztUsers = []; renderZentaoProfiles(); "ok"`);

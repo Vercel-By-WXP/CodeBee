@@ -166,3 +166,48 @@ class TestRunProcessStallWatchdog(BaseTest):
                     "orch": {"kind": "qwen", "command": "qwen"}}]
         catalog._apply_stall_patch(entries)
         self.assertEqual(entries[0]["orch"]["stall_timeout_s"], 900)
+
+
+class TestRunProcessActivityWindow(BaseTest):
+    """流式 CLI 不能因基础 60 秒窗口到期而误杀。"""
+
+    def test_stream_activity_extends_base_timeout_even_without_stall_watchdog(self):
+        from app.core.runner import run_process
+        child_script = (
+            "import time\n"
+            "for i in range(8):\n"
+            "    print(f'event{i}', flush=True)\n"
+            "    time.sleep(.1)\n"
+        )
+        started = time.time()
+        res = run_process(
+            argv=[sys.executable, "-c", child_script], timeout=.25,
+            activity_timeout=.8, stall_timeout=0)
+        self.assertTrue(res["ok"], msg=res)
+        self.assertGreater(time.time() - started, .25)
+        self.assertIn("event7", res["stdout"])
+
+    def test_activity_extension_requires_output(self):
+        from app.core.runner import run_process
+        child_script = "import time; time.sleep(5)"
+        started = time.time()
+        res = run_process(
+            argv=[sys.executable, "-c", child_script], timeout=.25,
+            activity_timeout=.8, stall_timeout=0)
+        self.assertTrue(res["timed_out"], msg=res)
+        self.assertLess(time.time() - started, 1.2)
+
+    def test_deadline_wins_over_activity_extension(self):
+        from app.core.runner import run_process
+        child_script = (
+            "import time\n"
+            "while True:\n"
+            "    print('event', flush=True)\n"
+            "    time.sleep(.05)\n"
+        )
+        res = run_process(
+            argv=[sys.executable, "-c", child_script], timeout=.1,
+            activity_timeout=5, stall_timeout=0,
+            deadline=time.monotonic() + .45)
+        self.assertTrue(res["timed_out"], msg=res)
+        self.assertTrue(res["deadline_exceeded"], msg=res)

@@ -1965,6 +1965,17 @@ def save_config(patch):
     return view()["config"]
 
 
+def bug_web_base(cfg=None):
+    """给前端拼 bug 详情页用的 web 根：探测出的有效地基（含自动补的 /zentao 子路径）
+    优先，没探测过回落用户填的原始地址。返回 stripped 根或空串。"""
+    c = dict(cfg) if cfg else _cfg()
+    hit = resolved_base_url(c.get("base_url"))
+    if hit:
+        return hit
+    b = re.sub(r"/api\.php/v1$", "", str(c.get("base_url") or "").strip().rstrip("/"))
+    return b if b.startswith(("http://", "https://")) else ""
+
+
 def view():
     """前端视图：配置脱敏（password 只回是否已设）+ claims 列表（新在前）。"""
     _ensure_loaded()
@@ -1973,9 +1984,11 @@ def view():
         has_pw = bool(cfg.get("password"))
         cfg["password"] = ""
         cfg["has_password"] = has_pw
+        bug_base = bug_web_base(cfg)
         claims = sorted(_STATE["claims"].values(),
                         key=lambda c: str(c.get("claimed_at") or ""), reverse=True)
         return {"config": cfg,
+                "bug_base": bug_base,
                 "claims": [dict(c) for c in claims],
                 "last_scan": _STATE.get("last_scan") or "",
                 "next_scan": _STATE.get("next_scan") or "",

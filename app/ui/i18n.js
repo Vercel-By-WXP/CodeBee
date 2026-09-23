@@ -2056,6 +2056,7 @@
     "记录丢失": "Record lost",
     "修复任务：": "Fix task: ",
     "认领于 ": "Claimed at ",
+    "在禅道中打开 Bug 详情": "Open bug details in ZenTao",
     "还没有认领过 Bug——配置好连接与产品 ID 后点「立即扫描」。": "No bugs claimed yet — set up the connection and product IDs, then click \"Scan Now\".",
     "禅道配置已保存": "ZenTao settings saved",
     "连接成功": "Connected",
