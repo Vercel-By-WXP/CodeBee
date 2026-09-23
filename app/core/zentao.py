@@ -897,6 +897,40 @@ def list_bugs(cfg, product_id, profile=None):
     return out[:MAX_BUGS]
 
 
+def weekly_brief(limit=12):
+    """本周工作素材（工作汇报起草注入用，2026-09-23 Weekly Report Generator 借鉴
+    ——「从工作系统取数入素材」）：分配给我的活跃任务 + 指派给我的活跃 Bug 摘要。
+    尽力而为：未配置/不可达/响应形状不对一律返回空串，绝不阻塞汇报起草。
+    多产品档案逐个聚合（同 _scan 口径），条目总量封顶 limit*2。"""
+    lines = []
+    try:
+        cfg = _cfg()
+        for profile in _profiles(cfg):
+            assigned = str(profile.get("assigned_to") or "").strip()
+            if not assigned:
+                continue
+            try:
+                d = _call("GET", "/tasks?%s" % urllib.parse.urlencode(
+                    {"assignedTo": assigned, "limit": limit}), cfg=cfg)
+                tasks = d.get("tasks") if isinstance(d, dict) else None
+                for t in (tasks or [])[:limit]:
+                    if isinstance(t, dict) and t.get("status") in ("wait", "doing"):
+                        lines.append("- [任务#%s] %s（%s）" % (
+                            t.get("id"), t.get("name") or "", t.get("status") or ""))
+            except Exception:
+                pass
+            try:
+                for b in list_bugs(cfg, profile.get("product"), profile)[:limit]:
+                    lines.append("- [Bug#%s] %s（严重级 %s）" % (
+                        b.get("id"), b.get("title") or "",
+                        b.get("severity") or b.get("status") or ""))
+            except Exception:
+                pass
+    except Exception:
+        return ""
+    return "\n".join(lines[:limit * 2])
+
+
 def fetch_modules(product_id):
     """拉产品模块清单（模块路由配置辅助）。接口不存在/失败报人话，提示手填 ID。"""
     _ensure_loaded()

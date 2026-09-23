@@ -3062,6 +3062,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             refresh_actual_route(
                 impl, implement_reason="章节修订：%s" %
                 (impl.get("label") or impl.get("id")))
+            # 正史重写后旧推演标过期（inkos 借鉴）：修订改写了章稿，本章的
+            # 分支计划不再反映当前正史——审计标记防误读。失败静默。
+            try:
+                branching.mark_stale(workdir, i)
+            except Exception:
+                pass
             _check_cancel(ev)
         cs_new = {"chapter": i, "title": ch["title"], "means": means,
                   "passed": bool(means) and all(v >= threshold_ch for v in means.values()),
@@ -3623,6 +3629,17 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             if is_research:
                 # 调研报告追加证据链要求（gpt-researcher 借鉴）
                 p += RESEARCH_APPENDIX
+            if task.get("type") == "weekly_report":
+                # 禅道本周素材注入（Weekly Report Generator 借鉴：从工作系统
+                # 取数入素材）。尽力而为：未配置/不可达静默为空，绝不阻塞起草。
+                try:
+                    from . import zentao as _zt
+                    brief = _zt.weekly_brief()
+                except Exception:
+                    brief = ""
+                if brief:
+                    p += ("\n\n## 禅道本周工作素材（如实取材，缺失数字留待补，"
+                          "勿虚构业绩）\n" + brief)
             p += _content_contract(task)
             return p
 
