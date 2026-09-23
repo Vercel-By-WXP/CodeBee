@@ -309,6 +309,48 @@ async function main() {
     check("④b 产品名称下拉有可读宽度且未溢出", ly.productW >= 180 && ly.productVisible, layout);
     await evalJs(`S.ztProducts = []; S.ztUsers = []; renderZentaoProfiles(); "ok"`);
 
+    // ④c 模块清单就位 → 模块 ID 变下拉（保留已配 #99；清单外的值给「手填」选项防采集丢路由）
+    const modSel = await evalJs(`(() => {
+      S.ztMods = { 7: [{id: 99, name: "登录"}, {id: 88, name: "支付"}] };
+      S.ztProfiles = ztHarvestProfiles();
+      renderZentaoProfiles();
+      const sel = document.querySelector("#zt-profiles .zt-prof .zt-mr-module");
+      return JSON.stringify({tag: sel.tagName, val: sel.value, opts: sel.options.length,
+        opt1: sel.options[1] ? sel.options[1].textContent : ""});
+    })()`, true);
+    const ms = JSON.parse(modSel || "{}");
+    check("④c 模块清单就位 → 模块 ID 变下拉且保留已配 #99",
+      ms.tag === "SELECT" && ms.val === "99" && ms.opts === 3 && ms.opt1.indexOf("登录") >= 0, modSel);
+    const modHf = await evalJs(`(() => {
+      S.ztProfiles[0].module_routes[0].module = 77;
+      renderZentaoProfiles();
+      const sel = document.querySelector("#zt-profiles .zt-prof .zt-mr-module");
+      const hf = sel.options[1] ? sel.options[1].textContent : "";
+      S.ztProfiles[0].module_routes[0].module = 99;
+      renderZentaoProfiles();
+      return JSON.stringify({hf,
+        val: document.querySelector("#zt-profiles .zt-prof .zt-mr-module").value});
+    })()`, true);
+    const mh = JSON.parse(modHf || "{}");
+    check("④c 清单外已配值给「手填」选项（采集不掉路由）",
+      mh.hf.indexOf("77") >= 0 && mh.hf.indexOf("手填") >= 0 && mh.val === "99", modHf);
+    // 路由行几何：删按钮与输入等高、钉在行尾不溢出卡片、与转给谁输入留缝、模块下拉有宽度
+    const mrGeo = await evalJs(`(() => {
+      const card = document.querySelector("#zt-profiles .zt-prof");
+      const row = card.querySelector(".zt-mr-row");
+      const cb = card.getBoundingClientRect(), rb = row.getBoundingClientRect();
+      const del = row.querySelector(".zt-mr-del").getBoundingClientRect();
+      const acc = row.querySelector(".zt-mr-account").getBoundingClientRect();
+      const mod = row.querySelector(".zt-mr-module").getBoundingClientRect();
+      return JSON.stringify({delW: Math.round(del.width), delH: Math.round(del.height),
+        modW: Math.round(mod.width), gap: Math.round(del.left - acc.right),
+        overflow: Math.round(del.right - cb.right), rowH: Math.round(rb.height)});
+    })()`, true);
+    const mg = JSON.parse(mrGeo || "{}");
+    check("④c 路由行几何：删按钮等高钉行尾、模块下拉有宽度、无溢出",
+      mg.delW >= 30 && mg.delH >= 24 && mg.delH <= mg.rowH + 1 && mg.modW >= 120 &&
+      mg.gap >= 4 && mg.overflow <= 2, mrGeo);
+
     // ⑤ 立即扫描对不可达地址优雅报错
     await evalJs(`(() => {
       window.__ztnet = [];

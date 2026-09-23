@@ -5238,8 +5238,10 @@ body.welcome-open { overflow: hidden; }
 .zt-mr-head button { margin-left: auto; }
 .zt-mr-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
 .zt-mr-row .zt-num { width: 110px; flex: none; }
+.zt-mr-row .zt-mr-module { flex: 0 1 170px; min-width: 120px; }   /* 下拉形态：装得下 #id 模块名，窄卡可缩 */
 .zt-mr-row .zt-mr-side { width: 110px; flex: none; }
-.zt-mr-row .zt-mr-account { flex: 1; min-width: 140px; max-width: 300px; }
+.zt-mr-row .zt-mr-account { flex: 1; min-width: 140px; }  /* 吃满剩余行宽，删除按钮钉在行尾 */
+.zt-mr-row .zt-mr-del { flex: none; align-self: stretch; padding-top: 0; padding-bottom: 0; min-width: 36px; }
 
 /* ---------------- 禅道·窄屏（追加于文件尾防并行重排） ---------------- */
 /* ≤900px：档案卡网格塌单列（标签在上、输入全宽），与 .grid-2 的断点口径一致 */
@@ -5251,9 +5253,9 @@ body.welcome-open { overflow: hidden; }
 /* ≤640px：模块路由行换行——模块/端一行，转给谁独占一行，删除按钮随行 */
 @media (max-width: 640px) {
   .zt-mr-row { flex-wrap: wrap; }
-  .zt-mr-row .zt-num { flex: 1 1 30%; min-width: 86px; }
+  .zt-mr-row .zt-num, .zt-mr-row .zt-mr-module { flex: 1 1 34%; min-width: 96px; }
   .zt-mr-row .zt-mr-side { flex: 1 1 30%; min-width: 96px; }
-  .zt-mr-row .zt-mr-account { flex: 1 1 100%; max-width: none; order: 5; }
+  .zt-mr-row .zt-mr-account { flex: 1 1 100%; order: 5; }
 }
 
 /* 需求拷问「已确认，开跑」条（借鉴 superpowers 分段签核）：全部问题选完出现 */

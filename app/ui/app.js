@@ -9779,6 +9779,23 @@ async function loadZentao() {
 
 const ZT_SIDES = ["backend", "frontend"];
 
+/* 模块字段双形态（同产品字段口径）：拉到清单 → 下拉选（#id 名称）；
+ * 没拉到（连接不可用/该产品无模块）→ 保留手填 ID。已配值不在清单里也给
+ * 「手填」选项，否则 select 选中态落空、采集时该路由会被当成 0 丢掉。 */
+function ztModuleField(p, r) {
+  const mods = (S.ztMods || {})[p.product] || [];
+  const cur = r.module ? String(r.module) : "";
+  if (!mods.length)
+    return '<input class="zt-mr-module zt-num" placeholder="' + t("模块 ID") + '" value="' + esc(cur) + '">';
+  const opts = ['<option value=""' + (cur ? "" : " selected") + " disabled>" + t("— 选模块 —") + "</option>"];
+  if (cur && !mods.some((m) => String(m.id) === cur))
+    opts.push('<option value="' + esc(cur) + '" selected>#' + esc(cur) + t("（手填）") + "</option>");
+  for (const m of mods)
+    opts.push('<option value="' + esc(m.id) + '"' + (cur === String(m.id) ? " selected" : "") + ">#" +
+      esc(m.id) + " " + esc(m.name || "") + "</option>");
+  return '<select class="zt-mr-module">' + opts.join("") + "</select>";
+}
+
 /* 产品字段双形态：拉到清单 → 下拉选；没拉到（连接不可用/老版无接口）→ 保留手填 ID */
 function ztProductField(p) {
   const cur = p.product || "";
@@ -9799,7 +9816,7 @@ function ztProductField(p) {
   return '<select class="zt-p-product" onchange="ztProdChanged(this)">' + opts.join("") + "</select>";
 }
 
-/* 选了产品 → 静默拉该产品的模块清单装进 datalist（模块路由也能下拉） */
+/* 选了产品 → 静默拉该产品的模块清单进 S.ztMods（模块路由就地变下拉） */
 function ztProdChanged(el) {
   const card = el.closest(".zt-prof");
   const i = Array.from(document.querySelectorAll("#zt-profiles .zt-prof")).indexOf(card);
@@ -9857,11 +9874,11 @@ function ztProfCardHtml(p, i) {
   const SIDE_OPTS = [["backend", "后端"], ["frontend", "前端"], ["both", "双端"], ["not_ours", "非我方"]];
   const rows = routes.map((r, j) =>
     '<div class="zt-mr-row" data-j="' + j + '">' +
-    '<input class="zt-mr-module zt-num" list="zt-mods-' + i + '" placeholder="' + t("模块 ID") + '" value="' + esc(r.module || "") + '">' +
+    ztModuleField(p, r) +
     '<select class="zt-mr-side">' + SIDE_OPTS.map((o) =>
       '<option value="' + o[0] + '"' + (r.side === o[0] ? " selected" : "") + ">" + t(o[1]) + "</option>").join("") + "</select>" +
     '<input class="zt-mr-account" list="zt-users" placeholder="' + t("转给谁（禅道账号，可空）") + '" value="' + esc(r.account || "") + '">' +
-    '<button class="ghost small" onclick="ztMrDel(' + i + "," + j + ')">' + t("删") + "</button>" +
+    '<button class="ghost small zt-mr-del" type="button" onclick="ztMrDel(' + i + "," + j + ')">' + t("删") + "</button>" +
     "</div>").join("");
   const owners = p.owners || {};
   return '<div class="card zt-prof" data-i="' + i + '"><div class="head">' +
@@ -9885,10 +9902,9 @@ function ztProfCardHtml(p, i) {
     '<label data-i18n="非我方转派给">非我方转派给</label><input class="zt-p-owner" list="zt-users" data-side="not_ours" value="' + esc(owners.not_ours || "") + '" placeholder="' + t("空 = 指回报告人") + '">' +
     "</div>" +
     '<div class="zt-mrs"><div class="zt-mr-head">' + t("模块路由（模块 → 端/人，排查优先级最高）") +
-    '<button class="ghost small" onclick="ztFetchMods(' + i + ')">' + t("拉取模块清单") + "</button>" +
+    '<button class="ghost small" onclick="ztFetchMods(' + i + ', false, true)">' + t("拉取模块清单") + "</button>" +
     '<button class="ghost small" onclick="ztMrAdd(' + i + ')">' + t("＋ 加路由") + "</button></div>" +
     (rows || '<div class="hint">' + t("未配路由——模块不在路由里的 Bug 走 AI 排查") + "</div>") +
-    '<datalist id="zt-mods-' + i + '"></datalist>' +
     "</div></div>";
 }
 
@@ -9974,22 +9990,34 @@ function ztMrDel(i, j) {
   renderZentaoProfiles();
 }
 
-async function ztFetchMods(i, silent) {
-  const pidEl = $("zt-profiles").querySelectorAll(".zt-prof")[i]?.querySelector(".zt-p-product");
+/* 拉产品模块清单 → S.ztMods[产品ID]（重画后模块 ID 变下拉）。
+ * S.ztModsAsked 每产品只自动拉一次（失败不重试，免得每次重画都打一趟）；
+ * 「拉取模块清单」按钮 force=true 绕过去，手动可反复刷新。
+ * silent=自动补拉（静默无busy）；重画前先采集，保住未保存输入。 */
+async function ztFetchMods(i, silent, force) {
+  const card = $("zt-profiles").querySelectorAll(".zt-prof")[i];
+  const pidEl = card && card.querySelector(".zt-p-product");
   const pid = parseInt((pidEl && pidEl.value) || "", 10);
   if (!pid) {
     if (!silent) toast(t("先选产品再拉模块清单"), true);
     return;
   }
+  S.ztModsAsked = S.ztModsAsked || {};
+  if (S.ztModsAsked[pid] && !force) return;
+  S.ztModsAsked[pid] = true;
   let r;
   try {
-    r = await api("/api/zentao/modules", { method: "POST", body: JSON.stringify({ product: pid }) });
+    r = await api("/api/zentao/modules", { method: "POST", body: JSON.stringify({ product: pid }),
+      silent: !!silent, busy: !silent });
   } catch (e) { if (!silent) toast(e.message, true); return; }
   if (!r.ok) { if (!silent) toast(r.error || t("拉取失败"), true); return; }
-  const dl = $("zt-mods-" + i);
-  if (dl) dl.innerHTML = (r.modules || []).map((m) =>
-    '<option value="' + esc(m.id) + '">' + esc(m.name || "") + "</option>").join("");
-  if (!silent) toast(t("模块清单已拉到 ") + (r.modules || []).length + t(" 条，输入框可下拉选择"));
+  const mods = r.modules || [];
+  if (!mods.length) { if (!silent) toast(t("该产品没有模块清单"), true); return; }
+  S.ztMods = S.ztMods || {};
+  S.ztMods[pid] = mods;
+  S.ztProfiles = ztHarvestProfiles();
+  renderZentaoProfiles();
+  if (!silent) toast(t("模块清单已拉到 ") + mods.length + t(" 条，模块 ID 已变下拉选择"));
 }
 
 /* 拉产品/账号清单：产品 ID 变下拉，负责人/转派账号挂 datalist。silent=进页自动拉 */
@@ -10009,6 +10037,10 @@ async function ztFetchCatalog(silent) {
   if (prodOk) {           // 产品下拉就位（先采集已填值再重渲染）
     S.ztProfiles = ztHarvestProfiles();
     renderZentaoProfiles();
+    // 各产品模块清单静默补拉（每产品一次）：有清单的档案，模块 ID 路由行就地变下拉
+    (S.ztProfiles || []).forEach((p, i) => {
+      if (parseInt(p.product, 10) > 0 && !((S.ztMods || {})[p.product])) ztFetchMods(i, true);
+    });
   }
   if (silent) return;
   const got = [];
