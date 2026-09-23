@@ -39,9 +39,16 @@ def plan_branches(run_id, task, i, goal, outline_txt, prev, n, *, log_path=None)
     不是闸门）。全部分支连同 pick 追加 .codebee/branch-plans.md 审计。"""
     if n < 2:
         return None
+    # Token 压力守卫：压力 > 0.7 时跳过推演——每次推演是额外 4000
+    # max_tokens 编排者调用；长篇后期预算紧张时推演是第一个该省的增强
+    # （压缩守卫先跑、推演不跑，省下的预算留给正文章稿）。
+    try:
+        from . import token_meter
+        if token_meter.pressure_ratio(run_id) > 0.7:
+            return None
+    except Exception:
+        pass
     from . import modelhub, runner
-    if n < 2:
-        return None
     orch = modelhub.resolve_orchestrator()
     if not orch:
         return None
