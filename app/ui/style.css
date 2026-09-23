@@ -5562,8 +5562,8 @@ button.request-busy > * { opacity: .18; }
 .zt-prof .head .zt-p-product {
   width: min(360px, 100%); min-width: 180px; flex: 1 1 240px;
 }
-/* 禅道自动化开关行：四个开关做成并列胶囊（选中态用强调色淡染，一眼看出开了哪些），
-   扫描间隔靠右成组「标签 + 圆角输入框（内嵌单位）」。窄屏自动换行、间隔独占一行。
+/* 禅道自动化开关行：四个开关与扫描间隔紧凑排列，避免间隔被推到行尾留下大片空白。
+   窄屏自动换行，手机上间隔独占一行。
    （此前 grid 版与 flex 版叠了两层，后者已全量覆盖前者，此处合并成单块） */
 /* 禅道页小节标题收边距（全局 24px/12px 在这块 12px 高的小标题上下显得空） */
 #sub-zentao .sec-title { margin: 14px 0 8px; }
@@ -5592,7 +5592,7 @@ button.request-busy > * { opacity: .18; }
 .zt-auto-options .zt-interval-field {
   display: inline-flex; align-items: center; gap: 8px;
   grid-template-columns: none; min-width: 0;
-  margin-left: auto; color: var(--muted); font-size: 12.5px;
+  margin-left: 0; color: var(--muted); font-size: 12.5px;
 }
 .zt-auto-options .zt-iv-box {
   display: inline-flex; align-items: center;
@@ -5608,9 +5608,6 @@ button.request-busy > * { opacity: .18; }
 }
 .zt-auto-options .zt-iv-box input:focus { border-color: transparent; }
 .zt-auto-options .zt-iv-unit { font-size: 12px; padding-right: 11px; }
-@media (max-width: 900px) {
-  .zt-auto-options .zt-interval-field { margin-left: 0; }
-}
 @media (max-width: 640px) {
   .zt-prof .head .zt-p-product { min-width: 0; }
   .zt-auto-options .zt-interval-field { width: 100%; }
