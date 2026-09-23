@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from unittest import mock
 
 from base import BaseTest
 
@@ -263,6 +264,72 @@ class TestChainRuntimeFallback(BaseTest):
         R.run_agent(agent2, "hi", readonly=True)
         self.assertIn('model_provider="orch"', " ".join(str(x) for x in captured["argv"]))
         R.run_process = orig
+
+
+class TestAuthCredentialFallback(BaseTest):
+    """认证拒绝跳过同一凭据的其他模型，只尝试已绑定的不同凭据。"""
+
+    @staticmethod
+    def _entry(provider_id, key_id, model, host, key):
+        return {
+            "provider_id": provider_id, "key_id": key_id, "model": model,
+            "env": {"TEST_ROUTE_KEY": key},
+            "provider": {"id": provider_id, "name": provider_id,
+                         "base_url": "https://%s/v1" % host},
+        }
+
+    def _run(self, chain, results):
+        from app.core import runner
+        attempted = []
+
+        def fake_run_process(**kwargs):
+            attempted.append(kwargs["env"].get("TEST_ROUTE_KEY"))
+            return results[len(attempted) - 1]
+
+        agent = {"id": "cli-x", "kind": "generic", "mode": "real",
+                 "command": "echo", "env": {}, "call_chain": chain}
+        with mock.patch.object(runner, "run_process", side_effect=fake_run_process):
+            result = runner.run_agent(agent, "hi", workdir=str(self.workdir))
+        return result, attempted
+
+    def test_auth_failure_skips_same_key_then_tries_distinct_credentials(self):
+        chain = [
+            self._entry("prov-a", "k1", "m1", "a.test", "a-key-1"),
+            self._entry("prov-a", "k1", "m2", "a.test", "a-key-1"),
+            self._entry("prov-a", "k2", "m2", "a.test", "a-key-2"),
+            self._entry("prov-b", "k1", "m1", "b.test", "b-key-1"),
+        ]
+        results = [
+            {"ok": False, "exit_code": 1, "stdout": "",
+             "stderr": "Invalid API Key: Please provide valid API Key",
+             "duration": 0.01, "cancelled": False, "timed_out": False},
+            {"ok": False, "exit_code": 1, "stdout": "",
+             "stderr": "HTTP 401 Unauthorized", "duration": 0.01,
+             "cancelled": False, "timed_out": False},
+            {"ok": True, "exit_code": 0, "stdout": "recovered", "stderr": "",
+             "duration": 0.01, "cancelled": False, "timed_out": False},
+        ]
+
+        result, attempted = self._run(chain, results)
+
+        self.assertTrue(result["ok"], result.get("error"))
+        self.assertEqual(attempted, ["a-key-1", "a-key-2", "b-key-1"])
+        self.assertEqual(result["provider_id"], "prov-b")
+        self.assertTrue(any(item.get("skipped") for item in result["attempts"]))
+
+    def test_auth_failure_fails_fast_without_a_distinct_credential(self):
+        chain = [
+            self._entry("prov-a", "k1", "m1", "a.test", "a-key-1"),
+            self._entry("prov-a", "k1", "m2", "a.test", "a-key-1"),
+        ]
+        result, attempted = self._run(chain, [{
+            "ok": False, "exit_code": 1, "stdout": "",
+            "stderr": "401 Unauthorized", "duration": 0.01,
+            "cancelled": False, "timed_out": False,
+        }])
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(attempted, ["a-key-1"])
 
 
 if __name__ == "__main__":

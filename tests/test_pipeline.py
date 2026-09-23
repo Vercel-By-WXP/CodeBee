@@ -136,6 +136,48 @@ class TestCodeFallbackRoute(BaseTest):
         self.assertNotIn("fallback", saved["route_plan"]["implement"]["fallback"])
 
 
+class TestCodeAuthFailureStopsCliSwitch(BaseTest):
+    def runTest(self):
+        import threading
+        from unittest.mock import patch
+        from app.core import pipeline, store, task_compile
+
+        primary = {"id": "primary", "label": "Primary", "kind": "codex",
+                   "mode": "real"}
+        fallback = {"id": "fallback", "label": "Fallback", "kind": "opencode",
+                    "mode": "real"}
+        agents = [primary, fallback]
+        task = store.create_task({
+            "type": "code", "title": "认证失败不换 CLI", "goal": "完成代码任务",
+            "workdir": str(self.workdir), "verify_command": "exit 0",
+            "implementer": "primary",
+        })
+        task = dict(task, difficulty="default", engine="code")
+        task["_compiled_spec"] = task_compile.compile_task(task)
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running")
+        attempted = []
+
+        def fake_step(_run_id, _role, agent, *_args, **_kwargs):
+            attempted.append(agent["id"])
+            if agent["id"] == "primary":
+                return {"ok": False, "error": "退出码 1；stderr/stdout: HTTP 401 Unauthorized",
+                        "text": "", "sid": ""}
+            return {"ok": True, "error": "", "text": "done", "sid": ""}
+
+        plan = {"source": "test", "steps": [{"title": "实现", "detail": "实现"}]}
+        with patch.object(pipeline.planner, "make_code_plan", return_value=plan), \
+                patch.object(pipeline.modelhub, "bind_agent", side_effect=lambda a, *_: a), \
+                patch.object(pipeline, "_run_step", side_effect=fake_step):
+            pipeline._run_code(store.get_run(run["id"]), task, agents,
+                               threading.Event(), {}, "auto")
+
+        saved = store.get_run(run["id"])
+        self.assertEqual(attempted, ["primary"])
+        self.assertEqual(saved["status"], "failed")
+        self.assertIn("认证", saved.get("error", ""))
+
+
 class TestCodeFallbackThenPrimaryRepairRoute(BaseTest):
     def runTest(self):
         import threading

@@ -1243,6 +1243,14 @@ def _run_code(run, task, agents, ev, stats, mode):
         ok, res = _run_one(impl_agent)
         if ok:
             return True
+        if runner._auth_error(res.get("error") or ""):
+            auth_err = ("实现步骤失败（上游拒绝认证；已停止自动换 CLI，避免隐式切换供应商）。"
+                        "请检查当前绑定的 Key、账号权限和端点；需要认证降级时，"
+                        "请在该 CLI 的绑定链中显式配置不同凭据。错误：%s"
+                        % (res.get("error") or "")[:500])
+            store.update_run(run_id, expected_status="running", status="failed",
+                             error=auth_err, ended_at=_now())
+            return False
         # 单路实现失败：Best-of-N 赛马兜底（借鉴 orca worktree 择优）——多路并行
         # 各自 worktree 隔离实现+验证，胜者 diff 回主工作区；失败回落走换将
         if (mode == "auto" and impl_agent.get("mode") == "real"

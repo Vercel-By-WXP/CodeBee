@@ -137,6 +137,22 @@ class TestProviderKeys(BaseTest):
         modelhub.note_key_error(pid, "k1", "超时；stderr/stdout: ...")
         self.assertFalse(modelhub.provider_view()[0]["keys"][0]["cooling"])
 
+    def test_invalid_api_key_cools_key_and_switches(self):
+        """明确的认证拒绝标记该 KEY 冷却，后续解析先走备用 KEY。"""
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        pid = self._one(modelhub)
+        modelhub.key_op(pid, "add", key=FAKE_K2)
+        modelhub.set_binding("claude-code", chain=[{"provider_id": pid, "model": "m1"}])
+
+        modelhub.note_key_error(pid, "k1", "Invalid API Key: Please provide valid API Key")
+
+        keys = modelhub.provider_view()[0]["keys"]
+        self.assertTrue(keys[0]["cooling"])
+        self.assertEqual(modelhub.providers()[0]["api_key"], FAKE_K2)
+        chain = modelhub.resolve_binding("claude-code")["call_chain"]
+        self.assertEqual([entry["key_id"] for entry in chain], ["k2"])
+
     def test_runner_quota_table_in_sync(self):
         """runner 的独立 _QUOTA 副本与 modelhub 同源：新增文案两边都要认。"""
         from app.core import modelhub, runner
@@ -145,6 +161,17 @@ class TestProviderKeys(BaseTest):
                     "codex: exceeded retry limit, last status: 429 Too Many Requests"):
             self.assertTrue(modelhub._quota_error(err), err)
             self.assertTrue(runner._quota_error(err), err)
+
+    def test_runner_auth_errors_match_key_cooldown_rules(self):
+        """runner 的换将识别与 modelhub 的 KEY 冷却识别保持一致。"""
+        from app.core import modelhub, runner
+        for err in ("Invalid API Key: Please provide valid API Key",
+                    "HTTP 401 Unauthorized", "authentication_error: invalid token"):
+            self.assertTrue(modelhub._auth_error(err), err)
+            self.assertTrue(runner._auth_error(err), err)
+        for err in ("HTTP 403 model access denied", "超时"):
+            self.assertFalse(modelhub._auth_error(err), err)
+            self.assertFalse(runner._auth_error(err), err)
 
     def test_fallback_model_entries_carry_key_id(self):
         """无显式链时换模型的回退条目也带 key_id：失败时 runner 才能记账冷却。

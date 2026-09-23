@@ -681,6 +681,7 @@ def provider_view():
 # 读取点（凭据注入/健康探测/取模型列表）无需感知多 KEY 结构。没配 keys 的老数据
 # 由 _provider_keys 按 api_key 现场合成一条——文件一个字节都不用改。
 _KEY_COOLDOWN_S = 30 * 60      # 欠费类失败后的冷却时长
+_AUTH_COOLDOWN_S = 30 * 60     # 明确认证拒绝后的冷却时长，可在 UI 手动恢复
 MAX_PROVIDER_KEYS = 8          # 单厂商 KEY 上限
 MAX_CHAIN_ATTEMPTS = 8         # 链展开后的尝试上限（模型 × KEY）
 # 欠费/配额/限流类失败：换 KEY 有意义（同厂商另一账号=另一份额度与并发桶），
@@ -697,6 +698,19 @@ def _quota_error(err):
     即回到首选），比「账单断了还死磕同一把 KEY」小得多。"""
     e = (err or "").lower()
     return any(k in e for k in _QUOTA_HINTS)
+
+
+_AUTH_HINTS = ("invalid api key", "invalid_api_key", "api key is invalid",
+               "incorrect api key", "unauthorized", "unauthorised",
+               "authentication failed", "authentication error",
+               "authentication_error", "invalid token", "invalid_token",
+               "http 401", "status code 401")
+
+
+def _auth_error(err):
+    """明确的凭据认证拒绝；不把一般 403/模型权限错误误判成 KEY 错误。"""
+    e = (err or "").lower()
+    return any(k in e for k in _AUTH_HINTS)
 
 
 def _provider_keys(prov, available_only=False, now=None):
@@ -826,7 +840,7 @@ def key_op(provider_id, op, key_id="", key="", label="", enabled=None, ids=None)
 
 
 def note_key_error(provider_id, key_id, error=""):
-    """一次 KEY 级失败回写：欠费类进冷却（后续解析自动跳过 → 切备用 KEY）。"""
+    """一次 KEY 级失败回写：欠费或明确认证拒绝进冷却，后续解析切备用 KEY。"""
     import time as _t
     if not provider_id or not key_id:
         return
@@ -842,6 +856,8 @@ def note_key_error(provider_id, key_id, error=""):
         target["last_fail_at"] = _t.time()
         if _quota_error(error):
             target["cool_until"] = _t.time() + _KEY_COOLDOWN_S
+        elif _auth_error(error):
+            target["cool_until"] = _t.time() + _AUTH_COOLDOWN_S
         _sync_api_key(prov)
         _save(data)
 

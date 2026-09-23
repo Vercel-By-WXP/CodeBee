@@ -1007,6 +1007,24 @@ def _quota_error(err):
     return any(k in err for k in _QUOTA)
 
 
+_AUTH = ("invalid api key", "invalid_api_key", "api key is invalid",
+         "incorrect api key", "unauthorized", "unauthorised",
+         "authentication failed", "authentication error", "authentication_error",
+         "invalid token", "invalid_token", "http 401", "status code 401")
+
+
+def _auth_error(err):
+    """只识别明确的凭据拒绝，不把一般模型权限错误（403）当成 KEY 错。"""
+    err = (err or "").lower()
+    return any(k in err for k in _AUTH)
+
+
+def _attempt_credential(att):
+    """绑定链中凭据的非敏感身份；不把密钥值写入日志或尝试记录。"""
+    return (str((att or {}).get("provider_id") or ""),
+            str((att or {}).get("key_id") or ""))
+
+
 # 限流（429）专项：与一般瞬态不同，它是「等一个窗口就常能自愈」的病——
 # 2026-09-22 四连败实测：claude ENOTFOUND 换将 codex 后仍与同一上游撞 429，
 # 链上无第三条路时整步立刻判死；而限流窗口通常按分钟计，原地等一个窗口
@@ -1067,6 +1085,7 @@ def _rate_limited(err):
 # 审计日志错误行探针：只认强信号，避免把回显提示词里的普通词当错误
 _LOG_ERR_HINT = re.compile(
     r"(429|402|rate[_ ]?limit|quota|余额|欠费|insufficient|billing|arrears"
+    r"|401|unauthorized|unauthorised|invalid[_ ]api[_ ]key|authentication[_ ]error"
     r"|ENOTFOUND|ECONNREFUSED|failed to run prompt|api_error|overloaded)",
     re.I)
 
@@ -1570,7 +1589,22 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     grace_left = RATE_LIMIT_GRACE_N  # 链尾限流宽限预算：整链撞 429 时原地等一个窗口再试一次
     timed_out_upstreams = {}  # 同一上游两次超时后跳过剩余模型
     skipped_upstreams = set()
+    auth_failed_credentials = set()
     for ai, att in enumerate(attempts):
+        credential = _attempt_credential(att)
+        if credential in auth_failed_credentials:
+            attempt_history.append({
+                "model": att.get("model") or "",
+                "provider_id": att.get("provider_id") or "",
+                "provider": ((att.get("provider") or {}).get("name", "")
+                             if isinstance(att.get("provider"), dict) else ""),
+                "kind": kind, "ok": False, "skipped": True,
+                "error_code": ErrorCode.VENDOR_ERROR,
+                "error": "同一凭据已被认证拒绝，跳过该凭据的其他模型",
+            })
+            if out is not None:
+                out["attempts"] = list(attempt_history)
+            continue
         upstream = _attempt_upstream(att)
         if upstream in skipped_upstreams:
             continue
@@ -1786,6 +1820,12 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     attempts.append(retry)
                     continue
             return out
+        if _auth_error(out.get("error")):
+            auth_failed_credentials.add(credential)
+            if not any(_attempt_credential(candidate) not in auth_failed_credentials
+                       for candidate in attempts[ai + 1:]):
+                return out
+            continue
         # 换将闸门：什么失败值得烧链上下一个候选。
         # · 瞬态/配额（文本特征，含 CLI 内部 api_retry 的 429/5xx 字样）照旧；
         # · 超时：显式可换（看 res 标志位）——慢上游换快候选可能救回。
