@@ -647,3 +647,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 **✅ 本班落地**：**多线剧情推演 MVP**（inkos 借鉴，待深挖榜首清账）——`core/branching.py`：serial.branches=2-3 时写章前**一次编排者调用**生成 N 条方向互异的分支节拍计划+自荐 pick 择优，选中分支替换本章 BEATS/HOOK 注入起草（**计划级赛马**——比 prose 级 Best-of-N 省一个数量级 token）；全部分支连同取舍理由追加 `.codebee/branch-plans.md` 审计（✅ 标择优）；失败/无编排者/N<2 静默回落原大纲节拍（增强不是闸门）；store 归一 branches 参数（1=默认关不落键、越界钳 3 同 variants 口径）。test_branching 6 项
 - claude-lane-stack 117★（一人 AI coding 工厂：Claude PM + 多 CLI writers 持久对话）| 雷达
+
+### 2026-09-23 10:01 第三十九班（批3：计划/spec/长任务）
+
+- 批3 复跑主体重合（spec-kit 138k/OpenSpec 69.9k/GSD 64.5k 均已入库）。新锐小标：1337-claude/geekychris-chief/vibecoding-bench | 雷达
+- A 组全活跃无增量事故
+
+**✅ 本班落地**：**章节安全落盘**（inkos 安全章节工作区借鉴，待深挖第二项清账）——`core/chaptersafe.py`：atomic_write_chapter 走 **tmp 写入 + os.replace 原子改名**，写一半崩溃/磁盘满不会留下半章正文冒充成稿（断点续跑按「文件够长」判定，半文件会被误当合法稿复用——正是 inkos「杜绝状态推进正文未落」的同款语义）；失败清理 tmp 残渣后原样抛出；路径守卫 resolve+parents+workdir 必须存在。pipeline._write_chapter 委托（6 处调用点零改动）。test_chaptersafe 5 项（落盘回读/覆盖/越界拒绝/委托生效/**磁盘满模拟旧稿完好**）

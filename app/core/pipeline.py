@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, attachments, branching, catalog, dispatch_log, history, hooks, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage, volumes
+from . import aiflavor, attachments, branching, catalog, chaptersafe, dispatch_log, history, hooks, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -2176,8 +2176,9 @@ def _wc(text):
 
 
 def _write_chapter(workdir, i, text):
-    with _chapter_io(workdir, i, "w") as f:
-        f.write(text)
+    # 安全落盘委托（inkos 安全章节工作区借鉴）：tmp+原子改名，写一半
+    # 崩溃不留半章冒充成稿；路径守卫在 chaptersafe（resolve+parents）
+    chaptersafe.atomic_write_chapter(workdir, i, text)
 
 
 def _all_ge(scores, threshold):
