@@ -1537,7 +1537,7 @@ def update_task_params(task_id, patch):
     return True, ""
 
 
-def add_step(run_id, role, agent_id, agent_label, note=""):
+def add_step(run_id, role, agent_id, agent_label, note="", model=""):
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -1546,6 +1546,9 @@ def add_step(run_id, role, agent_id, agent_label, note=""):
         step = {
             "n": n, "role": role, "agent": agent_id, "agent_label": agent_label,
             "note": note,
+            # 起跑即记解析到的模型：运行中蜂巢卡/步骤列表就能看到「在用哪个模型」，
+            # 不必等 finish_step 用实际结果覆盖（换将成功后以实际为准）
+            "model": str(model or "")[:80],
             "status": "running", "started_at": time.strftime("%H:%M:%S"),
             "ended_at": None, "duration_s": None, "exit_code": None,
             "summary": "", "log": None, "cost_usd": 0.0, "tokens": 0,

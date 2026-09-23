@@ -949,7 +949,7 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
               .replace("__OS__", _repair_os_label())
               .replace("__ALLOW__", " / ".join(p.strip() for p in _repair_allow())))
     step, log_abs = store.add_step(run_id, "ai-repair", agent["id"], agent.get("label"),
-                                   note="自动诊断修复")
+                                   note="自动诊断修复", model=agent.get("model") or "")
     res = runner.run_agent(agent, prompt, readonly=True, timeout=300,
                            cancel_event=ev, log_path=str(log_abs))
     try:

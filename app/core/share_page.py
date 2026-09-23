@@ -87,12 +87,15 @@ def render_share_html(run, task, report_text):
 
     steps_rows = ""
     for s in run.get("steps") or []:
+        who = s.get("agent_label") or s.get("agent") or ""
+        if s.get("model"):
+            who += " · " + str(s["model"])
         steps_rows += (
             '<div class="step"><span class="n">%02d</span>'
             '<span class="role">%s</span><span class="who">%s</span>'
             '<span class="sum">%s</span><span class="st %s">%s</span></div>'
             % (s.get("n") or 0, _esc(s.get("role") or ""),
-               _esc(s.get("agent_label") or s.get("agent") or ""),
+               _esc(who),
                _esc((s.get("summary") or "")[:220]), _esc(s.get("status") or ""),
                _esc(s.get("status") or "")))
 

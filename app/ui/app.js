@@ -3936,6 +3936,7 @@ function drawTaskDetail(key, runs) {
       '<span class="n">' + String(s.n).padStart(2, "0") + "</span>" +
       '<span class="role">' + esc(s.role) + "</span>" +
       '<span class="who">' + esc(t(s.agent_label || s.agent)) + "</span>" +
+      (String(s.model || "").trim() ? '<span class="st-model" title="' + esc(t("实际派发模型")) + '">' + esc(String(s.model).trim()) + "</span>" : "") +
       '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
       '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
       statusChip(s.status) +
@@ -6439,6 +6440,7 @@ async function toggleLog(runId, rel) {
 let hiveTimer = null;                    // 卡片尾巴轮询表
 let hiveClock = null;                    // running 秒表（1s 走动）
 const hiveTails = {};                    // "runid|rel" -> 最近一行输出缓存
+const hiveThink = {};                    // "runid|rel" -> 最近思考片段（【思考】行提取）
 
 function stopHiveTick() { if (hiveTimer) { clearInterval(hiveTimer); hiveTimer = null; } }
 
@@ -6474,6 +6476,10 @@ function hiveCleanLine(lines) {
     const l = String(lines[i] || "").trim();
     if (!l) continue;
     if (/warn\b|telemetry|metrics|failed to flush|mcp|已折叠/i.test(l)) continue;
+    // 二进制/UTF-16 残渣与乱码墙不配当「它在干什么」（claude 流里实测出现过
+    // \u0000 夹正文的残渣行，展示出来就是一串占位符）
+    if ((l.match(/\x00|\\u0000/gi) || []).length >= 2) continue;
+    if ((l.match(/\ufffd/g) || []).length > 6) continue;
     if (l.startsWith("{") && /"type"\s*:/.test(l)) {
       try {
         const ev = JSON.parse(l);
@@ -6483,6 +6489,19 @@ function hiveCleanLine(lines) {
       continue;
     }
     return l.slice(-160);
+  }
+  return "";
+}
+
+/* 思考片段：pretty 日志里最近的【思考】/思考心跳行——运行中卡片的一条
+ * 「💭 …」弱化行，让用户不用点开日志也能看到模型在想什么。没有思考行
+ * （qwen/mimo 等一次性输出）返回空，卡片不多占一行。 */
+function hiveThinkLine(lines) {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = String(lines[i] || "").trim();
+    if (!l) continue;
+    if (l.startsWith("【思考】")) return l.slice(0, 220);
+    if (/^— 思考中（心跳/.test(l)) return l;
   }
   return "";
 }
@@ -6520,13 +6539,22 @@ window.renderHive = function (run) {
       : s.status === "cancelled" ? "cancelled"
       : s.status === "timeout" ? "timeout" : "done";
     const who = s.agent_label || s.agent || "";
+    // 当前使用的模型：起跑即有（解析到的链首），收尾以实际使用覆盖；空则不显示
+    const model = String(s.model || "").trim();
+    const whoShow = who + (model ? " · " + model : "");
     // 完成即给结论：终态格子定格在 summary（智能体最终回答/失败原因），
     // 悬停 title 展示全文；运行中格子才跟实时尾巴
     const concl = String(s.summary || "").replace(/\s+/g, " ").trim();
     const key = run.id + "|" + (s.log || "");
-    if (st !== "running") delete hiveTails[key];
+    if (st !== "running") { delete hiveTails[key]; delete hiveThink[key]; }
     const tailText = st === "running" ? (hiveTails[key] || concl) : concl;
-    const title = [s.role, who,
+    // 思考行（仅运行中）：内置智能体步骤自带 s.thinking（流式落盘），CLI 步骤
+    // 由 hiveTick 从 pretty 日志提取【思考】行；终态格子的结论已定格，不再补
+    const thinkText = st === "running"
+      ? (hiveThink[key] ||
+         (s.thinking ? "💭 " + String(s.thinking).replace(/\s+/g, " ").trim().slice(-180) : ""))
+      : "";
+    const title = [s.role, whoShow,
                    (s.duration_s != null ? s.duration_s + "s" : ""),
                    s.started_at ? t("开始于 ") + s.started_at : "",
                    (s.note ? "◆ " + s.note : "")].filter(Boolean).join(" · ")
@@ -6540,9 +6568,12 @@ window.renderHive = function (run) {
       '<div class="hc-head">' +
       '<img class="hc-bee" src="icons/bee.svg" alt="" aria-hidden="true">' +
       '<span class="hc-role">' + esc(s.role || "") + "</span>" +
-      '<span class="hc-who">' + esc(who) + "</span></div>" +
+      '<span class="hc-who">' + esc(whoShow) + "</span></div>" +
       '<div class="hc-tail" data-log="' + esc(s.log || "") + '">' +
       esc(tailText) + "</div>" +
+      // 运行中始终渲染 hc-think（空时高度为 0）：hiveTick 拉到思考片段后
+      // 要有元素可写；终态格子连元素都不留
+      (st === "running" ? '<div class="hc-think" data-think="' + esc(s.log || "") + '">' + esc(thinkText) + "</div>" : "") +
       '<div class="hc-meta"><span class="hc-elapsed" data-started="' + esc(s.started_at || "") + '">' +
       (s.duration_s != null ? s.duration_s + "s" : hiveElapsed(s.started_at)) + "</span>" +
       (st === "running" ? '<span class="hc-live"><i class="live-dot"></i>' + t("工作中") + "</span>" : "") +
@@ -6638,7 +6669,7 @@ async function hiveTick(rid) {
   for (const rel of rels) {
     try {
       const r = await api("/api/runs/" + encodeURIComponent(rid) +
-        "/log?step=" + encodeURIComponent(rel) + "&tail=900&pretty=1");
+        "/log?step=" + encodeURIComponent(rel) + "&tail=2400&pretty=1");
       const lines = String(r.log || "").split("\n").filter((l) => l.trim());
       const last = hiveCleanLine(lines);
       const key = rid + "|" + rel;
@@ -6646,6 +6677,14 @@ async function hiveTick(rid) {
         hiveTails[key] = last;
         box.querySelectorAll(".hive-cell.st-running .hc-tail").forEach((el) => {
           if (el.dataset.log === rel) el.textContent = last;
+        });
+      }
+      // 思考行与尾巴同源（pretty 日志）：有新【思考】片段就推进卡片
+      const thk = hiveThinkLine(lines);
+      if (thk && hiveThink[key] !== thk) {
+        hiveThink[key] = thk;
+        box.querySelectorAll(".hive-cell.st-running .hc-think").forEach((el) => {
+          if (el.dataset.think === rel) el.textContent = thk;
         });
       }
     } catch (e) { /* 网络抖动保留上一帧 */ }

@@ -6086,3 +6086,16 @@ button.request-busy > * { opacity: .18; }
   border-top: 1px solid var(--line, rgba(127,127,127,.18));
   margin-top: 4px;
 }
+
+/* 蜂巢卡头部的「工具 · 模型」：起跑即显示当前使用的模型（换将收尾后以实际
+ * 为准）。模型名普遍比工具名长，45% 放不下「Claude Code · claude-…」，放宽
+ * 到 62%，超长仍省略号收敛（追加文件尾防并行重排）。 */
+.hive-cell .hc-who { max-width: 62%; }
+
+/* 蜂巢卡「思考过程」行（仅运行中）：pretty 日志的最近【思考】片段/内置智能体
+ * 流式 thinking。单行弱化斜体、省略号收敛，与 hc-tail 同节奏；无思考的步骤
+ * 不渲染这行，卡片高度不变。 */
+.hive-cell .hc-think {
+  margin-top: 2px; font-size: 10.5px; font-style: italic; color: var(--muted);
+  opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}

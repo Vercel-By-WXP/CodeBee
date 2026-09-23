@@ -331,7 +331,8 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     if dead_binding:
         note = ((note + "；") if note else "") + "⚠ " + dead_msg
     step, log_abs = store.add_step(run_id, role, agent["id"],
-                                   agent.get("label", agent["id"]), note=note)
+                                   agent.get("label", agent["id"]), note=note,
+                                   model=agent.get("model") or "")
     start = time.time()
     if dead_binding:
         from .error_codes import ErrorCode
@@ -393,7 +394,8 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
     followups=True 时从回答末尾解析「建议追问」块（直连对话专用协议）：
     剥离出结构化列表落步骤记录，正文保持干净。"""
     _wait_gate(run_id, ev)
-    step, log_abs = store.add_step(run_id, role, "builtin", "CodeBee", note=note)
+    step, log_abs = store.add_step(run_id, role, "builtin", "CodeBee", note=note,
+                                   model=bi.get("model") or "")
     start = time.time()
     agent_pseudo = {"id": "builtin", "label": "CodeBee", "kind": "builtin", "mode": "real",
                     "provider": {"id": bi.get("provider_id") or "",
