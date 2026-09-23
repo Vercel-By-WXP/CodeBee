@@ -246,6 +246,34 @@ class TestRunNow(AutomationCase):
         self.assertEqual(cur["next_run"], before)
 
 
+class TestRunStatusReconcile(AutomationCase):
+    """2026-09-23 实案回归：last_status 停在 started 的任务由 tick 对账真实
+    运行终态——此前触发后永不回写，任务卡片永远显示「运行中」（三任务全中）。"""
+
+    def runTest(self):
+        orig = self.aut._RUN_STATUS
+        self.addCleanup(setattr, self.aut, "_RUN_STATUS", orig)
+        t = self.make()
+        with self.aut._LOCK:
+            self.aut._TASKS[t["id"]]["last_run_id"] = "r-x1"
+            self.aut._TASKS[t["id"]]["last_status"] = "started"
+        statuses = {"r-x1": "running", "ghost": "done"}
+        self.aut._RUN_STATUS = statuses.get
+        self.aut._reconcile_statuses()
+        self.assertEqual(self.aut.get_task(t["id"])["last_status"], "started")
+        statuses["r-x1"] = "failed"
+        self.aut._reconcile_statuses()
+        self.assertEqual(self.aut.get_task(t["id"])["last_status"], "failed")
+        # 终态回写后不再翻动（对账只处理 started）
+        statuses["r-x1"] = "done"
+        self.aut._reconcile_statuses()
+        self.assertEqual(self.aut.get_task(t["id"])["last_status"], "failed")
+        # fire/run_now 会把拉起的 run_id 记到任务上（对账的依据）
+        cur, run_id = self.aut.run_now(self.make()["id"])
+        self.assertEqual(cur["last_run_id"], run_id)
+        self.assertEqual(cur["last_run_id"], "r-fake-1")
+
+
 class TestRunNowIntervalAnchor(AutomationCase):
     """2026-09-23 实案回归：interval 手动触发不得挪 last_run 锚点——
     22:28 手动跑一轮 + 23:43 服务重启，重启重算按新锚点滚出 00:28，

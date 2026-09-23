@@ -65,7 +65,7 @@ _DEFAULTS = {"id": "", "name": "", "prompt": "", "workdir": "", "kind": "", "tim
              "mode": "auto", "thinking": "standard",
              "direct_provider_id": "", "direct_model": "",
              "enabled": False, "created_at": "", "last_run": "", "next_run": "",
-             "run_count": 0, "last_status": ""}
+             "run_count": 0, "last_status": "", "last_run_id": ""}
 
 # 允许通过 update() 修改的字段（id/created_at/run_count 等运行痕迹不可改）
 _UPDATABLE = ("name", "prompt", "workdir", "kind", "time", "interval_hours",
@@ -386,8 +386,9 @@ def _fire(snapshot, now):
     """触发一个到期任务：拉起运行并推进 last_run/next_run/run_count/last_status。
     once 触发完自动停用。拉起失败只记 error，next_run 照常推进（下个周期重试）。"""
     status = "started"
+    run_id = ""
     try:
-        _launch_run(snapshot)
+        run_id = _launch_run(snapshot) or ""
     except Exception as e:
         log.warning("automation: 定时触发 %s 失败: %r", snapshot.get("id"), e)
         status = "error"
@@ -398,6 +399,8 @@ def _fire(snapshot, now):
         cur["last_run"] = _fmt_dt(now)
         cur["run_count"] = int(cur.get("run_count") or 0) + 1
         cur["last_status"] = status
+        if run_id:
+            cur["last_run_id"] = run_id
         if cur.get("kind") == "once":
             cur["enabled"] = False
             cur["next_run"] = ""
@@ -407,6 +410,49 @@ def _fire(snapshot, now):
 
 
 # ---------------------------------------------------------------- 调度线程
+
+def _default_run_status(rid):
+    """按 run_id 查运行状态（终态回写用）；查不到返回 None。"""
+    from . import store
+    try:
+        r = store.get_run(rid)
+    except Exception:
+        return None
+    return (r or {}).get("status") or None
+
+
+# 测试可替换的查态钩子
+_RUN_STATUS = _default_run_status
+
+_RUN_TERMINAL = ("done", "failed", "cancelled")
+
+
+def _reconcile_statuses():
+    """把 last_status 停在 started 的任务对账到真实运行终态。此前触发后永不
+    回写，任务卡片永远显示「运行中」（2026-09-23 实案：三个任务全部如此）。
+    store 查不到或还没到终态就保持原样，下一轮 tick 再看。"""
+    with _LOCK:
+        pending = {tid: t.get("last_run_id") for tid, t in _TASKS.items()
+                   if t.get("last_run_id") and t.get("last_status") == "started"}
+    if not pending:
+        return
+    settled = {}
+    for tid, rid in pending.items():
+        st = _RUN_STATUS(rid)
+        if st in _RUN_TERMINAL:
+            settled[tid] = st
+    if not settled:
+        return
+    with _LOCK:
+        dirty = False
+        for tid, st in settled.items():
+            t = _TASKS.get(tid)
+            if (t and t.get("last_run_id") == pending[tid]
+                    and t.get("last_status") == "started"):
+                t["last_status"] = st
+                dirty = True
+        if dirty:
+            _save_locked()
 
 def _tick():
     """扫描一遍到期任务并逐个触发。单任务异常只跳过该条，绝不上抛。"""
@@ -429,6 +475,11 @@ def _tick():
             _fire(dict(t), now)
         except Exception:
             log.exception("automation: tick 处理任务 %s 异常，已跳过", tid)
+    # 运行终态对账：last_status 停在 started 的任务查一次真实终态（见函数注）。
+    try:
+        _reconcile_statuses()
+    except Exception:
+        log.debug("automation: 运行终态对账跳过", exc_info=True)
     # 定时发布联动（P2.5）：任务级 auto_publish 标记到点触发批量发布。
     # 发布逻辑全在 publish/auto（护栏/幂等/单飞），这里只当调度宿主。
     try:
@@ -581,10 +632,11 @@ def run_now(tid):
     now = datetime.now()
     run_id = ""
     status = "started"
+    run_id = ""
     try:
         with _LOCK:
             snapshot = dict(_TASKS[tid])
-        run_id = _launch_run(snapshot)
+        run_id = _launch_run(snapshot) or ""
     except Exception as e:
         log.warning("automation: 手动触发 %s 失败: %r", tid, e)
         status = "error"
@@ -601,6 +653,8 @@ def run_now(tid):
             t["last_run"] = _fmt_dt(now)
         t["run_count"] = int(t.get("run_count") or 0) + 1
         t["last_status"] = status
+        if run_id:
+            t["last_run_id"] = run_id
         _save_locked()
         return dict(t), run_id
 
