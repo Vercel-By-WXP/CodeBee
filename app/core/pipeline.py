@@ -405,7 +405,8 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
             res = {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
                    "tokens": 0, "usage": None, "error": guard["reminder"],
                    "error_code": ErrorCode.ENV_BLOCK,
-                   "raw": {"exit_code": None}, "kind": agent.get("kind", "generic"),
+                   "raw": {"exit_code": None, "repeat_stop": True},
+                   "kind": agent.get("kind", "generic"),
                    "model": agent.get("model")}
             _finish_step_result(run_id, step, res, role, agent, start)
             return res
@@ -456,7 +457,8 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
         from .error_codes import ErrorCode
         res = {"ok": False, "text": "", "usage": None, "cost_usd": 0.0, "tokens": 0,
                "error": guard["reminder"], "error_code": ErrorCode.ENV_BLOCK,
-               "raw": {"exit_code": None}, "model": bi.get("model")}
+               "raw": {"exit_code": None, "repeat_stop": True},
+               "model": bi.get("model")}
         _finish_step_result(run_id, step, res, role, agent_pseudo, start)
         return res
     # 运行中指挥：drain 用户追加的指令/附件，注入本轮（与 _run_step 同语义）
@@ -2795,6 +2797,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                     note=("起草重试 %d/2（网关限流退避）" % draft_attempt) if draft_attempt else "")
                     prev_prompt = use_prompt
                     prev_timed_out = bool((res.get("raw") or {}).get("timed_out"))
+                    if (res.get("raw") or {}).get("repeat_stop"):
+                        break   # 重复守卫强制停止：同输入再试仍是死路，终态跳出
                     good, txt = _chapter_state()
                     if good:
                         break
@@ -2835,6 +2839,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                         note="起草换将 %s → %s：%s" % (
                                             impl["id"], other["id"],
                                             (other_reason or "")[:90]))
+                        if (res.get("raw") or {}).get("repeat_stop"):
+                            break   # 重复守卫判死：换将同 role 计数链必拦，终态跳出
                         good, txt = _chapter_state()
                         if not good and res["ok"] and _wc(res.get("text") or "") >= int(wpc * 0.6):
                             try:
