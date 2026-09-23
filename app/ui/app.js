@@ -936,13 +936,13 @@ function jsq(s) {
 }
 
 function statusChip(st) {
-  const zh = { queued: t("正在启动"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") };
+  const zh = { queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") };
   return '<span class="chip ' + esc(st) + '">' + (zh[st] || esc(st)) + "</span>";
 }
 
 /* 运行状态文案（传 run 对象）：退避窗口内的续跑副本写明「将于 HH:MM 自动
  * 续跑」，别让 5 分钟等待看起来像卡死/资源排队（2026-09-18 重写任务误判案）。
- * 到点后翻回「正在启动」——页面轮询重渲染时 Date.now() 已过预定时刻。 */
+ * 到点后翻回「排队中」——页面轮询重渲染时 Date.now() 已过预定时刻。 */
 function runStatusText(run) {
   const st = String((run && run.status) || "");
   if (st === "queued" && run && run.resume_enqueue_at) {
@@ -950,7 +950,7 @@ function runStatusText(run) {
     if (!isNaN(at) && Date.now() < at)
       return t("将于 {0} 自动续跑", String(run.resume_enqueue_at).slice(11, 16));
   }
-  return { queued: t("正在启动"), running: t("运行中"), done: t("完成"),
+  return { queued: t("排队中"), running: t("运行中"), done: t("完成"),
     failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") }[st] || st;
 }
 
@@ -4089,7 +4089,7 @@ function drawTaskDetail(key, runs) {
   chip.className = "chip " + st;
   chip.textContent = resumeIn
     ? t("将于 ") + resumeIn + t(" 自动续跑（第 ") + (Number(latest.auto_resumes) || 0) + t(" 次）")
-    : ({ queued: t("正在启动"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消") }[st] || st);
+    : ({ queued: t("排队中"), running: t("运行中"), done: t("完成"), failed: t("失败"), cancelled: t("已取消") }[st] || st);
   const bpt = $("btn-pause");
   if (bpt) bpt.classList.add("hidden");
   $("btn-delete").classList.add("hidden");
