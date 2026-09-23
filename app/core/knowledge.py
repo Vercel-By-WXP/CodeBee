@@ -251,6 +251,11 @@ def block_for(task):
         stale = _is_stale(x.get("as_of"))
         mark = ("（事实截至 %s，可能过期，请自行核实时效）" % x.get("as_of") if stale
                 else ("（事实截至 %s）" % x.get("as_of") if x.get("as_of") else ""))
+        # 置信标注（引用核验续）：medium 不标（默认噪音为零），low 早已
+        # 在学习口丢弃——只有 high 显式加冕，模型据以分配采信权重
+        conf = str(x.get("confidence") or "medium").strip().lower()
+        if conf == "high":
+            mark += "［有据］"
         lines.append("- **%s**%s：%s" % (x["title"], mark, x["body"]))
         used.append(x["id"])
     text = "## 知识库（已确认的领域知识，供参考）\n\n" + "\n".join(lines)

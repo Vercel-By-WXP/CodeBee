@@ -661,3 +661,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - A 组全活跃无增量事故
 
 **✅ 本班落地**：知识库 confidence 可信度分级（引用核验借鉴）——KNOWLEDGE_PROMPT 要求每条事实给出 high（有来源/数字口径）/medium（自洽未标来源）/low（不确定或矛盾）三级置信；**low 直接丢弃**（宁缺毋滥），缺失视为 medium；confidence 随条目落盘，近似/同题合并时 high 可覆盖 medium（有据版本吸收无据版本）。test_kb_confidence 4 项（落盘/合并升级/learn 丢 low+归一/prompt 契约）
+
+### 2026-09-23 14:02 第四十一班（批7：中文/网关/本地/办公）
+
+- 批7 复跑主体重合（OpenCreator 12.2k/inkos 10k 均已深挖入库复查活跃）。新锐小标：mARC/daintree/worca-cc | 雷达
+- A 组全活跃无增量事故
+
+**✅ 本班落地**：知识注入置信标注（上轮 confidence 分级的注入侧收口）——block_for 对 high 置信条目追加「［有据］」标记，模型据以分配采信权重；medium 不标（默认噪音为零）、low 早已在学习口丢弃；老数据无字段不炸。test_kb_conf_mark 2 项
