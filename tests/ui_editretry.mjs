@@ -26,7 +26,7 @@ async function main() {
   const tmp = mkdtempSync(join(tmpdir(), "tutti-editretry-"));
   const dataDir = join(tmp, "data");
   mkdirSync(join(dataDir, "tasks"), { recursive: true });
-  const mk = (taskId, runId, title, status, runErr, steps) => {
+  const mk = (taskId, runId, title, status, runErr, steps, verdict = null) => {
     writeFileSync(join(dataDir, "tasks", taskId + ".json"), JSON.stringify({
       id: taskId, type: "code", engine: "code", title, goal: "造数：" + title,
       workdir: join(tmp, "wd-" + taskId), git_rev: "", git_state: "",
@@ -40,7 +40,7 @@ async function main() {
       started_at: "2026-09-15 10:00:01", ended_at: "2026-09-15 10:00:30",
       cost_usd: 0, tokens: 0,
       error: runErr != null ? runErr : (status === "failed" ? "工作区有未提交改动" : ""),
-      verdict: null, summary: "", git: null,
+      verdict, summary: "", git: null,
     }), "utf-8");
   };
   mk("tedit1", "redit1", "失败态任务", "failed", null,
@@ -48,6 +48,8 @@ async function main() {
        summary: "计划已取消", started_at: "10:00:02", ended_at: "10:00:30",
        duration_s: 28.0, log: "" }]);
   mk("tdone1", "rdone1", "完成态任务", "done");
+  mk("tquality1", "rquality1", "验收未通过任务", "done", "", [],
+    { pass: false, verify_pass: false, review_pass: true });
   // 超时场景：run 级仍是 failed（状态机不扩），错误文案「超时」打头 + 步骤记 timeout
   mk("ttime1", "rtime1", "超时任务", "failed", "超时 1200s，已终止进程树；stderr/stdout: ……",
     [{ n: 1, role: "implement", agent: "a1", agent_label: "Codex CLI", status: "timeout",
@@ -117,6 +119,8 @@ async function main() {
     await send("Page.enable");
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(3500);
+    await evalJs(`localStorage.setItem("orch.lang", "zh"); location.reload()`);
+    await sleep(2500);
 
     const btnsOf = `(() => { const g = (id) => { const b = document.getElementById(id);
       return b ? { vis: !b.classList.contains("hidden"), txt: b.textContent.trim() } : { vis: false, txt: "" }; };
@@ -191,6 +195,13 @@ async function main() {
     check("完成态：基于此任务新建可见", bs.nf.vis, JSON.stringify(bs));
     check("完成态：编辑重试隐藏", !bs.edit.vis, JSON.stringify(bs));
     check("完成态：继续任务隐藏", !bs.retry.vis, JSON.stringify(bs));
+
+    // 代码实现完成但本地验证未通过：流水线仍为 done，质量门禁结果必须开放重试。
+    await evalJs(`sideOpenTask("tquality1")`);
+    await sleep(1200);
+    bs = JSON.parse(await evalJs(btnsOf));
+    check("验收未通过（done + verify_pass=false）：重试可见", bs.retry.vis, JSON.stringify(bs));
+    check("验收未通过：按钮明确显示重试任务", bs.retry.txt.includes("重试任务"), JSON.stringify(bs.retry));
 
     // 连载未达标（2026-09-20 重写未达标章）：完成态但 verdict.publishable=false
     // → 任务级与 run 级详情都放行重试按钮，文案换「↻ 重写未达标章」
