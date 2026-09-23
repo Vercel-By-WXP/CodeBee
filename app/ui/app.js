@@ -173,7 +173,43 @@ function cmpModelMenuRender() {
         '<button type="button" class="type-item" data-p="' + esc(cmpModelProv) + '" data-m="' + esc(n) + '"><span class="ti-body"><span class="ti-name">' +
         esc(n) + "</span></span>" + (pv === cmpModelProv && mv === n ? chk : "") + "</button>").join("");
   }
+  positionFloatingModelMenu(menu, $("f-direct-wrap"));
 }
+
+const FLOATING_MODEL_MENUS = [
+  ["cmp-model-menu", "f-direct-wrap"],
+  ["rd-model-menu", "rd-model-wrap"],
+];
+
+function positionFloatingModelMenu(menu, anchor) {
+  if (!menu || !anchor || menu.classList.contains("hidden")) return;
+  const rect = anchor.getBoundingClientRect();
+  const viewportWidth = document.documentElement.clientWidth;
+  const viewportHeight = document.documentElement.clientHeight;
+  const width = Math.max(1, Math.min(320, viewportWidth - 16));
+  const left = Math.max(8, Math.min(rect.left, viewportWidth - width - 8));
+  const above = Math.max(0, rect.top - 14);
+  const below = Math.max(0, viewportHeight - rect.bottom - 14);
+  const openAbove = above >= below;
+  const available = openAbove ? above : below;
+  const maxHeight = Math.max(1, Math.min(316, viewportHeight - 16, Math.max(48, available - 6)));
+
+  menu.style.width = width + "px";
+  menu.style.maxHeight = maxHeight + "px";
+  const height = Math.min(menu.scrollHeight, maxHeight);
+  const maxTop = Math.max(8, viewportHeight - height - 8);
+  const desiredTop = openAbove ? rect.top - height - 6 : rect.bottom + 6;
+  menu.style.left = left + "px";
+  menu.style.top = Math.max(8, Math.min(maxTop, desiredTop)) + "px";
+}
+
+function syncFloatingModelMenus() {
+  for (const [menuId, anchorId] of FLOATING_MODEL_MENUS)
+    positionFloatingModelMenu($(menuId), $(anchorId));
+}
+
+document.addEventListener("scroll", syncFloatingModelMenus, true);
+window.addEventListener("resize", syncFloatingModelMenus);
 
 function toggleModelMenu(force) {
   const menu = $("cmp-model-menu");
@@ -181,12 +217,14 @@ function toggleModelMenu(force) {
   const show = force !== undefined ? force : menu.classList.contains("hidden");
   if (show) { cmpModelProv = ""; cmpModelMenuRender(); }
   menu.classList.toggle("hidden", !show);
+  if (show) positionFloatingModelMenu(menu, $("f-direct-wrap"));
 }
 window.toggleModelMenu = toggleModelMenu;
 
 (function () {
   const menu = $("cmp-model-menu");
   if (!menu || menu.dataset.cmpBound) return;
+  document.body.appendChild(menu);
   menu.dataset.cmpBound = "1";
   menu.addEventListener("click", (e) => {
     // 钻取/选定都在菜单内完成：阻止冒泡到 document 的「点外面收起」——
@@ -231,7 +269,7 @@ window.toggleModelMenu = toggleModelMenu;
   });
   document.addEventListener("click", (e) => {
     const wrap = $("f-direct-wrap");
-    if (wrap && !wrap.contains(e.target)) toggleModelMenu(false);
+    if (wrap && !wrap.contains(e.target) && !menu.contains(e.target)) toggleModelMenu(false);
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") toggleModelMenu(false);

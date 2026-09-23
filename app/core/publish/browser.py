@@ -138,6 +138,10 @@ class Browser:
                                                       # 杀树（runner 同款）；Windows 忽略
         except OSError as e:
             raise BrowserError("浏览器启动失败：%s" % e)
+        # 挂巢（beekeeper）：服务死（含硬杀）自动化浏览器一起带走。接管老实例
+        # 的分支会把 self.proc 置 None，不受影响（那不是本进程起的，不能杀）。
+        from .. import beekeeper
+        beekeeper.adopt(self.proc)
         if not self._wait_ready(15.0):
             # Edge 对已有实例的 profile：新进程转交参数后秒退（stdout 会打
             # 「正在现有浏览器会话中打开」），调试端口是老实例自己的（甚至

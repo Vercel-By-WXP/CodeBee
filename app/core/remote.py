@@ -125,6 +125,8 @@ def start_quick_tunnel(port: int, on_url) -> bool:
     except Exception:
         _QUICK_PROC = None
         return False
+    from . import beekeeper
+    beekeeper.adopt(_QUICK_PROC)   # 挂巢：服务死（含硬杀）隧道一起带走，防孤儿 cloudflared
     import threading
 
     def _watch():

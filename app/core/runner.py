@@ -22,6 +22,7 @@ import tempfile
 import threading
 import time
 
+from . import beekeeper
 from .env_scrub import scrub_env
 from .error_codes import ErrorCode
 
@@ -690,6 +691,9 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                     "stderr": "启动失败: %r" % e, "duration": 0.0,
                     "cancelled": False, "timed_out": False, "stalled": False,
                     "deadline_exceeded": False, "abort_marker": None}
+        # 挂巢（beekeeper）：服务无论以何种方式退出（含被硬杀），蜜蜂 CLI
+        # 一起带走。挂巢失败只降级，绝不影响本步起跑。
+        beekeeper.adopt(proc)
         out_chunks, err_chunks = [], []
         stamp = [time.time(), False, time.monotonic()]  # [墙钟、是否有输出、单调时钟]
         t_out = threading.Thread(target=_pipe_reader, args=(proc.stdout, out_chunks, log_fh, stamp), daemon=True)
