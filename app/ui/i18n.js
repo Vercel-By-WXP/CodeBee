@@ -266,6 +266,7 @@
     "单击：卡内展开 diff；双击：弹窗查看": "Click: expand diff here; double-click: open in popup",
     "双击弹窗查看该文件的变更": "Double-click to view this file's changes in a popup",
     "复制": "Copy",
+    "复制日志全文": "Copy full log",
     "已复制": "Copied",
     "已载入原文，可修改后发送": "Original text loaded — edit and send",
     "选择文件夹": "Choose folder",

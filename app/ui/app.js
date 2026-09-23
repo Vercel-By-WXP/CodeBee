@@ -6377,6 +6377,18 @@ function logLiveBadge(live) {
   }
 }
 
+/* 复制抽屉日志全文：报错 JSON 动辄几十行还带横向滚动，手动圈选很折磨 */
+window.rdLogCopy = function () {
+  const pre = $("rd-log-text");
+  const text = ((pre && pre.textContent) || "").trim();
+  const idle = [t("（等待输出…）"), t("（无输出）")];
+  if (!text || idle.includes(text)) return;
+  const done = () => toast(t("已复制"));
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+  } else fallbackCopy(text, done);
+};
+
 /* 抽屉标题：按 (runId, 日志路径) 反查步骤角色与执行者——不知道在看谁的日志，
  * 抽屉就成了无名黑框 */
 function rdLogStepLabel(runId, rel) {

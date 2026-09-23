@@ -36,6 +36,9 @@ async function main() {
   const workdir = join(dataDir, "book");
   mkdirSync(workdir, { recursive: true });
   mkdirSync(join(dataDir, "tasks"), { recursive: true });
+  // 清理默认关：造数用的是 2000 年的古老时间（成品 mtime 过滤需要），
+  // 不关的话 automation tick 起跑就把 steps 日志当过期垃圾清了，抽屉只剩（无输出）
+  writeFileSync(join(dataDir, "settings.json"), JSON.stringify({ cleanup_enabled: false }), "utf-8");
   writeFileSync(join(runsDir, ...LOG_REL.split("/")),
     "===== 下达 2099-01-02 00:00:01 =====\n--- 指令 ---\n写第一章\n--- 输出 ---\n第一章正文输出行\n", "utf-8");
   writeFileSync(join(runsDir, "steps", "01-plan-mock-p.log"),
@@ -212,6 +215,24 @@ async function main() {
     check("抽屉标题=当前步骤（draft-c1 · 写手 A）",
       drawerTitle.open && drawerTitle.step.includes("draft-c1") && drawerTitle.step.includes("写手 A"),
       JSON.stringify(drawerTitle));
+
+    // D3) 复制按钮：点击把抽屉日志全文写进剪贴板 + toast 反馈
+    //     （stub writeText——headless 无剪贴板权限，只验调用链不验系统剪贴板）
+    const copyLog = await evalJson(`(async () => {
+      const btn = document.querySelector("#rd-log .rd-log-copy");
+      if (!btn) return { btn: false };
+      window.__copied = "";
+      navigator.clipboard.writeText = (t) => { window.__copied = t; return Promise.resolve(); };
+      btn.click();
+      await new Promise((r) => setTimeout(r, 250));
+      const toastEl = document.getElementById("toast");
+      return { btn: true, copied: String(window.__copied || "").slice(0, 120),
+        toast: toastEl ? toastEl.textContent : "" };
+    })()`);
+    check("抽屉复制按钮：日志全文进剪贴板并 toast 已复制",
+      copyLog.btn === true && (copyLog.copied || "").includes("第一章正文输出行") &&
+        (copyLog.toast || "") === "已复制",
+      JSON.stringify(copyLog));
     const drawerClosed = await evalJson(`(async () => {
       rdLogClose();
       await new Promise((r) => setTimeout(r, 150));
