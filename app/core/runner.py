@@ -224,7 +224,8 @@ def _drain_streams(proc, t_out, t_err, *, timeout=10):
     # ``returncode``; otherwise long-running timeout tests can leak a live
     # Popen handle and emit ResourceWarning during interpreter shutdown.
     remaining = max(0.0, deadline - time.time())
-    if remaining > 0 and proc.poll() is None:
+    # proc 可为 None（旧契约：只收线程不收割进程的调用方，tests/test_runner_drain）
+    if proc is not None and remaining > 0 and proc.poll() is None:
         try:
             proc.wait(timeout=remaining)
         except (subprocess.TimeoutExpired, OSError):
