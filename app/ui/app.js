@@ -1332,6 +1332,19 @@ function startSSE() {
   } catch (e) { /* EventSource 不可用：保持轮询 */ }
 }
 
+/* 页签可见性：后台页签关闭 SSE 让出连接（HTTP/1.1 单域名 6 连接上限，
+ * 每个隐藏页签一条永久 SSE 会把连接池吃光，前台页签的接口全部排队超时
+ * ——2026-09-23 实案：多标签打开时步骤列表/日志请求超时）。回到前台
+ * 立即重开 SSE 并拉一次全量。轮询在隐藏态本就被跳过，后台零连接占用。 */
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (S.es) { try { S.es.close(); } catch (e) {} S.es = null; S.sseLive = false; schedulePolling(); }
+  } else if (!S.es) {
+    startSSE();
+    poll();
+  }
+});
+
 /* ---------------------------------------------------------- 多端控制权 */
 function setControl(c) {
   S.control = c || null;
