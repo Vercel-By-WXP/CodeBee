@@ -10828,18 +10828,13 @@ async function saveSettings() {
 
 /* ---------------------------------------------------------- 关于与更新（selfupdate）
  * 后端 /api/selfupdate：mode=npm 才可自动升级；repo（git clone）提示 git pull。
- * 升级 = 建 mgmt run 跑 npm install -g @latest（日志实时落盘）→ 完成后点「重启」，
- * 服务就地拉起新实例并自退（--wait-port 等端口释放），前端轮询恢复后自动刷新。 */
+ * 升级 = 建 mgmt run 跑 npm install -g @latest（日志实时落盘）→ 服务自动重启，
+ * 前端等待断线恢复后自动刷新。 */
 let SU = null;          // 最近一次 check() 结果
 let SU_TIMER = null;    // 升级 run 轮询句柄
+let SU_RESTART_TIMER = null;
 
 const SU_MODE_TXT = { npm: "npm 全局安装", repo: "开发仓库（git clone）", source: "源码拷贝", other: "未知安装方式" };
-
-/* 最近一次「升级 Tutti 本体」run 是否已完成（决定重启按钮显隐；查 S.runs，
- * 页面刷新后按钮不丢）。runs 里 op=selfupgrade 的那条即升级 run。 */
-function suLastUpgradeRun() {
-  return (S.runs || []).find((r) => r.op === "selfupgrade") || null;
-}
 
 async function loadSelfupdate(force) {
   try {
@@ -11079,8 +11074,6 @@ function renderSu() {
   const b = $("su-check");
   if (b) b.disabled = false;
   $("su-apply").classList.toggle("hidden", !SU.has_update);
-  const last = suLastUpgradeRun();
-  $("su-restart").classList.toggle("hidden", !(last && last.status === "done"));
   renderUpdPill();
 }
 
@@ -11295,6 +11288,34 @@ async function suCheck() {
   else toast(t("已是最新版"));
 }
 
+function suWaitForAutoRestart() {
+  if (SU_RESTART_TIMER) clearTimeout(SU_RESTART_TIMER);
+  const prog = $("su-progress");
+  if (prog) prog.textContent = t("服务重启中，页面会自动恢复…");
+  let disconnected = false;
+  let tries = 0;
+  const probe = async () => {
+    tries++;
+    try {
+      await api("/api/control", { timeout: 2500, busy: false, operation: false });
+      if (disconnected) {
+        SU_RESTART_TIMER = null;
+        location.reload();
+        return;
+      }
+    } catch (e) {
+      disconnected = true;
+    }
+    if (tries >= 80) {
+      SU_RESTART_TIMER = null;
+      if (prog) prog.textContent = t("自动重启超时，请刷新页面");
+      return;
+    }
+    SU_RESTART_TIMER = setTimeout(probe, 1500);
+  };
+  SU_RESTART_TIMER = setTimeout(probe, 1500);
+}
+
 async function suApply() {
   if (!(await uiConfirm(t("升级会下载并安装最新版（约 1-2 分钟），期间服务继续可用。现在开始？"),
       { ok: t("开始升级") }))) return;
@@ -11315,8 +11336,8 @@ async function suApply() {
           $("su-apply").disabled = false;
           if (prog) prog.textContent = "";
           if (run.status === "done") {
-            toast(t("升级完成！点「重启服务生效」换新版本"));
-            refreshState();
+            toast(t("升级完成，服务将自动重启并应用新版本"));
+            suWaitForAutoRestart();
           } else {
             toast(t("升级失败，详情见运行记录"), true);
           }

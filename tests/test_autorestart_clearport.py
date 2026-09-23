@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """升级自动重启 + 启动端口清场单测（用户拍板 2026-09-21）。
 
-- 升级成功且版本真变 → 自动 relaunch+quit；守卫：无端口/版本未变/有任务在跑则跳过
+- 升级成功且版本真变 → 自动等待运行任务结束，再 relaunch+quit
+- 无端口/版本未变则跳过；重启排水不打断运行任务并拒绝新任务
 - 启动清场：自家旧实例（main.py 完整路径/npm 打包路径）杀树；别人的进程
   只报告不关闭；系统/自身进程拒绝清理。
 
@@ -36,26 +37,49 @@ class AutoRelaunchTests(BaseTest):
             su._maybe_auto_relaunch("0.1.22", None)   # 装完还是同版本
         m_rel.assert_not_called()
 
-    def test_skip_when_user_tasks_running(self):
+    def test_waits_for_user_tasks_before_relaunch(self):
         su = self._su()
         su._PENDING_PORT = 8765
+        restarted = threading.Event()
         with mock.patch.object(su, "package_version", return_value="0.1.23"), \
              mock.patch("app.core.jobs._alive", 3), \
-             mock.patch.object(su, "relaunch") as m_rel:
-            su._maybe_auto_relaunch("0.1.22", None)   # 还有别的任务在跑
-        m_rel.assert_not_called()
+             mock.patch("app.core.jobs.begin_restart_drain", side_effect=[False, True]) as m_drain, \
+             mock.patch("app.core.jobs.wait_for_idle", return_value=True) as m_idle, \
+             mock.patch.object(su.time, "sleep"), \
+             mock.patch.object(su, "relaunch") as m_rel, \
+             mock.patch.object(su, "self_quit", side_effect=restarted.set) as m_quit:
+            su._maybe_auto_relaunch("0.1.22", None)
+            self.assertTrue(restarted.wait(1))
+        self.assertEqual(m_drain.call_count, 2)
+        m_idle.assert_called_once_with(timeout=1.0)
+        m_rel.assert_called_once_with(8765)
+        m_quit.assert_called_once()
+
+    def test_restart_drain_waits_for_direct_chat(self):
+        from app.core import jobs
+
+        jobs.cancel_restart_drain()
+        with mock.patch.object(jobs, "_alive", 0), \
+             mock.patch.object(jobs, "_chat_alive", 1):
+            self.assertFalse(jobs.begin_restart_drain())
+        try:
+            with mock.patch.object(jobs, "_alive", 0), \
+                 mock.patch.object(jobs, "_chat_alive", 0):
+                self.assertTrue(jobs.begin_restart_drain())
+        finally:
+            jobs.cancel_restart_drain()
 
     def test_fires_relaunch_when_free(self):
         su = self._su()
         su._PENDING_PORT = 8765
+        restarted = threading.Event()
         with mock.patch.object(su, "package_version", return_value="0.1.23"), \
              mock.patch("app.core.jobs._alive", 0), \
              mock.patch.object(su.time, "sleep"), \
              mock.patch.object(su, "relaunch") as m_rel, \
-             mock.patch.object(su, "self_quit") as m_quit:
+             mock.patch.object(su, "self_quit", side_effect=restarted.set) as m_quit:
             su._maybe_auto_relaunch("0.1.22", None)
-            import time as _t
-            _t.sleep(0.5)   # 等 daemon 线程跑完（sleep 已被 mock 不等待）
+            self.assertTrue(restarted.wait(1))
         m_rel.assert_called_once_with(8765)
         m_quit.assert_called_once()
 
@@ -100,6 +124,13 @@ class AutoRelaunchTests(BaseTest):
             self.assertEqual(store.get_run(run["id"])["status"], "running")
             release.set()
             self.assertTrue(jobs.wait_for_idle(2))
+            self.assertTrue(jobs.begin_restart_drain())
+            self.assertTrue(jobs.capacity_status()["restarting"])
+            rejected = store.create_run("orchestration", "重启排水期间")
+            with self.assertRaises(jobs.JobsBusyError):
+                jobs.enqueue({"kind": "orchestration", "run_id": rejected["id"]})
+            self.assertEqual(store.get_run(rejected["id"])["status"], "failed")
+            jobs.cancel_restart_drain()
 
 
 class ClearStalePortTests(BaseTest):

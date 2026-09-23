@@ -101,7 +101,8 @@ async function main() {
       info: document.getElementById("su-info").textContent || "",
       note: document.getElementById("su-note").textContent || "",
       applyHidden: document.getElementById("su-apply").classList.contains("hidden"),
-      restartHidden: document.getElementById("su-restart").classList.contains("hidden"),
+      restartAbsent: !document.getElementById("su-restart"),
+      upgradeHint: document.querySelector("#sub-about [data-i18n^='升级会通过']")?.textContent || "",
       checkDisabled: document.getElementById("su-check").disabled
     })`));
     check("sub-about 面板显示且页签标题正确", page.visible && /关于与更新/.test(page.title), page.title);
@@ -115,7 +116,9 @@ async function main() {
     check("版本信息渲染（当前版本号 + 开发仓库模式，不锁死具体版本）",
       /v\d+\.\d+\.\d+/.test(page.info) && /开发仓库/.test(page.info), page.info);
     check("repo 模式 note 提示 git pull", /git pull/.test(page.note), page.note);
-    check("repo 模式升级按钮隐藏（永不自动升级防覆盖）", page.applyHidden && page.restartHidden);
+    check("repo 模式升级和自更新重启按钮均不存在（永不自动升级防覆盖）",
+      page.applyHidden && page.restartAbsent);
+    check("升级说明明确服务会自动重启", /服务会自动重启/.test(page.upgradeHint), page.upgradeHint);
     check("检查更新按钮可用", page.checkDisabled === false);
 
     // 4) 点「检查更新」→ 按钮短暂 disabled → 恢复；note 保持 git pull 提示

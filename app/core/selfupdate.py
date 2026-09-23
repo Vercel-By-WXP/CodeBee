@@ -9,8 +9,8 @@
 
 升级 = 在标准 mgmt run 里跑 `npm install -g codebee@latest`（日志实时落盘、
 SSE 可看进度）。npm 替换的是包目录文件，当前进程已加载进内存不受影响，装完后由
-「重启」换新代码：新进程先等旧端口释放再 bind（Windows SO_REUSEADDR 允许双 LISTEN
-同时存在，必须先验旧进程真退了），旧进程发送完重启响应后自退。
+自动重启换新代码：新进程先等旧端口释放再 bind（Windows SO_REUSEADDR 允许双
+LISTEN 同时存在，必须先验旧进程真退了），旧进程发送完重启响应后自退。
 
 安全：两处子进程命令的 argv 均为**行内字面量列表**（可执行文件与全部参数不来自任何
 外部输入；重启仅透传 argparse 校验过的整型端口），shell 全程 False，绝不拼接用户输入。
@@ -170,7 +170,7 @@ def apply_upgrade(port=None):
     port=服务端口：升级成功且版本真变时会自动就地重启（用户拍板 2026-09-21：
     升级完不该再要求手动点「重启服务生效」——旧进程滞留是 unknown api/界面
     闪烁/老宠物一类「升级了没生效」事故的总根子）。拿不到端口或运行环境不
-    具备时自动跳过，回落版本页的手动重启按钮。"""
+    具备时才跳过自动重启。"""
     global _PENDING_PORT
     try:
         _PENDING_PORT = int(port) if port else None
@@ -237,10 +237,10 @@ def _log_note(log_path, text):
 
 
 def _maybe_auto_relaunch(old_pkg, log_path):
-    """升级成功后的自动重启（三道守卫，任一不满足就回落手动按钮）：
+    """升级成功后的自动重启：
     ①知道服务端口（apply_upgrade 传入）；②版本真的变了（同版本重装不折腾）；
-    ③没有用户任务在跑（jobs._alive 只剩本升级任务自己）——正在干活的任务
-    不能被升级重启打断，此时留给用户挑自己合适的时间手动重启。"""
+    ③等当前用户任务自然结束后再原子停止接单——正在干活的任务不能被升级
+    重启打断，也不再要求用户找到一个可能不存在的手动重启按钮。"""
     import threading
     from . import jobs
     if not _PENDING_PORT:
@@ -250,26 +250,27 @@ def _maybe_auto_relaunch(old_pkg, log_path):
     if not old_pkg or new_pkg == old_pkg:
         _log_note(log_path, "版本未变化（%s），无需重启" % (new_pkg or "?"))
         return
-    if getattr(jobs, "_alive", 0) > 1:
-        _log_note(log_path, "检测到还有 %d 个任务在运行，不自动重启——"
-                  "完成后请在版本页手动点「重启服务生效」" % (jobs._alive - 1))
-        return
     port = _PENDING_PORT
 
     def _go():
         drain_started = False
+        wait_noted = False
         try:
             time.sleep(3.0)   # 留出日志收尾/浏览器看到「升级完成」的窗口
-            drain_started = jobs.begin_restart_drain()
-            if not drain_started:
-                _log_note(log_path, "延时窗口内有新任务进入，不自动重启——"
-                          "完成后请在版本页手动点「重启服务生效」")
-                return
+            while not drain_started:
+                if (not wait_noted and
+                        (getattr(jobs, "_alive", 0) > 1 or
+                         getattr(jobs, "_chat_alive", 0) > 0)):
+                    _log_note(log_path, "等待当前任务完成后自动重启服务…")
+                    wait_noted = True
+                drain_started = jobs.begin_restart_drain()
+                if not drain_started:
+                    jobs.wait_for_idle(timeout=1.0)
             _log_note(log_path, "自动重启服务以应用新版本 %s …" % new_pkg)
             if relaunch(port):
                 self_quit()
         except Exception:
-            log.exception("selfupdate: 自动重启失败，请在版本页手动重启")
+            log.exception("selfupdate: 自动重启失败")
         finally:
             # 正常 self_quit 会直接结束进程；若拉起失败、异常或测试替身返回，必须
             # 释放停止接单闸，避免当前实例永久拒绝新任务。

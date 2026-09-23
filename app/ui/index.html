@@ -1070,11 +1070,10 @@
             <button id="btn-welcome-replay" class="ghost small" onclick="welcomeOpen()"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="帮助中心">帮助中心</span></button>
             <button id="su-check" class="ghost small" onclick="suCheck()"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="检查更新">检查更新</span></button>
             <button id="su-apply" class="ghost small hidden" onclick="suApply()"><span data-i18n="升级到新版">升级到新版</span></button>
-            <button id="su-restart" class="ghost small hidden" onclick="suRestart()"><span data-i18n="重启服务生效">重启服务生效</span></button>
           </div>
           <p id="su-note" class="hint"></p>
           <p id="su-progress" class="hint"></p>
-          <p class="hint" data-i18n="升级会通过 npm 拉取最新版并自动执行（日志可在运行记录里实时查看）；完成后点「重启服务生效」，页面会自动重连。开发仓库（git clone）模式不提供自动升级，请用 git pull。">升级会通过 npm 拉取最新版并自动执行（日志可在运行记录里实时查看）；完成后点「重启服务生效」，页面会自动重连。开发仓库（git clone）模式不提供自动升级，请用 git pull。</p>
+          <p class="hint" data-i18n="升级会通过 npm 拉取最新版并自动执行（日志可在运行记录里实时查看）；完成后服务会自动重启，页面会自动重连。开发仓库（git clone）模式不提供自动升级，请用 git pull。">升级会通过 npm 拉取最新版并自动执行（日志可在运行记录里实时查看）；完成后服务会自动重启，页面会自动重连。开发仓库（git clone）模式不提供自动升级，请用 git pull。</p>
           <h3 data-i18n="帮助改进 CodeBee" class="sec-title">帮助改进 CodeBee</h3>
           <label class="toggle"><input id="set-telemetry" type="checkbox" onchange="saveTelemetry(this.checked)"> <span data-i18n="发送匿名错误报告（帮助我们发现和修复问题）">发送匿名错误报告（帮助我们发现和修复问题）</span></label>
           <p data-i18n="只上报失败原因码、供应商/模型名与脱敏后的错误摘录——绝不上传任务内容、章节正文、API 密钥和本机路径；关闭后立即停止一切上报。" class="hint">只上报失败原因码、供应商/模型名与脱敏后的错误摘录——绝不上传任务内容、章节正文、API 密钥和本机路径；关闭后立即停止一切上报。</p>

@@ -260,10 +260,10 @@ def wait_for_idle(timeout=10):
 
 
 def begin_restart_drain():
-    """升级任务已退出执行位且没有用户任务时，原子停止接单。"""
+    """升级任务已退出执行位且没有用户任务或 direct 对话时，原子停止接单。"""
     global _restart_drain
     with _pool_lock:
-        if _restart_drain or _alive != 0:
+        if _restart_drain or _alive != 0 or _chat_alive != 0:
             return False
         _restart_drain = True
         return True
@@ -921,7 +921,7 @@ def _do_selfupgrade(job, ev):
     if ev.is_set() or (store.get_run(run_id) or {}).get("status") != "running":
         return
     store.finish_step(run_id, step["n"], "done" if res["ok"] else "failed",
-                      summary="升级完成，点「重启」生效" if res["ok"]
+                      summary="升级完成，服务将自动重启生效" if res["ok"]
                       else ("升级失败: " + res["error"][:300]),
                       exit_code=res.get("exit_code"))
     # expected_status 守卫：用户已强制终止的运行保持 cancelled，不被改写
