@@ -1366,6 +1366,14 @@ def _run_code(run, task, agents, ev, stats, mode):
                             note="自动修复第 %d 轮" % round_no,
                             resume=resume_ctx["session"] if resume_ctx else impl_sid[0],
                             require_tools=True)
+            if (res.get("raw") or {}).get("timed_out"):
+                # 自动修复没有换将/重试兜底；超时后继续验收会把未完成的修复
+                # 当作正常轮次，让 run 继续显示 running，最终还可能误标 done。
+                # 步骤本身仍保留 timeout 细节，这里将 run/task 收口为终态 timeout。
+                error = (res.get("error") or "修复步骤超时")[:400]
+                store.update_run(run_id, expected_status="running", status="timeout",
+                                 ended_at=_now(), error="代码修复步骤超时：%s" % error)
+                return
             if res["ok"]:
                 _record_actual_route(
                     run_id, task, agents, stats, impl,

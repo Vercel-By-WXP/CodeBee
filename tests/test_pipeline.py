@@ -136,6 +136,50 @@ class TestCodeFallbackRoute(BaseTest):
         self.assertNotIn("fallback", saved["route_plan"]["implement"]["fallback"])
 
 
+class TestCodeRepairTimeout(BaseTest):
+    def runTest(self):
+        import threading
+        from unittest.mock import patch
+        from app.core import pipeline, store
+
+        task = store.create_task({
+            "type": "code", "title": "修复步骤超时", "goal": "完成代码修复",
+            "workdir": str(self.workdir), "verify_command": "exit 0",
+            "implementer": "primary",
+        })
+        task = dict(task, difficulty="easy", engine="code")
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running")
+        agent = {"id": "primary", "label": "Primary", "kind": "codex",
+                 "mode": "real"}
+        verify = {"calls": 0}
+
+        def fake_step(_run_id, role, *_args, **_kwargs):
+            if role == "fix-r1":
+                return {"ok": False, "error": "超时 240 秒", "text": "", "sid": "",
+                        "raw": {"timed_out": True, "cancelled": False}}
+            return {"ok": True, "error": "", "text": "已实现", "sid": "",
+                    "raw": {}}
+
+        def failed_verify(*_args, **_kwargs):
+            verify["calls"] += 1
+            return False, True
+
+        with patch.object(pipeline.modelhub, "bind_agent", side_effect=lambda a, *_: a), \
+                patch.object(pipeline.router, "pick", return_value=(agent, "primary")), \
+                patch.object(pipeline, "_run_step", side_effect=fake_step), \
+                patch.object(pipeline, "_run_verify", side_effect=failed_verify):
+            pipeline._run_code(store.get_run(run["id"]), task, [agent],
+                               threading.Event(), {}, "fast")
+
+        saved = store.get_run(run["id"])
+        self.assertEqual(saved["status"], "timeout")
+        self.assertIn("超时", saved.get("error", ""))
+        self.assertEqual(store.get_task(task["id"])["status"], "timeout")
+        self.assertEqual(verify["calls"], 1,
+                         "修复超时后应立即收口，不应继续执行下一轮验收")
+
+
 class TestCodeAuthFailureStopsCliSwitch(BaseTest):
     def runTest(self):
         import threading
