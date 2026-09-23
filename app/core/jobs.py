@@ -19,6 +19,7 @@ from __future__ import annotations
 import queue
 import sys
 import threading
+import time
 import traceback
 
 # 仅保留给旧测试/诊断代码观察；生产 enqueue 永远不向这里写入。
@@ -323,6 +324,16 @@ def _requeue_await_slot(job, waits_left=None):
         # 带着全新重试额度重新入队，封顶永远打不中）。仍满载则续下一拍。
         with _timer_lock:
             _deferred_timers.pop(run_id, None)
+        try:
+            from . import store
+            run = store.get_run(run_id) or {}
+            deadline_at = run.get("deadline_at")
+            if deadline_at is not None and float(deadline_at) <= time.time():
+                store.update_run(run_id, expected_status="queued", status="timeout",
+                                 ended_at=_now(), error="任务总时限已到（排队等待期间）")
+                return
+        except (TypeError, ValueError, AttributeError):
+            pass
         try:
             started = _try_start_once(job)
         except DuplicateJobError:
@@ -774,11 +785,19 @@ def requeue_pending(limit=10, max_age_s=None):
 
 def workers_info():
     with _pool_lock:
-        return {"target": _target, "alive": _alive,
+        info = {"target": _target, "alive": _alive,
                 "chat_alive": _chat_alive, "chat_pool": CHAT_POOL,
-                "queued": 0,
                 "available": 0 if _restart_drain else max(0, _target - _alive),
                 "mode": "restart-drain" if _restart_drain else "direct"}
+    # queued runs are deliberately persisted rather than held in _QUEUE. Report
+    # the same source the board renders so capacity waits are observable.
+    try:
+        from . import store
+        info["queued"] = sum(1 for run in store.list_runs(None)
+                             if run.get("status") == "queued")
+    except Exception:
+        info["queued"] = 0
+    return info
 
 
 def _drain_test_queue():

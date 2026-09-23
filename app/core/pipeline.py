@@ -34,6 +34,10 @@ class Cancelled(Exception):
     pass
 
 
+class TaskTimeout(Exception):
+    pass
+
+
 def _now():
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -41,6 +45,45 @@ def _now():
 def _check_cancel(ev):
     if ev is not None and ev.is_set():
         raise Cancelled()
+
+
+def _run_deadline(run_id):
+    """Convert the persisted wall-clock cutoff into a monotonic deadline."""
+    run = store.get_run(run_id) or {}
+    try:
+        deadline_at = float(run.get("deadline_at"))
+    except (TypeError, ValueError):
+        return None
+    return time.monotonic() + (deadline_at - time.time())
+
+
+def _ensure_budget(run_id):
+    deadline = _run_deadline(run_id)
+    if deadline is not None and time.monotonic() >= deadline:
+        store.update_run(run_id, expected_status="running", status="timeout",
+                         ended_at=_now(), error="任务总时限已到")
+        raise TaskTimeout()
+    return deadline
+
+
+def _step_timeout(run_id, requested, deadline=None):
+    value = max(0.0, float(requested or runner.DEFAULT_TIMEOUT))
+    deadline = deadline if deadline is not None else _run_deadline(run_id)
+    if deadline is not None:
+        value = min(value, max(0.0, deadline - time.monotonic()))
+    return value, deadline
+
+
+def _planner_call(fn, *args, deadline=None, **kwargs):
+    """Allow older injected planner doubles to omit the new deadline kwarg."""
+    if deadline is None:
+        return fn(*args, **kwargs)
+    try:
+        return fn(*args, deadline=deadline, **kwargs)
+    except TypeError as exc:
+        if "unexpected keyword argument 'deadline'" not in str(exc):
+            raise
+        return fn(*args, **kwargs)
 
 
 def _inside(dirpath, target):
@@ -195,12 +238,12 @@ def _get_session(run_id):
         return s
 
 
-def _make_llm_caller(agent, workdir):
+def _make_llm_caller(agent, workdir, deadline=None):
     """压缩摘要用 LLM：直接复用当前 step 的 agent（同 CLI 同模型）。"""
     def caller(messages):
         prompt = "\n\n".join(m.get("content", "") for m in messages)
         res = runner.run_agent(agent, prompt, workdir=workdir, readonly=True,
-                               timeout=300)
+                               timeout=300, deadline=deadline)
         return res.get("text") or ""
     return caller
 
@@ -306,6 +349,8 @@ def _binding_dead_msg(agent):
 def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None, require_tools=False):
     """执行一个智能体步骤并记录。返回 runner 统一结果。"""
     _wait_gate(run_id, ev)
+    deadline = _ensure_budget(run_id)
+    timeout, deadline = _step_timeout(run_id, timeout, deadline)
     # 绑定解析为空分两种（2026-09-18 起 区分对待）：
     # · 从没配过链（binding_configured=False）：回落 CLI 本机默认照跑——
     #   用户根本没在 CodeBee 里配供应商，谈不到「烧自己配的配额」；判失败
@@ -376,10 +421,15 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
         res = _spawn_step(session_run_id=run_id, role=role, agent=agent,
                           prompt=effective_prompt, workdir=workdir, readonly=readonly,
                           ev=ev, timeout=timeout, resume=resume, step=step,
-                          log_abs=log_abs, images=images, require_tools=require_tools)
+                          log_abs=log_abs, images=images, require_tools=require_tools,
+                          deadline=deadline)
     # 先收尾再查取消：取消时进程已被 run_process 杀停，若先抛 Cancelled，
     # 步骤记录会永远停在「运行中」变僵尸（与 _run_verify 的顺序对齐）
     _finish_step_result(run_id, step, res, role, agent, start)
+    if (res.get("raw") or {}).get("deadline_exceeded"):
+        store.update_run(run_id, expected_status="running", status="timeout",
+                         ended_at=_now(), error="任务总时限已到")
+        raise TaskTimeout()
     _check_cancel(ev)
     return res
 
@@ -394,6 +444,7 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
     followups=True 时从回答末尾解析「建议追问」块（直连对话专用协议）：
     剥离出结构化列表落步骤记录，正文保持干净。"""
     _wait_gate(run_id, ev)
+    deadline = _ensure_budget(run_id)
     step, log_abs = store.add_step(run_id, role, "builtin", "CodeBee", note=note,
                                    model=bi.get("model") or "")
     start = time.time()
@@ -437,7 +488,9 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
     def _on_activity(line):
         store.stream_step(run_id, step["n"], activity=str(line or "")[:200])
 
-    res = builtin_agent.run(bi, prompt, workdir, cancel_event=ev, log=_log, images=images,
+    remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+    res = builtin_agent.run(bi, prompt, workdir, timeout=remaining or 180,
+                            deadline=deadline, cancel_event=ev, log=_log, images=images,
                             on_reason=_on_reason, on_stream=_on_stream,
                             on_activity=_on_activity)
     if followups and res.get("ok"):
@@ -462,6 +515,10 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
     res.setdefault("cost_usd", 0.0)
     # 先收尾再查取消：与 _run_step 同序，防步骤记录停在「运行中」变僵尸
     _finish_step_result(run_id, step, res, role, agent_pseudo, start)
+    if (res.get("raw") or {}).get("deadline_exceeded"):
+        store.update_run(run_id, expected_status="running", status="timeout",
+                         ended_at=_now(), error="任务总时限已到")
+        raise TaskTimeout()
     _check_cancel(ev)
     return res
 
@@ -486,7 +543,8 @@ def _budget_max_tokens():
 
 
 def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
-                timeout, resume, step, log_abs, images=None, require_tools=False):
+                timeout, resume, step, log_abs, images=None, require_tools=False,
+                deadline=None):
     """真实 CLI 调用：压缩灰度路径或原路径。"""
     # T2.1 预算闸：已用 token 达到单次 run 上限 → 阻断后续真实调用（ENV_BLOCK）。
     # 只拦「下一步」，允许越过线的当前步完成；auto 续跑可在用户调高预算后接手。
@@ -509,10 +567,10 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
     if _compaction_enabled() and not resume:
         # Phase 2（1D）：撑爆 → 压缩 → 守门重试；同时把 usage 累进 token_meter（1C）
         session = _get_session(session_run_id)
-        llm_caller = _make_llm_caller(agent, workdir)
+        llm_caller = _make_llm_caller(agent, workdir, deadline=deadline)
         call_kwargs = dict(workdir=workdir, readonly=readonly,
                            timeout=timeout, cancel_event=ev, log_path=str(log_abs),
-                           images=images, require_tools=require_tools)
+                           images=images, require_tools=require_tools, deadline=deadline)
 
         def _call(p, **kw):
             nonlocal usage_recorded
@@ -539,7 +597,8 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
     else:
         res = runner.run_agent(agent, prompt, workdir=workdir, readonly=readonly,
                                timeout=timeout, cancel_event=ev, log_path=str(log_abs),
-                               resume=resume, images=images, require_tools=require_tools)
+                               resume=resume, images=images, require_tools=require_tools,
+                               deadline=deadline)
     # 默认关闭压缩和 resume 都走直通分支，也必须把真实 usage 送进预算表；否则
     # 下一步永远看到 used=0，max_tokens_per_run 只是一个无效设置。
     if not usage_recorded:
@@ -728,12 +787,15 @@ def _files_hint(sub):
 
 def _run_verify(run_id, task, workdir, ev):
     """确定性验证。返回 (verify_pass, ran)。"""
+    deadline = _ensure_budget(run_id)
     if not task.get("verify_command"):
         return True, False
     step, log_abs = store.add_step(run_id, "verify", "builtin", "内置验证器")
     start = time.time()
+    timeout, deadline = _step_timeout(run_id, 600, deadline)
     r = runner.run_process(shell_cmd=task["verify_command"], cwd=workdir,
-                           timeout=600, cancel_event=ev, log_path=str(log_abs))
+                           timeout=timeout, deadline=deadline, cancel_event=ev,
+                           log_path=str(log_abs))
     ok = r["ok"]
     # 与 _finish_step_result 同一套显示层细分：超时/取消杀停不再冒充「失败」
     if r.get("cancelled"):
@@ -746,6 +808,10 @@ def _run_verify(run_id, task, workdir, ev):
     store.finish_step(run_id, step["n"], v_status,
                       summary=v_sum,
                       exit_code=r["exit_code"], duration_s=time.time() - start)
+    if r.get("deadline_exceeded"):
+        store.update_run(run_id, expected_status="running", status="timeout",
+                         ended_at=_now(), error="任务总时限已到")
+        raise TaskTimeout()
     _check_cancel(ev)
     return ok, True
 
@@ -1057,11 +1123,14 @@ def _run_code(run, task, agents, ev, stats, mode):
         _wait_gate(run_id, ev)
         plan_step, plan_log = store.add_step(run_id, "plan", impl["id"], impl.get("label"),
                                              note=route.get("implementer", ""))
-        plan = planner.make_code_plan(_steered_task(run_id, task),
-                                      modelhub.bind_agent(impl, difficulty),
-                                      _resume_workdir(resume_ctx, workdir), ev,
-                                      resume=resume_ctx["session"] if resume_ctx else None,
-                                      log_path=str(plan_log) if plan_log else None)
+        plan = _planner_call(
+            planner.make_code_plan, _steered_task(run_id, task),
+            modelhub.bind_agent(impl, difficulty),
+            _resume_workdir(resume_ctx, workdir), ev,
+            resume=resume_ctx["session"] if resume_ctx else None,
+            log_path=str(plan_log) if plan_log else None,
+            deadline=_run_deadline(run_id))
+        _ensure_budget(run_id)
         # 规划器判定优先于启发式（仅当用户未显式指定难度）
         if not explicit and plan.get("difficulty") in ("easy", "hard"):
             difficulty = plan["difficulty"]
@@ -2329,8 +2398,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         _wait_gate(run_id, ev)
         outline_step, outline_log = store.add_step(run_id, "outline", impl["id"], impl.get("label"),
                                                    note=route.get("author", ""))
-        outline = planner.make_serial_outline(_steered_task(run_id, task), impl, workdir, ev,
-                                              log_path=str(outline_log) if outline_log else None)
+        outline = _planner_call(
+            planner.make_serial_outline, _steered_task(run_id, task), impl, workdir, ev,
+            log_path=str(outline_log) if outline_log else None,
+            deadline=_run_deadline(run_id))
+        _ensure_budget(run_id)
         if outline.get("degraded") and impl.get("mode") != "mock":
             # 兜底模板只有章号没有情节，据此写出的两万字等于废稿——
             # 中止并交给自动续跑等编排者恢复后重试，而不是空转烧配额。
@@ -3500,8 +3572,11 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     draft_note = route.get("author", "") if mode != "manual" else ""
 
     # 编排者大纲：只对真实执行有意义；失败静默退回无大纲（喂入带指令的任务副本）
-    outline = (planner.make_review_outline(_steered_task(run_id, task))
+    outline = (_planner_call(planner.make_review_outline,
+                             _steered_task(run_id, task),
+                             deadline=_run_deadline(run_id))
                if workflow["outline"] and impl.get("mode") != "mock" else None)
+    _ensure_budget(run_id)
     if outline:
         workflow = task_compile.content_workflow(
             task, difficulty, plan=outline, mode=mode)
@@ -3993,6 +4068,10 @@ def execute_run(run_id):
         store.update_run(run_id, expected_status="running", status="failed",
                          error="找不到任务 %s" % run.get("task_id"), ended_at=_now())
         return
+    try:
+        _ensure_budget(run_id)
+    except TaskTimeout:
+        return
     # 统一任务编译：旧字段继续供各引擎读取，规格作为运行级诊断与调度输入落盘。
     task_spec = task_compile.compile_task(task)
     store.update_run(run_id, task_spec=task_spec,
@@ -4111,6 +4190,9 @@ def execute_run(run_id):
                                    critics, impl, route, resume_ctx, difficulty)
             else:
                 _run_content_review(run, task, agents, ev, stats, mode)
+    except TaskTimeout:
+        store.update_run(run_id, expected_status="running",
+                         status="timeout", ended_at=_now(), error="任务总时限已到")
     except Cancelled:
         store.update_run(run_id, expected_status="running",
                          status="cancelled", ended_at=_now())

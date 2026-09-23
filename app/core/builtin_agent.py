@@ -347,7 +347,7 @@ def _tool_write_file(workdir, args):
     return "已写入 %s（%d 字符，UTF-8）" % (rel, len(content))
 
 
-def _tool_run_command(workdir, args, cancel_event=None):
+def _tool_run_command(workdir, args, cancel_event=None, deadline=None):
     """本机执行一条 shell 命令，返回 (退出码, 合并输出)。
 
     薄适配层：执行/杀树/取消/解码全部复用 runner.run_process（shell_cmd 分支
@@ -364,7 +364,7 @@ def _tool_run_command(workdir, args, cancel_event=None):
         timeout = CMD_DEFAULT_TIMEOUT
     r = runner.run_process(shell_cmd=cmdline, cwd=os.path.abspath(workdir or "."),
                            timeout=max(5, min(timeout, CMD_MAX_TIMEOUT)),
-                           cancel_event=cancel_event)
+                           deadline=deadline, cancel_event=cancel_event)
     out = runner.clean_cli_text(
         (r.get("stdout") or "") + (("\n" + r["stderr"]) if r.get("stderr") else ""))
     limit = CMD_OUT_HEAD + CMD_OUT_TAIL
@@ -405,13 +405,13 @@ _TOOL_IMPL = {"list_files": _tool_list_files, "read_file": _tool_read_file,
               "write_file": _tool_write_file, "run_command": _tool_run_command}
 
 
-def _exec_tool(workdir, name, args, cancel_event=None):
+def _exec_tool(workdir, name, args, cancel_event=None, deadline=None):
     fn = _TOOL_IMPL.get(name or "")
     if fn is None:
         return "（未知工具: %s）" % name
     try:
         if name == "run_command":
-            return fn(workdir, args or {}, cancel_event=cancel_event)
+            return fn(workdir, args or {}, cancel_event=cancel_event, deadline=deadline)
         return fn(workdir, args or {})
     except Exception as e:
         return "工具执行失败: %s" % (e)
@@ -443,7 +443,20 @@ def _post_json(url, headers, body, allow_private, timeout):
     return modelhub._post_json_http(url, headers, body, allow_private, timeout=timeout)
 
 
-def _post_interruptible(url, headers, body, allow_private, timeout, cancel_event):
+def _call_with_optional_deadline(fn, args, kwargs, deadline):
+    """Keep older test/integration transport shims source-compatible."""
+    if deadline is None:
+        return fn(*args, **kwargs)
+    try:
+        return fn(*args, **kwargs, deadline=deadline)
+    except TypeError as exc:
+        if "unexpected keyword argument 'deadline'" not in str(exc):
+            raise
+        return fn(*args, **kwargs)
+
+
+def _post_interruptible(url, headers, body, allow_private, timeout, cancel_event,
+                        deadline=None):
     """可打断的模型调用：cancel_event 置位即刻放弃等待返回。
 
     单次生成最长可跑满 timeout，取消不能陪跑到自然结束——HTTP 交给守护
@@ -459,11 +472,13 @@ def _post_interruptible(url, headers, body, allow_private, timeout, cancel_event
 
     th = threading.Thread(target=_go, daemon=True)
     th.start()
-    if cancel_event is None:
-        th.join(timeout + 10)
-    else:
-        while th.is_alive() and not cancel_event.wait(0.5):
-            pass
+    wait_until = deadline if deadline is not None else time.monotonic() + timeout + 10
+    while th.is_alive():
+        if cancel_event is not None and cancel_event.is_set():
+            break
+        if time.monotonic() >= wait_until:
+            return 0, None, ("任务总时限已到" if deadline is not None else "响应超时")
+        th.join(0.5)
     if cancel_event is not None and cancel_event.is_set():
         return 0, None, "已取消"
     return box.get("r") or (0, None, "无响应")
@@ -641,7 +656,8 @@ def _calls_from_acc(acc):
 
 
 def _post_sse_stream(url, headers, body, allow_private, timeout, proto,
-                     on_reason=None, on_text=None, on_tick=None, cancel_event=None):
+                     on_reason=None, on_text=None, on_tick=None, cancel_event=None,
+                     deadline=None):
     """流式（SSE）模型调用 → dict(status/text/reasoning/calls/usage/error/events)。
 
     与 _post_interruptible 同款的可打断语义：读取放守护线程，cancel_event 置位
@@ -717,11 +733,13 @@ def _post_sse_stream(url, headers, body, allow_private, timeout, proto,
 
     th = threading.Thread(target=_go, daemon=True)
     th.start()
-    if cancel_event is None:
-        th.join(timeout + 10)
-    else:
-        while th.is_alive() and not cancel_event.wait(0.5):
-            pass
+    wait_until = deadline if deadline is not None else time.monotonic() + timeout + 10
+    while th.is_alive():
+        if cancel_event is not None and cancel_event.is_set():
+            break
+        if time.monotonic() >= wait_until:
+            break
+        th.join(0.5)
     with lock:
         out = {"status": box["status"], "text": acc["text"],
                "reasoning": acc["reasoning"], "usage": dict(acc["usage"]),
@@ -731,7 +749,9 @@ def _post_sse_stream(url, headers, body, allow_private, timeout, proto,
         out["error"], out["status"] = "已取消", 0
         return out
     if th.is_alive():
-        out["error"], out["status"] = "响应超时", 0
+        out["error"], out["status"] = ("任务总时限已到" if deadline is not None
+                                         else "响应超时"), 0
+        out["deadline_exceeded"] = deadline is not None
     return out
 
 
@@ -903,7 +923,7 @@ def _norm_usage(usage):
 
 
 def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=None,
-        on_reason=None, on_stream=None, on_activity=None, stream=True):
+        on_reason=None, on_stream=None, on_activity=None, stream=True, deadline=None):
     """跑一次内置智能体（内部自带工具循环直到给出最终回答）。
 
     bi: resolve() 的返回；prompt: 本轮完整输入（目标/续轮块由 pipeline 拼）；
@@ -943,6 +963,14 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
     escalated = False       # 本轮 run 是否已提额（只提一次，防无限翻倍）
     empty_streak = 0        # 连续零正文轮数（拿到正文/工具即清零）
 
+    def _deadline_fail():
+        return {"ok": False, "text": "", "usage": dict(total_usage),
+                "error": "任务总时限已到", "model": model,
+                "provider_name": bi["provider_name"],
+                "provider_id": bi["provider_id"], "iterations": iters,
+                "cost_usd": 0.0, "reasoning": "\n\n".join(r for r in reasons if r)[:THINK_MAX_CHARS],
+                "raw": {"timed_out": True, "deadline_exceeded": True}}
+
     def _fire(cb, *cb_args):
         if cb is None:
             return
@@ -968,6 +996,8 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                 "reasoning": "\n\n".join(r for r in reasons if r)[:THINK_MAX_CHARS]}
 
     for it in range(1, MAX_TOOL_ITERS + 1):
+        if deadline is not None and time.monotonic() >= deadline:
+            return _deadline_fail()
         if cancel_event is not None and cancel_event.is_set():
             return _fail("已取消")
         reasons.append("")   # 每轮迭代各占一段思考（跨轮拼接时分段，join 时滤空段）
@@ -981,6 +1011,10 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                     got = False        # 本 KEY 拿到了响应（区别于 HTTP 失败换下家）
                     stripped = False   # thinking 对象被网关 400 拒后已摘除重发
                     while True:
+                        if deadline is not None and time.monotonic() >= deadline:
+                            return _deadline_fail()
+                        req_timeout = min(float(timeout), max(0.1, deadline - time.monotonic())) \
+                            if deadline is not None else timeout
                         url, headers, body = _build_request(
                             proto, pbase, kk["key"], model, system, msgs,
                             tools_ok, max_tokens=max_tokens)
@@ -1011,10 +1045,13 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         text, calls, usage = "", [], {}
                         streamed = False
                         if sbody is not None:
-                            part = _post_sse_stream(
-                                url, headers, sbody, allow_private, timeout, proto,
-                                on_reason=_take_reason, on_text=on_stream,
-                                cancel_event=cancel_event)
+                            part = _call_with_optional_deadline(
+                                _post_sse_stream,
+                                (url, headers, sbody, allow_private, req_timeout, proto),
+                                {"on_reason": _take_reason, "on_text": on_stream,
+                                 "cancel_event": cancel_event}, deadline)
+                            if part.get("deadline_exceeded"):
+                                return _deadline_fail()
                             if part["error"] == "已取消":
                                 return _fail("已取消")
                             if not part["error"] and part["events"]:
@@ -1032,9 +1069,12 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                                 # 供应商稳妥；非流式也失败才走下面的记账/换链。
                                 last_err = part["error"]
                         if not streamed:
-                            status, data, err = _post_interruptible(url, headers, body,
-                                                                    allow_private, timeout,
-                                                                    cancel_event)
+                            status, data, err = _call_with_optional_deadline(
+                                _post_interruptible,
+                                (url, headers, body, allow_private, req_timeout, cancel_event),
+                                {}, deadline)
+                            if err == "任务总时限已到":
+                                return _deadline_fail()
                             if cancel_event is not None and cancel_event.is_set():
                                 # 取消先于一切记账：健康 KEY 不能因被放弃的请求背上冷却
                                 return _fail("已取消")
@@ -1080,7 +1120,8 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         _fire(on_activity, "请求工具: " + "、".join(c["name"] for c in calls))
                         results = []
                         for c in calls:
-                            out = _exec_tool(workdir, c["name"], c["args"], cancel_event)
+                            out = _exec_tool(workdir, c["name"], c["args"], cancel_event,
+                                             deadline=deadline)
                             if log:
                                 brief = out if len(out) <= 120 else out[:120] + "…"
                                 log("[工具] %s → %s" % (c["name"], brief.replace("\n", " ⏎ ")))

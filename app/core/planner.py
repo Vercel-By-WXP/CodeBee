@@ -89,6 +89,15 @@ def _outline_timeout():
     return DEFAULT_OUTLINE_TIMEOUT
 
 
+def _deadline_timeout(deadline, requested):
+    if deadline is None:
+        return requested
+    try:
+        return max(1, min(float(requested), deadline - time.monotonic()))
+    except (TypeError, ValueError):
+        return requested
+
+
 def _log_usage(source, role, task, res, agent=None, tool="", model="", provider="",
                provider_id=""):
     """规划链路的调用入台账（编排者直连 / CLI 规划）；失败不影响规划本身。"""
@@ -346,7 +355,8 @@ def book_volume_plan(task, outline, upto):
     return volumes.merge_titles(plan, named)
 
 
-def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path=None):
+def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path=None,
+                        deadline=None):
     """连载大纲：编排者 API 优先 → 作者 CLI → 模板。返回 {book_title, chapters:[{title,beats,hook}]}。
 
     续写批次（serial.start_chapter > 1）：改用续写大纲提示词，注入前情大纲与
@@ -444,7 +454,7 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
             # 旁路缓存——首试 ok 但 JSON 不合法时，重试要的是「再抽一次样
             # 本」而不是同一份坏文本。
             res = modelhub.chat(prov["id"], model, prompt,
-                                max_tokens=16000, timeout=300, on_delta=cb,
+                                max_tokens=16000, timeout=_deadline_timeout(deadline, 300), on_delta=cb,
                                 reasoning_effort=_reasoning_effort(task),
                                 cache_ttl=3600 if _attempt == 1 else 0)
             cb.flush()
@@ -473,7 +483,8 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
         _append_log(log_path, "===== 作者 CLI（%s）=====" % author_agent.get("id", "?"))
         res = runner.run_agent(modelhub.bind_agent(author_agent), prompt,
                                workdir=workdir or task.get("workdir"), readonly=True,
-                               timeout=_outline_timeout(), cancel_event=ev,
+                               timeout=_deadline_timeout(deadline, _outline_timeout()),
+                               deadline=deadline, cancel_event=ev,
                                log_path=log_path)
         _log_usage("outline", "outline", task, res, agent=author_agent)
         if not res["ok"]:
@@ -591,11 +602,13 @@ def _reasoning_effort(task):
     return "medium"
 
 
-def make_code_plan(task, planner_agent, workdir, ev=None, resume=None, log_path=None):
+def make_code_plan(task, planner_agent, workdir, ev=None, resume=None, log_path=None,
+                   deadline=None):
     """代码任务计划：编排者 API 优先 → CLI 智能体 → 单步模板。"""
     orch = _orchestrator()
     if orch:
-        plan = _orch_code_plan(task, orch[0], orch[1], log_path=log_path)
+        plan = _orch_code_plan(task, orch[0], orch[1], log_path=log_path,
+                               deadline=deadline)
         if plan:
             return plan
     if planner_agent is None:
@@ -607,7 +620,8 @@ def make_code_plan(task, planner_agent, workdir, ev=None, resume=None, log_path=
               .replace("__CONTEXT__", task.get("context") or "（无）")
               .replace("__VERIFY__", task.get("verify_command") or "（未配置）"))
     res = runner.run_agent(planner_agent, prompt, workdir=workdir, readonly=True,
-                           timeout=300, cancel_event=ev, resume=resume,
+                           timeout=_deadline_timeout(deadline, 300), deadline=deadline,
+                           cancel_event=ev, resume=resume,
                            log_path=log_path)
     _log_usage("plan", "plan", task, res, agent=planner_agent)
     data = runner.extract_json(res.get("text") or "")
@@ -624,7 +638,7 @@ def _fallback_code_plan(task, note):
             "steps": [{"title": "实现任务", "detail": task["goal"]}]}
 
 
-def _orch_code_plan(task, prov, model, log_path=None):
+def _orch_code_plan(task, prov, model, log_path=None, deadline=None):
     cb = _log_streamer(log_path)
     # §07 T2.2：代码计划同任务同 prompt（断点续跑/重试），TTL 1h 精确缓存
     res = modelhub.chat(prov["id"], model,
@@ -632,7 +646,7 @@ def _orch_code_plan(task, prov, model, log_path=None):
                          .replace("__GOAL__", task["goal"])
                          .replace("__CONTEXT__", task.get("context") or "（无）")
                          .replace("__VERIFY__", task.get("verify_command") or "（未配置）")),
-                        max_tokens=8000, timeout=300, on_delta=cb,
+                        max_tokens=8000, timeout=_deadline_timeout(deadline, 300), on_delta=cb,
                         reasoning_effort=_reasoning_effort(task),
                         cache_ttl=3600)
     cb.flush()
@@ -652,7 +666,7 @@ def _orch_code_plan(task, prov, model, log_path=None):
             "workflow": _plan_workflow(data)}
 
 
-def make_review_outline(task):
+def make_review_outline(task, deadline=None):
     """review 类任务：编排者产出写作大纲（失败返回 None，起草退回无大纲）。"""
     orch = _orchestrator()
     if not orch:
@@ -662,7 +676,7 @@ def make_review_outline(task):
                         (REVIEW_OUTLINE_PROMPT
                          .replace("__GOAL__", task["goal"])
                          .replace("__CONTEXT__", task.get("context") or "（无）")),
-                        max_tokens=8000, timeout=300,
+                        max_tokens=8000, timeout=_deadline_timeout(deadline, 300),
                         reasoning_effort=_reasoning_effort(task),
                         cache_ttl=3600)   # §07 T2.2：同任务重试幂等，TTL 1h
     _log_usage("outline", "outline", task, res, model=model,

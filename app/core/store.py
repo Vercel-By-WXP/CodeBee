@@ -30,6 +30,10 @@ _STREAM_LOCK = threading.Lock()
 _STREAM_TS = {}
 LIVE_TEXT_MAX = 20000   # 单步骤实时思考/正文的保留上限（与 builtin_agent 同口径）
 
+DEFAULT_TASK_TIMEOUT_S = 3600
+MIN_TASK_TIMEOUT_S = 1
+MAX_TASK_TIMEOUT_S = 7 * 24 * 3600
+
 # ---------------------------------------------------------------- 状态版本（SSE 事件驱动）
 # 任何落盘写都算状态变化：SSE 连接等版本号变化才构建/推送全量状态，
 # 空闲时连接零开销（此前每连接每 0.8s 盲构建全量 payload，多端并发会放大成假死）
@@ -58,11 +62,37 @@ def wait_state_change(last_ver, timeout):
 
 
 def _new_id(prefix):
-    return "%s-%s-%04d" % (prefix, time.strftime("%Y%m%d-%H%M%S"), secrets.randbelow(10000))
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    # 10k random suffixes are not unique under a burst of task/run creation.
+    # Reserve against both indexes and disk so a collision cannot silently
+    # overwrite a queued run and make one of several submissions disappear.
+    with LOCK:
+        for _ in range(100):
+            candidate = "%s-%s-%04d" % (prefix, stamp, secrets.randbelow(10000))
+            if candidate in _TASKS or candidate in _RUNS:
+                continue
+            if (paths.TASKS_DIR / (candidate + ".json")).exists():
+                continue
+            if (paths.RUNS_DIR / candidate).exists():
+                continue
+            return candidate
+    raise RuntimeError("无法生成唯一记录 ID")
 
 
 def _safe_name(s):
     return re.sub(r"[^0-9A-Za-z_-]+", "-", str(s))[:40].strip("-") or "x"
+
+
+def _task_timeout_s(value=None):
+    """Resolve one bounded wall-clock budget for a task."""
+    raw = value
+    if raw in (None, ""):
+        raw = os.environ.get("TUTTI_TASK_TIMEOUT_S", DEFAULT_TASK_TIMEOUT_S)
+    try:
+        seconds = int(float(raw))
+    except (TypeError, ValueError):
+        seconds = DEFAULT_TASK_TIMEOUT_S
+    return max(MIN_TASK_TIMEOUT_S, min(MAX_TASK_TIMEOUT_S, seconds))
 
 
 # ---------------------------------------------------------------- 任务
@@ -129,6 +159,7 @@ def create_task(payload):
     }
     thinking = str(payload.get("thinking") or "standard").strip().lower()
     task["thinking"] = thinking if thinking in ("auto", "low", "standard", "high") else "auto"
+    task["timeout_s"] = _task_timeout_s(payload.get("timeout_s"))
     if flow["engine"] == "direct":
         task["direct_provider_id"] = _text(payload.get("direct_provider_id"),
                                             "direct_provider_id")[:80]
@@ -515,7 +546,7 @@ def load_all():
                 _save_json(paths.TASKS_DIR / (t["id"] + ".json"), t)
                 continue
             latest = max(runs, key=lambda r: r["id"])
-            if latest.get("status") in ("done", "failed", "cancelled"):
+            if latest.get("status") in ("done", "failed", "cancelled", "timeout"):
                 t["status"] = latest["status"]
                 _save_json(paths.TASKS_DIR / (t["id"] + ".json"), t)
 
@@ -540,11 +571,13 @@ def create_run(kind, title, task_id=None, entry_id=None, op=None):
         "status": "queued", "steps": [], "messages": [],
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "started_at": None, "ended_at": None,
+        "deadline_at": None,
         "cost_usd": 0.0, "tokens": 0, "error": "",
         "verdict": None, "summary": "",
     }
     if kind == "orchestration" and task_id:
         task = get_task(task_id) or {}
+        run["deadline_at"] = time.time() + _task_timeout_s(task.get("timeout_s"))
         try:
             eta = _RUN_ESTIMATOR(
                 task_type=task.get("type") or "", mode=task.get("mode") or "auto",
@@ -729,25 +762,27 @@ def update_run(run_id, expected_status=None, **fields):
         # 这套在落终态瞬间即时收口——打磨组长被取消/异常打断时 UI 不闪
         # 假「工作中」）。run 终态后不可能还有步骤在真跑。
         st = fields.get("status")
-        if st in ("done", "failed", "cancelled"):
+        if st in ("done", "failed", "cancelled", "timeout"):
             end_s = time.strftime("%H:%M:%S")
             for s in run["steps"]:
                 if s.get("status") in ("queued", "running"):
-                    s["status"] = "cancelled"
+                    s["status"] = "timeout" if st == "timeout" else "cancelled"
                     s["ended_at"] = s.get("ended_at") or end_s
                     if not s.get("summary"):
-                        s["summary"] = "步骤未正常收尾（终态自动恢复）"
+                        s["summary"] = ("步骤未正常收尾（任务总时限已到）"
+                                         if st == "timeout" else
+                                         "步骤未正常收尾（终态自动恢复）")
         _save_json(paths.RUNS_DIR / run_id / "run.json", run)
         # 状态回填：起跑与结束都同步任务状态。只回填终态的话，run 在跑、
         # 任务永远显示「排队中」（2026-09-18 实案：「# 重写·续」run 已 running
         # 写了一小时，任务卡 queued，用户以为卡死连点重试）。
-        if st in ("running", "done", "failed", "cancelled"):
+        if st in ("running", "done", "failed", "cancelled", "timeout"):
             tid = run.get("task_id")
             task = _TASKS.get(tid) if tid else None
             if task:
                 task["status"] = st
                 _save_json(paths.TASKS_DIR / (tid + ".json"), task)
-        if st in ("done", "failed", "cancelled"):
+        if st in ("done", "failed", "cancelled", "timeout"):
             # run_end 钩子（2026-09-22）：终态即触发，后台跑副作用型脚本
             # （回写知识库等）；失败/超时静默，绝不拖慢收尾路径
             try:
@@ -838,15 +873,17 @@ def recover_orphaned_runs():
     step_now = time.strftime("%H:%M:%S")
     with LOCK:
         for r in _RUNS.values():
-            if r.get("status") not in ("done", "failed", "cancelled"):
+            if r.get("status") not in ("done", "failed", "cancelled", "timeout"):
                 continue
             changed = False
             for s in r.get("steps") or []:
                 if s.get("status") in ("queued", "running"):
-                    s["status"] = "cancelled"
+                    s["status"] = "timeout" if r.get("status") == "timeout" else "cancelled"
                     s["ended_at"] = s.get("ended_at") or step_now
                     if not s.get("summary"):
-                        s["summary"] = "步骤未正常收尾（取消/中断自动恢复）"
+                        s["summary"] = ("步骤未正常收尾（任务总时限已到）"
+                                         if r.get("status") == "timeout" else
+                                         "步骤未正常收尾（取消/中断自动恢复）")
                     changed = True
             if changed:
                 _save_json(paths.RUNS_DIR / r["id"] / "run.json", r)

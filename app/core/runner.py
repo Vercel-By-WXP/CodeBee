@@ -29,7 +29,7 @@ from .error_codes import ErrorCode
 # 置 0 则两边通用（remote.py 同款守卫）。
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 DEFAULT_TIMEOUT = 1200  # 单步 20 分钟
-MAX_ATTEMPT_TIMEOUT_S = 60  # 单模型上游最多等 1 分钟，随后换模型/供应商
+MAX_ATTEMPT_TIMEOUT_S = 60  # 无进展时单模型最多等 1 分钟
 
 _BASH_CANDIDATES = [
     r"D:\Git\usr\bin\bash.exe",
@@ -559,9 +559,49 @@ def pretty_cli_log(text, max_event_chars=4000):
     return "\n".join(out)
 
 
+def _normalize_abort_markers(value):
+    """把重复错误配置规范成 ``[(marker, count), ...]``。
+
+    旧调用方传的是单个 ``(marker, count)`` 元组，必须继续支持；新的
+    调用方可以传字典或元组列表，以便同一 CLI 同时对多种断流文案止损。
+    """
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [(value, 1)]
+    if isinstance(value, dict):
+        raw = list(value.items())
+    elif (isinstance(value, (tuple, list)) and len(value) == 2
+          and isinstance(value[0], str)):
+        raw = [value]
+    else:
+        try:
+            raw = list(value)
+        except TypeError:
+            return []
+    out = []
+    for item in raw:
+        if isinstance(item, str):
+            marker, limit = item, 1
+        else:
+            try:
+                marker, limit = item
+            except (TypeError, ValueError):
+                continue
+        marker = str(marker or "")
+        try:
+            limit = max(1, int(limit))
+        except (TypeError, ValueError):
+            continue
+        if marker:
+            out.append((marker, limit))
+    return out
+
+
 def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None,
-                stall_timeout=0, repeat_abort=None):
+                stall_timeout=0, repeat_abort=None, deadline=None,
+                abort_markers=None):
     """通用子进程执行：并发读管道防死锁；超时/取消杀整棵进程树。
 
     stall_timeout：停滞看门狗（秒，0=关闭）——超过该时长 stdout/stderr 无任何
@@ -569,17 +609,40 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
     持续流动的 CLI 开（codex JSONL 事件流）；claude json 到结束才一次性输出，
     开了会把正常长任务误杀。
 
-    repeat_abort：可选 (marker, count)。同一致命错误达到次数即提前杀树，处理
-    CLI 自身不断打印重连消息、因此永远触发不了静默看门狗的假运行。
+    repeat_abort：可选 (marker, count)，也接受多个 ``(marker, count)``；同一
+    致命错误达到次数即提前杀树，处理 CLI 自身不断打印重连消息、因此永远
+    触发不了静默看门狗的假运行。abort_markers 是兼容扩展，用于不改变旧
+    repeat_abort 参数形状的情况下追加多种一次性断流标记。
 
-    返回 {ok, exit_code, stdout, stderr, duration, cancelled, timed_out, stalled}。
+    deadline：可选的 ``time.monotonic()`` 绝对截止时刻。它比 timeout 优先，
+    到点会杀掉进程树并返回 deadline_exceeded=True，调用方可把整个任务收口
+    为 timeout，而不是把它误记成普通供应商失败。
+
+    返回 {ok, exit_code, stdout, stderr, duration, cancelled, timed_out, stalled,
+    deadline_exceeded, abort_marker}。
     """
     if shell_cmd:
         # shell 串的解析器随平台：重定向/引号语法两边通用，只是解释器不同
         argv = ["cmd", "/c", shell_cmd] if os.name == "nt" else ["/bin/sh", "-c", shell_cmd]
     if argv is None:
         return {"ok": False, "exit_code": None, "stdout": "", "stderr": "argv 为空",
-                "duration": 0.0, "cancelled": False, "timed_out": False, "stalled": False}
+                "duration": 0.0, "cancelled": False, "timed_out": False,
+                "stalled": False, "deadline_exceeded": False, "abort_marker": None}
+    try:
+        deadline = float(deadline) if deadline is not None else None
+    except (TypeError, ValueError):
+        deadline = None
+    try:
+        timeout = max(0.0, float(timeout))
+    except (TypeError, ValueError):
+        timeout = float(DEFAULT_TIMEOUT)
+    if deadline is not None and time.monotonic() >= deadline:
+        return {"ok": False, "exit_code": None, "stdout": "",
+                "stderr": "[任务总时限已到，未启动子进程]", "duration": 0.0,
+                "cancelled": False, "timed_out": True, "stalled": False,
+                "deadline_exceeded": True, "abort_marker": None}
+    aborts = _normalize_abort_markers(repeat_abort)
+    aborts.extend(_normalize_abort_markers(abort_markers))
     full_env = scrub_env(os.environ.copy(), mode="drop")
     if env:
         # 5A：env 关键字环境变量注入用户传入的 env（属于有意注入，例如模型 API key）
@@ -613,7 +676,8 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         except Exception as e:
             return {"ok": False, "exit_code": None, "stdout": "",
                     "stderr": "启动失败: %r" % e, "duration": 0.0,
-                    "cancelled": False, "timed_out": False}
+                    "cancelled": False, "timed_out": False, "stalled": False,
+                    "deadline_exceeded": False, "abort_marker": None}
         out_chunks, err_chunks = [], []
         stamp = [time.time()]   # 最后输出时刻（两条管道共同刷新）
         t_out = threading.Thread(target=_pipe_reader, args=(proc.stdout, out_chunks, log_fh, stamp), daemon=True)
@@ -634,6 +698,8 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
             threading.Thread(target=_feed, daemon=True).start()
         start = time.time()
         cancelled = timed_out = stalled = repeat_aborted = False
+        deadline_exceeded = False
+        abort_marker = None
         while True:
             try:
                 proc.wait(timeout=0.4)
@@ -645,11 +711,22 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 _kill_tree(proc.pid)
                 _drain_streams(proc, t_out, t_err, timeout=10)
                 break
-            if time.time() - start > timeout:
+            if deadline is not None and time.monotonic() >= deadline:
+                deadline_exceeded = True
                 timed_out = True
                 _kill_tree(proc.pid)
                 _drain_streams(proc, t_out, t_err, timeout=5)
                 break
+            if time.time() - start > timeout:
+                # Claude/Codex 的工具循环可能持续吐 stream-json 事件而迟迟
+                # 不给最终 result。只要仍有活动，交给 stall_timeout 作为静默
+                # 上限；无输出的挂死仍按原单模型 timeout 快速换将。
+                active = stall_timeout and time.time() - stamp[0] < stall_timeout
+                if not active:
+                    timed_out = True
+                    _kill_tree(proc.pid)
+                    _drain_streams(proc, t_out, t_err, timeout=5)
+                    break
             if stall_timeout and time.time() - stamp[0] > stall_timeout:
                 # 停滞看门狗：长静默多为卡死（网关挂起/CLI 假死），与其耗满总
                 # 超时不如提前杀——错误按超时归类，走既有的换模型/换将链路
@@ -658,16 +735,19 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 _kill_tree(proc.pid)
                 _drain_streams(proc, t_out, t_err, timeout=5)
                 break
-            if repeat_abort:
+            if aborts:
                 try:
-                    marker, limit = repeat_abort
                     recent = decode_output(b"".join(out_chunks)[-8000:] +
                                            b"\n" + b"".join(err_chunks)[-8000:])
-                    if marker and recent.count(str(marker)) >= int(limit):
-                        repeat_aborted = True
-                        timed_out = True
-                        _kill_tree(proc.pid)
-                        _drain_streams(proc, t_out, t_err, timeout=5)
+                    for marker, limit in aborts:
+                        if recent.count(marker) >= limit:
+                            repeat_aborted = True
+                            abort_marker = marker
+                            timed_out = True
+                            _kill_tree(proc.pid)
+                            _drain_streams(proc, t_out, t_err, timeout=5)
+                            break
+                    if repeat_aborted:
                         break
                 except (TypeError, ValueError):
                     pass
@@ -688,7 +768,16 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         if cancelled:
             stderr += "\n[已被用户取消]"
         elif repeat_aborted:
-            stderr += "\n[同一网络错误重复 %s 次，已提前终止进程树]" % repeat_abort[1]
+            limit = next((n for m, n in aborts if m == abort_marker), "?")
+            if len(aborts) == 1 and abort_markers is None:
+                # 保留旧版 UI/测试已经依赖的文案；多标记配置使用更具体的
+                # 标记名，方便定位究竟是哪一种断流触发了止损。
+                stderr += "\n[同一网络错误重复 %s 次，已提前终止进程树]" % limit
+            else:
+                stderr += "\n[错误标记 %s 重复 %s 次，已提前终止进程树]" % (
+                    abort_marker, limit)
+        elif deadline_exceeded:
+            stderr += "\n[任务总时限已到，已终止进程树]"
         elif stalled:
             stderr += "\n[输出停滞 %ss，已终止进程树]" % stall_timeout
         elif timed_out:
@@ -697,7 +786,8 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
             "ok": exit_code == 0 and not cancelled and not timed_out,
             "exit_code": exit_code, "stdout": stdout, "stderr": stderr,
             "duration": duration, "cancelled": cancelled, "timed_out": timed_out,
-            "stalled": stalled,
+            "stalled": stalled, "deadline_exceeded": deadline_exceeded,
+            "abort_marker": abort_marker,
         }
     finally:
         if log_fh:
@@ -869,7 +959,8 @@ _TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
               # 2026-09-20 连载评审实测：codex 网关断流（stream disconnected）
               # 与 opencode 服务端 500（Unexpected server error）都是「重试/换将
               # 就可能活」的瞬态病，旧表判成终态导致整链早死
-              "stream disconnected", "unexpected server error",
+              "stream disconnected", "stream closed before response.completed",
+              "unexpected server error",
               # 2026-09-22 mo-so 实案：claude 报 "Can't reach the API server —
               # check your internet or DNS (ENOTFOUND)"，一家端点解析不到不代表
               # 跨厂商链上别家也不通，旧表判成终态直接跳去换将别的 CLI
@@ -1109,7 +1200,11 @@ def _prompt_to_file(prompt, workdir):
         return None
 
 
-_ARGV_PROMPT_SAFE = 20000   # 字符。Windows CreateProcess 命令行上限 32767，留路径/参数余量
+# Windows 上不少 CLI 先经过 cmd.exe/.cmd 垫片，实际安全上限接近 8191，
+# 而不是 CreateProcess 的理论 32767。留出命令、路径和环境参数余量，超过
+# 该值统一落盘，避免 MiMo/Kimi 评审在启动前直接报「命令行太长」。
+_ARGV_PROMPT_SAFE = 20000
+_ARGV_PROMPT_SHIM_SAFE = 6000
 
 
 def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=None):
@@ -1247,13 +1342,24 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
     # 超长时落盘临时文件、参数位换成读文件指令——评审/作者 CLI 非交互模式均带
     # 读文件工具（kimi 0.43 实测可读），读不到的调用输出不可解析，由评审全挂
     # 防线兜底判失败，绝不静默降级。
-    if argv is not None and stdin_text is None and len(prompt) > _ARGV_PROMPT_SAFE \
+    prompt_safe = _ARGV_PROMPT_SAFE
+    if argv:
+        launcher = str(argv[0]).lower()
+        if (launcher.endswith((".cmd", ".bat")) or
+                os.path.basename(launcher) in ("npm", "npx", "pnpm", "yarn", "bun")):
+            prompt_safe = _ARGV_PROMPT_SHIM_SAFE
+    if argv is not None and stdin_text is None and len(prompt) >= prompt_safe \
             and argv.count(prompt) == 1:
         pf = _prompt_to_file(prompt, workdir)
         if pf:
             argv[argv.index(prompt)] = (
                 "[系统] 本次完整指令因命令行长度限制已写入文件：%s\n"
                 "请先用读文件工具完整读取该文件，然后把文件内容当作你的任务指令执行。" % pf)
+            # Keep the original payload on stdin as a compatibility path for
+            # simple generic adapters and test shims that read stdin. CLI tools
+            # that intentionally use argv still receive the bounded file hint.
+            if kind == "generic" and stdin_text is None and len(tmpl) > 1:
+                stdin_text = prompt
             tmp_files.append(pf)
     return argv, stdin_text, prompt, tmp_files
 
@@ -1289,9 +1395,31 @@ def _stall_timeout(env_name, default):
         return default
 
 
+def _max_model_attempts(has_deadline=False):
+    """返回一次 runner 调用允许消耗的候选数。
+
+    生产任务会传入统一 deadline，默认收敛到 3 个候选；没有 deadline 的
+    旧式直接调用保留最多 4 个候选，以兼容已有的「同一上游两模型后换
+    供应商」策略。运维可用环境变量进一步收紧/放宽，最少 1 个。
+    """
+    default = 3 if has_deadline else 4
+    try:
+        value = int(os.environ.get("TUTTI_MAX_MODEL_ATTEMPTS", str(default)))
+        return max(1, min(12, value))
+    except (TypeError, ValueError):
+        return default
+
+
+_INVALID_MODEL_NAMES = frozenset(("auto", "default", "none"))
+
+
+def _invalid_model(model):
+    return str(model or "").strip().lower() in _INVALID_MODEL_NAMES
+
+
 def run_agent(agent, prompt, workdir=None, readonly=True,
               timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None,
-              images=None, require_tools=False):
+              images=None, require_tools=False, deadline=None):
     """执行一次智能体调用，返回统一结构
     {ok, text, json, cost_usd, tokens, error, error_code, raw}。
     agent 来自 registry.effective_agents()；resume 为已有会话 id，仅真实智能体生效
@@ -1308,13 +1436,33 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     失败不降级；同一上游超时两次即跳过该上游剩余模型。
 
     5E：catalog `orch.timeout_ms`（毫秒）优先于 caller 传入的 timeout；
-    但单个模型/上游调用硬封顶 60 秒，超时即试链上下一家。
+    单模型无进展时最多等 60 秒，持续 stream 活动交由 stall_timeout 看门狗
+    收口。deadline 是
+    任务共享的 ``time.monotonic()`` 绝对截止时刻；传入后所有模型、空响应
+    重试和限流宽限共用同一剩余预算。
     """
     # 5E：catalog orch.timeout_ms 优先
     orch_timeout_ms = (agent.get("orch") or {}).get("timeout_ms")
     if orch_timeout_ms:
         timeout = float(orch_timeout_ms) / 1000.0
-    timeout = min(float(timeout), MAX_ATTEMPT_TIMEOUT_S)
+    try:
+        timeout = float(timeout)
+    except (TypeError, ValueError):
+        timeout = float(DEFAULT_TIMEOUT)
+    timeout = max(0.0, timeout)
+    try:
+        deadline = float(deadline) if deadline is not None else None
+    except (TypeError, ValueError):
+        deadline = None
+    if deadline is not None and time.monotonic() >= deadline:
+        return {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+                "tokens": 0, "usage": None, "error": "任务总时限已到，未启动模型",
+                "error_code": ErrorCode.TIMEOUT,
+                "raw": {"exit_code": None, "timed_out": True,
+                        "deadline_exceeded": True, "duration": 0.0},
+                "kind": agent.get("kind", "generic"), "model": None,
+                "attempts": []}
+    timeout = min(timeout, MAX_ATTEMPT_TIMEOUT_S)
     kind = agent.get("kind", "generic")
     if kind == "aider":
         repo_issue = _git_repo_issue(workdir)
@@ -1322,7 +1470,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             return {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
                     "tokens": 0, "usage": None, "error": repo_issue,
                     "error_code": ErrorCode.VENDOR_ERROR, "raw": None,
-                    "kind": kind, "model": agent.get("model")}
+                    "kind": kind, "model": agent.get("model"), "attempts": []}
     if kind == "codex":
         stall_t = _stall_timeout("TUTTI_CODEX_STALL_TIMEOUT", 600)
     elif kind == "claude":
@@ -1341,7 +1489,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         return {"ok": False, "text": "", "json": None, "cost_usd": 0.0, "tokens": 0,
                 "usage": None, "error": reason,
                 "error_code": ErrorCode.ENV_BLOCK,
-                "raw": None, "kind": kind, "model": None}
+                "raw": None, "kind": kind, "model": None, "attempts": []}
     base_env = dict(agent.get("env") or {})
     if kind == "claude":
         bash = find_git_bash()
@@ -1355,10 +1503,36 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 "error": "该 CLI 未配置会话恢复（catalog orch.resume_argv_template），"
                          "无法在已有会话上继续",
                 "error_code": ErrorCode.VENDOR_ERROR,
-                "sid": "", "raw": None, "kind": kind, "model": None}
+                "sid": "", "raw": None, "kind": kind, "model": None, "attempts": []}
 
     attempts = _resolve_attempts(agent)
+    # 启动前过滤明显的占位模型名。它们常由某个 CLI 的会话标题/默认配置
+    # 泄漏进编排链；让子进程自己等待网关返回会把一个确定性配置错拖满
+    # 多轮超时。非法项不消耗模型调用预算，后面的真实候选仍可接手。
+    filtered_attempts = []
+    preflight_failures = []
+    for att in attempts:
+        if _invalid_model(att.get("model")):
+            preflight_failures.append({
+                "model": att.get("model"),
+                "provider_id": att.get("provider_id") or "",
+                "provider": (att.get("provider") or {}).get("name", "")
+                            if isinstance(att.get("provider"), dict) else "",
+                "ok": False, "skipped": True, "error":
+                    "无效模型名 %r，启动前跳过" % att.get("model"),
+            })
+            continue
+        filtered_attempts.append(att)
+    attempts = filtered_attempts[:_max_model_attempts(deadline is not None)]
     out = None
+    attempt_history = list(preflight_failures)
+    if not attempts:
+        return {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+                "tokens": 0, "usage": None,
+                "error": (preflight_failures[-1].get("error")
+                           if preflight_failures else "没有可尝试的模型"),
+                "error_code": ErrorCode.VENDOR_ERROR, "raw": None,
+                "kind": kind, "model": None, "attempts": attempt_history}
     grace_left = RATE_LIMIT_GRACE_N  # 链尾限流宽限预算：整链撞 429 时原地等一个窗口再试一次
     timed_out_upstreams = {}  # 同一上游两次超时后跳过剩余模型
     skipped_upstreams = set()
@@ -1366,7 +1540,10 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         upstream = _attempt_upstream(att)
         if upstream in skipped_upstreams:
             continue
-        model_deadline = att.get("_deadline") or (time.monotonic() + timeout)
+        # 有任务 deadline 时，所有候选共享同一个截止时刻；没有 deadline
+        # 的历史直接调用保留「每个候选最多 60 秒」的旧语义。
+        model_deadline = (att.get("_deadline") or deadline or
+                          (time.monotonic() + timeout))
         env = dict(base_env)
         env.update(att["env"])
         if kind == "codex":
@@ -1386,7 +1563,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             if remaining <= 0:
                 res = {"ok": False, "exit_code": None, "stdout": "", "stderr": "",
                        "duration": timeout, "cancelled": False, "timed_out": True,
-                       "stalled": False}
+                       "stalled": False,
+                       "deadline_exceeded": deadline is not None}
             else:
                 argv, stdin_text, prompt_eff, tmp_files = _build_call(
                     eff_agent, kind, sid, readonly,
@@ -1396,10 +1574,16 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 try:
                     repeat_guard = (("Reconnecting...", 2)
                                     if kind == "codex" else None)
+                    stream_abort_markers = (
+                        (("stream disconnected", 1),
+                         ("stream closed before response.completed", 1))
+                        if kind == "codex" else None)
                     res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
-                                      timeout=min(timeout, remaining), cancel_event=cancel_event,
+                                      timeout=min(timeout, remaining), deadline=deadline,
+                                      cancel_event=cancel_event,
                                       log_path=log_path, stall_timeout=stall_t,
-                                      repeat_abort=repeat_guard)
+                                      repeat_abort=repeat_guard,
+                                      abort_markers=stream_abort_markers)
                 finally:
                     # 超长指令临时文件：CLI 进程已结束（管道已收），即刻清场不污染工作目录
                     for tf in tmp_files:
@@ -1424,6 +1608,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                         else "超时" if res["timed_out"]
                         else "取消" if res["cancelled"]
                         else "退出码 %s" % res["exit_code"])
+                if res.get("deadline_exceeded"):
+                    head = "任务总时限已到"
                 out["error"] = head + ("；stderr/stdout: " + tail if tail else "")
                 if kind == "codex":
                     fm = _codex_fail_msg(res["stdout"])
@@ -1535,6 +1721,22 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     out["error_code"] = _classify_failure(res, kind=kind, empty_output=True)
             break
         _report_key(att, out)
+        raw = out.get("raw") or {}
+        attempt_history.append({
+            "model": out.get("model") or att.get("model") or "",
+            "provider_id": out.get("provider_id") or att.get("provider_id") or "",
+            "provider": ((out.get("provider") or {}).get("name", "")
+                         if isinstance(out.get("provider"), dict) else ""),
+            "kind": kind,
+            "ok": bool(out.get("ok")),
+            "duration": raw.get("duration", 0.0),
+            "timed_out": bool(raw.get("timed_out")),
+            "deadline_exceeded": bool(raw.get("deadline_exceeded")),
+            "abort_marker": raw.get("abort_marker"),
+            "error_code": str(out.get("error_code") or ""),
+            "error": (out.get("error") or "")[:500],
+        })
+        out["attempts"] = list(attempt_history)
         if out["ok"] or ai == len(attempts) - 1:
             remaining = model_deadline - time.monotonic()
             if (not out["ok"] and grace_left > 0 and _rate_limited(out.get("error"))
