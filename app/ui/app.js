@@ -2826,6 +2826,22 @@ async function archiveTask(id, archived) {
         .find((x) => x.id === id);
       if (t0 && t0.workdir) unhideSideDir(t0.workdir);
     }
+    // 乐观挪位：归档=任务从 tasks 挪进 archived_tasks，取消归档反向。同删除的
+    // 乐观清场——SSE 半死时推送不到，行要在侧栏挂到 60s 看门狗兜底才走。
+    // archivedIds 参与侧栏签名，挪位即重画；显式清掉不赌签名算法。
+    const st = S.state;
+    if (st) {
+      const from = archived ? (st.tasks || []) : (st.archived_tasks || []);
+      const i0 = from.findIndex((x) => x.id === id);
+      if (i0 >= 0) {
+        const t0 = from.splice(i0, 1)[0];
+        t0.archived = !!archived;
+        const to = archived ? (st.archived_tasks = st.archived_tasks || []) : (st.tasks = st.tasks || []);
+        to.push(t0);
+      }
+      S.sideSig = "";
+    }
+    render();
   } catch (e) { toast(t("操作失败：") + e.message, true); }
   poll();
 }
@@ -2845,6 +2861,21 @@ async function deleteTask(id) {
   // 详情有两种打开方式：run 级（detailRunId）与任务级（detailTaskKey，detailRunId 为空）。
   // 删的正是当前详情对应的任务时都要关，否则右侧还挂着已删任务、再点重试就撞「任务不存在」。
   if (S.detailRunId || S.detailTaskKey === id) closeRun();
+  // 乐观清场：不等 SSE 推送/轮询。删除靠 bump_state 走 SSE，SSE 半死时推送
+  // 不到，看门狗要 60s 才兜底拉全量——期间已删任务就挂在侧栏（2026-09-23
+  // 用户实测「任务删了，左侧列表不刷新」）。后端已删，就地清本地状态并强制
+  // 重画；下一次全量推送自然对齐。
+  const st = S.state;
+  if (st) {
+    st.tasks = (st.tasks || []).filter((x) => x.id !== id);
+    st.archived_tasks = (st.archived_tasks || []).filter((x) => x.id !== id);
+    if (st.task_latest) delete st.task_latest[id];
+    if (st.task_stats) delete st.task_stats[id];
+    const goneRuns = new Set((st.runs || []).filter((r) => r.task_id === id).map((r) => r.id));
+    if (goneRuns.size) st.runs = (st.runs || []).filter((r) => !goneRuns.has(r.id));
+    S.sideSig = "";   // 任务条目少了签名理应变化；显式清掉，不赌签名算法
+  }
+  render();
   poll();
   if (gone) toast(t("任务已删除"));
 }
