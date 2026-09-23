@@ -823,6 +823,10 @@ def _parse_claude_json(stdout):
         int(u.get("cache_creation_input_tokens") or 0)
     usage = {"input": inp, "output": out, "cached": cached, "reasoning": 0,
              "total": inp + out + cached}
+    # 网关实服模型：请求 deepseek-v4.1-flash 却被网关映射成 gemini-3.8-flash
+    # 之类（2026-09-23 夜班实案）——用量统计记错名、失败排查看错病根，都
+    # 靠 result 行的 modelUsage 对出来
+    served = sorted({str(k) for k in ((data.get("modelUsage") or {}) or {})})
     return {
         "text": data.get("result") or "",
         "cost_usd": data.get("total_cost_usd") or 0.0,
@@ -831,6 +835,7 @@ def _parse_claude_json(stdout):
         "is_error": bool(data.get("is_error")),
         # §07 T1.1：claude -p 返回本次会话 id，供 --resume 复用
         "sid": str(data.get("session_id") or ""),
+        "served_models": served,
     }
 
 
@@ -896,6 +901,55 @@ def _quota_error(err):
 _RATE_LIMIT = ("429", "rate limit", "too many requests", "限流")
 RATE_LIMIT_GRACE_S = 45      # 宽限等待时长：限流窗口通常按分钟计，等一个再试
 RATE_LIMIT_GRACE_N = 1       # 每步宽限次数：只兜一次，防限流长拖整轮时间
+
+
+# 上游内容拒答（refusal）：claude CLI 把 refusal stop_reason 渲染成
+# "API Error: <model> can't help with this. Start a new session to continue."
+# 这是网关后面那个模型对本次会话内容的过滤决定，不是任务终态——换一家
+# 异上游候选常常就能跑通。2026-09-23 夜班实案：doc 起草被 gemini 拒答后
+# 判成非瞬态整链早死，链上云知声候选根本没被尝试。
+_REFUSAL = ("can't help with this", "couldn't help with this",
+            'stop_reason":"refusal"', "content policy", "content filtering")
+
+
+def _refusal_error(err):
+    err = (err or "").lower()
+    return any(k in err for k in _REFUSAL)
+
+
+def _fail_sig(err):
+    """错误串的病根特征（剥掉输出尾段/数字/会话 id 等易变片段），供换将
+    循环做同因连撞止损。与 jobs._err_signature 同思路的轻量版，避免 core
+    模块环。超时错误的尾段是每次被杀时刻的输出快照，必然不同，签名只取
+    头部（；分隔符之前）。"""
+    s = str(err or "")
+    for sep in ("；stderr/stdout", "；日志错误行"):
+        i = s.find(sep)
+        if i > 0:
+            s = s[:i]
+            break
+    s = re.sub(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+               "<sid>", s)
+    s = re.sub(r"\d+", "N", s)
+    return re.sub(r"\s+", " ", s).strip()[:200]
+
+
+def _claude_drift_note(att_model, parsed):
+    """请求模型 vs 网关实服模型不一致时的注记；一致或无从判断返回空。"""
+    served = (parsed or {}).get("served_models") or []
+    if not served or not att_model or served == [att_model]:
+        return ""
+    return "[模型漂移] 请求 %s，上游实服 %s" % (att_model, ",".join(served))
+
+
+def _log_note(log_path, text):
+    if not log_path or not text:
+        return
+    try:
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write("\n[%s]\n" % text)
+    except OSError:
+        pass
 
 
 def _rate_limited(err):
@@ -1255,7 +1309,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     防模型纯口头谎报「环境受限」蒙混过关（2026-09-17 mo-so 实测）。
 
     模型尝试顺序来自 _resolve_attempts：跨厂商链（每条独立 env）或
-    主模型 + 降级备选；瞬态错误才换下一条，取消/超时/解析失败不降级。
+    主模型 + 降级备选；瞬态/配额/超时/上游拒答换下一条，取消与解析
+    失败不降级；超时连续两次同签名即止损（同一慢上游换壳无用）。
 
     5E：catalog `orch.timeout_ms`（毫秒）优先于 caller 传入的 timeout。
     """
@@ -1308,6 +1363,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     attempts = _resolve_attempts(agent)
     out = None
     grace_left = RATE_LIMIT_GRACE_N  # 链尾限流宽限预算：整链撞 429 时原地等一个窗口再试一次
+    prev_sig = ""  # 上一次尝试的失败签名：同因连撞止损用
     for ai, att in enumerate(attempts):
         env = dict(base_env)
         env.update(att["env"])
@@ -1370,6 +1426,10 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     parsed_err = _parse_claude_json(res["stdout"] or "")
                     if parsed_err and parsed_err.get("is_error") and parsed_err.get("text"):
                         out["error"] = "claude 返回 is_error: " + parsed_err["text"][:500]
+                        drift = _claude_drift_note(att.get("model"), parsed_err)
+                        if drift:
+                            out["error"] += "；" + drift
+                            _log_note(log_path, drift)
                 if kind == "codex" and att.get("provider_id"):
                     el = out["error"].lower()
                     if (("wire_api" in el and "no longer supported" in el)
@@ -1442,9 +1502,14 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 out["tokens"] = parsed["tokens"]
                 out["usage"] = parsed["usage"]
                 out["sid"] = parsed.get("sid") or ""  # §07 T1.1
+                drift = _claude_drift_note(att.get("model"), parsed)
+                if drift:
+                    _log_note(log_path, drift)
                 if parsed["is_error"]:
                     out["ok"] = False
                     out["error"] = "claude 返回 is_error: " + parsed["text"][:500]
+                    if drift:
+                        out["error"] += "；" + drift
                     out["error_code"] = _classify_failure(res, kind="claude", parsed=parsed)
                     break
                 if not out["text"] and attempt == 0:
@@ -1471,10 +1536,30 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     attempts.append(att)
                     continue
             return out
-        # 瞬态网络错误 → 换下一条；欠费/配额耗尽同样换（可能是同厂商的备用 KEY，
-        # 也可能是另一家厂商）——账单断了死磕同一把 KEY 没有任何意义。
-        if not (_transient_error(out.get("error")) or _quota_error(out.get("error"))):
-            return out  # 非瞬态（取消/超时/解析失败）不降级
+        # 换将闸门：什么失败值得烧链上下一个候选。
+        # · 瞬态/配额（文本特征，含 CLI 内部 api_retry 的 429/5xx 字样）照旧；
+        # · 超时：显式可换（看 res 标志位）——慢上游换快候选可能救回。
+        #   2026-09-23 夜班实案：旧逻辑里超时能否换将全赌输出尾部碰巧含有
+        #   "timeout" 字样（当时是步骤里读到的代码 timeout=900 撞的表）。
+        # · 上游内容拒答（refusal）：是那家模型的过滤决定，不是任务终态，
+        #   换异上游候选常常就活；判死则整 run 白烧（同案：gemini 拒答后
+        #   链上云知声候选从未被尝试）。
+        raw = out.get("raw") or {}
+        if (raw.get("cancelled")   # 取消是用户意志，绝不降级（尾段可能带瞬态字样）
+                or not (_transient_error(out.get("error")) or _quota_error(out.get("error"))
+                        or _refusal_error(out.get("error"))
+                        or raw.get("timed_out"))):
+            return out  # 取消/解析失败等真终态不降级
+        # 超时同因连撞止损：头部签名（超时/输出停滞）连续相同就收手——
+        # 链上候选绑同一上游时换将=换壳不换命（2026-09-22 429 集群教训；
+        # 2026-09-23 夜班实案同一慢上游连烧 3×20 分钟全超时零产出），最坏
+        # 情况从 N×步超时压到 2×。其余瞬态/拒答仍按链长全部尝试：各家病根
+        # 不同，每个候选都值得一次机会。
+        if raw.get("timed_out"):
+            sig = _fail_sig(out.get("error"))
+            if sig and sig == prev_sig:
+                return out
+            prev_sig = sig
     return out
 
 
