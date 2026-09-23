@@ -77,6 +77,7 @@ async function poll() {
     if (connLost) { connLost = false; $("#hd-conn").classList.add("hidden"); }
   } catch (e) {
     if (!connLost) { connLost = true; $("#hd-conn").classList.remove("hidden"); }
+    $("#hd-updated").textContent = t("重试连接中");
     return;
   }
   render(data);
@@ -86,43 +87,87 @@ async function poll() {
 const cardEls = new Map();   // task_id -> 卡元素（复用防闪烁）
 
 function render(d) {
+  const running = Array.isArray(d.running) ? d.running : [];
+  const queued = Array.isArray(d.queued) ? d.queued : [];
+  const recent = Array.isArray(d.recent) ? d.recent : [];
+  const usage = d.usage_today || {};
+  const pool = d.pool || {};
+  const health = Array.isArray(d.health) ? d.health : [];
+
   // KPI
-  $("#k-running").textContent = d.running.length;
-  $("#k-queued").textContent = d.queued.length;
-  $("#k-done").textContent = d.today_done;
-  $("#k-failed").textContent = d.today_failed;
-  $("#k-tokens").textContent = fmtTokens(d.usage_today.tokens);
-  $("#k-cost").textContent = fmtCost(d.usage_today.cost_usd);
+  const done = Number(d.today_done) || 0;
+  const failed = Number(d.today_failed) || 0;
+  const finished = done + failed;
+  $("#k-running").textContent = running.length;
+  $("#k-queued").textContent = queued.length;
+  $("#k-done").textContent = done;
+  $("#k-failed").textContent = failed;
+  $("#k-tokens").textContent = fmtTokens(usage.tokens);
+  $("#k-cost").textContent = fmtCost(usage.cost_usd);
+
+  // 总态势 Hero：把“有没有活”变成第一眼可读的状态，而不是只重复 KPI。
+  const heroActive = running.length > 0;
+  $("#hero-live-count").textContent = running.length;
+  $("#orb-number").textContent = running.length;
+  $("#hero-state").textContent = heroActive ? t("蜂群运行中") : t("蜂群待命");
+  if (heroActive) {
+    let copy = t("当前有 {0} 个任务正在并行执行", running.length);
+    if (queued.length) copy += " · " + t("有 {0} 个任务等待调度", queued.length);
+    $("#hero-copy").textContent = copy;
+  } else if (queued.length) {
+    $("#hero-copy").textContent = t("有 {0} 个任务等待调度", queued.length);
+  } else {
+    $("#hero-copy").textContent = t("没有正在运行的任务，新任务在主界面创建后会实时出现在这里");
+  }
 
   // 顶栏
-  const pool = d.pool || {};
   $("#hd-pool").textContent = t("蜂巢") + " " + (pool.alive || 0) + "/" + (pool.target || 0)
     + " · " + t("对话") + " " + (pool.chat_alive || 0) + "/" + (pool.chat_pool || 0);
-  const downs = (d.health || []).filter((h) => h.status === "down" && !h.silenced);
+  const syncTime = String(d.now || "").slice(11, 19) || new Date().toLocaleTimeString([], { hour12: false });
+  $("#hd-updated").textContent = t("已同步") + " · " + syncTime;
+  const downs = health.filter((h) => h.status === "down" && !h.silenced);
   const hp = $("#hd-health");
   if (downs.length) {
     hp.classList.remove("hidden");
     hp.textContent = "⚠ " + downs.map((h) => h.provider).join("、") + " " + t("异常");
     hp.title = downs.map((h) => (h.provider + " " + (h.model || "")).trim()).join("\n");
+    $("#hero-signal").textContent = t("有 {0} 个服务异常", downs.length);
+    $("#overview").classList.add("has-alert");
   } else {
     hp.classList.add("hidden");
+    $("#hero-signal").textContent = t("系统状态良好");
+    $("#overview").classList.remove("has-alert");
   }
+
+  // 执行池 / 概览侧栏
+  const alive = Math.max(0, Number(pool.alive) || 0);
+  const target = Math.max(0, Number(pool.target) || 0);
+  const fill = target ? Math.min(100, alive / target * 100) : 0;
+  $("#pool-meter-fill").style.width = fill + "%";
+  $("#pool-alive").textContent = alive;
+  $("#pool-target").textContent = target;
+  $("#overview-queued").textContent = queued.length;
+  $("#overview-success").textContent = finished ? Math.round(done / finished * 100) + "%" : "—";
 
   renderWall(d);
   renderTrend(d.trend || []);
   renderModels(d.models || []);
-  renderRecent(d.recent || []);
+  renderRecent(recent);
 }
 
 function renderWall(d) {
   const wrap = $("#wall-cards");
   const empty = $("#wall-empty");
-  const has = d.running.length > 0;
+  const running = Array.isArray(d.running) ? d.running : [];
+  const queued = Array.isArray(d.queued) ? d.queued : [];
+  const has = running.length > 0;
+  $("#wall-count").textContent = running.length + " ACTIVE";
+  $("#queue-count").textContent = queued.length;
   empty.classList.toggle("hidden", has);
   wrap.classList.toggle("hidden", !has);
 
   const seen = new Set();
-  for (const c of d.running) {
+  for (const c of running) {
     seen.add(c.task_id);
     let el = cardEls.get(c.task_id);
     if (!el) {
@@ -204,8 +249,8 @@ function renderWall(d) {
 
   // 排队条
   const qr = $("#queue-row");
-  qr.classList.toggle("hidden", !d.queued.length);
-  $("#queue-chips").innerHTML = d.queued.map((q) =>
+  qr.classList.toggle("hidden", !queued.length);
+  $("#queue-chips").innerHTML = queued.map((q) =>
     '<span class="chip" title="' + esc(q.title) + '">' + esc(q.title) + "</span>").join("");
 }
 
@@ -232,6 +277,7 @@ function renderModels(models) {
 
 function renderRecent(recent) {
   const box = $("#recent");
+  $("#recent-count").textContent = recent.length + " " + t("条事件");
   if (!recent.length) { box.innerHTML = '<div class="empty">' + t("还没有已完成的运行") + "</div>"; return; }
   const dot = { done: "done", failed: "failed", cancelled: "cancelled" };
   box.innerHTML = recent.map((r) => {
