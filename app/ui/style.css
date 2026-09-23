@@ -5685,6 +5685,10 @@ button.request-busy > * { opacity: .18; }
  * （真机实测 elementFromPoint 命中 ASIDE——2026-09-21「选不了模型」） */
 #cmp-model-menu { left: 0; right: auto; min-width: 250px; z-index: 95;
   top: auto; bottom: calc(100% + 6px); }
+/* 对话页模型菜单也在底部输入栏里：默认向下弹出会被窗口底边裁掉，
+ * 与新建任务菜单保持一致向上展开，确保菜单项实际落在可点击区域内。 */
+#rd-model-menu { left: 0; right: auto; min-width: 250px; z-index: 95;
+  top: auto; bottom: calc(100% + 6px); }
 
 /* 插件市场：内置/已安装/可安装分区标题与已装启停开关（对齐 ZCode 形态） */
 #mk-grid .sec-title { margin: 14px 0 6px; }
