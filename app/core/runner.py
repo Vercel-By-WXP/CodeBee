@@ -219,6 +219,16 @@ def _drain_streams(proc, t_out, t_err, *, timeout=10):
         remaining = max(0.0, deadline - time.time())
         if remaining > 0:
             t.join(timeout=remaining)
+    # Killing the tree does not necessarily reap the root process on Windows.
+    # Reap it with the remaining bounded budget before callers inspect
+    # ``returncode``; otherwise long-running timeout tests can leak a live
+    # Popen handle and emit ResourceWarning during interpreter shutdown.
+    remaining = max(0.0, deadline - time.time())
+    if remaining > 0 and proc.poll() is None:
+        try:
+            proc.wait(timeout=remaining)
+        except (subprocess.TimeoutExpired, OSError):
+            pass
 
 
 def _pipe_reader(stream, chunks, log_fh, stamp=None):
