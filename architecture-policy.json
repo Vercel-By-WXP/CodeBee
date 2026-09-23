@@ -6,7 +6,7 @@
           "tlsctx", "remote", "error_codes", "attachments", "dispatch",
           "capability", "aiflavor", "token_meter", "compaction", "session_log",
           "repeat_guard", "diagnostics", "bookmeta_catalog", "env_scrub", "util",
-          "browser", "ws", "ledger", "fanqie", "qimao", "flow", "prefs"],
+          "browser", "ws", "ledger", "fanqie", "qimao", "flow", "prefs", "board"],
     "1": ["catalog", "store", "skills", "knowledge", "history", "health",
           "task_compile", "step_runner", "market", "market_remote", "skill_scan",
           "share_page", "notify", "paihang", "planner", "router",

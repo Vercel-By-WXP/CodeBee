@@ -30,7 +30,7 @@ if os.environ.get("TUTTI_ISOLATE_HOME", "").strip() == "1":
     os.environ["USERPROFILE"] = _fake_home
     os.environ["HOME"] = _fake_home
 
-from core import automation, catalog, flows, jobs, manager, market, market_remote, preview, registry, remote, settings, store
+from core import automation, board, catalog, flows, jobs, manager, market, market_remote, preview, registry, remote, settings, store
 from core import paths
 from core import health
 import pick_dialog
@@ -235,6 +235,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/health":
                 from core import health
                 return self._json(200, health.snapshot())
+            if path == "/api/board":
+                # 任务驾驶舱大屏的轻量聚合（KB 级；别让它去拉 /api/state 全量）
+                return self._json(200, board.payload())
             if path == "/api/connect":
                 # 供设置页「手机连接」弹框生成二维码；远程打开需令牌，天然受保护
                 return self._json(200, {"urls": remote.build_connect_urls(PORT),
