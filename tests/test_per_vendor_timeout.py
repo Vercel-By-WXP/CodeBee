@@ -50,6 +50,21 @@ class TestPerVendorTimeout(BaseTest):
         finally:
             os.unlink(tmp)
 
+    def test_task_deadline_terminates_process_before_agent_timeout(self):
+        """run_process must enforce the shared task deadline, not just agent timeout."""
+        import time
+        from app.core import runner
+
+        deadline = time.monotonic() + 0.2
+        result = runner.run_process(
+            argv=[sys.executable, "-c", "import time; time.sleep(60)"],
+            timeout=120, deadline=deadline)
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["timed_out"])
+        self.assertTrue(result["deadline_exceeded"])
+        self.assertLess(result["duration"], 3.0)
+
     def test_configured_timeout_above_one_minute_is_not_clipped(self):
         """Per-agent budgets above one minute must reach the process runner unchanged."""
         from unittest.mock import patch

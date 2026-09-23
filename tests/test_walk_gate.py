@@ -142,6 +142,66 @@ class TestTimeoutWalk(BaseTest):
 
 
 class TestAttemptBudget(BaseTest):
+    def test_exhausted_task_deadline_does_not_start_next_model_process(self):
+        import app.core.runner as R
+        agent = _agent(("slow-a", "fast-b"))
+        agent["orch"] = {"timeout_ms": 2400000}
+        for item, provider_id in zip(agent["call_chain"], ("p-a", "p-b")):
+            item["provider_id"] = provider_id
+            item["provider"] = {"id": provider_id,
+                                 "base_url": "https://%s.example" % provider_id}
+
+        clock = [0.0]
+        calls = []
+
+        def fake(argv=None, **kwargs):
+            argv = list(argv or [])
+            calls.append(argv[argv.index("--model") + 1])
+            clock[0] = 100.0
+            return _timeout()
+
+        with mock.patch.object(R.time, "monotonic", side_effect=lambda: clock[0]), \
+                mock.patch.object(R, "run_process", side_effect=fake):
+            out = R.run_agent(agent, "hi", readonly=True, timeout=2400,
+                              deadline=100.0)
+
+        self.assertFalse(out["ok"])
+        self.assertEqual(calls, ["slow-a"])
+        self.assertTrue(out["raw"]["deadline_exceeded"])
+        self.assertIn("任务总时限已到", out["error"])
+
+    def test_long_attempts_respect_task_deadline_and_switch_after_same_upstream_timeouts(self):
+        import app.core.runner as R
+        agent = _agent(("slow-a", "slow-b", "fast-c"))
+        agent["orch"] = {"timeout_ms": 2400000}
+        for item, provider_id in zip(agent["call_chain"], ("p-a", "p-a", "p-b")):
+            item["provider_id"] = provider_id
+            item["provider"] = {"id": provider_id,
+                                 "base_url": "https://%s.example" % provider_id}
+
+        clock = [0.0]
+        calls = []
+        results = [_timeout(), _timeout(), _claude_result("FAST-C-OK")]
+
+        def fake(argv=None, **kwargs):
+            argv = list(argv or [])
+            calls.append({"model": argv[argv.index("--model") + 1],
+                          "timeout": kwargs["timeout"],
+                          "deadline": kwargs["deadline"]})
+            clock[0] += 30
+            return results[len(calls) - 1]
+
+        with mock.patch.object(R.time, "monotonic", side_effect=lambda: clock[0]), \
+                mock.patch.object(R, "run_process", side_effect=fake):
+            out = R.run_agent(agent, "hi", readonly=True, timeout=2400,
+                              deadline=100.0)
+
+        self.assertTrue(out["ok"], out.get("error"))
+        self.assertEqual([call["model"] for call in calls],
+                         ["slow-a", "slow-b", "fast-c"])
+        self.assertEqual([call["timeout"] for call in calls], [100, 70, 40])
+        self.assertEqual([call["deadline"] for call in calls], [100.0] * 3)
+
     def test_configured_attempt_budget_reaches_each_model_and_different_upstreams_are_tried(self):
         import app.core.runner as R
         agent = _agent(("slow-a", "slow-b", "fast-c"))
