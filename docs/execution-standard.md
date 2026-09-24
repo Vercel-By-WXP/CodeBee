@@ -152,7 +152,7 @@ token 用量和耗时是独立于"成/败"的第三条轴：一次 `done` 可以
 | 重复守卫 | `repeat_guard.py` 已按 prompt 指纹 3/5 阈值工作，`pipeline.py` 部分外层循环读取 `repeat_stop` | 已能拦同提示死循环；尚未成为所有换路/重试循环共享的错误签名熔断器 |
 | exit 0 与静默拒绝 | Codex 事件流检查 `turn.failed` 和实际工具事件；generic CLI 尚无统一错误信封协议 | 部分落地；aider 等适配器仍要补结果语义检查 |
 | CLI 配置一致性 | `manager.sync_runtime_config` 已做绑定同步和文件哈希复核；失败目前静默放过 | 有防线但不是硬预检，发布前必须确认新副本包含此逻辑 |
-| 取消与记账 | 内置 API 路径在取消前不记 KEY（流式/非流式/响应到手三路径，`test_cancel_no_key_penalty.py` 锁住该顺序）；CLI 路径仍需逐适配器验证取消后的 `_report_key`/健康回写顺序 | 内置路径已守卫；CLI 路径代码覆盖不完整 |
+| 取消与记账 | 三本惩罚账统一由 `runner.attempt_cancelled` 判定（结果 `cancelled` / `raw.cancelled` / `error_code=CANCELLED`）：`_report_key`、`pipeline._record_usage`、`planner._log_usage` 在取消时全部跳过；内置直连另有"取消先于记账"顺序守卫，流式/非流式/响应到手三路径零记账由 `test_cancel_no_key_penalty.py` 锁定 | CLI/编排者侧已落地并由 `test_cli_cancel_no_penalty.py` 锁定（含真实欠费仍冷却、真实失败仍进账的反向半边）；新增惩罚记账点必须复用该判定，不得按错误文案匹配 |
 | 评测隔离 | 测试基类和 `tmp_data_no_home_write` 已隔离临时数据并防止真实配置写入 | 已落地于测试纪律；生产执行仍须由发布与运行环境保证隔离边界 |
 | 终态保护 | `store.update_run(expected_status=...)` 已实现 CAS 和终态步骤收口 | 已落地；新增异步写入口必须继续使用 CAS |
 | 并行协作与发布 | HEAD worktree 发布法、分 hunk 提交、"摘自己复跑归因"目前沉淀在经验库与值班纪律；`release_gate.py` 已做本地清洁闸与归档 import 冒烟 | 实践已成型；尚未固化为脚本级强制（归属判定与 worktree 发布仍靠人执行） |
