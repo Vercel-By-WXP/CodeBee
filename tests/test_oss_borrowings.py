@@ -29,10 +29,18 @@ class TestTraceBorrowing(BaseTest):
         trace = tracing.build_trace(store.get_run(run["id"]), events)
         self.assertEqual(len(trace["trace_id"]), 32)
         self.assertEqual(trace["trace_id"], tracing.trace_id(run["id"]))
+        saved_run = store.get_run(run["id"])
+        self.assertEqual(saved_run["trace_schema_version"], tracing.SCHEMA_VERSION)
+        self.assertEqual(saved_run["trace_id"], trace["trace_id"])
+        self.assertEqual(saved_run["root_span_id"], tracing.root_span_id(run["id"]))
         self.assertEqual(len(trace["spans"]), 1)
         span = trace["spans"][0]
         self.assertEqual(span["span_id"], tracing.span_id(run["id"], 1))
         self.assertEqual(span["parent_span_id"], tracing.root_span_id(run["id"]))
+        self.assertEqual(saved_run["steps"][0]["trace_id"], trace["trace_id"])
+        self.assertEqual(saved_run["steps"][0]["span_id"], span["span_id"])
+        self.assertIsInstance(saved_run["steps"][0]["started_at_epoch"], float)
+        self.assertIsInstance(saved_run["steps"][0]["ended_at_epoch"], float)
         # Existing run storage keeps duration to one decimal place; the trace
         # preserves that contract while exposing it as a span attribute.
         self.assertEqual(span["duration_s"], 0.2)

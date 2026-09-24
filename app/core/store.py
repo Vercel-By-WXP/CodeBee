@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import artifacts, paths, runner, volumes
+from . import artifacts, paths, runner, tracing, volumes
 
 LOCK = threading.RLock()
 _TASKS = {}
@@ -717,6 +717,11 @@ def create_run(kind, title, task_id=None, entry_id=None, op=None):
         "cost_usd": 0.0, "tokens": 0, "error": "",
         "verdict": None, "summary": "",
     }
+    # Persist trace identity at run creation so replay remains stable across
+    # process restarts and legacy readers can still use the normal run shape.
+    run["trace_schema_version"] = tracing.SCHEMA_VERSION
+    run["trace_id"] = tracing.trace_id(run["id"])
+    run["root_span_id"] = tracing.root_span_id(run["id"])
     if kind == "orchestration" and task_id:
         task = get_task(task_id) or {}
         run["deadline_at"] = time.time() + _task_timeout_s(task.get("timeout_s"))
@@ -1780,6 +1785,11 @@ def add_step(run_id, role, agent_id, agent_label, note="", model="", provider=""
             # 只记身份不记密钥；老数据无此键，读取一律 .get
             "provider": str(provider or "")[:120],
             "status": "running", "started_at": time.strftime("%H:%M:%S"),
+            "started_at_epoch": time.time(),
+            "trace_id": str(run.get("trace_id") or tracing.trace_id(run_id)),
+            "span_id": tracing.span_id(run_id, n),
+            "parent_span_id": str(run.get("root_span_id") or
+                                   tracing.root_span_id(run_id)),
             "ended_at": None, "duration_s": None, "exit_code": None,
             "summary": "", "log": None, "cost_usd": 0.0, "tokens": 0,
         }
@@ -1852,6 +1862,7 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
             if s["n"] == n:
                 s["status"] = status
                 s["ended_at"] = time.strftime("%H:%M:%S")
+                s["ended_at_epoch"] = time.time()
                 # 步骤摘要是 CLI 文本的汇聚点（失败时=错误尾巴，成功时=智能体结论）：
                 # 落盘前统一清洗，避免 ANSI/覆写/乱码墙进 UI 与报告
                 s["summary"] = runner.clean_cli_text(summary)
@@ -1862,6 +1873,9 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                     s["model"] = str(model)[:80]
                 if duration_s is not None:
                     s["duration_s"] = round(duration_s, 1)
+                elif s.get("started_at_epoch") is not None:
+                    s["duration_s"] = round(max(
+                        0.0, s["ended_at_epoch"] - s["started_at_epoch"]), 1)
                 if output is not None:
                     # output 是智能体正文（对话气泡直读）：只剥 ANSI，不做噪声折叠
                     # ——正文里的装饰性长串是作者写的，不能替它省略
