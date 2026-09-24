@@ -78,7 +78,7 @@ BUILTIN_FLOWS = [
     {"id": "rank_scan", "name": "扫榜选材", "icon": "i-chart", "engine": "direct", "builtin": True,
      "goal_hint": "想写哪个方向（一句话，可留空默认分析总榜热门题材）",
      "note": "抓取七猫/番茄/起点/纵横四平台排行榜公开数据 → AI 提炼跨平台热门题材/人设/差异化切入点（快档直出报告）"},
-    {"id": "defect_retro", "name": "缺陷复盘", "icon": "i-clipboard", "engine": "direct", "builtin": True,
+    {"id": "defect_retro", "name": "缺陷复盘", "icon": "i-history", "engine": "direct", "builtin": True,
      "goal_hint": "复盘哪个版本/时间段的缺陷（建议附带禅道或 Jira 导出 CSV）",
      "note": "读取附带的缺陷导出数据 → AI 输出产品/开发/测试三视角复盘报告：整体画像、根因聚类、漏测分析、改进动作（快档直出报告）"},
     {"id": "research", "name": "调研报告", "icon": "i-file-search", "engine": "review", "builtin": True,
