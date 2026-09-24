@@ -981,7 +981,7 @@ def _model_flag(kind, model):
     return ["--model", model]  # claude / opencode / aider
 
 
-_TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
+    _TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
               "unavailable", "overloaded", "rate limit", "timeout", "timed out",
               "输出停滞",
               # 2026-09-15 连载验收实测：网关故障形态远不止 HTTP 5xx——
@@ -996,6 +996,11 @@ _TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
               # 就可能活」的瞬态病，旧表判成终态导致整链早死
               "stream disconnected", "stream closed before response.completed",
               "unexpected server error",
+              # Grok CLI wraps transport failures in reqwest text and then
+              # retries the same request internally. Treat that as a transient
+              # upstream failure so the orchestration chain can move on.
+              "reqwest error stream", "error sending request for url",
+              "internal error",
               # 2026-09-22 mo-so 实案：claude 报 "Can't reach the API server —
               # check your internet or DNS (ENOTFOUND)"，一家端点解析不到不代表
               # 跨厂商链上别家也不通，旧表判成终态直接跳去换将别的 CLI
@@ -1398,9 +1403,18 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
     # 防线兜底判失败，绝不静默降级。
     prompt_safe = _ARGV_PROMPT_SAFE
     if argv:
-        launcher = str(argv[0]).lower()
-        if (launcher.endswith((".cmd", ".bat")) or
-                os.path.basename(launcher) in ("npm", "npx", "pnpm", "yarn", "bun")):
+        # 垫片检测扫前三个 token：cmd /c xxx.CMD 形态下 argv[0] 是 cmd.exe，
+        # 真正的 .cmd 垫片在 argv[2]——只看 argv[0] 会漏判，中等长度提示词
+        # （6000-20000 字）留在指令行直接撞 cmd.exe 8191 上限
+        # （2026-09-24 评审「命令行太长」实案）
+        heads = [str(a).lower() for a in argv[:3]]
+        if any(a.endswith((".cmd", ".bat")) or
+               os.path.basename(a) in ("npm", "npx", "pnpm", "yarn", "bun")
+               for a in heads):
+            prompt_safe = _ARGV_PROMPT_SHIM_SAFE
+        elif os.name == "nt" and kind == "generic":
+            # Vendor wrappers are not always recognisable as npm shims. Keep
+            # generic prompts below the cmd.exe limit in that case too.
             prompt_safe = _ARGV_PROMPT_SHIM_SAFE
     if argv is not None and stdin_text is None and len(prompt) >= prompt_safe \
             and argv.count(prompt) == 1:
@@ -1659,6 +1673,15 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                         (("stream disconnected", 1),
                          ("stream closed before response.completed", 1))
                         if kind == "codex" else None)
+                    # Grok's CLI can keep a dead HTTP connection alive for the
+                    # full 20-minute generic timeout. Two identical transport
+                    # errors are enough evidence to stop this process and let
+                    # the next bound agent try.
+                    if agent.get("id") == "grok-build":
+                        stream_abort_markers = (
+                            ("reqwest error stream", 2),
+                            ("error sending request for url", 2),
+                        )
                     res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
                                       timeout=min(timeout, remaining), deadline=deadline,
                                       cancel_event=cancel_event,

@@ -1209,6 +1209,7 @@ def _run_code(run, task, agents, ev, stats, mode):
     store.update_run(run_id, route=route)
 
     def implement_all(impl_agent, prefix_note):
+        nonlocal reviewer
         # 会话延续只对原实现者有效；换将后新智能体没有该会话，必须丢弃
         use_resume = (resume_ctx["session"]
                       if (resume_ctx and impl_agent["id"] == resume_ctx["agent"]["id"]) else None)
@@ -1302,8 +1303,16 @@ def _run_code(run, task, agents, ev, stats, mode):
         # （超时等）仍只换一次，防着在坏候选上再烧一整个超时。
         if mode == "auto" and impl_agent.get("mode") == "real":
             tried = {impl_agent["id"], "mock-a", "mock-b"}
+            dead_ids = {impl_agent["id"]}  # 实现步已失败的原实现者，属已知死候选
             notes = []
             dead_ups = []  # 配额死亡候选的上游集合：换将优先异上游
+            # 原实现者若死于配额，其上游（网关/账号）也一并判入死池——否则第一棒
+            # 换将不知道同网关候选已死，评审者重选更会把「与死者同上游」的候选
+            # 继续当活口，评审撞同一条失效网关白烧一轮后误报「评审器故障」。
+            if runner._quota_error(res.get("error") or ""):
+                ups0 = router.agent_upstreams(impl_agent["id"])
+                if ups0:
+                    dead_ups.append(ups0)
             prev_id = impl_agent["id"]
             other = None
             while True:
@@ -1319,6 +1328,14 @@ def _run_code(run, task, agents, ev, stats, mode):
                 ok2, res = _run_one(other)
                 if ok2:
                     route_note = "；".join(notes + [note])
+                    # 换将成功：预先选定的评审者可能在实现步走查时被证伪为死链
+                    # （quota/限流秒死），且死者同上游（同网关）的候选同样不可信。
+                    # 按「排除本轮已知死者 + 同上游候选」的池重选评审者，否则评审
+                    # 撞同一条失效网关，白烧一轮后误报「评审器故障」。
+                    if workflow["review_required"]:
+                        reviewer, route["reviewer"] = router.pick_reviewer(
+                            agents, other, "code", stats,
+                            exclude=dead_ids, dead_upstreams=dead_ups)
                     store.update_run(run_id, error="", route_note=route_note)
                     _record_actual_route(
                         run_id, task, agents, stats, other,
@@ -1329,6 +1346,7 @@ def _run_code(run, task, agents, ev, stats, mode):
                     return True
                 notes.append(note)
                 tried.add(other["id"])
+                dead_ids.add(other["id"])
                 prev_id = other["id"]
                 if runner._quota_error(res.get("error") or ""):
                     ups = router.agent_upstreams(other["id"])
@@ -1399,7 +1417,7 @@ def _run_code(run, task, agents, ev, stats, mode):
                       .replace("__VERIFY_HINT__", _verify_hint(task)))
             prompt = attachments.append_task_context(prompt, task)
             res = _run_step(run_id, "fix-r%d" % round_no, modelhub.bind_agent(impl, difficulty),
-                            prompt, workdir, readonly=False, ev=ev,
+                            prompt, workdir, readonly=False, ev=ev, timeout=2400,
                             note="自动修复第 %d 轮" % round_no,
                             resume=resume_ctx["session"] if resume_ctx else impl_sid[0],
                             require_tools=True)
