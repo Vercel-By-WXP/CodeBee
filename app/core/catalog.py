@@ -146,12 +146,12 @@ DEFAULT_CATALOG = [
     {
         "id": "pi", "name": "Pi", "cli_group": "installable",
         "note": "Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-works/ 前缀；"
-                "默认模型在 ~/.pi/agent/settings.json 的 defaultModel（须配 defaultProvider 才能解析）",
+                "供应商端点与模型注册表在 ~/.pi/agent/models.json，settings.json 的 defaultModel 必须"
+                "配 defaultProvider 才解析得动——CodeBee 绑定后两处一并托管（providers.codebee）",
         "detect": {"cli": "pi"},
         "orch": {"kind": "generic", "command": "pi", "argv_template": ["-p", "{prompt}"]},
         "config": {"path": "~/.pi/agent/settings.json", "format": "json-path",
-                   "model_key": "defaultModel",
-                   "model_extra_keys": {"defaultProvider": ""}},
+                   "model_key": "defaultModel"},
         "install": "npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
         "upgrade": "npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest",
         "default_enabled": False,
@@ -218,8 +218,7 @@ CONFIG_PATCH = {
     "mimo-code": {"path": "~/.config/mimocode/mimocode.jsonc", "format": "jsonc",
                   "model_key": "model"},
     "pi": {"path": "~/.pi/agent/settings.json", "format": "json-path",
-           "model_key": "defaultModel",
-           "model_extra_keys": {"defaultProvider": ""}},
+           "model_key": "defaultModel"},
     "openclaw": {"path": "~/.openclaw/openclaw.json", "format": "json-path",
                  "model_key": "agents.defaults.model.primary"},
 }

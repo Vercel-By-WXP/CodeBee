@@ -127,7 +127,7 @@ _CURRENT_AGENTS: list = []
 _RUN_CONSTITUTION = ""
 
 
-def _dead_binding_substitute(dead_id, resume=None):
+def _dead_binding_substitute(dead_id, resume=None, exclude=(), blocked_upstreams=()):
     """死链补位：原定 CLI 配了链但解析为空（供应商停删/无密钥/**协议不匹配**——
     如 chat-only 供应商挂在只讲 responses 的 codex 链上）时，从同池找一个
     「配置过且链还活着」的真实 CLI 顶上——用户配的其它供应商继续干活，
@@ -135,13 +135,25 @@ def _dead_binding_substitute(dead_id, resume=None):
     的语义不变，补位用的仍是用户显式配好的链。
 
     resume 会话钉在原 CLI 上（会话跟人走），有 resume 时补位无意义，直接不找。
+    exclude/blocked_upstreams 由换将循环交来本轮已知死者与已封 403 上游：补位
+    若挑回它们，「换将」就成了原地换人——pi 撞 403 后换 claude-code，claude-code
+    死链补位又回到 pi，同一条网关撞两次，错误还写成「换将后仍失败」
+    （2026-09-24 自我迭代三次连败案）。上游取不到的候选不剔除，与
+    pick_switch_candidate「未知不参与剔除，宁白试不误杀」同判断。
     返回 bind_agent 之后的替代者，或 None。"""
     if resume:
         return None
     from . import modelhub as _mh
+    skip = set(exclude or ()) | {dead_id}
+    blocked = [set(d) for d in (blocked_upstreams or ()) if d]
     for a in _CURRENT_AGENTS or []:
-        if a.get("id") == dead_id or a.get("mode") != "real":
+        if a.get("id") in skip or a.get("mode") != "real":
             continue
+        if blocked:
+            ups = router.agent_upstreams(a.get("id"), difficulty="default",
+                                         role="implement")
+            if ups and any(ups & b for b in blocked):
+                continue
         try:
             cand = _mh.bind_agent(a, "default")
         except Exception:
@@ -347,8 +359,11 @@ def _binding_dead_msg(agent):
                 "请在「模型调度（可选）」页为该 CLI 指定已启用的供应商")
 
 
-def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None, require_tools=False):
-    """执行一个智能体步骤并记录。返回 runner 统一结果。"""
+def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None, require_tools=False, swap_guard=None):
+    """执行一个智能体步骤并记录。返回 runner 统一结果。
+
+    swap_guard 是换将循环交来的 {"exclude": 本轮已试 CLI, "blocked": 已封 403 上游}，
+    死链补位据此挑人，绝不把「换将」补位补回刚撞死的那个 CLI。"""
     _wait_gate(run_id, ev)
     deadline = _ensure_budget(run_id)
     timeout, deadline = _step_timeout(run_id, timeout, deadline)
@@ -365,7 +380,10 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                     and agent.get("binding_configured")
                     and not (agent.get("call_chain") or agent.get("env")))
     if dead_binding:
-        sub = _dead_binding_substitute(agent.get("id"), resume=resume)
+        sub = _dead_binding_substitute(
+            agent.get("id"), resume=resume,
+            exclude=(swap_guard or {}).get("exclude") or (),
+            blocked_upstreams=(swap_guard or {}).get("blocked") or ())
         if sub is not None:
             note = ((note + "；") if note else "") + (
                 "⚠ 原定 %s 绑定链全部失效，已补位 %s"
@@ -1123,6 +1141,9 @@ def _retry_content_draft_with_cli(run_id, task, agents, impl, difficulty, mode,
 
     while True:
         _check_cancel(ev)
+        # 补位守卫与下面 pick_switch_candidate 用的是同一份名单/同一份 403 上游
+        # 集合（引用交给 guard，循环里 add/extend 就地生效）
+        swap_guard = {"exclude": tried, "blocked": blocked_upstreams}
         candidate, reason = router.pick_switch_candidate(
             agents, "implement", task.get("type") or "novel", stats,
             exclude=tried, dead_upstreams=dead_upstreams, difficulty=difficulty,
@@ -1141,7 +1162,8 @@ def _retry_content_draft_with_cli(run_id, task, agents, impl, difficulty, mode,
         bound = modelhub.bind_agent(candidate, difficulty)
         last_result = _run_step(
             run_id, "draft", bound, prompt, step_wd, readonly=False, ev=ev,
-            note=attempt_note, images=_task_images(task, workdir))
+            note=attempt_note, images=_task_images(task, workdir),
+            swap_guard=swap_guard)
         last_impl = candidate
         last_note = attempt_note
         if last_result.get("ok"):
@@ -1172,6 +1194,10 @@ def _run_code(run, task, agents, ev, stats, mode):
     impl_sid = [""]    # §07 T1.1：最后一次实现的 CLI 会话 id（fix 轮复用）
     route = {}
     switched = False
+    # 换将守卫：死链补位在 _run_step 内挑人，看不到换将循环的已知死者与已封 403
+    # 上游，曾把「pi → claude-code」补位补回 pi 本人（同一条网关撞两次 403）。
+    # 两个容器由下面的换将循环就地填，_run_one 每次调用现取。
+    swap_guard = {"exclude": set(), "blocked": []}
     resume_ctx = _valid_resume(task, agents)
 
     # ---- 难度（影响模型选择）：用户指定 > 启发式 > 规划器判定
@@ -1317,7 +1343,7 @@ def _run_code(run, task, agents, ev, stats, mode):
                                 readonly=False, ev=ev,
                                 note=prefix_note if i == 0 else "",
                                 resume=use_resume, images=att_imgs,
-                                require_tools=True)
+                                require_tools=True, swap_guard=swap_guard)
                 # §07 T1.1：记录最后一次实现的会话 id，fix 轮复用（会话内前缀走缓存读计价）
                 new_sid = _resume_sid(agt_b, res.get("sid"))
                 if new_sid:
@@ -1364,7 +1390,8 @@ def _run_code(run, task, agents, ev, stats, mode):
             dead_ids = {impl_agent["id"]}  # 实现步已失败的原实现者，属已知死候选
             notes = []
             dead_ups = []  # 配额死亡候选的上游：先异上游，无异上游时仍可捡回
-            blocked_ups = []  # 403 上游权限拒绝：同 host 不再尝试
+            blocked_ups = swap_guard["blocked"]  # 403 上游拒绝：同 host 不再尝试
+            swap_guard["exclude"] = tried  # 就地 add，补位挑人时看到的就是这一份
             # 原实现者若死于配额，其上游（网关/账号）也一并判入死池——否则第一棒
             # 换将不知道同网关候选已死，评审者重选更会把「与死者同上游」的候选
             # 继续当活口，评审撞同一条失效网关白烧一轮后误报「评审器故障」。
@@ -2948,6 +2975,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     prev_timed_out = bool((res.get("raw") or {}).get("timed_out"))
                     if (res.get("raw") or {}).get("repeat_stop"):
                         break   # 重复守卫强制停止：同输入再试仍是死路，终态跳出
+                    if not res["ok"] and _has_forbidden_result(res):
+                        # 403 是上游权限判死（确定性秒死）：同作者同提示再退避重试
+                        # 仍是同一句 "Request not allowed"，只会把 30/60s 退避和白烧
+                        # 的三遍撞墙留到重复守卫才收口（2026-09-24 draft-c9 案）。
+                        # 立即跳出交换将——换到异上游才是新机会。
+                        break
                     good, txt = _chapter_state()
                     if good:
                         break
@@ -2969,12 +3002,20 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 # 评审门与后续 revise 拉回。
                 if not good:
                     tried = {impl["id"], "mock-a", "mock-b"}
+                    # 已封 403 上游随每次失败累积：换将选将与死链补位都不许再撞同一条
+                    # 网关（此前用裸 router.pick 换将，同网关候选照单全收）
+                    blocked_ups = _forbidden_upstream_sets(
+                        res, router.agent_upstreams(
+                            impl["id"], difficulty=difficulty,
+                            task_type=task.get("type") or "serial", role="implement"))
+                    swap_guard = {"exclude": tried, "blocked": blocked_ups}
                     for _alt in range(2):
                         if good or (ev is not None and ev.is_set()):
                             break
-                        other, other_reason = router.pick(
+                        other, other_reason = router.pick_switch_candidate(
                             agents, "implement", task.get("type") or "serial", None,
-                            exclude=tried)
+                            exclude=tried, difficulty=difficulty,
+                            blocked_upstreams=blocked_ups)
                         if not (other and other.get("mode") == "real"):
                             break
                         tried.add(other["id"])
@@ -2985,11 +3026,18 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                         modelhub.bind_agent(other, difficulty), use_prompt,
                                         step_wd, readonly=False, ev=ev, timeout=2400,
                                         images=_task_images(task, workdir),
+                                        swap_guard=swap_guard,
                                         note="起草换将 %s → %s：%s" % (
                                             impl["id"], other["id"],
                                             (other_reason or "")[:90]))
                         if (res.get("raw") or {}).get("repeat_stop"):
                             break   # 重复守卫判死：换将同 role 计数链必拦，终态跳出
+                        if not res["ok"]:
+                            blocked_ups.extend(_forbidden_upstream_sets(
+                                res, router.agent_upstreams(
+                                    other["id"], difficulty=difficulty,
+                                    task_type=task.get("type") or "serial",
+                                    role="implement")))
                         good, txt = _chapter_state()
                         if not good and res["ok"] and _wc(res.get("text") or "") >= int(wpc * 0.6):
                             try:

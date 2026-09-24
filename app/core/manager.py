@@ -635,18 +635,6 @@ def write_model(entry, model):
             except Exception:
                 return {"ok": False, "error": "配置文件不是合法 JSON，已中止（避免覆盖）"}
             _json_path_set(data, (cfg.get("model_key") or "model").split("."), model)
-            # pi 的 settings.json：defaultModel 必须配 defaultProvider 才能解析出
-            # (provider, model) 二元组；catalog 里声明了的伴随键一并落盘。
-            # setdefault 语义：用户已设的值（如 defaultProvider: anthropic）不被空串覆盖
-            for k, v in (cfg.get("model_extra_keys") or {}).items():
-                cur = data
-                ks = k.split(".")
-                for kk in ks[:-1]:
-                    if not isinstance(cur.get(kk), dict):
-                        cur[kk] = {}
-                    cur = cur[kk]
-                if cur.get(ks[-1]) in (None, ""):
-                    cur[ks[-1]] = v
             Path(path).write_bytes(
                 json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
         else:
@@ -1459,6 +1447,107 @@ def _sync_kimi_settings(entry, model, prov):
     return "；".join(errs) or None
 
 
+# pi 的自定义供应商注册表与 settings.json 同目录（pi 的 getModelsPath()），
+# 供应商名固定为一个托管位，绑定怎么换都只重写这一块。
+_PI_PROVIDER = "codebee"
+_PI_API_BY_PROTOCOL = {"anthropic": "anthropic-messages", "openai": "openai-completions"}
+# 各协议下「编排注入的那把密钥」env 名：models.json 用 $VAR 引用取值，
+# 配置文件里不落明文（与 dsh 走 DEEPSEEK_API_KEY 同一原则）
+_PI_KEY_ENV = {"anthropic": ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"),
+               "openai": ("ORCH_API_KEY", "OPENAI_API_KEY")}
+
+
+def _pi_models_path(entry):
+    """由 catalog 里 settings.json 的路径推导同目录 models.json。
+
+    不另存一份绝对路径：pi 用同一个 getAgentDir() 取这两件，硬编码第二份
+    路径会在用户改 PI_DIR/换平台时与实际脱节。"""
+    p = _config_path(entry)
+    return os.path.join(os.path.dirname(p), "models.json") if p else None
+
+
+def _pi_write_json(path, mutate):
+    """读—改—写一件 JSON 配置；非法 JSON 或顶层非对象一律中止不覆盖。
+    原文件先落 .bak 再写（与其余 CLI 同步同一套）。返回错误串或 None。"""
+    text = ""
+    if os.path.isfile(path):
+        text = _read_text(path, preserve_newlines=True)
+    try:
+        data = json.loads(text) if text.strip() else {}
+    except Exception:
+        return "%s 不是合法 JSON，已中止（避免覆盖）" % os.path.basename(path)
+    if not isinstance(data, dict):
+        return "%s 结构异常（顶层不是对象），已中止" % os.path.basename(path)
+    mutate(data)
+    if os.path.isfile(path):
+        shutil.copyfile(path, path + ".bak")
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_bytes(
+        json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
+    return None
+
+
+def _pi_merge_models(data, block):
+    provs = data.get("providers")
+    if not isinstance(provs, dict):
+        provs = {}
+    old = provs.get(_PI_PROVIDER)
+    merged = dict(old) if isinstance(old, dict) else {}
+    merged.update(block)   # 端点/协议/密钥引用/模型由托管段定，用户自加的 compat 等保留
+    provs[_PI_PROVIDER] = merged
+    data["providers"] = provs
+
+
+def _pi_merge_settings(data, model):
+    data["defaultProvider"] = _PI_PROVIDER
+    data["defaultModel"] = model
+
+
+def _sync_pi_settings(entry, model, prov, env=None):
+    """pi 专属注入：把绑定供应商写进 ~/.pi/agent/models.json 的 providers.codebee，
+    再把 settings.json 的 defaultProvider/defaultModel 指过去。
+
+    pi 解析启动模型要 (defaultProvider, defaultModel) 二元组命中 models.json 注册表、
+    且该供应商有凭据，否则回落到「已知供应商的默认模型」——2026-09-24 pi 19 连败、
+    零次真实成功即卡在这：这边只写 defaultModel、defaultProvider 留空，pi 便拿内置
+    anthropic 的 claude-opus-4-8 去打注入的 Bigmodel 端点，被上游一句
+    `403 {"error":{"type":"forbidden","message":"Request not allowed"}}` 挡回。
+    anthropic 面额外置 authHeader（Bearer 头），与 claude-code 走同一把
+    ANTHROPIC_AUTH_TOKEN 的既有实证保持一致。返回错误串或 None。"""
+    if tmp_data_no_home_write():
+        return "测试数据目录（TUTTI_DATA 在临时目录）不写真实 CLI 配置，已拦截"
+    proto = str(prov.get("protocol") or "").lower()
+    api = _PI_API_BY_PROTOCOL.get(proto)
+    env = env or {}
+    if not model or not api:
+        return ("pi 只认 anthropic / openai 协议供应商（当前 %s）——"
+                "请在「模型调度（可选）」页为 Pi 绑一个协议明确、带模型的供应商"
+                % (proto or "未指定协议"))
+    key_env = next((k for k in _PI_KEY_ENV[proto] if env.get(k)), "")
+    base = ""
+    if proto == "anthropic":
+        base = str(env.get("ANTHROPIC_BASE_URL") or prov.get("base_url") or "")
+    else:
+        base = str(env.get("OPENAI_API_BASE") or prov.get("base_url") or "")
+    base = base.rstrip("/")
+    if not base or not key_env:
+        return "pi 注入缺少可用端点或密钥环境变量，未写入配置"
+    block = {"baseUrl": base, "api": api, "apiKey": "$" + key_env,
+             "models": [{"id": model}]}
+    if proto == "anthropic":
+        block["authHeader"] = True
+    settings_path = _config_path(entry)
+    models_path = _pi_models_path(entry)
+    if not settings_path or not models_path:
+        return "pi 配置路径无效或越出用户主目录，已拒绝"
+    for path, mutate in ((models_path, lambda d: _pi_merge_models(d, block)),
+                         (settings_path, lambda d: _pi_merge_settings(d, model))):
+        err = _pi_write_json(path, mutate)
+        if err:
+            return err
+    return None
+
+
 def _claude_sync_enabled():
     """「直写 claude 配置」开关（settings 的 claude_config_sync，默认开）。
     关闭 = ~/.claude/settings.json 归用户手动管理（cc-switch 等），打开/运行前
@@ -1502,7 +1591,8 @@ _AGENT_INJECTORS = {
 # 无专属注入通道的专有协议 CLI：env 注入大概率无效，打开时明确告知而非静默废
 # （mimo 已实证配置注入：provider.codebee 块（apiKey 走 options）；grok 吃 XAI_API_KEY 但
 # 无端点 env 可指中转，openai 协议供应商也用不上）
-_NO_CHANNEL_HINT = ("grok-build", "pi")   # mimo 已有 provider 块注入（2026-09-24）
+_NO_CHANNEL_HINT = ("grok-build",)   # mimo 已有 provider 块注入（2026-09-24）；
+                                     # pi 已有 providers.codebee 注入（2026-09-24 403 案）
 
 
 def _sync_agent_injection(entry, binding):
@@ -1574,6 +1664,13 @@ def _sync_launch_model(entry, binding):
         err = _sync_codex_settings(entry, model, cp)
         notes.append("codex 供应商已同步为 %s" % cp.get("base_url", "") if not err
                      else "codex 供应商同步失败：%s" % err)
+    if entry["id"] == "pi" and model and prov:
+        # pi 只认 settings.json 的 defaultModel 配不上供应商：端点与模型注册表在
+        # models.json，两件必须同源一起写（binding 解析结果就是编排注入 env 的
+        # 那一条，故不走 launch_pick，避免配置与 env 各说各话）
+        err = _sync_pi_settings(entry, model, prov, binding.get("env") or {})
+        notes.append("Pi 供应商已注入 providers.%s · %s" % (_PI_PROVIDER, model)
+                     if not err else "Pi 配置注入失败：%s" % err)
     inj = _sync_agent_injection(entry, binding)
     if inj:
         notes.append(inj)
@@ -1588,15 +1685,22 @@ _RUNTIME_SYNC = {"fps": {}, "files": {}, "lock": threading.Lock()}
 
 
 def _runtime_cfg_hash(entry):
-    """CLI 自家配置文件的内容指纹；文件不存在返回 None。"""
-    try:
-        p = _safe_config_path((entry.get("config") or {}).get("path"))
-        if p and os.path.isfile(p):
-            with open(p, "rb") as fh:
-                return hashlib.sha256(fh.read()).hexdigest()
-    except Exception:
-        pass
-    return None
+    """CLI 自家配置文件的内容指纹；文件不存在返回 None。
+
+    pi 的绑定分两件落盘（settings.json 选模型 + models.json 定义供应商与端点），
+    只哈希 settings.json 会让 models.json 被外部毒写后逃过重写——kimi 毒配置同族。"""
+    paths = [_safe_config_path((entry.get("config") or {}).get("path"))]
+    if entry.get("id") == "pi":
+        paths.append(_pi_models_path(entry))
+    digests = []
+    for p in paths:
+        try:
+            if p and os.path.isfile(p):
+                with open(p, "rb") as fh:
+                    digests.append(hashlib.sha256(fh.read()).hexdigest())
+        except Exception:
+            pass
+    return "|".join(digests) if digests else None
 
 
 def sync_runtime_config(agent):

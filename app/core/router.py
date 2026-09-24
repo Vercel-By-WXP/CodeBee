@@ -85,6 +85,9 @@ def _online_bonus(agent, role, ttype):
         reason = ("，在线 %d/%d 验收成功（%+.1f），P95 %.1fs（%+.1f），均价 $%.4f（%+.1f）"
                   % (int(metrics.get("successes") or 0), success_samples,
                      success_score, p95, latency_score, cost, cost_score))
+        # 标准要求回退层出现在候选理由里（成本与时延预算第 5 条）：
+        # exact/task-role/task/global，让"分数来自哪层样本"可核对。
+        reason += "，样本层 %s" % (metrics.get("fallback") or "global")
         return total, reason
     except Exception:
         return 0.0, ""
@@ -155,6 +158,33 @@ _LOCAL_ENDPOINT_PROBES = (
 )
 
 _PI_SETTINGS_PATH = "~/.pi/agent/settings.json"
+_PI_MODELS_PATH = "~/.pi/agent/models.json"
+
+
+def _pi_provider_hosts(selected_name):
+    """按选中名取 pi 供应商块的 host:port（先 models.json，再 settings.json 兜底）。
+
+    老配置可能把 providers 直接写进 settings.json，两件都认；只认选中的那块。"""
+    hosts = set()
+    if not selected_name:
+        return hosts
+    for rel in (_PI_MODELS_PATH, _PI_SETTINGS_PATH):
+        try:
+            with open(os.path.expanduser(rel), "r", encoding="utf-8") as fh:
+                cfg = json.load(fh)
+        except (OSError, ValueError, TypeError):
+            continue
+        if not isinstance(cfg, dict):
+            continue
+        block = (cfg.get("providers") or {}).get(selected_name)
+        if not isinstance(block, dict):
+            continue
+        h = _host_of(block.get("baseUrl") or block.get("baseURL") or
+                     block.get("base_url"))
+        if h:
+            hosts.add(h)
+            break   # 命中即定：models.json 优先，别让另一件的旧块参与判断
+    return hosts
 
 
 def _host_of(url):
@@ -198,25 +228,17 @@ def agent_upstreams(agent_id, difficulty="default", task_type="", role=""):
         pass
     if not ups:
         if agent_id == "pi":
-            # Pi 将 endpoint 放在 providers.<defaultProvider>.baseUrl，不能只扫
-            # 所有 baseUrl（那会把未选中的 provider 也误算成当前上游）。
+            # Pi 的选择位在 settings.json（defaultProvider），而 endpoint 在**同目录
+            # models.json** 的 providers.<选中名>.baseUrl（pi 的 getModelsPath()，
+            # CodeBee 托管与用户手工配置都落在那儿）——不能只扫所有 baseUrl，
+            # 那会把未选中的 provider 也误算成当前上游。
             try:
                 with open(os.path.expanduser(_PI_SETTINGS_PATH), "r",
                           encoding="utf-8") as fh:
-                    cfg = json.load(fh)
-                if isinstance(cfg, dict):
-                    providers = cfg.get("providers") or {}
-                    selected_name = cfg.get("defaultProvider") or ""
-                else:
-                    providers, selected_name = {}, ""
-                selected = (providers.get(selected_name)
-                            if isinstance(providers, dict) else {}) or {}
-                if not isinstance(selected, dict):
-                    selected = {}
-                h = _host_of(selected.get("baseUrl") or selected.get("baseURL") or
-                             selected.get("base_url"))
-                if h:
-                    ups.add(h)
+                    settings = json.load(fh)
+                selected_name = str((settings.get("defaultProvider")
+                                     if isinstance(settings, dict) else "") or "")
+                ups.update(_pi_provider_hosts(selected_name))
             except (OSError, ValueError, TypeError):
                 pass
     if not ups:

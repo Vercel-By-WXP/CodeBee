@@ -71,8 +71,10 @@ class TestCatalogEntry(BaseTest):
         self.assertEqual(loaded["mimo-code"]["model_key"], "model")
         self.assertEqual(loaded["pi"]["path"], "~/.pi/agent/settings.json")
         self.assertEqual(loaded["pi"]["model_key"], "defaultModel")
-        self.assertEqual(loaded["pi"]["model_extra_keys"],
-                         {"defaultProvider": ""})
+        # pi 不再带 defaultProvider 伴随键：写空串正是 2026-09-24 那次 403 连败的
+        # 一半根因（defaultProvider 为空 → pi 回落内置供应商默认模型）。defaultProvider
+        # 与端点由 manager._sync_pi_settings 与 models.json 同源托管。
+        self.assertNotIn("model_extra_keys", loaded["pi"])
         self.assertEqual(loaded["openclaw"]["path"], "~/.openclaw/openclaw.json")
         # 绝不能写顶层 model（openclaw schema 校验会拒绝启动）
         self.assertEqual(loaded["openclaw"]["model_key"],
@@ -208,28 +210,30 @@ class _HomeIsolated(BaseTest):
 
 
 class TestJsonPathModelConfig(_HomeIsolated):
-    """json-path 格式：pi（defaultModel 双键）与 openclaw（嵌套 primary）。"""
+    """json-path 格式：pi（顶层 defaultModel）与 openclaw（嵌套 primary）。"""
 
     def _pi_entry(self):
         return {"id": "pi",
                 "config": {"path": "~/.pi/agent/settings.json", "format": "json-path",
-                           "model_key": "defaultModel",
-                           "model_extra_keys": {"defaultProvider": ""}}}
+                           "model_key": "defaultModel"}}
 
     def _openclaw_entry(self):
         return {"id": "openclaw",
                 "config": {"path": "~/.openclaw/openclaw.json", "format": "json-path",
                            "model_key": "agents.defaults.model.primary"}}
 
-    def test_pi_creates_file_with_both_keys(self):
-        """pi 不主动建 settings.json；写入须同时落 defaultModel 与 defaultProvider。"""
+    def test_pi_creates_file_and_reads_back(self):
+        """pi 不主动建 settings.json；write_model 只落 defaultModel。
+
+        defaultProvider 不归这里管：pi 的供应商定义在 models.json，两件由
+        manager._sync_pi_settings 同源托管（2026-09-24 空串 defaultProvider 案）。"""
         from app.core import manager
         out = manager.write_model(self._pi_entry(), "gpt-5.5")
         self.assertTrue(out["ok"], msg=out)
         f = self.home / ".pi" / "agent" / "settings.json"
         data = json.loads(f.read_text(encoding="utf-8"))
         self.assertEqual(data["defaultModel"], "gpt-5.5")
-        self.assertIn("defaultProvider", data)
+        self.assertNotIn("defaultProvider", data)
         self.assertEqual(manager.read_model(self._pi_entry()), "gpt-5.5")
 
     def test_pi_preserves_existing_keys(self):
@@ -244,7 +248,7 @@ class TestJsonPathModelConfig(_HomeIsolated):
         self.assertTrue(out["ok"], msg=out)
         data = json.loads(f.read_text(encoding="utf-8"))
         self.assertEqual(data["defaultModel"], "claude-x")
-        # setdefault 语义：用户已设的 defaultProvider 不被空串覆盖
+        # 选择位由 _sync_pi_settings 决定，write_model 一律不碰
         self.assertEqual(data["defaultProvider"], "anthropic")
         self.assertEqual(data["defaultThinkingLevel"], "high")
         self.assertEqual(data["theme"], "dark")
