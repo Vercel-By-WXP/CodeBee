@@ -97,6 +97,11 @@ def record(source="", run_id="", task_id="", task_type="", role="", step=0,
         total = _parse_int(u.get("total")) or (inp + out + cach)
         rec.update({"input": inp, "output": out, "cached": cach,
                     "reasoning": reas, "total": total})
+        # 压缩省量注记（source=compaction 专用）：上下文折叠净省的估算 token，
+        # 与消耗并列成账——省了多少不再是黑箱。零值不落字段防老记录膨胀。
+        saved = max(0, _parse_int(u.get("saved")))
+        if saved:
+            rec["saved"] = saved
         line = json.dumps(rec, ensure_ascii=False)
         with LOCK:
             paths.USAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -638,6 +643,9 @@ def summary(days=30, recent_limit=30):
     totals["cache_rate"] = round(totals["cached"] * 100.0 / denom, 1) if denom else 0.0
     totals["peak_tokens"] = max((bd["tokens"] for bd in by_day), default=0)
     totals["max_duration_s"] = round(max((float(r.get("duration_s") or 0.0) for r in records), default=0.0), 1)
+    # 压缩省量（source=compaction 记录的 saved 合计）：与消耗并列的第七维，
+    # 台账从此能答「省了多少」；无压缩记录时为 0，老前端不读不受影响
+    totals["compaction_saved"] = sum(_num(r, "saved") for r in records)
     cur, lng = _streaks(str(r.get("day") or "") for r in all_records)
     totals["streak_current"] = cur
     totals["streak_longest"] = lng

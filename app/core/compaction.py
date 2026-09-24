@@ -144,11 +144,26 @@ def compact_region(session, start_seq: int, end_seq: int, llm_caller,
             {"role": "system", "content": _SUMMARY_SYSTEM},
             {"role": "user", "content": region_text},
         ])
+        summary_tokens = estimate_tokens(summary)
         session.append("compaction_summary",
                        {"raw_tokens": raw_tokens,
-                        "summary_tokens": estimate_tokens(summary),
+                        "summary_tokens": summary_tokens,
                         "start_seq": start_seq, "end_seq": end_seq},
                        surface_op="shadow")
+        # 台账入账（A 专项：省了多少不再是黑箱）——摘要调用本身的真实消耗
+        # （读 region、写 summary）此前完全隐形；saved=净省量与消耗并列成账。
+        # record 自吞一切异常，统计绝不拖垮压缩事务。
+        try:
+            from . import usage as _usage
+            _usage.record(source="compaction",
+                          run_id=str(getattr(session, "run_id", "") or ""),
+                          tool="compaction",
+                          usage={"input": raw_tokens,
+                                 "output": summary_tokens,
+                                 "saved": max(0, raw_tokens - summary_tokens)},
+                          ok=True)
+        except Exception:
+            pass
         # surface replace：把区域折叠为一条 user 摘要消息
         session.append("user_message", {
             "content": f"[系统压缩摘要 {start_seq}-{end_seq}，原因 {reason}]\n{summary}",
