@@ -204,13 +204,43 @@ _NO_LIST_SUFFIX = ("无模型列表接口（HTTP 404）——"
 
 def _response_error_text(data):
     """Return a short, safe display string for a JSON API error envelope."""
-    if not isinstance(data, dict) or not data.get("error"):
+    seen = set()
+
+    def walk(value):
+        if id(value) in seen:
+            return ""
+        if isinstance(value, dict):
+            seen.add(id(value))
+            for field in ("error", "errors"):
+                err = value.get(field)
+                if err:
+                    if isinstance(err, dict):
+                        parts = [err.get(k) for k in ("type", "code", "message")
+                                 if err.get(k)]
+                        return ": ".join(str(p) for p in parts)[:200]
+                    if isinstance(err, list):
+                        text = "; ".join(str(x) for x in err if x)[:200]
+                    else:
+                        text = str(err)[:200]
+                    if text:
+                        return text
+            for field in ("status", "finish_reason"):
+                marker = str(value.get(field) or "").lower()
+                if marker in ("error", "failed", "failure"):
+                    return "%s=%s" % (field, marker)
+            for child in value.values():
+                found = walk(child)
+                if found:
+                    return found
+        elif isinstance(value, list):
+            seen.add(id(value))
+            for child in value:
+                found = walk(child)
+                if found:
+                    return found
         return ""
-    err = data.get("error")
-    if isinstance(err, dict):
-        parts = [err.get(k) for k in ("type", "code", "message") if err.get(k)]
-        return ": ".join(str(p) for p in parts)[:200]
-    return str(err)[:200]
+
+    return walk(data)
 
 
 def _model_payload_ok(protocol, data, wire_api=""):
@@ -220,16 +250,31 @@ def _model_payload_ok(protocol, data, wire_api=""):
     if protocol == "google":
         candidates = data.get("candidates")
         return isinstance(candidates, list) and any(
-            isinstance(c, dict) and isinstance((c.get("content") or {}).get("parts"), list)
+            isinstance(c, dict) and bool((c.get("content") or {}).get("parts"))
             for c in candidates)
     if protocol == "anthropic":
-        return isinstance(data.get("content"), list) and (
+        return bool(data.get("content")) and isinstance(data.get("content"), list) and (
             data.get("type") in (None, "message"))
     if wire_api == "responses" or ("output" in data and "choices" not in data):
         output = data.get("output")
         return isinstance(output, list) and bool(output)
     choices = data.get("choices")
     return isinstance(choices, list) and bool(choices)
+
+
+def _evaluation_is_usable(provider_id, model=""):
+    """Unknown evidence is allowed; stale evidence is never a routing green light."""
+    try:
+        from . import evaluation
+        for kind, name in (("provider", ""), ("model", model)):
+            if kind == "model" and not model:
+                continue
+            entry = evaluation.get(kind, provider_id, name)
+            if entry and not entry.get("fresh", False):
+                return False
+    except Exception:
+        return True
+    return True
 
 
 def is_no_list_note(err):
@@ -2389,6 +2434,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
                 continue  # 原生协议与适配过的 wire 都不匹配：跳过
             if prov.get("name") in down_set:
                 continue  # 健康监测判定 down：跳过，省掉无效等待
+            if not _evaluation_is_usable(pid, model):
+                continue  # 旧评测结论已过期/被健康事件作废，不能冒充绿灯
             if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
                 continue  # codex 0.154+ 只讲 responses wire：chat-only 供应商在起跑前
                           # 就剔除（此前撞了才冷却 30 分钟，每轮白烧一次注定失败的
@@ -2441,6 +2488,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     ep = _entry_endpoint(prov, allowed)
     if not ep:
         return None  # google 只登记；dsh 只接受 OpenAI 兼容端点；未适配的不硬塞
+    if not _evaluation_is_usable(pid, b.get("model") or prov.get("model") or ""):
+        return None
     if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
         return None  # codex 0.154+ 只讲 responses：chat-only 供应商直接判不可绑
                      # （解析为空 → 死链闸门/路由降权接手，不浪费 CLI 尝试）
@@ -2497,6 +2546,8 @@ def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role
         if not pid or not prov.get("enabled", True) or not prov.get("api_key"):
             continue
         if prov.get("name") in down_set:
+            continue
+        if not _evaluation_is_usable(pid, prov.get("model") or ""):
             continue
         ep = _entry_endpoint(prov, allowed)
         if not ep:
@@ -3215,6 +3266,8 @@ def resolve_orchestrator():
         model = names[0]["name"] if names else ""
     if not model:
         return None
+    if not _evaluation_is_usable(pid, model):
+        return None
     return prov, model
 
 
@@ -3369,6 +3422,15 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_tt
                 e = data.get("error")
                 msg = e.get("message", "") if isinstance(e, dict) else str(e)
             last_err = "HTTP %s %s" % (status, str(msg)[:200])
+            note_key_error(provider_id, key_id, last_err)
+            continue
+        envelope_error = _response_error_text(data)
+        if envelope_error:
+            last_err = "HTTP %s %s" % (status, envelope_error)
+            note_key_error(provider_id, key_id, last_err)
+            continue
+        if not _model_payload_ok(proto, data, prov.get("wire_api", "")):
+            last_err = "HTTP %s 响应结构无有效内容" % status
             note_key_error(provider_id, key_id, last_err)
             continue
         note_key_ok(provider_id, key_id)

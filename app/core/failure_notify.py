@@ -269,6 +269,12 @@ def record_all_candidates_failed(*, run_id: str, task_id: str = "", role: str = 
             state = _read()
             item = state.get(key) or {}
             item["last_outcomes"] = outcomes
+            # A configured channel can fail transiently.  Only close the
+            # episode after at least one channel confirms delivery; otherwise
+            # the cooldown permits a later exhausted run to retry the alert.
+            item["episode_notified"] = any(
+                bool(value.get("sent")) for value in outcomes.values()
+                if isinstance(value, dict))
             state[key] = item
             _write(state)
     return {"recorded": True, "notified": should_notify,

@@ -94,16 +94,25 @@ def record(kind: str, provider_id: str, model: str, result: dict,
     return out
 
 
-def invalidate_provider(provider_id: str, *, reason: str = "health_failure") -> None:
-    """Invalidate all conclusions for one provider after a health event."""
+def invalidate_provider(provider_id: str, model: str = "",
+                        *, reason: str = "health_failure") -> None:
+    """Invalidate one model, or all conclusions, after a health event."""
     provider_id = str(provider_id or "").strip()
     if not provider_id:
         return
     with _LOCK:
         data = _read()
-        data.setdefault("invalidated", {})[provider_id] = {
+        invalidation_key = key("model", provider_id, model) if model else provider_id
+        data.setdefault("invalidated", {})[invalidation_key] = {
             "at": time.time(), "reason": str(reason or "health_failure")[:80]}
         _write(data)
+
+
+def _safe_float(value, default=0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
 
 
 def get(kind: str, provider_id: str, model: str = "", *, now=None):
@@ -115,16 +124,20 @@ def get(kind: str, provider_id: str, model: str = "", *, now=None):
     if not isinstance(entry, dict):
         return None
     out = dict(entry)
-    invalid = (data.get("invalidated") or {}).get(str(provider_id or "")) or {}
-    invalid_at = float(invalid.get("at") or 0)
-    expires_at = float(out.get("expires_at") or 0)
+    invalidated = data.get("invalidated") or {}
+    exact_invalid = invalidated.get(key(kind, provider_id, model)) or {}
+    provider_invalid = invalidated.get(str(provider_id or "")) or {}
+    invalid = exact_invalid if exact_invalid else provider_invalid
+    invalid_at = _safe_float(invalid.get("at"))
+    expires_at = _safe_float(out.get("expires_at"))
     stale_reason = ""
-    if invalid_at and invalid_at >= float(out.get("evaluated_at") or 0):
+    if invalid_at and invalid_at >= _safe_float(out.get("evaluated_at")):
         stale_reason = str(invalid.get("reason") or "health_failure")
     elif expires_at <= now:
         stale_reason = "ttl_expired"
     if stale_reason:
         out["fresh"] = False
+        out["ok"] = False
         out["status"] = "stale"
         out["stale_reason"] = stale_reason
     else:

@@ -156,7 +156,7 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
     if provider_id:
         try:
             from . import evaluation
-            evaluation.invalidate_provider(provider_id)
+            evaluation.invalidate_provider(provider_id, model=model)
         except Exception:
             log.debug("[health] 无法使评测结论失效", exc_info=True)
     with _LOCK:
