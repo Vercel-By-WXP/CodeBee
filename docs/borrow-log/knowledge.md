@@ -757,3 +757,9 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 批2 复跑：KIP/agent-apprenticeship/MAGEO/scientific-agent-skills 等均已录，零真新标的
 
 **✅ 本班落地**：压缩省量入台账——compact_region 成功路径向 usage.record 入账（source=compaction：input=摘要读入/output=摘要写出/saved=净省量，零值不落字段）；summary() totals 增第七维 compaction_saved。A 专项「省了多少」从黑箱变可答；摘要调用真实消耗同步显形。test_compact_ledger 3 项
+
+### 2026-09-24 18:00 第五十五班（批4：治理/安全/人机协同）
+
+- 批4 复查：治理向高星均已录无增量
+
+**✅ 本班落地**：skill_scan 中文注入面——三组中文话术入列（指令覆盖/隐瞒双语序/人格重设收紧形态），中文恶意 skill 不再零覆盖；良性写作叙述零误报（「将描述」「忽略无关信息」刻意排除）。test_skill_scan_zh 4 项
