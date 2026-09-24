@@ -4,11 +4,12 @@
 用户在详情页「成果」分区点按钮触发（不做自动生成），后台线程调编排者模型
 提炼 大纲 + 故事圣经 + 已有章节 的精华，按平台表单字段归一化后存任务
 book_meta 字段，同时在工作目录落一份 Markdown 归档。降级链与大纲一致：
-编排者 API → 作者 CLI → 模板兜底（模板只做搬运归纳，字段留待用户补）。
+编排者 API → 作者 CLI → 模板兜底（模板只做搬运归纳，必填字段仍保证可建书）。
 """
 from __future__ import annotations
 
 import os
+import re
 import time
 from pathlib import Path
 
@@ -25,7 +26,8 @@ def template_only():
     """只走模板兜底（跳过编排者/作者 CLI）：env TUTTI_BOOKMETA_TEMPLATE_ONLY=1。
 
     离线环境、不想为开书资料再花一次模型调用、以及测试要确定性输出时使用；
-    产出仍是结构完整的字段，只是书名/简介直接取大纲与目标，其余留「待补充」。"""
+    产出仍是结构完整的字段，书名/简介直接取大纲与目标，平台必填字段由生成阶段
+    的官方目录兜底补齐。"""
     return str(os.environ.get("TUTTI_BOOKMETA_TEMPLATE_ONLY") or "").strip() in ("1", "true", "yes")
 
 
@@ -403,6 +405,136 @@ def _fill_tag_gaps(task, platform, meta, outline):
     return meta
 
 
+def _material_names(material):
+    """从圣经/大纲/章节里提取明确标注的人物名。
+
+    只接受带人物语义的短语（如“女主：阿禾”或“男主叫陆沉”），避免把
+    普通句子里的名词误当成主角。返回顺序去重后的最多两个名字。
+    """
+    text = str(material or "")
+    out = []
+    patterns = (
+        r"(?:主角|主人公|男主(?:角)?|女主(?:角)?|男一|女一|姓名|名字)"
+        r"\s*(?:是|叫|为|：|:)\s*([\u4e00-\u9fffA-Za-z][\u4e00-\u9fffA-Za-z·]{1,7})",
+        r"人物\s*[：:]\s*([^\n。；;]{2,40})",
+    )
+    for pat in patterns:
+        for m in re.finditer(pat, text):
+            raw = m.group(1)
+            chunks = re.split(r"[、,，/和及与]|\s+", raw)
+            for chunk in chunks:
+                name = re.sub(r"[^\u4e00-\u9fffA-Za-z·]", "", chunk)
+                if 2 <= len(name) <= 8 and name not in out:
+                    out.append(name[:5])
+                if len(out) >= 2:
+                    return out
+    return out
+
+
+def _pick_option(material, table, keywords=()):
+    """从官方选项表中按素材命中词选择一个，完全命中不到时用首项。"""
+    text = str(material or "")
+    for item in table:
+        if len(item) >= 2 and item in text:
+            return item
+    for key, item in keywords:
+        if key and key in text and item in table:
+            return item
+    return table[0] if table else ""
+
+
+def _has_value(value):
+    """判断建书字段是否真正有值（兼容列表和历史占位文本）。"""
+    placeholders = {"待补充", "（待补充）", "(待补充)"}
+    if isinstance(value, list):
+        return any((text := str(x or "").strip()) and text not in placeholders
+                   for x in value)
+    text = str(value or "").strip()
+    return bool(text) and text not in placeholders
+
+
+def _fill_required_fields(task, platform, meta, outline, material):
+    """生成阶段的必填字段闸门。
+
+    ``_norm`` 仍保持“表外值清空”的纯校验语义，供旧数据修复和单测使用；
+    这里仅在真正交付作品信息前补齐平台建书表单的必填项，避免 UI 展示一整
+    屏“待补充”而无法直接复制建书。所有分类/标签仍来自官方目录。
+    """
+    from . import bookmeta_catalog as cat
+
+    material = str(material or "")
+    names = _material_names(material)
+    female_words = ("女频", "女生", "女主", "言情", "古言", "恋爱")
+    female = any(x in ((task.get("goal") or "") + material) for x in female_words)
+    defaults = ("沈知微", "顾砚川", "林知夏") if female else ("陆沉", "苏晚", "程野")
+    if not _has_value(meta.get("protagonist_1")):
+        meta["protagonist_1"] = names[0] if names else defaults[0]
+    if not _has_value(meta.get("protagonist_2")):
+        candidate = names[1] if len(names) > 1 else defaults[1]
+        if candidate == meta["protagonist_1"]:
+            candidate = next((name for name in defaults if name != meta["protagonist_1"]), defaults[2])
+        meta["protagonist_2"] = candidate
+
+    if platform == "fanqie":
+        reader = meta.get("target_reader") or ("女频" if female else "男频")
+        if reader not in ("男频", "女频"):
+            reader = "女频" if female else "男频"
+        meta["target_reader"] = reader
+        cats, theme, role, plot = _fq_tables(reader)
+        c_plot, c_emo, c_char, c_world = _fq_content_tables()
+        if meta.get("category") not in cats:
+            meta["category"] = _pick_option(
+                material, cats,
+                (("戍边", "古风世情"), ("边关", "古风世情"),
+                 ("军", "抗战谍战"), ("悬疑", "女频悬疑" if female else "悬疑脑洞"),
+                 ("种田", "种田"), ("都市", "都市脑洞")))
+        groups = (("tags_theme", theme, 2), ("tags_role", role, 2),
+                  ("tags_plot", plot, 2), ("content_plot", c_plot, 4),
+                  ("content_emotion", c_emo, 2), ("content_character", c_char, 4),
+                  ("content_world", c_world, 1))
+    else:
+        reader = meta.get("target_reader") or ("女生" if female else "男生")
+        if reader not in ("男生", "女生"):
+            reader = "女生" if female else "男生"
+        meta["target_reader"] = reader
+        channel = cat.QIMAO_CATS.get(reader) or cat.QIMAO_CATS["男生"]
+        main = meta.get("category_main")
+        if main not in channel:
+            main = _pick_option(
+                material, list(channel),
+                (("戍边", "古代言情"), ("边关", "古代言情"),
+                 ("古代", "古代言情"), ("军事", "军事"),
+                 ("军", "军事"), ("都市", "都市"),
+                 ("玄幻", "玄幻奇幻"), ("悬疑", "奇闻异事")))
+            meta["category_main"] = main
+        subs = channel.get(main) or []
+        sub = meta.get("category_sub")
+        if sub not in subs:
+            located = cat.qimao_locate_sub(sub)
+            if located:
+                reader, main = located
+                meta["target_reader"] = reader
+                meta["category_main"] = main
+                subs = cat.QIMAO_CATS[reader][main]
+            else:
+                sub = ""
+        if sub not in subs:
+            meta["category_sub"] = _pick_option(material, subs)
+        groups = (("tags_style", cat.QIMAO_TAG_GROUPS["风格"], 3),
+                  ("tags_role", cat.QIMAO_TAG_GROUPS["角色"], 3),
+                  ("tags_plot", cat.QIMAO_TAG_GROUPS["情节"], 3),
+                  ("tags_bg", cat.QIMAO_TAG_GROUPS["背景"], 3))
+    for key, table, limit in groups:
+        values = meta.get(key)
+        if not isinstance(values, list):
+            values = []
+        values = [str(v).strip() for v in values if str(v or "").strip() in table]
+        if not values:
+            values = [_pick_option(material, table)]
+        meta[key] = values[:limit]
+    return meta
+
+
 def store_read_bible(task):
     """圣经读取的小包装（模板兜底用；异常向上抛由调用方吞掉）。"""
     from . import store
@@ -458,7 +590,8 @@ def make_book_meta(task, platform, author_agent=None, log_path=None):
         if res["ok"]:
             meta = _norm(runner.extract_json(res.get("text") or ""), platform, goal)
             if meta:
-                return _fill_tag_gaps(task, platform, meta, outline), \
+                meta = _fill_tag_gaps(task, platform, meta, outline)
+                return _fill_required_fields(task, platform, meta, outline, material), \
                     "编排者(%s · %s)" % (prov.get("name", prov["id"]), model)
         orch_err = str(res.get("error") or "返回内容无法解析为作品信息")[:200]
 
@@ -470,10 +603,12 @@ def make_book_meta(task, platform, author_agent=None, log_path=None):
         if res["ok"]:
             meta = _norm(runner.extract_json(res.get("text") or ""), platform, goal)
             if meta:
-                return _fill_tag_gaps(task, platform, meta, outline), "llm(%s)" % author_agent["id"]
+                meta = _fill_tag_gaps(task, platform, meta, outline)
+                return _fill_required_fields(task, platform, meta, outline, material), "llm(%s)" % author_agent["id"]
         orch_err = orch_err or str(res.get("error") or "")[:200]
 
     meta = _template_meta(task, platform, outline)
+    meta = _fill_required_fields(task, platform, meta, outline, material)
     meta["source"] = ("模板兜底（编排者不可用：%s）" % orch_err) if orch_err else "模板兜底"
     return meta, meta["source"]
 
@@ -543,3 +678,64 @@ def recover_orphans():
                     "at": time.strftime("%Y-%m-%d %H:%M:%S")})
                 n += 1
     return n
+
+
+def repair_existing():
+    """补齐历史已生成记录中的必填字段。
+
+    旧版本允许分类/主角为空并把结果标成 done；只要字段缺失就按当前官方
+    目录和已有素材补一次，已有非空字段保持不变。返回修复条数，供启动日志
+    和升级诊断使用。
+    """
+    from . import store
+    repaired = 0
+    for task in store.list_tasks(limit=10 ** 9):
+        book_meta = task.get("book_meta") or {}
+        for platform in PLATFORMS:
+            entry = book_meta.get(platform) or {}
+            if entry.get("status") != "done" or not isinstance(entry.get("data"), dict):
+                continue
+            data = dict(entry["data"])
+            if platform == "fanqie":
+                reader = data.get("target_reader")
+                cats, _, _, _ = _fq_tables(reader if reader in ("男频", "女频") else "男频")
+                required_ok = (
+                    data.get("category") in cats
+                    and all(_has_value(data.get(key)) for key in (
+                        "tags_theme", "tags_role", "tags_plot", "content_plot",
+                        "content_emotion", "content_character", "content_world"))
+                    and _has_value(data.get("protagonist_1"))
+                    and _has_value(data.get("protagonist_2")))
+            else:
+                from . import bookmeta_catalog as cat
+                reader = data.get("target_reader")
+                channel = cat.QIMAO_CATS.get(reader) or {}
+                main = data.get("category_main")
+                required_ok = (
+                    main in channel
+                    and data.get("category_sub") in (channel.get(main) or [])
+                    and all(_has_value(data.get(key)) for key in (
+                        "tags_style", "tags_role", "tags_plot", "tags_bg"))
+                    and _has_value(data.get("protagonist_1"))
+                    and _has_value(data.get("protagonist_2")))
+            if required_ok:
+                continue
+            try:
+                material, outline = _collect_material(task)
+                fixed = _fill_required_fields(task, platform, data, outline, material)
+                if fixed == entry["data"]:
+                    continue
+                payload = dict(entry)
+                payload["data"] = fixed
+                payload["source"] = (str(entry.get("source") or "") + "；已补齐必填字段").lstrip("；")
+                store.set_book_meta(task["id"], platform, payload)
+                try:
+                    fp = Path(task.get("workdir") or "") / PLATFORMS[platform]["file"]
+                    if fp.parent.is_dir():
+                        fp.write_text(render_markdown(task, platform, fixed), encoding="utf-8")
+                except OSError:
+                    pass
+                repaired += 1
+            except Exception:
+                continue
+    return repaired
