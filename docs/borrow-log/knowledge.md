@@ -769,3 +769,18 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 批6 复查：框架生态高星均已录无增量
 
 **✅ 本班落地**：压缩省量 KPI 卡——用量页 KPI 行露出台账第七维（compaction_saved）：有压缩显净省 token，无压缩显「—」与累计说明；EN 三键同步。补齐 16:00 后端账的前端面
+
+### 2026-09-24 21:00 用户点名清账班（待深挖队列 8 项清账 + 扫榜扩源）
+
+- **ECC instincts 概念深挖完成**（affaan-m/ECC，266k★，MIT）| instincts=从真实会话提取的模式+置信分（continuous-learning-v2；v1 是 Stop-hook 抽取）；注入纪律：SessionStart 每次最多注入 6 条（ECC_MAX_INJECTED_INSTINCTS）、置信阈值 0.7、按置信+项目相关性排序；生命周期：/evolve 把相关 instincts 聚类**晋升成 skill**、/prune 清过期 pending、/instinct-import/export 可迁移；Memory Vault 跨 harness 本地 Markdown 记忆（会话蒸馏=摘要+instincts+skills 三层）| **与 CodeBee 经验库对照**：outcome 加权≈置信分、相关性最高优先≈注入排序、命中热度≈召回信号——大机制同构；**差量四件**：①教训自动聚类晋升为技能（我们的经验止步于教训，技能靠市场装）②注入条数硬上限（我们有 token 预算无条数上限）③过期教训物理清理（我们只降权不删）④经验库导出/导入 | 差量①②进路线图备选 | 2026-09-24
+- **ARIS Anti-Autoresearch 深挖完成**（wanshuiyin/Anti-Autoresearch，卫星仓）| **确定性脊柱**：span 锚定+哈希证据账本 → LLM 审计员**只提议**发现 → 纯规则裁决器打分/降级（模型永不给 verdict）；61 个 HP-* 诚信信号带误报用例（HP-NUM-INFLATE 摘要 85.3 vs 表 84.7、HP-DELTA-ERROR 16% 实为 6.7%、HP-PIPELINE-ARTIFACT 模板残串精确匹配）；表面信号防火墙（重复表/LLM 图/凑页数硬顶 minor）、AI 文风印象**零裁决权重**；8 个模式 eval 门禁进 CI | 与我们评审解析三道网+事件流计数鉴别谎报同向；**可借形态**：①评审发现带证据锚（span+hash）而非自由文本 ②高误报类发现强制降档 ③「模型只提议、规则裁决」分工 | 借鉴方向（评审域） | 2026-09-24
+- **freellmapi 深挖完成**（tashfeenahmed/freellmapi，28.4k★，MIT）| 34 家免费档聚合 635 端点≈7.4B tokens/月，一个 /v1；per-key RPM/RPD/TPM/TPD 记账**学习供应商天花板**（主动避让而非撞了才冷却）；同模型跨供应商归一一条+组内严格 failover；sticky session 30 分钟+中途换模型带交接摘要；请求管线预压缩（prompt 去重/工具输出过滤/重复 JSON 压缩）；密钥 AES-256-GCM；免费版目录快照滞后 30 天（付费 $19/yr 实时）；**明示 Personal experimentation only** | 与我们多 KEY 链+冷却+链展开同构度高；**结论：不接**（ToS 个人实验限定+配额稳定性存疑+同构无增量）；差量=配额**记账式**主动避让（我们是错误驱动被动冷却）远期可借 | 不接（拍板材料齐） | 2026-09-24
+- **codegraph 深挖完成**（colbymchenry/codegraph，72k★，MIT）| 预索引符号/调用边/依赖图（含动态分发跳边）+文件监听自动同步+MCP 接线各家 CLI；实测 7 仓 7 语言：工具调用 -88%/token -62%/成本 -44%，**同时诚实报告常驻上下文 +80%**（稠密payload 进窗不走）——双面测量文化本身值得抄 | 重依赖本地索引守护进程，不接；差量备注：①代码任务上下文可预注入「符号+调用边+影响面」摘要 ②发基准要报「处理成本」与「常驻成本」两面 | 参考（含测量方法论） | 2026-09-24
+- **舰队三件套复查清账**：**orca**（stablyai，77.1k★，MIT，桌面 ADE）| 同一 prompt 扇出 5 agent 各自 worktree 赛马合并赢家+手机伴飞（监控/steer/追话）；**paseo**（getpaseo，18.3k★）| 自托管桌面+移动同接口多 CLI；**superset**（superset-sh，14.6k★，Elastic-2.0 ⚠️不可抄码）| 100+ agent 并行 worktree+内建终端/diff+iPhone 远控（Pro）| 与我们任务分支隔离链/并发池/手机 423 接管闭环逐项对上；**唯一差量**=代码任务级「同 prompt 扇出 N worktree 合并赢家」（我们赛马在稿件级/计划级）——费 token 远期备选 | 方向验证（差量小） | 2026-09-24
+- **continuum 深挖完成**（naman159/continuum，Apache-2.0，小标）| 长篇写作记忆层：**章节截断世界状态视图**（查「第 N 章末时角色知道什么」防剧透回溯）、角色状态版本化、承诺/伏笔 payoff 追踪、keyword+embedding 双检索、MCP 暴露给任意写作 agent+失败稿人工复核队列、题材预设（含 Xianxia）配实体抽取 | 与我们圣经+前情提要同域；**差量三件**：①按章节截断的历史状态查询 ②伏笔/承诺账本（显式追踪未兑现承诺）③知识面 MCP 化供外部 agent 复用 | 借鉴方向（小说域差量记路线图） | 2026-09-24
+- **Yuxi 深挖完成**（xerrors/Yuxi，7.2k★，中文）| 可私有部署多租户知识智能体平台：Docker 全家桶（LangGraph/Vue/FastAPI/Milvus/Neo4j/PG/MinerU/PaddleOCR）；特色=知识图谱参与检索（Milvus 文档块抽实体关系入 Neo4j 联合检索）+多租户权限+Langfuse 数据集评估智能体任务 | 与我们单体 pip/npm 轻形态完全不同赛道（多租户重部署）；「图谱参与检索」「数据集评估闭环」两点远期方向备注 | 参考 | 2026-09-24
+- **test-defect-retrospective 深挖完成**（zl2237，1★）| 禅道/Jira 导出→**产品/开发/测试三视角复盘报告**（MD+JSON+HTML）；值级标准化（状态/严重度/根因/时间）；analyzer 确定性同输入同输出；插件化平台解析器；问卷断点续跑；定性评审模式（需求/用例/技术方案文档评审可组合）| 与我们禅道闭环（扫描→建任务→修复→回写）互补——**我们缺「复盘报告」产物**；落地形态：direct 引擎+禅道 CSV 导出→三视角复盘，flows 热区定稿后做 | 借鉴方向（落地排队） | 2026-09-24
+- mira（303★ 索引化 PR 评审）复核：我们 A 专项已有 diff-only 评审，**已覆盖**出队 | 2026-09-24
+- OpenCreator 版本化差量备注：run 历史已有雏形，缺「同任务多次产出一键 diff 视图」（UI 层增强，非本轮）；TokenJuice/freellmapi 同款「工具输出进上下文前统一压缩管线」合并记 A 专项远期方向 | 2026-09-24
+
+**✅ 本班落地**：扫榜选材数据源扩容（路线图「扫榜数据源」欠账清账）——双源→四源：起点移动版（m.qidian.com/rank，主站被 WAF 拦 202/209B、移动页免签名直接出书名）+纵横（www.zongheng.com/rank）；_SOURCES 源清单化（存函数名调用期 globals() 解析——mock.patch 换模块属性才生效，存函数引用会钉死原函数让测试穿透打真网络，实测踩过）；榜单 tab/统计标签噪音词扩 17 个。旧欠账「封面图」核实已随 v0.1.x 两代发版落地（建书面板生成封面+CogView 接线+内嵌缩略图），本轮销账。test_paihang 12 项
