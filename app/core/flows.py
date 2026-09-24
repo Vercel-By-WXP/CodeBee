@@ -117,7 +117,7 @@ BUILTIN_FLOWS = [
      "threshold": 7.0, "rounds": 2,
      "goal_hint": "目标岗位 + 个人经历（可贴旧简历附件），几年经验投什么职级",
      "note": "简历优化/定制：起草 → 多维评审 → 修订循环 → 发布门禁"},
-    {"id": "bid_doc", "name": "标书编制", "icon": "i-file-search", "engine": "review", "builtin": True,
+    {"id": "bid_doc", "name": "标书编制", "icon": "i-tasks", "engine": "review", "builtin": True,
      "manuscript": "bid.md",
      "rubric": ["应答完整性", "合规符合度", "方案针对性", "评分点覆盖", "商务清晰度"],
      "threshold": 7.5, "rounds": 2,

@@ -814,3 +814,18 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 批7 复查：unsloth/openhuman/khoj/funNLP/JeecgBoot/Langchain-Chatchat 均已录无增量
 
 **✅ 本班落地**：压缩省量按日趋势——usage 聚合器与 by_day 逐日带 saved 维、KPI 卡挂 spark 走势；补全 09-24 台账第七维的时间维度（省量何时发生一眼可读）
+
+### 2026-09-25 00:35 第五十九班（批7 复跑 + 雷达源 C 全过——00 点 %7=0 与 58 班同批，重合属预期；数据巡检班）
+
+- 主扫描 103 组（A 78 + 批7 9 + A1u/A1p2 双轮）449 去重条目零失败零限流；雷达源 C 全过（topic 8 + 自家 CLI 周边 5 + 禅道周边 2 + awesome 新鲜度 6 + npm 2 + pypi 搜索页被拦如实记）；**真新标的 = 0**（连续两班零增量，头部格局稳定）
+- 新增雷达（备查）：impeccable 70.7k（AI harness 设计语言，pbakaus）/CLIProxyAPI 53.1k（多 CLI 包成 API 代理）/nanobot 48.5k（HKUDS 轻量 agent 框架）/Anthropic-Cybersecurity-Skills 33.3k（817 安全 skills）/FreeToken 13.7k（桌面级模型服务）/Backlog.md 6.8k（人机协作 git 项目管理）/claude-token-efficient 6.1k（CLAUDE.md 输出从简）/ClawRouter 6.6k+semantic-router 5.9k（vllm 系 MoM 路由）/costrict 4.4k（企业级 AI coder 含 CodeReview）/notfair-plugin 3.9k（SEO/GEO skills，最大营销 skills 包）/hope-agent 1.6k（中文跨端桌面 agent，记忆+目标推进+动态编排）/LightMem 1.2k（ICLR26 轻记忆）/nimbalyst 1.8k+claudexor 480+Ghostex 842+ntm 450（多 CLI 控制面同域四例）/tokenlens（零侵入 token 监控代理，中文新锐）
+- **writing-with-agents**（Jeffallan，31★）| Betty Flowers「Madman-Architect-Carpenter-Judge」四角色写作框架 skill | 与我们多角色评审同向；起草面四角色未显式化——蒸馏候选 | 雷达 | 2026-09-25
+- **tf-routing 实测反证**（0★，TrueFoundry）| 「cheap-first 全局路由是 p99 延迟陷阱」实测数据 | 我们 cascade 按**任务难度**分流而非全局便宜优先——设计未被证伪，记录为 A 专项对照证据 | 参考（A 专项） | 2026-09-25
+- **勘误清账（opencode-metrics 借鉴，09-22 记）**：用量页缓存命中率/首字延迟核实**已落地**——renderUsage KPI 卡三件全在（缓存命中率副标 tot.cache_rate / 首字延迟卡 P95·吞吐·样本 / 压缩省量卡 spark）| 已落地 | 2026-09-25
+- **六源市场连通恢复**（09-19 记 clawhub 网络不通、cocoloop 0 项）：本轮两源全部探活成功，合计 808 条可见——旧记录作废 | 已核实 | 2026-09-25
+- **D 专项数据维护**：教训 88→84——「做法：direct 判断题直接给结论」等 4 条同族做法合并为 1 条（要点并集）、「识别HMPV概念图」任务残留删除（一次性事实知识混入教训库且误分类流程规范）；流程规范偏科 48%→45%
+- **E 专项**：候选 CLI（reasonix/fuxi/gitlawb/zero/empryo + zcode/goose/crush）本机全未装——零接入维持防死链；DeepSeek-Reasonix 35.7k★（A4 头部、09-24 活跃）继续居候选首位
+- **F 专项**：禅道 poll_enabled=False（用户侧开关，非故障）；零积压、零 last_error、last_scan 09-21；产品档案 96 路由有效（mo-so workdir 存在，owners 齐）；无新禅道 AI 竞品（zentao-cli 60★ 09-22 活跃）
+- **⚠ 架构守卫新环报警（真实风险交人决策，未动）**：knowledge→skills→store→knowledge 两环——skills.py:868 与 store.py:653 函数内惰性互引（运行时无恙、静态图成环），09-24 并行提交引入、基线未更新。修复需动热区导入结构，交人拍板
+
+**✅ 本班落地**：①bid_doc 图标与 research 撞车修复（i-file-search→i-tasks，G 项随手修）；②计划清晰度「初级工程师测试」进 CODE_PLAN_PROMPT（superpowers 借鉴②路线图清账：detail 须无项目上下文、不做隐含判断也能照做不跑偏）+ test_plan_junior_test 2 项
