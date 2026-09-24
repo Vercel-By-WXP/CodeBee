@@ -292,6 +292,7 @@ class TestEffectiveUpstreamDetection(BaseTest):
         self.assertFalse(runner._auth_error(denied_with_auth_wording))
         self.assertTrue(runner._permission_error("HTTP 403 unknown response"))
         self.assertFalse(runner._permission_error("HTTP 401: invalid API key"))
+        self.assertFalse(runner._permission_error("vendor failed for model foo-403beta"))
 
     def test_auto_recommended_provider_is_counted(self):
         from unittest.mock import patch

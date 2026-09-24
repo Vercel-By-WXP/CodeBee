@@ -1007,7 +1007,7 @@ def _auth_error(err):
 
 def _permission_error(err):
     """识别明确的 HTTP 403 权限拒绝；它是上游故障，不等同于无效 API Key。"""
-    return bool(re.search(r"(?<!\d)403(?!\d)", str(err or "")))
+    return _shared_forbidden_error(err)
 
 
 def _attempt_credential(att):
