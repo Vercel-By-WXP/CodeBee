@@ -75,16 +75,22 @@ def _step_timeout(run_id, requested, deadline=None):
     return value, deadline
 
 
-def _planner_call(fn, *args, deadline=None, **kwargs):
-    """Allow older injected planner doubles to omit the new deadline kwarg."""
-    if deadline is None:
-        return fn(*args, **kwargs)
-    try:
-        return fn(*args, deadline=deadline, **kwargs)
-    except TypeError as exc:
-        if "unexpected keyword argument 'deadline'" not in str(exc):
-            raise
-        return fn(*args, **kwargs)
+def _planner_call(fn, *args, deadline=None, run_id=None, **kwargs):
+    """补上规划期函数的可选入参；旧测试替身可能不接收较新的 kwarg，
+    报错里点名哪个就退回哪个，其余照常传递（不放宽到吞掉任意 TypeError）。"""
+    extra = {}
+    if deadline is not None:
+        extra["deadline"] = deadline
+    if run_id is not None:
+        extra["run_id"] = run_id
+    while True:
+        try:
+            return fn(*args, **extra, **kwargs)
+        except TypeError as exc:
+            m = re.search(r"unexpected keyword argument '(\w+)'", str(exc))
+            if not m or m.group(1) not in extra:
+                raise
+            extra.pop(m.group(1))
 
 
 def _inside(dirpath, target):
@@ -2597,7 +2603,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         outline = _planner_call(
             planner.make_serial_outline, _steered_task(run_id, task), impl, workdir, ev,
             log_path=str(outline_log) if outline_log else None,
-            deadline=_run_deadline(run_id))
+            deadline=_run_deadline(run_id), run_id=run_id)
         _ensure_budget(run_id)
         if outline.get("degraded") and impl.get("mode") != "mock":
             # 兜底模板只有章号没有情节，据此写出的两万字等于废稿——

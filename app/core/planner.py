@@ -356,7 +356,7 @@ def book_volume_plan(task, outline, upto):
 
 
 def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path=None,
-                        deadline=None):
+                        deadline=None, run_id=None):
     """连载大纲：编排者 API 优先 → 作者 CLI → 模板。返回 {book_title, chapters:[{title,beats,hook}]}。
 
     续写批次（serial.start_chapter > 1）：改用续写大纲提示词，注入前情大纲与
@@ -368,7 +368,7 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
     n = int(serial.get("chapters") or 8)
     wpc = int(serial.get("words_per_chapter") or 2500)
     start = int(serial.get("start_chapter") or 1)
-    sk_block, _ = skills.block_for(task)
+    sk_block, _ = skills.block_for(task, run_id=run_id)
     kb_block = knowledge.block_for(task)
     if kb_block:
         sk_block = (sk_block + "\n\n" + kb_block) if sk_block else kb_block
