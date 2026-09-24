@@ -70,6 +70,29 @@ class CompactLedgerTests(BaseTest):
         self.assertNotIn("saved", recs[0])
 
 
+class ByDaySavedTests(BaseTest):
+    def runTest(self):
+        """by_day 逐日带 saved 维（KPI 卡 spark 数据源），无压缩日为 0。"""
+        from app.core import compaction, usage
+        from app.core.session_log import Session
+        s = Session("byday-run")
+        s.append("system_message", {"content": "sys"})
+        for i in range(6):
+            s.append("user_message", {"content": "u%d " % i + "字" * 3000})
+            s.append("assistant_message", {"content": "a%d " % i + "字" * 3000})
+        start, end = compaction.select_range(s)
+        self.assertTrue(start)
+        self.assertTrue(compaction.compact_region(s, start, end,
+                                                  lambda m: "摘要", reason="test"))
+        bd = usage.summary(days=1)["by_day"]
+        self.assertTrue(bd)
+        today = max(bd, key=lambda x: x["saved"])
+        self.assertGreater(today["saved"], 0)
+        # 无压缩日（夹具只压了今天，days=3 首日应为 0）
+        bd3 = usage.summary(days=3)["by_day"]
+        self.assertEqual(bd3[0].get("saved", 0), 0)
+
+
 if __name__ == "__main__":
     import unittest
     unittest.main()

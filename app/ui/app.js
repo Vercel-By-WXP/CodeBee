@@ -12717,6 +12717,7 @@ function renderUsage() {
   // 用量页不做环比：范围由用户任选（含「全部」），没有等长上一期可比，硬算会是假数。
   const dayTok = (u.by_day || []).map((d) => d.tokens || 0);
   const dayDur = (u.by_day || []).map((d) => d.duration_s || 0);
+  const daySaved = (u.by_day || []).map((d) => d.saved || 0);
   // 首字延迟只有内置直连的流式调用可测（CLI 事件流没有逐 token 时刻）：
   // perf_samples=0 时显示"暂无可测数据"，不能显示成 0ms。
   const fmtMs = (x) => (x >= 1000 ? (x / 1000).toFixed(1) + "s" : Math.round(x) + "ms");
@@ -12746,7 +12747,8 @@ function renderUsage() {
     kpiCard(t("压缩省量"), tot.compaction_saved ? fmtTok(tot.compaction_saved) : "—",
       tot.compaction_saved
         ? t("上下文折叠净省，与消耗并列成账")
-        : t("长对话压力压缩后在此累计"), false, "i-cpu", { tone: "ok" }),
+        : t("长对话压力压缩后在此累计"), false, "i-cpu",
+      { tone: "ok", spark: daySaved }),
   ].join("");
   const note = $("usage-note");
   if (note) {

@@ -478,13 +478,14 @@ def routing_stats(task_type="", role="", agent="", model="", provider="",
 
 
 def _group(records, key):
-    """按 key 聚合：{name: {calls, ok, tokens, input, output, cached, cache_rate, cost_usd, duration_s}}。"""
+    """按 key 聚合：{name: {calls, ok, tokens, input, output, cached, cache_rate, cost_usd, duration_s, saved}}。"""
     groups = {}
     for r in records:
         name = str(r.get(key) or "") or "unknown"
         g = groups.setdefault(name, {"calls": 0, "ok": 0, "tokens": 0,
                                      "input": 0, "output": 0, "cached": 0,
-                                     "cost_usd": 0.0, "duration_s": 0.0})
+                                     "cost_usd": 0.0, "duration_s": 0.0,
+                                     "saved": 0})
         g["calls"] += 1
         if r.get("ok"):
             g["ok"] += 1
@@ -492,6 +493,7 @@ def _group(records, key):
         g["input"] += _num(r, "input")
         g["output"] += _num(r, "output")
         g["cached"] += _num(r, "cached")
+        g["saved"] += _num(r, "saved")
         g["cost_usd"] = round(g["cost_usd"] + float(r.get("cost_usd") or 0.0), 4)
         g["duration_s"] = round(g["duration_s"] + float(r.get("duration_s") or 0.0), 1)
     # §07 验收指标：缓存命中率（cached / (input + cached)），与 totals.cache_rate 同口径
@@ -606,6 +608,7 @@ def summary(days=30, recent_limit=30):
                            "cached": g.get("cached", 0),
                            "cache_rate": g.get("cache_rate", 0.0),
                            "duration_s": g.get("duration_s", 0.0),
+                           "saved": g.get("saved", 0),
                            "cost_usd": round(g.get("cost_usd", 0.0), 4)})
     else:
         for d in sorted(day_groups):
@@ -616,6 +619,7 @@ def summary(days=30, recent_limit=30):
                            "cached": g.get("cached", 0),
                            "cache_rate": g.get("cache_rate", 0.0),
                            "duration_s": g.get("duration_s", 0.0),
+                           "saved": g.get("saved", 0),
                            "cost_usd": g["cost_usd"]})
 
     # 按日按模型 tokens（范围内；与 by_day 同一天序列，无数据天给空表）
