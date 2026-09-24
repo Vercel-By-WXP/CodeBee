@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from base import BaseTest
 
 FAKE_KEY = "sk-test-" + "abcdefgh" * 3
+FAKE_BACKUP_KEY = "sk-test-" + "ijklmnop" * 3
 
 
 class _FakeGateway(BaseHTTPRequestHandler):
@@ -40,10 +41,37 @@ class _FakeGateway(BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         self.rfile.read(n)
-        if self.path.endswith(("/messages", "/chat/completions", "/responses")):
-            self._json(200, {"content": [{"type": "text", "text": "ok"}], "choices": []})
+        if self.path.endswith("/messages"):
+            self._json(200, {"id": "msg_test", "type": "message", "role": "assistant",
+                             "content": [{"type": "text", "text": "ok"}],
+                             "stop_reason": "end_turn"})
+        elif self.path.endswith("/chat/completions"):
+            self._json(200, {"id": "chat_test", "choices": [{
+                "index": 0, "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop"}]})
+        elif self.path.endswith("/responses"):
+            self._json(200, {"id": "resp_test", "object": "response",
+                             "status": "completed", "output": [{
+                                 "type": "message", "content": [{
+                                     "type": "output_text", "text": "ok"}]}]})
         else:
             self._json(404, {"error": "no route"})
+
+
+class _ErrorPayloadGateway(_FakeGateway):
+    """A 2xx response carrying an error must remain a failed evaluation."""
+
+    def do_GET(self):
+        if self.path.endswith("/models"):
+            self._json(200, {"error": {"message": "access denied"},
+                             "data": [{"id": "must-not-be-accepted"}]})
+        else:
+            self._json(404, {"error": "no route"})
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        self.rfile.read(n)
+        self._json(200, {"error": {"message": "request not allowed"}})
 
 
 def _serve():
@@ -52,7 +80,31 @@ def _serve():
     return srv
 
 
+def _serve_error_payload():
+    srv = HTTPServer(("127.0.0.1", 0), _ErrorPayloadGateway)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
 class TestWireCaps(BaseTest):
+    def test_provider_and_model_evaluations_report_distinct_pass_states(self):
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        srv = _serve()
+        try:
+            base = "http://127.0.0.1:%d" % srv.server_address[1]
+            modelhub.upsert_provider({"name": "可达网关", "protocol": "openai",
+                                      "base_url": base + "/v1", "api_key": FAKE_KEY,
+                                      "model": "m1"})
+            pid = modelhub.providers()[0]["id"]
+            provider_result = modelhub.test_provider(pid)
+            model_result = modelhub.test_model(pid, "m1")
+            self.assertEqual(provider_result["status"], "reachable")
+            self.assertEqual(model_result["status"], "passed")
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
     def test_probe_and_resolve(self):
         from app.core import modelhub
         modelhub._FILE = self.data_dir / "models.json"
@@ -111,6 +163,69 @@ class TestWireCaps(BaseTest):
         finally:
             srv.shutdown()
             srv.server_close()
+
+    def test_provider_rejects_2xx_error_envelope(self):
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        srv = _serve_error_payload()
+        try:
+            base = "http://127.0.0.1:%d" % srv.server_address[1]
+            modelhub.upsert_provider({"name": "误报网关", "protocol": "openai",
+                                      "base_url": base + "/v1", "api_key": FAKE_KEY,
+                                      "allow_private": True})
+            pid = modelhub.providers()[0]["id"]
+            result = modelhub.test_provider(pid)
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["status"], "failed")
+            self.assertIn("access denied", result["error"])
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_model_rejects_2xx_error_envelope(self):
+        from unittest.mock import patch
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({"name": "误报模型", "protocol": "openai",
+                                  "base_url": "https://gateway.example/v1",
+                                  "api_key": FAKE_KEY, "model": "m1"})
+        pid = modelhub.providers()[0]["id"]
+        with patch.object(modelhub, "_post_json_http", return_value=(
+                200, {"error": {"message": "request not allowed"}}, "")):
+            result = modelhub.test_model(pid, "m1")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "FORBIDDEN")
+        self.assertIn("request not allowed", result["error"])
+
+    def test_auto_model_probe_can_use_backup_key(self):
+        from unittest.mock import patch
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({"name": "多密钥自动网关", "base_url": "https://gateway.example/v1",
+                                  "api_key": FAKE_KEY, "model": "m1"})
+        pid = modelhub.providers()[0]["id"]
+        modelhub.key_op(pid, "add", key=FAKE_BACKUP_KEY, label="backup")
+        calls = []
+
+        def probe(base, key, target_proto, model, allow_private, timeout=12):
+            if key == FAKE_BACKUP_KEY and target_proto == "openai":
+                return True, "chat", ""
+            return False, "", "HTTP 401 unauthorized"
+
+        def post(url, headers, body, allow_private, timeout=20):
+            calls.append(headers.get("Authorization", ""))
+            if headers.get("Authorization") == "Bearer " + FAKE_BACKUP_KEY:
+                return 200, {"choices": [{"message": {"content": "ok"}}]}, ""
+            return 401, {"error": {"message": "unauthorized"}}, "HTTP 401 unauthorized"
+
+        with patch.object(modelhub, "_probe_wire_once", side_effect=probe), \
+                patch.object(modelhub, "_post_json_http", side_effect=post):
+            result = modelhub.test_model(pid, "m1")
+        self.assertTrue(result["ok"], result.get("error"))
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["key_id"], "k2")
+        self.assertEqual(calls, ["Bearer " + FAKE_KEY, "Bearer " + FAKE_BACKUP_KEY])
 
     def test_probe_failure_keeps_gate_shut(self):
         from app.core import modelhub

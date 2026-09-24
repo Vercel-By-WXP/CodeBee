@@ -1623,11 +1623,14 @@ function renderProvDetail() {
     return;
   }
   const tp = (S.testProvState || {})[p.id];
-  const tpHtml = tp ? (tp.ok
+  const tpHtml = tp ? (tp.status === "reachable_unverified"
+    ? '<span class="badge warn" title="' + esc(tp.note || "") + '">⚠ ' +
+      t("可达，密钥未验证") + " · " + tp.latency_ms + "ms</span>"
+    : (tp.ok
     ? '<span class="badge ok"' + (tp.note ? ' title="' + esc(tp.note) + '"' : "") + '>' +
       t("✓ 连通 ") + tp.latency_ms + "ms" +
       (tp.note ? " · " + t("无模型列表接口") : " · " + tp.count + t(" 个模型")) + "</span>"
-    : '<span class="badge bad" title="' + esc(tp.error || "") + '">✗ ' + esc((tp.error || t("失败")).slice(0, 60)) + "</span>") : "";
+    : '<span class="badge bad" title="' + esc(tp.error || "") + '">✗ ' + esc((tp.error || t("失败")).slice(0, 60)) + "</span>")) : "";
   // 适配测试通过的 wire（同密钥实测可注入的另一条协议面）；形态随徽章标出
   const capTags = wireCapTags(p, "");
   const pb = (S.probeState || {})[p.id];

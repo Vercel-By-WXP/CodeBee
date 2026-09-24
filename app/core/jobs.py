@@ -824,6 +824,17 @@ def _now():
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _smoke_response_ok(text):
+    """Accept an explicit OK line; substrings such as "NOT OK" are failures."""
+    for line in str(text or "").splitlines():
+        value = line.strip().strip("`*_\"'").strip()
+        while value and value[-1] in ".!。！":
+            value = value[:-1].strip()
+        if value.upper() == "OK":
+            return True
+    return False
+
+
 def _do_mgmt(job, ev):
     from . import catalog, manager, store
     run_id = job["run_id"]
@@ -878,20 +889,21 @@ def _do_mgmt(job, ev):
                            timeout=300, cancel_event=ev, log_path=str(log_abs))
         if ev.is_set() or (store.get_run(run_id) or {}).get("status") != "running":
             return
-        ok = res["ok"] and "OK" in (res.get("text") or "").upper()
+        ok = bool(res.get("ok") and _smoke_response_ok(res.get("text")))
         try:
             _usage.record(source="smoke", run_id=run_id, step=step["n"], role="smoke",
                           agent=agent.get("id", ""), agent_label=agent.get("label", ""),
                           tool=agent.get("kind", ""), model=res.get("model") or "",
-                          ok=bool(res.get("ok")),
+                          ok=ok,
                           duration_s=float((res.get("raw") or {}).get("duration") or 0.0),
                           cost_usd=float(res.get("cost_usd") or 0.0),
                           usage=res.get("usage"))
         except Exception:
             pass
         store.finish_step(run_id, step["n"], "done" if ok else "failed",
-                          summary=("连通正常：%s" % (res.get("text") or "")[:120]) if ok
-                          else ("异常：%s" % (res.get("error") or (res.get("text") or "")[:120])),
+                          summary=("CLI 默认配置连通：%s" % (res.get("text") or "")[:120]) if ok
+                          else ("CLI 默认配置异常：%s" %
+                                (res.get("error") or (res.get("text") or "")[:120])),
                           exit_code=res["raw"].get("exit_code"),
                           cost_usd=res.get("cost_usd", 0.0), tokens=res.get("tokens", 0))
     else:

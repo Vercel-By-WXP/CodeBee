@@ -1073,12 +1073,14 @@ class TestNoListGateway(BaseTest):
             self.assertTrue(modelhub.is_no_list_note(err))
             res = modelhub.test_provider(pid)
             self.assertTrue(res["ok"])
+            self.assertEqual(res["status"], "reachable_unverified")
             self.assertEqual(res["note"], benign)
             self.assertFalse(modelhub.providers()[0]["keys"][0].get("last_error"))
             # 真错误照旧：测试连接判失败并记账 KEY
             modelhub._fetch_models_http = lambda *a, **k: (None, "HTTP 500 内部错误")
             res = modelhub.test_provider(pid)
             self.assertFalse(res["ok"])
+            self.assertEqual(res["status"], "failed")
             self.assertIn("500", modelhub.providers()[0]["keys"][0]["last_error"])
         finally:
             modelhub._fetch_models_http = orig

@@ -16,6 +16,14 @@ try:
 except Exception:
     pass
 
+# Long generic CLI prompts are passed as a bounded file hint on Windows.
+hint = re.search(r"本次完整指令因命令行长度限制已写入文件：([^\r\n]+)", blob)
+if hint:
+    try:
+        blob += "\n" + Path(hint.group(1).strip()).read_text(encoding="utf-8")
+    except OSError:
+        pass
+
 if "网文主编" in blob:
     print(json.dumps({
         "book_title": "崩溃恢复之书",

@@ -23,6 +23,14 @@ else:
     except Exception:
         prompt = ""
 
+# Long generic CLI prompts are passed as a bounded file hint on Windows.
+hint = re.search(r"本次完整指令因命令行长度限制已写入文件：([^\r\n]+)", prompt)
+if hint:
+    try:
+        prompt = Path(hint.group(1).strip()).read_text(encoding="utf-8")
+    except OSError:
+        pass
+
 
 def _fill(mark, total):
     body = mark + "。"

@@ -49,6 +49,51 @@ class TestErrorCodeEnum(BaseTest):
         self.assertFalse(is_retryable(""))
 
 
+class TestSharedFailureClassification(BaseTest):
+    """Transport/vendor failures share one stable vocabulary across layers."""
+
+    def runTest(self):
+        from app.core.error_codes import ErrorCode, classify_error_text, error_code_value
+
+        cases = (
+            ("No API key found for the selected model", ErrorCode.MISSING_CREDENTIAL),
+            ("HTTP 401: invalid_api_key", ErrorCode.AUTH),
+            ("HTTP 403 Forbidden: request not allowed", ErrorCode.FORBIDDEN),
+            ("HTTP 429 rate limit exceeded", ErrorCode.RATE_LIMIT),
+            ("unexpected status 403 forbidden", ErrorCode.FORBIDDEN),
+            ("unexpected status 401", ErrorCode.AUTH),
+            ("unexpected status 429", ErrorCode.RATE_LIMIT),
+            ("insufficient balance / quota exhausted", ErrorCode.QUOTA),
+            ("Unexpected server error", ErrorCode.UPSTREAM_SERVER),
+            ("stream disconnected before response.completed", ErrorCode.NETWORK),
+            ("deadline exceeded", ErrorCode.TIMEOUT),
+            ("Unexpected error database is locked", ErrorCode.LOCAL_STATE),
+        )
+        for message, expected in cases:
+            with self.subTest(message=message):
+                self.assertEqual(classify_error_text(message), expected)
+                self.assertEqual(error_code_value(expected), expected.value)
+        self.assertIsNone(classify_error_text("some unclassified vendor output"))
+        self.assertTrue(classify_error_text("Error: failed to run prompt: provider.connection_error: Connection error"))
+        self.assertIsNone(classify_error_text("record 402 is missing from the report"))
+        self.assertEqual(classify_error_text("HTTP 402 payment required"), ErrorCode.QUOTA)
+
+    def test_runner_error_code_uses_shared_taxonomy(self):
+        from app.core import runner
+        from app.core.error_codes import ErrorCode
+
+        for message, expected in (
+            ("Unexpected server error", ErrorCode.UPSTREAM_SERVER),
+            ("stream disconnected", ErrorCode.NETWORK),
+            ("No API key found", ErrorCode.MISSING_CREDENTIAL),
+            ("HTTP 403 Forbidden", ErrorCode.FORBIDDEN),
+        ):
+            with self.subTest(message=message):
+                self.assertEqual(runner._classify_failure({
+                    "ok": False, "exit_code": 1, "stdout": message, "stderr": "",
+                }), expected)
+
+
 class TestClassifyFailureHelper(BaseTest):
     """runner._classify_failure 单测：所有分支。"""
 
@@ -98,12 +143,20 @@ class TestClassifyFailureHelper(BaseTest):
         self.assertEqual(_classify_failure(self._ok_res(), kind="claude", parsed=None),
                          ErrorCode.PARSE_FAIL)
 
-    def test_claude_is_error(self):
+    def test_claude_is_error_classifies_upstream_status(self):
         from app.core.runner import _classify_failure
         from app.core.error_codes import ErrorCode
         self.assertEqual(_classify_failure(
             self._ok_res(), kind="claude",
             parsed={"is_error": True, "text": "API Error 503"}),
+            ErrorCode.UPSTREAM_SERVER)
+
+    def test_claude_content_refusal(self):
+        from app.core.runner import _classify_failure
+        from app.core.error_codes import ErrorCode
+        self.assertEqual(_classify_failure(
+            self._ok_res(), kind="claude",
+            parsed={"is_error": True, "text": "I can't help with this request."}),
             ErrorCode.VENDOR_REFUSAL)
 
     def test_claude_empty_after_retry(self):

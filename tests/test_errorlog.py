@@ -62,9 +62,41 @@ class TestRecordAndIter(BaseTest):
         batch2, cur2 = errorlog.pending_since(cur)
         self.assertEqual(batch2, [])
         self.assertEqual(cur2, cur)
-        # 失败重试语义：上传失败（游标未推进）后再取还能取到同一条
-        batch3, _ = errorlog.pending_since("", limit=10)
-        self.assertEqual(len(batch3), 1)
+        # 上传失败时调用方保留旧游标；重试仍会拿到同一批记录。
+        batch3, cur3 = errorlog.pending_since("")
+        self.assertEqual(batch3, batch)
+        self.assertEqual(cur3, cur)
+
+
+class TestFailureLogAttribution(BaseTest):
+    def test_records_actual_attempt_provider_and_plain_error_code(self):
+        import time
+        from app.core import errorlog, pipeline, store
+        from app.core.error_codes import ErrorCode
+
+        run = store.create_run("mgmt", "failure attribution regression")
+        step, _ = store.add_step(run["id"], "draft", "opencode", "OpenCode")
+        secret = FAKE_SK
+        result = {
+            "ok": False,
+            "error": "stream disconnected; model echoed this sensitive work fragment",
+            "error_code": ErrorCode.NETWORK,
+            "model": "model-x",
+            "provider_id": "provider-real",
+            "provider": {"id": "provider-real", "name": "Actual gateway",
+                         "api_key": secret, "keys": [{"key": secret}]},
+            "raw": {"exit_code": 1},
+        }
+        pipeline._finish_step_result(
+            run["id"], step, result, "draft", {"id": "opencode", "kind": "opencode"},
+            time.time() - 1)
+
+        row = errorlog.iter_records(0)[0]
+        self.assertEqual(row["provider"], "provider-real")
+        self.assertEqual(row["reason"], "NETWORK")
+        self.assertEqual(row["detail"], "网络连接或数据流中断")
+        self.assertNotIn("sensitive work fragment", json.dumps(row, ensure_ascii=False))
+        self.assertNotIn(secret, json.dumps(row, ensure_ascii=False))
 
 
 class TestSettingsToggle(BaseTest):

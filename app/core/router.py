@@ -2,6 +2,7 @@
 """智能路由：能力基线 × 历史胜率 × 角色约束 → 选智能体，并给出可解释的理由。"""
 from __future__ import annotations
 
+import json
 import os
 import re
 
@@ -153,6 +154,8 @@ _LOCAL_ENDPOINT_PROBES = (
     ("codex-cli", "~/.codex/config.toml", r'base_url\s*=\s*"([^"]+)"'),
 )
 
+_PI_SETTINGS_PATH = "~/.pi/agent/settings.json"
+
 
 def _host_of(url):
     """上游归一：只留 host:port。/api/anthropic 与 /v1 的路径差异不算换上游。"""
@@ -160,23 +163,62 @@ def _host_of(url):
     return m.group(1).lower() if m else ""
 
 
-def agent_upstreams(agent_id):
-    """候选实际会用到的上游集合（host:port 归一）。显式链 > CLI 本机配置
-    端点；两者都拿不到返回空集 = 未知。"""
+def agent_upstreams(agent_id, difficulty="default", task_type="", role=""):
+    """候选实际会用到的上游集合（host:port 归一）。显式链优先；空绑定按
+    运行期自动推荐链判断，再回落到 CLI 本机配置；都拿不到返回空集 = 未知。"""
     ups = set()
     try:
         from . import modelhub
         pref = modelhub._binding_for(agent_id)
-        chain = modelhub._binding_chain(pref)
         provs = {p.get("id"): p for p in modelhub.providers()}
-        if chain:
-            for item in chain:
+
+        def _add_chain(chain):
+            for item in chain or ():
                 pid = (item.get("provider_id") or "").strip()
-                h = _host_of((provs.get(pid) or {}).get("base_url"))
+                provider = item.get("provider") or provs.get(pid) or {}
+                h = _host_of(provider.get("base_url"))
                 if h:
                     ups.add(h)
+
+        configured = bool(modelhub._binding_chain(pref) or pref.get("provider_id"))
+        # 保留原始显式链中的 endpoint，即使某条已禁用/失效；同一个死上游仍
+        # 不值得在另一个 CLI 上立刻再撞一次。
+        if configured:
+            chain = modelhub._binding_chain(pref)
+            _add_chain(chain)
+            resolved = modelhub.resolve_binding(agent_id, difficulty) or {}
+            _add_chain(resolved.get("call_chain"))
+        else:
+            # bind_agent 在空绑定时会自动推荐供应商链。换将选路必须观察同一
+            # 生效链，否则“空绑定”的多个 CLI 可能被排成不同候选却共用一个 403 网关。
+            recommended = modelhub.recommend_binding(
+                agent_id, difficulty, task_type=task_type, role=role) or {}
+            _add_chain(recommended.get("call_chain"))
     except Exception:
         pass
+    if not ups:
+        if agent_id == "pi":
+            # Pi 将 endpoint 放在 providers.<defaultProvider>.baseUrl，不能只扫
+            # 所有 baseUrl（那会把未选中的 provider 也误算成当前上游）。
+            try:
+                with open(os.path.expanduser(_PI_SETTINGS_PATH), "r",
+                          encoding="utf-8") as fh:
+                    cfg = json.load(fh)
+                if isinstance(cfg, dict):
+                    providers = cfg.get("providers") or {}
+                    selected_name = cfg.get("defaultProvider") or ""
+                else:
+                    providers, selected_name = {}, ""
+                selected = (providers.get(selected_name)
+                            if isinstance(providers, dict) else {}) or {}
+                if not isinstance(selected, dict):
+                    selected = {}
+                h = _host_of(selected.get("baseUrl") or selected.get("baseURL") or
+                             selected.get("base_url"))
+                if h:
+                    ups.add(h)
+            except (OSError, ValueError, TypeError):
+                pass
     if not ups:
         for aid, path, pat in _LOCAL_ENDPOINT_PROBES:
             if aid != agent_id:
@@ -195,18 +237,27 @@ def agent_upstreams(agent_id):
 
 
 def pick_switch_candidate(agents, role, ttype, stats, exclude=(),
-                          dead_upstreams=()):
+                          dead_upstreams=(), difficulty="default",
+                          blocked_upstreams=()):
     """换将选将。配额类死亡背景下：与死者同上游的候选依次让位，直到找到
     异上游/上游未知的候选（2026-09-22 实案：kimi 与 claude 同骑智谱，0.1 分
     之差把异上游 qwencode 压在下面，换将=换壳不换命）。异上游耗尽后同上游
-    候选捡回分数最高者——聊胜于无。"""
+    候选捡回分数最高者——聊胜于无。403 明确拒绝的上游始终阻断，不捡回重试。"""
     exclude = set(exclude)
+    blocked_sets = [set(d) for d in (blocked_upstreams or ()) if d]
     best, reason = pick(agents, role, ttype, stats, exclude=exclude)
-    if best is None or not dead_upstreams:
+    if best is None or (not dead_upstreams and not blocked_sets):
         return best, reason
     deferred = []
     while best is not None:
-        ups = agent_upstreams(best.get("id"))
+        ups = agent_upstreams(best.get("id"), difficulty=difficulty,
+                              task_type=ttype, role=role)
+        if ups and any(ups & blocked for blocked in blocked_sets):
+            # 明确的 403 权限拒绝：同一上游没有换模型/换 CLI 再试的价值，
+            # 即使异上游候选耗尽也不把它捡回来（与可换账号的配额错误不同）。
+            exclude.add(best.get("id"))
+            best, reason = pick(agents, role, ttype, stats, exclude=exclude)
+            continue
         if not (ups and any(ups & dead for dead in dead_upstreams)):
             break  # 异上游或上游未知：就用它
         deferred.append((best, reason))
@@ -265,14 +316,14 @@ def route_plan(agents, role, task_spec, stats=None, exclude=(), selected=None,
 
 
 def pick_reviewer(agents, impl, ttype, stats=None, exclude=(),
-                  dead_upstreams=()):
+                  dead_upstreams=(), difficulty="default"):
     """评审者：跨厂商是硬规则（Codeband 的对抗式配对）——同族评审有同款盲区，
     评审者必须来自与实现者不同的 kind；跨族池为空才回退同厂商并如实备注，
     绝不把回退伪装成跨厂商。exclude 用于剔除运行时已知死候选（实现步走查证伪
-    的 quota/限流死链），与 pick / pick_switch_candidate 的 exclude 同语义。
+    的 quota/403 死链），与 pick / pick_switch_candidate 的 exclude 同语义。
     dead_upstreams 进一步剔除「与死者同上游」的候选——配额通常按网关/账号烧刻，
-    同上游 = 同配额桶，评审者又是单点，撞死链会白烧一轮并误报「评审器故障」，
-    故宁可少一个候选也不选已知-同上游的。上游未知不剔除（宁白试不误杀）。"""
+    同上游 = 同配额桶，403 权限拒绝也不能换壳重试。评审者又是单点，撞死链会
+    白烧一轮并误报「评审器故障」，故宁可少一个候选也不选已知同上游的。"""
     stats = stats or history.agent_stats()
     excluded = set(exclude)
     dead_sets = [set(d) for d in (dead_upstreams or ()) if d]
@@ -282,7 +333,8 @@ def pick_reviewer(agents, impl, ttype, stats=None, exclude=(),
             return False
         if not dead_sets:
             return True
-        ups = agent_upstreams(a.get("id"))
+        ups = agent_upstreams(a.get("id"), difficulty=difficulty,
+                              task_type=ttype, role="review")
         return not (ups and any(ups & d for d in dead_sets))
 
     impl_kind = impl.get("kind")

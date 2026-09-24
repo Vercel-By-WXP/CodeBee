@@ -688,6 +688,7 @@
     "正在获取模型列表…": "Fetching model list…",
     "已获取模型列表 · wire 适配测试后台进行中": "Model list fetched · wire adapt test running in background",
     "无模型列表接口": "no model-list endpoint",
+    "可达，密钥未验证": "Reachable; key unverified",
     "密钥（按顺序调用，欠费自动切备用）": "Keys (tried in order; a drained one auto-fails over)",
     "点「添加密钥」配备用号": "Add a spare key below",
     "添加密钥": "Add key",

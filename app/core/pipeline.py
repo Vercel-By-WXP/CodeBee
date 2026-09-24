@@ -25,6 +25,7 @@ from . import diagnostics
 from . import paths as paths_mod
 from . import session_log as session_log_mod
 from . import step_runner as step_runner_mod
+from .error_codes import error_code_value, safe_error_summary
 from .repeat_guard import guard as repeat_guard
 
 DEFAULT_RUBRIC = ["情节", "人物", "文笔", "节奏", "吸引力"]
@@ -643,11 +644,18 @@ def _finish_step_result(run_id, step, res, role, agent, start):
     if status in ("failed", "timeout"):
         try:
             from . import errorlog
-            prov = agent.get("provider") or {}
+            # `run_agent` reports the provider used by the final failed attempt;
+            # the original agent may describe only the first route (or no route).
+            prov = res.get("provider") or agent.get("provider") or {}
+            provider_id = (res.get("provider_id") or
+                           (prov.get("id") if isinstance(prov, dict) else "") or "")
             errorlog.record(
-                category="step", reason=str(res.get("error_code") or "UNKNOWN"),
-                detail=(res.get("error") or ""),
-                provider=(prov.get("name") if isinstance(prov, dict) else "") or "",
+                category="step", reason=error_code_value(res.get("error_code")) or "UNKNOWN",
+                # Runner errors may include arbitrary CLI stdout/stderr. Persist a
+                # content-free canonical summary; full diagnostics stay in the local
+                # run step log and are never uploaded through the error ledger.
+                detail=safe_error_summary(res.get("error_code")),
+                provider=provider_id,
                 model=res.get("model") or "", tool=agent.get("kind", ""),
                 role=role, run_id=run_id, task_id=(store.get_run(run_id) or {}).get("task_id") or "",
                 step=step["n"], exit_code=res.get("raw", {}).get("exit_code"))
@@ -824,12 +832,6 @@ def _run_verify(run_id, task, workdir, ev):
     return ok, True
 
 
-# 评审器鉴权/致命故障签名：命中即「评审未执行」，不得伪装成质量未通过
-_AUTH_RE = re.compile(
-    r"Invalid API Key|invalid api key|API [Kk]ey 不可用|API key not valid|"
-    r"unauthorized|Unauthorized|401 Unauthorized|鉴权失败|认证失败", re.I)
-
-
 def _run_review(run_id, task, workdir, reviewer, ev):
     diff = _git_diff(workdir)
     prompt = (CODE_REVIEW_PROMPT
@@ -846,7 +848,7 @@ def _run_review(run_id, task, workdir, reviewer, ev):
     # （mimo 退出码 0 但输出 Invalid API Key），被解析成「评审未通过」整晚空转
     # 修复轮。鉴权/崩溃签名命中时返回 reviewer_error，调用方以明确错误收口。
     _head = (res.get("text") or "")[:2000]
-    _auth_hit = bool(_AUTH_RE.search(_head)) or bool((res.get("raw") or {}).get("auth_error"))
+    _auth_hit = runner._auth_error(_head) or bool((res.get("raw") or {}).get("auth_error"))
     if not res.get("ok") or _auth_hit:
         _why = (res.get("error") or "").strip() or _head[:200]
         return {"pass": False, "scores": {}, "issues": [], "reviewer_error": True,
@@ -1042,6 +1044,31 @@ def _record_dispatch_completed(run_id, task, result, verify_pass=None, review_pa
         pass
 
 
+def _has_forbidden_result(result):
+    """True when any attempt in a model chain was rejected with HTTP 403."""
+    result = result or {}
+    return (bool(result.get("forbidden_upstreams"))
+            or runner._permission_error(result.get("error") or "")
+            or any(isinstance(attempt, dict)
+                   and runner._permission_error(attempt.get("error") or "")
+                   for attempt in result.get("attempts") or ()))
+
+
+def _forbidden_upstream_sets(result, fallback=()):
+    """Return the exact hosts rejected inside a chain, with agent routes as fallback."""
+    result = result or {}
+    hosts = {str(host) for host in result.get("forbidden_upstreams") or () if host}
+    for attempt in result.get("attempts") or ():
+        if not isinstance(attempt, dict):
+            continue
+        host = attempt.get("upstream") or ""
+        if host and host != "unknown" and runner._permission_error(attempt.get("error") or ""):
+            hosts.add(str(host))
+    if not hosts and _has_forbidden_result(result):
+        hosts.update(str(host) for host in (fallback or ()) if host)
+    return [{host} for host in hosts]
+
+
 def _retry_content_draft_with_cli(run_id, task, agents, impl, difficulty, mode,
                                   stats, prompt, workdir, step_wd, ev, resume_ctx,
                                   draft_note, draft_res):
@@ -1060,8 +1087,12 @@ def _retry_content_draft_with_cli(run_id, task, agents, impl, difficulty, mode,
     failures = ["%s：%s" % (impl.get("id") or "CLI",
                             (draft_res.get("error") or "起草失败")[:180])]
     dead_upstreams = []
-    first_upstreams = router.agent_upstreams(impl.get("id"))
-    if first_upstreams:
+    blocked_upstreams = []
+    first_upstreams = router.agent_upstreams(
+        impl.get("id"), difficulty=difficulty,
+        task_type=task.get("type") or "novel", role="implement")
+    blocked_upstreams.extend(_forbidden_upstream_sets(draft_res, first_upstreams))
+    if first_upstreams and not runner._permission_error(draft_res.get("error") or ""):
         dead_upstreams.append(first_upstreams)
     current = impl
     last_impl = impl
@@ -1072,7 +1103,8 @@ def _retry_content_draft_with_cli(run_id, task, agents, impl, difficulty, mode,
         _check_cancel(ev)
         candidate, reason = router.pick_switch_candidate(
             agents, "implement", task.get("type") or "novel", stats,
-            exclude=tried, dead_upstreams=dead_upstreams)
+            exclude=tried, dead_upstreams=dead_upstreams, difficulty=difficulty,
+            blocked_upstreams=blocked_upstreams)
         if candidate is None or candidate.get("id") in tried:
             break
         tried.add(candidate.get("id"))
@@ -1097,8 +1129,11 @@ def _retry_content_draft_with_cli(run_id, task, agents, impl, difficulty, mode,
                                     (last_result.get("error") or "起草失败")[:180]))
         if (last_result.get("raw") or {}).get("cancelled"):
             break
-        ups = router.agent_upstreams(candidate.get("id"))
-        if ups:
+        ups = router.agent_upstreams(
+            candidate.get("id"), difficulty=difficulty,
+            task_type=task.get("type") or "novel", role="implement")
+        blocked_upstreams.extend(_forbidden_upstream_sets(last_result, ups))
+        if ups and not runner._permission_error(last_result.get("error") or ""):
             dead_upstreams.append(ups)
         current = candidate
 
@@ -1199,7 +1234,8 @@ def _run_code(run, task, agents, ev, stats, mode):
         reviewer = None
         route["reviewer"] = workflow["reason"]
     elif mode in ("auto", "expert"):
-        reviewer, route["reviewer"] = router.pick_reviewer(agents, impl, "code", stats)
+        reviewer, route["reviewer"] = router.pick_reviewer(
+            agents, impl, "code", stats, difficulty=difficulty)
     else:
         reviewer, route["reviewer"] = _pick_reviewer_legacy(agents, impl)
     _record_actual_route(run_id, task, agents, stats, impl, reviewer=reviewer,
@@ -1299,26 +1335,35 @@ def _run_code(run, task, agents, ev, stats, mode):
         # 实现步失败不立刻判死：2026-09-16 实测配额烧干时 5 连跑全在同一条 CLI 上
         # 失败收场，而健康的 opencode 一直在旁观望——跨 CLI 换将重试
         # （mode=manual 尊重用户指定，不换）。2026-09-22 续修：配额/限流类死亡
-        # 是确定性秒死，允许继续走查候选名单（同上游让位异上游）；其余死因
-        # （超时等）仍只换一次，防着在坏候选上再烧一整个超时。
+        # 是确定性秒死，允许继续走查候选名单（同上游让位异上游）；明确的 403
+        # 权限拒绝只走不同上游，其余死因（超时等）仍只换一次。
         if mode == "auto" and impl_agent.get("mode") == "real":
             tried = {impl_agent["id"], "mock-a", "mock-b"}
             dead_ids = {impl_agent["id"]}  # 实现步已失败的原实现者，属已知死候选
             notes = []
-            dead_ups = []  # 配额死亡候选的上游集合：换将优先异上游
+            dead_ups = []  # 配额死亡候选的上游：先异上游，无异上游时仍可捡回
+            blocked_ups = []  # 403 上游权限拒绝：同 host 不再尝试
             # 原实现者若死于配额，其上游（网关/账号）也一并判入死池——否则第一棒
             # 换将不知道同网关候选已死，评审者重选更会把「与死者同上游」的候选
             # 继续当活口，评审撞同一条失效网关白烧一轮后误报「评审器故障」。
             if runner._quota_error(res.get("error") or ""):
-                ups0 = router.agent_upstreams(impl_agent["id"])
+                ups0 = router.agent_upstreams(
+                    impl_agent["id"], difficulty=difficulty,
+                    task_type="code", role="implement")
                 if ups0:
                     dead_ups.append(ups0)
+            if _has_forbidden_result(res):
+                ups0 = router.agent_upstreams(
+                    impl_agent["id"], difficulty=difficulty,
+                    task_type="code", role="implement")
+                blocked_ups.extend(_forbidden_upstream_sets(res, ups0))
             prev_id = impl_agent["id"]
             other = None
             while True:
                 other, other_reason = router.pick_switch_candidate(
                     agents, "implement", "code", stats,
-                    exclude=tried, dead_upstreams=dead_ups)
+                    exclude=tried, dead_upstreams=dead_ups,
+                    difficulty=difficulty, blocked_upstreams=blocked_ups)
                 if other is None or other.get("mode") != "real":
                     other = None
                     break
@@ -1329,13 +1374,15 @@ def _run_code(run, task, agents, ev, stats, mode):
                 if ok2:
                     route_note = "；".join(notes + [note])
                     # 换将成功：预先选定的评审者可能在实现步走查时被证伪为死链
-                    # （quota/限流秒死），且死者同上游（同网关）的候选同样不可信。
+                    # （配额/403 上游死亡），且死者同上游（同网关）的候选同样不可信。
                     # 按「排除本轮已知死者 + 同上游候选」的池重选评审者，否则评审
                     # 撞同一条失效网关，白烧一轮后误报「评审器故障」。
                     if workflow["review_required"]:
                         reviewer, route["reviewer"] = router.pick_reviewer(
                             agents, other, "code", stats,
-                            exclude=dead_ids, dead_upstreams=dead_ups)
+                            exclude=dead_ids,
+                            dead_upstreams=dead_ups + blocked_ups,
+                            difficulty=difficulty)
                     store.update_run(run_id, error="", route_note=route_note)
                     _record_actual_route(
                         run_id, task, agents, stats, other,
@@ -1348,17 +1395,23 @@ def _run_code(run, task, agents, ev, stats, mode):
                 tried.add(other["id"])
                 dead_ids.add(other["id"])
                 prev_id = other["id"]
+                ups = router.agent_upstreams(
+                    other["id"], difficulty=difficulty,
+                    task_type="code", role="implement")
+                denied_upstreams = _forbidden_upstream_sets(res, ups)
+                blocked_ups.extend(denied_upstreams)
                 if runner._quota_error(res.get("error") or ""):
-                    ups = router.agent_upstreams(other["id"])
                     if ups:
                         dead_ups.append(ups)
-                else:
+                elif not denied_upstreams:
                     break  # 非配额死因：只换一次就收手
             tail_err = (res.get("error") or "")[:200]
             if notes:
                 res_err = "；".join(notes) + "；换将后仍失败：%s" % tail_err
             elif other is None:
-                res_err = "实现步骤失败（无其他真实 CLI 可换将）: %s" % tail_err
+                reason = ("无不同上游真实 CLI 可换将；相同 403 上游已跳过"
+                          if blocked_ups else "无其他真实 CLI 可换将")
+                res_err = "实现步骤失败（%s）: %s" % (reason, tail_err)
             else:
                 res_err = "实现步骤失败: %s" % tail_err
         else:

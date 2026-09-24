@@ -24,7 +24,14 @@ import time
 
 from . import beekeeper
 from .env_scrub import scrub_env
-from .error_codes import ErrorCode
+from .error_codes import (
+    ErrorCode, classify_error_text, error_code_value,
+    is_auth_error as _shared_auth_error,
+    is_forbidden_error as _shared_forbidden_error,
+    is_quota_error as _shared_quota_error,
+    is_rate_limited_error as _shared_rate_limited_error,
+    is_transient_error as _shared_transient_error,
+)
 
 # 非 Windows 必须置 0：POSIX 的 Popen 对非零 creationflags 直接抛 ValueError，
 # 置 0 则两边通用（remote.py 同款守卫）。
@@ -981,66 +988,26 @@ def _model_flag(kind, model):
     return ["--model", model]  # claude / opencode / aider
 
 
-_TRANSIENT_DEFAULT = ("503", "502", "529", "429", "no available channel", "temporarily",
-              "unavailable", "overloaded", "rate limit", "timeout", "timed out",
-              "输出停滞",
-              # 2026-09-15 连载验收实测：网关故障形态远不止 HTTP 5xx——
-              # Z.ai 报 "400 [1211] Unknown Model"（模型临时下架）、qwen 连本地
-              # 端点 ECONNREFUSED、codex initialize 空响应，这些都被旧表判成
-              # 「非瞬态不降级」，导致跨厂商链上健康的后继模型从未被尝试。
-              "unknown model", "1211", "connection error", "econnrefused",
-              "connection aborted", "initialize", "reset by peer",
-              "channel is closed", "no route to host",
-              # 2026-09-20 连载评审实测：codex 网关断流（stream disconnected）
-              # 与 opencode 服务端 500（Unexpected server error）都是「重试/换将
-              # 就可能活」的瞬态病，旧表判成终态导致整链早死
-              "stream disconnected", "stream closed before response.completed",
-              "unexpected server error",
-              # Grok CLI wraps transport failures in reqwest text and then
-              # retries the same request internally. Treat that as a transient
-              # upstream failure so the orchestration chain can move on.
-              "reqwest error stream", "error sending request for url",
-              "internal error",
-              # 2026-09-22 mo-so 实案：claude 报 "Can't reach the API server —
-              # check your internet or DNS (ENOTFOUND)"，一家端点解析不到不代表
-              # 跨厂商链上别家也不通，旧表判成终态直接跳去换将别的 CLI
-              "enotfound", "getaddrinfo", "name or service not known",
-              "name resolution")
-
-# 保留兼容别名：旧 worker 热重载时可能短暂丢失模块级变量，判断函数不能因此
-# 把一次普通上游故障升级成 NameError。
-_TRANSIENT = _TRANSIENT_DEFAULT
-
-
-def _transient_error(err, _default_markers=_TRANSIENT_DEFAULT):
-    err = (err or "").lower()
-    markers = globals().get("_TRANSIENT") or _default_markers
-    return any(k in err for k in markers)
-
-
-# 欠费/配额/限流耗尽：换 KEY 与换厂商都该继续（同厂商另一账号往往还能用）。
-# 与 modelhub._QUOTA_HINTS 同源，这里独立一份避免 core 模块间循环依赖。
-_QUOTA = ("insufficient", "quota", "balance", "credit", "billing", "arrears",
-          "payment required", "402", "欠费", "余额", "额度", "exceeded",
-          "too many requests", "rate limit", "rate_limit", "http 429",
-          "并发", "超过限")
+def _transient_error(err):
+    """Shared retryable upstream/transport classification."""
+    return _shared_transient_error(err)
 
 
 def _quota_error(err):
-    err = (err or "").lower()
-    return any(k in err for k in _QUOTA)
-
-
-_AUTH = ("invalid api key", "invalid_api_key", "api key is invalid",
-         "incorrect api key", "unauthorized", "unauthorised",
-         "authentication failed", "authentication error", "authentication_error",
-         "invalid token", "invalid_token", "http 401", "status code 401")
+    """Quota and rate-limit checks share the taxonomy used by key health."""
+    return _shared_quota_error(err)
 
 
 def _auth_error(err):
-    """只识别明确的凭据拒绝，不把一般模型权限错误（403）当成 KEY 错。"""
-    err = (err or "").lower()
-    return any(k in err for k in _AUTH)
+    """Only explicit credential failures are auth errors; 403 is separate."""
+    if _permission_error(err):
+        return False
+    return _shared_auth_error(err)
+
+
+def _permission_error(err):
+    """识别明确的 HTTP 403 权限拒绝；它是上游故障，不等同于无效 API Key。"""
+    return bool(re.search(r"(?<!\d)403(?!\d)", str(err or "")))
 
 
 def _attempt_credential(att):
@@ -1053,23 +1020,12 @@ def _attempt_credential(att):
 # 2026-09-22 四连败实测：claude ENOTFOUND 换将 codex 后仍与同一上游撞 429，
 # 链上无第三条路时整步立刻判死；而限流窗口通常按分钟计，原地等一个窗口
 # 再试一次，好过把整轮 run 直接烧成 failed（欠费不同源，不适用宽限）。
-_RATE_LIMIT = ("429", "rate limit", "too many requests", "限流")
 RATE_LIMIT_GRACE_S = 45      # 宽限等待时长：限流窗口通常按分钟计，等一个再试
 RATE_LIMIT_GRACE_N = 1       # 每步宽限次数：只兜一次，防限流长拖整轮时间
 
 
-# 上游内容拒答（refusal）：claude CLI 把 refusal stop_reason 渲染成
-# "API Error: <model> can't help with this. Start a new session to continue."
-# 这是网关后面那个模型对本次会话内容的过滤决定，不是任务终态——换一家
-# 异上游候选常常就能跑通。2026-09-23 夜班实案：doc 起草被 gemini 拒答后
-# 判成非瞬态整链早死，链上云知声候选根本没被尝试。
-_REFUSAL = ("can't help with this", "couldn't help with this",
-            'stop_reason":"refusal"', "content policy", "content filtering")
-
-
 def _refusal_error(err):
-    err = (err or "").lower()
-    return any(k in err for k in _REFUSAL)
+    return classify_error_text(err) == ErrorCode.VENDOR_REFUSAL
 
 
 def _attempt_upstream(att):
@@ -1102,13 +1058,13 @@ def _log_note(log_path, text):
 
 
 def _rate_limited(err):
-    err = (err or "").lower()
-    return any(k in err for k in _RATE_LIMIT)
+    return _shared_rate_limited_error(err)
 
 
 # 审计日志错误行探针：只认强信号，避免把回显提示词里的普通词当错误
 _LOG_ERR_HINT = re.compile(
-    r"(429|402|rate[_ ]?limit|quota|余额|欠费|insufficient|billing|arrears"
+    r"(403|forbidden|request not allowed|permission denied|access denied"
+    r"|429|402|rate[_ ]?limit|quota|余额|欠费|insufficient|billing|arrears"
     r"|401|unauthorized|unauthorised|invalid[_ ]api[_ ]key|authentication[_ ]error"
     r"|ENOTFOUND|ECONNREFUSED|failed to run prompt|api_error|overloaded)",
     re.I)
@@ -1188,6 +1144,21 @@ def _classify_failure(res, *, parsed=None, kind="", attempt_done=False, empty_ou
         return ErrorCode.CANCELLED
     if res.get("timed_out"):
         return ErrorCode.TIMEOUT
+    if not res.get("ok") or (parsed and parsed.get("is_error")):
+        detail = "\n".join((str(res.get("stderr") or ""),
+                            str(res.get("stdout") or ""),
+                            str((parsed or {}).get("text") or "")))
+        if _permission_error(detail):
+            return ErrorCode.FORBIDDEN
+    # Preserve actionable upstream distinctions before collapsing non-zero exits
+    # into VENDOR_ERROR. The shared classifier is also used by modelhub and routing.
+    if not res.get("ok") or (parsed and parsed.get("is_error")):
+        detail = "\n".join((str(res.get("stderr") or ""),
+                            str(res.get("stdout") or ""),
+                            str((parsed or {}).get("text") or "")))
+        classified = classify_error_text(detail)
+        if classified is not None:
+            return classified
     # claude 解析失败（进程 ok 但 JSON 不可解析）
     if kind == "claude" and parsed is None:
         return ErrorCode.PARSE_FAIL
@@ -1621,6 +1592,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     grace_left = RATE_LIMIT_GRACE_N  # 链尾限流宽限预算：整链撞 429 时原地等一个窗口再试一次
     timed_out_upstreams = {}  # 同一上游两次超时后跳过剩余模型
     skipped_upstreams = set()
+    forbidden_upstreams = set()
     auth_failed_credentials = set()
     for ai, att in enumerate(attempts):
         credential = _attempt_credential(att)
@@ -1638,7 +1610,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 out["attempts"] = list(attempt_history)
             continue
         upstream = _attempt_upstream(att)
-        if upstream in skipped_upstreams:
+        if upstream in skipped_upstreams or upstream in forbidden_upstreams:
             continue
         # 有任务 deadline 时，所有候选共享同一个截止时刻；否则每个候选
         # 使用 catalog 配置或 caller 提供的单模型时限。
@@ -1763,13 +1735,17 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     except Exception:
                         pass
                 if not (_quota_error(out["error"]) or _transient_error(out["error"])
-                        or _rate_limited(out["error"])):
+                        or _rate_limited(out["error"])
+                        or _permission_error(out["error"])):
                     # 尾段清洗后没有错误信号而流式审计日志里有：补日志错误行。
                     # 2026-09-22 实测 kimi 撞 429 时 stderr/stdout 只剩启动横幅
                     # （真错误只走了流式管道），路由层看不到配额关键词，换将
                     # 判死因全靠猜。
                     _augment_error_from_log(out, log_path)
-                out["error_code"] = _classify_failure(res, kind=kind)
+                out["error_code"] = (ErrorCode.FORBIDDEN
+                                      if _permission_error(out["error"])
+                                      else classify_error_text(out["error"])
+                                      or _classify_failure(res, kind=kind))
                 break
             if kind == "codex":
                 out["text"], out["usage"], out_sid = _parse_codex_jsonl(res["stdout"])
@@ -1781,7 +1757,10 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 if fm:
                     out["ok"] = False
                     out["error"] = "codex: %s" % fm
-                    out["error_code"] = ErrorCode.VENDOR_ERROR
+                    out["error_code"] = (ErrorCode.FORBIDDEN
+                                          if _permission_error(out["error"])
+                                          else classify_error_text(out["error"])
+                                          or ErrorCode.VENDOR_ERROR)
                 elif not out["text"]:  # 事件流解析失败时退化为取 stdout 尾部
                     out["text"] = clean_cli_text(res["stdout"][-2000:])
                 if require_tools and out["ok"] and _codex_work_events(res["stdout"]) == 0:
@@ -1843,10 +1822,12 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             "timed_out": bool(raw.get("timed_out")),
             "deadline_exceeded": bool(raw.get("deadline_exceeded")),
             "abort_marker": raw.get("abort_marker"),
-            "error_code": str(out.get("error_code") or ""),
+            "error_code": error_code_value(out.get("error_code")),
             "error": (out.get("error") or "")[:500],
+            "upstream": upstream,
         })
         out["attempts"] = list(attempt_history)
+        out["forbidden_upstreams"] = sorted(forbidden_upstreams)
         if out["ok"] or ai == len(attempts) - 1:
             remaining = model_deadline - time.monotonic()
             if (not out["ok"] and grace_left > 0 and _rate_limited(out.get("error"))
@@ -1867,6 +1848,16 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                        for candidate in attempts[ai + 1:]):
                 return out
             continue
+        if _permission_error(out.get("error")):
+            # 403 通常是该网关/上游拒绝当前请求；同一 host 换模型只会重撞，
+            # 但不同 host 的候选仍可能有权限，应继续尝试异上游链项。
+            if upstream != "unknown":
+                forbidden_upstreams.add(upstream)
+            out["forbidden_upstreams"] = sorted(forbidden_upstreams)
+            if not any(_attempt_upstream(candidate) not in forbidden_upstreams
+                       for candidate in attempts[ai + 1:]):
+                return out
+            continue
         # 换将闸门：什么失败值得烧链上下一个候选。
         # · 瞬态/配额（文本特征，含 CLI 内部 api_retry 的 429/5xx 字样）照旧；
         # · 超时：显式可换（看 res 标志位）——慢上游换快候选可能救回。
@@ -1879,6 +1870,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         if (raw.get("cancelled")   # 取消是用户意志，绝不降级（尾段可能带瞬态字样）
                 or not (_transient_error(out.get("error")) or _quota_error(out.get("error"))
                         or _refusal_error(out.get("error"))
+                        or _permission_error(out.get("error"))
                         or raw.get("timed_out"))):
             return out  # 取消/解析失败等真终态不降级
         # 同一上游的模型连续两次超时就收手——

@@ -946,7 +946,10 @@ class Handler(BaseHTTPRequestHandler):
             # 适配测试：实测供应商另一条 wire 协议（同密钥），结果存 wire_caps
             from core import modelhub
             caps, note = modelhub.probe_wire_caps(self._body().get("id") or "")
-            return self._json(200, {"ok": True, "wire_caps": caps, "note": note})
+            ok = bool(caps)
+            return self._json(200, {"ok": ok,
+                                   "status": "passed" if ok else "failed",
+                                   "wire_caps": caps, "note": note})
         if path == "/api/models/test-model":
             from core import modelhub
             body = self._body()

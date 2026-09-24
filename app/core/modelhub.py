@@ -42,6 +42,9 @@ import time
 import urllib.request
 
 from . import paths, tlsctx
+from .error_codes import (
+    ErrorCode, classify_error_text, error_code_value, is_auth_error, is_quota_error,
+)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -199,9 +202,50 @@ _NO_LIST_SUFFIX = ("无模型列表接口（HTTP 404）——"
                    "模型以导入/手动添加为准，不影响对话调用")
 
 
+def _response_error_text(data):
+    """Return a short, safe display string for a JSON API error envelope."""
+    if not isinstance(data, dict) or not data.get("error"):
+        return ""
+    err = data.get("error")
+    if isinstance(err, dict):
+        parts = [err.get(k) for k in ("type", "code", "message") if err.get(k)]
+        return ": ".join(str(p) for p in parts)[:200]
+    return str(err)[:200]
+
+
+def _model_payload_ok(protocol, data, wire_api=""):
+    """A 2xx is only a pass if it contains a protocol-shaped model response."""
+    if not isinstance(data, dict) or _response_error_text(data):
+        return False
+    if protocol == "google":
+        candidates = data.get("candidates")
+        return isinstance(candidates, list) and any(
+            isinstance(c, dict) and isinstance((c.get("content") or {}).get("parts"), list)
+            for c in candidates)
+    if protocol == "anthropic":
+        return isinstance(data.get("content"), list) and (
+            data.get("type") in (None, "message"))
+    if wire_api == "responses" or ("output" in data and "choices" not in data):
+        output = data.get("output")
+        return isinstance(output, list) and bool(output)
+    choices = data.get("choices")
+    return isinstance(choices, list) and bool(choices)
+
+
 def is_no_list_note(err):
     """404≠密钥错≠网络断：网关本来就没有 /models 列表接口，属良性结果。"""
     return bool(err) and err.endswith(_NO_LIST_SUFFIX)
+
+
+def _evaluation_result(ok, error="", status=None, **fields):
+    """Keep legacy ``ok`` while exposing an explicit evaluation state and code."""
+    result = {"ok": bool(ok), "status": status or ("passed" if ok else "failed"),
+              "error": str(error or "")}
+    if not ok:
+        code = classify_error_text(error) or ErrorCode.VENDOR_ERROR
+        result["error_code"] = error_code_value(code)
+    result.update(fields)
+    return result
 
 
 def _fetch_models_http(base_url, api_key, protocol, allow_private=False):
@@ -245,6 +289,10 @@ def _fetch_models_http(base_url, api_key, protocol, allow_private=False):
                 with opener.open(req, timeout=15) as resp:
                     raw = resp.read(2 * 1024 * 1024)  # 响应上限 2MB
                 data = json.loads(raw.decode("utf-8", "replace"))
+                api_error = _response_error_text(data)
+                if api_error:
+                    last_err = url + " 返回 HTTP 200 错误: " + api_error
+                    continue
                 items = (data.get("data") or data.get("models")) if isinstance(data, dict) else data
                 names = []
                 for it in items or []:
@@ -684,33 +732,15 @@ _KEY_COOLDOWN_S = 30 * 60      # 欠费类失败后的冷却时长
 _AUTH_COOLDOWN_S = 30 * 60     # 明确认证拒绝后的冷却时长，可在 UI 手动恢复
 MAX_PROVIDER_KEYS = 8          # 单厂商 KEY 上限
 MAX_CHAIN_ATTEMPTS = 8         # 链展开后的尝试上限（模型 × KEY）
-# 欠费/配额/限流类失败：换 KEY 有意义（同厂商另一账号=另一份额度与并发桶），
-# 与瞬态网络错误分开记。429 限流文案一并纳入——只记错不冷却会让每个新步骤都
-# 从超限的首选 KEY 重新烧起（2026-09-22 首选超限不切备用实案）。
-_QUOTA_HINTS = ("insufficient", "quota", "balance", "credit", "billing", "arrears",
-                "payment required", "402", "欠费", "余额", "额度", "exceeded",
-                "too many requests", "rate limit", "rate_limit", "http 429",
-                "并发", "超过限")
-
-
 def _quota_error(err):
     """疑似欠费/配额耗尽。误判的代价只是临时切到备用 KEY（冷却到期或手动恢复
     即回到首选），比「账单断了还死磕同一把 KEY」小得多。"""
-    e = (err or "").lower()
-    return any(k in e for k in _QUOTA_HINTS)
-
-
-_AUTH_HINTS = ("invalid api key", "invalid_api_key", "api key is invalid",
-               "incorrect api key", "unauthorized", "unauthorised",
-               "authentication failed", "authentication error",
-               "authentication_error", "invalid token", "invalid_token",
-               "http 401", "status code 401")
+    return is_quota_error(err)
 
 
 def _auth_error(err):
     """明确的凭据认证拒绝；不把一般 403/模型权限错误误判成 KEY 错误。"""
-    e = (err or "").lower()
-    return any(k in e for k in _AUTH_HINTS)
+    return is_auth_error(err)
 
 
 def _provider_keys(prov, available_only=False, now=None):
@@ -2228,20 +2258,28 @@ def _protocol_candidates(prov):
             and _wire_endpoint_compatible(p, (caps.get(p) or {}).get("base"))]
 
 
-def _ensure_wire_candidates(provider_id, prov, model_name=""):
+def _ensure_wire_candidates(provider_id, prov, model_name="", key_id="",
+                            force_probe=False):
     """唯一协议场景（单模型测试/直连对话）的鸡生蛋解除：auto 供应商还没探出
     wire_caps 时（导入后没探过/上次探挂了），带着手头模型先实测一轮再谈——
     探到即落盘放行；返回 (候选, 失败原因 note)，仍探不出则 ([], note)。"""
     protos = _protocol_candidates(prov)
-    if protos:
+    if protos and (not force_probe or prov.get("protocol") != _PROTOCOL_AUTO):
         return protos, ""
     note = ""
+    caps = None
     try:
-        _, note = probe_wire_caps(provider_id, prefer_model=model_name)
+        caps, note = probe_wire_caps(provider_id, prefer_model=model_name, key_id=key_id,
+                                     persist=not bool(key_id))
     except Exception as e:
         note = repr(e)[:160]
     with _LOCK:
         prov2 = next((p for p in providers() if p.get("id") == provider_id), None)
+    if key_id and prov2 and prov2.get("protocol") == _PROTOCOL_AUTO:
+        # Per-key evaluation is ephemeral; it must not overwrite the provider-wide
+        # capability cache used by future routing for other credentials.
+        probed = dict(prov2, protocol=_PROTOCOL_AUTO, wire_caps=caps or {})
+        return _protocol_candidates(probed), (note or "")
     return (_protocol_candidates(prov2) if prov2 else []), (note or "")
 
 
@@ -2813,8 +2851,10 @@ def test_provider(provider_id):
     with _LOCK:
         prov = next((p for p in providers() if p.get("id") == provider_id), None)
     if not prov:
-        return {"ok": False, "error": "供应商不存在"}
-    keys = _chain_keys(prov) or [{"key": prov.get("api_key") or "", "id": ""}]
+        return _evaluation_result(False, "供应商不存在")
+    keys = _chain_keys(prov)
+    if not keys:
+        return _evaluation_result(False, "No API key is enabled and available")
     t0 = _t.time()
     last = ""
     for kk in keys:
@@ -2822,16 +2862,19 @@ def test_provider(provider_id):
                                         prov.get("protocol"), bool(prov.get("allow_private")))
         if names is not None:
             note_key_ok(provider_id, kk.get("id") or "")
-            return {"ok": True, "latency_ms": int((_t.time() - t0) * 1000),
-                    "count": len(names), "error": "", "key_id": kk.get("id") or ""}
+            return _evaluation_result(
+                True, status="reachable", latency_ms=int((_t.time() - t0) * 1000),
+                count=len(names), key_id=kk.get("id") or "")
         if is_no_list_note(err):
             # 网关没有 /models：HTTP 往返已证连通，与 KEY 无关——不计失败、
             # 不记 KEY 错误；密钥真伪交「单模型测试」的 1 token 真对话去验
-            return {"ok": True, "latency_ms": int((_t.time() - t0) * 1000),
-                    "count": 0, "error": "", "note": err, "key_id": kk.get("id") or ""}
+            return _evaluation_result(
+                True, status="reachable_unverified", latency_ms=int((_t.time() - t0) * 1000),
+                count=0, note=err, key_id=kk.get("id") or "")
         last = err
         note_key_error(provider_id, kk.get("id") or "", err)
-    return {"ok": False, "latency_ms": int((_t.time() - t0) * 1000), "error": last}
+    return _evaluation_result(False, last,
+                              latency_ms=int((_t.time() - t0) * 1000))
 
 
 def test_model(provider_id, model_name, key_id=""):
@@ -2845,21 +2888,33 @@ def test_model(provider_id, model_name, key_id=""):
     import urllib.parse
     with _LOCK:
         prov = next((p for p in providers() if p.get("id") == provider_id), None)
-    if not prov or not prov.get("api_key"):
-        return {"ok": False, "error": "供应商不存在或未配置密钥"}
-    protos, note = _ensure_wire_candidates(provider_id, prov, model_name)
-    if not protos:
-        return {"ok": False,
-                "error": "没探到可用 wire——地址/密钥/模型名至少一项不通" + ("（%s）" % note if note else "")}
+    if not prov:
+        return _evaluation_result(False, "供应商不存在")
     if key_id:
         keys = [k for k in _provider_keys(prov) if k["id"] == key_id]
         if not keys:
-            return {"ok": False, "error": "密钥不存在"}
+            return _evaluation_result(False, "Selected API key does not exist")
     else:
-        keys = _chain_keys(prov) or [{"key": prov.get("api_key") or "", "id": ""}]
+        keys = _chain_keys(prov)
+    if not keys:
+        return _evaluation_result(False, "No API key is enabled and available")
     t0 = _t.time()
     last = {"ok": False, "error": "无可用 wire"}
-    for kk in keys:
+    for key_index, kk in enumerate(keys):
+        # auto wire 能力可能随账号授权不同。指定 key_id 时必须用该密钥测探；
+        # 自动遍历时，备用 KEY 也独立探测，避免主 KEY 的 401 把供应商判死。
+        probe_key_id = (kk.get("id") or "") if (key_id or key_index > 0) else ""
+        protos, note = _ensure_wire_candidates(
+            provider_id, prov, model_name, key_id=probe_key_id,
+            force_probe=bool(key_id or key_index > 0))
+        if not protos:
+            last = _evaluation_result(
+                False, "No compatible wire was verified" + (" (%s)" % note if note else ""),
+                key_id=kk.get("id") or "")
+            note_key_error(provider_id, kk.get("id") or "", last["error"])
+            if key_id:
+                break
+            continue
         for proto, pbase in protos:
             base = (pbase or "").rstrip("/")
             if proto == "google":
@@ -2878,19 +2933,19 @@ def test_model(provider_id, model_name, key_id=""):
                 body = {"model": model_name, "max_tokens": 1,
                         "messages": [{"role": "user", "content": "ping"}]}
             status, data, err = _post_json_http(url, headers, body, bool(prov.get("allow_private")))
-            if status == 0:
-                last = {"ok": False, "error": err}
-                note_key_error(provider_id, kk.get("id") or "", err)
-                continue
-            if 200 <= status < 300:
+            api_error = _response_error_text(data)
+            if 200 <= status < 300 and _model_payload_ok(proto, data):
                 note_key_ok(provider_id, kk.get("id") or "")
-                return {"ok": True, "latency_ms": int((_t.time() - t0) * 1000),
-                        "error": "", "protocol": proto, "key_id": kk.get("id") or ""}
-            msg = ""
-            if isinstance(data, dict):
-                e = data.get("error")
-                msg = e.get("message", "") if isinstance(e, dict) else str(e)
-            last = {"ok": False, "error": "HTTP %s %s" % (status, str(msg)[:160])}
+                return _evaluation_result(
+                    True, status="passed", latency_ms=int((_t.time() - t0) * 1000),
+                    protocol=proto, key_id=kk.get("id") or "")
+            if status == 0:
+                message = err or "连接失败"
+            elif api_error:
+                message = "HTTP %s %s" % (status, api_error)
+            else:
+                message = "HTTP %s 响应结构无效或缺少模型结果" % status
+            last = _evaluation_result(False, message, key_id=kk.get("id") or "")
             note_key_error(provider_id, kk.get("id") or "", last["error"])
     last["latency_ms"] = int((_t.time() - t0) * 1000)
     return last
@@ -2965,14 +3020,20 @@ def _probe_wire_once(base, api_key, target_proto, model, allow_private, timeout=
     last = ""
     for item in variants:
         wire_api, url, body, headers = item
-        status, _data, err = _post_json_http(url, headers, body, allow_private, timeout=timeout)
-        if 200 <= status < 300:
+        status, data, err = _post_json_http(url, headers, body, allow_private, timeout=timeout)
+        if 200 <= status < 300 and _model_payload_ok(target_proto, data, wire_api):
             return True, wire_api, ""
-        last = err if status == 0 else "HTTP %s" % status
+        api_error = _response_error_text(data)
+        if status == 0:
+            last = err or "连接失败"
+        elif api_error:
+            last = "HTTP %s %s" % (status, api_error)
+        else:
+            last = "HTTP %s 响应结构无效或缺少模型结果" % status
     return False, "", last
 
 
-def probe_wire_caps(provider_id, prefer_model=""):
+def probe_wire_caps(provider_id, prefer_model="", key_id="", persist=True):
     """适配测试：实测该供应商的可用 wire，存进 wire_caps。返回 (caps, note)。
 
     显式协议的供应商只测「除原生外」的 wire（原生天然可用，不必花请求）；
@@ -2987,8 +3048,14 @@ def probe_wire_caps(provider_id, prefer_model=""):
         prov = next((p for p in providers() if p.get("id") == provider_id), None)
     if not prov:
         return {}, "供应商不存在"
-    if not prov.get("api_key"):
-        return {}, "该供应商未配置密钥"
+    if key_id:
+        keys = [k for k in _provider_keys(prov) if k["id"] == key_id and k.get("key")]
+        if not keys:
+            return {}, "密钥不存在或未启用"
+    else:
+        keys = _chain_keys(prov)
+    if not keys:
+        return {}, "该供应商未配置可用密钥"
     ranked = _ranked(prov.get("models") or [])
     model = (prefer_model or prov.get("model") or next(
         (m.get("name") for m in ranked
@@ -2999,18 +3066,21 @@ def probe_wire_caps(provider_id, prefer_model=""):
         return {}, "没有可用模型名——先「获取模型列表」再测"
     native = prov.get("protocol")
     auto = native == _PROTOCOL_AUTO
-    caps = dict(prov.get("wire_caps") or {})
+    caps = dict((prov.get("wire_caps") or {}) if persist and not key_id else {})
     notes = []
     for target in _BINDABLE_PROTOCOLS:
         if not auto and target == native:
             continue  # 显式协议：原生那条不用测
         found, err = None, ""
         for base in _wire_base_candidates(prov.get("base_url"), target):
-            ok, wire_api, err = _probe_wire_once(base, prov["api_key"], target,
-                                                 model, bool(prov.get("allow_private")))
-            if ok:
-                found = {"base": base.rstrip("/"), "wire_api": wire_api,
-                         "checked_at": _t.strftime("%Y-%m-%d %H:%M")}
+            for kk in keys:
+                ok, wire_api, err = _probe_wire_once(base, kk["key"], target,
+                                                     model, bool(prov.get("allow_private")))
+                if ok:
+                    found = {"base": base.rstrip("/"), "wire_api": wire_api,
+                             "checked_at": _t.strftime("%Y-%m-%d %H:%M")}
+                    break
+            if found:
                 break
         if found:
             caps[target] = found
@@ -3019,7 +3089,7 @@ def probe_wire_caps(provider_id, prefer_model=""):
             notes.append("%s wire 不通（%s）" % (target, (err or "无响应")[:80]))
     if auto and not caps:
         notes.append("没有探到可用的 wire——检查地址/密钥，或手动指定格式")
-    if caps != (prov.get("wire_caps") or {}):
+    if persist and caps != (prov.get("wire_caps") or {}):
         with _LOCK:
             data = _load()
             p = next((q for q in data.get("providers", []) if q.get("id") == provider_id), None)

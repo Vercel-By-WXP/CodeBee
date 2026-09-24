@@ -1289,6 +1289,7 @@ details.prow-hidden[open] > summary { margin-bottom: 6px; }
 .badge { font-size: 11px; padding: 1px 8px; border-radius: 999px; }
 .badge.ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
 .badge.bad { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+.badge.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 @media (max-width: 900px) { .prov-layout { grid-template-columns: 1fr; } .prov-side { position: static; } }
 
 /* ---- 管理操作就地反馈 ---- */

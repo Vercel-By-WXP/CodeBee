@@ -207,6 +207,223 @@ class TestSwitchStopsOnNonQuota(BaseTest):
         self.assertIn("换将后仍失败", run.get("error") or "")
 
 
+class TestForbiddenSwitchUsesDifferentUpstream(BaseTest):
+    """明确的 HTTP 403 上游拒绝应继续尝试异上游 CLI，不能换壳重撞同一网关。"""
+
+    def runTest(self):
+        from unittest.mock import patch
+        from app.core import pipeline, router, store
+
+        py = sys.executable or "python"
+        denied_script = ("import sys;"
+                         "sys.stderr.write('Reading prompt from stdin...\\n');"
+                         "sys.stdout.write('403 {\"error\":{\"type\":\"forbidden\","
+                         "\"message\":\"Request not allowed\"}}\\n');"
+                         "sys.exit(1)")
+        ok_script = ("import sys;"
+                     "sys.stdin.read();"
+                     "print('{\"pass\": true, \"scores\": {\"accuracy\": 9}, \"issues\": []}')")
+        agents = [
+            {"id": "forbidden-primary", "kind": "generic", "mode": "real",
+             "command": py, "argv_template": ["-c", denied_script]},
+            {"id": "same-upstream", "kind": "generic", "mode": "real",
+             "command": py, "argv_template": ["-c", denied_script]},
+            {"id": "different-upstream", "kind": "generic", "mode": "real",
+             "command": py, "argv_template": ["-c", ok_script]},
+        ]
+        upstreams = {"forbidden-primary": {"gateway.example"},
+                     "same-upstream": {"gateway.example"},
+                     "different-upstream": {"backup.example"}}
+        pipeline._agents = lambda: agents
+        orig_plan = pipeline.planner.make_code_plan
+        pipeline.planner.make_code_plan = (
+            lambda task, agent, wd, ev, resume=None, log_path=None:
+            {"source": "test", "steps": [{"title": "s1", "detail": "d1"}]})
+        try:
+            original_pick = router.pick
+            original_switch_pick = router.pick_switch_candidate
+            switch_choices = []
+
+            def _pick_first_implement(pool, role, ttype, stats=None, exclude=()):
+                if role == "implement" and not exclude:
+                    return pool[0], "primary test candidate"
+                return original_pick(pool, role, ttype, stats, exclude=exclude)
+
+            def _trace_switch_pick(*args, **kwargs):
+                choice = original_switch_pick(*args, **kwargs)
+                switch_choices.append(choice[0].get("id") if choice[0] else None)
+                return choice
+
+            task = store.create_task({
+                "type": "code", "title": "403 异上游换将回归", "goal": "做点事",
+                "workdir": str(self.workdir),
+            })
+            run = store.create_run("orchestration", task["title"], task_id=task["id"])
+            with patch.object(router, "pick", side_effect=_pick_first_implement), \
+                    patch.object(router, "pick_switch_candidate", side_effect=_trace_switch_pick), \
+                    patch.object(router, "agent_upstreams",
+                                 side_effect=lambda aid, **_kw: upstreams.get(aid, set())):
+                pipeline.execute_run(run["id"])
+        finally:
+            pipeline.planner.make_code_plan = orig_plan
+
+        run = store.get_run(run["id"])
+        self.assertEqual(run["status"], "done", run.get("error"))
+        self.assertEqual(switch_choices, ["different-upstream"])
+        impl_agents = [s["agent"] for s in run["steps"]
+                       if s["role"].startswith("implement")]
+        self.assertEqual(impl_agents,
+                         ["forbidden-primary", "different-upstream"])
+        self.assertNotIn("same-upstream", [s["agent"] for s in run["steps"]])
+
+
+class TestEffectiveUpstreamDetection(BaseTest):
+    """换将判重应覆盖自动推荐链和 Pi 自己 settings 中的默认 provider。"""
+
+    def test_permission_denial_is_not_misclassified_as_bad_api_key(self):
+        from app.core import runner
+
+        denied = ('退出码 1；stderr/stdout: 403 '
+                  '{"error":{"type":"forbidden","message":"Request not allowed"}}')
+        self.assertTrue(runner._permission_error(denied))
+        self.assertFalse(runner._auth_error(denied))
+        denied_with_auth_wording = "HTTP 403: invalid API key for this model"
+        self.assertTrue(runner._permission_error(denied_with_auth_wording))
+        self.assertFalse(runner._auth_error(denied_with_auth_wording))
+        self.assertTrue(runner._permission_error("HTTP 403 unknown response"))
+        self.assertFalse(runner._permission_error("HTTP 401: invalid API key"))
+
+    def test_auto_recommended_provider_is_counted(self):
+        from unittest.mock import patch
+        from app.core import modelhub, router
+
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub._save({"providers": [], "bindings": {}})
+        recommended = {"call_chain": [{
+            "provider_id": "auto", "provider": {"base_url": "https://shared.example/v1"},
+        }]}
+        with patch.object(modelhub, "recommend_binding", return_value=recommended):
+            self.assertEqual(
+                router.agent_upstreams("claude-code", task_type="code", role="implement"),
+                {"shared.example"})
+
+    def test_pi_local_default_provider_is_counted(self):
+        import json
+        from unittest.mock import patch
+        from app.core import modelhub, router
+
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub._save({"providers": [], "bindings": {}})
+        pi_settings = self.tmp / "pi-settings.json"
+        pi_settings.write_text(json.dumps({
+            "defaultProvider": "shared",
+            "providers": {
+                "shared": {"baseUrl": "https://shared.example/api", "apiKey": "fake"},
+                "unused": {"baseUrl": "https://unused.example/api", "apiKey": "fake"},
+            },
+        }), encoding="utf-8")
+        with patch.object(router, "_PI_SETTINGS_PATH", str(pi_settings)), \
+                patch.object(modelhub, "recommend_binding", return_value=None):
+            self.assertEqual(router.agent_upstreams("pi"), {"shared.example"})
+
+    def test_claude_code_local_endpoint_is_counted(self):
+        import json
+        from unittest.mock import patch
+        from app.core import modelhub, router
+
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub._save({"providers": [], "bindings": {}})
+        claude_settings = self.tmp / "claude-settings.json"
+        claude_settings.write_text(json.dumps({
+            "env": {"ANTHROPIC_BASE_URL": "https://shared.example/v1"},
+        }), encoding="utf-8")
+        probes = (("claude-code", str(claude_settings),
+                   r'"ANTHROPIC_BASE_URL"\s*:\s*"([^"]+)"'),)
+        with patch.object(router, "_LOCAL_ENDPOINT_PROBES", probes), \
+                patch.object(modelhub, "recommend_binding", return_value=None):
+            self.assertEqual(router.agent_upstreams("claude-code"), {"shared.example"})
+
+    def test_rejected_upstream_is_excluded_from_reviewer(self):
+        from unittest.mock import patch
+        from app.core import router
+
+        impl = {"id": "impl", "kind": "codex", "mode": "real"}
+        agents = [
+            impl,
+            {"id": "rejected", "kind": "claude", "mode": "real"},
+            {"id": "available", "kind": "qwen", "mode": "real"},
+        ]
+        upstreams = {"rejected": {"denied.example"},
+                     "available": {"backup.example"}}
+        with patch.object(router, "score", side_effect=lambda agent, *_args, **_kw:
+                          (90 if agent["id"] == "rejected" else 50, "test")), \
+                patch.object(router, "agent_upstreams",
+                             side_effect=lambda aid, **_kw: upstreams.get(aid, set())):
+            reviewer, note = router.pick_reviewer(
+                agents, impl, "code", {}, dead_upstreams=[{"denied.example"}])
+        self.assertEqual(reviewer["id"], "available")
+        self.assertTrue(note.startswith("跨厂商评审"))
+
+
+class TestForbiddenModelChain(BaseTest):
+    """模型链遇到 403 后跳过同一 host，仍可尝试不同 host。"""
+
+    def runTest(self):
+        from app.core import runner
+
+        py = sys.executable or "python"
+        script = ("import os,sys;"
+                  "mode=os.environ.get('TUTTI_FORBIDDEN_TEST_MODE');"
+                  "sys.exit((print('403 {\"error\":{\"type\":\"forbidden\","
+                  "\"message\":\"Request not allowed\"}}'),1)[1]) "
+                  "if mode != 'backup' else print('backup-ok')")
+        agent = {
+            "id": "forbidden-chain", "kind": "generic", "mode": "real",
+            "command": py, "argv_template": ["-c", script],
+            "call_chain": [
+                {"model": "first", "provider": {"base_url": "https://same.example/v1"},
+                 "env": {"TUTTI_FORBIDDEN_TEST_MODE": "first"}},
+                {"model": "same-host", "provider": {"base_url": "https://same.example/api"},
+                 "env": {"TUTTI_FORBIDDEN_TEST_MODE": "same"}},
+                {"model": "backup", "provider": {"base_url": "https://other.example/v1"},
+                 "env": {"TUTTI_FORBIDDEN_TEST_MODE": "backup"}},
+            ],
+        }
+        result = runner.run_agent(agent, "hi", readonly=True, timeout=60)
+        self.assertTrue(result["ok"], result.get("error"))
+        self.assertEqual(result["model"], "backup")
+        self.assertEqual([attempt["model"] for attempt in result["attempts"]],
+                         ["first", "backup"])
+
+    def test_forbidden_upstream_survives_later_model_failure(self):
+        from app.core import pipeline, runner
+
+        py = sys.executable or "python"
+        script = ("import os,sys;"
+                  "mode=os.environ.get('TUTTI_FORBIDDEN_TEST_MODE');"
+                  "print('403 {\"error\":{\"type\":\"forbidden\","
+                  "\"message\":\"Request not allowed\"}}' if mode == 'forbidden' "
+                  "else 'HTTP 503 upstream error');"
+                  "sys.exit(1)")
+        agent = {
+            "id": "forbidden-then-failure", "kind": "generic", "mode": "real",
+            "command": py, "argv_template": ["-c", script],
+            "call_chain": [
+                {"model": "denied", "provider": {"base_url": "https://denied.example/v1"},
+                 "env": {"TUTTI_FORBIDDEN_TEST_MODE": "forbidden"}},
+                {"model": "broken-backup", "provider": {"base_url": "https://backup.example/v1"},
+                 "env": {"TUTTI_FORBIDDEN_TEST_MODE": "backup"}},
+            ],
+        }
+        result = runner.run_agent(agent, "hi", readonly=True, timeout=60)
+        self.assertFalse(result["ok"])
+        self.assertTrue(runner._transient_error(result.get("error")))
+        self.assertEqual(result.get("forbidden_upstreams"), ["denied.example"])
+        self.assertEqual(
+            pipeline._forbidden_upstream_sets(result, {"fallback.example"}),
+            [{"denied.example"}])
+
+
 class TestPickSwitchUpstreamDeferral(BaseTest):
     """同上游让位：配额死亡的背景下，最高分候选与死者同上游且有异上游备选
     → 让位；异上游耗尽后同上游候选捡回；上游未知不参与剔除。"""
@@ -223,7 +440,7 @@ class TestPickSwitchUpstreamDeferral(BaseTest):
         orig_score = router.score
         orig_ups = router.agent_upstreams
         router.score = lambda a, role, ttype, stats=None: (a["_s"], "s%s" % a["_s"])
-        router.agent_upstreams = lambda aid: ups_map.get(aid, set())
+        router.agent_upstreams = lambda aid, **_kwargs: ups_map.get(aid, set())
         try:
             aid, reason = router.pick_switch_candidate(
                 agents, "implement", "code", {},
@@ -244,6 +461,11 @@ class TestPickSwitchUpstreamDeferral(BaseTest):
                 [{"id": "u-unk", "kind": "generic", "mode": "real", "_s": 70}],
                 "implement", "code", {}, exclude=set(), dead_upstreams=[{"bm.cn"}])
             self.assertEqual(aid4["id"], "u-unk")
+            # 403 上游拒绝是硬阻断：候选池只剩同 host 时不要捡回重试。
+            aid5, _ = router.pick_switch_candidate(
+                [agents[0]], "implement", "code", {},
+                blocked_upstreams=[{"bm.cn"}])
+            self.assertIsNone(aid5)
         finally:
             router.score = orig_score
             router.agent_upstreams = orig_ups
@@ -273,6 +495,15 @@ class TestAugmentErrorFromLog(BaseTest):
         out3 = {"error": "退出码 1；tail"}
         R._augment_error_from_log(out3, str(self.workdir / "nope.log"))
         self.assertEqual(out3["error"], "退出码 1；tail")
+
+        forbidden = self.workdir / "forbidden.log"
+        forbidden.write_text("pi version 1.0.0\n"
+                             "403 {\"error\":{\"type\":\"forbidden\","
+                             "\"message\":\"Request not allowed\"}}\n",
+                             encoding="utf-8")
+        out4 = {"error": "退出码 1；stderr/stdout: pi version 1.0.0"}
+        R._augment_error_from_log(out4, str(forbidden))
+        self.assertTrue(R._permission_error(out4["error"]))
 
 
 class TestImplementSwitchOnFailure(BaseTest):

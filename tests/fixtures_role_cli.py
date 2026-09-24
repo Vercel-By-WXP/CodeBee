@@ -14,12 +14,23 @@
 import json
 import re
 import sys
+from pathlib import Path
 
 blob = " ".join(sys.argv[1:])
 try:
     blob += "\n" + sys.stdin.read()
 except Exception:
     pass
+
+# Long generic CLI prompts are passed as a bounded file hint on Windows.
+# These fixtures stand in for agents with file-reading tools, so load that file
+# before dispatching on the prompt role.
+hint = re.search(r"本次完整指令因命令行长度限制已写入文件：([^\r\n]+)", blob)
+if hint:
+    try:
+        blob += "\n" + Path(hint.group(1).strip()).read_text(encoding="utf-8")
+    except OSError:
+        pass
 
 if "网文主编" in blob and "严格的评审" not in blob:
     print(json.dumps({
