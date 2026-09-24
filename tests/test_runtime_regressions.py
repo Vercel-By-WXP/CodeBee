@@ -7,13 +7,21 @@ from app.core import pipeline, runner
 
 class RuntimeRegressionTests(unittest.TestCase):
     def test_transient_error_survives_missing_hot_reload_global(self):
-        markers = runner.__dict__.pop("_TRANSIENT", None)
+        missing = object()
+        markers = runner.__dict__.pop("_TRANSIENT", missing)
+        defaults = runner.__dict__.pop("_TRANSIENT_DEFAULT", missing)
         try:
             self.assertTrue(runner._transient_error("stream disconnected"))
             self.assertFalse(runner._transient_error("permanent syntax error"))
         finally:
-            if markers is not None:
+            if markers is not missing:
                 runner._TRANSIENT = markers
+            else:
+                runner.__dict__.pop("_TRANSIENT", None)
+            if defaults is not missing:
+                runner._TRANSIENT_DEFAULT = defaults
+            else:
+                runner.__dict__.pop("_TRANSIENT_DEFAULT", None)
 
     def test_execute_run_clears_stale_workdir_warning_when_reclaimed(self):
         run = {

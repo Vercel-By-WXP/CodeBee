@@ -1012,9 +1012,9 @@ _TRANSIENT_DEFAULT = ("503", "502", "529", "429", "no available channel", "tempo
 _TRANSIENT = _TRANSIENT_DEFAULT
 
 
-def _transient_error(err):
+def _transient_error(err, _default_markers=_TRANSIENT_DEFAULT):
     err = (err or "").lower()
-    markers = globals().get("_TRANSIENT") or _TRANSIENT_DEFAULT
+    markers = globals().get("_TRANSIENT") or _default_markers
     return any(k in err for k in markers)
 
 
