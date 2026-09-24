@@ -264,13 +264,30 @@ def route_plan(agents, role, task_spec, stats=None, exclude=(), selected=None,
                          if x["agent_id"] not in active_ids]}
 
 
-def pick_reviewer(agents, impl, ttype, stats=None):
+def pick_reviewer(agents, impl, ttype, stats=None, exclude=(),
+                  dead_upstreams=()):
     """评审者：跨厂商是硬规则（Codeband 的对抗式配对）——同族评审有同款盲区，
     评审者必须来自与实现者不同的 kind；跨族池为空才回退同厂商并如实备注，
-    绝不把回退伪装成跨厂商。"""
+    绝不把回退伪装成跨厂商。exclude 用于剔除运行时已知死候选（实现步走查证伪
+    的 quota/限流死链），与 pick / pick_switch_candidate 的 exclude 同语义。
+    dead_upstreams 进一步剔除「与死者同上游」的候选——配额通常按网关/账号烧刻，
+    同上游 = 同配额桶，评审者又是单点，撞死链会白烧一轮并误报「评审器故障」，
+    故宁可少一个候选也不选已知-同上游的。上游未知不剔除（宁白试不误杀）。"""
     stats = stats or history.agent_stats()
+    excluded = set(exclude)
+    dead_sets = [set(d) for d in (dead_upstreams or ()) if d]
+
+    def _alive(a):
+        if a["id"] in excluded:
+            return False
+        if not dead_sets:
+            return True
+        ups = agent_upstreams(a.get("id"))
+        return not (ups and any(ups & d for d in dead_sets))
+
     impl_kind = impl.get("kind")
-    real = [a for a in agents if a.get("mode") == "real" and a["id"] != impl["id"]]
+    real = [a for a in agents
+            if a.get("mode") == "real" and a["id"] != impl["id"] and _alive(a)]
     cross = [a for a in real if a.get("kind") != impl_kind]
     if cross:
         best = max(cross, key=lambda a: score(a, "review", ttype, stats)[0])

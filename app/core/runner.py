@@ -981,7 +981,7 @@ def _model_flag(kind, model):
     return ["--model", model]  # claude / opencode / aider
 
 
-    _TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
+_TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
               "unavailable", "overloaded", "rate limit", "timeout", "timed out",
               "输出停滞",
               # 2026-09-15 连载验收实测：网关故障形态远不止 HTTP 5xx——

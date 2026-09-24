@@ -132,7 +132,11 @@ DEFAULT_CATALOG = [
         "note": "xAI 终端编码智能体；可执行名是 grok（不是 grok-build）；"
                 "默认模型在 ~/.grok/config.toml 的 [models] default（JSON 版配置不存在）",
         "detect": {"cli": "grok"},
-        "orch": {"kind": "generic", "command": "grok", "argv_template": ["-p", "{prompt}"]},
+        # Grok's CLI retries a failed reqwest connection internally. Keep the
+        # adapter's single attempt bounded so a dead endpoint does not consume
+        # the entire 20-minute generic timeout before failover.
+        "orch": {"kind": "generic", "command": "grok", "argv_template": ["-p", "{prompt}"],
+                 "timeout_ms": 180000, "stall_timeout_s": 120},
         "config": {"path": "~/.grok/config.toml", "format": "toml-section",
                    "model_key": "models.default"},
         "install": "npm install -g @xai-official/grok",
@@ -320,18 +324,19 @@ def _apply_config_patch(entries):
 
 
 def _apply_stall_patch(entries):
-    """存量数据幂等补齐：qwencode 补 stall_timeout_s=900（2026-09-22 实案）。
+    """为存量清单补齐 CLI 看门狗和单步上限。
 
-    data/catalog.json 生成后不会再随版本重写，老清单里的 qwencode 没有
-    停滞看门狗配置（当时按「结束才一次性输出」留 0）；实际验证 qwen 评审
-    会先流式吐内容再卡死在 MCP 收尾，静默看门狗能兜住。用户手写过该字段的
-    不覆盖（包括显式写 0 关闭的）。"""
+    data/catalog.json 生成后不会再随版本重写，用户手写过的字段不覆盖
+    （包括显式写 0 关闭的）。"""
     for e in entries:
-        if e.get("id") != "qwencode":
-            continue
         orch = e.get("orch")
-        if isinstance(orch, dict) and "stall_timeout_s" not in orch:
-            orch["stall_timeout_s"] = 900
+        if not isinstance(orch, dict):
+            continue
+        if e.get("id") == "qwencode":
+            orch.setdefault("stall_timeout_s", 900)
+        elif e.get("id") == "grok-build":
+            orch.setdefault("timeout_ms", 180000)
+            orch.setdefault("stall_timeout_s", 120)
 
 
 def _apply_install_patch(entries):
