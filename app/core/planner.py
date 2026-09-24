@@ -250,7 +250,8 @@ def _norm_chapters(data, n, vol_per=0, vol_start=1, vol_plan=None):
     # 分卷：只收本批真正用到的卷的卷名/卷弧光（模型可能多写或乱写卷号，一律按
     # 本批章号范围过滤）。卷边界不在这里——它由 volumes.build_plan 从章号推导。
     if vol_plan:
-        named = volumes.norm_volumes(data.get("volumes"), vol_per, vol_start, n)
+        named = volumes.norm_volumes(data.get("volumes"), vol_per, vol_start, n,
+                                      plan=vol_plan)
         if named:
             res["volumes"] = named
     return res

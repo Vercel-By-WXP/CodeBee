@@ -117,6 +117,55 @@ class TestVolumesPure(BaseTest):
         self.assertEqual(merged[1]["title"], "卷二 风云")
         self.assertEqual(merged[1]["arc"], "冲突升级")
 
+    def test_norm_volumes_filters_to_batch(self):
+        """收模型卷名只留本批覆盖到的卷；多写/乱写卷号一律丢弃。"""
+        from app.core import volumes as V
+        raw = {"1": {"title": "卷一 少年", "arc": "冲突一"},
+               "2": {"title": "卷二 风云", "arc": "冲突二"},
+               "3": {"title": "卷三 归隐"},        # per=20 时本批(21-28)覆盖不到
+               "x": {"title": "乱写"},              # 非数字卷号丢弃
+               "4": "纯字符串卷名"}                 # 本批覆盖不到
+        got = V.norm_volumes(raw, 20, 21, 8)
+        self.assertEqual(got, {"2": {"title": "卷二 风云", "arc": "冲突二"}})
+        # 纯字符串卷名兼容（与 merge_titles 同形）
+        self.assertEqual(V.norm_volumes({"2": "卷二 风云"}, 20, 21, 8),
+                         {"2": {"title": "卷二 风云", "arc": ""}})
+        # 跨卷批次：37–44 落卷 2 + 卷 3
+        self.assertEqual(sorted(V.norm_volumes(raw, 20, 37, 8)), ["2", "3"])
+
+    def test_norm_volumes_plan_wins_and_bad_input(self):
+        """调用方现成 plan 优先（显式不等长卷表边界与主链一致）；脏输入返回 None。"""
+        from app.core import volumes as V
+        spec = V.norm_spec([{"title": "A", "chapters": 20}, {"title": "B", "chapters": 16}])
+        plan = V.build_plan(spec, 0, upto=40)   # 卷1:1-20 卷2:21-36 卷3:37-52
+        # 若误按 per=20 等长推导，卷 2 会是 21-40、第 37 章落卷 2；
+        # 显式表里卷 2 只到 36，第 37 章已是卷 3 —— plan 传入才与主链一致
+        got = V.norm_volumes({"2": {"title": "B"}, "3": {"title": "C"}}, 20, 37, 4,
+                             plan=plan)
+        self.assertEqual(sorted(got), ["3"])
+        self.assertIsNone(V.norm_volumes(None, 20, 1, 8))
+        self.assertIsNone(V.norm_volumes([{"title": "x"}], 20, 1, 8))   # list 不收
+        self.assertIsNone(V.norm_volumes({"9": {"title": "x"}}, 20, 1, 8))  # 无命中
+        self.assertIsNone(V.norm_volumes({}, 20, 1, 8))
+
+    def test_norm_chapters_with_vol_plan_no_crash(self):
+        """回归：带 vol_plan 的大纲解析曾因 volumes.norm_volumes 缺实现
+        AttributeError（分卷任务大纲步同因两次止损的实案）。"""
+        from app.core import planner, volumes as V
+        plan = V.build_plan([], 20, upto=8)
+        o = planner._norm_chapters(
+            {"book_title": "书", "volumes": {"1": {"title": "卷一", "arc": "a"}},
+             "chapters": [{"title": "第一章", "beats": "b1"}]}, 1,
+            vol_per=20, vol_start=1, vol_plan=plan)
+        self.assertIsNotNone(o)
+        self.assertEqual(o["volumes"], {"1": {"title": "卷一", "arc": "a"}})
+        # 模型没给 volumes 字段也不炸（None → 交给调用方用既有卷名兜底）
+        o2 = planner._norm_chapters(
+            {"book_title": "书", "chapters": [{"title": "第一章", "beats": "b1"}]}, 1,
+            vol_per=20, vol_start=1, vol_plan=plan)
+        self.assertIsNotNone(o2)
+        self.assertNotIn("volumes", o2)
+
 
 class TestVolumesTask(BaseTest):
     """任务层：卷配置落盘 + 续写沿用。"""

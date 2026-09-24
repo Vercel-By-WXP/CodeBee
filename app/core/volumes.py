@@ -353,3 +353,37 @@ def merge_titles(plan, named):
                 e["arc"] = arc[:400]
         out.append(e)
     return out
+
+
+def norm_volumes(raw, per, start, n, plan=None):
+    """收大纲 JSON 里模型给的卷名/卷弧光，只留本批章号真正覆盖到的卷
+    （模型可能多写、乱写卷号，一律按卷规划表过滤；卷边界不采信模型）。
+
+    raw 形如 {"1": {"title","arc"}} 或 {"1": "卷名"}（键为卷号字符串）。
+    卷边界优先用调用方现成的 plan（显式卷表时与主链推导完全一致），
+    缺省按 per 等长推导。返回 {卷号str: {"title":..., "arc":...}}；
+    raw 不合规或本批卷号一个都没命中返回 None（调用方用既有卷名兜底）。"""
+    if not isinstance(raw, dict):
+        return None
+    s, cnt = _to_int(start), _to_int(n)
+    if s is None or cnt is None or cnt <= 0:
+        return None
+    if plan is None:
+        plan = build_plan(None, per, upto=s + cnt - 1)
+    hits = {e["vol"] for e in plan_volumes(plan, s, cnt)}
+    if not hits:
+        return None
+    out = {}
+    for key, item in raw.items():
+        vol = _to_int(str(key).strip())
+        if vol is None or vol not in hits:
+            continue
+        if isinstance(item, str):
+            item = {"title": item}
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()[:MAX_TITLE]
+        arc = str(item.get("arc") or "").strip()[:400]
+        if title or arc:
+            out[str(vol)] = {"title": title, "arc": arc}
+    return out or None
