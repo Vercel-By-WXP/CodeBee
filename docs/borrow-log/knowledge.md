@@ -795,3 +795,9 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 - **OpenCreator 版本化差量落地**（21:00 班差量备注即刻兑现）：成品文件「对比」chip——同任务上一版 run 有同名文本文件时，弹窗拉两版内容做统一 diff（新增绿/删除红/长相同段折叠计数）。**纯函数独立 artdiff.js**（公共前后缀修剪+中段 LCS，400 行/16 万格上限，超限诚实降级整块计数不装作对齐）——node 直测 12 项（tests/ui_art_diff.mjs：一致性/插入删除/LCS 交错保序/超限/空输入/重复行）。接线三处：artifactsChips 加 prevRun 参数、loadArtifacts 拉上一版清单（失败静默不给对比口）、bindArtifactClicks diff 分支先于通用预览；i18n EN 七键；CSS 行色复用 var(--ok)/var(--bad) 随皮肤。**混合文件锚点拆 hunk 提交**（app.js 211 行里约 90 行是并行道在制品）：锚点过滤 patch + git apply --cached --recount；style.css 双尾追加并 hunk 用「HEAD EOF 行号+纯新增块」手工重建只暂存自己
 - 剩余账更新：**⑩附件 digest 已由并行道本班落地**（commit_to_workdir 钉分块 sha256+verify_task 四态对账+execute_run 漂移落 attachment_drift，与本班 diff 同窗）；ECC 注入上限=knowledge.py 热区待树定；ARIS 规则裁决/continuum 伏笔账=pipeline 级大改攒批；⑨Office 编辑=docx/xlsx 只读预览已被并行道落（3664f96+PDF 切片），编辑态（Tiptap/Univer 依赖）维持远期待拍板
+
+### 2026-09-24 22:00 第五十七班（批1：代码质量与评审）
+
+- 批1 复查：评审/安全域高星均已录无增量
+
+**✅ 本班落地**：计划层反过度防御——HERO Overbuild 形态上移到编排者拆分面：hard 多子任务不做任务没要的防御性扩展（缓存/重试/监控/通用抽象层），真实风险写 detail 备注由人决定。与 d45506c（实现/修复层）成对，反过度防御闭环到计划-实现-修复三层。test_plan_anti_overbuild 3 项
