@@ -784,3 +784,9 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - OpenCreator 版本化差量备注：run 历史已有雏形，缺「同任务多次产出一键 diff 视图」（UI 层增强，非本轮）；TokenJuice/freellmapi 同款「工具输出进上下文前统一压缩管线」合并记 A 专项远期方向 | 2026-09-24
 
 **✅ 本班落地**：扫榜选材数据源扩容（路线图「扫榜数据源」欠账清账）——双源→四源：起点移动版（m.qidian.com/rank，主站被 WAF 拦 202/209B、移动页免签名直接出书名）+纵横（www.zongheng.com/rank）；_SOURCES 源清单化（存函数名调用期 globals() 解析——mock.patch 换模块属性才生效，存函数引用会钉死原函数让测试穿透打真网络，实测踩过）；榜单 tab/统计标签噪音词扩 17 个。旧欠账「封面图」核实已随 v0.1.x 两代发版落地（建书面板生成封面+CogView 接线+内嵌缩略图），本轮销账。test_paihang 12 项
+
+### 2026-09-24 22:30 用户点名清账班·第二班（缺陷复盘 flow + release_smoke）
+
+- **test-defect-retrospective 借鉴落地**（21:00 班「落地排队」即刻兑现）：`defect_retro`（缺陷复盘）新预置类型——direct 引擎+任务附件通道（禅道/Jira 导出 CSV）→ 三视角复盘报告（整体画像/产品/开发/测试/改进动作带责任角色）。`defectretro.retro_prompt` 纯框架注入（与 paihang 抓取注入同构但恒有返回）；pipeline 分支+flows 登记+i18n EN 四键。**防编造纪律进提示词**：数字必须从导出数出来、缺数据写「数据未提供」、无附件给导出步骤不硬写报告。test_defectretro 5 项 + content_contracts/flow_type_integrity 过（成本预估已覆盖新类型）
+- **WorkDSH 清单⑥ 发布工程落地**：`tests/test_release_smoke.py` 发版校验工具——①SHA256SUMS 清单（tar 流直读哈希，字节写保 LF）②import 冒烟（解包后逐个 import app/core，0.1.63「坏文件进包用户才崩」类的当班闸）③bin 入口在包校验。单测 6 项（防 tar-slip 三重防线/清单口径/快速 import）+CLI 发版档真跑过（132 文件/78 模块/0 失败）。**Mimosa 五轮攻防**：extractall→字符串预检→market_remote._safe_extract 同款 idiom（段白名单+resolve 收容+落点复查+write_bytes）才放行——安全工具拦出了真防线，最终形态比初版更硬
+- rank_scan note 文案同步四源（G 专项：描述与实际不符）；发版档用法：`python tests/test_release_smoke.py --pack`（test_selfupdate 后、npm publish 前，退出码非 0 不发版）

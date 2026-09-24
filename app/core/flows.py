@@ -77,7 +77,10 @@ BUILTIN_FLOWS = [
      "note": "起草 → 多维评审 → 修订循环 → 发布门禁"},
     {"id": "rank_scan", "name": "扫榜选材", "icon": "i-chart", "engine": "direct", "builtin": True,
      "goal_hint": "想写哪个方向（一句话，可留空默认分析总榜热门题材）",
-     "note": "抓取七猫+番茄排行榜公开数据 → AI 提炼跨平台热门题材/人设/差异化切入点（快档直出报告）"},
+     "note": "抓取七猫/番茄/起点/纵横四平台排行榜公开数据 → AI 提炼跨平台热门题材/人设/差异化切入点（快档直出报告）"},
+    {"id": "defect_retro", "name": "缺陷复盘", "icon": "i-clipboard", "engine": "direct", "builtin": True,
+     "goal_hint": "复盘哪个版本/时间段的缺陷（建议附带禅道或 Jira 导出 CSV）",
+     "note": "读取附带的缺陷导出数据 → AI 输出产品/开发/测试三视角复盘报告：整体画像、根因聚类、漏测分析、改进动作（快档直出报告）"},
     {"id": "research", "name": "调研报告", "icon": "i-file-search", "engine": "review", "builtin": True,
      "manuscript": "report.md",
      "rubric": ["全面性", "深度", "论据可靠", "可读性", "结论质量"],
@@ -258,14 +261,19 @@ _DIGEST_FIELDS = ("id", "engine", "manuscript", "rubric", "threshold", "rounds",
                   "verify_command")
 
 
-def flow_digest(flow):
-    """流程定义的内容指纹（sha256 前 16 位）——「这个任务当时用的是哪一版流程」
-    的对账真源（借鉴 WorkDSH ADR-0010 发布后不可变修订）。"""
+def flow_content_sha256(flow):
+    """Return the full semantic content hash for an immutable flow revision."""
     if not isinstance(flow, dict):
         return ""
     basis = {k: flow.get(k) for k in _DIGEST_FIELDS}
     blob = json.dumps(basis, ensure_ascii=False, sort_keys=True, default=str)
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def flow_digest(flow):
+    """流程定义的内容指纹（sha256 前 16 位）——「这个任务当时用的是哪一版流程」
+    的对账真源（借鉴 WorkDSH ADR-0010 发布后不可变修订）。"""
+    return flow_content_sha256(flow)[:16]
 
 
 def flow_drift(task):

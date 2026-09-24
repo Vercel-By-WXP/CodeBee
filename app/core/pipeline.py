@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, attachments, branching, catalog, chaptersafe, dispatch_log, flows, history, hooks, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage, volumes
+from . import aiflavor, attachments, branching, catalog, chaptersafe, defectretro, dispatch_log, flows, history, hooks, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -1961,6 +1961,10 @@ def _run_direct(run, task, agents, ev, stats, mode):
                 # 扫榜选材（借鉴 oh-story 扫榜）：抓七猫排行榜公开数据注入，
                 # AI 做选题洞察；抓取失败回落普通直连提示词
                 prompt = paihang.rank_scan_prompt(task.get("goal") or "") or ""
+            if task.get("type") == "defect_retro" and bi is not None:
+                # 缺陷复盘（借鉴 test-defect-retrospective）：三视角分析框架
+                # 注入，缺陷导出 CSV 走任务附件通道（框架恒有、不回落）
+                prompt = defectretro.retro_prompt(task.get("goal") or "")
             if not prompt:
                 if bi is not None:
                     prompt = (BUILTIN_DIRECT_PROMPT
