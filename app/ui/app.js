@@ -6192,6 +6192,8 @@ const FP_TXT = new Set(["md", "txt", "log", "csv", "yml", "yaml", "ini", "toml",
   "py", "js", "ts", "jsx", "tsx", "html", "htm", "css", "svg", "bat", "sh", "ps1",
   "c", "h", "cpp", "hpp", "java", "go", "rs", "xml", "sql", "mqtt", "proto"]);
 const FP_DOCX = new Set(["docx"]);   // 只认 OOXML；legacy .doc 二进制不在此列
+const FP_PDF = new Set(["pdf"]);
+const FP_XLSX = new Set(["xlsx"]);   // 只认 OOXML；legacy .xls 二进制不在此列
 
 function _fpExt(name) { return (String(name).split(".").pop() || "").toLowerCase(); }
 
@@ -6232,6 +6234,128 @@ async function _fpRenderDocx(url) {
   } catch (e) {
     if (filePopIsOpen())
       _fpSetBody('<div class="fp-hint">' + esc(t("docx 预览不可用（渲染器需联网首次加载）；可下载后查看。")) + "</div>");
+  }
+}
+
+/* PDF 只读预览（WorkDSH「真任务以可读产物收尾」切片）：pdf.js 走 jsdelivr
+ * 懒加载，钉 3.11.174（最后带 UMD 构建的版本，4.x 转 ESM 不适用 script 注入）；
+ * 渲染进 canvas，按弹窗宽度适配；大 PDF 封顶 20 页防渲染爆内存，超页给下载
+ * 提示。加载/渲染失败优雅回落下载提示，与 docx 同款。 */
+const FP_PDF_MAX_PAGES = 20;
+let _pdfLib = null;
+function _loadPdfLib() {
+  if (_pdfLib) return _pdfLib;
+  const base = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/";
+  const load = (src) => new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = src; s.onload = () => res(); s.onerror = () => rej(new Error("load fail: " + src));
+    document.head.appendChild(s);
+  });
+  _pdfLib = load(base + "pdf.min.js").then(() => {
+    if (!window.pdfjsLib) throw new Error("pdf 渲染器未就绪");
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = base + "pdf.worker.min.js";
+  });
+  _pdfLib.catch(() => { _pdfLib = null; });   // 失败不缓存，下次打开可重试
+  return _pdfLib;
+}
+
+async function _fpRenderPdf(url) {
+  const el = _fpEnsure();
+  try {
+    const [r] = await Promise.all([fetch(url), _loadPdfLib()]);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    if (!filePopIsOpen()) return;
+    _fpSetBody('<div class="fp-pdf"><div class="fp-docx-load">' + esc(t("渲染中…")) + "</div></div>");
+    const box = el.querySelector(".fp-pdf");
+    const doc = await window.pdfjsLib.getDocument({ data: await r.arrayBuffer() }).promise;
+    if (!filePopIsOpen()) return;
+    const loader = box.querySelector(".fp-docx-load");
+    if (loader) loader.remove();
+    const total = doc.numPages;
+    const width = Math.max(320, (box.clientWidth || 800) - 8);
+    for (let i = 1; i <= Math.min(total, FP_PDF_MAX_PAGES); i++) {
+      const page = await doc.getPage(i);
+      if (!filePopIsOpen()) return;
+      const vp1 = page.getViewport({ scale: width / page.getViewport({ scale: 1 }).width });
+      const canvas = document.createElement("canvas");
+      canvas.className = "fp-pdf-page";
+      canvas.width = Math.floor(vp1.width); canvas.height = Math.floor(vp1.height);
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp1 }).promise;
+      box.appendChild(canvas);
+    }
+    if (total > FP_PDF_MAX_PAGES)
+      box.insertAdjacentHTML("beforeend", '<div class="fp-hint">' +
+        esc(t("仅渲染前 {0} 页（共 {1} 页），完整内容请下载。")
+          .replace("{0}", FP_PDF_MAX_PAGES).replace("{1}", total)) + "</div>");
+  } catch (e) {
+    if (filePopIsOpen())
+      _fpSetBody('<div class="fp-hint">' + esc(t("PDF 预览不可用（渲染器需联网首次加载）；可下载后查看。")) + "</div>");
+  }
+}
+
+/* xlsx 只读预览：SheetJS 走 jsdelivr 懒加载（钉 0.18.5，npm 末版）；多工作表
+ * 给页签切换；单元格按文本渲染（raw:false，日期/数字走显示值），200 行 ×
+ * 40 列封顶，超限给下载提示。只认 OOXML 的 .xlsx——legacy .xls 仍走下载。 */
+const FP_XLS_MAX_ROWS = 200, FP_XLS_MAX_COLS = 40;
+let _xlsxLib = null;
+function _loadXlsxLib() {
+  if (_xlsxLib) return _xlsxLib;
+  const load = (src) => new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = src; s.onload = () => res(); s.onerror = () => rej(new Error("load fail: " + src));
+    document.head.appendChild(s);
+  });
+  _xlsxLib = load("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js")
+    .then(() => { if (!window.XLSX) throw new Error("xlsx 渲染器未就绪"); });
+  _xlsxLib.catch(() => { _xlsxLib = null; });
+  return _xlsxLib;
+}
+
+async function _fpRenderXlsx(url) {
+  const el = _fpEnsure();
+  try {
+    const [r] = await Promise.all([fetch(url), _loadXlsxLib()]);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    if (!filePopIsOpen()) return;
+    _fpSetBody('<div class="fp-xlsx"><div class="fp-docx-load">' + esc(t("渲染中…")) + "</div></div>");
+    const box = el.querySelector(".fp-xlsx");
+    const wb = window.XLSX.read(await r.arrayBuffer(), { type: "array" });
+    if (!filePopIsOpen()) return;
+    box.innerHTML = "";
+    const tabs = document.createElement("div");
+    tabs.className = "fp-xls-tabs";
+    const pane = document.createElement("div");
+    box.appendChild(tabs); box.appendChild(pane);
+    const drawSheet = (idx) => {
+      const ws = wb.Sheets[wb.SheetNames[idx]];
+      const rows = window.XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
+      let html = '<table class="fp-xls"><tbody>';
+      rows.slice(0, FP_XLS_MAX_ROWS).forEach((row, ri) => {
+        const tag = ri === 0 ? "th" : "td";
+        html += "<tr>" + row.slice(0, FP_XLS_MAX_COLS).map((c) =>
+          "<" + tag + ">" + esc(String(c == null ? "" : c)) + "</" + tag + ">").join("") + "</tr>";
+      });
+      html += "</tbody></table>";
+      if (rows.length > FP_XLS_MAX_ROWS)
+        html += '<div class="fp-hint">' +
+          esc(t("已截断：仅显示前 {0} 行 × {1} 列；完整内容请下载。")
+            .replace("{0}", FP_XLS_MAX_ROWS).replace("{1}", FP_XLS_MAX_COLS)) + "</div>";
+      pane.innerHTML = html;
+      tabs.querySelectorAll(".fp-xls-tab").forEach((b, i) =>
+        b.classList.toggle("active", i === idx));
+    };
+    wb.SheetNames.forEach((sn, i) => {
+      const b = document.createElement("button");
+      b.className = "ghost fp-xls-tab" + (i === 0 ? " active" : "");
+      b.type = "button"; b.textContent = sn;
+      b.addEventListener("click", () => drawSheet(i));
+      tabs.appendChild(b);
+    });
+    if (!wb.SheetNames.length) throw new Error("empty workbook");
+    drawSheet(0);
+  } catch (e) {
+    if (filePopIsOpen())
+      _fpSetBody('<div class="fp-hint">' + esc(t("表格预览不可用（渲染器需联网首次加载）；可下载后查看。")) + "</div>");
   }
 }
 
@@ -6283,6 +6407,8 @@ async function _fpPreviewUrl(url, name, size, opts) {
       return;
     }
     if (FP_DOCX.has(ext)) { await _fpRenderDocx(url); return; }
+    if (FP_PDF.has(ext)) { await _fpRenderPdf(url); return; }
+    if (FP_XLSX.has(ext)) { await _fpRenderXlsx(url); return; }
     _fpSetBody('<div class="fp-hint">' + esc(t("二进制文件不预览，可下载查看。")) + "</div>");
   } catch (e) {
     _fpSetBody('<div class="fp-hint">' + esc(t("内容读取失败：") + (e.message || e)) + "</div>");

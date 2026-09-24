@@ -33,6 +33,10 @@
     "还没有从外部目录安装过插件；退出过滤后逛逛目录，安装前会先给你看包内容。": "No external plugins installed yet; clear this filter to browse the catalog — installs always show package contents first.",
     "渲染中…": "Rendering…",
     "docx 预览不可用（渲染器需联网首次加载）；可下载后查看。": "docx preview unavailable (renderer needs network on first load); download to view instead.",
+    "PDF 预览不可用（渲染器需联网首次加载）；可下载后查看。": "PDF preview unavailable (renderer needs network on first load); download to view instead.",
+    "表格预览不可用（渲染器需联网首次加载）；可下载后查看。": "Spreadsheet preview unavailable (renderer needs network on first load); download to view instead.",
+    "仅渲染前 {0} 页（共 {1} 页），完整内容请下载。": "Rendering first {0} of {1} pages only; download for the full document.",
+    "已截断：仅显示前 {0} 行 × {1} 列；完整内容请下载。": "Truncated: showing first {0} rows × {1} columns only; download for the full sheet.",
 
     // —— 用量统计图表 ——
 

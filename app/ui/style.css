@@ -6142,6 +6142,26 @@ button.request-busy > * { opacity: .18; }
   border: 1px dashed var(--border); border-radius: 999px; padding: 0 7px; line-height: 16px;
   max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* PDF/xlsx 只读预览（成品弹窗，WorkDSH「真任务以可读产物收尾」切片；
+ * 追加于文件尾防并行重排）。PDF 纸面白底与 docx 同理：文档画布是内容不是 UI */
+#file-pop .fp-pdf { padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+#file-pop .fp-pdf canvas.fp-pdf-page {
+  background: #fff; box-shadow: 0 2px 12px rgba(0, 0, 0, .3); max-width: 100%;
+}
+#file-pop .fp-xlsx { padding: 12px; overflow: auto; }
+.fp-xls-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.fp-xls-tabs .fp-xls-tab.active {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  color: var(--accent);
+}
+table.fp-xls { border-collapse: collapse; font-family: var(--mono); font-size: 11.5px; }
+.fp-xls th, .fp-xls td {
+  border: 1px solid var(--border); padding: 2px 8px; white-space: nowrap;
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis;
+}
+.fp-xls th { color: var(--muted); font-weight: 600; font-family: var(--font-ui); }
+
 /* ---------------- 成品两版对比（artdiff.js + artifactDiffBody） ----------------
  * 行色复用 insp-plus/insp-minus 同源变量（var(--ok)/var(--bad)），随皮肤走。 */
 .art-diff { margin: 0; padding: 6px 0 10px; font-family: var(--mono); font-size: 12px; line-height: 1.6; }

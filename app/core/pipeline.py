@@ -4455,6 +4455,21 @@ def execute_run(run_id):
         print("[CodeBee] 流程漂移：%s（任务 %s 创建后流程已修改 %s → %s）"
               % (run_id, task.get("id"), _drift["pinned"][:8], _drift["current"][:8]),
               flush=True)
+    # 附件完整性对账（借鉴 WorkDSH 输入引用修订）：任务钉的附件指纹 vs 当前
+    # 文件内容。换过/删过给明确诊断——续跑吃到「不是当初那份附件」不能无声。
+    try:
+        _adrift = attachments.verify_task(task, task.get("workdir"))
+        if _adrift:
+            store.update_run(run_id, attachment_drift=_adrift)
+            _names = "、".join(d["name"] for d in _adrift[:3]) + (
+                " 等 %d 项" % len(_adrift) if len(_adrift) > 3 else "")
+            _warns2 = (store.get_run(run_id) or {}).get("warnings") or []
+            store.update_run(run_id, warnings=_warns2 + [
+                "附件在任务创建后已变化（%s）：%s；本次执行使用当前文件内容"
+                % (", ".join(sorted({d["status"] for d in _adrift})), _names)])
+            print("[CodeBee] 附件漂移：%s（%s）" % (run_id, _names), flush=True)
+    except Exception:
+        pass
     try:
         _ensure_budget(run_id)
     except TaskTimeout:
