@@ -271,6 +271,14 @@ def _evaluation_is_usable(provider_id, model=""):
                 continue
             entry = evaluation.get(kind, provider_id, name)
             if entry and not entry.get("fresh", False):
+                # Expiry is a re-probe trigger, not a permanent dead end.  The
+                # probe writes a fresh ledger entry; a failed probe keeps this
+                # candidate out of routing until a later explicit retry.
+                probe = (test_model(provider_id, model) if kind == "model" and model
+                         else test_provider(provider_id))
+                return bool(probe and probe.get("ok") and probe.get("fresh"))
+            if entry and (not entry.get("ok") or entry.get("status") not in
+                          ("passed", "reachable", "reachable_unverified")):
                 return False
     except Exception:
         return True
@@ -306,6 +314,7 @@ def _record_evaluation(kind, provider_id, model, result):
         return evaluation.record(
             kind, provider_id, model, result,
             protocol=result.get("protocol") or "",
+            key_id=result.get("key_id") or "",
             requested_model=model,
             served_model=result.get("served_model") or "")
     except Exception:
@@ -2488,7 +2497,7 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     ep = _entry_endpoint(prov, allowed)
     if not ep:
         return None  # google 只登记；dsh 只接受 OpenAI 兼容端点；未适配的不硬塞
-    if not _evaluation_is_usable(pid, b.get("model") or prov.get("model") or ""):
+    if not _evaluation_is_usable(pid):
         return None
     if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
         return None  # codex 0.154+ 只讲 responses：chat-only 供应商直接判不可绑
@@ -2499,6 +2508,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
         model = prov.get("model") or ""
     if not model and names:
         model = names[0] if (not routing or difficulty != "easy") else names[-1]
+    if not _evaluation_is_usable(pid, model):
+        return None
     # model 可为空：仅注入供应商凭据，不指定模型（用网关默认）
     fallbacks = [n for n in names if n != model][:MAX_BIND_MODELS - 1]
     # 多 KEY：主模型先按 KEY 逐把试（欠费自动切备用），再降级到别的模型
@@ -2561,6 +2572,8 @@ def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role
         # 候选阶段不能先截前三个：便宜档往往排在供应商列表后面，easy 任务
         # 需要看到完整启用列表后再按成本与档位评分。最终调用链仍受上限约束。
         for model in names:
+            if not _evaluation_is_usable(pid, model):
+                continue
             candidates.append({"provider_id": pid, "model": model})
     if not candidates:
         return None
@@ -3009,10 +3022,21 @@ def test_model(provider_id, model_name, key_id=""):
             status, data, err = _post_json_http(url, headers, body, bool(prov.get("allow_private")))
             api_error = _response_error_text(data)
             if 200 <= status < 300 and _model_payload_ok(proto, data):
+                served_model = ""
+                if isinstance(data, dict):
+                    served_model = str(data.get("model") or data.get("model_name") or "").strip()
+                if served_model and served_model != model_name:
+                    last = _evaluation_result(
+                        False, "模型漂移：请求 %s，实际服务 %s" %
+                        (model_name, served_model), protocol=proto,
+                        key_id=kk.get("id") or "", served_model=served_model)
+                    note_key_error(provider_id, kk.get("id") or "", last["error"])
+                    continue
                 note_key_ok(provider_id, kk.get("id") or "")
                 return finish(_evaluation_result(
                     True, status="passed", latency_ms=int((_t.time() - t0) * 1000),
-                    protocol=proto, key_id=kk.get("id") or ""))
+                    protocol=proto, key_id=kk.get("id") or "",
+                    served_model=served_model))
             if status == 0:
                 message = err or "连接失败"
             elif api_error:

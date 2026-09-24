@@ -651,7 +651,8 @@ def _orch_code_plan(task, prov, model, log_path=None, deadline=None):
                         cache_ttl=3600)
     cb.flush()
     _log_usage("plan", "plan", task, res, model=model,
-               provider=prov.get("name", prov.get("id", "")))
+               provider=prov.get("name", prov.get("id", "")),
+               provider_id=prov.get("id", ""))
     if not res["ok"]:
         _append_log(log_path, "编排者计划（%s · %s）失败：%s" % (
             prov.get("name", prov["id"]), model, (res.get("error") or "未知错误")[:300]))
@@ -680,7 +681,8 @@ def make_review_outline(task, deadline=None):
                         reasoning_effort=_reasoning_effort(task),
                         cache_ttl=3600)   # §07 T2.2：同任务重试幂等，TTL 1h
     _log_usage("outline", "outline", task, res, model=model,
-               provider=prov.get("name", prov.get("id", "")))
+               provider=prov.get("name", prov.get("id", "")),
+               provider_id=prov.get("id", ""))
     if not res["ok"]:
         return None
     data = runner.extract_json(res.get("text") or "")

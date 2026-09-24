@@ -11,6 +11,7 @@ the health probe can show recovery, but only a fresh evaluation restores
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 import threading
@@ -55,9 +56,12 @@ def _write(value: dict) -> None:
         pass
 
 
-def key(kind: str, provider_id: str, model: str = "") -> str:
-    return "%s|%s|%s" % (str(kind or "provider"),
+def key(kind: str, provider_id: str, model: str = "", protocol: str = "",
+        key_id: str = "") -> str:
+    base = "%s|%s|%s" % (str(kind or "provider"),
                           str(provider_id or ""), str(model or ""))
+    suffix = "|".join((str(protocol or ""), str(key_id or "")))
+    return base if not suffix.strip("|") else base + "|" + suffix
 
 
 def decorate(result: dict, *, now=None) -> dict:
@@ -72,7 +76,7 @@ def decorate(result: dict, *, now=None) -> dict:
 
 def record(kind: str, provider_id: str, model: str, result: dict,
            *, protocol: str = "", requested_model: str = "",
-           served_model: str = "") -> dict:
+           served_model: str = "", key_id: str = "") -> dict:
     """Persist safe metadata for one completed evaluation and return it."""
     out = decorate(result)
     entry = {
@@ -84,12 +88,14 @@ def record(kind: str, provider_id: str, model: str, result: dict,
         "evaluated_at": out["evaluated_at"],
         "expires_at": out["expires_at"],
         "protocol": str(protocol or ""),
+        "key_id": str(key_id or result.get("key_id") or ""),
         "requested_model": str(requested_model or model or ""),
         "served_model": str(served_model or ""),
     }
     with _LOCK:
         data = _read()
-        data.setdefault("entries", {})[key(kind, provider_id, model)] = entry
+        data.setdefault("entries", {})[key(
+            kind, provider_id, model, protocol, key_id or result.get("key_id") or "")] = entry
         _write(data)
     return out
 
@@ -102,15 +108,20 @@ def invalidate_provider(provider_id: str, model: str = "",
         return
     with _LOCK:
         data = _read()
-        invalidation_key = key("model", provider_id, model) if model else provider_id
-        data.setdefault("invalidated", {})[invalidation_key] = {
-            "at": time.time(), "reason": str(reason or "health_failure")[:80]}
+        at = time.time()
+        invalidations = data.setdefault("invalidated", {})
+        invalidations[provider_id] = {
+            "at": at, "reason": str(reason or "health_failure")[:80]}
+        if model:
+            invalidations[key("model", provider_id, model)] = {
+                "at": at, "reason": str(reason or "health_failure")[:80]}
         _write(data)
 
 
 def _safe_float(value, default=0.0) -> float:
     try:
-        return float(value)
+        result = float(value)
+        return result if math.isfinite(result) else float(default)
     except (TypeError, ValueError):
         return float(default)
 
@@ -120,14 +131,24 @@ def get(kind: str, provider_id: str, model: str = "", *, now=None):
     now = time.time() if now is None else float(now)
     with _LOCK:
         data = _read()
-    entry = (data.get("entries") or {}).get(key(kind, provider_id, model))
+    entries = data.get("entries") or {}
+    base_key = key(kind, provider_id, model)
+    entry = entries.get(base_key)
+    matches = [value for name, value in entries.items()
+               if str(name).startswith(base_key + "|") and isinstance(value, dict)]
+    candidates = ([entry] if isinstance(entry, dict) else []) + matches
+    entry = max(candidates, key=lambda value: _safe_float(value.get("evaluated_at")),
+                default=None)
     if not isinstance(entry, dict):
         return None
     out = dict(entry)
     invalidated = data.get("invalidated") or {}
     exact_invalid = invalidated.get(key(kind, provider_id, model)) or {}
     provider_invalid = invalidated.get(str(provider_id or "")) or {}
-    invalid = exact_invalid if exact_invalid else provider_invalid
+    invalid = max((candidate for candidate in (exact_invalid, provider_invalid)
+                   if isinstance(candidate, dict)),
+                  key=lambda candidate: _safe_float(candidate.get("at")),
+                  default={})
     invalid_at = _safe_float(invalid.get("at"))
     expires_at = _safe_float(out.get("expires_at"))
     stale_reason = ""

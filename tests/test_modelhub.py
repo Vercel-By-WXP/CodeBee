@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from unittest import mock
 
 from base import BaseTest
 
@@ -1111,6 +1112,41 @@ class TestNoListGateway(BaseTest):
             self.assertIn("500", modelhub.providers()[0]["keys"][0]["last_error"])
         finally:
             modelhub._fetch_models_http = orig
+
+
+class TestChatEnvelopeGuard(BaseTest):
+    def test_http_200_nested_error_is_not_success(self):
+        from app.core import modelhub
+
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({
+            "name": "nested-error", "protocol": "openai",
+            "base_url": "https://nested.test/v1", "api_key": FAKE_KEY,
+            "model": "m1"})
+        pid = modelhub.providers()[0]["id"]
+        with mock.patch.object(modelhub, "_post_json_http",
+                               return_value=(200, {"choices": [{
+                                   "error": {"message": "provider failed"}}]}, "")):
+            result = modelhub.chat(pid, "m1", "hello")
+        self.assertFalse(result["ok"])
+        self.assertIn("provider failed", result["error"])
+
+    def test_model_drift_is_a_failed_evaluation(self):
+        from app.core import modelhub
+
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({
+            "name": "drift", "protocol": "openai",
+            "base_url": "https://drift.test/v1", "api_key": FAKE_KEY,
+            "model": "requested"})
+        pid = modelhub.providers()[0]["id"]
+        response = {"model": "served-other", "choices": [{
+            "message": {"content": "ok"}}]}
+        with mock.patch.object(modelhub, "_post_json_http",
+                               return_value=(200, response, "")):
+            result = modelhub.test_model(pid, "requested")
+        self.assertFalse(result["ok"])
+        self.assertIn("模型漂移", result["error"])
 
 
 if __name__ == "__main__":

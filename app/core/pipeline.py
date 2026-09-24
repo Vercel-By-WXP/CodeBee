@@ -737,6 +737,8 @@ def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
             provider=res.get("provider_id") or provider_id or provider_name or "",
             ok=bool(res.get("ok")),
             duration_s=float(res.get("raw", {}).get("duration") or 0.0),
+            first_token_ms=float((res.get("raw") or {}).get("first_token_ms") or 0.0),
+            tokens_per_sec=float((res.get("raw") or {}).get("tokens_per_sec") or 0.0),
             cost_usd=float(res.get("cost_usd") or 0.0),
             usage=res.get("usage"))
         # 告警模块：CLI 调用成功/失败上报（provider 名与 usage 台账一致）

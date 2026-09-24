@@ -88,3 +88,17 @@ class TestFailureNotify(BaseTest):
             sent, detail = failure_notify._send_email(event)
         self.assertFalse(sent)
         self.assertEqual(detail, "email_error:ValueError")
+
+    def test_failed_channels_leave_episode_retryable(self):
+        from app.core import failure_notify
+
+        with mock.patch.dict(os.environ, {
+                "TUTTI_FAILURE_NOTIFY_THRESHOLD": "1",
+                "TUTTI_FAILURE_NOTIFY_COOLDOWN_S": "0"}, clear=False), \
+                mock.patch.object(failure_notify, "send",
+                                  return_value={"email": {"sent": False}}):
+            result = failure_notify.record_all_candidates_failed(
+                run_id="r1", role="review", attempts=[{"ok": False}])
+        self.assertTrue(result["notified"])
+        state = (self.data_dir / "failure_notifications.json").read_text(encoding="utf-8")
+        self.assertIn('"episode_notified": false', state)
