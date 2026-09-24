@@ -728,3 +728,11 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **claude-code-security-review**（anthropics 官方，6.3k★）| 官方 AI 安全评审 GitHub Action（Claude 驱动 PR 安全审查）| 与我们跨厂商评审同域；官方背书的「评审只读+结构化输出」纪律可参考 | 参考
 
 **✅ 本班落地**：v0.1.62 发版（HEAD worktree 发布法首用）——npm 只打包已提交树，并行会话未提交在制品天然排除（0.1.48 教训的结构性解法，不再需要等树干净）；CHANGELOG 未发布段九项漏账收编补记。发布内容：活计划回写+skill_scan 治理四特征+HERO 反过度防御块
+
+### 2026-09-24 10:00 第五十一班（批3：计划/spec/长任务）
+
+- 批3 复查：spec-kit（138.6k★）/OpenSpec（70k★）/get-shit-done（64.5k★）/planning-with-files 均已录
+- **ccpm**（automazeio，8.4k★）| GitHub 原生 agent 项目管理技能系统（issue/milestone 皆技能操作）| 与我们禅道集成同域异构（他们 GitHub-native）；「PM 即技能包」的形态参考 | 参考
+- **worktrunk**（max-sixty，8.4k★）| git worktree 管理 CLI | 与我们任务分支隔离+赛马 worktree 已覆盖同域 | 参考
+
+**✅ 本班落地**：Stop gate（planning-with-files 第四件）——收工时活计划勾选完整性可见：`[ ]`未跑/`[!]`失败/`[>]`中断均算未完成，收工摘要+verdict.plan_gate 如实点名；只保可见不改判。test_plan_stopgate 4 项
