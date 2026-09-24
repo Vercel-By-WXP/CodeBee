@@ -6794,7 +6794,7 @@ function renderRouting(run) {
       (rows ? '<details class="rd-route-candidates"><summary>' + esc(t("查看候选评分")) + '</summary>' + rows + '</details>' : "") +
       '</div>';
   };
-  const roles = [roleBlock("implement", t("执行")), roleBlock("review", t("评审"))].filter(Boolean).join("");
+  const roles = [roleBlock("implement", t("实现")), roleBlock("review", t("评审"))].filter(Boolean).join("");
   if (!roles) { box.classList.add("hidden"); box.innerHTML = ""; return; }
   box.classList.remove("hidden");
   box.innerHTML = '<div class="rd-routing-head"><span class="rd-routing-title">' + esc(t("任务画像与调度")) +
