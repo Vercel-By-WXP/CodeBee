@@ -15,7 +15,8 @@ class KarmaOrderTests(BaseTest):
         return skills
 
     def test_high_karma_first(self):
-        """won-lost 高的排最前（即便 hits 低）；失守多的沉底。"""
+        """可信度（未失守率）高的排最前；反复失守的沉底（不删除）。
+        注意 good 必须有注入次数：won 只可能跟着注入产生，hits=0 是造不出来的状态。"""
         sk = self._sk()
         good = sk.upsert_lesson("code", "有效教训", "A" * 6)
         bad = sk.upsert_lesson("code", "失守教训", "B" * 6)
@@ -24,9 +25,9 @@ class KarmaOrderTests(BaseTest):
             data = sk._load()
             for it in data["lessons"]:
                 if it["id"] == good["id"]:
-                    it["won"], it["hits"] = 3, 0
+                    it["won"], it["hits"] = 3, 40      # 注入多且几乎不失守
                 elif it["id"] == bad["id"]:
-                    it["lost"], it["hits"] = 2, 5   # 热度高但净失守
+                    it["lost"], it["hits"] = 2, 5      # 注入 5 次失守 2 次
                 elif it["id"] == mid["id"]:
                     it["hits"] = 2
             sk._save(data)

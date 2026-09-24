@@ -16,9 +16,9 @@ class KarmaViewTests(BaseTest):
         skills._FILE = self.data_dir / "skills.json"
         a = skills.upsert_lesson("code", "karma 教训", "内容" * 4)
         skills.block_for({"type": "code", "goal": "x"}, run_id="r-k1")
-        skills.note_outcome("r-k1", True)    # 过审 → won=1
+        skills.note_outcome("r-k1", True, reward=[a["id"]])     # 点名 + 过审 → won=1
         skills.block_for({"type": "code", "goal": "x"}, run_id="r-k2")
-        skills.note_outcome("r-k2", False)   # 失败 → lost=1
+        skills.note_outcome("r-k2", False, penalize=[a["id"]])  # 点名 + 失败 → lost=1
         v = skills.view()
         hit = next(x for x in v["lessons"] if x["id"] == a["id"])
         self.assertEqual(hit.get("won"), 1)
@@ -35,7 +35,7 @@ class KarmaViewTests(BaseTest):
         bad = skills.upsert_lesson("code", "共享标题乙", "做法B" * 3)
         for i in range(3):
             skills.block_for({"type": "code", "goal": "x"}, run_id="rg%d" % i)
-            skills.note_outcome("rg%d" % i, True)
+            skills.note_outcome("rg%d" % i, True, reward=[good["id"]])
         with skills._LOCK:
             data = skills._load()
             for it in data["lessons"]:

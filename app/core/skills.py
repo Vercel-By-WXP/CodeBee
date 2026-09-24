@@ -285,6 +285,25 @@ def _lesson_id(scope, title):
     return "sk-" + h
 
 
+_KARMA_PRIOR = 1.0   # 加性平滑伪计数：无证据时折到中性值，不奖励也不惩罚新条目
+
+
+def _karma(item):
+    """这条教训**可信吗**：未失守率的平滑估计 (hits-lost+1)/(hits+2)。
+
+    分母是注入次数 hits，不是 won+lost。只看胜负次数会把「注入 1175 次、真实归因
+    失守 3 次」（失守率 0.26%）排在「注入 4 次、失守 1 次」（25%）之后——那是把
+    证据量当成了噪声。加 1/加 2 平滑让无证据的新条目落在中性 0.5，样本越多越接近
+    真实比率。刻意不用 Wilson 置信下界：那会把「注入 2 次零失守」打到 0.34，比从未
+    注入的还低，等于惩罚正面证据。
+    """
+    hits = max(0, int(item.get("hits") or 0))
+    lost = max(0, int(item.get("lost") or 0))
+    if lost > hits:
+        lost = hits            # 台账被手工改坏时不失守倒挂
+    return (hits - lost + _KARMA_PRIOR) / (hits + 2 * _KARMA_PRIOR)
+
+
 def list_lessons(scope=None, only_enabled=False, category=None):
     with _LOCK:
         items = list((_load().get("lessons") or []))
@@ -296,9 +315,9 @@ def list_lessons(scope=None, only_enabled=False, category=None):
     if only_enabled:
         items = [x for x in items if x.get("enabled", True)]
     # karma 感知排序（UI 列表用；注入排序在 relevance_top 不走这里）：
-    # 有效教训（won-lost 高）排最前——经验库页首屏即「真实帮上忙的」，
-    # 其次按注入热度；失守多的自然沉底（不隐藏——降权不删除）。
-    items.sort(key=lambda x: (-(int(x.get("won") or 0) - int(x.get("lost") or 0)),
+    # 首键是可信度下界（注入多且很少失守的居首），被点名归因过成功的（won）作次键
+    # 提权，再按注入热度；失守多的自然沉底（不隐藏——降权不删除）。
+    items.sort(key=lambda x: (-_karma(x), -int(x.get("won") or 0),
                               -int(x.get("hits") or 0), -int(x.get("seen") or 1),
                               x.get("created_at") or ""))
     return items
@@ -423,13 +442,12 @@ def relevance_top(lessons, task, limit):
         return lessons[:limit]
 
     # 使用反馈闭环（pmb「量化记忆真实帮助」+ tradememory「按结局加权召回」）：
-    # 相关性优先；同分比 outcome 胜负（注入后任务过审 +1 / 未过 -1），再比 hits。
+    # 相关性优先；同分比可信度下界，再比归因成功的次数，最后比注入热度。
     def rank(x):
         grams = _text_bigrams(x.get("title")) | _text_bigrams(x.get("content"))
         overlap = -len(probe & grams)
-        karma = int(x.get("won") or 0) - int(x.get("lost") or 0)
-        lid = x.get("id") or ""
-        return (overlap, -karma, -int(x.get("hits") or 0), lid)
+        return (overlap, -_karma(x), -int(x.get("won") or 0),
+                -int(x.get("hits") or 0), x.get("id") or "")
 
     return sorted(lessons, key=rank)[:limit]
 
@@ -486,10 +504,12 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
             lessons.sort(key=lambda x: x.get("id") or "")
         lines = []
         for x in lessons:
-            lines.append("- **%s**：%s" % (x["title"], x["content"]))
+            # 编号可见：复盘官据此点名「哪条已沉淀教训没防住本次问题」，
+            # 归因才能落到单条而不是整批（见 note_outcome）。
+            lines.append("- [%s] **%s**：%s" % (x["id"], x["title"], x["content"]))
             used.append(x["id"])
             lesson_ids.append(x["id"])
-        lesson_part = ("### 【本项目已沉淀的教训（历史评审反复出现，务必规避）】\n"
+        lesson_part = ("### 【本项目已沉淀的教训（历史评审反复出现，务必规避；方括号内为教训编号）】\n"
                        + "\n".join(lines))
 
     if not parts and not lesson_part:
@@ -510,29 +530,48 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
             with _LOCK:
                 if len(_INJECTED) >= _INJECTED_MAX:
                     _INJECTED.clear()   # 有界兜底：登记超量整体作废（丢信号不丢内存）
-                _INJECTED[str(run_id)] = list(lesson_ids)
+                rid = str(run_id)
+                # 并集而非覆盖：一个 run 里大纲步与评审步都会注入，覆盖会让
+                # 先注入的那批教训永远拿不到归因。
+                _INJECTED[rid] = sorted(set(_INJECTED.get(rid) or ()) | set(lesson_ids))
     return text, used
 
 
-def note_outcome(run_id, passed):
-    """run 收尾回写注入教训的胜负（tradememory outcome 加权）。
+def note_outcome(run_id, passed, penalize=None, reward=None):
+    """按**单条归因结果**回写胜负（outcome 加权 · 精确归因版）。
 
-    passed=True → won+1（这条教训在场时任务过审）；False → lost+1。
-    只清算登记在案的教训；幂等（同一 run 消费后清除登记）。"""
+    `passed` 取 `_run_outcome` 的三态结论：True → 清算 reward，False → 清算
+    penalize，**None → 只消费登记，一律不回写**（本次没有可归因的质量结局）。
+    两个集合都只在本 run 登记过的 id 内生效。幂等：登记消费即清除。
+
+    未被点名的注入教训**不回写**。旧实现给整批 top-8 统一记 +/-1：一次没过就把
+    七八条不相干的教训一起打成负分，`list_lessons` 按 karma 排序后好教训集体沉底、
+    UI 首屏再也看不到。归因缺失即本次无信号，宁可不落账——稀疏而正确的胜负优于
+    稠密而失真。
+    """
     rid = str(run_id or "")
     if not rid:
         return
     with _LOCK:
-        ids = _INJECTED.pop(rid, None)
-        if not ids:
+        registered = {str(i) for i in (_INJECTED.pop(rid, None) or [])}
+        if not registered or passed is None:
             return
+        src = reward if passed else penalize
+        targets = set()
+        for i in (src or []):
+            if str(i) in registered:
+                targets.add(str(i))
+        if not targets:
+            return
+        key = "won" if passed else "lost"
         data = _load()
-        idset = set(ids)
+        changed = False
         for it in (data.get("lessons") or []):
-            if it.get("id") in idset:
-                key = "won" if passed else "lost"
+            if it.get("id") in targets:
                 it[key] = int(it.get(key) or 0) + 1
-        _save(data)
+                changed = True
+        if changed:
+            _save(data)
 
 
 def bump_hits(ids):
@@ -558,7 +597,9 @@ LEARN_PROMPT = """你是编排系统的复盘官。下面是刚结束的一次�
 记忆借鉴：任务一次通过且分数高时，把「这次做对了什么」提炼成可复用步骤，title
 以「做法：」开头，如「做法：先列评分点再逐条应答」）。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"lessons": [{"title": "≤14 字的归类（教训直接写；有效做法以「做法：」开头）", "category": "问题分类", "content": "下次必须怎么做/避免什么（≤120 字，具体可执行）"}]}
+{"lessons": [{"title": "≤14 字的归类（教训直接写；有效做法以「做法：」开头）", "category": "问题分类", "content": "下次必须怎么做/避免什么（≤120 字，具体可执行）", "violates": ["sk-xxxxxx"]}]}
+violates：本次问题**戳穿了下面「本次已注入的历史教训」中的哪几条**（那几条已在提示词里却没防住），
+只能填下面列出的编号原值，不确定或没有对应就填 []。
 category 必须从以下固定枚举中选一个（贴合评审维度，不要自创类别）：
 __CATEGORIES__
 最多 5 条，只保留反复出现或影响过稿/验收的关键项；一次通过的高分运行优先提炼「做法」；没有值得沉淀的就返回空数组。
@@ -568,6 +609,9 @@ __TYPE__
 
 ## 任务目标（摘要）
 __GOAL__
+
+## 本次已注入的历史教训（编号 + 标题；violates 只能引用这里的编号）
+__INJECTED__
 
 ## 本次结论
 __VERDICT__
@@ -610,6 +654,69 @@ def _collect_issues(run):
     return issues[:30]
 
 
+_DIM_SEP = re.compile(r"[、,，/;；\s\.\-—]+")
+
+
+def _issue_cats(issue):
+    """把一条评审问题归到闭集分类集合。dim 可多选（「钩子、爽点」），
+    逐段归一化；都命中不了再退到 note 正文关键词（与沉淀路径同一套度量）。"""
+    out = set()
+    for part in _DIM_SEP.split(str(issue.get("dim") or "")):
+        c = _normalize_category(part, part)
+        if c:
+            out.add(c)
+    if not out:
+        c = _category_from(issue.get("note"))
+        if c:
+            out.add(c)
+    return out
+
+
+def _lesson_cats(lesson):
+    """教训侧的类别集合：category 枚举优先，退到 dim，再退到标题关键词。
+    刻意不扫正文——长文本首个关键词命中即胜，归因会退化成噪声匹配。"""
+    c = (_normalize_category(lesson.get("category"), lesson.get("dim"))
+         or _category_from(lesson.get("title")))
+    return {c} if c else set()
+
+
+def _collect_strengths(run):
+    """本次达标（≥阈值）的维度：过审 run 的正向归因依据——教训守的维度
+    这次分数站得住，才记一次 won。"""
+    v = run.get("verdict") or {}
+    thr = float(v.get("threshold") or 7.0)
+    good = {}
+    for c in (v.get("chapter_scores") or []):
+        for d, s in (c.get("means") or {}).items():
+            if float(s) >= thr:
+                good[d] = good.get(d, 0) + 1
+    for d, s in (v.get("global_scores") or {}).items():
+        if float(s) >= thr:
+            good[d] = good.get(d, 0) + 1
+    return [{"dim": d} for d in sorted(good, key=lambda k: (-good[k], k))]
+
+
+def _attribute(registered, by_id, issues, strengths):
+    """整批 +/- → 单条归因（A 路：类别匹配，零模型依赖）。
+    返回 (penalize, reward)：与本次**问题**同类别的教训挨罚；与本次**达标维度**
+    同类别且不属于问题类别的教训记功。归不了类的教训两侧都不动。"""
+    icats, scats = set(), set()
+    for i in issues:
+        icats |= _issue_cats(i)
+    for s in strengths:
+        scats |= _issue_cats(s)
+    penalize, reward = [], []
+    for rid in registered:
+        cats = _lesson_cats(by_id.get(rid) or {})
+        if not cats:
+            continue
+        if cats & icats:
+            penalize.append(rid)
+        elif cats & scats:
+            reward.append(rid)
+    return penalize, reward
+
+
 def _fallback_lessons(task, run):
     """无编排者时的确定性兜底：按维度把反复出现的问题聚成教训。"""
     v = run.get("verdict") or {}
@@ -634,65 +741,107 @@ def _fallback_lessons(task, run):
     return out[:5]
 
 
+def _run_outcome(run):
+    """把评审结论折成三态结局：True 过审 / False 未过审 / None 无从判定。
+
+    旧实现是 `bool(verdict.get("pass"))`，把「没有结论」直接判成「质量不通过」。
+    实跑 110 个 run 里 75 个根本没有 verdict（61 failed / 14 done / 4 running /
+    1 cancelled / 1 timeout），每一个都在给整批注入教训白记一笔 lost。基础设施类
+    失败（换路耗尽、超时、取消）不是质量信号，这点统一执行标准里也写了：取消不得
+    进入任何惩罚。判不出来就返回 None，宁可这次不归因。
+    """
+    if (run.get("status") or "") != "done":
+        return None
+    v = run.get("verdict") or {}
+    if not v:
+        return None
+    for key in ("pass", "publishable"):        # 单章评审用 pass，连载用 publishable
+        val = v.get(key)
+        if isinstance(val, bool):
+            return val
+    if isinstance(v.get("verify_pass"), bool) or isinstance(v.get("review_pass"), bool):
+        return bool(v.get("verify_pass")) and bool(v.get("review_pass"))
+    gp = v.get("global_pass")
+    return gp if isinstance(gp, bool) else None
+
+
 def learn_from_run(run_id, use_orchestrator=True):
-    """运行结束后自动总结教训并沉淀。返回写入条数。"""
+    """运行结束后自动总结教训并沉淀。返回写入条数。
+
+    胜负清算放在 finally：无论是否沉淀出新教训、编排者是否可用，本 run 的注入登记
+    都必须被消费掉（旧实现把落账放最前就是为了「一定清算」，改成精确归因后同样不能漏，
+    且登记不消费会一直泄漏内存）。
+    """
     from . import store
     run = store.get_run(run_id)
     if not run:
         return 0
-    # outcome 加权（tradememory）：本 run 注入过的教训按结局记胜负——
-    # 失败 run 说明在场教训没防住这个问题（lost+1），过审则 won+1。
-    # 放最前：无论后续是否沉淀新教训，胜负都要落账。
-    try:
-        verdict = run.get("verdict") or {}
-        note_outcome(run_id, bool(verdict.get("pass")))
-    except Exception:
-        pass
-    task = store.get_task(run.get("task_id")) if run.get("task_id") else None
-    if not task:
-        return 0
-    # mock 运行不沉淀（没有真实评审信号）
-    if all((s.get("agent") or "").startswith("mock") for s in (run.get("steps") or [])):
-        return 0
-    v = run.get("verdict") or {}
-    if not v:
-        return 0
+    verdict = run.get("verdict") or {}
+    outcome = _run_outcome(run)
+    registered = list(_INJECTED.get(str(run_id)) or [])
+    by_id = {x.get("id"): x for x in list_lessons()} if registered else {}
     issues = _collect_issues(run)
-    lessons = []
-    if use_orchestrator:
+    cited = set()   # B 路归因：复盘官点名「已注入却没防住本次问题」的教训编号
+    try:
+        task = store.get_task(run.get("task_id")) if run.get("task_id") else None
+        if not task:
+            return 0
+        # mock 运行不沉淀（没有真实评审信号）
+        if all((s.get("agent") or "").startswith("mock") for s in (run.get("steps") or [])):
+            return 0
+        v = verdict
+        if not v:
+            return 0
+        lessons = []
+        if use_orchestrator:
+            try:
+                from . import modelhub, runner
+                orch = modelhub.resolve_orchestrator()
+                if orch:
+                    prov, model = orch
+                    verdict_txt = json.dumps({k: v[k] for k in v if k not in ("route", "chapter_scores")},
+                                             ensure_ascii=False)[:1200]
+                    injected_txt = "\n".join(
+                        "- [%s] %s" % (lid, (by_id.get(lid) or {}).get("title", ""))
+                        for lid in registered) or "（本次未注入历史教训，violates 一律填 []）"
+                    prompt = (LEARN_PROMPT.replace("__CATEGORIES__", "、".join(LESSON_CATEGORIES))
+                              .replace("__TYPE__", str(task.get("type")))
+                              .replace("__GOAL__", (task.get("goal") or "")[:600])
+                              .replace("__INJECTED__", injected_txt)
+                              .replace("__VERDICT__", verdict_txt)
+                              .replace("__ISSUES__",
+                                       "\n".join("- %s" % i.get("note", "") for i in issues)[:3000] or "（无）"))
+                    # 推理模型的思考会吞掉全部预算：max_tokens 给足才有正文可解析
+                    res = modelhub.chat(prov["id"], model, prompt, max_tokens=8000, timeout=300)
+                    if res.get("ok"):
+                        data = runner.extract_json(res.get("text") or "")
+                        raw = (data or {}).get("lessons") if isinstance(data, dict) else None
+                        if isinstance(raw, list):
+                            for x in raw[:5]:
+                                if isinstance(x, dict) and x.get("title") and x.get("content"):
+                                    lessons.append({"title": str(x["title"]), "content": str(x["content"]),
+                                                    "category": x.get("category")})
+                                    for lid in (x.get("violates") or [])[:MAX_LESSONS_INJECT]:
+                                        cited.add(str(lid).strip())
+            except Exception:
+                lessons = []
+        if not lessons:
+            lessons = _fallback_lessons(task, run)
+        n = 0
+        for x in lessons:
+            if upsert_lesson(task.get("type") or "*", x["title"], x["content"], source=run_id,
+                             category=x.get("category"), dim=x.get("dim")):
+                n += 1
+        return n
+    finally:
         try:
-            from . import modelhub, runner
-            orch = modelhub.resolve_orchestrator()
-            if orch:
-                prov, model = orch
-                verdict_txt = json.dumps({k: v[k] for k in v if k not in ("route", "chapter_scores")},
-                                         ensure_ascii=False)[:1200]
-                prompt = (LEARN_PROMPT.replace("__CATEGORIES__", "、".join(LESSON_CATEGORIES))
-                          .replace("__TYPE__", str(task.get("type")))
-                          .replace("__GOAL__", (task.get("goal") or "")[:600])
-                          .replace("__VERDICT__", verdict_txt)
-                          .replace("__ISSUES__",
-                                   "\n".join("- %s" % i.get("note", "") for i in issues)[:3000] or "（无）"))
-                # 推理模型的思考会吞掉全部预算：max_tokens 给足才有正文可解析
-                res = modelhub.chat(prov["id"], model, prompt, max_tokens=8000, timeout=300)
-                if res.get("ok"):
-                    data = runner.extract_json(res.get("text") or "")
-                    raw = (data or {}).get("lessons") if isinstance(data, dict) else None
-                    if isinstance(raw, list):
-                        for x in raw[:5]:
-                            if isinstance(x, dict) and x.get("title") and x.get("content"):
-                                lessons.append({"title": str(x["title"]), "content": str(x["content"]),
-                                                "category": x.get("category")})
+            # A 路（类别匹配）+ B 路（模型点名）取并集；两者都落空时本次不落账。
+            penalize, reward = _attribute(registered, by_id, issues, _collect_strengths(run))
+            named = set(penalize) | (cited & set(registered))   # 编造/已挤出 top-k 的编号不认账
+            note_outcome(run_id, outcome, penalize=sorted(named),
+                         reward=[i for i in reward if i not in named])
         except Exception:
-            lessons = []
-    if not lessons:
-        lessons = _fallback_lessons(task, run)
-    n = 0
-    for x in lessons:
-        if upsert_lesson(task.get("type") or "*", x["title"], x["content"], source=run_id,
-                         category=x.get("category"), dim=x.get("dim")):
-            n += 1
-    return n
+            pass
 
 
 def learn_async(run_id):
