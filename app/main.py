@@ -2612,6 +2612,7 @@ def main():
         pass
     from core import usage
     store.set_run_estimator(usage.estimate)
+    store.set_run_auditor(usage.audit_run)   # 终态把预估与真实用量逐条对账
     _step("正在回填用量台账…")
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）
     if n_bf:

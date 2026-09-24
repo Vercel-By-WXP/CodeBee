@@ -554,12 +554,23 @@ def load_all():
 # ---------------------------------------------------------------- 运行（含管理操作）
 
 _RUN_ESTIMATOR = None
+_RUN_AUDITOR = None
 
 
 def set_run_estimator(estimator):
     """由应用入口注入 ETA 估算器，保持存储层不反向依赖用量模块。"""
     global _RUN_ESTIMATOR
     _RUN_ESTIMATOR = estimator if callable(estimator) else None
+
+
+def set_run_auditor(auditor):
+    """注入 run 终态对账器（usage.audit_run），同样不让存储层依赖用量模块。"""
+    global _RUN_AUDITOR
+    _RUN_AUDITOR = auditor if callable(auditor) else None
+
+
+# run 终态集合：与 CAS 收口、状态回填共用同一份定义
+TERMINAL_STATUSES = ("done", "failed", "cancelled", "timeout")
 
 
 def create_run(kind, title, task_id=None, entry_id=None, op=None):
@@ -776,12 +787,14 @@ def update_run(run_id, expected_status=None, **fields):
     当前状态不等于 expected_status 则拒绝写入并返回 None，
     防止陈旧执行方（被取消的 worker、崩溃恢复前的旧线程）覆盖新状态
     ——防御模式「异步状态不是同步状态」。不传则保持原行为。"""
+    audit = None
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
             return None
         if expected_status is not None and run.get("status") != expected_status:
             return None
+        prev_status = str(run.get("status") or "")
         for k in ("error", "summary"):
             if isinstance(fields.get(k), str):
                 # 错误串多是我们自己拼的 CLI 尾巴（含 ANSI/覆写/乱码墙）：
@@ -813,6 +826,11 @@ def update_run(run_id, expected_status=None, **fields):
             if task:
                 task["status"] = st
                 _save_json(paths.TASKS_DIR / (tid + ".json"), task)
+        if st in TERMINAL_STATUSES and prev_status not in TERMINAL_STATUSES:
+            # 事后对账：只有「非终态 → 终态」这一次翻转才记账，重复写终态
+            # （UI 补写、迟到写手）不得二次入账。快照在锁内浅拷，锁外调用
+            # 审计器——审计器会回读 store，锁内调用即自锁。
+            audit = dict(run)
         if st in ("done", "failed", "cancelled", "timeout"):
             # run_end 钩子（2026-09-22）：终态即触发，后台跑副作用型脚本
             # （回写知识库等）；失败/超时静默，绝不拖慢收尾路径
@@ -831,6 +849,11 @@ def update_run(run_id, expected_status=None, **fields):
     # 「在跑」直到下一次无关 bump（2026-09-22 侧栏假在跑案）。
     # 调用都是步骤级边界，不会形成推送风暴；CAS 拒绝/无此 run 的早退
     # 路径不动版本号。
+    if audit is not None and _RUN_AUDITOR is not None:
+        try:
+            _RUN_AUDITOR(audit)
+        except Exception:
+            pass    # 对账永远不能拖垮终态收尾
     bump_state()
     return run
 

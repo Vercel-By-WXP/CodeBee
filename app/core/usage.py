@@ -702,7 +702,9 @@ def estimate(task_type="", days=90, mode="auto", thinking="standard", rounds=Non
 
     同一 run 的多条步骤记录加总为一个样本，优先用成功 run，给中位数/平均/P90。
     无历史样本时使用流程级保守基线；模式与思考程度只做透明倍率修正。"""
-    span = max(1, min(3650, int(days or 90)))
+    # days<=0（UI 的「全部」档）不能退化成「只扫今天」：基线会跟着窗口一起坍缩，
+    # 于是全历史被估成 480 秒常数。按保守年限扫全量。
+    span = 3650 if days is not None and int(days) <= 0 else max(1, min(3650, int(days or 90)))
     with LOCK:
         records = _iter_records(span)
     runs = {}
@@ -733,6 +735,8 @@ def estimate(task_type="", days=90, mode="auto", thinking="standard", rounds=Non
     except (TypeError, ValueError):
         pass
     if not basis:
+        # 全历史里一条同类样本都没有（article/doc 等低频类型）时才用基线，
+        # 并在 duration_source 上如实标 baseline，UI 必须点名它不是实测。
         baseline = _DURATION_BASELINES.get(task_type, 480)
         median_s = max(30, int(baseline * factor))
         return {"task_type": task_type or "", "days": span, "samples": 0,
@@ -775,3 +779,74 @@ def estimate(task_type="", days=90, mode="auto", thinking="standard", rounds=Non
         "duration_source": duration_source,
         "since": (datetime.date.today() - datetime.timedelta(days=span - 1)).isoformat(),
     }
+
+
+def _audit_file(day):
+    return paths.USAGE_DIR / ("estimate-audit-%s.jsonl" % day[:7].replace("-", ""))
+
+
+_AUDITED = {}      # run_id -> 落盘路径；幂等去重，上限后整体清空防无界增长
+_AUDIT_LIMIT = 4000
+TERMINAL_STATUSES = ("done", "failed", "cancelled", "timeout")
+
+
+def audit_run(run):
+    """事后对账：开跑前的预估快照 vs 本次真实用量，一条 run 一行。
+
+    预估值只取 run 上的快照（store.create_run 落的 estimated_duration_s 等），
+    绝不回读当前 estimate()——那会把本次刚写入的消耗算进"预估"，比值永远偏低。
+    快照缺失（回填前的老 run、非编排类）时如实标 basis=none，不猜一个数充数。
+    """
+    try:
+        run_id = str((run or {}).get("id") or "")
+        if not run_id or run_id in _AUDITED:
+            return None
+        status = str(run.get("status") or "")
+        if status not in TERMINAL_STATUSES:
+            return None
+        task_type = str(run.get("task_type") or (run.get("op") or {}).get("type") or "")
+        est_s = _parse_float(run.get("estimated_duration_s"))
+        est_p90 = _parse_float(run.get("estimated_p90_s"))
+        basis = "stored"
+        if est_s <= 0:
+            # 快照缺失时退而用同类型历史口径，但必须落 basis=recomputed 标出来源
+            snap = estimate(task_type=task_type, days=(run.get("estimate_days") or 90))
+            est_s = _parse_float(snap.get("estimated_duration_s"))
+            est_p90 = _parse_float(snap.get("p90_duration_s"))
+            basis = "recomputed" if est_s > 0 else "none"
+        actual_s = 0.0
+        actual_tokens = 0
+        for r in _iter_records(366):
+            if str(r.get("run_id") or "") != run_id:
+                continue
+            actual_s += max(0.0, _parse_float(r.get("duration_s")))
+            actual_tokens += _parse_int(r.get("total"))
+        rec = {
+            "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "day": time.strftime("%Y-%m-%d"),
+            "run_id": run_id[:64],
+            "task_id": str(run.get("task_id") or "")[:64],
+            "task_type": task_type[:32] or "unknown",
+            "status": status[:16],
+            "est_duration_s": round(est_s, 1),
+            "est_p90_s": round(est_p90, 1),
+            "est_source": str(run.get("estimate_source") or "")[:16],
+            "est_samples": _parse_int(run.get("estimate_samples")),
+            "est_basis": basis[:16],
+            "actual_duration_s": round(actual_s, 1),
+            "actual_tokens": actual_tokens,
+            "ratio": round(actual_s / est_s, 3) if est_s > 0 else 0.0,
+            "over_p90": bool(est_p90 > 0 and actual_s > est_p90),
+        }
+        line = json.dumps(rec, ensure_ascii=False)
+        path = _audit_file(rec["day"])
+        with LOCK:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        if len(_AUDITED) >= _AUDIT_LIMIT:
+            _AUDITED.clear()
+        _AUDITED[run_id] = str(path)
+        return rec
+    except Exception:
+        return None
