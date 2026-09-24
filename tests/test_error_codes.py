@@ -53,12 +53,15 @@ class TestSharedFailureClassification(BaseTest):
     """Transport/vendor failures share one stable vocabulary across layers."""
 
     def runTest(self):
-        from app.core.error_codes import ErrorCode, classify_error_text, error_code_value
+        from app.core.error_codes import (
+            ErrorCode, classify_error_text, error_code_value, is_auth_error,
+        )
 
         cases = (
             ("No API key found for the selected model", ErrorCode.MISSING_CREDENTIAL),
             ("HTTP 401: invalid_api_key", ErrorCode.AUTH),
             ("HTTP 403 Forbidden: request not allowed", ErrorCode.FORBIDDEN),
+            ("HTTP 403: invalid API key for this model", ErrorCode.FORBIDDEN),
             ("HTTP 429 rate limit exceeded", ErrorCode.RATE_LIMIT),
             ("unexpected status 403 forbidden", ErrorCode.FORBIDDEN),
             ("unexpected status 401", ErrorCode.AUTH),
@@ -74,6 +77,7 @@ class TestSharedFailureClassification(BaseTest):
                 self.assertEqual(classify_error_text(message), expected)
                 self.assertEqual(error_code_value(expected), expected.value)
         self.assertIsNone(classify_error_text("some unclassified vendor output"))
+        self.assertFalse(is_auth_error("HTTP 403: invalid API key for this model"))
         self.assertTrue(classify_error_text("Error: failed to run prompt: provider.connection_error: Connection error"))
         self.assertIsNone(classify_error_text("record 402 is missing from the report"))
         self.assertEqual(classify_error_text("HTTP 402 payment required"), ErrorCode.QUOTA)
@@ -87,6 +91,7 @@ class TestSharedFailureClassification(BaseTest):
             ("stream disconnected", ErrorCode.NETWORK),
             ("No API key found", ErrorCode.MISSING_CREDENTIAL),
             ("HTTP 403 Forbidden", ErrorCode.FORBIDDEN),
+            ("HTTP 403: invalid API key for this model", ErrorCode.FORBIDDEN),
         ):
             with self.subTest(message=message):
                 self.assertEqual(runner._classify_failure({

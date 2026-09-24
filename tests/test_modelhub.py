@@ -74,6 +74,28 @@ class TestModelHub(BaseTest):
         self.assertIsNone(modelhub.resolve_binding("claude-code"))
 
 
+class TestForbiddenKeyHealth(BaseTest):
+    def test_forbidden_with_api_key_wording_does_not_cool_key(self):
+        from app.core import modelhub
+
+        modelhub._FILE = self.data_dir / "models.json"
+        modelhub.upsert_provider({
+            "name": "403 gateway", "protocol": "openai",
+            "base_url": "https://gateway.test/v1", "api_key": FAKE_KEY,
+            "model": "m1",
+        })
+        pid = modelhub.providers()[0]["id"]
+        modelhub.key_op(pid, "add", key=FAKE_KEY2, label="backup")
+
+        modelhub.note_key_error(pid, "k1", "HTTP 403: invalid API key for this model")
+
+        provider = next(p for p in modelhub._load()["providers"] if p["id"] == pid)
+        first_key = next(k for k in provider["keys"] if k["id"] == "k1")
+        self.assertNotIn("cool_until", first_key)
+        available = modelhub._provider_keys(provider, available_only=True)
+        self.assertEqual([key["id"] for key in available], ["k1", "k2"])
+
+
 class TestCCSwitchImport(BaseTest):
     def runTest(self):
         from app.core import modelhub

@@ -106,6 +106,11 @@ def classify_error_text(error):
     text = str(error or "").lower()
     if not text:
         return None
+    # An explicit HTTP 403 is authoritative even when the provider describes the
+    # permission problem with credential wording (for example, "invalid API key
+    # for this model"). Do not cool down the key as an authentication failure.
+    if re.search(r"(?<!\d)403(?!\d)", text):
+        return ErrorCode.FORBIDDEN
     if any(marker in text for marker in _MISSING_CREDENTIAL):
         return ErrorCode.MISSING_CREDENTIAL
     if (any(marker in text for marker in _AUTH)
