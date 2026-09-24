@@ -201,3 +201,32 @@ class TestRepeatGuardMemoryBound(BaseTest):
             g.check("run1", "planner", f"prompt {i}")
         s = g.stats("run1", "planner")
         self.assertLessEqual(s["chain_len"], 10)
+
+
+class TestRepeatGuardAgentIsolation(BaseTest):
+    """换将是有效回退，不应继承前一执行者的重复预算。"""
+
+    def test_fallback_agent_gets_a_fresh_budget(self):
+        from app.core.repeat_guard import RepeatGuard
+
+        guard = RepeatGuard()
+        for _ in range(4):
+            result = guard.check("run", "draft-c9", "draft the chapter",
+                                 identity="pi")
+        self.assertFalse(result["should_stop"])
+
+        result = guard.check("run", "draft-c9", "draft the chapter",
+                             identity="claude-code")
+        self.assertEqual(result["count"], 1)
+        self.assertFalse(result["should_stop"])
+
+        for _ in range(3):
+            result = guard.check("run", "draft-c9", "draft the chapter",
+                                 identity="claude-code")
+        self.assertEqual(result["count"], 4)
+        self.assertFalse(result["should_stop"])
+
+        result = guard.check("run", "draft-c9", "draft the chapter",
+                             identity="claude-code")
+        self.assertEqual(result["count"], 5)
+        self.assertTrue(result["should_stop"])

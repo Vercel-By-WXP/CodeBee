@@ -400,7 +400,8 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                 pass
     else:
         # 5C：重复调用守门——指纹取原始 prompt（提醒注入 spawn 副本，不污染计数链）
-        guard = repeat_guard.check(run_id, role, prompt)
+        guard = repeat_guard.check(run_id, role, prompt,
+                                  identity=agent.get("id") or agent.get("kind") or "")
         if guard["should_stop"]:
             from .error_codes import ErrorCode
             res = {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
@@ -453,7 +454,7 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
     agent_pseudo = {"id": "builtin", "label": "CodeBee", "kind": "builtin", "mode": "real",
                     "provider": {"id": bi.get("provider_id") or "",
                                  "name": bi.get("provider_name") or ""}}
-    guard = repeat_guard.check(run_id, role, prompt)
+    guard = repeat_guard.check(run_id, role, prompt, identity="builtin")
     if guard["should_stop"]:
         from .error_codes import ErrorCode
         res = {"ok": False, "text": "", "usage": None, "cost_usd": 0.0, "tokens": 0,

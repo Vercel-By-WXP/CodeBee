@@ -5,8 +5,9 @@
 参考 dsh packages/guard/repeat-tool-reminder/src/index.ts：
   监听 tools/post-execute，按 (tool, canonical_args) 跟踪，3/5/8 阈值注入 user-message 提醒。
 
-Tutti 的 "tool" 对应到 "step role"，"canonical_args" 对应到 prompt 模板指纹。
-步骤级调用代价远高于普通工具调用，因此第 3 次提醒、第 5 次强制停止。
+Tutti 的 "tool" 对应到 step role + 执行者身份，"canonical_args" 对应到 prompt
+模板指纹。不同 CLI 间的换将是有效的回退，不能共享同一个重复预算。步骤级调用
+代价远高于普通工具调用，因此第 3 次提醒、第 5 次强制停止。
 """
 from __future__ import annotations
 
@@ -31,7 +32,7 @@ STOP_TEMPLATE = (
 )
 
 
-def _prompt_fingerprint(prompt: str) -> str:
+def _prompt_fingerprint(prompt: str, identity: str = "") -> str:
     """prompt 指纹：用前 200 字符 + 总长度（CLI prompt 头几行通常是模板部分）。
 
     不做严格 canonical args 比对（CLI prompt 通常很长，且 dsh 也用 JSON.stringify）；
@@ -40,11 +41,12 @@ def _prompt_fingerprint(prompt: str) -> str:
     用 SHA-256 取前 12 字符（96 bit）：48 亿分之一碰撞概率对去重足够；不追求密码学强度。
     """
     head = (prompt or "")[:200]
-    return hashlib.sha256(f"{head}|{len(prompt or '')}".encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha256(
+        f"{identity}\0{head}|{len(prompt or '')}".encode("utf-8")).hexdigest()[:12]
 
 
 class RepeatGuard:
-    """每 (run_id, step_role) 独立计数；key = prompt 指纹。
+    """每 (run_id, step_role) 的最近执行链独立计数；指纹包含执行者身份。
 
     计数仅统计相同 key 连续出现；新 prompt 会重置。
     """
@@ -56,13 +58,16 @@ class RepeatGuard:
         # chain[(run_id, role)] = [(ts, fingerprint)]
         self._chains: dict = {}
 
-    def check(self, run_id: str, role: str, prompt: str) -> dict:
+    def check(self, run_id: str, role: str, prompt: str, *, identity: str = "") -> dict:
         """检查并更新 (run_id, role) 的连续计数。
+
+        identity 标识实际执行 CLI/agent。相同 prompt 换到其他执行者属于回退，
+        会从新的连续链计数；同一执行者重复相同调用仍按阈值停止。
 
         Returns:
             {"count": int, "reminder": str | None, "should_stop": bool}
         """
-        fp = _prompt_fingerprint(prompt)
+        fp = _prompt_fingerprint(prompt, str(identity or ""))
         chain_key = (run_id, role)
         with self._lock:
             chain = self._chains.setdefault(chain_key, [])
