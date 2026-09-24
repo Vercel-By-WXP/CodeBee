@@ -126,3 +126,34 @@ def chapter_manage_url(book):
     if bid:
         return "https://fanqienovel.com/main/writer/chapter-manage/" + bid
     return CONFIG["home"] + "book-manage"
+
+
+def resolve_book_id(page, book):
+    """登记缺 book_id 时按书名在作家后台找回：点书卡进详情，从 URL 提取。
+
+    建书成功但 id 提取落空（跳转链没走完/auto_submit=false 人工提交）的书，
+    发章前经 manager._resolve_book_id 调到这里补账；找不回返回空串不拦死。"""
+    import re
+    import time
+    from . import flow as _flow
+    title = str((book or {}).get("title") or "").strip()
+    if not title:
+        return ""
+    try:
+        page.navigate(CONFIG["home"], timeout=30)
+    except Exception:
+        return ""
+    r = None
+    for _try in range(6):                   # 书列表慢渲染
+        r = page.call(_flow._click_match_js(), [title], 300)
+        if (r or {}).get("ok"):
+            break
+        time.sleep(1.0)
+    if not (r or {}).get("ok"):
+        return ""
+    time.sleep(2.5)                         # 详情页跳转收尾
+    m = re.search(r"book-info/(\d+)|chapter-manage/(\d+)|writer/(\d+)/publish",
+                  str(page.url() or ""))
+    if not m:
+        return ""
+    return m.group(1) or m.group(2) or m.group(3) or ""

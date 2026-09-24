@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 
 from .browser import BrowserError
@@ -122,6 +123,13 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     url = url.replace("{%s}" % k, str(v))
                 for k, v in (values or {}).items():   # editor_url/draft_url 等任务级占位
                     url = url.replace("{%s}" % k, str(v))
+                # 占位符没被吃掉=values 缺键（平台模块缺 URL 生成器/登记不全）。
+                # 直接放行会让浏览器停在 about:blank，到 url_any 才误报
+                # 「未登录或改版」——在这里点名缺哪个键（0924 番茄三连败）。
+                left = re.findall(r"\{[A-Za-z_][A-Za-z0-9_]*\}", url)
+                if left:
+                    raise FlowError("URL 占位符 %s 没有对应值：%s"
+                                    % (",".join(left), url[:90]))
                 note(i, "打开 %s" % url)
                 # 重页（编辑器/管理列表）可按步放宽；缺省 45s（30s 对慢网偏紧）
                 page.navigate(url, timeout=float(st.get("timeout") or 45))
@@ -410,7 +418,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     else:
                         msg += "（常见原因：表单校验未过，如简介字数不足）"
                     raise FlowError(msg)
-                note(i, "页面标记校验通过")
+                note(i, "页面标记校验通过（%s）" % u[:80])
             else:
                 raise FlowError("未知步骤类型：%s" % act)
         except FlowError:

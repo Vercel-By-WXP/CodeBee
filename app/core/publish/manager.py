@@ -19,6 +19,7 @@ view()（SSE/轮询）看进度；线程内任何异常都落终态，绝不悬�
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 
@@ -419,14 +420,21 @@ def create_book_async(task_id, plat, auto_submit=False):
                           shot=lambda n: page.screenshot(ledger.shot_path(plat, task_id, n)),
                           log=logs.append)
             # book_id：创建成功后平台跳书籍详情/编辑器，从 URL 提取
-            # （番茄 book-info/<id>；七猫 information?id=<id>）。
-            # 提取不到就先用书名登记，发章按书名找书。
+            # （番茄 book-info/<id>；七猫 information?id=<id>）。url_any 过了
+            # 但页面还在跳转链上时再等几轮；提取落空把最终 URL 记进日志，
+            # 别再静默登记空 id（发章只能兜底找书，直达编辑器就废了）。
             book_id = ""
             try:
-                m_url = re.search(r"book-info/(\d+)|information\?id=(\d+)",
-                                  str(page.url() or ""))
-                if m_url:
-                    book_id = m_url.group(1) or m_url.group(2)
+                for _try in range(6):
+                    m_url = re.search(r"book-info/(\d+)|information\?id=(\d+)",
+                                      str(page.url() or ""))
+                    if m_url:
+                        book_id = m_url.group(1) or m_url.group(2)
+                        break
+                    time.sleep(0.8)
+                if not book_id:
+                    logs.append("book_id 提取落空，最终页面：%s"
+                                % str(page.url() or "")[:120])
             except Exception:
                 pass
             ledger.record(plat, "create_book", task_id=task_id, title=book_name,
@@ -515,6 +523,32 @@ def _login_guard(plat):
         return False, "浏览器不可用：%s" % e
 
 
+def _url_values(mod, book):
+    """平台模块提供的 URL 占位值（chapter_manage_url/draft_url/editor_url），
+    逐键取、缺哪个跳哪个。曾按序连赋 + except AttributeError 兜底：draft_url
+    只有七猫有，番茄走到第二行即断，editor_url 永远赋不上——{editor_url}
+    残进 navigate，页面停在 about:blank 误报「未登录或改版」（0924 三连败）。"""
+    out = {}
+    for key in ("chapter_manage_url", "draft_url", "editor_url"):
+        fn = getattr(mod, key, None)
+        if callable(fn):
+            out[key] = fn(book)
+    return out
+
+
+def _resolve_book_id(plat, page, book):
+    """登记缺 book_id 时按书名在作家后台找回（平台模块可选提供
+    resolve_book_id）。找不回返回空串：流程按无 id 兜底路径继续，让后续
+    步骤如实报错，绝不在这里拦死。找回后回写 books.json，下次直达。"""
+    fn = getattr(PLATFORMS[plat], "resolve_book_id", None)
+    if not callable(fn) or str((book or {}).get("book_id") or "").strip():
+        return ""
+    try:
+        return str(fn(page, book) or "").strip()
+    except Exception:
+        return ""
+
+
 # ---------------------------------------------------------------- 动作：发章
 def read_chapter(fp):
     """读章节文件 → (章号, 标题, 正文, 错误)。UTF-8→GBK 回退（章稿乱码教训）。
@@ -584,17 +618,18 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False):
     mod = PLATFORMS[plat]
     values = {"chapter_title": title, "chapter_body": body,
               "book_name": book.get("title") or ""}
-    try:                                   # verify/draft 页 URL（流程占位）
-        values["chapter_manage_url"] = mod.chapter_manage_url(book)
-        values["draft_url"] = mod.draft_url(book)
-        values["editor_url"] = mod.editor_url(book)
-    except AttributeError:
-        pass
+    values.update(_url_values(mod, book))   # verify/draft/editor 页 URL（流程占位）
     logs = []
 
     def run():
         try:
             b, page = _open_page(plat)
+            bid = _resolve_book_id(plat, page, book)
+            if bid:                          # 建书时没提上 id 的书，发章前补账
+                book = dict(book, book_id=bid)
+                values.update(_url_values(mod, book))
+                ledger.save_book(task_id, plat, book)
+                logs.append("已按书名找回 book_id=%s 并更新登记" % bid)
             flow.run_flow(page, load_flow(plat, "upload_chapter"), values=values,
                           config=mod.CONFIG, auto_submit=auto_submit,
                           shot=lambda n: page.screenshot(ledger.shot_path(plat, task_id, n)),

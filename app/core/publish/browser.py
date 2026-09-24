@@ -342,6 +342,12 @@ class Page:
                 pass
             time.sleep(0.4)
             return
+        host = _up(url).netloc
+        if not host:
+            # 无主机名=无效地址（占位符未替换等）。放行会在下方被「host 为空
+            # 视为已到位」吞掉——页面停在 about:blank 还假装导航成功（0924 案）。
+            raise BrowserError("无效的导航地址（无主机名，占位符可能未替换）：%s"
+                               % str(url)[:90])
         try:
             self.send("Page.navigate", {"url": url}, timeout=timeout)
         except BrowserError:

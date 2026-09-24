@@ -70,6 +70,16 @@ def main():
         pg = b.new_page("http://127.0.0.1:%d/" % port)
         check("evaluate 1+1", lambda: (pg.evaluate("1+1"), None)[1] if pg.evaluate("1+1") == 2 else (_ for _ in ()).throw(AssertionError("!=2")))
         check("url", lambda: (_ for _ in ()).throw(AssertionError(pg.url())) if "127.0.0.1" not in pg.url() else None)
+
+        def _nav_invalid():
+            # 无主机名（占位符未替换的残串）：必须当场报错，不能假装
+            # 导航成功让页面停在 about:blank（0924 番茄发章三连败案）
+            try:
+                pg.navigate("{editor_url}")
+            except BrowserError as e:
+                return str(e)[:60]
+            raise AssertionError("无效地址应抛 BrowserError")
+        check("navigate 拒无效地址", _nav_invalid)
         pg.wait_for("#title")
         check("fill input", lambda: (pg.fill("#title", u"测试书名"), None)[1])
         check("read value", lambda: (_ for _ in ()).throw(AssertionError(pg.value("#title"))) if pg.value("#title") != u"测试书名" else None)

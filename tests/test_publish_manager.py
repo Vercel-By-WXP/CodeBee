@@ -323,6 +323,76 @@ def test_flow_submit_gate():
            % (getattr(pg, "_clicks", 0), n2))
 
 
+# ------------------------------------------------- 发章 about:blank 三连败修复（2026-09-24）
+
+def test_url_values_per_platform():
+    """URL 占位值逐键取：平台缺 draft_url 不能连坐后面的 editor_url。
+
+    番茄曾因按序连赋 + AttributeError 兜底拿不到 editor_url——{editor_url}
+    残串进 navigate，页面停在 about:blank 误报「未登录或改版」。"""
+    from core.publish import fanqie as fq, qimao as qm
+    vq = manager._url_values(qm, {"book_id": "123", "title": "书"})
+    expect(set(vq) == {"chapter_manage_url", "draft_url", "editor_url"},
+           "七猫三键齐：%s" % sorted(vq))
+    vf = manager._url_values(fq, {"book_id": "456", "title": "书"})
+    expect("editor_url" in vf and "/publish/" in vf["editor_url"],
+           "番茄 editor_url 必须在场：%s" % vf)
+    expect("draft_url" not in vf, "番茄没有 draft_url，跳过不报错")
+    expect("chapter-manage/456" in vf["chapter_manage_url"], "管理页 URL 带 id")
+
+
+def test_flow_navigate_placeholder_guard():
+    """navigate 占位符没被吃掉：点名缺的键，别放到 url_any 才误报。"""
+    from core.publish import flow
+    try:
+        flow.run_flow(_FlowPage(), [{"do": "navigate", "url": "{editor_url}"}],
+                      values={})
+        raise AssertionError("占位符残留应抛 FlowError")
+    except flow.FlowError as e:
+        expect("editor_url" in str(e) and "占位符" in str(e),
+               "报错点名缺的键：%s" % e)
+
+
+class _ResolvePage:
+    """resolve_book_id 假页：导航记录 + 点击恒中 + 可控最终 URL。"""
+
+    def __init__(self, final_url=""):
+        self._final = final_url
+        self.navs = []
+
+    def navigate(self, url, timeout=30):
+        self.navs.append(url)
+
+    def call(self, js, *a, **kw):
+        return {"ok": True}
+
+    def url(self):
+        return self._final
+
+
+def test_resolve_book_id_by_title():
+    """登记缺 book_id：按书名在后台找回，提不到返回空串不拦死。"""
+    pg = _ResolvePage("https://fanqienovel.com/main/writer/book-info/71430320")
+    bid = manager._resolve_book_id("fanqie", pg,
+                                   {"book_id": "", "title": "戍边骑奴"})
+    expect(bid == "71430320", "从详情 URL 提取 id：%s" % bid)
+    expect(pg.navs and "fanqienovel.com/main/writer/" in pg.navs[0],
+           "先开后台首页：%s" % pg.navs)
+    bid3 = manager._resolve_book_id(
+        "fanqie", _ResolvePage("https://fanqienovel.com/main/writer/chapter-manage/99"),
+        {"book_id": "", "title": "书"})
+    expect(bid3 == "99", "章节管理页形态也能提：%s" % bid3)
+    bid2 = manager._resolve_book_id("fanqie", _ResolvePage(""),
+                                    {"book_id": "", "title": "书"})
+    expect(bid2 == "", "提不到返回空串不拦死：%r" % bid2)
+    pg4 = _ResolvePage("https://fanqienovel.com/main/writer/book-info/1")
+    bid4 = manager._resolve_book_id("fanqie", pg4, {"book_id": "7", "title": "书"})
+    expect(bid4 == "" and pg4.navs == [], "已有 id 短路，不动浏览器")
+    expect(manager._resolve_book_id("qimao", _ResolvePage(),
+                                    {"book_id": "", "title": "x"}) == "",
+           "平台无钩子静默跳过")
+
+
 def main():
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
