@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import base64
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -37,6 +38,7 @@ class FakeZen:
         self.old_sid = ""
         self.old_session_n = 0
         self.web_style = ""     # ""=根路径不特殊应答；"pathinfo"/"get"=按形态回登录跳转
+        self.files = {}         # 路径 → 原始字节（bug 截图下载用，免 Token 直服）
 
     def handler(self):
         srv = self
@@ -186,6 +188,15 @@ class FakeZen:
                     # web 根按配置的路由形态回登录跳转（bug 链接形态探测的目标应答）
                     self._js_html("/zentao/user-login-td.html" if srv.web_style == "pathinfo"
                                   else "index.php?m=user&f=login")
+                    return
+                fp = urlparse(self.path).path
+                if fp in srv.files:
+                    raw = srv.files[fp]
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.end_headers()
+                    self.wfile.write(raw)
                     return
                 if srv.old:
                     p = urlparse(self.path).path.lstrip("/")
@@ -876,7 +887,7 @@ class TestFailureEscalate(ZenCase):
 
 
 class TestFailureNoOwner(ZenCase):
-    """失败但没配负责人：只评论（commented），不误转。"""
+    """失败但没配负责人：只评论（commented），不误转，且不清空指派人。"""
     def runTest(self):
         self.configure(profiles=[self.profile(owners={})])
         self.bug(511)
@@ -886,9 +897,51 @@ class TestFailureNoOwner(ZenCase):
         self.zen_mod.scan_now()
         c = self.claim()
         self.assertEqual(c["state"], "commented")
+        self.assertIn("负责人未配置", c["note"])
         puts = self.put_calls("511")
         self.assertEqual(len(puts), 1)
-        self.assertNotIn("assignedTo", puts[0][2])
+        self.assertEqual(puts[0][2].get("assignedTo"), "coder",
+                         "空 target 只评论必须带回当前指派人（禅道 PUT 缺 assignedTo 会清空指派）")
+        self.assertEqual(self.fz.bugs["511"]["assignedTo"]["account"], "coder")
+        self.assertEqual(self.resolve_calls("511"), [])
+
+
+class TestFailureInternalCrash(ZenCase):
+    """CodeBee 自身崩溃（run.error 是内部异常）：只评论不转派（#27783 案），
+    评论注明工具异常且带回当前指派人。"""
+    def runTest(self):
+        self.configure()
+        self.bug(521)
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.store.update_run(
+            c["tasks"][0]["run_id"], status="failed",
+            error="NameError(\"name '_TRANSIENT' is not defined\")")
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertEqual(c["state"], "commented", "内部异常不转派")
+        self.assertIn("内部异常", c["note"])
+        puts = self.put_calls("521")
+        self.assertEqual(len(puts), 1)
+        self.assertEqual(puts[0][2].get("assignedTo"), "coder", "崩溃评论不清指派人")
+        self.assertIn("工具自身异常", puts[0][2]["comment"])
+        self.assertIn("未成功", puts[0][2]["comment"])
+        self.assertEqual(self.resolve_calls("521"), [])
+
+
+class TestInternalCrashDetector(ZenCase):
+    """内部崩溃判别：repr 异常/Python traceback 算；CLI 冒号形态与普通
+    错误文案不算（那是真修过）。"""
+    def runTest(self):
+        f = self.zen_mod._looks_internal_crash
+        self.assertTrue(f("NameError(\"name '_TRANSIENT' is not defined\")"))
+        self.assertTrue(f("KeyError('run_id')"))
+        self.assertTrue(f("Traceback (most recent call last):\n  File \"x.py\"\nNameError: x"))
+        self.assertFalse(f("验证命令退出码 1"))
+        self.assertFalse(f("TimeoutError: 连接超时"))
+        self.assertFalse(f("运行状态 failed"))
+        self.assertFalse(f(""))
+        self.assertFalse(f(None))
 
 
 class TestNeedManualAndRetry(ZenCase):
@@ -1122,3 +1175,213 @@ class TestModuleFetchOld(ZenCase):
         r3 = self.zen_mod.fetch_modules(1)
         self.assertFalse(r3["ok"])
         self.assertIn("脚本", r3["error"])
+
+
+# ---------------------------------------------------------------- 图片证据（#27754 案）
+
+_PNG1 = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+         b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+         b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82")
+
+
+class TestImageEvidenceHelpers(BaseTest):
+    """纯函数：图片指涉识别 + src 抽取 + 魔数判型 + data URI。"""
+    def runTest(self):
+        from app.core import zentao
+        bug_img_tag = {"title": "功能未对齐", "steps": "<p>看图</p><img src='/a.png'/>"}
+        bug_img_word = {"title": "功能未对齐，具体如图。", "steps": "<p>打开页面</p>"}
+        bug_plain = {"title": "接口 500", "steps": "<p>调用报错</p>"}
+        bug_log_file = {"title": "报错", "steps": "<p>x</p>",
+                        "files": {"1": {"title": "run.log", "extension": "log"}}}
+        bug_png_file = {"title": "报错", "steps": "<p>x</p>",
+                        "files": {"2": {"title": "截图.png", "extension": "png"}}}
+        self.assertTrue(zentao._bug_mentions_images(bug_img_tag))
+        self.assertTrue(zentao._bug_mentions_images(bug_img_word))
+        self.assertFalse(zentao._bug_mentions_images(bug_plain))
+        self.assertFalse(zentao._bug_mentions_images(bug_log_file), "日志附件不算图片证据")
+        self.assertTrue(zentao._bug_mentions_images(bug_png_file))
+        srcs = zentao._img_srcs('<img src="/a.png" ><img data-x="1" SRC=\'/b.jpg\'>'
+                                '<img src="data:image/png;base64,QUJD">')
+        self.assertEqual(srcs, ["/a.png", "/b.jpg", "data:image/png;base64,QUJD"])
+        self.assertEqual(zentao._img_mime(_PNG1), "image/png")
+        self.assertEqual(zentao._img_mime(b"<html>404</html>"), "")
+        mime, raw = zentao._decode_data_uri("data:image/png;base64," +
+                                            base64.b64encode(_PNG1).decode())
+        self.assertEqual((mime, raw[:4]), ("image/png", _PNG1[:4]))
+        self.assertEqual(zentao._file_entry_urls("9", {"extension": "png"}),
+                         ["/file-read-9.png", "/file-download-9.png"])
+
+
+class TestTriageImageGuard(ZenCase):
+    """图片守卫：描述指向截图但读不到 → unknown 留人工，绝不调 LLM 盲判。"""
+    def runTest(self):
+        cfg = self.configure(profiles=[self.profile(module_routes=[])])
+        prof = self.zen_mod._profiles(cfg)[0]
+        self.bug(801, title="【客户管理】【客户跟进记录】功能未对齐，具体如图。",
+                 steps="<p>操作后对比截图</p><img src='/file-read-555.png'/>")
+        bug = self.fz.bugs["801"]
+        # 图片 404、详情也无附件 → 守卫触发
+        self.zen_mod._IMG_CACHE.clear()
+        tri = self.zen_mod._ai_triage(bug, prof)
+        self.assertEqual(tri["side"], "unknown")
+        self.assertIn("图片", tri["reason"])
+        # 端到端：need_manual，不建任务不转派
+        self.assertTrue(self.zen_mod.scan_now()["ok"])
+        c = self.claim()
+        self.assertEqual(c["state"], "need_manual")
+        self.assertIn("图片", c["note"])
+        self.assertEqual(c.get("tasks"), [])
+        self.assertEqual(self.put_calls("801"), [], "守卫路径不得转派")
+
+
+class TestTriageWithImages(ZenCase):
+    """图片抓到 → 随 chat 透传给排查模型；判定结果带 imgs；转派文案标注。"""
+    def runTest(self):
+        from app.core import modelhub
+        self.fz.files["/file-read-555.png"] = _PNG1
+        cfg = self.configure(profiles=[self.profile(module_routes=[])])
+        prof = self.zen_mod._profiles(cfg)[0]
+        self.bug(802, title="客户跟进记录字段缺失，具体如图。",
+                 steps="<p>新建跟进记录缺字段</p><img src='/file-read-555.png'/>")
+        bug = self.fz.bugs["802"]
+        calls = []
+        orig = (modelhub.resolve_orchestrator, modelhub.chat, modelhub._model_image_in)
+        modelhub.resolve_orchestrator = lambda: (
+            {"id": "p", "api_key": "k", "allow_private": True}, "m")
+        modelhub._model_image_in = lambda prov, model: True
+
+        def fake_chat(pid, model, prompt, max_tokens=2048, timeout=120, cache_ttl=0,
+                      on_delta=None, reasoning_effort="", images=None):
+            calls.append({"prompt": prompt, "images": images})
+            return {"ok": True, "tokens": 10,
+                    "text": json.dumps({"side": "frontend", "reason": "截图显示前端缺字段"})}
+
+        modelhub.chat = fake_chat
+        try:
+            self.zen_mod._IMG_CACHE.clear()
+            tri = self.zen_mod._ai_triage(bug, prof)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(tri["side"], "frontend")
+            self.assertEqual(tri["imgs"], 1)
+            self.assertEqual(len(calls[0]["images"]), 1, "截图必须随 chat 透传")
+            self.assertEqual(calls[0]["images"][0][0], "image/png")
+            self.assertIn("先看图", calls[0]["prompt"])
+            # 端到端：转派前端，文案带截图标注（stub 必须盖住扫描全程）
+            self.assertTrue(self.zen_mod.scan_now()["ok"])
+            c = self.claim()
+            self.assertEqual(c["state"], "transferred")
+            puts = self.put_calls("802")
+            self.assertEqual(len(puts), 1)
+            self.assertIn("fe-owner", json.dumps(puts[0][2], ensure_ascii=False))
+            self.assertIn("1 张 bug 截图", str(puts[0][2].get("comment") or ""))
+        finally:
+            (modelhub.resolve_orchestrator, modelhub.chat,
+             modelhub._model_image_in) = orig
+
+
+class TestTriageFilesFallback(ZenCase):
+    """steps 无内嵌图 → 回落详情 files 附件取图（REST 形状 files 直接在 bug 里）。"""
+    def runTest(self):
+        from app.core import modelhub
+        self.fz.files["/file-read-9.png"] = _PNG1
+        cfg = self.configure(profiles=[self.profile(module_routes=[])])
+        prof = self.zen_mod._profiles(cfg)[0]
+        self.bug(803, title="页面渲染不对，见附件截图。",
+                 steps="<p>样式错乱，见附件</p>",
+                 files={"9": {"title": "截图.png", "extension": "png"}})
+        bug = self.fz.bugs["803"]
+        calls = []
+        orig = (modelhub.resolve_orchestrator, modelhub.chat, modelhub._model_image_in)
+        modelhub.resolve_orchestrator = lambda: (
+            {"id": "p", "api_key": "k", "allow_private": True}, "m")
+        modelhub._model_image_in = lambda prov, model: True
+
+        def fake_chat(pid, model, prompt, max_tokens=2048, timeout=120, cache_ttl=0,
+                      on_delta=None, reasoning_effort="", images=None):
+            calls.append({"prompt": prompt, "images": images})
+            return {"ok": True, "tokens": 5,
+                    "text": json.dumps({"side": "backend", "reason": "数据缺失"})}
+
+        modelhub.chat = fake_chat
+        try:
+            self.zen_mod._IMG_CACHE.clear()
+            tri = self.zen_mod._ai_triage(bug, prof)
+        finally:
+            (modelhub.resolve_orchestrator, modelhub.chat,
+             modelhub._model_image_in) = orig
+        self.assertEqual(tri["side"], "backend")
+        self.assertEqual(tri["imgs"], 1, "附件图片要经 files 回落取到")
+        self.assertEqual(len(calls[0]["images"]), 1)
+
+
+class TestNoVisionModelGuard(ZenCase):
+    """图片抓到了但排查模型不支持 image_in → 留人工并提示开能力，不烧文本盲判。"""
+    def runTest(self):
+        from app.core import modelhub
+        self.fz.files["/file-read-555.png"] = _PNG1
+        cfg = self.configure(profiles=[self.profile(module_routes=[])])
+        prof = self.zen_mod._profiles(cfg)[0]
+        self.bug(804, title="功能未对齐，如图。",
+                 steps="<p><img src='/file-read-555.png'/></p>")
+        bug = self.fz.bugs["804"]
+        called = []
+        orig = (modelhub.resolve_orchestrator, modelhub.chat, modelhub._model_image_in)
+        modelhub.resolve_orchestrator = lambda: (
+            {"id": "p", "api_key": "k", "allow_private": True}, "m")
+        modelhub._model_image_in = lambda prov, model: False
+
+        def fake_chat(*a, **kw):
+            called.append(1)
+            return {"ok": False, "error": "不应被调用"}
+
+        modelhub.chat = fake_chat
+        try:
+            self.zen_mod._IMG_CACHE.clear()
+            tri = self.zen_mod._ai_triage(bug, prof)
+        finally:
+            (modelhub.resolve_orchestrator, modelhub.chat,
+             modelhub._model_image_in) = orig
+        self.assertEqual(called, [], "无视觉能力不得发起排查调用")
+        self.assertEqual(tri["side"], "unknown")
+        self.assertIn("image_in", tri["reason"])
+
+
+class TestFixTaskCarriesImages(ZenCase):
+    """修复任务带截图：_launch_fix 把 bug 图落 _attachments/ 并注入 goal 提示。"""
+    def runTest(self):
+        self.fz.files["/file-read-555.png"] = _PNG1
+        cfg = self.configure(profiles=[self.profile(
+            module_routes=[], repos={"backend": {"git_rev": "r1"}})])
+        prof = self.zen_mod._profiles(cfg)[0]
+        self.bug(805, title="列表渲染缺列，如图。",
+                 steps="<p><img src='/file-read-555.png'/></p>")
+        bug = self.fz.bugs["805"]
+        self.zen_mod._launch_fix = self._orig_launch      # 换回真实现
+        self.zen_mod._IMG_CACHE.clear()
+        task, run = self.zen_mod._launch_fix(bug, prof, "backend", cfg)
+        atts = task.get("attachments") or []
+        self.assertEqual(len(atts), 1)
+        self.assertEqual(atts[0]["path"], "_attachments/zenbug805-1.png")
+        self.assertIn("先读图再动手", task["goal"])
+        self.assertTrue((self.workdir / "_attachments" / "zenbug805-1.png").is_file())
+
+
+class TestChatUserContentShapes(BaseTest):
+    """modelhub._chat_user_content：三协议有图/无图形状。"""
+    def runTest(self):
+        from app.core.modelhub import _chat_user_content as c
+        self.assertEqual(c("openai", "hi", None), "hi")
+        self.assertEqual(c("anthropic", "hi", None), "hi")
+        self.assertEqual(c("google", "hi", None), [{"text": "hi"}])
+        imgs = [("image/png", "QUJD")]
+        o = c("openai", "hi", imgs)
+        self.assertEqual(o[0], {"type": "text", "text": "hi"})
+        self.assertEqual(o[1]["type"], "image_url")
+        self.assertEqual(o[1]["image_url"]["url"], "data:image/png;base64,QUJD")
+        a = c("anthropic", "hi", imgs)
+        self.assertEqual(a[1]["type"], "image")
+        self.assertEqual(a[1]["source"]["media_type"], "image/png")
+        self.assertEqual(a[1]["source"]["data"], "QUJD")
+        g = c("google", "hi", imgs)
+        self.assertEqual(g[0], {"text": "hi"})
+        self.assertEqual(g[1]["inline_data"], {"mime_type": "image/png", "data": "QUJD"})

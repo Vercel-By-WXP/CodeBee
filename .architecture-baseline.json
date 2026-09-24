@@ -15,6 +15,10 @@
     },
     {
       "kind": "cycle",
+      "text": "cycle: jobs -> pipeline -> zentao -> jobs"
+    },
+    {
+      "kind": "cycle",
       "text": "cycle: manager -> modelhub -> manager"
     },
     {
@@ -92,6 +96,10 @@
     {
       "kind": "layer",
       "text": "layer: branching(L99) -> store(L1) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: branching(L99) -> token_meter(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -359,6 +367,10 @@
     },
     {
       "kind": "layer",
+      "text": "layer: pipeline(L3) -> zentao(L2) 反向依赖"
+    },
+    {
+      "kind": "layer",
       "text": "layer: planner(L1) -> settings_schema(L0) 反向依赖"
     },
     {
@@ -539,45 +551,45 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/manager.py 1950 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/manager.py 1996 行（上限 1200，历史最高 0）",
       "file": "app/core/manager.py",
-      "lines": 1950
+      "lines": 1996
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/modelhub.py 3221 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/modelhub.py 3303 行（上限 1200，历史最高 0）",
       "file": "app/core/modelhub.py",
-      "lines": 3221
+      "lines": 3303
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/pipeline.py 4094 行（上限 1200，历史最高 4184）",
+      "text": "lines: app/core/pipeline.py 4483 行（上限 1200，历史最高 0）",
       "file": "app/core/pipeline.py",
-      "lines": 4184
+      "lines": 4483
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/runner.py 1666 行（上限 1200，历史最高 1720）",
+      "text": "lines: app/core/runner.py 2019 行（上限 1200，历史最高 0）",
       "file": "app/core/runner.py",
-      "lines": 1720
+      "lines": 2019
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/store.py 1837 行（上限 1200，历史最高 1841）",
+      "text": "lines: app/core/store.py 1852 行（上限 1200，历史最高 0）",
       "file": "app/core/store.py",
-      "lines": 1841
+      "lines": 1852
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/zentao.py 1977 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/zentao.py 2421 行（上限 1200，历史最高 0）",
       "file": "app/core/zentao.py",
-      "lines": 1977
+      "lines": 2421
     },
     {
       "kind": "lines",
-      "text": "lines: app/main.py 2725 行（上限 1200，历史最高 2728）",
+      "text": "lines: app/main.py 2832 行（上限 1200，历史最高 0）",
       "file": "app/main.py",
-      "lines": 2728
+      "lines": 2832
     },
     {
       "kind": "lines",

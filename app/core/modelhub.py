@@ -3096,32 +3096,68 @@ def resolve_orchestrator():
     return prov, model
 
 
-def _chat_cache_path(provider_id, model_name, prompt, max_tokens, reasoning_effort=""):
-    """§07 T2.2：精确匹配响应缓存的落盘路径（只缓存 ok 的幂等调用）。"""
+def _chat_user_content(proto, prompt, images):
+    """images=[(mime, b64)] 时构造多模态 user content；无图返回原样文本。
+
+    openai/anthropic 的 content 变数组块，google 走 parts；形状与
+    builtin_agent 的对话消息一致（图只进 user 消息）。"""
+    if not images:
+        return [{"text": prompt}] if proto == "google" else prompt
+    if proto == "google":
+        parts = [{"text": prompt}]
+        for mime, b64 in images:
+            parts.append({"inline_data": {"mime_type": mime, "data": b64}})
+        return parts
+    blocks = [{"type": "text", "text": prompt}]
+    for mime, b64 in images:
+        if proto == "anthropic":
+            blocks.append({"type": "image",
+                           "source": {"type": "base64", "media_type": mime,
+                                      "data": b64}})
+        else:
+            blocks.append({"type": "image_url",
+                           "image_url": {"url": "data:%s;base64,%s" % (mime, b64)}})
+    return blocks
+
+
+def _chat_cache_path(provider_id, model_name, prompt, max_tokens, reasoning_effort="",
+                     images=None):
+    """§07 T2.2：精确匹配响应缓存的落盘路径（只缓存 ok 的幂等调用）。
+    images 参与键（同 prompt 不同图的响应可能不同）。"""
     import hashlib as _h
+    img_sig = ""
+    if images:
+        try:
+            img_sig = _h.sha256("|".join("%s|%s" % (m, b) for m, b in images)
+                                .encode("utf-8")).hexdigest()[:16]
+        except Exception:
+            img_sig = "err"
     key = "|".join([str(provider_id), str(model_name), str(max_tokens),
-                    str(reasoning_effort or ""), str(prompt)])
+                    str(reasoning_effort or ""), str(prompt), img_sig])
     name = _h.sha256(key.encode("utf-8")).hexdigest()[:24]
     return paths.DATA_DIR / "chat_cache" / (name + ".json")
 
 
 def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_ttl=0,
-         on_delta=None, reasoning_effort=""):
+         on_delta=None, reasoning_effort="", images=None):
     """直连供应商 API 做一次对话（编排者规划 / 连通性测试）。
 
     支持 anthropic / openai / google 三种协议；复用 SSRF 防护。
+    images=[(mime, b64)] 时随 user 消息传图（三协议形状见 _chat_user_content；
+    图只在非流式路径验证过，流式 on_delta 与图并用未验证）。
     返回 {ok, text, tokens, usage, error}；usage 为细分 {input, output, cached, reasoning, total}。
-    cache_ttl>0 启用精确匹配响应缓存（key=供应商+模型+prompt+max_tokens，只缓存
-    ok 结果）——仅限幂等调用（连通性测试等）；创作类调用不要开，否则同一 prompt
+    cache_ttl>0 启用精确匹配响应缓存（key=供应商+模型+prompt+max_tokens+图签名，
+    只缓存 ok 结果）——仅限幂等调用（连通性测试等）；创作类调用不要开，否则同一 prompt
     的二次请求会屏蔽模型的新输出。
     on_delta 给定时走 SSE 流式：每收到一段增量文本回调一次。编排者直连调用
     不经 run_process、原本生成全程日志只有一行标题，靠它把「正在吐字」实时
     写进步骤日志（planner._log_streamer 节流落盘）。
     """
+    images = [(str(m), str(b)) for m, b in (images or [])] or None
     if cache_ttl > 0:
         try:
             cache_path = _chat_cache_path(provider_id, model_name, prompt, max_tokens,
-                                          reasoning_effort)
+                                          reasoning_effort, images)
             if cache_path.is_file():
                 age = time.time() - cache_path.stat().st_mtime
                 if age <= cache_ttl:
@@ -3157,7 +3193,7 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_tt
             else:
                 url = base + "/v1beta/models/%s:generateContent" % model_name
             headers = {"x-goog-api-key": use_key}
-            body = {"contents": [{"parts": [{"text": prompt}]}],
+            body = {"contents": [{"parts": _chat_user_content(proto, prompt, images)}],
                     "generationConfig": {"maxOutputTokens": max_tokens}}
         else:
             path = "/messages" if proto == "anthropic" else "/chat/completions"
@@ -3167,7 +3203,8 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_tt
             else:
                 headers = {"Authorization": "Bearer " + use_key}
             body = {"model": model_name, "max_tokens": max_tokens,
-                    "messages": [{"role": "user", "content": prompt}]}
+                    "messages": [{"role": "user",
+                                  "content": _chat_user_content(proto, prompt, images)}]}
             effort = str(reasoning_effort or "").strip().lower()
             if proto == "openai" and effort in ("low", "medium", "high"):
                 body["reasoning_effort"] = effort
@@ -3255,7 +3292,7 @@ def chat(provider_id, model_name, prompt, max_tokens=2048, timeout=120, cache_tt
     if cache_ttl > 0:
         try:
             cache_path = _chat_cache_path(provider_id, model_name, prompt, max_tokens,
-                                          reasoning_effort)
+                                          reasoning_effort, images)
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             tmp = cache_path.with_suffix(".tmp")
             import json as _json

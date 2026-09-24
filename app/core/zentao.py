@@ -32,7 +32,11 @@ backend | frontend | both | not_ours | unknown。
   纯对方端问题  → 不建任务，直接转派该端负责人+排查结论评论
   非我方        → 转派报告人（或 owners.not_ours）+评论；只转派不解决
   unknown       → 不碰 bug，need_manual + 群通知（下轮扫描 bug 仍激活则重排查）
-  修复任务失败  → 评论尝试记录 + 转派该端负责人（模块路由 account > 端负责人）
+  修复任务失败  → 评论尝试记录 + 转派该端负责人（模块路由 account > 端负责人）；
+                  CodeBee 自身崩溃（内部异常）不转派——那是工具故障不是修不动，
+                  只评论+群通知人工；负责人未配置同样只评论。
+                  只评论也绝不盲写 PUT：禅道 PUT /bugs/{id} 缺 assignedTo 会
+                  清空指派人，必须带回当前指派人（#27783 案）。
 
 落库纪律：修复任务落单即带基线（档案配了用档案，没配取工作目录当前 HEAD）
 走任务分支隔离，修完的代码自动提交在任务分支上，对账合并后才算落库；
@@ -45,8 +49,10 @@ resolve 前再验一遍——没基线的任务改动只在工作区，有未提
 """
 from __future__ import annotations
 
+import base64
 import html as _html
 import hashlib
+import io
 import ipaddress
 import json
 import logging
@@ -91,6 +97,13 @@ _LEGACY_INTERVAL_HOURS_DEFAULT = 2      # 老配置 interval_hours 缺省值（�
 SIDES = ("backend", "frontend")
 TRIAGE_SIDES = ("backend", "frontend", "both", "not_ours")   # unknown 单列
 SIDE_CN = {"backend": "后端", "frontend": "前端"}
+
+# 图片证据：#27754 案——「功能未对齐，具体如图」被纯文本排查脑补成前端样式问题。
+# 排查/修复前先尽量把图抓到手；抓不到就按守卫留人工，绝不盲判。
+_IMG_REF_RE = re.compile(r"如图|见图|截图|附图|下图|上图|图示|图片|图像|录屏|视频")
+TRIAGE_MAX_IMAGES = 4          # 排查提示词最多随附几张图（请求体与 token 预算）
+IMG_CACHE_TTL = 900            # bug 图片按 bug_id 短缓存（排查+建任务两处共用）
+_IMG_CACHE = {}                # str(bug_id) → (ts, [(mime, b64)])；空结果也缓存防重复下载
 
 _CFG_DEFAULTS = {
     "base_url": "",
@@ -828,7 +841,13 @@ def _old_route(api, method, p, q, body):
     m = re.match(r"^/bugs/(\d+)$", p)
     if m and method == "GET":
         d = go(get("/bug-view-%s.json" % m.group(1)), "（查 bug）")
-        return d.get("bug") if isinstance(d, dict) and isinstance(d.get("bug"), dict) else d
+        bug = d.get("bug") if isinstance(d, dict) and isinstance(d.get("bug"), dict) else d
+        # 老接口的 files 附件在 data 顶层，不在 bug 里：合并进 bug dict（REST 形状兼容）
+        if isinstance(bug, dict) and isinstance(d, dict) \
+                and isinstance(d.get("files"), (dict, list)):
+            bug = dict(bug)
+            bug["files"] = d["files"]
+        return bug
 
     m = re.match(r"^/bugs/(\d+)/resolve$", p)
     if m and method == "POST":
@@ -891,6 +910,231 @@ def _severity(bug):
         return int(bug.get("severity") or 0)
     except (TypeError, ValueError):
         return 0
+
+
+# ---------------------------------------------------------------- bug 图片证据
+
+_IMG_MAGIC = ((b"\x89PNG", "image/png"), (b"\xff\xd8\xff", "image/jpeg"),
+              (b"GIF8", "image/gif"))
+
+
+def _img_mime(raw):
+    """按魔数判图片类型；非图返回空串（下载到错误页 HTML 时靠它拦住）。"""
+    raw = bytes(raw or b"")
+    for pre, mime in _IMG_MAGIC:
+        if raw.startswith(pre):
+            return mime
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return "image/webp"
+    return ""
+
+
+def _img_ext_mime(ext):
+    return {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+            "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp"}.get(
+        str(ext or "").strip().lstrip(".").lower(), "")
+
+
+def _img_srcs(steps_html):
+    """steps 富文本里的 <img src> 候选（含 data: URI）。"""
+    return re.findall(r'(?is)<img\b[^>]*?\bsrc\s*=\s*["\']([^"\']+)["\']',
+                      str(steps_html or ""))
+
+
+def _bug_mentions_images(bug):
+    """描述是否指向图片证据：steps 带 <img>、文字提「如图/截图…」、或附件含图片。"""
+    html = str(bug.get("steps") or "")
+    if "<img" in html.lower():
+        return True
+    text = str(bug.get("title") or "") + "\n" + _strip_html(html)
+    if _IMG_REF_RE.search(text):
+        return True
+    files = bug.get("files")
+    vals = files.values() if isinstance(files, dict) else (files if isinstance(files, list) else [])
+    for e in vals:
+        if isinstance(e, dict) and _img_ext_mime(
+                e.get("extension") or str(e.get("title") or "").rsplit(".", 1)[-1]):
+            return True
+    return False
+
+
+def _decode_data_uri(src):
+    m = re.match(r"(?is)^data:(image/[\w.+-]+);base64,(.+)$", src.strip())
+    if not m:
+        return "", b""
+    try:
+        raw = base64.b64decode(m.group(2))
+    except Exception:
+        return "", b""
+    mime = _img_mime(raw) or m.group(1).lower()
+    return mime, raw
+
+
+def _download_same_origin(src, cfg):
+    """下载禅道站内图片字节：仅同源（host:port 与配置的禅道一致），带会话多形态
+    尝试（zentaosid 查询参——新老两通道都认；再裸 GET 兜底），魔数校验。
+    非 200 / 非图 / 网络失败返回 b""。"""
+    try:
+        base = _raw_base(cfg.get("base_url"))
+    except ZenError:
+        return b""
+    url = src if "://" in str(src) else base + "/" + str(src).lstrip("/")
+    try:
+        u, bu = urllib.parse.urlsplit(url), urllib.parse.urlsplit(base)
+    except ValueError:
+        return b""
+    if (u.scheme or bu.scheme, u.netloc) != (bu.scheme, bu.netloc):
+        return b""          # 第三方图床一律不取（SSRF 边界外只放行同源）
+    url = _guard_url("%s://%s%s" % (bu.scheme, bu.netloc, u.path or "/")
+                     + (("?" + u.query) if u.query else ""))
+    tries = []
+    for sid in (str(_OLD.get("sid") or ""), str(_TOKEN.get("v") or "")):
+        if sid:
+            tries.append(url + ("&" if "?" in url else "?") + "zentaosid=" + sid)
+    tries.append(url)
+    for t in tries:
+        try:
+            req = urllib.request.Request(t, headers={"Accept": "*/*"})
+            with _no_redirect_opener().open(req, timeout=HTTP_TIMEOUT) as r:
+                if r.status != 200:
+                    continue
+                raw = r.read(20 * 1024 * 1024)
+        except Exception:
+            continue
+        if _img_mime(raw):
+            return raw
+    return b""
+
+
+def _file_entry_urls(fid, entry):
+    """详情 files 条目 → 下载候选 URL（entry 自带地址优先，再猜经典路由）。"""
+    out = []
+    if isinstance(entry, dict):
+        for k in ("download", "url", "href"):
+            v = str(entry.get(k) or "").strip()
+            if v.startswith(("http://", "https://", "/")):
+                out.append(v)
+        ext = _img_ext_mime(entry.get("extension")
+                            or str(entry.get("title") or "").rsplit(".", 1)[-1])
+    else:
+        ext = ""
+    if ext:
+        ext = ext.split("/", 1)[1]
+        for route in ("file-read-%s.%s", "file-download-%s.%s"):
+            out.append("/" + route % (fid, ext))
+    return out
+
+
+def _prep_image_pairs(pairs):
+    """[(mime, 原始字节)] → [(mime, b64)]。缩放规则与内置智能体同款（长边 1568、
+    超大转 JPEG q85、单张 5MB 剔除）；就地实现不跨层 import（架构 L2→L1 反向禁）。"""
+    try:
+        from PIL import Image
+    except Exception:
+        Image = None
+    out = []
+    for mime, raw in pairs or []:
+        data = raw
+        if Image is not None:
+            try:
+                im = Image.open(io.BytesIO(raw))
+                im.load()
+                w, h = im.size
+                edge = max(w, h, 1)
+                if edge > 1568:
+                    r = 1568 / float(edge)
+                    im = im.resize((max(1, round(w * r)), max(1, round(h * r))),
+                                   Image.LANCZOS)
+                fmt = {"image/png": "PNG", "image/jpeg": "JPEG",
+                       "image/gif": "GIF", "image/webp": "WEBP"}.get(mime, "PNG")
+                buf = io.BytesIO()
+                im.save(buf, format=fmt)
+                data = buf.getvalue()
+            except Exception:
+                data = raw                # 解码失败退回原始字节
+            if mime != "image/jpeg" and len(data) > 3500 * 1024:
+                try:                      # 仍过大：转 JPEG q85（RGB 拍平 alpha）
+                    im = Image.open(io.BytesIO(data)).convert("RGB")
+                    buf = io.BytesIO()
+                    im.save(buf, format="JPEG", quality=85)
+                    data, mime = buf.getvalue(), "image/jpeg"
+                except Exception:
+                    pass
+        if len(data) > 5 * 1024 * 1024:
+            continue
+        out.append((mime, base64.b64encode(data).decode("ascii")))
+    return out
+
+
+def _bug_images(bug_id, steps_html, cfg=None):
+    """bug 关联图片 → [(mime, b64)]：steps 内嵌 <img>（含 data: URI）优先，
+    读不到再看详情 files 附件。下载带禅道会话、魔数校验、缩放管线同内置智能体。
+    拿不到返回 []（也缓存，15 分钟内不重复下载）。"""
+    key = str(bug_id or "")
+    now = time.time()
+    hit = _IMG_CACHE.get(key)
+    if hit and now - hit[0] < IMG_CACHE_TTL:
+        return hit[1]
+    cfg = cfg or _cfg()
+    pairs = []
+    for src in _img_srcs(steps_html):
+        s = src.strip()
+        if s.lower().startswith("data:"):
+            mime, raw = _decode_data_uri(s)
+            if raw:
+                pairs.append((mime or "image/png", raw))
+        elif not s.lower().startswith("javascript:"):
+            raw = _download_same_origin(s, cfg)
+            if raw:
+                pairs.append((_img_mime(raw), raw))
+    if not pairs and key:
+        try:
+            detail = _call("GET", "/bugs/%s" % key, cfg=cfg)
+            files = detail.get("files") if isinstance(detail, dict) else None
+            entries = (list(files.items()) if isinstance(files, dict)
+                       else [(str(i), e) for i, e in enumerate(files or [])])
+            for fid, entry in entries:
+                mime = _img_ext_mime(
+                    (entry.get("extension") if isinstance(entry, dict) else "")
+                    or str(entry.get("title") if isinstance(entry, dict) else "").rsplit(".", 1)[-1])
+                if not mime:
+                    continue          # 日志/压缩包等非图附件不取
+                for u in _file_entry_urls(fid, entry):
+                    raw = _download_same_origin(u, cfg)
+                    if raw:
+                        pairs.append((_img_mime(raw), raw))
+                        break
+        except Exception:
+            log.debug("zentao: bug 附件图片获取失败", exc_info=True)
+    imgs = _prep_image_pairs(pairs[:TRIAGE_MAX_IMAGES])
+    if len(_IMG_CACHE) > 128:
+        for k in sorted(_IMG_CACHE, key=lambda k: _IMG_CACHE[k][0])[:64]:
+            _IMG_CACHE.pop(k, None)
+    _IMG_CACHE[key] = (now, imgs)
+    return imgs
+
+
+def _save_bug_attachments(workdir, bug_id, imgs):
+    """bug 截图落工作目录 _attachments/（create_task 的 dict 清单形态直用）。
+    返回 [{name,size,mime,path}]；失败返回 []。"""
+    if not imgs:
+        return []
+    try:
+        adir = Path(workdir) / "_attachments"
+        adir.mkdir(parents=True, exist_ok=True)
+        ext = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif",
+               "image/webp": ".webp"}
+        items = []
+        for i, (mime, b64) in enumerate(imgs, 1):
+            name = "zenbug%s-%d%s" % (bug_id, i, ext.get(mime, ".png"))
+            data = base64.b64decode(b64)
+            (adir / name).write_bytes(data)
+            items.append({"name": name, "size": len(data), "mime": mime,
+                          "path": "_attachments/" + name})
+        return items
+    except Exception:
+        log.debug("zentao: bug 截图落附件失败", exc_info=True)
+        return []
 
 
 def _claimable(bug, profile):
@@ -1129,13 +1373,33 @@ def test_connection(base_url=None, account=None, password=None):
 # ---------------------------------------------------------------- 排查（triage）
 
 def _ai_triage(bug, profile):
-    """AI 兜底排查：单次 LLM 调用判端。不可用/解析失败返回 None（bookmeta 同款配方）。"""
+    """AI 兜底排查：单次 LLM 调用判端。不可用/解析失败返回 None（bookmeta 同款配方）。
+
+    图片守卫（#27754 案）：描述指向截图而图片读不到、或排查模型不支持看图时，
+    直接判 unknown 留人工——绝不拿纯文本盲判，「具体如图」的 bug 文字里没有答案。
+    """
     try:
+        images = []
+        if _bug_mentions_images(bug):
+            try:
+                images = _bug_images(bug.get("id"), bug.get("steps"))
+            except Exception:
+                log.debug("zentao: bug 图片获取失败", exc_info=True)
+            if not images:
+                return {"side": "unknown",
+                        "reason": "描述指向截图/图片但图片未能读取，证据不足，"
+                                  "留人工确认后定责",
+                        "imgs": 0}
         from . import modelhub, runner
         orch = modelhub.resolve_orchestrator()
         if not orch:
             return None
         prov, model = orch
+        if images and not modelhub._model_image_in(prov, model):
+            return {"side": "unknown",
+                    "reason": "描述含截图但排查模型不支持图片输入（image_in），"
+                              "请为编排模型开启图片输入或改用视觉模型",
+                    "imgs": 0}
         repos = profile.get("repos") or {}
         hints = profile.get("repo_hints") or {}
 
@@ -1153,6 +1417,9 @@ def _ai_triage(bug, profile):
         steps = _strip_html(bug.get("steps"))
         if steps:
             lines.append(steps[:3000])
+        if images:
+            lines.append("【截图】随本消息附 %d 张 bug 截图，判定前先看图，"
+                         "截图与文字冲突时以截图为准。" % len(images))
         lines.append("")
         lines.append("【仓库背景】后端仓库：%s；前端仓库：%s" % (_repo_desc("backend"),
                                                         _repo_desc("frontend")))
@@ -1162,7 +1429,7 @@ def _ai_triage(bug, profile):
         lines.append("判定口径：backend=纯后端问题；frontend=纯前端问题；both=两端都要改；"
                      "not_ours=与这两个仓库无关（第三方服务/环境/需求变更/数据问题等）。")
         res = modelhub.chat(prov["id"], model, "\n".join(lines), max_tokens=500,
-                            timeout=90)
+                            timeout=90, images=images or None)
         if not res.get("ok"):
             log.warning("zentao: AI 排查失败：%s", res.get("error"))
             return None
@@ -1170,7 +1437,8 @@ def _ai_triage(bug, profile):
         side = str((data or {}).get("side") or "").strip().lower()
         if side not in TRIAGE_SIDES:
             return None
-        return {"side": side, "reason": str((data or {}).get("reason") or "")[:300]}
+        return {"side": side, "reason": str((data or {}).get("reason") or "")[:300],
+                "imgs": len(images)}
     except Exception:
         log.debug("zentao: AI 排查异常", exc_info=True)
         return None
@@ -1206,8 +1474,8 @@ def _repo_of(profile, side):
     return (profile.get("repos") or {}).get(side) or dict(_REPO_DEFAULTS)
 
 
-def _goal_text(bug, side=None):
-    """bug → 修复目标提示词。side 给出时附端约束。"""
+def _goal_text(bug, side=None, images=0):
+    """bug → 修复目标提示词。side 给出时附端约束；images>0 时提示先读附件截图。"""
     bid = bug.get("id")
     lines = ["修复禅道 Bug #%s：%s" % (bid, str(bug.get("title") or "").strip())]
     steps = _strip_html(bug.get("steps"))
@@ -1233,6 +1501,11 @@ def _goal_text(bug, side=None):
     if meta:
         lines.append("")
         lines.append("【元信息】" + "；".join(meta))
+    if images:
+        lines.append("")
+        lines.append("【截图】bug 截图共 %d 张，已放在工作目录 _attachments/（文件名 "
+                     "zenbug*）；先读图再动手——需求以截图为准，不要凭文字想象。"
+                     % images)
     lines.append("")
     lines.append("【要求】只修这个 bug，不做无关重构；改动最小化；修完自查不引入回归。")
     if side in SIDES:
@@ -1250,7 +1523,18 @@ def _launch_fix(bug, profile, side, cfg):
     wd = str(repo.get("workdir") or "").strip() or settings.default_workdir()
     title = ("[禅道#%s][%s] %s" % (bid, SIDE_CN.get(side, side),
                                    str(bug.get("title") or "").strip())).strip()[:60]
-    payload = {"type": "code", "title": title, "goal": _goal_text(bug, side), "workdir": wd}
+    # bug 截图随任务走：修复智能体跟排查同样需要看图，否则修出来的就是想象中的 bug
+    imgs = []
+    try:
+        if _bug_mentions_images(bug):
+            imgs = _bug_images(bid, bug.get("steps"))
+    except Exception:
+        imgs = []
+    atts = _save_bug_attachments(str(wd), bid, imgs)
+    payload = {"type": "code", "title": title, "goal": _goal_text(bug, side, images=len(atts)),
+               "workdir": wd}
+    if atts:
+        payload["attachments"] = atts
     base = str(repo.get("git_rev") or "").strip()
     if not base:
         # 档案没配基线就取落单时点的 HEAD：让修复走任务分支隔离——修完自动
@@ -1354,6 +1638,8 @@ def _transfer_text(claim, profile, fixed_runs, target_side):
              "Bug：#%s %s" % (claim.get("bug_id"), claim.get("title") or ""),
              "排查结论：%s问题——%s" % (SIDE_CN.get(target_side, target_side),
                                       tri.get("reason") or tri.get("by") or "按规则")]
+    if tri.get("imgs"):
+        lines.append("（判定依据含 %d 张 bug 截图）" % tri["imgs"])
     for side, run in (fixed_runs or []):
         lines.extend(_fix_summary(claim, run, profile, side))
     lines.append("请%s负责人接手处理；本 bug 保持激活，处理完请按正常流程解决。"
@@ -1362,7 +1648,7 @@ def _transfer_text(claim, profile, fixed_runs, target_side):
     return "\n".join(lines)
 
 
-def _fail_text(claim, failed_tasks, runs):
+def _fail_text(claim, failed_tasks, runs, internal=False):
     tri = claim.get("triage") or {}
     lines = ["【CodeBee 自动修复未成功】",
              "Bug：#%s %s" % (claim.get("bug_id"), claim.get("title") or "")]
@@ -1372,6 +1658,9 @@ def _fail_text(claim, failed_tasks, runs):
         r = runs.get(t.get("run_id")) or {}
         why = str(r.get("error") or "").strip() or ("运行状态 " + str(r.get("status") or ""))
         lines.append("【%s】失败：%s" % (SIDE_CN.get(t.get("side"), t.get("side")), why[:300]))
+    if internal:
+        lines.append("（失败原因是 CodeBee 工具自身异常，不代表修复结论；"
+                     "请人工排查 CodeBee 或续跑修复任务）")
     lines.append("CodeBee 修复任务：%s（可人工续跑或接管）；本 bug 保持待处理。"
                  % "、".join(t.get("task_id") or "?" for t in claim.get("tasks") or []))
     return "\n".join(lines)
@@ -1400,10 +1689,18 @@ def _ensure_resolved(cfg, bug_id, comment, assign_to):
 
 
 def _transfer(cfg, bug_id, target, comment):
-    """转派：PUT assignedTo+comment（bug 保持激活）。target 空=只评论。抛 ZenError。"""
+    """转派：PUT assignedTo+comment（bug 保持激活）。target 空=只评论。抛 ZenError。
+
+    禅道 PUT /bugs/{id} 不带 assignedTo 会把指派人清空（#27783 案：只评论
+    也出了「指派给(空)」记录），空 target 必须先 GET 带回当前指派人；GET
+    不到就整个不发——宁可不评论，不可盲写清指派。
+    """
     body = {"comment": comment}
     if target:
         body["assignedTo"] = target
+    else:
+        cur = _call("GET", "/bugs/%s" % bug_id, cfg=cfg)
+        body["assignedTo"] = _acct(cur.get("assignedTo")) or ""
     _call("PUT", "/bugs/%s" % bug_id, cfg=cfg, body=body)
 
 
@@ -1580,8 +1877,27 @@ def _finish_ok(claim, cfg):
             % (bid, claim.get("title") or "", "、".join(t.get("task_id") or "" for t in tasks)))
 
 
+# CodeBee 自身崩溃形态：run.error 是裸 Python 异常 repr（如 NameError(...)，
+# 0.1.63 _TRANSIENT 缩进事故实测形态）或带 Python traceback。这不是「修不动
+# bug」——转派给端负责人等于拿自家工具故障甩锅。冒号形态（TimeoutError: x）
+# 多为 CLI/被测仓的真实输出，不算内部崩溃。
+_CRASH_REPR_RE = re.compile(r"^[A-Za-z_]\w*(?:Error|Exception|Interrupt)\(")
+
+
+def _looks_internal_crash(err):
+    e = str(err or "").strip()
+    if not e:
+        return False
+    return ("Traceback (most recent call last" in e
+            or _CRASH_REPR_RE.match(e) is not None)
+
+
 def _finish_failed(claim, cfg):
-    """我方任一任务失败：评论尝试记录 + 转派该端负责人（有配则转）。"""
+    """我方任一任务失败：评论尝试记录 + 转派该端负责人（有配则转）。
+
+    CodeBee 自身崩溃（内部异常）不转派——工具故障不是「修不动」，转出去是
+    甩锅，只评论+群通知人工。负责人未配置同样只评论。
+    """
     bid = str(claim.get("bug_id"))
     profile = _profile_for(cfg, claim.get("product")) or {}
     tasks = claim.get("tasks") or []
@@ -1589,24 +1905,37 @@ def _finish_failed(claim, cfg):
     failed = [t for t in tasks
               if str((runs.get(t.get("run_id")) or {}).get("status") or "") not in
               ("queued", "running", "done")]
-    text = _fail_text(claim, failed, runs)
-    # 升级目标：取第一个失败端的路由账号/负责人
+    internal = any(_looks_internal_crash((runs.get(t.get("run_id")) or {}).get("error"))
+                   for t in failed)
+    text = _fail_text(claim, failed, runs, internal=internal)
+    # 升级目标：取第一个失败端的路由账号/负责人（内部崩溃不转派）
     target = ""
-    for t in failed:
-        target = _route_account(profile, claim.get("triage") or {}, t.get("side"))
-        if target:
-            break
+    if not internal:
+        for t in failed:
+            target = _route_account(profile, claim.get("triage") or {}, t.get("side"))
+            if target:
+                break
     try:
         _transfer(cfg, bid, target, text)
-        note = "已评论说明%s" % ("并转派 %s" % target if target else "")
-        state = "escalated" if target else "commented"
+        if internal:
+            note = "CodeBee 内部异常，已评论说明（不转派，请人工排查工具链）"
+            state = "commented"
+        elif target:
+            note = "已评论说明并转派 %s" % target
+            state = "escalated"
+        else:
+            side = str((failed[0].get("side") if failed else "") or "")
+            note = "已评论说明（%s负责人未配置，未转派）" % SIDE_CN.get(side, side or "该端")
+            state = "commented"
     except ZenError as e:
         log.warning("zentao: bug %s 失败评论未送达（群通知兜底）：%s", bid, e)
         note = "修复失败，评论未送达：%s" % e
         state = "commented"
     _set_claim(bid, state=state, note=note)
-    _notify("🐛❌ 禅道 Bug #%s 自动修复未成功%s\n%s\n修复任务：%s"
-            % (bid, ("，已转派 " + target) if target else "",
+    why = ("CodeBee 内部异常，未转派" if internal
+           else ("已转派 " + target if target else "负责人未配置，未转派"))
+    _notify("🐛❌ 禅道 Bug #%s 自动修复未成功（%s）\n%s\n修复任务：%s"
+            % (bid, why,
                claim.get("title") or "", "、".join(t.get("task_id") or "" for t in tasks)))
 
 
@@ -1692,8 +2021,9 @@ def _route_one(bug, profile, cfg, notify=True):
         target = tri.get("account") or str(profile.get("owners").get("not_ours") or "") \
             or opened
         text = ("【CodeBee 排查转派】\nBug：#%s %s\n排查结论：非我方两个仓库的问题——%s\n"
-                "转回 %s 核实处理。\n（本条由 CodeBee 禅道集成自动回写）"
+                "%s转回 %s 核实处理。\n（本条由 CodeBee 禅道集成自动回写）"
                 % (bid, bug.get("title") or "", tri.get("reason") or "按规则",
+                   ("（判定依据含 %d 张 bug 截图）\n" % tri["imgs"]) if tri.get("imgs") else "",
                    target or "报告人"))
         try:
             _transfer(cfg, bid, target, text)
@@ -2087,4 +2417,5 @@ def _test_reset():
         _OLD.update(api="", sid="", at=0.0)
         _OLD_FORM["form"] = ""
         _REST_LAST_ERR["msg"] = ""
+        _IMG_CACHE.clear()
         globals()["_LOADED"] = True
