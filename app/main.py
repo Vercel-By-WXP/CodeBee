@@ -1027,6 +1027,15 @@ class Handler(BaseHTTPRequestHandler):
             from core import skills
             n = skills.learn_from_run((self._body().get("run_id") or ""))
             return self._json(200, {"ok": True, "learned": n})
+        if path == "/api/skills/evolve":
+            # 教训晋升草稿（ECC /evolve 借鉴）：高可信教训聚合成用户包草稿，
+            # 默认停用待人工审阅；返回收录概况
+            from core import skills
+            fname, n = skills.evolve_lessons()
+            if not fname:
+                return self._json(200, {"ok": True, "file": None, "count": 0,
+                                        "note": "no eligible lessons"})
+            return self._json(200, {"ok": True, "file": fname, "count": n})
         if path == "/api/knowledge/op":
             from core import knowledge
             body = self._body()

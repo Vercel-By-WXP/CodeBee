@@ -2194,10 +2194,10 @@ NOVEL_CRITIQUE_PROMPT = """你是严格的评审（不要使用任何工具、�
 请输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {
   "scores": {"__DIMKEYS__"},
-  "issues": [{"dim": "维度名", "severity": "major|minor", "note": "具体问题"}],
+  "issues": [{"dim": "维度名", "severity": "major|minor", "note": "具体问题", "quote": "支撑该问题的稿件原文连续片段（≥8字，逐字摘录不许改写）"}],
   "summary": "一句话总评"
 }
-每个维度打 1-10 分（可为小数），宁严勿宽。
+每个维度打 1-10 分（可为小数），宁严勿宽。major 问题必须给 quote（系统会逐条校验引文是否真在稿件中——编造的引文会被降档标记）。
 
 ## 待评审稿件
 ---
@@ -2310,6 +2310,18 @@ def _read_ledger(workdir):
     return txt or "（暂无记录）"
 
 
+def _read_ledger_raw(workdir):
+    """账本原文（缺文件/读失败返回空串）——供 _ledger_watchlist 解析，
+    不带注入面的兜底文案。"""
+    p = os.path.abspath(os.path.join(str(workdir or ""), LEDGER_FILE))
+    if not _inside(workdir, p) or not os.path.isfile(p):
+        return ""
+    try:
+        return _read_text_any_enc(p)
+    except OSError:
+        return ""
+
+
 def _shrink_context_block(sk_block, bible, budget=12000):
     """分层上下文降级（长提示词在容量受限通道上会挂起/秒拒，2026-09-17 讯飞实测）。
 
@@ -2419,10 +2431,11 @@ SERIAL_GLOBAL_PROMPT = """你是网文主编（不要修改任何文件）。全
 请输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {
   "scores": {"__DIMKEYS__"},
-  "issues": [{"dim": "维度名", "severity": "major|minor", "note": "具体问题（指明哪一章）"}],
+  "issues": [{"dim": "维度名", "severity": "major|minor", "note": "具体问题（指明哪一章）", "quote": "支撑该问题的稿件原文连续片段（≥8字，逐字摘录不许改写）"}],
   "summary": "一句话总评：是否达到可签约水平"
 }
 每个维度打 1-10 分，宁严勿宽。重点关注：主线一致性、人物弧光、节奏、爽点密度、完本感。
+major 问题必须给 quote（系统会逐条校验引文是否真在稿件中——编造的引文会被降档标记）。
 
 ## 全书目标
 __GOAL__
@@ -2494,6 +2507,87 @@ def _read_variant(workdir, i, k):
 def _wc(text):
     """近似字数（去空白后的字符数，中文场景够用）。"""
     return len(re.sub(r"\s", "", text or ""))
+
+
+_ANCHOR_EDGE_PUNCT = "。！？，、；：…—·,.!?;:\"'“”‘’()（）[]【】《》<>*#-"
+
+
+def _norm_anchor(s):
+    """锚校验归一：去全部空白 + 剥首尾标点（引文摘录常多带一个句号/引号，
+    中英混排空格差异也不应判假）。"""
+    s = re.sub(r"\s+", "", str(s or ""))
+    return s.strip(_ANCHOR_EDGE_PUNCT)
+
+
+def _anchor_issues(issues, manuscript):
+    """评审证据锚（ARIS Anti-Autoresearch 借鉴）：issue 带 quote（稿件原文
+    摘录）时做确定性 containment 校验——模型只提议发现，锚定事实由规则裁决。
+
+    三态：quote 命中稿件 → anchored=True；quote 给了但对不上 → anchored=False
+    （降档殿后+标记，不删除：模型改写式引用时保留可见性）；没给 quote →
+    anchored=None（老格式评审灰度兼容，不标记不排序影响）。返回 (issues, 未锚定数)。"""
+    ms = _norm_anchor(manuscript)
+    unanchored = 0
+    for it in issues or []:
+        q = _norm_anchor(it.get("quote"))
+        if not q:
+            it["anchored"] = None
+            continue
+        it["anchored"] = len(q) >= 6 and q in ms
+        if it["anchored"] is False:
+            unanchored += 1
+    return issues, unanchored
+
+
+def _major_lines(majors, limit=8):
+    """majors → 修订面意见行：锚定的在前，未锚定殿后并带标记（模型据此
+    分配采信权重）；无 quote 的老格式行居中不动。"""
+    ranked = sorted(majors or [],
+                    key=lambda x: {True: 0, False: 2}.get(x.get("anchored"), 1))
+    lines = []
+    for x in ranked[:limit]:
+        mark = ("（未锚定：引文与稿件不符，酌情采信）"
+                if x.get("anchored") is False else "")
+        lines.append("- [%s] %s%s" % (x.get("dim", "?"),
+                                      str(x.get("note", ""))[:140], mark))
+    return lines
+
+
+_LEDGER_DONE_WORDS = ("已兑现", "已回收", "已解除", "已完成", "已了结", "已交付")
+
+
+def _ledger_watchlist(ledger_text, upto_chapter, min_age=3, limit=8):
+    """陈年承诺督促（continuum 承诺/伏笔账借鉴）：按「## 第 N 章」段解析
+    资源账本，承诺/伏笔类条目现状未了结、且距本章 ≥min_age 章未更新 →
+    观查清单（推送起草面督促推进/回收）。账本按章追加、同名条目以最后
+    出现的章为准；老账本无该类条目返回空。"""
+    last = {}   # (类型, 名称) -> (最后章号, 现状)
+    cur = 0
+    for ln in str(ledger_text or "").splitlines():
+        m = re.match(r"##\s*第\s*(\d+)\s*章", ln.strip())
+        if m:
+            cur = int(m.group(1))
+            continue
+        s = ln.strip().lstrip("-*").strip()
+        if not s or "|" not in s:
+            continue
+        parts = [p.strip() for p in s.split("|")]
+        if len(parts) < 3:
+            continue
+        typ, name, status = parts[0], parts[1], "｜".join(parts[2:])
+        if "承诺" not in typ and "伏笔" not in typ:
+            continue
+        last[(typ, name)] = (cur, status)
+    out = []
+    for (typ, name), (ch_no, status) in last.items():
+        if any(w in status for w in _LEDGER_DONE_WORDS):
+            continue
+        age = upto_chapter - ch_no
+        if age >= min_age:
+            out.append({"type": typ, "name": name, "status": status,
+                        "age": age, "last_chapter": ch_no})
+    out.sort(key=lambda x: -x["age"])
+    return out[:limit]
 
 
 def _write_chapter(workdir, i, text):
@@ -2752,6 +2846,19 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         ev_check_lines = [[]]     # 每章重置：第一份非空评审的逐项判定
         ledger_lines = []         # 本章全部评审的账本增量并集
         ledger_txt = _read_ledger(workdir)   # 截至上一章的资源账本（起草注入）
+        # 陈年承诺督促（continuum 借鉴）：账本里 ≥3 章未推进且未了结的承诺/
+        # 伏笔点名给起草面——「本章推进/回收其一，或明确有意留白」；老账本
+        # 无承诺类条目时静默不占字节
+        try:
+            _wl = _ledger_watchlist(_read_ledger_raw(workdir), i)
+            if _wl:
+                ledger_txt += ("\n\n### ⚠ 陈年承诺/伏笔（多章未推进）\n"
+                               + "\n".join("- %s「%s」：%s（已 %d 章未更新——本章应推进、"
+                                           "回收其一，或在大纲允许处明确留白）"
+                                           % (w["type"], w["name"], w["status"], w["age"])
+                                           for w in _wl))
+        except Exception:
+            pass
         prev = ""
         draft_sid = ""  # §07 T1.1：本轮 draft/复用章的会话 id（revise 复用；reuse 时为空）
         if i > 1:
@@ -3284,9 +3391,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             rounds_used = 2
             majors = [x for x in issues_all if x.get("chapter") == i
                       and x.get("severity") == "major"][:8]
+            majors, _unanchored = _anchor_issues(majors, text)
             crit_lines = ["- %s：%.1f（章阈值 %.1f）" % (d, means[d], threshold_ch) for d in dims]
-            crit_lines += ["- [%s] %s" % (x.get("dim", "?"), str(x.get("note", ""))[:140])
-                           for x in majors]
+            crit_lines += _major_lines(majors)
+            if _unanchored:
+                crit_lines.append("- ⚠ %d 条 major 意见的引文未能在稿件中锚定，已降序殿后" % _unanchored)
             if rnd == 1 and race_losers and impl.get("mode") == "real":
                 # 赛马败者精华回收（连载版）：一次选择器调用提炼落选稿优点，
                 # 与评审意见一并喂给首轮修订；失败静默不影响修订
@@ -4012,8 +4121,10 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         # 修订
         crit_lines = ["- %s：%.1f（阈值 %.1f）" % (d, means[d], threshold) for d in dims]
         majors = [i for i in issues_all if i.get("severity") == "major"][:8]
-        for i in majors:
-            crit_lines.append("- [%s] %s" % (i.get("dim", "?"), str(i.get("note", ""))[:120]))
+        majors, _unanchored = _anchor_issues(majors, manuscript)
+        crit_lines += _major_lines(majors)
+        if _unanchored:
+            crit_lines.append("- ⚠ %d 条 major 意见的引文未能在稿件中锚定，已降序殿后" % _unanchored)
         if r == 1 and bestof_improvements:
             # 败者精华回收（freebuff suggestedImprovements 的落地）：终审从落选
             # 候选稿提炼的优点，首轮修订时与评审意见一并喂给作者

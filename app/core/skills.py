@@ -497,6 +497,54 @@ def relevance_top(lessons, task, limit):
     return sorted(lessons, key=rank)[:limit]
 
 
+def evolve_lessons(min_hits=6, min_karma=0.75, min_won=1, max_items=10):
+    """教训半自动晋升技能包（ECC /evolve 借鉴）：把被任务面反复验证的教训
+    （注入 ≥min_hits、可信度下界 ≥min_karma、成功归因 ≥min_won）聚成一份
+    用户包**草稿**写入 data/skillpacks/evolve-<时间戳>.md。
+
+    草稿默认停用（packs 状态写 enabled=False）——晋升必须过人工审阅这道闸：
+    技能库页审后启用/改 scopes/编辑正文；不自动生效，避免聚合噪音直接进
+    全量任务注入。返回 (文件名, 收录条数)；无可晋升教训返回 (None, 0)。"""
+    with _LOCK:
+        items = list((_load().get("lessons") or []))
+    picked = [x for x in items
+              if x.get("enabled", True)
+              and int(x.get("hits") or 0) >= min_hits
+              and int(x.get("won") or 0) >= min_won
+              and _karma(x) >= min_karma]
+    picked.sort(key=lambda x: (-_karma(x), -int(x.get("hits") or 0)))
+    picked = picked[:max_items]
+    if not picked:
+        return None, 0
+    scopes = sorted({str(x.get("scope") or "*") for x in picked})
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    fname = "evolve-%s.md" % stamp
+    lines = ["# 晋升自项目教训（evolve 草稿，待人工审阅启用）", "",
+             "以下教训经任务面反复验证聚合而成；逐条确认后可编辑删改，"
+             "确认无误再在技能库页启用本包。", ""]
+    for x in picked:
+        lines.append("- **%s**（可信度 %.0f%%，注入 %d 次/成功归因 %d 次）：%s"
+                     % (x.get("title") or x.get("id"),
+                        _karma(x) * 100, int(x.get("hits") or 0),
+                        int(x.get("won") or 0), x.get("content") or ""))
+    fm = ["---",
+          "name: 教训晋升草稿·%s" % time.strftime("%Y-%m-%d %H:%M"),
+          "scopes:"] + ["  - %s" % s for s in scopes] + [
+          "note: evolve 自动聚合的高可信教训草稿（默认停用，审阅后启用）",
+          "---", ""]
+    d = _user_pack_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    (d / fname).write_text("\n".join(fm + lines) + "\n", encoding="utf-8")
+    # 草稿停用态：pid 与 _load_user_pack 的 path.stem 哈希口径一致
+    stem = fname[:-3] if fname.endswith(".md") else fname
+    pid = "user-" + hashlib.sha256(stem.encode("utf-8")).hexdigest()[:10]
+    with _LOCK:
+        data = _load()
+        data.setdefault("packs", {})[pid] = {"enabled": False, "evolved": True}
+        _save(data)
+    return fname, len(picked)
+
+
 # 运行级注入登记（outcome 加权用）：run_id → 注入的教训 id 列表。
 # 容量有界防泄漏；run 收尾 learn_from_run 时消费清除。
 _INJECTED = {}

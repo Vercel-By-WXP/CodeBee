@@ -130,28 +130,114 @@ def _fq_content_tables():
 
 
 def _fq_options_block(goal):
-    """番茄提示词的真实选项注入：按 goal 推断读者给出对应分类与标签表。"""
+    """番茄提示词的真实选项注入：按 goal 推断读者给出对应分类与标签表。
+
+    2026-09-24 起首行加频道判定规则：素材明显属于另一频时 target_reader
+    如实填、分类留空（规整层按该频表校验并兜底补齐），防「注入男频表+
+    女频素材」时硬凑男频分类。"""
     reader = "女频" if "女" in (goal or "") else "男频"
     cats, theme, role, plot = _fq_tables(reader)
     c_plot, c_emo, c_char, c_world = _fq_content_tables()
-    return ("目标读者（%s）可用的主分类表（必选且只能选一个）：%s\n"
+    return ("先按素材判定目标读者（战争/军功/历史争霸/都市异能/系统→男频；"
+            "总裁豪门/宅斗宫斗/年代/婚恋情感线为主→女频），target_reader 如实填；"
+            "主分类从下方按目标读者 %s 预注入的表里选，素材明显属于另一频时"
+            "分类留空待系统按该频表补齐。主分类要贴世界观而非字面词——架空"
+            "王朝/军事/军功题材选历史古代或历史脑洞，西方奇幻仅限西式魔幻"
+            "世界观。\n"
+            "目标读者（%s）可用的主分类表（必选且只能选一个）：%s\n"
             "阅读标签三组各最多选 2 个——主题组：%s\n角色组：%s\n情节组（部分，选最贴合的）：%s\n"
             "内容标签四组——情节组（最多4个，部分）：%s\n情感组（最多2个）：%s\n"
             "人设组（最多4个，部分）：%s\n世界观组（最多1个）：%s"
-            % (reader, "、".join(cats), "、".join(theme), "、".join(role),
+            % (reader, reader, "、".join(cats), "、".join(theme), "、".join(role),
                "、".join(plot[:50]), "、".join(c_plot[:60]), "、".join(c_emo),
                "、".join(c_char[:60]), "、".join(c_world)))
 
 
 def _qm_options_block(goal):
-    """七猫提示词的真实选项注入：按频道给级联 + 四组标签池（每组必选 1-3）。"""
+    """七猫提示词的真实选项注入：双频道级联 + 频道判定规则 + 跨频道禁令。
+
+    2026-09-24 前只按 goal 猜频道注入单频道表，但挡不住模型自带另一频道
+    的分类知识跨频道自造组合（男频军事文被配成 女生/古代言情/权谋天下，
+    级联还自洽）——必须双频道全量注入并明示判定规则。"""
     from . import bookmeta_catalog as cat
-    channel = cat.QIMAO_CATS.get("女生" if "女" in (goal or "") else "男生")
-    cascade = ["%s（二级：%s）" % (m, "、".join(v)) for m, v in channel.items()]
-    pool = ["%s组（必选1-3个）：%s" % (g, "、".join(t)) for g, t in cat.QIMAO_TAG_GROUPS.items()]
-    return ("一级分类表（选一个）：%s\n一级→二级级联（二级必须从所属一级下选）：%s\n"
-            "作品标签四组：%s"
-            % ("、".join(channel), "；".join(cascade), "；".join(pool)))
+    cascades = ["%s频道（一级→二级）：%s" % (ch, "；".join(
+        "%s（二级：%s）" % (m, "、".join(v)) for m, v in mains.items()))
+        for ch, mains in cat.QIMAO_CATS.items()]
+    pool = ["%s组（必选1-3个）：%s" % (g, "、".join(t))
+            for g, t in cat.QIMAO_TAG_GROUPS.items()]
+    return ("先按素材判定目标读者频道：战争/军功/练兵/历史争霸/都市异能/"
+            "系统流/玄幻修仙→男生；总裁豪门/宅斗宫斗/年代/婚恋情感线为主→"
+            "女生。target_reader 必须填判定的频道，一级/二级分类只能从该频道"
+            "的级联表里选，严禁跨频道——如「权谋天下」只存在于女生·古代言情"
+            "下，男频军事历史文不得选用；「架空历史」属男生·历史。\n"
+            "%s\n作品标签四组（男女生同池）：%s"
+            % ("。".join(cascades), "；".join(pool)))
+
+
+# ---- 频道题材信号（2026-09-24 实案：男频军事文《戍边骑奴》被生成端配成
+# 女生/古代言情/权谋天下——「权谋天下」字面贴合朝堂线但只存在于女生频道，
+# 模型跨频道自造组合且级联自洽，目录校验拦不住，只能靠题材信号判频道。
+# 必须保守：信号单侧命中才判，双侧命中/零命中一律不判（宁可不纠不可错纠）。
+# 证据语料只用 goal+简介：分类字段是嫌疑输出、标签池男女同池，都不算证据。
+_CH_SIGNAL_MALE = ("军功", "戍边", "骑奴", "特种兵", "练兵", "杀伐", "阵斩",
+                   "百夫长", "大军", "蛮族", "边军", "边关", "边疆", "战场",
+                   "争霸", "兵王", "战神", "赘婿", "武侠", "修仙", "修真",
+                   "玄幻", "机甲", "星际", "电竞", "网游", "领主")
+_CH_SIGNAL_FEMALE = ("言情", "总裁", "豪门", "宅斗", "宫斗", "嫡女", "庶女",
+                     "甜宠", "虐恋", "宠妻", "宠夫", "王妃", "医妃", "皇后",
+                     "公主", "丫鬟", "千金", "女配", "追妻", "闪婚", "隐婚",
+                     "婆媳", "闺蜜", "女尊", "女强", "军婚", "宫闱")
+
+
+def _channel_anchor(text):
+    """题材信号判频道：男/女信号词单侧命中返回 男生/女生，否则 None。"""
+    t = str(text or "")
+    if not t:
+        return None
+    male = any(w in t for w in _CH_SIGNAL_MALE)
+    female = any(w in t for w in _CH_SIGNAL_FEMALE)
+    if male and not female:
+        return "男生"
+    if female and not male:
+        return "女生"
+    return None
+
+
+_READER_OF = {"fanqie": {"男生": "男频", "女生": "女频"},
+              "qimao": {"男频": "男生", "女频": "女生"}}
+
+
+def _reader_anchor(task, platform, meta):
+    """频道锚：题材信号（goal+简介）优先，其次同书另一平台已定的读者。
+
+    返回 (该平台的读者词, 依据说明) 或 (None, "")。"""
+    corpus = "。".join(x for x in ((task or {}).get("goal") or "",
+                                   (meta or {}).get("summary") or "") if x)
+    sig = _channel_anchor(corpus)
+    if sig:
+        # 信号词是男生/女生：七猫原样用，番茄翻成 男频/女频
+        own = sig if platform == "qimao" else {"男生": "男频", "女生": "女频"}[sig]
+        return own, "题材信号"
+    peer_plat = "qimao" if platform == "fanqie" else "fanqie"
+    peer = (((task or {}).get("book_meta") or {}).get(peer_plat) or {})
+    if peer.get("status") == "done":
+        mapped = _READER_OF[platform].get(
+            (peer.get("data") or {}).get("target_reader"))
+        if mapped:
+            return mapped, "同书另一平台(%s)已定读者" % PLATFORMS[peer_plat]["label"]
+    return None, ""
+
+
+def _apply_fix_note(meta, source):
+    """把 _fill_required_fields 记录的纠偏说明并进 source。
+
+    meta 里的 _fixes 是临时键，随出随清，不落 book_meta 数据（否则
+    repair_existing 的幂等比较会每次不等、启动反复重写）。"""
+    fixes = meta.pop("_fixes", None)
+    if fixes:
+        source = (str(source or "") + "；" + "；".join(str(x) for x in fixes)
+                  ).strip("；")
+    return source
 
 
 def _collect_material(task):
@@ -517,6 +603,28 @@ def _fill_required_fields(task, platform, meta, outline, material):
     # 标题/占位文本过不了提交且流程看不到报错——洗成正文，不够长从素材取
     meta["summary"] = _prose_summary(meta.get("summary"), material)
 
+    # 频道锚：题材信号/同书另一平台的读者与模型声称的频道冲突时以锚为准
+    # 翻转（2026-09-24 实案：男频军事文被配成 女生/古代言情/权谋天下，
+    # 级联自洽骗过目录校验）。翻转后旧频道分类作废，由下方素材补齐逻辑
+    # 按正确频道重选；纠偏说明记 _fixes 临时键，由调用方并进 source。
+    anchor, why = _reader_anchor(task, platform, meta)
+    if anchor and meta.get("target_reader") != anchor:
+        meta["_fixes"] = ["频道纠偏：%s→%s（依据：%s）"
+                          % (meta.get("target_reader") or "未填", anchor, why)]
+        meta["target_reader"] = anchor
+        if platform == "qimao":
+            ch = cat.QIMAO_CATS.get(anchor) or {}
+            if meta.get("category_main") not in ch:
+                meta["category_main"] = ""
+            ch_main = meta.get("category_main")
+            if meta.get("category_sub") and not (
+                    ch_main and meta["category_sub"] in (ch.get(ch_main) or [])):
+                meta["category_sub"] = ""
+        else:
+            fq_cats, _, _, _ = _fq_tables(anchor)
+            if meta.get("category") not in fq_cats:
+                meta["category"] = ""
+
     if platform == "fanqie":
         reader = meta.get("target_reader") or ("女频" if female else "男频")
         if reader not in ("男频", "女频"):
@@ -525,11 +633,22 @@ def _fill_required_fields(task, platform, meta, outline, material):
         cats, theme, role, plot = _fq_tables(reader)
         c_plot, c_emo, c_char, c_world = _fq_content_tables()
         if meta.get("category") not in cats:
-            meta["category"] = _pick_option(
-                material, cats,
-                (("戍边", "古风世情"), ("边关", "古风世情"),
-                 ("军", "抗战谍战"), ("悬疑", "女频悬疑" if female else "悬疑脑洞"),
-                 ("种田", "种田"), ("都市", "都市脑洞")))
+            # 关键词兜底按频道给（2026-09-24 实案《戍边骑奴》：旧表不分频道，
+            # 「戍边→古风世情」是女频词，男频素材永远选不中，全部落到男频表
+            # 首项「西方奇幻」——架空王朝军事文被配成西式魔幻）
+            kw = (("历史", "历史古代"), ("古代", "历史古代"),
+                  ("王朝", "历史脑洞"), ("架空", "历史脑洞"),
+                  ("戍边", "历史古代"), ("边关", "历史古代"),
+                  ("抗战", "抗战谍战"), ("谍战", "抗战谍战"),
+                  ("军", "历史古代"), ("种田", "都市种田"),
+                  ("都市", "都市脑洞"), ("悬疑", "悬疑脑洞")) if reader == "男频" else (
+                 ("宅斗", "宫斗宅斗"), ("宫斗", "宫斗宅斗"),
+                 ("总裁", "豪门总裁"), ("豪门", "豪门总裁"),
+                 ("古代", "古风世情"), ("古言", "古言脑洞"),
+                 ("年代", "年代"), ("种田", "种田"),
+                 ("婚姻", "职场婚恋"), ("恋爱", "职场婚恋"),
+                 ("悬疑", "女频悬疑"), ("快穿", "快穿"))
+            meta["category"] = _pick_option(material, cats, kw)
         groups = (("tags_theme", theme, 2), ("tags_role", role, 2),
                   ("tags_plot", plot, 2), ("content_plot", c_plot, 4),
                   ("content_emotion", c_emo, 2), ("content_character", c_char, 4),
@@ -542,12 +661,15 @@ def _fill_required_fields(task, platform, meta, outline, material):
         channel = cat.QIMAO_CATS.get(reader) or cat.QIMAO_CATS["男生"]
         main = meta.get("category_main")
         if main not in channel:
-            main = _pick_option(
-                material, list(channel),
-                (("戍边", "古代言情"), ("边关", "古代言情"),
-                 ("古代", "古代言情"), ("军事", "军事"),
-                 ("军", "军事"), ("都市", "都市"),
-                 ("玄幻", "玄幻奇幻"), ("悬疑", "奇闻异事")))
+            # 关键词兜底按频道给（2026-09-24 频道锚落地后读方可信，旧的
+            # 「戍边→古代言情」在男生频道下永远选不中白占位）
+            kw = (("戍边", "历史"), ("边关", "历史"), ("军", "军事"),
+                  ("都市", "都市"), ("玄幻", "玄幻奇幻"), ("悬疑", "奇闻异事")
+                  ) if reader == "男生" else (
+                  ("宅斗", "古代言情"), ("宫斗", "古代言情"),
+                  ("古代", "古代言情"), ("总裁", "现代言情"),
+                  ("年代", "现代言情"), ("都市", "现代言情"))
+            main = _pick_option(material, list(channel), kw)
             meta["category_main"] = main
         subs = channel.get(main) or []
         sub = meta.get("category_sub")
@@ -644,8 +766,9 @@ def make_book_meta(task, platform, author_agent=None, log_path=None):
             meta = _norm(runner.extract_json(res.get("text") or ""), platform, goal)
             if meta:
                 meta = _fill_tag_gaps(task, platform, meta, outline)
-                return _fill_required_fields(task, platform, meta, outline, material), \
-                    "编排者(%s · %s)" % (prov.get("name", prov["id"]), model)
+                meta = _fill_required_fields(task, platform, meta, outline, material)
+                return meta, _apply_fix_note(meta, "编排者(%s · %s)"
+                                             % (prov.get("name", prov["id"]), model))
         orch_err = str(res.get("error") or "返回内容无法解析为作品信息")[:200]
 
     if author_agent and author_agent.get("mode") == "real" and not template_only():
@@ -657,13 +780,14 @@ def make_book_meta(task, platform, author_agent=None, log_path=None):
             meta = _norm(runner.extract_json(res.get("text") or ""), platform, goal)
             if meta:
                 meta = _fill_tag_gaps(task, platform, meta, outline)
-                return _fill_required_fields(task, platform, meta, outline, material), "llm(%s)" % author_agent["id"]
+                meta = _fill_required_fields(task, platform, meta, outline, material)
+                return meta, _apply_fix_note(meta, "llm(%s)" % author_agent["id"])
         orch_err = orch_err or str(res.get("error") or "")[:200]
 
     meta = _template_meta(task, platform, outline)
     meta = _fill_required_fields(task, platform, meta, outline, material)
     meta["source"] = ("模板兜底（编排者不可用：%s）" % orch_err) if orch_err else "模板兜底"
-    return meta, meta["source"]
+    return meta, _apply_fix_note(meta, meta["source"])
 
 
 def render_markdown(task, platform, meta):
@@ -773,16 +897,26 @@ def repair_existing():
                     and _has_value(data.get("protagonist_1"))
                     and _has_value(data.get("protagonist_2"))
                     and _summary_ok(data.get("summary")))
+            # 频道失配也视为待修复（2026-09-24 实案：级联自洽的跨频道组合
+            # 字段全齐，required_ok 挡不住，只能靠题材信号识别）
+            anchor, _ = _reader_anchor(task, platform,
+                                       {"summary": data.get("summary") or ""})
+            if anchor and anchor != data.get("target_reader"):
+                required_ok = False
             if required_ok:
                 continue
             try:
                 material, outline = _collect_material(task)
                 fixed = _fill_required_fields(task, platform, data, outline, material)
+                fixes = fixed.pop("_fixes", None)   # 先清临时键再比幂等
                 if fixed == entry["data"]:
                     continue
                 payload = dict(entry)
                 payload["data"] = fixed
-                payload["source"] = (str(entry.get("source") or "") + "；已补齐必填字段").lstrip("；")
+                note = "已补齐必填字段"
+                if fixes:
+                    note += "；" + "；".join(str(x) for x in fixes)
+                payload["source"] = (str(entry.get("source") or "") + "；" + note).lstrip("；")
                 store.set_book_meta(task["id"], platform, payload)
                 try:
                     fp = Path(task.get("workdir") or "") / PLATFORMS[platform]["file"]

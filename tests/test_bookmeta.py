@@ -178,8 +178,129 @@ class TestNorm(unittest.TestCase):
         self.assertIn("现代言情", blk_q)
         self.assertIn("总裁豪门", blk_q)
         self.assertIn("必选1-3个", blk_q)
-        # 频道隔离：女生频道不出现男生一级
-        self.assertNotIn("玄幻奇幻", blk_q)
+        # 2026-09-24 起双频道全量注入 + 判定规则 + 跨频道禁令：单频道注入
+        # 挡不住模型自带另一频道的分类知识（男频军事文被配成女生·权谋天下案）
+        self.assertIn("男生频道", blk_q)
+        self.assertIn("女生频道", blk_q)
+        self.assertIn("严禁跨频道", blk_q)
+        self.assertIn("架空历史", blk_q)
+
+
+class TestChannelAnchor(unittest.TestCase):
+    """频道题材信号锚（2026-09-24 实案：男频军事文《戍边骑奴》被生成端配成
+    女生/古代言情/权谋天下——「权谋天下」只存在于女生频道，跨频道组合级联
+    自洽，目录校验拦不住，只能靠题材信号判频道）。"""
+
+    MILITARY_SUMMARY = ("现代特种兵王殉职雪崩，睁眼成了大乾北境最卑贱的骑奴，"
+                        "只有编号七十三。他凭蹄印预言蛮骑夜袭救下全营，军功却"
+                        "被军官冒领，反挨二十军棍。他以上现代特战本领与练兵之"
+                        "道，雪谷设伏阵斩百夫长，从骑奴到将军，戍边抗蛮。")
+
+    def _military_meta(self):
+        return {"book_name": "戍边骑奴：我以军功镇山河",
+                "target_reader": "女生", "category_main": "古代言情",
+                "category_sub": "权谋天下",
+                "tags_style": ["热血", "爽文", "正剧"],
+                "tags_role": ["特种兵", "将军", "杀伐果断"],
+                "tags_plot": ["穿越", "逆袭", "战争"],
+                "tags_bg": ["架空历史", "古代", "历史"],
+                "protagonist_1": "秦骁", "protagonist_2": "沈青梧",
+                "status": "连载中", "summary": self.MILITARY_SUMMARY}
+
+    def test_channel_anchor_unit(self):
+        self.assertEqual(bookmeta._channel_anchor("军功练兵戍边"), "男生")
+        self.assertEqual(bookmeta._channel_anchor("甜宠宅斗嫡女"), "女生")
+        self.assertIsNone(bookmeta._channel_anchor("军功与甜宠并存"))   # 双侧不判
+        self.assertIsNone(bookmeta._channel_anchor("平平无奇的日常"))   # 零信号不判
+        self.assertIsNone(bookmeta._channel_anchor(""))
+
+    def test_real_case_male_military_flipped(self):
+        # 真案复刻：模型跨频道自造 女生/古代言情/权谋天下，信号单侧男生 →
+        # 翻转 + 旧频道分类作废 + 素材补齐按男生频道重选（历史/架空历史）
+        from core import bookmeta_catalog as cat
+        task = {"goal": "帮我确定一个热门小说方向，帮我生成大纲",
+                "book_meta": {"fanqie": {"status": "done",
+                                         "data": {"target_reader": "男频"}}}}
+        meta = self._military_meta()
+        material = "架空历史大乾军旅 " + self.MILITARY_SUMMARY
+        out = bookmeta._fill_required_fields(task, "qimao", meta, {}, material)
+        self.assertEqual(out["target_reader"], "男生")
+        self.assertEqual(out["category_main"], "历史")
+        self.assertEqual(out["category_sub"], "架空历史")
+        self.assertTrue(out.get("_fixes"))                    # 纠偏说明在场
+        self.assertIn("题材信号", "；".join(out["_fixes"]))
+        self.assertEqual(out["tags_role"], ["特种兵", "将军", "杀伐果断"])  # 标签不动
+
+    def test_female_romance_kept(self):
+        meta = {"book_name": "x", "target_reader": "女生",
+                "category_main": "现代言情", "category_sub": "总裁豪门",
+                "summary": "落魄千金闪婚豪门总裁，甜宠虐恋双重奏",
+                "tags_style": ["甜宠"], "tags_role": ["女总裁"],
+                "tags_plot": ["闪婚"], "tags_bg": ["都市"],
+                "protagonist_1": "苏", "protagonist_2": "陆", "status": "连载中"}
+        out = bookmeta._fill_required_fields({}, "qimao", meta, {}, meta["summary"])
+        self.assertEqual(out["target_reader"], "女生")
+        self.assertEqual((out["category_main"], out["category_sub"]),
+                         ("现代言情", "总裁豪门"))
+        self.assertNotIn("_fixes", out)                       # 信号与声称一致不纠
+
+    def test_balanced_signals_no_flip(self):
+        # 双侧命中（军旅+甜宠）→ 不判 → 保守保留模型声称，绝不反向错纠
+        meta = {"book_name": "x", "target_reader": "女生",
+                "category_main": "现代言情", "category_sub": "职场情缘",
+                "summary": "特种兵退伍的她回乡开甜品店，军功章与甜宠日常",
+                "tags_style": ["甜宠"], "tags_role": ["特种兵"],
+                "tags_plot": ["逆袭"], "tags_bg": ["都市"],
+                "protagonist_1": "甲", "protagonist_2": "乙", "status": "连载中"}
+        out = bookmeta._fill_required_fields({}, "qimao", meta, {}, meta["summary"])
+        self.assertEqual(out["target_reader"], "女生")
+        self.assertNotIn("_fixes", out)
+
+    def test_peer_platform_anchor(self):
+        # 信号零命中时看同书另一平台已定的读者：番茄男频 → 七猫翻转男生
+        from core import bookmeta_catalog as cat
+        task = {"goal": "无信号的日常故事",
+                "book_meta": {"fanqie": {"status": "done",
+                                         "data": {"target_reader": "男频"}}}}
+        meta = {"book_name": "x", "target_reader": "女生",
+                "category_main": "古代言情", "category_sub": "权谋天下",
+                "summary": "一个关于美食与日常的平淡故事",
+                "tags_style": ["治愈"], "tags_role": ["医生"],
+                "tags_plot": ["美食"], "tags_bg": ["都市"],
+                "protagonist_1": "甲", "protagonist_2": "乙", "status": "连载中"}
+        out = bookmeta._fill_required_fields(task, "qimao", meta, {}, "美食日常")
+        self.assertEqual(out["target_reader"], "男生")
+        self.assertIn("另一平台", "；".join(out.get("_fixes") or []))
+        self.assertIn(out["category_main"], cat.QIMAO_CATS["男生"])  # 分类随频道重选
+        self.assertIn(out["category_sub"],
+                      cat.QIMAO_CATS["男生"][out["category_main"]])
+
+    def test_apply_fix_note_pops_and_appends(self):
+        meta = {"_fixes": ["频道纠偏：女生→男生（依据：题材信号）"], "x": 1}
+        src = bookmeta._apply_fix_note(meta, "llm(a)")
+        self.assertEqual(src, "llm(a)；频道纠偏：女生→男生（依据：题材信号）")
+        self.assertNotIn("_fixes", meta)                       # 临时键随出随清
+        self.assertEqual(bookmeta._apply_fix_note({"x": 1}, "s"), "s")
+
+    def test_fanqie_category_fallback_channel_aware(self):
+        # 《戍边骑奴》案：旧兜底不分频道，「戍边→古风世情」女频词男频素材
+        # 选不中 → 全部落男频表首项「西方奇幻」。架空王朝军事文应兜到历史类
+        task = {"goal": "", "id": "t-x", "title": "书"}
+        meta = {"book_name": "书", "target_reader": "男频",
+                "summary": "现代兵王成了大乾北境骑奴，以军功镇山河",
+                "protagonist_1": "秦", "protagonist_2": "沈"}
+        material = ("现代兵王殉职雪崩，成了大乾王朝北境军营的骑奴编号七十三，"
+                    "军功练兵戍边，从骑奴到将军。")
+        out = bookmeta._fill_required_fields(task, "fanqie", meta, {}, material)
+        self.assertIn(out["category"], ("历史古代", "历史脑洞"))
+        self.assertNotEqual(out["category"], "西方奇幻")
+        # 女频素材兜女频词
+        meta_f = {"book_name": "书", "target_reader": "女频",
+                  "summary": "嫡女重生宅斗虐渣",
+                  "protagonist_1": "甲", "protagonist_2": "乙"}
+        out_f = bookmeta._fill_required_fields(task, "fanqie", meta_f, {},
+                                               "古代深宅嫡女庶女宅斗")
+        self.assertEqual(out_f["category"], "宫斗宅斗")
 
 
 class TestValuesCreateBook(unittest.TestCase):
@@ -233,6 +354,45 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn("**内容·世界观**：规则怪谈", md)
         self.assertIn("**主角名2**：（待补充）", md)
         self.assertIn("来源：编排者(x)", md)
+
+
+class TestRepairChannel(unittest.TestCase):
+    """repair_existing 频道自愈：已落库的跨频道坏数据字段全齐（级联自洽），
+    旧口径 required_ok 放行；靠题材信号识别后启动修复即翻转，且幂等。"""
+
+    def test_wrong_channel_entry_repaired_and_idempotent(self):
+        from core import bookmeta_catalog as cat
+        tid = "t-bmtestchan-0001"
+        bad = {"book_name": "戍边骑奴：我以军功镇山河", "target_reader": "女生",
+               "category_main": "古代言情", "category_sub": "权谋天下",
+               "tags_style": ["热血", "爽文"], "tags_role": ["特种兵", "将军"],
+               "tags_plot": ["穿越", "战争"], "tags_bg": ["架空历史"],
+               "protagonist_1": "秦骁", "protagonist_2": "沈青梧",
+               "status": "连载中",
+               "summary": ("现代特种兵王殉职雪崩，成了大乾北境最卑贱的骑奴。"
+                           "军功被冒领反挨军棍，他凭特战本领与练兵之道，"
+                           "雪谷设伏阵斩百夫长，从骑奴到将军，戍边抗蛮。")}
+        with store.LOCK:
+            store._TASKS[tid] = {"id": tid, "title": "书", "status": "done",
+                                 "goal": "架空历史军旅题材长篇",
+                                 "workdir": str(TMP / "wd-repair"),
+                                 "serial": {"start_chapter": 1},
+                                 "book_meta": {"qimao": {"status": "done",
+                                                         "data": dict(bad),
+                                                         "source": "llm(x)",
+                                                         "at": "x"}}}
+        n = bookmeta.repair_existing()
+        self.assertGreaterEqual(n, 1)
+        fixed = store.get_task(tid)["book_meta"]["qimao"]
+        self.assertEqual(fixed["data"]["target_reader"], "男生")
+        self.assertIn(fixed["data"]["category_main"], cat.QIMAO_CATS["男生"])
+        self.assertIn(fixed["data"]["category_sub"],
+                      cat.QIMAO_CATS["男生"][fixed["data"]["category_main"]])
+        self.assertIn("频道纠偏", fixed["source"])
+        # 幂等：修完再跑不重复改写（_fixes 临时键不落盘是前提）
+        self.assertEqual(bookmeta.repair_existing(), 0)
+        with store.LOCK:
+            del store._TASKS[tid]
 
 
 class TestStoreBookMeta(unittest.TestCase):

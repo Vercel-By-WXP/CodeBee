@@ -6687,7 +6687,20 @@ async function loadArtifacts(runId) {
   }
   const head = '<div class="files-head"><span class="sec-title">' + t("成品文件") + '</span>' +
     '<span class="wd" title="' + esc(t("点击复制")) + '" onclick="copyText(this.textContent)">' + esc(d.workdir) + "</span></div>";
-  const chips = artifactsChips(runId, files);
+  // 上一版 run 的文件清单（详情上下文才有）：同名文本文件给「对比」入口；
+  // 拉不到/无历史静默降级——对比是增强不是闸门
+  let prevRun = null;
+  if (detailOwns && S.detailTaskKey) {
+    const prev = (_taskRunsCache.get(S.detailTaskKey) || []).find((r) => r.id !== runId);
+    if (prev) {
+      try {
+        const pd = await api("/api/runs/" + encodeURIComponent(prev.id) + "/files");
+        if (pd && (pd.files || []).length)
+          prevRun = { id: prev.id, names: new Set(pd.files.map((f2) => f2.name)) };
+      } catch (e) { /* 上一版清单不可用就不给对比 */ }
+    }
+  }
+  const chips = artifactsChips(runId, files, prevRun);
   if (box) box.innerHTML = head + '<div class="file-chips">' + chips + "</div>";
   if (mainBox) { mainBox.classList.remove("hidden");
     mainBox.innerHTML = head + '<div class="file-chips">' + chips + "</div>"; }

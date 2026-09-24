@@ -772,7 +772,7 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 ### 2026-09-24 21:00 用户点名清账班（待深挖队列 8 项清账 + 扫榜扩源）
 
-- **ECC instincts 概念深挖完成**（affaan-m/ECC，266k★，MIT）| instincts=从真实会话提取的模式+置信分（continuous-learning-v2；v1 是 Stop-hook 抽取）；注入纪律：SessionStart 每次最多注入 6 条（ECC_MAX_INJECTED_INSTINCTS）、置信阈值 0.7、按置信+项目相关性排序；生命周期：/evolve 把相关 instincts 聚类**晋升成 skill**、/prune 清过期 pending、/instinct-import/export 可迁移；Memory Vault 跨 harness 本地 Markdown 记忆（会话蒸馏=摘要+instincts+skills 三层）| **与 CodeBee 经验库对照**：outcome 加权≈置信分、相关性最高优先≈注入排序、命中热度≈召回信号——大机制同构；**差量四件**：①教训自动聚类晋升为技能（我们的经验止步于教训，技能靠市场装）②注入条数硬上限（我们有 token 预算无条数上限）③过期教训物理清理（我们只降权不删）④经验库导出/导入 | 差量①②进路线图备选 | 2026-09-24
+- **ECC instincts 概念深挖完成**（affaan-m/ECC，266k★，MIT）| instincts=从真实会话提取的模式+置信分（continuous-learning-v2；v1 是 Stop-hook 抽取）；注入纪律：SessionStart 每次最多注入 6 条（ECC_MAX_INJECTED_INSTINCTS）、置信阈值 0.7、按置信+项目相关性排序；生命周期：/evolve 把相关 instincts 聚类**晋升成 skill**、/prune 清过期 pending、/instinct-import/export 可迁移；Memory Vault 跨 harness 本地 Markdown 记忆（会话蒸馏=摘要+instincts+skills 三层）| **与 CodeBee 经验库对照**：outcome 加权≈置信分、相关性最高优先≈注入排序、命中热度≈召回信号——大机制同构；**差量勘误（09-25 复核）**：②注入条数硬上限系误记——MAX_LESSONS_INJECT=8 与 KNOWLEDGE_MAX_INJECT 早已双存在；实差量=①教训自动聚类晋升技能（已落 evolve）/③过期清理（降权已有、物理删除伤数据不做）/④导出导入（backup 全量已覆盖） | ①已落地 | 2026-09-24
 - **ARIS Anti-Autoresearch 深挖完成**（wanshuiyin/Anti-Autoresearch，卫星仓）| **确定性脊柱**：span 锚定+哈希证据账本 → LLM 审计员**只提议**发现 → 纯规则裁决器打分/降级（模型永不给 verdict）；61 个 HP-* 诚信信号带误报用例（HP-NUM-INFLATE 摘要 85.3 vs 表 84.7、HP-DELTA-ERROR 16% 实为 6.7%、HP-PIPELINE-ARTIFACT 模板残串精确匹配）；表面信号防火墙（重复表/LLM 图/凑页数硬顶 minor）、AI 文风印象**零裁决权重**；8 个模式 eval 门禁进 CI | 与我们评审解析三道网+事件流计数鉴别谎报同向；**可借形态**：①评审发现带证据锚（span+hash）而非自由文本 ②高误报类发现强制降档 ③「模型只提议、规则裁决」分工 | 借鉴方向（评审域） | 2026-09-24
 - **freellmapi 深挖完成**（tashfeenahmed/freellmapi，28.4k★，MIT）| 34 家免费档聚合 635 端点≈7.4B tokens/月，一个 /v1；per-key RPM/RPD/TPM/TPD 记账**学习供应商天花板**（主动避让而非撞了才冷却）；同模型跨供应商归一一条+组内严格 failover；sticky session 30 分钟+中途换模型带交接摘要；请求管线预压缩（prompt 去重/工具输出过滤/重复 JSON 压缩）；密钥 AES-256-GCM；免费版目录快照滞后 30 天（付费 $19/yr 实时）；**明示 Personal experimentation only** | 与我们多 KEY 链+冷却+链展开同构度高；**结论：不接**（ToS 个人实验限定+配额稳定性存疑+同构无增量）；差量=配额**记账式**主动避让（我们是错误驱动被动冷却）远期可借 | 不接（拍板材料齐） | 2026-09-24
 - **codegraph 深挖完成**（colbymchenry/codegraph，72k★，MIT）| 预索引符号/调用边/依赖图（含动态分发跳边）+文件监听自动同步+MCP 接线各家 CLI；实测 7 仓 7 语言：工具调用 -88%/token -62%/成本 -44%，**同时诚实报告常驻上下文 +80%**（稠密payload 进窗不走）——双面测量文化本身值得抄 | 重依赖本地索引守护进程，不接；差量备注：①代码任务上下文可预注入「符号+调用边+影响面」摘要 ②发基准要报「处理成本」与「常驻成本」两面 | 参考（含测量方法论） | 2026-09-24
@@ -801,3 +801,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 批1 复查：评审/安全域高星均已录无增量
 
 **✅ 本班落地**：计划层反过度防御——HERO Overbuild 形态上移到编排者拆分面：hard 多子任务不做任务没要的防御性扩展（缓存/重试/监控/通用抽象层），真实风险写 detail 备注由人决定。与 d45506c（实现/修复层）成对，反过度防御闭环到计划-实现-修复三层。test_plan_anti_overbuild 3 项
+
+### 2026-09-25 00:30 用户点名清账班·第四班（终清：ARIS 锚+continuum 督促+ECC evolve）
+
+- **ARIS 评审证据锚落地**（Anti-Autoresearch「模型只提议、规则裁决」分工的评审域切片）：NOVEL_CRITIQUE_PROMPT/SERIAL_GLOBAL_PROMPT 的 issues 增 quote 字段（≥8 字逐字摘录+「编造引文会被降档」威慑）；`_anchor_issues` 确定性 containment 校验**三态**（命中=锚定/对不上=未锚定降档殿后带标记/老格式无 quote=None 灰度兼容不标记）；归一=去空白+剥首尾标点（引文多带一个句号不该判假）；连载与内容两处修订面 crit_lines 换 `_major_lines`（锚定在前/未锚定殿后+⚠计数行）。event_check 逐项目标审稿的原文证据要求（此前已有）与 issues 锚互补
+- **continuum 陈年承诺督促落地**（承诺/伏笔账差量收窄版——资源账本+章戳早已存在，真差量=无账龄督促）：`_ledger_watchlist` 按「## 第 N 章」段解析承诺/伏笔条目（同名以最后出现章为准、现状含已兑现/已回收等词剔除），距本章 ≥3 章未推进 → 起起草面追加「⚠ 陈年承诺/伏笔」清单（推进/回收其一或明确留白）；min_age 边界/排序/空账本全测
+- **ECC evolve 落地**（/evolve 教训晋升技能的半自动版）：`skills.evolve_lessons`——注入 ≥6+可信度下界 ≥0.75+成功归因 ≥1 的教训聚成用户包**草稿**（data/skillpacks/evolve-*.md，frontmatter scopes=教训域并集），**默认停用**（pid 与 _load_user_pack stem 哈希同口径写 enabled=False）——晋升必须过人工审阅闸；POST /api/skills/evolve 返回收录概况。ECC 差量②「注入条数上限」勘误为误记（两上限早已存在）
+- test_final_borrowings 15 项（锚三态/归一/降档/提示词契约+督促边界排序剔除+evolve 门槛草稿停用）；相邻域 review_fallback/reviewer_error/quality_gates/serial_review_resilience/lesson 三件全绿

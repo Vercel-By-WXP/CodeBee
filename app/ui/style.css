@@ -6171,4 +6171,3 @@ table.fp-xls { border-collapse: collapse; font-family: var(--mono); font-size: 1
 .art-diff .dl-add { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
 .art-diff .dl-del { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); text-decoration: none; }
 .art-diff .dl-gap { padding: 4px 14px; color: var(--muted); font-family: var(--font-ui); font-size: 11px; opacity: .85; }
-
