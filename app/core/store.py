@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import paths, runner, volumes
+from . import artifacts, paths, runner, volumes
 
 LOCK = threading.RLock()
 _TASKS = {}
@@ -746,7 +746,7 @@ def task_side(task_id):
     total_steps = sum(len(r.get("steps") or []) for r in runs)
     # 成品口径闸：任务一步都没跑出来过（如历次都在检出前失败）→ 工作目录里的
     # 文件变动全是并行活动的噪音，不算这个任务的成品
-    wd, arts = run_artifacts(latest["id"], limit=50) if (latest and total_steps > 0) else ("", [])
+    wd, arts = run_artifacts(latest["id"], limit=50, cache=True) if (latest and total_steps > 0) else ("", [])
     return {
         "task": {k: task.get(k) for k in ("id", "title", "status", "workdir", "git_state",
                                           "git_rev")},
@@ -966,41 +966,6 @@ def run_workdir(run_id):
     return str(task.get("workdir") or "") if task else ""
 
 
-_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".idea", ".vscode"}
-
-# 构建产物/依赖缓存目录：里面的文件是工具链再生成的，不是任务成品
-_BUILD_DIRS = {
-    "target", "build", "dist", "out", "bin", "obj",           # 通用构建输出
-    "surefire", "failsafe-reports", "test-output", "reports",  # 测试/报告输出
-    ".next", ".nuxt", ".output", ".gradle", ".gradle-home",    # 前端/Gradle
-    "__MACOSX",
-}
-
-# CLI 自身的历史/评审中间件不属于用户成果。它们通常落在工作目录根部，
-# 只按隐藏目录过滤会漏掉 Aider 的 .aider.* 与流程生成的 *_review.json。
-_PROCESS_ARTIFACT_NAMES = {
-    ".aider.chat.history.md", ".aider.input.history", ".aider.input.history.md",
-    ".aider.tags.cache.v4", ".aider.tags.cache.v3", ".aider.conf.yml",
-}
-_PROCESS_ARTIFACT_SUFFIXES = ("_review.json", ".review.json")
-_PROCESS_ARTIFACT_PREFIXES = ("tutti_prompt_", "_tutti_prompt_")
-
-
-def _is_process_artifact(rel_name):
-    """判断工作目录文件是否为 CLI/评审过程产物，而非可交付成果。"""
-    name = str(rel_name or "").replace("\\", "/")
-    base = name.rsplit("/", 1)[-1].lower()
-    if base in _PROCESS_ARTIFACT_NAMES:
-        return True
-    if base.startswith(".") and base.startswith(".aider"):
-        return True
-    if base.endswith(_PROCESS_ARTIFACT_SUFFIXES):
-        return True
-    if base.startswith(_PROCESS_ARTIFACT_PREFIXES):
-        return True
-    return False
-
-
 def task_first_start(task_id, fallback=""):
     """该任务最早一次运行的开始时间（含回退：任务创建时间 → 指定回退值）。"""
     stamps = []
@@ -1019,13 +984,15 @@ def task_first_start(task_id, fallback=""):
     return best
 
 
-def run_artifacts(run_id, limit=200):
+def run_artifacts(run_id, limit=200, cache=False):
     """列一次运行的「成品文件」：工作目录里自该任务首次运行以来新产生/修改的文件。
 
     断点续跑会拆成多条 run，只按本 run 过滤会漏掉早期章节；这里以「任务首跑」
     为起点。返回 (workdir, files)；files 按 mtime 新→旧，name 为工作目录内
-    相对路径，已跳过 .git / 隐藏目录 / node_modules / target 等构建产物目录，
-    最多 limit 个。
+    相对路径，已跳过 .git / 隐藏目录 / node_modules / target 等构建产物目录。
+    cache=True 供 UI 轮询热路径（详情/侧栏/状态快照）复用短 TTL 缓存与在飞
+    合并；发布/预览/知识库等正确性敏感方保持默认，永远现扫。
+    剪枝遍历与过滤实现在 artifacts.py（几万文件目录从秒级降到百毫秒级）。
     """
     wd = run_workdir(run_id)
     if not wd:
@@ -1040,36 +1007,12 @@ def run_artifacts(run_id, limit=200):
     root = Path(wd)
     if not root.is_dir():
         return wd, []
-    files = []
-    try:
-        for p in root.rglob("*"):
-            if not p.is_file():
-                continue
-            if any(part in _SKIP_DIRS for part in p.parts):
-                continue
-            if any(part in _BUILD_DIRS for part in p.parts[:-1]):
-                continue
-            # 隐藏目录一律是工具过程文件（.mimocode/.zcode/.claude/.codex…），
-            # 不是成品；按前缀通排，免得每来一个新 agent CLI 就补一次白名单
-            if any(part.startswith(".") for part in p.parts[:-1]):
-                continue
-            try:
-                st = p.stat()
-            except OSError:
-                continue
-            if st.st_mtime < t0:
-                continue
-            rel_name = str(p.relative_to(root)).replace("\\", "/")
-            if _is_process_artifact(rel_name):
-                continue
-            files.append({"name": rel_name,
-                          "size": st.st_size, "mtime": int(st.st_mtime)})
-            if len(files) >= 800:  # 防超大目录拖垮接口；截断后再排序取最新
-                break
-    except OSError:
-        pass
-    files.sort(key=lambda f: -f["mtime"])
-    return wd, files[:limit]
+    running = False
+    if cache:
+        task = get_task(run.get("task_id") or "") if run.get("task_id") else None
+        running = bool(task) and task.get("status") in ("queued", "running")
+    return wd, artifacts.scan(str(root), t0, limit=limit,
+                              running=running, cache=cache)
 
 
 def task_step_count(task_id):

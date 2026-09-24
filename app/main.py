@@ -411,7 +411,7 @@ class Handler(BaseHTTPRequestHandler):
                 run = store.get_run(m.group(1))
                 if not run:
                     return self._json(404, {"error": "not found"})
-                wd, files = store.run_artifacts(m.group(1))
+                wd, files = store.run_artifacts(m.group(1), cache=True)
                 # 任务一步都没跑出来过（如历次都在检出前失败）→ 工作目录里的
                 # 文件变动是并行活动的噪音，不算这个任务的成品
                 if files and not store.task_step_count(run.get("task_id") or ""):
@@ -2035,7 +2035,7 @@ class Handler(BaseHTTPRequestHandler):
                     duration_s = step_duration_s
         wd, files = "", []
         try:
-            wd, files = store.run_artifacts(latest.get("id") or "", limit=12)
+            wd, files = store.run_artifacts(latest.get("id") or "", limit=12, cache=True)
             if files and not store.task_step_count(latest.get("task_id") or ""):
                 files = []   # 与 /files 端点同口径：无步骤的任务不给成品（fixture 防误报）
         except Exception:
@@ -2645,6 +2645,12 @@ def main():
     n_bo = bookmeta.recover_orphans()  # 作品信息生成线程同样会被重启杀掉，遗留 running 收尸
     if n_bo:
         print("[CodeBee] 崩溃恢复：%d 条作品信息生成中断标记为 failed（可点重试）" % n_bo)
+    try:
+        n_bm = bookmeta.repair_existing()
+        if n_bm:
+            print("[CodeBee] 作品信息迁移：%d 条历史记录已补齐建书必填字段" % n_bm)
+    except Exception:
+        pass
     try:
         from core.publish import manager as publish_mgr
         n_pb = publish_mgr.recover_orphans()  # 发布线程同款收尸：waiting_login/busy 改判 error
