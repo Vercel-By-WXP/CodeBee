@@ -154,6 +154,13 @@ def upsert_entry(scope, title, body, tags=None, source="", source_file="",
         if hit is not None:
             it = hit
             it["seen"] = int(it.get("seen") or 1) + 1
+            # 合并不吞变体标题（与教训库同款记忆卫生）：近似题吸收留痕——
+            # 溯源可见、变体措辞的后续检索有据；去重+封顶 8。
+            if title != str(it.get("title") or ""):
+                mt = it.setdefault("merged_titles", [])
+                if title not in mt:
+                    mt.append(title)
+                    del mt[:-8]
             old_body = str(it.get("body") or "")
             old_rev = it.get("revision_id") or ""
             new_rev = revisions.make_revision("kbrev", body, source=source)

@@ -410,6 +410,14 @@ def upsert_lesson(scope, title, content, source="", category=None, dim=None):
             it.update({k: new_rev[k] for k in ("revision_id", "content_sha256")})
             it["seen"] = int(it.get("seen") or 1) + 1
             it["updated_at"] = _now()
+            # 合并不吞变体标题（批2 记忆卫生）：近似题被吸收时留痕——溯源可见，
+            # 且后续按变体措辞检索也能命中（bigram 检索只看 survivor 自己的题）。
+            # 去重+封顶 8 条，防止长跑自动化把字段撑成第二正文。
+            if title != str(it.get("title") or ""):
+                mt = it.setdefault("merged_titles", [])
+                if title not in mt:
+                    mt.append(title)
+                    del mt[:-8]
             # 合并时不降级已有分类：除非本次归到了明确类别，或该条原本没有分类
             if cat != LESSON_UNCATEGORIZED or not it.get("category"):
                 it["category"] = cat
