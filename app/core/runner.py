@@ -184,18 +184,23 @@ def _kill_tree(pid):
     某些机器状态下 taskkill /F /T 对普通进程也挂死 30s+，等满 15s 超时会让每次
     超时杀进程都卡 20s，看门狗/超时全被拖死；漏杀的孙进程由启动孤儿清扫兜底）。
     POSIX 靠 spawn 时的 start_new_session（子进程自成一个进程组，pgid==pid）
-    用 killpg 连孙带杀。"""
+    用 killpg 连孙带杀。
+
+    返回是否确认整树清空（借鉴 WorkDSH 取消结算分层：kill 动作完成 ≠ 停稳）：
+    Windows 以 taskkill /T 在 1.2s 内退出且返回 0 为准；POSIX 以 killpg 成功
+    为准。返回 False = 停稳未知（孙进程可能仍在），调用方据此落
+    quiescence_unknown 诊断，不改变任何终态语义。"""
     if os.name != "nt":
         try:
             os.killpg(pid, signal.SIGKILL)
-            return
+            return True
         except Exception:
             pass
         try:
-            os.kill(pid, signal.SIGKILL)
+            os.kill(pid, signal.SIGKILL)   # 组杀失败退而杀根：子孙已不可确认
         except Exception:
             pass
-        return
+        return False
     # Windows 没有 signal.SIGKILL（直接引用会 AttributeError）；os.kill 带任意
     # 信号值都走 TerminateProcess，用 SIGTERM
     try:
@@ -211,8 +216,9 @@ def _kill_tree(pid):
             stderr=subprocess.DEVNULL, close_fds=True,   # 不继承被杀进程的管道句柄，否则 EOF 永不来、drain 烧满超时
             creationflags=CREATE_NO_WINDOW)
         tk.wait(timeout=1.2)           # 健康机器 <1s；卡死就不再陪等（后台自行结束）
+        return tk.returncode == 0
     except Exception:
-        pass
+        return False
 
 
 def _drain_streams(proc, t_out, t_err, *, timeout=10):
@@ -647,7 +653,8 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
     为 timeout，而不是把它误记成普通供应商失败。
 
     返回 {ok, exit_code, stdout, stderr, duration, cancelled, timed_out, stalled,
-    deadline_exceeded, abort_marker}。
+    deadline_exceeded, abort_marker}；杀树后未能确认整树清空时额外带
+    quiescence_unknown=True（孙进程可能仍在，诊断用，不改变终态语义）。
     """
     if shell_cmd:
         # shell 串的解析器随平台：重定向/引号语法两边通用，只是解释器不同
@@ -736,6 +743,7 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         cancelled = timed_out = stalled = repeat_aborted = False
         deadline_exceeded = False
         abort_marker = None
+        tree_quiet = None   # 杀树结果：None=未杀，True=确认清空，False=停稳未知
         while True:
             try:
                 proc.wait(timeout=0.4)
@@ -744,13 +752,13 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 pass
             if cancel_event is not None and cancel_event.is_set():
                 cancelled = True
-                _kill_tree(proc.pid)
+                tree_quiet = _kill_tree(proc.pid)
                 _drain_streams(proc, t_out, t_err, timeout=10)
                 break
             if deadline is not None and time.monotonic() >= deadline:
                 deadline_exceeded = True
                 timed_out = True
-                _kill_tree(proc.pid)
+                tree_quiet = _kill_tree(proc.pid)
                 _drain_streams(proc, t_out, t_err, timeout=5)
                 break
             elapsed = time.monotonic() - start_mono
@@ -763,7 +771,7 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                           and elapsed < timeout + activity_timeout)
                 if not active:
                     timed_out = True
-                    _kill_tree(proc.pid)
+                    tree_quiet = _kill_tree(proc.pid)
                     _drain_streams(proc, t_out, t_err, timeout=5)
                     break
             if stall_timeout and time.time() - stamp[0] > stall_timeout:
@@ -771,7 +779,7 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 # 超时不如提前杀——错误按超时归类，走既有的换模型/换将链路
                 stalled = True
                 timed_out = True
-                _kill_tree(proc.pid)
+                tree_quiet = _kill_tree(proc.pid)
                 _drain_streams(proc, t_out, t_err, timeout=5)
                 break
             if aborts:
@@ -783,7 +791,7 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                             repeat_aborted = True
                             abort_marker = marker
                             timed_out = True
-                            _kill_tree(proc.pid)
+                            tree_quiet = _kill_tree(proc.pid)
                             _drain_streams(proc, t_out, t_err, timeout=5)
                             break
                     if repeat_aborted:
@@ -821,7 +829,7 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
             stderr += "\n[输出停滞 %ss，已终止进程树]" % stall_timeout
         elif timed_out:
             stderr += "\n[超时 %ss，已终止进程树]" % timeout
-        return {
+        result = {
             "ok": exit_code == 0 and not cancelled and not timed_out,
             "exit_code": exit_code, "stdout": stdout, "stderr": stderr,
             "duration": duration, "cancelled": cancelled, "timed_out": timed_out,
@@ -832,6 +840,13 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
             "activity_timeout": activity_timeout,
             "last_output_age": max(0.0, time.time() - stamp[0]),
         }
+        if tree_quiet is False:
+            # 杀树完成但未确认整树清空（taskkill 卡死放弃 / killpg 失手只杀了
+            # 根）：孙进程可能仍在运行。只落诊断标记，不改变 cancelled/timed_out
+            # 等任何终态语义——KEY 冷却豁免、健康惩罚仍按结构化取消标记判断。
+            result["quiescence_unknown"] = True
+            result["stderr"] += "\n[进程树未确认清空：孙进程可能仍在运行]"
+        return result
     finally:
         if log_fh:
             try:

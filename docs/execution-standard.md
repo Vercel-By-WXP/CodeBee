@@ -141,6 +141,17 @@ token 用量和耗时是独立于"成/败"的第三条轴：一次 `done` 可以
 - 终态写入使用单一 CAS 规则：`queued/running` 才能翻转到 `done/failed/cancelled/timeout`，迟到异步写手必须被拒绝；终态后的步骤统一收口，不能复活任务。
 - 新增重试/换路必须测取消、deadline、相同 host 去重、备用 KEY、不同上游后备和终态保护。
 - 错误台账只持久化分类后的简短原因、实际路由身份和非敏感元数据；原始 stdout/stderr 和任务内容只留在本机运行详情。
+- 流程漂移只诊断不阻断：「改完流程再重跑」是合法路径，但任务创建后流程定义的语义变化必须留痕（`run.flow_drift` + 用户可见 warning），不得让历史任务的兜底取值静默换新。
+- 杀树完成、管道 EOF、根进程退出码任一出现都不等于整树停稳；未能确认清空时必须落 `quiescence_unknown` 诊断，不得把它当作成功收口或任何惩罚/豁免的证据。
+
+## 修订钉住与执行留痕
+
+本节把「这个任务当时到底用的什么」变成可对账的事实，而不是靠翻日志猜。四条口径：
+
+1. **流程修订钉住**：`store.create_task` 在创建时固化流程参数并记 `flow_snapshot.digest`（`flows.flow_digest`，只含语义字段；icon/note/name 等展示位不参与，改措辞不制造漂移噪音）。`execute_run` 每次起跑——含续跑、重试、自动续跑——都用 `flows.flow_drift` 比对当前定义：漂移落结构化 `run.flow_drift` 并追加 warning，给明确诊断而非静默换新。任务固化参数不受流程修改影响，因此漂移不阻断执行。
+2. **步骤绑定速记**：步骤起跑即记实际执行身份 `provider`（绑定链形态 `provider_id@host`，env 注入形态 `KEY名=host`；只记身份不记密钥）。模型目录、`route_plan` 和推荐结果都只是发现/计划信息；步骤行的实际解析记录才是「本步用了谁」的对账依据——换将、补位、故障转移后以步骤行为准。
+3. **停稳未知**：`runner._kill_tree` 返回是否确认整树清空（Windows 以 taskkill /T 在 1.2s 内返回 0 为准，POSIX 以 killpg 成功为准）；未确认时 `run_process` 结果带 `quiescence_unknown=True`，stderr 与步骤摘要同步提示「孙进程可能仍在运行」。该标记只作诊断：不改变 cancelled/timed_out 终态语义，不进入 KEY 冷却与供应商健康判定，孤儿清扫继续兜底。
+4. **执行事实与业务事实分界**：步骤记录与步骤日志是执行事实的唯一源（实际绑定、工具轨迹、进程收场）；run 的 warnings/`flow_drift`、任务状态、经验库与用量台账是业务事实，各自持有、以稳定 ID 关联。近名事实不得互相冒充：任务翻 `done` 不冒充质量达标（质量门另有判定）、`route_plan` 选中不冒充实际执行、忙碌动画/进度徽章不冒充执行事实、杀树完成不冒充进程停稳。
 
 ## 当前实现状态
 
@@ -163,6 +174,9 @@ token 用量和耗时是独立于"成/败"的第三条轴：一次 `done` 可以
 | 内容质量判定门 | 双闸判定（确定性验证 + 独立评审）、阈值分档、逐维度全达标、`review_no_all_fail_zero` 断言和 `test_quality_gates.py` 均已在代码里 | 判定口径已可执行；"体裁错位"（报告腔）目前只有单点净化与提示词约束，缺通用体裁守卫 |
 | 成本与时延计量 | `usage.record` 已落 token 五分项（含 `cached`/`reasoning`）与 `duration_s`/`cost_usd`/`saved`，启动 `backfill_from_runs` 幂等回填；`token_meter` 提供 `used`/`last_context`/`pressure_ratio`/`capacity`，`budget.max_tokens_per_run` 熔断与 `usage.estimate` 已接线，路由按 `p95_duration_s`/`avg_cost_usd` 软加减分且候选理由带样本层（`fallback` 标签），换将 `attempt_history` 逐项带 `key_id`/`protocol`/`tokens`/`usage` 分项/`cost_usd`，缓存命中率已进用量页 | 计量与闸门已落地；中间失败候选尚未逐条进用量台账（每步仍只落最终一条，逐尝试消耗只在 `attempt_history` 里）；TTFT 与 tokens/sec 已有计量字段（仅内置直连流式可测，缺字段=不可测），尚未进路由与验收口径，`estimate` 尚未成为排程前置闸，成本/时延的前后差异比对仍靠人工看用量页 |
 | 候选打分权重 | `router.score`（基线/绑定/历史/亲和度/在线/配额）与 `dispatch.score_model_entry`（质量/档位/价格/能力/视觉/在线）已按本表取值实现，理由字符串逐项回显分值与样本层，`dispatch_decisions` 已产出脱敏排序明细；`test_candidate_scoring_standard.py` 把本表每个数值与代码常量钉在一起 | 分值与文档已对齐且有守卫；能力基线与亲和度仍是人工先验，未随真实台账校准，调权重时守卫只要求同步改表、不判断新值是否更优 |
+| 修订钉住与漂移诊断 | `flows.flow_digest/flow_drift` + `store.create_task` 落 `flow_snapshot`，`execute_run` 起跑比对并落 `flow_drift` 与 warning，`test_revision_binding_ledger.py` 锁定 | 已落地；只覆盖语义字段，改展示位不告漂移；流程被删除时不告漂移（任务自有固化参数） |
+| 步骤绑定速记 | `_run_step` 与内置直连起跑记 `provider`（`provider_id@host` / `KEY名=host`），`add_step` 落步骤行 | 已落地；UI 步骤卡尚未展示该列（先入账后展示），老运行数据无此键、读取须 `.get` |
+| 停稳未知标记 | `_kill_tree` 返回确认结果，`run_process` 未确认时带 `quiescence_unknown`，步骤摘要与 stderr 同步提示 | 已落地；POSIX killpg 失手、Windows taskkill 卡死两路径均覆盖判定，孤儿清扫继续兜底 |
 
 ## 配套运营闭环
 
@@ -303,3 +317,4 @@ host 归一已用于换路（403 隔离、同 host 让位）与评测作废，�
 | 当前实现状态·CLI 配置一致性 | 将实现状态更新为“失败可传播并阻断”，补充对应回归测试；文件哈希漂移检测的归属校正为 `test_pi_injector.py` | 保持文档状态与运行时代码一致 |
 | 运行时代码 | 新增共享上游身份归一化；同步缓存命中返回成功；同步失败传播为 `ENV_BLOCK` | 让路由、换路和预检使用同一可验证口径 |
 | 导语 | 节名交叉引用修正：「并行协作与发布纪律」拆正为「并行会话协作纪律」与「发布与通知硬闸」 | 消除指向不存在小节的失效引用 |
+| 新增「修订钉住与执行留痕」节 | 流程 digest 钉住与漂移诊断、步骤绑定速记、停稳未知标记、执行/业务事实分界四口径；实施约束补两条；实现状态表补三行（借鉴 WorkDSH ADR-0010/ADR-0012/ResolvedExecutionBinding 与取消结算分层） | 「任务当时用的哪版流程/哪个上游/进程是否真停稳」从翻日志猜变成可对账事实 |

@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, attachments, branching, catalog, chaptersafe, dispatch_log, history, hooks, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage, volumes
+from . import aiflavor, attachments, branching, catalog, chaptersafe, dispatch_log, flows, history, hooks, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -365,6 +365,44 @@ def _binding_dead_msg(agent):
                 "请在「模型调度（可选）」页为该 CLI 指定已启用的供应商")
 
 
+def _binding_brief(agent):
+    """步骤级绑定速记（借鉴 WorkDSH ResolvedExecutionBinding：模型目录只是发现
+    信息，解析结果才是权威）。把本步实际执行用的 provider 链与上游 host 压成
+    一行——配额烧错家/模型漂移直接对账步骤行，不必翻日志文本里的审计行。
+    只记身份不记密钥：env 形态的注入也只取 URL 的 host 部分。"""
+    from . import upstream as _up
+    entries = []
+    for item in (agent.get("call_chain") or [])[:4]:
+        if not isinstance(item, dict):
+            continue
+        pid = str(item.get("provider_id") or "").strip()
+        prov = item.get("provider") if isinstance(item.get("provider"), dict) else {}
+        host = ""
+        try:
+            host = _up.normalize_upstream(
+                str(prov.get("base_url") or prov.get("baseUrl") or ""))
+        except Exception:
+            host = ""
+        if pid and host and host not in pid:
+            entries.append("%s@%s" % (pid, host))
+        else:
+            entries.append(pid or host or "?")
+    if not entries:
+        # env 注入形态（如 ANTHROPIC_BASE_URL）：URL 值的 host 不敏感，可入账
+        for k, v in sorted((agent.get("env") or {}).items()):
+            s = str(v or "")
+            if s.startswith(("http://", "https://")):
+                try:
+                    host = _up.normalize_upstream(s)
+                except Exception:
+                    continue
+                if host:
+                    entries.append("%s=%s" % (str(k)[:24], host))
+            if len(entries) >= 3:
+                break
+    return ",".join(entries[:3])[:120]
+
+
 def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner.DEFAULT_TIMEOUT, note="", resume=None, images=None, require_tools=False, swap_guard=None):
     """执行一个智能体步骤并记录。返回 runner 统一结果。
 
@@ -402,7 +440,8 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
         note = ((note + "；") if note else "") + "⚠ " + dead_msg
     step, log_abs = store.add_step(run_id, role, agent["id"],
                                    agent.get("label", agent["id"]), note=note,
-                                   model=agent.get("model") or "")
+                                   model=agent.get("model") or "",
+                                   provider=_binding_brief(agent))
     start = time.time()
     if dead_binding:
         from .error_codes import ErrorCode
@@ -473,7 +512,8 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
     _wait_gate(run_id, ev)
     deadline = _ensure_budget(run_id)
     step, log_abs = store.add_step(run_id, role, "builtin", "CodeBee", note=note,
-                                   model=bi.get("model") or "")
+                                   model=bi.get("model") or "",
+                                   provider=str(bi.get("provider_id") or "")[:120])
     start = time.time()
     agent_pseudo = {"id": "builtin", "label": "CodeBee", "kind": "builtin", "mode": "real",
                     "provider": {"id": bi.get("provider_id") or "",
@@ -650,9 +690,15 @@ def _finish_step_result(run_id, step, res, role, agent, start):
         status = "timeout"
     else:
         status = "done" if res["ok"] else "failed"
+    step_summary = (res.get("text") or res.get("error") or "")[:600]
+    if raw.get("quiescence_unknown"):
+        # 杀树未确认清空（借鉴 WorkDSH 取消结算分层：kill 完成 ≠ 停稳）：
+        # 孙进程可能仍在跑，孤儿清扫稍后兜底。只提示不改变终态语义。
+        step_summary = ((step_summary + "\n") if step_summary else "") + \
+            "⚠ 进程树未确认清空：孙进程可能仍在运行（孤儿清扫稍后兜底）"
     store.finish_step(run_id, step["n"],
                       status,
-                      summary=((res.get("text") or res.get("error") or "")[:600]),
+                      summary=step_summary,
                       exit_code=res.get("raw", {}).get("exit_code"),
                       cost_usd=res.get("cost_usd", 0.0),
                       tokens=res.get("tokens", 0),
@@ -4387,6 +4433,24 @@ def execute_run(run_id):
         store.update_run(run_id, expected_status="running", status="failed",
                          error="找不到任务 %s" % run.get("task_id"), ended_at=_now())
         return
+    # 流程修订漂移诊断（借鉴 WorkDSH ADR-0010 修订钉住）：任务参数创建时已
+    # 固化，改流程不影响固化字段；但历史任务缺失字段的兜底仍取当前流程定义，
+    # 续跑/重试可能静默吃到新流程。漂移不阻断——「改完流程再重跑」是合法
+    # 路径——但必须留痕可对账：run 记结构化 flow_drift + 用户可见 warning。
+    _drift = flows.flow_drift(task)
+    if _drift:
+        store.update_run(run_id, flow_drift=_drift)
+        try:
+            _warns = (store.get_run(run_id) or {}).get("warnings") or []
+            store.update_run(run_id, warnings=_warns + [
+                "流程「%s」在任务创建后已修改（%s → %s）；任务固化参数不受影响，"
+                "历史任务缺失字段的兜底取值已随新定义"
+                % (_drift["flow"], _drift["pinned"][:8], _drift["current"][:8])])
+        except Exception:
+            pass
+        print("[CodeBee] 流程漂移：%s（任务 %s 创建后流程已修改 %s → %s）"
+              % (run_id, task.get("id"), _drift["pinned"][:8], _drift["current"][:8]),
+              flush=True)
     try:
         _ensure_budget(run_id)
     except TaskTimeout:

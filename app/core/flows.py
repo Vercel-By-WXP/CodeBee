@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import threading
@@ -248,6 +249,43 @@ def get_flow(flow_id):
         if f["id"] == flow_id:
             return f
     return None
+
+
+# 参与 digest 的语义字段：会进运行链的参数与提示词。icon/note/goal_hint/name 是
+# 纯展示位——措辞变化不影响执行语义，不应制造「修订漂移」噪音。
+_DIGEST_FIELDS = ("id", "engine", "manuscript", "rubric", "threshold", "rounds",
+                  "best_of", "serial", "draft_prompt", "critique_prompt",
+                  "verify_command")
+
+
+def flow_digest(flow):
+    """流程定义的内容指纹（sha256 前 16 位）——「这个任务当时用的是哪一版流程」
+    的对账真源（借鉴 WorkDSH ADR-0010 发布后不可变修订）。"""
+    if not isinstance(flow, dict):
+        return ""
+    basis = {k: flow.get(k) for k in _DIGEST_FIELDS}
+    blob = json.dumps(basis, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+def flow_drift(task):
+    """任务流程修订漂移检测：任务创建时钉的 digest vs 当前流程定义。
+
+    任务参数在创建时已固化（改流程不影响固化字段），但 task_compile 对历史
+    任务缺失字段（threshold/rubric/manuscript）仍回落当前流程定义——续跑/
+    重试因此可能静默吃到新流程。这里只诊断不裁定：返回
+    {"flow", "pinned", "current"} 或 None（无快照/流程已删/无漂移）。"""
+    snap = (task or {}).get("flow_snapshot") or {}
+    pinned = str(snap.get("digest") or "")
+    if not pinned:
+        return None
+    cur = get_flow(str((task or {}).get("type") or ""))
+    if not cur:
+        return None
+    current = flow_digest(cur)
+    if not current or current == pinned:
+        return None
+    return {"flow": cur.get("id") or "", "pinned": pinned, "current": current}
 
 
 def upsert_flow(payload):

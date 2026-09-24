@@ -160,6 +160,13 @@ def create_task(payload):
     thinking = str(payload.get("thinking") or "standard").strip().lower()
     task["thinking"] = thinking if thinking in ("auto", "low", "standard", "high") else "auto"
     task["timeout_s"] = _task_timeout_s(payload.get("timeout_s"))
+    # 流程修订出处（借鉴 WorkDSH ADR-0010）：创建时钉住当时流程定义的指纹。
+    # 固化参数已保证「改流程不影响本任务」，digest 再补上可对账的一面——
+    # 续跑/重试时若流程已改，flows.flow_drift 能给出明确诊断而非静默换新。
+    task["flow_snapshot"] = {"id": flow["id"], "name": (flow.get("name") or "")[:40],
+                             "engine": flow["engine"],
+                             "edited": bool(flow.get("edited")),
+                             "digest": flows_mod.flow_digest(flow)}
     if flow["engine"] == "direct":
         task["direct_provider_id"] = _text(payload.get("direct_provider_id"),
                                             "direct_provider_id")[:80]
@@ -1571,7 +1578,7 @@ def update_task_params(task_id, patch):
     return True, ""
 
 
-def add_step(run_id, role, agent_id, agent_label, note="", model=""):
+def add_step(run_id, role, agent_id, agent_label, note="", model="", provider=""):
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -1583,6 +1590,10 @@ def add_step(run_id, role, agent_id, agent_label, note="", model=""):
             # 起跑即记解析到的模型：运行中蜂巢卡/步骤列表就能看到「在用哪个模型」，
             # 不必等 finish_step 用实际结果覆盖（换将成功后以实际为准）
             "model": str(model or "")[:80],
+            # 绑定速记（借鉴 WorkDSH ResolvedExecutionBinding）：本步实际用的
+            # provider 链与上游 host——烧错配额/模型漂移直接对账步骤行。
+            # 只记身份不记密钥；老数据无此键，读取一律 .get
+            "provider": str(provider or "")[:120],
             "status": "running", "started_at": time.strftime("%H:%M:%S"),
             "ended_at": None, "duration_s": None, "exit_code": None,
             "summary": "", "log": None, "cost_usd": 0.0, "tokens": 0,
