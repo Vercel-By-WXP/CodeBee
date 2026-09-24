@@ -4211,7 +4211,7 @@ def execute_run(run_id):
     if initial_status not in ("queued", "running"):
         return
     if store.update_run(run_id, expected_status=initial_status, status="running",
-                        started_at=_now()) is None:
+                        started_at=_now(), resume_enqueue_at="", warnings=[]) is None:
         return
     if task is None:
         store.update_run(run_id, expected_status="running", status="failed",

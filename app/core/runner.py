@@ -981,7 +981,7 @@ def _model_flag(kind, model):
     return ["--model", model]  # claude / opencode / aider
 
 
-_TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
+_TRANSIENT_DEFAULT = ("503", "502", "529", "429", "no available channel", "temporarily",
               "unavailable", "overloaded", "rate limit", "timeout", "timed out",
               "输出停滞",
               # 2026-09-15 连载验收实测：网关故障形态远不止 HTTP 5xx——
@@ -1007,10 +1007,15 @@ _TRANSIENT = ("503", "502", "529", "429", "no available channel", "temporarily",
               "enotfound", "getaddrinfo", "name or service not known",
               "name resolution")
 
+# 保留兼容别名：旧 worker 热重载时可能短暂丢失模块级变量，判断函数不能因此
+# 把一次普通上游故障升级成 NameError。
+_TRANSIENT = _TRANSIENT_DEFAULT
+
 
 def _transient_error(err):
     err = (err or "").lower()
-    return any(k in err for k in _TRANSIENT)
+    markers = globals().get("_TRANSIENT") or _TRANSIENT_DEFAULT
+    return any(k in err for k in markers)
 
 
 # 欠费/配额/限流耗尽：换 KEY 与换厂商都该继续（同厂商另一账号往往还能用）。
