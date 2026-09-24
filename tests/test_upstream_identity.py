@@ -19,6 +19,11 @@ class UpstreamIdentityTest(unittest.TestCase):
         from app.core.upstream import normalize_upstream
 
         self.assertEqual("2001:db8::1", normalize_upstream("https://[2001:0db8::1]:443/v1"))
+        self.assertEqual("[2001:db8::1]:8443",
+                         normalize_upstream("https://[2001:0db8::1]:8443/v1"))
+        self.assertNotEqual(normalize_upstream("https://[2001:db8::1]:8443"),
+                            normalize_upstream("https://[2001:db8::1:8443]"))
+        self.assertEqual("api.example:0", normalize_upstream("https://api.example:0"))
         self.assertEqual("", normalize_upstream("https:///v1"))
 
     def test_runner_and_router_share_identity(self):

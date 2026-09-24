@@ -23,14 +23,18 @@ def normalize_upstream(value, default_scheme="https"):
         if not host:
             return ""
         host = host.rstrip(".").lower()
+        ip_host = None
         try:
-            host = ipaddress.ip_address(host).compressed.lower()
+            ip_host = ipaddress.ip_address(host)
+            host = ip_host.compressed.lower()
         except ValueError:
             pass
         port = parsed.port
         scheme = (parsed.scheme or default_scheme).lower()
-        if port and not ((scheme == "https" and port == 443)
-                         or (scheme == "http" and port == 80)):
+        if port is not None and not ((scheme == "https" and port == 443)
+                                     or (scheme == "http" and port == 80)):
+            if getattr(ip_host, "version", None) == 6:
+                return "[%s]:%d" % (host, port)
             return "%s:%d" % (host, port)
         return host
     except (TypeError, ValueError):
