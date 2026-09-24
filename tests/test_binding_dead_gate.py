@@ -19,7 +19,7 @@ class HealthMixin(BaseTest):
     def setUp(self):
         super().setUp()
         from app.core import health
-        health.init(data_dir=str(self.data_dir))
+        health.init(data_dir=str(self.data_dir), start_probe=False)
         with health._LOCK:
             health._PROVIDERS.clear()
 
@@ -234,7 +234,7 @@ class TestLegacyPillPurge(HealthMixin):
         }}
         import json as _json
         f.write_text(_json.dumps(data), encoding="utf-8")
-        health.init(data_dir=str(self.data_dir))   # 重新 init 触发清理
+        health.init(data_dir=str(self.data_dir), start_probe=False)   # 重新 init 触发清理
         names = list(health._PROVIDERS.keys())
         self.assertNotIn("绑定链·codex-cli", names, "老静态胶囊条目必须被清掉")
         self.assertIn("P1", names, "真实供应商的健康状态不受影响")

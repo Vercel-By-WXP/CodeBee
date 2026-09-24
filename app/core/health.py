@@ -44,9 +44,13 @@ _PROBE_THREAD = None
 _STARTED = False
 
 
-def init(data_dir=None):
-    """注入存储路径并从磁盘恢复状态（服务重启不丢告警上下文）。"""
-    global _FILE, _PROVIDERS, _STARTED
+def init(data_dir=None, *, start_probe=True):
+    """注入存储路径并从磁盘恢复状态（服务重启不丢告警上下文）。
+
+    ``start_probe=False`` 供单元测试等受控场景使用，避免留下跨用例的
+    daemon 探针线程。
+    """
+    global _FILE, _PROVIDERS, _STARTED, _PROBE_THREAD
     with _LOCK:
         base = Path(data_dir) if data_dir else Path(_default_dir())
         base.mkdir(parents=True, exist_ok=True)
@@ -70,10 +74,11 @@ def init(data_dir=None):
         # 发现（gone 标记）随手清——探针循环里不做全量扫描，避免和测试
         # 夹具/运行期建条目赛跑。
         _prune_missing()
-        if not _STARTED:
+        if start_probe and not _STARTED:
             _STARTED = True
-            t = threading.Thread(target=_probe_loop, name="health-probe", daemon=True)
-            t.start()
+            _PROBE_THREAD = threading.Thread(
+                target=_probe_loop, name="health-probe", daemon=True)
+            _PROBE_THREAD.start()
 
 
 def _default_dir():
@@ -82,12 +87,22 @@ def _default_dir():
 
 
 def _persist():
-    if _FILE is None:
-        return
-    tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"providers": _PROVIDERS}, ensure_ascii=False, indent=2),
-                   encoding="utf-8")
-    tmp.replace(_FILE)
+    # This is telemetry state: a storage failure must not turn a successful or
+    # failed model call into a task failure. Callers already hold _LOCK, but
+    # keeping the path and snapshot read under it also protects future callers.
+    with _LOCK:
+        path = _FILE
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(
+                json.dumps({"providers": _PROVIDERS}, ensure_ascii=False, indent=2),
+                encoding="utf-8")
+            tmp.replace(path)
+        except OSError as e:
+            log.warning("[health] 无法持久化供应商健康状态到 %s: %s", path, e)
 
 
 def _now():
@@ -308,6 +323,23 @@ def _prune_missing():
             log.info("[health] 清除已删除供应商的健康记录：%s", ", ".join(stale))
 
 
+def _record_probe_result(name, st, ok, gone):
+    """只应用仍属于当前状态表的探针结果，忽略跨 init/测试的过期结果。"""
+    with _LOCK:
+        if _PROVIDERS.get(name) is not st:
+            return
+        if gone:
+            _PROVIDERS.pop(name, None)
+            _persist()
+            log.info("[health] %s 已删除，健康记录随之清除", name)
+        elif ok:
+            report_success(name)
+            log.info("[health] 探针确认 %s 已恢复", name)
+        else:
+            st["last_fail_at"] = _now()
+            _persist()
+
+
 def _probe_loop():
     while True:
         try:
@@ -323,20 +355,7 @@ def _probe_loop():
                     st["probe_backoff_idx"] = idx + 1
             for name, st in targets:
                 ok, gone = _probe_one(st)
-                if gone:
-                    with _LOCK:
-                        if _PROVIDERS.pop(name, None) is not None:
-                            _persist()
-                    log.info("[health] %s 已删除，健康记录随之清除", name)
-                elif ok:
-                    report_success(name)
-                    log.info("[health] 探针确认 %s 已恢复", name)
-                else:
-                    with _LOCK:
-                        cur = _PROVIDERS.get(name)
-                        if cur:
-                            cur["last_fail_at"] = _now()
-                            _persist()
+                _record_probe_result(name, st, ok, gone)
         except Exception:
             log.exception("health probe loop error")
         time.sleep(15)  # 探针调度心跳

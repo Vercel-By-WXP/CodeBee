@@ -14,7 +14,7 @@ class HealthBase(BaseTest):
     def setUp(self):
         super().setUp()
         from app.core import health
-        health.init(data_dir=str(self.data_dir))
+        health.init(data_dir=str(self.data_dir), start_probe=False)
         with health._LOCK:
             health._PROVIDERS.clear()
 
@@ -153,7 +153,7 @@ class TestPersistence(HealthBase):
         try:
             for _ in range(4):
                 health.report_failure("cavoti", "503")
-            health.init(data_dir=str(self.data_dir))  # 模拟重启
+            health.init(data_dir=str(self.data_dir), start_probe=False)  # 模拟重启
         finally:
             modelhub.providers = orig
         snap = health.snapshot()
@@ -165,7 +165,7 @@ class TestPersistence(HealthBase):
         """供应商已从配置删除：重启（重新 init）时健康条目一并清掉（Z.ai 幽灵案）。"""
         from app.core import health
         health.report_failure("Z.ai - API Key", "429", provider_id="prov-z")
-        health.init(data_dir=str(self.data_dir))  # 模拟重启：models.json 里已无 prov-z
+        health.init(data_dir=str(self.data_dir), start_probe=False)  # 模拟重启：models.json 里已无 prov-z
         self.assertNotIn("Z.ai - API Key",
                          {p["provider"] for p in health.snapshot()["providers"]})
 
@@ -230,6 +230,34 @@ class TestProbeLoop(HealthBase):
             self.assertEqual(health.snapshot()["providers"][0]["status"], "down")
         finally:
             modelhub.chat = orig_chat
+
+    def test_probe_result_does_not_mutate_replaced_state(self):
+        """init/测试切换后，旧探针返回不能覆盖当前 provider 状态。"""
+        from app.core import health
+        health.report_failure("cavoti", "503")
+        stale = health._PROVIDERS["cavoti"]
+        current = dict(stale, status="failing", last_error="current test")
+        with health._LOCK:
+            health._PROVIDERS["cavoti"] = current
+
+        health._record_probe_result("cavoti", stale, ok=True, gone=False)
+        self.assertIs(health._PROVIDERS["cavoti"], current)
+        self.assertEqual(current["status"], "failing")
+        self.assertEqual(current["last_error"], "current test")
+
+        health._record_probe_result("cavoti", stale, ok=False, gone=True)
+        self.assertIs(health._PROVIDERS["cavoti"], current)
+
+    def test_persistence_failure_does_not_escape_reporting(self):
+        """健康文件不可写时保留内存状态，不打断主流程错误处理。"""
+        from app.core import health
+        blocker = self.tmp / "not-a-directory"
+        blocker.write_text("block", encoding="utf-8")
+        with health._LOCK:
+            health._FILE = blocker / "provider_health.json"
+
+        health.report_failure("cavoti", "503")
+        self.assertEqual(health.snapshot()["providers"][0]["provider"], "cavoti")
 
 
 class TestSnapshotShape(HealthBase):
@@ -316,5 +344,3 @@ class TestGhostCleanup(HealthBase):
             modelhub.providers, modelhub.chat = orig_providers, orig_chat
         self.assertFalse(ok)
         self.assertFalse(gone)
-
-

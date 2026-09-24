@@ -51,6 +51,13 @@ class BaseTest(unittest.TestCase):
         _sk._FILE = self.data_dir / "skills.json"
         import app.core.knowledge as _kb
         _kb._FILE = self.data_dir / "knowledge.json"
+        # 健康状态使用 init() 注入存储路径；在用例入口直接绑定临时文件并清空
+        # 内存状态，避免未显式 init 的调用写入上一用例已删除的目录。
+        from app.core import health as _health
+        self._health = _health
+        with _health._LOCK:
+            _health._FILE = self.data_dir / "provider_health.json"
+            _health._PROVIDERS.clear()
         from app.core import skills as _sk2
         with _sk2._LOCK:
             _sk2._user_pack_cache.clear()
@@ -73,6 +80,13 @@ class BaseTest(unittest.TestCase):
             pipeline._agents = self._pipeline_agents_backup
         except Exception:
             pass
+        # 清状态并解除临时路径绑定。若探针或测试线程仍在使用健康模块，锁会让
+        # 解绑排在当前持久化操作之后；解绑后任何延迟上报都不会碰已删除目录。
+        health = getattr(self, "_health", None)
+        if health is not None:
+            with health._LOCK:
+                health._PROVIDERS.clear()
+                health._FILE = None
         os_env = __import__("os").environ
         if self._old_tutti_data is None:
             os_env.pop("TUTTI_DATA", None)
