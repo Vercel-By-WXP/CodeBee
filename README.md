@@ -480,6 +480,10 @@ node tests\ui_skin.mjs        :: 皮肤核验（调色板变量对齐 + 换肤/�
 自更新一致性）+ 端到端（mock 全流程、门禁逻辑、验证失败拦截、服务级 API 全链路），
 全部不消耗真实配额。
 
+发版必须使用根目录的 `npm run release:gate`：它会阻断脏工作区和全量红灯，
+并从实际 npm 归档解包做 Python import 冒烟；只有闸门通过后，`npm run release`
+才会执行 `npm publish`。
+
 ## 更新日志
 
 见 [CHANGELOG.md](CHANGELOG.md)。应用内「设置 → 关于与更新」可检查更新、查看

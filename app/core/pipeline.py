@@ -662,6 +662,27 @@ def _finish_step_result(run_id, step, res, role, agent, start):
                 step=step["n"], exit_code=res.get("raw", {}).get("exit_code"))
         except Exception:
             pass
+    # A failed step with an entirely failed candidate history is a routing
+    # exhaustion event.  Keep this separate from provider health: one provider
+    # may fail while another candidate succeeds, whereas this alarm means a
+    # whole chain has been spent repeatedly.  Cancellation never wakes an
+    # operator or poisons the episode counter.
+    try:
+        from . import failure_notify
+        attempts = res.get("attempts") or []
+        if status in ("failed", "timeout") and not (raw.get("cancelled") or
+                                                       res.get("error_code") == "CANCELLED"):
+            if attempts and not any(isinstance(a, dict) and a.get("ok")
+                                    for a in attempts):
+                run = store.get_run(run_id) or {}
+                failure_notify.record_all_candidates_failed(
+                    run_id=run_id, task_id=run.get("task_id") or "", role=role,
+                    attempts=attempts, error_code=error_code_value(res.get("error_code")),
+                    provider=res.get("provider_id") or "", model=res.get("model") or "")
+        elif res.get("ok"):
+            failure_notify.record_success(role=role)
+    except Exception:
+        pass
     if agent.get("mode") != "mock":
         _record_usage(run_id, role, agent, res, source="pipeline", step=step["n"])
     # 5F：step 级运行时断言（只告警不阻断）

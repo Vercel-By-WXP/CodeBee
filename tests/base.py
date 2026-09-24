@@ -58,6 +58,8 @@ class BaseTest(unittest.TestCase):
         with _health._LOCK:
             _health._FILE = self.data_dir / "provider_health.json"
             _health._PROVIDERS.clear()
+        import app.core.failure_notify as _failure_notify
+        _failure_notify.reset_for_tests()
         from app.core import skills as _sk2
         with _sk2._LOCK:
             _sk2._user_pack_cache.clear()

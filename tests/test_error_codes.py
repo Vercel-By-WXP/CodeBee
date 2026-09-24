@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import sys
+import re
 from pathlib import Path
 from base import BaseTest
 
@@ -20,6 +21,27 @@ class TestErrorCodeEnum(BaseTest):
         self.assertEqual(ErrorCode.VENDOR_ERROR.value, "VENDOR_ERROR")
         self.assertEqual(ErrorCode.CANCELLED.value, "CANCELLED")
         self.assertEqual(ErrorCode.EMPTY.value, "EMPTY")
+
+    def test_execution_standard_matrix_matches_enum(self):
+        """The markdown matrix is a checked interface, not a second memory."""
+        from app.core.error_codes import ErrorCode
+
+        root = Path(__file__).resolve().parents[1]
+        text = (root / "docs" / "execution-standard.md").read_text(encoding="utf-8")
+        section = text.split("## 统一错误分类与换路矩阵", 1)[1]
+        section = section.split("错误文本分类只用来", 1)[0]
+        first_cells = []
+        for line in section.splitlines():
+            if not line.startswith("|") or line.startswith("| 错误类") or line.startswith("|---"):
+                continue
+            first_cells.append(line.split("|", 2)[1])
+        documented = [code for cell in first_cells
+                      for code in re.findall(r"`([A-Z][A-Z0-9_]*)`", cell)]
+        expected = set(ErrorCode.__members__)
+        self.assertEqual(set(documented), expected)
+        self.assertEqual(sorted(documented), sorted(expected),
+                         msg="每个错误码应在矩阵中恰好出现一次")
+        self.assertFalse(set(documented) - expected)
 
     def test_is_fatal(self):
         from app.core.error_codes import is_fatal, ErrorCode

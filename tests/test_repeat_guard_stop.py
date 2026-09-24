@@ -18,7 +18,8 @@ class TestRepeatGuardStop(BaseTest):
         prompt = "同一个提示词模板内容" * 10
         # 预热计数链到阈值-1（阈值 3 提醒 / 5 强停）
         for _ in range(4):
-            repeat_guard.guard.check(run["id"], "draft", prompt)
+            repeat_guard.guard.check(run["id"], "draft", prompt,
+                                     identity="claude-code")
         agent = {"id": "claude-code", "label": "Claude Code",
                  "kind": "claude", "mode": "real"}   # 无 binding_configured → 过死链闸
         res = pipeline._run_step(run["id"], "draft", agent, prompt,

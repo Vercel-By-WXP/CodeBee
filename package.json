@@ -31,6 +31,10 @@
     "cli",
     "multi-agent"
   ],
+  "scripts": {
+    "release:gate": "python scripts/release_gate.py",
+    "release": "python scripts/release_gate.py --publish"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Vercel-By-WXP/CodeBee.git"
