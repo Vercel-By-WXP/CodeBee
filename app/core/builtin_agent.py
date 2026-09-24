@@ -665,9 +665,16 @@ def _post_sse_stream(url, headers, body, allow_private, timeout, proto,
     增量（调用方据此实时打印「思考过程」），on_text 收到**累计**正文（只在真的
     变长时触发，运行中直接当正文预览），on_tick 是无文本进展时的心跳。
     events=0 表示网关根本没按流回（多半忽略了 stream 字段）——调用方据此回落
-    非流式；events>0 而正文为空则是模型真没说话，不该重发（白烧一次生成）。"""
+    非流式；events>0 而正文为空则是模型真没说话，不该重发（白烧一次生成）。
+
+    首字延迟与吞吐（§07 体验面）：`first_token_ms` = 发出请求到第一个**带内容**
+    的增量（思考 / 正文 / 工具参数）之间的毫秒数；`tokens_per_sec` 用 output
+    token 除以「首个到末个内容增量」的窗口，窗口过短或拿不到 output 时记 0
+    （0 = 不可测，不是"一秒 0 个 token"）。两者只有走流式才有值，非流式回落
+    路径与 CLI 子进程路径都给 0。"""
     acc = {"text": "", "reasoning": "", "tools": {}, "usage": {}}
-    box = {"status": 0, "err": "", "events": 0, "sent_text": None}
+    box = {"status": 0, "err": "", "events": 0, "sent_text": None,
+           "first_ms": None, "last_ms": None}
     lock = threading.Lock()
 
     def _emit(cb, payload):
@@ -688,6 +695,7 @@ def _post_sse_stream(url, headers, body, allow_private, timeout, proto,
             if host is None:
                 box["err"] = herr
                 return
+            t_send = time.monotonic()      # 首字延迟基线：请求发出，不含 DNS/连接前准备
             req = urllib.request.Request(
                 url, method="POST",
                 headers=dict(headers, **{"Content-Type": "application/json",
@@ -719,6 +727,11 @@ def _post_sse_stream(url, headers, body, allow_private, timeout, proto,
                             acc["reasoning"] += reason
                         moved = _stream_accumulate(proto, obj, acc)
                         text_now = acc["text"]
+                    if reason or moved:
+                        now_ms = (time.monotonic() - t_send) * 1000.0
+                        if box["first_ms"] is None:
+                            box["first_ms"] = now_ms
+                        box["last_ms"] = now_ms
                     if reason:
                         _emit(on_reason, reason)
                     if text_now != box["sent_text"]:
@@ -744,7 +757,14 @@ def _post_sse_stream(url, headers, body, allow_private, timeout, proto,
         out = {"status": box["status"], "text": acc["text"],
                "reasoning": acc["reasoning"], "usage": dict(acc["usage"]),
                "calls": _calls_from_acc(acc), "events": box["events"],
-               "error": box["err"]}
+               "first_token_ms": round(box["first_ms"], 1) if box["first_ms"] is not None else 0.0,
+               "tokens_per_sec": 0.0, "error": box["err"]}
+        gen_s = 0.0
+        if box["first_ms"] is not None and box["last_ms"] is not None:
+            gen_s = (box["last_ms"] - box["first_ms"]) / 1000.0
+        out_tok = int(acc["usage"].get("output") or 0)
+        if gen_s > 0.2 and out_tok > 0:
+            out["tokens_per_sec"] = round(out_tok / gen_s, 2)
     if cancel_event is not None and cancel_event.is_set():
         out["error"], out["status"] = "已取消", 0
         return out
@@ -962,6 +982,16 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
     max_tokens = BASE_MAX_TOKENS   # 思考占满预算时提额重试（跨迭代保持，见空正文分支）
     escalated = False       # 本轮 run 是否已提额（只提一次，防无限翻倍）
     empty_streak = 0        # 连续零正文轮数（拿到正文/工具即清零）
+    perf = {"ttft": [], "tps": []}   # 各次流式调用的首字延迟(ms)与吞吐(tok/s)
+
+    def _perf():
+        """本次 run 的体验指标：跨迭代取均值；无流式样本时返回空 dict。"""
+        if not perf["ttft"] and not perf["tps"]:
+            return {}
+        return {"first_token_ms": (round(sum(perf["ttft"]) / len(perf["ttft"]), 1)
+                                   if perf["ttft"] else 0.0),
+                "tokens_per_sec": (round(sum(perf["tps"]) / len(perf["tps"]), 2)
+                                   if perf["tps"] else 0.0)}
 
     def _deadline_fail():
         return {"ok": False, "text": "", "usage": dict(total_usage),
@@ -993,6 +1023,7 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
         return {"ok": False, "text": "", "usage": dict(total_usage), "error": err,
                 "model": model, "provider_name": bi["provider_name"],
                 "provider_id": bi["provider_id"], "iterations": iters, "cost_usd": 0.0,
+                "raw": _perf(),
                 "reasoning": "\n\n".join(r for r in reasons if r)[:THINK_MAX_CHARS]}
 
     for it in range(1, MAX_TOOL_ITERS + 1):
@@ -1059,6 +1090,10 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                                 text, calls = part["text"], part["calls"]
                                 usage = part["usage"]
                                 streamed = True
+                                if part.get("first_token_ms"):
+                                    perf["ttft"].append(float(part["first_token_ms"]))
+                                if part.get("tokens_per_sec"):
+                                    perf["tps"].append(float(part["tokens_per_sec"]))
                                 if not reasons or not reasons[-1]:
                                     # 调用方没挂实时回调（无可视化诉求）时思考只在
                                     # 累加器里：这里兜底收进结果，落库口径一致
@@ -1188,4 +1223,5 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
     return {"ok": True, "text": (text or "").strip(), "usage": dict(total_usage),
             "error": "", "model": model, "provider_name": bi["provider_name"],
             "provider_id": bi["provider_id"], "iterations": iters, "cost_usd": 0.0,
+            "raw": _perf(),
             "reasoning": "\n\n".join(r for r in reasons if r)[:THINK_MAX_CHARS]}

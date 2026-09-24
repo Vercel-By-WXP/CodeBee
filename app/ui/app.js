@@ -12335,6 +12335,9 @@ function renderUsage() {
   // 用量页不做环比：范围由用户任选（含「全部」），没有等长上一期可比，硬算会是假数。
   const dayTok = (u.by_day || []).map((d) => d.tokens || 0);
   const dayDur = (u.by_day || []).map((d) => d.duration_s || 0);
+  // 首字延迟只有内置直连的流式调用可测（CLI 事件流没有逐 token 时刻）：
+  // perf_samples=0 时显示"暂无可测数据"，不能显示成 0ms。
+  const fmtMs = (x) => (x >= 1000 ? (x / 1000).toFixed(1) + "s" : Math.round(x) + "ms");
   $("usage-kpis").innerHTML = [
     kpiCard(t("累计 Token 数"), fmtTok(tot.tokens),
       t("调用 ") + fmtTok(tot.calls) + t(" 次 · 成功率 ") +
@@ -12353,6 +12356,11 @@ function renderUsage() {
     kpiCard(t("最长连续天数"), fmtTok(tot.streak_longest) + t(" 天"),
       t("缓存命中率 ") + (tot.cache_rate || 0) + "%", false, "i-calendar-days",
       { tone: "ok" }),
+    kpiCard(t("首字延迟"), tot.perf_samples ? fmtMs(tot.avg_first_token_ms) : t("暂无可测数据"),
+      tot.perf_samples
+        ? t("P95 ") + fmtMs(tot.p95_first_token_ms) + t(" · 吞吐 ") +
+          (tot.avg_tokens_per_sec || 0) + t(" tok/s · 样本 ") + fmtTok(tot.perf_samples) + t(" 次")
+        : t("仅内置直连流式调用可测"), false, "i-cpu", { tone: "calm" }),
   ].join("");
   const note = $("usage-note");
   if (note) {
