@@ -751,7 +751,7 @@ def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
         from . import health
         prov = res.get("provider") or agent.get("provider") or {}
         prov_name = (prov.get("name") if isinstance(prov, dict) else "") or ""
-        if prov_name:
+        if prov_name and not runner.attempt_cancelled(res):
             if res.get("ok"):
                 health.report_success(prov_name)
             else:

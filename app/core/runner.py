@@ -1107,13 +1107,27 @@ def _grace_wait(cancel_event, seconds, log_path=None, why=""):
     return cancel_event is None or not cancel_event.is_set()
 
 
+def attempt_cancelled(res):
+    """这次调用是不是被用户取消的。
+
+    取消是用户意志不是上游表现：KEY 冷却、供应商健康、评测作废三本惩罚账都必须
+    跳过（docs/execution-standard.md 统一执行算法第 3 条与 CANCELLED 行）。只看
+    错误文案不行——取消串是「取消；stderr/stdout: <被杀进程尾部>」，尾部碰巧含
+    429/欠费字样就会把健康 KEY 打进 30 分钟冷却。
+    """
+    res = res if isinstance(res, dict) else {}
+    raw = res.get("raw") if isinstance(res.get("raw"), dict) else {}
+    return (bool(res.get("cancelled")) or bool(raw.get("cancelled"))
+            or error_code_value(res.get("error_code")) == ErrorCode.CANCELLED)
+
+
 def _report_key(att, out):
     """把这次尝试的结果回写到 KEY 账本：欠费/失败 → 冷却，成功 → 清错误。
 
     回写失败绝不能影响主流程（账本是旁路），所以整体吞异常。
     """
     pid, kid = att.get("provider_id") or "", att.get("key_id") or ""
-    if not (pid and kid):
+    if not (pid and kid) or attempt_cancelled(out):
         return
     try:
         from . import modelhub

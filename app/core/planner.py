@@ -113,7 +113,7 @@ def _log_usage(source, role, task, res, agent=None, tool="", model="", provider=
                      cost_usd=float((res or {}).get("cost_usd") or 0.0),
                      usage=(res or {}).get("usage"))
         # 告警模块：编排者直连调用的成功/失败上报（provider_id 供「禁用厂商」定位）
-        if provider:
+        if provider and not runner.attempt_cancelled(res):
             from . import health
             if (res or {}).get("ok"):
                 health.report_success(provider)

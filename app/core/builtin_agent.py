@@ -1026,11 +1026,18 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                 "raw": _perf(),
                 "reasoning": "\n\n".join(r for r in reasons if r)[:THINK_MAX_CHARS]}
 
+    def _cancel_fail():
+        """取消终态带结构化标记：下游惩罚账（KEY 冷却/供应商健康/评测作废）靠标记
+        认出取消，不靠「已取消」字样匹配。"""
+        out = _fail("已取消")
+        out["cancelled"] = True
+        return out
+
     for it in range(1, MAX_TOOL_ITERS + 1):
         if deadline is not None and time.monotonic() >= deadline:
             return _deadline_fail()
         if cancel_event is not None and cancel_event.is_set():
-            return _fail("已取消")
+            return _cancel_fail()
         reasons.append("")   # 每轮迭代各占一段思考（跨轮拼接时分段，join 时滤空段）
         done = False
         reBump = False         # 本轮要提额重试（同一迭代重跑，不烧迭代数）
@@ -1084,7 +1091,7 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                             if part.get("deadline_exceeded"):
                                 return _deadline_fail()
                             if part["error"] == "已取消":
-                                return _fail("已取消")
+                                return _cancel_fail()
                             if not part["error"] and part["events"]:
                                 # 网关确实按流回了：正文/工具取增量累加结果
                                 text, calls = part["text"], part["calls"]
@@ -1112,7 +1119,7 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                                 return _deadline_fail()
                             if cancel_event is not None and cancel_event.is_set():
                                 # 取消先于一切记账：健康 KEY 不能因被放弃的请求背上冷却
-                                return _fail("已取消")
+                                return _cancel_fail()
                             if status == 0 or not (200 <= status < 300):
                                 msg = ""
                                 if isinstance(data, dict):
