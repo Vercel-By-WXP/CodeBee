@@ -1,24 +1,26 @@
 /* CodeBee Mission Control
-   方向：工业感任务指挥中心。深海底色承载信息，琥珀色代表蜂群，冰蓝色代表实时数据。 */
+   方向：工业感任务指挥中心。深海底色承载信息，琥珀色代表蜂群，冰蓝色代表实时数据。
+   v2 修订：旧版装饰密度高于信息密度。保留现有 DOM 与动态行为，
+   调色板重置为更温暖的石墨蓝，强调色收敛、字号层级拉清（原 v1 值已并入本块）。 */
 
 :root {
-  --bg: #06101c;
-  --bg-deep: #040a12;
-  --panel: #0c1a2c;
-  --panel-hi: #12253c;
-  --panel-soft: #0f2035;
-  --line: #294763;
-  --line-soft: #1d3853;
-  --text: #eef5ff;
-  --muted: #7f9bb7;
-  --muted-2: #526f8d;
-  --amber: #f5b84e;
-  --amber-hot: #ffd26a;
-  --cyan: #54d7ff;
-  --blue: #6f9dff;
-  --violet: #a58bff;
-  --green: #50dfa8;
-  --red: #ff7078;
+  --bg: #081116;
+  --bg-deep: #050b0e;
+  --panel: #101b20;
+  --panel-hi: #16252b;
+  --panel-soft: #192a30;
+  --line: #304249;
+  --line-soft: #24353b;
+  --text: #f4efe5;
+  --muted: #98aaa9;
+  --muted-2: #657a7d;
+  --amber: #e8ad4d;
+  --amber-hot: #ffd071;
+  --cyan: #78c9c0;
+  --blue: #9db9ad;
+  --violet: #9aafa7;
+  --green: #82d3a2;
+  --red: #ea7e78;
   --mono: "Cascadia Mono", "SFMono-Regular", Consolas, ui-monospace, monospace;
   --display: "Bahnschrift", "DIN Alternate", "Segoe UI", "Microsoft YaHei", sans-serif;
 }
@@ -387,29 +389,6 @@ button, input { font: inherit; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
-}
-
-/* ---------------------------------------------------------------- v2：克制的运营控制台
-   旧版的问题是装饰密度高于信息密度。这里保留现有 DOM 和动态行为，
-   重置为更温暖的石墨蓝色板、少量强调色和更清晰的字号层级。 */
-:root {
-  --bg: #081116;
-  --bg-deep: #050b0e;
-  --panel: #101b20;
-  --panel-hi: #16252b;
-  --panel-soft: #192a30;
-  --line: #304249;
-  --line-soft: #24353b;
-  --text: #f4efe5;
-  --muted: #98aaa9;
-  --muted-2: #657a7d;
-  --amber: #e8ad4d;
-  --amber-hot: #ffd071;
-  --cyan: #78c9c0;
-  --blue: #9db9ad;
-  --violet: #9aafa7;
-  --green: #82d3a2;
-  --red: #ea7e78;
 }
 
 body {

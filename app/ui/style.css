@@ -17,37 +17,55 @@
   --chip-queued-bg: #3a3a3a;
   --log-bg: #161616;
   --log-text: #c3c9d6;
-  --shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  --shadow: 0 18px 48px rgba(7, 19, 38, .16);
   --mono: "Cascadia Code", Consolas, monospace;
-  --r-lg: 16px;
-  --r-md: 12px;
-  --r-sm: 8px;
+  --font-ui: "Aptos", "Segoe UI", sans-serif;
+  --font-display: "Aptos Display", "Trebuchet MS", sans-serif;
+  --r-lg: 20px;
+  --r-md: 14px;
+  --r-sm: 10px;
   /* 用量图表三色：输入 / 缓存·其他 / 输出 —— 蓝→青→淡紫同类色，饱和度明度对齐 */
   --uc-in: #6e9bff;
   --uc-ca: #3fd0bb;
   --uc-out: #b79bff;
 }
 html[data-theme="light"]:not([data-skin]), html[data-theme="light"][data-skin="classic"] {
-  --bg: #ffffff;
-  --sidebar: #f9f9f9;
-  --panel: #ffffff;
-  --panel2: #f4f4f5;
-  --border: #e5e5e5;
-  --border-strong: #cfcfcf;
-  --text: #0d0d0d;
-  --muted: #8f8f8f;
-  --accent: #3a6ee8;
-  --accent2: #8250e8;
-  --ok: #0f9d6c;
+  --bg: #f4f7fb;
+  --sidebar: #eef3f8;
+  --panel: rgba(255, 255, 255, .88);
+  --panel2: #eaf0f6;
+  --border: rgba(21, 49, 78, .11);
+  --border-strong: rgba(21, 49, 78, .24);
+  --text: #10253d;
+  --muted: #63758b;
+  --accent: #167dce;
+  --accent2: #7858de;
+  --ok: #139878;
   --warn: #b07d18;
   --bad: #d63c55;
   --chip-queued-bg: #ececee;
   --log-bg: #f6f6f7;
   --log-text: #3a4050;
-  --shadow: 0 10px 30px rgba(0, 0, 0, .06);
+  --shadow: 0 18px 48px rgba(24, 54, 89, .10);
   --uc-in: #3567e0;
   --uc-ca: #0fa592;
   --uc-out: #8a55ee;
+}
+/* 经典皮肤·夜间版（刷新后调色板）：顶部 :root 是无属性兜底（旧灰调），
+ * 应用启动总会写 data-skin + data-theme，经典夜间实际落在这套石墨蓝上。
+ * 语义色（ok/warn/bad/log/uc-*）刻意不覆盖，继续继承 :root 默认。 */
+html[data-theme="dark"]:not([data-skin]), html[data-theme="dark"][data-skin="classic"] {
+  --bg: #091522;
+  --sidebar: #0b1c2c;
+  --panel: rgba(15, 34, 53, .88);
+  --panel2: #132c43;
+  --border: rgba(194, 223, 249, .12);
+  --border-strong: rgba(194, 223, 249, .24);
+  --text: #edf6ff;
+  --muted: #92a9bf;
+  --accent: #53b9f5;
+  --accent2: #a28af5;
+  --shadow: 0 22px 60px rgba(0, 0, 0, .30);
 }
 
 /* ================= 皮肤（换肤） =================
@@ -3310,43 +3328,6 @@ span.imgcap:hover { border-color: var(--accent); color: var(--accent); }
    The existing UI has a wide feature surface; this layer sharpens the
    hierarchy without changing any DOM hooks or application behaviour.
 ================================================================ */
-:root {
-  --font-ui: "Aptos", "Segoe UI", sans-serif;
-  --font-display: "Aptos Display", "Trebuchet MS", sans-serif;
-  --r-lg: 20px;
-  --r-md: 14px;
-  --r-sm: 10px;
-  --shadow: 0 18px 48px rgba(7, 19, 38, .16);
-}
-
-html[data-theme="light"]:not([data-skin]), html[data-theme="light"][data-skin="classic"] {
-  --bg: #f4f7fb;
-  --sidebar: #eef3f8;
-  --panel: rgba(255, 255, 255, .88);
-  --panel2: #eaf0f6;
-  --border: rgba(21, 49, 78, .11);
-  --border-strong: rgba(21, 49, 78, .24);
-  --text: #10253d;
-  --muted: #63758b;
-  --accent: #167dce;
-  --accent2: #7858de;
-  --ok: #139878;
-  --shadow: 0 18px 48px rgba(24, 54, 89, .10);
-}
-
-html[data-theme="dark"]:not([data-skin]), html[data-theme="dark"][data-skin="classic"] {
-  --bg: #091522;
-  --sidebar: #0b1c2c;
-  --panel: rgba(15, 34, 53, .88);
-  --panel2: #132c43;
-  --border: rgba(194, 223, 249, .12);
-  --border-strong: rgba(194, 223, 249, .24);
-  --text: #edf6ff;
-  --muted: #92a9bf;
-  --accent: #53b9f5;
-  --accent2: #a28af5;
-  --shadow: 0 22px 60px rgba(0, 0, 0, .30);
-}
 /* Keep the refreshed surfaces consistent across the selectable palettes. */
 html[data-theme="light"][data-skin], html[data-theme="dark"][data-skin] {
   --font-ui: "Aptos", "Segoe UI", sans-serif;
@@ -4366,7 +4347,7 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
 #run-detail .rd-more-toggle {
   flex: none; width: 30px; height: 30px; padding: 0; border: 0;
   border-radius: 8px; background: transparent; color: var(--muted);
-  font: 700 18px/1 var(--font-body); letter-spacing: 2px; cursor: pointer;
+  font: 700 18px/1 var(--font-ui); letter-spacing: 2px; cursor: pointer;
   transition: background-color .15s, color .15s;
 }
 #run-detail .rd-more-toggle:hover,
@@ -5214,7 +5195,7 @@ body.welcome-open { overflow: hidden; }
 
 /* ---------------- 禅道 Bug 自动修复设置页（追加于文件尾防并行重排） ---------------- */
 .zt-status { margin: 2px 0 6px; }
-.zt-err { color: var(--danger, #dc2626); margin-left: 10px; }
+.zt-err { color: var(--bad); margin-left: 10px; }
 .zt-grid {
   display: grid; grid-template-columns: 150px minmax(240px, 560px);
   gap: 8px 14px; align-items: center; margin: 6px 0 4px;
@@ -5225,8 +5206,8 @@ body.welcome-open { overflow: hidden; }
 .zt-grid-toggles { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
 .zt-grid-toggles label { display: flex; align-items: center; gap: 8px; color: inherit; font-size: 13px; }
 .zt-tag-ok { color: var(--ok); }
-.zt-tag-warn { color: var(--warn, #b45309); border-color: var(--warn, #b45309); }
-.zt-tag-err { color: var(--danger, #dc2626); border-color: var(--danger, #dc2626); }
+.zt-tag-warn { color: var(--warn); border-color: var(--warn); }
+.zt-tag-err { color: var(--bad); border-color: var(--bad); }
 .zt-tag-fix { color: var(--accent); border-color: var(--accent); }
 
 /* ---------------- 禅道·产品档案卡（追加于文件尾防并行重排） ---------------- */
@@ -5382,12 +5363,12 @@ body.welcome-open { overflow: hidden; }
 
 /* 数据与备份页：清理预估行 + 消息块内的警示色（2026-09-20） */
 .cl-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 0;
-  border-bottom: 1px solid var(--line, rgba(128,128,128,.15)); }
+  border-bottom: 1px solid var(--border); }
 .cl-row b { font-size: 12.5px; white-space: nowrap; }
 .cl-row .hint { flex: 1 1 auto; min-width: 0; margin: 0; }
 .cl-row .tag { white-space: nowrap; }
 .msg .bad { color: var(--bad); }
-.msg .ok { color: var(--ok, #4ade80); }
+.msg .ok { color: var(--ok); }
 
 /* —— 群摘要·微信直连（群选择器，2026-09-20）—— */
 #bee-reader-box { display: flex; flex-direction: column; gap: 8px;
@@ -5509,7 +5490,7 @@ button.request-busy > * { opacity: .18; }
   position: absolute; z-index: 140; top: calc(100% + 9px); right: 0;
   width: min(370px, calc(100vw - 24px)); max-height: min(480px, calc(100vh - 88px));
   overflow: hidden; border: 1px solid var(--border-strong); border-radius: 8px;
-  background: var(--panel); box-shadow: var(--shadow-lg);
+  background: var(--panel); box-shadow: var(--shadow);
 }
 .op-center.hidden { display: none; }
 .op-center-head {
@@ -6089,7 +6070,7 @@ button.request-busy > * { opacity: .18; }
   padding: 7px 14px 3px;
   font-size: 11px; font-weight: 600; letter-spacing: .04em;
   color: var(--muted);
-  border-top: 1px solid var(--line, rgba(127,127,127,.18));
+  border-top: 1px solid var(--border);
   margin-top: 4px;
 }
 
