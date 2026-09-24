@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import threading
 import time
 
@@ -40,7 +41,7 @@ def _candidate(row):
 def record_event(run_id="", task_id="", task_type="", difficulty="", role="",
                  phase="selected", selected="", participants=(), candidates=(),
                  fallback=(), selection_reason="", result="", verify_pass=None,
-                 review_pass=None):
+                 review_pass=None, trace_id="", span_id="", parent_event_id=""):
     """追加一条事件；仅保存路由元数据，不保存正文、提示词、密钥或文件内容。"""
     try:
         day = time.strftime("%Y-%m-%d")
@@ -57,6 +58,20 @@ def record_event(run_id="", task_id="", task_type="", difficulty="", role="",
             "selection_reason": _text(selection_reason, 400),
             "result": _text(result, 32),
         }
+        # Trace identifiers are routing metadata only.  They deliberately do
+        # not carry prompt/output contents and remain optional for old callers.
+        if run_id:
+            from . import tracing
+            event["trace_id"] = _text(trace_id or tracing.trace_id(run_id), 64)
+        if span_id:
+            event["span_id"] = _text(span_id, 32)
+        if parent_event_id:
+            event["parent_event_id"] = _text(parent_event_id, 64)
+        event["event_id"] = hashlib.sha256(
+            ("%s|%s|%s|%s|%s|%s" % (
+                time.time_ns(), run_id, phase, role, selected, result
+            )).encode("utf-8")
+        ).hexdigest()[:24]
         if verify_pass is not None:
             event["verify_pass"] = bool(verify_pass)
         if review_pass is not None:

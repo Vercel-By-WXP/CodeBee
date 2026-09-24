@@ -440,6 +440,14 @@ class Handler(BaseHTTPRequestHandler):
                 if not store.get_run(m.group(1)):
                     return self._json(404, {"error": "not found"})
                 return self._json(200, {"assets": store.run_asset_refs(m.group(1))})
+            m = re.match(r"^/api/runs/([^/]+)/trace$", path)
+            if m:
+                run = store.get_run(m.group(1))
+                if not run:
+                    return self._json(404, {"error": "not found"})
+                from core import dispatch_log, tracing
+                return self._json(200, {"trace": tracing.build_trace(
+                    run, dispatch_log.replay(run_id=m.group(1), limit=200))})
             m = re.match(r"^/api/runs/([^/]+)/preview$", path)
             if m:
                 # 网页成品预览：入口 HTML + 同目录代码文件（前端渲染「预览」页签）
