@@ -238,8 +238,12 @@ def block_for(task):
                      | skills._text_bigrams(x.get("body"))
                      | set(x.get("tags") or []))
             # 过期降权（inkos 检索保留来源/位置的启发）：同等相关性下，
-            # 可能过期的事实排在新鲜事实之后——旧知识不该压过新知识
-            return (-len(probe & grams), 1 if _is_stale(x.get("as_of")) else 0,
+            # 可能过期的事实排在新鲜事实之后——旧知识不该压过新知识。
+            # 命中热度平级决胜（教训库 karma 的轻量同构）：_bump_hits 记的
+            # 注入命中数此前只进不出；相关性同档时高频命中条目优先——
+            # 被反复召回的知识已被任务面验证过可用性，压过从未被选中的
+            return (-len(probe & grams), -(int(x.get("hits") or 0)),
+                    1 if _is_stale(x.get("as_of")) else 0,
                     x.get("id") or "")
         entries = sorted(entries, key=rank)
     else:
