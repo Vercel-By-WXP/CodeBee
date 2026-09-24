@@ -30,7 +30,8 @@ DIMENSIONS = {
 
 FIELDS = ("ts", "day", "run_id", "step", "task_id", "task_type", "role", "agent", "agent_label",
           "tool", "model", "provider", "ok", "duration_s",
-          "input", "output", "cached", "reasoning", "total", "cost_usd", "source")
+          "input", "output", "cached", "reasoning", "total", "cost_usd", "source",
+          "first_token_ms", "tokens_per_sec")
 
 
 def _month_file(day):
@@ -63,7 +64,8 @@ def _parse_bool(v):
 
 def record(source="", run_id="", task_id="", task_type="", role="", step=0,
            agent="", agent_label="", tool="", model="", provider="",
-           ok=True, duration_s=0.0, cost_usd=0.0, usage=None):
+           ok=True, duration_s=0.0, cost_usd=0.0, usage=None,
+           first_token_ms=0.0, tokens_per_sec=0.0):
     """追加一条用量记录。usage 为细分 dict：{input, output, cached, reasoning, total}；
     缺省字段按 0 处理。任何异常都吞掉——统计永远不能拖垮业务调用方。
 
@@ -102,6 +104,14 @@ def record(source="", run_id="", task_id="", task_type="", role="", step=0,
         saved = max(0, _parse_int(u.get("saved")))
         if saved:
             rec["saved"] = saved
+        # 体验指标（§07）：只有内置直连的流式路径可测，CLI 事件流没有逐 token
+        # 时刻。零值不落字段——"缺字段"表示不可测，不能读成"首字 0 毫秒"。
+        ft = round(_parse_float(first_token_ms), 1)
+        if ft > 0:
+            rec["first_token_ms"] = ft
+        tps = round(_parse_float(tokens_per_sec), 2)
+        if tps > 0:
+            rec["tokens_per_sec"] = tps
         line = json.dumps(rec, ensure_ascii=False)
         with LOCK:
             paths.USAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -646,6 +656,18 @@ def summary(days=30, recent_limit=30):
     # 压缩省量（source=compaction 记录的 saved 合计）：与消耗并列的第七维，
     # 台账从此能答「省了多少」；无压缩记录时为 0，老前端不读不受影响
     totals["compaction_saved"] = sum(_num(r, "saved") for r in records)
+    # 体验指标：只统计可测记录（缺失与 0 都表示"这条没测到"，不参与均值），
+    # 否则 CLI 路径会把首字延迟平均数拉到 0，读数即假数。
+    ft_list = sorted(_parse_float(r.get("first_token_ms")) for r in records
+                     if _parse_float(r.get("first_token_ms")) > 0)
+    tps_list = [_parse_float(r.get("tokens_per_sec")) for r in records
+                if _parse_float(r.get("tokens_per_sec")) > 0]
+    totals["perf_samples"] = len(ft_list)
+    totals["avg_first_token_ms"] = (round(sum(ft_list) / len(ft_list), 1)
+                                    if ft_list else 0.0)
+    totals["p95_first_token_ms"] = _percentile(ft_list, 0.95) if ft_list else 0.0
+    totals["avg_tokens_per_sec"] = (round(sum(tps_list) / len(tps_list), 2)
+                                    if tps_list else 0.0)
     cur, lng = _streaks(str(r.get("day") or "") for r in all_records)
     totals["streak_current"] = cur
     totals["streak_longest"] = lng

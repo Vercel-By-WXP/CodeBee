@@ -38,8 +38,8 @@ function seedUsage(dataDir) {
     cost_usd: 0.02, input: 1000, output: 400, cached: 200, reasoning: 0, total: 1600,
   }, over));
   const lines = [
-    rec(isoDay(0), {}),
-    rec(isoDay(-1), { tool: "claude", agent: "claude-code", model: "claude-ui", role: "review", output: 900, total: 2300 }),
+    rec(isoDay(0), { first_token_ms: 640, tokens_per_sec: 40 }),
+    rec(isoDay(-1), { tool: "claude", agent: "claude-code", model: "claude-ui", role: "review", output: 900, total: 2300, first_token_ms: 1200, tokens_per_sec: 60 }),
     rec(isoDay(-2), { tool: "orchestrator", agent: "orchestrator", agent_label: "编排者", model: "orch-ui", role: "plan", input: 300, output: 100, total: 400 }),
     rec(isoDay(-5), { tool: "claude", agent: "claude-code", model: "claude-ui", role: "draft", ok: false, total: 1500, input: 1100, output: 400 }),
     rec(isoDay(-40), { tool: "qwen", model: "qwen-ui", total: 5000, input: 4000, output: 1000 }),
@@ -133,6 +133,18 @@ async function main() {
     check("KPI 总 tokens=5800（1600+2300+400+1500）", /5,?800|5800/.test(kpiText), kpiText.slice(0, 120));
     check("KPI 副行调用 4 次", /调用\s*4/.test(kpiText), kpiText.slice(0, 160));
     check("KPI 副行成功率 75%（4 中 3 成）", /成功率\s*75/.test(kpiText), kpiText.slice(0, 160));
+
+    // 3b) 体验指标卡：只有 2 条可测记录参与均值（不可测的两条不得把首字拉成 0）
+    check("首字延迟卡渲染", /首字延迟/.test(kpiText), kpiText.slice(0, 200));
+    check("首字延迟=920ms（640+1200 的均值，仅可测样本）", /920ms/.test(kpiText), kpiText.slice(0, 200));
+    check("吞吐=50 tok/s 且样本 2 次", /50\s*tok\/s/.test(kpiText) && /样本\s*2/.test(kpiText),
+      kpiText.slice(0, 240));
+    await evalJs(`setUsageDays(1); "ok"`);
+    await sleep(1200);
+    const todayPerf = await evalJs(`document.getElementById("usage-kpis").textContent`);
+    check("切回今天=640ms", /640ms/.test(todayPerf), todayPerf.slice(0, 200));
+    await evalJs(`setUsageDays(30); "ok"`);
+    await sleep(1200);
 
     // 4) 趋势图 SVG（多模型折线：≥2 天走 path 曲线 + 数据点）与维度排行
     const pathN = await evalJs(`document.querySelectorAll("#usage-trend svg path").length`);

@@ -48,7 +48,8 @@ class TestCostSectionIsWritten(unittest.TestCase):
             "不得记成模型质量失败",      # 预算熔断是运维开关
             "样本为 0 时该项记 0",       # 无历史不猜候选好坏
             "不构成任务通过条件",        # estimate 只服务排程
-            "既无计量字段也无口径",      # TTFT/tokens-per-sec 是已知空白
+            "「缺字段」表示不可测",        # TTFT/吞吐零值不落=不可测，不得读成 0 毫秒
+            "尚未进入路由加减分",         # 已入账但不进任何口径
             "单点跑得快慢不构成结论",
         ):
             with self.subTest(marker=marker):
@@ -115,14 +116,20 @@ class TestCostStandardMatchesCode(unittest.TestCase):
         self.assertIn("上限 -18", section)
         self.assertIn("惩罚 -4", section)
 
-    def test_cache_rate_tripwire(self):
-        """标准声称 TTFT/吞吐无口径；一旦代码补上就必须同步改文档。"""
+    def test_perf_fields_are_pinned(self):
+        """TTFT/吞吐已入账（2026-09-24）：字段在、零值不落、文档必须点名口径。"""
         from app.core import usage
 
-        src = inspect.getsource(usage.record) + ",".join(usage.FIELDS)
-        for field in ("ttft", "tokens_per_sec"):
+        params = set(inspect.signature(usage.record).parameters)
+        src = inspect.getsource(usage.record)
+        section = _section()
+        for field in ("first_token_ms", "tokens_per_sec"):
             with self.subTest(field=field):
-                self.assertNotIn(field, src)
+                self.assertIn(field, params)
+                self.assertIn(field, ",".join(usage.FIELDS))
+                self.assertIn("`%s`" % field, section)
+        self.assertIn("if ft > 0", src)      # 零值不落字段=不可测
+        self.assertIn("if tps > 0", src)
 
 
 class TestRoutingMetricsShape(BaseTest):
