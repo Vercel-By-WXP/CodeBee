@@ -9820,6 +9820,7 @@ function renderSkills() {
       'onclick="skillCatFilter(\'' + esc(x.category) + '\')" title="' + t("只看该类") + '">' + esc(t(x.category)) + "</span>" : "") +
     '<span class="tag">' + esc(x.scope === "*" ? t("通用") : x.scope) + "</span>" +
     (x.seen > 1 ? '<span class="tag">' + t("出现 ") + x.seen + t(" 次") + "</span>" : "") +
+    ((x.merged_titles || []).length ? '<span class="tag" title="' + t("被近似题合并吸收的变体标题数") + '">' + t("吸收 ") + x.merged_titles.length + t(" 个近似题") + "</span>" : "") +
     (x.hits ? '<span class="tag">' + t("已注入 ") + x.hits + t(" 次") + "</span>" : "") +
     (x.won > 0 ? '<span class="tag ok" title="' + t("注入后任务过审的次数（真实帮上忙）") + '">' + t("有效 ") + x.won + "</span>" : "") +
     (x.lost > 0 ? '<span class="tag" style="color:var(--bad)" title="' + t("注入后任务仍失败的次数（没防住）") + '">' + t("失守 ") + x.lost + "</span>" : "") +
@@ -9910,6 +9911,7 @@ function kbCard(x) {
     (x.confidence === "high" ? '<span class="tag ok" title="' + esc(t("产出材料中有明确来源或数据支撑")) + '">' + esc(t("有据")) + "</span>" : "") +
     '<span class="tag">' + esc(x.scope === "*" ? t("通用") : x.scope) + "</span>" +
     (x.seen > 1 ? '<span class="tag">' + t("出现 ") + x.seen + t(" 次") + "</span>" : "") +
+    ((x.merged_titles || []).length ? '<span class="tag" title="' + t("被近似题合并吸收的变体标题数") + '">' + t("吸收 ") + x.merged_titles.length + t(" 个近似题") + "</span>" : "") +
     (x.hits ? '<span class="tag">' + t("已注入 ") + x.hits + t(" 次") + "</span>" : "") +
     (x.enabled === false ? '<span class="tag">' + t("已停用") + "</span>" : "");
   const tags = (x.tags || []).map((tg) =>
