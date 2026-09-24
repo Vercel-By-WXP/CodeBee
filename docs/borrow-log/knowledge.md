@@ -736,3 +736,9 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **worktrunk**（max-sixty，8.4k★）| git worktree 管理 CLI | 与我们任务分支隔离+赛马 worktree 已覆盖同域 | 参考
 
 **✅ 本班落地**：Stop gate（planning-with-files 第四件）——收工时活计划勾选完整性可见：`[ ]`未跑/`[!]`失败/`[>]`中断均算未完成，收工摘要+verdict.plan_gate 如实点名；只保可见不改判。test_plan_stopgate 4 项
+
+### 2026-09-24 12:00 第五十二班（批5：检索/知识/浏览器）
+
+- 批5 复查：dify（157k★）/claude-mem（94.6k★ 持久上下文）/ragflow（91.2k★）/Agent-Reach（85.1k★ 网页可达性）均已录无增量；langchain/LibreChat/TiDB 大盘熟悉面
+
+**✅ 本班落地**：知识检索命中热度回流排序——_bump_hits 记账首次进 block_for 排序链做平级决胜（教训库 karma 的轻量同构：被反复召回的知识已验证任务面可用性，相关性同档时优先）；相关性压制/过期降权顺位不变。test_kb_hits_rank 3 项
