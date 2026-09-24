@@ -2055,21 +2055,36 @@ class Handler(BaseHTTPRequestHandler):
             msgs = r.get("messages") or []
             steps = r.get("steps") or []
             # 消息没有日期（只有 HH:MM:SS），跨 run 不能按时间混排；用语义顺序：
-            # 已消费消息（驱动了本轮回答）→ 已完成步骤 → 未消费消息（run 结束后
-            # 才追话到达的）→ 运行中/排队步骤（打字动画）。追问因此总在上一轮
-            # 回答之后、本轮打字动画之前。
+            # 已消费消息（驱动了本轮回答）→ 已完成步骤 → 运行中/排队步骤 →
+            # 未消费消息。运行中的回复卡锚在开跑位置，中途追话（指挥信箱，还没
+            # 轮到消费）是比卡更新的排队件，必须落在卡下——否则 21:31 开跑的卡
+            # 排在 21:42/21:43 的追问后面，被读成「回复串到了别人的问题」，且步骤
+            # 收尾时消息会整组跳位（2026-09-24 用户实测）。
+            # 排队卡（还没开跑、无 started_at）反向兼容：拿 run 创建时刻当锚点，
+            # 早于锚点的未消费消息（触发本轮排队的那条）仍排在卡前，开跑消费后
+            # 位置不动、时间线不跳变；晚于锚点的才是中途追话，沉底等下一轮。
+            pending = [m for m in msgs if not m.get("consumed")]
             for m in msgs:
                 if m.get("consumed"):
                     _emit_msg(m)
             for s in steps:
                 if (s.get("status") or "") == "done":
                     _emit_step(s, r.get("id") or run_id)
-            for m in msgs:
-                if not m.get("consumed"):
+            live_steps = [s for s in steps if (s.get("status") or "") != "done"]
+            if not live_steps:
+                for m in pending:
                     _emit_msg(m)
-            for s in steps:
-                if (s.get("status") or "") != "done":
-                    _emit_step(s, r.get("id") or run_id)
+                continue
+            rc = str(r.get("created_at") or "")
+            anchor = (live_steps[0].get("started_at") or "") or (rc[11:19] if len(rc) >= 19 else "")
+            for m in pending:
+                if str(m.get("created_at") or "") <= anchor:
+                    _emit_msg(m)
+            for s in live_steps:
+                _emit_step(s, r.get("id") or run_id)
+            for m in pending:
+                if str(m.get("created_at") or "") > anchor:
+                    _emit_msg(m)
         return self._json(200, {
             "run_id": run_id, "status": run.get("status") or "",
             "engine": engine,
