@@ -236,5 +236,38 @@ class TestQualityGates(BaseTest):
         self.assertTrue(inh6.get("outline"))
 
 
+class TestQualityGateStandardIsExecutable(unittest.TestCase):
+    """质量门判定口径必须写在标准里并被钉住，不能只活在代码注释里。"""
+
+    SECTION = "## 内容质量判定门"
+
+    def setUp(self):
+        root = Path(__file__).resolve().parents[1]
+        self.text = (root / "docs" / "execution-standard.md").read_text(
+            encoding="utf-8")
+
+    def test_section_and_impl_row_exist(self):
+        self.assertIn(self.SECTION, self.text)
+        self.assertIn("| 内容质量判定门 |", self.text)
+
+    def test_decisions_are_pinned(self):
+        section = self.text.split(self.SECTION, 1)[1]
+        for marker in (
+            "双闸相与",            # 验证 ∧ 评审，单闸绿灯不算过
+            "不取平均",            # 逐维度全达标
+            "一律视为不达标",      # 缺分/缺阈值不猜成通过
+            "不落 0 分",           # 评审器失败不折算成质量 0 分
+            "免检通行证",          # 反向：也不得借评审器失败放行
+            "不带病产出",          # 输入降级即中止
+            "不得是报告标题",      # 体裁错位判质量失败
+            "只有评审维度集合",    # 裁定权归属
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, section)
+
+    def test_task_row_still_points_at_the_gate(self):
+        self.assertIn("验证命令通过且质量门通过", self.text)
+
+
 if __name__ == "__main__":
     unittest.main()
