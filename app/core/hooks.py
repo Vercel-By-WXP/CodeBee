@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shlex
 import subprocess
 
@@ -100,11 +101,16 @@ def _run_one(h, payload):
     if not argv:
         return None
     try:
+        # Hook input/output is a UTF-8 JSON/text protocol. Python subprocesses on
+        # Windows otherwise inherit the OEM code page and their Chinese stdout is
+        # decoded as mojibake below. Non-Python hooks ignore this variable.
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
         proc = subprocess.run(
             argv, shell=False,
             input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             capture_output=True, timeout=int(h.get("timeout_s") or _DEFAULT_TIMEOUT),
-            creationflags=_CREATE_NO_WINDOW)
+            creationflags=_CREATE_NO_WINDOW, env=env)
     except subprocess.TimeoutExpired:
         log.warning("hook[%s %s] 超时，已跳过", h.get("name"), h.get("event"))
         return None
