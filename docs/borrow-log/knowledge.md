@@ -808,3 +808,9 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **continuum 陈年承诺督促落地**（承诺/伏笔账差量收窄版——资源账本+章戳早已存在，真差量=无账龄督促）：`_ledger_watchlist` 按「## 第 N 章」段解析承诺/伏笔条目（同名以最后出现章为准、现状含已兑现/已回收等词剔除），距本章 ≥3 章未推进 → 起起草面追加「⚠ 陈年承诺/伏笔」清单（推进/回收其一或明确留白）；min_age 边界/排序/空账本全测
 - **ECC evolve 落地**（/evolve 教训晋升技能的半自动版）：`skills.evolve_lessons`——注入 ≥6+可信度下界 ≥0.75+成功归因 ≥1 的教训聚成用户包**草稿**（data/skillpacks/evolve-*.md，frontmatter scopes=教训域并集），**默认停用**（pid 与 _load_user_pack stem 哈希同口径写 enabled=False）——晋升必须过人工审阅闸；POST /api/skills/evolve 返回收录概况。ECC 差量②「注入条数上限」勘误为误记（两上限早已存在）
 - test_final_borrowings 15 项（锚三态/归一/降档/提示词契约+督促边界排序剔除+evolve 门槛草稿停用）；相邻域 review_fallback/reviewer_error/quality_gates/serial_review_resilience/lesson 三件全绿
+
+### 2026-09-25 00:01 第五十八班（批7：中文/网关/本地/办公）
+
+- 批7 复查：unsloth/openhuman/khoj/funNLP/JeecgBoot/Langchain-Chatchat 均已录无增量
+
+**✅ 本班落地**：压缩省量按日趋势——usage 聚合器与 by_day 逐日带 saved 维、KPI 卡挂 spark 走势；补全 09-24 台账第七维的时间维度（省量何时发生一眼可读）
