@@ -208,7 +208,14 @@ def _name(v, limit):
 
 
 def _summary(v):
-    return str(v or "").strip()[:500]
+    """剥 markdown 装饰后截断。2026-09-23 实案：简介混成调研报告标题
+    「# 网文选题分析报告…」——模型把研究素材当小说素材时输出的是标题行，
+    至少不能把 #/* 符号和报告腔标题原样带进建书表单。"""
+    t = re.sub(r"^\s*#{1,6}\s*", "", str(v or "").strip())
+    t = re.sub(r"(?m)^\s*[-*•]\s*", "", t)
+    t = t.replace("**", "").replace("__", "")
+    t = re.sub(r"\n{2,}", "\n", t).strip()
+    return t[:500]
 
 
 def _in_table(v, table, limit=10):
@@ -560,9 +567,19 @@ def make_book_meta(task, platform, author_agent=None, log_path=None):
     """生成一个平台的作品信息。返回 (meta dict, source 字符串)；模板兜底永远有返回。"""
     from . import knowledge, modelhub, planner, runner, skills  # 惰性导入，同 planner
     material, outline = _collect_material(task)
+    # 素材充分性门：没有大纲也没有章稿/圣经的任务（如「帮我定方向」的选题
+    # 研究任务）没有可推介的小说要素——生成只会产出报告腔垃圾
+    # （2026-09-23 实案：简介=「# 网文选题分析报告…」）。宁明确拒绝。
+    if not outline and "## 第一章开头" not in material and "## 故事圣经" not in material:
+        raise ValueError(
+            "该任务还没有小说大纲、正文或故事圣经，无法生成作品信息——"
+            "先完成大纲/首批章节后再来一键生成")
     schema = {"fanqie": FANQIE_SCHEMA, "qimao": QIMAO_SCHEMA}.get(platform) or ""
     plat_label = PLATFORMS[platform]["label"]
     sk_block, _ = skills.block_for(task)
+    # 实案教训（2026-09-23）：素材偏研究向时模型把简介写成「分析报告标题」
+    summary_rule = ("- summary 必须是面向读者的小说推介文案：点出题材、主角、核心冲突与悬念，"
+                    "200/500 字内成段；绝不允许写成报告标题、要点清单或任务说明。")
     kb_block = knowledge.block_for(task)
     if kb_block:
         sk_block = (sk_block + "\n\n" + kb_block) if sk_block else kb_block
@@ -572,7 +589,8 @@ def make_book_meta(task, platform, author_agent=None, log_path=None):
     prompt = (PROMPT_HEAD.replace("__PLATFORM__", plat_label)
               .replace("__SKILLS__", sk_block)
               .replace("__SCHEMA__", schema)
-              .replace("__OPTIONS_RULE__", options) + "\n\n## 小说素材\n" + material)
+              .replace("__OPTIONS_RULE__", options + "\n" + summary_rule)
+              + "\n\n## 小说素材\n" + material)
 
     orch = None
     if not template_only():
