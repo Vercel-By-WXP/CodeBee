@@ -16,5 +16,6 @@ tmp_*
 /tests/
 !/tests/
 /tests/*
+!/tests/test_*.py
 !/tests/test_state_payload.py
 .playwright-cli/
