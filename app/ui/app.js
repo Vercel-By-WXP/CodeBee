@@ -4315,6 +4315,7 @@ function drawTaskDetail(key, runs, appendFrom) {
           '<span class="role">' + esc(s.role) + "</span>" +
           '<span class="who">' + esc(t(s.agent_label || s.agent)) + "</span>" +
           (String(s.model || "").trim() ? '<span class="st-model" title="' + esc(t("实际派发模型")) + '">' + esc(String(s.model).trim()) + "</span>" : "") +
+          (String(s.provider || "").trim() ? '<span class="st-prov" title="' + esc(t("实际用上游（厂商@网关）")) + '">' + esc(String(s.provider).trim()) + "</span>" : "") +
           '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
           '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
           statusChip(s.status) +
@@ -4757,6 +4758,7 @@ function renderRunDetailSteps(run, token) {
         '<span class="role">' + esc(s.role) + "</span>" +
         '<span class="who">' + esc(t(s.agent_label || s.agent)) + "</span>" +
         (s.model ? '<span class="st-model" title="' + esc(t("实际派发模型")) + '">' + esc(s.model) + "</span>" : "") +
+        (String(s.provider || "").trim() ? '<span class="st-prov" title="' + esc(t("实际用上游（厂商@网关）")) + '">' + esc(String(s.provider).trim()) + "</span>" : "") +
         '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
         '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
         statusChip(s.status) +
@@ -8051,16 +8053,29 @@ async function rdPrefsPush(what) {
     patch.direct_model = rdModelMv;
     patch.direct_agent = rdModelAgent;
   }
+  // 修订 CAS（借鉴 WorkDSH 契约纪律）：带上页面所见的任务修订号，别的窗口
+  // 先改过则后端拒绝过期写入；本地提示后由轮询回填最新值——「我改成功了」
+  // 的假象（实际已被人覆盖）就此消失。
+  if (task.rev != null) patch.expected_rev = task.rev;
   try {
-    await api("/api/tasks/" + encodeURIComponent(task.id) + "/params", {
+    const data = await api("/api/tasks/" + encodeURIComponent(task.id) + "/params", {
       method: "POST", operation: false, body: JSON.stringify(patch) });
-  } catch (e) { /* 运行中/网络失败不打断对话，发送前还有兜底 */ }
+    if (data && data.rev != null) task.rev = data.rev;   // 续用凭据：连推时后几次不再过期
+  } catch (e) {
+    if (String((e && e.message) || "").indexOf("已被其他窗口修改") >= 0) {
+      toast(e.message, true);   // 冲突要可见：静默吞掉=又一种假成功
+    }
+    /* 运行中/网络失败不打断对话，发送前还有兜底 */
+  }
 }
 
 async function rdPrefsPushAll() {
-  // 发送前兜底：三个一起推（/chat 开新一轮前调用；失败静默——值已在前端，
-  // 下一轮 poll 的回填也不会覆盖用户刚选的值）
-  await Promise.all([rdPrefsPush("mode"), rdPrefsPush("thinking"), rdPrefsPush("model")]);
+  // 发送前兜底：三个一起推（/chat 开新一轮前调用）。改为顺序推——三次都带
+  // expected_rev，并发推会在第一次成功后让后两次全成过期写入被拒；
+  // 值已在前端，失败静默同前，下一轮 poll 的回填也不会覆盖用户刚选的值。
+  await rdPrefsPush("mode");
+  await rdPrefsPush("thinking");
+  await rdPrefsPush("model");
 }
 
 function drawChatAtts() {

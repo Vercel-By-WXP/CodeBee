@@ -2,7 +2,7 @@
 """修订钉住与执行留痕测试（借鉴 WorkDSH ADR-0010 / ResolvedExecutionBinding /
 取消结算分层的落地守卫）。
 
-覆盖四件：
+覆盖五件：
   1. flows.flow_digest：语义字段稳定指纹（展示位不制造漂移噪音）；
   2. create_task 钉 flow_snapshot + flows.flow_drift 漂移检测（新任务无漂移、
      改语义字段告漂移、改展示位不告、流程删除不告）；
@@ -10,6 +10,8 @@
      store.add_step 落 provider 列（默认空串，老数据兼容）；
   4. 停稳未知：_kill_tree 返回确认结果，run_process 杀树未确认时带
      quiescence_unknown 且不改变 timed_out 语义；确认清空时无该键。
+  5. 参数修订 CAS：update_task_params 带 expected_rev 的过期写入被拒、
+     匹配写入 rev+1、不带 expected_rev 旧调用零影响、坏类型拒绝。
 """
 from __future__ import annotations
 
@@ -185,6 +187,68 @@ class TestQuiescenceUnknown(BaseTest):
         saved = store.get_run(run["id"])["steps"][0]
         self.assertEqual(saved["status"], "timeout")
         self.assertIn("进程树未确认清空", saved["summary"])
+
+
+class TestParamsRevisionCas(BaseTest):
+    def _make_task(self):
+        from app.core import store
+        return store.create_task({"type": "direct", "goal": "干活",
+                                  "workdir": str(self.workdir)})
+
+    def test_rev_starts_at_one_and_bumps_on_write(self):
+        from app.core import store
+        task = self._make_task()
+        self.assertEqual(task["rev"], 1)
+        ok, err = store.update_task_params(task["id"], {"mode": "fast"})
+        self.assertTrue(ok, err)
+        self.assertEqual(store.get_task(task["id"])["rev"], 2)
+        self.assertEqual(store.get_task(task["id"])["mode"], "fast")
+
+    def test_stale_expected_rev_rejected_without_overwrite(self):
+        from app.core import store
+        task = self._make_task()
+        # 窗口 A、B 都看到 rev=1；A 先写成功（rev→2），B 带旧 rev 再写必须被拒
+        ok, err = store.update_task_params(task["id"],
+                                           {"mode": "fast", "expected_rev": 1})
+        self.assertTrue(ok, err)
+        ok, err = store.update_task_params(task["id"],
+                                           {"mode": "expert", "expected_rev": 1})
+        self.assertFalse(ok)
+        self.assertIn("已被其他窗口修改", err)
+        # 过期写入没有生效：mode 仍是 A 写的 fast，rev 不动
+        cur = store.get_task(task["id"])
+        self.assertEqual(cur["mode"], "fast")
+        self.assertEqual(cur["rev"], 2)
+        # 带正确 rev 的窗口 B 重试成功
+        ok, err = store.update_task_params(task["id"],
+                                           {"mode": "expert", "expected_rev": 2})
+        self.assertTrue(ok, err)
+        self.assertEqual(store.get_task(task["id"])["rev"], 3)
+
+    def test_legacy_call_without_expected_rev_unchanged(self):
+        from app.core import store
+        task = self._make_task()
+        # 旧调用（test_builtin_agent 的直连 CLI 切换路径等）不带 expected_rev：
+        # 行为不变，照写照递增
+        ok, err = store.update_task_params(task["id"], {"thinking": "high"})
+        self.assertTrue(ok, err)
+        self.assertEqual(store.get_task(task["id"])["thinking"], "high")
+
+    def test_bad_expected_rev_rejected(self):
+        from app.core import store
+        task = self._make_task()
+        ok, err = store.update_task_params(task["id"],
+                                           {"mode": "fast", "expected_rev": "abc"})
+        self.assertFalse(ok)
+        self.assertIn("expected_rev", err)
+        self.assertEqual(store.get_task(task["id"])["rev"], 1)
+
+    def test_no_change_no_rev_bump(self):
+        from app.core import store
+        task = self._make_task()
+        ok, err = store.update_task_params(task["id"], {"mode": task["mode"]})
+        self.assertTrue(ok, err)
+        self.assertEqual(store.get_task(task["id"])["rev"], 1)
 
 
 if __name__ == "__main__":

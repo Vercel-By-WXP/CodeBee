@@ -167,6 +167,9 @@ def create_task(payload):
                              "engine": flow["engine"],
                              "edited": bool(flow.get("edited")),
                              "digest": flows_mod.flow_digest(flow)}
+    # 参数修订号（借鉴 WorkDSH 契约纪律 expectedRevision）：写接口据此做过期
+    # 写入检测。老任务无此键按 1 处理；不带 expected_rev 的调用不受影响。
+    task["rev"] = 1
     if flow["engine"] == "direct":
         task["direct_provider_id"] = _text(payload.get("direct_provider_id"),
                                             "direct_provider_id")[:80]
@@ -1537,29 +1540,45 @@ def rename_task(task_id, title):
 
 def update_task_params(task_id, patch):
     """更新任务编排参数（对话条三件套：mode/thinking/direct_provider_id/direct_model）。
-    只在任务未在跑时生效——运行中改参数不会影响当前执行，静默跳过避免误导。"""
+    只在任务未在跑时生效——运行中改参数不会影响当前执行，静默跳过避免误导。
+
+    修订 CAS（借鉴 WorkDSH 契约纪律 expectedRevision）：patch 携带整数
+    expected_rev 时与任务当前 rev 比对，不符=别处已先改——拒绝写入并说明，
+    不做过期覆盖；不带 expected_rev 的旧调用保持原行为。写成功 rev+1，
+    调用方（路由）从 get_task 回读新 rev 交前端续用。"""
     if not _valid_id(task_id):
         return False, "非法的任务 ID"
+    patch = dict(patch) if isinstance(patch, dict) else {}
+    expected_rev = patch.pop("expected_rev", None)
     with LOCK:
         task = _TASKS.get(task_id)
         if not task:
             return False, "任务不存在"
         if task.get("status") in ("queued", "running"):
             return False, "任务运行中，参数不可改"
+        if expected_rev is not None:
+            try:
+                want_rev = int(expected_rev)
+                cur_rev = int(task.get("rev") or 1)
+            except (TypeError, ValueError):
+                return False, "expected_rev 必须是整数"
+            if want_rev != cur_rev:
+                return False, ("任务参数已被其他窗口修改（当前修订 %d），"
+                               "已拒绝过期写入，界面稍后自动同步最新值" % cur_rev)
         changed = False
-        mode = str((patch or {}).get("mode") or "").strip()
+        mode = str(patch.get("mode") or "").strip()
         if mode in ("auto", "fast", "expert", "manual"):
             if task.get("mode") != mode:
                 task["mode"] = mode
                 changed = True
-        thinking = str((patch or {}).get("thinking") or "").strip()
+        thinking = str(patch.get("thinking") or "").strip()
         if thinking in ("auto", "low", "standard", "high"):
             if task.get("thinking") != thinking:
                 task["thinking"] = thinking
                 changed = True
         if task.get("engine") == "direct":
-            pv = str((patch or {}).get("direct_provider_id") or "").strip()[:80]
-            mv = str((patch or {}).get("direct_model") or "").strip()[:160]
+            pv = str(patch.get("direct_provider_id") or "").strip()[:80]
+            mv = str(patch.get("direct_model") or "").strip()[:160]
             if mv and not pv:
                 return False, "指定对话模型时必须同时指定厂商"
             if task.get("direct_provider_id") != pv or task.get("direct_model") != mv:

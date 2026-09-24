@@ -6105,3 +6105,11 @@ button.request-busy > * { opacity: .18; }
   background: color-mix(in srgb, #d97706 16%, transparent);
   color: #b45309;
 }
+/* 步骤卡「实际用上游」小徽章（借鉴 WorkDSH ResolvedExecutionBinding，追加于文件尾
+ * 防并行重排）：与 st-model 同族但用独立类名——ui_hive_model_think 断言
+ * .st-model 徽章数，复用类名会破锚点。虚线边框与模型徽章区分。 */
+.step .st-prov {
+  font-size: 10.5px; color: var(--muted); opacity: .85;
+  border: 1px dashed var(--border); border-radius: 999px; padding: 0 7px; line-height: 16px;
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

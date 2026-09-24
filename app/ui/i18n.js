@@ -860,6 +860,7 @@
     "大纲 → 逐章起草评审 → 合并（可续跑）": "Outline → per-chapter draft & review → merge (resumable)",
     "≈{0} tokens · {1}次": "≈{0} tokens · {1} runs",
     "实际派发模型": "Dispatched model",
+    "实际用上游（厂商@网关）": "Actual upstream (provider@gateway)",
     "大纲": "Outline",
     "修复": "Fix",
     "验证": "Verify",

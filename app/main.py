@@ -744,8 +744,13 @@ class Handler(BaseHTTPRequestHandler):
             elif m.group(2) == "rename":
                 ok, err = store.rename_task(m.group(1), self._body().get("title"))
             elif m.group(2) == "params":
-                # 对话条三件套（mode/thinking/direct 模型）随发随改：只许空闲态改
+                # 对话条三件套（mode/thinking/direct 模型）随发随改：只许空闲态改。
+                # 成功回传最新修订号（expected_rev CAS 的续用凭据，前端连推三件
+                # 时靠它避免后两次推成过期写入）
                 ok, err = store.update_task_params(m.group(1), self._body())
+                if ok:
+                    _t = store.get_task(m.group(1)) or {}
+                    return self._json(200, {"ok": True, "rev": _t.get("rev")})
             else:
                 ok, err = store.delete_task(m.group(1))
             return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
