@@ -2248,6 +2248,19 @@
     "保存失败": "Save failed",
     "失败 ": "Failed ",
 
+    // —— 任务总时限（任务信息弹层，空闲可改）——
+    "任务总时限": "Task time limit",
+    "30 分钟": "30 min",
+    "1 小时": "1 hour",
+    "2 小时": "2 hours",
+    "3 小时": "3 hours",
+    "4 小时": "4 hours",
+    "6 小时": "6 hours",
+    "12 小时": "12 hours",
+    "24 小时": "24 hours",
+    "自定义 ": "Custom · ",
+    "单次运行的总时间预算；超时即中断（连载断点续跑，已完成章不重写）。空闲时可改，下次运行生效": "Total wall-clock budget per run; the run stops when it is exhausted (serial novels resume from finished chapters). Editable while idle, effective on the next run",
+
     // —— 引擎调参（设置 v2，label 来自后端 schema description）——
     "编排引擎": "Orchestration engine",
     "预算": "Budget",

@@ -564,19 +564,32 @@ def _err_signature(err):
     return re.sub(r"\s+", " ", s).strip()[:400]
 
 
+def _serial_progress(run):
+    """连载运行的已过审章数——超时续跑的进度锚点（chapter_scores 长度）。"""
+    try:
+        return len(run.get("chapter_scores") or [])
+    except Exception:
+        return 0
+
+
 def _maybe_auto_resume(run_id):
-    """连载任务失败自动续跑：继承已完成章继续，最多 AUTO_RESUME_MAX 次。
+    """连载任务失败/超时自动续跑：继承已完成章继续，最多 AUTO_RESUME_MAX 次。
 
     真实长篇单次运行常因供应商拥堵超时中断；这里在执行线程收尾时自动续跑一次
     续跑（store.retry_task 会带上 inherit），让整个流程真正无人值守。
+    2026-09-24 戍边骑奴 9-20 案：「任务总时限已到」终态此前不续跑，而总时限
+    预算默认 1 小时、慢链天 12 章天然跑不完，用户只能守着手动点重试——超时
+    恰恰是最该自动接着写的一种中断，纳入。
     同因连撞止损：续跑副本再失败时与本次失败的错误签名比对（2026-09-18
     重写任务 kimi 403 欠费案），一模一样说明退避没换来不同结果，直接落
-    终态写明死因，不再烧剩余的退避次数。
+    终态写明死因，不再烧剩余的退避次数。超时例外：错误签名恒为同一句
+    「任务总时限已到」，但每轮都在落章——本轮比上轮多过审了章就不算
+    「同因无效重试」，续跑交给次数上限兜底；两轮一章未进则照常止损。
     """
     try:
         from . import store
         run = store.get_run(run_id)
-        if not run or run.get("status") not in ("failed", "cancelled"):
+        if not run or run.get("status") not in ("failed", "cancelled", "timeout"):
             return False
         task = store.get_task(run.get("task_id")) if run.get("task_id") else None
         if not task or not task.get("serial"):
@@ -589,8 +602,11 @@ def _maybe_auto_resume(run_id):
         if prev_id:
             prev = store.get_run(prev_id)
             sig_now = _err_signature(run.get("error"))
+            timeout_progressed = (run.get("status") == "timeout"
+                                  and _serial_progress(run) > _serial_progress(prev or {}))
             if (prev and sig_now and prev.get("error")
-                    and sig_now == _err_signature(prev.get("error"))):
+                    and sig_now == _err_signature(prev.get("error"))
+                    and not timeout_progressed):
                 store.update_run(run_id, auto_resume_stopped="same_cause",
                                  error=(run.get("error") or "")
                                  + "｜自动续跑止损：连续两次失败原因相同，不再重试")

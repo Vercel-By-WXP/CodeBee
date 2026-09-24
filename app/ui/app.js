@@ -4820,6 +4820,7 @@ async function renderRunDetail() {
     (run.error ? '<span class="stat err">' + errTag(run.error) + esc(run.error.slice(0, 200)) + "</span>" : "") +
     '<span class="stat tasksum hidden" id="rd-meta-task"></span>';
   if (S.detailSide) fillMetaTask(S.detailSide.stats || {});   // 缓存命中：轮询重画不闪丢累计组
+  renderTimeoutRow(rcTask, run);
   renderPlan(run);
   renderRouting(run);
   renderChapterScores(run);
@@ -8280,6 +8281,56 @@ window.toggleRdModelMenu = toggleRdModelMenu;
     if (e.key === "Escape") toggleRdModelMenu(false);
   });
 })();
+
+// 任务总时限（秒）选项：任务信息弹层里的空闲可改项（2026-09-24 戍边骑奴案：
+// 12 章连载默认 1 小时在慢链天跑不完）。值不入轮询重建的 rd-meta，防 select 弹回。
+const TASK_TIMEOUT_CHOICES = [
+  [1800, "30 分钟"], [3600, "1 小时"], [7200, "2 小时"], [10800, "3 小时"],
+  [14400, "4 小时"], [21600, "6 小时"], [43200, "12 小时"], [86400, "24 小时"],
+];
+
+function timeoutLabel(s) {
+  const hit = TASK_TIMEOUT_CHOICES.find((c) => c[0] === Number(s));
+  if (hit) return hit[1];
+  const m = Math.round(Number(s) / 60);
+  return (m >= 60 ? (Math.round(m / 60 * 10) / 10) + " 小时" : m + " 分钟");
+}
+
+function renderTimeoutRow(rcTask, run) {
+  const row = $("rd-timeout-row"), sel = $("rd-timeout");
+  if (!row || !sel) return;
+  if (!rcTask) { row.classList.add("hidden"); return; }
+  row.classList.remove("hidden");
+  const cur = Number(rcTask.timeout_s || 3600);
+  // 选项一次性构建；当前值不在档内时补一项，避免选中丢失
+  const want = TASK_TIMEOUT_CHOICES.map((c) => c[0]).concat(
+    TASK_TIMEOUT_CHOICES.some((c) => c[0] === cur) ? [] : [cur]).join(",");
+  if (sel.dataset.choices !== want) {
+    sel.dataset.choices = want;
+    sel.innerHTML = TASK_TIMEOUT_CHOICES
+      .map((c) => '<option value="' + c[0] + '">' + esc(t(c[1])) + "</option>").join("") +
+      (TASK_TIMEOUT_CHOICES.some((c) => c[0] === cur)
+        ? "" : '<option value="' + cur + '">' + esc(t("自定义 ") + timeoutLabel(cur)) + "</option>");
+  }
+  const busy = ["queued", "running"].indexOf(rcTask.status) >= 0;
+  sel.disabled = busy;
+  // 用户正操作（含失焦瞬间）不回写 value，防轮询把刚选的值弹回旧值
+  if (document.activeElement !== sel) sel.value = String(cur);
+  if (!sel.dataset.bound) {
+    sel.dataset.bound = "1";
+    sel.addEventListener("change", async () => {
+      const task = (S.state && (S.state.tasks || []).find((x) => x.id === rcTask.id)) || rcTask;
+      const patch = { timeout_s: Number(sel.value) || 3600 };
+      if (task.rev != null) patch.expected_rev = task.rev;
+      try {
+        const data = await api("/api/tasks/" + encodeURIComponent(rcTask.id) + "/params", {
+          method: "POST", operation: false, body: JSON.stringify(patch) });
+        if (data && data.rev != null) task.rev = data.rev;
+        task.timeout_s = patch.timeout_s;   // 即时回显，不等轮询
+      } catch (e) { toast(e && e.message ? e.message : "保存失败", true); }
+    });
+  }
+}
 
 async function rdPrefsPush(what) {
   // what: mode|thinking|model（变更源）；写任务参数（空闲态才允许）

@@ -526,6 +526,10 @@
           <div id="rd-meta-popover" class="rd-meta-popover hidden" role="dialog" aria-label="任务信息" data-i18n-aria="任务信息">
             <div class="rd-meta-popover-head"><span data-i18n="任务信息">任务信息</span><button id="rd-more-close" type="button" class="ghost" aria-label="关闭" data-i18n-aria="关闭">×</button></div>
             <div id="rd-meta" class="stats rd-meta-strip"></div>
+            <div id="rd-timeout-row" class="rd-timeout-row hidden">
+              <label for="rd-timeout" data-i18n="任务总时限">任务总时限</label>
+              <select id="rd-timeout" data-i18n-title="单次运行的总时间预算；超时即中断（连载断点续跑，已完成章不重写）。空闲时可改，下次运行生效"></select>
+            </div>
             <div id="rd-overview" class="rd-overview hidden" aria-live="polite"></div>
           </div>
         </div>

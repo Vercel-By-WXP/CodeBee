@@ -299,3 +299,101 @@ class TestAutoResumeBackoff(BaseTest):
             jobs.threading.Timer = orig_timer
         runs = [r for r in store.list_runs(50) if r.get("task_id") == task["id"]]
         self.assertEqual(len(runs), 3, "异因失败应排出第 3 个运行")
+
+
+class TestAutoResumeTimeout(BaseTest):
+    """超时终态纳入自动续跑（2026-09-24 戍边骑奴 9-20 案）。
+
+    「任务总时限已到」此前不触发续跑：总时限默认 1 小时、慢链天 12 章连载
+    天然跑不完，用户只能守着手动点重试。超时是最该接着写的一种中断——
+    进度锚点用 chapter_scores：本轮比上轮多过审了章就不算同因无效重试；
+    两轮一章未进（错误签名又恒同句）则照常止损交给人工。
+    """
+
+    def _seed_timeout_serial_run(self, store, title, chapters_passed=0):
+        task = store.create_task({
+            "type": "serial_novel", "title": title, "goal": "写连载",
+            "workdir": str(self.workdir),
+            "serial": {"chapters": 12, "words_per_chapter": 2500},
+        })
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        scores = [{"chapter": i, "title": "第%d章" % i, "means": {"情节": 8.0},
+                   "passed": True, "rounds": 1} for i in range(1, chapters_passed + 1)]
+        store.update_run(run["id"], status="timeout", error="任务总时限已到",
+                         chapter_scores=scores)
+        return task, run
+
+    def _fake_timer(self):
+        from app.core import jobs
+        orig = jobs.threading.Timer
+
+        def fake_timer(interval, fn):
+            class _T:
+                daemon = False
+                def start(self):
+                    pass
+            return _T()
+        jobs.threading.Timer = fake_timer
+        return orig
+
+    def test_timeout_serial_run_resumes(self):
+        """超时的连载任务自动续跑，新 run 继承次数并记录退避入队时刻。"""
+        from app.core import jobs, store
+        task, run = self._seed_timeout_serial_run(store, "timeout book", chapters_passed=2)
+        orig = self._fake_timer()
+        try:
+            self.assertTrue(jobs._maybe_auto_resume(run["id"]),
+                            "timeout 终态必须触发自动续跑")
+        finally:
+            jobs.threading.Timer = orig
+        runs = [r for r in store.list_runs(50) if r.get("task_id") == task["id"]]
+        new = next(r for r in runs if r["id"] != run["id"])
+        self.assertEqual(new["status"], "queued")
+        self.assertEqual(new["auto_resumes"], 1)
+        self.assertTrue(new.get("resume_enqueue_at"))
+
+    def test_timeout_progressed_still_resumes_despite_same_error(self):
+        """两轮同为「任务总时限已到」但本轮多过审了章：不算同因无效重试。"""
+        from app.core import jobs, store
+        task, run_a = self._seed_timeout_serial_run(store, "slow book", chapters_passed=2)
+        orig = self._fake_timer()
+        try:
+            self.assertTrue(jobs._maybe_auto_resume(run_a["id"]))
+            runs = [r for r in store.list_runs(50) if r.get("task_id") == task["id"]]
+            run_b = next(r for r in runs if r["id"] != run_a["id"])
+            store.update_run(run_b["id"], status="timeout", error="任务总时限已到",
+                             chapter_scores=[{"chapter": i, "title": "第%d章" % i,
+                                              "means": {"情节": 8.0},
+                                              "passed": True, "rounds": 1}
+                                             for i in range(1, 6)])
+            self.assertTrue(jobs._maybe_auto_resume(run_b["id"]),
+                            "有进度（5 章 > 2 章）的超时必须继续续跑")
+        finally:
+            jobs.threading.Timer = orig
+
+    def test_timeout_no_progress_stops_same_cause(self):
+        """两轮超时一章未进：退避没换来结果，止损落终态。"""
+        from app.core import jobs, store
+        task, run_a = self._seed_timeout_serial_run(store, "stuck book", chapters_passed=0)
+        orig = self._fake_timer()
+        try:
+            self.assertTrue(jobs._maybe_auto_resume(run_a["id"]))
+            runs = [r for r in store.list_runs(50) if r.get("task_id") == task["id"]]
+            run_b = next(r for r in runs if r["id"] != run_a["id"])
+            store.update_run(run_b["id"], status="timeout", error="任务总时限已到")
+            self.assertFalse(jobs._maybe_auto_resume(run_b["id"]),
+                             "零进度同因超时必须止损")
+        finally:
+            jobs.threading.Timer = orig
+        run_b = store.get_run(run_b["id"])
+        self.assertEqual(run_b.get("auto_resume_stopped"), "same_cause")
+        self.assertIn("止损", run_b.get("error") or "")
+
+    def test_non_serial_timeout_not_resumed(self):
+        """非连载任务超时不自动续跑（自动续跑的语义是连载接着写）。"""
+        from app.core import jobs, store
+        task = store.create_task({"type": "direct", "goal": "干活",
+                                  "workdir": str(self.workdir)})
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="timeout", error="任务总时限已到")
+        self.assertFalse(jobs._maybe_auto_resume(run["id"]))

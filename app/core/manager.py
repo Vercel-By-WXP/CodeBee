@@ -1227,6 +1227,13 @@ def _sync_qwen_settings(entry, model, prov):
     path = _guard_home(_config_path(entry))
     if not path:
         return "qwen 配置路径无效或越出用户主目录，已拒绝"
+    # 内闸防 anthropic 面混进 OPENAI_BASE_URL（2026-09-24 戍边骑奴案：史上
+    # 某版把 .../api/anthropic 写进去，qwen 拿 openai 协议打 anthropic 路由，
+    # 网关恒回 404 被误判「网关限流」，每轮 run 起点白烧 2-3 次重试）。
+    # auto 协议不拦——适配层探出的 openai 面由外层 launch_pick 负责把关。
+    if str(prov.get("protocol") or "").lower() == "anthropic":
+        return ("qwen 只认 OpenAI 兼容端点，拒绝把 anthropic 面 %s 写进 OPENAI_BASE_URL"
+                % (prov.get("base_url") or "?"))
     updates = {"OPENAI_API_KEY": prov.get("api_key") or "",
                "OPENAI_BASE_URL": prov.get("base_url") or ""}
     if model:

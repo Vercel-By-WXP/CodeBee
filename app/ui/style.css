@@ -6171,3 +6171,9 @@ table.fp-xls { border-collapse: collapse; font-family: var(--mono); font-size: 1
 .art-diff .dl-add { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
 .art-diff .dl-del { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); text-decoration: none; }
 .art-diff .dl-gap { padding: 4px 14px; color: var(--muted); font-family: var(--font-ui); font-size: 11px; opacity: .85; }
+
+/* 任务总时限行（任务信息弹层内，rd-meta 下方独立一行；不随轮询重建） */
+.rd-timeout-row { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--hairline, rgba(128,128,128,.18)); font-size: 12px; }
+.rd-timeout-row label { color: var(--muted); white-space: nowrap; }
+.rd-timeout-row select { flex: 0 0 auto; min-width: 96px; }
+.rd-timeout-row select:disabled { opacity: .55; cursor: not-allowed; }

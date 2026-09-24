@@ -250,6 +250,46 @@ class TestParamsRevisionCas(BaseTest):
         self.assertTrue(ok, err)
         self.assertEqual(store.get_task(task["id"])["rev"], 1)
 
+    def test_timeout_s_updatable_with_clamp_and_rev(self):
+        """任务总时限建后可改（2026-09-24 戍边骑奴案）：走 _task_timeout_s
+        统一钳制；改值 rev+1、同值不空转；脏值回落默认不报错；新运行按
+        改后的时限给满预算。"""
+        import time as _t
+        from app.core import store
+        task = self._make_task()
+        self.assertEqual(task.get("timeout_s"), 3600, "默认 1 小时")
+        ok, err = store.update_task_params(task["id"], {"timeout_s": 14400})
+        self.assertTrue(ok, err)
+        cur = store.get_task(task["id"])
+        self.assertEqual(cur["timeout_s"], 14400)
+        self.assertEqual(cur["rev"], 2, "改时限也是参数修订，rev 必须递增")
+        # 同值再推：不空转 bump
+        ok, err = store.update_task_params(task["id"], {"timeout_s": 14400})
+        self.assertTrue(ok, err)
+        self.assertEqual(store.get_task(task["id"])["rev"], 2)
+        # 超上限钳到 7 天；脏值回落默认
+        ok, err = store.update_task_params(task["id"], {"timeout_s": 10 ** 9})
+        self.assertTrue(ok, err)
+        self.assertEqual(store.get_task(task["id"])["timeout_s"], 7 * 24 * 3600)
+        ok, err = store.update_task_params(task["id"], {"timeout_s": "垃圾输入"})
+        self.assertTrue(ok, err)
+        self.assertEqual(store.get_task(task["id"])["timeout_s"], 3600)
+        # 新运行按当前时限重新给满预算（retry_task 走同一 create_run）
+        store.update_task_params(task["id"], {"timeout_s": 7200})
+        t0 = _t.time()
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        self.assertAlmostEqual(run["deadline_at"], t0 + 7200, delta=5,
+                               msg="run 预算必须等于改后的 timeout_s")
+
+    def test_timeout_s_rejected_while_running(self):
+        """运行中改不了总时限（与三件套同闸）。"""
+        from app.core import store
+        task = self._make_task()
+        store.update_task_status(task["id"], "running")
+        ok, err = store.update_task_params(task["id"], {"timeout_s": 14400})
+        self.assertFalse(ok)
+        self.assertEqual(store.get_task(task["id"])["timeout_s"], 3600)
+
 
 if __name__ == "__main__":
     unittest.main()

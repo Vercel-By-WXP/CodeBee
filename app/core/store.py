@@ -1693,7 +1693,8 @@ def rename_task(task_id, title):
 
 
 def update_task_params(task_id, patch):
-    """更新任务编排参数（对话条三件套：mode/thinking/direct_provider_id/direct_model）。
+    """更新任务编排参数（对话条三件套：mode/thinking/direct_provider_id/direct_model，
+    另有 timeout_s 任务总时限）。
     只在任务未在跑时生效——运行中改参数不会影响当前执行，静默跳过避免误导。
 
     修订 CAS（借鉴 WorkDSH 契约纪律 expectedRevision）：patch 携带整数
@@ -1744,6 +1745,16 @@ def update_task_params(task_id, patch):
             av = str(patch.get("direct_agent") or "").strip()[:80]
             if task.get("direct_agent") != av and (av or task.get("direct_agent")):
                 task["direct_agent"] = av
+                changed = True
+        # 任务总时限（秒）：建任务时写入，此后靠这里改——下次重试/续跑的
+        # create_run 会按它重新给满预算（2026-09-24 戍边骑奴案：12 章连载
+        # 默认 1 小时在慢链天跑不完，只能人工反复重试）。走 _task_timeout_s
+        # 统一钳制 [1s, 7天]，脏值回落默认；空闲时才可改（与三件套同闸）。
+        raw_ts = patch.get("timeout_s")
+        if raw_ts not in (None, ""):
+            new_ts = _task_timeout_s(raw_ts)
+            if task.get("timeout_s") != new_ts:
+                task["timeout_s"] = new_ts
                 changed = True
         if changed:
             task["rev"] = int(task.get("rev") or 1) + 1
