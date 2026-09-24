@@ -1209,6 +1209,15 @@ def _resolve_attempts(agent):
             for m in (models_to_try or [None])[:3]]
 
 
+def _attempt_protocol(att):
+    """尝试身份里的协议：链/供应商条目自带 protocol 才记，取不到留空——
+    留空表示未声明，不得回填猜测（chat/responses 之分要靠适配层实测）。"""
+    prov = att.get("provider")
+    if isinstance(prov, dict) and prov.get("protocol"):
+        return str(prov["protocol"])[:24]
+    return ""
+
+
 def _codex_sandbox(readonly):
     """codex 沙箱档位。写步默认 danger-full-access（2026-09-17 用户拍板「默认给全部
     权限」）：workspace-write 禁网+禁盘外写，模型偶发还会误判沙箱受限、谎报
@@ -1574,6 +1583,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 "provider_id": att.get("provider_id") or "",
                 "provider": (att.get("provider") or {}).get("name", "")
                             if isinstance(att.get("provider"), dict) else "",
+                "key_id": att.get("key_id") or "",
+                "protocol": _attempt_protocol(att),
                 "ok": False, "skipped": True, "error":
                     "无效模型名 %r，启动前跳过" % att.get("model"),
             })
@@ -1602,7 +1613,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 "provider_id": att.get("provider_id") or "",
                 "provider": ((att.get("provider") or {}).get("name", "")
                              if isinstance(att.get("provider"), dict) else ""),
-                "kind": kind, "ok": False, "skipped": True,
+                "kind": kind, "key_id": att.get("key_id") or "",
+                "protocol": _attempt_protocol(att),
+                "ok": False, "skipped": True,
                 "error_code": ErrorCode.VENDOR_ERROR,
                 "error": "同一凭据已被认证拒绝，跳过该凭据的其他模型",
             })
@@ -1816,9 +1829,13 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             "provider_id": out.get("provider_id") or att.get("provider_id") or "",
             "provider": ((out.get("provider") or {}).get("name", "")
                          if isinstance(out.get("provider"), dict) else ""),
-            "kind": kind,
+            "kind": kind, "key_id": att.get("key_id") or "",
+            "protocol": _attempt_protocol(att),
             "ok": bool(out.get("ok")),
             "duration": raw.get("duration", 0.0),
+            "tokens": out.get("tokens") or 0,
+            "usage": out.get("usage") or None,
+            "cost_usd": out.get("cost_usd") or 0.0,
             "timed_out": bool(raw.get("timed_out")),
             "deadline_exceeded": bool(raw.get("deadline_exceeded")),
             "abort_marker": raw.get("abort_marker"),
