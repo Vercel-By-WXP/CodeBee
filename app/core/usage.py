@@ -689,6 +689,8 @@ def summary(days=30, recent_limit=30):
     }
 
 
+THIN_SAMPLES = 10   # 低于此样本数即「薄样本」，口径见执行标准第 6 条
+
 _DURATION_BASELINES = {
     "direct": 90, "rank_scan": 240, "email": 180, "weekly_report": 240,
     "translation": 240, "speech": 360, "video_script": 360, "article": 480,
@@ -742,6 +744,9 @@ def estimate(task_type="", days=90, mode="auto", thinking="standard", rounds=Non
         return {"task_type": task_type or "", "days": span, "samples": 0,
                 "estimated_duration_s": median_s,
                 "p90_duration_s": max(median_s + 30, int(median_s * 1.7)),
+                # 标准「成本与时延预算」第 6 条：样本 <10 即薄样本，UI 必须点名，
+                # 不能把"仅此一例"的历史当实测承诺。
+                "thin": True, "min_samples_for_estimate": THIN_SAMPLES,
                 "duration_source": "baseline"}
     toks = sorted(g["tokens"] for g in basis)
     costs = sorted(g["cost"] for g in basis)
@@ -776,6 +781,7 @@ def estimate(task_type="", days=90, mode="auto", thinking="standard", rounds=Non
         "estimated_duration_s": max(30, int(dmed * factor)),
         "p90_duration_s": max(60, int(dp90 * factor)),
         "duration_samples": len(durations),
+        "thin": n < THIN_SAMPLES, "min_samples_for_estimate": THIN_SAMPLES,
         "duration_source": duration_source,
         "since": (datetime.date.today() - datetime.timedelta(days=span - 1)).isoformat(),
     }

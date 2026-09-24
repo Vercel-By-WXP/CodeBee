@@ -303,7 +303,9 @@ class Handler(BaseHTTPRequestHandler):
                 q = parse_qs(urlparse(self.path).query)
                 ttype = (q.get("type") or [""])[0][:32]
                 try:
-                    edays = max(1, min(3650, int((q.get("days") or ["90"])[0])))
+                    # 0 = 「全部」档：不能在这里钳成 1，否则 estimate 的窗口
+                    # 跟着一起塌成今天，全历史被估成流程基线
+                    edays = max(0, min(3650, int((q.get("days") or ["90"])[0])))
                 except ValueError:
                     edays = 90
                 mode = (q.get("mode") or ["auto"])[0][:16]

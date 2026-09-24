@@ -824,6 +824,7 @@
     "预估：≈{0}{1}": "Est: ≈{0}{1}",
     "近{0}天 · {1}次同类": "last {0}d · {1} similar runs",
     "暂无同类历史，按流程基线估算": "No similar history; estimated from the workflow baseline",
+    "同类仅 {0} 次样本，估得不准": "Only {0} similar samples — the estimate is unreliable",
     "预计完成约 {0}": "Estimated completion: about {0}",
     "预计完成约 {0}，保守不超过 {1}": "Estimated completion: about {0}; conservative bound {1}",
     "预计剩余约 {0}": "About {0} remaining",

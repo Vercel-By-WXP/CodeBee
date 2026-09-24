@@ -518,10 +518,12 @@ async function refreshEstimate() {
     }
     const duration = chatDurTxt(d.estimated_duration_s);
     const p90 = chatDurTxt(d.p90_duration_s || d.estimated_duration_s);
-    const source = d.samples > 0
+    const source = (d.samples || 0) >= (d.min_samples_for_estimate || 10)
       ? t("近{0}天 · {1}次同类", d.days || 90, d.samples)
-      : t("暂无同类历史，按流程基线估算");
-    const tokenPart = d.samples > 0 && d.median_tokens != null
+      : (d.samples > 0
+        ? t("同类仅 {0} 次样本，估得不准", d.samples)
+        : t("暂无同类历史，按流程基线估算"));
+    const tokenPart = d.samples >= (d.min_samples_for_estimate || 10) && d.median_tokens != null
       ? " · ≈" + fmtTok(d.median_tokens) + " tokens" : "";
     const cost = (d.median_cost_usd || 0) > 0 ? " · ≈$" + Number(d.median_cost_usd).toFixed(2) : "";
     el.textContent = t("预计完成约 {0}，保守不超过 {1}", duration, p90) +

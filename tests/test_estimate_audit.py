@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import time
+import unittest
 from pathlib import Path
 
 from base import BaseTest
@@ -132,6 +133,34 @@ class TestEstimateBasis(BaseTest):
         est = usage.estimate(task_type="no-such-type", days=90)
         self.assertEqual(0, est["samples"])
         self.assertEqual("baseline", est["duration_source"])
+
+
+    def test_thin_sample_flag_matches_standard(self):
+        """标准第 6 条：samples < 10 即薄样本，estimate 必须落 thin 供 UI 点名。"""
+        from app.core import usage
+        self.assertEqual(10, usage.THIN_SAMPLES)
+        est = usage.estimate(task_type="no-such-type", days=90)
+        self.assertEqual(0, est["samples"])
+        self.assertTrue(est["thin"])
+        self.assertEqual(usage.THIN_SAMPLES, est["min_samples_for_estimate"])
+
+
+class TestStandardDocMatchesRuntime(unittest.TestCase):
+    """标准写了「UI 必须点名薄样本」，那 UI 里就得真有这条分支与 i18n 键。"""
+
+    def test_ui_and_i18n_honor_the_threshold(self):
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        js = (root / "app" / "ui" / "app.js").read_text(encoding="utf-8")
+        i18n = (root / "app" / "ui" / "i18n.js").read_text(encoding="utf-8")
+        usage_py = (root / "app" / "core" / "usage.py").read_text(encoding="utf-8")
+        # 标准第 6 条的「samples < 10 即薄样本」随 e532efc 之后的提交入库；
+        # 工作树里那份文档可能还是并行会话的在制品，故此处只锁代码侧三件套。
+        self.assertIn("min_samples_for_estimate", js)   # UI 用它而不是硬编码
+        self.assertIn('t("同类仅 {0} 次样本，估得不准", d.samples)', js)
+        self.assertIn('"同类仅 {0} 次样本，估得不准":', i18n)
+        self.assertIn('THIN_SAMPLES = 10', usage_py)
 
 
 if __name__ == "__main__":
