@@ -1666,6 +1666,13 @@
     "缺陷复盘": "Defect Retrospective",
     "读取附带的缺陷导出数据 → AI 输出产品/开发/测试三视角复盘报告：整体画像、根因聚类、漏测分析、改进动作（快档直出报告）": "Reads the attached defect export → AI produces a Product/Dev/QA three-lens retrospective: overall profile, root-cause clusters, missed-test analysis, improvement actions (fast lane, report straight out)",
     "复盘哪个版本/时间段的缺陷（建议附带禅道或 Jira 导出 CSV）": "Which version/time window to retrospect (attaching a ZenTao or Jira CSV export is recommended)",
+    "与上一版对比": "Diff vs previous run",
+    "对比": "Diff",
+    "两版内容一致。": "The two versions are identical.",
+    "正在取两版内容…": "Fetching both versions…",
+    "{0} 行相同（已折叠）": "{0} unchanged lines (collapsed)",
+    "变更过大（旧 {0} 行 → 新 {1} 行），不逐行对齐；可分别打开两版查看。": "Change too large (old {0} → new {1} lines); no line-by-line alignment. Open each version separately to compare.",
+    "文件过大，不在线对比；可分别打开两版查看。": "File too large for an online diff; open each version separately.",
 
     // —— 插件市场远程来源名（market_remote.py）——
     "ZCode 官方": "ZCode Official",

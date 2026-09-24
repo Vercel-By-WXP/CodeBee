@@ -790,3 +790,8 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **test-defect-retrospective 借鉴落地**（21:00 班「落地排队」即刻兑现）：`defect_retro`（缺陷复盘）新预置类型——direct 引擎+任务附件通道（禅道/Jira 导出 CSV）→ 三视角复盘报告（整体画像/产品/开发/测试/改进动作带责任角色）。`defectretro.retro_prompt` 纯框架注入（与 paihang 抓取注入同构但恒有返回）；pipeline 分支+flows 登记+i18n EN 四键。**防编造纪律进提示词**：数字必须从导出数出来、缺数据写「数据未提供」、无附件给导出步骤不硬写报告。test_defectretro 5 项 + content_contracts/flow_type_integrity 过（成本预估已覆盖新类型）
 - **WorkDSH 清单⑥ 发布工程落地**：`tests/test_release_smoke.py` 发版校验工具——①SHA256SUMS 清单（tar 流直读哈希，字节写保 LF）②import 冒烟（解包后逐个 import app/core，0.1.63「坏文件进包用户才崩」类的当班闸）③bin 入口在包校验。单测 6 项（防 tar-slip 三重防线/清单口径/快速 import）+CLI 发版档真跑过（132 文件/78 模块/0 失败）。**Mimosa 五轮攻防**：extractall→字符串预检→market_remote._safe_extract 同款 idiom（段白名单+resolve 收容+落点复查+write_bytes）才放行——安全工具拦出了真防线，最终形态比初版更硬
 - rank_scan note 文案同步四源（G 专项：描述与实际不符）；发版档用法：`python tests/test_release_smoke.py --pack`（test_selfupdate 后、npm publish 前，退出码非 0 不发版）
+
+### 2026-09-24 23:40 用户点名清账班·第三班（run 产物两版对比）
+
+- **OpenCreator 版本化差量落地**（21:00 班差量备注即刻兑现）：成品文件「对比」chip——同任务上一版 run 有同名文本文件时，弹窗拉两版内容做统一 diff（新增绿/删除红/长相同段折叠计数）。**纯函数独立 artdiff.js**（公共前后缀修剪+中段 LCS，400 行/16 万格上限，超限诚实降级整块计数不装作对齐）——node 直测 12 项（tests/ui_art_diff.mjs：一致性/插入删除/LCS 交错保序/超限/空输入/重复行）。接线三处：artifactsChips 加 prevRun 参数、loadArtifacts 拉上一版清单（失败静默不给对比口）、bindArtifactClicks diff 分支先于通用预览；i18n EN 七键；CSS 行色复用 var(--ok)/var(--bad) 随皮肤。**混合文件锚点拆 hunk 提交**（app.js 211 行里约 90 行是并行道在制品）：锚点过滤 patch + git apply --cached --recount；style.css 双尾追加并 hunk 用「HEAD EOF 行号+纯新增块」手工重建只暂存自己
+- 剩余账更新：**⑩附件 digest 已由并行道本班落地**（commit_to_workdir 钉分块 sha256+verify_task 四态对账+execute_run 漂移落 attachment_drift，与本班 diff 同窗）；ECC 注入上限=knowledge.py 热区待树定；ARIS 规则裁决/continuum 伏笔账=pipeline 级大改攒批；⑨Office 编辑=docx/xlsx 只读预览已被并行道落（3664f96+PDF 切片），编辑态（Tiptap/Univer 依赖）维持远期待拍板

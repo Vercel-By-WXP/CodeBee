@@ -6455,21 +6455,81 @@ function fmtSize(n) {
 /* 成品文件行（检查器「成品文件」与主栏「成果」分区共用一套标记）：
  * fc-row：文件行 + 弹窗预览按钮同行排布，避免按钮独占一行参差不齐。
  * 点文件名与点「预览」同款 artPopup 弹窗，行为一致不 surprise。 */
-function artifactsChips(runId, files) {
+function artifactsChips(runId, files, prevRun) {
   return files.map((f) => {
     const isTxt = FP_TXT.has(_fpExt(f.name));   // 文本/代码都有弹窗预览（按代码格式展示）
+    // 与上一版对比（OpenCreator「版本化对比」借鉴）：同名文本文件在上一版
+    // run 也存在时给 diff 入口；prevRun=null（无历史/清单拉取失败）静默不给
+    const diffable = isTxt && prevRun && prevRun.names.has(f.name);
     return '<span class="fc-row">' +
       '<a class="file-chip artifact-file-open" href="' + urlAuth("/api/runs/" + encodeURIComponent(runId) + "/file?name=" +
       encodeURIComponent(f.name)) + '" target="_blank" rel="noopener" ' +
       'title="' + esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
       '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
-      '<span class="p">' + esc(f.name) + "</span><i>" + fmtSize(f.size) + "</i></a>" +
+      '<span class="p">' + esc(f.name) + '</span><i>' + fmtSize(f.size) + "</i></a>" +
       (isTxt ? '<a class="file-chip prev artifact-file-preview" title="' + esc(t("查看内容")) +
         '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
         '<svg class="ico" aria-hidden="true"><use href="#i-book"/></svg>' + t("预览") + "</a>" : "") +
+      (diffable ? '<a class="file-chip prev artifact-file-diff" title="' + esc(t("与上一版对比")) +
+        '" data-file-run="' + esc(runId) + '" data-prev-run="' + esc(prevRun.id) +
+        '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
+        '<svg class="ico" aria-hidden="true"><use href="#i-git-branch"/></svg>' + t("对比") + "</a>" : "") +
       "</span>";
   }).join("");
 }
+
+/* 两版 diff 弹窗正文（纯函数在 artdiff.js，node 直测）：统一 diff 行 + 长
+ * 相同段折叠；中段超限诚实给整块计数（不装作逐行对齐）。 */
+function artifactDiffBody(a, b) {
+  const d = ArtifactDiff.diff(a, b);
+  if (d.identical) return '<div class="fp-hint">' + esc(t("两版内容一致。")) + "</div>";
+  const gap = (n) => '<div class="dl-gap">… ' + esc(t("{0} 行相同（已折叠）").replace("{0}", n)) + " …</div>";
+  const ln = (cls, s, mark) => '<div class="dl-ln dl-' + cls + '"><i>' + mark + "</i>" + esc(s || "") + "</div>";
+  let html = "";
+  if (d.prefix) html += gap(d.prefix);
+  if (d.oversized) {
+    html += '<div class="dl-gap">' +
+      esc(t("变更过大（旧 {0} 行 → 新 {1} 行），不逐行对齐；可分别打开两版查看。")
+        .replace("{0}", d.oversized.a).replace("{1}", d.oversized.b)) + "</div>";
+  } else {
+    const rows = d.rows || [];
+    let run = 0, runAt = 0;   // 连续相同行折叠：≥6 行合并成一个 gap
+    rows.forEach((r, idx) => {
+      if (r.t === "=") { if (!run) runAt = idx; run++; return; }
+      if (run < 6) for (let k = runAt; k < runAt + run; k++) html += ln("eq", rows[k].s, " ");
+      else html += gap(run);
+      run = 0;
+      html += r.t === "+" ? ln("add", r.s, "+") : ln("del", r.s, "−");
+    });
+    if (run < 6) for (let k = runAt; k < runAt + run; k++) html += ln("eq", rows[k].s, " ");
+    else if (run) html += gap(run);
+  }
+  if (d.suffix) html += gap(d.suffix);
+  return '<pre class="art-diff">' + html + "</pre>";
+}
+
+/* 对比上一版弹窗：取两版文本 → diff 渲染（复用成品弹窗骨架）。 */
+window.artDiffPopup = async function (runId, prevRunId, name) {
+  _fpSaveCtx = null; _fpRawText = ""; _fpDirty = false; _fpCopyText = null;
+  const nm = String(name).split("/").pop();
+  _fpOpen(nm + " · " + t("与上一版对比"),
+    '<i>' + esc(String(prevRunId).slice(0, 8)) + " → " + esc(String(runId).slice(0, 8)) + "</i>", "");
+  _fpSetBody('<div class="fp-hint">' + esc(t("正在取两版内容…")) + "</div>");
+  const u1 = urlAuth("/api/runs/" + encodeURIComponent(prevRunId) + "/file?name=" + encodeURIComponent(name));
+  const u2 = urlAuth("/api/runs/" + encodeURIComponent(runId) + "/file?name=" + encodeURIComponent(name));
+  try {
+    const [r1, r2] = await Promise.all([fetch(u1), fetch(u2)]);
+    if (!r1.ok || !r2.ok) throw new Error("HTTP " + (r1.ok ? r2.status : r1.status));
+    const [a, b] = await Promise.all([r1.text(), r2.text()]);
+    if (!filePopIsOpen()) return;
+    if (a.length + b.length > 4 * 1024 * 1024)
+      _fpSetBody('<div class="fp-hint">' + esc(t("文件过大，不在线对比；可分别打开两版查看。")) + "</div>");
+    else _fpSetBody(artifactDiffBody(a, b));
+  } catch (e) {
+    if (filePopIsOpen())
+      _fpSetBody('<div class="fp-hint">' + esc(t("内容读取失败：") + (e.message || e)) + "</div>");
+  }
+};
 
 async function loadArtifacts(runId) {
   // 双入口同源渲染：检查器「成品文件」TAB + 主栏详情「成果」分区。
@@ -13249,6 +13309,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const bindArtifactClicks = (root) => {
     if (!root) return;
     root.addEventListener("click", (e) => {
+      const diff = e.target.closest(".artifact-file-diff[data-prev-run]");
+      if (diff) {   // 对比上一版：先于通用预览分支（chip 同样带 data-file-run/name）
+        e.preventDefault();
+        artDiffPopup(diff.dataset.fileRun, diff.dataset.prevRun, diff.dataset.fileName || "");
+        return;
+      }
       const file = e.target.closest("[data-file-run][data-file-name]");
       if (!file) return;
       e.preventDefault();

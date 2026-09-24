@@ -6142,3 +6142,13 @@ button.request-busy > * { opacity: .18; }
   border: 1px dashed var(--border); border-radius: 999px; padding: 0 7px; line-height: 16px;
   max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* ---------------- 成品两版对比（artdiff.js + artifactDiffBody） ----------------
+ * 行色复用 insp-plus/insp-minus 同源变量（var(--ok)/var(--bad)），随皮肤走。 */
+.art-diff { margin: 0; padding: 6px 0 10px; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
+.art-diff .dl-ln { display: flex; gap: 8px; padding: 0 14px; white-space: pre-wrap; word-break: break-word; }
+.art-diff .dl-ln i { flex: none; width: 12px; text-align: center; font-style: normal; opacity: .75; }
+.art-diff .dl-eq { color: var(--muted); }
+.art-diff .dl-add { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.art-diff .dl-del { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); text-decoration: none; }
+.art-diff .dl-gap { padding: 4px 14px; color: var(--muted); font-family: var(--font-ui); font-size: 11px; opacity: .85; }
+
