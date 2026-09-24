@@ -829,3 +829,19 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **⚠ 架构守卫新环报警（真实风险交人决策，未动）**：knowledge→skills→store→knowledge 两环——skills.py:868 与 store.py:653 函数内惰性互引（运行时无恙、静态图成环），09-24 并行提交引入、基线未更新。修复需动热区导入结构，交人拍板
 
 **✅ 本班落地**：①bid_doc 图标与 research 撞车修复（i-file-search→i-tasks，G 项随手修）；②计划清晰度「初级工程师测试」进 CODE_PLAN_PROMPT（superpowers 借鉴②路线图清账：detail 须无项目上下文、不做隐含判断也能照做不跑偏）+ test_plan_junior_test 2 项
+
+### 2026-09-25 00:52 第六十班（批7 三连 + 59 班遗留收编）
+
+- 复查（repos 端点）：orca 77,331★（09-24 活跃）、superpowers 291,096★、oh-story 7,090★（09-24 活跃）、spec-kit 138,726★、Reasonix 35,706★（09-24 活跃，候选首位维持）；**inkos 10,034★ pushed_at 停在 2026-08-25——停更快一个月**（星数仍涨），深挖队列降级为「停更观察」
+- **ultraworkers/claw-code**（195,276★/108k forks，Rust，08-16 停更）| 「agent 管理的博物馆展品——无人干预开发维护」行为艺术式展品项目 | 星数奇观无机制可借鉴 | 参考（雷达奇观档）| 2026-09-25
+- **shareAI-lab/learn-claude-code**（77,559★，Python，08-26 停更）| 「Bash is all you need」从 0 到 1 造 nano claude code 式 harness 教学仓 | 我们本体即 harness，教学参照 | 参考 | 2026-09-25
+- **msitarzewski/agency-agents**（154,472★，09-22 活跃）| 核实为已录 agency-agents-zh（中文专家角色模板）的英文上游本体 | 补记关联；「蒸馏为类型角色与交付契约」结论沿用 | 参考（关联补记）| 2026-09-25
+- 本轮真新标的 = **0**（连续三班）——头部格局稳定期，调研重心自然转向「复查+小件清账」节奏
+
+**✅ 本班落地**：①defect_retro 图标缺失修复（i-clipboard→i-history，59 班只查撞车漏了缺失——精灵表无定义菜单图标空白）+ `tests/test_flow_icons.py` 2 项把「图标已定义+互不重复」两类问题一起锁死；②A 专项留存④清账——CODE_IMPL_PROMPT「交付物从简」行（claude-token-efficient 借鉴：回复不写开场白/不复述任务/直接给干货）+ test_output_slim 2 项
+
+### 2026-09-25 02:00 第五十九班（批2：学习记忆与自我改进）
+
+- 批2 复查：学习记忆域高星均已录无增量
+
+**✅ 本班落地**：近似合并留痕 merged_titles——教训/知识双侧近似题吸收不再静默吞变体：去重+封顶 8 条（防自动化长跑撑爆字段）、精确同题零痕迹；后续按变体措辞检索有据、审计可见
