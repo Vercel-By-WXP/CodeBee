@@ -1,6 +1,6 @@
 {
   "name": "codebee",
-  "version": "0.1.61",
+  "version": "0.1.62",
   "description": "CodeBee · 多智能体编排台 — 统一编排本机 AI 编码 CLI（Codex / Claude Code / QwenCode / OpenCode / Aider…）：目标→拆解→路由→执行→验证→跨厂商评审→修复→报告。纯 Python 标准库实现，本地 Web UI。",
   "license": "MIT",
   "bin": {
