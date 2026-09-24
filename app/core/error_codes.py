@@ -106,18 +106,21 @@ def classify_error_text(error):
     text = str(error or "").lower()
     if not text:
         return None
+    if re.search(r"(?:http(?:/\d(?:\.\d)?)?\s*|status(?:\s+code)?\s*[:=]?\s*)401\b", text):
+        return ErrorCode.AUTH
     # An explicit HTTP 403 is authoritative even when the provider describes the
     # permission problem with credential wording (for example, "invalid API key
     # for this model"). Do not cool down the key as an authentication failure.
-    if re.search(r"(?<!\d)403(?!\d)", text):
+    if (re.search(r"(?:http(?:/\d(?:\.\d)?)?\s*|status(?:\s+code)?\s*[:=]?\s*|"
+                  r"code\s*[:=]?\s*)403\b", text)
+            or re.search(r"(?:^|:\s*)403(?=$|[\s:{])", text)):
         return ErrorCode.FORBIDDEN
     if any(marker in text for marker in _MISSING_CREDENTIAL):
         return ErrorCode.MISSING_CREDENTIAL
     if (any(marker in text for marker in _AUTH)
             or re.search(r"(?:http(?:/\d(?:\.\d)?)?\s*|status(?:\s+code)?\s*[:=]?\s*)401\b", text)):
         return ErrorCode.AUTH
-    if (re.search(r"(?<!\d)403(?!\d)", text)
-            or any(marker in text for marker in _FORBIDDEN)):
+    if any(marker in text for marker in _FORBIDDEN):
         return ErrorCode.FORBIDDEN
     if (re.search(r"(?:http(?:/\d(?:\.\d)?)?\s*|status(?:\s+code)?\s*[:=]?\s*)429\b", text)
             or any(marker in text for marker in _RATE_LIMIT)):

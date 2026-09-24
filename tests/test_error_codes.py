@@ -52,7 +52,7 @@ class TestErrorCodeEnum(BaseTest):
 class TestSharedFailureClassification(BaseTest):
     """Transport/vendor failures share one stable vocabulary across layers."""
 
-    def runTest(self):
+    def test_shared_classification(self):
         from app.core.error_codes import (
             ErrorCode, classify_error_text, error_code_value, is_auth_error,
         )
@@ -62,6 +62,8 @@ class TestSharedFailureClassification(BaseTest):
             ("HTTP 401: invalid_api_key", ErrorCode.AUTH),
             ("HTTP 403 Forbidden: request not allowed", ErrorCode.FORBIDDEN),
             ("HTTP 403: invalid API key for this model", ErrorCode.FORBIDDEN),
+            ("HTTP 401 invalid API key for model foo-403beta", ErrorCode.AUTH),
+            ("invalid API key for model foo-403beta", ErrorCode.AUTH),
             ("HTTP 429 rate limit exceeded", ErrorCode.RATE_LIMIT),
             ("unexpected status 403 forbidden", ErrorCode.FORBIDDEN),
             ("unexpected status 401", ErrorCode.AUTH),
@@ -77,6 +79,7 @@ class TestSharedFailureClassification(BaseTest):
                 self.assertEqual(classify_error_text(message), expected)
                 self.assertEqual(error_code_value(expected), expected.value)
         self.assertIsNone(classify_error_text("some unclassified vendor output"))
+        self.assertIsNone(classify_error_text("vendor failed for model foo-403beta"))
         self.assertFalse(is_auth_error("HTTP 403: invalid API key for this model"))
         self.assertTrue(classify_error_text("Error: failed to run prompt: provider.connection_error: Connection error"))
         self.assertIsNone(classify_error_text("record 402 is missing from the report"))

@@ -95,6 +95,11 @@ class TestForbiddenKeyHealth(BaseTest):
         available = modelhub._provider_keys(provider, available_only=True)
         self.assertEqual([key["id"] for key in available], ["k1", "k2"])
 
+        modelhub.note_key_error(pid, "k1", "HTTP 401 invalid API key for model foo-403beta")
+        provider = next(p for p in modelhub._load()["providers"] if p["id"] == pid)
+        first_key = next(k for k in provider["keys"] if k["id"] == "k1")
+        self.assertGreater(first_key["cool_until"], 0)
+
 
 class TestCCSwitchImport(BaseTest):
     def runTest(self):
