@@ -220,6 +220,109 @@ def test_upgrade_selfheal_stale_timeout():
         manager._browsers.pop("qimao", None)
 
 
+# ------------------------------------------------- 建书前置闸 + flow 加固（2026-09-24）
+
+def test_create_preflight():
+    good_fq = {"book_name": "戍边骑奴", "summary": "字" * 60, "category": "悬疑脑洞",
+               "tags_theme": ["古代"], "tags_role": ["大佬"], "tags_plot": ["打脸"]}
+    expect(manager._create_preflight("fanqie", good_fq) == "", "达标资料放行")
+    e1 = manager._create_preflight("fanqie", dict(good_fq, summary="短简介"))
+    expect("50-500" in e1, "番茄简介字数不符拦停：%s" % e1)
+    e2 = manager._create_preflight("fanqie", dict(good_fq, summary="字" * 600))
+    expect("50-500" in e2, "超长简介同样拦停：%s" % e2)
+    e3 = manager._create_preflight("fanqie", dict(good_fq, book_name="（待补充）"))
+    expect("书名" in e3, "占位书名拦停：%s" % e3)
+    e4 = manager._create_preflight("fanqie", dict(good_fq, tags_role=[]))
+    expect("标签" in e4, "空标签组拦停：%s" % e4)
+    good_qm = {"book_name": "书", "summary": "简介", "category_main": "古代言情",
+               "category_sub": "宫闱宅斗", "tags_style": ["悬疑"], "tags_role": ["兵王"],
+               "tags_plot": ["鉴宝"], "tags_bg": ["古代"]}
+    expect(manager._create_preflight("qimao", good_qm) == "", "七猫达标放行")
+    e5 = manager._create_preflight("qimao", dict(good_qm, summary="（待补充）"))
+    expect("简介" in e5, "七猫占位简介拦停：%s" % e5)
+    e6 = manager._create_preflight("qimao", dict(good_qm, tags_bg=[]))
+    expect("标签" in e6, "七猫空背景组拦停：%s" % e6)
+
+
+class _FlowPage:
+    """run_flow 离线假页：只实现被测步骤用到的面。"""
+
+    def __init__(self, url="", call_results=None):
+        self._url = url
+        self._calls = 0
+        self._call_results = list(call_results or [])
+
+    def url(self):
+        return self._url
+
+    def call(self, js, *a, **kw):
+        self._calls += 1
+        if self._call_results:
+            return self._call_results.pop(0)
+        return {"ok": False, "err": "x"}
+
+    def real_click_text(self, text, scope="", **kw):
+        self._clicks = getattr(self, "_clicks", 0) + 1
+        return {"ok": True}
+
+    def wait_for(self, sel, timeout=8):
+        pass
+
+    def fill(self, sel, text):
+        pass
+
+
+def test_flow_url_any_brings_page_hint():
+    from core.publish import flow
+    pg = _FlowPage(url="https://fanqienovel.com/main/writer/create",
+                   call_results=["作品简介至少50字"])
+    try:
+        flow.run_flow(pg, [{"do": "url_any", "any": ["book-info"]}], values={})
+        raise AssertionError("url_any 失败应抛 FlowError")
+    except flow.FlowError as e:
+        expect("页面提示" in str(e) and "50字" in str(e), "页面报错要带回来：%s" % e)
+    pg2 = _FlowPage(url="https://x/create", call_results=[""])
+    try:
+        flow.run_flow(pg2, [{"do": "url_any", "any": ["book-info"]}], values={})
+        raise AssertionError("url_any 失败应抛 FlowError")
+    except flow.FlowError as e:
+        expect("表单校验未过" in str(e), "无页面提示时给人话猜测：%s" % e)
+
+
+def test_flow_tags_group_retry_and_message():
+    from core.publish import flow
+    pg = _FlowPage()                       # 组名永远找不到=弹层没开
+    try:
+        flow.run_flow(pg, [{"do": "tags"}], values={"_tags": [["风格", "热血"]]})
+        raise AssertionError("组名找不到应抛 FlowError")
+    except flow.FlowError as e:
+        expect("弹层未打开" in str(e), "报错点名弹层未开：%s" % e)
+    expect(pg._calls == 4, "组名点击重试 4 次（等弹层开）：%d" % pg._calls)
+    pg2 = _FlowPage(call_results=[{"ok": False}, {"ok": True}, {"ok": True}])
+    n = flow.run_flow(pg2, [{"do": "tags"}], values={"_tags": [["风格", "热血"]]})
+    expect(n == 1 and pg2._calls == 3, "第2次点中组名+1次标签点选：%d %d"
+           % (n, pg2._calls))
+
+
+def test_flow_submit_gate():
+    from core.publish import flow
+    pg = _FlowPage(url="https://fanqienovel.com/book-info/123")
+    steps = [{"do": "fill", "sel": "input", "key": "t"},
+             {"do": "submit", "text": "立即创建", "scope": "button"},
+             {"do": "url_any", "any": ["book-info"]}]
+    shots = []
+    vals = {"t": "书名"}
+    n = flow.run_flow(pg, steps, values=dict(vals), auto_submit=False,
+                      shot=lambda name: shots.append(name))
+    expect(n == 2 and getattr(pg, "_clicks", 0) == 0,
+           "auto_submit=false 停在提交前不真点：%s %s" % (n, getattr(pg, "_clicks", 0)))
+    expect(shots[-1] == "ready-manual-submit", "补人工确认截图：%s" % shots)
+    n2 = flow.run_flow(pg, steps, values=dict(vals), auto_submit=True)
+    expect(getattr(pg, "_clicks", 0) == 1 and n2 == 3,
+           "auto_submit=true 直提交并走完校验：%s %s"
+           % (getattr(pg, "_clicks", 0), n2))
+
+
 def main():
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

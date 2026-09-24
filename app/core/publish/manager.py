@@ -350,6 +350,36 @@ def probe_form_async(plat):
 
 
 # ---------------------------------------------------------------- 动作：建书
+def _create_preflight(plat, data):
+    """建书前置闸：平台表单对必填字段有硬校验（番茄简介 50-500 字），过不了
+    校验时页面不跳转、流程只能误报「未登录或改版」——开浏览器之前先拦下，
+    把人话原因还给用户。返回错误文案，空串=放行。"""
+    placeholders = {"待补充", "（待补充）", "(待补充)"}
+    title = str(data.get("book_name") or "").strip()
+    if not title or title in placeholders:
+        return "作品名称为空，请先补书名再点「创建作品」"
+    summary = str(data.get("summary") or "").strip()
+    if plat == "fanqie":
+        if len(summary) < 50 or len(summary) > 500:
+            return ("作品简介 %d 字，番茄建书表单要求 50-500 字；"
+                    "请先补简介再点「创建作品」" % len(summary))
+        if not str(data.get("category") or "").strip():
+            return "作品分类为空，请先重生成作品信息再建书"
+        for key in ("tags_theme", "tags_role", "tags_plot"):
+            if not (data.get(key) or []):
+                return "作品标签（%s）为空，请先重生成作品信息再建书" % key
+    elif plat == "qimao":
+        if not summary or summary in placeholders:
+            return "作品简介为空，请先补简介再点「创建作品」"
+        for key in ("category_main", "category_sub"):
+            if not str(data.get(key) or "").strip():
+                return "作品分类为空，请先重生成作品信息再建书"
+        for key in ("tags_style", "tags_role", "tags_plot", "tags_bg"):
+            if not (data.get(key) or []):
+                return "作品标签（%s）为空，请先重生成作品信息再建书" % key
+    return ""
+
+
 def create_book_async(task_id, plat, auto_submit=False):
     """按任务 book_meta 的资料在平台建书。返回 (ok, err)。"""
     from .. import store
@@ -365,6 +395,9 @@ def create_book_async(task_id, plat, auto_submit=False):
         return False, "该平台有操作正在进行中"
     if ledger.book_for(task_id, plat):
         return False, "该任务已在此平台登记过作品，请直接发章"
+    why = _create_preflight(plat, meta["data"])
+    if why:
+        return False, why
     ok_login, why = _login_guard(plat)
     if not ok_login:
         return False, why

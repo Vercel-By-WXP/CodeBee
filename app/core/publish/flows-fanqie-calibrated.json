@@ -1,5 +1,5 @@
 {
- "_note": "番茄真机校准（2026-09-19 定稿，建书+发章结构全部实测）：编辑器=/main/writer/<book_id>/publish/ 直达（章节号 input.serial-input 纯数字；标题 div.serial-editor-input-hint input ≥5字/30上限；正文 .ProseMirror ≥1000字；「下一步」保存校验后按钮组右缘箭头展开下拉含「定时发布」）。建书=/main/writer/create 直达表单：radio 签约模式/目标读者（label 真实点击）→ 阅读标签 select（y<430）弹层 arco-anchor 切主分类/主题/角色/情节 + 标签云点击 + 确认 → 内容标签 select（y>430）弹层 情感/人设/世界观 同构 → 名称/主角1/主角2/简介 → 立即创建 → 跳 book-info/<id>。",
+ "_note": "番茄真机校准（2026-09-19 定稿，2026-09-24 加固）：编辑器=/main/writer/<book_id>/publish/ 直达（章节号 input.serial-input 纯数字；标题 div.serial-editor-input-hint input ≥5字/30上限；正文 .ProseMirror ≥1000字；「下一步」保存校验后按钮组右缘箭头展开下拉含「定时发布」）。建书=/main/writer/create 直达表单：radio 签约模式/目标读者（label 真实点击）→ 阅读标签 select（y<430）弹层 arco-anchor 切主分类/主题/角色/情节 + 标签云点击 + 确认 → 内容标签 select（y>430）弹层 情感/人设/世界观 同构 → 名称/主角1/主角2/简介 → 立即创建（submit 步骤：auto_submit=false 时填好即停，留给人工提交） → 跳 book-info/<id>。锚点切换渲染慢（0924 三连败）：弹层打开后 settle，锚点 tries=12。",
  "check_login": [
   {
    "do": "navigate",
@@ -162,6 +162,10 @@
    "tries": 10
   },
   {
+   "do": "sleep",
+   "s": 1.2
+  },
+  {
    "do": "click_real",
    "text": "{category}",
    "scope": ".category-modal span,.category-modal div,.category-modal li",
@@ -171,7 +175,7 @@
    "do": "click_real",
    "text": "主题",
    "scope": ".category-modal .arco-anchor-link",
-   "tries": 8
+   "tries": 12
   },
   {
    "do": "click_real",
@@ -185,7 +189,7 @@
    "do": "click_real",
    "text": "角色",
    "scope": ".category-modal .arco-anchor-link",
-   "tries": 8
+   "tries": 12
   },
   {
    "do": "click_real",
@@ -199,7 +203,7 @@
    "do": "click_real",
    "text": "情节",
    "scope": ".category-modal .arco-anchor-link",
-   "tries": 8
+   "tries": 12
   },
   {
    "do": "click_real",
@@ -227,10 +231,14 @@
    "tries": 15
   },
   {
+   "do": "sleep",
+   "s": 1.2
+  },
+  {
    "do": "click_real",
    "text": "情感",
    "scope": ".category-modal .arco-anchor-link",
-   "tries": 8
+   "tries": 12
   },
   {
    "do": "click_real",
@@ -244,7 +252,7 @@
    "do": "click_real",
    "text": "人设",
    "scope": ".category-modal .arco-anchor-link",
-   "tries": 8
+   "tries": 12
   },
   {
    "do": "click_real",
@@ -258,7 +266,7 @@
    "do": "click_real",
    "text": "世界观",
    "scope": ".category-modal .arco-anchor-link",
-   "tries": 8
+   "tries": 12
   },
   {
    "do": "click_real",
@@ -304,7 +312,7 @@
    "name": "create-book-filled"
   },
   {
-   "do": "click_real",
+   "do": "submit",
    "text": "立即创建",
    "scope": "button",
    "tries": 10

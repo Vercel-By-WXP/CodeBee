@@ -312,5 +312,51 @@ class TestCollectMaterial(unittest.TestCase):
         self.assertEqual(outline.get("book_title"), "《回响》")
 
 
+class TestSummaryQuality(unittest.TestCase):
+    """简介质量闸（2026-09-24）：番茄建书表单硬要求 50-500 字，模板兜底把
+    目标首行（markdown 标题）当简介填进表单，提交被平台静默拒绝，流程只能
+    误报「未登录或改版」——t-20260921 案。"""
+
+    MATERIAL = ("她本是天之骄女，一朝跌落泥潭，成了人人可欺的弃子。"
+                "三年蛰伏，她携满身医术归来，前夫跪求复合，仇人夜不能寐。"
+                "这一次，她要亲手拿回属于自己的一切。")
+
+    def test_md_plain_strips_markdown(self):
+        self.assertEqual(bookmeta._md_plain("# 标题\n- 要点1\n> 引用"), "标题要点1引用")
+        self.assertEqual(bookmeta._md_plain("正文**加粗**`码`"), "正文加粗码")
+        self.assertEqual(bookmeta._md_plain("1. 首项\n2. 次项"), "首项次项")
+
+    def test_summary_ok_threshold(self):
+        self.assertFalse(bookmeta._summary_ok(
+            "# 网文选题分析报告（基于七猫 + 番茄双平台榜单）"))
+        self.assertFalse(bookmeta._summary_ok("（待补充）"))
+        self.assertTrue(bookmeta._summary_ok("字" * 50))
+        # 判定口径是「清洗后」：超长先被 _summary 截到 500，即合规
+        self.assertTrue(bookmeta._summary_ok("字" * 501))
+        self.assertEqual(len(bookmeta._prose_summary("字" * 600, "")), 500)
+
+    def test_prose_summary_replaces_junk_from_material(self):
+        junk = "# 网文选题分析报告（基于七猫 + 番茄双平台榜单）"
+        out = bookmeta._prose_summary(junk, self.MATERIAL)
+        self.assertGreaterEqual(len(out), 50)
+        self.assertFalse(out.startswith("#"))
+        self.assertIn("天之骄女", out)
+
+    def test_prose_summary_keeps_good_text(self):
+        good = "她本是天之骄女，一朝跌落泥潭。" * 5        # ≥50 字且无 markdown
+        self.assertEqual(bookmeta._prose_summary(good, "别的素材"), good)
+
+    def test_prose_summary_no_material_keeps_cur(self):
+        junk = "# 短标题"
+        self.assertEqual(bookmeta._prose_summary(junk, ""), junk)
+
+    def test_fill_required_fixes_junk_summary(self):
+        task = {"goal": "", "id": "t-x", "title": "书"}
+        meta = {"summary": "# 标题行", "book_name": "书"}
+        out = bookmeta._fill_required_fields(task, "fanqie", meta, {}, self.MATERIAL)
+        self.assertGreaterEqual(len(out["summary"]), 50)
+        self.assertFalse(out["summary"].startswith("#"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

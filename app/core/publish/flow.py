@@ -86,6 +86,20 @@ def _click_text_js():
             "hit.scrollIntoView({block:'center'});hit.click();return{ok:true};}")
 
 
+def _page_error_text_js():
+    # 抓页面上可见的报错/提示（toast、表单校验消息）：提交被平台静默拒绝
+    # 时 url_any 只看得到「没跳转」，把页面自己的话带回来才不用瞎猜
+    return ("()=>{const sels='.arco-message,.arco-notification,"
+            "[class*=message],[class*=toast],[class*=error],[class*=alert]';"
+            "const out=[],seen={};"
+            "for(const e of document.querySelectorAll(sels)){"
+            "const r=e.getBoundingClientRect();"
+            "if(r.width<=0||r.height<=0)continue;"
+            "const x=(e.innerText||'').trim();"
+            "if(!x||x.length>120||seen[x])continue;seen[x]=1;out.push(x);}"
+            "return out.slice(0,5).join(' ｜ ');}")
+
+
 def run_flow(page, steps, values=None, config=None, auto_submit=False,
              shot=None, log=None):
     """跑一个流程。values：fill 取值字典；config：平台 URL 等占位符来源。
@@ -289,14 +303,17 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     if not tg:
                         continue
                     if grp:                             # 切到目标组
+                        # 前置 click_text「添加标签」可能被分类下拉的关闭
+                        # 动画/遮罩吞掉（el.click() 打在遮罩上也返回 ok），
+                        # 组名找不到=弹层还没开：多等几轮让它开出来
                         r0 = None
-                        for _try in range(2):
+                        for _try in range(4):
                             r0 = page.call(_click_text_js(), grp, scope, True)
                             if (r0 or {}).get("ok"):
                                 break
-                            time.sleep(0.6)
+                            time.sleep(1.0)
                         if not (r0 or {}).get("ok"):
-                            raise FlowError("标签组「%s」切换失败" % grp)
+                            raise FlowError("标签组「%s」切换失败（标签弹层未打开）" % grp)
                         time.sleep(0.3)
                     r = None
                     for _try in range(3):
@@ -325,7 +342,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     text = str(st["text"])
                     note(i, "提交「%s」（真实鼠标事件）" % text)
                     r = None
-                    for _try in range(3):
+                    for _try in range(int(st.get("tries") or 3)):
                         r = page.real_click_text(
                             text, st.get("scope") or "button,a,[class*=btn]",
                             contains=True)
@@ -382,8 +399,17 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 u = str(page.url() or "")
                 marks = st.get("any") or []
                 if not any(m in u for m in marks):
-                    raise FlowError("当前页面 %s 不含预期标记 %s（可能未登录或改版）"
-                                    % (u[:90], marks))
+                    hint = ""
+                    try:
+                        hint = str(page.call(_page_error_text_js(), timeout=5) or "")
+                    except Exception:
+                        pass
+                    msg = "当前页面 %s 不含预期标记 %s（可能未登录或改版）" % (u[:90], marks)
+                    if hint:
+                        msg += "；页面提示：%s" % hint[:150]
+                    else:
+                        msg += "（常见原因：表单校验未过，如简介字数不足）"
+                    raise FlowError(msg)
                 note(i, "页面标记校验通过")
             else:
                 raise FlowError("未知步骤类型：%s" % act)

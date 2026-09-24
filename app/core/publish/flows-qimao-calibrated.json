@@ -1,5 +1,5 @@
 {
- "_note": "七猫真机校准（2026-09-19 凌晨定稿）：建书=book-manage「新建小说」→站点弹层(click_match+确认)→information 表单(fill_label/radio/级联分类/tags 四组各1-3个+确定/主角名平铺/简介)；书名仅允许，：！？中文标点（·被拦）。发章=编辑器填好后「立即发布」落草稿箱（未签约书限制）→草稿行「立即发布」→「更正序号去发布」→「确认发布」三层弹窗→章节待审核。正文下限 1000 字（min_chapter_chars）。book-upload?id=<书id> 直达编辑器。",
+ "_note": "七猫真机校准（2026-09-19 凌晨定稿）：建书=book-manage「新建小说」→站点弹层(click_match+确认)→information 表单(fill_label/radio/级联分类/tags 四组各1-3个+确定/主角名平铺/简介)；书名仅允许，：！？中文标点（·被拦）。发章=编辑器填好后「立即发布」落草稿箱（未签约书限制）→草稿行「立即发布」→「更正序号去发布」→「确认发布」三层弹窗→章节待审核。正文下限 1000 字（min_chapter_chars）。book-upload?id=<书id> 直达编辑器。；2026-09-24 加固：二级分类选完 settle 1s 再点「添加标签」（下拉关闭动画吞点击致标签弹层未开、组名切换失败案）",
  "probe_form": [
   {
    "do": "navigate",
@@ -95,6 +95,10 @@
    "text": "{category_sub}",
    "contains": true,
    "scope": "li,span,[class*=dropdown] *,[class*=popper] *"
+  },
+  {
+   "do": "sleep",
+   "s": 1.0
   },
   {
    "do": "click_text",

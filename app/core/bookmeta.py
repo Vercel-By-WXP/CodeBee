@@ -460,6 +460,37 @@ def _has_value(value):
     return bool(text) and text not in placeholders
 
 
+def _md_plain(text):
+    """markdown 轻洗（在 _summary 净化之上）：每行剥标题/列表/引用符与行内
+    强调符，合并成一段正文文字（建书表单简介是单行框）。"""
+    out = []
+    for ln in _summary(text).splitlines():
+        ln = re.sub(r"^\s*(#{1,6}\s*|[-*+]\s+|>\s*|\d+[.、)）]\s*)", "", ln)
+        ln = re.sub(r"[*_`#>]+", "", ln).strip()
+        if ln:
+            out.append(ln)
+    return "".join(out)
+
+
+def _summary_ok(value):
+    """简介够不够格进建书表单：番茄表单硬性要求 50-500 字（占位文案即
+    「请输入50-500字」），markdown 标题/占位符过不了平台提交校验，且自动
+    化流程看不到平台的字段报错，只会误报成「未登录或改版」。"""
+    return 50 <= len(_md_plain(value)) <= 500
+
+
+def _prose_summary(cur, material):
+    """简介兜底清理：markdown 洗成正文；洗完仍不足 50 字就从素材正文取。
+    取不出够长的正文时原样返回——由建书前置闸拦停并提示补写，不硬编。"""
+    text = _md_plain(cur)
+    if len(text) >= 50:
+        return text[:500]
+    body = _md_plain(material)
+    if len(body) >= 50:
+        return body[:500]
+    return str(cur or "").strip()
+
+
 def _fill_required_fields(task, platform, meta, outline, material):
     """生成阶段的必填字段闸门。
 
@@ -481,6 +512,10 @@ def _fill_required_fields(task, platform, meta, outline, material):
         if candidate == meta["protagonist_1"]:
             candidate = next((name for name in defaults if name != meta["protagonist_1"]), defaults[2])
         meta["protagonist_2"] = candidate
+
+    # 简介质量：平台建书表单对简介有硬字数校验（番茄 50-500 字），markdown
+    # 标题/占位文本过不了提交且流程看不到报错——洗成正文，不够长从素材取
+    meta["summary"] = _prose_summary(meta.get("summary"), material)
 
     if platform == "fanqie":
         reader = meta.get("target_reader") or ("女频" if female else "男频")
@@ -723,7 +758,8 @@ def repair_existing():
                         "tags_theme", "tags_role", "tags_plot", "content_plot",
                         "content_emotion", "content_character", "content_world"))
                     and _has_value(data.get("protagonist_1"))
-                    and _has_value(data.get("protagonist_2")))
+                    and _has_value(data.get("protagonist_2"))
+                    and _summary_ok(data.get("summary")))
             else:
                 from . import bookmeta_catalog as cat
                 reader = data.get("target_reader")
@@ -735,7 +771,8 @@ def repair_existing():
                     and all(_has_value(data.get(key)) for key in (
                         "tags_style", "tags_role", "tags_plot", "tags_bg"))
                     and _has_value(data.get("protagonist_1"))
-                    and _has_value(data.get("protagonist_2")))
+                    and _has_value(data.get("protagonist_2"))
+                    and _summary_ok(data.get("summary")))
             if required_ok:
                 continue
             try:
