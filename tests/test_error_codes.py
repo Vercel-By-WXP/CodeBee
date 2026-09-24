@@ -43,6 +43,34 @@ class TestErrorCodeEnum(BaseTest):
                          msg="每个错误码应在矩阵中恰好出现一次")
         self.assertFalse(set(documented) - expected)
 
+    def test_execution_standard_covers_multimodal_contract(self):
+        """Keep the image capability boundary in the executable standard."""
+        root = Path(__file__).resolve().parents[1]
+        text = (root / "docs" / "execution-standard.md").read_text(encoding="utf-8")
+        self.assertIn("| 多模态能力 |", text)
+        section = text.split("## 多模态评测规则", 1)[1]
+        section = section.split("## 统一错误分类与换路矩阵", 1)[0]
+        for marker in (
+            "image_in",
+            "image_out",
+            "HTTP 200 + 错误信封",
+            "图像输入",
+            "图像输出",
+            "可解码",
+            "image part",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, section)
+
+    def test_execution_standard_pins_evaluation_expiry(self):
+        """A passed probe must remain evidence with a documented clock."""
+        root = Path(__file__).resolve().parents[1]
+        text = (root / "docs" / "execution-standard.md").read_text(encoding="utf-8")
+        for marker in ("evaluated_at", "expires_at", "fresh",
+                       "TUTTI_EVALUATION_TTL_S", "不能复活旧的 `passed`"):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, text)
+
     def test_is_fatal(self):
         from app.core.error_codes import is_fatal, ErrorCode
         self.assertTrue(is_fatal(ErrorCode.VENDOR_ERROR))

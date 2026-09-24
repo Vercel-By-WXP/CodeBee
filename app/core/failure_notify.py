@@ -18,6 +18,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import smtplib
 import subprocess
 import threading
@@ -30,6 +31,16 @@ DEFAULT_THRESHOLD = 3
 DEFAULT_COOLDOWN_SECONDS = 3600
 MAX_SEEN_RUNS = 64
 _LOCK = threading.RLock()
+
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)\b(api[_ -]?key|access[_ -]?token|authorization|bearer|"
+    r"password|secret|token)\b\s*[:=]\s*[^\s,;]+")
+_BEARER_VALUE = re.compile(r"(?i)\bbearer\s+[^\s,;]+")
+_SECRET_NAME = re.compile(
+    r"(?i)\b(?:[A-Za-z0-9_-]*(?:api[_-]?key|secret|password)"
+    r"[A-Za-z0-9_-]*|[A-Za-z0-9_-]+[_-]token[A-Za-z0-9_-]*)\b")
+_TOKEN_PREFIX = re.compile(
+    r"\b(?:sk|pk|rk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{8,}\b")
 
 
 def _state_path() -> Path:
@@ -79,9 +90,15 @@ def _scope(role: str = "") -> str:
 
 
 def _safe_text(value, limit: int = 120) -> str:
-    # Provider/model labels are metadata, but strip control characters before
-    # putting them in a toast, e-mail, or durable state.
-    return " ".join(str(value or "").replace("\x00", "").split())[:limit]
+    # Metadata is normally safe, but provider/model labels can originate from
+    # local configuration.  Redact common credential forms before placing them
+    # in a toast, e-mail, or durable state; control characters are removed too.
+    text = " ".join(str(value or "").replace("\x00", "").split())
+    text = _SECRET_ASSIGNMENT.sub("[REDACTED]", text)
+    text = _BEARER_VALUE.sub("Bearer [REDACTED]", text)
+    text = _SECRET_NAME.sub("[REDACTED]", text)
+    text = _TOKEN_PREFIX.sub("[REDACTED]", text)
+    return text[:limit]
 
 
 def _event_from_attempts(*, run_id: str, task_id: str, role: str,
@@ -150,26 +167,26 @@ def _send_windows_toast(event: dict) -> tuple[bool, str]:
 
 
 def _send_email(event: dict) -> tuple[bool, str]:
-    host = os.environ.get("TUTTI_NOTIFY_SMTP_HOST", "").strip()
-    recipient = os.environ.get("TUTTI_NOTIFY_EMAIL_TO", "").strip()
-    if not host or not recipient:
-        return False, "email_unconfigured"
-    sender = os.environ.get("TUTTI_NOTIFY_EMAIL_FROM", "codebee@localhost").strip()
     try:
+        host = os.environ.get("TUTTI_NOTIFY_SMTP_HOST", "").strip()
+        recipient = os.environ.get("TUTTI_NOTIFY_EMAIL_TO", "").strip()
+        if not host or not recipient:
+            return False, "email_unconfigured"
+        sender = os.environ.get("TUTTI_NOTIFY_EMAIL_FROM", "codebee@localhost").strip()
         port = int(os.environ.get("TUTTI_NOTIFY_SMTP_PORT", "587"))
     except ValueError:
         port = 587
-    msg = EmailMessage()
-    msg["Subject"] = "CodeBee 候选链连续失败告警"
-    msg["From"] = sender
-    msg["To"] = recipient
-    msg.set_content(
-        "连续 %d 轮全候选失败。\nrun=%s task=%s role=%s code=%s provider=%s model=%s\n"
-        % (event.get("consecutive_failures") or 0, event.get("run_id") or "",
-           event.get("task_id") or "", event.get("role") or "",
-           event.get("error_code") or "", event.get("provider") or "",
-           event.get("model") or ""))
     try:
+        msg = EmailMessage()
+        msg["Subject"] = "CodeBee 候选链连续失败告警"
+        msg["From"] = sender
+        msg["To"] = recipient
+        msg.set_content(
+            "连续 %d 轮全候选失败。\nrun=%s task=%s role=%s code=%s provider=%s model=%s\n"
+            % (event.get("consecutive_failures") or 0, event.get("run_id") or "",
+               event.get("task_id") or "", event.get("role") or "",
+               event.get("error_code") or "", event.get("provider") or "",
+               event.get("model") or ""))
         with smtplib.SMTP(host, port, timeout=15) as smtp:
             if os.environ.get("TUTTI_NOTIFY_SMTP_TLS", "1").lower() not in (
                     "0", "false", "off", "no"):
@@ -180,7 +197,7 @@ def _send_email(event: dict) -> tuple[bool, str]:
                 smtp.login(user, password)
             smtp.send_message(msg)
         return True, "email"
-    except (OSError, smtplib.SMTPException) as exc:
+    except (OSError, smtplib.SMTPException, ValueError, TypeError) as exc:
         return False, "email_error:%s" % type(exc).__name__
 
 

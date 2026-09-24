@@ -62,3 +62,29 @@ class TestFailureNotify(BaseTest):
         state = (self.data_dir / "failure_notifications.json").read_text(encoding="utf-8")
         self.assertNotIn("SECRET_API_KEY", state)
         self.assertNotIn("prompt body", state)
+
+    def test_metadata_redacts_credential_shaped_values(self):
+        from app.core import failure_notify
+
+        failure_notify.record_all_candidates_failed(
+            run_id="r1", task_id="t1", role="x",
+            attempts=[{"ok": False, "provider_id":
+                       "https://api.example.test?api_key=SECRET_API_KEY",
+                       "model": "sk-test-secret-value-12345"}],
+            error_code="TOKEN=another-secret")
+        state = (self.data_dir / "failure_notifications.json").read_text(encoding="utf-8")
+        self.assertNotIn("SECRET_API_KEY", state)
+        self.assertNotIn("sk-test-secret-value-12345", state)
+        self.assertNotIn("another-secret", state)
+
+    def test_malformed_email_headers_are_best_effort_failures(self):
+        from app.core import failure_notify
+
+        event = {"consecutive_failures": 3, "run_id": "r1"}
+        with mock.patch.dict(os.environ, {
+                "TUTTI_NOTIFY_SMTP_HOST": "smtp.example.test",
+                "TUTTI_NOTIFY_EMAIL_TO": "oncall@example.test\nX-Injected: yes",
+            }, clear=False):
+            sent, detail = failure_notify._send_email(event)
+        self.assertFalse(sent)
+        self.assertEqual(detail, "email_error:ValueError")

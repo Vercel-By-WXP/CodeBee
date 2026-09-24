@@ -33,7 +33,8 @@
   ],
   "scripts": {
     "release:gate": "python scripts/release_gate.py",
-    "release": "python scripts/release_gate.py --publish"
+    "release": "python scripts/release_gate.py --publish",
+    "prepublishOnly": "python scripts/release_gate.py"
   },
   "repository": {
     "type": "git",

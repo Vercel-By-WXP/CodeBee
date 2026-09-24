@@ -146,6 +146,19 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
     """一次真实失败调用。provider 用展示名（与 usage 台账一致）。"""
     if not provider:
         return
+
+    # A failed live call invalidates capability evidence for this upstream.
+    # Keep this hook lazy and best-effort: health telemetry must never make a
+    # model call fail, and importing evaluation at module load would create a
+    # dependency cycle during startup.  ``provider_id`` is the canonical
+    # identity used by the evaluation ledger; the display name is not safe to
+    # use as a substitute because aliases can point at the same host.
+    if provider_id:
+        try:
+            from . import evaluation
+            evaluation.invalidate_provider(provider_id)
+        except Exception:
+            log.debug("[health] 无法使评测结论失效", exc_info=True)
     with _LOCK:
         st = _PROVIDERS.setdefault(provider, {
             "name": provider, "provider_id": provider_id or "",

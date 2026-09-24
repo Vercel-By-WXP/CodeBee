@@ -1,10 +1,19 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from base import BaseTest
 
 
 class TestReleaseGate(BaseTest):
+    def test_npm_publish_has_physical_pre_gate(self):
+        package = json.loads((Path(__file__).resolve().parents[1] /
+                              "package.json").read_text(encoding="utf-8"))
+        self.assertEqual(package["scripts"]["prepublishOnly"],
+                         "python scripts/release_gate.py")
+
     def test_package_member_validation_rejects_runtime_data(self):
         from scripts.release_gate import GateError, validate_package_members
 

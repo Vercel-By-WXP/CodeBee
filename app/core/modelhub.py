@@ -245,7 +245,26 @@ def _evaluation_result(ok, error="", status=None, **fields):
         code = classify_error_text(error) or ErrorCode.VENDOR_ERROR
         result["error_code"] = error_code_value(code)
     result.update(fields)
-    return result
+    # A green probe is evidence with a clock, not a permanent capability
+    # claim.  The provider/model-specific ledger is written by test_provider /
+    # test_model once the identity is known.
+    try:
+        from . import evaluation
+        return evaluation.decorate(result)
+    except Exception:
+        return result
+
+
+def _record_evaluation(kind, provider_id, model, result):
+    try:
+        from . import evaluation
+        return evaluation.record(
+            kind, provider_id, model, result,
+            protocol=result.get("protocol") or "",
+            requested_model=model,
+            served_model=result.get("served_model") or "")
+    except Exception:
+        return result
 
 
 def _fetch_models_http(base_url, api_key, protocol, allow_private=False):
@@ -2850,11 +2869,13 @@ def test_provider(provider_id):
     import time as _t
     with _LOCK:
         prov = next((p for p in providers() if p.get("id") == provider_id), None)
+    def finish(result):
+        return _record_evaluation("provider", provider_id, "", result)
     if not prov:
-        return _evaluation_result(False, "供应商不存在")
+        return finish(_evaluation_result(False, "供应商不存在"))
     keys = _chain_keys(prov)
     if not keys:
-        return _evaluation_result(False, "No API key is enabled and available")
+        return finish(_evaluation_result(False, "No API key is enabled and available"))
     t0 = _t.time()
     last = ""
     for kk in keys:
@@ -2862,19 +2883,19 @@ def test_provider(provider_id):
                                         prov.get("protocol"), bool(prov.get("allow_private")))
         if names is not None:
             note_key_ok(provider_id, kk.get("id") or "")
-            return _evaluation_result(
+            return finish(_evaluation_result(
                 True, status="reachable", latency_ms=int((_t.time() - t0) * 1000),
-                count=len(names), key_id=kk.get("id") or "")
+                count=len(names), key_id=kk.get("id") or ""))
         if is_no_list_note(err):
             # 网关没有 /models：HTTP 往返已证连通，与 KEY 无关——不计失败、
             # 不记 KEY 错误；密钥真伪交「单模型测试」的 1 token 真对话去验
-            return _evaluation_result(
+            return finish(_evaluation_result(
                 True, status="reachable_unverified", latency_ms=int((_t.time() - t0) * 1000),
-                count=0, note=err, key_id=kk.get("id") or "")
+                count=0, note=err, key_id=kk.get("id") or ""))
         last = err
         note_key_error(provider_id, kk.get("id") or "", err)
-    return _evaluation_result(False, last,
-                              latency_ms=int((_t.time() - t0) * 1000))
+    return finish(_evaluation_result(False, last,
+                                     latency_ms=int((_t.time() - t0) * 1000)))
 
 
 def test_model(provider_id, model_name, key_id=""):
@@ -2888,16 +2909,18 @@ def test_model(provider_id, model_name, key_id=""):
     import urllib.parse
     with _LOCK:
         prov = next((p for p in providers() if p.get("id") == provider_id), None)
+    def finish(result):
+        return _record_evaluation("model", provider_id, model_name, result)
     if not prov:
-        return _evaluation_result(False, "供应商不存在")
+        return finish(_evaluation_result(False, "供应商不存在"))
     if key_id:
         keys = [k for k in _provider_keys(prov) if k["id"] == key_id]
         if not keys:
-            return _evaluation_result(False, "Selected API key does not exist")
+            return finish(_evaluation_result(False, "Selected API key does not exist"))
     else:
         keys = _chain_keys(prov)
     if not keys:
-        return _evaluation_result(False, "No API key is enabled and available")
+        return finish(_evaluation_result(False, "No API key is enabled and available"))
     t0 = _t.time()
     last = {"ok": False, "error": "无可用 wire"}
     for key_index, kk in enumerate(keys):
@@ -2936,9 +2959,9 @@ def test_model(provider_id, model_name, key_id=""):
             api_error = _response_error_text(data)
             if 200 <= status < 300 and _model_payload_ok(proto, data):
                 note_key_ok(provider_id, kk.get("id") or "")
-                return _evaluation_result(
+                return finish(_evaluation_result(
                     True, status="passed", latency_ms=int((_t.time() - t0) * 1000),
-                    protocol=proto, key_id=kk.get("id") or "")
+                    protocol=proto, key_id=kk.get("id") or ""))
             if status == 0:
                 message = err or "连接失败"
             elif api_error:
@@ -2948,7 +2971,7 @@ def test_model(provider_id, model_name, key_id=""):
             last = _evaluation_result(False, message, key_id=kk.get("id") or "")
             note_key_error(provider_id, kk.get("id") or "", last["error"])
     last["latency_ms"] = int((_t.time() - t0) * 1000)
-    return last
+    return finish(last)
 
 
 # ---------------------------------------------------------------- wire 协议适配
