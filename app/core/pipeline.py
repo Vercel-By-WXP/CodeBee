@@ -1541,13 +1541,27 @@ def _run_code(run, task, agents, ev, stats, mode):
         _write_project_memory(task, workdir, _mem_lines)
     except Exception:
         pass
+    # Stop gate（planning-with-files）：收工时活计划若有未勾选项，摘要与 verdict
+    # 如实点名——「计划没走完就报完成」属于静默降级（赛马/异常路径不回写勾选时
+    # 此前无任何可见信号）。只保可见不改判：勾选是文件事实，质量判据仍是评审。
+    try:
+        gate_total, gate_left = plan_stopgate(workdir)
+    except Exception:
+        gate_total, gate_left = 0, []
+    gate_note = ""
+    if gate_left:
+        verdict["plan_gate"] = "活计划 %d 项中 %d 项未勾选完成：%s" % (
+            gate_total, len(gate_left),
+            "、".join("#%d[%s]%s" % (n, mk, t) for n, mk, t in gate_left[:3]))
+        gate_note = "；⚠ 活计划 %d/%d 项完成" % (gate_total - len(gate_left), gate_total)
     store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
-                     summary="代码任务%s（验证%s / 评审%s%s）" % (
+                     summary="代码任务%s（验证%s / 评审%s%s%s）" % (
                          "通过" if overall_pass else "未通过",
                          "通过" if verify_pass else "未通过",
                          (("通过" if review_json.get("pass") else "未通过")
                           if workflow["review_required"] else "按策略省略"),
-                         "，%d 轮修复" % (len(repairs) - 1) if len(repairs) > 1 else ""),
+                         "，%d 轮修复" % (len(repairs) - 1) if len(repairs) > 1 else "",
+                         gate_note),
                      ended_at=_now())
 
 
@@ -4143,6 +4157,31 @@ def _write_task_plan(task, workdir, plan):
 
 
 _PLAN_MARK = {"done": "x", "fail": "!", "run": ">"}
+
+
+def plan_stopgate(workdir):
+    """Stop gate（planning-with-files 第四件）：收工前校验活计划勾选完整性。
+    返回 (总项数, [(序号, 标记, 标题)])；计划文件缺失/异常 → (0, [])（无计划不拦）。
+    未完成 = 勾选框不是 [x]（含 [ ] 未跑、[!] 失败、[>] 中断在跑）。"""
+    try:
+        from pathlib import Path as _P
+        import re as _re
+        root = _P(workdir).resolve()
+        target = (root / ".codebee" / "task_plan.md").resolve()
+        if root not in target.parents or not target.is_file():
+            return 0, []
+        pat = _re.compile(r"^(\d+)\. \[([ x!>])\] ")
+        total, unfinished = 0, []
+        for ln in target.read_text("utf-8").splitlines():
+            m = pat.match(ln)
+            if not m:
+                continue
+            total += 1
+            if m.group(2) != "x":
+                unfinished.append((int(m.group(1)), m.group(2), ln[m.end():][:60]))
+        return total, unfinished
+    except Exception:
+        return 0, []
 
 
 def mark_task_plan(workdir, index, status):
