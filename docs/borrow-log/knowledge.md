@@ -721,3 +721,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **ARIS 家族**深挖升级（16.5k★ 主仓+三卫星仓）：主仓=执行者驾驶+独立评审（同构我们）；**HERO-Anti-OverDefense=已落地**（四形态反过度防御块入 IMPL/FIX 提示词）；Anti-Autoresearch（61 完整性信号→确定性取证报告）待深挖——与我们评审解析/证据锚定同向；ARIS-Monitor（等待批准时亮红灯小挂件）与手机端 423 接管提醒同域 | 已落地一件
 
 **✅ 本班落地**：HERO 反过度防御块——CODE_IMPL_PROMPT 全量版（点名四形态：哈希/校验和、层层边界分支、自造评分标准/闸门、顺手加固；「只约束提出不约束检查」语义边界；真实风险写进总结由人决定）+ CODE_FIX_PROMPT 紧凑版。评审提示词刻意不加（评审的检查面不受约束）。test_anti_over 4 项
+
+### 2026-09-24 08:00 第五十班（批1：代码质量与评审）
+
+- 批1 复查：SkillSpector（skill_scan 借鉴源头）/vuls/agentic_security/code-review-checklist/AI-Infra-Guard 均已录
+- **claude-code-security-review**（anthropics 官方，6.3k★）| 官方 AI 安全评审 GitHub Action（Claude 驱动 PR 安全审查）| 与我们跨厂商评审同域；官方背书的「评审只读+结构化输出」纪律可参考 | 参考
+
+**✅ 本班落地**：v0.1.62 发版（HEAD worktree 发布法首用）——npm 只打包已提交树，并行会话未提交在制品天然排除（0.1.48 教训的结构性解法，不再需要等树干净）；CHANGELOG 未发布段九项漏账收编补记。发布内容：活计划回写+skill_scan 治理四特征+HERO 反过度防御块
