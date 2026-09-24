@@ -23,6 +23,7 @@ import threading
 import time
 
 from . import beekeeper
+from . import upstream
 from .env_scrub import scrub_env
 from .error_codes import (
     ErrorCode, classify_error_text, error_code_value,
@@ -1029,12 +1030,12 @@ def _refusal_error(err):
 
 
 def _attempt_upstream(att):
-    """返回尝试项的上游身份；同一 host 换模型/供应商别名不重复烧超时。"""
+    """返回规范化上游身份；同一 host 换模型不重复烧超时。"""
     provider = (att or {}).get("provider") or {}
     base_url = str(provider.get("base_url") or "").strip()
-    match = re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://([^/?#]+)", base_url)
-    if match:
-        return match.group(1).lower()
+    normalized = upstream.normalize_upstream(base_url)
+    if normalized:
+        return normalized
     provider_id = str((att or {}).get("provider_id") or "").strip()
     return "provider:" + provider_id if provider_id else "unknown"
 
@@ -1540,6 +1541,13 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 "kind": agent.get("kind", "generic"), "model": None,
                 "attempts": []}
     kind = agent.get("kind", "generic")
+    if agent.get("runtime_config_sync_failed"):
+        return {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+                "tokens": 0, "usage": None,
+                "error": agent.get("runtime_config_sync_error") or
+                         "CLI 绑定配置同步失败，已阻断本次执行",
+                "error_code": ErrorCode.ENV_BLOCK, "raw": None,
+                "kind": kind, "model": None, "attempts": []}
     if kind == "aider":
         repo_issue = _git_repo_issue(workdir)
         if repo_issue:

@@ -345,7 +345,12 @@ class TestDshArgv(BaseTest):
         agent = {"id": "deepseek-harness", "kind": "generic", "mode": "real",
                  "command": sys.executable,
                  "argv_template": [str(fixture), "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL"]}
-        out = runner.run_agent(modelhub.bind_agent(agent), "", readonly=True, timeout=60)
+        # 本测试对象是 env 注入管道，不是配置同步闸：测试环境禁止写真实
+        # ~/.dsh/settings.yaml（tmp_data_no_home_write 防毒闸），同步按新契约
+        # 判 ENV_BLOCK 属预期行为，此处按同步成功放行（闸门本身由
+        # test_upstream_identity.py 锁定）。
+        with mock.patch("app.core.manager.sync_runtime_config", return_value=True):
+            out = runner.run_agent(modelhub.bind_agent(agent), "", readonly=True, timeout=60)
         self.assertTrue(out["ok"], msg=out)
         self.assertIn("DEEPSEEK_API_KEY=%s" % FAKE_KEY, out["text"])
         self.assertIn("DEEPSEEK_BASE_URL=https://gw.test/v1", out["text"])

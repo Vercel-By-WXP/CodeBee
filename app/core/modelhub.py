@@ -2177,12 +2177,15 @@ def bind_agent(agent, difficulty="default", task_type="", role=""):
 
     所有真实派发都经此函数（含死链补位），入口顺带做运行前配置同步防线：
     绑定换供应商后 CLI 自家配置不会自愈（2026-09-18 opencode 钉死讯飞旧端点
-    案），这里把当前链首落进 CLI 自家配置。失败静默，不拦派发。"""
+    案），这里把当前链首落进 CLI 自家配置。同步失败会标记为 ENV_BLOCK，
+    防止旧配置被误当成当前绑定继续执行。"""
+    sync_ok = True
     try:
         from . import manager
-        manager.sync_runtime_config(agent)
+        result = manager.sync_runtime_config(agent)
+        sync_ok = result is not False
     except Exception:
-        pass
+        sync_ok = False
     task_type = task_type or agent.get("_dispatch_task_type") or ""
     role = role or agent.get("_dispatch_role") or ""
     rid = agent.get("id")
@@ -2196,6 +2199,9 @@ def bind_agent(agent, difficulty="default", task_type="", role=""):
         r = recommend_binding(rid, difficulty, task_type=task_type, role=role)
         binding_mode = "auto" if r else "cli_default"
     a = dict(agent)
+    if not sync_ok:
+        a["runtime_config_sync_failed"] = True
+        a["runtime_config_sync_error"] = "CLI 绑定配置同步失败，已阻断本次执行"
     a["binding_configured"] = configured
     a["binding_mode"] = binding_mode
     # 统一思考档位：支持该能力的 CLI（当前 Codex）会把它下发为原生参数；

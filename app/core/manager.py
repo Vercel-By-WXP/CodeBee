@@ -1628,7 +1628,11 @@ def _sync_launch_model(entry, binding):
     「默认模型」只是手动快照，会滞后）。dsh 额外同步端点与 models 目录；
     codex 已改为不落盘（2026-09-21 起：全局 model_provider 归 CC Switch/
     用户管理，编排任务的绑定走 runner 的 -c 一次性注入）。返回给用户
-    看的同步笔记列表。"""
+    看的同步笔记列表。
+
+    笔记契约：失败项必须含「失败」字样（或英文 failed）——
+    sync_runtime_config 据此判定同步失败并触发 ENV_BLOCK 预检，
+    新增失败路径不得改用其他措辞。"""
     notes = []
     model = (binding.get("model") or "").strip()
     prov = binding.get("provider") or {}
@@ -1714,8 +1718,9 @@ def sync_runtime_config(agent):
 
     指纹缓存：同绑定（模型/供应商/端点/KEY/codex 段）只写一次盘，步骤级高频
     调用近零成本，也不与用户手工编辑配置打架（绑定没变就不动）；无绑定或
-    条目无配置段直接返回（测试空转，绝不碰真实家目录）；任何失败静默放过
-    ——防线不拦运行，配置错误会在步骤错误里现形。"""
+    条目无配置段直接返回（测试空转，绝不碰真实家目录）。返回 ``True`` 表示
+    已完成或无需同步，``False`` 表示同步失败；调用方必须把失败作为 ENV_BLOCK
+    收口，不能让旧配置继续执行。"""
     try:
         cand = [agent.get("id"), _KIND_ENTRY.get(agent.get("kind") or "")]
         entry = None
@@ -1725,9 +1730,9 @@ def sync_runtime_config(agent):
                 if entry:
                     break
         if entry is None or not (entry.get("config") or {}).get("path"):
-            return
+            return True
         if entry["id"] in ("codex-cli", "codex"):
-            return   # codex 绝不在运行防线上落盘（2026-09-20 orch 劫持事故）：
+            return True   # codex 绝不在运行防线上落盘（2026-09-20 orch 劫持事故）：
                      # 编排步骤走 runner 的 -c 一次性注入，不依赖 config.toml；
                      # 在这里写盘会把全局 ~/.codex/config.toml 的 model_provider
                      # 顶掉（CC Switch / 用户手动选的供应商被劫持）。交互 TUI
@@ -1737,7 +1742,7 @@ def sync_runtime_config(agent):
         model = (binding.get("model") or "").strip()
         env = binding.get("env") or {}
         if not model and not env:
-            return   # 没配链或链全死：没有可落的目标，绝不动用户配置
+            return True   # 没配链或链全死：没有可落的目标，绝不动用户配置
         # 指纹取解析结果整体：env 里带端点+KEY（provider 字典不含原始 KEY，
         # 换 KEY 必须可见），codex 段单独入纹
         fp = (model, repr(sorted(env.items())),
@@ -1745,16 +1750,26 @@ def sync_runtime_config(agent):
         with _RUNTIME_SYNC["lock"]:
             if (_RUNTIME_SYNC["fps"].get(entry["id"]) == fp
                     and _RUNTIME_SYNC["files"].get(entry["id"]) == _runtime_cfg_hash(entry)):
-                return
+                return True
             # 绑定没变≠文件没变：指纹命中但文件被外部改写（测试毒写/手工编辑
             # 托管段）时必须按绑定重写——2026-09-22 kimi 实案：测试夹具毒入
             # ~/.kimi-code/config.toml（x.example 不可解析），换将步骤因指纹
             # 命中跳过重写，kimi 带毒配置静默退出码 1
-            _sync_launch_model(entry, binding)
+            notes = _sync_launch_model(entry, binding)
+            # 测试隔离闸明确拒绝写真实用户配置；这是安全跳过，不是生产同步
+            # 失败。测试进程仍需把绑定 env 传给子进程，不能被误判成 ENV_BLOCK。
+            if any("测试数据目录" in str(note) and "拦截" in str(note)
+                   for note in (notes or ())):
+                return True
+            failed = any("失败" in str(note) or "failed" in str(note).lower()
+                         for note in (notes or ()))
+            if failed:
+                return False
             _RUNTIME_SYNC["fps"][entry["id"]] = fp
             _RUNTIME_SYNC["files"][entry["id"]] = _runtime_cfg_hash(entry)
+        return True
     except Exception:
-        pass
+        return False
 
 
 def launch(entry, open_browser=True):

@@ -6,7 +6,7 @@ import json
 import os
 import re
 
-from . import dispatch, history
+from . import dispatch, history, upstream
 
 # 各类智能体的能力基线（0-100）。真实 CLI 里官方双雄最高。
 CAPABILITY = {
@@ -189,9 +189,8 @@ def _pi_provider_hosts(selected_name):
 
 
 def _host_of(url):
-    """上游归一：只留 host:port。/api/anthropic 与 /v1 的路径差异不算换上游。"""
-    m = re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://([^/?#]+)", str(url or "").strip())
-    return m.group(1).lower() if m else ""
+    """上游归一：路径、认证信息和默认端口不影响同一上游身份。"""
+    return upstream.normalize_upstream(url)
 
 
 def agent_upstreams(agent_id, difficulty="default", task_type="", role=""):
