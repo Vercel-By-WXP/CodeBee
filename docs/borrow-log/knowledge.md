@@ -751,3 +751,9 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **Langchain-Chatchat**（38.7k★）| 中文本地知识库问答（原 Langchain-ChatGLM）| 我们知识库=任务域注入，他们=RAG 问答面；本地中文 RAG 形态参考 | 参考
 
 **✅ 本班落地**：i18n「执行」重复键译值冲突修复——EN 字典两处「执行」（Run/Implement）JS 后值静默覆盖致英文模式全显 Implement；字典唯一化（执行=Run、实现=Implement 各一）+路由卡实现角色块改用 t("实现") + 位置锚定重复键扫描守卫入测试列（发版巡检清单例行化，零重复键强制）。test_i18n_dups 2 项
+
+### 2026-09-24 16:00 第五十四班（批2：学习记忆与自我改进）
+
+- 批2 复跑：KIP/agent-apprenticeship/MAGEO/scientific-agent-skills 等均已录，零真新标的
+
+**✅ 本班落地**：压缩省量入台账——compact_region 成功路径向 usage.record 入账（source=compaction：input=摘要读入/output=摘要写出/saved=净省量，零值不落字段）；summary() totals 增第七维 compaction_saved。A 专项「省了多少」从黑箱变可答；摘要调用真实消耗同步显形。test_compact_ledger 3 项
