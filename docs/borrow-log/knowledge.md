@@ -845,3 +845,23 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 批2 复查：学习记忆域高星均已录无增量
 
 **✅ 本班落地**：近似合并留痕 merged_titles——教训/知识双侧近似题吸收不再静默吞变体：去重+封顶 8 条（防自动化长跑撑爆字段）、精确同题零痕迹；后续按变体措辞检索有据、审计可见
+
+### 2026-09-25 02:56 第六十一班（批2 + 雷达源 C 全过 + 七专项巡检班）
+
+- **compozy/compozy**（2.8k★，09-24 活跃）新入库 | 「AI agents 的操作系统：接入你已有的 agent CLI」——与我们同形态（多 CLI 编排面）新竞品 | 雷达
+- **qiqihezh/deepresearch-agent**（153★，中文）新入库 | 生产级深研：Red-Blue 对抗降噪（检索结果两队互搏滤噪）+语义级上下文压缩+跨 Agent 共享记忆 | **「检索降噪」是我们调研报告任务空白** | 待深挖
+- **GhalebDweikat/winnow**（54★）| 校准上下文筛：每个工具结果被评判值得否进上下文 | A 专项「工具输出统一压缩管线」第 5 独立验证 | 方向验证
+- **Jev/TypeSafe System One 簇**（一周 6+ 例：typesafe-computer-use 947★/JevLoop/jev-browser 等）| 「机械决策不进 LLM」新范式——非 LLM 小决策核处理路由/分类/审批，LLM 只做深度推理；cascade 的激进版（零模型分流）| 雷达（范式观察）
+- **yetone/magpie**（578★）| 跨 CLI 模型混搭网关（Codex 跑 DeepSeek、Claude Code 跑 Kimi）| 模型调度同域再验证 | 参考
+- **演讲 PPT 域六连**（presentation-ai 3.0k/SlideBot/ppt-agent-skill/slide-deck-generator/beamer-academic/marp-skill）| 赛道升温；我们 17 类型无「演示文稿」类型——产品空档交人拍板不擅自扩 | 参考（C 专项备注）
+- **free-claude-code**（55.9k★）| 9 harness 免费用聚合 | 星数奇观档 | 参考
+- 复查重大增量：**ZCode 361★→6,696★（一周 20 倍爆发）**——本机仍未装，防死链维持；禅道生态三新小标（zentao-mcp/zentao-auto-fixer-server——与我们闭环同域/pi-zentao）；去 AI 味再热（quiron+snifftest，aiflavor 同域第 3/4 例）；WeChatBridge 652★（微信→Agent 通道生态）；批2 学习记忆域 komi-learn/causal-memory/MegaMemory 均参考级；awesome 全活跃、npm 无新标的
+- **D 专项里程碑**：教训五组同族合并 84→67 条（验评关系 10→1/盲修 4→1/接口验收 4→1/修复留证 3→1，merged_titles 留痕）——流程规范偏科 45%→31%，分布 31/30/16/12/6/4
+
+**✅ 本班落地**：①四角色写作框架蒸馏（writing-with-agents 借鉴清账）——novel 契约新增「成文分三步」：狂人倾倒素材清单→建筑师组织结构→木匠按结构成文，初稿期不做质量审判（Judge=既有评审链不重复）；原契约全收敛导向、发散步骤缺失是真实差量。②email 线程级交付契约（agentic-inbox 待深挖清账）——「逐条回应不漏问+行动项带负责人与截止时间」（收件回复视角，与既有发件视角行互补）。test_content_contracts +2 项。G 专项 README 三处过时修正（15 种→17 种+清单/表格补缺陷复盘标书编制+扫榜四平台）
+
+### 2026-09-25 04:00 第六十班（批4：治理/安全/人机协同）
+
+- 批4 复查：治理域高星均已录无增量
+
+**✅ 本班落地**：skill_scan 云元数据/内网探测特征——169.254.169.254（AWS/GCP 元数据）、metadata.google.internal、私网+凭据路径组合入列可疑意图（高风险档）；127.0.0.1 本地开发与公网常规端点零误报。test_skill_scan_metadata 4 项
