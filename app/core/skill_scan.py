@@ -37,6 +37,14 @@ _PATTERNS = [
     (r"\bcrontab\b|schtasks|LaunchAgents|CurrentVersion\\Run|StartupItems",
      "持久化", "注册定时任务/自启动项（持久化驻留特征）"),
     (r"stratum\+tcp|xmrig|cryptonight", "可疑意图", "加密货币挖矿特征"),
+    # 云元数据/内网端点探测（批4 治理 09-25：169.254.169.254 窃取云凭据是
+    # 真实攻击面，此前零覆盖）。只认高信号形态：链路本地元数据地址/云元数据
+    # 主机名，或私网地址搭配凭据路径——本地起服务提 127.0.0.1:3000 不误报。
+    (r"169\.254\.169\.254|169\.254\.\d{1,3}\.\d{1,3}|metadata\.google\.internal",
+     "可疑意图", "触碰云元数据端点（窃取云凭据特征）"),
+    (r"(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})[^。\n]{0,40}"
+     r"(?:meta-data|credentials|secret|token|\.ssh)",
+     "可疑意图", "私网地址搭配凭据路径（内网探测特征）"),
     # 敏感信息读取
     (r"os\.environ|process\.env|getenv", "环境读取", "读取环境变量（可能带走密钥）"),
     (r"\.ssh/|\.aws/|\.npmrc|\.gitconfig|credentials|\.env\b", "敏感文件", "触碰凭据/密钥文件路径"),
