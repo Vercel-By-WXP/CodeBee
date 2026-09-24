@@ -18,6 +18,7 @@
   --log-bg: #161616;
   --log-text: #c3c9d6;
   --shadow: 0 18px 48px rgba(7, 19, 38, .16);
+  --mask: rgba(0, 0, 0, .5);
   --mono: "Cascadia Code", Consolas, monospace;
   --font-ui: "Aptos", "Segoe UI", sans-serif;
   --font-display: "Aptos Display", "Trebuchet MS", sans-serif;
@@ -1134,7 +1135,7 @@ body.inspector-open #inspector { display: flex; }
   }
   body.inspector-open #insp-mask {
     display: block; position: fixed; inset: 0; z-index: 55;
-    background: rgba(0, 0, 0, .45);
+    background: var(--mask);
   }
 }
 
@@ -1155,7 +1156,7 @@ body.inspector-open #inspector { display: flex; }
   body:not(.side-collapsed) #sidebar { transform: none; }
   body:not(.side-collapsed) #drawer-mask {
     display: block; position: fixed; inset: 0; z-index: 55;
-    background: rgba(0, 0, 0, .45);
+    background: var(--mask);
   }
   main { padding: 18px 14px 70px; }
   .panel { padding: 16px; }
@@ -1424,7 +1425,7 @@ details.prow-hidden[open] > summary { margin-bottom: 6px; }
 
 /* ---- 通用弹框 ---- */
 .modal-wrap { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px; }
-.modal-mask { position: absolute; inset: 0; background: rgba(0, 0, 0, .5); }
+.modal-mask { position: absolute; inset: 0; background: var(--mask); }
 .modal {
   position: relative; width: 100%; max-width: 620px; max-height: calc(100vh - 48px);
   display: flex; flex-direction: column; background: var(--bg);
@@ -1901,7 +1902,7 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
  * 层级 240：高于主 modal(200)、低于 #ask(250)，Esc 逐层关 */
 #file-pop {
   position: fixed; inset: 0; z-index: 240; display: flex; align-items: center; justify-content: center;
-  padding: 4vh 4vw; background: rgba(0, 0, 0, 0.45);
+  padding: 4vh 4vw; background: var(--mask);
 }
 #file-pop.hidden { display: none; }
 #file-pop .fp-panel {
@@ -2386,7 +2387,7 @@ html.code-wrap #file-pop .fp-ln { white-space: pre-wrap; word-break: break-word;
 /* ============ 命令面板（Ctrl+K / 侧栏搜索行唤起）============ */
 .cmdk-mask {
   position: fixed; inset: 0; z-index: 300;
-  background: rgba(0, 0, 0, .45); backdrop-filter: blur(2px);
+  background: var(--mask); backdrop-filter: blur(2px);
   display: flex; align-items: flex-start; justify-content: center; padding-top: 11vh;
 }
 .cmdk-mask.hidden { display: none; }
@@ -2589,15 +2590,15 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
   user-select: none;
 }
 .health-banner.alerting {
-  background: rgba(220, 38, 38, 0.14);
-  color: #dc2626;
-  border: 1px solid rgba(220, 38, 38, 0.45);
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+  color: var(--bad);
+  border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent);
   animation: health-pulse 2s ease-in-out infinite;
 }
 .health-banner.recovered {
-  background: rgba(34, 197, 94, 0.12);
-  color: #16a34a;
-  border: 1px solid rgba(34, 197, 94, 0.4);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--ok);
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent);
 }
 @keyframes health-pulse {
   0%, 100% { opacity: 1; }
@@ -2612,15 +2613,15 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
 
 /* ---- 供应商健康告警弹框：禁用厂商的危险按钮 ---- */
 .modal-foot button.danger {
-  background: rgba(220, 38, 38, 0.12);
-  color: #dc2626;
-  border: 1px solid rgba(220, 38, 38, 0.45);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  color: var(--bad);
+  border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent);
 }
-.modal-foot button.danger:hover { background: rgba(220, 38, 38, 0.22); }
+.modal-foot button.danger:hover { background: color-mix(in srgb, var(--bad) 22%, transparent); }
 
 /* 运行中指挥：未消费指令的撤回按钮（贴右侧，hover 提亮） */
 .rd-msg .m-retract { float: right; margin-left: 8px; padding: 0 7px; font-size: 11.5px; opacity: .8; }
-.rd-msg .m-retract:hover { opacity: 1; color: #dc2626; border-color: rgba(220, 38, 38, .45); }
+.rd-msg .m-retract:hover { opacity: 1; color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
 
 /* 外部目录滚动分页：续页提示行 + 哨兵（追加于文件尾，防并行重排） */
 .mkr-more { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 0 2px; }
@@ -5010,7 +5011,7 @@ html::-webkit-scrollbar-track { background: transparent; }
 
 /* ---- 帮助中心（首启欢迎引导升级版）：左目录右内容，随皮肤 accent ---- */
 .welcome-wrap { position: fixed; inset: 0; z-index: 195; display: flex; align-items: center; justify-content: center; padding: 24px; }
-.welcome-mask { position: absolute; inset: 0; background: rgba(0, 0, 0, .5); }
+.welcome-mask { position: absolute; inset: 0; background: var(--mask); }
 .welcome-card {
   position: relative; display: flex; width: min(920px, 100%); height: min(620px, calc(100vh - 48px));
   background: var(--bg); border: 1px solid var(--border-strong);
@@ -5338,7 +5339,7 @@ body.welcome-open { overflow: hidden; }
   flex-direction: column; gap: 10px; min-height: 46px; }
 .bee-digest { border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 10px; }
 .bee-digest-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-.bee-tag { background: rgba(245, 185, 66, .16); color: var(--warn);
+.bee-tag { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn);
   border-radius: 6px; padding: 1px 8px; font-size: 12px; font-weight: 600; }
 .bee-meta { font-size: 11.5px; color: var(--muted); }
 .bee-text { font-size: 12.5px; line-height: 1.55; white-space: pre-wrap;
@@ -5382,7 +5383,7 @@ body.welcome-open { overflow: hidden; }
 .bee-g { display: flex; align-items: center; gap: 8px; padding: 3px 6px;
   border-radius: 6px; cursor: pointer; font-size: 12.5px; }
 .bee-g:hover { background: var(--panel2); }
-.bee-g.on { background: rgba(245, 185, 66, .12); }
+.bee-g.on { background: color-mix(in srgb, var(--warn) 12%, transparent); }
 .bee-g span:first-of-type { flex: 1; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; }
 .bee-g input { flex: none; }
@@ -6091,10 +6092,10 @@ button.request-busy > * { opacity: .18; }
 .outcome-warn {
   margin-top: 8px;
   padding: 8px 10px;
-  border: 1px solid rgba(217, 119, 6, .45);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
   border-radius: 8px;
-  background: rgba(217, 119, 6, .08);
-  color: #b45309;
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  color: var(--warn);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -6102,9 +6103,37 @@ button.request-busy > * { opacity: .18; }
 /* 「完成·未达标」：跑完但评审未过——不用成功绿，用琥珀警告色（2026-09-23
  * 禅道双单实案：用户把未达标误读成修好了） */
 .chip.done.unqualified {
-  background: color-mix(in srgb, #d97706 16%, transparent);
-  color: #b45309;
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
 }
+
+/* ---- 市场安装预览弹框（先看后装，两阶段确认；追加于文件尾防并行重排） ---- */
+.mkpv-name { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+.mkpv-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+.mkpv-skills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 12.5px; }
+.mkpv-sum { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+.mkpv-files { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11.5px; margin: 4px 0 10px; }
+.mkpv-files th { text-align: left; font-family: var(--font-ui); font-size: 11.5px; color: var(--muted); font-weight: 600; padding: 2px 10px 4px 0; border-bottom: 1px solid var(--border-strong); }
+.mkpv-files td { padding: 2px 10px 2px 0; border-bottom: 1px solid var(--border); max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mkpv-files td.mkpv-chars { color: var(--muted); white-space: nowrap; text-align: right; }
+.mkpv-files td.mkpv-more, .mkpv-strip li.mkpv-more { color: var(--muted); list-style: none; }
+.mkpv-sec { font-size: 12.5px; color: var(--warn); margin: 6px 0 4px; }
+.mkpv-strip { margin: 2px 0 8px 16px; padding: 0; font-family: var(--mono); font-size: 11.5px; color: var(--muted); max-height: 110px; overflow: auto; }
+.mkpv-strip li { margin: 1px 0; }
+
+/* 「已安装 N」过滤入口：active 时随 accent 提亮 */
+#mkr-installed.active { border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent); }
+
+/* ---- docx 只读预览（渲染器注入的 .docx-wrapper 改随皮肤；纸面保持白——
+ *      文档画布是内容不是 UI，白底是刻意的（令牌规则豁免项）） ---- */
+#file-pop .fp-docx { min-height: 100%; padding: 12px; }
+#file-pop .fp-docx .docx-wrapper { background: transparent; padding: 0; }
+#file-pop .fp-docx .docx-wrapper > section.docx {
+  background: #fff; color: #000; margin-bottom: 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .3);
+}
+#file-pop .fp-docx-load { padding: 24px 18px; color: var(--muted); font-size: 12.5px; }
+
 /* 步骤卡「实际用上游」小徽章（借鉴 WorkDSH ResolvedExecutionBinding，追加于文件尾
  * 防并行重排）：与 st-model 同族但用独立类名——ui_hive_model_think 断言
  * .st-model 徽章数，复用类名会破锚点。虚线边框与模型徽章区分。 */

@@ -587,7 +587,8 @@ class Handler(BaseHTTPRequestHandler):
                     offset=(q.get("offset") or ["0"])[0],
                     limit=(q.get("limit") or [""])[0],
                     source=(q.get("source") or [""])[0],
-                    q=(q.get("q") or [""])[0]))
+                    q=(q.get("q") or [""])[0],
+                    installed=(q.get("installed") or [""])[0]))
             return self._json(404, {"error": "unknown api"})
         # 静态文件：单文件或 UI 子目录文件（如 icons/icon-192.png）；
         # _static 内的 parents 校验确保解析后仍在 UI_DIR 内，防穿越
@@ -1284,9 +1285,15 @@ class Handler(BaseHTTPRequestHandler):
         # 否则 "remote" 会被当成包名吞掉
         if path == "/api/market/remote/refresh":
             return self._json(200, market_remote.refresh((self._body() or {}).get("source")))
+        if path == "/api/market/remote/preview":
+            # 安装前预览（先看后装）：下载+剥离检查但不落盘，带 token 两阶段安装
+            res, err = market_remote.preview_remote((self._body() or {}).get("id") or "")
+            return self._json(400, {"error": err}) if err else self._json(200, res)
         m = re.match(r"^/api/market/remote/install$", path)
         if m:
-            res, err = market_remote.install_remote((self._body() or {}).get("id") or "")
+            body = self._body() or {}
+            res, err = market_remote.install_remote(body.get("id") or "",
+                                                     body.get("token") or "")
             return self._json(400, {"error": err}) if err else self._json(200, res)
         m = re.match(r"^/api/market/([^/]+)/(install|remove)$", path)
         if m:

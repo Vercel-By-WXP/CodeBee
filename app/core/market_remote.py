@@ -24,6 +24,7 @@ import os
 import ipaddress
 import json
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -343,11 +344,13 @@ def _entries_from_cache(cache=None):
     return entries
 
 
-def view(offset=0, limit=_PAGE_LIMIT, source=None, q=None):
+def view(offset=0, limit=_PAGE_LIMIT, source=None, q=None, installed=None):
     """外部目录视图（服务端过滤 + 分页）。缓存全在本地，对全量条目过滤再切页
     零成本——搜索/来源筛选不再受「已加载页」限制，滚动翻页逛完全部目录。
+    installed=真值时只看已安装（「已安装 N」入口的过滤器）；installed_total
+    始终是**未过滤前**的全量已装数（徽章计数与过滤条件无关）。
     返回 {sources, entries(本页), total(过滤后全量), offset, has_more,
-    categories}。"""
+    categories, installed_total}。"""
     cache = _load_cache()
     entries = _entries_from_cache(cache)
     sources = []
@@ -360,6 +363,9 @@ def view(offset=0, limit=_PAGE_LIMIT, source=None, q=None):
     for e in entries:
         if e["category"] and e["category"] not in cats:
             cats.append(e["category"])
+    installed_total = sum(1 for e in entries if e["installed"])
+    if installed:
+        entries = [e for e in entries if e["installed"]]
     if source:
         entries = [e for e in entries if e["source_id"] == source]
     qq = str(q or "").strip().lower()
@@ -372,7 +378,7 @@ def view(offset=0, limit=_PAGE_LIMIT, source=None, q=None):
     page = entries[offset:offset + limit]
     return {"sources": sources, "entries": page, "total": len(entries),
             "offset": offset, "has_more": offset + limit < len(entries),
-            "categories": cats}
+            "categories": cats, "installed_total": installed_total}
 
 
 def _fetch_clawhub_catalog():
@@ -659,7 +665,9 @@ def _safe_extract(zf, dest):
 
 
 def _download_zip(entry, tmp):
-    """下载 zip（校验 sha256）→ 安全解包 → 返回插件根目录。"""
+    """下载 zip（校验 sha256）→ 安全解包 → 返回 (插件根目录, 完整性说明)。
+    完整性：清单带 sha256 且校验通过 = verified；清单没带 = unverified
+    （靠 https 传输 + 解包后的纯技能白名单兜底，如实告知不装懂）。"""
     data = _fetch(entry["install"]["url"], cap=_CAP_DOWNLOAD)
     want = (entry["install"].get("sha256") or "").lower()
     if want:
@@ -667,7 +675,7 @@ def _download_zip(entry, tmp):
         if got != want:
             raise ValueError("sha256 校验不符（期望 %s，实际 %s）" % (want[:12], got[:12]))
     dest = _safe_extract(zipfile.ZipFile(io.BytesIO(data)), tmp / "unzip")
-    return _plugin_root(dest)
+    return _plugin_root(dest), ("verified" if want else "unverified")
 
 
 def _gh_split(url):
@@ -870,7 +878,7 @@ def _download_clawhub(entry, tmp):
         _CLAWHUB_BASE, q(inst["slug"], safe=""), q(inst["reference"] or inst["slug"], safe=""))
     data = _fetch(url, cap=_CAP_DOWNLOAD)
     dest = _safe_extract(zipfile.ZipFile(io.BytesIO(data)), tmp / "clawhub")
-    return _plugin_root(dest)
+    return _plugin_root(dest), "unverified"
 
 
 def _plugin_root(base):
@@ -961,9 +969,20 @@ def build_files(entry, root):
     return out, None, stripped
 
 
-def install_remote(entry_id):
-    """安装外部目录插件：下载 → 纯技能检查 → 转换 → 复用 market 安装通道。
-    返回 (结果 dict, 错误)。"""
+def _fetch_root(entry, tmp):
+    """按来源下载并解包，返回 (插件根目录, 完整性说明)。
+    verified=zip 带 sha256 且校验通过；unverified=直链无哈希（https+白名单兜底）；
+    git-ref/git-head=git 类来源按 ref/HEAD 取树。"""
+    kind = entry["install"]["kind"]
+    if kind == "zip":
+        return _download_zip(entry, tmp)
+    if kind == "clawhub":
+        return _download_clawhub(entry, tmp)
+    return _download_git_any(entry, tmp), \
+        ("git-ref" if entry["install"].get("ref") else "git-head")
+
+
+def _resolve_entry(entry_id):
     entries = _entries_from_cache()
     entry = next((e for e in entries if e["id"] == entry_id), None)
     if not entry:
@@ -972,33 +991,112 @@ def install_remote(entry_id):
         return None, entry["block_reason"] or "该插件不适配 CodeBee"
     if entry["install"]["kind"] == "unsupported":
         return None, "来源类型不支持（仅支持 zip 直链、git 子目录与 ClawHub）"
+    return entry, None
+
+
+# 预览→确认安装两阶段之间的已检内容缓存：token 一次性、TTL 10 分钟、最多 8 份
+# （files 是纯文本 dict、总量有 _CAP_TOTAL_TEXT 上限，缓存占用有界）。
+_PREVIEW_TTL = 600
+_PREVIEW_MAX = 8
+_PREVIEW_CACHE = {}
+
+
+def _preview_purge():
+    now = time.time()
+    for k in [k for k, v in _PREVIEW_CACHE.items() if now - v["ts"] > _PREVIEW_TTL]:
+        _PREVIEW_CACHE.pop(k, None)
+    while len(_PREVIEW_CACHE) > _PREVIEW_MAX:
+        _PREVIEW_CACHE.pop(min(_PREVIEW_CACHE, key=lambda k: _PREVIEW_CACHE[k]["ts"]))
+
+
+def _skill_names_from_files(files, entry):
+    """从转换后的 files 键推技能名：market-<id>.md 是主技能（用条目名），
+    market-<id>__<名>.md 是多技能包里的其余技能（用目录名）。"""
+    names = []
+    for k in files:
+        if "/" in k or not k.endswith(".md") or not k.startswith("market-"):
+            continue
+        base = k[len("market-"):-3]
+        names.append("__" in base and base.split("__", 1)[1] or entry["title"])
+    return sorted(set(names))
+
+
+def preview_remote(entry_id):
+    """安装前预览（先看后装）：下载 → 剥离式检查 → 转换，但**不落盘安装**。
+    返回 (预览 dict, 错误)。dict 带 token，确认安装时把 token 传回
+    install_remote 即安装这份已检内容，不重复下载。"""
+    entry, err = _resolve_entry(entry_id)
+    if err:
+        return None, err
     tmp = Path(tempfile.mkdtemp(prefix="codebee-mkt-"))
     try:
-        kind = entry["install"]["kind"]
-        if kind == "zip":
-            root = _download_zip(entry, tmp)
-        elif kind == "clawhub":
-            root = _download_clawhub(entry, tmp)
-        else:
-            root = _download_git_any(entry, tmp)
+        root, integrity = _fetch_root(entry, tmp)
         files, blocked, stripped = build_files(entry, root)
         if blocked:
             return None, blocked
-        res, err = market.install_files(entry_id, entry["title"], files, extra={
-            "remote": {"source": entry["source_id"], "name": entry["name"],
-                       "version": entry["version"], "homepage": entry["homepage"]},
-        })
-        if err:
-            return None, err
-        res["skills"] = sum(1 for k in files if k.endswith(".md") and "/" not in k)
-        res["stripped"] = sorted(stripped)
-        return res, None
+        _preview_purge()
+        token = secrets.token_hex(12)
+        _PREVIEW_CACHE[token] = {"entry_id": entry_id, "files": files,
+                                 "stripped": stripped, "ts": time.time()}
+        file_list = sorted(files.items(), key=lambda kv: kv[0])
+        return {
+            "token": token, "id": entry_id, "title": entry["title"],
+            "source": entry["source_name"], "version": entry["version"],
+            "homepage": entry["homepage"], "integrity": integrity,
+            "skills": _skill_names_from_files(files, entry),
+            "files_total": len(files),
+            "total_chars": sum(len(v) for v in files.values()),
+            "file_list": [{"path": k, "chars": len(v)} for k, v in file_list[:60]],
+            "stripped": sorted(stripped)[:40], "stripped_total": len(stripped),
+            "expires_in": _PREVIEW_TTL,
+        }, None
     except ValueError as e:
         return None, str(e)
-    except Exception as e:   # 网络/解包等意外错误也要兜成用户可读的一句话
+    except Exception as e:
         return None, "下载或解析插件失败: %s" % e
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def install_remote(entry_id, token=""):
+    """安装外部目录插件：下载 → 纯技能检查 → 转换 → 复用 market 安装通道。
+    token 非空且命中预览缓存时直接安装那份已检内容（不重复下载）；token
+    一次性（装成功即焚，防重放）。返回 (结果 dict, 错误)。"""
+    entry, err = _resolve_entry(entry_id)
+    if err:
+        return None, err
+    cached = None
+    if token:
+        _preview_purge()
+        c = _PREVIEW_CACHE.get(str(token))
+        if c and c["entry_id"] == entry_id:
+            cached = c
+    if cached:
+        files, stripped = cached["files"], cached["stripped"]
+    else:
+        tmp = Path(tempfile.mkdtemp(prefix="codebee-mkt-"))
+        try:
+            root, _integrity = _fetch_root(entry, tmp)
+            files, blocked, stripped = build_files(entry, root)
+            if blocked:
+                return None, blocked
+        except ValueError as e:
+            return None, str(e)
+        except Exception as e:   # 网络/解包等意外错误也要兜成用户可读的一句话
+            return None, "下载或解析插件失败: %s" % e
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    res, err = market.install_files(entry_id, entry["title"], files, extra={
+        "remote": {"source": entry["source_id"], "name": entry["name"],
+                   "version": entry["version"], "homepage": entry["homepage"]},
+    })
+    if err:
+        return None, err
+    if cached:
+        _PREVIEW_CACHE.pop(str(token), None)
+    res["skills"] = sum(1 for k in files if k.endswith(".md") and "/" not in k)
+    res["stripped"] = sorted(stripped)
+    return res, None
 
 
 def remove_remote(entry_id):

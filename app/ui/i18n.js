@@ -11,6 +11,28 @@
   // 字典：键 = 中文原文；值 = 英文译文。未命中即回落中文。
   const EN = {
     // —— 短片段（拼接用）——
+    "检查中…": "Checking…",
+    "已安装 ": "Installed ",
+    "…等 ": "…and ",
+    "…等共 ": "…plus ",
+    "文件": "File",
+    "体量": "Size",
+    "包含技能：": "Skills included: ",
+    "确认安装": "Confirm install",
+
+    // —— 市场安装预览（先看后装）——
+    "安装前确认": "Pre-install confirmation",
+    "正在下载插件包做安装前检查，包较大时需要约一分钟…": "Downloading the plugin package for a pre-install check; large packages may take about a minute…",
+    "sha256 已校验": "sha256 verified",
+    "无哈希（HTTPS 传输 + 纯技能白名单兜底）": "No hash (HTTPS transport + pure-skill whitelist as backstop)",
+    "按 git ref 锁定": "Pinned by git ref",
+    "跟随仓库 HEAD": "Tracks repository HEAD",
+    "将自动剥离（不写入、不执行）：": "Will be stripped automatically (never written or executed): ",
+    "安装后运行任务时自动注入提示词；可到「经验库」启停或卸载。": "After install, content is injected into matching task prompts automatically; enable/disable/uninstall it in \"Skill library\".",
+    "只看已安装的外部插件": "Show only installed external plugins",
+    "还没有从外部目录安装过插件；退出过滤后逛逛目录，安装前会先给你看包内容。": "No external plugins installed yet; clear this filter to browse the catalog — installs always show package contents first.",
+    "渲染中…": "Rendering…",
+    "docx 预览不可用（渲染器需联网首次加载）；可下载后查看。": "docx preview unavailable (renderer needs network on first load); download to view instead.",
 
     // —— 用量统计图表 ——
 
@@ -1639,8 +1661,11 @@
     "评分点覆盖": "Scoring coverage",
     "商务清晰度": "Commercial clarity",
     "扫榜选材": "Rank Scan for Topics",
-    "抓取七猫+番茄排行榜公开数据 → AI 提炼跨平台热门题材/人设/差异化切入点（快档直出报告）": "Grabs public Qimao + Fanqie ranking data → AI distills cross-platform hot genres / character archetypes / differentiation angles (fast lane, report straight out)",
+    "抓取七猫/番茄/起点/纵横四平台排行榜公开数据 → AI 提炼跨平台热门题材/人设/差异化切入点（快档直出报告）": "Grabs public rankings from Qimao / Fanqie / Qidian / Zongheng → AI distills cross-platform hot genres / character archetypes / differentiation angles (fast lane, report straight out)",
     "想写哪个方向（一句话，可留空默认分析总榜热门题材）": "Which direction to write (one sentence; leave empty to analyze the overall hot genres)",
+    "缺陷复盘": "Defect Retrospective",
+    "读取附带的缺陷导出数据 → AI 输出产品/开发/测试三视角复盘报告：整体画像、根因聚类、漏测分析、改进动作（快档直出报告）": "Reads the attached defect export → AI produces a Product/Dev/QA three-lens retrospective: overall profile, root-cause clusters, missed-test analysis, improvement actions (fast lane, report straight out)",
+    "复盘哪个版本/时间段的缺陷（建议附带禅道或 Jira 导出 CSV）": "Which version/time window to retrospect (attaching a ZenTao or Jira CSV export is recommended)",
 
     // —— 插件市场远程来源名（market_remote.py）——
     "ZCode 官方": "ZCode Official",

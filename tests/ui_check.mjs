@@ -1,20 +1,16 @@
 /* 第 3 轮 UI 验证：Edge headless + CDP（Node 内置 WebSocket，零依赖）。
  * 打开临时服务的页面 → 断言类型下拉由 JS 填充 → 切换各设置页 →
- * 打开流程管理弹框 → 断言编排设置渲染 → 截图 → 关闭浏览器（清理进程）。 */
+ * 打开流程管理弹框 → 断言编排设置渲染 → 截图 → 关闭浏览器（清理进程）。
+ * 浏览器段走共享 _ui_boot.mjs（DPR 钉 1 + CDP 随机口 + 环境回读，见 docs/ui-design.md §8）。 */
 import { spawn } from "node:child_process";
-import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { bootEdge } from "./_ui_boot.mjs";
 
 // 服务端口可用 TUTTI_TEST_PORT 覆盖——18798 是共享端口，多代理并跑时会双绑，
 // 量到的可能是别人工作树的前端（归属存疑时换端口复跑一遍再判定）
 const SERVICE = "http://127.0.0.1:" + (Number(process.env.TUTTI_TEST_PORT) || 18798);
-const CDP_PORT = Number(process.env.TUTTI_TEST_CDP) || 9333;
-const EDGE_CANDIDATES = [
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-];
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const results = [];
@@ -26,45 +22,12 @@ function check(name, cond, detail = "") {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  const edge = EDGE_CANDIDATES.find(() => true);
-  const profile = mkdtempSync(join(tmpdir(), "tutti-cdp-"));
-  const proc = spawn(edge, [
-    "--headless=new", "--disable-gpu", "--no-first-run",
-    `--user-data-dir=${profile}`, `--remote-debugging-port=${CDP_PORT}`,
-    "--window-size=1400,950", "about:blank",
-  ], { stdio: "ignore" });
+  const { ws, send, evalJs, envInfo, close } = await bootEdge({ width: 1400, height: 950 });
+  console.log("  · " + envInfo.line);
+  check("Edge headless 启动且 DPR 钉 1", envInfo.dpr === 1, envInfo.line);
 
   try {
-    // 拿 about:blank 页面的 ws 调试地址
-    let target = null;
-    for (let i = 0; i < 30 && !target; i++) {
-      await sleep(500);
-      try {
-        const res = await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`);
-        const list = await res.json();
-        target = list.find((t) => t.type === "page");
-      } catch (e) { /* Edge 未就绪 */ }
-    }
-    check("Edge headless 启动并开放 CDP", !!target);
-
-    const ws = new WebSocket(target.webSocketDebuggerUrl);
-    await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
-    let seq = 0;
-    const pending = new Map();
-    ws.onmessage = (ev) => {
-      const msg = JSON.parse(ev.data);
-      if (msg.id && pending.has(msg.id)) pending.get(msg.id)(msg);
-    };
-    const send = (method, params = {}) => new Promise((res) => {
-      const id = ++seq;
-      pending.set(id, res);
-      ws.send(JSON.stringify({ id, method, params }));
-    });
-    const evalJs = async (expr) => {
-      const r = await send("Runtime.evaluate", { expression: expr, returnByValue: true });
-      return r.result?.result?.value;
-    };
-
+    mkdirSync(join(ROOT, ".ui-shots"), { recursive: true });
     await send("Page.enable");
     await send("Page.navigate", { url: SERVICE + "/" });
     await sleep(3500);   // 等 load + SSE 首帧 + loadFlows
@@ -92,7 +55,7 @@ async function main() {
     const orchHtml = await evalJs(`document.getElementById("orch-config").innerHTML`);
     check("编排设置渲染编排者表单", /编排者供应商/.test(orchHtml || ""), (orchHtml || "").slice(0, 120));
     const workers = await evalJs(`document.getElementById("set-workers").value`);
-    check("并发数输入框已加载", Number(workers) >= 1 && Number(workers) <= 6, workers);
+    check("并发数输入框已加载", Number(workers) >= 1 && Number(workers) <= 24, workers);   // 默认 12、上限 24
     await send("Page.captureScreenshot", { format: "png" }).then((r) => {
       writeFileSync(join(ROOT, ".ui-shots", "r3-orch.png"),
         Buffer.from(r.result.data, "base64"));
@@ -185,13 +148,8 @@ async function main() {
     // 7) 服务端确认这些请求没有 5xx（控制台无异常由服务日志兜底）
     const state = await fetch(SERVICE + "/api/state").then((r) => r.json());
     check("页面操作期间服务状态正常", Array.isArray(state.agents));
-
-    ws.close();
   } finally {
-    try { proc.kill(); } catch (e) { /* ignore */ }
-    await sleep(800);
-    try { spawn("taskkill", ["/F", "/T", "/PID", String(proc.pid)], { stdio: "ignore" }); } catch (e) { /* ignore */ }
-    try { rmSync(profile, { recursive: true, force: true }); } catch (e) { /* ignore */ }
+    await close();
   }
 
   const bad = results.filter((r) => !r.ok);

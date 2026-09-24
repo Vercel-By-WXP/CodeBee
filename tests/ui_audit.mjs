@@ -100,12 +100,32 @@ async function auditPages(js, label) {
   }
 }
 
+/* 图标可访问名称纪律（docs/ui-design.md §3）：纯图标交互件必须有
+ * aria-label / title / data-i18n-title / aria-labelledby 之一；装饰图标
+ * 应 aria-hidden。禁用态豁免（临时禁用不是终态）。 */
+async function auditIconA11y(js, label) {
+  const bad = await js(`(() => {
+    const out = [];
+    document.querySelectorAll("button, .icon-btn, [role=button]").forEach((el) => {
+      if (el.disabled) return;
+      const text = (el.innerText || "").trim();
+      if (text || !el.querySelector("svg")) return;
+      const named = el.getAttribute("aria-label") || el.getAttribute("title")
+        || el.getAttribute("data-i18n-title") || el.getAttribute("aria-labelledby");
+      if (!named) out.push(el.outerHTML.replace(/\\s+/g, " ").slice(0, 90));
+    });
+    return out;
+  })()`);
+  check(`[${label}] 纯图标按钮都有可访问名称`, !bad || bad.length === 0, (bad || []).join(" ｜ "));
+}
+
 async function main() {
   // ---------- 场景 A：空台账 ----------
   const emptyData = join(mkdtempSync(join(tmpdir(), "tutti-empty-")), "data");
   mkdirSync(emptyData, { recursive: true });
   await withBrowser(emptyData, "空台账", async ({ js, errors }) => {
     await auditPages(js, "空台账");
+    await auditIconA11y(js, "空台账");
     await js(`switchTab("usage"); "ok"`);
     await sleep(1400);
     const kpi = await js(`document.getElementById("usage-kpis").textContent`);
@@ -159,6 +179,7 @@ async function main() {
 
   await withBrowser(dataDir, "有数据", async ({ js, send }) => {
     await auditPages(js, "有数据");
+    await auditIconA11y(js, "有数据");
     // 默认范围是「今天」，种子数据跨多天，先显式切到 30 天再断言总量
     await js(`S.usageDays = 30; switchTab("usage"); "ok"`);
     await sleep(1400);

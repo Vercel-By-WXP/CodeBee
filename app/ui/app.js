@@ -6191,8 +6191,49 @@ const FP_IMG = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg"
 const FP_TXT = new Set(["md", "txt", "log", "csv", "yml", "yaml", "ini", "toml", "json",
   "py", "js", "ts", "jsx", "tsx", "html", "htm", "css", "svg", "bat", "sh", "ps1",
   "c", "h", "cpp", "hpp", "java", "go", "rs", "xml", "sql", "mqtt", "proto"]);
+const FP_DOCX = new Set(["docx"]);   // 只认 OOXML；legacy .doc 二进制不在此列
 
 function _fpExt(name) { return (String(name).split(".").pop() || "").toLowerCase(); }
+
+/* docx 只读预览（试探功能）：渲染器走 jsdelivr 懒加载（docx-preview 依赖
+ * JSZip，两者只在首次打开 docx 时加载，平时零请求零开销）；加载/渲染失败
+ * 优雅回落到下载提示。渲染内容是用户自己工作目录的文件，信任面与网页成品
+ * 预览页签一致。版本钉死，升级要走一次人工验证。 */
+let _docxLibs = null;
+function _loadDocxLibs() {
+  if (_docxLibs) return _docxLibs;
+  const load = (src) => new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = src; s.onload = () => res(); s.onerror = () => rej(new Error("load fail: " + src));
+    document.head.appendChild(s);
+  });
+  _docxLibs = Promise.all([
+    load("https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"),
+    load("https://cdn.jsdelivr.net/npm/docx-preview@0.4.1/dist/docx-preview.min.js"),
+  ]).then(() => {
+    if (!window.docx || !window.JSZip) throw new Error("docx 渲染器未就绪");
+  });
+  _docxLibs.catch(() => { _docxLibs = null; });   // 失败不缓存，下次打开可重试
+  return _docxLibs;
+}
+
+async function _fpRenderDocx(url) {
+  const el = _fpEnsure();
+  try {
+    const [r] = await Promise.all([fetch(url), _loadDocxLibs()]);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    if (!filePopIsOpen()) return;
+    _fpSetBody('<div class="fp-docx"><div class="fp-docx-load">' + esc(t("渲染中…")) + "</div></div>");
+    const box = el.querySelector(".fp-docx");
+    await window.docx.renderAsync(await r.arrayBuffer(), box, null, { inWrapper: true });
+    if (!filePopIsOpen()) return;
+    const loader = box.querySelector(".fp-docx-load");
+    if (loader) loader.remove();
+  } catch (e) {
+    if (filePopIsOpen())
+      _fpSetBody('<div class="fp-hint">' + esc(t("docx 预览不可用（渲染器需联网首次加载）；可下载后查看。")) + "</div>");
+  }
+}
 
 /* 按 URL 弹窗预览：图片 blob 直显、md 渲染、文本/代码等宽原文、json 美化、
  * 其余二进制只给下载。成品弹窗与目录文件弹窗共用；目录文件弹窗带 save
@@ -6241,6 +6282,7 @@ async function _fpPreviewUrl(url, name, size, opts) {
       el.querySelector(".fp-acts").insertAdjacentHTML("afterbegin", btns.join(""));
       return;
     }
+    if (FP_DOCX.has(ext)) { await _fpRenderDocx(url); return; }
     _fpSetBody('<div class="fp-hint">' + esc(t("二进制文件不预览，可下载查看。")) + "</div>");
   } catch (e) {
     _fpSetBody('<div class="fp-hint">' + esc(t("内容读取失败：") + (e.message || e)) + "</div>");
@@ -10768,7 +10810,7 @@ function mkSetView(v) {
 function mkrFilterKey() {
   const q = (($("mkr-search") || {}).value || "").trim().toLowerCase();
   const srcSel = $("mkr-source");
-  return q + "|" + (srcSel ? srcSel.value : "");
+  return q + "|" + (srcSel ? srcSel.value : "") + "|" + (S.mkrInst ? "inst" : "");
 }
 
 /* 搜索防抖：过滤在服务端对全量做，停 350ms 再发请求；只跟当前过滤键变化时重拉首页 */
@@ -10793,6 +10835,7 @@ async function mkrLoadPage(reset) {
   let url = "/api/market/remote?offset=" + (S.mkrOffset || 0) + "&limit=" + MKR_PAGE;
   if (srcSel && srcSel.value) url += "&source=" + encodeURIComponent(srcSel.value);
   if (q) url += "&q=" + encodeURIComponent(q);
+  if (S.mkrInst) url += "&installed=1";
   S.mkrLoading = true;
   let data = null;
   try { data = await api(url); } catch (e) { data = null; }
@@ -10844,11 +10887,20 @@ function renderMarketRemote() {
   const times = (data.sources || []).map((s) => s.fetched_at).filter(Boolean);
   const meta = $("mkr-meta");
   if (meta) meta.textContent = times.length ? t("目录更新于 ") + times.join(" / ") : "";
+  // 「已安装 N」入口：计数是全量已装（未过滤），点击切换只看已安装
+  const instBtn = $("mkr-installed");
+  if (instBtn) {
+    instBtn.textContent = t("已安装 ") + (Number(data.installed_total) || 0);
+    instBtn.classList.toggle("active", !!S.mkrInst);
+    instBtn.setAttribute("aria-pressed", S.mkrInst ? "true" : "false");
+  }
   const items = S.mkrAll || [];
   mkCount(t("已加载 ") + items.length + t(" / 共 ") + data.total + t(" 个"));
   if (!items.length) {
     grid.innerHTML = '<div class="empty">' + (data.total === 0 && !S.mkrOffset && !(($("mkr-search")||{}).value||"").trim() && !(srcSel||{}).value
-      ? t("外部目录还是空的，点「拉取更新」从公开生态获取。")
+      ? (S.mkrInst
+          ? t("还没有从外部目录安装过插件；退出过滤后逛逛目录，安装前会先给你看包内容。")
+          : t("外部目录还是空的，点「拉取更新」从公开生态获取。"))
       : t("没有符合条件插件")) + "</div>";
     const more = $("mkr-more");
     if (more) more.classList.add("hidden");
@@ -10904,15 +10956,73 @@ async function mkrRefresh() {
   btn.textContent = old;
 }
 
+/* 两阶段安装（先看后装）：① 预览——服务端下载+剥离式检查但不落盘，弹框展示
+ * 包内容（文件清单/体量/剥离项/完整性）；② 确认——带 token 安装那份已检内容，
+ * 不重复下载。token 一次性，安装失败弹框保留可重试。 */
 async function mkrInstall(id) {
-  // 安装要现场下载插件包（zip/tarball，实测 10~60s），必须立刻给反馈，
-  // 否则用户以为点了没反应；按钮按 data-mk 定位，失败时由重拉页面复位
   const btn = document.querySelector('#mkr-grid button[data-mk="' + id + '"]');
-  if (btn) { btn.disabled = true; btn.textContent = t("安装中…"); }
-  toast(t("正在下载安装，插件包较大时需要约一分钟…"));
+  if (btn) { btn.disabled = true; btn.textContent = t("检查中…"); }
+  toast(t("正在下载插件包做安装前检查，包较大时需要约一分钟…"));
+  let p;
+  try {
+    p = await api("/api/market/remote/preview", { method: "POST",
+      body: JSON.stringify({ id }), timeout: 180000 });
+  } catch (e) {
+    toast(e.message, true);
+    mkrLoadPage(true);   // 失败重拉复位按钮
+    return;
+  }
+  mkrShowInstallPreview(p);
+}
+
+function _mkrIntegrityText(k) {
+  const map = {
+    verified: t("sha256 已校验"),
+    unverified: t("无哈希（HTTPS 传输 + 纯技能白名单兜底）"),
+    "git-ref": t("按 git ref 锁定"),
+    "git-head": t("跟随仓库 HEAD"),
+  };
+  return map[k] || k || "";
+}
+
+function mkrShowInstallPreview(p) {
+  p = p || {};
+  const rows = (p.file_list || []).map((f) =>
+    '<tr><td title="' + esc(f.path) + '">' + esc(f.path) + '</td><td class="mkpv-chars">' + esc(mkCharsText(f.chars)) + "</td></tr>").join("");
+  const moreF = p.files_total > (p.file_list || []).length
+    ? '<tr><td colspan="2" class="mkpv-more">' + t("…等共 ") + p.files_total + t(" 个文件") + "</td></tr>" : "";
+  const stripped = p.stripped || [];
+  const strippedHtml = stripped.length
+    ? '<div class="mkpv-sec">' + t("将自动剥离（不写入、不执行）：") + "</div>" +
+      '<ul class="mkpv-strip">' + stripped.map((s) => "<li>" + esc(s) + "</li>").join("") +
+      (p.stripped_total > stripped.length
+        ? '<li class="mkpv-more">' + t("…等 ") + p.stripped_total + t(" 个") + "</li>" : "") + "</ul>"
+    : "";
+  const skills = (p.skills || []).map((s) => '<span class="tag">' + esc(s) + "</span>").join("");
+  openModal(t("安装前确认"),
+    '<div class="mkpv">' +
+    '<div class="mkpv-name">' + esc(p.title || p.id || "") + "</div>" +
+    '<div class="mkpv-meta"><span>' + esc(t("来源：") + (p.source || "")) + "</span>" +
+    (p.version ? "<span>v" + esc(p.version) + "</span>" : "") +
+    "<span>" + esc(_mkrIntegrityText(p.integrity)) + "</span></div>" +
+    (skills ? '<div class="mkpv-skills">' + t("包含技能：") + skills + "</div>" : "") +
+    '<div class="mkpv-sum">' + t("共 ") + (p.files_total || 0) + t(" 个文件 · ") + esc(mkCharsText(p.total_chars || 0)) + "</div>" +
+    (rows ? '<table class="mkpv-files"><thead><tr><th>' + t("文件") + "</th><th>" + t("体量") +
+      "</th></tr></thead><tbody>" + rows + moreF + "</tbody></table>" : "") +
+    strippedHtml +
+    '<p class="hint">' + t("安装后运行任务时自动注入提示词；可到「经验库」启停或卸载。") + "</p>" +
+    "</div>",
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + "</button>" +
+    '<button class="primary" id="mkpv-ok" onclick="mkrInstallConfirm(\'' + esc(p.token || "") + '\',\'' + esc(p.id || "") + '\')">' + t("确认安装") + "</button>");
+}
+
+async function mkrInstallConfirm(token, id) {
+  const ok = $("mkpv-ok");
+  if (ok) { ok.disabled = true; ok.textContent = t("安装中…"); }
   try {
     const r = await api("/api/market/remote/install", { method: "POST",
-      body: JSON.stringify({ id }), timeout: 180000 });
+      body: JSON.stringify({ id, token }), timeout: 180000 });
+    closeModal();
     if (r && r.already) toast(t("该插件已安装过"));
     else {
       // 剥离式安装：脚本/钩子/MCP 文件被剔除但技能装上了，如实告知剔除了什么
@@ -10922,8 +11032,13 @@ async function mkrInstall(id) {
           + (stripped.length > 3 ? t(" 等 ") + stripped.length + t(" 个文件") : "")
         : ""));
     }
-  } catch (e) { toast(e.message, true); }
-  mkrLoadPage(true);   // 重装当前过滤页（已安装徽章要翻牌，失败也复位按钮）
+  } catch (e) {
+    toast(e.message, true);
+    const ok2 = $("mkpv-ok");
+    if (ok2) { ok2.disabled = false; ok2.textContent = t("确认安装"); }
+    return;   // 弹框保留：可重试或取消（token 未消费）
+  }
+  mkrLoadPage(true);   // 已安装徽章要翻牌
 }
 
 
@@ -13556,6 +13671,10 @@ document.addEventListener("DOMContentLoaded", () => {
     mkrLoadPage(true);
   });
   $("mkr-source").addEventListener("change", () => mkrLoadPage(true));
+  $("mkr-installed").addEventListener("click", () => {
+    S.mkrInst = !S.mkrInst;
+    mkrLoadPage(true);
+  });
   $("mkr-refresh").addEventListener("click", mkrRefresh);
   $("mkr-more-btn").addEventListener("click", () => mkrLoadPage(false));
   mkrBindSentinel();

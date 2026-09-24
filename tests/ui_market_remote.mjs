@@ -193,16 +193,17 @@ async function main() {
 
     // 6) 安装失败路径：可装条目的 zip 地址指向 127.0.0.1 → SSRF 网关确定性拒绝，
     //    toast 报错（验证整条 安装→服务端→错误提示 链路，且不外联）。
-    //    同步断言「点击立即有反馈」：mkrInstall 的同步段先翻按钮+toast 再发请求
-    //    （SSRF 对本地地址秒拒，300ms 后已是完成态，中间态必须同步抓）。
+    //    同步断言「点击立即有反馈」：两阶段安装的第一步是预览检查，
+    //    mkrInstall 的同步段先翻按钮+toast 再发预览请求（SSRF 对本地地址秒拒，
+    //    300ms 后已是完成态，中间态必须同步抓）。
     const fb = await evalJs(`(() => {
       mkrInstall("remote-zcode-clean-commit");
       const btn = document.querySelector('#mkr-grid button[data-mk="remote-zcode-clean-commit"]');
       return { btn: btn && btn.textContent, off: btn ? btn.disabled : null,
                toast: (document.getElementById("toast")||{textContent:""}).textContent };
     })()`);
-    check("点击同步生效：按钮变安装中并禁用", fb.btn && fb.btn.includes("安装中") && fb.off === true, JSON.stringify(fb));
-    check("点击同步生效：toast 提示下载中", /下载/.test(fb.toast), fb.toast);
+    check("点击同步生效：按钮变检查中并禁用", fb.btn && fb.btn.includes("检查中") && fb.off === true, JSON.stringify(fb));
+    check("点击同步生效：toast 提示下载检查中", /下载/.test(fb.toast), fb.toast);
     await sleep(1200);
     const toastTxt = await evalJs(`(document.getElementById("toast")||{textContent:""}).textContent`);
     check("安装被 SSRF 拦截并 toast 报错", /拒绝|非公网|失败/.test(toastTxt), toastTxt);
