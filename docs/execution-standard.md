@@ -152,7 +152,7 @@ token 用量和耗时是独立于"成/败"的第三条轴：一次 `done` 可以
 | 重复守卫 | `repeat_guard.py` 已按 prompt 指纹 3/5 阈值工作，`pipeline.py` 部分外层循环读取 `repeat_stop` | 已能拦同提示死循环；尚未成为所有换路/重试循环共享的错误签名熔断器 |
 | exit 0 与静默拒绝 | Codex 事件流检查 `turn.failed` 和实际工具事件；generic CLI 尚无统一错误信封协议 | 部分落地；aider 等适配器仍要补结果语义检查 |
 | CLI 配置一致性 | `manager.sync_runtime_config` 已做绑定同步和文件哈希复核；失败目前静默放过 | 有防线但不是硬预检，发布前必须确认新副本包含此逻辑 |
-| 取消与记账 | 内置 API 路径在取消前不记 KEY；CLI 路径仍需逐适配器验证取消后的 `_report_key`/健康回写顺序 | 规则已定，代码覆盖不完整 |
+| 取消与记账 | 内置 API 路径在取消前不记 KEY（流式/非流式/响应到手三路径，`test_cancel_no_key_penalty.py` 锁住该顺序）；CLI 路径仍需逐适配器验证取消后的 `_report_key`/健康回写顺序 | 内置路径已守卫；CLI 路径代码覆盖不完整 |
 | 评测隔离 | 测试基类和 `tmp_data_no_home_write` 已隔离临时数据并防止真实配置写入 | 已落地于测试纪律；生产执行仍须由发布与运行环境保证隔离边界 |
 | 终态保护 | `store.update_run(expected_status=...)` 已实现 CAS 和终态步骤收口 | 已落地；新增异步写入口必须继续使用 CAS |
 | 并行协作与发布 | HEAD worktree 发布法、分 hunk 提交、"摘自己复跑归因"目前沉淀在经验库与值班纪律；`release_gate.py` 已做本地清洁闸与归档 import 冒烟 | 实践已成型；尚未固化为脚本级强制（归属判定与 worktree 发布仍靠人执行） |
@@ -161,7 +161,7 @@ token 用量和耗时是独立于"成/败"的第三条轴：一次 `done` 可以
 | 旁路通道分层评测 | 发布链已有前置闸/简介兜底/submit 闸等加固（建书链六连），禅道已有读图守卫与降级换将，调度已有锚点修复与终态对账 | 防线以实案补丁形态存在；尚未按"连接→能力→提交→回读"分层产出独立结论，各层红灯语义待统一 |
 | 数据资产入库守卫 | i18n 重复键/译值冲突扫描已例行化进全量 | 已落地于 i18n；CHANGELOG、keywords、角色/流程清单等资产的守卫尚未普及 |
 | 内容质量判定门 | 双闸判定（确定性验证 + 独立评审）、阈值分档、逐维度全达标、`review_no_all_fail_zero` 断言和 `test_quality_gates.py` 均已在代码里 | 判定口径已可执行；"体裁错位"（报告腔）目前只有单点净化与提示词约束，缺通用体裁守卫 |
-| 成本与时延计量 | `usage.record` 已落 token 五分项（含 `cached`/`reasoning`）与 `duration_s`/`cost_usd`/`saved`，启动 `backfill_from_runs` 幂等回填；`token_meter` 提供 `used`/`last_context`/`pressure_ratio`/`capacity`，`budget.max_tokens_per_run` 熔断与 `usage.estimate` 已接线，路由按 `p95_duration_s`/`avg_cost_usd` 软加减分且候选理由带样本层（`fallback` 标签），换将 `attempt_history` 逐项带 `key_id`/`protocol`/`tokens`/`usage` 分项/`cost_usd`，缓存命中率已进用量页 | 计量与闸门已落地；中间失败候选尚未逐条进用量台账（每步仍只落最终一条，逐尝试消耗只在 `attempt_history` 里）；TTFT 与 tokens/sec 无字段无口径，`estimate` 尚未成为排程前置闸，成本/时延的前后差异比对仍靠人工看用量页 |
+| 成本与时延计量 | `usage.record` 已落 token 五分项（含 `cached`/`reasoning`）与 `duration_s`/`cost_usd`/`saved`，启动 `backfill_from_runs` 幂等回填；`token_meter` 提供 `used`/`last_context`/`pressure_ratio`/`capacity`，`budget.max_tokens_per_run` 熔断与 `usage.estimate` 已接线，路由按 `p95_duration_s`/`avg_cost_usd` 软加减分且候选理由带样本层（`fallback` 标签），换将 `attempt_history` 逐项带 `key_id`/`protocol`/`tokens`/`usage` 分项/`cost_usd`，缓存命中率已进用量页 | 计量与闸门已落地；中间失败候选尚未逐条进用量台账（每步仍只落最终一条，逐尝试消耗只在 `attempt_history` 里）；TTFT 与 tokens/sec 已有计量字段（仅内置直连流式可测，缺字段=不可测），尚未进路由与验收口径，`estimate` 尚未成为排程前置闸，成本/时延的前后差异比对仍靠人工看用量页 |
 | 候选打分权重 | `router.score`（基线/绑定/历史/亲和度/在线/配额）与 `dispatch.score_model_entry`（质量/档位/价格/能力/视觉/在线）已按本表取值实现，理由字符串逐项回显分值与样本层，`dispatch_decisions` 已产出脱敏排序明细；`test_candidate_scoring_standard.py` 把本表每个数值与代码常量钉在一起 | 分值与文档已对齐且有守卫；能力基线与亲和度仍是人工先验，未随真实台账校准，调权重时守卫只要求同步改表、不判断新值是否更优 |
 
 ## 配套运营闭环
