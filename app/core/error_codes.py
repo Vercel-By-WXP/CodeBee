@@ -65,11 +65,12 @@ _AUTH = (
 )
 _FORBIDDEN = ("forbidden", "request not allowed", "permission denied", "access denied")
 _RATE_LIMIT = ("rate limit", "rate_limit", "too many requests", "http 429", "status code 429",
-               "限流")
+               "concurrent limit", "concurrency limit", "too many concurrent",
+               "并发限制", "并发超限", "限流")
 _QUOTA = ("insufficient balance", "insufficient quota", "insufficient credit",
           "quota", "balance is insufficient", "credit balance", "billing", "arrears",
           "payment required", "http 402", "status code 402", "欠费", "余额", "额度",
-          "并发", "超过限", "usage limit", "limit exceeded", "quota exhausted")
+          "usage limit", "limit exceeded", "quota exhausted")
 _SERVER = ("unexpected server error", "internal server error", "server error",
            "overloaded", "temporarily", "unavailable", "service unavailable",
            "internal error", "no available channel", "unknown model")

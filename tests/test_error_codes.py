@@ -65,6 +65,8 @@ class TestSharedFailureClassification(BaseTest):
             ("HTTP 401 invalid API key for model foo-403beta", ErrorCode.AUTH),
             ("invalid API key for model foo-403beta", ErrorCode.AUTH),
             ("HTTP 429 rate limit exceeded", ErrorCode.RATE_LIMIT),
+            ("concurrent limit exceeded", ErrorCode.RATE_LIMIT),
+            ("并发超限，请稍后重试", ErrorCode.RATE_LIMIT),
             ("unexpected status 403 forbidden", ErrorCode.FORBIDDEN),
             ("unexpected status 401", ErrorCode.AUTH),
             ("unexpected status 429", ErrorCode.RATE_LIMIT),
