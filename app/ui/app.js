@@ -12363,6 +12363,10 @@ function renderUsage() {
         ? t("P95 ") + fmtMs(tot.p95_first_token_ms) + t(" · 吞吐 ") +
           (tot.avg_tokens_per_sec || 0) + t(" tok/s · 样本 ") + fmtTok(tot.perf_samples) + t(" 次")
         : t("仅内置直连流式调用可测"), false, "i-cpu", { tone: "calm" }),
+    kpiCard(t("压缩省量"), tot.compaction_saved ? fmtTok(tot.compaction_saved) : "—",
+      tot.compaction_saved
+        ? t("上下文折叠净省，与消耗并列成账")
+        : t("长对话压力压缩后在此累计"), false, "i-cpu", { tone: "ok" }),
   ].join("");
   const note = $("usage-note");
   if (note) {
