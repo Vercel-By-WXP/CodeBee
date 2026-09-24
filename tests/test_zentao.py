@@ -1244,19 +1244,24 @@ class TestTriageWithImages(ZenCase):
         self.bug(802, title="客户跟进记录字段缺失，具体如图。",
                  steps="<p>新建跟进记录缺字段</p><img src='/file-read-555.png'/>")
         bug = self.fz.bugs["802"]
-        calls = []
-        orig = (modelhub.resolve_orchestrator, modelhub.chat, modelhub._model_image_in)
+        calls, marks = [], []
+        orig = (modelhub.resolve_orchestrator, modelhub.chat, modelhub.providers,
+                modelhub.set_model_caps)
         modelhub.resolve_orchestrator = lambda: (
             {"id": "p", "api_key": "k", "allow_private": True}, "m")
-        modelhub._model_image_in = lambda prov, model: True
+        modelhub.providers = lambda: [{"id": "p", "enabled": True, "api_key": "k",
+                                       "models": [{"name": "m", "enabled": True,
+                                                   "image_in": True}]}]
 
         def fake_chat(pid, model, prompt, max_tokens=2048, timeout=120, cache_ttl=0,
                       on_delta=None, reasoning_effort="", images=None):
-            calls.append({"prompt": prompt, "images": images})
+            calls.append({"pid": pid, "model": model,
+                          "prompt": prompt, "images": images})
             return {"ok": True, "tokens": 10,
                     "text": json.dumps({"side": "frontend", "reason": "截图显示前端缺字段"})}
 
         modelhub.chat = fake_chat
+        modelhub.set_model_caps = lambda pid, name, flag: marks.append((pid, name, flag))
         try:
             self.zen_mod._IMG_CACHE.clear()
             tri = self.zen_mod._ai_triage(bug, prof)
@@ -1265,7 +1270,9 @@ class TestTriageWithImages(ZenCase):
             self.assertEqual(tri["imgs"], 1)
             self.assertEqual(len(calls[0]["images"]), 1, "截图必须随 chat 透传")
             self.assertEqual(calls[0]["images"][0][0], "image/png")
+            self.assertEqual(calls[0]["model"], "m", "编排模型已声明能力：直接用它")
             self.assertIn("先看图", calls[0]["prompt"])
+            self.assertEqual(marks, [], "声明过的能力不需要再推断落标")
             # 端到端：转派前端，文案带截图标注（stub 必须盖住扫描全程）
             self.assertTrue(self.zen_mod.scan_now()["ok"])
             c = self.claim()
@@ -1275,8 +1282,8 @@ class TestTriageWithImages(ZenCase):
             self.assertIn("fe-owner", json.dumps(puts[0][2], ensure_ascii=False))
             self.assertIn("1 张 bug 截图", str(puts[0][2].get("comment") or ""))
         finally:
-            (modelhub.resolve_orchestrator, modelhub.chat,
-             modelhub._model_image_in) = orig
+            (modelhub.resolve_orchestrator, modelhub.chat, modelhub.providers,
+             modelhub.set_model_caps) = orig
 
 
 class TestTriageFilesFallback(ZenCase):
@@ -1291,10 +1298,12 @@ class TestTriageFilesFallback(ZenCase):
                  files={"9": {"title": "截图.png", "extension": "png"}})
         bug = self.fz.bugs["803"]
         calls = []
-        orig = (modelhub.resolve_orchestrator, modelhub.chat, modelhub._model_image_in)
+        orig = (modelhub.resolve_orchestrator, modelhub.chat, modelhub.providers)
         modelhub.resolve_orchestrator = lambda: (
             {"id": "p", "api_key": "k", "allow_private": True}, "m")
-        modelhub._model_image_in = lambda prov, model: True
+        modelhub.providers = lambda: [{"id": "p", "enabled": True, "api_key": "k",
+                                       "models": [{"name": "m", "enabled": True,
+                                                   "image_in": True}]}]
 
         def fake_chat(pid, model, prompt, max_tokens=2048, timeout=120, cache_ttl=0,
                       on_delta=None, reasoning_effort="", images=None):
@@ -1308,14 +1317,14 @@ class TestTriageFilesFallback(ZenCase):
             tri = self.zen_mod._ai_triage(bug, prof)
         finally:
             (modelhub.resolve_orchestrator, modelhub.chat,
-             modelhub._model_image_in) = orig
+             modelhub.providers) = orig
         self.assertEqual(tri["side"], "backend")
         self.assertEqual(tri["imgs"], 1, "附件图片要经 files 回落取到")
         self.assertEqual(len(calls[0]["images"]), 1)
 
 
 class TestNoVisionModelGuard(ZenCase):
-    """图片抓到了但排查模型不支持 image_in → 留人工并提示开能力，不烧文本盲判。"""
+    """全库都没有可看图的模型（声明与名字推断皆无）→ 才轮到留人工，文案给指引。"""
     def runTest(self):
         from app.core import modelhub
         self.fz.files["/file-read-555.png"] = _PNG1
@@ -1325,10 +1334,9 @@ class TestNoVisionModelGuard(ZenCase):
                  steps="<p><img src='/file-read-555.png'/></p>")
         bug = self.fz.bugs["804"]
         called = []
-        orig = (modelhub.resolve_orchestrator, modelhub.chat, modelhub._model_image_in)
+        orig = (modelhub.resolve_orchestrator, modelhub.chat)
         modelhub.resolve_orchestrator = lambda: (
             {"id": "p", "api_key": "k", "allow_private": True}, "m")
-        modelhub._model_image_in = lambda prov, model: False
 
         def fake_chat(*a, **kw):
             called.append(1)
@@ -1339,11 +1347,92 @@ class TestNoVisionModelGuard(ZenCase):
             self.zen_mod._IMG_CACHE.clear()
             tri = self.zen_mod._ai_triage(bug, prof)
         finally:
-            (modelhub.resolve_orchestrator, modelhub.chat,
-             modelhub._model_image_in) = orig
-        self.assertEqual(called, [], "无视觉能力不得发起排查调用")
+            (modelhub.resolve_orchestrator, modelhub.chat) = orig
+        self.assertEqual(called, [], "无看图候选不得发起排查调用")
         self.assertEqual(tri["side"], "unknown")
-        self.assertIn("image_in", tri["reason"])
+        self.assertIn("图片输入", tri["reason"])
+
+
+class TestVisionInferAndAutoMark(ZenCase):
+    """编排模型不会看图 → 自动改用名字推断的视觉模型；实测成功自动落能力标记。"""
+    def runTest(self):
+        from app.core import modelhub
+        self.fz.files["/file-read-555.png"] = _PNG1
+        cfg = self.configure(profiles=[self.profile(module_routes=[])])
+        prof = self.zen_mod._profiles(cfg)[0]
+        self.bug(806, title="功能未对齐，如图。",
+                 steps="<p><img src='/file-read-555.png'/></p>")
+        bug = self.fz.bugs["806"]
+        calls, marks = [], []
+        orig = (modelhub.resolve_orchestrator, modelhub.chat, modelhub.providers,
+                modelhub.set_model_caps)
+        modelhub.resolve_orchestrator = lambda: (
+            {"id": "p", "api_key": "k", "allow_private": True}, "text-only")
+        modelhub.providers = lambda: [{"id": "p", "enabled": True, "api_key": "k",
+                                       "models": [{"name": "text-only", "enabled": True},
+                                                  {"name": "glm-4v-flash", "enabled": True}]}]
+
+        def fake_chat(pid, model, prompt, max_tokens=2048, timeout=120, cache_ttl=0,
+                      on_delta=None, reasoning_effort="", images=None):
+            calls.append({"pid": pid, "model": model, "images": images})
+            return {"ok": True, "tokens": 8,
+                    "text": json.dumps({"side": "backend", "reason": "截图显示数据缺失"})}
+
+        modelhub.chat = fake_chat
+        modelhub.set_model_caps = lambda pid, name, flag: marks.append((pid, name, flag))
+        try:
+            self.zen_mod._IMG_CACHE.clear()
+            tri = self.zen_mod._ai_triage(bug, prof)
+        finally:
+            (modelhub.resolve_orchestrator, modelhub.chat, modelhub.providers,
+             modelhub.set_model_caps) = orig
+        self.assertEqual(tri["side"], "backend")
+        self.assertEqual([c["model"] for c in calls], ["glm-4v-flash"],
+                         "编排模型纯文本时自动换名字推断的视觉模型")
+        self.assertEqual(len(calls[0]["images"]), 1)
+        self.assertEqual(marks, [("p", "glm-4v-flash", True)],
+                         "实测吃图成功要自动落 image_in 标记")
+
+
+class TestVisionCandidateFailover(ZenCase):
+    """首个视觉候选网关拒图 → 自动换下一个候选；标记只落真正成功那个。"""
+    def runTest(self):
+        from app.core import modelhub
+        self.fz.files["/file-read-555.png"] = _PNG1
+        cfg = self.configure(profiles=[self.profile(module_routes=[])])
+        prof = self.zen_mod._profiles(cfg)[0]
+        self.bug(807, title="功能未对齐，如图。",
+                 steps="<p><img src='/file-read-555.png'/></p>")
+        bug = self.fz.bugs["807"]
+        calls, marks = [], []
+        orig = (modelhub.resolve_orchestrator, modelhub.chat, modelhub.providers,
+                modelhub.set_model_caps)
+        modelhub.resolve_orchestrator = lambda: (
+            {"id": "p", "api_key": "k", "allow_private": True}, "text-only")
+        modelhub.providers = lambda: [{"id": "p", "enabled": True, "api_key": "k",
+                                       "models": [{"name": "glm-4v-a", "enabled": True},
+                                                  {"name": "glm-4v-b", "enabled": True}]}]
+
+        def fake_chat(pid, model, prompt, max_tokens=2048, timeout=120, cache_ttl=0,
+                      on_delta=None, reasoning_effort="", images=None):
+            calls.append(model)
+            if model == "glm-4v-a":
+                return {"ok": False, "error": "HTTP 400 image not supported"}
+            return {"ok": True, "tokens": 8,
+                    "text": json.dumps({"side": "both", "reason": "截图显示两端都要改"})}
+
+        modelhub.chat = fake_chat
+        modelhub.set_model_caps = lambda pid, name, flag: marks.append((pid, name, flag))
+        try:
+            self.zen_mod._IMG_CACHE.clear()
+            tri = self.zen_mod._ai_triage(bug, prof)
+        finally:
+            (modelhub.resolve_orchestrator, modelhub.chat, modelhub.providers,
+             modelhub.set_model_caps) = orig
+        self.assertEqual(tri["side"], "both")
+        self.assertEqual(calls, ["glm-4v-a", "glm-4v-b"], "拒图候选自动换将")
+        self.assertEqual(marks, [("p", "glm-4v-b", True)],
+                         "只给实测成功的候选落标记")
 
 
 class TestFixTaskCarriesImages(ZenCase):

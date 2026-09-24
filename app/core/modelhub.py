@@ -2037,6 +2037,35 @@ def _model_image_in(prov, model):
     return False
 
 
+def vision_candidates(prefer_provider_id="", prefer_model=""):
+    """全库搜「能看图」的候选模型，供图类调用自动降级（编排模型不支持看图时
+    自己换将，不甩人工）。返回有序 [(prov, model_name, inferred)]：
+    声明 image_in 的在先；仅名字推断（_auto_image_in）的在后（inferred=True，
+    调用方实测成功后应 set_model_caps 落标记）。编排者供应商排最前，
+    编排模型本身若可看图排整个列表第一。"""
+    out, seen = [], set()
+    provs = [p for p in providers()
+             if isinstance(p, dict) and p.get("enabled", True) and p.get("api_key")]
+    provs.sort(key=lambda p: 0 if p.get("id") == prefer_provider_id else 1)
+    for p in provs:
+        for m in _enabled_models(p):
+            name = str(m.get("name") or "")
+            if not name or (p.get("id"), name) in seen:
+                continue
+            if bool(m.get("image_in")):
+                inferred = False
+            elif _auto_image_in(name):
+                inferred = True
+            else:
+                continue
+            seen.add((p.get("id"), name))
+            out.append((p, name, inferred))
+    if prefer_model:
+        out.sort(key=lambda x: 0 if (x[0].get("id") == prefer_provider_id
+                                     and x[1] == prefer_model) else 1)
+    return out
+
+
 def bind_agent(agent, difficulty="default", task_type="", role=""):
     """按绑定生成应用了供应商/模型覆盖的 agent 副本；无绑定时原样返回。
 

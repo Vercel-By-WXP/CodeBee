@@ -1375,10 +1375,12 @@ def test_connection(base_url=None, account=None, password=None):
 def _ai_triage(bug, profile):
     """AI 兜底排查：单次 LLM 调用判端。不可用/解析失败返回 None（bookmeta 同款配方）。
 
-    图片守卫（#27754 案）：描述指向截图而图片读不到、或排查模型不支持看图时，
-    直接判 unknown 留人工——绝不拿纯文本盲判，「具体如图」的 bug 文字里没有答案。
+    图片守卫（#27754 案）：描述指向截图而图片读不到 → unknown 留人工，绝不拿
+    纯文本盲判。排查模型不会看图时也不甩人工——自动全库找看图候选（声明
+    image_in 的优先，名字推断兜底），候选逐个试、实测吃图成功回写能力标记。
     """
     try:
+        from . import modelhub, runner
         images = []
         if _bug_mentions_images(bug):
             try:
@@ -1390,16 +1392,8 @@ def _ai_triage(bug, profile):
                         "reason": "描述指向截图/图片但图片未能读取，证据不足，"
                                   "留人工确认后定责",
                         "imgs": 0}
-        from . import modelhub, runner
         orch = modelhub.resolve_orchestrator()
-        if not orch:
-            return None
-        prov, model = orch
-        if images and not modelhub._model_image_in(prov, model):
-            return {"side": "unknown",
-                    "reason": "描述含截图但排查模型不支持图片输入（image_in），"
-                              "请为编排模型开启图片输入或改用视觉模型",
-                    "imgs": 0}
+        prov, model = orch if orch else (None, None)
         repos = profile.get("repos") or {}
         hints = profile.get("repo_hints") or {}
 
@@ -1428,11 +1422,43 @@ def _ai_triage(bug, profile):
                      '"reason": "一句话依据"}')
         lines.append("判定口径：backend=纯后端问题；frontend=纯前端问题；both=两端都要改；"
                      "not_ours=与这两个仓库无关（第三方服务/环境/需求变更/数据问题等）。")
-        res = modelhub.chat(prov["id"], model, "\n".join(lines), max_tokens=500,
-                            timeout=90, images=images or None)
-        if not res.get("ok"):
-            log.warning("zentao: AI 排查失败：%s", res.get("error"))
-            return None
+        prompt = "\n".join(lines)
+        if images:
+            cand = modelhub.vision_candidates(
+                prefer_provider_id=(prov or {}).get("id") or "",
+                prefer_model=model or "")
+            if not cand:
+                return {"side": "unknown",
+                        "reason": "所有已启用模型都不支持图片输入，无法看图定责"
+                                  "（请在模型管理里启用一个视觉模型）",
+                        "imgs": 0}
+            res, last_err = None, ""
+            for p, m, inferred in cand:
+                r = modelhub.chat(p["id"], m, prompt, max_tokens=500, timeout=90,
+                                  images=images)
+                if r.get("ok"):
+                    res = r
+                    if inferred:
+                        # 名字推断的候选实测吃图成功：回写能力标记（幂等），
+                        # 模型管理页图徽章同步可见，后续调用直接命中
+                        err = modelhub.set_model_caps(p["id"], m, True)
+                        if err:
+                            log.debug("zentao: 自动标记 image_in 失败：%s", err)
+                    break
+                last_err = str(r.get("error") or "")
+                log.warning("zentao: 视觉排查候选 %s/%s 不可用：%s",
+                            p.get("id"), m, last_err[:160])
+            if not res:
+                return {"side": "unknown",
+                        "reason": "看图排查全部候选失败（%s）" % last_err[:160],
+                        "imgs": 0}
+        else:
+            if not orch:
+                return None
+            res = modelhub.chat(prov["id"], model, prompt, max_tokens=500, timeout=90)
+            if not res.get("ok"):
+                log.warning("zentao: AI 排查失败：%s", res.get("error"))
+                return None
         data = runner.extract_json(res.get("text") or "")
         side = str((data or {}).get("side") or "").strip().lower()
         if side not in TRIAGE_SIDES:

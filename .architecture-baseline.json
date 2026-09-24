@@ -557,9 +557,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/modelhub.py 3303 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/modelhub.py 3332 行（上限 1200，历史最高 0）",
       "file": "app/core/modelhub.py",
-      "lines": 3303
+      "lines": 3332
     },
     {
       "kind": "lines",
@@ -581,9 +581,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/zentao.py 2421 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/zentao.py 2447 行（上限 1200，历史最高 0）",
       "file": "app/core/zentao.py",
-      "lines": 2421
+      "lines": 2447
     },
     {
       "kind": "lines",
