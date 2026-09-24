@@ -23,7 +23,7 @@ import re
 import threading
 import time
 
-from .. import paths
+from .. import operations, paths
 from . import fanqie, flow, ledger, qimao
 from .browser import Browser, BrowserError, Page
 
@@ -407,9 +407,13 @@ def create_book_async(task_id, plat, auto_submit=False):
     data = meta["data"]
     mod = PLATFORMS[plat]
     logs = []
+    book_name = (data.get("book_name") or "").strip()
+    operation_id = operations.begin(
+        "publish:%s:create_book" % plat,
+        {"task_id": task_id, "title": book_name}, task_id=task_id,
+        metadata={"platform": plat, "action": "create_book"})
 
     def run():
-        book_name = (data.get("book_name") or "").strip()
         try:
             b, page = _open_page(plat)
             values = mod.values_create_book(data)
@@ -437,17 +441,32 @@ def create_book_async(task_id, plat, auto_submit=False):
                                 % str(page.url() or "")[:120])
             except Exception:
                 pass
+            operation_status = "confirmed" if book_id else "unknown"
+            if book_id:
+                operations.confirm(operation_id, remote_receipt=book_id,
+                                   metadata={"platform": plat, "action": "create_book"})
+            else:
+                operations.mark_unknown(
+                    operation_id,
+                    "建书流程完成但未取得远端 book_id，请先在平台核对后再重试",
+                    metadata={"platform": plat, "action": "create_book"})
             ledger.record(plat, "create_book", task_id=task_id, title=book_name,
-                          book_id=book_id, ok=True,
-                          error="\n".join(logs)[:2000],
-                          shot=str(ledger.shot_path(plat, task_id, "")))
+                          book_id=book_id, ok=bool(book_id),
+                          error=("\n".join(logs)[:2000] if book_id else
+                                 "建书结果未知：未取得远端 book_id；请先对账"),
+                          shot=str(ledger.shot_path(plat, task_id, "")),
+                          operation_id=operation_id, operation_status=operation_status,
+                          remote_receipt=book_id)
             ledger.save_book(task_id, plat, {"book_id": book_id, "title": book_name})
             _set(plat, status="connected", error="")
         except Exception as e:
+            operations.finish_exception(operation_id, e)
+            operation_status = (operations.get(operation_id) or {}).get("status") or "failed"
             _set(plat, status="error", error="建书失败：%s" % e)
             ledger.record(plat, "create_book", task_id=task_id, title=book_name,
                           ok=False, error=str(e)[:300],
-                          shot=str(ledger.shot_path(plat, task_id, "")))
+                          shot=str(ledger.shot_path(plat, task_id, "")),
+                          operation_id=operation_id, operation_status=operation_status)
         finally:
             _save()
 
@@ -592,6 +611,10 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False):
     book = ledger.book_for(task_id, plat)
     if not book:
         return False, "该任务尚未在此平台建书，请先「创建作品」"
+    # 闭包中需要在找回 book_id 后更新书籍引用；使用独立副本避免
+    # Python 将 book 误判为 run() 的局部变量，导致前置解析触发
+    # UnboundLocalError。
+    book_ref = dict(book)
     if _st(plat).get("status") == "busy":
         return False, "该平台有操作正在进行中"
     ch_no, title, body, err = read_chapter(chapter_file)
@@ -617,31 +640,42 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False):
 
     mod = PLATFORMS[plat]
     values = {"chapter_title": title, "chapter_body": body,
-              "book_name": book.get("title") or ""}
-    values.update(_url_values(mod, book))   # verify/draft/editor 页 URL（流程占位）
+              "book_name": book_ref.get("title") or ""}
+    values.update(_url_values(mod, book_ref))   # verify/draft/editor 页 URL（流程占位）
     logs = []
+    operation_id = operations.begin(
+        "publish:%s:upload_chapter" % plat,
+        {"task_id": task_id, "chapter_no": ch_no, "title": title}, task_id=task_id,
+        metadata={"platform": plat, "action": "upload_chapter"})
 
     def run():
         try:
             b, page = _open_page(plat)
-            bid = _resolve_book_id(plat, page, book)
+            bid = _resolve_book_id(plat, page, book_ref)
             if bid:                          # 建书时没提上 id 的书，发章前补账
-                book = dict(book, book_id=bid)
-                values.update(_url_values(mod, book))
-                ledger.save_book(task_id, plat, book)
+                book_ref.update(book_id=bid)
+                values.update(_url_values(mod, book_ref))
+                ledger.save_book(task_id, plat, book_ref)
                 logs.append("已按书名找回 book_id=%s 并更新登记" % bid)
             flow.run_flow(page, load_flow(plat, "upload_chapter"), values=values,
                           config=mod.CONFIG, auto_submit=auto_submit,
                           shot=lambda n: page.screenshot(ledger.shot_path(plat, task_id, n)),
                           log=logs.append)
+            operations.confirm(operation_id, metadata={"platform": plat,
+                                                        "action": "upload_chapter",
+                                                        "chapter_no": ch_no})
             ledger.record(plat, "upload_chapter", task_id=task_id, chapter_no=ch_no,
-                          book_id=book.get("book_id") or "", title=title, ok=True)
+                          book_id=book_ref.get("book_id") or "", title=title, ok=True,
+                          operation_id=operation_id, operation_status="confirmed")
             _set(plat, status="connected", error="")
         except Exception as e:
+            operations.finish_exception(operation_id, e)
+            operation_status = (operations.get(operation_id) or {}).get("status") or "failed"
             _set(plat, status="error", error="发章失败：%s" % e)
             ledger.record(plat, "upload_chapter", task_id=task_id, chapter_no=ch_no,
-                          book_id=book.get("book_id") or "", title=title,
-                          ok=False, error=str(e)[:300])
+                          book_id=book_ref.get("book_id") or "", title=title,
+                          ok=False, error=str(e)[:300], operation_id=operation_id,
+                          operation_status=operation_status)
         finally:
             _save()
 

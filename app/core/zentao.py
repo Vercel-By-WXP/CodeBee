@@ -67,7 +67,7 @@ import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import jobs, paths, settings, store, tlsctx
+from . import jobs, operations, paths, settings, store, tlsctx
 
 log = logging.getLogger(__name__)
 
@@ -1710,7 +1710,16 @@ def _ensure_resolved(cfg, bug_id, comment, assign_to):
     body = {"resolution": "fixed", "resolvedBuild": "trunk", "comment": comment}
     if assign_to:
         body["assignedTo"] = assign_to
-    _call("POST", "/bugs/%s/resolve" % bug_id, cfg=cfg, body=body)
+    operation_id = operations.begin("zentao:bug:%s:resolve" % bug_id, body,
+                                    metadata={"bug_id": bug_id, "action": "resolve"})
+    try:
+        result = _call("POST", "/bugs/%s/resolve" % bug_id, cfg=cfg, body=body)
+        receipt = str((result or {}).get("id") or bug_id)
+        operations.confirm(operation_id, remote_receipt=receipt,
+                           metadata={"bug_id": bug_id, "action": "resolve"})
+    except Exception as exc:
+        operations.finish_exception(operation_id, exc)
+        raise
     return True
 
 
@@ -1727,7 +1736,16 @@ def _transfer(cfg, bug_id, target, comment):
     else:
         cur = _call("GET", "/bugs/%s" % bug_id, cfg=cfg)
         body["assignedTo"] = _acct(cur.get("assignedTo")) or ""
-    _call("PUT", "/bugs/%s" % bug_id, cfg=cfg, body=body)
+    operation_id = operations.begin("zentao:bug:%s:transfer" % bug_id, body,
+                                    metadata={"bug_id": bug_id, "action": "transfer"})
+    try:
+        result = _call("PUT", "/bugs/%s" % bug_id, cfg=cfg, body=body)
+        receipt = str((result or {}).get("id") or bug_id)
+        operations.confirm(operation_id, remote_receipt=receipt,
+                           metadata={"bug_id": bug_id, "action": "transfer"})
+    except Exception as exc:
+        operations.finish_exception(operation_id, exc)
+        raise
 
 
 def _notify(text):

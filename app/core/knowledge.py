@@ -29,7 +29,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import paths, skills
+from . import paths, revisions, skills
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "knowledge.json"
@@ -82,6 +82,29 @@ def list_entries(scope=None, status=None, tag=None, only_enabled=False):
     return items
 
 
+def revision_for_task(task) -> dict:
+    """Return approved knowledge references selected by task scope."""
+    scope = str((task or {}).get("type") or "*")
+    entries = list_entries(scope=scope, status="approved", only_enabled=True)
+    refs = []
+    for entry in entries:
+        body = entry.get("body") or ""
+        digest = revisions.content_sha256(body)
+        stored_digest = str(entry.get("content_sha256") or "")
+        drift = bool(stored_digest and stored_digest != digest)
+        refs.append({"id": entry.get("id") or "",
+                     "revision_id": (entry.get("revision_id")
+                                     if stored_digest == digest else
+                                     revisions.revision_id("kbrev", digest)) or
+                     revisions.revision_id("kbrev", digest),
+                     "content_sha256": digest,
+                     "revision_drift": drift})
+    payload = {"scope": scope, "entries": refs}
+    digest = revisions.stable_digest(payload)
+    return {"revision_id": revisions.revision_id("knowledge", digest),
+            "content_sha256": digest, "scope": scope, "entries": refs}
+
+
 def _title_sim(a, b):
     """标题近似度：字符 bigram 的包含度（交集 / 较短者，中文友好零分词）。
     用包含度而非 Jaccard：「X」vs「X 指南」的较短者完全被包含 →1.0，
@@ -131,13 +154,25 @@ def upsert_entry(scope, title, body, tags=None, source="", source_file="",
         if hit is not None:
             it = hit
             it["seen"] = int(it.get("seen") or 1) + 1
+            old_body = str(it.get("body") or "")
+            old_rev = it.get("revision_id") or ""
+            new_rev = revisions.make_revision("kbrev", body, source=source)
             if status == "approved" or it.get("status") != "approved":
+                if old_body and old_body != body:
+                    it.setdefault("revisions", []).append(
+                        revisions.revision_record(
+                            "kbrev", old_body, source=it.get("source") or "",
+                            extra={"body": old_body, "revision_id": old_rev or
+                                   revisions.revision_id("kbrev", revisions.content_sha256(old_body))}))
+                    it["revisions"] = it["revisions"][-5:]
                 it["body"] = body
+                it.update({k: new_rev[k] for k in ("revision_id", "content_sha256")})
                 if status == "approved":
                     it["status"] = "approved"
             else:
                 it.setdefault("revisions", []).append(
-                    {"at": _now(), "body": body, "source": source})
+                    revisions.revision_record("kbrev", body, source=source,
+                                               extra={"body": body}))
                 it["revisions"] = it["revisions"][-5:]   # 最多留 5 条修订候选
             for tg in tags:
                 if tg not in (it.get("tags") or []):
@@ -154,6 +189,7 @@ def upsert_entry(scope, title, body, tags=None, source="", source_file="",
             it["updated_at"] = _now()
             _save(data)
             return it
+        rev = revisions.make_revision("kbrev", body, source=source)
         it = {"id": kid, "scope": scope, "title": title, "body": body,
               "tags": tags, "status": status, "enabled": True,
               "source": source, "source_file": source_file,
@@ -161,6 +197,7 @@ def upsert_entry(scope, title, body, tags=None, source="", source_file="",
               "confidence": confidence or "medium",
               "revisions": [], "hits": 0, "seen": 1,
               "created_at": _now(), "updated_at": _now(), "kind": "knowledge"}
+        it.update({k: rev[k] for k in ("revision_id", "content_sha256")})
         items.append(it)
         _save(data)
         return it
@@ -197,7 +234,17 @@ def entry_op(entry_id, op, fields=None):
             if str(f.get("title") or "").strip():
                 hit["title"] = str(f["title"]).strip()[:80]
             if str(f.get("body") or "").strip():
-                hit["body"] = str(f["body"]).strip()[:1500]
+                new_body = str(f["body"]).strip()[:1500]
+                old_body = str(hit.get("body") or "")
+                if old_body != new_body:
+                    hit.setdefault("revisions", []).append(
+                        revisions.revision_record(
+                            "kbrev", old_body, source=hit.get("source") or "",
+                            extra={"body": old_body}))
+                    hit["revisions"] = hit["revisions"][-5:]
+                    hit["body"] = new_body
+                    hit.update({k: revisions.make_revision("kbrev", new_body)[k]
+                                for k in ("revision_id", "content_sha256")})
             if "tags" in f:
                 hit["tags"] = [str(t).strip()[:20]
                                for t in (f.get("tags") or []) if str(t).strip()][:8]

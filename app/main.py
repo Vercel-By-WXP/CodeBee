@@ -288,6 +288,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "catalog": manager.catalog_view()})
             if path == "/api/runs":
                 return self._json(200, {"runs": store.list_runs()})
+            if path == "/api/operations":
+                from core import operations
+                q = parse_qs(urlparse(self.path).query)
+                try:
+                    limit = max(1, min(1000, int((q.get("limit") or [100])[0])))
+                except (TypeError, ValueError):
+                    limit = 100
+                return self._json(200, {"operations": operations.recent(
+                    target=(q.get("target") or [""])[0][:160],
+                    status=(q.get("status") or [""])[0][:20], limit=limit)})
+            m = re.match(r"^/api/operations/([^/]+)$", path)
+            if m:
+                from core import operations
+                item = operations.get(m.group(1))
+                return self._json(200, {"operation": item}) if item else self._json(404, {"error": "not found"})
             if path == "/api/pet_state":
                 return self._api_pet_state()
             if path == "/api/usage":
@@ -420,6 +435,11 @@ class Handler(BaseHTTPRequestHandler):
                     files = []
                 return self._json(200, {"workdir": wd, "files": files,
                                         "task_id": run.get("task_id") or ""})
+            m = re.match(r"^/api/runs/([^/]+)/assets$", path)
+            if m:
+                if not store.get_run(m.group(1)):
+                    return self._json(404, {"error": "not found"})
+                return self._json(200, {"assets": store.run_asset_refs(m.group(1))})
             m = re.match(r"^/api/runs/([^/]+)/preview$", path)
             if m:
                 # 网页成品预览：入口 HTML + 同目录代码文件（前端渲染「预览」页签）
@@ -689,6 +709,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_dir_save()
         if path == "/api/pick_folder":
             return self._api_pick_folder()
+        m = re.match(r"^/api/operations/([^/]+)/reconcile$", path)
+        if m:
+            from core import operations
+            body = self._body() or {}
+            status = str(body.get("status") or "").strip().lower()
+            if status not in ("confirmed", "failed", "unknown"):
+                return self._json(400, {"error": "status 必须是 confirmed、failed 或 unknown"})
+            ok = operations.reconcile(m.group(1), status,
+                                      remote_receipt=body.get("remote_receipt") or "",
+                                      error=body.get("error") or "",
+                                      metadata=body.get("metadata"))
+            if not ok:
+                return self._json(404, {"error": "操作不存在或状态无效"})
+            return self._json(200, {"ok": True, "operation": operations.get(m.group(1))})
         m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry|rename|continue|params)$", path)
         if m:
             if m.group(2) == "archive":
@@ -1345,19 +1379,61 @@ class Handler(BaseHTTPRequestHandler):
         if not task:
             return self._json(404, {"error": "任务不存在"})
         if op == "git-merge":
-            ok, err, info = gitmod.merge_task_branch(task.get("workdir"), task)
-            if not ok:
-                return self._json(400, {"error": err})
-            store.set_task_git_state(task_id, "merged")
-            return self._json(200, {"ok": True, **(info or {})})
+            from core import operations
+            operation_id = operations.begin(
+                "git:%s:merge" % task_id,
+                {"task_id": task_id, "branch": task.get("git_branch") or ""},
+                task_id=task_id, metadata={"action": "merge"})
+            remote_applied = False
+            try:
+                ok, err, info = gitmod.merge_task_branch(task.get("workdir"), task)
+                if not ok:
+                    operations.fail(operation_id, err, metadata={"action": "merge"})
+                    return self._json(400, {"error": err})
+                remote_applied = True
+                store.set_task_git_state(task_id, "merged")
+                operations.confirm(operation_id, remote_receipt=(info or {}).get("commit") or "",
+                                   metadata={"action": "merge"})
+                return self._json(200, {"ok": True, "operation_id": operation_id,
+                                        **(info or {})})
+            except Exception as exc:
+                # The remote merge may have happened before local state
+                # persistence failed; keep the operation auditable and
+                # prevent a blind retry from duplicating the merge.
+                if remote_applied:
+                    operations.mark_unknown(operation_id,
+                                            "Git 合并可能已完成，但本地状态回写失败：%s" % exc,
+                                            metadata={"action": "merge"})
+                else:
+                    operations.finish_exception(operation_id, exc)
+                return self._json(500, {"error": "Git 合并收口失败：%s" % exc,
+                                        "operation_id": operation_id})
         body = self._body()
         if not body.get("confirm"):
             return self._json(400, {"error": "丢弃任务分支不可恢复，需要 confirm=true 二次确认"})
-        ok, err = gitmod.discard_task_branch(task.get("workdir"), task)
-        if not ok:
-            return self._json(400, {"error": err})
-        store.set_task_git_state(task_id, "discarded")
-        return self._json(200, {"ok": True})
+        from core import operations
+        operation_id = operations.begin(
+            "git:%s:discard" % task_id, {"task_id": task_id}, task_id=task_id,
+            metadata={"action": "discard"})
+        remote_applied = False
+        try:
+            ok, err = gitmod.discard_task_branch(task.get("workdir"), task)
+            if not ok:
+                operations.fail(operation_id, err, metadata={"action": "discard"})
+                return self._json(400, {"error": err})
+            remote_applied = True
+            store.set_task_git_state(task_id, "discarded")
+            operations.confirm(operation_id, metadata={"action": "discard"})
+            return self._json(200, {"ok": True, "operation_id": operation_id})
+        except Exception as exc:
+            if remote_applied:
+                operations.mark_unknown(operation_id,
+                                        "Git 丢弃可能已完成，但本地状态回写失败：%s" % exc,
+                                        metadata={"action": "discard"})
+            else:
+                operations.finish_exception(operation_id, exc)
+            return self._json(500, {"error": "Git 丢弃收口失败：%s" % exc,
+                                    "operation_id": operation_id})
 
     def _api_book_meta_generate(self, task_id):
         """作品信息一键生成（POST /api/tasks/<id>/book-meta，body: {platform}）。
@@ -2639,6 +2715,13 @@ def main():
     n_mg = store.recover_interrupted_mgmt()
     if n_mg:
         print("[CodeBee] 崩溃恢复：%d 个遗留管理操作标记为 failed（interrupted at startup）" % n_mg)
+    try:
+        from core import operations
+        n_op = operations.recover_pending()
+        if n_op:
+            print("[CodeBee] 外部写入对账：%d 个无回执操作标记为 unknown" % n_op)
+    except Exception:
+        pass
     try:
         # 孤儿 CLI 清扫走后台线程：PowerShell Get-CimInstance 在部分机器上会慢满
         # timeout（真实装机 60s，启动被白拖一分钟且无任何提示——看门狗堆栈抓到）。

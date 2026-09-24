@@ -29,6 +29,7 @@ anthropic/openai 可注入到 CLI；google 仅登记（当前无对应 CLI 可�
 from __future__ import annotations
 
 import copy
+import hashlib
 import ipaddress
 import json
 import os
@@ -757,6 +758,34 @@ def _backup_file(path):
 def providers():
     with _LOCK:
         return _load().get("providers", [])
+
+
+def connection_identity(provider_id, key_id="") -> dict:
+    """Resolve provider/credential identity without exposing credential values.
+
+    A provider definition (protocol + normalized host), provider instance (the
+    configured provider id), account/key identity and credential id are kept as
+    separate fields for run snapshots.  The existing provider store remains the
+    source of truth; this helper only supplies stable, redacted references.
+    """
+    provider_id = str(provider_id or "").strip()
+    key_id = str(key_id or "").strip()
+    prov = next((p for p in providers() if str(p.get("id") or "") == provider_id), {})
+    from . import upstream
+    host = upstream.normalize_upstream(prov.get("base_url") or "")
+    protocol = str(prov.get("protocol") or "")[:24]
+    definition_key = "%s|%s" % (protocol, host)
+    definition_id = "conn-def-" + hashlib.sha256(definition_key.encode("utf-8")).hexdigest()[:16]
+    account_id = key_id or "provider-default"
+    return {
+        "connection_id": provider_id,
+        "definition_id": definition_id,
+        "instance_id": provider_id,
+        "account_id": account_id,
+        "credential_id": account_id,
+        "protocol": protocol,
+        "upstream": host,
+    }
 
 
 def bindings():

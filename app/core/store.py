@@ -163,10 +163,13 @@ def create_task(payload):
     # 流程修订出处（借鉴 WorkDSH ADR-0010）：创建时钉住当时流程定义的指纹。
     # 固化参数已保证「改流程不影响本任务」，digest 再补上可对账的一面——
     # 续跑/重试时若流程已改，flows.flow_drift 能给出明确诊断而非静默换新。
+    flow_content_sha = flows_mod.flow_content_sha256(flow)
     task["flow_snapshot"] = {"id": flow["id"], "name": (flow.get("name") or "")[:40],
                              "engine": flow["engine"],
                              "edited": bool(flow.get("edited")),
-                             "digest": flows_mod.flow_digest(flow)}
+                             "digest": flow_content_sha[:16],
+                             "revision_id": "flowrev-" + flow_content_sha[:16],
+                             "content_sha256": flow_content_sha}
     # 参数修订号（借鉴 WorkDSH 契约纪律 expectedRevision）：写接口据此做过期
     # 写入检测。老任务无此键按 1 处理；不带 expected_rev 的调用不受影响。
     task["rev"] = 1
@@ -322,8 +325,20 @@ def create_task(payload):
     att_ids = payload.get("attachments")
     if isinstance(att_ids, list) and att_ids:
         from . import attachments as att_mod
-        items = [a for a in att_ids if isinstance(a, dict) and a.get("path")]
-        if not items:  # 纯 id 形态 → 从待提交区移入工作目录
+        dict_items = [a for a in att_ids if isinstance(a, dict) and a.get("path")]
+        if dict_items:
+            root = Path(str(wd)).resolve()
+            items = []
+            for raw in dict_items[:att_mod.MAX_FILES]:
+                rel = att_mod.norm_rel(raw)
+                fp = (root / rel).resolve() if rel else root / "__invalid__"
+                if rel and root in fp.parents and fp.is_file():
+                    item = dict(raw)
+                    item["path"] = rel
+                    items.append(item)
+            if not items:
+                raise ValueError("附件路径必须位于工作目录的 _attachments/ 内")
+        else:  # 纯 id 形态 → 从待提交区移入工作目录
             try:
                 items = att_mod.commit_to_workdir(
                     str(wd), [str(x) for x in att_ids][:att_mod.MAX_FILES])
@@ -331,6 +346,18 @@ def create_task(payload):
                 raise ValueError("附件落盘失败: %s" % e)
         if items:
             task["attachments"] = items
+            task["asset_refs"] = att_mod.asset_refs(str(wd), items)
+            try:
+                from . import assets
+                for ref in task["asset_refs"]:
+                    saved = assets.register(str(wd), ref.get("path"),
+                                            owner_type="task", owner_id=task["id"],
+                                            name=ref.get("name"), mime=ref.get("mime"))
+                    if saved:
+                        ref.update({k: saved[k] for k in ("asset_id", "revision_id",
+                                                          "content_sha256")})
+            except Exception:
+                pass
             task["context"] = att_mod.merge_context(
                 task["context"], items, workdir=str(wd))
     with LOCK:
@@ -579,6 +606,100 @@ def set_run_auditor(auditor):
     _RUN_AUDITOR = auditor if callable(auditor) else None
 
 
+def _execution_snapshot(task):
+    """Capture the redacted execution inputs at run creation time.
+
+    This is intentionally a snapshot of identities and revisions, never API
+    keys or task bodies.  Later binding/skill/knowledge changes therefore do
+    not rewrite the explanation of an existing run.
+    """
+    task = task or {}
+    flow_snapshot = dict(task.get("flow_snapshot") or {})
+    flow_digest = str(flow_snapshot.get("digest") or "")
+    flow_content_sha = str(flow_snapshot.get("content_sha256") or "")
+    flow_revision_id = str(flow_snapshot.get("revision_id") or "")
+    if not flow_content_sha and len(flow_digest) == 64:
+        flow_content_sha = flow_digest
+    if not flow_revision_id and flow_digest:
+        flow_revision_id = "flowrev-" + flow_digest[:16]
+
+    def _redact_command(command):
+        value = str(command or "")[:300]
+        if not value:
+            return ""
+        pattern = re.compile(
+            r"(?i)(api[_-]?key|access[_-]?token|auth(?:orization)?|password|passwd|secret|token)"
+            r"(\s*[:=]\s*|\s+)([^\s]+)")
+        return pattern.sub(lambda m: m.group(1) + m.group(2) + "<redacted>", value)
+
+    snapshot = {
+        "captured_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "task_id": task.get("id") or "",
+        "flow_revision": flow_digest,
+        "flow_revision_id": flow_revision_id,
+        "flow_content_sha256": flow_content_sha,
+        "flow_snapshot": flow_snapshot,
+        "workdir": str(task.get("workdir") or "")[:500],
+        "git_rev": str(task.get("git_rev") or "")[:160],
+        "verify_command": _redact_command(task.get("verify_command") or ""),
+        "quality_gate": {
+            "threshold": task.get("threshold"),
+            "rubric": list(task.get("rubric") or [])[:8],
+            "rounds": task.get("rounds"),
+            "best_of": task.get("best_of"),
+        },
+    }
+    try:
+        from . import knowledge, modelhub, skills
+        snapshot["skills"] = skills.revision_for_task(task)
+        snapshot["knowledge"] = knowledge.revision_for_task(task)
+        providers = {str(p.get("id") or ""): p for p in modelhub.providers()}
+        bindings = {}
+        for agent_id, binding in (modelhub.bindings() or {}).items():
+            chain = []
+            for item in (binding or {}).get("chain") or []:
+                pid = str(item.get("provider_id") or "")
+                prov = providers.get(pid) or {}
+                try:
+                    key_ids = [str(k.get("id") or "") for k in modelhub._provider_keys(prov)
+                               if k.get("id")]
+                except Exception:
+                    key_ids = []
+                entry = {
+                    "provider_id": pid,
+                    "model": str(item.get("model") or "")[:160],
+                    "key_ids": key_ids[:8],
+                }
+                if pid:
+                    entry.update(modelhub.connection_identity(pid, key_ids[0] if key_ids else ""))
+                chain.append(entry)
+            bindings[str(agent_id)[:80]] = {
+                "difficulty_routing": bool((binding or {}).get("difficulty_routing")),
+                "chain": chain,
+            }
+        snapshot["agent_bindings"] = bindings
+        if task.get("direct_provider_id") or task.get("direct_model"):
+            direct = {
+                "provider_id": str(task.get("direct_provider_id") or "")[:80],
+                "model": str(task.get("direct_model") or "")[:160],
+                "agent": str(task.get("direct_agent") or "")[:80],
+            }
+            direct_pid = str(task.get("direct_provider_id") or "")
+            direct_prov = providers.get(direct_pid) or {}
+            direct_keys = modelhub._provider_keys(direct_prov)
+            if direct_pid:
+                direct.update(modelhub.connection_identity(
+                    direct_pid, str((direct_keys[0] if direct_keys else {}).get("id") or "")))
+            snapshot["direct"] = direct
+    except Exception:
+        # A snapshot is diagnostic metadata.  A broken optional catalog must
+        # never prevent the task from being created.
+        snapshot.setdefault("skills", {})
+        snapshot.setdefault("knowledge", {})
+        snapshot.setdefault("agent_bindings", {})
+    return snapshot
+
+
 # run 终态集合：与 CAS 收口、状态回填共用同一份定义
 TERMINAL_STATUSES = ("done", "failed", "cancelled", "timeout")
 
@@ -599,6 +720,7 @@ def create_run(kind, title, task_id=None, entry_id=None, op=None):
     if kind == "orchestration" and task_id:
         task = get_task(task_id) or {}
         run["deadline_at"] = time.time() + _task_timeout_s(task.get("timeout_s"))
+        run["execution_snapshot"] = _execution_snapshot(task)
         try:
             eta = _RUN_ESTIMATOR(
                 task_type=task.get("type") or "", mode=task.get("mode") or "auto",
@@ -826,7 +948,6 @@ def update_run(run_id, expected_status=None, **fields):
                         s["summary"] = ("步骤未正常收尾（任务总时限已到）"
                                          if st == "timeout" else
                                          "步骤未正常收尾（终态自动恢复）")
-        _save_json(paths.RUNS_DIR / run_id / "run.json", run)
         # 状态回填：起跑与结束都同步任务状态。只回填终态的话，run 在跑、
         # 任务永远显示「排队中」（2026-09-18 实案：「# 重写·续」run 已 running
         # 写了一小时，任务卡 queued，用户以为卡死连点重试）。
@@ -836,6 +957,16 @@ def update_run(run_id, expected_status=None, **fields):
             if task:
                 task["status"] = st
                 _save_json(paths.TASKS_DIR / (tid + ".json"), task)
+        if st in TERMINAL_STATUSES:
+            try:
+                from . import acceptance
+                run["acceptance"] = acceptance.evaluate_run(
+                    run, (_TASKS.get(run.get("task_id")) if run.get("task_id") else None) or {})
+            except Exception:
+                # Acceptance reporting is evidence enrichment; it must not
+                # prevent the primary run from reaching a terminal state.
+                pass
+        _save_json(paths.RUNS_DIR / run_id / "run.json", run)
         if st in TERMINAL_STATUSES and prev_status not in TERMINAL_STATUSES:
             # 事后对账：只有「非终态 → 终态」这一次翻转才记账，重复写终态
             # （UI 补写、迟到写手）不得二次入账。快照在锁内浅拷，锁外调用
@@ -1046,6 +1177,29 @@ def run_artifacts(run_id, limit=200, cache=False):
         running = bool(task) and task.get("status") in ("queued", "running")
     return wd, artifacts.scan(str(root), t0, limit=limit,
                               running=running, cache=cache)
+
+
+def run_asset_refs(run_id, limit=200):
+    """Return content-addressed references for this run's output files."""
+    wd, files = run_artifacts(run_id, limit=limit, cache=False)
+    if not wd:
+        return []
+    from . import attachments
+    refs = attachments.asset_refs(wd, [{"path": f.get("name") or f.get("path") or ""}
+                                       for f in files if isinstance(f, dict)])
+    try:
+        from . import assets
+        run = get_run(run_id) or {}
+        for ref in refs:
+            saved = assets.register(wd, ref.get("path"), owner_type="run",
+                                    owner_id=run_id, name=ref.get("name"),
+                                    mime=ref.get("mime"))
+            if saved:
+                ref.update({k: saved[k] for k in ("asset_id", "revision_id",
+                                                  "content_sha256")})
+    except Exception:
+        pass
+    return refs
 
 
 def task_step_count(task_id):
@@ -1587,11 +1741,12 @@ def update_task_params(task_id, patch):
                 changed = True
             # 执行 CLI 可改/可清（清空 = 回内置智能体或模型绑定）；与模型绑定
             # 允许共存，运行时 CLI 优先
-            av = str((patch or {}).get("direct_agent") or "").strip()[:80]
+            av = str(patch.get("direct_agent") or "").strip()[:80]
             if task.get("direct_agent") != av and (av or task.get("direct_agent")):
                 task["direct_agent"] = av
                 changed = True
         if changed:
+            task["rev"] = int(task.get("rev") or 1) + 1
             _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
             bump_state()
     return True, ""

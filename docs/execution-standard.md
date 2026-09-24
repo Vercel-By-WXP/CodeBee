@@ -153,6 +153,29 @@ token 用量和耗时是独立于"成/败"的第三条轴：一次 `done` 可以
 3. **停稳未知**：`runner._kill_tree` 返回是否确认整树清空（Windows 以 taskkill /T 在 1.2s 内返回 0 为准，POSIX 以 killpg 成功为准）；未确认时 `run_process` 结果带 `quiescence_unknown=True`，stderr 与步骤摘要同步提示「孙进程可能仍在运行」。该标记只作诊断：不改变 cancelled/timed_out 终态语义，不进入 KEY 冷却与供应商健康判定，孤儿清扫继续兜底。
 4. **执行事实与业务事实分界**：步骤记录与步骤日志是执行事实的唯一源（实际绑定、工具轨迹、进程收场）；run 的 warnings/`flow_drift`、任务状态、经验库与用量台账是业务事实，各自持有、以稳定 ID 关联。近名事实不得互相冒充：任务翻 `done` 不冒充质量达标（质量门另有判定）、`route_plan` 选中不冒充实际执行、忙碌动画/进度徽章不冒充执行事实、杀树完成不冒充进程停稳。
 
+## WorkDSH 边界落地（P0/P1/P2）
+
+本节把 WorkDSH 的执行绑定、修订、资产所有权和外部回执原则落到 CodeBee 的现有数据模型中。所有新增字段均向后兼容，老任务/老 run 缺字段时按“未记录”处理，不补猜测值。
+
+### P0：运行快照与外部操作台账
+
+1. `store.create_run` 写入脱敏 `execution_snapshot`：流程 digest、技能/知识修订集合、CLI 绑定链、规范化上游、连接定义/实例/账号/凭据 ID、工作目录、Git revision、验证命令和质量闸配置。快照不得包含 API key、任务正文、原始 stdout/stderr。
+2. 外部写操作必须先写 `operations.begin()` 的 `pending` 记录，再以同一 `operation_id` 写 `confirmed`、`failed` 或 `unknown`。请求只留 `request_hash`；未知状态必须先远端对账后才能重试。
+3. 发布台账、Git 分支裁决和禅道写操作必须能回指 `operation_id`；`ok=false` 不得被 UI 解释为“远端一定失败”，`unknown` 必须单独展示。
+
+### P1：不可变修订、资产引用、连接身份和验收矩阵
+
+1. 流程、经验、知识、技能包和资产均用 `revision_id + content_sha256` 标识。内容变化产生新修订，旧修订进入有限历史；历史 run 只引用旧修订，不因当前库变化而改写。
+2. 项目/任务只保存 `asset_id + revision_id + path` 等引用和摘要，资产正文仍由工作目录/资产库持有。移除引用不删除正文；缺失文件返回“未找到”，不伪造成果。
+3. 连接身份分为定义（协议+规范化上游）、实例（provider ID）、账号/凭据（`key_id`）。快照和台账只保存这些身份，不保存凭据值，也不按显示名合并连接。
+4. 每个终态 run 生成独立验收矩阵：正确性、性能、边界、异常、可读性、安全性。缺少证据为 `not_evaluated` 或 `unknown`，不能从退出码、忙碌状态或模型回复推断通过。
+
+### P2：重启恢复与未知操作对账
+
+1. 启动时将超过 15 分钟仍为 `pending` 的外部操作转为 `unknown`，保留原请求摘要，禁止自动重放。
+2. 远端查询得到结论后调用 `operations.reconcile()` 写入带 `last_reconciled_at` 的确认/失败记录；对账失败继续保持 `unknown`，由人工或后续任务决定补偿。
+3. 运行恢复仍沿用 `recover_orphaned_runs`；运行状态恢复和外部写入对账是两条独立链路，不能把 run failed 当成远端写入 failed。
+
 ## 当前实现状态
 
 | 规则 | 当前代码状态 | 结论 |
@@ -177,6 +200,11 @@ token 用量和耗时是独立于"成/败"的第三条轴：一次 `done` 可以
 | 修订钉住与漂移诊断 | `flows.flow_digest/flow_drift` + `store.create_task` 落 `flow_snapshot`，`execute_run` 起跑比对并落 `flow_drift` 与 warning，`test_revision_binding_ledger.py` 锁定 | 已落地；只覆盖语义字段，改展示位不告漂移；流程被删除时不告漂移（任务自有固化参数） |
 | 步骤绑定速记 | `_run_step` 与内置直连起跑记 `provider`（`provider_id@host` / `KEY名=host`），`add_step` 落步骤行 | 已落地；UI 步骤卡尚未展示该列（先入账后展示），老运行数据无此键、读取须 `.get` |
 | 停稳未知标记 | `_kill_tree` 返回确认结果，`run_process` 未确认时带 `quiescence_unknown`，步骤摘要与 stderr 同步提示 | 已落地；POSIX killpg 失手、Windows taskkill 卡死两路径均覆盖判定，孤儿清扫继续兜底 |
+| WorkDSH P0 运行快照 | `store.create_run` 落 `execution_snapshot`；只保存绑定、连接身份和修订摘要 | 已落地；密钥、任务正文和原始日志不进快照 |
+| WorkDSH P0 外部操作台账 | `core.operations` append-only；发布/Git/禅道写操作关联 `operation_id` | 已落地；状态区分 `pending/confirmed/failed/unknown` |
+| WorkDSH P1 修订与资产 | `revisions.py`、经验/知识/技能包摘要、`assets.py`、任务 `asset_refs` | 已落地；历史字段缺失时按未记录处理 |
+| WorkDSH P1 验收矩阵 | `acceptance.evaluate_run` 在 run 终态写入六维证据 | 已落地；无证据为 `not_evaluated`/`unknown` |
+| WorkDSH P2 外部恢复 | 启动调用 `operations.recover_pending`；可用 `operations.reconcile` 对账 | 已落地；超时 pending 不自动重放 |
 
 ## 配套运营闭环
 
@@ -318,3 +346,4 @@ host 归一已用于换路（403 隔离、同 host 让位）与评测作废，�
 | 运行时代码 | 新增共享上游身份归一化；同步缓存命中返回成功；同步失败传播为 `ENV_BLOCK` | 让路由、换路和预检使用同一可验证口径 |
 | 导语 | 节名交叉引用修正：「并行协作与发布纪律」拆正为「并行会话协作纪律」与「发布与通知硬闸」 | 消除指向不存在小节的失效引用 |
 | 新增「修订钉住与执行留痕」节 | 流程 digest 钉住与漂移诊断、步骤绑定速记、停稳未知标记、执行/业务事实分界四口径；实施约束补两条；实现状态表补三行（借鉴 WorkDSH ADR-0010/ADR-0012/ResolvedExecutionBinding 与取消结算分层） | 「任务当时用的哪版流程/哪个上游/进程是否真停稳」从翻日志猜变成可对账事实 |
+| 新增「WorkDSH 边界落地（P0/P1/P2）」节 | 增加运行快照、外部操作回执、不可变修订、资产引用、连接身份、六维验收和重启对账口径 | 将 WorkDSH 开源项目中可迁移的边界模型落实为 CodeBee 可验证字段和状态 |

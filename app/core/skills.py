@@ -25,7 +25,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import paths
+from . import paths, revisions
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "skills.json"
@@ -189,6 +189,8 @@ def _load_user_pack(path):
         "user": True,
     }
     pack["body"] = body
+    pack.update({k: revisions.make_revision("packrev", body, source=key)[k]
+                 for k in ("revision_id", "content_sha256")})
     with _LOCK:
         _user_pack_cache[key] = (mt, pack)
     return pack
@@ -263,6 +265,38 @@ def list_packs():
                     "enabled": bool(st.get("enabled", True)),
                     "chars": len(pack_text(p))})
     return out
+
+
+def revision_for_task(task) -> dict:
+    """Return the skill inputs selected for a task as a compact revision set."""
+    scope = str((task or {}).get("type") or "*")
+    packs = []
+    for pack in all_packs():
+        if scope not in (pack.get("scopes") or ["*"]) and "*" not in (pack.get("scopes") or []):
+            continue
+        if not _pack_enabled(pack.get("id")):
+            continue
+        body = pack_text(pack)
+        rev = revisions.make_revision("packrev", body, source=pack.get("id") or "")
+        packs.append({"id": pack.get("id") or "", "revision_id": rev["revision_id"],
+                      "content_sha256": rev["content_sha256"]})
+    lessons = []
+    for lesson in list_lessons(scope=scope, only_enabled=True):
+        current_digest = revisions.content_sha256(lesson.get("content") or "")
+        stored_digest = str(lesson.get("content_sha256") or "")
+        drift = bool(stored_digest and stored_digest != current_digest)
+        lessons.append({"id": lesson.get("id") or "",
+                        "revision_id": (lesson.get("revision_id")
+                                        if stored_digest == current_digest else
+                                        revisions.revision_id("skrev", current_digest)) or
+                        revisions.revision_id("skrev", current_digest),
+                        "content_sha256": current_digest,
+                        "revision_drift": drift})
+    payload = {"scope": scope, "packs": packs, "lessons": lessons}
+    digest = revisions.stable_digest(payload)
+    return {"revision_id": revisions.revision_id("skills", digest),
+            "content_sha256": digest, "scope": scope,
+            "packs": packs, "lessons": lessons}
 
 
 def _pack_enabled(pid):
@@ -364,7 +398,16 @@ def upsert_lesson(scope, title, content, source="", category=None, dim=None):
                     break
         if hit is not None:
             it = hit
+            old_content = str(it.get("content") or "")
+            new_rev = revisions.make_revision("skrev", content, source=source)
+            if old_content and old_content != content:
+                it.setdefault("revisions", []).append(
+                    revisions.revision_record(
+                        "skrev", old_content, source=it.get("source") or "",
+                        extra={"content": old_content}))
+                it["revisions"] = it["revisions"][-5:]
             it["content"] = content
+            it.update({k: new_rev[k] for k in ("revision_id", "content_sha256")})
             it["seen"] = int(it.get("seen") or 1) + 1
             it["updated_at"] = _now()
             # 合并时不降级已有分类：除非本次归到了明确类别，或该条原本没有分类
@@ -374,6 +417,7 @@ def upsert_lesson(scope, title, content, source="", category=None, dim=None):
                 it["source"] = source
             _save(data)
             return it
+        rev = revisions.make_revision("skrev", content, source=source)
         it = {"id": lid, "scope": scope, "title": title, "content": content,
               "source": source, "hits": 0, "seen": 1, "enabled": True,
               "category": cat,
@@ -381,6 +425,7 @@ def upsert_lesson(scope, title, content, source="", category=None, dim=None):
               # 稳定 token（procedure=程序性做法 / lesson=规避性教训）；
               # 展示层 view() 翻译成「做法/教训」，持久层不用中文防改文案伤数据
               "kind": ("procedure" if title.startswith("做法：") else "lesson")}
+        it.update({k: rev[k] for k in ("revision_id", "content_sha256")})
         items.append(it)
         _save(data)
         return it

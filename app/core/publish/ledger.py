@@ -24,7 +24,8 @@ from .. import paths
 LOCK = threading.RLock()
 
 FIELDS = ("ts", "day", "platform", "action", "task_id", "chapter_no",
-          "book_id", "title", "ok", "error", "shot")
+          "book_id", "title", "ok", "error", "shot", "operation_id",
+          "operation_status", "remote_receipt")
 
 
 def _month_file(day):
@@ -32,7 +33,8 @@ def _month_file(day):
 
 
 def record(platform, action, task_id="", chapter_no=0, book_id="",
-           title="", ok=True, error="", shot=""):
+           title="", ok=True, error="", shot="", operation_id="",
+           operation_status="", remote_receipt=""):
     """追加一条发布记录。异常全吞——记账失败绝不能影响发布主流程。"""
     try:
         rec = {
@@ -47,6 +49,9 @@ def record(platform, action, task_id="", chapter_no=0, book_id="",
             "ok": bool(ok),
             "error": str(error or "")[:300],
             "shot": str(shot)[:200],
+            "operation_id": str(operation_id or "")[:80],
+            "operation_status": str(operation_status or "")[:20],
+            "remote_receipt": str(remote_receipt or "")[:300],
         }
         with LOCK:
             paths.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)

@@ -13,6 +13,7 @@ commit_to_workdir 移入 <workdir>/_attachments/ 并把路径清单注入任务�
 from __future__ import annotations
 
 import base64
+import hashlib
 import html as _html
 import json
 import mimetypes
@@ -109,6 +110,89 @@ def norm_rel(a):
     if p.startswith("_attachments/"):
         return p
     return "_attachments/" + p.rsplit("/", 1)[-1]
+
+
+def _digest_file(path):
+    """分块 sha256：附件几 MB 级，块读防一次性大内存。"""
+    h = hashlib.sha256()
+    with open(str(path), "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def verify_task(task, workdir=None):
+    """附件完整性对账（借鉴 WorkDSH 输入引用修订：任务输入钉精确修订而非
+    可变 latest）。任务创建/追加时钉的 digest vs 当前文件内容：
+
+    返回漂移清单 [{path, name, pinned, current, status}]，status ∈
+    changed/missing/unreadable；无附件、无钉记（老数据）或无漂移返回 []。
+    只诊断不阻断——用户可能有意换文件，但绝不静默。"""
+    root = Path(str(workdir or (task or {}).get("workdir") or "")).resolve()
+    out = []
+    for a in (task or {}).get("attachments") or []:
+        pinned = str(a.get("digest") or "")
+        rel = norm_rel(a)
+        if not pinned or not rel:
+            continue   # 老数据无钉记：不做推断，不算漂移
+        fp = (root / rel).resolve()
+        try:
+            if root not in fp.parents:
+                out.append({"path": rel, "name": str(a.get("name") or rel)[:120],
+                            "pinned": pinned, "current": "", "status": "unreadable"})
+                continue
+            if not fp.is_file():
+                out.append({"path": rel, "name": str(a.get("name") or rel)[:120],
+                            "pinned": pinned, "current": "", "status": "missing"})
+                continue
+            cur = _digest_file(fp)
+        except OSError:
+            out.append({"path": rel, "name": str(a.get("name") or rel)[:120],
+                        "pinned": pinned, "current": "", "status": "unreadable"})
+            continue
+        if cur != pinned:
+            out.append({"path": rel, "name": str(a.get("name") or rel)[:120],
+                        "pinned": pinned, "current": cur, "status": "changed"})
+    return out
+
+
+def asset_refs(workdir, items):
+    """Return stable asset references for files owned by a task.
+
+    The file remains in the task workspace; the reference carries only its
+    identity, revision digest and relative path.  This lets project/task
+    records point at an asset without copying the asset body into metadata.
+    Missing files are skipped so legacy attachment records remain readable.
+    """
+    root = Path(str(workdir or "")).resolve()
+    out = []
+    for raw in items or []:
+        if isinstance(raw, dict) and str(raw.get("path") or "").replace("\\", "/").startswith("_attachments/"):
+            rel = norm_rel(raw)
+        else:
+            rel = str((raw or {}).get("path") if isinstance(raw, dict) else raw or "")
+            rel = rel.replace("\\", "/").lstrip("/")
+        if not rel:
+            continue
+        fp = (root / rel).resolve()
+        try:
+            if root not in fp.parents or not fp.is_file():
+                continue
+            digest = _digest_file(fp)
+            source = raw if isinstance(raw, dict) else {}
+            out.append({
+                "asset_id": "asset-" + digest[:16],
+                "revision_id": "assetrev-" + digest[:16],
+                "content_sha256": digest,
+                "path": rel,
+                "name": str(source.get("name") or fp.name)[:120],
+                "mime": str(source.get("mime") or mimetypes.guess_type(fp.name)[0]
+                           or "application/octet-stream")[:120],
+                "size": fp.stat().st_size,
+            })
+        except (OSError, ValueError):
+            continue
+    return out
 
 
 def read_pending(fid):
@@ -292,7 +376,10 @@ def commit_to_workdir(workdir, ids):
         item = {"name": name,
                 "size": meta.get("size") or (adir / name).stat().st_size,
                 "mime": meta.get("mime") or "application/octet-stream",
-                "path": "_attachments/" + name}
+                "path": "_attachments/" + name,
+                # 内容指纹（借鉴 WorkDSH 输入引用修订）：续跑/重试时
+                # verify_task 对账——文件被换过/删过给明确诊断，不静默
+                "digest": _digest_file(adir / name)}
         # Office zip 文档抽正文 → 伴生 .txt：无头 CLI 读不了二进制容器，
         # 有文本版所有智能体都能直接读；抽取失败只降级不拒收
         if Path(name).suffix.lower() in _TEXT_EXTRACT_EXT:
@@ -377,6 +464,10 @@ def items_from_paths(paths_, workdir):
         except OSError:
             size = 0
         item = {"name": Path(rel).name, "path": rel, "mime": mime, "size": size}
+        try:
+            item["digest"] = _digest_file(path)   # 运行中追加同样钉指纹
+        except OSError:
+            pass
         side = path.with_name(path.name + ".txt")
         if side.is_file():
             item["text_path"] = rel + ".txt"
