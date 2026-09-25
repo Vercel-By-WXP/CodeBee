@@ -88,6 +88,40 @@ class ContentContractTests(BaseTest):
         self.assertIn("标题写结果或结论", doc)                     # 标题=结果
         self.assertIn("可测试的验收标准", doc)                     # 验收可测试
 
+    def test_novel_madman_architect_carpenter(self):
+        """四角色写作框架蒸馏（2026-09-25 借鉴 writing-with-agents）：
+        起草侧先发散后收敛三步进契约；Judge 角色由评审链承担不进起草契约。"""
+        from app.core import pipeline
+
+        novel = pipeline._content_contract({"type": "novel"})
+        self.assertIn("素材清单", novel)                           # 狂人：发散倾倒
+        self.assertIn("组织成结构", novel)                         # 建筑师：结构化
+        self.assertIn("按结构成文", novel)                         # 木匠：按结构成文
+        self.assertIn("初稿期不做质量审判", novel)                 # Judge 不在起草期
+
+    def test_research_evidence_conflict_and_gap_driven(self):
+        """调研证据纪律（2026-09-25 借鉴 deepresearch-agent 记忆层矛盾检测消解
+        + dzhng/deep-research 缺口驱动迭代）：来源冲突显式裁决不各说一半，
+        子问题清单缺口驱动补查、查不到的显式标注证据不足。"""
+        from app.core import pipeline
+
+        appendix = pipeline.RESEARCH_APPENDIX
+        self.assertIn("来源冲突显式裁决", appendix)      # 矛盾不悄悄取舍
+        self.assertIn("不各说一半", appendix)            # 冲突处理去向
+        self.assertIn("按来源可信度加权", appendix)      # Source-Weight 消解
+        self.assertIn("缺口驱动补查", appendix)          # 子问题清单驱动
+        self.assertIn("证据不足", appendix)              # 缺口显式标注
+
+    def test_email_thread_action_items(self):
+        """线程级交付契约（2026-09-25 借鉴 agentic-inbox）：回复邮件逐条回应不漏问，
+        行动项带负责人与截止时间。"""
+        from app.core import pipeline
+
+        email = pipeline._content_contract({"type": "email"})
+        self.assertIn("逐条回应", email)
+        self.assertIn("不漏问", email)
+        self.assertIn("负责人", email)
+
 
 if __name__ == "__main__":
     import unittest
