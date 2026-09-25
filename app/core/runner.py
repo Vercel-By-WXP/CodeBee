@@ -2030,16 +2030,18 @@ def as_scores(gj):
 def extract_scores_from_text(text):
     """评审解析第四道网（借鉴 BAML 的宽容提取）：模型把分数写成散文键值对
     完全不出 JSON 时（2026-09-18 真实案例：kimi 正文提分），从文本直接抓
-    「维度：N 分」模式。返回 scores dict 或 {}。"""
+    「维度：N 分」模式。返回 scores dict 或 {}。
+    2026-09-25 批1 补：分隔符不止冒号——短横线「正确性 - 9 分」、全角等号
+    「＝」、箭头「→」三种真实输出形态此前全漏，格式错被误判质量差白烧修复轮。"""
     if not text:
         return {}
     scores = {}
     for m in re.finditer(
-            r"[\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z0-9 ]{0,11}"
-            r"[:：]\s*(\d{1,2}(?:\.\d)?)\s*分?", text):
-        dim = m.group(0).rsplit(":", 1)[0].rsplit("：", 1)[0].strip()
+            r"([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z0-9 ]{0,11})"
+            r"\s*[:：\-＝=→]\s*(\d{1,2}(?:\.\d)?)\s*分?", text):
+        dim = m.group(1).strip()
         try:
-            val = float(m.group(1))
+            val = float(m.group(2))
         except ValueError:
             continue
         if not dim or dim in scores or not (1.0 <= val <= 10.0):
