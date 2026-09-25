@@ -11357,6 +11357,7 @@ async function loadSettings() {
     if (pet && S.settings) pet.checked = S.settings.pet_enabled !== false;
     const cs = $("set-claude-sync");
     if (cs && S.settings) cs.checked = S.settings.claude_config_sync !== false;
+    fillNotifyPush();
     syncPetModeSeg();
     syncPetSkinSeg();
     const wd = $("set-workdir"), hint = $("set-workdir-hint");
@@ -11545,6 +11546,66 @@ async function saveSettings() {
       claude_config_sync: !$("set-claude-sync") || $("set-claude-sync").checked }) });
     S.settings = r.settings;
     if (msg) { msg.className = "msg ok"; msg.textContent = t("已保存：编排并发上限 ") + r.workers; }
+  } catch (e) {
+    if (msg) { msg.className = "msg err"; msg.textContent = e.message; }
+  }
+}
+
+/* 推送通知（设置页）：群 webhook + 个人推送通道（Bark/ntfy/Server酱/Telegram） */
+const NOTIFY_INPUTS = ["set-notify-webhook", "set-notify-bark-server", "set-notify-bark-key",
+  "set-notify-ntfy", "set-notify-serverchan", "set-notify-tg-token", "set-notify-tg-chat"];
+
+function fillNotifyPush() {
+  if (!S.settings) return;
+  const v = (k) => S.settings[k] || "";
+  const set = (id, key) => { const el = $(id); if (el) el.value = v(key); };
+  set("set-notify-webhook", "notify_webhook");
+  set("set-notify-bark-server", "notify_bark_server");
+  set("set-notify-bark-key", "notify_bark_key");
+  set("set-notify-ntfy", "notify_ntfy_topic");
+  set("set-notify-serverchan", "notify_serverchan_key");
+  set("set-notify-tg-token", "notify_telegram_token");
+  set("set-notify-tg-chat", "notify_telegram_chat_id");
+}
+
+function notifyPushPatch() {
+  const val = (id) => { const el = $(id); return el ? el.value.trim() : undefined; };
+  const p = {};
+  const pairs = [["set-notify-webhook", "notify_webhook"], ["set-notify-bark-server", "notify_bark_server"],
+    ["set-notify-bark-key", "notify_bark_key"], ["set-notify-ntfy", "notify_ntfy_topic"],
+    ["set-notify-serverchan", "notify_serverchan_key"], ["set-notify-tg-token", "notify_telegram_token"],
+    ["set-notify-tg-chat", "notify_telegram_chat_id"]];
+  pairs.forEach(([id, key]) => { const v = val(id); if (v !== undefined) p[key] = v; });
+  return p;
+}
+
+async function saveNotifyPush() {
+  const msg = $("notify-test-msg");
+  try {
+    const r = await api("/api/settings", { method: "POST", body: JSON.stringify(notifyPushPatch()) });
+    S.settings = r.settings;
+    fillNotifyPush();
+    if (msg) { msg.className = "msg ok"; msg.textContent = t("推送设置已保存"); }
+  } catch (e) {
+    if (msg) { msg.className = "msg err"; msg.textContent = e.message; }
+  }
+}
+
+async function testNotifyPush() {
+  const msg = $("notify-test-msg");
+  if (msg) { msg.className = "msg"; msg.textContent = t("发送中…"); }
+  try {
+    // 先落盘当前输入再测，避免「改了没保存测的是旧配置」的困惑
+    await api("/api/settings", { method: "POST", body: JSON.stringify(notifyPushPatch()) });
+    const r = await api("/api/notify/test", { method: "POST" });
+    const names = Object.keys(r.channels || {});
+    const bad = names.filter((k) => !r.channels[k]);
+    if (msg) {
+      msg.className = "msg " + (r.ok ? "ok" : "err");
+      msg.textContent = r.ok
+        ? (bad.length ? t("部分通道失败：") + bad.join(", ") : t("✓ 测试消息已发出（") + names.join(", ") + "）")
+        : (t("全部通道发送失败：") + names.join(", "));
+    }
   } catch (e) {
     if (msg) { msg.className = "msg err"; msg.textContent = e.message; }
   }

@@ -666,7 +666,8 @@ class Handler(BaseHTTPRequestHandler):
         # /api/hooks/run 用自己的令牌鉴权（外部脚本没有设备控制权握手）。
         if path in ("/api/health/op", "/api/models/provider-op", "/api/models/model-op",
                     "/api/models/test-provider", "/api/models/test-model",
-                    "/api/models/probe-wire", "/api/models/key-op", "/api/hooks/run"):
+                    "/api/models/probe-wire", "/api/models/key-op", "/api/hooks/run",
+                    "/api/notify/test"):
             pass                                    # 落到下方各自路由
         else:
             deny = self._deny_control()
@@ -691,6 +692,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": ok, "output": out})
         if path == "/api/tasks/clarify":
             return self._api_task_clarify()
+        if path == "/api/notify/test":
+            # 设置页「发送测试」：向全部已配置推送通道发一条测试消息
+            from core import notify
+            res = notify.push_text_ex(
+                "🔔 CodeBee 测试推送\n收到这条消息说明推送通道连通正常（任务收尾会推同样格式的结果摘要）。")
+            if not res:
+                return self._json(400, {"error": "未配置任何推送通道（群 Webhook / Bark / ntfy / Server酱 / Telegram）"})
+            return self._json(200, {"ok": any(res.values()), "channels": res})
         if path == "/api/hooks/run":
             return self._api_hook_run()
         if path == "/api/health/op":

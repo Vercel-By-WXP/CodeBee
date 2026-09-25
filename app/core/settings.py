@@ -21,9 +21,15 @@ _FILE = paths.DATA_DIR / "settings.json"
 # 运行时出现（空闲 90s 隐身）。
 # cleanup_enabled / cleanup_retention_days：每日垃圾清理（core/cleanup.py）——
 # 运行过程日志/发布截图/bak 残留等超期自动清理；retention 为保留天数。
+# 个人推送通道（core/notify.py 读取）：Bark（iOS）/ ntfy（自托管友好）/
+# Server酱（微信）/ Telegram Bot。密钥只存本机 settings.json，不出网（推送
+# 时才带着发给对应服务）。bark_server 留空回落官方 api.day.app。
 DEFAULTS = {"max_concurrent_jobs": 12, "default_workdir": "", "hooks_token": "",
             "telemetry_errors": True, "publish_daily_cap": 10,
             "publish_fail_streak": 3, "notify_webhook": "", "notify_base_url": "",
+            "notify_bark_server": "", "notify_bark_key": "",
+            "notify_ntfy_topic": "", "notify_serverchan_key": "",
+            "notify_telegram_token": "", "notify_telegram_chat_id": "",
             "pet_enabled": True, "pet_mode": "always", "pet_skin": "plush",
             "cleanup_enabled": True, "cleanup_retention_days": 14,
             # claude_config_sync：打开/运行前防线是否直写 ~/.claude/settings.json。
@@ -118,6 +124,11 @@ def save(patch):
             cur["notify_webhook"] = str(patch.get("notify_webhook") or "").strip()[:300]
         if "notify_base_url" in patch:
             cur["notify_base_url"] = str(patch.get("notify_base_url") or "").strip()[:200]
+        for _nk, _nmax in (("notify_bark_server", 200), ("notify_bark_key", 128),
+                           ("notify_ntfy_topic", 200), ("notify_serverchan_key", 128),
+                           ("notify_telegram_token", 128), ("notify_telegram_chat_id", 64)):
+            if _nk in patch:
+                cur[_nk] = str(patch.get(_nk) or "").strip()[:_nmax]
         if "pet_enabled" in patch:
             cur["pet_enabled"] = bool(patch.get("pet_enabled"))
         if "pet_mode" in patch:

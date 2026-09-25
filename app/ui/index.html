@@ -957,6 +957,33 @@
             <label class="toggle" style="margin-top:6px"><input id="set-claude-sync" type="checkbox"> <span data-i18n="把绑定供应商写进 ~/.claude/settings.json（一键打开与每次运行前）">把绑定供应商写进 ~/.claude/settings.json（一键打开与每次运行前）</span></label>
             <p data-i18n="开启后 CodeBee 会覆盖 cc-switch 等工具对交互 claude 的手选配置。关闭后交互 claude 配置归你手动管理；编排步骤改用一次性注入，模型路由不受影响。" class="hint">开启后 CodeBee 会覆盖 cc-switch 等工具对交互 claude 的手选配置。关闭后交互 claude 配置归你手动管理；编排步骤改用一次性注入，模型路由不受影响。</p>
           </div>
+          <h3 data-i18n="推送通知" class="sec-title">推送通知</h3>
+          <div class="field"><label data-i18n="群机器人 Webhook（钉钉 / 飞书 / 企业微信，按域名自动适配）">群机器人 Webhook（钉钉 / 飞书 / 企业微信，按域名自动适配）</label>
+            <div class="input-row">
+              <input id="set-notify-webhook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" data-i18n-ph="https://oapi.dingtalk.com/robot/send?access_token=…">
+            </div>
+            <p data-i18n="任务收尾把结果摘要推到群里；也接受任意 https 地址（按钉钉 text 形状发，自建 n8n 等自选）。" class="hint">任务收尾把结果摘要推到群里；也接受任意 https 地址（按钉钉 text 形状发，自建 n8n 等自选）。</p>
+          </div>
+          <div class="field"><label data-i18n="个人推送（推到你的手机，配任意一条即可）">个人推送（推到你的手机，配任意一条即可）</label>
+            <div class="grid-2">
+              <div><input id="set-notify-bark-key" type="text" placeholder="Bark Device Key" data-i18n-ph="Bark Device Key">
+                <input id="set-notify-bark-server" type="text" placeholder="Bark 服务器（默认 https://api.day.app）" data-i18n-ph="Bark 服务器（默认 https://api.day.app）" style="margin-top:6px"></div>
+              <div><input id="set-notify-ntfy" type="text" placeholder="ntfy 主题 URL（如 https://ntfy.sh/my-topic）" data-i18n-ph="ntfy 主题 URL（如 https://ntfy.sh/my-topic）"></div>
+            </div>
+            <div class="grid-2" style="margin-top:6px">
+              <div><input id="set-notify-serverchan" type="text" placeholder="Server酱 SendKey（推送到微信）" data-i18n-ph="Server酱 SendKey（推送到微信）"></div>
+              <div><input id="set-notify-tg-token" type="text" placeholder="Telegram Bot Token" data-i18n-ph="Telegram Bot Token">
+                <input id="set-notify-tg-chat" type="text" placeholder="Telegram Chat ID" data-i18n-ph="Telegram Chat ID" style="margin-top:6px"></div>
+            </div>
+            <p data-i18n="密钥只存本机。多通道同时配置时全部发送；任一通道收到即视为送达。" class="hint">密钥只存本机。多通道同时配置时全部发送；任一通道收到即视为送达。</p>
+          </div>
+          <div class="field">
+            <div class="input-row">
+              <button class="ghost small" onclick="saveNotifyPush()" data-i18n="保存推送设置">保存推送设置</button>
+              <button class="ghost small" onclick="testNotifyPush()" data-i18n="发送测试">发送测试</button>
+            </div>
+            <p class="hint" id="notify-test-msg"></p>
+          </div>
           <div id="set-v2-card" class="field"></div>
           <div id="settings-msg" class="msg"></div>
         </div>
