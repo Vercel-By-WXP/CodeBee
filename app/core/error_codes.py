@@ -55,6 +55,9 @@ FATAL_CODES = frozenset({
 _MISSING_CREDENTIAL = (
     "no api key", "missing api key", "api key not found", "api key is required",
     "missing environment variable", "missing env var",
+    # claude CLI 登录闸门：无 OAuth/Key 时 -p 模式只吐一行提示即退出（exit 0/1
+    # 都见过），不产生 result 事件——绑定链 env 未注入或本机未登录时必现
+    "not logged in", "please run /login",
 )
 _AUTH = (
     "invalid api key", "invalid_api_key", "api key is invalid", "incorrect api key",
@@ -180,7 +183,7 @@ _SAFE_ERROR_SUMMARIES = {
     ErrorCode.EMPTY: "模型未返回内容",
     ErrorCode.NETWORK: "网络连接或数据流中断",
     ErrorCode.UPSTREAM_SERVER: "上游服务端异常",
-    ErrorCode.MISSING_CREDENTIAL: "所选路由未找到可用 API 凭据",
+    ErrorCode.MISSING_CREDENTIAL: "未找到可用凭据（CLI 未登录或未配置 API Key）",
     ErrorCode.AUTH: "API 凭据认证失败",
     ErrorCode.FORBIDDEN: "上游拒绝账号、模型或请求权限",
     ErrorCode.QUOTA: "上游余额或调用额度不足",

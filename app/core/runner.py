@@ -1063,6 +1063,23 @@ def _claude_drift_note(att_model, parsed):
     return "[模型漂移] 请求 %s，上游实服 %s" % (att_model, ",".join(served))
 
 
+def _claude_login_hint(error_code, error_text):
+    """claude 登录闸门的修复指引；非缺凭据或非登录措辞返回空。
+
+    「无链回落本机默认」时 runner 不注入任何凭据（_resolve_attempts 的 env
+    恒空），本机 claude 又没登录 → 每步必死还烧满退避。把修法直接写进
+    错误串，别让一句「Not logged in」冒充死因（2026-09-25 Mac 端实案：
+    init JSON 里 apiKeySource=none，链上零候选可换将）。"""
+    if error_code_value(error_code) != ErrorCode.MISSING_CREDENTIAL:
+        return ""
+    if "not logged in" not in str(error_text or "").lower():
+        return ""
+    return ("；claude CLI 未登录且本步未注入绑定链凭据，修复二选一："
+            "① 绑定页为 claude-code 配置供应商链（如 Bigmodel anthropic 面）；"
+            "② 在 ~/.claude/settings.json 的 env 里配 ANTHROPIC_BASE_URL"
+            " + ANTHROPIC_AUTH_TOKEN")
+
+
 def _log_note(log_path, text):
     if not log_path or not text:
         return
@@ -1189,9 +1206,11 @@ def _classify_failure(res, *, parsed=None, kind="", attempt_done=False, empty_ou
         classified = classify_error_text(detail)
         if classified is not None:
             return classified
-    # claude 解析失败（进程 ok 但 JSON 不可解析）
+    # claude 解析失败（进程 ok 但无 result 事件）：先按 stdout 认错误——未登录
+    # 闸门只吐一行「Not logged in · Please run /login」就退出，认不出才是
+    # 真正的解析失败
     if kind == "claude" and parsed is None:
-        return ErrorCode.PARSE_FAIL
+        return classify_error_text(res.get("stdout") or "") or ErrorCode.PARSE_FAIL
     # claude 明确 is_error
     if parsed and parsed.get("is_error"):
         return ErrorCode.VENDOR_REFUSAL
@@ -1796,6 +1815,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                       if _permission_error(out["error"])
                                       else classify_error_text(out["error"])
                                       or _classify_failure(res, kind=kind))
+                if kind == "claude":
+                    out["error"] += _claude_login_hint(out["error_code"],
+                                                       out["error"])
                 break
             if kind == "codex":
                 out["text"], out["usage"], out_sid = _parse_codex_jsonl(res["stdout"])
@@ -1830,6 +1852,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     out["ok"] = False
                     out["error"] = "claude 输出无法解析为 JSON；stdout 尾部: " + res["stdout"][-500:]
                     out["error_code"] = _classify_failure(res, kind="claude", parsed=None)
+                    out["error"] += _claude_login_hint(out["error_code"], out["error"])
                     break
                 out["text"] = parsed["text"]
                 out["cost_usd"] = parsed["cost_usd"]

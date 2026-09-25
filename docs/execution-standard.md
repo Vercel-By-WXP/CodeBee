@@ -49,7 +49,7 @@
 
 | 错误类 | 典型信号 | 动作 |
 |---|---|---|
-| `MISSING_CREDENTIAL` / `AUTH` | 缺 API Key、401、invalid key | 尝试同供应商启用的备用 KEY；都失败后报告密钥配置问题，不把 403 混成 KEY 错。取消路径不记 KEY 冷却 |
+| `MISSING_CREDENTIAL` / `AUTH` | 缺 API Key、401、invalid key、CLI 未登录（`not logged in` / `please run /login`） | 尝试同供应商启用的备用 KEY；都失败后报告密钥配置问题，不把 403 混成 KEY 错。取消路径不记 KEY 冷却 |
 | `FORBIDDEN` | 403、forbidden、模型/账号无权限 | 同一上游不重复撞其他模型，转到不同上游；无异上游则返回权限诊断 |
 | `QUOTA` | 402、余额或额度不足 | 冷却失败 KEY，尝试备用 KEY 和不同供应商；不对耗尽额度做原地重试 |
 | `RATE_LIMIT` | 429、rate limit、too many requests、concurrent limit、并发超限 | 冷却/切 KEY；只在截止时间允许时等待一次，再继续后备候选 |
