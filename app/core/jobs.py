@@ -186,6 +186,21 @@ def _try_start_once(job):
         CANCELS.pop(run_id, None)
         return False
 
+    # A queued run may have spent minutes waiting for a slot or resume timer.
+    # Only the successful slot owner starts the execution clock.  The CAS
+    # prevents a cancellation between slot claim and launch from being revived.
+    if current and current.get("task_id"):
+        task = store.get_task(current["task_id"])
+        if task:
+            budget_s = store._task_timeout_s(current.get("timeout_budget_s") or
+                                             task.get("timeout_s"))
+            if store.update_run(run_id, expected_status="running",
+                                timeout_budget_s=budget_s,
+                                deadline_at=time.time() + budget_s) is None:
+                _release_slot(job)
+                CANCELS.pop(run_id, None)
+                raise DuplicateJobError("运行 %s 已在启动前结束" % run_id)
+
     try:
         threading.Thread(target=_run_job, args=(dict(job),),
                          name="job-direct-%d" % seq, daemon=True).start()
@@ -324,16 +339,6 @@ def _requeue_await_slot(job, waits_left=None):
         # 带着全新重试额度重新入队，封顶永远打不中）。仍满载则续下一拍。
         with _timer_lock:
             _deferred_timers.pop(run_id, None)
-        try:
-            from . import store
-            run = store.get_run(run_id) or {}
-            deadline_at = run.get("deadline_at")
-            if deadline_at is not None and float(deadline_at) <= time.time():
-                store.update_run(run_id, expected_status="queued", status="timeout",
-                                 ended_at=_now(), error="任务总时限已到（排队等待期间）")
-                return
-        except (TypeError, ValueError, AttributeError):
-            pass
         try:
             started = _try_start_once(job)
         except DuplicateJobError:
@@ -577,9 +582,8 @@ def _maybe_auto_resume(run_id):
 
     真实长篇单次运行常因供应商拥堵超时中断；这里在执行线程收尾时自动续跑一次
     续跑（store.retry_task 会带上 inherit），让整个流程真正无人值守。
-    2026-09-24 戍边骑奴 9-20 案：「任务总时限已到」终态此前不续跑，而总时限
-    预算默认 1 小时、慢链天 12 章天然跑不完，用户只能守着手动点重试——超时
-    恰恰是最该自动接着写的一种中断，纳入。
+    2026-09-24 戍边骑奴 9-20 案：「任务总时限已到」终态此前不续跑，
+    长篇在慢链天仍可能超过单次预算；超时也是应自动接着写的一种中断。
     同因连撞止损：续跑副本再失败时与本次失败的错误签名比对（2026-09-18
     重写任务 kimi 403 欠费案），一模一样说明退避没换来不同结果，直接落
     终态写明死因，不再烧剩余的退避次数。超时例外：错误签名恒为同一句

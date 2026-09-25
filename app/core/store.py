@@ -33,6 +33,9 @@ LIVE_TEXT_MAX = 20000   # 单步骤实时思考/正文的保留上限（与 buil
 DEFAULT_TASK_TIMEOUT_S = 3600
 MIN_TASK_TIMEOUT_S = 1
 MAX_TASK_TIMEOUT_S = 7 * 24 * 3600
+REVIEW_TASK_TIMEOUT_S = 7200
+LONG_TASK_TIMEOUT_S = 14400
+SERIAL_EXTRA_CHAPTER_S = 1800
 
 # ---------------------------------------------------------------- 状态版本（SSE 事件驱动）
 # 任何落盘写都算状态变化：SSE 连接等版本号变化才构建/推送全量状态，
@@ -93,6 +96,26 @@ def _task_timeout_s(value=None):
     except (TypeError, ValueError):
         seconds = DEFAULT_TASK_TIMEOUT_S
     return max(MIN_TASK_TIMEOUT_S, min(MAX_TASK_TIMEOUT_S, seconds))
+
+
+def _default_timeout_s(task):
+    """Choose a bounded default from the amount of work, not one hour for all."""
+    env_value = os.environ.get("TUTTI_TASK_TIMEOUT_S")
+    if env_value not in (None, ""):
+        return _task_timeout_s(env_value)
+    serial = task.get("serial")
+    if isinstance(serial, dict) and serial.get("chapters"):
+        try:
+            chapters = max(1, min(20, int(serial["chapters"])))
+        except (TypeError, ValueError):
+            chapters = 8
+        return min(MAX_TASK_TIMEOUT_S,
+                   LONG_TASK_TIMEOUT_S + max(0, chapters - 8) * SERIAL_EXTRA_CHAPTER_S)
+    if task.get("engine") == "code":
+        return LONG_TASK_TIMEOUT_S
+    if task.get("engine") == "review":
+        return REVIEW_TASK_TIMEOUT_S
+    return DEFAULT_TASK_TIMEOUT_S
 
 
 # ---------------------------------------------------------------- 任务
@@ -159,7 +182,6 @@ def create_task(payload):
     }
     thinking = str(payload.get("thinking") or "standard").strip().lower()
     task["thinking"] = thinking if thinking in ("auto", "low", "standard", "high") else "auto"
-    task["timeout_s"] = _task_timeout_s(payload.get("timeout_s"))
     # 流程修订出处（借鉴 WorkDSH ADR-0010）：创建时钉住当时流程定义的指纹。
     # 固化参数已保证「改流程不影响本任务」，digest 再补上可对账的一面——
     # 续跑/重试时若流程已改，flows.flow_drift 能给出明确诊断而非静默换新。
@@ -293,6 +315,9 @@ def create_task(payload):
                 if vper:
                     s["volume_chapters"] = vper
                 task["serial"] = s
+    raw_timeout = payload.get("timeout_s")
+    task["timeout_s"] = (_task_timeout_s(raw_timeout)
+                         if raw_timeout not in (None, "") else _default_timeout_s(task))
     critics = payload.get("critics")
     if isinstance(critics, list) and critics:
         task["critics"] = [str(c) for c in critics]
@@ -724,7 +749,10 @@ def create_run(kind, title, task_id=None, entry_id=None, op=None):
     run["root_span_id"] = tracing.root_span_id(run["id"])
     if kind == "orchestration" and task_id:
         task = get_task(task_id) or {}
-        run["deadline_at"] = time.time() + _task_timeout_s(task.get("timeout_s"))
+        run["timeout_budget_s"] = _task_timeout_s(task.get("timeout_s"))
+        # Provisional for direct callers; jobs resets it at worker claim so
+        # queued/backoff time does not shorten the actual execution budget.
+        run["deadline_at"] = time.time() + run["timeout_budget_s"]
         run["execution_snapshot"] = _execution_snapshot(task)
         try:
             eta = _RUN_ESTIMATOR(
@@ -1751,10 +1779,9 @@ def update_task_params(task_id, patch):
             if task.get("direct_agent") != av and (av or task.get("direct_agent")):
                 task["direct_agent"] = av
                 changed = True
-        # 任务总时限（秒）：建任务时写入，此后靠这里改——下次重试/续跑的
-        # create_run 会按它重新给满预算（2026-09-24 戍边骑奴案：12 章连载
-        # 默认 1 小时在慢链天跑不完，只能人工反复重试）。走 _task_timeout_s
-        # 统一钳制 [1s, 7天]，脏值回落默认；空闲时才可改（与三件套同闸）。
+        # 任务总时限（秒）：建任务时按工作量给默认值，此处支持空闲时显式改。
+        # 下次重试/续跑按新值重新给预算；已在跑的 run 保持原截止时间。
+        # 统一钳制 [1s, 7天]，脏值回落基础默认。
         raw_ts = patch.get("timeout_s")
         if raw_ts not in (None, ""):
             new_ts = _task_timeout_s(raw_ts)
