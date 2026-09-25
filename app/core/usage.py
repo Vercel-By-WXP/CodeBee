@@ -19,6 +19,26 @@ from . import paths
 
 LOCK = threading.RLock()
 
+# ---------------------------------------------------------------- 用量版本（SSE 轻量事件）
+# 台账每落一条记录就 bump 一次版本号。SSE 循环看到变化只推一个几十字节的
+# usage 事件让前端刷新侧栏用量条，绝不为此构建/推送全量状态——运行中记账
+# 是秒级频率，全量 payload 会被放大成推送风暴。版本号自带合并：两次读取
+# 之间落多少条记录都只算一次变化。
+_VER_CV = threading.Condition()
+_USAGE_VER = 1
+
+
+def bump_usage():
+    global _USAGE_VER
+    with _VER_CV:
+        _USAGE_VER += 1
+        _VER_CV.notify_all()
+
+
+def usage_version():
+    return _USAGE_VER
+
+
 # 维度 → 显示名（聚合接口与前端共用）
 DIMENSIONS = {
     "tool": "工具（CLI）",
@@ -120,6 +140,7 @@ def record(source="", run_id="", task_id="", task_type="", role="", step=0,
             _ROUTING_CACHE["data"].clear()
             _ROUTING_RECORDS_CACHE.clear()
             _HOURLY_CACHE["ts"] = 0.0
+        bump_usage()  # 台账变了：SSE 推 usage 事件，侧栏用量条实时跟进
     except Exception:
         pass
 
@@ -250,6 +271,15 @@ def agent_tokens_recent(agent, hours=1):
         return 0
 
 
+# 文件级解析缓存：台账 append-only（写入只增不改前缀），按 (mtime_ns, size)
+# 命中就复用已解析记录。用量条实时化后 summary 会被按秒级反复调用，缓存让
+# 每次只重解析当天新落的小文件，历史月份不再逐次全量 json.loads。缓存的是
+# 未过滤的全量记录，days 过滤在读出后做，同一份缓存可服务不同取数窗口。
+# 读+stat 全程持 LOCK（RLock 可重入，summary 外层已持也不死锁），杜绝
+# 「读到旧内容、却按新 mtime 入缓存」的竞态把新记录吞到下次追加才可见。
+_FILE_CACHE = {}
+
+
 def _iter_records(days):
     """按时间范围读取台账（days=0 表示全部）。返回按写入顺序的记录列表。"""
     out = []
@@ -267,21 +297,32 @@ def _iter_records(days):
         if since_month and p.stem.rsplit("-", 1)[-1] < since_month:
             continue
         try:
-            for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
-                line = line.strip()
-                if not line.startswith("{"):
-                    continue
-                try:
-                    r = json.loads(line)
-                except Exception:
-                    continue
-                if not isinstance(r, dict):
-                    continue
-                if since_day and str(r.get("day", "")) < since_day:
-                    continue
-                out.append(r)
+            with LOCK:
+                st = p.stat()
+                key = str(p)
+                hit = _FILE_CACHE.get(key)
+                if hit and hit[0] == (st.st_mtime_ns, st.st_size):
+                    recs = hit[1]
+                else:
+                    recs = []
+                    for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+                        line = line.strip()
+                        if not line.startswith("{"):
+                            continue
+                        try:
+                            r = json.loads(line)
+                        except Exception:
+                            continue
+                        if not isinstance(r, dict):
+                            continue
+                        recs.append(r)
+                    _FILE_CACHE[key] = ((st.st_mtime_ns, st.st_size), recs)
         except Exception:
             continue
+        for r in recs:
+            if since_day and str(r.get("day", "")) < since_day:
+                continue
+            out.append(r)
     return out
 
 

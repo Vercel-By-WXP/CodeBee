@@ -113,6 +113,29 @@ class TestUsageLedger(BaseTest):
         self.assertEqual(s["by_model"][0]["key"], "(默认)")     # 未传 model 时的占位
 
 
+class TestUsageVersionAndCache(BaseTest):
+    """用量条实时化的两块地基：record 落账必须 bump 用量版本号（SSE
+    usage 事件的事件源）；_iter_records 文件级缓存在台账追加后必须立刻
+    可见（mtime/size 失效），summary 与直读口径一致。"""
+
+    def test_record_bumps_usage_version(self):
+        v0 = usage.usage_version()
+        usage.record(tool="codex", usage={"total": 10})
+        self.assertGreater(usage.usage_version(), v0)
+
+    def test_iter_cache_sees_appends(self):
+        usage.record(tool="codex", usage={"total": 100})
+        n0 = len(usage._iter_records(0))
+        self.assertGreaterEqual(n0, 1)
+        usage.record(tool="codex", usage={"total": 50})
+        n1 = len(usage._iter_records(0))
+        self.assertEqual(n1, n0 + 1)
+        # summary 与直读一致（同一份缓存喂两处）
+        self.assertEqual(usage.summary(days=0)["totals"]["calls"], n1)
+        # days 过滤在缓存读出后做，窄窗口也能正确收敛
+        self.assertLessEqual(len(usage._iter_records(1)), n1)
+
+
 class TestRunnerUsageParse(BaseTest):
 
     def test_parse_codex_jsonl_usage(self):

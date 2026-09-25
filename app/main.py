@@ -34,6 +34,7 @@ if os.environ.get("TUTTI_ISOLATE_HOME", "").strip() == "1":
 from core import automation, board, catalog, flows, jobs, manager, market, market_remote, preview, registry, remote, settings, store
 from core import paths
 from core import health
+from core import usage as usage_ledger
 import pick_dialog
 import pet
 
@@ -2293,6 +2294,7 @@ class Handler(BaseHTTPRequestHandler):
             pass
         cid = self._client_id()
         ver = store.state_version()
+        uver = usage_ledger.usage_version()
         sent_ctrl = None
         last_send = 0.0
         try:
@@ -2308,8 +2310,9 @@ class Handler(BaseHTTPRequestHandler):
             last_send = time.time()
             while True:
                 ver = store.wait_state_change(ver, 2.0)
+                uver_now = usage_ledger.usage_version()
                 ctrl = remote.control_view(cid)
-                if ver == store.state_version() and ctrl == sent_ctrl:
+                if ver == store.state_version() and ctrl == sent_ctrl and uver_now == uver:
                     # 空闲心跳：真发出去的字节让中间层不掐空闲流，也让半死
                     # 连接在下一次写时尽早报错（注释行，EventSource 不派发事件）
                     if time.time() - last_send >= SSE_PING_S:
@@ -2317,6 +2320,18 @@ class Handler(BaseHTTPRequestHandler):
                         self.wfile.flush()
                         last_send = time.time()
                     continue  # 超时醒来且无变化
+                if uver_now != uver:
+                    # 用量条实时化：台账有新记账（哪怕状态没变，如内置智能体
+                    # 同一工具循环内多次模型调用）只发一个几十字节的 usage
+                    # 事件，前端据此刷新左下角用量条，不构建/推送全量状态。
+                    # 2s 醒来才查一次版本号：两次醒来之间落多少条记录都合并
+                    # 成一个事件，推送频率天然有上界。
+                    self.wfile.write(("event: usage\ndata: " +
+                                      json.dumps({"v": uver_now}) + "\n\n").encode("utf-8"))
+                    uver = uver_now
+                    last_send = time.time()
+                if ver == store.state_version() and ctrl == sent_ctrl:
+                    continue  # 只需要补 usage 事件，状态与控制权都没变
                 payload = json.dumps(_state_payload(cid, ver), ensure_ascii=False)
                 self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
                 self.wfile.flush()
