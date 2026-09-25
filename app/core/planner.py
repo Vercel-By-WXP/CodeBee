@@ -144,6 +144,11 @@ detail 的清晰度按「初级工程师测试」校验：假设执行者没有�
 只读 detail 就能照做不跑偏（借鉴 superpowers）。
 若工作目录为空（全新项目），files 写计划新建的文件路径。
 
+## 工作目录侦察（CodeBee 自动扫描的真实结构）
+__RECON__
+（这是执行前自动扫描的真实目录结构：API 编排者没有读文件工具，拆解以上方侦察
+为准，不要凭想象编路径；CLI 执行者有工具，可在实现时再用工具复核。）
+
 ## 开发目标
 __GOAL__
 
@@ -152,6 +157,84 @@ __CONTEXT__
 
 ## 验收命令（最终必须通过）
 __VERIFY__"""
+
+# ---- 工作目录侦察（file-explorer 职能内置化，借鉴 freebuff 专职子 agent）----
+# 给没有文件工具的直连编排者补「贴着真实代码库规划」的能力；CLI 规划者注入后
+# 可省探索轮次。剪枝口径与 artifacts.py 一致（SKIP_DIRS + BUILD_DIRS），另加
+# 本工具任务元数据目录。
+_RECON_SKIP = {".git", "node_modules", "__pycache__", ".venv", "venv", ".idea",
+               ".vscode", "dist", "build", "target", "out", "bin", "obj",
+               ".next", ".nuxt", ".output", "__MACOSX", ".codebee", "_attachments"}
+_RECON_ENTRY_FILES = ("README.md", "readme.md", "README.txt", "package.json",
+                      "pyproject.toml", "requirements.txt", "pom.xml",
+                      "build.gradle", "go.mod", "Cargo.toml", "composer.json")
+_RECON_MAX_FILES = 120        # 目录树条目上限（超出省略并注明）
+_RECON_MAX_CHARS = 2400       # 注入 prompt 的字符预算（约 1.2k token）
+
+
+def workdir_recon(workdir, max_chars=_RECON_MAX_CHARS):
+    """规划前工作目录侦察：文件清单 + 项目清单文件头部摘要。输出纯文本块。
+
+    任何异常都返回一句话说明——侦察永远不能挡规划。
+    """
+    try:
+        root = os.path.abspath(workdir or "")
+        if not workdir or not os.path.isdir(root):
+            return "（工作目录不存在或尚未创建——按全新项目规划）"
+        files = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            rel = os.path.relpath(dirpath, root)
+            if rel != "." and rel.split(os.sep)[0] in _RECON_SKIP:
+                dirnames[:] = []
+                continue
+            dirnames[:] = [d for d in dirnames if d not in _RECON_SKIP]
+            depth = 0 if rel == "." else rel.count(os.sep) + 1
+            if depth > 4:
+                dirnames[:] = []
+                continue
+            prefix = "" if rel == "." else rel.replace(os.sep, "/") + "/"
+            for fn in filenames:
+                files.append(prefix + fn)
+        if not files:
+            return "（空目录——全新项目，可自由规划文件结构）"
+        total = len(files)
+        files.sort()
+        lines = ["共 %d 个文件%s：" % (total, "（截断显示）" if total > _RECON_MAX_FILES else "")]
+        lines += ["- " + f for f in files[:_RECON_MAX_FILES]]
+        if total > _RECON_MAX_FILES:
+            lines.append("…（其余 %d 个文件已省略）" % (total - _RECON_MAX_FILES))
+        shown = 0
+        for f in files:
+            if shown >= 3:
+                break
+            name = f.rsplit("/", 1)[-1]
+            if name in _RECON_ENTRY_FILES:
+                try:
+                    with open(os.path.join(root, f.replace("/", os.sep)),
+                              "r", encoding="utf-8", errors="replace") as fh:
+                        head = "".join(fh.readlines()[:15])[:600]
+                except OSError:
+                    continue
+                if head.strip():
+                    lines += ["", "%s 头部：" % name, head]
+                    shown += 1
+        out = "\n".join(lines)
+        if len(out) > max_chars:
+            out = out[:max_chars] + "\n…（侦察报告已截断）"
+        return out
+    except Exception as e:
+        return "（侦察失败：%s）" % e
+
+
+def _code_plan_prompt(task):
+    """代码规划 prompt 组装（编排者与 CLI 两处共用同一份，保证同任务同 prompt）。"""
+    return (CODE_PLAN_PROMPT
+            .replace("__N__", str(MAX_SUBTASKS))
+            .replace("__GOAL__", task["goal"])
+            .replace("__CONTEXT__", task.get("context") or "（无）")
+            .replace("__VERIFY__", task.get("verify_command") or "（未配置）")
+            .replace("__RECON__", workdir_recon(task.get("workdir") or "")))
+
 
 REVIEW_OUTLINE_PROMPT = """你是内容主编。请为下面的创作任务拟一份写作大纲（要点列表，3-8 条），
 并按内容风险建议后续质量步骤。
@@ -620,10 +703,7 @@ def make_code_plan(task, planner_agent, workdir, ev=None, resume=None, log_path=
         return _fallback_code_plan(task, "（无可用智能体）")
     if planner_agent.get("mode") == "mock":
         return _fallback_code_plan(task, "mock 模式：单步模板")
-    prompt = (CODE_PLAN_PROMPT.replace("__N__", str(MAX_SUBTASKS))
-              .replace("__GOAL__", task["goal"])
-              .replace("__CONTEXT__", task.get("context") or "（无）")
-              .replace("__VERIFY__", task.get("verify_command") or "（未配置）"))
+    prompt = _code_plan_prompt(task)
     res = runner.run_agent(planner_agent, prompt, workdir=workdir, readonly=True,
                            timeout=_deadline_timeout(deadline, 300), deadline=deadline,
                            cancel_event=ev, resume=resume,
@@ -646,11 +726,7 @@ def _fallback_code_plan(task, note):
 def _orch_code_plan(task, prov, model, log_path=None, deadline=None):
     cb = _log_streamer(log_path)
     # §07 T2.2：代码计划同任务同 prompt（断点续跑/重试），TTL 1h 精确缓存
-    res = modelhub.chat(prov["id"], model,
-                        (CODE_PLAN_PROMPT.replace("__N__", str(MAX_SUBTASKS))
-                         .replace("__GOAL__", task["goal"])
-                         .replace("__CONTEXT__", task.get("context") or "（无）")
-                         .replace("__VERIFY__", task.get("verify_command") or "（未配置）")),
+    res = modelhub.chat(prov["id"], model, _code_plan_prompt(task),
                         max_tokens=8000, timeout=_deadline_timeout(deadline, 300), on_delta=cb,
                         reasoning_effort=_reasoning_effort(task),
                         cache_ttl=3600)

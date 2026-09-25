@@ -24,14 +24,14 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 ## 2026-09-18 第三轮
 
 - **omnigent**（omnigent-ai/omnigent，10.1k★）| 编排多 CLI 的元壳：每步前按「本步将用模型」容量重估并压缩、跨壳任务交接、聚合看板、pre-run 成本预估 | 换将超窗预检与成本预估已抄；跨壳交接≈我们的换将链；看板≈蜂巢 | 已落地/已覆盖
-- **agent-orchestrator**（Untrivial-ai，12.1k★）| planning→merge 全程监督、.spec/PROMPT.md 任务规格文件化、计划评审闸 | spec 文件化未抄（路线图）；计划闸≈编排者+待裁决 | 部分借鉴
+- **agent-orchestrator**（Untrivial-ai，12.1k★）| planning→merge 全程监督、.spec/PROMPT.md 任务规格文件化、计划评审闸 | spec 文件化已落地：.codebee/{spec.md,task_plan.md,evidence.md} 任务档案+勾选 stopgate+归档戳（2026-09-25 复查确认，pipeline._write_task_plan/_append_evidence）；计划闸≈编排者+待裁决 | 已落地/已覆盖
 - **oh-my-claudecode**（39.2k★）| 团队化编排、安全围栏、自学习沉淀、PR 工作流、doctor 健康诊断 | 大多有对应物（经验库=自学习、diagnostics=doctor、评审闸=围栏） | 已覆盖
 - **munder-difflin**（7.5k★）| 同任务 N 克隆并行+评审择优+每任务 token 上限；LanceDB 向量经验检索 | 赛马已抄（连载+单稿）；预算熔断已有；向量检索未抄（重依赖，暂缓） | 已落地
-- **freebuff**（CodebuffAI/freebuff，12.3k★）| 每步按本步模型容量重估、缓存感知压缩、suggest_followups、best-of-n 多策略+败者精华回收、专职子 agent 分工（thinker/researcher-web/file-explorer 家族）| 预检/追问卡/赛马精华已抄；专职子 agent 分工未抄（路线图候选）；缓存感知按设计不需要 | 已落地/部分
+- **freebuff**（CodebuffAI/freebuff，12.3k★）| 每步按本步模型容量重估、缓存感知压缩、suggest_followups、best-of-n 多策略+败者精华回收、专职子 agent 分工（thinker/researcher-web/file-explorer 家族）| 预检/追问卡/赛马精华已抄；file-explorer 职能已内置化=规划前工作目录侦察 workdir_recon（2026-09-25，API 直连编排者盲规划补盲）；thinker/researcher-web 不适用（编排链已有对应物）；缓存感知按设计不需要 | 已落地/已覆盖
 - **emdash**（5.8k★）| 并行编码 agent + worktree 隔离 + 外部集成面 | 隔离链已有；外部集成抄了 Webhook 思路 | 已覆盖
 - **edict**（cft0808，16.9k★）| 三省六部制分角色治理 + 实时看板 + 多模型 | 治理隐喻可参考；看板=蜂巢 | 参考
-- **grill-me-skill**（RobMitt，610★）| 需求拷问：一次一问、每题多选弹窗、能自答绝不问用户、沿决策树逐分支到达共识、收尾汇总决策 | 三问向导是固定题序，此为自适应树状追问升级；追问芯片机制现成可复用 | 借鉴（路线图：需求拷问模式）
-- **grill-for-unknowns**（nicobailon，219★）| 先找未知项、再拷问计划、达成实现前共识 | 与 grill-me 合并借鉴 | 借鉴（同上）
+- **grill-me-skill**（RobMitt，610★）| 需求拷问：一次一问、每题多选弹窗、能自答绝不问用户、沿决策树逐分支到达共识、收尾汇总决策 | 已落地：/api/tasks/clarify 编排者生成 1-3 问（能自答不问）+ renderClarify 采访卡（芯片点选/分段签核/跳过直做），2026-09-25 复查确认；决策树多轮追问与现状折中（一卡多问）收敛，不再单列路线图 | 已落地
+- **grill-for-unknowns**（nicobailon，219★）| 先找未知项、再拷问计划、达成实现前共识 | 与 grill-me 合并借鉴；同上已落地 | 已落地
 
 ## 前两轮（详见当日报告）
 
