@@ -13,10 +13,13 @@
 from __future__ import annotations
 
 import base64
+import fnmatch
 import io
 import json
 import mimetypes
 import os
+import re
+import shutil
 import threading
 import time
 import urllib.parse
@@ -50,6 +53,8 @@ _SYSTEM_PROMPT = """你是 CodeBee 的内置执行智能体，直接完成用户
 
 ## 工作方式
 - 需要读文件、看目录、写文件时调用工具；所有路径都是工作目录内的相对路径。
+- 改文件的优先级：小改动用 edit_file（精确查找替换，不必整份重写）＞追加用 append_file＞整份重建才用 write_file。删除/移动/重命名/复制用 fs_manage，不要绕 shell。
+- 大文件（超 64KB）默认只读头尾、中段省略；要看全用 read_file 的 offset/lines 分段读（返回头会提示下一段的 offset）。找内容用 search_content（带行号的 grep），找文件用 find_files，不要逐个文件读。
 - read_file 只能读文本文件；图片、压缩包等二进制文件读不了，如实告知用户即可，不要反复尝试。
 - 用户消息中的图片附件会直接出现在对话里，可直接看图作答，无需用工具读取。
 - run_command 直接在用户的电脑上执行命令并回传退出码与输出：诊断、修复、改配置、重启服务等操作会真实生效。命令跑完看输出再决定下一步，不要一次性罗列步骤让用户自己敲。
@@ -286,6 +291,35 @@ def _tool_read_file(workdir, args):
         return "（路径越界: %s）" % rel
     if not p.is_file():
         return "（文件不存在: %s）" % rel
+    # 分段读取（P0 基础件）：offset/lines 任一非空即按行号范围读——超 64KB
+    # 被「头尾保留、中段省略」截断的大文件靠它读全（用户实测 _lessons_dump.txt
+    # 68KB 被截案）。行号 1-based；逐行切片后不强行拼回整份。
+    offset_raw = str(args.get("offset") or "").strip()
+    lines_raw = str(args.get("lines") or "").strip()
+    if offset_raw or lines_raw:
+        try:
+            size = p.stat().st_size
+        except OSError as e:
+            return "（读取失败: %s）" % e
+        if size > READ_EDIT_MAX_BYTES:
+            return ("（文件过大 %d MB，分段读取上限 %d MB；请用 run_command 处理）"
+                    % (size // (1024 * 1024), READ_EDIT_MAX_BYTES // (1024 * 1024)))
+        try:
+            offset = max(1, int(float(offset_raw or 1)))
+            lines = max(1, min(READ_SEGMENT_MAX_LINES,
+                               int(float(lines_raw or READ_SEGMENT_DEFAULT_LINES))))
+        except (TypeError, ValueError):
+            return "（offset/lines 须为整数行号）"
+        all_lines = runner.decode_output(p.read_bytes()).splitlines()
+        total = len(all_lines)
+        if total == 0:
+            return "（空文件）"
+        if offset > total:
+            return "（offset %d 超出文件总行数 %d）" % (offset, total)
+        seg = all_lines[offset - 1:offset - 1 + lines]
+        head = "第 %d–%d 行（共 %d 行；用 offset=%d 续读下一段）" % (
+            offset, offset - 1 + len(seg), total, offset + len(seg))
+        return head + "\n" + ("\n".join(seg) or "（该范围无内容）")
     data = p.read_bytes()[:READ_MAX_BYTES + 1]
     truncated = len(data) > READ_MAX_BYTES
     if truncated:
@@ -343,7 +377,10 @@ def _tool_write_file(workdir, args):
     if base not in dest.parents:
         return "（路径越界: %s）" % rel
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(content, encoding="utf-8")
+    # newline=""：不翻译换行——模型回写 read_file 读到的 CRLF 内容时，
+    # 默认翻译会二次翻成 \r\r\n
+    with dest.open("w", encoding="utf-8", newline="") as fh:
+        fh.write(content)
     return "已写入 %s（%d 字符，UTF-8）" % (rel, len(content))
 
 
@@ -388,12 +425,254 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None):
     return "%s退出码: %s\n%s" % (prefix, "未知" if code is None else code, body)
 
 
+# ---------------------------------------------------------------- P0 基础件扩展
+# 2026-09-25 用户实测反馈：改大文件只能整份读写、删/移/改名只能绕 shell、
+# 大文件 64KB 中段被截、找内容只能逐文件读——补齐四个基础件（局部编辑、
+# 文件管理、分段读取、全文搜索），全部锁死工作目录内。
+
+READ_EDIT_MAX_BYTES = 16 * 1024 * 1024   # edit/append 分段读全文解码上限
+SEARCH_MAX_FILE_BYTES = 2 * 1024 * 1024  # search_content 单文件参与搜索上限
+SEARCH_DEFAULT_RESULTS = 50              # 命中行默认上限
+READ_SEGMENT_DEFAULT_LINES = 200         # read_file 分段默认行数
+READ_SEGMENT_MAX_LINES = 2000            # read_file 分段行数上限
+
+_WALK_PRUNE = {".git", "__pycache__", "node_modules", ".venv", "venv",
+               "dist", "build", "target", ".idea", ".vscode", "__MACOSX",
+               ".pytest_cache", ".mypy_cache"}
+
+
+def _guard_rel(workdir, rel, allow_root=False):
+    """工作目录相对路径守卫（list/read/write 同款惯用法抽公共）。
+
+    返回 (resolve 后的 Path, 错误串)；合法时错误串为 None。空 rel 仅在
+    allow_root=True 时代表工作目录根。"""
+    rel = str(rel or "").replace("\\", "/").strip("/")
+    if (not rel and not allow_root) or ".." in Path(rel).parts \
+            or any(":" in seg for seg in Path(rel).parts):
+        return None, "（非法路径: %s）" % rel
+    base = Path(workdir or ".").resolve()
+    p = (base / rel).resolve() if rel else base
+    if base not in p.parents and p != base:
+        return None, "（路径越界: %s）" % rel
+    return p, None
+
+
+def _read_text_capped(p, limit=READ_EDIT_MAX_BYTES):
+    """读文本并识别编码（bytes 上限防巨型文件）。返回 (text, err)。"""
+    try:
+        size = p.stat().st_size
+    except OSError as e:
+        return "", "（读取失败: %s）" % e
+    if size > limit:
+        return "", ("（文件过大 %d MB，超过 %d MB 上限；请用 run_command 处理）"
+                    % (size // (1024 * 1024), limit // (1024 * 1024)))
+    data = p.read_bytes()
+    if _looks_binary(data[:8192]):
+        return "", "（二进制文件，%s 不适用: %s）" % ("文本编辑", _bin_format(data[:64]))
+    return runner.decode_output(data), None
+
+
+def _tool_edit_file(workdir, args):
+    """精确查找替换：old_text 逐字符匹配，默认仅允许 1 处命中。"""
+    p, err = _guard_rel(workdir, args.get("path"))
+    if err:
+        return err
+    old_text = str(args.get("old_text") or "")
+    new_text = str(args.get("new_text") if args.get("new_text") is not None else "")
+    if not old_text:
+        return "（old_text 不能为空；改全文请用 write_file 整份写入）"
+    if not p.is_file():
+        return "（文件不存在: %s）" % p.name
+    text, err = _read_text_capped(p)
+    if err:
+        return err
+    count = text.count(old_text)
+    crlf = False
+    if count == 0 and "\r\n" in text and "\r\n" not in old_text:
+        # Windows 文件 CRLF：按 LF 形态重试匹配，命中则在原文上以 CRLF 替换，
+        # 保持文件既有换行风格（否则整个文件换行符被翻转）
+        crlf_text = text.replace("\r\n", "\n")
+        count = crlf_text.count(old_text)
+        crlf = count > 0
+    if count == 0:
+        return ("（old_text 在文件中找不到逐字符匹配——read_file 超过 64KB 会"
+                "中段省略，请用 offset/lines 分段读全后重试）")
+    replace_all = str(args.get("replace_all") or "").strip().lower() in ("1", "true", "yes")
+    if count > 1 and not replace_all:
+        return ("（old_text 命中 %d 处；请补充更多上下文使命中唯一，"
+                "或传 replace_all=true 全部替换）" % count)
+    if crlf:
+        old_text = old_text.replace("\n", "\r\n")
+        new_text = new_text.replace("\n", "\r\n")
+    # newline="" 禁止 Python 的 \n→os.linesep 翻译：文件既有 CRLF 时会被
+    # 二次翻译成 \r\r\n（Windows 实测损坏案），写什么落什么
+    with p.open("w", encoding="utf-8", newline="") as fh:
+        fh.write(text.replace(old_text, new_text))
+    return "已替换 %d 处（%s）" % (count if replace_all else 1, p.name)
+
+
+def _tool_append_file(workdir, args):
+    """文件末尾追加（bytes 级追加，大文件不整份重写）；不存在则创建。"""
+    p, err = _guard_rel(workdir, args.get("path"))
+    if err:
+        return err
+    content = str(args.get("content") if args.get("content") is not None else "")
+    if not content:
+        return "（content 不能为空）"
+    if p.is_file():
+        with open(p, "rb") as fh:
+            head = fh.read(8192)
+        if _looks_binary(head):
+            return "（二进制文件，不能按文本追加: %s — %s）" % (p.name, _bin_format(head))
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "ab") as fh:
+        fh.write(content.encode("utf-8"))
+    return "已追加 %d 字符到 %s（UTF-8）" % (len(content), p.name)
+
+
+def _tool_fs_manage(workdir, args):
+    """删除 / 移动 / 重命名 / 复制（工作目录内；目标已存在一律拒绝防覆盖）。"""
+    action = str(args.get("action") or "").strip().lower()
+    if action not in ("delete", "move", "rename", "copy"):
+        return "（action 须为 delete/move/rename/copy）"
+    p, err = _guard_rel(workdir, args.get("path"))
+    if err:
+        return err
+    if not p.exists() and not p.is_symlink():
+        return "（不存在: %s）" % p
+    if action == "delete":
+        if p.is_dir() and not p.is_symlink():
+            shutil.rmtree(str(p))
+            return "已删除目录（含全部内容）: %s" % p.name
+        p.unlink()
+        return "已删除: %s" % p.name
+    dest, err = _guard_rel(workdir, args.get("dest"))
+    if err:
+        return err.replace("非法路径", "dest 非法路径").replace("路径越界", "dest 路径越界")
+    if dest.exists() or dest.is_symlink():
+        return "（目标已存在，拒绝覆盖: %s；先删除或换名）" % dest.name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if action == "copy":
+        if p.is_dir():
+            shutil.copytree(str(p), str(dest))
+        else:
+            shutil.copy2(str(p), str(dest))
+        return "已复制 %s → %s" % (p.name, dest.name)
+    shutil.move(str(p), str(dest))
+    return "已%s %s → %s" % ("移动" if action == "move" else "重命名",
+                             p.name, dest.name)
+
+
+def _tool_search_content(workdir, args):
+    """grep 式内容搜索：正则（编译失败回退字面量），逐行命中带行号。"""
+    pattern = str(args.get("pattern") or "").strip()
+    if not pattern:
+        return "（pattern 不能为空）"
+    try:
+        rx = re.compile(pattern)
+    except re.error:
+        rx = re.compile(re.escape(pattern))
+        pattern_note = "（正则无效，已按字面量搜索）\n"
+    else:
+        pattern_note = ""
+    sub, err = _guard_rel(workdir, args.get("path"), allow_root=True)
+    if err:
+        return err
+    if not sub.is_dir():
+        return "（目录不存在: %s）" % args.get("path")
+    glob_pat = str(args.get("glob") or "").strip()
+    try:
+        max_results = max(1, min(200, int(float(args.get("max_results") or 0)
+                                        or SEARCH_DEFAULT_RESULTS)))
+    except (TypeError, ValueError):
+        max_results = SEARCH_DEFAULT_RESULTS
+    base = Path(workdir or ".").resolve()
+    out, hits, scanned = [], 0, 0
+    for root, dirs, files in os.walk(str(sub)):
+        dirs[:] = [d for d in dirs if d not in _WALK_PRUNE]
+        for f in files:
+            if glob_pat:
+                relp = os.path.relpath(os.path.join(root, f), str(base)).replace(os.sep, "/")
+                if not (fnmatch.fnmatch(f, glob_pat) or fnmatch.fnmatch(relp, glob_pat)):
+                    continue
+            fp = os.path.join(root, f)
+            try:
+                if os.path.getsize(fp) > SEARCH_MAX_FILE_BYTES:
+                    continue
+                with open(fp, "rb") as fh:
+                    head = fh.read(8192)
+                if _looks_binary(head):
+                    continue
+                with open(fp, "rb") as fh:
+                    data = fh.read()
+            except OSError:
+                continue
+            scanned += 1
+            rel = os.path.relpath(fp, str(base)).replace(os.sep, "/")
+            for i, line in enumerate(runner.decode_output(data).splitlines(), 1):
+                if rx.search(line):
+                    out.append("%s:%d: %s" % (rel, i, line.strip()[:200]))
+                    hits += 1
+                    if hits >= max_results:
+                        out.append("…（已达 %d 行上限，缩小 pattern/glob 或调大 max_results）"
+                                   % max_results)
+                        return pattern_note + "\n".join(out)
+    if not out:
+        return pattern_note + ("（无命中；已扫描 %d 个文本文件）" % scanned)
+    return pattern_note + "\n".join(out) + "\n（共 %d 行命中 / 扫描 %d 个文件）" % (hits, scanned)
+
+
+def _tool_find_files(workdir, args):
+    """文件名通配查找（fnmatch；pattern 不含 / 时匹配任意深度的文件名）。"""
+    pattern = str(args.get("pattern") or "").strip().replace("\\", "/")
+    if not pattern or ".." in pattern or ":" in pattern:
+        return "（非法 pattern: %s；示例 *.py 或 data/*.json）" % pattern
+    base = Path(workdir or ".").resolve()
+    match_name = "/" not in pattern
+    out = []
+    for root, dirs, files in os.walk(str(base)):
+        dirs[:] = [d for d in dirs if d not in _WALK_PRUNE]
+        for f in files:
+            rel = os.path.relpath(os.path.join(root, f), str(base)).replace(os.sep, "/")
+            if not (fnmatch.fnmatch(rel, pattern)
+                    or (match_name and fnmatch.fnmatch(f, pattern))):
+                continue
+            try:
+                size = os.path.getsize(os.path.join(root, f))
+            except OSError:
+                size = -1
+            out.append("%s (%d B)" % (rel, size))
+            if len(out) >= LIST_MAX_ENTRIES:
+                return "\n".join(out) + "\n…（截断，共 %d+ 项）" % LIST_MAX_ENTRIES
+    return "\n".join(out) or "（无匹配文件）"
+
+
 TOOLS_SPEC = [
     {"name": "list_files", "description": "列出工作目录（或其子目录）下的文件",
      "args": {"path": "子目录相对路径，留空=根目录"}},
-    {"name": "read_file", "description": "读取工作目录内一个文本文件（UTF-8/GBK 自动识别，超 64KB 时保留开头与结尾、中段省略；图片等二进制文件无法读取）",
-     "args": {"path": "文件相对路径"}},
-    {"name": "write_file", "description": "把文本内容写入工作目录内一个文件（UTF-8，父目录自动创建）",
+    {"name": "read_file", "description": "读取工作目录内一个文本文件（UTF-8/GBK 自动识别；默认超 64KB 时保留开头与结尾、中段省略，此时用 offset/lines 分段读全；图片等二进制文件无法读取）",
+     "args": {"path": "文件相对路径",
+              "?offset": "可选，起始行号（1-based），配合 lines 分段读取大文件",
+              "?lines": "可选，读取行数（默认 200，最大 2000）"}},
+    {"name": "edit_file", "description": "对文件做精确查找替换（局部编辑，不必整份重写）：old_text 必须与文件内容逐字符一致，默认要求命中唯一，配合 read_file 使用",
+     "args": {"path": "文件相对路径",
+              "old_text": "要被替换的原文（逐字符精确匹配）",
+              "new_text": "替换后的新文本（可为空串=删除）",
+              "?replace_all": "可选，true=替换全部命中（默认仅允许 1 处命中）"}},
+    {"name": "append_file", "description": "把文本追加到文件末尾（bytes 级追加，大文件不必整份重写）；文件不存在则创建。追加日志、逐条记录时优先用它",
+     "args": {"path": "文件相对路径", "content": "追加到末尾的文本"}},
+    {"name": "fs_manage", "description": "文件管理：删除 / 移动 / 重命名 / 复制（工作目录内；目标已存在一律拒绝覆盖，删目录会连内容一起删）",
+     "args": {"action": "delete | move | rename | copy",
+              "path": "源相对路径（目录或文件）",
+              "?dest": "move/rename/copy 的目标相对路径"}},
+    {"name": "search_content", "description": "全文内容搜索（grep 式）：在工作目录内逐文件逐行匹配正则，命中行带「路径:行号:」前缀返回；自动跳过二进制与依赖目录（node_modules/.git 等）",
+     "args": {"pattern": "搜索文本或正则表达式",
+              "?path": "可选，限定搜索的子目录，默认根目录",
+              "?glob": "可选，文件名过滤，如 *.py",
+              "?max_results": "可选，命中行数上限（默认 50，最大 200）"}},
+    {"name": "find_files", "description": "按文件名通配查找文件（如 *.py、data/*.json、report*.md）；pattern 不含 / 时匹配任意深度的文件名",
+     "args": {"pattern": "文件名通配模式"}},
+    {"name": "write_file", "description": "把文本内容写入工作目录内一个文件（UTF-8，整份覆盖，父目录自动创建；只改一小段请用 edit_file）",
      "args": {"path": "文件相对路径", "content": "完整文本内容"}},
     {"name": "run_command",
      "description": "在本机执行一条 shell 命令，返回退出码与合并输出。诊断、修复、改配置、重启服务等操作真实生效；先跑命令看结果再定下一步。默认超时 600 秒，可用 timeout_sec 调整（5~1800）。Windows 需要管理员权限的命令（flushdns/防火墙/系统服务等）用 powershell -Command \"Start-Process <程序> -ArgumentList '<参数>' -Verb RunAs -Wait\" 触发 UAC（用户点允许后提权执行；提权进程输出拿不到，事后用普通命令复核）。避免长驻/交互式命令（ping -t、top、按键应答的安装器）。",
@@ -402,7 +681,10 @@ TOOLS_SPEC = [
 ]
 
 _TOOL_IMPL = {"list_files": _tool_list_files, "read_file": _tool_read_file,
-              "write_file": _tool_write_file, "run_command": _tool_run_command}
+              "write_file": _tool_write_file, "run_command": _tool_run_command,
+              "edit_file": _tool_edit_file, "append_file": _tool_append_file,
+              "fs_manage": _tool_fs_manage, "search_content": _tool_search_content,
+              "find_files": _tool_find_files}
 
 
 def _exec_tool(workdir, name, args, cancel_event=None, deadline=None):
@@ -419,23 +701,36 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None):
 
 # ---------------------------------------------------------------- 协议适配
 
+def _split_tool_args(t):
+    """args 键以 ? 开头 = 可选参数（模型侧名字去掉 ?，不进 required）。"""
+    props, required = {}, []
+    for k, v in t["args"].items():
+        opt = k.startswith("?")
+        props[k[1:] if opt else k] = {"type": "string", "description": v}
+        if not opt:
+            required.append(k)
+    return props, required
+
+
 def _openai_tools():
-    return [{"type": "function", "function": {
-        "name": t["name"], "description": t["description"],
-        "parameters": {"type": "object",
-                       "properties": {k: {"type": "string", "description": v}
-                                      for k, v in t["args"].items()},
-                       "required": list(t["args"].keys())}}}
-        for t in TOOLS_SPEC]
+    out = []
+    for t in TOOLS_SPEC:
+        props, required = _split_tool_args(t)
+        out.append({"type": "function", "function": {
+            "name": t["name"], "description": t["description"],
+            "parameters": {"type": "object", "properties": props,
+                           "required": required}}})
+    return out
 
 
 def _anthropic_tools():
-    return [{"name": t["name"], "description": t["description"],
-             "input_schema": {"type": "object",
-                              "properties": {k: {"type": "string", "description": v}
-                                             for k, v in t["args"].items()},
-                              "required": list(t["args"].keys())}}
-            for t in TOOLS_SPEC]
+    out = []
+    for t in TOOLS_SPEC:
+        props, required = _split_tool_args(t)
+        out.append({"name": t["name"], "description": t["description"],
+                    "input_schema": {"type": "object", "properties": props,
+                                     "required": required}})
+    return out
 
 
 def _post_json(url, headers, body, allow_private, timeout):
