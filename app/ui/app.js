@@ -1324,6 +1324,12 @@ function startSSE() {
       schedulePolling();
       poll();
     };
+    // 命名事件：台账有新记账（event: usage）。不进 onmessage、不触发
+    // applyState——只刷新左下角用量条，3s 节流在 sideUsageLoad 里。
+    es.addEventListener("usage", () => {
+      S._lastSseAt = Date.now();
+      sideUsageLoad(true);
+    });
     es.onmessage = (ev) => {
       S._lastSseAt = Date.now();
       try { applyState(JSON.parse(ev.data)); render(); } catch (e) { /* ignore */ }
@@ -1349,6 +1355,7 @@ document.addEventListener("visibilitychange", () => {
   } else if (!S.es) {
     startSSE();
     poll();
+    sideUsageLoad(true);  // 隐藏期落下的记账立刻补上（SSE 断开期间收不到 usage 事件）
   }
 });
 
@@ -12998,20 +13005,32 @@ function ovMaybeRefresh() {
 /* ---------------------------------------------------------- 侧栏常驻：用量条 + 计数徽章 */
 /* 用量条的数字来自真实台账，口径写死为「本月」（自然月，从 1 号起）。
  * 刻意不做「用量 68%」那种进度条：CodeBee 没有套餐配额，没有分母可除，
- * 编一个上限出来就是假数。这里陈列的是能直接去用量页核对的事实。 */
-async function sideUsageLoad() {
-  if (S.sideUsage && S.sideUsageAt && Date.now() - S.sideUsageAt < 60000) return;  // 1 分钟节流
+ * 编一个上限出来就是假数。这里陈列的是能直接去用量页核对的事实。
+ * 实时化：台账每落一条记录服务端就推一个 usage 事件（event: usage），
+ * onusage 监听器据此带 force 拉台账；有在跑/排队 run 时 3s 快节奏，
+ * 空闲回落 60s——数字不动的时候不烧请求。 */
+function sideUsageBusy() {
+  const runs = (S.state && S.state.runs) || [];
+  return runs.some((r) => r.status === "running" || r.status === "queued");
+}
+
+async function sideUsageLoad(force) {
+  if (S._suBusy) return;   // 在飞保护：SSE 推送与轮询并发触发只算一次
+  const gap = (force || sideUsageBusy()) ? 3000 : 60000;
+  if (S.sideUsage && S.sideUsageAt && Date.now() - S.sideUsageAt < gap) return;
+  S._suBusy = true;
   try {
     const u = await api("/api/usage?days=30");
     S.sideUsage = u || null;
     S.sideUsageAt = Date.now();
   } catch (e) { /* 拉不到就保留上次的值，不把侧栏清空 */ }
+  finally { S._suBusy = false; }
   sideUsageRender();
 }
 
 function sideUsageRefresh() {
   sideUsageRender();          // 计数徽章靠 S.state，同步重画
-  sideUsageLoad();            // 台账按节流异步补
+  sideUsageLoad();            // 台账按节奏异步补（忙 3s / 闲 60s，见 sideUsageLoad）
 }
 
 function sideUsageRender() {
@@ -13021,31 +13040,40 @@ function sideUsageRender() {
   const u = S.sideUsage;
   const tok = $("su-tok"), cost = $("su-cost"), spark = $("su-spark");
   if (!tok || !cost || !spark) return;
-  if (!u || !u.by_day || !u.by_day.length) {
-    tok.textContent = t("本月还没有调用");
-    cost.textContent = "";
-    spark.innerHTML = "";
-    return;
-  }
+  let tokTxt = "", costTxt = "", sparkHtml = "", hasData = false;
   // 口径=自然月：days=31 只是取数窗口（任一自然月的已过天数都不超过它），
   // 展示前必须按当前年月再滤一遍——不滤的话月初那几天会把上个月的尾巴算进"本月"，
   // 标签写着本月、数字却是滚动 30 天，就是假口径
-  const now = new Date();
-  const ym = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
-  const monthDays = u.by_day.filter((d) => String(d.day || "").slice(0, 7) === ym);
-  const sum = (k) => monthDays.reduce((s, d) => s + (Number(d[k]) || 0), 0);
-  const calls = sum("calls");
-  if (!calls) {
-    tok.textContent = t("本月还没有调用");
-    cost.textContent = "";
-    spark.innerHTML = "";
-    return;
+  if (u && u.by_day && u.by_day.length) {
+    const now = new Date();
+    const ym = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+    const monthDays = u.by_day.filter((d) => String(d.day || "").slice(0, 7) === ym);
+    const sum = (k) => monthDays.reduce((s, d) => s + (Number(d[k]) || 0), 0);
+    const calls = sum("calls");
+    if (calls) {
+      hasData = true;
+      tokTxt = fmtTok(sum("tokens")) + t(" tokens · ") + fmtTok(calls) + t(" 次");
+      costTxt = fmtUsd(sum("cost_usd"));
+      // 走势不受月界影响：近 14 天日序列，只是节奏参考，by_day 连续补零直接取尾
+      const days = u.by_day.slice(-14).map((d) => d.tokens || 0);
+      sparkHtml = days.length > 1 ? kpiSparkSvg(days, "accent") : "";
+    }
   }
-  tok.textContent = fmtTok(sum("tokens")) + t(" tokens · ") + fmtTok(calls) + t(" 次");
-  cost.textContent = fmtUsd(sum("cost_usd"));
-  // 走势不受月界影响：近 14 天日序列，只是节奏参考，by_day 连续补零直接取尾
-  const days = u.by_day.slice(-14).map((d) => d.tokens || 0);
-  spark.innerHTML = days.length > 1 ? kpiSparkSvg(days, "accent") : "";
+  if (!tokTxt) tokTxt = t("本月还没有调用");
+  tok.textContent = tokTxt;
+  cost.textContent = costTxt;
+  spark.innerHTML = sparkHtml;
+  // 数字真的变了才闪一下；占位符 → 首次真数据不闪（每次加载都闪就太闹了）
+  const sig = tokTxt + "|" + costTxt;
+  if (S._suHadData && S._suSig && S._suSig !== sig) {
+    box.classList.remove("su-live");
+    void box.offsetWidth;  // 强制重排以重启动画
+    box.classList.add("su-live");
+    clearTimeout(S._suLiveT);
+    S._suLiveT = setTimeout(() => box.classList.remove("su-live"), 1100);
+  }
+  S._suSig = sig;
+  S._suHadData = hasData;
 }
 
 /* 计数徽章：挂在「运行记录」快捷导航项上，数当前在跑 + 排队的 run 数。

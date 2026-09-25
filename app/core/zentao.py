@@ -69,6 +69,11 @@ from pathlib import Path
 
 from . import jobs, operations, paths, settings, store, tlsctx
 
+try:
+    import chinese_calendar as _hcal   # 法定节假日+调休数据（chinesecalendar）
+except ImportError:                    # 未装时跳过节假日功能不可用，开启即保存报错
+    _hcal = None
+
 log = logging.getLogger(__name__)
 
 _LOCK = threading.RLock()
@@ -115,6 +120,7 @@ _CFG_DEFAULTS = {
     "triage_ai": True,         # 模块路由未命中时用 AI 兜底排查
     "poll_enabled": False,
     "interval_minutes": INTERVAL_DEFAULT,
+    "skip_holidays": False,    # 法定休假日顺延定时扫描（对账不受影响）
 }
 
 _REPO_DEFAULTS = {"workdir": "", "git_rev": "", "verify_command": ""}
@@ -132,7 +138,7 @@ _PROFILE_DEFAULTS = {
 
 _UPDATABLE = ("base_url", "account", "password", "product_profiles",
               "auto_resolve", "auto_merge", "triage_ai",
-              "poll_enabled", "interval_minutes")
+              "poll_enabled", "interval_minutes", "skip_holidays")
 
 
 # ---------------------------------------------------------------- 出网边界（SSRF）
@@ -2188,6 +2194,34 @@ def _scan(cfg):
     return claimed
 
 
+def _now():
+    """当前时刻（独立成函数供测试注入时钟）。"""
+    return datetime.now()
+
+
+def _holiday_gap(now):
+    """今天是法定休假日 → 返回下一个工作日同时刻（作顺延后的 next_scan）；
+    今天是工作日（含调休补班的周末）或判定不了（库缺失/年份超出已知范围）
+    → None 照常扫描。只拦「扫描认领」，对账不受影响。"""
+    if _hcal is None:
+        return None
+    d = now.date()
+    try:
+        if _hcal.is_workday(d):
+            return None
+    except (NotImplementedError, ValueError, KeyError):
+        return None
+    d += timedelta(days=1)
+    for _ in range(366):
+        try:
+            if _hcal.is_workday(d):
+                return datetime.combine(d, now.time())
+        except (NotImplementedError, ValueError, KeyError):
+            break
+        d += timedelta(days=1)
+    return None   # 范围不足：按次日顺延兜底，到时再判一次
+
+
 def _poll(force=False):
     """执行一次扫描；同一进程内只允许一个扫描实例。"""
     if not _SCAN_LOCK.acquire(blocking=False):
@@ -2222,6 +2256,17 @@ def _poll_unlocked(force=False):
                             "error": "", "skipped": "not_due"}
             except ValueError:
                 pass
+        # 到点但今天是法定休假日：不认领新 Bug，next_scan 顺延到下一个工作日
+        # 同时刻（调休补班的周末照常扫；手动「立即扫描」不受此闸约束）
+        if cfg.get("skip_holidays"):
+            gap = _holiday_gap(_now())
+            if gap is not None:
+                with _LOCK:
+                    _STATE["next_scan"] = gap.strftime("%Y-%m-%d %H:%M:%S")
+                    _save_locked()
+                log.info("zentao: 法定休假日，扫描顺延至 %s", _STATE["next_scan"])
+                return {"ok": True, "claimed": 0, "reconciled": True,
+                        "error": "", "skipped": "holiday"}
     err = ""
     try:
         out["claimed"] = _scan(cfg)
@@ -2400,8 +2445,12 @@ def save_config(patch):
                 except (TypeError, ValueError):
                     raise ValueError("interval_minutes 必须是 %d-%d 的整数"
                                      % (INTERVAL_MIN, INTERVAL_MAX))
-            elif k in ("auto_resolve", "auto_merge", "triage_ai", "poll_enabled"):
+            elif k in ("auto_resolve", "auto_merge", "triage_ai", "poll_enabled",
+                       "skip_holidays"):
                 v = bool(v)
+                if k == "skip_holidays" and v and _hcal is None:
+                    raise ValueError("跳过法定节假日需要先安装 chinesecalendar 库"
+                                     "（pip install chinesecalendar）")
             cfg[k] = v
         _STATE["config"] = cfg
         if cfg.get("poll_enabled"):

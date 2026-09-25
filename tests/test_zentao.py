@@ -4,13 +4,15 @@
 覆盖：SSRF 守卫、过滤、配置校验/脱敏/老配置迁移、扫描认领去重、排查三路
 （模块规则优先/AI 兜底/不可用留人工）、我方端修复 resolve、非我方转派、
 纯对方端转派（含测试指错人改派）、双端我端修完转派、失败升级、负责人优先级、
-模块清单容错、need_manual 重排查、老 claim 归一、token 401 重试、fire_due 节流。
+模块清单容错、need_manual 重排查、老 claim 归一、token 401 重试、fire_due 节流、
+节假日顺延（含调休补班照扫与库缺失兜底）。
 """
 from __future__ import annotations
 
 import base64
 import json
 import threading
+from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 from unittest import mock
@@ -1034,6 +1036,70 @@ class TestFireDueGate(ZenCase):
         res2 = self.zen_mod.fire_due()
         self.assertEqual(res2.get("skipped"), "not_due")
         self.assertEqual(len(self.zen_mod.view()["claims"]), 1)
+
+
+class TestHolidaySkip(ZenCase):
+    def runTest(self):
+        """skip_holidays：法定休假日顺延扫描到下一工作日；调休补班周末照常扫；
+        库缺失时保存报错、运行时判定不了照常扫（不卡死）。"""
+        import chinese_calendar as hcal
+        today = date.today()
+
+        def scan_day(delta):
+            """把模块时钟钉到 today+delta 天 10:00 跑一次 fire_due（清 next_scan 过节流闸）。"""
+            when = datetime.combine(today + timedelta(days=delta), datetime.min.time())
+            when = when.replace(hour=10)
+            self.zen_mod._STATE["next_scan"] = ""
+            with mock.patch.object(self.zen_mod, "_now", return_value=when):
+                return self.zen_mod.fire_due()
+
+        def find(pred):
+            for i in range(1, 400):
+                cand = today + timedelta(days=i)
+                try:
+                    if pred(cand):
+                        return cand
+                except NotImplementedError:
+                    continue
+            return None
+
+        # 开关依赖库：缺失时开启保存必须报错（不能静默存下永不生效）
+        with mock.patch.object(self.zen_mod, "_hcal", None):
+            with self.assertRaises(ValueError):
+                self.zen_mod.save_config({"skip_holidays": True})
+
+        self.configure()
+        self.bug(901)
+        self.zen_mod.save_config({"poll_enabled": True, "skip_holidays": True})
+
+        # 法定休假日：不认领，next_scan 顺延到下一个工作日的同一时刻
+        hol = find(lambda d: not hcal.is_workday(d))
+        self.assertIsNotNone(hol, "chinesecalendar 范围内找不到休假日")
+        res = scan_day((hol - today).days)
+        self.assertEqual(res.get("skipped"), "holiday")
+        self.assertEqual(len(self.zen_mod.view()["claims"]), 0)
+        ns = self.zen_mod._STATE["next_scan"]
+        nsd = datetime.strptime(ns, "%Y-%m-%d %H:%M:%S")
+        self.assertEqual(nsd.hour, 10)
+        self.assertTrue(nsd.date() > hol, "next_scan 未顺延到假日之后")
+        self.assertTrue(hcal.is_workday(nsd.date()))
+
+        # 调休补班的周末（weekday>=5 但算工作日）照常扫描
+        self.bug(902)
+        makeup = find(lambda d: d.weekday() >= 5 and hcal.is_workday(d))
+        self.assertIsNotNone(makeup, "chinesecalendar 范围内找不到补班日")
+        res2 = scan_day((makeup - today).days)
+        self.assertNotEqual(res2.get("skipped"), "holiday")
+        self.assertEqual(len(self.zen_mod.view()["claims"]), 2)
+
+        # 运行时库不可用（未装/数据损坏）：判定不了 → 照常扫描，不卡死调度
+        self.bug(903)
+        hol2 = find(lambda d: not hcal.is_workday(d) and d != hol)
+        self.assertIsNotNone(hol2)
+        with mock.patch.object(self.zen_mod, "_hcal", None):
+            res3 = scan_day((hol2 - today).days)
+        self.assertNotEqual(res3.get("skipped"), "holiday")
+        self.assertEqual(len(self.zen_mod.view()["claims"]), 3)
 
 
 class TestScanSingleFlight(ZenCase):

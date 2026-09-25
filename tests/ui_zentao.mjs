@@ -317,7 +317,7 @@ async function main() {
     check("④b 自动化选项与扫描间隔成组对齐", ly.autoH < 100 && ly.numberInside, layout);
     check("④b 扫描间隔用分钟：老默认2h跟随新默认5分钟+最小值 5",
       ly.unit === "分钟" && ly.ivMin === "5" && ly.ivVal === "5", layout);
-    check("④b 四个开关渲染为等高胶囊", ly.chips === 4 && ly.chipH >= 26 && ly.chipH <= 44, layout);
+    check("④b 五个开关渲染为等高胶囊", ly.chips === 5 && ly.chipH >= 26 && ly.chipH <= 44, layout);
     check("④b 产品名称下拉有可读宽度且未溢出", ly.productW >= 180 && ly.productVisible, layout);
     await evalJs(`S.ztProducts = []; S.ztUsers = []; renderZentaoProfiles(); "ok"`);
 

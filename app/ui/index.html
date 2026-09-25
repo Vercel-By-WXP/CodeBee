@@ -741,6 +741,7 @@
           <label class="toggle" title="修复任务评审通过后，自动到禅道 resolve（fixed）并回评论" data-i18n-title="修复任务评审通过后，自动到禅道 resolve（fixed）并回评论"><input id="zt-autoresolve" type="checkbox"><span data-i18n="自动 resolve Bug">自动 resolve Bug</span></label>
           <label class="toggle" title="把任务分支自动合并回基线分支（需配置基线分支；合并失败不 resolve 不转派，留人工）" data-i18n-title="把任务分支自动合并回基线分支（需配置基线分支；合并失败不 resolve 不转派，留人工）"><input id="zt-automerge" type="checkbox"><span data-i18n="自动合并代码">自动合并代码</span></label>
           <label class="toggle" title="按下面的间隔定时扫描；关掉后仍可手动「立即扫描」" data-i18n-title="按下面的间隔定时扫描；关掉后仍可手动「立即扫描」"><input id="zt-poll" type="checkbox"><span data-i18n="定时扫描">定时扫描</span></label>
+          <label class="toggle" title="法定休假日不认领新 Bug，扫描顺延到下一个工作日（对账照跑）；调休补班的周末照常扫描" data-i18n-title="法定休假日不认领新 Bug，扫描顺延到下一个工作日（对账照跑）；调休补班的周末照常扫描"><input id="zt-holiday" type="checkbox"><span data-i18n="跳过法定节假日">跳过法定节假日</span></label>
           <label class="zt-interval-field" for="zt-interval" title="定时扫描的间隔，最小 5 分钟" data-i18n-title="定时扫描的间隔，最小 5 分钟"><span class="zt-iv-label" data-i18n="扫描间隔">扫描间隔</span><span class="zt-iv-box"><input id="zt-interval" type="number" min="5" max="10080" step="5"><span class="zt-iv-unit" data-i18n="分钟">分钟</span></span></label>
         </div>
         <div class="ops"><button id="btn-zentao-save" class="primary small"><span data-i18n="保存配置">保存配置</span></button></div>
