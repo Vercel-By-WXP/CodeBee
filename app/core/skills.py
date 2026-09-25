@@ -607,7 +607,13 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
         for x in lessons:
             # 编号可见：复盘官据此点名「哪条已沉淀教训没防住本次问题」，
             # 归因才能落到单条而不是整批（见 note_outcome）。
-            lines.append("- [%s] **%s**：%s" % (x["id"], x["title"], x["content"]))
+            # karma 标注（批5 对称补齐）：won≥2 才标——1 次可能是巧合，噪音为零；
+            # 与知识库［有据］置信标同构，模型可按实证强度校准采信。
+            # run 内稳定：won 只在 run 收尾回写，任务中途字节不变。
+            karma = ""
+            if int(x.get("won") or 0) >= 2:
+                karma = "（已验证有效 %d 次）" % int(x.get("won") or 0)
+            lines.append("- [%s] **%s**%s：%s" % (x["id"], x["title"], karma, x["content"]))
             used.append(x["id"])
             lesson_ids.append(x["id"])
         lesson_part = ("### 【本项目已沉淀的教训（历史评审反复出现，务必规避；方括号内为教训编号）】\n"
