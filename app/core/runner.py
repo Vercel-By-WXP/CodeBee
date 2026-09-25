@@ -1070,34 +1070,62 @@ def _claude_drift_note(att_model, parsed):
     return "[模型漂移] 请求 %s，上游实服 %s" % (att_model, ",".join(served))
 
 
-def _claude_login_hint(error_code, error_text):
-    """claude 登录闸门的修复指引；非缺凭据或非登录措辞返回空。
+_LOGIN_FIX_HINTS = {
+    "claude": ("① 绑定页为 claude-code 配置供应商链（如 Bigmodel anthropic 面）；"
+               "② 在 ~/.claude/settings.json 的 env 里配 ANTHROPIC_BASE_URL"
+               " + ANTHROPIC_AUTH_TOKEN"),
+    "codex": ("① 绑定页为 codex 配置供应商链；② 本机执行 codex login 完成登录"),
+}
+
+
+def _login_hint(kind, error_code, error_text):
+    """凭据注入型 CLI 撞登录闸门的修复指引；非缺凭据或非登录措辞返回空。
 
     「无链回落本机默认」时 runner 不注入任何凭据（_resolve_attempts 的 env
-    恒空），本机 claude 又没登录 → 每步必死还烧满退避。把修法直接写进
-    错误串，别让一句「Not logged in」冒充死因（2026-09-25 Mac 端实案：
-    init JSON 里 apiKeySource=none，链上零候选可换将）。"""
+    恒空），本机 CLI 又没登录 → 每步必死还烧满退避。把修法直接写进错误串，
+    别让一句「Not logged in」冒充死因（2026-09-25 Mac 端 claude 实案：init
+    JSON 里 apiKeySource=none，链上零候选可换将）。措辞闸保持窄词：
+    login failed / invalid credentials 是 AUTH 语义，不进缺凭据指引。"""
     if error_code_value(error_code) != ErrorCode.MISSING_CREDENTIAL:
         return ""
-    if "not logged in" not in str(error_text or "").lower():
+    low = str(error_text or "").lower()
+    if ("not logged in" not in low and "please run /login" not in low
+            and "please log in" not in low):
         return ""
-    return ("；claude CLI 未登录且本步未注入绑定链凭据，修复二选一："
-            "① 绑定页为 claude-code 配置供应商链（如 Bigmodel anthropic 面）；"
-            "② 在 ~/.claude/settings.json 的 env 里配 ANTHROPIC_BASE_URL"
-            " + ANTHROPIC_AUTH_TOKEN")
+    fix = _LOGIN_FIX_HINTS.get(kind) or (
+        "① 绑定页为该 CLI 配置供应商链（带密钥的供应商条目）；"
+        "② 完成该 CLI 的本机登录或在其自家配置里注入 API Key")
+    return ("；%s CLI 未登录且本步未注入绑定链凭据，修复二选一：%s"
+            % (kind, fix))
 
 
-def _claude_cred_note(argv):
-    """claude 步骤审计头的凭据模式行（run_process audit_notes 用）。
+def _cred_audit_note(kind, att, argv):
+    """步骤审计头的凭据模式行（run_process audit_notes 用，所有 CLI 通用）。
 
-    argv 里有没有 --settings 是绑定链凭据是否注入的真值——_build_call 只在
-    env 带 ANTHROPIC_* 时落它。2026-09-25 Mac 实案：纯模型条目零注入，进程
-    死在登录闸门后只能靠 init JSON 的 apiKeySource=none 反推死因；起跑就把
-    凭据模式钉进日志头，审计行一眼可读。"""
-    if any(str(a) == "--settings" for a in (argv or [])):
-        return "凭据=绑定链（一次性 --settings 注入 ANTHROPIC_*）"
-    return ("凭据=本机默认（未注入 ANTHROPIC_*，走本机 claude 登录态；"
-            "未登录则 -p 必死在登录闸门）")
+    注入真值按 kind 分流：claude 只认 argv 里的 --settings（_build_call 只在
+    env 带 ANTHROPIC_* 时落它——ORCH_API_KEY 这类别家约定的键对 claude 无效，
+    不得按 env 非空误报「绑定链注入」）；其余 kind 的 env 直接传给进程，
+    env 非空即有效注入。条目级 no_cred 标记（resolve_binding 给纯模型条目
+    打标）独立点名。只写形态名与变量名，密钥值绝不入日志。
+    2026-09-25 Mac 实案：纯模型条目零注入，进程死在登录闸门后只能靠 init
+    JSON 的 apiKeySource=none 反推死因；起跑就把凭据模式钉进日志头，且不限
+    claude——codex/kimi/qwen 等 generic 的零凭据起跑同样一眼可读。"""
+    if kind == "claude":
+        if any(str(a) == "--settings" for a in (argv or [])):
+            return "凭据=绑定链（一次性 --settings 注入 ANTHROPIC_*）"
+        if att.get("no_cred"):
+            return ("凭据=无注入（链上纯模型条目零凭据，只传 -m 走本机 claude "
+                    "登录态；未登录则 -p 必死在登录闸门）")
+        return ("凭据=本机默认（未注入 ANTHROPIC_*，走本机 claude 登录态；"
+                "未登录则 -p 必死在登录闸门）")
+    if att.get("no_cred"):
+        return ("凭据=无注入（链上纯模型条目零凭据，只传 -m 走本机 CLI 登录态；"
+                "本机未登录/未配置则必死在凭据闸门）")
+    env = att.get("env") or {}
+    if env:
+        return "凭据=绑定链注入（env: %s）" % ",".join(sorted(env))
+    return ("凭据=本机默认（本步未注入任何凭据 env，走 CLI 本机登录态/配置；"
+            "未登录则必死在登录/凭据闸门）")
 
 
 def _log_note(log_path, text):
@@ -1265,7 +1293,8 @@ def _resolve_attempts(agent):
                  "own_cp": "codex_provider" in e,
                  "codex_provider": e.get("codex_provider"),
                  "provider_id": e.get("provider_id") or "",
-                 "key_id": e.get("key_id") or ""} for e in chain]
+                 "key_id": e.get("key_id") or "",
+                 "no_cred": bool(e.get("no_cred"))} for e in chain]
     base_model = agent.get("model")
     fb = [m for m in (agent.get("model_fallbacks") or []) if m and m != base_model]
     models_to_try = ([base_model] if base_model else []) + fb
@@ -1732,9 +1761,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     att["model"], prompt,
                     images=images if kind == "codex" else None,
                     workdir=workdir)
-                # 凭据模式起跑钉进审计头；argv 真值推导见 _claude_cred_note
-                audit_notes = ([_claude_cred_note(argv)]
-                               if kind == "claude" else None)
+                # 凭据模式起跑钉进审计头（所有 CLI）：注入真值按 kind 分流，
+                # claude 以 argv 的 --settings 为准，见 _cred_audit_note
+                audit_notes = [_cred_audit_note(kind, att, argv)]
                 try:
                     repeat_guard = (("Reconnecting...", 2)
                                     if kind == "codex" else None)
@@ -1839,9 +1868,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                       if _permission_error(out["error"])
                                       else classify_error_text(out["error"])
                                       or _classify_failure(res, kind=kind))
-                if kind == "claude":
-                    out["error"] += _claude_login_hint(out["error_code"],
-                                                       out["error"])
+                out["error"] += _login_hint(kind, out["error_code"],
+                                            out["error"])
                 break
             if kind == "codex":
                 out["text"], out["usage"], out_sid = _parse_codex_jsonl(res["stdout"])
@@ -1876,7 +1904,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     out["ok"] = False
                     out["error"] = "claude 输出无法解析为 JSON；stdout 尾部: " + res["stdout"][-500:]
                     out["error_code"] = _classify_failure(res, kind="claude", parsed=None)
-                    out["error"] += _claude_login_hint(out["error_code"], out["error"])
+                    out["error"] += _login_hint("claude", out["error_code"], out["error"])
                     break
                 out["text"] = parsed["text"]
                 out["cost_usd"] = parsed["cost_usd"]

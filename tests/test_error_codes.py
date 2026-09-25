@@ -217,20 +217,35 @@ class TestClassifyFailureHelper(BaseTest):
                          ErrorCode.MISSING_CREDENTIAL)
 
     def test_claude_login_hint(self):
-        """指引只在「缺凭据 + 登录闸门措辞」同时成立时附上。"""
-        from app.core.runner import _claude_login_hint
+        """指引只在「缺凭据 + 登录闸门措辞」同时成立时附上（kind 通用化后
+        claude/codex 各有专属修法，其余 kind 走通用兜底文案）。"""
+        from app.core.runner import _login_hint
         from app.core.error_codes import ErrorCode
-        hint = _claude_login_hint(
-            ErrorCode.MISSING_CREDENTIAL,
+        hint = _login_hint(
+            "claude", ErrorCode.MISSING_CREDENTIAL,
             "退出码 0；stderr/stdout: Not logged in · Please run /login")
         self.assertIn("绑定链凭据", hint)
         self.assertIn("ANTHROPIC_BASE_URL", hint)
-        # 措辞不对（其他缺凭据场景）不附 claude 专属指引
-        self.assertEqual(_claude_login_hint(
-            ErrorCode.MISSING_CREDENTIAL, "No API key found"), "")
+        self.assertIn("claude", hint)
+        # codex 同措辞：出 codex 专属修法（codex login）
+        hint2 = _login_hint("codex", ErrorCode.MISSING_CREDENTIAL,
+                            "Not logged in, please run `codex login`")
+        self.assertIn("codex login", hint2)
+        # 未收录 kind：走通用兜底文案，仍指明该 CLI 名
+        hint3 = _login_hint("kimi", ErrorCode.MISSING_CREDENTIAL,
+                            "Not logged in")
+        self.assertIn("kimi CLI", hint3)
+        self.assertIn("供应商链", hint3)
+        # 措辞不对（其他缺凭据场景）不附登录指引
+        self.assertEqual(_login_hint(
+            "claude", ErrorCode.MISSING_CREDENTIAL, "No API key found"), "")
+        # AUTH 语义措辞（login failed）不进缺凭据指引
+        self.assertEqual(_login_hint(
+            "claude", ErrorCode.MISSING_CREDENTIAL,
+            "login failed: invalid credentials"), "")
         # 错误码不对（未识别的登录措辞）不附
-        self.assertEqual(_claude_login_hint(ErrorCode.PARSE_FAIL,
-                                            "Not logged in · Please run /login"), "")
+        self.assertEqual(_login_hint("claude", ErrorCode.PARSE_FAIL,
+                                     "Not logged in · Please run /login"), "")
 
     def test_claude_is_error_classifies_upstream_status(self):
         from app.core.runner import _classify_failure

@@ -2452,7 +2452,9 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
 
     call_chain 是跨厂商降级链（唯一真源）：每条 {model, env, provider, [codex_provider]}，
     按序尝试；供应商失效（停用/删除/无密钥/协议不可注入）的条目被跳过，全链失效
-    → 整体回落 CLI 默认（None）。纯链条目（无供应商）不注入 env，只传 -m。
+    → 整体回落 CLI 默认（None）。纯链条目（无供应商）不注入 env，只传 -m，
+    并带 no_cred=True 标记供 runner 审计层点名（零凭据条目走本机登录态，
+    本机无登录态必死在凭据闸门——2026-09-25 Mac claude 实案）。
     难度路由只在无显式链时生效。
     """
     # Local-credential-only CLIs must never expose a binding, including legacy
@@ -2487,7 +2489,11 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
             pid = (item.get("provider_id") or "").strip()
             if not pid:
                 if model:
-                    entries.append({"model": model, "env": {}, "provider": None})
+                    # 纯模型条目：零凭据注入，只传 -m 走 CLI 本机登录态。
+                    # no_cred 标记供 runner 审计行/登录指引点名（Mac claude 案：
+                    # 零注入死在登录闸门，起跑前无人知、死后只能靠 init JSON 反推）
+                    entries.append({"model": model, "env": {}, "provider": None,
+                                    "no_cred": True})
                 continue
             prov = provs.get(pid)
             if not prov or not prov.get("enabled", True) or not prov.get("api_key"):
