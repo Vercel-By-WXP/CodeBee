@@ -2455,6 +2455,12 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     → 整体回落 CLI 默认（None）。纯链条目（无供应商）不注入 env，只传 -m。
     难度路由只在无显式链时生效。
     """
+    # Local-credential-only CLIs must never expose a binding, including legacy
+    # model-only entries that have no provider_id.  The generic runner cannot
+    # inject those model names, so returning a partial chain would make the UI
+    # report a bound model while the CLI silently uses its own default.
+    if agent_kind_or_id in _LOCAL_CRED_ONLY_TARGETS:
+        return None
     b = _binding_for(agent_kind_or_id)
     chain = _binding_chain(b)
     provs = {p.get("id"): p for p in providers()}

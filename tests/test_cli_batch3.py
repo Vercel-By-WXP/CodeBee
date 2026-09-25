@@ -153,6 +153,13 @@ class TestLocalCredOnlyBinding(BaseTest):
                              chain=[{"provider_id": pid, "model": "gpt-x"}])
         self.assertIsNone(modelhub.resolve_binding("gemini-cli"))
 
+    def test_model_only_binding_does_not_fake_success(self):
+        """旧式仅模型绑定也必须拒绝，避免 UI 显示已绑定但 CLI 仍用默认模型。"""
+        from app.core import modelhub
+        for cid in NEW_IDS:
+            modelhub.set_binding(cid, chain=[{"model": "model-only"}])
+            self.assertIsNone(modelhub.resolve_binding(cid), msg=cid)
+
     def test_recommend_binding_returns_none(self):
         from app.core import modelhub
         for cid in NEW_IDS:
