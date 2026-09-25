@@ -538,7 +538,11 @@ def cancel_event_for(run_id):
     return ev
 
 
-AUTO_RESUME_MAX = 3      # 连载任务自动续跑上限（超时/中断后自动接着写，无需人工）
+# 连载任务自动续跑上限（超时/中断后自动接着写，无需人工）。3 是 2026-09-25
+# 戍边骑奴 9-20·续2 案的上限：20 章连载 3 轮烧完次数后卡死在「任务总时限已到」
+# 等人工，而每轮都在稳定进章——止损已由零进度两轮同因止损兜底，上限只作
+# 最后保险（真烧钱还有日/月花费硬顶闸），10 轮足够 20 章慢链天跑完。
+AUTO_RESUME_MAX = 10
 AUTO_RESUME_DELAY_S = 300  # 自动续跑延迟入队秒数：网关限流/欠费窗口通常分钟级，
                            # 立即重排会撞在同一堵墙上把续跑次数烧光（2026-09-17 七猫实测）
 
@@ -589,6 +593,8 @@ def _maybe_auto_resume(run_id):
     终态写明死因，不再烧剩余的退避次数。超时例外：错误签名恒为同一句
     「任务总时限已到」，但每轮都在落章——本轮比上轮多过审了章就不算
     「同因无效重试」，续跑交给次数上限兜底；两轮一章未进则照常止损。
+    上限烧完时（超时且有进章）把已过审进度与断点续跑指引写进错误行，
+    别让执行结果卡读起来像白跑。
     """
     try:
         from . import store
@@ -601,6 +607,21 @@ def _maybe_auto_resume(run_id):
         if run.get("cancelled_by_user") or run.get("status") == "cancelled":
             return False   # 用户主动取消的运行绝不自动续跑
         if int(run.get("auto_resumes") or 0) >= AUTO_RESUME_MAX:
+            # 上限烧完不再续跑。但「任务总时限已到」+本轮有进章时，错误行必须
+            # 带上进度与续跑方式——不然执行结果卡只写「任务总时限已到」，读起来
+            # 像白跑（2026-09-25 续2 案：用户看到 64/64 步+超时以为续跑没生效）。
+            if run.get("status") == "timeout" and _serial_progress(run) > 0:
+                try:
+                    total = int((task.get("serial") or {}).get("chapters") or 0)
+                    where = ("/" + str(total) + " 章") if total > 0 else " 章"
+                    store.update_run(
+                        run_id,
+                        error=(run.get("error") or "")
+                        + "｜自动续跑次数已用完，已过审 "
+                        + str(_serial_progress(run)) + where
+                        + "；点重试将从断点继续，已过审章不会重写")
+                except Exception:
+                    pass
             return False
         prev_id = run.get("auto_resumed_from")
         if prev_id:

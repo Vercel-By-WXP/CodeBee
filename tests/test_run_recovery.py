@@ -310,7 +310,8 @@ class TestAutoResumeTimeout(BaseTest):
     两轮一章未进（错误签名又恒同句）则照常止损交给人工。
     """
 
-    def _seed_timeout_serial_run(self, store, title, chapters_passed=0):
+    def _seed_timeout_serial_run(self, store, title, chapters_passed=0,
+                                 auto_resumes=0):
         task = store.create_task({
             "type": "serial_novel", "title": title, "goal": "写连载",
             "workdir": str(self.workdir),
@@ -320,7 +321,7 @@ class TestAutoResumeTimeout(BaseTest):
         scores = [{"chapter": i, "title": "第%d章" % i, "means": {"情节": 8.0},
                    "passed": True, "rounds": 1} for i in range(1, chapters_passed + 1)]
         store.update_run(run["id"], status="timeout", error="任务总时限已到",
-                         chapter_scores=scores)
+                         chapter_scores=scores, auto_resumes=auto_resumes)
         return task, run
 
     def _fake_timer(self):
@@ -397,3 +398,29 @@ class TestAutoResumeTimeout(BaseTest):
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
         store.update_run(run["id"], status="timeout", error="任务总时限已到")
         self.assertFalse(jobs._maybe_auto_resume(run["id"]))
+
+    def test_max_reached_timeout_with_progress_writes_hint(self):
+        """续跑上限烧完且本轮有进章：不再续跑，但错误行要带进度与断点指引。
+
+        2026-09-25 续2 案：3 轮烧完上限后执行结果卡只剩「任务总时限已到」，
+        用户以为自动续跑没生效。上限是保险不是判决——已过审的章在盘上，
+        手动重试即可断点续写，这句话必须写在卡上。
+        """
+        from app.core import jobs, store
+        task, run = self._seed_timeout_serial_run(
+            store, "capped book", chapters_passed=9,
+            auto_resumes=jobs.AUTO_RESUME_MAX)
+        self.assertFalse(jobs._maybe_auto_resume(run["id"]),
+                         "上限烧完不得再排续跑副本")
+        err = store.get_run(run["id"]).get("error") or ""
+        self.assertIn("已过审 9/12 章", err, "错误行必须写明进度")
+        self.assertIn("断点", err, "错误行必须写明怎么接着写")
+
+    def test_max_reached_timeout_zero_progress_no_hint(self):
+        """上限烧完且零进章（止损场景）：错误行保持原样，不加进度指引。"""
+        from app.core import jobs, store
+        task, run = self._seed_timeout_serial_run(
+            store, "capped stuck book", chapters_passed=0,
+            auto_resumes=jobs.AUTO_RESUME_MAX)
+        self.assertFalse(jobs._maybe_auto_resume(run["id"]))
+        self.assertEqual(store.get_run(run["id"]).get("error"), "任务总时限已到")
