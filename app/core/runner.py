@@ -631,7 +631,7 @@ def _normalize_abort_markers(value):
 def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None,
                 stall_timeout=0, repeat_abort=None, deadline=None,
-                abort_markers=None, activity_timeout=0):
+                abort_markers=None, activity_timeout=0, audit_notes=None):
     """通用子进程执行：并发读管道防死锁；超时/取消杀整棵进程树。
 
     stall_timeout：停滞看门狗（秒，0=关闭）——超过该时长 stdout/stderr 无任何
@@ -651,6 +651,10 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
     deadline：可选的 ``time.monotonic()`` 绝对截止时刻。它比 timeout 优先，
     到点会杀掉进程树并返回 deadline_exceeded=True，调用方可把整个任务收口
     为 timeout，而不是把它误记成普通供应商失败。
+
+    audit_notes：可选字符串列表，逐行追加在审计头命令行下方——用于把
+    argv/env 里看不出的运行形态钉进日志（如 claude 凭据=绑定链注入/本机默认），
+    事后诊断不用靠猜。只写形态名，绝不写密钥值。
 
     返回 {ok, exit_code, stdout, stderr, duration, cancelled, timed_out, stalled,
     deadline_exceeded, abort_marker}；杀树后未能确认整树清空时额外带
@@ -695,6 +699,9 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         try:
             head = ["===== 下达 %s =====" % time.strftime("%Y-%m-%d %H:%M:%S"),
                     "$ " + " ".join(str(a) for a in argv)]
+            for _note in (audit_notes or []):
+                if _note:
+                    head.append("· " + str(_note))
             if stdin_text:
                 capped = stdin_text[:12000]
                 head.append("--- 指令（%d 字符%s）---" % (
@@ -1078,6 +1085,19 @@ def _claude_login_hint(error_code, error_text):
             "① 绑定页为 claude-code 配置供应商链（如 Bigmodel anthropic 面）；"
             "② 在 ~/.claude/settings.json 的 env 里配 ANTHROPIC_BASE_URL"
             " + ANTHROPIC_AUTH_TOKEN")
+
+
+def _claude_cred_note(argv):
+    """claude 步骤审计头的凭据模式行（run_process audit_notes 用）。
+
+    argv 里有没有 --settings 是绑定链凭据是否注入的真值——_build_call 只在
+    env 带 ANTHROPIC_* 时落它。2026-09-25 Mac 实案：纯模型条目零注入，进程
+    死在登录闸门后只能靠 init JSON 的 apiKeySource=none 反推死因；起跑就把
+    凭据模式钉进日志头，审计行一眼可读。"""
+    if any(str(a) == "--settings" for a in (argv or [])):
+        return "凭据=绑定链（一次性 --settings 注入 ANTHROPIC_*）"
+    return ("凭据=本机默认（未注入 ANTHROPIC_*，走本机 claude 登录态；"
+            "未登录则 -p 必死在登录闸门）")
 
 
 def _log_note(log_path, text):
@@ -1712,6 +1732,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     att["model"], prompt,
                     images=images if kind == "codex" else None,
                     workdir=workdir)
+                # 凭据模式起跑钉进审计头；argv 真值推导见 _claude_cred_note
+                audit_notes = ([_claude_cred_note(argv)]
+                               if kind == "claude" else None)
                 try:
                     repeat_guard = (("Reconnecting...", 2)
                                     if kind == "codex" else None)
@@ -1734,7 +1757,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                       log_path=log_path, stall_timeout=stall_t,
                                       activity_timeout=activity_t,
                                       repeat_abort=repeat_guard,
-                                      abort_markers=stream_abort_markers)
+                                      abort_markers=stream_abort_markers,
+                                      audit_notes=audit_notes)
                 finally:
                     # 超长指令临时文件：CLI 进程已结束（管道已收），即刻清场不污染工作目录
                     for tf in tmp_files:
