@@ -10,7 +10,8 @@
 
 **AI 是引擎，你的经验是方向盘。** CodeBee 为你指挥一支跨厂商的执笔/编码小队：
 统一调度本机已装的 AI 编码 CLI（Codex CLI、Claude Code、Qwen Code、OpenCode、Aider、
-Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness……），提供
+Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness、Gemini CLI、CodeBuddy CLI、
+Trae Agent……），提供
 **目标 → 自动拆解 → 智能路由 → 执行 → 客观验证 → 跨厂商评审 → 自动修复/换将 → 汇总报告**
 的完整闭环。你不在时它们自动推进、自我打磨；需要你拍板的地方——质量闸门、任务分支的
 采纳与丢弃——它们会亮起「待裁决」等你，绝不静默替你决定。
@@ -425,7 +426,8 @@ CLI 默认冒烟、供应商可达性、wire 适配、单模型生成、绑定�
   CodeBee 编排运行时用哪个供应商 / 模型统一在「CLI 绑定」页配置；
 - **编排开关**：决定哪些 CLI 参与任务路由。
 
-Kimi Code / MiMo Code / Grok Build / Pi / DeepSeek Harness 的安装命令已内置（均取自
+Kimi Code / MiMo Code / Grok Build / Pi / DeepSeek Harness / Gemini CLI / CodeBuddy CLI /
+Trae Agent 的安装命令已内置（均取自
 各工具官方渠道）。若某个条目的安装命令缺失，直接编辑 `data/catalog.json` 补上
 `install` 字段保存后点"重新加载 catalog"即可；点"恢复默认 catalog"可回滚。
 

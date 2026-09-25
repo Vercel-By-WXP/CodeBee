@@ -281,13 +281,19 @@ class TestLaunch(BaseTest):
         """内置条目全部补上 launch；用户手写的 launch 不被覆盖。"""
         from app.core import catalog
         entries = catalog.load()
-        self.assertEqual(len(entries), 11)
+        # 11 内置 + 第三批三新 CLI（gemini-cli/codebuddy/trae-agent，随
+        # _merge_new_defaults 自动补齐）——数量断言随新条目演进
+        self.assertEqual(len(entries), 14)
         for e in entries:
             self.assertTrue((e.get("launch") or {}).get("command"), e["id"])
         dsh = catalog.by_id("deepseek-harness")
         self.assertEqual(dsh["launch"]["kind"], "web")
         self.assertEqual(dsh["launch"]["port"], 18790)
         self.assertIn("--port 18790", dsh["launch"]["command"])
+        for cid, cmd in (("gemini-cli", "gemini"), ("codebuddy", "cbc"),
+                         ("trae-agent", "trae-cli")):
+            e = catalog.by_id(cid)
+            self.assertEqual(e["launch"], {"kind": "console", "command": cmd}, msg=cid)
         # 用户手写过的 launch 原样保留
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._paths.CATALOG_FILE.write_text(json.dumps([

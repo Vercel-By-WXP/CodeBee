@@ -2419,7 +2419,17 @@ def bindable_protocols(agent_kind_or_id):
         return ("openai",)
     if agent_kind_or_id in ("claude-code", "claude"):
         return ("anthropic",)
+    if agent_kind_or_id in _LOCAL_CRED_ONLY_TARGETS:
+        return ()
     return tuple(_BINDABLE_PROTOCOLS)
+
+
+# 只吃 CLI 本机凭据、不吃 Tutti 两种 wire env 的目标：gemini 本尊只认
+# GOOGLE_API_KEY/GEMINI_API_KEY（Google AI 协议，Tutti 无此协议面）；codebuddy
+# （claude 兼容系）与 trae-agent 的凭据 env 语义未实机验证。注入它们不认的 env
+# 只会造出「链显示活着、实际走 CLI 默认模型」的静默假绑定——宁可返回空协议集，
+# 链上条目全跳过、回落 CLI 本机登录态（recommend_binding 同口径，返回 None）。
+_LOCAL_CRED_ONLY_TARGETS = ("gemini-cli", "codebuddy", "trae-agent")
 
 
 def binding_dead_msg(cli_id):
@@ -2429,7 +2439,10 @@ def binding_dead_msg(cli_id):
         protos = bindable_protocols(cli_id)
     except Exception:
         protos = ()
-    hint = ("该 CLI 仅接受 %s 协议的已启用供应商；" % "、".join(protos)) if protos else ""
+    if not protos:
+        return ("该 CLI 暂不支持绑定链（凭据注入尚未适配，使用 CLI 本机登录态与"
+                "默认模型）；请勿为其配置供应商链")
+    hint = "该 CLI 仅接受 %s 协议的已启用供应商；" % "、".join(protos)
     return ("绑定链全部失效（链上供应商已停用/删除/无密钥，或模型已停用），"
             "本步判失败、不回落 CLI 本机默认——%s请在「模型调度（可选）」页为该 CLI 指定已启用的供应商" % hint)
 

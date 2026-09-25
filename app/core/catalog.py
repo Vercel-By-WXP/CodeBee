@@ -172,6 +172,45 @@ DEFAULT_CATALOG = [
         "upgrade": "npm install -g @deepseek-ai/dsh@latest",
         "default_enabled": False,
     },
+    {
+        "id": "gemini-cli", "name": "Gemini CLI", "cli_group": "installable",
+        "note": "Google 官方编码 CLI；无头 gemini -p \"提示词\"；默认模型在 "
+                "~/.gemini/settings.json 顶层 model；凭据走个人 Google 账号 OAuth "
+                "（浏览器登录，免费额度）或 GOOGLE_API_KEY/GEMINI_API_KEY 环境变量",
+        "detect": {"cli": "gemini"},
+        "orch": {"kind": "generic", "command": "gemini", "argv_template": ["-p", "{prompt}"]},
+        "config": {"path": "~/.gemini/settings.json", "format": "json", "model_key": "model"},
+        "install": "npm install -g @google/gemini-cli",
+        "upgrade": "npm install -g @google/gemini-cli@latest",
+        "default_enabled": False,
+    },
+    {
+        "id": "codebuddy", "name": "CodeBuddy CLI", "cli_group": "installable",
+        "note": "腾讯云 CodeBuddy Code（claude 兼容系，需 Node ≥18.20）；可执行名 cbc"
+                "（codebuddy 是全名别名）；无头 cbc -p \"提示词\"；配置在 "
+                "~/.codebuddy/settings.json（claude 形态三级作用域，模型走顶层 model 键）",
+        "detect": {"cli": "cbc"},
+        "orch": {"kind": "generic", "command": "cbc", "argv_template": ["-p", "{prompt}"]},
+        "config": {"path": "~/.codebuddy/settings.json", "format": "json", "model_key": "model"},
+        "install": "npm install -g @tencent-ai/codebuddy-code",
+        "upgrade": "npm install -g @tencent-ai/codebuddy-code@latest",
+        "default_enabled": False,
+    },
+    {
+        "id": "trae-agent", "name": "Trae Agent", "cli_group": "installable",
+        "note": "字节跳动开源 trae-agent；可执行名 trae-cli；PyPI 无包，uv tool 从 "
+                "GitHub 直装（Python ≥3.12）；无头 trae-cli run \"提示词\"（一次性任务"
+                "形态）；配置 trae_config.yaml 默认找当前工作目录（TRAE_CONFIG_FILE "
+                "可指定），默认模型是 agents.trae_agent.model 指向 models 表别名的两层"
+                "引用，CodeBee 暂不托管其模型落盘——绑定模型请在 trae_config.yaml 自配",
+        "detect": {"cli": "trae-cli"},
+        "orch": {"kind": "generic", "command": "trae-cli", "argv_template": ["run", "{prompt}"]},
+        "config": {"path": "~/.trae/trae_config.yaml", "format": None, "model_key": None},
+        "install": "uv tool install --python 3.12 git+https://github.com/bytedance/trae-agent",
+        "upgrade": "uv tool install --force --python 3.12 git+https://github.com/bytedance/trae-agent",
+        "uninstall": "uv tool uninstall trae-agent",
+        "default_enabled": False,
+    },
 ]
 
 _LOCK = threading.RLock()
@@ -195,6 +234,9 @@ LAUNCH_PATCH = {    "codex-cli": {"kind": "console", "command": "codex"},
     "mimo-code": {"kind": "console", "command": "mimo"},
     "grok-build": {"kind": "console", "command": "grok"},
     "pi": {"kind": "console", "command": "pi"},
+    "gemini-cli": {"kind": "console", "command": "gemini"},
+    "codebuddy": {"kind": "console", "command": "cbc"},
+    "trae-agent": {"kind": "console", "command": "trae-cli"},
     # dsh 自带浏览器 UI（dsh web）；端口固定以便「已在运行就直接开页面」的复用
     # 判断，18790 避开 CodeBee 自身与常用测试端口。--no-open 关掉 dsh 自己开浏览器
     # 的行为（否则它会和 CodeBee 就绪后各开一个标签页）
