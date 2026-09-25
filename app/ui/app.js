@@ -6582,8 +6582,18 @@ function fmtSize(n) {
 /* 成品文件行（检查器「成品文件」与主栏「成果」分区共用一套标记）：
  * fc-row：文件行 + 弹窗预览按钮同行排布，避免按钮独占一行参差不齐。
  * 点文件名与点「预览」同款 artPopup 弹窗，行为一致不 surprise。 */
-function artifactsChips(runId, files, prevRun) {
-  return files.map((f) => {
+function artifactsChips(runId, files, prevRun, hasPlan) {
+  // 活计划入口（批3）：task_plan.md 不进成品扫描，存在时首行给「任务计划」
+  // 独立入口（file 端点按名可取，浏览器直接看勾选进度）。
+  const planChip = hasPlan
+    ? '<span class="fc-row">' +
+      '<a class="file-chip artifact-file-open" href="' + urlAuth("/api/runs/" + encodeURIComponent(runId) + "/file?name=" +
+      encodeURIComponent(".codebee/task_plan.md")) + '" target="_blank" rel="noopener" ' +
+      'title=".codebee/task_plan.md">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-git-branch"/></svg>' +
+      '<span class="p">' + t("任务计划") + "</span><i>plan</i></a></span>"
+    : "";
+  return planChip + files.map((f) => {
     const isTxt = FP_TXT.has(_fpExt(f.name));   // 文本/代码都有弹窗预览（按代码格式展示）
     // 与上一版对比（OpenCreator「版本化对比」借鉴）：同名文本文件在上一版
     // run 也存在时给 diff 入口；prevRun=null（无历史/清单拉取失败）静默不给
@@ -6679,9 +6689,10 @@ async function loadArtifacts(runId) {
   const mainBox = detailOwns ? $("rd-arts") : null;
   // 成果分区徽章：文件数（终态才有产出，运行中不计）；只随 detailOwns 一起刷
   const fb = detailOwns ? document.querySelector('#rd-tabs .rd-tab[data-tab="result"] .rd-badge') : null;
-  if (fb) { fb.textContent = files.length ? String(files.length) : "";
-    fb.className = "rd-badge" + (files.length ? "" : " hidden"); }
-  if (!files.length) {
+  if (fb) { const cnt = files.length + (d.has_plan ? 1 : 0);
+    fb.textContent = cnt ? String(cnt) : "";
+    fb.className = "rd-badge" + (cnt ? "" : " hidden"); }
+  if (!files.length && !d.has_plan) {
     if (box) box.innerHTML = '<span class="insp-hint">' + esc(t("本次运行没有在工作目录里产出新文件。")) + "</span>";
     if (mainBox) { mainBox.classList.add("hidden"); mainBox.innerHTML = ""; }
     return;
@@ -6701,7 +6712,7 @@ async function loadArtifacts(runId) {
       } catch (e) { /* 上一版清单不可用就不给对比 */ }
     }
   }
-  const chips = artifactsChips(runId, files, prevRun);
+  const chips = artifactsChips(runId, files, prevRun, d.has_plan);
   if (box) box.innerHTML = head + '<div class="file-chips">' + chips + "</div>";
   if (mainBox) { mainBox.classList.remove("hidden");
     mainBox.innerHTML = head + '<div class="file-chips">' + chips + "</div>"; }

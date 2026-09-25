@@ -1909,6 +1909,7 @@
     "丢弃该文件的全部未提交改动？此操作不可恢复。": "Discard all uncommitted changes of this file? This cannot be undone.",
     "删除这个未跟踪文件？此操作不可恢复。": "Delete this untracked file? This cannot be undone.",
     "任务分支": "Task branch",
+    "任务计划": "Task plan",
     "已配置代码版本隔离，但任务分支尚未创建（检出失败见运行错误）。": "Code-version isolation is configured, but the task branch has not been created yet (see run error if checkout failed).",
     "藏青底色 + 天蓝强调，夜间长时间盯任务更沉静（默认）": "Navy base + sky-blue accent; calmer for long night sessions (default)",
     "黑白灰 + 蓝色强调，ChatGPT 式清爽配色": "Black/white/gray + blue accent — the clean ChatGPT-style palette",

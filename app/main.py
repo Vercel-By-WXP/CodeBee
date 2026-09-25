@@ -47,6 +47,19 @@ MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=ut
         ".webmanifest": "application/manifest+json; charset=utf-8"}
 
 
+def _has_task_plan(wd):
+    """活计划存在性（批3）：task_plan.md 落 .codebee/ 不进成品扫描，
+    前端据此给「任务计划」入口（file 端点按名可取）。resolve+parents 守卫。"""
+    try:
+        if not wd:
+            return False
+        root = Path(wd).resolve()
+        p = (root / ".codebee" / "task_plan.md").resolve()
+        return (root in p.parents) and p.is_file()
+    except Exception:
+        return False
+
+
 def _utf8_bytes(data):
     """文本预览出口的编码守卫：字节流非合法 UTF-8 时按 GBK 解码后重编码为
     UTF-8 再发。子代理在中文 Windows 上可能把工作区文件落成 GBK，直接透传
@@ -433,8 +446,11 @@ class Handler(BaseHTTPRequestHandler):
                 # 文件变动是并行活动的噪音，不算这个任务的成品
                 if files and not store.task_step_count(run.get("task_id") or ""):
                     files = []
+                # 活计划入口（批3）：存在性单列标志
+                has_plan = _has_task_plan(wd)
                 return self._json(200, {"workdir": wd, "files": files,
-                                        "task_id": run.get("task_id") or ""})
+                                        "task_id": run.get("task_id") or "",
+                                        "has_plan": has_plan})
             m = re.match(r"^/api/runs/([^/]+)/assets$", path)
             if m:
                 if not store.get_run(m.group(1)):
