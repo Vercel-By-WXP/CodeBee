@@ -248,6 +248,15 @@ def register_default_namespaces():
                 FieldDef("max_tokens_per_run", "int", 0,
                          "单次运行 token 预算上限（0=不限；超额停止后续步骤，等自动续跑）",
                          clamp=(0, 100_000_000)),
+                # 花费硬顶（美元，与用量台账 cost_usd 同口径）：0 = 不限；
+                # 当日/当月实付累计达到上限后，新步骤不再发起真实调用，
+                # 任务转「预算熔断」状态等用户调高上限或次日/次月自动恢复。
+                FieldDef("daily_cost_usd", "float", 0.0,
+                         "每日花费上限（美元，0=不限；按用量台账当日实付累计，超额停止后续步骤）",
+                         clamp=(0, 1_000_000)),
+                FieldDef("monthly_cost_usd", "float", 0.0,
+                         "每月花费上限（美元，0=不限；按用量台账当月实付累计，超额停止后续步骤）",
+                         clamp=(0, 1_000_000)),
             ],
             validate=lambda v: None,
         )

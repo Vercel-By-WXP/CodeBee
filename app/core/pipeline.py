@@ -610,10 +610,59 @@ def _budget_max_tokens():
         return 0
 
 
+def _budget_cost_caps():
+    """日/月花费硬顶（美元，与用量台账 cost_usd 同口径）；0 = 不限。
+
+    返回 (daily_cap, monthly_cap)。读台账失败按 0 处理（闸放行）——
+    统计层故障不能把业务锁死。
+    """
+    try:
+        from .settings_schema import get as ss_get, register_default_namespaces
+        register_default_namespaces()
+        d = float(ss_get("budget", "daily_cost_usd") or 0)
+        m = float(ss_get("budget", "monthly_cost_usd") or 0)
+        return max(0.0, d), max(0.0, m)
+    except Exception:
+        return 0.0, 0.0
+
+
+def _cost_gate_block():
+    """花费硬顶闸：超出日/月上限返回人话报文（ENV_BLOCK 形状），否则 None。
+
+    与 token 预算闸同一命中形状：只拦「下一步」，允许越过线的当前步完成；
+    auto 续跑可在用户调高上限（或次日/次月额度重置）后接手；同因连撞由
+    repeat-guard 止损，不会烧钱（被拦步骤零真实调用）。
+    """
+    daily_cap, monthly_cap = _budget_cost_caps()
+    if daily_cap <= 0 and monthly_cap <= 0:
+        return None
+    try:
+        from .usage import cost_snapshot
+        today, month = cost_snapshot()
+    except Exception:
+        return None
+    if daily_cap > 0 and today >= daily_cap:
+        return ("已超出每日花费预算：$%.2f/$%.2f（可在设置→编排设置→预算 调整，"
+                "次日自动恢复），停止后续步骤" % (today, daily_cap))
+    if monthly_cap > 0 and month >= monthly_cap:
+        return ("已超出每月花费预算：$%.2f/$%.2f（可在设置→编排设置→预算 调整，"
+                "次月自动恢复），停止后续步骤" % (month, monthly_cap))
+    return None
+
+
 def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
                 timeout, resume, step, log_abs, images=None, require_tools=False,
                 deadline=None):
     """真实 CLI 调用：压缩灰度路径或原路径。"""
+    # 花费硬顶闸（先于 token 闸：钱比 token 更早见顶）：命中直接返回 ENV_BLOCK 形状。
+    cost_block = _cost_gate_block()
+    if cost_block:
+        from .error_codes import ErrorCode
+        return {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+                "tokens": 0, "usage": None, "error": cost_block,
+                "error_code": ErrorCode.ENV_BLOCK, "sid": "",
+                "raw": {"exit_code": None}, "kind": agent.get("kind", "generic"),
+                "model": agent.get("model")}
     # T2.1 预算闸：已用 token 达到单次 run 上限 → 阻断后续真实调用（ENV_BLOCK）。
     # 只拦「下一步」，允许越过线的当前步完成；auto 续跑可在用户调高预算后接手。
     cap = _budget_max_tokens()

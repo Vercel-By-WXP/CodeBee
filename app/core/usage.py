@@ -326,6 +326,33 @@ def _iter_records(days):
     return out
 
 
+def cost_snapshot():
+    """(今日实付, 当月实付) 美元快照——花费硬顶闸（pipeline 预算检查）用。
+
+    复用 _iter_records 的按文件缓存；窗口取 31 天恒覆盖整个当月，
+    单月文件量级下每次调用开销可忽略。任何异常返回 (0.0, 0.0)（闸放行，
+    统计层故障不能反过来把业务锁死）。
+    """
+    try:
+        import datetime
+        today = datetime.date.today().isoformat()
+        month = today[:7]
+        t = m = 0.0
+        for r in _iter_records(31):
+            c = _parse_float(r.get("cost_usd"))
+            if c <= 0:
+                continue
+            d = str(r.get("day") or "")
+            if d == today:
+                t += c
+                m += c
+            elif d.startswith(month):
+                m += c
+        return round(t, 4), round(m, 4)
+    except Exception:
+        return 0.0, 0.0
+
+
 def _iter_quality_records(days):
     """读取独立质量台账；不混入用量统计的调用数、token 和成本。"""
     out = []
