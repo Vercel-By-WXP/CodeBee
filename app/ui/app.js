@@ -9656,6 +9656,7 @@ function openFlowsManager() {
     (f.builtin ? '<span class="tag ok">' + t("预置") + '</span>' : '<span class="tag">' + t("自定义") + '</span>') +
     (f.edited ? '<span class="tag">' + t("已改") + '</span>' : "") +
     '<button class="ghost small" onclick="flowForm(\'' + esc(f.id) + '\')">' + t("编辑") + '</button>' +
+    '<button class="ghost small" onclick="flowExport(\'' + esc(f.id) + '\')">' + t("导出") + '</button>' +
     (f.builtin
       ? (f.edited ? '<button class="ghost small" onclick="flowReset(\'' + esc(f.id) + '\')">' + t("恢复默认") + '</button>' : "")
       : '<button class="danger small" onclick="deleteFlow(\'' + esc(f.id) + '\')">' + t("删除") + '</button>') +
@@ -9666,8 +9667,49 @@ function openFlowsManager() {
   const body = '<p class="hint">' + t("预置流程可直接编辑（阈值/轮数/维度/章节数/提示词），改动随时可「恢复默认」；") +
     t("自定义流程只需填名称与引擎，其余留空走默认。") + '</p>' +
     '<div class="list">' + rows + "</div>" +
-    '<button class="primary" style="margin-top:10px" onclick="flowForm()">' + t("＋ 新建自定义流程") + '</button>';
+    '<div class="input-row" style="margin-top:10px">' +
+    '<button class="primary" onclick="flowForm()">' + t("＋ 新建自定义流程") + '</button>' +
+    '<button class="ghost" onclick="flowImport()">' + t("导入分享码") + '</button></div>';
   openModal(t("🧩 任务类型管理"), body, "");
+}
+
+/* 流程分享码：导出 = 拿码 + 尝试复制到剪贴板；导入 = 粘贴码 + 覆盖确认 */
+async function flowExport(fid) {
+  let r;
+  try { r = await api("/api/flows/export", { method: "POST", body: JSON.stringify({ id: fid }) }); }
+  catch (e) { toast(t("导出失败：") + e.message, true); return; }
+  const body = '<p class="hint">' +
+    t("把这段分享码发给任何人，对方在「任务类型管理 → 导入分享码」粘贴即可一键安装：") + '</p>' +
+    '<textarea id="fl-share-code" rows="6" readonly style="width:100%;font-family:var(--mono,monospace);font-size:12px;word-break:break-all">' +
+    esc(r.code) + "</textarea>";
+  openModal(t("📤 导出流程：") + (r.name || fid), body, "");
+  const ta = $("fl-share-code");
+  if (ta) { ta.focus(); ta.select(); }
+  try { await navigator.clipboard.writeText(r.code); toast(t("分享码已复制到剪贴板")); } catch (e) { /* 无剪贴板权限时保持手选 */ }
+}
+
+function flowImport() {
+  const body = '<p class="hint">' +
+    t("粘贴他人分享的流程码。若与现有流程同 ID：预置流程写入可回滚的自定义改动，自定义流程将被覆盖。") + '</p>' +
+    '<textarea id="fl-import-code" rows="6" placeholder="CBFLOW1.…" style="width:100%;font-family:var(--mono,monospace);font-size:12px;word-break:break-all"></textarea>';
+  openModal(t("📥 导入流程分享码"), body,
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>' +
+    '<button class="primary" onclick="flowImportDo()">' + t("导入") + '</button>');
+}
+
+async function flowImportDo() {
+  const code = ($("fl-import-code") || {}).value || "";
+  if (!code.trim()) { toast(t("请先粘贴分享码"), true); return; }
+  let r;
+  try { r = await api("/api/flows/import", { method: "POST", body: JSON.stringify({ code }) }); }
+  catch (e) { toast(t("导入失败：") + e.message, true); return; }
+  closeModal();
+  invalidateFlowRubricDraft(r.id);
+  await loadFlows();
+  openFlowsManager();
+  const how = r.status === "noop" ? t("（与现有内容一致）")
+    : r.status === "updated" ? t("（已覆盖现有定义）") : "";
+  toast(t("已导入流程「") + (r.name || r.id) + "」" + how);
 }
 
 async function flowReset(fid) {

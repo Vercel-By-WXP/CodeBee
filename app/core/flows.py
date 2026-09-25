@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
@@ -399,3 +400,65 @@ def reset_flow(flow_id):
             data["overrides"] = ovs
             _write(data)
     return None
+
+
+# ---- 流程分享码（参考 Dify 模板中心 / n8n workflow 模板的可分发思路）----
+# 把「流程」变成可分发资产：导出为一段可粘贴的分享码，对方在任务类型管理里
+# 粘贴导入即装。码体 = 前缀 + urlsafe base64(JSON)，无签名——分享码本来就
+# 是明文可读的信封，导入时过 upsert_flow 全套规范化，坏数据进不来。
+
+_SHARE_PREFIX = "CBFLOW1."
+_SHARE_KIND = "codebee-flow"
+# 导出字段白名单：与 _EDITABLE 对齐 + 身份/展示字段。builtin 标记不导出
+# （对端是否预置由对端的 BUILTIN_FLOWS 决定，不能跨机携带）。
+_SHARE_FIELDS = ("id", "name", "engine", "icon", "goal_hint", "note",
+                 "manuscript", "rubric", "threshold", "rounds", "best_of",
+                 "serial", "draft_prompt", "critique_prompt", "verify_command")
+
+
+def export_flow_code(flow_id):
+    """导出流程为分享码。返回 (code, 错误)。"""
+    f = get_flow(str(flow_id or "").strip())
+    if not f:
+        return None, "流程不存在"
+    payload = {"kind": _SHARE_KIND, "v": 1,
+               "flow": {k: f.get(k) for k in _SHARE_FIELDS if k in f}}
+    blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return _SHARE_PREFIX + base64.urlsafe_b64encode(blob.encode("utf-8")).decode("ascii"), None
+
+
+def import_flow_code(code):
+    """导入分享码。返回 (result, 错误)；result = {id, name, status, builtin}。
+
+    status：created=新建自定义流程；updated=覆盖已有定义（预置流程写
+    overrides，可「恢复默认」回滚）；noop=内容与现状完全一致。UI 应在
+    导入前向用户确认「同 ID 流程会被覆盖」——后端不做静默改名。
+    """
+    if not isinstance(code, str) or not code.strip().startswith(_SHARE_PREFIX):
+        return None, "不是有效的 CodeBee 流程分享码（应以 %s 开头）" % _SHARE_PREFIX
+    raw = code.strip()[len(_SHARE_PREFIX):].strip()
+    try:
+        blob = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+        payload = json.loads(blob.decode("utf-8"))
+    except Exception:
+        return None, "分享码解析失败（可能被截断或篡改）"
+    if not isinstance(payload, dict) or payload.get("kind") != _SHARE_KIND:
+        return None, "分享码内容不是 CodeBee 流程"
+    flow_in = payload.get("flow")
+    if not isinstance(flow_in, dict):
+        return None, "分享码缺少流程定义"
+    fid = str(flow_in.get("id") or "").strip()
+    if not fid:
+        return None, "分享码缺少流程 ID"
+    existed = get_flow(fid)
+    existed_digest = flow_digest(existed) if existed else ""
+    flow, err = upsert_flow(flow_in)
+    if err:
+        return None, err
+    if existed and flow_digest(flow) == existed_digest \
+            and flow.get("name") == existed.get("name"):
+        status = "noop"
+    else:
+        status = "updated" if existed else "created"
+    return {"id": fid, "name": flow.get("name"), "status": status,
+            "builtin": bool(existed and existed.get("builtin"))}, None

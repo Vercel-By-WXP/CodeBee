@@ -1047,6 +1047,19 @@ class Handler(BaseHTTPRequestHandler):
             if err:
                 return self._json(400, {"error": err})
             return self._json(200, {"ok": True, "flow": flow})
+        if path == "/api/flows/export":
+            # 流程分享码：导出一段可粘贴的码，对端「导入分享码」一键安装
+            body = self._body() or {}
+            code, err = flows.export_flow_code(body.get("id") or "")
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True, "code": code,
+                                    "name": (flows.get_flow(body.get("id") or "") or {}).get("name")})
+        if path == "/api/flows/import":
+            res, err = flows.import_flow_code((self._body() or {}).get("code"))
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, dict(ok=True, **res))
         if path == "/api/skills/lesson-op":
             from core import skills
             body = self._body()
