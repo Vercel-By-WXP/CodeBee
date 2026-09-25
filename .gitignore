@@ -19,3 +19,4 @@ tmp_*
 !/tests/test_*.py
 !/tests/test_state_payload.py
 .playwright-cli/
+作品信息-*.md
