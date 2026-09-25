@@ -11,6 +11,10 @@ CodeBee 蜜蜂。实现要点：
   庆祝=原地旋转、睡觉=调暗降饱和、失联=灰化）；机器没有 Pillow 或素材缺失
   时回落「手绘模式」——canvas 矢量卡通蜜蜂（零依赖兜底，npm 分发用户可能
   装不了 PIL）。
+- 底板：Windows 用 -transparentcolor 键色逐像素透明，蜜蜂真浮空；macOS 的
+  Tk 没有逐像素透明（键色是 Windows 专属），矩形底板必然整个露出来还带
+  系统边框——非 Windows 把底板画成深色卡片（「桌面小组件」形态），状态
+  滤镜只作用于蜂体、不碰底板色（2026-09-25 Mac 实拍白板翻车）。
 - 状态机：sleep（打盹）/ work（振翅）/ cheer（翻滚庆祝）/ alert（警示抖动），
   由「上一轮活跃任务集合 vs 本轮结果」的差分推出，不需要后端记事件流。
 - 悬停任务清单走指针轮询而不是 Enter/Leave：-transparentcolor 的透明像素在
@@ -310,6 +314,72 @@ def _http_json(port, path, body=None):
 # 用罕见深色，蜜蜂配色不会撞上。
 KEY = "#010203"
 KEY_RGB = (1, 2, 3)
+# 非 Windows 底板：macOS 的 Tk 没有逐像素透明（-transparentcolor 是
+# Windows 专属），矩形底板必然整个露出来还带系统边框——索性把底板画成
+# 深色卡片（对齐悬停清单面板色），桌宠呈「桌面小组件」形态，而不是
+# 一块突兀的白板（2026-09-25 Mac 实拍翻车）。
+CARD_BG = "#1B2430"
+CARD_RGB = (27, 36, 48)
+
+
+def plate_for(os_name):
+    """底板色：Windows=键色（配 -transparentcolor 逐像素透明）；其余=卡片色。"""
+    return KEY if os_name == "nt" else CARD_BG
+
+
+def plate_rgb_for(os_name):
+    """底板色的 RGB 元组（精灵帧合成/噪点归底用），与 plate_for 同源。"""
+    return KEY_RGB if os_name == "nt" else CARD_RGB
+
+
+PLATE = plate_for(os.name)
+PLATE_RGB = plate_rgb_for(os.name)
+
+
+def composite_plate(img, plate_rgb):
+    """RGBA 精灵合成到不透明底色（纯像素逻辑，不碰 Tk，可测试）。"""
+    from PIL import Image
+    bg = Image.new("RGBA", img.size, tuple(plate_rgb) + (255,))
+    bg.alpha_composite(img)
+    return bg.convert("RGB")
+
+
+def knock_to_plate(img, plate_rgb):
+    """近底色噪点（旋转/缩放的 AA 碎点）归底色，原地修改并返回。"""
+    pr, pg, pb = plate_rgb
+    px = img.load()
+    w, h = img.size
+    for yy in range(h):
+        for xx in range(w):
+            r, g, b = px[xx, yy]
+            if abs(r - pr) + abs(g - pg) + abs(b - pb) < 12:
+                px[xx, yy] = plate_rgb
+    return img
+
+
+def mood_rgba(img, color=1.0, bright=1.0):
+    """状态滤镜（降饱和/调暗/灰化）只作用于有内容的像素，底板色不动。
+
+    ImageEnhance 系列对整图混色，会把透明洞当黑色往里掺；而本文件的做法
+    是先合成到底板再出帧，底板跟着变暗后卡片上就浮出一块更暗的小框
+    （Windows 靠近键噪点归键兜回来，Mac 卡片底兜不回来）——故按 alpha
+    手做：透明像素原样，蜂体像素做 luma 降饱和 + 调暗。不修改入参图。
+    """
+    img = img.copy()
+    px = img.load()
+    w, h = img.size
+    for yy in range(h):
+        for xx in range(w):
+            r, g, b, a = px[xx, yy]
+            if not a:
+                continue
+            lum = int(r * 0.299 + g * 0.587 + b * 0.114)
+            px[xx, yy] = (
+                min(255, max(0, int((lum * (1 - color) + r * color) * bright))),
+                min(255, max(0, int((lum * (1 - color) + g * color) * bright))),
+                min(255, max(0, int((lum * (1 - color) + b * color) * bright))),
+                a)
+    return img
 WIN_W, WIN_H = 170, 150          # 手绘回落模式的窗口尺寸
 SPRITE_DIR = Path(__file__).resolve().parent
 SPRITE_DISP_H = 112              # 精灵显示高度（宽等比）
@@ -496,7 +566,7 @@ class PetApp:
                 self.root.attributes("-transparentcolor", KEY)
             except Exception:
                 pass
-        self.root.configure(bg=KEY)
+        self.root.configure(bg=PLATE)
 
         # 形象：本地 cfg 优先（换形象要立刻见效，不等服务端轮询），缺省 plush
         self.skin = str(cfg.get("skin") or DEFAULT_SKIN)
@@ -515,7 +585,7 @@ class PetApp:
             self.win_w, self.win_h = WIN_W, WIN_H
 
         self.cv = tk.Canvas(self.root, width=self.win_w, height=self.win_h,
-                            bg=KEY, highlightthickness=0, bd=0)
+                            bg=PLATE, highlightthickness=0, bd=0)
         self.cv.pack()
         self.spr = None
 
@@ -628,7 +698,7 @@ class PetApp:
         expand 放画布，窗口会比蜂体大一圈，点缀画件全悬空（真机截图翻车）。
         """
         try:
-            from PIL import Image, ImageEnhance, ImageTk
+            from PIL import Image, ImageTk
         except Exception:
             # 无 Pillow：用 Tk 原生 PhotoImage 直接贴 PNG（Tk 8.6+ 原生解码，
             # 零依赖）——此前直接回落手绘蜂，普通用户 npm 装完没有 Pillow，
@@ -659,30 +729,21 @@ class PetApp:
             base = base0.resize((disp_w, disp_h), Image.LANCZOS)
 
             def flat(img):
-                """合成到键色底：羽化边缘自然过渡，键色即透明，无需真 alpha。"""
-                bg = Image.new("RGBA", img.size, KEY_RGB + (255,))
-                bg.alpha_composite(img)
-                return bg.convert("RGB")
+                """合成到底板色：Windows 键色待逐像素透明，Mac 卡片底；
+                羽化边缘自然过渡，无需真 alpha。"""
+                return composite_plate(img, PLATE_RGB)
 
             def bake(img):
-                """RGB → PhotoImage；近键色噪点（旋转/缩放的 AA 碎点）归键。"""
-                px = img.load()
-                w, h = img.size
-                for yy in range(h):
-                    for xx in range(w):
-                        r, g, b = px[xx, yy]
-                        if abs(r - 1) + abs(g - 2) + abs(b - 3) < 12:
-                            px[xx, yy] = KEY_RGB
-                return ImageTk.PhotoImage(img)
+                """RGB → PhotoImage；近底色噪点（旋转/缩放的 AA 碎点）归底。"""
+                return ImageTk.PhotoImage(knock_to_plate(img, PLATE_RGB))
 
             rot = lambda a: flat(base.rotate(a, resample=Image.BICUBIC))
             frames = {
                 "alert": [bake(flat(base))],
-                "sleep": [bake(ImageEnhance.Brightness(
-                    ImageEnhance.Color(flat(base)).enhance(0.7)
-                ).enhance(0.55))],
-                "dead": [bake(ImageEnhance.Brightness(
-                    flat(base).convert("L").convert("RGB")).enhance(0.6))],
+                # 睡觉降饱和调暗 / 失联灰化：滤镜只碰蜂体不碰底板
+                # （mood_rgba 按 alpha 手做，底板色恒定，卡片不浮暗框）
+                "sleep": [bake(flat(mood_rgba(base, color=0.7, bright=0.55)))],
+                "dead": [bake(flat(mood_rgba(base, color=0.0, bright=0.6)))],
                 "work": [bake(rot(a)) for a in (-8, -4, 0, 4, 8)],
                 # 欢腾摇摆：左倾-回正-右倾-回正，像跳舞不像旋转木马
                 "cheer": [bake(rot(a)) for a in (0, 10, 20, 10, 0, -10,

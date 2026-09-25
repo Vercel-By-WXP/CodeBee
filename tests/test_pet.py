@@ -143,6 +143,77 @@ class TestPetLogic(unittest.TestCase):
         self.assertEqual(rows, [pet.LANG["zh"]["all_clear"]])
 
 
+try:
+    from PIL import Image  # noqa: F401
+    _HAVE_PIL = True
+except Exception:
+    _HAVE_PIL = False
+
+
+class TestPetPlate(unittest.TestCase):
+    """底板形态：Windows 键色逐像素透明；其余平台（macOS 等）深色卡片。
+
+    macOS 的 Tk 没有逐像素透明（-transparentcolor 是 Windows 专属），
+    矩形底板必然露出来——画成深色卡片呈「桌面小组件」形态，而不是一块
+    带系统边框的白板（2026-09-25 Mac 实拍翻车）。
+    """
+
+    def test_plate_selection(self):
+        self.assertIs(pet.plate_for("nt"), pet.KEY)
+        self.assertIs(pet.plate_for("darwin"), pet.CARD_BG)
+        self.assertIs(pet.plate_for("linux"), pet.CARD_BG)
+        self.assertEqual(pet.plate_rgb_for("nt"), pet.KEY_RGB)
+        self.assertEqual(pet.plate_rgb_for("darwin"), pet.CARD_RGB)
+
+    def test_card_rgb_matches_card_bg(self):
+        # 两个常量必须同源，否则噪点归底会把颜色归错
+        self.assertEqual(pet.CARD_RGB,
+                         tuple(int(pet.CARD_BG[i:i + 2], 16)
+                               for i in (1, 3, 5)))
+
+    @unittest.skipUnless(_HAVE_PIL, "无 Pillow")
+    def test_composite_plate_fills_transparent_with_plate(self):
+        # 卡片形态：精灵帧合成到卡片底色，透明区=卡片色（不再依赖键色变透明）
+        img = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+        out = pet.composite_plate(img, pet.CARD_RGB)
+        self.assertEqual(out.getpixel((0, 0)), pet.CARD_RGB)
+        self.assertEqual(out.getpixel((7, 7)), pet.CARD_RGB)
+
+    @unittest.skipUnless(_HAVE_PIL, "无 Pillow")
+    def test_composite_plate_keeps_opaque_pixels(self):
+        img = Image.new("RGBA", (4, 4), (250, 180, 40, 255))
+        out = pet.composite_plate(img, pet.CARD_RGB)
+        self.assertEqual(out.getpixel((2, 2)), (250, 180, 40))
+
+    @unittest.skipUnless(_HAVE_PIL, "无 Pillow")
+    def test_knock_to_plate_snaps_near_noise_and_spares_body(self):
+        noise = (pet.CARD_RGB[0] + 3, pet.CARD_RGB[1] + 2, pet.CARD_RGB[2] + 1)
+        img = Image.new("RGB", (2, 1), noise)
+        out = pet.knock_to_plate(img, pet.CARD_RGB)
+        self.assertEqual(out.getpixel((0, 0)), pet.CARD_RGB)
+        body = Image.new("RGB", (1, 1), (250, 180, 40))   # 蜂体色离底板远
+        self.assertEqual(pet.knock_to_plate(body, pet.CARD_RGB)
+                         .getpixel((0, 0)), (250, 180, 40))
+
+    @unittest.skipUnless(_HAVE_PIL, "无 Pillow")
+    def test_mood_rgba_touches_body_only_and_keeps_alpha(self):
+        # 状态滤镜只作用于蜂体：透明底板区原样（否则卡片上浮出一块更暗的
+        # 小框），蜂体变暗且降饱和，输入图不被原地修改
+        img = Image.new("RGBA", (4, 4), (0, 0, 0, 0))
+        img.putpixel((1, 1), (200, 100, 0, 255))
+        out = pet.mood_rgba(img, color=0.7, bright=0.55)
+        self.assertEqual(out.getpixel((0, 0)), (0, 0, 0, 0))
+        r, g, b, a = out.getpixel((1, 1))
+        self.assertEqual(a, 255)
+        self.assertLess(r + g + b, 200 + 100 + 0)
+        self.assertLess(max(r, g, b) - min(r, g, b), 200)
+        self.assertEqual(img.getpixel((1, 1)), (200, 100, 0, 255))  # 入参不动
+
+        gray = pet.mood_rgba(img, color=0.0, bright=0.6).getpixel((1, 1))
+        self.assertEqual(len({gray[0], gray[1], gray[2]}), 1)   # 失联=纯灰
+        self.assertEqual(gray[3], 255)
+
+
 class TestPetSettings(BaseTest):
     """pet_enabled / pet_mode 的默认值、往返与非法值拒绝。"""
 
