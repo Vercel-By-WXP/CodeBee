@@ -3109,6 +3109,111 @@ def test_model(provider_id, model_name, key_id=""):
     return finish(last)
 
 
+def generate_once(provider_id, model_name, prompt, max_tokens=2048, timeout_s=120):
+    """单轮真实生成（评测基准台等需要「自定义 prompt 实答」的场景）。
+
+    与 test_model 同一套 wire 解析（auto 探测/多 KEY 回退/KEY 健康记账），
+    但发的是真实生成请求并取回正文。返回
+    {ok, text, usage{input,output}, protocol, key_id, latency_ms, error}；
+    任何失败折叠进 ok=False + error，绝不抛出。
+    """
+    import time as _t
+    with _LOCK:
+        prov = next((p for p in providers() if p.get("id") == provider_id), None)
+    if not prov:
+        return {"ok": False, "text": "", "usage": None, "error": "供应商不存在"}
+    keys = _chain_keys(prov)
+    if not keys:
+        return {"ok": False, "text": "", "usage": None, "error": "无可用 API KEY"}
+    allow_private = bool(prov.get("allow_private"))
+    t0 = _t.time()
+
+    def out(ok, text="", usage=None, protocol="", key_id="", error=""):
+        return {"ok": ok, "text": text, "usage": usage, "protocol": protocol,
+                "key_id": key_id, "error": error,
+                "latency_ms": int((_t.time() - t0) * 1000)}
+
+    last_err = "无可用 wire"
+    for key_index, kk in enumerate(keys):
+        probe_key_id = (kk.get("id") or "") if key_index > 0 else ""
+        protos, note = _ensure_wire_candidates(provider_id, prov, model_name,
+                                               key_id=probe_key_id,
+                                               force_probe=bool(probe_key_id))
+        if not protos:
+            last_err = "无已验证的兼容 wire" + ("（%s）" % note if note else "")
+            note_key_error(provider_id, kk.get("id") or "", last_err)
+            continue
+        for proto, pbase in protos:
+            base = (pbase or "").rstrip("/")
+            if proto == "google":
+                url = base + ("/models/%s:generateContent" % model_name
+                              if base.endswith("/v1beta")
+                              else "/v1beta/models/%s:generateContent" % model_name)
+                headers = {"x-goog-api-key": kk["key"]}
+                body = {"contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"maxOutputTokens": max_tokens}}
+            else:
+                path = "/messages" if proto == "anthropic" else "/chat/completions"
+                url = (base + path) if base.endswith("/v1") else (base + "/v1" + path)
+                if proto == "anthropic":
+                    headers = {"x-api-key": kk["key"], "anthropic-version": "2023-06-01"}
+                else:
+                    headers = {"Authorization": "Bearer " + kk["key"]}
+                body = {"model": model_name, "max_tokens": max_tokens,
+                        "messages": [{"role": "user", "content": prompt}]}
+            status, data, err = _post_json_http(url, headers, body, allow_private,
+                                                timeout=timeout_s)
+            if status == 0:
+                last_err = err or "连接失败"
+                note_key_error(provider_id, kk.get("id") or "", last_err)
+                continue
+            if not (200 <= status < 300):
+                last_err = "HTTP %s %s" % (status, _response_error_text(data) or "")
+                note_key_error(provider_id, kk.get("id") or "", last_err)
+                continue
+            text, usage_d = _extract_generation(proto, data)
+            if not (text or "").strip():
+                last_err = "HTTP 200 空响应"
+                note_key_error(provider_id, kk.get("id") or "", last_err)
+                continue
+            note_key_ok(provider_id, kk.get("id") or "")
+            return out(True, text, usage_d, proto, kk.get("id") or "")
+    return out(False, error=last_err)
+
+
+def _extract_generation(proto, data):
+    """从三族 wire 的生成响应里取正文与 token 细分。取不到返回 ("", None)。"""
+    if not isinstance(data, dict):
+        return "", None
+    text, usage_d = "", None
+    try:
+        if proto == "openai":
+            msg = ((data.get("choices") or [{}])[0] or {}).get("message") or {}
+            c = msg.get("content")
+            text = c if isinstance(c, str) else "".join(
+                p.get("text") or "" for p in c) if isinstance(c, list) else ""
+            u = data.get("usage") or {}
+            usage_d = {"input": u.get("prompt_tokens") or 0,
+                       "output": u.get("completion_tokens") or 0}
+        elif proto == "anthropic":
+            text = "".join(b.get("text") or "" for b in data.get("content") or []
+                           if isinstance(b, dict) and b.get("type") == "text")
+            u = data.get("usage") or {}
+            usage_d = {"input": u.get("input_tokens") or 0,
+                       "output": u.get("output_tokens") or 0}
+        elif proto == "google":
+            cand = ((data.get("candidates") or [{}])[0] or {})
+            text = "".join(p.get("text") or "" for p in (cand.get("content") or {}).get("parts") or [])
+            u = data.get("usageMetadata") or {}
+            usage_d = {"input": u.get("promptTokenCount") or 0,
+                       "output": u.get("candidatesTokenCount") or 0}
+    except Exception:
+        pass
+    if usage_d is not None and not any(isinstance(v, (int, float)) for v in usage_d.values()):
+        usage_d = None
+    return text, usage_d
+
+
 # ---------------------------------------------------------------- wire 协议适配
 # 聚合中转网关（new-api/one-api 系）通常同一密钥同时开 openai(/chat/completions)
 # 与 anthropic(/v1/messages) 两面 wire。在「模型接入」页用 1 token 最小对话实测，

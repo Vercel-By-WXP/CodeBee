@@ -289,6 +289,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/orchestrator":
                 from core import modelhub
                 return self._json(200, {"orchestrator": modelhub.orchestrator_view()})
+            if path == "/api/evalbench":
+                from core import evalbench
+                return self._json(200, evalbench.state())
             if path == "/api/catalog":
                 return self._json(200, {"catalog": manager.catalog_view(),
                                         "checking": manager.updates_checking()})
@@ -700,6 +703,18 @@ class Handler(BaseHTTPRequestHandler):
             if not res:
                 return self._json(400, {"error": "未配置任何推送通道（群 Webhook / Bark / ntfy / Server酱 / Telegram）"})
             return self._json(200, {"ok": any(res.values()), "channels": res})
+        if path == "/api/evalbench/run":
+            # 评测基准台：样题 × 候选模型实跑 + 编排者裁判打分（后台线程）
+            from core import evalbench
+            body = self._body() or {}
+            info, err = evalbench.start(body.get("candidates"),
+                                        sample_ids=body.get("samples"))
+            if err:
+                return self._json(409 if "在跑" in err else 400, {"error": err})
+            return self._json(200, dict(ok=True, **info))
+        if path == "/api/evalbench/cancel":
+            from core import evalbench
+            return self._json(200, {"ok": evalbench.cancel()})
         if path == "/api/hooks/run":
             return self._api_hook_run()
         if path == "/api/health/op":

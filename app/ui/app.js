@@ -11653,6 +11653,108 @@ async function testNotifyPush() {
   }
 }
 
+/* ---------------------------------------------------------- 模型评测（评测基准台）
+ * 固定样题 × 候选模型实跑 + 编排者裁判打分 → 能力榜；修 bug 题真跑代码做客观验证。 */
+let EB_TIMER = null;
+
+async function loadEvalBench() {
+  if (EB_TIMER) { clearInterval(EB_TIMER); EB_TIMER = null; }
+  try { S.evalbench = await api("/api/evalbench"); } catch (e) { S.evalbench = null; }
+  if (!S.models) { try { S.models = await api("/api/models"); } catch (e) { /* 页面其余部分自会提示 */ } }
+  renderEvalBench();
+  if (S.evalbench && S.evalbench.running) EB_TIMER = setInterval(pollEvalBench, 2500);
+}
+
+function pollEvalBench() {
+  api("/api/evalbench").then((r) => {
+    S.evalbench = r; renderEvalBench();
+    if (!r.running && EB_TIMER) { clearInterval(EB_TIMER); EB_TIMER = null; }
+  }).catch(() => {});
+}
+
+function ebCandidates() {
+  const rows = [];
+  (S.models && S.models.providers || []).forEach((p) => {
+    if (p.enabled === false) return;
+    (p.models || []).forEach((m) => {
+      if (m.enabled === false || m.hidden) return;
+      rows.push({ provider_id: p.id, provider_name: p.name || p.id, model: m.name });
+    });
+  });
+  return rows;
+}
+
+function renderEvalBench() {
+  const eb = S.evalbench;
+  if (!eb) return;
+  const samplesBox = $("eb-samples"), candsBox = $("eb-cands"), board = $("eb-board");
+  if (!samplesBox) return;                     // 子页不在 DOM（防御并行改版）
+  if (!samplesBox.dataset.done) {
+    samplesBox.innerHTML = eb.samples.map((s) =>
+      '<div class="item"><div class="t"><span class="name">' + esc(t(s.name)) + "</span>" +
+      (s.verify ? '<span class="tag ok">' + t("带客观验证") + "</span>" : "") + "</div>" +
+      '<div class="desc">' + esc(t(s.requirement)) + t("　维度：") +
+      esc(s.dims.map((d) => t(d)).join(" / ")) + "</div></div>").join("");
+    samplesBox.dataset.done = "1";
+  }
+  const prev = (eb.leaderboard || []).reduce((acc, r) => {
+    acc[r.provider_id + "\n" + r.model] = true; return acc;
+  }, {});
+  candsBox.innerHTML = ebCandidates().map((c) => {
+    const key = c.provider_id + "\n" + c.model;
+    return '<label class="toggle" style="display:flex;align-items:center;gap:6px">' +
+      '<input type="checkbox" class="eb-cand" data-pid="' + esc(c.provider_id) +
+      '" data-model="' + esc(c.model) + '"' + (prev[key] ? " checked" : "") + "> " +
+      '<span>' + esc(t(c.provider_name)) + " · " + esc(c.model) + "</span></label>";
+  }).join("") || '<div class="hint">' + t("没有可用模型：先在「模型接入」配置启用了密钥的供应商。") + "</div>";
+  const j = eb.judge || {};
+  const jEl = $("eb-judge");
+  if (jEl) jEl.textContent = j.ready
+    ? t("裁判：") + (j.model || j.provider_id)
+    : t("裁判未就绪：先在「编排设置」配置编排者供应商");
+  const pr = eb.progress;
+  $("eb-progress").textContent = eb.running && pr
+    ? t("评测中 ") + (pr.done || 0) + "/" + (pr.total || 0) + (pr.current ? t("　·　") + pr.current : "")
+    : "";
+  board.innerHTML = (eb.leaderboard || []).map((r) => {
+    const dims = Object.keys(r.scores || {}).length
+      ? t("　") + Object.keys(r.scores).map((d) => t(d) + " " + r.scores[d]).join(t("　")) : "";
+    const verify = r.verify_total
+      ? t("　客观验证 ") + r.verify_pass + "/" + r.verify_total : "";
+    const marks = (r.same_family ? '<span class="tag">' + t("同族评审") + "</span>" : "") +
+      (r.failed_n ? '<span class="tag">' + t("失败 ") + r.failed_n + "</span>" : "") +
+      (!r.scored_n ? '<span class="tag">' + t("未得分") + "</span>" : "");
+    return '<div class="item"><div class="t"><span class="name">#' + r.rank + "　" +
+      esc(r.model) + "</span>" +
+      (r.overall != null ? '<span class="tag ok">' + t("综合 ") + r.overall + "</span>" : "") + marks +
+      '<span class="tag">' + esc(t(r.provider_name)) + "</span></div>" +
+      '<div class="desc">' + t("样题 ") + r.samples_n + verify + dims +
+      (r.last_ts ? t("　·　") + r.last_ts : "") + "</div></div>";
+  }).join("") || '<div class="hint">' + t("还没有评测结果：勾选候选模型后点「开始评测」。") + "</div>";
+  const btn = $("eb-run-btn");
+  if (btn) btn.disabled = !!eb.running;
+}
+
+async function evalbenchRun() {
+  const picks = Array.from(document.querySelectorAll(".eb-cand:checked")).map((el) => ({
+    provider_id: el.dataset.pid, model: el.dataset.model }));
+  const msg = $("eb-msg");
+  if (!picks.length) { if (msg) { msg.className = "msg err"; msg.textContent = t("请先勾选至少一个候选模型"); } return; }
+  try {
+    await api("/api/evalbench/run", { method: "POST", body: JSON.stringify({ candidates: picks }) });
+    if (msg) { msg.className = "msg ok"; msg.textContent = ""; }
+    if (!EB_TIMER) EB_TIMER = setInterval(pollEvalBench, 2500);
+    pollEvalBench();
+  } catch (e) {
+    if (msg) { msg.className = "msg err"; msg.textContent = e.message; }
+  }
+}
+
+async function evalbenchCancel() {
+  try { await api("/api/evalbench/cancel", { method: "POST" }); } catch (e) { /* 空闲时 200 ok=false */ }
+  pollEvalBench();
+}
+
 /* ---------------------------------------------------------- 关于与更新（selfupdate）
  * 后端 /api/selfupdate：mode=npm 才可自动升级；repo（git clone）提示 git pull。
  * 升级 = 建 mgmt run 跑 npm install -g @latest（日志实时落盘）→ 服务自动重启，
@@ -13473,6 +13575,7 @@ function switchTab(name, shell) {
   if (name === "runs" && !S.detailRunId) closeRun();
   if (name === "agents") autoCheckUpdates();   // 进目录页自动查各 CLI 新版本
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排设置页拉取配置
+  if (name === "evalbench") loadEvalBench();   // 进模型评测页：榜单 + 候选清单
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
   if (name === "knowledge") loadKnowledge();   // 进知识库页拉取条目
   if (name === "automation") { loadAutomation(); startAutoPoll(); }   // 进自动化页：拉取 + 页面可见时每 8s 轮询

@@ -212,6 +212,7 @@
       <button class="set-item" data-sub="knowledge" data-i18n="知识库"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg>知识库</button>
       <button class="set-item" data-sub="market" data-i18n="插件市场"><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg>插件市场</button>
       <button class="set-item" data-sub="orch" data-i18n="编排设置"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg>编排设置</button>
+      <button class="set-item" data-sub="evalbench" data-i18n="模型评测"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>模型评测</button>
       <div data-i18n="数据" class="set-group">数据</div>
       <button class="set-item" data-sub="data" data-i18n="数据与备份"><svg class="ico" aria-hidden="true"><use href="#i-library"></use></svg>数据与备份</button>
       <div data-i18n="外观" class="set-group">外观</div>
@@ -986,6 +987,26 @@
           </div>
           <div id="set-v2-card" class="field"></div>
           <div id="settings-msg" class="msg"></div>
+        </div>
+      </div>
+
+      <!-- 模型评测（评测基准台：样题 × 候选模型 × 固定 rubric → 能力榜） -->
+      <div id="sub-evalbench" class="subpage hidden">
+        <div class="panel wide">
+          <div class="panel-head"><h2 data-i18n="模型评测">模型评测</h2><span class="spacer"></span><span class="hint" id="eb-judge"></span></div>
+          <p data-i18n="固定样题（章节写作 / 修 bug / 结构化摘要）让候选模型各跑一遍，同一评审链打分出能力榜；修 bug 题带客观验证（代码真跑断言）。评审用「编排者」供应商，先在编排设置里配好；裁判与候选同供应商时如实标注「同族评审」。所有调用计入用量台账（评测记账不计费用，价格表单位未核实）。" class="hint">固定样题（章节写作 / 修 bug / 结构化摘要）让候选模型各跑一遍，同一评审链打分出能力榜；修 bug 题带客观验证（代码真跑断言）。评审用「编排者」供应商，先在编排设置里配好；裁判与候选同供应商时如实标注「同族评审」。所有调用计入用量台账（评测记账不计费用，价格表单位未核实）。</p>
+          <h3 data-i18n="内置样题" class="sec-title">内置样题</h3>
+          <div id="eb-samples" class="list"></div>
+          <h3 data-i18n="候选模型（勾选要实测的模型）" class="sec-title">候选模型（勾选要实测的模型）</h3>
+          <div id="eb-cands" class="list"></div>
+          <div class="input-row" style="margin-top:10px">
+            <button id="eb-run-btn" class="primary" onclick="evalbenchRun()" data-i18n="开始评测">开始评测</button>
+            <button class="ghost" onclick="evalbenchCancel()" data-i18n="停止">停止</button>
+            <span id="eb-progress" class="hint"></span>
+          </div>
+          <div id="eb-msg" class="msg"></div>
+          <h3 data-i18n="能力榜" class="sec-title">能力榜</h3>
+          <div id="eb-board" class="list"></div>
         </div>
       </div>
 

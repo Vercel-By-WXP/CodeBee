@@ -14,7 +14,7 @@
     "2": ["runner", "manager", "jobs", "automation", "selfupdate", "cleanup",
           "backup", "errorlog", "telemetry", "gitmod", "zentao", "wxdigest",
           "publish", "publish.auto", "publish.browser", "publish.flow",
-          "publish.manager", "bookmeta"],
+          "publish.manager", "bookmeta", "evalbench"],
     "3": ["pipeline", "main"]
   },
   "forbidCycles": true,
