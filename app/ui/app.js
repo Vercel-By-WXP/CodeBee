@@ -9507,6 +9507,44 @@ async function catAutoBindAll() {
   poll();
 }
 
+/* 一键升级全部（智能体目录页）：把所有「已安装且配了升级命令」的条目批量
+ * 送进 mgmt 队列，服务端跳过「已是最新的」；每条复用单条升级的就地面板跟踪。
+ * 批量起跑的日志默认收起（要看点「查看日志」），防止十几张卡同时摊开刷屏。 */
+async function catUpgradeAll() {
+  const btn = $("btn-catalog-upgrade-all");
+  if (btn) btn.disabled = true;
+  try {
+    const r = await api("/api/catalog/upgrade-all", { method: "POST" });
+    S.mgmt = S.mgmt || {};
+    for (const s of (r.started || [])) {
+      const before = ((S.catalog || []).find((x) => x.id === s.id) || {}).version;
+      S.mgmt[s.id] = { opLabel: t("升级"), status: "queued", versionBefore: before,
+                       log: "", showLog: false };
+      pollMgmt(s.id, s.run_id);
+    }
+    S.catSig = null; renderCatalog();
+    const n = (r.started || []).length, skip = (r.busy || []).length, bad = (r.failed || []).length;
+    let msg;
+    if (n) {
+      msg = t("已开始升级 %1 个智能体").replace("%1", n);
+      if (skip) msg += t("，%1 个忙于其他管理操作未动").replace("%1", skip);
+      if (bad) msg += t("，%1 个任务创建失败").replace("%1", bad);
+    } else if (skip) {
+      msg = t("没有新的升级任务：%1 个条目正忙于其他管理操作。").replace("%1", skip);
+    } else if (bad) {
+      msg = t("升级任务创建失败：") + (r.failed || []).join("、");
+    } else {
+      msg = t("没有需要升级的智能体（都已最新，或未安装/未配置升级命令）。");
+    }
+    toast(msg, !n);
+  } catch (e) {
+    toast(t("失败：") + e.message, true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+  poll();
+}
+
 /* 一键打开：web 类后台起服务并自动开浏览器；console 类新开终端窗口跑交互 TUI。
    用的模型就是目录页「默认模型」已写入该 CLI 配置文件的那份；密钥由服务端按编排同款规则注入 */
 async function openAgent(id) {
@@ -14126,6 +14164,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-reload-catalog").addEventListener("click", async () => {
     await api("/api/catalog/reload", { method: "POST" }); poll(); refreshSessionAgents();
   });
+  $("btn-catalog-upgrade-all").addEventListener("click", catUpgradeAll);
   $("btn-catalog-autobind").addEventListener("click", catAutoBindAll);
   $("btn-import").addEventListener("click", openImportDialog);
   $("btn-add-provider").addEventListener("click", openAddProviderDialog);

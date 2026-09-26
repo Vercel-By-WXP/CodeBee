@@ -925,6 +925,30 @@ class Handler(BaseHTTPRequestHandler):
             n = manager.check_updates_async(force=force)
             return self._json(200, {"ok": True, "count": n,
                                     "checking": manager.updates_checking()})
+        if path == "/api/catalog/upgrade-all":
+            # 一键升级：把所有可升级条目逐个送进 mgmt 队列（选条见
+            # manager.upgrade_all_targets）。同条目去重闸与单条升级共用——
+            # 忙着的条目跳过并在响应里点名，前端 toast 汇报
+            started, busy, failed = [], [], []
+            for e in manager.upgrade_all_targets():
+                if store.active_mgmt_run(e["id"]):
+                    busy.append(e.get("name", e["id"]))
+                    continue
+                run = store.create_run("mgmt", "升级 %s" % e.get("name", e["id"]),
+                                       entry_id=e["id"], op="upgrade")
+                queued, qerr = self._enqueue_run(
+                    run["id"], None,
+                    {"kind": "mgmt", "run_id": run["id"], "entry_id": e["id"], "op": "upgrade"})
+                if not queued:
+                    # 入队失败必须落终态：queued 僵尸会永久堵住去重闸
+                    store.update_run(run["id"], status="failed", error=qerr or "enqueue 失败",
+                                     ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+                    failed.append(e.get("name", e["id"]))
+                    continue
+                started.append({"id": e["id"], "name": e.get("name", e["id"]),
+                                "run_id": run["id"]})
+            return self._json(200, {"ok": True, "started": started,
+                                    "busy": busy, "failed": failed})
         if path == "/api/selfupdate/apply":
             from core import selfupdate
             try:

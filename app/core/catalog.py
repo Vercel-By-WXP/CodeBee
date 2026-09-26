@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import re
 import sys
 import threading
@@ -430,7 +431,12 @@ def load(force=False):
             entries = json.loads(paths.CATALOG_FILE.read_text(encoding="utf-8"))
         except Exception:
             entries = copy.deepcopy(DEFAULT_CATALOG)
-        _merge_new_defaults(entries)
+        # TUTTI_TEST_NO_DEFAULT_CATALOG：e2e 测试隔离开关——种盘的 catalog.json
+        # 就是全部条目。默认合并会把真实 CLI 条目带进测试服务，一键升级这类
+        # 「遍历全 catalog」的接口会把真机的 npm/winget 升级真跑一遍（2026-09-26
+        # e2e_upgrade_all 实弹案：codex 被真升）。
+        if not os.environ.get("TUTTI_TEST_NO_DEFAULT_CATALOG"):
+            _merge_new_defaults(entries)
         _apply_resume_patch(entries)
         _apply_launch_patch(entries)
         _apply_config_patch(entries)

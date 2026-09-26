@@ -2089,6 +2089,27 @@ def check_updates_async(force=False):
     return len(entries)
 
 
+def upgrade_all_targets():
+    """「一键升级全部」的目标条目，按目录顺序返回。
+
+    只收同时满足：已安装 + 配了 upgrade 命令（op=upgrade 硬依赖该字段，
+    没配的跟单条一样不出「升级」按钮）+ 更新检查不是「已是最新」。
+    检查结果为 unknown（还没查）/ unsupported（渠道查不了）的也升级——
+    npm/pip 的升级命令幂等，宁可空跑一次也不漏升；唯一跳过「已是最新」，
+    防无谓重装（重装易撞 EBUSY 文件锁）。
+    """
+    detected = detect_all()
+    out = []
+    for e in catalog.load():
+        det = (detected or {}).get(e["id"]) or {}
+        if not det.get("installed") or not e.get("upgrade"):
+            continue
+        if update_info(e).get("status") == "current":
+            continue
+        out.append(e)
+    return out
+
+
 def catalog_view():
     """管理页数据：catalog + 检测 + 版本 + 模型 + 编排启用状态。"""
     from . import registry
