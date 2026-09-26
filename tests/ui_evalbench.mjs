@@ -173,6 +173,15 @@ async function main() {
     check("开始评测的 POST 带 1 个候选", posted.length === 1 && posted[0].n === 1,
       JSON.stringify(posted));
 
+    // ── 3.5 推荐选模的实测分偏好（benchPick 纯函数，与后端 dispatch 同款软信号）──
+    check("有实测分时偏好榜上高分模型", await evalJs(`(function(){
+      S.benchScores = {"prov-a\\nmodel-a": 8.2, "prov-a\\nmodel-c": 9.0};
+      var rows = [{name:"model-a"},{name:"model-c"},{name:"model-d"}];
+      return benchPick("prov-a", rows) === rows[1]; })()`));
+    check("无实测分保持 priority 首个（返回 null 不干预）", await evalJs(`(function(){
+      S.benchScores = {};
+      return benchPick("prov-x", [{name:"a"},{name:"b"}]) === null; })()`));
+
     // ── 4. EN i18n ──
     await evalJs(`(function(){ try{ localStorage.setItem("orch.lang","en"); }catch(e){}
       if(typeof applyI18n==="function") applyI18n(); return true; })()`);
