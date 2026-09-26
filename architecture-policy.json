@@ -6,7 +6,8 @@
           "tlsctx", "remote", "error_codes", "attachments", "dispatch",
           "capability", "aiflavor", "token_meter", "compaction", "session_log",
           "repeat_guard", "diagnostics", "bookmeta_catalog", "env_scrub", "util",
-          "browser", "ws", "ledger", "fanqie", "qimao", "flow", "prefs", "board"],
+          "browser", "ws", "ledger", "fanqie", "qimao", "flow", "prefs", "board",
+          "benchstore", "evalbench"],
     "1": ["catalog", "store", "skills", "knowledge", "history", "health",
           "task_compile", "step_runner", "market", "market_remote", "skill_scan",
           "share_page", "notify", "paihang", "planner", "router",
@@ -14,7 +15,7 @@
     "2": ["runner", "manager", "jobs", "automation", "selfupdate", "cleanup",
           "backup", "errorlog", "telemetry", "gitmod", "zentao", "wxdigest",
           "publish", "publish.auto", "publish.browser", "publish.flow",
-          "publish.manager", "bookmeta", "evalbench"],
+          "publish.manager", "bookmeta"],
     "3": ["pipeline", "main"]
   },
   "forbidCycles": true,

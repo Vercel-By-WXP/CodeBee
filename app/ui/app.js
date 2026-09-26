@@ -1261,6 +1261,7 @@ async function refreshPollLookups(force) {
         S.modelCatalog = models.catalog || [];
         S.sourceNames = models.source_names || S.sourceNames || {};
         S._modelsLoaded = true;
+        refreshBenchScores();          // 评测实测分随模型目录一起保鲜（推荐选模用）
         renderDirectModelPicker();
         const provSig = JSON.stringify((S.providers || []).map((p) => [p.id, p.enabled, !!p.api_key]));
         if (provSig !== S.provSig) { S.provSig = provSig; loadOrchestrator(); }
@@ -9092,6 +9093,32 @@ function bindRepaint() { S.bindSig = null; renderBindings(); }
  * 解析照样失败；没有合适的就什么都不绑（2026-09-17 用户拍板，不再保留
  * 「只剩它也上」的兜底）。只预填草稿态（dirty），逐条看清后各自保存
  * 或「全部保存」，健康链绝不被覆盖。 */
+/* 评测台实测分（推荐选模用）：与后端 dispatch 同款软信号——只在该供应商的
+ * 启用模型里挑「榜上有名且分最高」的那个，无数据保持 priority 首个（现状）。 */
+async function refreshBenchScores() {
+  const now = Date.now();
+  if (S._benchAt && now - S._benchAt < 60000) return;   // 评测数据变化慢，60s 节流
+  S._benchAt = now;
+  try {
+    const eb = await api("/api/evalbench");
+    const map = {};
+    (eb.leaderboard || []).forEach((r) => {
+      if (r.overall != null) map[r.provider_id + "\n" + r.model] = r.overall;
+    });
+    S.benchScores = map;
+  } catch (e) { /* 评测数据不可得时推荐保持原行为 */ }
+}
+
+function benchPick(pid, models) {
+  const map = S.benchScores || {};
+  let best = null, bestScore = -1;
+  (models || []).forEach((m) => {
+    const s = map[pid + "\n" + m.name];
+    if (typeof s === "number" && s > bestScore) { best = m; bestScore = s; }
+  });
+  return best;
+}
+
 function recommendFor(c) {
   // 目录页「默认模型」下拉用 orch_kind || id 判协议（仅管理条目没有 orch_kind），
   // 推荐口径与下拉过滤保持一致；绑定页条目恒有 orch_kind，不受影响
@@ -9105,7 +9132,10 @@ function recommendFor(c) {
   const p = provs[0];
   const models = (p.models || []).filter((m) => !m.hidden && m.enabled !== false);
   if (!models.length) return null;
-  return { p: p.id, m: models[0].name };
+  // 供应商级选择规则保持不变（协议适配/优先级/冷却）；实测分只在模型级做偏好，
+  // 且不覆盖「默认模型停用+500 降权」等既有防线——见 0922 禁自动调度拍板
+  const bench = benchPick(p.id, models);
+  return { p: p.id, m: (bench || models[0]).name };
 }
 
 /* 供应商对某 CLI 是否「推荐可用」：启用、协议适配，且至少有一把不在冷却期的

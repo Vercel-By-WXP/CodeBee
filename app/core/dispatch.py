@@ -119,6 +119,20 @@ def _online_model_bonus(entry, task_type, role):
         return 0.0, ""
 
 
+def _bench_bonus(entry):
+    """评测基准台实测分软信号（promptfoo 式样题榜单；14 天新鲜度，过期记 0）。
+
+    与在线信号同理念：软加减分，硬约束（健康/冷却/协议）仍由调用方负责；
+    无数据不猜分——没上过评测台的候选保持原排序。
+    """
+    try:
+        from . import benchstore
+        return benchstore.bonus_for(entry.get("provider_id") or "",
+                                    entry.get("model") or "")
+    except Exception:
+        return 0.0, ""
+
+
 def score_model_entry(entry, providers, pricing, difficulty, task_type="", role=""):
     """给已通过硬约束的模型链条目评分，返回 (score, explanation)。"""
     provider = (providers or {}).get(entry.get("provider_id")) \
@@ -146,11 +160,14 @@ def score_model_entry(entry, providers, pricing, difficulty, task_type="", role=
     if dim == "vision":
         vision_score = 24.0 if meta.get("image_in") else -24.0
     online_score, online_reason = _online_model_bonus(entry, task_type, role)
-    total = quality + tier_score + price_score + strength_score + vision_score + online_score
-    reason = ("质量 %+.1f，档位 %s %+.1f，%s，能力 %s %+.1f%s%s"
+    bench_score, bench_reason = _bench_bonus(entry)
+    total = (quality + tier_score + price_score + strength_score + vision_score
+             + online_score + bench_score)
+    reason = ("质量 %+.1f，档位 %s %+.1f，%s，能力 %s %+.1f%s%s%s%s"
               % (quality, tier, tier_score, price_reason, dim,
                  strength_score + vision_score,
-                 "，" if online_reason else "", online_reason))
+                 "，" if online_reason else "", online_reason,
+                 "，" if bench_reason else "", bench_reason))
     return round(total, 2), reason
 
 

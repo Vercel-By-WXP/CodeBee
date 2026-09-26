@@ -208,6 +208,26 @@ class TestModelChainWeightsMatchDoc(BaseTest):
         self.assertIn("真 +24、假 -24", vision)
         self.assertIn("以实测评测为准", vision)
 
+    def test_bench_row_matches_code(self):
+        """实测（评测台）分项：文档数值与 benchstore 代码常量逐格一致。"""
+        from app.core import benchstore, dispatch
+
+        row = _row("| 实测（评测台） |")
+        self.assertIn("(overall − 7.0) × 1.5", row)
+        self.assertIn("±4.5", row)
+        self.assertIn("14 天", row)
+        self.assertIn("过期记 0", row)
+        self.assertIn("无数据记 0", row)
+        # 代码常量与表一致
+        self.assertEqual(benchstore._BASELINE, 7.0)
+        self.assertEqual(benchstore._K, 1.5)
+        self.assertEqual(benchstore._MAX_BONUS, 4.5)
+        self.assertEqual(benchstore.FRESH_DAYS, 14)
+        # 分项真的进了总分与理由（理由是权重的唯一可观测面）
+        src = inspect.getsource(dispatch.score_model_entry)
+        self.assertIn("_bench_bonus(entry)", src)
+        self.assertIn("bench_score", src)
+
     def test_rerank_only_under_easy_or_hard(self):
         from app.core import dispatch
 

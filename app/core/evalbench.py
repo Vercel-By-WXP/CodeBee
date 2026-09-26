@@ -82,22 +82,20 @@ def samples():
 # ---------------------------------------------------------------- 存储
 
 def _path():
-    return paths.DATA_DIR / "eval_bench.json"
+    """兼容旧引用（单测/探针断言用）；读写实际下沉 benchstore（L0 存储层，
+    dispatch 同层合法取实测分软信号）。"""
+    from . import benchstore
+    return benchstore._path()
 
 
 def _read():
-    try:
-        data = json.loads(_path().read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+    from . import benchstore
+    return benchstore.read_doc()
 
 
 def _write(data):
-    _path().parent.mkdir(parents=True, exist_ok=True)
-    tmp = _path().with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(_path())
+    from . import benchstore
+    benchstore.write_doc(data)
 
 
 def _persist_result(row):
