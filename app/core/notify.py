@@ -188,6 +188,13 @@ def push_run(run_id):
             lines.append("📄 详情：%s/api/runs/%s/share" % (base, run_id))
     except Exception:
         pass
+    # 分支待裁决：任务跑完有改动等人拍板时点名提醒（手机端看到即可去详情处理）
+    try:
+        task = store.get_task(run.get("task_id")) if run.get("task_id") else None
+        if task and task.get("git_state") == "isolated":
+            lines.append("⚠ 任务分支待裁决（合并/丢弃）")
+    except Exception:
+        pass
     return push_text("\n".join(lines))
 
 

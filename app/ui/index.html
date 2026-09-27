@@ -1101,6 +1101,20 @@
             <label class="toggle" style="margin-top:6px"><input id="bk-logs" type="checkbox" checked> <span data-i18n="包含运行过程日志（备份更大，但历史日志可完整回看）">包含运行过程日志（备份更大，但历史日志可完整回看）</span></label>
             <div id="bk-result" class="msg"></div>
           </div>
+          <div class="field">
+            <label data-i18n="远程备份（导出后自动上传到 WebDAV / S3 兼容 PUT 端点）">远程备份（导出后自动上传到 WebDAV / S3 兼容 PUT 端点）</label>
+            <label class="toggle" style="margin-top:6px"><input id="bk-remote-enabled" type="checkbox"> <span data-i18n="启用：每次导出成功后自动推送备份包到远程端点">启用：每次导出成功后自动推送备份包到远程端点</span></label>
+            <div class="input-row" style="margin-top:6px">
+              <input id="bk-remote-url" type="text" placeholder="端点 URL（如 https://dav.example.com/backup/）" data-i18n-ph="端点 URL（如 https://dav.example.com/backup/）" style="flex:1">
+            </div>
+            <div class="input-row" style="margin-top:6px">
+              <input id="bk-remote-user" type="text" placeholder="用户名（可空）" data-i18n-ph="用户名（可空）">
+              <input id="bk-remote-pass" type="password" placeholder="密码（可空）" data-i18n-ph="密码（可空）">
+              <button class="ghost small" type="button" onclick="saveBackupRemote()" data-i18n="保存">保存</button>
+              <button class="ghost small" type="button" onclick="testBackupRemote()" data-i18n="测试连接">测试连接</button>
+            </div>
+            <p class="hint" id="bk-remote-msg"></p>
+          </div>
         </div>
         <div class="panel wide">
           <div class="panel-head"><h2 data-i18n="恢复（导入备份包）">恢复（导入备份包）</h2></div>

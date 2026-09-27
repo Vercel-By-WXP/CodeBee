@@ -11567,6 +11567,7 @@ async function loadSettings() {
     const mcp = $("set-mcp-servers");
     if (mcp && S.settings) mcp.value = S.settings.mcp_servers || "";
     fillNotifyPush();
+    fillBackupRemote();
     syncPetModeSeg();
     syncPetSkinSeg();
     const wd = $("set-workdir"), hint = $("set-workdir-hint");
@@ -13703,9 +13704,14 @@ window.exportBackup = async function () {
       body: JSON.stringify({ target_dir: (($("bk-target") || {}).value || "").trim(),
                              include_logs: $("bk-logs").checked }) });
     const ext = (r.external_workdirs || []);
+    const remote = r.remote || {};
     $("bk-result").innerHTML = '<span class="ok">' + esc(t("已导出")) + t("：") + esc(r.path)
       + t("（") + esc(fmtSize(r.size || 0)) + t("，") + esc(t("任务")) + " " + (r.tasks || 0)
       + " · " + esc(t("运行记录")) + " " + (r.runs || 0) + t("）") + "</span>"
+      + (remote && remote.skipped ? "" :
+        (remote && remote.ok
+          ? '<div><span class="ok">' + esc(t("☁ 已推送到远程备份端点")) + "</span></div>"
+          : '<div><span class="bad">' + esc(t("☁ 远程推送失败：") + (remote.error || "")) + "</span></div>"))
       + (ext.length ? '<div><span class="bad">' + esc(t("以下外部目录不在备份里，需自行拷贝："))
         + esc(ext.join("、")) + "</span></div>" : "")
       + '<button class="ghost small" onclick="copyText(this)" data-copy="' + esc(r.path) + '">'
@@ -13716,6 +13722,45 @@ window.exportBackup = async function () {
     if (btn) { btn.disabled = false; btn.innerHTML = old; }
   }
 };
+
+/* 远程备份通道：配置存 settings，导出成功后由后端自动推送 */
+async function saveBackupRemote() {
+  const msg = $("bk-remote-msg");
+  try {
+    const r = await api("/api/settings", { method: "POST", body: JSON.stringify({
+      backup_remote_enabled: !$("bk-remote-enabled") || $("bk-remote-enabled").checked,
+      backup_remote_url: ($("bk-remote-url") || {}).value || "",
+      backup_remote_user: ($("bk-remote-user") || {}).value || "",
+      backup_remote_pass: ($("bk-remote-pass") || {}).value || "" }) });
+    S.settings = r.settings;
+    if (msg) msg.textContent = t("已保存");
+  } catch (e) { if (msg) msg.textContent = e.message; }
+}
+
+async function testBackupRemote() {
+  const msg = $("bk-remote-msg");
+  if (msg) msg.textContent = t("测试中…");
+  try {
+    await api("/api/settings", { method: "POST", body: JSON.stringify({
+      backup_remote_enabled: !$("bk-remote-enabled") || $("bk-remote-enabled").checked,
+      backup_remote_url: ($("bk-remote-url") || {}).value || "",
+      backup_remote_user: ($("bk-remote-user") || {}).value || "",
+      backup_remote_pass: ($("bk-remote-pass") || {}).value || "" }) });
+    const r = await api("/api/data/test-remote", { method: "POST", timeout: 90000 });
+    if (msg) msg.className = "hint " + (r.ok ? "ok" : "err");
+    if (msg) msg.textContent = r.ok ? t("✓ 远程端点连通，可上传") : (t("连接失败：") + (r.error || ""));
+  } catch (e) { if (msg) msg.textContent = e.message; }
+}
+
+function fillBackupRemote() {
+  if (!S.settings) return;
+  const set = (id, key) => { const el = $(id); if (el) el.value = S.settings[key] || ""; };
+  const ck = $("bk-remote-enabled");
+  if (ck) ck.checked = S.settings.backup_remote_enabled === true;
+  set("bk-remote-url", "backup_remote_url");
+  set("bk-remote-user", "backup_remote_user");
+  set("bk-remote-pass", "backup_remote_pass");
+}
 
 /* 通用「复制到剪贴板」：data-copy 属性携带文本（导出路径等） */
 window.copyText = async function (btn) {

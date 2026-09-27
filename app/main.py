@@ -1421,7 +1421,17 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 log.exception("backup: 导出失败")
                 return self._json(500, {"error": "导出失败：%s" % e})
+            # 远程备份通道：启用即自动推送（失败不挡导出，结果并进响应）
+            try:
+                from core import remotesync
+                info["remote"] = remotesync.push_remote(info.get("path") or "")
+            except Exception:
+                info["remote"] = {"ok": False, "error": "推送异常"}
             return self._json(200, {"ok": True, **info})
+        if path == "/api/data/test-remote":
+            # 远程备份连通性测试：PUT 一个探针文件
+            from core import remotesync
+            return self._json(200, {"ok": True, **remotesync.test_remote()})
         if path == "/api/data/import":
             # op=inspect 预览（不落盘）；op=apply 应用（merge/replace + 路径重映射）
             from core import backup

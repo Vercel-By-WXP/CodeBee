@@ -35,6 +35,10 @@ DEFAULTS = {"max_concurrent_jobs": 12, "default_workdir": "", "hooks_token": "",
             # MCP 服务器清单（JSON 数组字符串，stdio 形态）
             "bench_auto_enabled": False, "bench_auto_days": 7,
             "mcp_servers": "",
+            # 备份远程通道（remotesync）：导出成功后自动 PUT 到 WebDAV/S3 兼容
+            # 端点（Basic auth）；密钥只存本机
+            "backup_remote_enabled": False, "backup_remote_url": "",
+            "backup_remote_user": "", "backup_remote_pass": "",
             "pet_enabled": True, "pet_mode": "always", "pet_skin": "plush",
             "cleanup_enabled": True, "cleanup_retention_days": 14,
             # claude_config_sync：打开/运行前防线是否直写 ~/.claude/settings.json。
@@ -143,6 +147,12 @@ def save(patch):
                 return cur, "bench_auto_days 必须是 1-90 的整数"
         if "mcp_servers" in patch:
             cur["mcp_servers"] = str(patch.get("mcp_servers") or "").strip()[:4000]
+        if "backup_remote_enabled" in patch:
+            cur["backup_remote_enabled"] = bool(patch.get("backup_remote_enabled"))
+        for _rk, _rmax in (("backup_remote_url", 300), ("backup_remote_user", 128),
+                           ("backup_remote_pass", 128)):
+            if _rk in patch:
+                cur[_rk] = str(patch.get(_rk) or "").strip()[:_rmax]
         if "pet_enabled" in patch:
             cur["pet_enabled"] = bool(patch.get("pet_enabled"))
         if "pet_mode" in patch:
