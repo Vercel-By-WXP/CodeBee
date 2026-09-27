@@ -692,7 +692,8 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None):
         # MCP 工具：透传给配置的服务器（stdio JSON-RPC）；超时给足但封顶
         try:
             from . import mcp_client
-            r = mcp_client.dispatch_full_name(name, args or {})
+            r = mcp_client.dispatch_full_name(
+                name, args or {}, cancel_event=cancel_event, deadline=deadline)
             return r.get("text") or ("（MCP 工具失败: %s）" % r.get("error") if not r.get("ok") else "")
         except Exception as e:
             return "MCP 工具执行失败: %s" % e
@@ -1486,6 +1487,10 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         for c in calls:
                             out = _exec_tool(workdir, c["name"], c["args"], cancel_event,
                                              deadline=deadline)
+                            if deadline is not None and time.monotonic() >= deadline:
+                                return _deadline_fail()
+                            if cancel_event is not None and cancel_event.is_set():
+                                return _cancel_fail()
                             if log:
                                 brief = out if len(out) <= 120 else out[:120] + "…"
                                 log("[工具] %s → %s" % (c["name"], brief.replace("\n", " ⏎ ")))
