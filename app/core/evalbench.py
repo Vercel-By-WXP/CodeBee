@@ -190,9 +190,11 @@ def import_sample_code(code):
         return None, "分享码解析失败（可能被截断或篡改）"
     if not isinstance(payload, dict) or payload.get("kind") != _SAMPLE_SHARE_KIND:
         return None, "分享码内容不是 CodeBee 样题"
-    sample, err = sample_op("add", payload.get("sample"))
-    if err and "ID" in str(err):
-        sample, err = sample_op("add", dict(payload.get("sample") or {}))  # 换号重试
+    sample_in = dict(payload.get("sample") or {})
+    # ID 冲突自动换号（add 对同 id 是覆盖语义，会静默替换原题——不是想要的）
+    if any(x.get("id") == str(sample_in.get("id") or "") for x in custom_samples()):
+        sample_in.pop("id", None)
+    sample, err = sample_op("add", sample_in)
     if err:
         return None, err
     return {"id": sample["id"], "name": sample["name"]}, None
