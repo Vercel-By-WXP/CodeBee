@@ -976,12 +976,30 @@ def _run_verify(run_id, task, workdir, ev):
     return ok, True
 
 
+def _review_depth_note(diff):
+    """评审深度随 diff 规模分级（借鉴 pr-af 模型分级：评审投入应随变更量级变化）。
+    纯提示词指引，不改 pass 判定语义：小改动不逼评审员凑字数（省 token），
+    大变更先概览后深看高风险区（防浮于表面）。中等规模不给指引（默认深度）。"""
+    lines = (diff or "").count("\n")
+    if 0 < lines < 40:
+        return ("\n\n## 评审深度指引（小改动快速评审）\n"
+                "本次变更很小（%d 行）。聚焦正确性与验收命令是否真实覆盖改动，"
+                "不展开风格类与假设性建议；确认无 blocker 即可给 pass。" % lines)
+    if lines >= 600:
+        return ("\n\n## 评审深度指引（大变更评审）\n"
+                "本次变更较大（%d 行）。先逐 hunk 概览建立全貌，再对高风险区"
+                "（安全/并发/数据与迁移/公共 API 契约）逐行深看；"
+                "minor 问题汇总一条即可，不逐条展开。" % lines)
+    return ""
+
+
 def _run_review(run_id, task, workdir, reviewer, ev):
     diff = _git_diff(workdir)
     prompt = (CODE_REVIEW_PROMPT
               .replace("__GOAL__", task["goal"])
               .replace("__VERIFY__", task.get("verify_command") or "（未配置）")
               .replace("__DIFF__", diff or "（无法获取 git diff，请综合任务目标谨慎评审）"))
+    prompt += _review_depth_note(diff)
     if task.get("context"):
         prompt += "\n\n## 原始背景与附件要求\n" + task["context"]
     res = _run_step(run_id, "review", reviewer, prompt, workdir, readonly=True, ev=ev,
