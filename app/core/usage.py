@@ -219,9 +219,29 @@ def _budget_alert_check(day):
         pass
 
 
+EXPORT_COLUMNS = ("ts", "day", "source", "task_type", "role", "agent", "model",
+                  "provider", "ok", "input", "output", "cached", "reasoning",
+                  "total", "cost_usd")
+
+
+def export_csv(days=30, max_rows=10000):
+    """台账明细导出 CSV（UTF-8 BOM，Excel 直开；行数封顶防炸）。返回 bytes。"""
+    import csv as _csv
+    import io as _io
+    buf = _io.StringIO()
+    writer = _csv.writer(buf)
+    writer.writerow(EXPORT_COLUMNS)
+    n = 0
+    for r in _iter_records(max(0, int(days or 0))):
+        writer.writerow([r.get(c, "") for c in EXPORT_COLUMNS])
+        n += 1
+        if n >= max_rows:
+            break
+    return b"\xef\xbb\xbf" + buf.getvalue().encode("utf-8")
+
+
 def backfill_from_runs():
     """把历史 run.json 里已记录的 token 用量回填进台账（启动时调用，幂等）。
-
     埋点是后加的：此前的运行只在 run.json 的步骤里存了 tokens/cost_usd 总量，
     没有输入/输出/缓存细分，所以回填记录 input/output/cached 记 0、只有 total，
     并以 source="backfill" 标记便于区分。已回填的 (run_id, 步骤号) 会跳过，

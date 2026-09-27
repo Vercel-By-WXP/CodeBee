@@ -370,6 +370,19 @@ class Handler(BaseHTTPRequestHandler):
                     "Content-Disposition":
                         'attachment; filename="codebee-diag-%s.zip"'
                         % time.strftime("%Y%m%d-%H%M%S")})
+            if path == "/api/usage/export":
+                # 台账明细导出 CSV（UTF-8 BOM，Excel 直开；行数封顶防炸）
+                from core import usage as _usage
+                try:
+                    days = max(0, min(3650, int((parse_qs(urlparse(self.path).query)
+                                                .get("days") or ["30"])[0])))
+                except (TypeError, ValueError):
+                    days = 30
+                csv_bytes = _usage.export_csv(days=days)
+                return self._send(200, csv_bytes, ctype="text/csv; charset=utf-8",
+                                  headers={"Content-Disposition":
+                                           'attachment; filename="codebee-usage-%s.csv"'
+                                           % time.strftime("%Y%m%d-%H%M%S")})
             if path == "/api/diagnostics/issue-summary":
                 # 一键反馈 Issue 的预填摘要（标题+正文，全程脱敏，用户亲手提交）
                 from core import telemetry

@@ -13966,6 +13966,11 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("#usage-ranges [data-days]").forEach((b) =>
     b.addEventListener("click", () => setUsageDays(b.dataset.days)));
   $("btn-usage-refresh").addEventListener("click", loadUsage);
+  const ubtn = $("btn-usage-export");
+  if (ubtn) ubtn.addEventListener("click", () => {
+    // 下载导航带令牌（urlAuth）；范围跟随页面当前选择
+    window.open(urlAuth("/api/usage/export?days=" + encodeURIComponent(usageRange())), "_blank");
+  });
   document.querySelectorAll("#usage-heat-modes [data-heat]").forEach((b) =>
     b.addEventListener("click", () => setUsageHeatMode(b.dataset.heat)));
   $("btn-back").addEventListener("click", closeRun);
