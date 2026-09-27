@@ -9725,6 +9725,7 @@ function openFlowsManager() {
     (f.edited ? '<span class="tag">' + t("已改") + '</span>' : "") +
     '<button class="ghost small" onclick="flowForm(\'' + esc(f.id) + '\')">' + t("编辑") + '</button>' +
     '<button class="ghost small" onclick="flowExport(\'' + esc(f.id) + '\')">' + t("导出") + '</button>' +
+    '<button class="ghost small" onclick="flowHistory(\'' + esc(f.id) + '\')">' + t("历史") + '</button>' +
     (f.builtin
       ? (f.edited ? '<button class="ghost small" onclick="flowReset(\'' + esc(f.id) + '\')">' + t("恢复默认") + '</button>' : "")
       : '<button class="danger small" onclick="deleteFlow(\'' + esc(f.id) + '\')">' + t("删除") + '</button>') +
@@ -9754,6 +9755,43 @@ async function flowExport(fid) {
   const ta = $("fl-share-code");
   if (ta) { ta.focus(); ta.select(); }
   try { await navigator.clipboard.writeText(r.code); toast(t("分享码已复制到剪贴板")); } catch (e) { /* 无剪贴板权限时保持手选 */ }
+}
+
+/* 版本历史（Langfuse prompt management 借鉴）：当前版 + 历史版清单，每版带
+ * 实测战绩；恢复前弹确认——被顶下来的当前版会进历史，错了还能翻回来。 */
+const FLOW_SOURCE_TXT = { manual: "手动修改", import: "分享码导入", restore: "恢复顶下" };
+
+async function flowHistory(fid) {
+  let versions;
+  try { versions = (await api("/api/flows/versions?id=" + encodeURIComponent(fid))).versions || []; }
+  catch (e) { toast(t("历史读取失败：") + e.message, true); return; }
+  const statTxt = (st) => !st ? "" :
+    '<span class="tag">' + t("任务 ") + st.runs +
+    (st.pass_rate != null ? t("　通过 ") + Math.round(st.pass_rate * 100) + "%" : "") +
+    (st.avg_overall != null ? t("　均分 ") + st.avg_overall : "") + "</span>";
+  const rows = versions.map((v) => {
+    const src = v.current ? '<span class="tag ok">' + t("当前") + "</span>"
+      : '<span class="tag">' + t(FLOW_SOURCE_TXT[v.source] || v.source) + " " + esc(v.ts) + "</span>";
+    const btn = v.current ? "" :
+      '<button class="ghost small" onclick="flowRestore(\'' + esc(fid) + "', '" + esc(v.ts) + '\')">' + t("恢复") + "</button>";
+    return '<div class="item"><div class="t"><span class="name">' + esc(v.name || fid) +
+      "</span>" + src + '<span class="tag">' + esc(v.digest) + "</span>" + statTxt(v.stats) + btn +
+      "</div></div>";
+  }).join("");
+  openModal(t("🕘 流程版本历史：") + fid,
+    '<p class="hint">' +
+    t("每次保存/导入覆盖前的版本自动留档（每流程最多 10 份）。战绩按任务钉住的流程指纹对账——改提示词前先看看现在这版跑得怎么样。") + "</p>" +
+    '<div class="list">' + (rows || '<div class="hint">' + t("还没有历史版本。") + "</div>") + "</div>", "");
+}
+
+async function flowRestore(fid, ts) {
+  if (!await uiConfirm(t("把该流程恢复到 ") + ts + t(" 的版本？当前版本会先存进历史，随时可再翻回。"), { ok: t("恢复") })) return;
+  try { await api("/api/flows/restore", { method: "POST", body: JSON.stringify({ id: fid, ts }) }); }
+  catch (e) { toast(t("恢复失败：") + e.message, true); return; }
+  invalidateFlowRubricDraft(fid);
+  await loadFlows();
+  openFlowsManager();
+  toast(t("已恢复历史版本"));
 }
 
 function flowImport() {

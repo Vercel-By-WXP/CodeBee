@@ -268,6 +268,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"sources": modelhub.sources()})
             if path == "/api/flows":
                 return self._json(200, {"flows": flows.list_flows()})
+            if path == "/api/flows/versions":
+                qs = parse_qs(urlparse(self.path).query)
+                fid = (qs.get("id") or [""])[0]
+                return self._json(200, {"versions": flows.flow_versions(fid)})
             if path == "/api/skills":
                 from core import skills
                 return self._json(200, skills.view())
@@ -1083,6 +1087,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "binding": b})
         if path == "/api/flows":
             flow, err = flows.upsert_flow(self._body())
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True, "flow": flow})
+        if path == "/api/flows/restore":
+            # 版本历史恢复：把历史版重新 upsert 回来（当前版先入史，可再回滚）
+            body = self._body() or {}
+            flow, err = flows.restore_flow_version(body.get("id") or "",
+                                                   body.get("ts") or "")
             if err:
                 return self._json(400, {"error": err})
             return self._json(200, {"ok": True, "flow": flow})
@@ -2827,6 +2839,7 @@ def main():
     from core import usage
     store.set_run_estimator(usage.estimate)
     store.set_run_auditor(usage.audit_run)   # 终态把预估与真实用量逐条对账
+    flows.set_runs_provider(store.list_runs)  # 版本战绩对账用 run 遍历器（防 flows→store 静态环）
     _step("正在回填用量台账…")
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）
     if n_bf:

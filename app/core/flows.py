@@ -14,6 +14,7 @@ import hashlib
 import json
 import re
 import threading
+import time
 
 from . import paths, volumes
 
@@ -297,11 +298,13 @@ def flow_drift(task):
     return {"flow": cur.get("id") or "", "pinned": pinned, "current": current}
 
 
-def upsert_flow(payload):
+def upsert_flow(payload, source="manual"):
     """新增/更新流程。返回 (flow, 错误)。
 
     - 预置流程 id：写入 overrides（可编辑、可恢复默认）；
-    - 新 id：创建自定义流程——**只需 name + engine**，其余字段留空走引擎默认。
+    - 新 id：创建自定义流程——**只需 name + engine**，其余字段留空走引擎默认；
+    - source：覆盖成因，进版本历史（manual=手动改 / import=分享码导入 /
+      restore=恢复操作顶下旧版）；语义与名字都相同则不产生历史噪音。
     """
     fid = str(payload.get("id") or "").strip()
     name = str(payload.get("name") or "").strip()
@@ -320,6 +323,7 @@ def upsert_flow(payload):
         ov.pop("id", None)
         ov["engine"] = base["engine"]   # 引擎不可改（避免语义错乱）
         merged = _apply_overrides(base, ov)
+        _push_history(fid, merged, source)
         with _LOCK:
             data = _read()
             ovs = data.get("overrides") if isinstance(data.get("overrides"), dict) else {}
@@ -363,6 +367,7 @@ def upsert_flow(payload):
     elif engine == "code":
         flow["verify_command"] = str(payload.get("verify_command") or "")[:200]
     # direct：无流程参数（目标+附件即全部输入）
+    _push_history(fid, flow, source)
     with _LOCK:
         data = _read()
         flows = data.get("flows") if isinstance(data.get("flows"), list) else []
@@ -452,7 +457,7 @@ def import_flow_code(code):
         return None, "分享码缺少流程 ID"
     existed = get_flow(fid)
     existed_digest = flow_digest(existed) if existed else ""
-    flow, err = upsert_flow(flow_in)
+    flow, err = upsert_flow(flow_in, source="import")
     if err:
         return None, err
     if existed and flow_digest(flow) == existed_digest \
@@ -462,3 +467,128 @@ def import_flow_code(code):
         status = "updated" if existed else "created"
     return {"id": fid, "name": flow.get("name"), "status": status,
             "builtin": bool(existed and existed.get("builtin"))}, None
+
+
+# ---- 版本历史（Langfuse prompt management 借鉴）：提示词/参数改动可回滚 ----
+# 覆盖前的当前版自动快照进 data/flows_history.json（每流程 ≤_HISTORY_MAX 条），
+# 恢复=把历史版重新 upsert 回来；runs 已按 flow_revision（digest 前 16）对账，
+# 每版顺手给出实测战绩——「哪版提示词好用」不再靠感觉。
+
+_HISTORY_MAX = 10          # 每流程保留的历史版本数（新的顶旧的）
+
+
+def _history_read():
+    try:
+        data = json.loads((paths.DATA_DIR / "flows_history.json").read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _history_write(data):
+    paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = paths.DATA_DIR / "flows_history.json.tmp"
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(paths.DATA_DIR / "flows_history.json")
+
+
+def _push_history(fid, new_flow, source):
+    """把「即将被覆盖的当前版」存进历史；语义与名字都相同则跳过（不产噪音）。"""
+    try:
+        cur = get_flow(fid)
+        if not cur:
+            return                                # 首次创建没有旧版可存
+        if flow_digest(cur) == flow_digest(new_flow) \
+                and cur.get("name") == new_flow.get("name"):
+            return
+        with _LOCK:
+            data = _history_read()
+            versions = data.get(fid) if isinstance(data.get(fid), list) else []
+            versions.insert(0, {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                                "source": str(source or "manual")[:16],
+                                "flow": {k: cur.get(k) for k in _SHARE_FIELDS if k in cur}})
+            data[fid] = versions[:_HISTORY_MAX]
+            _history_write(data)
+    except Exception:
+        pass                                       # 历史是增强，永远不挡保存
+
+
+_RUNS_PROVIDER = None      # main.py 启动注入 store.list_runs；flows(L0) 不反向
+                           # 依赖 store(L1)——静态图不成环（同 set_run_estimator 模式）
+
+
+def set_runs_provider(fn):
+    """注入 run 遍历器（应用入口传 store.list_runs）；未注入时版本无战绩。"""
+    global _RUNS_PROVIDER
+    _RUNS_PROVIDER = fn if callable(fn) else None
+
+
+def _flow_stats(digest16):
+    """该流程修订的实测战绩：任务数/通过率/均分（按 run 钉的 flow_revision 对账）。
+
+    均分分母只算有评分的 run；无记录返回 None。"""
+    try:
+        if not _RUNS_PROVIDER:
+            return None
+        runs = wins = scored_n = 0
+        total = 0.0
+        for run in (_RUNS_PROVIDER(limit=None) or []):
+            if not isinstance(run, dict):
+                continue
+            rev = str(((run.get("execution_snapshot") or {}).get("flow_revision")) or "")
+            if rev[:16] != digest16:
+                continue
+            runs += 1
+            v = run.get("verdict") or {}
+            if v.get("publishable") is True:
+                wins += 1
+            if isinstance(v.get("overall"), (int, float)):
+                total += float(v["overall"])
+                scored_n += 1
+        if not runs:
+            return None
+        return {"runs": runs, "pass_rate": round(wins / runs, 2),
+                "avg_overall": round(total / scored_n, 1) if scored_n else None}
+    except Exception:
+        return None
+
+
+def flow_versions(flow_id):
+    """给 UI 的版本清单：当前版在前，历史版新→旧；每版带 digest 与实测战绩。"""
+    fid = str(flow_id or "").strip()
+    out = []
+    cur = get_flow(fid)
+    if cur:
+        d = flow_digest(cur)[:16]
+        out.append({"current": True, "ts": "", "source": "current", "name": cur.get("name"),
+                    "digest": d, "stats": _flow_stats(d)})
+    for snap in _history_read().get(fid) or []:
+        d = flow_digest(snap.get("flow") or {})[:16]
+        out.append({"current": False, "ts": str(snap.get("ts") or ""),
+                    "source": str(snap.get("source") or "manual"),
+                    "name": (snap.get("flow") or {}).get("name"),
+                    "digest": d, "stats": _flow_stats(d)})
+    return out
+
+
+def restore_flow_version(flow_id, ts):
+    """恢复历史版本。返回 (flow, 错误)。
+
+    恢复动作本身也会把「被顶下来的当前版」存进历史（source=restore），
+    恢复错了还能再恢复回去；目标条目先从历史中消费掉再做 upsert——
+    ts 是秒级精度，顺序反了同秒快照会被误删。"""
+    fid = str(flow_id or "").strip()
+    ts = str(ts or "")
+    with _LOCK:
+        data = _history_read()
+        versions = data.get(fid) if isinstance(data.get(fid), list) else []
+        snap = next((s for s in versions if s.get("ts") == ts), None)
+        if snap:
+            data[fid] = [s for s in versions if s.get("ts") != ts]
+            _history_write(data)
+    if not snap:
+        return None, "历史版本不存在（可能已被消费）"
+    flow, err = upsert_flow(dict(snap.get("flow") or {}), source="restore")
+    if err:
+        return None, err
+    return flow, None
