@@ -11886,7 +11886,11 @@ function renderEvalBench() {
   if (!samplesBox.dataset.done) {
     samplesBox.innerHTML = eb.samples.map((s) =>
       '<div class="item"><div class="t"><span class="name">' + esc(t(s.name)) + "</span>" +
-      (s.verify ? '<span class="tag ok">' + t("带客观验证") + "</span>" : "") + "</div>" +
+      (s.verify ? '<span class="tag ok">' + t("带客观验证") + "</span>" : "") +
+      (s.builtin ? "" : '<span class="tag">' + t("自定义") + "</span>" +
+        '<button class="ghost small" onclick="sampleExport(\'' + esc(s.id) + '\')">' + t("导出") + "</button>" +
+        '<button class="danger small" onclick="sampleDelete(\'' + esc(s.id) + '\')">' + t("删除") + "</button>") +
+      "</div>" +
       '<div class="desc">' + esc(t(s.requirement)) + t("　维度：") +
       esc(s.dims.map((d) => t(d)).join(" / ")) + "</div></div>").join("");
     samplesBox.dataset.done = "1";
@@ -11977,6 +11981,78 @@ async function evalbenchRun() {
 async function evalbenchCancel() {
   try { await api("/api/evalbench/cancel", { method: "POST" }); } catch (e) { /* 空闲时 200 ok=false */ }
   pollEvalBench();
+}
+
+/* 自定义样题：添加表单 / 删除 / 导出分享码 / 导入分享码 */
+function sampleAdd() {
+  const body = '<div class="form">' +
+    '<div class="field"><label>' + t("名称 ") + '<span class="req">*</span></label><input id="sm-name" maxlength="20"></div>' +
+    '<div class="field"><label>' + t("评审维度（2-6 个，逗号分隔）") + '</label><input id="sm-dims" placeholder="' + t("例：正确性，可读性") + '"></div>' +
+    '<div class="field"><label>' + t("题目要求（一句话，给裁判看）") + '</label><input id="sm-req" maxlength="120"></div>' +
+    '<div class="field"><label>' + t("题目内容 ") + '<span class="req">*</span>' + t("（发给候选模型的完整题面，≤2000 字）") + '</label>' +
+    '<textarea id="sm-prompt" rows="6" style="width:100%"></textarea></div></div>';
+  openModal(t("＋ 添加自定义样题"), body,
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>' +
+    '<button class="primary" onclick="sampleAddDo()">' + t("保存") + '</button>');
+}
+
+async function sampleAddDo() {
+  const dims = (($("sm-dims") || {}).value || "").split(/[,，、\n]+/).map((s) => s.trim()).filter(Boolean);
+  try {
+    await api("/api/evalbench/sample-op", { method: "POST", body: JSON.stringify({
+      op: "add", sample: { name: ($("sm-name") || {}).value, dims,
+        requirement: ($("sm-req") || {}).value, prompt: ($("sm-prompt") || {}).value } }) });
+    closeModal();
+    S.evalbench = await api("/api/evalbench");
+    const box = $("eb-samples");
+    if (box) box.dataset.done = "";
+    renderEvalBench();
+    toast(t("样题已添加"));
+  } catch (e) { toast(t("保存失败：") + e.message, true); }
+}
+
+async function sampleDelete(sid) {
+  if (!await uiConfirm(t("删除这道自定义样题？历史评测结果保留。"), { ok: t("删除"), danger: true })) return;
+  try { await api("/api/evalbench/sample-op", { method: "POST", body: JSON.stringify({ op: "delete", sid }) }); }
+  catch (e) { toast(t("删除失败：") + e.message, true); return; }
+  S.evalbench = await api("/api/evalbench");
+  const box = $("eb-samples");
+  if (box) box.dataset.done = "";
+  renderEvalBench();
+  toast(t("已删除"));
+}
+
+async function sampleExport(sid) {
+  let r;
+  try { r = await api("/api/evalbench/sample-export", { method: "POST", body: JSON.stringify({ id: sid }) }); }
+  catch (e) { toast(t("导出失败：") + e.message, true); return; }
+  const body = '<p class="hint">' + t("把这段样题分享码发给任何人，对方在「添加样题 → 导入」粘贴即可：") + '</p>' +
+    '<textarea id="sm-share-code" rows="5" readonly style="width:100%;font-family:var(--mono,monospace);font-size:12px;word-break:break-all">' +
+    esc(r.code) + "</textarea>";
+  openModal(t("📤 导出样题"), body, "");
+  try { await navigator.clipboard.writeText(r.code); toast(t("分享码已复制到剪贴板")); } catch (e) { /* 无剪贴板权限时保持手选 */ }
+}
+
+function sampleImport() {
+  const body = '<p class="hint">' + t("粘贴样题分享码（CBSAMP1. 开头），ID 冲突自动换号。") + '</p>' +
+    '<textarea id="sm-import-code" rows="5" style="width:100%;font-family:var(--mono,monospace);font-size:12px;word-break:break-all"></textarea>';
+  openModal(t("📥 导入样题分享码"), body,
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>' +
+    '<button class="primary" onclick="sampleImportDo()">' + t("导入") + '</button>');
+}
+
+async function sampleImportDo() {
+  const code = ($("sm-import-code") || {}).value || "";
+  if (!code.trim()) { toast(t("请先粘贴分享码"), true); return; }
+  let r;
+  try { r = await api("/api/evalbench/sample-import", { method: "POST", body: JSON.stringify({ code }) }); }
+  catch (e) { toast(t("导入失败：") + e.message, true); return; }
+  closeModal();
+  S.evalbench = await api("/api/evalbench");
+  const box = $("eb-samples");
+  if (box) box.dataset.done = "";
+  renderEvalBench();
+  toast(t("已导入样题「") + (r.name || r.id) + "」");
 }
 
 /* ---------------------------------------------------------- 关于与更新（selfupdate）

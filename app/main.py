@@ -732,6 +732,30 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/evalbench/cancel":
             from core import evalbench
             return self._json(200, {"ok": evalbench.cancel()})
+        if path == "/api/evalbench/sample-op":
+            # 自定义样题增删：{op:add|delete, sample:{...}|sid}
+            from core import evalbench
+            body = self._body() or {}
+            res, err = evalbench.sample_op(body.get("op") or "",
+                                           sample=body.get("sample"),
+                                           sid=body.get("sid") or "")
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True, "sample": res})
+        if path == "/api/evalbench/sample-export":
+            from core import evalbench
+            body = self._body() or {}
+            code, err = evalbench.export_sample_code(body.get("id") or "")
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True, "code": code})
+        if path == "/api/evalbench/sample-import":
+            from core import evalbench
+            body = self._body() or {}
+            res, err = evalbench.import_sample_code(body.get("code"))
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, dict(ok=True, **res))
         if path == "/api/hooks/run":
             return self._api_hook_run()
         if path == "/api/health/op":

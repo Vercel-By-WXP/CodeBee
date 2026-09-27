@@ -1021,6 +1021,7 @@
     "输出单价 ¥/M": "Output price ¥/M",
     "标定单价：": "Set price: ",
     "单价已标定": "Price saved",
+    "导出当前范围的台账明细（CSV，Excel 可开）": "Export ledger details for the current range (CSV, opens in Excel)",
     "📥 导入流程分享码": "📥 Import flow share code",
     "请先粘贴分享码": "Paste a share code first",
     "（与现有内容一致）": " (identical to current content)",

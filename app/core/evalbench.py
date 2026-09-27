@@ -16,6 +16,7 @@ rubric → 实测能力榜。与 evaluation.py（供应商连通性，24h TTL）
 """
 from __future__ import annotations
 
+import base64
 import json
 import re
 import threading
@@ -68,15 +69,133 @@ BUILTIN_SAMPLES = [
 ]
 _SAMPLE_IDS = {s["id"] for s in BUILTIN_SAMPLES}
 
+
+def _all_samples():
+    """内置 + 自定义样题全集（跑评测与对账的单一真源）。"""
+    return list(BUILTIN_SAMPLES) + custom_samples()
+
 _MAX_CANDIDATES = 8          # 一次评测的候选上限：控成本（每候选 = 样题数 × 2 次调用）
 _MAX_CAND_TEXT = 4000        # 喂给裁判的作答截断
 
 
 def samples():
-    """给 UI 的样题清单（不带完整 prompt，页面展示用）。"""
-    return [{"id": s["id"], "name": s["name"], "requirement": s["requirement"],
-             "dims": s["dims"], "verify": bool(s.get("verify"))}
-            for s in BUILTIN_SAMPLES]
+    """给 UI 的样题清单（不带完整 prompt，页面展示用）：内置 + 自定义。"""
+    out = [{"id": s["id"], "name": s["name"], "requirement": s["requirement"],
+            "dims": s["dims"], "verify": bool(s.get("verify")), "builtin": True}
+           for s in BUILTIN_SAMPLES]
+    out += [{"id": s["id"], "name": s["name"], "requirement": s["requirement"],
+             "dims": s["dims"], "verify": False, "builtin": False}
+            for s in custom_samples()]
+    return out
+
+
+# ---- 自定义样题（评测台可扩展化）：跑你自己的题，样题也能出分享码 ----
+# 存 data/eval_samples.json；自定义样题一律无客观验证（verify 是内置修 bug 题
+# 的专用通道）。分享码 CBSAMP1. 前缀，与流程分享码同一信封形态。
+
+CUSTOM_MAX = 12
+_SAMPLE_ID_RE = re.compile(r"^c-[a-z0-9_-]{1,24}$")
+
+
+def _samples_path():
+    return paths.DATA_DIR / "eval_samples.json"
+
+
+def custom_samples():
+    try:
+        data = json.loads(_samples_path().read_text(encoding="utf-8"))
+        arr = data.get("samples") if isinstance(data, dict) else None
+        return [s for s in arr if isinstance(s, dict) and s.get("id")] \
+            if isinstance(arr, list) else []
+    except Exception:
+        return []
+
+
+def sample_op(op, sample=None, sid=""):
+    """自定义样题增删。返回 (样本或 None, 错误)。"""
+    if op == "add":
+        if not isinstance(sample, dict):
+            return None, "样题必须是对象"
+        if len(custom_samples()) >= CUSTOM_MAX:
+            return None, "自定义样题最多 %d 道" % CUSTOM_MAX
+        sid = str(sample.get("id") or "").strip() or \
+            ("c-" + format(int(time.time() * 1000) % 10**10, "x"))
+        if not _SAMPLE_ID_RE.match(sid):
+            return None, "样题 ID 只能是小写 c- 开头的字母/数字/-/_（≤24 位）"
+        name = str(sample.get("name") or "").strip()[:20]
+        prompt = str(sample.get("prompt") or "").strip()
+        requirement = str(sample.get("requirement") or "").strip()[:120]
+        dims = [str(d).strip()[:8] for d in sample.get("dims") or [] if str(d).strip()]
+        if not name:
+            return None, "样题名称不能为空"
+        if len(prompt) < 10:
+            return None, "题目内容太短（至少 10 字）"
+        if len(prompt) > 2000:
+            return None, "题目内容最长 2000 字"
+        if not (2 <= len(dims) <= 6):
+            return None, "评审维度需要 2-6 个"
+        entry = {"id": sid, "name": name, "requirement": requirement or name,
+                 "dims": dims, "prompt": prompt, "builtin": False}
+        with _LOCK:
+            arr = custom_samples()
+            arr = [s for s in arr if s.get("id") != sid]
+            arr.append(entry)
+            _samples_path().parent.mkdir(parents=True, exist_ok=True)
+            _samples_path().write_text(
+                json.dumps({"samples": arr}, ensure_ascii=False, indent=2),
+                encoding="utf-8")
+        return entry, None
+    if op == "delete":
+        sid = str(sid or "").strip()
+        if not sid:
+            return None, "缺少样题 ID"
+        with _LOCK:
+            arr = [s for s in custom_samples() if s.get("id") != sid]
+            _samples_path().parent.mkdir(parents=True, exist_ok=True)
+            _samples_path().write_text(
+                json.dumps({"samples": arr}, ensure_ascii=False, indent=2),
+                encoding="utf-8")
+        return {"id": sid, "deleted": True}, None
+    return None, "未知操作 " + str(op)
+
+
+_SAMPLE_SHARE_PREFIX = "CBSAMP1."
+_SAMPLE_SHARE_KIND = "codebee-sample"
+
+
+def export_sample_code(sid):
+    """样题导出为分享码。返回 (code, 错误)。"""
+    sid = str(sid or "").strip()
+    s = next((x for x in custom_samples() if x.get("id") == sid), None)
+    if not s:
+        return None, "自定义样题不存在（内置样题不可导出）"
+    payload = {"kind": _SAMPLE_SHARE_KIND, "v": 1,
+               "sample": {k: s.get(k) for k in
+                          ("id", "name", "requirement", "dims", "prompt")}}
+    blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return _SAMPLE_SHARE_PREFIX + base64.urlsafe_b64encode(
+        blob.encode("utf-8")).decode("ascii"), None
+
+
+def import_sample_code(code):
+    """导入样题分享码：ID 冲突时自动换号（样题无覆盖语义，都是加题）。"""
+    code = str(code or "").strip()
+    if not code.startswith(_SAMPLE_SHARE_PREFIX):
+        return None, "不是有效的 CodeBee 样题分享码（应以 %s 开头）" % _SAMPLE_SHARE_PREFIX
+    raw = code[len(_SAMPLE_SHARE_PREFIX):].strip()
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(
+            raw + "=" * (-len(raw) % 4)).decode("utf-8"))
+    except Exception:
+        return None, "分享码解析失败（可能被截断或篡改）"
+    if not isinstance(payload, dict) or payload.get("kind") != _SAMPLE_SHARE_KIND:
+        return None, "分享码内容不是 CodeBee 样题"
+    sample, err = sample_op("add", payload.get("sample"))
+    if err and "ID" in str(err):
+        sample, err = sample_op("add", dict(payload.get("sample") or {}))  # 换号重试
+    if err:
+        return None, err
+    return {"id": sample["id"], "name": sample["name"]}, None
 
 
 # ---------------------------------------------------------------- 存储
@@ -241,7 +360,7 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
     绝不让一次坏调用毁掉整轮。notify_done=True 收尾推送摘要（定时回归：
     任务跑完了要主动找到人）。"""
     global _RUN
-    sample_by_id = {s["id"]: s for s in BUILTIN_SAMPLES}
+    sample_by_id = {s["id"]: s for s in _all_samples()}
     for cand in candidates:
         prov_id, model = cand.get("provider_id") or "", cand.get("model") or ""
         if not prov_id or not model:
@@ -417,8 +536,9 @@ def start(candidates, sample_ids=None, notify_done=False):
                           "model": str(c["model"]).strip()})
     if not cands:
         return None, "请先勾选至少一个候选模型"
-    ids = [s for s in (sample_ids or list(_SAMPLE_IDS)) if s in _SAMPLE_IDS] or \
-          [s["id"] for s in BUILTIN_SAMPLES]
+    all_ids = [s["id"] for s in _all_samples()]
+    ids = [s for s in (sample_ids or all_ids) if s in all_ids] or \
+          [s["id"] for s in _all_samples()]
     from . import modelhub
     orch = modelhub.orchestrator_view()
     if not orch.get("ready"):
@@ -475,8 +595,8 @@ def _matrix(results):
     """逐题对比：样题 → {「provider_id|model」: 最新一次结果}。
 
     同键多轮只留最新（results 按写入顺序，后写覆盖前写）；样题顺序跟
-    BUILTIN_SAMPLES 定版，空样题不占行。"""
-    order = [s["id"] for s in BUILTIN_SAMPLES]
+    样题全集定版（内置在前），空样题不占行。"""
+    order = [s["id"] for s in _all_samples()]
     cells = {sid: {} for sid in order}
     for r in results:
         sid = str(r.get("sample_id") or "")
