@@ -944,3 +944,21 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 批5 复查：检索/知识域高星均已录无增量
 
 **✅ 本班落地**：教训注入 karma 标注——won≥2 注入行带「（已验证有效 N 次）」实证标（知识［有据］标的教训侧对称件）；karma 从排序信号升级为模型可见的采信依据
+
+## 2026-09-26 全类型调研与七专项巡检班（调研日 2026-09-26，批2 学习记忆+雷达全过）
+
+- **harbor-framework/harbor**（5,617★，09-26 活跃）| Terminal-Bench 团队官方评测 harness（TB 2.0 官方 runner）：评测任意 agent CLI（Claude Code/OpenHands/Codex）、自建基准、Daytona/Modal 等数千环境并行、RL rollout 生成 | evalbench 是模型级实测，harbor 是 agent 整链级评测——评测域大盘新坐标 | 参考（evalbench 远期扩展参照）| 2026-09-26
+- **sentrux/sentrux**（3,286★，MIT，中文）| 「代码质量传感器」：实时质量分+Rules Engine+MCP，论点「没有传感器 agent 不知道改什么」 | 我们评审链=事后传感器（打分+教训回流），差量在实时性但需装独立 MCP | 参考 | 2026-09-26
+- **ThreeMoonsLab/agents-shipgate**（89★，PyPI+Action）| agent 能力变更的确定性合并闸门：纯静态扫 MCP/SDK/LangChain 配置变更，合并前展示能力差异，零 LLM 零网络 | 理念印证：agent 能力变更过确定性闸门——与我们 skill 装前扫描+装后冒烟同向；供应链面（Shai-Hulud 同款）已有守卫 | 参考 | 2026-09-26
+- **microsoft/agent-framework**（13,804★）微软官方框架主体（合并 AAF+SK 系）| 生态事实 | 参考 | 2026-09-26
+- **rocketride-org/rocketride-server**（12,390★）C++ 核心 AI 管线引擎 | 基础设施域参考 | 参考 | 2026-09-26
+- 同形态井喷第 6 日：**loushang**（zhnt，1,431★，**Python 同栈** coding harness）/Lody 1,129（团队共享多端）/mjolnir 64（六 CLI 管理）/orchvia/overdeck/AgntSpce——机制均无未覆盖项 | 雷达（同形态跟踪）
+- **dsh 生态 +2**：dsh-links（Android 伴侣，trusted-LAN 配对）/dsh-quota-check（配额读数）——已接 dsh 周边繁荣第 5/6 例，佐证接入判断 | 雷达
+- Jev TypeSafe 簇继续扩张（jev-browser-skill 09-26 新）| 范式观察维持 | 雷达
+
+### 复查记录
+- 2026-09-26：orca 78,545★（09-26 活跃 +1k）/superpowers 291,787★/oh-story 7,116★（09-26 活跃）/ZCode 6,800★（稳态缓涨，仍未装防死链维持）/ECC 267,655★/DeepSeek-Reasonix 35,709★（09-26 活跃，E 候选首位维持）/denova 820★（+34）/neuro-book 698★（+24）/mira 343★（+40）/pr-af 638★/ironcurtain 611★ 全活跃
+- awesome 四清单全活跃（awesome-claude-code 54,627/VoltAgent 34,873/Long-Horizon 1,046/Agent-Memory 648）；npm/pypi 无新标的
+- **连续第六班机制级真新标的=0**——头部格局稳定期节奏（复查+新锐簇观察+待深挖清账）维持有效
+
+**✅ 本班落地**：评审深度随 diff 规模分级（pr-af 待深挖第 3 项清账）——`pipeline._review_depth_note`：小 diff（<40 行）附快速评审指引（聚焦正确性不凑字数省 token）、大 diff（≥600 行）附概览+高风险区深看指引（安全/并发/数据与迁移/公共 API）、中等与空 diff 不给指引（空 diff 不误导放松）；纯提示词分级不改 pass 语义。test_review_depth 4 项。另有遗留完整态收编两笔：62d4b89 一键升级全部+e132426 evalbench 补测
