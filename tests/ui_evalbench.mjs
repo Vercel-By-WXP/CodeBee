@@ -41,6 +41,13 @@ const FAKE_EB = {
       same_family: true, last_ts: "2026-09-25 21:00:00" },
   ],
   last_runs: [],
+  matrix: {
+    samples: ["writing", "bugfix"],
+    cells: {
+      writing: {"prov-a|model-a": {overall: 8.5, scored: true, verify_ok: null, ok: true, ts: "t"}},
+      bugfix: {"prov-a|model-a": {overall: null, scored: true, verify_ok: false, ok: true, ts: "t"}},
+    },
+  },
 };
 const FAKE_MODELS = {
   providers: [
@@ -154,6 +161,11 @@ async function main() {
        document.querySelector("#eb-board").innerHTML.includes("失败 1")`));
     check("裁判就绪显示裁判模型", await evalJs(
       `document.getElementById("eb-judge").textContent.indexOf("judge-x")>=0`));
+    check("定时回归控件在", await evalJs(
+      `!!document.getElementById("eb-auto-enabled") && !!document.getElementById("eb-auto-days")`));
+    check("逐题对比表渲染（8.5 分 + ⚠ 标记）", await evalJs(`(function(){
+      var h = document.getElementById("eb-matrix").innerHTML;
+      return h.indexOf("model-a")>=0 && h.indexOf("8.5")>=0 && h.indexOf("⚠")>=0; })()`));
 
     // ── 3. 勾选 → 开始评测（stub 接住 POST）──
     // 注意：renderEvalBench 会把榜单上已有的模型预勾选（产品行为），

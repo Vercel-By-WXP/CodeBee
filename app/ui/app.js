@@ -9796,15 +9796,44 @@ async function flowRestore(fid, ts) {
 
 function flowImport() {
   const body = '<p class="hint">' +
-    t("粘贴他人分享的流程码。若与现有流程同 ID：预置流程写入可回滚的自定义改动，自定义流程将被覆盖。") + '</p>' +
-    '<textarea id="fl-import-code" rows="6" placeholder="CBFLOW1.…" style="width:100%;font-family:var(--mono,monospace);font-size:12px;word-break:break-all"></textarea>';
+    t("粘贴他人分享的流程码，先解析预览再确认导入。") + '</p>' +
+    '<textarea id="fl-import-code" rows="6" placeholder="CBFLOW1.…" style="width:100%;font-family:var(--mono,monospace);font-size:12px;word-break:break-all"></textarea>' +
+    '<div id="fl-import-view"></div>';
   openModal(t("📥 导入流程分享码"), body,
     '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>' +
-    '<button class="primary" onclick="flowImportDo()">' + t("导入") + '</button>');
+    '<button class="primary" id="fl-import-btn" onclick="flowImportPreview()">' + t("解析预览") + '</button>');
+}
+
+async function flowImportPreview() {
+  const code = ($("fl-import-code") || {}).value || "";
+  const view = $("fl-import-view"), btn = $("fl-import-btn");
+  if (!code.trim()) { toast(t("请先粘贴分享码"), true); return; }
+  let p;
+  try { p = await api("/api/flows/preview", { method: "POST", body: JSON.stringify({ code }) }); }
+  catch (e) { toast(t("解析失败：") + e.message, true); return; }
+  if (!view) return;
+  const conflict = p.exists
+    ? (p.builtin
+        ? t("⚠ 将覆盖预置流程「") + esc(p.existing_name) + t("」的自定义改动（可恢复默认回滚）")
+        : t("⚠ 将覆盖现有自定义流程「") + esc(p.existing_name) + t("」"))
+    : t("✓ 新流程，直接创建");
+  view.innerHTML = '<div class="item"><div class="t"><span class="name">' + esc(p.name || p.id) +
+    "</span>" + '<span class="tag">' + esc(p.id) + "</span>" +
+    '<span class="tag">' + esc(t(p.engine === "code" ? "代码引擎"
+      : p.engine === "direct" ? "直连引擎" : "评审引擎")) + "</span>" +
+    (p.serial ? '<span class="tag">' + t("连载") + "</span>" : "") +
+    (p.has_prompts ? '<span class="tag ok">' + t("含自定义提示词") + "</span>" : "") + "</div>" +
+    '<div class="desc">' + (p.rubric || []).map((d) => esc(t(d))).join(" / ") +
+    (p.threshold != null ? t("　阈值：") + p.threshold : "") +
+    (p.rounds != null ? t("　轮数：") + p.rounds : "") + "</div>" +
+    '<div class="desc">' + conflict + "</div></div>";
+  btn.textContent = t("确认导入");
+  btn.onclick = flowImportDo;
+  S._importCode = code;
 }
 
 async function flowImportDo() {
-  const code = ($("fl-import-code") || {}).value || "";
+  const code = S._importCode || (($("fl-import-code") || {}).value || "");
   if (!code.trim()) { toast(t("请先粘贴分享码"), true); return; }
   let r;
   try { r = await api("/api/flows/import", { method: "POST", body: JSON.stringify({ code }) }); }
@@ -11505,6 +11534,8 @@ async function loadSettings() {
     if (pet && S.settings) pet.checked = S.settings.pet_enabled !== false;
     const cs = $("set-claude-sync");
     if (cs && S.settings) cs.checked = S.settings.claude_config_sync !== false;
+    const mcp = $("set-mcp-servers");
+    if (mcp && S.settings) mcp.value = S.settings.mcp_servers || "";
     fillNotifyPush();
     syncPetModeSeg();
     syncPetSkinSeg();
@@ -11739,6 +11770,16 @@ async function saveNotifyPush() {
   }
 }
 
+async function saveMcpServers() {
+  const el = $("set-mcp-servers");
+  if (!el) return;
+  try {
+    const r = await api("/api/settings", { method: "POST", body: JSON.stringify({ mcp_servers: el.value }) });
+    S.settings = r.settings;
+    toast(t("MCP 配置已保存，下次对话生效"));
+  } catch (e) { toast(t("保存失败：") + e.message, true); }
+}
+
 async function testNotifyPush() {
   const msg = $("notify-test-msg");
   if (msg) { msg.className = "msg"; msg.textContent = t("发送中…"); }
@@ -11767,8 +11808,25 @@ async function loadEvalBench() {
   if (EB_TIMER) { clearInterval(EB_TIMER); EB_TIMER = null; }
   try { S.evalbench = await api("/api/evalbench"); } catch (e) { S.evalbench = null; }
   if (!S.models) { try { S.models = await api("/api/models"); } catch (e) { /* 页面其余部分自会提示 */ } }
+  if (!S.settings) { try { S.settings = await api("/api/settings"); } catch (e) { /* 定时开关留默认 */ } }
+  const ae = $("eb-auto-enabled"), ad = $("eb-auto-days");
+  if (ae && S.settings) ae.checked = S.settings.bench_auto_enabled === true;
+  if (ad && S.settings) ad.value = S.settings.bench_auto_days || 7;
   renderEvalBench();
   if (S.evalbench && S.evalbench.running) EB_TIMER = setInterval(pollEvalBench, 2500);
+}
+
+async function saveBenchAuto() {
+  const msg = $("eb-auto-msg");
+  try {
+    const r = await api("/api/settings", { method: "POST", body: JSON.stringify({
+      bench_auto_enabled: !$("eb-auto-enabled") || $("eb-auto-enabled").checked,
+      bench_auto_days: parseInt($("eb-auto-days").value, 10) || 7 }) });
+    S.settings = r.settings;
+    if (msg) { msg.textContent = t("已保存"); }
+  } catch (e) {
+    if (msg) { msg.textContent = e.message; }
+  }
 }
 
 function pollEvalBench() {
@@ -11837,8 +11895,38 @@ function renderEvalBench() {
       '<div class="desc">' + t("样题 ") + r.samples_n + verify + dims +
       (r.last_ts ? t("　·　") + r.last_ts : "") + "</div></div>";
   }).join("") || '<div class="hint">' + t("还没有评测结果：勾选候选模型后点「开始评测」。") + "</div>";
+  renderEvalMatrix(eb);
   const btn = $("eb-run-btn");
   if (btn) btn.disabled = !!eb.running;
+}
+
+/* 逐题对比：行=样题，列=候选模型（按榜单名次），格=最新一次得分 */
+function renderEvalMatrix(eb) {
+  const box = $("eb-matrix");
+  if (!box) return;
+  const mx = eb.matrix || { samples: [], cells: {} };
+  const cols = (eb.leaderboard || [])
+    .map((r) => r.provider_id + "|" + r.model);
+  const sname = {};
+  (eb.samples || []).forEach((s) => { sname[s.id] = s.name; });
+  if (!mx.samples.length || !cols.length) { box.innerHTML = ""; return; }
+  const cellHtml = (sid, mk) => {
+    const c = (mx.cells[sid] || {})[mk];
+    if (!c) return '<td style="color:var(--dim,#999);text-align:center">·</td>';
+    if (!c.ok) return '<td style="text-align:center;color:var(--err,#d33)">✗</td>';
+    if (!c.scored || c.overall == null)
+      return '<td style="text-align:center;color:var(--dim,#999)">−</td>';
+    const mark = c.verify_ok === false ? "⚠" : "";
+    return '<td style="text-align:center">' + c.overall.toFixed(1) + mark + "</td>";
+  };
+  box.innerHTML = '<div style="overflow-x:auto"><table class="eb-mx" style="border-collapse:collapse;width:100%;font-size:12.5px">' +
+    "<tr><th style=\"text-align:left;padding:4px 8px;color:var(--dim,#999)\">" + t("样题 \\ 模型") + "</th>" +
+    cols.map((mk) => '<th style="padding:4px 8px;white-space:nowrap">' + esc(mk.split("|")[1]) + "</th>").join("") + "</tr>" +
+    mx.samples.map((sid) =>
+      "<tr><td style=\"padding:4px 8px;white-space:nowrap\">" + esc(t(sname[sid] || sid)) + "</td>" +
+      cols.map((mk) => cellHtml(sid, mk)).join("") + "</tr>").join("") +
+    "</table></div>" +
+    '<p class="hint">' + t("⚠ = 该题客观验证未通过；✗ = 生成失败；− = 生成成功但未得分。") + "</p>";
 }
 
 async function evalbenchRun() {

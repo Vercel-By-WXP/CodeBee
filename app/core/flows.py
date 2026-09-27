@@ -432,13 +432,8 @@ def export_flow_code(flow_id):
     return _SHARE_PREFIX + base64.urlsafe_b64encode(blob.encode("utf-8")).decode("ascii"), None
 
 
-def import_flow_code(code):
-    """导入分享码。返回 (result, 错误)；result = {id, name, status, builtin}。
-
-    status：created=新建自定义流程；updated=覆盖已有定义（预置流程写
-    overrides，可「恢复默认」回滚）；noop=内容与现状完全一致。UI 应在
-    导入前向用户确认「同 ID 流程会被覆盖」——后端不做静默改名。
-    """
+def _decode_share_code(code):
+    """分享码 → (flow_in, 错误)。解码与校验共用（preview / import 两步走）。"""
     if not isinstance(code, str) or not code.strip().startswith(_SHARE_PREFIX):
         return None, "不是有效的 CodeBee 流程分享码（应以 %s 开头）" % _SHARE_PREFIX
     raw = code.strip()[len(_SHARE_PREFIX):].strip()
@@ -452,9 +447,46 @@ def import_flow_code(code):
     flow_in = payload.get("flow")
     if not isinstance(flow_in, dict):
         return None, "分享码缺少流程定义"
-    fid = str(flow_in.get("id") or "").strip()
-    if not fid:
+    if not str(flow_in.get("id") or "").strip():
         return None, "分享码缺少流程 ID"
+    return flow_in, None
+
+
+def preview_flow_code(code):
+    """分享码两步导入的第一步：解析并预览，不落盘。
+
+    返回 (预览, 错误)：预览带流程定义摘要 + 与现有同 ID 流程的冲突提示。"""
+    flow_in, err = _decode_share_code(code)
+    if err:
+        return None, err
+    fid = str(flow_in.get("id") or "").strip()
+    existed = get_flow(fid)
+    preview = {"id": fid,
+               "name": str(flow_in.get("name") or "")[:20],
+               "engine": str(flow_in.get("engine") or "review"),
+               "rubric": flow_in.get("rubric") if isinstance(flow_in.get("rubric"), list) else [],
+               "threshold": flow_in.get("threshold"),
+               "rounds": flow_in.get("rounds"),
+               "has_prompts": bool(str(flow_in.get("draft_prompt") or "").strip()
+                                   or str(flow_in.get("critique_prompt") or "").strip()),
+               "serial": bool(isinstance(flow_in.get("serial"), dict)
+                              and flow_in.get("serial", {}).get("chapters")),
+               "exists": bool(existed),
+               "existing_name": (existed or {}).get("name") or "",
+               "builtin": bool(existed and existed.get("builtin"))}
+    return preview, None
+
+
+def import_flow_code(code):
+    """导入分享码。返回 (result, 错误)；result = {id, name, status, builtin}。
+
+    status：created=新建自定义流程；updated=覆盖已有定义（预置流程写
+    overrides，可「恢复默认」回滚）；noop=内容与现状完全一致。UI 走
+    preview_flow_code 预览确认后再进这里。"""
+    flow_in, err = _decode_share_code(code)
+    if err:
+        return None, err
+    fid = str(flow_in.get("id") or "").strip()
     existed = get_flow(fid)
     existed_digest = flow_digest(existed) if existed else ""
     flow, err = upsert_flow(flow_in, source="import")

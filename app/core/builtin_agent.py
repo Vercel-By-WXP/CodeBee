@@ -688,6 +688,14 @@ _TOOL_IMPL = {"list_files": _tool_list_files, "read_file": _tool_read_file,
 
 
 def _exec_tool(workdir, name, args, cancel_event=None, deadline=None):
+    if str(name or "").startswith("mcp__"):
+        # MCP 工具：透传给配置的服务器（stdio JSON-RPC）；超时给足但封顶
+        try:
+            from . import mcp_client
+            r = mcp_client.dispatch_full_name(name, args or {})
+            return r.get("text") or ("（MCP 工具失败: %s）" % r.get("error") if not r.get("ok") else "")
+        except Exception as e:
+            return "MCP 工具执行失败: %s" % e
     fn = _TOOL_IMPL.get(name or "")
     if fn is None:
         return "（未知工具: %s）" % name
@@ -712,6 +720,15 @@ def _split_tool_args(t):
     return props, required
 
 
+def _mcp_specs():
+    """MCP 工具清单（带缓存）；取不到/未配置返回空表——增强不挡主流程。"""
+    try:
+        from . import mcp_client
+        return mcp_client.tool_specs_cached()
+    except Exception:
+        return []
+
+
 def _openai_tools():
     out = []
     for t in TOOLS_SPEC:
@@ -720,6 +737,12 @@ def _openai_tools():
             "name": t["name"], "description": t["description"],
             "parameters": {"type": "object", "properties": props,
                            "required": required}}})
+    for m in _mcp_specs():
+        # MCP 工具自带 JSON Schema（透传，不套字符串化的 _split_tool_args）
+        out.append({"type": "function", "function": {
+            "name": m["full_name"],
+            "description": (m["description"] + "（MCP 工具，来自服务器 %s）" % m["server"]).strip(),
+            "parameters": m["input_schema"]}})
     return out
 
 
@@ -730,6 +753,10 @@ def _anthropic_tools():
         out.append({"name": t["name"], "description": t["description"],
                     "input_schema": {"type": "object", "properties": props,
                                      "required": required}})
+    for m in _mcp_specs():
+        out.append({"name": m["full_name"],
+                    "description": (m["description"] + "（MCP 工具，来自服务器 %s）" % m["server"]).strip(),
+                    "input_schema": m["input_schema"]})
     return out
 
 

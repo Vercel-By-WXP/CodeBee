@@ -234,12 +234,12 @@ def _record_usage(run_id, role, sample_id, prov_id, model, ok, dur_ms, usage_d, 
         pass
 
 
-def _run_bench(run_id, candidates, sample_ids, judge_cfg):
+def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
     """同步跑完一轮评测（start 的线程体；单测直接调它）。
 
     逐条产出、逐条落盘：候选失败 / 裁判失败 / 解析失败都如实成行，
-    绝不让一次坏调用毁掉整轮。
-    """
+    绝不让一次坏调用毁掉整轮。notify_done=True 收尾推送摘要（定时回归：
+    任务跑完了要主动找到人）。"""
     global _RUN
     sample_by_id = {s["id"]: s for s in BUILTIN_SAMPLES}
     for cand in candidates:
@@ -294,11 +294,35 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg):
                 if _RUN:
                     _RUN["done"] += 1
     with _LOCK:
+        cancelled = bool(_RUN and _RUN.get("cancel"))
+    if notify_done and not cancelled:
+        _notify_auto_done(len(candidates))
+    with _LOCK:
         if _RUN and _RUN.get("cancel"):
             _append_run_log(run_id, judge_cfg, cancelled=True)
         else:
-            _append_run_log(run_id, judge_cfg)
+            _append_run_log(run_id, judge_cfg, auto=notify_done)
         _RUN = None
+
+
+def _notify_auto_done(candidates_n):
+    """定时回归收尾推送（Top3 榜单）；通知失败只记日志。"""
+    try:
+        from . import notify
+        board = _leaderboard(_read_results_list(), {})[:3]
+        lines = ["🧊 CodeBee 评测台定时回归完成",
+                 "候选 %d 个，裁判为编排者供应商" % max(1, candidates_n)]
+        for r in board:
+            score = ("%.1f" % r["overall"]) if r.get("overall") is not None else "未得分"
+            lines.append("#%d %s：%s" % (r["rank"], r["model"], score))
+        notify.push_text("\n".join(lines))
+    except Exception:
+        pass
+
+
+def _read_results_list():
+    results = _read().get("results")
+    return [r for r in results if isinstance(r, dict)] if isinstance(results, list) else []
 
 
 def _gen(prov_id, model, prompt, max_tokens):
@@ -310,20 +334,81 @@ def _gen(prov_id, model, prompt, max_tokens):
         return {"ok": False, "text": "", "usage": None, "error": str(e)}
 
 
-def _append_run_log(run_id, judge_cfg, cancelled=False):
+def _append_run_log(run_id, judge_cfg, cancelled=False, auto=False):
     with _LOCK:
         data = _read()
         runs = data.get("runs") if isinstance(data.get("runs"), list) else []
         runs.append({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "run_id": run_id,
                      "judge": "%s · %s" % (judge_cfg.get("provider_id") or "",
                                            judge_cfg.get("model") or ""),
-                     "cancelled": bool(cancelled)})
+                     "cancelled": bool(cancelled), "auto": bool(auto)})
         data["runs"] = runs[-20:]
         _write(data)
 
 
-def start(candidates, sample_ids=None):
-    """发起一轮评测。返回 (运行描述, 错误)。裁判 = 编排者供应商（必须就绪）。"""
+def _auto_candidates():
+    """定时回归的候选：启用且有 KEY 的供应商里，各取启用模型（catalog 顺序），
+    全局截到 _MAX_CANDIDATES。没有可用候选返回空表。"""
+    out = []
+    try:
+        from . import modelhub
+        for p in modelhub.providers():
+            if p.get("enabled", True) is False or not (p.get("api_key") or p.get("keys")):
+                continue
+            for m in p.get("models") or []:
+                if len(out) >= _MAX_CANDIDATES:
+                    return out
+                if m.get("enabled", True) is False or m.get("hidden"):
+                    continue
+                if isinstance(m.get("name"), str) and m.get("name"):
+                    out.append({"provider_id": p.get("id") or "", "model": m["name"]})
+    except Exception:
+        return []
+    return out
+
+
+def _last_auto_ts():
+    for r in reversed(_read().get("runs") or []):
+        if isinstance(r, dict) and r.get("auto") and not r.get("cancelled"):
+            return str(r.get("ts") or "")
+    return ""
+
+
+def fire_due():
+    """自动化 tick 钩子（同 cleanup/wxdigest.fire_due 模式）：设置启用且距上次
+    定时回归超过间隔天数时，自动起一轮评测并推送结果。自节流、绝不抛错。
+
+    返回 {"skipped": True, "reason": str} 或 {"started": True, "total": n}。"""
+    try:
+        from . import settings as settings_mod
+        s = settings_mod.load()
+        if not s.get("bench_auto_enabled"):
+            return {"skipped": True, "reason": "disabled"}
+        days = max(1, int(s.get("bench_auto_days") or 7))
+        last = _last_auto_ts()
+        if last:
+            try:
+                elapsed = time.time() - time.mktime(
+                    time.strptime(last, "%Y-%m-%d %H:%M:%S"))
+                if elapsed < days * 86400.0:
+                    return {"skipped": True, "reason": "not-due"}
+            except ValueError:
+                pass                       # 时间戳坏 = 视作到期，重跑一轮
+        cands = _auto_candidates()
+        if not cands:
+            return {"skipped": True, "reason": "no-candidates"}
+        info, err = start(cands, notify_done=True)
+        if err:
+            return {"skipped": True, "reason": err[:80]}
+        return {"started": True, "total": info.get("total") or 0}
+    except Exception as e:
+        return {"skipped": True, "reason": str(e)[:80]}
+
+
+def start(candidates, sample_ids=None, notify_done=False):
+    """发起一轮评测。返回 (运行描述, 错误)。裁判 = 编排者供应商（必须就绪）。
+
+    notify_done=True：跑完推送结果摘要（定时回归用）。"""
     global _RUN
     cands = []
     for c in (candidates or [])[:_MAX_CANDIDATES]:
@@ -348,7 +433,7 @@ def start(candidates, sample_ids=None):
     run_id = "bench-" + time.strftime("%Y%m%d-%H%M%S")
     total = len(cands) * len(ids)
     threading.Thread(target=_run_bench, daemon=True, name=run_id,
-                     args=(run_id, cands, ids, judge_cfg)).start()
+                     args=(run_id, cands, ids, judge_cfg, notify_done)).start()
     return {"run_id": run_id, "total": total}, None
 
 
@@ -382,7 +467,29 @@ def state():
                       "ready": bool(orch.get("ready"))},
             "samples": samples(),
             "leaderboard": board,
+            "matrix": _matrix(results),
             "last_runs": (data.get("runs") or [])[-5:]}
+
+
+def _matrix(results):
+    """逐题对比：样题 → {「provider_id|model」: 最新一次结果}。
+
+    同键多轮只留最新（results 按写入顺序，后写覆盖前写）；样题顺序跟
+    BUILTIN_SAMPLES 定版，空样题不占行。"""
+    order = [s["id"] for s in BUILTIN_SAMPLES]
+    cells = {sid: {} for sid in order}
+    for r in results:
+        sid = str(r.get("sample_id") or "")
+        model = str(r.get("model") or "")
+        if sid not in cells or not model:
+            continue
+        cells[sid][str(r.get("provider_id") or "") + "|" + model] = {
+            "overall": r.get("overall"),
+            "scored": bool(r.get("scored")),
+            "verify_ok": r.get("verify_ok"),
+            "ok": bool(r.get("ok")),
+            "ts": str(r.get("ts") or "")}
+    return {"samples": order, "cells": cells}
 
 
 def _leaderboard(results, prov_names):

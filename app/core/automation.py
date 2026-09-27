@@ -48,6 +48,16 @@ _TASKS = {}           # id → task dict（内存真源；落盘为 {"version":1
 _LOADED = False
 _STARTED = False
 
+# 模块外 tick 钩子（main.py 启动注入，如 evalbench.fire_due 定时回归）：
+# automation 不点名任何业务模块——注入方向 main(L3)→钩子，本模块静态图保持干净
+_TICK_HOOKS = []
+
+
+def register_tick_hook(fn):
+    """注册一个每 tick 调用的零参函数（自节流，异常自行吞掉）。"""
+    if callable(fn) and fn not in _TICK_HOOKS:
+        _TICK_HOOKS.append(fn)
+
 TICK_SECONDS = 25     # 调度扫描间隔：到点触发误差不超过半个周期
 KINDS = ("daily", "interval", "weekly", "once")
 INTERVAL_MIN, INTERVAL_MAX = 1, 720   # interval_hours 合法区间（小时）
@@ -515,6 +525,13 @@ def _tick():
                      ("，%d 项失败" % len(r.get("errors") or [])) if r.get("errors") else "")
     except Exception:
         log.debug("automation: 每日清理跳过", exc_info=True)
+    # 模块外 tick 钩子（如评测台定时回归）：钩子自节流、自行吞错
+    for _hook in list(_TICK_HOOKS):
+        try:
+            _hook()
+        except Exception:
+            log.debug("automation: tick 钩子跳过", exc_info=True)
+
 
 
 def _loop():

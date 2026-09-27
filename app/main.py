@@ -1106,6 +1106,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": err})
             return self._json(200, {"ok": True, "code": code,
                                     "name": (flows.get_flow(body.get("id") or "") or {}).get("name")})
+        if path == "/api/flows/preview":
+            # 分享码两步导入第一步：解析预览，不落盘
+            res, err = flows.preview_flow_code((self._body() or {}).get("code"))
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, dict(ok=True, **res))
         if path == "/api/flows/import":
             res, err = flows.import_flow_code((self._body() or {}).get("code"))
             if err:
@@ -2840,6 +2846,8 @@ def main():
     store.set_run_estimator(usage.estimate)
     store.set_run_auditor(usage.audit_run)   # 终态把预估与真实用量逐条对账
     flows.set_runs_provider(store.list_runs)  # 版本战绩对账用 run 遍历器（防 flows→store 静态环）
+    from core import evalbench as _evalbench
+    automation.register_tick_hook(_evalbench.fire_due)  # 评测台定时回归挂自动化 tick
     _step("正在回填用量台账…")
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）
     if n_bf:

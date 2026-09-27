@@ -30,6 +30,11 @@ DEFAULTS = {"max_concurrent_jobs": 12, "default_workdir": "", "hooks_token": "",
             "notify_bark_server": "", "notify_bark_key": "",
             "notify_ntfy_topic": "", "notify_serverchan_key": "",
             "notify_telegram_token": "", "notify_telegram_chat_id": "",
+            # 评测台定时回归（evalbench.fire_due，automation tick 调用）：
+            # enabled=False 关；days 间隔天数控节流；mcp_servers=内置智能体的
+            # MCP 服务器清单（JSON 数组字符串，stdio 形态）
+            "bench_auto_enabled": False, "bench_auto_days": 7,
+            "mcp_servers": "",
             "pet_enabled": True, "pet_mode": "always", "pet_skin": "plush",
             "cleanup_enabled": True, "cleanup_retention_days": 14,
             # claude_config_sync：打开/运行前防线是否直写 ~/.claude/settings.json。
@@ -129,6 +134,15 @@ def save(patch):
                            ("notify_telegram_token", 128), ("notify_telegram_chat_id", 64)):
             if _nk in patch:
                 cur[_nk] = str(patch.get(_nk) or "").strip()[:_nmax]
+        if "bench_auto_enabled" in patch:
+            cur["bench_auto_enabled"] = bool(patch.get("bench_auto_enabled"))
+        if "bench_auto_days" in patch:
+            try:
+                cur["bench_auto_days"] = max(1, min(90, int(patch.get("bench_auto_days"))))
+            except (TypeError, ValueError):
+                return cur, "bench_auto_days 必须是 1-90 的整数"
+        if "mcp_servers" in patch:
+            cur["mcp_servers"] = str(patch.get("mcp_servers") or "").strip()[:4000]
         if "pet_enabled" in patch:
             cur["pet_enabled"] = bool(patch.get("pet_enabled"))
         if "pet_mode" in patch:

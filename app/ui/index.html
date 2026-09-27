@@ -959,6 +959,14 @@
             <label class="toggle" style="margin-top:6px"><input id="set-claude-sync" type="checkbox"> <span data-i18n="把绑定供应商写进 ~/.claude/settings.json（一键打开与每次运行前）">把绑定供应商写进 ~/.claude/settings.json（一键打开与每次运行前）</span></label>
             <p data-i18n="开启后 CodeBee 会覆盖 cc-switch 等工具对交互 claude 的手选配置。关闭后交互 claude 配置归你手动管理；编排步骤改用一次性注入，模型路由不受影响。" class="hint">开启后 CodeBee 会覆盖 cc-switch 等工具对交互 claude 的手选配置。关闭后交互 claude 配置归你手动管理；编排步骤改用一次性注入，模型路由不受影响。</p>
           </div>
+          <h3 data-i18n="MCP 工具（内置智能体）" class="sec-title">MCP 工具（内置智能体）</h3>
+          <div class="field"><label data-i18n="MCP 服务器清单（JSON 数组，stdio 形态，最多 4 个）">MCP 服务器清单（JSON 数组，stdio 形态，最多 4 个）</label>
+            <textarea id="set-mcp-servers" rows="4" style="width:100%;font-family:var(--mono,monospace);font-size:12px" placeholder='[{"name":"fs","command":"npx","args":["-y","@modelcontextprotocol/server-fs","C:/data"]}]'></textarea>
+            <div class="input-row" style="margin-top:6px">
+              <button class="ghost small" onclick="saveMcpServers()" data-i18n="保存 MCP 配置">保存 MCP 配置</button>
+            </div>
+            <p data-i18n="内置智能体（直连对话/直接执行）会把服务器的工具并入工具循环（mcp__服务器__工具 名）。命令在你本机执行，与「执行命令」工具同一自主权级别；工具清单缓存 5 分钟。留空 = 不启用。" class="hint">内置智能体（直连对话/直接执行）会把服务器的工具并入工具循环（mcp__服务器__工具 名）。命令在你本机执行，与「执行命令」工具同一自主权级别；工具清单缓存 5 分钟。留空 = 不启用。</p>
+          </div>
           <h3 data-i18n="推送通知" class="sec-title">推送通知</h3>
           <div class="field"><label data-i18n="群机器人 Webhook（钉钉 / 飞书 / 企业微信，按域名自动适配）">群机器人 Webhook（钉钉 / 飞书 / 企业微信，按域名自动适配）</label>
             <div class="input-row">
@@ -1006,8 +1014,19 @@
             <span id="eb-progress" class="hint"></span>
           </div>
           <div id="eb-msg" class="msg"></div>
+          <div class="field"><label data-i18n="定时回归（自动防漂移）">定时回归（自动防漂移）</label>
+            <label class="toggle" style="margin-top:6px"><input id="eb-auto-enabled" type="checkbox"> <span data-i18n="到期自动重跑候选榜并推送结果（挂自动化 tick，裁判为编排者；候选=启用供应商的启用模型，最多 8 个）">到期自动重跑候选榜并推送结果（挂自动化 tick，裁判为编排者；候选=启用供应商的启用模型，最多 8 个）</span></label>
+            <div class="input-row" style="margin-top:6px">
+              <input id="eb-auto-days" type="number" min="1" max="90" value="7" style="width:80px">
+              <span data-i18n="天一轮">天一轮</span>
+              <button class="ghost small" onclick="saveBenchAuto()" data-i18n="保存">保存</button>
+              <span id="eb-auto-msg" class="hint"></span>
+            </div>
+          </div>
           <h3 data-i18n="能力榜" class="sec-title">能力榜</h3>
           <div id="eb-board" class="list"></div>
+          <h3 data-i18n="逐题对比" class="sec-title">逐题对比</h3>
+          <div id="eb-matrix"></div>
         </div>
       </div>
 
