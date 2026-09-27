@@ -525,7 +525,7 @@ async function refreshEstimate() {
         : t("暂无同类历史，按流程基线估算"));
     const tokenPart = d.samples >= (d.min_samples_for_estimate || 10) && d.median_tokens != null
       ? " · ≈" + fmtTok(d.median_tokens) + " tokens" : "";
-    const cost = (d.median_cost_usd || 0) > 0 ? " · ≈$" + Number(d.median_cost_usd).toFixed(2) : "";
+    const cost = (d.median_cost_usd || 0) > 0 ? " · ≈¥" + Number(d.median_cost_usd).toFixed(2) : "";
     el.textContent = t("预计完成约 {0}，保守不超过 {1}", duration, p90) +
       tokenPart + cost + t("（") + source + t("）");
     el.classList.remove("hidden");
@@ -1935,6 +1935,8 @@ function provModelRow(pid, m, group) {
       esc((tm.error || "").slice(0, 24)) + "</span>") : "";
   const price = (m.price_in != null && m.price_out != null)
     ? '<span class="hint">¥' + esc(m.price_in) + "/¥" + esc(m.price_out) + "</span>" : "";
+  const priceBtn = '<span class="tag" title="' + t("手标单价（¥/百万 tokens），台账记账与花费预算按此折算") + '"' +
+    ' onclick="editModelPrice(\'' + esc(pid) + '\', \'' + esc(m.name) + '\')">' + t("价") + "</span>";
   const imgcap = '<span class="tag imgcap' + (m.image_in ? " ok" : "") + '" title="' +
     (m.image_in ? t("支持图片输入，点击关闭")
                 : t("纯文本模型，点击开启图片输入（内置智能体传图以此为准）")) + '"' +
@@ -1948,7 +1950,7 @@ function provModelRow(pid, m, group) {
     '<span class="drag" title="' + t("拖动调整优先级") + '"><svg class="ico" aria-hidden="true"><use href="#i-grip"></use></svg></span>' +
     '<span class="pprio">#' + m.priority + "</span>" +
     '<span class="pname" title="' + esc(m.name) + '">' + esc(m.name) + "</span>" +
-    price + imgcap + tmHtml +
+    price + priceBtn + imgcap + tmHtml +
     '<span class="row-ops">' +
     '<button class="ghost small row-op" onclick="testModelBtn(\'' + esc(pid) + '\', \'' + esc(m.name) + '\')">' + t("测试") + '</button>' +
     '<button class="danger small row-op" title="' + t("从列表删除：刷新/重新导入不会再带回，可在分组底部恢复") + '"' +
@@ -2042,6 +2044,34 @@ function toggleModelImage(pid, name) {
     body: JSON.stringify({ provider_id: pid, name, image_in: !(m && m.image_in) }) })
     .then(() => { S.modelsSig = null; poll(); })
     .catch((e) => toast(t("保存失败：") + e.message, true));
+}
+
+/* 手标模型单价（¥/百万 tokens）：台账记账与花费预算按此折算；清空=回落价表 */
+function editModelPrice(pid, name) {
+  const p = (S.providers || []).find((x) => x.id === pid);
+  const m = p && (p.models || []).find((x) => x.name === name);
+  const body = '<p class="hint">' +
+    t("单价按 ¥/百万 tokens 填（输入价/输出价）。手标优先于导入价表；台账「费用」列与花费预算按它折算——不标则不记账。") + "</p>" +
+    '<div class="grid-2">' +
+    '<div class="field"><label>' + t("输入单价 ¥/M") + '</label><input id="mp-in" type="number" step="0.01" min="0" value="' +
+      (m && m.price_in != null ? m.price_in : "") + '"></div>' +
+    '<div class="field"><label>' + t("输出单价 ¥/M") + '</label><input id="mp-out" type="number" step="0.01" min="0" value="' +
+      (m && m.price_out != null ? m.price_out : "") + '"></div></div>';
+  openModal(t("标定单价：") + name, body,
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>' +
+    '<button class="primary" onclick="saveModelPrice(\'' + esc(pid) + '\', \'' + esc(name) + '\')">' + t("保存") + '</button>');
+}
+
+async function saveModelPrice(pid, name) {
+  try {
+    await api("/api/models/set-price", { method: "POST", body: JSON.stringify({
+      provider_id: pid, name,
+      price_in: ($("mp-in") || {}).value ?? "", price_out: ($("mp-out") || {}).value ?? "" }) });
+    closeModal();
+    S.modelsSig = null; S.providers = null;
+    poll();
+    toast(t("单价已标定"));
+  } catch (e) { toast(t("保存失败：") + e.message, true); }
 }
 
 /* 反查模型是否声明图片输入（绑定页 chip/列表只读徽标用） */
@@ -4266,7 +4296,7 @@ function drawTaskDetail(key, runs, appendFrom) {
   $("rd-meta").innerHTML =
     '<span class="stat">' + t("运行 ") + '<b>' + runs.length + "/" + totalRuns + "</b>" + t(" 次") + "</span>" +
     '<span class="stat">' + t("步骤 ") + '<b>' + totalSteps + "/" + allSteps + "</b>" + t(" 步") + "</span>" +
-    '<span class="stat">' + t("成本 ") + '<b>$' + (aggregate ? aggregate.cost_usd : sum("cost_usd")).toFixed(3) + "</b></span>" +
+    '<span class="stat">' + t("成本 ") + '<b>¥' + (aggregate ? aggregate.cost_usd : sum("cost_usd")).toFixed(3) + "</b></span>" +
     '<span class="stat">tokens <b>' + (aggregate ? aggregate.tokens : sum("tokens")) + "</b></span>" +
     (latest.error ? '<span class="stat err">' + errTag(latest.error) + esc(latest.error.slice(0, 200)) + "</span>" : "");
   $("rd-plan").classList.add("hidden");

@@ -611,7 +611,7 @@ def _budget_max_tokens():
 
 
 def _budget_cost_caps():
-    """日/月花费硬顶（美元，与用量台账 cost_usd 同口径）；0 = 不限。
+    """日/月花费硬顶（¥，按台账标定单价折算的 cost 列累计）；0 = 不限。
 
     返回 (daily_cap, monthly_cap)。读台账失败按 0 处理（闸放行）——
     统计层故障不能把业务锁死。
@@ -619,8 +619,8 @@ def _budget_cost_caps():
     try:
         from .settings_schema import get as ss_get, register_default_namespaces
         register_default_namespaces()
-        d = float(ss_get("budget", "daily_cost_usd") or 0)
-        m = float(ss_get("budget", "monthly_cost_usd") or 0)
+        d = float(ss_get("budget", "daily_cost_yuan") or 0)
+        m = float(ss_get("budget", "monthly_cost_yuan") or 0)
         return max(0.0, d), max(0.0, m)
     except Exception:
         return 0.0, 0.0
@@ -642,10 +642,10 @@ def _cost_gate_block():
     except Exception:
         return None
     if daily_cap > 0 and today >= daily_cap:
-        return ("已超出每日花费预算：$%.2f/$%.2f（可在设置→编排设置→预算 调整，"
+        return ("已超出每日花费预算：¥%.2f/¥%.2f（可在设置→编排设置→预算 调整，"
                 "次日自动恢复），停止后续步骤" % (today, daily_cap))
     if monthly_cap > 0 and month >= monthly_cap:
-        return ("已超出每月花费预算：$%.2f/$%.2f（可在设置→编排设置→预算 调整，"
+        return ("已超出每月花费预算：¥%.2f/¥%.2f（可在设置→编排设置→预算 调整，"
                 "次月自动恢复），停止后续步骤" % (month, monthly_cap))
     return None
 

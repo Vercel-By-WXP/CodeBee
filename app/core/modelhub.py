@@ -2809,10 +2809,82 @@ def models_view():
             if m.get("hidden"):
                 continue
             pr = pricing.get(m["name"]) or {}
+            if m.get("price_in") is not None or m.get("price_out") is not None:
+                pr = {"in": m.get("price_in"), "out": m.get("price_out")}   # 手标优先
             rows.append(dict(base, name=m["name"], enabled=bool(m.get("enabled", True)),
                              priority=m.get("priority", 0),
                              price_in=pr.get("in"), price_out=pr.get("out")))
     return rows
+
+
+def model_price(model_name, provider=""):
+    """模型单价（¥ / 百万 tokens）：指定供应商的手标价优先，回落 CCSwitch
+    导入价表；都没有返回 None——不猜价，台账不记钱、预算不计入。
+
+    手标是「按供应商」标定的（同名模型在不同网关价格可不同），因此指定
+    供应商未标价时不继承别家手标，直接看价表。
+    列名沿用台账 cost_usd 字段，语义自本函数起 = 费用（¥）。
+    """
+    def _manual(prov_id):
+        with _LOCK:
+            for p in _load().get("providers", []):
+                if not prov_id or p.get("id") != prov_id:
+                    continue
+                for m in p.get("models") or []:
+                    if m.get("name") != model_name:
+                        continue
+                    try:
+                        pin = float(m.get("price_in"))
+                        pout = float(m.get("price_out"))
+                    except (TypeError, ValueError):
+                        continue
+                    if pin >= 0 and pout >= 0 and (pin or pout):
+                        return {"in": pin, "out": pout}
+        return None
+
+    try:
+        pr = _manual(provider)
+        if pr:
+            return pr
+        with _LOCK:
+            raw = (_load().get("pricing") or {}).get(model_name) or {}
+        pin, pout = float(raw.get("in") or 0), float(raw.get("out") or 0)
+        if pin > 0 or pout > 0:
+            return {"in": pin, "out": pout}
+    except Exception:
+        pass
+    return None
+
+
+def set_model_price(provider_id, name, price_in, price_out):
+    """手标模型单价（¥/百万 tokens；空串=清除标定，回落价表/未标价）。"""
+    def _num(v):
+        v = str(v if v is not None else "").strip()
+        return float(v) if v != "" else None
+    try:
+        pin, pout = _num(price_in), _num(price_out)
+    except (TypeError, ValueError):
+        return "单价必须是数字"
+    if (pin is not None and pin < 0) or (pout is not None and pout < 0):
+        return "单价不能为负"
+    with _LOCK:
+        data = _load()
+        prov = next((p for p in data.get("providers", []) if p.get("id") == provider_id), None)
+        if not prov:
+            return "供应商不存在"
+        m = next((x for x in prov.get("models") or [] if x.get("name") == name), None)
+        if not m:
+            return "模型不存在"
+        if pin is None:
+            m.pop("price_in", None)
+        else:
+            m["price_in"] = pin
+        if pout is None:
+            m.pop("price_out", None)
+        else:
+            m["price_out"] = pout
+        _save(data)
+    return None
 
 
 def reorder_models(provider_id, ordered_names):

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""花费硬顶（budget.daily_cost_usd / monthly_cost_usd，美元口径）单测。
+"""花费硬顶（budget.daily_cost_yuan / monthly_cost_yuan，¥ 口径（按台账标定单价折算））单测。
 
 覆盖：schema 字段注册与钳制、台账快照 cost_snapshot（今日/当月口径）、
 pipeline 花费闸 _cost_gate_block 的命中/放行/统计故障放行。
@@ -37,21 +37,21 @@ class TestSchemaFields(CostCapsBase):
         ss.register_default_namespaces()
         d = ss.describe("budget")
         vals = d["values"]
-        self.assertIn("daily_cost_usd", vals)
-        self.assertIn("monthly_cost_usd", vals)
-        self.assertEqual(vals["daily_cost_usd"], 0.0)
-        self.assertEqual(vals["monthly_cost_usd"], 0.0)
+        self.assertIn("daily_cost_yuan", vals)
+        self.assertIn("monthly_cost_yuan", vals)
+        self.assertEqual(vals["daily_cost_yuan"], 0.0)
+        self.assertEqual(vals["monthly_cost_yuan"], 0.0)
 
     def test_mutate_coerces_and_clamps(self):
         from app.core import settings_schema as ss
         ss.register_default_namespaces()
-        ss.mutate("budget", [{"op": "set", "path": "daily_cost_usd", "value": 5.5}])
-        self.assertEqual(ss.get("budget", "daily_cost_usd"), 5.5)
+        ss.mutate("budget", [{"op": "set", "path": "daily_cost_yuan", "value": 5.5}])
+        self.assertEqual(ss.get("budget", "daily_cost_yuan"), 5.5)
         # 负值钳到 0；超过上限钳到 clamp.max
-        ss.mutate("budget", [{"op": "set", "path": "monthly_cost_usd", "value": -3}])
-        self.assertEqual(ss.get("budget", "monthly_cost_usd"), 0.0)
-        ss.mutate("budget", [{"op": "set", "path": "monthly_cost_usd", "value": 9_999_999}])
-        self.assertEqual(ss.get("budget", "monthly_cost_usd"), 1_000_000)
+        ss.mutate("budget", [{"op": "set", "path": "monthly_cost_yuan", "value": -3}])
+        self.assertEqual(ss.get("budget", "monthly_cost_yuan"), 0.0)
+        ss.mutate("budget", [{"op": "set", "path": "monthly_cost_yuan", "value": 9_999_999}])
+        self.assertEqual(ss.get("budget", "monthly_cost_yuan"), 1_000_000)
 
 
 class TestCostSnapshot(CostCapsBase):

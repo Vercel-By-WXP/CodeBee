@@ -674,7 +674,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/api/health/op", "/api/models/provider-op", "/api/models/model-op",
                     "/api/models/test-provider", "/api/models/test-model",
                     "/api/models/probe-wire", "/api/models/key-op", "/api/hooks/run",
-                    "/api/notify/test"):
+                    "/api/notify/test", "/api/models/set-price", "/api/models/model-caps"):
             pass                                    # 落到下方各自路由
         else:
             deny = self._deny_control()
@@ -1057,6 +1057,15 @@ class Handler(BaseHTTPRequestHandler):
             err = modelhub.set_model_caps(body.get("provider_id") or "",
                                           body.get("name") or "",
                                           body.get("image_in"))
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
+        if path == "/api/models/set-price":
+            # 手标模型单价（¥/百万 tokens）：台账记账与花费预算按此折算
+            from core import modelhub
+            body = self._body()
+            err = modelhub.set_model_price(body.get("provider_id") or "",
+                                           body.get("name") or "",
+                                           body.get("price_in"),
+                                           body.get("price_out"))
             return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
         if path == "/api/models/test-provider":
             from core import modelhub

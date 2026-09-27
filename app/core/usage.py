@@ -119,6 +119,18 @@ def record(source="", run_id="", task_id="", task_type="", role="", step=0,
         total = _parse_int(u.get("total")) or (inp + out + cach)
         rec.update({"input": inp, "output": out, "cached": cach,
                     "reasoning": reas, "total": total})
+        # 金额闭环：调用方没给费用（CLI/直连/评测普遍如此）→ 按标定单价折算
+        # （¥/百万 tokens；手标优先，回落导入价表；未标价 = 不记钱，宁缺毋滥）。
+        # 列名 cost_usd 沿用历史，语义 = 费用（¥）。
+        if _parse_float(rec.get("cost_usd")) <= 0 and (inp or out) \
+                and rec.get("model") not in ("", "(默认)"):
+            try:
+                from . import modelhub
+                pr = modelhub.model_price(str(rec["model"]), provider=str(rec["provider"]))
+                if pr:
+                    rec["cost_usd"] = round((pr["in"] * inp + pr["out"] * out) / 1e6, 4)
+            except Exception:
+                pass
         # 压缩省量注记（source=compaction 专用）：上下文折叠净省的估算 token，
         # 与消耗并列成账——省了多少不再是黑箱。零值不落字段防老记录膨胀。
         saved = max(0, _parse_int(u.get("saved")))
@@ -141,6 +153,68 @@ def record(source="", run_id="", task_id="", task_type="", role="", step=0,
             _ROUTING_RECORDS_CACHE.clear()
             _HOURLY_CACHE["ts"] = 0.0
         bump_usage()  # 台账变了：SSE 推 usage 事件，侧栏用量条实时跟进
+        if _budget_caps_on():
+            # 花费预警（硬顶的事前半环）：只在配了上限时起线程，绝不拖慢记账
+            threading.Thread(target=_budget_alert_check, daemon=True,
+                             args=(rec["day"],)).start()
+    except Exception:
+        pass
+
+
+def _budget_caps_on():
+    try:
+        from .settings_schema import get as ss_get, register_default_namespaces
+        register_default_namespaces()
+        return (float(ss_get("budget", "daily_cost_yuan") or 0) > 0
+                or float(ss_get("budget", "monthly_cost_yuan") or 0) > 0)
+    except Exception:
+        return False
+
+
+def _budget_alert_check(day):
+    """花费预警推送（50%/80%，日/月各自去重一次）：预警是硬顶的事前提醒，
+    触发阈值状态落 data/budget_alerts.json（按天重置）。失败静默。"""
+    try:
+        from .settings_schema import get as ss_get, register_default_namespaces
+        register_default_namespaces()
+        dcap = float(ss_get("budget", "daily_cost_yuan") or 0)
+        mcap = float(ss_get("budget", "monthly_cost_yuan") or 0)
+        today, month = cost_snapshot()
+        marks = []
+        for scope, spent, cap in (("d", today, dcap), ("m", month, mcap)):
+            if cap <= 0 or spent <= 0:
+                continue
+            pct = spent / cap
+            for th in (0.8, 0.5):
+                if pct >= th:
+                    marks.append((scope, int(th * 100), spent, cap))
+                    break
+        if not marks:
+            return
+        sp = paths.DATA_DIR / "budget_alerts.json"
+        try:
+            st = json.loads(sp.read_text(encoding="utf-8"))
+        except Exception:
+            st = {}
+        if st.get("day") != day or not isinstance(st.get("done"), list):
+            st = {"day": day, "done": []}
+        done = st["done"]
+        new = [m for m in marks if ("%s%d" % (m[0], m[1])) not in done]
+        if not new:
+            return
+        st["done"] = done + ["%s%d" % (m[0], m[1]) for m in new]
+        sp.parent.mkdir(parents=True, exist_ok=True)
+        tmp = sp.with_suffix(".tmp")
+        tmp.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(sp)
+        from . import notify
+        lines = ["💸 CodeBee 花费预警"]
+        for scope, pct, spent, cap in new:
+            lines.append("%s花费 ¥%.2f，已达%s上限 ¥%.2f 的 %d%%" % (
+                "今日" if scope == "d" else "本月", spent,
+                "每日" if scope == "d" else "每月", cap, pct))
+        lines.append("（达 100% 后新步骤将停止，可在设置→编排设置→预算调整）")
+        notify.push_text("\n".join(lines))
     except Exception:
         pass
 
