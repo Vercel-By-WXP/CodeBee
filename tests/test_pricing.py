@@ -137,19 +137,20 @@ class TestBudgetAlert(BaseTest):
             {"op": "set", "path": "monthly_cost_yuan", "value": 0}])
 
     def test_alert_at_thresholds_deduped(self):
-        from app.core import notify
         self._caps(daily=10.0)
-        with mock.patch.object(notify, "push_text", return_value=True) as mpush:
+        pushes = []
+        usage.set_alert_push(lambda text: pushes.append(text))
+        try:
             # 一笔 ¥6（60%，超 50% 阈值）——预警在后台线程，轮询等它落地
             usage.record(source="pipeline", run_id="r", task_id="t", task_type="code",
                          role="implement", step=1, model="glm-x", provider="p1",
                          ok=True, usage={"input": 6_000_000, "output": 0})
             for _ in range(100):
-                if mpush.call_count:
+                if pushes:
                     break
                 time.sleep(0.02)
-            self.assertEqual(mpush.call_count, 1)
-            text = mpush.call_args.args[0]
+            self.assertEqual(len(pushes), 1)
+            text = pushes[0]
             self.assertIn("花费预警", text)
             self.assertIn("50%", text)
             # 再来一笔同日不变 → 不重复推
@@ -157,15 +158,21 @@ class TestBudgetAlert(BaseTest):
                          role="implement", step=2, model="glm-x", provider="p1",
                          ok=True, usage={"input": 100, "output": 0})
             time.sleep(0.3)
-            self.assertEqual(mpush.call_count, 1)
+            self.assertEqual(len(pushes), 1)
+        finally:
+            usage.set_alert_push(None)
 
     def test_no_alert_without_caps(self):
-        from app.core import notify
-        with mock.patch.object(notify, "push_text", return_value=True) as mpush:
+        pushes = []
+        usage.set_alert_push(lambda text: pushes.append(text))
+        try:
             usage.record(source="pipeline", run_id="r", task_id="t", task_type="code",
                          role="implement", step=1, model="glm-x", provider="p1",
                          ok=True, usage={"input": 6_000_000, "output": 0})
-            self.assertFalse(mpush.called)
+            time.sleep(0.3)
+            self.assertEqual(pushes, [])
+        finally:
+            usage.set_alert_push(None)
 
 
 if __name__ == "__main__":

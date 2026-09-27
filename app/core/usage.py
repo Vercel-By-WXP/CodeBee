@@ -171,6 +171,16 @@ def _budget_caps_on():
         return False
 
 
+_ALERT_PUSH = None        # main.py 启动注入 notify.push_text——usage(L0) 不反向
+                           # 依赖 notify(L1)，静态图不成环（同 set_run_estimator 模式）
+
+
+def set_alert_push(fn):
+    """注入花费预警的推送函数；未注入则预警静默跳过。"""
+    global _ALERT_PUSH
+    _ALERT_PUSH = fn if callable(fn) else None
+
+
 def _budget_alert_check(day):
     """花费预警推送（50%/80%，日/月各自去重一次）：预警是硬顶的事前提醒，
     触发阈值状态落 data/budget_alerts.json（按天重置）。失败静默。"""
@@ -207,14 +217,15 @@ def _budget_alert_check(day):
         tmp = sp.with_suffix(".tmp")
         tmp.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
         tmp.replace(sp)
-        from . import notify
+        if not _ALERT_PUSH:
+            return
         lines = ["💸 CodeBee 花费预警"]
         for scope, pct, spent, cap in new:
             lines.append("%s花费 ¥%.2f，已达%s上限 ¥%.2f 的 %d%%" % (
                 "今日" if scope == "d" else "本月", spent,
                 "每日" if scope == "d" else "每月", cap, pct))
         lines.append("（达 100% 后新步骤将停止，可在设置→编排设置→预算调整）")
-        notify.push_text("\n".join(lines))
+        _ALERT_PUSH("\n".join(lines))
     except Exception:
         pass
 

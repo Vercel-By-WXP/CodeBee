@@ -2904,6 +2904,8 @@ def main():
     flows.set_runs_provider(store.list_runs)  # 版本战绩对账用 run 遍历器（防 flows→store 静态环）
     from core import evalbench as _evalbench
     automation.register_tick_hook(_evalbench.fire_due)  # 评测台定时回归挂自动化 tick
+    from core import notify as _notify
+    usage_ledger.set_alert_push(_notify.push_text)  # 花费预警推送注入（防 usage→notify 静态环）
     _step("正在回填用量台账…")
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）
     if n_bf:
