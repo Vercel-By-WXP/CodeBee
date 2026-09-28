@@ -87,6 +87,24 @@ def _click_text_js():
             "hit.scrollIntoView({block:'center'});hit.click();return{ok:true};}")
 
 
+def _checked_js():
+    # radio/checkbox 点击闭环：点击派发成功 ≠ 选中成功（遮罩/几何打偏会静默
+    # 吞掉，2026-09-28 建书两 radio 全空实案）。点完回头验 checked 态：
+    # arco 系 label 挂 checked 类、原生 input 挂 checked 属性，双信号任一即算
+    return ("(t,scope)=>{"
+            "const els=[...document.querySelectorAll("
+            "scope||'label,[class*=radio],[class*=checkbox]')]"
+            ".filter(e=>e.getBoundingClientRect().width>0);"
+            "const el=els.find(e=>((e.innerText||'').trim()).includes(t));"
+            "if(!el)return{ok:false,err:'nf'};"
+            "const box=el.closest('[class*=radio],[class*=checkbox]')||el;"
+            "const inp=box.querySelector('input[type=radio],input[type=checkbox]')||"
+            "el.querySelector('input[type=radio],input[type=checkbox]');"
+            "const ck=(inp&&inp.checked)||/checked|active/.test(box.className||'')"
+            "||/checked|active/.test(el.className||'');"
+            "return{ok:!!ck};}")
+
+
 def _page_error_text_js():
     # 抓页面上可见的报错/提示（toast、表单校验消息）：提交被平台静默拒绝
     # 时 url_any 只看得到「没跳转」，把页面自己的话带回来才不用瞎猜
@@ -176,18 +194,31 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     continue
                 note(i, "真实点击「%s」" % text)
                 r = None
-                for _try in range(int(st.get("tries") or 25)):
+                verified = not st.get("expect_checked")
+                tries = int(st.get("tries") or 25)
+                for _try in range(tries):
                     r = page.real_click_text(text, st.get("scope") or
                                              "a,button,[class*=btn]",
                                              y_min=st.get("y_min"),
                                              y_max=st.get("y_max"))
                     if (r or {}).get("ok"):
-                        break
+                        if verified:
+                            break
+                        # 点击成功≠选中成功：回头验 checked 态，不中重点
+                        v = page.call(_checked_js(), text,
+                                      st.get("scope") or "")
+                        if (v or {}).get("ok"):
+                            verified = True
+                            break
+                        note(i, "「%s」已点但未见选中态，重试" % text)
                     time.sleep(0.4)
-                if not (r or {}).get("ok"):
+                if not verified or not (r or {}).get("ok"):
                     if st.get("optional"):
                         note(i, "「%s」未出现，跳过（optional）" % text)
                         continue
+                    if (r or {}).get("ok") and st.get("expect_checked"):
+                        raise FlowError("「%s」连点 %d 次仍未见选中态"
+                                        "（radio 被遮罩/改版拦下）" % (text, tries))
                     raise FlowError((r or {}).get("err") or text)
             elif act == "click_in":
                 # 先按 scope_text 定位容器（如书卡），再在容器内点 text 按钮。

@@ -1,5 +1,5 @@
 {
- "_note": "番茄真机校准（2026-09-19 定稿，2026-09-24 加固）：编辑器=/main/writer/<book_id>/publish/ 直达（章节号 input.serial-input 纯数字；标题 div.serial-editor-input-hint input ≥5字/30上限；正文 .ProseMirror ≥1000字；「下一步」保存校验后按钮组右缘箭头展开下拉含「定时发布」）。建书=/main/writer/create 直达表单：radio 签约模式/目标读者（label 真实点击）→ 阅读标签 select（y<430）弹层 arco-anchor 切主分类/主题/角色/情节 + 标签云点击 + 确认 → 内容标签 select（y>430）弹层 情感/人设/世界观 同构 → 名称/主角1/主角2/简介 → 立即创建（submit 步骤：auto_submit=false 时填好即停，留给人工提交） → 跳 book-info/<id>。锚点切换渲染慢（0924 三连败）：弹层打开后 settle，锚点 tries=12。",
+ "_note": "番茄真机校准（2026-09-19 定稿，2026-09-24 加固）：编辑器=/main/writer/<book_id>/publish/ 直达（章节号 input.serial-input 纯数字；标题 div.serial-editor-input-hint input ≥5字/30上限；正文 .ProseMirror ≥1000字；「下一步」保存校验后按钮组右缘箭头展开下拉含「定时发布」）。建书=/main/writer/create 直达表单：radio 签约模式/目标读者（label 真实点击）→ 阅读标签 select（y<430）弹层 arco-anchor 切主分类/主题/角色/情节 + 标签云点击 + 确认 → 内容标签 select（y>430）弹层 情感/人设/世界观 同构 → 名称/主角1/主角2/简介 → 立即创建（submit 步骤：auto_submit=false 时填好即停，留给人工提交） → 跳 book-info/<id>。锚点切换渲染慢（0924 三连败）：弹层打开后 settle，锚点 tries=12。0928 再加固（弹层没开连败案）：签约/读者 radio 点击后断言选中态（expect_checked）；两处标签触发器点完 wait .category-modal 存在替代盲 sleep；real_click_text 落点 elementFromPoint 守卫，找不到目标时报错自带定位范围可见项诊断。",
  "check_login": [
   {
    "do": "navigate",
@@ -139,13 +139,15 @@
    "do": "click_real",
    "text": "{signing_mode}",
    "scope": "label.arco-radio,span.arco-radio,[class*=serial-radio]",
-   "tries": 8
+   "tries": 8,
+   "expect_checked": true
   },
   {
    "do": "click_real",
    "text": "{target_reader}",
    "scope": "label.arco-radio,span.arco-radio,[class*=serial-radio]",
-   "tries": 8
+   "tries": 8,
+   "expect_checked": true
   },
   {
    "do": "click_real",
@@ -162,8 +164,9 @@
    "tries": 10
   },
   {
-   "do": "sleep",
-   "s": 1.2
+   "do": "wait",
+   "sel": ".category-modal",
+   "timeout": 15
   },
   {
    "do": "click_real",
@@ -231,8 +234,9 @@
    "tries": 15
   },
   {
-   "do": "sleep",
-   "s": 1.2
+   "do": "wait",
+   "sel": ".category-modal",
+   "timeout": 15
   },
   {
    "do": "click_real",

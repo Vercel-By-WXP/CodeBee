@@ -123,6 +123,10 @@ class Browser:
         args = [self.exe,
                 "--remote-debugging-port=%d" % self.port,
                 "--user-data-dir=%s" % self.user_data_dir,
+                # 窗口几何必须钉死：真实鼠标事件按视口坐标派发，窗口被 Edge
+                # 恢复成怪尺寸（2026-09-28 实案 921×920 方窗）时全部点击系统性
+                # 打偏，建书 radio/弹层一个都点不中还步步报成功
+                "--window-size=1366,900",
                 "--no-first-run", "--no-default-browser-check",
                 "--hide-crash-restore-bubble"]   # 崩溃恢复气泡压掉即够；
                                                  # --restore-last-session 是无值开关，
@@ -239,9 +243,26 @@ class Page:
             self.send("Runtime.enable")
             self.send("Page.enable")
             self._ua_override()
+            self._check_viewport()
         except BrowserError:
             self.ws.close()
             raise
+
+    def _check_viewport(self):
+        """视口几何告警：接管老实例（attach）时窗口尺寸不受我们控制，怪几何
+        会让真实点击坐标打偏——只告警不改状态，硬防护在 real_click_text 的
+        elementFromPoint 守卫。"""
+        try:
+            m = self.send("Page.getLayoutMetrics", timeout=5.0) or {}
+            css = m.get("cssLayoutViewport") or m.get("layoutViewport") or {}
+            w = int(css.get("clientWidth") or 0)
+            h = int(css.get("clientHeight") or 0)
+            if w and (w < 1000 or h < 600):
+                print("[publish] 视口异常 %dx%d（期望 ≥1000x600）：真实点击坐标"
+                      "可能打偏，建议关掉该平台浏览器窗口后重连"
+                      % (w, h), flush=True)
+        except Exception:
+            pass
 
     def _ua_override(self):
         """UA 伪装成标准 Chrome：Edge 尾巴（Edg/x.y）会被部分站点（如七猫
@@ -471,7 +492,9 @@ class Page:
         qm-btn 一类自定义按钮只认真实事件序列（mousedown/mouseup/focus），
         el.click() 对它们无效——建书「确认创建」/发章「立即发布」都栽在这。
         y_min/y_max 限定元素纵向范围（区分同名 select、限制弹层内点击）。
-        返回 {ok, tag?, via}；找不到元素返回 {ok: False, err}。"""
+        派发前 elementFromPoint 验证落点真是目标：遮罩/浮层/窗口几何漂移会让
+        坐标系统性打偏且步步报成功（2026-09-28 建书弹层没开实案）。
+        返回 {ok, tag?, via}；找不到/被挡/出视口返回 {ok: False, err}。"""
         r = self.call(
             "(t,scope,c,y0,y1)=>{"
             "const vis=e=>e.getBoundingClientRect().width>0;"
@@ -485,13 +508,29 @@ class Page:
             "cands.sort((a,b)=>((a.innerText||'').trim().length)-((b.innerText||'').trim().length));"
             "const el=cands[0];el.scrollIntoView({block:'center'});"
             "const rc=el.getBoundingClientRect();"
-            "return{ok:true,x:Math.round(rc.x+rc.width/2),y:Math.round(rc.y+rc.height/2),"
+            "const x=Math.round(rc.x+rc.width/2),y=Math.round(rc.y+rc.height/2);"
+            "const hit=document.elementFromPoint(x,y);"
+            "if(!hit)return{ok:false,err:'oob'};"
+            "if(hit!==el&&!el.contains(hit)&&!hit.contains(el))"
+            "return{ok:false,err:'blocked',by:hit.tagName+' '+"
+            "((hit.className||'')+'').slice(0,40)};"
+            "return{ok:true,x:x,y:y,"
             "tag:el.tagName,cls:(el.className||'').toString().slice(0,30)};}",
             str(text), scope or "", bool(contains),
             int(y_min) if y_min is not None else None,
             int(y_max) if y_max is not None else None)
         if not (r or {}).get("ok"):
-            return {"ok": False, "err": "页面上找不到文本为「%s」的可点元素" % text}
+            err = (r or {}).get("err")
+            if err == "blocked":
+                return {"ok": False,
+                        "err": "「%s」的落点被 %s 挡住（遮罩/浮层未退场）"
+                               % (text, (r or {}).get("by") or "未知元素")}
+            if err == "oob":
+                return {"ok": False,
+                        "err": "「%s」的落点在视口外——浏览器窗口几何异常，"
+                               "关掉该平台浏览器窗口后重试" % text}
+            return {"ok": False, "err": "页面上找不到文本为「%s」的可点元素%s"
+                    % (text, self._click_diag(scope))}
         x, y = r["x"], r["y"]
         self.send("Input.dispatchMouseEvent",
                   {"type": "mousePressed", "x": x, "y": y,
@@ -500,6 +539,27 @@ class Page:
                   {"type": "mouseReleased", "x": x, "y": y,
                    "button": "left", "clickCount": 1}, timeout=8.0)
         return {"ok": True, "tag": r.get("tag"), "via": "input"}
+
+    def _click_diag(self, scope):
+        """点击目标找不到时的现场自证：定位范围里到底有没有可见元素、都是
+        什么——「弹层没开」和「分类表变了」从此一眼可分，不用再猜。"""
+        try:
+            r = self.call(
+                "(scope)=>{const vis=e=>e.getBoundingClientRect().width>0;"
+                "const els=[...document.querySelectorAll(scope||"
+                "'button,a,[role=button],span,li,[class*=btn]')].filter(vis);"
+                "const ts=[...new Set(els.map(e=>(e.innerText||'').trim())"
+                ".filter(x=>x&&x.length<=10))].slice(0,8);"
+                "return{n:els.length,ts:ts};}", scope or "")
+            n = int((r or {}).get("n") or 0)
+            ts = "／".join(str(t) for t in ((r or {}).get("ts") or []))
+            if not n:
+                return "（定位范围 %s 内无可见元素：目标容器多半没打开）" \
+                       % (str(scope or "默认")[:48])
+            return "（定位范围 %s 内可见项：%s）" \
+                   % (str(scope or "默认")[:48], ts[:120])
+        except Exception:
+            return ""
 
     def screenshot(self, fp):
         """整页截图存证：发布每步之后落一张，出错可回看卡在哪一步。"""
