@@ -452,8 +452,9 @@ def create_book_async(task_id, plat, auto_submit=False):
                     metadata={"platform": plat, "action": "create_book"})
             ledger.record(plat, "create_book", task_id=task_id, title=book_name,
                           book_id=book_id, ok=bool(book_id),
-                          error=("\n".join(logs)[:2000] if book_id else
-                                 "建书结果未知：未取得远端 book_id；请先对账"),
+                          error=((("" if book_id else
+                                   "建书结果未知：未取得远端 book_id；请先对账\n")
+                                  + "\n".join(logs))[:2000] or None),
                           shot=str(ledger.shot_path(plat, task_id, "")),
                           operation_id=operation_id, operation_status=operation_status,
                           remote_receipt=book_id)

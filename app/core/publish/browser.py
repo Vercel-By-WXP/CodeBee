@@ -78,27 +78,68 @@ def _free_port():
     return port
 
 
+def _win_edge_proc_lines():
+    """(pid, 命令行) 清单。wmic 优先（快）；Win11 24H2 起系统已移除
+    wmic——输出为空/报错时落 PowerShell CIM（冷启 ~2s，仅在必要时付）。"""
+    import subprocess as _sp
+    try:
+        out = _sp.check_output(
+            ["wmic", "process", "where", "Name='msedge.exe'",
+             "get", "ProcessId,CommandLine"],
+            stderr=_sp.DEVNULL, timeout=12).decode("utf-8", "replace")
+        lines = []
+        for l in out.splitlines():
+            l = l.strip()
+            if not l or l.startswith("CommandLine"):
+                continue
+            m = re.match(r"^(.*\S)\s+(\d+)$", l)   # wmic 列序固定：命令行在前 pid 在后
+            if m and "msedge" in m.group(1):
+                lines.append((m.group(2), m.group(1)))
+        if lines:
+            return lines
+    except Exception:
+        pass
+    try:
+        ps = None
+        for cand in ("powershell",
+                     r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"):
+            try:
+                out = _sp.check_output(
+                    [cand, "-NoProfile", "-Command",
+                     "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | "
+                     "ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }"],
+                    stderr=_sp.DEVNULL, timeout=30).decode("utf-8", "replace")
+                break
+            except OSError:
+                continue               # PATH 没带 System32\WindowsPowerShell 的环境
+        lines = []
+        for l in (out or "").splitlines():
+            pid, _, cmd = l.strip().partition("|")
+            if pid.isdigit() and cmd:
+                lines.append((pid, cmd))
+        return lines
+    except Exception:
+        return []
+
+
 def _debug_ports_for_profile(user_data_dir):
     """扫描本机浏览器进程命令行，返回使用该 profile 的主实例的调试端口。
 
-    跨平台：Windows 走 wmic（PS 启动太慢），POSIX 走 ps。只认主进程
+    跨平台：Windows 走 wmic→PowerShell CIM 回退，POSIX 走 ps。只认主进程
     （--type= 子进程没有调试端口）。路径按小写+正反斜杠归一后比对。"""
     import subprocess as _sp
     try:
         if sys.platform == "win32":
-            out = _sp.check_output(
-                ["wmic", "process", "where", "Name='msedge.exe'", "get", "CommandLine"],
-                stderr=_sp.DEVNULL, timeout=12).decode("utf-8", "replace")
-            lines = out.splitlines()
+            lines = _win_edge_proc_lines()
         else:
             out = _sp.check_output(["ps", "-axo", "command"], timeout=12).decode()
-            lines = [l for l in out.splitlines()
+            lines = [(None, l) for l in out.splitlines()
                      if "msedge" in l or "chrome" in l or "chromium" in l]
     except Exception:
         return []
     key = str(user_data_dir).replace("\\", "/").strip("/").lower()
     ports = []
-    for ln in lines:
+    for _pid, ln in lines:
         ln = ln.strip()
         if not ln or "--type=" in ln or "--remote-debugging-port=" not in ln:
             continue
@@ -170,10 +211,11 @@ class Browser:
     def _wait_ready(self, timeout):
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if self.proc.poll() is not None:
-                return False            # 二开 profile 时新进程会把参数转交老实例后退出
             if port_alive(self.port, timeout=1.0):
                 return True
+            # Edge 147 起 launcher 进程常先退（真身 detached 续跑、调试端口
+            # 晚几秒才开）——见 proc 退出不能收兵，要把端口窗口等满；真没起
+            # 来时上面的接管扫描（_debug_ports_for_profile）还兜得住
             time.sleep(0.4)
         return False
 
@@ -181,11 +223,25 @@ class Browser:
         return port_alive(self.port, timeout=1.5)
 
     def close(self):
-        """杀掉浏览器进程树。登录态在 profile 里，杀掉不丢。"""
+        """杀掉浏览器进程树。登录态在 profile 里，杀掉不丢。
+
+        Edge 147 起 launcher 常先退、真身 detached 续跑——taskkill 只打到
+        已退出的 launcher 时，按 profile 再扫一遍主进程补刀，否则孤儿实例
+        锁着 profile，下次 launch 误报「已在运行的会话」。"""
         pid = getattr(self, "proc", None) and self.proc.pid
         try:
             if sys.platform == "win32" and pid:
                 subprocess.call(["taskkill", "/F", "/T", "/PID", str(pid)],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if self.proc.poll() is not None and self.user_data_dir:
+                    key = str(self.user_data_dir).replace("\\", "/").strip("/").lower()
+                    for opid, cmd in _win_edge_proc_lines():
+                        if "--type=" in cmd:
+                            continue
+                        norm = cmd.replace("\\\\", "/").replace("\\", "/").lower()
+                        if key in norm:
+                            subprocess.call(
+                                ["taskkill", "/F", "/T", "/PID", str(opid)],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             elif pid:
                 # spawn 时 start_new_session，pgid==pid，连渲染进程带杀（runner 同款）；

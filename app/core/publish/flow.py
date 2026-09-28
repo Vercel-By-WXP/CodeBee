@@ -119,6 +119,98 @@ def _page_error_text_js():
             "return out.slice(0,5).join(' ｜ ');}")
 
 
+def _tag_sections_js():
+    # 标签弹层分组读取（七猫形态）：div.tags-wrap[data-type-id] 每组一块，
+    # 组名在 .tags-tit（带前导空格须 trim），芯片名 .tags-con-name，
+    # 选中态 .tags-con.tag-selected。返回 null = 弹层无此结构。
+    return ("()=>{const wraps=[...document.querySelectorAll('.tags-wrap')];"
+            "if(!wraps.length)return null;"
+            "return wraps.map(w=>({"
+            "g:(((w.querySelector('.tags-tit')||{}).innerText)||'').trim(),"
+            "sel:[...w.querySelectorAll('.tags-box .tags-con.tag-selected .tags-con-name')]"
+            ".map(e=>(e.innerText||'').trim())}));}")
+
+
+def _tag_click_js():
+    # 组内精确定位芯片再点。四组选项同屏渲染、芯片点击永远落在其所在
+    # 分组（左侧组名导航只管高亮不管归属），且组名导航/全弹层 contains
+    # 搜索在滚动竞态下会假成功——el.click() 打在滚动中的芯片上被平台吞
+    # 掉也报 ok（0928 实案：前 9 个全中、第 10 个「都市」假成功，背景组
+    # 空选，「确定」被平台以「每个类型下至少选择1个标签」打回）。
+    # err=nogroup（弹层没这组）单独返回，供上层区分「没等到弹层」与
+    # 「组里没这个标签」（后者=平台目录漂移，必须立刻报错而不是去别组碰）。
+    return ("(g,t)=>{for(const w of document.querySelectorAll('.tags-wrap')){"
+            "const gname=(((w.querySelector('.tags-tit')||{}).innerText)||'').trim();"
+            "if(gname!==g)continue;"
+            "const hit=[...w.querySelectorAll('.tags-box .tags-con-name')]"
+            ".find(e=>((e.innerText||'').trim())===t);"
+            "if(!hit)return{ok:false,err:'组「'+g+'」下没有标签「'+t+'」'};"
+            "hit.scrollIntoView({block:'center'});hit.click();return{ok:true};}"
+            "return{ok:false,err:'nogroup'};}")
+
+
+def _tags_select_grouped(page, note, i, pairs):
+    """分组定位点选：逐项点+回读校验（点不中就重新定位重试），收尾全组
+    对账——多选的再点一次剔除（芯片是开关）、缺的补点，两轮仍不齐才报
+    错，错误带组名+差集，别让人对着平台的「每个类型下至少选择1个标签」
+    toast 瞎猜。"""
+    def read():
+        return page.call(_tag_sections_js()) or []
+
+    def one(g, t):
+        for _try in range(4):
+            r = page.call(_tag_click_js(), g, t)
+            err = (r or {}).get("err")
+            if err == "nogroup":
+                time.sleep(0.8)                # 弹层中途重渲染：等它回来
+                continue
+            if err:
+                raise FlowError(err)           # 组里没有这个标签=目录漂移，去别组碰只会点错
+            time.sleep(0.5)
+            for s in read():
+                if s["g"] == g:
+                    if t in s["sel"]:
+                        return True
+                    break
+        return False
+
+    for g, t in pairs:
+        if not one(g, t):
+            raise FlowError("标签「%s」未能选入「%s」组（该组或已选满3个）" % (t, g))
+    want = {}
+    for g, t in pairs:
+        want.setdefault(g, set()).add(t)
+    bad = []
+    for _round in range(2):
+        bad = []
+        for s in read():
+            w = want.get(s["g"])
+            if w is None:
+                continue                       # 没让点的组不动它
+            extra = sorted(set(s["sel"]) - w)
+            miss = sorted(w - set(s["sel"]))
+            if extra or miss:
+                parts = []
+                if extra:
+                    parts.append("多选 " + "、".join(extra))
+                if miss:
+                    parts.append("缺 " + "、".join(miss))
+                bad.append("「%s」组%s" % (s["g"], "；".join(parts)))
+        if not bad:
+            note(i, "标签对账通过（%d 项）" % len(pairs))
+            return
+        for s in read():                       # 多选：再点一次取消
+            for x in set(s["sel"]) - want.get(s["g"], set()):
+                page.call(_tag_click_js(), s["g"], x)
+                time.sleep(0.4)
+        for g, t in pairs:                     # 缺选：补点
+            sel = next((x["sel"] for x in read() if x["g"] == g), [])
+            if t not in sel:
+                page.call(_tag_click_js(), g, t)
+                time.sleep(0.4)
+    raise FlowError("标签对账未过：%s" % "；".join(bad))
+
+
 def run_flow(page, steps, values=None, config=None, auto_submit=False,
              shot=None, log=None):
     """跑一个流程。values：fill 取值字典；config：平台 URL 等占位符来源。
@@ -328,13 +420,39 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     raise FlowError((r or {}).get("err") or "单选点击失败")
             elif act == "tags":
                 # 标签弹层逐个点选：manager 把标签清单放 values["_tags"]。
-                # 项为 [组名, 标签] 时先点左侧组名切换（组标签懒渲染）再点标签；
-                # 纯字符串直接点。弹层打开由前置 click_text「添加标签」负责。
+                # 项为 [组名, 标签] 且弹层呈现分组结构（.tags-wrap）时走
+                # 「分组定位」：芯片在**它所属组的区块内**精确定位、点完即
+                # 回读该组选中集校验——点不中就重新定位重试，绝不带病前进。
+                # 弹层无此结构或清单含无组名项时回退旧路径（整页 contains
+                # 搜索：组名切换 + 直接点标签，历史平台兜底）。
                 tags = values.get("_tags") or []
                 if not tags:
                     note(i, "无标签可点，跳过")
                     continue
                 scope = st.get("scope") or "span,li,label,[class*=dialog] *,[class*=popper] *"
+                pairs = [(str(it[0]).strip(), str(it[1]).strip()) for it in tags
+                         if not isinstance(it, (str, int))
+                         and str(it[0] or "").strip() and str(it[1] or "").strip()]
+                sections = None
+                if pairs and len(pairs) == len(tags):
+                    for _w in range(8):            # 等弹层渲染出分组结构
+                        sections = page.call(_tag_sections_js())
+                        if sections:
+                            break
+                        time.sleep(1.0)
+                if sections:
+                    missing = {g for g, _ in pairs} - {s["g"] for s in sections}
+                    if missing:
+                        # 弹层是分组结构但组名对不上=平台目录/组名改了——
+                        # 回退旧路径只会全局乱点（本次事故根源形态），当场报错
+                        raise FlowError(
+                            "标签弹层分组与预期不符：缺 %s（弹层现有组：%s）；"
+                            "请重生成作品信息后再试"
+                            % ("、".join(sorted(missing)),
+                               "、".join(s["g"] for s in sections)))
+                    note(i, "点选标签 %d 项（分组定位）" % len(pairs))
+                    _tags_select_grouped(page, note, i, pairs)
+                    continue
                 note(i, "点选标签 %d 项" % len(tags))
                 for item in tags:
                     grp, tg = ("", str(item)) if isinstance(item, (str, int)) \
