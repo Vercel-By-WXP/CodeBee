@@ -1063,6 +1063,11 @@
     "——记得点「保存 MCP 配置」": " — remember to hit \"Save MCP config\"",
     "（覆盖同名 ": " (overwrites same-name ",
     "最多 4 个 MCP 服务器，请先删减再套模板": "Max 4 MCP servers — trim the list before adding a template",
+    // —— 评测性价比 ——
+    "综合分 ÷ 评测花费（¥，按标定单价折算）": "Overall score ÷ bench cost (¥, computed from calibrated unit prices)",
+    "性价比 ": "value ",
+    " 分/¥": " pts/¥",
+    "花费 ¥": "cost ¥",
     "📥 导入流程分享码": "📥 Import flow share code",
     "请先粘贴分享码": "Paste a share code first",
     "（与现有内容一致）": " (identical to current content)",

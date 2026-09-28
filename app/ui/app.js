@@ -11358,6 +11358,7 @@ async function scanZentao() {
 /* /api/market → {catalog, categories(闭集)}；搜索/分类/状态全在本地过滤。
  * 外部目录（/api/market/remote）只读缓存不联网；联网拉取仅在用户点「拉取更新」。 */
 async function loadMarket() {
+  loadPlugins();
   try { S.market = await api("/api/market"); }
   catch (e) { S.market = null; }
   if (mkActiveView() === "remote") {
@@ -11368,6 +11369,80 @@ async function loadMarket() {
   }
   renderMarket();
   renderMarketRemote();
+}
+
+/* ---------------------------------------------------------- 本地插件（manifest） */
+async function loadPlugins() {
+  try { S.plugins = await api("/api/plugins"); }
+  catch (e) { S.plugins = null; }
+  renderPlugins();
+}
+
+function pluginCardHtml(p) {
+  const title = p.display_name || p.name || p.id || "";
+  const state = p.state || (p.installed ? (p.enabled ? "enabled" : "disabled") : "available");
+  let ops = "";
+  if (state === "blocked" || state === "broken") {
+    ops = '<span class="tag warn">' + esc(t(state === "blocked" ? "不适配" : "损坏")) + "</span>";
+  } else if (p.installed) {
+    ops = '<label class="switch" title="' + esc(p.enabled ? t("已启用") : t("已停用")) + '">' +
+      '<input type="checkbox"' + (p.enabled ? " checked" : "") +
+      ' onchange="pluginToggle(\'' + esc(p.id) + '\', this.checked)"></label>' +
+      '<button class="ghost small" onclick="pluginRemove(\'' + esc(p.id) + '\')">' + t("卸载") + "</button>";
+  } else {
+    ops = '<button class="primary small" onclick="pluginInstall(\'' + esc(p.id) + '\')">' + t("安装") + "</button>";
+  }
+  const caps = (p.capabilities || []).map((x) => '<span class="tag">' + esc(x) + "</span>").join("");
+  const features = [
+    p.skill_count ? t("技能 ") + p.skill_count : "",
+    p.has_mcp ? "MCP" : "",
+    p.version ? "v" + p.version : "",
+  ].filter(Boolean).join(" · ");
+  return '<div class="card mk-card plugin-card"><div class="head">' +
+    '<span class="name">' + esc(t(title)) + "</span>" +
+    '<span class="tag">' + esc(t(p.category || "Productivity")) + "</span></div>" +
+    '<div class="note">' + esc(t(p.short_description || p.description || p.error || "")) + "</div>" +
+    '<div class="mk-meta"><span>' + esc(features) + '</span><span>' + esc(p.author || "") + "</span></div>" +
+    (caps ? '<div class="mk-meta">' + caps + "</div>" : "") +
+    '<div class="ops">' + ops + "</div></div>";
+}
+
+function renderPlugins() {
+  const grid = $("plugin-grid");
+  if (!grid) return;
+  const data = S.plugins;
+  if (!data) { grid.innerHTML = '<div class="empty">' + t("插件加载失败") + "</div>"; return; }
+  const count = $("plugin-count");
+  if (count) count.textContent = data.total || 0;
+  grid.innerHTML = (data.plugins || []).map(pluginCardHtml).join("") ||
+    '<div class="empty">' + t("还没有发现本地插件") + "</div>";
+}
+
+async function pluginInstall(id) {
+  try {
+    const r = await api("/api/plugins/" + encodeURIComponent(id) + "/install", { method: "POST", body: "{}" });
+    toast(r && r.already ? t("该插件已安装过") : t("插件安装成功"));
+  } catch (e) { toast(e.message || t("安装失败"), true); return; }
+  await loadPlugins();
+  loadMarket();
+}
+
+async function pluginToggle(id, enabled) {
+  try {
+    await api("/api/plugins/" + encodeURIComponent(id) + "/" + (enabled ? "enable" : "disable"), { method: "POST", body: "{}" });
+    toast(enabled ? t("插件已启用") : t("插件已停用"));
+  } catch (e) { toast(e.message || t("操作失败"), true); }
+  loadPlugins();
+}
+
+async function pluginRemove(id) {
+  if (!await uiConfirm(t("卸载该插件？技能包和本地插件副本会被移除。"), { ok: t("卸载"), danger: true })) return;
+  try {
+    await api("/api/plugins/" + encodeURIComponent(id) + "/remove", { method: "POST", body: "{}" });
+    toast(t("插件已卸载"));
+  } catch (e) { toast(e.message || t("卸载失败"), true); return; }
+  await loadPlugins();
+  loadMarket();
 }
 
 function mkCount(text) {
@@ -12193,7 +12268,11 @@ function renderEvalBench() {
       ? t("　客观验证 ") + r.verify_pass + "/" + r.verify_total : "";
     const marks = (r.same_family ? '<span class="tag">' + t("同族评审") + "</span>" : "") +
       (r.failed_n ? '<span class="tag">' + t("失败 ") + r.failed_n + "</span>" : "") +
-      (!r.scored_n ? '<span class="tag">' + t("未得分") + "</span>" : "");
+      (!r.scored_n ? '<span class="tag">' + t("未得分") + "</span>" : "") +
+      (r.value_per_yuan != null
+        ? '<span class="tag ok" title="' + t("综合分 ÷ 评测花费（¥，按标定单价折算）") + '">' +
+          t("性价比 ") + r.value_per_yuan + t(" 分/¥") + "</span>"
+        : (r.cost_yuan != null ? '<span class="tag">' + t("花费 ¥") + r.cost_yuan + "</span>" : ""));
     return '<div class="item"><div class="t"><span class="name">#' + r.rank + "　" +
       esc(r.model) + "</span>" +
       (r.overall != null ? '<span class="tag ok">' + t("综合 ") + r.overall + "</span>" : "") + marks +
@@ -14316,6 +14395,10 @@ window.loadAutomation = loadAutomation;
 window.mkInstall = mkInstall;
 window.mkRemove = mkRemove;
 window.loadMarket = loadMarket;
+window.loadPlugins = loadPlugins;
+window.pluginInstall = pluginInstall;
+window.pluginToggle = pluginToggle;
+window.pluginRemove = pluginRemove;
 window.mkrInstall = mkrInstall;
 window.mkrRefresh = mkrRefresh;
 window.mkSetView = mkSetView;
