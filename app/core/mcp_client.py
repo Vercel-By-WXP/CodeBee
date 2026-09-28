@@ -37,6 +37,12 @@ _CALL_TIMEOUT_MAX = 300.0
 _CLIENT_INFO = {"name": "CodeBee", "version": "1.0"}
 
 
+def invalidate_tools_cache():
+    """服务器配置变化后丢弃已发现工具（插件启停等场景调用）。"""
+    with _LOCK:
+        _TOOLS_CACHE.clear()
+
+
 def parse_servers(text):
     """settings.mcp_servers 文本 → 校验后的服务器配置列表。返回 (servers, 错误)。"""
     raw = str(text or "").strip()

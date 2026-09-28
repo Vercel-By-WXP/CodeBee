@@ -2984,8 +2984,37 @@ def main():
     from core import notify as _notify
     usage_ledger.set_alert_push(_notify.push_text)  # 花费预警推送注入（防 usage→notify 静态环）
     from core import mcp_client as _mcp
-    _mcp.set_settings_text(
-        lambda: str(settings.load().get("mcp_servers") or ""))  # MCP 清单注入（防 mcp_client→settings 边）
+    def _mcp_servers_text():
+        """settings 清单 + 已启用插件的 MCP 服务器合成（plugin 名隔离防撞名）。"""
+        import json as _json
+        try:
+            raw = str(settings.load().get("mcp_servers") or "")
+            configured = _json.loads(raw) if raw.strip() else []
+        except Exception:
+            return raw or ""
+        if not isinstance(configured, list):
+            return raw or ""
+        try:
+            from core import plugins as _plugins
+            plugin_servers = _plugins.active_mcp_servers()
+        except Exception:
+            plugin_servers = []          # 坏插件不能连累用户显式配置的服务器
+        import hashlib as _hashlib
+        import re as _re
+        for item in plugin_servers or []:
+            if not isinstance(item, dict):
+                continue
+            plugin_id = str(item.pop("plugin_id", "plugin"))
+            server_name = str(item.get("name") or "server")
+            digest = _hashlib.sha256(
+                (plugin_id + ":" + server_name).encode("utf-8")).hexdigest()[:6]
+            safe = _re.sub(r"[^a-z0-9_-]", "-", plugin_id.lower())
+            item["name"] = ("plg_" + safe[:11] + "_" + digest)[:24]
+            if not any(x.get("name") == item["name"] for x in configured
+                       if isinstance(x, dict)):
+                configured.append(item)
+        return _json.dumps(configured, ensure_ascii=False)
+    _mcp.set_settings_text(_mcp_servers_text)  # MCP 清单注入（防 mcp_client→settings 边）
     _step("正在回填用量台账…")
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）
     if n_bf:
