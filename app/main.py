@@ -1468,6 +1468,20 @@ class Handler(BaseHTTPRequestHandler):
             # 远程备份连通性测试：PUT 一个探针文件
             from core import remotesync
             return self._json(200, {"ok": True, **remotesync.test_remote()})
+        if path == "/api/data/remote-list":
+            # 远程备份包列举（WebDAV PROPFIND）
+            from core import remotesync
+            names, err = remotesync.list_remote()
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True, "files": names})
+        if path == "/api/data/remote-pull":
+            # 拉远程备份包到 imports 目录（之后走既有导入预览/应用向导）
+            from core import remotesync
+            p, err = remotesync.pull_remote((self._body() or {}).get("name"))
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True, "path": p})
         if path == "/api/data/import":
             # op=inspect 预览（不落盘）；op=apply 应用（merge/replace + 路径重映射）
             from core import backup

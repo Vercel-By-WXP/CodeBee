@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 
+from . import runner   # L0→L2 合法方向（小层号依赖大层号）；模块级绑定便于测试打桩
+
 _MAX_TIMEOUT_S = 3600
 
 
@@ -34,7 +36,6 @@ def push_remote(zip_path, timeout_s=1800):
     p = Path(zip_path)
     if not p.is_file():
         return {"ok": False, "skipped": False, "status": 0, "error": "备份包不存在"}
-    from . import runner
     argv = ["curl", "-sS", "-f", "-T", str(p), "--max-time", str(max(60, timeout_s)),
             cfg["url"] + "/" + p.name]
     if cfg["user"] or cfg["pass"]:
@@ -63,3 +64,58 @@ def test_remote():
             os.unlink(p)
         except OSError:
             pass
+
+
+def _curl_common_args():
+    cfg = _cfg()
+    argv = ["curl", "-sS", "-f", "--max-time", "120"]
+    if cfg["user"] or cfg["pass"]:
+        argv += ["--user", cfg["user"] + ":" + cfg["pass"]]
+    return cfg, argv
+
+
+def list_remote():
+    """列远程端点上的备份包（WebDAV PROPFIND，其他端点回落 GET 目录页）。
+    返回 (文件名列表, 错误)。仅支持 push 时同款 URL 前缀。"""
+    cfg, argv = _curl_common_args()
+    if not cfg["enabled"] or not cfg["url"]:
+        return None, "未启用远程备份"
+    r = runner.run_process(
+        argv=argv + ["-X", "PROPFIND", "-H",
+                     "Content-Type: application/xml", "-H", "Depth: 1",
+                     "--data-binary", "", cfg["url"] + "/"], timeout=150)
+    if not r.get("ok"):
+        err = (r.get("stderr") or "").strip().splitlines()
+        return None, (err[-1] if err else "列举失败（端点可能不支持 PROPFIND）")[:200]
+    import re as _re
+    text = str(r.get("stdout") or "")
+    names = sorted({m for m in _re.findall(
+        r"codebee-backup-\d{8}-\d{6}\.zip", text)}, reverse=True)
+    return names, None
+
+
+def pull_remote(name):
+    """从远程端点拉备份包到本机 imports 目录（走现有导入向导）。
+    name 必须精确匹配 codebee-backup-*.zip 形态（防路径注入）。
+    返回 (本地路径, 错误)。"""
+    import re as _re
+    name = str(name or "").strip()
+    if not _re.match(r"^codebee-backup-\d{8}-\d{6}\.zip$", name):
+        return None, "非法的备份包名"
+    cfg, argv = _curl_common_args()
+    if not cfg["enabled"] or not cfg["url"]:
+        return None, "未启用远程备份"
+    from . import paths
+    dest_dir = paths.DATA_DIR / "imports"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / name
+    r = runner.run_process(
+        argv=argv + ["-o", str(dest), cfg["url"] + "/" + name], timeout=1900)
+    if not r.get("ok") or not dest.is_file() or dest.stat().st_size == 0:
+        try:
+            dest.unlink()
+        except OSError:
+            pass
+        err = (r.get("stderr") or "").strip().splitlines()
+        return None, (err[-1] if err else "拉取失败")[:200]
+    return str(dest), None
