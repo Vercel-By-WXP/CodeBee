@@ -317,6 +317,7 @@ def install_files(pack_id, name, files, extra=None):
             reg["installed"][pack_id]["smoke"] = smoke
             _save_registry(reg)
     return {"ok": True, "id": pack_id, "name": name, "file": target,
+            "files": list(((_load_registry().get("installed") or {}).get(pack_id) or {}).get("files") or [target]),
             "already": already, "scan": scan_note, "smoke": smoke}, None
 
 

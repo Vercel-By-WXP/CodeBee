@@ -31,7 +31,7 @@ if os.environ.get("TUTTI_ISOLATE_HOME", "").strip() == "1":
     os.environ["USERPROFILE"] = _fake_home
     os.environ["HOME"] = _fake_home
 
-from core import automation, board, catalog, flows, jobs, manager, market, market_remote, preview, registry, remote, settings, store
+from core import automation, board, catalog, flows, jobs, manager, market, market_remote, plugins, preview, registry, remote, settings, store
 from core import paths
 from core import health
 from core import usage as usage_ledger
@@ -642,6 +642,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"task": t}) if t else self._json(404, {"error": "not found"})
             if path == "/api/market":
                 return self._json(200, market.view())
+            if path == "/api/plugins":
+                return self._json(200, plugins.view())
             if path == "/api/cleanup":
                 # 数据与备份页：清理配置 + 上次清理状态 + 当前可清理预估
                 from core import cleanup
@@ -1565,6 +1567,18 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 err = market.remove(m.group(1))
                 res = {"ok": True, "id": m.group(1)}
+            return self._json(400, {"error": err}) if err else self._json(200, res)
+        m = re.match(r"^/api/plugins/([^/]+)/(install|enable|disable|remove)$", path)
+        if m:
+            plugin_id, op = m.group(1), m.group(2)
+            if op == "install":
+                res, err = plugins.install(plugin_id)
+            elif op == "remove":
+                err = plugins.remove(plugin_id)
+                res = {"ok": True, "id": plugin_id}
+            else:
+                err = plugins.toggle(plugin_id, op == "enable")
+                res = {"ok": True, "id": plugin_id, "enabled": op == "enable"}
             return self._json(400, {"error": err}) if err else self._json(200, res)
         return self._json(404, {"error": "unknown api"})
 

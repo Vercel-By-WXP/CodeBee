@@ -17,6 +17,7 @@ name 用于工具名前缀（mcp__<name>__<tool>），必须 [a-z0-9_-]。
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import subprocess
@@ -35,6 +36,12 @@ _CALL_TIMEOUT = 60.0
 _CALL_TIMEOUT_MAX = 300.0
 
 _CLIENT_INFO = {"name": "CodeBee", "version": "1.0"}
+
+
+def invalidate_tools_cache():
+    """Drop discovered MCP tools after a server configuration change."""
+    with _LOCK:
+        _TOOLS_CACHE.clear()
 
 
 def parse_servers(text):
@@ -265,8 +272,37 @@ def dispatch_full_name(full_name, arguments, timeout_s=_CALL_TIMEOUT):
 
 
 def _settings_text():
+    """Merge explicit settings with enabled, locally installed plugin servers."""
     try:
         from . import settings
-        return str(settings.load().get("mcp_servers") or "")
+        raw = str(settings.load().get("mcp_servers") or "")
+        try:
+            configured = json.loads(raw) if raw.strip() else []
+        except Exception:
+            return raw
+        if not isinstance(configured, list):
+            return raw
+        try:
+            from . import plugins
+            plugin_servers = plugins.active_mcp_servers()
+        except Exception:
+            # A broken optional plugin must never hide explicitly configured
+            # MCP servers.
+            plugin_servers = []
+        for item in plugin_servers:
+            if not isinstance(item, dict):
+                continue
+            # Keep plugin tools isolated from user server names and from each
+            # other. The normal parser still validates the final merged list.
+            plugin_id = str(item.pop("plugin_id", "plugin"))
+            server_name = str(item.get("name") or "server")
+            digest = hashlib.sha256(
+                (plugin_id + ":" + server_name).encode("utf-8")).hexdigest()[:6]
+            safe = re.sub(r"[^a-z0-9_-]", "-", plugin_id.lower())
+            item["name"] = ("plg_" + safe[:11] + "_" + digest)[:24]
+            if not any(x.get("name") == item["name"] for x in configured
+                       if isinstance(x, dict)):
+                configured.append(item)
+        return json.dumps(configured, ensure_ascii=False)
     except Exception:
         return ""
