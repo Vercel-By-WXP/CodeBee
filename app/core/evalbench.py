@@ -219,9 +219,19 @@ def _write(data):
     benchstore.write_doc(data)
 
 
-def _persist_result(row):
+def _update(fn):
+    """锁内读-改-写：evalbench 的文档是多段共享（results/runs/top1），
+    各写入点若各自 read→modify→write 会互相覆盖（同秒多写实测互踩）。
+    全部走这里，一次 RMW 一个临界区。"""
     with _LOCK:
         data = _read()
+        fn(data)
+        _write(data)
+        return data
+
+
+def _persist_result(row):
+    def _mut(data):
         results = data.get("results") if isinstance(data.get("results"), list) else []
         results = [r for r in results
                    if not (isinstance(r, dict) and r.get("sample_id") == row["sample_id"]
@@ -229,7 +239,7 @@ def _persist_result(row):
                            and r.get("model") == row["model"])]
         results.append(row)
         data["results"] = results[-400:]     # 封顶：8 候选 × 3 样题 × 多轮历史也够用
-        _write(data)
+    _update(_mut)
 
 
 # ---------------------------------------------------------------- 评审
@@ -455,31 +465,18 @@ def _notify_auto_done(candidates_n):
             score = ("%.1f" % r["overall"]) if r.get("overall") is not None else "未得分"
             lines.append("#%d %s：%s" % (r["rank"], r["model"], score))
         # 与上次定时回归的 Top1 对比（防漂移一眼可见：换主了/掉了都点名）
-        prev = None
-        for r in reversed(_read().get("runs") or []):
-            if isinstance(r, dict) and r.get("auto") and not r.get("cancelled") \
-                    and r.get("top1"):
-                prev = r["top1"]
-                break
+        prev, cur_top1 = None, None
         if board and board[0].get("overall") is not None:
             cur_top1 = "%s（%.1f）" % (board[0]["model"], board[0]["overall"])
-            _remember_top1(cur_top1)
-            if prev and prev.split("（")[0] != board[0]["model"]:
+            prev = _read().get("last_auto_top1")
+            def _mut(data):
+                data["last_auto_top1"] = cur_top1
+            _update(_mut)
+            if prev and prev.split("（")[0] != cur_top1.split("（")[0]:
                 lines.append("⚠ 榜首易主：上次 %s → 本次 %s" % (prev, cur_top1))
         notify.push_text("\n".join(lines))
     except Exception:
         pass
-
-
-def _remember_top1(text):
-    with _LOCK:
-        data = _read()
-        runs = data.get("runs") if isinstance(data.get("runs"), list) else []
-        for r in reversed(runs):
-            if isinstance(r, dict) and r.get("auto") and not r.get("cancelled"):
-                r["top1"] = str(text)
-                break
-        _write(data)
 
 
 def _read_results_list():
@@ -511,15 +508,14 @@ def _model_price_cached(prov_id, model):
 
 
 def _append_run_log(run_id, judge_cfg, cancelled=False, auto=False):
-    with _LOCK:
-        data = _read()
+    def _mut(data):
         runs = data.get("runs") if isinstance(data.get("runs"), list) else []
         runs.append({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "run_id": run_id,
                      "judge": "%s · %s" % (judge_cfg.get("provider_id") or "",
                                            judge_cfg.get("model") or ""),
                      "cancelled": bool(cancelled), "auto": bool(auto)})
         data["runs"] = runs[-20:]
-        _write(data)
+    _update(_mut)
 
 
 def _auto_candidates():
