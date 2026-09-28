@@ -52,7 +52,7 @@ BUILTIN_FLOWS = [
      "threshold": 7.0, "rounds": 2,
      "serial": {"chapters": 8, "words_per_chapter": 2500},
      "goal_hint": "题材/受众/卖点 + 总字数（例：2 万字都市女频，可签约平台）",
-     "note": "大纲 → 逐章起草 → 每章多维评审修订 → 全局一致性评审 → 合并（可断点续跑）"},
+     "note": "大纲 → 逐章起草 → 签约质量门禁（开篇/推进/文风/情感/节奏）→ 全局一致性评审 → 合并（可断点续跑）"},
     {"id": "article", "name": "自媒体文章", "icon": "i-news", "engine": "review", "builtin": True,
      "manuscript": "article.md",
      "rubric": ["选题与标题", "开头吸引力", "结构节奏", "平台适配", "传播性"],
