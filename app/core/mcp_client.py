@@ -264,9 +264,18 @@ def dispatch_full_name(full_name, arguments, timeout_s=_CALL_TIMEOUT):
     return call_tool(srv, tool, arguments, timeout_s=timeout_s)
 
 
+_SETTINGS_TEXT = None     # main.py 启动注入（读 settings.mcp_servers）——本模块
+                           # 不直接依赖 settings(L0)，静态图保持干净（同 set_run_estimator 模式）
+
+
+def set_settings_text(fn):
+    """注入 MCP 服务器清单读取器；未注入时工具清单为空（MCP 功能关闭）。"""
+    global _SETTINGS_TEXT
+    _SETTINGS_TEXT = fn if callable(fn) else None
+
+
 def _settings_text():
     try:
-        from . import settings
-        return str(settings.load().get("mcp_servers") or "")
+        return str(_SETTINGS_TEXT() or "") if _SETTINGS_TEXT else ""
     except Exception:
         return ""

@@ -2983,6 +2983,9 @@ def main():
     automation.register_tick_hook(_evalbench.fire_due)  # 评测台定时回归挂自动化 tick
     from core import notify as _notify
     usage_ledger.set_alert_push(_notify.push_text)  # 花费预警推送注入（防 usage→notify 静态环）
+    from core import mcp_client as _mcp
+    _mcp.set_settings_text(
+        lambda: str(settings.load().get("mcp_servers") or ""))  # MCP 清单注入（防 mcp_client→settings 边）
     _step("正在回填用量台账…")
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）
     if n_bf:

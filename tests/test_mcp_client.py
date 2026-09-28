@@ -106,8 +106,9 @@ class TestLiveFakeServer(BaseTest):
 
     def test_dispatch_full_name_via_settings(self):
         from app.core import settings as settings_mod
-        settings_mod.save({"mcp_servers": json.dumps(
-            [{"name": "fs", "command": self.cfg["command"], "args": self.cfg["args"]}])})
+        text = json.dumps([{"name": "fs", "command": self.cfg["command"],
+                            "args": self.cfg["args"]}])
+        mcp_client.set_settings_text(lambda: text)
         r = mcp_client.dispatch_full_name("mcp__fs__echo", {"text": "hi"})
         self.assertTrue(r["ok"], r.get("error"))
         self.assertEqual(r["text"], "echo:hi")
@@ -117,8 +118,9 @@ class TestLiveFakeServer(BaseTest):
 
     def test_tool_specs_cached(self):
         from app.core import settings as settings_mod
-        settings_mod.save({"mcp_servers": json.dumps(
-            [{"name": "fs", "command": self.cfg["command"], "args": self.cfg["args"]}])})
+        text = json.dumps([{"name": "fs", "command": self.cfg["command"],
+                            "args": self.cfg["args"]}])
+        mcp_client.set_settings_text(lambda: text)
         specs = mcp_client.tool_specs_cached()
         self.assertEqual(len(specs), 1)
         self.assertEqual(specs[0]["full_name"], "mcp__fs__echo")
