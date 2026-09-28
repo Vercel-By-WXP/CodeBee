@@ -1436,14 +1436,15 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                             if deadline is not None else timeout
                         url, headers, body = _build_request(
                             proto, pbase, kk["key"], model, system, msgs,
-                            allow_tools, max_tokens=max_tokens,
+                            tools_ok, max_tokens=max_tokens,
                             extra_specs=[CREATE_TASK_SPEC] if task_creator else None)
                         sbody = None
                         if stream:
                             # 流式体单独构造（+stream / include_usage）；非流式体留给回落重发
                             _, _, sbody = _build_request(
                                 proto, pbase, kk["key"], model, system, msgs,
-                                tools_ok, stream=True, max_tokens=max_tokens)
+                                tools_ok, stream=True, max_tokens=max_tokens,
+                                extra_specs=[CREATE_TASK_SPEC] if task_creator else None)
                         effort = str(bi.get("reasoning_effort") or "").strip().lower()
                         # reasoning_effort 是 OpenAI wire 字段；Anthropic thinking 使用
                         # 另一套对象结构，向兼容网关硬塞该字段会直接得到 400。
@@ -1545,7 +1546,7 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         results = []
                         for c in calls:
                             out = _exec_tool(workdir, c["name"], c["args"], cancel_event,
-                                             deadline=deadline)
+                                             deadline=deadline, task_creator=task_creator)
                             if log:
                                 brief = out if len(out) <= 120 else out[:120] + "…"
                                 log("[工具] %s → %s" % (c["name"], brief.replace("\n", " ⏎ ")))

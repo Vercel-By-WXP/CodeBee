@@ -970,3 +970,9 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **sentrux**（[sentrux/sentrux](https://github.com/sentrux/sentrux)）| 运行中质量传感器与 Rules Engine | CodeBee 已有评审分数和教训回流，实时反馈仍属远期差量 | 参考 | 2026-09-28
 - **Mastra f95b8fa**| 审批恢复先持久化新标签，避免快照竞态 | CodeBee 尚未发现同构审批状态窗口 | 观察 | 2026-09-28
 - **本轮落地判断**| CLI 纯模型假绑定已在 8e4f4d2/9c6b7aa 修复并有回归测试；WorkDSH 远端回执语义若改会影响幂等，暂不动 | 无机制级代码新增，文档沉淀一项 | 2026-09-28
+
+### 2026-09-28 批5续检：浏览器/检索与内置工具循环
+
+- **browser-use / invisible_playwright_mcp / BrowserSkill**| 浏览器 agent 与 MCP 技能生态继续活跃；CodeBee 已有 Playwright、MCP 通道及 SSRF 闸门，未发现低风险机制差量 | 雷达复查，不接入 | 2026-09-28
+- **Haystack / R2R / Airweave**| 成熟检索与知识管线，但引入会扩大部署、索引和数据权限面；CodeBee 当前任务级知识注入更轻 | 参考，待未来明确知识库产品边界后再评估 | 2026-09-28
+- **builtin_agent 工具循环修复**| `_build_request` 的错误参数名会让所有带工具的内置执行在首轮直接失败；Windows Gemini wrapper 使旧断言把真实 argv 误报失败 | 已修复参数传递、流式 create_task 规格与 task_creator 透传，并放宽测试到 node/gemini.js 形态 | 2026-09-28

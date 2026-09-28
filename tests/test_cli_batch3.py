@@ -185,7 +185,12 @@ class TestArgvShape(BaseTest):
         argv, stdin_text, _, _ = runner._build_call(
             self._agent("gemini-cli", "gemini", ["-p", "{prompt}"]),
             "generic", "", False, "gemini-2.5-pro", "写一段开场")
-        self.assertTrue(any(a.lower() == "gemini" for a in argv), msg=argv)
+        # Windows npm 安装可能通过 node.exe 直接绕过 gemini.cmd，argv 中会是
+        # gemini.js；Linux/macOS 则通常保留裸 gemini 命令名。
+        commands = [str(a).replace("\\", "/").rsplit("/", 1)[-1].lower()
+                    for a in argv]
+        self.assertTrue(any(a in ("gemini", "gemini.cmd", "gemini.js", "gemini.mjs")
+                            for a in commands), msg=argv)
         self.assertEqual(argv[-2:], ["-p", "写一段开场"])
         self.assertNotIn("--model", argv)
         self.assertIsNone(stdin_text)
