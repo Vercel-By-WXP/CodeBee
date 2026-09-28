@@ -962,3 +962,11 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **连续第六班机制级真新标的=0**——头部格局稳定期节奏（复查+新锐簇观察+待深挖清账）维持有效
 
 **✅ 本班落地**：评审深度随 diff 规模分级（pr-af 待深挖第 3 项清账）——`pipeline._review_depth_note`：小 diff（<40 行）附快速评审指引（聚焦正确性不凑字数省 token）、大 diff（≥600 行）附概览+高风险区深看指引（安全/并发/数据与迁移/公共 API）、中等与空 diff 不给指引（空 diff 不误导放松）；纯提示词分级不改 pass 语义。test_review_depth 4 项。另有遗留完整态收编两笔：62d4b89 一键升级全部+e132426 evalbench 补测
+
+## 2026-09-28 全类型调研与七专项巡检（批3：计划/spec/长任务）
+
+- **harbor**（[laude-institute/harbor](https://github.com/laude-institute/harbor)）| Terminal-Bench 官方整链评测 harness，可并行运行任意 agent CLI | CodeBee evalbench 当前是模型级样题评测，整链评测是远期差量 | 参考，暂不接入 | 2026-09-28
+- **agents-shipgate**（[ThreeMoonsLab/agents-shipgate](https://github.com/ThreeMoonsLab/agents-shipgate)）| 零 LLM/零网络的 agent 能力变更静态闸门 | CodeBee 已有 skill 白名单、SSRF 扫描、安装后冒烟，能力方向已覆盖 | 已覆盖 | 2026-09-28
+- **sentrux**（[sentrux/sentrux](https://github.com/sentrux/sentrux)）| 运行中质量传感器与 Rules Engine | CodeBee 已有评审分数和教训回流，实时反馈仍属远期差量 | 参考 | 2026-09-28
+- **Mastra f95b8fa**| 审批恢复先持久化新标签，避免快照竞态 | CodeBee 尚未发现同构审批状态窗口 | 观察 | 2026-09-28
+- **本轮落地判断**| CLI 纯模型假绑定已在 8e4f4d2/9c6b7aa 修复并有回归测试；WorkDSH 远端回执语义若改会影响幂等，暂不动 | 无机制级代码新增，文档沉淀一项 | 2026-09-28
