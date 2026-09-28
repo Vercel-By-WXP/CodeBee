@@ -117,16 +117,42 @@ def load_books():
 
 
 def save_book(task_id, platform, info):
-    """登记/更新任务在某平台的作品绑定。info: {book_id, title, url?}。"""
+    """登记/更新任务在某平台的作品绑定。info: {book_id, title, url?}。
+
+    合并语义：只覆写登记四键，保留条目上的其他字段（如校准所得 remote_*），
+    否则发章链里找回 book_id 的一次 save_book 会把校准结果抹掉。"""
     with LOCK:
         paths.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
         books = load_books()
-        books.setdefault(str(task_id), {})[str(platform)] = {
+        books.setdefault(str(task_id), {}).setdefault(str(platform), {}).update({
             "book_id": str(info.get("book_id") or ""),
             "title": str(info.get("title") or "")[:120],
             "url": str(info.get("url") or "")[:300],
             "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        }
+        })
+        tmp = _BOOKS_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(books, ensure_ascii=False, indent=1),
+                       encoding="utf-8")
+        tmp.replace(_BOOKS_FILE)
+
+
+def update_book(task_id, platform, **fields):
+    """原地合并更新登记条目（如平台校准数 remote_*），不碰 book_id/title 等既有键。
+
+    save_book 是整条覆写语义（建书/找回 id 用），校准字段走这里才不会被
+    下一次 save_book 冲掉。"""
+    if not fields:
+        return
+    with LOCK:
+        books = load_books()
+        ent = (books.setdefault(str(task_id), {}).setdefault(str(platform), {}))
+        if not ent:
+            return                      # 没登记过的书不凭空造条目
+        for k, v in fields.items():
+            if v is None:
+                ent.pop(k, None)        # None=删键（换绑书时作废旧校准数）
+            else:
+                ent[k] = v
         tmp = _BOOKS_FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(books, ensure_ascii=False, indent=1),
                        encoding="utf-8")

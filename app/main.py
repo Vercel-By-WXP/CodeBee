@@ -535,8 +535,12 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 from core.publish import manager as pub
                 from core.publish import ledger as pub_ledger
-                return self._json(200, {"history": pub.history(task_id=m.group(1), limit=50),
-                                        "books": pub_ledger.load_books().get(m.group(1)) or {}})
+                tid = m.group(1)
+                books = pub_ledger.load_books().get(tid) or {}
+                return self._json(200, {"history": pub.history(task_id=tid, limit=50),
+                                        "books": books,
+                                        "published": {p: pub.published_local(tid, p)
+                                                      for p in books}})
             m = re.match(r"^/api/publish/task/([^/]+)/pending$", path)
             if m:
                 # 自动发布视图：待发清单统计 + 护栏状态 + 批量发布进度
@@ -905,6 +909,35 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/publish/task/([^/]+)/publish-all$", path)
         if m:
             return self._api_publish_auto(m.group(1))
+        m = re.match(r"^/api/publish/task/([^/]+)/sync-published$", path)
+        if m:
+            # 已发章数校准：数章节管理页的实况写回登记（后台线程）。
+            # manual=true（用户点「校准」）允许 attach-or-launch；自动触发
+            # 只 attach 在跑实例，绝不因打开页面弹出新浏览器窗口。
+            from core.publish import manager as pub
+            from core import store
+            from core.publish import ledger as pub_ledger
+            tid = m.group(1)
+            if not store.get_task(tid):
+                return self._json(404, {"error": "任务不存在"})
+            body = self._body() or {}
+            plat = str(body.get("platform") or "").strip()
+            books = pub_ledger.load_books().get(tid) or {}
+            if plat and plat not in books:
+                return self._json(400, {"error": "该平台未登记作品"})
+            plats = [plat] if plat else list(books)
+            if not plats:
+                return self._json(400, {"error": "该任务没有已登记作品"})
+            manual = bool(body.get("manual"))
+            started, skipped = [], {}
+            for p in plats:
+                ok, err = pub.sync_published_async(tid, p, manual=manual)
+                if ok:
+                    started.append(p)
+                else:
+                    skipped[p] = err
+            return self._json(200, {"ok": True, "started": started,
+                                    "skipped": skipped})
         m = re.match(r"^/api/tasks/([^/]+)/(git-merge|git-discard)$", path)
         if m:
             return self._api_git_verdict(m.group(1), m.group(2))

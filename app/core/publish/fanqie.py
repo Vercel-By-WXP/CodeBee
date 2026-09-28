@@ -19,6 +19,12 @@ CONFIG = {
     "home": "https://fanqienovel.com/main/writer/",   # 实测 writer. 子域不存在(DNS 000)；快照实抓为主站路径
     # 导航后 URL 含任一标记 → 未登录（跳到了登录/通行证页）
     "login_url_marks": ["login", "passport", "sso", "account/signin"],
+    # 章节管理页计数（2026-09-28 实机校准）：Arco 表格，数据行=含 ≥4 个 td 的 tr
+    # （表头行是 th，天然排除）。逐行 innerText 交 manager 按状态关键词分桶。
+    "count_rows_js":
+        "()=>[...document.querySelectorAll('tr')]"
+        ".filter(tr => tr.querySelectorAll(':scope > td').length >= 4)"
+        ".map(tr => tr.innerText.replace(/\\s+/g, ' ').trim()).filter(Boolean)",
 }
 
 # 建书：入口 → 弹层/页面 → 文本字段直填；分类/签约模式/标签走文本点击。

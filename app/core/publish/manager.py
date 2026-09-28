@@ -489,6 +489,13 @@ def register_book(task_id, plat, title, book_id=""):
     title = (title or "").strip()
     if not title:
         return False, "作品名必填（发章按作品名在平台找书）"
+    # 换绑另一本书（book_id/title 变了）时旧书的校准数作废，防张冠李戴
+    old = ledger.book_for(task_id, plat) or {}
+    if old and (old.get("book_id") != str(book_id or "").strip()
+                or old.get("title") != title[:120]):
+        ledger.update_book(task_id, plat, remote_total=None, remote_published=None,
+                           remote_review=None, remote_rejected=None,
+                           remote_synced_at=None, remote_error=None)
     ledger.save_book(task_id, plat, {"book_id": str(book_id or "").strip(),
                                      "title": title[:120]})
     return True, ""
@@ -682,6 +689,130 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False):
     threading.Thread(target=run, daemon=True,
                      name="pub-ch-%s" % plat).start()
     return True, ""
+
+
+# ------------------------------------------------ 已发章数校准（平台实况对账）
+# 台账只记得 CodeBee 自己发成功的章：用户在平台窗口里手工补交/平台驳回/
+# 台账重复记录都会让「已发 N」漂移（2026-09-28 实案：番茄平台 8 章台账 7）。
+# 校准 = 打开章节管理页数行，按状态关键词分桶后写回 books.json 的 remote_*。
+
+_STATUS_PUB = "已发布"
+_STATUS_REVIEW = ("待审核", "审核中", "排队")
+_STATUS_BAD = ("未通过", "驳回")
+
+
+def bucket_chapter_rows(rows):
+    """章节管理页的行文本 → {total, published, review, rejected}。
+
+    行里含状态关键词才计入对应桶；total=识别出的章节数据行数。"""
+    out = {"total": 0, "published": 0, "review": 0, "rejected": 0}
+    for t in rows or []:
+        t = str(t)
+        if not t:
+            continue
+        if "章节名称" in t:                     # 表头兜底（正常到不了这）
+            continue
+        out["total"] += 1
+        if any(k in t for k in _STATUS_BAD):
+            out["rejected"] += 1
+        elif _STATUS_PUB in t:
+            out["published"] += 1
+        elif any(k in t for k in _STATUS_REVIEW):
+            out["review"] += 1
+    return out
+
+
+def sync_published(task_id, plat, manual=False):
+    """同步执行一次校准（manager.sync_published_async 的线程体）。
+
+    manual=False（打开作品页自动触发）只 attach 在跑的浏览器实例，绝不
+    静默 launch 新窗口吓人；manual=True（用户点「校准」按钮）才允许
+    attach-or-launch。识别不到章节行（改版/未登录/分页）时只记 note
+    不覆写 remote_*——宁可显示旧数也不把 0 当真相。"""
+    from .browser import Browser
+    book = ledger.book_for(task_id, plat)
+    if not book:
+        return False, "该任务未在此平台登记作品"
+    if _st(plat).get("status") == "busy":
+        return False, "该平台有操作正在进行中"
+    mod = PLATFORMS[plat]
+    js = mod.CONFIG.get("count_rows_js")
+    if not js:
+        return False, "该平台未配置章节计数"
+    try:
+        if manual:
+            b, page = _open_page(plat)
+        else:
+            port = _st(plat).get("port") or 0
+            b = Browser.attach(int(port))       # 实例已死 → 异常 → 只记原因
+            page = b.first_page(create=True)
+    except Exception as e:
+        return False, "浏览器未连接，点「连接平台」后再校准"
+    try:
+        page.navigate(mod.chapter_manage_url(book), timeout=40)
+        time.sleep(4.0)                         # SPA 表格慢渲染
+        url = str(page.url() or "")
+        if any(m in url for m in mod.CONFIG["login_url_marks"]) \
+                or url.startswith("chrome-error://"):
+            return False, "平台登录态已失效，请重连后校准"
+        rows = page.call(js) or []
+        st = bucket_chapter_rows(rows)
+        if st["total"] <= 0:
+            return False, "章节管理页未识别到章节列表（可能改版）"
+        ledger.update_book(task_id, plat,
+                           remote_total=st["total"],
+                           remote_published=st["published"],
+                           remote_review=st["review"],
+                           remote_rejected=st["rejected"],
+                           remote_synced_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+        return True, ""
+    except Exception as e:
+        return False, "校准失败：%s" % str(e)[:160]
+
+
+def _sync_preflight(task_id, plat, manual):
+    """校准前置检查（同步、不碰浏览器页面）：登记在案/没在忙/平台支持；
+    自动触发（manual=False）时还要求浏览器实例活着——绝不静默 launch。"""
+    from .browser import Browser
+    if plat not in PLATFORMS:
+        return False, "未知平台"
+    if not ledger.book_for(task_id, plat):
+        return False, "该任务未在此平台登记作品"
+    if _st(plat).get("status") == "busy":
+        return False, "该平台有操作正在进行中"
+    if not PLATFORMS[plat].CONFIG.get("count_rows_js"):
+        return False, "该平台未配置章节计数"
+    if not manual:
+        port = _st(plat).get("port") or 0
+        try:
+            Browser.attach(int(port))
+        except Exception:
+            return False, "浏览器未连接，点「连接平台」后再校准"
+    return True, ""
+
+
+def sync_published_async(task_id, plat, manual=False):
+    """校准进后台线程（浏览器操作绝不能堵 HTTP 线程）。
+
+    返回 (ok, err)：预检失败时线程都不起，接口即时回报 skipped 原因。"""
+    ok, err = _sync_preflight(task_id, plat, manual)
+    if not ok:
+        return False, err
+
+    def run():
+        ok2, err2 = sync_published(task_id, plat, manual=manual)
+        if not ok2:
+            ledger.update_book(task_id, plat, remote_error=err2,
+                               remote_synced_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+
+    threading.Thread(target=run, daemon=True,
+                     name="pub-sync-%s" % plat).start()
+    return True, ""
+
+
+def published_local(task_id, plat):
+    """本地台账口径的已发章数（去重后的章号数，记录数会因重试虚高）。"""
+    return len(ledger.published_chapters(task_id, plat))
 
 
 def history(task_id=None, plat=None, limit=50):

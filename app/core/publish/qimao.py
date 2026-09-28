@@ -19,6 +19,11 @@ CONFIG = {
     # 编辑器顶栏明示「正文字数最少 1000 字」——不足时「立即发布」被静默拦截
     "min_chapter_chars": 1000,
     "login_url_marks": ["login", "signin", "passport", "sso"],
+    # 章节管理页计数（2026-09-28 实机校准）：Element UI 表格，.el-table__row
+    # 只中数据行（表头在独立的 header-wrapper 表里），与发章流程的等待选择器同源
+    "count_rows_js":
+        "()=>[...document.querySelectorAll('.el-table__row')]"
+        ".map(tr => tr.innerText.replace(/\\s+/g, ' ').trim()).filter(Boolean)",
 }
 
 CREATE_BOOK = [
