@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import artifacts, paths, runner, tracing, volumes
+from . import artifacts, audit, paths, runner, tracing, volumes
 
 LOCK = threading.RLock()
 _TASKS = {}
@@ -1435,8 +1435,12 @@ def archive_task(task_id, archived=True):
     return True, ""
 
 
-def delete_task(task_id):
-    """删除任务及其全部运行记录（含日志与报告目录）。返回 (ok, 错误信息)。"""
+def delete_task(task_id, actor=""):
+    """删除任务及其全部运行记录（含日志与报告目录）。返回 (ok, 错误信息)。
+
+    不可逆且无回收站，故落审计（谁/何时/删了什么——2026-09-28 连载根任务
+    被删案：事后无人能回答这两问）。连载链的前序任务被后续任务 serial.continues
+    依赖，删了会把整条链的「继续连载/断点续跑」地基抽掉——这类任务只许归档。"""
     if not _valid_id(task_id):
         return False, "非法的任务 ID"
     with LOCK:
@@ -1445,6 +1449,10 @@ def delete_task(task_id):
             return False, "任务不存在"
         if task.get("status") in ("queued", "running"):
             return False, "运行中的任务不能删除，请先取消"
+        if task.get("type") == "serial_novel":
+            for other in _TASKS.values():
+                if other.get("id") != task_id and                         (other.get("serial") or {}).get("continues") == task_id:
+                    return False, "该任务是连载链的前序任务（后续任务依赖它），请用「归档」隐藏而不是删除"
         run_ids = []
         for rid, r in _RUNS.items():
             if r.get("task_id") != task_id:
@@ -1458,6 +1466,15 @@ def delete_task(task_id):
     for rid in run_ids:
         _schedule_run_dir_cleanup(rid)
     (paths.TASKS_DIR / (task_id + ".json")).unlink(missing_ok=True)
+    audit.record("task_delete", {
+        "task_id": task_id,
+        "title": task.get("title") or "",
+        "type": task.get("type") or "",
+        "status": task.get("status") or "",
+        "workdir": task.get("workdir") or "",
+        "run_ids": run_ids,
+        "actor": actor or "local",
+    })
     bump_state()
     return True, ""
 

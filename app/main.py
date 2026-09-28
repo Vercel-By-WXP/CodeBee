@@ -881,7 +881,10 @@ class Handler(BaseHTTPRequestHandler):
                     _t = store.get_task(m.group(1)) or {}
                     return self._json(200, {"ok": True, "rev": _t.get("rev")})
             else:
-                ok, err = store.delete_task(m.group(1))
+                # actor 记进删除审计（store 落台账）；本地回环标 local 更可读
+                ip = self.client_address[0] if self.client_address else ""
+                ok, err = store.delete_task(
+                    m.group(1), actor="local" if ip in ("127.0.0.1", "::1") else ip)
             return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
         m = re.match(r"^/api/tasks/([^/]+)/bible$", path)
         if m:
