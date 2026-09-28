@@ -8,6 +8,7 @@
   },
   "files": [
     "app",
+    "!app/tests",
     "bin",
     "tools/wx_reader.py",
     "CHANGELOG.md",
