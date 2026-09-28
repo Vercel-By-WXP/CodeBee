@@ -521,6 +521,79 @@ class TestRealLaunchChain(AutomationCase):
             self.aut._launch_run = self._fake_launch
 
 
+class TestPersistentAutomationTask(AutomationCase):
+    """周期触发复用同一个 CodeBee 任务容器，而不是每次新建任务。"""
+
+    def runTest(self):
+        from app.core import jobs as jobs_mod
+        from app.core import store as store_mod
+
+        enqueued = []
+        orig_enqueue = jobs_mod.enqueue
+        jobs_mod.enqueue = lambda job: enqueued.append(job)
+        self.aut._launch_run = self._orig_launch
+        try:
+            t = self.make(name="持续巡检", kind="daily", time="09:00")
+            first, first_run = self.aut.run_now(t["id"])
+            self.assertEqual(first["run_count"], 1)
+            first_task_id = enqueued[0]["task_id"]
+            self.assertEqual(first["task_id"], first_task_id)
+
+            # 结束第一轮后再次触发：仍然是同一个任务，只新增运行记录。
+            store_mod.update_task_status(first_task_id, "done")
+            store_mod.update_run(first_run, status="done", ended_at="now")
+            second, second_run = self.aut.run_now(t["id"])
+            self.assertEqual(second["run_count"], 2)
+            self.assertEqual(second["task_id"], first_task_id)
+            self.assertNotEqual(first_run, second_run)
+            self.assertEqual(enqueued[1]["task_id"], first_task_id)
+            self.assertNotEqual(enqueued[0]["run_id"], enqueued[1]["run_id"])
+        finally:
+            jobs_mod.enqueue = orig_enqueue
+            self.aut._launch_run = self._fake_launch
+
+
+class TestPersistentAutomationDefaultWorkdir(AutomationCase):
+    """Switching from an explicit directory to the default must rebind."""
+
+    def runTest(self):
+        from app.core import settings as settings_mod
+        explicit = self.workdir / "explicit"
+        explicit.mkdir()
+        payload = {"type": "doc", "goal": "做一次巡检", "workdir": "",
+                   "mode": "auto", "thinking": "standard"}
+        task = {"type": "doc", "goal": "做一次巡检", "workdir": str(explicit),
+                "mode": "auto", "thinking": "standard"}
+        self.assertNotEqual(str(explicit), settings_mod.default_workdir())
+        self.assertFalse(self.aut._persistent_task_compatible(task, payload))
+
+
+class TestPersistentAutomationLaunchSingleFlight(AutomationCase):
+    """Concurrent run-now requests may enqueue only one run for a task."""
+
+    def runTest(self):
+        from app.core import jobs as jobs_mod
+        from app.core import store as store_mod
+
+        enqueued = []
+        orig_enqueue = jobs_mod.enqueue
+        jobs_mod.enqueue = lambda job: enqueued.append(job)
+        self.aut._launch_run = self._orig_launch
+        try:
+            t = self.make(name="并发巡检", kind="daily", time="09:00")
+            first, first_run = self.aut.run_now(t["id"])
+            self.assertEqual(first["last_status"], "started")
+            snapshot = self.aut.get_task(t["id"])
+            with self.assertRaises(self.aut._AutomationBusy):
+                self.aut._launch_run(snapshot)
+            self.assertEqual(len(enqueued), 1)
+            self.assertEqual(enqueued[0]["run_id"], first_run)
+            self.assertEqual(store_mod.get_run(first_run)["status"], "queued")
+        finally:
+            jobs_mod.enqueue = orig_enqueue
+            self.aut._launch_run = self._fake_launch
+
+
 class TestRealLaunchFailureClosesRecords(AutomationCase):
     """真实定时启动链在入队失败时不能留下 queued 孤儿记录。"""
 

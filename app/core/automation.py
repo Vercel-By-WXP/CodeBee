@@ -3,19 +3,18 @@
 
 数据落盘 <data>/automation.json（tmp + os.replace 原子写；data 目录由 paths.py
 决定，TUTTI_DATA 环境变量感知）。调度是一个 daemon 线程，每 TICK_SECONDS 秒
-扫一遍到期任务：到点即复用与 /api/tasks 完全相同的链路（store.create_task →
-store.create_run → jobs.enqueue）拉起一次真实运行，不自己造运行器。单次触发
+扫一遍到期任务：首次到点按 /api/tasks 的链路创建一个持久任务，后续触发复用
+该任务并只新增 run 记录，再交给 jobs.enqueue 拉起真实运行。单次触发
 失败只把 last_status 记为 error 并推进 next_run，调度线程绝不允许因异常退出。
 
 任务模型：
   {id, name, prompt, workdir, kind: daily|interval|weekly|once, time: "HH:MM",
    interval_hours, weekday(0-6 周一=0), run_at(once 用, ISO), flow(编排流程 id),
    mode(编排模式), thinking(思考程度), direct_provider_id/direct_model(仅 direct 流程),
-   enabled, created_at, last_run, next_run, run_count, last_status}
+   enabled, created_at, last_run, next_run, run_count, last_status, task_id}
 
 运行偏好（mode/thinking/对话模型）与新建任务 Composer 的三颗胶囊同一套取值，
-到点拉起时原样透传给 store.create_task——定时任务不是另一条执行链，用户在这里
-选的编排强度与模型偏好必须与手动建任务完全等价。
+首次创建时原样透传给 store.create_task；配置身份变化时才建立新的任务上下文。
 
 重启语义：错过的 once 不补跑（启动恢复时直接停用）；daily/weekly/interval
 重算 next_run 到下一个未来时刻即可，不追赶停机期间错过的周期。
@@ -43,6 +42,9 @@ from . import jobs, paths, store
 log = logging.getLogger(__name__)
 
 _LOCK = threading.RLock()
+# Scheduler ticks and the manual "run now" action can arrive concurrently.
+# Keep the active-run check and enqueue decision single-flight per process.
+_LAUNCH_LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "automation.json"
 _TASKS = {}           # id → task dict（内存真源；落盘为 {"version":1,"tasks":[全部任务]}）
 _LOADED = False
@@ -75,7 +77,7 @@ _DEFAULTS = {"id": "", "name": "", "prompt": "", "workdir": "", "kind": "", "tim
              "mode": "auto", "thinking": "standard",
              "direct_provider_id": "", "direct_model": "",
              "enabled": False, "created_at": "", "last_run": "", "next_run": "",
-             "run_count": 0, "last_status": "", "last_run_id": ""}
+             "run_count": 0, "last_status": "", "last_run_id": "", "task_id": ""}
 
 # 允许通过 update() 修改的字段（id/created_at/run_count 等运行痕迹不可改）
 _UPDATABLE = ("name", "prompt", "workdir", "kind", "time", "interval_hours",
@@ -287,6 +289,7 @@ def _normalize(d):
     except (TypeError, ValueError):
         t["run_count"] = 0
     t["enabled"] = bool(t["enabled"])
+    t["task_id"] = str(t.get("task_id") or "").strip()
     return t
 
 
@@ -343,6 +346,60 @@ def _recover_after_restart():
 
 # ---------------------------------------------------------------- 运行拉起
 
+
+class _AutomationBusy(RuntimeError):
+    """The persistent task already has a queued or running run."""
+
+
+def _active_run(task_id):
+    """Return an active run for a persistent task, if any."""
+    try:
+        for run in store.task_runs(task_id):
+            if run.get("status") in ("queued", "running"):
+                return run
+    except Exception:
+        # Fail closed: if the run index cannot be read, do not risk launching
+        # a duplicate run against the same persistent task.
+        log.debug("automation: active-run check failed task=%s", task_id,
+                  exc_info=True)
+        return True
+    return None
+
+
+def _effective_workdir(value):
+    """Resolve an automation workdir the same way store.create_task does."""
+    requested = str(value or "").strip()
+    if not requested:
+        from . import settings
+        requested = settings.default_workdir()
+    return os.path.normcase(os.path.abspath(os.path.expanduser(requested)))
+
+
+def _persistent_task_compatible(task, payload):
+    """Only reuse a backing task while its execution identity is unchanged."""
+    if not task or task.get("type") != payload.get("type"):
+        return False
+    if task.get("goal") != payload.get("goal"):
+        return False
+    if _effective_workdir(task.get("workdir")) != _effective_workdir(payload.get("workdir")):
+        return False
+    for key in ("mode", "thinking", "direct_provider_id", "direct_model"):
+        if (task.get(key) or "") != (payload.get(key) or ""):
+            return False
+    return True
+
+
+def _bind_task_id(automation_id, task_id):
+    """Persist the CodeBee task backing one schedule."""
+    if not automation_id or not task_id:
+        return
+    with _LOCK:
+        current = _TASKS.get(automation_id)
+        if current is None or current.get("task_id") == task_id:
+            return
+        current["task_id"] = task_id
+        _save_locked()
+
 def _launch_run(t):
     """拉起一次真实编排运行：与 main.py 的 /api/tasks 走同一条链路
     （store.create_task → store.create_run → jobs 直接启动），返回 run_id。
@@ -363,12 +420,27 @@ def _launch_run(t):
     task = None
     run = None
     try:
-        task = store.create_task(payload)
-        run = store.create_run("orchestration", task["title"], task_id=task["id"])
-        store.update_task_status(task["id"], "queued")
-        jobs.enqueue({"kind": "orchestration", "run_id": run["id"],
-                      "task_id": task["id"]})
-        return run["id"]
+        with _LAUNCH_LOCK:
+            persistent_id = str(t.get("task_id") or "").strip()
+            if persistent_id:
+                task = store.get_task(persistent_id)
+                if task is None or not _persistent_task_compatible(task, payload):
+                    # The user may have deleted the backing task. Recreate the
+                    # persistent conversation when its definition changed.
+                    task = None
+                elif _active_run(persistent_id):
+                    raise _AutomationBusy("上一次定时运行仍在执行，跳过本次重叠触发")
+            if task is None:
+                task = store.create_task(payload)
+                t["task_id"] = task["id"]
+                _bind_task_id(t.get("id"), task["id"])
+            run = store.create_run("orchestration", task["title"], task_id=task["id"])
+            store.update_task_status(task["id"], "queued")
+            jobs.enqueue({"kind": "orchestration", "run_id": run["id"],
+                          "task_id": task["id"]})
+            return run["id"]
+    except _AutomationBusy:
+        raise
     except Exception:
         # 启动失败必须收口，不能留下看似仍在启动的任务/run。
         # Keep the public error generic; the detailed traceback stays in the
@@ -399,6 +471,9 @@ def _fire(snapshot, now):
     run_id = ""
     try:
         run_id = _launch_run(snapshot) or ""
+    except _AutomationBusy as e:
+        log.info("automation: 跳过重叠触发 %s: %s", snapshot.get("id"), e)
+        status = "busy"
     except Exception as e:
         log.warning("automation: 定时触发 %s 失败: %r", snapshot.get("id"), e)
         status = "error"
@@ -654,6 +729,9 @@ def run_now(tid):
         with _LOCK:
             snapshot = dict(_TASKS[tid])
         run_id = _launch_run(snapshot) or ""
+    except _AutomationBusy as e:
+        log.info("automation: 手动触发 %s 跳过重叠运行: %s", tid, e)
+        status = "busy"
     except Exception as e:
         log.warning("automation: 手动触发 %s 失败: %r", tid, e)
         status = "error"

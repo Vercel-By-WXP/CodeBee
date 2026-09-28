@@ -10365,6 +10365,7 @@ function autoCardHtml(tsk) {
     "</div>" +
     '<div class="auto-kind">' + esc(autoKindText(tsk)) +
     (flow ? '<span class="tag">' + t("流程：") + esc(t(flow.name)) + "</span>" : "") +
+    (tsk.task_id ? '<span class="tag">' + t("会话复用") + "</span>" : "") +
     autoPrefTags(tsk) + "</div>" +
     '<div class="auto-prompt">' + esc(tsk.prompt) + "</div>" +
     '<div class="auto-meta">' +
@@ -10453,7 +10454,7 @@ async function autoForm(task, tpl) {
     '<div class="field au-fld hidden" data-k="weekday"><label>' + t("星期几") + '</label><select id="au-weekday">' + wdOpts + "</select></div>" +
     '<div class="field au-fld hidden" data-k="runat"><label>' + t("执行时间") + '</label><input id="au-runat" type="datetime-local" value="' + esc(runAt) + '"></div>' +
     "</div>" +
-    '<p class="hint">' + t("到点自动把执行内容作为一个新任务跑起来；错过的一次性任务不补跑。") + "</p>" +
+    '<p class="hint">' + t("首次到点创建任务，后续复用同一任务上下文；错过的一次性任务不补跑。") + "</p>" +
     "</div>";
   openModal(task ? t("编辑定时任务") : t("新建定时任务"), body, "");
   const foot = $("modal-foot");
