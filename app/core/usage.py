@@ -173,12 +173,14 @@ def _budget_caps_on():
 
 _ALERT_PUSH = None        # main.py 启动注入 notify.push_text——usage(L0) 不反向
                            # 依赖 notify(L1)，静态图不成环（同 set_run_estimator 模式）
+_ALERT_LOCK = threading.RLock()
 
 
 def set_alert_push(fn):
     """注入花费预警的推送函数；未注入则预警静默跳过。"""
     global _ALERT_PUSH
-    _ALERT_PUSH = fn if callable(fn) else None
+    with _ALERT_LOCK:
+        _ALERT_PUSH = fn if callable(fn) else None
 
 
 def _budget_alert_check(day):
@@ -201,31 +203,34 @@ def _budget_alert_check(day):
                     break
         if not marks:
             return
-        sp = paths.DATA_DIR / "budget_alerts.json"
-        try:
-            st = json.loads(sp.read_text(encoding="utf-8"))
-        except Exception:
-            st = {}
-        if st.get("day") != day or not isinstance(st.get("done"), list):
-            st = {"day": day, "done": []}
-        done = st["done"]
-        new = [m for m in marks if ("%s%d" % (m[0], m[1])) not in done]
-        if not new:
-            return
-        st["done"] = done + ["%s%d" % (m[0], m[1]) for m in new]
-        sp.parent.mkdir(parents=True, exist_ok=True)
-        tmp = sp.with_suffix(".tmp")
-        tmp.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(sp)
-        if not _ALERT_PUSH:
-            return
-        lines = ["💸 CodeBee 花费预警"]
-        for scope, pct, spent, cap in new:
-            lines.append("%s花费 ¥%.2f，已达%s上限 ¥%.2f 的 %d%%" % (
-                "今日" if scope == "d" else "本月", spent,
-                "每日" if scope == "d" else "每月", cap, pct))
-        lines.append("（达 100% 后新步骤将停止，可在设置→编排设置→预算调整）")
-        _ALERT_PUSH("\n".join(lines))
+        with _ALERT_LOCK:
+            push = _ALERT_PUSH
+            if push is None:
+                return
+            sp = paths.DATA_DIR / "budget_alerts.json"
+            try:
+                st = json.loads(sp.read_text(encoding="utf-8"))
+            except Exception:
+                st = {}
+            if st.get("day") != day or not isinstance(st.get("done"), list):
+                st = {"day": day, "done": []}
+            done = st["done"]
+            new = [m for m in marks if ("%s%d" % (m[0], m[1])) not in done]
+            if not new:
+                return
+            lines = ["💸 CodeBee 花费预警"]
+            for scope, pct, spent, cap in new:
+                lines.append("%s花费 ¥%.2f，已达%s上限 ¥%.2f 的 %d%%" % (
+                    "今日" if scope == "d" else "本月", spent,
+                    "每日" if scope == "d" else "每月", cap, pct))
+            lines.append("（达 100% 后新步骤将停止，可在设置→编排设置→预算调整）")
+            if push("\n".join(lines)) is False:
+                return
+            st["done"] = done + ["%s%d" % (m[0], m[1]) for m in new]
+            sp.parent.mkdir(parents=True, exist_ok=True)
+            tmp = sp.with_suffix(".tmp")
+            tmp.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(sp)
     except Exception:
         pass
 
