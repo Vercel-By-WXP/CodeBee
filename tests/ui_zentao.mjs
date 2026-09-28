@@ -1,7 +1,7 @@
 /* 禅道·产品档案 UI 验证：自起临时服务（TUTTI_DATA 隔离 + 种子 zentao.json v2）+ Edge headless。
  * 覆盖：设置导航「禅道」入口、档案卡渲染（产品/负责人/模块路由）、修复记录的
  * 排查徽章与任务链接、保存配置落库（含档案结构与脱敏）、增删产品/路由、
- * 立即扫描对不可达地址优雅报错。
+ * 修复记录归档区（默认收起/展开/手动归档/取消归档）、立即扫描对不可达地址优雅报错。
  * 结束清理浏览器/服务进程、临时目录。 */
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -42,7 +42,13 @@ async function main() {
     claims: { "501": { bug_id: 501, product: 7, title: "种子 Bug：登录 500",
         triage: { side: "backend", reason: "模块 #99 路由规则", by: "rule", account: "" },
         tasks: [{ side: "backend", task_id: "t-seed-1", run_id: "r-seed-1", state: "fixing" }],
-        state: "fixing", note: "", attempts: 0, claimed_at: "2026-09-19 08:00:00" } },
+        state: "fixing", note: "", attempts: 0, claimed_at: "2026-09-19 08:00:00" },
+      "502": { bug_id: 502, product: 7, title: "种子 Bug：已解决归档样例",
+        triage: { side: "backend", reason: "模块 #99 路由规则", by: "rule", account: "" },
+        tasks: [], state: "transferred", note: "", attempts: 0,
+        claimed_at: "2026-09-19 07:00:00",
+        archived: true, archived_by: "auto", archived_at: "2026-09-20 09:00:00",
+        archive_reason: "禅道侧已解决，自动归档" } },
     last_scan: "2026-09-19 08:00:00", next_scan: "", last_error: "",
   }, null, 1), "utf-8");
 
@@ -362,6 +368,53 @@ async function main() {
     check("④c 路由行几何：删按钮等高钉行尾、模块下拉有宽度、无溢出",
       mg.delW >= 30 && mg.delH >= 24 && mg.delH <= mg.rowH + 1 && mg.modW >= 120 &&
       mg.gap >= 4 && mg.overflow <= 2, mrGeo);
+
+    // ④d 修复记录归档区：默认收起 → 展开见归档卡与原因 → 手动归档/取消归档走 API
+    const archHead = await evalJs(`(() => {
+      const box = document.getElementById("zentao-claims");
+      const head = box.querySelector("button.zt-arch-head");
+      return JSON.stringify({ head: !!head, count: head ? head.querySelector(".tag").textContent : "",
+        hiddenCard: !box.querySelector(".zt-arch-list .card"),
+        liveCards: box.querySelectorAll(".card:not(.zt-archived)").length });
+    })()`, true);
+    const ah = JSON.parse(archHead || "{}");
+    check("④d 已归档区默认收起：折叠头在、计数 1、归档卡不渲染、进行中卡 1 张",
+      ah.head === true && ah.count === "1" && ah.hiddenCard === true && ah.liveCards === 1, archHead);
+    await evalJs(`zentaoToggleArchive(); "ok"`);
+    const archOpen = await evalJs(`(() => {
+      const card = document.querySelector("#zentao-claims .zt-arch-list .card.zt-archived");
+      if (!card) return "{}";
+      return JSON.stringify({ title: card.querySelector(".name").textContent.slice(0, 30),
+        reason: (card.querySelector(".note") || {}).textContent || "",
+        unarch: !!Array.from(card.querySelectorAll("button")).find((b) => b.textContent.indexOf("取消归档") >= 0) });
+    })()`, true);
+    const ao = JSON.parse(archOpen || "{}");
+    check("④d 展开后归档卡显示（弱化样式 + 归档原因 + 取消归档按钮）",
+      ao.title.indexOf("#502") >= 0 && ao.title.indexOf("已解决归档样例") >= 0 &&
+      ao.reason.indexOf("禅道侧已解决") >= 0 && ao.unarch === true, archOpen);
+    await evalJs(`Array.from(document.querySelectorAll("#zentao-claims .card:not(.zt-archived) button"))
+      .find((b) => b.textContent.indexOf("归档") >= 0).click(); "ok"`);
+    const archived501 = await waitFor(`api("/api/zentao").then((v) => {
+      const c = (v.claims || []).find((x) => String(x.bug_id) === "501") || {};
+      return c.archived === true && c.archived_by === "manual";
+    })`, 10000);
+    check("④d 点「归档」→ 501 落归档区（manual 来源）", archived501 === true);
+    const card501 = await waitFor(
+      `!!Array.from(document.querySelectorAll("#zentao-claims .zt-arch-list .card"))
+         .find((c) => c.textContent.indexOf("#501") >= 0)`, 10000);
+    check("④d 归档卡上屏（重绘后）", card501 === true);
+    await evalJs(`Array.from(document.querySelectorAll("#zentao-claims .zt-arch-list .card"))
+      .find((c) => c.textContent.indexOf("#501") >= 0)
+      .querySelector("button").click(); "ok"`);
+    const back501 = await waitFor(`api("/api/zentao").then((v) => {
+      const c = (v.claims || []).find((x) => String(x.bug_id) === "501") || {};
+      return c.archived === false;
+    })`, 10000);
+    check("④d 点「取消归档」→ 501 回到进行中", back501 === true);
+    await evalJs(`zentaoToggleArchive(); "ok"`);
+    const archClosed = await evalJs(
+      `!document.querySelector("#zentao-claims .zt-arch-list .card")`);
+    check("④d 再点折叠头收起归档区", archClosed === true);
 
     // ⑤ 立即扫描对不可达地址优雅报错
     await evalJs(`(() => {

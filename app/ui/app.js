@@ -5188,7 +5188,31 @@ function pbBlock(task, platform) {
   const books = (S.pubTaskInfo && S.pubTaskInfo.books) || {};
   const book = books[platform];
   const hist = (S.pubTaskInfo && S.pubTaskInfo.history) || [];
-  const nCh = hist.filter((r) => r.platform === platform && r.action === "upload_chapter" && r.ok).length;
+  const pubCnt = (S.pubTaskInfo && S.pubTaskInfo.published) || {};
+  // 已发口径：平台实况（点过校准）优先；否则本地台账去重章号数
+  //（直接数记录会因重试虚高，见 2026-09-28 校准案）
+  const localN = (typeof pubCnt[platform] === "number") ? pubCnt[platform]
+    : new Set(hist.filter((r) => r.platform === platform && r.action === "upload_chapter"
+        && r.ok && (r.chapter_no || 0) > 0).map((r) => r.chapter_no)).size;
+  const hasRemote = book && (typeof book.remote_total === "number"
+    || typeof book.remote_published === "number");
+  const remoteN = hasRemote ? ((typeof book.remote_total === "number")
+    ? book.remote_total : book.remote_published) : null;
+  const nCh = hasRemote ? remoteN : localN;
+  let chTitle = "";
+  if (hasRemote) {
+    const parts = [];
+    parts.push(remoteN !== localN
+      ? t("平台实况 ") + remoteN + t(" 章，本地台账 ") + localN + t(" 章，已按平台纠正")
+      : t("已按平台实况校准：") + remoteN + t(" 章"));
+    if (book.remote_published != null && book.remote_published !== remoteN)
+      parts.push(t("其中已发布 ") + book.remote_published +
+        (book.remote_review ? t("，审核中 ") + book.remote_review : ""));
+    if (book.remote_synced_at) parts.push(t("校准于 ") + book.remote_synced_at);
+    chTitle = parts.join(t("；"));
+  } else {
+    chTitle = t("本地台账口径，点「校准」按平台实况纠正");
+  }
   const busy = st === "busy";
   let btns = "";
   if (st === "none" || st === "error" || st === "waiting_login") {
@@ -5203,8 +5227,12 @@ function pbBlock(task, platform) {
     btns += '<span class="pb-book" title="' + esc(t("已在此平台创建的作品")) + '">' +
       esc(t("已建书：") + (book.title || "")) + "</span>";
     btns += ' <button class="primary" ' + (busy ? "disabled" : "") +
-      ' onclick="pbUploadChapter(\'' + esc(task.id) + "', '" + platform + '\')">' +
+      ' onclick="pbUploadChapter(\'' + esc(task.id) + "', '" + platform + '\')" title="' +
+      esc(chTitle) + '">' +
       t("发一章") + (nCh ? t("（已发 ") + nCh + t("）") : "") + "</button>";
+    btns += ' <button class="ghost pb-tool" ' + (busy ? "disabled" : "") +
+      ' onclick="pbSyncPublished(\'' + esc(task.id) + "', '" + platform + '\')" title="' +
+      esc(t("按平台实况纠正已发章数")) + '">' + t("校准") + "</button>";
     // 批量发布（publish/auto.py）：待发清单 + 护栏 + 进度都来自 /pending 视图
     const au = (((S.pubAuto && S.pubAuto.books) || [])
       .find((b) => b.platform === platform)) || {};
@@ -5275,6 +5303,22 @@ function pbSyncState(task) {
       const ti = await api("/api/publish/task/" + encodeURIComponent(task.id) + "/history");
       S.pubTaskInfo = ti;
       sig += "#" + JSON.stringify(ti.books || {}) + "#" + (ti.history || []).length;
+      // 已发章数自动校准：平台在线且登记在案、超 10 分钟没对过账就静默对一次
+      //（服务端只 attach 在跑的浏览器，绝不因此弹新窗口；结果落 books.json，
+      // 下一轮轮询带回来重渲染）。失败不打扰——旧数继续显示。
+      const nowMs = Date.now();
+      Object.keys(ti.books || {}).forEach((p) => {
+        const bk = ti.books[p] || {};
+        const ps2 = ((S.pubState && S.pubState.platforms) || {})[p] || {};
+        const at = bk.remote_synced_at
+          ? Date.parse(String(bk.remote_synced_at).replace(/-/g, "/")) || 0 : 0;
+        if (ps2.status === "connected" && nowMs - at > 600000 &&
+            nowMs - (S["_pbSyncAt_" + p] || 0) > 600000) {
+          S["_pbSyncAt_" + p] = nowMs;
+          api("/api/publish/task/" + encodeURIComponent(task.id) + "/sync-published",
+            { method: "POST", body: JSON.stringify({ platform: p }) }).catch(() => {});
+        }
+      });
     } catch (e) { /* 任务级失败不阻塞平台状态 */ }
     try {
       // 批量发布视图（待发数/护栏/进度）——进行中时靠本节流轮询自然刷新
@@ -5288,6 +5332,18 @@ function pbSyncState(task) {
     } else S._pbSig = sig;
   }, 120);
 }
+
+window.pbSyncPublished = async function (taskId, platform) {
+  // 手动校准：允许服务端 attach-or-launch（用户点了按钮，弹窗口是预期内）
+  try {
+    const r = await api("/api/publish/task/" + encodeURIComponent(taskId) +
+      "/sync-published", { method: "POST",
+        body: JSON.stringify({ platform: platform, manual: true }) });
+    if (r.skipped && r.skipped[platform])
+      toast(t("校准未执行：") + r.skipped[platform], true);
+    else toast(t("正在按平台实况校准，几秒后自动更新"));
+  } catch (e) { toast(t("校准失败：") + e.message, true); }
+};
 
 window.pbConnect = async function (platform) {
   try {
@@ -11026,30 +11082,66 @@ function zentaoBugUrl(c) {
   return base + "/bug-view-" + encodeURIComponent(c.bug_id) + ".html";
 }
 
+let ztArchivedOpen = false;   // 已归档区默认收起（会话内记忆，不落 localStorage）
+
+function zentaoToggleArchive() {
+  ztArchivedOpen = !ztArchivedOpen;
+  renderZentaoClaims();
+}
+
+/* 归档 / 取消归档：后端改 claim 字段后整页重拉（记录少，不划算做乐观更新） */
+async function zentaoArchiveClaim(bugId, archived) {
+  try {
+    await api("/api/zentao/claims/archive", { method: "POST",
+      body: JSON.stringify({ bug_id: bugId, archived: archived }) });
+    await loadZentao();
+  } catch (e) { toast((e && e.message) || String(e), true); }
+}
+
+function zentaoClaimCard(c, archived) {
+  const tasks = (c.tasks || []).map((tk) =>
+    "<span>" + t("【") + (tk.side === "frontend" ? t("前端") : t("后端")) + t("】") +
+    '<a href="#" onclick="zentaoOpenRun(\'' + esc(tk.run_id || "") + '\');return false;">' + esc(tk.task_id || "?") + "</a></span>").join("");
+  const bugUrl = zentaoBugUrl(c);
+  const name = "#" + esc(c.bug_id) + " " + esc(c.title || "");
+  const headName = bugUrl
+    ? '<a class="zt-bug-link" href="' + esc(bugUrl) + '" target="_blank" rel="noopener" title="' +
+      esc(t("在禅道中打开 Bug 详情")) + '">' + name + "</a>"
+    : name;
+  const act = archived
+    ? '<button class="ghost small" onclick="zentaoArchiveClaim(\'' + esc(c.bug_id) + '\',false)">' + t("取消归档") + "</button>"
+    : '<button class="ghost small" title="' + esc(t("移入已归档区，不再出现在进行中列表")) + '" onclick="zentaoArchiveClaim(\'' + esc(c.bug_id) + '\',true)">' + t("归档") + "</button>";
+  return '<div class="card' + (archived ? " zt-archived" : "") + '"><div class="head"><span class="name">' + headName + "</span>" +
+    zentaoStateTag(c.state) + act + "</div>" +
+    '<div class="auto-meta">' +
+    (zentaoTriText(c) ? "<span>" + esc(zentaoTriText(c)) + "</span>" : "") +
+    (tasks || "") +
+    (c.claimed_at ? "<span>" + t("认领于 ") + esc(c.claimed_at) + "</span>" : "") +
+    "</div>" +
+    (archived && c.archive_reason ? '<div class="note">' + t("归档：") + esc(c.archive_reason) +
+      (c.archived_at ? " · " + esc(c.archived_at) : "") + "</div>" : "") +
+    (c.note ? '<div class="note">' + esc(c.note) + "</div>" : "") +
+    "</div>";
+}
+
 function renderZentaoClaims() {
   const box = $("zentao-claims");
   if (!box) return;
   const claims = (S.zentao && S.zentao.claims) || [];
-  box.innerHTML = claims.map((c) => {
-    const tasks = (c.tasks || []).map((tk) =>
-      "<span>" + t("【") + (tk.side === "frontend" ? t("前端") : t("后端")) + t("】") +
-      '<a href="#" onclick="zentaoOpenRun(\'' + esc(tk.run_id || "") + '\');return false;">' + esc(tk.task_id || "?") + "</a></span>").join("");
-    const bugUrl = zentaoBugUrl(c);
-    const name = "#" + esc(c.bug_id) + " " + esc(c.title || "");
-    const headName = bugUrl
-      ? '<a class="zt-bug-link" href="' + esc(bugUrl) + '" target="_blank" rel="noopener" title="' +
-        esc(t("在禅道中打开 Bug 详情")) + '">' + name + "</a>"
-      : name;
-    return '<div class="card"><div class="head"><span class="name">' + headName + "</span>" +
-      zentaoStateTag(c.state) + "</div>" +
-      '<div class="auto-meta">' +
-      (zentaoTriText(c) ? "<span>" + esc(zentaoTriText(c)) + "</span>" : "") +
-      (tasks || "") +
-      (c.claimed_at ? "<span>" + t("认领于 ") + esc(c.claimed_at) + "</span>" : "") +
-      "</div>" +
-      (c.note ? '<div class="note">' + esc(c.note) + "</div>" : "") +
-      "</div>";
-  }).join("") || '<div class="empty">' + t("还没有认领过 Bug——配置好连接与产品档案后点「立即扫描」。") + "</div>";
+  const live = claims.filter((c) => !c.archived);
+  const done = claims.filter((c) => c.archived);
+  let html = live.map((c) => zentaoClaimCard(c, false)).join("");
+  if (!claims.length)
+    html = '<div class="empty">' + t("还没有认领过 Bug——配置好连接与产品档案后点「立即扫描」。") + "</div>";
+  if (done.length) {
+    html += '<button class="zt-arch-head' + (ztArchivedOpen ? " open" : "") +
+      '" onclick="zentaoToggleArchive()">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg>' +
+      t("已归档") + '<span class="tag">' + done.length + "</span></button>";
+    if (ztArchivedOpen)
+      html += '<div class="zt-arch-list">' + done.map((c) => zentaoClaimCard(c, true)).join("") + "</div>";
+  }
+  box.innerHTML = html;
 }
 
 function zentaoOpenRun(runId) {

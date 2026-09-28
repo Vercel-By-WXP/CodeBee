@@ -1473,6 +1473,16 @@ class Handler(BaseHTTPRequestHandler):
             from core import zentao
             res = zentao.scan_now()      # 网络操作同步做（ThreadingHTTPServer 不堵别的请求）
             return self._json(200, dict(res, ok=bool(res.get("ok"))))
+        if path == "/api/zentao/claims/archive":
+            from core import zentao
+            body = self._body() or {}
+            try:
+                c = zentao.archive_claim(body.get("bug_id"),
+                                         bool(body.get("archived")),
+                                         str(body.get("reason") or ""))
+            except zentao.ZenError as e:
+                return self._json(404, {"error": str(e)})
+            return self._json(200, {"ok": True, "claim": c})
         if path == "/api/zentao/modules":
             from core import zentao
             pid = (self._body() or {}).get("product")

@@ -212,6 +212,10 @@ def _normalize_claim(d):
         c["triage"] = {"side": "", "reason": "", "by": "", "account": ""}
     c.setdefault("note", "")
     c.setdefault("attempts", 0)
+    c.setdefault("archived", False)       # 归档三件套：老数据无字段照常跑
+    c.setdefault("archived_by", "")       # manual=用户手点 / auto=扫描对账自动
+    c.setdefault("archived_at", "")
+    c.setdefault("archive_reason", "")
     return c
 
 
@@ -1816,6 +1820,93 @@ def _set_claim(bid, **patch):
         _save_locked()
 
 
+def archive_claim(bid, archived, reason=""):
+    """手动归档/取消归档一条修复记录。返回更新后的 claim；不存在抛 ZenError。"""
+    bid = str(bid)
+    _ensure_loaded()
+    with _LOCK:
+        c = _STATE["claims"].get(bid)
+        if c is None:
+            raise ZenError("修复记录 #%s 不存在" % bid)
+        if archived:
+            c.update({"archived": True, "archived_by": "manual",
+                      "archived_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                      "archive_reason": str(reason or "").strip() or "手动归档"})
+        else:
+            c.update({"archived": False, "archived_by": "",
+                      "archived_at": "", "archive_reason": ""})
+        c["at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        _save_locked()
+        return dict(c)
+
+
+def _bug_status(cfg, bid):
+    """单查 bug 当前状态。失败抛异常（对账方决定本轮跳过，绝不盲归档）。"""
+    d = _call("GET", "/bugs/%s" % bid, cfg=cfg)
+    return str(d.get("status") or "")
+
+
+def _archive_sweep(cfg, profile, by_id):
+    """归档对账：本产品激活列表拉取成功后跑一遍（list_bugs 抛错到不了这里，
+    网络抖动不会 mass-archive）。
+
+    - 记录不在激活列表 → 单查确认：resolved/closed 才自动归档；仍激活
+      （多半已改派给别人）只备注一次，不归档；单查失败本轮跳过。
+    - 已自动归档的记录 bug 重新激活且仍可认领 → 取消归档重走排查
+      （手动归档是用户的明确决定，永不自动取消）。
+    """
+    pid = str(profile.get("product") or "")
+    with _LOCK:
+        mine = [dict(c) for c in _STATE["claims"].values()
+                if str(c.get("product") or "") == pid]
+    for c in mine:
+        bid = str(c.get("bug_id") or "")
+        if not bid:
+            continue
+        if bid in by_id:
+            if c.get("archived") and c.get("archived_by") == "auto" \
+                    and _claimable(by_id[bid], profile):
+                _set_claim(bid, archived=False, archived_by="",
+                           archived_at="", archive_reason="",
+                           note="禅道侧重新激活，重新排查")
+                try:
+                    _route_one(by_id[bid], profile, cfg)
+                except Exception as e:
+                    log.warning("zentao: bug %s 重新激活重排查失败：%s", bid, e)
+                    _set_claim(bid, state="need_manual",
+                               note="重新激活重排查失败：%s" % e)
+            continue
+        if c.get("archived"):
+            continue
+        try:
+            status = _bug_status(cfg, bid)
+        except Exception:
+            log.warning("zentao: 归档对账单查 bug %s 失败，本轮跳过", bid)
+            continue
+        if status in ("resolved", "closed"):
+            with _LOCK:
+                cc = _STATE["claims"].get(bid)
+                if cc is not None and not cc.get("archived") \
+                        and cc.get("state") != "fixing":
+                    cc.update({"archived": True, "archived_by": "auto",
+                               "archived_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                               "archive_reason": "禅道侧%s，自动归档"
+                                                 % ("已解决" if status == "resolved" else "已关闭"),
+                               "at": time.strftime("%Y-%m-%d %H:%M:%S")})
+                    _save_locked()
+        else:
+            # 仍激活但不在我的列表（改派/过滤条件变化）：备注一次不归档；
+            # fixing 中的只标注不归档——流程收口交给对账，这里不抢状态
+            note = "bug 仍激活但不在本档案扫描列表（可能已改派），不归档"
+            with _LOCK:
+                cc = _STATE["claims"].get(bid)
+                if cc is not None and note not in str(cc.get("note") or ""):
+                    cc["note"] = (str(cc.get("note") or "") + "；" + note) \
+                        if cc.get("note") else note
+                    cc["at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    _save_locked()
+
+
 def _route_account(profile, tri, side):
     """转派/升级目标：模块路由 account > 端负责人。"""
     if tri and tri.get("account"):
@@ -2053,6 +2144,8 @@ def _route_one(bug, profile, cfg, notify=True):
         "title": str(bug.get("title") or "")[:120],
         "triage": tri, "tasks": [], "state": "fixing", "note": "",
         "attempts": 0, "claimed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        # 归档字段就地归零：reopen 重走排查覆盖老 claim 时不能残留 True
+        "archived": False, "archived_by": "", "archived_at": "", "archive_reason": "",
     }
     opened = _acct(bug.get("openedBy"))
 
@@ -2166,7 +2259,8 @@ def _route_one(bug, profile, cfg, notify=True):
 
 
 def _scan(cfg):
-    """按产品档案逐个拉 bug：认领新 bug + 重试 need_manual 的存量。返回认领数。"""
+    """按产品档案逐个拉 bug：认领新 bug + 重试 need_manual 的存量 + 归档对账。
+    返回认领数。"""
     claimed = 0
     profiles = _profiles(cfg)
     if not profiles:
@@ -2177,7 +2271,8 @@ def _scan(cfg):
         with _LOCK:
             seen = set(_STATE["claims"].keys())
             retry_ids = [k for k, c in _STATE["claims"].items()
-                         if c.get("state") == "need_manual" and k in by_id
+                         if c.get("state") == "need_manual" and not c.get("archived")
+                         and k in by_id
                          and str(by_id[k].get("status") or "") == "active"]
         for bug in bugs:
             bid = str(bug.get("id") or "")
@@ -2191,6 +2286,11 @@ def _scan(cfg):
                 if _STATE["claims"].get(bid, {}).get("state") != "need_manual":
                     continue
             _route_one(by_id[bid], profile, cfg, notify=False)
+        # 归档对账：走到这里说明本产品列表拉取成功，消失判定才可信
+        try:
+            _archive_sweep(cfg, profile, by_id)
+        except Exception:
+            log.exception("zentao: 产品 %s 归档对账异常，跳过", profile.get("product"))
     return claimed
 
 

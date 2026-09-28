@@ -6184,3 +6184,18 @@ table.fp-xls { border-collapse: collapse; font-family: var(--mono); font-size: 1
 .rd-timeout-row label { color: var(--muted); white-space: nowrap; }
 .rd-timeout-row select { flex: 0 0 auto; min-width: 96px; }
 .rd-timeout-row select:disabled { opacity: .55; cursor: not-allowed; }
+
+/* ---------------- 禅道·修复记录归档区（追加于文件尾防并行重排） ---------------- */
+/* 已归档卡：整体降透明度弱化，标题链接维持可点 */
+.zt-archived { opacity: .62; }
+.zt-archived .head .name { text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: var(--muted); }
+/* 已归档折叠头：按钮形态（可聚焦），箭头随开合转 90° */
+button.zt-arch-head {
+  display: flex; align-items: center; gap: 6px; margin: 10px 0 4px;
+  padding: 6px 10px; border: 1px dashed var(--border); border-radius: 10px;
+  background: none; color: var(--muted); font-size: 12.5px; cursor: pointer; width: 100%;
+}
+button.zt-arch-head .ico { transition: transform .15s; }
+button.zt-arch-head.open .ico { transform: rotate(90deg); }
+button.zt-arch-head:hover { border-color: var(--accent); color: var(--accent); }
+.zt-arch-list { display: grid; gap: 10px; margin-top: 6px; }

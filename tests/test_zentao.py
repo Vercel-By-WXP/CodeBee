@@ -5,7 +5,7 @@
 （模块规则优先/AI 兜底/不可用留人工）、我方端修复 resolve、非我方转派、
 纯对方端转派（含测试指错人改派）、双端我端修完转派、失败升级、负责人优先级、
 模块清单容错、need_manual 重排查、老 claim 归一、token 401 重试、fire_due 节流、
-节假日顺延（含调休补班照扫与库缺失兜底）。
+节假日顺延（含调休补班照扫与库缺失兜底）、归档（自动对账/手动/reopen 重认领/改派备注）。
 """
 from __future__ import annotations
 
@@ -1540,3 +1540,146 @@ class TestChatUserContentShapes(BaseTest):
         g = c("google", "hi", imgs)
         self.assertEqual(g[0], {"text": "hi"})
         self.assertEqual(g[1]["inline_data"], {"mime_type": "image/png", "data": "QUJD"})
+
+
+class TestArchiveSweep(ZenCase):
+    """归档对账：禅道侧已解决/关闭 → 自动归档；修复中的不归档。"""
+    def runTest(self):
+        self.configure()
+        self.bug(701)
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertEqual(c["state"], "fixing")
+        # 修复期间 bug 被外部解决：fixing 状态绝不归档（流程自己收口）
+        self.fz.bugs["701"]["status"] = "resolved"
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertFalse(c.get("archived"), "fixing 中的记录不归档")
+        self.assertEqual(c["state"], "fixing")
+        # 我方流程收口后（终态），下一轮对账自动归档
+        self.zen_mod._set_claim("701", state="transferred", note="手动流转测试")
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertTrue(c["archived"])
+        self.assertEqual(c["archived_by"], "auto")
+        self.assertIn("已解决", c["archive_reason"])
+        # 归档后不再变化（幂等）
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertTrue(c["archived"])
+        self.assertEqual(c["archive_reason"].count("已解决"), 1)
+
+
+class TestArchiveSweepClosed(ZenCase):
+    """禅道侧关闭（closed）同样自动归档。"""
+    def runTest(self):
+        self.configure()
+        self.bug(711)
+        self.zen_mod.scan_now()
+        self.zen_mod._set_claim("711", state="commented", note="留人工")
+        self.fz.bugs["711"]["status"] = "closed"
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertTrue(c["archived"])
+        self.assertIn("已关闭", c["archive_reason"])
+
+
+class TestArchiveReassignNote(ZenCase):
+    """bug 仍激活但改派给别人（不在我的列表）→ 不归档，只备注一次。"""
+    def runTest(self):
+        self.configure()
+        self.bug(702)
+        self.zen_mod.scan_now()
+        self.assertEqual(self.claim()["state"], "fixing")
+        self.fz.bugs["702"]["assignedTo"] = {"account": "tester", "realname": "测试君"}
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertFalse(c.get("archived"))
+        self.assertIn("仍激活", c["note"])
+        # 再扫不重复追加备注
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertEqual(c["note"].count("仍激活"), 1)
+
+
+class TestArchiveFetchFailSkip(ZenCase):
+    """消失但单查失败（bug 整个查不到）→ 本轮跳过，绝不盲归档。"""
+    def runTest(self):
+        self.configure()
+        self.bug(703)
+        self.zen_mod.scan_now()
+        del self.fz.bugs["703"]     # 列表消失 + 单查 404
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertFalse(c.get("archived"))
+        self.assertEqual(c["state"], "fixing")
+
+
+class TestArchiveReopenReroute(ZenCase):
+    """自动归档的 bug 禅道侧重新激活 → 取消归档重走排查认领。"""
+    def runTest(self):
+        self.configure()
+        self.bug(706)
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.store.update_run(c["tasks"][0]["run_id"], status="done",
+                              verdict={"pass": True, "publishable": True})
+        self.zen_mod.scan_now()          # resolve 成功
+        self.assertEqual(self.claim()["state"], "resolved")
+        self.zen_mod.scan_now()          # 对账自动归档
+        self.assertTrue(self.claim()["archived"])
+        self.assertEqual(len(self.launched), 1)
+        # 测试重新激活（reopen）→ 禅道会指派回解决人 → 取消归档并重新认领
+        self.fz.bugs["706"]["status"] = "active"
+        self.fz.bugs["706"]["assignedTo"] = {"account": "coder", "realname": "码蜂"}
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertFalse(c["archived"])
+        self.assertEqual(c["archived_by"], "")
+        self.assertEqual(c["state"], "fixing")
+        self.assertEqual(len(self.launched), 2, "reopen 后重新建修复任务")
+
+
+class TestArchiveManualHold(ZenCase):
+    """手动归档是用户决定：重新激活也不自动取消、不重认领。"""
+    def runTest(self):
+        self.configure()
+        self.bug(707)
+        self.zen_mod.scan_now()
+        self.zen_mod._set_claim("707", state="need_manual", note="留人工")
+        self.zen_mod.archive_claim("707", True)
+        c = self.claim()
+        self.assertEqual(c["archived_by"], "manual")
+        self.assertEqual(c["state"], "need_manual")
+        # 归档的 need_manual 不再参与重排查（路由已配好也跳过）
+        self.configure(profiles=[self.profile(
+            module_routes=[{"module": 99, "side": "backend", "account": ""}])])
+        n0 = len(self.launched)
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertEqual(c["state"], "need_manual", "归档后不重排查")
+        self.assertEqual(len(self.launched), n0, "归档后不建新修复任务")
+        # 外部解决后对账也不动手动归档
+        self.fz.bugs["707"]["status"] = "resolved"
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.assertTrue(c["archived"])
+        self.assertEqual(c["archived_by"], "manual", "手动归档不被自动覆盖")
+
+
+class TestArchiveManualApi(ZenCase):
+    """手动归档/取消归档 API：字段写入与清除、不存在报错。"""
+    def runTest(self):
+        self.configure()
+        self.bug(704)
+        self.zen_mod.scan_now()
+        c = self.zen_mod.archive_claim("704", True, reason="已跟进完毕")
+        self.assertTrue(c["archived"])
+        self.assertEqual(c["archived_by"], "manual")
+        self.assertEqual(c["archive_reason"], "已跟进完毕")
+        self.assertTrue(c["archived_at"])
+        c = self.zen_mod.archive_claim("704", False)
+        self.assertFalse(c["archived"])
+        self.assertEqual(c["archive_reason"], "")
+        with self.assertRaises(self.zen_mod.ZenError):
+            self.zen_mod.archive_claim("999", True)
