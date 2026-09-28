@@ -12047,6 +12047,41 @@ async function saveMcpServers() {
   } catch (e) { toast(t("保存失败：") + e.message, true); }
 }
 
+/* MCP 一键模板（2026 社区最常用五款，npx 免安装）：追加进现有清单，
+ * name 冲突时覆盖同名条目；由用户自行点「保存 MCP 配置」落盘。 */
+const MCP_TEMPLATES = {
+  fetch: () => ({ name: "fetch", command: "npx", args: ["-y", "mcp-server-fetch"],
+    note: t("网页抓取：把 URL 内容取回为 markdown（内置智能体即可联网读网页）") }),
+  memory: () => ({ name: "memory", command: "npx", args: ["-y", "@modelcontextprotocol/server-memory"],
+    note: t("知识图谱记忆：跨对话的持久记忆（实体/关系存本机 JSONL）") }),
+  filesystem: () => ({ name: "fs", command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-fs", (S.settings && S.settings.default_workdir_effective) || "."],
+    note: t("文件访问：授权目录内的读/写/搜索（默认授权 CodeBee 保存路径，可改）") }),
+  playwright: () => ({ name: "playwright", command: "npx",
+    args: ["-y", "@playwright/mcp@latest"],
+    note: t("浏览器自动化：开页面/点击/填表/截图（2026 社区使用量第一的 MCP 服务器）") }),
+  context7: () => ({ name: "context7", command: "npx",
+    args: ["-y", "@upstash/context7-mcp"],
+    note: t("文档查询：取常用库的最新版文档（防 API 过时幻觉）") }),
+};
+
+function mcpTemplate(kind) {
+  const el = $("set-mcp-servers");
+  if (!el) return;
+  const mk = (MCP_TEMPLATES[kind] || (() => null))();
+  if (!mk) return;
+  let arr = [];
+  try { arr = JSON.parse(el.value || "[]") || []; } catch (e) { arr = []; }
+  if (!Array.isArray(arr)) arr = [];
+  const i = arr.findIndex((x) => x && x.name === mk.name);
+  const dupNote = i >= 0 ? t("（覆盖同名 ") + mk.name + "）" : "";
+  if (i >= 0) arr[i] = { name: mk.name, command: mk.command, args: mk.args };
+  else if (arr.length >= 4) { toast(t("最多 4 个 MCP 服务器，请先删减再套模板"), true); return; }
+  else arr.push({ name: mk.name, command: mk.command, args: mk.args });
+  el.value = JSON.stringify(arr, null, 2);
+  toast(mk.note + dupNote + t("——记得点「保存 MCP 配置」"));
+}
+
 async function testNotifyPush() {
   const msg = $("notify-test-msg");
   if (msg) { msg.className = "msg"; msg.textContent = t("发送中…"); }
