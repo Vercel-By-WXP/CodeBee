@@ -281,3 +281,62 @@ class TestNoPillOnOps(HealthMixin):
         # 没配过链的 CLI → False（闸门放行，回落本机默认）
         out3 = MH.bind_agent({"id": "qwencode", "kind": "generic", "mode": "real"})
         self.assertFalse(out3.get("binding_configured"))
+
+
+class TestOutlineDeadGate(HealthMixin):
+    """大纲路径的死链闸门（2026-09-28 七天上限案）：
+
+    make_serial_outline 的作者 CLI 兜底此前直接裸调 bind_agent 的返回——
+    配过链但解析为空时零注入裸奔回 CLI 本机默认，撞残留本机配置指向的
+    同一个上游，死因被掩盖成「作者 CLI 失败」。与 pipeline._run_step 同
+    语义：判失败带人话，等续跑重试（大纲已有编排者兜底，不搬同池补位）。
+    """
+
+    _CLAUDE = {
+        "providers": [{"id": "p1", "name": "P1", "protocol": "anthropic",
+                       "base_url": "https://x.example/v1", "api_key": "k",
+                       "enabled": True, "models": [{"name": "m1", "enabled": True}]}],
+        "bindings": {"claude-code": {"provider_id": "p1", "model": "m1",
+                                     "chain": [{"provider_id": "p1", "model": "m1"}],
+                                     "models": ["m1"]}},
+    }
+
+    def test_outline_dead_binding_fails_without_bare_call(self):
+        """配过链但全死：判 degraded 带死链文案，绝不裸调 CLI。"""
+        from unittest import mock
+        from app.core import modelhub as MH, planner
+        MH._FILE.write_text(json.dumps(self._CLAUDE), encoding="utf-8")
+        MH.providers_op(["p1"], "disable")            # 配过链但解析为空
+        author = {"id": "claude-code", "label": "Claude Code",
+                  "kind": "claude", "mode": "real"}
+        with mock.patch.object(planner, "_orchestrator", return_value=None), \
+             mock.patch.object(planner, "_log_streamer",
+                               return_value=mock.MagicMock()), \
+             mock.patch.object(planner, "_append_log"), \
+             mock.patch.object(planner, "_log_usage"), \
+             mock.patch.object(planner.runner, "run_agent") as ra:
+            out = planner.make_serial_outline(
+                {"goal": "写书", "context": "", "serial": {"chapters": 2}},
+                author_agent=author, workdir=str(self.workdir))
+        ra.assert_not_called()   # 关键回归：死链时绝不裸奔回本机默认
+        self.assertTrue(out.get("degraded"))
+        self.assertIn("绑定链", out.get("degraded_reason") or "")
+
+    def test_outline_live_binding_still_calls_cli(self):
+        """链活着：闸门放行，作者 CLI 照常被调（不误伤正常路径）。"""
+        from unittest import mock
+        from app.core import modelhub as MH, planner
+        MH._FILE.write_text(json.dumps(self._CLAUDE), encoding="utf-8")
+        author = {"id": "claude-code", "label": "Claude Code",
+                  "kind": "claude", "mode": "real"}
+        with mock.patch.object(planner, "_orchestrator", return_value=None), \
+             mock.patch.object(planner, "_log_streamer",
+                               return_value=mock.MagicMock()), \
+             mock.patch.object(planner, "_append_log"), \
+             mock.patch.object(planner, "_log_usage"), \
+             mock.patch.object(planner.runner, "run_agent",
+                               return_value={"ok": True, "text": "", "error": ""}) as ra:
+            planner.make_serial_outline(
+                {"goal": "写书", "context": "", "serial": {"chapters": 2}},
+                author_agent=author, workdir=str(self.workdir))
+        self.assertEqual(ra.call_count, 1)

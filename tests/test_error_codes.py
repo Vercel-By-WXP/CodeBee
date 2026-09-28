@@ -120,6 +120,14 @@ class TestSharedFailureClassification(BaseTest):
             ("HTTP 429 rate limit exceeded", ErrorCode.RATE_LIMIT),
             ("concurrent limit exceeded", ErrorCode.RATE_LIMIT),
             ("并发超限，请稍后重试", ErrorCode.RATE_LIMIT),
+            # 2026-09-27 智谱七天上限实案：裸 (429) 无 http/status-code 前缀，
+            # 此前分类不出 → 换将闸门当终态收工，备用 KEY 永不上场
+            ("claude 返回 is_error: API Error: Request rejected (429) · [1310]"
+             "[已达到 7 天使用上限，2026-09-28 09:45:56 后可继续使用。如需超限额"
+             "按量付费使用，可联系管理员开启超额按量付费。]", ErrorCode.RATE_LIMIT),
+            # 同一族上限文案有不带 429 字样的形态：靠中文「使用上限」进 QUOTA
+            ("API Error: [1310][已达到 7 天使用上限，2026-09-28 09:45:56 后可继续使用。]",
+             ErrorCode.QUOTA),
             ("unexpected status 403 forbidden", ErrorCode.FORBIDDEN),
             ("unexpected status 401", ErrorCode.AUTH),
             ("unexpected status 429", ErrorCode.RATE_LIMIT),

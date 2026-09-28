@@ -67,13 +67,19 @@ _AUTH = (
     "status code 401",
 )
 _FORBIDDEN = ("forbidden", "request not allowed", "permission denied", "access denied")
+# 「request rejected」是智谱网关 429 的固定措辞（Request rejected (429)）：
+# 裸 (429) 不带 http/status-code 前缀，正则分支匹配不到，只能靠词面
+# （2026-09-27 七天上限案：分类不出 → 换将闸门当终态收工，备用 KEY 永不上场）
 _RATE_LIMIT = ("rate limit", "rate_limit", "too many requests", "http 429", "status code 429",
+               "request rejected",
                "concurrent limit", "concurrency limit", "too many concurrent",
                "并发限制", "并发超限", "限流")
 _QUOTA = ("insufficient balance", "insufficient quota", "insufficient credit",
           "quota", "balance is insufficient", "credit balance", "billing", "arrears",
           "payment required", "http 402", "status code 402", "欠费", "余额", "额度",
-          "usage limit", "limit exceeded", "quota exhausted")
+          "usage limit", "limit exceeded", "quota exhausted",
+          # 周期性用量上限（七天/五小时窗口）：部分上游文案不带 429 字样
+          "使用上限", "用量上限")
 _SERVER = ("unexpected server error", "internal server error", "server error",
            "overloaded", "temporarily", "unavailable", "service unavailable",
            "internal error", "no available channel", "unknown model")

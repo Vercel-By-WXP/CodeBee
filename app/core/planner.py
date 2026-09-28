@@ -569,12 +569,22 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
         # 8 章大纲 + 经验包注入是重生成任务，300s 实测不够（claude CLI 必超时）；
         # 超时可经 env TUTTI_OUTLINE_TIMEOUT 或设置 orchestrator.outline_timeout_s 调整
         _append_log(log_path, "===== 作者 CLI（%s）=====" % author_agent.get("id", "?"))
-        res = runner.run_agent(modelhub.bind_agent(author_agent), prompt,
-                               workdir=workdir or task.get("workdir"), readonly=True,
-                               timeout=_deadline_timeout(deadline, _outline_timeout()),
-                               deadline=deadline, cancel_event=ev,
-                               log_path=log_path)
-        _log_usage("outline", "outline", task, res, agent=author_agent)
+        bound = modelhub.bind_agent(author_agent)
+        # 死链闸门（与 pipeline._run_step 同语义）：配过链但解析为空（全死/评测
+        # 过期探针失败）时判失败不裸奔回 CLI 本机默认——2026-09-28 七天上限案：
+        # 裸调走残留本机配置撞同一个上游，死因被掩盖成「作者 CLI 失败」。
+        # 大纲已有编排者兜底，不搬 pipeline 的同池补位机制。
+        if (bound.get("binding_configured")
+                and not (bound.get("call_chain") or bound.get("env"))):
+            res = {"ok": False, "error": modelhub.binding_dead_msg(
+                author_agent.get("id", "")), "text": ""}
+        else:
+            res = runner.run_agent(bound, prompt,
+                                   workdir=workdir or task.get("workdir"), readonly=True,
+                                   timeout=_deadline_timeout(deadline, _outline_timeout()),
+                                   deadline=deadline, cancel_event=ev,
+                                   log_path=log_path)
+            _log_usage("outline", "outline", task, res, agent=author_agent)
         if not res["ok"]:
             _append_log(log_path, "作者 CLI 失败：%s" % (res.get("error") or "")[:300])
             reason_tail = (res.get("error") or reason_tail)[:200]

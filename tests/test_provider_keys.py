@@ -114,6 +114,9 @@ class TestProviderKeys(BaseTest):
         codex「exceeded retry limit...429 Too Many Requests」原靠 exceeded 命中；
         智谱原生「并发数超过限制」「每分钟Token数已超过上限」与 claude 的
         rate_limit_error 此前只记错不冷却——每个新步骤都从超限的首选 KEY 重新烧起。
+        2026-09-27 追加：智谱七天上限「Request rejected (429) · [1310][已达到
+        7 天使用上限…]」裸 (429) 无前缀、上限措辞是中文，此前分类不出既不换将
+        也不冷却，备用 KEY 整晚没上过场。
         """
         from app.core import modelhub
         modelhub._FILE = self.data_dir / "models.json"
@@ -122,7 +125,10 @@ class TestProviderKeys(BaseTest):
         modelhub.set_binding("claude-code", chain=[{"provider_id": pid, "model": "m1"}])
         cases = ("HTTP 429 并发数超过限制",
                  "codex: exceeded retry limit, last status: 429 Too Many Requests",
-                 "claude 返回 is_error: API Error: 429 rate_limit_error")
+                 "claude 返回 is_error: API Error: 429 rate_limit_error",
+                 "claude 返回 is_error: API Error: Request rejected (429) · [1310]"
+                 "[已达到 7 天使用上限，2026-09-28 09:45:56 后可继续使用。如需超限额"
+                 "按量付费使用，可联系管理员开启超额按量付费。]")
         for err in cases:
             modelhub.key_op(pid, "reset", key_id="k1")
             modelhub.key_op(pid, "reset", key_id="k2")
