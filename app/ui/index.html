@@ -1403,20 +1403,52 @@
             </aside>
             <div class="browser-viewport">
               <div class="browser-empty" id="browser-empty">
-                <div class="browser-home-dashboard" id="browser-home-dashboard">
-                  <div class="browser-empty-mark"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg></div>
-                  <div class="browser-home-copy">
-                    <span class="browser-home-eyebrow" data-i18n="CodeBee 工作浏览器">CodeBee 工作浏览器</span>
-                    <h2 data-i18n="打开页面，验证结果，继续交付">打开页面，验证结果，继续交付</h2>
-                    <p data-i18n="网页预览、验证证据和发布动作都围绕当前任务展开。">网页预览、验证证据和发布动作都围绕当前任务展开。</p>
+                <div class="browser-home-workbench" id="browser-home-dashboard">
+                  <header class="browser-home-hero">
+                    <div class="browser-empty-mark"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg></div>
+                    <div class="browser-home-copy">
+                      <span class="browser-home-eyebrow" data-i18n="CodeBee 工作浏览器">CodeBee 工作浏览器</span>
+                      <h2 data-i18n="让 CodeBee 打开页面并完成验证">让 CodeBee 打开页面并完成验证</h2>
+                      <p data-i18n="配置 Playwright 工具后，任务智能体可打开页面、点击、填表和截图；小说发布继续复用本机登录态。">配置 Playwright 工具后，任务智能体可打开页面、点击、填表和截图；小说发布继续复用本机登录态。</p>
+                    </div>
+                    <span class="browser-home-mode"><i></i><span data-i18n="任务驱动">任务驱动</span></span>
+                  </header>
+                  <section class="browser-home-current">
+                    <span class="browser-home-section-label" data-i18n="当前工作">当前工作</span>
+                    <div class="browser-home-task-row">
+                      <div>
+                        <h3 id="browser-home-task-title" data-i18n="还没有任务">还没有任务</h3>
+                        <p id="browser-home-task-meta" data-i18n="先新建任务，CodeBee 会在这里接管预览、验证与发布动作。">先新建任务，CodeBee 会在这里接管预览、验证与发布动作。</p>
+                      </div>
+                      <span id="browser-home-run" class="browser-home-run" data-i18n="等待任务进入工作台">等待任务进入工作台</span>
+                    </div>
+                  </section>
+                  <div class="browser-home-workflows">
+                    <button class="browser-home-action primary" id="browser-open-preview" data-browser-home-action="preview" type="button">
+                      <svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg><span><b data-i18n="预览成品">预览成品</b><small data-i18n="打开当前任务的网页成果">打开当前任务的网页成果</small></span>
+                    </button>
+                    <button class="browser-home-action" data-browser-home-action="verify" type="button">
+                      <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg><span><b data-i18n="查看验证">查看验证</b><small data-i18n="检查测试、截图与修复证据">检查测试、截图与修复证据</small></span>
+                    </button>
+                    <button class="browser-home-action" data-browser-home-action="retry" type="button">
+                      <svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span><b data-i18n="交给 CodeBee 重跑">交给 CodeBee 重跑</b><small data-i18n="带着当前任务上下文再次执行">带着当前任务上下文再次执行</small></span>
+                    </button>
+                    <button class="browser-home-action" data-browser-home-action="publish" type="button">
+                      <svg class="ico" aria-hidden="true"><use href="#i-book-open"></use></svg><span><b data-i18n="进入小说发布">进入小说发布</b><small data-i18n="番茄、七猫自动填稿，提交前确认">番茄、七猫自动填稿，提交前确认</small></span>
+                    </button>
                   </div>
-                  <button class="primary" id="browser-open-preview" type="button"><svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg><span data-i18n="打开当前任务预览">打开当前任务预览</span></button>
+                  <div class="browser-home-capabilities">
+                    <div><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span><b data-i18n="浏览器自动化">浏览器自动化</b><small data-i18n="配置 Playwright MCP 后可开页、交互与截图">配置 Playwright MCP 后可开页、交互与截图</small></span></div>
+                    <div><svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg><span><b data-i18n="结果验证">结果验证</b><small data-i18n="成品、命令与证据集中回看">成品、命令与证据集中回看</small></span></div>
+                    <div><svg class="ico" aria-hidden="true"><use href="#i-book-open"></use></svg><span><b data-i18n="受控发布">受控发布</b><small data-i18n="平台登录态留在本机，最终提交由你确认">平台登录态留在本机，最终提交由你确认</small></span></div>
+                  </div>
                 </div>
-                <div class="browser-home-grid" aria-hidden="true">
-                  <div><svg class="ico"><use href="#i-check"></use></svg><span data-i18n="验证修复">验证修复</span></div>
-                  <div><svg class="ico"><use href="#i-book-open"></use></svg><span data-i18n="准备发布">准备发布</span></div>
-                  <div><svg class="ico"><use href="#i-git-branch"></use></svg><span data-i18n="检查版本">检查版本</span></div>
-                </div>
+              </div>
+              <div class="browser-frame-error hidden" id="browser-frame-error" role="status">
+                <div class="browser-frame-error-mark"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></div>
+                <h2 data-i18n="这个网站拒绝了内置嵌入">这个网站拒绝了内置嵌入</h2>
+                <p id="browser-frame-error-text" data-i18n="Google 等网站会拦截 iframe 或自动化挑战；页面本身未必不可访问。">Google 等网站会拦截 iframe 或自动化挑战；页面本身未必不可访问。</p>
+                <button class="primary small" id="browser-frame-error-open" type="button"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg><span data-i18n="用系统浏览器继续">用系统浏览器继续</span></button>
               </div>
               <iframe id="browser-frame" class="browser-frame hidden" title="CodeBee 浏览器" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>
             </div>

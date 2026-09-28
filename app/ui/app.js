@@ -21,6 +21,7 @@ const BROWSER_TASK_STORAGE_KEY = "orch.browser.task.v1";
 let browserState = browserLoadState();
 let browserTaskId = "";
 let browserPublishAt = 0;
+let browserFrameWatch = 0;
 
 try { browserTaskId = localStorage.getItem(BROWSER_TASK_STORAGE_KEY) || ""; } catch (e) { browserTaskId = ""; }
 
@@ -73,13 +74,42 @@ function browserLatestRun(task) {
   if (!task) return null;
   if (S.lastRun && S.lastRun.task_id === task.id) return S.lastRun;
   const runs = ((S.state || {}).runs || []).filter((run) => run && run.task_id === task.id);
-  return runs[0] || null;
+  return runs[0] || ((S.state || {}).task_latest || {})[task.id] || null;
 }
 
 function browserStatusLabel(status) {
   const map = { running: "运行中", queued: "排队中", done: "已完成", failed: "失败",
     cancelled: "已取消", timeout: "超时", waiting: "等待中" };
   return t(map[status] || status || "未开始");
+}
+
+function browserRenderHomeTask(task, run, status, verifyPass) {
+  const title = $("browser-home-task-title"), meta = $("browser-home-task-meta");
+  const runLine = $("browser-home-run");
+  if (!title || !meta || !runLine) return;
+  const buttons = {};
+  document.querySelectorAll("[data-browser-home-action]").forEach((button) => {
+    buttons[button.dataset.browserHomeAction] = button;
+  });
+  if (!task) {
+    title.textContent = t("还没有任务");
+    meta.textContent = t("先新建任务，CodeBee 会在这里接管预览、验证与发布动作。");
+    runLine.textContent = t("等待任务进入工作台");
+    Object.values(buttons).forEach((button) => { button.disabled = true; });
+    return;
+  }
+  const type = task.type || task.flow || "";
+  title.textContent = task.title || task.goal || t("未命名任务");
+  meta.textContent = [browserStatusLabel(status), type].filter(Boolean).join(" · ");
+  const verifyText = verifyPass === true ? t("验证通过") :
+    (verifyPass === false ? t("验证未通过") : t("等待验证"));
+  runLine.textContent = run && run.id
+    ? t("运行 #{0} · {1}", String(run.id).slice(0, 8), verifyText)
+    : t("还没有运行记录");
+  if (buttons.preview) buttons.preview.disabled = !run || !run.id;
+  if (buttons.verify) buttons.verify.disabled = !run || !run.id;
+  if (buttons.retry) buttons.retry.disabled = status === "running" || status === "queued";
+  if (buttons.publish) buttons.publish.disabled = !/(serial|novel|小说|连载)/i.test(type);
 }
 
 function browserRenderTaskOptions() {
@@ -114,11 +144,16 @@ function browserRenderTaskContext() {
     verify.innerHTML = '<span>' + esc(t("任务运行后，这里会显示验证证据")) + "</span>";
     publish.innerHTML = '<span>' + esc(t("连载任务完成后，可从这里进入发布工作台")) + "</span>";
     if (actions) actions.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    browserRenderHomeTask(null, null, "", null);
     return null;
   }
   if (actions) actions.querySelectorAll("button").forEach((button) => { button.disabled = false; });
   const latest = ((S.state || {}).task_latest || {})[task.id] || {};
   const status = run && run.status || task.status || latest.status || "";
+  const previewAction = $("browser-action-preview"), detailAction = $("browser-action-detail"), retryAction = $("browser-action-retry");
+  if (previewAction) previewAction.disabled = !run || !run.id;
+  if (detailAction) detailAction.disabled = !run || !run.id;
+  if (retryAction) retryAction.disabled = status === "running" || status === "queued";
   const type = task.type || task.flow || "";
   card.innerHTML = '<div class="browser-task-title">' + esc(task.title || t("未命名任务")) + "</div>" +
     '<div class="browser-task-meta"><span class="browser-task-status">' + esc(browserStatusLabel(status)) +
@@ -140,6 +175,7 @@ function browserRenderTaskContext() {
     const statusText = state.status === "connected" ? "已连接" : (state.status === "busy" ? "操作中" : "未连接");
     return '<div class="browser-publish-platform"><b>' + esc(t(label)) + '</b><span>' + esc(t(statusText)) + "</span></div>";
   }).join("") + "</div>";
+  browserRenderHomeTask(task, run, status, verifyPass);
   return task;
 }
 
@@ -202,6 +238,15 @@ function browserEmbedUrl(url) {
   } catch (e) { return url; }
 }
 
+// CodeBee's query token is a local application credential. It must never be
+// attached to Google, GitHub, publishing platforms, or any other third party.
+function browserUrlAuth(url) {
+  try {
+    const parsed = new URL(url, location.origin);
+    return parsed.origin === location.origin ? urlAuth(url) : url;
+  } catch (e) { return url; }
+}
+
 function browserRenderHint(url) {
   const hint = $("browser-hint");
   if (!hint) return;
@@ -212,7 +257,7 @@ function browserRenderHint(url) {
   try {
     const host = (new URL(url, location.origin).hostname || "").toLowerCase();
     if (host === "google.com" || host.endsWith(".google.com")) {
-      hint.textContent = t("Google 使用兼容嵌入模式；如仍无法显示，可用右上角系统浏览器打开。");
+      hint.textContent = t("Google 可在本机系统浏览器访问；嵌入工作区会被 Google 拒绝，请用右上角系统浏览器打开。");
     } else if (BROWSER_FRAME_BLOCKED_HOSTS.has(host)) {
       hint.textContent = t("此网站禁止嵌入页面；请点击右上角系统浏览器打开。");
     } else {
@@ -221,6 +266,35 @@ function browserRenderHint(url) {
   } catch (e) {
     hint.textContent = t("外部网站可能禁止嵌入；可用右上角系统浏览器打开。");
   }
+}
+
+function browserSetFrameError(show, message) {
+  const frame = $("browser-frame"), error = $("browser-frame-error"), text = $("browser-frame-error-text");
+  if (!frame || !error) return;
+  error.classList.toggle("hidden", !show);
+  frame.classList.toggle("hidden", show);
+  if (text && message) text.textContent = message;
+}
+
+function browserWatchFrame(url) {
+  window.clearTimeout(browserFrameWatch);
+  browserSetFrameError(false);
+  const frame = $("browser-frame");
+  if (!frame || url === BROWSER_HOME) return;
+  browserFrameWatch = window.setTimeout(() => {
+    let host = "";
+    try { host = (new URL(url, location.origin).hostname || "").toLowerCase(); } catch (e) { /* invalid URL was already normalized */ }
+    if (host === "google.com" || host.endsWith(".google.com")) {
+      browserSetFrameError(true, t("Google 可以在本机系统浏览器访问，但会拒绝嵌入 CodeBee 工作区；这不是本地网络问题。"));
+      return;
+    }
+    try {
+      // Cross-origin pages throw here when they loaded successfully. A failed
+      // frame stays at about:blank, which is the useful signal for Google/XFO.
+      const docUrl = frame.contentDocument && frame.contentDocument.URL;
+      if (docUrl === "about:blank") browserSetFrameError(true);
+    } catch (e) { /* loaded cross-origin content; keep it visible */ }
+  }, 2400);
 }
 
 function browserDrawTabs() {
@@ -247,11 +321,17 @@ function browserDraw() {
   const canBack = tab.index > 0, canForward = tab.index < tab.history.length - 1;
   ["browser-back", "browser-forward"].forEach((id, i) => { const b = $(id); if (b) b.disabled = i ? !canForward : !canBack; });
   if (tab.url === BROWSER_HOME) {
+    window.clearTimeout(browserFrameWatch);
+    browserSetFrameError(false);
     if (frame) { frame.classList.add("hidden"); frame.removeAttribute("src"); }
     if (empty) empty.classList.remove("hidden");
   } else {
     if (empty) empty.classList.add("hidden");
-    if (frame) { frame.classList.remove("hidden"); frame.src = urlAuth(browserEmbedUrl(tab.url)); }
+    if (frame) {
+      frame.classList.remove("hidden");
+      frame.src = browserUrlAuth(browserEmbedUrl(tab.url));
+      browserWatchFrame(tab.url);
+    }
   }
   browserRenderHint(tab.url);
   browserSaveState();
@@ -278,8 +358,19 @@ function browserBind() {
   $("browser-reload").addEventListener("click", () => { const f = $("browser-frame"); if (f && !f.classList.contains("hidden")) f.src = f.src; });
   $("browser-home").addEventListener("click", () => browserNavigate(BROWSER_HOME));
   $("browser-new-tab").addEventListener("click", () => { browserState.tabs.push({ id: "tab-" + Date.now(), url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }); browserState.active = browserState.tabs.length - 1; browserDraw(); });
-  $("browser-open-external").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(urlAuth(t0.url), "_blank", "noopener"); });
-  $("browser-open-preview").addEventListener("click", browserOpenPreview);
+  $("browser-open-external").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "_blank", "noopener"); });
+  $("browser-frame-error-open").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "_blank", "noopener"); });
+  $("browser-empty").addEventListener("click", (e) => {
+    const button = e.target.closest("[data-browser-home-action]");
+    if (!button || button.disabled) return;
+    const task = browserCurrentTask(), action = button.dataset.browserHomeAction;
+    if (action === "preview") browserOpenTaskPreview(task);
+    else if (action === "verify") browserOpenTaskRun(task, "result");
+    else if (action === "publish") browserOpenTaskRun(task, "bookmeta");
+    else if (action === "retry") {
+      if (task) retryTask(task.id); else toast(t("请先选择任务"), true);
+    }
+  });
   const taskSelect = $("browser-task-select");
   if (taskSelect) taskSelect.addEventListener("change", () => {
     browserTaskId = taskSelect.value || "";
@@ -4217,6 +4308,8 @@ function renderSideTasks() {
 /* 主视图打开详情面板的公共部分：留在任务树，主栏切到运行/任务详情 */
 function showDetailInMain() {
   S.tab = "runs";
+  const main = document.querySelector("main");
+  if (main) main.classList.remove("browser-page-active");
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-runs"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.remove("active"));
   document.body.classList.remove("settings-mode");
@@ -14550,6 +14643,8 @@ function exitSettings() {
   document.querySelectorAll(".qitem").forEach((b) => b.classList.remove("active"));
   document.querySelectorAll(".rail-btn[data-rail-page]").forEach((b) => b.classList.toggle("active", b.dataset.railPage === "tasks"));
   document.body.classList.remove("settings-mode");
+  const main = document.querySelector("main");
+  if (main) main.classList.remove("browser-page-active");
   syncRailState();
   document.body.classList.remove("files-mode");
   cmpGreeting();   // 回到任务页：问候语刷新
