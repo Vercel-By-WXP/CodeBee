@@ -102,12 +102,30 @@
 <div id="drawer-mask" aria-hidden="true"></div>
 <div id="app">
 
+  <!-- Codex 式一级导航：保留原有侧栏功能，增加一条可快速切换主视图的窄轨道。 -->
+  <nav class="side-rail" aria-label="主导航">
+    <button type="button" class="rail-btn active" title="任务" aria-label="任务" onclick="exitSettings()">
+      <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
+    </button>
+    <button type="button" class="rail-btn" title="运行记录" aria-label="运行记录" onclick="switchTab('runs')">
+      <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
+    </button>
+    <button type="button" class="rail-btn" title="自动化" aria-label="自动化" onclick="switchTab('automation')">
+      <svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>
+    </button>
+    <span class="rail-spacer"></span>
+    <button type="button" class="rail-btn" title="设置" aria-label="设置" onclick="document.getElementById('btn-settings').click()">
+      <svg class="ico" aria-hidden="true"><use href="#i-gear"></use></svg>
+    </button>
+  </nav>
+
   <!-- ================= 侧栏 ================= -->
   <aside id="sidebar">
     <!-- 常规视图：任务树 -->
     <div class="side-main">
       <div class="brand" title="CodeBee · 多智能体编排台" data-i18n-title="CodeBee · 多智能体编排台">
         <span class="brand-name">CodeBee</span>
+        <svg class="ico brand-caret" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
       </div>
       <button id="btn-new-task" class="new-task"><span class="nt-label" data-i18n="＋ 新任务">＋ 新任务</span><span class="kbd" aria-hidden="true">N</span></button>
       <button class="side-search" id="btn-cmdk" title="搜索" data-i18n-title="搜索">
