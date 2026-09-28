@@ -1175,6 +1175,13 @@
           <p class="hint" data-i18n="选择之前导出的备份包，先预览确认再导入。导入会覆盖同名任务与配置；当前数据会先自动备份一份到数据目录 imports/ 下，导入后需重启服务生效。">选择之前导出的备份包，先预览确认再导入。导入会覆盖同名任务与配置；当前数据会先自动备份一份到数据目录 imports/ 下，导入后需重启服务生效。</p>
           <div class="field">
             <div class="input-row">
+              <button class="ghost small" type="button" onclick="listRemoteBackups()" data-i18n="从远程端点拉取备份…">从远程端点拉取备份…</button>
+              <span class="hint" id="bi-remote-msg"></span>
+            </div>
+            <div id="bi-remote-list" class="list"></div>
+          </div>
+          <div class="field">
+            <div class="input-row">
               <input id="bi-path" type="text" placeholder="备份包 zip 路径" data-i18n-ph="备份包 zip 路径">
               <button class="ghost small" type="button" onclick="pickBackupFile()" data-i18n="选择备份包…">选择备份包…</button>
               <button id="bi-inspect" class="ghost small" type="button" onclick="inspectBackup()"><span data-i18n="预览">预览</span></button>
@@ -1367,13 +1374,52 @@
             <button type="button" class="browser-shortcut" data-browser-preview="1"><span class="shortcut-mark preview">P</span><span data-i18n="当前任务预览">当前任务预览</span></button>
           </div>
           <div class="browser-stage">
-            <div class="browser-empty" id="browser-empty">
-              <div class="browser-empty-mark"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg></div>
-              <h2 data-i18n="把网页带进工作流">把网页带进工作流</h2>
-              <p data-i18n="浏览资料、查看成品预览，再把页面内容交给 CodeBee 处理。">浏览资料、查看成品预览，再把页面内容交给 CodeBee 处理。</p>
-              <button class="primary" id="browser-open-preview" type="button"><svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg><span data-i18n="打开当前任务预览">打开当前任务预览</span></button>
+            <aside class="browser-context" id="browser-context" aria-label="CodeBee 工作上下文" data-i18n-aria="CodeBee 工作上下文">
+              <div class="browser-context-head">
+                <span class="browser-context-kicker"><svg class="ico" aria-hidden="true"><use href="#i-baton"></use></svg><span data-i18n="工作上下文">工作上下文</span></span>
+                <span class="browser-context-live"><i></i><span data-i18n="本地">本地</span></span>
+              </div>
+              <div class="browser-context-select">
+                <label for="browser-task-select" data-i18n="当前任务">当前任务</label>
+                <select id="browser-task-select" aria-label="选择当前任务" data-i18n-aria="选择当前任务"></select>
+              </div>
+              <div class="browser-task-card" id="browser-task-card">
+                <div class="browser-task-empty" data-i18n="选择一个任务开始工作">选择一个任务开始工作</div>
+              </div>
+              <div class="browser-context-actions" id="browser-context-actions">
+                <button class="primary small" id="browser-action-preview" type="button"><svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg><span data-i18n="预览成品">预览成品</span></button>
+                <button class="ghost small" id="browser-action-detail" type="button"><svg class="ico" aria-hidden="true"><use href="#i-file-search"></use></svg><span data-i18n="查看详情">查看详情</span></button>
+                <button class="ghost small" id="browser-action-retry" type="button"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="重新运行">重新运行</span></button>
+              </div>
+              <section class="browser-context-section">
+                <div class="browser-context-section-head"><span data-i18n="验证">验证</span><button class="icon-btn" id="browser-action-verify" type="button" title="查看验证结果" aria-label="查看验证结果" data-i18n-title="查看验证结果" data-i18n-aria="查看验证结果"><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button></div>
+                <div id="browser-verify-card" class="browser-verify-card"></div>
+              </section>
+              <section class="browser-context-section browser-publish-section">
+                <div class="browser-context-section-head"><span data-i18n="小说发布">小说发布</span><button class="icon-btn" id="browser-action-publish" type="button" title="打开发布工作台" aria-label="打开发布工作台" data-i18n-title="打开发布工作台" data-i18n-aria="打开发布工作台"><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button></div>
+                <div class="browser-publish-note" data-i18n="发布由 CodeBee 受控浏览器执行，提交前保留人工确认。">发布由 CodeBee 受控浏览器执行，提交前保留人工确认。</div>
+                <div id="browser-publish-card" class="browser-publish-card"></div>
+              </section>
+            </aside>
+            <div class="browser-viewport">
+              <div class="browser-empty" id="browser-empty">
+                <div class="browser-home-dashboard" id="browser-home-dashboard">
+                  <div class="browser-empty-mark"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg></div>
+                  <div class="browser-home-copy">
+                    <span class="browser-home-eyebrow" data-i18n="CodeBee 工作浏览器">CodeBee 工作浏览器</span>
+                    <h2 data-i18n="打开页面，验证结果，继续交付">打开页面，验证结果，继续交付</h2>
+                    <p data-i18n="网页预览、验证证据和发布动作都围绕当前任务展开。">网页预览、验证证据和发布动作都围绕当前任务展开。</p>
+                  </div>
+                  <button class="primary" id="browser-open-preview" type="button"><svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg><span data-i18n="打开当前任务预览">打开当前任务预览</span></button>
+                </div>
+                <div class="browser-home-grid" aria-hidden="true">
+                  <div><svg class="ico"><use href="#i-check"></use></svg><span data-i18n="验证修复">验证修复</span></div>
+                  <div><svg class="ico"><use href="#i-book-open"></use></svg><span data-i18n="准备发布">准备发布</span></div>
+                  <div><svg class="ico"><use href="#i-git-branch"></use></svg><span data-i18n="检查版本">检查版本</span></div>
+                </div>
+              </div>
+              <iframe id="browser-frame" class="browser-frame hidden" title="CodeBee 浏览器" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>
             </div>
-            <iframe id="browser-frame" class="browser-frame hidden" title="CodeBee 浏览器" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>
           </div>
           <div class="browser-foot"><span id="browser-hint" data-i18n="外部网站可能禁止嵌入；可用右上角系统浏览器打开。">外部网站可能禁止嵌入；可用右上角系统浏览器打开。</span><span class="spacer"></span><span id="browser-history-count"></span></div>
         </div>

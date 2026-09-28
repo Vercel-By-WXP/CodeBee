@@ -15,8 +15,14 @@ const S = { state: null, catalog: null, catSig: "", providers: null, bindings: n
 /* ---------------------------------------------------------- 内置浏览器工作区 */
 const BROWSER_STORAGE_KEY = "orch.browser.workspace.v1";
 const BROWSER_HOME = "__codebee_home__";
-const BROWSER_SEARCH = "https://www.google.com/search?q=";
+const BROWSER_SEARCH = "https://www.google.com/search?igu=1&q=";
+const BROWSER_FRAME_BLOCKED_HOSTS = new Set(["github.com", "www.github.com", "x.com", "twitter.com", "www.twitter.com", "linkedin.com", "www.linkedin.com"]);
+const BROWSER_TASK_STORAGE_KEY = "orch.browser.task.v1";
 let browserState = browserLoadState();
+let browserTaskId = "";
+let browserPublishAt = 0;
+
+try { browserTaskId = localStorage.getItem(BROWSER_TASK_STORAGE_KEY) || ""; } catch (e) { browserTaskId = ""; }
 
 function browserLoadState() {
   try {
@@ -45,6 +51,127 @@ function browserSaveState() {
   if (count) count.textContent = t("{0} 个标签页", browserState.tabs.length);
 }
 
+function browserTaskList() {
+  return ((S.state || {}).tasks || []).filter((task) => task && task.id);
+}
+
+function browserTaskForId(id) {
+  return browserTaskList().find((task) => task.id === id) || null;
+}
+
+function browserCurrentTask() {
+  const candidates = [browserTaskId, S.detailTaskKey,
+    S.lastRun && S.lastRun.task_id, S.lastRunTask && S.lastRunTask.id];
+  for (const id of candidates) {
+    const task = id && browserTaskForId(id);
+    if (task) return task;
+  }
+  return browserTaskList()[0] || null;
+}
+
+function browserLatestRun(task) {
+  if (!task) return null;
+  if (S.lastRun && S.lastRun.task_id === task.id) return S.lastRun;
+  const runs = ((S.state || {}).runs || []).filter((run) => run && run.task_id === task.id);
+  return runs[0] || null;
+}
+
+function browserStatusLabel(status) {
+  const map = { running: "运行中", queued: "排队中", done: "已完成", failed: "失败",
+    cancelled: "已取消", timeout: "超时", waiting: "等待中" };
+  return t(map[status] || status || "未开始");
+}
+
+function browserRenderTaskOptions() {
+  const select = $("browser-task-select");
+  if (!select) return null;
+  const tasks = browserTaskList();
+  const current = browserCurrentTask();
+  if (current && !browserTaskId) browserTaskId = current.id;
+  if (!tasks.length) {
+    select.innerHTML = '<option value="">' + esc(t("暂无任务")) + "</option>";
+    select.disabled = true;
+    return null;
+  }
+  select.disabled = false;
+  select.innerHTML = tasks.map((task) => '<option value="' + esc(task.id) + '">' +
+    esc(task.title || task.goal || t("未命名任务")) + "</option>").join("");
+  const chosen = browserTaskForId(browserTaskId) || current || tasks[0];
+  browserTaskId = chosen.id;
+  select.value = browserTaskId;
+  try { localStorage.setItem(BROWSER_TASK_STORAGE_KEY, browserTaskId); } catch (e) { /* memory only */ }
+  return chosen;
+}
+
+function browserRenderTaskContext() {
+  const task = browserRenderTaskOptions();
+  const card = $("browser-task-card"), verify = $("browser-verify-card"), publish = $("browser-publish-card");
+  const actions = $("browser-context-actions");
+  if (!card || !verify || !publish) return task;
+  const run = browserLatestRun(task);
+  if (!task) {
+    card.innerHTML = '<div class="browser-task-empty">' + esc(t("还没有任务；先在左侧新建一个任务")) + "</div>";
+    verify.innerHTML = '<span>' + esc(t("任务运行后，这里会显示验证证据")) + "</span>";
+    publish.innerHTML = '<span>' + esc(t("连载任务完成后，可从这里进入发布工作台")) + "</span>";
+    if (actions) actions.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    return null;
+  }
+  if (actions) actions.querySelectorAll("button").forEach((button) => { button.disabled = false; });
+  const latest = ((S.state || {}).task_latest || {})[task.id] || {};
+  const status = run && run.status || task.status || latest.status || "";
+  const type = task.type || task.flow || "";
+  card.innerHTML = '<div class="browser-task-title">' + esc(task.title || t("未命名任务")) + "</div>" +
+    '<div class="browser-task-meta"><span class="browser-task-status">' + esc(browserStatusLabel(status)) +
+    "</span>" + (type ? '<span>' + esc(type) + "</span>" : "") +
+    (run && run.id ? '<span>#' + esc(String(run.id).slice(0, 8)) + "</span>" : "") + "</div>" +
+    (task.goal ? '<div class="browser-task-goal">' + esc(task.goal) + "</div>" : "");
+  const verdict = (run && run.verdict) || latest.verdict || {};
+  const verifyPass = verdict.verify_pass != null ? verdict.verify_pass :
+    (run && run.verify_pass != null ? run.verify_pass : null);
+  const verifyClass = verifyPass === true ? "ok" : (verifyPass === false ? "bad" : "");
+  const verifyIcon = verifyPass === true ? "i-check" : (verifyPass === false ? "i-x" : "i-gauge");
+  const verifyText = verifyPass === true ? "验证通过" : (verifyPass === false ? "验证未通过" : "等待验证");
+  const command = task.verify_command || "";
+  verify.innerHTML = '<div class="browser-verify-line ' + verifyClass + '"><svg class="ico" aria-hidden="true"><use href="#' + verifyIcon + '"></use></svg><span>' + esc(t(verifyText)) + "</span></div>" +
+    (command ? '<div class="browser-verify-command" title="' + esc(command) + '">' + esc(command) + "</div>" : '<span>' + esc(t("未配置验证命令")) + "</span>");
+  const platforms = ["fanqie", "qimao"], ps = (S.pubState && S.pubState.platforms) || {};
+  publish.innerHTML = '<div class="browser-publish-platforms">' + platforms.map((platform) => {
+    const state = ps[platform] || {}, label = platform === "fanqie" ? "番茄" : "七猫";
+    const statusText = state.status === "connected" ? "已连接" : (state.status === "busy" ? "操作中" : "未连接");
+    return '<div class="browser-publish-platform"><b>' + esc(t(label)) + '</b><span>' + esc(t(statusText)) + "</span></div>";
+  }).join("") + "</div>";
+  return task;
+}
+
+function browserOpenTaskRun(task, tab) {
+  const run = browserLatestRun(task);
+  if (!task || !run || !run.id) { toast(t("当前任务还没有运行记录"), true); return; }
+  showDetailInMain();
+  openRun(run.id, tab || null);
+}
+
+function browserOpenTaskPreview(task) {
+  const run = browserLatestRun(task);
+  if (!run || !run.id) { toast(t("当前任务还没有可预览的成果"), true); return; }
+  api("/api/runs/" + encodeURIComponent(run.id) + "/preview").then((data) => {
+    if (!data || !data.ok || !data.base) throw new Error(t("当前任务没有网页成品"));
+    browserNavigate(data.base + data.entry);
+  }).catch((e) => toast(e.message || String(e), true));
+}
+
+async function browserLoadPublishState(task) {
+  if (!task || Date.now() - browserPublishAt < 5000) return;
+  browserPublishAt = Date.now();
+  try {
+    const state = await api("/api/publish");
+    S.pubState = state;
+    if (task.id) {
+      try { S.pubTaskInfo = await api("/api/publish/task/" + encodeURIComponent(task.id) + "/history"); } catch (e) { /* optional */ }
+    }
+    browserRenderTaskContext();
+  } catch (e) { /* publishing is optional and may not be installed */ }
+}
+
 function normalizeBrowserUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) return BROWSER_HOME;
@@ -60,6 +187,40 @@ function browserActiveTab() { return browserState.tabs[browserState.active] || b
 function browserTitle(url) {
   if (url === BROWSER_HOME) return "CodeBee 浏览器";
   try { return new URL(url, location.origin).hostname.replace(/^www\./, "") || "浏览器"; } catch (e) { return "浏览器"; }
+}
+
+// Google sends X-Frame-Options on its normal entry/search URLs. The documented
+// `igu=1` variant keeps the same Google UI while allowing an embedded workspace
+// to render it; other sites still use the system-browser fallback when they
+// opt out of framing.
+function browserEmbedUrl(url) {
+  try {
+    const parsed = new URL(url, location.origin);
+    const host = (parsed.hostname || "").toLowerCase();
+    if (host === "google.com" || host.endsWith(".google.com")) parsed.searchParams.set("igu", "1");
+    return parsed.toString();
+  } catch (e) { return url; }
+}
+
+function browserRenderHint(url) {
+  const hint = $("browser-hint");
+  if (!hint) return;
+  if (url === BROWSER_HOME) {
+    hint.textContent = t("外部网站可能禁止嵌入；可用右上角系统浏览器打开。");
+    return;
+  }
+  try {
+    const host = (new URL(url, location.origin).hostname || "").toLowerCase();
+    if (host === "google.com" || host.endsWith(".google.com")) {
+      hint.textContent = t("Google 使用兼容嵌入模式；如仍无法显示，可用右上角系统浏览器打开。");
+    } else if (BROWSER_FRAME_BLOCKED_HOSTS.has(host)) {
+      hint.textContent = t("此网站禁止嵌入页面；请点击右上角系统浏览器打开。");
+    } else {
+      hint.textContent = t("外部网站可能禁止嵌入；可用右上角系统浏览器打开。");
+    }
+  } catch (e) {
+    hint.textContent = t("外部网站可能禁止嵌入；可用右上角系统浏览器打开。");
+  }
 }
 
 function browserDrawTabs() {
@@ -79,6 +240,7 @@ function browserDrawTabs() {
 function browserDraw() {
   const tab = browserActiveTab();
   if (!tab) return;
+  browserRenderTaskContext();
   browserDrawTabs();
   const address = $("browser-address"), frame = $("browser-frame"), empty = $("browser-empty");
   if (address) address.value = tab.url === BROWSER_HOME ? "" : tab.url;
@@ -89,8 +251,9 @@ function browserDraw() {
     if (empty) empty.classList.remove("hidden");
   } else {
     if (empty) empty.classList.add("hidden");
-    if (frame) { frame.classList.remove("hidden"); frame.src = urlAuth(tab.url); }
+    if (frame) { frame.classList.remove("hidden"); frame.src = urlAuth(browserEmbedUrl(tab.url)); }
   }
+  browserRenderHint(tab.url);
   browserSaveState();
 }
 
@@ -104,12 +267,7 @@ function browserNavigate(value, replace) {
 }
 
 function browserOpenPreview() {
-  const run = S.lastRun || ((S.state || {}).runs || [])[0];
-  if (!run || !run.id) { toast(t("当前还没有可预览的任务成果"), true); return; }
-  api("/api/runs/" + encodeURIComponent(run.id) + "/preview").then((d) => {
-    if (!d || !d.ok || !d.base) throw new Error(t("当前任务没有网页成品"));
-    browserNavigate(d.base + d.entry);
-  }).catch((e) => toast(e.message || String(e), true));
+  browserOpenTaskPreview(browserCurrentTask());
 }
 
 function browserBind() {
@@ -122,9 +280,28 @@ function browserBind() {
   $("browser-new-tab").addEventListener("click", () => { browserState.tabs.push({ id: "tab-" + Date.now(), url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }); browserState.active = browserState.tabs.length - 1; browserDraw(); });
   $("browser-open-external").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(urlAuth(t0.url), "_blank", "noopener"); });
   $("browser-open-preview").addEventListener("click", browserOpenPreview);
+  const taskSelect = $("browser-task-select");
+  if (taskSelect) taskSelect.addEventListener("change", () => {
+    browserTaskId = taskSelect.value || "";
+    try { localStorage.setItem(BROWSER_TASK_STORAGE_KEY, browserTaskId); } catch (e) { /* memory only */ }
+    browserRenderTaskContext();
+    browserLoadPublishState(browserCurrentTask());
+  });
+  $("browser-action-preview").addEventListener("click", () => browserOpenTaskPreview(browserCurrentTask()));
+  $("browser-action-detail").addEventListener("click", () => browserOpenTaskRun(browserCurrentTask()));
+  $("browser-action-retry").addEventListener("click", () => {
+    const task = browserCurrentTask();
+    if (task) retryTask(task.id); else toast(t("请先选择任务"), true);
+  });
+  $("browser-action-verify").addEventListener("click", () => browserOpenTaskRun(browserCurrentTask(), "result"));
+  $("browser-action-publish").addEventListener("click", () => {
+    const task = browserCurrentTask();
+    if (task) browserOpenTaskRun(task, "bookmeta"); else toast(t("请先选择任务"), true);
+  });
   $("browser-shortcuts").addEventListener("click", (e) => { const b = e.target.closest("[data-browser-url], [data-browser-preview]"); if (!b) return; if (b.dataset.browserPreview) browserOpenPreview(); else browserNavigate(b.dataset.browserUrl); });
   $("browser-tabs").addEventListener("click", (e) => { const close = e.target.closest(".browser-tab-close"), tab = e.target.closest(".browser-tab"); if (!tab) return; const i = browserState.tabs.findIndex((x) => x.id === tab.dataset.browserTab); if (close && browserState.tabs.length > 1) { browserState.tabs.splice(i, 1); browserState.active = Math.min(browserState.active, browserState.tabs.length - 1); } else if (!close && i >= 0) browserState.active = i; browserDraw(); });
   browserDraw();
+  browserLoadPublishState(browserCurrentTask());
 }
 
 /* ---------------------------------------------------------- 任务类型（流程） */
@@ -1215,6 +1392,10 @@ function applyState(d) {
   $("conn").className = "conn ok";
   restoreInspector();   // 刷新后恢复上次打开的检查器（只在已开时为空操作）
   ovMaybeRefresh();     // 停在概览页时：概览语与最近运行跟着这次状态一起刷新
+  if (S.tab === "browser") {
+    browserRenderTaskContext();
+    browserLoadPublishState(browserCurrentTask());
+  }
 }
 
 /* ---------------------------------------------------------- 供应商健康告警横幅 */
@@ -4039,6 +4220,8 @@ function showDetailInMain() {
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-runs"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.remove("active"));
   document.body.classList.remove("settings-mode");
+  syncRailState();
+  syncInspBtn();
   renderPageCrumb();
   collapseDrawerIfMobile();
   syncInspectorVis();    // 从设置子页点进运行详情：任务上下文，检查器跟着回来
@@ -4108,6 +4291,7 @@ window.sideOpenTask = function (key) {
   rdTabReset();
   if (!S.histJump && typeof histPush === "function") histPush({ m: "main", tab: "run-detail" });
   showDetailInMain();
+  syncInspBtn();
   $("run-detail").classList.remove("hidden");
   document.querySelector("#sub-runs .panel:first-child").classList.add("hidden");
   detailSideReset();     // 换详情目标：任务级 side 缓存作废，等首拉
@@ -4602,6 +4786,7 @@ async function openRun(id, pinTab) {
   rdTabReset(pinTab || null);   // sideOpenRun 带步骤号时钉住步骤分区
   document.querySelector("#sub-runs .panel:first-child").classList.add("hidden");
   $("run-detail").classList.remove("hidden");
+  syncInspBtn();
   detailSideReset();     // 换详情目标：任务级 side 缓存作废，等首拉
   syncInspectorVis();    // 详情已铺开：检查器让位（选中保留，返回列表自动滑回）
   renderRunDetail();
@@ -4617,6 +4802,7 @@ function closeRun() {
   stopHiveTick();
   detailSideReset();
   $("run-detail").classList.add("hidden");
+  syncInspBtn();
   renderChatNav();   // 解除 main.chat-fill（对话为主的固定高度），恢复外层滚动
   if (document.body.classList.contains("settings-mode") || S.mainPage === "runs") {
     // 回运行列表：设置导航里点进来的，或主栏本就停在运行记录页（快捷导航/概览的入口）
@@ -6032,9 +6218,25 @@ window.closeInspector = function () {
 function syncInspBtn() {
   const b = $("btn-insp");
   if (!b) return;
+  const detailOpen = !!($("run-detail") && !$("run-detail").classList.contains("hidden"));
+  const inTaskWorkspace = !document.body.classList.contains("settings-mode") && !S.mainPage && !detailOpen;
+  b.classList.toggle("hidden", !inTaskWorkspace);
   const tip = document.body.classList.contains("inspector-open") ? t("收起任务详情") : t("打开任务详情");
   b.title = tip;
   b.setAttribute("aria-label", tip);
+}
+
+function syncRailState() {
+  const buttons = Array.from(document.querySelectorAll(".side-rail .rail-btn"));
+  buttons.forEach((b) => b.classList.remove("active"));
+  if (!buttons.length) return;
+  if (document.body.classList.contains("settings-mode")) {
+    buttons[buttons.length - 1].classList.add("active");
+    return;
+  }
+  const page = S.mainPage || S.tab;
+  const index = page === "runs" ? 1 : page === "automation" ? 2 : page === "browser" ? 3 : 0;
+  (buttons[index] || buttons[0]).classList.add("active");
 }
 
 /* 手动开合检查器。没选中过任务时兜底拿最近一个跑过的（树序即最新在前），
@@ -6054,6 +6256,7 @@ window.toggleInspector = function () {
 function syncInspectorVis() {
   const insp = $("inspector");
   if (!insp) return;
+  syncInspBtn();
   // 兜底只认「run 记录全部没了」（清理/删除）：排空档不动已开着的检查器，
   // 否则自动续跑的 run 间隙（done→queued→running）会闪关
   const runsGone = S.state && S.inspKey && !((S.state.task_latest || {})[S.inspKey]);
@@ -10481,6 +10684,7 @@ function autoPrefTags(tsk) {
     out.push(t("对话模型") + t("：") + (p ? (p.name || p.id) : tsk.direct_provider_id) +
       "/" + (tsk.direct_model || t("随厂商推荐")));
   }
+  out.push(tsk.fresh_chat ? t("每次新聊天") : t("延续上轮"));
   return out.map((s) => '<span class="tag">' + esc(s) + "</span>").join("");
 }
 
@@ -10571,6 +10775,10 @@ async function autoForm(task, tpl) {
     '<div class="field"><label>' + t("思考程度") + "</label>" +
       autoPillHtml("au-thinking", AUTO_THINKINGS, thinking) + "</div>" +
     "</div>" +
+    /* 会话延续：默认延续上一轮（巡检/盯梢类任务能感知上次进展）；打开则每次全新 */
+    '<div class="field"><label class="toggle"><input id="au-fresh" type="checkbox"' +
+      (f.fresh_chat ? " checked" : "") + '> <span>' + t("每次运行时都开启新聊天") + "</span></label>" +
+      '<p class="hint">' + t("默认关闭：到点运行延续同一任务上一轮的会话与成果（知道上次干到哪）；打开则每次从零开始。") + "</p></div>" +
     '<div id="au-model-field" class="field hidden"><label>' + t("对话模型（可选）") + '</label><div class="grid-2">' +
       '<select id="au-direct-provider" aria-label="' + t("对话厂商") + '"></select>' +
       '<select id="au-direct-model-name" aria-label="' + t("对话模型") + '"></select>' +
@@ -10583,7 +10791,7 @@ async function autoForm(task, tpl) {
     '<div class="field au-fld hidden" data-k="weekday"><label>' + t("星期几") + '</label><select id="au-weekday">' + wdOpts + "</select></div>" +
     '<div class="field au-fld hidden" data-k="runat"><label>' + t("执行时间") + '</label><input id="au-runat" type="datetime-local" value="' + esc(runAt) + '"></div>' +
     "</div>" +
-    '<p class="hint">' + t("首次到点创建任务，后续复用同一任务上下文；错过的一次性任务不补跑。") + "</p>" +
+    '<p class="hint">' + t("首次到点创建任务，后续到点重复触发同一任务；错过的一次性任务不补跑。") + "</p>" +
     "</div>";
   openModal(task ? t("编辑定时任务") : t("新建定时任务"), body, "");
   const foot = $("modal-foot");
@@ -10686,6 +10894,7 @@ async function saveAutoForm(id) {
   // 运行偏好：与 Composer 同名字段，后端 _apply_run_prefs 再归一一次
   payload.mode = $("au-mode") ? $("au-mode").value : "";
   payload.thinking = $("au-thinking") ? $("au-thinking").value : "";
+  payload.fresh_chat = !!(($("au-fresh") || {}).checked);
   if (!$("au-model-field") || !$("au-model-field").classList.contains("hidden")) {
     payload.direct_provider_id = $("au-direct-provider") ? $("au-direct-provider").value : "";
     payload.direct_model = $("au-direct-model-name") ? $("au-direct-model-name").value : "";
@@ -14121,6 +14330,33 @@ function fillBackupRemote() {
   set("bk-remote-pass", "backup_remote_pass");
 }
 
+/* 远程备份拉取恢复：列端点上的备份包 → 点「拉取」→ 落 imports/ →
+ * 自动回填路径并触发既有导入预览向导 */
+async function listRemoteBackups() {
+  const msg = $("bi-remote-msg"), box = $("bi-remote-list");
+  if (msg) msg.textContent = t("列举中…");
+  let files;
+  try { files = (await api("/api/data/remote-list", { method: "POST", timeout: 150000 })).files || []; }
+  catch (e) { if (msg) msg.textContent = e.message; return; }
+  if (msg) msg.textContent = files.length ? "" : t("端点上没有备份包");
+  if (box) box.innerHTML = files.map((f) =>
+    '<div class="item"><div class="t"><span class="name">' + esc(f) + "</span>" +
+    '<button class="ghost small" onclick="pullRemoteBackup(\'' + esc(f) + '\')">' + t("拉取") + "</button></div></div>").join("");
+}
+
+async function pullRemoteBackup(name) {
+  const msg = $("bi-remote-msg");
+  if (msg) msg.textContent = t("拉取中（包大时需数分钟）…");
+  let p;
+  try { p = (await api("/api/data/remote-pull", { method: "POST", timeout: 600000,
+    body: JSON.stringify({ name }) })).path; }
+  catch (e) { if (msg) msg.textContent = e.message; return; }
+  if (msg) msg.textContent = t("已拉取到本地");
+  const inp = $("bi-path");
+  if (inp) inp.value = p;
+  if (typeof inspectBackup === "function") inspectBackup();   // 直接进预览向导
+}
+
 /* 通用「复制到剪贴板」：data-copy 属性携带文本（导出路径等） */
 window.copyText = async function (btn) {
   const text = btn.getAttribute("data-copy") || "";
@@ -14270,6 +14506,9 @@ function switchTab(name, shell) {
   S.mainPage = inMain ? name : "";   // 主栏停在哪个全局页；closeRun 靠它回到点开详情前那一页
   if (settingsNavSubs().has(name)) localStorage.setItem("orch.setTab", name);
   document.body.classList.toggle("settings-mode", !inMain);
+  const main = document.querySelector("main");
+  if (main) main.classList.toggle("browser-page-active", name === "browser");
+  syncRailState();
   document.body.classList.remove("files-mode");   // 文件浏览页与两套导航都互斥，别叠在左栏
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-settings"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", !inMain && b.dataset.sub === name));
@@ -14311,6 +14550,7 @@ function exitSettings() {
   document.querySelectorAll(".qitem").forEach((b) => b.classList.remove("active"));
   document.querySelectorAll(".rail-btn[data-rail-page]").forEach((b) => b.classList.toggle("active", b.dataset.railPage === "tasks"));
   document.body.classList.remove("settings-mode");
+  syncRailState();
   document.body.classList.remove("files-mode");
   cmpGreeting();   // 回到任务页：问候语刷新
   renderPageCrumb();
