@@ -62,7 +62,10 @@ _SYSTEM_PROMPT = """你是 CodeBee 的内置执行智能体，直接完成用户
 - Windows 上需要管理员权限的命令（flushdns、winsock reset、防火墙、系统服务等），用 powershell -Command "Start-Process <程序> -ArgumentList '<参数>' -Verb RunAs -Wait" 触发 UAC——用户屏幕会弹窗，点允许即提权执行；提权进程的输出拿不到，之后要用普通命令复核效果。macOS/Linux 用 sudo 并在输出里提示用户输密码不可行时改写临时脚本让用户跑。
 - 避免跑长驻/交互式命令（ping -t、top、要按键应答的安装器），它们会拖满超时被强杀。
 - 产出文件一律 UTF-8 编码。
-- 回答用户的语言与用户一致（默认中文）。直接给结论和内容，不要输出任何机器标记或协议行。"""
+- 回答用户的语言与用户一致（默认中文）。直接给结论和内容，不要输出任何机器标记或协议行。
+- 核心产出完成后立即停止探索并总结；不要为“再确认一次”重复读取或重复写入。
+- 每次工具调用后都要判断是否已经达到目标；如果工具轮次即将耗尽，先完成已开始的操作，随后直接给出已完成内容、产出文件和未完成项。
+"""
 
 
 def resolve(provider_id="", model="", difficulty="default"):
@@ -1443,7 +1446,8 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                             # 流式体单独构造（+stream / include_usage）；非流式体留给回落重发
                             _, _, sbody = _build_request(
                                 proto, pbase, kk["key"], model, system, msgs,
-                                tools_ok, stream=True, max_tokens=max_tokens)
+                                allow_tools, stream=True, max_tokens=max_tokens,
+                                extra_specs=[CREATE_TASK_SPEC] if task_creator else None)
                         effort = str(bi.get("reasoning_effort") or "").strip().lower()
                         # reasoning_effort 是 OpenAI wire 字段；Anthropic thinking 使用
                         # 另一套对象结构，向兼容网关硬塞该字段会直接得到 400。
@@ -1537,7 +1541,27 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         break
                     if not got:
                         continue                 # 本 KEY 失败，换下一个
+                    if calls and force_finalize:
+                        # 收尾请求明确禁用工具；模型若仍返回 tool call，不能再
+                        # 开启新一轮，否则会绕过止损边界。
+                        last_err = "收尾时模型仍请求工具"
+                        last_action_was_tools = False
+                        done = True
+                        break
                     if calls:
+                        sig = json.dumps(
+                            [(c.get("name"), c.get("args") or {}) for c in calls],
+                            ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                        if sig == repeat_tool_signature:
+                            repeat_tool_streak += 1
+                        else:
+                            repeat_tool_signature = sig
+                            repeat_tool_streak = 1
+                        if repeat_tool_streak >= 3:
+                            repeat_stop = True
+                            if log:
+                                log("[迭代 %d] 检测到同一工具调用连续重复，转入收尾" % it)
+                            _fire(on_activity, "检测到重复工具调用，正在收尾")
                         if log:
                             log("[迭代 %d] %s 请求工具: %s" % (
                                 it, model, ", ".join(c["name"] for c in calls)))
@@ -1545,7 +1569,7 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         results = []
                         for c in calls:
                             out = _exec_tool(workdir, c["name"], c["args"], cancel_event,
-                                             deadline=deadline)
+                                             deadline=deadline, task_creator=task_creator)
                             if log:
                                 brief = out if len(out) <= 120 else out[:120] + "…"
                                 log("[工具] %s → %s" % (c["name"], brief.replace("\n", " ⏎ ")))
@@ -1556,6 +1580,7 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         msgs.append({"role": "assistant", "content": text, "tool_calls": calls})
                         msgs.append({"role": "tool_results", "tool_results": results})
                         empty_streak = 0
+                        last_action_was_tools = True
                         done = True
                         break
                     if (text or "").strip():

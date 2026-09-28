@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, attachments, branching, catalog, chaptersafe, defectretro, dispatch_log, flows, history, hooks, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, registry, router, runner, skills, store, task_compile, usage, volumes
+from . import aiflavor, attachments, branching, catalog, chaptersafe, defectretro, dispatch_log, flows, history, hooks, jobs, knowledge, manager, modelhub, mocks, paihang, planner, registry, router, runner, skills, store, task_compile, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -2280,7 +2280,6 @@ NOVEL_CRITIQUE_PROMPT = """你是严格的评审（不要使用任何工具、�
   "summary": "一句话总评"
 }
 每个维度打 1-10 分（可为小数），宁严勿宽。major 问题必须给 quote（系统会逐条校验引文是否真在稿件中——编造的引文会被降档标记）。
-评审必须逐项回答：叙述语域与视角是否统一；复杂情感是否有动作、五感或生理细节；开篇是否在前 600 字进入具体冲突；本章是否发生局面变化；是否存在可删的重复铺垫或长段解释。
 
 ## 待评审稿件
 ---
@@ -2463,10 +2462,6 @@ def _ensure_critique_placeholders(tpl):
     """自定义评审模板缺占位符时补上，避免稿件内容/维度定义丢失导致盲评。"""
     if "__MANUSCRIPT__" not in tpl:
         tpl += "\n\n## 待评审稿件\n---\n__MANUSCRIPT__\n---"
-    elif "## 待评审稿件" not in tpl:
-        # 自定义模板可能只放占位符、不提供标题；统一补锚点，保证经验库、
-        # 故事圣经和确定性文本信号仍能插到稿件正文之前。
-        tpl = tpl.replace("__MANUSCRIPT__", "## 待评审稿件\n---\n__MANUSCRIPT__\n---", 1)
     if "__DIMKEYS__" not in tpl:
         tpl = ("请按维度打分（1-10 分）。\n\n" + tpl)
     return tpl
@@ -2491,7 +2486,6 @@ __VOLUME__
 - 章节标题：__TITLE__
 - 剧情要点：__BEATS__
 - 章末钩子：__HOOK__
-- 本章爽点/情绪爆点：__HIGHLIGHT__（必须按特写镜头写厚：铺垫在前、放大在中、余波在后，用动作/五感/生理反应/环境反馈呈现，禁止一句话带过）
 - 正文约 __WORDS__ 字，中文，直接开写正文（可含本章标题行）。
 
 ## 前情提要（此前各章结尾摘录，衔接用）
@@ -2499,12 +2493,6 @@ __PREV__
 
 ## 资源账本（道具/伤情/承诺/伏笔的现状登记，写本章前必须核对）
 __LEDGER__
-
-## 全书文风锚（本章必须遵守；与前文各章保持同一笔调）
-__STYLE__
-
-## 签约质量门禁
-__QUALITY_GATE__
 
 - 写完文件后，最终回复只输出一行：`第 __I__ 章完成（约 __WORDS__ 字）`——不要在回复里复述或解释正文。"""
 
@@ -2515,25 +2503,11 @@ __GOAL__
 
 ## 本卷上下文
 __VOLUME__
-## 本章按大纲应完成
-__BEATS__
-（本章爽点/情绪爆点：__HIGHLIGHT__）
-
 ## 本章评审意见
 __CRITIQUE__
 
-## 全书文风锚（修订后必须仍符合本锚，与前文各章同一笔调）
-__STYLE__
-
-## 签约返修原则
-- 统一叙述语域、句式和视角距离，不在白描、半文半白和网络梗之间跳变。
-- 复杂情感必须落到动作、五感、生理反应和对话潜台词，禁止只写“很伤心/很愤怒”。
-- 爽点/情绪爆点按特写镜头写厚：铺垫在前、放大在中、余波在后，禁止一句话带过。
-- 删除不改变局面的环境、解释和重复叙述；每段至少完成冲突、信息或人物选择之一。
-- 让主角主动做出选择并推动下一步，补足因果桥，不用旁白硬推剧情。
-
 ## 要求
-- 针对性解决所有 major 问题（含确定性文本信号指出的问题），保持与前后的剧情衔接；字数仍约 __WORDS__ 字。"""
+- 针对性解决所有 major 问题，保持与前后的剧情衔接；字数仍约 __WORDS__ 字。"""
 
 SERIAL_GLOBAL_PROMPT = """你是网文主编（不要修改任何文件）。全书各章已完稿，请从**全书整体**视角评审。
 请输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
@@ -2542,33 +2516,13 @@ SERIAL_GLOBAL_PROMPT = """你是网文主编（不要修改任何文件）。全
   "issues": [{"dim": "维度名", "severity": "major|minor", "note": "具体问题（指明哪一章）", "quote": "支撑该问题的稿件原文连续片段（≥8字，逐字摘录不许改写）"}],
   "summary": "一句话总评：是否达到可签约水平"
 }
-每个维度打 1-10 分，宁严勿宽。重点关注：主线一致性、人物弧光、开篇吸引力、文风统一、情感细腻度、情节推进与节奏控制。
-若是前 3 章，必须核对黄金一章/黄金三章的切入速度；若发现拖沓、硬推或情绪概括，给出可定位的 major 问题与原文引文。
+每个维度打 1-10 分，宁严勿宽。重点关注：主线一致性、人物弧光、节奏、爽点密度、完本感。
 major 问题必须给 quote（系统会逐条校验引文是否真在稿件中——编造的引文会被降档标记）。
 
 ## 全书目标
 __GOAL__
 
 ## 全文
----
-__MANUSCRIPT__
----"""
-
-# 独立签约评估（开篇闸门 + 2万字检查点共用）：评分维度保持作者任务口径，
-# 平台五维在这里按平台真实尺度单独核——驳回模板的高频话术逐条要判定。
-SERIAL_SIGNING_EVAL_PROMPT = """你是签约评估编辑（不要修改任何文件）。请按免费阅读平台（番茄/七猫）签约评估的口径评审下面的稿件__NOTE__。
-请输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{
-  "scores": {"__DIMKEYS__"},
-  "issues": [{"dim": "维度名", "severity": "major|minor", "note": "具体问题（指明哪一章）", "quote": "支撑该问题的稿件原文连续片段（≥8字，逐字摘录不许改写）"}],
-  "summary": "一句话总评：是否达到可申请签约评估的水平"
-}
-每个维度打 1-10 分（可为小数），按平台真实尺度从严。五个维度固定为：开篇吸引力、情节推进、文风统一、情感细腻度、节奏控制。
-驳回模板的高频话术——文风在风格上不统一（语域/句式跳变）、
-复杂情感描绘不够细腻（情绪概括无动作细节）、开篇切入点缺乏足够的吸引力（黄金一章未兑现）、情节的推动生硬（因果桥缺失/旁白硬推）、
-行文拖沓节奏缓慢（重复铺垫、与主线无关的描写）——每一条都要给出明确判定与证据。
-
-## 待评审稿件
 ---
 __MANUSCRIPT__
 ---"""
@@ -2802,10 +2756,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     serial = task.get("serial") or {}
     n = int(serial.get("chapters") or 8)
     wpc = int(serial.get("words_per_chapter") or 2500)
-    # 保留既有任务/流程的评分维度，避免历史任务和外部评审桩因维度漂移失效；
-    # 签约专项维度作为额外硬性检查注入提示词与报告证据。
     dims = task.get("rubric") or DEFAULT_RUBRIC
-    signing_dims = novel_quality.rubric_for({"type": "serial_novel"})
     threshold = task.get("threshold", 7.0)
     threshold_ch = threshold - 0.5 if threshold >= 7.5 else threshold   # 单章阈值略放宽 0.5 分
     dimkey = ", ".join('"%s": 0' % d for d in dims)
@@ -2827,16 +2778,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         bible = task["context"] + ("\n\n" + bible if bible else "")
 
 
-    def crit_prompt_for(text, note="", event_check="", chapter=None):
+    def crit_prompt_for(text, note="", event_check=""):
         tpl = _ensure_critique_placeholders(
             _tpl(task, "critique_prompt", NOVEL_CRITIQUE_PROMPT))
         if note:
             tpl = tpl.replace("你是严格的评审",
                               "你是严格的评审（背景：%s，请结合全书目标评审本章节）" % note, 1)
-        tpl = tpl.replace("## 待评审稿件",
-                          "## 签约专项检查维度\n" + "、".join(signing_dims) +
-                          "\n请在 issues 中指出这些专项问题的具体证据；它们是评分解释层，"
-                          "不替换用户已有评分维度。\n\n## 待评审稿件", 1)
         if event_check:
             # 逐项目标审稿（借鉴 AI-Novel-Writer v1.1）：本章大纲要点逐项核对
             tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % event_check, 1)
@@ -2852,23 +2799,6 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         # 确定性检测（AI 味/叙事架构/节奏）此前只挂在单稿件评审上，连载逐章
         # 从未拿到——逐章节奏与钩子恰恰最需要这条参考线（命中才追加，不扣分）
         tpl = aiflavor.inject_into_prompt(tpl, text, task.get("type"))
-        signal = novel_quality.signal_summary(text, chapter=chapter)
-        signal_block = novel_quality.format_signal_summary(signal)
-        if signal_block:
-            tpl = tpl.replace("## 待评审稿件", "## 确定性文本信号\n" + signal_block + "\n\n## 待评审稿件", 1)
-        if style_block:
-            tpl = tpl.replace("## 待评审稿件", style_block + "\n## 待评审稿件", 1)
-        # 跨章风格指纹：本章与此前各章的确定性指标（句长/对白占比/情绪动作密度）
-        # 中位基线比对，漂移超阈时点名——「文风统一」不靠评审模型自觉
-        base_sigs = [cs.get("quality_signals") for cs in chapter_scores
-                     if isinstance(cs, dict) and isinstance(cs.get("quality_signals"), dict)]
-        if base_sigs:
-            drift = novel_quality.style_deviation_notes(base_sigs, signal)
-            if drift:
-                tpl = tpl.replace(
-                    "## 待评审稿件",
-                    "## 风格指纹核查（确定性证据，请计入文风统一）\n- "
-                    + "\n- ".join(drift) + "\n\n## 待评审稿件", 1)
         return tpl.replace("__DIMKEYS__", dimkey).replace(
             "__MANUSCRIPT__", text or "（稿件为空！）")
 
@@ -2923,30 +2853,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                               outline.get("source", "?"),
                               outline.get("book_title") or task["title"], n),
                           duration_s=0.1 if impl.get("mode") == "mock" else None)
-    # 全书文风锚：续写批次模型没回锚点时回查前批大纲兜底，再渲染成注入块。
-    # 起草/修订模板用占位版本（永远有内容），评审面只在真有锚时注入。
-    if not outline.get("style_anchor") and start > 1:
-        try:
-            _prev_anchor = planner.prev_style_anchor(task)
-            if _prev_anchor:
-                outline["style_anchor"] = _prev_anchor
-        except Exception:
-            pass
     store.update_run(run_id, outline=outline)
     _check_cancel(ev)
     end = start + n - 1   # 本批最后一章的全书章号（全局评审与合并成书覆盖 1..end）
-
-    def render_outline_txt():
-        return "\n".join(
-            "第 %d 章《%s》：%s%s%s" % (start + k, c["title"], c["beats"],
-                                       ("（章末钩子：%s）" % c.get("hook")) if c.get("hook") else "",
-                                       ("（爆点：%s）" % c["highlight"]) if c.get("highlight") else "")
-            for k, c in enumerate(outline["chapters"]))
-
-    outline_txt = render_outline_txt()
-    style_block = novel_quality.style_anchor_block(outline.get("style_anchor"))
-    style_tpl = style_block or ("（大纲未指定文风锚：延续前文章节的叙述视角、句长与语域，"
-                                "全批保持同一笔调）\n")
+    outline_txt = "\n".join(
+        "第 %d 章《%s》：%s%s" % (start + k, c["title"], c["beats"],
+                                ("（章末钩子：%s）" % c.get("hook")) if c.get("hook") else "")
+        for k, c in enumerate(outline["chapters"]))
 
     # 分卷规划表（本书级、由章号确定性推导）：覆盖到本批末章即可。写成
     # 全书顶层字段，UI/报告/发布页直接读，不必重算。
@@ -2979,56 +2892,6 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     chapter_scores = []          # [{chapter,title,means,passed,rounds,words}]
     issues_all = []
 
-    # ---- 独立签约评估设施（开篇闸门 + 2万字检查点共用）----
-    def _signing_eval(upto_chapter, note):
-        """按平台五维对截至 upto_chapter 的稿件做一次签约评估。
-        与任务 rubric 解耦（评分维度保持作者口径，签约五维是解释层/平台口径）。
-        返回 (means, issues, summary)；评估失败返回 (None, [], "")——调用方
-        按「未评估」处理，绝不得当 0 分。issues 同时并入 issues_all 供打磨用。"""
-        texts, acc = [], 0
-        for j in range(start, upto_chapter + 1):
-            t = _read_chapter(workdir, j)
-            if not t:
-                continue
-            texts.append("### 第 %d 章\n\n%s" % (j, t.strip()))
-            acc += _wc(t)
-            if acc >= novel_quality.SIGNING_CHECKPOINT_WORDS * 1.2:
-                break
-        if not texts:
-            return None, [], ""
-        signing_dimkey = ", ".join('"%s": 0' % d for d in novel_quality.SIGNING_RUBRIC)
-        prompt = (SERIAL_SIGNING_EVAL_PROMPT
-                  .replace("__DIMKEYS__", signing_dimkey)
-                  .replace("__NOTE__", note or "")
-                  .replace("__MANUSCRIPT__", "\n\n".join(texts)[:26000]))
-        agent = critics[0] if critics else impl
-        res = _run_step(run_id, "signing-eval", modelhub.bind_agent(agent, difficulty),
-                        prompt, workdir, readonly=True, ev=ev, timeout=2400,
-                        note=("签约评估 %s" % (note or "")).strip())
-        cj = _critique_json(res, novel_quality.SIGNING_RUBRIC)
-        scores = cj.get("scores") or {}
-        means = {}
-        for d in novel_quality.SIGNING_RUBRIC:
-            try:
-                means[d] = float(scores[d])
-            except (KeyError, TypeError, ValueError):
-                pass
-        if not means:
-            return None, [], ""
-        issues = (cj.get("issues") or [])[:6]
-        issues_all.extend({"chapter": upto_chapter, **it} for it in issues)
-        return means, issues, str(cj.get("summary") or "")
-
-    def _signing_record(kind, payload):
-        """签约评估结果入 run（signing_evals.<kind>），审计与 UI 证据。"""
-        try:
-            latest = store.get_run(run_id) or {}
-            evals = dict(latest.get("signing_evals") or {})
-            evals[kind] = payload
-            store.update_run(run_id, signing_evals=evals)
-        except Exception:
-            pass
-
     # ---- 2) 逐章
     for k in range(1, n + 1):
         i = start + k - 1        # 全书章号：文件名/步骤角色/评分记录都按全书编号
@@ -3051,22 +2914,17 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         # 逐项目标审稿（借鉴 AI-Novel-Writer）：本章大纲要点随评审下发，评审
         # 以 <event_check> 回逐项判定；资源账本（借鉴角色资源账本）以 <ledger>
         # 回本章道具/伤情/承诺/伏笔增量，评审达标后追加账本文件供下章注入。
-        def build_event_block(ch_ent):
-            return (
-                "## 本章大纲核对（逐项目标审稿）\n"
-                "本章按大纲应完成：\n- 剧情要点：%s\n- 章末钩子：%s\n- 爽点/情绪爆点：%s\n"
-                "评审时逐项判定「已完成 / 未完成 / 待核实」，判定必须引用正文证据"
-                "（原文短句或位置），写在回复末尾的 <event_check> 块内（每项一行）。"
-                "「铺垫了但没发生」不算已完成；爆点一句带过（未按特写写厚）不算已完成；"
-                "未完成的项必须反映到对应维度评分。\n"
-                "另在 <event_check> 块之后输出 <ledger> 块（没有新变化就整个省略）："
-                "逐行列出本章新出现或状态变化的 道具/伤情/承诺/伏笔，格式："
-                "类型|名称|现状（一句话）。\n%s\n"
-                % (ch_ent.get("beats") or "按大纲推进", ch_ent.get("hook") or "留下悬念",
-                   ch_ent.get("highlight") or "（大纲未指定，按剧情要点核对是否有一处小冲突/小反转写厚）",
-                   vol_review_block))
-
-        event_block = build_event_block(ch)
+        event_block = (
+            "## 本章大纲核对（逐项目标审稿）\n"
+            "本章按大纲应完成：\n- 剧情要点：%s\n- 章末钩子：%s\n"
+            "评审时逐项判定「已完成 / 未完成 / 待核实」，判定必须引用正文证据"
+            "（原文短句或位置），写在回复末尾的 <event_check> 块内（每项一行）。"
+            "「铺垫了但没发生」不算已完成；未完成的项必须反映到对应维度评分。\n"
+            "另在 <event_check> 块之后输出 <ledger> 块（没有新变化就整个省略）："
+            "逐行列出本章新出现或状态变化的 道具/伤情/承诺/伏笔，格式："
+            "类型|名称|现状（一句话）。\n%s\n"
+            % (ch.get("beats") or "按大纲推进", ch.get("hook") or "留下悬念",
+               vol_review_block))
         ev_check_lines = [[]]     # 每章重置：第一份非空评审的逐项判定
         ledger_lines = []         # 本章全部评审的账本增量并集
         ledger_txt = _read_ledger(workdir)   # 截至上一章的资源账本（起草注入）
@@ -3164,7 +3022,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                         "｜你的专属评审视角：%s（其他评审会覆盖其余视角，"
                                         "请深挖你的镜头，但所有维度仍需打分）" % lens)
                                     if lens else "",
-                                    event_check=event_check, chapter=i) + note_extra,
+                                    event_check=event_check) + note_extra,
                                 workdir, readonly=True, ev=ev,
                                 resume=sids.get(agent["id"]))
                 results[idx] = {
@@ -3216,7 +3074,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                     crit_prompt_for(
                                         text,
                                         note="小说第 %d 章" % i,
-                                        event_check=event_check, chapter=i) + note_extra,
+                                        event_check=event_check) + note_extra,
                                     workdir, readonly=True, ev=ev)
                     cj = runner.extract_json(res.get("text") or "")
                     if isinstance(cj, dict) and isinstance(cj.get("scores"), dict) \
@@ -3307,9 +3165,6 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         .replace("__TITLE__", ch["title"])
                         .replace("__BEATS__", branch_beats or ch["beats"] or "按大纲推进")
                         .replace("__HOOK__", branch_hook or ch.get("hook") or "留下悬念")
-                        .replace("__HIGHLIGHT__", ch.get("highlight") or "按剧情要点自然铺设一处小冲突/小反转")
-                        .replace("__STYLE__", style_tpl)
-                        .replace("__QUALITY_GATE__", novel_quality.opening_requirements(i, wpc))
                         .replace("__WORDS__", str(wpc)))
 
             n_variants = max(1, min(3, int(serial.get("variants") or 1)))
@@ -3595,12 +3450,6 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             store.update_run(run_id, chapter_scores=chapter_scores)
             continue
 
-        # 开篇闸门（仅全书第 1 章、真实作者、可经 serial.opening_gate=false 关闭）：
-        # 平台口径「开篇失败=全书判死」，第 1 章必须按签约评估单独核开篇吸引力
-        gate_live = (start == 1 and i == 1 and impl.get("mode") == "real"
-                     and bool(serial.get("opening_gate", True)))
-        gate_note = ""
-        gate_opening_ok = None   # rnd1 闸门评估是否过线（None=未评估）
         for rnd in (1, 2):
             text = _read_chapter(workdir, i)
             if rnd == 1 and race_cj is not None:
@@ -3618,36 +3467,6 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 return
             means = means_of(cj_by_agent)
             passed = bool(means) and all(v >= threshold_ch for v in means.values())
-            if rnd == 1 and gate_live:
-                s_means, s_issues, s_summary = _signing_eval(
-                    i, "（开篇闸门：核第 1 章能否抓住读者）")
-                if s_means is not None:
-                    gate_opening_ok = not novel_quality.opening_below(
-                        s_means, threshold_ch)
-                    _signing_record("opening_gate", {
-                        "chapter": i, "means": s_means,
-                        "summary": (s_summary or "")[:200],
-                        "opening_below_line": not gate_opening_ok})
-                if s_means is not None and not gate_opening_ok:
-                    # 平台口径未过线：回大纲层重设计前三章节拍，再按新节拍重写，
-                    # 而不是只修文案——切入点不行是结构病（重设计失败回退普通修订）
-                    passed = False
-                    critique_txt = "；".join(
-                        "%s %.1f（签约线 %.1f）" % (d, s_means.get(d, 0.0), threshold_ch)
-                        for d in novel_quality.SIGNING_RUBRIC)
-                    if s_issues:
-                        critique_txt += "；意见：" + "；".join(
-                            str(it.get("note") or "")[:80] for it in s_issues[:3])
-                    rebuilt = _planner_call(
-                        planner.redesign_opening, task, outline=outline,
-                        critique=critique_txt, author_agent=impl, workdir=workdir,
-                        ev=ev, deadline=_run_deadline(run_id), run_id=run_id)
-                    if rebuilt is not None:
-                        ch = outline["chapters"][k - 1]       # 合并是原位改写，刷新引用
-                        event_block = build_event_block(ch)   # 逐项核对按新节拍重建
-                        outline_txt = render_outline_txt()    # 后续章节看到新节拍
-                        gate_note = ("- [开篇闸门] 前三章节拍已按签约评估重新设计"
-                                     "（见「本章按大纲应完成」），请按新节拍对本章做结构性重写，不是小修。")
             if passed or rnd == 2:
                 break
             # 第 1 轮不达标 → 修订该章后重评审
@@ -3657,14 +3476,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             majors, _unanchored = _anchor_issues(majors, text)
             crit_lines = ["- %s：%.1f（章阈值 %.1f）" % (d, means[d], threshold_ch) for d in dims]
             crit_lines += _major_lines(majors)
-            if gate_note:
-                crit_lines.insert(0, gate_note)
             if _unanchored:
                 crit_lines.append("- ⚠ %d 条 major 意见的引文未能在稿件中锚定，已降序殿后" % _unanchored)
-            sig_now = novel_quality.signal_summary(text, chapter=i)
-            if sig_now.get("hints"):
-                crit_lines.append("- 确定性复查提示（修订须对应处理）："
-                                  + "；".join(sig_now["hints"]))
             if rnd == 1 and race_losers and impl.get("mode") == "real":
                 # 赛马败者精华回收（连载版）：一次选择器调用提炼落选稿优点，
                 # 与评审意见一并喂给首轮修订；失败静默不影响修订
@@ -3699,10 +3512,6 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__I__", str(i)).replace("__FILE__", ch_file)
                           .replace("__GOAL__", task["goal"])
                           .replace("__VOLUME__", vol_block_for(i))
-                          .replace("__BEATS__", ch.get("beats") or "按大纲推进")
-                          .replace("__HIGHLIGHT__", ch.get("highlight")
-                                   or "按剧情要点自然铺设一处小冲突/小反转")
-                          .replace("__STYLE__", style_tpl)
                           .replace("__CRITIQUE__", "\n".join(crit_lines))
                           .replace("__WORDS__", str(wpc)))
                 prompt = attachments.append_task_context(prompt, task)
@@ -3720,30 +3529,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             except Exception:
                 pass
             _check_cancel(ev)
-        if gate_live and not (gate_opening_ok and rounds_used == 1):
-            # 闸门终判（rnd1 已过线且未修订时免复核）：平台口径的开篇吸引力
-            # 仍低于签约线 → 停批止损。写满 8 章才发现开篇不行太贵，这正是
-            # 《戍边骑奴》被整本驳回的病根。
-            s_means2, _si2, s_sum2 = _signing_eval(
-                i, "（开篇闸门终判：重设计/修订后能否申请签约评估）")
-            _signing_record("opening_gate_final", {
-                "chapter": i, "means": s_means2 or {},
-                "summary": (s_sum2 or "")[:200]})
-            opening_final = (s_means2 or {}).get(novel_quality.OPENING_DIM)
-            if opening_final is not None and float(opening_final) < threshold_ch:
-                store.update_run(run_id, expected_status="running", status="failed",
-                                 error="开篇闸门：第 1 章签约评估「开篇吸引力」%.1f 低于签约线 %.1f"
-                                       "（已重设计节拍并修订仍不达标）。开篇失败=全书判死，已停批止损；"
-                                       "稿件保留，可人工复核或调整目标后重开。"
-                                       % (float(opening_final), threshold_ch),
-                                 ended_at=_now())
-                return
         cs_new = {"chapter": i, "title": ch["title"], "means": means,
                   "passed": bool(means) and all(v >= threshold_ch for v in means.values()),
                   "rounds": rounds_used,
-                  "words": _wc(_read_chapter(workdir, i)),
-                  "quality_signals": novel_quality.signal_summary(
-                      _read_chapter(workdir, i), chapter=i)}
+                  "words": _wc(_read_chapter(workdir, i))}
         _vent = volumes.find(vol_plan, i) if vol_plan else None
         if _vent:
             cs_new["vol"] = _vent["vol"]                     # 章节卡按卷分组用
@@ -3775,69 +3564,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 f.write("- 第%d章《%s》：%s（%d 字，%s）\n" % (
                     i, ch["title"],
                     ch.get("beats") or "按大纲推进", chapter_scores[-1]["words"],
-                    "%.1f 分" % (means.get("情节", means.get("情节推进", 0.0)))
-                    if means else "无评分"))
+                    "%.1f 分" % means.get("情节", 0.0) if means else "无评分"))
         except Exception:
             pass
-
-        # ---- 2万字签约预评估检查点（平台口径：前 2 万字定签约）。累计字数
-        # 过线时做一次独立签约评估；未达线先重改最弱章一轮再复核一次。
-        # 不中止批次——终局全局评审仍是发布门，这里把问题提前暴露并给一次
-        # 修复机会（全书评审通过记录 signing_checkpoint，只触发一次）。
-        if impl.get("mode") == "real":
-            total_words = sum(int(c.get("words") or 0) for c in chapter_scores)
-            latest_cp = (store.get_run(run_id) or {}).get("signing_checkpoint")
-            if total_words >= novel_quality.SIGNING_CHECKPOINT_WORDS and not latest_cp:
-                cp_means, _cpi, cp_summary = _signing_eval(
-                    i, "（2万字签约预评估检查点）")
-                cp = {"at_words": total_words, "chapter": i,
-                      "means": cp_means or {},
-                      "passed": bool(cp_means) and all(
-                          v >= threshold for v in cp_means.values()) if cp_means else None,
-                      "summary": (cp_summary or "")[:200]}
-                if cp["passed"] is False:
-                    # 未达线：重改最弱章一轮（按签约评估短板），再复核一次
-                    weak = _weakest_chapters(chapter_scores, cp_means, threshold, limit=1)
-                    short = "；".join(
-                        "%s %.1f（签约线 %.1f）" % (d, v, threshold)
-                        for d, v in (cp_means or {}).items() if v < threshold)
-                    for c in weak:
-                        j = c["chapter"]
-                        _wch = outline["chapters"][j - start] if start <= j <= end \
-                            else ch
-                        crit = ("- 2万字签约预评估未达线：%s\n- 全文短板：%s\n"
-                                "- 重改要求：优先补签约短板（风格统一/情感特写/节奏删拖沓），"
-                                "不得改动剧情主线关键事实。"
-                                % (short or "（各维度均未明确出分）", short or "（无）"))
-                        res = _run_step(
-                            run_id, "polish-cp%d" % j,
-                            modelhub.bind_agent(impl, difficulty),
-                            (SERIAL_REVISE_PROMPT
-                             .replace("__I__", str(j))
-                             .replace("__FILE__", "chapter-%02d.md" % j)
-                             .replace("__GOAL__", task["goal"])
-                             .replace("__VOLUME__", vol_block_for(j))
-                             .replace("__BEATS__", _wch.get("beats") or "按大纲推进")
-                             .replace("__HIGHLIGHT__", _wch.get("highlight")
-                                      or "按剧情要点自然铺设一处小冲突/小反转")
-                             .replace("__STYLE__", style_tpl)
-                             .replace("__CRITIQUE__", crit)
-                             .replace("__WORDS__", str(wpc))),
-                            workdir, readonly=False, ev=ev, timeout=2400,
-                            note="2万字检查点：签约预评估未达线，重改最弱章")
-                        if not res["ok"]:
-                            continue
-                        try:
-                            branching.mark_stale(workdir, j)
-                        except Exception:
-                            pass
-                    cp_means2, _cpi2, cp_sum2 = _signing_eval(
-                        i, "（2万字检查点复核）")
-                    if cp_means2:
-                        cp["means"] = cp_means2
-                        cp["summary"] = (cp_sum2 or "")[:200]
-                        cp["passed"] = all(v >= threshold for v in cp_means2.values())
-                store.update_run(run_id, signing_checkpoint=cp)
 
     # ---- 3) 全局一致性评审（覆盖 1..end 全书：续写批次必须连同旧章一起查一致性）
     full_text = "\n\n".join(_read_chapter(workdir, i) for i in range(1, end + 1))
@@ -3960,10 +3689,6 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     "\n- 重改要求：优先修全书节奏/衔接问题（章间过渡、信息倾泻、主角主动性），"
                     "再补本章短板；不得改动既有剧情主线的关键事实。"
                     % (dims_txt or "（无）", threshold, gj or "（无）"))
-            _psig = novel_quality.signal_summary(_read_chapter(workdir, i), chapter=i)
-            if _psig.get("hints"):
-                crit += ("\n- 确定性复查提示（修订须对应处理）："
-                         + "；".join(_psig["hints"]))
             if impl.get("mode") == "mock":
                 _write_chapter(workdir, i, mocks.draft_manuscript(
                     {"title": ch["title"], "goal": task["goal"]}, 3))
@@ -3991,7 +3716,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     cj = mocks.critique(agent["id"], 3, dims, threshold_ch)
                 else:
                     res2 = _run_step(run_id, "critique-c%d" % i, modelhub.bind_agent(agent, difficulty),
-                                     crit_prompt_for(_read_chapter(workdir, i), note="小说第 %d 章（打磨后）" % i, chapter=i),
+                                     crit_prompt_for(_read_chapter(workdir, i), note="小说第 %d 章（打磨后）" % i),
                                      workdir, readonly=True, ev=ev)
                     cj = runner.extract_json(res2.get("text") or "")
                     if not isinstance(cj, dict) or not isinstance(cj.get("scores"), dict):
@@ -4119,12 +3844,6 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                      + " | ".join("%.1f" % c["means"].get(d, 0.0) for d in dims)
                      + " | %.1f | %s | %d | %d |" % (mean, "✓" if c["passed"] else "✗",
                                                      c["rounds"], c["words"]))
-    signal_hints = []
-    for c in chapter_scores:
-        for hint in (c.get("quality_signals") or {}).get("hints") or []:
-            signal_hints.append("- 第 %s 章：%s" % (c.get("chapter"), hint))
-    if signal_hints:
-        lines += ["", "## 确定性文本信号复查", ""] + signal_hints[:20]
     lines += ["", "## 全局评审（阈值 %.1f）" % threshold, ""]
     lines += ["- %s：%.1f" % (d, global_means.get(d, 0.0)) for d in dims]
     lines += ["", "## 主要问题", ""]

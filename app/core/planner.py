@@ -254,14 +254,10 @@ SERIAL_OUTLINE_PROMPT = """你是网文主编，熟悉签约平台（番茄/七�
 __SKILLS__
 请为下面的小说目标设计一份连载大纲：共 __N__ 章，每章约 __W__ 字。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"book_title": "书名", "style_anchor": "全书文风锚（80字内，具体可执行：叙述视角与人称、句长基调、语域、对白风格、禁用表达）", "chapters": [{"title": "章节标题", "beats": "本章剧情要点（50-120字：事件/冲突/推进）", "hook": "章末钩子（一句话）", "highlight": "本章爽点/情绪爆点（一句话：谁在哪里完成什么反转或释放什么情绪）"}]__VOLUMES_KEY__}
+{"book_title": "书名", "chapters": [{"title": "章节标题", "beats": "本章剧情要点（50-120字：事件/冲突/推进）", "hook": "章末钩子（一句话）"}]__VOLUMES_KEY__}
 硬性要求：
-- 第 1-3 章是黄金三章：第 1 章前 100 字出现主角、前 200 字出现异常或欲望、前 600 字进入具体困境，
-  第 3 章末留大钩子；不要用世界观或环境描写拖延切入；
-- 每章都写清“主角主动选择 → 阻碍 → 局面变化 → 章末钩子”，禁止水字数的日常流水账和硬旁白推剧情；
-- 大纲中的情感转折必须给出触发事件和人物选择，不能只写“误会加深/感情升温”；
-- style_anchor 是全书唯一的文风锚，每章起草/修订/评审都会注入：必须写明视角人称与句长基调等可执行约束，不要空话；
-- 每章必须给出 highlight（爽点/情绪爆点）：没有爆点的章节要重新设计，过渡章也要有小冲突小反转；
+- 第 1-3 章是黄金三章：第 1 章开篇即冲突+人设立住，第 3 章末留大钩子；
+- 每章有明确冲突与剧情推进，禁止水字数的日常流水账；
 - 结局必须闭环（完本感），主角有成长弧光；
 - 题材健康，无违规内容，符合平台签约调性。
 __VOLUMES__
@@ -277,18 +273,13 @@ SERIAL_CONTINUE_OUTLINE_PROMPT = """你是网文主编，熟悉签约平台（�
 __SKILLS__
 这是一部长篇连载的续写：全书已完成前 __DONE__ 章，现在请规划第 __START__–__END__ 章
 （本批共 __N__ 章，每章约 __W__ 字）。只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"book_title": "书名（与前文保持一致）", "style_anchor": "全书文风锚（80字内，必须延续下方给出的既定文风锚，不得另起炉灶）", "chapters": [{"title": "章节标题", "beats": "本章剧情要点（50-120字：事件/冲突/推进）", "hook": "章末钩子（一句话）", "highlight": "本章爽点/情绪爆点（一句话：谁在哪里完成什么反转或释放什么情绪）"}]__VOLUMES_KEY__}
+{"book_title": "书名（与前文保持一致）", "chapters": [{"title": "章节标题", "beats": "本章剧情要点（50-120字：事件/冲突/推进）", "hook": "章末钩子（一句话）"}]__VOLUMES_KEY__}
 硬性要求：
 - 第 1 章直接衔接前文（见下方前情），不得跳线、不得重启设定、不得复述前文；
 - 主线沿既有脉络推进，新冲突尽量从已埋伏笔中生长，人物性格与前文一致；
-- 每章都写清“主角主动选择 → 阻碍 → 局面变化 → 章末钩子”，禁止水字数的日常流水账；
-- 复杂情感必须落到触发事件、动作/生理反应和潜台词，不能用一句概括代替；
-- 延续既定叙述视角和语言锚点（见下方既定文风锚），删掉重复复述，避免节奏变慢；
+- 每章有明确冲突与剧情推进，禁止水字数的日常流水账；
 - 题材健康，无违规内容，符合平台签约调性。
 __VOLUMES__
-
-## 既定文风锚（前文已定，必须原样延续）
-__STYLE_ANCHOR__
 
 ## 前情大纲（已完成章节，章号为全书章号）
 __PREV_OUTLINE__
@@ -334,19 +325,13 @@ def _norm_chapters(data, n, vol_per=0, vol_start=1, vol_plan=None):
         if not title:
             continue
         out.append({"title": title[:60], "beats": beats[:500],
-                    "hook": str(c.get("hook") or "").strip()[:200],
-                    "highlight": str(c.get("highlight") or "").strip()[:200]})
+                    "hook": str(c.get("hook") or "").strip()[:200]})
     if len(out) < min(n, max(2, n // 2)):   # 至少给出半数章的大纲，否则视为失败（n=1 时至少 1 章）
         return None
     while len(out) < n:             # 缺的章补模板位
         out.append({"title": "第 %d 章" % (len(out) + 1), "beats": "按全书目标推进剧情",
-                    "hook": "", "highlight": ""})
+                    "hook": ""})
     res = {"book_title": str(data.get("book_title") or "").strip()[:40], "chapters": out[:n]}
-    # 全书文风锚：大纲一次性裁定，后续每章起草/修订/评审注入（pipeline 消费）；
-    # 续写批次由提示词强制延续前批锚点，模型不另起炉灶
-    anchor = str(data.get("style_anchor") or "").strip()
-    if anchor:
-        res["style_anchor"] = anchor[:300]
     # 分卷：只收本批真正用到的卷的卷名/卷弧光（模型可能多写或乱写卷号，一律按
     # 本批章号范围过滤）。卷边界不在这里——它由 volumes.build_plan 从章号推导。
     if vol_plan:
@@ -411,26 +396,6 @@ def _prev_serial_story(task):
     except OSError:
         pass
     return "\n".join(lines), max(best_i, 0), book_title, tail, volnames
-
-
-def prev_style_anchor(task):
-    """沿 serial.continues 链回查最近一批大纲的文风锚（旧 → 新取最新的非空值）。
-    续写批次的大纲提示词据此强制延续笔调——跨批次不换文风。找不到返回 ""。"""
-    from . import store  # 惰性导入：同 _prev_serial_story
-    anchor, cur, seen = "", task, set()
-    while len(seen) < 10:
-        cont = str((cur.get("serial") or {}).get("continues") or "")
-        prev = store.get_task(cont) if cont else None
-        if not prev or prev["id"] in seen:
-            break
-        seen.add(prev["id"])
-        for r in store.task_runs(prev["id"]):
-            o = r.get("outline")
-            if o and not o.get("degraded") and str(o.get("style_anchor") or "").strip():
-                anchor = str(o["style_anchor"]).strip()
-                break
-        cur = prev
-    return anchor
 
 
 def _chain_volume_names(task):
@@ -526,9 +491,6 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
                   .replace("__N__", str(n)).replace("__W__", str(wpc))
                   .replace("__VOLUMES_KEY__", vol_key)
                   .replace("__VOLUMES__", vol_block)
-                  .replace("__STYLE_ANCHOR__", prev_style_anchor(task)
-                           or "（前文未记录文风锚，请依据前情大纲与最新一章结尾自行归纳，"
-                              "归纳后全批保持一致）")
                   .replace("__PREV_OUTLINE__", prev_lines or "（无大纲记录，请依据下方最新一章结尾与小说目标衔接）")
                   .replace("__PREV_TAIL__", prev_tail or "（无）")
                   .replace("__GOAL__", task["goal"])
@@ -650,103 +612,6 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
         out["degraded"] = True
         out["degraded_reason"] = "编排者/作者模型均未返回可用大纲（%s）" % reason_tail
     return _mark(out)
-
-
-# 开篇重设计提示词（开篇闸门专用）：第 1 章签约评估的开篇吸引力未达线时，
-# 回大纲层重设计前三章节拍而不是只修稿——切入点不行是结构病，修文案救不了。
-SERIAL_OPENING_REBUILD_PROMPT = """你是网文主编，熟悉签约平台（番茄/七猫/起点）的过稿标准。
-这本书的第 1 章在签约预评估中「开篇吸引力」未达线，评审意见如下：
-__CRITIQUE__
-
-请重设计前 __COUNT__ 章的大纲节拍（只动这 __COUNT__ 章，不碰后续章节），让开篇符合黄金一章标准：
-第 1 章前 100 字出现主角、前 200 字出现异常或冲突、前 600 字进入具体困境、章末留可兑现的钩子；
-切入点必须是具体事件（退婚/陷害/背叛/生死危机等），禁止世界观铺垫开局。
-只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"chapters": [{"title": "章节标题", "beats": "本章剧情要点（50-120字：事件/冲突/推进）", "hook": "章末钩子（一句话）", "highlight": "本章爽点/情绪爆点（一句话）"}]}
-章序与原大纲一致（从第 1 章起），必须保持书名、主角与核心设定不变，只强化切入与钩子设计。
-
-## 全书目标
-__GOAL__
-
-## 原大纲（前 __COUNT__ 章）
-__OUTLINE__"""
-
-
-def merge_opening(outline, data, count=3):
-    """把开篇重设计输出合并回大纲：只替换前 count 章的节拍字段，其余一律不动。
-    没有可采纳的节拍设计返回 None（上层回退普通修订，不中断 run）。"""
-    try:
-        count = max(1, int(count))
-    except (TypeError, ValueError):
-        count = 3
-    if not isinstance(outline, dict) or not isinstance(data, dict):
-        return None
-    cur = outline.get("chapters") or []
-    chs = data.get("chapters")
-    if not isinstance(chs, list):
-        return None
-    merged = 0
-    for idx, ch in enumerate(chs[:count]):
-        if idx >= len(cur) or not isinstance(ch, dict):
-            continue
-        beats = str(ch.get("beats") or "").strip()
-        if not beats:
-            continue   # 没有节拍设计的条目不采纳（避免把原节拍洗成空）
-        title = str(ch.get("title") or "").strip()
-        if title:
-            cur[idx]["title"] = title[:60]
-        cur[idx]["beats"] = beats[:500]
-        cur[idx]["hook"] = str(ch.get("hook") or "").strip()[:200]
-        cur[idx]["highlight"] = str(ch.get("highlight") or "").strip()[:200]
-        merged += 1
-    return outline if merged else None
-
-
-def redesign_opening(task, outline=None, critique="", author_agent=None, workdir=None,
-                     ev=None, log_path=None, deadline=None, run_id=None):
-    """开篇闸门：重设计前三章大纲节拍。编排者优先；编排者未配置或两次尝试均
-    失败时返回 None——重设计是增量优化，失败不能比普通修稿更脆（上层回退）。"""
-    if not isinstance(outline, dict) or not (outline.get("chapters") or []):
-        return None
-    count = min(3, len(outline["chapters"]))
-    head_txt = "\n".join(
-        "第 %d 章《%s》：%s%s%s" % (idx + 1, c.get("title", ""), c.get("beats", ""),
-                                  ("（章末钩子：%s）" % c["hook"]) if c.get("hook") else "",
-                                  ("（爆点：%s）" % c["highlight"]) if c.get("highlight") else "")
-        for idx, c in enumerate(outline["chapters"][:count]))
-    prompt = (SERIAL_OPENING_REBUILD_PROMPT
-              .replace("__CRITIQUE__", (critique or "（无具体意见，开篇评分未达线）")[:600])
-              .replace("__COUNT__", str(count))
-              .replace("__GOAL__", task.get("goal", ""))
-              .replace("__OUTLINE__", head_txt))
-    orch = _orchestrator()
-    if not orch:
-        _append_log(log_path, "开篇重设计：编排者未配置，回退普通修订")
-        return None
-    prov, model = orch
-    label = "%s · %s" % (prov.get("name", prov["id"]), model)
-    _append_log(log_path, "===== 开篇重设计（%s）=====" % label)
-    for _attempt in (1, 2):
-        cb = _log_streamer(log_path)
-        res = modelhub.chat(prov["id"], model, prompt,
-                            max_tokens=8000, timeout=_deadline_timeout(deadline, 180),
-                            on_delta=cb, reasoning_effort=_reasoning_effort(task),
-                            cache_ttl=3600 if _attempt == 1 else 0)
-        cb.flush()
-        _log_usage("outline", "opening-rebuild", task, res, model=model,
-                   provider=prov.get("name", prov.get("id", "")),
-                   provider_id=prov.get("id", ""))
-        if res["ok"]:
-            merged = merge_opening(outline, runner.extract_json(res.get("text") or ""),
-                                   count=count)
-            if merged:
-                _append_log(log_path, "开篇重设计成功：前 %d 章节拍已更新" % count)
-                return merged
-            _append_log(log_path, "尝试 %d：输出不可合并" % _attempt)
-        else:
-            _append_log(log_path, "尝试 %d 失败：%s"
-                        % (_attempt, (res.get("error") or "未知错误")[:300]))
-    return None
 
 
 def _norm_subtasks(data):

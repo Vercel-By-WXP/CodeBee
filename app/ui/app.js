@@ -4663,14 +4663,14 @@ function rdTabsSync(ctx) {
       S.rdTabSig = sig;
       const avail = rdTabAvail();
       const direct = chatAvail && chatEngineIsDirect(S.lastRun);
-      // 直连任务的主问题是「继续聊什么、上一轮回答是什么」——默认把对话
-      // 放在第一视线；编排/代码任务才默认落蜂巢，先看阶段与在岗步骤。
+      // 所有任务的主问题都是「继续聊什么、各智能体输出了什么」——默认把
+      // 对话放在第一视线；蜂巢/步骤/成果保留为侧边工作台入口。
       // 没跑到终态时成果分区是空的，避免打开详情先看到白板。
       const finishing = !c.running && ["done", "failed", "cancelled", "timeout"].includes(c.status);
       S.rdTab = (direct && avail.chat ? "chat" : null)
         // 跑出了能打开的网页成品：第一视线给「预览」——这正是用户做完一个
         // 前端任务最想看到的（借鉴对话式编程产品：跑完先看东西跑起来）。
-        // 直连任务的对话、待裁决的版本仍排在它前面：那两个是"要用户说话/动手"。
+        // 对话与待裁决的版本仍排在它前面：那两个是"要用户说话/动手"。
         || (finishing && avail.preview ? "preview" : null)
         || (avail.hive ? "hive" : null)
         || (avail.chat ? "chat" : null)
@@ -6573,7 +6573,17 @@ window.fpSaveEdit = async function () {
 
 /* 成品文件弹窗预览 */
 window.artPopup = async function (runId, name, size) {
-  return _fpPreviewUrl("/api/runs/" + encodeURIComponent(runId) + "/file?name=" + encodeURIComponent(name), name, size);
+  // 成果文本沿用目录文件弹窗的编辑器：先取得该 run 的真实工作目录，
+  // 再把保存上下文交给同一套 mtime 冲突保护。二进制文件仍然只读预览。
+  let save = null;
+  if (FP_TXT.has(_fpExt(name))) {
+    try {
+      const d = await api("/api/runs/" + encodeURIComponent(runId) + "/files");
+      if (d && d.workdir) save = { dir: d.workdir, name: String(name) };
+    } catch (e) { /* 读取清单失败时保持只读预览 */ }
+  }
+  return _fpPreviewUrl("/api/runs/" + encodeURIComponent(runId) + "/file?name=" + encodeURIComponent(name), name, size,
+    save ? { editable: true, save } : undefined);
 };
 
 /* 对话结果卡「运行展示」：HTML 成品在弹窗里真跑——复用 /preview 只读挂载
@@ -7795,11 +7805,11 @@ function bindDirector() {
 }
 
 
-/* ---------------- 对话分区（直连任务默认视图） ----------------
- * 直连 run 的蜂巢/版本/圣经基本是空的，真正的主角是时间线：用户说的话与 CLI
- * 每轮输出混排成气泡。运行中发送 = 信箱（下一步送达）；已结束发送 = /chat
- * （后端自动起新一轮 run 接着聊）。轮次边界如实标注：无头 CLI 插不进正在跑的
- * 进程，运行中递的话只在下一步生效。 */
+/* ---------------- 对话分区（所有任务默认视图） ----------------
+ * 时间线把任务目标、用户消息与各智能体每轮输出混排成气泡；蜂巢/步骤/成果
+ * 仍是同一详情工作区的辅助分区。运行中发送 = 信箱（下一步送达）；已结束发送
+ * = /chat（后端自动起新一轮 run 接着做）。轮次边界如实标注：无头 CLI 插不进
+ * 正在跑的进程，运行中递的话只在下一步生效。 */
 let chatRunId = null;
 let chatAtts = [];
 let chatTimelineItems = [];   // renderChat 每次重建时间线时刷新；复制/编辑重发按索引回查
@@ -7823,8 +7833,9 @@ function chatEngineIsDirect(run) {
   const st = S.state || {};
   const all = (st.tasks || []).concat(st.archived_tasks || []);
   const task = all.find((x) => x.id === (run && run.task_id));
-  return !!((task && task.engine === "direct") ||
-    (!task && run && (run.engine === "direct" || run.type === "direct")));
+  // 对话工作区是所有有任务归属的运行的共同入口；管理型孤立运行
+  // 没有可续跑的任务，不显示可发送的对话框。
+  return !!(task && task.id === (run && run.task_id));
 }
 
 /* 思考过程块（2026-09-22 用户诉求「把思考过程打印出来」）：内置智能体流式抓的
@@ -7921,7 +7932,7 @@ function chatBodyHTML(text) {
 async function renderChat(run, active) {
   const box = $("rd-chat");
   if (!box) return;
-  // 只对直连任务启用（其它流程有自己的蜂巢/步骤视图，不抢默认选卡）
+  // 所有有任务归属的运行都启用对话时间线；蜂巢/步骤/成果仍按原页签保留
   if (!run || !chatEngineIsDirect(run)) { box.classList.add("hidden"); return; }
   box.classList.remove("hidden");
   const continueNote = $("rd-chat-continue-note");
@@ -7934,7 +7945,9 @@ async function renderChat(run, active) {
     if (task) rdPrefsFill(task);
   }
   const sig = run.id + "|" + run.status + "|" + (run.steps || []).length +
-    "|" + ((run.messages || []).length);
+    "|" + ((run.messages || []).length) + "|" + (run.steps || []).map((s) =>
+      [s.status, s.output, s.summary, s.thinking, s.stream, (s.activity || []).length].join("~")
+    ).join("^");
   if (sig === chatSig) return;   // 轮询重画去抖：内容没变不重建 DOM（保住输入焦点）
   const runForFetch = run.id;    // 拉取期间可能切详情：过期响应不落盘（同 renderRunDetail 闸门）
   chatSig = sig;
@@ -8086,10 +8099,11 @@ function drawChatFlow(run, data, active) {
  * 措辞说「本轮」不说「任务」：追话每轮都落一张卡，卡头喊「任务完成」会被读成
  * 又建了一个新任务（2026-09-22 用户反馈：其实一直都在同一个任务里）。 */
 function chatResultHTML(run, res) {
-  const ok = res.status === "done";
+  const partial = !!res.partial;
+  const ok = res.status === "done" && !partial;
   const bad = res.status === "failed";
-  const icon = ok ? "#i-check" : "#i-x";
-  const label = ok ? t("本轮完成") : (bad ? t("本轮失败") : t("已取消"));
+  const icon = ok ? "#i-check" : (partial ? "#i-gauge" : "#i-x");
+  const label = partial ? t("本轮部分完成") : (ok ? t("本轮完成") : (bad ? t("本轮失败") : t("已取消")));
   const meta = [];
   if (res.executor) meta.push(esc(res.executor));
   if (res.turns) meta.push(res.turns + " " + t("轮对话"));
@@ -8115,11 +8129,11 @@ function chatResultHTML(run, res) {
   }).join("");
   return '<div class="chat-row">' +
     '<span class="chat-avatar" aria-hidden="true"><svg class="ico"><use href="' + icon + '"></use></svg></span>' +
-    '<div class="chat-result' + (ok ? "" : bad ? " bad" : " off") + '">' +
+    '<div class="chat-result' + (partial ? " partial" : ok ? "" : bad ? " bad" : " off") + '">' +
     '<div class="cr-head"><svg class="ico" aria-hidden="true"><use href="' + icon + '"></use></svg>' +
     esc(label) + "</div>" +
     (meta.length ? '<div class="cr-meta">' + meta.join(" · ") + "</div>" : "") +
-    (bad && res.error ? '<div class="cr-err">' + esc(res.error) + "</div>" : "") +
+    ((bad || partial) && res.error ? '<div class="cr-err">' + esc(res.error) + "</div>" : "") +
     '<div class="cr-files">' + (chips
       ? '<div class="cr-files-title">' + esc(t("产出文件")) + t("（") + files.length + t("）") + "</div>" +
         '<div class="file-chips">' + chips + "</div>"
