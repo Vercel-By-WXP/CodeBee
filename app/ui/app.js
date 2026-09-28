@@ -15092,3 +15092,18 @@ async function beePyInstall() {
     } catch (e) { /* 轮询失败下一拍再试 */ }
   }, 3000);
 }
+
+// CodeBee workspace switcher: the first item is intentionally informational
+// until multiple local workspaces are supported.
+function toggleBrandMenu(force) {
+  const menu = $("brand-menu");
+  const btn = $("btn-brand");
+  if (!menu || !btn) return;
+  const open = typeof force === "boolean" ? force : menu.classList.contains("hidden");
+  menu.classList.toggle("hidden", !open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#btn-brand, #brand-menu")) toggleBrandMenu(false);
+});

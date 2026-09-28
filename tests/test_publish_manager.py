@@ -247,10 +247,11 @@ def test_create_preflight():
 class _FlowPage:
     """run_flow 离线假页：只实现被测步骤用到的面。"""
 
-    def __init__(self, url="", call_results=None):
+    def __init__(self, url="", call_results=None, click_results=None):
         self._url = url
         self._calls = 0
         self._call_results = list(call_results or [])
+        self._click_results = list(click_results or [])
 
     def url(self):
         return self._url
@@ -263,6 +264,8 @@ class _FlowPage:
 
     def real_click_text(self, text, scope="", **kw):
         self._clicks = getattr(self, "_clicks", 0) + 1
+        if self._click_results:
+            return self._click_results.pop(0)
         return {"ok": True}
 
     def wait_for(self, sel, timeout=8):
@@ -368,6 +371,66 @@ class _ResolvePage:
 
     def url(self):
         return self._final
+
+
+def test_flow_click_real_expect_checked():
+    """radio 点击闭环（2026-09-28 建书弹层没开实案）：点击派发成功 ≠ 选中
+    成功，expect_checked 步骤必须回头验 checked 态，验不中重点、耗尽报专用错。"""
+    from core.publish import flow
+    # 点击 ok + 选中态 ok → 一次过
+    pg = _FlowPage(call_results=[{"ok": True}])
+    n = flow.run_flow(pg, [{"do": "click_real", "text": "男频",
+                            "scope": "label.arco-radio",
+                            "expect_checked": True}], values={})
+    expect(n == 1, "点击+选中双达标放行：n=%s" % n)
+    # 点击 ok 但永远验不到选中态 → 专用报错（不是笼统的找不到）
+    pg2 = _FlowPage()                    # call 走默认 {"ok":False}
+    try:
+        flow.run_flow(pg2, [{"do": "click_real", "text": "男频",
+                             "scope": "label.arco-radio", "tries": 3,
+                             "expect_checked": True}], values={})
+        raise AssertionError("验不到选中态应抛 FlowError")
+    except flow.FlowError as e:
+        expect("选中态" in str(e), "报错点名选中态：%s" % e)
+    expect(pg2._clicks == 3, "验不中要重点满 tries：%d" % pg2._clicks)
+    # 点击本身被挡（elementFromPoint 守卫）→ 原样透出挡路死因
+    blocked = {"ok": False,
+               "err": "「男频」的落点被 DIV arco-mask 挡住（遮罩/浮层未退场）"}
+    pg3 = _FlowPage(click_results=[dict(blocked), dict(blocked)])
+    try:
+        flow.run_flow(pg3, [{"do": "click_real", "text": "男频",
+                             "scope": "label.arco-radio", "tries": 2,
+                             "expect_checked": True}], values={})
+        raise AssertionError("被挡应抛 FlowError")
+    except flow.FlowError as e:
+        expect("挡住" in str(e), "被挡死因透出：%s" % e)
+    # 不带 expect_checked 的普通点击不受影响（不调 verify）
+    pg4 = _FlowPage()
+    n4 = flow.run_flow(pg4, [{"do": "click_real", "text": "确认",
+                              "scope": "button", "tries": 2}], values={})
+    expect(n4 == 1 and pg4._calls == 0, "无断言需求零额外求值：%s %s"
+           % (n4, pg4._calls))
+
+
+def test_fanqie_flow_closed_loop_contract():
+    """番茄建书流程 JSON 契约（2026-09-28 弹层没开连败案）：radio 步骤必须
+    带选中态断言；标签触发器点完必须 wait 弹层存在，不许退回盲 sleep。"""
+    import json as _json
+    from core.publish import flow as _flow
+    fp = Path(_flow.__file__).with_name("flows-fanqie-calibrated.json")
+    data = _json.loads(fp.read_text(encoding="utf-8"))
+    cb = data["create_book"]
+    radios = [s for s in cb if s.get("do") == "click_real"
+              and "radio" in (s.get("scope") or "")]
+    expect(len(radios) == 2 and all(s.get("expect_checked") for s in radios),
+           "签约/读者两个 radio 步骤必须带 expect_checked：%s"
+           % [(s.get("text"), s.get("expect_checked")) for s in radios])
+    trig = [i for i, s in enumerate(cb) if s.get("text") == "请选择作品标签"]
+    expect(len(trig) == 2, "阅读/内容两处标签触发器：%s" % trig)
+    for i in trig:
+        nxt = cb[i + 1]
+        expect(nxt.get("do") == "wait" and nxt.get("sel") == ".category-modal",
+               "触发器后必须 wait 弹层存在（sleep 已退役）：%s" % nxt)
 
 
 def test_resolve_book_id_by_title():

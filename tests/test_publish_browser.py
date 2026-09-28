@@ -22,6 +22,12 @@ FORM = u"""<!doctype html><html><body>
 <textarea id="summary"></textarea>
 <div id="editor" contenteditable="true"></div>
 <button id="go" onclick="document.title='CLICKED'">提交</button>
+<label class="arco-radio"><input type="radio" name="ch" value="m"><span>男频</span></label>
+<label class="arco-radio"><input type="radio" name="ch" value="f"><span>女频</span></label>
+<div style="position:relative;width:220px;height:40px">
+  <button id="cov" style="width:100%;height:100%">被挡按钮</button>
+  <div id="mask" style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.02)"></div>
+</div>
 </body></html>"""
 
 
@@ -88,6 +94,48 @@ def main():
         check("editable content", lambda: (_ for _ in ()).throw(AssertionError(str(len(pg.value("#editor"))))) if len(pg.value("#editor")) < 100 else None)
         check("click", lambda: (pg.click("#go"), None)[1])
         check("click effect", lambda: (_ for _ in ()).throw(AssertionError(pg.evaluate("document.title"))) if pg.evaluate("document.title") != "CLICKED" else None)
+
+        # ---- real_click_text 三死因 + radio 选中闭环（2026-09-28 建书案）
+        from core.publish import flow as _flow
+        r = pg.real_click_text(u"提交")
+        check("real_click 命中", lambda: r if r.get("ok") else (_ for _ in ()).throw(AssertionError(r)))
+
+        def _radio_click_and_verify():
+            r1 = pg.real_click_text(u"男频", scope="label.arco-radio")
+            if not r1.get("ok"):
+                raise AssertionError("radio 点击失败：%s" % r1)
+            v = pg.call(_flow._checked_js(), u"男频", "label.arco-radio")
+            if not v.get("ok"):
+                raise AssertionError("选中态验证失败：%s" % v)
+            raw = pg.evaluate("document.querySelector('input[name=ch]').checked")
+            if raw is not True:
+                raise AssertionError("input.checked 应为真：%r" % raw)
+            return "checked"
+        check("real_click radio+选中闭环", _radio_click_and_verify)
+
+        def _click_blocked():
+            r1 = pg.real_click_text(u"被挡按钮")
+            if r1.get("ok"):
+                raise AssertionError("被遮罩应拒点：%s" % r1)
+            if u"挡住" not in (r1.get("err") or ""):
+                raise AssertionError("死因要点名挡路者：%s" % r1.get("err"))
+            return (r1.get("err") or "")[:40]
+        check("real_click 落点守卫", _click_blocked)
+
+        def _click_not_found_diag():
+            r1 = pg.real_click_text(u"不存在的文本", scope="#nonexist span")
+            if r1.get("ok"):
+                raise AssertionError("找不到应拒点：%s" % r1)
+            err = r1.get("err") or ""
+            if u"可点元素" not in err or u"无可见元素" not in err:
+                raise AssertionError("报错要自带范围诊断：%s" % err)
+            r2 = pg.real_click_text(u"不存在的文本")
+            err2 = r2.get("err") or ""
+            if u"可见项" not in err2:
+                raise AssertionError("默认范围要报可见项清单：%s" % err2)
+            return err2[-50:]
+        check("real_click 找不到自带诊断", _click_not_found_diag)
+
         check("screenshot", lambda: os.path.exists(pg.screenshot(os.path.join(shots, "1.png"))))
         check("probe", lambda: (_ for _ in ()).throw(AssertionError(json.dumps(pg.probe(), ensure_ascii=False))) if len(pg.probe()) < 4 else None)
         check("big frame 分片", lambda: (_ for _ in ()).throw(AssertionError("len")) if len(pg.evaluate("'x'.repeat(3000000)")) != 3000000 else None)

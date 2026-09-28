@@ -44,6 +44,9 @@ def test_launch_args():
     expect(not any(a.startswith("--restore-last-session") for a in argv),
            "不得带 --restore-last-session（=false 反而激活会话恢复）：%s" % argv)
     expect("--hide-crash-restore-bubble" in argv, "崩溃恢复气泡压掉：%s" % argv)
+    expect(any(a.startswith("--window-size=") for a in argv),
+           "窗口几何必须钉死（2026-09-28 方窗 921×920 实案：几何漂移→真实点击"
+           "系统性打偏）：%s" % argv)
     expect(kwargs.get("start_new_session") == (os.name != "nt"),
            "POSIX 独立进程组（killpg 前提）/Windows 忽略：%r" % kwargs.get("start_new_session"))
 

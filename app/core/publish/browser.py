@@ -78,27 +78,68 @@ def _free_port():
     return port
 
 
+def _win_edge_proc_lines():
+    """(pid, 命令行) 清单。wmic 优先（快）；Win11 24H2 起系统已移除
+    wmic——输出为空/报错时落 PowerShell CIM（冷启 ~2s，仅在必要时付）。"""
+    import subprocess as _sp
+    try:
+        out = _sp.check_output(
+            ["wmic", "process", "where", "Name='msedge.exe'",
+             "get", "ProcessId,CommandLine"],
+            stderr=_sp.DEVNULL, timeout=12).decode("utf-8", "replace")
+        lines = []
+        for l in out.splitlines():
+            l = l.strip()
+            if not l or l.startswith("CommandLine"):
+                continue
+            m = re.match(r"^(.*\S)\s+(\d+)$", l)   # wmic 列序固定：命令行在前 pid 在后
+            if m and "msedge" in m.group(1):
+                lines.append((m.group(2), m.group(1)))
+        if lines:
+            return lines
+    except Exception:
+        pass
+    try:
+        ps = None
+        for cand in ("powershell",
+                     r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"):
+            try:
+                out = _sp.check_output(
+                    [cand, "-NoProfile", "-Command",
+                     "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | "
+                     "ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }"],
+                    stderr=_sp.DEVNULL, timeout=30).decode("utf-8", "replace")
+                break
+            except OSError:
+                continue               # PATH 没带 System32\WindowsPowerShell 的环境
+        lines = []
+        for l in (out or "").splitlines():
+            pid, _, cmd = l.strip().partition("|")
+            if pid.isdigit() and cmd:
+                lines.append((pid, cmd))
+        return lines
+    except Exception:
+        return []
+
+
 def _debug_ports_for_profile(user_data_dir):
     """扫描本机浏览器进程命令行，返回使用该 profile 的主实例的调试端口。
 
-    跨平台：Windows 走 wmic（PS 启动太慢），POSIX 走 ps。只认主进程
+    跨平台：Windows 走 wmic→PowerShell CIM 回退，POSIX 走 ps。只认主进程
     （--type= 子进程没有调试端口）。路径按小写+正反斜杠归一后比对。"""
     import subprocess as _sp
     try:
         if sys.platform == "win32":
-            out = _sp.check_output(
-                ["wmic", "process", "where", "Name='msedge.exe'", "get", "CommandLine"],
-                stderr=_sp.DEVNULL, timeout=12).decode("utf-8", "replace")
-            lines = out.splitlines()
+            lines = _win_edge_proc_lines()
         else:
             out = _sp.check_output(["ps", "-axo", "command"], timeout=12).decode()
-            lines = [l for l in out.splitlines()
+            lines = [(None, l) for l in out.splitlines()
                      if "msedge" in l or "chrome" in l or "chromium" in l]
     except Exception:
         return []
     key = str(user_data_dir).replace("\\", "/").strip("/").lower()
     ports = []
-    for ln in lines:
+    for _pid, ln in lines:
         ln = ln.strip()
         if not ln or "--type=" in ln or "--remote-debugging-port=" not in ln:
             continue
@@ -123,6 +164,10 @@ class Browser:
         args = [self.exe,
                 "--remote-debugging-port=%d" % self.port,
                 "--user-data-dir=%s" % self.user_data_dir,
+                # 窗口几何必须钉死：真实鼠标事件按视口坐标派发，窗口被 Edge
+                # 恢复成怪尺寸（2026-09-28 实案 921×920 方窗）时全部点击系统性
+                # 打偏，建书 radio/弹层一个都点不中还步步报成功
+                "--window-size=1366,900",
                 "--no-first-run", "--no-default-browser-check",
                 "--hide-crash-restore-bubble"]   # 崩溃恢复气泡压掉即够；
                                                  # --restore-last-session 是无值开关，
@@ -166,10 +211,11 @@ class Browser:
     def _wait_ready(self, timeout):
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if self.proc.poll() is not None:
-                return False            # 二开 profile 时新进程会把参数转交老实例后退出
             if port_alive(self.port, timeout=1.0):
                 return True
+            # Edge 147 起 launcher 进程常先退（真身 detached 续跑、调试端口
+            # 晚几秒才开）——见 proc 退出不能收兵，要把端口窗口等满；真没起
+            # 来时上面的接管扫描（_debug_ports_for_profile）还兜得住
             time.sleep(0.4)
         return False
 
@@ -177,11 +223,25 @@ class Browser:
         return port_alive(self.port, timeout=1.5)
 
     def close(self):
-        """杀掉浏览器进程树。登录态在 profile 里，杀掉不丢。"""
+        """杀掉浏览器进程树。登录态在 profile 里，杀掉不丢。
+
+        Edge 147 起 launcher 常先退、真身 detached 续跑——taskkill 只打到
+        已退出的 launcher 时，按 profile 再扫一遍主进程补刀，否则孤儿实例
+        锁着 profile，下次 launch 误报「已在运行的会话」。"""
         pid = getattr(self, "proc", None) and self.proc.pid
         try:
             if sys.platform == "win32" and pid:
                 subprocess.call(["taskkill", "/F", "/T", "/PID", str(pid)],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if self.proc.poll() is not None and self.user_data_dir:
+                    key = str(self.user_data_dir).replace("\\", "/").strip("/").lower()
+                    for opid, cmd in _win_edge_proc_lines():
+                        if "--type=" in cmd:
+                            continue
+                        norm = cmd.replace("\\\\", "/").replace("\\", "/").lower()
+                        if key in norm:
+                            subprocess.call(
+                                ["taskkill", "/F", "/T", "/PID", str(opid)],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             elif pid:
                 # spawn 时 start_new_session，pgid==pid，连渲染进程带杀（runner 同款）；
@@ -239,9 +299,26 @@ class Page:
             self.send("Runtime.enable")
             self.send("Page.enable")
             self._ua_override()
+            self._check_viewport()
         except BrowserError:
             self.ws.close()
             raise
+
+    def _check_viewport(self):
+        """视口几何告警：接管老实例（attach）时窗口尺寸不受我们控制，怪几何
+        会让真实点击坐标打偏——只告警不改状态，硬防护在 real_click_text 的
+        elementFromPoint 守卫。"""
+        try:
+            m = self.send("Page.getLayoutMetrics", timeout=5.0) or {}
+            css = m.get("cssLayoutViewport") or m.get("layoutViewport") or {}
+            w = int(css.get("clientWidth") or 0)
+            h = int(css.get("clientHeight") or 0)
+            if w and (w < 1000 or h < 600):
+                print("[publish] 视口异常 %dx%d（期望 ≥1000x600）：真实点击坐标"
+                      "可能打偏，建议关掉该平台浏览器窗口后重连"
+                      % (w, h), flush=True)
+        except Exception:
+            pass
 
     def _ua_override(self):
         """UA 伪装成标准 Chrome：Edge 尾巴（Edg/x.y）会被部分站点（如七猫
@@ -471,7 +548,9 @@ class Page:
         qm-btn 一类自定义按钮只认真实事件序列（mousedown/mouseup/focus），
         el.click() 对它们无效——建书「确认创建」/发章「立即发布」都栽在这。
         y_min/y_max 限定元素纵向范围（区分同名 select、限制弹层内点击）。
-        返回 {ok, tag?, via}；找不到元素返回 {ok: False, err}。"""
+        派发前 elementFromPoint 验证落点真是目标：遮罩/浮层/窗口几何漂移会让
+        坐标系统性打偏且步步报成功（2026-09-28 建书弹层没开实案）。
+        返回 {ok, tag?, via}；找不到/被挡/出视口返回 {ok: False, err}。"""
         r = self.call(
             "(t,scope,c,y0,y1)=>{"
             "const vis=e=>e.getBoundingClientRect().width>0;"
@@ -485,13 +564,29 @@ class Page:
             "cands.sort((a,b)=>((a.innerText||'').trim().length)-((b.innerText||'').trim().length));"
             "const el=cands[0];el.scrollIntoView({block:'center'});"
             "const rc=el.getBoundingClientRect();"
-            "return{ok:true,x:Math.round(rc.x+rc.width/2),y:Math.round(rc.y+rc.height/2),"
+            "const x=Math.round(rc.x+rc.width/2),y=Math.round(rc.y+rc.height/2);"
+            "const hit=document.elementFromPoint(x,y);"
+            "if(!hit)return{ok:false,err:'oob'};"
+            "if(hit!==el&&!el.contains(hit)&&!hit.contains(el))"
+            "return{ok:false,err:'blocked',by:hit.tagName+' '+"
+            "((hit.className||'')+'').slice(0,40)};"
+            "return{ok:true,x:x,y:y,"
             "tag:el.tagName,cls:(el.className||'').toString().slice(0,30)};}",
             str(text), scope or "", bool(contains),
             int(y_min) if y_min is not None else None,
             int(y_max) if y_max is not None else None)
         if not (r or {}).get("ok"):
-            return {"ok": False, "err": "页面上找不到文本为「%s」的可点元素" % text}
+            err = (r or {}).get("err")
+            if err == "blocked":
+                return {"ok": False,
+                        "err": "「%s」的落点被 %s 挡住（遮罩/浮层未退场）"
+                               % (text, (r or {}).get("by") or "未知元素")}
+            if err == "oob":
+                return {"ok": False,
+                        "err": "「%s」的落点在视口外——浏览器窗口几何异常，"
+                               "关掉该平台浏览器窗口后重试" % text}
+            return {"ok": False, "err": "页面上找不到文本为「%s」的可点元素%s"
+                    % (text, self._click_diag(scope))}
         x, y = r["x"], r["y"]
         self.send("Input.dispatchMouseEvent",
                   {"type": "mousePressed", "x": x, "y": y,
@@ -500,6 +595,27 @@ class Page:
                   {"type": "mouseReleased", "x": x, "y": y,
                    "button": "left", "clickCount": 1}, timeout=8.0)
         return {"ok": True, "tag": r.get("tag"), "via": "input"}
+
+    def _click_diag(self, scope):
+        """点击目标找不到时的现场自证：定位范围里到底有没有可见元素、都是
+        什么——「弹层没开」和「分类表变了」从此一眼可分，不用再猜。"""
+        try:
+            r = self.call(
+                "(scope)=>{const vis=e=>e.getBoundingClientRect().width>0;"
+                "const els=[...document.querySelectorAll(scope||"
+                "'button,a,[role=button],span,li,[class*=btn]')].filter(vis);"
+                "const ts=[...new Set(els.map(e=>(e.innerText||'').trim())"
+                ".filter(x=>x&&x.length<=10))].slice(0,8);"
+                "return{n:els.length,ts:ts};}", scope or "")
+            n = int((r or {}).get("n") or 0)
+            ts = "／".join(str(t) for t in ((r or {}).get("ts") or []))
+            if not n:
+                return "（定位范围 %s 内无可见元素：目标容器多半没打开）" \
+                       % (str(scope or "默认")[:48])
+            return "（定位范围 %s 内可见项：%s）" \
+                   % (str(scope or "默认")[:48], ts[:120])
+        except Exception:
+            return ""
 
     def screenshot(self, fp):
         """整页截图存证：发布每步之后落一张，出错可回看卡在哪一步。"""
