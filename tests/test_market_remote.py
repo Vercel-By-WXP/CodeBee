@@ -75,6 +75,12 @@ class TestMarketRemoteSsrf(BaseTest):
                         return_value=[(2, 1, 6, "", ("93.184.216.34", 443))]):
             host, port = mr.assert_public_url("https://cdn.example.com/a/b.json")
         self.assertEqual((host, port), ("cdn.example.com", 443))
+        # 用户信息可能是访问令牌，拒绝后不能在错误中回显。
+        for bad in ("https://secret-token@github.com/o/r.git",
+                    "http://user:secret-token@github.com/o/r.git"):
+            with self.assertRaises(ValueError) as caught:
+                mr.assert_public_url(bad)
+            self.assertNotIn("secret-token", str(caught.exception))
 
 
 class TestMarketRemoteParse(BaseTest):
@@ -550,6 +556,24 @@ class TestGitSourceSsrf(BaseTest):
                 mock.patch.object(mr.subprocess, "run") as run:
             with self.assertRaisesRegex(ValueError, "拒绝非公网地址"):
                 mr._download_git(entry, Path(tempfile.mkdtemp()))
+        run.assert_not_called()
+
+        credentialed = {"install": {"url": "https://secret-token@github.com/o/r.git",
+                                    "path": ""}}
+        with mock.patch.object(mr, "_gh_tarball") as tarball, \
+                mock.patch.object(mr, "_gh_fetch_files") as files, \
+                mock.patch.object(mr, "_download_git") as clone:
+            with self.assertRaises(ValueError) as caught:
+                mr._download_git_any(credentialed, self.tmp)
+        self.assertNotIn("secret-token", str(caught.exception))
+        tarball.assert_not_called()
+        files.assert_not_called()
+        clone.assert_not_called()
+        with mock.patch.object(mr.shutil, "which", return_value="git"), \
+                mock.patch.object(mr.subprocess, "run") as run:
+            with self.assertRaises(ValueError) as caught:
+                mr._download_git(credentialed, self.tmp)
+        self.assertNotIn("secret-token", str(caught.exception))
         run.assert_not_called()
 
 

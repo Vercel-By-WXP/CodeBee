@@ -110,18 +110,29 @@ def _cache_file(source_id):
 
 # ---------------------------------------------------------------- 网络边界
 
+def _reject_url_userinfo(url):
+    """拒绝 URL authority 中的凭据；错误不回显可能含令牌的原始 URL。"""
+    parsed = urlparse(url or "")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("URL 不允许携带用户信息")
+    return parsed
+
+
 def assert_public_url(url):
     """SSRF 防护：仅 https；host 解析出的所有 IP 都不得是环回/私有/保留地址。
     返回 (host, port)，不合法直接抛 ValueError。"""
-    u = urlparse(url or "")
+    u = _reject_url_userinfo(url)
     if u.scheme != "https":
-        raise ValueError("仅允许 https 地址: %s" % url)
+        raise ValueError("仅允许 https 地址")
     host = u.hostname
     if not host:
-        raise ValueError("URL 缺少主机名: %s" % url)
-    if u.port is not None and not (0 < u.port < 65536):
-        raise ValueError("端口非法: %s" % url)
-    port = u.port or 443
+        raise ValueError("URL 缺少主机名")
+    try:
+        port = u.port or 443
+    except ValueError:
+        raise ValueError("端口非法") from None
+    if not (0 < port < 65536):
+        raise ValueError("端口非法")
     infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
     if not infos:
         raise ValueError("主机无法解析: %s" % host)
@@ -841,7 +852,7 @@ def _download_git(entry, tmp):
         proc = subprocess.run(cmd, capture_output=True, timeout=300,
                               text=True, encoding="utf-8", errors="replace")
     except subprocess.TimeoutExpired:
-        raise ValueError("git 克隆超时: %s" % inst["url"])
+        raise ValueError("git 克隆超时")
     if proc.returncode != 0:
         raise ValueError("git 克隆失败: %s" % (proc.stderr or "").strip()[-200:])
     root = dst / sub if sub else dst
@@ -856,6 +867,7 @@ def _download_git(entry, tmp):
 def _download_git_any(entry, tmp):
     """git 类来源安装：codeload tarball 优先（完整、最新）→ jsdelivr 逐文件
     兜底（codeload 不可达时）→ git 浅克隆收尾（非 github 托管 / 精确 ref）。"""
+    _reject_url_userinfo(entry["install"].get("url"))
     try:
         return _gh_tarball(entry, tmp)
     except ValueError as e:
