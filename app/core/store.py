@@ -487,8 +487,8 @@ def get_task(task_id):
     return None
 
 
-def list_tasks(limit=100, archived=None):
-    """archived=None 返回全部；False 仅未归档；True 仅已归档。按 id（含时间戳）倒序。"""
+def list_tasks(limit=None, archived=None):
+    """按 id 倒序列任务。archived 筛选归档态；limit=None 返回全部。"""
     with LOCK:
         ids = sorted(_TASKS.keys(), reverse=True)
         out = []
@@ -497,7 +497,7 @@ def list_tasks(limit=100, archived=None):
             if archived is not None and bool(t.get("archived")) != archived:
                 continue
             out.append(t)
-            if len(out) >= limit:
+            if limit is not None and len(out) >= limit:
                 break
         return out
 

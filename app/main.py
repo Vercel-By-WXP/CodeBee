@@ -2708,9 +2708,9 @@ def _state_payload(client_id="", ver=None):
     return {
         "v": ver,
         "agents": agents,
-        "tasks": store.list_tasks(30, archived=False),
+        "tasks": store.list_tasks(archived=False),
         # 归档任务默认隐藏；目标/上下文可能很大，只有查看或恢复时再按需读取。
-        "archived_tasks": [_state_task_summary(t) for t in store.list_tasks(30, archived=True)],
+        "archived_tasks": [_state_task_summary(t) for t in store.list_tasks(archived=True)],
         # 每个任务的最近一次运行（不受 runs 窗口限制）：侧栏靠它展示各任务真实近况
         "task_latest": {tid: _state_run_summary(run) for tid, run in latest.items()},
         # 每个任务的运行次数/步骤总数（全量）：侧栏「查看全部」的计数来源

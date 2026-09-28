@@ -102,6 +102,47 @@ class TestStatePayload(BaseTest):
         self.assertEqual(payload["task_latest"]["t-1"]["pending_message_count"], 1)
         self.assertLess(len(str(payload)), 2000)
 
+    def test_state_snapshot_keeps_tasks_beyond_recent_thirty(self):
+        from unittest import mock
+
+        from app import main
+
+        tasks = []
+        for i in range(35):
+            task_id = "t-20260927-%06d-%04d" % (i, i)
+            tasks.append({
+                "id": task_id, "title": "Task %d" % i,
+                "workdir": str(self.workdir), "archived": False,
+            })
+        for i in range(35):
+            archived_id = "t-20260926-%06d-%04d" % (i, i)
+            tasks.append({
+                "id": archived_id, "title": "Archived %d" % i,
+                "workdir": str(self.workdir), "archived": True,
+            })
+
+        def list_tasks(limit=None, archived=None):
+            selected = sorted((task for task in tasks
+                               if archived is None or task["archived"] == archived),
+                              key=lambda task: task["id"], reverse=True)
+            return selected if limit is None else selected[:limit]
+
+        with mock.patch.object(main.registry, "effective_agents", return_value=[]), \
+             mock.patch.object(main.manager, "detect_all", return_value={}), \
+             mock.patch.object(main.catalog, "load", return_value=[]), \
+             mock.patch.object(main.store, "list_runs", return_value=[]), \
+             mock.patch.object(main.store, "latest_run_by_task", return_value={}), \
+             mock.patch.object(main.store, "list_tasks", side_effect=list_tasks), \
+             mock.patch.object(main.store, "task_run_stats", return_value={}), \
+             mock.patch.object(main.remote, "control_view", return_value={}), \
+             mock.patch.object(main.health, "snapshot", return_value={}), \
+             mock.patch.object(main.jobs, "workers_info", return_value={}):
+            payload = main._state_payload()
+
+        self.assertEqual(len(payload["tasks"]), 35)
+        self.assertEqual(len(payload["archived_tasks"]), 35)
+        self.assertEqual(payload["tasks"][-1]["title"], "Task 0")
+
     def test_run_summary_omits_detail_payload_but_keeps_list_contract(self):
         from app import main
 
