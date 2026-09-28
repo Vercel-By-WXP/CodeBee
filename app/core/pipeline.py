@@ -1916,14 +1916,15 @@ def _pending_messages(run_id):
 
 
 def _direct_prev_run(task_id, exclude_run_id):
-    """同一任务下最近一次已结束的 direct run（追话时继承会话 id 与工作目录）。"""
+    """同一任务下最近一次已结束的 direct run（追话时继承会话 id 与工作目录）。
+    timeout 也算结束——定时任务超时是常态，延续不能因为上轮超时而静默断链。"""
     try:
         runs = store.list_runs(limit=200)
     except Exception:
         return None
     cands = [r for r in runs
              if r.get("task_id") == task_id and r.get("id") != exclude_run_id
-             and r.get("status") in ("done", "failed", "cancelled")]
+             and r.get("status") in store.TERMINAL_STATUSES]
     if not cands:
         return None
     return max(cands, key=lambda r: r.get("id") or "")
@@ -2031,7 +2032,12 @@ def _run_direct(run, task, agents, ev, stats, mode):
         pending0 = store.peek_messages(run_id)
     except Exception:
         pending0 = []
-    if pending0:
+    # 会话延续（automation 定时触发）：automation._launch_run 在 run 上注入
+    # fresh_chat=False 时，即使信箱空也查上一轮接续——定时巡检/盯梢类任务
+    # 需要知道上次干到哪。普通任务的 run 无此键，维持「每次全新对话」；
+    # 追话（信箱有未消费消息）永远继承，不受开关影响。
+    auto_carry = (run.get("fresh_chat") is False)
+    if pending0 or auto_carry:
         prev = _direct_prev_run(task["id"], run_id)
         if prev:
             ps = (prev.get("direct_session") or {})

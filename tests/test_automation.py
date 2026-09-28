@@ -625,6 +625,59 @@ class TestRealLaunchFailureClosesRecords(AutomationCase):
         self.assertNotIn("worker queue unavailable", run.get("error", ""))
 
 
+class TestCarryFreshChat(AutomationCase):
+    """会话延续开关（fresh_chat）：默认延续——信箱种上一轮输出；开启则全新对话。
+
+    延续 = _launch_run 种「定时任务延续」消息（所有流程首步 drain 注入）+
+    run 打 fresh_chat=False 标记（direct 引擎继承 CLI 会话 id）。"""
+
+    def runTest(self):
+        from app.core import jobs as jobs_mod
+        from app.core import store as store_mod
+
+        enqueued = []
+        orig_enqueue = jobs_mod.enqueue
+        jobs_mod.enqueue = lambda job: enqueued.append(job)
+        self.aut._launch_run = self._orig_launch
+        try:
+            t = self.make(name="延续巡检")
+
+            # 首轮：无历史可延续 → 信箱为空，但 run 已带延续档标记
+            _t1, r1 = self.aut.run_now(t["id"])
+            self.assertEqual(store_mod.peek_messages(r1), [])
+            self.assertIs(store_mod.get_run(r1).get("fresh_chat"), False)
+
+            # 首轮收尾并留下输出 → 次轮信箱应种「定时任务延续」+ 上轮结尾
+            store_mod.update_run(r1, status="done", ended_at="now",
+                                 steps=[{"summary": "巡检结论：全绿，无需处理"}])
+            _t2, r2 = self.aut.run_now(t["id"])
+            msgs = store_mod.peek_messages(r2)
+            self.assertEqual(len(msgs), 1)
+            self.assertEqual(msgs[0]["sender"], "定时延续")
+            self.assertIn("定时任务延续", msgs[0]["text"])
+            self.assertIn("巡检结论：全绿，无需处理", msgs[0]["text"])
+
+            # 开启「每次新聊天」：不再注入，run 标记翻真
+            cur = self.aut.update(t["id"], {"fresh_chat": True})
+            self.assertTrue(cur["fresh_chat"])
+            store_mod.update_run(r2, status="done", ended_at="now",
+                                 steps=[{"summary": "次轮结论"}])
+            _t3, r3 = self.aut.run_now(t["id"])
+            self.assertEqual(store_mod.peek_messages(r3), [])
+            self.assertIs(store_mod.get_run(r3).get("fresh_chat"), True)
+
+            # 开关随任务持久化（重启重载后仍在）
+            self.aut.load(force=True)
+            self.assertTrue(self.aut.get_task(t["id"])["fresh_chat"])
+            # 改回延续档
+            self.aut.update(t["id"], {"fresh_chat": False})
+            self.aut.load(force=True)
+            self.assertIs(self.aut.get_task(t["id"])["fresh_chat"], False)
+        finally:
+            jobs_mod.enqueue = orig_enqueue
+            self.aut._launch_run = self._fake_launch
+
+
 if __name__ == "__main__":
     import unittest as _u
     _u.main()
