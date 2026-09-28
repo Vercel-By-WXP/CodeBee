@@ -185,7 +185,10 @@ class TestArgvShape(BaseTest):
         argv, stdin_text, _, _ = runner._build_call(
             self._agent("gemini-cli", "gemini", ["-p", "{prompt}"]),
             "generic", "", False, "gemini-2.5-pro", "写一段开场")
-        self.assertTrue(any(a.lower() == "gemini" for a in argv), msg=argv)
+        # 身份断言放宽为包含匹配：本机装了 gemini-cli 时 resolve_command
+        # 解析成真实 bundle 路径（…gemini-cli/bundle/gemini.js），字面量
+        # "gemini" 只在未安装机器上出现——契约是参数形状，不是命令名。
+        self.assertTrue(any("gemini" in a.lower() for a in argv), msg=argv)
         self.assertEqual(argv[-2:], ["-p", "写一段开场"])
         self.assertNotIn("--model", argv)
         self.assertIsNone(stdin_text)

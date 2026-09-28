@@ -6432,7 +6432,7 @@ button.primary:hover { filter:brightness(.96); }
    brand color. */
 html[data-skin="ocean"][data-theme="light"] {
   --bg: #fff; --sidebar: #eff5fd; --panel: #fff; --panel2: #f0f6fd;
-  --border: #d7e3f4; --border-strong: #b9cde8; --text: #0c1a2c; --muted: #5d7290;
+  --border: #d7e3f4; --border-strong: #b9cde8; --text: #0c1a2c; --muted: #526983;
   --accent: #1f6fd0; --accent2: #5b4fe0; --ok: #0d9a72; --warn: #a9761a;
   --bad: #d23c58; --chip-queued-bg: #f0f6fd; --log-bg: #f4f8fe; --log-text: #33475f;
 }
@@ -6455,3 +6455,78 @@ html[data-skin="contrast"] .rail-btn.active { box-shadow: none; }
 /* 一级导航已经迁移到最左侧窄轨，项目栏只保留项目与任务内容，避免重复入口。 */
 .side-quick { display: none; }
 .side-foot { display: none; }
+
+/* 项目栏顶部：搜索收进标题行，新任务回归普通命令项。 */
+.side-main { position: relative; }
+.brand { padding-right: 42px; }
+.side-main > .side-search {
+  position: absolute; top: 8px; right: 4px;
+  width: 32px; min-height: 32px; height: 32px; margin: 0; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; border-radius: 8px; color: var(--muted);
+}
+.side-main > .side-search .ss-label,
+.side-main > .side-search .kbd { display: none; }
+.side-main > .side-search:hover { background: var(--panel2); color: var(--text); }
+.side-main > .new-task {
+  width: calc(100% - 18px); min-height: 34px; margin: 8px 14px 6px 4px; padding: 7px 9px;
+  background: transparent; color: var(--text); border: 0; border-radius: 8px;
+  box-shadow: none; font-weight: 400; transform: none;
+}
+.side-main > .new-task:hover {
+  background: var(--panel2); color: var(--text); box-shadow: none; transform: none;
+}
+.side-main > .new-task .kbd { display: none; }
+
+/* Typography pass: slightly larger working text and clearer hierarchy. */
+body { font-size: 14px; }
+#sidebar { font-size: 13px; }
+.brand-name { font-size: 16px; font-weight: 700; }
+.new-task { font-size: 14px; }
+.side-label { font-size: 12px; letter-spacing: .04em; }
+.sdir summary, .stask { font-size: 13px; }
+.sdir summary, .stask { line-height: 1.55; }
+.side-usage { font-size: 12px; }
+.topbar .page-title { font-size: 15px; }
+main { font-size: 14px; }
+#run-list .item { border-color: color-mix(in srgb, var(--border) 72%, transparent); border-radius: 11px; padding: 11px 12px; }
+#run-list .item .rt .name { font-size: 14px; }
+#run-list .item .rt .desc { font-size: 12px; }
+#run-list .item .time { font-size: 12px; }
+.cmp-context-note, .cmp-hint, .cmp-estimate { font-size: 12px; }
+#f-goal::placeholder { color: color-mix(in srgb, var(--muted) 78%, #fff); }
+
+/* Match the reference proportions: 46px rail + 216px project column. */
+#app { grid-template-columns: 46px 216px minmax(0, 1fr); }
+body.side-collapsed #app { grid-template-columns: 46px 0 minmax(0, 1fr); }
+#sidebar { padding: 13px 0 10px; }
+.brand { width: 100%; padding: 4px 12px 12px; justify-content: flex-start; text-align: left; }
+.brand {
+  display: flex; align-items: center; gap: 7px; min-height: 39px;
+  margin: 0; border: 0; outline: 0; background: transparent;
+  color: var(--text); font: inherit; cursor: pointer;
+}
+.brand:hover { background: transparent; }
+.brand:focus, .brand:active { border: 0; outline: 0; box-shadow: none; }
+.brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -2px; }
+.brand-name { flex: 0 0 auto; }
+.side-main > .new-task { margin-left: 12px; margin-right: 10px; }
+.side-section.tasks { padding-left: 12px; padding-right: 10px; }
+.side-usage { margin-left: 10px; margin-right: 10px; }
+
+.brand-menu {
+  position: absolute; z-index: 80; top: 47px; left: 8px; width: 204px;
+  padding: 6px; border: 1px solid var(--border-strong); border-radius: 12px;
+  background: var(--panel); box-shadow: 0 14px 32px color-mix(in srgb, var(--text) 16%, transparent);
+}
+.brand-menu-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  min-height: 48px; padding: 8px 9px; border-radius: 8px; color: var(--text);
+  font-size: 13px;
+}
+.brand-menu-item.selected { background: color-mix(in srgb, var(--panel2) 70%, transparent); }
+.brand-menu-item b { display: block; font-weight: 600; }
+.brand-menu-item small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+.brand-menu-item > .ico { width: 15px; height: 15px; color: var(--muted); }
+.brand-caret { transition: transform .15s ease; }
+.brand[aria-expanded="true"] .brand-caret { transform: rotate(-90deg); }

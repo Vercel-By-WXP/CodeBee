@@ -123,9 +123,15 @@
   <aside id="sidebar">
     <!-- 常规视图：任务树 -->
     <div class="side-main">
-      <div class="brand" title="CodeBee · 多智能体编排台" data-i18n-title="CodeBee · 多智能体编排台">
+      <button id="btn-brand" class="brand" type="button" title="切换工作区" aria-label="切换工作区" aria-haspopup="menu" aria-expanded="false" onclick="toggleBrandMenu()">
         <span class="brand-name">CodeBee</span>
         <svg class="ico brand-caret" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+      </button>
+      <div id="brand-menu" class="brand-menu hidden" role="menu" aria-label="工作区">
+        <div class="brand-menu-item selected" role="menuitem">
+          <span><b>CodeBee</b><small>多智能体编排台</small></span>
+          <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
+        </div>
       </div>
       <button id="btn-new-task" class="new-task"><span class="nt-label" data-i18n="＋ 新任务">＋ 新任务</span><span class="kbd" aria-hidden="true">N</span></button>
       <button class="side-search" id="btn-cmdk" title="搜索" data-i18n-title="搜索">
