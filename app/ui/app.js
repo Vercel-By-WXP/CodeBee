@@ -12281,6 +12281,15 @@ function renderEvalBench() {
       (r.last_ts ? t("　·　") + r.last_ts : "") + "</div></div>";
   }).join("") || '<div class="hint">' + t("还没有评测结果：勾选候选模型后点「开始评测」。") + "</div>";
   renderEvalMatrix(eb);
+  // 分数走势 sparkline（近 14 天全体已得分的按日均值；数据≥2 天才画）
+  const trendBox = $("eb-trend");
+  if (trendBox) {
+    const series = (eb.trend || []).map((t) => t.overall);
+    trendBox.innerHTML = (series.length > 1)
+      ? '<span class="hint">' + t("分数走势（近 ") + series.length + t(" 天）") + "</span>" +
+        kpiSparkSvg(series, series[series.length - 1] >= series[0] ? "up" : "down")
+      : "";
+  }
   const btn = $("eb-run-btn");
   if (btn) btn.disabled = !!eb.running;
 }
@@ -14265,6 +14274,7 @@ function switchTab(name, shell) {
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-settings"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", !inMain && b.dataset.sub === name));
   document.querySelectorAll(".qitem").forEach((b) => b.classList.toggle("active", inMain && b.dataset.page === name));
+  document.querySelectorAll(".rail-btn[data-rail-page]").forEach((b) => b.classList.toggle("active", b.dataset.railPage === (inMain ? name : "tasks")));
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-" + name));
   renderPageCrumb();   // 页名 + 面包屑组名一起刷新（组名从左栏导航现读）
   if (name === "runs" && !S.detailRunId) closeRun();
@@ -14299,6 +14309,7 @@ function exitSettings() {
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-tasks"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", b.dataset.sub === "tasks"));
   document.querySelectorAll(".qitem").forEach((b) => b.classList.remove("active"));
+  document.querySelectorAll(".rail-btn[data-rail-page]").forEach((b) => b.classList.toggle("active", b.dataset.railPage === "tasks"));
   document.body.classList.remove("settings-mode");
   document.body.classList.remove("files-mode");
   cmpGreeting();   // 回到任务页：问候语刷新
@@ -14916,6 +14927,7 @@ const CmdK = { tab: "all", q: "", sel: 0, flat: [] };
 function cmdkOps() {
   return [
     { icon: "i-tasks", label: t("新任务"), kbd: "N", run: () => $("btn-new-task").click() },
+    { icon: "i-browser", label: t("浏览器"), run: () => switchTab("browser", "main") },
     { icon: "i-calendar-days", label: t("自动化"), run: () => switchTab("automation") },
     { icon: "i-blocks", label: t("插件市场"), run: () => switchTab("market") },
     { icon: "i-book", label: t("经验库"), run: () => switchTab("skills") },

@@ -1068,6 +1068,9 @@
     "性价比 ": "value ",
     " 分/¥": " pts/¥",
     "花费 ¥": "cost ¥",
+    // —— 评测趋势 ——
+    "分数走势（近 ": "Score trend (last ",
+    " 天）": " days)",
     "📥 导入流程分享码": "📥 Import flow share code",
     "请先粘贴分享码": "Paste a share code first",
     "（与现有内容一致）": " (identical to current content)",

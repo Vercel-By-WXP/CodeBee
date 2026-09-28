@@ -108,14 +108,17 @@
 
   <!-- Codex 式一级导航：保留原有侧栏功能，增加一条可快速切换主视图的窄轨道。 -->
   <nav class="side-rail" aria-label="主导航">
-    <button type="button" class="rail-btn active" title="任务" aria-label="任务" onclick="exitSettings()">
+    <button type="button" class="rail-btn active" data-rail-page="tasks" title="任务" aria-label="任务" data-i18n-title="任务" data-i18n-aria="任务" onclick="exitSettings()">
       <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
     </button>
-    <button type="button" class="rail-btn" title="运行记录" aria-label="运行记录" onclick="switchTab('runs')">
+    <button type="button" class="rail-btn" data-rail-page="runs" title="运行记录" aria-label="运行记录" data-i18n-title="运行记录" data-i18n-aria="运行记录" onclick="switchTab('runs')">
       <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
     </button>
-    <button type="button" class="rail-btn" title="自动化" aria-label="自动化" onclick="switchTab('automation')">
+    <button type="button" class="rail-btn" data-rail-page="automation" title="自动化" aria-label="自动化" data-i18n-title="自动化" data-i18n-aria="自动化" onclick="switchTab('automation')">
       <svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>
+    </button>
+    <button type="button" class="rail-btn" id="btn-rail-browser" data-rail-page="browser" title="浏览器" aria-label="浏览器" data-i18n-title="浏览器" data-i18n-aria="浏览器" onclick="switchTab('browser', 'main')">
+      <svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg>
     </button>
     <span class="rail-spacer"></span>
     <button type="button" class="rail-btn" title="设置" aria-label="设置" onclick="document.getElementById('btn-settings').click()">
@@ -940,6 +943,11 @@
           <button data-i18n="经验包" class="seg-btn active" data-v="local">经验包</button>
           <button data-i18n="外部目录" class="seg-btn" data-v="remote">外部目录</button>
         </div>
+        <div class="plugin-section">
+          <h3 class="sec-title"><span data-i18n="本地插件">本地插件</span> <span class="tag" id="plugin-count"></span></h3>
+          <p class="hint" data-i18n="本地插件遵循统一 manifest 规范。技能会接入经验库；MCP 只在启用后合并到内置智能体工具，不执行插件脚本或钩子。">本地插件遵循统一 manifest 规范。技能会接入经验库；MCP 只在启用后合并到内置智能体工具，不执行插件脚本或钩子。</p>
+          <div id="plugin-grid" class="cards mk-grid"></div>
+        </div>
         <div id="mk-local">
         <div class="pm-tools mk-tools">
           <input id="mk-search" type="search" placeholder="搜索插件…" data-i18n-ph="搜索插件…" autocomplete="off">
@@ -1076,6 +1084,7 @@
             </div>
           </div>
           <h3 data-i18n="能力榜" class="sec-title">能力榜</h3>
+          <div class="input-row" id="eb-trend" style="align-items:center;gap:8px"></div>
           <div id="eb-board" class="list"></div>
           <h3 data-i18n="逐题对比" class="sec-title">逐题对比</h3>
           <div id="eb-matrix"></div>

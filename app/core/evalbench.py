@@ -445,7 +445,7 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
 
 
 def _notify_auto_done(candidates_n):
-    """定时回归收尾推送（Top3 榜单）；通知失败只记日志。"""
+    """定时回归收尾推送（Top3 榜单 + 与上次定时回归的 Top1 对比）；通知失败只记日志。"""
     try:
         from . import notify
         board = _leaderboard(_read_results_list(), {})[:3]
@@ -454,9 +454,32 @@ def _notify_auto_done(candidates_n):
         for r in board:
             score = ("%.1f" % r["overall"]) if r.get("overall") is not None else "未得分"
             lines.append("#%d %s：%s" % (r["rank"], r["model"], score))
+        # 与上次定时回归的 Top1 对比（防漂移一眼可见：换主了/掉了都点名）
+        prev = None
+        for r in reversed(_read().get("runs") or []):
+            if isinstance(r, dict) and r.get("auto") and not r.get("cancelled") \
+                    and r.get("top1"):
+                prev = r["top1"]
+                break
+        if board and board[0].get("overall") is not None:
+            cur_top1 = "%s（%.1f）" % (board[0]["model"], board[0]["overall"])
+            _remember_top1(cur_top1)
+            if prev and prev.split("（")[0] != board[0]["model"]:
+                lines.append("⚠ 榜首易主：上次 %s → 本次 %s" % (prev, cur_top1))
         notify.push_text("\n".join(lines))
     except Exception:
         pass
+
+
+def _remember_top1(text):
+    with _LOCK:
+        data = _read()
+        runs = data.get("runs") if isinstance(data.get("runs"), list) else []
+        for r in reversed(runs):
+            if isinstance(r, dict) and r.get("auto") and not r.get("cancelled"):
+                r["top1"] = str(text)
+                break
+        _write(data)
 
 
 def _read_results_list():
@@ -525,6 +548,19 @@ def _last_auto_ts():
         if isinstance(r, dict) and r.get("auto") and not r.get("cancelled"):
             return str(r.get("ts") or "")
     return ""
+
+
+def score_trend():
+    """全体已得分结果的按日综合分均值（近 14 天）——评测页 sparkline 用。"""
+    trend = {}
+    for r in _read_results_list():
+        if not (r.get("scored") and r.get("overall") is not None):
+            continue
+        day = str(r.get("ts") or "")[:10]
+        if day:
+            trend.setdefault(day, []).append(float(r["overall"]))
+    return [{"day": d, "overall": round(sum(trend[d]) / len(trend[d]), 2)}
+            for d in sorted(trend)[-14:]]
 
 
 def fire_due():
@@ -622,6 +658,7 @@ def state():
             "samples": samples(),
             "leaderboard": board,
             "matrix": _matrix(results),
+            "trend": score_trend(),
             "last_runs": (data.get("runs") or [])[-5:]}
 
 

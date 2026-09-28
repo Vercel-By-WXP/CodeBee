@@ -126,10 +126,23 @@ class TestNotifyAndMatrix(BaseTest):
             evalbench._run_bench("bench-auto", [{"provider_id": "p", "model": "m"}],
                                  ["writing"], {"provider_id": "j", "model": "jm"},
                                  notify_done=True)
-        self.assertTrue(mpush.called)
-        text = mpush.call_args.args[0]
-        self.assertIn("定时回归", text)
-        self.assertIn("8.8", text)
+            self.assertTrue(mpush.called)
+            text = mpush.call_args.args[0]
+            self.assertIn("定时回归", text)
+            self.assertIn("8.8", text)
+            # 再跑一轮：榜首从 m 换成 m2 → 点名「榜首易主」
+            mpush.reset_mock()
+            with mock.patch.object(evalbench, "_gen", side_effect=self._fake_gen(
+                    {"dims": {"情节": 6}, "overall": 6.0, "comment": ""})):
+                evalbench._RUN = {"total": 1, "done": 0, "current": "", "cancel": False,
+                                  "started_ts": time.time()}
+                evalbench._run_bench("bench-auto2", [{"provider_id": "p2", "model": "m2"}],
+                                     ["writing"], {"provider_id": "j", "model": "jm"},
+                                     notify_done=True)
+            self.assertTrue(mpush.called)
+            text2 = mpush.call_args.args[0]
+            self.assertIn("榜首易主", text2)
+            self.assertIn("m2", text2)
 
     def test_no_push_when_cancelled(self):
         from app.core import notify
