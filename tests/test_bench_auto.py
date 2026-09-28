@@ -126,10 +126,34 @@ class TestNotifyAndMatrix(BaseTest):
             evalbench._run_bench("bench-auto", [{"provider_id": "p", "model": "m"}],
                                  ["writing"], {"provider_id": "j", "model": "jm"},
                                  notify_done=True)
-        self.assertTrue(mpush.called)
-        text = mpush.call_args.args[0]
-        self.assertIn("定时回归", text)
-        self.assertIn("8.8", text)
+            self.assertTrue(mpush.called)
+            text = mpush.call_args.args[0]
+            self.assertIn("定时回归", text)
+            self.assertIn("8.8", text)
+            # 再跑一轮：同一模型 m 这次只考 6.0（同键最新胜把 m 拉下 8.8），
+            # 榜首从 m（8.8）变成……仍是 m 但分数变了不算易主；改用两个模型：
+            # m2 第一轮 8.8 居首，本轮 m2 掉到 6.0、m 冲到 9.5 → 真易主
+            mpush.reset_mock()
+            def drifting(prov_id, model, prompt, max_tokens=2048):
+                if "评审员" in prompt:
+                    score = 6.0 if model == "m2" else 9.5
+                    return {"ok": True, "text": json.dumps(
+                        {"dims": {"情节": score}, "overall": score, "comment": ""}),
+                        "usage": None, "error": "", "latency_ms": 5}
+                return {"ok": True, "text": "正文。", "usage": {"input": 1, "output": 2},
+                        "error": "", "latency_ms": 6}
+            with mock.patch.object(evalbench, "_gen", side_effect=drifting):
+                evalbench._RUN = {"total": 2, "done": 0, "current": "", "cancel": False,
+                                  "started_ts": time.time()}
+                evalbench._run_bench("bench-auto2",
+                                     [{"provider_id": "p", "model": "m"},
+                                      {"provider_id": "p2", "model": "m2"}],
+                                     ["writing"], {"provider_id": "j", "model": "jm"},
+                                     notify_done=True)
+            self.assertTrue(mpush.called)
+            text2 = mpush.call_args.args[0]
+            self.assertIn("榜首易主", text2)
+            self.assertIn("m）", text2)   # 新榜首 m
 
     def test_no_push_when_cancelled(self):
         from app.core import notify

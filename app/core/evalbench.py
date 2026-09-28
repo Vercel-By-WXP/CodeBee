@@ -342,7 +342,8 @@ def _verify_bugfix(answer):
 # ---------------------------------------------------------------- 运行链
 
 def _record_usage(run_id, role, sample_id, prov_id, model, ok, dur_ms, usage_d, error=""):
-    """评测调用入台账（source=bench）；cost_usd 记 0（价格表单位未核实）。"""
+    """评测调用入台账（source=bench）。评测花费记在结果行 cost_yuan（性价比
+    榜用），台账列保持 0——评测是横向对比不是生产消耗，别污染金额趋势。"""
     try:
         from . import usage
         usage.record(source="bench", run_id=run_id, task_id="", task_type="bench",
@@ -398,6 +399,23 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
             _record_usage(run_id, "judge", sid, judge_cfg["provider_id"],
                           judge_cfg["model"], jp.get("ok"), jp.get("latency_ms"),
                           jp.get("usage"), jp.get("error") or "")
+            # 本条结果的花费（¥，标定单价折算；未标价记 None=性价比未知）
+            def _cost(u, prov_id_, model_):
+                try:
+                    if not u:
+                        return None
+                    pr = _model_price_cached(prov_id_, model_)
+                    if not pr:
+                        return None
+                    return round((pr["in"] * int(u.get("input") or 0)
+                                  + pr["out"] * int(u.get("output") or 0)) / 1e6, 6)
+                except Exception:
+                    return None
+            cost_yuan = _cost(gen.get("usage"), prov_id, model)
+            judge_cost = _cost(jp.get("usage"), judge_cfg["provider_id"],
+                               judge_cfg["model"])
+            if cost_yuan is not None and judge_cost is not None:
+                cost_yuan = round(cost_yuan + judge_cost, 6)
             parsed = _parse_judge_json(jp.get("text") or "") if jp.get("ok") else None
             row = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
                    "sample_id": sid, "provider_id": prov_id, "model": model,
@@ -407,7 +425,7 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
                    "overall": parsed["overall"] if parsed else None,
                    "scores": parsed["dims"] if parsed else {},
                    "comment": parsed["comment"] if parsed else "",
-                   "cost_usd": 0.0,
+                   "cost_usd": 0.0, "cost_yuan": cost_yuan,
                    "duration_s": round((gen.get("latency_ms", 0) + jp.get("latency_ms", 0)) / 1000.0, 1),
                    "same_family": prov_id == judge_cfg.get("provider_id")}
             _persist_result(row)
@@ -427,7 +445,7 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
 
 
 def _notify_auto_done(candidates_n):
-    """定时回归收尾推送（Top3 榜单）；通知失败只记日志。"""
+    """定时回归收尾推送（Top3 榜单 + 与上次定时回归的 Top1 对比）；通知失败只记日志。"""
     try:
         from . import notify
         board = _leaderboard(_read_results_list(), {})[:3]
@@ -436,9 +454,32 @@ def _notify_auto_done(candidates_n):
         for r in board:
             score = ("%.1f" % r["overall"]) if r.get("overall") is not None else "未得分"
             lines.append("#%d %s：%s" % (r["rank"], r["model"], score))
+        # 与上次定时回归的 Top1 对比（防漂移一眼可见：换主了/掉了都点名）
+        prev = None
+        for r in reversed(_read().get("runs") or []):
+            if isinstance(r, dict) and r.get("auto") and not r.get("cancelled") \
+                    and r.get("top1"):
+                prev = r["top1"]
+                break
+        if board and board[0].get("overall") is not None:
+            cur_top1 = "%s（%.1f）" % (board[0]["model"], board[0]["overall"])
+            _remember_top1(cur_top1)
+            if prev and prev.split("（")[0] != board[0]["model"]:
+                lines.append("⚠ 榜首易主：上次 %s → 本次 %s" % (prev, cur_top1))
         notify.push_text("\n".join(lines))
     except Exception:
         pass
+
+
+def _remember_top1(text):
+    with _LOCK:
+        data = _read()
+        runs = data.get("runs") if isinstance(data.get("runs"), list) else []
+        for r in reversed(runs):
+            if isinstance(r, dict) and r.get("auto") and not r.get("cancelled"):
+                r["top1"] = str(text)
+                break
+        _write(data)
 
 
 def _read_results_list():
@@ -453,6 +494,20 @@ def _gen(prov_id, model, prompt, max_tokens):
         return modelhub.generate_once(prov_id, model, prompt, max_tokens=max_tokens)
     except Exception as e:                      # 防御：generate_once 承诺不抛，这里兜底
         return {"ok": False, "text": "", "usage": None, "error": str(e)}
+
+
+_PRICE_CACHE = {}      # (prov_id, model) → {"in","out"} | None（None 也缓存：未标价不反复穿透）
+
+
+def _model_price_cached(prov_id, model):
+    key = (str(prov_id or ""), str(model or ""))
+    if key not in _PRICE_CACHE:
+        try:
+            from . import modelhub
+            _PRICE_CACHE[key] = modelhub.model_price(key[1], provider=key[0])
+        except Exception:
+            _PRICE_CACHE[key] = None
+    return _PRICE_CACHE[key]
 
 
 def _append_run_log(run_id, judge_cfg, cancelled=False, auto=False):
@@ -493,6 +548,19 @@ def _last_auto_ts():
         if isinstance(r, dict) and r.get("auto") and not r.get("cancelled"):
             return str(r.get("ts") or "")
     return ""
+
+
+def score_trend():
+    """全体已得分结果的按日综合分均值（近 14 天）——评测页 sparkline 用。"""
+    trend = {}
+    for r in _read_results_list():
+        if not (r.get("scored") and r.get("overall") is not None):
+            continue
+        day = str(r.get("ts") or "")[:10]
+        if day:
+            trend.setdefault(day, []).append(float(r["overall"]))
+    return [{"day": d, "overall": round(sum(trend[d]) / len(trend[d]), 2)}
+            for d in sorted(trend)[-14:]]
 
 
 def fire_due():
@@ -590,6 +658,7 @@ def state():
             "samples": samples(),
             "leaderboard": board,
             "matrix": _matrix(results),
+            "trend": score_trend(),
             "last_runs": (data.get("runs") or [])[-5:]}
 
 
@@ -630,15 +699,22 @@ def _leaderboard(results, prov_names):
                 dims[d] = dims.get(d, 0.0) + float(v)
                 dim_n[d] = dim_n.get(d, 0) + 1
         verified = [r for r in items if r.get("verify_ok") is not None]
+        # 性价比（¥）：有标价且综合分>0 才有值 = 分/元；未标价 None
+        costs = [float(r.get("cost_yuan")) for r in scored
+                 if r.get("cost_yuan") is not None]
+        total_cost = round(sum(costs), 4) if costs else None
+        overall = (sum(r["overall"] for r in scored) / len(scored)) if scored else None
+        value = round(overall / total_cost, 2) if (overall and total_cost) else None
         rows.append({
             "provider_id": prov_id, "model": model,
             "provider_name": prov_names.get(prov_id) or prov_id,
-            "overall": round(sum(r["overall"] for r in scored) / len(scored), 2) if scored else None,
+            "overall": round(overall, 2) if overall is not None else None,
             "samples_n": len(items), "scored_n": len(scored),
             "failed_n": len(failed),
             "scores": {d: round(v / dim_n[d], 1) for d, v in dims.items() if dim_n[d]},
             "verify_pass": sum(1 for r in verified if r.get("verify_ok")),
             "verify_total": len(verified),
+            "cost_yuan": total_cost, "value_per_yuan": value,
             "same_family": any(r.get("same_family") for r in scored),
             "last_ts": max((r.get("ts") or "") for r in items),
         })

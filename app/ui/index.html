@@ -55,6 +55,10 @@
   <symbol id="i-workflow" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></symbol>
   <symbol id="i-phone" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M12 18h.01"/></symbol>
   <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
+  <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 3h7v7"/><path d="m21 3-9 9"/><path d="M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-browser" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M7 6.5h.01M10 6.5h.01M13 6.5h.01"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
   <symbol id="i-globe" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2c1.9 0 3.6 2.8 4 6.5h-8c.4-3.7 2.1-6.5 4-6.5ZM4.3 10.5h2.7c-.1 1-.1 2 0 3H4.3a8 8 0 0 1 0-3Zm.8-2a8 8 0 0 1 4-4.2c-1 1.3-1.8 3-2.1 4.2H5.1Zm-1 7h2c.3 1.3 1 3 2.1 4.2a8 8 0 0 1-4-4.2Zm2-2a17 17 0 0 1 0-3h8a17 17 0 0 1 0 3h-8Zm2.9 6.2c-1-1.2-1.8-2.9-2.1-4.2h1.9c.3 1.2 1.1 3 2.1 4.2a8 8 0 0 1-1.9 0Zm3 0c-1-.5-2-2.6-2.4-4.2h4.8c-.4 1.6-1.4 3.7-2.4 4.2Zm1.9-.2c1-1.2 1.8-2.9 2.1-4.2h2a8 8 0 0 1-4.1 4.2Zm4.4-6.2h-2.7c.1-1 .1-2 0-3h2.7a8 8 0 0 1 0 3Zm-2.4-5a11 11 0 0 0-2-4.2 8 8 0 0 1 4 4.2h-2Z"/><path d="M7 10.5h10M7 13.5h10" fill="none" stroke="currentColor" stroke-width=".8" opacity=".45"/></symbol><symbol id="i-palette" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2a10 10 0 0 0 0 20 2 2 0 0 0 2-2v-1a2 2 0 0 1 2-2h1.5A4.5 4.5 0 0 0 22 12.5C22 6.7 17.5 2 12 2Z"/></symbol>
@@ -104,14 +108,17 @@
 
   <!-- Codex 式一级导航：保留原有侧栏功能，增加一条可快速切换主视图的窄轨道。 -->
   <nav class="side-rail" aria-label="主导航">
-    <button type="button" class="rail-btn active" title="任务" aria-label="任务" onclick="exitSettings()">
+    <button type="button" class="rail-btn active" data-rail-page="tasks" title="任务" aria-label="任务" data-i18n-title="任务" data-i18n-aria="任务" onclick="exitSettings()">
       <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
     </button>
-    <button type="button" class="rail-btn" title="运行记录" aria-label="运行记录" onclick="switchTab('runs')">
+    <button type="button" class="rail-btn" data-rail-page="runs" title="运行记录" aria-label="运行记录" data-i18n-title="运行记录" data-i18n-aria="运行记录" onclick="switchTab('runs')">
       <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
     </button>
-    <button type="button" class="rail-btn" title="自动化" aria-label="自动化" onclick="switchTab('automation')">
+    <button type="button" class="rail-btn" data-rail-page="automation" title="自动化" aria-label="自动化" data-i18n-title="自动化" data-i18n-aria="自动化" onclick="switchTab('automation')">
       <svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>
+    </button>
+    <button type="button" class="rail-btn" id="btn-rail-browser" data-rail-page="browser" title="浏览器" aria-label="浏览器" data-i18n-title="浏览器" data-i18n-aria="浏览器" onclick="switchTab('browser', 'main')">
+      <svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg>
     </button>
     <span class="rail-spacer"></span>
     <button type="button" class="rail-btn" title="设置" aria-label="设置" onclick="document.getElementById('btn-settings').click()">
@@ -123,21 +130,30 @@
   <aside id="sidebar">
     <!-- 常规视图：任务树 -->
     <div class="side-main">
-      <button id="btn-brand" class="brand" type="button" title="切换工作区" aria-label="切换工作区" aria-haspopup="menu" aria-expanded="false" onclick="toggleBrandMenu()">
-        <span class="brand-name">CodeBee</span>
-        <svg class="ico brand-caret" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
-      </button>
+      <div class="brand-row">
+        <button id="btn-brand" class="brand" type="button" title="切换工作区" aria-label="切换工作区" aria-haspopup="menu" aria-expanded="false" onclick="toggleBrandMenu()">
+          <span class="brand-name">CodeBee</span>
+          <svg class="ico brand-caret" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+        </button>
+        <button id="btn-notify-toggle" class="brand-tool" title="完成/待裁决提示音" aria-label="完成/待裁决提示音"
+                data-i18n-title="完成/待裁决提示音" data-i18n-aria="完成/待裁决提示音">
+          <svg class="ico" aria-hidden="true"><use href="#i-bell"></use></svg>
+        </button>
+        <button class="brand-tool side-search" id="btn-cmdk" title="搜索" aria-label="搜索" data-i18n-title="搜索">
+          <svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>
+          <span class="ss-label" data-i18n="搜索">搜索</span>
+          <span class="kbd" aria-hidden="true">Ctrl K</span>
+        </button>
+      </div>
       <div id="brand-menu" class="brand-menu hidden" role="menu" aria-label="工作区">
         <div class="brand-menu-item selected" role="menuitem">
           <span><b>CodeBee</b><small>多智能体编排台</small></span>
           <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
         </div>
       </div>
-      <button id="btn-new-task" class="new-task"><span class="nt-label" data-i18n="＋ 新任务">＋ 新任务</span><span class="kbd" aria-hidden="true">N</span></button>
-      <button class="side-search" id="btn-cmdk" title="搜索" data-i18n-title="搜索">
-        <svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>
-        <span class="ss-label" data-i18n="搜索">搜索</span>
-        <span class="kbd" aria-hidden="true">Ctrl K</span>
+      <button id="btn-new-task" class="new-task">
+        <svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg>
+        <span class="nt-label">新聊天</span><span class="kbd" aria-hidden="true">N</span>
       </button>
       <!-- 快捷导航：只放最常用的全局页（data-page 是页面 id 真源）。
            点它们只换主栏内容，左栏任务树原地不动（app.js switchTab 的 main 形态）；
@@ -156,10 +172,14 @@
           <svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>
           <span data-i18n="自动化">自动化</span>
         </button>
+        <button class="qitem" id="btn-q-browser" data-page="browser" title="浏览器" data-i18n-title="浏览器">
+          <svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg>
+          <span data-i18n="浏览器">浏览器</span>
+        </button>
       </div>
       <div class="side-section tasks">
         <div class="side-label-row">
-          <div data-i18n="任务" class="side-label">任务</div>
+          <div data-i18n="项目" class="side-label">项目</div>
           <button id="btn-side-expand" class="foot-btn notify-toggle" title="展开全部" aria-label="展开全部"
                   data-i18n-title="展开全部" data-i18n-aria="展开全部">
             <svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
@@ -167,10 +187,6 @@
           <button id="btn-side-arch" class="foot-btn notify-toggle arch-toggle" title="显示已归档" aria-label="显示已归档"
                   data-i18n-title="显示已归档" data-i18n-aria="显示已归档">
             <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
-          </button>
-          <button id="btn-notify-toggle" class="foot-btn notify-toggle" title="完成/待裁决提示音" aria-label="完成/待裁决提示音"
-                  data-i18n-title="完成/待裁决提示音" data-i18n-aria="完成/待裁决提示音">
-            <svg class="ico" aria-hidden="true"><use href="#i-bell"></use></svg>
           </button>
         </div>
         <div id="side-tasks" class="side-tasks"></div>
@@ -927,6 +943,11 @@
           <button data-i18n="经验包" class="seg-btn active" data-v="local">经验包</button>
           <button data-i18n="外部目录" class="seg-btn" data-v="remote">外部目录</button>
         </div>
+        <div class="plugin-section">
+          <h3 class="sec-title"><span data-i18n="本地插件">本地插件</span> <span class="tag" id="plugin-count"></span></h3>
+          <p class="hint" data-i18n="本地插件遵循统一 manifest 规范。技能会接入经验库；MCP 只在启用后合并到内置智能体工具，不执行插件脚本或钩子。">本地插件遵循统一 manifest 规范。技能会接入经验库；MCP 只在启用后合并到内置智能体工具，不执行插件脚本或钩子。</p>
+          <div id="plugin-grid" class="cards mk-grid"></div>
+        </div>
         <div id="mk-local">
         <div class="pm-tools mk-tools">
           <input id="mk-search" type="search" placeholder="搜索插件…" data-i18n-ph="搜索插件…" autocomplete="off">
@@ -989,6 +1010,14 @@
           <h3 data-i18n="MCP 工具（内置智能体）" class="sec-title">MCP 工具（内置智能体）</h3>
           <div class="field"><label data-i18n="MCP 服务器清单（JSON 数组，stdio 形态，最多 4 个）">MCP 服务器清单（JSON 数组，stdio 形态，最多 4 个）</label>
             <textarea id="set-mcp-servers" rows="4" style="width:100%;font-family:var(--mono,monospace);font-size:12px" placeholder='[{"name":"fs","command":"npx","args":["-y","@modelcontextprotocol/server-fs","C:/data"]}]'></textarea>
+            <div class="input-row" style="margin-top:6px" id="mcp-templates">
+              <span class="hint" data-i18n="一键模板：">一键模板：</span>
+              <button class="ghost small" onclick="mcpTemplate('fetch')" data-i18n="fetch 网页抓取">fetch 网页抓取</button>
+              <button class="ghost small" onclick="mcpTemplate('memory')" data-i18n="memory 记忆">memory 记忆</button>
+              <button class="ghost small" onclick="mcpTemplate('filesystem')" data-i18n="filesystem 文件">filesystem 文件</button>
+              <button class="ghost small" onclick="mcpTemplate('playwright')" data-i18n="playwright 浏览器">playwright 浏览器</button>
+              <button class="ghost small" onclick="mcpTemplate('context7')" data-i18n="context7 文档">context7 文档</button>
+            </div>
             <div class="input-row" style="margin-top:6px">
               <button class="ghost small" onclick="saveMcpServers()" data-i18n="保存 MCP 配置">保存 MCP 配置</button>
             </div>
@@ -1055,6 +1084,7 @@
             </div>
           </div>
           <h3 data-i18n="能力榜" class="sec-title">能力榜</h3>
+          <div class="input-row" id="eb-trend" style="align-items:center;gap:8px"></div>
           <div id="eb-board" class="list"></div>
           <h3 data-i18n="逐题对比" class="sec-title">逐题对比</h3>
           <div id="eb-matrix"></div>
@@ -1304,6 +1334,48 @@
               <div id="files-list" class="files-list"></div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div id="sub-browser" class="subpage hidden">
+        <div class="browser-shell">
+          <div class="browser-head">
+            <div class="browser-tabs" id="browser-tabs" role="tablist" aria-label="浏览器标签页">
+              <button class="browser-tab active" type="button" data-browser-tab="home" role="tab" aria-selected="true">
+                <svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span>CodeBee 浏览器</span>
+              </button>
+              <button class="browser-tab-add" id="browser-new-tab" type="button" title="新建标签页" aria-label="新建标签页"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg></button>
+            </div>
+            <div class="browser-status"><span class="browser-status-dot"></span><span data-i18n="本地浏览器工作区">本地浏览器工作区</span></div>
+          </div>
+          <div class="browser-toolbar">
+            <button class="icon-btn" id="browser-back" type="button" title="后退" aria-label="后退"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg></button>
+            <button class="icon-btn" id="browser-forward" type="button" title="前进" aria-label="前进"><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+            <button class="icon-btn" id="browser-reload" type="button" title="刷新" aria-label="刷新"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg></button>
+            <button class="icon-btn" id="browser-home" type="button" title="主页" aria-label="主页"><svg class="ico" aria-hidden="true"><use href="#i-home"></use></svg></button>
+            <form id="browser-nav-form" class="browser-address-wrap">
+              <svg class="ico browser-lock" aria-hidden="true"><use href="#i-lock"></use></svg>
+              <input id="browser-address" type="text" autocomplete="off" spellcheck="false" placeholder="输入网址或搜索内容" data-i18n-ph="输入网址或搜索内容" aria-label="网址">
+              <button class="browser-go" type="submit" title="打开" aria-label="打开"><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+            </form>
+            <button class="ghost small browser-external" id="browser-open-external" type="button" title="在系统浏览器打开"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg><span data-i18n="系统浏览器">系统浏览器</span></button>
+          </div>
+          <div class="browser-shortcuts" id="browser-shortcuts">
+            <button type="button" class="browser-shortcut" data-browser-url="https://www.google.com"><span class="shortcut-mark google">G</span><span>Google</span></button>
+            <button type="button" class="browser-shortcut" data-browser-url="https://github.com"><span class="shortcut-mark github">GH</span><span>GitHub</span></button>
+            <button type="button" class="browser-shortcut" data-browser-url="https://developer.mozilla.org"><span class="shortcut-mark mdn">MDN</span><span>MDN</span></button>
+            <button type="button" class="browser-shortcut" data-browser-preview="1"><span class="shortcut-mark preview">P</span><span data-i18n="当前任务预览">当前任务预览</span></button>
+          </div>
+          <div class="browser-stage">
+            <div class="browser-empty" id="browser-empty">
+              <div class="browser-empty-mark"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg></div>
+              <h2 data-i18n="把网页带进工作流">把网页带进工作流</h2>
+              <p data-i18n="浏览资料、查看成品预览，再把页面内容交给 CodeBee 处理。">浏览资料、查看成品预览，再把页面内容交给 CodeBee 处理。</p>
+              <button class="primary" id="browser-open-preview" type="button"><svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg><span data-i18n="打开当前任务预览">打开当前任务预览</span></button>
+            </div>
+            <iframe id="browser-frame" class="browser-frame hidden" title="CodeBee 浏览器" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>
+          </div>
+          <div class="browser-foot"><span id="browser-hint" data-i18n="外部网站可能禁止嵌入；可用右上角系统浏览器打开。">外部网站可能禁止嵌入；可用右上角系统浏览器打开。</span><span class="spacer"></span><span id="browser-history-count"></span></div>
         </div>
       </div>
     </section>

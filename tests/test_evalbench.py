@@ -55,6 +55,7 @@ class EvalBenchBase(BaseTest):
     def setUp(self):
         super().setUp()
         evalbench._RUN = None
+        evalbench._PRICE_CACHE.clear()
 
 
 class TestJudgeParsing(EvalBenchBase):
@@ -124,10 +125,26 @@ class TestRunBench(EvalBenchBase):
         self.assertEqual(board["model-a"]["overall"], 7.8)
         self.assertEqual(board["model-a"]["verify_pass"], 1)
         self.assertFalse(board["model-a"]["same_family"])
+        # 无标价：cost_yuan/value_per_yuan 都是 None（不猜价）
+        self.assertIsNone(board["model-a"]["cost_yuan"])
+        self.assertIsNone(board["model-a"]["value_per_yuan"])
         # 台账：4 样题生成 + 4 裁判 = 8 条 bench 记录
         from app.core import usage
         bench_rows = [r for r in usage._iter_records(1) if r.get("source") == "bench"]
         self.assertEqual(len(bench_rows), 8)
+
+    def test_value_per_yuan_with_price(self):
+        from app.core import modelhub
+        with mock.patch.object(modelhub, "model_price",
+                               return_value={"in": 2.0, "out": 6.0}), \
+             mock.patch.object(evalbench, "_gen", side_effect=_fake_gen_factory()):
+            evalbench._run_bench("bench-t", [{"provider_id": "p", "model": "m"}],
+                                 ["writing"], {"provider_id": "j", "model": "jm"})
+        row = self._board()["m"]
+        self.assertIsNotNone(row["cost_yuan"])
+        self.assertGreater(row["cost_yuan"], 0)
+        self.assertEqual(row["value_per_yuan"],
+                         round(row["overall"] / row["cost_yuan"], 2))
 
     def test_same_family_flagged(self):
         with mock.patch.object(evalbench, "_gen",
