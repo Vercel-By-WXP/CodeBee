@@ -220,7 +220,10 @@ class PersonalPushTests(BaseTest):
         with mock.patch.object(notify, "_send", side_effect=[True, RuntimeError("net down")]):
             res = notify.push_text_ex("hi")
         self.assertEqual(res, {"bark": True, "telegram": False})
-        self.assertTrue(notify.push_text("hi"))
+        # push_text 也必须在离线测试替身内验证，避免把网络可用性混入
+        # “任一通道成功即返回 True”的行为断言。
+        with mock.patch.object(notify, "_send", return_value=True):
+            self.assertTrue(notify.push_text("hi"))
 
     def test_push_run_works_without_webhook(self):
         """只有个人通道也应收到任务摘要（旧版无 webhook 即静默跳过）。"""
