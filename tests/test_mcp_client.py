@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -139,6 +140,60 @@ class TestLiveFakeServer(BaseTest):
                                    "env": {}})
         self.assertFalse(r["ok"])
         self.assertIn("超时", r["error"])
+
+
+class TestToolCacheRefresh(BaseTest):
+
+    def setUp(self):
+        super().setUp()
+        with mcp_client._LOCK:
+            mcp_client._TOOLS_CACHE.clear()
+        self.addCleanup(mcp_client._TOOLS_CACHE.clear)
+
+    def test_concurrent_refresh_publishes_complete_list(self):
+        servers = [{"name": name, "command": "unused"} for name in ("first", "second")]
+        second_started = threading.Event()
+        release_second = threading.Event()
+        reader_done = threading.Event()
+        results = {}
+
+        def discover(server):
+            if server["name"] == "second":
+                second_started.set()
+                if not release_second.wait(2):
+                    raise AssertionError("second discovery was not released")
+            return {"ok": True, "tools": [{"name": "echo", "description": "",
+                                          "input_schema": {}}]}
+
+        def reader():
+            results["reader"] = mcp_client.tool_specs_cached()
+            reader_done.set()
+
+        def refresh_cache():
+            results["refresh"] = mcp_client.tool_specs_cached(force=True)
+
+        with mock.patch.object(mcp_client, "_settings_text",
+                               return_value=json.dumps(servers)), \
+             mock.patch.object(mcp_client, "list_tools", side_effect=discover):
+            refresh = threading.Thread(target=refresh_cache)
+            refresh.start()
+            reader_thread = None
+            try:
+                self.assertTrue(second_started.wait(2))
+                with mcp_client._LOCK:
+                    self.assertEqual(mcp_client._TOOLS_CACHE, {})
+                reader_thread = threading.Thread(target=reader)
+                reader_thread.start()
+            finally:
+                release_second.set()
+                refresh.join(3)
+                if reader_thread is not None:
+                    reader_thread.join(3)
+
+        self.assertFalse(refresh.is_alive())
+        self.assertTrue(reader_done.is_set())
+        self.assertEqual(len(results["refresh"]), 2)
+        self.assertEqual(len(results["reader"]), 2)
 
 
 class TestBuiltinAgentWiring(BaseTest):

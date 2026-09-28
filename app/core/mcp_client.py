@@ -24,6 +24,7 @@ import threading
 import time
 
 _LOCK = threading.RLock()
+_REFRESH_LOCK = threading.Lock()
 _TOOLS_CACHE = {}          # server_key → (ts, tools)
 _TOOLS_TTL = 300.0
 
@@ -210,43 +211,55 @@ def call_tool(server, tool_name, arguments, timeout_s=_CALL_TIMEOUT):
 
 # ---- 面向 builtin_agent 的合并视图（带缓存） ----
 
+def _cached_specs():
+    """调用方持有 _LOCK；缓存未命中返回 None。"""
+    if not _TOOLS_CACHE or any(time.time() - ts > _TOOLS_TTL
+                               for ts, _tools in _TOOLS_CACHE.values()):
+        return None
+    out = []
+    for _ts, tools in _TOOLS_CACHE.values():
+        out.extend(tools)
+    return out[:MAX_MCP_TOOLS]
+
+
 def tool_specs_cached(force=False):
     """全部服务器的工具合并清单：[{server, name(原名), full_name, description,
     input_schema}]。TTL 内走缓存；单个服务器失败跳过（error 挂在条目外不打断）。"""
     with _LOCK:
-        if not force:
-            hit = True
-            for key, (ts, _t) in _TOOLS_CACHE.items():
-                if time.time() - ts > _TOOLS_TTL:
-                    hit = False
-                    break
-            if hit and _TOOLS_CACHE:
-                out = []
-                for _key, (_ts, tools) in _TOOLS_CACHE.items():
-                    out.extend(tools)
-                return out[:MAX_MCP_TOOLS]
-    servers, err = parse_servers(_settings_text())
-    if err or not servers:
-        return []
-    out = []
-    with _LOCK:
-        _TOOLS_CACHE.clear()
-    for srv in servers:
-        res = list_tools(srv)
-        if not res.get("ok"):
-            continue
-        specs = []
-        for t in res["tools"]:
-            specs.append({"server": srv["name"], "name": t["name"],
-                          "full_name": "mcp__%s__%s" % (srv["name"], t["name"]),
-                          "description": t["description"],
-                          "input_schema": t["input_schema"]})
+        cached = None if force else _cached_specs()
+        if cached is not None:
+            return cached
+    # 同一时间只刷新一次；整批发现完成后再发布，避免并发调用读到半份清单。
+    with _REFRESH_LOCK:
         with _LOCK:
-            _TOOLS_CACHE[srv["name"]] = (time.time(), specs)
-        out.extend(specs)
-        if len(out) >= MAX_MCP_TOOLS:
-            break
-    return out[:MAX_MCP_TOOLS]
+            cached = None if force else _cached_specs()
+            if cached is not None:
+                return cached
+        servers, err = parse_servers(_settings_text())
+        if err or not servers:
+            with _LOCK:
+                _TOOLS_CACHE.clear()
+            return []
+        out = []
+        refreshed = {}
+        for srv in servers:
+            res = list_tools(srv)
+            if not res.get("ok"):
+                continue
+            specs = []
+            for t in res["tools"]:
+                specs.append({"server": srv["name"], "name": t["name"],
+                              "full_name": "mcp__%s__%s" % (srv["name"], t["name"]),
+                              "description": t["description"],
+                              "input_schema": t["input_schema"]})
+            refreshed[srv["name"]] = (time.time(), specs)
+            out.extend(specs)
+            if len(out) >= MAX_MCP_TOOLS:
+                break
+        with _LOCK:
+            _TOOLS_CACHE.clear()
+            _TOOLS_CACHE.update(refreshed)
+        return out[:MAX_MCP_TOOLS]
 
 
 def dispatch_full_name(full_name, arguments, timeout_s=_CALL_TIMEOUT):
