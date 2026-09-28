@@ -28,7 +28,7 @@ from pathlib import Path
 
 from . import modelhub, runner, tlsctx
 
-MAX_TOOL_ITERS = 16          # 单步工具循环上限（防模型打转）
+MAX_TOOL_ITERS = 32          # 单步工具循环上限（防模型打转；收尾另留 1 轮）
 READ_MAX_BYTES = 64 * 1024   # read_file 单次读取上限
 READ_HEAD_BYTES = 44 * 1024  # TokenJuice 借鉴（openhuman）：超限文件头尾保留、
 READ_TAIL_BYTES = 16 * 1024  # 中段省略——日志/代码的报错常在尾部，纯截头会丢关键信息
@@ -62,7 +62,10 @@ _SYSTEM_PROMPT = """你是 CodeBee 的内置执行智能体，直接完成用户
 - Windows 上需要管理员权限的命令（flushdns、winsock reset、防火墙、系统服务等），用 powershell -Command "Start-Process <程序> -ArgumentList '<参数>' -Verb RunAs -Wait" 触发 UAC——用户屏幕会弹窗，点允许即提权执行；提权进程的输出拿不到，之后要用普通命令复核效果。macOS/Linux 用 sudo 并在输出里提示用户输密码不可行时改写临时脚本让用户跑。
 - 避免跑长驻/交互式命令（ping -t、top、要按键应答的安装器），它们会拖满超时被强杀。
 - 产出文件一律 UTF-8 编码。
-- 回答用户的语言与用户一致（默认中文）。直接给结论和内容，不要输出任何机器标记或协议行。"""
+- 回答用户的语言与用户一致（默认中文）。直接给结论和内容，不要输出任何机器标记或协议行。
+- 核心产出完成后立即停止探索并总结；不要为“再确认一次”重复读取或重复写入。
+- 每次工具调用后都要判断是否已经达到目标；如果工具轮次即将耗尽，先完成已开始的操作，随后直接给出已完成内容、产出文件和未完成项。
+"""
 
 
 def resolve(provider_id="", model="", difficulty="default"):
@@ -1363,6 +1366,11 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
     max_tokens = BASE_MAX_TOKENS   # 思考占满预算时提额重试（跨迭代保持，见空正文分支）
     escalated = False       # 本轮 run 是否已提额（只提一次，防无限翻倍）
     empty_streak = 0        # 连续零正文轮数（拿到正文/工具即清零）
+    last_action_was_tools = False
+    repeat_tool_signature = ""
+    repeat_tool_streak = 0
+    repeat_stop = False
+    finalize_attempted = False
     perf = {"ttft": [], "tps": []}   # 各次流式调用的首字延迟(ms)与吞吐(tok/s)
 
     def _perf():
@@ -1414,7 +1422,20 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
         out["cancelled"] = True
         return out
 
-    for it in range(1, MAX_TOOL_ITERS + 1):
+    # 工具上限后最多再给一次“只输出总结”的机会。这样最后一轮已经
+    # 成功写文件/抓数据但尚未总结时，不会把真实成果误报成失败。
+    for it in range(1, MAX_TOOL_ITERS + 2):
+        force_finalize = it > MAX_TOOL_ITERS or repeat_stop
+        if force_finalize and (finalize_attempted or not last_action_was_tools):
+            break
+        if force_finalize and not finalize_attempted:
+            finalize_attempted = True
+            msgs.append({"role": "user", "content":
+                         "请停止调用工具，只根据已经完成的操作直接给出最终答复。"
+                         "列出已完成内容、产出文件和仍未完成的事项；不要继续探索。"})
+            if log:
+                log("[收尾] 工具循环已到边界，发起一次无工具最终总结")
+            _fire(on_activity, "工具循环到边界，正在生成最终总结")
         if deadline is not None and time.monotonic() >= deadline:
             return _deadline_fail()
         if cancel_event is not None and cancel_event.is_set():
@@ -1434,16 +1455,17 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                             return _deadline_fail()
                         req_timeout = min(float(timeout), max(0.1, deadline - time.monotonic())) \
                             if deadline is not None else timeout
+                        allow_tools = tools_ok and not force_finalize
                         url, headers, body = _build_request(
                             proto, pbase, kk["key"], model, system, msgs,
-                            tools_ok, max_tokens=max_tokens,
+                            allow_tools, max_tokens=max_tokens,
                             extra_specs=[CREATE_TASK_SPEC] if task_creator else None)
                         sbody = None
                         if stream:
                             # 流式体单独构造（+stream / include_usage）；非流式体留给回落重发
                             _, _, sbody = _build_request(
                                 proto, pbase, kk["key"], model, system, msgs,
-                                tools_ok, stream=True, max_tokens=max_tokens,
+                                allow_tools, stream=True, max_tokens=max_tokens,
                                 extra_specs=[CREATE_TASK_SPEC] if task_creator else None)
                         effort = str(bi.get("reasoning_effort") or "").strip().lower()
                         # reasoning_effort 是 OpenAI wire 字段；Anthropic thinking 使用
@@ -1538,7 +1560,27 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         break
                     if not got:
                         continue                 # 本 KEY 失败，换下一个
+                    if calls and force_finalize:
+                        # 收尾请求明确禁用工具；模型若仍返回 tool call，不能再
+                        # 开启新一轮，否则会绕过止损边界。
+                        last_err = "收尾时模型仍请求工具"
+                        last_action_was_tools = False
+                        done = True
+                        break
                     if calls:
+                        sig = json.dumps(
+                            [(c.get("name"), c.get("args") or {}) for c in calls],
+                            ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                        if sig == repeat_tool_signature:
+                            repeat_tool_streak += 1
+                        else:
+                            repeat_tool_signature = sig
+                            repeat_tool_streak = 1
+                        if repeat_tool_streak >= 3:
+                            repeat_stop = True
+                            if log:
+                                log("[迭代 %d] 检测到同一工具调用连续重复，转入收尾" % it)
+                            _fire(on_activity, "检测到重复工具调用，正在收尾")
                         if log:
                             log("[迭代 %d] %s 请求工具: %s" % (
                                 it, model, ", ".join(c["name"] for c in calls)))
@@ -1557,6 +1599,7 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         msgs.append({"role": "assistant", "content": text, "tool_calls": calls})
                         msgs.append({"role": "tool_results", "tool_results": results})
                         empty_streak = 0
+                        last_action_was_tools = True
                         done = True
                         break
                     if (text or "").strip():
@@ -1564,10 +1607,12 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                             log("[迭代 %d] 最终回答（%d 字）" % (it, len(text)))
                         ok = True
                         empty_streak = 0
+                        last_action_was_tools = False
                         done = True
                         break
                     # —— 零正文零工具：分辨「思考占满输出预算」还是「模型真没说话」。
                     # 推理模型的思考计入 max_tokens：想满了流会正常收，正文却是空的。
+                    last_action_was_tools = False
                     rlen = len(reasons[-1] or "")
                     out_tok = int(usage.get("output") or 0)
                     exhausted = (rlen >= THINK_EXHAUST_MIN_CHARS
@@ -1608,6 +1653,17 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
             break   # 所有 wire/KEY 都失败
         if ok or stopit:
             break
+    if not ok and not text and finalize_attempted:
+        # 工具已经执行过且收尾调用也未能给正文：把真实执行结果作为“部分完成”
+        # 返回。pipeline 会按成功步骤落盘，用户可以继续追问而不是被迫重跑。
+        partial = _fail(last_err or "已完成工具操作，但未生成最终总结")
+        partial["ok"] = True
+        partial["partial"] = True
+        partial["text"] = ("部分完成：已执行部分操作，但未能生成最终总结。"
+                            "请检查工作目录中的产出文件，或继续追问以完成剩余事项。")
+        partial["error"] = last_err or "已完成工具操作，但未生成最终总结"
+        partial.setdefault("raw", {})["partial"] = True
+        return partial
     if not ok and not text:
         return _fail(last_err or "工具循环达上限仍无最终回答")
     return {"ok": True, "text": (text or "").strip(), "usage": dict(total_usage),

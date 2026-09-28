@@ -2179,7 +2179,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"ok": True, "message": msg})
 
     def _api_run_timeline(self, run_id):
-        """直连对话视图的时间线：目标 + 用户消息 + 各步最终回答按序合并成气泡流。
+        """任务对话工作区时间线：目标 + 用户消息 + 各步最终回答按序合并成气泡流。
 
         形状：[任务目标] → [用户消息] → [assistant 输出] → [用户追问] → …。
         步骤正文只认 output/summary（干净回答），供详情页「对话」分区直读。
@@ -2189,14 +2189,17 @@ class Handler(BaseHTTPRequestHandler):
         回放单个 run 会把历史轮的回答全丢掉（2026-09-17 实测：一发消息，
         之前智能体输出从时间线消失）。继承的消息是同 id 副本，跨 run 按
         (id, 时间, 文本) 去重；每个 run 内先消息后步骤（消息总是先于本轮
-        回答送达）。非 direct 任务保持单 run 步骤流（视图未启用）。"""
+        回答送达）。没有任务归属的管理运行保持单 run 步骤流。"""
         run = store.get_run(run_id)
         if not run:
             return self._json(404, {"error": "not found"})
         task = store.get_task(run.get("task_id") or "") if run.get("task_id") else None
         engine = (task or {}).get("engine") or ""
         items = []
-        if engine == "direct":
+        # 对话工作区按任务回放，而不是按某个引擎特判：编排类任务也会
+        # 产生多轮运行（重试、连载续跑、用户反馈），用户需要看到完整的
+        # 智能体输出历史。没有任务归属的管理运行仍只展示自己这一轮。
+        if task:
             runs = list(reversed(store.task_runs(run["task_id"])))   # 旧→新
         else:
             runs = [run]
@@ -2204,7 +2207,7 @@ class Handler(BaseHTTPRequestHandler):
         # 附件归一成 _attachments/ 相对路径：前端展示仍取文件名（attName 剥目录），
         # 但「点击查看」需要相对路径走 /api/runs/<id>/file 通道——只下发文件名的话
         # 点开永远 404。时间取任务创建时刻（对话的开场是任务本身，不是某一轮续跑的起始时间）
-        if task and engine == "direct":
+        if task:
             from core import attachments as _att
             atts = [p for p in (_att.norm_rel(a) for a in (task.get("attachments") or [])) if p]
             items.append({
@@ -2252,6 +2255,7 @@ class Handler(BaseHTTPRequestHandler):
                 "role": s.get("role") or "",
                 "n": s.get("n"),
                 "status": s.get("status") or "",
+                "partial": bool(s.get("partial")),
                 "text": body,
                 "note": s.get("note") or "",
                 "run": run_id_of_step,
@@ -2312,13 +2316,23 @@ class Handler(BaseHTTPRequestHandler):
         成没成、跑多久、谁执行的、产出了哪些文件。模型最后一轮回答可能只是
         寒暄/追问（用户反馈：输入"1"跑完 55 秒只见一句"消息可能发错了"），
         执行结果不能依赖模型自觉交代，由产品明示。"""
-        if engine != "direct" or not latest:
+        # 对话工作区现在覆盖所有有任务归属的运行（编排、直连、连载等）。
+        # `engine` 仅保留给调用方展示/兼容，不能再把编排任务的结果卡过滤掉。
+        # 没有关联任务的管理运行仍在 _api_run_timeline 中走孤立运行路径，
+        # 不会误显示可续聊的结果卡。
+        if not latest:
             return None
         st = latest.get("status") or ""
         if st not in ("done", "failed", "cancelled", "timeout"):
             return None
         verdict = latest.get("verdict") or {}
         route = latest.get("route") or {}
+        # 非直连编排路径可能只在步骤收尾记录 partial，而没有统一的
+        # run-level verdict。结果卡必须保留这个事实，不能把已执行一部分
+        # 的运行显示成完整成功。
+        partial = bool(verdict.get("partial")) or any(
+            isinstance(step, dict) and bool(step.get("partial"))
+            for step in (latest.get("steps") or []))
 
         def _seconds(value):
             try:
@@ -2365,7 +2379,10 @@ class Handler(BaseHTTPRequestHandler):
             wd, files = "", []
         return {
             "status": st,
-            "error": (latest.get("error") or "") if st in ("failed", "timeout") else "",
+            "partial": partial,
+            "error": ((latest.get("error") or "") if st in ("failed", "timeout")
+                       else "部分完成：已执行部分操作，但最终总结未完整生成"
+                       if partial else ""),
             "executor": route.get("implementer") or verdict.get("impl") or "",
             "turns": verdict.get("turns") or 0,
             "duration_s": duration_s,
@@ -2387,8 +2404,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "not found"})
         task = store.get_task(run.get("task_id") or "") if run.get("task_id") else None
         is_serial = bool(task and task.get("serial"))
-        if not task or (task.get("engine") != "direct" and not is_serial):
-            return self._json(400, {"error": "该任务不是直连任务，请用「下达指令」"})
+        if not task:
+            return self._json(400, {"error": "运行没有关联任务，无法进入对话工作区"})
         if (run.get("status") or "") in ("queued", "running"):
             return self._json(400, {"error": "运行中：消息会随下一步自动送达，无需追话"})
         body = self._body() or {}

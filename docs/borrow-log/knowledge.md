@@ -971,8 +971,98 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **Mastra f95b8fa**| 审批恢复先持久化新标签，避免快照竞态 | CodeBee 尚未发现同构审批状态窗口 | 观察 | 2026-09-28
 - **本轮落地判断**| CLI 纯模型假绑定已在 8e4f4d2/9c6b7aa 修复并有回归测试；WorkDSH 远端回执语义若改会影响幂等，暂不动 | 无机制级代码新增，文档沉淀一项 | 2026-09-28
 
-### 2026-09-28 批5续检：浏览器/检索与内置工具循环
+## 2026-09-28 全类型调研与七专项巡检班（调研日 2026-09-28，批2 学习记忆·WebSearch 串行降级）
+
+> 本机 Bash 全程不可用（WSL 劫持）——gh api/which/git/npm 全失效，调研走 WebSearch 串行、
+> 巡检走 Read/Grep/Glob、改动落工作区未提交（五道关待 shell 恢复补跑）。详见当日报告。
+
+- **检索降噪四重独立验证**（Cornell Tech 深研操纵研究/MisKnow-Agent 误导暴露即致错/
+  ARGUS 误信息注入防御/清华 SafeSearch+ProGRank+CorruptRAG 攻防文献簇）| 与
+  deepresearch-agent Red-Blue 合流——「检索降噪」从单例升级为学术+工程共识 |
+  **✅ 已落地切片**（RESEARCH_APPENDIX +来源先审后用/结论经得起反例两条，
+  test_research_noise_guard 4 项）；剩余「Red-Blue 完整两队互搏检索流」降远期观察 | 已落地 | 2026-09-28
+- **mnemo / repo-memory-mcp / Memorix / engram / smara-io 簇**（批2 记忆域）|
+  MCP+本地 SQLite 已是共识形态，与 agentmemory/memsearch/pmb/pi-mem 重合；
+  smara「Ebbinghaus 遗忘曲线衰减评分」与经验库过期降权同向 | 参考（雷达跟踪）| 2026-09-28
+- **de-ai topic 页成型**（GitHub 专属 topic：Clean/Refactor/Detect/Write 四模式中文
+  skill；Humanizer 24 模式；36kr 报道网文平台 AI 味人工审读成工序）| 去 AI 味赛道
+  措辞层持续升温，我们 aiflavor 18 套话+sepia 架构级三信号保持深一层 | 已覆盖 | 2026-09-28
+- **bivex/ZenTaoMcp**（禅道 MCP Bridge）| 禅道 AI 生态第 4 例通道级集成（前 3 例：
+  zentao-mcp/auto-fixer-server/pi-zentao）；禅道官方「智能分派 +40%」系平台内建功能，
+  与我们外挂深度闭环不同赛道 | 参考（雷达跟踪）| 2026-09-28
+
+### 七专项（本轮实证要点）
+
+- A：锚点全在位（预算熔断 :627/696、压缩守门 :636、评审深度 :999/1022、_shrink :2435/3379），零新机制
+- B：六源在位；网络探活本轮无法执行；新见案例过三问均不过，零接入维持
+- C：17 类型定义齐无异常；演示文稿空档维持交人拍板
+- D：教训 67 条稳定（21/20/11/8/4/3，偏科 31%），无新增同族可并
+- E：**勘误：已接 14 个而非 11 个**（v0.1.69 加 gemini-cli/codebuddy/trae-agent 后口径未更）；候选 CLI which 探测本轮无法执行，零接入防死链维持
+- F：禅道零积压零错误；产品 ID 96 → mo-so workdir Glob 实证存活；triage_ai=True 在位
+- G：过时文案 grep 零残留；新毛病无
+
+### 待深挖队列（当期快照）
+
+1. 工具输出统一压缩管线（A 专项留存①，管线级攒批）
+2. 语义缓存（待租户/敏感边界拍板）
+3. 调研报告 Red-Blue 完整两队互搏检索流（本轮落地切片后的剩余，远期观察）
+4. 演示文稿任务类型空档——交人拍板（不擅自扩）
+5. 任务宪章编译为运行时强制策略（ironcurtain，治理远期）
+6. 既有攒批维持：ARIS 规则裁决/continuum 伏笔账/multica 看板视角/OpenCreator 版本化对比 UI
+7. **shell 恢复后待办**：本轮 pipeline.py 改动+test_research_noise_guard.py（add -f）走五道关补提交；CHANGELOG 未发布段补「调研报告检索降噪」一行
+
+## 2026-09-28 第二班（调研日 2026-09-28，批4 治理/安全/人机协同+A3/A10 混扫·WebSearch 串行降级）
+
+> Bash 仍挂（同上一班），WebSearch 串行六查：批4 治理组×2、A3 token×1、A10 翻译/对话×2、
+> Trending 雷达×1。落地走 Read/Edit/Write，五道关继续顺延。
+
+- **andrewyng/translation-agent** | agentic 三步法 translate→reflect→improve + glossary
+  机制：动笔前先提炼术语表、翻译时强制统一、reflect 检查——我们翻译流程有「术语一致性」
+  评审 rubric（事后抓）但起草侧无约定，长文译名漂移只能靠修订轮返工 |
+  **✅ 已落地切片**（TRANSLATION_APPENDIX 术语表先行：稿件开头 `## 术语表`、全篇以表为
+  准不随上下文漂移、无术语短文可省略；注入闸只挂 translation 类型，test_translation_glossary
+  5 项）。TransAgents 出版社角色分工不借鉴（评审链已有对应物）| 已落地 | 2026-09-28
+- **RIGForge ProofPackets**（MCP server，2026-09 上 MCP Market）| 编码 agent 把工作封成
+  密码学签名证据包、单命令重验——抓「伪造完成声明」与篡改；自认只证 provenance 不证
+  正确性 | 我们 stopgate+evidence.md 已是证据档案形态，签名基建超出当前需要（反过度
+  防御）| 参考（雷达跟踪）| 2026-09-28
+- **Transluce 8600 真实会话测量**（2026-08）| 编码 agent「谎报成功/规避监控」频率实测；
+  arXiv 2026-05 大规模分析同向 | 印证 stopgate/证据链设计的经验基础，无需动作 | 已覆盖 | 2026-09-28
+- **marklynd/mcp-approvals** | 审批闸 MCP + tamper-evident 哈希链审计日志 | audit.py
+  JSONL 台账刚落（2026-09-28 未发布段）；哈希链属防篡改加固，当前无此威胁模型，不跟 |
+  参考（雷达跟踪）| 2026-09-28
+- **google/ax** | Google 新 AI Agent 编排器，2026-09-23 单日 +2305 星（agents-radar 记录）|
+  新锐头部，下轮通道恢复后逐仓复查机制差量 | 待深挖 | 2026-09-28
+- **MT-OSC**（arXiv 2026-04）| 一次性顺序压缩聊天史（后台免滚动摘要）修多轮对话迷航 |
+  与三段压缩同向，零机制差量 | 已覆盖 | 2026-09-28
+- **A3 缓存组复查** | prompt-cache（messkan）已录；NeuralTrust 2026-07 共识：prompt
+  缓存（供应商侧前缀命中 -90%）与语义缓存（同义免调用）互补——与已录「缓存感知按设计
+  不需要」判断一致 | 已覆盖 | 2026-09-28
+- **Trending 新面孔** | paperclipai/paperclip、vectorize-io/hindsight、archify（架构图
+  agent skill）、withoneai/cli（One CLI，Trendshift 热榜）| 首见入雷达，未过接入三问 |
+  参考（雷达跟踪）| 2026-09-28
+
+### 七专项（本班实证要点）
+
+- A：A3 搜索零新机制；锚点维持上一班实证（预算熔断/压缩守门/评审分级/_shrink 全在位）
+- B：Bash 挂无法探活六源；新见案例过三问均不过（重合度高/需签名基建/用户不会搜），零接入维持
+- C：17 类型 flows.py 实数与 README 口径一致；**translation 补起草侧术语表**（本轮落地件）
+- D：经验库脚本依赖 shell 无法实跑；本轮方法论走 knowledge.md+当日报告沉淀
+- E：catalog.py 实数 14 个（grep 实证）；候选 CLI which 探测仍无法执行，零接入防死链维持
+- F：上一班已核（开关关属用户侧预期、零积压），本班无新禅道 AI 竞品，不重复
+- G：**self-iteration-prompt.md 三处过时口径修复**——「13 种预置类型」→「17 种（以
+  flows.py 实际为准）」、「已接 11 个」→「2026-09-28 实数 14 个（以 catalog.py 实际为准）」、
+  「流程规范 61%」（旧口径，上轮实证 31%）→ 去数字化表述防再漂
+
+### 待深挖队列（增量）
+
+8. **shell 恢复后待办（合并两班）**：pipeline.py 两处 appendix 改动 + test_research_noise_guard.py /
+   test_translation_glossary.py（均 add -f）走五道关补提交；CHANGELOG 未发布段两行已补齐
+   （检索降噪+翻译术语表），恢复后随完整态一并发版
+9. google/ax 逐仓复查（下轮优先，通道恢复后）
+
+### 批5续检：浏览器/检索与内置工具循环
 
 - **browser-use / invisible_playwright_mcp / BrowserSkill**| 浏览器 agent 与 MCP 技能生态继续活跃；CodeBee 已有 Playwright、MCP 通道及 SSRF 闸门，未发现低风险机制差量 | 雷达复查，不接入 | 2026-09-28
 - **Haystack / R2R / Airweave**| 成熟检索与知识管线，但引入会扩大部署、索引和数据权限面；CodeBee 当前任务级知识注入更轻 | 参考，待未来明确知识库产品边界后再评估 | 2026-09-28
-- **builtin_agent 工具循环修复**| `_build_request` 的错误参数名会让所有带工具的内置执行在首轮直接失败；Windows Gemini wrapper 使旧断言把真实 argv 误报失败 | 已修复参数传递、流式 create_task 规格与 task_creator 透传，并放宽测试到 node/gemini.js 形态 | 2026-09-28
+- **builtin_agent 工具循环修复**| 工具开关传递错误会让所有带工具的内置执行在首轮失败；Windows Gemini wrapper 使旧断言把真实 argv 误报失败 | 已修复参数传递、流式 create_task 规格与 task_creator 透传，并放宽测试到 node/gemini.js 形态 | 2026-09-28

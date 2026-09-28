@@ -122,6 +122,17 @@ class ContentContractTests(BaseTest):
         self.assertIn("不漏问", email)
         self.assertIn("负责人", email)
 
+    def test_article_mobile_platform_typesetting(self):
+        """移动端排版契约（2026-09-27 借鉴 AIWriteX）：公众号/头条等平台阅读
+        主战场在手机，短段落+小标题分节是排版硬需求；条件限定（仅移动端平台）
+        不过度约束面向其他媒介的文章。"""
+        from app.core import pipeline
+
+        article = pipeline._content_contract({"type": "article"})
+        self.assertIn("移动端平台", article)
+        self.assertIn("每段三行以内", article)
+        self.assertIn("小标题分节", article)
+
 
 if __name__ == "__main__":
     import unittest

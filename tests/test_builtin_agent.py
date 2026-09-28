@@ -137,6 +137,79 @@ class TestBuiltinAnthropicToolLoop(BaseTest):
         self.assertIn("空目录", last["content"][0]["content"])
 
 
+class TestBuiltinToolLoopFinalization(BaseTest):
+    def runTest(self):
+        """工具循环到上限后应保留一轮无工具收尾，避免成果被误报失败。"""
+        from unittest.mock import patch
+        from app.core import builtin_agent
+
+        bi = {"prov": {"id": "p-finalize", "name": "P", "protocol": "openai",
+                        "base_url": "http://gw.test/v1", "api_key": "sk-test",
+                        "enabled": True, "model": "m"},
+              "model": "m", "provider_id": "p-finalize", "provider_name": "P"}
+        calls = []
+
+        def fake_post(url, headers, body, allow_private, timeout):
+            calls.append(body)
+            if len(calls) == 1:
+                return 200, {"choices": [{"message": {"content": "", "tool_calls": [
+                    {"id": "c1", "type": "function", "function": {
+                        "name": "write_file",
+                        "arguments": '{"path":"done.txt","content":"ok"}'}}
+                ]}}]}, ""
+            return 200, {"choices": [{"message": {
+                "content": "已完成 done.txt，请检查产出。"}}]}, ""
+
+        orig = builtin_agent._post_json
+        builtin_agent._post_json = fake_post
+        try:
+            with patch.object(builtin_agent, "MAX_TOOL_ITERS", 1):
+                res = builtin_agent.run(bi, "写文件", str(self.workdir), stream=False)
+        finally:
+            builtin_agent._post_json = orig
+        self.assertTrue(res["ok"], res.get("error"))
+        self.assertFalse(res.get("partial", False))
+        self.assertEqual(res["text"], "已完成 done.txt，请检查产出。")
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("tools", calls[1])
+        self.assertTrue((self.workdir / "done.txt").is_file())
+
+
+class TestBuiltinToolLoopPartialResult(BaseTest):
+    def runTest(self):
+        """收尾模型仍无正文时，返回部分完成而不是丢失已执行工具结果。"""
+        from unittest.mock import patch
+        from app.core import builtin_agent
+
+        bi = {"prov": {"id": "p-partial", "name": "P", "protocol": "openai",
+                        "base_url": "http://gw.test/v1", "api_key": "sk-test",
+                        "enabled": True, "model": "m"},
+              "model": "m", "provider_id": "p-partial", "provider_name": "P"}
+        calls = []
+
+        def fake_post(url, headers, body, allow_private, timeout):
+            calls.append(body)
+            return 200, {"choices": [{"message": {"content": "", "tool_calls": [
+                {"id": "c1", "type": "function", "function": {
+                    "name": "write_file",
+                    "arguments": '{"path":"partial.txt","content":"ok"}'}}
+            ]}}]}, ""
+
+        orig = builtin_agent._post_json
+        builtin_agent._post_json = fake_post
+        try:
+            with patch.object(builtin_agent, "MAX_TOOL_ITERS", 1):
+                res = builtin_agent.run(bi, "写文件", str(self.workdir), stream=False)
+        finally:
+            builtin_agent._post_json = orig
+        self.assertTrue(res["ok"], res.get("error"))
+        self.assertTrue(res.get("partial"))
+        self.assertIn("部分完成", res["text"])
+        self.assertTrue((self.workdir / "partial.txt").is_file())
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("tools", calls[1])
+
+
 class TestBuiltinReasoningWire(BaseTest):
     def runTest(self):
         """思考程度只写入支持该字段的 OpenAI wire。"""
