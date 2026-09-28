@@ -1451,7 +1451,8 @@ def delete_task(task_id, actor=""):
             return False, "运行中的任务不能删除，请先取消"
         if task.get("type") == "serial_novel":
             for other in _TASKS.values():
-                if other.get("id") != task_id and                         (other.get("serial") or {}).get("continues") == task_id:
+                if other.get("id") != task_id and \
+                        (other.get("serial") or {}).get("continues") == task_id:
                     return False, "该任务是连载链的前序任务（后续任务依赖它），请用「归档」隐藏而不是删除"
         run_ids = []
         for rid, r in _RUNS.items():
@@ -1897,7 +1898,7 @@ def clear_stream_state(run_id=None, n=None):
 
 def finish_step(run_id, n, status, summary="", exit_code=None,
                 cost_usd=0.0, tokens=0.0, duration_s=None, model=None, output=None,
-                followups=None, thinking=None):
+                followups=None, thinking=None, partial=False):
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -1928,6 +1929,10 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                     s["thinking"] = runner.strip_ansi(str(thinking))[:LIVE_TEXT_MAX]
                 if followups:
                     s["followups"] = list(followups)[:3]
+                if partial:
+                    s["partial"] = True
+                else:
+                    s.pop("partial", None)
                 # 收尾即清运行中态：stream/activity/live 只是过程快照，留着会让
                 # 前端把「已结束」的步骤仍当实时流渲染（也白占 run.json 体积）
                 s.pop("stream", None)

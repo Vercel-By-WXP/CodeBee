@@ -264,10 +264,15 @@ def _collect_material(task):
         parts.append("## 已有大纲\n" + "\n".join(lines))
     head = ""
     try:
-        p = Path(task.get("workdir") or "") / "chapter-001.md"
-        if p.is_file():
-            from . import runner
-            head = runner.read_text_any_enc(p)[:_FIRST_CH_HEAD]
+        from . import runner
+        # 章节文件命名并存：连载流水线落 chapter-01.md（两位），有的书是
+        # chapter-001.md（三位）——只认一种会瞎掉「第一章开头」素材
+        # （2026-09-28 马甲书案：明明 8 章成稿在手却报「没有正文」）。
+        for name in ("chapter-001.md", "chapter-01.md", "chapter-1.md"):
+            p = Path(task.get("workdir") or "") / name
+            if p.is_file():
+                head = runner.read_text_any_enc(p)[:_FIRST_CH_HEAD]
+                break
     except OSError:
         pass
     if head:

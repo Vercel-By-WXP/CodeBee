@@ -4046,11 +4046,13 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
 .chat-result .cr-head { display: flex; align-items: center; gap: 8px; font-weight: 600;
   font-size: 13.5px; color: var(--ok); }
 .chat-result.bad .cr-head { color: var(--bad); }
+.chat-result.partial .cr-head { color: var(--warn); }
 .chat-result.off .cr-head { color: var(--muted); }
 .chat-result .cr-head .ico { width: 16px; height: 16px; flex: none; }
 .chat-result .cr-meta { font-size: 12px; color: var(--muted); margin-top: 5px; }
 .chat-result .cr-err { font-size: 12.5px; color: var(--bad); margin-top: 8px; line-height: 1.5;
   white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-result.partial .cr-err { color: var(--warn); }
 .chat-result .cr-files { margin-top: 10px; }
 .chat-result .cr-files-title { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 .chat-result .cr-steps { margin-top: 10px; font-size: 12.5px; }

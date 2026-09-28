@@ -500,6 +500,24 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     return res
 
 
+def _create_task_from_builtin(payload):
+    """Create and enqueue a task requested by the direct conversation tool."""
+    task = store.create_task(payload)
+    run = None
+    try:
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_task_status(task["id"], "queued")
+        jobs.enqueue({"kind": "orchestration", "run_id": run["id"],
+                      "task_id": task["id"]})
+    except Exception:
+        if run:
+            store.update_run(run["id"], status="failed", error="运行记录初始化失败",
+                             ended_at=_now())
+        store.update_task_status(task["id"], "failed")
+        raise
+    return {"task_id": task["id"], "run_id": run["id"]}
+
+
 def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=None,
                       followups=False):
     """内置智能体步骤：直连模型 API + 工具循环（builtin_agent），不经 CLI 进程。
@@ -560,7 +578,8 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
     res = builtin_agent.run(bi, prompt, workdir, timeout=remaining or 180,
                             deadline=deadline, cancel_event=ev, log=_log, images=images,
                             on_reason=_on_reason, on_stream=_on_stream,
-                            on_activity=_on_activity)
+                            on_activity=_on_activity,
+                            task_creator=_create_task_from_builtin)
     if followups and res.get("ok"):
         clean, fups = _parse_followups(res.get("text") or "")
         if fups:
@@ -758,7 +777,8 @@ def _finish_step_result(run_id, step, res, role, agent, start):
                       output=(res.get("text") or ""),
                       followups=res.get("followups"),
                       # 思考过程（内置智能体流式抓取）：落进步骤记录，对话气泡折叠展示
-                      thinking=res.get("reasoning") or None)
+                      thinking=res.get("reasoning") or None,
+                      partial=bool(res.get("partial")))
     # 错误台账：失败/超时各记一条结构化记录（遥测与诊断包的数据源）。
     # 用户主动取消不入账——那不是产品问题；detail 只存脱敏后的失败摘录。
     if status in ("failed", "timeout"):
@@ -2003,6 +2023,7 @@ def _run_direct(run, task, agents, ev, stats, mode):
 
     sid = (resume_ctx["session"] if resume_ctx else "") or ""
     last_text = ""
+    partial_turn = False
     # 追话起跑（/api/runs/<id>/chat → retry_task）：信箱已有未消费消息 = 这是对话
     # 的下一轮而非首轮。CLI 继承上一轮的会话 id（真的「接着上次聊」），内置智能体
     # 靠「上一轮输出（结尾）」块带上下文；同时把首步切成续轮档。
@@ -2088,6 +2109,7 @@ def _run_direct(run, task, agents, ev, stats, mode):
             return
         turns += 1
         last_text = (res.get("text") or "").strip()
+        partial_turn = partial_turn or bool(res.get("partial"))
         if impl is not None:
             new_sid = _resume_sid(impl, res.get("sid"))
             if new_sid:
@@ -2106,7 +2128,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
 
     verdict = {"type": task["type"], "engine": "direct", "pass": True, "mode": mode,
                "direct": True, "turns": turns,
-               "impl": "builtin" if bi is not None else impl["id"], "route": route}
+               "impl": "builtin" if bi is not None else impl["id"], "route": route,
+               "partial": partial_turn}
     impl_label = ("CodeBee（%s · %s）" % (bi["provider_name"], bi["model"])
                   if bi is not None else impl.get("label"))
     report = ["# 直连任务：%s" % task["title"], "",
@@ -2163,6 +2186,10 @@ CONTENT_DELIVERY_CONTRACTS = {
     ]),
     "article": ("平台内容主编", [
         "标题、开头钩子、正文层级和结尾行动建议要适配目标平台与读者。",
+        # AIWriteX 借鉴（2026-09-27）：公众号/头条/小红书等平台阅读主战场在手机，
+        # 泛泛「适配平台」落不到执行——短段落、小标题分节是这类平台的排版硬需求
+        "面向移动端平台（公众号/头条/小红书等）时按手机阅读节奏排版："
+        "每段三行以内、用小标题分节、关键结论独立成段便于扫读。",
         "事实、数据和引语不得编造；缺少来源时明确标注待核实。",
     ]),
     "video_script": ("短视频编导", [
@@ -2244,7 +2271,10 @@ def _content_contract(task):
 # 调研报告类稿件的追加要求（借鉴 gpt-researcher 迭代深研）：有网络/读文件工具时
 # 多源交叉验证，单源结论降权——调研的可信度来自证据链而非文采。
 # 来源冲突裁决借鉴 deepresearch-agent 记忆层矛盾检测（Majority/Source-Weight 消解）；
-# 子问题缺口补查借鉴 dzhng/deep-research 迭代循环
+# 子问题缺口补查借鉴 dzhng/deep-research 迭代循环；
+# 来源可信度审查与主动找反例借鉴对抗降噪（2026-09-28：Cornell Tech 深研 agent
+# 可被 UGC 误导内容操纵 / MisKnow-Agent 误导暴露即致错 / ARGUS 误信息注入防御 /
+# deepresearch-agent Red-Blue 两队互搏——检索降噪多源独立验证后收窄的落地切片）
 RESEARCH_APPENDIX = """
 
 ## 调研要求（证据链）
@@ -2255,10 +2285,27 @@ RESEARCH_APPENDIX = """
 - 来源冲突显式裁决：同一事实多个来源说法不一致时，写明分歧点与各方依据，给出
   倾向判断和理由（多数来源一致取多数，权威差异按来源可信度加权）——不各说一半，
   也不悄悄只取其一。
+- 来源先审后用：营销软文、SEO 内容农场、利益相关方的自我背书一律降权，引用时
+  点明其立场；同一说法优先追溯到更原始的出处（转述会走样）。
+- 结论要经得起反例：关键结论不仅找支持证据，也主动找反对证据；找不到才可写强
+  结论，写完自问「什么证据能推翻它」并在风险与局限里如实回答。
 - 缺口驱动补查：起草前先列出报告要回答的子问题清单，逐个核对证据是否到位；
   没找到答案的子问题明确标注「证据不足」，不用泛泛而谈填空。
 - 结构硬性要求：报告第一段必须是「**核心结论**」三行以内的要点摘要（结论先行），
   之后才展开分层论证 → 风险与局限（说明哪些结论证据不足）。"""
+
+# 翻译类稿件的追加要求（借鉴 andrewyng/translation-agent 三步法 translate→reflect→improve
+# 的 glossary 机制）：动笔前先提炼术语表、全篇译名以表为准——术语一致性此前只靠
+# 评审 rubric「术语一致性」事后抓，起草侧无约定，长文译名漂移只能靠修订轮返工。
+# TransAgents（多智能体文学翻译）的出版社角色分工不借鉴：评审链已有对应物。
+TRANSLATION_APPENDIX = """
+
+## 翻译要求（术语表先行）
+- 动笔前先通读全文，提炼术语表放在稿件开头（`## 术语表`）：专有名词（人名/地名/
+  作品名/产品名/机构名）与反复出现的领域术语，逐条给出「源文 → 译名」。
+- 全篇译名以术语表为准：同一源文术语从头到尾一个译法，不随上下文漂移；业界已有
+  通用译名的从通用，没有的定一个贴切的并全篇保持一致。
+- 无术语可提炼的短文可省略术语表，译名一致性要求不变。"""
 
 NOVEL_REVISE_PROMPT = """你是__ROLE__。请根据下方汇总评审意见修订稿件文件：`__FILE__`（直接写入该文件）。文件必须以 UTF-8 编码保存（PowerShell 写文件显式加 -Encoding UTF8，禁止依赖默认编码）。
 
@@ -4370,6 +4417,9 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             if is_research:
                 # 调研报告追加证据链要求（gpt-researcher 借鉴）
                 p += RESEARCH_APPENDIX
+            if task.get("type") == "translation":
+                # 翻译追加术语表先行要求（andrewyng/translation-agent 借鉴）
+                p += TRANSLATION_APPENDIX
             if task.get("type") == "weekly_report":
                 # 禅道本周素材注入（Weekly Report Generator 借鉴：从工作系统
                 # 取数入素材）。尽力而为：未配置/不可达静默为空，绝不阻塞起草。
