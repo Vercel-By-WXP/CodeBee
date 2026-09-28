@@ -12,6 +12,121 @@ document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh"
 const $ = (id) => document.getElementById(id);
 const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined };
 
+/* ---------------------------------------------------------- 内置浏览器工作区 */
+const BROWSER_STORAGE_KEY = "orch.browser.workspace.v1";
+const BROWSER_HOME = "__codebee_home__";
+const BROWSER_SEARCH = "https://www.google.com/search?q=";
+let browserState = browserLoadState();
+
+function browserLoadState() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(BROWSER_STORAGE_KEY) || "{}");
+    const tabs = Array.isArray(raw.tabs) && raw.tabs.length ? raw.tabs : [{ id: "home", url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }];
+    const kept = tabs.slice(0, 20).map(browserNormalizeTab);
+    return { tabs: kept, active: Math.max(0, Math.min(Number(raw.active) || 0, kept.length - 1)) };
+  } catch (e) {
+    return { tabs: [{ id: "home", url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }], active: 0 };
+  }
+}
+
+function browserNormalizeTab(tab, i) {
+  const history = Array.isArray(tab.history) && tab.history.length ? tab.history.slice(-20) : [tab.url || BROWSER_HOME];
+  const index = Math.max(0, Math.min(Number(tab.index) || history.length - 1, history.length - 1));
+  return { id: String(tab.id || ("tab-" + i)), url: history[index], title: String(tab.title || "CodeBee 浏览器").slice(0, 80), history, index };
+}
+
+function browserSaveState() {
+  try {
+    browserState.tabs = browserState.tabs.slice(0, 20).map(browserNormalizeTab);
+    browserState.active = Math.max(0, Math.min(browserState.active, browserState.tabs.length - 1));
+    localStorage.setItem(BROWSER_STORAGE_KEY, JSON.stringify(browserState));
+  } catch (e) { /* private browsing/storage quota: browser remains usable in memory */ }
+  const count = $("browser-history-count");
+  if (count) count.textContent = t("{0} 个标签页", browserState.tabs.length);
+}
+
+function normalizeBrowserUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return BROWSER_HOME;
+  if (raw === BROWSER_HOME || raw.indexOf("/preview/") === 0 || raw.indexOf(location.origin + "/preview/") === 0) return raw;
+  if (/^(javascript|data|vbscript|file):/i.test(raw)) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(raw)) return "https://" + raw;
+  return BROWSER_SEARCH + encodeURIComponent(raw);
+}
+
+function browserActiveTab() { return browserState.tabs[browserState.active] || browserState.tabs[0]; }
+
+function browserTitle(url) {
+  if (url === BROWSER_HOME) return "CodeBee 浏览器";
+  try { return new URL(url, location.origin).hostname.replace(/^www\./, "") || "浏览器"; } catch (e) { return "浏览器"; }
+}
+
+function browserDrawTabs() {
+  const tabs = $("browser-tabs");
+  if (!tabs) return;
+  tabs.querySelectorAll(".browser-tab").forEach((x) => x.remove());
+  const add = $("browser-new-tab");
+  browserState.tabs.forEach((tab, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "browser-tab" + (i === browserState.active ? " active" : "");
+    b.dataset.browserTab = tab.id; b.setAttribute("role", "tab"); b.setAttribute("aria-selected", i === browserState.active ? "true" : "false");
+    b.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span>' + esc(tab.title || browserTitle(tab.url)) + '</span><span class="browser-tab-close" aria-label="关闭标签页">×</span>';
+    tabs.insertBefore(b, add);
+  });
+}
+
+function browserDraw() {
+  const tab = browserActiveTab();
+  if (!tab) return;
+  browserDrawTabs();
+  const address = $("browser-address"), frame = $("browser-frame"), empty = $("browser-empty");
+  if (address) address.value = tab.url === BROWSER_HOME ? "" : tab.url;
+  const canBack = tab.index > 0, canForward = tab.index < tab.history.length - 1;
+  ["browser-back", "browser-forward"].forEach((id, i) => { const b = $(id); if (b) b.disabled = i ? !canForward : !canBack; });
+  if (tab.url === BROWSER_HOME) {
+    if (frame) { frame.classList.add("hidden"); frame.removeAttribute("src"); }
+    if (empty) empty.classList.remove("hidden");
+  } else {
+    if (empty) empty.classList.add("hidden");
+    if (frame) { frame.classList.remove("hidden"); frame.src = urlAuth(tab.url); }
+  }
+  browserSaveState();
+}
+
+function browserNavigate(value, replace) {
+  const url = normalizeBrowserUrl(value);
+  if (!url) { toast(t("不允许打开此类地址"), true); return false; }
+  const tab = browserActiveTab();
+  if (replace) tab.history[tab.index] = url;
+  else { tab.history = tab.history.slice(0, tab.index + 1).concat(url).slice(-20); tab.index = tab.history.length - 1; }
+  tab.url = url; tab.title = browserTitle(url); browserDraw(); return true;
+}
+
+function browserOpenPreview() {
+  const run = S.lastRun || ((S.state || {}).runs || [])[0];
+  if (!run || !run.id) { toast(t("当前还没有可预览的任务成果"), true); return; }
+  api("/api/runs/" + encodeURIComponent(run.id) + "/preview").then((d) => {
+    if (!d || !d.ok || !d.base) throw new Error(t("当前任务没有网页成品"));
+    browserNavigate(d.base + d.entry);
+  }).catch((e) => toast(e.message || String(e), true));
+}
+
+function browserBind() {
+  if (!$("browser-frame")) return;
+  $("browser-nav-form").addEventListener("submit", (e) => { e.preventDefault(); browserNavigate($("browser-address").value); });
+  $("browser-back").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.index > 0) { t0.index--; t0.url = t0.history[t0.index]; browserDraw(); } });
+  $("browser-forward").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.index < t0.history.length - 1) { t0.index++; t0.url = t0.history[t0.index]; browserDraw(); } });
+  $("browser-reload").addEventListener("click", () => { const f = $("browser-frame"); if (f && !f.classList.contains("hidden")) f.src = f.src; });
+  $("browser-home").addEventListener("click", () => browserNavigate(BROWSER_HOME));
+  $("browser-new-tab").addEventListener("click", () => { browserState.tabs.push({ id: "tab-" + Date.now(), url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }); browserState.active = browserState.tabs.length - 1; browserDraw(); });
+  $("browser-open-external").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(urlAuth(t0.url), "_blank", "noopener"); });
+  $("browser-open-preview").addEventListener("click", browserOpenPreview);
+  $("browser-shortcuts").addEventListener("click", (e) => { const b = e.target.closest("[data-browser-url], [data-browser-preview]"); if (!b) return; if (b.dataset.browserPreview) browserOpenPreview(); else browserNavigate(b.dataset.browserUrl); });
+  $("browser-tabs").addEventListener("click", (e) => { const close = e.target.closest(".browser-tab-close"), tab = e.target.closest(".browser-tab"); if (!tab) return; const i = browserState.tabs.findIndex((x) => x.id === tab.dataset.browserTab); if (close && browserState.tabs.length > 1) { browserState.tabs.splice(i, 1); browserState.active = Math.min(browserState.active, browserState.tabs.length - 1); } else if (!close && i >= 0) browserState.active = i; browserDraw(); });
+  browserDraw();
+}
+
 /* ---------------------------------------------------------- 任务类型（流程） */
 async function loadFlows() {
   // 偏好记忆（借鉴 chinese-novelist-skill）：并行拉最近一次的任务参数，
@@ -11586,6 +11701,17 @@ function mkrShowInstallPreview(p) {
         ? '<li class="mkpv-more">' + t("…等 ") + p.stripped_total + t(" 个") + "</li>" : "") + "</ul>"
     : "";
   const skills = (p.skills || []).map((s) => '<span class="tag">' + esc(s) + "</span>").join("");
+  // 内容安检（装前扫描）：高风险红字强提示 + 发现明细；注意级只留一行
+  const riskFindings = (p.risk_findings || []).map((f) =>
+    '<li>' + esc(t(f.category)) + ' · ' + esc(f.detail || "") + t("（行 ") + f.line + "）</li>").join("");
+  const riskHtml = p.risk_label
+    ? (p.risk_label.indexOf("高风险") >= 0
+      ? '<div class="mkpv-sec" style="color:var(--err,#d33)"><b>' + esc(t(p.risk_label)) +
+        "：</b>" + t("技能文本命中危险模式（可能诱导模型外传密钥/执行命令）。请逐条确认下方发现，不确定就别装。") +
+        '<ul class="mkpv-strip">' + riskFindings + "</ul></div>"
+      : '<div class="mkpv-sec">' + esc(t(p.risk_label)) + "：" + t("部分内容值得留意识别") +
+        '<ul class="mkpv-strip">' + riskFindings + "</ul></div>")
+    : "";
   openModal(t("安装前确认"),
     '<div class="mkpv">' +
     '<div class="mkpv-name">' + esc(p.title || p.id || "") + "</div>" +
@@ -11593,6 +11719,7 @@ function mkrShowInstallPreview(p) {
     (p.version ? "<span>v" + esc(p.version) + "</span>" : "") +
     "<span>" + esc(_mkrIntegrityText(p.integrity)) + "</span></div>" +
     (skills ? '<div class="mkpv-skills">' + t("包含技能：") + skills + "</div>" : "") +
+    riskHtml +
     '<div class="mkpv-sum">' + t("共 ") + (p.files_total || 0) + t(" 个文件 · ") + esc(mkCharsText(p.total_chars || 0)) + "</div>" +
     (rows ? '<table class="mkpv-files"><thead><tr><th>' + t("文件") + "</th><th>" + t("体量") +
       "</th></tr></thead><tbody>" + rows + moreF + "</tbody></table>" : "") +
@@ -11600,7 +11727,9 @@ function mkrShowInstallPreview(p) {
     '<p class="hint">' + t("安装后运行任务时自动注入提示词；可到「经验库」启停或卸载。") + "</p>" +
     "</div>",
     '<button class="ghost" onclick="closeModal()">' + t("取消") + "</button>" +
-    '<button class="primary" id="mkpv-ok" onclick="mkrInstallConfirm(\'' + esc(p.token || "") + '\',\'' + esc(p.id || "") + '\')">' + t("确认安装") + "</button>");
+    '<button class="' + (p.risk_label && p.risk_label.indexOf("高风险") >= 0 ? "danger" : "primary") +
+    '" id="mkpv-ok" onclick="mkrInstallConfirm(\'' + esc(p.token || "") + '\',\'' + esc(p.id || "") + '\')">' +
+    (p.risk_label && p.risk_label.indexOf("高风险") >= 0 ? t("我已确认风险，仍要安装") : t("确认安装")) + "</button>");
 }
 
 async function mkrInstallConfirm(token, id) {
@@ -12718,7 +12847,7 @@ async function suStartupCheck() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { overview: "概览", tasks: "任务", runs: "运行记录", automation: "自动化", zentao: "禅道 Bug 自动修复", __wxdigest: "群摘要", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
+const TAB_TITLES = { overview: "概览", tasks: "任务", runs: "运行记录", automation: "自动化", browser: "浏览器", zentao: "禅道 Bug 自动修复", __wxdigest: "群摘要", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
 const SET_TABS = new Set(Object.keys(TAB_TITLES));   // 全部设置子页（__phone 是弹框，不算）
 
 function tabTitle(name) {
@@ -14039,6 +14168,7 @@ function switchTab(name, shell) {
   if (name === "data") loadDataPage();   // 进数据与备份页：清理配置/状态/可清理预估
   if (name === "usage") { syncUsageRange(); loadUsage(); }   // 进用量页：对齐范围选中态并拉取
   if (name === "overview") { ovDays(); loadOverview(); }   // 进概览页：对齐趋势范围并拉两期台账
+  if (name === "browser") browserDraw();
   if (name === "appearance") renderAppearance();   // 进皮肤页：按当前皮肤/明暗重画卡片
   if (name === "appearance") renderCodeSettings();  // 代码设置行 + 双主题预览卡同步当前值
   if (name === "about") loadSelfupdate(false);     // 进关于页：拉版本与更新状态
@@ -14451,6 +14581,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-q-overview").addEventListener("click", () => switchTab("overview", "main"));
   $("btn-q-runs").addEventListener("click", () => switchTab("runs", "main"));
   $("btn-q-automation").addEventListener("click", () => switchTab("automation", "main"));
+  $("btn-q-browser").addEventListener("click", () => switchTab("browser", "main"));
+  browserBind();
   bindCtxMenus();
   bindInspector();
   if (window.innerWidth < 900) document.body.classList.add("side-collapsed");

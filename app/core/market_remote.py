@@ -1039,6 +1039,15 @@ def preview_remote(entry_id):
         _PREVIEW_CACHE[token] = {"entry_id": entry_id, "files": files,
                                  "stripped": stripped, "ts": time.time()}
         file_list = sorted(files.items(), key=lambda kv: kv[0])
+        # 内容安检（ClawHavoc 投毒案借鉴）：对全部技能文本跑危险模式扫描，
+        # 风险随预览返回——UI 高风险红字确认；发现列表给行号可定位。
+        try:
+            from . import skill_scan
+            risk_findings = skill_scan.scan_text(
+                "\n".join(str(v) for v in files.values()))
+            risk_label = skill_scan.risk_label(risk_findings)
+        except Exception:
+            risk_findings, risk_label = [], ""
         return {
             "token": token, "id": entry_id, "title": entry["title"],
             "source": entry["source_name"], "version": entry["version"],
@@ -1048,6 +1057,7 @@ def preview_remote(entry_id):
             "total_chars": sum(len(v) for v in files.values()),
             "file_list": [{"path": k, "chars": len(v)} for k, v in file_list[:60]],
             "stripped": sorted(stripped)[:40], "stripped_total": len(stripped),
+            "risk_label": risk_label, "risk_findings": risk_findings[:8],
             "expires_in": _PREVIEW_TTL,
         }, None
     except ValueError as e:
