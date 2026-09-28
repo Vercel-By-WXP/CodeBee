@@ -148,7 +148,7 @@ def create_task(payload):
         raise ValueError("目标描述不能为空")
     title = title or goal.splitlines()[0][:30]  # 标题可省略，自动取目标首行
     if not workdir:
-        # 未指定目录 → 用「默认保存路径」（设置里可改；内置回落 <data 同级>/workspace）。
+        # 未指定目录 → 用「默认保存路径」（设置里可改；内置回落 <数据目录>/workspace）。
         # 默认路径允许自动创建；用户显式给的目录仍必须已存在。
         from . import settings as settings_mod
         workdir = settings_mod.default_workdir()

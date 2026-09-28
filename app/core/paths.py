@@ -66,3 +66,7 @@ LOG_TAIL_CHARS = 4000  # API 返回日志时的截断长度
 def ensure_dirs():
     for p in (DATA_DIR, TASKS_DIR, RUNS_DIR):
         p.mkdir(parents=True, exist_ok=True)
+    # 内置默认保存路径（settings.builtin_workdir）启动即建，用户没自定义时
+    # 「打开目录」/选目录不会撞上不存在的路径。这里不能 import settings（会环），
+    # 且即使用户自定义了默认路径，多建一个空 workspace 也无害。
+    (DATA_DIR / "workspace").mkdir(parents=True, exist_ok=True)

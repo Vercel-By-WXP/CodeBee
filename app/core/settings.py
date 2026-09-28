@@ -55,8 +55,10 @@ MIN_WORKERS, MAX_WORKERS = 1, 24
 
 
 def builtin_workdir():
-    """内置默认保存路径：<data 目录同级>/workspace。"""
-    return str(paths.DATA_DIR.parent / "workspace")
+    """内置默认保存路径：数据目录内的 workspace/（CodeBee 自己的地盘，
+    启动 ensure_dirs 即创建；老版本落在数据目录同级——Windows 上是
+    AppData\\Roaming\\workspace，平时不存在点开即报错，已废弃）。"""
+    return str(paths.DATA_DIR / "workspace")
 
 
 def default_workdir():

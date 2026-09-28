@@ -58,6 +58,7 @@ _SYSTEM_PROMPT = """你是 CodeBee 的内置执行智能体，直接完成用户
 - read_file 只能读文本文件；图片、压缩包等二进制文件读不了，如实告知用户即可，不要反复尝试。
 - 用户消息中的图片附件会直接出现在对话里，可直接看图作答，无需用工具读取。
 - run_command 直接在用户的电脑上执行命令并回传退出码与输出：诊断、修复、改配置、重启服务等操作会真实生效。命令跑完看输出再决定下一步，不要一次性罗列步骤让用户自己敲。
+- 当工具列表中提供 create_task 时，如果用户明确要求开始另一项 CodeBee 工作（例如“新建连载小说任务”“再开一个代码任务”），调用它发起独立任务；不要只在当前回答里描述应该怎么做。先从用户话里提取任务类型和目标，缺少关键目标时再追问。
 - Windows 上需要管理员权限的命令（flushdns、winsock reset、防火墙、系统服务等），用 powershell -Command "Start-Process <程序> -ArgumentList '<参数>' -Verb RunAs -Wait" 触发 UAC——用户屏幕会弹窗，点允许即提权执行；提权进程的输出拿不到，之后要用普通命令复核效果。macOS/Linux 用 sudo 并在输出里提示用户输密码不可行时改写临时脚本让用户跑。
 - 避免跑长驻/交互式命令（ping -t、top、要按键应答的安装器），它们会拖满超时被强杀。
 - 产出文件一律 UTF-8 编码。
@@ -687,7 +688,64 @@ _TOOL_IMPL = {"list_files": _tool_list_files, "read_file": _tool_read_file,
               "find_files": _tool_find_files}
 
 
-def _exec_tool(workdir, name, args, cancel_event=None, deadline=None):
+CREATE_TASK_SPEC = {
+    "name": "create_task",
+    "description": "发起一个独立的 CodeBee 任务。用户要求开始另一类工作（例如创建连载小说、写代码或生成文档）时使用；任务会出现在任务列表并异步运行，不要把它当作当前对话里的普通回答。",
+    "args": {
+        "type": "任务类型 ID，例如 serial_novel、novel、code、doc、article",
+        "goal": "新任务的明确目标",
+        "?title": "新任务标题",
+        "?workdir": "绝对工作目录；留空沿用当前工作目录",
+        "?context": "补充背景或约束",
+        "?chapters": "serial_novel 首批章节数",
+        "?words_per_chapter": "serial_novel 每章目标字数",
+        "?start_chapter": "续写起始章节号",
+        "?variants": "连载同章候选稿数量（1-3）",
+        "?branches": "连载剧情分支数量（1-3）",
+        "?story_bible": "连载小说初始故事圣经",
+    },
+}
+
+
+def _tool_create_task(workdir, args, task_creator=None):
+    """Create a separate task through the caller-owned task boundary."""
+    if task_creator is None:
+        return "（当前对话不支持发起新任务）"
+    task_type = str(args.get("type") or "").strip().lower()
+    goal = str(args.get("goal") or "").strip()
+    if not task_type:
+        return "（type 不能为空；可用类型请使用 serial_novel、novel、code、doc 等）"
+    if not goal:
+        return "（goal 不能为空）"
+    payload = {
+        "type": task_type,
+        "goal": goal,
+        "title": str(args.get("title") or "").strip(),
+        "workdir": str(args.get("workdir") or workdir or "").strip(),
+        "context": str(args.get("context") or "").strip(),
+    }
+    if task_type == "serial_novel":
+        serial = {}
+        for key in ("chapters", "words_per_chapter", "start_chapter", "variants", "branches"):
+            if args.get(key) not in (None, ""):
+                serial[key] = args.get(key)
+        if serial:
+            payload["serial"] = serial
+        if args.get("story_bible") not in (None, ""):
+            payload["story_bible"] = str(args.get("story_bible") or "").strip()
+    try:
+        result = task_creator(payload)
+    except Exception as exc:
+        return "（发起任务失败：%s）" % str(exc)[:300]
+    if not isinstance(result, dict) or not result.get("task_id"):
+        return "（发起任务失败：未返回任务编号）"
+    return "已发起新任务：%s（运行编号：%s，类型：%s）" % (
+        result["task_id"], result.get("run_id") or "", task_type)
+
+
+def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creator=None):
+    if name == "create_task":
+        return _tool_create_task(workdir, args or {}, task_creator=task_creator)
     if str(name or "").startswith("mcp__"):
         # MCP 工具：透传给配置的服务器（stdio JSON-RPC）；超时给足但封顶
         try:
@@ -729,9 +787,9 @@ def _mcp_specs():
         return []
 
 
-def _openai_tools():
+def _openai_tools(extra_specs=None):
     out = []
-    for t in TOOLS_SPEC:
+    for t in list(TOOLS_SPEC) + list(extra_specs or []):
         props, required = _split_tool_args(t)
         out.append({"type": "function", "function": {
             "name": t["name"], "description": t["description"],
@@ -746,9 +804,9 @@ def _openai_tools():
     return out
 
 
-def _anthropic_tools():
+def _anthropic_tools(extra_specs=None):
     out = []
-    for t in TOOLS_SPEC:
+    for t in list(TOOLS_SPEC) + list(extra_specs or []):
         props, required = _split_tool_args(t)
         out.append({"name": t["name"], "description": t["description"],
                     "input_schema": {"type": "object", "properties": props,
@@ -1144,7 +1202,7 @@ def _m_anthropic(m):
 
 
 def _build_request(proto, base, use_key, model, system, msgs, with_tools, stream=False,
-                   max_tokens=BASE_MAX_TOKENS):
+                   max_tokens=BASE_MAX_TOKENS, extra_specs=None):
     """按协议构造 (url, headers, body)。msgs 为内部统一形状。
 
     stream=True 时按协议打开流式：google 换 :streamGenerateContent?alt=sse，
@@ -1179,7 +1237,7 @@ def _build_request(proto, base, use_key, model, system, msgs, with_tools, stream
         body = {"model": model, "max_tokens": max_tokens, "system": system,
                 "messages": [_m_anthropic(m) for m in msgs]}
         if with_tools:
-            body["tools"] = _anthropic_tools()
+            body["tools"] = _anthropic_tools(extra_specs)
         if stream:
             body["stream"] = True
         return url, headers, body
@@ -1195,7 +1253,7 @@ def _build_request(proto, base, use_key, model, system, msgs, with_tools, stream
     body = {"model": model, "max_tokens": max_tokens,
             "messages": [{"role": "system", "content": system}] + msgs_wire}
     if with_tools:
-        body["tools"] = _openai_tools()
+        body["tools"] = _openai_tools(extra_specs)
     if stream:
         body["stream"] = True
         body["stream_options"] = {"include_usage": True}
@@ -1265,7 +1323,8 @@ def _norm_usage(usage):
 
 
 def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=None,
-        on_reason=None, on_stream=None, on_activity=None, stream=True, deadline=None):
+        on_reason=None, on_stream=None, on_activity=None, stream=True, deadline=None,
+        task_creator=None):
     """跑一次内置智能体（内部自带工具循环直到给出最终回答）。
 
     bi: resolve() 的返回；prompt: 本轮完整输入（目标/续轮块由 pipeline 拼）；
@@ -1377,7 +1436,8 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                             if deadline is not None else timeout
                         url, headers, body = _build_request(
                             proto, pbase, kk["key"], model, system, msgs,
-                            tools_ok, max_tokens=max_tokens)
+                            allow_tools, max_tokens=max_tokens,
+                            extra_specs=[CREATE_TASK_SPEC] if task_creator else None)
                         sbody = None
                         if stream:
                             # 流式体单独构造（+stream / include_usage）；非流式体留给回落重发
