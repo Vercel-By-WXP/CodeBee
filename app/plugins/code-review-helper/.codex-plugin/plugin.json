@@ -1,0 +1,18 @@
+{
+  "name": "code-review-helper",
+  "version": "0.1.0",
+  "description": "把代码评审前的风险检查接入 CodeBee。",
+  "author": {
+    "name": "CodeBee"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "代码评审助手",
+    "shortDescription": "提测前快速检查边界、异常、并发与安全风险。",
+    "longDescription": "一个轻量的代码评审守则插件，安装后会在 code 类型任务中自动注入检查清单。",
+    "developerName": "CodeBee",
+    "category": "代码开发",
+    "capabilities": ["Review", "Write"],
+    "defaultPrompt": ["请按评审清单检查这段代码。"]
+  }
+}

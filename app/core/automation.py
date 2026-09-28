@@ -76,14 +76,13 @@ _DEFAULTS = {"id": "", "name": "", "prompt": "", "workdir": "", "kind": "", "tim
              "interval_hours": 0, "weekday": -1, "run_at": "", "flow": "",
              "mode": "auto", "thinking": "standard",
              "direct_provider_id": "", "direct_model": "",
-             "fresh_chat": False,
              "enabled": False, "created_at": "", "last_run": "", "next_run": "",
              "run_count": 0, "last_status": "", "last_run_id": "", "task_id": ""}
 
 # 允许通过 update() 修改的字段（id/created_at/run_count 等运行痕迹不可改）
 _UPDATABLE = ("name", "prompt", "workdir", "kind", "time", "interval_hours",
               "weekday", "run_at", "flow", "mode", "thinking",
-              "direct_provider_id", "direct_model", "fresh_chat", "enabled")
+              "direct_provider_id", "direct_model", "enabled")
 
 
 # ---------------------------------------------------------------- 时间工具
@@ -290,7 +289,6 @@ def _normalize(d):
     except (TypeError, ValueError):
         t["run_count"] = 0
     t["enabled"] = bool(t["enabled"])
-    t["fresh_chat"] = bool(t.get("fresh_chat"))
     t["task_id"] = str(t.get("task_id") or "").strip()
     return t
 
@@ -402,33 +400,6 @@ def _bind_task_id(automation_id, task_id):
         current["task_id"] = task_id
         _save_locked()
 
-
-# 会话延续注入头（fresh_chat=False 时随信箱消息下发给执行者）
-_AUTO_CARRY_HEAD = ("【定时任务延续】这是同一个定时任务的再次自动执行，不是首轮："
-                    "上一轮运行的输出结尾见下。请在其基础上继续推进（复核、更新、"
-                    "补齐），不要从零重来。\n\n## 上一轮输出（结尾）\n")
-
-
-def _prev_run_tail(task_id, exclude_run_id):
-    """同任务最近一次已结束运行的最后一段输出（延续上下文的素材）。
-    无历史或历史无输出返回 ""——首轮/没东西可延续就不注入。"""
-    try:
-        runs = store.list_runs(limit=100)
-    except Exception:
-        return ""
-    cands = [r for r in runs
-             if r.get("task_id") == task_id and r.get("id") != exclude_run_id
-             and r.get("status") in store.TERMINAL_STATUSES]
-    if not cands:
-        return ""
-    prev = max(cands, key=lambda r: r.get("id") or "")
-    for s in reversed(prev.get("steps") or []):
-        txt = (s.get("summary") or "").strip()
-        if txt:
-            return txt[-2500:]
-    return (prev.get("summary") or "").strip()[-2500:]
-
-
 def _launch_run(t):
     """拉起一次真实编排运行：与 main.py 的 /api/tasks 走同一条链路
     （store.create_task → store.create_run → jobs 直接启动），返回 run_id。
@@ -464,24 +435,6 @@ def _launch_run(t):
                 t["task_id"] = task["id"]
                 _bind_task_id(t.get("id"), task["id"])
             run = store.create_run("orchestration", task["title"], task_id=task["id"])
-            # 会话延续开关（默认关 = 延续），每次触发现算：
-            #   fresh_chat=True  → 全新对话，不注入任何历史
-            #   fresh_chat=False → 两路延续：run 打标记（direct 引擎据此继承
-            #     CLI 会话 id，pipeline._run_direct）+ 信箱种「定时延续」消息
-            #     （带上一轮输出结尾，所有流程首步 drain 注入，编排者规划步骤
-            #     经 peek 同样可见）
-            try:
-                store.update_run(run["id"], fresh_chat=bool(t.get("fresh_chat")))
-            except Exception:
-                log.exception("automation: fresh_chat 注入失败 run=%s", run["id"])
-            if not t.get("fresh_chat"):
-                try:
-                    tail = _prev_run_tail(task["id"], run["id"])
-                    if tail:
-                        store.add_message(run["id"], _AUTO_CARRY_HEAD + tail,
-                                          sender="定时延续")
-                except Exception:
-                    log.exception("automation: 延续上下文注入失败 run=%s", run["id"])
             store.update_task_status(task["id"], "queued")
             jobs.enqueue({"kind": "orchestration", "run_id": run["id"],
                           "task_id": task["id"]})
@@ -707,7 +660,6 @@ def create(payload):
     t.update({k: payload.get(k) for k in _UPDATABLE})
     t["id"] = "auto-%s-%04d" % (time.strftime("%Y%m%d-%H%M%S"), secrets.randbelow(10000))
     t["enabled"] = bool(payload.get("enabled", True))
-    t["fresh_chat"] = bool(t.get("fresh_chat"))
     t["created_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     t["kind"] = payload.get("kind") or "daily"
     _validate_core(t)
@@ -733,7 +685,6 @@ def update(tid, patch):
         for k in _UPDATABLE:
             if k in patch:
                 merged[k] = patch[k]
-        merged["fresh_chat"] = bool(merged.get("fresh_chat"))
         _validate_core(merged, check_workdir=("workdir" in patch))
         _apply_schedule(merged, check_flow=("flow" in patch))
         _apply_run_prefs(merged)   # 改了 flow 就重判：非 direct 流程清掉残留模型
