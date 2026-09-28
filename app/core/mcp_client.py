@@ -103,29 +103,45 @@ class _Session:
                 env={**os.environ, **(self.server.get("env") or {})})
         except Exception as e:
             raise RuntimeError("MCP 服务器启动失败: %s" % e)
-        import queue as _queue
-        self.lines = _queue.Queue()
-        threading.Thread(target=self._pump_out, daemon=True).start()
-        threading.Thread(target=self._pump_err, daemon=True).start()
-        self._request("initialize", {
-            "protocolVersion": "2024-11-05", "capabilities": {},
-            "clientInfo": _CLIENT_INFO}, timeout=_INIT_TIMEOUT)
-        self._notify("notifications/initialized")
+        try:
+            import queue as _queue
+            self.lines = _queue.Queue()
+            threading.Thread(target=self._pump_out, daemon=True).start()
+            threading.Thread(target=self._pump_err, daemon=True).start()
+            self._request("initialize", {
+                "protocolVersion": "2024-11-05", "capabilities": {},
+                "clientInfo": _CLIENT_INFO}, timeout=_INIT_TIMEOUT)
+            self._notify("notifications/initialized")
+        except BaseException:
+            # __enter__ 抛错时 with 不会调用 __exit__，这里必须自行收尾。
+            self.__exit__(None, None, None)
+            raise
         return self
 
     def __exit__(self, *exc):
-        try:
-            if self.proc and self.proc.stdin:
-                try:
-                    self.proc.stdin.close()
-                except Exception:
-                    pass
-        finally:
+        proc = self.proc
+        if proc is None:
+            return False
+        if proc.stdin:
             try:
-                if self.proc:
-                    self.proc.kill()
+                proc.stdin.close()
             except Exception:
                 pass
+        try:
+            if proc.poll() is None:
+                proc.kill()
+        except Exception:
+            pass
+        try:
+            proc.wait(timeout=1)
+        except Exception:
+            pass
+        for stream in (proc.stdout, proc.stderr):
+            if stream:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
         return False
 
     def _send(self, obj):

@@ -105,6 +105,26 @@ class TestLiveFakeServer(BaseTest):
         self.assertTrue(c["ok"], c.get("error"))
         self.assertEqual(c["text"], "echo:你好")
 
+    def test_session_closes_process_and_pipes(self):
+        with mcp_client._Session(self.cfg) as sess:
+            proc = sess.proc
+        self.assertIsNotNone(proc.returncode)
+        self.assertTrue(proc.stdin.closed)
+        self.assertTrue(proc.stdout.closed)
+        self.assertTrue(proc.stderr.closed)
+
+    def test_session_closes_after_initialize_failure(self):
+        cfg = {"name": "dead", "command": sys.executable,
+               "args": ["-c", "raise SystemExit(1)"], "env": {}}
+        sess = mcp_client._Session(cfg)
+        with self.assertRaises(RuntimeError):
+            sess.__enter__()
+        proc = sess.proc
+        self.assertIsNotNone(proc.returncode)
+        self.assertTrue(proc.stdin.closed)
+        self.assertTrue(proc.stdout.closed)
+        self.assertTrue(proc.stderr.closed)
+
     def test_dispatch_full_name_via_settings(self):
         from app.core import settings as settings_mod
         settings_mod.save({"mcp_servers": json.dumps(
