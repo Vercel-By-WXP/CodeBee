@@ -10,7 +10,7 @@ function codebeeDocumentTitle(lang) {
 document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, rdHiveFirst: false, _rdCtx: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined };
 
 /* ---------------------------------------------------------- 内置浏览器工作区 */
 const BROWSER_STORAGE_KEY = "orch.browser.workspace.v1";
@@ -4394,7 +4394,8 @@ window.sideOpenTask = function (key) {
   detailSideReset();     // 换详情目标：任务级 side 缓存作废，等首拉
   const olderRunsButton = $("rd-load-earlier");
   if (olderRunsButton) olderRunsButton.hidden = true;
-  S.rdTab = "steps";
+  S.rdHiveFirst = true;   // 侧栏点开任务详情：首拉后默认落「蜂巢」（用户 2026-09-29）
+  S.rdTab = null;
   S.rdTabSig = "";
   applyRdTabs();
   syncInspectorVis();    // 详情已铺开：检查器让位（选中保留，返回列表自动滑回）
@@ -5022,12 +5023,14 @@ function renderChatNav() {
 window.rdChatNavGo = function (tab) {
   S.rdTab = tab;
   S.rdTabPin = true;   // 用户主动去看其它分区：别被自动选卡拽回对话
+  S.rdHiveFirst = false;
   applyRdTabs();
 };
 window.rdChatNavBack = function () {
   S.rdTab = "chat";
   S.rdTabPin = false;
   S.rdTabSig = "";
+  S.rdHiveFirst = false;
   applyRdTabs();
 };
 
@@ -5061,20 +5064,26 @@ function rdTabsSync(ctx) {
       S.rdTabSig = sig;
       const avail = rdTabAvail();
       const direct = chatAvail && chatEngineIsDirect(S.lastRun);
-      // 所有任务的主问题都是「继续聊什么、各智能体输出了什么」——默认把
-      // 对话放在第一视线；蜂巢/步骤/成果保留为侧边工作台入口。
-      // 没跑到终态时成果分区是空的，避免打开详情先看到白板。
       const finishing = !c.running && ["done", "failed", "cancelled", "timeout"].includes(c.status);
-      S.rdTab = (direct && avail.chat ? "chat" : null)
+      // 侧栏点开任务详情默认落「蜂巢」工作台（用户 2026-09-29）：一次性偏好，
+      // sideOpenTask 置位、蜂巢可用即兑现并钉住（后续状态翻转不再拽走）；
+      // ctx 明确 steps=0（纯聊天无蜂巢可看）或手选页签/rdTabReset 时放弃。
+      // 兑现前先留在手上的页签，不让对话抢跑——其余选卡优先级不变。
+      const hivePending = S.rdHiveFirst;
+      const hiveReady = hivePending && avail.hive;
+      if (hiveReady || (hivePending && c.steps === 0)) S.rdHiveFirst = false;
+      S.rdTab = (hiveReady ? "hive" : null)
+        || (hivePending && S.rdTab && avail[S.rdTab] ? S.rdTab : null)
+        || (direct && avail.chat ? "chat" : null)
         // 跑出了能打开的网页成品：第一视线给「预览」——这正是用户做完一个
         // 前端任务最想看到的（借鉴对话式编程产品：跑完先看东西跑起来）。
-        // 对话与待裁决的版本仍排在它前面：那两个是"要用户说话/动手"。
         || (finishing && avail.preview ? "preview" : null)
         || (avail.hive ? "hive" : null)
         || (avail.chat ? "chat" : null)
-        || (c.running ? (avail.hive ? "hive" : "steps")
+        || (c.running ? "steps"
           : (c.gitState === "isolated" && avail.git ? "git"
             : (c.hasResult && finishing ? "result" : "steps")));
+      if (hiveReady) S.rdTabPin = true;
     }
   }
   applyRdTabs();
@@ -5098,6 +5107,7 @@ function rdTabReset(pin) {
   S.rdTab = pin || null;
   S.rdTabSig = "";
   S.rdTabPin = !!pin;
+  S.rdHiveFirst = false;
   S._rdCtx = {};
   S._rdHeavy = { runId: "", report: false, artifacts: false, preview: false };
   S._rdDetailToken = (S._rdDetailToken || 0) + 1;
@@ -11857,7 +11867,11 @@ function renderMarket() {
 async function mkInstall(id) {
   try {
     const r = await api("/api/market/" + encodeURIComponent(id) + "/install", { method: "POST", body: "{}" });
-    toast(r && r.already ? t("该插件已安装过") : t("安装成功，运行任务时自动注入提示词；可到「经验库」启停或查看"));
+    if (r && r.already) toast(t("该插件已安装过"));
+    else {
+      toast(t("安装成功，运行任务时自动注入提示词；可到「经验库」启停或查看"));
+      (r && r.warnings || []).forEach((w) => toast(w, true));   // 供应链/内容警示逐条红牌
+    }
   } catch (e) { toast(e.message, true); return; }
   loadMarket();
 }
@@ -12096,6 +12110,13 @@ function mkrShowInstallPreview(p) {
       : '<div class="mkpv-sec">' + esc(t(p.risk_label)) + "：" + t("部分内容值得留意识别") +
         '<ul class="mkpv-strip">' + riskFindings + "</ul></div>")
     : "";
+  // 供应链对账（AST10 #2）：内容突变 / 近似名仿冒特征
+  const chainHtml =
+    (p.changed ? '<div class="mkpv-sec" style="color:var(--err,#d33)">⚠ ' +
+      t("内容较上次安装发生变化（指纹 ") + esc(p.digest || "") + t("），建议核对后再启用") + "</div>" : "") +
+    ((p.near_names || []).map((n) =>
+      '<div class="mkpv-sec">⚠ ' + t("与已装技能「") + esc(n[0]) + t("」名称过近（相似度 ") +
+      Math.round(n[1] * 100) + t("%），注意甄别仿冒") + "</div>").join(""));
   openModal(t("安装前确认"),
     '<div class="mkpv">' +
     '<div class="mkpv-name">' + esc(p.title || p.id || "") + "</div>" +
@@ -12103,7 +12124,7 @@ function mkrShowInstallPreview(p) {
     (p.version ? "<span>v" + esc(p.version) + "</span>" : "") +
     "<span>" + esc(_mkrIntegrityText(p.integrity)) + "</span></div>" +
     (skills ? '<div class="mkpv-skills">' + t("包含技能：") + skills + "</div>" : "") +
-    riskHtml +
+    riskHtml + chainHtml +
     '<div class="mkpv-sum">' + t("共 ") + (p.files_total || 0) + t(" 个文件 · ") + esc(mkCharsText(p.total_chars || 0)) + "</div>" +
     (rows ? '<table class="mkpv-files"><thead><tr><th>' + t("文件") + "</th><th>" + t("体量") +
       "</th></tr></thead><tbody>" + rows + moreF + "</tbody></table>" : "") +
@@ -14878,6 +14899,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!b || b.classList.contains("hidden")) return;
     S.rdTab = b.dataset.tab;
     S.rdTabPin = true;
+    S.rdHiveFirst = false;
     applyRdTabs();
     rdEnsureActiveTabData();
   });

@@ -1048,6 +1048,15 @@ def preview_remote(entry_id):
             risk_label = skill_scan.risk_label(risk_findings)
         except Exception:
             risk_findings, risk_label = [], ""
+        # 供应链对账（AST10 #2）：与上次见过的内容/已装名比对（只读不写）
+        try:
+            digest = market._pack_digest(files)
+            reg = market._load_registry()
+            changed = str((reg.get("seen") or {}).get(entry_id) or "") not in ("", digest)
+            near = market._similar_names(entry.get("title") or "",
+                                         reg.get("installed") or {})
+        except Exception:
+            digest, changed, near = "", False, []
         return {
             "token": token, "id": entry_id, "title": entry["title"],
             "source": entry["source_name"], "version": entry["version"],
@@ -1058,6 +1067,7 @@ def preview_remote(entry_id):
             "file_list": [{"path": k, "chars": len(v)} for k, v in file_list[:60]],
             "stripped": sorted(stripped)[:40], "stripped_total": len(stripped),
             "risk_label": risk_label, "risk_findings": risk_findings[:8],
+            "digest": digest, "changed": changed, "near_names": near,
             "expires_in": _PREVIEW_TTL,
         }, None
     except ValueError as e:

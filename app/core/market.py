@@ -120,6 +120,31 @@ def _is_market_file(path, pack_id):
     return "source: market" in head and ("market_id: %s" % pack_id) in head
 
 
+def _pack_digest(files):
+    """包内容指纹（sha256 前 16）：升级突变对账用——内容一致则同值。"""
+    import hashlib
+    blob = json.dumps({k: files[k] for k in sorted(files)}, ensure_ascii=False)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+def _similar_names(name, installed, cutoff=0.82):
+    """typosquatting 特征近似名对账（difflib 序列相似度）：与已装技能名过近的
+    返回 [(已装名, 相似度)]。降本求准——cutoff 以上才算「过近」。"""
+    import difflib
+    low = str(name or "").strip().lower()
+    if not low:
+        return []
+    out = []
+    for pid, rec in (installed or {}).items():
+        prev = str((rec or {}).get("name") or "").strip().lower()
+        if not prev or prev == low:
+            continue
+        ratio = difflib.SequenceMatcher(None, low, prev).ratio()
+        if ratio >= cutoff:
+            out.append(((rec or {}).get("name") or pid, round(ratio, 2)))
+    return sorted(out, key=lambda x: -x[1])[:3]
+
+
 # ---------------------------------------------------------------- 安装状态（持久化）
 
 def _load_registry():
@@ -260,6 +285,14 @@ def install_files(pack_id, name, files, extra=None):
         udir = _user_pack_dir()
         reg = _load_registry()
         installed = reg.setdefault("installed", {})
+        # 跨卸载的内容记忆（AST10 #2 供应链投毒对账）：同名/同 id 包重装时
+        # 与上次见过的内容比对，突变即警示——卸载重装也骗不过对账。
+        seen = reg.setdefault("seen", {})
+        digest = _pack_digest(files)
+        prev_digest = str(seen.get(pack_id) or "")
+        changed_vs_seen = bool(prev_digest and prev_digest != digest)
+        # typosquatting 特征（AST10 #2）：与已装技能名过近的新包点名
+        near = _similar_names(name, installed)
         rec = installed.get(pack_id)
         primary = "market-%s.md" % pack_id
         target = (rec or {}).get("file") or ""
@@ -283,13 +316,24 @@ def install_files(pack_id, name, files, extra=None):
                     written.append(name_i)
             except OSError as e:
                 return None, "写入用户技能库失败: %s" % e
-            record = {"file": target, "files": written, "installed_at": _now()}
+            record = {"file": target, "files": written, "installed_at": _now(),
+                      "digest": digest, "name": str(name or "")[:60]}
             if scan_note:
                 record["scan"] = scan_note   # 危险模式扫描结果随包记账
             if extra:
                 record.update(extra)
             installed[pack_id] = record
+        else:
+            installed[pack_id]["digest"] = digest
+        seen[pack_id] = digest        # seen 永远跟最新一次见到对齐
         _save_registry(reg)
+    warnings = []
+    if changed_vs_seen:
+        warnings.append("⚠ 内容较上次安装发生变化（内容指纹 %s → %s），"
+                        "建议核对diff后再启用" % (prev_digest, digest))
+    for near_name, ratio in near:
+        warnings.append("⚠ 与已装技能「%s」名称过近（相似度 %.0f%%），"
+                        "注意甄别仿冒（typosquatting）" % (near_name, ratio * 100))
     # 装后冒烟验证（SkillForge 证据驱动借鉴）：装完重新走 skills 的解析链，
     # 证明该包能被加载、名字对得上、正文非空——写盘成功 ≠ 技能可用，
     # frontmatter 缺失/正文为空都能在这里当场暴露，而不是下次任务注入时静默丢失。
@@ -317,7 +361,9 @@ def install_files(pack_id, name, files, extra=None):
             reg["installed"][pack_id]["smoke"] = smoke
             _save_registry(reg)
     return {"ok": True, "id": pack_id, "name": name, "file": target,
-            "already": already, "scan": scan_note, "smoke": smoke}, None
+            "already": already, "scan": scan_note, "smoke": smoke,
+            "digest": digest, "changed": changed_vs_seen,
+            "warnings": warnings}, None
 
 
 def remove(pack_id):

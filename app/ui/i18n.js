@@ -1104,6 +1104,11 @@
     "技能文本命中危险模式（可能诱导模型外传密钥/执行命令）。请逐条确认下方发现，不确定就别装。": "The skill text hits dangerous patterns (may trick the model into exfiltrating keys / running commands). Review each finding below — if unsure, don't install.",
     "我已确认风险，仍要安装": "I understand the risk — install anyway",
     "部分内容值得留意识别": "some content worth a closer look",
+    "内容较上次安装发生变化（指纹 ": "Content changed since last install (digest ",
+    "），建议核对后再启用": "); review before enabling",
+    "与已装技能「": "Name too close to installed skill \"",
+    "」名称过近（相似度 ": "\" (similarity ",
+    "%），注意甄别仿冒": "%) — possible typosquatting",
     // —— 远程备份拉取恢复 ——
     "从远程端点拉取备份…": "Pull backup from remote endpoint…",
     "列举中…": "Listing…",
