@@ -4654,8 +4654,10 @@ function drawTaskDetail(key, runs, appendFrom) {
   if (!runs.length) return;
   // 消息数/未消费数也入签名：新指令或被 drain 后重画指挥区；步骤状态入签名：
   // 取消收尾把僵尸步骤落成「已取消」时要立即重画，不等条数变化；
-  // 作品信息状态入签名：后台一键生成 running→done 要立刻反映到成果区面板
+  // 作品信息状态入签名：后台一键生成 running→done 要立刻反映到成果区面板。
+  // 续写批次签名盯的是链上根任务的 book_meta（都是用第一个）+ 本任务封面状态
   const bmTask = ((S.state || {}).tasks || []).find((x) => x.id === key);
+  const bmRoot = bmRootTask(bmTask || {});
   // 自动续跑退避相位入签名：预定启动时刻过了之后 chip 翻为「正在启动」
   const lr0 = runs[0] || {};
   const resumePending = (lr0.resume_enqueue_at &&
@@ -4665,7 +4667,8 @@ function drawTaskDetail(key, runs, appendFrom) {
     (r.messages || []).length, (r.messages || []).filter((m) => !m.consumed).length,
     r.message_count, r.pending_message_count,
     r.summary, r.error, r.cost_usd, r.tokens, JSON.stringify(r.verdict || {})])
-    .concat([JSON.stringify((bmTask || {}).book_meta || null), resumePending]));
+    .concat([JSON.stringify([(bmRoot || {}).book_meta || null,
+      (bmTask || {}).cover_gen || null]), resumePending]));
   if (sig === S.taskSig) return;
   S.taskSig = sig;
   const latest = runs[0];                       // runs 新→旧
@@ -5490,11 +5493,6 @@ window.bmGoRoot = function (rootId) {
   browserOpenTaskRun(t, "bookmeta");
 };
 
-function intOf(v, dflt) {
-  const n = parseInt(v, 10);
-  return isNaN(n) ? dflt : n;
-}
-
 function renderBookMetaPanel(task) {
   const box = $("rd-bookmeta");
   if (!box || !(task || {}).id || !bmNeedsPanel(task)) {
@@ -5579,8 +5577,11 @@ function renderBookMetaPanel(task) {
       "</div>";
   }).join("") + "</div>";
   // 封面卡（covergen，借鉴 oh-story 封面图环节）：curl 落盘运行目录，
-  // done 后卡片内直接嵌缩略图（/api/runs/<id>/cover 专用通道），点开新页看大图
-  const cg = task.cover_gen || {};
+  // done 后卡片内直接嵌缩略图（/api/runs/<id>/cover 专用通道），点开新页看大图。
+  // 封面也是「这本书」的：本任务没生成过就沿用根任务的封面；点生成则落本任务自己的
+  const cgSrc = (task.cover_gen && (task.cover_gen.status || task.cover_gen.run_id)) ? task : src;
+  const cg = cgSrc.cover_gen || {};
+  const cgInherited = cgSrc !== task;
   const cgSt = cg.status || "";
   let cgBody = "";
   if (cgSt === "running") {
@@ -5593,7 +5594,8 @@ function renderBookMetaPanel(task) {
       '<img class="bm-cover-img" src="' + esc(urlAuth(covUrl)) + '" alt="cover.png" ' +
       'onerror="this.closest(&quot;.bm-cover-wrap&quot;).classList.add(&quot;noimg&quot;)"></a>' +
       '<span class="bm-cover-fallback">' + esc(t("cover.png 已不在运行目录")) + "</span>" +
-      '<div class="bm-cover-meta">' + esc([cg.model, cg.provider, cg.size].filter(Boolean).join(" · ")) + "</div></div>";
+      '<div class="bm-cover-meta">' + esc([cg.model, cg.provider, cg.size,
+        cgInherited ? t("继承自首批") : ""].filter(Boolean).join(" · ")) + "</div></div>";
   } else if (cgSt === "done") {
     cgBody = '<div class="bm-empty">' + esc(t("封面已生成，但缺少运行记录归属")) + "</div>";
   } else if (cgSt === "failed") {

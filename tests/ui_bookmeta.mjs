@@ -44,7 +44,7 @@ async function main() {
     serial: { chapters: 10, words_per_chapter: 2000, start_chapter: 1 },
     created_at: "2000-01-03 00:00:00", mode: "manual", archived: false,
   }, null, 2));
-  // 续写批次（start_chapter > 1）：不该出「作品信息」TAB——开书资料属于这本书
+  // 续写批次（continues 指向首批）：作品信息 TAB 也在——一本书一份资料沿链只读继承
   writeFileSync(join(dataDir, "tasks", "task-bmcont.json"), JSON.stringify({
     id: "task-bmcont", title: "宅斗长篇连载·续写", type: "serial_novel",
     goal: "接着写", workdir, status: "done",
@@ -159,19 +159,34 @@ async function main() {
       tabs.hiddenIds);
     check("终态自动选卡仍落「成果」（作品信息不抢）", tabs.active === "result", tabs.active);
 
-    // A2) 续写批次（start_chapter=11）：作品信息 TAB 不出现——开书资料属于这本书
+    // A2) 续写批次（continues 指向首批）：作品信息 TAB 也在——沿链只读继承
+    //（都是用第一个）；首批此刻还没生成 → 空态指路回首批，平台卡不出生成按钮
     const cont = await evalJson(`(async () => {
       sideOpenTask("task-bmcont");
       await new Promise((r) => setTimeout(r, 1200));
       const tb = Array.from(document.querySelectorAll("#rd-tabs .rd-tab"));
+      const box = document.getElementById("rd-bookmeta");
       return {
         ids: tb.filter((b) => !b.classList.contains("hidden")).map((b) => b.dataset.tab).join(","),
         hasBm: tb.some((b) => b.dataset.tab === "bookmeta" && !b.classList.contains("hidden")),
-        panelHidden: document.getElementById("rd-bookmeta").classList.contains("hidden"),
+        panelHidden: box.classList.contains("hidden"),
+        inherit: !!box.querySelector(".bm-inherit"),
+        backBtn: Array.from(box.querySelectorAll(".bm-head button"))
+          .some((b) => b.textContent.includes("回首批任务")),
+        guide: (box.textContent || "").includes("首批任务还没生成开书资料"),
+        // 只数头部操作区的生成钮：pbBlock 发布行的「创建作品」也是 primary，不算
+        platGen: Array.from(box.querySelectorAll(".bm-card"))
+          .filter((c) => { const n = c.querySelector(".bm-plat-name");
+            return n && n.textContent.trim() !== "封面图"; })
+          .filter((c) => c.querySelector(".bm-card-head button.primary")).length,
       };
     })()`);
-    check("续写批次不出「作品信息」TAB", cont.hasBm === false && cont.panelHidden === true,
+    check("续写批次也出「作品信息」TAB（沿链继承）",
+      cont.hasBm === true && cont.panelHidden === false, JSON.stringify(cont));
+    check("续写批次继承徽注 + 「回首批任务」入口", cont.inherit === true && cont.backBtn === true,
       JSON.stringify(cont));
+    check("首批未生成 → 空态指路；平台卡不出生成按钮（只读）",
+      cont.guide === true && cont.platGen === 0, JSON.stringify(cont));
     check("续写批次其余分区照旧（蜂巢/步骤/成果/圣经都在）",
       ["hive", "steps", "result", "bible"].every((k) => cont.ids.split(",").includes(k)),
       cont.ids);
@@ -188,7 +203,11 @@ async function main() {
       return {
         paneVisible: !document.querySelector('.rd-pane[data-pane="bookmeta"]').classList.contains("hidden"),
         guide: !!document.querySelector("#rd-bookmeta .bm-guide"),
-        genBtns: document.querySelectorAll("#rd-bookmeta .bm-card button.primary").length,
+        // 只数平台卡头部生成钮：封面卡的「生成封面」与发布行「创建作品」都不算
+        genBtns: Array.from(document.querySelectorAll("#rd-bookmeta .bm-card"))
+          .filter((c) => { const n = c.querySelector(".bm-plat-name");
+            return n && n.textContent.trim() !== "封面图"; })
+          .filter((c) => c.querySelector(".bm-card-head button.primary")).length,
         text: box ? box.textContent : "",
       };
     })()`);
@@ -267,6 +286,36 @@ async function main() {
       Array.from(document.querySelectorAll("#rd-bookmeta .bm-card button"))
         .filter((b) => b.textContent.includes("重新生成")).length)()`);
     check("done 态出现「重新生成」×2", regen === 2, regen);
+
+    // F) 续写批次回看：首批已生成 → 继承只读视图（字段全在场、平台卡零操作钮、徽章同 2/2）
+    const contDone = await evalJson(`(async () => {
+      sideOpenTask("task-bmcont");
+      await new Promise((r) => setTimeout(r, 1500));
+      const bmTab = document.querySelector('#rd-tabs .rd-tab[data-tab="bookmeta"]');
+      if (bmTab) bmTab.click();
+      await new Promise((r) => setTimeout(r, 400));
+      const box = document.getElementById("rd-bookmeta");
+      const platCards = Array.from(box.querySelectorAll(".bm-card"))
+        .filter((c) => { const n = c.querySelector(".bm-plat-name");
+          return n && n.textContent.trim() !== "封面图"; });
+      return {
+        inherit: !!box.querySelector(".bm-inherit"),
+        backBtn: Array.from(box.querySelectorAll(".bm-head button"))
+          .some((b) => b.textContent.includes("回首批任务")),
+        done: platCards.filter((c) => c.classList.contains("st-done")).length,
+        fields: platCards.reduce((a, c) => a + c.querySelectorAll(".bm-f").length, 0),
+        copies: platCards.reduce((a, c) => a + c.querySelectorAll(".bm-copy").length, 0),
+        ops: platCards.reduce((a, c) => a + c.querySelectorAll(".bm-card-head button").length, 0),
+        badge: (document.querySelector('#rd-tabs .rd-tab[data-tab="bookmeta"] .rd-badge') || {}).textContent || "",
+      };
+    })()`);
+    check("续写批次看到首批生成的字段（14+12 全继承，复制钮照常）",
+      contDone && contDone.done === 2 && contDone.fields === 26 && contDone.copies === 26,
+      JSON.stringify(contDone));
+    check("续写批次平台卡只读（零操作按钮，生成回首批做）",
+      contDone && contDone.ops === 0, JSON.stringify(contDone));
+    check("续写批次徽章同样 2/2（都是用第一个）",
+      contDone && contDone.badge === "2/2", contDone && contDone.badge);
 
     check("无控制台错误", consoleErrors.length === 0, consoleErrors.join(" | ").slice(0, 300));
   } finally {

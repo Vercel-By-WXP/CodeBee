@@ -80,11 +80,19 @@ def _iter_records(days=90):
 
 
 def published_chapters(task_id, platform):
-    """该任务在该平台已成功发布的章节号集合（幂等跳过依据）。"""
+    """该任务在该平台已成功发布的章节号集合（幂等跳过依据）。
+
+    连载链合并口径：同一本书一条链，任一批次发过的章号整链可见——续写任务
+    重发首批已发章节会被这里拦下。"""
+    from .. import store
+    try:
+        ids = set(store.serial_chain_ids(task_id))
+    except Exception:
+        ids = {str(task_id)}
     out = set()
     for r in _iter_records(3650):
         if (r.get("action") == "upload_chapter" and r.get("ok")
-                and r.get("task_id") == task_id and r.get("platform") == platform):
+                and r.get("task_id") in ids and r.get("platform") == platform):
             n = r.get("chapter_no") or 0
             if n > 0:
                 out.add(int(n))
@@ -92,10 +100,17 @@ def published_chapters(task_id, platform):
 
 
 def recent(task_id=None, platform=None, limit=50):
-    """最近记录（新在前），详情页发布历史用。"""
+    """最近记录（新在前），详情页发布历史用。task_id 给定时按连载链合并。"""
+    from .. import store
+    ids = None
+    if task_id:
+        try:
+            ids = set(store.serial_chain_ids(task_id))
+        except Exception:
+            ids = {str(task_id)}
     out = []
     for r in _iter_records(90):
-        if task_id and r.get("task_id") != task_id:
+        if ids is not None and r.get("task_id") not in ids:
             continue
         if platform and r.get("platform") != platform:
             continue
@@ -116,15 +131,41 @@ def load_books():
         return {}
 
 
+def _chain_order(task_id):
+    """连载链条 id 序列（根在前、自己紧随其后）：书籍绑定沿链共享的遍历序。
+
+    自己优先于祖先：续写任务上补找回的 book_id（写在自身条目）不该被根上
+    缺 id 的旧条目盖住。链取不到时回退 [task_id]。"""
+    from .. import store
+    try:
+        chain = [str(t) for t in store.serial_chain_ids(task_id)]
+    except Exception:
+        chain = []
+    chain = chain or [str(task_id)]
+    tid = str(task_id)
+    return [tid] + [t for t in chain if t != tid]
+
+
 def save_book(task_id, platform, info):
     """登记/更新任务在某平台的作品绑定。info: {book_id, title, url?}。
+
+    绑定属于「这本书」而不是某一批章节：写入链条上已有条目的任务（通常根
+    任务），链条全空则落到根上——续写批次建书/补账不会在链条上分叉出第二份。
 
     合并语义：只覆写登记四键，保留条目上的其他字段（如校准所得 remote_*），
     否则发章链里找回 book_id 的一次 save_book 会把校准结果抹掉。"""
     with LOCK:
         paths.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
         books = load_books()
-        entry = books.setdefault(str(task_id), {}).setdefault(str(platform), {})
+        target = next((t for t in _chain_order(task_id)
+                       if (books.get(t) or {}).get(str(platform))), None)
+        if target is None:
+            from .. import store          # 链条全空：绑定落到根任务上
+            try:
+                target = str(store.serial_chain_ids(task_id)[0])
+            except Exception:
+                target = str(task_id)
+        entry = books.setdefault(target, {}).setdefault(str(platform), {})
         entry.update({
             "book_id": str(info.get("book_id") or ""),
             "title": str(info.get("title") or "")[:120],
@@ -144,14 +185,17 @@ def update_book(task_id, platform, **fields):
     """原地合并更新登记条目（如平台校准数 remote_*），不碰 book_id/title 等既有键。
 
     save_book 是整条覆写语义（建书/找回 id 用），校准字段走这里才不会被
-    下一次 save_book 冲掉。"""
+    下一次 save_book 冲掉。连载链沿链找已有条目更新（校准从哪个批次发起
+    都落在这本书的账上）；链条上没登记过不凭空造条目。"""
     if not fields:
         return
     with LOCK:
         books = load_books()
-        ent = (books.setdefault(str(task_id), {}).setdefault(str(platform), {}))
-        if not ent:
+        target = next((t for t in _chain_order(task_id)
+                       if (books.get(t) or {}).get(str(platform))), None)
+        if target is None:
             return                      # 没登记过的书不凭空造条目
+        ent = books[target][str(platform)]
         for k, v in fields.items():
             if v is None:
                 ent.pop(k, None)        # None=删键（换绑书时作废旧校准数）
@@ -164,7 +208,26 @@ def update_book(task_id, platform, **fields):
 
 
 def book_for(task_id, platform):
-    return ((load_books().get(str(task_id)) or {}).get(str(platform))) or None
+    """任务在某平台的作品绑定；连载链沿链继承（自己条目优先，其次祖先根）。"""
+    books = load_books()
+    for tid in _chain_order(task_id):
+        ent = (books.get(tid) or {}).get(str(platform))
+        if ent:
+            return ent
+    return None
+
+
+def books_for(task_id):
+    """任务在两平台的已登记绑定（沿连载链继承，都是用第一个）。
+
+    history / sync-published / pending 等前端视图的统一口径——续写批次
+    看到的就是这本书的登记，别处直查 load_books().get(tid) 会跟它们打架。"""
+    out = {}
+    for p in ("fanqie", "qimao"):
+        ent = book_for(task_id, p)
+        if ent:
+            out[p] = ent
+    return out
 
 
 def shot_path(platform, task_id, step):

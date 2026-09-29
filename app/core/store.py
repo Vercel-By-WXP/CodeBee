@@ -502,6 +502,57 @@ def list_tasks(limit=None, archived=None):
         return out
 
 
+def serial_chain_ids(task_id):
+    """连载链条全部任务 id，根任务在前（一本书一条链：开书资料/发布绑定沿链共享）。
+
+    含祖先（沿 serial.continues 上溯）与后代（全量扫 continues 指向链条成员）；
+    非连载/未知任务回退 [task_id]。环与超深链安全（上限 50）。"""
+    task_id = str(task_id or "")
+    if not task_id:
+        return []
+    with LOCK:
+        by_id = {str(t.get("id")): t for t in _TASKS.values()}
+    if task_id not in by_id:
+        return [task_id]
+    order, seen = [], set()
+    cur = task_id
+    while cur and cur in by_id and cur not in seen and len(seen) < 50:
+        seen.add(cur)
+        order.append(cur)
+        cur = str(((by_id[cur].get("serial") or {}).get("continues")) or "") or ""
+    order.reverse()                      # 根在前
+    in_chain, grew = set(order), True
+    while grew:                          # 后代收进链条，迭代到收敛
+        grew = False
+        for tid, t in by_id.items():
+            if tid in in_chain:
+                continue
+            parent = str(((t.get("serial") or {}).get("continues")) or "")
+            if parent and parent in in_chain:
+                order.append(tid)
+                in_chain.add(tid)
+                grew = True
+    return order
+
+
+def inherited_book_meta(task, platform):
+    """任务在某平台的作品信息：连载链上「生成完成」的条目整链共用（都是用第一个）。
+
+    根在前找第一个 status=done 且有 data 的条目；整链都没有则返回任务自己的
+    条目（可能为空——调用方按未生成口径处理）。"""
+    task = task or {}
+    platform = str(platform)
+    own = ((task.get("book_meta") or {}).get(platform)) or {}
+    for tid in serial_chain_ids(task.get("id") or ""):
+        t = task if tid == str(task.get("id")) else get_task(tid)
+        if not t:
+            continue
+        e = ((t.get("book_meta") or {}).get(platform)) or {}
+        if e.get("status") == "done" and e.get("data"):
+            return e
+    return own
+
+
 def migrate_task_workdirs(old_root, new_root):
     """把「旧默认保存路径」下的任务目录搬到新默认路径下，并更新任务记录。
 

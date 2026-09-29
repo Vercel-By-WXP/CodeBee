@@ -114,7 +114,7 @@ def status(task_id):
     """前端视图：待发清单 + 护栏状态 + 自动发布进度。"""
     from .. import store
     from . import ledger, manager
-    ent = ledger.load_books().get(str(task_id)) or {}
+    ent = ledger.books_for(str(task_id))   # 沿连载链继承：续写批次同书同账
     task = store.get_task(task_id)
     books = []
     for plat, info in ent.items():

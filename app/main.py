@@ -576,7 +576,8 @@ class Handler(BaseHTTPRequestHandler):
                 from core.publish import manager as pub
                 from core.publish import ledger as pub_ledger
                 tid = m.group(1)
-                books = pub_ledger.load_books().get(tid) or {}
+                # 绑定沿连载链继承（都是用第一个）：续写批次也要看到这本书的登记
+                books = pub_ledger.books_for(tid)
                 return self._json(200, {"history": pub.history(task_id=tid, limit=50),
                                         "books": books,
                                         "published": {p: pub.published_local(tid, p)
@@ -996,7 +997,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(404, {"error": "任务不存在"})
             body = self._body() or {}
             plat = str(body.get("platform") or "").strip()
-            books = pub_ledger.load_books().get(tid) or {}
+            # 绑定沿连载链继承（与 history 端点同口径）：续写批次发起校准也能
+            # 落到这本书的账上，否则前端看到继承绑定、这里却报「未登记」互相打架
+            books = pub_ledger.books_for(tid)
             if plat and plat not in books:
                 return self._json(400, {"error": "该平台未登记作品"})
             plats = [plat] if plat else list(books)
