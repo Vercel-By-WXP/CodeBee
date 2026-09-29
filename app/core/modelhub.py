@@ -2414,8 +2414,9 @@ def _wire_endpoint_compatible(proto, base_url):
 def bindable_protocols(agent_kind_or_id):
     """该 CLI 可绑定的 wire 协议（与 resolve_binding 的 allowed 一致）。
     供死链告警/失败文案解释「为什么绑不上」：claude 只认 anthropic，
-    codex/dsh 只认 openai，其余开放双协议（含 wire 适配）。"""
-    if _deepseek_env_target(agent_kind_or_id) or agent_kind_or_id in ("codex-cli", "codex"):
+    codex/dsh/qwen 只认 openai，其余开放双协议（含 wire 适配）。"""
+    if (_deepseek_env_target(agent_kind_or_id)
+            or agent_kind_or_id in ("codex-cli", "codex", "qwencode", "qwen")):
         return ("openai",)
     if agent_kind_or_id in ("claude-code", "claude"):
         return ("anthropic",)

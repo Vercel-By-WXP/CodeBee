@@ -332,6 +332,41 @@ class TestAuthCredentialFallback(BaseTest):
         self.assertEqual(attempted, ["a-key-1"])
 
 
+class TestQwenProtocolGate(BaseTest):
+    """qwen 只讲 openai wire 的协议闸门（2026-09-29 连载评审实案）。
+
+    实案：路由把 qwencode 选进评审席（打分时「绑定链可用 +8」），resolve_binding
+    给它注入 ANTHROPIC_*——qwen CLI 一个都不读，回落本机过期配置撞出
+    「HTTP 200 + 404 NOT_FOUND 信封」，两次评审尝试全灭，链上又没有别的活人，
+    整章按「评审全部失败」中止。修法：qwen 归入 openai-only 组（与 codex 同款
+    preskip），anthropic 供应商在解析层整条剔除，让链直接走查到能讲话的人。"""
+
+    def test_qwen_anthropic_provider_preskipped(self):
+        from app.core import modelhub
+        modelhub._FILE = self.data_dir / "models.json"
+        pa, pb = _two_providers(modelhub)
+        modelhub.set_binding("qwencode", chain=[
+            {"provider_id": pa, "model": "claude-x"},
+            {"provider_id": pb, "model": "gpt-y"}])
+        r = modelhub.resolve_binding("qwencode")
+        self.assertEqual(len(r["call_chain"]), 1,
+                         "anthropic 供应商条目必须在解析层剔除")
+        entry = r["call_chain"][0]
+        # openai 条目的运行时 env 是通用 ORCH_API_KEY（qwen 自己的 OPENAI_*
+        # 由 settings.json 同步通道负责，见 manager._sync_qwen_settings）
+        self.assertEqual(entry["env"].get("ORCH_API_KEY"), FAKE_KEY_B)
+        self.assertNotIn("ANTHROPIC_BASE_URL", entry["env"])
+        self.assertNotIn("ANTHROPIC_AUTH_TOKEN", entry["env"])
+        # 只剩 anthropic 供应商 → 判不可绑（None → 死链闸门/路由降权接手），
+        # 绝不返回「链显示活着、实际走 CLI 本机默认」的假绑定
+        modelhub.providers_op([pb], "disable")
+        self.assertIsNone(modelhub.resolve_binding("qwencode"))
+        self.assertEqual(modelhub.bindable_protocols("qwencode"), ("openai",))
+        self.assertEqual(modelhub.bindable_protocols("qwen"), ("openai",))
+        # id/kind 两种入参口径一致；claude 的 anthropic 闸门不受影响
+        self.assertEqual(modelhub.bindable_protocols("claude-code"), ("anthropic",))
+
+
 if __name__ == "__main__":
     import unittest as _u
     _u.main()
