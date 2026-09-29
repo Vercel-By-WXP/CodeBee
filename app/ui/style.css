@@ -868,23 +868,24 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .route b { color: var(--text); }
 
 .steps { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+/* 弹性行而非网格：行内子元素数量可变（st-model/st-prov 徽章有无），网格定死
+ * 7 列会把 chip+日志按钮挤到隐含第二行，「运行中」掉进 30px 窄列一字一行竖排 */
 .step {
-  display: grid; grid-template-columns: 30px 92px 118px minmax(0, 1fr) auto auto auto;
-  align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 12px;
   background: var(--panel2); border: 1px solid transparent; border-radius: var(--r-md);
   padding: 10px 14px; cursor: pointer; font-size: 13px;
   transition: border-color .15s;
 }
 .step:hover { border-color: var(--border-strong); }
 .step .n {
-  width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+  flex: none; width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
   background: var(--panel); border: 1px solid var(--border);
   font-family: var(--mono); font-size: 11px; color: var(--muted);
 }
-.step .role { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.step .who { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.step .sum { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.step .dur { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+.step .role { flex: 0 0 92px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step .who { flex: 0 0 118px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step .sum { flex: 1 1 auto; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step .dur { flex: none; color: var(--muted); font-size: 12px; font-family: var(--mono); }
 .step-log-btn {
   border: 1px solid var(--border); border-radius: 999px; background: transparent;
   color: var(--muted); padding: 3px 8px; font-size: 11px; line-height: 1.2;
@@ -5034,9 +5035,15 @@ main.chat-fill #run-detail.chat-mode > .rd-main { overflow: hidden; }
     background: var(--panel);  /* 浮卡实底，不透出底下时间线 */
     box-shadow: 0 18px 44px rgba(6, 18, 35, .16), 0 2px 10px rgba(6, 18, 35, .08);
   }
+  /* 对话柱向左加宽（用户 2026-09-29）：给浮卡让位的空白不再两侧对称预留，
+     只在右缘留一份（版心右距 = 卡宽 + 2×间隙）——柱体在「版心左缘↔浮卡」
+     之间自动居中，吃满原先空旷的左半边；宽帽 960→1120 */
+  #run-detail.chat-mode .rd-pane[data-pane="chat"] {
+    padding-right: calc(var(--rd-card-w) + 2 * var(--rd-card-gap));
+  }
   #run-detail.chat-mode .rd-chat-flow,
   #run-detail.chat-mode .rd-chat-bar {
-    max-width: min(960px, calc(100% - 2 * (var(--rd-card-w) + var(--rd-card-gap))));
+    max-width: min(1120px, 100%);
   }
   /* 对话模式里按需打开的其它分区（步骤/蜂巢…）：右侧整体给浮卡让位 */
   #run-detail.chat-mode .rd-pane:not([data-pane="chat"]) {
@@ -7011,3 +7018,8 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
   .browser-home-workflows { grid-template-columns: 1fr; }
   .browser-home-action { min-height: 72px; }
 }
+
+/* 步骤行 flex 化后的防压缩补充（追加于文件尾防并行重排）：徽章/按钮不许被
+ * 挤压收缩，摘要列吸收余量——运行中行（无摘要/耗时）状态 chip 与 CLI 日志
+ * 按钮才能稳定贴右单行，与完成行同构 */
+.step .st-model, .step .st-prov, .step .step-log-btn { flex: none; }

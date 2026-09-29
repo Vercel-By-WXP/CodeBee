@@ -105,10 +105,13 @@ async function main() {
     await sleep(4000);
 
     /* ---- A) 结果卡：本轮完成 + HTML chip 带运行按钮 ---- */
-    // 走真实用户路径：侧栏任务行 → 任务级详情（直连默认落「对话」分区）。
+    // 走真实用户路径：侧栏任务行 → 任务级详情（2026-09-29 起默认落「蜂巢」，
+    // 本用例量的是对话时间线，显式切回「对话」分区——等价用户点「返回对话」）。
     // 直接调 openRun 会跳过 showDetailInMain，详情渲染在被隐藏的容器里（假可见）。
     await evalJs(`sideOpenTask(${JSON.stringify(taskId)}); "ok"`);
     await sleep(2500);
+    await evalJs(`rdChatNavGo("chat"); "ok"`);
+    await sleep(400);
     const a = JSON.parse(await evalJs(`JSON.stringify({
       cardLabel: (document.querySelector("#rd-chat-flow .chat-result .cr-head")||{}).textContent || "",
       chips: document.querySelectorAll("#rd-chat-flow .chat-result .file-chip").length,
