@@ -272,6 +272,9 @@ def _normalize(source_meta, entry):
         "version": str(entry.get("version") or "").strip(),
         "homepage": str(entry.get("homepage") or "").strip(),
         "keywords": [str(k).lower() for k in (entry.get("keywords") or []) if isinstance(k, str)],
+        # 信任卡元数据（ClawTrust 思路）：来源自报的下载量——自报数据只作
+        # 热度参考，不作安全结论
+        "downloads": str(((entry.get("stats") or {}).get("downloads")) or ""),
         "source_id": source_meta["id"],
         "source_name": source_meta["name"],
         "install": install,
@@ -325,6 +328,8 @@ def _entries_from_cache(cache=None):
     cache = cache if cache is not None else _load_cache()
     src_meta = {s["id"]: s for s in SOURCES}
     installed = market.installed_ids()
+    # 信任卡：已装包的安检摘要（真注册表，非 id 集合）
+    registry = market._load_registry().get("installed") or {}
     entries = []
     for sid in [s["id"] for s in SOURCES]:
         c = cache.get(sid)
@@ -339,6 +344,7 @@ def _entries_from_cache(cache=None):
             e["block_reason"] = _compat_block(e) or ""
             e["installed"] = e["id"] in installed
             e["installable"] = e["compat"] == "ok"
+            e["scan_note"] = str((registry.get(e["id"]) or {}).get("scan") or "")
             entries.append(e)
     entries.sort(key=lambda x: (x["source_id"], x["name"].lower()))
     return entries

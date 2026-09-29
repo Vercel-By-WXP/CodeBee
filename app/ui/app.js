@@ -11957,13 +11957,22 @@ function mkrCardHtml(p) {
     esc(p.block_reason || t("该插件无法从公开生态下载")) + '">' + t("不适配") + "</button>";
   else ops = '<button class="primary small" data-mk="' + esc(p.id) + '" onclick="mkrInstall(\'' + esc(p.id) + '\')">' + t("安装") + "</button>";
   const meta = [p.author, p.version ? "v" + p.version : ""].filter(Boolean).join(" · ");
+  // 信任卡（ClawTrust 思路）：热度（来源自报下载量，仅参考）+ 装前安检结论
+  const trust = [
+    p.downloads ? '<span class="tag" title="' + t("来源自报下载量，仅作热度参考") + '">▼ ' +
+      esc(p.downloads) + "</span>" : "",
+    p.scan_note ? (p.scan_note.indexOf("高风险") >= 0
+      ? '<span class="tag" style="color:var(--err,#d33)" title="' + esc(p.scan_note) + '">' +
+        t("⚠ 安检高风险") + "</span>"
+      : '<span class="tag" title="' + esc(p.scan_note) + '">' + t("安检：") + esc(p.scan_note.split("：")[0]) + "</span>")
+      : ""].filter(Boolean).join("");
   return '<div class="card mk-card' + (p.compat === "blocked" ? " blocked" : "") + '"><div class="head">' +
     '<span class="name">' + esc(t(p.title || p.name)) + "</span>" +
     '<span class="tag mk-src">' + esc(t(p.source_name || "")) + "</span>" +
     (p.category ? '<span class="tag">' + esc(p.category) + "</span>" : "") +
     "</div>" +
     '<div class="note">' + esc(t(p.desc || "")) + "</div>" +
-    '<div class="mk-meta"><span>' + esc(meta) + "</span></div>" +
+    '<div class="mk-meta"><span>' + esc(meta) + "</span>" + trust + "</div>" +
     '<div class="ops">' + ops + "</div></div>";
 }
 

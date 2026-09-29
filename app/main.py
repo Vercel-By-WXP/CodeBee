@@ -309,6 +309,14 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/evalbench":
                 from core import evalbench
                 return self._json(200, evalbench.state())
+            if path == "/api/evalbench/report":
+                # 评测报告导出（Markdown，浏览器下载）
+                from core import evalbench
+                return self._send(200, evalbench.report_markdown().encode("utf-8"),
+                                  ctype="text/markdown; charset=utf-8",
+                                  headers={"Content-Disposition":
+                                           'attachment; filename="codebee-bench-%s.md"'
+                                           % time.strftime("%Y%m%d-%H%M%S")})
             if path == "/api/catalog":
                 return self._json(200, {"catalog": manager.catalog_view(),
                                         "checking": manager.updates_checking()})
