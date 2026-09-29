@@ -184,7 +184,7 @@ class TestNotifyAndMatrix(BaseTest):
                                    "overall": None, "scores": {}, "comment": "",
                                    "cost_usd": 0.0, "duration_s": 1.0, "same_family": False})
         mx = evalbench._matrix(evalbench._read_results_list())
-        self.assertEqual(mx["samples"], ["writing", "bugfix", "summary"])
+        self.assertEqual(mx["samples"], ["writing", "bugfix", "summary", "redteam"])
         cell = mx["cells"]["writing"]["p|m"]
         self.assertEqual(cell["overall"], 9.0)           # 同键最新胜
         self.assertFalse(mx["cells"]["bugfix"]["p|m"]["ok"])

@@ -613,6 +613,68 @@ def score_trend():
             for d in sorted(trend)[-14:]]
 
 
+def report_markdown():
+    """评测报告导出（Markdown）：榜单+逐题对比+趋势一次成文，配推送/存档。"""
+    st = state()
+    lines = ["# CodeBee 模型评测报告",
+             "",
+             "生成时间：%s　裁判：%s（%s）" % (
+                 time.strftime("%Y-%m-%d %H:%M"),
+                 st["judge"].get("model") or "未配置",
+                 "就绪" if st["judge"].get("ready") else "未就绪"),
+             ""]
+    board = st.get("leaderboard") or []
+    if board:
+        lines += ["## 能力榜", "",
+                  "| # | 模型 | 供应商 | 综合 | 性价比 | 客观验证 | 样题 | 备注 |",
+                  "|---|---|---|---|---|---|---|---|"]
+        for r in board:
+            notes = []
+            if r.get("same_family"):
+                notes.append("同族评审")
+            if r.get("failed_n"):
+                notes.append("失败 %d" % r["failed_n"])
+            if not r.get("scored_n"):
+                notes.append("未得分")
+            lines.append("| %d | %s | %s | %s | %s | %s | %d | %s |" % (
+                r["rank"], r["model"], r.get("provider_name") or "",
+                ("%.2f" % r["overall"]) if r.get("overall") is not None else "—",
+                ("%s 分/¥" % r["value_per_yuan"]) if r.get("value_per_yuan") is not None else "—",
+                "%d/%d" % (r["verify_pass"], r["verify_total"]) if r.get("verify_total") else "—",
+                r.get("samples_n") or 0, "、".join(notes) or "—"))
+        lines.append("")
+    trend = st.get("trend") or []
+    if len(trend) >= 2:
+        lines += ["## 分数走势（近 %d 天）" % len(trend), "",
+                  "| " + " | ".join(t["day"] for t in trend) + " |",
+                  "| " + " | ".join("---" for _ in trend) + " |",
+                  "| " + " | ".join("%.2f" % t["overall"] for t in trend) + " |", ""]
+    mx = st.get("matrix") or {}
+    cols = [r["provider_id"] + "|" + r["model"] for r in board]
+    if mx.get("samples") and cols:
+        sname = {s["id"]: s["name"] for s in st.get("samples") or []}
+        lines += ["## 逐题对比", "",
+                  "| 样题 | " + " | ".join(m.split("|")[1] for m in cols) + " |",
+                  "|---|" + "---|" * len(cols)]
+        for sid in mx["samples"]:
+            row = [sname.get(sid, sid)]
+            for mk in cols:
+                c = (mx["cells"].get(sid) or {}).get(mk)
+                if not c:
+                    row.append("·")
+                elif not c.get("ok"):
+                    row.append("✗")
+                elif not c.get("scored") or c.get("overall") is None:
+                    row.append("−")
+                else:
+                    row.append(("%.1f" % c["overall"]) + ("⚠" if c.get("verify_ok") is False else ""))
+            lines.append("| " + " | ".join(row) + " |")
+        lines.append("")
+    lines += ["> ⚠ = 客观验证未通过；✗ = 生成失败；− = 未得分。"
+              "所有分数为固定样题 + 编排者裁判口径，仅供横向参考。"]
+    return "\n".join(lines)
+
+
 def fire_due():
     """自动化 tick 钩子（同 cleanup/wxdigest.fire_due 模式）：设置启用且距上次
     定时回归超过间隔天数时，自动起一轮评测并推送结果。自节流、绝不抛错。

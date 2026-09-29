@@ -1111,6 +1111,10 @@
     "%），注意甄别仿冒": "%) — possible typosquatting",
     // —— 评测 Red-team 维度 ——
     "安全测试": "red-team",
+    // —— 市场信任卡 ——
+    "来源自报下载量，仅作热度参考": "Downloads reported by the source — popularity reference only",
+    "⚠ 安检高风险": "⚠ high-risk on scan",
+    "安检：": "scan: ",
     // —— 远程备份拉取恢复 ——
     "从远程端点拉取备份…": "Pull backup from remote endpoint…",
     "列举中…": "Listing…",
