@@ -39,6 +39,11 @@ async function main() {
     execSync(`netstat -ano | findstr ":${PORT} " | findstr "LISTENING"`, { stdio: "pipe" });
     console.error("端口 " + PORT + " 已被占用，先处理再跑"); process.exit(2);
   } catch (e) { /* 空闲 */ }
+  // CDP 口也要预检：残留 Edge 占着口时新实例绑不上，/json/list 会驱动别人的浏览器
+  try {
+    execSync(`netstat -ano | findstr ":${CDP_PORT} " | findstr "LISTENING"`, { stdio: "pipe" });
+    console.error("CDP 口 " + CDP_PORT + " 已被占用（残留 Edge？按 PID 清理后再跑）"); process.exit(2);
+  } catch (e) { /* 空闲 */ }
 
   const dataDir = mkdtempSync(join(tmpdir(), "tutti-rm-"));
   await new Promise((res) => {
@@ -202,14 +207,111 @@ async function main() {
           `!JSON.parse(localStorage.getItem("tutti.hiddenDirs") || "[]").includes(${JSON.stringify(archWd)})`);
         check("在该目录新建任务自动解除隐藏", unhidden,
           await evalJs(`localStorage.getItem("tutti.hiddenDirs")`));
+
+        /* ---- 场景 C（服务重启窗口实测案）：归档请求网络层失败时文件夹绝不能
+         *       照旧从侧栏消失——藏是 localStorage 假成功，服务端没归档，手机端
+         *       等其他设备照样看得到。stub fetch 让 /archive 全拒 → 应弹错误
+         *       toast 且文件夹留在侧栏、隐藏表不动；恢复 fetch 重试 → 正常隐藏。 ---- */
+        const dirSelC = dirSelB;
+        // unhideSideDir 只清签名不立即重绘，等下一轮 poll 把文件夹画回来
+        let dirBack3 = false, w4 = 0;
+        while (w4 < 10000) {
+          await sleep(1000); w4 += 1000;
+          dirBack3 = await evalJs(`!!document.querySelector(${dirSelC})`);
+          if (dirBack3) break;
+        }
+        check("场景C：解除隐藏后文件夹重绘回侧栏", dirBack3, "等了 " + w4 + "ms 仍在");
+        await evalJs(`(async () => {
+          window.__origFetch = window.fetch;
+          window.fetch = (url, opts) => {
+            if (String(url).includes("/archive"))
+              return Promise.reject(new TypeError("Failed to fetch"));
+            return window.__origFetch(url, opts);
+          };
+          const dir = document.querySelector(${dirSelC});
+          dir.dispatchEvent(new MouseEvent("contextmenu",
+            { bubbles: true, cancelable: true, clientX: 300, clientY: 200 }));
+          await new Promise(r => setTimeout(r, 250));
+          [...document.querySelectorAll("#ctx-menu .ctx-item")]
+            .find(x => x.textContent.trim() === "移除该文件夹").click();
+        })()`);
+        await sleep(1000);
+        const askShown3 = await evalJs(
+          `(() => { const d = document.getElementById("ask");
+            return d && !d.classList.contains("hidden"); })()`);
+        check("场景C：失败注入下确认框照常弹出", askShown3);
+        if (askShown3) {
+          await evalJs(`document.getElementById("ask-yes").click(); true`);
+          await sleep(1500);
+          const cState = await evalJs(`(() => {
+            const t = document.getElementById("toast");
+            return JSON.stringify({
+              toastBad: !!(t && t.classList.contains("show") && t.classList.contains("bad")),
+              toastText: t ? t.textContent : "",
+              dirStill: !!document.querySelector(${dirSelC}),
+              hiddenDirs: JSON.parse(localStorage.getItem("tutti.hiddenDirs") || "[]"),
+            });
+          })()`);
+          const cs = JSON.parse(cState);
+          check("场景C：归档失败弹出错误 toast（不静默）",
+            cs.toastBad && /归档失败/.test(cs.toastText), cState);
+          check("场景C：文件夹留在侧栏（不假成功）", cs.dirStill, cState);
+          check("场景C：目录未进隐藏表", !cs.hiddenDirs.includes(archWd), cState);
+          await evalJs(`(async () => {
+            window.fetch = window.__origFetch;
+            const dir = document.querySelector(${dirSelC});
+            dir.dispatchEvent(new MouseEvent("contextmenu",
+              { bubbles: true, cancelable: true, clientX: 300, clientY: 200 }));
+            await new Promise(r => setTimeout(r, 250));
+            [...document.querySelectorAll("#ctx-menu .ctx-item")]
+              .find(x => x.textContent.trim() === "移除该文件夹").click();
+          })()`);
+          await sleep(1000);
+          const askShown4 = await evalJs(
+            `(() => { const d = document.getElementById("ask");
+              return d && !d.classList.contains("hidden"); })()`);
+          if (!askShown4) { check("场景C：恢复后重试正常隐藏文件夹", false, "确认框未弹出"); }
+          else {
+            await evalJs(`document.getElementById("ask-yes").click(); true`);
+            let gone3 = false, w3 = 0;
+            while (w3 < 10000) {
+              await sleep(1000); w3 += 1000;
+              gone3 = await evalJs(`!document.querySelector(${dirSelC})`);
+              if (gone3) break;
+            }
+            check("场景C：恢复后重试正常隐藏文件夹", gone3, "等了 " + w3 + "ms 仍在");
+          }
+        }
       }
     }
 
     const errs = await evalJs(`(window.__errs||[]).join(" | ")`).catch(() => "");
     if (errs) console.log("页面报错: " + errs);
   } finally {
-    try { execSync(`taskkill /PID ${(proc.pid)} /T /F`, { stdio: "ignore" }); } catch (e) {}
-    try { execSync(`taskkill /PID ${(svc.pid)} /T /F`, { stdio: "ignore" }); } catch (e) {}
+    // taskkill 必须走 spawn 数组：execSync 的 "/PID" 会被 Git Bash 当路径改写，
+    // 杀树静默失败留下残留 Edge 抢 CDP 口（实测两棵残留树把下轮跑挂）
+    try { spawn("taskkill", ["/F", "/T", "/PID", String(proc.pid)], { stdio: "ignore" }); } catch (e) {}
+    try { spawn("taskkill", ["/F", "/T", "/PID", String(svc.pid)], { stdio: "ignore" }); } catch (e) {}
+    // 复杀+验证：Edge 会自己再孵化浏览器进程，树杀后 CDP 口可能仍被占，甚至
+    // 杀完隔几秒又冒一个（实测）；按 netstat 监听 PID 补刀（不走 WMI——系统负载
+    // 高时 Get-CimInstance 会挂死），连续两轮全空才算干净。
+    let cleanRounds = 0;
+    for (let round = 0; round < 6 && cleanRounds < 2; round++) {
+      await sleep(1200);
+      const stale = new Set();
+      for (const port of [PORT, CDP_PORT]) {
+        try {
+          const out = execSync(`netstat -ano | findstr ":${port} " | findstr "LISTENING"`,
+            { stdio: "pipe" }).toString();
+          for (const m of out.matchAll(/\s(\d+)\s*$/gm)) stale.add(m[1]);
+        } catch (e) { /* 该口已空 */ }
+      }
+      if (!stale.size) { cleanRounds++; continue; }
+      cleanRounds = 0;
+      for (const p of stale) {
+        try { spawn("taskkill", ["/F", "/T", "/PID", p], { stdio: "ignore" }); } catch (e) {}
+      }
+    }
     await sleep(500);
     try { rmSync(dataDir, { recursive: true, force: true }); } catch (e) {}
     try { rmSync(profile, { recursive: true, force: true }); } catch (e) {}

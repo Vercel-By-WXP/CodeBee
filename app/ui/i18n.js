@@ -738,6 +738,7 @@
     "取消归档": "Unarchive",
     "归档": "Archive",
     "归档任务": "Archive Task",
+    "有 {0} 个任务归档失败，文件夹先保留；任务与文件都没动，稍后重试即可": "{0} task(s) failed to archive — the folder is kept; nothing was touched, just retry later",
     "归档后任务从侧栏收起，可随时用左下角时钟图标找回并取消归档": "Archiving hides the task from the sidebar; use the clock icon at the bottom-left to find it back and unarchive anytime",
     "重命名任务": "Rename task",
     "↻ 继续任务": "↻ Resume task",

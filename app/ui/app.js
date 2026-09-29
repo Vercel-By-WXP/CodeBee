@@ -3368,7 +3368,8 @@ async function archiveTask(id, archived) {
       S.sideSig = "";
     }
     render();
-  } catch (e) { toast(t("操作失败：") + e.message, true); }
+    return true;
+  } catch (e) { toast(t("操作失败：") + e.message, true); return false; }
   poll();
 }
 
@@ -3982,7 +3983,14 @@ async function removeSideDir(ids, dir) {
       .replace("%1", ids.length),
     { ok: t("移除") });
   if (!ok) return;
-  for (const id of ids) await archiveTask(id, true);
+  // 有归档失败就不能藏文件夹：藏是 localStorage 假成功，服务端任务没归档，
+  // 手机端等其他设备照样看得到这批任务（服务重启窗口实测案）。留文件夹让用户重试。
+  let failed = 0;
+  for (const id of ids) if (!await archiveTask(id, true)) failed++;
+  if (failed) {
+    toast(t("有 {0} 个任务归档失败，文件夹先保留；任务与文件都没动，稍后重试即可").replace("{0}", failed), true);
+    return;
+  }
   if (dir) hideSideDir(dir);
 }
 
