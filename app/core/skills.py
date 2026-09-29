@@ -23,6 +23,7 @@ import json
 import re
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 from . import paths, revisions
@@ -338,6 +339,52 @@ def _karma(item):
     return (hits - lost + _KARMA_PRIOR) / (hits + 2 * _KARMA_PRIOR)
 
 
+_DECAY_GRACE_DAYS = 30   # 宽限期：30 天内不衰减（新条目与常用条目都不受影响）
+_DECAY_RAMP_DAYS = 60    # 宽限期后线性爬满（再 60 天衰减到底）
+
+
+def _surplus_decay(item, now=None):
+    """衰减后的「信任盈余」(ds, lost)：won==0 且闲置超宽限期的条目，盈余
+    (hits−lost)⁺ 随时长线性衰减到 0——过去的注入证据会过期（hippo-memory 借鉴，
+    066 班深挖）；lost 是失守证据，粘滞不衰减。won≥1 有结局归因背书不衰减；
+    无时间戳的条目不衰减（无从判旧不臆测）。updated_at 随每次 upsert 刷新，
+    被再次触及即重置。只压排序，不删除、不改数据。"""
+    hits = max(0, int(item.get("hits") or 0))
+    lost = min(max(0, int(item.get("lost") or 0)), hits)
+    if int(item.get("won") or 0) > 0:
+        return hits - lost, lost
+    stamp = item.get("updated_at") or item.get("created_at")
+    if not stamp:
+        return hits - lost, lost
+    try:
+        then = datetime.strptime(str(stamp)[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return hits - lost, lost
+    now = now or datetime.now()
+    idle = (now - then).days
+    if idle <= _DECAY_GRACE_DAYS:
+        return hits - lost, lost
+    ramp = min(1.0, (idle - _DECAY_GRACE_DAYS) / float(_DECAY_RAMP_DAYS))
+    return int(round((hits - lost) * (1.0 - ramp))), lost
+
+
+def _eff_karma(item, now=None):
+    """有效可信度：以衰减后盈余重算 karma。ramp=0 时与 _karma 完全等价
+    （(hits−lost+1)/(hits+2) 恒等变形），满衰减时未归因条目回中性 0.5——
+    与新鲜条目同位，先后交给「新者优先」尾键；失守者因 lost 粘滞继续下沉。"""
+    ds, lost = _surplus_decay(item, now=now)
+    return (ds + _KARMA_PRIOR) / (ds + lost + 2 * _KARMA_PRIOR)
+
+
+def _ts(item):
+    """created_at → epoch 秒（排序用，可取负实现新者优先）；缺失/坏值记 0。"""
+    stamp = str(item.get("created_at") or "")[:19]
+    try:
+        return datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").timestamp()
+    except ValueError:
+        return 0.0
+
+
 def list_lessons(scope=None, only_enabled=False, category=None):
     with _LOCK:
         items = list((_load().get("lessons") or []))
@@ -349,11 +396,13 @@ def list_lessons(scope=None, only_enabled=False, category=None):
     if only_enabled:
         items = [x for x in items if x.get("enabled", True)]
     # karma 感知排序（UI 列表用；注入排序在 relevance_top 不走这里）：
-    # 首键是可信度下界（注入多且很少失守的居首），被点名归因过成功的（won）作次键
-    # 提权，再按注入热度；失守多的自然沉底（不隐藏——降权不删除）。
-    items.sort(key=lambda x: (-_karma(x), -int(x.get("won") or 0),
-                              -int(x.get("hits") or 0), -int(x.get("seen") or 1),
-                              x.get("created_at") or ""))
+    # 首键是有效可信度（未归因条目的信任盈余随闲置衰减——证据会过期；won 背书与
+    # 失守证据都粘滞），被点名归因过成功的（won）作次键提权，再按衰减后盈余；
+    # 失守多的自然沉底（不隐藏——降权不删除）。衰减到中性的同分者按新者优先
+    # （-_ts 尾键）——「先试新的」是衰减语义的一部分。
+    items.sort(key=lambda x: (-_eff_karma(x), -int(x.get("won") or 0),
+                              -_surplus_decay(x)[0], -int(x.get("seen") or 1),
+                              -_ts(x), x.get("id") or ""))
     return items
 
 
@@ -495,12 +544,13 @@ def relevance_top(lessons, task, limit):
         return lessons[:limit]
 
     # 使用反馈闭环（pmb「量化记忆真实帮助」+ tradememory「按结局加权召回」）：
-    # 相关性优先；同分比可信度下界，再比归因成功的次数，最后比注入热度。
+    # 相关性优先；同分比有效可信度（未归因盈余随闲置衰减），再比归因成功的次数，
+    # 最后比衰减后盈余；同到中性的按新者优先。
     def rank(x):
         grams = _text_bigrams(x.get("title")) | _text_bigrams(x.get("content"))
         overlap = -len(probe & grams)
-        return (overlap, -_karma(x), -int(x.get("won") or 0),
-                -int(x.get("hits") or 0), x.get("id") or "")
+        return (overlap, -_eff_karma(x), -int(x.get("won") or 0),
+                -_surplus_decay(x)[0], -_ts(x), x.get("id") or "")
 
     return sorted(lessons, key=rank)[:limit]
 
