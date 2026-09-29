@@ -1224,7 +1224,11 @@ async function api(path, opts) {
       // 他人持有时弹「接管并重试」确认，确认后抢夺控制权并自动重试一次。
       // uiConfirm 弹窗互斥防堆叠；重试标记防递归；GET 轮询不会走到这里。
       const holder = data.control.holder || "";
-      if (!opts._ctrlRetry && !opts.silent && !api._ctrlPrompting && holder) {
+      // 30s 节流：弹框未关时 _ctrlPrompting 互斥已挡并发，但关框后紧跟着的
+      // 自动写请求会连环撞 423 连环弹（实测一轮页面循环 5927 次），只留一次打断。
+      if (!opts._ctrlRetry && !opts.silent && !api._ctrlPrompting && holder
+          && Date.now() - (api._ctrlPromptAt || 0) > 30000) {
+        api._ctrlPromptAt = Date.now();
         api._ctrlPrompting = true;
         try {
           if (await uiConfirm(t("「{0}」正在控制，接管后自动重试「{1}」？",
@@ -9561,7 +9565,10 @@ function updateChip(c) {
 async function autoCheckUpdates() {
   if (Date.now() - (S.updateCheckAt || 0) < 5 * 60 * 1000) return;
   S.updateCheckAt = Date.now();
-  try { await api("/api/catalog/check-updates", { method: "POST", busy: false }); } catch (e) { /* 忽略 */ }
+  // silent：进页自动检查撞上他设备控制权（423）时不准弹「接管并重试」模态框——
+  // 弹框遮罩盖全屏吞滚轮，用户体感就是「所有页面都不能滚动」（2026-09-29 实测案）。
+  // 用户主动点的「检查更新」走 checkUpdate(id) 通道，不受此影响。
+  try { await api("/api/catalog/check-updates", { method: "POST", busy: false, silent: true }); } catch (e) { /* 忽略 */ }
   poll();
 }
 
@@ -12174,7 +12181,7 @@ async function loadSettings() {
     const tel = $("set-telemetry");
     if (tel && S.settings) tel.checked = S.settings.telemetry_errors !== false;
     const pet = $("set-pet");
-    if (pet && S.settings) pet.checked = S.settings.pet_enabled !== false;
+    if (pet && S.settings) pet.checked = !!S.settings.pet_enabled;
     const cs = $("set-claude-sync");
     if (cs && S.settings) cs.checked = S.settings.claude_config_sync !== false;
     const mcp = $("set-mcp-servers");
