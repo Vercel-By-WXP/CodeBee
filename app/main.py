@@ -1585,6 +1585,14 @@ class Handler(BaseHTTPRequestHandler):
             except zentao.ZenError as e:
                 return self._json(404, {"error": str(e)})
             return self._json(200, {"ok": True, "claim": c})
+        if path == "/api/zentao/claims/retry":
+            from core import zentao
+            body = self._body() or {}
+            try:
+                c, msg = zentao.retry_claim(body.get("bug_id"))
+            except zentao.ZenError as e:
+                return self._json(409, {"error": str(e)})
+            return self._json(200, {"ok": True, "claim": c, "message": msg})
         if path == "/api/zentao/modules":
             from core import zentao
             pid = (self._body() or {}).get("product")

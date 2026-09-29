@@ -32,11 +32,11 @@ backend | frontend | both | not_ours | unknown。
   纯对方端问题  → 不建任务，直接转派该端负责人+排查结论评论
   非我方        → 转派报告人（或 owners.not_ours）+评论；只转派不解决
   unknown       → 不碰 bug，need_manual + 群通知（下轮扫描 bug 仍激活则重排查）
-  修复任务失败  → 评论尝试记录 + 转派该端负责人（模块路由 account > 端负责人）；
-                  CodeBee 自身崩溃（内部异常）不转派——那是工具故障不是修不动，
-                  只评论+群通知人工；负责人未配置同样只评论。
-                  只评论也绝不盲写 PUT：禅道 PUT /bugs/{id} 缺 assignedTo 会
-                  清空指派人，必须带回当前指派人（#27783 案）。
+  修复任务失败  → 不评论不转派（#27828 案定口径：失败不是修复结论，写回
+                  禅道是拿工具故障/中间态打扰业务流，也绝不当甩锅转派）——
+                  只记台账+群通知，回炉 retry 状态等下轮扫描自动重试（上限
+                  FIX_MAX_ATTEMPTS 次），到限置 failed 终态等人工；禅道页
+                  「立即处理」（retry_claim）随时可手工重触发。
 
 落库纪律：修复任务落单即带基线（档案配了用档案，没配取工作目录当前 HEAD）
 走任务分支隔离，修完的代码自动提交在任务分支上，对账合并后才算落库；
@@ -94,6 +94,7 @@ HTTP_TIMEOUT = 15
 PAGE_LIMIT = 100
 MAX_BUGS = 500
 RESOLVE_MAX_ATTEMPTS = 3
+FIX_MAX_ATTEMPTS = 3          # 修复失败自动重试上限（retry 状态下轮扫描重试计数）
 RETRY_DELAY_MIN = 30
 INTERVAL_MIN, INTERVAL_MAX = 5, 10080   # 扫描间隔（分钟）：5 分钟 ~ 7 天
 INTERVAL_DEFAULT = 5
@@ -1684,22 +1685,14 @@ def _transfer_text(claim, profile, fixed_runs, target_side):
     return "\n".join(lines)
 
 
-def _fail_text(claim, failed_tasks, runs, internal=False):
-    tri = claim.get("triage") or {}
-    lines = ["【CodeBee 自动修复未成功】",
-             "Bug：#%s %s" % (claim.get("bug_id"), claim.get("title") or "")]
-    if tri.get("side"):
-        lines.append("排查结论：%s（%s）" % (tri.get("side"), tri.get("reason") or ""))
+def _fail_brief(failed_tasks, runs):
+    """失败端一句话摘要：『后端：原因；前端：原因』（群通知/台账共用）。"""
+    parts = []
     for t in failed_tasks:
         r = runs.get(t.get("run_id")) or {}
         why = str(r.get("error") or "").strip() or ("运行状态 " + str(r.get("status") or ""))
-        lines.append("【%s】失败：%s" % (SIDE_CN.get(t.get("side"), t.get("side")), why[:300]))
-    if internal:
-        lines.append("（失败原因是 CodeBee 工具自身异常，不代表修复结论；"
-                     "请人工排查 CodeBee 或续跑修复任务）")
-    lines.append("CodeBee 修复任务：%s（可人工续跑或接管）；本 bug 保持待处理。"
-                 % "、".join(t.get("task_id") or "?" for t in claim.get("tasks") or []))
-    return "\n".join(lines)
+        parts.append("%s：%s" % (SIDE_CN.get(t.get("side"), t.get("side")), why[:200]))
+    return "；".join(parts)[:300]
 
 
 # ---------------------------------------------------------------- 禅道写回动作
@@ -2022,25 +2015,32 @@ def _finish_ok(claim, cfg):
 # 0.1.63 _TRANSIENT 缩进事故实测形态）或带 Python traceback。这不是「修不动
 # bug」——转派给端负责人等于拿自家工具故障甩锅。冒号形态（TimeoutError: x）
 # 多为 CLI/被测仓的真实输出，不算内部崩溃。
+# 自家工具链故障形态：评审器没跑起来（评审未执行）——pipeline 对评审 CLI
+# 启动失败的包装错误，同样不是「修不动」的结论。
 _CRASH_REPR_RE = re.compile(r"^[A-Za-z_]\w*(?:Error|Exception|Interrupt)\(")
+
+_TOOL_FAIL_MARKERS = ("评审器故障（评审未执行）", "评审器执行失败（评审未执行）")
 
 
 def _looks_internal_crash(err):
     e = str(err or "").strip()
     if not e:
         return False
+    if any(m in e for m in _TOOL_FAIL_MARKERS):
+        return True
     return ("Traceback (most recent call last" in e
             or _CRASH_REPR_RE.match(e) is not None)
 
 
 def _finish_failed(claim, cfg):
-    """我方任一任务失败：评论尝试记录 + 转派该端负责人（有配则转）。
+    """我方任一任务失败：不评论不转派（#27828 案定口径），只记台账+群通知。
 
-    CodeBee 自身崩溃（内部异常）不转派——工具故障不是「修不动」，转出去是
-    甩锅，只评论+群通知人工。负责人未配置同样只评论。
+    失败不是修复结论——无论是 CodeBee 工具链故障（评审器起不来/内部崩溃）
+    还是修复未通过，写回禅道都是拿中间态打扰业务流，转派更是甩锅。失败回炉
+    retry 状态，下轮扫描自动重试（只重建失败端，上限 FIX_MAX_ATTEMPTS 次）；
+    到限置 failed 终态等人工，禅道页「立即处理」随时可手工重触发。
     """
     bid = str(claim.get("bug_id"))
-    profile = _profile_for(cfg, claim.get("product")) or {}
     tasks = claim.get("tasks") or []
     runs = {t.get("run_id"): store.get_run(t.get("run_id") or "") for t in tasks}
     failed = [t for t in tasks
@@ -2048,36 +2048,27 @@ def _finish_failed(claim, cfg):
               ("queued", "running", "done")]
     internal = any(_looks_internal_crash((runs.get(t.get("run_id")) or {}).get("error"))
                    for t in failed)
-    text = _fail_text(claim, failed, runs, internal=internal)
-    # 升级目标：取第一个失败端的路由账号/负责人（内部崩溃不转派）
-    target = ""
-    if not internal:
-        for t in failed:
-            target = _route_account(profile, claim.get("triage") or {}, t.get("side"))
-            if target:
-                break
-    try:
-        _transfer(cfg, bid, target, text)
-        if internal:
-            note = "CodeBee 内部异常，已评论说明（不转派，请人工排查工具链）"
-            state = "commented"
-        elif target:
-            note = "已评论说明并转派 %s" % target
-            state = "escalated"
-        else:
-            side = str((failed[0].get("side") if failed else "") or "")
-            note = "已评论说明（%s负责人未配置，未转派）" % SIDE_CN.get(side, side or "该端")
-            state = "commented"
-    except ZenError as e:
-        log.warning("zentao: bug %s 失败评论未送达（群通知兜底）：%s", bid, e)
-        note = "修复失败，评论未送达：%s" % e
-        state = "commented"
-    _set_claim(bid, state=state, note=note)
-    why = ("CodeBee 内部异常，未转派" if internal
-           else ("已转派 " + target if target else "负责人未配置，未转派"))
-    _notify("🐛❌ 禅道 Bug #%s 自动修复未成功（%s）\n%s\n修复任务：%s"
-            % (bid, why,
-               claim.get("title") or "", "、".join(t.get("task_id") or "" for t in tasks)))
+    why = _fail_brief(failed, runs)
+    kind = "CodeBee 工具链异常" if internal else "修复未通过"
+    task_ids = "、".join(t.get("task_id") or "?" for t in tasks)
+    attempts = int(claim.get("attempts") or 0) + 1
+    if attempts <= FIX_MAX_ATTEMPTS:
+        _set_claim(bid, attempts=attempts, state="retry",
+                   note="修复失败（%s：%s），第 %d/%d 次重试将于下轮扫描自动进行"
+                        % (kind, why, attempts, FIX_MAX_ATTEMPTS))
+        if attempts == 1:   # 中间次只记台账不刷屏，成败都有下文（重试/终态）再报
+            _notify("🐛❌ 禅道 Bug #%s 自动修复未成功（%s）\n%s\n失败：%s\n"
+                    "第 %d/%d 次重试将于下轮扫描自动进行，也可到禅道页点「立即处理」。\n"
+                    "修复任务：%s"
+                    % (bid, kind, claim.get("title") or "", why,
+                       attempts, FIX_MAX_ATTEMPTS, task_ids))
+        return
+    _set_claim(bid, attempts=attempts, state="failed",
+               note="连续 %d 次修复失败（%s：%s），已停止自动重试，请人工接管"
+                    % (attempts, kind, why))
+    _notify("🐛❌ 禅道 Bug #%s 连续 %d 次自动修复未成功（%s），已停止重试，"
+            "请人工接管（禅道页可「立即处理」重新触发）\n%s\n失败：%s\n修复任务：%s"
+            % (bid, attempts, kind, claim.get("title") or "", why, task_ids))
 
 
 def _refresh_claim_runs(claim):
@@ -2258,8 +2249,88 @@ def _route_one(bug, profile, cfg, notify=True):
     return "fixing"
 
 
+def _retry_one(bug, claim, profile, cfg):
+    """重试一个 retry 挂单：只重建失败的修复任务（成功端保留），attempts 累加
+    不清零（上限计数跨重试累计）。建任务失败 → need_manual 留人工。"""
+    bid = str(bug.get("id") or "")
+    tasks = []
+    try:
+        for t in claim.get("tasks") or []:
+            r = store.get_run(t.get("run_id") or "") or {}
+            if str(r.get("status") or "") in ("queued", "running", "done"):
+                tasks.append(dict(t))
+                continue
+            task, run = _launch_fix(bug, profile, t.get("side"), cfg)
+            tasks.append({"side": t.get("side"), "task_id": task["id"],
+                          "run_id": run["id"], "state": "fixing"})
+    except Exception as e:
+        log.warning("zentao: bug %s 重试建任务失败：%s", bid, e)
+        _set_claim(bid, state="need_manual", note="重试建任务失败：%s" % e)
+        _notify("🐛⚠️ 禅道 Bug #%s 重试建任务失败，留人工：%s" % (bid, e))
+        return
+    _set_claim(bid, tasks=tasks, state="fixing",
+               note="第 %d 次重试进行中" % max(1, int(claim.get("attempts") or 1)))
+
+
+# 「立即处理」可重触发的状态：fixing（在跑）/resolved/transferred（已闭环）/
+# done_manual（修完等人工确认，重跑会重复修复）不行，其余都行。
+_RETRYABLE_STATES = ("retry", "failed", "escalated", "commented",
+                     "need_manual", "merge_failed", "resolve_failed", "lost")
+
+
+def retry_claim(bid):
+    """手工「立即处理」：不等下轮扫描，立即重新触发一个失败/留人工的修复。
+
+    按状态分流：need_manual 重新排查认领；merge_failed/resolve_failed 置回
+    fixing 交给对账重试合并/回写；其余（retry/failed/历史 escalated 等）重建
+    失败端任务。归档的不拒——手工触发即用户明确意图，顺手取消归档。
+    返回 (claim, 动作文案)；不存在/状态不允许抛 ZenError。
+    """
+    bid = str(bid)
+    _ensure_loaded()
+    with _LOCK:
+        cfg = dict(_cfg())
+        c = _STATE["claims"].get(bid)
+        if c is None:
+            raise ZenError("修复记录 #%s 不存在" % bid)
+        state = str(c.get("state") or "")
+        if state == "fixing":
+            raise ZenError("Bug #%s 修复进行中，无需重触发" % bid)
+        if state == "resolved":
+            raise ZenError("Bug #%s 已解决，无需重触发" % bid)
+        if state == "transferred":
+            raise ZenError("Bug #%s 已转派他人，不能重触发" % bid)
+        if state == "done_manual":
+            raise ZenError("Bug #%s 修复已完成，等人工确认合并/解决即可" % bid)
+        product = c.get("product")
+    profile = _profile_for(cfg, product)
+    if profile is None:
+        raise ZenError("Bug #%s 的产品档案已不存在，无法重触发" % bid)
+    bug = _call("GET", "/bugs/%s" % bid, cfg=cfg)   # ZenError 往上抛（连不上别硬触）
+    if str(bug.get("status") or "") not in ("active", ""):
+        raise ZenError("Bug #%s 禅道侧状态已是 %s，无需修复" % (bid, bug.get("status")))
+    if state == "need_manual":
+        _route_one(bug, profile, cfg, notify=False)
+        msg = "已重新排查认领"
+    elif state in ("merge_failed", "resolve_failed"):
+        _set_claim(bid, state="fixing", note="手工重触发：等待对账重试合并/回写")
+        msg = "已置回修复中，等待对账重试合并/回写"
+    else:
+        # failed/retry/历史遗留 escalated/commented/lost：清零计数重新给满重试额度
+        with _LOCK:
+            cur = dict(_STATE["claims"].get(bid) or {})
+        cur["attempts"] = 0
+        _retry_one(bug, cur, profile, cfg)
+        msg = "已重新拉起修复任务（重试额度已重置）"
+    _set_claim(bid, attempts=0, archived=False, archived_by="",
+               archived_at="", archive_reason="")
+    with _LOCK:
+        out = dict(_STATE["claims"].get(bid) or {})
+    return out, msg
+
+
 def _scan(cfg):
-    """按产品档案逐个拉 bug：认领新 bug + 重试 need_manual 的存量 + 归档对账。
+    """按产品档案逐个拉 bug：认领新 bug + 重试 need_manual/retry 的存量 + 归档对账。
     返回认领数。"""
     claimed = 0
     profiles = _profiles(cfg)
@@ -2271,7 +2342,8 @@ def _scan(cfg):
         with _LOCK:
             seen = set(_STATE["claims"].keys())
             retry_ids = [k for k, c in _STATE["claims"].items()
-                         if c.get("state") == "need_manual" and not c.get("archived")
+                         if c.get("state") in ("need_manual", "retry")
+                         and not c.get("archived")
                          and k in by_id
                          and str(by_id[k].get("status") or "") == "active"]
         for bug in bugs:
@@ -2280,12 +2352,18 @@ def _scan(cfg):
                 continue
             _route_one(bug, profile, cfg)
             claimed += 1
-        # need_manual 重排查（bug 仍激活才出现在列表里）
+        # need_manual 重排查 / retry 失败端重试（bug 仍激活才出现在列表里）
         for bid in retry_ids:
             with _LOCK:
-                if _STATE["claims"].get(bid, {}).get("state") != "need_manual":
+                c = _STATE["claims"].get(bid) or {}
+                st = str(c.get("state") or "")
+                if st not in ("need_manual", "retry"):
                     continue
-            _route_one(by_id[bid], profile, cfg, notify=False)
+                claim = dict(c)
+            if st == "need_manual":
+                _route_one(by_id[bid], profile, cfg, notify=False)
+            else:
+                _retry_one(by_id[bid], claim, profile, cfg)
         # 归档对账：走到这里说明本产品列表拉取成功，消失判定才可信
         try:
             _archive_sweep(cfg, profile, by_id)

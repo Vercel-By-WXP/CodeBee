@@ -1,7 +1,8 @@
 /* 禅道·产品档案 UI 验证：自起临时服务（TUTTI_DATA 隔离 + 种子 zentao.json v2）+ Edge headless。
  * 覆盖：设置导航「禅道」入口、档案卡渲染（产品/负责人/模块路由）、修复记录的
  * 排查徽章与任务链接、保存配置落库（含档案结构与脱敏）、增删产品/路由、
- * 修复记录归档区（默认收起/展开/手动归档/取消归档）、立即扫描对不可达地址优雅报错。
+ * 修复记录归档区（默认收起/展开/手动归档/取消归档）、失败记录「立即处理」按钮
+ * （渲染/徽章/点击走 retry API）、立即扫描对不可达地址优雅报错。
  * 结束清理浏览器/服务进程、临时目录。 */
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -48,7 +49,12 @@ async function main() {
         tasks: [], state: "transferred", note: "", attempts: 0,
         claimed_at: "2026-09-19 07:00:00",
         archived: true, archived_by: "auto", archived_at: "2026-09-20 09:00:00",
-        archive_reason: "禅道侧已解决，自动归档" } },
+        archive_reason: "禅道侧已解决，自动归档" },
+      "503": { bug_id: 503, product: 7, title: "种子 Bug：修复失败样例",
+        triage: { side: "backend", reason: "模块 #99 路由规则", by: "rule", account: "" },
+        tasks: [{ side: "backend", task_id: "t-seed-3", run_id: "r-seed-3", state: "fixing" }],
+        state: "failed", attempts: 4, claimed_at: "2026-09-19 06:00:00",
+        note: "连续 4 次修复失败（修复未通过：boom），已停止自动重试，请人工接管" } },
     last_scan: "2026-09-19 08:00:00", next_scan: "", last_error: "",
   }, null, 1), "utf-8");
 
@@ -188,6 +194,37 @@ async function main() {
     })()`, true);
     check("②c 探到 GET 形态部署回退查询串链接",
       getForm === "http://127.0.0.1:18949/index.php?m=bug&f=view&bugID=501", getForm);
+
+    // ②d 立即处理：失败/丢失记录有「立即处理」按钮，点击走 retry API 并 toast 动作结果
+    const retryBtns = await evalJs(`(() => {
+      const cards = Array.from(document.querySelectorAll("#zentao-claims .card:not(.zt-archived)"));
+      return JSON.stringify(cards.map((c) => ({
+        id: ((c.querySelector(".zt-bug-link") || {}).textContent || "").slice(0, 4),
+        btn: !!Array.from(c.querySelectorAll("button")).find((b) => b.textContent.indexOf("立即处理") >= 0)
+      })));
+    })()`, true);
+    const rb = JSON.parse(retryBtns || "[]");
+    check("②d 失败/丢失记录有「立即处理」按钮", rb.length === 2 && rb.every((x) => x.btn), retryBtns);
+    const failTag = await evalJs(
+      `document.getElementById("zentao-claims").textContent.indexOf("修复失败") >= 0`, true);
+    check("②d failed 状态徽章上屏（修复失败）", failTag === true);
+    await evalJs(`(() => {
+      const orig = window.fetch.bind(window);
+      window.fetch = (url, opts) => {
+        if (String(url).includes("/api/zentao/claims/retry")) {
+          return Promise.resolve(new Response(JSON.stringify(
+            { ok: true, message: "已重新拉起修复任务（重试额度已重置）" }),
+            { status: 200, headers: { "Content-Type": "application/json" } }));
+        }
+        return orig(url, opts);
+      };
+      return 1;
+    })()`);
+    await evalJs(`Array.from(document.querySelectorAll("#zentao-claims .card:not(.zt-archived) button"))
+      .find((b) => b.textContent.indexOf("立即处理") >= 0).click(); "ok"`);
+    const retryToast = await waitFor(
+      `document.body.textContent.indexOf("已重新拉起修复任务") >= 0`, 6000);
+    check("②d 点「立即处理」→ 调 retry API 并 toast 动作结果", retryToast === true);
 
     // ②b 仓库·工作目录行：「选择…」按钮 + 占位文案讲真话 + 点选回填同一行（pick_folder 已 stub 防真弹窗）
     await evalJs(`(() => {
@@ -378,20 +415,21 @@ async function main() {
         liveCards: box.querySelectorAll(".card:not(.zt-archived)").length });
     })()`, true);
     const ah = JSON.parse(archHead || "{}");
-    check("④d 已归档区默认收起：折叠头在、计数 1、归档卡不渲染、进行中卡 1 张",
-      ah.head === true && ah.count === "1" && ah.hiddenCard === true && ah.liveCards === 1, archHead);
+    check("④d 已归档区默认收起：折叠头在、计数 1、归档卡不渲染、进行中卡 2 张",
+      ah.head === true && ah.count === "1" && ah.hiddenCard === true && ah.liveCards === 2, archHead);
     await evalJs(`zentaoToggleArchive(); "ok"`);
     const archOpen = await evalJs(`(() => {
       const card = document.querySelector("#zentao-claims .zt-arch-list .card.zt-archived");
       if (!card) return "{}";
       return JSON.stringify({ title: card.querySelector(".name").textContent.slice(0, 30),
         reason: (card.querySelector(".note") || {}).textContent || "",
-        unarch: !!Array.from(card.querySelectorAll("button")).find((b) => b.textContent.indexOf("取消归档") >= 0) });
+        unarch: !!Array.from(card.querySelectorAll("button")).find((b) => b.textContent.indexOf("取消归档") >= 0),
+        noRetry: !Array.from(card.querySelectorAll("button")).find((b) => b.textContent.indexOf("立即处理") >= 0) });
     })()`, true);
     const ao = JSON.parse(archOpen || "{}");
-    check("④d 展开后归档卡显示（弱化样式 + 归档原因 + 取消归档按钮）",
+    check("④d 展开后归档卡显示（弱化样式 + 归档原因 + 取消归档按钮 + 无立即处理）",
       ao.title.indexOf("#502") >= 0 && ao.title.indexOf("已解决归档样例") >= 0 &&
-      ao.reason.indexOf("禅道侧已解决") >= 0 && ao.unarch === true, archOpen);
+      ao.reason.indexOf("禅道侧已解决") >= 0 && ao.unarch === true && ao.noRetry === true, archOpen);
     await evalJs(`Array.from(document.querySelectorAll("#zentao-claims .card:not(.zt-archived) button"))
       .find((b) => b.textContent.indexOf("归档") >= 0).click(); "ok"`);
     const archived501 = await waitFor(`api("/api/zentao").then((v) => {

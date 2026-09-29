@@ -729,7 +729,7 @@ class TestBootReconcile(ZenCase):
         self.assertIsNotNone(timer, "有 fixing 挂单时安排补对账")
         self.addCleanup(timer.cancel)
         self.zen_mod._boot_reconcile()
-        self.assertEqual(self.claim()["state"], "escalated")
+        self.assertEqual(self.claim()["state"], "retry", "失败不评论不转派，回炉待重试")
 
 
 class TestLaunchFailureClosesRun(ZenCase):
@@ -868,49 +868,102 @@ class TestBothSidesMergeFail(ZenCase):
         self.assertEqual(self.put_calls("411"), [], "合并失败不转派")
 
 
-class TestFailureEscalate(ZenCase):
-    """修复任务失败：评论尝试记录 + 转派该端负责人，不 resolve。"""
+class TestFailureRetryAndGiveUp(ZenCase):
+    """修复失败：不评论不转派（#27828 案定口径），对账后同轮回炉重试；
+    连续失败超过上限置 failed 终态等人工。全程零禅道写入。"""
     def runTest(self):
         self.configure()
         self.bug(501)
         self.zen_mod.scan_now()
         c = self.claim()
-        self.store.update_run(c["tasks"][0]["run_id"], status="failed",
-                              error="验证命令退出码 1")
-        self.zen_mod.scan_now()
-        c = self.claim()
-        self.assertEqual(c["state"], "escalated")
-        puts = self.put_calls("501")
-        self.assertEqual(len(puts), 1)
-        self.assertEqual(puts[0][2]["assignedTo"], "be-owner", "失败转后端负责人")
-        self.assertIn("未成功", puts[0][2]["comment"])
-        self.assertIn("验证命令退出码 1", puts[0][2]["comment"])
+        self.assertEqual(c["state"], "fixing")
+        mx = self.zen_mod.FIX_MAX_ATTEMPTS
+        for i in range(1, mx + 2):
+            self.store.update_run(c["tasks"][0]["run_id"], status="failed",
+                                  error="验证命令退出码 1")
+            self.zen_mod.scan_now()
+            c = self.claim()
+            if i <= mx:
+                self.assertEqual(c["state"], "fixing",
+                                 "第 %d 次失败应回炉并同轮重试" % i)
+                self.assertEqual(c["attempts"], i)
+            else:
+                self.assertEqual(c["state"], "failed", "超上限停机等人工")
+        self.assertEqual(len(self.launched), mx + 1, "初始 1 次 + 每次失败各重建 1 次")
+        self.assertEqual(self.put_calls("501"), [], "失败全程零禅道写入")
         self.assertEqual(self.resolve_calls("501"), [])
 
 
-class TestFailureNoOwner(ZenCase):
-    """失败但没配负责人：只评论（commented），不误转，且不清空指派人。"""
+class TestFailureRetryPartial(ZenCase):
+    """双端我方：一端成功一端失败 → 重试只重建失败端，成功端保留不重跑。"""
     def runTest(self):
-        self.configure(profiles=[self.profile(owners={})])
-        self.bug(511)
+        self.configure(profiles=[self.profile(
+            our_sides=["backend", "frontend"],
+            repos={"backend": {"workdir": str(self.workdir)},
+                   "frontend": {"workdir": str(self.workdir)}},
+            module_routes=[])])
+        self.bug(531, module=5)
+        orig = self.zen_mod._ai_triage
+        self.zen_mod._ai_triage = lambda b, p: {"side": "both"}
+        try:
+            self.zen_mod.scan_now()
+        finally:
+            self.zen_mod._ai_triage = orig
+        c = self.claim()
+        self.assertEqual(len(c["tasks"]), 2)
+        be = next(t for t in c["tasks"] if t["side"] == "backend")
+        fe = next(t for t in c["tasks"] if t["side"] == "frontend")
+        self.store.update_run(be["run_id"], status="done")
+        self.store.update_run(fe["run_id"], status="failed", error="boom")
         self.zen_mod.scan_now()
         c = self.claim()
+        self.assertEqual(c["state"], "fixing", "失败端已同轮重建")
+        be2 = next(t for t in c["tasks"] if t["side"] == "backend")
+        fe2 = next(t for t in c["tasks"] if t["side"] == "frontend")
+        self.assertEqual(be2["task_id"], be["task_id"], "成功端保留")
+        self.assertNotEqual(fe2["task_id"], fe["task_id"], "失败端重建")
+        self.assertEqual(len(self.launched), 3, "初始 2 + 只补失败端 1")
+        self.assertEqual(self.put_calls("531"), [])
+
+
+class TestRetryClaim(ZenCase):
+    """「立即处理」：failed 终态手工重触发——重建失败端+清零重试额度+取消归档；
+    fixing/resolved 等状态拒绝；merge_failed 置回 fixing 交对账。"""
+    def runTest(self):
+        self.configure()
+        self.bug(541)
+        self.zen_mod.scan_now()
+        c = self.claim()
+        self.store.update_run(c["tasks"][0]["run_id"], status="failed",
+                              error="评审器故障（评审未执行）：退出码 1")
+        self.zen_mod.scan_now()          # 失败 → 同轮回炉重试 → fixing(新 run)
+        c = self.claim()
+        self.assertEqual(c["state"], "fixing")
         self.store.update_run(c["tasks"][0]["run_id"], status="failed", error="boom")
-        self.zen_mod.scan_now()
+        self.zen_mod._set_claim("541", attempts=self.zen_mod.FIX_MAX_ATTEMPTS)
+        self.zen_mod.scan_now()          # 超上限 → failed 终态
         c = self.claim()
-        self.assertEqual(c["state"], "commented")
-        self.assertIn("负责人未配置", c["note"])
-        puts = self.put_calls("511")
-        self.assertEqual(len(puts), 1)
-        self.assertEqual(puts[0][2].get("assignedTo"), "coder",
-                         "空 target 只评论必须带回当前指派人（禅道 PUT 缺 assignedTo 会清空指派）")
-        self.assertEqual(self.fz.bugs["511"]["assignedTo"]["account"], "coder")
-        self.assertEqual(self.resolve_calls("511"), [])
+        self.assertEqual(c["state"], "failed")
+        self.zen_mod._set_claim("541", archived=True, archived_by="manual")
+        c2, msg = self.zen_mod.retry_claim("541")
+        self.assertEqual(c2["state"], "fixing")
+        self.assertFalse(c2.get("archived"), "手工触发顺手取消归档")
+        self.assertEqual(c2["attempts"], 0, "重试额度清零重新给满")
+        self.assertIn("重新拉起", msg)
+        # 已在修复中 → 拒绝重复触发
+        with self.assertRaises(self.zen_mod.ZenError):
+            self.zen_mod.retry_claim("541")
+        # merge_failed → 置回 fixing 交给对账重试合并
+        self.zen_mod._set_claim("541", state="merge_failed", note="合并冲突")
+        c3, msg3 = self.zen_mod.retry_claim("541")
+        self.assertEqual(c3["state"], "fixing")
+        self.assertIn("对账", msg3)
+        self.assertEqual(len(self.launched), 3, "初始+自动重试+立即处理各 1")
 
 
 class TestFailureInternalCrash(ZenCase):
-    """CodeBee 自身崩溃（run.error 是内部异常）：只评论不转派（#27783 案），
-    评论注明工具异常且带回当前指派人。"""
+    """CodeBee 自身崩溃/评审器故障：同为失败收口——不评论不转派（#27828 案），
+    回炉重试。评审器起不来是工具链故障，不是「修不动」的结论。"""
     def runTest(self):
         self.configure()
         self.bug(521)
@@ -918,27 +971,26 @@ class TestFailureInternalCrash(ZenCase):
         c = self.claim()
         self.store.update_run(
             c["tasks"][0]["run_id"], status="failed",
-            error="NameError(\"name '_TRANSIENT' is not defined\")")
+            error="评审器故障（评审未执行）：评审器执行失败（评审未执行）：退出码 1；"
+                  "stderr/stdout: 该版本的 claude.exe 与你运行的 Windows 版本不兼容。")
         self.zen_mod.scan_now()
         c = self.claim()
-        self.assertEqual(c["state"], "commented", "内部异常不转派")
-        self.assertIn("内部异常", c["note"])
-        puts = self.put_calls("521")
-        self.assertEqual(len(puts), 1)
-        self.assertEqual(puts[0][2].get("assignedTo"), "coder", "崩溃评论不清指派人")
-        self.assertIn("工具自身异常", puts[0][2]["comment"])
-        self.assertIn("未成功", puts[0][2]["comment"])
+        self.assertEqual(c["state"], "fixing", "评审器故障也回炉重试")
+        self.assertEqual(len(self.launched), 2)
+        self.assertEqual(self.put_calls("521"), [], "零禅道写入")
         self.assertEqual(self.resolve_calls("521"), [])
 
 
 class TestInternalCrashDetector(ZenCase):
-    """内部崩溃判别：repr 异常/Python traceback 算；CLI 冒号形态与普通
-    错误文案不算（那是真修过）。"""
+    """内部崩溃判别：repr 异常/Python traceback/评审器未执行算工具自身故障；
+    CLI 冒号形态与普通错误文案不算（那是真修过）。"""
     def runTest(self):
         f = self.zen_mod._looks_internal_crash
         self.assertTrue(f("NameError(\"name '_TRANSIENT' is not defined\")"))
         self.assertTrue(f("KeyError('run_id')"))
         self.assertTrue(f("Traceback (most recent call last):\n  File \"x.py\"\nNameError: x"))
+        self.assertTrue(f("评审器故障（评审未执行）：退出码 1"))
+        self.assertTrue(f("评审器执行失败（评审未执行）：退出码 1；stderr: claude.exe 不兼容"))
         self.assertFalse(f("验证命令退出码 1"))
         self.assertFalse(f("TimeoutError: 连接超时"))
         self.assertFalse(f("运行状态 failed"))
