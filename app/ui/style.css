@@ -4641,8 +4641,8 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
 }
 #sub-tasks #att-chips:empty { display: none; }
 #sub-tasks .att-chip.att-image {
-  position: relative; width: 88px; height: 88px; max-width: none; padding: 0;
-  overflow: visible; border-radius: 12px; background: var(--panel2);
+  position: relative; width: 56px; height: 56px; max-width: none; padding: 0;
+  overflow: visible; border-radius: 10px; background: var(--panel2);
   border-color: var(--border); box-shadow: 0 2px 10px color-mix(in srgb, #000 10%, transparent);
 }
 #sub-tasks .att-chip.att-image img {
@@ -4654,13 +4654,13 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 #sub-tasks .att-chip.att-image .ax {
-  position: absolute; z-index: 2; top: -6px; right: -6px;
+  position: absolute; z-index: 2; top: -5px; right: -5px;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; padding: 0; border: 1px solid var(--panel);
+  width: 18px; height: 18px; padding: 0; border: 1px solid var(--panel);
   border-radius: 50%; background: var(--text); color: var(--panel);
   box-shadow: 0 2px 6px color-mix(in srgb, #000 18%, transparent);
 }
-#sub-tasks .att-chip.att-image .ax .ico { width: 11px; height: 11px; }
+#sub-tasks .att-chip.att-image .ax .ico { width: 10px; height: 10px; }
 #sub-tasks .att-chip.att-image .ax:hover,
 #sub-tasks .att-chip.att-image .ax:focus-visible { background: var(--bad); color: #fff; outline: none; }
 #sub-tasks .cmp-box > .att-chips + textarea { padding-top: 8px; }
@@ -4670,7 +4670,7 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
     left: 8px; right: 8px; width: auto; top: calc(100% + 2px);
   }
   #run-detail .rd-meta-popover #rd-overview { grid-template-columns: minmax(0, 1fr) auto; }
-  #sub-tasks .att-chip.att-image { width: 82px; height: 82px; }
+  #sub-tasks .att-chip.att-image { width: 56px; height: 56px; }
 }
 
 /* ================= 详情页侧边栏重构 =================
@@ -5963,23 +5963,24 @@ button.request-busy > * { opacity: .18; }
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 #mk-grid.mk-grouped .sec-title { margin: 16px 0 8px; }
 
-/* 首页 composer 图片附件缩略图：与任务页同款 88×88 卡（此前样式只写在
+/* 首页 composer 图片附件缩略图：与任务页同款 56×56 紧凑缩略卡（此前样式只写在
  * #sub-tasks 作用域，首页 img 按原始尺寸渲染直接压住输入文字——2026-09-21
- * 用户实测「有遮挡」）。删除钮右上角悬浮。 */
-.att-chip.att-image { position: relative; width: 88px; height: 88px; max-width: none;
-  padding: 0; overflow: visible; border-radius: 12px; background: var(--panel2);
+ * 用户实测「有遮挡」；2026-09-29 88×88 仍嫌太大挡视野，收紧到 56）。
+ * 删除钮右上角悬浮。 */
+.att-chip.att-image { position: relative; width: 56px; height: 56px; max-width: none;
+  padding: 0; overflow: visible; border-radius: 10px; background: var(--panel2);
   border-color: var(--border); box-shadow: 0 2px 10px color-mix(in srgb, #000 10%, transparent); }
 .att-chip.att-image img { display: block; width: 100%; height: 100%; object-fit: cover;
   border-radius: inherit; background: var(--panel2); }
 .att-chip.att-image .att-image-name { position: absolute; width: 1px; height: 1px;
   padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0);
   white-space: nowrap; border: 0; }
-.att-chip.att-image .ax { position: absolute; z-index: 2; top: -6px; right: -6px;
-  display: inline-flex; align-items: center; justify-content: center; width: 20px;
-  height: 20px; padding: 0; border: 1px solid var(--panel); border-radius: 50%;
+.att-chip.att-image .ax { position: absolute; z-index: 2; top: -5px; right: -5px;
+  display: inline-flex; align-items: center; justify-content: center; width: 18px;
+  height: 18px; padding: 0; border: 1px solid var(--panel); border-radius: 50%;
   background: var(--panel); color: var(--muted); }
 .att-chip.att-image .ax:hover { background: var(--bad); color: #fff; }
-.att-chip.att-image .ax .ico { width: 11px; height: 11px; }
+.att-chip.att-image .ax .ico { width: 10px; height: 10px; }
 
 /* 对话气泡图片附件缩略图（2026-09-21 用户反馈：图片只显示文件名要点开才见）：
  * 96×96 圆角卡，点击仍走 att-open 弹大图 */
