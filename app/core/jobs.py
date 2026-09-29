@@ -39,6 +39,8 @@ MAX_POOL = 24
 CHAT_POOL = 4         # 轻量池上限：direct 对话直连 API 本机开销极小，4 个足够
 BUSY_WAIT_S = 15.0    # 满载排队后的补跑轮询间隔（秒）；测试可调小
 BUSY_WAIT_MAX = 40    # 补跑拍数封顶：15s × 40 = 10 分钟，超时才判失败
+QUEUED_SWEEP_INTERVAL_S = 60  # 运行期 queued 巡检周期：续跑 Timer 断链的最后防线
+QUEUED_SWEEP_MIN_AGE_S = 120  # 只接管卡了超过该秒数的 queued run（正常排队/刚建的不掺和）
 
 
 class JobsBusyError(RuntimeError):
@@ -114,6 +116,8 @@ def start_worker():
     if _started:
         return
     _started = True
+    threading.Thread(target=_queued_sweep_loop,
+                     name="queued-sweep", daemon=True).start()
     try:
         from . import settings
         configure(settings.load()["max_concurrent_jobs"])
@@ -121,6 +125,23 @@ def start_worker():
     except Exception:
         pass
     configure(12)
+
+
+def _queued_sweep_loop():
+    """运行期 queued 巡检：requeue_pending 只在启动时跑一次，而续跑 Timer
+    随进程死亡——resume_enqueue_at 到点时若进程已换血，副本就永远躺平在
+    queued（2026-09-29 实案：连载续跑副本躺了 4 小时无人接）。这里周期兜底
+    捞起超龄 queued：到点的退避副本、蒸发的满载排队都走 requeue_pending
+    统一收口。防双跑靠三层既有闸：_task_active_run 单飞 + enqueue CAS 认领
+    + 重复 job 跳过；退避未到点/max_age 内的新鲜记录 requeue_pending 自己跳。"""
+    while True:
+        time.sleep(QUEUED_SWEEP_INTERVAL_S)
+        if _restart_drain:
+            continue
+        try:
+            requeue_pending(limit=10, max_age_s=QUEUED_SWEEP_MIN_AGE_S)
+        except Exception:
+            pass
 
 
 def _job_is_light(run):
