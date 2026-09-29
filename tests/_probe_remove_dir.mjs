@@ -279,7 +279,21 @@ async function main() {
               gone3 = await evalJs(`!document.querySelector(${dirSelC})`);
               if (gone3) break;
             }
-            check("场景C：恢复后重试正常隐藏文件夹", gone3, "等了 " + w3 + "ms 仍在");
+            if (!gone3) {
+              // 失败时抓现场：toast 文案/确认框是否卡着/隐藏表/服务端归档状态
+              const diag = await evalJs(`(() => JSON.stringify({
+                toast: (document.getElementById("toast") || {}).textContent || "",
+                askOpen: (() => { const d = document.getElementById("ask");
+                  return d && !d.classList.contains("hidden"); })(),
+                hiddenDirs: localStorage.getItem("tutti.hiddenDirs"),
+              }))()`).catch((e) => "diag失败: " + e.message);
+              const srv = await api(`/api/state`).catch((e) => ({ json: { err: String(e) } }));
+              const at2 = ((srv.json || {}).archived_tasks || []).some((x) => x.id === "task-arch");
+              check("场景C：恢复后重试正常隐藏文件夹", false,
+                "等了 " + w3 + "ms 仍在；页面[" + diag + "] 服务端task-arch已归档=" + at2);
+            } else {
+              check("场景C：恢复后重试正常隐藏文件夹", true);
+            }
           }
         }
       }
@@ -294,10 +308,10 @@ async function main() {
     try { spawn("taskkill", ["/F", "/T", "/PID", String(svc.pid)], { stdio: "ignore" }); } catch (e) {}
     // 复杀+验证：Edge 会自己再孵化浏览器进程，树杀后 CDP 口可能仍被占，甚至
     // 杀完隔几秒又冒一个（实测）；按 netstat 监听 PID 补刀（不走 WMI——系统负载
-    // 高时 Get-CimInstance 会挂死），连续两轮全空才算干净。
+    // 高时 Get-CimInstance 会挂死），连续三轮全空才算干净。
     let cleanRounds = 0;
-    for (let round = 0; round < 6 && cleanRounds < 2; round++) {
-      await sleep(1200);
+    for (let round = 0; round < 10 && cleanRounds < 3; round++) {
+      await sleep(1500);
       const stale = new Set();
       for (const port of [PORT, CDP_PORT]) {
         try {
