@@ -124,12 +124,16 @@ def save_book(task_id, platform, info):
     with LOCK:
         paths.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
         books = load_books()
-        books.setdefault(str(task_id), {}).setdefault(str(platform), {}).update({
+        entry = books.setdefault(str(task_id), {}).setdefault(str(platform), {})
+        entry.update({
             "book_id": str(info.get("book_id") or ""),
             "title": str(info.get("title") or "")[:120],
             "url": str(info.get("url") or "")[:300],
             "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         })
+        # Distinguish a title-only manual binding from an unverified create-book result.
+        if "source" in info:
+            entry["source"] = str(info.get("source") or "")[:20]
         tmp = _BOOKS_FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(books, ensure_ascii=False, indent=1),
                        encoding="utf-8")
@@ -171,13 +175,24 @@ def shot_path(platform, task_id, step):
 
 
 _CHAPTER_RE = re.compile(r"第\s*([0-9０-９一二三四五六七八九十百千零两]+)\s*[章节回]")
+_CHAPTER_FILE_RE = re.compile(
+    r"(?:^|[/\\_-])(?:chapter|chap|ch)[-_ ]*([0-9０-９]+)(?:\D|$)",
+    re.IGNORECASE,
+)
 
 
 def parse_chapter_no(name):
-    """从章节标题/文件名解析章号（第12章/第十二章），失败返回 0。"""
-    m = _CHAPTER_RE.search(str(name or ""))
+    """从章节标题/文件名解析章号（第12章/第十二章/chapter-12），失败返回 0。"""
+    raw = str(name or "")
+    m = _CHAPTER_RE.search(raw)
     if not m:
-        return 0
+        m = _CHAPTER_FILE_RE.search(raw)
+        if not m:
+            return 0
+        try:
+            return int(m.group(1).translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+        except (TypeError, ValueError):
+            return 0
     s = m.group(1)
     if s.isdigit():
         return int(s)

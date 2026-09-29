@@ -394,8 +394,18 @@ def create_book_async(task_id, plat, auto_submit=False):
         return False, "请先生成该平台的作品信息"
     if _st(plat).get("status") == "busy":
         return False, "该平台有操作正在进行中"
-    if ledger.book_for(task_id, plat):
-        return False, "该任务已在此平台登记过作品，请直接发章"
+    existing = ledger.book_for(task_id, plat)
+    # A title-only manual registration is usable as a binding. For legacy
+    # entries without source metadata, only a recorded failed create-book
+    # attempt is safe to retry; otherwise it may be a real manual binding.
+    if existing:
+        if existing.get("book_id") or existing.get("source") == "manual":
+            return False, "该任务已在此平台登记过作品，请直接发章"
+        failed_create = any(
+            r.get("action") == "create_book" and not r.get("ok")
+            for r in ledger.recent(task_id=task_id, platform=plat, limit=50))
+        if not failed_create:
+            return False, "该任务已有作品登记但未确认，请登记已有作品或先在平台核对"
     why = _create_preflight(plat, meta["data"])
     if why:
         return False, why
@@ -458,7 +468,8 @@ def create_book_async(task_id, plat, auto_submit=False):
                           shot=str(ledger.shot_path(plat, task_id, "")),
                           operation_id=operation_id, operation_status=operation_status,
                           remote_receipt=book_id)
-            ledger.save_book(task_id, plat, {"book_id": book_id, "title": book_name})
+            ledger.save_book(task_id, plat, {"book_id": book_id, "title": book_name,
+                                             "source": "create"})
             _set(plat, status="connected", error="")
         except Exception as e:
             operations.finish_exception(operation_id, e)
@@ -498,7 +509,7 @@ def register_book(task_id, plat, title, book_id=""):
                            remote_review=None, remote_rejected=None,
                            remote_synced_at=None, remote_error=None)
     ledger.save_book(task_id, plat, {"book_id": str(book_id or "").strip(),
-                                     "title": title[:120]})
+                                     "title": title[:120], "source": "manual"})
     return True, ""
 
 
@@ -619,6 +630,8 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False):
     book = ledger.book_for(task_id, plat)
     if not book:
         return False, "该任务尚未在此平台建书，请先「创建作品」"
+    if not book.get("book_id") and book.get("source") != "manual":
+        return False, "该平台建书结果未确认（缺少作品 ID），请重试创建作品或登记已有作品"
     # 闭包中需要在找回 book_id 后更新书籍引用；使用独立副本避免
     # Python 将 book 误判为 run() 的局部变量，导致前置解析触发
     # UnboundLocalError。
@@ -665,16 +678,27 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False):
                 values.update(_url_values(mod, book_ref))
                 ledger.save_book(task_id, plat, book_ref)
                 logs.append("已按书名找回 book_id=%s 并更新登记" % bid)
+            elif not book_ref.get("book_id"):
+                raise RuntimeError("未按作品名找到远端作品，未打开章节编辑器；"
+                                   "请检查平台作品名或补填作品 ID")
             flow.run_flow(page, load_flow(plat, "upload_chapter"), values=values,
                           config=mod.CONFIG, auto_submit=auto_submit,
                           shot=lambda n: page.screenshot(ledger.shot_path(plat, task_id, n)),
                           log=logs.append)
-            operations.confirm(operation_id, metadata={"platform": plat,
-                                                        "action": "upload_chapter",
-                                                        "chapter_no": ch_no})
-            ledger.record(plat, "upload_chapter", task_id=task_id, chapter_no=ch_no,
-                          book_id=book_ref.get("book_id") or "", title=title, ok=True,
-                          operation_id=operation_id, operation_status="confirmed")
+            if auto_submit:
+                operations.confirm(operation_id, metadata={"platform": plat,
+                                                            "action": "upload_chapter",
+                                                            "chapter_no": ch_no})
+                ledger.record(plat, "upload_chapter", task_id=task_id, chapter_no=ch_no,
+                              book_id=book_ref.get("book_id") or "", title=title, ok=True,
+                              operation_id=operation_id, operation_status="confirmed")
+            else:
+                # run_flow stops immediately before the submit step. Keep the
+                # operation pending and never count the filled form as published.
+                ledger.record(plat, "upload_chapter_pending", task_id=task_id,
+                              chapter_no=ch_no, book_id=book_ref.get("book_id") or "",
+                              title=title, ok=False, error="等待人工提交",
+                              operation_id=operation_id, operation_status="pending")
             _set(plat, status="connected", error="")
         except Exception as e:
             operations.finish_exception(operation_id, e)
@@ -689,6 +713,45 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False):
 
     threading.Thread(target=run, daemon=True,
                      name="pub-ch-%s" % plat).start()
+    return True, ""
+
+
+def confirm_manual_chapter(task_id, plat, chapter_no):
+    """Record an explicit user confirmation after submitting in the browser."""
+    from .. import store
+    if plat not in PLATFORMS:
+        return False, "未知平台"
+    if not store.get_task(task_id):
+        return False, "任务不存在"
+    try:
+        chapter_no = int(chapter_no or 0)
+    except (TypeError, ValueError):
+        chapter_no = 0
+    if chapter_no <= 0:
+        return False, "章号无效"
+    if chapter_no in ledger.published_chapters(task_id, plat):
+        return True, ""
+    pending = next((r for r in ledger.recent(task_id=task_id, platform=plat, limit=100)
+                    if r.get("action") == "upload_chapter_pending"
+                    and int(r.get("chapter_no") or 0) == chapter_no), None)
+    if not pending:
+        return False, "没有找到待确认的填稿记录，请先重新填入该章"
+    op_id = pending.get("operation_id") or ""
+    current = operations.get(op_id) if op_id else None
+    if current and current.get("status") == "pending":
+        ok = operations.confirm(op_id, remote_receipt="manual-confirmed",
+                                metadata={"platform": plat, "action": "upload_chapter"})
+    elif current:
+        ok = operations.reconcile(op_id, "confirmed", remote_receipt="manual-confirmed",
+                                  metadata={"platform": plat, "action": "upload_chapter"})
+    else:
+        ok = True
+    if not ok:
+        return False, "待确认操作状态已变化，请重新校准后再试"
+    ledger.record(plat, "upload_chapter", task_id=task_id, chapter_no=chapter_no,
+                  book_id=pending.get("book_id") or "", title=pending.get("title") or "",
+                  ok=True, operation_id=op_id, operation_status="confirmed",
+                  remote_receipt="manual-confirmed")
     return True, ""
 
 

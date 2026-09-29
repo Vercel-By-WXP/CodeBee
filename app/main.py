@@ -945,6 +945,15 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/publish/task/([^/]+)/(create-book|chapter|auto-publish)$", path)
         if m:
             return self._api_publish_task_op(m.group(1), m.group(2))
+        m = re.match(r"^/api/publish/task/([^/]+)/confirm-chapter$", path)
+        if m:
+            from core.publish import manager as pub
+            body = self._body() or {}
+            platform = (body.get("platform") or "").strip()
+            ok, err = pub.confirm_manual_chapter(
+                m.group(1), platform, body.get("chapter_no"))
+            return self._json(400, {"error": err or "确认失败"}) \
+                if not ok else self._json(200, {"ok": True})
         m = re.match(r"^/api/publish/task/([^/]+)/register-book$", path)
         if m:
             return self._api_publish_register_book(m.group(1))

@@ -5595,6 +5595,9 @@ function pbBlock(task, platform) {
   const [label, cls] = PB_ST[st] || PB_ST.none;
   const books = (S.pubTaskInfo && S.pubTaskInfo.books) || {};
   const book = books[platform];
+  // A create-book flow can finish without a remote id. Keep that binding
+  // retryable instead of presenting it as a ready-to-publish book.
+  const bookReady = !!(book && (book.book_id || book.source === "manual"));
   const hist = (S.pubTaskInfo && S.pubTaskInfo.history) || [];
   const pubCnt = (S.pubTaskInfo && S.pubTaskInfo.published) || {};
   // 已发口径：平台实况（点过校准）优先；否则本地台账去重章号数
@@ -5631,7 +5634,7 @@ function pbBlock(task, platform) {
   }
   btns += '<button class="ghost pb-tool" onclick="pbProbe(\'' + platform + '\')" title="' +
     esc(t("dump 平台表单结构（校准自动填表用）")) + '">' + t("探测") + "</button>";
-  if (book) {
+  if (bookReady) {
     btns += '<span class="pb-book" title="' + esc(t("已在此平台创建的作品")) + '">' +
       esc(t("已建书：") + (book.title || "")) + "</span>";
     btns += ' <button class="primary" ' + (busy ? "disabled" : "") +
@@ -5661,6 +5664,11 @@ function pbBlock(task, platform) {
       // 人工模式一轮只填一章：等用户在浏览器提交后再发起（连发会导航离开
       // 未提交的编辑器丢稿）。message 是下一步指引，不是错误。
       btns += '<div class="pb-hint">' + esc(run.message || t("已填好一章，请在浏览器确认提交")) + "</div>";
+      if (run.last_chapter) {
+        btns += '<button class="ghost pb-tool" onclick="pbConfirmChapter(\'' +
+          esc(task.id) + "', '" + platform + "', " + Number(run.last_chapter) +
+          ')">' + t("我已在平台提交") + "</button>";
+      }
     } else if (run && run.status !== "running") {
       const doneLine = run.status === "done"
         ? t("自动发布完成：") + run.done + "/" + run.total + (run.message ? t("。") + run.message : "")
@@ -5669,16 +5677,19 @@ function pbBlock(task, platform) {
         esc(doneLine + t("（") + (run.at || "") + t("）")) + "</div>";
     }
   } else {
+    if (book && book.title) {
+      btns += '<span class="pb-book pb-err">' + esc(t("建书未确认：") + book.title) + "</span>";
+    }
     btns += '<button class="primary" ' + (busy ? "disabled" : "") +
       ' onclick="pbCreateBook(\'' + esc(task.id) + "', '" + platform + '\')">' + t("创建作品") + "</button>";
     btns += '<button class="ghost" onclick="pbRegToggle(\'' + platform + '\')" title="' +
       esc(t("作品已在平台建好（建书流程没走通或手工建的）？补登记后直接发章，不会在平台新建")) + '">' + t("登记已有作品") + "</button>";
   }
   let extra = "";
-  if (st === "error" && !book && ps.last_action === "create_book") {
+  if (st === "error" && !bookReady && ps.last_action === "create_book") {
     extra += '<div class="pb-hint">' + esc(t("若作品其实已在平台建好，点「登记已有作品」补登记，勿重复创建")) + "</div>";
   }
-  if (!book) {
+  if (!bookReady) {
     extra += '<div class="pb-reg hidden" id="pb-reg-' + platform + '">' +
       '<input id="pb-reg-title-' + platform + '" placeholder="' + esc(t("平台上的作品名（必填）")) + '">' +
       '<input id="pb-reg-id-' + platform + '" placeholder="' + esc(t("作品ID（选填，管理页URL里有）")) + '">' +
@@ -5863,8 +5874,24 @@ window.pbSendChapter = async function (taskId, platform, relName) {
       { method: "POST", body: JSON.stringify({ platform, file: relName }) });
     toast(t("正在填写章节…（完成后请在浏览器里确认提交）"));
     const box = $("pb-ch-" + platform);
-    if (box) box.classList.add("hidden");
+    if (box) {
+      const n = chapterNumOf(relName);
+      box.classList.remove("hidden");
+      box.innerHTML = '<div class="pb-hint">' + esc(t("填稿已完成，请先在浏览器里提交，再点击确认")) +
+        '</div><button class="ghost pb-tool" onclick="pbConfirmChapter(\'' +
+        esc(taskId) + "', '" + platform + "', " + Number(n || 0) +
+        ')">' + t("我已在平台提交") + "</button>";
+    }
   } catch (e) { toast(t("发章失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbConfirmChapter = async function (taskId, platform, chapterNo) {
+  try {
+    await api("/api/publish/task/" + encodeURIComponent(taskId) + "/confirm-chapter",
+      { method: "POST", body: JSON.stringify({ platform, chapter_no: chapterNo }) });
+    toast(t("已确认提交，台账已更新"));
+  } catch (e) { toast(t("确认提交失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
 
@@ -5872,11 +5899,11 @@ window.pbPublishAll = async function (taskId, platform) {
   const au = (((S.pubAuto && S.pubAuto.books) || [])
     .find((b) => b.platform === platform)) || {};
   if (!au.pending) return;
-  if (!confirm(t("将从最靠前的待发章节开始填稿（共 {0} 章待发）。本轮只填一章并停在表单页，由你在浏览器里确认提交；提交后再点一次即发下一章。护栏（每日上限/连续失败暂停）生效。继续？", au.pending))) return;
+  if (!confirm(t("将从最靠前的待发章节开始填稿（共 {0} 章待发）。本轮只填一章并停在表单页，由你在浏览器里确认提交；提交后点击“我已在平台提交”，再选择下一章。护栏（每日上限/连续失败暂停）生效。继续？", au.pending))) return;
   try {
     await api("/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
       { method: "POST", body: JSON.stringify({ platform }) });
-    toast(t("正在填第一章稿——填好后请在浏览器窗口里确认提交"));
+    toast(t("正在填第一章稿——填好后请在浏览器窗口里确认提交，再重新校准"));
   } catch (e) { toast(t("自动发布失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };

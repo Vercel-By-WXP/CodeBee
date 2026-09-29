@@ -31,6 +31,10 @@ _running = {}                # task_id → {platform, at, done, total, status, e
 _LOCK = threading.Lock()
 
 
+def _book_ready(info):
+    return bool(info and (info.get("book_id") or info.get("source") == "manual"))
+
+
 # ---------------------------------------------------------------- 护栏配置
 def _settings():
     from .. import settings
@@ -114,6 +118,8 @@ def status(task_id):
     for plat, info in ent.items():
         pend, err = pending(task_id, plat)
         ok, why = guards(task_id, plat)
+        if not _book_ready(info):
+            ok, why = False, "该平台建书结果未确认（缺少作品 ID），请重试创建作品或登记已有作品"
         books.append({"platform": plat, "bound": True,
                       "title": info.get("title") or "",
                       "pending": len(pend), "guard_ok": ok, "guard_reason": why,
@@ -172,8 +178,11 @@ def publish_pending_async(task_id, platform, auto_submit=False):
     task = store.get_task(task_id)
     if not task:
         return False, "任务不存在"
-    if not ledger.book_for(task_id, platform):
+    book = ledger.book_for(task_id, platform)
+    if not book:
         return False, "该任务尚未在此平台建书，请先「创建作品」"
+    if not _book_ready(book):
+        return False, "该平台建书结果未确认（缺少作品 ID），请重试创建作品或登记已有作品"
     ok, why = guards(task_id, platform)
     if not ok:
         return False, why
@@ -212,6 +221,15 @@ def publish_pending_async(task_id, platform, auto_submit=False):
                                    "请提交后重跑剩余章节" % (item["chapter_no"],
                                                              IDLE_TIMEOUT_S / 60))
                     return
+                if not auto_submit:
+                    # The manager stopped before the submit step. There is no
+                    # remote success receipt until the user clicks submit.
+                    st["last_chapter"] = item["chapter_no"]
+                    st["status"] = "manual_pause"
+                    st["message"] = ("第 %d 章已填好，请在浏览器里确认提交；"
+                                     "提交后请重新校准，再选择下一章（剩 %d 章）"
+                                     % (item["chapter_no"], st["total"] - st["done"]))
+                    return
                 if item["chapter_no"] not in ledger.published_chapters(
                         task_id, platform):
                     st["status"] = "error"
@@ -220,18 +238,11 @@ def publish_pending_async(task_id, platform, auto_submit=False):
                     return
                 st["done"] += 1
                 st["last_chapter"] = item["chapter_no"]
-                if not auto_submit and st["done"] < st["total"]:
-                    # 人工确认模式：填好一章就停，等用户在浏览器提交后再发起
-                    st["status"] = "manual_pause"
-                    st["message"] = ("第 %d 章已填好，请在浏览器里确认提交；"
-                                     "提交后再点一次发布即发下一章（剩 %d 章）"
-                                     % (item["chapter_no"], st["total"] - st["done"]))
-                    return
                 if st["done"] < st["total"]:
                     time.sleep(PACE_S)
             st["status"] = "done"
             if not auto_submit:
-                st["message"] = "第 %d 章已填好，请在浏览器里确认提交" % st["last_chapter"]
+                st["message"] = "第 %d 章已填好，请在浏览器里确认提交，再重新校准" % st["last_chapter"]
         except Exception as e:                 # 线程内绝不能悬挂无终态
             st["status"] = "error"
             st["error"] = "自动发布异常：%s" % e
@@ -332,7 +343,7 @@ def due_tasks(now=None):
             continue
         if str(ap.get("time") or "") <= hhmm_now and fired.get(task["id"]) != today:
             plat = ap.get("platform")
-            if plat and ledger.book_for(task["id"], plat):
+            if plat and _book_ready(ledger.book_for(task["id"], plat)):
                 out.append((task, ap))
     return out
 
