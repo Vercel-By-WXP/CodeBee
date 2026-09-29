@@ -167,7 +167,11 @@ function browserRenderTaskContext() {
   const verifyIcon = verifyPass === true ? "i-check" : (verifyPass === false ? "i-x" : "i-gauge");
   const verifyText = verifyPass === true ? "验证通过" : (verifyPass === false ? "验证未通过" : "等待验证");
   const command = task.verify_command || "";
+  const qualityLabels = { continue_only: "继续打磨（暂不可发布）",
+    publish_ready: "可发布，签约检查点待完成", signing_ready: "可申请签约" };
+  const qualityStatus = verdict.quality_status && qualityLabels[verdict.quality_status];
   verify.innerHTML = '<div class="browser-verify-line ' + verifyClass + '"><svg class="ico" aria-hidden="true"><use href="#' + verifyIcon + '"></use></svg><span>' + esc(t(verifyText)) + "</span></div>" +
+    (qualityStatus ? '<div class="browser-verify-command quality-status">' + esc(t(qualityStatus)) + "</div>" : "") +
     (command ? '<div class="browser-verify-command" title="' + esc(command) + '">' + esc(command) + "</div>" : '<span>' + esc(t("未配置验证命令")) + "</span>");
   const platforms = ["fanqie", "qimao"], ps = (S.pubState && S.pubState.platforms) || {};
   publish.innerHTML = '<div class="browser-publish-platforms">' + platforms.map((platform) => {
@@ -1243,7 +1247,12 @@ async function api(path, opts) {
         }
       }
     }
-    if (!res.ok) throw new Error((data && data.error) || ("HTTP " + res.status));
+    if (!res.ok) {
+      const failure = new Error((data && data.error) || ("HTTP " + res.status));
+      failure.status = res.status;
+      failure.data = data;
+      throw failure;
+    }
     const method = String(fetchOpts.method || "GET").toUpperCase();
     if (method !== "GET") {
       if (String(path).startsWith("/api/catalog/")) S._catalogLoaded = false;
@@ -1257,6 +1266,21 @@ async function api(path, opts) {
   } finally {
     if (timer) clearTimeout(timer);
     requestBusyEnd(busyToken);
+  }
+}
+
+async function pbApiWithQualityOverride(path, body, prompt) {
+  try {
+    return await api(path, { method: "POST", body: JSON.stringify(body) });
+  } catch (e) {
+    const gate = e && e.data && e.data.quality_gate;
+    if (!gate) throw e;
+    if (!confirm((prompt || "质量门禁未通过") + "\n\n" + (e.message || "") +
+      "\n\n确认后将记录为人工强制放行。继续？")) throw e;
+    const reason = window.prompt("请输入人工复核原因（必填）", "已人工复核稿件与平台版本") || "";
+    if (!reason.trim()) throw new Error("未填写人工复核原因，已取消强制放行");
+    return await api(path, { method: "POST", body: JSON.stringify({ ...body,
+      force: true, force_confirmed: true, force_reason: reason.trim() }) });
   }
 }
 
@@ -5438,14 +5462,33 @@ function bmStatusChip(st) {
   return m ? '<span class="bm-st ' + m[0] + '">' + (m[1] === "生成中" ? "● " : "") + t(m[1]) + "</span>" : "";
 }
 
-/* 作品信息 TAB：只有连载首批需要（建书表单只在开书时填一次）。
- * 续写批次（serial.start_chapter > 1）沿用第一批的书名/简介/标签，不再重复出面板——
- * 开书资料属于「这本书」，不属于某一批章节。非连载任务同样不渲染。 */
+/* 作品信息 TAB：所有连载任务都展示（一本书一份开书资料，都是用第一个）。
+ * 续写批次（serial.continues 指向首批）只读沿用根任务的资料，生成/重生成回
+ * 首批任务做——面板上给指路入口。非连载任务不渲染。 */
 function bmNeedsPanel(task) {
-  const s = (task || {}).serial;
-  if (!s) return false;
-  try { return intOf(s.start_chapter, 1) <= 1; } catch (e) { return true; }
+  return !!((task || {}).serial);
 }
+
+/* 连载链根任务：沿 serial.continues 上溯（环/断链停在当前）。状态里找不到
+ * 父任务（已删除等）返回当前任务，面板退化为自身数据。 */
+function bmRootTask(task) {
+  let cur = task || null;
+  const seen = {};
+  while (cur && ((cur.serial || {}).continues) && !seen[cur.id]) {
+    seen[cur.id] = 1;
+    const parent = (((S.state || {}).tasks || [])
+      .find((x) => x.id === cur.serial.continues)) || null;
+    if (!parent) break;
+    cur = parent;
+  }
+  return cur || task;
+}
+
+window.bmGoRoot = function (rootId) {
+  const t = (((S.state || {}).tasks || []).find((x) => x.id === rootId)) || null;
+  if (!t) { toast(t("找不到首批任务（可能已删除）"), true); return; }
+  browserOpenTaskRun(t, "bookmeta");
+};
 
 function intOf(v, dflt) {
   const n = parseInt(v, 10);
@@ -5458,19 +5501,33 @@ function renderBookMetaPanel(task) {
     if (box) box.classList.add("hidden");
     return;
   }
-  const bm = task.book_meta || {};
+  const src = bmRootTask(task);          // 都是用第一个：开书资料读链上根任务
+  const inherited = src.id !== task.id;
+  const bm = src.book_meta || {};
   const taskBusy = task.status === "running" || task.status === "queued";
   let html = '<div class="bm-head"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>' +
     '<span class="sec-title">' + t("作品信息") + "</span>" +
+    (inherited ? '<span class="bm-inherit" title="' + esc(src.title || src.id) + '">' +
+      esc(t("继承自首批") + "《" + (src.title || src.id) + "》") + "</span>" : "") +
     '<span class="hint">' + esc(t("按发布平台生成建书表单资料，逐字段复制过去")) + "</span>" +
     '<button class="hhelp" data-help-topic="publish" title="' + esc(t("这是什么？点开看帮助")) + '" aria-label="' + esc(t("帮助")) + '"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>' +
     '<span class="flex1"></span>';
   if (taskBusy) html += '<span class="bm-warn">' + esc(t("任务运行中，生成将在本轮结束后可用")) + "</span>";
+  // 续写批次只读沿用：生成/重生成回首批任务做，这里给指路入口（一本书一份资料）
+  if (inherited) html += '<button class="ghost" onclick="bmGoRoot(\'' + esc(src.id) + '\')" title="' +
+    esc(t("开书资料在首批任务上生成与维护")) + '">' +
+    '<svg class="ico" aria-hidden="true"><use href="#i-arrow-right"/></svg>' + t("回首批任务") + "</button>";
   html += "</div>";
   if (!bm.fanqie && !bm.qimao && !taskBusy) {
-    html += '<div class="bm-guide"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>' +
-      '<div><b>' + esc(t("章节已就绪，创建作品还差开书资料")) + "</b>" +
-      "<p>" + esc(t("点平台卡片上的「生成」按钮，一键产出书名/简介/标签/主角名等建书资料，生成后逐字段复制进建书表单。")) + "</p></div></div>";
+    if (inherited) {
+      html += '<div class="bm-guide"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>' +
+        '<div><b>' + esc(t("首批任务还没生成开书资料")) + "</b>" +
+        "<p>" + esc(t("开书资料属于这本书，在首批任务上生成后整条连载链都能看到。")) + "</p></div></div>";
+    } else {
+      html += '<div class="bm-guide"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>' +
+        '<div><b>' + esc(t("章节已就绪，创建作品还差开书资料")) + "</b>" +
+        "<p>" + esc(t("点平台卡片上的「生成」按钮，一键产出书名/简介/标签/主角名等建书资料，生成后逐字段复制进建书表单。")) + "</p></div></div>";
+    }
   }
   html += '<div class="bm-cards">' + BOOKMETA_PLATFORMS.map((p) => {
     const entry = bm[p.id] || {};
@@ -5500,7 +5557,9 @@ function renderBookMetaPanel(task) {
       body = '<div class="bm-empty">' + esc(t("尚未生成")) + "</div>";
     }
     let action;
-    if (st === "running") {
+    if (inherited) {
+      action = "";   // 续写批次只读：生成/重生成集中在头部「回首批任务」入口
+    } else if (st === "running") {
       action = '<button class="ghost" disabled><svg class="ico spin" aria-hidden="true"><use href="#i-refresh"/></svg>' + t("生成中…") + "</button>";
     } else if (st === "done") {
       action = '<button class="ghost" onclick="bmGen(\'' + esc(task.id) + "', '" + p.id + '\')" title="' + esc(t("重新生成会覆盖现有内容")) + '">' +
@@ -5797,8 +5856,9 @@ window.pbProbe = async function (platform) {
 window.pbCreateBook = async function (taskId, platform) {
   if (!confirm(t("将用生成的作品信息在平台自动填建书表单。填好后会停在最后一步，由你在浏览器里人工点提交。继续？"))) return;
   try {
-    await api("/api/publish/task/" + encodeURIComponent(taskId) + "/create-book",
-      { method: "POST", body: JSON.stringify({ platform }) });
+    await pbApiWithQualityOverride(
+      "/api/publish/task/" + encodeURIComponent(taskId) + "/create-book",
+      { platform }, "创建作品前的质量门禁未通过");
     toast(t("正在自动填写建书表单…（完成后请在浏览器里确认提交）"));
   } catch (e) { toast(t("建书失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
@@ -5878,8 +5938,9 @@ window.pbUploadChapter = async function (taskId, platform) {
 window.pbSendChapter = async function (taskId, platform, relName) {
   if (!confirm(t("将把《{0}》填进平台章节编辑器，填好后由你人工提交。继续？", relName))) return;
   try {
-    await api("/api/publish/task/" + encodeURIComponent(taskId) + "/chapter",
-      { method: "POST", body: JSON.stringify({ platform, file: relName }) });
+    await pbApiWithQualityOverride(
+      "/api/publish/task/" + encodeURIComponent(taskId) + "/chapter",
+      { platform, file: relName }, "发章前的质量门禁未通过");
     toast(t("正在填写章节…（完成后请在浏览器里确认提交）"));
     const box = $("pb-ch-" + platform);
     if (box) {
@@ -5909,8 +5970,9 @@ window.pbPublishAll = async function (taskId, platform) {
   if (!au.pending) return;
   if (!confirm(t("将从最靠前的待发章节开始填稿（共 {0} 章待发）。本轮只填一章并停在表单页，由你在浏览器里确认提交；提交后点击“我已在平台提交”，再选择下一章。护栏（每日上限/连续失败暂停）生效。继续？", au.pending))) return;
   try {
-    await api("/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
-      { method: "POST", body: JSON.stringify({ platform }) });
+    await pbApiWithQualityOverride(
+      "/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
+      { platform }, "批量发布前的质量门禁未通过");
     toast(t("正在填第一章稿——填好后请在浏览器窗口里确认提交，再重新校准"));
   } catch (e) { toast(t("自动发布失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
@@ -10543,14 +10605,30 @@ function renderSkills() {
   const box = $("skill-packs");
   if (!box || !S.skills) return;
   const packs = S.skills.packs || [], lessons = S.skills.lessons || [];
-  box.innerHTML = packs.map((p) =>
-    '<div class="card"><div class="head"><span class="name">📚 ' + esc(t(p.name)) + "</span>" +
-    '<span class="tag">' + esc((p.scopes || []).map((s) => t(s)).join(" / ")) + "</span>" +
-    (p.enabled ? '<span class="tag ok">' + t("启用中") + "</span>" : '<span class="tag">' + t("已停用") + "</span>") + "</div>" +
-    '<div class="note">' + esc(t(p.note || "")) + "</div>" +
-    '<div class="facts">' + t("正文 ") + "<b>" + p.chars + "</b>" + t(" 字（自动注入该类任务的规划与评审提示词）") + "</div>" +
-    '<div class="ops"><button class="ghost small" onclick="skillPackOp(\'' + esc(p.id) + '\', \'' +
-    (p.enabled ? "disable" : "enable") + '\')">' + (p.enabled ? t("停用") : t("启用")) + "</button></div></div>").join("")
+  box.innerHTML = packs.map((p) => {
+    const card = p.card;
+    const cardHtml = card
+      ? '<div class="facts" style="margin-top:4px">' +
+        '<span class="tag" title="' + esc(t("来源：") + (card.source && card.source.market || "-")) + '">' +
+        t("来源 ") + esc((card.source && card.source.market) || "-") + "</span>" +
+        (card.digest ? '<span class="tag" title="' + t("内容指纹（重装突变对账用）") + '">' +
+          t("指纹 ") + esc(card.digest) + "</span>" : "") +
+        (card.scan ? (card.scan.indexOf("高风险") >= 0
+          ? '<span class="tag" style="color:var(--err,#d33)">' + esc(card.scan.split("：")[0]) + "</span>"
+          : '<span class="tag">' + esc(card.scan.split("：")[0]) + "</span>") : "") +
+        "</div>" +
+        (card.declares ? '<div class="note" style="margin-top:2px">📝 ' + t("自述：") +
+          esc(card.declares.slice(0, 120)) + (card.declares.length > 120 ? "…" : "") + "</div>" : "")
+      : "";
+    return '<div class="card"><div class="head"><span class="name">📚 ' + esc(t(p.name)) + "</span>" +
+      '<span class="tag">' + esc((p.scopes || []).map((s) => t(s)).join(" / ")) + "</span>" +
+      (p.enabled ? '<span class="tag ok">' + t("启用中") + "</span>" : '<span class="tag">' + t("已停用") + "</span>") + "</div>" +
+      '<div class="note">' + esc(t(p.note || "")) + "</div>" +
+      '<div class="facts">' + t("正文 ") + "<b>" + p.chars + "</b>" + t(" 字（自动注入该类任务的规划与评审提示词）") + "</div>" +
+      cardHtml +
+      '<div class="ops"><button class="ghost small" onclick="skillPackOp(\'' + esc(p.id) + '\', \'' +
+      (p.enabled ? "disable" : "enable") + '\')">' + (p.enabled ? t("停用") : t("启用")) + "</button></div></div>";
+  }).join("")
     || '<div class="empty">' + t("暂无经验包") + "</div>";
   // 分类 chip 过滤：药丸按钮 + 彩色圆点 + 计数，选中态高亮。值 = 分类名，空串 = 全部。
   const cats = S.skills.categories || [];
@@ -15128,6 +15206,43 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelector("main").addEventListener("scroll", apnSyncActive, { passive: true });
   syncLangMode();
   $("btn-menu").addEventListener("click", () => document.body.classList.toggle("side-collapsed"));
+  /* 侧栏宽度拖拽：grid 列宽走 --side-w，拖动实时跟手，松手落 localStorage，双击复原。
+   * 仅桌面网格布局生效（窄屏侧栏是固定宽抽屉，手柄已 display:none） */
+  (() => {
+    const KEY = "orch.sideW", MIN = 190, MAX = 460;   // 复原默认值=CSS 回退 216
+    const root = document.documentElement;
+    const apply = (w) => root.style.setProperty("--side-w", w + "px");
+    const saved = parseInt(localStorage.getItem(KEY), 10);
+    if (saved >= MIN && saved <= MAX && window.innerWidth >= 900) apply(saved);
+    const el = $("side-resizer");
+    let active = false, startX = 0, startW = 0;
+    const onMove = (e) => {
+      if (!active) return;
+      apply(Math.round(Math.min(MAX, Math.max(MIN, startW + e.clientX - startX))));
+    };
+    const onFinish = () => {
+      if (!active) return;
+      active = false;
+      document.body.classList.remove("side-resizing");
+      localStorage.setItem(KEY, String(Math.round($("sidebar").getBoundingClientRect().width)));
+    };
+    el.addEventListener("pointerdown", (e) => {
+      if (window.innerWidth < 900) return;
+      active = true; startX = e.clientX;
+      startW = $("sidebar").getBoundingClientRect().width;
+      document.body.classList.add("side-resizing");
+      e.preventDefault();
+    });
+    /* move/up 挂 window：setPointerCapture 在部分环境（headless 真实输入实测）不生效，
+       move 会按命中测试派发到主区元素，只有 window 级监听保证收到 */
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onFinish);
+    window.addEventListener("pointercancel", onFinish);
+    el.addEventListener("dblclick", () => {
+      localStorage.removeItem(KEY);
+      root.style.removeProperty("--side-w");
+    });
+  })();
   // 手机抽屉：遮罩点击 / 侧栏内任何可点项（导航、任务树、设置入口）点击后都收回
   $("drawer-mask").addEventListener("click", () => document.body.classList.add("side-collapsed"));
   $("sidebar").addEventListener("click", (e) => {

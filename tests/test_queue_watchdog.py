@@ -589,5 +589,64 @@ class QueueWatchdogTest(BaseTest):
                          "存量配置不强迁，用户在设置页自行调")
 
 
+class QueuedSweepTest(BaseTest):
+    """运行期 queued 巡检兜底（2026-09-29 实案：续跑副本躺平 4 小时）。
+
+    requeue_pending 此前只在启动时跑一次；续跑 Timer 随进程死亡后，到点的
+    退避副本再也没有人入队——进程不重启就永远躺平。修法：start_worker 挂一个
+    周期巡检线程，超龄 queued（含到点的退避副本）统一交 requeue_pending 收口。"""
+
+    def test_sweep_loop_calls_requeue_with_inspect_age(self):
+        from app.core import jobs
+        calls, sleeps = [], []
+
+        def fake_requeue(limit=10, max_age_s=None):
+            calls.append(max_age_s)
+            if len(calls) >= 2:
+                raise KeyboardInterrupt  # 跳出 while True（BaseException 不被吞）
+
+        with mock.patch.object(jobs, "requeue_pending", fake_requeue), \
+             mock.patch.object(jobs.time, "sleep", lambda s: sleeps.append(s)):
+            with self.assertRaises(KeyboardInterrupt):
+                jobs._queued_sweep_loop()
+        self.assertEqual(calls,
+                         [jobs.QUEUED_SWEEP_MIN_AGE_S] * 2,
+                         "巡检必须带 max_age_s 检查模式，不是启动全量模式")
+        self.assertTrue(sleeps)
+        self.assertTrue(all(s == jobs.QUEUED_SWEEP_INTERVAL_S for s in sleeps))
+
+    def test_sweep_picks_expired_backoff_copy(self):
+        """到点的退避副本必须被巡检捞起（Timer 断链实案回归）。"""
+        from app.core import store, jobs
+        task = _mk_serial_task("到点副本")
+        stale = store.create_run("orchestration", task["title"], task_id=task["id"])
+        past = _time.strftime("%Y-%m-%d %H:%M:%S",
+                              _time.localtime(_time.time() - 300))
+        stale_created = _time.strftime("%Y-%m-%d %H:%M:%S",
+                                       _time.localtime(_time.time() - 3600))
+        store.update_run(stale["id"], status="queued", created_at=stale_created,
+                         resume_enqueue_at=past)
+        captured = []
+        with mock.patch.object(jobs, "enqueue", side_effect=captured.append):
+            self.assertEqual(jobs.requeue_pending(max_age_s=120), 1,
+                             "退避已到点的超龄副本必须兜底入队")
+        self.assertEqual(captured[0]["run_id"], stale["id"])
+
+    def test_sweep_skips_unexpired_backoff_copy(self):
+        """退避未到点的副本巡检不碰——重启/巡检都不该烧掉网关退避窗口。"""
+        from app.core import store, jobs
+        task = _mk_serial_task("未到点副本")
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        old_created = _time.strftime("%Y-%m-%d %H:%M:%S",
+                                     _time.localtime(_time.time() - 3600))
+        future = _time.strftime("%Y-%m-%d %H:%M:%S",
+                                _time.localtime(_time.time() + 600))
+        store.update_run(run["id"], status="queued", created_at=old_created,
+                         resume_enqueue_at=future)
+        with mock.patch.object(jobs, "enqueue") as enq:
+            self.assertEqual(jobs.requeue_pending(max_age_s=120), 0)
+            self.assertFalse(enq.called)
+
+
 if __name__ == "__main__":
     unittest.main()

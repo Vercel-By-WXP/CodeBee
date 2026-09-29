@@ -112,14 +112,21 @@ def pending(task_id, platform):
 
 def status(task_id):
     """前端视图：待发清单 + 护栏状态 + 自动发布进度。"""
-    from . import ledger
+    from .. import store
+    from . import ledger, manager
     ent = ledger.load_books().get(str(task_id)) or {}
+    task = store.get_task(task_id)
     books = []
     for plat, info in ent.items():
         pend, err = pending(task_id, plat)
         ok, why = guards(task_id, plat)
         if not _book_ready(info):
             ok, why = False, "该平台建书结果未确认（缺少作品 ID），请重试创建作品或登记已有作品"
+        elif task:
+            quality = manager._quality_release_guard(task, plat, action="publish")
+            if not quality.get("allowed"):
+                ok, why = False, "质量门禁拦截：%s" % "；".join(
+                    quality.get("blockers") or [])
         books.append({"platform": plat, "bound": True,
                       "title": info.get("title") or "",
                       "pending": len(pend), "guard_ok": ok, "guard_reason": why,
@@ -156,7 +163,8 @@ def calibrated(platform):
     return (paths.PUBLISH_DIR / ("flows-%s.json" % platform)).is_file()
 
 
-def publish_pending_async(task_id, platform, auto_submit=False):
+def publish_pending_async(task_id, platform, auto_submit=False, force=False,
+                          force_confirmed=False, force_reason=""):
     """把任务的待发章节按章号顺序发出（后台线程）。返回 (ok, err)。
 
     auto_submit=True（直发）逐章提交走完全程；False（人工确认）每轮只填
@@ -183,6 +191,11 @@ def publish_pending_async(task_id, platform, auto_submit=False):
         return False, "该任务尚未在此平台建书，请先「创建作品」"
     if not _book_ready(book):
         return False, "该平台建书结果未确认（缺少作品 ID），请重试创建作品或登记已有作品"
+    quality = manager._quality_release_guard(
+        task, platform, action="publish", force=force,
+        force_confirmed=force_confirmed, force_reason=force_reason)
+    if not quality.get("allowed"):
+        return False, "质量门禁拦截：%s" % "；".join(quality.get("blockers") or [])
     ok, why = guards(task_id, platform)
     if not ok:
         return False, why
@@ -208,9 +221,14 @@ def publish_pending_async(task_id, platform, auto_submit=False):
                     st["status"] = "error"
                     st["error"] = "第 %d 章前护栏拦截：%s" % (item["chapter_no"], why)
                     return
+                upload_kwargs = {"auto_submit": auto_submit}
+                if force or force_confirmed or force_reason:
+                    upload_kwargs.update(force=force,
+                                         force_confirmed=force_confirmed,
+                                         force_reason=force_reason)
                 ok2, err2 = manager.upload_chapter_async(
                     task_id, platform, str(Path(wd) / item["file"]),
-                    auto_submit=auto_submit)
+                    **upload_kwargs)
                 if not ok2:
                     st["status"] = "error"
                     st["error"] = "第 %d 章发起失败：%s" % (item["chapter_no"], err2)

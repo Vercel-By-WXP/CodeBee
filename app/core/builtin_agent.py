@@ -1589,6 +1589,13 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         for c in calls:
                             out = _exec_tool(workdir, c["name"], c["args"], cancel_event,
                                              deadline=deadline, task_creator=task_creator)
+                            # 运行期注入警示层：外部内容（网页/命令输出/文件）一律
+                            # 包围栏进上下文；检测命中升级强围栏（prompt_guard）。
+                            try:
+                                from . import prompt_guard
+                                out = prompt_guard.wrap_external(out, c["name"])
+                            except Exception:
+                                pass
                             if log:
                                 brief = out if len(out) <= 120 else out[:120] + "…"
                                 log("[工具] %s → %s" % (c["name"], brief.replace("\n", " ⏎ ")))

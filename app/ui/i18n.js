@@ -1236,6 +1236,7 @@
     "皮肤 / 换肤：多套配色，各含日间与夜间": "Skin: each set has both light and dark variants",
     "切换日间 / 夜间主题": "Toggle light/dark theme",
     "收起 / 展开侧栏": "Collapse / expand sidebar",
+    "拖动调宽 · 双击复原": "Drag to resize · double-click to reset",
     "编排": "Orchestration",
     "配置": "Config",
     "外观": "Appearance",

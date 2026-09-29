@@ -356,6 +356,9 @@ body {
 *::-webkit-scrollbar-track { background: transparent; }
 
 /* ---------------- 布局骨架 ---------------- */
+/* ---------------- 布局骨架 ---------------- */
+/* ⚠️ 此层列宽已被后发皮肤层（「46px rail + 216px project column」）整体覆盖，
+   侧栏宽度真源在那一层的 --side-w；此处保留原始骨架注释性记录 */
 #app { display: grid; grid-template-columns: 264px 1fr; height: 100vh; }
 body.side-collapsed #app { grid-template-columns: 0 1fr; }
 #mainwrap { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
@@ -366,8 +369,24 @@ body.side-collapsed #app { grid-template-columns: 0 1fr; }
   background: var(--sidebar); border-right: 1px solid var(--border);
   padding: 14px 12px 12px; min-width: 0; overflow: hidden;
   transition: opacity .15s;
+}  padding: 14px 12px 12px; min-width: 0; overflow: hidden;
+  transition: opacity .15s;
+  position: relative;
 }
 body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-right: 0; opacity: 0; pointer-events: none; }
+body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-right: 0; opacity: 0; pointer-events: none; }
+/* 右缘拖拽手柄：贴右缘 7px 热区，hover/拖动中亮竖条；手柄属 sidebar 内，不受内容滚动影响 */
+#side-resizer {
+  position: absolute; top: 0; bottom: 0; right: 0; width: 7px;
+  cursor: col-resize; z-index: 20; touch-action: none;
+}
+#side-resizer::after {
+  content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 3px;
+  background: transparent; transition: background .15s;
+}
+#side-resizer:hover::after, body.side-resizing #side-resizer::after { background: var(--accent); opacity: .5; }
+body.side-resizing { cursor: col-resize; user-select: none; }
+body.side-resizing iframe { pointer-events: none; }
 /* 品牌：方形字母标磁贴 + 字标，单行位于侧栏最顶上 */
 .brand { display: flex; align-items: center; gap: 10px; font-size: 15.5px; font-weight: 700; padding: 6px 8px 12px; white-space: nowrap; overflow: hidden; }
 /* 品牌：Codex 式低调字标——纯正文色小字，无磁贴无渐变（2026-09-15 参考 Codex 桌面端定版） */
@@ -1215,6 +1234,8 @@ body.inspector-open #inspector { display: flex; }
 @media (max-width: 900px) {
   #app { grid-template-columns: 1fr; }
   body.side-collapsed #app { grid-template-columns: 1fr; }
+  body.side-collapsed #app { grid-template-columns: 1fr; }
+  #side-resizer { display: none; }
   #sidebar {
     position: fixed; z-index: 60; top: 0; left: 0; bottom: 0;
     width: min(300px, 84vw);
@@ -6631,7 +6652,9 @@ main { font-size: 14px; }
 #f-goal::placeholder { color: color-mix(in srgb, var(--muted) 78%, #fff); }
 
 /* Match the reference proportions: 46px rail + 216px project column. */
-#app { grid-template-columns: 46px 216px minmax(0, 1fr); }
+#app { grid-template-columns: 46px 216px minmax(0, 1fr); }/* Match the reference proportions: 46px rail + 216px project column.
+   侧栏列宽走 --side-w（#side-resizer 拖动实时改，localStorage 记忆）。 */
+#app { grid-template-columns: 46px var(--side-w, 216px) minmax(0, 1fr); }
 body.side-collapsed #app { grid-template-columns: 46px 0 minmax(0, 1fr); }
 #sidebar { padding: 13px 0 10px; }
 .brand { width: 100%; padding: 4px 12px 12px; justify-content: flex-start; text-align: left; }
@@ -6695,7 +6718,7 @@ body.side-collapsed #app { grid-template-columns: 46px 0 minmax(0, 1fr); }
    Keep the rail and project column in the grid when the right detail panel opens;
    the older three-column rule put the inspector on a new row and squeezed the main area. */
 body.inspector-open #app {
-  grid-template-columns: 46px 216px minmax(0, 1fr) minmax(280px, 340px);
+  grid-template-columns: 46px 216px minmax(0, 1fr) minmax(280px, 340px);  grid-template-columns: 46px var(--side-w, 216px) minmax(0, 1fr) minmax(280px, 340px);
 }
 body.side-collapsed.inspector-open #app {
   grid-template-columns: 46px 0 minmax(0, 1fr) minmax(280px, 340px);

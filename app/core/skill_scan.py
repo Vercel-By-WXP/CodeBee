@@ -66,6 +66,23 @@ _PATTERNS = [
     (r"(you (are|must) (now|act as)|从此你是|你现在必须"
      r"|从现在起你(?:是|扮演|成为|要[^。\n]{0,4}服从)|请你扮演)",
      "越权人格", "试图重设助手人格"),
+    # SkillSpector 规则对表补充（0929 第四轮：AR/OH/TR 三族缺口）
+    (r"(do not|don't|never|不用|无需|不必)[^\n]{0,14}"
+     r"(refuse|decline|reject|reject)|(?:拒绝|推辞)[^\n]{0,6}(?:是)?(?:禁止|不允许|违规)"
+     r"|you (?:will|must) (?:always|never fail to) comply",
+     "提示注入", "反拒答抑制（试图关掉模型的拒绝能力）"),
+    (r"(omit|skip|remove)[^\n]{0,16}(disclaimer|warning|safety)"
+     r"|(?:省略|跳过|不要加|去掉)[^\n]{0,10}(?:免责|声明|安全(?:提示|警告|策略))",
+     "提示注入", "免责/安全声明抑制"),
+    (r"(?:your|the) (?:output|response|answer)[^\n]{0,30}"
+     r"(?:will be|is) (?:executed|run|evaluated as (?:code|commands?))"
+     r"|(?:输出|回答)(?:会|将)[^\n]{0,12}(?:被)?(?:直接)?(?:执行|当作命令|作为代码)",
+     "数据外发", "输出即执行指示（作答将被当命令跑——OH1 输出注入）"),
+    (r"(?:keyword|trigger|关键词|触发)[^\n]{0,50}"
+     r"(?:any|every|all|任何|所有|一切)|"
+     r"(?:any|every|all|任何|所有|一切)[^\n]{0,30}"
+     r"(?:keyword|trigger|关键词|触发)",
+     "可疑意图", "过宽触发条件（任何输入都激活——TR1 触发滥用）"),
     (r"exfiltrat|渗透|后门|backdoor|keylog", "可疑意图", "包含可疑渗透/后门词汇"),
 ]
 

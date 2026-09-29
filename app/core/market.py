@@ -366,6 +366,46 @@ def install_files(pack_id, name, files, extra=None):
             "warnings": warnings}, None
 
 
+def skill_card(pack_id):
+    """技能行为卡（ClawHub Skill Card 模式）：安装时把「这个技能声明做什么 /
+    从哪来 / 指纹是什么 / 安检结论」拼成一张卡。经验库与市场卡共用这一份
+    真源——行为可见性是投毒防线的最后一环（装了什么必须随时可查）。
+
+    返回 dict 或 None（非市场安装）。"""
+    with _LOCK:
+        rec = dict((_load_registry().get("installed") or {}).get(pack_id) or {})
+    if not rec:
+        return None
+    body_head = ""
+    target = rec.get("file") or ""
+    if target:
+        try:
+            raw = (_user_pack_dir() / target).read_text(encoding="utf-8",
+                                                        errors="replace")
+            meta, body = skills._parse_frontmatter(raw)
+            rec.setdefault("name", meta.get("name") or pack_id)
+            scopes = meta.get("scopes")
+            if isinstance(scopes, list):
+                rec.setdefault("scopes", scopes)
+            body_head = body.strip()[:200]
+        except Exception:
+            body_head = ""
+    remote = rec.get("remote") or {}
+    return {
+        "id": pack_id,
+        "name": rec.get("name") or pack_id,
+        "declares": body_head,                       # 技能正文开头=自述行为
+        "scopes": rec.get("scopes") or [],
+        "digest": rec.get("digest") or "",
+        "scan": rec.get("scan") or "",               # 装前安检结论（含风险分级）
+        "smoke": rec.get("smoke") or "",
+        "installed_at": rec.get("installed_at") or "",
+        "source": {"market": "内置市场" if not remote else str(remote.get("name") or ""),
+                   "version": str(remote.get("version") or ""),
+                   "homepage": str(remote.get("homepage") or "")},
+    }
+
+
 def remove(pack_id):
     """卸载市场包：只删 market.json 有记录（或文件标记可自愈）且文件带本包
     market 标记的包。skills 内置包与无标记的用户自建包一律拒绝。
