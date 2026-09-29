@@ -10543,14 +10543,30 @@ function renderSkills() {
   const box = $("skill-packs");
   if (!box || !S.skills) return;
   const packs = S.skills.packs || [], lessons = S.skills.lessons || [];
-  box.innerHTML = packs.map((p) =>
-    '<div class="card"><div class="head"><span class="name">📚 ' + esc(t(p.name)) + "</span>" +
-    '<span class="tag">' + esc((p.scopes || []).map((s) => t(s)).join(" / ")) + "</span>" +
-    (p.enabled ? '<span class="tag ok">' + t("启用中") + "</span>" : '<span class="tag">' + t("已停用") + "</span>") + "</div>" +
-    '<div class="note">' + esc(t(p.note || "")) + "</div>" +
-    '<div class="facts">' + t("正文 ") + "<b>" + p.chars + "</b>" + t(" 字（自动注入该类任务的规划与评审提示词）") + "</div>" +
-    '<div class="ops"><button class="ghost small" onclick="skillPackOp(\'' + esc(p.id) + '\', \'' +
-    (p.enabled ? "disable" : "enable") + '\')">' + (p.enabled ? t("停用") : t("启用")) + "</button></div></div>").join("")
+  box.innerHTML = packs.map((p) => {
+    const card = p.card;
+    const cardHtml = card
+      ? '<div class="facts" style="margin-top:4px">' +
+        '<span class="tag" title="' + esc(t("来源：") + (card.source && card.source.market || "-")) + '">' +
+        t("来源 ") + esc((card.source && card.source.market) || "-") + "</span>" +
+        (card.digest ? '<span class="tag" title="' + t("内容指纹（重装突变对账用）") + '">' +
+          t("指纹 ") + esc(card.digest) + "</span>" : "") +
+        (card.scan ? (card.scan.indexOf("高风险") >= 0
+          ? '<span class="tag" style="color:var(--err,#d33)">' + esc(card.scan.split("：")[0]) + "</span>"
+          : '<span class="tag">' + esc(card.scan.split("：")[0]) + "</span>") : "") +
+        "</div>" +
+        (card.declares ? '<div class="note" style="margin-top:2px">📝 ' + t("自述：") +
+          esc(card.declares.slice(0, 120)) + (card.declares.length > 120 ? "…" : "") + "</div>" : "")
+      : "";
+    return '<div class="card"><div class="head"><span class="name">📚 ' + esc(t(p.name)) + "</span>" +
+      '<span class="tag">' + esc((p.scopes || []).map((s) => t(s)).join(" / ")) + "</span>" +
+      (p.enabled ? '<span class="tag ok">' + t("启用中") + "</span>" : '<span class="tag">' + t("已停用") + "</span>") + "</div>" +
+      '<div class="note">' + esc(t(p.note || "")) + "</div>" +
+      '<div class="facts">' + t("正文 ") + "<b>" + p.chars + "</b>" + t(" 字（自动注入该类任务的规划与评审提示词）") + "</div>" +
+      cardHtml +
+      '<div class="ops"><button class="ghost small" onclick="skillPackOp(\'' + esc(p.id) + '\', \'' +
+      (p.enabled ? "disable" : "enable") + '\')">' + (p.enabled ? t("停用") : t("启用")) + "</button></div></div>";
+  }).join("")
     || '<div class="empty">' + t("暂无经验包") + "</div>";
   // 分类 chip 过滤：药丸按钮 + 彩色圆点 + 计数，选中态高亮。值 = 分类名，空串 = 全部。
   const cats = S.skills.categories || [];
@@ -15128,6 +15144,42 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelector("main").addEventListener("scroll", apnSyncActive, { passive: true });
   syncLangMode();
   $("btn-menu").addEventListener("click", () => document.body.classList.toggle("side-collapsed"));
+  /* 侧栏宽度拖拽：grid 列宽走 --side-w，拖动实时跟手，松手落 localStorage，双击复原。
+   * 仅桌面网格布局生效（窄屏侧栏是固定宽抽屉，手柄已 display:none） */
+  (() => {
+    const KEY = "orch.sideW", MIN = 190, MAX = 460;   // 复原默认值=CSS 回退 216
+    const root = document.documentElement;
+    const apply = (w) => root.style.setProperty("--side-w", w + "px");
+    const saved = parseInt(localStorage.getItem(KEY), 10);
+    if (saved >= MIN && saved <= MAX && window.innerWidth >= 900) apply(saved);
+    const el = $("side-resizer");
+    let active = false, startX = 0, startW = 0;
+    el.addEventListener("pointerdown", (e) => {
+      if (window.innerWidth < 900) return;
+      active = true; startX = e.clientX;
+      startW = $("sidebar").getBoundingClientRect().width;
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+      document.body.classList.add("side-resizing");
+      e.preventDefault();
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (!active) return;
+      apply(Math.round(Math.min(MAX, Math.max(MIN, startW + e.clientX - startX))));
+    });
+    const finish = (e) => {
+      if (!active) return;
+      active = false;
+      document.body.classList.remove("side-resizing");
+      try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+      localStorage.setItem(KEY, String(Math.round($("sidebar").getBoundingClientRect().width)));
+    };
+    el.addEventListener("pointerup", finish);
+    el.addEventListener("pointercancel", finish);
+    el.addEventListener("dblclick", () => {
+      localStorage.removeItem(KEY);
+      root.style.removeProperty("--side-w");
+    });
+  })();
   // 手机抽屉：遮罩点击 / 侧栏内任何可点项（导航、任务树、设置入口）点击后都收回
   $("drawer-mask").addEventListener("click", () => document.body.classList.add("side-collapsed"));
   $("sidebar").addEventListener("click", (e) => {

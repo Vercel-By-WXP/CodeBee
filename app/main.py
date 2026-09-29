@@ -287,7 +287,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"versions": flows.flow_versions(fid)})
             if path == "/api/skills":
                 from core import skills
-                return self._json(200, skills.view())
+                v = skills.view()
+                try:
+                    # 技能行为卡（ClawHub Skill Card 模式）：市场安装的包按文件
+                    # 名关联拼卡——声明/来源/指纹/安检一次可见。skills(L1) 不能
+                    # 反向 import market（成环），拼接放路由层。
+                    from core import market as _market
+                    reg = _market._load_registry().get("installed") or {}
+                    by_file = {str(r.get("file") or ""): pid
+                               for pid, r in reg.items() if isinstance(r, dict)}
+                    for p in v.get("packs") or []:
+                        pid = by_file.get("market-%s.md" % p.get("id"))
+                        if pid:
+                            p["card"] = _market.skill_card(pid)
+                except Exception:
+                    pass
+                return self._json(200, v)
             if path == "/api/knowledge":
                 from core import knowledge
                 return self._json(200, knowledge.view())
