@@ -35,7 +35,8 @@
   "scripts": {
     "release:gate": "python scripts/release_gate.py",
     "release": "python scripts/release_gate.py --publish",
-    "prepublishOnly": "python scripts/release_gate.py"
+    "prepublishOnly": "python scripts/release_gate.py",
+    "release:clean": "python scripts/prune_release_debris.py"
   },
   "repository": {
     "type": "git",
