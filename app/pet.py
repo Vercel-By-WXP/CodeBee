@@ -89,7 +89,7 @@ def parse_snapshot(raw):
         # boot：服务进程启动标识（值变化=服务换人，本宠让位给新服务的蜜蜂）
         "boot": raw.get("boot") or None,
         "settings": {
-            "pet_enabled": bool(st.get("pet_enabled", True)),
+            "pet_enabled": bool(st.get("pet_enabled", False)),
             "pet_mode": str(st.get("pet_mode") or "always"),
             "pet_skin": str(st.get("pet_skin") or DEFAULT_SKIN),
         },

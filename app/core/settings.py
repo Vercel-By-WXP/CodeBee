@@ -16,7 +16,8 @@ _FILE = paths.DATA_DIR / "settings.json"
 # 「导出诊断包」是用户手动操作不受此开关限制）
 # publish_daily_cap / publish_fail_streak：自动发布护栏——每任务每平台每日
 # 成功发章上限、平台连续失败几次后暂停自动发布（publish/auto.py 读取）
-# pet_enabled / pet_mode：桌面蜜蜂（app/pet.py）开关与显示模式。关闭后看护线程
+# pet_enabled / pet_mode：桌面蜜蜂（app/pet.py）开关与显示模式（默认关，设置页
+# 可开）。关闭后看护线程不再拉起、在岗蜜蜂轮询到 false 自行退出；mode=always
 # 不再拉起、在岗蜜蜂轮询到 false 自行退出；mode=always 常驻，tasks_only 仅任务
 # 运行时出现（空闲 90s 隐身）。
 # cleanup_enabled / cleanup_retention_days：每日垃圾清理（core/cleanup.py）——
@@ -39,7 +40,7 @@ DEFAULTS = {"max_concurrent_jobs": 12, "default_workdir": "", "hooks_token": "",
             # 端点（Basic auth）；密钥只存本机
             "backup_remote_enabled": False, "backup_remote_url": "",
             "backup_remote_user": "", "backup_remote_pass": "",
-            "pet_enabled": True, "pet_mode": "always", "pet_skin": "plush",
+            "pet_enabled": False, "pet_mode": "always", "pet_skin": "plush",
             "cleanup_enabled": True, "cleanup_retention_days": 14,
             # claude_config_sync：打开/运行前防线是否直写 ~/.claude/settings.json。
             # 关闭后交互 claude 配置归用户手动管理（cc-switch 等），编排步骤经

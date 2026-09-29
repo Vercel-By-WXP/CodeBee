@@ -220,6 +220,19 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------ 路由
     def do_GET(self):
+        # 顶层兜底：任何路由裸抛以前=socketserver 直接掐断连接、零日志，
+        # 浏览器只见 "Failed to fetch"（2026-09-29 store 局部名遮蔽实案）。
+        # 现在统一落日志并回 500 JSON；对端已断开时无从回话，原样上抛。
+        try:
+            return self._route_get()
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError,
+                socket.timeout):
+            raise
+        except Exception:
+            log.exception("GET %s 处理异常", getattr(self, "path", "?"))
+            self._safe_500()
+
+    def _route_get(self):
         path = urlparse(self.path).path
         m = None
         # 静态页不设防（无敏感信息）：远程裸地址打开时由前端令牌门引导输入
@@ -918,8 +931,12 @@ class Handler(BaseHTTPRequestHandler):
             # manual=true（用户点「校准」）允许 attach-or-launch；自动触发
             # 只 attach 在跑实例，绝不因打开页面弹出新浏览器窗口。
             from core.publish import manager as pub
-            from core import store
             from core.publish import ledger as pub_ledger
+            # 注意：这里绝不能再 `from core import store`——函数内 import 会把
+            # store 变成 do_POST 整个函数的局部名，同函数里其余路由（新建任务/
+            # 取消/升级全部等）一读 store 就是 UnboundLocalError，连接被静默
+            # 掐断，前端只见 "Failed to fetch"（0.1.70 实案，bisect 定位）。
+            # store 已在模块顶层导入，直接用。
             tid = m.group(1)
             if not store.get_task(tid):
                 return self._json(404, {"error": "任务不存在"})
@@ -1916,7 +1933,7 @@ class Handler(BaseHTTPRequestHandler):
             # 服务换了个进程（升级重启）——旧蜜蜂自行退场让新服务 spawn 新蜜蜂
             # （旧形象常驻的根因：同端口轮询永远正常，旧进程从不自离）。
             "boot": _BOOT_TS,
-            "settings": {"pet_enabled": bool(st.get("pet_enabled", True)),
+            "settings": {"pet_enabled": bool(st.get("pet_enabled", False)),
                          "pet_mode": str(st.get("pet_mode") or "always"),
                          "pet_skin": str(st.get("pet_skin") or "plush")},
             "workers": {"running": n_run, "queued": n_q},
@@ -2878,7 +2895,7 @@ def _start_pet_keeper(port):
     def _loop():
         while True:
             try:
-                if settings.load().get("pet_enabled", True):
+                if settings.load().get("pet_enabled", False):
                     if _PET_PROC is None or _PET_PROC.poll() is not None:
                         # 全机唯一蜜蜂：别的服务实例（不同数据目录）已养蜂时
                         # 不再拉起，否则桌面会出现多只（用户实测踩坑）

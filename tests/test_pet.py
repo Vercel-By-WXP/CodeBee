@@ -91,7 +91,7 @@ class TestPetLogic(unittest.TestCase):
 
     def test_parse_snapshot_tolerates_junk(self):
         snap = pet.parse_snapshot(None)
-        self.assertFalse(snap["settings"]["pet_enabled"] is False)  # 默认开
+        self.assertFalse(snap["settings"]["pet_enabled"])  # 默认关
         self.assertEqual(snap["tasks"], [])
         snap = pet.parse_snapshot({"settings": {"pet_mode": 123},
                                    "workers": {"running": "2"},
@@ -217,9 +217,9 @@ class TestPetPlate(unittest.TestCase):
 class TestPetSettings(BaseTest):
     """pet_enabled / pet_mode 的默认值、往返与非法值拒绝。"""
 
-    def test_defaults_on_and_always(self):
+    def test_defaults_off_and_always(self):
         view = settings.load()
-        self.assertTrue(view["pet_enabled"])
+        self.assertFalse(view["pet_enabled"])
         self.assertEqual(view["pet_mode"], "always")
 
     def test_roundtrip_and_validation(self):
@@ -305,9 +305,9 @@ class TestPetEndpoint(unittest.TestCase):
             handler._api_pet_state()
         _, payload = handler.responses[0]
         self.assertEqual(payload["tasks"][0]["title"], "t-9")
-        # 设置缺省也兜底为开+常驻+默认形象
+        # 设置缺省也兜底为关+常驻+默认形象
         self.assertEqual(payload["settings"],
-                         {"pet_enabled": True, "pet_mode": "always",
+                         {"pet_enabled": False, "pet_mode": "always",
                           "pet_skin": "plush"})
 
 
