@@ -1068,3 +1068,5 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **builtin_agent 工具循环修复**| 工具开关传递错误会让所有带工具的内置执行在首轮失败；Windows Gemini wrapper 使旧断言把真实 argv 误报失败 | 已修复参数传递、流式 create_task 规格与 task_creator 透传，并放宽测试到 node/gemini.js 形态 | 2026-09-28
 - **jnMetaCode/agency-orchestrator**（Apache-2.0，约 2.3k★，2026-09-29 活跃）| YAML 工作流把 `acceptance` 标准与 `assert.contains` 等机械断言绑定，运行后自动核验；另有 Studio/CLI 多渠道与 276 角色库 | CodeBee 已有六维验收矩阵、证据落盘和验证命令，能力已覆盖；可配置断言作为待深挖项，不在本轮引入新接口 | 已覆盖 | 2026-09-29
 - **扫榜任务文案对账**| 后端 `paihang` 已是七猫/番茄/起点/纵横四源，创建卡仍写“抓双平台榜”，英文 i18n 同步过时 | 修正 UI 描述与英文词条，并新增静态契约测试，避免源数量变化后文案漂移 | 已落地 | 2026-09-29
+- **批3 计划/spec/长任务复查**| OpenSpec、GSD、planning-with-files、PraisonAI、worktrunk、lazycodex 继续活跃；spec、任务档案、断点续跑、隔离 worktree 已覆盖，未形成低风险接口差量 | 参考/已覆盖 | 2026-09-29
+- **borrow_scan_nightly Windows 编码修复**| 默认 GBK 控制台遇到仓库描述中的 Unicode 会触发 `UnicodeEncodeError`，中止整轮 JSONL 输出 | stdout/stderr 启动时显式 UTF-8，查询与安全边界不变 | 已落地 | 2026-09-29
