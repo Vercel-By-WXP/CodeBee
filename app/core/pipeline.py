@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, attachments, branching, catalog, chaptersafe, defectretro, dispatch_log, flows, history, hooks, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, registry, router, runner, skills, store, task_compile, usage, volumes
+from . import aiflavor, attachments, branching, catalog, chaptersafe, defectretro, dispatch_log, flows, history, hooks, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, router, runner, skills, store, task_compile, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -2636,16 +2636,34 @@ def _critique_json(res, dims):
     任何一道出分即算有效评审——「无法解析」绝不能把正常出分的评审吞掉
     （2026-09-18 七猫案：kimi 内嵌引号病连烧三轮自动续跑全判评审全挂）。"""
     text = res.get("text") or ""
+    def validated(value):
+        value = value if isinstance(value, dict) else {}
+        raw_scores = value.get("scores") if isinstance(value.get("scores"), dict) else {}
+        scores, errors = quality_gate.normalize_scores(raw_scores, dims)
+        if errors:
+            # Keep individually valid dimensions for repair/polish diagnostics,
+            # but mark the set incomplete so release consensus cannot use it.
+            partial = {}
+            for dim in dims:
+                one, one_errors = quality_gate.normalize_scores({dim: raw_scores.get(dim)}, [dim])
+                if not one_errors:
+                    partial[dim] = one[dim]
+            scores = partial
+        value["scores"] = scores
+        if errors:
+            value["score_errors"] = errors
+        return value
+
     gj = runner.as_scores(runner.extract_json(text))
     if isinstance(gj, dict) and isinstance(gj.get("scores"), dict) and gj.get("scores"):
-        return gj
+        return validated(gj)
     prose = runner.scores_from_prose(text, dims)
     if not prose:
         # 第四道网（BAML 借鉴）：维度名没命中时按「X：N 分」模式泛化抓取——
         # 自定义 rubric 改了维度措辞而模型用了自己的说法时仍能救回
         prose = runner.extract_scores_from_text(text)
     if prose:
-        return {"scores": prose, "issues": [], "summary": text[:400]}
+        return validated({"scores": prose, "issues": [], "summary": text[:400]})
     return {"scores": {}, "issues": [],
             "summary": "评审输出无法解析：%s" % (text or res.get("error") or "")[:150]}
 
@@ -3025,6 +3043,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
 
     chapter_scores = []          # [{chapter,title,means,passed,rounds,words}]
     issues_all = []
+    signing_review_meta = {}
 
     # ---- 独立签约评估设施（开篇闸门 + 2万字检查点共用）----
     def _signing_eval(upto_chapter, note):
@@ -3048,23 +3067,30 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                   .replace("__DIMKEYS__", signing_dimkey)
                   .replace("__NOTE__", note or "")
                   .replace("__MANUSCRIPT__", "\n\n".join(texts)[:26000]))
-        agent = critics[0] if critics else impl
-        res = _run_step(run_id, "signing-eval", modelhub.bind_agent(agent, difficulty),
-                        prompt, workdir, readonly=True, ev=ev, timeout=2400,
-                        note=("签约评估 %s" % (note or "")).strip())
-        cj = _critique_json(res, novel_quality.SIGNING_RUBRIC)
-        scores = cj.get("scores") or {}
-        means = {}
-        for d in novel_quality.SIGNING_RUBRIC:
-            try:
-                means[d] = float(scores[d])
-            except (KeyError, TypeError, ValueError):
-                pass
-        if not means:
+        reviewers = critics or [impl]
+        reviews, summaries, issues = [], [], []
+        for idx, agent in enumerate(reviewers):
+            res = _run_step(run_id, "signing-eval", modelhub.bind_agent(agent, difficulty),
+                            prompt, workdir, readonly=True, ev=ev, timeout=2400,
+                            note=("签约评估 %s" % (note or "")).strip())
+            cj = _critique_json(res, novel_quality.SIGNING_RUBRIC)
+            if cj.get("scores"):
+                reviews.append({"id": agent.get("id") or "signing-%d" % idx,
+                                "scores": cj.get("scores")})
+            summaries.append(str(cj.get("summary") or ""))
+            issues.extend((cj.get("issues") or [])[:6])
+        agg = quality_gate.aggregate_reviews(
+            reviews, novel_quality.SIGNING_RUBRIC, threshold=threshold,
+            min_reviewers=1)
+        signing_review_meta.clear()
+        signing_review_meta.update({"reviewer_count": agg.get("reviewer_count", 0),
+                                    "consensus": agg.get("consensus", False),
+                                    "spreads": agg.get("spreads", {})})
+        means = agg.get("means") or {}
+        if not agg.get("eligible") or not means:
             return None, [], ""
-        issues = (cj.get("issues") or [])[:6]
         issues_all.extend({"chapter": upto_chapter, **it} for it in issues)
-        return means, issues, str(cj.get("summary") or "")
+        return means, issues, next((s for s in summaries if s), "")
 
     def _signing_record(kind, payload):
         """签约评估结果入 run（signing_evals.<kind>），审计与 UI 证据。"""
@@ -3265,9 +3291,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                         note="小说第 %d 章" % i,
                                         event_check=event_check, chapter=i) + note_extra,
                                     workdir, readonly=True, ev=ev)
-                    cj = runner.extract_json(res.get("text") or "")
+                    cj = _critique_json(res, dims)
                     if isinstance(cj, dict) and isinstance(cj.get("scores"), dict) \
-                            and cj.get("scores"):
+                            and len(cj.get("scores") or {}) == len(dims):
                         cj_map[spare["id"]] = cj
                         scored += 1
                         remember_agent(actual_critics, spare)
@@ -3283,10 +3309,19 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         def means_of(cj_map):
             vals = {}
             for d in dims:
-                xs = [float(cj["scores"].get(d, 0)) for cj in cj_map.values()
-                      if isinstance(cj.get("scores"), dict) and d in cj["scores"]]
+                xs = []
+                for cj in cj_map.values():
+                    scores, errors = quality_gate.normalize_scores(cj.get("scores"), dims)
+                    if not errors and d in scores:
+                        xs.append(scores[d])
                 vals[d] = round(sum(xs) / len(xs), 1) if xs else 0.0
             return vals
+
+        def review_stats(cj_map, threshold_value):
+            reviews = [{"id": aid, "scores": cj.get("scores")}
+                       for aid, cj in cj_map.items()]
+            return quality_gate.aggregate_reviews(
+                reviews, dims, threshold=threshold_value)
 
         critic_sids = {}   # §07 T1.1：每评审的会话 id（第 2 轮复用，前缀走缓存读）
         race_cj = None     # 变体赛马已评审胜者：直接作为第 1 轮结果，不重评
@@ -3664,6 +3699,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                        "已中止以免以 0 分误判质量" % i, ended_at=_now())
                 return
             means = means_of(cj_by_agent)
+            chapter_review = review_stats(cj_by_agent, threshold_ch)
             passed = bool(means) and all(v >= threshold_ch for v in means.values())
             if rnd == 1 and gate_live:
                 s_means, s_issues, s_summary = _signing_eval(
@@ -3787,6 +3823,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 return
         cs_new = {"chapter": i, "title": ch["title"], "means": means,
                   "passed": bool(means) and all(v >= threshold_ch for v in means.values()),
+                  "reviewer_count": chapter_review.get("reviewer_count", 0),
+                  "reviewer_consensus": chapter_review.get("consensus", False),
+                  "reviewer_spreads": chapter_review.get("spreads", {}),
                   "rounds": rounds_used,
                   "words": _wc(_read_chapter(workdir, i)),
                   "quality_signals": novel_quality.signal_summary(
@@ -3839,6 +3878,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     i, "（2万字签约预评估检查点）")
                 cp = {"at_words": total_words, "chapter": i,
                       "means": cp_means or {},
+                      "reviewer_count": signing_review_meta.get("reviewer_count", 0),
+                      "reviewer_consensus": signing_review_meta.get("consensus", False),
+                      "reviewer_spreads": signing_review_meta.get("spreads", {}),
                       "passed": bool(cp_means) and all(
                           v >= threshold for v in cp_means.values()) if cp_means else None,
                       "summary": (cp_summary or "")[:200]}
@@ -3882,6 +3924,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         i, "（2万字检查点复核）")
                     if cp_means2:
                         cp["means"] = cp_means2
+                        cp["reviewer_count"] = signing_review_meta.get("reviewer_count", 0)
+                        cp["reviewer_consensus"] = signing_review_meta.get("consensus", False)
+                        cp["reviewer_spreads"] = signing_review_meta.get("spreads", {})
                         cp["summary"] = (cp_sum2 or "")[:200]
                         cp["passed"] = all(v >= threshold for v in cp_means2.values())
                 store.update_run(run_id, signing_checkpoint=cp)
@@ -3889,13 +3934,14 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     # ---- 3) 全局一致性评审（覆盖 1..end 全书：续写批次必须连同旧章一起查一致性）
     full_text = "\n\n".join(_read_chapter(workdir, i) for i in range(1, end + 1))
     global_issues = []
+    global_review_results = []
 
     def run_global_round(agent_list):
         """一轮全局评审：返回 (出分评审数, 按维累计分)。失败/不可解析不得当成低分计入。
 
         多评审并发（2026-09-22，同章级评审并发）：各自读同一份全书文本、互不依赖，
         串行只是把等待时间叠起来。共享结构仍在 join 后按原顺序合并，结果与串行一致。"""
-        gmeans_acc, scored = {}, 0
+        gmeans_acc, scored, valid_reviews = {}, 0, []
         results = {}
         # 绑定解析提前到主线程（线程内不做会写盘的 bind_agent）
         bound = [modelhub.bind_agent(a, difficulty) for a in agent_list]
@@ -3944,16 +3990,21 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 continue
             if "error" in gj:
                 raise gj["error"]     # 还原串行版的异常上抛语义
-            if gj.get("scores"):
+            scores, errors = quality_gate.normalize_scores(gj.get("scores"), dims)
+            partial_scores = gj.get("scores") if isinstance(gj.get("scores"), dict) else {}
+            if scores or partial_scores:
                 scored += 1
+            if not errors:
+                valid_reviews.append({"id": agent_list[idx].get("id") or "reviewer-%d" % idx,
+                                      "scores": scores})
             global_issues.extend({"chapter": "全书", **it} for it in (gj.get("issues") or [])[:8])
             for d in dims:
-                v = gj.get("scores", {}).get(d)
+                v = scores.get(d) if not errors else partial_scores.get(d)
                 if v is not None:
                     gmeans_acc.setdefault(d, []).append(float(v))
-        return scored, gmeans_acc
+        return scored, gmeans_acc, valid_reviews
 
-    gscored, gmeans_acc = run_global_round(critics)
+    gscored, gmeans_acc, global_review_results = run_global_round(critics)
     # 「评不上」≠「评了低分」：全局评审全挂时先从其它真实智能体补位（对齐章级
     # 评审者级 fallback）；补位后仍零分则判 run 失败——「无法评审」绝不能当成
     # 「全局评审未通过」去盖「未达标」章（2026-09-18 假未达标案：codex 绑定链
@@ -3963,7 +4014,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         tried = {a.get("id") for a in critics}
         for spare in [a for a in (agents or [])
                       if a.get("mode") == "real" and a.get("id") not in tried][:2]:
-            sc, acc = run_global_round([spare])
+            sc, acc, spare_reviews = run_global_round([spare])
+            global_review_results.extend(spare_reviews)
             for d, xs in acc.items():
                 gmeans_acc.setdefault(d, []).extend(xs)
             gscored += sc
@@ -3982,6 +4034,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             return
     global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans_acc.items()}
     global_pass = _all_ge(global_means, threshold)
+    global_review = quality_gate.aggregate_reviews(
+        global_review_results, dims, threshold=threshold)
 
     # ---- 3.5) 自驱打磨：全局评审不过 → 自动重改最弱章并重评（至多 2 轮，无需人工）
     polish_rounds = 0
@@ -4079,14 +4133,17 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         # 不代表书变差，不能拿「无法评审」覆盖真实分数）
         try:
             full_text = "\n\n".join(_read_chapter(workdir, i2) for i2 in range(1, end + 1))
-            gscored2, gmeans_acc2 = run_global_round(critics)
+            gscored2, gmeans_acc2, global_review_results2 = run_global_round(critics)
         except BaseException:
             store.finish_step(run_id, pstep["n"], "failed",
                               summary="打磨后全书重评异常中止，已落盘章稿不受影响")
             raise
         if gscored2:
+            global_review_results = global_review_results2
             global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans_acc2.items()}
             global_pass = _all_ge(global_means, threshold)
+            global_review = quality_gate.aggregate_reviews(
+                global_review_results, dims, threshold=threshold)
         store.finish_step(run_id, pstep["n"], "done" if global_pass else "failed",
                           summary="重改 %s；打磨后全局 %s（%s）" % (
                               "、".join("第 %d 章" % x for x in fixed),
@@ -4125,7 +4182,16 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                       duration_s=0.1)
 
     chapters_pass = all(c["passed"] for c in chapter_scores)
-    publishable = bool(chapters_pass and global_pass)
+    major_issues = [x for x in issues_all + global_issues
+                    if isinstance(x, dict) and x.get("severity") == "major"]
+    publishable = bool(chapters_pass and global_pass and not major_issues)
+    signing_checkpoint = (store.get_run(run_id) or {}).get("signing_checkpoint") or {}
+    quality_status = "continue_only"
+    if publishable and global_review.get("consensus") and all(
+            c.get("reviewer_count", 0) >= quality_gate.MIN_REVIEWERS and
+            c.get("reviewer_consensus") is True for c in chapter_scores):
+        quality_status = ("signing_ready" if signing_checkpoint.get("passed") is True
+                          else "publish_ready")
     overall = round(sum(sum(c["means"].values()) / max(1, len(c["means"]))
                         for c in chapter_scores) / max(1, len(chapter_scores)), 1)
     verdict = {
@@ -4135,6 +4201,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         "start_chapter": start, "end_chapter": end, "total_words": total_words,
         "chapter_scores": chapter_scores, "global_scores": global_means,
         "global_pass": global_pass, "route": route,
+        "global_reviewer_count": global_review.get("reviewer_count", 0),
+        "global_reviewer_consensus": global_review.get("consensus", False),
+        "global_reviewer_spreads": global_review.get("spreads", {}),
+        "major_issues": major_issues[:20],
+        "signing_checkpoint": signing_checkpoint,
+        "quality_status": quality_status,
     }
     if vol_plan:
         verdict["volumes"] = vol_plan

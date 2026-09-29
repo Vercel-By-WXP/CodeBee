@@ -23,7 +23,7 @@ import re
 import threading
 import time
 
-from .. import operations, paths
+from .. import operations, paths, quality_gate
 from . import fanqie, flow, ledger, qimao
 from .browser import Browser, BrowserError, Page
 
@@ -71,6 +71,37 @@ def _set(plat, **kv):
 
 def _st(plat):
     return (_state.get("platforms") or {}).get(plat) or {}
+
+
+def _quality_release_guard(task, plat, action="publish", target_chapter=None,
+                           force=False, force_confirmed=False, force_reason=""):
+    """Return a release decision backed by the latest completed review.
+
+    Non-fiction/code tasks keep their existing publish workflow; novel release
+    actions must carry a verifiable quality verdict.  This keeps the gate
+    focused on the signing failure mode without breaking generic file publish.
+    """
+    if str(task.get("type") or "").lower() not in ("novel", "serial_novel") \
+            and (task.get("engine") or "") != "review":
+        return {"allowed": True, "status": "not_applicable", "blockers": [],
+                "warnings": [], "forced": False}
+    from .. import store
+    verdict = None
+    for run in sorted(store.task_runs(task.get("id")) or [],
+                      key=lambda item: str(item.get("id") or ""), reverse=True):
+        if run.get("status") == "done" and isinstance(run.get("verdict"), dict):
+            verdict = run["verdict"]
+            break
+    decision = quality_gate.evaluate_release(
+        verdict or {}, action=action, target_chapter=target_chapter,
+        platform_version=ledger.book_for(task.get("id"), plat) or {},
+        force=force, force_confirmed=force_confirmed, force_reason=force_reason)
+    decision["version_snapshot"] = quality_gate.local_version(task.get("workdir") or "")
+    decision["platform_snapshot"] = ledger.book_for(task.get("id"), plat) or {}
+    if verdict:
+        decision["quality_status"] = verdict.get("quality_status") or "continue_only"
+        decision["review_run_id"] = run.get("id")
+    return decision
 
 
 def view():
@@ -381,7 +412,8 @@ def _create_preflight(plat, data):
     return ""
 
 
-def create_book_async(task_id, plat, auto_submit=False):
+def create_book_async(task_id, plat, auto_submit=False, force=False,
+                      force_confirmed=False, force_reason=""):
     """按任务 book_meta 的资料在平台建书。返回 (ok, err)。"""
     from .. import store
     if plat not in PLATFORMS:
@@ -389,7 +421,8 @@ def create_book_async(task_id, plat, auto_submit=False):
     task = store.get_task(task_id)
     if not task:
         return False, "任务不存在"
-    meta = ((task.get("book_meta") or {}).get(plat) or {})
+    # 连载链沿链继承（都是用第一个）：续写批次从自己身上建书也用首批生成的资料
+    meta = store.inherited_book_meta(task, plat)
     if meta.get("status") != "done" or not meta.get("data"):
         return False, "请先生成该平台的作品信息"
     if _st(plat).get("status") == "busy":
@@ -409,6 +442,11 @@ def create_book_async(task_id, plat, auto_submit=False):
     why = _create_preflight(plat, meta["data"])
     if why:
         return False, why
+    quality = _quality_release_guard(
+        task, plat, action="publish", force=force,
+        force_confirmed=force_confirmed, force_reason=force_reason)
+    if not quality.get("allowed"):
+        return False, "质量门禁拦截：%s" % "；".join(quality.get("blockers") or [])
     ok_login, why = _login_guard(plat)
     if not ok_login:
         return False, why
@@ -619,7 +657,8 @@ def read_chapter(fp):
     return ch_no, title, body, ""
 
 
-def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False):
+def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
+                         force=False, force_confirmed=False, force_reason=""):
     """把一章发到平台（或填好待人工确认）。幂等：已成功发布的章号拒绝重发。"""
     from .. import store
     if plat not in PLATFORMS:
@@ -641,6 +680,11 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False):
     ch_no, title, body, err = read_chapter(chapter_file)
     if err:
         return False, err
+    quality = _quality_release_guard(
+        task, plat, action="publish", target_chapter=ch_no or None,
+        force=force, force_confirmed=force_confirmed, force_reason=force_reason)
+    if not quality.get("allowed"):
+        return False, "质量门禁拦截：%s" % "；".join(quality.get("blockers") or [])
     n_chars = len(body.replace("\n", "").replace(" ", ""))
     if n_chars < 100:
         return False, "正文过短（%d 字），疑似未完成章节" % n_chars

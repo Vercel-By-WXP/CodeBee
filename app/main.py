@@ -556,11 +556,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"path": fp, "text": text})
             m = re.match(r"^/api/tasks/([^/]+)/book-meta$", path)
             if m:
-                # 作品信息（番茄/七猫建书表单资料）：读取任务上的生成状态与结果
+                # 作品信息（番茄/七猫建书表单资料）：读取生成状态与结果。
+                # 连载链沿链继承（都是用第一个）：续写批次读到的就是首批的结果。
                 task = store.get_task(m.group(1))
                 if not task:
                     return self._json(404, {"error": "not found"})
-                return self._json(200, {"book_meta": task.get("book_meta") or {}})
+                return self._json(200, {"book_meta": {
+                    p: store.inherited_book_meta(task, p)
+                    for p in ("fanqie", "qimao")
+                    if store.inherited_book_meta(task, p)}})
             if path == "/api/publish":
                 # 一键发布：平台连接状态 + 最近台账（详情页发布面板）
                 from core.publish import manager as pub
@@ -1754,7 +1758,13 @@ class Handler(BaseHTTPRequestHandler):
         if platform not in bookmeta.PLATFORMS:
             return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
         if not bookmeta.needs_book_meta(task):
-            return self._json(400, {"error": "只有连载首批任务需要作品信息；续写批次沿用第一批的开书资料"})
+            # 生成权留在首批（一本书一份资料）：指路根任务，别让用户在续写批次上撞墙
+            root = next((store.get_task(t) for t
+                         in store.serial_chain_ids(task_id) if t != task_id), None)
+            return self._json(400, {"error": (
+                "开书资料在连载首批任务《%s》上生成与维护，请到首批任务的「作品信息」页操作"
+                % ((root or {}).get("title") or "首批")
+                if root else "只有连载首批任务需要作品信息；续写批次沿用第一批的开书资料")})
         if task.get("status") in ("queued", "running"):
             return self._json(400, {"error": "任务正在运行，请等本轮结束后再生成作品信息"})
         cur = ((task.get("book_meta") or {}).get(platform) or {})
@@ -1799,8 +1809,14 @@ class Handler(BaseHTTPRequestHandler):
         if platform not in ("fanqie", "qimao"):
             return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
         auto_submit = bool(body.get("auto_submit"))
+        force = bool(body.get("force"))
+        force_confirmed = bool(body.get("force_confirmed"))
+        force_reason = str(body.get("force_reason") or "").strip()
         if op == "create-book":
-            ok, err = pub.create_book_async(task_id, platform, auto_submit)
+            kwargs = ({"force": force, "force_confirmed": force_confirmed,
+                       "force_reason": force_reason}
+                      if force or force_confirmed or force_reason else {})
+            ok, err = pub.create_book_async(task_id, platform, auto_submit, **kwargs)
         elif op == "auto-publish":
             # 定时发布配置（P2.5）：enabled=false 也落（保留 time 供再开）；
             # 校验/归一在 auto.norm_auto_publish，语义见 auto.py 头注
@@ -1829,9 +1845,16 @@ class Handler(BaseHTTPRequestHandler):
                 fp.relative_to(_P(wd).resolve())
             except (OSError, ValueError):
                 return self._json(400, {"error": "章节文件必须在任务工作目录内"})
-            ok, err = pub.upload_chapter_async(task_id, platform, str(fp), auto_submit)
+            kwargs = ({"force": force, "force_confirmed": force_confirmed,
+                       "force_reason": force_reason}
+                      if force or force_confirmed or force_reason else {})
+            ok, err = pub.upload_chapter_async(task_id, platform, str(fp), auto_submit,
+                                               **kwargs)
         if not ok:
-            return self._json(400, {"error": err or "操作失败"})
+            payload = {"error": err or "操作失败"}
+            if str(err or "").startswith("质量门禁拦截："):
+                payload["quality_gate"] = {"status": "blocked", "message": err}
+            return self._json(400, payload)
         return self._json(200, {"ok": True, "started": True})
 
     def _api_publish_register_book(self, task_id):
@@ -1861,10 +1884,19 @@ class Handler(BaseHTTPRequestHandler):
         platform = (body.get("platform") or "").strip()
         if platform not in ("fanqie", "qimao"):
             return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
+        force = bool(body.get("force"))
+        force_confirmed = bool(body.get("force_confirmed"))
+        force_reason = str(body.get("force_reason") or "").strip()
         ok, err = pub_auto.publish_pending_async(
-            task_id, platform, auto_submit=bool(body.get("auto_submit")))
+            task_id, platform, auto_submit=bool(body.get("auto_submit")),
+            **({"force": force, "force_confirmed": force_confirmed,
+                "force_reason": force_reason}
+               if force or force_confirmed or force_reason else {}))
         if not ok:
-            return self._json(400, {"error": err or "操作失败"})
+            payload = {"error": err or "操作失败"}
+            if str(err or "").startswith("质量门禁拦截："):
+                payload["quality_gate"] = {"status": "blocked", "message": err}
+            return self._json(400, payload)
         return self._json(200, {"ok": True, "started": True})
 
     def _api_task_side(self, task_id):
