@@ -680,6 +680,24 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(404, {"error": "not found"})
 
     def do_POST(self):
+        # 同 do_GET：路由裸抛统一落日志并回 500，不再静默掐连接
+        try:
+            return self._route_post()
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError,
+                socket.timeout):
+            raise
+        except Exception:
+            log.exception("POST %s 处理异常", getattr(self, "path", "?"))
+            self._safe_500()
+
+    def _safe_500(self):
+        # 响应头可能已发出（流式路由半途抛），二次失败只能放弃
+        try:
+            self._json(500, {"error": "服务内部错误，详情见服务端日志"})
+        except Exception:
+            pass
+
+    def _route_post(self):
         path = urlparse(self.path).path
         m = None
         if not self._authed():
