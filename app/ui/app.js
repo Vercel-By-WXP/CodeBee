@@ -11500,6 +11500,7 @@ bindHooksPanel();
 function zentaoStateTag(st) {
   const MAP = {
     fixing: ["修复中", "zt-tag-fix"],
+    retry: ["待重试", "zt-tag-warn"],
     resolved: ["已解决", "zt-tag-ok"],
     transferred: ["已转派", "zt-tag-fix"],
     escalated: ["已升级转派", "zt-tag-warn"],
@@ -11508,6 +11509,7 @@ function zentaoStateTag(st) {
     resolve_failed: ["回写失败", "zt-tag-warn"],
     done_manual: ["待人工确认", "zt-tag-warn"],
     need_manual: ["需人工", "zt-tag-warn"],
+    failed: ["修复失败", "zt-tag-err"],
     lost: ["记录丢失", "zt-tag-err"],
   };
   const m = MAP[st] || [st || "?", ""];
@@ -11574,6 +11576,20 @@ async function zentaoArchiveClaim(bugId, archived) {
   } catch (e) { toast((e && e.message) || String(e), true); }
 }
 
+/* 立即处理：不等下轮扫描，手工重触发失败/留人工的修复（后端按状态分流） */
+async function zentaoRetryClaim(bugId) {
+  try {
+    const r = await api("/api/zentao/claims/retry", { method: "POST",
+      body: JSON.stringify({ bug_id: bugId }) });
+    toast((r && r.message) || t("已重新触发处理"));
+    await loadZentao();
+  } catch (e) { toast((e && e.message) || String(e), true); }
+}
+
+/* 这些状态的记录可以「立即处理」（fixing/resolved/transferred/done_manual 不行） */
+const ZT_RETRYABLE = { retry: 1, failed: 1, escalated: 1, commented: 1,
+  need_manual: 1, merge_failed: 1, resolve_failed: 1, lost: 1 };
+
 function zentaoClaimCard(c, archived) {
   const tasks = (c.tasks || []).map((tk) =>
     "<span>" + t("【") + (tk.side === "frontend" ? t("前端") : t("后端")) + t("】") +
@@ -11584,11 +11600,15 @@ function zentaoClaimCard(c, archived) {
     ? '<a class="zt-bug-link" href="' + esc(bugUrl) + '" target="_blank" rel="noopener" title="' +
       esc(t("在禅道中打开 Bug 详情")) + '">' + name + "</a>"
     : name;
+  const retryBtn = (!archived && ZT_RETRYABLE[c.state])
+    ? '<button class="ghost small" title="' + esc(t("不等下轮扫描，立即重新触发修复")) +
+      '" onclick="zentaoRetryClaim(\'' + esc(c.bug_id) + '\')">' + t("立即处理") + "</button>"
+    : "";
   const act = archived
     ? '<button class="ghost small" onclick="zentaoArchiveClaim(\'' + esc(c.bug_id) + '\',false)">' + t("取消归档") + "</button>"
     : '<button class="ghost small" title="' + esc(t("移入已归档区，不再出现在进行中列表")) + '" onclick="zentaoArchiveClaim(\'' + esc(c.bug_id) + '\',true)">' + t("归档") + "</button>";
   return '<div class="card' + (archived ? " zt-archived" : "") + '"><div class="head"><span class="name">' + headName + "</span>" +
-    zentaoStateTag(c.state) + act + "</div>" +
+    zentaoStateTag(c.state) + retryBtn + act + "</div>" +
     '<div class="auto-meta">' +
     (zentaoTriText(c) ? "<span>" + esc(zentaoTriText(c)) + "</span>" : "") +
     (tasks || "") +
