@@ -1071,3 +1071,4 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **批3 计划/spec/长任务复查**| OpenSpec、GSD、planning-with-files、PraisonAI、worktrunk、lazycodex 继续活跃；spec、任务档案、断点续跑、隔离 worktree 已覆盖，未形成低风险接口差量 | 参考/已覆盖 | 2026-09-29
 - **borrow_scan_nightly Windows 编码修复**| 默认 GBK 控制台遇到仓库描述中的 Unicode 会触发 `UnicodeEncodeError`，中止整轮 JSONL 输出 | stdout/stderr 启动时显式 UTF-8，查询与安全边界不变 | 已落地 | 2026-09-29
 - **批5 检索/知识/浏览器复查**| BrowserSkill、AI-Infra-Guard、Microsoft Agent Framework、Composio、RAGFlow、Haystack、Agent-Reach 等继续活跃；浏览器会话隔离、技能扫描、RAG 与多代理编排均已有对应记录或能力 | 无新低风险接口差量，维持复查 | 2026-09-29
+- **批7 中文/网关/本地/办公复查**| Orca、Untrivial/agent-orchestrator、omnigent、dorkos、mjolnir、purplemux、SkillSpector、agent-secrets、ai-agent-skills、larksuite/cli 等覆盖多 CLI 面板、远程审批、凭据隔离与技能包管理；CodeBee 已有任务档案、运行守卫、MCP/SSRF、市场安检和证据门禁 | 无新低风险接口差量，维持复查 | 2026-09-29
