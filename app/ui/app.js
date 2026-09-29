@@ -15243,42 +15243,6 @@ document.addEventListener("DOMContentLoaded", () => {
       root.style.removeProperty("--side-w");
     });
   })();
-  /* 侧栏宽度拖拽：grid 列宽走 --side-w，拖动实时跟手，松手落 localStorage，双击复原。
-   * 仅桌面网格布局生效（窄屏侧栏是固定宽抽屉，手柄已 display:none） */
-  (() => {
-    const KEY = "orch.sideW", MIN = 190, MAX = 460;   // 复原默认值=CSS 回退 216
-    const root = document.documentElement;
-    const apply = (w) => root.style.setProperty("--side-w", w + "px");
-    const saved = parseInt(localStorage.getItem(KEY), 10);
-    if (saved >= MIN && saved <= MAX && window.innerWidth >= 900) apply(saved);
-    const el = $("side-resizer");
-    let active = false, startX = 0, startW = 0;
-    el.addEventListener("pointerdown", (e) => {
-      if (window.innerWidth < 900) return;
-      active = true; startX = e.clientX;
-      startW = $("sidebar").getBoundingClientRect().width;
-      try { el.setPointerCapture(e.pointerId); } catch (_) {}
-      document.body.classList.add("side-resizing");
-      e.preventDefault();
-    });
-    el.addEventListener("pointermove", (e) => {
-      if (!active) return;
-      apply(Math.round(Math.min(MAX, Math.max(MIN, startW + e.clientX - startX))));
-    });
-    const finish = (e) => {
-      if (!active) return;
-      active = false;
-      document.body.classList.remove("side-resizing");
-      try { el.releasePointerCapture(e.pointerId); } catch (_) {}
-      localStorage.setItem(KEY, String(Math.round($("sidebar").getBoundingClientRect().width)));
-    };
-    el.addEventListener("pointerup", finish);
-    el.addEventListener("pointercancel", finish);
-    el.addEventListener("dblclick", () => {
-      localStorage.removeItem(KEY);
-      root.style.removeProperty("--side-w");
-    });
-  })();
   // 手机抽屉：遮罩点击 / 侧栏内任何可点项（导航、任务树、设置入口）点击后都收回
   $("drawer-mask").addEventListener("click", () => document.body.classList.add("side-collapsed"));
   $("sidebar").addEventListener("click", (e) => {
