@@ -1109,6 +1109,8 @@
     "与已装技能「": "Name too close to installed skill \"",
     "」名称过近（相似度 ": "\" (similarity ",
     "%），注意甄别仿冒": "%) — possible typosquatting",
+    // —— 评测 Red-team 维度 ——
+    "安全测试": "red-team",
     // —— 远程备份拉取恢复 ——
     "从远程端点拉取备份…": "Pull backup from remote endpoint…",
     "列举中…": "Listing…",

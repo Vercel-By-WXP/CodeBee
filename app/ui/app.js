@@ -12564,6 +12564,7 @@ function renderEvalBench() {
     samplesBox.innerHTML = eb.samples.map((s) =>
       '<div class="item"><div class="t"><span class="name">' + esc(t(s.name)) + "</span>" +
       (s.verify ? '<span class="tag ok">' + t("带客观验证") + "</span>" : "") +
+      (s.redteam ? '<span class="tag" style="color:var(--err,#d33)">' + t("安全测试") + "</span>" : "") +
       (s.builtin ? "" : '<span class="tag">' + t("自定义") + "</span>" +
         '<button class="ghost small" onclick="sampleExport(\'' + esc(s.id) + '\')">' + t("导出") + "</button>" +
         '<button class="danger small" onclick="sampleDelete(\'' + esc(s.id) + '\')">' + t("删除") + "</button>") +
