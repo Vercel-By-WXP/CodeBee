@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import glob
 import json
 import os
 import re
@@ -68,10 +69,50 @@ def find_git_bash():
     return None
 
 
+_CLI_EXTS = (".exe", ".cmd", ".bat")
+
+
+def _fallback_probe_cli(name):
+    """which() 落空时按常见安装位兜底找 CLI（Windows only），返回全路径或 None。
+
+    服务进程的 PATH 是启动那一刻的快照：CLI 在服务起跑之后才安装/迁移（如
+    2026-09-30 claude 转 winget 原生安装）时，快照里没有新目录，which 解析
+    不到、裸名直传 Popen 直接 FileNotFoundError，直到重启服务才自愈。这里
+    只探测磁盘已知落点，不改 PATH、不缓存（装没装是低频事件，探几次不亏）。
+    """
+    if os.name != "nt":
+        return None
+    name = str(name)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+        return None   # 带斜杠/参数形态的不是裸命令名，交给原路径逻辑
+    local = os.environ.get("LOCALAPPDATA") or ""
+    home = os.path.expanduser("~")
+    appdata = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
+    flat_dirs = (
+        os.path.join(local, "Microsoft", "WinGet", "Links"),
+        os.path.join(home, ".local", "bin"),
+        os.path.join(appdata, "npm"),
+    )
+    for d in flat_dirs:
+        for ext in _CLI_EXTS:
+            p = os.path.join(d, name + ext)
+            if os.path.isfile(p):
+                return p
+    # winget 便携包：Packages\<厂商.Id_*>\name.EXE（目录名带来源哈希，glob 一层）
+    pkgs = os.path.join(local, "Microsoft", "WinGet", "Packages")
+    try:
+        for p in glob.glob(os.path.join(pkgs, "*", name + ".*")):
+            if p.lower().endswith(_CLI_EXTS) and os.path.isfile(p):
+                return p
+    except OSError:
+        pass
+    return None
+
+
 def resolve_command(command):
     """命令名 → 可直接 spawn 的 argv 前缀（.cmd/.bat 垫片必须经 cmd /c）。"""
-    path = shutil.which(command) or command
-    low = path.lower()
+    path = shutil.which(command) or _fallback_probe_cli(command) or command
+    low = str(path).lower()
     if low.endswith(".cmd") or low.endswith(".bat"):
         return ["cmd", "/c", path]
     return [path]
@@ -719,6 +760,16 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 creationflags=CREATE_NO_WINDOW,
                 start_new_session=(os.name != "nt"))  # POSIX 需独立进程组供 killpg 杀树；Windows 忽略该参数
+        except FileNotFoundError as e:
+            # filename=None 时 %r 只有一句「系统找不到指定的文件」，无从排查
+            # （2026-09-30 claude winget 迁移实案：服务 PATH 快照过旧）。
+            tgt = str(argv[0]) if argv else ""
+            return {"ok": False, "exit_code": None, "stdout": "",
+                    "stderr": ("启动失败：找不到可执行文件「%s」。CLI 未安装或已卸载；"
+                               "若刚安装，重启 CodeBee 服务让 PATH 生效即可。"
+                               % tgt),
+                    "duration": 0.0, "cancelled": False, "timed_out": False,
+                    "stalled": False, "deadline_exceeded": False, "abort_marker": None}
         except Exception as e:
             return {"ok": False, "exit_code": None, "stdout": "",
                     "stderr": "启动失败: %r" % e, "duration": 0.0,

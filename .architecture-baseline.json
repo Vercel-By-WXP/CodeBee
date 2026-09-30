@@ -569,9 +569,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/runner.py 2019 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/runner.py 2193 行（上限 1200，历史最高 0）",
       "file": "app/core/runner.py",
-      "lines": 2019
+      "lines": 2193
     },
     {
       "kind": "lines",
