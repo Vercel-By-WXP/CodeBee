@@ -833,7 +833,7 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 ### 2026-09-25 00:52 第六十班（批7 三连 + 59 班遗留收编）
 
-- 复查（repos 端点）：orca 77,331★（09-24 活跃）、superpowers 291,096★、oh-story 7,090★（09-24 活跃）、spec-kit 138,726★、Reasonix 35,706★（09-24 活跃，候选首位维持）；**inkos 10,034★ pushed_at 停在 2026-08-25——停更快一个月**（星数仍涨），深挖队列降级为「停更观察」
+- 复查（repos 端点）：orca 77,331★（09-24 活跃）、superpowers 291,096★、oh-story 7,090★（09-24 活跃）、spec-kit 138,726★、Reasonix 35,706★（09-24 活跃，候选首位维持）；**inkos 10,034★ pushed_at 停在 2026-08-25——停更快一个月**（星数仍涨），深挖队列降级为「停更观察」——**2026-09-30 复查：恢复更新（10,088★，09-27 push），解除停更观察回雷达；多线推演/安全章节工作区两差量已落地，第三差量（检索投影）bigram top-k 已覆盖维持**
 - **ultraworkers/claw-code**（195,276★/108k forks，Rust，08-16 停更）| 「agent 管理的博物馆展品——无人干预开发维护」行为艺术式展品项目 | 星数奇观无机制可借鉴 | 参考（雷达奇观档）| 2026-09-25
 - **shareAI-lab/learn-claude-code**（77,559★，Python，08-26 停更）| 「Bash is all you need」从 0 到 1 造 nano claude code 式 harness 教学仓 | 我们本体即 harness，教学参照 | 参考 | 2026-09-25
 - **msitarzewski/agency-agents**（154,472★，09-22 活跃）| 核实为已录 agency-agents-zh（中文专家角色模板）的英文上游本体 | 补记关联；「蒸馏为类型角色与交付契约」结论沿用 | 参考（关联补记）| 2026-09-25
@@ -883,7 +883,7 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 - **winnow**（GhalebDweikat，54★，09-19 新）| 校准的上下文筛：每个工具结果被评判值得否进上下文 | A 专项「工具输出统一压缩管线」第 5 独立验证（TokenJuice/openhuman/freellmapi/deepresearch-agent 之后）| 方向验证 | 2026-09-25
 - **Jev/TypeSafe System One 簇**（一周 6+ 例：typesafe-computer-use 947★/JevLoop/jev-browser/jev-skill 等）| 「机械决策不进 LLM」：非 LLM 小决策核处理路由/分类/审批，LLM 只做深度推理 | cascade 的激进版（我们便宜模型分流、他们零模型分流）；成本收益待观察 | 雷达（范式观察）| 2026-09-25
-- **qiqihezh/deepresearch-agent**（153★，中文）| 生产级深研：Red-Blue 对抗降噪（检索结果两队互搏滤噪）+语义级上下文压缩+跨 Agent 共享记忆 | 调研报告任务「检索降噪」是我们空白 | 待深挖 | 2026-09-25
+- **qiqihezh/deepresearch-agent**（153★，中文）| 生产级深研：Red-Blue 对抗降噪（检索结果两队互搏滤噪）+语义级上下文压缩+跨 Agent 共享记忆 | 调研报告任务「检索降噪」是我们空白 | **2026-09-30 复查：停更实锤（pushed 停在 05-11）——检索降噪已有学术四重验证支撑（09-28 落地切片），本条降级不依赖单项目；Red-Blue 完整互搏维持远期观察** | 2026-09-30
 - **演讲 PPT 域六连**（presentation-ai 3.0k/SlideBot 1.2k/ppt-agent-skill/slide-deck-generator/beamer-academic/marp-skill）| 演示文稿生成赛道升温 | 我们 17 类型无「演示文稿」类型——产品空档交人拍板，不擅自扩类型 | 参考（C 专项备注）| 2026-09-25
 - **org2AI/ORG2**（2,630★，09-24 活跃）| 「agent 如何构建软件的 system of record」：内置 rust harness+20+ CLI | 多 CLI 编排同形态两日最大新面孔 | 雷达 | 2026-09-25
 - **多 CLI 控制面/终端窗管井喷**（63/64 班两日 25+ 例：tuios 3,716/nodeterm 1,894/poco-claw 1,352/thClaws 1,227/agent-deck 948/Citadel 923/Pane 485/dario 545/amux 497 等）| 赛道拥挤度新高 | 同形态竞品持续验证产品方向；机制上均无我们未覆盖项 | 雷达（同形态跟踪）| 2026-09-25
@@ -1080,3 +1080,48 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 七猫质量复盘先限定实际读稿范围，再看故事单元的具体事件、主角选择、可见后果、阶段兑现和后续问题；拒稿分析保留原话、稿件版本与修改范围，将编辑意见、正文证据和推测分栏。开篇字数点位、具名人数、对话开场等只作为阅读负担观察，不作通用过稿阈值。
 - 番茄质量与数据分层：先逐章检查动机、因果、连续性、文风和移动端阅读，再按平台适配、当前合同/后台规则复核。完读、追读、留存等指标按后台定义作为定位信号；样本不足或多变量同时变更时结论标“证据不足”，有样本时一次只改一个变量并记录复验范围，不把相关性写成推荐算法因果。
 - 复用规则：把平台经验包用于提出可逆的质量检查和实验，不用于宣称“满足即过签/起量”；平台政策随频道与日期变化，必须回到当前官方页面核验。
+
+## 2026-09-30 对比学习与七专项巡检班（第七十班批5 汇总·计划第 2/4 步）
+
+> 基于当日 11 时班（批4）与 12:34 第七十班（批5+雷达 C 全过，115 查询 523 行/457 唯一仓）
+> 的调研结果做对比学习；七专项全部实锚复核（非转录前班结论）。只认「他们有、我们没有、且确实好用」。
+
+### 新条目
+
+- **career-ops-hq/career-ops**（73,096★，created 2026-04-04，09-30 活跃）| 开源求职 agent：扫招聘门户→**逐条 A-H 结构化报告+全球 1-5 评分** | 我们有 `resume` 类型但只做简历产出；「扫外部列表→逐条结构化分级评分报告」的交付契约形态与 rank_scan（扫榜）/defect_retro（复盘）同构（外部数据→评分报告交付物），是真实差量 | **待深挖**（A-H 分级报告的交付契约形态值得拆，进当期待深挖首位）| 2026-09-30
+- **@dannyvan/zentao-mcp**（npm 2026-09-08 发布）| 禅道 REST API v1 直连 MCP，**写操作默认 dry-run** | 与已录 zentao-mcp/auto-fixer-server/pi-zentao/ZenTaoMcp 同代通道级集成，无机制差量；「写操作默认 dry-run」的安全默认与我们 auto_submit=false / poll_enabled=False 纪律同向——安全默认设计再验证 | 参考（F 专项周边，一句入库）| 2026-09-30
+- **alphaparkinc/genpark-dynamic-prompt-prefix-cache-skill**（7★，09-28）| radix-trie 最长公共 prompt 前缀匹配缓存 | 我们前缀缓存稳定靠「注入点固定」设计（09-22 Reasonix 印证）；「跨 prompt 前缀去重」是另一角度但项目极小 | 参考（A 专项，只记思路不接）| 2026-09-30
+- **adampaulwalker/claude-code-subagent-cache**（1★，09-28）| **测量**子代理反复重读上下文的 token 支出（先量化再优化） | 「工具输出统一压缩管线」留存方向的第 6 独立验证（TokenJuice/openhuman/freellmapi/deepresearch-agent/winnow 之后），且补上「测量侧先行」角度——read_file 头尾保留只覆盖文件读取一种工具 | 方向验证（A 专项）| 2026-09-30
+- **ayghri/i-have-adhd**（52,213★，09-19）| 「别把答案埋起来」——ADHD 友好输出从简 skill | 我们 claude-token-efficient 借鉴（交付物从简进 CODE_IMPL_PROMPT）已有；同理念 52k 星量级第二例 | 已覆盖（生态验证 +1）| 2026-09-30
+- **kimi-cli→kimi-code 继任核实** | MoonshotAI 旧 Python CLI 明确废弃归档，kimi-code（7,740★，09-30 活跃）官方继任 | 核实我方 catalog.py 已正确：id=kimi-code、install=@moonshot-ai/kimi-code、note 已写「kimi-cli 正在下线」 | 已覆盖（E 专项无需动作）| 2026-09-30
+- **pacifio/atlas**（8,431★，09-29）| "Source control for agents"——多 coding agent 变更追踪 | 我们任务分支隔离链+版本页签已有对应物；「代理变更的源控制」命名视角新 | 雷达 | 2026-09-30
+- **jlcodes99/cockpit-tools**（18,522★，09-29）| AI IDE 账号管理器（Antigravity/Codex/Copilot/Windsurf/Kiro）| 凭据保险库待深挖项（sandbase-harness 借鉴）的「账号管理器」形态佐证 +1 | 雷达（凭据族）| 2026-09-30
+- **nextlevelbuilder/ui-ux-pro-max-skill**（131,692★，09-27）| UI/UX 设计智能 skill 包（前端任务增强最大星 skill）| 接入三问（重合度/可直读性/用户会搜吗）不过——重合高（我们流程评审已覆盖前端任务质量面）、整包不可直读、用户搜的是具体功能不是整包 | 不接（蒸馏候选留观察，B 专项）| 2026-09-30
+- **同形态/生态事实速记**：openclaw 390,811★（10 个月 39 万星，catalog 已收录 installable、本机未装——星数只作生态事实）；Understand-Anything 84,735★+codegraph 72,413★（代码理解图谱双雄，我们知识库不做代码结构索引的边界维持）；andrej-karpathy-skills 215,924★（巨型星数提示词人格项目，ponytail 同族奇观档）；kubernetes-sigs/agent-sandbox 4,092★（k8s 官方 agent 沙箱，我们沙箱=CLI 自带边界不变）；opencodex 16,674★/command-code 4,066★（网关/coding agent 域，command-code 进 E 候选雷达本机未装）；BettaFish 42,378★（中文多 agent 舆情，任务类型不相关）；paca/plandb（AI 原生 issue tracker，「issue 先行」赛道在长大，multica 看板视角同域 +2）| 均无未覆盖机制 | 雷达 | 2026-09-30
+
+### 复查记录（repos 端点 34 仓 + 雷达）
+
+- 2026-09-30：头部全活跃——orca 81,766★（09-26 记 78,545→4 天 +3.2k）/superpowers 293,070/oh-story 7,174（09-27）/spec-kit 139,463（09-29）/OpenSpec 70,713（09-29）/planning-with-files 27,185/ECC 269,716（09-30）/agentmemory 29,031/paseo 19,038（09-30）/superset 14,751（09-30）/drama-skills 2,397/OpenCreator 12,520（+328 vs 09-23）/openhuman 40,175/ARIS 16,836/deer-flow 83,247/multica 51,704/codegraph 72,413/graphiti 31,316/cognee 31,230
+- **状态变更三件**：①inkos 恢复更新（见上文勘误）；②deepresearch-agent 停更实锤（见上文降级）；③denova 843★（09-30 活跃）元数据已补齐，能力判断仍限仓库简介级维持待深挖
+- E 专项：**esengine/DeepSeek-Reasonix 正名**（35,718★，09-30 活跃）候选首位维持（本机未装零接入）；ZCode 7,193★（09-29）缓涨维持；openclaw 390k；kimi-code 继任核实 catalog 已正确
+- awesome 四清单全活跃（awesome-claude-code 54,825/VoltAgent 35,041/Long-Horizon 1,053/Agent-Memory 653）；npm 两页无接入级标的；pypi 被拦如实记录；新锐轮（created:>09-23）写作域零新库、多 agent 编排均 <25★——头部格局稳定期延续
+
+### 七专项结论（摘要，详见当日报告）
+
+- A：12 项既有机制锚点全实锚在位（预算熔断 pipeline.py:613/token_meter :690/cascade :1455/_shrink_context_block :2455/diff 评审 :945/评审深度 :999/:1022/planner 精确缓存三处 :587/:736/:879/压缩省量 usage.py:835/read_file 头尾保留 builtin_agent.py:330）；竞品对照零新机制可抄；留存方向三条维持
+- B：六源在位（market_remote.py:50-73）；本轮候选过三问均不过，零接入维持
+- C：17 类型实数核对（direct/code/novel/serial_novel/article/video_script/doc/translation/rank_scan/defect_retro/research/speech/weekly_report/email/tech_proposal/resume/bid_doc），name/goal_hint i18n EN 零缺失；演示文稿空档维持交人拍板
+- D：教训 67 条零漂移（流程规范 21/31%、节奏爽点 20、情节逻辑 11、人物塑造 8、一致性 4、文笔风格 3；lesson 63+procedure 4）；知识库 12 条（serial_novel 9/direct 3）——无新增同族可并
+- E：catalog 14 条目实数；本机 which 实测在装 12（codex/claude/opencode/qwen/kimi/dsh/pi/mimo/grok/aider/**gemini/codebuddy**）；八候选全未装零接入防死链维持
+- F：禅道链路代码在位；claims 零积压、last_error 空、poll_enabled=False（用户侧）；产品 96→mo-so workdir 存活验证、owners 齐、module_routes 空（AI 兜底 triage_ai=True 覆盖）；新竞品 zentao-mcp 一句入库（见新条目）
+- G：过时文案 grep（13种/15种/双平台/两平台/双源/已接11）全零命中；本轮零新毛病
+
+### 待深挖队列（当期快照）
+
+1. **career-ops A-H 结构化评分报告交付契约**（新进首位——rank_scan/resume/defect_retro 同构域）
+2. 工具输出统一压缩管线（第 6 验证到手，含「测量侧先行」角度；管线级攒批）
+3. 语义缓存（待租户/敏感边界拍板）
+4. 演示文稿任务类型空档——交人拍板（不擅自扩）
+5. 任务宪章编译为运行时强制策略（ironcurtain，治理远期）
+6. 既有攒批维持：ARIS 规则裁决/multica 看板视角/OpenCreator 版本化对比 UI（已落 artdiff 对比，剩多版本管理面）/凭据保险库（cockpit-tools 佐证 +1）
+7. google/ax 12,594★（09-27）描述级已核，逐仓机制复查排队（通道稳定时）
