@@ -243,17 +243,25 @@ async function main() {
       (fanqie ? "" : "　panel=" + (await evalJson(`(document.getElementById("rd-bookmeta") || {}).textContent || "NOBOX"`))));
     check("TAB 徽章 1/2", fanqie && fanqie.badge === "1/2", fanqie && fanqie.badge);
 
-    // D) 复制按钮 → toast
-    const copyToast = await evalJson(`(async () => {
+    // D) 复制按钮 → 剪贴板真拿到文本 + toast
+    //（2026-09-30 回归：文件尾曾有第二个 window.copyText 覆盖字符串版，复制静默
+    //  失灵但 toast 照弹——只断言 toast 抓不住它，必须对账剪贴板内容）
+    const copyRes = await evalJson(`(async () => {
       const btn = document.querySelector("#rd-bookmeta .bm-card.st-done .bm-copy");
       if (!btn) return null;
+      window.__copied = "";
+      navigator.clipboard.writeText = (t) => { window.__copied = t; return Promise.resolve(); };
       btn.click();
       await new Promise((r) => setTimeout(r, 300));
       const toast = document.querySelector("#toast");
-      return { toastText: toast ? toast.textContent : "" };
+      return { copied: window.__copied, dataText: btn.dataset.text || "",
+        toastText: toast ? toast.textContent : "" };
     })()`);
-    check("点复制出 toast（已复制：作品名）", copyToast &&
-      (copyToast.toastText || "").includes("已复制"), copyToast && copyToast.toastText);
+    check("点复制剪贴板真拿到字段文本", copyRes && copyRes.copied &&
+      copyRes.copied === copyRes.dataText && copyRes.copied !== "",
+      copyRes && JSON.stringify(copyRes));
+    check("点复制出 toast（已复制：作品名）", copyRes &&
+      (copyRes.toastText || "").includes("已复制"), copyRes && copyRes.toastText);
 
     // E) 七猫生成 → 9 字段；徽章 2/2；重新生成 ×2（按平台名精确匹配卡片）
     await evalJson(`(() => {

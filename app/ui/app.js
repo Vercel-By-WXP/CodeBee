@@ -5644,8 +5644,8 @@ window.coverGen = async function (taskId) {
 };
 
 window.bmCopyBtn = function (btn) {
-  copyText(btn.dataset.text || "");
-  toast(t("已复制：") + (btn.dataset.label || ""));
+  // 只在真实复制成功后报「已复制」——剪贴板不可用时 fallbackCopy 会弹失败提示
+  copyText(btn.dataset.text || "", () => toast(t("已复制：") + (btn.dataset.label || "")));
 };
 
 /* ---------------- 一键发布（bookmeta 分区内每平台卡的发布行） ----------------
@@ -7471,13 +7471,20 @@ async function renderPreview(runId) {
   rdTabsSync();   // 预览可用性（rdTabAvail 认 #rd-preview 的显隐）随之更新
 }
 
-window.copyText = function (t) {
-  // writeText 返回 promise，无头/非安全上下文会拒绝——必须挂 catch，否则
-  // 未处理的 promise 拒绝会以控制台错误冒出来（测试断言 0 错误会被它打爆）
+/* 复制文本到剪贴板：writeText 只在安全上下文（https / localhost）可用，
+ * 用局域网 IP 或远程地址打开页面时 navigator.clipboard 是 undefined 或直接
+ * 拒绝——必须回退 execCommand，否则按钮点了、剪贴板却是空的。done=真实
+ * 复制成功后的回调；失败由 fallbackCopy 统一弹错误提示。 */
+window.copyText = function (t, done) {
+  const ok = () => { if (done) done(); };
   try {
-    const p = navigator.clipboard.writeText(t);
-    if (p && p.catch) p.catch(() => { /* 剪贴板不可用则忽略 */ });
-  } catch (e) { /* 剪贴板不可用则忽略 */ }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      // 未处理的 promise 拒绝会以控制台错误冒出来（测试断言 0 错误会被它打爆）
+      navigator.clipboard.writeText(t).then(ok, () => fallbackCopy(t, ok));
+      return;
+    }
+  } catch (e) { /* 落到 execCommand 兜底 */ }
+  fallbackCopy(t, ok);
 };
 
 let currentLog = null; // { runId, rel }：同一路径在不同轮次也必须能切换
@@ -9187,8 +9194,7 @@ function bindChat() {
       if (!it) return;
       const txt = it.kind === "user" ? String(it.text || "") : chatCleanText(it.text);
       if (act.dataset.cact === "copy") {
-        copyText(txt);
-        toast(t("已复制"));
+        copyText(txt, () => toast(t("已复制")));
       } else if (act.dataset.cact === "edit") {
         const ta = $("rd-chat-input");
         if (ta && txt) {
@@ -14488,9 +14494,14 @@ function copyConnUrl() {
 function fallbackCopy(text, done) {
   const ta = document.createElement("textarea");
   ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";   // 藏起来但不 display:none（后者 select 不到）
   document.body.appendChild(ta);
   ta.select();
-  try { document.execCommand("copy"); done(); } catch (e) { toast(t("复制失败，请手动选择地址"), true); }
+  try {
+    if (!document.execCommand("copy")) throw new Error("copy rejected");
+    if (done) done();
+  } catch (e) { toast(t("复制失败，请手动长按/右键复制"), true); }
   ta.remove();
 }
 
@@ -14548,7 +14559,7 @@ window.exportBackup = async function () {
           : '<div><span class="bad">' + esc(t("☁ 远程推送失败：") + (remote.error || "")) + "</span></div>"))
       + (ext.length ? '<div><span class="bad">' + esc(t("以下外部目录不在备份里，需自行拷贝："))
         + esc(ext.join("、")) + "</span></div>" : "")
-      + '<button class="ghost small" onclick="copyText(this)" data-copy="' + esc(r.path) + '">'
+      + '<button class="ghost small" onclick="copyText(this.getAttribute(\'data-copy\'))" data-copy="' + esc(r.path) + '">'
       + esc(t("复制路径")) + "</button>";
   } catch (e) {
     $("bk-result").innerHTML = '<span class="bad">' + esc(e.message || String(e)) + "</span>";
@@ -14623,12 +14634,10 @@ async function pullRemoteBackup(name) {
   if (typeof inspectBackup === "function") inspectBackup();   // 直接进预览向导
 }
 
-/* 通用「复制到剪贴板」：data-copy 属性携带文本（导出路径等） */
-window.copyText = async function (btn) {
-  const text = btn.getAttribute("data-copy") || "";
-  try { await navigator.clipboard.writeText(text); toast(t("已复制")); }
-  catch (e) { fallbackCopy(text, () => toast(t("已复制"))); }
-};
+/* ⚠️ 不要在这里再定义 window.copyText——文件前部已有一个字符串版实现
+ * （含 execCommand 兜底 + 成功回调）；曾在文件尾再定义一次元素版（读
+ * data-copy 属性），后定义覆盖前定义，导致所有传字符串的复制入口
+ * （作品简介/对话/工作目录路径）一概 TypeError 静默失灵。 */
 
 window.pickBackupFile = async function () {
   const cur = (($("bi-path") || {}).value || "").trim();
