@@ -31,20 +31,6 @@ def template_only():
     return str(os.environ.get("TUTTI_BOOKMETA_TEMPLATE_ONLY") or "").strip() in ("1", "true", "yes")
 
 
-def needs_book_meta(task):
-    """这本书是否需要开书资料：连载首批（start_chapter <= 1）才需要。
-
-    开书资料属于「这本书」而不是某一批章节——续写批次沿用第一批的书名/简介/
-    标签即可，重复生成只会覆盖成同内容的近义版本。非连载任务一律不需要。"""
-    serial = (task or {}).get("serial")
-    if not isinstance(serial, dict):
-        return False
-    try:
-        return int(serial.get("start_chapter") or 1) <= 1
-    except (TypeError, ValueError):
-        return True
-
-
 # 各平台建书表单的字段展示顺序（前端卡片与 Markdown 归档共用）。
 # 番茄官方表单（2026-09 实抓）：签约模式=连载模式/完本模式；阅读标签=主分类(必选1)
 # +主题/角色/情节(各≤2)；内容标签=情节(≤4)/情感(≤2)/人设(≤4)/世界观(≤1)。

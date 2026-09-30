@@ -535,6 +535,30 @@ def serial_chain_ids(task_id):
     return order
 
 
+def chain_book_meta(task, platform):
+    """任务在某平台的作品信息「面板视图」：根优先返回首个有状态的条目。
+
+    与 inherited_book_meta 同为根优先，但不筛 done——生成可从链上任意任务
+    触发、落点在根任务，running/failed 也要沿链可见，否则续写批次触发生成
+    后面板永远空转。running/done 优先于 failed（旧失败不遮新结果）。"""
+    task = task or {}
+    platform = str(platform)
+    own = ((task.get("book_meta") or {}).get(platform)) or {}
+    first_failed = None
+    for tid in serial_chain_ids(task.get("id") or ""):
+        t = task if tid == str(task.get("id")) else get_task(tid)
+        if not t:
+            continue
+        e = ((t.get("book_meta") or {}).get(platform)) or {}
+        if not (isinstance(e, dict) and e.get("status")):
+            continue
+        if e.get("status") in ("running", "done"):
+            return e
+        if first_failed is None:
+            first_failed = e
+    return first_failed or own
+
+
 def inherited_book_meta(task, platform):
     """任务在某平台的作品信息：连载链上「生成完成」的条目整链共用（都是用第一个）。
 

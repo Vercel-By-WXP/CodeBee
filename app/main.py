@@ -562,14 +562,15 @@ class Handler(BaseHTTPRequestHandler):
             m = re.match(r"^/api/tasks/([^/]+)/book-meta$", path)
             if m:
                 # 作品信息（番茄/七猫建书表单资料）：读取生成状态与结果。
-                # 连载链沿链继承（都是用第一个）：续写批次读到的就是首批的结果。
+                # 生成可从链上任意任务触发、落点在根任务（都是用第一个），
+                # running/failed 状态也要沿链可见（chain_book_meta）。
                 task = store.get_task(m.group(1))
                 if not task:
                     return self._json(404, {"error": "not found"})
                 return self._json(200, {"book_meta": {
-                    p: store.inherited_book_meta(task, p)
+                    p: store.chain_book_meta(task, p)
                     for p in ("fanqie", "qimao")
-                    if store.inherited_book_meta(task, p)}})
+                    if store.chain_book_meta(task, p)}})
             if path == "/api/publish":
                 # 一键发布：平台连接状态 + 最近台账（详情页发布面板）
                 from core.publish import manager as pub
@@ -1773,7 +1774,10 @@ class Handler(BaseHTTPRequestHandler):
 
         后台线程跑（编排者→作者CLI→模板的降级链可能数分钟），请求立即返回；
         前端靠任务 book_meta 状态（SSE 全量状态里带）轮进度。已有 running 时
-        幂等拒绝，不重复起线程。"""
+        幂等拒绝，不重复起线程。生成权不限定首批（2026-09-30 实案：
+        start_chapter>1 的独立任务被误拦，用户点首版也撞墙）——任何任务都能
+        触发；但开书资料属于「这本书」，素材与落点统一取连载链根任务
+        （都是用第一个），续写批次触发的生成整链可见、建书口径不分叉。"""
         from core import bookmeta
         task = store.get_task(task_id)
         if not task:
@@ -1782,27 +1786,22 @@ class Handler(BaseHTTPRequestHandler):
         platform = (body.get("platform") or "").strip()
         if platform not in bookmeta.PLATFORMS:
             return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
-        if not bookmeta.needs_book_meta(task):
-            # 生成权留在首批（一本书一份资料）：指路根任务，别让用户在续写批次上撞墙
-            root = next((store.get_task(t) for t
-                         in store.serial_chain_ids(task_id) if t != task_id), None)
-            return self._json(400, {"error": (
-                "开书资料在连载首批任务《%s》上生成与维护，请到首批任务的「作品信息」页操作"
-                % ((root or {}).get("title") or "首批")
-                if root else "只有连载首批任务需要作品信息；续写批次沿用第一批的开书资料")})
-        if task.get("status") in ("queued", "running"):
+        chain = store.serial_chain_ids(task_id)
+        target = (store.get_task(chain[0]) if chain else None) or task
+        target_id = str(target.get("id"))
+        if target.get("status") in ("queued", "running"):
             return self._json(400, {"error": "任务正在运行，请等本轮结束后再生成作品信息"})
-        cur = ((task.get("book_meta") or {}).get(platform) or {})
+        cur = ((target.get("book_meta") or {}).get(platform) or {})
         if cur.get("status") == "running":
             return self._json(200, {"ok": True, "already": True})
-        if not store.set_book_meta(task_id, platform,
+        if not store.set_book_meta(target_id, platform,
                                    {"status": "running",
                                     "at": time.strftime("%Y-%m-%d %H:%M:%S")}):
             return self._json(404, {"error": "任务不存在"})
-        author = bookmeta._resolve_author(task)
+        author = bookmeta._resolve_author(target)
         threading.Thread(target=bookmeta.generate_async, daemon=True,
                          name="book-meta-%s" % platform,
-                         args=(task_id, platform, author)).start()
+                         args=(target_id, platform, author)).start()
         return self._json(200, {"ok": True, "started": True})
 
     def _api_publish_platform_op(self, platform, op):

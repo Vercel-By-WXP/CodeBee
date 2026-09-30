@@ -2,9 +2,11 @@
 """连载链沿链继承单测（2026-09-29「都展示，都是用第一个」改版）。
 
 口径：一本书一条链——开书资料（book_meta）、发布绑定（books.json）、已发
-章号（publish-*.jsonl）整链共享，写入落到根任务，续写批次只读沿用：
+章号（publish-*.jsonl）整链共享，写入落到根任务，续写批次读沿用：
   store.serial_chain_ids     祖先+后代收链，根在前，环安全
-  store.inherited_book_meta  首个「生成完成」条目整链可见
+  store.inherited_book_meta  首个「生成完成」条目整链可见（建书口径）
+  store.chain_book_meta      面板视图：running/failed 也沿链可见（生成
+                             权不限定首批，2026-09-30；落点在根）
   ledger.book_for/save_book/update_book  绑定沿链读、写落根
   ledger.published_chapters/recent      章号与历史沿链合并（防续写重发）
 
@@ -83,6 +85,25 @@ def t_chain_cycle_safe():
     ids = store.serial_chain_ids(a["id"])
     expect(a["id"] in ids and b["id"] in ids, "环内两个都该到: %r" % ids)
     expect(len(ids) == len(set(ids)), "环不得无限收")
+
+
+def t_chain_meta_view():
+    # 面板视图（2026-09-30 生成权放开后）：生成可从任意任务触发、落点在根，
+    # running/failed 也要沿链可见，否则续写批次触发生成后面板永远空转
+    store.set_book_meta(root["id"], "qimao", {"status": "running", "at": "x"})
+    expect(store.chain_book_meta(leaf, "qimao").get("status") == "running",
+           "根的 running 沿链可见")
+    store.set_book_meta(root["id"], "qimao", {"status": "failed", "error": "e", "at": "x"})
+    expect(store.chain_book_meta(leaf, "qimao").get("status") == "failed",
+           "根的 failed 沿链可见")
+    store.set_book_meta(root["id"], "qimao", dict(DONE_META))
+    expect(store.chain_book_meta(leaf, "qimao").get("status") == "done",
+           "链上有 done 视图给 done（旧失败不遮新结果）")
+    expect(store.chain_book_meta(mid, "fanqie").get("data", {}).get("book_name") == "七十三",
+           "done 数据照常沿链")
+    expect(store.chain_book_meta(plain, "qimao") == {}, "链外任务视图为空")
+    with store.LOCK:                     # 还原现场：qimao 条目是本段私造
+        store._TASKS[root["id"]]["book_meta"].pop("qimao", None)
 
 
 def t_inherited_meta():

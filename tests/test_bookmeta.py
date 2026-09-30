@@ -17,29 +17,6 @@ from core import bookmeta, paths, store  # noqa: E402
 TMP = Path(tempfile.mkdtemp(prefix="tutti-bm-fixture-"))
 
 
-class TestNeedsBookMeta(unittest.TestCase):
-    """开书资料只属于「这本书」：续写批次不再出面板/不再生成。"""
-
-    def test_first_batch_needs(self):
-        self.assertTrue(bookmeta.needs_book_meta({"serial": {"chapters": 10}}))
-        self.assertTrue(bookmeta.needs_book_meta({"serial": {"chapters": 10, "start_chapter": 1}}))
-
-    def test_continue_batch_does_not_need(self):
-        self.assertFalse(bookmeta.needs_book_meta(
-            {"serial": {"chapters": 8, "start_chapter": 11}}))
-        self.assertFalse(bookmeta.needs_book_meta(
-            {"serial": {"chapters": 1, "start_chapter": 2}}))
-
-    def test_non_serial_does_not_need(self):
-        self.assertFalse(bookmeta.needs_book_meta({"type": "novel", "serial": None}))
-        self.assertFalse(bookmeta.needs_book_meta({}))
-        self.assertFalse(bookmeta.needs_book_meta(None))
-
-    def test_bad_start_chapter_treated_as_first(self):
-        # 脏数据不该把面板藏掉：解析失败按首批处理（保守放行）
-        self.assertTrue(bookmeta.needs_book_meta({"serial": {"start_chapter": "abc"}}))
-
-
 class TestNorm(unittest.TestCase):
     def test_fanqie_norm_clamps(self):
         m = bookmeta._norm({

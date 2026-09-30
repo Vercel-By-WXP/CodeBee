@@ -5627,12 +5627,6 @@ function bmRootTask(task) {
   return cur || task;
 }
 
-window.bmGoRoot = function (rootId) {
-  const t = (((S.state || {}).tasks || []).find((x) => x.id === rootId)) || null;
-  if (!t) { toast(t("找不到首批任务（可能已删除）"), true); return; }
-  browserOpenTaskRun(t, "bookmeta");
-};
-
 function renderBookMetaPanel(task) {
   const box = $("rd-bookmeta");
   if (!box || !(task || {}).id || !bmNeedsPanel(task)) {
@@ -5662,21 +5656,12 @@ function renderBookMetaPanel(task) {
     '<button class="hhelp" data-help-topic="publish" title="' + esc(t("这是什么？点开看帮助")) + '" aria-label="' + esc(t("帮助")) + '"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>' +
     '<span class="flex1"></span>';
   if (taskBusy) html += '<span class="bm-warn">' + esc(t("任务运行中，生成将在本轮结束后可用")) + "</span>";
-  // 续写批次只读沿用：生成/重生成回首批任务做，这里给指路入口（一本书一份资料）
-  if (inherited) html += '<button class="ghost" onclick="bmGoRoot(\'' + esc(src.id) + '\')" title="' +
-    esc(t("开书资料在首批任务上生成与维护")) + '">' +
-    '<svg class="ico" aria-hidden="true"><use href="#i-arrow-right"/></svg>' + t("回首批任务") + "</button>";
   html += "</div>";
   if (!bm.fanqie && !bm.qimao && !taskBusy) {
-    if (inherited) {
-      html += '<div class="bm-guide"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>' +
-        '<div><b>' + esc(t("首批任务还没生成开书资料")) + "</b>" +
-        "<p>" + esc(t("开书资料属于这本书，在首批任务上生成后整条连载链都能看到。")) + "</p></div></div>";
-    } else {
-      html += '<div class="bm-guide"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>' +
-        '<div><b>' + esc(t("章节已就绪，创建作品还差开书资料")) + "</b>" +
-        "<p>" + esc(t("点平台卡片上的「生成」按钮，一键产出书名/简介/标签/主角名等建书资料，生成后逐字段复制进建书表单。")) + "</p></div></div>";
-    }
+    // 生成入口不再区分首批/续写（2026-09-30 放开；后端落点统一在链上根任务），指引文案只留一份
+    html += '<div class="bm-guide"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>' +
+      '<div><b>' + esc(t("章节已就绪，创建作品还差开书资料")) + "</b>" +
+      "<p>" + esc(t("点平台卡片上的「生成」按钮，一键产出书名/简介/标签/主角名等建书资料，生成后逐字段复制进建书表单。")) + "</p></div></div>";
   }
   html += '<div class="bm-cards">' + BOOKMETA_PLATFORMS.map((p) => {
     const entry = bm[p.id] || {};
@@ -5706,9 +5691,7 @@ function renderBookMetaPanel(task) {
       body = '<div class="bm-empty">' + esc(t("尚未生成")) + "</div>";
     }
     let action;
-    if (inherited) {
-      action = "";   // 续写批次只读：生成/重生成集中在头部「回首批任务」入口
-    } else if (st === "running") {
+    if (st === "running") {
       action = '<button class="ghost" disabled><svg class="ico spin" aria-hidden="true"><use href="#i-refresh"/></svg>' + t("生成中…") + "</button>";
     } else if (st === "done") {
       action = '<button class="ghost" onclick="bmGen(\'' + esc(task.id) + "', '" + p.id + '\')" title="' + esc(t("重新生成会覆盖现有内容")) + '">' +

@@ -2,7 +2,8 @@
 """作品信息一键生成端到端：临时数据目录 + 独立端口起真实服务（不碰真实 data/ 与 8765）。
 
 链路：建连载任务 → POST book-meta（番茄）→ 轮询到 done → 字段/归档 md 校验 →
-七猫同样走通 → 非法 platform 400 → 非连载任务 400。无编排者配置 → 模板兜底，
+七猫同样走通 → 非法 platform 400 → 生成权不限定首批（非连载任务受理、
+连载链从续写批次触发落点在根）。无编排者配置 → 模板兜底，
 输出确定性（测的是链路不是模型）。请求全部发往硬编码本机环回 127.0.0.1。
 """
 import json
@@ -130,28 +131,53 @@ def main():
         st, d = req("POST", "/api/tasks/%s/book-meta" % tid, {"platform": "qidian"})
         check("非法 platform 400", st == 400, (st, d))
 
+        # 2026-09-30 生成权不限定首批（实案：start_chapter>1 的独立任务被旧
+        # 口径误拦）——非连载小说任务也能生成
         st, d = req("POST", "/api/tasks", {"type": "novel",
                                            "goal": "单稿小说", "workdir": str(wd)})
-        st2, d2 = req("POST", "/api/tasks/%s/book-meta" % d.get("task_id", "x"),
-                      {"platform": "fanqie"})
-        check("非连载任务 400（无 serial 字段）", st2 == 400, (st2, d2))
+        check("建单稿任务", st == 200 and d.get("task_id"), d)
+        novel_id = d.get("task_id", "x")
+        req("POST", "/api/runs/%s/cancel" % (d.get("run_id") or ""))
+        novel_ok = False
+        for _ in range(60):
+            st2, d2 = req("POST", "/api/tasks/%s/book-meta" % novel_id,
+                          {"platform": "fanqie"})
+            if st2 == 200 and d2.get("ok"):
+                novel_ok = True
+                break
+            time.sleep(2)
+        check("非连载任务也受理（生成权不限定首批）", novel_ok, (st2, d2))
+        entry = wait_book_meta(novel_id, "fanqie")
+        check("单稿任务生成完成(done)", entry.get("status") == "done", entry)
 
         st, d = req("GET", "/api/tasks/%s/book-meta" % "t-nope")
         check("任务不存在 404", st == 404, st)
 
-        # 续写批次：开书资料属于「这本书」，不再重复生成（前端也不出这个 TAB）。
+        # 连载链：从续写批次触发生成，落点与素材取根任务（都是用第一个）。
         # 直接种任务（真实续写要等上一批跑完，与本次契约无关）
+        root_id = "t-bmroot-000000-0001"
         cont_id = "t-bmcont-000000-0001"
         # Path.write_bytes 替代 open("w")（安全钩子对 open+动态路径误报路径穿越；
         # write_bytes 语义等价且无换行翻译）
+        (Path(data) / "tasks" / (root_id + ".json")).write_bytes(json.dumps(
+            {"id": root_id, "title": "首批", "type": "serial_novel",
+             "goal": "接着写", "workdir": str(wd), "status": "done",
+             "serial": {"chapters": 8, "words_per_chapter": 2000,
+                        "start_chapter": 1}}, ensure_ascii=False).encode("utf-8"))
         (Path(data) / "tasks" / (cont_id + ".json")).write_bytes(json.dumps(
             {"id": cont_id, "title": "续写批次", "type": "serial_novel",
              "goal": "接着写", "workdir": str(wd), "status": "done",
              "serial": {"chapters": 8, "words_per_chapter": 2000,
-                        "start_chapter": 11}}, ensure_ascii=False).encode("utf-8"))
+                        "continues": root_id, "start_chapter": 11}},
+            ensure_ascii=False).encode("utf-8"))
         st, d2 = req("POST", "/api/tasks/%s/book-meta" % cont_id, {"platform": "fanqie"})
-        check("续写批次 400（沿用第一批开书资料）", st == 400
-              and "首批" in (d2.get("error") or ""), (st, d2))
+        check("续写批次受理（生成权不限定首批）", st == 200 and d2.get("ok"), (st, d2))
+        entry = wait_book_meta(root_id, "fanqie")
+        check("续写批次触发的生成落在根任务（都是用第一个）",
+              entry.get("status") == "done", entry)
+        st, d2 = req("GET", "/api/tasks/%s/book-meta" % cont_id)
+        got = ((d2.get("book_meta") or {}).get("fanqie") or {})
+        check("续写批次沿链看到根的结果（面板视图）", got.get("status") == "done", got)
 
         print("\n通过 %d / 失败 %d" % (len(PASS), len(FAIL)))
         if FAIL:

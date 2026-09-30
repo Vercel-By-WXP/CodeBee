@@ -161,8 +161,9 @@ async function main() {
     // 本断言的初衷是「作品信息不抢自动选卡」，落点随新契约改为 hive
     check("终态自动选卡落「蜂巢」（作品信息不抢）", tabs.active === "hive", tabs.active);
 
-    // A2) 续写批次（continues 指向首批）：作品信息 TAB 也在——沿链只读继承
-    //（都是用第一个）；首批此刻还没生成 → 空态指路回首批，平台卡不出生成按钮
+    // A2) 续写批次（continues 指向首批）：作品信息 TAB 也在——沿链继承
+    //（都是用第一个）；2026-09-30 生成权不限定首批：平台卡直接出生成按钮
+    //（后端落点在根任务），「回首批任务」指路入口已删
     const cont = await evalJson(`(async () => {
       sideOpenTask("task-bmcont");
       await new Promise((r) => setTimeout(r, 1200));
@@ -175,7 +176,7 @@ async function main() {
         inherit: !!box.querySelector(".bm-inherit"),
         backBtn: Array.from(box.querySelectorAll(".bm-head button"))
           .some((b) => b.textContent.includes("回首批任务")),
-        guide: (box.textContent || "").includes("首批任务还没生成开书资料"),
+        guide: (box.textContent || "").includes("一键产出书名/简介/标签/主角名"),
         // 只数头部操作区的生成钮：pbBlock 发布行的「创建作品」也是 primary，不算
         platGen: Array.from(box.querySelectorAll(".bm-card"))
           .filter((c) => { const n = c.querySelector(".bm-plat-name");
@@ -185,10 +186,10 @@ async function main() {
     })()`);
     check("续写批次也出「作品信息」TAB（沿链继承）",
       cont.hasBm === true && cont.panelHidden === false, JSON.stringify(cont));
-    check("续写批次继承徽注 + 「回首批任务」入口", cont.inherit === true && cont.backBtn === true,
-      JSON.stringify(cont));
-    check("首批未生成 → 空态指路；平台卡不出生成按钮（只读）",
-      cont.guide === true && cont.platGen === 0, JSON.stringify(cont));
+    check("续写批次继承徽注在，「回首批任务」指路已删",
+      cont.inherit === true && cont.backBtn === false, JSON.stringify(cont));
+    check("平台卡直接出生成按钮（生成权不限定首批）",
+      cont.guide === true && cont.platGen === 2, JSON.stringify(cont));
     check("续写批次其余分区照旧（蜂巢/步骤/成果/圣经都在）",
       ["hive", "steps", "result", "bible"].every((k) => cont.ids.split(",").includes(k)),
       cont.ids);
@@ -297,7 +298,8 @@ async function main() {
         .filter((b) => b.textContent.includes("重新生成")).length)()`);
     check("done 态出现「重新生成」×2", regen === 2, regen);
 
-    // F) 续写批次回看：首批已生成 → 继承只读视图（字段全在场、平台卡零操作钮、徽章同 2/2）
+    // F) 续写批次回看：首批已生成 → 沿链继承视图（字段全在场、平台卡同样
+    // 出「重新生成」钮、徽章同 2/2）
     const contDone = await evalJson(`(async () => {
       sideOpenTask("task-bmcont");
       await new Promise((r) => setTimeout(r, 1500));
@@ -322,8 +324,8 @@ async function main() {
     check("续写批次看到首批生成的字段（14+12 全继承，复制钮照常）",
       contDone && contDone.done === 2 && contDone.fields === 26 && contDone.copies === 26,
       JSON.stringify(contDone));
-    check("续写批次平台卡只读（零操作按钮，生成回首批做）",
-      contDone && contDone.ops === 0, JSON.stringify(contDone));
+    check("续写批次平台卡同样出「重新生成」钮（生成权不限定首批）",
+      contDone && contDone.ops === 2 && contDone.backBtn === false, JSON.stringify(contDone));
     check("续写批次徽章同样 2/2（都是用第一个）",
       contDone && contDone.badge === "2/2", contDone && contDone.badge);
 
