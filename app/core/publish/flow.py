@@ -32,6 +32,47 @@ class FlowError(Exception):
     """流程失败：message 面向用户（含步骤序号与截图路径线索）。"""
 
 
+class TitleDupError(FlowError):
+    """平台拒绝书名：重名（全平台书名唯一）。message 带平台提示原文。
+
+    与普通流程失败分开成独立类型：manager 建书要按它触发「对账复用 →
+    自动换名重试」，普通失败不能换名（换了也建不成）。"""
+
+    def __init__(self, hint):
+        super().__init__("平台拒绝书名（已存在同名作品）：%s" % hint)
+        self.hint = hint
+
+
+# 重名提示识别词（番茄/七猫建书页校验文案口径：「书名已存在」「该名称已被
+# 使用」等）。核心词「已存在/已被使用/已被注册/重名」足够特异——建书页上
+# 出现这些词几乎必然指向书名撞车；不加宽泛的「重复」，防误伤其它字段校验。
+DUP_HINT_WORDS = ("已存在", "已被使用", "已被注册", "重名", "已被占用")
+
+
+def _dup_probe_js():
+    # 抓页面上可见提示里命中重名关键词的那条（toast/表单校验/弹窗）。
+    # 选择器与 _page_error_text_js 同源；只回命中词的那条，空串=页面没喊重名。
+    return ("(words)=>{const sels='.arco-message,.arco-notification,"
+            "[class*=message],[class*=toast],[class*=error],[class*=alert],"
+            "[class*=tip],[class*=tooltip],[class*=valid]';"
+            "for(const e of document.querySelectorAll(sels)){"
+            "const r=e.getBoundingClientRect();"
+            "if(r.width<=0||r.height<=0)continue;"
+            "const x=(e.innerText||'').trim();"
+            "if(!x||x.length>160)continue;"
+            "for(const w of words){if(x.includes(w))return x;}}"
+            "return '';}")
+
+
+def dup_hint(page, timeout=5):
+    """读页面上的重名提示文本；无/读失败返回空串。预检与事后探测共用。"""
+    try:
+        v = page.call(_dup_probe_js(), list(DUP_HINT_WORDS), timeout=timeout)
+        return v.strip() if isinstance(v, str) else ""
+    except Exception:
+        return ""
+
+
 def _click_match_js():
     # 点同时包含所有关键词的最小可见元素（长度最小者=最内层卡片）
     return ("(keys,maxLen)=>{"
@@ -212,11 +253,14 @@ def _tags_select_grouped(page, note, i, pairs):
 
 
 def run_flow(page, steps, values=None, config=None, auto_submit=False,
-             shot=None, log=None):
+             shot=None, log=None, dup_check=False):
     """跑一个流程。values：fill 取值字典；config：平台 URL 等占位符来源。
 
     shot(name) → 截图落盘函数（manager 注入，路径含任务/平台维度）；
-    log(line)  → 步骤日志函数（进发布记录的 log 字段）。返回执行到的步数。"""
+    log(line)  → 步骤日志函数（进发布记录的 log 字段）。返回执行到的步数。
+    dup_check  → 提交前探测页面重名提示（建书专用）：平台实时校验喊「已
+    存在」时点提交必然被拒、流程只会误报「未登录或改版」——在点击前抛
+    TitleDupError 让上层走换名重试，别白点（2026-09-30 马甲案）。"""
     values = values or {}
     config = config or {}
     log = log or (lambda s: None)
@@ -440,7 +484,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         if sections:
                             break
                         time.sleep(1.0)
-                if sections:
+                if sections and isinstance(sections, list):
                     missing = {g for g, _ in pairs} - {s["g"] for s in sections}
                     if missing:
                         # 弹层是分组结构但组名对不上=平台目录/组名改了——
@@ -495,6 +539,13 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     if shot:
                         shot("ready-manual-submit")
                     return i + 1
+                if dup_check:
+                    # 事前预检：填表阶段平台实时校验（fill 派发过 change 事件，
+                    # blur/输入即触发）喊了重名就别点了，点了也必被拒
+                    hint = dup_hint(page)
+                    if hint:
+                        _fail_shot(shot, "step%d-title-dup" % i)
+                        raise TitleDupError(hint)
                 if st.get("text"):                    # 按按钮文本提交
                     text = str(st["text"])
                     note(i, "提交「%s」（真实鼠标事件）" % text)

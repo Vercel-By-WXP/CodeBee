@@ -300,10 +300,10 @@ def test_flow_tags_group_retry_and_message():
         raise AssertionError("组名找不到应抛 FlowError")
     except flow.FlowError as e:
         expect("弹层未打开" in str(e), "报错点名弹层未开：%s" % e)
-    expect(pg._calls == 4, "组名点击重试 4 次（等弹层开）：%d" % pg._calls)
+    expect(pg._calls == 5, "弹层探测 1 次+组名点击重试 4 次（等弹层开）：%d" % pg._calls)
     pg2 = _FlowPage(call_results=[{"ok": False}, {"ok": True}, {"ok": True}])
     n = flow.run_flow(pg2, [{"do": "tags"}], values={"_tags": [["风格", "热血"]]})
-    expect(n == 1 and pg2._calls == 3, "第2次点中组名+1次标签点选：%d %d"
+    expect(n == 1 and pg2._calls == 3, "探测 1 次+第2次点中组名+1次标签点选：%d %d"
            % (n, pg2._calls))
 
 
@@ -454,6 +454,95 @@ def test_resolve_book_id_by_title():
     expect(manager._resolve_book_id("qimao", _ResolvePage(),
                                     {"book_id": "", "title": "x"}) == "",
            "平台无钩子静默跳过")
+
+
+def test_title_dup_precheck():
+    """建书预检（2026-09-30 马甲案）：平台实时校验喊重名 → 提交前抛
+    TitleDupError，不白点提交；dup_check 关闭（发章默认）不拦。"""
+    from core.publish import flow
+    pg0 = _FlowPage(url="https://x/writer", call_results=["书名已存在"])
+    n = flow.run_flow(pg0, [{"do": "submit", "text": "创建"}], values={},
+                      auto_submit=True)
+    expect(n == 1, "未开 dup_check 不拦提交：%s" % n)
+    pg = _FlowPage(url="https://x/writer",
+                   call_results=["书名已存在，请重新输入"])
+    try:
+        flow.run_flow(pg, [{"do": "submit", "text": "创建"}], values={},
+                      auto_submit=True, dup_check=True)
+        raise AssertionError("页面喊重名应拦下提交")
+    except flow.TitleDupError as e:
+        expect("已存在" in e.hint, "异常带平台提示原文：%s" % e.hint)
+        expect(getattr(pg, "_clicks", 0) == 0, "拦下时不点提交按钮")
+    pg2 = _FlowPage(url="https://x/writer", call_results=[""])
+    n2 = flow.run_flow(pg2, [{"do": "submit", "text": "创建"}], values={},
+                       auto_submit=True, dup_check=True)
+    expect(n2 == 1 and getattr(pg2, "_clicks", 0) == 1, "页面无重名照常提交")
+    # 关键词表：核心重名词齐、宽泛词「重复」不收（防误伤其它字段校验）
+    for w in ("已存在", "已被使用", "已被注册", "重名"):
+        expect(w in flow.DUP_HINT_WORDS, "关键词缺 %s" % w)
+    expect(flow.dup_hint(_FlowPage(call_results=[{"ok": False}])) == "",
+           "非字符串返回当无提示")
+
+
+def test_alt_titles_candidates():
+    """撞名候选：无模型时静默降级机械变体；候选有界、不含原名、截 15 字。"""
+    from core import modelhub
+    orig = modelhub.resolve_orchestrator
+    modelhub.resolve_orchestrator = lambda: None    # 测试环境不真调模型
+    try:
+        logs = []
+        base = "我的马甲藏不住了"
+        alts = manager._alt_titles("fanqie",
+                                   {"book_name": base, "summary": "简介"},
+                                   {"id": "t-dup"}, logs)
+        expect(alts and len(alts) <= manager._ALT_COUNT + 2,
+               "候选有界：%s" % alts)
+        expect(all(a != base and len(a) <= 15 for a in alts),
+               "候选非原名且截 15 字：%s" % alts)
+        expect(manager._mech_titles(base) and
+               any(m in alts for m in manager._mech_titles(base)),
+               "机械变体兜底在场：%s" % alts)
+        expect(manager._alt_titles("fanqie", {"book_name": ""},
+                                   {"id": "t"}, logs) == [],
+               "原名为空返回空队列")
+    finally:
+        modelhub.resolve_orchestrator = orig
+
+
+def test_sync_renamed_book():
+    """换名同步：bookmeta data、归档 Markdown、最新批次大纲统一到新名，
+    台账另由 save_book 落——任何一环留旧名都会让下轮对账/重生成错位。"""
+    from core import store
+    wd = _TMP / "sync-dup-work"
+    wd.mkdir(exist_ok=True)
+    store._TASKS.pop("syncdup1", None)
+    task = store.create_task({"type": "serial_novel", "title": "同步样例",
+                              "goal": "测试目标", "context": "",
+                              "workdir": str(wd)})
+    tid = task["id"]                     # create_task 自动生成 id
+    meta_entry = {"status": "done",
+                  "data": {"book_name": "我的马甲藏不住了", "summary": "简介"},
+                  "source": "测试", "at": "2026-09-30 00:00:00"}
+    store.set_book_meta(tid, "fanqie", meta_entry)
+    run = store.create_run("serial_novel", "同步样例", task_id=tid)
+    store.update_run(run["id"], outline={
+        "book_title": "我的马甲藏不住了",
+        "chapters": [{"title": "第 1 章", "beats": "b", "hook": "", "highlight": ""}]})
+    data = {"book_name": "我的马甲藏不住了"}
+    logs = []
+    manager._sync_renamed_book(tid, "fanqie", task, data, "马甲终藏不住", logs)
+    expect(data["book_name"] == "马甲终藏不住", "data 就地改名")
+    cur = store.get_task(tid)
+    got = (((cur.get("book_meta") or {}).get("fanqie") or {}).get("data") or {})
+    expect(got.get("book_name") == "马甲终藏不住", "bookmeta 已同步：%s" % got)
+    md = (wd / "作品信息-番茄.md").read_text(encoding="utf-8")
+    expect("马甲终藏不住" in md and "我的马甲藏不住了" not in md,
+           "归档 Markdown 已重写为新名")
+    outlines = [r.get("outline") for r in store.task_runs(tid)
+                if isinstance(r.get("outline"), dict)]
+    expect(outlines and outlines[0].get("book_title") == "马甲终藏不住",
+           "最新批次大纲书名已同步：%s" % outlines)
+    store._TASKS.pop(tid, None)          # 清场：不污染后续测试
 
 
 def main():

@@ -382,6 +382,108 @@ def probe_form_async(plat):
 
 
 # ---------------------------------------------------------------- 动作：建书
+_ALT_COUNT = 3       # 撞名后自动换名最多试 3 个候选
+_ALT_TIMEOUT = 90    # 候选书名一次轻调用的墙钟（发布线程内，不能久等）
+_TITLE_MAX = 15      # 两平台书名统一截 15 字（bookmeta._norm 同口径）
+
+
+def _mech_titles(base):
+    """机械变体兜底（模型不可用时的最后手段）：最小改动、不重构词——
+    同音字（了→啦）、去「我的」前缀、加「纪事」尾。丑但能建成书，
+    烧在发布线程里的几万字稿费比书名门面贵得多。"""
+    out, seen = [], {base}
+    for v in (base.replace("了", "啦", 1),
+              base[2:] if base.startswith("我的") else "",
+              (base + "纪事") if len(base) <= 13 else ""):
+        v = str(v or "").strip()[:_TITLE_MAX]
+        if len(v) >= 4 and v not in seen:
+            out.append(v)
+            seen.add(v)
+    return out
+
+
+def _alt_titles(plat, data, task, logs):
+    """撞名候选队列：编排者基于原名+简介一次轻调用重出书名，失败静默
+    降级机械变体——候选生成绝不能阻断建书主流程。"""
+    base = str(data.get("book_name") or "").strip()
+    if not base:
+        return []
+    out = []
+    try:
+        from .. import modelhub, planner, runner
+        orch = modelhub.resolve_orchestrator()
+        if orch:
+            prov, model = orch
+            prompt = (
+                "你是网文编辑。原书名《%s》在平台重名被拒，请为同一本书重起"
+                " %d 个新书名：每个 15 字内；保持原题材气质与钩子感；避开原名"
+                "的核心词组合与「我的XX藏不住」式高频套路组合；书名里带一个本"
+                "书独有的专名（人名/金手指/设定词）最不易再撞。只输出一个 "
+                "```json 字符串数组，如 [\"书名1\",\"书名2\"]，不要输出其它内容。"
+                "\n\n## 简介（截选）\n%s"
+                % (base, _ALT_COUNT + 2, str(data.get("summary") or "")[:300]))
+            res = modelhub.chat(prov["id"], model, prompt,
+                                max_tokens=600, timeout=_ALT_TIMEOUT)
+            planner._log_usage("publish", "create_book", task or {"id": ""}, res,
+                               model=model,
+                               provider=prov.get("name", prov.get("id", "")),
+                               provider_id=prov.get("id", ""))
+            if res["ok"]:
+                arr = runner.extract_json(res.get("text") or "")
+                if isinstance(arr, dict):
+                    arr = arr.get("titles") or arr.get("candidates") or []
+                if isinstance(arr, list):
+                    for x in arr:
+                        t = str(x or "").strip().replace("\n", " ")[:_TITLE_MAX]
+                        if len(t) >= 2 and t != base and t not in out:
+                            out.append(t)
+            if out:
+                logs.append("候选书名（编排者 %s）：%s"
+                            % (model, "、".join(out[:5])))
+    except Exception as e:
+        logs.append("候选书名生成降级（%s）" % str(e)[:100])
+    for v in _mech_titles(base):
+        if v not in out:
+            out.append(v)
+    return out[:_ALT_COUNT + 2]
+
+
+def _sync_renamed_book(task_id, plat, task, data, new_name, logs):
+    """建书撞名自动换名后的全链路同步。
+
+    只换建书表单里的字、bookmeta/大纲/归档还留旧名的话：下轮发章按旧书名
+    对账、用户点「重生成作品信息」又把旧名改回去——马甲案同款错位复发。
+    这里把 bookmeta data、归档 Markdown、最新批次大纲的 book_title 统一到
+    新名（台账 title 由调用方 save_book 落）。任一环节失败只记日志，
+    不拦建书成功主流程。"""
+    try:
+        from pathlib import Path as _Path
+        from .. import bookmeta as _bm
+        from .. import store as _store
+        data["book_name"] = new_name
+        cur = _store.get_task(task_id)
+        prev = ((cur or {}).get("book_meta") or {}).get(plat) or {}
+        if isinstance(prev.get("data"), dict):
+            payload = dict(prev)
+            payload["data"] = dict(prev["data"], book_name=new_name)
+            _store.set_book_meta(task_id, plat, payload)
+            fp = _Path(task.get("workdir") or "") / _bm.PLATFORMS[plat]["file"]
+            if str(fp.parent) and fp.parent.is_dir():
+                fp.write_text(_bm.render_markdown(cur, plat, payload["data"]),
+                              encoding="utf-8")
+            logs.append("作品信息与归档已同步新书名《%s》" % new_name)
+        # 大纲书名：续写链继承与「一键重生成」素材都读最新批次大纲，
+        # 不同步会让下次重生成把书名改回旧名
+        for r in _store.task_runs(task_id):
+            o = r.get("outline")
+            if isinstance(o, dict) and o.get("chapters") and o.get("book_title"):
+                _store.update_run(r["id"], outline=dict(o, book_title=new_name))
+                logs.append("大纲书名已同步为《%s》" % new_name)
+                break
+    except Exception as e:
+        logs.append("书名同步部分失败（不拦建书）：%s" % str(e)[:120])
+
+
 def _create_preflight(plat, data):
     """建书前置闸：平台表单对必填字段有硬校验（番茄简介 50-500 字），过不了
     校验时页面不跳转、流程只能误报「未登录或改版」——开浏览器之前先拦下，
@@ -462,40 +564,101 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
         metadata={"platform": plat, "action": "create_book"})
 
     def run():
+        final_name = book_name
         try:
             b, page = _open_page(plat)
-            values = mod.values_create_book(data)
-            steps = _with_tag_steps(load_flow(plat, "create_book"),
-                                    mod.tag_groups(data), values, mod)
-            flow.run_flow(page, steps, values=values, config=mod.CONFIG,
-                          auto_submit=auto_submit,
-                          shot=lambda n: page.screenshot(ledger.shot_path(plat, task_id, n)),
-                          log=logs.append)
-            # book_id：创建成功后平台跳书籍详情/编辑器，从 URL 提取
-            # （番茄 book-info/<id>；七猫 information?id=<id>）。url_any 过了
-            # 但页面还在跳转链上时再等几轮；提取落空把最终 URL 记进日志，
-            # 别再静默登记空 id（发章只能兜底找书，直达编辑器就废了）。
+            # 书名全平台唯一（2026-09-30 马甲案）：撞名是建书常见死法，撞了
+            # 原样报「疑似未建成」会白烧几万字稿费。试名队列=原名+自动候选
+            # （编排者重出→机械变体兜底）；同名书恰在本账号下时对账复用不换
+            # 名。人工提交模式（auto_submit=false）不自动换名——用户在页面
+            # 上自己点提交，撞名他自己看得见。
+            names = [book_name]
+            cands_ready = False
             book_id = ""
-            try:
-                for _try in range(6):
-                    m_url = re.search(r"book-info/(\d+)|information\?id=(\d+)",
-                                      str(page.url() or ""))
-                    if m_url:
-                        book_id = m_url.group(1) or m_url.group(2)
+            i = 0
+            while i < len(names) and i < 1 + _ALT_COUNT + 2:
+                name = names[i]
+                i += 1
+                final_name = name
+                if i > 1:
+                    logs.append("第 %d 次尝试，书名《%s》" % (i, name))
+                values = mod.values_create_book(dict(data, book_name=name))
+                steps = _with_tag_steps(load_flow(plat, "create_book"),
+                                        mod.tag_groups(data), values, mod)
+                try:
+                    flow.run_flow(page, steps, values=values, config=mod.CONFIG,
+                                  auto_submit=auto_submit, dup_check=auto_submit,
+                                  shot=lambda n: page.screenshot(
+                                      ledger.shot_path(plat, task_id, n)),
+                                  log=logs.append)
+                except flow.TitleDupError as e:
+                    # 事前预检命中：平台实时校验已喊重名，点提交必被拒
+                    logs.append(str(e))
+                    bid = _resolve_book_id(plat, page, {"title": name})
+                    if bid:
+                        book_id, final_name = bid, name
+                        logs.append("同名书就在本账号下，已复用 book_id=%s" % bid)
                         break
-                    time.sleep(0.8)
-                if not book_id:
-                    logs.append("book_id 提取落空，最终页面：%s"
-                                % str(page.url() or "")[:120])
-            except Exception:
-                pass
-            if not book_id:
-                # id 提取落空 ≠ 没建成（跳转链没走完等）：当场按书名在作家
-                # 后台对账，找回即补上，别把「结果未知」甩给用户人肉核对。
-                bid = _resolve_book_id(plat, page, {"title": book_name})
+                    if not cands_ready:
+                        names = names + _alt_titles(plat, data, task, logs)
+                        cands_ready = True
+                    if i >= len(names):
+                        break               # 候选没准备出来（模型+机械全空）
+                    continue
+                # book_id：创建成功后平台跳书籍详情/编辑器，从 URL 提取
+                # （番茄 book-info/<id>；七猫 information?id=<id>）。url_any 过了
+                # 但页面还在跳转链上时再等几轮；提取落空把最终 URL 记进日志，
+                # 别再静默登记空 id（发章只能兜底找书，直达编辑器就废了）。
+                try:
+                    for _try in range(6):
+                        m_url = re.search(r"book-info/(\d+)|information\?id=(\d+)",
+                                          str(page.url() or ""))
+                        if m_url:
+                            book_id = m_url.group(1) or m_url.group(2)
+                            break
+                        time.sleep(0.8)
+                    if not book_id:
+                        logs.append("book_id 提取落空，最终页面：%s"
+                                    % str(page.url() or "")[:120])
+                except Exception:
+                    pass
+                if book_id:
+                    break
+                if not auto_submit:
+                    # 人工提交模式：按书名对账兜底即止，不自动换名
+                    bid = _resolve_book_id(plat, page, {"title": name})
+                    if bid:
+                        book_id = bid
+                        logs.append("book_id 提取落空，已按书名在平台对账找回 %s" % bid)
+                    break
+                # 自动提交被平台静默拒绝（不跳转）时，toast 常喊重名——抓
+                # 回来判定，别落进「疑似未建成」的糊涂账
+                hint = ""
+                for _try in range(3):
+                    hint = flow.dup_hint(page)
+                    if hint:
+                        break
+                    time.sleep(1.0)
+                if hint:
+                    logs.append("页面提示：%s" % hint[:120])
+                    bid = _resolve_book_id(plat, page, {"title": name})
+                    if bid:
+                        book_id, final_name = bid, name
+                        logs.append("同名书就在本账号下，已复用 book_id=%s" % bid)
+                        break
+                    if not cands_ready:
+                        names = names + _alt_titles(plat, data, task, logs)
+                        cands_ready = True
+                    continue
+                # 非撞名失败：按书名对账兜底（原有逻辑），找不回就明说未建成
+                bid = _resolve_book_id(plat, page, {"title": name})
                 if bid:
                     book_id = bid
                     logs.append("book_id 提取落空，已按书名在平台对账找回 %s" % bid)
+                break
+            if book_id and final_name != book_name:
+                # 换名成功（或复用同名旧书）：书名全链路同步到新名
+                _sync_renamed_book(task_id, plat, task, data, final_name, logs)
             operation_status = "confirmed" if book_id else "unknown"
             if book_id:
                 operations.confirm(operation_id, remote_receipt=book_id,
@@ -504,13 +667,13 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
                 operations.mark_unknown(
                     operation_id,
                     "建书流程走完，但平台作品列表按书名未找到《%s》，书很可能未建成；"
-                    "请到平台作品管理确认，若已存在可人工登记" % book_name,
+                    "请到平台作品管理确认，若已存在可人工登记" % final_name,
                     metadata={"platform": plat, "action": "create_book"})
-            ledger.record(plat, "create_book", task_id=task_id, title=book_name,
+            ledger.record(plat, "create_book", task_id=task_id, title=final_name,
                           book_id=book_id, ok=bool(book_id),
                           error=((("" if book_id else
                                    "建书流程走完但未取得 book_id，且平台按书名未找到"
-                                   "《%s》，疑似未建成\n" % book_name)
+                                   "《%s》，疑似未建成\n" % final_name)
                                   + "\n".join(logs))[:2000] or None),
                           shot=str(ledger.shot_path(plat, task_id, "")),
                           operation_id=operation_id, operation_status=operation_status,
@@ -518,7 +681,7 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
             if book_id:
                 # 未取得 id 不落台账：空条目会让界面亮「已建书」、校准盲跑，
                 # 而发章/下次建书各自有按书名对账的兜底，空条目只剩害处。
-                ledger.save_book(task_id, plat, {"book_id": book_id, "title": book_name,
+                ledger.save_book(task_id, plat, {"book_id": book_id, "title": final_name,
                                                  "source": "create"})
             _set(plat, status="connected", error="")
         except Exception as e:
