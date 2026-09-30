@@ -557,9 +557,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/modelhub.py 3332 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/modelhub.py 3844 行（上限 1200，历史最高 0）",
       "file": "app/core/modelhub.py",
-      "lines": 3332
+      "lines": 3844
     },
     {
       "kind": "lines",
