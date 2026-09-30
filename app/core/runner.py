@@ -1629,6 +1629,30 @@ def _invalid_model(model):
     return str(model or "").strip().lower() in _INVALID_MODEL_NAMES
 
 
+# opencode 启动横幅形如「> build · glm-5.3」（ANSI 清洗后一行、圆点分隔）；
+# 真错误（配额/配置/网络）CLI 都会另打印文本，不会是纯横幅形态
+_OC_BANNER_LINE_RE = re.compile(r"^\s*>?\s*[^\s·•]+\s*[·•]\s*\S+\s*$")
+
+
+def _opencode_fast_banner_death(res):
+    """opencode 启动期秒退签名：退出码 1、总时长很短、输出清洗 ANSI 后只剩
+    启动横幅、没有任何错误文本。真实失败不走这个形态；该形态只值得原地
+    立即重试一次（配置写读竞态/端口抢占类瞬时抖动，2026-09-30 实案：
+    并行评审爆发期连续三发「退出码 1；stderr/stdout: > build · glm-5.3」，
+    数分钟后同进程自愈）。"""
+    if res.get("ok") or res.get("exit_code") != 1:
+        return False
+    try:
+        if float(res.get("duration") or 0) > 15.0:
+            return False
+    except (TypeError, ValueError):
+        return False
+    blob = clean_cli_text((res.get("stderr") or "") + "\n"
+                          + (res.get("stdout") or ""))
+    lines = [ln.strip() for ln in blob.splitlines() if ln.strip()]
+    return bool(lines) and all(_OC_BANNER_LINE_RE.match(ln) for ln in lines)
+
+
 def run_agent(agent, prompt, workdir=None, readonly=True,
               timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None,
               images=None, require_tools=False, deadline=None):
@@ -1852,6 +1876,14 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                    "provider_id": att.get("provider_id") or "",
                    "provider": att.get("provider") or {}}
             if not res["ok"]:
+                if (kind == "opencode" and attempt == 0
+                        and _opencode_fast_banner_death(res)
+                        and not (cancel_event is not None
+                                 and cancel_event.is_set())):
+                    _log_note(log_path,
+                              "opencode 启动即退（仅横幅无错误文本）——按瞬时抖动 2s 后原地重试一次")
+                    time.sleep(2.0)
+                    continue
                 # stderr 与 stdout 都要进错误串：codex 把 "Reading prompt from
                 # stdin..." 打在 stderr，真正的配额/限流错误全在 stdout 的 JSONL
                 # 里——只取其一会让 _quota_error/_transient_error 判空。

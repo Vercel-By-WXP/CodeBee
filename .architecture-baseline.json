@@ -551,9 +551,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/manager.py 1996 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/manager.py 2232 行（上限 1200，历史最高 0）",
       "file": "app/core/manager.py",
-      "lines": 1996
+      "lines": 2232
     },
     {
       "kind": "lines",
@@ -569,9 +569,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/runner.py 2193 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/runner.py 2225 行（上限 1200，历史最高 0）",
       "file": "app/core/runner.py",
-      "lines": 2193
+      "lines": 2225
     },
     {
       "kind": "lines",
