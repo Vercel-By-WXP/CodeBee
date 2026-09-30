@@ -763,7 +763,9 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         except FileNotFoundError as e:
             # filename=None 时 %r 只有一句「系统找不到指定的文件」，无从排查
             # （2026-09-30 claude winget 迁移实案：服务 PATH 快照过旧）。
-            tgt = str(argv[0]) if argv else ""
+            # e.filename 在场（如 POSIX cwd 缺失）时点名真实缺失路径，不猜 argv[0]。
+            tgt = str(e.filename) if getattr(e, "filename", None) \
+                else (str(argv[0]) if argv else "")
             return {"ok": False, "exit_code": None, "stdout": "",
                     "stderr": ("启动失败：找不到可执行文件「%s」。CLI 未安装或已卸载；"
                                "若刚安装，重启 CodeBee 服务让 PATH 生效即可。"

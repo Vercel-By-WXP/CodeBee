@@ -647,7 +647,7 @@ def write_model(entry, model):
             # settings.json、openclaw 缺失即安全默认——官方文档明确「缺失即
             # 内置默认」）；它正是用户层覆盖的落点，缺了按需创建
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            _atomic_write_bytes(path,b"{}" if fmt in ("json", "json-path", "jsonc") else b"")
+            _atomic_write_bytes(path, b"{}" if fmt in ("json", "json-path", "jsonc") else b"")
         if fmt == "jsonc":
             # mimo（mimocode.jsonc）有注释，整体重解析会丢注释——复用
             # _jsonc_set 做就地片段改写（只动目标键，其余原样保留）
@@ -658,7 +658,7 @@ def write_model(entry, model):
             if not ok:
                 return {"ok": False,
                         "error": "jsonc 结构异常，未能就地写入 %s（已避免覆盖）" % path}
-            _atomic_write_bytes(path,new_text.encode("utf-8"))
+            _atomic_write_bytes(path, new_text.encode("utf-8"))
         elif fmt == "toml-line":
             text = _read_text(path)
             new_line = 'model = "%s"' % model
@@ -666,17 +666,17 @@ def write_model(entry, model):
                 text = re.sub(r'(?m)^\s*model\s*=\s*"[^"]*"', new_line, text)
             else:
                 text = text.rstrip("\n") + "\n" + new_line + "\n"
-            _atomic_write_bytes(path,text.encode("utf-8"))
+            _atomic_write_bytes(path, text.encode("utf-8"))
         elif fmt == "toml-section":
             text = _read_text(path, preserve_newlines=True)
             text = _toml_write_value(text, *_dotted_key(cfg), value=model)
-            _atomic_write_bytes(path,text.encode("utf-8"))
+            _atomic_write_bytes(path, text.encode("utf-8"))
         elif fmt == "yaml-line":
             # newline="" 关掉通用换行转换：文本层面看不出 \r\n 就会被静默改写成 LF，
             # 用户的 Windows 配置不该因为写个模型名而整篇换行符被替换
             text = _read_text(path, preserve_newlines=True)
             text = _yaml_write_value(text, *_yaml_model_path(cfg), value=model)
-            _atomic_write_bytes(path,text.encode("utf-8"))
+            _atomic_write_bytes(path, text.encode("utf-8"))
         elif fmt == "json-path":
             # openclaw（agents.defaults.model.primary）：默认模型藏在嵌套对象里，
             # 且 openclaw 对未知顶层键直接拒绝启动——绝不能写顶层 "model"
@@ -859,7 +859,7 @@ def _sync_dsh_settings(entry, model, base_url):
         if text2 != text:
             if os.path.isfile(path):
                 shutil.copyfile(path, path + ".bak")
-            _atomic_write_bytes(path,text2.encode("utf-8"))
+            _atomic_write_bytes(path, text2.encode("utf-8"))
         return None
     except Exception as e:
         return repr(e)
@@ -1016,7 +1016,7 @@ def _sync_codex_settings(entry, model, cp):
         if text2 != text:
             if os.path.isfile(path):
                 shutil.copyfile(path, path + ".bak")
-            _atomic_write_bytes(path,text2.encode("utf-8"))
+            _atomic_write_bytes(path, text2.encode("utf-8"))
         return None
     except Exception as e:
         return repr(e)
@@ -1233,7 +1233,7 @@ def _sync_settings_env(path, updates, remove_keys=()):
         data["env"] = env
         if os.path.isfile(path):
             shutil.copyfile(path, path + ".bak")
-        _atomic_write_bytes(path,json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
+        _atomic_write_bytes(path, json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
         return None
     except Exception as e:
         return repr(e)
@@ -1345,7 +1345,7 @@ def _sync_mimo_settings(entry, model, prov):
                                   json.dumps("codebee/" + model))
         if not ok:
             return "mimocode.jsonc 结构异常，未能写入 model（已避免覆盖）"
-        _atomic_write_bytes(path,new_text.encode("utf-8"))
+        _atomic_write_bytes(path, new_text.encode("utf-8"))
         return None
     except OSError as e:
         return "写入 mimocode.jsonc 失败：%s" % str(e)[:80]
@@ -1425,7 +1425,7 @@ def _sync_opencode_settings(entry, model, prov):
                                          json.dumps(top_perms))
             if os.path.isfile(path):
                 shutil.copyfile(path, path + ".bak")
-            _atomic_write_bytes(path,new_text.encode("utf-8"))
+            _atomic_write_bytes(path, new_text.encode("utf-8"))
         except Exception as e:
             errs.append("%s: %r" % (path, e))
     return "；".join(errs) or None
@@ -1499,7 +1499,7 @@ def _sync_kimi_settings(entry, model, prov):
                 new_text = top + "\n" + body + "\n" + tables
             else:
                 new_text = (body + "\n" if body else "") + managed
-            _atomic_write_bytes(path,new_text.encode("utf-8"))
+            _atomic_write_bytes(path, new_text.encode("utf-8"))
         except Exception as e:
             errs.append("%s: %r" % (path, e))
     return "；".join(errs) or None
