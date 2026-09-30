@@ -35,7 +35,8 @@ async function main() {
     providers: [
       { id: "prov-a", name: "维云模型 YBJ", protocol: "openai",
         base_url: "https://a.test/v1", api_key: "sk-" + "a".repeat(20),
-        models: Array.from({ length: 71 }, (_, i) => ({ name: "m-a-" + i, priority: i + 1 })) },
+        models: Array.from({ length: 71 }, (_, i) => ({
+          name: "m-a-" + i, priority: i + 1, enabled: i < 69 })) },
       { id: "prov-b", name: "Z.ai · API Key", protocol: "anthropic",
         base_url: "https://b.test/v1", api_key: "sk-" + "b".repeat(20),
         models: Array.from({ length: 10 }, (_, i) => ({ name: "m-b-" + i, priority: i + 1 })) },
@@ -123,8 +124,8 @@ async function main() {
     check("每张卡：计数与名称首行顶端对齐", out.topAligned, JSON.stringify(out.geom));
     check("所有卡的计数同一垂直位置", out.nTopsUniform, JSON.stringify(out.geom.map((g) => g.nTop)));
     check("协议标签行在名称行下方", out.metaBelowName, JSON.stringify(out.geom));
-    check("计数文本正确（71/10 模型，只数启用中的模型）",
-      JSON.stringify(out.geom.map((g) => g.text)) === JSON.stringify(["71 模型", "10 模型"]),
+    check("计数文本正确（69/10 模型，只数启用中的模型）",
+      JSON.stringify(out.geom.map((g) => g.text)) === JSON.stringify(["69 模型", "10 模型"]),
       JSON.stringify(out.geom.map((g) => g.text)));
     check("厂商列表无横向溢出", out.overflow <= 0, "overflow=" + out.overflow);
     check("左栏供应商框与右列详情顶端对齐", out.cols && Math.abs(out.cols.side - out.cols.detail) <= 3 &&
@@ -149,6 +150,30 @@ async function main() {
     await sleep(600);
     const allN = await js(`document.querySelectorAll("#prov-list .prov-item").length`);
     check("「全部」视图三张卡齐出", allN === 3, JSON.stringify(allN));
+
+    // 详情页模型区同一套过滤：默认只渲染启用中的 69 行，点「已停用/全部」切换
+    await js(`document.querySelectorAll("#prov-list .prov-status .cat-chip")[0].click()`);
+    await sleep(600);
+    check("模型区状态 chips 三枚齐备",
+      (await js(`document.querySelectorAll(".pm-status .cat-chip").length`)) === 3);
+    check("模型区 chips 计数（69 启用 / 2 停用 / 71 全部）",
+      (await js(`JSON.stringify([...document.querySelectorAll(".pm-status .cat-chip")].map((c) => c.querySelector("b").textContent))`))
+        === JSON.stringify(["69", "2", "71"]),
+      await js(`JSON.stringify([...document.querySelectorAll(".pm-status .cat-chip")].map((c) => c.textContent.trim()))`));
+    check("模型列表默认只渲染启用中的 69 行",
+      (await js(`document.querySelectorAll("#pm-groups .prow").length`)) === 69,
+      await js(`document.querySelectorAll("#pm-groups .prow").length`));
+    check("模型计数条按当前视图口径（69 个模型）",
+      (await js(`document.getElementById("pm-count-prov-a").textContent`)) === "69 个模型",
+      await js(`document.getElementById("pm-count-prov-a").textContent`));
+    await js(`document.querySelectorAll(".pm-status .cat-chip")[1].click()`);
+    await sleep(600);
+    check("模型「已停用」视图只剩 2 行",
+      (await js(`document.querySelectorAll("#pm-groups .prow").length`)) === 2);
+    await js(`document.querySelectorAll(".pm-status .cat-chip")[2].click()`);
+    await sleep(600);
+    check("模型「全部」视图 71 行齐出",
+      (await js(`document.querySelectorAll("#pm-groups .prow").length`)) === 71);
 
     const shot = await send("Page.captureScreenshot", { format: "png" });
     if (shot?.result?.data) {
