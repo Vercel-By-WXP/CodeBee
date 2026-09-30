@@ -2862,6 +2862,27 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
 
     refresh_actual_route(impl)
     workdir = task["workdir"]
+    # Long-form state is a deterministic input to every chapter.  Bootstrap
+    # legacy serial tasks once, then refuse to write over manually edited
+    # derived views until the author reconciles the source JSON.
+    from . import story_tracking
+    try:
+        tracking_state = story_tracking.load(workdir)
+        if tracking_state is None:
+            story_tracking.init(workdir, task.get("id"), task.get("title"),
+                                premise=task.get("goal") or "")
+        tracking_check = story_tracking.check(workdir)
+    except Exception as exc:
+        store.update_run(run_id, expected_status="running", status="failed",
+                         error="故事追踪状态不可用，请先修复：%s" % str(exc)[:500],
+                         ended_at=_now())
+        return
+    if not tracking_check.get("ok"):
+        store.update_run(run_id, expected_status="running", status="failed",
+                         error="故事追踪状态存在漂移，请先修复：%s" %
+                               "；".join(tracking_check.get("errors") or [])[:500],
+                         ended_at=_now())
+        return
     # 续会话步骤的 CLI 启动目录（稿件读写仍用 workdir）
     step_wd = _resume_workdir(resume_ctx, workdir) if resume_ctx else workdir
     serial = task.get("serial") or {}
@@ -3840,6 +3861,26 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         chapter_scores.append(cs_new)
         # 每章即时持久化：长篇中断/超时后可断点续跑，不丢已完成章的分数
         store.update_run(run_id, chapter_scores=chapter_scores)
+        # Structured story state is committed alongside the chapter.  The
+        # pipeline remains compatible with legacy workdirs: a tracking failure
+        # is reported in the run evidence but never deletes a valid chapter.
+        try:
+            from . import story_tracking
+            story_tracking.commit_chapter(
+                workdir, i, outline_txt, _read_chapter(workdir, i),
+                facts=[str(x.get("note") or "") for x in issues_all
+                       if isinstance(x, dict) and x.get("chapter") == i and x.get("note")],
+                foreshadowing=[{"id": "F-%04d-%02d" % (i, n + 1),
+                                "text": str(line)[:400], "status": "active",
+                                "planted_chapter": i}
+                               for n, line in enumerate(ledger_lines[:20])],
+                next_promises=[ch.get("hook") or ch.get("highlight") or ""],
+            )
+        except Exception as exc:
+            try:
+                store.update_run(run_id, story_tracking_warning=str(exc)[:300])
+            except Exception:
+                pass
         # 资源账本（借鉴角色资源账本）：评审提出的道具/伤情/承诺/伏笔增量
         # 追加到 .codebee/resource-ledger.md，下一章起草时注入，防跨章穿帮。
         # 失败静默——账本是增强不是硬依赖。

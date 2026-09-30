@@ -186,6 +186,11 @@ def publish_pending_async(task_id, platform, auto_submit=False, force=False,
     task = store.get_task(task_id)
     if not task:
         return False, "任务不存在"
+    from .. import contracts
+    contract = contracts.get(task_id)
+    if ((contract and contract.get("approval_required")) or task.get("approval_required")) \
+            and not contracts.release_allowed(task_id):
+        return False, "任务需要先完成审批，才能发布产物"
     book = ledger.book_for(task_id, platform)
     if not book:
         return False, "该任务尚未在此平台建书，请先「创建作品」"
@@ -359,6 +364,12 @@ def due_tasks(now=None):
         ap = task.get("auto_publish")
         if not isinstance(ap, dict) or not ap.get("enabled"):
             continue
+        if ap.get("auto_submit"):
+            from .. import contracts
+            contract = contracts.get(task["id"])
+            if ((contract and contract.get("approval_required")) or
+                    task.get("approval_required")) and not contracts.release_allowed(task["id"]):
+                continue
         if str(ap.get("time") or "") <= hhmm_now and fired.get(task["id"]) != today:
             plat = ap.get("platform")
             if plat and _book_ready(ledger.book_for(task["id"], plat)):

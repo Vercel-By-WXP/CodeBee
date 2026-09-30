@@ -422,6 +422,56 @@ def _schedule_enqueue(job, delay_s):
     return True
 
 
+def enqueue_now(run_id):
+    """立即重试：退避窗口内的续跑副本跳过等待马上入队（详情页按钮触发）。
+
+    返回 (ok, err)。先摘到点 Timer 再直接 enqueue——CAS 认领保证与 Timer
+    竞态时只有一方生效，Timer 抢先起跑按目的已达成处理。resume_enqueue_at
+    同步清空：副本一旦入队/起跑，UI 不该再显示「将于 HH:MM 自动续跑」；
+    满载转排队后由补跑心跳接管，巡检也把它当普通排队记录。跳过退避是
+    用户的主动选择（等效于手动重试），不受「别烧退避窗口」的巡检约束。"""
+    from . import store
+    run = store.get_run(run_id)
+    if not run:
+        return False, "运行不存在"
+    if run.get("status") != "queued":
+        return False, "该运行已不在排队等待中"
+    if not str(run.get("resume_enqueue_at") or ""):
+        return False, "该运行不在自动续跑等待中"
+    if str(run.get("kind") or "orchestration") != "orchestration" or not run.get("task_id"):
+        return False, "该运行不支持立即重试"
+    resume_at = str(run.get("resume_enqueue_at") or "")
+    with _timer_lock:
+        old = _deferred_timers.pop(run_id, None)
+    if old is not None:
+        old.cancel()
+    if store.update_run(run_id, resume_enqueue_at="") is None:
+        if old is not None:
+            _schedule_enqueue({"kind": "orchestration", "run_id": run_id,
+                               "task_id": run.get("task_id")}, 1.0)
+        return False, "运行状态已变化，请刷新后重试"
+    try:
+        enqueue({"kind": "orchestration", "run_id": run_id,
+                 "task_id": run.get("task_id")})
+    except DuplicateJobError:
+        pass   # 到点 Timer 抢先起跑/运行已被取消接管：无需再排
+    except Exception as exc:
+        # A non-duplicate enqueue failure must not strand the run with the
+        # backoff marker cleared and its original timer removed.
+        current = store.get_run(run_id)
+        if current and current.get("status") == "queued":
+            store.update_run(run_id, resume_enqueue_at=resume_at)
+            try:
+                import time as _time
+                due = _time.mktime(_time.strptime(resume_at, "%Y-%m-%d %H:%M:%S"))
+                _schedule_enqueue({"kind": "orchestration", "run_id": run_id,
+                                   "task_id": run.get("task_id")}, max(0.0, due - _time.time()))
+            except Exception:
+                pass
+        return False, "立即重试失败，已恢复自动续跑：%s" % str(exc)[:160]
+    return True, ""
+
+
 def restore_deferred_resumes(limit=None, now=None):
     """重建重启前的自动续跑退避 Timer；返回成功恢复的数量。"""
     import time as _t

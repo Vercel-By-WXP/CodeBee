@@ -247,6 +247,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(401, {"error": "需要访问令牌（启动 CodeBee 时控制台会显示）"})
             if path == "/api/state":
                 return self._json(200, _state_payload(self._client_id()))
+            if path == "/api/openapi.json":
+                from core import openapi
+                return self._json(200, openapi.document())
+            m = re.match(r"^/api/a2a/tasks/([^/]+)$", path)
+            if m:
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "not found"})
+                run = store.latest_run_by_task().get(m.group(1))
+                from core import contracts
+                return self._json(200, {"task": task, "run": run,
+                                        "contract": contracts.get(m.group(1))})
             if path == "/api/browse":
                 return self._api_browse()
             if path == "/api/dir/scan":
@@ -266,6 +278,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/board":
                 # 任务驾驶舱大屏的轻量聚合（KB 级；别让它去拉 /api/state 全量）
                 return self._json(200, board.payload())
+            if path == "/api/analytics":
+                from core import analytics
+                return self._json(200, analytics.summary(store))
             if path == "/api/connect":
                 # 供设置页「手机连接」弹框生成二维码；远程打开需令牌，天然受保护
                 return self._json(200, {"urls": remote.build_connect_urls(PORT),
@@ -311,6 +326,19 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/knowledge":
                 from core import knowledge
                 return self._json(200, knowledge.view())
+            if path == "/api/agents/presence":
+                from core import presence
+                return self._json(200, {"agents": presence.list_agents()})
+            if path == "/api/retrieval/search":
+                from core import retrieval
+                q = parse_qs(urlparse(self.path).query)
+                try:
+                    results = retrieval.search((q.get("q") or [""])[0],
+                                               (q.get("limit") or [10])[0])
+                except ValueError as exc:
+                    return self._json(400, {"error": str(exc)})
+                return self._json(200, {"query": (q.get("q") or [""])[0][:500],
+                                        "results": results})
             if path == "/api/settings":
                 return self._json(200, dict(settings.load(), **jobs.workers_info()))
             if path == "/api/settings-v2":
@@ -537,7 +565,26 @@ class Handler(BaseHTTPRequestHandler):
             m = re.match(r"^/api/tasks/([^/]+)/detail$", path)
             if m:
                 task = store.get_task(m.group(1))
-                return self._json(200, {"task": task}) if task else self._json(404, {"error": "not found"})
+                if not task:
+                    return self._json(404, {"error": "not found"})
+                from core import contracts
+                return self._json(200, {"task": task, "contract": contracts.get(m.group(1))})
+            m = re.match(r"^/api/tasks/([^/]+)/contract$", path)
+            if m:
+                from core import contracts
+                item = contracts.get(m.group(1))
+                return self._json(200, {"contract": item}) if item else self._json(404, {"error": "not found"})
+            m = re.match(r"^/api/tasks/([^/]+)/story-tracking$", path)
+            if m:
+                from core import story_tracking
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "not found"})
+                try:
+                    return self._json(200, {"state": story_tracking.load(task.get("workdir")),
+                                            "check": story_tracking.check(task.get("workdir"))})
+                except ValueError as exc:
+                    return self._json(409, {"error": str(exc)})
             m = re.match(r"^/api/tasks/([^/]+)/runs$", path)
             if m:
                 # 任务级详情用：该任务全部 run（含 steps），不受前端 run 窗口限制
@@ -545,13 +592,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(404, {"error": "not found"})
                 query = parse_qs(urlparse(self.path).query)
                 if "limit" not in query:
-                    return self._json(200, {"runs": store.task_runs(m.group(1))})
+                    from core import contracts
+                    return self._json(200, {"runs": store.task_runs(m.group(1)),
+                                            "contract": contracts.get(m.group(1))})
                 try:
                     limit = max(1, min(20, int((query.get("limit") or [3])[0])))
                     offset = max(0, int((query.get("offset") or [0])[0]))
                 except (TypeError, ValueError):
                     return self._json(400, {"error": "invalid pagination"})
-                return self._json(200, store.task_runs_page(m.group(1), offset, limit))
+                payload = store.task_runs_page(m.group(1), offset, limit)
+                from core import contracts
+                payload["contract"] = contracts.get(m.group(1))
+                return self._json(200, payload)
             m = re.match(r"^/api/tasks/([^/]+)/bible$", path)
             if m:
                 # 故事圣经：查看（无令牌豁免走 _authed 已过；本机免令牌）
@@ -764,6 +816,9 @@ class Handler(BaseHTTPRequestHandler):
                 return deny
         if path == "/api/tasks":
             return self._api_create_task()
+        if path == "/api/a2a/tasks":
+            status, resp = self._create_and_start(self._body() or {})
+            return self._json(status, {"protocol": "a2a-lite", **resp})
         if path == "/api/hooks/save":
             # 生命周期钩子配置整表保存（本机设置）
             from core import hooks
@@ -781,6 +836,87 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": ok, "output": out})
         if path == "/api/tasks/clarify":
             return self._api_task_clarify()
+        if path == "/api/agents/presence":
+            from core import presence
+            body = self._body() or {}
+            try:
+                row = presence.heartbeat(body.get("agent_id"), body.get("label"),
+                                         body.get("capabilities"), body.get("task_id"),
+                                         body.get("status"), body.get("metadata"))
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"ok": True, "agent": row})
+        if path == "/api/retrieval/index":
+            from core import retrieval
+            body = self._body() or {}
+            try:
+                if body.get("source"):
+                    row = retrieval.upsert(body.get("source"), body.get("text"), body.get("metadata"), body.get("doc_id"))
+                    return self._json(200, {"ok": True, "document": row})
+                root = body.get("root")
+                if not root:
+                    raise ValueError("root 必填")
+                # Indexing is intentionally scoped to the configured workspace
+                # or an existing task workdir; never accept an arbitrary disk path.
+                allowed = [settings.default_workdir()]
+                task_id = str(body.get("task_id") or "").strip()
+                if task_id:
+                    task = store.get_task(task_id)
+                    if not task:
+                        return self._json(404, {"error": "任务不存在"})
+                    allowed.append(task.get("workdir"))
+                result = retrieval.index_directory(root, limit=body.get("limit") or 500,
+                                                   allowed_roots=allowed)
+            except (ValueError, TypeError) as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"ok": True, **result})
+        m = re.match(r"^/api/tasks/([^/]+)/contract$", path)
+        if m:
+            from core import contracts
+            body = self._body() or {}
+            op = str(body.get("op") or "update").lower()
+            tid = m.group(1)
+            try:
+                if op in ("update", "create"):
+                    item = contracts.create(tid, body)
+                    return self._json(200, {"ok": True, "contract": item})
+                if op == "evidence":
+                    item = contracts.add_evidence(tid, body.get("evidence") or body,
+                                                   actor=body.get("actor") or self._client_name())
+                    return self._json(200, {"ok": True, "contract": item})
+                if op == "approve":
+                    item, err = contracts.approve(tid, body.get("actor") or self._client_name(), body.get("note"))
+                elif op == "reject":
+                    item, err = contracts.reject(tid, body.get("actor") or self._client_name(), body.get("note"))
+                elif op == "blocked":
+                    item, err = contracts.set_blocked(tid, body.get("reason"), body.get("actor") or self._client_name())
+                else:
+                    return self._json(400, {"error": "未知 contract 操作"})
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(400 if err else 200, {"error": err} if err else {"ok": True, "contract": item})
+        m = re.match(r"^/api/tasks/([^/]+)/story-tracking$", path)
+        if m:
+            from core import story_tracking
+            task = store.get_task(m.group(1))
+            if not task:
+                return self._json(404, {"error": "not found"})
+            body = self._body() or {}
+            try:
+                if body.get("op") == "init":
+                    state = story_tracking.init(task.get("workdir"), task.get("id"),
+                                                task.get("title"), body.get("premise") or task.get("goal"))
+                else:
+                    state = story_tracking.commit_chapter(
+                        task.get("workdir"), body.get("chapter"), body.get("outline"), body.get("prose"),
+                        facts=body.get("facts"), characters=body.get("characters"),
+                        timeline=body.get("timeline"), foreshadowing=body.get("foreshadowing"),
+                        next_promises=body.get("next_promises"), author_truth=body.get("author_truth"),
+                        reader_known=body.get("reader_known"))
+            except (ValueError, OSError) as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"ok": True, "state": state,
+                                    "check": story_tracking.check(task.get("workdir"))})
         if path == "/api/notify/test":
             # 设置页「发送测试」：向全部已配置推送通道发一条测试消息
             from core import notify
@@ -1054,6 +1190,12 @@ class Handler(BaseHTTPRequestHandler):
             store.update_run(m.group(1), cancelled_by_user=True)
             ok = jobs.cancel(m.group(1))
             return self._json(200, {"ok": ok})
+        m = re.match(r"^/api/runs/([^/]+)/resume_now$", path)
+        if m:
+            # 立即重试：跳过自动续跑的退避等待马上入队（用户点按钮 = 主动
+            # 选择不等退避窗口）。设备控制权由 do_POST 顶部的统一写闸把关。
+            ok, err = jobs.enqueue_now(m.group(1))
+            return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
         m = re.match(r"^/api/runs/([^/]+)/delete$", path)
         if m:
             ok, err = store.delete_run(m.group(1))
@@ -1713,6 +1855,13 @@ class Handler(BaseHTTPRequestHandler):
         if not task:
             return self._json(404, {"error": "任务不存在"})
         if op == "git-merge":
+            from core import contracts
+            contract = contracts.get(task_id)
+            if (contract and contract.get("approval_required")) or task.get("approval_required"):
+                if not contracts.release_allowed(task_id):
+                    return self._json(409, {"error": "任务需要先完成审批，才能合并产物",
+                                            "contract": contract})
+        if op == "git-merge":
             from core import operations
             operation_id = operations.begin(
                 "git:%s:merge" % task_id,
@@ -1836,6 +1985,12 @@ class Handler(BaseHTTPRequestHandler):
         force = bool(body.get("force"))
         force_confirmed = bool(body.get("force_confirmed"))
         force_reason = str(body.get("force_reason") or "").strip()
+        from core import contracts
+        contract = contracts.get(task_id)
+        if ((contract and contract.get("approval_required")) or task.get("approval_required")) \
+                and not contracts.release_allowed(task_id):
+            return self._json(409, {"error": "任务需要先完成审批，才能发布产物",
+                                    "contract": contract})
         if op == "create-book":
             kwargs = ({"force": force, "force_confirmed": force_confirmed,
                        "force_reason": force_reason}
@@ -1855,6 +2010,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not ap:
                     return self._json(400, {"error": ap_err})
                 ap["enabled"] = False
+            if ap.get("enabled") and ap.get("auto_submit"):
+                from core import contracts
+                contract = contracts.get(task_id)
+                if ((contract and contract.get("approval_required")) or
+                        task.get("approval_required")) and not contracts.release_allowed(task_id):
+                    return self._json(409, {"error": "任务需要先完成审批，才能启用自动提交",
+                                            "contract": contract})
             ok, err = store.set_auto_publish(task_id, ap), ""
             if ok:
                 return self._json(200, {"ok": True, "auto_publish": ap})

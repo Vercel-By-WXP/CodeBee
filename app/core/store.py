@@ -195,6 +195,18 @@ def create_task(payload):
     # 参数修订号（借鉴 WorkDSH 契约纪律 expectedRevision）：写接口据此做过期
     # 写入检测。老任务无此键按 1 处理；不带 expected_rev 的调用不受影响。
     task["rev"] = 1
+    # Durable task contract: acceptance criteria and approval requirement are
+    # persisted outside the task JSON so evidence/audit history survives task
+    # parameter edits and can be consumed by API/MCP clients independently.
+    raw_criteria = payload.get("acceptance_criteria")
+    if raw_criteria not in (None, "") and not isinstance(raw_criteria, list):
+        raise ValueError("acceptance_criteria 必须是列表")
+    task["acceptance_criteria"] = [str(x).strip()[:500] for x in
+                                    (raw_criteria or []) if str(x).strip()][:40]
+    approval_required = payload.get("approval_required", False)
+    if not isinstance(approval_required, bool):
+        raise ValueError("approval_required 必须是布尔值")
+    task["approval_required"] = approval_required
     if flow["engine"] == "direct":
         task["direct_provider_id"] = _text(payload.get("direct_provider_id"),
                                             "direct_provider_id")[:80]
@@ -388,6 +400,24 @@ def create_task(payload):
     with LOCK:
         _TASKS[task["id"]] = task
         _save_json(paths.TASKS_DIR / (task["id"] + ".json"), task)
+    try:
+        from . import contracts
+        contracts.create(task["id"], {
+            "acceptance_criteria": task.get("acceptance_criteria"),
+            "approval_required": task.get("approval_required"),
+            "actor": "system",
+        })
+    except Exception:
+        # Contracts are an evidence enrichment layer; legacy task creation
+        # must remain available if a damaged optional contract file is found.
+        pass
+    if task.get("serial"):
+        try:
+            from . import story_tracking
+            story_tracking.init(task["workdir"], task["id"], task["title"],
+                                premise=task.get("context") or task.get("goal") or "")
+        except Exception:
+            pass
     return task
 
 
@@ -1074,6 +1104,22 @@ def update_run(run_id, expected_status=None, **fields):
                 # Acceptance reporting is evidence enrichment; it must not
                 # prevent the primary run from reaching a terminal state.
                 pass
+            try:
+                from . import contracts
+                for case in (run.get("acceptance") or {}).get("cases") or []:
+                    contracts.add_evidence(
+                        run.get("task_id") or "",
+                        {"criterion": "acceptance:%s" % case.get("case"),
+                         "status": "passed" if case.get("status") == "passed" else case.get("status"),
+                         "summary": case.get("reason") or "acceptance matrix",
+                         "source": "acceptance"}, actor="system")
+                contracts.record_acceptance_cases(
+                    run.get("task_id") or "",
+                    (run.get("acceptance") or {}).get("cases") or [],
+                    actor="system")
+                contracts.complete(run.get("task_id") or "", run)
+            except Exception:
+                pass
         _save_json(paths.RUNS_DIR / run_id / "run.json", run)
         if st in TERMINAL_STATUSES and prev_status not in TERMINAL_STATUSES:
             # 事后对账：只有「非终态 → 终态」这一次翻转才记账，重复写终态
@@ -1744,6 +1790,8 @@ def continue_task(task_id, chapters=None):
         "difficulty": task.get("difficulty") or "auto",
         "implementer": task.get("implementer") or "",
         "critics": task.get("critics") or [],
+        "acceptance_criteria": task.get("acceptance_criteria") or [],
+        "approval_required": bool(task.get("approval_required")),
         "manuscript": task.get("manuscript") or "manuscript.md",
         "threshold": task.get("threshold") or 7.0,
         "serial": {"chapters": batch,

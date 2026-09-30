@@ -4574,6 +4574,16 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
 .rd-overview-last span { color: var(--text); }
 .rd-overview-actions { display: flex; justify-content: flex-end; gap: 6px; grid-column: 1 / -1; }
 .rd-overview-actions button { padding: 5px 9px; font-size: 11.5px; }
+.rd-contract { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; grid-column: 1 / -1; padding-top: 8px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11.5px; }
+.rd-contract b { color: var(--text); }
+.rd-contract .err { color: var(--bad); }
+.rd-contract-evidence { display: flex; flex-wrap: wrap; gap: 4px 8px; width: 100%; }
+.rd-contract-criterion { padding: 2px 6px; border-radius: 5px; background: color-mix(in srgb, var(--text) 7%, transparent); }
+.rd-contract-criterion.passed { color: var(--ok); }
+.rd-contract-criterion.failed { color: var(--bad); }
+.rd-contract-mark { margin-left: 4px; padding: 0 4px; border: 0; border-radius: 4px; color: var(--muted); background: transparent; cursor: pointer; }
+.rd-contract-mark.pass:hover { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.rd-contract-mark.fail:hover { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
 
 /* 直连详情把概览放进右上角信息面板；主区仍然只留对话。 */
 #run-detail.chat-mode .rd-meta-popover #rd-overview:not(.hidden) { display: grid !important; }

@@ -10,7 +10,7 @@ function codebeeDocumentTitle(lang) {
 document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, rdHiveFirst: false, _rdCtx: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, rdHiveFirst: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined };
 
 /* ---------------------------------------------------------- 内置浏览器工作区 */
 const BROWSER_STORAGE_KEY = "orch.browser.workspace.v1";
@@ -3145,6 +3145,9 @@ async function createTask() {
   S.clarifyDone = false;
   if (!payload.workdir) delete payload.workdir;  // 留空 → 服务端用「默认保存路径」（编排设置可改）
   else unhideSideDir(payload.workdir);           // 在已移除的目录新建任务 → 自动恢复显示
+  const acceptance = (($('f-acceptance') || {}).value || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  if (acceptance.length) payload.acceptance_criteria = acceptance.slice(0, 40);
+  payload.approval_required = !!(($('f-approval-required') || {}).checked);
   if (payload.mode === "manual") payload.implementer = $("f-impl").value;
   // 附件与代码版本：任务创建时服务端把待提交附件移入 _attachments/ 并注入上下文
   if ((S.atts || []).length) payload.attachments = S.atts.filter((a) => a.id).map((a) => a.id);
@@ -4623,6 +4626,20 @@ function setRetryBtn(run, task) {
       : t("再跑一次这个任务；连载任务会断点续跑，已完成章节不重写");
 }
 
+/* 「立即重试」：退避窗口内的续跑副本（将于 HH:MM 自动续跑）可跳过等待直接
+ * 入队。只认 queued + 未来时刻的 resume_enqueue_at；普通并发排队每 15s 有
+ * 补跑心跳，用不上这个按钮。退避相位在两处渲染的签名里都有（resumePending /
+ * etaBucket 分钟桶），到点后下一帧自然隐藏。 */
+function setResumeNowBtn(run) {
+  const b = $("btn-resume-now");
+  if (!b) return;
+  const at = run && run.status === "queued"
+    ? Date.parse(String(run.resume_enqueue_at || "").replace(" ", "T")) : NaN;
+  const inBackoff = !isNaN(at) && Date.now() < at;
+  b.classList.toggle("hidden", !inBackoff);
+  S.resumeNowRunId = inBackoff ? run.id : null;
+}
+
 /* 任务级详情：聚合该任务所有 run 的步骤。
  * 有任务档案的从 /api/tasks/<id>/runs 拉全量——前端 run 窗口只有最近 40 条，
  * 窗口外的历史会被算丢；无主运行组（管理操作/任务已删）仍用窗口数据。
@@ -4640,6 +4657,7 @@ function renderTaskDetail() {
   setRetryBtn(retrySnapshotForTask(key, tk, latestSummary), tk);
   setEditRetry(tk ? tk.id : "", tk ? tk.status : "", !!tk);
   syncArchBtn(tk, tk && (tk.status === "running" || tk.status === "queued"));
+  setResumeNowBtn(null);   // 退避与否要看 run 数据，先收起防上一个任务残留
   const isTask = ((S.state || {}).tasks || []).some((t2) => t2.id === key);
   if (isTask) {
     loadTaskRuns(key, latestSummary);
@@ -4703,6 +4721,7 @@ function loadTaskRuns(key, latestSummary) {
         offset: Number(data.offset) + runs.length, total: Number(data.total),
         hasMore: !!data.has_more, totals: data.totals || null, loading: false,
       });
+      if (data && data.contract) S.taskContracts[key] = data.contract;
       _taskRunsCache.delete(key);
       _taskRunsCache.set(key, runs);
       while (_taskRunsCache.size > 3) {
@@ -4752,6 +4771,7 @@ async function loadEarlierTaskRuns(key) {
     page.offset = Number(data.offset) + older.length;
     page.total = Number(data.total) || page.total;
     page.hasMore = !!data.has_more;
+    if (data && data.contract) S.taskContracts[key] = data.contract;
     drawTaskDetail(key, _taskRunsCache.get(key), appendFrom);
   } catch (e) {
     toast(t("加载历史运行失败：") + e.message, true);
@@ -4846,6 +4866,7 @@ function drawTaskDetail(key, runs, appendFrom) {
   // S.detailRunId，cancelRun 靠 S.cancelTargetRunId 知道取消谁
   $("btn-cancel").classList.toggle("hidden", !activeRun);
   S.cancelTargetRunId = activeRun ? activeRun.id : null;
+  setResumeNowBtn(activeRun && activeRun.status === "queued" ? activeRun : null);
   const bp2 = $("btn-pause");
   if (bp2 && activeRun) {
     bp2.classList.toggle("hidden", false);
@@ -5403,6 +5424,7 @@ async function renderRunDetail() {
   const active = run.status === "queued" || run.status === "running";
   $("btn-cancel").classList.toggle("hidden", !active);
   S.cancelTargetRunId = active ? run.id : null;
+  setResumeNowBtn(run.status === "queued" ? run : null);   // 在 sig 守卫前：退避相位由 etaBucket 分钟桶兜底刷新
   $("btn-delete").classList.toggle("hidden", active);
   $("btn-share").classList.toggle("hidden", active);   // 分享页：结束后可生成自包含 HTML
   $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
@@ -5637,10 +5659,14 @@ function renderBookMetaPanel(task) {
   //（正在填登记表单）或章节清单正展开时跳过本帧整块重绘——innerHTML
   // 重建会把没提交的字清掉、把展开列表折回去。轮询链继续转，blur/收起
   // 后下一轮数据变化自然跟上；登记草稿另有 S.pbRegDraft 兜底回填。
+  // 守卫只保护同一任务（box.dataset.taskId）：切到别的任务的详情时，
+  // 上一任务的展开态没有保留价值，放行重绘——否则新任务详情的作品信息
+  // 页签一直挂着上一本书的建书/发布数据（2026-09-30 用户实案）。
   const ae = document.activeElement;
-  if ((ae && box.contains(ae) &&
+  if (box.dataset.taskId === task.id &&
+      ((ae && box.contains(ae) &&
         (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) ||
-      box.querySelector(".pb-chapters:not(.hidden)")) {
+       box.querySelector(".pb-chapters:not(.hidden)"))) {
     pbSyncState(task);
     return;
   }
@@ -5747,6 +5773,7 @@ function renderBookMetaPanel(task) {
     bmStatusChip(cgSt) + '<span class="flex1"></span>' + cgAction + "</div>" + cgBody + "</div></div>";
   box.classList.remove("hidden");
   box.innerHTML = html;
+  box.dataset.taskId = task.id;   // 跨任务守卫标记：展开态/输入保护只对同一任务生效
   // TAB 徽章：已生成平台数（生成中显示 ●，随下次轮询刷新）
   const badge = document.querySelector('#rd-tabs .rd-tab[data-tab="bookmeta"] .rd-badge');
   if (badge) {
@@ -8260,6 +8287,23 @@ async function cancelRun() {
   toast(r && r.ok ? t("已强制终止运行") : t("该运行已结束，无需取消"));
 }
 
+/* 立即重试：跳过自动续跑的退避等待，马上把续跑副本入队。任务级详情没有
+ * S.detailRunId，目标用渲染时钉好的 resumeNowRunId（与 cancel 同款约定）。 */
+async function resumeNow() {
+  const rid = S.detailRunId || S.resumeNowRunId;
+  if (!rid) return;
+  let r;
+  try {
+    r = await api("/api/runs/" + encodeURIComponent(rid) + "/resume_now", { method: "POST" });
+  } catch (e) { toast(t("操作失败：") + (e && e.message ? e.message : t("网络异常")), true); return; }
+  if (r && r.ok) {
+    toast(t("已跳过等待，马上继续"));
+    refreshState();   // 后端 bump 也会推 SSE，这里主动刷一轮让按钮立刻消失
+  } else {
+    toast((r && r.error) || t("操作失败"), true);
+  }
+}
+
 /* ---------------------------------------------------- 运行中指挥（消息信箱） */
 /* 用户在详情页往运行中的任务「递话」：文字 + 附件（截图/文件）。
  * 无头 CLI 插不进正在跑的进程，指令在下一次步骤下达前由后端 drain 注入。
@@ -8964,6 +9008,7 @@ function renderDetailOverview(run, runs, task, aggregate) {
   const duration = runDurationSeconds(run);
   const etaText = runEtaText(run);
   const goal = (task && task.goal) || run.goal || run.title || "";
+  const contract = (task && task.contract) || S.taskContracts[(task && task.id) || run.task_id] || null;
   const actions = [];
   if (total) actions.push('<button type="button" class="ghost" data-overview-tab="steps">' + esc(t("查看步骤")) + "</button>");
   if (last && last.log) actions.push('<button type="button" class="ghost" data-overview-run="' + esc(run.id) + '" data-overview-log="' + esc(last.log) + '">' + esc(t("打开 CLI 日志")) + "</button>");
@@ -8986,9 +9031,62 @@ function renderDetailOverview(run, runs, task, aggregate) {
       (etaText ? '<span class="rd-eta">' + esc(etaText) + '</span>' : "") +
     '</div>' +
     (lastText ? '<div class="rd-overview-last"><b>' + esc(t("最近一步")) + '</b><span>' + esc(lastText) + '</span></div>' : "") +
+    (contract ? contractOverviewHtml(contract) : "") +
     (actions.length ? '<div class="rd-overview-actions">' + actions.join("") + '</div>' : "");
   box.classList.remove("hidden");
 }
+
+function contractOverviewHtml(contract) {
+  const criteria = Array.isArray(contract.acceptance_criteria) ? contract.acceptance_criteria : [];
+  const evidence = Array.isArray(contract.evidence) ? contract.evidence : [];
+  const latest = {};
+  evidence.forEach((e) => { if (e && e.criterion) latest[e.criterion] = e; });
+  const passed = criteria.filter((c) => latest[c] && latest[c].status === "passed").length;
+  const approval = contract.approval_required
+    ? (contract.approval && contract.approval.status === "approved" ? t("已审批") : t("待审批")) : t("无需审批");
+  const taskId = String(contract.task_id || "");
+  const approvalAction = contract.approval_required && (!contract.approval || contract.approval.status !== "approved")
+    ? '<button type="button" class="ghost small" onclick="contractAction(\'' + jsq(taskId) + '\',\'approve\')">' + esc(t("批准发布")) + '</button>' : "";
+  const evidenceText = criteria.map((c) => {
+    const e = latest[c];
+    const controls = '<button type="button" class="rd-contract-mark pass" title="' + esc(t("标记通过")) + '" onclick="contractEvidenceAction(\'' + jsq(taskId) + '\',\'' + jsq(c) + '\',\'passed\')">✓</button>' +
+      '<button type="button" class="rd-contract-mark fail" title="' + esc(t("标记失败")) + '" onclick="contractEvidenceAction(\'' + jsq(taskId) + '\',\'' + jsq(c) + '\',\'failed\')">×</button>';
+    return '<span class="rd-contract-criterion ' + (e ? esc(e.status) : "pending") + '">' + esc(c) + ': ' + esc(e ? e.status : t("待验收")) + controls + '</span>';
+  }).join("");
+  return '<div class="rd-contract"><b>' + esc(t("任务契约")) + '</b>' +
+    '<span>' + esc(t("验收")) + ' ' + passed + '/' + criteria.length + '</span>' +
+    '<span>' + esc(t("审批")) + ' ' + esc(approval) + '</span>' +
+    (evidenceText ? '<div class="rd-contract-evidence">' + evidenceText + '</div>' : "") + approvalAction +
+    (contract.blocked_reason ? '<span class="err">' + esc(t("Blocked：")) + esc(contract.blocked_reason) + '</span>' : "") +
+    '</div>';
+}
+
+async function contractAction(taskId, op) {
+  try {
+    const data = await api("/api/tasks/" + encodeURIComponent(taskId) + "/contract", {
+      method: "POST", body: JSON.stringify({ op: op, actor: "ui" })
+    });
+    if (data && data.contract) S.taskContracts[taskId] = data.contract;
+    toast(op === "approve" ? t("已批准发布") : t("契约已更新"));
+    refreshState();
+  } catch (e) { toast((e && e.message) || t("操作失败"), true); }
+}
+window.contractAction = contractAction;
+
+async function contractEvidenceAction(taskId, criterion, status) {
+  const summary = await uiPrompt(t("证据说明（可空）"), "");
+  if (summary === null) return;
+  try {
+    const data = await api("/api/tasks/" + encodeURIComponent(taskId) + "/contract", {
+      method: "POST", body: JSON.stringify({ op: "evidence", actor: "ui",
+        evidence: { criterion: criterion, status: status, summary: summary, source: "manual" } })
+    });
+    if (data && data.contract) S.taskContracts[taskId] = data.contract;
+    toast(t("证据已记录"));
+    refreshState();
+  } catch (e) { toast((e && e.message) || t("操作失败"), true); }
+}
+window.contractEvidenceAction = contractEvidenceAction;
 
 /* 对话条三件套：与任务参数双向同步（2026-09-21 用户反馈「这里面也需要同步改」）。
  * 回填自当前任务；改动即写任务（空闲态），发送 /chat 前再兜底同步一次。 */
@@ -15269,6 +15367,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ? S.detailTaskKey : "");
     if (taskId) retryTask(taskId);
   });
+  $("btn-resume-now").addEventListener("click", resumeNow);
   /* 日志控制台高度：顶边手柄拖拽调整（localStorage 记忆），双击复位为默认弹性高度 */
   (() => {
     const grip = $("rd-log-grip"), box = $("rd-log");

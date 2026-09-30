@@ -25,7 +25,9 @@ TOOLS = [
          "goal": {"type": "string", "description": "任务目标（一句话说清要做什么）"},
          "type": {"type": "string", "description": "任务类型 id（如 code/novel/doc/direct），默认 doc"},
          "workdir": {"type": "string", "description": "工作目录绝对路径；留空用 CodeBee 默认保存路径"},
-         "title": {"type": "string", "description": "任务标题；留空取目标前 30 字"}},
+         "title": {"type": "string", "description": "任务标题；留空取目标前 30 字"},
+         "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
+         "approval_required": {"type": "boolean"}},
          "required": ["goal"]}},
     {"name": "get_status", "description": "查任务与最近一次运行的状态：进度、当前步骤、评分、错误。",
      "inputSchema": {"type": "object", "properties": {
@@ -38,6 +40,17 @@ TOOLS = [
     {"name": "bench_leaderboard", "description": "模型评测基准台能力榜（综合分 Top N）。",
      "inputSchema": {"type": "object", "properties": {
          "top": {"type": "integer", "description": "取前 N，默认 5"}}}},
+    {"name": "get_contract", "description": "读取任务验收标准、证据、审批和完成回执。",
+     "inputSchema": {"type": "object", "properties": {
+         "task_id": {"type": "string"}}, "required": ["task_id"]}},
+    {"name": "record_evidence", "description": "向任务契约追加结构化验收证据。",
+     "inputSchema": {"type": "object", "properties": {
+         "task_id": {"type": "string"}, "criterion": {"type": "string"},
+         "status": {"type": "string", "enum": ["passed", "failed", "unknown", "not_evaluated"]},
+         "summary": {"type": "string"}}, "required": ["task_id", "status"]}},
+    {"name": "search_knowledge", "description": "在本地检索索引中搜索带来源和命中词解释的上下文。",
+     "inputSchema": {"type": "object", "properties": {
+         "query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}},
 ]
 
 
@@ -57,10 +70,38 @@ def _tool_create_task(args):
                "goal": goal[:4000],
                "workdir": str(args.get("workdir") or "").strip()
                or settings_mod.default_workdir()}
-    task = store.create_task(payload)
-    run = store.create_run("orchestration", task["title"], task_id=task["id"])
-    store.update_task_status(task["id"], "queued")
-    _enqueue({"kind": "orchestration", "run_id": run["id"], "task_id": task["id"]})
+    criteria = args.get("acceptance_criteria")
+    if criteria is not None and not isinstance(criteria, list):
+        return {"isError": True, "content": "acceptance_criteria 必须是列表"}
+    if isinstance(criteria, list):
+        payload["acceptance_criteria"] = [str(x).strip()[:500] for x in criteria if str(x).strip()][:40]
+    approval_required = args.get("approval_required", False)
+    if not isinstance(approval_required, bool):
+        return {"isError": True, "content": "approval_required 必须是布尔值"}
+    payload["approval_required"] = approval_required
+    try:
+        task = store.create_task(payload)
+    except ValueError as exc:
+        return {"isError": True, "content": str(exc)}
+    run = None
+    try:
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_task_status(task["id"], "queued")
+        _enqueue({"kind": "orchestration", "run_id": run["id"], "task_id": task["id"]})
+    except Exception as exc:
+        # Mirror the HTTP creator: every partially-created task/run is closed
+        # so MCP clients never receive a success while the UI shows queued.
+        if run:
+            try:
+                store.update_run(run["id"], status="failed", error="任务启动失败，请稍后重试",
+                                 ended_at=__import__("time").strftime("%Y-%m-%d %H:%M:%S"))
+            except Exception:
+                pass
+        try:
+            store.update_task_status(task["id"], "failed")
+        except Exception:
+            pass
+        return {"isError": True, "content": "任务启动失败，请稍后重试"}
     return {"content": "已创建并排队：task_id=%s run_id=%s（可用 get_status 查进度）"
             % (task["id"], run["id"])}
 
@@ -121,9 +162,37 @@ def _tool_bench(args):
     return {"content": json.dumps(rows, ensure_ascii=False, indent=1)}
 
 
+def _tool_contract(args):
+    from core import contracts
+    item = contracts.get(str(args.get("task_id") or "").strip())
+    if not item:
+        return {"isError": True, "content": "任务契约不存在"}
+    return {"content": json.dumps(item, ensure_ascii=False, indent=1)}
+
+
+def _tool_evidence(args):
+    from core import contracts
+    try:
+        item = contracts.add_evidence(str(args.get("task_id") or "").strip(), args,
+                                      actor=str(args.get("actor") or "mcp")[:120])
+    except ValueError as exc:
+        return {"isError": True, "content": str(exc)}
+    return {"content": json.dumps(item, ensure_ascii=False, indent=1)}
+
+
+def _tool_search(args):
+    from core import retrieval
+    try:
+        rows = retrieval.search(args.get("query"), args.get("limit") or 10)
+    except (TypeError, ValueError) as exc:
+        return {"isError": True, "content": str(exc)}
+    return {"content": json.dumps(rows, ensure_ascii=False, indent=1)}
+
+
 _TOOL_IMPL = {"create_task": _tool_create_task, "get_status": _tool_get_status,
               "list_recent": _tool_list_recent, "usage_summary": _tool_usage_summary,
-              "bench_leaderboard": _tool_bench}
+              "bench_leaderboard": _tool_bench, "get_contract": _tool_contract,
+              "record_evidence": _tool_evidence, "search_knowledge": _tool_search}
 
 
 def handle_request(msg):

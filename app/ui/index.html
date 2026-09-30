@@ -481,6 +481,10 @@
                 <div class="field"><label data-i18n="任务标题">任务标题</label><input id="f-title" placeholder="可空，自动取目标首行" data-i18n-ph="可空，自动取目标首行"></div>
               </div>
               <div class="field"><label data-i18n="上下文">上下文</label><textarea id="f-context" rows="2" placeholder="背景信息、约束、相关文件（可空）" data-i18n-ph="背景信息、约束、相关文件（可空）"></textarea></div>
+              <div class="grid-2">
+                <div class="field"><label>验收标准（每行一条）</label><textarea id="f-acceptance" rows="3" placeholder="例如：测试全部通过&#10;例如：产出文件存在"></textarea></div>
+                <div class="field"><label class="checkline"><input id="f-approval-required" type="checkbox"> 完成前需要人工审批</label><p class="hint">启用后，Git 合并和发布会等待审批记录。</p></div>
+              </div>
 
               <div id="f-code-only">
                 <div class="field"><label data-i18n="验证命令">验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）" data-i18n-ph="例：python -m pytest -q（可空=只评审）"></div>
@@ -544,6 +548,7 @@
           <div class="rd-actions">
             <button id="btn-pause" class="ghost hidden" data-i18n="暂停">暂停</button>
             <button data-i18n="取消运行" id="btn-cancel" class="danger hidden">取消运行</button>
+            <button data-i18n="立即重试" id="btn-resume-now" class="primary hidden" data-i18n-title="不等自动续跑的退避等待，马上接着跑；连载任务从断点继续，已完成章节不重写" title="不等自动续跑的退避等待，马上接着跑；连载任务从断点继续，已完成章节不重写">立即重试</button>
             <button data-i18n="↻ 继续任务" id="btn-retry" class="primary hidden" data-i18n-title="再跑一次这个任务；连载任务会断点续跑，已完成章节不重写" title="再跑一次这个任务；连载任务会断点续跑，已完成章节不重写">↻ 继续任务</button>
             <button data-i18n="✎ 编辑重试" id="btn-editretry" class="ghost hidden" data-i18n-title="取回原任务的目标/目录/评审设置，修改后提交即重新开跑" title="取回原任务的目标/目录/评审设置，修改后提交即重新开跑">✎ 编辑重试</button>
             <button data-i18n="继续连载" id="btn-continue" class="ghost hidden">继续连载</button>

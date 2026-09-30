@@ -107,6 +107,31 @@ class HttpRouteGuard(unittest.TestCase):
         self.assertEqual(st, 200, "单条升级应正常受理，实际 %s %r" % (st, body))
         self.assertTrue(body.get("run_id"), "受理必须返回 run_id")
 
+    def test_04_contract_openapi_health_and_remote_auth_shapes(self):
+        st, body = _req("GET", "/api/openapi.json")
+        self.assertEqual(st, 200)
+        self.assertIn("/api/tasks/{task_id}/contract", body.get("paths", {}))
+        self.assertIn("codebeeQueryToken", body.get("components", {}).get("securitySchemes", {}))
+
+        st, body = _req("GET", "/api/health")
+        self.assertEqual(st, 200)
+        self.assertIsInstance(body, dict)
+
+        import http.client
+        # This server only enforces forwarded-client auth when trusted-proxy
+        # mode is enabled; enable it for the explicit remote-auth assertion.
+        from core import remote
+        remote.set_trusted_proxy(True)
+        conn = http.client.HTTPConnection("127.0.0.1", PORT, timeout=15)
+        try:
+            conn.request("GET", "/api/state", headers={"X-Forwarded-For": "203.0.113.9"})
+            resp = conn.getresponse()
+            self.assertEqual(resp.status, 401)
+            resp.read()
+        finally:
+            conn.close()
+            remote.set_trusted_proxy(False)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
