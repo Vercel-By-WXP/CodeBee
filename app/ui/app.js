@@ -1271,20 +1271,34 @@ async function api(path, opts) {
 
 /* 质量门禁三选一弹框（替代原生 confirm 的单一「强制放行」出口）：
  * 取消 / ↻ 重新评审 / 强制放行。「重新评审」= 重写未达标章再评（语义同详情页
- * 「↻ 重写未达标章」按钮，走 retry 的未达标分支），仅 serial 任务且非运行中
- * 才给（运行中后端 retry 也会拒）。返回 "review" | "force" | null(取消)。 */
+ * 「↻ 重写未达标章」按钮，走 retry 的未达标分支），仅 serial 任务才给；任务
+ * 运行/排队中按钮置灰（后端 retry 会拒），但必须显出来并写明出路——正在跑的
+ * 这轮结束后再来发布，仍不达标时按钮即可点；无声藏按钮用户只会看到死路。
+ * 返回 "review" | "force" | null(取消)。 */
 async function pbGateChoice(err, promptText, taskId) {
   const tk = ((S.state || {}).tasks || []).find((x) => x.id === taskId);
-  const canReview = !!(tk && tk.serial &&
-    tk.status !== "running" && tk.status !== "queued");
+  const busy = !!(tk && (tk.status === "running" || tk.status === "queued"));
+  const canReview = !!(tk && tk.serial && !busy);
+  const resumeAt = busy
+    ? ((((S.state || {}).task_latest || {})[taskId] || {}).resume_enqueue_at || "") : "";
+  const busyHint = (tk && tk.serial && busy)
+    ? (resumeAt
+        ? t("任务正在运行/排队中，预计 {0} 自动续跑，暂不能重复发起评审；等这轮跑完再来点发布——若质量仍不达标，这里就能点「重新评审」（只重写未达标章）。",
+            String(resumeAt).slice(11, 16))
+        : t("任务正在运行/排队中，暂不能重复发起评审；等这轮跑完再来点发布——若质量仍不达标，这里就能点「重新评审」（只重写未达标章）。"))
+    : "";
   const msg = (promptText || t("质量门禁未通过")) + "\n\n" + ((err && err.message) || "");
   const v = await _askOpen({
     title: t("质量门禁未通过"),
     bodyHtml: '<div class="ask-msg">' + esc(msg) + "</div>" +
       (canReview ? '<div class="ask-msg">' +
-        esc(t("「重新评审」只重写未达标章节并重新评审（已过线章节沿用成稿与评分），跑完后再来发布。")) + "</div>" : ""),
+        esc(t("「重新评审」只重写未达标章节并重新评审（已过线章节沿用成稿与评分），跑完后再来发布。")) + "</div>" : "") +
+      (busyHint ? '<div class="ask-msg">' + esc(busyHint) + "</div>" : ""),
     okText: t("强制放行…"),
-    extra: canReview ? [{ text: "↻ " + t("重新评审"), value: "review" }] : [],
+    extra: (tk && tk.serial)
+      ? [{ text: "↻ " + t("重新评审"), value: "review", disabled: busy,
+           title: busy ? t("任务运行/排队中，暂不能发起；等这轮跑完再试") : "" }]
+      : [],
     onOpen: () => $("ask-yes").focus(),
   });
   return v === "review" ? "review" : (v === true ? "force" : null);
@@ -1363,6 +1377,8 @@ function _askOpen(opts) {
       const el = document.createElement("button");
       el.className = (b.cls || "ghost") + " ask-extra";
       el.textContent = b.text;
+      el.disabled = !!b.disabled;   // 置灰态：看得见点不了（配合 title 说明原因）
+      if (b.title) el.title = b.title;
       el.addEventListener("click", () => _askClose(b.value));
       foot.insertBefore(el, $("ask-no"));
     });
