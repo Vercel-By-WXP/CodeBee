@@ -5643,10 +5643,14 @@ function renderBookMetaPanel(task) {
   //（正在填登记表单）或章节清单正展开时跳过本帧整块重绘——innerHTML
   // 重建会把没提交的字清掉、把展开列表折回去。轮询链继续转，blur/收起
   // 后下一轮数据变化自然跟上；登记草稿另有 S.pbRegDraft 兜底回填。
+  // 守卫只保护同一任务（box.dataset.taskId）：切到别的任务的详情时，
+  // 上一任务的展开态没有保留价值，放行重绘——否则新任务详情的作品信息
+  // 页签一直挂着上一本书的建书/发布数据（2026-09-30 用户实案）。
   const ae = document.activeElement;
-  if ((ae && box.contains(ae) &&
+  if (box.dataset.taskId === task.id &&
+      ((ae && box.contains(ae) &&
         (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) ||
-      box.querySelector(".pb-chapters:not(.hidden)")) {
+       box.querySelector(".pb-chapters:not(.hidden)"))) {
     pbSyncState(task);
     return;
   }
@@ -5764,6 +5768,7 @@ function renderBookMetaPanel(task) {
     bmStatusChip(cgSt) + '<span class="flex1"></span>' + cgAction + "</div>" + cgBody + "</div></div>";
   box.classList.remove("hidden");
   box.innerHTML = html;
+  box.dataset.taskId = task.id;   // 跨任务守卫标记：展开态/输入保护只对同一任务生效
   // TAB 徽章：已生成平台数（生成中显示 ●，随下次轮询刷新）
   const badge = document.querySelector('#rd-tabs .rd-tab[data-tab="bookmeta"] .rd-badge');
   if (badge) {
