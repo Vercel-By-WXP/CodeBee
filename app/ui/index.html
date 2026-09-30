@@ -893,8 +893,8 @@
         <div class="panel wide">
           <div class="panel-head"><h2 data-i18n="模型调度（可选）">模型调度（可选）</h2>
             <button class="hhelp" data-help-topic="models" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
-            <button id="btn-autobind" class="ghost small" onclick="autoBindAll()" data-i18n="生成推荐指定方案">生成推荐指定方案</button>
-            <button id="btn-saveall-bind" class="ghost small hidden" onclick="saveAllBindings()" data-i18n="全部保存">全部保存</button>
+            <div class="actions"><button id="btn-autobind" class="ghost small" onclick="autoBindAll()" data-i18n="生成推荐指定方案">生成推荐指定方案</button>
+            <button id="btn-saveall-bind" class="ghost small hidden" onclick="saveAllBindings()" data-i18n="全部保存">全部保存</button></div>
           </div>
           <p data-i18n="默认无需绑定：CodeBee 会按任务类型、步骤角色、难度、成本、协议兼容性和健康状态动态推荐厂商与模型，并在无可用供应商时回落 CLI 自身配置。只有需要固定厂商、模型或跨厂商降级顺序时才在这里指定；显式指定会覆盖自动推荐，但不改写 CLI 全局配置。" class="hint">默认无需绑定：CodeBee 会按任务类型、步骤角色、难度、成本、协议兼容性和健康状态动态推荐厂商与模型，并在无可用供应商时回落 CLI 自身配置。只有需要固定厂商、模型或跨厂商降级顺序时才在这里指定；显式指定会覆盖自动推荐，但不改写 CLI 全局配置。</p>
           <div id="binding-list" class="cards"></div>
@@ -920,7 +920,7 @@
       <div id="sub-knowledge" class="subpage hidden">
         <div class="panel wide">
           <div class="panel-head"><h2 data-i18n="知识库">知识库</h2>
-            <button class="ghost small" onclick="kbFormOpen(null)"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg><span data-i18n="新建条目">新建条目</span></button></div>
+            <div class="actions"><button class="ghost small" onclick="kbFormOpen(null)"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg><span data-i18n="新建条目">新建条目</span></button></div></div>
           <p class="hint"><span data-i18n="运行产出自动整理成的可复用知识：">运行产出自动整理成的可复用知识：</span><span data-i18n="任务结束由编排者从产出材料自动提炼，默认直接转正参与注入；也可以手动新建——同时是你自己的知识管理库。条目按任务类型与相关性自动注入同类任务的规划与评审提示词。">任务结束由编排者从产出材料自动提炼，默认直接转正参与注入；也可以手动新建——同时是你自己的知识管理库。条目按任务类型与相关性自动注入同类任务的规划与评审提示词。</span></p>
           <div class="kb-toolbar">
             <input id="kb-search" data-i18n-ph="搜索标题 / 正文 / 标签" placeholder="搜索标题 / 正文 / 标签" oninput="kbSearch(this.value)">
