@@ -1626,7 +1626,7 @@
     "经验包": "Packs",
     "外部目录": "External catalog",
     "市场视图": "Market view",
-    "外部目录聚合公开生态：ZCode、Anthropic、Anthropic 官方技能、社区多端技能库（Codex / Gemini 兼容）与 ClawHub。本平台只注入纯技能内容（文档型）；插件包里的脚本、钩子或 MCP 组件会在安装时自动剥离并告知，绝不会被写入或执行。装好的技能不会单独「运行」，而是作为经验内容自动注入相关任务的提示词。": "External catalogs aggregate public ecosystems: ZCode, Anthropic, official Anthropic skills, a community multi-agent skill library (Codex / Gemini compatible) and ClawHub. Only pure skill content (docs) is ever injected; scripts, hooks and MCP components are stripped at install time and reported — never written or executed. Installed skills are not run standalone: they become experience content auto-injected into the prompts of related tasks.",
+    "外部目录聚合公开生态：ZCode、Anthropic、Anthropic 官方技能、社区多端技能库（Codex / Gemini 兼容）、ClawHub 与 CocoLoop。本平台只注入纯技能内容（文档型）；插件包里的脚本、钩子或 MCP 组件会在安装时自动剥离并告知，绝不会被写入或执行。装好的技能不会单独「运行」，而是作为经验内容自动注入相关任务的提示词。": "External catalogs aggregate public ecosystems: ZCode, Anthropic, official Anthropic skills, a community multi-agent skill library (Codex / Gemini compatible), ClawHub, and CocoLoop. Only pure skill content (docs) is ever injected; scripts, hooks and MCP components are stripped at install time and reported — never written or executed. Installed skills are not run standalone: they become experience content auto-injected into the prompts of related tasks.",
     "该插件无法从公开生态下载": "This plugin can't be fetched from the public ecosystem",
     "；已自动剥离脚本/钩子/MCP 文件：": "; stripped scripts/hooks/MCP files: ",
     " 等 ": " and ",
