@@ -14773,6 +14773,13 @@ function collapseDrawerIfMobile() {
 function switchTab(name, shell) {
   if (name === "__phone") { openPhoneConnect(); return; }  // 手机连接是弹框，不切页
   if (name === "__guide") { welcomeOpen(); return; }       // 帮助中心是弹层，不切页（设置导航「软件」组）
+  // 详情开着时切去别的页：详情一并关掉（它是 runs 子页的住户，name==="runs" 除外）。
+  // 不关会留两个残留：S.detailRunId 让顶栏标题卡在「运行详情」；对话态详情给 main
+  // 挂的 chat-fill（overflow:hidden 锁滚动，见 renderChatNav）留在原地——设置/概览
+  // 等子页整页滚不动（2026-09-30 设置页滚不动实案）。closeRun 里的 renderChatNav
+  // 会看到详情已隐而解锚。此处用旧的 S.mainPage 走 closeRun 归位分支，随后本函数
+  // 再落到用户真正点的目标页。
+  if ((S.detailRunId || S.detailTaskKey) && name !== "runs") closeRun();
   // 形态由目标页决定：快捷导航页（概览/运行记录/自动化）走 main——只换主栏内容、
   // 左栏任务树原地不动；其余页进设置导航。调用方可用 shell 显式覆盖（如已在设置里
   // 点运行详情，仍要留在设置侧栏）。用户主动进设置时左栏一定会换成设置导航。
@@ -14816,6 +14823,7 @@ function switchTab(name, shell) {
 
 /* 退出设置/回到新建任务表单：左栏恢复任务树，主栏回到任务页 */
 function exitSettings() {
+  if (S.detailRunId || S.detailTaskKey) closeRun();   // 设置运行列表开着详情就回表单：一并关掉，防 chat-fill 锁滚动与标题残留
   S.tab = "tasks";
   S.mainPage = "";   // 主栏回到表单：不再是快捷导航页
   stopAutoPoll();   // 离开设置视图：自动化页轮询一并停掉
