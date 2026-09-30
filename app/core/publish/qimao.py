@@ -125,6 +125,36 @@ def chapter_manage_url(book):
     return CONFIG["book_manage"]
 
 
+def resolve_book_id(page, book):
+    """登记缺 book_id 时按书名在作品管理页找回：点书名卡进详情，从 URL 提取。
+
+    与番茄同款对账通道（fanqie.resolve_book_id）；找不回返回空串不拦死。"""
+    import re
+    import time
+    from . import flow as _flow
+    title = str((book or {}).get("title") or "").strip()
+    if not title:
+        return ""
+    try:
+        page.navigate(CONFIG["book_manage"], timeout=30)
+    except Exception:
+        return ""
+    r = None
+    for _try in range(6):                   # 列表慢渲染
+        r = page.call(_flow._click_match_js(), [title], 300)
+        if (r or {}).get("ok"):
+            break
+        time.sleep(1.0)
+    if not (r or {}).get("ok"):
+        return ""
+    time.sleep(2.5)                         # 跳转收尾
+    m = re.search(r"manage\?id=(\d+)|draft\?id=(\d+)|information\?id=(\d+)",
+                  str(page.url() or ""))
+    if not m:
+        return ""
+    return m.group(1) or m.group(2) or m.group(3) or ""
+
+
 def draft_url(book):
     """草稿箱页（发章真发布链中转站）。"""
     bid = str((book or {}).get("book_id") or "")

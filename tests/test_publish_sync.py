@@ -210,6 +210,139 @@ def test_reregister_clears_stale_remote():
     expect(b.get("remote_total") == 5, "同书重登记保留校准：%s" % b)
 
 
+def test_create_book_empty_id_reconciles_and_skips_entry():
+    """建书未取得 book_id：先按书名对账，找回即落账；仍空则不落台账
+    （空条目曾把界面骗成「已建书」、校准盲跑——2026-09-30 假登记案）。"""
+    import time as _time
+    from core import store
+
+    class FakePage:
+        def url(self):
+            return "https://fanqienovel.com/main/writer/create"  # 无 book-info
+
+    class FakeBrowser:
+        def first_page(self, create=True):
+            return FakePage()
+
+    patches = {
+        "_open_page": lambda plat: (FakeBrowser(), FakePage()),
+        "_create_preflight": lambda plat, data: "",
+        "_quality_release_guard": lambda *a, **k: {"allowed": True},
+        "_login_guard": lambda plat: (True, ""),
+    }
+    saved = {k: getattr(manager, k) for k in patches}
+    saved_flow = manager.flow.run_flow
+    manager.flow.run_flow = lambda *a, **k: None
+    for k, v in patches.items():
+        setattr(manager, k, v)
+    try:
+        # —— 场景A：id 落空但对账找回 → 正常落账翻成功
+        ta = store.create_task({"name": "建书对账A", "type": "novel",
+                                "goal": "x"})["id"]
+        store.set_book_meta(ta, "fanqie", {"status": "done", "data": {
+            "book_name": "对账找回书", "summary": "x", "category": "都市脑洞",
+            "tags_theme": ["都市异能"], "tags_role": ["扮猪吃虎"],
+            "tags_plot": ["打脸"]}})
+        manager._resolve_book_id = lambda plat, page, book: "888"
+        manager.create_book_async(ta, "fanqie")
+        _wait_idle()
+        b = ledger.book_for(ta, "fanqie")
+        expect(b and b["book_id"] == "888" and b.get("source") == "create",
+               "对账找回的 id 落账：%s" % b)
+
+        # —— 场景B：id 落空且对账也找不回 → 不落台账，审计记「疑似未建成」
+        tb = store.create_task({"name": "建书对账B", "type": "novel",
+                                "goal": "x"})["id"]
+        store.set_book_meta(tb, "fanqie", {"status": "done", "data": {
+            "book_name": "没建成的书", "summary": "x", "category": "都市脑洞",
+            "tags_theme": ["都市异能"], "tags_role": ["扮猪吃虎"],
+            "tags_plot": ["打脸"]}})
+        manager._resolve_book_id = lambda plat, page, book: ""
+        manager.create_book_async(tb, "fanqie")
+        _wait_idle()
+        expect(ledger.book_for(tb, "fanqie") is None,
+               "对账找不回不落台账（防假「已建书」）")
+        recs = [r for r in ledger.recent(task_id=tb, platform="fanqie", limit=10)
+                if r.get("action") == "create_book"]
+        expect(recs and not recs[0].get("ok")
+               and "疑似未建成" in str(recs[0].get("error") or ""),
+               "审计如实记「疑似未建成」：%s" % (recs[:1]))
+    finally:
+        manager.flow.run_flow = saved_flow
+        for k, v in saved.items():
+            setattr(manager, k, v)
+
+
+def _wait_idle(plat="fanqie", timeout=15.0):
+    """等 create_book_async 的守护线程收尾（busy 翻走）。"""
+    import time as _time
+    deadline = _time.time() + timeout
+    while _time.time() < deadline:
+        if manager._st(plat).get("status") != "busy":
+            return
+        _time.sleep(0.2)
+    raise AssertionError("建书线程 %ss 未收尾" % timeout)
+
+
+def test_sync_empty_id_resolves_first():
+    """校准遇 book_id 空登记：先对账找回再校准；找不回明确报「可能未建成」，
+    不再拿空 id 盲跑作品列表页报误导人的「可能改版」。"""
+    from core.publish import browser as browser_mod
+
+    class FakePage:
+        def __init__(self, rows, url=""):
+            self._rows, self._url = rows, url
+            self.navigated = []
+        def navigate(self, url, timeout=30):
+            self.navigated.append(url)
+        def url(self):
+            return self._url
+        def call(self, js, *a):
+            return self._rows
+
+    class FakeBrowser:
+        def first_page(self, create=True):
+            return FakeBrowser.page
+        @staticmethod
+        def attach(port):
+            return FakeBrowser()
+
+    pages = {}
+    def make_page():
+        pages["cur"] = FakePage(
+            ["第1章 x 900 0 已发布 09-30"],
+            url="https://fanqienovel.com/main/writer/chapter-manage/666")
+        return pages["cur"]
+
+    saved = (manager._resolve_book_id, browser_mod.Browser.attach)
+    try:
+        manager._set("fanqie", status="connected", port=59998)
+        browser_mod.Browser.attach = lambda port: FakeBrowser()
+
+        # —— 找回：补账 book_id 且继续校准写回 remote_*
+        ledger.save_book("t-synde", "fanqie", {"book_id": "", "title": "空id书A"})
+        manager._resolve_book_id = lambda plat, page, book: "666"
+        FakeBrowser.page = make_page()
+        ok, err = manager.sync_published("t-synde", "fanqie")
+        expect(ok, err)
+        b = ledger.book_for("t-synde", "fanqie")
+        expect(b["book_id"] == "666" and b.get("remote_total") == 1,
+               "对账找回并完成校准：%s" % b)
+
+        # —— 找不回：明确报「可能尚未建成」，不盲跑章节管理 URL
+        ledger.save_book("t-synmiss", "fanqie", {"book_id": "", "title": "空id书B"})
+        manager._resolve_book_id = lambda plat, page, book: ""
+        FakeBrowser.page = make_page()
+        ok, err = manager.sync_published("t-synmiss", "fanqie")
+        expect(not ok and "未找到" in err and "尚未建成" in err, err)
+        expect(ledger.book_for("t-synmiss", "fanqie")["book_id"] == "",
+               "找不回不补账")
+        expect(pages["cur"].navigated == [], "找不回不导航盲跑：%s"
+               % pages["cur"].navigated)
+    finally:
+        manager._resolve_book_id, browser_mod.Browser.attach = saved
+
+
 if __name__ == "__main__":
     print("== test_publish_sync")
     check("bucket_rows", test_bucket_rows)
@@ -219,5 +352,8 @@ if __name__ == "__main__":
     check("books_snapshot_carry_remote", test_books_snapshot_carry_remote)
     check("sync_glue_with_stub_page", test_sync_glue_with_stub_page)
     check("reregister_clears_stale_remote", test_reregister_clears_stale_remote)
+    check("create_book_empty_id_reconciles_and_skips_entry",
+          test_create_book_empty_id_reconciles_and_skips_entry)
+    check("sync_empty_id_resolves_first", test_sync_empty_id_resolves_first)
     print("== %d fail" % len(FAILS))
     sys.exit(1 if FAILS else 0)

@@ -489,6 +489,13 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
                                 % str(page.url() or "")[:120])
             except Exception:
                 pass
+            if not book_id:
+                # id 提取落空 ≠ 没建成（跳转链没走完等）：当场按书名在作家
+                # 后台对账，找回即补上，别把「结果未知」甩给用户人肉核对。
+                bid = _resolve_book_id(plat, page, {"title": book_name})
+                if bid:
+                    book_id = bid
+                    logs.append("book_id 提取落空，已按书名在平台对账找回 %s" % bid)
             operation_status = "confirmed" if book_id else "unknown"
             if book_id:
                 operations.confirm(operation_id, remote_receipt=book_id,
@@ -496,18 +503,23 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
             else:
                 operations.mark_unknown(
                     operation_id,
-                    "建书流程完成但未取得远端 book_id，请先在平台核对后再重试",
+                    "建书流程走完，但平台作品列表按书名未找到《%s》，书很可能未建成；"
+                    "请到平台作品管理确认，若已存在可人工登记" % book_name,
                     metadata={"platform": plat, "action": "create_book"})
             ledger.record(plat, "create_book", task_id=task_id, title=book_name,
                           book_id=book_id, ok=bool(book_id),
                           error=((("" if book_id else
-                                   "建书结果未知：未取得远端 book_id；请先对账\n")
+                                   "建书流程走完但未取得 book_id，且平台按书名未找到"
+                                   "《%s》，疑似未建成\n" % book_name)
                                   + "\n".join(logs))[:2000] or None),
                           shot=str(ledger.shot_path(plat, task_id, "")),
                           operation_id=operation_id, operation_status=operation_status,
                           remote_receipt=book_id)
-            ledger.save_book(task_id, plat, {"book_id": book_id, "title": book_name,
-                                             "source": "create"})
+            if book_id:
+                # 未取得 id 不落台账：空条目会让界面亮「已建书」、校准盲跑，
+                # 而发章/下次建书各自有按书名对账的兜底，空条目只剩害处。
+                ledger.save_book(task_id, plat, {"book_id": book_id, "title": book_name,
+                                                 "source": "create"})
             _set(plat, status="connected", error="")
         except Exception as e:
             operations.finish_exception(operation_id, e)
@@ -856,6 +868,18 @@ def sync_published(task_id, plat, manual=False):
             page = b.first_page(create=True)
     except Exception as e:
         return False, "浏览器未连接，点「连接平台」后再校准"
+    if not str(book.get("book_id") or "").strip():
+        # book_id 空的登记（人工登记/未验证建书结果）别拿去拼 URL 盲跑：
+        # 空 id 会落到作品列表页，数章节必然 0 行，报一句误导人的「可能改版」。
+        # 先按书名对账，找回补账再校准；找不回就明说书可能没建成。
+        bid = _resolve_book_id(plat, page, book)
+        if bid:
+            book = dict(book, book_id=bid)
+            ledger.save_book(task_id, plat, book)   # 合并语义：保留 remote_*
+        else:
+            return False, ("平台作品列表按书名未找到《%s》，这本书可能尚未建成；"
+                           "请到平台作品管理确认，若已存在可人工登记"
+                           % (book.get("title") or ""))
     try:
         page.navigate(mod.chapter_manage_url(book), timeout=40)
         time.sleep(4.0)                         # SPA 表格慢渲染
