@@ -87,9 +87,14 @@ class PluginTests(unittest.TestCase):
             root = Path(td)
             self._plugin(root, mcp=True)
             data = Path(td) / "data"
+            # 生产链路里 _SETTINGS_TEXT 由 main() 启动注入（读 settings +
+            # plugins 合成）——单测没有 main()，注入同一个真函数才测得着
+            inject = lambda: plugins.merged_servers_text(
+                settings.load().get("mcp_servers"))
             with patch.object(plugins.paths, "DATA_DIR", data), \
                  patch.object(plugins.market.paths, "DATA_DIR", data), \
-                 patch.object(settings, "load", return_value={"mcp_servers": "[]"}):
+                 patch.object(settings, "load", return_value={"mcp_servers": "[]"}), \
+                 patch.object(mcp_client, "_SETTINGS_TEXT", inject):
                 result, err = plugins.install("sample-plugin", roots=[root])
                 self.assertIsNone(err)
                 self.assertTrue(result["has_mcp"])
@@ -113,9 +118,12 @@ class PluginTests(unittest.TestCase):
 
     def test_plugin_scan_failure_preserves_explicit_mcp_settings(self):
         configured = [{"name": "user", "command": "python", "args": []}]
+        inject = lambda: plugins.merged_servers_text(
+            settings.load().get("mcp_servers"))
         with patch.object(settings, "load", return_value={
             "mcp_servers": json.dumps(configured)
-        }), patch.object(plugins, "active_mcp_servers", side_effect=RuntimeError("broken")):
+        }), patch.object(plugins, "active_mcp_servers", side_effect=RuntimeError("broken")), \
+            patch.object(mcp_client, "_SETTINGS_TEXT", inject):
             self.assertEqual(json.loads(mcp_client._settings_text()), configured)
 
 

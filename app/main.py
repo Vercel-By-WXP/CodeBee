@@ -303,6 +303,11 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
                 return self._json(200, v)
+            if path == "/api/plugins":
+                # 本地插件（.codex-plugin/plugin.json 契约）：发现+安装台账的
+                # 聚合视图。坏 manifest 以 blocked/broken 行呈现，不 500。
+                from core import plugins
+                return self._json(200, plugins.view())
             if path == "/api/knowledge":
                 from core import knowledge
                 return self._json(200, knowledge.view())
@@ -1306,6 +1311,23 @@ class Handler(BaseHTTPRequestHandler):
             from core import knowledge
             n = knowledge.learn_from_run((self._body().get("run_id") or ""))
             return self._json(200, {"ok": True, "learned": n})
+        m = re.match(r"^/api/plugins/([^/]+)/(install|enable|disable|remove)$", path)
+        if m:
+            # 本地插件生命周期：只搬文件+记账（skills 走 market.install_files、
+            # MCP 只暴露声明），永不执行插件代码。前端 loadPlugins 拉的就是
+            # 上面 GET /api/plugins；缺这组路由时设置页会显示「插件加载失败」。
+            from core import plugins
+            pid, op = m.group(1), m.group(2)
+            if op == "install":
+                result, err = plugins.install(pid)
+                if err:
+                    return self._json(400, {"error": err})
+                return self._json(200, result or {"ok": True})
+            if op == "remove":
+                err = plugins.remove(pid)
+                return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
+            err = plugins.toggle(pid, op == "enable")
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
         m = re.match(r"^/api/flows/([^/]+)/reset$", path)
         if m:
             err = flows.reset_flow(m.group(1))
@@ -3094,36 +3116,10 @@ def main():
     from core import notify as _notify
     usage_ledger.set_alert_push(_notify.push_text)  # 花费预警推送注入（防 usage→notify 静态环）
     from core import mcp_client as _mcp
+    from core.plugins import merged_servers_text as _plugins_mcp_text
     def _mcp_servers_text():
         """settings 清单 + 已启用插件的 MCP 服务器合成（plugin 名隔离防撞名）。"""
-        import json as _json
-        try:
-            raw = str(settings.load().get("mcp_servers") or "")
-            configured = _json.loads(raw) if raw.strip() else []
-        except Exception:
-            return raw or ""
-        if not isinstance(configured, list):
-            return raw or ""
-        try:
-            from core import plugins as _plugins
-            plugin_servers = _plugins.active_mcp_servers()
-        except Exception:
-            plugin_servers = []          # 坏插件不能连累用户显式配置的服务器
-        import hashlib as _hashlib
-        import re as _re
-        for item in plugin_servers or []:
-            if not isinstance(item, dict):
-                continue
-            plugin_id = str(item.pop("plugin_id", "plugin"))
-            server_name = str(item.get("name") or "server")
-            digest = _hashlib.sha256(
-                (plugin_id + ":" + server_name).encode("utf-8")).hexdigest()[:6]
-            safe = _re.sub(r"[^a-z0-9_-]", "-", plugin_id.lower())
-            item["name"] = ("plg_" + safe[:11] + "_" + digest)[:24]
-            if not any(x.get("name") == item["name"] for x in configured
-                       if isinstance(x, dict)):
-                configured.append(item)
-        return _json.dumps(configured, ensure_ascii=False)
+        return _plugins_mcp_text(settings.load().get("mcp_servers"))
     _mcp.set_settings_text(_mcp_servers_text)  # MCP 清单注入（防 mcp_client→settings 边）
     _step("正在回填用量台账…")
     n_bf = usage.backfill_from_runs()  # 历史运行 token 回填台账（幂等，仅补缺失步骤）

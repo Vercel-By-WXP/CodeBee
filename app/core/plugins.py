@@ -9,6 +9,7 @@ bundles are never executed by this module.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -522,4 +523,37 @@ def active_mcp_servers():
         except PluginError:
             continue
     return [x for x in out if isinstance(x, dict) and x.get("command")]
+
+
+def merged_servers_text(user_text):
+    """用户显式 MCP 清单（JSON 文本）+ 已启用插件的声明 → 合成后的 JSON 文本。
+
+    插件服务器名加 ``plg_`` 前缀+短哈希隔离，防与用户配置撞名；用户清单
+    非法或非数组时原样返回，坏插件绝不连累用户显式配置的服务器。
+    逻辑原先长在 main() 启动闭包里、测试够不着（ae9bcb8 半交付时两个
+    用例即因此恒错），2026-09-30 随 /api/plugins 路由补齐一并下沉。"""
+    raw = str(user_text or "")
+    try:
+        configured = json.loads(raw) if raw.strip() else []
+    except (ValueError, TypeError):
+        return raw
+    if not isinstance(configured, list):
+        return raw
+    try:
+        plugin_servers = active_mcp_servers()
+    except Exception:
+        plugin_servers = []
+    for item in plugin_servers or []:
+        if not isinstance(item, dict):
+            continue
+        plugin_id = str(item.pop("plugin_id", "plugin"))
+        server_name = str(item.get("name") or "server")
+        digest = hashlib.sha256(
+            (plugin_id + ":" + server_name).encode("utf-8")).hexdigest()[:6]
+        safe = re.sub(r"[^a-z0-9_-]", "-", plugin_id.lower())
+        item["name"] = ("plg_" + safe[:11] + "_" + digest)[:24]
+        if not any(x.get("name") == item["name"] for x in configured
+                   if isinstance(x, dict)):
+            configured.append(item)
+    return json.dumps(configured, ensure_ascii=False)
 
