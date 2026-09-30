@@ -157,7 +157,9 @@ async function main() {
     check("无 git → 版本隐藏，作品信息在场",
       tabs.hiddenIds.split(",").includes("git") && !tabs.hiddenIds.split(",").includes("bookmeta"),
       tabs.hiddenIds);
-    check("终态自动选卡仍落「成果」（作品信息不抢）", tabs.active === "result", tabs.active);
+    // 2026-09-29 起 sideOpenTask 默认落「蜂巢」（用户偏好，7a609c8）；
+    // 本断言的初衷是「作品信息不抢自动选卡」，落点随新契约改为 hive
+    check("终态自动选卡落「蜂巢」（作品信息不抢）", tabs.active === "hive", tabs.active);
 
     // A2) 续写批次（continues 指向首批）：作品信息 TAB 也在——沿链只读继承
     //（都是用第一个）；首批此刻还没生成 → 空态指路回首批，平台卡不出生成按钮

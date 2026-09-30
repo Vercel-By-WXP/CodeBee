@@ -4766,11 +4766,20 @@ function drawTaskDetail(key, runs, appendFrom) {
   // cost_usd/tokens 故意不入签名：运行中每次记账都在变，入签名会把整帧
   // 重绘变回「几秒一闪」；步骤状态翻转自然带上新数字，任务累计统计另有
   // detailSide 通道（2s 节流）保实时，两者都够新鲜。
+  // 消息数/verdict 必须归一化再入签名：loadTaskRuns 每轮把 state 的摘要
+  // 投影（message_count 等）assign 进缓存 run，下一轮干净 run 又洗掉这些
+  // 键——裸取字段会在 null↔0 / 全量↔精简 verdict 间来回摆，每 8s 必重画
+  // 一帧（2026-09-30 任务页闪烁实案）。归一后两种形状取值一致。
+  const msgN = (r) => r.message_count != null ? Number(r.message_count)
+    : (r.messages || []).length;
+  const msgP = (r) => r.pending_message_count != null ? Number(r.pending_message_count)
+    : (r.messages || []).filter((m) => !m.consumed).length;
+  const vcmp = (r) => { const v = r.verdict || null;
+    return v ? JSON.stringify([v.pass, v.publishable, v.verify_pass, v.review_pass]) : null; };
   const sig = JSON.stringify(runs.map((r) => [r.id, r.status, (r.steps || []).length,
     (r.steps || []).map((s) => s.status).join(""),
-    (r.messages || []).length, (r.messages || []).filter((m) => !m.consumed).length,
-    r.message_count, r.pending_message_count,
-    r.summary, r.error, JSON.stringify(r.verdict || {})])
+    msgN(r), msgP(r),
+    r.summary, r.error, vcmp(r)])
     .concat([JSON.stringify([(bmRoot || {}).book_meta || null,
       (bmTask || {}).cover_gen || null]), resumePending]));
   if (sig === S.taskSig) return;
