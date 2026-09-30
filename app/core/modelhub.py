@@ -74,6 +74,9 @@ _PROTOCOL_AUTO = "auto"
 _PROTOCOL_CHOICES = _PROTOCOLS + (_PROTOCOL_AUTO,)
 # auto 挑主协议时的偏好顺序：只挑「实测过的」wire（wire_caps），不猜。
 _WIRE_PREFERENCE = ("anthropic", "openai")
+# 新鲜失败（fresh + failed）评测条目的重探间隔：失败探针会刷新 evaluated_at，
+# 实际效果=固定 15 分钟退避一次，而不是把链锁死到 24h TTL（0930 公司OpenAI 案）。
+_FAILED_REPROBE_AFTER = 15 * 60
 
 
 def _load():
@@ -264,7 +267,12 @@ def _model_payload_ok(protocol, data, wire_api=""):
 
 
 def _evaluation_is_usable(provider_id, model=""):
-    """Unknown evidence is allowed; stale evidence is never a routing green light."""
+    """Unknown evidence is allowed; stale evidence is never a routing green light.
+
+    新鲜失败（fresh + failed）不再硬卡到 24h TTL：隔 ``_FAILED_REPROBE_AFTER``
+    秒就地重探一次。失败的探针会刷新 evaluated_at，自然形成固定间隔的退避
+    节流——2026-09-30 公司OpenAI 案：一条 10:39 的失败探针把 codex 链锁到
+    次日同时刻，网关恢复后也没有任何自动回探路径（重探只对 stale 触发）。"""
     try:
         from . import evaluation
         for kind, name in (("provider", ""), ("model", model)):
@@ -280,6 +288,14 @@ def _evaluation_is_usable(provider_id, model=""):
                 return bool(probe and probe.get("ok") and probe.get("fresh"))
             if entry and (not entry.get("ok") or entry.get("status") not in
                           ("passed", "reachable", "reachable_unverified")):
+                try:
+                    age = time.time() - float(entry.get("evaluated_at") or 0)
+                except (TypeError, ValueError):
+                    age = 0.0
+                if age >= _FAILED_REPROBE_AFTER:
+                    probe = (test_model(provider_id, model) if kind == "model" and model
+                             else test_provider(provider_id))
+                    return bool(probe and probe.get("ok") and probe.get("fresh"))
                 return False
     except Exception:
         return True
@@ -2433,9 +2449,43 @@ def bindable_protocols(agent_kind_or_id):
 _LOCAL_CRED_ONLY_TARGETS = ("gemini-cli", "codebuddy", "trae-agent")
 
 
+def _dead(reasons, text):
+    """死因速记去重追加（同供应商多条链目只留一份，防文案刷屏）。"""
+    if text not in reasons:
+        reasons.append(text)
+
+
+# 死因速记（进程内）：resolve_binding 判空链时按 CLI 记最近一次逐条死因，
+# binding_dead_msg 据此把「真实死因」钉进失败/告警文案——0930 假死链案：
+# 文案只列「停用/删除/无密钥/模型停用」四种配置猜测，真凶（健康事件作废、
+# 探针失败、协议不匹配）一个都不在文案里，用户看着「明明有可用模型」无从对账。
+_DEAD_REASONS = {}
+_DEAD_REASONS_TTL = 15 * 60.0
+
+
+def _note_dead_reasons(cli_id, items):
+    with _LOCK:
+        _DEAD_REASONS[str(cli_id or "")] = {
+            "at": time.time(),
+            "items": [str(x)[:90] for x in (items or []) if str(x).strip()][:6],
+        }
+
+
+def last_dead_reasons(cli_id):
+    """该 CLI 最近一次链解析死因（超过 TTL 视为过期不复述，防陈旧误导）。"""
+    try:
+        with _LOCK:
+            rec = _DEAD_REASONS.get(str(cli_id or ""))
+            fresh = (rec is not None
+                     and time.time() - float(rec.get("at") or 0) <= _DEAD_REASONS_TTL)
+            return list(rec.get("items") or []) if fresh else []
+    except Exception:
+        return []
+
+
 def binding_dead_msg(cli_id):
     """死链失败/告警文案（pipeline 死链闸门与本模块 sync 共用）：说明为什么
-    不回落本机默认 + 该 CLI 需要什么协议的供应商。"""
+    不回落本机默认 + 该 CLI 需要什么协议的供应商 + 最近一次解析的真实死因。"""
     try:
         protos = bindable_protocols(cli_id)
     except Exception:
@@ -2444,8 +2494,12 @@ def binding_dead_msg(cli_id):
         return ("该 CLI 暂不支持绑定链（凭据注入尚未适配，使用 CLI 本机登录态与"
                 "默认模型）；请勿为其配置供应商链")
     hint = "该 CLI 仅接受 %s 协议的已启用供应商；" % "、".join(protos)
-    return ("绑定链全部失效（链上供应商已停用/删除/无密钥，或模型已停用），"
-            "本步判失败、不回落 CLI 本机默认——%s请在「模型调度（可选）」页为该 CLI 指定已启用的供应商" % hint)
+    msg = ("绑定链全部失效（链上供应商已停用/删除/无密钥，或模型已停用），"
+           "本步判失败、不回落 CLI 本机默认——%s请在「模型调度（可选）」页为该 CLI 指定已启用的供应商" % hint)
+    reasons = last_dead_reasons(cli_id)
+    if reasons:
+        msg += "。最近一次解析死因：" + "；".join(reasons)
+    return msg
 
 
 def resolve_binding(agent_kind_or_id, difficulty="default"):
@@ -2485,6 +2539,7 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
             down_set = health.down_names()
         except Exception:
             down_set = set()
+        dead_reasons = []   # 逐条死因速记：解析为空时喂给 binding_dead_msg（0930 假死链案）
         for item in chain:
             model = (item.get("model") or "").strip()
             pid = (item.get("provider_id") or "").strip()
@@ -2497,20 +2552,38 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
                                     "no_cred": True})
                 continue
             prov = provs.get(pid)
-            if not prov or not prov.get("enabled", True) or not prov.get("api_key"):
-                continue  # 该条失效：跳过（降级链的语义就是逐条顶上）
+            label = (prov or {}).get("name") or pid
+            if not prov:
+                _dead(dead_reasons, "%s：供应商已删除" % label)
+                continue
+            if not prov.get("enabled", True):
+                _dead(dead_reasons, "%s：供应商已停用" % label)
+                continue
+            if not prov.get("api_key"):
+                _dead(dead_reasons, "%s：无可用密钥" % label)
+                continue
             ep = _entry_endpoint(prov, allowed)
             if not ep:
-                continue  # 原生协议与适配过的 wire 都不匹配：跳过
+                proto = prov.get("protocol") or "auto"
+                _dead(dead_reasons, "%s：协议不匹配（%s，该 CLI 仅接受 %s）"
+                      % (label, proto if proto != "auto" else "auto 未探出可用 wire",
+                         "、".join(allowed)))
+                continue
             if prov.get("name") in down_set:
+                _dead(dead_reasons, "%s：健康监测判定 down" % label)
                 continue  # 健康监测判定 down：跳过，省掉无效等待
             if not _evaluation_is_usable(pid, model):
+                _dead(dead_reasons, "%s：评测结论不可用（健康事件作废或探针失败）"
+                      % label)
                 continue  # 旧评测结论已过期/被健康事件作废，不能冒充绿灯
             if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
+                _dead(dead_reasons, "%s：chat wire 被 codex 剔除（codex 仅讲 responses）"
+                      % label)
                 continue  # codex 0.154+ 只讲 responses wire：chat-only 供应商在起跑前
                           # 就剔除（此前撞了才冷却 30 分钟，每轮白烧一次注定失败的
                           # 尝试——2026-09-17 续4 连载 c35 实测）
             if model and not _model_bindable(prov, model):
+                _dead(dead_reasons, "%s：模型 %s 已停用/删除" % (label, model))
                 continue  # 模型被停用/删除：该条跳过（2026-09-15 告警弹框「禁用该模型」）
             # 多 KEY：同一厂商按 KEY 展开成多条，顺序即调用顺序。欠费的 KEY 被
             # 冷却跳过（切备用），全冷却时仍留一条顶上——降级复用既有尝试循环。
@@ -2524,6 +2597,7 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
             if len(entries) >= MAX_CHAIN_ATTEMPTS:
                 break
         if not entries:
+            _note_dead_reasons(agent_kind_or_id, dead_reasons)
             return None
         # 显式难度路由开启时，解析层就是唯一排序真源；关闭时保持手工链顺序。
         if routing and tier in ("easy", "hard"):
@@ -2553,16 +2627,37 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     if not pid:
         return None
     prov = provs.get(pid)
-    if not prov or not prov.get("enabled", True) or not prov.get("api_key"):
+    single_reasons = []
+    label = (prov or {}).get("name") or pid
+    if not prov:
+        _dead(single_reasons, "%s：供应商已删除" % label)
+        _note_dead_reasons(agent_kind_or_id, single_reasons)
+        return None
+    if not prov.get("enabled", True):
+        _dead(single_reasons, "%s：供应商已停用" % label)
+        _note_dead_reasons(agent_kind_or_id, single_reasons)
+        return None
+    if not prov.get("api_key"):
+        _dead(single_reasons, "%s：无可用密钥" % label)
+        _note_dead_reasons(agent_kind_or_id, single_reasons)
         return None
     ep = _entry_endpoint(prov, allowed)
     if not ep:
+        proto = prov.get("protocol") or "auto"
+        _dead(single_reasons, "%s：协议不匹配（%s，该 CLI 仅接受 %s）"
+              % (label, proto if proto != "auto" else "auto 未探出可用 wire",
+                 "、".join(allowed)))
+        _note_dead_reasons(agent_kind_or_id, single_reasons)
         return None  # google 只登记；dsh 只接受 OpenAI 兼容端点；未适配的不硬塞
     if not _evaluation_is_usable(pid):
+        _dead(single_reasons, "%s：评测结论不可用（健康事件作废或探针失败）" % label)
+        _note_dead_reasons(agent_kind_or_id, single_reasons)
         return None
     if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
+        _dead(single_reasons, "%s：chat wire 被 codex 剔除（codex 仅讲 responses）" % label)
+        _note_dead_reasons(agent_kind_or_id, single_reasons)
         return None  # codex 0.154+ 只讲 responses：chat-only 供应商直接判不可绑
-                     # （解析为空 → 死链闸门/路由降权接手，不浪费 CLI 尝试）
+                 # （解析为空 → 死链闸门/路由降权接手，不浪费 CLI 尝试）
     names = [m["name"] for m in _enabled_models(prov)]
     model = prov.get("model_" + tier) or "" if (routing and tier) else ""
     if not model:

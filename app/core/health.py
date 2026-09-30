@@ -143,9 +143,22 @@ def report_success(provider: str):
 
 def report_failure(provider: str, error: str = "", *, model: str = "",
                    provider_id: str = ""):
-    """一次真实失败调用。provider 用展示名（与 usage 台账一致）。"""
+    """一次真实失败调用。provider 用展示名（与 usage 台账一致）。
+
+    本地 CLI 启动失败（TOOL_LAUNCH：找不到可执行文件等）与供应商无关，
+    记进来会把健康供应商的评测结论作废、链被解析层过滤成死链——
+    2026-09-30 claude 垫片被清案：Bigmodel 全程健康却被连续启动失败
+    拖进 down。只打日志提醒修本地环境，不进健康台账。"""
     if not provider:
         return
+    try:
+        from .error_codes import ErrorCode, classify_error_text
+        if classify_error_text(error) == ErrorCode.TOOL_LAUNCH:
+            log.warning("[health] 本地 CLI 启动失败（与供应商 %s 无关，不记健康故障）：%s",
+                        provider, str(error or "")[:160])
+            return
+    except Exception:
+        pass
 
     # A failed live call invalidates capability evidence for this upstream.
     # Keep this hook lazy and best-effort: health telemetry must never make a

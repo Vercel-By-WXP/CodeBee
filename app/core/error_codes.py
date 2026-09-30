@@ -37,6 +37,7 @@ class ErrorCode(str, Enum):
     RATE_LIMIT = "RATE_LIMIT"              # 短时速率/并发限制（429）
     LOCAL_STATE = "LOCAL_STATE"            # 本地 CLI 状态/锁冲突
     CONTEXT_OVERFLOW = "CONTEXT_OVERFLOW"  # 触发压缩（与 MAX_TOKENS 不同）
+    TOOL_LAUNCH = "TOOL_LAUNCH"            # 本地 CLI 启动失败（找不到可执行文件）
 
     # === ok ===
     # "" 表示成功，不设枚举值
@@ -91,6 +92,11 @@ _NETWORK = ("stream disconnected", "stream closed", "connection reset", "connect
             "输出停滞")
 _LOCAL_STATE = ("database is locked", "database locked", "sqlite busy",
                 "unable to open database file")
+# run_process 对 Popen 异常的统一包裹前缀（"启动失败: %r"）。供应商侧任何
+# 报错都不会长这个样子，所以单靠前缀即可零误判地识别「本地工具链起不来」。
+# 2026-09-30 claude 垫片被清案：这类失败被记成供应商健康故障，把健康的
+# Bigmodel 评测作废、整链判死——必须先于一切上游分类识别。
+_TOOL_LAUNCH = ("启动失败",)
 _TRANSIENT_HINTS = ("stream closed before response.completed", "output stall", "timed out",
                     "timeout", "output stalled", "ENOTFOUND", "Reconnecting...",
                     "initialize", "[1211]")
@@ -116,6 +122,8 @@ def classify_error_text(error):
     text = str(error or "").lower()
     if not text:
         return None
+    if any(marker in text for marker in _TOOL_LAUNCH):
+        return ErrorCode.TOOL_LAUNCH
     if re.search(r"(?:http(?:/\d(?:\.\d)?)?\s*|status(?:\s+code)?\s*[:=]?\s*)401\b", text):
         return ErrorCode.AUTH
     # An explicit HTTP 403 is authoritative even when the provider describes the
@@ -196,6 +204,7 @@ _SAFE_ERROR_SUMMARIES = {
     ErrorCode.RATE_LIMIT: "上游触发速率或并发限制",
     ErrorCode.LOCAL_STATE: "CLI 本地状态或数据库锁冲突",
     ErrorCode.CONTEXT_OVERFLOW: "输入上下文超出模型容量",
+    ErrorCode.TOOL_LAUNCH: "本地 CLI 启动失败（可执行文件不存在，与供应商无关）",
 }
 
 

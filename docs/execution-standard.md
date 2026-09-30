@@ -59,6 +59,7 @@
 | `TIMEOUT` | 任务 deadline、CLI 超时、无输出停滞 | 使用共享 deadline 换较快候选；预算耗尽后终止，不能无限延长 |
 | `MAX_TOKENS` | 思考占满 `max_tokens`，有思考心跳但无正文 | 与 `EMPTY` 分开；内置模型同轮只提额一次（8000→16000），仍无正文才终态；普通 CLI 只有拿到结构化信号时才能分类 |
 | `CONTEXT_OVERFLOW` | 上下文超过模型容量、触发压缩 | 先压缩并确认 surface generation 前进，再重试一次；没有压缩进展不得重复发送原上下文 |
+| `TOOL_LAUNCH` | 本地 CLI 启动失败（找不到可执行文件，与供应商无关） | 不得计入供应商健康故障、不得作废健康的上游评测；按缺失可执行文件排障（winget/npm 垫片/PATH 快照），修好后重试 |
 | `VENDOR_REFUSAL` | 内容策略拒答，或要求工具却零动作 | 先检查提示词是否含未脱敏凭据等自伤信号；若是自伤先修输入，不盲目换上游；否则作为上游结果处理，可试异上游，保留用户输入本身 |
 | `PARSE_FAIL` / `EMPTY` | 输出结构错误、没有模型内容 | 协议探测/模型评测判失败；完整任务中不伪装成质量评审不通过 |
 | `ENV_BLOCK` | CLI 缺失、路径/策略/本地运行时问题、重复守卫终止 | 给出本机修复说明；不通过换模型掩盖配置问题。重复守卫标记必须让外层流程立即收口 |
@@ -187,7 +188,7 @@ token 用量和耗时是独立于"成/败"的第三条轴：一次 `done` 可以
 
 | 规则 | 当前代码状态 | 结论 |
 |---|---|---|
-| 错误码枚举与安全摘要 | `error_codes.py` 已包含 18 个错误码及安全摘要；`MAX_TOKENS`、`CONTEXT_OVERFLOW`、`SIGNAL_IGNORED` 已入枚举 | 文档与枚举已对齐；三类的完整运行时分类仍需各适配器补结构化信号 |
+| 错误码枚举与安全摘要 | `error_codes.py` 已包含 19 个错误码及安全摘要；`MAX_TOKENS`、`CONTEXT_OVERFLOW`、`SIGNAL_IGNORED` 已入枚举 | 文档与枚举已对齐；三类的完整运行时分类仍需各适配器补结构化信号 |
 | 思考心跳与 token 撑爆 | `builtin_agent.py` 已识别思考占满、同轮一次提额；`runner.py` 已把流式输出和 `thinking_tokens` 作为活性 | 已落地；不能把心跳误判为停滞，也不能把空正文直接归为 `EMPTY` |
 | 上游 host 去重与 403 隔离 | `core.upstream.normalize_upstream` 被 router/runner 共用：统一处理大小写、尾点、HTTP(S) 默认端口、非默认端口、凭据/路径剥离和 IPv6 压缩；403 继续记录 `forbidden_upstreams` | 已落地；DNS 别名不做推断，供应盘点仍需确保异上游供给 |
 | 重复守卫 | `repeat_guard.py` 已按 prompt 指纹 3/5 阈值工作，`pipeline.py` 部分外层循环读取 `repeat_stop` | 已能拦同提示死循环；尚未成为所有换路/重试循环共享的错误签名熔断器 |
