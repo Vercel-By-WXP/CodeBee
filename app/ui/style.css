@@ -7052,3 +7052,9 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
  * 挤压收缩，摘要列吸收余量——运行中行（无摘要/耗时）状态 chip 与 CLI 日志
  * 按钮才能稳定贴右单行，与完成行同构 */
 .step .st-model, .step .st-prov, .step .step-log-btn { flex: none; }
+
+/* 供应商/模型状态过滤 chips（追加于文件尾防并行重排）：默认只看启用，
+ * 停用的点「已停用/全部」才现身；复用 .cat-chip 药丸，窄侧栏收紧行距 */
+.prov-status { margin: 2px 0 8px; }
+.prov-status .cat-chip { padding: 3px 9px; font-size: 12px; }
+.pm-status { margin: 10px 0 2px; }

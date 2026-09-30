@@ -10,7 +10,7 @@ function codebeeDocumentTitle(lang) {
 document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, rdHiveFirst: false, _rdCtx: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, rdHiveFirst: false, _rdCtx: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined };
 
 /* ---------------------------------------------------------- 内置浏览器工作区 */
 const BROWSER_STORAGE_KEY = "orch.browser.workspace.v1";
@@ -1269,18 +1269,51 @@ async function api(path, opts) {
   }
 }
 
-async function pbApiWithQualityOverride(path, body, prompt) {
+/* 质量门禁三选一弹框（替代原生 confirm 的单一「强制放行」出口）：
+ * 取消 / ↻ 重新评审 / 强制放行。「重新评审」= 重写未达标章再评（语义同详情页
+ * 「↻ 重写未达标章」按钮，走 retry 的未达标分支），仅 serial 任务且非运行中
+ * 才给（运行中后端 retry 也会拒）。返回 "review" | "force" | null(取消)。 */
+async function pbGateChoice(err, promptText, taskId) {
+  const tk = ((S.state || {}).tasks || []).find((x) => x.id === taskId);
+  const canReview = !!(tk && tk.serial &&
+    tk.status !== "running" && tk.status !== "queued");
+  const msg = (promptText || t("质量门禁未通过")) + "\n\n" + ((err && err.message) || "");
+  const v = await _askOpen({
+    title: t("质量门禁未通过"),
+    bodyHtml: '<div class="ask-msg">' + esc(msg) + "</div>" +
+      (canReview ? '<div class="ask-msg">' +
+        esc(t("「重新评审」只重写未达标章节并重新评审（已过线章节沿用成稿与评分），跑完后再来发布。")) + "</div>" : ""),
+    okText: t("强制放行…"),
+    extra: canReview ? [{ text: "↻ " + t("重新评审"), value: "review" }] : [],
+    onOpen: () => $("ask-yes").focus(),
+  });
+  return v === "review" ? "review" : (v === true ? "force" : null);
+}
+
+async function pbApiWithQualityOverride(path, body, prompt, taskId) {
   try {
     return await api(path, { method: "POST", body: JSON.stringify(body) });
   } catch (e) {
     const gate = e && e.data && e.data.quality_gate;
     if (!gate) throw e;
-    if (!confirm((prompt || "质量门禁未通过") + "\n\n" + (e.message || "") +
-      "\n\n确认后将记录为人工强制放行。继续？")) throw e;
-    const reason = window.prompt("请输入人工复核原因（必填）", "已人工复核稿件与平台版本") || "";
-    if (!reason.trim()) throw new Error("未填写人工复核原因，已取消强制放行");
+    const pick = await pbGateChoice(e, prompt, taskId);
+    if (pick === "review") {
+      // 重写未达标章 + 重新评审：不继续本次发布，调用方按 gate_reviewed 跳过
+      // 成功提示；评审完成后用户再点一次发布按钮即可。
+      try {
+        const r = await api("/api/tasks/" + encodeURIComponent(taskId) + "/retry",
+          { method: "POST" });
+        jumpToRun(r.run_id);
+        toast(t("已发起重新评审（重写未达标章）——评审完成后再来发布"));
+      } catch (e2) { toast(t("发起重新评审失败：") + e2.message, true); }
+      return { gate_reviewed: true };
+    }
+    if (pick !== "force") throw e;
+    const reason = await uiPrompt(t("强制放行：请输入人工复核原因（必填）"),
+      "已人工复核稿件与平台版本");
+    if (!reason) throw new Error(t("未填写人工复核原因，已取消强制放行"));
     return await api(path, { method: "POST", body: JSON.stringify({ ...body,
-      force: true, force_confirmed: true, force_reason: reason.trim() }) });
+      force: true, force_confirmed: true, force_reason: reason }) });
   }
 }
 
@@ -1321,7 +1354,18 @@ function _askOpen(opts) {
     _askResolve = resolve;
     $("ask-title").textContent = opts.title || t("确认");
     $("ask-body").innerHTML = opts.bodyHtml || "";
+    // 三态弹框：extra 按钮插在「取消」左侧，点按以 opts 里的 value 结束
+    // （非布尔，只有用到 extra 的调用方需要判读）；开新框先清上一帧残留。
     const yes = $("ask-yes");
+    const foot = yes.parentNode;
+    foot.querySelectorAll(".ask-extra").forEach((b) => b.remove());
+    (opts.extra || []).forEach((b) => {
+      const el = document.createElement("button");
+      el.className = (b.cls || "ghost") + " ask-extra";
+      el.textContent = b.text;
+      el.addEventListener("click", () => _askClose(b.value));
+      foot.insertBefore(el, $("ask-no"));
+    });
     yes.textContent = opts.okText || t("确定");
     yes.className = opts.danger ? "danger" : "primary";
     $("ask").classList.remove("hidden");
@@ -1937,11 +1981,16 @@ function renderProvList() {
   const box = $("prov-list");
   if (!box) return;
   const kw = (S.provFilter || "").trim().toLowerCase();
-  const provs = (S.providers || []).filter((p) => !kw ||
+  const kwHit = (p) => !kw ||
     (p.name || "").toLowerCase().includes(kw) ||
     (p.protocol || "").toLowerCase().includes(kw) ||
     (p.source || "").toLowerCase().includes(kw) ||
-    (p.base_url || "").toLowerCase().includes(kw));
+    (p.base_url || "").toLowerCase().includes(kw);
+  const view = S.provStatus || "enabled";
+  // 状态过滤默认只看启用（2026-09-30 用户拍板）：停用的点「已停用/全部」chip 才现身
+  const stHit = (p) => view === "all" || (view === "off" ? p.enabled === false : p.enabled !== false);
+  const hit = (S.providers || []).filter(kwHit);
+  const provs = hit.filter(stHit);
   if (!S.selProv && provs.length) S.selProv = provs[0].id;
   if (S.selProv && !provs.some((p) => p.id === S.selProv)) {
     S.selProv = provs.length ? provs[0].id : null;
@@ -1952,6 +2001,13 @@ function renderProvList() {
   }
   const selN = Object.keys(S.selProvs || {}).length;
   box.classList.toggle("has-sel", selN > 0);
+  const chips = hit.length ? '<div class="cat-chips prov-status">' +
+    '<button class="cat-chip' + (view === "enabled" ? " active" : "") + '" onclick="setProvStatus(\'enabled\')">' +
+      t("已启用") + " <b>" + hit.filter((p) => p.enabled !== false).length + "</b></button>" +
+    '<button class="cat-chip' + (view === "off" ? " active" : "") + '" onclick="setProvStatus(\'off\')">' +
+      t("已停用") + " <b>" + hit.filter((p) => p.enabled === false).length + "</b></button>" +
+    '<button class="cat-chip' + (view === "all" ? " active" : "") + '" onclick="setProvStatus(\'all\')">' +
+      t("全部") + " <b>" + hit.length + "</b></button></div>" : "";
   const batch = selN ? '<div class="prov-batch"><span class="n">' + t("已选 ") + selN + t(" 个") + "</span>" +
     '<button class="ghost small" onclick="batchProvOp(\'enable\')">' + t("启用") + '</button>' +
     '<button class="ghost small" onclick="batchProvOp(\'disable\')">' + t("停用") + '</button>' +
@@ -1960,9 +2016,10 @@ function renderProvList() {
   const allBox = provs.length ? '<label class="prov-all"><input type="checkbox"' +
     (selN === provs.length && selN > 0 ? " checked" : "") +
     ' onchange="toggleAllProvSel(this.checked)">' + t(" 全选") +
-    (kw ? t("（筛选后 ") + provs.length + t(" 个）") : t("（") + provs.length + t("）")) + "</label>" : "";
-  box.innerHTML = batch + allBox + (provs.map((p) => {
-    const n = p.models == null ? null : p.models.filter((m) => !m.hidden).length;
+    (kw || view !== "all" ? t("（筛选后 ") + provs.length + t(" 个）") : t("（") + provs.length + t("）")) + "</label>" : "";
+  box.innerHTML = chips + batch + allBox + (provs.map((p) => {
+    // 卡片计数只数启用中的模型（列表默认也只展示启用中的，两边口径一致）
+    const n = p.models == null ? null : p.models.filter((m) => !m.hidden && m.enabled !== false).length;
     const st = n == null ? t("未获取") : n + t(" 模型");
     const off = p.enabled === false;
     return '<div class="prov-item' + (p.id === S.selProv ? " active" : "") + (off ? " off" : "") +
@@ -1980,7 +2037,16 @@ function renderProvList() {
   }).join("") ||
     '<div class="hint" style="padding:8px">' + (kw && (S.providers || []).length
       ? t("没有匹配「") + esc(S.provFilter) + t("」的供应商。")
-      : t("暂无供应商——点上方「导入」。")) + "</div>");
+      : (view === "enabled" && hit.some((p) => p.enabled === false)
+        ? t("%1 个供应商已停用——点上方「已停用」查看。").replace("%1", hit.filter((p) => p.enabled === false).length)
+        : t("暂无供应商——点上方「导入」。"))) + "</div>");
+}
+
+function setProvStatus(v) {
+  S.provStatus = v;
+  S.modelsSig = null;
+  renderProvList();   // 可能收敛 S.selProv，详情跟着换人
+  renderProvDetail();
 }
 
 function toggleProvSel(id, on) {
@@ -1994,11 +2060,13 @@ function toggleAllProvSel(on) {
   S.selProvs = {};
   if (on) {
     const kw = (S.provFilter || "").trim().toLowerCase();
-    for (const p of (S.providers || []).filter((p) => !kw ||
+    const view = S.provStatus || "enabled";
+    for (const p of (S.providers || []).filter((p) => (!kw ||
       (p.name || "").toLowerCase().includes(kw) ||
       (p.protocol || "").toLowerCase().includes(kw) ||
       (p.source || "").toLowerCase().includes(kw) ||
-      (p.base_url || "").toLowerCase().includes(kw))) S.selProvs[p.id] = true;
+      (p.base_url || "").toLowerCase().includes(kw)) &&
+      (view === "all" || (view === "off" ? p.enabled === false : p.enabled !== false)))) S.selProvs[p.id] = true;
   }
   S.modelsSig = null;
   renderProvList();
@@ -2105,6 +2173,18 @@ function renderProvDetail() {
       ' value="' + esc(kw) + '" oninput="filterModels(\'' + esc(p.id) + '\', this.value)">' +
       '<span class="pm-count" id="pm-count-' + esc(p.id) + '"></span>' +
       pmAddHtml(p) + '</div>';
+    // 模型列表状态过滤：默认只看启用（与供应商列表同一套 chip 口径）
+    const vis = (p.models || []).filter((m) => !m.hidden);
+    if (vis.length) {
+      const mview = S.mlistStatus || "enabled";
+      html += '<div class="cat-chips pm-status">' +
+        '<button class="cat-chip' + (mview === "enabled" ? " active" : "") + '" onclick="setModelStatus(\'enabled\')">' +
+          t("已启用") + " <b>" + vis.filter((m) => m.enabled !== false).length + "</b></button>" +
+        '<button class="cat-chip' + (mview === "off" ? " active" : "") + '" onclick="setModelStatus(\'off\')">' +
+          t("已停用") + " <b>" + vis.filter((m) => m.enabled === false).length + "</b></button>" +
+        '<button class="cat-chip' + (mview === "all" ? " active" : "") + '" onclick="setModelStatus(\'all\')">' +
+          t("全部") + " <b>" + vis.length + "</b></button></div>";
+    }
     html += '<div id="pm-groups" class="pm-groups' + (selN ? " has-sel" : "") + '">' +
       provModelGroupsHtml(p) + "</div>";
     if (hidden.length) {
@@ -2258,7 +2338,9 @@ function wireCapTags(p, excludeProto) {
 /* 模型分组区 HTML（全量重绘与过滤重绘共用；过滤时暂停拖拽排序） */
 function provModelGroupsHtml(p) {
   const kw = ((S.modelFilter || {})[p.id] || "").trim().toLowerCase();
+  const mview = S.mlistStatus || "enabled";
   const models = (p.models || []).filter((m) => !m.hidden)
+    .filter((m) => mview === "all" || (mview === "off" ? m.enabled === false : m.enabled !== false))
     .filter((m) => !kw || (m.name || "").toLowerCase().includes(kw))
     .sort((a, b) => (a.priority || 0) - (b.priority || 0));
   const sel = modelSel(p.id);
@@ -2269,9 +2351,15 @@ function provModelGroupsHtml(p) {
   }
   const gnames = Object.keys(groups).sort();
   if (!gnames.length) {
-    return '<div class="empty">' + (kw
+    const offAll = (p.models || []).filter((m) => !m.hidden && m.enabled === false).length;
+    const msg = kw
       ? t("没有匹配「") + esc(kw) + t("」的模型。")
-      : t("该供应商没有可用模型（或全部被停用）。")) + "</div>";
+      : mview === "off"
+        ? t("没有已停用的模型。")
+        : (mview === "enabled" && offAll
+          ? t("%1 个模型已停用——点上方「已停用」查看。").replace("%1", offAll)
+          : t("该供应商没有可用模型（或全部被停用）。"));
+    return '<div class="empty">' + msg + "</div>";
   }
   let html = "";
   for (const g of gnames) {
@@ -2307,9 +2395,12 @@ function updateModelCount(pid) {
   const p = (S.providers || []).find((x) => x.id === pid);
   if (!el || !p || !p.models) return;
   const kw = (S.modelFilter || {})[pid] || "";
-  const total = p.models.filter((m) => !m.hidden).length;
+  const mview = S.mlistStatus || "enabled";
+  const inView = (m) => !m.hidden &&
+    (mview === "all" || (mview === "off" ? m.enabled === false : m.enabled !== false));
+  const total = p.models.filter(inView).length;
   const shown = total && kw.trim()
-    ? p.models.filter((m) => !m.hidden &&
+    ? p.models.filter((m) => inView(m) &&
         (m.name || "").toLowerCase().includes(kw.trim().toLowerCase())).length
     : total;
   el.textContent = kw.trim() ? (shown + " / " + total + t(" 个模型")) : (total + t(" 个模型"));
@@ -2508,13 +2599,22 @@ function toggleGroupSel(pid, group, on) {
   const p = (S.providers || []).find((x) => x.id === pid);
   if (!p) return;
   const kw = ((S.modelFilter || {})[pid] || "").trim().toLowerCase();
+  const mview = S.mlistStatus || "enabled";
   const s = modelSelSet(pid);
   for (const m of p.models || []) {
     if (m.hidden) continue;
+    if (mview !== "all" && (mview === "off" ? m.enabled !== false : m.enabled === false)) continue;
     if ((m.protocol || p.protocol || t("其他")) !== group) continue;
     if (kw && !(m.name || "").toLowerCase().includes(kw)) continue;  // 过滤时只作用于可见行
     if (on) s[m.name] = true; else delete s[m.name];
   }
+  S.modelsSig = null;
+  renderProvDetail();
+}
+
+/* 模型列表状态过滤 chip：默认只看启用 */
+function setModelStatus(v) {
+  S.mlistStatus = v;
   S.modelsSig = null;
   renderProvDetail();
 }
@@ -4417,6 +4517,7 @@ window.sideOpenTask = function (key) {
   S.detailRunId = null;
   S.focusStep = 0;
   S.taskSig = "";
+  S.runDetailSig = "";   // 详情在任务态/运行态间共用同一套 DOM：切走必须作废运行态签名
   rdTabReset();
   if (!S.histJump && typeof histPush === "function") histPush({ m: "main", tab: "run-detail" });
   showDetailInMain();
@@ -4662,11 +4763,14 @@ function drawTaskDetail(key, runs, appendFrom) {
   const lr0 = runs[0] || {};
   const resumePending = (lr0.resume_enqueue_at &&
     Date.now() < Date.parse(String(lr0.resume_enqueue_at).replace(" ", "T"))) ? 1 : 0;
+  // cost_usd/tokens 故意不入签名：运行中每次记账都在变，入签名会把整帧
+  // 重绘变回「几秒一闪」；步骤状态翻转自然带上新数字，任务累计统计另有
+  // detailSide 通道（2s 节流）保实时，两者都够新鲜。
   const sig = JSON.stringify(runs.map((r) => [r.id, r.status, (r.steps || []).length,
     (r.steps || []).map((s) => s.status).join(""),
     (r.messages || []).length, (r.messages || []).filter((m) => !m.consumed).length,
     r.message_count, r.pending_message_count,
-    r.summary, r.error, r.cost_usd, r.tokens, JSON.stringify(r.verdict || {})])
+    r.summary, r.error, JSON.stringify(r.verdict || {})])
     .concat([JSON.stringify([(bmRoot || {}).book_meta || null,
       (bmTask || {}).cover_gen || null]), resumePending]));
   if (sig === S.taskSig) return;
@@ -4915,6 +5019,7 @@ async function openRun(id, pinTab) {
   _taskStepRenderToken++;
   S.detailRunId = id;
   S.detailTaskKey = null;
+  S.runDetailSig = "";   // 新目标首帧必画；也兜住「任务态改过 DOM 后回到本运行」的串台
   renderPageCrumb();   // 标题「运行详情」；必须在赋值后画——showDetailInMain 先于本函数跑，那边画不到
   rdTabReset(pinTab || null);   // sideOpenRun 带步骤号时钉住步骤分区
   document.querySelector("#sub-runs .panel:first-child").classList.add("hidden");
@@ -4929,6 +5034,7 @@ function closeRun() {
   S.detailRunId = null;
   S.detailTaskKey = null;
   S.taskSig = "";
+  S.runDetailSig = "";
   S.focusStep = 0;
   rdTabReset();
   stopLogLive();
@@ -5276,6 +5382,15 @@ async function renderRunDetail() {
   $("btn-share").classList.toggle("hidden", active);   // 分享页：结束后可生成自包含 HTML
   $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
   const rcTask = ((S.state || {}).tasks || []).find((x) => x.id === run.task_id);
+  // 签名守卫（模型页/检查器同款）：数据没变不重绘。详情区是全页最重的
+  // 渲染面，此前 SSE 推送+轮询每 8s 无差别整块重写，是「页面一闪一闪、
+  // 发布表单填一半被清空」的总根源（2026-09-30 用户实案）。运行中 ETA
+  // 随墙钟走，签名带 1 分钟桶让「预计剩余」每分钟翻新，不必跟轮询同频。
+  const etaBucket = (run.status === "running" || run.status === "queued")
+    ? Math.floor(Date.now() / 60000) : 0;
+  const rdSig = JSON.stringify([run, rcTask || null, etaBucket]);
+  if (rdSig === S.runDetailSig) return;
+  S.runDetailSig = rdSig;
   // 归档按钮：非运行中任务可归档/取消归档（此前只有侧栏右键菜单入口，
   // 用户反馈「归档按钮不见了」——补显式入口，文案随状态切换）
   syncArchBtn(rcTask, active);
@@ -5497,6 +5612,17 @@ function renderBookMetaPanel(task) {
   const box = $("rd-bookmeta");
   if (!box || !(task || {}).id || !bmNeedsPanel(task)) {
     if (box) box.classList.add("hidden");
+    return;
+  }
+  // 输入/展开态保护（检查器 insp-msg-input 同款纪律）：面板里有输入焦点
+  //（正在填登记表单）或章节清单正展开时跳过本帧整块重绘——innerHTML
+  // 重建会把没提交的字清掉、把展开列表折回去。轮询链继续转，blur/收起
+  // 后下一轮数据变化自然跟上；登记草稿另有 S.pbRegDraft 兜底回填。
+  const ae = document.activeElement;
+  if ((ae && box.contains(ae) &&
+        (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) ||
+      box.querySelector(".pb-chapters:not(.hidden)")) {
+    pbSyncState(task);
     return;
   }
   const src = bmRootTask(task);          // 都是用第一个：开书资料读链上根任务
@@ -5751,7 +5877,7 @@ function pbBlock(task, platform) {
     }
     btns += '<button class="primary" ' + (busy ? "disabled" : "") +
       ' onclick="pbCreateBook(\'' + esc(task.id) + "', '" + platform + '\')">' + t("创建作品") + "</button>";
-    btns += '<button class="ghost" onclick="pbRegToggle(\'' + platform + '\')" title="' +
+    btns += '<button class="ghost" onclick="pbRegToggle(\'' + esc(task.id) + "','" + platform + '\')" title="' +
       esc(t("作品已在平台建好（建书流程没走通或手工建的）？补登记后直接发章，不会在平台新建")) + '">' + t("登记已有作品") + "</button>";
   }
   let extra = "";
@@ -5759,9 +5885,16 @@ function pbBlock(task, platform) {
     extra += '<div class="pb-hint">' + esc(t("若作品其实已在平台建好，点「登记已有作品」补登记，勿重复创建")) + "</div>";
   }
   if (!bookReady) {
-    extra += '<div class="pb-reg hidden" id="pb-reg-' + platform + '">' +
-      '<input id="pb-reg-title-' + platform + '" placeholder="' + esc(t("平台上的作品名（必填）")) + '">' +
-      '<input id="pb-reg-id-' + platform + '" placeholder="' + esc(t("作品ID（选填，管理页URL里有）")) + '">' +
+    // 展开态+草稿值外置（S.pbRegDraft，按任务+平台键）：整块重绘不再清空
+    // 用户填了一半的作品名/ID——输入即存，重绘按草稿回填，登记成功才清。
+    const reg = (S.pbRegDraft || {})[task.id + ":" + platform] || {};
+    extra += '<div class="pb-reg' + (reg.open ? "" : " hidden") + '" id="pb-reg-' + platform + '">' +
+      '<input id="pb-reg-title-' + platform + '" value="' + esc(reg.title || "") +
+      '" placeholder="' + esc(t("平台上的作品名（必填）")) +
+      '" oninput="pbRegDraftSave(\'' + esc(task.id) + "','" + platform + '\',\'title\',this.value)">' +
+      '<input id="pb-reg-id-' + platform + '" value="' + esc(reg.id || "") +
+      '" placeholder="' + esc(t("作品ID（选填，管理页URL里有）")) +
+      '" oninput="pbRegDraftSave(\'' + esc(task.id) + "','" + platform + '\',\'id\',this.value)">' +
       '<button class="ghost" onclick="pbRegister(\'' + esc(task.id) + "', '" + platform + '\')">' + t("确认登记") + "</button>" +
       "</div>";
   }
@@ -5777,18 +5910,27 @@ function pbBlock(task, platform) {
 let _pbTimer = 0;
 function pbSyncState(task) {
   clearTimeout(_pbTimer);
+  // 5s 节流折进调度间隔：距上一拉未满 5s 就等满再拉（pbKick 置 0 可立即拉）
+  const delay = Math.max(120, 5000 - (Date.now() - (S.pubFetchAt || 0)));
   _pbTimer = setTimeout(async () => {
-    const now = Date.now();
-    if (now - (S.pubFetchAt || 0) < 5000) return;   // 节流：主轮询不每次都打 /api/publish
-    S.pubFetchAt = now;
+    // 自续轮询链：详情区签名守卫上线后，主渲染泵不再每 8s 带跑本面板，
+    // 发布状态自己转——面板可见且仍指向同一任务就 5s 一拉，收起/切走
+    // 自然停，下次 renderBookMetaPanel 重新点火。task 对象可能已老，
+    // 一律按 id 从 S.state 重解析，渲染吃的永远是新数据。
+    const box = $("rd-bookmeta");
+    if (!task || !task.id || !box || box.classList.contains("hidden") ||
+        $("run-detail").classList.contains("hidden")) return;
+    const tk = ((S.state || {}).tasks || []).find((x) => x.id === task.id);
+    if (!tk || ((S.lastRunTask || {}).id || "") !== tk.id) return;
+    S.pubFetchAt = Date.now();
     let sig = "";
     try {
       const v = await api("/api/publish");
       S.pubState = v;
       sig += JSON.stringify(v.platforms || {});
-    } catch (e) { return; }
+    } catch (e) { pbSyncState(tk); return; }
     try {
-      const ti = await api("/api/publish/task/" + encodeURIComponent(task.id) + "/history");
+      const ti = await api("/api/publish/task/" + encodeURIComponent(tk.id) + "/history");
       S.pubTaskInfo = ti;
       sig += "#" + JSON.stringify(ti.books || {}) + "#" + (ti.history || []).length;
       // 已发章数自动校准：平台在线且登记在案、超 10 分钟没对过账就静默对一次
@@ -5803,22 +5945,23 @@ function pbSyncState(task) {
         if (ps2.status === "connected" && nowMs - at > 600000 &&
             nowMs - (S["_pbSyncAt_" + p] || 0) > 600000) {
           S["_pbSyncAt_" + p] = nowMs;
-          api("/api/publish/task/" + encodeURIComponent(task.id) + "/sync-published",
+          api("/api/publish/task/" + encodeURIComponent(tk.id) + "/sync-published",
             { method: "POST", body: JSON.stringify({ platform: p }) }).catch(() => {});
         }
       });
     } catch (e) { /* 任务级失败不阻塞平台状态 */ }
     try {
       // 批量发布视图（待发数/护栏/进度）——进行中时靠本节流轮询自然刷新
-      const au = await api("/api/publish/task/" + encodeURIComponent(task.id) + "/pending");
+      const au = await api("/api/publish/task/" + encodeURIComponent(tk.id) + "/pending");
       S.pubAuto = au;
       sig += "@" + JSON.stringify(au.books || {}) + "@" + JSON.stringify(au.running || {});
     } catch (e) { /* 视图缺失（老服务）不阻塞 */ }
-    if (sig !== (S._pbSig || "") && !$("rd-bookmeta").classList.contains("hidden")) {
+    if (sig !== (S._pbSig || "")) {
       S._pbSig = sig;
-      renderBookMetaPanel(task);
+      renderBookMetaPanel(tk);
     } else S._pbSig = sig;
-  }, 120);
+    pbSyncState(tk);   // 续链：面板还开着就下一轮 5s 后再来
+  }, delay);
 }
 
 window.pbSyncPublished = async function (taskId, platform) {
@@ -5856,19 +5999,34 @@ window.pbProbe = async function (platform) {
 };
 
 window.pbCreateBook = async function (taskId, platform) {
-  if (!confirm(t("将用生成的作品信息在平台自动填建书表单。填好后会停在最后一步，由你在浏览器里人工点提交。继续？"))) return;
+  if (!(await uiConfirm(t("将用生成的作品信息在平台自动填建书表单。填好后会停在最后一步，由你在浏览器里人工点提交。继续？"),
+    { ok: t("开始建书") }))) return;
   try {
-    await pbApiWithQualityOverride(
+    const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/create-book",
-      { platform }, "创建作品前的质量门禁未通过");
-    toast(t("正在自动填写建书表单…（完成后请在浏览器里确认提交）"));
+      { platform }, "创建作品前的质量门禁未通过", taskId);
+    if (!(r && r.gate_reviewed))
+      toast(t("正在自动填写建书表单…（完成后请在浏览器里确认提交）"));
   } catch (e) { toast(t("建书失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
 
-window.pbRegToggle = function (platform) {
+/* 登记草稿随输随存：重绘回填的写侧（读侧在 pbBlock 模板里 value=/open） */
+window.pbRegDraftSave = function (taskId, platform, key, val) {
+  S.pbRegDraft = S.pbRegDraft || {};
+  const k = taskId + ":" + platform;
+  const d = S.pbRegDraft[k] = Object.assign({}, S.pbRegDraft[k]);
+  d[key] = String(val == null ? "" : val);
+};
+
+window.pbRegToggle = function (taskId, platform) {
   const box = $("pb-reg-" + platform);
-  if (box) box.classList.toggle("hidden");
+  if (!box) return;
+  box.classList.toggle("hidden");
+  S.pbRegDraft = S.pbRegDraft || {};
+  const k = taskId + ":" + platform;
+  const d = S.pbRegDraft[k] = Object.assign({}, S.pbRegDraft[k]);
+  d.open = !box.classList.contains("hidden");   // 展开态也外置：重绘不再把表单折回去
 };
 
 window.pbRegister = async function (taskId, platform) {
@@ -5881,6 +6039,7 @@ window.pbRegister = async function (taskId, platform) {
     toast(t("已登记，可直接发章"));
     const box = $("pb-reg-" + platform);
     if (box) box.classList.add("hidden");
+    if (S.pbRegDraft) delete S.pbRegDraft[taskId + ":" + platform];   // 登记落定，草稿使命完成
   } catch (e) { toast(t("登记失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
@@ -5938,20 +6097,23 @@ window.pbUploadChapter = async function (taskId, platform) {
 };
 
 window.pbSendChapter = async function (taskId, platform, relName) {
-  if (!confirm(t("将把《{0}》填进平台章节编辑器，填好后由你人工提交。继续？", relName))) return;
+  if (!(await uiConfirm(t("将把《{0}》填进平台章节编辑器，填好后由你人工提交。继续？", relName),
+    { ok: t("开始填稿") }))) return;
   try {
-    await pbApiWithQualityOverride(
+    const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/chapter",
-      { platform, file: relName }, "发章前的质量门禁未通过");
-    toast(t("正在填写章节…（完成后请在浏览器里确认提交）"));
-    const box = $("pb-ch-" + platform);
-    if (box) {
-      const n = chapterNumOf(relName);
-      box.classList.remove("hidden");
-      box.innerHTML = '<div class="pb-hint">' + esc(t("填稿已完成，请先在浏览器里提交，再点击确认")) +
-        '</div><button class="ghost pb-tool" onclick="pbConfirmChapter(\'' +
-        esc(taskId) + "', '" + platform + "', " + Number(n || 0) +
-        ')">' + t("我已在平台提交") + "</button>";
+      { platform, file: relName }, "发章前的质量门禁未通过", taskId);
+    if (!(r && r.gate_reviewed)) {
+      toast(t("正在填写章节…（完成后请在浏览器里确认提交）"));
+      const box = $("pb-ch-" + platform);
+      if (box) {
+        const n = chapterNumOf(relName);
+        box.classList.remove("hidden");
+        box.innerHTML = '<div class="pb-hint">' + esc(t("填稿已完成，请先在浏览器里提交，再点击确认")) +
+          '</div><button class="ghost pb-tool" onclick="pbConfirmChapter(\'' +
+          esc(taskId) + "', '" + platform + "', " + Number(n || 0) +
+          ')">' + t("我已在平台提交") + "</button>";
+      }
     }
   } catch (e) { toast(t("发章失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
@@ -5970,12 +6132,14 @@ window.pbPublishAll = async function (taskId, platform) {
   const au = (((S.pubAuto && S.pubAuto.books) || [])
     .find((b) => b.platform === platform)) || {};
   if (!au.pending) return;
-  if (!confirm(t("将从最靠前的待发章节开始填稿（共 {0} 章待发）。本轮只填一章并停在表单页，由你在浏览器里确认提交；提交后点击“我已在平台提交”，再选择下一章。护栏（每日上限/连续失败暂停）生效。继续？", au.pending))) return;
+  if (!(await uiConfirm(t("将从最靠前的待发章节开始填稿（共 {0} 章待发）。本轮只填一章并停在表单页，由你在浏览器里确认提交；提交后点击“我已在平台提交”，再选择下一章。护栏（每日上限/连续失败暂停）生效。继续？", au.pending),
+    { ok: t("开始发布") }))) return;
   try {
-    await pbApiWithQualityOverride(
+    const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
-      { platform }, "批量发布前的质量门禁未通过");
-    toast(t("正在填第一章稿——填好后请在浏览器窗口里确认提交，再重新校准"));
+      { platform }, "批量发布前的质量门禁未通过", taskId);
+    if (!(r && r.gate_reviewed))
+      toast(t("正在填第一章稿——填好后请在浏览器窗口里确认提交，再重新校准"));
   } catch (e) { toast(t("自动发布失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
@@ -13334,7 +13498,8 @@ async function scanPorts() {
 }
 
 async function closePort(port) {
-  if (!confirm(t("结束占用端口 %1 的进程？先温和关闭，无效会自动强制结束（系统进程会被拒绝）").replace("%1", port))) return;
+  if (!(await uiConfirm(t("结束占用端口 %1 的进程？先温和关闭，无效会自动强制结束（系统进程会被拒绝）").replace("%1", port),
+    { ok: t("结束进程") }))) return;
   try {
     const r = await api("/api/ports/close", { method: "POST", body: JSON.stringify({ port }) });
     toast(r.message || (r.ok ? t("已关闭") : t("未能关闭")), !r.ok);
@@ -13649,7 +13814,7 @@ function setLangBtn(lang) {
   if (getLang() === lang) return;
   setLang(lang);
   // 失效全部渲染签名，让下一次 render() 把所有动态内容重画一遍
-  S.catSig = ""; S.modelsSig = ""; S.bindSig = ""; S.orchSig = ""; S.sideSig = ""; S.taskSig = ""; S.mgmt = {};
+  S.catSig = ""; S.modelsSig = ""; S.bindSig = ""; S.orchSig = ""; S.sideSig = ""; S.taskSig = ""; S.runDetailSig = ""; S.mgmt = {};
   syncLangMode();
   // 浏览器标签标题
   document.title = codebeeDocumentTitle(lang);

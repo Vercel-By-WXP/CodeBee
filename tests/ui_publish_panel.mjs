@@ -59,7 +59,7 @@ async function main() {
     error: "", verdict: null, summary: "",
   }), "utf-8");
   writeFileSync(join(dataDir, "publish", "books.json"), JSON.stringify({
-    "pub-t1": { fanqie: { book_id: "", title: "测试书", url: "", created_at: now } },
+    "pub-t1": { fanqie: { book_id: "77001", title: "测试书", url: "", created_at: now } },
   }), "utf-8");
 
   let svc = null, edge = null, ws = null;
@@ -118,7 +118,7 @@ async function main() {
           return new Response(JSON.stringify({
             history: [{ platform: "fanqie", action: "upload_chapter", chapter_no: 1,
               title: "第1章 风起", ok: true, ts: "2026-09-18 10:00:00" }],
-            books: { fanqie: { book_id: "", title: "测试书", url: "", created_at: "" } },
+            books: { fanqie: { book_id: "77001", title: "测试书", url: "", created_at: "" } },
           }), { status: 200 });
         }
         if (u === "/api/publish" || u.startsWith("/api/publish?")) {
@@ -174,11 +174,20 @@ async function main() {
       s1.btns[0].includes("发一章（已发 1）") && s1.fqHasBook, JSON.stringify(s1));
     check("未建书平台显示「创建作品」", s1.btns[1].includes("创建作品"), JSON.stringify(s1));
 
-    /* 4) 点「发一章」→ 章稿列表（过滤作品信息归档） */
+    /* 4) 点「发一章」→ 应用内预检确认（开始填稿）→ 章稿列表（过滤作品信息归档） */
     const s2 = JSON.parse(await evalJs(`(async () => {
       const rows = [...document.querySelectorAll(".bm-pub")];
       const btn = [...rows[0].querySelectorAll("button")].find(b => b.textContent.includes("发一章"));
       btn.click();
+      // 预检确认已统一为应用内弹框：点「开始填稿」穿过
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 400));
+        const ask = document.getElementById("ask");
+        if (ask && !ask.classList.contains("hidden")) {
+          const yes = document.getElementById("ask-yes");
+          if (yes && yes.textContent.includes("开始填稿")) { yes.click(); break; }
+        }
+      }
       for (let i = 0; i < 10; i++) {
         await new Promise(r => setTimeout(r, 300));
         if (document.querySelectorAll("#pb-ch-fanqie .pb-ch-item").length) break;
@@ -190,11 +199,19 @@ async function main() {
       s2.items.length === 2 && s2.items.includes("第1章 风起.md") && !s2.items.some(x => x.includes("作品信息")),
       JSON.stringify(s2));
 
-    /* 5) 点章稿 → confirm 自动过 → POST 发出且 body 正确 */
+    /* 5) 点章稿 → 应用内预检确认（开始填稿）→ POST 发出且 body 正确 */
     const s3 = JSON.parse(await evalJs(`(async () => {
       const btn = [...document.querySelectorAll("#pb-ch-fanqie .pb-ch-item")]
         .find(b => b.textContent.includes("第1章"));
       btn.click();
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 400));
+        const ask = document.getElementById("ask");
+        if (ask && !ask.classList.contains("hidden")) {
+          const yes = document.getElementById("ask-yes");
+          if (yes && yes.textContent.includes("开始填稿")) { yes.click(); break; }
+        }
+      }
       await new Promise(r => setTimeout(r, 700));
       return JSON.stringify({ posts: window.__pbPosts });
     })()`));

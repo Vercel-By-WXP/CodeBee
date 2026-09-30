@@ -1,6 +1,8 @@
 /* 厂商列表卡片「顶端对齐」验收：
  *   每张厂商卡 = 名称行（名称 + 右侧「N 模型」计数，顶端对齐）+ 第二行协议标签；
  *   所有卡的计数同一垂直位置、与名称首行对齐，无横向溢出。
+ * 附带状态过滤验收（2026-09-30）：默认只展示启用中的供应商，
+ * 点「已停用 / 全部」chip 才现身对应分组；卡片计数=启用中的模型数。
  * 自含临时服务（端口 18796），只读操作不抢设备控制权。
  * 用法：node tests/ui_check_prov_align.mjs */
 import { spawn } from "node:child_process";
@@ -117,16 +119,36 @@ async function main() {
             detail: +d.getBoundingClientRect().top.toFixed(1) } : null; })(),
       };
     })())`));
-    check("渲染出 3 张厂商卡", out.count === 3, JSON.stringify(out.count));
+    check("渲染出 2 张启用中的厂商卡（停用的 cavoti 默认隐藏）", out.count === 2, JSON.stringify(out.count));
     check("每张卡：计数与名称首行顶端对齐", out.topAligned, JSON.stringify(out.geom));
     check("所有卡的计数同一垂直位置", out.nTopsUniform, JSON.stringify(out.geom.map((g) => g.nTop)));
     check("协议标签行在名称行下方", out.metaBelowName, JSON.stringify(out.geom));
-    check("计数文本正确（71/10/3 模型）",
-      JSON.stringify(out.geom.map((g) => g.text)) === JSON.stringify(["71 模型", "10 模型", "3 模型"]),
+    check("计数文本正确（71/10 模型，只数启用中的模型）",
+      JSON.stringify(out.geom.map((g) => g.text)) === JSON.stringify(["71 模型", "10 模型"]),
       JSON.stringify(out.geom.map((g) => g.text)));
     check("厂商列表无横向溢出", out.overflow <= 0, "overflow=" + out.overflow);
     check("左栏供应商框与右列详情顶端对齐", out.cols && Math.abs(out.cols.side - out.cols.detail) <= 3 &&
       out.cols.side <= out.cols.detail + 1, JSON.stringify(out.cols));
+
+    // 状态过滤：点「已停用」chip → 只剩 cavoti；点「全部」→ 三张全出
+    check("状态过滤 chips 三枚齐备（已启用/已停用/全部）",
+      (await js(`document.querySelectorAll("#prov-list .prov-status .cat-chip").length`)) === 3);
+    await js(`document.querySelectorAll("#prov-list .prov-status .cat-chip")[1].click()`);
+    await sleep(600);
+    const offOut = JSON.parse(await js(`JSON.stringify((() => {
+      const items = [...document.querySelectorAll("#prov-list .prov-item")];
+      return { count: items.length,
+        texts: items.map((it) => it.querySelector(".pi-n").textContent.trim()),
+        names: items.map((it) => it.querySelector(".pi-name").textContent.trim()) };
+    })())`));
+    check("「已停用」视图只剩 cavoti 一张卡", offOut.count === 1 && offOut.names[0] === "cavoti",
+      JSON.stringify(offOut));
+    check("「已停用」视图计数文本正确（3 模型）",
+      JSON.stringify(offOut.texts) === JSON.stringify(["3 模型"]), JSON.stringify(offOut.texts));
+    await js(`document.querySelectorAll("#prov-list .prov-status .cat-chip")[2].click()`);
+    await sleep(600);
+    const allN = await js(`document.querySelectorAll("#prov-list .prov-item").length`);
+    check("「全部」视图三张卡齐出", allN === 3, JSON.stringify(allN));
 
     const shot = await send("Page.captureScreenshot", { format: "png" });
     if (shot?.result?.data) {

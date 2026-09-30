@@ -924,7 +924,10 @@ def _do_mgmt(job, ev):
             summary = ("失败：安装文件被占用（可能有同名程序在运行，或杀毒软件正在扫描），"
                        "请关闭占用该文件的程序后重试。完整输出见日志。")
         else:
-            summary = ("完成" if ok else "失败") + (": " + res["error"][:300] if res.get("error") else "")
+            # note 优先：良性收口（如 winget「已装无可升级」复检在装）给用户
+            # 看原因，别让「完成」两个字孤零零不带解释
+            extra = str(res.get("note") or res.get("error") or "")[:300]
+            summary = ("完成" if ok else "失败") + (": " + extra if extra else "")
         store.finish_step(run_id, step["n"],
                           "done" if ok else "failed",
                           summary=summary,

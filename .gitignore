@@ -20,3 +20,7 @@ tmp_*
 !/tests/test_state_payload.py
 .playwright-cli/
 作品信息-*.md
+
+# 运行时产物与测试事故目录（winget 探针 LOCALAPPDATA 相对化事故、发布流程输出）
+/Microsoft/
+/app/output/

@@ -116,8 +116,22 @@ async function main() {
     check("其他进程行有关闭按钮", !!table && table.hasCloseBtn, table && JSON.stringify(table));
 
     // 4) 自身端口温和关闭 → 409 拒绝，toast 报「不能关闭自身服务进程」
-    //    （close_port 内部两次端口扫描，机器忙时可能超过 1.5s，轮询等待）
-    await evalJs(`window.confirm = () => true; closePort(${PORT}); "pending"`);
+    //    （close_port 内部两次端口扫描，机器忙时可能超过 1.5s，轮询等待；
+    //      closePort 的确认已统一为应用内弹框，点「结束进程」穿过）
+    await evalJs(`closePort(${PORT}); "pending"`);
+    let confirmed1 = false;
+    for (let i = 0; i < 10 && !confirmed1; i++) {
+      await sleep(400);
+      confirmed1 = await evalJs(`(() => {
+        const ask = document.getElementById("ask");
+        if (ask && !ask.classList.contains("hidden")) {
+          document.getElementById("ask-yes").click();
+          return true;
+        }
+        return false;
+      })()`);
+    }
+    check("closePort 弹应用内确认框", confirmed1);
     let toast1 = "";
     for (let i = 0; i < 24 && !toast1; i++) {
       await sleep(1000);

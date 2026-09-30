@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import glob
 import hashlib
 import json
 import os
@@ -89,10 +90,36 @@ def _safe_config_path(raw):
 
 # ---------------------------------------------------------------- 检测
 
+def _which_cli(cli):
+    """PATH 找 CLI；Windows 上再兜底 winget 便携包两处标准落点。
+
+    winget 装的 CLI（如 Claude Code）把 exe 放进
+    %LOCALAPPDATA%\\Microsoft\\WinGet\\Packages\\<PkgId>_*\\，并把该目录写进
+    注册表用户 PATH——注册表更新后已在跑的进程（本服务）不继承，shutil.which
+    落空 → 卡片「未安装」假象，点安装又被 winget「已装无可升级」非零退出拒掉
+    （2026-09-30 实案）。Links 是便携包符号链接标准目录，Packages 按
+    <cli>.exe 通配兜另一形态；两条都只兜 which 落空的场景，零额外开销。"""
+    path = shutil.which(cli)
+    if path:
+        return path
+    if os.name != "nt":
+        return None
+    local = os.environ.get("LOCALAPPDATA")
+    if not local:
+        return None
+    links = os.path.join(local, "Microsoft", "WinGet", "Links", cli + ".exe")
+    if os.path.isfile(links):
+        return links
+    for hit in sorted(glob.glob(os.path.join(
+            local, "Microsoft", "WinGet", "Packages", "*", cli + ".exe"))):
+        return hit
+    return None
+
+
 def detect_entry(entry):
     d = entry.get("detect") or {}
     if d.get("cli"):
-        path = shutil.which(d["cli"])
+        path = _which_cli(d["cli"])
         return {"installed": bool(path), "detail": path or ""}
     if d.get("exe"):
         full = _expand(d["exe"])
@@ -1907,6 +1934,34 @@ def _open_when_ready(port, url, log_path, timeout=30):
 
 # ---------------------------------------------------------------- 安装/升级
 
+# winget「包已装且无可用升级」退出码（有符号 -1978335189 / 无符号 2316632107）
+_WINGET_NOOP_EXIT = 0x8A15002B
+# 双语结论标记：winget 对已装包重复 install 会转 upgrade，无可升级即打这些话
+_WINGET_NOOP_MARKERS = ("找不到可用的升级", "没有可用的较新的包版本",
+                        "No available upgrade", "No newer package versions")
+
+
+def _winget_already_ok(cmd, op, res):
+    """winget install/upgrade 撞「已装且无可升级」时的良性判定。
+
+    该场景命令非零退出，但目标态（已安装）本就达成——按失败走会触发 AI
+    修复白烧一轮诊断（2026-09-30 Claude Code 实案：检测漏装 + 点安装 =
+    假失败 + 假修复）。只认显式「无事可做」的退出码/结论话术，且调用方
+    还要复检 installed 才按成功收口。"""
+    if res.get("ok") or op not in ("install", "upgrade"):
+        return False
+    if not str(cmd or "").strip().lower().startswith("winget"):
+        return False
+    code = res.get("exit_code")
+    try:
+        if code is not None and (int(code) & 0xFFFFFFFF) == _WINGET_NOOP_EXIT:
+            return True
+    except (TypeError, ValueError):
+        pass
+    out = "%s\n%s" % (res.get("stdout") or "", res.get("stderr") or "")
+    return any(m in out for m in _WINGET_NOOP_MARKERS)
+
+
 def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
     """执行 install/upgrade/uninstall 命令（由任务执行器异步运行，日志实时落盘）。"""
     if op == "uninstall":
@@ -1923,17 +1978,27 @@ def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
                              % (op, entry["id"])}
     res = runner.run_process(shell_cmd=cmd, cwd=str(paths.ROOT),
                              timeout=1800, cancel_event=cancel_event, log_path=log_path)
+    winget_noop = _winget_already_ok(cmd, op, res)
     detect_all(force=True)
     with _LOCK:
         _STATE["versions"].pop(entry["id"], None)
+    if winget_noop and detect_entry(entry)["installed"]:
+        # winget 说「已装且无可升级」、复检也在装：install 语义（确保在装）已达成
+        refresh_update_async(entry)
+        return {"ok": True, "exit_code": res["exit_code"], "command": cmd,
+                "error": "",
+                "note": "winget 报已安装且无可用升级，复检确认本机在装"}
     if res["ok"]:
         # 安装/升级成功即作废该条目的更新检查缓存并后台复检：否则 10 分钟 TTL
         # 内徽章仍显示「有新版本」，诱导同版本重装（重装易撞 EBUSY 文件锁，
         # 2026-09-18 dsh 案）。
         refresh_update_async(entry)
+    tail = runner.clean_cli_text(res["stderr"])[-800:]
+    if not tail and not res["ok"]:
+        # winget 把结论打在 stdout（stderr 恒空），只回「退出码 N」零信息量
+        tail = runner.clean_cli_text(res["stdout"])[-800:]
     return {"ok": res["ok"], "exit_code": res["exit_code"], "command": cmd,
-            "error": "" if res["ok"] else (runner.clean_cli_text(res["stderr"])[-800:]
-                                           or "退出码 %s" % res["exit_code"])}
+            "error": "" if res["ok"] else (tail or "退出码 %s" % res["exit_code"])}
 
 
 def refresh_update_async(entry):

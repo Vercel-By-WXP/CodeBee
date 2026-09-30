@@ -12,8 +12,10 @@
 """
 from __future__ import annotations
 
+import tempfile
 import threading
 import time
+from pathlib import Path
 
 from base import BaseTest
 
@@ -272,3 +274,158 @@ class TestAiderChannelPatch(BaseTest):
         self.assertIsNotNone(entry)
         self.assertTrue(entry["install"].startswith("uv tool install"))
         self.assertIsNone(catalog.npm_pkg_name(entry["install"]))
+
+
+class TestWingetNoopInstall(BaseTest):
+    """winget「已装且无可升级」良性收口（2026-09-30 Claude Code 实案）。
+
+    检测漏装（服务进程 PATH 未继承注册表更新）→ 卡片「未安装」→ 点安装 →
+    winget 报已装无可升级（退出码 0x8A15002B，结论打在 stdout、stderr 恒空）
+    被当失败，错误行只剩「退出码 2316632107」，又白烧一轮 AI 修复诊断。"""
+
+    def _entry(self):
+        return {"id": "claude-code", "name": "Claude Code",
+                "install": "winget install -e --id Anthropic.ClaudeCode",
+                "upgrade": "winget upgrade -e --id Anthropic.ClaudeCode"}
+
+    def _res(self, ok=False, exit_code=1, stdout="", stderr=""):
+        return {"ok": ok, "exit_code": exit_code, "stdout": stdout, "stderr": stderr}
+
+    def test_noop_exit_code_recognized(self):
+        """0x8A15002B（无符号 2316632107）= 已装且无可升级，良性。"""
+        from app.core import manager
+        self.assertTrue(manager._winget_already_ok(
+            self._entry()["install"], "install",
+            self._res(exit_code=2316632107)))
+
+    def test_noop_text_markers_recognized(self):
+        """退出码不可靠时（locale/版本差异）结论话术双语文案兜底。"""
+        from app.core import manager
+        zh = self._res(stdout="找到已安装的现有包。正在尝试升级已安装的包...\n"
+                              "找不到可用的升级。\n配置的源中没有可用的较新的包版本。")
+        en = self._res(stdout="Found an existing installed package...\n"
+                              "No available upgrade found.\n"
+                              "No newer package versions are available.")
+        self.assertTrue(manager._winget_already_ok(self._entry()["install"], "install", zh))
+        self.assertTrue(manager._winget_already_ok(self._entry()["install"], "install", en))
+
+    def test_real_failure_not_masked(self):
+        """真失败不放行：普通非零退出、非 winget 命令、非安装类 op 都拒。"""
+        from app.core import manager
+        self.assertFalse(manager._winget_already_ok(
+            self._entry()["install"], "install", self._res(stderr="winget 安装失败")))
+        self.assertFalse(manager._winget_already_ok(
+            "npm install -g x", "install", self._res(exit_code=2316632107)))
+        self.assertFalse(manager._winget_already_ok(
+            self._entry()["install"], "uninstall", self._res(exit_code=2316632107)))
+        self.assertFalse(manager._winget_already_ok(
+            self._entry()["install"], "install", self._res(ok=True)))
+
+    def test_noop_with_detect_confirmed_returns_ok(self):
+        """winget 说已装 + 复检在装 → ok=True 带 note，别再触发 AI 修复。"""
+        from app.core import manager
+        entry = self._entry()
+        orig = (manager.runner.run_process, manager.detect_all,
+                manager.detect_entry, manager.check_update)
+        manager.runner.run_process = lambda **kw: self._res(
+            exit_code=2316632107,
+            stdout="找到已安装的现有包。\n找不到可用的升级。")
+        manager.detect_all = lambda force=False: {}
+        manager.detect_entry = lambda e: {"installed": True, "detail": "x"}
+        manager.check_update = lambda e, force=False: None
+        try:
+            res = manager.run_mgmt_command(entry, "install")
+        finally:
+            (manager.runner.run_process, manager.detect_all,
+             manager.detect_entry, manager.check_update) = orig
+        self.assertTrue(res["ok"])
+        self.assertIn("无可用升级", res.get("note") or "")
+        self.assertEqual(res.get("error"), "")
+
+    def test_noop_but_undetected_stays_failed_with_stdout_tail(self):
+        """复检仍未检出（老服务漏 winget 落点形态）→ 维持失败，且错误行兜底
+        取 stdout 结论（winget stderr 恒空，只报退出码零信息量）。"""
+        from app.core import manager
+        entry = self._entry()
+        orig = (manager.runner.run_process, manager.detect_all, manager.check_update)
+        manager.runner.run_process = lambda **kw: self._res(
+            exit_code=2316632107, stdout="找不到可用的升级。")
+        manager.detect_all = lambda force=False: {}
+        manager.check_update = lambda e, force=False: None
+        try:
+            res = manager.run_mgmt_command(entry, "install")
+        finally:
+            (manager.runner.run_process, manager.detect_all,
+             manager.check_update) = orig
+        self.assertFalse(res["ok"])
+        self.assertIn("找不到可用的升级", res["error"])
+
+
+class TestWingetPathDetect(BaseTest):
+    """_which_cli 的 winget 便携包落点兜底：winget 写注册表用户 PATH，但已在
+    跑的服务进程不继承注册表更新（2026-09-30 Claude Code「未安装」假象）。"""
+
+    def _make_pkg_exe(self, td, sub, name):
+        import os
+        pkg = td / "Microsoft" / "WinGet" / sub / "Anthropic.ClaudeCode_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        pkg.mkdir(parents=True, exist_ok=True)
+        exe = pkg / name
+        exe.write_bytes(b"")
+        return exe
+
+    def test_packages_dir_fallback(self):
+        import os
+        from app.core import manager
+        with tempfile.TemporaryDirectory() as td_str:
+            td = Path(td_str)
+            exe = self._make_pkg_exe(td, "Packages", "claude.exe")
+            orig_which = manager.shutil.which
+            orig_local = os.environ.get("LOCALAPPDATA")
+            manager.shutil.which = lambda c: None   # 服务进程 PATH 落空形态
+            os.environ["LOCALAPPDATA"] = str(td)
+            try:
+                self.assertEqual(manager._which_cli("claude"), str(exe))
+                self.assertTrue(manager.detect_entry(
+                    {"detect": {"cli": "claude"}})["installed"])
+            finally:
+                manager.shutil.which = orig_which
+                if orig_local is None:
+                    os.environ.pop("LOCALAPPDATA", None)
+                else:
+                    os.environ["LOCALAPPDATA"] = orig_local
+
+    def test_links_dir_fallback(self):
+        import os
+        from app.core import manager
+        with tempfile.TemporaryDirectory() as td_str:
+            td = Path(td_str)
+            # Links 是便携包符号链接标准目录：exe 直接在根下（无包 id 子目录）
+            links_dir = td / "Microsoft" / "WinGet" / "Links"
+            links_dir.mkdir(parents=True)
+            exe = links_dir / "claude.exe"
+            exe.write_bytes(b"")
+            orig_which = manager.shutil.which
+            orig_local = os.environ.get("LOCALAPPDATA")
+            manager.shutil.which = lambda c: None
+            os.environ["LOCALAPPDATA"] = str(td)
+            try:
+                self.assertEqual(manager._which_cli("claude"), str(exe))
+            finally:
+                manager.shutil.which = orig_which
+                if orig_local is None:
+                    os.environ.pop("LOCALAPPDATA", None)
+                else:
+                    os.environ["LOCALAPPDATA"] = orig_local
+
+    def test_which_hit_skips_fallback(self):
+        """PATH 直接命中时不碰磁盘兜底（热路径零开销）。"""
+        import os
+        from app.core import manager
+        with tempfile.TemporaryDirectory() as td_str:
+            os.environ["LOCALAPPDATA"] = td_str   # 空目录：兜底必然落空
+            orig_which = manager.shutil.which
+            manager.shutil.which = lambda c: r"C:\bin\claude.CMD"
+            try:
+                self.assertEqual(manager._which_cli("claude"), r"C:\bin\claude.CMD")
+            finally:
+                manager.shutil.which = orig_which
