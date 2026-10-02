@@ -7478,8 +7478,10 @@ function artifactsChips(runId, files, prevRun, hasPlan) {
       (isTxt ? '<a class="file-chip prev artifact-file-preview" title="' + esc(t("查看内容")) +
         '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
         '<svg class="ico" aria-hidden="true"><use href="#i-book"/></svg>' + t("预览") + "</a>" : "") +
-      (diffable ? '<a class="file-chip prev artifact-file-diff" title="' + esc(t("与上一版对比")) +
+      (diffable ? '<a class="file-chip prev artifact-file-diff" title="' +
+        esc(prevRun.ver ? t("与第 {0} 版对比").replace("{0}", prevRun.ver) : t("与上一版对比")) +
         '" data-file-run="' + esc(runId) + '" data-prev-run="' + esc(prevRun.id) +
+        '" data-prev-ver="' + (prevRun.ver || "") +
         '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
         '<svg class="ico" aria-hidden="true"><use href="#i-git-branch"/></svg>' + t("对比") + "</a>" : "") +
       "</span>";
@@ -7516,12 +7518,17 @@ function artifactDiffBody(a, b) {
   return '<pre class="art-diff">' + html + "</pre>";
 }
 
-/* 对比上一版弹窗：取两版文本 → diff 渲染（复用成品弹窗骨架）。 */
-window.artDiffPopup = async function (runId, prevRunId, name) {
+/* 对比上一版弹窗：取两版文本 → diff 渲染（复用成品弹窗骨架）。
+ * prevVer 在场时副标用「第 N 版 → 当前」（序号比 run_id 前 8 位对用户可读）；
+ * 缺号退回原 run_id 摘要，审计语义不丢。 */
+window.artDiffPopup = async function (runId, prevRunId, name, prevVer) {
   _fpSaveCtx = null; _fpRawText = ""; _fpDirty = false; _fpCopyText = null;
   const nm = String(name).split("/").pop();
-  _fpOpen(nm + " · " + t("与上一版对比"),
-    '<i>' + esc(String(prevRunId).slice(0, 8)) + " → " + esc(String(runId).slice(0, 8)) + "</i>", "");
+  const sub = prevVer
+    ? '<i>' + esc(t("第 {0} 版 → 当前").replace("{0}", prevVer)) +
+      " · " + esc(String(prevRunId).slice(0, 8)) + " → " + esc(String(runId).slice(0, 8)) + "</i>"
+    : '<i>' + esc(String(prevRunId).slice(0, 8)) + " → " + esc(String(runId).slice(0, 8)) + "</i>";
+  _fpOpen(nm + " · " + t("与上一版对比"), sub, "");
   _fpSetBody('<div class="fp-hint">' + esc(t("正在取两版内容…")) + "</div>");
   const u1 = urlAuth("/api/runs/" + encodeURIComponent(prevRunId) + "/file?name=" + encodeURIComponent(name));
   const u2 = urlAuth("/api/runs/" + encodeURIComponent(runId) + "/file?name=" + encodeURIComponent(name));
@@ -7569,20 +7576,35 @@ async function loadArtifacts(runId) {
     return;
   }
   const head = '<div class="files-head"><span class="sec-title">' + t("成品文件") + '</span>' +
+    verBadge +
     '<span class="wd" title="' + esc(t("点击复制")) + '" onclick="copyText(this.textContent)">' + esc(d.workdir) + "</span></div>";
   // 上一版 run 的文件清单（详情上下文才有）：同名文本文件给「对比」入口；
-  // 拉不到/无历史静默降级——对比是增强不是闸门
-  let prevRun = null;
+  // 拉不到/无历史静默降级——对比是增强不是闸门。
+  // 版本序号（OpenCreator「版本化」剩余面）：任务 run 列表最新在前，序号 =
+  // run 总数 - 列表内序位；total 缺失（分页未拉过）就不编版本号，徽章/对比
+  // 标题退回原样——序号是可读性增强不是闸门
+  let prevRun = null, curVer = 0;
   if (detailOwns && S.detailTaskKey) {
-    const prev = (_taskRunsCache.get(S.detailTaskKey) || []).find((r) => r.id !== runId);
+    const runs = _taskRunsCache.get(S.detailTaskKey) || [];
+    const total = ((_taskRunsPaging.get(S.detailTaskKey) || {}).total) || 0;
+    const idx = runs.findIndex((r) => r.id === runId);
+    if (total && idx >= 0) curVer = total - idx;
+    const prev = runs.find((r) => r.id !== runId);
     if (prev) {
       try {
         const pd = await api("/api/runs/" + encodeURIComponent(prev.id) + "/files");
-        if (pd && (pd.files || []).length)
-          prevRun = { id: prev.id, names: new Set(pd.files.map((f2) => f2.name)) };
+        if (pd && (pd.files || []).length) {
+          const pIdx = runs.indexOf(prev);
+          prevRun = { id: prev.id, names: new Set(pd.files.map((f2) => f2.name)),
+            ver: (total && pIdx >= 0) ? total - pIdx : 0 };
+        }
       } catch (e) { /* 上一版清单不可用就不给对比 */ }
     }
   }
+  const verBadge = curVer > 1
+    ? '<span class="ver-badge" title="' + esc(t("该任务第 N 次运行的产出，序号含修订与重试")) + '">' +
+      esc(t("第 {0} 版").replace("{0}", curVer)) + "</span>"
+    : "";
   const chips = artifactsChips(runId, files, prevRun, d.has_plan);
   if (box) box.innerHTML = head + '<div class="file-chips">' + chips + "</div>";
   if (mainBox) { mainBox.classList.remove("hidden");
@@ -15310,7 +15332,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const diff = e.target.closest(".artifact-file-diff[data-prev-run]");
       if (diff) {   // 对比上一版：先于通用预览分支（chip 同样带 data-file-run/name）
         e.preventDefault();
-        artDiffPopup(diff.dataset.fileRun, diff.dataset.prevRun, diff.dataset.fileName || "");
+        artDiffPopup(diff.dataset.fileRun, diff.dataset.prevRun, diff.dataset.fileName || "",
+          Number(diff.dataset.prevVer) || 0);
         return;
       }
       const file = e.target.closest("[data-file-run][data-file-name]");

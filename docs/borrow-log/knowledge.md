@@ -1088,7 +1088,7 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 
 ### 新条目
 
-- **career-ops-hq/career-ops**（73,096★，created 2026-04-04，09-30 活跃）| 开源求职 agent：扫招聘门户→**逐条 A-H 结构化报告+全球 1-5 评分** | 我们有 `resume` 类型但只做简历产出；「扫外部列表→逐条结构化分级评分报告」的交付契约形态与 rank_scan（扫榜）/defect_retro（复盘）同构（外部数据→评分报告交付物），是真实差量 | **待深挖**（A-H 分级报告的交付契约形态值得拆，进当期待深挖首位）| 2026-09-30
+- **career-ops-hq/career-ops**（73,096★，created 2026-04-04，09-30 活跃）| 开源求职 agent：扫招聘门户→**逐条 A-H 结构化报告+全球 1-5 评分** | 我们有 `resume` 类型但只做简历产出；「扫外部列表→逐条结构化分级评分报告」的交付契约形态与 rank_scan（扫榜）/defect_retro（复盘）同构（外部数据→评分报告交付物），是真实差量 | **2026-10-03 勘误：A-E 跨平台证据分级已随 v0.1.73 落地（rank_scan 报告契约 f0bd197），「待深挖」清账；其余机制（拒信模式/幽灵岗/STAR+R）属求职域专用不再跟进** | 已落地 | 2026-10-03
 - **@dannyvan/zentao-mcp**（npm 2026-09-08 发布）| 禅道 REST API v1 直连 MCP，**写操作默认 dry-run** | 与已录 zentao-mcp/auto-fixer-server/pi-zentao/ZenTaoMcp 同代通道级集成，无机制差量；「写操作默认 dry-run」的安全默认与我们 auto_submit=false / poll_enabled=False 纪律同向——安全默认设计再验证 | 参考（F 专项周边，一句入库）| 2026-09-30
 - **alphaparkinc/genpark-dynamic-prompt-prefix-cache-skill**（7★，09-28）| radix-trie 最长公共 prompt 前缀匹配缓存 | 我们前缀缓存稳定靠「注入点固定」设计（09-22 Reasonix 印证）；「跨 prompt 前缀去重」是另一角度但项目极小 | 参考（A 专项，只记思路不接）| 2026-09-30
 - **adampaulwalker/claude-code-subagent-cache**（1★，09-28）| **测量**子代理反复重读上下文的 token 支出（先量化再优化） | 「工具输出统一压缩管线」留存方向的第 6 独立验证（TokenJuice/openhuman/freellmapi/deepresearch-agent/winnow 之后），且补上「测量侧先行」角度——read_file 头尾保留只覆盖文件读取一种工具 | 方向验证（A 专项）| 2026-09-30
@@ -1125,3 +1125,23 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 5. 任务宪章编译为运行时强制策略（ironcurtain，治理远期）
 6. 既有攒批维持：ARIS 规则裁决/multica 看板视角/OpenCreator 版本化对比 UI（已落 artdiff 对比，剩多版本管理面）/凭据保险库（cockpit-tools 佐证 +1）
 7. google/ax 12,594★（09-27）描述级已核，逐仓机制复查排队（通道稳定时）
+
+## 2026-10-03 凌晨班（批3：计划/spec/长任务 + 七专项巡检）
+
+- **yc-software/qm**（15,316★，10-02 活跃，MIT）已深挖 | 「多人 agent harness for work」：Slack+Web 双形态、自部署自有云自有密钥；**每人每房隔离 workspace**（scoped 记忆/文件/密钥视图/权限/cron/web app/持久沙箱）；Pi/OpenCode/Codex/Claude Code 四 CLI 驱动同一核不锁供应商 | 组织化多人编排新巨型；与 happier（三端）/multica（看板协作）同域但更「组织基础设施」层。单机单人产品无小件可抄；「每人每房 scoped 记忆」是记忆隔离的组织级形态（边界：我们单人） | 雷达 | 2026-10-03
+- **21st-dev/1code**（5,585★，10-02 活跃）已深挖 | 开源 coding agent 客户端（21st.dev 出品）：多 agent 一窗/worktree 隔离/后台云沙箱/Kanban/Git 客户端/**聊天分叉**/**消息队列**（agent 忙时排队 prompt）/语音输入/Plan Mode | 同形态竞品逐项对查：消息队列**已覆盖**（我们运行中信箱排队+「待送达」标记+跑完自动续轮送达，rd-chat-send active 分支）、worktree/看板/语音/Plan 均有对应物；**唯一差量=聊天分叉**（从任意助手消息起 fork 子会话改写历史——管线级改动，远期备注） | 参考（差量一项记远期） | 2026-10-03
+- **google/ax 深挖完成**（12,881★，09-27 push，v1alpha1）| 「agent 的 Kubernetes」：task.yaml 声明式三原语（Task 沙箱 workload/Workspace 预接线 git+MCP+skills 热启动/Model 平台级 LLM+K8s Secret 凭据）+ Agent Substrate 集群沙箱 + ax suspend/resume（空闲暂停精确恢复）+ ax ssh（看 agent 干活） | 集群级 workload 编排与单机多 CLI 台不同赛道；suspend/resume=断点续跑、ssh=事件流、Workspace 热启动=经验召回+会话复用、Secret=凭据保险库（已列待深挖）——机制层全有对应物，形态层（声明式清单/K8s）不适用 | 参考（待深挖第 7 项清账） | 2026-10-03
+- **批3 新面孔速记**：coollabsio/jean 1,302★（dev environment for AI agents，同形态小件）| mcp-shrimp-task-manager 2,145★（链式思维任务管理 MCP=编排者拆解+task_plan 同域）| withkynam/vibecode-pro-max-kit 1,143★（「Your AI forgets. This remembers.」spec+记忆 harness=文件真源同向验证）| agentrq 1,137★（HITL 实时对话任务管理=待裁决同向）| auto-deep-researcher-24x7 1,293★（24/7 自主深研=ARIS 同构）| ghostwriter/phantom 1,476★（self-evolving co-worker=经验库自学习+沙箱同向）| 均雷达/参考 | 2026-10-03
+- **雷达三小标**：gongdear/cline-pilot 102★（skill 驱动外部 CLI 代理人的轻量委托形态）| binbingwu/Multi-Agent-Game-Localizer 40★（中文：主控大模型+本地小模型翻译子代理分层成本结构=cascade 同向佐证）| npm @nathapp/nax（TDD 循环直至完成微型编排器，只记形态）| 均雷达 | 2026-10-03
+- 生态事实：deer-flow 描述改「long-horizon SuperAgent harness」；ruflo 73,723★（+425，社区星数审计质疑帖存在按 API 采信）；Awesome-Long-Horizon-Agents 11 天无 push 准停更观察；firecrawl 187k★ 为 web 数据基础设施非编排竞品（Agent-Reach 域已覆盖）不入册细查
+
+**✅ 本班落地**：多版本序号可见化（OpenCreator「版本化」剩余面收口）——成品文件头部「第 N 版」徽章（run 总数-列表序位，total 缺失不编不显示）+ 对比 chip「与第 N 版对比」+ diff 弹窗副标「第 N 版 → 当前」（run_id 摘要降为审计尾注）+ i18n 四键 + ui_ver_badge.mjs 11 项（CDP 直调 artifactsChips：序号形态/降级/diffable 不回归/i18n 完整性/英文形态）
+
+### 待深挖队列（2026-10-03 快照）
+
+1. 工具输出统一压缩管线（第 7 验证到手，管线级攒批）
+2. 语义缓存（待租户/敏感边界拍板）
+3. 演示文稿任务类型空档——交人拍板（不擅自扩）
+4. 任务宪章编译为运行时强制策略（ironcurtain，治理远期）
+5. 聊天分叉（1code，管线级远期备注）
+6. 既有攒批维持：ARIS 规则裁决/multica 看板视角/凭据保险库（cockpit-tools 佐证；data/zentao.json 明文密码属该域，交人决策）

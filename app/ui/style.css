@@ -7071,3 +7071,10 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 .prov-status { margin: 2px 0 8px; }
 .prov-status .cat-chip { padding: 3px 9px; font-size: 12px; }
 .pm-status { margin: 10px 0 2px; }
+
+/* 成品文件头部「第 N 版」徽章（多版本序号可见化，追加尾防并行重排）：
+ * 只在任务有 ≥2 次运行时出现；中性色小药丸，不给操作语义 */
+.files-head .ver-badge {
+  font-size: 11px; color: var(--muted); border: 1px solid var(--border);
+  border-radius: 9px; padding: 1px 8px; white-space: nowrap; cursor: help;
+}
