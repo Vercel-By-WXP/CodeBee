@@ -1096,6 +1096,9 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/tasks/([^/]+)/book-meta$", path)
         if m:
             return self._api_book_meta_generate(m.group(1))
+        m = re.match(r"^/api/tasks/([^/]+)/book-meta/rename$", path)
+        if m:
+            return self._api_book_meta_rename(m.group(1))
         m = re.match(r"^/api/tasks/([^/]+)/cover$", path)
         if m:
             from core import covergen
@@ -1952,6 +1955,58 @@ class Handler(BaseHTTPRequestHandler):
                          name="book-meta-%s" % platform,
                          args=(target_id, platform, author)).start()
         return self._json(200, {"ok": True, "started": True})
+
+    def _api_book_meta_rename(self, task_id):
+        """作品信息换名（POST /api/tasks/<id>/book-meta/rename，body: {platform}）。
+
+        只换 book_name 一个字段：整套重生成会覆盖已核对过的分类/标签/简介，
+        而用户的痛点只是书名与本站已有作品撞名。同步接口（单次轻模型调用），
+        成功才写盘，模型失败时现有数据原样不动。排除名单=全站已用书名
+        （books.json 登记 + 各任务 book_meta），从根上防「换出来的还是重名」。
+        落点同生成：连载链根任务（2026-09-30 都是用第一个）。"""
+        from core import bookmeta
+        task = store.get_task(task_id)
+        if not task:
+            return self._json(404, {"error": "任务不存在"})
+        body = self._body() or {}
+        platform = (body.get("platform") or "").strip()
+        if platform not in bookmeta.PLATFORMS:
+            return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
+        chain = store.serial_chain_ids(task_id)
+        target = (store.get_task(chain[0]) if chain else None) or task
+        target_id = str(target.get("id"))
+        if target.get("status") in ("queued", "running"):
+            return self._json(400, {"error": "任务正在运行，请等本轮结束后再换名"})
+        entry = ((target.get("book_meta") or {}).get(platform) or {})
+        if entry.get("status") != "done" or not isinstance(entry.get("data"), dict):
+            return self._json(400, {"error": "该平台作品信息尚未生成，没有书名可换"})
+        old_name = str((entry["data"] or {}).get("book_name") or "").strip()
+        if not old_name:
+            return self._json(400, {"error": "现有记录没有书名可换"})
+        new_name, err = bookmeta.rename_book(target, platform, old_name,
+                                             bookmeta.used_book_names())
+        if err:
+            return self._json(400, {"error": err})
+        data = dict(entry["data"])
+        data["book_name"] = new_name
+        payload = dict(entry)
+        payload["data"] = data
+        payload["at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        payload["source"] = (str(entry.get("source") or "") +
+                             "；换名：《%s》→《%s》" % (old_name, new_name)).lstrip("；")
+        if not store.set_book_meta(target_id, platform, payload):
+            return self._json(404, {"error": "任务不存在"})
+        # 归档 Markdown 同步（工作目录在场才写；source 只进归档不进 book_meta
+        # 数据——数据里多的键会让 repair_existing 的幂等比较每次不等）
+        try:
+            fp = Path(target.get("workdir") or "") / bookmeta.PLATFORMS[platform]["file"]
+            if fp.parent.is_dir():
+                fp.write_text(bookmeta.render_markdown(
+                    target, platform, dict(data, source=payload["source"])),
+                    encoding="utf-8")
+        except OSError:
+            pass
+        return self._json(200, {"ok": True, "old": old_name, "new": new_name})
 
     def _api_publish_platform_op(self, platform, op):
         """平台会话操作：connect 开浏览器等扫码 / disconnect 关 / probe 探测表单。"""

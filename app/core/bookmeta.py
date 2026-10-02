@@ -781,6 +781,112 @@ def make_book_meta(task, platform, author_agent=None, log_path=None):
     return meta, _apply_fix_note(meta, meta["source"])
 
 
+# ---- 换名（2026-10-02 用户实案：生成的书名与本站已有作品重名，用户要的是
+# 「换一个名字」而不是整套重摇——重摇会覆盖已核对过的分类/标签/简介）
+
+RENAME_TIMEOUT = 120
+# 排除名单注入上限：全站书名可能上百个，超出的按序丢弃（提示词预算保护；
+# 排序后字母序前 80 个 + 调用方传入的近期撞名足够防撞，撞了还有重试兜底）
+RENAME_EXCLUDE_LIMIT = 80
+
+RENAME_PROMPT = """你是网文编辑。这本书《__OLD__》的书名与已有作品重名了，请另起一个新书名。
+
+书的基本情况：
+__MATERIAL__
+
+硬性要求：
+- 只输出一个 ```json 代码块：{"book_name": "新书名"}，不要输出其他内容；
+- 新书名不超过 15 个字，贴合题材、有网文点击欲，与旧书名同一题材但用词明显不同；
+- 严禁与下面任何一本书重名，也不得只加「2」「新」「之」等后缀敷衍：
+__EXCLUDE__"""
+
+
+def used_book_names():
+    """本站全部已用书名（换名排除名单）：已建书登记（books.json 的 title）
+    + 所有任务 book_meta 各平台 done 态的 book_name。读取异常只降级不阻断
+    （名单不全最坏结果是换出来的名字仍撞，用户再点一次）。"""
+    from .publish import ledger
+    names = set()
+    try:
+        # books.json 结构：{task_id: {platform: {book_id, title, url, ...}}}
+        for by_plat in (ledger.load_books() or {}).values():
+            if not isinstance(by_plat, dict):
+                continue
+            for rec in by_plat.values():
+                t = str((rec or {}).get("title") or "").strip()
+                if t:
+                    names.add(t)
+    except Exception:
+        pass
+    try:
+        from . import store
+        for task in store.list_tasks(limit=10 ** 9):
+            for entry in (task.get("book_meta") or {}).values():
+                if isinstance(entry, dict) and entry.get("status") == "done":
+                    n = str((entry.get("data") or {}).get("book_name") or "").strip()
+                    if n:
+                        names.add(n)
+    except Exception:
+        pass
+    return names
+
+
+def rename_book(task, platform, old_name, exclude_names=()):
+    """给已生成的作品信息换一个不重名的书名。返回 (new_name, "") 或 ("", 错误)。
+
+    只产出新名，不写盘——调用方负责更新 book_meta 与归档同步；这样模型失败
+    时现有数据原样保留（区别于整套生成的线程+状态机，轻调用同步返回即可）。
+    新名若仍撞排除名单，把撞名项并入名单重试一次。"""
+    from . import modelhub, planner, runner
+    old_name = str(old_name or "").strip()
+    exclude = {str(x).strip() for x in (exclude_names or ()) if str(x).strip()}
+    exclude.add(old_name)
+    goal_lines = [x.strip() for x in (task.get("goal") or "").splitlines() if x.strip()]
+    meta_lines = []
+    if goal_lines:
+        meta_lines.append("目标：" + goal_lines[0][:200])
+    try:
+        _, bible, _ = store_read_bible(task)
+        if bible:
+            meta_lines.append("故事圣经摘录：" + bible[:400])
+    except Exception:
+        pass
+    material = "\n".join(meta_lines) if meta_lines else "（素材缺失，按旧书名题材另起）"
+    orch = None
+    try:
+        orch = modelhub.resolve_orchestrator()
+    except Exception:
+        orch = None
+    if not orch:
+        return "", "编排者模型不可用，无法自动换名（可稍后重试）"
+    prov, model = orch
+    last = ""
+    for _ in range(2):                           # 首轮撞名单 → 带撞名项重试一次
+        ex_block = "\n".join("- " + n for n in sorted(exclude)[:RENAME_EXCLUDE_LIMIT])
+        prompt = (RENAME_PROMPT.replace("__OLD__", old_name)
+                  .replace("__MATERIAL__", material)
+                  .replace("__EXCLUDE__", ex_block or "（暂无）"))
+        res = modelhub.chat(prov["id"], model, prompt, max_tokens=400,
+                            timeout=RENAME_TIMEOUT)
+        planner._log_usage("bookmeta", "bookmeta-rename", task, res, model=model,
+                           provider=prov.get("name", prov.get("id", "")),
+                           provider_id=prov.get("id", ""))
+        if not res["ok"]:
+            last = str(res.get("error") or "模型调用失败")[:200]
+            continue
+        data = runner.extract_json(res.get("text") or "")
+        new_name = _name(data.get("book_name") if isinstance(data, dict) else "", 15)
+        if not new_name:
+            last = "返回内容无法解析出新书名"
+            continue
+        if new_name in exclude:
+            last = "新书名《%s》仍与本站已有作品重名" % new_name
+            exclude.add(new_name)
+            continue
+        return new_name, ""
+    return "", last or "换名失败，请稍后重试"
+
+
 def render_markdown(task, platform, meta):
     """落工作目录的归档 Markdown（与前端弹框同一份字段顺序）。"""
     plat = PLATFORMS[platform]["label"]

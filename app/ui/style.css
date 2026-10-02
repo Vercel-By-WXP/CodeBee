@@ -2842,16 +2842,19 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
   transition: border-color .15s; }
 .bm-card:hover .bm-chip { border-color: var(--border-strong); }
 
-/* 复制按钮：图标 + 文字，默认淡出，行 hover / 键盘聚焦时点亮 */
-.bm-copy { flex: none; display: inline-flex; align-items: center; gap: 4px; align-self: center;
+/* 复制按钮：图标 + 文字，默认淡出，行 hover / 键盘聚焦时点亮。
+ * 换名按钮（.bm-rename）同款外观独立类——不加进 .bm-copy 是为了「复制钮」
+ * 计数语义干净（ui_bookmeta 基线按每字段一钮数）。 */
+.bm-copy, .bm-rename { flex: none; display: inline-flex; align-items: center; gap: 4px; align-self: center;
   font-size: 11.5px; line-height: 1; padding: 4px 9px; border-radius: 999px;
   border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer;
   opacity: .55; transition: opacity .15s, color .15s, background .15s, border-color .15s; }
-.bm-copy .ico { width: 12px; height: 12px; }
-.bm-f:hover .bm-copy { opacity: 1; }
-.bm-copy:hover, .bm-copy:focus-visible { color: var(--accent); border-color: var(--border-strong);
+.bm-copy .ico, .bm-rename .ico { width: 12px; height: 12px; }
+.bm-f:hover .bm-copy, .bm-f:hover .bm-rename { opacity: 1; }
+.bm-copy:hover, .bm-copy:focus-visible, .bm-rename:hover, .bm-rename:focus-visible {
+  color: var(--accent); border-color: var(--border-strong);
   background: var(--panel2); opacity: 1; }
-.bm-copy:active { transform: translateY(1px); }
+.bm-copy:active, .bm-rename:active { transform: translateY(1px); }
 
 /* 生成中骨架屏 */
 .bm-skwrap { padding: 6px 18px 16px; }

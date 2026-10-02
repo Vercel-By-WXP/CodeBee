@@ -150,6 +150,26 @@ def main():
         entry = wait_book_meta(novel_id, "fanqie")
         check("单稿任务生成完成(done)", entry.get("status") == "done", entry)
 
+        # 换名接口（2026-10-02 书名撞名按钮）：同步轻接口，失败绝不动现有数据。
+        # 临时数据目录没配编排者链 → 明确报错（换名不设模板兜底：机械改名产出
+        # 「XX 2」没有意义），book_name 与归档 md 都保持原样。
+        # novel_id 在此已就绪且其七猫尚未生成，正好当「未生成」用例
+        st, d = req("POST", "/api/tasks/%s/book-meta/rename" % tid, {"platform": "qidian"})
+        check("换名非法 platform 400", st == 400, (st, d))
+        st, d = req("POST", "/api/tasks/%s/book-meta/rename" % novel_id,
+                    {"platform": "qimao"})
+        check("未生成平台换名 400", st == 400 and "尚未生成" in (d.get("error") or ""), (st, d))
+        st, d = req("GET", "/api/tasks/%s/book-meta" % tid)
+        before = ((((d.get("book_meta") or {}).get("fanqie") or {}).get("data") or {})
+                  .get("book_name"))
+        st, d = req("POST", "/api/tasks/%s/book-meta/rename" % tid, {"platform": "fanqie"})
+        check("无编排者换名 400 且报因", st == 400 and "编排者" in (d.get("error") or ""), (st, d))
+        st, d = req("GET", "/api/tasks/%s/book-meta" % tid)
+        after = ((((d.get("book_meta") or {}).get("fanqie") or {}).get("data") or {})
+                 .get("book_name"))
+        check("换名失败不动现有数据", bool(before) and after == before, (before, after))
+        check("换名失败不毁归档 md", (wd / "作品信息-番茄.md").is_file())
+
         st, d = req("GET", "/api/tasks/%s/book-meta" % "t-nope")
         check("任务不存在 404", st == 404, st)
 

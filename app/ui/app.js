@@ -5706,10 +5706,26 @@ function renderBookMetaPanel(task) {
         const v = tags
           ? '<span class="bm-chips">' + raw.map((x) => '<span class="bm-chip">' + esc(String(x)) + "</span>").join("") + "</span>"
           : '<span class="bm-f-v' + (long ? " bm-f--scroll" : "") + '" title="' + esc(val) + '">' + esc(val) + "</span>";
+        // 书名行加「换名」（2026-10-02 撞名实案）：只换书名一个字段，其余
+        // 已核对过的分类/标签/简介不被重摇覆盖；换名中禁用态由 S.bmRenaming
+        // 跨重绘保持（轮询整块 innerHTML 重建会把按钮态复位）
+        let rename = "";
+        if (key === "book_name") {
+          const renaming = S.bmRenaming === task.id + "|" + p.id;
+          rename = '<button class="bm-rename" data-task="' + esc(task.id) +
+            '" data-plat="' + p.id + '" data-old="' + esc(val) + '"' + (renaming ? " disabled" : "") +
+            ' title="' + esc(t("书名与本站已有作品重名时，点这里换一个新书名（其余字段不动）")) + '"' +
+            ' onclick="bmRename(this)">' +
+            (renaming
+              ? '<svg class="ico spin" aria-hidden="true"><use href="#i-refresh"/></svg>' + esc(t("换名中…"))
+              : '<svg class="ico" aria-hidden="true"><use href="#i-refresh"/></svg>' + esc(t("换名"))) +
+            "</button>";
+        }
         return '<div class="bm-f' + (long || tags ? " bm-f--full" : "") + '">' +
           '<span class="bm-f-k">' + esc(t(label)) + "</span>" + v +
           '<button class="bm-copy" data-text="' + esc(val) + '" data-label="' + esc(t(label)) +
-          '" title="' + esc(t("点击复制")) + '" onclick="bmCopyBtn(this)"><svg class="ico" aria-hidden="true"><use href="#i-file-text"/></svg>' + t("复制") + "</button></div>";
+          '" title="' + esc(t("点击复制")) + '" onclick="bmCopyBtn(this)"><svg class="ico" aria-hidden="true"><use href="#i-file-text"/></svg>' + t("复制") + "</button>" +
+          rename + "</div>";
       }).join("") + "</div>";
     } else if (st === "failed") {
       body = '<div class="bm-errhint">' + esc(entry.error || t("生成失败")) + "</div>";
@@ -5792,6 +5808,34 @@ window.bmGen = async function (taskId, platform) {
     toast(t("已开始生成，完成后这里会自动更新"));
     await refreshState(); render();   // 立即翻到「生成中」，不等 SSE 推送/下一轮轮询
   } catch (e) { toast(t("生成失败：") + e.message, true); }
+};
+
+/* 换名（书名撞名专用）：同步接口单次轻模型调用，成功后新书名随 SSE/轮询
+ * 回填；失败 toast 报错，现有字段原样保留。期间 S.bmRenaming 让按钮禁用态
+ * 跨轮询重绘保持，防连点打两个换名请求。 */
+window.bmRename = async function (btn) {
+  if (btn.disabled) return;
+  // 立即禁用+换文案（防 await 期间双击发第二个请求）；S.bmRenaming 让禁用态
+  // 跨轮询重绘保持（轮询整块 innerHTML 重建会把按钮态复位，渲染端按它还原）
+  btn.disabled = true;
+  btn.innerHTML = '<svg class="ico spin" aria-hidden="true"><use href="#i-refresh"/></svg>' + esc(t("换名中…"));
+  const taskId = btn.dataset.task, platform = btn.dataset.plat;
+  S.bmRenaming = taskId + "|" + platform;
+  try {
+    const r = await api("/api/tasks/" + encodeURIComponent(taskId) + "/book-meta/rename",
+      { method: "POST", body: JSON.stringify({ platform }) });
+    toast(t("已换名：") + "《" + (r.old || btn.dataset.old || "") + "》→《" + (r.new || "") + "》");
+  } catch (e) {
+    toast(t("换名失败：") + e.message, true);
+  } finally {
+    S.bmRenaming = "";
+    // 就地恢复按钮：render 的详情签名守卫在服务端数据没变时（换名失败正是）
+    // 会跳过重绘，按钮不能指望 render 归位；若 render 真重建了整卡，btn 已
+    // detach，改它是无害空操作
+    btn.disabled = false;
+    btn.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-refresh"/></svg>' + esc(t("换名"));
+    try { await refreshState(); render(); } catch (e) { /* 拉状态失败不影响上面的恢复 */ }
+  }
 };
 
 /* 封面图生成（covergen）：curl 子进程直接落盘运行目录，Python 不经手图像字节 */
