@@ -121,9 +121,28 @@ class TestRenameBook(unittest.TestCase):
     def test_unparsable(self):
         p, _ = self._patch_orch()
         with p, mock.patch("core.modelhub.chat",
-                           return_value=_chat_return("我觉得《烽火连城》不错")):
+                           return_value=_chat_return("我想想，从军旅题材入手，突出戍边的苦寒与坚韧……")):
             new_name, err = bookmeta.rename_book(self.task, "fanqie", "戍边骑奴")
         self.assertEqual((new_name, err), ("", "返回内容无法解析出新书名"))
+
+    def test_bare_text_booktitle_fallback(self):
+        # 思考烧预算时 JSON 没成形，正文《书名》形态直接抠出来用
+        p, _ = self._patch_orch()
+        with p, mock.patch("core.modelhub.chat",
+                           return_value=_chat_return("我想想……《烽燧月》这个名字可以")):
+            new_name, err = bookmeta.rename_book(self.task, "fanqie", "戍边骑奴",
+                                                 bookmeta.used_book_names())
+        self.assertEqual((new_name, err), ("烽燧月", ""))
+
+    def test_bare_text_fallback_still_respects_exclude(self):
+        # 抠出来的名字也要过排除名单：撞了重试，重试给 JSON 就成功
+        p, _ = self._patch_orch()
+        rets = [_chat_return("《别的书》？"), _chat_return('{"book_name": "铁衣寒"}')]
+        with p, mock.patch("core.modelhub.chat", side_effect=rets) as mchat:
+            new_name, err = bookmeta.rename_book(self.task, "fanqie", "戍边骑奴",
+                                                 {"别的书"})
+        self.assertEqual((new_name, err), ("铁衣寒", ""))
+        self.assertEqual(mchat.call_count, 2)
 
     def test_no_orchestrator(self):
         with mock.patch("core.modelhub.resolve_orchestrator",

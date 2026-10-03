@@ -866,7 +866,9 @@ def rename_book(task, platform, old_name, exclude_names=()):
         prompt = (RENAME_PROMPT.replace("__OLD__", old_name)
                   .replace("__MATERIAL__", material)
                   .replace("__EXCLUDE__", ex_block or "（暂无）"))
-        res = modelhub.chat(prov["id"], model, prompt, max_tokens=400,
+        # max_tokens 4000 对齐主生成（2026-10-03 实案：glm-5.3 思考计入
+        # max_tokens，给 400 三次全被思考烧穿 output 打满，JSON 没成形）
+        res = modelhub.chat(prov["id"], model, prompt, max_tokens=4000,
                             timeout=RENAME_TIMEOUT)
         planner._log_usage("bookmeta", "bookmeta-rename", task, res, model=model,
                            provider=prov.get("name", prov.get("id", "")),
@@ -874,8 +876,15 @@ def rename_book(task, platform, old_name, exclude_names=()):
         if not res["ok"]:
             last = str(res.get("error") or "模型调用失败")[:200]
             continue
-        data = runner.extract_json(res.get("text") or "")
+        text = str(res.get("text") or "")
+        data = runner.extract_json(text)
         new_name = _name(data.get("book_name") if isinstance(data, dict) else "", 15)
+        if not new_name:
+            # 兜底：思考烧预算时 JSON 可能没成形，正文里有《书名》/「书名」
+            # 形态就抠出来用——抠出的名字仍要过下面的排除名单检查
+            m = re.search(r"[《「]([^《》「」]{1,15})[》」]", text)
+            if m:
+                new_name = _name(m.group(1), 15)
         if not new_name:
             last = "返回内容无法解析出新书名"
             continue
