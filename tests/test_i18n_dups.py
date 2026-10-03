@@ -56,6 +56,25 @@ class I18nDupGuardTests(BaseTest):
         self.assertEqual(cnt.get("执行"), 1)
         self.assertEqual(cnt.get("实现"), 1)
 
+    def test_builtin_flow_fields_have_en_keys(self):
+        """预置流程 name/goal_hint/note 三字段逐一有 EN 键。
+
+        后端 note 改版而 i18n EN 键不跟 = 英文界面静默回落中文（t() 未命中
+        不报错）——2026-10-03 深夜巡检班实案两例（serial_novel/rank_scan）。
+        本守卫只对 BUILTIN_FLOWS 默认文案生效；用户 overrides 改出的自定义
+        文案回落中文属预期，不入本断言。
+        """
+        from app.core import flows as _flows
+        keys = set(_keys_of(_en_block()))
+        missing = []
+        for flow in _flows.BUILTIN_FLOWS:
+            for field in ("name", "goal_hint", "note"):
+                text = flow.get(field)
+                if text and text not in keys:
+                    missing.append("%s.%s" % (flow.get("id"), field))
+        self.assertEqual(missing, [],
+                         "预置流程文案缺 EN 键（英文界面会回落中文）: %r" % missing)
+
 
 if __name__ == "__main__":
     import unittest
