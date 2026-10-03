@@ -1152,3 +1152,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **feder-cr/dots / universal-modder / yomiyasu / hypoarena / open-dot / iCode** | 反封锁 web agent / 游戏改 mod 包 / AI 日文润色 / 科研工作台 / Mac 个人代理 / 离线开发平台——域外或已覆盖，均无未覆盖机制 | 雷达 | 2026-10-03
 - **npm 包混入用户作品数据实案**：app/ 下未跟踪的 `作品信息-*.md` 会被 npm pack 打进发布包——根 .npmignore 的 `**` 排除对「app/ 有自己的 .npmignore」就近覆盖规则无效；发版冒烟（tar 非 ASCII 段拒收）是最后一道真防线。修复=两级 .npmignore 各补排除。 | 教训（发版工程）| 2026-10-03
 - 复查：superpowers 294,479★/codex 127,641★ 活跃；七专项全绿；教训 67 条零漂移；零新接入级标的（稳定期常态）。
+
+## 2026-10-03 B4 治理/安全/人机协同复查
+
+- 扫描器全量完成 115 查询、523 条结果、466 个唯一仓库、0 错误；A 常驻、B4 轮换、A1 `updated`/`stars page=2` 双轮均执行，GitHub API 串行 4 秒间隔。
+- `microsoft/agent-governance-toolkit`（6,377★，10-03 push）、`FailproofAI/failproofai`（5,234★，10-02 push）、`cordum-io/cordum`（509★，09-30 push）复查 commit/release/issue/PR/安全公告：策略执行、请求链 ID、动作防火墙与 CodeBee 现有 stopgate、证据档案、`run_id/trace_id`、操作台账、审批和 SSRF/技能闸门重合，无低风险接口差量；不接入。
+- 七专项实锚：17 类 flow、14 个 catalog CLI、六源市场和禅道链路均正常；教训 67 条零漂移；过时文案零命中；未安装 CLI 不盲接。`data/zentao.json` 明文凭据列为既有远期决策项。
+- 本班无代码落地，避免为观测/治理同类能力扩大接口和持久化面。证据与日志见 `docs/borrow-log/2026-10-03.md`。
