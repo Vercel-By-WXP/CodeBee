@@ -1698,9 +1698,47 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 10. 宪章自动起草骨架（claude-rules 192★ 维持，交人拍板）
 11. 既有攒批维持：ARIS 规则裁决/multica 看板视角/凭据保险库/CONTINUUM 幂等动作账本（Cyrax321 10-02 push 同域再验证）/ASD-STE100 技术英语规范化（3,211★ 放量，交人拍板）
 
+## 2026-10-04 04 时巡检班（七专项 A-G 三轮独立实证 + 落地立项——新一轮计划第 2/4 步）
+
+> 三只读代理分域实证 + 本班自查实数（skills.json 计数/which 全量/六源真实 URL 连通/
+> git log 差量定位/近重复对复核），全部当前行号，非转录前班。零代码毛病，两条知识库
+> 记录口径修正；落地立项 1 件（第 8 项 git log 通道）。详见 iteration-report.md 04 时节。
+
+- **A 专项** | 预算熔断 pipeline.py:613-629+闸 :687-701；日/月成本帽 :632-669 先于 token 闸；token_meter 双路记账 :721-746；压缩守门 :231-241+:703-737；三段压缩 compaction.py:119-179（saved :156-166）；预检 step_runner.py:75-89；**diff-only 评审已在位** :1016-1022（只发 _git_diff :944）；深度分级 :999-1013；cascade :1449-1465；_shrink 定义 :2455-2490；resume :206-285；召回 skills.py:533-555+衰减 :346-368；planner 缓存 :675/:824/:967/:998（modelhub.py:3673） | 四方向：prompt 缓存无但 resume+精确缓存+cached 计价已拿走大头；语义缓存无维持待拍板；diff-only 已有；廉价分流 cascade 外另有难度选模双通道（builtin_agent.py:91/:118、modelhub.py:2662、dispatch.py:153）已满配——零未覆盖差量 | 已覆盖 | 2026-10-04
+- **A 记录勘误（非代码毛病）** | 「_shrink_context_block 两处调用点」旧录不符现状：全仓现仅 1 处调用（:3572），:2455 是定义；两处为 09-28 报告期历史形态——口径修正入档 | 勘误 | 2026-10-04
+- **B 专项** | 六源在位（market_remote.py:50-76）；**本班真实 URL 连通六绿**（zcode 41,930B/anthropic 189,668B/anthropic-skills 2,213B/claude-skills/clawhub/cocoloop 11,703B）；SSRF assert_public_url :113-133+禁重定向 :145-159+3 跳上限+git 通道同口径 :834/:841；体量上限实为**六重**（:91-99，_CAP_TOTAL_TEXT=4MB 旧录漏计，第 2 条口径修正）；inspect_tree :568-604 剥离式白名单+_safe_extract :632-670 三重防逃逸；唯一落地通道 install_files（market.py:267）装前 skill_scan+typosquatting 0.82+指纹 | 本班零新候选进评估面，零接入维持 | 已覆盖 | 2026-10-04
+- **C 专项** | 17 类型（flows.py:36-128）逐一核对；i18n 查表式（中文原文→EN）17 name+17 goal_hint+13 note 零缺失（serial_novel :1973/rank_scan :1932 两新键在位，前端消费 app.js:447/:775 实证）；演示文稿空档维持交人拍板 | 巡检 | 2026-10-04
+- **D 专项** | 67 条零漂移（lesson 63+procedure 4；流程规范 22/节奏爽点 21=64% 偏科维持）；同 scope ≥0.8 共 4 对逐一判读**零真重复**（3 对=维度参数化模板变体各带分数数据不并；1 对=共享词汇边缘重合、动作不同不并）；方法论小教训：difflib/字集 proxy 会把模板变体误判重复（一度误报 1,107 对），查重须 title+content 双判读后人工定性（只入报告不入教训库） | 数据卫生 | 2026-10-04
+- **E 专项** | catalog 14 条目（catalog.py:32-215）；本机在装 13、openclaw 在册未装；九候选（含 herdr）PATH 全空零接入防死链；Reasonix 35,737★ 候选首位维持 | 巡检 | 2026-10-04
+- **F 专项** | 全链实读：automation daemon（TICK 25s）→fire_due zentao.py:2470→_SCAN_LOCK 单飞 :2403→_scan :2332；legacy interval_hours:2 换算 :271-279 在位（现配置仍是老键，换算即新默认 5 分钟非故障）；_route_one :2128→_launch_fix :1556→_reconcile :2093→_finish_ok :1912（merge/resolve 双闸+幂等）→_finish_failed :2035（3 次上限）；**claims=0 零积压、last_error 空、poll_enabled=false**（last_scan 停 09-21 即开关关，用户侧预期）；本班只读未触发任何真实工单变更/群通知；禅道 AI 竞品零新增 | 巡检 | 2026-10-04
+- **G 专项** | 过时文案活码 grep 零命中；「四平台」3 处均准确（paihang.py:97-101 实 4 源）；index.html 断链零命中（锚点/本地资源/60 SVG 精灵全解析）；唯一口径漂移即 A 专项 _shrink 勘误，非产品毛病 | 巡检 | 2026-10-04
+- **落地立项（唯一件，不凑数）** | **第 8 项 weekly_report git log 素材通道**：契约已承诺（skillpacks/market/weekly-report.md:17）、禅道半边已落地（pipeline.py:4716-4726+zentao.py:1192+test_weekly_brief.py）、git log 半边全仓无实现——模型写周报提交素材缺源；落点 _draft_prompt_for weekly_report 分支旁新增 _gitlog_brief(workdir)（复用 gitmod._git gitmod.py:31，--since 7 天 --pretty=%h %ad %s 上限 40 条），非仓/无提交/异常一律静默空，与禅道 brief 并列各自独立 try；测试 test_weekly_gitlog.py 三案（非仓 ""/2 commits 含摘要/异常 ""）——行号/契约/测试已锚定，交第 3-4/4 步 | 立项 | 2026-10-04
+
+### 待深挖队列（2026-10-04 04 时巡检班快照——第 8 项升「已立项待落地」，余同 03 时版）
+
+1. 工具输出统一压缩管线（第 7 验证在手，管线级攒批）
+2. 语义缓存（待租户/敏感边界拍板）
+3. 演示文稿任务类型空档——交人拍板（不擅自扩）
+4. 任务宪章编译为运行时强制策略（ironcurtain，治理远期；claude-elixir-phoenix「Iron Laws」+1 佐证）
+5. 聊天分叉（1code，管线级远期备注）
+6. 小红书平台特化交付契约蒸馏（wenzi-xhs 两小件，交人拍板）
+7. 教训卡「标记无用」显式负反馈入口（剩 ①UI 负反馈，D 专项小件交人拍板；hippo-memory 770★ 在动维持）
+8. **weekly_report git log 素材通道——已立项（04 时巡检班，落点/契约/测试三案锚定），待第 3-4/4 步落地提交**
+9. 翻译「译文翻译腔检查」蒸馏（yomiyasu，TRANSLATION_APPENDIX +1 条，交人拍板）
+10. 宪章自动起草骨架（claude-rules 192★ 维持，交人拍板）
+11. 既有攒批维持：ARIS 规则裁决/multica 看板视角/凭据保险库/CONTINUUM 幂等动作账本/ASD-STE100 技术英语规范化（3,211★，交人拍板）
+
 ## 2026-10-04 收口班（计划第 4/4 步·联调回归+发版 v0.1.78）
 
 - **32 位 Python 全量 discover 长跑中途静默退出（exit 0 无统计行）（实案）** | 本机 Python38-32 全量 `unittest discover`（2118 项）两次跑到 1461 行附近进程消失、`echo $?` 仍 0、日志无 Ran/OK 统计——并发多班次（8+ python 进程）下 32 位进程内存上限触顶即崩且退出码失真 | 处置：按字母序分片跑（`test_[a-r]*.py` + `test_[s-z]*.py`）每片独立进程有统计行，改动面测试单跑全绿 | **教训：长跑测试「exit 0」不算绿，必须有 Ran/OK 统计行才算证据；32 位解释器 + 并发负载 → 分片跑测是正打法** | 发版工程 | 2026-10-04
 - **npm publish 命令挂起 ≠ 发布未落地（实案，与 10-03 「声称完成实未发」互为镜像）** | 本班 publish 两次前台 240-300s 零输出（疑似交互/网络长挂），杀任务重试后 registry 直查 latest=0.1.78、tarball shasum 在架——第一次挂起调用实际上传成功 | 与 10-03 教训合流成同一条：**publish 双向都不可信（回显可信它未发、挂起可指它已发），唯一证据 = registry 独立实查（npm view dist-tags + shasum）**；下次发版打法：后台起 publish + 轮询 registry，勿等命令行回显 | 发版工程 | 2026-10-04
 - **i18n EN 键滞后收口（代码教训）** | flows.py note 改版（45d772a 签约门禁/f0bd197 A-E 分级）时 i18n EN 键未跟，英文界面静默回落中文（t() 未命中不报错）| 处置：两键补齐 + `test_i18n_dups.test_builtin_flow_fields_have_en_keys` 全量守卫（17 类型×三字段逐一有 EN 键，漏翻当场报错）| **教训：后端文案与 i18n 键必须同 commit 联动，守卫测试固化** | i18n 工程 | 2026-10-04
 - **main 既有测试红 26F+3E 与本轮零交集的判别法** | 分片跑出 29 失败/错误，逐个归因：bookmeta 顶层 sys.exit 写法（8e30224）、publish 建书对账收紧断言未跟（07d066b/4a00d48）、usage_stats 模型路由环境耦合 | **判别法：失败文件与本轮 diff 文件集求交=空 → 既有红，如实记录不越界代修（防踩踏），留待属主班次** | 测试工程 | 2026-10-04
+
+## 2026-10-04 05 时收尾班（计划第 4/4 步·五道关+推送+发版 v0.1.79）
+
+- **第 8 项 weekly_report git log 素材通道落地发版（收口）** | `31f0e93`（feat：_gitlog_brief + weekly_report 分支并列注入，2 files +79）+ `ef3e755`（release v0.1.79：package.json bump + CHANGELOG/README relnotes 同步），五道关全过（详见 iteration-report.md 05 时收尾班节），推送 `5406ee0..ef3e755` 上远端 | 待深挖第 8 项关闭 | 落地收口 | 2026-10-04
+- **发布闸 prepublishOnly 双实证（补 117 行收口班案例后的第二例）** | 本班首次 `npm publish` 被闸以「工作区不干净」正确拦下（docs 在制品+smoke 残留 codebee-0.1.78.tgz 在树），registry 实查维持 0.1.78 零污染——闸先于上传拦截有效；处置顺序=清自身残留→docs 落库→复跑 publish。**打法固化：多班并发时 publish 前必过 release_gate.py 本地预检，工作区不净先落 docs 再发** | 发版工程 | 2026-10-04
+- **既有红集本班复核（25F+3E 两轮一致）** | 分片 A/B 失败集与收口班 26F+3E 同域（14 个测试文件），代表样本净进程单跑复现=确定性既有红，与本轮 diff 求交=空；另录：同窗落地班「discover 全量 exit 0 全绿」与本班分片红并存——并发负载下失败集环境耦合两录并呈，**判别永远以「与本轮 diff 文件集求交」为准，不以单次全量绿/红定案** | 测试工程 | 2026-10-04
+- **仓库级判定命令必须从仓库根跑（本班实案）** | 在 tests/ 子目录跑 `ls scripts/`+`git ls-files` 得空/子域结果，一度误判 scripts/release_gate.py「被删」并写进发版叙事——实为在册且在位（e998457 引入）；cd 回根目录复验即翻案 | **教训：`git ls-files`/`ls` 受 cwd 限域，仓库级存在性判定先 `cd` 仓库根再下结论** | 工程纪律 | 2026-10-04
+- **模型评审子代理网关 400（基础设施阻塞实录）** | code-reviewer 代理两次（含显式 model 指定）均被 API 网关拒：HTTP 400 [1211]「模型不存在」，网关侧实际收到 model=auto——代理忽略 model 参数透传 auto 所致 | 处置：自审四轴（惯例/边界/测试覆盖/残留）即本轮评审记录并入报告，基础设施问题如实交运维 | 工程设施 | 2026-10-04
