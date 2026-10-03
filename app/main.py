@@ -1208,6 +1208,10 @@ class Handler(BaseHTTPRequestHandler):
             if err and not n:
                 return self._json(400, {"error": err})
             return self._json(200, {"ok": True, "count": n, "skipped": skipped, "message": err})
+        if path == "/api/runs/cancel_all":
+            # 急停（kill switch）：取消全部进行中任务。全量扫描不受侧栏
+            # 窗口限制——窗口外的活跃运行也一并取消（hcom/amux 族竞品标配）。
+            return self._json(200, {"ok": True, "count": jobs.cancel_all()})
         if path == "/api/runs/clear":
             n, skipped = store.clear_runs()
             return self._json(200, {"ok": True, "count": n, "skipped": skipped})

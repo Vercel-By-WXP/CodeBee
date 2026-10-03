@@ -206,6 +206,10 @@
         </span>
       </button>
       <div class="side-foot">
+        <!-- 急停（kill switch）：有进行中任务才现身；点击取消全部排队/运行中任务 -->
+        <button id="btn-kill-all" class="foot-btn kill hidden" title="急停：取消全部进行中（排队/运行）任务" aria-label="急停" data-i18n-aria="急停" data-i18n-title="急停：取消全部进行中（排队/运行）任务">
+          <svg class="ico ico-lg" aria-hidden="true"><use href="#i-x"></use></svg>
+        </button>
         <button id="btn-settings" class="foot-btn" title="设置" aria-label="设置" data-i18n-aria="设置" data-i18n-title="设置">
           <svg class="ico ico-lg" aria-hidden="true"><use href="#i-gear"></use></svg>
         </button>

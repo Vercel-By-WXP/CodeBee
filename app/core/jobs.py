@@ -601,6 +601,28 @@ def cancel(run_id):
     return False
 
 
+def cancel_all():
+    """急停（kill switch）：取消全部 queued/running 运行，返回实际取消数。
+
+    逐跑走 cancel() 同一条链路（事件置位 + 终态落盘 + 退避定时器清理），
+    单跑失败不影响其余。cancelled_by_user 先落——与单跑取消端点同一语义，
+    自动续跑不得把急停的任务又续上。
+    """
+    from . import store
+    n = 0
+    for r in store.list_runs(limit=None):
+        rid = r.get("id")
+        if not rid or (r.get("status") or "") not in ("queued", "running"):
+            continue
+        try:
+            store.update_run(rid, cancelled_by_user=True)
+        except Exception:
+            pass
+        if cancel(rid):
+            n += 1
+    return n
+
+
 def cancel_event_for(run_id):
     ev = CANCELS.get(run_id)
     if ev is None:

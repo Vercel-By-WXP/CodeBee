@@ -4458,6 +4458,14 @@ function renderSideTasks() {
     vb.classList.toggle("hidden", !vcount);
     vb.title = vcount ? vcount + t(" 个任务待裁决") : "";
   }
+  // 急停钮现身条件同源侧栏真相（全量组，不受搜索过滤）：有排队/运行中任务
+  // 才显示。点击走后端全量扫描，窗口外/侧栏外的活跃运行也一并取消。
+  const acount = groups.filter((g) => g.status === "running" || g.status === "queued").length;
+  const kb = $("btn-kill-all");
+  if (kb) {
+    kb.classList.toggle("hidden", !acount);
+    kb.title = acount ? t("急停：取消全部进行中（排队/运行）任务") + "（" + acount + "）" : "";
+  }
 }
 
 /* 主视图打开详情面板的公共部分：留在任务树，主栏切到运行/任务详情 */
@@ -5060,6 +5068,26 @@ async function clearRuns() {
   if (r && r.skipped) toast(t("已清除 ") + r.count + t(" 条；另有 ") + r.skipped + t(" 条运行中的记录已保留（请先取消再清除）。"));
   poll();
 }
+
+/* 急停（kill switch）：取消全部排队/运行中任务。危险操作——确认框点名
+ * 数量；后端全量扫，侧栏窗口外的活跃运行也一并取消。防双击：busy 期间
+ * 直接吞掉重复点击。 */
+async function cancelAllRuns() {
+  const btn = $("btn-kill-all");
+  if (!btn || btn.classList.contains("busy")) return;
+  if (!await uiConfirm(t("确认急停：取消全部进行中（排队/运行）任务？"), { ok: t("急停"), danger: true })) return;
+  btn.classList.add("busy");
+  try {
+    const d = await api("/api/runs/cancel_all", { method: "POST", timeout: 30000 });
+    toast(t("已取消 ") + ((d && d.count) || 0) + t(" 个进行中任务"));
+  } catch (e) {
+    toast(t("急停失败：") + e.message, true);
+  } finally {
+    btn.classList.remove("busy");
+  }
+  poll();
+}
+window.cancelAllRuns = cancelAllRuns;
 
 async function openRun(id, pinTab) {
   _taskStepRenderToken++;
@@ -15324,6 +15352,7 @@ document.addEventListener("DOMContentLoaded", () => {
     b.addEventListener("click", () => setUsageHeatMode(b.dataset.heat)));
   $("btn-back").addEventListener("click", closeRun);
   $("btn-cancel").addEventListener("click", cancelRun);
+  $("btn-kill-all").addEventListener("click", cancelAllRuns);
   bindDirector();
   bindChat();
   const bindArtifactClicks = (root) => {
