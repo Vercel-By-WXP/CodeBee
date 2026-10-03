@@ -1556,9 +1556,20 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
             and argv.count(prompt) == 1:
         pf = _prompt_to_file(prompt, workdir)
         if pf:
-            argv[argv.index(prompt)] = (
-                "[系统] 本次完整指令因命令行长度限制已写入文件：%s\n"
-                "请先用读文件工具完整读取该文件，然后把文件内容当作你的任务指令执行。" % pf)
+            if kind == "aider":
+                # aider 非交互态没有「读文件工具」语义：--message 指挥它读文件
+                # 会被模型判定为提示注入直接拒绝（2026-10-03 不周山守村人全局
+                # 评审实案：glm-5.3 十秒交白卷 → 全局有效评审恒 1 名，门禁
+                # 「≥2 名」结构性不可能通过）。aider 的 --read 把文件作为只读
+                # 会话文件由 CLI 自己读入，语义与交互式 aider file.md 一致。
+                argv[argv.index(prompt)] = (
+                    "本次完整任务指令已作为只读文件加入会话，"
+                    "请直接依据该文件内容执行任务。")
+                argv += ["--read", pf]
+            else:
+                argv[argv.index(prompt)] = (
+                    "[系统] 本次完整指令因命令行长度限制已写入文件：%s\n"
+                    "请先用读文件工具完整读取该文件，然后把文件内容当作你的任务指令执行。" % pf)
             # Keep the original payload on stdin as a compatibility path for
             # simple generic adapters and test shims that read stdin. CLI tools
             # that intentionally use argv still receive the bounded file hint.

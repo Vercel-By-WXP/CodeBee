@@ -2832,6 +2832,95 @@ def _weakest_chapters(chapter_scores, global_means, threshold, limit=2):
     return cand[:limit]
 
 
+_ARCHIVE_DIR = "已成稿"
+_CH_MENTION_RE = re.compile(r"第\s*(\d{1,4})\s*(?:[—–\-~至到]\s*(\d{1,4})\s*)?章")
+
+
+def _archived_preface(workdir, start):
+    """前文回退：续写批次的前作章文件被归档成单文件（发布后 chapter-NN.md
+    不在场）时，从「已成稿/」目录找回前文全文，供全书评审与合并成书使用。
+    任一前文章节文件仍在场则视为未归档，返回空串（正常路径零影响）。"""
+    if start <= 1:
+        return ""
+    for i in range(1, start):
+        if _read_chapter(workdir, i):
+            return ""
+    adir = os.path.join(str(workdir), _ARCHIVE_DIR)
+    try:
+        names = sorted(os.listdir(adir))
+    except OSError:
+        return ""
+    parts = []
+    for name in names:
+        if not name.lower().endswith((".md", ".txt")):
+            continue
+        if "目录" in name:   # 阅读目录/章节目录是索引不是正文
+            continue
+        p = os.path.join(adir, name)
+        if not os.path.isfile(p):
+            continue
+        try:
+            t = _read_text_any_enc(p)
+        except Exception:
+            continue
+        if t and t.strip():
+            parts.append(t.strip())
+    return "\n\n".join(parts)
+
+
+def _full_manuscript(workdir, start, end, cap=60000):
+    """全书评审文本：本批 start..end 全文保底在场，前文（章文件缺失时回退
+    归档）用剩余预算从尾部截取——越靠近本批的前文对一致性越要紧。直拼再
+    [:cap] 会把预算整段喂给前文、把本批（真正的评审对象）截掉。"""
+    new_text = "\n\n".join(t for t in (_read_chapter(workdir, i)
+                                       for i in range(start, end + 1)) if t)
+    old_text = "\n\n".join(t for t in (_read_chapter(workdir, i)
+                                       for i in range(1, start)) if t)
+    if not old_text and start > 1:
+        old_text = _archived_preface(workdir, start)
+    budget = cap - len(new_text) - 2
+    if budget <= 0:
+        return new_text[:cap]
+    if len(old_text) > budget:
+        cut_mark = "……（前文较长，仅保留紧邻本批的尾部）……\n\n"
+        keep = budget - len(cut_mark)
+        old_text = cut_mark + (old_text[-keep:] if keep > 0 else "")
+    return (old_text + "\n\n" + new_text)[:cap] if old_text else new_text[:cap]
+
+
+def _chapters_named_in(issues, lo=1, hi=None):
+    """评审 issue 文本里点名的章号集合（「第22章」「第26—28章」都认）。
+    用于把全局一致性 major 落到具体章；范围外的章号丢弃。"""
+    out = set()
+    for it in issues or []:
+        for m in _CH_MENTION_RE.finditer(str(it.get("note") or it.get("issue") or "")):
+            a = int(m.group(1))
+            b = int(m.group(2)) if m.group(2) else a
+            if b < a:
+                a, b = b, a
+            for c in range(a, b + 1):
+                if c >= lo and (hi is None or c <= hi):
+                    out.add(c)
+    return out
+
+
+def _dedup_issues(items, key_len=60):
+    """跨轮评审 issues 去重：同章同维度同要点（归一化前缀）只保留首条。
+    全局评审每轮重跑都会把上一轮的问题原样或换个说法再列一遍，不去重会把
+    同一处问题计成三四条 major，门禁报告数字虚高。"""
+    seen, out = set(), []
+    for x in items or []:
+        if not isinstance(x, dict):
+            continue
+        k = (str(x.get("chapter")), str(x.get("dim")),
+             re.sub(r"\s", "", str(x.get("note") or ""))[:key_len])
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(x)
+    return out
+
+
 def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route, resume_ctx, difficulty):
     """连载流水线：大纲 → 逐章起草/评审/修订 → 全局一致性评审 → 合并成书。"""
     import json as _json
@@ -3973,16 +4062,17 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 store.update_run(run_id, signing_checkpoint=cp)
 
     # ---- 3) 全局一致性评审（覆盖 1..end 全书：续写批次必须连同旧章一起查一致性）
-    full_text = "\n\n".join(_read_chapter(workdir, i) for i in range(1, end + 1))
+    full_text = _full_manuscript(workdir, start, end)
     global_issues = []
     global_review_results = []
 
     def run_global_round(agent_list):
-        """一轮全局评审：返回 (出分评审数, 按维累计分)。失败/不可解析不得当成低分计入。
+        """一轮全局评审：返回 (出分评审数, 按维累计分, 有效评审, 本轮 issues)。
+        失败/不可解析不得当成低分计入。
 
         多评审并发（2026-09-22，同章级评审并发）：各自读同一份全书文本、互不依赖，
         串行只是把等待时间叠起来。共享结构仍在 join 后按原顺序合并，结果与串行一致。"""
-        gmeans_acc, scored, valid_reviews = {}, 0, []
+        gmeans_acc, scored, valid_reviews, round_issues = {}, 0, [], []
         results = {}
         # 绑定解析提前到主线程（线程内不做会写盘的 bind_agent）
         bound = [modelhub.bind_agent(a, difficulty) for a in agent_list]
@@ -4038,14 +4128,15 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             if not errors:
                 valid_reviews.append({"id": agent_list[idx].get("id") or "reviewer-%d" % idx,
                                       "scores": scores})
-            global_issues.extend({"chapter": "全书", **it} for it in (gj.get("issues") or [])[:8])
+            round_issues.extend({"chapter": "全书", **it} for it in (gj.get("issues") or [])[:8])
             for d in dims:
                 v = scores.get(d) if not errors else partial_scores.get(d)
                 if v is not None:
                     gmeans_acc.setdefault(d, []).append(float(v))
-        return scored, gmeans_acc, valid_reviews
+        return scored, gmeans_acc, valid_reviews, round_issues
 
-    gscored, gmeans_acc, global_review_results = run_global_round(critics)
+    gscored, gmeans_acc, global_review_results, _gi = run_global_round(critics)
+    global_issues.extend(_gi)
     # 「评不上」≠「评了低分」：全局评审全挂时先从其它真实智能体补位（对齐章级
     # 评审者级 fallback）；补位后仍零分则判 run 失败——「无法评审」绝不能当成
     # 「全局评审未通过」去盖「未达标」章（2026-09-18 假未达标案：codex 绑定链
@@ -4083,9 +4174,17 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     while (not global_pass) and polish_rounds < 2 and chapter_scores and global_means:
         polish_rounds += 1
         weak = _weakest_chapters(chapter_scores, global_means, threshold, limit=2)
+        # 全局一致性 major 点名的章优先进入打磨面：脱纲/主线漂移类问题的病灶章
+        # 单章分数往往全部达标（章级评审只看局部），只按分数选章永远选不中
+        # （2026-10-03 不周山守村人实案：21–28 章整体脱纲、章分全 8+，两轮
+        # 打磨重改的全是达标章，全局分纹丝不动）。
+        named = _chapters_named_in(global_issues, lo=start, hi=end)
+        if named:
+            weak = ([c for c in chapter_scores if c.get("chapter") in named]
+                    + [c for c in weak if c.get("chapter") not in named])[:2]
         if not weak:
             break
-        note = "自动打磨第 %d 轮：全局评审未过，重改最弱章 %s" % (
+        note = "自动打磨第 %d 轮：全局评审未过，重改 %s" % (
             polish_rounds, "、".join("第 %d 章" % c["chapter"] for c in weak))
         pstep, _ = store.add_step(run_id, "polish-r%d" % polish_rounds, impl["id"],
                                   impl.get("label"), note=note)
@@ -4098,10 +4197,24 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 for d in dims if float((c.get("means") or {}).get(d, 0.0)) < threshold)
             gj = "；".join("%s %.1f" % (d, s2) for d, s2 in global_means.items()
                            if float(s2) < threshold)
-            crit = ("- 本章维度不达标：%s（阈值 %.1f）\n- 全书一致性评审指出的短板：%s"
-                    "\n- 重改要求：优先修全书节奏/衔接问题（章间过渡、信息倾泻、主角主动性），"
-                    "再补本章短板；不得改动既有剧情主线的关键事实。"
-                    % (dims_txt or "（无）", threshold, gj or "（无）"))
+            # 本章被全局评审点名时附上原话，并放开「不得改主线」约束——脱纲章
+            # 唯一的修法就是按大纲推翻自创情节，保事实微调恰恰修不动
+            ch_named = [x for x in global_issues
+                        if i in _chapters_named_in([x], lo=i, hi=i)]
+            if ch_named:
+                crit = ("- 本章维度不达标：%s（阈值 %.1f）\n- 全书一致性评审指出的短板：%s"
+                        "\n- 全书评审对本章的点名（逐条对照处理）：\n%s"
+                        "\n- 重改要求：若现稿剧情与「本章按大纲应完成」脱轨（评审已点名），"
+                        "以本章大纲要点为准重写剧情，可推翻现稿自创的情节线；"
+                        "本书其余各章的既成事实仍不得改动。"
+                        % (dims_txt or "（无）", threshold, gj or "（无）",
+                           "\n".join("- [%s] %s" % (x.get("dim"), str(x.get("note") or "")[:220])
+                                     for x in ch_named[:4])))
+            else:
+                crit = ("- 本章维度不达标：%s（阈值 %.1f）\n- 全书一致性评审指出的短板：%s"
+                        "\n- 重改要求：优先修全书节奏/衔接问题（章间过渡、信息倾泻、主角主动性），"
+                        "再补本章短板；不得改动既有剧情主线的关键事实。"
+                        % (dims_txt or "（无）", threshold, gj or "（无）"))
             _psig = novel_quality.signal_summary(_read_chapter(workdir, i), chapter=i)
             if _psig.get("hints"):
                 crit += ("\n- 确定性复查提示（修订须对应处理）："
@@ -4114,7 +4227,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__I__", str(i)).replace("__FILE__", "chapter-%02d.md" % i)
                           .replace("__GOAL__", task["goal"])
                           .replace("__VOLUME__", vol_block_for(i))
+                          .replace("__BEATS__", ch.get("beats") or "按大纲推进")
+                          .replace("__HIGHLIGHT__", ch.get("highlight")
+                                   or "按剧情要点自然铺设一处小冲突/小反转")
                           .replace("__CRITIQUE__", crit)
+                          .replace("__STYLE__", style_tpl)
                           .replace("__WORDS__", str(wpc)))
                 prompt = attachments.append_task_context(prompt, task)
                 res = _run_step(run_id, "polish-c%d" % i, modelhub.bind_agent(impl, difficulty),
@@ -4173,7 +4290,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         # 重评全书一致性（同一评审闭包；本轮全挂则保留上一轮结论——评审链挂了
         # 不代表书变差，不能拿「无法评审」覆盖真实分数）
         try:
-            full_text = "\n\n".join(_read_chapter(workdir, i2) for i2 in range(1, end + 1))
+            full_text = _full_manuscript(workdir, start, end)
             gscored2, gmeans_acc2, global_review_results2 = run_global_round(critics)
         except BaseException:
             store.finish_step(run_id, pstep["n"], "failed",
@@ -4197,6 +4314,14 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     ms_name = _ms_name(task.get("manuscript"))
     book_title = outline.get("book_title") or task["title"]
     parts = ["# %s" % book_title, ""]
+    # 前文归档回退：前作章文件已被归档（chapter-NN.md 不在场）时，合并成品
+    # 不能只剩本批——否则续写批次的「成书」会静默丢掉此前全部章节
+    arch_preface = _archived_preface(workdir, start) if start > 1 else ""
+    if arch_preface:
+        parts.append("## 前文（第 1–%d 章 · 归档稿）" % (start - 1))
+        parts.append("")
+        parts.append(arch_preface)
+        parts.append("")
     # 分卷标题：卷首章之前插「第 X 卷 《卷名》」分隔（全书 1..end 都插，续写
     # 批次合并时上一批的卷标题也一并补上，不会只在首批出现）
     vol_heads = {}
@@ -4217,13 +4342,14 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         f.write("\n".join(parts))
     total_words = _wc("\n".join(parts))
     store.finish_step(run_id, step["n"], "done",
-                      summary="已合并 %d 章为 %s（约 %d 字%s）" % (
+                      summary="已合并 %d 章为 %s（约 %d 字%s%s）" % (
                           n, ms_name, total_words,
-                          "，分 %d 卷" % len(vol_heads) if vol_heads else ""),
+                          "，分 %d 卷" % len(vol_heads) if vol_heads else "",
+                          "，前文 1–%d 章取自归档" % (start - 1) if arch_preface else ""),
                       duration_s=0.1)
 
     chapters_pass = all(c["passed"] for c in chapter_scores)
-    major_issues = [x for x in issues_all + global_issues
+    major_issues = [x for x in _dedup_issues(list(issues_all) + list(global_issues))
                     if isinstance(x, dict) and x.get("severity") == "major"]
     publishable = bool(chapters_pass and global_pass and not major_issues)
     signing_checkpoint = (store.get_run(run_id) or {}).get("signing_checkpoint") or {}
@@ -4288,7 +4414,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     lines += ["", "## 全局评审（阈值 %.1f）" % threshold, ""]
     lines += ["- %s：%.1f" % (d, global_means.get(d, 0.0)) for d in dims]
     lines += ["", "## 主要问题", ""]
-    majors = [x for x in issues_all + global_issues if x.get("severity") == "major"][:12]
+    majors = [x for x in _dedup_issues(list(issues_all) + list(global_issues))
+              if x.get("severity") == "major"][:12]
     if majors:
         lines.extend("- [第%s章][%s] %s" % (str(x.get("chapter", "?")), x.get("dim", "?"),
                                             str(x.get("note", ""))[:150]) for x in majors)
