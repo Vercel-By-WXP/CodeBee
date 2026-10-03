@@ -1656,3 +1656,51 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **B 专项增量：市场六源网络探活本轮全绿**（zcode 41KB/anthropic 189KB/anthropic-skills 2.2KB/claude-skills 94KB/clawhub 45KB/cocoloop 11.7KB，均 HTTP 200）——凌晨班只核清单在位，本轮补连通实证；零新增接入维持 | 已核实 | 2026-10-04
 - **复查增量（repos 端点 30 仓，与前两班并集后覆盖面扩展）**：multica 51,885/codegraph 73,114/harbor 5,806/open-code-review 43,480/SkillSpector 19,230（10-02）/stop-that-shit 2,460（10-03 热涨维持）/openhuman 40,508/deer-flow 83,352/ARIS 16,934/oh-my-claudecode 39,559（10-03）/zentao-cli 61★（10-01）/spec-kit 139,986（10-03）/OpenSpec 70,970（10-02）全活跃零 archived；**awesome-harness-engineering 属主补认：ai-boost/awesome-harness-engineering 4,685★（10-03 活跃）**——此前记录缺属主（keywords.md 已同步）；openclaw 391,233★（vs 09-30 +422）| 复查 | 2026-10-04
 - 星数跃升互证：atlas 8,930（爬升维持）/CLIProxyAPI 54,006/cockpit-tools 18,610/tuios 4,612/CPA-Manager-Plus 3,730（面板族缓涨）/Understand-Anything 85,164/OmO 69,766/i-have-adhd 53,131——与 topic 页复核同值交叉印证 | 复查 | 2026-10-04
+
+## 2026-10-04 03 时班（批3：计划/spec/长任务——新一轮计划第 1/4 步全类型调研）
+
+> 03 时 %7=3 → 批3（今日首个轮换班，凌晨班跑的批1 不重复）。主扫 scripts/
+> borrow_scan_nightly.py --batch 3：**11 查询 50 行，gh api 串行 4s 零失败零限流**；
+> repos 端点复查 12 仓（批3 域 4+头部 5+E 域 1+待深挖在动 2）+ WebSearch 串行 1 发
+> + hippo-memory 正主路径 search 端点补核。本地实锚三向一致（17 类型/67 教训/
+> catalog 14）。**零机制级新差量（连续第十一班稳定期）**。详见 iteration-report.md。
+
+- **croffasia/itsaplan**（879★，10-03 活跃）新入库 | self-hosted Linear/Plane 替代：团队与 AI agent 并肩规划的项目管理+工单 | 禅道/项目管理周边（F 专项）同域不同形态——我们接已有禅道回写，不造组织级工单工具 | 参考（F 域雷达）| 2026-10-04
+- **coollabsio/jean**（1,305★，10-02 活跃）新入库 | AI agent 的 dev environment | dev env 托管路线参考（我们=编排台，工作目录即环境）| 雷达 | 2026-10-04
+- **AI45Lab/OpenART**（228★，10-03 活跃）新入库 | 动态长程有状态环境的 agent 安全/鲁棒性评测框架 | 评测域补格（harbor/Kiln/evalscope 旁）；自评测缺口维持远期 | 参考（评测域）| 2026-10-04
+- **malevrigns/atlas-agent-control-plane**（105★，09-13）新入库 | auditable 控制面：evidence-backed memory+governed tool runtime+checkpoint DAG recovery | 证据锚/事件流计数/checkpoint 恢复均有对应物；DAG 形态恢复同域再验证 | 方向验证 | 2026-10-04
+- **oliver-kriska/claude-elixir-phoenix**（560★，10-02）新入库 | Claude Code 插件：26 专家 agent+「Iron Laws enforcement」 | 规则强制执法向——待深挖第 4 项「宪章运行时化」（ironcurtain）+1 佐证 | 方向验证 | 2026-10-04
+- **ZykjShadow/Async**（475★，05-19 停更 4 月+）新入库 | IDE 形态 AI 编码工作台（chat+planning+agent 统一桌面） | IDE 路线历史标本 | 参考 | 2026-10-04
+- **MARKTECHPOST-AI-MEDIA-INC/AI-Agents-Projects-Tutorials**（2,916★）新入库 | 多 agent 系统/记忆/规划教程清单 | 清单域雷达，三问不过不接 | 雷达 | 2026-10-04
+- 小件一句带过：InternAgent 1,444★（科研长程框架，域外）/ OneDayAgent 36★（长程 harness 学术向）/ cogneva 30★ / tiger_cowork 62★ / Echo 8★ | 雷达 | 2026-10-04
+- **CONTINUUM（Cyrax321）28★（10-02 push）查重=09-21 已录同仓**（语义检查点+幂等动作账本，naman159/continuum 为另一写作记忆层仓勿混）——幂等键待深挖攒批维持，非新面孔 | 查重勘误 | 2026-10-04
+
+### 复查记录（repos 端点 12 仓 + search 补核，04 时）
+
+- 批3 域全活跃：github/spec-kit **140,000★**（10-03 push，vs 凌晨班 139,986 +14）/ OpenSpec 70,977（10-02）/ planning-with-files 27,267（10-01）/ agentmemory 29,117（10-03 push）
+- 头部续涨：orca **84,351★**（vs 02 时 84,311 +40 续领跑）/ superpowers 294,848 / anthropics-skills **179,515**（+8）/ claude-mem **95,482**（+53）
+- E 域：DeepSeek-Reasonix **35,737★**（10-03 push）候选首位维持；九候选全未装零接入
+- 待深挖在动仓：**kitfunso/hippo-memory 770★（10-03 push，正主路径本班经 search 端点勘定——此前记录只写「hippo-memory 770★」未留全路径，已补）/ lifedever/claude-rules 192★（03-19 维持）**
+- **星数跃升互证：asd-ste100-skill 409→3,211★**（push 停 09-08 无新提交——存量放量疑入榜；ASD-STE100 技术英语规范化蒸馏候选价值不变，队列第 11 项内交人拍板）
+- 状态变更：12 仓零新增 archived；批3 头部（lazycodex 3,722★ 09-22 2k→3.7k 大涨 10-03 push/worktrunk 8,726 活跃）无机制增量
+
+### 待深挖队列（2026-10-04 04 时快照，与巡检落位班一致，零变化；第 4/11 项本班同域佐证 +1）
+
+1. 工具输出统一压缩管线（第 7 验证在手，管线级攒批）
+2. 语义缓存（待租户/敏感边界拍板）
+3. 演示文稿任务类型空档——交人拍板（不擅自扩）
+4. 任务宪章编译为运行时强制策略（ironcurtain，治理远期；本班 claude-elixir-phoenix「Iron Laws」+1 佐证）
+5. 聊天分叉（1code，管线级远期备注）
+6. 小红书平台特化交付契约蒸馏（wenzi-xhs 两小件，交人拍板）
+7. 教训卡「标记无用」显式负反馈入口（收窄：剩 ①UI 负反馈，D 专项小件交人拍板；kitfunso/hippo-memory 770★ 在动维持）
+8. weekly_report git log 素材通道（GitPulse 差量，C 专项小件）
+9. 翻译「译文翻译腔检查」蒸馏（yomiyasu，TRANSLATION_APPENDIX +1 条，交人拍板）
+10. 宪章自动起草骨架（claude-rules 192★ 维持，交人拍板）
+11. 既有攒批维持：ARIS 规则裁决/multica 看板视角/凭据保险库/CONTINUUM 幂等动作账本（Cyrax321 10-02 push 同域再验证）/ASD-STE100 技术英语规范化（3,211★ 放量，交人拍板）
+
+## 2026-10-04 收口班（计划第 4/4 步·联调回归+发版 v0.1.78）
+
+- **32 位 Python 全量 discover 长跑中途静默退出（exit 0 无统计行）（实案）** | 本机 Python38-32 全量 `unittest discover`（2118 项）两次跑到 1461 行附近进程消失、`echo $?` 仍 0、日志无 Ran/OK 统计——并发多班次（8+ python 进程）下 32 位进程内存上限触顶即崩且退出码失真 | 处置：按字母序分片跑（`test_[a-r]*.py` + `test_[s-z]*.py`）每片独立进程有统计行，改动面测试单跑全绿 | **教训：长跑测试「exit 0」不算绿，必须有 Ran/OK 统计行才算证据；32 位解释器 + 并发负载 → 分片跑测是正打法** | 发版工程 | 2026-10-04
+- **npm publish 命令挂起 ≠ 发布未落地（实案，与 10-03 「声称完成实未发」互为镜像）** | 本班 publish 两次前台 240-300s 零输出（疑似交互/网络长挂），杀任务重试后 registry 直查 latest=0.1.78、tarball shasum 在架——第一次挂起调用实际上传成功 | 与 10-03 教训合流成同一条：**publish 双向都不可信（回显可信它未发、挂起可指它已发），唯一证据 = registry 独立实查（npm view dist-tags + shasum）**；下次发版打法：后台起 publish + 轮询 registry，勿等命令行回显 | 发版工程 | 2026-10-04
+- **i18n EN 键滞后收口（代码教训）** | flows.py note 改版（45d772a 签约门禁/f0bd197 A-E 分级）时 i18n EN 键未跟，英文界面静默回落中文（t() 未命中不报错）| 处置：两键补齐 + `test_i18n_dups.test_builtin_flow_fields_have_en_keys` 全量守卫（17 类型×三字段逐一有 EN 键，漏翻当场报错）| **教训：后端文案与 i18n 键必须同 commit 联动，守卫测试固化** | i18n 工程 | 2026-10-04
+- **main 既有测试红 26F+3E 与本轮零交集的判别法** | 分片跑出 29 失败/错误，逐个归因：bookmeta 顶层 sys.exit 写法（8e30224）、publish 建书对账收紧断言未跟（07d066b/4a00d48）、usage_stats 模型路由环境耦合 | **判别法：失败文件与本轮 diff 文件集求交=空 → 既有红，如实记录不越界代修（防踩踏），留待属主班次** | 测试工程 | 2026-10-04
