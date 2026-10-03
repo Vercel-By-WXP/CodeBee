@@ -1145,3 +1145,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 4. 任务宪章编译为运行时强制策略（ironcurtain，治理远期）
 5. 聊天分叉（1code，管线级远期备注）
 6. 既有攒批维持：ARIS 规则裁决/multica 看板视角/凭据保险库（cockpit-tools 佐证；data/zentao.json 明文密码属该域，交人决策）
+
+## 2026-10-03 上午班（批2：学习记忆与自我改进）
+
+- **Louis-CFM/coucou**（2,988★，10-03）| notch 桌宠看护 coding agents 状态 | 桌宠 tasks_only+活跃 tooltip+事件气泡已覆盖同理念，无小件可抄 | 雷达 | 2026-10-03
+- **feder-cr/dots / universal-modder / yomiyasu / hypoarena / open-dot / iCode** | 反封锁 web agent / 游戏改 mod 包 / AI 日文润色 / 科研工作台 / Mac 个人代理 / 离线开发平台——域外或已覆盖，均无未覆盖机制 | 雷达 | 2026-10-03
+- **npm 包混入用户作品数据实案**：app/ 下未跟踪的 `作品信息-*.md` 会被 npm pack 打进发布包——根 .npmignore 的 `**` 排除对「app/ 有自己的 .npmignore」就近覆盖规则无效；发版冒烟（tar 非 ASCII 段拒收）是最后一道真防线。修复=两级 .npmignore 各补排除。 | 教训（发版工程）| 2026-10-03
+- 复查：superpowers 294,479★/codex 127,641★ 活跃；七专项全绿；教训 67 条零漂移；零新接入级标的（稳定期常态）。

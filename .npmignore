@@ -2,4 +2,5 @@
 **/*.pyc
 **/.mimosa
 **/data
+**/作品信息-*.md
 .DS_Store

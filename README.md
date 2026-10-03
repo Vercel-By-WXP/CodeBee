@@ -11,7 +11,7 @@
 **AI 是引擎，你的经验是方向盘。** CodeBee 为你指挥一支跨厂商的执笔/编码小队：
 统一调度本机已装的 AI 编码 CLI（Codex CLI、Claude Code、Qwen Code、OpenCode、Aider、
 Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness、Gemini CLI、CodeBuddy CLI、
-Trae Agent……），提供
+Trae Agent、OpenClaw……），提供
 **目标 → 自动拆解 → 智能路由 → 执行 → 客观验证 → 跨厂商评审 → 自动修复/换将 → 汇总报告**
 的完整闭环。你不在时它们自动推进、自我打磨；需要你拍板的地方——质量闸门、任务分支的
 采纳与丢弃——它们会亮起「待裁决」等你，绝不静默替你决定。
@@ -33,10 +33,12 @@ Trae Agent……），提供
 ---
 
 <!-- relnotes:start -->
-### 最新版更新内容（v0.1.74）
+### 最新版更新内容（v0.1.75）
 
-- 新增 TOOL_LAUNCH 错误码：本地 CLI 启动失败与供应商故障彻底区分，不再误作废健康评测
-- 评测/重探间隔与失败探针刷新调优
+- 一键急停：侧栏红色急停钮全量取消进行中/排队任务，终态不动
+- 成品文件「第 N 版」徽章 + 「与第 N 版对比」，多版本一眼分先后
+- 作品信息「换名」按钮：书名撞名只换名不重摇
+- 用户作品数据文件（作品信息-*.md）不再漏进 npm 发布包
 <!-- relnotes:end -->
 
 

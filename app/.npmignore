@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 .mimosa/
 data/
+作品信息-*.md
