@@ -180,5 +180,12 @@
 - **未解决风险（如实交人）**：①既有红 25F+3E 属 14 个测试文件，根因三条均系他班在管，留属主班次；②模型评审代理基础设施故障（网关模型路由 400）待运维；③publish 闸与工作区清洁强耦合——多班并发「先落 docs 再 publish」顺序纪律本轮再次验证有效。
 - **待深挖队列**：11 项维持 04 时巡检班快照，第 8 项（weekly_report git log 素材通道）**已落地关闭**（31f0e93），余 10 项口径不变。
 
+### 收尾补记（第二收尾班独立复核，接 1f53d84 之后）
+
+- **独立复跑同域互证**：分片复跑（片 A 23F+3E / 片 B 2F）与本班录逐项同数；14 文件失败集隔离单跑——9 模块（mimo_injector/git_workbench/qwen_injector_guard/deepseek_harness/mgmt_guards/http_500_guard/launch/portscan/bookmeta）**全绿=纯并发干扰**，与上节判别法结论一致。
+- **mcp_server 2F 已修**（上节既有红集中唯一可机械收口件）：test_mcp_server.py 期望 5 工具为 7f64794（09-27）旧形态，54e28aa（09-30）契约三工具（get_contract/record_evidence/search_knowledge）为有意扩展——测试断言跟码，期望列表 5→8、stdio smoke 计数同改，`test_mcp_server` 隔离复跑 OK（Ran 6）。非越界：该文件无在管班次，改动独立成 commit。
+- **既有红根因精化（交属主班次）**：①flows.TestSerialResume——mock 章 367 字 < 600 字，撞 b856632「首章正文不足 600 字」签约门禁 → publishable=False（overall 6.2>阈值 6.0、各章 passed=True 仍拦），fixture 短文未随门禁更新，补 mock 首章 ≥600 字即收；②publish_auto 10F+workdsh_boundaries 1F 同根因确认=07d066b/4a00d48 建书确认严格化后 mock book_id 空被拒，属主班次处置；③usage_stats 1F 维持 5406ee0 已录。
+- **npm publish 收口**：本补记 docs + mcp 测试修复落库、工作区干净后复跑 publish（结果见推送与发版状态终录）。
+
 ---
 

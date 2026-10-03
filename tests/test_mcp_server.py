@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""CodeBee MCP 服务器（app/mcp_server.py）单测：handler 单测覆盖 5 工具 +
+"""CodeBee MCP 服务器（app/mcp_server.py）单测：handler 单测覆盖 8 工具 +
 stdio 形态 smoke（真子进程 initialize/tools/list）。
 
 跑法：python -m unittest discover -s tests -p "test_mcp_server.py" -v
@@ -29,7 +29,9 @@ class TestHandleRequest(BaseTest):
         r2 = mcp_server.handle_request({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         names = [t["name"] for t in r2["result"]["tools"]]
         self.assertEqual(names, ["create_task", "get_status", "list_recent",
-                                 "usage_summary", "bench_leaderboard"])
+                                 "usage_summary", "bench_leaderboard",
+                                 "get_contract", "record_evidence",
+                                 "search_knowledge"])
         # 通知无响应；未知方法报错
         self.assertIsNone(mcp_server.handle_request({"method": "notifications/initialized"}))
         r3 = mcp_server.handle_request({"jsonrpc": "2.0", "id": 3, "method": "bogus"})
@@ -107,7 +109,7 @@ class TestStdioSmoke(BaseTest):
                 if line:
                     outs.append(json.loads(line.decode("utf-8")))
             self.assertEqual(outs[0]["result"]["serverInfo"]["name"], "codebee")
-            self.assertEqual(len(outs[1]["result"]["tools"]), 5)
+            self.assertEqual(len(outs[1]["result"]["tools"]), 8)
         finally:
             try:
                 proc.stdin.close()
