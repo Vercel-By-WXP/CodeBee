@@ -2521,6 +2521,20 @@ def _ensure_critique_placeholders(tpl):
 
 # ---------------------------------------------------------------- 连载引擎（长篇小说：逐章打磨）
 
+def serial_locked_chapter_block(workdir, chapter):
+    """本章锁定章纲注入块（起草/修订共用）：工作目录章纲/*ch-<N>.md 存在时
+    以最高优先级随提示词下发——批次大纲可能被继承链带偏，锁定章纲才是作者
+    逐章确认过的事实标准（2026-10-03 不周山 rogue 大纲实案的治本闸）。
+    无章纲返回 ""（老书零噪音）。"""
+    text = planner.locked_chapter_outline_text(workdir, chapter)
+    if not text:
+        return ""
+    return ("## 锁定章纲（作者已确认，最高优先级）\n"
+            "本章标题、视角（POV）、时间地点、事件节拍与章末落点必须逐项对齐下方章纲；"
+            "若与其他要点冲突，以锁定章纲为准；其后章目的伏笔揭示位不得提前烧毁。\n\n"
+            + text)
+
+
 SERIAL_CHAPTER_PROMPT = """你是一名网文作者（写作规范见下方经验库）。本书信息如下，请先完整读完再执行末尾的「本章任务」。
 
 __SKILLS__
@@ -2539,6 +2553,7 @@ __VOLUME__
 - 剧情要点：__BEATS__
 - 章末钩子：__HOOK__
 - 本章爽点/情绪爆点：__HIGHLIGHT__（必须按特写镜头写厚：铺垫在前、放大在中、余波在后，用动作/五感/生理反应/环境反馈呈现，禁止一句话带过）
+__LOCKED_CH__
 - 正文约 __WORDS__ 字，中文，直接开写正文（可含本章标题行）。
 
 ## 前情提要（此前各章结尾摘录，衔接用）
@@ -2565,6 +2580,7 @@ __VOLUME__
 ## 本章按大纲应完成
 __BEATS__
 （本章爽点/情绪爆点：__HIGHLIGHT__）
+__LOCKED_CH__
 
 ## 本章评审意见
 __CRITIQUE__
@@ -3501,6 +3517,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         .replace("__TITLE__", ch["title"])
                         .replace("__BEATS__", branch_beats or ch["beats"] or "按大纲推进")
                         .replace("__HOOK__", branch_hook or ch.get("hook") or "留下悬念")
+                        .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, i))
                         .replace("__HIGHLIGHT__", ch.get("highlight") or "按剧情要点自然铺设一处小冲突/小反转")
                         .replace("__STYLE__", style_tpl)
                         .replace("__QUALITY_GATE__", novel_quality.opening_requirements(i, wpc))
@@ -3895,6 +3912,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__GOAL__", task["goal"])
                           .replace("__VOLUME__", vol_block_for(i))
                           .replace("__BEATS__", ch.get("beats") or "按大纲推进")
+                          .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, i))
                           .replace("__HIGHLIGHT__", ch.get("highlight")
                                    or "按剧情要点自然铺设一处小冲突/小反转")
                           .replace("__STYLE__", style_tpl)
@@ -4049,6 +4067,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                              .replace("__GOAL__", task["goal"])
                              .replace("__VOLUME__", vol_block_for(j))
                              .replace("__BEATS__", _wch.get("beats") or "按大纲推进")
+                             .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, j))
                              .replace("__HIGHLIGHT__", _wch.get("highlight")
                                       or "按剧情要点自然铺设一处小冲突/小反转")
                              .replace("__STYLE__", style_tpl)
@@ -4241,6 +4260,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__GOAL__", task["goal"])
                           .replace("__VOLUME__", vol_block_for(i))
                           .replace("__BEATS__", ch.get("beats") or "按大纲推进")
+                          .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, i))
                           .replace("__HIGHLIGHT__", ch.get("highlight")
                                    or "按剧情要点自然铺设一处小冲突/小反转")
                           .replace("__CRITIQUE__", crit)

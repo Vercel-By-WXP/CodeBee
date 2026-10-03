@@ -11,6 +11,7 @@ import json
 import os
 import re
 import time
+from pathlib import Path
 
 from . import knowledge, modelhub, runner, skills, usage, volumes
 
@@ -283,6 +284,8 @@ __SKILLS__
 硬性要求：
 - 第 1 章直接衔接前文（见下方前情），不得跳线、不得重启设定、不得复述前文；
 - 主线沿既有脉络推进，新冲突尽量从已埋伏笔中生长，人物性格与前文一致；
+- 若下方给出「锁定章纲」：本批各章 title/beats/hook 必须逐章从对应章纲提炼对齐
+  （标题沿用、视角不换、节拍不裁并、伏笔揭示位不提前），不得虚构章纲之外的主线事件；
 - 每章都写清“主角主动选择 → 阻碍 → 局面变化 → 章末钩子”，禁止水字数的日常流水账；
 - 复杂情感必须落到触发事件、动作/生理反应和潜台词，不能用一句概括代替；
 - 延续既定叙述视角和语言锚点（见下方既定文风锚），删掉重复复述，避免节奏变慢；
@@ -294,6 +297,9 @@ __STYLE_ANCHOR__
 
 ## 前情大纲（已完成章节，章号为全书章号）
 __PREV_OUTLINE__
+
+## 锁定章纲（本批各章已确认的章纲，最高优先级；为空则按前情自然规划）
+__LOCKED_OUTLINE__
 
 ## 最新一章结尾（衔接锚点）
 __PREV_TAIL__
@@ -480,6 +486,86 @@ def book_volume_plan(task, outline, upto):
     return volumes.merge_titles(plan, named)
 
 
+_CH_OUTLINE_FILE_RE = re.compile(r"ch-(\d{1,4})\.md$", re.IGNORECASE)
+
+
+def _read_workdir_text(p, cap):
+    """章纲/卷纲文件读文本：UTF-8 → GBK → replace（同 _prev_serial_story 纪律，
+    CLI 子代理在中文 Windows 上可能把文件落成 GBK）。"""
+    try:
+        b = p.read_bytes()
+    except OSError:
+        return ""
+    for enc in ("utf-8", "gbk"):
+        try:
+            return b.decode(enc)[:cap].strip()
+        except UnicodeDecodeError:
+            continue
+    return b.decode("utf-8", "replace")[:cap].strip()
+
+
+def locked_chapter_outline_text(workdir, chapter, cap=3000):
+    """工作目录里本章的锁定章纲全文（章纲/*ch-<N>.md，按文件名章号精确匹配）。
+    逐章章纲是作者逐章确认过的事实标准——大纲生成、起草、修订三面都应以它为
+    最高优先级，否则「起草跟批次大纲、评审跟章纲」会永久互斥（2026-10-03
+    不周山 21-28 章 rogue 大纲实案）。无匹配文件返回 ""（老书零噪音）。"""
+    if not workdir or chapter is None:
+        return ""
+    try:
+        base = Path(str(workdir)) / "章纲"
+        if not base.is_dir():
+            return ""
+        hits = []
+        for p in base.iterdir():
+            if not p.is_file():
+                continue
+            m = _CH_OUTLINE_FILE_RE.search(p.name)
+            if m and int(m.group(1)) == int(chapter):
+                hits.append(p)
+    except OSError:
+        return ""
+    if not hits:
+        return ""
+    hits.sort(key=lambda p: p.name)   # 同章号多份时取文件名序最大（卷号更高者）
+    return _read_workdir_text(hits[-1], cap)
+
+
+def locked_serial_outline_block(task, start, end, per_cap=2500, total_cap=16000):
+    """续写大纲生成的锁定章纲注入块：本批 [start, end] 逐章汇总章纲全文。
+    一份章纲都没有时回退 大纲/*.md（截断兜底，至少锚住卷纲方向）；两者皆无
+    返回 ""（零噪音）。"""
+    workdir = str(task.get("workdir") or "")
+    parts, used = [], 0
+    if workdir:
+        for n in range(int(start), int(end) + 1):
+            if used >= total_cap:
+                break
+            t = locked_chapter_outline_text(workdir, n, cap=per_cap)
+            if t:
+                head = "### 第 %d 章锁定章纲" % n
+                parts.append(head + "\n" + t)
+                used += len(head) + len(t) + 2
+    if parts:
+        return "\n\n".join(parts)[:total_cap]
+    if workdir:
+        try:
+            base = Path(workdir) / "大纲"
+            if base.is_dir():
+                buf, used = [], 0
+                for p in sorted(base.glob("*.md")):
+                    if used >= total_cap:
+                        break
+                    t = _read_workdir_text(p, min(4000, total_cap - used))
+                    if t:
+                        buf.append("### %s\n%s" % (p.name, t))
+                        used += len(t) + len(p.name) + 8
+                if buf:
+                    return "\n\n".join(buf)[:total_cap]
+        except OSError:
+            pass
+    return ""
+
+
 def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path=None,
                         deadline=None, run_id=None):
     """连载大纲：编排者 API 优先 → 作者 CLI → 模板。返回 {book_title, chapters:[{title,beats,hook}]}。
@@ -520,6 +606,7 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
     else:
         vol_block, vol_key = "", ""
     if start > 1:
+        locked_block = locked_serial_outline_block(task, start, start + n - 1)
         prompt = (SERIAL_CONTINUE_OUTLINE_PROMPT
                   .replace("__SKILLS__", sk_block)
                   .replace("__DONE__", str(done))
@@ -532,6 +619,7 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
                            or "（前文未记录文风锚，请依据前情大纲与最新一章结尾自行归纳，"
                               "归纳后全批保持一致）")
                   .replace("__PREV_OUTLINE__", prev_lines or "（无大纲记录，请依据下方最新一章结尾与小说目标衔接）")
+                  .replace("__LOCKED_OUTLINE__", locked_block or "（无）")
                   .replace("__PREV_TAIL__", prev_tail or "（无）")
                   .replace("__GOAL__", task["goal"])
                   .replace("__CONTEXT__", task.get("context") or "（无）"))
