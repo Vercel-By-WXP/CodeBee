@@ -2554,6 +2554,7 @@ __VOLUME__
 - 章末钩子：__HOOK__
 - 本章爽点/情绪爆点：__HIGHLIGHT__（必须按特写镜头写厚：铺垫在前、放大在中、余波在后，用动作/五感/生理反应/环境反馈呈现，禁止一句话带过）
 __LOCKED_CH__
+__STALE_NOTE__
 - 正文约 __WORDS__ 字，中文，直接开写正文（可含本章标题行）。
 
 ## 前情提要（此前各章结尾摘录，衔接用）
@@ -3480,6 +3481,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             store.finish_step(run_id, step["n"], "done", summary="（mock）第 %d 章草稿落盘" % i,
                               duration_s=0.2)
         else:
+            # 重写未达标章时旧稿仍在场：不点破来历，作者会「校验沿用」直接交卷
+            # （2026-10-03 实案：agent 对照章纲逐项核对旧稿后原样保留，补钩修订落空）。
+            # 必须明说旧稿未过审、要求覆盖。
+            stale_note = ""
+            if os.path.exists(os.path.join(workdir, ch_file)):
+                stale_note = ("- 注意：目录里已有一版**未通过评审**的旧稿 `%s`——不要校验沿用、"
+                              "不要增量修补，按本章任务直接覆盖重写。" % ch_file)
             # stable_order：同一任务 8 个章节的技能块必须字节级一致（§07 T1.2' 前缀缓存）
             sk_block, _ = skills.block_for(task, stable_order=True, run_id=run_id)
             if bible:
@@ -3518,6 +3526,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         .replace("__BEATS__", branch_beats or ch["beats"] or "按大纲推进")
                         .replace("__HOOK__", branch_hook or ch.get("hook") or "留下悬念")
                         .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, i))
+                        .replace("__STALE_NOTE__", stale_note)
                         .replace("__HIGHLIGHT__", ch.get("highlight") or "按剧情要点自然铺设一处小冲突/小反转")
                         .replace("__STYLE__", style_tpl)
                         .replace("__QUALITY_GATE__", novel_quality.opening_requirements(i, wpc))

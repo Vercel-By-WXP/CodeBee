@@ -145,6 +145,8 @@ class TestDraftAndReviseInjectLockedOutline(BaseTest):
             "锁定要点：饭桌维修款争执后 18:45 送县医院。", encoding="utf-8")
         (gang / "vol-1-ch-22.md").write_text(
             "锁定要点：许知微视角夜班，空床实景。", encoding="utf-8")
+        # 旧稿在场（重写未达标章场景）：不得被「校验沿用」
+        (self.workdir / "chapter-21.md").write_text("旧稿。", encoding="utf-8")
 
         body = "这是一段足够长的测试正文，主角在核对停工范围。" * 30
         cap = {"draft": {}, "revise": {}}
@@ -182,6 +184,10 @@ class TestDraftAndReviseInjectLockedOutline(BaseTest):
         self.assertIn("## 锁定章纲", d21, "起草提示词必须注入锁定章纲块")
         self.assertIn("饭桌维修款争执", d21, "锁定章纲正文必须随提示词下发")
         self.assertIn("18:45", d21)
+        self.assertIn("未通过评审", d21, "旧稿在场时必须明示未过审、要求覆盖重写")
+        self.assertIn("覆盖重写", d21)
+        d22 = cap["draft"].get(22) or ""
+        self.assertNotIn("未通过评审", d22, "无旧稿的章不得误带覆盖提示")
         for prompt in list(cap["draft"].values()) + list(cap["revise"].values()):
             self.assertNotIn("__LOCKED_CH__", prompt, "占位符不得残留")
             self.assertNotIn("__BEATS__", prompt)
