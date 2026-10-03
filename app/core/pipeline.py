@@ -2893,6 +2893,8 @@ def _chapters_named_in(issues, lo=1, hi=None):
     用于把全局一致性 major 落到具体章；范围外的章号丢弃。"""
     out = set()
     for it in issues or []:
+        if not isinstance(it, dict):
+            continue
         for m in _CH_MENTION_RE.finditer(str(it.get("note") or it.get("issue") or "")):
             a = int(m.group(1))
             b = int(m.group(2)) if m.group(2) else a
@@ -3970,6 +3972,16 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 store.update_run(run_id, story_tracking_warning=str(exc)[:300])
             except Exception:
                 pass
+        # 旧账换新账（章内修订回路）：本章终评达标 → 用终轮评审的 issues 换掉
+        # 第 1 轮的旧账。不换的话「修订后已达标」的章仍顶着第 1 轮 majors，
+        # 最终 publishable 被陈账永远压着 False。放在 story_tracking 取材之后：
+        # 事实沉淀仍吃得到修订前的完整意见，门禁只认终轮评判。
+        if cs_new["passed"] and cj_by_agent:
+            issues_all[:] = [x for x in issues_all if x.get("chapter") != i]
+            for _cj in cj_by_agent.values():
+                if isinstance(_cj, dict):
+                    issues_all.extend({"chapter": i, **it}
+                                      for it in (_cj.get("issues") or [])[:6])
         # 资源账本（借鉴角色资源账本）：评审提出的道具/伤情/承诺/伏笔增量
         # 追加到 .codebee/resource-ledger.md，下一章起草时注入，防跨章穿帮。
         # 失败静默——账本是增强不是硬依赖。
@@ -4146,8 +4158,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         tried = {a.get("id") for a in critics}
         for spare in [a for a in (agents or [])
                       if a.get("mode") == "real" and a.get("id") not in tried][:2]:
-            sc, acc, spare_reviews = run_global_round([spare])
+            sc, acc, spare_reviews, _sgi = run_global_round([spare])
             global_review_results.extend(spare_reviews)
+            global_issues.extend(_sgi)
             for d, xs in acc.items():
                 gmeans_acc.setdefault(d, []).extend(xs)
             gscored += sc
@@ -4275,6 +4288,14 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         c2["polished"] = True
                     c2["words"] = _wc(_read_chapter(workdir, i))
                     fixed.append(i)
+            if repolished:
+                # 旧账换新账（章级）：该章旧 issues 是对打磨前稿件的评判，重写
+                # 已落盘并重评，陈账不撤会同全局陈账一起永远压着 publishable
+                issues_all[:] = [x for x in issues_all if x.get("chapter") != i]
+                for _cj in cj_by_agent.values():
+                    if isinstance(_cj, dict):
+                        issues_all.extend({"chapter": i, **it}
+                                          for it in (_cj.get("issues") or [])[:6])
             store.update_run(run_id, chapter_scores=chapter_scores)
             _check_cancel(ev)
         if not fixed:
@@ -4291,7 +4312,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         # 不代表书变差，不能拿「无法评审」覆盖真实分数）
         try:
             full_text = _full_manuscript(workdir, start, end)
-            gscored2, gmeans_acc2, global_review_results2 = run_global_round(critics)
+            gscored2, gmeans_acc2, global_review_results2, gi2 = run_global_round(critics)
         except BaseException:
             store.finish_step(run_id, pstep["n"], "failed",
                               summary="打磨后全书重评异常中止，已落盘章稿不受影响")
@@ -4302,6 +4323,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             global_pass = _all_ge(global_means, threshold)
             global_review = quality_gate.aggregate_reviews(
                 global_review_results, dims, threshold=threshold)
+            # 旧账换新账：上一轮的 majors 是对打磨前稿件的评判，重评出了新分
+            # 却不换 issues，重写修好了也永远 publishable=False（陈账死闸）
+            global_issues[:] = gi2
         store.finish_step(run_id, pstep["n"], "done" if global_pass else "failed",
                           summary="重改 %s；打磨后全局 %s（%s）" % (
                               "、".join("第 %d 章" % x for x in fixed),

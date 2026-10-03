@@ -37,6 +37,13 @@ def _digest(text):
     return hashlib.sha256(str(text).encode("utf-8")).hexdigest()
 
 
+def _norm_lf(text):
+    """换行归一到 LF。章稿经 _read_chapter 保真读回时带 CRLF（Windows 上
+    _write_chapter 文本模式落盘所致），不归一会让同一份稿在不同路径下
+    摘要不一致。"""
+    return str(text).replace("\r\n", "\n").replace("\r", "\n")
+
+
 def _empty(task_id, title, premise=""):
     return {"version": 1, "task_id": str(task_id), "title": str(title or "")[:120],
             "premise": str(premise or "")[:2000], "state_revision": 0,
@@ -126,7 +133,7 @@ def commit_chapter(workdir, chapter_no, outline, prose, *, facts=None, character
     if not 1 <= number <= _MAX_CHAPTERS:
         raise ValueError("章节号必须在 1-%d 之间" % _MAX_CHAPTERS)
     outline = str(outline or "").strip()
-    prose = str(prose or "").strip()
+    prose = _norm_lf(str(prose or "").strip())
     if not outline:
         raise ValueError("提交章节前必须有细纲")
     if not prose:
@@ -163,8 +170,10 @@ def commit_chapter(workdir, chapter_no, outline, prose, *, facts=None, character
     state["updated_at"] = _now()
     chapter_dir = _CHAPTERS / ("%04d" % number)
     (root / chapter_dir).mkdir(parents=True, exist_ok=True)
-    (root / chapter_dir / "outline.md").write_text(outline + "\n", encoding="utf-8")
-    (root / chapter_dir / "prose.md").write_text(prose + "\n", encoding="utf-8")
+    # 字节落盘钉死 LF：文本模式写会把已含 CRLF 的章稿二次翻译成 \r\r\n，
+    # 磁盘稿与状态摘要永久错位，续写批开场漂移闸必拦（2026-10-03 实案）
+    (root / chapter_dir / "outline.md").write_bytes((outline + "\n").encode("utf-8"))
+    (root / chapter_dir / "prose.md").write_bytes((prose + "\n").encode("utf-8"))
     _save(root, state)
     _render(root, state)
     return state
@@ -206,6 +215,31 @@ def _render(root, state):
         pass
 
 
+def _prose_matches(path, digest):
+    """章稿摘要比对，兼容三种历史形态。
+
+    - 新写：文件纯 LF，状态摘要按 LF 文本计算；
+    - 旧写（文本模式二次翻译）：磁盘 \\r\\r\\n，状态摘要按 CRLF 原文计算——
+      CRCRLF 是写出路径独有的字节形态，先按字节愈合回 CRLF 再比对即可认定
+      同源，不必要求用户手工修复历史状态（2026-10-03 续写批漂移闸误杀实案）；
+    - 旧写（未二次翻译）：磁盘普通 CRLF，摘要按 CRLF 原文计算。
+    注意愈合必须在字节层做：read_text 的通用换行翻译会把 \\r\\r\\n 折成 \\n\\n，
+      事后无从区分「真空行」与「二次翻译」，就再也对不上了。
+    """
+    if not digest:
+        return False
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return False
+    candidates = set()
+    for raw in (data, data.replace(b"\r\r\n", b"\r\n")):
+        text = raw.decode("utf-8", "replace")
+        candidates.add(_digest(text.strip()))
+        candidates.add(_digest(_norm_lf(text).strip()))
+    return digest in candidates
+
+
 def check(workdir):
     root = _root(workdir)
     state = _load(root)
@@ -235,7 +269,7 @@ def check(workdir):
             current = outline.read_text(encoding="utf-8").strip()
             if persisted and persisted not in current:
                 errors.append("章节细纲不一致: %04d" % number)
-        elif _digest(prose.read_text(encoding="utf-8").strip()) != chapter.get("prose_digest"):
+        elif not _prose_matches(prose, chapter.get("prose_digest")):
             errors.append("章节正文不一致: %04d" % number)
     return {"ok": not errors, "errors": errors, "state_revision": state.get("state_revision", 0),
             "current_chapter": state.get("current_chapter", 0)}
