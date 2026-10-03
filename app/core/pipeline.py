@@ -949,6 +949,22 @@ def _git_diff(workdir):
     return gitmod.collect_changes(workdir)["diff"]
 
 
+def _gitlog_brief(workdir):
+    """周报素材的 git log 半边（GitPulse 借鉴：提交记录也是工作系统取数，
+    补齐交付契约取材清单第一项「git log --since 起止」的落地）。
+    尽力而为：非 git 仓/无提交/命令失败一律返回空串，绝不阻塞起草；
+    -n 40 封顶防 token 失控（预算熔断兜底）。只读，不动仓库。"""
+    try:
+        from . import gitmod
+        r = gitmod._git(workdir, "log", "--since=7 days ago",
+                        "--pretty=%h %ad %s", "--date=short", "-n", "40")
+    except Exception:
+        return ""
+    if not r.get("ok"):
+        return ""
+    return (r.get("stdout") or "").strip()
+
+
 def _verify_hint(task):
     if task.get("verify_command"):
         return "- 完成后请自查：`%s` 应当通过。" % task["verify_command"]
@@ -4724,6 +4740,12 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 if brief:
                     p += ("\n\n## 禅道本周工作素材（如实取材，缺失数字留待补，"
                           "勿虚构业绩）\n" + brief)
+                # 本周提交素材（GitPulse 借鉴）：交付契约取材清单第一项
+                # 「合并的提交（git log --since 起止）」的落地半边，与禅道
+                # 素材并列、各自尽力而为互不阻塞。
+                gl = _gitlog_brief(workdir)
+                if gl:
+                    p += ("\n\n## 本周提交素材（git log，如实取材，缺失勿虚构）\n" + gl)
             p += _content_contract(task)
             return p
 
