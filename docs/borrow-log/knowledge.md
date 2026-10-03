@@ -1159,3 +1159,43 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - `microsoft/agent-governance-toolkit`（6,377★，10-03 push）、`FailproofAI/failproofai`（5,234★，10-02 push）、`cordum-io/cordum`（509★，09-30 push）复查 commit/release/issue/PR/安全公告：策略执行、请求链 ID、动作防火墙与 CodeBee 现有 stopgate、证据档案、`run_id/trace_id`、操作台账、审批和 SSRF/技能闸门重合，无低风险接口差量；不接入。
 - 七专项实锚：17 类 flow、14 个 catalog CLI、六源市场和禅道链路均正常；教训 67 条零漂移；过时文案零命中；未安装 CLI 不盲接。`data/zentao.json` 明文凭据列为既有远期决策项。
 - 本班无代码落地，避免为观测/治理同类能力扩大接口和持久化面。证据与日志见 `docs/borrow-log/2026-10-03.md`。
+
+## 2026-10-03 16:00 班（批2：学习记忆与自我改进·全类型雷达——计划第 1/4 步调研）
+
+- **Fergana-Labs/stash**（328★，10-03 当日活跃）新入库 | 「agent 从经验学习的基础设施」：捕获生产 traces → 把教训变成可复用知识与技能 | 与我们经验库全链（教训+做法+evolve 晋升）**同构**——教训→技能晋升链的独立实现；无未覆盖机制，同向验证 +1 | 方向验证 | 2026-10-03
+- **eugeniughelbur/obsidian-second-brain**（4,666★，10-01）新入库 | Claude Code 等 7 CLI 的持久记忆，纯 Markdown 存 Obsidian vault（「别再每次会话重新解释你的项目/决策/人物」）| 文件真源路线第 N 验证（pi-mem/markdown-memory/openhuman Memory Tree Obsidian 镜像同源）；我们经验库+任务档案同路且多了 outcome 加权 | 已覆盖（生态验证 +1）| 2026-10-03
+- **code-yeongyu/oh-my-openagent（OmO）**（69,763★，10-03 活跃）新入库 | 「输入 mass ulw 关键词 + prompt 即成 graph engineering 大师」——**关键词触发的大师人格/技能注入器**，跨 Claude/Codex/Cursor/OpenCode 七 CLI，topics 含 orchestration | 69.7k★ 量级人格/技能注入生态大盘（ponytail 同族工程化）；与我们经验召回同域——他们显式关键词触发、我们 bigram 语义自动注入（自动化更深），无未覆盖机制 | 参考（雷达）| 2026-10-03
+- **wenziai/wenzi-xhs-agent-skills**（148★，09-30）新入库 | 小红书运营 Agent Skills：账号定位/选题标题/真人化改稿/图文规划/排期复盘 | **自媒体文章任务域**的平台特化 skill 包（小红书主战场）；三问：重合（article 通用流程无平台特化）/可直读/会搜——**不整包接市场**，与 platform-writing-skills-cn 同结论；「平台特化交付契约」蒸馏候选（真人化改稿≈去 AI 味已有，选题标题/排期复盘是差量小件）| 借鉴（蒸馏候选，B/C 专项）| 2026-10-03
+- **wbb316/dsh-novel**（4★，09-30）| DSH 插件：小说创作台（5 个 novel_* 工具+开书向导/设定表单/关系图）| dsh 插件生态第 7 例（links/quota-check/AI-Novel-Writer 插件/movо 之后）——已接 dsh 生态持续繁荣佐证 | 雷达 | 2026-10-03
+- **tangwenwen-md/chinese-de-ai-writing**（3★，09-29）| 中文去 AI 味：**按证据分级的审稿改稿 skill**（Claude Code/Agent Skills）| 去 AI 味赛道第 5 例（aiflavor 自有/quiron/snifftest/mr-li 之后）；「按证据分级」与我们「确定性检测行+模型评审」两层同向 | 已覆盖（生态验证 +1）| 2026-10-03
+- **NousResearch/autonovel**（1,601★，03-20 后停更）| Hermes Agent 出品自主小说管线：写/修/排版/插图/朗读全链（19 章 79,456 字成品）| 写作域全链形态参照；**停更 6 个月**不入深挖 | 雷达（停更观察）| 2026-10-03
+- **mcp-zentao-pro**（openclaw-master-skills 内）| 禅道 MCP 扩展包：跨项目数据聚合视图/一句话建任务/工时记录/自动状态流转 | 禅道 AI 生态通道级第 5 例（zentao-mcp/auto-fixer-server/pi-zentao/ZenTaoMcp 之后）；一句话建任务+状态流转与我们扫描→建任务→resolve 闭环同构 | 参考（F 专项雷达）| 2026-10-03
+- **学术/生态速记**：Memskill（arXiv 2602.02474，learning & evolving memory skills——记忆技能自身演化，evolve 晋升链的学术同向）；GitSkills 数据集（379 万 SKILL.md/28.2 万仓，skill 生态研究资源）；arena-skill（202★，「Claude 给烂答案就做 100 版赛马」——Best-of-N 第 N 同向验证）；gitmemory（18★，Git 版本化+连续性校验记忆）；awesome-claude-video-skills（385★，10-03 新，视频 skills 清单——短视频→成片域）；mongodb-partners/agent-memory（17★，Atlas+Bedrock 层级记忆，云依赖不适用）；titration（8★，「让 coding agent 修 prompt 直到真的能用」TDD-for-prompts 形态小件）| 均参考/雷达 | 2026-10-03
+
+### 复查记录（repos 端点 40+ 仓）
+- 2026-10-03 16 时：头部全活跃——orca 84,054★（vs 凌晨 83,788，当日 +266 继续领跑）/superpowers 294,595/ECC 271,598（10-02）/openhuman 40,472/deer-flow 83,340/codegraph 73,048/multica 51,865/spec-kit 139,892/OpenSpec 70,946/planning-with-files 27,263/agentmemory 29,102/paseo 19,297/superset 14,830/OpenCreator 12,569/Reasonix 35,732（E 候选首位维持）/ZCode 7,345（09-29）/harbor 5,803（harbor-framework org）/agent-governance-toolkit 6,380/failproofai 5,234/cordum 509
+- 写作域：oh-story 7,214★（10-03 当日活跃）/drama-skills 2,454★（10-03）/inkos 10,108★（09-27 恢复后维持）/OpenFic 1,174/chinese-novelist-skill 3,275（09-06）/AI-Novel-Writing-Assistant 3,060（09-23）；anthropics/skills 179,449★（09-29）/ARIS 16,916★（09-29）/harness-sdk 8,631/claude-mem 95,213（+857 vs 09-21）/loop-engineering 11,407/zentao-cli 61★（10-01）
+- 记忆域批2：cognee 31,317/graphiti 31,395（10-02）/memsearch 2,709（09-24）/pro-workflow 2,899（09-29）/projectmem 849（10-03 活跃，+19 vs 09-22）/KIP 86/mengram 204/MemRL 176/MegaMemory 707/compozy 2,790（10-01）/Yuxi 7,258（09-30）
+- awesome 清单：awesome-claude-code 54,983（10-03）/VoltAgent 35,137（10-02）/Agent-Memory 656（10-01）活跃；**Awesome-Long-Horizon-Agents 1,058★（09-22 后 11 天无 push——停更观察转正）**
+- 状态变更：21st-dev/1code archived=true 实证（凌晨勘误维持）；autonovel 停更 6 个月（新记）；andrej-karpathy-skills 迁 multica-ai org（216,627★）、ponytail 迁 DietrichGebert org（152,148★）——org 变动生态事实
+- npm 两页无接入级标的（@nathapp/nax 已录；其余 fork/小项）；pypi 搜索页被拦（3036 字节拦截页，如实记录）；Trending 替身无 10 月新巨型
+
+### 待深挖队列（2026-10-03 16 时快照，无新增机制级项）
+1. 工具输出统一压缩管线（第 7 验证在手，管线级攒批）
+2. 语义缓存（待租户/敏感边界拍板）
+3. 演示文稿任务类型空档——交人拍板（不擅自扩）
+4. 任务宪章编译为运行时强制策略（ironcurtain，治理远期）
+5. 聊天分叉（1code，管线级远期备注）
+6. **小红书平台特化交付契约蒸馏**（wenzi-xhs：选题标题/排期复盘两小件，article 域——新进，交人拍板是否做）
+7. 既有攒批维持：ARIS 规则裁决/multica 看板视角/凭据保险库（cockpit-tools 佐证）
+
+## 2026-10-03 巡检班（七专项·计划第 2/4 步）
+
+- **教训库合并闸跨类盲区（实证）** | upsert_lesson 近似合并只查同 scope 同分类：「打脸必须反派在场」（情节逻辑）与「打脸须反派在场」（人物塑造）bigram 包含度 0.83 跨类逃逸成两条；且自动跨类合并不可行——「情节/人物/文笔 维度反复不达标」三连互为 0.857，与真重复对 0.833 区分度不足，自动闸必误伤 | **D 专项巡检新增手工步骤：同 scope 跨类 containment ≥0.8 人工裁决**；本轮数据合并（+「章末钩子松散」归位节奏爽点）列落地候选① | 巡检方法论 | 2026-10-03
+- **G 随手修**：skills.py:40 注释「七猫+番茄双平台」→「四源扫榜」（口径过时，纯注释）；README CLI 名册 14 条目与 catalog 一致核实 | 已修 | 2026-10-03
+
+## 2026-10-03 落地·提交·发版班（计划第 3-4/4 步）
+
+- **教训库数据卫生落地** | 候选①全量：D-1 跨类近重复对合并（merged_titles 留痕、教训 67→66）+ D-2「章末钩子松散」归位节奏爽点；偏科口径 情节逻辑 11→10/人物塑造 8→7/节奏爽点 20→21 | 已落（data/ 运行时数据不进 git）| 2026-10-03
+- **test_skills 预存挂修复** | 3a92737（09-30）改 qimao 包文案「主角主观能动性→主角主动选择」未同步测试关键词，test_skills 预存挂 3 天无人察觉——全量绿不等于逐测试绿，改包文案必须 grep 测试关键词 | 已修（关键词对齐）| 2026-10-03
+- 发版 v0.1.77：收口 a853e28（章纲三面注入）+ 本批修复；纯注释/测试修复轮是否发版以「当天是否有未发布代码入库」为准（a853e28 在库未发布即发） | 发布纪律 | 2026-10-03

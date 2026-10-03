@@ -37,7 +37,7 @@ def _user_pack_dir():
     """用户自建包目录：每次现取 paths.DATA_DIR（测试重定向后自动跟随）。"""
     return paths.DATA_DIR / "skillpacks"
 
-MAX_INJECT_CHARS = 9000      # 单次注入上限（防止提示词爆炸；七猫+番茄双平台包并存后上调）
+MAX_INJECT_CHARS = 9000      # 单次注入上限（防止提示词爆炸；四源扫榜平台包并存后上调）
 MAX_LESSONS_INJECT = 8       # 注入的自动教训条数上限
 WILDCARD_PACK_CHAR_CAP = 2400  # wildcard（scope=*）包单包注入预算：市场通配技能动辄数万字，全文注入会挤掉项目教训
 

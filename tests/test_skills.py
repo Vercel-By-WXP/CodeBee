@@ -23,7 +23,7 @@ class TestSkillPacks(BaseTest):
         self.assertGreater(qimao["chars"], 2000)            # 正文真实存在
         self.assertIn("serial_novel", qimao["scopes"])
         text = skills.pack_text(next(p for p in skills.BUILTIN_PACKS if p["id"] == "qimao-signing"))
-        for kw in ("黄金一章", "期待感", "主角主观能动性", "钩子"):
+        for kw in ("黄金一章", "期待感", "主角主动选择", "钩子"):
             self.assertIn(kw, text)
 
         # 2) 注入：连载任务带上经验包 + 命中计数
