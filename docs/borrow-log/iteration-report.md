@@ -187,5 +187,10 @@
 - **既有红根因精化（交属主班次）**：①flows.TestSerialResume——mock 章 367 字 < 600 字，撞 b856632「首章正文不足 600 字」签约门禁 → publishable=False（overall 6.2>阈值 6.0、各章 passed=True 仍拦），fixture 短文未随门禁更新，补 mock 首章 ≥600 字即收；②publish_auto 10F+workdsh_boundaries 1F 同根因确认=07d066b/4a00d48 建书确认严格化后 mock book_id 空被拒，属主班次处置；③usage_stats 1F 维持 5406ee0 已录。
 - **npm publish 收口**：本补记 docs + mcp 测试修复落库、工作区干净后复跑 publish（结果见推送与发版状态终录）。
 
----
+### 发版终录（registry 实查定案，v0.1.79 在架）
 
+- **发布状态：v0.1.79 已上架**——`npm view codebee version` = **0.1.79**、`dist-tags.latest` = 0.1.79、`codebee@0.1.79` 可解析；live tarball `dist.shasum` = `716cb2d232e79b2dcbf6c582fc1730d3bf02e33b`，与 publish 运行时回显 shasum 逐字一致（registry 独立第二查，非命令回显自证）。
+- **过程两波折如实录**：①首次 publish 被 prepublishOnly 闸「工作区不干净」拦下（docs 在制品+smoke 残留 tgz），registry 零污染；②复跑过闸上传时遇 **E409「Cannot publish over previously staged version 0.1.79」**——本班与第二收尾班并发各起 publish，一方先 staged 所致；约 2.5 分钟后 registry 实查 latest=0.1.79 落地，shasum 核对一致，**无需重发无需 revert**。并发 publish 的 E409 是良性信号（防重复上架闸），落库即安。
+- **发版内容**：`31f0e93`（weekly git log 素材通道）+ `ef3e755`（version bump/CHANGELOG/README relnotes）；发布工件 169 文件与 smoke 预检一致。
+
+---
