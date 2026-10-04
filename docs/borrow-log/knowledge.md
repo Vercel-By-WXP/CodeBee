@@ -2238,3 +2238,45 @@ usage_stats tie-break（2/2）/ test_flows 阈值对齐（9/9）/ test_quality_g
 ### 发版判定
 
 本班零实现改动（纯测试+docs），不进 CHANGELOG「用户可感知变更」口径——**v0.1.83 保持 latest 不再发版**（同日 v0.1.81/82/83 三连发已有先例，但「仅当天有代码入库才发」的必要条件不满足）。
+
+## 2026-10-05 06 时班（批6：框架/平台/SDK 生态——全类型调研+存量红净态对账）
+
+> 6%7=6 批6。主扫 115 查询 523 行 467 唯一仓零失败零限流；雷达 C：repos 25 仓+npm 两查
+> （pypi 省配额在案）；WebSearch 免配（距 04 时班 2 班未到 3-4 班窗口+本班非「无新竞品」判定）。
+> 批6 已录为主零增量（harness-sdk 7,551→8,656 放量参考级）；零机制级新差量（第十九班）。
+
+### 新条目（本班真新面孔，均雷达/参考级）
+
+- **thesysdev/openui**（9,980★，10-04 活跃）新入库 | 生成式 UI 开放标准 | UI 生成非编排台任务类型域 | 雷达 | 2026-10-05
+- **FlashML-org/FreeToken**（14,169★，10-04 活跃）新入库 | 桌面级数据中心规模模型 serving | 本地部署路线，网关族旁 | 雷达 | 2026-10-05
+- **muratcankoylan/Agent-Skills-for-Context-Engineering**（18,074★，10-01）新入库 | 上下文工程 skill 集合 | skill 生态例证（B 专项装前扫描已满配不接） | 雷达（B 专项） | 2026-10-05
+- **zjunlp/LightMem**（1,183★，ICLR 2026）新入库 | 轻量高效记忆增强生成 | 记忆域学术新件；经验召回已满配 | 雷达 | 2026-10-05
+- **kentcdodds/kody**（732★，10-04 活跃）新入库 | agent 之家：memory+keys+code+automations | 凭据保险库攒批域佐证 +1 | 雷达 | 2026-10-05
+- **iLearn-Lab/NovelClaw**（379★，05-31）新入库 | 动态记忆优先长篇协作框架 | webnovel-writer/ainovel-cli 同域小标；向量检索攒批域例证 | 雷达 | 2026-10-05
+- **BlinkDL/AI-Writer**（3,910★，2025-05 停更）新入库 | RWKV 中文网文生成模型 | 模型非编排台竞品 | 不适用 | 2026-10-05
+
+### 简称→正主全名对照表（本班勘定沉淀——后续 repos 复查免再勘定，省配额）
+
+历史报告/knowledge 记录惯用简称，repos 端点复查必须全名。本班 4 次搜索勘定 11 件：
+webnovel-writer→lingfengQAQ/webnovel-writer · ainovel-cli→voocel/ainovel-cli ·
+drama-skills→zenstory-ai/drama-skills · yomiyasu→nanaism/yomiyasu ·
+hippo-memory→kitfunso/hippo-memory · wenzi-xhs→wenziai/wenzi-xhs-agent-skills ·
+claude-rules→lifedever/claude-rules · DeepSeek-Reasonix→esengine/DeepSeek-Reasonix ·
+SkillSpector→NVIDIA/SkillSpector · gstack→garrytan/gstack ·
+huobao-drama（火宝短剧）→chatfire-AI/huobao-drama | 方法论 | 2026-10-05
+
+### 复查增量（repos 端点，07:0x）
+
+orca 84,946（+49 续领跑）/ gstack 135,147（+31）/ anthropics/skills 179,649（+12）/ SkillSpector 19,381（+6）/ DeepSeek-Reasonix 35,740（10-04 push 候选首位维持）/ ainovel-cli 2,095（+1）/ yomiyasu 1,381（+5 在动）/ webnovel-writer 7,316 / drama-skills 2,499 / hippo-memory 770 / wenzi-xhs 153 / claude-rules 192（停更维持）/ archestra 4,343 / opensquilla 7,082 / cc-haha 14,862 / huobao-drama 15,670——全部零 archived，零增量面孔。
+
+### 存量红净态对账（当前 HEAD 99df8b4 净进程复跑）
+
+14 时班既有台账 11 文件中 **10 文件当前 HEAD 全部转绿**（publish_auto 22/http_500_guard/mimo_injector/qwen_injector_guard/git_workbench/mgmt_guards/launch/deepseek_harness 21）——「争用嫌疑豁免不能跨班沿用，必须按当前 HEAD 重验」教训执行完毕，台账清空；仅 portscan 真实杀进程用例挂死维持（第三班复现，修复方向在案交人拍板）。跑法勘误：净进程复跑一律 cd tests（`from base import` 型测试仓库根必 ModuleNotFoundError，台账名 test_deepseek 实为 test_deepseek_harness）。
+
+### 教训与方法论（本班入库）
+
+- **后台跑长任务先验证输出通道实时性**：Python stderr/stdout 重定向到文件时默认块缓冲，PROGRESS 进度全程 0 行——排查只能 wc 输出行数倒推。长跑脚本 reconfigure 一律补 `line_buffering=True`（本班已修 borrow_scan_nightly.py），新脚本写时带上次教训 | 方法论 | 2026-10-05
+
+### 待深挖队列（06 时快照）
+
+同 04 时班版零变化；LightMem/NovelClaw 记忆域备注随向量检索攒批第 1/4 项。

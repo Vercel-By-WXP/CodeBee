@@ -10,9 +10,9 @@ import urllib.parse
 # Windows 默认控制台可能是 GBK；仓库描述含 emoji 或其他 Unicode 时，
 # JSONL 扫描结果必须仍能完整落盘，不能因输出编码中止整轮扫描。
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
 QUERIES = [
     ("A1", "multi-agent+orchestration"), ("A1", "agent+orchestration"),
