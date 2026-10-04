@@ -2172,3 +2172,9 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 本轮落地件回归：test_serial_ctx_shrink 4/serial_variants_flow 4/borrow_round 6/race_ctx_shrink 1/branching（含新继承用例）/selfupdate 6/6 全绿（s-z+a-r 分片统计行为证）。
 - 全量 2142 项分片对账：25 项红/错全落既有台账（11 文件），零新增；较上一收口班 +12 项全为本轮新测试。
 - 待深挖队列：与 22 时版零变化；v0.1.82 已发布（registry shasum a0de5baf 逐字一致+包内 import 冒烟过）。
+
+### 独立复核班补录（第二收口通道交叉验证，2026-10-04 22 时后）
+
+- **争用嫌疑豁免不能跨班沿用，必须按当前 HEAD 重验** | 收口班沿 14 时班口径把 test_flows 记入「争用嫌疑组（单独跑全绿）」，独立复核班实测单独净进程跑 1F + 干净 HEAD（ae68961）worktree 同样 1F——系存量确定性红（首章 600 字开篇闸 vs mock 稿 367 字，publishable 断言滞后，与 publish_auto/workdsh 同类），非争用。HEAD 在动，历史班的「单独跑全绿」证据随新提交过期；凡引用旧豁免先在当前 HEAD 复跑一遍再落账 | 教训 | 2026-10-04
+- **独立复核全对账零新增**：a-f 723（1F+1E）+g-m 376（4F+2E）+n-r 542（10F）+s-z 501（2F）=2142 项，与收口班 a-r 1641+s-z 501 总数与红名单逐项吻合；朴素分片 a-r 片再证 32 位静默退出（无统计行 exit 0）。三提交（90a7bd6/34460ed/ae68961）show --stat 零外来零踩踏；443 抖动两连击下以 origin/main 跟踪引用+npm registry 0.1.82 实查双证推送发版落地 | 复核 | 2026-10-04
+- 待深挖队列 +1：test_flows.TestSerialResume 存量断言滞后修复（断言侧或 mock 稿加长，红名单归类改「存量红」）；余同收口班快照零变化。
