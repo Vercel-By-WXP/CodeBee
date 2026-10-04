@@ -2280,3 +2280,40 @@ orca 84,946（+49 续领跑）/ gstack 135,147（+31）/ anthropics/skills 179,6
 ### 待深挖队列（06 时快照）
 
 同 04 时班版零变化；LightMem/NovelClaw 记忆域备注随向量检索攒批第 1/4 项。
+
+## 2026-10-05 07 时班（批7：中文/网关/本地/办公——全类型调研+越范围检测落地）
+
+> 7%7=0 批7。主扫 114 查询 513 行 451 唯一仓零失败零限流；雷达 C：repos 存量 10 仓+npm 一查
+> （pypi 历班拦截在案省配额）。WebSearch 交叉验证执行（距 04 时班第 3 班到窗口）：
+> 捞出 coze-studio/eino/Vision-Agents 三名——repos 端点二次实证全部真仓在库
+> （「新闻面 ≠ 开源仓在」规则第 2 例，本例为正向实证：仓名勘定 stream→GetStream、eino 正主
+> cloudwego/eino）。B7 域零机制级新差量（第二十班）。
+
+### 新条目（本班真新面孔，均雷达/参考级）
+
+- **coze-dev/coze-studio**（21,674★，07-29 push）新入库 | 字节扣子开源版：可视化 agent 开发平台（低代码编排+工作流） | 可视化低代码路线与 CLI 舰队编排不同轨；国内生态位最大竞品之一持续跟踪 | 参考 | 2026-10-05
+- **cloudwego/eino**（13,239★，09-29 push）新入库 | 字节 Go 语言 LLM 应用开发框架（Coze 生态，原子组件+编排） | 框架域（批6 族旁）异栈参考 | 参考 | 2026-10-05
+- **GetStream/Vision-Agents**（8,150★，10-04 push）新入库 | 语音/视觉实时 agent 框架 | 我们无音视频任务类型；实锚勘定（新闻名 stream→GetStream） | 雷达 | 2026-10-05
+- **TransformerOptimus/SuperAGI**（17,698★，2025-01 停更）新入库 | 曾一线自治 agent 框架 | 停更 8 个月+大仓——「停更大仓」形态例证（claude-rules 同类） | 不适用（停更） | 2026-10-05
+- **coleam00/context-engineering-intro**（13,888★）新入库 | 上下文工程课程/方法论（A2 域） | 教育内容非竞品；方法论与已有 compaction/§07 同向 | 参考 | 2026-10-05
+- **Integuru-AI/Integuru**（4,773★，06-24）新入库 | 逆向工程自动建集成的 agent | 集成域参考（我们集成面=CLI+MCP，不追） | 参考 | 2026-10-05
+- **szczyglis-dev/py-gpt**（1,973★，10-03 push）新入库 | 桌面 AI 助手（GPT-6/Gemini/Claude 多模型） | 本地助手客户端非编排台；B7 本地域旁证 | 雷达 | 2026-10-05
+- **rhysd/go-github-selfupdate**（646★）新入库 | Go CLI 自更新库（A9 自更新域） | 异栈参考：我们的 selfupdate 已有 relaunch 守卫+registry 校验 | 参考 | 2026-10-05
+- **vijaythecoder/awesome-claude-agents**（4,389★，2025-10）新入库 | Claude 子代理编排 awesome 清单 | 雷达源补充候选（已录 awesome 清单第 14 个） | 雷达源补充 | 2026-10-05
+- **yuruotong1/autoMate**（3,965★，09-18 push）/ **magnitudedev/browser-agent**（4,134★）新入库 | CUA/浏览器操控族 | 同 trycua/cua 结论：我们无 GUI 操控能力 | 不适用（暂） | 2026-10-05
+
+### 存量复查（repos 端点，07:5x，正主全名对照表直用——零搜索摩擦，配额 10 查）
+
+orca 84,966（+20 续领跑）/ gstack 135,153（+6）/ anthropics/skills 179,649 持平 / SkillSpector 19,384（+3）/ DeepSeek-Reasonix 35,739（10-04 push 候选首位维持）/ webnovel-writer 7,316 持平 / ainovel-cli 2,095 持平 / yomiyasu 1,383（+2 在动）/ drama-skills 2,499 持平 / obra/superpowers 295,279 头部在录——**全部 alive 零 archived**。npm 一查：agent-orchestrator-mcp-server/@nathapp/nax/agentcraft/opencode-oceanus 均已录族或微型，零接入级。
+
+### 落地件（1 件——越范围编辑提醒，roadmap 在册待落地件清账）
+
+**越范围编辑提醒**（agent-delegate 借鉴，2026-09-22 入库「借鉴方向（越范围检测，代码任务）」）：pipeline.py 新增 _plan_scope_files（计划全步骤涉及文件并集）+ _scope_note（声明清单 vs collect_changes 实际变更文件，超出即点名提醒评审员核对；文件/目录型声明「相等或位于其下」匹配；反斜杠与 ./ 前缀归一）；_run_review 挂第 5 参 scope_files（None 时零额外 git 开销，test_review_fallback 的 _git_diff mock 契约不动）。同 _review_depth_note 形态：纯提示词指引，不改 pass 判定语义。计划未锚定 files（旧计划/手动/快路径）静默跳过。tests/test_review_depth.py +7 用例（11/11 绿）。
+
+### 队列快照勘误（G 专项发现——快照滞后于代码）
+
+待深挖队列第 7 项（教训卡显式负反馈）已落地 **3d0e013**（useless op+粘滞负证据+UI「没用」按钮）；第 8 项（weekly_report git log 素材通道）已落地 **31f0e93**（_gitlog_brief :953）；test-defect-retrospective 复盘报告已落地为预置类型 defect_retro（BUILTIN_FLOWS 17 之一）。三件本班实证后从队列划掉——后续班引用队列快照须先对代码实证再引用（本条即方法论）。
+
+### 待深挖队列（07 时快照）
+
+原 1-6/9-11 项维持（第 7/8 项已落地划掉，见上）；第 9 项翻译腔检查维持交人拍板。本班新面孔均雷达/参考级不产生新队列项。

@@ -1029,13 +1029,64 @@ def _review_depth_note(diff):
     return ""
 
 
-def _run_review(run_id, task, workdir, reviewer, ev):
+def _norm_rel(path):
+    """归一成仓库相对 posix 路径：反斜杠转正斜杠、剥 ./ 前缀。"""
+    s = str(path or "").replace("\\", "/").strip()
+    return s[2:] if s.startswith("./") else s
+
+
+def _plan_scope_files(subtasks):
+    """计划全步骤涉及文件并集（保持出现顺序去重）。计划未锚定 files（旧计划/
+    手动/快路径）返回空列表——越范围检测无从对照即静默跳过。"""
+    out = []
+    for sub in subtasks or []:
+        for f in (sub or {}).get("files") or []:
+            key = str(f)
+            if key and key not in out:
+                out.append(key)
+    return out
+
+
+def _scope_note(scope_files, changed_files):
+    """越范围编辑提醒（agent-delegate 借鉴）：计划锚定了涉及文件，而实际变更
+    超出声明清单时，点名请评审员核对是否计划外改动。文件型/目录型声明（以 /
+    结尾）都按「相等或位于其下」匹配；清单外文件只在提醒里点名，不改 pass
+    判定语义；计划未锚定文件（changed_files=None）不猜范围不提醒。"""
+    declared = []
+    for f in scope_files or []:
+        s = _norm_rel(f)
+        if s and s not in declared:
+            declared.append(s)
+    if not declared or changed_files is None:
+        return ""
+    outside = []
+    for p in changed_files or []:
+        s = _norm_rel(p)
+        if not s or s in outside:
+            continue
+        if not any(s == d or s.startswith(d if d.endswith("/") else d + "/")
+                   for d in declared):
+            outside.append(s)
+    if not outside:
+        return ""
+    return ("\n\n## 越范围变更提醒\n计划声明的涉及文件：%s。本次变更还动了清单之外的：%s"
+            "——请核对这些改动是否任务必需（公共依赖连带属正常，凭空多改要点出）；"
+            "若属计划锚定疏漏请如实说明，不要仅因此给 blocker。"
+            % ("、".join("`%s`" % d for d in declared[:10]),
+               "、".join("`%s`" % p for p in outside[:8])))
+
+
+def _run_review(run_id, task, workdir, reviewer, ev, scope_files=None):
     diff = _git_diff(workdir)
     prompt = (CODE_REVIEW_PROMPT
               .replace("__GOAL__", task["goal"])
               .replace("__VERIFY__", task.get("verify_command") or "（未配置）")
               .replace("__DIFF__", diff or "（无法获取 git diff，请综合任务目标谨慎评审）"))
     prompt += _review_depth_note(diff)
+    if scope_files:
+        from . import gitmod
+        changed = [f.get("path") for f in (gitmod.collect_changes(workdir).get("files") or [])]
+        prompt += _scope_note(scope_files, changed)
     if task.get("context"):
         prompt += "\n\n## 原始背景与附件要求\n" + task["context"]
     res = _run_step(run_id, "review", reviewer, prompt, workdir, readonly=True, ev=ev,
@@ -1654,7 +1705,8 @@ def _run_code(run, task, agents, ev, stats, mode):
         else:
             verify_fail_streak[0] = 0
         # 先让确定性验证落盘，再执行模型评审；终态判断会同时使用两份证据。
-        review_json = _run_review(run_id, task, workdir, modelhub.bind_agent(reviewer, difficulty), ev)
+        review_json = _run_review(run_id, task, workdir, modelhub.bind_agent(reviewer, difficulty), ev,
+                                  scope_files=_plan_scope_files(subtasks))
         return review_json, verify_pass, verify_ran
 
     verify_fail_streak = [0]   # gate：verify 连败计数（>=2 轮恢复评审参与诊断）

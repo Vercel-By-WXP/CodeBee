@@ -210,7 +210,7 @@
 ## C. 雷达源（每轮全过）
 
 - awesome 清单：awesome-agent-orchestration、awesome-claude-skills、ai-boost/awesome-harness-engineering（4.7k★，2026-10-04 属主补认）、awesome-mcp-servers（punkpeye，2026-10-04 名实修正：旧 punkpeye/awesome-mcp 已 404，社区迁此仓 95.8k★ 两轮实证存活）、awesome-cli-coding-agents、awesome-ai-agents、awesome-llm-apps、awesome-claude-code（54k★）、VoltAgent/awesome-agent-skills（34.6k★ 1000+ skills）、buildwithclaude（3.5k★ 枢纽）
-- awesome 清单补充（2026-09-22）：RUC-NLPIR/Awesome-Long-Horizon-Agents（长程 agent 路线图）、TeleAI-UAGI/Awesome-Agent-Memory（记忆域地图）、caramaschiHG/awesome-ai-agents-2026（300+ 资源月更）
+- awesome 清单补充（2026-09-22）：RUC-NLPIR/Awesome-Long-Horizon-Agents（长程 agent 路线图）、TeleAI-UAGI/Awesome-Agent-Memory（记忆域地图）、caramaschiHG/awesome-ai-agents-2026（300+ 资源月更）、vijaythecoder/awesome-claude-agents（4.4k★ Claude 子代理编排，2026-10-05 07 时班批7 捞出补入）
 - GitHub Trending（weekly，ai/agent 类）；直抓被拦时的替身（2026-09-22 补）：ossinsight.io、trendshift.io
 - topic 页：multi-agent-orchestration、ai-agents、claude-code、agent-framework、claude-skills、llm-agents、ai-coding-assistant、mcp
 - 发行渠道：npm search（agent orchestrator / claude code）、pypi（agent orchestrator）各扫一页
