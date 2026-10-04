@@ -5294,9 +5294,12 @@ def mark_task_plan(workdir, index, status):
 
 
 def _workdir_blocker(task, run_id):
-    """同工作目录互斥：返回占用该目录的运行中/排队任务（无则 None）。
+    """同工作目录互斥：返回占用该目录的任务（无则 None）。
     任务计划/项目记忆/任务分支检出都是工作目录级共享状态，并行会互相覆盖
-    （2026-09-23 禅道双单实案），故同目录只允许一个任务在跑。"""
+    （2026-09-23 禅道双单实案），故同目录只允许一个任务在跑。占用者只认
+    **真正在跑**（running）的 run：2026-10-05 实案——三个同目录任务全部
+    queued 时，排队中的兄弟互相被当成占用者，各自退避 60s 形成活锁，
+    谁也起不来；排队者是「同样在等」而不是「占着」。"""
     wd = (task.get("workdir") or "").rstrip("/\\")
     if not wd:
         return None
@@ -5305,7 +5308,8 @@ def _workdir_blocker(task, run_id):
                 or t.get("status") not in ("running", "queued")
                 or (t.get("workdir") or "").rstrip("/\\") != wd):
             continue
-        if jobs._task_active_run(t.get("id"), exclude_run_id=run_id):
+        blk = jobs._task_active_run(t.get("id"), exclude_run_id=run_id)
+        if blk is not None and blk.get("status") == "running":
             return t
     return None
 

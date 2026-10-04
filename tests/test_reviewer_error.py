@@ -110,6 +110,16 @@ class TestSameWorkdirMutex(BaseTest):
         blocker = pipeline._workdir_blocker(t2, r2["id"])
         self.assertIsNotNone(blocker, "A 运行中 → B 必须检测到占用者")
         self.assertEqual(blocker.get("id"), t1["id"])
+        # 混合态活锁回归（2026-10-05 实案）：兄弟任务只是排队（queued）时不
+        # 算占用者——否则三个同目录排队 run 互相等待，谁也起不来
+        store.update_run(r1["id"], expected_status="running", status="queued",
+                         started_at="")
+        store.update_task_status(t1["id"], "queued")
+        self.assertIsNone(pipeline._workdir_blocker(t2, r2["id"]),
+                          "兄弟任务仅排队时不构成占用（防同目录活锁）")
+        store.update_run(r1["id"], expected_status="queued", status="running",
+                         started_at="12:00:00")
+        store.update_task_status(t1["id"], "running")
         # 不同目录互不影响
         os.makedirs(wd + os.sep + "c-own", exist_ok=True)
         t3 = store.create_task({"type": "code", "title": "C单", "goal": "c",
