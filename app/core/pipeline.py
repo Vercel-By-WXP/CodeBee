@@ -2870,24 +2870,35 @@ _CH_MENTION_RE = re.compile(r"第\s*(\d{1,4})\s*(?:[—–\-~至到]\s*(\d{1,4})
 
 
 def _archived_preface(workdir, start):
-    """前文回退：续写批次的前作章文件被归档成单文件（发布后 chapter-NN.md
-    不在场）时，从「已成稿/」目录找回前文全文，供全书评审与合并成书使用。
-    任一前文章节文件仍在场则视为未归档，返回空串（正常路径零影响）。"""
+    """前文回退：续写批次里从第 1 章起连续归档的前缀（chapter-NN.md 不在场）
+    从「已成稿/」目录找回，供全书评审与合并成书使用。返回 (文本, 归档覆盖
+    到的章号)：第 1 章仍在场返回 ("", 0)（正常路径零影响）；混合态（如
+    1–20 已归档、21–28 在场）按连续缺失前缀计入——2026-10-04 实案：旧版
+    见任一章在场就整体放弃，1–20 被静默丢出成书。同题名 .md/.txt 并存只
+    取一份，不重复计字。"""
     if start <= 1:
-        return ""
+        return "", 0
+    covered = 0
     for i in range(1, start):
         if _read_chapter(workdir, i):
-            return ""
+            break
+        covered = i
+    if covered < 1:
+        return "", 0
     adir = os.path.join(str(workdir), _ARCHIVE_DIR)
     try:
         names = sorted(os.listdir(adir))
     except OSError:
-        return ""
+        return "", 0
     parts = []
+    stems = set()
     for name in names:
         if not name.lower().endswith((".md", ".txt")):
             continue
         if "目录" in name:   # 阅读目录/章节目录是索引不是正文
+            continue
+        stem = os.path.splitext(name)[0]
+        if stem in stems:    # 同题名 .md/.txt 是同一份内容的两种格式
             continue
         p = os.path.join(adir, name)
         if not os.path.isfile(p):
@@ -2898,7 +2909,8 @@ def _archived_preface(workdir, start):
             continue
         if t and t.strip():
             parts.append(t.strip())
-    return "\n\n".join(parts)
+            stems.add(stem)
+    return "\n\n".join(parts), covered
 
 
 def _full_manuscript(workdir, start, end, cap=60000):
@@ -2910,7 +2922,7 @@ def _full_manuscript(workdir, start, end, cap=60000):
     old_text = "\n\n".join(t for t in (_read_chapter(workdir, i)
                                        for i in range(1, start)) if t)
     if not old_text and start > 1:
-        old_text = _archived_preface(workdir, start)
+        old_text = _archived_preface(workdir, start)[0]
     budget = cap - len(new_text) - 2
     if budget <= 0:
         return new_text[:cap]
@@ -4383,11 +4395,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     ms_name = _ms_name(task.get("manuscript"))
     book_title = outline.get("book_title") or task["title"]
     parts = ["# %s" % book_title, ""]
-    # 前文归档回退：前作章文件已被归档（chapter-NN.md 不在场）时，合并成品
-    # 不能只剩本批——否则续写批次的「成书」会静默丢掉此前全部章节
-    arch_preface = _archived_preface(workdir, start) if start > 1 else ""
+    # 前文归档回退：从第 1 章起连续归档的前缀（chapter-NN.md 不在场）时，
+    # 合并成品不能只剩本批——否则续写批次的「成书」会静默丢掉归档前文
+    arch_preface, arch_upto = _archived_preface(workdir, start) if start > 1 else ("", 0)
     if arch_preface:
-        parts.append("## 前文（第 1–%d 章 · 归档稿）" % (start - 1))
+        parts.append("## 前文（第 1–%d 章 · 归档稿）" % arch_upto)
         parts.append("")
         parts.append(arch_preface)
         parts.append("")
@@ -4414,7 +4426,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                       summary="已合并 %d 章为 %s（约 %d 字%s%s）" % (
                           n, ms_name, total_words,
                           "，分 %d 卷" % len(vol_heads) if vol_heads else "",
-                          "，前文 1–%d 章取自归档" % (start - 1) if arch_preface else ""),
+                          "，前文 1–%d 章取自归档" % arch_upto if arch_preface else ""),
                       duration_s=0.1)
 
     chapters_pass = all(c["passed"] for c in chapter_scores)

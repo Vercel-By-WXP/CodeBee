@@ -168,14 +168,31 @@ class TestArchivedPreface(PolishRunBase):
         from app.core import pipeline
         wd = str(self.workdir)
         body = self._seed_archive()
-        self.assertEqual(pipeline._archived_preface(wd, 1), "")
-        got = pipeline._archived_preface(wd, 3)
+        self.assertEqual(pipeline._archived_preface(wd, 1), ("", 0))
+        got, upto = pipeline._archived_preface(wd, 3)
         self.assertIn("前文归档正文", got)
+        self.assertEqual(upto, 2, "1–2 缺失 → 归档覆盖到第 2 章")
         self.assertNotIn(self.TOC, got, "目录索引文件不得并入前文")
         # 前文章节文件仍在场 → 不走归档回退
         (self.workdir / "chapter-01.md").write_text("第一章正文", encoding="utf-8")
-        self.assertEqual(pipeline._archived_preface(wd, 3), "")
+        self.assertEqual(pipeline._archived_preface(wd, 3), ("", 0))
         (self.workdir / "chapter-01.md").unlink()
+
+    def test_mixed_archived_prefix(self):
+        """混合态回归（2026-10-04 实案）：1–2 已归档、第 3 章在场——旧版见
+        任一章在场就整体放弃，归档的 1–2 被静默丢出成书；同名 .md/.txt
+        并存只取一份。"""
+        from app.core import pipeline
+        wd = str(self.workdir)
+        body = self._seed_archive()
+        (self.workdir / "已成稿" / "不周山守村人-前作.txt").write_text(
+            body, encoding="utf-8")   # 同题名双格式：只允许计一次
+        (self.workdir / "chapter-03.md").write_text("第三章正文", encoding="utf-8")
+        got, upto = pipeline._archived_preface(wd, 4)
+        self.assertIn("前文归档正文", got)
+        self.assertEqual(upto, 2, "连续缺失前缀 1–2 计入归档")
+        self.assertNotIn("第三章正文", got, "在场的第 3 章不并入归档段")
+        self.assertEqual(got.count("前文归档正文"), 40, "同题名 .md/.txt 只取一份")
 
     def test_full_manuscript_budget_keeps_batch(self):
         from app.core import pipeline
