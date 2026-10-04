@@ -1852,3 +1852,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **publish 慢在途新实证（补 E409 条）**：registry 读（npm view）秒回、写（publish PUT）可长挂 ~15min 才落地；`npm publish | tail` 管道缓冲全程零输出≠卡死——**判落地只以 `npm view codebee version` 为准，勿凭无输出过早杀重发**；本次第 1 次尝试确被杀（后重发成功，未触发 E409 属侥幸，下次先等足 30min 窗口再动）。
 - **release_gate 拦 CRLF 实证**：stash pop 的行尾归一化会让 gitignored-but-tracked 测试文件工作态出纯行尾 M，prepublishOnly 闸按「工作区不净」拦发——`git restore <file>` 即解；stash 前后跑测试的对照实验（既有红判别）要预留这步收尾。
 - **bookmeta 脚本式测试吞进程实证**：tests/test_bookmeta_chain.py 顶层 `sys.exit(1 if FAILS else 0)`，unittest 模块直跑模式 import 即执行全脚本并 exit(0)——同批后续模块一个不跑、判定行不打印、exit=0 假绿；**测试判别一律 discover `-s tests` 模式**（base.py 导入路径也只有该模式解析，模块直跑出 9 个伪 ERROR 的教训同源）。
+
+## 11 时班·第 4/4 步五道关覆核与管道假象实证（执行端，与上节发版终录互补）
+
+- **闸②真实结果**：全量 discover 重定向落盘实测 **REAL_EXIT=0、1546 ok 零失败**；首跑 `... | tail -25` 曾见 `test_core_guards ... FAIL` 一例——单跑 6/6 绿 ×2+复跑全绿+失败域（selfupdate）与本轮 diff 零交集，判既有序贯耦合 flaky 留观察。
+- **管道 `$?` 假象（与上节 publish 零输出假象成对）**：`python -m unittest discover ... | tail` 的退出码是 tail 的——首跑实有 FAIL 却报 exit 0，靠逐行扫输出抓 FAIL 字样才暴露；上步报告「全量 exit 0 全绿」同命令同假象，本步复跑才实证。**闸②判据必须 `> log 2>&1` 后看 `$?`，管道判绿一律不作数**。
+- **评审通道实录**：code-reviewer 代理网关 400（既有实录同型再现）→ 换 ocx-self 通道一次通过——「无阻塞问题可提交」，CRITICAL/HIGH/MEDIUM 零、LOW 一条 docstring 缩进（已修，被并行提交时序定格为修前版，随本沉淀提交恢复）；评审员额外实证核过 tests/base.py 隔离链有效性（含 revisions.make_revision 全模块无 I/O 的隐蔽面）与断言非空转（「翻译腔」旧常量确不含、溯源注释在常量外不虚过）——隔离与断言双验通过。
+- **E409 良性第二例旁证**：本端 publish 撞 `cannot publish over 0.1.80`——版本已由上节记录的在途 publish 落地（registry latest=0.1.80，shasum 0866adbe 实查在架）；与 v0.1.79 E409 staged 竞态同型，**并发班发布判据再钉一次：只认 `npm view`，撞 E409 即已达成**。

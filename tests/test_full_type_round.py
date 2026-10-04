@@ -8,8 +8,8 @@
   3. 边界：本轮落地件（serial_novel 签约门禁 note / rank_scan A-E 证据分级
       note）与 i18n EN 键严格相等、键恰好一次、旧版文案残留为零；
   4. 本轮新增：翻译起草侧常量带「翻译腔自查」条（yomiyasu 借鉴，此前翻译腔
-      只靠评审 rubric 事后抓）；经验库蒸馏走 upsert_lesson 入库路径——闭集
-      分类落位、同题再沉淀合并不分裂（隔离数据目录，不碰真实经验库）。
+     只靠评审 rubric 事后抓）；经验库蒸馏走 upsert_lesson 入库路径——闭集
+     分类落位、同题再沉淀合并不分裂（隔离数据目录，不碰真实经验库）。
 
 跑法：python -m unittest discover -s tests -p "test_full_type_round.py" -v
 17×3 字段 EN 键全量守卫在 test_i18n_dups.test_builtin_flow_fields_have_en_keys，

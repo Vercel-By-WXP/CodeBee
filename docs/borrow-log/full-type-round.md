@@ -197,6 +197,44 @@
 - 发版判断：本轮 pipeline.py 有代码入库（常量追加），按「当天有代码入库才发」候选 v0.1.80（patch+1 + CHANGELOG 顶部追加 + test_selfupdate 全绿前置）。
 - 真实风险如实记：`data/skills.json` 为运行时单文件 JSON 直写（skills 层既有形态，本轮沿用 `upsert_lesson` 未改存储层）；无并发/权限/迁移面新增。
 
+---
+
+## 第 4/4 步实录（11:00-11:2x，五道关+推送+发版 v0.1.80 收口）
+
+> 本步职责：整体联调+评审（修复轮预算 2）+五道关+推送+发版+沉淀。执行期间并行执行者
+> 在同工作区 main 完成了提交与推送（b68a6d1 功能五文件 + 1143ec0 发版三文件）——
+> 本步改走「核对确认」路径：提交内容与本轮改动面逐文件核对一致，无踩踏无恢复需求。
+
+### 五道关执行实录
+
+| 闸 | 结果 | 证据 |
+|---|---|---|
+| ⓪ 分支 | main ✓ | `git branch --show-current` = main（全程未切） |
+| ① 编译 | 过 | `py_compile app/core/pipeline.py tests/test_full_type_round.py` OK；零 JS 改动 `node --check` 不适用 |
+| ② 全量 | **真实退出码 0，1546 ok 零失败** | 首跑管道 tail 假象（见方法论节）；复跑 `> log 2>&1` 实测 REAL_EXIT=0；test_selfupdate 单独 6/6 绿 ×2、test_full_type_round 5/5 绿、test_i18n_dups 3/3 绿 |
+| ③ 评审 | 无阻塞问题，可提交 | code-reviewer 代理网关 400（既有实录同型）→ ocx-self 通道重试通过：CRITICAL/HIGH/MEDIUM 零，LOW 一条（docstring 续行缩进 6/5 空格混用，纯注释）；评审员实证核过测试隔离有效性（含 revisions.make_revision 全模块无 I/O 的隐蔽面）与断言非空转（「翻译腔」旧常量确不含，溯源注释在常量外不虚过） |
+| ④ 暂存 | 干净 | 外来标记（pick_dialog/ask_directory/backoff）零命中；五文件 UTF-8 无 BOM 逐字节过 |
+| ⑤ 提交核对 | 一致 | b68a6d1 stat 五文件（pipeline.py+9 / 测试+35 / 三文档）与本轮改动面逐文件一致、无外来文件；1143ec0 stat 三文件（package.json+CHANGELOG+README）为发版配套 |
+
+- **时序插曲如实记**：本步在评审后修了 docstring 缩进 LOW（6→5 空格），并行提交 b68a6d1（10:53:48）定格的是修前版本——修正随本沉淀提交恢复，纯注释零行为差异。
+- **flaky 判别**：首跑全量输出中 `test_core_guards ... FAIL` 一例——单跑 6/6 绿 ×2 + 复跑全量全绿 + 失败域（selfupdate）与本轮 diff（TRANSLATION_APPENDIX/测试用例）零交集，判既有序贯耦合 flaky，不阻塞不扩修（如实记录待观察）。
+
+### 推送与发版
+
+- **推送**：本地 main 与 origin/main 同步（fetch 后无 ahead/behind）——b68a6d1+1143ec0 均已在远端（并行执行者完成，本步 fetch 核对确认）。
+- **发版判定**：当天有代码入库（b68a6d1 pipeline.py 常量追加）✓；test_selfupdate 6/6 全绿 ✓；package.json 0.1.79→0.1.80、CHANGELOG 顶部追加、README relnotes 同步（1143ec0）✓。
+- **npm publish**：registry 实查 **latest=0.1.80 在架，shasum=0866adbe6e09d92e4912bf914d54f53cfe8735a9** ✓。我方 publish 撞 `E409 You cannot publish over the previously published versions: 0.1.80`——版本已由并行执行者发布，**竞态良性无需重发**（与 v0.1.79 发版 E409 staged 竞态实录同型第二例）。
+
+### 方法论沉淀：管道 exit 0 假象（本轮最大教训）
+
+`python -m unittest discover ... 2>&1 | tail -25` 的 `$?` 是 **tail 的退出码**，不是 unittest 的——首跑全量实有 FAIL 却报 exit 0，若非逐行扫输出抓到 `FAIL` 字样即漏检。上一步报告「全量 exit 0 全绿」同命令同假象，本步复跑才实证。**判全量必须重定向落盘后看真实退出码**：`python -m unittest discover -s tests > log 2>&1; echo $?`。
+
+### 未完成项与待深挖
+
+- test_core_guards 全量序贯 flaky（首跑一例）根因未查——selfupdate 域测试间状态耦合，与本轮无关，留观察不扩修。
+- 备选提案（教训卡负反馈/演示文稿类型/prompt 缓存）维持待深挖队列，零变化。
+- pypi 通道拦截页维持历班结论；新 CLI 五候选未装机不接入。
+
 ## 发版终录（v0.1.80，11 时班）
 
 - **提交链**：b68a6d1（feat: 翻译腔自查+守卫测试+蒸馏+巡检沉淀）→ 1143ec0（chore(release): v0.1.80 三件套）——连同前班 98445b4/db1736d 共 3 提交一并推送，远端零领先冲突（fetch 核对后直推）。
