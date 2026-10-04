@@ -90,6 +90,22 @@ class TestLockedOutlineHelpers(BaseTest):
         self.assertEqual(
             planner.locked_serial_outline_block({"workdir": str(self.tmp / "none")}, 1, 8), "")
 
+    def test_total_cap_scales_with_batch_size(self):
+        """12 章批（章纲总量 2.4 万字 > 旧固定 16000）不得截尾——尾部章的
+        章纲必须完整进注入块（2026-10-04 实案：45—48 章被生成成「待核」）。"""
+        from app.core import planner
+        gang = self.workdir / "章纲"
+        gang.mkdir()
+        filler = "章节节拍与红线占位内容，确保每份章纲有真实长度。" * 85   # ≈2040 字
+        for n in range(37, 49):
+            (gang / ("vol-1-ch-%d.md" % n)).write_text(
+                "第%d章锁定要点：%s" % (n, filler), encoding="utf-8")
+        block = planner.locked_serial_outline_block(
+            {"workdir": str(self.workdir)}, 37, 48)
+        self.assertIn("### 第 48 章锁定章纲", block, "尾章章纲不得被固定 cap 截掉")
+        self.assertIn("第37章锁定要点", block.replace(" ", ""))
+        self.assertGreater(len(block), 16000, "cap 应随批大小放大")
+
 
 class TestLockedChapterBlockShape(BaseTest):
 

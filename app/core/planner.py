@@ -530,19 +530,24 @@ def locked_chapter_outline_text(workdir, chapter, cap=3000):
     return _read_workdir_text(hits[-1], cap)
 
 
-def locked_serial_outline_block(task, start, end, per_cap=2500, total_cap=16000):
+def locked_serial_outline_block(task, start, end, per_cap=2500, total_cap=None):
     """续写大纲生成的锁定章纲注入块：本批 [start, end] 逐章汇总章纲全文。
-    一份章纲都没有时回退 大纲/*.md（截断兜底，至少锚住卷纲方向）；两者皆无
-    返回 ""（零噪音）。"""
+    总量上限随批大小缩放（下限 16000、上限 32000）——2026-10-04 实案：12 章
+    批次章纲共 2.4 万字，旧固定 16000 截尾，第 45—48 章被生成成「待核：原
+    章名未提供」。一份章纲都没有时回退 大纲/*.md（截断兜底，至少锚住卷纲
+    方向）；两者皆无返回 ""（零噪音）。"""
+    n = max(1, int(end) - int(start) + 1)
+    if total_cap is None:
+        total_cap = max(16000, min(32000, per_cap * n))
     workdir = str(task.get("workdir") or "")
     parts, used = [], 0
     if workdir:
-        for n in range(int(start), int(end) + 1):
+        for num in range(int(start), int(end) + 1):
             if used >= total_cap:
                 break
-            t = locked_chapter_outline_text(workdir, n, cap=per_cap)
+            t = locked_chapter_outline_text(workdir, num, cap=per_cap)
             if t:
-                head = "### 第 %d 章锁定章纲" % n
+                head = "### 第 %d 章锁定章纲" % num
                 parts.append(head + "\n" + t)
                 used += len(head) + len(t) + 2
     if parts:
