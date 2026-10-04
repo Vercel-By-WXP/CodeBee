@@ -1,7 +1,11 @@
+import sys
 from pathlib import Path
 
 from base import BaseTest
 
+# main.py 用 `from core import ...`，`import main` 前需把 app/ 加入 sys.path
+# （对齐 test_encoding_gbk/test_state_payload 惯例——旧布局裸 import 在 discover 下必红）
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 
 ROOT = Path(__file__).resolve().parents[1] / "app"
 

@@ -2213,3 +2213,28 @@ orca 84,897（+223 续领跑）/ gstack 135,116（+128 放量）/ SkillSpector 1
 ### 存量红清账（本班落地 6 件）
 
 usage_stats tie-break（2/2）/ test_flows 阈值对齐（9/9）/ test_quality_gate 旧布局 import（11/11）/ test_bookmeta_chain discover 兼容（双通道绿）/ test_publish_auto 建书对账断言对齐 07d066b+9cd11d1+新增未确认守卫用例（22/22，原 9F 清账）/ test_workdsh_boundaries 闭包补账场景改写（10/10，原 1F 清账）——**main 既有红台账 -2F -2E -9F -1F**，零新红。
+
+## 2026-10-05 05 时观察验收班（并发写手窗口期验收 + conversation_workspace 旧布局 import 清账）
+
+> 进入时六件在制品已由 04 时班验收回填（报告+knowledge 本班节齐备），本班先跑触及面独立复核
+> **7 组 71 项全绿**（usage 15/usage_stats 2/flows 9/quality_gate 11/bookmeta 1 双通道/publish_auto
+> 22/workdsh 10）。回填途中发现收口班在场（0291707 已提交、package.json bump 0.1.83 发版中）——
+> 按 7dbc3ce「拦并发写手在场窗口期」纪律**立即停写转观察**，全程零踩踏。
+
+### 收口班成果验收（本班独立核对）
+
+- **提交清单**：0291707 十文件（六件清账+四件沉淀）/ 07572a8 三文件（CHANGELOG/README/package.json）——零外来文件、零踩踏；commit message 与实际 diff 逐项吻合。
+- **推送**：main==origin/main（push 已落地）；**npm registry 实查 0.1.83**（publish 慢在途 ~7min 后核对落地，v0.1.82→0.1.83）。
+
+### 独立分片复跑对账（120/260 件粒度）
+
+- 前 120 件（a~c 段）**零新增红**：唯一 bad = `test_conversation_workspace` **2E**——`import main` 裸 import 旧布局残留（仓库根无 main.py，pre-app/ 时代正身），与 test_quality_gate 同族同因；即收口班 a-r 片「10F+2E」之 2E 实锚（收口班未点名，本班查明归档）。
+- `test_portscan` 单件 300s 挂死中止循环（32 位长跑静默退出在案现象的变体复现）——分片粒度跑法需配单件超时。
+
+### 本班落地件：conversation_workspace 旧布局 import 清账（1E）
+
+`sys.path.insert(app/)` + 注释对齐 test_encoding_gbk/test_state_payload 既有惯例——**3/3 绿**，触及面 26 项全绿（本件 3+state_payload 14+encoding_gbk 9）。零实现改动。
+
+### 发版判定
+
+本班零实现改动（纯测试+docs），不进 CHANGELOG「用户可感知变更」口径——**v0.1.83 保持 latest 不再发版**（同日 v0.1.81/82/83 三连发已有先例，但「仅当天有代码入库才发」的必要条件不满足）。
