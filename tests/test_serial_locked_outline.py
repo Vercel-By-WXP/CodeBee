@@ -165,7 +165,7 @@ class TestDraftAndReviseInjectLockedOutline(BaseTest):
         (self.workdir / "chapter-21.md").write_text("旧稿。", encoding="utf-8")
 
         body = "这是一段足够长的测试正文，主角在核对停工范围。" * 30
-        cap = {"draft": {}, "revise": {}}
+        cap = {"draft": {}, "revise": {}, "global": []}
 
         def fake(run_id, role, agent, prompt, workdir, readonly, ev, *a, **kw):
             if role.startswith("draft-c"):
@@ -183,6 +183,7 @@ class TestDraftAndReviseInjectLockedOutline(BaseTest):
             if role == "signing-eval":
                 return _ok(_j(SIGN))
             if role == "global-critique":
+                cap["global"].append(prompt)
                 return _ok(_j(RUBRIC))
             return _ok()
 
@@ -209,3 +210,10 @@ class TestDraftAndReviseInjectLockedOutline(BaseTest):
             self.assertNotIn("__BEATS__", prompt)
         for prompt in cap["draft"].values():
             self.assertIn("锁定章纲", prompt, "本用例两章都有章纲，起草提示词都应注入")
+        # 批次评审口径：续写批次（start>1）的全局评审必须带范围校正，
+        # 黄金三章口径明确只对全书 1—3 章
+        self.assertTrue(cap["global"], "应捕获到全局评审提示词")
+        for gp in cap["global"]:
+            self.assertIn("批次评审口径", gp, "续写批次全局评审必须注入批次口径")
+            self.assertIn("第 21—22 章", gp)
+            self.assertIn("仅适用于全书第 1—3 章", gp)

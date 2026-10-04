@@ -148,6 +148,9 @@ class TestPolishTargetsNamedChapters(PolishRunBase):
         self._review(task, run, agents, critics, impl, cap)
         pp = cap.get("polish_prompts") or {}
         self.assertTrue(pp, "全局低分应触发打磨")
+        # 首批（start=1）不注入批次评审口径——黄金三章口径本来就适用
+        for gp in cap.get("global_prompts", []):
+            self.assertNotIn("批次评审口径", gp)
         for p in pp.values():
             self.assertIn("不得改动既有剧情主线的关键事实", p)
 
