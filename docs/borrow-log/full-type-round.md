@@ -196,3 +196,10 @@
 - 待提交五文件：`app/core/pipeline.py`、`tests/test_full_type_round.py`（-f）、`docs/borrow-log/full-type-round.md`、`docs/borrow-log/knowledge.md`、`docs/borrow-log/2026-10-04.md`。
 - 发版判断：本轮 pipeline.py 有代码入库（常量追加），按「当天有代码入库才发」候选 v0.1.80（patch+1 + CHANGELOG 顶部追加 + test_selfupdate 全绿前置）。
 - 真实风险如实记：`data/skills.json` 为运行时单文件 JSON 直写（skills 层既有形态，本轮沿用 `upsert_lesson` 未改存储层）；无并发/权限/迁移面新增。
+
+## 发版终录（v0.1.80，11 时班）
+
+- **提交链**：b68a6d1（feat: 翻译腔自查+守卫测试+蒸馏+巡检沉淀）→ 1143ec0（chore(release): v0.1.80 三件套）——连同前班 98445b4/db1736d 共 3 提交一并推送，远端零领先冲突（fetch 核对后直推）。
+- **发版闸两实录**：①第 1 次 publish 被 prepublishOnly release_gate 拦——stash pop 的 CRLF 归一化让 tests/test_full_type_round.py 工作态出纯行尾 M，「发版前工作区必须净」`git restore` 一发即解；②过闸后 publish 慢在途 ~15min 才落地（registry 读秒回、写路径长挂，`| tail` 管道缓冲全程零输出）——**判落地只以 `npm view codebee version` 为准，勿凭无输出过早杀重发（E409 竞态教训仍在）**。
+- **终验**：registry latest=**0.1.80**、dist.shasum=`0866adbe6e09d92e4912bf914d54f53cfe8735a9` 与本地 pack 逐字一致、publish exit 0。
+- **纪律对账**：本轮零越界（既有红未代修、F 专项零写回、五候选零接入）；对照实验（stash 净跑 vs 带 diff 跑）判既有红零交集，全程未扩大改动面。

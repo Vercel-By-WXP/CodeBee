@@ -1845,3 +1845,10 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - 批2 主体结论沿用：记忆域竞品密度最高（episodic/procedural/事前警告/trace→教训各族齐备），机制面与我方经验库双通道（lessons 注入+知识库检索检索召回）重合度高，无未覆盖机制
 - **待深挖队列零变化**（零新候选零清账，11 项维持）；keywords.md 零调整（零新依据不动）
 - 纪律对账：A/C 高重合面未重跑（07 时班 2 小时内已全覆盖，按 keywords.md「结果高度重合即跳余页省配额」纪律）；pypi 通道拦截页与历班同效如实记
+
+## 11 时班·v0.1.80 发版终录（全类型轮第 3/4 步）
+
+- **落地**：提案 1+2 验收后过五道关——b68a6d1（翻译腔自查前置+守卫测试+蒸馏 3 条）+ 1143ec0（v0.1.80 三件套），连同前班 2 提交一并推送；提案 1 明细与验收实录见 full-type-round.md。
+- **publish 慢在途新实证（补 E409 条）**：registry 读（npm view）秒回、写（publish PUT）可长挂 ~15min 才落地；`npm publish | tail` 管道缓冲全程零输出≠卡死——**判落地只以 `npm view codebee version` 为准，勿凭无输出过早杀重发**；本次第 1 次尝试确被杀（后重发成功，未触发 E409 属侥幸，下次先等足 30min 窗口再动）。
+- **release_gate 拦 CRLF 实证**：stash pop 的行尾归一化会让 gitignored-but-tracked 测试文件工作态出纯行尾 M，prepublishOnly 闸按「工作区不净」拦发——`git restore <file>` 即解；stash 前后跑测试的对照实验（既有红判别）要预留这步收尾。
+- **bookmeta 脚本式测试吞进程实证**：tests/test_bookmeta_chain.py 顶层 `sys.exit(1 if FAILS else 0)`，unittest 模块直跑模式 import 即执行全脚本并 exit(0)——同批后续模块一个不跑、判定行不打印、exit=0 假绿；**测试判别一律 discover `-s tests` 模式**（base.py 导入路径也只有该模式解析，模块直跑出 9 个伪 ERROR 的教训同源）。
