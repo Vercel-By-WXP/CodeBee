@@ -241,3 +241,4 @@
 - **发版闸两实录**：①第 1 次 publish 被 prepublishOnly release_gate 拦——stash pop 的 CRLF 归一化让 tests/test_full_type_round.py 工作态出纯行尾 M，「发版前工作区必须净」`git restore` 一发即解；②过闸后 publish 慢在途 ~15min 才落地（registry 读秒回、写路径长挂，`| tail` 管道缓冲全程零输出）——**判落地只以 `npm view codebee version` 为准，勿凭无输出过早杀重发（E409 竞态教训仍在）**。
 - **终验**：registry latest=**0.1.80**、dist.shasum=`0866adbe6e09d92e4912bf914d54f53cfe8735a9` 与本地 pack 逐字一致、publish exit 0。
 - **纪律对账**：本轮零越界（既有红未代修、F 专项零写回、五候选零接入）；对照实验（stash 净跑 vs 带 diff 跑）判既有红零交集，全程未扩大改动面。
+- **发版闸第三实录（11:26 收尾复核班）**：另一路收尾复核的 publish 亦被 release_gate 拦——拦时工作态是并行沉淀提交（514f889）**正在写的两文件**（full-type-round.md/test_full_type_round.py 出 M），与①CRLF 行尾例成因不同：闸同样挡住「并发写手在场」窗口期的发版尝试。该路 publish 未出包（闸前置拦截），registry 0.1.80 由 11 时班 publish 落地，零重复发布。该班独立复核与终录全对账：⓪main✓ ①py_compile 5 文件+node --check i18n/app.js✓ ②全量后台真退出码 0✓ test_selfupdate 6/6✓ ③三码提交逐 hunk 自审零阻塞✓ ⑤四提交 stat 逐文件对账+外来标记零命中✓ registry `npm view`=0.1.80 实查✓——零新增修正，不重复沉淀。
