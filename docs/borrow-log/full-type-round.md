@@ -242,3 +242,32 @@
 - **终验**：registry latest=**0.1.80**、dist.shasum=`0866adbe6e09d92e4912bf914d54f53cfe8735a9` 与本地 pack 逐字一致、publish exit 0。
 - **纪律对账**：本轮零越界（既有红未代修、F 专项零写回、五候选零接入）；对照实验（stash 净跑 vs 带 diff 跑）判既有红零交集，全程未扩大改动面。
 - **发版闸第三实录（11:26 收尾复核班）**：另一路收尾复核的 publish 亦被 release_gate 拦——拦时工作态是并行沉淀提交（514f889）**正在写的两文件**（full-type-round.md/test_full_type_round.py 出 M），与①CRLF 行尾例成因不同：闸同样挡住「并发写手在场」窗口期的发版尝试。该路 publish 未出包（闸前置拦截），registry 0.1.80 由 11 时班 publish 落地，零重复发布。该班独立复核与终录全对账：⓪main✓ ①py_compile 5 文件+node --check i18n/app.js✓ ②全量后台真退出码 0✓ test_selfupdate 6/6✓ ③三码提交逐 hunk 自审零阻塞✓ ⑤四提交 stat 逐文件对账+外来标记零命中✓ registry `npm view`=0.1.80 实查✓——零新增修正，不重复沉淀。
+
+---
+
+## 2026-10-04 13 时班（新一轮计划第 2/4 步·七专项 A-G 巡检+落地）
+
+> 分支 main（7dbc3ce）。上接 12 时班批5 调研（工作区两 docs 在制品不碰）。巡检全绿，
+> 落地一件：待深挖第 7 项「教训卡标记无用显式负反馈」清账（后端零基础全新建）。
+
+### 七专项巡检结论（本班实锚）
+
+- **A token 节约**：预算熔断（pipeline.py:627/:696 max_tokens_per_run）/diff-only 评审（_git_diff:944+深度分级）/cascade（modelhub.classify_difficulty:3536）/_shrink_context_block（:2476，仅连载路径挂接）全在位。四方向对账：prompt 缓存/语义缓存全库零命中维持待深挖（语义缓存卡租户边界）；廉价分流已有完整链；strands-decider「机械决策不进 LLM」记 A 专项远期备注不建设 | 已覆盖
+- **B 插件市场**：六源（market_remote.py SOURCES:50）+assert_public_url:113+逐跳重过网关+typosquatting 对账（market.py:131）全在位；12 时班新见候选过三问均不过零接入 | 已覆盖
+- **C 任务类型**：BUILTIN_FLOWS 17 类型运行期实测全注册；rank_scan note「四平台」与 paihang._SOURCES 四源一致，无双源/单源过时文案残留 | 巡检
+- **D 经验库**：data/skills.json 70 条实测——流程规范 36%/节奏爽点 30%/情节逻辑 14%/人物塑造 10%/一致性 6%/文笔风格 4%，全库视角无病态偏科（61% 旧口径为 scope 视角，09 时班同结论）；标题完全重复 0 | 数据卫生
+- **E 新 CLI**：catalog 已接 11+；五候选（reasonix/fuxi/gitlawb/zero/empryo）本机 command -v 全未检出——零接入防死链维持 | 巡检
+- **F 禅道**：data/zentao.json claims={} 零积压、last_error 空、poll 未启（用户侧未接实例属预期）；scan_now/路由三规则/失败不回写口径在位；12 时班周边扫描零新禅道 AI 竞品 | 巡检
+- **G 产品**：版本号 package.json=0.1.80 与 CHANGELOG 一致；node --check app.js/i18n.js 过；榜单源数/菜单描述抽查零过时 | 巡检
+
+### 落地实录：教训卡「标记无用」显式负反馈（待深挖第 7 项清账）
+
+> hippo-memory 差量（770★，10-04 当日活跃）。此前自动闭环只有 won/lost 结局归因
+> （注入后过审/失败），用户「这条教训没用」的显式判断无入口。最小实现：
+
+- `app/core/skills.py`：①lesson_op 新增 "useless" op——立即停用（不再注入）+useless 计数 +1（再启用不丢证据）；②_karma/_surplus_decay 把 useless 按失守同权计入粘滞负证据（clamp 在 hits 内不倒挂），显式负反馈后即使手动再启用，排序也持续下沉
+- `app/ui/app.js`：教训卡新增「没用」按钮（确认弹窗→op useless）+「没用 n」负反馈计数徽章
+- `app/ui/i18n.js`：+4 EN 键（按钮/徽章/确认弹窗/徽章 title）
+- `tests/test_lesson_feedback.py`（新增，git add -f）：3 用例——停用+计数落账、bump_hits 对齐证据量后 relevance_top 排序下沉、enable/disable/delete/未知操作原语义零回归
+- 验收：py_compile+node --check 过；test_lesson_feedback 3/3 绿；test_i18n_dups 3/3、test_full_type_round 5/5 守卫绿；用例名全库唯一
+- 未做与风险备注：语义缓存/prompt 缓存维持待深挖第 2 项（租户边界交人拍板）； useless 证据 clamp 在 hits 内——零注入教训被标无用不产生 karma 罚（不臆测无注入证据的排序，先停用即刻生效）

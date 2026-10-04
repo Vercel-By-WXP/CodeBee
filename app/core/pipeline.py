@@ -2481,7 +2481,7 @@ def _shrink_context_block(sk_block, bible, budget=12000):
     - 圣经截断保整段（按二级标题边界，无边界才硬截）
     - 模块库截断保整模块（按「## 」标题边界）
     - 经验库直接硬截（条目本身短，损失最小）
-    返回 (新 sk_block, 降级说明)。无降级返回原样。"""
+    返回 (新 sk_block, 新 bible, 降级说明)。无降级原样返回（说明为空串）。"""
     total = len(sk_block or "") + len(bible or "")
     if total <= budget:
         return sk_block, bible, ""
@@ -2514,6 +2514,14 @@ def _shrink_context_block(sk_block, bible, budget=12000):
         bible = keep + "\n\n（圣经已因上下文容量限制精简）"
         notes.append("圣经→边界截断")
     return sk_block, bible, "；".join(notes)
+
+
+def _serial_shrunk_block(lessons, bible, kb_block, budget=12000):
+    """连载起草重试的分层降级组装：经验库与圣经按各自身份过 _shrink_context_block
+    （经验库→4K、模块库按模块边界、圣经按二级标题边界），知识库块与大纲/前情
+    同待遇永不动。返回重组后的替换块——调用方整块 replace，字节级对位。"""
+    sk2, bible2, _note = _shrink_context_block(lessons, bible, budget=budget)
+    return "\n\n".join(p for p in (sk2, bible2, kb_block) if p)
 
 
 def _critic_lens(critics, agent):
@@ -3522,12 +3530,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 stale_note = ("- 注意：目录里已有一版**未通过评审**的旧稿 `%s`——不要校验沿用、"
                               "不要增量修补，按本章任务直接覆盖重写。" % ch_file)
             # stable_order：同一任务 8 个章节的技能块必须字节级一致（§07 T1.2' 前缀缓存）
-            sk_block, _ = skills.block_for(task, stable_order=True, run_id=run_id)
-            if bible:
-                sk_block = (sk_block + "\n\n" + bible) if sk_block else bible
+            # 三块分开留底：起草重试的分层降级（_serial_shrunk_block）要按
+            # 「经验库/圣经」各自的身份收缩，折成一整块就只剩 4K 硬截一层了
+            sk_lessons, _ = skills.block_for(task, stable_order=True, run_id=run_id)
             kb_block = knowledge.block_for(task)
-            if kb_block:
-                sk_block = (sk_block + "\n\n" + kb_block) if sk_block else kb_block
+            sk_block = "\n\n".join(p for p in (sk_lessons, bible, kb_block) if p)
             scope = ("本章 = 大纲第 %d 章" % i) if start == 1 else (
                 "本批为第 %d–%d 章，下列按全书章号列出各章要点" % (start, end))
 
@@ -3602,8 +3609,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         # ——分层降级：经验库→4K、模块库按模块边界、圣经按二级标题
                         # 边界，保大纲/前情/本章要点（2026-09-17 七猫实测：全量
                         # 30KB 对讯飞必挂）
-                        sk2, bible2, _note = _shrink_context_block(sk_block, bible, budget=12000)
-                        use_prompt = prompt.replace(sk_block, sk2).replace(bible, bible2)
+                        use_prompt = prompt.replace(
+                            sk_block, _serial_shrunk_block(sk_lessons, bible, kb_block))
                     # 超时重试必须有新变量才值得做（2026-09-22）：提示词与上次逐字节
                     # 相同、上次又是超时/停滞收场时，重试只是把同一个超时再烧一遍
                     # （2400s × N）。此时直接跳出交替换将——换 CLI/模型才是新机会。

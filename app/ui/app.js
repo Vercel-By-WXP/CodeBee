@@ -11032,11 +11032,13 @@ function renderSkills() {
     (x.hits ? '<span class="tag">' + t("已注入 ") + x.hits + t(" 次") + "</span>" : "") +
     (x.won > 0 ? '<span class="tag ok" title="' + t("注入后任务过审的次数（真实帮上忙）") + '">' + t("有效 ") + x.won + "</span>" : "") +
     (x.lost > 0 ? '<span class="tag" style="color:var(--bad)" title="' + t("注入后任务仍失败的次数（没防住）") + '">' + t("失守 ") + x.lost + "</span>" : "") +
+    (x.useless ? '<span class="tag" style="color:var(--bad)" title="' + t("用户标记无用的次数（显式负反馈，排序下沉）") + '">' + t("没用 ") + x.useless + "</span>" : "") +
     (x.enabled === false ? '<span class="tag">' + t("已停用") + "</span>" : "") + "</div>" +
     '<div class="note">' + esc(t(x.content)) + "</div>" +
     '<div class="ops">' +
     '<button class="ghost small" onclick="skillLessonOp(\'' + esc(x.id) + '\', \'' +
     (x.enabled === false ? "enable" : "disable") + '\')">' + (x.enabled === false ? t("启用") : t("停用")) + "</button>" +
+    '<button class="ghost small" onclick="skillLessonOp(\'' + esc(x.id) + '\', \'useless\')" title="' + t("标记这条教训没帮上忙？将停用并记一次无用反馈") + '">' + t("没用") + "</button>" +
     '<button class="danger small" onclick="skillLessonOp(\'' + esc(x.id) + '\', \'delete\')">' + t("删除") + "</button>" +
     "</div></div>").join("") ||
     (filt ? '<div class="empty">' + t("该分类下暂无教训") + "</div>"
@@ -11055,6 +11057,7 @@ async function skillPackOp(id, op) {
 }
 
 async function skillLessonOp(id, op) {
+  if (op === "useless" && !await uiConfirm(t("标记这条教训没帮上忙？将停用并记一次无用反馈"), { ok: t("没用"), danger: true })) return;
   if (op === "delete" && !await uiConfirm(t("删除这条教训？"), { ok: t("删除"), danger: true })) return;
   try { await api("/api/skills/lesson-op", { method: "POST", body: JSON.stringify({ id, op }) }); }
   catch (e) { toast(e.message, true); return; }

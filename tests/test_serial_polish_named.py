@@ -75,16 +75,21 @@ class TestNamedHelpers(BaseTest):
         (adir / "卷一合集.md").write_text("第一章前文A\n\n第二章前文B", encoding="utf-8")
         (adir / "阅读目录.md").write_text("目录：不是正文", encoding="utf-8")
         # 前文章节文件全部不在场 → 归档找回；目录文件不算正文（断言用包含式，
-        # 不依赖 read 侧换行归一）
-        pref = P._archived_preface(self.workdir, 21)
+        # 不依赖 read 侧换行归一）。返回 (文本, 归档覆盖到的章号) 二元组
+        # （c7f973b 起混合态按连续缺失前缀计入，旧「见任一章在场即整体放弃」
+        # 契约已废——本用例曾按旧契约断言字符串，2026-10-04 巡检班对齐）
+        pref, upto = P._archived_preface(self.workdir, 21)
         self.assertIn("第一章前文A", pref)
         self.assertIn("第二章前文B", pref)
+        self.assertEqual(upto, 20)
         self.assertNotIn("目录", pref)
-        # 任一前文章节在场 → 视为未归档，走正常路径
+        # 混合态：3 在场时连续缺失前缀只有 1–2，仍从归档找回（1–2 不再静默丢出）
         P._write_chapter(self.workdir, 3, "还在场的第三章")
-        self.assertEqual(P._archived_preface(self.workdir, 21), "")
+        pref2, upto2 = P._archived_preface(self.workdir, 21)
+        self.assertIn("第一章前文A", pref2)
+        self.assertEqual(upto2, 2)
         # 首批（start<=1）没有前文可找
-        self.assertEqual(P._archived_preface(self.workdir, 1), "")
+        self.assertEqual(P._archived_preface(self.workdir, 1), ("", 0))
 
     def test_full_manuscript_batch_first_budget(self):
         from app.core import pipeline as P

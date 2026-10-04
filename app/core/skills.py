@@ -336,6 +336,8 @@ def _karma(item):
     lost = max(0, int(item.get("lost") or 0))
     if lost > hits:
         lost = hits            # 台账被手工改坏时不失守倒挂
+    useless = min(max(0, int(item.get("useless") or 0)), hits)
+    lost = max(lost, useless)  # 用户显式「标记无用」按失守同权计入（粘滞负证据）
     return (hits - lost + _KARMA_PRIOR) / (hits + 2 * _KARMA_PRIOR)
 
 
@@ -351,6 +353,7 @@ def _surplus_decay(item, now=None):
     被再次触及即重置。只压排序，不删除、不改数据。"""
     hits = max(0, int(item.get("hits") or 0))
     lost = min(max(0, int(item.get("lost") or 0)), hits)
+    lost = max(lost, min(max(0, int(item.get("useless") or 0)), hits))
     if int(item.get("won") or 0) > 0:
         return hits - lost, lost
     stamp = item.get("updated_at") or item.get("created_at")
@@ -489,8 +492,9 @@ def upsert_lesson(scope, title, content, source="", category=None, dim=None):
 
 
 def lesson_op(lesson_id, op):
-    """启用/停用/删除教训。返回错误或 None。"""
-    if op not in ("enable", "disable", "delete"):
+    """启用/停用/删除教训；useless=用户显式「标记无用」（停用+记粘滞负证据）。
+    返回错误或 None。"""
+    if op not in ("enable", "disable", "delete", "useless"):
         return "未知操作 " + str(op)
     with _LOCK:
         data = _load()
@@ -500,6 +504,9 @@ def lesson_op(lesson_id, op):
             return "教训不存在"
         if op == "delete":
             data["lessons"] = [x for x in items if x.get("id") != lesson_id]
+        elif op == "useless":
+            hit["enabled"] = False   # 显式负反馈即停用：不再注入
+            hit["useless"] = int(hit.get("useless") or 0) + 1
         else:
             hit["enabled"] = (op == "enable")
         _save(data)
