@@ -167,6 +167,17 @@ def _norm_serial(serial):
     per = volumes.norm_per(serial.get("volume_chapters"))
     if per:
         out["volume_chapters"] = per
+    # 同章赛马/多线推演（1=不启用不落键）：流程编辑器（app.js fl-variants）
+    # 会把 variants 随 serial 提交，漏带会在 upsert 时被静默丢弃——任务创建
+    # 从 flow.serial 继承（store.create_task）后永远读到 1，赛马形同虚设。
+    # 钳位口径与 store.create_task 一致（1-3）。
+    for key in ("variants", "branches"):
+        try:
+            n = max(1, min(3, int(serial.get(key) or 1)))
+        except Exception:
+            n = 1
+        if n > 1:
+            out[key] = n
     return out
 
 

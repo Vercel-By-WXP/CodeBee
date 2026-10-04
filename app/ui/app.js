@@ -766,7 +766,7 @@ function onTypeChange() {
   const bibleCreate = $("bible-create-field");
   const isSerialReview = isReview && !!(flow && flow.serial);
   if (bibleCreate) bibleCreate.classList.toggle("hidden", !isSerialReview);
-  const clearSerialFields = () => ["f-chapters", "f-words-per-ch", "f-variants", "f-bible",
+  const clearSerialFields = () => ["f-chapters", "f-words-per-ch", "f-variants", "f-branches", "f-bible",
     "f-vol-chapters", "f-vol-spec"].forEach((id) => {
     const el = $(id);
     if (el) el.value = "";
@@ -3187,6 +3187,9 @@ async function createTask() {
         chapters: ch,
         words_per_chapter: parseInt($("f-words-per-ch").value, 10) || 2500,
         variants: Math.max(1, Math.min(3, parseInt($("f-variants").value, 10) || 1)),
+        // 多线剧情推演：任务级 serial 整体替换流程默认，漏带会把流程里
+        // 配好的 branches 冲掉（store.create_task 字段级不合并）
+        branches: Math.max(1, Math.min(3, parseInt($("f-branches").value, 10) || 1)),
       };
       // 分卷：显式卷结构文本优先（后端解析成卷表），否则用每卷章数。
       // 两个都留空 = 不分卷（后端收到 0/缺字段即不分卷）。
@@ -3951,6 +3954,7 @@ async function newFromTaskAsync(id) {
     $("f-chapters").value = tk.serial ? tk.serial.chapters : "";
     $("f-words-per-ch").value = tk.serial ? tk.serial.words_per_chapter : "";
     $("f-variants").value = tk.serial && tk.serial.variants ? tk.serial.variants : "";
+    $("f-branches").value = tk.serial && tk.serial.branches ? tk.serial.branches : "";
     // 分卷：还原每卷章数；指定卷结构还原成可读文本（卷名 + 章数/章号范围）
     $("f-vol-chapters").value = tk.serial && tk.serial.volume_chapters ? tk.serial.volume_chapters : "";
     $("f-vol-spec").value = tk.serial && Array.isArray(tk.serial.volumes)
@@ -10887,6 +10891,7 @@ function flowForm(fid) {
     '<div class="field"><label>' + t("连载章节数（留空 = 单稿件）") + '</label><input id="fl-chapters" type="number" min="2" max="20" value="' + (f && f.serial ? f.serial.chapters : "") + '" placeholder="' + t("例：8") + '"></div>' +
     '<div class="field"><label>' + t("每章约字数") + '</label><input id="fl-words-per-ch" type="number" min="500" max="8000" step="100" value="' + (f && f.serial ? f.serial.words_per_chapter : "") + '" placeholder="' + t("例：2500") + '"></div>' +
     '<div class="field"><label>' + t("同章赛马稿件数") + '</label><input id="fl-variants" type="number" min="1" max="3" step="1" value="' + (f && f.serial ? (f.serial.variants || 1) : 1) + '" placeholder="' + t("1 = 关闭") + '"></div>' +
+    '<div class="field"><label>' + t("多线剧情推演数") + '</label><input id="fl-branches" type="number" min="1" max="3" step="1" value="' + (f && f.serial ? (f.serial.branches || 1) : 1) + '" placeholder="' + t("1 = 关闭") + '"></div>' +
     '<div class="field"><label>' + t("分卷：每卷章数（留空 = 不分卷）") + '</label><input id="fl-vol-chapters" type="number" min="2" max="200" step="1" value="' + (f && f.serial && f.serial.volume_chapters ? f.serial.volume_chapters : "") + '" placeholder="' + t("例：20") + '"></div>' +
     "</div>" +
     '<div class="field"><label>' + t("起草提示词（可选，占位符 __FILE__ __GOAL__ __CONTEXT__ __SKILLS__）") + '</label><textarea id="fl-draft" rows="3" placeholder="' + t("留空 = 内置通用模板") + '">' + esc(f && f.draft_prompt ? f.draft_prompt : "") + "</textarea></div>" +
@@ -10932,6 +10937,7 @@ async function saveFlow() {
         chapters: ch,
         words_per_chapter: parseInt($("fl-words-per-ch").value, 10) || 2500,
         variants: Math.max(1, Math.min(3, parseInt($("fl-variants").value, 10) || 1)),
+        branches: Math.max(1, Math.min(3, parseInt($("fl-branches").value, 10) || 1)),
       };
       const vp = parseInt(($("fl-vol-chapters") || {}).value, 10);
       if (vp >= 2) payload.serial.volume_chapters = vp;   // 流程默认分卷（任务级可覆盖）

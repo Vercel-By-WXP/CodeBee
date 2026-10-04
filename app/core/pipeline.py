@@ -2519,9 +2519,10 @@ def _shrink_context_block(sk_block, bible, budget=12000):
 def _serial_shrunk_block(lessons, bible, kb_block, budget=12000):
     """连载起草重试的分层降级组装：经验库与圣经按各自身份过 _shrink_context_block
     （经验库→4K、模块库按模块边界、圣经按二级标题边界），知识库块与大纲/前情
-    同待遇永不动。返回重组后的替换块——调用方整块 replace，字节级对位。"""
-    sk2, bible2, _note = _shrink_context_block(lessons, bible, budget=budget)
-    return "\n\n".join(p for p in (sk2, bible2, kb_block) if p)
+    同待遇永不动。返回 (重组后的替换块, 降级说明)——调用方整块 replace，字节级
+    对位；降级说明（哪几层生效了）进 step note，运行页可对账（预算内为空串）。"""
+    sk2, bible2, note = _shrink_context_block(lessons, bible, budget=budget)
+    return "\n\n".join(p for p in (sk2, bible2, kb_block) if p), note
 
 
 def _critic_lens(critics, agent):
@@ -3596,6 +3597,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 last_attempt_reason = chapter_reason
                 prev_prompt = None      # 上一次实际下发的提示词
                 prev_timed_out = False  # 上一次是否「超时/停滞」收场
+                shrink_note = ""        # 本次重试的分层降级说明（进 step note 供对账）
                 for draft_attempt in range(3):
                     if draft_attempt:
                         # 30s / 60s 退避；ev.wait 睡等可被取消即刻唤醒
@@ -3609,8 +3611,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         # ——分层降级：经验库→4K、模块库按模块边界、圣经按二级标题
                         # 边界，保大纲/前情/本章要点（2026-09-17 七猫实测：全量
                         # 30KB 对讯飞必挂）
-                        use_prompt = prompt.replace(
-                            sk_block, _serial_shrunk_block(sk_lessons, bible, kb_block))
+                        shrunk_block, shrink_note = _serial_shrunk_block(
+                            sk_lessons, bible, kb_block)
+                        use_prompt = prompt.replace(sk_block, shrunk_block)
                     # 超时重试必须有新变量才值得做（2026-09-22）：提示词与上次逐字节
                     # 相同、上次又是超时/停滞收场时，重试只是把同一个超时再烧一遍
                     # （2400s × N）。此时直接跳出交替换将——换 CLI/模型才是新机会。
@@ -3622,7 +3625,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                     step_wd, readonly=False, ev=ev, timeout=2400,
                                     resume=resume_ctx["session"] if resume_ctx else None,
                                     images=_task_images(task, workdir),
-                                    note=("起草重试 %d/2（网关限流退避）" % draft_attempt) if draft_attempt else "")
+                                    note=("起草重试 %d/2（网关限流退避%s）"
+                                          % (draft_attempt,
+                                             ("；降级：" + shrink_note) if shrink_note else "")) if draft_attempt else "")
                     prev_prompt = use_prompt
                     prev_timed_out = bool((res.get("raw") or {}).get("timed_out"))
                     if (res.get("raw") or {}).get("repeat_stop"):
@@ -3729,6 +3734,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 # 败稿删除；变体 0 = 本任作者（revise 会话沿用），其余取跨族优先的
                 # 其他真实智能体，不足时同作者开新会话凑数。
                 scored_variants = []
+                # 复赛降级块（算一次）：与非赛马起草重试同源（_serial_shrunk_block）
+                # ——预算内与 sk_block 字节级一致（replace 等于原样），超预算才真降级
+                race_shrunk_block, race_shrink_note = _serial_shrunk_block(
+                    sk_lessons, bible, kb_block)
                 for race_round in range(2):
                     # 全变体失败（网关突发限流）→ 60s 退避重赛一轮，别一章判死
                     if race_round:
@@ -3754,13 +3763,22 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
 
                     def _draft_one(kk, agent):
                         vfile = "chapter-%02d-v%d.md" % (i, kk)
+                        vp = _draft_prompt(vfile)
+                        if race_round and len(vp) > 12000 and sk_block and sk_block in vp:
+                            # 复赛分层降级（与非赛马起草重试同口径）：容量受限通道上
+                            # 全量提示词必挂，复赛照发同一份全量只是把 N×2400s 再烧
+                            # 一遍——按身份收缩经验库/圣经（大纲/前情/知识库块不动）。
+                            vp = vp.replace(sk_block, race_shrunk_block)
+                        note = "赛马变体 %d/%d（%s）" % (kk + 1, len(pool), agent.get("id"))
+                        if race_round and race_shrink_note:
+                            note += "；复赛降级：%s" % race_shrink_note
                         r = _run_step(run_id, "draft-c%d-v%d" % (i, kk),
                                       modelhub.bind_agent(agent, difficulty),
-                                      _draft_prompt(vfile), step_wd, readonly=False, ev=ev,
+                                      vp, step_wd, readonly=False, ev=ev,
                                       timeout=2400,
                                       # 赛马只在全新起草时启用（无续会话），每路都是新会话
                                       images=_task_images(task, workdir),
-                                      note="赛马变体 %d/%d（%s）" % (kk + 1, len(pool), agent.get("id")))
+                                      note=note)
                         results[kk] = (vfile, agent, r)
 
                     threads = []

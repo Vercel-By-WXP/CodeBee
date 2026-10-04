@@ -103,6 +103,27 @@ class BranchingTests(BaseTest):
                                 "serial": {"chapters": 2}})
         self.assertNotIn("branches", t3["serial"])   # 默认关
 
+    def test_continue_task_inherits_branches(self):
+        """续写批次沿用 branches（与 variants 随链条沿用同口径）——漏带则
+        多线推演在连载链上只剩首批生效，续写批次静默回到 1。"""
+        from app.core import store
+        prev = store.create_task({"type": "serial_novel", "title": "链书", "goal": "g",
+                                  "workdir": str(self.workdir),
+                                  "serial": {"chapters": 2, "words_per_chapter": 800,
+                                             "branches": 2}})
+        (self.workdir / "chapter-01.md").write_text("第 1 章", encoding="utf-8")
+        ok, err, nxt = store.continue_task(prev["id"])
+        self.assertTrue(ok, err)
+        self.assertEqual(nxt["serial"]["branches"], 2)
+        self.assertEqual(nxt["serial"]["continues"], prev["id"])
+        # 关闭态（不落键）续写后同样不落键——不悄悄打开
+        prev2 = store.create_task({"type": "serial_novel", "title": "链书二", "goal": "g",
+                                   "workdir": str(self.workdir),
+                                   "serial": {"chapters": 2, "words_per_chapter": 800}})
+        ok2, err2, nxt2 = store.continue_task(prev2["id"])
+        self.assertTrue(ok2, err2)
+        self.assertNotIn("branches", nxt2["serial"])
+
 
 def runner_mod():
     from app.core import runner

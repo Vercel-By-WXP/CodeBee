@@ -1831,6 +1831,8 @@
     "工作目录内的文件名": "File name inside the workdir",
     "1 = 关闭": "1 = off",
     "1 = 关闭（2-3 每章多稿择优，更贵）": "1 = off (2-3 drafts per chapter, best wins — pricier)",
+    "多线剧情推演数": "Plot branch plans per chapter",
+    "1 = 关闭（2-3 写前剧情分支推演择优）": "1 = off (2-3 branch plans, best picked before drafting)",
     "小写字母开头，可留空": "start with a lowercase letter; optional",
     "留空 = 2": "empty = 2",
     "留空 = 7.0": "empty = 7.0",

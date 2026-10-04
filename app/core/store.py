@@ -1801,6 +1801,10 @@ def continue_task(task_id, chapters=None):
     }
     if serial.get("variants"):   # 赛马配置随链条沿用
         payload["serial"]["variants"] = serial["variants"]
+    # 多线推演（branches）同口径随链条沿用：漏带则续写批次恒回 1，
+    # 多线剧情推演在连载链上只剩首批生效
+    if serial.get("branches"):
+        payload["serial"]["branches"] = serial["branches"]
     # 分卷配置随链条沿用：卷边界必须跨批次稳定，否则同一卷会被续写批次重切
     if serial.get("volumes"):
         payload["serial"]["volumes"] = serial["volumes"]

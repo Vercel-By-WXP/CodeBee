@@ -271,3 +271,54 @@
 - `tests/test_lesson_feedback.py`（新增，git add -f）：3 用例——停用+计数落账、bump_hits 对齐证据量后 relevance_top 排序下沉、enable/disable/delete/未知操作原语义零回归
 - 验收：py_compile+node --check 过；test_lesson_feedback 3/3 绿；test_i18n_dups 3/3、test_full_type_round 5/5 守卫绿；用例名全库唯一
 - 未做与风险备注：语义缓存/prompt 缓存维持待深挖第 2 项（租户边界交人拍板）； useless 证据 clamp 在 hits 内——零注入教训被标无用不产生 karma 罚（不臆测无注入证据的排序，先停用即刻生效）
+
+---
+
+## 2026-10-04 15 时班（新一轮计划第 1/4 步·全类型调研——检索覆盖矩阵与证据）
+
+> 开工 15:36、分支 main（b4dd562，v0.1.81 已发版）、工作区干净。本步只做调研与沉淀，
+> 零代码改动；产出=knowledge.md「15 时班」节 + 本节。
+
+### 执行参数与批次判定
+
+- **本机执行时刻**：2026-10-04 15:36（周日）；**hour=15，15 % 7 = 1 → 轮换批1（代码质量与评审）**。
+- **主扫描**：`scripts/borrow_scan_nightly.py` 全量（无 --batch）＝A 常驻 78（含内置 B1 11）+ B1 轮换 11 + A1u（sort=updated 新锐轮）8 + A1p2（stars page=2 翻页）8 = **116 查询**。
+- **限流纪律**：gh api 认证调用串行 sleep 4s；进度日志 116/116 ok、**零 403 零 FAIL 零 EXC**；单查询超时 60s + 403 退避 20s 一次（未触发）。
+- **结果**：524 行、按 full_name 去重后 **423 唯一仓**；结果高度重合（与当日凌晨班/07 时班两轮 A 常驻 + 今日批1-7 全覆盖一致）——按 keywords.md「重合跳余页省配额」纪律，未追加 page=3。
+
+### 检索覆盖矩阵（13 场景 × 本轮命中面）
+
+用户列举 14 场景（口径「13 种」）对 `flows.py BUILTIN_FLOWS` 实数 17（当日多班三向一致，本班不重复动码，引用凌晨班矩阵）：direct/code/novel/serial_novel/article/video_script/doc/translation/rank_scan/defect_retro/research/speech/weekly_report/email 全映射，另含 doc/resume/bid_doc。本轮词组对各类型的扫描命中：
+
+| 类型 | 词组面 | 本轮命中结论 |
+|---|---|---|
+| 代码 | B1 批1 全 11 组 + A10 代码两组 | 主体已录零增量；GnawTreeWriter 0★（AST 编辑族）等微型 |
+| 小说/连载 | A7 前四组 + A12 | 写作域无新竞品**第七班连续确认**（新锐轮全 0-2★） |
+| 自媒体文章 | A7 article 组 + wenzi-xhs（已录） | 无新标的 |
+| 调研报告 | A10 deep research + B5（今日 12 时班） | 已录族稳定 |
+| 短视频脚本 | A10 短视频组 + video_script 域（5 例已录） | 无新标的 |
+| 技术方案/演讲/汇报/邮件 | A10 对应四组 | 学生级为主，结论维持 |
+| 翻译 | A7 translation + A10 quality | yomiyasu 1,347（10-04 当日活跃）在动；已落地条无新差量 |
+| 扫榜/禅道工单 | A9 + 禅道周边 2 组 | 零新禅道 AI 竞品（第 8 例后持续为零） |
+| 对话/文档 | A10 chatbot memory / doc 组 | sharedcontext 50★ 等微型 |
+
+### 雷达源 C 遍历记录（全过，逐源证据）
+
+| 源 | 通道 | 结果 |
+|---|---|---|
+| repos 端点复查 | gh api repos（22 仓，2s 间隔） | 全命中零 archived：orca 84,581（10-04）/Reasonix 35,738（10-04，E 候选首位）/oh-story 7,242/yomiyasu 1,347/hippo-memory 770/ZCode 7,384（未装维持）/spec-kit 140,041/OpenSpec 71,004 等 |
+| awesome 清单 | repos 端点 8 清单 | 全活跃：awesome-claude-code 55,035（10-04）/VoltAgent 35,181/awesome-claude-skills 76,443/awesome-llm-apps 140,663/awesome-mcp-servers 95,806/harness-engineering 4,692/Agent-Memory 657（10-04）/Long-Horizon 1,059（停更观察维持） |
+| Trending 替身 | trendshift.io（webfetch 直连成功） | 新面孔 t3code 24.8k/image-blaster 1.1k/whirl 355 已录；moli/OpenDots/claude-mem/Agent-Reach 已录 |
+| topic 页 8 | gh api search topic: sort=stars per_page=5 | 首五位全已录；唯一新面孔 archify 76,860（已录上） |
+| 新锐轮 2 | created:>2026-09-28 sort=stars | agent 域全 genpark 蓄水农场族（已录不重复）；写作域全 0-2★ |
+| 自家 CLI 周边 5 | codex manager/claude code manager/opencode suite/kimi cli/grok cli | 全为已录族（cockpit-tools 18,614/opencodex 16,883/kimi-code 7,769/CLIProxyAPI 54,067） |
+| 禅道周边 2 | zentaophp OR zentao ai/bug triage agent | 首页大盘噪音占位、clickup-ai-bug-triage 0★——零新禅道 AI 竞品 |
+| npm 两查 | npm search --json（agent orchestrator/claude code） | 已录族为主（nax/agentcraft/oceanus/bizar/coleo），无接入级标的 |
+| pypi | pypi.org/search（webfetch） | **Client Challenge 拦截页**（历班 3038B 拦截页之外新形态，第六种记录）——通道不可用如实记，npm 通道正常 |
+
+### 本轮结论与候选裁定
+
+- **真新面孔 ~18 件全为参考/雷达级，零机制级新差量（连续第十六班稳定期）**；最大两件 t3code（24.8k，同形态控制面）与 archify（76.9k，图表生成 skill）均无「他们有、我们没有、确实好用」的可抄机制——同形态形态差量（移动全控）与域外能力（图表工序）分别交人拍板/记录，不擅自扩。
+- **历史项目逐项增量复查**已并入 knowledge.md「15 时班·复查记录」（22 仓 repos 端点 + 主扫双轮比对）。
+- keywords.md 零调整（无新依据）；A1-A10 常驻组、批1、C 雷达全部执行完毕；不可访问源（pypi）如实记为阻塞。
+- E 专项顺带实测：本机在装 13 CLI、九候选全未装——零接入防死链维持（无新接入候选达标）。

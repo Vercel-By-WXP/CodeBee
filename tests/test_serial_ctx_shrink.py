@@ -38,34 +38,38 @@ class SerialCtxShrinkTests(BaseTest):
         """经验库→4K 与模块库边界截断各层独立生效；知识库块原样保留。"""
         from app.core import pipeline
         lessons, bible, kb = _big_lessons(), _module_bible(), "知识块：术语表。"
-        out = pipeline._serial_shrunk_block(lessons, bible, kb)
+        out, note = pipeline._serial_shrunk_block(lessons, bible, kb)
         self.assertIn("经验库已因上下文容量限制精简", out)
         self.assertIn("模块库已因上下文容量限制精简", out)
         self.assertIn(kb, out)                       # 知识块永不动
         self.assertLess(len(out), len("\n\n".join((lessons, bible, kb))))
+        self.assertIn("经验库→4K", note)             # 降级说明逐层可对账
+        self.assertIn("模块库→边界截断", note)
 
     def test_within_budget_untouched(self):
-        """预算内整块原样返回（字节级对位，保证 replace 命中）。"""
+        """预算内整块原样返回（字节级对位，保证 replace 命中），无降级说明。"""
         from app.core import pipeline
         lessons, bible, kb = "小经验块", "## 故事圣经\n设定。", "知识块"
         joined = "\n\n".join(p for p in (lessons, bible, kb) if p)
-        self.assertEqual(pipeline._serial_shrunk_block(lessons, bible, kb), joined)
+        self.assertEqual(pipeline._serial_shrunk_block(lessons, bible, kb),
+                         (joined, ""))
 
     def test_empty_parts_leave_no_blank_segments(self):
         """经验库/知识块为空时不出空段、不出多余分隔符。"""
         from app.core import pipeline
         bible = "## 故事圣经\n设定。"
-        self.assertEqual(pipeline._serial_shrunk_block("", bible, ""), bible)
-        self.assertEqual(pipeline._serial_shrunk_block("经验", "", ""), "经验")
+        self.assertEqual(pipeline._serial_shrunk_block("", bible, ""), (bible, ""))
+        self.assertEqual(pipeline._serial_shrunk_block("经验", "", ""), ("经验", ""))
 
     def test_bible_boundary_layer_without_modules(self):
         """无模块库标记的超长圣经走二级标题边界截断兜底层。"""
         from app.core import pipeline
         bible = _section_bible()
-        out = pipeline._serial_shrunk_block("短经验", bible, "")
+        out, note = pipeline._serial_shrunk_block("短经验", bible, "")
         self.assertIn("圣经已因上下文容量限制精简", out)
         self.assertIn("\n## ", out)                  # 截在标题边界，不拦腰
         self.assertLess(len(out), len(bible))
+        self.assertIn("圣经→边界截断", note)
 
 
 if __name__ == "__main__":
