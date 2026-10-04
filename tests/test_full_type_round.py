@@ -6,7 +6,10 @@
   2. 回归：用户 14 场景 → 注册表 id 映射零缺失（任务类型矩阵口径锁定），
      注册表额外 doc/resume/bid_doc 三类型如实记录；
   3. 边界：本轮落地件（serial_novel 签约门禁 note / rank_scan A-E 证据分级
-     note）与 i18n EN 键严格相等、键恰好一次、旧版文案残留为零。
+      note）与 i18n EN 键严格相等、键恰好一次、旧版文案残留为零；
+  4. 本轮新增：翻译起草侧常量带「翻译腔自查」条（yomiyasu 借鉴，此前翻译腔
+      只靠评审 rubric 事后抓）；经验库蒸馏走 upsert_lesson 入库路径——闭集
+      分类落位、同题再沉淀合并不分裂（隔离数据目录，不碰真实经验库）。
 
 跑法：python -m unittest discover -s tests -p "test_full_type_round.py" -v
 17×3 字段 EN 键全量守卫在 test_i18n_dups.test_builtin_flow_fields_have_en_keys，
@@ -109,6 +112,36 @@ class FullTypeRoundTests(BaseTest):
         for stale in _STALE_COPY:
             self.assertEqual(_pairs_of(block, stale), [],
                              "旧版文案残留 EN 键: %r" % stale)
+
+    def test_translation_appendix_carries_tone_selfcheck(self):
+        """翻译腔自查前置到起草侧：常量含自查条，术语表约定不被挤掉。"""
+        from app.core.pipeline import TRANSLATION_APPENDIX
+        self.assertIn("翻译腔", TRANSLATION_APPENDIX,
+                      "翻译起草侧缺翻译腔自查（缺陷复现：只靠评审事后抓）")
+        self.assertIn("## 翻译要求", TRANSLATION_APPENDIX)
+        self.assertIn("术语表", TRANSLATION_APPENDIX,
+                      "术语表先行约定被挤掉")
+        # 常量是唯一消费点（draft prompt 追加），形态保持「\n 开头的追加块」
+        self.assertTrue(TRANSLATION_APPENDIX.startswith("\n"))
+
+    def test_lesson_distillation_path_dedups_and_categorizes(self):
+        """经验库蒸馏入库路径：upsert_lesson 闭集分类落位、同题合并不分裂。"""
+        from app.core import skills
+        title = ("全类型竞品雷达三问接入判据：重合度/可直读性/用户搜索意图，"
+                 "三问全过才接、不过只跟踪")
+        first = skills.upsert_lesson("*", title, "三问判据正文",
+                                     source="borrow-log 2026-10-04",
+                                     category="流程规范")
+        self.assertIsNotNone(first)
+        self.assertEqual(first["category"], "流程规范",
+                         "闭集分类未按入参落位")
+        before = len(skills.list_lessons("*"))
+        again = skills.upsert_lesson("*", title, "三问判据正文（更新）",
+                                     source="borrow-log 2026-10-04",
+                                     category="流程规范")
+        after = len(skills.list_lessons("*"))
+        self.assertEqual(after, before, "同题再沉淀应合并而非新增")
+        self.assertEqual(again["seen"], 2, "合并语义应 seen+1")
 
 
 if __name__ == "__main__":
