@@ -125,12 +125,15 @@ class TestWorkdshBoundaries(BaseTest):
         self.assertEqual(cases["performance"]["status"], "not_evaluated")
 
     def test_upload_chapter_resolves_book_without_closure_scope_error(self):
-        """发章在闭包内补 book_id 时，前置解析仍使用原始书籍引用。"""
+        """发章在闭包内补 book_id 时，前置解析仍使用原始书籍引用。
+
+        建书对账收紧（07d066b）后无 book_id 的书在入口即被拒，
+        闭包补账路径改用「已有 ID、发章时按书名对账刷新」场景验证。"""
         from app.core import store
         from app.core.publish import ledger, manager
 
         task = store.create_task({"type": "code", "goal": "publish", "workdir": str(self.workdir)})
-        ledger.save_book(task["id"], "fanqie", {"title": "测试书", "book_id": ""})
+        ledger.save_book(task["id"], "fanqie", {"title": "测试书", "book_id": "book-00"})
         chapter = self.workdir / "第1章.md"
         chapter.write_text("# 第1章\n" + ("正文" * 80), encoding="utf-8")
 
@@ -160,7 +163,7 @@ class TestWorkdshBoundaries(BaseTest):
         self.assertEqual(err, "")
         self.assertEqual(len(seen_books), 1)
         self.assertEqual({key: seen_books[0][key] for key in ("book_id", "title", "url")},
-                         {"book_id": "", "title": "测试书", "url": ""})
+                         {"book_id": "book-00", "title": "测试书", "url": ""})
         self.assertEqual(ledger.book_for(task["id"], "fanqie")["book_id"], "book-42")
 
     def test_acceptance_needs_evidence_for_every_dimension(self):

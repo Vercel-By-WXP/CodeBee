@@ -172,7 +172,7 @@ class TestPublishPending(unittest.TestCase):
             (cls.wd / ("第%d章.md" % i)).write_text("# 第%d章\n正文" % i,
                                                     encoding="utf-8")
         ledger.save_book(cls.task["id"], "fanqie",
-                         {"book_id": "", "title": "测试书"})
+                         {"book_id": "bk-test-001", "title": "测试书"})
 
     def setUp(self):
         _reset_ledger()
@@ -228,7 +228,8 @@ class TestPublishPending(unittest.TestCase):
             self.assertTrue(ok, err)
             st = self._wait_status(self.task["id"])
             self.assertEqual(st.get("status"), "manual_pause")
-            self.assertEqual(st.get("done"), 1)
+            # 9cd11d1 起 done 只计确认发布（人工填好未提交不计），填了 1 章但 done=0
+            self.assertEqual(st.get("done"), 0)
             self.assertEqual(len(fake.calls), 1)
             self.assertIn("提交", st.get("message") or "")
             # 再发起一轮 → 发下一章（幂等台账已记第 1 章）
@@ -236,7 +237,7 @@ class TestPublishPending(unittest.TestCase):
             self.assertTrue(ok)
             st = self._wait_status(self.task["id"])
             self.assertEqual(st.get("status"), "manual_pause")
-            self.assertEqual(st.get("done"), 1)
+            self.assertEqual(st.get("done"), 0)
             self.assertEqual(len(fake.calls), 2)
         finally:
             self.manager.upload_chapter_async = orig
@@ -291,9 +292,10 @@ class TestPublishPending(unittest.TestCase):
             self.assertFalse(ok2)
             self.assertIn("进行中", err2)
             st = self._wait_status(self.task["id"], timeout=15)
-            # 人工模式一章一停：首轮以 manual_pause 收场（单飞闸已验）
+            # 人工模式一章一停：首轮以 manual_pause 收场（单飞闸已验）；
+            # 9cd11d1 起人工填好未提交不计 done
             self.assertEqual(st.get("status"), "manual_pause")
-            self.assertEqual(st.get("done"), 1)
+            self.assertEqual(st.get("done"), 0)
         finally:
             self.manager.upload_chapter_async = orig
 
@@ -315,10 +317,19 @@ class TestPublishPending(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("建书", err)
 
+    def test_unconfirmed_book_rejected(self):
+        # 建书结果未确认（缺作品 ID）不许发章：对账收紧闸（07d066b）的守卫
+        t = store.create_task({"type": "direct", "goal": "建书未确认任务",
+                               "workdir": str(WD)})
+        ledger.save_book(t["id"], "fanqie", {"book_id": "", "title": "未确认书"})
+        ok, err = auto.publish_pending_async(t["id"], "fanqie")
+        self.assertFalse(ok)
+        self.assertIn("未确认", err)
+
     def test_no_pending_rejects(self):
         t = store.create_task({"type": "direct", "goal": "没有章节的任务",
                                "workdir": str(WD)})
-        ledger.save_book(t["id"], "fanqie", {"title": "空书"})
+        ledger.save_book(t["id"], "fanqie", {"book_id": "bk-empty-001", "title": "空书"})
         ok, err = auto.publish_pending_async(t["id"], "fanqie")
         self.assertFalse(ok)
         self.assertIn("待发", err)
@@ -336,7 +347,7 @@ class TestAutoPublishDue(unittest.TestCase):
             pass
         self.task = store.create_task({"type": "direct", "goal": "定时发布任务",
                                        "workdir": str(WD)})
-        ledger.save_book(self.task["id"], "fanqie", {"title": "定时书"})
+        ledger.save_book(self.task["id"], "fanqie", {"book_id": "bk-due-001", "title": "定时书"})
         self.calls = []
         self._orig = auto.publish_pending_async
         auto.publish_pending_async = \

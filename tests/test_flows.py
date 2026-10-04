@@ -257,7 +257,9 @@ class TestSerialResume(BaseTest):
             "type": "serial_novel", "title": "续跑测试", "mode": "auto",
             "goal": "短篇连载", "workdir": str(self.workdir),
             "serial": {"chapters": 3, "words_per_chapter": 800},
-            "threshold": 6.0,
+            # 与 e2e 同用 7.0：mock 第 1 轮带 major 意见，6.0 一次过会把 major 留进
+            # major_issues 导致 publishable=False（本用例验证续跑语义，非发布门禁）
+            "threshold": 7.0,
         })
         # 模拟一次中断的运行：大纲 + 前两章已起草完成
         run1 = store.create_run("orchestration", task["title"], task_id=task["id"])

@@ -2178,3 +2178,38 @@ diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价�
 - **争用嫌疑豁免不能跨班沿用，必须按当前 HEAD 重验** | 收口班沿 14 时班口径把 test_flows 记入「争用嫌疑组（单独跑全绿）」，独立复核班实测单独净进程跑 1F + 干净 HEAD（ae68961）worktree 同样 1F——系存量确定性红（首章 600 字开篇闸 vs mock 稿 367 字，publishable 断言滞后，与 publish_auto/workdsh 同类），非争用。HEAD 在动，历史班的「单独跑全绿」证据随新提交过期；凡引用旧豁免先在当前 HEAD 复跑一遍再落账 | 教训 | 2026-10-04
 - **独立复核全对账零新增**：a-f 723（1F+1E）+g-m 376（4F+2E）+n-r 542（10F）+s-z 501（2F）=2142 项，与收口班 a-r 1641+s-z 501 总数与红名单逐项吻合；朴素分片 a-r 片再证 32 位静默退出（无统计行 exit 0）。三提交（90a7bd6/34460ed/ae68961）show --stat 零外来零踩踏；443 抖动两连击下以 origin/main 跟踪引用+npm registry 0.1.82 实查双证推送发版落地 | 复核 | 2026-10-04
 - 待深挖队列 +1：test_flows.TestSerialResume 存量断言滞后修复（断言侧或 mock 稿加长，红名单归类改「存量红」）；余同收口班快照零变化。
+
+## 2026-10-05 04 时班（批4：治理/安全/人机协同——新一轮计划第 1/4 步全类型调研+存量红清账）
+
+> 4%7=4 批4。主扫 115 查询 523 行 467 唯一仓零失败零限流；雷达 C 全过（repos 55 仓+
+> npm 两查+WebSearch 串行交叉验证 1 发——距 10-04 20 时班 4 班按新规则配一次）。
+> 跨通道实证三件：covenant 实仓仅 5★ 微型 / NVIDIA open-agent-safety-platform 仓 404
+> （新闻真、正主仓名未勘定）/ WSO2 Agent Manager 仓名未勘定——**WebSearch claim 一律
+> repos 端点二次实证首例落地，规则补丁已落 keywords.md**。零机制级新差量（稳定期延续）。
+
+### 新条目（本班真新面孔，均雷达/参考级）
+
+- **archestra-ai/archestra**（4,343★，10-04 活跃）新入库 | 企业 AI 平台：guardrails+MCP registry+gateway+orchestration 全栈 | 治理簇（bernstein/cordum 簇）+网关族双域叠加；无未覆盖机制面 | 雷达 | 2026-10-05
+- **Justin0504/Aegis**（484★，09-06）新入库 | 运行时策略强制+加密审计链+human-in-the-loop | bernstein 同族小标（批4 治理域）；同上零新机制 | 雷达 | 2026-10-05
+- **darrenhinde/OpenAgentsControl**（4,887★，09-13）新入库 | plan-first 工作流+approval gates 框架 | 我方计划闸+待裁决已覆盖主路径 | 雷达 | 2026-10-05
+- **agentrq/agentrq**（1,137★，10-04 活跃）新入库 | HITL 实时会话任务管理（human-in-loop conversational） | 采访卡/签核已有对应物 | 雷达 | 2026-10-05
+- **spec-kitty/spec-kitty**（1,662★，10-04 活跃）新入库 | Spec-Driven Development + 组织级治理 | spec-kit/OpenSpec 同族 +1 | 雷达 | 2026-10-05
+- **asalsali/covenant-framework-community**（5★）新入库 | 多 agent 治理框架（WebSearch 捞出，repos 实证微型） | 量级不足，WebSearch 放大效应例证 | 雷达 | 2026-10-05
+- **TokenRhythm/opensquilla**（7,082★，10-04 活跃）新入库 | 「Token-Efficient AI Agent——same budget, higher intelligence」token 效率型 agent | 我方 token 面已满配（压缩/熔断/cascade/_shrink 八件）；无具体新机制披露 | 雷达（A3 远期备注随队列第 2 项攒批） | 2026-10-05
+- **vllm-project/semantic-router**（6,030★，10-04 活跃）新入库 | Mixture-of-Models 可编程语义路由（按语义选模型） | 与 strands-decider「机械决策不进 LLM」范式同向；cascade+难度选模已满配 | 参考（A 专项远期备注） | 2026-10-05
+- **PenglongHuang/chinese-novelist-skill**（3,286★，09-06）新入库 | 中文长篇 skill 包：三层问答·创作记忆·悬念钩子·自动校验 | 与我 novel/serial 同域；采访/记忆/钩子/校验四机制均有对应物（clarify/resume_ctx/评审维度/quality gates） | 已覆盖 | 2026-10-05
+- **notnotype/neuro-book**（719★，09-30 活跃）新入库 | 长篇小说写作 IDE（软件工程方法做 fiction） | 同域形态参考；无机制披露细节 | 雷达 | 2026-10-05
+- **FireRedTeam/FireRed-OpenStoryline**（3,458★，07-31）新入库 | 小说→视频编辑 agent（A12 改编域） | 平台化路线参考 | 参考 | 2026-10-05
+- **dream-num/univer**（22,356★，10-04 活跃）新入库 | 「The Office Harness for AI Agents」表格/文档/幻灯/画布 | 办公域大件；**演示文稿空档例证 +1**（交人拍板维持） | 参考 | 2026-10-05
+- **allweonedev/presentation-ai**（3,037★，06-05 停更）+ **tonyqinatcmu/SlideBot-AI**（1,215★，01-31 停更）新入库 | 开源 AI 演示文稿生成两件 | C 专项演示文稿空档例证 +2（空档拍板维持） | 参考 | 2026-10-05
+- **BlockRunAI/ClawRouter**（6,614★）+ **looplj/axonhub**（5,334★，10-04 活跃）+ **caidaoli/ccLoad**（418★，10-04 活跃）新入库 | 网关族三件（agent-native 路由/100+ LLM gateway/CC 池化网关） | 网关路线不接维持（coai/one-api 族旁） | 雷达（网关族） | 2026-10-05
+- **NanmiCoder/cc-haha**（14,862★，10-04 活跃）+ **Alishahryar1/free-claude-code**（56,650★，10-04 活跃）+ **SethGammon/Citadel**（922★，10-01 活跃）+ **Agent-Field/SWE-AF**（1,027★）新入库 | 同形态四件：CC 桌面工作台/多 harness 订阅聚合/CC+Codex 操作层/SE 舰队 | 蜂巢+多 CLI 面已覆盖主路径；无未覆盖机制 | 雷达（同形态） | 2026-10-05
+- **mukul975/Anthropic-Cybersecurity-Skills**（33,772★，08-31 后停更）新入库 | 817 个安全 skill 结构化包（6 框架映射） | skill 市场域大件；我方装前扫描+白名单已满配，不接 | 雷达（B 专项生态例证） | 2026-10-05
+
+### 复查增量（repos 端点）
+
+orca 84,897（+223 续领跑）/ gstack 135,116（+128 放量）/ SkillSpector 19,375（+75）/ anthropics/skills 179,637 / DeepSeek-Reasonix 35,741（10-04 push 候选首位维持）/ webnovel-writer 7,316（+6）/ ainovel-cli 2,094（10-04 push 活跃）/ drama-skills 2,499（+26）/ yomiyasu 1,376（+21 在动）/ hippo-memory 770（当日 push）/ wenzi-xhs 153 / 火宝短剧 15,670（+300）/ claude-rules 192（停更注记维持）。全部零 archived。
+
+### 存量红清账（本班落地 6 件）
+
+usage_stats tie-break（2/2）/ test_flows 阈值对齐（9/9）/ test_quality_gate 旧布局 import（11/11）/ test_bookmeta_chain discover 兼容（双通道绿）/ test_publish_auto 建书对账断言对齐 07d066b+9cd11d1+新增未确认守卫用例（22/22，原 9F 清账）/ test_workdsh_boundaries 闭包补账场景改写（10/10，原 1F 清账）——**main 既有红台账 -2F -2E -9F -1F**，零新红。

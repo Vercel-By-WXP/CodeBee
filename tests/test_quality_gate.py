@@ -1,6 +1,13 @@
+import sys
 import unittest
+from pathlib import Path
 
-from core.quality_gate import aggregate_reviews, evaluate_release, local_version, normalize_scores
+# pre-app/ 旧布局残留 import（from core...）在 discover 下必 loader 红——
+# 对齐 tests/base.py 惯例：仓库根入 path，走 app.core 正身。
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.core.quality_gate import (  # noqa: E402
+    aggregate_reviews, evaluate_release, local_version, normalize_scores)
 
 
 class ScoreValidationTests(unittest.TestCase):

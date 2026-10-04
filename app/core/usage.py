@@ -679,7 +679,8 @@ def _group(records, key):
 def _model_display_map(records):
     """模型名归一映射 {casefold: 展示名}：同一模型不同大小写（GLM-5.3-Flash 与
     glm-5.3-flash）会被拆成两行统计，这里把 casefold 相同的归为一组，
-    展示名取组内出现次数最多的原始写法（平局取更长写法，信息更全）。"""
+    展示名取组内出现次数最多的原始写法（平局取更长写法，再平局取大写字母
+    更多的规范形——台账倒序读入时 2:2 平局的裁断不再随记录顺序漂移）。"""
     canon = {}
     for r in records:
         name = str(r.get("model") or "") or "unknown"
@@ -690,7 +691,8 @@ def _model_display_map(records):
     display = {}
     for k, c in canon.items():
         display[k] = max(c["names"].items(),
-                         key=lambda kv: (kv[1], len(kv[0])))[0]
+                         key=lambda kv: (kv[1], len(kv[0]),
+                                         sum(ch.isupper() for ch in kv[0])))[0]
     return display
 
 

@@ -15,6 +15,7 @@
 import os
 import sys
 import tempfile
+import unittest
 from pathlib import Path
 
 _TMP = Path(tempfile.mkdtemp(prefix="bmchain-test-")).resolve()
@@ -23,17 +24,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 
 from core import store  # noqa: E402
 from core.publish import ledger  # noqa: E402
-
-FAILS = []
-
-
-def check(name, fn):
-    try:
-        fn()
-        print("  ok   %s" % name)
-    except Exception as e:
-        FAILS.append(name)
-        print("  FAIL %s: %r" % (name, e))
 
 
 def expect(cond, msg=""):
@@ -190,9 +180,15 @@ def t_recent_merge():
     expect(ledger.recent(task_id=plain["id"]) == [], "链外无历史")
 
 
-for name, fn in sorted([(k[2:], v) for k, v in globals().items()
-                        if k.startswith("t_") and callable(v)]):
-    check(name, fn)
+class TestBookmetaChain(unittest.TestCase):
+    # 用例间有账目顺序依赖（先读继承、再写落根、后视图合并），保持单方法按序跑
+    def test_chain_suite(self):
+        os.environ["TUTTI_DATA"] = str(_TMP)   # discover 同进程跑时恢复本件现场
+        for name, fn in sorted([(k[2:], v) for k, v in globals().items()
+                                if k.startswith("t_") and callable(v)]):
+            with self.subTest(case=name):
+                fn()
 
-print("---- %s: %d fail" % ("test_bookmeta_chain", len(FAILS)))
-sys.exit(1 if FAILS else 0)
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

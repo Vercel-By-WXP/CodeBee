@@ -9,6 +9,9 @@
 > gh api 不可用时（如本机 Bash 被劫持/WebFetch 域名校验全拦）降级走 WebSearch 串行，翻页与双轮排序纪律不适用、报告如实记录；
 > 2026-10-04 补：**单通道「无新竞品」结论性判定须每 3-4 班配一次 WebSearch 串行交叉验证**——
 > gh api 连续八班报「写作域无新竞品」后，WebSearch 仍捞出 webnovel-writer（7.3k★）/ainovel-cli（2.1k★）两件大仓（20 时复核班实证），防单通道盲区（谁/何时/为何：20 时独立复核班）；
+> 2026-10-05 补：**WebSearch 捞出的仓/平台 claim 一律 repos 端点二次实证后才能定性入库**——
+> 新闻面 ≠ 开源仓在（04 时班实证：NVIDIA「Open Agent Safety Platform」新闻真但同名仓 404、
+> covenant 被 WebSearch 放大实仓仅 5★、WSO2 Agent Manager 仓名未勘定）（谁/何时/为何：04 时班首例）。
 > 结果高度重合即跳余页省配额。新增关键词直接编辑本文件并在行尾标注（谁/何时/为何）。
 
 ## A. 常驻组（每轮全跑，78 组）
