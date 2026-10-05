@@ -9,12 +9,17 @@
   3. 回归：i-preview 图标在精灵表有定义（菜单不空白）；i18n EN 三字段
      键恰好一条（英文界面不回落中文）；
   4. 边界：帮助页「600+ 技能」静态数字去数字化——四条字符串同步后
-     旧文案残留为零、新键跨端一致（app.js 中文原文 = i18n.js EN 键）。
+     旧文案残留为零、新键跨端一致（app.js 中文原文 = i18n.js EN 键）；
+  5. 21 时班第 3/4 步落地件机检（交接结论=零代码件，落地走文档/数据通道）：
+     路线图清账四处锚点（去AI味起草+评审双接线 / 扫榜四源聚合 / 剧情模块库
+     注入+模块边界截断 / 封面图生成链路）与 D 蒸馏 scope=article 路由边界
+     ——「引用前须对代码实证」方法论机械化：锚点漂移即红，倒逼同步 knowledge.md。
 
 跑法：python -m unittest discover -s tests -p "test_full_type_iteration.py" -v
 """
 from __future__ import annotations
 
+import inspect
 import io
 import os
 import re
@@ -120,6 +125,128 @@ class MarketplaceCopyDequantifiedTests(BaseTest):
         # 旧键两条不得残留（后值覆盖前值的隐形文案事故形态）
         self.assertNotIn("600+ 技能，一键安装", i18n_src)
         self.assertNotIn("600+ 技能一键安装", i18n_src)
+
+
+_MAIN_PY = os.path.join(_ROOT, "app", "main.py")
+
+
+class RoadmapClearingAnchorTests(BaseTest):
+    """路线图清账（knowledge.md 2026-10-05 21 时班）四处锚点机检 + D 蒸馏路由。
+
+    旧问题复现：路线图复选框入库后长期挂账，且历史上有「引用未实证先划掉」
+    事故（07 时班方法论）——本组把清账引用的代码锚点锁进测试：日后重构改名
+    导致 knowledge.md 引用失效时在此先红，而不是留下一份说谎的台账。
+    """
+
+    def test_aiflavor_wired_into_draft_and_review(self):
+        """去AI味：确定性检测器可用、注入位置正确，且起草/评审两处都接线。"""
+        from app.core import aiflavor, pipeline
+        for fn in ("analyze", "narrative_analyze", "pacing_analyze",
+                   "inject_into_prompt"):
+            self.assertTrue(callable(getattr(aiflavor, fn, None)), fn)
+        tpl = "评审要求：套话密度纳入参考。\n\n## 待评审稿件\n他推门进来。"
+        hit = aiflavor.inject_into_prompt(tpl, "值得注意的是，" * 40 + "他走了。")
+        self.assertIn("## 确定性检测结果（供评审参考）", hit, "命中时必须下发检测块")
+        self.assertEqual(hit.count("## 待评审稿件"), 1)
+        self.assertLess(hit.index("## 确定性检测结果"), hit.index("## 待评审稿件"),
+                        "检测块固定插在稿件段之前（前缀稳定纪律）")
+        # 零噪音边界：无命中原样返回（邮件类非叙事文体不注入节奏统计）
+        clean = aiflavor.inject_into_prompt(tpl, "今天天气很好。", kind="email")
+        self.assertEqual(clean, tpl)
+        # 接线锚点：起草与评审两个消费点都在（缺一处=旗舰场景漏挂的事故形态）
+        src = inspect.getsource(pipeline)
+        self.assertIn('aiflavor.inject_into_prompt(tpl, text, task.get("type"))', src,
+                      "起草侧未接 aiflavor")
+        self.assertIn(
+            'aiflavor.inject_into_prompt(crit_prompt, manuscript, task.get("type"))',
+            src, "评审侧未接 aiflavor")
+
+    def test_rank_scan_wired_to_four_platform_fetchers(self):
+        """扫榜选材：rank_scan 注册为 direct 引擎，paihang 四源聚合接线在位。"""
+        import inspect
+        from app.core import flows, paihang
+        f = flows.get_flow("rank_scan")
+        self.assertIsNotNone(f)
+        self.assertEqual(f["engine"], "direct")
+        fetchers = ("fetch_qimao_rank", "fetch_fanqie_rank",
+                    "fetch_qidian_rank", "fetch_zongheng_rank")
+        for fn in fetchers + ("fetch_rank_items", "rank_scan_prompt"):
+            self.assertTrue(callable(getattr(paihang, fn, None)), fn)
+        # 聚合器按 _SOURCES 名单间接派发（globals()[fname]）——四源名单必须齐
+        src_names = [fname for _label, fname in paihang._SOURCES]
+        for fn in fetchers:
+            self.assertIn(fn, src_names, "聚合名单缺 %s（四平台口径残缺）" % fn)
+
+    def test_plot_modules_injection_and_boundary_truncation(self):
+        """剧情模块库：约定式注入（无文件零噪音）+ 超预算按模块边界截断不腰斩。"""
+        from app.core import pipeline
+        empty = os.path.join(self.tmp, "no-modules-work")
+        os.mkdir(empty)
+        self.assertEqual(pipeline._plot_modules(empty), "",
+                         "无模块库必须零噪音（约定式功能）")
+        with io.open(os.path.join(self.workdir, pipeline.MODULES_FILE),
+                     "w", encoding="utf-8") as fh:
+            fh.write("## 模块01\n反转揭底。MOD01_END\n\n## 模块02\n误会消解。MOD02_END\n")
+        mods = pipeline._plot_modules(self.workdir)
+        self.assertIn("## 剧情模块库", mods)
+        for tag in ("MOD01_END", "MOD02_END"):
+            self.assertIn(tag, mods)
+        src = inspect.getsource(pipeline)
+        self.assertIn("mods = _plot_modules(workdir)", src, "连载注入块未接模块库")
+        # 边界：超预算触发「模块库→边界截断」，且截断只落在 "\n## " 模块边界——
+        # 保留的每个模块必须完整（哨兵在=未腰斩），被截掉的整模块消失
+        head = "## 世界观\n大陆设定。\n\n"
+        parts = [head, "## 剧情模块库"]
+        for i in range(1, 17):
+            parts.append("\n## 模块%02d\n%sMOD%02d_END\n"
+                         % (i, ("素材%02d。" % i) * 220, i))
+        bible = "".join(parts)
+        sk = "x" * 200
+        self.assertGreater(len(sk) + len(bible), 12000, "样例必须真的超预算")
+        sk2, bible2, notes = pipeline._shrink_context_block(sk, bible)
+        self.assertIn("模块库→边界截断", notes)
+        self.assertIn("（模块库已因上下文容量限制精简）", bible2)
+        kept = re.findall(r"## 模块(\d\d)", bible2)
+        self.assertLess(len(kept), 16, "截断必须真的发生")
+        for nn in kept:
+            self.assertIn("MOD%s_END" % nn, bible2,
+                          "模块%s 被腰斩（截断未落在模块边界）" % nn)
+        self.assertEqual(sk2, sk, "经验块不该被动")
+
+    def test_cover_generation_chain_mounted(self):
+        """封面图：模块可导入、/cover 路由挂载、封面卡与文案三端在位。"""
+        from app.core import covergen
+        self.assertTrue(callable(getattr(covergen, "start", None)))
+        with io.open(_MAIN_PY, encoding="utf-8") as fh:
+            main_src = fh.read()
+        self.assertIn(r"^/api/tasks/([^/]+)/cover$", main_src, "路由未挂载")
+        self.assertIn("from core import covergen", main_src)
+        self.assertIn("covergen.start(", main_src)
+        with io.open(_APP_JS, encoding="utf-8") as fh:
+            app_src = fh.read()
+        self.assertIn("封面卡（covergen", app_src)
+        self.assertIn("生成竖版封面插画，产出 cover.png", app_src)
+        hits = _pairs_of(_en_block(), "生成竖版封面插画，产出 cover.png")
+        self.assertEqual(len(hits), 1, "封面文案 EN 键应恰好一条")
+
+    def test_distilled_lesson_scopes_to_article_only(self):
+        """D 蒸馏（wenzi-xhs 选题/标题/排期复盘）：scope=article 路由边界——
+        只进文章类注入，不漏进小说类（本班选 article 而非 "*" 的理由）。"""
+        from app.core import skills
+        self.assertIn("文笔风格", skills.LESSON_CATEGORIES, "闭集外分类")
+        lid = skills.upsert_lesson(
+            "article",
+            "测试：小红书选题标题排期复盘要领（蒸馏通道回归样本）",
+            "选题从账号定位出发；标题兼顾钩子与关键词双通道。",
+            source="borrow-log 2026-10-05 蒸馏清账",
+            category="文笔风格")
+        self.assertIsNotNone(lid)
+        self.assertEqual(lid["scope"], "article")
+        self.assertTrue(lid.get("enabled", True))
+        in_article = [x["id"] for x in skills.list_lessons("article")]
+        self.assertIn(lid["id"], in_article)
+        in_novel = [x["id"] for x in skills.list_lessons("novel")]
+        self.assertNotIn(lid["id"], in_novel, "article 作用域不得漏进小说注入")
 
 
 if __name__ == "__main__":

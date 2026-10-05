@@ -11,7 +11,7 @@ class TestDispatch(BaseTest):
         for kind in ("direct", "code", "novel", "serial_novel",
                      "article", "video_script", "translation",
                      "research", "speech", "weekly_report",
-                     "email", "rank_scan", "tech_proposal", "zentao"):
+                     "email", "rank_scan", "tech_proposal", "defect_retro"):
             self.assertIn(task_dimension(kind), ("writing", "coding",
                                                   "reasoning", "vision"))
 

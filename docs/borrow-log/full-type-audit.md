@@ -1,3 +1,119 @@
+# 2026-10-05 20 时班·全类型调研过程审计（full-type-audit，新一轮计划第 1/4 步）
+
+> 本节为本轮（20 时班）过程记录：查询批次、来源通道、14 类型覆盖表、失败/限流项、
+> 可追溯差异清单。未访问的来源如实标「未访问」，不冒充完成。
+
+## 0. 执行环境实录
+
+- 开工 2026-10-05 20:21（UTC+8），主扫收口 20:5x，通道复核 21:0x。
+- 分支 **main**（HEAD b6d2269，v0.1.86 已发版），工作区开工时干净。
+- **并发事实在案**：18 时班两条收口通道分别于 20:14:18（a104fee）与 20:20:10（b6d2269）
+  落库——后者先于本班开工 96 秒，属刚离场写手；本班全程动手前 `git status` 复核干净。
+- B 批次选择：20 % 7 = **6** → 批6（框架/平台/SDK 生态；本日 06 时班已跑过同批，本班为轮换再访）。
+- 通道前提：gh api 认证可用（开工时 search 30/30、core 5000/5000 满配），主扫串行 sleep 4s。
+
+## 1. 查询批次（主扫 `scripts/borrow_scan_nightly.py` 无参全量模式）
+
+| 批次 | 组 | 查询数 | 结果 |
+|---|---|---|---|
+| A 常驻 | A1 核心编排 8 / A2 扩展形态 7 / A3 token 节约 4 / A4 新 CLI 3 / A5 舰队形态 4 / A6 评测观测协作 6 / A7 写作场景 8 / A8 prompt 网关质量 5 / A9 产品配套 6 / A10 全类型写作对话代码 10 / A11 项目记忆 5 / A12 发布平台 5 / A13 面板用量守卫 7 | 78 | 全 ok |
+| A 常驻内置 | B1 代码质量评审 11（QUERIES 内置份） | 11 | 全 ok |
+| B 轮换 | B6 框架/平台/SDK 生态 10（langgraph platform / crewai studio / autogen studio / openai agents sdk / google adk / mastra / pydanticai / semantic kernel / 互操作协议 / 框架横评） | 10 | 全 ok |
+| 双轮排序 | A1u（A1 全 8 组 sort=updated 新锐轮）+ A1p2（A1 全 8 组 stars page=2 翻页） | 16 | 全 ok |
+| **合计** | | **115** | **524 行，470 唯一仓，零失败零限流** |
+
+- 双轮排序纪律同历班：stars 轮为主，updated 新锐轮与 page=2 挂 A1 核心组；A1p2 与 A1
+  重合由汇总端按 full_name 去重，未再翻 page=3。
+- 原始扫描 JSONL：`%TEMP%\borrow_scan_20h.jsonl`（524 行，脚本不写仓库内文件）。
+
+## 2. 来源通道实录（雷达源 C）
+
+| 通道 | 本班状态 | 说明 |
+|---|---|---|
+| gh api search/repositories（主扫） | ✅ 完成 | 115 查询见上，零 403 零 FAIL 零退避 |
+| gh api repos 端点（存量复查+新面孔实证） | ✅ 完成 | 52 次调用（33 存量 + 8 全名勘定 + 11 新面孔明细），串行 sleep 2-3s，core 配额池，全 alive 零 archived |
+| gh api search（全名勘定 8 查 + topic 8 页 + 禅道周边 2 查） | ✅ 完成 | 主扫结束后串行 4s 补跑（主扫期间不抢 search 配额） |
+| trendshift.io（Trending 替身） | ✅ **本班可达（破 12/16/18 时班三连拦）** | 抓 live 榜前 13 名（翻页未做，如实记录）；捞 5 件新面孔全部 repos 端点二次实证 |
+| WebSearch 串行交叉验证 | ✅ 完成 | 1 查（批6 域「new AI agent framework 2026 open source」，DDG HTML 通道）：捞出名全为已知框架族（LangGraph/CrewAI/AutoGen/SK/LlamaIndex/PydanticAI/OpenAgents），零新仓 claim，双通道互证批6 稳定期 |
+| npm search 两查 | ✅ 完成 | "agent orchestrator" + "claude code manager"——全已录族/微型（bdb/coleo/crow/claude-code-manager 等 18 时班已录），零接入级 |
+| awesome 清单新鲜度 | ✅ 完成 | 11 源 repos 实测全 alive 零 archived（VoltAgent 35,222 / awesome-mcp-servers 95,827 / awesome-claude-code 55,087 / harness-engineering 4,709 / Long-Horizon 1,062 停更观察 / TeleAI Agent-Memory 658 / TsinghuaC3I 665 / awesome-claude-agents 4,388 停更 / awesome-llm-apps 140,746 / buildwithclaude 3,588 / vijaythecoder 4,388） |
+| pypi search | ❌ 未访问 | 历班六种拦截形态在案，按纪律省配额未复试 |
+| GitHub Trending 直抓 | ❌ 未访问 | 历班直抓被拦在案；替身 trendshift 本班可达并成功补位（Trending 面由其承担） |
+
+## 3. 全类型覆盖表（用户列举 14 场景 vs 注册表实数）
+
+注册表实数（本班代码复核 `app/core/flows.py` BUILTIN_FLOWS:37-128 逐条实读）：**18 类型**
+direct / code / novel / serial_novel / article / video_script / doc / translation /
+rank_scan / defect_retro / research / speech / presentation / weekly_report / email /
+tech_proposal / resume / bid_doc。
+
+| 用户点名场景 | 注册类型 | 本班扫描覆盖来源（词组级） | 覆盖 |
+|---|---|---|---|
+| 直接执行 | direct | A1×8 + A2 autonomous/workflow 组 | ✅ |
+| 代码 | code | A10 code gen + code refactor 组 + B1 评审 11 组（内置份随主扫全跑） | ✅ |
+| 小说 | novel | A7 novel/story + creative writing + long form + 中文网文 4 组 | ✅ |
+| 连载 | serial_novel | A7 consistency 组 + A12 chapter hook/serial pacing 组 | ✅ |
+| 自媒体文章 | article | A7 article/blog writing 组 | ✅ |
+| 调研报告 | research | A10 deep research 组（批5 轮换词组本班未轮到，域由 A10 覆盖） | ✅ |
+| 短视频脚本 | video_script | A10 short video script 组 | ✅ |
+| 技术方案 | tech_proposal | A5 spec-driven 组 + A7 long form 组 | ✅ |
+| 翻译 | translation | A7 translation workflow 组 + A10 translation quality 组（双组） | ✅ |
+| 演讲稿 | speech | A7 speech/presentation script 组 + A10 slides 组（双组） | ✅ |
+| 工作汇报 | weekly_report | A10 weekly report 组 | ✅ |
+| 商务邮件 | email | A10 email writing 组 | ✅ |
+| 扫榜选材 | rank_scan | A9 webnovel author tools/小说作者工具 组（拆解爆款域） | ✅ |
+| 禅道工单 | defect_retro | A13 defect retrospective 组 + 雷达禅道周边搜（easysoft/zentao-skills 74★ 官方族在录，**第 11 例零新禅道 AI 竞品**；bug-triage 面 1★/0★ 微型） | ✅ |
+
+额外关注面：对话记忆=A10 chatbot memory 组 ✅ / 知识库=A11 spec archive 组 ✅ /
+文档生成=A10 doc gen 组 ✅ / 演示文稿=A10 slides 组 ✅。
+**结论：14 场景全映射 + 4 额外类型，本轮扫描面无类型缺覆盖。**
+
+## 4. 失败 / 限流项（如实记录）
+
+- 主扫 115 查询：**零失败零限流**（进度文件 0 条 FAIL、0 条 403、0 次退避）。
+- repos 端点：零 404（全名对照表口径生效——12 时班九仓补勘 + 本班 8 仓勘定后免再勘）。
+- pypi / GitHub Trending 直抓两通道未完成（见 §2 表，缺位如实记录；trendshift 补位成功）。
+- trendshift live 榜只抓前 13 名（详情页翻页未做，如实记录不冒充全量）。
+- WebSearch（DDG HTML）：1 发即过，零 429。
+
+## 5. 可追溯差异清单（新面孔 → 证据 → 裁决）
+
+| 仓 | 证据（本班实测） | 裁决 |
+|---|---|---|
+| lexmount/moli | 8,448★ / push 10-05 / created 08-10 / Rust / trendshift live #6 | 浏览器自动化域（BrowserSkill/gsd-browser 族旁）雷达——「AI Agent 专用浏览器」增速快 |
+| neilsonnn/image-blaster | 9,186★ / push 05-15 / trendshift #2 | skill 生态（image-to-world for Claude，封面图域旁）雷达 |
+| morluto/rea | 4,020★ / push 10-05 / trendshift #1 | 逆向工程 agent CLI+MCP，工具域雷达 |
+| tester-army/e2e | 3,840★ / push 10-05 / trendshift | e2e 测试框架（B1 族旁，AI agent 标签）雷达 |
+| omnirush-ai/omnirush-gui | 1,477★ / push 10-05 / created 09-21 | 面板族（桌面 coding agent 免费 tier）雷达 |
+| shiwenwen/hope-agent | 1,747★ / push 10-05 / created 03-13 / Rust | 跨设备桌面 agent+记忆（同形态）雷达 |
+| michael-denyer/pstack-claude | 1,297★ / push 10-05 / created 05-26 / JS | 多 CLI 栈管理器（CC/Codex/Pi/OpenCode/Gemini/Prime）雷达（A13 同形态） |
+| agentlas-ai/Agentlas-OS | 1,558★ / push 10-05 / created 06-04 / Python | A1u 新锐轮——专家 agent 枢纽+临时拉起，A1 域雷达 |
+| nuwax-ai/nuwax | 890★ / push 10-05 / created 2025-07 | 企业级 Agent OS 开发平台，平台族雷达 |
+| strukto-ai/mirage | 3,676★ / push 10-05 / created 05-06 / TS | topic:llm-agents——「AI Agent 虚拟终端」，面板族（OmniTerm/agent-pane 簇旁）雷达 |
+| juspay/xyne-spaces | 797★ / push 10-05 / created 08-02 | topic:ai-agents——「AI Org-OS」人+agent 协作平台（multica 同族）雷达 |
+| HKUDS/nanobot | 48,794★ / push 10-05 / created 02-01 / Python | 主扫 A2 组——超轻个人 agent 框架（HKUDS 族新面，OpenHarness 旁）雷达 |
+| GoogleCloudPlatform/race-condition | 234★ / push 10-05 / created 03-27 | B6 组——Google 官方多 agent 模拟，参考级 |
+| shareAI-lab/learn-claude-code | 78,022★ / push 09-28 | 教学件（nano claude-code harness），学习材料雷达 |
+| pbakaus/impeccable | 76,787★ / push 10-05 | 「AI harness 的设计语言」，skill/设计域雷达 |
+| msitarzewski/agency-agents | 156,954★ / push 10-04 | **agency-agents-zh（已录 21,060★）英文原仓**——家族注记，蒸馏结论沿用原条 |
+| herdrdev/herdr | 42,401★ / push 10-05 / Rust | 已知名（09-19 装机探测候选未装）星数首记——「coding agents 的 runtime」，E 域雷达 |
+| wanshuiyin/Auto-claude-code-research-in-sleep | 16,985★ / push 09-29 | ARIS markdown-only 自动调研 skills，研究域雷达 |
+| 拒收明细 | xorbitsai/xagent 303★ / y49/tlive 214★ / Faust-Donf/beamer-academic 306★ / ythx-101/live-panel-skill 546★ / onikan27/claude-code-monitor 310★ / Idun-Group/idun-agent-platform 203★（09-22 push）/ arthjean/paneflow 83★ / ensemblr-hq/ensemblr 8★（已知族）/ corezoid-ai 72★ / stempeck/agentfactory 3★ / skaiy/wild_agentos 3★ / jeong-sik/masc 3★ / takecchi/alteroid 0★ 等新锐微型 | 均不过「他们有+我们没有+运转良好」门槛，拒收如实记录 |
+
+## 6. 结论
+
+批6 域（框架/平台/SDK 生态）**零机制级新差量**——第 22 班稳定期延续（mastra 28,560 /
+vercel-ai 27,122 / harness-sdk 8,669 / semantix 821 / aegra 1,240 全已录零增量）。
+跨域新面孔 18 件入库全雷达/参考级，零接入级标的。存量 52 仓次全 alive 零 archived。
+全名对照表新增 10 仓（garrytan/gstack、lingfengQAQ/webnovel-writer、voocel/ainovel-cli、
+nanaism/yomiyasu、kitfunso/hippo-memory、wenziai/wenzi-xhs-agent-skills、
+esengine/DeepSeek-Reasonix、Shubhamsaboo/awesome-llm-apps、
+oliver-zehentleitner/keep-the-why、juspay/xyne-spaces 正主勘定）。
+keywords.md 本班**零调整**（新面孔全部由现有词组/雷达源捞出，无确凿缺口）。
+本步为纯调研步，零 app/ 实现改动、零发版对象。
+
+---
+
 # 2026-10-05 18 时班·全类型调研过程审计（full-type-audit，新一轮计划第 1/4 步）
 
 > 本文件为本轮（18 时班）过程记录：查询批次、来源通道、14 类型覆盖表、失败/限流项、

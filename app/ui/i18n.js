@@ -2980,6 +2980,14 @@
     "没有正在运行的任务，新任务在主界面创建后会实时出现在这里": "No running tasks — new ones created in the main UI appear here in real time.",
     "还没有已完成的运行": "No finished runs yet",
     "暂无调用记录": "No calls yet",
+    // —— EN 词条收尾补全（2026-10-06 巡检 G-② 残件 7 条：本地插件/自定义样题/报告导出/浏览器面板；133 字 webhooks 键词条早已在位，文件级 grep 误报勿重加）——
+    "本地插件": "Local plugins",
+    "本地插件遵循统一 manifest 规范。技能会接入经验库；MCP 只在启用后合并到内置智能体工具，不执行插件脚本或钩子。": "Local plugins follow a unified manifest spec. Skills feed the experience library; MCP tools merge into the built-in agent's toolkit only once enabled — plugin scripts or hooks are never executed.",
+    "＋ 添加自定义样题": "＋ Add custom sample",
+    "导入样题分享码": "Import sample share code",
+    "导出报告（Markdown）": "Export report (Markdown)",
+    "选择一个任务开始工作": "Pick a task to start working",
+    "重新运行": "Re-run",
   };
 
   // ---------- 工具 ----------
