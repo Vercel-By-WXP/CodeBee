@@ -916,8 +916,9 @@ __ISSUES__
 - 完成后用 2-3 句话说明改了什么。
 __VERIFY_HINT__"""
 
-CODE_REVIEW_PROMPT = """你是代码评审员（不要修改任何文件）。请只基于下方提供的任务与变更内容进行评审，
-输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
+CODE_REVIEW_PROMPT = """你是代码评审员（不要修改任何文件）。diff 为主要依据；
+如运行环境允许读取文件，可打开涉及文件及周边代码核对上下文（只读，不得修改任何文件）；
+无法读文件时基于 diff 评审。输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {
   "pass": true/false,
   "scores": {"正确性": 1-10, "可维护性": 1-10, "安全": 1-10},
@@ -926,9 +927,12 @@ CODE_REVIEW_PROMPT = """你是代码评审员（不要修改任何文件）。�
 }
 
 ## 评审要求（findings 锚定证据）
-每个 issue 的 detail 必须给出「文件名:行号」（从 diff 的 hunk 头 @@ -a,b +c,d @@ 与上下文推算），
-并引用该处一行关键代码作为依据——没有证据定位的问题不要报，宁可少报不报猜测。
-（借鉴 pr-af：findings grounded in code evidence 是评审可信度的根。）
+每个 issue 的 detail 必须给出「文件名:行号」（从 diff 的 hunk 头 @@ -a,b +c,d @@ 与上下文推算，
+深读文件核到的行号优先），并引用该处一行关键代码作为依据——没有证据定位的问题不要报，
+宁可少报不报猜测。（借鉴 pr-af：findings grounded in code evidence 是评审可信度的根。）
+
+## 半成品收工提醒（agent-delegate 借鉴）
+检查本次变更是否引入 TODO/FIXME/占位实现/未接线的函数或配置——发现按半成品如实降档。
 
 ## 任务目标
 __GOAL__
