@@ -12,6 +12,9 @@
 > 2026-10-05 补：**WebSearch 捞出的仓/平台 claim 一律 repos 端点二次实证后才能定性入库**——
 > 新闻面 ≠ 开源仓在（04 时班实证：NVIDIA「Open Agent Safety Platform」新闻真但同名仓 404、
 > covenant 被 WebSearch 放大实仓仅 5★、WSO2 Agent Manager 仓名未勘定）（谁/何时/为何：04 时班首例）。
+> 2026-10-05 再补：**新面孔入库时顺带 gh api orgs/<org>/repos 扫其组织矩阵**（repos 端点零搜索配额）——
+> beads 27.6k★ 一年仓被 A2「agent+memory」头部恒星压出 per_page=5 剪切线、靠 gascity 新锐轮顺组织
+> 才掘出（谁/何时/为何：15 时班首例，头部查询剪不动中腰部巨仓）。
 > 结果高度重合即跳余页省配额。新增关键词直接编辑本文件并在行尾标注（谁/何时/为何）。
 
 ## A. 常驻组（每轮全跑，78 组）
@@ -210,7 +213,7 @@
 ## C. 雷达源（每轮全过）
 
 - awesome 清单：awesome-agent-orchestration、awesome-claude-skills、ai-boost/awesome-harness-engineering（4.7k★，2026-10-04 属主补认）、awesome-mcp-servers（punkpeye，2026-10-04 名实修正：旧 punkpeye/awesome-mcp 已 404，社区迁此仓 95.8k★ 两轮实证存活）、awesome-cli-coding-agents、awesome-ai-agents、awesome-llm-apps、awesome-claude-code（54k★）、VoltAgent/awesome-agent-skills（34.6k★ 1000+ skills）、buildwithclaude（3.5k★ 枢纽）
-- awesome 清单补充（2026-09-22）：RUC-NLPIR/Awesome-Long-Horizon-Agents（长程 agent 路线图）、TeleAI-UAGI/Awesome-Agent-Memory（记忆域地图）、caramaschiHG/awesome-ai-agents-2026（300+ 资源月更）、vijaythecoder/awesome-claude-agents（4.4k★ Claude 子代理编排，2026-10-05 07 时班批7 捞出补入）
+- awesome 清单补充（2026-09-22）：RUC-NLPIR/Awesome-Long-Horizon-Agents（长程 agent 路线图）、TeleAI-UAGI/Awesome-Agent-Memory（记忆域地图）、caramaschiHG/awesome-ai-agents-2026（300+ 资源月更）、vijaythecoder/awesome-claude-agents（4.4k★ Claude 子代理编排，2026-10-05 07 时班批7 捞出补入）、TsinghuaC3I/Awesome-Memory-for-Agents（665★ 记忆域论文集，WebSearch 交叉验证捞出+repos 二次实证，2026-10-05 16 时班批2 补入——批2 域专属地图与 TeleAI 互补）
 - GitHub Trending（weekly，ai/agent 类）；直抓被拦时的替身（2026-09-22 补）：ossinsight.io、trendshift.io
 - topic 页：multi-agent-orchestration、ai-agents、claude-code、agent-framework、claude-skills、llm-agents、ai-coding-assistant、mcp
 - 发行渠道：npm search（agent orchestrator / claude code）、pypi（agent orchestrator）各扫一页
