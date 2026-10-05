@@ -21,6 +21,7 @@ TYPE_DIMENSIONS = {
     "rank_scan": "reasoning",
     "research": "reasoning",
     "speech": "writing",
+    "presentation": "writing",
     "weekly_report": "writing",
     "email": "writing",
     "tech_proposal": "reasoning",

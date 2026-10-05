@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """全类型回归（2026-10-04 全类型竞品调研轮，第 3/4 步落地核验）：
 
-  1. 正常：全部预置任务类型（BUILTIN_FLOWS 实数 17）注册可用——list/get 解析、
+  1. 正常：全部预置任务类型（BUILTIN_FLOWS 实数 18，2026-10-05 加演示文稿）
+      注册可用——list/get 解析、
      三展示字段齐、引擎合法、review 引擎四默认参数在位；
   2. 回归：用户 14 场景 → 注册表 id 映射零缺失（任务类型矩阵口径锁定），
-     注册表额外 doc/resume/bid_doc 三类型如实记录；
+      注册表额外 doc/resume/bid_doc/presentation 四类型如实记录；
   3. 边界：本轮落地件（serial_novel 签约门禁 note / rank_scan A-E 证据分级
       note）与 i18n EN 键严格相等、键恰好一次、旧版文案残留为零；
   4. 本轮新增：翻译起草侧常量带「翻译腔自查」条（yomiyasu 借鉴，此前翻译腔
@@ -27,11 +28,12 @@ from test_i18n_dups import _en_block
 _I18N = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                      "app", "ui", "i18n.js")
 
-# 任务类型矩阵（2026-10-04 落位班实读 flows.py）：17 = 用户 14 场景 + 额外 3。
+# 任务类型矩阵（2026-10-05 落地班实读 flows.py）：18 = 用户 14 场景 + 额外 4。
 EXPECTED_IDS = frozenset((
     "direct", "code", "novel", "serial_novel", "article", "video_script",
     "doc", "translation", "rank_scan", "defect_retro", "research", "speech",
     "weekly_report", "email", "tech_proposal", "resume", "bid_doc",
+    "presentation",
 ))
 
 # 用户 14 场景（列举口径）→ 注册表 id；改名/删类型时此处当 consciously 更新
@@ -42,7 +44,7 @@ USER_SCENARIOS = (
     ("翻译", "translation"), ("演讲稿", "speech"), ("工作汇报", "weekly_report"),
     ("商务邮件", "email"), ("扫榜选材", "rank_scan"), ("禅道工单", "defect_retro"),
 )
-EXTRA_REGISTRY_TYPES = ("doc", "resume", "bid_doc")
+EXTRA_REGISTRY_TYPES = ("doc", "resume", "bid_doc", "presentation")
 
 # 本轮改版前的旧文案（英文界面静默旧话术的残留哨兵）
 _STALE_COPY = (
@@ -84,7 +86,7 @@ class FullTypeRoundTests(BaseTest):
                 self.assertTrue(flow.get("rounds"), "%s 缺 rounds 默认" % fid)
 
     def test_user_scenario_matrix_zero_missing(self):
-        """回归：用户 14 场景映射零缺失 + 注册表额外三类型在位。"""
+        """回归：用户 14 场景映射零缺失 + 注册表额外类型在位。"""
         from app.core import flows
         by_id = {f["id"] for f in flows.BUILTIN_FLOWS}
         missing = [(label, fid) for label, fid in USER_SCENARIOS

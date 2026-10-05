@@ -13357,7 +13357,7 @@ function helpChapterBody(id) {
       '<li><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg><div><b>' + t("版本工作台") + '</b><span>' + t("任务分支隔离，改动可审可合") + '</span></div></li>' +
       '<li><svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg><div><b>' + t("自动化") + '</b><span>' + t("定时任务，无人值守") + '</span></div></li>' +
       '<li><svg class="ico" aria-hidden="true"><use href="#i-library"></use></svg><div><b>' + t("经验库") + '</b><span>' + t("内置规范包 + 自动沉淀教训，越用越顺手") + '</span></div></li>' +
-      '<li><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg><div><b>' + t("插件市场") + '</b><span>' + t("600+ 技能，一键安装") + '</span></div></li>' +
+      '<li><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg><div><b>' + t("插件市场") + '</b><span>' + t("技能一键安装") + '</span></div></li>' +
       '</ul>';
   }
   if (id === "serial") {
@@ -13399,7 +13399,7 @@ function helpChapterBody(id) {
       '<h3 class="help-h3">' + t("禅道 Bug 自动修复") + '</h3>' +
       '<p class="help-p">' + t("设置 → 禅道：配好地址与产品档案后，定时扫描激活 Bug，按模块路由 / AI 排查定责（前端/后端/双端/非我方）；我方端的 Bug 自动创建代码修复任务，修完自动合并、resolve 并回写报告到群里；测试指错人的也会按排查结论改派。合并失败不 resolve 不转派，留人工兜底。") + '</p>' +
       '<h3 class="help-h3">' + t("技能市场") + '</h3>' +
-      '<p class="help-p">' + t("设置 → 插件市场：600+ 技能一键安装，来源包括内置库和 ZCode、Anthropic 等多个外部目录。装上的技能会注入智能体能力，按任务类型生效。") + '</p>' +
+      '<p class="help-p">' + t("设置 → 插件市场：技能一键安装，来源包括内置库和 ZCode、Anthropic 等多个外部目录。装上的技能会注入智能体能力，按任务类型生效。") + '</p>' +
       '<h3 class="help-h3">' + t("用量台账") + '</h3>' +
       '<p class="help-p">' + t("设置 → 用量统计：每次调用的模型、token 与费用按多个维度聚合展示，历史运行会在启动时自动回填——每个任务花了多少，一目了然。") + '</p>';
   }
