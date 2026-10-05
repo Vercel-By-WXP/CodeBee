@@ -2581,3 +2581,83 @@ codegraph 73,226/graphiti **31,442（+26）**/huobao-drama 15,703——15 时破
 
 风险在档（交人拍板，本班不动）：data/zentao.json config.password 明文（攒批既有）；
 portscan 真实杀进程用例挂死三班复现；32 位 Python 全量 discover 静默退出（分片绕行）。
+
+## 2026-10-05 18 时班（批4：治理/安全/人机协同——全类型调研，过程审计见 full-type-audit.md）
+
+> 18%7=4 批4。主扫 115 查询 524 行 469 唯一仓零失败零限流（A 常驻 89 含内置 B1 11+
+> B4 轮换 10+A1u/A1p2 双轮 16，gh api 串行 4s）。雷达 C：topic 8 页+npm 两查+awesome
+> 9 清单+WebSearch 串行 1 查（治理域交叉验证，双通道互证零新竞品）；trendshift 三班连拦、
+> Trending 直抓未行、pypi 省配额——三缺位如实记录（full-type-audit.md §2），以 topic
+> sort=updated 补位。**批4 域零机制级新差量（15 时破稳后第 2 班回稳）**。新面孔组织
+> 矩阵顺藤首件（user 型属主 users/ 端点第 2 例）：dsh-background-agents 带出
+> PerryLink/DSH 插件生态 48 件（非 fork 且 dsh- 前缀，per_page=100 两页 28+20 实测；
+> 初记 15 件系首页口径不可追溯，独立评审后勘误）。
+
+### 新条目（本班真新面孔，均雷达/参考级）
+
+- **yetone/magpie**（5,007★，10-05 push）新入库 | 菜单栏模型路由「Every agent's model.
+  One place」——Codex 走 DeepSeek、Claude Code 走 Kimi，菜单栏一键切 | 网关族
+  （ClawRouter/axonhub/ccLoad 簇旁）+1；网关路线不接维持 | 雷达（网关族） | 2026-10-05
+- **desplega-ai/agent-swarm**（857★，10-05 push）新入库 |「Your Company Agentic
+  Operating System」 | A1 域中件；编排主路径已覆盖 | 雷达 | 2026-10-05
+- **kdlbs/kandev**（899★，10-05 push）新入库 | AI Kanban & Dev Environment：编排多
+  agent+review changes+开 PR+多 provider | 面板族（cc-haha/free-claude-code/Citadel
+  簇）+1 | 雷达（同形态） | 2026-10-05
+- **ZaxbyHub/opencode-swarm**（486★，10-05 push）新入库 | OpenCode hub-and-spoke
+  swarm 编排插件 | A1 域生态件 | 雷达 | 2026-10-05
+- **PerryLink/dsh-research-report**（215★，10-05 push）新入库 | DSH 可验证调研报告
+  引擎：**content-addressed evidence ledger 证据账本** | 调研报告类型对标：我们
+  research 流程有缺口驱动补查+结论先行，缺「内容寻址证据账本」式引用核验留痕；量级
+  微型不入队列，机制备注随批5 citation-verification 词组域攒批 | 雷达 | 2026-10-05
+- **PerryLink/dsh-permission-rules**（118★，10-05 push）新入库 | CC 式声明式权限规则
+  （ordered allow/deny/ask） | 批4 治理域：我们权限链=设备控制权守卫+白名单闸；
+  声明式规则文件是差量形态但 DSH 插件不可直装 | 雷达 | 2026-10-05
+- **PerryLink/dsh-\* 插件群 48 件**（非 fork dsh- 前缀两页 28+20 实测；dsh-talk 语音会话/dsh-team-rooms 跨会话房间/
+  dsh-session-sync 跨设备同步/dsh-observe OTel 导出/dsh-skill-pack-security 供应链闸
+  等，全 10-05 push）新入库 | DeepSeek Harness 插件生态整体 | E 域：deepseek-harness
+  已在 catalog，其插件生态=自家 CLI 周边雷达新面；keywords.md 自家 CLI 周边搜已补
+  dsh 词（确凿缺口首补） | 雷达（E 域周边） | 2026-10-05
+- 拒收明细（如实记录）：edwinkys/phantasm 196★（HITL approval layer，2024-11 停更
+  11 个月）/ CosmosYi/AutoControl-Arena 108★（ICML 学术风险发现）/ ESAA-Security
+  202★（agent 安全审计微型）/ matank001/cursor-security-rules 380★（2025-08 停更）/
+  gemini-ai-code-reviewer 252★（2025-12 停更）+MoaKK/AI-Code-Reviewer 103★+MatterAI
+  54★（B1 评审族微型，OpenCodeReview/pr-af 簇旁零差量）/ alphaparkinc/genpark
+  semantic-cache-manager 9★（队列第 2 项攒批微证）/ dsh-autotier 1★（cascade 同向
+  已满配）/ npm 面 bdb-agent-orchestrator（Untrivial fork）/tide-commander/
+  crow-central-agency（面板族）/garda-agent-orchestrator（治理族）/coleo——均不过
+  「他们有+我们没有+运转良好」门槛 | 判据 | 2026-10-05
+
+### 复查增量（repos 端点 30 仓，18:4x-19:0x，全 alive 零 archived）
+
+orca **85,356（+96 续领跑）**/gstack 135,277（+33）/pi 112,563（+41）/ponytail
+**155,458（+148）**/superpowers 295,431（09-27 后无 push 维持）/mattpocock/skills
+**276,548（+118，对 superpowers 差 18.9k 续逼近）**/ECC 273,247（+84）/hermes-agent
+251,300/opencode 211,807/anthropics/skills 179,712/spec-kit 140,171/OpenSpec 71,058/
+agentmemory 29,132/planning-with-files 27,286/claude-mem **96,334（+51 放量持续）**/
+SkillSpector 19,416；写作域 webnovel-writer 7,321/ainovel-cli 2,096/**yomiyasu 1,460
+（+14 在动）**/drama-skills 2,512/oh-story 7,261/hippo-memory 772/wenzi-xhs 153/
+claude-rules 192（停更维持）；E 域 **DeepSeek-Reasonix 35,730（10-05 push 候选首位
+维持）**；治理域 bernstein 1,394（10-05 push 在动）/gastown 系 beads 27,643/gascity
+1,329；context-mode **25,438（+15）**/huobao-drama 15,714/alibaba/open-code-review
+**43,791（+17）**。勘误：裸名 open-code-review 404，正主全名 alibaba/open-code-review
+（全名对照表口径在案）。
+
+### WebSearch 交叉验证（治理域，单通道「零新竞品」结论性判定按规则配额）
+
+串行 1 查：捞出名全为已录框架族（LangGraph/CrewAI/AutoGen/ADK/OpenAI Agents SDK/
+Dify/Mastra/OpenClaw）+治理标准面（EU AI Act/NIST AI RMF/ISO 42001）——零新仓
+claim，双通道互证批4 稳定期 | 通道 | 2026-10-05
+
+### 待深挖队列（18 时快照）
+
+16 时快照 11 项全部维持（第 3/10 项保持划掉）；本班新面孔均雷达级零新队列项；
+dsh-research-report 证据账本机制随批5 citation-verification 词组域备注（量级微型
+不入队）。风险在档维持（交人拍板）：data/zentao.json 明文密码；portscan 真实杀进程
+用例挂死；32 位全量 discover 静默退出。
+
+### 七专项巡检实测（第 2/4 步，19:0x）
+
+- **token 机制面 10 项在档**：三段压缩/token_meter/预算熔断（`pipeline.py` `_ensure_budget`:61+`_budget_cost_caps`:632）/cascade 分流（`capability.py`:100，`cascade.enabled` 默认 False opt-in）/会话复用（impl_sid:1560+critic_sids:3559+_valid_resume:206）/前缀字节稳定（:2436/:3113/:3595）/`_shrink_context_block`:2538 四层降级/经验召回/评审文本预算（`_full_manuscript`:2992）/diff 兜底评审（:921）。**唯一差量=供应商侧显式 prompt cache_control（全 app/core grep 零命中）——受本步「不扩建缓存」禁令转人工决策，零改动** | 机制 | 2026-10-05
+- **catalog 实数勘误**：`catalog.py` `DEFAULT_CATALOG`:32 实数 **14 个**（非任务文本所记 11）；本机 which 按**探测名**实测在机 **13** 个（codex/claude/opencode/qwen/aider/kimi/mimo/grok/pi/dsh/gemini/cbc/trae-cli），仅 openclaw 未装——初稿按包名（kimi-code/deepseek-harness/trae）误测记「在机 10、3 件待装」，独立评审后勘误（探测名≠包名，:1832 旧诫）；候选 DeepSeek-Reasonix/FuXi/Gitlawb/zero/Empryo which 零命中，维持不盲接 | 勘误 | 2026-10-05
+- **禅道运行态实测**：data/zentao.json `poll_enabled=False`/profiles=0/claims=0，last_scan=09-21（14 天前）last_error 空——**链路与 UI 完好但本机定时扫描未启用（部署配置缺位，非代码缺陷）**；积压/路由/回写本机未验证（无实例权限，不为验证触发真实工单） | 巡检 | 2026-10-05
+- **经验库分布复核**：70 条（+3）流程规范 36%/节奏爽点 30%/情节逻辑 14%/人物塑造 10%/一致性 6%/文笔风格 4%——维持 :1831「无病态偏科」；真实偏科在 scope（serial_novel 66%/code 14%）；「市场接入三问」已在库（去重实测生效），新增入库 1 条「禅道巡检运行态三看」（sk-f9aa2d8d1043，scope=code） | 数据卫生 | 2026-10-05
