@@ -86,7 +86,7 @@ tech_proposal / resume / bid_doc。
 | ZaxbyHub/opencode-swarm | 486★ / 10-05 push / topic:mcp | A1 生态雷达 |
 | PerryLink/dsh-research-report | 215★ / 10-05 push / users/PerryLink 顺藤 | 雷达（调研报告域机制备注） |
 | PerryLink/dsh-permission-rules | 118★ / 10-05 push / 同上 | 雷达（批4 域） |
-| PerryLink/dsh-* 群 48 件（非 fork dsh- 前缀两页 28+20 实测；初记 15 件系首页口径不可追溯，已勘误） | users/PerryLink/repos 全 10-05 push | E 域自家 CLI 周边雷达，keywords.md 补词 |
+| PerryLink/dsh-* 群 48 件（非 fork dsh- 前缀两页 28+20 实测；初记 15 件系首页口径不可追溯，已勘误） | users/PerryLink/repos 45/48 件 10-05 当日 push（dsh-kit/dsh-laya/dsh-plugin-upgrade-016 为 09 月） | E 域自家 CLI 周边雷达，keywords.md 补词 |
 | edwinkys/phantasm | 196★ / 2024-11 停更 | 拒收（停更） |
 | CosmosYi/AutoControl-Arena | 108★ / ICML 学术 | 拒收（学术微型） |
 | ESAA-Security | 202★ / 微型审计架构 | 拒收（量级不足） |
@@ -236,7 +236,7 @@ keywords.md 本班仅补 1 处确凿缺口（自家 CLI 周边搜缺 deepseek-ha
 本步指令要求新建 `tests/test_full_type_audit.py` 覆盖「实际后端改进」——本步实际
 后端改进为零，且「全部预置类型基础契约回归」在既有套件已逐面在守，新建只会复制
 既有断言（指令同段自带禁令：「不编写无意义的 Python 测试」）。逐面对照 + 实跑
-（2026-10-05，7 件 56 用例全绿零失败）：
+（2026-10-05，8 件 56 用例全绿零失败）：
 
 | 契约面 | 既有用例 | 结果 |
 |---|---|---|

@@ -2614,7 +2614,7 @@ portscan 真实杀进程用例挂死三班复现；32 位 Python 全量 discover
   声明式规则文件是差量形态但 DSH 插件不可直装 | 雷达 | 2026-10-05
 - **PerryLink/dsh-\* 插件群 48 件**（非 fork dsh- 前缀两页 28+20 实测；dsh-talk 语音会话/dsh-team-rooms 跨会话房间/
   dsh-session-sync 跨设备同步/dsh-observe OTel 导出/dsh-skill-pack-security 供应链闸
-  等，全 10-05 push）新入库 | DeepSeek Harness 插件生态整体 | E 域：deepseek-harness
+  等，45/48 件 10-05 当日 push，dsh-kit/dsh-laya/dsh-plugin-upgrade-016 为 09 月）新入库 | DeepSeek Harness 插件生态整体 | E 域：deepseek-harness
   已在 catalog，其插件生态=自家 CLI 周边雷达新面；keywords.md 自家 CLI 周边搜已补
   dsh 词（确凿缺口首补） | 雷达（E 域周边） | 2026-10-05
 - 拒收明细（如实记录）：edwinkys/phantasm 196★（HITL approval layer，2024-11 停更
@@ -2658,6 +2658,6 @@ dsh-research-report 证据账本机制随批5 citation-verification 词组域备
 ### 七专项巡检实测（第 2/4 步，19:0x）
 
 - **token 机制面 10 项在档**：三段压缩/token_meter/预算熔断（`pipeline.py` `_ensure_budget`:61+`_budget_cost_caps`:632）/cascade 分流（`capability.py`:100，`cascade.enabled` 默认 False opt-in）/会话复用（impl_sid:1560+critic_sids:3559+_valid_resume:206）/前缀字节稳定（:2436/:3113/:3595）/`_shrink_context_block`:2538 四层降级/经验召回/评审文本预算（`_full_manuscript`:2992）/diff 兜底评审（:921）。**唯一差量=供应商侧显式 prompt cache_control（全 app/core grep 零命中）——受本步「不扩建缓存」禁令转人工决策，零改动** | 机制 | 2026-10-05
-- **catalog 实数勘误**：`catalog.py` `DEFAULT_CATALOG`:32 实数 **14 个**（非任务文本所记 11）；本机 which 按**探测名**实测在机 **13** 个（codex/claude/opencode/qwen/aider/kimi/mimo/grok/pi/dsh/gemini/cbc/trae-cli），仅 openclaw 未装——初稿按包名（kimi-code/deepseek-harness/trae）误测记「在机 10、3 件待装」，独立评审后勘误（探测名≠包名，:1832 旧诫）；候选 DeepSeek-Reasonix/FuXi/Gitlawb/zero/Empryo which 零命中，维持不盲接 | 勘误 | 2026-10-05
+- **catalog 实数勘误**：`catalog.py` `DEFAULT_CATALOG`:32 实数 **14 个**（非任务文本所记 11）；本机 which 按**探测名**实测在机 **13** 个（codex/claude/opencode/qwen/aider/kimi/mimo/grok/pi/dsh/gemini/cbc/trae-cli），仅 openclaw 未装——初稿按包名（kimi-code/deepseek-harness/trae）误测记「在机 10 个，openclaw/kimi-code/deepseek-harness/trae 待装」（4 件待装中 3 件误判），独立评审后勘误（探测名≠包名，:1832 旧诫）；候选 DeepSeek-Reasonix/FuXi/Gitlawb/zero/Empryo which 零命中，维持不盲接 | 勘误 | 2026-10-05
 - **禅道运行态实测**：data/zentao.json `poll_enabled=False`/profiles=0/claims=0，last_scan=09-21（14 天前）last_error 空——**链路与 UI 完好但本机定时扫描未启用（部署配置缺位，非代码缺陷）**；积压/路由/回写本机未验证（无实例权限，不为验证触发真实工单） | 巡检 | 2026-10-05
 - **经验库分布复核**：70 条（+3）流程规范 36%/节奏爽点 30%/情节逻辑 14%/人物塑造 10%/一致性 6%/文笔风格 4%——维持 :1831「无病态偏科」；真实偏科在 scope（serial_novel 66%/code 14%）；「市场接入三问」已在库（去重实测生效），新增入库 1 条「禅道巡检运行态三看」（sk-f9aa2d8d1043，scope=code） | 数据卫生 | 2026-10-05
