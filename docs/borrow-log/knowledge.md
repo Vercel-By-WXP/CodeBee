@@ -3535,3 +3535,35 @@ py_compile/node --check 过；test_i18n_key_coverage 3 绿+test_i18n_dups（零�
 键守卫）绿+相邻回归（market_copy 3/registry_audit 4/regressions 6）全绿零波及。
 有代码入库（i18n.js+测试件）：英文界面 7 处文案可感知改善，按「当天有代码
 入库才发」应发 patch（与 05 时落地班三件合并计版），交第 4/4 步执行。
+
+## 2026-10-06 08 时收口班（第 4/4 步·联调终核+五道关复跑+发版终核）
+
+> 分支 main。开工 HEAD=b6d2269；收口中并行通道（第 3/4 步落地班）07:56-07:58
+> 完成 bd7c7f1（代码+测试+文档 17 件）与 0b0c105（v0.1.87 发版三件）并推送。
+> 本班转独立终核+发版补齐，不重做不重置。
+
+### 联调终核（全类型零误伤）
+
+18 型注册表契约（registry_audit 4/borrow_round 10/full_type_iteration 13/
+dispatch 4）全绿；禅道隔离测试 53 项全绿——app.js:15184 与 index.html:250 的
+"zentao" 字面量为设置页子页签导航（非任务类型消费方），改型零误伤；市场六源
+提示+i18n 429 键全量对账零缺 | 勘定 | 2026-10-06
+
+### 五道关与发版实录
+
+⓪main 全程未切；①py_compile 8 文件+node --check 过；②全量 discover 终局
+**exit 0 全绿**（本机真实 IO 测试慢，首跑 30 分钟后台时限中止于
+test_runner_drain，重跑达成；尾部 RuntimeError/ResourceWarning 系测试错误
+路径预期 stderr 噪声）；③逐 hunk 自审+独立模型评审四点实证全过（zentao
+残留合法/键逐字一致/断言与实现吻合/无 CRITICAL·HIGH）；④⑤提交推送由并行
+通道完成且与本班审定稿逐字一致，无踩踏。发版：0b0c105 只落发版提交未及
+publish，本班复跑 test_selfupdate 6 绿后补发——**首试 10 分钟无输出判定
+443 抖动挂起，停掉重试遇 release-gate 闸门拦截（工作区有本班文档在制品），
+按闸门要求先提交文档沉淀再 publish**，结果见当日报告 08 时班补录 | 复核 |
+2026-10-06
+
+### 受限项（如实记录）
+
+code-reviewer 子代理通道两次 API 400（上游模型路由「模型不存在」，指定
+sonnet 亦被忽略）——模型评审改走 ocx-self 通道完成（19 工具调用实证复核），
+通道故障属环境问题非代码问题 | 记录 | 2026-10-06
