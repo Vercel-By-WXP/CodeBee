@@ -7084,3 +7084,15 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 .foot-btn.kill { color: var(--bad); }
 .foot-btn.kill:hover { color: #fff; background: var(--bad); }
 .foot-btn.kill.busy { opacity: .5; pointer-events: none; }
+
+/* 封面提示词预览框（生成前确认，drama-skills 借鉴③「先预览确认再生产」；
+ * 追加尾防并行重排）：面板内换行展示将使用的提示词，限高可滚动，取消不落任何请求 */
+.bm-cover-preview {
+  margin: 0 18px 14px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); padding: 10px 12px;
+}
+.bm-cover-preview-hint { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.bm-cover-preview-text {
+  font-size: 12.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+  max-height: 180px; overflow: auto; color: var(--text);
+}

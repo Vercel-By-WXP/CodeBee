@@ -623,6 +623,17 @@ class Handler(BaseHTTPRequestHandler):
                     p: store.chain_book_meta(task, p)
                     for p in ("fanqie", "qimao")
                     if store.chain_book_meta(task, p)}})
+            m = re.match(r"^/api/tasks/([^/]+)/cover/prompt$", path)
+            if m:
+                # 封面提示词预览（只读，drama-skills 借鉴③「先预览确认再生产」）：
+                # 生成前先回 _cover_prompt 结果给前端展示，用户确认后再走
+                # POST /cover 付费链。纯只读，不触发任何模型/图像调用。
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "not found"})
+                from core import covergen
+                return self._json(200, {"ok": True,
+                                        "prompt": covergen._cover_prompt(task)})
             if path == "/api/publish":
                 # 一键发布：平台连接状态 + 最近台账（详情页发布面板）
                 from core.publish import manager as pub

@@ -10,7 +10,7 @@ function codebeeDocumentTitle(lang) {
 document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, rdHiveFirst: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, rdHiveFirst: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
 
 /* ---------------------------------------------------------- 内置浏览器工作区 */
 const BROWSER_STORAGE_KEY = "orch.browser.workspace.v1";
@@ -5812,10 +5812,24 @@ function renderBookMetaPanel(task) {
     cgBody = '<div class="bm-empty">' + esc(t("生成竖版封面插画，产出 cover.png")) + "</div>";
   }
   const cgBusy = taskBusy || cgSt === "running";
+  // 生成前提示词预览确认（drama-skills 借鉴③「先预览确认再生产」）：点
+  // 「生成封面」先只读拉提示词展示，确认后才走 coverGen 的 POST 付费链；
+  // S.coverPrompt 让预览态跨轮询重绘保持（同 bmRenaming 模式）
+  // 排除 running（生成中不出确认钮）与 done（已出图预览无意义，挂回 done 卡误导）
+  const cgPrev = (S.coverPrompt && S.coverPrompt.taskId === task.id
+                  && cgSt !== "running" && cgSt !== "done") ? S.coverPrompt : null;
   const cgAction = cgSt === "running"
     ? '<button class="ghost" disabled><svg class="ico spin" aria-hidden="true"><use href="#i-refresh"/></svg>' + t("生成中…") + "</button>"
-    : '<button class="primary" onclick="coverGen(\'' + esc(task.id) + '\')">' +
-      (cgSt === "failed" ? t("重试") : t("生成封面")) + "</button>";
+    : cgPrev
+      ? '<button class="primary" onclick="coverConfirm(\'' + jsq(task.id) + '\')">' + t("确认生成") + "</button>" +
+        '<button class="ghost" onclick="coverCancel(\'' + jsq(task.id) + '\')">' + t("取消") + "</button>"
+      : '<button class="primary" onclick="coverPreview(\'' + jsq(task.id) + '\')">' +
+        (cgSt === "failed" ? t("重试") : t("生成封面")) + "</button>";
+  if (cgPrev) {
+    cgBody += '<div class="bm-cover-preview"><div class="bm-cover-preview-hint">' +
+      esc(t("生成前请确认图像提示词（确认后才调用图像接口）：")) + "</div>" +
+      '<div class="bm-cover-preview-text">' + esc(cgPrev.prompt || "") + "</div></div>";
+  }
   html += '<div class="bm-cards"><div class="bm-card st-' + (cgSt || "new") + '">' +
     '<div class="bm-card-head"><span class="bm-plat-name"><svg class="ico" aria-hidden="true"><use href="#i-book-open"/></svg>' + esc(t("封面图")) + "</span>" +
     bmStatusChip(cgSt) + '<span class="flex1"></span>' + cgAction + "</div>" + cgBody + "</div></div>";
@@ -5878,6 +5892,34 @@ window.coverGen = async function (taskId) {
     toast(t("已开始生成封面，完成后这里会自动更新"));
     await refreshState(); render();
   } catch (e) { toast(t("封面生成失败：") + e.message, true); }
+};
+
+/* 生成前提示词预览（drama-skills 借鉴③「先预览确认再生产」）：只读拉取
+ * 后端 _cover_prompt 结果展示，不发图像请求；「确认生成」才走既有 coverGen
+ * 的 POST /cover 付费链，「取消」只清预览态重绘、零请求。
+ * 三个处理器都作废详情签名再 render：S.coverPrompt 不在 drawTaskDetail/
+ * renderRunDetail 的数据签名里，服务端数据没变时守卫会整帧跳过重绘
+ * （bmRename 同陷阱，见其 :5877 注释）——不作废则预览框不上屏、取消后残留。 */
+function coverInvalidateDetail() {
+  S.taskSig = "";
+  S.runDetailSig = "";
+  render();
+}
+window.coverPreview = async function (taskId) {
+  try {
+    const r = await api("/api/tasks/" + encodeURIComponent(taskId) + "/cover/prompt");
+    S.coverPrompt = { taskId: taskId, prompt: r.prompt || "" };
+    coverInvalidateDetail();
+  } catch (e) { toast(t("封面提示词获取失败：") + e.message, true); }
+};
+window.coverConfirm = function (taskId) {
+  S.coverPrompt = null;
+  coverInvalidateDetail();   // 先归位成单按钮再发 POST，失败时界面不留旧预览框
+  window.coverGen(taskId);
+};
+window.coverCancel = function (taskId) {
+  if (S.coverPrompt && S.coverPrompt.taskId === taskId) S.coverPrompt = null;
+  coverInvalidateDetail();
 };
 
 window.bmCopyBtn = function (btn) {
