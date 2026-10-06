@@ -322,3 +322,152 @@
 - **历史项目逐项增量复查**已并入 knowledge.md「15 时班·复查记录」（22 仓 repos 端点 + 主扫双轮比对）。
 - keywords.md 零调整（无新依据）；A1-A10 常驻组、批1、C 雷达全部执行完毕；不可访问源（pypi）如实记为阻塞。
 - E 专项顺带实测：本机在装 13 CLI、九候选全未装——零接入防死链维持（无新接入候选达标）。
+
+---
+
+# 2026-10-06 16 时班（新一轮计划第 2/4 步·七专项 A-G 巡检+落地提案）
+
+> 开工 16:23（UTC+8）、分支 main（ac15ee1，v0.1.88 已发版）。工作区在制品 = 当日
+> 01 时起各调研/巡检班沉淀三 docs（2026-10-06.md / current-round.md / knowledge.md，
+> 未提交）——本班增量追加、逐字不动其既有内容。本步为巡检+提案步：A-G 全实证落本节；
+> 落地提案只记录不执行（纳入第 3 步确认清单，评审通过再实现）。零代码改动。
+> 以下行号全部为本班 16:2x-16:4x 独立实读，非沿用历班。
+
+## A. token 节约（单列小节·八件既有机制逐项实锚）
+
+**检查方法**：grep 定位 + 逐段 Read pipeline.py / task_compile / modelhub / usage / step_runner。
+
+| 机制 | 真实实现（文件:行，本班实核） | 结果 |
+|---|---|---|
+| 三段压缩 | compaction.py（estimate_tokens/prune_text/select_range/compact_region/maybe_compact）；pipeline.py `_compaction_enabled(:231)`（默认关灰度）+ `_spawn_step(:672)` 撑爆→压缩→守门重试分支 :703 起 | 在位 |
+| token_meter | `_spawn_step` 内双路径累进：压缩路径 :723 + 直通路径 :743（:738 注释「直通也必须回填 usage 防预算表空转」）；cached 单独记账（usage.py :117-120，不计 used） | 在位 |
+| 预算熔断 | 花费闸 `_cost_gate_block` 先于 token 闸（:677 注释「钱比 token 更早见顶」）；`_budget_max_tokens(:613)`+`_budget_cost_caps(:632)` 日/月双封顶；ENV_BLOCK 只拦下一步不掐当前步（:685-701） | 在位 |
+| cascade | pipeline.py :1529 `capability.cascade_reorder`（easy 任务 + 设置 opt-in，difficulty 传参）；上游 `classify_difficulty(modelhub:3536)` → `bind_agent(:2217)`；code_bestof 难度分道 `_code_bestof(:1146)` | 在位 |
+| 经验召回 | skills.block_for（:619，stable_order 按 id 保前缀字节稳定）；知识库 retrieval.search + knowledge.block_for（:3599 消费）；调用点 stable_order 双处 :3141-3142/:3595-3598 | 在位 |
+| 会话复用 | `_valid_resume(:206)` → `_resume_workdir(:219)` → `_resume_sid(:270)`（codex/claude/opencode/qwen 原生 resume，generic 走 resume_argv_template）；resume 钉原 CLI 换将不补位（:150 注释） | 在位 |
+| diff 评审 | `_git_diff(:948)`（HEAD diff+未跟踪新文件，gitmod.collect_changes 30KB 封顶）+ `_review_depth_note(:1019)`（<40 行快评/≥600 行先概览后深看）唯一消费 :1089 + `_scope_note(:1054)` 越范围提醒 | 在位 |
+| _shrink 家族 | `_shrink_context_block(:2538)`（圣经>模块库>经验库四层优先级）+ `_serial_shrunk_block(:2581)`（降级说明透出进 step note）；消费点 :3676 非赛马重试 + :3801 赛马复赛（21 时班落地件在位） | 在位 |
+
+**辅助锚**：step_runner `_PRECHECK_RATIO=0.9(:28)` 事前门 :80；modelhub `chat(cache_ttl)(:3673)` 精确匹配响应缓存；`cache_control|semantic_cache|prompt_cache` 全 app/core grep **零命中**（本班复核维持）。
+
+**四方向判定（不重复建设）**：prompt 缓存=供应商侧能力，应用侧已用 stable_order 保前缀最大化；语义缓存=队列既有项卡租户/敏感边界交人拍板；diff-only 评审=已有满配（diff+shortstat+深度分级+越范围提醒）；廉价模型分流=cascade+难度选模+bestof 分道已满配。**零新建**。
+
+## B. 插件市场（六源+闸门+三问裁定）
+
+- **六源在位**：market_remote.py SOURCES :50-76（zcode / anthropic / anthropic-skills / claude-skills / clawhub / cocoloop，镜像优先+回退序）。
+- **缓存实数 810 逐源实测**：zcode 26 / anthropic 315 / anthropic-skills 5 / claude-skills 99 / clawhub 215 / cocoloop 150，fetched_at 全 2026-10-03——与 01 时班口径零漂移。
+- **闸门实锚**：SSRF `assert_public_url(:113)`；安装白名单 `inspect_tree(:568)`（:588 白名单外内容不参与检查与安装）；market.py typosquatting 近名对账（:131/:294）、装前 `skill_scan.scan_summary`（:281）、内容指纹突变（:291-293）、装后冒烟（:340-357）。零绕闸零自动安装。
+- **本轮候选三问裁定（全部跟踪不接入）**：agnix 440★（AI 助手配置 linter——独立 CLI 不可直装六源，校验思路留 B 专项备注）/ dsh-plugins-store 68★（DSH 生态商店，不属六源范畴）/ kodus-ai 1,449★（AGPLv3 且 review 域机制已满配）/ pr-agent 13,273★（仓名迁移勘定后机制对应物已满配）/ nautilus-compass 1,134★（「无编排者协调」不同轨）。
+
+## C. 任务类型（注册表 18 × 指令面 14 映射）
+
+- **注册表实数 18**（flows.py:36-134 逐条实读）：direct/code/novel/serial_novel/article/video_script/doc/translation/rank_scan/defect_retro/research/speech/presentation/weekly_report/email/tech_proposal/resume/bid_doc——14 指令项（含禅道工单→defect_retro）映射零缺失，另 4 自研（doc/presentation/resume/bid_doc）。
+- **流程参数实证**：review 型 14 个全带 manuscript/rubric(4-5 维)/threshold(7.0，bid_doc 7.5)/rounds(2)；direct 型 3 个（direct/rank_scan/defect_retro）目标+附件即全部输入；code 型带 verify_command；serial 型带 chapters/words_per_chapter/variants/branches。`task_compile.content_workflow(:156)` 轻量三类型 {email, weekly_report, translation}（:163）免大纲单评审、深度三类型 {novel, research, tech_proposal}（:164）大纲+双评审、threshold≥8.5 强制双评审（:194）——菜单描述/goal_hint/note 与执行参数一致。
+- **i18n 实证**：18 类型中文名在 i18n.js 程序化核验零缺失；新增 branches 编辑器 EN 键在位（「同章赛马稿件数」「多线剧情推演数」「1 = 关闭」）。守卫复跑：test_full_type_round **5/5 OK** + test_i18n_dups **3/3 OK**（TUTTI_DATA 隔离净进程）。
+
+## D. 经验库（数据卫生体检）
+
+- **存量实测**（python 直读 data/skills.json）：lessons **72** 零漂移——流程规范 26（36%）/节奏爽点 21（29%）/情节逻辑 10（14%）/人物塑造 7（10%）/一致性 4（6%）/文笔风格 4（6%）；全库 category 视角无病态偏科（「61%」旧口径为 scope 视角：serial_novel 46/code 11/* 10/direct 4/article 1）；packs=3。
+- **重复检测**：标题完全重复 **0**——零可并项，零删除动作（不批量重写不迁移）。
+- **蒸馏候选 1 条**（记录待写，第 3 步执行，见提案 2）。
+
+## E. 新 CLI 接入（catalog 对账 + 本机探测）
+
+- **catalog.py DEFAULT_CATALOG=14**（import 实测）：codex-cli/claude-code/opencode/qwencode/aider/openclaw/kimi-code/mimo-code/grok-build/pi/deepseek-harness/gemini-cli/codebuddy/trae-agent。
+- **本机在装 13/14**（command -v 逐个实测；openclaw MISSING——与 01 时班「13/14 在装」口径一致；codebuddy 条目探测名 cbc FOUND）。
+- **六候选探测**：deepseek-reasonix/reasonix/fuxi/gitlawb/zero/empryo `command -v` **全 MISSING**——未装不实测不接入，防死链维持。
+
+## F. 禅道集成（只读巡检，零写回动作）
+
+- **配置态复核（承 13 时班勘定口径，本班独立复证成立）**：data/zentao.json 为「已配置+显式关闭」态——base_url 实例（10.143.132.5:8899）+ 账号 + product_profiles 产品 96（our_sides=[backend]，owners backend/frontend 双侧在位）；**poll_enabled=false 系 config 内层显式关闭**（13 时班勘正多班「键缺失/配置缺位」误读，本班实读同判）。
+- **本班新增实锚两点**：①产品 96 路由目标 backend workdir E:\GitLab\cbc\mo-so **本机实存**（ls 实测 EXISTS）——档案路由不是死链；②设置页禅道子页动作五件齐全（app.js:1012-1017 测试连接/拉产品/拉账号/扫描/保存）。
+- **扫描状态**：claims=**0** 零积压、last_error **空**（无故障）、last_scan 停 2026-09-21 20:43（poll 关闭所致非漂移）。
+- **链路实锚**：调度挂 automation tick（automation.py:580-581 `zentao.fire_due()`，自节流）、启动加载 main.py:3438 `zentao.start()`、手动扫描 main.py:1779-1781 `/api/zentao/scan`→`scan_now()`（zentao.py :2470/:2479/:2496）；设置页禅道子页动作齐全（app.js:1012-1017 测试连接/拉产品/拉账号/扫描/保存五动作）。
+- **路由核对**：产品 96 → mo-so 仓路由目标实存，our_sides 规范化（zentao.py:327）与「双端/我方端→修完转派、纯对方端→直转派、失败不评论不转派」三规则口径在位（沿用历班实读）。
+- **只读纪律**：未触发 scan/resolve/评论/群通知任何写接口；密码字段核对面全程 masked 不外播——**明文密码风险维持在档**（凭据保险库队列项，交人拍板）。
+- **竞品雷达**：禅道周边零新竞品（沿用 01 时班第 19 例后口径）。
+
+## G. 产品巡检（UI 文案/链接/描述一致性）
+
+- 过时文案 grep（「13 种/14 种/16 种/17 种/单源」）i18n.js/index.html/app.js/README **零命中**；README.md:135「**18 种任务类型**」与注册表实数一致。
+- rank_scan 四平台三向一致（flows.py:82 note ↔ paihang.py:97-102 `_SOURCES` 七猫/番茄/起点/纵横 ↔ README）。
+- **在册 G 项清账**：22 时班所记「serial.branches 无 UI 编辑入口」已收口——任务表单 f-branches（app.js:769/:3192/:3957）+ 流程编辑器 fl-branches（:10936/:10982）+ i18n EN 键全在位。
+- **结果：零新毛病，零改动**。
+
+## 受阻项（如实记录，不擅动）
+
+1. **全局一致性评审无容量降级**（22 时班录，本班复核仍在）：圣经原样注入无封顶+full_text 头截，容量受限通道 N 评审并发全挂整 run 判失败——评审覆盖面属质量语义，交人拍板。
+2. 语义缓存/prompt 缓存显式接入、凭据保险库（data/zentao.json 明文密码）——队列既有项，交人拍板。
+3. 队列第 1 项 RAG 向量检索——需 embedding 基建，非「小而实」；本班提案 1 只取第 4 项的关键词半张（不引基建）。
+4. 禅道 poll 未开启——用户侧部署决策，不代开（实例可达性本班亦未探测，避免触发真实请求）。
+
+---
+
+## 落地提案（第 3 步确认清单，评审通过再动）
+
+### 提案 1：连载起草「相关历史章节推荐」注入（队列第 4 项关键词版）
+
+> 口径说明：13 时班「在册代码级小而实积压核对为零」指其时候拍板件（语义缓存/评审降级/
+> gate 修法）——本提案出自队列活项第 4 项（20 时班移交注记「供择小而实、第 1/4 项同管线
+> 攒批」）的新立提案，走本步评审门；若评审认定属行为语义交人拍板范畴，转候拍板不擅动。
+
+- **需求**：连载前情只看近 2 章结尾摘录+findings 摘要（pipeline.py :3394-3413），300+ 章长篇的伏笔回收/人物回场只有 ledger watchlist（:3383 陈账督促）兜底；story_tracking 已持久化每章 facts/characters/foreshadowing（story_tracking.py:125 commit_chapter）却未参与起草注入。
+- **真实函数/锚点**：章循环 pipeline.py:3339 起（`ch = outline["chapters"][k-1]` :3341 带 beats/hook/highlight）；`tracking_state = story_tracking.load(workdir)` 已在同函数作用域（:3082）；prev 组装块 :3394-3413。
+- **拟改文件**：仅 app/core/pipeline.py + tests/ 新测试。新增 `_related_chapters_note(tracking_state, ch, max_n=3)`：纯本地关键词重叠计分（本章 beats/hook/highlight 分词 vs 历史章 foreshadowing/characters/facts 行），命中章输出「第 N 章：相关行摘录」capped 注入 `if i > 1` 的 prev 尾部；零匹配零输出。**零 LLM 调用、零存储写入**。
+- **验收用例**：① py_compile 过；② 新测试（隔离 workdir 造 tracking state）：历史章 foreshadowing 含「玉佩」+ 本章 beats 含「玉佩」→ note 命中该章；零重叠大纲 → 空串；③ 既有 test_serial_ctx_shrink 4 项 + test_race_ctx_shrink 不回归。
+- **跨模块影响**：story_tracking 只读；评审语义/flows/UI 零改动；输出经 prev 注入路径自然进入降级块（不新增 budget 口子）。
+- **收益证据**：近 2 章窗口外的中期记忆空洞（10-04 20 时班队列实证：500+ 章体量下前情覆盖不足）补上「哪几章埋了这条线」的显式指针，成本为零额外模型调用。
+
+### 提案 2：D 专项蒸馏 1 条调研方法论入经验库（非代码）
+
+- **需求**：本轮（01 时班）WebSearch 交叉验证勘定 PR-Agent 仓名迁移（qodo-ai→The-PR-Agent，「新闻面 ≠ 开源仓在」规则第 4 例）——方法论目前只在 knowledge.md 对照表层，经验库注入面没有。
+- **真实入口**：`skills.upsert_lesson`（skills.py:421 起）。
+- **拟写条目**：{标题:「竞品勘定必须 repos 端点二次实证——新闻/搜索面与开源仓存续脱节（仓名迁移/属主消失/商业闭源），主扫与 WebSearch 捞到的名一律 repos 复核 stars/push/正主后再入对照表」, scope:"*", category:流程规范, source:"borrow-log 2026-10-06"}。
+- **验收**：lessons 72→73、category 落闭集、标题查重零重复、seen=1 不分裂。
+- **回滚**：按 title 精确移除，无联动。
+
+## 本班纪律对账
+
+- 零代码改动（巡检+提案步）；改动面仅本节两 docs 追加（full-type-round.md / knowledge.md），在制三 docs 未触碰。
+- F 专项全程只读（含未探测实例可达性——避免触发真实请求）；E 专项六候选零安装；B 专项零自动装包零绕闸。
+- 守卫测试经 TUTTI_DATA 隔离净进程复跑，未写真实经验库。
+
+---
+
+## 第 3/4 步落地实录（16 时段·提案 1+2 实施）
+
+> 承上节提案清单执行：提案 1（连载起草「相关历史章节推荐」注入）+ 提案 2（蒸馏 1 条
+> 方法论入经验库）。与提案逐条对齐：零 LLM 调用、零存储写入、零 UI/flows/评审语义改动。
+
+### 实际改动路径
+
+| 文件 | 改动 | 提案锚点核对 |
+|---|---|---|
+| `app/core/pipeline.py` | ①新增 `_related_chapters_note(tracking_state, ch, current=0, max_n=3)`（置于 `_serial_shrunk_block` 之后，`_critic_lens` 之前）：本章 beats/hook/highlight 与历史章 foreshadowing/characters/facts 行做字符 bigram 重叠计分（复用 `skills._text_bigrams`，knowledge._title_sim 同款先例），命中行数排序取 top max_n，输出「第 N 章：相关行摘录」；行摘录 80 字截断、每章 ≤3 行、单行命中门槛 ≥2 个 bigram；零匹配/无状态/空章纲返回空串；`current` 排除当章及之后记录（重跑已提交章不跟自己记录自证）。②前情组装块（findings 注入之后、仍 `if i > 1` 内）追加消费：`rel = _related_chapters_note(tracking_state, ch, current=i)`，命中才 `prev += "\n\n" + rel`，失败静默——经 prev 注入路径自然随降级块走，零新增预算口子 | 与提案签名一致（追加 `current` 关键字参数为真实重跑场景所需守卫，max_n=3 默认不变）；唯一消费点即 prev 尾部，零第二注入点 |
+| `tests/test_full_type_round.py` | +3 用例（新 `RelatedChaptersNoteTests` 类）：`test_related_chapters_note_hits_orders_and_caps`（命中/排序/零重叠章不出现/max_n 封顶）、`test_related_chapters_note_silent_and_self_excluded`（无状态/空章纲/零重叠空串、current 自章排除、current=0 可命中、max_n=0 空串）、`test_serial_draft_wires_related_note_into_prev`（起草前情组装接线在位）；模块 docstring 补第 5 条 | 提案验收用例①②全覆盖；用例名全库唯一（grep 核过） |
+| `data/skills.json` | lessons **72→73**：新增「竞品勘定必须 repos 端点二次实证……」（scope=\*、category=流程规范、seen=1、source=borrow-log 2026-10-06），经 `skills.upsert_lesson`（skills.py:421）API 落库，标题查重零重复、闭集分类 | 提案 2 验收全过；运行时数据不入库（data/ gitignore） |
+
+- 零 UI/样式/浏览器交互改动 → `app/ui/app.js`/`i18n.js`/`index.html`/`style.css` 未触碰，`tests/ui_full_type_round.mjs` 依规格条件不建，`node --check` 不适用（零 JS 改动）。
+- `current` 参数设计说明：提案签名 `_related_chapters_note(tracking_state, ch, max_n=3)`；实施为 `(tracking_state, ch, current=0, max_n=3)`——续写批重跑已提交章时（start_chapter 回退），记录在案的历史章会与自己大纲自证命中，`current=i` 一参排除，调用点单行传参，不引额外抽象。
+
+### 测试命令与结果（本步实跑）
+
+| 命令 | 结果 |
+|---|---|
+| `python -m py_compile app/core/pipeline.py tests/test_full_type_round.py` | 过 |
+| `python -m unittest discover -s tests -p "test_full_type_round.py" -v` | **8/8 OK**（原 5 + 新 3） |
+| `python -m unittest discover -s tests -p "test_serial_ctx_shrink.py"` | **4/4 OK**（提案回归项③） |
+| `python -m unittest discover -s tests -p "test_race_ctx_shrink.py"` | **1/1 OK**（61s，赛马收缩不回归） |
+| `python -m unittest discover -s tests -p "test_i18n_dups.py"` | **3/3 OK** |
+| `python -m unittest discover -s tests -p "test_content_contracts.py"` | **9/9 OK**（未选类型与既有内容契约零回归） |
+| `python -m unittest discover -s tests > log 2>&1`（全量，落盘取真实退出码） | **REAL_EXIT=0**、FAIL/ERROR 行零——判全绿；「Ran/OK」摘要行缺失系队列在册「32 位全量 discover 静默退出」已知形态（exit 0 + 零 FAIL 行双信号一致，如实记不扩修） |
+| 闸④预扫 `git diff \| grep -E "pick_dialog\|ask_directory\|backoff"` | 零命中 |
+| 改动两文件 UTF-8 无 BOM 逐字节校验 | 过 |
+
+- 17/18 预置类型注册表零改动（`test_all_builtin_types_register_and_resolve` + `test_user_scenario_matrix_zero_missing` 随 8/8 绿锁定）。
+- 真实风险如实记（不自行扩大修复）：`data/skills.json` 为运行时单文件 JSON 直写（skills 层既有形态，本步沿用 `upsert_lesson` 未改存储层）；`_related_chapters_note` 计分为字符 bigram 重叠，纯启发式指针（非语义召回），命中质量以评审链兜底——与提案「零 LLM 调用零存储写入」边界一致。
+
+### 交第 4/4 步清单（闸②全量复核+闸⑤提交+闸⑥推送发版）
+
+- 待提交文件：`app/core/pipeline.py`、`tests/test_full_type_round.py`、`docs/borrow-log/full-type-round.md`（本节）+ 前步调研沉淀三 docs（2026-10-06.md / current-round.md / knowledge.md，归属前步不混提）。
+- 发版判断：本轮 pipeline.py 有代码入库（新函数+前情注入），按「当天有代码入库才发」候选 patch+1（v0.1.88 → v0.1.89，test_selfupdate 全绿前置）。

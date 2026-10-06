@@ -21,7 +21,7 @@ QUERIES = [
     ("A1", "claude+skills+OR+agent+skills+marketplace"), ("A1", "多智能体+编排"),
     ("A2", "autonomous+agent+framework"), ("A2", "agent+workflow+engine+OR+agent+pipeline"),
     ("A2", "agentic+coding"), ("A2", "agent+memory+OR+agent+evals"),
-    ("A2", "context+engineering"), ("A2", "ai+employee+OR+digital+worker"),
+    ("A2", "context+engineering"), ("A2", "ai+employee+OR+digital+worker+OR+digital+employee"),
     ("A2", "LLM+workflow+builder"),
     ("A3", "prompt+caching+OR+llm+semantic+cache"), ("A3", "token+optimization+OR+token+efficient"),
     ("A3", "context+window+management"), ("A3", "cheap+model+routing+OR+model+cascade"),
