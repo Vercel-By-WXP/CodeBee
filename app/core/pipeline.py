@@ -2587,6 +2587,55 @@ def _serial_shrunk_block(lessons, bible, kb_block, budget=12000):
     return "\n\n".join(p for p in (sk2, bible2, kb_block) if p), note
 
 
+_RELATED_ROW_CHARS = 80     # 单行摘录截断（记录行本体可达 1000 字，注入面只留指针）
+_RELATED_ROWS_PER_CH = 3    # 每章最多摘录的行数
+_RELATED_MIN_GRAMS = 2      # 单行命中门槛：bigram 重叠数（1 个重叠噪音过高）
+
+
+def _related_chapters_note(tracking_state, ch, current=0, max_n=3):
+    """连载起草的「相关历史章节推荐」（纯本地重叠计分，零 LLM 调用零存储写入）。
+
+    前情注入只看近 2 章结尾+findings 摘要，中期记忆（伏笔回收/人物回场）此前
+    只有账本督促兜底；story_tracking 已逐章持久化 facts/characters/foreshadowing，
+    这里拿本章大纲要点（beats/hook/highlight）与各历史章记录行做字符 bigram
+    重叠计分（复用 skills._text_bigrams，口径与经验库召回一致），按命中行数挑
+    最相关的 max_n 章输出「第 N 章：相关行摘录」指针。零匹配/无状态返回空串
+    （老书零噪音）；current 传当前全书章号时只看更早的章（重跑已提交章不跟
+    自己的记录自证）。"""
+    ch = ch or {}
+    probe = skills._text_bigrams(" ".join(
+        str(ch.get(k) or "") for k in ("beats", "hook", "highlight")))
+    if not probe:
+        return ""
+    scored = []
+    for rec in (tracking_state or {}).get("chapters") or []:
+        try:
+            no = int(rec.get("chapter") or 0)
+        except (TypeError, ValueError):
+            continue
+        if no < 1 or (current and no >= current):
+            continue
+        rows = [str((x or {}).get("text") or "") for x in rec.get("foreshadowing") or []]
+        rows += [str(x) for x in rec.get("characters") or []]
+        rows += [str(x) for x in rec.get("facts") or []]
+        hits = []
+        for row in rows:
+            row = row.strip()
+            if row and len(probe & skills._text_bigrams(row)) >= _RELATED_MIN_GRAMS:
+                hits.append(row[:_RELATED_ROW_CHARS]
+                            + ("…" if len(row) > _RELATED_ROW_CHARS else ""))
+        if hits:
+            scored.append((len(hits), no, hits))
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    take = scored[:max(0, int(max_n or 0))]
+    if not take:
+        return ""
+    lines = ["### 相关历史章节（按本章大纲要点重叠检出，起草前可回看）"]
+    for _, no, hits in take:
+        lines.append("- 第 %d 章：%s" % (no, "；".join(hits[:_RELATED_ROWS_PER_CH])))
+    return "\n".join(lines)
+
+
 def _critic_lens(critics, agent):
     """该评审的专属视角；单评审/手动指定时不播种（无从轮换，也别稀释注意力）。"""
     try:
@@ -3409,6 +3458,16 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     if fd_txt:
                         # 截到 3000 字防无限膨胀；只在尾部追加时自动增长，注入头固定
                         prev += "\n\n## 此前章节发现摘要\n" + fd_txt[:3000]
+            except Exception:
+                pass
+            # 相关历史章节推荐（story_tracking 逐章 facts/characters/foreshadowing
+            # 与本章大纲要点的纯本地重叠计分）：近 2 章窗口外的伏笔回收/人物回场
+            # 给显式指针，经 prev 注入路径自然随降级块走（不新增预算口子）；
+            # 零匹配零输出（老书零噪音），失败静默。
+            try:
+                rel = _related_chapters_note(tracking_state, ch, current=i)
+                if rel:
+                    prev += "\n\n" + rel
             except Exception:
                 pass
 

@@ -513,6 +513,63 @@ def lesson_op(lesson_id, op):
     return None
 
 
+def merge_lessons(primary_id, duplicate_ids):
+    """把近重复教训并为主条（存量聚簇的管理通道；upsert_lesson 合并路径的管理版）。
+
+    自动去重只拦沉淀时的近似题（bigram 包含度 ≥0.8），语义近但措辞散的存量
+    聚簇没有并类通道。语义=upsert 合并语义的延伸：被并条标题进主条
+    merged_titles（去重封顶 8，溯源+变体检索可见）、正文进 revisions 留痕
+    （封顶 5，带 merged_from 指明来源条），注入/结局证据计数（hits/lost/
+    useless/won/seen）并入主条——召回排序的 karma 证据不因合并缩水；正文与
+    分类以主条为准（不批量重写内容）。返回错误说明或 None。
+    """
+    dup_ids = []
+    for x in (duplicate_ids or []):
+        did = str(x or "").strip()
+        if did and did not in dup_ids:
+            dup_ids.append(did)
+    if not dup_ids:
+        return "缺少被并条目"
+    with _LOCK:
+        data = _load()
+        items = data.get("lessons") or []
+        by_id = {}
+        for x in items:
+            by_id[x.get("id")] = x
+        primary = by_id.get(primary_id)
+        if not primary:
+            return "主条不存在"
+        if primary_id in dup_ids:
+            return "主条不能同时是被并条目"
+        dups = []
+        for did in dup_ids:
+            d = by_id.get(did)
+            if not d:
+                return "被并条目不存在 " + did
+            dups.append(d)
+        revs = primary.setdefault("revisions", [])
+        titles = primary.setdefault("merged_titles", [])
+        primary_title = str(primary.get("title") or "")
+        for d in dups:
+            content = str(d.get("content") or "")
+            if content:
+                revs.append(revisions.revision_record(
+                    "skrev", content, source=d.get("source") or "",
+                    extra={"content": content, "merged_from": d.get("id")}))
+            title = str(d.get("title") or "")
+            if title and title != primary_title and title not in titles:
+                titles.append(title)
+            for k in ("hits", "lost", "useless", "won", "seen"):
+                primary[k] = int(primary.get(k) or 0) + int(d.get(k) or 0)
+        primary["revisions"] = revs[-5:]
+        primary["merged_titles"] = titles[-8:]
+        primary["updated_at"] = _now()
+        drop = {d.get("id") for d in dups}
+        data["lessons"] = [x for x in items if x.get("id") not in drop]
+        _save(data)
+    return None
+
+
 def pack_op(pack_id, op):
     """启用/停用包（内置与用户自建均可停用；用户包不可通过此接口删除，删文件即可）。"""
     if op not in ("enable", "disable"):

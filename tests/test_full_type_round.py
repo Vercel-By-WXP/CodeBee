@@ -11,6 +11,10 @@
   4. 本轮新增：翻译起草侧常量带「翻译腔自查」条（yomiyasu 借鉴，此前翻译腔
      只靠评审 rubric 事后抓）；经验库蒸馏走 upsert_lesson 入库路径——闭集
      分类落位、同题再沉淀合并不分裂（隔离数据目录，不碰真实经验库）。
+  5. 2026-10-06 轮：连载起草「相关历史章节推荐」（_related_chapters_note，
+     story_tracking 记录行与本章大纲要点的纯本地 bigram 重叠计分，零 LLM
+     调用零存储写入）——命中/排序/封顶、零匹配静默与自章排除、起草前情
+     组装的接线在位。
 
 跑法：python -m unittest discover -s tests -p "test_full_type_round.py" -v
 17×3 字段 EN 键全量守卫在 test_i18n_dups.test_builtin_flow_fields_have_en_keys，
@@ -144,6 +148,73 @@ class FullTypeRoundTests(BaseTest):
         after = len(skills.list_lessons("*"))
         self.assertEqual(after, before, "同题再沉淀应合并而非新增")
         self.assertEqual(again["seen"], 2, "合并语义应 seen+1")
+
+
+def _chapter_rec(no, foreshadowing=None, characters=None, facts=None):
+    """story_tracking.load 形态的最小章记录（只带消费字段，story_tracking
+    自身的读写回归在 test_story_tracking*，此处不重复）。"""
+    return {"chapter": no, "outline": "章纲占位", "facts": list(facts or []),
+            "characters": list(characters or []),
+            "foreshadowing": [{"id": "f%d" % k, "text": t, "status": "active",
+                               "planted_chapter": no, "payoff_chapter": None}
+                              for k, t in enumerate(foreshadowing or [])]}
+
+
+_CH = {"beats": "沈青梧查玉佩裂纹的来历", "hook": "当铺掌柜半夜来敲门",
+       "highlight": "玉佩当众碎成两半"}
+
+
+class RelatedChaptersNoteTests(BaseTest):
+    """连载起草「相关历史章节推荐」（2026-10-06 轮提案 1）：命中/排序/封顶、
+    零匹配静默、自章排除、起草前情组装接线。"""
+
+    def test_related_chapters_note_hits_orders_and_caps(self):
+        """正常路径：重叠章检出并按命中行数排序，非重叠章零噪音，max_n 封顶。"""
+        from app.core.pipeline import _related_chapters_note
+        state = {"version": 1, "chapters": [
+            _chapter_rec(2, foreshadowing=["玉佩在当铺失而复得，沈青梧起疑"]),
+            _chapter_rec(5, characters=["沈青梧"]),
+            _chapter_rec(8, facts=["北境商队压价收粮"]),
+            _chapter_rec(12, foreshadowing=["玉佩裂纹暗合族徽",
+                                            "玉佩裂纹里藏着半张地图"]),
+        ]}
+        note = _related_chapters_note(state, _CH, current=20)
+        self.assertIn("相关历史章节", note)
+        self.assertIn("第 12 章", note)
+        self.assertIn("玉佩裂纹暗合族徽", note)
+        self.assertIn("第 2 章", note)
+        self.assertIn("第 5 章", note)
+        self.assertNotIn("第 8 章", note, "零重叠章不得出现")
+        # 排序：命中行数多者在前（12 有两行），同分按章号升序（2 先于 5）
+        self.assertLess(note.index("第 12 章"), note.index("第 2 章"))
+        self.assertLess(note.index("第 2 章"), note.index("第 5 章"))
+        # 封顶：max_n=2 只留前两名（12、2），第 5 章落榜
+        capped = _related_chapters_note(state, _CH, current=20, max_n=2)
+        self.assertIn("第 12 章", capped)
+        self.assertIn("第 2 章", capped)
+        self.assertNotIn("第 5 章", capped)
+
+    def test_related_chapters_note_silent_and_self_excluded(self):
+        """边界：无状态/空章纲/零重叠返回空串；current 排除当章及之后记录。"""
+        from app.core.pipeline import _related_chapters_note
+        self.assertEqual(_related_chapters_note(None, _CH), "")
+        self.assertEqual(_related_chapters_note({"version": 1, "chapters": []}, _CH), "")
+        self.assertEqual(_related_chapters_note({"version": 1, "chapters": [
+            _chapter_rec(3, foreshadowing=["玉佩下落不明"])], }, {}), "")
+        fresh = {"version": 1, "chapters": [_chapter_rec(4, facts=["玉佩裂纹来历"])]}
+        self.assertEqual(_related_chapters_note(fresh, _CH, current=4), "",
+                         "重跑已提交章不得跟自己的记录自证")
+        self.assertIn("第 4 章", _related_chapters_note(fresh, _CH),
+                      "不传 current 时历史记录照常可命中")
+        self.assertEqual(_related_chapters_note(fresh, _CH, current=4, max_n=0), "")
+
+    def test_serial_draft_wires_related_note_into_prev(self):
+        """回归：连载起草前情组装消费该推荐（prev 尾部注入位在位，防接线被改丢）。"""
+        import inspect
+        from app.core import pipeline
+        src = inspect.getsource(pipeline)
+        self.assertIn("_related_chapters_note(tracking_state, ch, current=i)", src)
+        self.assertIn("相关历史章节", src)
 
 
 if __name__ == "__main__":

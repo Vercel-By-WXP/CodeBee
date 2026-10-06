@@ -249,6 +249,91 @@ class RoadmapClearingAnchorTests(BaseTest):
         self.assertNotIn(lid["id"], in_novel, "article 作用域不得漏进小说注入")
 
 
+class LessonMergeChannelTests(BaseTest):
+    """经验库管理通道（2026-10-07 全类型轮第 3/4 步，04 时巡检班提案 1）：
+
+    自动去重只拦沉淀时的近似题（bigram 包含度 ≥0.8），语义近措辞散的存量
+    聚簇（章末钩子 4 条/开篇钩子 2 条/爽点 2 条）此前没有并类通道——D 项
+    体检「存量合并须绕开既有接口」转成本通道（skills.merge_lessons）。
+    锁三件事：历史不丢（merged_titles/revisions 留痕）、召回证据不缩水
+    （hits/won/seen 并入主条）、错误路径不动数据。
+    """
+
+    def _mk(self, title, content):
+        from app.core import skills
+        it = skills.upsert_lesson("serial_novel", title, content)
+        self.assertIsNotNone(it, title)
+        return it
+
+    def test_merge_keeps_history_and_drops_duplicates(self):
+        """正常路径：条数收缩、正文以主条为准、被并条标题与正文双留痕。"""
+        from app.core import skills
+        keep = self._mk("每章结尾必须留悬念", "结尾落在未解决问题或反转上。")
+        dup1 = self._mk("章尾钩子必须挖坑断章", "章尾挖坑或断章，保证读者有翻页冲动。")
+        dup2 = self._mk("结尾平淡要重写", "平缓过渡章尾重写，吸引力达标再提交。")
+        self.assertEqual(len(skills.list_lessons()), 3, "夹具不得被自动去重误并")
+        self.assertIsNone(skills.merge_lessons(keep["id"], [dup1["id"], dup2["id"]]))
+        items = skills.list_lessons()
+        self.assertEqual(len(items), 1)
+        it = items[0]
+        self.assertEqual(it["id"], keep["id"])
+        self.assertEqual(it["content"], keep["content"], "正文以主条为准（不批量重写）")
+        for dup in (dup1, dup2):
+            self.assertIn(dup["title"], it["merged_titles"], "被并标题须留痕")
+        by_src = {r.get("merged_from"): r for r in it.get("revisions") or []}
+        self.assertEqual(set(by_src), {dup1["id"], dup2["id"]}, "被并正文须进 revisions")
+        self.assertEqual(by_src[dup1["id"]]["content"], dup1["content"])
+
+    def test_merge_carries_evidence_so_recall_not_damaged(self):
+        """验收「召回不受损」：被并条的 hits/won 证据并入主条，排序不缩水。"""
+        from app.core import skills
+        weak = self._mk("开篇钩子规范", "每章第一屏抛出未解决冲突或新悬念。")
+        strong = self._mk("章首钩子不足", "前100字内必须出现新信息、冲突或悬念。")
+        plain = self._mk("无关话题的其他教训", "完全不同的话题内容样本。")
+        with skills._LOCK:
+            data = skills._load()
+            for it in data["lessons"]:
+                if it["id"] == strong["id"]:
+                    it["hits"] = 2
+                    it["won"] = 1
+            skills._save(data)
+        self.assertIsNone(skills.merge_lessons(weak["id"], [strong["id"]]))
+        it = next(x for x in skills.list_lessons() if x["id"] == weak["id"])
+        self.assertEqual(int(it.get("hits") or 0), 2, "被并条注入证据须并入主条")
+        self.assertEqual(int(it.get("won") or 0), 1, "被并条结局背书须并入主条")
+        ids = [x["id"] for x in skills.list_lessons()]
+        self.assertEqual(ids[0], weak["id"], "并入证据后主条应排到无证据条目之前")
+
+    def test_merge_error_paths_leave_data_untouched(self):
+        """边界：主条缺失/自并/被并缺失/空清单各报错，且数据原样。"""
+        from app.core import skills
+        a = self._mk("标题样本一", "内容一。")
+        b = self._mk("标题样本二", "内容二。")
+        self.assertEqual(skills.merge_lessons("sk-nope", [b["id"]]), "主条不存在")
+        self.assertEqual(skills.merge_lessons(a["id"], [a["id"]]),
+                         "主条不能同时是被并条目")
+        self.assertEqual(skills.merge_lessons(a["id"], ["sk-nope"]),
+                         "被并条目不存在 sk-nope")
+        self.assertEqual(skills.merge_lessons(a["id"], []), "缺少被并条目")
+        self.assertEqual(skills.merge_lessons(a["id"], None), "缺少被并条目")
+        self.assertEqual(len(skills.list_lessons()), 2, "错误路径不得动数据")
+
+    def test_recategorize_via_upsert_explicit_category(self):
+        """改类走既有 upsert_lesson（显式 category 覆盖旧类）——存量 1 条
+        「做法：小红书…」文笔风格→流程规范的数据手术锚点；同文重写零 revision。"""
+        from app.core import skills
+        it = skills.upsert_lesson("article", "做法：小红书选题复盘要领",
+                                  "选题-标题-数据台账复盘。", category="文笔风格")
+        self.assertEqual(it["category"], "文笔风格")
+        it2 = skills.upsert_lesson("article", "做法：小红书选题复盘要领",
+                                   "选题-标题-数据台账复盘。", category="流程规范")
+        self.assertEqual(it2["id"], it["id"])
+        self.assertEqual(it2["category"], "流程规范")
+        self.assertEqual(it2["content"], it["content"])
+        self.assertEqual(it2.get("revisions") or [], [],
+                         "同文重写不得产生 revision 噪音")
+
+
 if __name__ == "__main__":
     import unittest
     unittest.main()
