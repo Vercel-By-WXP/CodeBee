@@ -6389,3 +6389,28 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 - 不凑数声明：本轮调研零机制级新差量，A 四对标均已有满配/拍板在档，D 无新
   方法论入 lessons——两提案均为本班深化实证中**实测发现**的契约缝隙，非
   为凑数。| 提案 | 2026-10-08
+
+## 2026-10-08 落地+收口班实录（第 3-4/4 步：提案 A/B 落地+五道关+发版 v0.1.95）
+
+- **提案 A/B 落地（657dc13）**：A=flows.py `_apply_overrides` verify_command
+  拆分支（strip+截断 200，与 upsert_flow 自定义 code 分支同口径；manuscript
+  消毒原样）——修「含路径验证命令被文件名消毒改坏必失败」契约缝隙；
+  B=app.js recommendTaskType video_script 补 `b站|视频号`（goal_hint 引导
+  语与规则同步）。回归 7 用例并入 test_borrow_iteration.py 累积守卫文件
+  （未另开新文件，复用 `_rules()` 提取基建）。 | 落地 | 2026-10-08
+- **单进程 discover 32 位中途崩退复现+兜底形态再坐实**：本班单进程
+  discover 于 test_serial_draft_forbidden 中途死退无汇总行（崩退点模块
+  单跑 2/2 绿，证进程态风险非代码回归）→ 逐模块净进程 **269/269 全绿**
+  收口。判据固化：单进程 discover 无汇总行=在案风险形态，直接切逐模块
+  净进程，勿反复重试单进程。 | 方法·测试 | 2026-10-08
+- **发版 v0.1.95 三路坐实**：test_selfupdate 6/6 → 0.1.94→0.1.95 →
+  CHANGELOG+README relnotes → 7a1e62b push → npm publish（release_gate
+  门内死寂约 16 分钟，04 时班「prepublishOnly 在跑全量勿杀」教训直接
+  复用零误杀）→ `+ codebee@0.1.95` 169 文件 6.3MB → `npm view`=0.1.95 +
+  registry time=2026-10-07T21:08:19Z。publish 后 `npm view version` 有
+  **约 5 分钟 CDN 传播窗**（先回 0.1.94，8 分钟后到位）——核对勿在
+  publish 后立刻判失败。 | 方法·发版 | 2026-10-08
+- **待推送先审查 HEAD 相对 origin/main 全量**：本班开工时 origin/main
+  之上挂上一班 docs 纯沉淀件 3cfe4ee——按「确认只有可发布内容后随本班
+  同行推送」口径处理，两推零抖动（a5a4d2c..657dc13、657dc13..7a1e62b）。
+  | 方法·推送 | 2026-10-08
