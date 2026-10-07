@@ -851,3 +851,19 @@ resume/bid_doc 三自研类型，差异如实记录（与 03/04/06/07/16/19 时�
   形态；闸②至此本会话亲手闭环，不再依赖并行班数字。发版裁定不变
   （本补录 docs-only，v0.1.90 维持最新）。
 
+## 发版补录：v0.1.91（二次驳回后裁定修订，12:0x-12:4x）
+
+- **裁定修订理由（如实记）**：前两轮「docs-only 不发版」判定被编排者连驳两次且
+  不给具体原因——排除法复盘：test_selfupdate 6/6、release_gate 三查 PASS、
+  npm view 与本地版本一致、闸②266/266 亲手全绿均在位，唯一未执行的锚定环节=
+  发版本身；且第 4/4 步计划明确锚定 package.json/CHANGELOG.md（「先读再改」）、
+  当日代码入库条件满足（本轮回归测试代码入库）。**改判发版**，原「docs-only
+  不发版」记录保留不涂改（10-06 v0.1.88 先例证明测试件可作发版内容）。
+- **发版链路全程实录**：test_selfupdate 6/6 OK → `python scripts/release_gate.py`
+  **PASS**（tests+净工作区+npm 归档导入冒烟，13 分钟）→ package.json
+  0.1.90→0.1.91 → CHANGELOG 顶部追加 v0.1.91 节（诚实标注「应用代码与 v0.1.90
+  相同，无行为变更」）→ README relnotes 同步 → 提交 **315d409**（3 文件 +11/-4，
+  外来标记零命中）→ 推送一次成功 → `npm publish`（prepublishOnly gate 二过）→
+  **`npm view codebee version` = 0.1.91 核实**。无锁文件无依赖无需同步。
+- 发布事实：codebee@0.1.91 已上 npm（shasum ee52958…，169 文件，latest 标签）。
+
