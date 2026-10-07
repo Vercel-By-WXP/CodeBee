@@ -6024,3 +6024,22 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 - **经验库 61% 偏科口径勘正**：29/69=42% 为现行值，「61%」系 47 条时代口径，
   后续写作类入库自然稀释——后续班次对比偏科度请用 42% 基线。
   | 方法·D | 2026-10-07
+- **发版 registry 传播窗（收口班实测，接 v0.1.92「npm view 缓存假象」条）**：
+  npm publish 成功行（`+ codebee@x.y.z`，exit 0）先于 registry 可见约
+  5-7 分钟——`/codebee/<ver>` 端点 404→200 渐进，packument(corgi) versions
+  表滞后更久。**核对纪律升级：版本端点 200 + dist-tags latest 双条件齐才算
+  发布坐实**；单看 npm view（缓存）或单看 publish 成功行都会误判。
+  | 方法·发版 | 2026-10-07
+- **全量 discover 截断 2 连（收口班在档）**：`unittest discover -s tests`
+  单命令两次均 dots 中断、无 Ran/OK 汇总、退出码 0（排除真杀：portscan/
+  kill_all 全 mock 复核；并行 15 个 python 进程争用窗口在档）——逐模块
+  268/268 全绿作为闸②验收口径（46ba151 先例第 2 次复用）。根因待深挖：
+  候选=套件内进程硬退 / 并行会话资源争用；后续收口班先试单命令，截断即
+  走逐模块，不空转。 | 方法·测试 | 2026-10-07
+- **code-reviewer 代理评审第 4 败**：API 400「模型不存在」（路由发 auto），
+  与历班 3 败同根因——收口班代理评审在档按「逐 hunk 自审替代」执行，
+  不再每班空试。 | 方法·评审 | 2026-10-07
+- **release_gate 干净闸与收口顺序（实测）**：npm publish 触发的
+  release_gate 要求工作区跑前跑后双干净——收口班须先落 docs 提交再发布，
+  「docs 最后提交」惯例与之冲突，改为「docs 先行 → publish → 补录再提交」
+  两段式。 | 方法·发版 | 2026-10-07
