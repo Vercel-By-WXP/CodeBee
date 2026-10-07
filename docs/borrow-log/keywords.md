@@ -222,6 +222,6 @@
 - GitHub Trending（weekly，ai/agent 类）；直抓被拦时的替身（2026-09-22 补）：ossinsight.io、trendshift.io
 - topic 页：multi-agent-orchestration、ai-agents、claude-code、agent-framework、claude-skills、llm-agents、ai-coding-assistant、mcp
 - 发行渠道：npm search（agent orchestrator / claude code）、pypi（agent orchestrator）各扫一页
-- 框架周边搜：q=langgraph+platform / crewai+studio / autogen+studio 类；竞品名周边：q=orca+alternative、q=claude+flow+OR+ruflo 生态
+- 框架周边搜：q=langgraph+platform / crewai+studio / autogen+studio 类；竞品名周边：q=orca+alternative、q=claude+flow+OR+ruflo 生态、q=openrig+OR+vercel+eve 生态（2026-10-07 06 时班补：openrig 系 WebSearch 交叉验证捞出的多 CLI 舰队编排同形态直接竞品〔mvschwarz/openrig 24h 640→5,494★ 病毒式〕、eve 系 Vercel Agent Stack 主件〔vercel/eve 5,474★〕，双双 repos 实证后入库跟踪，谁/何时/为何：06 时班批6 WebSearch 首捞）
 - 自家 CLI 名周边搜：q=codex+manager、q=claude+code+manager+OR+wrapper、q=opencode+suite、q=kimi+cli、q=grok+cli、q=deepseek+harness+plugin+OR+dsh+plugin（2026-10-05 18 时班补：catalog 已接 deepseek-harness〔探测名 dsh，本机在〕，顺 PerryLink 组织矩阵掘出 DSH 插件生态 48 件（非 fork 且 dsh- 前缀两页 28+20 实测）——dsh-research-report 证据账本/dsh-permission-rules 声明式权限；自家 CLI 周边词此前缺 deepseek-harness 系，顺藤规则比新词组更先命中，谁/何时/为何：18 时班首补）
 - 禅道/项目管理/工单周边搜：q=zentaophp+OR+zentao+ai、q=bug+triage+agent+OR+issue+auto+assign、q=jira+ai+agent+OR+linear+ai+agent（竞品：禅道集成 7951ca5 已落地，持续盯增量）

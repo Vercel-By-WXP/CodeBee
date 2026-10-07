@@ -4972,3 +4972,180 @@ WebSearch 系窗口未到的提前补位 1 发（批5 域定向缺口理由，�
   真子进程孵化/杀收类用例假死——与收口班「同进程状态污染」定性互补；打法：
   分片互斥+检测到并行班 unittest/release_gate 进程时只等不跑，收口后独占重跑
   | 测试 | 2026-10-07
+
+## 2026-10-07 06 时班（批6：框架/平台/SDK 生态——新一轮计划第 1/4 步全类型调研）
+
+> 开工实录：06:38（UTC+8，hour=6，6%7=6 → 轮换批6）、分支 main（5a0d624，
+> v0.1.89 已发版）、工作区干净。通道：gh api 认证可用（search 30/分实测），
+> 主扫 115 查询 sleep 4s 零失败零限流（DONE 115/524 行实证）；WebSearch 串行
+> 1 发（3-4 班窗口纪律内）。证据底稿全文见 2026-10-07.md 06 时班节。
+
+### 主扫与雷达 C（完成状态与来源）
+
+- **主扫**：`scripts/borrow_scan_nightly.py` 无参全量（自动选批 B6）——A 常驻
+  89（含内置 B1 11）+ B6 轮换 10 + A1u/A1p2 双轮 16 = **115 查询 524 行 468
+  唯一仓，零失败零限流**。 | 主扫 | 2026-10-07
+- **主扫面过筛**：468 唯一仓全名+简称双通道对全历史——**290 已录/178 首见**；
+  **批6 域 10 词头部全已录**（agents-towards-production 21,532/vercel ai
+  27,151/strands harness-sdk 8,694/google agents-cli 6,058/axonhub 5,337/
+  aegra 1,241/pandaprobe 784）——**批6 域稳定期零机制级新差量**（批2/3/4/5
+  各域轮过均稳同型）。 | 巡检 | 2026-10-07
+- **WebSearch 串行 1 发**（批6 域定向）：**OpenRig 与 Vercel eve 两个新名字
+  repos 端点二次实证双双坐实大星实仓**（10-05 规则第 3/4 例落地）——本班
+  主要增量见下节；Microsoft Agent Framework/AWS Strands 横评常客已录复认。
+  | 调研 | 2026-10-07
+- **雷达 C 全过**：awesome 18 源 18/18 alive 零 archived（awesome-claude-code
+  55,161 与 VoltAgent skills 35,278 双放量）；trendshift 根页可达（353KB 29 仓）
+  候选 6 件新 repos 实证；topic 8 页候选全已录零新大件；npm 两查零新大件
+  （@polderlabs/bizar 微型判据）；pypi 第九班复认（CSP 壳页 3KB 零 snippet）；
+  禅道周边 2 查**第 23 例零新禅道 AI 竞品**。 | 雷达 | 2026-10-07
+
+### 本班新面孔（openrig 同形态直接竞品为历轮 A1 域罕见级新面孔）
+
+- **mvschwarz/openrig**（5,494★，10-06 push，WebSearch→in:name 勘定+README
+  深读）新入库 | **「A harness wraps a model. A rig wraps your harnesses」**
+  ——harness 之上编排层：YAML 定义 agent 团队、一条命令 boot、Claude Code+
+  Codex+Pi 同 rig 管理为一个系统；lead agent 协调 specialists、结果与决策
+  上抛；TUI seats 表（runtime/model/context/state 四列）；持久团队/角色/共享
+  上下文/owned work；npm @openrig/cli；Node22+/tmux **原生 Windows 不支持、
+  WSL2 未测** | **历轮罕见的同形态直接竞品**（多 CLI 舰队编排+持久团队+面板）：
+  闸门/评审/经验库/18 类型流程我们全有对应；Windows 原生系我们差异化壁垒；
+  seats 四列表与 YAML 团队定义可与 flow 编排/catalog 对比 | **A1/A5 域直接
+  竞品入库（对标跟踪；24h 640→5,494★ 病毒式）** | 2026-10-07
+- **vercel/eve**（5,474★，10-06 push，WebSearch→in:name 勘定+README 深读）
+  新入库 | **filesystem-first durable agent 框架**：agent/ 目录约定
+  （instructions.md 系统 prompt/tools/ 类型化函数/skills/ 按需程序/channels/
+  消息通道/schedules/ cron）——「文件系统即编写界面」；npx init+交互 TUI；
+  AI Gateway 接入（Vercel Agent Stack 主件） | 目录约定即配置与我们 data/
+  +flows 同向；channels/schedules 文件化声明与 automation.py 定时同域（机制
+  我们已有）；durable/resume 会话复用已配 | **A2 域新面孔对标件（雷达/对标）**
+  | 2026-10-07
+- **storytold 纯净室全家桶扩散**（artcraft 3,150/lightcraft 1,150/printcraft
+  1,042/vectorcraft 989 新+photocraft/filmcraft 已录=6 件；trendshift+repos
+  实证）新入库 | Rust 纯净室重实现 Adobe/Lightroom/Acrobat/Illustrator 全家桶
+  | 创作工具域旁非 agent；「纯净室重实现」路线信号续强（storytold 系组织级
+  跟踪） | 雷达（创作工具域旁） | 2026-10-07
+- robbietilton/Compositor（9,182★，Mac Photoshop 替代）| 创作工具域旁 | 雷达
+  | 2026-10-07
+- ibm/assetopsbench（2,330★，工业 4.0 统一 benchmark+orchestrating）| A6 评测
+  域垂直，benchmark 形态与 evalbench 同向 | 判据（A6 垂直域） | 2026-10-07
+- remorses/usecomputer（336★，computer automation CLI）| A5 域微型 | 判据
+  （微型） | 2026-10-07
+- labring/fastgpt（29,783★）+elizaos/eliza（19,549★）双首见 | 知识库平台/
+  agentic OS 老牌大仓——**疑属主迁移复见非新项目**（历史以简称在档，本班
+  双通道口径首见；未考古 git 历史如实记） | 判据（首见口径注记） | 2026-10-07
+- 微型批：Akxan/ppt-agent-skill 155+code-on-sunday/slide-deck-generator 150
+  （diagram-design 同域 PPT/slide skill 微型双件）/LoopTroop 159/agentic-os
+  189/@polderlabs/bizar（orchestrator-first autonomy harness）等 | 判据
+  （微型） | 2026-10-07
+
+排除件：china-dictatorship（政治噪声）/nginx-ultimate-bad-bot-blocker（B1 词
+域外误中）/youdaotainer/alfred-google-translate（A7 翻译词误中 Alfred 工作流）/
+comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（B1 词误中
+体素引擎）/coursera/unity 特效（A11 词误中课程）等域外噪声如实记。
+
+### 存量复查（repos 端点 29 件，26 alive 零 archived；基准 vs 03 时班，间隔约 2.5-3 小时）
+
+- 头部：orca **86,501（+60 续领跑）**/ superpowers 296,003 / ECC（affaan-m
+  复认）274,261 / claude-mem 97,130 / hermes-agent 251,684 / opencode
+  （anomalyco）212,040 / **pi=earendil-works/pi 112,953（badlogic/pi-mono
+  302 重定向实证，属主注记更新）**。
+- 放量族：**rea 9,046（+659 放量续，trendshift 驱动）**/ Strata 15,650（+146
+  续）/ iFixAi 21,638 / ponytail 156,791。
+- 持平族：DeepSeek-Reasonix（esengine）35,741（E 候选首位维持）/webnovel-writer
+  7,335/ainovel-cli 2,109/huobao-drama 15,790/SkillSpector 19,562/open-code-review
+  44,036/context-mode 25,546/beads 27,684/agentmemory 29,183/hippo-memory 774/
+  bernstein 1,415/gascity 1,331/nautilus-compass 1,255/yomiyasu 1,594。
+- **属主勘定（in:name 规则第 2 例批量落地，三件零悬置）**：orca 正主=
+  **stablyai/orca**（oh-my-claudecode 旧属主 404）/ herdr 正主=**herdrdev/herdr
+  42,653** / drama-skills 正主=**zenstory-ai/drama-skills 2,552**。 | 复查
+  | 2026-10-07
+
+### 全类型覆盖与七专项（本班只读口径）
+
+- 14 目标类型全覆盖（矩阵见 2026-10-07.md 06 时班节）；**BUILTIN_FLOWS=18 /
+  DEFAULT_CATALOG=14 import 实测**（与 03/04/16/19 时班同口径独立复证）。
+- A token：零命中维持（cache_control/semantic_cache/prompt_cache 全 core
+  grep）；_shrink_context_block 3 锚点在位；bifrost 语义缓存候选维持交拍板。
+- B 市场：六源 market_remote.py:50-76 实读在位；本班候选均非六源直装件
+  （openrig/eve 系框架、storytold 系桌面应用）——三问不过零接入零绕闸。
+- D 经验：lessons=**68**（04 时班并类后新基线：流程规范 28/节奏 16/情节 10/
+  人物 7/一致 4/文笔 3；scope serial_novel 41 偏科维持）——数据手术成果零回漂。
+- E 新 CLI：五候选全 MISSING 零接入防死链；13/14 已接在装（openclaw MISSING）；
+  @openrig/cli npm 在架本机未装不盲接（跟踪）。
+- F 禅道：poll 显式关/claims=0/last_scan 停 09-21——部署配置缺位同口径；
+  第 23 例零新竞品。
+- G 产品：过时文案 grep 零命中零新毛病。
+
+### 词库同步与发版判定
+
+- keywords.md C 源「竞品名周边搜」追加 `q=openrig+OR+vercel+eve 生态`（行尾
+  标注谁/何时/为何）——病毒式同形态竞品+Agent Stack 主件持续盯增量。
+- 本班 docs-only 零产品代码件——**不发版**（03/05 时等班先例）；openrig/eve
+  交第 2/4 步巡检班深化，不自行立项。
+
+### 待深挖队列（06 时快照）与未验证项
+
+- 21 时快照 11 项全部维持（第 3/10 项保持划掉）；本班零新队列项（openrig/eve
+  入对标跟踪不入深挖队列——机制面全有对应，Windows 原生差异化在）。风险在档
+  维持（交人拍板）：data/zentao.json 明文密码；批跑同进程测试间争用面；32 位
+  全量 discover 静默退出；runner_drain 计时超界。 | 队列 | 2026-10-07
+- 未验证项：openrig/eve 仅 README 头部深读未安装实测；openrig 24h 增速系
+  WebSearch 报道转述未独立溯源；fastgpt/eliza 属主迁移系推断未考古 git 历史；
+  mattpocock-skills 属主本班未探（悬置维持）；trendshift /repositories 子路径
+  404（根页补位）；npm 新生件无下载量核查（历班无此惯例）。 | 未验证
+  | 2026-10-07
+
+## 2026-10-07 07 时巡检班（新一轮第 2/4 步·七专项增量复核+openrig/eve 三问深化）
+
+### 七专项增量复核结果（全部只读，与历班口径比对）
+
+- A token：零命中维持（cache_control/semantic_cache/prompt_cache 全 core grep
+  独立复测）；四锚点复锚（_compaction_enabled:231/:703、cascade_reorder 消费
+  :1529、_shrink_context_block:2538/:2582/:2586 收口提交后态）；四方向判定
+  维持零新增机制，bifrost 拍板件不变。
+- B 市场：六源缓存逐源实测 810（catalog.plugins 求和：zcode 26/anthropic
+  315/anthropic-skills 5/claude-skills 99/clawhub 215/cocoloop 150，fetched_at
+  2026-10-03 零漂移）。**openrig 三问闭环：不可直装（缓存 grep 零命中）+不可
+  运行（tmux 硬依赖+Native Windows not supported，装亦死链）+重合度虽高但
+  机制面全有对应——零接入零绕闸，seats 四列表+YAML 团队定义记借鉴方向交拍板；
+  其侵入式 setup（写 provider hooks+trust 进用户机器）反衬我们自包含编排系
+  差异化壁垒。vercel/eve 三问闭环：agent 开发框架非编排台件、不可直装、
+  channels/schedules 与 automation.py 同域异形（机制已有）——雷达跟踪结案。**
+- C 类型：BUILTIN_FLOWS=18/DEFAULT_CATALOG=14 第 5 次独立复证；i18n 18 型
+  **按 name 键（中文源文）18/18 在位**——勘误：按 id 键测会全量误报（前端
+  t(f.name) 映射，键系中文源文非 id），后续班检测口径以此为准。
+- D 经验：lessons=68 新基线零回漂（28/16/10/7/4/3，scope serial_novel 41
+  维持）；openrig/eve 零蒸馏依据（其定位即 CodeBee 自身定位）。
+- E 新 CLI：六候选+openclaw 全 MISSING 复测零接入防死链；@openrig/cli 0.6.5
+  在架不盲接——「不接」已从缺证升为有证（Windows 不支持 README 实读坐实）。
+- F 禅道：poll_enabled=False/claims=0/last_error 空/last_scan 停 09-21 只读
+  复认，全程零触发零生产工单变更；第 23 例零新竞品顺延。
+- G 产品：过时文案零命中；flowDesc 前端兜底链四层实读与后端 note 一致——
+  零新毛病。
+
+### 落地判定与队列
+
+- 队列活项均攒批/拍板/远期，在册代码级「小而实」积压为零——**零代码件
+  docs-only 不发版**；四件借鉴候选（OpenMontage/diagram-design/bifrost/
+  openrig seats）交拍板不自行立项。
+- 21 时快照 11 项全部维持（第 3/10 项保持划掉）；openrig/eve 深化完毕转对标
+  跟踪结案，零新队列项。 | 队列 | 2026-10-07
+
+## 2026-10-07 07 时落地班（新一轮第 3/4 步·JS 侧 t() 字面量对账+54 词条补齐）
+
+- **JS 侧 t() 字面量 i18n 对账首次建立**：历班 i18n 覆盖只测 index.html
+  data-i18n 键与 BUILTIN_FLOWS 三字段，app.js 内 2,360 处 `t("字面量")` /
+  1,726 唯一键从无对账——全量实测 54 键缺 EN 词条（英文界面 toast/状态/
+  弹窗中文裸奔）。打法：t() 未命中静默返回键本身（不报错），覆盖缺口只能
+  文件级正则对账兜底；正则须排除 `obj.t(` 成员调用并兼容 `\\"` 转义形态。
+  已锁 tests/test_borrow_iteration.py（全量对账+修复面点名，解析面 >1000
+  自守）。 | i18n | 2026-10-07
+- **i18n 词条尾追先例续用**：54 条补齐循 2026-10-06 G-② 残件 7 条尾追位置
+  （EN 字典收尾+带来源注释）；术语对齐既有译法——片段冒号保留尾空格、「」
+  转直引号、emoji/↻/✓ 原样、{0} 占位符保留、拼接片段照实收词条（"共 "/
+  " · 吞吐 " 同例）。 | 文案 | 2026-10-07
+- **落地班选定结论偏差处置先例**：巡检班记录（零代码件 docs-only）与编排者
+  「已选定」说法出入时——按 01:4x 班先例「尊重选定不强行加功能，实落地=
+  回归锚定件+文档」，spec G 专项授权内的小毛病随手修可并做，偏差在报告
+  如实记供编排者核对。 | 流程 | 2026-10-07
