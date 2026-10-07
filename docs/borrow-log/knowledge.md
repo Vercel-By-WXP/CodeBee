@@ -5862,3 +5862,105 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   同指令 `npm view` 一假一真（缓存窗口内/外）构成缓存坑完整边界样本。
   | 方法·发版 | 2026-10-07
 
+## 2026-10-07 21 时班沉淀（批7：中文/网关/本地/办公——新一轮计划第 1/4 步全类型调研·批7 全量补课班）
+
+> 开工 21:39（hour=21，21%7=0 → 批7）；分支 main（d897820，v0.1.92 已发版），
+> 工作区干净。通道全恢复（gh api search 30/分满额起跑）。批7 今日系午后班
+> WebSearch 降级 claim 级跑过，本班按 18 时班先例以 gh api 全量补齐——降级
+> 班结论升全量实证的第一班。主扫 114 查询（A 常驻 89+B7 轮换 9+A1u/A1p2 双轮
+> 16）514 行 452 唯一仓零失败零限流（PROGRESS DONE 114 实证）。详录见
+> 2026-10-07.md 21 时班节。 | 调研 | 2026-10-07
+
+- **awslabs/cli-agent-orchestrator（CAO）1,394★**（AWS 官方 org，Python，
+  10-07 在更，PyPI `cli-agent-orchestrator` 在架）：本地 cao-server+provider
+  CLIs 跑隔离 tmux 会话、supervisor 委派 specialist 并行/串行、agent 保持原生
+  CLI 进程与认证；**12 provider**（Kiro/Claude Code/Codex/Antigravity/Hermes/
+  Kimi/MiniMax/Copilot/OpenCode/OMP/Cursor/Grok Build）——**A1 域重磅同形态
+  竞品**（多 CLI 编排正主进场）：catalog 14 条目 vs 其 12 provider、supervisor-
+  specialist 与 planner-dispatch 同构、tmux 硬依赖=Windows 原生不支持（同
+  openrig，我们 Windows 原生系差异化壁垒）；双生文档站+interactive courses
+  产品化完成度高。 | **A1 对标入库（雷达/对标跟踪）** | 2026-10-07
+- **dtyq/magic 5,043★**（超级麦吉 Magicrew，org 矩阵顺藤坐实：super-magic
+  96★ 系旧仓，正主=magic 5,043★ pushed 08-12）：企业级开源 AI Agent 平台、
+  自我定位「enterprise 版 OpenClaw」——Generalist Agent+Workflow Engine+IM+
+  在线协同办公 all-in-one；卖点=统一数据/预算护栏（budget guardrails）/输出
+  不止纯文本/高风险动作审批闸。**WebSearch 交叉验证捞出（143 组词各班从未
+  命中）+orgs/dtyq/repos 矩阵顺藤坐实（repos 端点零搜索配额）——StaffDeck
+  词形盲区第 2 例**（「Magicrew」非词库词形）；预算护栏/审批闸我们全有对应
+  （_ensure_budget 七闸口/六源白名单闸门）；企业多租户+IM+协同办公系部署形态
+  差异（我们桌面单机）。 | **B7 新面孔对标入库（雷达/对标）+keywords.md B7
+  组补词形** | 2026-10-07
+- **mixpeek/amux 520★**（Rust 单二进制 MIT，10-07 在更）：AI coding agents
+  控制面——并行 Claude Code/Codex/Gemini workers+共享看板+原子任务+schedules
+  +loops+origin-stamped messaging+模型切换+自愈恢复，dashboard 或手机。A1
+  同形态（与 openrig 同族）；原子任务/schedules/自愈恢复机制面我们全有对应
+  （jobs/automation.py/会话复用）。 | A1 同形判据（雷达） | 2026-10-07
+- **23blocks-OS/ai-maestro 812★**（TypeScript）：Agent Orchestrator+技能
+  系统——记忆搜索/代码图查询/A2A 消息/统一面板管理 Claude Code+Codex+Grok
+  Build/跨机迁移 agent。A1 同形态中腰部；技能系统与经验库同向（我们已有）。
+  | A1 同形判据（雷达） | 2026-10-07
+- **hashgraph-online/hol-guard 802★**（10-07 在更）：**AI agent 运行时杀毒**
+  ——拦截危险工具/密钥访问/prompt 注入/恶意包/MCP 服务器/插件/技能。B4 治理
+  域新参照：我们三闸（SSRF+白名单+装前 skill_scan）系安装时闸，hol-guard 把
+  「运行时拦截」做成独立防层——形态差异在档（不做检查范围外加固，交拍板）。
+  | B4 判据·参照 | 2026-10-07
+- **strukto-ai/mirage 3,677★**：「World's First Virtual Terminal for AI
+  Agents」——A13 面板域（与 aden-hive/hive 同族，系统级可视化面板系真实差量
+  但系面板工程，不立项不凑数维持）。 | A13 判据 | 2026-10-07
+- **skill 形态垂直化信号三件**：QingYunA/answer-me-with-html 1,955★（中文
+  作者「用一页 HTML 回答复杂问题」skill）/Klotzkette/claude-fuer-deutsches-
+  recht 1,670★（德国法律垂直 skill 包，DSGVO/律师保密义务条款内建）/gooseworks
+  -ai/goose-skills 1,234★（GTM/营销 skills 库：ads/social/SEO/lead gen）——
+  skill 包向垂直行业纵深的生态信号（与 diagram-design 图表 skill 同向）。
+  | 判据（生态信号） | 2026-10-07
+- **批7 域结论：稳定期延续，降级 claim 升全量坐实零机制级新差量**——33 唯一
+  仓头部全已录族（agency-agents-zh 21,093〔原版 msitarzewski/agency-agents
+  154,263〕/LangBot 18,039/astron-agent 8,878/astron-rpa 5,255/Yuxi 7,293/
+  agency-orchestrator 2,330/deep-eye 2,332 均 09-19~23 已录复认）；首见仅
+  baserow 6,094★（no-code DB+AI agents 域旁）+AChat 3,259★（04-17 停更降级）
+  +微型若干（@nathapp/nax loops-until-done/flutter_agent_harness 64★ 等）。
+  与今日批1/2/3/4/5/6 各域结论同型。 | 域结论 | 2026-10-07
+
+### 复查记录（21 时班）
+
+- **存量 27 件 repos 实测全 alive 零 archived**（基准 vs 18 时班，间隔约 3h）：
+  orca 86,779→**86,877（+98 续领跑）**/mattpocock-skills 278,722→278,958
+  （+236）/superpowers 296,174→296,222/claude-mem 97,387→97,459/hermes-agent
+  251,796→251,827/opencode 212,124→212,143/pi 113,094→113,130/**anthropics/
+  skills 179,988→180,006 破 18 万**；放量族 **rea 11,225→12,036（+811 大爆发
+  续三连）**/Strata 16,354→16,544（+190 续）/iFixAi 21,905→22,038（+133 放量）
+  /ponytail 156,791（06 时基准）→157,289（+498）；持平族 DeepSeek-Reasonix
+  35,743（**E 候选首位维持**）/beads 27,706/agentmemory 29,204/herdr 42,762/
+  SkillSpector 19,614/context-mode 25,593/open-code-review 44,163/drama-skills
+  2,572/webnovel-writer 7,346；对标件 openrig 5,644（+30）/eve 5,478/OpenShell
+  15,219（+17）/agent-orchestrator 12,858/hive 11,090 持平/minimax-code 1,986。
+  | 复查 | 2026-10-07
+- **awesome 20 源 20/20 alive 零 archived**：hesreallyhim/awesome-claude-code
+  55,193（+6）与 VoltAgent/awesome-agent-skills 35,313（+7）10-07 当日在更；
+  Shubhamsaboo/awesome-llm-apps 140,921/e2b-dev/awesome-ai-agents 30,288 维持
+  ——travisvn 15,298（较 18 时班 -3 微降、04-28 停更维持）。dsh 生态微型新生件
+  （DSHana 55★/dsh-plugin-mesh 7★）；PerryLink org 404（历班 dsh 插件源 org
+  疑属主迁移，未勘定如实记）。 | 复查 | 2026-10-07
+- **topic 8 页全扫（本班恢复单扫，updated 排序）**：hol-guard/mirage/amux 等
+  新面孔即出于此（8 页连扫 3 件 A1 同形反复在 updated 头部——topic:claude-code
+  与 topic:ai-coding-assistant 系多 CLI 编排新件首发地，18 时班「让位主扫未
+  单扫」本班补上，产出比预期厚）；npm 两查零大件；禅道周边 2 查头部全无关
+  **第 28 例零新禅道 AI 竞品**（18 时班第 27 例顺延）。 | 雷达 | 2026-10-07
+
+### 本班结论
+
+1. **AWS 官方进场多 CLI 编排域是今日最大信号**：CAO（awslabs）与 openrig/
+   amux/ai-maestro 四件同形态同日活跃——「多 CLI 归一编排」赛道 2026-10 进入
+   大厂+创业密集期；CodeBee 机制面全有对应，Windows 原生+18 类型流程+经验库
+   系差异化壁垒，维持对标跟踪不立项。
+2. **降级班 claim 升全量闭环**：批7 午后班 WebSearch claim 级候选（墨枢/
+   webfiction/ryk/hive 等）已由 18 时班+本班两班 repos 坐实或降级——关键词库
+   10-07 补充纪律（降级班候选归 repos 班勘定）全链路走通第 2 例。
+3. **词形盲区第 2 例入档**：dtyq/magic（超级麦吉）143 组词从未命中——专名/
+   品牌词形（Magicrew/超级麦吉）与功能词形（digital employee）正交，B7 组补
+   `q=magicrew+OR+超级麦吉`；C 雷达源补 `q=cli-agent-orchestrator+OR+amux+OR+
+   ai-maestro 生态`盯 A1 同形三件增量。
+4. 待深挖队列 11 项维持零新队列项（四件 A1 同形对标件机制面全有对应，不
+   入深挖）；风险在档维持（交人拍板）：data/zentao.json 明文密码/批跑同进程
+   争用/32 位 discover 静默退出/runner_drain 计时超界。 | 结论 | 2026-10-07
+
