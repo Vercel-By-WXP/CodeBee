@@ -20,6 +20,13 @@
 > 等三条全名新补），盲猜 owner 逐个试错浪费配额（谁/何时/为何：00 时班首例批量落地）。
 > 中文/多语查询过 gh api 前必须 URL 编码（urllib.parse.quote）——00 时班 11 条中文查询未编码
 > 全数 HTTP 400、补跑才拿到（谁/何时/为何：00 时班）。
+> 2026-10-07 补：**小时不可测时（shell 劫持+时间站域名全拦）批次改按「当日未跑批」覆盖**——
+> 从当日已跑记录反推剩余批，优先轮转位最近的未跑批、候选批全过，报告如实记小时缺失不伪造时刻
+> （谁/何时/为何：10-07 午后班 Bash 三测全废、worldtimeapi/timeanddate 双拦，当日已跑
+> B3/B6/B2/B5/B6 后改覆盖 B1+B7+B4）。
+> 2026-10-07 再补：**WebSearch 为唯一通道时按族合并查询（A1-A13 每族 1-3 发+B 候选批+C 可用面），
+> 产出对 borrow-log 全历史 Grep 过筛防重复入库**——逐词单查必超配额，合并查询词级粒度损失如实记
+> （谁/何时/为何：10-07 午后班串行 20 发实证可行、七件复见全数过筛零重复）。
 > 结果高度重合即跳余页省配额。新增关键词直接编辑本文件并在行尾标注（谁/何时/为何）。
 
 ## A. 常驻组（每轮全跑，78 组）
@@ -222,6 +229,6 @@
 - GitHub Trending（weekly，ai/agent 类）；直抓被拦时的替身（2026-09-22 补）：ossinsight.io、trendshift.io
 - topic 页：multi-agent-orchestration、ai-agents、claude-code、agent-framework、claude-skills、llm-agents、ai-coding-assistant、mcp
 - 发行渠道：npm search（agent orchestrator / claude code）、pypi（agent orchestrator）各扫一页
-- 框架周边搜：q=langgraph+platform / crewai+studio / autogen+studio 类；竞品名周边：q=orca+alternative、q=claude+flow+OR+ruflo 生态、q=openrig+OR+vercel+eve 生态（2026-10-07 06 时班补：openrig 系 WebSearch 交叉验证捞出的多 CLI 舰队编排同形态直接竞品〔mvschwarz/openrig 24h 640→5,494★ 病毒式〕、eve 系 Vercel Agent Stack 主件〔vercel/eve 5,474★〕，双双 repos 实证后入库跟踪，谁/何时/为何：06 时班批6 WebSearch 首捞）
-- 自家 CLI 名周边搜：q=codex+manager、q=claude+code+manager+OR+wrapper、q=opencode+suite、q=kimi+cli、q=grok+cli、q=deepseek+harness+plugin+OR+dsh+plugin（2026-10-05 18 时班补：catalog 已接 deepseek-harness〔探测名 dsh，本机在〕，顺 PerryLink 组织矩阵掘出 DSH 插件生态 48 件（非 fork 且 dsh- 前缀两页 28+20 实测）——dsh-research-report 证据账本/dsh-permission-rules 声明式权限；自家 CLI 周边词此前缺 deepseek-harness 系，顺藤规则比新词组更先命中，谁/何时/为何：18 时班首补）
+- 框架周边搜：q=langgraph+platform / crewai+studio / autogen+studio 类；竞品名周边：q=orca+alternative、q=claude+flow+OR+ruflo 生态、q=openrig+OR+vercel+eve 生态（2026-10-07 06 时班补：openrig 系 WebSearch 交叉验证捞出的多 CLI 舰队编排同形态直接竞品〔mvschwarz/openrig 24h 640→5,494★ 病毒式〕、eve 系 Vercel Agent Stack 主件〔vercel/eve 5,474★〕，双双 repos 实证后入库跟踪，谁/何时/为何：06 时班批6 WebSearch 首捞）、q=openshell+OR+agent-orchestrator+OR+hive 生态（2026-10-07 18 时班补：NVIDIA/OpenShell 15,202★ 沙箱运行时/OrchestratorInc/agent-orchestrator 12,857★/aden-hive/hive 11,092★ 三件降级班 claim 级 repos 端点坐实大星且主扫 115 查全零命中系剪切线盲区，需盯增量，谁/何时/为何：18 时班批4 补课班）
+- 自家 CLI 名周边搜：q=codex+manager、q=claude+code+manager+OR+wrapper、q=opencode+suite、q=kimi+cli、q=grok+cli、q=deepseek+harness+plugin+OR+dsh+plugin（2026-10-05 18 时班补：catalog 已接 deepseek-harness〔探测名 dsh，本机在〕，顺 PerryLink 组织矩阵掘出 DSH 插件生态 48 件（非 fork 且 dsh- 前缀两页 28+20 实测）——dsh-research-report 证据账本/dsh-permission-rules 声明式权限；自家 CLI 周边词此前缺 deepseek-harness 系，顺藤规则比新词组更先命中，谁/何时/为何：18 时班首补）、q=minimax+code+OR+minimax+cli 生态（2026-10-07 18 时班补：MiniMax-AI/minimax-code 1,985★ 官方开源 terminal coding agent，org 矩阵顺藤坐实〔OpenAgentCore 196★=OpenAI Agents API 自托管实现〕，E 专项候选本机未装待实测零接入防死链，谁/何时/为何：18 时班批4 补课班）
 - 禅道/项目管理/工单周边搜：q=zentaophp+OR+zentao+ai、q=bug+triage+agent+OR+issue+auto+assign、q=jira+ai+agent+OR+linear+ai+agent（竞品：禅道集成 7951ca5 已落地，持续盯增量）

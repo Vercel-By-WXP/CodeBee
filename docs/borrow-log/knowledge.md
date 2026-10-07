@@ -5376,3 +5376,434 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 - **生态筛选**：CrewAI-Studio 的无代码 GUI 与 CodeBee 任务台重合；agentic-trading 是 ADK+A2A 教学样例；AgentOps 观测/成本能力与现有 usage、trace、操作台账重合。B6 本班零新增代码件，避免为了“有新仓”重复建设。
 - **降级证据**：PyPI 查询受代理 `ProxyError` 阻断，已记录为通道降级，不把无结果伪装成“无项目”。
 - **在制品纪律**：本班观察到外部 `859df79` 已推送且工作树仍有四个未提交文件；未覆盖、未暂存、未提交，后续班先复核其归属再继续。
+
+## 2026-10-07 14 时班（批1：代码质量与评审——全类型调研，通道降级班）
+
+> 元信息：本机时间不可考（WSL 劫持 Bash 全不可用、worldtimeapi/WebFetch 域名校验全拦
+> ——「WebFetch 域名校验全拦」系 09-22 历班同款），按环境快照分支 main（HEAD=be07b74，
+> 工作区干净，13 时班观察的四个未提交文件已由 f61500a/05b13b2/be07b74 收口）。
+> 今日已跑批3（03 时）/批6（06 时）/批2（09 时）/批5（12 时）/批6（13 时），本班按
+> 第三十五班「轮换标签与小时有偏差已注记」先例选**今日未跑的批1（代码质量与评审）**
+> 补位。**通道降级**：gh api/curl/npm 全不可用 → WebSearch 串行 9 发（09-22 降级纪律，
+> 被限即顺延未遇）；repos 二次实证通道不在 → 新面孔一律**不定性入库、列判据/雷达级**
+> （10-05 纪律的通道受限变体，星数/日期系第三方口径近似）。 | 元信息 | 2026-10-07
+
+### 批1 域（WebSearch 3 发：代码评审/测试生成/安全评审）
+
+- **域结论：稳定期零新大件**（与批2/3/5/6 各域轮过均稳同型）。评审/安全域命中全
+  已录族或商业件（GHAS/CodeQL/Semgrep/CodeRabbit 族）；GitHub 官方「Trust Layer
+  验证 agentic 行为（correct isn't deterministic）」——**「不信任自报」族第 N 证**，
+  与我们事件流计数/跨厂商评审同向。 | 主扫 | 2026-10-07
+- **TDAD（Test-Driven Agentic Development，arXiv 2603.17973）**判据级 | 针对「AI
+  coding agent 引入回归、破坏此前通过的测试」提出测试驱动的 agentic 开发——与我们
+  代码任务测试闸同向；**借鉴方向候选**：代码任务先固化「此前通过的测试集」作为回归
+  闸再放手改（读全文后定，交后续班评审） | 判据 | 2026-10-07
+- **EvalView**（GitHub Marketplace action）判据级 | AI agent 测试框架（LangGraph/
+  CrewAI/OpenAI/Anthropic 通用）——我们缺自评测（evalscope 已记）同域旁证 | 判据 | 2026-10-07
+- **awesome-ai-testing**（tugkanboz）| 聚合清单（EvoMaster/EvoSuite 等）——三问
+  ②③不过（需二跳、用户不整包搜），雷达跟踪不接市场 | 雷达 | 2026-10-07
+
+### 全类型轮询（WebSearch 5 发：小说/演示/禅道/周报/短剧）
+
+- **小说/连载域**：零新大件。判据级 2 件：**DeepQuill**（Reddit 口径，「AI 读你的
+  书而非写、自动建一致性笔记」——一致性笔记自动化的新角度）/**avoid-ai-writing**
+  （conorbronsdon，去 AI 味 skill，Claude Code/Codex 兼容——与 aiflavor 同域微型件）。
+  行业信号：**The Benchmark Lab 2026 fiction benchmark 把 long-form continuity 列为
+  第一判据**——印证连载一致性评审路线；arXiv「Tracking State Footprints」2610.03140
+  （multi-agent 一致性层级）研究面参考。 | 调研 | 2026-10-07
+- **演示/演讲域**：零新具名大件（presenton/Slidev+AI/Gamma 已知域）；thetoolforthat
+  500+ 工具聚合清单三问不过。 | 调研 | 2026-10-07
+- **禅道工单域**：**第 26 例零新禅道 AI 竞品**（12 时班第 25 例顺延）；参考信号：
+  Zentor 博客引 CodeRabbit 测试——**Opus 5 评审更精准但漏已知 bug、nitpicks 4 倍**
+  （评审噪音权衡，我们评审深度分级 :1019 同题域参考）。 | 调研 | 2026-10-07
+- **工作汇报域**：判据级 1 件：Reddit 上的开源 GitHub Action——**从 commits/PRs/
+  reviews 活动史自动聚合生成叙事周报**。差量=素材自动聚合 vs 我们用户供材；**借鉴
+  方向候选**：weekly_report 增加可选「从任务档案/evidence.md/git 活动史自动聚合素材」
+  （小而实，交后续班评审）。 | 调研 | 2026-10-07
+- **短剧/短视频域**：**OpenMontage 已录复查增量**（calesthio）：11→**12 条生产管线/
+  49→100+ tools/400→700+ agent skills** 扩容放量（第三方口径）——03 时班「分镜管线化」
+  借鉴方向候选维持交拍板，同族观察信号增强。新判据 2 件：**VibePaper**（商业 $20/月，
+  短剧+AI 视频生产的节点画布协作工作台，Seedance 2.0 集成——节点画布形态参考）/
+  **awesome-claude-video-skills**（zhuyansen，Claude 视频 skill 聚合清单——三问不过
+  雷达）。**DSH 生态扩散第 8 信号**：awesome-dsh-plugin 收录 **Copree**（AI group
+  chat 框架）含 **short-drama mode**（导入剧本→分镜）——dsh 生态向写作域渗透续强。 | 调研 | 2026-10-07
+
+### 雷达面（WebSearch 1 发主增量：新 CLI/编排动向）
+
+- **Brigade**（spinabot，10-03 发布）判据级 | 自托管 AI agent 团队→共享编排系统：
+  长期记忆+委派+模型切换——**A1/A5 域同形态新面孔**（与 openrig 同族，未 repos 实证
+  不定性入库，待有通道班勘定）；threads 口径 | 判据 | 2026-10-07
+- **PI-Desktop**（vastsa）判据级 | local-first AI coding agent 桌面工作区（免账号），
+  GitHub Trending 2.8K+——A13 桌面形态新锐 | 判据 | 2026-10-07
+- **IBM Bob self-hosted**（10-01）判据级 | IBM coding agent 气隙环境版（银行/政府
+  全离线）——大厂私有化部署动向 | 判据 | 2026-10-07
+- **OpenAI Agents API 公测**（10-01~02）判据级 | 把 Codex 背后的 managed harness
+  暴露为可编程 API——**若成熟，未来 catalog 可增「API 直连」形态**（不经 CLI 进程，
+  与 direct engine 合流方向），远期观察 | 判据 | 2026-10-07
+- 评测面：Terminal-Bench 4.0 Claude Code+Opus 5.5 64.8% 领跑、Octomind 25 任务真实
+  PR 基准 GLM-5.2 24/25（$63.43）——评测口径参考。已录族复认：OpenClaw/OpenCode/
+  Codex CLI/OpenHands/Cline/Goose/pi/DSH。 | 雷达 | 2026-10-07
+
+### 七专项轻量实测（本班文件级只读实测，非照抄历班）
+
+- **A token**：`cache_control|semantic_cache|prompt_cache` 全 core Grep **零命中维持**
+  （本班独立复测）；语义缓存=bifrost 拍板件维持交拍板；四方向判定维持零新增机制。 | 巡检 | 2026-10-07
+- **B 市场**：本班候选（Brigade/PI-Desktop/DeepQuill/avoid-ai-writing/VibePaper/
+  awesome-claude-video-skills/TDAD/EvalView/awesome-ai-testing）均非六源可直装技能包
+  ——三问不过，**零接入零绕闸零安装**。 | 巡检 | 2026-10-07
+- **C 类型**：flows.py BUILTIN_FLOWS **18 型** Grep 逐条实测（direct/code/novel/
+  serial_novel/article/video_script/doc/translation/rank_scan/defect_retro/research/
+  speech/presentation/weekly_report/email/tech_proposal/resume/bid_doc）——与历班
+  6 次独立复证同口径零漂移；任务口径 13 种 vs 实际 18 维持历班裁定（枚举「禅道工单」
+  系 F 专项集成非预置流程，不删项）。 | 巡检 | 2026-10-07
+- **D 经验**：data/skills.json lessons=**69**（12 时班新基线零回漂复认）；本班新面孔
+  均判据/雷达级无可蒸馏方法论，纪律不动。 | 巡检 | 2026-10-07
+- **E 新 CLI**：DEFAULT_CATALOG **14 条** Grep 实数复认零漂移；`command -v` 本机探测
+  **不可行**（Bash 劫持，如实记录）——沿最近历班（13 时班）口径 13/14 在装、六候选
+  +openclaw MISSING，**零接入防死链维持**；DeepSeek-Reasonix 35,742★ 候选首位维持。 | 巡检 | 2026-10-07
+- **F 禅道**：data/zentao.json 只读实测：poll_enabled=**False** 显式关/claims={} **零
+  积压**/last_error 空/last_scan 停 2026-09-21 20:43:44（部署配置缺位多班同口径，是否
+  启用交人决定）；product 96 档案与 triage_ai=true 在位；全程只读零触发。 | 巡检 | 2026-10-07
+- **G 产品**：过时文案（「13 种/13种/单源」）UI 三件 Grep **零命中**——零新毛病零
+  随手修。 | 巡检 | 2026-10-07
+
+### 落地判定与词库
+
+- **零代码件：docs-only 不发版**（本步=计划第 1/4 项调研步，锚定文件=knowledge.md
+  +keywords.md 两 docs，与 v0.1.91「锚定清单优先」教训一致无冲突）。 | 落地 | 2026-10-07
+- **keywords.md 本班零改动**：本班新面孔（Brigade/PI-Desktop/DeepQuill/VibePaper/
+  awesome-claude-video-skills 等）均未 repos 二次实证——按 10-05 纪律不入词库
+  （openrig 词形先例系实证后入库），待有 gh api 通道班勘定后再议。 | 词库 | 2026-10-07
+- 借鉴方向候选 3 件交后续班/拍板（不自行立项）：①TDAD 回归闸（代码任务）②周报
+  素材自动聚合（weekly_report）③OpenAI Agents API 直连形态（catalog 远期）。 | 队列 | 2026-10-07
+
+### 待深挖队列与未验证项（如实记录）
+
+- 21 时快照 11 项全部维持（第 3/10 保持划掉）；本班零新队列项（新面孔均判据/雷达
+  级）。风险在档维持（交人拍板）：data/zentao.json 明文密码；批跑同进程测试间争用
+  面；32 位全量 discover 静默退出；runner_drain 计时超界。 | 队列 | 2026-10-07
+- **未验证**：gh api 词组级主扫 115 查/trendshift 直抓/npm/pypi 全未行（通道不在，
+  WebSearch 域定向 9 发替代）；repos 二次实证全未行（新面孔星数/日期系第三方口径）；
+  `command -v` 本机探测未行；TDAD/DeepQuill/avoid-ai-writing 未读全文/未逐 commit；
+  本机时间未实测（worldtimeapi 被拦，批1 补位判定系推断）；禅道定时扫描未真实触发
+  （不为验证制造 Bug）。 | 未验证 | 2026-10-07
+- **与并行午后班关系（同轮双会话）**：另一会话同轮以 WebSearch 20 发覆盖批 B1+B7+
+  B4 候选（见下「午后班沉淀」节与其报告节）——两班独立通道在 **TDAD 上双通道一致**
+  （交叉验证），其余增量互补零重复（本班 Brigade/PI-Desktop/OpenAI Agents API/
+  DeepQuill/VibePaper/DSH 第 8 信号/周报素材聚合 vs 午后班 墨枢/ryk/MiniMax/pi CVE/
+  禅道官方信号/起点剧场）；本班「批1 补位」判定写于午后班落笔之前，事后看批1 系
+  两班共跑，增量不撞、记录均保留不涂改。 | 并行注记 | 2026-10-07
+
+## 2026-10-07 午后班沉淀（批 B1/B7 候选——第 1/4 步全类型调研·通道降级版）
+
+> 通道：Bash 被劫持全废（`/bin/bash` 缺失三测同败）+WebFetch 域名校验全拦 → 走 keywords.md
+> 既定降级纪律 WebSearch 串行 20 发；小时不可测，按「当日未跑批」覆盖 B1+B7（14/15 时
+> 轮转位）+B4 顺带。**全部新面孔未经 repos 端点二次实证（10-05 纪律），一律 claim 级不入
+> 定性**；主扫脚本未行，以逐族合并查询+全历史 Grep 过筛等效替代。详录见 2026-10-07.md
+> 午后班节。| 调研 | 2026-10-07
+
+- **墨枢**（topic:chinese-novel，claim 级）：中文长篇工作台——设定库/时间线/RAG/一致性
+  守卫/**自然化审查工作台**/团队协作。大纲/设定库/一致性守卫我们全有对应；「自然化审查
+  （去 AI 味）」与「时间线」系显式环节——**午后巡检班复核更正：两者均已覆盖**
+  （aiflavor.py 三层检测：措辞层套话密度+叙事架构层三类指纹+节奏层开篇/章末钩子，
+  已挂单稿件与连载逐章评审双链路 pipeline:3201/:4992；story_tracking 逐章
+  facts/characters/foreshadowing 持久化即章节事实账本）——「竞品有我们没有」判定
+  须先查产品内现状。 | 已覆盖（午后巡检班复核更正） | 2026-10-07
+- **webfiction-write**（同源，claim 级）：Codex 基座网文全流程 skill，明确面向番茄/起点/
+  七猫/刺猬猫——与我们扫榜→大纲→正文同形（skill 形态），平台名定向值得其 README 深读。 | 判据·雷达 | 2026-10-07
+- **LAY-lgtm/novel-writing-framework**（claim 级）：500 章实战提炼的方法论框架（阮一峰
+  科技爱好者周刊推荐 claim）——方法论面蒸馏候选。 | 判据（待 README 深读） | 2026-10-07
+- **自然化审查/去 AI 味域信号**（行业面）：番茄/七猫 2026 前后收紧纯 AI 文审核（「AI 代笔」
+  降权、「AI 辅助」标识安全）+阅文「起点剧场」（网文 IP→AI 短剧）上线——平台侧证据支持
+  「自然化审查作为小说/连载评审维度」候选经验（scope=novel/serial_novel），优先级上升。
+  **午后巡检班复核更正：评审维度已覆盖**（aiflavor 三层检测+双评审链路挂载），
+  行业信号转为「检测词表持续运维」的佐证（AI_PHRASES 注释自带「持续运维」约定）。 | 已覆盖（复核更正，词表运维佐证在档） | 2026-10-07
+- **christopherkarani/ryk**（B4，claim 级）：本地 agent guardrails——策略引擎+审批流+
+  **86 个安全包分发**+OS 级 sandbox（no Docker）+审计。闸门族同域（我们六源+白名单+SSRF
+  防护+双层闸门已实证健康）；「安全包」分发形态系新参照。 | 判据 | 2026-10-07
+- **aden-hive/hive**（A13，claim 级）：生产 multi-agent harness+CPU/内存/token **资源监控
+  可视化**——运行台账我们有、系统级资源可视化面板无。 | 判据 | 2026-10-07
+- **Vault-MCP**（A13，claim 级）：age 加密凭据文件+代理工具无直访问模式——对
+  **data/zentao.json 明文密码在档风险**（交人拍板项）系第三参照件（同向：历班已记凭据
+  加密方向），**非顺手加固**，仍交拍板。 | 判据·参照 | 2026-10-07
+- **MiniMax Coding Agent**（A4，claim 级）：2026-09-21 开源 MIT、headless for CI、
+  Agent Client Protocol——**E 专项增补候选**，未装未测不接入（防死链纪律）。同面首见
+  claim：Meta Muse Code/Junie CLI/agy CLI/New Relic Ground Truth CLI（厂商产品面无开源
+  仓可勘定）。 | E 候选（待实测） | 2026-10-07
+- **npm 面 claim 簇**：TokenTracker/ai-craft（跨 Claude Code/Codex/OpenCode/Pi/OMP/
+  Copilot 用量统计）、Empir3 Bridge（MCP 化多 agent 编排）、Pi Conductor（pi 持久会话
+  编排）、oh-my-openagent（多 harness 重构）——A13 用量指标域与 A1 同形簇+1。 | 判据 | 2026-10-07
+- **agentic-qe**（B1，claim 级）：开源 QE agent 舰队（测试生成+覆盖缺口+flaky 检测×11
+  coding agent 宿主）；TDAD 论文印证「agent 引入回归」风险面。 | 判据 | 2026-10-07
+- **OrchestratorInc/agent-orchestrator**（topic，claim 级）：并行 agent 监督+skills，
+  Apache-2.0，数日内更新——A1 同形新件。OpenShell（trendshift 碎片，「safe, private」）
+  信息不足待勘定。PromptSite（轻量 prompt 版本管理）新微型。 | 判据 | 2026-10-07
+- **禅道 F 专项增量（官方产品化信号）**：ZenTao CLI 原厂 Skills 新闻面（easysoft/
+  zentao-cli 仓 09-22 已录，「一键装进 Claude/Cursor」系产品化推进信号）+**IPD 4.7.1
+  内置 4 个智能体**（首见）+imyuyu/zentao-cli（社区 CLI 首见 claim）+zentao-mcp 同族复认
+  （daodaobing/bivex/@dannyvan 均已录）——**第 26 例定性维持：零机制级新竞品，官方产品化
+  推进入档**。 | F 专项 | 2026-10-07
+- **发布平台行业信号（A12）**：阅文起点剧场（IP→AI 短剧）+ElserStudio/invideo 微短剧
+  工作流（章→60-120s 集）+WebnovelSync 跨站同步——OpenMontage 分镜管线化借鉴方向获
+  行业面佐证。 | 判据 | 2026-10-07
+
+### 复查记录（通道受限版）
+
+- **pi 属主台账矛盾销账**：06 时班「earendil-works/pi（badlogic/pi-mono 302 实证）」vs
+  12 时班「未勘定」——本班多源三角定位（agentic-ai readthedocs/pi.dev/HF badlogicgames）
+  证实**正主=earendil-works/pi（badlogic/pi-mono 组织迁移，MIT，225+ releases）**，06 时
+  班正确。**新风险**：CVE-2026-5556——pi-mono ≤0.58.4 `discoverAndLoadExtensions`
+  代码注入/RCE（SentinelOne claim）；pi 系 catalog 已接（13/14 在装），**本机版本核查交
+  人拍板**（本班无 shell）。 | 销账+风险 | 2026-10-07
+- **过筛七件全对回历史零重复入库**：MoneyPrinterTurbo（09-22）/InkOS=Narcooo/inkos
+  （09-23 已深挖，多线推演+chaptersafe 已抄，维持观察）/Presenton（09-22）/zentao-cli=
+  easysoft（09-22）/Aegis（Justin0504 484★ 多轮）/awesome-auditable-ai（10-03）/
+  Conductor（多义）。属主歧义新记：travisvn/awesome-claude-skills 15.3k★ 疑义 claim
+  （正主=ComposioHQ 76.6k★），待 repos in:name 勘定不盲采。openrig 第三方页 980-1.1k★
+  系 shields 缓存滞后，gh api 5,546（12 时班实测）优先。 | 过筛 | 2026-10-07
+- **C 类型第 6 次复证**：BUILTIN_FLOWS=18（flows.py:36-128 逐条实读）——任务口径
+  「13 种」系指令面（+禅道工单映射=14 面），实际 18 型零漂移不删项，与历班同口径。
+  各类型域判定维持：article/speech/translation/email/weekly/resume/bid_doc 域稳定期/
+  沉寂期零新仓；「代码→架构图」第三信号（CodeWiki/DocAgent）；research 16-step 悬置
+  维持（无仓名）。 | 巡检 | 2026-10-07
+
+### 本班结论
+
+1. **通道降级纪律首次双通道同断实战**：Bash+WebFetch 同断下 WebSearch 串行 20 发+
+   Grep 过筛可完成 A1-A13/B 候选批/C 可用面全覆盖，但代价=全部 claim 级（星数/
+   pushed_at 缺失）+19 源逐仓实测未行——本轮增量以「判据/雷达候选」形态入档，
+   勘定归 repos 班。
+2. **两个真正的新信号**：①「自然化审查（去 AI 味）」成为网文平台审核显式门槛（行业面
+   多源）——小说/连载评审维度候选，交拍板；②禅道官方产品化提速（IPD 内置智能体+
+   CLI Skills 新闻面）——F 专项竞品压力面升级但零机制级新竞品维持。
+3. **风险台账+1**：pi ≤0.58.4 CVE-2026-5556 RCE（若本机命中）——在档风险交拍板：
+   zentao.json 明文密码/poll_enabled=False/批跑同进程争用/32 位 discover 静默退出/
+   runner_drain 计时超界 维持。
+4. **待办 2 件交后续班**：①本机 pi 版本核查（CVE）；②travisvn/awesome-claude-skills
+   属主勘定。待深挖队列 11 项维持，本班零新队列项。
+
+## 2026-10-07 午后巡检班沉淀（新一轮第 2/4 步·七专项 A-G 实证+候选复核销账）
+
+> 通道：Bash 仍被 WSL 接管（`/bin/bash` 缺失）——Read/Grep/Glob 文件级实测执行全部
+> 专项，shell 类探测（command -v/npm view/git）未行如实记。HEAD=be07b74（v0.1.91），
+> pipeline.py 行号全部本班实读零漂移。详录见 2026-10-07.md 午后巡检班节。 | 巡检 | 2026-10-07
+
+- **A token 八件机制逐件实读在位**：三段压缩（compaction.py 全文，摘要消耗入账
+  usage.record(compaction) :156-166）/token_meter（cached 单列不计 used :101-107）/
+  双熔断（花费闸先于 token 闸 pipeline:676-677，ENV_BLOCK 只拦下一步）/cascade
+  （capability.py:100-125 tier 重排+难度选模 :111-118）/经验召回（block_for
+  stable_order+教训保底）/会话复用/diff 评审（CODE_REVIEW_PROMPT findings 锚定
+  证据 :929-932）/_shrink_context_block 四层降级 :2538-2578。`cache_control|
+  semantic_cache|prompt_cache` 全 core grep 零命中维持——四方向判定维持，
+  语义缓存维持攒批拍板件，**零新增机制零重复建设**。 | 巡检 | 2026-10-07
+- **B 市场**：六源 fetched_at=2026-10-03 零漂移（本班逐文件实测）；午后班 claim 级
+  候选（墨枢/webfiction/ryk/aden-hive/TokenTracker/agentic-qe 等）六源缓存 grep
+  **0 命中=不可直装坐实**，三问逐条全不过——零安装零绕闸；「86 安全包分发」「资源
+  监控可视化」记对标素材不立项。 | 巡检 | 2026-10-07
+- **C 类型第 7 次复证**：BUILTIN_FLOWS=18（flows.py:36-134 逐条实读）；i18n name
+  键 18/18——勘误一次：首测 16/18 系 pattern 用指令口径词（代码任务/投标文件）
+  非注册名（代码/标书编制），口径错非产品缺陷（与 07 时班 id 键勘误同族入档）。
+  README「18 种」一致零漂移。 | 巡检 | 2026-10-07
+- **D 基线 69 条零回漂**（分类 29/16/10/7/4/3 核对无误，流程规范 42.0%；scope
+  serial_novel 41 偏科维持）；**「自然化审查」候选复核为已覆盖=本班主增量**
+  （aiflavor.py 三层检测+单稿件/连载逐章评审双挂载实证，墨枢/时间线同判销账）
+  ——方法论：**「竞品有我们没有」判定必须先查产品内现状再立项**。零合并项，
+  纪律不动数据。 | 巡检·复核 | 2026-10-07
+- **E**：catalog 14 条目实数复认（dsh :168）；本机探测 shell 断未行沿历班口径
+  （13/14 在装、六候选全 MISSING）；MiniMax 新增候选未装未测零接入防死链；
+  pi CVE 本机核查待办维持。**F**：poll_enabled=False/claims={} 零积压/last_scan
+  停 2026-09-21——部署配置缺位非代码缺陷维持，全程只读零触发，第 26 例零新
+  竞品顺延。**G**：过时文案 UI 三件零命中零新毛病；aiflavor 节奏层 article 不在
+  NARRATIVE_FLOWS 系可辩护设计边界（交产品判断，不顺手改）。 | 巡检 | 2026-10-07
+- **三件候选复核销账**：①14 时班「活动史自动聚合周报」——weekly_report 素材链
+  已配（禅道 weekly_brief pipeline:4913-4923+git log 半边 _gitlog_brief 双源并列
+  互不阻塞）；②午后班「自然化审查」——aiflavor 已覆盖；③墨枢「时间线」——
+  story_tracking 章节事实账本已覆盖。**在册代码级「小而实」积压判定为零，不凑数
+  件**；本班 docs-only 不发版（07 时巡检班/14 时班先例）。 | 销账 | 2026-10-07
+
+## 2026-10-07 16 时落地班沉淀（新一轮第 3/4 步·index.html 属性级 i18n 缺口修复）
+
+> Bash 全程被 WSL 劫持（班中四测同败）——Write/Edit 实现+grep 级实测验证，运行级
+> 验证（py_compile/node --check/unittest/git）归第 4/4 步通道恢复后执行。落地判定
+> 承 07 时落地班先例：巡检判定积压为零时，实落地=实测发现的真实缺口修复+回归锚定
+> 件。 | 落地 | 2026-10-07
+
+- **主发现：i18n 对账存在第三层盲区——属性级**。历班覆盖只落两层（data-i18n 键
+  ↔ i18n.js=test_i18n_key_coverage；app.js t() 字面量 ↔ i18n.js=test_borrow_
+  iteration），「中文 title/aria-label/placeholder 挂了文案却缺 data-i18n-title/
+  -aria/-ph 钩子」从无对账——applyI18n（i18n.js:3115-3128）只按钩子属性重译，缺
+  钩子属性在英文界面恒为中文。190 处含中文属性元素逐行核对，16 缺口（浏览器工具
+  栏 9/侧栏导航 5/验收标准字段 2）。**方法论：i18n 对账面=静态 HTML 键 + 属性钩子
+  + JS 字面量三层，缺一层就有裸奔面**。 | 发现·修复 | 2026-10-07
+- **修复四件**：index.html 16 元素补钩子（+19 属性，中文源值逐字未动，zh 零行为
+  变化）；i18n.js 尾追 13 条 EN 词条（设置/搜索/刷新/打开复用既有条目；`&#10;`
+  实体键按 JS `\n` 转义形态入库与 dataset 解码值精确匹配）；test_borrow_iteration
+  补单引号 t('…') 对账盲区（07 时班在案盲区销账，app.js 现存 2 处词条均在位零
+  用户可见缺陷）；test_iteration_regressions 追加 IndexHtmlAttrI18nTests（全量
+  钩子对账=改前红改后绿+修复面 20 钩子/13 词条点名锁定）。 | 修复 | 2026-10-07
+- **排除项与方法**：mkr-installed「已安装」静态文案非缺口（app.js:12558 动态覆写
+  已走 t()）；label 文本节点 33/33 全带钩子、toast/confirm/alert 零裸中文——包裹
+  纪律良好，缺口集中于「后补的浏览器页签工具栏与侧栏导航」；「已安装 N」等动态
+  文本不属属性级对账范围。 | 边界 | 2026-10-07
+- **通道阻塞两件入档**：Bash 劫持（运行级验证降级 grep 推定，改前失败改后通过由
+  缺口实证链替代）+code-reviewer 子代理 API 400 两轮（模型路由环境故障，评审转
+  本会话内六项自评审全过）——均系环境侧非代码侧，第 4/4 步收口时通道恢复须补跑
+  运行级验证。 | 阻塞 | 2026-10-07
+
+## 2026-10-07 收口班沉淀（本轮第 4/4 步·静态联调完成+执行面阻塞如实记）
+
+> Bash 全程被 WSL 接管（班中 6 测同败+子代理复核同败）——五道关⓪①②④⑤执行面
+> 全未行，git 提交/推送/npm 发版全未行；实落地=静态联调复核+本沉淀。改动未提交
+> → **不发版不 bump**（package.json 保持 0.1.91，无 npm 半发布态无 revert 需要）。
+> | 收口 | 2026-10-07
+
+- **静态联调全过**：属性级 i18n 全量复扫 **190/190 中文属性全带同值钩子**（含 3 处
+  跨行标签，16 缺口修复面零回漂）；i18n.js 13 新词条+13 复用键抽查全在位；两测试件
+  静态审查过（正则边界/unescape 比对/转义计数/20 锚点点名与实文件吻合）；18 型第 8
+  次复证（BUILTIN_FLOWS=18+i18n name 键 18/18）。 | 联调 | 2026-10-07
+- **shell 劫持根因定位与修复法（方法论入档）**：harness 把 bash 解析到 WSL
+  bash.exe→本机发行版缺 /bin/bash；Git for Windows 实际在 **D:\Git\bin\bash.exe**
+  （C:\Program Files\Git 缺失）。已把 `CLAUDE_CODE_GIT_BASH_PATH=D:\Git\bin\bash.exe`
+  写入 ~/.claude/settings.json env——env 仅启动时生效，**须重启会话验证**；无效则
+  备选 wsl --set-default / PATH 前置 D:\Git\bin / 修复发行版。 | 环境 | 2026-10-07
+- **未提交不发版判定**：改动在工作区未入库时，发版前置（提交+推送+selfupdate 绿）
+  不可能满足——正确处置=版本号/CHANGELOG/npm 三不动，待通道恢复按重跑清单走五道关
+  再判发版（预记 v0.1.92：英文界面属性级 16 处+单引号对账补盲区，用户可感知应发
+  patch）。keywords.md 本班零调整（降级纪律已覆盖）。 | 流程 | 2026-10-07
+
+## 2026-10-07 18 时班沉淀（批4 治理/安全/人机协同·通道恢复班）
+
+> 18:39 开工（hour=18 → 批4，午后班降级跑过 1 发、本班 gh api 全量补齐）、分支
+> main（be07b74）。**shell/gh api/curl/npm 全恢复**（CLAUDE_CODE_GIT_BASH_PATH
+> 修复经会话重启生效实证）。主扫 115 查询/524 行/466 唯一仓/exit 0 零失败零 403；
+> B4 域 31 件头部全已录=批4 域稳定期零机制级新差量。本班主增量=**降级班 claim 级
+> 面孔的 repos 端点二次实证补课**（10-05 纪律）+待办双销。docs-only 不发版。
+> | 调研 | 2026-10-07
+
+- **三件大星对标坐实（claim→定性入库）**：**NVIDIA/OpenShell 15,202★**（safe,
+  private runtime for autonomous AI agents——A5 沙箱运行时域大星；**115 查询全
+  零命中=主扫 per_page=5 剪切线又一实证**，BMAD 同款盲区，靠 C 雷达面补位）/
+  **OrchestratorInc/agent-orchestrator 12,857★**（A1 同形态，与 Untrivial 同名
+  异主已录件并存）/**aden-hive/hive 11,092★**（A13 harness+资源监控可视化——
+  真实差量系面板工程不立项）。均雷达/对标跟踪零接入（非六源技能包三问不过）。
+  | 竞品 | 2026-10-07
+- **E 专项候选坐实+本机探测复测**：**MiniMax-AI/minimax-code 1,985★**（官方开源
+  terminal coding agent；org 顺藤 OpenAgentCore 196★=OpenAI Agents API 自托管实现，
+  14 时班公测信号获仓级佐证）——`command -v` 恢复后首测 13/14 在装（openclaw
+  MISSING）、六候选+minimax 全 MISSING，**零接入防死链维持**。**pi 0.99.1 实测
+  >0.58.4：CVE-2026-5556 影响范围外本机无风险（待办①销）**。 | 新CLI | 2026-10-07
+- **属主勘定四件（in:name 规则第 3 批量例）**：mattpocock/skills=278,722★ 正主
+  （03 时班悬置销账，中文本地化分叉 vinvcn 4,642 系扩散信号）/ travisvn/awesome-
+  claude-skills=15,301★ 真仓但 04-28 停更（ComposioHQ 76,638★ 正主并行在，两仓
+  并存非失配，待办②销）/ webnovel-writer=lingfengQAQ 7,343★ 首定（副产
+  webnovel-writer-opencode 213★ 多 CLI 移植件，oh-story/ponytail 同款扩散信号
+  再+1）/ hermes-agent=NousResearch 251,796★（家族件 hermes-agent-self-evolution
+  5,471★ 进化式自改进在档）。 | 勘定 | 2026-10-07
+- **降级面孔定性收窄（claim→实证后降级）**：ryk 42★ 微型且 08-20 停更/LAY-lgtm
+  novel-writing-framework 249★ 停更/webfiction-write 18★ 微型（claim 属实但均
+  判据级）；**墨枢 in:name 零命中仓名未勘定**（疑产品名非仓名，规则第 6 例记法，
+  其「自然化审查」已由午后巡检班复核为 aiflavor 已覆盖）；vault-mcp claim 正主
+  未勘到（同名多件均不符，hashicorp/vault-mcp-server 系另一物）；EvalView ≤1★
+  噪声。**方法沉淀：claim 级面孔过半数在 repos 实证后降级——10-05 规则持续有效，
+  未经 repos 坐实不入定性入库**。 | 方法 | 2026-10-07
+- **A1u 新面孔 mco-org/mco 530★**：CLI-first 多 agent 并行跑+原始答案对比+协调
+  评审（答案对比与内容引擎赛马同向）——A1 同形态中腰部判据。 | 竞品 | 2026-10-07
+- **存量复查 26 件全 alive 零 archived**：orca +278 续领跑/rea +2,179 大爆发续
+  （trendshift 驱动）/Strata +704/mattpocock +774 放量/DeepSeek-Reasonix 35,746
+  E 候选首位持平；C 雷达 awesome 18 源 alive 零 archived；禅道周边**第 27 例零
+  新机制级竞品**（官方 MCP 桥接信号面增厚）；pypi 第 13 班 CSP 壳页（curl 恢复
+  仍壳=通道侧复认）；trendshift 直抓仍拦。B4 域结论稳定期、lessons=69 零回漂、
+  18/14 第 9 次复证、零新毛病、keywords.md +2 词形（openshell/agent-orchestrator/
+  hive+minimax 生态盯增量）。 | 例行 | 2026-10-07
+
+## 2026-10-07 19 时巡检班沉淀（新一轮第 2/4 步·七专项 A-G 实证+回归测试首跑抓缺陷）
+
+> 通道全恢复（Bash/python 实测可用，CLAUDE_CODE_GIT_BASH_PATH 修复生效），分支
+> main（be07b74）五道关⓪过。**本班主增量=16时班属性级 i18n 回归测试首次真实执行**
+> （历班 Bash 劫持只静态审查过，首跑即抓到测试自身正则缺陷）——产品本体零缺陷被
+> 真实执行复证，测试件一字符修复入候选。 | 巡检 | 2026-10-07
+
+- **A token 八机制 grep 级复证全在位零漂移**：三段压缩（compaction.py:12-18 触发
+  口径+:77-81 tail 预算+:193 压力比闸）/token_meter（accumulate 进账+cached 单列
+  不计 used）/双熔断（pipeline.py:676-696 花费闸先于 token 闸，ENV_BLOCK 只拦下
+  一步）/cascade（capability.py:100-125 tier 重排+难度选模，modelhub.py:2280+
+  branching.py:46-47 压力联动的双挂载）/经验召回（skills.py:676 block_for+
+  knowledge.py:277 双源）/会话复用（session_run_id pipeline.py:691 跨步进账）/
+  diff 评审（pipeline.py:921-960 -n 40 封顶+findings 锚定证据）/_shrink_context_
+  block（pipeline.py:2538-2582 四层降级+连载逐章 :2581 分层组装）。`prompt cache|
+  semantic cache|cache_control` 全 core grep 零命中维持——**四方向判定维持，无真
+  实缺口不新增机制**。 | 巡检·A | 2026-10-07
+- **B 市场六源实读+闸门三重实证**：SOURCES=6（market_remote.py:50-75 zcode/
+  anthropic/anthropic-skills/claude-skills/clawhub/cocoloop 逐条）；SSRF 网关
+  :114（仅 https+解析全 IP 拦环回/私有/保留）、逐跳重检 :156/:202、体量上限五重
+  （清单 5MB/包 80MB/解包 120MB/500 文件/单文本 512KB）、白名单闸 :941-952（安装
+  面与声明不符整包拒绝）。六源缓存 fetched_at=2026-10-03 实读零漂移；18时班新面
+  孔（OpenShell/agent-orchestrator/aden-hive/mco/minimax-code）三问逐条不过：
+  非技能包不可直装+A1 同形态重合+用户不按此搜——**零安装零绕闸，雷达跟踪**。
+  | 巡检·B | 2026-10-07
+- **C 类型第 10 次复证全过**：BUILTIN_FLOWS=18（flows.py:36-134 全文实读逐条：
+  direct/code/novel/serial_novel/article/video_script/doc/translation/rank_scan/
+  defect_retro/research/speech/presentation/weekly_report/email/tech_proposal/
+  resume/bid_doc）；i18n EN 词条 18/18（**中文源值口径**——键格式系「中文：EN」
+  映射非 `flow.name.<id>` 键，本班又一次靠先查真实格式避免口径错报缺）。task_
+  compile.py 全文实读：难度推导（threshold≥8.5→hard，研究/方案/扫榜默认 hard
+  :27-29）、rubric 钳 8 条 :60、轻量三元（email/weekly_report/translation :163）
+  与深度三元（novel/research/tech_proposal :164）分工、高门槛强制双评审 :194-195
+  ——菜单描述/流程参数/辅助信息与行为一致零新毛病。 | 巡检·C | 2026-10-07
+- **D 基线 69 条逐项吻合零回漂**：真源 data/skills.json（skills.py:32）实读：
+  分类 流程规范29/节奏爽点16/情节逻辑10/人物塑造7/一致性4/文笔风格3（流程规范
+  42.0%）、scope serial_novel 41/*/12/code/11/direct/4/article/1——与基线完全
+  一致。block_for :676/list_lessons :391 接口在位。**合并候选本班零**（纪律不动
+  数据）；本轮调研方法论增量由 18时班收口（claim 实证降级规则），零重复入库。
+  | 巡检·D | 2026-10-07
+- **E 13/14 维持+探测口径勘误自记**：catalog.py detect 清单 14 条实读（codex/
+  claude/opencode/qwen/aider/openclaw/kimi/mimo/grok/pi/dsh/gemini/cbc/trae-cli）；
+  实测 13 在装（openclaw MISSING 维持）。**勘误一次：初探用 `trae` 误报 MISSING，
+  对 catalog:202 detect=trae-cli 复探 OK**——「探测前先读 detect 字段」与 C 专项
+  「指令口径词 vs 注册名」同族入方法论。六候选（DeepSeek-Reasonix/FuXi/Gitlawb/
+  zero/Empryo/MiniMax）未装未测零接入防死链维持。 | 巡检·E | 2026-10-07
+- **F 停摆系部署配置维持+全程只读**：真源 data/zentao.json 实读：poll_enabled=
+  False、last_scan=2026-09-21 20:43:44、claims=0、last_error 空——零 Bug 积压、
+  扫描链健康（配置一旦启用即可用）；本班未触发任何 resolve/评论/群通知。产品档案
+  路由未动；i18n 禅道词条 30 处在位。第 27 例后零新机制级竞品顺延（18时班已录）。
+  | 巡检·F | 2026-10-07
+- **G 主发现：IndexHtmlAttrI18nTests 首跑即抓测试自身缺陷**。tests/test_iteration_
+  regressions.py:112 `_ATTR` 正则 `[a-zA-Z-]+` 字符类缺数字——钩子键名 `data-i18n-
+  aria/title/ph` 含 `18` 被错拆成 `n-aria`，钩子在位却全判缺 → **全量对账 241 全
+  假阳性**（修复面点名测试 test_repaired_hooks_and_entries_locked 是过的，缺口仅
+  在全量扫描半边）。产品本体零缺陷：字符类补 `0-9` 后全量复扫 0 问题=190/190 中
+  文属性全带同值钩子（收口班静态联调结论被真实执行复证）。**方法论：从未运行过
+  的测试不算绿灯——「静态审查过」与「跑过」之间存在盲区，劫持班交付的测试件必
+  须在通道恢复后首跑**。过时文案扫描（单源/双源等）零命中零新毛病维持。
+  | 发现·G | 2026-10-07
+- **落地候选（1 件，小而实可自动验证，第 3/4 步实施）**：tests/test_iteration_
+  regressions.py:112 `_ATTR = _re.compile(r'([a-zA-Z-]+)="([^"]*)"')` 字符类补
+  `0-9` → `([a-zA-Z0-9-]+)`。验收：`cd tests && python -m unittest test_iteration_
+  regressions test_borrow_iteration` 全绿（改前 241 假阳性红、改后绿），产品零行
+  为变化（纯测试件）。收益：i18n 属性契约从此真跑得动，后续回归有真实闸门。风险：
+  零（测试件单字符修复，已用等价脚本验证 0 误报）；无并发/跨模块面。在册其余积
+  压维持判定为零，不凑数件。 | 候选 | 2026-10-07
+
+## 2026-10-07 19 时落地班沉淀（新一轮第 3/4 步·属性级 i18n 对账正则修复实施）
+
+> 通道正常（shell/python 实测可用），分支 main（be07b74）。实施上一子任务
+> （19 时巡检班）确认的唯一落地件；在制品其余增量逐字不动。详录见
+> 2026-10-07.md 19 时落地班节。 | 落地 | 2026-10-07
+
+- **候选实施+改前红改后绿真实闭环**：`_ATTR` 字符类 `[a-zA-Z-]+`→
+  `[a-zA-Z0-9-]+`（tests/test_iteration_regressions.py:112 单行）。改前实跑
+  FAILED（241 处「缺 data-i18n-*」假阳性复现，与巡检班预判数字一致）；改后
+  `python -m unittest test_iteration_regressions test_borrow_iteration`
+  **5/5 OK**+py_compile 过——i18n 属性契约自此真实可跑，后续回归有闸门。
+  | 落地·闭环 | 2026-10-07
+- **全预置类型静态一致性检查（本步要求，只读零改动）**：BUILTIN_FLOWS=18
+  import 实测、18/18 四字段齐全；review 型 14 个 rubric 4-5 维/threshold 7.0
+  （bid_doc 7.5）/rounds 2 零异常；serial{8,2500} 在位；i18n 类型名 EN 词条
+  18/18。相邻锚定回归（flow_icons/content_contracts/review_depth/i18n_dups/
+  i18n_key_coverage）**28/28 OK**——flows.py/pipeline.py 零需求零改动。
+  | 一致性 | 2026-10-07
+- **方法论沿用印证**：「从未运行过的测试不算绿灯」二次实证——本班改前红即
+  巡检班首跑结论的可复现闭环；改一行正则使 241 假阳性归零，产品零行为变化。
+  差量教训一条自记：写 docs 应走 Read/Write/Edit 工具（本班日报追加误用
+  Bash heredoc 一次，字节级验证 UTF-8 无损后保留并如实记，下不为例）。
+  | 方法·自记 | 2026-10-07
