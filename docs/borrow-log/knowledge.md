@@ -6001,3 +6001,26 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   knowledge-work-plugins +420/ccpm pushed 停 2026-03-18 停更观察新增）零
   archived 零属主失配。 | 复查 | 2026-10-07
 
+
+## 2026-10-07 22 时班批2（七专项巡检+落地班）
+
+- **A 专项四方向定谳（源码锚点全录）**：八件在位（三段压缩/token_meter/
+  预算熔断×3 闸/maybe_compact 触发/分层降级×2 挂点/diff-only 评审×4 件/
+  tier 廉价分流 modelhub:2525→2662/经验召回 bigram 双通道）——四方向
+  「三有一不适用」：prompt 缓存系 CLI 底层自理（cached 字段已入 meter 不占
+  压力，编排层做 cache_control 不适用）、语义缓存维持 bifrost 拍板件。
+  | 巡检·A | 2026-10-07
+- **recommendTaskType 四类型缺口修复（C/G 双专项产出）**：app.js 规则表
+  11→15 条（+resume/presentation/bid_doc/doc），并纠真实截胡——「优化我的
+  简历，投后端岗」被 code 的 /后端/ 抢先（find 首中即返），专属词三条前置
+  code 之前。固化 test_recommend_rules.py 常驻对账（BUILTIN_FLOWS 除三快档
+  全覆盖），后续新增流程类型漏配规则 discover 当场爆。**方法论：新增流程
+  类型三对账——图标精灵表（test_flow_icons）/推荐规则（test_recommend_rules）/
+  菜单动态渲染（renderTypeOptions 拉flows，天然零断链）**。 | 落地·C/G | 2026-10-07
+- **market typosquatting 内置名盲区（B 专项，交拍板不扩展）**：
+  _similar_names 只对 market.json 已装记录对账，不含两处 BUILTIN_PACKS
+  内置名——仿内置名外部包（如 fanqie-nove1）不触发近似名告警（安检扫描与
+  内容指纹对账仍生效）。安全增强非缺陷。 | 发现·B | 2026-10-07
+- **经验库 61% 偏科口径勘正**：29/69=42% 为现行值，「61%」系 47 条时代口径，
+  后续写作类入库自然稀释——后续班次对比偏科度请用 42% 基线。
+  | 方法·D | 2026-10-07
