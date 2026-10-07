@@ -6043,3 +6043,87 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   release_gate 要求工作区跑前跑后双干净——收口班须先落 docs 提交再发布，
   「docs 最后提交」惯例与之冲突，改为「docs 先行 → publish → 补录再提交」
   两段式。 | 方法·发版 | 2026-10-07
+
+## 2026-10-08 00 时班沉淀（批7：中文/网关/本地/办公——新一轮计划第 1/4 步全类型调研·七专项巡检班）
+
+> 开工 00:40（hour=0，0%7=0 → 批7）；分支 main（d0ce51e，v0.1.93 已发版），工作区
+> 干净。主扫 114 查询（A 常驻 89+B7 轮换 9+A1u/A1p2 双轮 16）514 行 447 唯一仓
+> 零失败零限流；WebSearch 串行 1 发+repos 勘定；trendshift/topic/npm/pypi 全通道
+> 可达。详录见 2026-10-08.md。 | 元信息 | 2026-10-08
+
+- **andrewyng/openworker 18,461★**（吴恩达，10-07 在更，Beta，macOS 签名+Windows
+  x64，openworker.com）：开源桌面 AI 同事「交付成品而非聊天」——specialist
+  coworkers（安全审查/云姿态/事件分诊先发；**确定性扫描器+模型推理、修复重扫+
+  diff 评审「fixer 绝非唯一检查者」**）；standing automations（晨报/周报/频道守望
+  定时任务带全转录）；Governed by design（每动作治理+日志，consequential 动作前
+  check-in 批准）；BYOK 四家+Ollama 全本地；NVIDIA OpenShell 沙箱；Python agent
+  server 基于 aisuite。**A1/A2 域重磅同形态竞品**（WebSearch 交叉验证捞出+repos
+  坐实，主扫 114 组从未命中——个人品牌词形盲区第 3 例〔StaffDeck/magic 同款〕）：
+  standing automations≈automation.py、specialist coworkers≈内置流程/skillpacks、
+  治理审计≈audit.py+评审闸——机制面全有对应；CodeBee 差异化=Windows 原生深度
+  （其 Windows 未签名）+18 类型内容流程+经验库自学习，「fixer 绝非唯一检查者」
+  与 diff-only 评审闸同构系行业共识再证。 | **A1 对标入库（雷达/对标跟踪）**
+  +keywords.md C 雷达源补自家周边词形 | 2026-10-08
+- **anthropics/claude-plugins-official 37,496★**（10-07 在更）：Anthropic 官方插件
+  策展目录——/plugins（官方维护）+/external_plugins（伙伴/社区，**须过质量与
+  安全审批上架**）+`/plugin install` 直装；plugin.json+.mcp.json+commands/agents
+  标准结构。B 专项市场域参照：官方把「策展+审批上架」做成一级市场，与我们六源
+  白名单闸门+装前 skill_scan 同构互证（外部审批制=我们装前三问）。 | **B 专项
+  参照入库（雷达/对标）** | 2026-10-08
+- **Dicklesworthstone/coding_agent_account_manager（caam）208★**（Go，10-07 在更）：
+  AI coding CLI 订阅账号秒切器——撞 Claude Max/GPT Pro/Gemini Ultra 限额时
+  sub-100ms 换号替代 60s 浏览器 OAuth。A13 凭据/账号管理域新参照（与
+  agent-credential-vault 族同域）；与编排台核心不重合，雷达跟踪。 | A13 参考判据
+  | 2026-10-08
+- **chengyi-ai/native-subtitle-quote-image 1,937★**（中文作者，10-07 在更）：
+  「保留视频内嵌字幕+精确取帧+生成 3:4 社交长图」Agent Skill（skill 形态可直读）。
+  短视频脚本/自媒体文章流程的**成品后处理**参照：我们产出脚本文字流，其系
+  「脚本→配图物料」真实增量面。 | **借鉴方向（video_script/article 域），交
+  第 3/4 步评审** | 2026-10-08
+- **微型/参照判据一批**：google-antigravity/antigravity-sdk-python 3,654★（Google
+  官方 agent SDK 第 4 件，域旁参考）/posit-dev/skills 529★（Posit 官方数据科学
+  skills 集合，skill 垂直化信号第 4 例）/lofcz/LLMTornado 643★（.NET LLM 编排
+  框架，域旁跟踪）/@polderlabs/bizar npm 10.33.0（Codex+Claude Code 自动化
+  harness，GitHub 大星正主未勘到，跟踪）。 | 判据（雷达） | 2026-10-08
+- **EverMemOS claim 降级排除**：WebSearch 捞出「盛大团队开源记忆 OS」，in:name
+  勘定全 GitHub 无大星正主（最大 ZhenhangTung/openclaw-EverMemOS 12★ 且 03 月
+  停更）——**repos 二次实证规则第 7 例**（新闻面≠开源大仓在）。智谱清流中文名
+  搜索零回未勘定，跟踪不结论。 | 验证 | 2026-10-08
+- **awesome-claude-skills 正主勘定**：旧注属主 anthropics/ 404 失配——in:name
+  一次勘定正主 **ComposioHQ/awesome-claude-skills 76,657★**（travisvn 15,299 系
+  同名镜像噪声）；keywords.md C 源已补注。 | 复查·勘定 | 2026-10-08
+- **F 专项交拍板件（本班唯一）**：data/zentao.json 实测 `poll_enabled: false`、
+  last_scan 停在 **2026-09-21 20:43（17 天未扫）**、last_error 空——**定时扫描
+  系配置关闭非故障**；产品档案路由 product 96 在位。不擅自改用户配置，交用户
+  拍板是否重开轮询（或设置页「立即扫描」手动触发）。竞品面第 30 例：npm 通道
+  第 2 班连用又中 **zentao-cli 0.3.1**（「对 AI Agents 友好」人用 CLI，与我们
+  自动扫描修复闭环形态不同、无冲突）+zentao-api 0.7.2 SDK；GitHub 2 查零新；
+  **禅道自动修复集成面我们仍独占**。 | 发现·F（交拍板） | 2026-10-08
+- **七专项静态巡检零漂移**：A 八机制锚点在位（token_meter:148/pipeline:613+648+
+  2538/step_runner:28 _PRECHECK_RATIO=0.9）、四对标方向「三有一不适用」维持；
+  B 六源在位+零新接入（openworker 桌面应用/caam 切换器均不满足接入三问）；
+  C BUILTIN_FLOWS=18 与 README「18 种」一致+recommendTaskType 修复态在位
+  （app.js:837/:842 实读）；D lessons=69 基线零漂移（42% 流程规范口径沿用）；
+  E catalog=14 条目本机 12/14 在装（openclaw 缺），DeepSeek-Reasonix 35,744（+1）
+  候选首位维持不盲接；G UI 零新毛病（「单双源」过时文案 grep 零命中）。
+  | 巡检·A/B/C/D/E/G | 2026-10-08
+
+### 复查记录（00 时班，基准=22 时班间隔约 2h）
+
+- 存量头部全 alive 零 archived：superpowers 296,300（+78）/mattpocock-skills
+  279,178（+220 续放量）/hermes-agent 251,860（+33）/opencode 212,167（+24）/
+  anthropics-skills 180,028（+22）/ponytail 157,383（+94）/**orca 86,977（+85
+  续领跑）**/pi 113,153（+23）/agency-agents-zh 21,098（+5）/StaffDeck 1,971
+  （+2）。 | 复查 | 2026-10-08
+
+### 本班结论（00 时班）
+
+1. **吴恩达 openworker 系最大信号**：桌面 AI 同事新竞品与 CodeBee 形态最接近
+   （standing automations/specialist coworkers/governed 三面全同构），机制面对照
+   后维持对标跟踪不立项；词形盲区第 3 例入档（「OpenWorker」系人名+品名复合
+   词形，功能词组正交）。
+2. 官方策展市场二连（claude-plugins-official+posit-dev/skills）——插件/skill 生态
+   向「官方审批上架」收敛，与六源白名单闸同构互证。
+3. 批7 域稳定期延续零机制级新差量；B7 域全量 21 时班坐实后本班轮换复认。
+4. 待深挖队列 11 项维持；交拍板 2 件在档（禅道轮询重开+cost-xray 观测粒度）。
+   | 结论 | 2026-10-08
