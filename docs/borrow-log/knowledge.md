@@ -6127,3 +6127,49 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 3. 批7 域稳定期延续零机制级新差量；B7 域全量 21 时班坐实后本班轮换复认。
 4. 待深挖队列 11 项维持；交拍板 2 件在档（禅道轮询重开+cost-xray 观测粒度）。
    | 结论 | 2026-10-08
+
+## 2026-10-08 01 时班沉淀（第 2/4 步·七专项 A-G 深化实证+落地提案班）
+
+> 开工 01:02；分支 main（1df1f27，v0.1.93 已发版）、工作区干净。以 00 时班调研
+> 底稿为基线，只读巡检零代码改动，禅道全程只读零触发。行号全部本班独立实读。
+> 详录见 2026-10-08.md 01 时班节。 | 元信息 | 2026-10-08
+
+- **E 专项计数勘正（13/14 非 12/14）**：DEFAULT_CATALOG 14 条目（catalog.py:32）
+  本机 which 按探测名实测 13/14 在装（仅 openclaw 缺）——00 时班「12/14」少计
+  1 件；「探测名≠包名」诫（10-05 18 时班首立）第 2 例复用。 | 勘误·E | 2026-10-08
+- **F 专项补验：禅道关闭态 UI 可感知**：renderZentaoStatus（app.js:12049-12064）
+  关闭态明示「定时扫描未开启（仍可手动『立即扫描』）」+上次扫描时间——00 时班
+  交拍板件（poll 重开）之外 UI 侧无缺口，用户可自行感知。 | 巡检·F | 2026-10-08
+- **三候选三撞既有面（零代码提案的方法论依据）**：本班提落地提案前逐一对账——
+  ①补 rank_scan/defect_retro 推荐规则→test_recommend_rules.py:21 `_RULELESS`
+  豁免集在案（成文决策非漏配）；②禅道关闭态提示→renderZentaoStatus 在位；
+  ③app.js i18n 覆盖守卫→test_borrow_iteration.py 10-07 已落地（1642 处 t()
+  字面量本班脚本复测零缺失）。**方法论：巡检班提「补齐类」提案前，先 grep
+  既有守卫测试（tests/test_*rules*/*coverage*/*i18n*）与代码内豁免集/状态渲染，
+  三撞既有面即撤案——第 2/4 步「零新缺口」属正常产出非空转**。
+  | 方法·巡检 | 2026-10-08
+- **A 专项八锚点独立复认（与 10-07 04 时班行号零漂移）**：预算熔断 pipeline:613+
+  :632+:648-669（花费闸先于 token 闸 :676）/:703 接线/compaction.py:1-30 三段式
+  （8192/4096 剪枝→摘要→surface replace）/token_meter.py:23+:60+:84-85（cached
+  不计压力）/step_runner.py:28 _PRECHECK_RATIO=0.9/cascade :1526-1529→
+  capability.py:100/_shrink_context_block :2538-2578/skills.py:676 block_for
+  stable_order/diff 评审 :919-948+:1019/_resume_sid :270-283。四对标方向判定
+  维持（prompt 缓存供应商侧/语义缓存待拍板/diff-only 满配/cascade 满配）。
+  | 巡检·A | 2026-10-08
+- **B 专项零新接入**：六源（market_remote.py:50-76）+装前 skill_scan（market.py:
+  280-281）+三层防护（体量上限 :91-99/逐跳复验 :99/SSRF :113-133）全在位；
+  本班候选 openworker（桌面应用）/caam（账号切换器）/claude-plugins-official
+  （策展目录）三问全不过；native-subtitle-quote-image 不在六源清单、扩源非
+  小而实——全部雷达跟踪。 | 巡检·B | 2026-10-08
+- **落地提案 1 件（第 3 步执行清单）**：D 专项蒸馏入库「落地提案先对账既有
+  守卫」——skills.upsert_lesson（skills.py:424，category=流程规范，scope=code，
+  source="borrow-log 2026-10-08"）；验收 69→70 零重复，回滚按 title 精确移除。
+  | 提案·D | 2026-10-08
+
+### 待深挖队列（01 时快照）与未验证项
+
+- 21 时快照 11 项全部维持（第 3/10 保持划掉）；本班零新队列项。风险在档维持
+  （交人拍板）：data/zentao.json 明文密码；32 位全量 discover 静默退出；
+  runner_drain 计时超界；批跑同进程测试间争用面。 | 队列 | 2026-10-08
+- 未验证项：禅道积压/路由/回写链路（无实例权限，poll 关闭态不触发真实扫描）；
+  keywords.md 本班零调整（零真实关键词缺口不动）。 | 未验证 | 2026-10-08
