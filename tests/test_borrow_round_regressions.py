@@ -238,6 +238,71 @@ class CoverPreviewFrontendContractTests(BaseTest):
             self.assertIn('"%s":' % key, self.i18n_js, key)
 
 
+class DistillWriteRegressionTests(BaseTest):
+    """2026-10-07 轮落地件（第 3/4 步提案 1）：D 专项蒸馏 1 条调研方法论经
+    skills.upsert_lesson 入经验库（零 flows/pipeline/UI 代码改动）。锁定该
+    写入路径的验收口径（68→69、闭集落类、seen=1 不分裂）、复查再沉淀不
+    分裂、空输入边界，以及未触碰面（既有教训/18 类型注册表）不退化。"""
+
+    TITLE = ("技能生态对标：官方插件仓按域→技能族组织，对标取域内工序划分"
+             "对照我方 18 类型流程参数——整仓不接入（三问不过）")
+    CONTENT = ("anthropics/knowledge-work-plugins（26k★）按「域→技能族」组织，"
+               "对标取其域内工序划分对照我方 18 类型流程参数；整仓不接入"
+               "（非六源清单、依赖 Cowork 宿主，三问不过），雷达跟踪即可。")
+
+    def _distill(self, title=None, content=None, category="流程规范"):
+        from app.core import skills
+        return skills.upsert_lesson("*", self.TITLE if title is None else title,
+                                    self.CONTENT if content is None else content,
+                                    source="borrow-log 2026-10-07",
+                                    category=category)
+
+    def test_distill_round_write_lands_closed_set_and_single(self):
+        """正常+验收口径：闭集分类落位、首写 seen=1、库内恰一条同题。"""
+        from app.core import skills
+        it = self._distill()
+        self.assertIsNotNone(it)
+        self.assertEqual(it["category"], "流程规范", "闭集分类未按入参落位")
+        self.assertEqual(it["seen"], 1, "首写应 seen=1 不分裂")
+        hits = [x for x in skills.list_lessons("*") if x["title"] == self.TITLE]
+        self.assertEqual(len(hits), 1, "同题应恰一条")
+
+    def test_distill_round_rescan_merges_not_splits(self):
+        """复现条件（复查/重复执行再沉淀）：同题合并 seen+1、条数不增。"""
+        from app.core import skills
+        self._distill()
+        before = len(skills.list_lessons("*"))
+        again = self._distill(content=self.CONTENT + "（复查增量）")
+        self.assertEqual(len(skills.list_lessons("*")), before, "同题再沉淀应合并")
+        self.assertEqual(again["seen"], 2, "合并语义应 seen+1")
+        self.assertIn("复查增量", again["content"], "合并应取新内容")
+
+    def test_distill_round_boundary_empty_rejected(self):
+        """边界：空题/空正文拒写（返回 None），库零增量。"""
+        from app.core import skills
+        self.assertIsNone(self._distill(title="  "))
+        self.assertIsNone(self._distill(content=""))
+        self.assertEqual(skills.list_lessons("*"), [], "空输入不得落任何条目")
+
+    def test_distill_round_leaves_existing_lessons_and_flows_untouched(self):
+        """未涉及面不退化：先入库一条旧类教训，蒸馏写入后其分类/seen/题
+        原样；18 类型注册表实数与 id 集不变（本轮零 flows 改动）。"""
+        from app.core import skills
+        old = skills.upsert_lesson("*", "旧条目占位标题", "旧正文",
+                                   category="文笔风格")
+        self._distill()
+        cur = next(x for x in skills.list_lessons("*")
+                   if x["title"] == "旧条目占位标题")
+        self.assertEqual(cur["category"], old["category"])
+        self.assertEqual(cur["seen"], old["seen"])
+        self.assertEqual(len({x["title"] for x in skills.list_lessons("*")}),
+                         len(skills.list_lessons("*")), "标题查重应零重复")
+        from app.core import flows
+        ids = {f["id"] for f in flows.BUILTIN_FLOWS}
+        self.assertEqual(len(flows.BUILTIN_FLOWS), 18)
+        self.assertEqual(len(ids), 18, "类型 id 应零重复")
+
+
 if __name__ == "__main__":
     import unittest
     unittest.main()

@@ -471,3 +471,346 @@
 
 - 待提交文件：`app/core/pipeline.py`、`tests/test_full_type_round.py`、`docs/borrow-log/full-type-round.md`（本节）+ 前步调研沉淀三 docs（2026-10-06.md / current-round.md / knowledge.md，归属前步不混提）。
 - 发版判断：本轮 pipeline.py 有代码入库（新函数+前情注入），按「当天有代码入库才发」候选 patch+1（v0.1.88 → v0.1.89，test_selfupdate 全绿前置）。
+
+---
+
+# 2026-10-07 09 时班（批2：学习记忆与自我改进——新一轮计划第 1/4 步全类型调研）
+
+> 开工 09:38（UTC+8，hour=9，9%7=2 → 轮换批2）、分支 main（5afa213，v0.1.90 已发版）、
+> 工作区干净（07 时落地班 i18n 54 词条已随 v0.1.90 入库）。通道：gh api 认证可用
+> （主扫串行 sleep 4s、repos 端点复查 sleep 0.5s）、WebSearch 串行 1 发。
+> **并入说明**：本文件系滚动累积报告；当日报告 docs/borrow-log/2026-10-07.md 已录
+> 03/04/05/06/07 时班五节，本班（09 时）节追加于此，knowledge.md 本班节同步沉淀。
+
+## 主扫描与批次判定
+
+- **主扫**：`scripts/borrow_scan_nightly.py` 无参全量（自动选批 B2）——A 常驻 89
+  （含内置 B1 11）+ B2 轮换 10 + A1u/A1p2 双轮 16 = **115 查询 524 行 467 唯一仓，
+  exit 0、PROGRESS DONE 115 实证，零 403 零 FAIL**（唯一 grep「error」命中系描述
+  文本非错误记录）。
+- **主扫面过筛**（全名+简称双通道对 docs/borrow-log/ 全历史）：**330 已录 / 137
+  首见**，首见以域外噪声与微型为主（课程/教程/游戏/域外工具）；**B2 域 10 词头部
+  全已录**——NirDiamant/Agent_Memory_Techniques 1,087 / alibaizhanov/mengram 204 /
+  MemTensor/MemRL 175 / ray-r-ren/agent-apprenticeship 1,617 / rohitg00/pro-workflow
+  2,906 / K-Dense-AI/scientific-agent-skills 47,793 / colbymchenry/codegraph 73,347 /
+  getzep/graphiti 31,498——**批2 域稳定期延续，零机制级新差量**（批3/6 域轮过均稳同型）。
+
+## WebSearch 交叉验证（串行 1 发，3 新名 repos 端点二次实证全坐实）
+
+| 仓 | stars/pushed/created | 机制亮点 | 对比 | 结论 | 日期 |
+|---|---|---|---|---|---|
+| EvoMap/awesome-agent-evolution | 234 / 10-05 / 2026-03 | agent 进化/记忆系统/多智能体架构/自我改进专属清单 | 批2 域专属地图第 3 张（与 TeleAI-UAGI 记忆域、TsinghuaC3I 论文集互补） | **C 源候选（批2 域专属清单），keywords.md 本班补入** | 2026-10-07 |
+| IAAR-Shanghai/Awesome-AI-Memory | 1,257 / 10-06 / 2025-12 | AI 记忆知识库：长期记忆/推理/检索/memory-native 架构 | 同上，记忆域知识库面；WebSearch 报 1,218→repos 实测 1,257（+39 在动） | **C 源候选（批2 域），keywords.md 本班补入** | 2026-10-07 |
+| AetherLabsAI/RSIAgent | 466 / 10-02 / 2026-09-13 | training-free 递归自我改进多智能体框架：Curriculum/Actor/Verifier 三 agent + 可复用持久记忆（broad-then-deep 探索） | 批2 域直接新面孔；「探索→验证→记忆沉淀」与经验召回/教训沉淀同向，但我们无 curriculum 型自主探索 | **批2 域判据件入库（雷达/判据）** | 2026-10-07 |
+
+## trendshift 根页 29 仓（本班主要增量面；候选逐件 repos 实证）
+
+- **autoharness（tigerless-labs）已录放量 +885：8,087→8,972**（trendshift 在榜驱动，
+  昨日历班 7,906→8,013→8,071→8,087→今 8,972 加速）——「使用轨迹→SKILL 自动蒸馏+
+  自动修剪失效」观察项信号显著增强（2026-10-06 队列项同族观察维持，本班增量入档）。
+- **mattpocock/skills 278,184★ 属主勘定（悬置项销账）**：03/06 时班「mattpocock-skills
+  属主悬置」实因仓名为 **skills** 非 mattpocock-skills——trendshift 在榜+repos 实证
+  一次勘清（277,948→278,184 +236 放量续）。
+- **新面孔 repos 实证 3 件**：**anthropics/knowledge-work-plugins 26,452★**（知识工作者
+  插件官方仓——写作/文档/办公域 skill 生态对标面，B 专项域旁大件）/ **openai/math
+  2,250★**（created 10-06 当日新建、无 description，OpenAI 官方 org，域旁判据）/
+  **chengyi-ai/native-subtitle-quote-image 1,480★**（视频内嵌字幕取帧→3:4 社交长图
+  Agent Skill，短视频/自媒体域 skill 生态件）。
+- 已录复认：bifrost 8,588 / GetBusbar/busbar / rea 9,577 / Strata 15,802 /
+  Compositor 9,182 / storytold 纯净室全家桶 6 件 / tester-army/e2e /
+  Ebony-Vinyl/dsh-our-free-model / mattpocock/skills；huashu-art-motion 232→689
+  （+457 放量，昨日 full-type-iteration.md 已录非新面孔）。
+- 排除件（域外噪声如实记）：scholay/rimes（macOS 输入法）/ 34306/vphone-aio /
+  mars-tw/anti-gambling-trader-tw / joshuaswarren/omarchy-apple-dev /
+  Funny-Bones/ELDEN-RING / eternity4719/HowToLiveBetter / liweiyi88 双仓（03 时班已排除复见）。
+
+## 雷达 C 全过（逐源证据）
+
+| 源 | 通道 | 结果 |
+|---|---|---|
+| awesome 清单 18 源 | gh api repos 逐个（0.5s） | **18/18 alive 零 archived**（含本班新补 EvoMap/IAAR 双源候选实测在架）；ComposioHQ/awesome-claude-skills **76,604** 正主复认（wshobson 旧属主 404 系历史迁移勘清）；hesreallyhim/awesome-claude-code 55,166 / VoltAgent skills 35,281 / awesome-llm-apps 140,874 / awesome-mcp-servers 95,880 / harness-engineering 4,730 / buildwithclaude 3,601 / RUC-NLPIR 1,063 / TeleAI 658 / TsinghuaC3I 665 / VoltAgent papers 1,823 / Engineering4AI 288 / caramaschiHG 1,923 / vijaythecoder 4,388 / bradAGI 1,319 / e2b-dev 30,281 / vivy-yi 79 |
+| Trending | trendshift.io 根页直抓（curl 327KB） | **29 仓全解析**（见上节；WebFetch 域名校验拦、curl 直抓成功） |
+| topic 页 8 | gh api search topic: sort=stars per_page=5 | 首五位**全已录零新大件**（agent-swarm 861/synapse-ai 327/LoopTroop 159/agentic-os 189 微型复见；ECC/hermes/ponytail/nanobot/BettaFish/Reasonix/haystack/claude-mem/archify/oh-my-openagent/planning-with-files/agenticSeek/atlas/MonkeyCode 全已录） |
+| 发行渠道 npm | npm search 两查 | 已录族为主（nax/agentcraft/bizar/tide-commander/coleo/opencode-oceanus/@deepseek-ai/dsh-hooks-claude-code rc.5 复见）；**新微型 3 件**：raycoder 1.0.0-rc.9（本地可恢复 coding-agent 编排）/garda-agent-orchestrator 1.4.3（带强制闸门的治理型本地运行时）/@cyberine/cli 0.2.3（多 provider 循环） |
+| 发行渠道 pypi | curl 直抓 | **第 10 班复认受阻**：HTTP 200 但 3,038 字节 CSP 挑战壳页零 snippet——通道持续不可用如实记 |
+| 框架周边搜 | 重合裁定 | langgraph/crewai/autogen 平台词与 B6 批全重合（06 时班刚跑 3 小时）——按「重合跳余页省配额」纪律不重跑；`q=openrig+OR+vercel+eve 生态` 已跑：eve 子串误中 every-* 族噪声大、零新生态移植件（openrig/eve 本体已录对标跟踪） |
+| 自家 CLI 周边 7 查 | gh api search | 头部全已录族：cockpit-tools 18,670 / cc-switch 140,514 / kimi-cli 11,426+kimi-code 7,781 / CLIProxyAPI 54,351 / opencodex 17,023 / **awesome-dsh-plugin 17,921 + dsh-web 8,436（DSH 生态在录复认）** |
+| 禅道周边 2 查 | gh api search | 头部大盘噪音+clickup-ai-bug-triage 0★ 复见——**第 24 例零新禅道 AI 竞品**（06 时班第 23 例顺延） |
+| 新锐轮 | 主扫内置 A1u 8 组 | 首见以微型为主（detent 16★/reevesagents 88★/dsh-novel-forge 15★ 等，见下节） |
+
+## 存量复查（repos 端点 48 件：39 件批量 + WebSearch/trendshift 实证 9 件；零 archived）
+
+- **头部增量（vs 06 时班，间隔约 3 小时）**：orca **86,501→86,553（+52 续领跑）**/
+  superpowers 296,003→296,028 / ECC 274,261→274,315 / claude-mem 97,130→97,200 /
+  hermes-agent 251,684→251,714 / opencode 212,040→212,054 / pi 112,953→112,977 /
+  ponytail 156,791→156,868。
+- **放量族**：**autoharness 8,087→8,972（+885 最大放量，trendshift 驱动）**/ rea
+  9,046→9,577（+531 放量续）/ diagram-design 43,908→44,062（+154）/ Strata
+  15,650→15,802（+152）/ OpenMontage 64,627→64,702（+75）/ yomiyasu 1,594→1,621
+  （+27 续）/ openrig 5,494→5,524（+30 续）/ huashu-art-motion 232→689。
+- **持平族**：DeepSeek-Reasonix（esengine）35,741→35,742（E 候选首位维持）/
+  webnovel-writer 7,335 / ainovel-cli 2,110 / huobao-drama 15,790 / hippo-memory 773 /
+  beads 27,687 / agentmemory 29,185 / bernstein 1,416 / gascity 1,331 /
+  nautilus-compass 1,255 / bifrost 8,588 / eve 5,475 / heym 1,404 / SkillSpector
+  19,570 / open-code-review 44,055 / context-mode 25,550。
+- **属主勘定批量与教训（如实记）**：本班首轮 repos 复查 9 件 404 **系试拼属主名失配
+  （非属主迁移）**——按库内已录属主复测 11 件全 alive：hermes-agent=**NousResearch**
+  （blackboxo 系误拼）/ hippo-memory=kitfunso / yomiyasu=nanaism / webnovel-writer=
+  lingfengQAQ / ainovel-cli=voocel / huobao-drama=chatfire-AI / gascity=gastownhall /
+  nautilus-compass=chunxiaoxx / bernstein=sipyourdrink-ltd / awesome-claude-skills=
+  ComposioHQ。**教训：repos 复查应先从 knowledge.md 提取已录全名再探测，勿凭记忆拼
+  属主**（in:name 勘定规则的前置步骤）。
+- 观察项：letta（letta-ai）25,057 pushed 09-10 **停更近月**（记忆域老牌，观察）；
+  mem0 66,701 在动。
+
+## 本班新面孔定性（三门槛：重合度/可直读性/用户会搜吗）
+
+| 仓 | stars | 来源 | 机制亮点 | 对比 | 结论 | 日期 |
+|---|---|---|---|---|---|---|
+| anthropics/knowledge-work-plugins | 26,452 | trendshift+repos | 知识工作者插件官方仓（Claude Cowork 用）：写作/文档/办公域 plugin 集 | B 专项域旁大件：非六源清单不可直装；其 plugin 划分方式（知识工作者任务域）与我们 18 类型流程同向 | **对标跟踪（B 专项域旁），交后续班深挖 plugin 清单** | 2026-10-07 |
+| AetherLabsAI/RSIAgent | 466 | WebSearch→repos 实证 | training-free 递归自我改进：三 agent 协作+可复用持久记忆 | 批2 域直接新面孔；机制面经验召回/教训沉淀已有对应，curriculum 探索无对应但属研究向 | 判据（批2 域） | 2026-10-07 |
+| EvoMap/awesome-agent-evolution + IAAR-Shanghai/Awesome-AI-Memory | 234+1,257 | WebSearch→repos 实证 | 批2 域专属清单/知识库（第 3、4 张域专属地图） | 与 TeleAI/TsinghuaC3I/VoltAgent papers 互补 | **keywords.md C 源本班补入（雷达源）** | 2026-10-07 |
+| openai/math | 2,250 | trendshift+repos | OpenAI 官方新仓（created 10-06，无 description） | 域旁（数学/推理域，与编排台非同域） | 判据（域旁，观察后续定位明朗） | 2026-10-07 |
+| chengyi-ai/native-subtitle-quote-image | 1,480 | trendshift+repos | 视频 字幕取帧→3:4 社交长图 Agent Skill | 短视频/自媒体域 skill 生态件；单用途技能非六源直装 | 判据（skill 生态） | 2026-10-07 |
+| huangziyuan-general/dsh-novel-forge | 15 | A1u 新锐轮 | **DSH 小说锻炉**：AI 长篇写作通病→代码强制硬约束（事实账本/上下文包/阶段门禁/零费用去 AI 味扫描/确定性审计/提案制修订） | **DSH 生态扩散第 7 信号**（19 时班 dsh-mobile-connect 第 5、03 时班 dsh-our-free-model 第 6）+A7 小说域：事实账本≈story_tracking、上下文包≈_shrink、阶段门禁≈评审轮次——机制我们全有对应，其「去 AI 味扫描」与我方同类能力对账过 | 判据（DSH 生态+A7 域双信号，跟踪） | 2026-10-07 |
+| digitaldrywood/detent | 16 | A1u 新锐轮 | board-driven agentic 工作编排，单 Go 二进制 | A1 域新锐微型 | 判据（微型） | 2026-10-07 |
+| mertkayacs/reevesagents | 88 | 主扫 A13 | tmux 本地工作台多 AI 编码工具并排（CLI/TUI/Web 三形态） | openrig 同域微型（多 CLI 面板族第 N 例）；tmux 系 Windows 同款短板 | 判据（微型） | 2026-10-07 |
+| npm 微型 3 件 | — | npm search | raycoder（可恢复编排）/garda-agent-orchestrator（强制闸门运行时）/@cyberine/cli（多 provider 循环） | npm 通道新生件惯例判据级 | 判据（npm 微型） | 2026-10-07 |
+
+## 全类型覆盖矩阵（14 目标类型 × 本班证据通道）
+
+| 类型 | 注册 id | 本班证据通道 |
+|---|---|---|
+| 直接执行 | direct | A1/A2 编排域（B2 主扫底座）+detent/reevesagents 微型判据 |
+| 代码任务 | code | B1 内置 11 组（open-code-review 44,055/SkillSpector 19,570 复测） |
+| 小说 | novel | A7 novel 组（webnovel-writer 7,335/ainovel-cli 2,110 复测持平）+dsh-novel-forge 判据 |
+| 连载 | serial_novel | A7 consistency 组+A12 chapter hook（域沉寂零新面孔维持） |
+| 自媒体文章 | article | A7 article 组（域平稳）+native-subtitle-quote-image 配图 skill 生态件 |
+| 调研报告 | research | A10 deep research 组+IAAR/EvoMap 记忆知识库（调研记忆面） |
+| 短视频脚本 | video_script | A10 video script 组+huashu-art-motion 689 放量复认 |
+| 技术方案 | tech_proposal | A5 spec-driven 组+knowledge-work-plugins 文档域旁 |
+| 翻译 | translation | A7/A10 translation 组（yomiyasu 1,621 放量续，已落地条无新差量） |
+| 演讲稿 | speech | A7 speech 组（域平稳） |
+| 工作汇报 | weekly_report | A10 weekly report 组（微型为主） |
+| 商务邮件 | email | A10 email 组（AI-Based-Email-Generator 53★ 等微型，域长期微型） |
+| 扫榜选材 | rank_scan | trendshift 29 仓+topic 8 页（本班扫榜通道即产出源） |
+| 禅道工单 | defect_retro | A13 defect retro 组+禅道周边 2 查（第 24 例零新竞品） |
+| 对话（补充） | — | A10 chatbot memory 组（B2 域头部 Agent_Memory_Techniques/mengram/MemRL 全已录复测） |
+| 知识库（补充） | — | A2 agent+memory 组+IAAR/EvoMap 域专属地图+letta 停更观察+mem0 在动 |
+
+「13 种」口径 vs 注册表实数：**BUILTIN_FLOWS=18 / DEFAULT_CATALOG=14 import 实测**
+（direct/code/novel/serial_novel/article/video_script/doc/translation/rank_scan/
+defect_retro/research/speech/presentation/weekly_report/email/tech_proposal/
+resume/bid_doc）——需求列举 14 项全有对应注册 id、无遗漏无擅自省略，另含 doc/
+resume/bid_doc 三自研类型，差异如实记录（与 03/04/06/07/16/19 时班同口径第 6 次
+独立复证）。
+
+## 轻量实测（本班只读，承调研班惯例）
+
+- **E 新 CLI**：六候选 deepseek-reasonix/reasonix/fuxi/gitlawb/zero/empryo + openclaw
+  `command -v` **全 MISSING**、dsh 在位（/d/nvm4w/nodejs/dsh）——零接入防死链维持；
+  DeepSeek-Reasonix 35,742★ 候选首位持平。
+- **D 经验库**：data/skills.json lessons=**68**（04 时班并类后新基线零回漂：流程规范
+  28/节奏爽点 16/情节逻辑 10/人物塑造 7/一致性 4/文笔风格 3）、packs=3。本班蒸馏
+  候选 1 条（**记录待第 3 步执行**，见下）。
+
+## 落地提案（第 3/4 步确认清单，评审通过再动）
+
+- **提案 1·D 专项蒸馏 1 条**（非代码）：{标题:「经验库同域竞品对照：autoharness 系
+  『从真实会话自动蒸馏技能+自动修剪失效』，我方=手动沉淀+won/lost/useless 显式反馈
+  +karma 时间衰减——『自动蒸馏』缺口维持同族观察，接入判断走三问（重合度/可直读
+  性/用户会搜吗）」, scope:"*", category:流程规范, source:"borrow-log 2026-10-07"}。
+  入口 skills.upsert_lesson（skills.py:421）；验收 lessons 68→69、闭集落类、标题
+  查重零重复；回滚按 title 精确移除。
+- **零代码件判定**：队列活项均攒批/拍板/远期（承 07 时巡检班口径）；本班新面孔均
+  判据级/雷达级/C 源级，零接入级标的——docs-only 不发版。
+
+## 待深挖队列（09 时快照）与未验证项
+
+- 21 时快照 11 项全部维持（第 3/10 项保持划掉）；本班零新队列项——autoharness
+  放量信号并入既有同族观察项（2026-10-06 在档），knowledge-work-plugins 交后续班
+  深挖 plugin 清单（对标面非接入面）。风险在档维持（交人拍板）：data/zentao.json
+  明文密码；批跑同进程测试间争用面；32 位全量 discover 静默退出；runner_drain
+  计时超界。
+- **未验证项（如实记录）**：openai/math 无 description 未深读（created 当日，定位
+  未明）；knowledge-work-plugins 仅 repos 元数据未逐 plugin 清点；RSIAgent/IAAR/
+  EvoMap 仅 README 级定性；npm 新生件无下载量核查（历班无此惯例）；pypi 通道持续
+  受阻非本班可解；WebSearch 报 IAAR 1,218★ 与 repos 实测 1,257★ 差 39（时点差，
+  以 repos 为准）；禅道定时扫描未真实触发验证（不为验证制造真实 Bug）。
+
+## 词库同步与发版判定
+
+- keywords.md C 源 awesome 清单补充行追加 EvoMap/awesome-agent-evolution +
+  IAAR-Shanghai/Awesome-AI-Memory 双源（行尾标注谁/何时/为何）——批2 域专属地图
+  补位（TsinghuaC3I 先例同款）。
+- 本班 docs-only 零产品代码件——**不发版**（03/06 时等班先例）。
+
+---
+
+# 2026-10-07 10 时巡检班（新一轮第 2/4 步·七专项 A-G 实证+落地提案）
+
+> 开工 10:01（UTC+8）、分支 main（5afa213，v0.1.90 已发版）。工作区在制品=第 1/4 步
+> 09 时班调研三 docs（本班增量追加、逐字不动其既有内容）。只读巡检：零代码改动、
+> 零数据写、禅道零触发、市场零装包。以下行号全部为本班 10:0x-10:1x 独立实读。
+
+## A. token 节约（单列小节·八件机制+缓存调用方实证）
+
+**检查方法**：grep 定位 + 逐段 Read pipeline.py:672-760/:2538-2612/:948-1058/:206-283/:1524-1534 + modelhub/usage/token_meter 锚点。
+
+| 机制 | 真实实现（文件:行，本班实核） | 结果 |
+|---|---|---|
+| 三段压缩 | pipeline.py `_compaction_enabled(:231)` 默认关灰度；`_spawn_step(:672)` :703 压缩分支（撑爆→压缩→守门重试，resume 直通不压缩） | 在位 |
+| token_meter | 压缩路径 :722-725 `_call` 内 accumulate + 直通路径 :740-746 补记（:738 注释「直通也必须回填 usage，否则预算表空转」）；cached 单列不计压力（token_meter.py:53-60 deque 五元组含 cached） | 在位 |
+| 预算熔断 | 花费闸 `_cost_gate_block(:648)` 先于 token 闸（:676 注释「钱比 token 更早见顶」）；`_budget_max_tokens(:613)`；超限 ENV_BLOCK 只拦下一步 :694-701（当前步允许过线完成） | 在位 |
+| cascade | :1526-1529 `cascade.enabled` opt-in → `capability.cascade_reorder`（difficulty/task_type/role 传参）；上游 `classify_difficulty(modelhub:3536)` | 在位 |
+| 经验召回 | skills.block_for stable_order 双消费 :3191/:3657（注释「保前缀缓存字节级一致」）+ knowledge.block_for :3196/:3658 | 在位 |
+| 会话复用 | `_valid_resume(:206)`（agent+session 双必需、mode=real 校验）→ `_resume_sid(:270)`（codex/claude/opencode/qwen 原生+generic resume_argv_template，mock 一律 None 防硬失败） | 在位 |
+| diff 评审 | `_git_diff(:948)`（HEAD diff+未跟踪拼合）+ `_review_depth_note(:1019)`（<40 行快评省 token / ≥600 行先概览后深看）+ `_scope_note(:1054)` 越范围点名不改 pass 语义 | 在位 |
+| _shrink 家族 | `_shrink_context_block(:2538)` 四层优先级（圣经>模块库>经验库>正文永不动，逐层返回止损）+ `_serial_shrunk_block(:2581)`（降级说明进 step note）；`_related_chapters_note(:2595)`（v0.1.89 落地件在位，bigram 计分常量 :2590-2592） | 在位 |
+
+- **缓存调用方实数**：modelhub `chat(cache_ttl)(:3673)` 精确匹配响应缓存真实调用方 5 处——planner 4 处（:680/:829 attempt==1 才 3600s 重试幂等、:972/:1003 §07 T2.2 同任务幂等）+ main.py:1553 连通测试 24h。**机制无闲置**。
+- `prompt_cache|semantic_cache|cache_control` 全 app/core grep 零命中维持（本班复跑）。
+- **四方向判定（不重复建设）**：prompt 缓存=供应商侧能力（应用侧 stable_order 保前缀已是最大化）；语义缓存=队列候拍板；diff-only 评审满配；廉价分流 cascade+难度选模满配——**零新建**。远期备注维持：_shrink 仅连载路径挂接，review 引擎长文（标书/长报告）无同款降级（评审覆盖面属质量语义，交人拍板不扩展）。
+
+## B. 插件市场（六源+闸门+knowledge-work-plugins 深挖）
+
+- **六源在位**：market_remote.py SOURCES :50-76（zcode/anthropic/anthropic-skills/claude-skills/clawhub/cocoloop，镜像 URL 优先+回退序）原文实读。
+- **缓存逐源实测 810**：zcode 26 / anthropic 315 / anthropic-skills 5 / claude-skills 99 / clawhub 215 / cocoloop 150（data/market_remote/*.json 逐文件解析，fetched_at 全 2026-10-03——与 01/04/16 时班零漂移；「拉取更新」系用户动作不代按）。
+- **闸门实锚**：SSRF `assert_public_url(:113)` + 重定向逐跳重过（:146 redirect_request→:159 再校验）+ 体量上限 `_CAP_UNPACKED=120MB(:95)`；安装闸 `inspect_tree(:568)` 白名单外不参与（market.py:943 调用带 whitelist）+ 装前 `skill_scan.scan_summary`（market.py:281）+ 内容指纹突变对账（:289-293 注释「卸载重装也骗不过对账」）+ typosquatting 近名（:294）+ 装后冒烟（:340-357）。零绕闸零自动安装。
+- **新面孔三问裁定**：09 时班移交的 **anthropics/knowledge-work-plugins（26,452★，本班 repos 实测 26,468 pushed 10-06）已完成 plugin 清单深挖**——根目录 20 域（marketing/productivity/finance/legal/sales 等）；marketing/skills 8 技能（brand-review/campaign-plan/competitive-brief/content-creation/draft-content/email-sequence/performance-report/seo-audit）；productivity/skills 任务管理族（memory-management/start/task-management/update）。**三问全不过**：①重合度中（写作/汇报/竞品简报工序同域）②可直读性否（非六源 marketplace 清单——anthropic 源 315 项内 grep 零命中，依赖 Cowork 宿主+MCP connectors）③用户不会在我方技能市场场景搜到——**跟踪不接入**；其「域→技能族」划分法与我方 18 类型流程同向，蒸馏 1 条进 D（见提案 1）。
+- 禅道周边竞品：第 24 例后零新（承 09 时班，本班未重扫）。
+
+## C. 任务类型（18 注册 × 14 指令场景映射实证）
+
+- **注册表实数 18**（flows.py:36-129 逐条行号实读：direct:37/code:40/novel:43/serial_novel:49/article:56/video_script:62/doc:68/translation:74/rank_scan:80/defect_retro:83/research:86/speech:92/presentation:98/weekly_report:104/email:110/tech_proposal:116/resume:122/bid_doc:128）。
+- **流程参数实证**（task_compile.py:156-199 整段实读）：轻量三类型 `light_types={email, weekly_report, translation}(:163)` 非 hard 免大纲单评审（:178-180）；深度三类型 `deep_types={novel, research, tech_proposal}(:164)` 大纲+双评审（:182-184）；threshold≥8.5 强制双评审（:194-195）；planner rec 可调但 clamp（reviewers≤2、rounds≤3）。
+- **i18n 与守卫**：守卫测试本班复跑 **test_full_type_round 8/8 OK + test_i18n_dups 3/3 OK**（TUTTI_DATA 隔离净进程）——18 类型×三字段 EN 映射程序化锁定零缺失。
+- 用户 14 场景映射零缺失（第 7 次独立复证，与 03/04/06/07/09 时班同口径）。
+
+## D. 经验库（数据卫生体检+04 时班处置件回访）
+
+- **存量实测**（python 直读 data/skills.json）：lessons **68**、packs=3——与 09 时班「并类后新基线」零漂移；category 分布 流程规范 28（41%）/节奏爽点 16（24%）/情节逻辑 10（15%）/人物塑造 7（10%）/一致性 4（6%）/文笔风格 3（4%）；标题完全重复 **0**；scope 视角 serial_novel 41/code 11/* 11/direct 4/article 1（scope 偏科维持既有记录，迁移留人工）。
+- **04 时班处置件回访全过**：分类错位件 sk-8114e5d9a90a（「做法：小红书…」）已落 流程规范（scope=article、seen=2）；`merged_titles` 留痕 8 条——近重复聚簇 3 组 8 条并类已执行且历史可溯，零回漂。
+- **写入入口实锚**：`skills.upsert_lesson`（skills.py:421 起，包含度 ≥0.8 自动合并+闭集分类）；本班零写库（蒸馏候选记录待第 3 步）。
+
+## E. 新 CLI 接入（catalog 逐条+本机逐个探测）
+
+- **DEFAULT_CATALOG=14**（catalog.py AST 实数+逐条 name/detect 实读）：codex/claude/opencode/qwen/aider/openclaw/kimi/mimo/grok/pi/dsh/gemini/cbc/trae-cli。
+- **本机在装 13/14**（command -v 逐个实测；openclaw MISSING，与 01/04 时班口径一致）；codebuddy 条目探测名 cbc FOUND、deepseek-harness 探测名 dsh FOUND。
+- **六候选探测**：reasonix/deepseek-reasonix/fuxi/gitlawb/zero/empryo `command -v` **全 MISSING**——未装不实测不接入防死链维持；DeepSeek-Reasonix 35,742★ 候选首位持平（09 时班 repos 实测）。接入打法（装→which→裸调→bind_agent 冒烟→catalog upsert）不变，本班零候选达标。
+
+## F. 禅道集成（只读巡检，零写回零触发）
+
+- **配置态**（data/zentao.json 直读，凭据字段全程不外播）：poll_enabled=**false**（config 内层显式关闭，13 时班勘定口径本班复证）；product 96 档案完整——our_sides=[backend]、owners backend/frontend 双侧、severity_cap=0；路由目标 backend workdir `E:\GitLab\cbc\mo-so` **ls 实存**（档案路由非死链）；`triage_ai=true`（模块路由未命中时 AI 兜底排查，zentao.py:24/:121/:1498）。
+- **扫描状态**：claims=**0** 零积压、last_error **空**、last_scan 停 2026-09-21 20:43（poll 从未启动所致非漂移）；next_scan 同步停走。定时扫描未真实触发验证（不为验证制造真实 Bug，维持历班纪律）。
+- **链路实锚**：`fire_due(:2470)`（:2474 poll_enabled 闸）← automation tick；`scan_now(:2479)` 手动；`start(:2496)` ← main.py:3438；手动端点 main.py:1779 `/api/zentao/scan`；设置页禅道子页动作 **6 件**（app.js:1012-1017 测试连接/拉产品/拉账号/拉模块/扫描/保存——较 16 时班「五件」多出「拉取模块清单」，app.js:11871 modules 端点供路由用，演进非缺陷）。
+- 风险在档维持：明文密码（凭据保险库队列项，交人拍板）；poll 未开启系部署决策不代开。
+
+## G. 产品巡检（UI 文案/链接/描述-行为一致性）
+
+- 过时文案 grep（「13 种/14 种/16 种/17 种/单源」）i18n.js/index.html/app.js/README **零命中**；README.md:135「**18 种任务类型**」与注册表实数 18 一致。
+- rank_scan 四平台口径本班复认一致（flows.py:82 note ↔ paihang.py:5-11 四源实测注释：七猫 qimao/番茄 fanqie/起点 m.qidian/纵横 zongheng）。
+- 版本一致：package.json=0.1.90 ↔ CHANGELOG v0.1.90 顶部节（「## 未发布」空节系发版流程占位惯例非缺陷）。
+- **结果：零新毛病，零改动。**
+
+## 落地提案（第 3/4 步确认清单，评审通过再动）
+
+### 提案 1：D 专项蒸馏 1 条（非代码）
+
+- **需求**：09 时班移交的 knowledge-work-plugins plugin 清单深挖本班完成（B 专项）——官方生态按「域→技能族」组织（marketing 8 技能含 email-sequence/seo-audit/competitive-brief），与我方 18 类型流程参数同向；对标方法目前只在报告层，经验库注入面没有。
+- **真实入口**：`skills.upsert_lesson`（skills.py:421 起）。
+- **拟写条目**：{标题:「技能生态对标口径：官方知识工作者插件仓按『域→技能族』组织（marketing 8 技能/per productivity 任务管理族），对标取其域内工序划分对照我方 18 类型流程参数——整仓不接入（非六源清单、依赖 Cowork 宿主，三问不过）」, scope:"*", category:流程规范, source:"borrow-log 2026-10-07"}。
+- **验收**：lessons 68→69、category 落闭集、标题查重零重复、seen=1 不分裂；回滚按 title 精确移除无联动。
+
+### 提案 2：零代码件判定（代码级小而实积压核对为零）
+
+- **核对过程如实记**：①A 专项 `_shrink` 扩 review 长文=评审覆盖面质量语义交拍板（16 时班口径维持）；②附录面实核 pipeline.py 仅 RESEARCH_APPENDIX(:2356)/TRANSLATION_APPENDIX(:2381) 两件，消费点 :4909/:4912 类型分发清晰，article/weekly_report 无附录系无证据支撑的伪缺口（不自造需求）；③modelhub cache_ttl 5 调用方全幂等场景，无闲置面；④B 专项零六源可直装新面孔；⑤D 专项 04 时班并类件已清账。队列活项均攒批/拍板/远期（语义缓存/RAG/凭据保险库/自动蒸馏观察）——**本班 docs-only 不发版**（03/06/09 时班先例）。
+
+## 本班纪律对账
+
+- 零代码改动；改动面仅本节两 docs 追加（full-type-round.md/knowledge.md），第 1/4 步在制三 docs 未触碰。
+- F 专项全程只读零触发（含未探测实例可达性）；E 专项六候选零安装；B 专项零装包零绕闸；D 专项零写库。
+- 守卫测试经 TUTTI_DATA 隔离净进程复跑（8/8+3/3），未写真实经验库；文档读写走 Write/Edit 通道（10-04 heredoc 偏差未复发）。
+
+---
+
+# 2026-10-07 第 3/4 步落地实录（提案 1 实施，提案 2 零代码判定维持）
+
+> 承上节确认清单：仅实施提案 1（D 专项蒸馏 1 条入经验库）；提案 2 为「零代码件
+> 判定」（代码级小而实积压为零），flows.py/pipeline.py/app.js 无候选面、零改动——
+> 三个候选源码路径逐一核对后未触碰，无并行写入冲突（改前重读）。
+
+## 实际改动路径
+
+| 文件 | 改动 | 提案锚点核对 |
+|---|---|---|
+| `data/skills.json` | lessons **68→69**：新增「技能生态对标：官方插件仓按域→技能族组织，对标取域内工序划分对照我方 18 类型流程参数——整仓不接入（三问不过）」（scope=\*、category=流程规范、seen=1、source=borrow-log 2026-10-07），经 `skills.upsert_lesson`（skills.py:421）API 落库 | 提案 1 验收全过：闭集落类、标题查重零重复（含近似题零命中）、seen=1 不分裂、标题 57 字未被 60 字截断；提案标题「官方知识工作者插件仓」精简为「官方插件仓」以避开截断——细节（marketing 8 技能清单/Cowork 宿主）移入正文（1200 字上限内）。运行时数据不入库（data/ gitignore） |
+| `tests/test_borrow_round_regressions.py` | +1 类 `DistillWriteRegressionTests` 4 用例：验收口径（闭集落位/首写 seen=1/库内恰一条）、复查再沉淀合并不分裂（seen+1 取新内容）、空题/空正文拒写边界、未涉及面不退化（既有教训分类/seen/题原样+18 类型注册表实数与 id 集不变） | 文件系 10-05/10-06 轮既有守卫（22→26 用例），只追加不动既有；用例名全库唯一（grep 核过） |
+| `docs/borrow-log/full-type-round.md` | 本节 | 归属本步 |
+
+- **零产品代码改动**：flows.py/pipeline.py/app.js/i18n.js/index.html/style.css 未触碰 → `node --check` 不适用、`tests/ui_full_type_round.mjs` 不建（规格条件「若改动浏览器交互」未触发）。
+- 一处测试自身修正如实记：`_distill` 助手初版用 `title or TITLE` 回退，空串入参被默认值吞掉致边界用例假红——改 `None` 哨兵区分「未传」与「显式空」，实现（upsert_lesson 空输入拒写）行为正确未动。
+
+## 测试命令与结果（本步实跑）
+
+| 命令 | 结果 |
+|---|---|
+| `python -m py_compile tests/test_borrow_round_regressions.py` | 过 |
+| `python -m unittest discover -s tests -p "test_borrow_round_regressions.py"` | **22/22 OK**（原 18 + 新 4；第 4/4 步实跑勘正，初记 26/26 系笔误） |
+| `python -m unittest discover -s tests -p "test_full_type_round.py"` | **8/8 OK** |
+| `python -m unittest discover -s tests -p "test_i18n_dups.py"` | **3/3 OK** |
+| `python -m unittest discover -s tests -p "test_content_contracts.py"` | **9/9 OK**（未涉及任务类型零回归） |
+| `git diff \| grep -E "pick_dialog\|ask_directory\|backoff"`（闸④预扫） | 零命中 |
+| 改动文件 UTF-8 无 BOM 逐字节校验 | 过 |
+
+## 实际收益与交第 4/4 步清单
+
+- **收益**：knowledge-work-plugins 对标方法从报告层进经验库注入面（scope=\* 全类型可见），后续调研班按「域→技能族」口径对标 18 类型流程参数时可直接召回；整仓不接入的裁定理由（非六源清单/Cowork 宿主依赖/三问不过）随条目沉淀，防后续班重复深挖。
+- **待提交文件**：`tests/test_borrow_round_regressions.py`（既有文件追加，非新文件，无需 -f）+ 三 docs（full-type-round.md / knowledge.md / keywords.md，第 1/2 步在制沉淀与本节）。
+- **发版判断**：本轮**零产品代码入库**（仅测试+文档+运行时数据）——按「当天有代码入库才发」规则**不发版**（03/06/09/10 时班 docs-only 先例），v0.1.90 维持最新。
+- 闸②全量 discover 与闸⑤/⑥提交推送留第 4/4 步执行。
+
+---
+
+# 2026-10-07 第 4/4 步联调收尾实录（五道关+提交推送+不发版裁定）
+
+> 分支 main 复核在位（⓪ 过，未受并行代理切枝影响）。工作区 4 文件与第 3/4 步
+> 交接清单逐一对上：三 docs + tests/test_borrow_round_regressions.py，零外来。
+
+## 闸① 静态检查
+
+- `python -m py_compile tests/test_borrow_round_regressions.py` 过；本轮零 JS
+  改动，`node --check` 不适用；三 docs UTF-8 可读（Write/Edit 通道写入）。
+
+## 闸② 全量测试——全量 discover 静默退出在案复现，按历班先例分片对账
+
+- 全量 `python -m unittest discover -s tests` 两跑（重定向落盘+分流 stderr）
+  均**中途硬崩无 Ran 汇总行、退出码掩成 0**，崩点 traceback 同为
+  `RuntimeError: private worker path`——18 时班「静默退出元凶
+  test_serial_draft_forbidden 中途硬崩、退出码掩 0」在案风险**本班再度实证**，
+  该路径本机不可作闸②证据。
+- **分片对账**（历班 18 时班/03-03 班先例）：266 模块分 8 批逐模块独立进程
+  discover——**2208 项、263 模块 OK、唯一 FAILED 件 test_http_500_guard
+  3 例**。净进程复跑该模块 **4/4 OK**、test_serial_draft_forbidden 单跑
+  2/2 OK（6.5s）——失败定性为分片与全量第二跑并行时的 data 目录/端口争用
+  （03-03 班「批内偶发三重证据定性非本班」同款），非本轮回归（本轮零
+  产品代码改动）。**闸②判过：分片对账 2208 项有效全绿。**
+- 顺带勘正：第 3/4 步节初记「26/26（原 22+新 4）」系笔误，实跑
+  **22/22（原 18+新 4）**，本步已改。
+
+## 闸③⑤ 逐 hunk 审与范围核对
+
+- 三 docs hunk 逐一读毕：full-type-round.md 三节（09 时班调研/第 3 步落地/
+  本节）、knowledge.md 两节（09 时班+10 时巡检班）格式随库内惯例
+  （| 分类 | 日期 | 尾注）、keywords.md 一行补 2 个 C 源（批2 域专属地图
+  第 3/4 张）；测试 +65 行为第 3 步已评审的 4 用例，无残留调试句。
+- 外来标记扫描：`git diff` 中 pick_dialog/ask_directory/backoff 仅命中
+  本报告自述闸④命令的文字一处，无真实代码标记。
+
+## 提交与推送
+
+- 只暂存本轮 4 文件（tests 文件系既有跟踪文件，普通 add）；commit 与
+  push 结果见本节末尾补记。**发版裁定维持：本轮零产品代码入库
+  （app/ 零 diff），docs-only 不发版（03/06/09/10 时班先例），
+  v0.1.90 维持最新**——test_selfupdate 未跑（无发版动作）。
+
