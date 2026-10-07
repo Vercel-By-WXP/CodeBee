@@ -837,6 +837,11 @@ function renderDirectModelPicker() {
 function recommendTaskType(goal) {
   const s = String(goal || "").toLowerCase();
   const rules = [
+    // 专属词在前（简历/PPT/标书的目标里常带技术词，放 code 之后会被截胡，
+    // 「优化我的简历，投后端岗」实测命中 code——2026-10-07 巡检）：
+    ["resume", /(简历|求职|应聘)/i],
+    ["presentation", /(演示文稿|ppt|幻灯片|答辩)/i],
+    ["bid_doc", /(标书|投标|招标应答)/i],
     ["code", /(代码|bug|报错|修复|重构|接口|数据库|前端|后端|python|javascript|typescript|java|go\b|git)/i],
     ["translation", /(翻译|译成|translate|translation|中译英|英译中)/i],
     ["email", /(邮件|email|e-mail|回信|邀约信|商务函)/i],
@@ -848,6 +853,7 @@ function recommendTaskType(goal) {
     ["serial_novel", /(连载|续写.*章|网文|长篇小说)/i],
     ["novel", /(小说|故事|短篇|章节)/i],
     ["article", /(公众号|自媒体|文章|博客|小红书)/i],
+    ["doc", /(文档|操作手册|说明书)/i],
   ];
   const hit = rules.find((x) => x[1].test(s));
   return hit && flowById(hit[0]) ? hit[0] : "";
