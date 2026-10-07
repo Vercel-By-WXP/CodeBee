@@ -673,6 +673,7 @@ def _sanitize_run_text(r):
 
 
 def load_all():
+    recovered_failures = []
     with LOCK:
         for p in paths.TASKS_DIR.glob("*.json"):
             try:
@@ -698,6 +699,9 @@ def load_all():
                     r["status"] = "failed"
                     r["error"] = r.get("error") or "服务重启中断，可重试"
                     _save_json(p, r)
+                    # 读盘收尸绕过 update_run，需在释放存储锁后补一条 run
+                    # 级错误记录；避免错误台账的文件 I/O 拉长全局锁。
+                    recovered_failures.append(dict(r))
                 _RUNS[r["id"]] = r
             except Exception:
                 pass
@@ -716,6 +720,8 @@ def load_all():
             if latest.get("status") in ("done", "failed", "cancelled", "timeout"):
                 t["status"] = latest["status"]
                 _save_json(paths.TASKS_DIR / (t["id"] + ".json"), t)
+    for run in recovered_failures:
+        _record_run_failure(run)
 
 
 # ---------------------------------------------------------------- 运行（含管理操作）
