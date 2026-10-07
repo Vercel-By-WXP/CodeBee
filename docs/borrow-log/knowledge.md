@@ -6227,3 +6227,165 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 - 未验证项：npm 包归档成员校验/解包冒烟由 release_gate 代跑——归档内容
   清单已经 publish 台账实测（见上打包卫生条）；keywords.md 本轮零调整
   维持。 | 未验证 | 2026-10-08
+
+## 2026-10-08 03 时班沉淀（批3：计划/spec/长任务——新一轮（v0.1.94 后）计划第 1/4 步全类型调研·七专项巡检班）
+
+> 开工 03:40（hour=3，3%7=3 → 批3）；报告锚定命名 docs/borrow-log/2026-10-09.md
+> （实际开工时刻在报告头部如实记）。分支 main（3cfe517e 前基线 3cfe4ee）、工作区
+> 干净。主扫 116 查询（A 常驻 89+B3 轮换 11+A1u/A1p2 双轮 16）519+5 行 462 唯一仓
+> 零失败零限流；**Q115 处后台 600s 时限杀、余 1 查当场单发补齐（116/116 全覆盖）**；
+> WebSearch 串行 1 发（B3 域，零新 claim）+trendshift/topic/npm/pypi/awesome 20 源
+> 全通道可达。 | 元信息 | 2026-10-08
+
+- **全通道收敛稳定期（本班总判定）**：批3 域两周一轮换零新面孔冲头部（OpenSpec
+  71,262/get-shit-done 64,360/planning-with-files 27,321 已录族领跑）；主扫 136
+  首见全噪声/课程库/停更旧件；trendshift 50 仓+topic 8 页 160 仓+WebSearch 三交叉
+  通道**判据线以上零新**——零「对方有我们没有」机制级差量，与 00 时班批7 域结论
+  同型。 | 主扫·批3 | 2026-10-08
+- **Dicklesworthstone/coding_agent_session_search 1,162★**（10-07 在更，topic:ai-agents）：
+  统一 TUI/CLI 索引检索本地 coding agent 会话历史，跨 11+ provider（caam 同作者
+  第二件）。A13 观测域：我们运行页自带会话流无跨 CLI 本地历史聚合面，属工具面
+  非编排面不重合。 | A13 参考判据（雷达） | 2026-10-08
+- **Azure/agent-landing-zone 1,184★**（10-07 在更，topic:agent-framework）：Azure
+  官方企业级 AI agent 落地基座（安全基础设施+部署模板）。B4 治理域参照：云厂把
+  「agent 安全落地基座」产品化，与桌面单机形态不重合；治理清单可作 audit.py
+  对照面。 | 参照判据（雷达） | 2026-10-08
+- **undefined-ui/second-brain-os 1,005★**（10-07 在更，topic:claude-skills）：自维护
+  AI 第二大脑（指南+起始 vault+agent skills+自组织脚本）。A11 记忆域，个人知识
+  管理形态无编排差量。 | A11 参考判据（雷达） | 2026-10-08
+- **KroMiose/nekro-agent 1,135★**（09-29 在更，主扫 A1p2 中文词首见）：中文 QQ 平台
+  agent 框架（沙箱插件执行）。中文 agent 生态判据补充（CowAgent 同域已录），IM bot
+  形态不重合。 | 参考（中文生态雷达） | 2026-10-08
+- **scaleapi/agentenv-framework 169★**（10-07 在更）：Scale AI 官方 RL 评测环境构建
+  框架——A6 评测域旁（我们 rubric 评审系产出质量评测非 RL 环境）。 | 参考（域旁）
+  | 2026-10-08
+- **微型判据群+B4 趋势信号**：claude-mem-lite 66/human-review 19（人审一页纸，
+  diff 评审同向）/localharness 46（本地 LLM harness 词形）/tale 32/membrane 64
+  （提示词注入边界）/agent-blackbox 26/agent-bom 31（agent 供应链 SBOM）/
+  tinymemory 10/workhorse 19 等——**「agent 安全边界」微型件连续第 3 班成簇，
+  B4 域趋势信号在档**。 | 微型判据（雷达） | 2026-10-08
+- **放量信号**：**strands-agents/harness-sdk 7.4k（9-21）→7.55k（9-23）→8,722
+  （本班）两周 +~900 放量加速**（AWS 官方 harness SDK 化）；Compositor 11,034
+  （+1,852/日，域旁创作工具）；autoharness 9,177/agent-memory 2,380/cost-xray
+  3,834 微涨续。 | 复查·放量 | 2026-10-08
+- **D 基线更新 69→70**：v0.1.94 蒸馏件「落地提案先对账既有守卫」入库后真实库
+  lessons=70（流程规范 30=43%/节奏爽点 16/情节逻辑 10/人物塑造 7/一致性 4/
+  文笔风格 3）——**后续班次以 70 为基线**（勿沿用 69 误判漂移，10-07 22 时班
+  「跨班对比先查基线确立班次」诫第 2 例）。 | 基线·D | 2026-10-08
+- **七专项静态巡检零漂移**：A 八锚点在位（pipeline:613/:648/:677 花费闸先于
+  token 闸/:2538、step_runner:28、skills:676）四对标判定维持；B 六源在位零新接入
+  （session_search/second-brain-os/agent-landing-zone/story-skills 三问全不过）；
+  C BUILTIN_FLOWS=18+recommendTaskType（app.js:837）+_RULELESS 豁免集在位；
+  E catalog=14 本机 13/14 在装（openclaw 缺）、候选五 CLI 全 MISSING 零盲接、
+  DeepSeek-Reasonix 35,747（+3）首位维持；F 禅道 poll_enabled=false + claims={}
+  零积压 + last_scan 停 09-21（18 天未扫）交拍板维持、npm 通道第 31 例零新、
+  自动修复集成面仍独占；G 过时文案 grep 零命中零新毛病。 | 巡检·A/B/C/E/F/G
+  | 2026-10-08
+- **后台主扫时限教训**：百查询级主扫（116 查×~5s≈10 分钟）放后台须给足时限
+  （≥900s）——本班 600s 上限杀于 Q115，余 1 查单发补齐纯属余量运气；补查无损
+  但进程形态（无 PROGRESS DONE）要在报告如实记。 | 方法·扫描 | 2026-10-08
+
+### 复查记录（03 时班，基准=00 时班，间隔约 3h）
+
+- 存量头部 462 仓全 alive 零 archived：orca 87,046（+69 续领跑）/superpowers
+  296,340（+40）/mattpocock-skills 279,351（+173 续放量）/ECC 274,810（+90）/
+  hermes-agent 251,898（+38）/opencode 212,190（+23）/ponytail 157,476（+93）/
+  dify 158,033（+9）/pi 113,169（+16）/open-design 99,852；oh-my-openagent
+  69,872（+33）/nimbalyst 1,848 持平/story-skills 277（+13）/magic-context 2,275
+  （+7）/amux 521（+1）；StaffDeck 1,969↔1,971 ±2 系缓存抖动非信号。 | 复查
+  | 2026-10-08
+
+### 待深挖队列（03 时快照）与未验证项
+
+- 04 时快照 11 项维持，本班零新队列项；交拍板 4 件维持（禅道轮询重开/cost-xray
+  观测粒度/release_gate 判定面/npm 包体 files 白名单）。 | 队列 | 2026-10-08
+- 未验证项：禅道积压/路由/回写链路（poll 关闭态不触发真实扫描）；pypi 仅在架
+  验证；trendshift 提取法第 2 班（50 仓全量成功，置信度升高）。keywords.md
+  本班零调整（B3「requirement elicitation」零回系词形弱非缺口，maintain）。
+  | 未验证 | 2026-10-08
+
+## 七专项深化实证（第 2/4 步·调用链级，10 时班）
+
+- **A 四对标方向调用链实证（静态锚点→执行链）**：①diff-only 评审=满配——
+  pipeline.py:919 `CODE_REVIEW_PROMPT`（「diff 为主要依据」）→ :948 `_git_diff`
+  （git diff HEAD + 未跟踪新文件拼入，新章节/新模块不漏）→ :1019
+  `_review_depth_note`（评审深度随 diff 行数分级，pr-af 借鉴）→ :1084/:1089
+  拼装；②廉价分流=opt-in 满配——capability.py:100 `cascade_reorder`
+  （FrugalGPT tier 升序稳定重排，链<2 原样返回；providers 在场时走
+  dispatch.rank_model_entries 精排）→ pipeline.py:1526 `ss_get("cascade",
+  "enabled")` 门；③prompt（前缀）缓存=设计面缓存友好——skills.py block_for
+  stable_order 保序 + knowledge.py 头注「同一任务字节稳定不碎供应商前缀缓存」
+  + flows.py:283 `flow_content_sha256` 语义字段恒定；显式 cache_control 断点
+  仍属供应商侧自理（拍板件维持）；④语义缓存=拍板件维持（重复任务占比低，
+  缓存键失效面>收益）。预算链复核：pipeline.py:61 `_ensure_budget` →
+  :648 花费闸先于 :677 token 闸 → :2538 `_shrink_context_block` 四层降级 →
+  step_runner.py:28 `_PRECHECK_RATIO=0.9` 事前门 → compaction.py:182
+  `maybe_compact`（压力比≥阈值才压，llm_caller 缺失直接跳过）。| 巡检·A
+- **B 白名单/SSRF 边界实证**：market_remote.py:50 SOURCES len=6 实测
+  （zcode/anthropic/anthropic-skills/claude-skills/clawhub/cocoloop）；
+  :114 SSRF 网关（仅 https + 解析出的全部 IP 拒环回/私有/链路本地/保留段）+
+  :156 逐跳 GET 重定向每跳重过闸 + :202 直连重试仍过闸；体量五帽（清单 5MB/
+  包 80MB/解包 120MB/500 文件/512KB 单文本）；安装白名单 :568 `inspect_tree`
+  + :941-952 安装包 skills 白名单比对（「白名单技能与包内容不匹配」拒装）。
+  本班判据件接入三问复答零变化：session_search（独立 TUI 非六源包/可直读但
+  非包/用户不按包搜）不接、second-brain-os（个人 vault）/agent-landing-zone
+  （云基座）形态不重合不接，story-skills 277★ 维持雷达。**零新接入**。
+  | 巡检·B
+- **C 18 类型×推荐规则×i18n 三面对账全绿**：BUILTIN_FLOWS=18（flows.py:36
+  实数）↔ app.js recommendTaskType 15 规则（18−_RULELESS 豁免 3：direct/
+  rank_scan/defect_retro 成文决策）一一对应；18 name+18 note+18 goal_hint
+  共 54 串在 i18n.js 全部有键（脚本实测 missing=0）；README:135/242「18 种」
+  口径准确。推荐规则正则与 goal_hint 引导语对账发现 1 处小缝隙→落地提案 B
+  （video_script 规则缺「B站/视频号」，其 goal_hint 明示引导用户写这两个词）。
+  | 巡检·C
+- **D 基线 70 复核+零互含重复**：data/skills.json lessons=70 实数（流程规范
+  30=43%/节奏爽点 16/情节逻辑 10/人物塑造 7/一致性 4/文笔风格 3）；title 两两
+  互含扫描 **0 对**（upsert_lesson:424 `_title_containment` 去重在位生效）；
+  scope 分布 serial_novel 41/code 12/*/12/direct 4/article 1。**「百查询主扫
+  后台 ≥900s」方法论判不进 lessons**——lessons 是任务运行时注入经验（写作/
+  code 域），扫描运维纪律属 borrow-log 面，维持 knowledge.md 沉淀不双写
+  （knowledge.py 头注分工边界：lessons=下次怎么做，knowledge=已知是什么）。
+  本班零 lessons 入库（无新写作/code 方法论）。| 巡检·D
+- **E 14 条目×本机 13/14 复测零漂移**：catalog.py:32 DEFAULT_CATALOG=14
+  实数；which 探测 codex/claude/opencode/qwen/aider/kimi/mimo/grok/pi/dsh/
+  gemini/cbc/trae-cli **13 OK**、openclaw MISSING（与 03 时班一致）；候选五
+  CLI（deepseek-reasonix/fuxi/gitlawb/zero/empryo）which 全 MISSING——零盲接
+  防死链维持，DeepSeek-Reasonix 首位候选待本机实装后再评。| 巡检·E
+- **F 禅道链路实证（配置关闭非故障坐实）**：data/zentao.json 实测 config.
+  poll_enabled=false + base_url=http://10.143.132.5:8899（内网自建）+
+  auto_resolve/auto_merge/triage_ai 全 true + claims={} 零积压 + last_error
+  空 + last_scan 停 2026-09-21 20:43:44（17 天未扫，poll 关闭所致）。
+  zentao.py:80 `_SCAN_LOCK` 单飞防重、:163 `_guard_url` 拦元数据地址不拦用户
+  显式内网 URL（合理）；resolve 前置双验（合并落库+auto_merge 双开关）在位。
+  轮询重开仍系交拍板件不擅动。| 巡检·F（交拍板维持）
+- **G UI/契约一致性**：过时文案（「13 种」「单源/双源」）grep README+app/ui
+  零命中；流程编辑器 saveFlow（app.js:10960）payload 与 _EDITABLE 白名单对
+  齐（review 引擎 8 字段，code 引擎无 verify_command 编辑入口——任务级
+  f-verify 在创建表单配，设计口径自洽）；分工码 CBFLOW1 导入端到端链路在
+  upsert_flow 全套规范化内。**缝隙 1 件**（=提案 A 根因）：flows.py:233
+  `_apply_overrides` 把 verify_command 与 manuscript 共用文件名消毒（`/`→`_`
+  、连续点→`_`），与 upsert_flow:385 code 分支（仅截断 200）双口径——分享码
+  roundtrip 含路径验证命令会被静默改坏（`pytest tests/test_a.py`→
+  `pytest tests_test_a.py` 必失败），见落地提案 A。| 巡检·G
+
+### 落地提案（第 3/4 步实施件，复核通过后动代码）
+
+- **提案 A（flows.py verify_command 消毒分流，契约一致性）**：flows.py:233
+  `elif k in ("manuscript", "verify_command")` 拆开——manuscript 保留既有消毒，
+  verify_command 改 `str(v or "").strip()[:200]`（与 upsert_flow:385 自定义
+  code 分支同口径）。影响链：upsert_flow→_apply_overrides（预置 code 流程
+  overrides/分享码导入）；消费链 pipeline.py:996/:1207
+  `runner.run_process(shell_cmd=verify_command)` 真实执行。验收：
+  ①`_apply_overrides` 传 `{"verify_command": "python tests/run_all.py"}`
+  输出保真；②manuscript 消毒行为不变（`a/b.md`→`a_b.md`）；③分享码导出→
+  导入 roundtrip verify_command 保真。回归：tests/ 新增
+  test_flows_verify_contract.py 3 用例（git add -f 提交）。
+- **提案 B（recommendTaskType video_script 规则补词，1 行+2 用例）**：
+  app.js:856 video_script 正则补 `|b站|B站|视频号`——flows.py:66 goal_hint
+  明示引导「抖音/B站/视频号」，用户照提示写「做个B站视频讲XX」当前不命中
+  推荐直接落快档。回归：tests/test_recommend_rules.py 追加 2 用例（「B站
+  视频」→video_script、「视频号脚本」→video_script，py 正则提取法已有基建
+  :21 `_rules()` 直接复用）。
+- 不凑数声明：本轮调研零机制级新差量，A 四对标均已有满配/拍板在档，D 无新
+  方法论入 lessons——两提案均为本班深化实证中**实测发现**的契约缝隙，非
+  为凑数。| 提案 | 2026-10-08

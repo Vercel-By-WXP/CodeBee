@@ -1,5 +1,13 @@
 # -*- coding: utf-8 -*-
-"""JS 侧 t() 字面量键 ↔ i18n.js 词条全量对账（2026-10-07 轮第 3/4 步落地件）。
+"""各轮借调研落地件的回归守卫累积（文件名按迭代惯例固定）。
+
+2026-10-09 轮第 3/4 步两件（见文件尾两节）：
+  A. flows overrides 的 verify_command 消毒分流（含路径命令保真 +
+     分享码 roundtrip 保真）；
+  B. recommendTaskType 的 video_script 规则补「b站/视频号」。
+
+——以下为 2026-10-07 轮落地件——
+JS 侧 t() 字面量键 ↔ i18n.js 词条全量对账。
 
 本轮第 2/4 步（07 时巡检班）C 项勘误：i18n 覆盖检测口径=按中文源文键（前端
 t(f.name) 包裹映射），按 id 键测会全量误报。该口径此前只落到 index.html
@@ -132,6 +140,108 @@ class AppJsTLiteralI18nTests(BaseTest):
         for key in _REPAIRED_KEYS:
             with self.subTest(key=key):
                 self.assertGreaterEqual(_entry_count(i18n, key), 1, key)
+
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-09 轮第 3/4 步落地件 A：verify_command 消毒分流。
+# 修复前：overrides 把 verify_command 与 manuscript 共用文件名消毒
+# （`/`→`_` 等），`pytest tests/test_a.py` 被改坏成 `pytest tests_test_a.py`
+# 必失败；与自定义 code 流程（upsert_flow 仅截断 200）口径不一。
+# 修复后：verify_command 仅 strip+截断，manuscript 消毒保持不变。
+from test_recommend_rules import _rules
+
+
+class VerifyCommandOverrideTests(BaseTest):
+    """overrides 的 verify_command 走「仅截断」口径（分享码导入同走此链）。"""
+
+    CMD = "pytest tests/test_a.py -q"  # 修复前会被改坏成 pytest tests_test_a.py -q
+
+    def test_verify_command_with_path_preserved_all_builtin_types(self):
+        """修复前可复现 → 修复后保真：全部预置类型的 overrides 命令原样。"""
+        from app.core.flows import BUILTIN_FLOWS, _apply_overrides
+        for f in BUILTIN_FLOWS:
+            merged = _apply_overrides(f, {"verify_command": self.CMD})
+            self.assertEqual(merged["verify_command"], self.CMD,
+                             "类型 %s 的验证命令被文件名消毒改写" % f["id"])
+
+    def test_manuscript_sanitization_unchanged(self):
+        """manuscript 仍走文件名消毒（路径分隔符/点段/前导点），行为不变。"""
+        from app.core.flows import _apply_overrides
+        base = {"id": "x", "engine": "review"}
+        self.assertEqual(
+            _apply_overrides(base, {"manuscript": "a/b\\c..d.md"})["manuscript"],
+            "a_b_c_d.md")
+        # 点段先替换成 `_`，单前导点才由 lstrip 吃掉（既有行为原样锁定）
+        self.assertEqual(
+            _apply_overrides(dict(base), {"manuscript": "..lead.md"})["manuscript"],
+            "_lead.md")
+        self.assertEqual(
+            _apply_overrides(dict(base), {"manuscript": ".hidden.md"})["manuscript"],
+            "hidden.md")
+
+    def test_verify_command_truncate_and_empty_ignored(self):
+        """与自定义 code 流程同口径：仅截断 200；空白不落键（保持默认）。"""
+        from app.core.flows import _apply_overrides
+        base = {"id": "x", "engine": "code", "verify_command": ""}
+        long_cmd = "echo " + "a" * 300
+        self.assertEqual(
+            _apply_overrides(dict(base), {"verify_command": long_cmd})["verify_command"],
+            long_cmd[:200])
+        self.assertEqual(
+            _apply_overrides(dict(base), {"verify_command": "   "})["verify_command"],
+            "")
+
+    def test_share_code_roundtrip_custom_code_flow(self):
+        """分享码导出→导入 roundtrip（自定义 code 流程）：含路径命令保真。"""
+        from app.core import flows
+        _, err = flows.upsert_flow({"id": "it_code", "name": "迭代验证",
+                                    "engine": "code", "verify_command": self.CMD})
+        self.assertIsNone(err, err)
+        code, err = flows.export_flow_code("it_code")
+        self.assertIsNone(err, err)
+        result, err = flows.import_flow_code(code)
+        self.assertIsNone(err, err)
+        self.assertEqual(result["status"], "noop")  # 内容与现状一致即保真
+        self.assertEqual(flows.get_flow("it_code")["verify_command"], self.CMD)
+
+    def test_share_code_roundtrip_builtin_override(self):
+        """分享码导入预置 code 流程（写 overrides 路径）：含路径命令保真。"""
+        from app.core import flows
+        _, err = flows.upsert_flow({"id": "code", "name": "代码", "engine": "code",
+                                    "verify_command": self.CMD})
+        self.assertIsNone(err, err)
+        code, err = flows.export_flow_code("code")
+        self.assertIsNone(err, err)
+        result, err = flows.import_flow_code(code)
+        self.assertIsNone(err, err)
+        self.assertEqual(result["status"], "noop")
+        self.assertEqual(flows.get_flow("code")["verify_command"], self.CMD)
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-09 轮第 3/4 步落地件 B：recommendTaskType 的 video_script 规则补词。
+# 修复前：goal_hint 引导「抖音/B站/视频号」（flows.py video_script），规则只认
+# 「抖音」——照提示输入不弹类型切换建议。
+class VideoScriptRuleTests(unittest.TestCase):
+    """video_script 推荐规则补「b站/视频号」（提取法复用 test_recommend_rules）。"""
+
+    def _recommend(self, goal):
+        for fid, pat in _rules():
+            if pat.search(goal):
+                return fid
+        return ""
+
+    def test_goal_hint_platforms_hit_video_script(self):
+        """照 goal_hint 提示输入「B站/视频号」应命中类型建议（修复前为空）。"""
+        self.assertEqual(self._recommend("做个3分钟的B站视频，介绍这个项目"),
+                         "video_script")
+        self.assertEqual(self._recommend("视频号脚本，新品发布60秒"), "video_script")
+
+    def test_existing_hits_unchanged(self):
+        """既有命中不回归：抖音/短视频照旧，规则顺序（novel 先于 article）照旧。"""
+        self.assertEqual(self._recommend("写个短视频脚本，抖音带货"), "video_script")
+        self.assertEqual(self._recommend("写一篇悬疑小说"), "novel")
 
 
 if __name__ == "__main__":

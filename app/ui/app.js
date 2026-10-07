@@ -846,7 +846,7 @@ function recommendTaskType(goal) {
     ["translation", /(翻译|译成|translate|translation|中译英|英译中)/i],
     ["email", /(邮件|email|e-mail|回信|邀约信|商务函)/i],
     ["weekly_report", /(周报|月报|述职|工作汇报|工作总结)/i],
-    ["video_script", /(短视频|口播|分镜|抖音|视频脚本)/i],
+    ["video_script", /(短视频|口播|分镜|抖音|b站|视频号|视频脚本)/i],
     ["speech", /(演讲稿|发言稿|致辞|演讲)/i],
     ["tech_proposal", /(技术方案|架构方案|选型方案|实施方案)/i],
     ["research", /(调研报告|竞品调研|市场调研|深度研究)/i],

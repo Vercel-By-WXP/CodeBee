@@ -230,9 +230,16 @@ def _apply_overrides(base, ov):
                 f["best_of"] = max(1, min(3, int(v)))
             except Exception:
                 pass
-        elif k in ("manuscript", "verify_command"):
+        elif k == "manuscript":
             s = re.sub(r"[\\/]+", "_", str(v or "")).strip()
             s = re.sub(r"\.{2,}", "_", s).lstrip(".")
+            if s:
+                f[k] = s
+        elif k == "verify_command":
+            # 验证命令原样交给 runner.run_process 执行，不是文件名——套文件名
+            # 消毒会把 `pytest tests/test_a.py` 改坏成 `pytest tests_test_a.py`。
+            # 与自定义 code 流程（upsert_flow）同口径：仅截断。
+            s = str(v or "").strip()[:200]
             if s:
                 f[k] = s
         elif k in ("draft_prompt", "critique_prompt"):
