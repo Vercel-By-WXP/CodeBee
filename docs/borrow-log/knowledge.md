@@ -6197,9 +6197,33 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   269/269 权威证据放行，是否给门禁加 Ran/OK 汇总校验交人拍板。
   | 风险·发版 | 2026-10-08
 
+### 04 时班补录（并行收口班的对侧视角，核验+补位实录）
+
+- **并行会话收口处置纪律**：五道关推进中工作区被并行会话收口（f9b5176+
+  1e6fbfe 双提交双推送）——不覆盖不重做，逐字核验其内容与此前自审 diff
+  完全一致后接纳；计数分歧（268 vs 269）以 `ls tests/test_*.py | wc -l`
+  实测归一（并行对）。 | 方法·并行 | 2026-10-08
+- **publish「挂起」先想 prepublishOnly 在跑全量（误杀教训）**：npm publish
+  挂零输出≠网络挂起——package.json prepublishOnly 钩子=release_gate.py，
+  首关即单进程全量 discover（3600s 超时），门内测试期 publish 外表死寂
+  15-20 分钟；本轮前两次尝试当网络抖动错杀，第三次直写文件复跑才见
+  `[release-gate] PASS`。判据：先 `npm view`+`npm ping` 定网络，再看
+  package.json scripts 钩子定卡点。 | 方法·发版 | 2026-10-08
+- **并发 publish 409 幂等无害**：多会话/超时误杀竞态下，第二完成者撞
+  「cannot publish over previously published versions」属正常收口信号；
+  registry `npm view time` 时间戳是唯一事实源（本轮 02:16:46+0800），PUT
+  归属不作唯一判定（同树同提交产物归一）。 | 方法·发版 | 2026-10-08
+- **npm 包打包卫生实测（补上述未验证项）**：0.1.94 归档 169 文件 6.3MB，
+  publish 台账实读——validate_package_members 拦 /tests/ /data/ /.git/ 等
+  但**未拦 app/.playwright-cli 控制台日志与 page 截图（约 1.1MB）、
+  app/browser-*.png 历史截图（约 1.5MB）、app/output/_probe_*.py 探针
+  脚本**；不影响功能，属包体卫生，是否收紧 files 白名单交拍板（第 4 件）。
+  | 风险·发版 | 2026-10-08
+
 ### 待深挖队列（04 时快照）与未验证项
 
-- 01 时快照 11 项维持；交拍板 2→3 件（新增 release_gate 判定面校验）。
-  | 队列 | 2026-10-08
-- 未验证项：npm 包归档成员校验/解包冒烟由 release_gate 代跑（本轮未独立复验
-  归档内容清单）；keywords.md 本轮零调整维持。 | 未验证 | 2026-10-08
+- 01 时快照 11 项维持；交拍板 2→4 件（release_gate 判定面校验+npm 包体
+  files 白名单收紧）。 | 队列 | 2026-10-08
+- 未验证项：npm 包归档成员校验/解包冒烟由 release_gate 代跑——归档内容
+  清单已经 publish 台账实测（见上打包卫生条）；keywords.md 本轮零调整
+  维持。 | 未验证 | 2026-10-08
