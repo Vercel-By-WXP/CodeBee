@@ -5831,3 +5831,16 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   PORT=18944）在 discover 崩退/并行会话后可能留孤儿服务占端口，后续全量
   必假败——**全量跑前 netstat 查测试固定端口占用、python.exe+固定测试端口
   双特征即可 taskkill**；本班实证清除后 4/4 OK。 | 方法·环境 | 2026-10-07
+- **发版 v0.1.92 实录（并行分工+本班闭环）**：元数据三件套由并行会话提交
+  推送（7195d57），npm publish 由本班补完——首试被 release_gate
+  require_clean 拦（本班 docs 未提交），按闸序提交推送 46ba151 后重试过三道
+  闸 **+ codebee@0.1.92**。 | 发版 | 2026-10-07
+- **方法论（npm view 缓存假象）**：publish 成功后 `npm view` 可能长期回旧版
+  （本地元数据缓存），404/旧版≠发布失败——**核对一律 curl 直查
+  registry.npmjs.org/<pkg>/latest 的 dist-tags 与 shasum**（本班 npm view
+  15 分钟假 0.1.91+404，REST 实况 0.1.92 且 shasum 与发布通知一致）。
+  | 方法·发版核对 | 2026-10-07
+- **闸盲区（交人拍板）**：release_gate.run_tests 只看退出码，32 位单进程
+  discover「崩退且退出码 0」会让闸放行未真跑完的测试——真实证据须闸外逐
+  模块取证（本班 267/267）；闸内改逐模块属 release_gate.py 改造项不顺手修。
+  | 风险·在档 | 2026-10-07
