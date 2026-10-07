@@ -5964,3 +5964,40 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
    入深挖）；风险在档维持（交人拍板）：data/zentao.json 明文密码/批跑同进程
    争用/32 位 discover 静默退出/runner_drain 计时超界。 | 结论 | 2026-10-07
 
+## 2026-10-07 22 时班沉淀（新一轮第 1/4 步·批1 全量补课+禅道新件破连）
+
+> 与 21 时班并行时间线（其批7 全量、本班批1 全量 22%7=1），详录见
+> 2026-10-07.md 22 时班节。 | 元信息 | 2026-10-07
+
+- **B1 域全量补课闭环**：116 查询 419 唯一仓零失败——11 词头部全已录
+  （SkillSpector 19,616/vuls/claude-code-security-review/BugTraceAI 等），
+  域稳定期维持；14 时班降级 claim 全部坐实。B1-B7 七批今日全部完成 gh api
+  全量级覆盖（03=B3/06=B6/14+22=B1/午后=B2/B5+B7/18=B4）。 | 主扫 | 2026-10-07
+- **禅道零新竞品 28 例连被 npm 通道打破**：`@jw-king/dsh-plugin-zentao`
+  （DSH bundle 插件连禅道 REST API，09-02 建，v0.1.17）——**第 29 例有新件**；
+  教训：禅道周边此前只扫 GitHub 搜索 2 查，npm「zentao ai」查询系新增通道
+  即命中（渠道正交性第 3 例：StaffDeck/magic 同款「换个渠道就有」）。
+  | 发现·F | 2026-10-07
+- **tigerless-labs org 顺藤四件矩阵入库**（trendshift autoharness 在榜触发）：
+  cost-xray 3,833★（**A3 新参照**：逐部件拆解 CC/Codex 实发 API 请求的成本
+  透视——token_meter 管自身压力、其管「请求解剖」，观测粒度差量交拍板）/
+  pr-test-guard 139★（B1 微型）/agent-memory 959→**2,379 大放量**/autoharness
+  **9,172（较 10-06 +1,159 放量加速，D 专项同域待深挖件）**。keywords.md 补
+  `q=cost-xray+OR+autoharness+OR+pr-test-guard+OR+tigerless 生态`。
+  | 发现·A3/D | 2026-10-07
+- **两通道同日恢复**（21 时班双拦/14 班连断态解除，窗口性如实记）：
+  trendshift curl 直抓 331KB 27 件（storytold 家族 4 兄弟扩仓+huashu-art-motion
+  232→1,317 微型放量升级）；**pypi 第 15 班 HTTP 200 真 Simple index**
+  （agent_orchestrator 2.0.0 在架，14 班 CSP 壳页连断销账）。 | 雷达 | 2026-10-07
+- **WebSearch 串行 1 发（B1 域）**：Kodus 1,453/PR-Agent 13,294 已录复认；
+  CodeAnt「~1,200★」claim in:name 勘定无大星实仓——**repos 二次实证规则
+  第 6 例**（新闻面≠开源仓在）；fireup.pro「评审辩论降误报」未具名在档。
+  | 验证 | 2026-10-07
+- **D 经验勘误自记**：本班开工曾按 03 时班 lessons=73 基线误判「69=-4 异常」，
+  核对 12 时班节确系当日去重新基线——复认 21 时班口径 69 零漂移（流程规范
+  29/节奏爽点 16/情节逻辑 10/人物塑造 7/一致性 4/文笔风格 3）；教训：跨班
+  对比基线先查基线确立班次再定性。 | 方法·自记 | 2026-10-07
+- **存量复查 23 件与 21 时班互证**（orca 86,892 续领跑/VulnHunter +93 放量/
+  knowledge-work-plugins +420/ccpm pushed 停 2026-03-18 停更观察新增）零
+  archived 零属主失配。 | 复查 | 2026-10-07
+
