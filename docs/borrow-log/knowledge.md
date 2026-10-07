@@ -5369,3 +5369,10 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   雷达跟踪不接入（六源+双层闸门实证健康）。C/G：18 型零漂移、设置页/图标/版本
   三方零毛病。F：链路全实证健康，claims=0 零积压，poll_enabled=False 待拍板，
   本班零触发。 | 巡检 | 2026-10-07
+
+## 2026-10-07 13 时班沉淀（批6 框架/平台/SDK 增量）
+
+- **B6 稳定期判据**：`pandaprobe`（traces/evals/metrics 自托管）、`python-a2a`（A2A+MCP 协议实现）、`agentscope-runtime`（沙箱/AaaS/观测）分别代表观测、跨代理协议、运行时平台，但 CodeBee 已有运行证据、审批/SSRF 闸门、SSE 与 CLI 编排；框架级能力不可作为六源技能包直装，三问不过即跟踪不接入。
+- **生态筛选**：CrewAI-Studio 的无代码 GUI 与 CodeBee 任务台重合；agentic-trading 是 ADK+A2A 教学样例；AgentOps 观测/成本能力与现有 usage、trace、操作台账重合。B6 本班零新增代码件，避免为了“有新仓”重复建设。
+- **降级证据**：PyPI 查询受代理 `ProxyError` 阻断，已记录为通道降级，不把无结果伪装成“无项目”。
+- **在制品纪律**：本班观察到外部 `859df79` 已推送且工作树仍有四个未提交文件；未覆盖、未暂存、未提交，后续班先复核其归属再继续。
