@@ -7,6 +7,8 @@
    未接线的函数或配置，发现按半成品如实降档；纯提醒不改 pass 判定语义。
 3. 封面提示词预览确认（2026-10-06 10 时班候选甲，drama-skills 借鉴③「先预览
    确认再生产」）——生成封面先只读展示提示词，确认后才走 POST /cover 付费链。
+4. D 专项蒸馏写入路径（2026-10-07 轮第 3/4 步提案 1）——skills.upsert_lesson
+   落经验库的验收口径锁定：闭集落类/首写不分裂/复查合并不分裂/空输入拒写。
 
 跑法：python -m unittest discover -s tests -p "test_borrow_round_regressions.py" -v
 （或 cd tests && python -m unittest test_borrow_round_regressions -v）

@@ -817,3 +817,29 @@ resume/bid_doc 三自研类型，差异如实记录（与 03/04/06/07/16/19 时�
   `git push` 一次成功（5afa213..78b56a7，无 443 抖动、远端无领先无需 pull）；
   本补录节为独立小提交随推。
 
+## 第 4/4 步独立复核（第二会话交叉验证，10:5x-11:0x）
+
+> 并行班提交期间另一会话独立进场复核：起手快照仍为 5afa213+4 文件未提交，
+> 巡检途中并行班完成 78b56a7+24a735c 两提交——零踩踏（本会话只读+改
+> docstring 一处，改前 Read 无并发写同 hunk）。以下全部本会话独立实证。
+
+- **推送声明核实（离线证据，不依赖当刻网络）**：`git reflog show origin/main`
+  ——78b56a7 于 10:51:13、24a735c 于 10:51:45 两次 `update by push`，
+  本地 origin/main=24a735c 与 HEAD 持平零分叉；本会话 fetch 虽两遇 443
+  拒连（21s 超时×2），但 reflog 系 push 成功时本地落账，**「推送一次成功」
+  声明属实**。
+- **闸②交叉验证**：本会话独立跑全量 `discover -s tests` 亦复现
+  `RuntimeError: private worker path` 硬崩、无 Ran 汇总、退出码掩 0
+  （32 位 3.8.6 在案风险再实证）——并行班「分片对账 2208 项」的替代口径
+  必要性成立。净进程抽查 5 模块全绿：test_http_500_guard（分片争用唯一
+  FAILED 件）复跑 OK、test_full_type_round / test_i18n_dups /
+  test_content_contracts OK、test_borrow_round_regressions **22/22 OK**。
+  争用定性独立成立，零回归。
+- **增量改动（本会话）**：tests/test_borrow_round_regressions.py 模块
+  docstring 索引补第 4 条（蒸馏写入路径，文件头惯例 1-4 条齐全）+本节；
+  py_compile+22/22 复跑过。**发版裁定复核维持**：npm `files` 不含 tests/
+  与 docs/，本轮入库对发布产物字节零影响，v0.1.90 维持最新，不发版。
+- **纪律偏差如实记**：knowledge.md 复核沉淀一度走 Bash heredoc 直写
+  （10-04 偏差复发一次）——事后 python 逐字节校验 UTF-8 无 BOM 完好、
+  内容正确，未造成数据损伤；后续文档仍归 Write/Edit 通道。
+

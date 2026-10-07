@@ -5272,3 +5272,15 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   按）；禅道定时扫描未真实触发验证；knowledge-work-plugins 仅清单级深挖、各
   skill SKILL.md 未逐篇读（对标面非接入面）；pypi 通道持续受阻非本班可解。
   | 未验证 | 2026-10-07
+
+## 2026-10-07 第 4/4 步独立复核（第二会话交叉验证）
+
+- **推送声明离线核验法**：并行班「推送一次成功」声明当刻 fetch 两遇 443 拒连
+  无法在线验证——改用 `git reflog show origin/main`：push 成功会在本地
+  remote-tracking ref 落 `update by push` 账（本例 10:51:13/:45 两笔，与声明
+  完全对上），不依赖当刻网络窗口。远端声明核验先走 reflog，省重试配额。
+  | 教训 | 2026-10-07
+- **全量 discover 静默退出第 3 次独立实证**（private worker path 硬崩+退出码
+  掩 0，32 位 3.8.6）：分片对账口径两个会话各自复现同一崩点后净进程抽查
+  5 模块全绿（含分片争用唯一 FAILED 件 http_500_guard 复跑 OK）——争用定性
+  跨会话成立，闸②判据维持「分片对账+争议件净进程复跑」。 | 验证 | 2026-10-07
