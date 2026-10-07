@@ -329,7 +329,26 @@ def block_for(task):
         total += separator + len(line)
     text = header + "\n".join(lines)
     if skipped:
-        text += "\n…（%d 条超出预算未注入）" % skipped
+        # 预算也包含诊断尾注；若尾注放不下，继续整条回退已选条目，绝不
+        # 让“提示词未超预算”被尾注本身打破。极小预算连尾注都放不下时，
+        # 保留标题（或返回空串）比输出超预算文本更安全。
+        while lines:
+            note = "\n…（%d 条超出预算未注入）" % skipped
+            if len(text) + len(note) <= KNOWLEDGE_BUDGET:
+                break
+            lines.pop()
+            used.pop()
+            skipped = len(entries) - len(used)
+            text = header + "\n".join(lines)
+        note = "\n…（%d 条超出预算未注入）" % skipped
+        if len(text) + len(note) <= KNOWLEDGE_BUDGET:
+            text += note
+        elif len(header) <= KNOWLEDGE_BUDGET:
+            text = header
+            used = []
+        else:
+            text = ""
+            used = []
     if used:
         _bump_hits(used)
     return text

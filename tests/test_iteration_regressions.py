@@ -71,14 +71,21 @@ class TestKnowledgeBlockBudget(BaseTest):
         self.assertEqual(hits2[dropped[0]], 0)
 
         # —— 边界：首条本身超过预算也必须整条丢弃，不能放行后超预算或记 hits ——
+        old_budget = knowledge.KNOWLEDGE_BUDGET
         knowledge.KNOWLEDGE_BUDGET = 80
         oversized = knowledge.upsert_entry(
             "code", "单条超预算", "超长知识。" * 200, status="approved")
         try:
             text3 = knowledge.block_for({"type": "code"})
+            self.assertLessEqual(len(text3), knowledge.KNOWLEDGE_BUDGET)
             self.assertNotIn("单条超预算", text3)
             self.assertEqual(
                 next(x["hits"] for x in knowledge.list_entries("code")
                      if x["id"] == oversized["id"]), 0)
         finally:
-            knowledge.KNOWLEDGE_BUDGET = 3000
+            knowledge.KNOWLEDGE_BUDGET = old_budget
+
+
+if __name__ == "__main__":
+    import unittest
+    unittest.main()
