@@ -834,6 +834,57 @@ def _execution_snapshot(task):
 TERMINAL_STATUSES = ("done", "failed", "cancelled", "timeout")
 
 
+def _record_run_failure(run):
+    """把 run 级失败写入错误台账，避免启动/调度异常只留在 run.json。
+
+    步骤失败已经由 pipeline 记录；这里只覆盖 run 的收口失败（例如
+    enqueue/线程启动失败、服务重启恢复和超时），并由调用方保证同一 run
+    只在首次进入终态时调用。只写稳定原因和安全摘要，不把原始错误或任务
+    正文复制进遥测台账。
+    """
+    try:
+        from . import errorlog
+        from .error_codes import ErrorCode, classify_error_text, error_code_value, safe_error_summary
+
+        status = str(run.get("status") or "failed")
+        raw_code = run.get("error_code")
+        if not raw_code:
+            failed_steps = [s for s in (run.get("steps") or [])
+                            if isinstance(s, dict) and s.get("status") in ("failed", "timeout")]
+            if failed_steps:
+                raw_code = failed_steps[-1].get("error_code")
+        if not raw_code:
+            raw_code = classify_error_text(run.get("error") or "")
+
+        try:
+            code = ErrorCode(raw_code) if raw_code else None
+        except (TypeError, ValueError):
+            code = None
+        if code is not None:
+            reason = error_code_value(code)
+            detail = safe_error_summary(code)
+        elif status == "timeout":
+            reason, detail = "TIMEOUT", "调用超时"
+        else:
+            reason, detail = "RUN_FAILED", "运行失败"
+
+        step = next((s for s in reversed(run.get("steps") or [])
+                     if isinstance(s, dict) and s.get("status") in ("failed", "timeout")), {})
+        provider = step.get("provider") or run.get("provider") or ""
+        if isinstance(provider, dict):
+            provider = provider.get("id") or provider.get("name") or ""
+        errorlog.record(
+            category="run", reason=reason, detail=detail,
+            provider=provider, model=step.get("model") or run.get("model") or "",
+            tool=step.get("agent") or run.get("tool") or "",
+            role=step.get("role") or "", run_id=run.get("id") or "",
+            task_id=run.get("task_id") or "", step=step.get("n") or 0,
+            exit_code=step.get("exit_code"))
+    except Exception:
+        # 诊断台账是旁路能力，绝不能阻塞状态收口。
+        pass
+
+
 def create_run(kind, title, task_id=None, entry_id=None, op=None):
     run = {
         "id": _new_id("r" if kind == "orchestration" else "m"),
@@ -1058,6 +1109,7 @@ def update_run(run_id, expected_status=None, **fields):
     防止陈旧执行方（被取消的 worker、崩溃恢复前的旧线程）覆盖新状态
     ——防御模式「异步状态不是同步状态」。不传则保持原行为。"""
     audit = None
+    failure_audit = None
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -1126,6 +1178,8 @@ def update_run(run_id, expected_status=None, **fields):
             # （UI 补写、迟到写手）不得二次入账。快照在锁内浅拷，锁外调用
             # 审计器——审计器会回读 store，锁内调用即自锁。
             audit = dict(run)
+            if st in ("failed", "timeout"):
+                failure_audit = dict(run)
         if st in ("done", "failed", "cancelled", "timeout"):
             # run_end 钩子（2026-09-22）：终态即触发，后台跑副作用型脚本
             # （回写知识库等）；失败/超时静默，绝不拖慢收尾路径
@@ -1144,6 +1198,8 @@ def update_run(run_id, expected_status=None, **fields):
     # 「在跑」直到下一次无关 bump（2026-09-22 侧栏假在跑案）。
     # 调用都是步骤级边界，不会形成推送风暴；CAS 拒绝/无此 run 的早退
     # 路径不动版本号。
+    if failure_audit is not None:
+        _record_run_failure(failure_audit)
     if audit is not None and _RUN_AUDITOR is not None:
         try:
             _RUN_AUDITOR(audit)

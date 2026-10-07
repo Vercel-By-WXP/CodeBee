@@ -137,13 +137,14 @@ class TestKnowledgeInject(BaseTest):
         block3 = knowledge.block_for({"type": "code", "goal": "优化 docker 构建缓存"})
         self.assertIn("docker 构建缓存", block3)
 
-        # 6) 独立预算截断（不挤占经验包/圣经的预算）
+        # 6) 独立预算截断（不挤占经验包/圣经的预算）——整条装箱：
+        #    装不下的条目整条丢弃带标注，绝不产出拦腰半句
         old_budget = knowledge.KNOWLEDGE_BUDGET
         try:
             knowledge.KNOWLEDGE_BUDGET = 80
             b = knowledge.block_for({"type": "novel", "goal": "写小说"})
-            self.assertTrue(b.endswith("…（已截断）"))
-            self.assertLessEqual(len(b), 80 + len("\n…（已截断）"))
+            self.assertTrue(b.endswith("超出预算未注入）"))
+            self.assertNotIn("已截断", b)
         finally:
             knowledge.KNOWLEDGE_BUDGET = old_budget
 

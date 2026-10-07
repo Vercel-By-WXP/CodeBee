@@ -99,6 +99,50 @@ class TestFailureLogAttribution(BaseTest):
         self.assertNotIn(secret, json.dumps(row, ensure_ascii=False))
 
 
+class TestRunFailureLog(BaseTest):
+    def test_terminal_run_failure_is_recorded_once(self):
+        """运行级启动失败不能只留在 run.json，且重复收口不得重复记账。"""
+        from app.core import errorlog, store
+
+        run = store.create_run("orchestration", "启动失败可观测性")
+        store.update_run(run["id"], status="failed", error="boom")
+        store.update_run(run["id"], status="failed", error="boom")
+
+        rows = errorlog.iter_records(0)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["category"], "run")
+        self.assertEqual(rows[0]["reason"], "RUN_FAILED")
+        self.assertEqual(rows[0]["detail"], "运行失败")
+        self.assertEqual(rows[0]["run_id"], run["id"])
+
+    def test_timeout_run_uses_stable_reason_and_no_raw_error(self):
+        from app.core import errorlog, store
+
+        run = store.create_run("orchestration", "运行超时可观测性")
+        store.update_run(run["id"], status="timeout",
+                         error="C:\\Users\\secret\\work\nprovider key leaked")
+
+        rows = errorlog.iter_records(0)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["reason"], "TIMEOUT")
+        self.assertEqual(rows[0]["detail"], "调用超时")
+        self.assertNotIn("secret", json.dumps(rows[0], ensure_ascii=False))
+
+    def test_startup_recovery_of_queued_run_is_logged(self):
+        from app.core import errorlog, store
+
+        run = store.create_run("orchestration", "启动恢复排队残留")
+        store._RUNS.clear()
+        store.load_all()
+
+        restored = store.get_run(run["id"])
+        self.assertEqual(restored["status"], "failed")
+        rows = errorlog.iter_records(0)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["reason"], "RUN_FAILED")
+        self.assertEqual(rows[0]["run_id"], run["id"])
+
+
 class TestSettingsToggle(BaseTest):
     def runTest(self):
         from app.core import settings

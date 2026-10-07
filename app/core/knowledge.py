@@ -304,7 +304,12 @@ def block_for(task):
         entries.sort(key=lambda x: x.get("id") or "")
     entries = entries[:KNOWLEDGE_MAX_INJECT]
 
-    lines, used = [], []
+    # 整条装箱（对照 skills.py 包区纪律）：当前条完整放得下才收入，放不下
+    # 即停——拦腰截出的半条知识是模型噪音；被预算丢弃的条目不记 hits，
+    # 否则「从未被读到」的内容反而升权、继续挤占预算（反馈回路缺陷）。
+    header = "## 知识库（已确认的领域知识，供参考）\n\n"
+    lines, used, skipped = [], [], 0
+    total = len(header)
     for x in entries:
         stale = _is_stale(x.get("as_of"))
         mark = ("（事实截至 %s，可能过期，请自行核实时效）" % x.get("as_of") if stale
@@ -314,11 +319,17 @@ def block_for(task):
         conf = str(x.get("confidence") or "medium").strip().lower()
         if conf == "high":
             mark += "［有据］"
-        lines.append("- **%s**%s：%s" % (x["title"], mark, x["body"]))
+        line = "- **%s**%s：%s" % (x["title"], mark, x["body"])
+        separator = 1 if lines else 0
+        if total + separator + len(line) > KNOWLEDGE_BUDGET:
+            skipped = len(entries) - len(used)
+            break
+        lines.append(line)
         used.append(x["id"])
-    text = "## 知识库（已确认的领域知识，供参考）\n\n" + "\n".join(lines)
-    if len(text) > KNOWLEDGE_BUDGET:
-        text = text[:KNOWLEDGE_BUDGET] + "\n…（已截断）"
+        total += separator + len(line)
+    text = header + "\n".join(lines)
+    if skipped:
+        text += "\n…（%d 条超出预算未注入）" % skipped
     if used:
         _bump_hits(used)
     return text
