@@ -5807,3 +5807,27 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   差量教训一条自记：写 docs 应走 Read/Write/Edit 工具（本班日报追加误用
   Bash heredoc 一次，字节级验证 UTF-8 无损后保留并如实记，下不为例）。
   | 方法·自记 | 2026-10-07
+
+## 2026-10-07 收口班沉淀（本轮第 4/4 步·整体联调五道关执行+推送发版实录）
+
+> 通道恢复班（shell 全可用），分支 main（be07b74）实测。收口对象=16/19 时
+> 落地班四件；本班零产品代码，报告详录见 2026-10-07.md 收口班节。
+> | 收口 | 2026-10-07
+
+- **五道关全过实录**：⓪ main 实测；①py_compile 两测试件+node --check 两
+  UI 件过；②逐模块净进程 discover -p 形态 **267/267 有效全绿**（单进程
+  discover 32 位中途崩退在案风险再复现作废；唯一败例 test_http_500_guard
+  系孤儿 python 测试服务占其固定端口 18944，taskkill 后隔离复跑 4/4 OK，
+  与改动面零交集）；③逐 hunk 自审过、code-reviewer 代理 API 400 第 3 败
+  按两轮纪律停止（会话内自评审代位在档）；④外来标记零命中；⑤show --stat
+  核对。 | 验收·五道关 | 2026-10-07
+- **方法论（跑法伪影三连，沉淀防复发）**：tests/ 两种导入惯例并存
+  （`from base import` 裸导入 vs `from tests.base import` 包导入），单 cwd
+  的 `<module>`/`tests.<module>` 形态各必炸一半——唯 `discover -s tests -p
+  "<mod>.py"`（起始目录入 sys.path+cwd=root 双可达）全兼容；**逐模块全量
+  只能走 discover -p 形态**。后台/子进程任务须显式 chdir 仓库根（继承陈旧
+  cwd 的伪影轮全部废弃不计证据）。 | 方法·测试跑法 | 2026-10-07
+- **方法论（孤儿测试服务）**：固定端口测试模块（如 test_http_500_guard
+  PORT=18944）在 discover 崩退/并行会话后可能留孤儿服务占端口，后续全量
+  必假败——**全量跑前 netstat 查测试固定端口占用、python.exe+固定测试端口
+  双特征即可 taskkill**；本班实证清除后 4/4 OK。 | 方法·环境 | 2026-10-07
