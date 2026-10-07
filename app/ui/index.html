@@ -108,7 +108,7 @@
 <div id="app">
 
   <!-- Codex 式一级导航：保留原有侧栏功能，增加一条可快速切换主视图的窄轨道。 -->
-  <nav class="side-rail" aria-label="主导航">
+  <nav class="side-rail" aria-label="主导航" data-i18n-aria="主导航">
     <button type="button" class="rail-btn active" data-rail-page="tasks" title="任务" aria-label="任务" data-i18n-title="任务" data-i18n-aria="任务" onclick="exitSettings()">
       <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
     </button>
@@ -122,7 +122,7 @@
       <svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg>
     </button>
     <span class="rail-spacer"></span>
-    <button type="button" class="rail-btn" title="设置" aria-label="设置" onclick="document.getElementById('btn-settings').click()">
+    <button type="button" class="rail-btn" title="设置" aria-label="设置" data-i18n-title="设置" data-i18n-aria="设置" onclick="document.getElementById('btn-settings').click()">
       <svg class="ico" aria-hidden="true"><use href="#i-gear"></use></svg>
     </button>
   </nav>
@@ -132,7 +132,7 @@
     <!-- 常规视图：任务树 -->
     <div class="side-main">
       <div class="brand-row">
-        <button id="btn-brand" class="brand" type="button" title="切换工作区" aria-label="切换工作区" aria-haspopup="menu" aria-expanded="false" onclick="toggleBrandMenu()">
+        <button id="btn-brand" class="brand" type="button" title="切换工作区" aria-label="切换工作区" data-i18n-title="切换工作区" data-i18n-aria="切换工作区" aria-haspopup="menu" aria-expanded="false" onclick="toggleBrandMenu()">
           <span class="brand-name">CodeBee</span>
           <svg class="ico brand-caret" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
         </button>
@@ -140,13 +140,13 @@
                 data-i18n-title="完成/待裁决提示音" data-i18n-aria="完成/待裁决提示音">
           <svg class="ico" aria-hidden="true"><use href="#i-bell"></use></svg>
         </button>
-        <button class="brand-tool side-search" id="btn-cmdk" title="搜索" aria-label="搜索" data-i18n-title="搜索">
+        <button class="brand-tool side-search" id="btn-cmdk" title="搜索" aria-label="搜索" data-i18n-title="搜索" data-i18n-aria="搜索">
           <svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>
           <span class="ss-label" data-i18n="搜索">搜索</span>
           <span class="kbd" aria-hidden="true">Ctrl K</span>
         </button>
       </div>
-      <div id="brand-menu" class="brand-menu hidden" role="menu" aria-label="工作区">
+      <div id="brand-menu" class="brand-menu hidden" role="menu" aria-label="工作区" data-i18n-aria="工作区">
         <div class="brand-menu-item selected" role="menuitem">
           <span><b>CodeBee</b><small>多智能体编排台</small></span>
           <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
@@ -487,7 +487,7 @@
               </div>
               <div class="field"><label data-i18n="上下文">上下文</label><textarea id="f-context" rows="2" placeholder="背景信息、约束、相关文件（可空）" data-i18n-ph="背景信息、约束、相关文件（可空）"></textarea></div>
               <div class="grid-2">
-                <div class="field"><label>验收标准（每行一条）</label><textarea id="f-acceptance" rows="3" placeholder="例如：测试全部通过&#10;例如：产出文件存在"></textarea></div>
+                <div class="field"><label data-i18n="验收标准（每行一条）">验收标准（每行一条）</label><textarea id="f-acceptance" rows="3" placeholder="例如：测试全部通过&#10;例如：产出文件存在" data-i18n-ph="例如：测试全部通过&#10;例如：产出文件存在"></textarea></div>
                 <div class="field"><label class="checkline"><input id="f-approval-required" type="checkbox"> 完成前需要人工审批</label><p class="hint">启用后，Git 合并和发布会等待审批记录。</p></div>
               </div>
 
@@ -1363,25 +1363,25 @@
       <div id="sub-browser" class="subpage hidden">
         <div class="browser-shell">
           <div class="browser-head">
-            <div class="browser-tabs" id="browser-tabs" role="tablist" aria-label="浏览器标签页">
+            <div class="browser-tabs" id="browser-tabs" role="tablist" aria-label="浏览器标签页" data-i18n-aria="浏览器标签页">
               <button class="browser-tab active" type="button" data-browser-tab="home" role="tab" aria-selected="true">
                 <svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span>CodeBee 浏览器</span>
               </button>
-              <button class="browser-tab-add" id="browser-new-tab" type="button" title="新建标签页" aria-label="新建标签页"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg></button>
+              <button class="browser-tab-add" id="browser-new-tab" type="button" title="新建标签页" aria-label="新建标签页" data-i18n-title="新建标签页" data-i18n-aria="新建标签页"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg></button>
             </div>
             <div class="browser-status"><span class="browser-status-dot"></span><span data-i18n="本地浏览器工作区">本地浏览器工作区</span></div>
           </div>
           <div class="browser-toolbar">
-            <button class="icon-btn" id="browser-back" type="button" title="后退" aria-label="后退"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg></button>
-            <button class="icon-btn" id="browser-forward" type="button" title="前进" aria-label="前进"><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
-            <button class="icon-btn" id="browser-reload" type="button" title="刷新" aria-label="刷新"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg></button>
-            <button class="icon-btn" id="browser-home" type="button" title="主页" aria-label="主页"><svg class="ico" aria-hidden="true"><use href="#i-home"></use></svg></button>
+            <button class="icon-btn" id="browser-back" type="button" title="后退" aria-label="后退" data-i18n-title="后退" data-i18n-aria="后退"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg></button>
+            <button class="icon-btn" id="browser-forward" type="button" title="前进" aria-label="前进" data-i18n-title="前进" data-i18n-aria="前进"><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+            <button class="icon-btn" id="browser-reload" type="button" title="刷新" aria-label="刷新" data-i18n-title="刷新" data-i18n-aria="刷新"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg></button>
+            <button class="icon-btn" id="browser-home" type="button" title="主页" aria-label="主页" data-i18n-title="主页" data-i18n-aria="主页"><svg class="ico" aria-hidden="true"><use href="#i-home"></use></svg></button>
             <form id="browser-nav-form" class="browser-address-wrap">
               <svg class="ico browser-lock" aria-hidden="true"><use href="#i-lock"></use></svg>
-              <input id="browser-address" type="text" autocomplete="off" spellcheck="false" placeholder="输入网址或搜索内容" data-i18n-ph="输入网址或搜索内容" aria-label="网址">
-              <button class="browser-go" type="submit" title="打开" aria-label="打开"><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+              <input id="browser-address" type="text" autocomplete="off" spellcheck="false" placeholder="输入网址或搜索内容" data-i18n-ph="输入网址或搜索内容" aria-label="网址" data-i18n-aria="网址">
+              <button class="browser-go" type="submit" title="打开" aria-label="打开" data-i18n-title="打开" data-i18n-aria="打开"><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
             </form>
-            <button class="ghost small browser-external" id="browser-open-external" type="button" title="在系统浏览器打开"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg><span data-i18n="系统浏览器">系统浏览器</span></button>
+            <button class="ghost small browser-external" id="browser-open-external" type="button" title="在系统浏览器打开" data-i18n-title="在系统浏览器打开"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg><span data-i18n="系统浏览器">系统浏览器</span></button>
           </div>
           <div class="browser-shortcuts" id="browser-shortcuts">
             <button type="button" class="browser-shortcut" data-browser-url="https://www.google.com"><span class="shortcut-mark google">G</span><span>Google</span></button>
@@ -1466,7 +1466,7 @@
                 <p id="browser-frame-error-text" data-i18n="Google 等网站会拦截 iframe 或自动化挑战；页面本身未必不可访问。">Google 等网站会拦截 iframe 或自动化挑战；页面本身未必不可访问。</p>
                 <button class="primary small" id="browser-frame-error-open" type="button"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg><span data-i18n="用系统浏览器继续">用系统浏览器继续</span></button>
               </div>
-              <iframe id="browser-frame" class="browser-frame hidden" title="CodeBee 浏览器" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>
+              <iframe id="browser-frame" class="browser-frame hidden" title="CodeBee 浏览器" data-i18n-title="CodeBee 浏览器" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>
             </div>
           </div>
           <div class="browser-foot"><span id="browser-hint" data-i18n="外部网站可能禁止嵌入；可用右上角系统浏览器打开。">外部网站可能禁止嵌入；可用右上角系统浏览器打开。</span><span class="spacer"></span><span id="browser-history-count"></span></div>

@@ -11,7 +11,8 @@ data-i18n 键（test_i18n_key_coverage.py）与 BUILTIN_FLOWS 三字段
 
 边界：t(key) 未命中静默返回键本身（zh 模式同值、不报错），缺词条只能靠
 文件级对账兜底；字面量含拼接片段（"P95 "/"（行 " 等），词条照实收（与既有
-"共 "/" · 吞吐 " 同例）；正则只认双引号实参（与文件实际写法一致），与
+"共 "/" · 吞吐 " 同例）；正则认双引号与单引号两种实参（2026-10-07 落地班补
+盲区：app.js 现存 2 处 t('…') 单引号调用，旧正则漏对账），与
 test_i18n_key_coverage 的转义形态兼容口径相同。
 
 跑法：python -m unittest discover -s tests -p "test_borrow_iteration.py" -v
@@ -31,6 +32,8 @@ _I18N_JS = os.path.join(_ROOT, "app", "ui", "i18n.js")
 
 # 与探针同式：t("…") 双引号字面量实参（排除 obj.t( 成员调用误配）
 _T_CALL = re.compile(r'(?<![\w$.])t\(\s*"((?:[^"\\]|\\.)+)"\s*[,)]')
+# 单引号形态（2026-10-07 落地班补盲区：app.js 现存 t('…') 写法，旧正则漏对账）
+_T_CALL_SQ = re.compile(r"(?<![\w$.])t\(\s*'((?:[^'\\\n]|\\.)+)'\s*[,)]")
 
 # 本轮补齐的 54 键修复清单（点名锁定，防部分回退；与 i18n.js 尾追批一一对应）
 _REPAIRED_KEYS = (
@@ -112,7 +115,8 @@ class AppJsTLiteralI18nTests(BaseTest):
     def test_all_app_js_t_literals_have_entry(self):
         """全量对账：每个 JS 侧字面量键至少一条词条（转义形态兼容）。"""
         i18n = _read(_I18N_JS)
-        keys = sorted(set(_T_CALL.findall(_read(_APP_JS))))
+        keys = sorted(set(_T_CALL.findall(_read(_APP_JS)))
+                      | set(_T_CALL_SQ.findall(_read(_APP_JS))))
         # 守卫自身：解析面骤降说明正则/文件形态漂移，先红报形态而非漏报
         self.assertGreater(len(keys), 1000,
                            "t() 字面量解析数异常（%d），正则或文件形态漂移" % len(keys))

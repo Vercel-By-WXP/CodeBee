@@ -3049,6 +3049,21 @@
     "P95 ": "P95 ",
     "复制失败，请手动长按/右键复制": "Copy failed — long-press / right-click to copy manually",
     "✓ 远程端点连通，可上传": "✓ Remote endpoint reachable, ready to upload",
+    // 2026-10-07 落地班：属性级 i18n 缺口补齐——浏览器工具栏/侧栏导航/验收标准字段
+    // 的 title·aria-label·placeholder 挂了中文却缺翻译钩子（英文界面悬停/读屏中文裸奔）
+    "主导航": "Main navigation",
+    "切换工作区": "Switch workspace",
+    "工作区": "Workspace",
+    "验收标准（每行一条）": "Acceptance criteria (one per line)",
+    "例如：测试全部通过\n例如：产出文件存在": "e.g. all tests pass\ne.g. output file exists",
+    "浏览器标签页": "Browser tabs",
+    "新建标签页": "New tab",
+    "后退": "Back",
+    "前进": "Forward",
+    "主页": "Home",
+    "网址": "Address",
+    "在系统浏览器打开": "Open in system browser",
+    "CodeBee 浏览器": "CodeBee Browser",
   };
 
   // ---------- 工具 ----------
