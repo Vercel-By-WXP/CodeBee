@@ -853,12 +853,19 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
         # network-disabled task bypass that boundary through MCP.
         if sandbox.get("network") is False:
             return "（沙箱拒绝：MCP 服务尚未接入网络隔离，工具未执行）"
+        remaining = None
+        if deadline is not None:
+            remaining = float(deadline) - time.monotonic()
+            if remaining <= 0:
+                return "（任务总时限已到，MCP 工具未执行）"
         # MCP 工具：透传给配置的服务器（stdio JSON-RPC）；超时给足但封顶
         try:
             from . import mcp_client
+            timeout_s = min(float(sandbox.get("timeout_s") or CMD_MAX_TIMEOUT),
+                            remaining if remaining is not None else CMD_MAX_TIMEOUT)
             r = mcp_client.dispatch_full_name(
                 name, args or {}, sandbox=sandbox, workdir=workdir,
-                disabled_tools=denied)
+                disabled_tools=denied, timeout_s=timeout_s)
             return r.get("text") or ("（MCP 工具失败: %s）" % r.get("error") if not r.get("ok") else "")
         except Exception as e:
             return "MCP 工具执行失败: %s" % e

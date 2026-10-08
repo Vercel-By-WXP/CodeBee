@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -299,6 +300,76 @@ class CompetitiveFeatureTests(unittest.TestCase):
                     wd, "mcp__demo__send", {"message": "hello"}, sandbox=sandbox)
         self.assertIn("网络隔离", result)
         dispatch.assert_not_called()
+
+    def test_mcp_call_timeout_is_bounded_by_task_deadline_and_policy(self):
+        from core import builtin_agent, mcp_client
+        with tempfile.TemporaryDirectory() as wd:
+            sandbox = policy.normalize_sandbox({"timeout_s": 20}, wd)
+            with patch.object(mcp_client, "dispatch_full_name",
+                              return_value={"ok": True, "text": "ok"}) as dispatch:
+                builtin_agent._exec_tool(
+                    wd, "mcp__demo__read", {}, sandbox=sandbox,
+                    deadline=time.monotonic() + 7)
+            self.assertAlmostEqual(dispatch.call_args.kwargs["timeout_s"], 7, delta=0.5)
+
+            with patch.object(mcp_client, "dispatch_full_name") as dispatch:
+                result = builtin_agent._exec_tool(
+                    wd, "mcp__demo__read", {}, sandbox=sandbox,
+                    deadline=time.monotonic() - 1)
+            self.assertIn("时限", result)
+            dispatch.assert_not_called()
+
+    def test_mcp_client_does_not_expand_short_deadline_budget(self):
+        from core import mcp_client
+
+        class Session:
+            created = []
+
+            def __init__(self, server, *, sandbox, workdir, timeout_s):
+                self.timeout_s = timeout_s
+                self.created.append(self)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def _request(self, method, params, timeout):
+                if method == "tools/call":
+                    self.request_timeout = timeout
+                return {"content": [{"type": "text", "text": "ok"}]}
+
+        with patch.object(mcp_client, "_Session", Session):
+            result = mcp_client.call_tool(
+                {"name": "demo"}, "read", {}, timeout_s=0.2,
+                sandbox={"allowed_roots": [str(self.root)]}, workdir=str(self.root))
+        self.assertTrue(result["ok"])
+        self.assertLessEqual(Session.created[0].timeout_s, 0.2)
+        self.assertLessEqual(Session.created[0].request_timeout, 0.2)
+
+    def test_mcp_bubblewrap_launch_enforces_network_and_minimal_environment(self):
+        from core import mcp_client
+        with tempfile.TemporaryDirectory() as wd:
+            sandbox = policy.normalize_sandbox({"network": False,
+                                                "env_allowlist": ["MCP_TOKEN"]}, wd)
+            root = Path(wd)
+            roots = [root]
+            cwd = root
+            with patch.object(mcp_client.os, "path") as path:
+                path.exists.side_effect = lambda p: p in ("/usr", "/bin")
+                argv = mcp_client._bubblewrap_argv(
+                    {"command": "/usr/bin/mcp-server", "args": []},
+                    sandbox, roots, cwd)
+            with patch.dict(os.environ, {"MCP_TOKEN": "allowed", "HOST_SECRET": "denied"}):
+                env = mcp_client._sandbox_env({"env": {}}, sandbox)
+        self.assertIn("--unshare-net", argv)
+        self.assertIn("--bind", argv)
+        self.assertIn(wd, argv)
+        self.assertEqual(str(cwd), str(Path(wd)))
+        self.assertEqual(env.get("MCP_TOKEN"), "allowed")
+        self.assertNotIn("HOST_SECRET", env)
+        self.assertNotIn("OTHER", env)
 
     def test_external_cli_sandbox_policy_fails_closed_when_backend_cannot_enforce(self):
         from core import pipeline

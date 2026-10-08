@@ -107,13 +107,31 @@ def _sandbox_launch(server, sandbox, workdir):
     if not roots:
         raise RuntimeError("MCP 沙箱没有允许目录，拒绝启动")
     cwd = root if policy.path_allowed(root, normalized) else roots[0]
+    argv = _bubblewrap_argv(server, normalized, roots, cwd)
+    return argv, _sandbox_env(server, normalized), str(cwd)
+
+
+def _sandbox_env(server, sandbox):
+    """Pass only the minimal runtime environment and explicitly allowed values."""
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+           "HOME": "/tmp", "TMPDIR": "/tmp"}
+    for name in sandbox.get("env_allowlist") or []:
+        if name in os.environ:
+            env[name] = os.environ[name]
+        elif name in (server.get("env") or {}):
+            env[name] = str(server["env"][name])
+    return env
+
+
+def _bubblewrap_argv(server, sandbox, roots, cwd):
+    """Build bwrap argv from already validated paths (also host-testable)."""
     argv = ["bwrap", "--die-with-parent", "--new-session", "--tmpfs", "/"]
     for system_path in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"):
         if os.path.exists(system_path):
             argv.extend(["--dir", system_path, "--ro-bind", system_path, system_path])
     argv.extend(["--dir", "/proc", "--dir", "/dev", "--proc", "/proc",
                  "--dev", "/dev", "--tmpfs", "/tmp"])
-    if normalized.get("network") is False:
+    if sandbox.get("network") is False:
         argv.append("--unshare-net")
     for allowed_root in roots:
         for parent in reversed(allowed_root.parents):
@@ -123,23 +141,18 @@ def _sandbox_launch(server, sandbox, workdir):
                      str(allowed_root), str(allowed_root)])
     argv.extend(["--chdir", str(cwd), "--", server["command"]]
                 + list(server.get("args") or []))
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-           "HOME": "/tmp", "TMPDIR": "/tmp"}
-    for name in normalized.get("env_allowlist") or []:
-        if name in os.environ:
-            env[name] = os.environ[name]
-        elif name in (server.get("env") or {}):
-            env[name] = str(server["env"][name])
-    return argv, env, str(cwd)
+    return argv
 
 
 class _Session:
     """一次性的 MCP 服务器会话：spawn → initialize → （list/call）→ 杀树。"""
 
-    def __init__(self, server, sandbox=None, workdir=None):
+    def __init__(self, server, sandbox=None, workdir=None, timeout_s=None):
         self.server = server
         self.sandbox = sandbox
         self.workdir = workdir
+        self.timeout_s = timeout_s
+        self.deadline = None
         self.proc = None
         self.lines = None       # reader 线程产出的行队列
         self.err = None
@@ -161,8 +174,12 @@ class _Session:
             self.lines.put(None)      # EOF 哨兵
 
     def __enter__(self):
+        if self.timeout_s is not None:
+            self.deadline = time.monotonic() + max(0.0, float(self.timeout_s))
         try:
             argv, env, cwd = _sandbox_launch(self.server, self.sandbox, self.workdir)
+            if self.deadline is not None and time.monotonic() >= self.deadline:
+                raise RuntimeError("MCP 任务时限已到，拒绝启动")
             self.proc = subprocess.Popen(
                 argv,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -175,9 +192,14 @@ class _Session:
         threading.Thread(target=self._pump_out, daemon=True).start()
         threading.Thread(target=self._pump_err, daemon=True).start()
         try:
+            init_timeout = _INIT_TIMEOUT
+            if self.deadline is not None:
+                init_timeout = min(init_timeout, self.deadline - time.monotonic())
+                if init_timeout <= 0:
+                    raise RuntimeError("MCP 任务时限已到，初始化未执行")
             self._request("initialize", {
                 "protocolVersion": "2024-11-05", "capabilities": {},
-                "clientInfo": _CLIENT_INFO}, timeout=_INIT_TIMEOUT)
+                "clientInfo": _CLIENT_INFO}, timeout=init_timeout)
             self._notify("notifications/initialized")
         except Exception:
             # Context manager __exit__ is not called when __enter__ raises.
@@ -210,12 +232,17 @@ class _Session:
 
     def _request(self, method, params, timeout):
         """单请求单响应；忽略通知与未知 id 的服务端请求。"""
+        duration = max(0.0, float(timeout))
+        if self.deadline is not None:
+            duration = min(duration, self.deadline - time.monotonic())
+        if duration <= 0:
+            raise RuntimeError("%s 超时（任务时限已到）" % method)
         rid = id({})
         self._send({"jsonrpc": "2.0", "id": 1 if method == "initialize" else rid,
                     "method": method, "params": params or {}})
-        deadline = time.time() + max(1.0, timeout)
+        deadline = time.monotonic() + duration
         while True:
-            remain = deadline - time.time()
+            remain = deadline - time.monotonic()
             if remain <= 0:
                 raise RuntimeError("%s 超时（%.0fs）" % (method, timeout))
             try:
@@ -263,8 +290,9 @@ def call_tool(server, tool_name, arguments, timeout_s=_CALL_TIMEOUT,
               *, sandbox=None, workdir=None):
     """调用一个工具。返回 {"ok", "text", "error", "is_error"}。"""
     try:
-        timeout = min(_CALL_TIMEOUT_MAX, max(5.0, float(timeout_s or _CALL_TIMEOUT)))
-        with _Session(server, sandbox=sandbox, workdir=workdir) as sess:
+        timeout = min(_CALL_TIMEOUT_MAX, max(0.001, float(timeout_s or _CALL_TIMEOUT)))
+        with _Session(server, sandbox=sandbox, workdir=workdir,
+                      timeout_s=timeout) as sess:
             res = sess._request("tools/call",
                                 {"name": tool_name,
                                  "arguments": arguments if isinstance(arguments, dict) else {}},
