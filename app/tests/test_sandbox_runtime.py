@@ -14,6 +14,20 @@ _BWRAP_READY = sys.platform.startswith("linux") and bool(shutil.which("bwrap"))
 _REQUIRE_BWRAP = os.environ.get("CODEBEE_REQUIRE_BWRAP") == "1"
 
 
+def _bwrap_probe(extra_args=()):
+    argv = [shutil.which("bwrap"), "--die-with-parent", "--new-session",
+            "--tmpfs", "/"]
+    for system_path in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"):
+        if Path(system_path).exists():
+            argv.extend(["--dir", system_path, "--ro-bind", system_path, system_path])
+    argv.extend(["--dir", "/proc", "--dir", "/dev", "--proc", "/proc",
+                 "--dev", "/dev"])
+    argv.extend(extra_args)
+    argv.extend(["--", "/bin/true"])
+    return subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          timeout=5, check=False)
+
+
 class BubblewrapRuntimeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -22,17 +36,7 @@ class BubblewrapRuntimeTests(unittest.TestCase):
             if _REQUIRE_BWRAP:
                 raise RuntimeError(message)
             raise unittest.SkipTest(message)
-        argv = [shutil.which("bwrap"), "--die-with-parent", "--new-session",
-                "--tmpfs", "/"]
-        for system_path in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"):
-            if Path(system_path).exists():
-                argv.extend(["--dir", system_path, "--ro-bind",
-                             system_path, system_path])
-        argv.extend(["--dir", "/proc", "--dir", "/dev", "--proc", "/proc",
-                     "--dev", "/dev", "--", "/bin/true"])
-        probe = subprocess.run(
-            argv,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
+        probe = _bwrap_probe()
         if probe.returncode:
             detail = probe.stderr.decode("utf-8", errors="replace").strip()
             message = "bubblewrap user namespace unavailable: %s" % detail[:200]
@@ -84,10 +88,7 @@ class BubblewrapRuntimeTests(unittest.TestCase):
         self.assertEqual(self.outside.read_text(encoding="utf-8"), "host-only-secret")
 
     def test_network_isolation_when_kernel_allows_network_namespaces(self):
-        probe = subprocess.run(
-            [shutil.which("bwrap"), "--die-with-parent", "--new-session",
-             "--unshare-net", "--", "/bin/true"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
+        probe = _bwrap_probe(["--unshare-net"])
         if probe.returncode:
             detail = probe.stderr.decode("utf-8", errors="replace").strip()
             if _REQUIRE_BWRAP:
