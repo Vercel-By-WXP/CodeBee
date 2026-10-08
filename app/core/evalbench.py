@@ -27,6 +27,7 @@ from . import paths
 
 _LOCK = threading.RLock()
 _RUN = None          # 运行中态：{"total","done","current","cancel","started_ts"}；None = 空闲
+_RUN_THREAD = None   # 跑 _run_bench 的线程句柄：state() 据此自愈「线程已死但 _RUN 没清」的卡死态
 
 # ---------------------------------------------------------------- 内置样题集
 
@@ -418,22 +419,28 @@ def _record_usage(run_id, role, sample_id, prov_id, model, ok, dur_ms, usage_d, 
         pass
 
 
+def _cancelled():
+    with _LOCK:
+        return bool(_RUN and _RUN.get("cancel"))
+
+
 def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
     """同步跑完一轮评测（start 的线程体；单测直接调它）。
 
     逐条产出、逐条落盘：候选失败 / 裁判失败 / 解析失败都如实成行，
     绝不让一次坏调用毁掉整轮。notify_done=True 收尾推送摘要（定时回归：
     任务跑完了要主动找到人）。"""
-    global _RUN
+    global _RUN, _RUN_THREAD
     sample_by_id = {s["id"]: s for s in _all_samples()}
+    run_rows = []
     try:
         for cand in candidates:
             prov_id, model = cand.get("provider_id") or "", cand.get("model") or ""
             if not prov_id or not model:
                 continue
             for sid in sample_ids:
-                if _RUN and _RUN.get("cancel"):
-                    break
+                if _cancelled():
+                    return
                 sample = sample_by_id[sid]
                 try:
                     with _LOCK:
@@ -443,17 +450,21 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
                     _record_usage(run_id, sid, sid, prov_id, model, gen.get("ok"),
                                   gen.get("latency_ms"), gen.get("usage"), gen.get("error") or "")
                     if not gen.get("ok"):
-                        _persist_result({"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
-                                         "sample_id": sid, "provider_id": prov_id, "model": model,
-                                         "ok": False, "scored": False, "verify_ok": None,
-                                         "error": str(gen.get("error") or "生成失败")[:200],
-                                         "overall": None, "scores": {}, "comment": "",
-                                         "cost_usd": 0.0, "duration_s": round(gen.get("latency_ms", 0) / 1000.0, 1),
-                                         "same_family": False})
+                        row = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                               "sample_id": sid, "provider_id": prov_id, "model": model,
+                               "ok": False, "scored": False, "verify_ok": None,
+                               "error": str(gen.get("error") or "生成失败")[:200],
+                               "overall": None, "scores": {}, "comment": "",
+                               "cost_usd": 0.0, "duration_s": round(gen.get("latency_ms", 0) / 1000.0, 1),
+                               "same_family": False}
+                        _persist_result(row)
+                        run_rows.append(row)
                         with _LOCK:
                             if _RUN:
                                 _RUN["done"] += 1
                         continue
+                    if _cancelled():
+                        return              # 生成已花掉但裁判不必再等：立即停
                     answer = gen.get("text") or ""
                     verify_ok, verify_detail = (None, "")
                     if sample.get("redteam"):
@@ -495,29 +506,45 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
                            "duration_s": round((gen.get("latency_ms", 0) + jp.get("latency_ms", 0)) / 1000.0, 1),
                            "same_family": prov_id == judge_cfg.get("provider_id")}
                     _persist_result(row)
+                    run_rows.append(row)
                 except Exception as e:
                     # 单条炸掉（如提示词拼装异常）如实落一行失败记录，别毁掉整轮
-                    _persist_result({"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
-                                     "sample_id": sid, "provider_id": prov_id, "model": model,
-                                     "ok": False, "scored": False, "verify_ok": None,
-                                     "error": ("评测步骤异常：%s" % (str(e) or type(e).__name__))[:200],
-                                     "overall": None, "scores": {}, "comment": "",
-                                     "cost_usd": 0.0, "duration_s": 0.0,
-                                     "same_family": False})
+                    row = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                           "sample_id": sid, "provider_id": prov_id, "model": model,
+                           "ok": False, "scored": False, "verify_ok": None,
+                           "error": ("评测步骤异常：%s" % (str(e) or type(e).__name__))[:200],
+                           "overall": None, "scores": {}, "comment": "",
+                           "cost_usd": 0.0, "duration_s": 0.0,
+                           "same_family": False}
+                    _persist_result(row)
+                    run_rows.append(row)
                 with _LOCK:
                     if _RUN:
                         _RUN["done"] += 1
     finally:
         with _LOCK:
             cancelled = bool(_RUN and _RUN.get("cancel"))
-        if notify_done and not cancelled:
-            _notify_auto_done(len(candidates))
-        with _LOCK:
-            if _RUN and _RUN.get("cancel"):
+            # run_id 令牌：强制脱离后用户已开新一轮时，旧线程的尾巴绝不误清新一轮；
+            # 无 run_id 的裸调用（单测直跑）视作持有槽位，保持可清。
+            mine = bool(_RUN and (_RUN.get("run_id") or "") in ("", run_id))
+            if mine:
+                _RUN = None
+                _RUN_THREAD = None
+        # 收尾落库/推送放在运行态清理之后：它们自身出错也不能把「评测中」卡住
+        if mine and run_rows and not cancelled:
+            try:
+                _apply_feedback(run_rows)     # 评测反哺：每轮跑完刷新 per-model 分数
+            except Exception:
+                pass
+        try:
+            if cancelled:
                 _append_run_log(run_id, judge_cfg, cancelled=True)
             else:
                 _append_run_log(run_id, judge_cfg, auto=notify_done)
-            _RUN = None
+        except Exception:
+            pass
+        if notify_done and not cancelled:
+            _notify_auto_done(len(candidates))
 
 
 def _notify_auto_done(candidates_n):
@@ -540,6 +567,13 @@ def _notify_auto_done(candidates_n):
             _update(_mut)
             if prev and prev.split("（")[0] != cur_top1.split("（")[0]:
                 lines.append("⚠ 榜首易主：上次 %s → 本次 %s" % (prev, cur_top1))
+        fb = feedback_status()
+        if fb.get("mode") == "auto":
+            below = [(c.get("model") or k) for k, c in (fb.get("scores") or {}).items()
+                     if isinstance(c, dict) and c.get("below_floor")]
+            if below:
+                lines.append("▾ 反哺 auto 生效：低于及格线 %.1f 已降权 → %s"
+                             % (fb.get("floor") or 6.0, "、".join(below)))
         notify.push_text("\n".join(lines))
     except Exception:
         pass
@@ -582,6 +616,75 @@ def _append_run_log(run_id, judge_cfg, cancelled=False, auto=False):
                      "cancelled": bool(cancelled), "auto": bool(auto)})
         data["runs"] = runs[-20:]
     _update(_mut)
+
+
+# ---------------------------------------------------------------- 评测反哺
+# 「评测了就该去影响」：每轮跑完把 per-model 均分落进 benchstore 的 feedback
+# 块，router._bench_bonus（auto 档）据此给低于及格线的候选降权。写端永远写
+# （关着也有数可看、可回溯），读端按 settings.bench_feedback 三档取用：
+#   off    = 不读不用（纯记录）
+#   advise = 只在界面标注分数与低分警示，不改路由
+#   auto   = 低于及格线的模型在路由打分里被降权（软分，不剔除不封禁）
+
+def _apply_feedback(rows):
+    """跑完一轮把本轮各 (供应商, 模型) 的聚合写进 feedback（整块替换：
+    分数永远反映最近一轮，不做跨轮加权——评测口径变了旧分留着反而误导）。"""
+    agg = {}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        key = "%s|%s" % (r.get("provider_id") or "", r.get("model") or "")
+        cell = agg.setdefault(key, {"provider_id": r.get("provider_id") or "",
+                                    "model": r.get("model") or "",
+                                    "scored": [], "failed": 0})
+        if r.get("overall") is not None:
+            cell["scored"].append(float(r["overall"]))
+        elif not r.get("ok") or not r.get("scored"):
+            cell["failed"] += 1
+    if not agg:
+        return
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    out = {}
+    for key, cell in agg.items():
+        vals = cell["scored"]
+        out[key] = {"provider_id": cell["provider_id"], "model": cell["model"],
+                    "overall": round(sum(vals) / len(vals), 2) if vals else None,
+                    "n": len(vals), "failed": cell["failed"], "ts": now}
+
+    def _mut(data):
+        data["feedback"] = {"scores": out, "updated_ts": now}
+    _update(_mut)
+
+
+def feedback_scores():
+    """router / UI 共用的只读视图：{"prov|model": {overall, n, failed, ts}}。"""
+    try:
+        fb = _read().get("feedback")
+        scores = fb.get("scores") if isinstance(fb, dict) else None
+        return scores if isinstance(scores, dict) else {}
+    except Exception:
+        return {}
+
+
+def feedback_status():
+    """评测页展示用：当前反哺档位 + 及格线 + 最近一轮分数（含是否低于线）。"""
+    try:
+        from . import settings as settings_mod
+        s = settings_mod.load()
+    except Exception:
+        s = {}
+    mode = s.get("bench_feedback")
+    if mode not in ("off", "advise", "auto"):
+        mode = "advise"
+    try:
+        floor = round(max(3.0, min(9.0, float(s.get("bench_floor") or 6.0))), 1)
+    except (TypeError, ValueError):
+        floor = 6.0
+    scores = feedback_scores()
+    for cell in scores.values():
+        if isinstance(cell, dict) and cell.get("overall") is not None:
+            cell["below_floor"] = float(cell["overall"]) < floor
+    return {"mode": mode, "floor": floor, "scores": scores}
 
 
 def _auto_candidates():
@@ -739,32 +842,58 @@ def start(candidates, sample_ids=None, notify_done=False):
         return None, "评审需要编排者供应商：请先在「编排设置」配置并启用"
     judge_cfg = {"provider_id": orch.get("provider_id") or "",
                  "model": orch.get("model") or orch.get("provider_model") or ""}
+    global _RUN, _RUN_THREAD
+    run_id = "bench-" + time.strftime("%Y%m%d-%H%M%S")
+    total = len(cands) * len(ids)
+    thr = threading.Thread(target=_run_bench, daemon=True, name=run_id,
+                           args=(run_id, cands, ids, judge_cfg, notify_done))
     with _LOCK:
         if _RUN:
             return None, "已有一轮评测在跑（%d/%d）" % (_RUN.get("done", 0), _RUN.get("total", 0))
-        _RUN = {"total": len(cands) * len(ids), "done": 0, "current": "",
-                "cancel": False, "started_ts": time.time()}
-    run_id = "bench-" + time.strftime("%Y%m%d-%H%M%S")
-    total = len(cands) * len(ids)
-    threading.Thread(target=_run_bench, daemon=True, name=run_id,
-                     args=(run_id, cands, ids, judge_cfg, notify_done)).start()
+        _RUN = {"total": total, "done": 0, "current": "",
+                "cancel": False, "started_ts": time.time(),
+                "run_id": run_id, "judge_cfg": dict(judge_cfg)}
+        _RUN_THREAD = thr          # 句柄与运行态同一临界区落位：state() 自愈不会误伤新起线程
+    thr.start()
     return {"run_id": run_id, "total": total}, None
 
 
-def cancel():
-    """请求停止在跑的一轮（当前这一步做完即停，已产出的结果保留）。"""
+def cancel(force=False):
+    """两段式停止。第一击=优雅停：打上标记，当前样题（含生成调用）做完即停——
+    生成调用单次最坏要几分钟才回到检查点，所以 UI 同步显示「停止中」；
+    第二击=强制脱离：立即清运行态让界面回到空闲（后台线程跑完当前调用后
+    自行退出，结果行照常落盘，run_id 令牌保证它不误清新一轮）。"""
+    global _RUN, _RUN_THREAD
     with _LOCK:
-        if _RUN:
+        if not _RUN:
+            return {"ok": False}
+        if not _RUN.get("cancel"):
             _RUN["cancel"] = True
-            return True
-    return False
+            return {"ok": True, "force": False}
+        run_id = str(_RUN.get("run_id") or "")
+        judge_cfg = dict(_RUN.get("judge_cfg") or {})
+        _RUN = None
+        _RUN_THREAD = None
+    if run_id:
+        try:
+            _append_run_log(run_id, judge_cfg, cancelled=True)
+        except Exception:
+            pass
+    return {"ok": True, "force": True}
 
 
 def state():
-    """给 UI 的全量视图：运行态 + 裁判 + 榜单 + 样题清单。"""
+    """给 UI 的全量视图：运行态 + 裁判 + 榜单 + 样题清单 + 反哺状态。"""
+    global _RUN, _RUN_THREAD
     from . import modelhub
     orch = modelhub.orchestrator_view()
     with _LOCK:
+        thr = _RUN_THREAD
+        # 自愈：线程已死但 _RUN 没清干净（旧版本崩溃残留）→ 就地复位，
+        # 否则 UI 永远「评测中」且停止按钮再怎么点也没人读标记。
+        if _RUN and (thr is None or not thr.is_alive()):
+            _RUN = None
+            _RUN_THREAD = None
         run = dict(_RUN) if _RUN else None
     prov_names = {}
     try:
@@ -783,6 +912,7 @@ def state():
             "leaderboard": board,
             "matrix": _matrix(results),
             "trend": score_trend(),
+            "feedback": feedback_status(),
             "last_runs": (data.get("runs") or [])[-5:]}
 
 
