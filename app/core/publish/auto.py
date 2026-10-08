@@ -17,6 +17,7 @@ auto 管「一批章节」——枚举任务成品里的章节文件，减去台
 """
 from __future__ import annotations
 
+import os
 import threading
 import time
 
@@ -29,6 +30,13 @@ _STREAK_DEFAULT = 3
 
 _running = {}                # task_id → {platform, at, done, total, status, error}
 _LOCK = threading.Lock()
+
+
+def _isdir(p):
+    try:
+        return os.path.isdir(p)
+    except (OSError, ValueError):
+        return False
 
 
 def _book_ready(info):
@@ -83,26 +91,58 @@ def guards(task_id, platform):
 # 个章号，其中 34 个来自 章纲/已成稿/作废稿 目录）。
 _DOC_DIR_MARKS = ("章纲/", "大纲/", "设定/", "参考资料/", "已成稿/",
                   "作废稿", "docs/", "outline/")
+_WALK_PRUNE = {"node_modules", "target", "build", "dist", "__pycache__"}
+
+
+def _workdir_chapter_files(wd):
+    """任务工作目录的**全量**章节稿（不看时间窗，2026-10-08 实案）。
+
+    run 成品口径的时间窗起点是「各自任务的首跑」——续写链上每个批次任务
+    只能看到自己出生以后新写的章节：今天的批次任务待发只剩 73-78，昨天
+    的 65-78，根任务才有全量 31-78。发布待发的正确口径是「工作目录里
+    还没发过的章节稿」，与哪个任务/何时跑无关，所以这里直接全树扫。"""
+    import os as _os
+    out = []
+    for dirpath, dirnames, filenames in _os.walk(wd):
+        dirnames[:] = [d for d in dirnames
+                       if not d.startswith(".") and d not in _WALK_PRUNE]
+        for name in filenames:
+            if not name.lower().endswith((".md", ".txt")):
+                continue
+            fp = _os.path.join(dirpath, name)
+            rel = _os.path.relpath(fp, wd).replace("\\", "/")
+            if rel.startswith(_DOC_DIR_MARKS):
+                continue
+            try:
+                out.append({"name": rel, "size": _os.path.getsize(fp)})
+            except OSError:
+                pass
+    return out
 
 
 def pending(task_id, platform):
-    """待发章节清单：任务成品文件中的章节文件 − 台账已发章号，按章号升序。
+    """待发章节清单：任务工作目录里的章节文件 − 已发章号，按章号升序。
 
-    返回 (list, err)；list 项 {chapter_no, file, size}，file 为工作目录相对
-    路径。章号解析不出的文件不进自动发布（防同章多文件误发），API 单章
-    发（manager 直调）不受此限。
+    已发口径连载链合并（含校准所得平台实况），所以任何一个批次任务上发
+    起发布，看到的都是整本书的待发清单。返回 (list, err)；list 项
+    {chapter_no, file, size}，file 为工作目录相对路径。章号解析不出的
+    文件不进自动发布（防同章多文件误发），API 单章发（manager 直调）
+    不受此限。
     """
     from .. import store
     from . import ledger
     task = store.get_task(task_id)
     if not task:
         return [], "任务不存在"
-    files = []
-    for r in store.task_runs(task_id):
-        _wd, fs = store.run_artifacts(r.get("id") or "", limit=800)
-        if fs:
-            files = fs           # 任一 run 的成品口径都从任务首跑起，取到即够
-            break
+    wd = str(task.get("workdir") or "").strip()
+    files = _workdir_chapter_files(wd) if wd and _isdir(wd) else []
+    if not files:
+        # workdir 缺失/异常：退回 run 成品口径（最新 run 优先）
+        for r in store.task_runs(task_id):
+            _wd, fs = store.run_artifacts(r.get("id") or "", limit=800)
+            if fs:
+                files = fs           # 任一 run 的成品口径都从任务首跑起，取到即够
+                break
     done = ledger.published_chapters(task_id, platform)
     out, seen = [], set()
     for f in files:

@@ -6362,12 +6362,36 @@ window.pbConfirmChapter = async function (taskId, platform, chapterNo) {
   S._pbSig = ""; pbKick();
 };
 
+function pbSelCountSync(key) {
+  // 就地对账：按钮计数/禁用态与全部 chip 勾选态向状态层看齐——重绘链一旦
+  // 断掉（poll 失败/详情上下文切换），勾选与计数也不许脱节（2026-10-08 实案
+  // 「勾了 18 计数 48」即重绘未跟上）。
+  const box = document.querySelector('.pb-pend[data-key="' +
+    String(key).replace(/"/g, "&quot;") + '"]');
+  const ent = (S.pbSel || {})[key];
+  if (!box || !ent) return;
+  for (const b of box.querySelectorAll("button")) {
+    const t = b.textContent || "";
+    if (/（\d+）$/.test(t)) b.textContent = t.replace(/（\d+）$/, "（" + ent.sel.size + "）");
+    b.disabled = ent.sel.size === 0;
+  }
+  for (const c of box.querySelectorAll(".pb-chip")) {
+    const inp = c.querySelector("input");
+    const num = Number((c.textContent || "").trim());
+    if (!inp || !num) continue;
+    const on = ent.sel.has(num);
+    if (inp.checked !== on) inp.checked = on;
+    c.classList.toggle("on", on);
+  }
+}
+
 window.pbSelToggle = function (taskId, platform, no, on) {
   const key = taskId + ":" + platform;
   const ent = (S.pbSel || {})[key];
   if (!ent) return;
   if (on) ent.sel.add(Number(no)); else ent.sel.delete(Number(no));
-  S._pbSig = ""; pbKick();   // 重画刷新按钮计数（勾选态存 S.pbSel 不丢）
+  pbSelCountSync(key);       // 先就地同步，再触发整块重绘
+  S._pbSig = ""; pbKick();
 };
 
 window.pbSelAll = function (taskId, platform, all) {
@@ -6376,6 +6400,7 @@ window.pbSelAll = function (taskId, platform, all) {
   if (!ent) return;
   if (all) for (const n of ent.sig.split(",")) ent.sel.add(Number(n));
   else ent.sel.clear();
+  pbSelCountSync(key);
   S._pbSig = ""; pbKick();
 };
 
@@ -8341,26 +8366,15 @@ function hiveThinkLine(lines) {
   return "";
 }
 
-const hiveSceneTransform = { x: 0, y: 0, zoom: 1 };
+/* —— 3D 场景（WebGL 蜂巢塔）控制层：引擎在 hive3d.js，这里只管模式切换/
+ * localStorage 持久化/WebGL 不可用降级，以及把 renderHive 的泳道数据翻译给场景。 —— */
+let hiveScene = null;          // Hive3D 场景实例（懒创建）
+let hiveSceneDead = false;     // WebGL 不可用/上下文丢失——本次页面周期内不再尝试
+let hiveMode = "3d";           // 当前视图模式（orch.hiveView）
+let hiveRunId = "";            // 最近一次 renderHive 的 run.id（尾巴/思考缓存键前缀）
+const hiveLiveMeta = {};       // rel -> { started_at }（3D 芯片秒表用）
 
-function updateHiveSceneTransform() {
-  const scene = $("rd-hive-cells");
-  if (!scene) return;
-  scene.style.setProperty("--scene-x", hiveSceneTransform.x + "px");
-  scene.style.setProperty("--scene-y", hiveSceneTransform.y + "px");
-  scene.style.setProperty("--scene-zoom", String(hiveSceneTransform.zoom));
-}
-
-function setHiveSceneMode(mode) {
-  const scene = $("rd-hive-cells");
-  const viewport = $("rd-hive-viewport");
-  const tools = document.querySelector(".hive-scene-tools");
-  if (!scene || !viewport) return;
-  const is3d = mode !== "2d";
-  scene.classList.toggle("hive-3d", is3d);
-  scene.classList.toggle("hive-2d", !is3d);
-  viewport.classList.toggle("hive-2d", !is3d);
-  if (tools) tools.classList.toggle("hive-2d", !is3d);
+function setHiveSceneButtons(is3d) {
   document.querySelectorAll("[data-hive-view]").forEach((button) => {
     const active = button.dataset.hiveView === (is3d ? "3d" : "2d");
     button.classList.toggle("active", active);
@@ -8368,66 +8382,124 @@ function setHiveSceneMode(mode) {
   });
 }
 
+function ensureHiveScene() {
+  if (hiveScene || hiveSceneDead) return hiveScene;
+  const canvas = $("rd-hive-gl"), overlay = $("rd-hive-overlay");
+  if (!canvas || !overlay || !window.Hive3D) { hiveSceneDead = true; return null; }
+  hiveScene = window.Hive3D.create({
+    canvas, overlay,
+    onCellActivate(rid, rel) { hiveOpenLog(rid, rel); },
+    /* 悬停气泡与运行中芯片的实时内容：尾巴/思考来自 hiveTick 的缓存，秒表现算 */
+    cellRefresh(rel) {
+      const key = hiveRunId + "|" + rel;
+      const meta = hiveLiveMeta[rel] || {};
+      return {
+        tail: hiveTails[key] || "",
+        think: hiveThink[key] || "",
+        elapsed: meta.started_at ? hiveElapsed(meta.started_at) : "",
+      };
+    },
+    onFatal() {   // 上下文丢失等不可恢复故障：退回 2D 并禁用 3D 入口
+      hiveSceneDead = true;
+      hiveScene = null;
+      setHiveSceneMode("2d", { silent: true });
+      toast(t("3D 场景不可用，已切换 2D 列表"), true);
+    },
+  });
+  if (!hiveScene) hiveSceneDead = true;
+  return hiveScene;
+}
+
+function setHiveSceneMode(mode, opts) {
+  const viewport = $("rd-hive-viewport");
+  if (!viewport) return;
+  let is3d = mode !== "2d";
+  if (is3d) {
+    const sc = ensureHiveScene();
+    if (!sc) {
+      is3d = false;
+      if (!(opts && opts.silent)) toast(t("当前环境不支持 WebGL，已切换 2D 列表"), true);
+    }
+  }
+  hiveMode = is3d ? "3d" : "2d";
+  if (hiveScene) hiveScene.setActive(is3d);
+  viewport.classList.toggle("hive-mode-3d", is3d);
+  viewport.classList.toggle("hive-mode-2d", !is3d);
+  const tools = document.querySelector(".hive-scene-tools");
+  if (tools) tools.classList.toggle("hive-2d", !is3d);
+  setHiveSceneButtons(is3d);
+  try { localStorage.setItem("orch.hiveView", hiveMode); } catch (e) { /* 隐私模式等 */ }
+}
+
 function setupHiveSceneControls() {
   const viewport = $("rd-hive-viewport");
-  const scene = $("rd-hive-cells");
-  if (!viewport || !scene || viewport.dataset.controlsReady) return;
+  if (!viewport || viewport.dataset.controlsReady) return;
   viewport.dataset.controlsReady = "true";
-  updateHiveSceneTransform();
-
   document.querySelectorAll("[data-hive-view]").forEach((button) => {
     button.addEventListener("click", () => setHiveSceneMode(button.dataset.hiveView));
   });
   document.querySelectorAll("[data-hive-scene-action]").forEach((button) => {
     button.addEventListener("click", () => {
-      if (button.dataset.hiveSceneAction === "reset") {
-        hiveSceneTransform.x = 0;
-        hiveSceneTransform.y = 0;
-        hiveSceneTransform.zoom = 1;
-      } else {
-        hiveSceneTransform.zoom = Math.max(.65, Math.min(1.55,
-          hiveSceneTransform.zoom + (button.dataset.hiveSceneAction === "zoom-in" ? .1 : -.1)));
-      }
-      updateHiveSceneTransform();
+      if (hiveMode !== "3d" || !hiveScene) return;
+      if (button.dataset.hiveSceneAction === "reset") hiveScene.resetView();
+      else hiveScene.zoomAt(button.dataset.hiveSceneAction === "zoom-in" ? 1 / 1.18 : 1.18);
     });
   });
+  let saved = "3d";
+  try { saved = localStorage.getItem("orch.hiveView") || "3d"; } catch (e) { /* ignore */ }
+  setHiveSceneMode(saved === "2d" ? "2d" : "3d", { silent: true });
+}
 
-  let drag = null;
-  viewport.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || event.target.closest(".hive-cell, button, a, input, textarea")) return;
-    drag = { id: event.pointerId, x: event.clientX, y: event.clientY,
-      originX: hiveSceneTransform.x, originY: hiveSceneTransform.y };
-    viewport.classList.add("is-dragging");
-    viewport.setPointerCapture(event.pointerId);
+/* renderHive → 场景数据翻译：泳道=蜂巢塔的一层，格子按状态映射高度/颜色。
+ * 气泡卡 HTML 在这里用 esc() 拼好（场景端 innerHTML 直用，自己不转义）；
+ * 运行中格子的尾巴/思考行留空，由场景每 2Hz 经 cellRefresh 回填。 */
+function hiveSceneSync(run, lanes, byStage) {
+  hiveRunId = run.id;
+  for (const k of Object.keys(hiveLiveMeta)) delete hiveLiveMeta[k];
+  const model = { runId: run.id, lanes: [] };
+  lanes.forEach((stage, i) => {
+    const list = byStage[stage];
+    const hasRun = list.some((s) => s.status === "running");
+    const settled = list.filter((s) => !["running", "queued"].includes(s.status)).length;
+    model.lanes.push({
+      name: stage, count: list.length, settled, active: hasRun,
+      cells: list.slice(-8).map((s) => {
+        const st = s.status === "queued" ? "queued"
+          : s.status === "running" ? "running"
+          : s.status === "failed" ? "failed"
+          : s.status === "cancelled" ? "cancelled"
+          : s.status === "timeout" ? "timeout" : "done";
+        const who = s.agent_label || s.agent || "";
+        const mdl = String(s.model || "").trim();
+        const whoShow = who + (mdl ? " · " + mdl : "");
+        const rel = s.log || "";
+        if (st === "running") hiveLiveMeta[rel] = { started_at: s.started_at || "" };
+        const concl = String(s.summary || "").replace(/\s+/g, " ").trim();
+        const elapsed = s.duration_s != null ? s.duration_s + "s" : hiveElapsed(s.started_at);
+        const stWord = { running: t("运行中"), done: t("完成"), failed: t("失败"),
+          timeout: t("超时"), cancelled: t("已取消"), queued: t("排队中") }[st] || s.status;
+        const metaBits = [stWord, elapsed, rel ? t("点击格子看日志") : ""].filter(Boolean).join(" · ");
+        const tip =
+          '<b class="hg-tip-role">' + esc(s.role || "") + "</b>" +
+          (whoShow ? '<i class="hg-tip-who">' + esc(whoShow) + "</i>" : "") +
+          '<p class="hg-tip-tail">' + (st === "running" ? "" : esc(concl)) + "</p>" +
+          '<em class="hg-tip-think"></em>' +
+          '<u class="hg-tip-meta">' + esc(metaBits) + "</u>";
+        return { rel, role: s.role || "", status: st, tip };
+      }),
+    });
   });
-  viewport.addEventListener("pointermove", (event) => {
-    if (!drag || drag.id !== event.pointerId) return;
-    hiveSceneTransform.x = drag.originX + event.clientX - drag.x;
-    hiveSceneTransform.y = drag.originY + event.clientY - drag.y;
-    updateHiveSceneTransform();
-  });
-  const endDrag = (event) => {
-    if (!drag || (event && drag.id !== event.pointerId)) return;
-    drag = null;
-    viewport.classList.remove("is-dragging");
-  };
-  viewport.addEventListener("pointerup", endDrag);
-  viewport.addEventListener("pointercancel", endDrag);
-  viewport.addEventListener("lostpointercapture", endDrag);
-  viewport.addEventListener("wheel", (event) => {
-    if (!scene.classList.contains("hive-3d")) return;
-    event.preventDefault();
-    hiveSceneTransform.zoom = Math.max(.65, Math.min(1.55,
-      hiveSceneTransform.zoom * (event.deltaY < 0 ? 1.08 : .92)));
-    updateHiveSceneTransform();
-  }, { passive: false });
+  const sc = ensureHiveScene();
+  if (!sc) return;
+  sc.sync(model);                    // 2D 模式也同步：切回 3D 时数据即 ready（画布未激活零 GPU 开销）
+  sc.setActive(hiveMode === "3d");
 }
 
 window.renderHive = function (run) {
   const box = $("rd-hive");
   if (!box) return;
   const steps = (run && run.steps) || [];
-  if (!run || !steps.length) { box.classList.add("hidden"); stopHiveTick(); return; }
+  if (!run || !steps.length) { box.classList.add("hidden"); stopHiveTick(); if (hiveScene) hiveScene.setActive(false); return; }
   box.classList.remove("hidden");
   setupHiveSceneControls();
   // 按步骤首次出现顺序分泳道（流水线天然有序）
@@ -8555,6 +8627,7 @@ window.renderHive = function (run) {
     if (cellsBox._hiveEnterT) clearTimeout(cellsBox._hiveEnterT);
     cellsBox._hiveEnterT = setTimeout(() => cellsBox.classList.remove("hive-enter"), 1400);
   }
+  hiveSceneSync(run, lanes, byStage);   // WebGL 蜂巢塔吃同一份泳道数据（内部自管激活）
   const live = running.length && (run.status === "running" || run.status === "queued");
   if (hiveClock) { clearInterval(hiveClock); hiveClock = null; }
   if (live) {

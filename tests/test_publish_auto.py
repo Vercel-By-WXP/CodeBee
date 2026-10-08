@@ -217,6 +217,24 @@ class TestPublishPending(unittest.TestCase):
         finally:
             self.manager.upload_chapter_async = orig
 
+    def test_pending_sees_full_book_from_any_chain_task(self):
+        """续写链暗病（2026-10-08 实案）：批次任务只看得见自己出生以后新写的
+        章节（run 成品窗口=各自首跑）——今天批次任务的待发只剩 73-78。
+        pending 改按工作目录全量扫描后，任意链上任务看到的都是整本书的待发。"""
+        t2 = store.create_task({"type": "direct", "goal": "续写批次",
+                                "workdir": str(type(self).wd)})
+        pend, err = auto.pending(t2["id"], "fanqie")
+        self.assertEqual(err, "")
+        self.assertEqual([p["chapter_no"] for p in pend], [1, 2, 3],
+                         "无 run 的续写任务也按工作目录全量枚举：%s" % pend)
+        # 文档目录里的编号文件不算章节稿
+        (type(self).wd / "章纲").mkdir(exist_ok=True)
+        (type(self).wd / "章纲" / "vol-1-ch-9.md").write_text(
+            "# 第9章 章纲\n要点", encoding="utf-8")
+        pend2, _ = auto.pending(t2["id"], "fanqie")
+        self.assertEqual([p["chapter_no"] for p in pend2], [1, 2, 3],
+                         "章纲目录编号文件不进待发：%s" % pend2)
+
     def test_publish_selected_only(self):
         """批量选择发布：only=章号清单只发所选（保序）；所选全不在待发时报错。
         status 视图 items 带待发清单（UI 勾选数据源）。"""
@@ -352,8 +370,11 @@ class TestPublishPending(unittest.TestCase):
         self.assertIn("未确认", err)
 
     def test_no_pending_rejects(self):
+        # 空工作目录：扫不出任何章节稿 → 明确拒绝（2026-10-08 起 pending
+        # 按工作目录全量扫描，不再依赖 run 成品窗口）
+        empty_wd = tempfile.mkdtemp(prefix="tutti-pa-empty-")
         t = store.create_task({"type": "direct", "goal": "没有章节的任务",
-                               "workdir": str(WD)})
+                               "workdir": empty_wd})
         ledger.save_book(t["id"], "fanqie", {"book_id": "bk-empty-001", "title": "空书"})
         ok, err = auto.publish_pending_async(t["id"], "fanqie")
         self.assertFalse(ok)
