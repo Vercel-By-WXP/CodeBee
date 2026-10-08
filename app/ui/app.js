@@ -6041,8 +6041,10 @@ function pbBlock(task, platform) {
     if (run && run.status === "running") {
       btns += '<span class="pb-book">' + esc(t("自动发布中 ") + run.done + "/" + run.total) + "</span>";
     } else if (au.pending > 0) {
-      btns += ' <button class="ghost" ' + (busy || !au.guard_ok ? "disabled" : "") +
-        ' title="' + esc(au.guard_ok ? t("按章号顺序逐章填稿（人工模式每点一次填一章，浏览器里提交后再点发下一章）") : au.guard_reason || "") + '"' +
+      // 门禁不再禁用按钮：点了走 pbApiWithQualityOverride 的复审/强制对话，
+      // 死按钮只会让用户无路可走（2026-10-08 实案：guard false 全灰点不了）
+      btns += ' <button class="ghost" ' + (busy ? "disabled" : "") +
+        ' title="' + esc(au.guard_ok ? t("按章号顺序逐章填稿（人工模式每点一次填一章，浏览器里提交后再点发下一章）") : t("护栏提示：") + (au.guard_reason || "")) + '"' +
         ' onclick="pbPublishAll(\'' + esc(task.id) + "', '" + platform + '\')">' +
         t("发布全部待发") + t("（") + au.pending + t("）") + "</button>";
     }
@@ -6072,11 +6074,13 @@ function pbBlock(task, platform) {
         "</div>" +
         '<div class="pb-pend-chips">' + chips + "</div>" +
         '<div class="pb-pend-btns">' +
-        '<button class="ghost" ' + (busy || !au.guard_ok || !sel.size ? "disabled" : "") +
+        '<button class="ghost" ' + (busy || !sel.size ? "disabled" : "") +
+        ' title="' + esc(au.guard_ok ? "" : t("护栏提示：") + (au.guard_reason || "")) + '"' +
         ' onclick="pbPublishSelected(\'' + esc(task.id) + "','" + platform + '\',false)">' +
         t("发布所选") + t("（") + sel.size + t("）") + "</button>" +
-        '<button class="ghost" ' + (busy || !au.guard_ok || !sel.size ? "disabled" : "") +
-        ' title="' + esc(t("所选章节逐章自动提交（无人值守），护栏每日上限/连败退避照常生效")) + '"' +
+        '<button class="ghost" ' + (busy || !sel.size ? "disabled" : "") +
+        ' title="' + esc(t("所选章节逐章自动提交（无人值守），护栏每日上限/连败退避照常生效") +
+          (au.guard_ok ? "" : "；" + t("护栏提示：") + (au.guard_reason || ""))) + '"' +
         ' onclick="pbPublishSelected(\'' + esc(task.id) + "','" + platform + '\',true)">' +
         t("直发所选") + t("（") + sel.size + t("）") + "</button>" +
         "</div></div>";
