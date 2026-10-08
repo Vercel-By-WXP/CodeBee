@@ -426,14 +426,17 @@ class CompetitiveFeatureTests(unittest.TestCase):
                 store.create_task({"type": "code", "goal": "test", "workdir": str(workdir)})
         save_task.assert_not_called()
 
-    def test_sandbox_network_off_fails_closed_for_shell(self):
-        from core import builtin_agent
+    def test_sandbox_network_off_fails_closed_for_shell_without_backend(self):
+        from core import builtin_agent, runner
         with tempfile.TemporaryDirectory() as wd:
             sandbox = policy.normalize_sandbox({"allowed_roots": [wd], "network": False}, wd)
-            result = builtin_agent._exec_tool(
-                wd, "run_command", {"command": "echo should-not-run"}, sandbox=sandbox)
-            self.assertNotIn("should-not-run", result)
-            self.assertNotIn("退出码: 0", result)
+            with patch.object(builtin_agent.shutil, "which", return_value=None), \
+                 patch.object(runner, "run_process") as run_process:
+                result = builtin_agent._exec_tool(
+                    wd, "run_command", {"command": "echo should-not-run"}, sandbox=sandbox)
+        self.assertIn("网络隔离后端", result)
+        self.assertNotIn("should-not-run", result)
+        run_process.assert_not_called()
 
     def test_shell_does_not_start_a_process_when_platform_has_no_sandbox_backend(self):
         from core import builtin_agent, runner
@@ -949,6 +952,30 @@ class CompetitiveFeatureTests(unittest.TestCase):
         project_memory.decide(self.root, row["id"], "approve", expected_version=1, now=1001)
         with self.assertRaises(ValueError):
             project_memory.decide(self.root, row["id"], "archive", expected_version=1, now=1002)
+
+    def test_project_memory_archive_restore_checks_version_and_expiry(self):
+        with patch.object(project_memory, "DEFAULT_TTL_DAYS", 1):
+            row = project_memory.propose(self.root, facts=["approved fact"], now=1000)
+            project_memory.decide(self.root, row["id"], "approve",
+                                  expected_version=1, now=1001)
+            archived = project_memory.decide(self.root, row["id"], "archive",
+                                             expected_version=2, now=1002)
+            self.assertEqual(archived["version"], 3)
+            self.assertEqual(project_memory.active_text(self.root, now=1003), "")
+            with self.assertRaisesRegex(ValueError, "版本已变化"):
+                project_memory.decide(self.root, row["id"], "restore",
+                                      expected_version=2, now=1003)
+            restored = project_memory.decide(self.root, row["id"], "restore",
+                                             expected_version=3, now=1004)
+            self.assertEqual(restored["status"], "approved")
+            self.assertEqual(restored["version"], 4)
+            self.assertIn("approved fact", project_memory.active_text(self.root, now=1005))
+            project_memory.decide(self.root, row["id"], "archive",
+                                  expected_version=4, now=1006)
+            with self.assertRaisesRegex(ValueError, "已过期"):
+                project_memory.decide(self.root, row["id"], "restore",
+                                      expected_version=5, now=1000 + 86400)
+            self.assertEqual(project_memory.active_text(self.root, now=1000 + 86400), "")
 
     def test_project_memory_rejects_workspace_symlink_store(self):
         outside = self.root / "outside"
