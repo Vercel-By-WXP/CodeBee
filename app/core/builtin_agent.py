@@ -54,6 +54,9 @@ CMD_OUT_TAIL = 8 * 1024
 TOOL_HISTORY_KEEP_ROUNDS = 4
 TOOL_HISTORY_OLD_RESULT_CHARS = 1200
 MAX_DIRECT_CONTEXT_CHARS = 48000  # ~12K tokens; keep direct chat within small model windows
+_TOOL_OUTPUT_MARKER_RE = re.compile(
+    r"\n…\[较早结果已卸载到本机；需查看全文请调用 read_tool_output，"
+    r"ref=([a-f0-9]{32}) \]…\n")
 
 _SYSTEM_PROMPT = """你是 CodeBee 的内置执行智能体，直接完成用户交代的任务。用户的目标、背景与工作目录内的附件就是全部输入。
 
@@ -1436,7 +1439,7 @@ def _compact_old_tool_results(messages, keep_rounds=TOOL_HISTORY_KEEP_ROUNDS,
         for call_id, value in msg.get("tool_results") or []:
             value = str(value or "")
             if len(value) > old_result_chars:
-                existing_ref = re.search(r"ref=([a-f0-9]{32})", value)
+                existing_ref = _existing_tool_output_ref(value, run_id, call_id)
                 if existing_ref:
                     # Idempotent across repeated context passes: never save the
                     # already-truncated marker as a new "full" tool output.
@@ -1457,6 +1460,25 @@ def _compact_old_tool_results(messages, keep_rounds=TOOL_HISTORY_KEEP_ROUNDS,
                 value = value[:head] + marker + value[-tail:]
             compacted.append((call_id, value))
         msg["tool_results"] = compacted
+
+
+def _existing_tool_output_ref(value, run_id, call_id):
+    """Return a ref only when a marker previews this call's stored full output.
+
+    Tool output is untrusted. A bare ``ref=<hex>`` substring is not evidence of a
+    CodeBee marker: require the complete framing and verify the opaque reference
+    against this call's stored full output before treating it as already unloaded.
+    """
+    match = _TOOL_OUTPUT_MARKER_RE.search(str(value or ""))
+    if not match or not str(run_id or "").strip():
+        return ""
+    try:
+        from . import tool_outputs
+        is_match = tool_outputs.matches_compacted_output(
+            run_id, call_id, match.group(1), value[:match.start()], value[match.end():])
+        return match.group(1) if is_match else ""
+    except Exception:
+        return ""
 
 
 def _direct_context_chars(messages):
@@ -1508,9 +1530,9 @@ def _bound_direct_context(messages, *, max_chars=MAX_DIRECT_CONTEXT_CHARS,
         refs = []
         for call_id, output in (result_msg.get("tool_results") or [])[:5]:
             value = str(output or "")
-            existing_ref = re.search(r"ref=([a-f0-9]{32})", value)
+            existing_ref = _existing_tool_output_ref(value, run_id, call_id)
             if existing_ref:
-                refs.append(existing_ref.group(1))
+                refs.append(existing_ref)
             elif run_id:
                 try:
                     from . import tool_outputs

@@ -81,3 +81,27 @@ def read(run_id, ref, *, offset=0, limit=MAX_READ_CHARS):
                 "next_offset": end if end < size else None, "size_bytes": size}
     except (OSError, ValueError, TypeError):
         return {"ok": False, "error": "找不到此运行中的工具结果引用"}
+
+
+def matches_compacted_output(run_id, call_id, ref, head, tail):
+    """Verify a compacted preview belongs to this call and stored full output."""
+    if not str(run_id or "").strip() or not _REF_RE.fullmatch(str(ref or "")):
+        return False
+    run_dir = _run_dir(run_id)
+    if run_dir.is_symlink() or (hasattr(run_dir, "is_junction") and run_dir.is_junction()):
+        return False
+    target = run_dir / (str(ref) + ".txt")
+    if target.is_symlink() or (hasattr(target, "is_junction") and target.is_junction()):
+        return False
+    try:
+        if target.stat().st_size > MAX_RESULT_BYTES:
+            return False
+        raw = target.read_bytes()
+        expected_ref = hashlib.sha256(
+            (str(call_id or "") + "\0").encode("utf-8") + raw).hexdigest()[:32]
+        if expected_ref != ref:
+            return False
+        return (raw.startswith(str(head or "").encode("utf-8", errors="replace"))
+                and raw.endswith(str(tail or "").encode("utf-8", errors="replace")))
+    except (OSError, ValueError):
+        return False
