@@ -8512,6 +8512,8 @@ let hiveSceneDead = false;     // WebGL 不可用/上下文丢失——本次页
 let hiveMode = "3d";           // 当前视图模式（orch.hiveView）
 let hiveRunId = "";            // 最近一次 renderHive 的 run.id（尾巴/思考缓存键前缀）
 const hiveLiveMeta = {};       // rel -> { started_at }（3D 芯片秒表用）
+let hiveDialogPoll = null;
+let hiveDialogKey = "";
 
 function setHiveSceneButtons(is3d) {
   document.querySelectorAll("[data-hive-view]").forEach((button) => {
@@ -8527,7 +8529,7 @@ function ensureHiveScene() {
   if (!canvas || !overlay || !window.Hive3D) { hiveSceneDead = true; return null; }
   hiveScene = window.Hive3D.create({
     canvas, overlay,
-    onCellActivate(rid, rel) { hiveOpenLog(rid, rel); },
+    onCellActivate(rid, rel, cell) { openHiveMonitorLog(rid, rel, cell); },
     /* 悬停气泡与运行中芯片的实时内容：尾巴/思考来自 hiveTick 的缓存，秒表现算 */
     cellRefresh(rel) {
       const key = hiveRunId + "|" + rel;
@@ -8547,6 +8549,40 @@ function ensureHiveScene() {
   });
   if (!hiveScene) hiveSceneDead = true;
   return hiveScene;
+}
+
+async function openHiveMonitorLog(runId, rel, cell) {
+  if (!rel) { toast(t("该步骤无日志"), true); return; }
+  const dialog = $("hive-log-dialog"), title = $("hive-log-title"), meta = $("hive-log-meta"), pre = $("hive-log-text"), error = $("hive-log-error");
+  if (!dialog || !title || !meta || !pre) { hiveOpenLog(runId, rel); return; }
+  if (hiveDialogPoll) { clearInterval(hiveDialogPoll); hiveDialogPoll = null; }
+  hiveDialogKey = runId + "|" + rel;
+  title.textContent = cell && cell.role ? t(cell.role) : rdLogStepLabel(runId, rel);
+  const status = cell && cell.status ? t({ running: "运行中", done: "完成", queued: "排队中", failed: "失败", timeout: "超时", cancelled: "已取消" }[cell.status] || cell.status) : "";
+  meta.textContent = [status, cell && cell.displayAgent, cell && (cell.displayElapsed || cell.started_at)].filter(Boolean).join(" · ");
+  pre.textContent = t("加载日志中…");
+  if (error) error.textContent = "";
+  if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
+  const load = async () => {
+    try {
+      const r = await api("/api/runs/" + encodeURIComponent(runId) + "/log?step=" + encodeURIComponent(rel) + "&pretty=1");
+      if (hiveDialogKey !== runId + "|" + rel) return;
+      pre.textContent = r.log || (r.step_status === "running" ? t("（等待输出…）") : t("（无输出）"));
+      pre.scrollTop = pre.scrollHeight;
+      if (r.step_status !== "running" && hiveDialogPoll) { clearInterval(hiveDialogPoll); hiveDialogPoll = null; }
+    } catch (e) {
+      if (error) error.textContent = t("日志读取失败：") + (e && e.message ? e.message : "");
+    }
+  };
+  await load();
+  if (cell && cell.status === "running") hiveDialogPoll = setInterval(load, 2500);
+}
+
+function closeHiveMonitorLog() {
+  hiveDialogKey = "";
+  if (hiveDialogPoll) { clearInterval(hiveDialogPoll); hiveDialogPoll = null; }
+  const dialog = $("hive-log-dialog");
+  if (dialog && dialog.open) dialog.close();
 }
 
 function setHiveSceneMode(mode, opts) {
@@ -8574,6 +8610,13 @@ function setupHiveSceneControls() {
   const viewport = $("rd-hive-viewport");
   if (!viewport || viewport.dataset.controlsReady) return;
   viewport.dataset.controlsReady = "true";
+  const hiveDialog = $("hive-log-dialog");
+  const hiveClose = $("hive-log-close");
+  if (hiveClose) hiveClose.addEventListener("click", closeHiveMonitorLog);
+  if (hiveDialog) hiveDialog.addEventListener("close", () => {
+    hiveDialogKey = "";
+    if (hiveDialogPoll) { clearInterval(hiveDialogPoll); hiveDialogPoll = null; }
+  });
   document.querySelectorAll("[data-hive-view]").forEach((button) => {
     button.addEventListener("click", () => setHiveSceneMode(button.dataset.hiveView));
   });
@@ -8633,7 +8676,13 @@ function hiveSceneSync(run, lanes, byStage) {
           '<p class="hg-tip-tail">' + (st === "running" ? "" : esc(concl)) + "</p>" +
           '<em class="hg-tip-think"></em>' +
           '<u class="hg-tip-meta">' + esc(metaBits) + "</u>";
-        return { rel, role: s.role || "", status: st, tip };
+        return {
+          rel, role: s.role || "", status: st, tip,
+          displayTail: st === "running" ? "" : concl,
+          displayStatus: stWord,
+          displayElapsed: elapsed,
+          displayAgent: whoShow,
+        };
       }),
     });
   });

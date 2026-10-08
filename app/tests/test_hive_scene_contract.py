@@ -25,16 +25,13 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn('data-hive-scene-action="zoom-in"', INDEX)
         self.assertIn('data-hive-scene-action="zoom-out"', INDEX)
 
-    def test_engine_is_real_webgl_scene_with_camera_and_picking(self):
-        self.assertIn('getContext("webgl2"', ENGINE)
-        self.assertIn("drawElementsInstanced", ENGINE)
-        self.assertIn("requestAnimationFrame", ENGINE)
+    def test_engine_is_reference_renderer_with_dynamic_pages_and_picking(self):
+        self.assertIn("ReferenceScene", ENGINE)
+        self.assertIn("SCREENS", ENGINE)
+        self.assertIn("showPage", ENGINE)
         self.assertIn("ResizeObserver", ENGINE)
-        self.assertIn("prefers-reduced-motion", ENGINE)
-        self.assertIn('addEventListener("pointerdown"', ENGINE)
-        self.assertIn('addEventListener("pointermove"', ENGINE)
-        self.assertIn('addEventListener("wheel"', ENGINE)
-        self.assertIn("fitView", ENGINE)
+        self.assertIn('"pointerdown"', ENGINE)
+        self.assertIn('"wheel"', ENGINE)
         self.assertIn("resetView", ENGINE)
         self.assertIn("projectCell", ENGINE)
 
@@ -49,11 +46,22 @@ class HiveSceneContractTests(unittest.TestCase):
     def test_styles_include_gl_host_overlay_and_flat_fallback(self):
         self.assertIn(".hive-gl", STYLE)
         self.assertIn(".hg-badge", STYLE)
-        self.assertIn(".hg-chip", STYLE)
-        self.assertIn(".hg-tip", STYLE)
+        self.assertIn(".hive-reference", STYLE)
         self.assertIn("#rd-hive-viewport.hive-mode-2d", STYLE)
         self.assertIn("#rd-hive-viewport.hive-mode-3d #rd-hive-cells", STYLE)
         self.assertIn("@media (prefers-reduced-motion: reduce)", STYLE)
+
+    def test_3d_office_projects_live_step_info_onto_clickable_monitors(self):
+        self.assertIn('node("button", "hg-monitor"', ENGINE)
+        self.assertIn("screenMeta", ENGINE)
+        self.assertIn("displayTail", APP)
+        self.assertIn("displayStatus", APP)
+        self.assertIn("displayElapsed", APP)
+        self.assertIn(".hg-monitor", STYLE)
+        self.assertIn(".hive-reference-layer", STYLE)
+        self.assertNotIn("豆包AI生成", ENGINE)
+        self.assertIn('workbench-reference.png', INDEX)
+        self.assertIn('"点击查看实时日志"', I18N)
 
     def test_i18n_covers_3d_scene_strings(self):
         self.assertIn("拖动旋转 · 滚轮缩放 · 右键升降", I18N)

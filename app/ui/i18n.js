@@ -15,6 +15,7 @@
     "3D 场景": "3D scene",
     "2D 列表": "2D list",
     "拖动旋转 · 滚轮缩放 · 右键升降": "Drag to orbit · Scroll to zoom · Right-drag to climb",
+    "拖动平移 · 滚轮缩放 · 点击屏幕看日志": "Drag to pan · Scroll to zoom · Click a screen for logs",
     "复位视角": "Reset view",
     "缩小": "Zoom out",
     "放大": "Zoom in",
@@ -23,6 +24,19 @@
     "3D 场景不可用，已切换 2D 列表": "3D scene failed — switched to 2D list",
     "点击格子看日志": "click a cell for its log",
     "点击工位看该阶段最新日志": "click the station for its latest log",
+    "点击查看实时日志": "Click to view live log",
+    "加载日志中…": "Loading log…",
+    "协作工作台参考场景": "Collaborative workbench reference scene",
+    "阶段 {0} · {1}": "Stage {0} · {1}",
+    "{0} / {1} 步骤": "{0} / {1} steps",
+    "等待任务": "Waiting for task",
+    "空闲工位": "Idle workstation",
+    "待命": "Standby",
+    "等待日志输出…": "Waiting for log output…",
+    "等待执行": "Waiting to run",
+    "（无输出）": "(No output)",
+    "上一组工位": "Previous workstation group",
+    "下一组工位": "Next workstation group",
     // —— 短片段（拼接用）——
     "检查中…": "Checking…",
     "浏览器": "Browser",
@@ -3240,6 +3254,9 @@
     });
     scope.querySelectorAll("[data-i18n-aria]").forEach((el) => {
       el.setAttribute("aria-label", t(el.dataset.i18nAria));
+    });
+    scope.querySelectorAll("[data-i18n-alt]").forEach((el) => {
+      el.setAttribute("alt", t(el.dataset.i18nAlt));
     });
     // 编排 pill 短名取自 option 文本，重译后要跟着换语言
     if (typeof window.syncCmpSelFace === "function") {
