@@ -8,6 +8,7 @@ import base64
 import difflib
 import os
 import secrets
+import stat
 import subprocess
 import tempfile
 import threading
@@ -481,6 +482,93 @@ def snapshot_preview(run_id, workdir):
             "warning": "仅覆盖已记录的工作区文件；shell 命令、MCP 与外部服务副作用不保证可回滚。恢复会检查指纹并拒绝符号链接，但不防范恶意本地进程在校验与写入之间替换父目录。"}
 
 
+def _restore_file_posix(root, rel, item, expected_exists, expected_hash):
+    """Restore using directory handles so parent-path swaps cannot escape root."""
+    required = (os.open in getattr(os, "supports_dir_fd", set())
+                and os.mkdir in getattr(os, "supports_dir_fd", set())
+                and os.replace in getattr(os, "supports_dir_fd", set())
+                and os.unlink in getattr(os, "supports_dir_fd", set()))
+    if not required:
+        return False
+    parts = Path(rel).parts
+    if not parts:
+        return False
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    root_fd = os.open(str(root), directory_flags)
+    parent_fd = root_fd
+    owned_fds = []
+    missing_parent = False
+    try:
+        for part in parts[:-1]:
+            try:
+                child_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+            except FileNotFoundError:
+                missing_parent = True
+                break
+            owned_fds.append(child_fd)
+            parent_fd = child_fd
+
+        leaf = parts[-1]
+        current = None
+        if not missing_parent:
+            try:
+                file_fd = os.open(leaf, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+                                  dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
+            else:
+                try:
+                    if not stat.S_ISREG(os.fstat(file_fd).st_mode):
+                        return False
+                    with os.fdopen(file_fd, "rb", closefd=False) as handle:
+                        current = handle.read(_SNAPSHOT_MAX_BYTES + 1)
+                finally:
+                    os.close(file_fd)
+        current_exists = current is not None
+        current_hash = hashlib.sha256(current).hexdigest() if current_exists else None
+        if current_exists != bool(expected_exists) or current_hash != expected_hash:
+            return False
+
+        if item.get("existed"):
+            if missing_parent:
+                parent_fd = root_fd
+                for part in parts[:-1]:
+                    try:
+                        os.mkdir(part, mode=0o700, dir_fd=parent_fd)
+                    except FileExistsError:
+                        pass
+                    child_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+                    owned_fds.append(child_fd)
+                    parent_fd = child_fd
+            raw = base64.b64decode(item.get("before_b64") or "", validate=True)
+            temp_name = ".codebee-restore-%s.tmp" % secrets.token_hex(12)
+            temp_fd = os.open(temp_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                              | getattr(os, "O_NOFOLLOW", 0), 0o600, dir_fd=parent_fd)
+            try:
+                with os.fdopen(temp_fd, "wb", closefd=False) as handle:
+                    handle.write(raw)
+                    handle.flush()
+                    os.fsync(temp_fd)
+                os.close(temp_fd)
+                temp_fd = None
+                os.replace(temp_name, leaf, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+            except Exception:
+                if temp_fd is not None:
+                    os.close(temp_fd)
+                try:
+                    os.unlink(temp_name, dir_fd=parent_fd)
+                except OSError:
+                    pass
+                raise
+        elif current_exists:
+            os.unlink(leaf, dir_fd=parent_fd)
+        return True
+    finally:
+        for fd in reversed(owned_fds):
+            os.close(fd)
+        os.close(root_fd)
+
+
 def restore_files(run_id, workdir):
     """Restore only files whose current fingerprint still matches our post-edit state."""
     if not workdir:
@@ -497,6 +585,18 @@ def restore_files(run_id, workdir):
             safe_root, safe_rel = _safe_snapshot_path(root, root / rel)
             if not item or safe_root is None or safe_rel != rel or not view.get("restorable"):
                 conflicts.append(rel)
+                continue
+            if os.name == "posix":
+                try:
+                    did_restore = _restore_file_posix(
+                        root, rel, item, view.get("current_sha256") is not None,
+                        view.get("current_sha256"))
+                except (OSError, ValueError):
+                    did_restore = False
+                if did_restore:
+                    restored += 1
+                else:
+                    conflicts.append(rel)
                 continue
             target = root / rel
             try:

@@ -102,6 +102,38 @@ class CompetitiveFeatureTests(unittest.TestCase):
             self.assertEqual(restored["conflicts"], ["note.txt"])
             self.assertEqual(target.read_text(encoding="utf-8"), "concurrent user edit")
 
+    @unittest.skipUnless(os.name == "posix", "dir-fd restore hardening is POSIX-specific")
+    def test_checkpoint_restore_stays_inside_open_directory_if_parent_is_swapped(self):
+        workdir = self.root / "work"
+        parent = workdir / "nested"
+        outside = self.root / "outside"
+        parent.mkdir(parents=True)
+        outside.mkdir()
+        target = parent / "note.txt"
+        target.write_text("before", encoding="utf-8")
+        outside_target = outside / "note.txt"
+        outside_target.write_text("outside stays", encoding="utf-8")
+        with patch.object(checkpoints, "_DIR", self.root / "checkpoints"):
+            checkpoints.capture_file("run-parent-race", workdir, target)
+            target.write_text("after", encoding="utf-8")
+            checkpoints.mark_file_after("run-parent-race", workdir, target)
+            original_replace = os.replace
+
+            def swap_parent_then_replace(src, dst, **kwargs):
+                moved = workdir / "nested-original"
+                os.rename(parent, moved)
+                parent.symlink_to(outside, target_is_directory=True)
+                return original_replace(src, dst, **kwargs)
+
+            with patch.object(checkpoints.os, "replace", side_effect=swap_parent_then_replace):
+                restored = checkpoints.restore_files("run-parent-race", workdir)
+
+        self.assertEqual(restored["restored"], 1)
+        self.assertEqual(outside_target.read_text(encoding="utf-8"), "outside stays")
+        self.assertEqual((workdir / "nested-original" / "note.txt").read_text(encoding="utf-8"),
+                         "before")
+        self.assertTrue(parent.is_symlink())
+
     def test_checkpoint_restores_agent_created_file(self):
         with patch.object(checkpoints, "_DIR", self.root / "checkpoints"):
             workdir = self.root / "work"
