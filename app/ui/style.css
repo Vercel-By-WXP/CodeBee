@@ -7300,3 +7300,4 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 .pb-chip.on { border-color: var(--accent, #4a7dbe); color: var(--text); }
 .pb-chip input { margin: 0; }
 .pb-pend-btns { display: flex; gap: 8px; margin-top: 6px; }
+.pb-vol { font-size: 11px; color: var(--accent, #4a7dbe); margin-top: 5px; font-weight: 600; }

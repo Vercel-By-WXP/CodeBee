@@ -155,6 +155,14 @@ def pending(task_id, platform):
                 files = fs           # 任一 run 的成品口径都从任务首跑起，取到即够
                 break
     done = ledger.published_chapters(task_id, platform)
+    # 分卷标注（2026-10-08 用户需求：待发清单按卷展示）：卷计划解析不出时
+    # volume 为空串，前端不分组平铺。
+    plan = []
+    try:
+        from . import volumes as _volumes
+        plan = _volumes.load_plan(wd)
+    except Exception:
+        plan = []
     out, seen = [], set()
     for f in files:
         name = str(f.get("name") or "")
@@ -166,7 +174,9 @@ def pending(task_id, platform):
         if n <= 0 or n in done or n in seen:
             continue
         seen.add(n)
-        out.append({"chapter_no": n, "file": name, "size": f.get("size") or 0})
+        vol = _volumes.volume_for(n, plan) if plan else None
+        out.append({"chapter_no": n, "file": name, "size": f.get("size") or 0,
+                    "volume": (vol.get("name") or "") if vol else ""})
     out.sort(key=lambda x: x["chapter_no"])
     return out, ""
 

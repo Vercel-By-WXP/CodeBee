@@ -6175,27 +6175,39 @@ function pbBlock(task, platform) {
         ' onclick="pbPublishAll(\'' + esc(task.id) + "', '" + platform + '\')">' +
         t("发布全部待发") + t("（") + au.pending + t("）") + "</button>";
     }
-    // 批量选择：待发章号 chips（默认全选），「发布所选」人工模式 / 「直发所选」
-    // 逐章自动提交（护栏每日上限/连败退避照常生效）。分卷由服务端按卷计划
-    // 自动选/建（volumes.py），界面上不用管卷。
-    const items = (au.items && au.items.length ? au.items : [])
-      .map((x) => Number(x.chapter_no)).filter((n) => n > 0);
-    if (items.length && !run) {
+    // 批量选择：待发章号 chips 按卷分组（卷计划来自服务端 items[].volume），
+    // 「发布所选」人工模式 / 「直发所选」逐章自动提交（护栏照常生效）。
+    // 分卷由服务端按卷计划自动选/建（volumes.py），界面上不用管卷。
+    const its = (au.items && au.items.length ? au.items : [])
+      .map((x) => ({ n: Number(x.chapter_no), v: x.volume || "" }))
+      .filter((x) => x.n > 0);
+    if (its.length && !run) {
       const key = task.id + ":" + platform;
-      const sig = items.join(",");
+      const sig = its.map((x) => x.n).join(",");
       S.pbSel = S.pbSel || {};
       if (!S.pbSel[key] || S.pbSel[key].sig !== sig)
-        S.pbSel[key] = { sig, sel: new Set(items) };
+        S.pbSel[key] = { sig, sel: new Set(its.map((x) => x.n)) };
       const sel = S.pbSel[key].sel;
+      // 连续段按卷名分组；无卷计划的整块平铺不显示卷头
+      const groups = [];
+      for (const x of its) {
+        const g = groups[groups.length - 1];
+        if (g && g.v === x.v) g.ns.push(x.n);
+        else groups.push({ v: x.v, ns: [x.n] });
+      }
       let chips = "";
-      for (const n of items)
-        chips += '<label class="pb-chip' + (sel.has(n) ? " on" : "") + '">' +
-          '<input type="checkbox" ' + (sel.has(n) ? "checked" : "") +
-          ' onchange="pbSelToggle(\'' + esc(task.id) + "','" + platform + "'," + n + ',this.checked)">' +
-          n + "</label>";
+      for (const g of groups) {
+        if (groups.length > 1 || g.v)
+          chips += '<div class="pb-vol">' + esc(g.v || t("未分卷")) + "</div>";
+        for (const n of g.ns)
+          chips += '<label class="pb-chip' + (sel.has(n) ? " on" : "") + '">' +
+            '<input type="checkbox" ' + (sel.has(n) ? "checked" : "") +
+            ' onchange="pbSelToggle(\'' + esc(task.id) + "','" + platform + "'," + n + ',this.checked)">' +
+            n + "</label>";
+      }
       pendHtml += '<div class="pb-pend" data-key="' + esc(key) + '">' +
         '<div class="pb-pend-head">' +
-        '<span>' + esc(t("待发 ")) + items.length + esc(t(" 章（按卷计划自动分卷）")) + "</span>" +
+        '<span>' + esc(t("待发 ")) + its.length + esc(t(" 章（按卷计划自动分卷）")) + "</span>" +
         '<a href="javascript:void(0)" onclick="pbSelAll(\'' + esc(task.id) + "','" + platform + "',true)" + '">' + esc(t("全选")) + "</a>" +
         '<a href="javascript:void(0)" onclick="pbSelAll(\'' + esc(task.id) + "','" + platform + "',false)" + '">' + esc(t("清空")) + "</a>" +
         "</div>" +
