@@ -44,8 +44,17 @@ class CompetitiveFeatureTests(unittest.TestCase):
             checkpoints.finish("run-1", 2, "unknown", error="network timeout")
             view = checkpoints.replay_preview("run-1")
         self.assertFalse(view["replayable"])
-        self.assertEqual(view["blocked_reason"], "unknown_requires_reconciliation")
+        self.assertEqual(view["blocked_reason"], "requires_reconciliation")
         self.assertEqual(view["steps"][0]["status"], "unknown")
+
+    def test_checkpoint_orphan_and_missing_run_are_not_replayable(self):
+        with patch.object(checkpoints, "_DIR", self.root / "checkpoints"):
+            checkpoints.start("orphan", 1, "implement", "prompt")
+            orphan = checkpoints.replay_preview("orphan")
+            missing = checkpoints.replay_preview("missing")
+        self.assertFalse(orphan["replayable"])
+        self.assertFalse(missing["replayable"])
+        self.assertEqual(missing["blocked_reason"], "checkpoint_not_found")
 
     def test_webhook_signature_and_delivery_deduplication(self):
         raw = b'{"goal":"run"}'
@@ -54,9 +63,13 @@ class CompetitiveFeatureTests(unittest.TestCase):
         signature = webhooks.sign(secret, raw, timestamp)
         self.assertTrue(webhooks.verify(secret, raw, signature, timestamp, now=1700000001))
         self.assertFalse(webhooks.verify(secret, raw, signature, timestamp, now=1700001000))
+        github = "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+        self.assertTrue(webhooks.verify_raw(secret, raw, github))
         with patch.object(webhooks, "_FILE", self.root / "deliveries.json"):
             self.assertTrue(webhooks.claim_delivery("delivery-1", now=1700000000)[0])
             self.assertFalse(webhooks.claim_delivery("delivery-1", now=1700000001)[0])
+            webhooks.release_delivery("delivery-1")
+            self.assertTrue(webhooks.claim_delivery("delivery-1", now=1700000002)[0])
 
     def test_eval_matrix_reports_baseline_regressions(self):
         manifest = eval_matrix.normalize_manifest({
@@ -72,6 +85,7 @@ class CompetitiveFeatureTests(unittest.TestCase):
         self.assertEqual(report["matrix"][0]["candidate"], "model-a")
         self.assertEqual(report["regressions"][0]["delta"], -1.0)
         self.assertEqual(report["best_candidate"], "model-b")
+        self.assertIsNone(eval_matrix.evaluate(manifest, {"model-a": {"case-1": {"score": float("nan")}}})["matrix"][0]["score"])
 
     def test_knowledge_pipeline_chunks_with_source_hash_and_quality(self):
         with patch.object(retrieval, "_FILE", self.root / "index.json"), \
@@ -85,6 +99,8 @@ class CompetitiveFeatureTests(unittest.TestCase):
         self.assertEqual(report["source_sha256"], result["source_sha256"])
         self.assertEqual(report["indexed_chunks"], result["chunks"])
         self.assertGreater(report["quality"]["non_empty_ratio"], 0)
+        with self.assertRaises(ValueError):
+            knowledge_pipeline.ingest("bad", "text", metadata=["not", "an object"])
 
     def test_policy_sandbox_and_flow_graph_are_deterministic(self):
         sandbox = policy.normalize_sandbox({

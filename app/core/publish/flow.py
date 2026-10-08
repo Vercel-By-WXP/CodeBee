@@ -15,9 +15,13 @@
   click_text {text, scope, contains}  按「可见文本」点按钮/标签（无稳定 id 的弹层项）
   shot      {name}                截图存证
   probe     {note}                dump 表单元素清单（校准选择器用，结果进 log）
+  click_match {any:[..], max_len}  关键词选块（点同时含所有关键词的最小元素）
   submit    {sel}                 终步：auto_submit=false 时跳过（留给人工确认），
                                   跳过时补一张 ready-*.png，用户在浏览器窗口里自查提交
-  url_any   {any: [..]}           断言当前 URL 含任一标记，不含则报错（登录跳转检测）
+  volume   {key, open_sel, modal_sel, item_sel, add_sel, input_sel,
+            confirm_sel, settle}  发章带卷：选平台已有卷，缺则新建（自动分卷）
+  verify   {url, any, settle}     上线验证：导航后断言标记在场
+  url_any  {any: [..]}            断言当前 URL 含任一标记（登录跳转检测）
 """
 from __future__ import annotations
 
@@ -603,6 +607,104 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         raise FlowError("上线验证失败：%s 页面上没有「%s」（章节未真正发布）"
                                         % (url[:60], mk[:40]))
                 note(i, "验证通过")
+            elif act == "volume":
+                # 发章带卷（2026-10-08 批量自动发布·自动分卷）：打开编辑器
+                # 的分卷弹窗，按去前缀名匹配已有卷并选中；平台没有目标卷时
+                # 走「新建分卷」（行内输名→confirm 图标→选中）再确定。
+                # 选择器全部数据驱动（不同平台编辑器不同）；无目标卷名或
+                # 编辑器没有卷选择器（optional）时跳过，保持平台默认卷。
+                from .volumes import norm_volume_name
+                target = str(values.get(st.get("key") or "volume_name") or "").strip()
+                open_sel = str(st.get("open_sel") or "")
+                modal_sel = str(st.get("modal_sel") or "")
+                item_sel = str(st.get("item_sel") or "")
+                settle = float(st.get("settle") or 1.2)
+                if not target:
+                    note(i, "无分卷目标，跳过")
+                    continue
+                if not (open_sel and modal_sel and item_sel):
+                    raise FlowError("volume 步骤缺选择器配置（open_sel/modal_sel/item_sel）")
+                r = page.call("(s)=>{var v=document.querySelector(s);"
+                              "if(!v)return{ok:false,err:'noopen'};v.click();return{ok:true};}",
+                              open_sel, timeout=8)
+                if not (r or {}).get("ok"):
+                    if st.get("optional"):
+                        note(i, "编辑器无分卷选择器，跳过")
+                        continue
+                    raise FlowError("分卷选择器未出现：%s" % open_sel)
+                time.sleep(settle)
+
+                def vol_items():
+                    out = page.call("(s)=>[...document.querySelectorAll(s)]"
+                                    ".filter(e=>e.getBoundingClientRect().width>0)"
+                                    ".map(e=>(e.innerText||'').trim())",
+                                    item_sel, timeout=8)
+                    return [str(x).strip() for x in (out or []) if str(x or "").strip()]
+
+                def pick_hit():
+                    for t in vol_items():
+                        if norm_volume_name(t) == norm_volume_name(target):
+                            return t
+                    return ""
+
+                def modal_ok():
+                    rr = page.call("(m)=>{var mm=document.querySelector(m);"
+                                   "if(!mm)return{ok:false};"
+                                   "var b=mm.querySelectorAll('button');"
+                                   "for (var i=0;i<b.length;i++){"
+                                   " if((b[i].innerText||'').trim()==='确定'){b[i].click();return{ok:true};}}"
+                                   "return{ok:false};}", modal_sel, timeout=8)
+                    return bool((rr or {}).get("ok"))
+
+                hit = pick_hit()
+                if not hit:
+                    add_sel = str(st.get("add_sel") or "")
+                    if not add_sel:
+                        raise FlowError("平台没有目标分卷「%s」且流程未配新建分卷" % target)
+                    r = page.call("(s)=>{var e=document.querySelector(s);"
+                                  "if(!e)return{ok:false};e.click();return{ok:true};}",
+                                  add_sel, timeout=8)
+                    if not (r or {}).get("ok"):
+                        raise FlowError("「新建分卷」点不到：%s" % add_sel)
+                    time.sleep(settle)
+                    rr = page.call("(m,t,inp,cs)=>{var mm=document.querySelector(m);"
+                                   "if(!mm)return{ok:false,err:'nomodal'};"
+                                   "var el=mm.querySelector(inp);"
+                                   "if(!el)return{ok:false,err:'noinput'};"
+                                   "var d=Object.getOwnPropertyDescriptor("
+                                   "HTMLInputElement.prototype,'value');"
+                                   "d.set.call(el,t);"
+                                   "el.dispatchEvent(new Event('input',{bubbles:true}));"
+                                   "var c=mm.querySelector(cs);"
+                                   "if(!c)return{ok:false,err:'noconfirm'};"
+                                   "c.click();return{ok:true};}",
+                                   modal_sel, target,
+                                   str(st.get("input_sel") or "input"),
+                                   str(st.get("confirm_sel") or "i.tomato-confirm"),
+                                   timeout=8)
+                    if not (rr or {}).get("ok"):
+                        raise FlowError("新建分卷「%s」失败：%s"
+                                        % (target, (rr or {}).get("err")))
+                    time.sleep(settle)
+                    hit = pick_hit()
+                    if not hit:
+                        raise FlowError("新建分卷后列表里没有「%s」" % target)
+                    known = values.get("_volumes")
+                    if isinstance(known, list) and hit not in known:
+                        known.append(hit)
+                    note(i, "已新建分卷「%s」" % hit)
+                rr = page.call("(s,t)=>{var els=document.querySelectorAll(s);"
+                               "for (var i=0;i<els.length;i++){"
+                               " if(((els[i].innerText||'').trim())===t){"
+                               "  els[i].click();return{ok:true};}}"
+                               "return{ok:false};}", item_sel, hit, timeout=8)
+                if not (rr or {}).get("ok"):
+                    raise FlowError("分卷「%s」点选失败" % hit)
+                time.sleep(0.5)
+                if not modal_ok():
+                    raise FlowError("分卷弹窗「确定」失败")
+                time.sleep(settle)
+                note(i, "分卷已选「%s」" % hit)
             elif act == "url_any":
                 u = str(page.url() or "")
                 marks = st.get("any") or []

@@ -77,6 +77,14 @@ def guards(task_id, platform):
 
 
 # ---------------------------------------------------------------- 待发枚举
+# 文档目录里的编号文件不是章节稿：章纲/大纲按章编号（第85章-xxx.md、
+# vol-1-ch-16.md），全按章号算会把待发清单撑出一堆「假章」——批量选择
+# 发布时一旦选中就会把章纲当正文填进编辑器（2026-10-08 实案：全书树 88
+# 个章号，其中 34 个来自 章纲/已成稿/作废稿 目录）。
+_DOC_DIR_MARKS = ("章纲/", "大纲/", "设定/", "参考资料/", "已成稿/",
+                  "作废稿", "docs/", "outline/")
+
+
 def pending(task_id, platform):
     """待发章节清单：任务成品文件中的章节文件 − 台账已发章号，按章号升序。
 
@@ -100,6 +108,8 @@ def pending(task_id, platform):
     for f in files:
         name = str(f.get("name") or "")
         if not name.lower().endswith((".md", ".txt")):
+            continue
+        if name.startswith(_DOC_DIR_MARKS):
             continue
         n = ledger.parse_chapter_no(name)
         if n <= 0 or n in done or n in seen:
@@ -129,7 +139,9 @@ def status(task_id):
                     quality.get("blockers") or [])
         books.append({"platform": plat, "bound": True,
                       "title": info.get("title") or "",
-                      "pending": len(pend), "guard_ok": ok, "guard_reason": why,
+                      "pending": len(pend),
+                      "items": pend[:200],
+                      "guard_ok": ok, "guard_reason": why,
                       "calibrated": calibrated(plat)})
     run = _running.get(task_id) or None
     if run:
@@ -163,10 +175,12 @@ def calibrated(platform):
     return (paths.PUBLISH_DIR / ("flows-%s.json" % platform)).is_file()
 
 
-def publish_pending_async(task_id, platform, auto_submit=False, force=False,
-                          force_confirmed=False, force_reason=""):
+def publish_pending_async(task_id, platform, auto_submit=False, only=None,
+                          force=False, force_confirmed=False, force_reason=""):
     """把任务的待发章节按章号顺序发出（后台线程）。返回 (ok, err)。
 
+    only=章号清单（批量选择发布）：从待发清单里挑出所选章号，保持章号
+    升序；所选全都不在待发清单里（已发过/解析不出章号）时报错不空跑。
     auto_submit=True（直发）逐章提交走完全程；False（人工确认）每轮只填
     **一章**就停在 manual_pause——表单填好后提交权在用户，walker 若直接
     填下一章会导航离开未提交的编辑器，把上一章内容丢掉（平台草稿自动
@@ -207,6 +221,15 @@ def publish_pending_async(task_id, platform, auto_submit=False, force=False,
     pend, err = pending(task_id, platform)
     if err:
         return False, err
+    if only is not None:
+        try:
+            want = {int(n) for n in (only or []) if n}
+        except (TypeError, ValueError):
+            return False, "chapters 必须是章号数组"
+        pend = [p for p in pend if p["chapter_no"] in want]
+        if not pend:
+            return False, ("所选章节都不在待发清单里（已发过，或成品里没有"
+                           "对应章节文件）；可先点「校准」对齐平台实况")
     if not pend:
         return False, "没有待发章节（全部已发布，或成品里没有可识别的章节文件）"
 

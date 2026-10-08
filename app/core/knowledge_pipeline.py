@@ -45,11 +45,15 @@ def _load():
 def ingest(source, text, metadata=None, *, chunk_size=1200, overlap=120):
     source = str(source or "").strip()[:500]
     text = str(text or "")
+    if len(text) > 2 * 1024 * 1024:
+        raise ValueError("text 过大（最大 2 MiB）")
     if not source or not text.strip():
         raise ValueError("source 和 text 不能为空")
     source_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
     ingest_id = "ingest-" + hashlib.sha256((source + "\0" + source_hash).encode("utf-8")).hexdigest()[:20]
     chunks = chunk_text(text, chunk_size, overlap)
+    if metadata is not None and not isinstance(metadata, dict):
+        raise ValueError("metadata 必须是对象")
     meta = {str(k)[:60]: str(v)[:500] for k, v in (metadata or {}).items()
             if isinstance(k, (str, int)) and isinstance(v, (str, int, float, bool))}
     indexed = []

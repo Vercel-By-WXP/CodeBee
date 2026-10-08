@@ -84,9 +84,11 @@ def _read(run_id=""):
         files = sorted(_DIR.glob("checkpoints-*.jsonl"), reverse=True)
     except OSError:
         files = []
-    for path in files:
+    for path in files[:24]:
         try:
-            for line in path.read_text(encoding="utf-8").splitlines():
+            if path.stat().st_size > 4 * 1024 * 1024:
+                continue
+            for line in path.read_text(encoding="utf-8").splitlines()[-50000:]:
                 try:
                     row = json.loads(line)
                 except (TypeError, ValueError):
@@ -104,11 +106,19 @@ def replay_preview(run_id):
         rows = _read(str(run_id or "")[:80])
     latest = {}
     starts = {}
+    finishes = {}
     for row in rows:
-        key = int(row.get("step") or 0)
+        try:
+            key = int(row.get("step"))
+        except (TypeError, ValueError):
+            continue
+        if key < 0:
+            continue
         latest[key] = dict(latest.get(key) or {}, **row)
         if row.get("event") == "start":
             starts[key] = row
+        elif row.get("event") == "finish":
+            finishes[key] = row
     steps = []
     for key in sorted(latest):
         item = dict(latest[key])
@@ -116,10 +126,16 @@ def replay_preview(run_id):
             item.setdefault("prompt_sha256", starts[key].get("prompt_sha256"))
             item.setdefault("attempt", starts[key].get("attempt", 1))
         steps.append(item)
-    unknown = next((x for x in steps if x.get("status") == "unknown"), None)
+    unknown = next((x for x in steps if x.get("status") in ("unknown", "running")
+                    or x.get("event") != "finish"
+                    or x.get("step") not in finishes
+                    or x.get("step") not in starts), None)
+    if not steps:
+        unknown = {"reason": "checkpoint_not_found"}
     return {"run_id": str(run_id or ""), "steps": steps,
             "replayable": unknown is None,
-            "blocked_reason": "unknown_requires_reconciliation" if unknown else ""}
+            "blocked_reason": ("checkpoint_not_found" if not steps else
+                               "requires_reconciliation" if unknown else "")}
 
 
 def replay(run_id):

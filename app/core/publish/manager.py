@@ -801,11 +801,44 @@ def _resolve_book_id(plat, page, book):
 
 
 # ---------------------------------------------------------------- 动作：发章
+# 裸标题行（中文数字章稿常态）：行首「第三十一章 绕开的路线」，无 # 前缀。
+# 认不出会把标题行留进正文、标题回退成文件名 chapter-31——番茄编辑器
+# 序号/标题分开填，两头全输（2026-10-08 实案）。
+_BARE_HEAD_RE = re.compile(
+    r"^\s*第\s*[0-9０-９一二三四五六七八九十百千零两]+\s*[章节回]")
+
+
+def split_chapter_name(title):
+    """「第三十一章 绕开的路线」→「绕开的路线」（番茄标题位不带章号前缀，
+    序号单独填）。没有章号前缀、或前缀后没有正题 → 原样返回。"""
+    title = str(title or "")
+    m = ledger._CHAPTER_RE.search(title)
+    if not m:
+        return title
+    rest = title[m.end():].strip(" ：:，,、.·-—－_　")
+    return rest or title
+
+
+def chapter_fill_values(ch_no, title, body, book_name):
+    """发章流程的 values 字典。chapter_title=完整标题行（台账留痕/七猫流程
+    锚点口径不变）；chapter_no=阿拉伯数字串（番茄「第 _ 章」序号框只认数字，
+    2026-10-08 实案：流程有 fill 步骤但 values 从没给过这个键，序号永远
+    空着被平台以「章节序号只支持阿拉伯数字」打回）；chapter_name=拆掉章号
+    前缀的正题（番茄标题位）。章号解析不出给空串，fill 步骤按空值跳过。"""
+    return {"chapter_title": str(title or ""),
+            "chapter_name": split_chapter_name(title),
+            "chapter_no": str(int(ch_no)) if ch_no else "",
+            "chapter_body": str(body or ""),
+            "book_name": str(book_name or "")}
+
+
 def read_chapter(fp):
     """读章节文件 → (章号, 标题, 正文, 错误)。UTF-8→GBK 回退（章稿乱码教训）。
 
-    标题取首个「# 」标题行，没有则用文件名；章号从标题/文件名的
-    「第X章」解析，解析不出记 0（台账不按章号幂等，只按标题留痕）。"""
+    标题识别三档：markdown「# 」标题行 → 裸「第X章 标题」首行 → 文件名。
+    标题行不进正文（平台编辑器序号/标题单独填，正文再带一遍读者会看到重复）。
+    章号从标题/文件名的「第X章」解析，解析不出记 0（台账不按章号幂等，
+    只按标题留痕）。"""
     from pathlib import Path
     from .. import runner
     p = Path(fp)
@@ -820,9 +853,15 @@ def read_chapter(fp):
     body_start = 0
     for i, ln in enumerate(lines[:5]):
         s = ln.strip()
-        if s.startswith("#"):                 # 只认 markdown 标题行
+        if s.startswith("#"):                 # markdown 标题行
             s = s.lstrip("#").strip()
             if s:
+                title, body_start = s, i + 1
+                break
+    if not title:
+        for i, ln in enumerate(lines[:5]):    # 裸「第X章 …」首行
+            s = ln.strip()
+            if _BARE_HEAD_RE.match(s):
                 title, body_start = s, i + 1
                 break
     if not title:
@@ -879,8 +918,17 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     _set(plat, status="busy", last_action="upload_chapter", error="")
 
     mod = PLATFORMS[plat]
-    values = {"chapter_title": title, "chapter_body": body,
-              "book_name": book_ref.get("title") or ""}
+    values = chapter_fill_values(ch_no, title, body,
+                                 book_ref.get("title") or "")
+    # 分卷：按本地卷计划解析目标卷（无计划=空串，volume 步骤按空值跳过，
+    # 保持平台默认卷）；_volumes 是平台卷表共享缓存，弹窗新建的卷由流程
+    # 步骤追加进来，跑完回写 books.json 供后续章节免建。
+    try:
+        from . import volumes as _volumes
+        values["volume_name"] = _volumes.name_for(task.get("workdir"), ch_no)
+    except Exception:
+        values["volume_name"] = ""
+    values["_volumes"] = list(book_ref.get("volumes") or [])
     values.update(_url_values(mod, book_ref))   # verify/draft/editor 页 URL（流程占位）
     logs = []
     operation_id = operations.begin(
@@ -904,6 +952,9 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                           config=mod.CONFIG, auto_submit=auto_submit,
                           shot=lambda n: page.screenshot(ledger.shot_path(plat, task_id, n)),
                           log=logs.append)
+            new_vols = values.get("_volumes")
+            if isinstance(new_vols, list) and new_vols != (book_ref.get("volumes") or []):
+                ledger.update_book(task_id, plat, volumes=new_vols)
             if auto_submit:
                 operations.confirm(operation_id, metadata={"platform": plat,
                                                             "action": "upload_chapter",
@@ -977,32 +1028,9 @@ def confirm_manual_chapter(task_id, plat, chapter_no):
 # ------------------------------------------------ 已发章数校准（平台实况对账）
 # 台账只记得 CodeBee 自己发成功的章：用户在平台窗口里手工补交/平台驳回/
 # 台账重复记录都会让「已发 N」漂移（2026-09-28 实案：番茄平台 8 章台账 7）。
-# 校准 = 打开章节管理页数行，按状态关键词分桶后写回 books.json 的 remote_*。
-
-_STATUS_PUB = "已发布"
-_STATUS_REVIEW = ("待审核", "审核中", "排队")
-_STATUS_BAD = ("未通过", "驳回")
-
-
-def bucket_chapter_rows(rows):
-    """章节管理页的行文本 → {total, published, review, rejected}。
-
-    行里含状态关键词才计入对应桶；total=识别出的章节数据行数。"""
-    out = {"total": 0, "published": 0, "review": 0, "rejected": 0}
-    for t in rows or []:
-        t = str(t)
-        if not t:
-            continue
-        if "章节名称" in t:                     # 表头兜底（正常到不了这）
-            continue
-        out["total"] += 1
-        if any(k in t for k in _STATUS_BAD):
-            out["rejected"] += 1
-        elif _STATUS_PUB in t:
-            out["published"] += 1
-        elif any(k in t for k in _STATUS_REVIEW):
-            out["review"] += 1
-    return out
+# 校准 = 打开章节管理页数行（跨页+跨卷），按状态关键词分桶后写回 books.json
+# 的 remote_*。行收集/分桶在 chaprows（本文件超行数基线拆出，2026-10-08）。
+from .chaprows import bucket_chapter_rows, collect_all_volumes  # noqa: E402
 
 
 def sync_published(task_id, plat, manual=False):
@@ -1010,8 +1038,9 @@ def sync_published(task_id, plat, manual=False):
 
     manual=False（打开作品页自动触发）只 attach 在跑的浏览器实例，绝不
     静默 launch 新窗口吓人；manual=True（用户点「校准」按钮）才允许
-    attach-or-launch。识别不到章节行（改版/未登录/分页）时只记 note
-    不覆写 remote_*——宁可显示旧数也不把 0 当真相。"""
+    attach-or-launch。行收集走 _collect_all_volumes（跨页+跨卷）；
+    识别不到章节行（改版/未登录）时只记 note 不覆写 remote_*——宁可
+    显示旧数也不把 0 当真相。"""
     from .browser import Browser
     book = ledger.book_for(task_id, plat)
     if not book:
@@ -1050,16 +1079,19 @@ def sync_published(task_id, plat, manual=False):
         if any(m in url for m in mod.CONFIG["login_url_marks"]) \
                 or url.startswith("chrome-error://"):
             return False, "平台登录态已失效，请重连后校准"
-        rows = page.call(js) or []
+        rows, vols = collect_all_volumes(page, mod)
         st = bucket_chapter_rows(rows)
         if st["total"] <= 0:
             return False, "章节管理页未识别到章节列表（可能改版）"
+        extra = {"volumes": vols} if vols else {}
         ledger.update_book(task_id, plat,
                            remote_total=st["total"],
                            remote_published=st["published"],
                            remote_review=st["review"],
                            remote_rejected=st["rejected"],
-                           remote_synced_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+                           remote_published_nos=st["published_nos"],
+                           remote_synced_at=time.strftime("%Y-%m-%d %H:%M:%S"),
+                           **extra)
         return True, ""
     except Exception as e:
         return False, "校准失败：%s" % str(e)[:160]

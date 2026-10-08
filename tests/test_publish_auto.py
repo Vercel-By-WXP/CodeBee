@@ -217,8 +217,33 @@ class TestPublishPending(unittest.TestCase):
         finally:
             self.manager.upload_chapter_async = orig
 
-    def test_manual_mode_fills_one_then_pauses(self):
-        # 人工确认模式：填好一章停在 manual_pause，等用户浏览器提交后再发起
+    def test_publish_selected_only(self):
+        """批量选择发布：only=章号清单只发所选（保序）；所选全不在待发时报错。
+        status 视图 items 带待发清单（UI 勾选数据源）。"""
+        fake = _FakeUpload()
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = fake
+        try:
+            st = auto.status(self.task["id"])
+            ent = next(b for b in st["books"] if b["platform"] == "fanqie")
+            self.assertEqual([i["chapter_no"] for i in ent.get("items") or []],
+                             [1, 2, 3], "items 带待发清单")
+            ok, err = auto.publish_pending_async(self.task["id"], "fanqie",
+                                                 only=[3, 2])
+            self.assertTrue(ok, err)
+            st = self._wait_status(self.task["id"])
+            self.assertEqual(st.get("status"), "manual_pause")
+            self.assertEqual(Path(fake.calls[0]).name, "第2章.md",
+                             "只发所选且保章号升序：%s" % fake.calls)
+            # 所选全不在待发 → 明确报错不空跑
+            ok, err = auto.publish_pending_async(self.task["id"], "fanqie",
+                                                 only=[99])
+            self.assertFalse(ok)
+            self.assertIn("校准", err)
+        finally:
+            self.manager.upload_chapter_async = orig
+
+    def test_manual_mode_fills_one_then_pauses(self):        # 人工确认模式：填好一章停在 manual_pause，等用户浏览器提交后再发起
         # （连发第二章会导航离开未提交的编辑器，把上一章内容丢掉）
         fake = _FakeUpload()
         orig = self.manager.upload_chapter_async

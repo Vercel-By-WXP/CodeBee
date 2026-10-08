@@ -308,6 +308,13 @@ class Handler(BaseHTTPRequestHandler):
                 qs = parse_qs(urlparse(self.path).query)
                 fid = (qs.get("id") or [""])[0]
                 return self._json(200, {"versions": flows.flow_versions(fid)})
+            m = re.match(r"^/api/flows/([^/]+)/graph$", path)
+            if m:
+                from core import flow_graph
+                try:
+                    return self._json(200, {"graph": flow_graph.build(m.group(1))})
+                except ValueError as exc:
+                    return self._json(404, {"error": str(exc)})
             if path == "/api/skills":
                 from core import skills
                 v = skills.view()
@@ -347,8 +354,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(400, {"error": str(exc)})
                 return self._json(200, {"query": (q.get("q") or [""])[0][:500],
                                         "results": results})
+            if path == "/api/knowledge/pipeline":
+                from core import knowledge_pipeline
+                q = parse_qs(urlparse(self.path).query)
+                return self._json(200, knowledge_pipeline.quality_report(
+                    (q.get("ingest_id") or [""])[0]))
+            if path == "/api/policy":
+                from core import policy
+                q = parse_qs(urlparse(self.path).query)
+                return self._json(200, policy.normalize_sandbox(
+                    {}, (q.get("workdir") or [settings.default_workdir()])[0]))
             if path == "/api/settings":
-                return self._json(200, dict(settings.load(), **jobs.workers_info()))
+                return self._json(200, dict(settings.public_view(), **jobs.workers_info()))
             if path == "/api/settings-v2":
                 # schema 化设置全貌（secret 已脱敏；前端调参卡直读）
                 from core import settings_schema as ss2
@@ -562,6 +579,20 @@ class Handler(BaseHTTPRequestHandler):
                 from core import dispatch_log, tracing
                 return self._json(200, {"trace": tracing.build_trace(
                     run, dispatch_log.replay(run_id=m.group(1), limit=200))})
+            m = re.match(r"^/api/runs/([^/]+)/otel$", path)
+            if m:
+                run = store.get_run(m.group(1))
+                if not run:
+                    return self._json(404, {"error": "not found"})
+                from core import dispatch_log, tracing
+                trace = tracing.build_trace(run, dispatch_log.replay(run_id=m.group(1), limit=200))
+                return self._json(200, tracing.to_otel(trace))
+            m = re.match(r"^/api/runs/([^/]+)/checkpoints$", path)
+            if m:
+                if not store.get_run(m.group(1)):
+                    return self._json(404, {"error": "not found"})
+                from core import checkpoints
+                return self._json(200, {"checkpoint": checkpoints.replay_preview(m.group(1))})
             m = re.match(r"^/api/runs/([^/]+)/preview$", path)
             if m:
                 # 网页成品预览：入口 HTML + 同目录代码文件（前端渲染「预览」页签）
@@ -981,6 +1012,32 @@ class Handler(BaseHTTPRequestHandler):
             if err:
                 return self._json(400, {"error": err})
             return self._json(200, dict(ok=True, **res))
+        if path == "/api/eval-matrix/normalize":
+            from core import eval_matrix
+            try:
+                return self._json(200, {"manifest": eval_matrix.normalize_manifest(self._body())})
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+        if path == "/api/eval-matrix/evaluate":
+            from core import eval_matrix
+            body = self._body() or {}
+            try:
+                report = eval_matrix.evaluate(body.get("manifest"),
+                                              body.get("results"), body.get("baseline"))
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"report": report})
+        if path == "/api/knowledge/pipeline":
+            from core import knowledge_pipeline
+            body = self._body() or {}
+            try:
+                report = knowledge_pipeline.ingest(
+                    body.get("source"), body.get("text"), body.get("metadata"),
+                    chunk_size=body.get("chunk_size", 1200),
+                    overlap=body.get("overlap", 120))
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"ok": True, "report": report})
         if path == "/api/hooks/run":
             return self._api_hook_run()
         if path == "/api/health/op":
@@ -1509,9 +1566,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             view, err = settings.save(self._body())
             if err:
-                return self._json(400, {"error": err, "settings": view})
+                return self._json(400, {"error": err, "settings": settings.public_view(view)})
             n = jobs.configure(view["max_concurrent_jobs"])
-            return self._json(200, {"ok": True, "settings": view, "workers": n})
+            return self._json(200, {"ok": True, "settings": settings.public_view(view), "workers": n})
         m = re.match(r"^/api/settings-v2/([a-z_-]+)$", path)
         if m:
             # schema 化设置写入口：{ops:[{op:"set",path,value}], expected_revision?}
@@ -2152,11 +2209,14 @@ class Handler(BaseHTTPRequestHandler):
         force = bool(body.get("force"))
         force_confirmed = bool(body.get("force_confirmed"))
         force_reason = str(body.get("force_reason") or "").strip()
+        only = body.get("chapters")            # 批量选择发布：章号数组（可省=全部待发）
+        kwargs = {"only": only if isinstance(only, list) else None}
+        if force or force_confirmed or force_reason:
+            kwargs.update(force=force, force_confirmed=force_confirmed,
+                          force_reason=force_reason)
         ok, err = pub_auto.publish_pending_async(
             task_id, platform, auto_submit=bool(body.get("auto_submit")),
-            **({"force": force, "force_confirmed": force_confirmed,
-                "force_reason": force_reason}
-               if force or force_confirmed or force_reason else {}))
+            **kwargs)
         if not ok:
             payload = {"error": err or "操作失败"}
             if str(err or "").startswith("质量门禁拦截："):
@@ -3033,10 +3093,13 @@ class Handler(BaseHTTPRequestHandler):
         POST /api/hooks/run，头 X-CodeBee-Token；体 {goal 必填, type, workdir,
         context, title}。令牌取设置 hooks_token（data/settings.json，UI/文件均可
         配置）：已配置则必须精确匹配；未配置仅放行本机回环。任务链与 UI 完全相同。"""
+        from core import webhooks
         try:
-            tok = str(settings.load().get("hooks_token") or "")
+            cfg = settings.load()
+            tok = str(cfg.get("hooks_token") or "")
+            signing_secret = str(cfg.get("hooks_signing_secret") or "")
         except Exception:
-            tok = ""
+            tok, signing_secret = "", ""
         given = (self.headers.get("X-CodeBee-Token") or "").strip()
         if tok:
             if given != tok:
@@ -3046,6 +3109,18 @@ class Handler(BaseHTTPRequestHandler):
             if host not in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
                 return self._json(403, {
                     "error": "未配置 hooks.token，仅允许本机触发；请先在设置中配置令牌"})
+        # Optional HMAC envelope for GitHub/GitLab-style integrations. A
+        # configured secret makes the signature mandatory; token auth remains
+        # useful for old local scripts when no secret is configured.
+        if signing_secret:
+            timestamp = self.headers.get("X-CodeBee-Timestamp") or ""
+            signature = (self.headers.get("X-CodeBee-Signature") or
+                         self.headers.get("X-Hub-Signature-256") or "")
+            signed = (webhooks.verify(signing_secret, self._raw_request_body(),
+                                      signature, timestamp) if timestamp else
+                      webhooks.verify_raw(signing_secret, self._raw_request_body(), signature))
+            if not signed:
+                return self._json(401, {"error": "Webhook 签名无效或已过期"})
         raw = self._body()
         payload = {}
         for k, cap in (("goal", 4000), ("context", 4000), ("type", 40),
@@ -3059,7 +3134,18 @@ class Handler(BaseHTTPRequestHandler):
             payload["type"] = "direct"
         if not payload.get("title"):
             payload["title"] = payload["goal"][:30]
+        delivery_id = (self.headers.get("X-CodeBee-Delivery") or
+                       self.headers.get("X-Delivery-Id") or "").strip()
+        if delivery_id:
+            claimed, info = webhooks.claim_delivery(delivery_id)
+            if not claimed:
+                return self._json(200, {"ok": True, "deduplicated": True,
+                                        "delivery_id": info.get("delivery_id")})
         status, resp = self._create_and_start(payload)
+        if delivery_id and status != 200:
+            webhooks.release_delivery(delivery_id)
+        if delivery_id:
+            resp = dict(resp, delivery_id=delivery_id)
         return self._json(status, resp)
 
     def _enqueue_run(self, run_id, task_id, job):

@@ -53,6 +53,18 @@ DEFAULTS = {"max_concurrent_jobs": 12, "default_workdir": "", "hooks_token": "",
 # 桌宠形象白名单（与 app/pet.py 的 SKINS 对齐；这里不 import pet 模块，避免
 # core 反向依赖 app 根目录脚本）
 PET_SKINS = ("plush", "robot")
+SECRET_KEYS = frozenset({"hooks_token", "hooks_signing_secret", "notify_webhook",
+                         "notify_bark_key", "notify_ntfy_topic", "notify_serverchan_key",
+                         "notify_telegram_token", "notify_telegram_chat_id", "backup_remote_pass"})
+
+
+def public_view(value=None):
+    """Return settings suitable for API responses without credential material."""
+    source = dict(value if isinstance(value, dict) else load())
+    for key in SECRET_KEYS:
+        if key in source:
+            source[key] = "***" if source[key] else ""
+    return source
 # 并发保护上限 24：编排任务有空位即直接启动，满载回滚 queued 排队自动补跑，
 # 不秒判失败；同任务单飞守卫在 jobs 层。该上限保护的是本机资源（CLI 子进程
 # 数），与各 API 厂商的限流无关；direct 对话走 jobs 轻量池不占此额度。

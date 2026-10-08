@@ -6654,7 +6654,7 @@ button.primary:hover { filter:brightness(.96); }
    inherit ocean/forest/amber/violet/contrast choices instead of imposing a new
    brand color. */
 html[data-skin="ocean"][data-theme="light"] {
-  --bg: #fff; --sidebar: #eff5fd; --panel: #fff; --panel2: #f0f6fd;
+  --bg: #ffffff; --sidebar: #eff5fd; --panel: #fff; --panel2: #f0f6fd;
   --border: #d7e3f4; --border-strong: #b9cde8; --text: #0c1a2c; --muted: #526983;
   --accent: #1f6fd0; --accent2: #5b4fe0; --ok: #0d9a72; --warn: #a9761a;
   --bad: #d23c58; --chip-queued-bg: #f0f6fd; --log-bg: #f4f8fe; --log-text: #33475f;
@@ -7276,3 +7276,17 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
   #rd-hive-cells .hive-lane,
   #rd-hive-cells .hive-cell { transition: none; }
 }
+
+/* ---- 发布台·批量选择（pb-pend）：待发章号 chips + 全选/清空 + 发布所选/直发所选 ---- */
+.pb-pend { width: 100%; margin-top: 6px; padding: 6px 8px; border: 1px solid var(--line);
+  border-radius: 8px; font-size: 12px; }
+.pb-pend-head { display: flex; gap: 10px; align-items: center; color: var(--muted); }
+.pb-pend-head a { color: var(--accent, #4a7dbe); text-decoration: none; }
+.pb-pend-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;
+  max-height: 96px; overflow: auto; }
+.pb-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px;
+  border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
+  color: var(--muted); user-select: none; }
+.pb-chip.on { border-color: var(--accent, #4a7dbe); color: var(--text); }
+.pb-chip input { margin: 0; }
+.pb-pend-btns { display: flex; gap: 8px; margin-top: 6px; }

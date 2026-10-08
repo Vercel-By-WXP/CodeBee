@@ -83,6 +83,41 @@ def test_read_chapter():
     expect(manager.read_chapter(str(_TMP / "nope.md"))[3] != "", "缺文件报错")
 
 
+def test_read_chapter_bare_heading():
+    """裸「第X章 标题」首行（中文数字章稿常态）：标题行剥出正文、章号解析。
+    认不出的旧世界=标题回退文件名 chapter-31 + 标题行留正文里，番茄编辑器
+    序号/标题双输（2026-10-08 实案）。"""
+    fp = _chapter("chapter-31.md",
+                  "第三十一章 绕开的路线\n\n两点整，车还是拐进了院坝。\n\n" + "正文" * 60)
+    no, title, body, err = manager.read_chapter(fp)
+    expect(err == "" and no == 31, "章号解析：%s %d" % (err, no))
+    expect(title == "第三十一章 绕开的路线", "标题=完整标题行：%s" % title)
+    expect(body.startswith("两点整") and "第三十一章" not in body,
+           "标题行不进正文：%s" % body[:40])
+    fp2 = _chapter("c32.md", "第一百零五章 夜谈\n\n" + "正文" * 50)
+    no2, t2, b2, _ = manager.read_chapter(fp2)
+    expect(no2 == 105 and b2.startswith("正文") and "第一百零五章" not in b2,
+           "百位中文数字：%d %s" % (no2, t2))
+
+
+def test_split_chapter_name_and_fill_values():
+    """番茄编辑器三件套拆键：chapter_no=阿拉伯串、chapter_name=正题、
+    chapter_title=完整行（台账/七猫锚点口径不变）。"""
+    expect(manager.split_chapter_name("第三十一章 绕开的路线") == "绕开的路线",
+           "中文数字前缀拆掉：%s" % manager.split_chapter_name("第三十一章 绕开的路线"))
+    expect(manager.split_chapter_name("第31章、风起") == "风起", "顿号分隔")
+    expect(manager.split_chapter_name("第三十一章") == "第三十一章", "无正题原样")
+    expect(manager.split_chapter_name("风起") == "风起", "无章号原样")
+    expect(manager.split_chapter_name("chapter-31") == "chapter-31", "文件名原样")
+    vals = manager.chapter_fill_values(31, "第三十一章 绕开的路线", "正文", "书")
+    expect(vals["chapter_no"] == "31" and vals["chapter_name"] == "绕开的路线"
+           and vals["chapter_title"] == "第三十一章 绕开的路线"
+           and vals["chapter_body"] == "正文" and vals["book_name"] == "书",
+           "fill values 三件套：%s" % vals)
+    vals0 = manager.chapter_fill_values(0, "番外", "x", "书")
+    expect(vals0["chapter_no"] == "", "章号 0 → 空串（fill 跳过）:%s" % vals0)
+
+
 def test_flow_override():
     steps = manager.load_flow("fanqie", "check_login")
     expect(steps and steps[0]["do"] == "navigate", "内置流程可读")
@@ -431,6 +466,128 @@ def test_fanqie_flow_closed_loop_contract():
         nxt = cb[i + 1]
         expect(nxt.get("do") == "wait" and nxt.get("sel") == ".category-modal",
                "触发器后必须 wait 弹层存在（sleep 已退役）：%s" % nxt)
+
+
+def test_fanqie_upload_flow_contract():
+    """番茄发章流程契约（2026-10-08 序号空案）：序号/标题/正文三件套必须
+    各填各的键；verify 标记用「第{chapter_no}章」（用户手工改过标题时按名
+    对版必假失败）。随包基线与 data 覆盖表（在场时）同规。"""
+    import json as _json
+    from core.publish import flow as _flow
+
+    def contract(ups, tag):
+        keys = [s.get("key") for s in ups if s.get("do") == "fill"]
+        expect("chapter_no" in keys and "chapter_name" in keys
+               and "chapter_title" not in keys,
+               "%s 序号/正题分填、不再拿完整行填标题：%s" % (tag, keys))
+        verifies = [s for s in ups if s.get("do") == "verify"]
+        expect(len(verifies) == 1 and "第{chapter_no}章" in verifies[0]["any"]
+               and "{chapter_name}" in verifies[0]["any"],
+               "%s verify 双标记：%s" % (tag, verifies and verifies[0].get("any")))
+        # manual 模式的命门：「下一步」必须是 submit 步骤（auto_submit=false
+        # 在此步前停）。click_real 不会被 manual 闸拦——序号修好后 manual
+        # 模式会一路点到「定时发布/发布」把人工确认模式架空（2026-10-08）。
+        nxt = [s for s in ups if s.get("text") == "下一步"
+               and s.get("do") in ("submit", "click_real")]
+        expect(len(nxt) == 1 and nxt[0]["do"] == "submit",
+               "%s 下一步必须走 submit 闸：%s" % (tag, nxt))
+        # 批量自动发布·自动分卷（2026-10-08）：volume 步骤必须在填稿之前，
+        # 且带全真机选择器（编辑器分卷弹窗/新建分卷/行内确认）。
+        vi = next((k for k, s in enumerate(ups) if s.get("do") == "volume"), -1)
+        first_fill = next((k for k, s in enumerate(ups)
+                           if s.get("do") == "fill"), len(ups))
+        expect(vi >= 0, "%s 缺 volume 步骤" % tag)
+        expect(vi < first_fill, "%s volume 步骤必须在填稿前" % tag)
+        vs = ups[vi]
+        for k in ("open_sel", "modal_sel", "item_sel", "add_sel",
+                  "input_sel", "confirm_sel"):
+            expect(str(vs.get(k) or "").strip(), "%s volume 缺 %s" % (tag, k))
+        expect(vs.get("key") == "volume_name", "%s volume key" % tag)
+
+    base_fp = Path(_flow.__file__).with_name("flows-fanqie-calibrated.json")
+    contract(_json.loads(base_fp.read_text(encoding="utf-8"))["upload_chapter"],
+             "基线")
+    contract(manager.load_flow("fanqie", "upload_chapter"), "解析后")
+
+
+def test_volume_step_flow_logic():
+    """volume 步骤全链（假页驱动）：选已有卷 / 缺卷新建（输名→✓→选中→
+    确定）/ 无目标跳过 / 无卷选择器 optional 跳过。"""
+    from core.publish import flow as _flow
+
+    class VolPage:
+        """分卷弹窗状态桩：open→列表；add→编辑态；confirm→落名；item→选中；ok→收。"""
+        def __init__(self, vols, open_ok=True):
+            self.vols = list(vols)          # 平台显示名
+            self.modal = False
+            self.editing = False
+            self.selected = []
+            self.created = []
+            self.open_ok = open_ok
+
+        def call(self, fn, *a, **k):
+            if "v.click" in fn:
+                if not self.open_ok:
+                    return {"ok": False, "err": "noopen"}
+                self.modal = True
+                return {"ok": True}
+            if "width>0" in fn and "map" in fn:           # vol_items
+                out = list(self.vols) if self.modal else []
+                if self.editing:
+                    out.append("第9卷：")
+                return out
+            if "e.click" in fn and "add" in fn:           # add_sel 点击
+                self.editing = True
+                return {"ok": True}
+            if "HTMLInputElement" in fn:                  # 行内输名+confirm
+                self.created.append(a[1])
+                self.editing = False
+                self.vols.append("第9卷：" + str(a[1]))
+                return {"ok": True}
+            if "els[i].click" in fn:                      # 点卷条目
+                t = a[1]
+                if t in self.vols:
+                    self.selected.append(t)
+                    return {"ok": True}
+                return {"ok": False}
+            if "确定" in fn:                              # 弹窗确定
+                self.modal = False
+                return {"ok": True}
+            return {"ok": True}
+
+    step = {"do": "volume", "key": "volume_name", "optional": True,
+            "open_sel": ".vopen", "modal_sel": ".vmodal",
+            "item_sel": ".vitem", "add_sel": ".vadd",
+            "input_sel": "input", "confirm_sel": "i.ok", "settle": 0}
+
+    def run(page, values):
+        logs = []
+        _flow.run_flow(page, [dict(step)], values=values, log=logs.append)
+        return logs
+
+    # 1) 已有卷：按去前缀名选中
+    pg = VolPage(["第一卷：山门换锁", "第二卷：县里有旧账"])
+    vals = {"volume_name": "县里有旧账"}
+    run(pg, vals)
+    expect(pg.selected == ["第二卷：县里有旧账"], "去前缀选中：%s" % pg.selected)
+
+    # 2) 缺卷：新建（输名→确认）→ 选中 → 追加进共享缓存
+    pg2 = VolPage(["第一卷：山门换锁"])
+    vals2 = {"volume_name": "试着开一道口", "_volumes": ["第一卷：山门换锁"]}
+    run(pg2, vals2)
+    expect(pg2.created == ["试着开一道口"], "新建输名：%s" % pg2.created)
+    expect(pg2.selected == ["第9卷：试着开一道口"], "新建后选中：%s" % pg2.selected)
+    expect(vals2["_volumes"][-1] == "第9卷：试着开一道口", "缓存追加")
+
+    # 3) 无目标卷名：跳过（不开弹窗）
+    pg3 = VolPage(["第一卷：山门换锁"])
+    run(pg3, {"volume_name": ""})
+    expect(not pg3.modal and not pg3.selected, "空卷名跳过")
+
+    # 4) 编辑器没有卷选择器 + optional：跳过不报错
+    pg4 = VolPage(["第一卷：山门换锁"], open_ok=False)
+    run(pg4, {"volume_name": "山门换锁"})
+    expect(not pg4.selected, "无选择器 optional 跳过")
 
 
 def test_resolve_book_id_by_title():

@@ -9,6 +9,10 @@
    确认再生产」）——生成封面先只读展示提示词，确认后才走 POST /cover 付费链。
 4. D 专项蒸馏写入路径（2026-10-07 轮第 3/4 步提案 1）——skills.upsert_lesson
    落经验库的验收口径锁定：闭集落类/首写不分裂/复查合并不分裂/空输入拒写。
+5. 产品巡检两件（2026-10-08 10 时班第 3/4 步 G 专项，纯标记/文案层）——
+   index.html iOS 状态栏 meta 畸形补 content= 属性名（G-1）；README 删除
+   relnotes 标记块外残留 v0.1.65 旧更新段（G-2）。详见
+   ProductInspectRegressionsTests。
 
 跑法：python -m unittest discover -s tests -p "test_borrow_round_regressions.py" -v
 （或 cd tests && python -m unittest test_borrow_round_regressions -v）
@@ -303,6 +307,85 @@ class DistillWriteRegressionTests(BaseTest):
         ids = {f["id"] for f in flows.BUILTIN_FLOWS}
         self.assertEqual(len(flows.BUILTIN_FLOWS), 18)
         self.assertEqual(len(ids), 18, "类型 id 应零重复")
+
+
+class ProductInspectRegressionsTests(BaseTest):
+    """2026-10-08 10 时班第 3/4 步 G 专项两件（产品巡检，纯标记/文案层，零逻辑改动）：
+    1. index.html iOS 状态栏 meta 畸形——`="black-translucent"` 缺 content= 属性名，
+       浏览器整条忽略该标签，iOS PWA 状态栏样式失效（G-1）；
+    2. README relnotes 标记块外残留 v0.1.65 旧更新段——npm/GitHub 渲染出现
+       「最新版是 v0.1.65」误导段（G-2）；selfupdate._relnotes 只认标记段内内容，
+       删段外残留不影响查新。"""
+
+    @classmethod
+    def setUpClass(cls):
+        root = Path(__file__).resolve().parents[1]
+        cls.index_html = (root / "app" / "ui" / "index.html").read_text(encoding="utf-8")
+        cls.readme = (root / "README.md").read_text(encoding="utf-8")
+
+    def _meta_attrs(self):
+        """解析页面全部 meta 标签的属性表（HTMLParser 实析，非源码字符串断言）。"""
+        import html.parser
+
+        class MetaCollector(html.parser.HTMLParser):
+            def __init__(self):
+                html.parser.HTMLParser.__init__(self)
+                self.metas = []
+
+            def handle_starttag(self, tag, attrs):
+                if tag == "meta":
+                    self.metas.append(dict(attrs))
+
+        parser = MetaCollector()
+        parser.feed(self.index_html)
+        parser.close()
+        return parser.metas
+
+    def test_status_bar_meta_well_formed(self):
+        """G-1：状态栏样式 meta 恰一条且 content="black-translucent"（修复前
+        属性值被解析成无名属性、content 缺失 → 本用例红）。"""
+        metas = [m for m in self._meta_attrs()
+                 if m.get("name") == "apple-mobile-web-app-status-bar-style"]
+        self.assertEqual(len(metas), 1, "状态栏样式 meta 应恰一条")
+        self.assertEqual(metas[0].get("content"), "black-translucent",
+                         "content 属性名缺失或值不符（畸形标签被浏览器整条忽略）")
+
+    def test_named_metas_all_have_content(self):
+        """边界扫：全部带 name 的 meta 都有非空 content（同型畸形一票拦截）。"""
+        bad = [m.get("name") for m in self._meta_attrs()
+               if m.get("name") and not (m.get("content") or "").strip()]
+        self.assertEqual(bad, [], "带 name 的 meta 缺 content：%s" % bad)
+
+    def test_readme_relnotes_single_heading_inside_block(self):
+        """G-2：「最新版更新内容」标题全文件恰 1 处，且落在 relnotes 标记对内
+        （修复前块外 v0.1.65 旧段与之并存 → 计数 2 红）。"""
+        import re
+        text = self.readme
+        self.assertEqual(text.count("<!-- relnotes:start -->"), 1)
+        self.assertEqual(text.count("<!-- relnotes:end -->"), 1)
+        lo = text.index("<!-- relnotes:start -->")
+        hi = text.index("<!-- relnotes:end -->")
+        self.assertLess(lo, hi, "relnotes 标记对顺序颠倒")
+        headings = list(re.finditer(r"^### 最新版更新内容", text, re.M))
+        self.assertEqual(len(headings), 1,
+                         "「最新版更新内容」标题应仅存 1 处（标记块内），实得 %d"
+                         % len(headings))
+        self.assertTrue(lo < headings[0].start() < hi,
+                        "唯一更新内容标题不在 relnotes 块内")
+
+    def test_readme_relnotes_block_not_emptied(self):
+        """边界：标记段内更新内容非空（selfupdate._relnotes 查新依赖段内文案）。"""
+        import re
+        m = re.search(r"<!--\s*relnotes:start\s*-->(.*?)<!--\s*relnotes:end\s*-->",
+                      self.readme, re.S)
+        self.assertIsNotNone(m)
+        body = m.group(1)
+        self.assertIn("### 最新版更新内容", body)
+        self.assertIn("- ", body, "relnotes 段内应至少一条更新项")
+
+    def test_readme_stale_version_heading_gone(self):
+        """边界：块外 v0.1.65 旧标题不再出现（防回填）。"""
+        self.assertNotIn("### 最新版更新内容（v0.1.65）", self.readme)
 
 
 if __name__ == "__main__":

@@ -19,12 +19,44 @@ CONFIG = {
     "home": "https://fanqienovel.com/main/writer/",   # 实测 writer. 子域不存在(DNS 000)；快照实抓为主站路径
     # 导航后 URL 含任一标记 → 未登录（跳到了登录/通行证页）
     "login_url_marks": ["login", "passport", "sso", "account/signin"],
-    # 章节管理页计数（2026-09-28 实机校准）：Arco 表格，数据行=含 ≥4 个 td 的 tr
-    # （表头行是 th，天然排除）。逐行 innerText 交 manager 按状态关键词分桶。
+    # 章节管理页计数（2026-09-28 实机校准；2026-10-08 补跨页/跨卷）：
+    # Arco 表格，数据行=含 ≥4 个 td 的 tr（表头行是 th，天然排除）。
+    # 逐行 innerText 交 manager 按状态关键词分桶。表每页 15 行且带分卷筛选，
+    # 只数当前页会把 30 章已发报成 15（校准少计实案）——pager_next_js 翻页、
+    # volume_js 换卷，manager._collect_all_volumes 负责循环。
     "count_rows_js":
         "()=>[...document.querySelectorAll('tr')]"
         ".filter(tr => tr.querySelectorAll(':scope > td').length >= 4)"
         ".map(tr => tr.innerText.replace(/\\s+/g, ' ').trim()).filter(Boolean)",
+    "pager_next_js":
+        "()=>{const n=document.querySelector('.arco-pagination-item-next');"
+        "if(!n)return{done:true};"
+        "if(/item-disabled/.test(n.className))return{done:true};"
+        "n.click();return{done:false};}",
+    # 分卷下拉是自绘 byte-select（非 arco-select），弹层在 click 后下一帧才
+    # 渲染——四段式由 manager 用 sleep 隔开：current 读当前卷、open 开弹层、
+    # options 读选项（弹层开着读）、pick 在已开的弹层里点选某卷（选中即收起）。
+    # 无「全部」项，逐卷收齐全量；收完恢复进入时的卷。
+    "volume_js": {
+        "current":
+            "()=>{const v=document.querySelector('.chapter-select-left .byte-select-view');"
+            "return v?(v.innerText||'').trim():'';}",
+        "open":
+            "()=>{const v=document.querySelector('.chapter-select-left .byte-select-view');"
+            "if(!v)return{ok:false};v.click();return{ok:true};}",
+        "options":
+            "()=>{const dd=[...document.querySelectorAll('.byte-select-popup,"
+            "[class*=select-dropdown]')].find(e=>e.getBoundingClientRect().width>0);"
+            "return dd?[...dd.querySelectorAll('li,[class*=option]')]"
+            ".map(e=>(e.innerText||'').trim()).filter(Boolean):[];}",
+        "pick":
+            "(t)=>{const dd=[...document.querySelectorAll('.byte-select-popup,"
+            "[class*=select-dropdown]')].find(e=>e.getBoundingClientRect().width>0);"
+            "if(!dd)return{ok:false};"
+            "const hit=[...dd.querySelectorAll('li,[class*=option]')]"
+            ".find(e=>((e.innerText||'').trim())===t);"
+            "if(!hit)return{ok:false};hit.click();return{ok:true};}",
+    },
 }
 
 # 建书：入口 → 弹层/页面 → 文本字段直填；分类/签约模式/标签走文本点击。
@@ -49,6 +81,11 @@ CREATE_BOOK = [
 
 # 发章：后台首页 → 按书名点进作品 → 新建章节 → 填标题与正文。
 # book_name 由 manager 从作品登记（books.json）带入 values，click_text 复用。
+# 番茄编辑器「第 [序号] 章 [标题]」三件套分开填：chapter_no=阿拉伯章号
+# （序号框只认数字，空着被平台打回）、chapter_name=正题、chapter_body=正文
+# （标题行已在 read_chapter 剥掉）。volume 步骤按 values.volume_name 选卷/
+# 建卷（自动分卷，无计划时空值跳过）。内置默认表选择器为推测，真机以
+# flows-fanqie-calibrated.json / data 覆盖表为准。
 UPLOAD_CHAPTER = [
     {"do": "navigate", "url": "{home}"},
     {"do": "url_any", "any": ["fanqienovel.com"]},
@@ -56,7 +93,15 @@ UPLOAD_CHAPTER = [
      "scope": "a,span,div[class*=title],div[class*=book]"},
     {"do": "click_text", "text": "新建章节", "contains": True, "scope": "button,a,[role=button],span"},
     {"do": "probe", "note": "章节编辑器"},
-    {"do": "fill", "sel": "input[placeholder*='章节'],input[placeholder*='标题']", "key": "chapter_title"},
+    {"do": "wait", "sel": "[contenteditable=true],textarea[class*=content],div[class*=editor]", "timeout": 10},
+    {"do": "volume", "key": "volume_name", "optional": True,
+     "open_sel": "input[type=number],input[class*=serial],div[class*=volume]",
+     "modal_sel": "[class*=volume][class*=modal],[class*=modal][class*=volume]",
+     "item_sel": "[class*=volume] li,[class*=volume-item]",
+     "add_sel": "[class*=add-volume],[class*=volume] button",
+     "confirm_sel": "[class*=confirm]", "settle": 1.5},
+    {"do": "fill", "sel": "input[type=number],input[class*=serial],input[class*=byte]", "key": "chapter_no"},
+    {"do": "fill", "sel": "input[placeholder*='章节'],input[placeholder*='标题']", "key": "chapter_name"},
     {"do": "wait", "sel": "[contenteditable=true],textarea[class*=content],div[class*=editor]", "timeout": 10},
     {"do": "fill", "sel": "[contenteditable=true],textarea[class*=content]", "key": "chapter_body"},
     {"do": "shot", "name": "chapter-filled"},

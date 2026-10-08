@@ -51,17 +51,154 @@ MIXED_ROWS = FANQIE_ROWS + ["第9章 草稿 800 0 未通过 2026-09-27 00:00"]
 
 def test_bucket_rows():
     st = manager.bucket_chapter_rows(FANQIE_ROWS)
-    expect(st == {"total": 3, "published": 3, "review": 0, "rejected": 0},
-           "番茄行全为已发布：%s" % st)
+    expect(st["total"] == 3 and st["published"] == 3 and st["review"] == 0
+           and st["rejected"] == 0, "番茄行全为已发布：%s" % st)
+    expect(st["published_nos"] == [1, 7, 8], "已发章号集：%s" % st["published_nos"])
     st = manager.bucket_chapter_rows(QIMAO_ROWS)
-    expect(st == {"total": 2, "published": 0, "review": 2, "rejected": 0},
-           "七猫未签约书全为待审核：%s" % st)
+    expect(st["total"] == 2 and st["published"] == 0 and st["review"] == 2
+           and st["rejected"] == 0, "七猫未签约书全为待审核：%s" % st)
+    expect(st["published_nos"] == [], "待审核行不进章号集")
     st = manager.bucket_chapter_rows(MIXED_ROWS)
     expect(st["total"] == 4 and st["published"] == 3 and st["rejected"] == 1,
            "驳回行进 rejected 桶：%s" % st)
     st = manager.bucket_chapter_rows(["章节名称 字数 错别字 审核状态 发布时间 操作"])
     expect(st["total"] == 0, "表头行不计：%s" % st)
     expect(manager.bucket_chapter_rows([])["total"] == 0, "空行清单")
+
+
+class VolumePagerPage:
+    """章节管理页状态桩：按 JS 特征分派——数行 / 翻页 / 分卷 open+options+pick。
+
+    还原番茄真机形态：表每页 15 行、分卷下拉把列表筛到单卷、翻到末页 next
+    挂 item-disabled。"""
+    def __init__(self, volumes, url="https://fanqienovel.com/main/writer/chapter-manage/777"):
+        # volumes: [(卷名, [每页行清单, ...]), ...]
+        self._vols = volumes
+        self._vi = 0
+        self._pi = 0
+        self._url = url
+        self.picked = []
+
+    def navigate(self, url, timeout=30):
+        pass
+
+    def url(self):
+        return self._url
+
+    def call(self, js, *a):
+        if ":scope > td" in js:                       # count_rows_js
+            return list(self._vols[self._vi][1][self._pi])
+        if "arco-pagination-item-next" in js:         # pager_next_js
+            if self._pi + 1 < len(self._vols[self._vi][1]):
+                self._pi += 1
+                return {"done": False}
+            return {"done": True}
+        if "chapter-select-left" in js:               # volume open / current
+            return {"ok": True} if "click" in js else self._vols[self._vi][0]
+        if "(t)=" in js:                              # volume pick（弹层已开）
+            want = a[0] if a else ""
+            for i, (name, _pages) in enumerate(self._vols):
+                if name == want:
+                    self._vi, self._pi = i, 0
+                    self.picked.append(want)
+                    return {"ok": True}
+            return {"ok": False}
+        if "byte-select-popup" in js:                 # volume options
+            return [name for name, _ in self._vols]
+        raise AssertionError("未知 JS 分派：%s" % js[:80])
+
+
+def test_sync_pagination_and_volumes():
+    """校准跨页+跨卷收齐：番茄真机 30 章已发，旧逻辑只数当前页 15 行报 15；
+    分卷再拆两卷各 15 行。收齐后 remote_total/remote_published/published_nos
+    全量落盘，幂等集合并入（待发清单不再把已发章当待发）。"""
+    from core.publish import browser as browser_mod
+
+    def rows_page(nos):
+        return ["第%d章 题%d %d 0 已发布 2026-10-08 00:00" % (n, n, 900 + n)
+                for n in nos]
+
+    vol1 = ("第一卷：山门换锁", [rows_page(range(30, 15, -1)),
+                                rows_page(range(15, 0, -1))])
+    vol2 = ("第二卷：县里有旧账", [rows_page(range(45, 30, -1))])
+    page = VolumePagerPage([vol1, vol2])
+
+    class FakeBrowser:
+        port = 59998
+        @staticmethod
+        def attach(port):
+            if not port:
+                raise browser_mod.BrowserError("dead")
+            return FakeBrowser()
+        def first_page(self, create=True):
+            return page
+
+    manager._set("fanqie", status="connected", port=59998)
+    ledger.save_book("t-vol", "fanqie", {"book_id": "777", "title": "分卷书"})
+    ledger.record("fanqie", "upload_chapter", task_id="t-vol",
+                  chapter_no=2, ok=True)          # 本地只有第 2 章
+    orig = browser_mod.Browser.attach
+    browser_mod.Browser.attach = FakeBrowser.attach
+    try:
+        ok, err = manager.sync_published("t-vol", "fanqie")
+    finally:
+        browser_mod.Browser.attach = orig
+    expect(ok, err)
+    b = ledger.book_for("t-vol", "fanqie")
+    expect(b["remote_total"] == 45 and b["remote_published"] == 45,
+           "45 章全量（旧逻辑 15）：%s" % {k: b[k] for k in
+                                          ("remote_total", "remote_published")})
+    expect(b["remote_published_nos"] == list(range(1, 46)),
+           "已发章号集 1..45：%s" % b["remote_published_nos"][:5])
+    expect(page.picked[:2] == ["第一卷：山门换锁", "第二卷：县里有旧账"]
+           and page.picked[-1] == "第一卷：山门换锁",
+           "两卷收齐且还原进入时的卷：%s" % page.picked)
+    # 幂等集合=本地记录∪平台实况：手工补交的章不再当「待发」重发
+    done = ledger.published_chapters("t-vol", "fanqie")
+    expect(2 in done and 40 in done and len(done) == 45,
+           "本地∪实况章号集：%d" % len(done))
+
+
+def test_sync_pagination_stops_on_dead_pager():
+    """翻页 JS 缺席/无进展时按单页收（七猫与旧桩兼容，不空转）。"""
+    from core.publish import browser as browser_mod
+
+    class LegacyPage:
+        """老桩形态：call 不吃第二参数、任何 js 都回同一份行。"""
+        def __init__(self):
+            self.calls = 0
+        def navigate(self, url, timeout=30):
+            pass
+        def url(self):
+            return "https://fanqienovel.com/main/writer/chapter-manage/777"
+        def call(self, js):
+            self.calls += 1
+            return ["第%d章 x 1 0 已发布 t" % i for i in range(1, 6)]
+
+    pg = LegacyPage()
+
+    class FB:
+        port = 59997
+        @staticmethod
+        def attach(port):
+            return FB()
+        def first_page(self, create=True):
+            return pg
+
+    manager._set("fanqie", status="connected", port=59997)
+    ledger.save_book("t-legacy", "fanqie", {"book_id": "778", "title": "旧桩书"})
+    orig = browser_mod.Browser.attach
+    browser_mod.Browser.attach = FB.attach
+    try:
+        ok, err = manager.sync_published("t-legacy", "fanqie")
+    finally:
+        browser_mod.Browser.attach = orig
+    expect(ok, err)
+    b = ledger.book_for("t-legacy", "fanqie")
+    expect(b["remote_total"] == 5 and b["remote_published_nos"] == [1, 2, 3, 4, 5],
+           "旧桩单页收齐不空转：%s" % b["remote_total"])
+    # 有界即可：current/open/options + 3 次点选止损 + 兜底收行，不许死循环
+    expect(pg.calls <= 20, "调用次数有界：%d" % pg.calls)
 
 
 def test_update_book_merge():
@@ -355,5 +492,8 @@ if __name__ == "__main__":
     check("create_book_empty_id_reconciles_and_skips_entry",
           test_create_book_empty_id_reconciles_and_skips_entry)
     check("sync_empty_id_resolves_first", test_sync_empty_id_resolves_first)
+    check("sync_pagination_and_volumes", test_sync_pagination_and_volumes)
+    check("sync_pagination_stops_on_dead_pager",
+          test_sync_pagination_stops_on_dead_pager)
     print("== %d fail" % len(FAILS))
     sys.exit(1 if FAILS else 0)

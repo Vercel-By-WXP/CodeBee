@@ -6014,6 +6014,7 @@ function pbBlock(task, platform) {
   }
   const busy = st === "busy";
   let btns = "";
+  let pendHtml = "";   // 批量选择 chips（bookReady 分支里填充，extra 段落拼接）
   if (st === "none" || st === "error" || st === "waiting_login") {
     btns += '<button class="ghost" onclick="pbConnect(\'' + platform + '\')">' +
       (st === "error" ? t("重连") : t("连接平台")) + "</button>";
@@ -6045,6 +6046,41 @@ function pbBlock(task, platform) {
         ' onclick="pbPublishAll(\'' + esc(task.id) + "', '" + platform + '\')">' +
         t("发布全部待发") + t("（") + au.pending + t("）") + "</button>";
     }
+    // 批量选择：待发章号 chips（默认全选），「发布所选」人工模式 / 「直发所选」
+    // 逐章自动提交（护栏每日上限/连败退避照常生效）。分卷由服务端按卷计划
+    // 自动选/建（volumes.py），界面上不用管卷。
+    const items = (au.items && au.items.length ? au.items : [])
+      .map((x) => Number(x.chapter_no)).filter((n) => n > 0);
+    if (items.length && !run) {
+      const key = task.id + ":" + platform;
+      const sig = items.join(",");
+      S.pbSel = S.pbSel || {};
+      if (!S.pbSel[key] || S.pbSel[key].sig !== sig)
+        S.pbSel[key] = { sig, sel: new Set(items) };
+      const sel = S.pbSel[key].sel;
+      let chips = "";
+      for (const n of items)
+        chips += '<label class="pb-chip' + (sel.has(n) ? " on" : "") + '">' +
+          '<input type="checkbox" ' + (sel.has(n) ? "checked" : "") +
+          ' onchange="pbSelToggle(\'' + esc(task.id) + "','" + platform + "'," + n + ',this.checked)">' +
+          n + "</label>";
+      pendHtml += '<div class="pb-pend" data-key="' + esc(key) + '">' +
+        '<div class="pb-pend-head">' +
+        '<span>' + esc(t("待发 ")) + items.length + esc(t(" 章（按卷计划自动分卷）")) + "</span>" +
+        '<a href="javascript:void(0)" onclick="pbSelAll(\'' + esc(task.id) + "','" + platform + "',true)" + '">' + esc(t("全选")) + "</a>" +
+        '<a href="javascript:void(0)" onclick="pbSelAll(\'' + esc(task.id) + "','" + platform + "',false)" + '">' + esc(t("清空")) + "</a>" +
+        "</div>" +
+        '<div class="pb-pend-chips">' + chips + "</div>" +
+        '<div class="pb-pend-btns">' +
+        '<button class="ghost" ' + (busy || !au.guard_ok || !sel.size ? "disabled" : "") +
+        ' onclick="pbPublishSelected(\'' + esc(task.id) + "','" + platform + '\',false)">' +
+        t("发布所选") + t("（") + sel.size + t("）") + "</button>" +
+        '<button class="ghost" ' + (busy || !au.guard_ok || !sel.size ? "disabled" : "") +
+        ' title="' + esc(t("所选章节逐章自动提交（无人值守），护栏每日上限/连败退避照常生效")) + '"' +
+        ' onclick="pbPublishSelected(\'' + esc(task.id) + "','" + platform + '\',true)">' +
+        t("直发所选") + t("（") + sel.size + t("）") + "</button>" +
+        "</div></div>";
+    }
     if (au.pending > 0 && !au.guard_ok) {
       btns += '<div class="pb-err">' + esc(au.guard_reason || t("护栏拦截")) + "</div>";
     }
@@ -6074,6 +6110,7 @@ function pbBlock(task, platform) {
       esc(t("作品已在平台建好（建书流程没走通或手工建的）？补登记后直接发章，不会在平台新建")) + '">' + t("登记已有作品") + "</button>";
   }
   let extra = "";
+  extra += pendHtml;
   if (st === "error" && !bookReady && ps.last_action === "create_book") {
     extra += '<div class="pb-hint">' + esc(t("若作品其实已在平台建好，点「登记已有作品」补登记，勿重复创建")) + "</div>";
   }
@@ -6321,8 +6358,46 @@ window.pbConfirmChapter = async function (taskId, platform, chapterNo) {
   S._pbSig = ""; pbKick();
 };
 
-window.pbPublishAll = async function (taskId, platform) {
-  const au = (((S.pubAuto && S.pubAuto.books) || [])
+window.pbSelToggle = function (taskId, platform, no, on) {
+  const key = taskId + ":" + platform;
+  const ent = (S.pbSel || {})[key];
+  if (!ent) return;
+  if (on) ent.sel.add(Number(no)); else ent.sel.delete(Number(no));
+  S._pbSig = ""; pbKick();   // 重画刷新按钮计数（勾选态存 S.pbSel 不丢）
+};
+
+window.pbSelAll = function (taskId, platform, all) {
+  const key = taskId + ":" + platform;
+  const ent = (S.pbSel || {})[key];
+  if (!ent) return;
+  if (all) for (const n of ent.sig.split(",")) ent.sel.add(Number(n));
+  else ent.sel.clear();
+  S._pbSig = ""; pbKick();
+};
+
+window.pbPublishSelected = async function (taskId, platform, autoSubmit) {
+  const key = taskId + ":" + platform;
+  const ent = (S.pbSel || {})[key];
+  const chapters = ent ? [...ent.sel].sort((a, b) => a - b) : [];
+  if (!chapters.length) return;
+  const msg = autoSubmit
+    ? t("将对所选 {0} 章（第 {1} 章—第 {2} 章）逐章自动填稿并提交发布，无需人工确认；护栏（每日上限/连续失败暂停）生效。确定直发？")
+    : t("将按章号顺序逐章填所选 {0} 章（第 {1} 章—第 {2} 章）。人工模式每轮填一章并停在表单页，由你在浏览器里确认提交。分卷会按卷计划自动选/建。继续？");
+  if (!(await uiConfirm(t(msg, chapters.length, chapters[0], chapters[chapters.length - 1]),
+    { ok: autoSubmit ? t("开始直发") : t("开始发布") }))) return;
+  try {
+    const r = await pbApiWithQualityOverride(
+      "/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
+      { platform, chapters, auto_submit: !!autoSubmit },
+      "批量发布前的质量门禁未通过", taskId);
+    if (!(r && r.gate_reviewed))
+      toast(autoSubmit ? t("直发已启动，进度见发布台")
+                       : t("正在填第一章稿——填好后请在浏览器窗口里确认提交，再重新校准"));
+  } catch (e) { toast(t("自动发布失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbPublishAll = async function (taskId, platform) {  const au = (((S.pubAuto && S.pubAuto.books) || [])
     .find((b) => b.platform === platform)) || {};
   if (!au.pending) return;
   if (!(await uiConfirm(t("将从最靠前的待发章节开始填稿（共 {0} 章待发）。本轮只填一章并停在表单页，由你在浏览器里确认提交；提交后点击“我已在平台提交”，再选择下一章。护栏（每日上限/连续失败暂停）生效。继续？", au.pending),
@@ -9839,6 +9914,7 @@ const SKINS = [
   { id: "ocean", name: "深海", desc: "藏青底色 + 天蓝强调，夜间长时间盯任务更沉静（默认）" },
   { id: "hermes", name: "墨金", desc: "暖墨底色 + 金色发丝线，Hermes 式古典优雅" },
   { id: "classic", name: "经典", desc: "黑白灰 + 蓝色强调，ChatGPT 式清爽配色" },
+  { id: "paper", name: "简白", desc: "纯白画布 + 浅灰分区 + 克制蓝强调，Codex 式极简明亮" },
   { id: "forest", name: "森野", desc: "墨绿底色 + 青翠强调，偏自然的护眼配色" },
   { id: "amber", name: "暖阳", desc: "暖棕底色 + 琥珀强调，纸感暖调" },
   { id: "violet", name: "霓虹", desc: "暗紫底色 + 品红强调，霓虹感强" },

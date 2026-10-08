@@ -181,7 +181,7 @@ def to_otel(trace: dict) -> dict:
             if key in item:
                 attrs.append(_attribute("codebee." + key, item.get(key)))
         status = str(item.get("status") or "unknown")
-        spans.append({
+        item_span = {
             "traceId": str(item.get("trace_id") or trace.get("trace_id") or "")[:32],
             "spanId": str(item.get("span_id") or "")[:16],
             "parentSpanId": str(item.get("parent_span_id") or "")[:16],
@@ -192,7 +192,10 @@ def to_otel(trace: dict) -> dict:
             "attributes": attrs,
             "status": {"code": 1 if status == "done" else (2 if status in ("failed", "timeout") else 0),
                         "message": "" if status == "done" else status},
-        })
+        }
+        if item.get("ended_at") is not None:
+            item_span["endTimeUnixNano"] = _otel_time(item.get("ended_at"))
+        spans.append(item_span)
     return {"resourceSpans": [{
         "resource": {"attributes": [
             _attribute("service.name", "codebee"),
@@ -200,4 +203,5 @@ def to_otel(trace: dict) -> dict:
         ]},
         "scopeSpans": [{"scope": {"name": "codebee", "version": "1.0"},
                         "spans": spans}],
-    }], "schemaUrl": OTEL_SCHEMA_URL}
+        "schemaUrl": OTEL_SCHEMA_URL,
+    }]}

@@ -21,7 +21,7 @@ const EDGE_CANDIDATES = [
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
 ];
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SKIN_IDS = ["ocean", "hermes", "classic", "forest", "amber", "violet", "contrast"];
+const SKIN_IDS = ["ocean", "hermes", "classic", "paper", "forest", "amber", "violet", "contrast"];
 
 const results = [];
 const check = (name, cond, detail = "") => {
@@ -40,11 +40,14 @@ function staticCheck() {
     if (!m) return null;
     return new Set((m[1].match(/--[a-z0-9-]+\s*:/g) || []).map((v) => v.replace(/\s*:/, "")));
   };
-  const structural = new Set(["--mono", "--r-lg", "--r-md", "--r-sm"]);
+  // --mask/--font-ui/--font-display 是全局结构件（弹层遮罩、字体栈），不随皮肤换色，豁免
+  const structural = new Set(["--mono", "--r-lg", "--r-md", "--r-sm", "--mask", "--font-ui", "--font-display"]);
   const palette = (set) => new Set([...(set || [])].filter((v) => !structural.has(v)));
 
   const refDark = palette(blockVars(":root"));
-  const refLight = palette(blockVars('html[data-theme="light"]'));
+  // 经典日间块是多选择器形态（:not([data-skin]) 与 [data-skin="classic"] 并列），
+  // 取其中带皮肤属性的完整选择器才能在静态正则下命中
+  const refLight = palette(blockVars('html[data-theme="light"][data-skin="classic"]'));
   check("经典皮肤（:root 与日间版）声明了调色板变量", refDark.size >= 15 && refLight.size === refDark.size,
     `dark=${refDark.size} light=${refLight.size}`);
   check("经典皮肤日夜两版变量名一致", [...refDark].every((v) => refLight.has(v)) && refLight.size === refDark.size,
@@ -159,13 +162,13 @@ async function main() {
       prevBg: [...document.querySelectorAll("#skin-grid .skin-card")].map(c => c.querySelector(".pv-main").style.background)
     })`));
     check("皮肤页能打开且标题为「皮肤」", page.shown && page.title === "皮肤", JSON.stringify(page).slice(0, 200));
-    check("皮肤页列出全部 7 套皮肤（深海默认排首）", page.cards === 7 && page.ids[0] === "ocean" && JSON.stringify([...page.ids].sort()) === JSON.stringify([...SKIN_IDS].sort()), JSON.stringify(page.ids));
+    check("皮肤页列出全部 8 套皮肤（深海默认排首）", page.cards === 8 && page.ids[0] === "ocean" && JSON.stringify([...page.ids].sort()) === JSON.stringify([...SKIN_IDS].sort()), JSON.stringify(page.ids));
     check("默认选中「深海」", page.active.length === 1 && page.active[0] === "ocean", JSON.stringify(page.active));
     check("明暗分段显示当前为日间", JSON.stringify(page.modeOn) === JSON.stringify(["light"]), JSON.stringify(page.modeOn));
     check("顶栏皮肤入口为纯图标（不显示皮肤名文字）", page.pillIconOnly === true, JSON.stringify(page.pillIconOnly));
     check("皮肤页标签显示「深海 · 日间」", /深海/.test(page.cur) && /日间/.test(page.cur), page.cur);
     check("每张卡片预览色块都取到了色值（无空块）",
-      page.prevBg.length === 7 && page.prevBg.every((c) => c && c !== "rgba(0, 0, 0, 0)" && c !== ""),
+      page.prevBg.length === 8 && page.prevBg.every((c) => c && c !== "rgba(0, 0, 0, 0)" && c !== ""),
       JSON.stringify(page.prevBg));
     const sides = JSON.parse(await evalJs(`JSON.stringify(
       [...document.querySelectorAll("#skin-grid .skin-card .pv-side")].map((c) => c.style.background))`));
@@ -203,7 +206,7 @@ async function main() {
       check(`换肤「${id}」：body 实际背景色已跟着变`, /^rgb/.test(st.bodyBg), st.bodyBg);
       check(`换肤「${id}」：手机状态栏色跟随皮肤`, !!st.meta && st.meta.startsWith("#"), st.meta);
     }
-    check("7 套皮肤的底色/强调色互不相同（没有套壳重复）", new Set(Object.values(seen)).size === 7,
+    check("8 套皮肤的底色/强调色互不相同（没有套壳重复）", new Set(Object.values(seen)).size === 8,
       JSON.stringify(seen));
 
     /* ---- 明暗切换：换皮肤不丢 ---- */
@@ -273,8 +276,8 @@ async function main() {
       overflow: document.querySelector(".top-actions").scrollWidth - document.querySelector(".top-actions").clientWidth
     })`));
     check("窄屏顶栏收起皮肤入口（改用 设置 → 皮肤）", mobTop.skinPill === "none", JSON.stringify(mobTop));
-    check("窄屏顶栏明暗按钮仍在、且不横向溢出",
-      mobTop.themePill !== "none" && mobTop.overflow <= 0, JSON.stringify(mobTop));
+    check("窄屏顶栏明暗按钮一并收起（≤760px 布局层隐藏全部非 ctrl 胶囊，明暗走 设置→外观）且不横向溢出",
+      mobTop.themePill === "none" && mobTop.overflow <= 0, JSON.stringify(mobTop));
 
     await evalJs(`document.getElementById("btn-settings").click(); "ok"`);
     await sleep(500);
@@ -288,13 +291,13 @@ async function main() {
       return JSON.stringify({
         cols: cols.length,
         cards: cards.length,
-        inPanel: cards.length === 7 && r0.width > 0 && r0.right <= document.documentElement.clientWidth + 1,
+        inPanel: cards.length === 8 && r0.width > 0 && r0.right <= document.documentElement.clientWidth + 1,
         sameRow: Math.abs(r0.top - r1.top) < 2,
         descHidden: getComputedStyle(document.querySelector(".skin-desc")).display === "none",
         drawerCollapsed: document.body.classList.contains("side-collapsed")
       });
     })()`));
-    check("窄屏皮肤页两列排布、卡片不出屏", mob.cols === 2 && mob.cards === 7 && mob.inPanel && mob.sameRow, JSON.stringify(mob));
+    check("窄屏皮肤页两列排布、卡片不出屏", mob.cols === 2 && mob.cards === 8 && mob.inPanel && mob.sameRow, JSON.stringify(mob));
     check("窄屏隐藏皮肤描述（只留名字与配色预览）", mob.descHidden, JSON.stringify(mob));
     check("窄屏点设置导航后抽屉自动收起（不挡皮肤页）", mob.drawerCollapsed, JSON.stringify(mob));
 

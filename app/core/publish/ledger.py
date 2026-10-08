@@ -83,7 +83,11 @@ def published_chapters(task_id, platform):
     """该任务在该平台已成功发布的章节号集合（幂等跳过依据）。
 
     连载链合并口径：同一本书一条链，任一批次发过的章号整链可见——续写任务
-    重发首批已发章节会被这里拦下。"""
+    重发首批已发章节会被这里拦下。
+    并入校准所得的平台实况章号（remote_published_nos）：用户在浏览器里手工
+    补交的章本地台账没有记录，不并入的话「发布全部待发」会把平台已有的章
+    再发一遍（2026-10-08 实案：平台 30 章台账 7，待发清单里全是已发过的）。
+    章号以最近一次校准为准——手工发布后重新校准即可刷新。"""
     from .. import store
     try:
         ids = set(store.serial_chain_ids(task_id))
@@ -96,6 +100,14 @@ def published_chapters(task_id, platform):
             n = r.get("chapter_no") or 0
             if n > 0:
                 out.add(int(n))
+    try:
+        ent = book_for(task_id, platform) or {}
+        for n in (ent.get("remote_published_nos") or []):
+            n = int(n)
+            if n > 0:
+                out.add(n)
+    except (TypeError, ValueError):
+        pass
     return out
 
 

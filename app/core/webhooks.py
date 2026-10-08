@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import sqlite3
+import threading
 import time
 from pathlib import Path
 
@@ -13,6 +15,7 @@ from . import paths
 _FILE = paths.DATA_DIR / "webhook_deliveries.json"
 MAX_SKEW_SECONDS = 300
 MAX_DELIVERIES = 2000
+_LOCK = threading.RLock()
 
 
 def sign(secret, body, timestamp):
@@ -34,6 +37,15 @@ def verify(secret, body, signature, timestamp, *, now=None, max_skew=MAX_SKEW_SE
     return hmac.compare_digest(expected, str(signature).strip())
 
 
+def verify_raw(secret, body, signature):
+    """Verify providers such as GitHub that sign the raw body only."""
+    if not secret or not signature:
+        return False
+    expected = "sha256=" + hmac.new(str(secret).encode("utf-8"), body or b"",
+                                    hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, str(signature).strip())
+
+
 def _load():
     try:
         value = json.loads(_FILE.read_text(encoding="utf-8"))
@@ -47,20 +59,31 @@ def claim_delivery(delivery_id, *, now=None, ttl_seconds=86400):
     if not delivery_id:
         return True, {"deduplicated": False, "delivery_id": ""}
     stamp = float(time.time() if now is None else now)
-    data = _load()
-    fresh = {}
-    for key, value in data.items():
-        try:
-            if stamp - float(value) <= max(60, int(ttl_seconds)):
-                fresh[key] = value
-        except (TypeError, ValueError):
-            continue
-    if delivery_id in fresh:
-        return False, {"deduplicated": True, "delivery_id": delivery_id}
-    fresh[delivery_id] = stamp
-    fresh = dict(sorted(fresh.items(), key=lambda item: item[1], reverse=True)[:MAX_DELIVERIES])
-    _FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(fresh, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(_FILE)
+    db_path = _FILE.with_suffix(_FILE.suffix + ".sqlite3")
+    with _LOCK:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(str(db_path), timeout=5) as db:
+            db.execute("CREATE TABLE IF NOT EXISTS deliveries (delivery_id TEXT PRIMARY KEY, claimed_at REAL NOT NULL)")
+            cutoff = stamp - max(60, int(ttl_seconds))
+            db.execute("DELETE FROM deliveries WHERE claimed_at < ?", (cutoff,))
+            try:
+                db.execute("INSERT INTO deliveries(delivery_id, claimed_at) VALUES (?, ?)",
+                           (delivery_id, stamp))
+            except sqlite3.IntegrityError:
+                return False, {"deduplicated": True, "delivery_id": delivery_id}
+            db.execute("DELETE FROM deliveries WHERE delivery_id NOT IN (SELECT delivery_id FROM deliveries ORDER BY claimed_at DESC LIMIT ?)",
+                       (MAX_DELIVERIES,))
     return True, {"deduplicated": False, "delivery_id": delivery_id}
+
+
+def release_delivery(delivery_id):
+    delivery_id = str(delivery_id or "").strip()[:160]
+    if not delivery_id:
+        return
+    db_path = _FILE.with_suffix(_FILE.suffix + ".sqlite3")
+    with _LOCK:
+        try:
+            with sqlite3.connect(str(db_path), timeout=5) as db:
+                db.execute("DELETE FROM deliveries WHERE delivery_id = ?", (delivery_id,))
+        except (OSError, sqlite3.Error):
+            pass

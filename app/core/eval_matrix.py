@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import time
 
 
@@ -45,7 +46,8 @@ def _score(value):
     if isinstance(value, dict):
         value = value.get("score")
     try:
-        return max(0.0, min(10.0, float(value)))
+        value = float(value)
+        return max(0.0, min(10.0, value)) if math.isfinite(value) else None
     except (TypeError, ValueError):
         return None
 
@@ -58,9 +60,12 @@ def evaluate(manifest, results, baseline=None):
     for candidate in manifest["candidates"]:
         scores = []
         for case in manifest["cases"]:
-            value = ((results.get(candidate) or {}).get(case["id"]))
+            candidate_results = results.get(candidate)
+            candidate_baseline = baseline.get(candidate)
+            value = (candidate_results.get(case["id"]) if isinstance(candidate_results, dict) else None)
+            old_value = (candidate_baseline.get(case["id"]) if isinstance(candidate_baseline, dict) else None)
             score = _score(value)
-            old = _score(((baseline.get(candidate) or {}).get(case["id"])))
+            old = _score(old_value)
             row = {"candidate": candidate, "case": case["id"], "score": score,
                    "baseline": old, "delta": round(score - old, 4) if score is not None and old is not None else None}
             matrix.append(row)
