@@ -144,9 +144,10 @@ def save(patch):
             cur["telemetry_errors"] = bool(patch.get("telemetry_errors"))
         if "publish_daily_cap" in patch:
             try:
-                cur["publish_daily_cap"] = max(1, min(50, int(patch.get("publish_daily_cap"))))
+                v = int(patch.get("publish_daily_cap"))
             except (TypeError, ValueError):
-                return cur, "publish_daily_cap 必须是 1-50 的整数"
+                return cur, "publish_daily_cap 必须是 0-50 的整数（0=不限制）"
+            cur["publish_daily_cap"] = max(0, min(50, v))
         if "publish_fail_streak" in patch:
             try:
                 cur["publish_fail_streak"] = max(1, min(10, int(patch.get("publish_fail_streak"))))

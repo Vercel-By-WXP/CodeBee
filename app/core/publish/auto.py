@@ -57,7 +57,7 @@ def daily_cap():
         v = int(_settings().get("publish_daily_cap") or _CAP_DEFAULT)
     except (TypeError, ValueError):
         v = _CAP_DEFAULT
-    return max(1, min(50, v))
+    return max(0, min(50, v))
 
 
 def fail_streak():
@@ -69,13 +69,17 @@ def fail_streak():
 
 
 def guards(task_id, platform):
-    """两道护栏：每日上限 + 连败退避。返回 (ok, 人话原因)。"""
+    """两道护栏：每日上限 + 连败退避。返回 (ok, 人话原因)。
+
+    publish_daily_cap=0 视为不限制（2026-10-08 用户要求关闭每日上限）。"""
     from . import ledger
-    used = ledger.today_count(task_id, platform)
     cap = daily_cap()
-    if used >= cap:
-        return False, ("今日已发 %d 章（上限 %d），为防风控明天再发；"
-                       "确需多发请在设置调 publish_daily_cap" % (used, cap))
+    if cap > 0:
+        used = ledger.today_count(task_id, platform)
+        if used >= cap:
+            return False, ("今日已发 %d 章（上限 %d），为防风控明天再发；"
+                           "确需多发请在设置调 publish_daily_cap（0=不限制）"
+                           % (used, cap))
     streak = ledger.consecutive_failures(platform)
     limit = fail_streak()
     if streak >= limit:

@@ -82,21 +82,10 @@
    "skip_if_modal": true
   },
   {
-   "do": "js_click",
-   "text": "仅基础检测",
-   "scope": "button,a,[role=button],span,li,[class*=btn],div",
-   "tries": 60,
-   "optional": true
-  },
-  {
-   "do": "sleep",
-   "s": 5
-  },
-  {
-   "do": "js_click",
+   "do": "click_real",
    "text": "提交",
    "scope": "button,a,[role=button],span,li,[class*=btn],div",
-   "tries": 75,
+   "tries": 400,
    "optional": true
   },
   {
