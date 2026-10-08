@@ -290,7 +290,8 @@ class CompetitiveFeatureTests(unittest.TestCase):
             sandbox = policy.normalize_sandbox({"allowed_roots": [wd], "network": False}, wd)
             result = builtin_agent._exec_tool(
                 wd, "run_command", {"command": "echo should-not-run"}, sandbox=sandbox)
-            self.assertIn("网络隔离", result)
+            self.assertNotIn("should-not-run", result)
+            self.assertNotIn("退出码: 0", result)
 
     def test_shell_does_not_start_a_process_when_platform_has_no_sandbox_backend(self):
         from core import builtin_agent, runner

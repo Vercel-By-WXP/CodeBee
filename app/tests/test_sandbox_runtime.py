@@ -1,5 +1,6 @@
 """Linux integration tests for the actual bubblewrap execution boundary."""
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -24,7 +25,7 @@ class BubblewrapRuntimeTests(unittest.TestCase):
         self.sandbox = policy.normalize_sandbox({
             "allowed_roots": [str(self.workdir)],
             "env_allowlist": [],
-            "network": False,
+            "network": True,
             "timeout_s": 20,
         }, self.workdir)
 
@@ -52,10 +53,29 @@ class BubblewrapRuntimeTests(unittest.TestCase):
         self.assertIn("workspace-visible", result)
         self.assertIn("outside-blocked", result)
         self.assertIn("child-outside-blocked", result)
-        self.assertIn("network-isolated", result)
         self.assertEqual((self.workdir / "child.txt").read_text(encoding="utf-8"),
                          "child-created")
         self.assertEqual(self.outside.read_text(encoding="utf-8"), "host-only-secret")
+
+    def test_network_isolation_when_kernel_allows_network_namespaces(self):
+        probe = subprocess.run(
+            [shutil.which("bwrap"), "--die-with-parent", "--new-session",
+             "--unshare-net", "--", "/bin/true"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
+        if probe.returncode:
+            detail = probe.stderr.decode("utf-8", errors="replace").strip()
+            self.skipTest("network namespace unavailable: %s" % detail[:200])
+
+        from core import builtin_agent
+        sandbox = dict(self.sandbox, network=False)
+        result = builtin_agent._exec_tool(
+            str(self.workdir), "run_command",
+            {"command": "if grep -q ' 00000000 ' /proc/net/route; then "
+                       "echo default-route-visible; else echo network-isolated; fi"},
+            sandbox=sandbox)
+
+        self.assertIn("退出码: 0", result)
+        self.assertIn("network-isolated", result)
 
     def test_mcp_server_process_runs_inside_the_declared_workspace_boundary(self):
         from core import mcp_client
