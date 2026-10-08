@@ -3847,6 +3847,7 @@ async function renameTask(id) {
 async function retryTask(id) {
   try {
     const r = await api("/api/tasks/" + encodeURIComponent(id) + "/retry", { method: "POST" });
+    chatJumpLatest();   // 续跑副本开新一轮：时间线要跳到最新，别停在原地或历史中间
     jumpToRun(r.run_id);
   } catch (e) { toast(t("重试失败：") + e.message, true); return; }
   poll();
@@ -3873,6 +3874,7 @@ async function continueSerial(id) {
     r = await api("/api/tasks/" + encodeURIComponent(id) + "/continue",
       { method: "POST", body: JSON.stringify({ chapters: ch }) });
   } catch (e) { toast(t("创建续写任务失败：") + e.message, true); return; }
+  chatJumpLatest();   // 续写批次开新一轮：对话时间线跳到最新
   jumpToRun(r.run_id);
   poll();
 }
@@ -4548,6 +4550,7 @@ window.sideOpenRun = function (id, n) {
  * 按时间顺序列出该任务全部 run 的全部步骤，run 之间加分隔条。 */
 window.sideOpenTask = function (key) {
   _taskStepRenderToken++;
+  chatJumpLatest();   // 首开任务详情：对话时间线落最新（默认落蜂巢时切到对话页签也带到底）
   $("rd-steps").innerHTML = '<div class="hint" role="status">' + esc(t("正在加载任务详情…")) + "</div>";
   S.lastRun = null;
   S.detailTaskKey = key;
@@ -5101,6 +5104,7 @@ window.cancelAllRuns = cancelAllRuns;
 
 async function openRun(id, pinTab) {
   _taskStepRenderToken++;
+  chatJumpLatest();   // 首开运行详情：对话时间线落最新（历史长时别停在顶部）
   S.detailRunId = id;
   S.detailTaskKey = null;
   S.runDetailSig = "";   // 新目标首帧必画；也兜住「任务态改过 DOM 后回到本运行」的串台
@@ -5185,6 +5189,10 @@ function rdTabAvail() {
 
 function applyRdTabs() {
   const avail = rdTabAvail();
+  // 「切进对话页签」以 pane 入口前的真实显隐为准：rdChatNavGo/setRdTab 等
+  // 入口都是先改 S.rdTab 再进来，函数内抓 S.rdTab 旧值抓不到过渡。
+  const _chatPaneIn = document.querySelector('#run-detail .rd-pane[data-pane="chat"]');
+  const chatWasHidden = !_chatPaneIn || _chatPaneIn.classList.contains("hidden");
   if (!S.rdTab || !avail[S.rdTab]) {
     S.rdTab = ["chat", "hive", "steps", "result", "preview", "git", "bible", "bookmeta"]
       .find((k) => avail[k]) || "steps";
@@ -5209,6 +5217,17 @@ function applyRdTabs() {
   }
   // 对话页签不放日志抽屉：会盖住贴底输入条（手动切来/自动选卡都覆盖）
   if (S.rdTab === "chat" && !$("rd-log").classList.contains("hidden")) window.rdLogClose();
+  // 切进对话页签且带着跳最新标记（继续任务/首开详情置的）：把时间线带到底。
+  // 内容已与当前 run 对齐（drawChatFlow 盖的 run 戳）才就地落底并消费——内容
+  // 还是上一轮的旧帧（续跑换 run、/timeline 在途）则保留标记，等 drawChatFlow
+  // 重建完新内容再落底，避免停在旧帧尾、新一轮气泡压在折叠线下面。
+  if (S.rdTab === "chat" && chatWasHidden && chatForceBottom) {
+    const fl = $("rd-chat-flow");
+    if (fl && fl.dataset.runId && fl.dataset.runId === chatRunId) {
+      chatScrollBottomNow(fl);
+      chatForceBottom = false;
+    }
+  }
   renderChatNav();
 }
 
@@ -8444,6 +8463,7 @@ async function resumeNow() {
   } catch (e) { toast(t("操作失败：") + (e && e.message ? e.message : t("网络异常")), true); return; }
   if (r && r.ok) {
     toast(t("已跳过等待，马上继续"));
+    chatJumpLatest();   // 续跑副本接着跑：新步骤落时间线尾部，跳过去看最新
     refreshState();   // 后端 bump 也会推 SSE，这里主动刷一轮让按钮立刻消失
   } else {
     toast((r && r.error) || t("操作失败"), true);
@@ -8720,7 +8740,28 @@ let chatSig = "";
 let chatLiveSig = "";        // 时间线实时增量签名（思考/正文长度变才重建 DOM）
 let chatLiveTimer = null;    // 运行中快轮询句柄（1.2s，见 scheduleChatLive）
 let chatLiveRunId = null;
-let chatForceBottom = false; // 发送消息后强制贴底一次（不管当时滚到哪，都要看到自己刚发的内容与回复）
+let chatForceBottom = false; // 强制贴底一次（不管当时滚到哪，都要看到最新内容）；发送消息、继续任务、打开详情共用
+
+/* 瞬时落底：.rd-chat-flow 带 scroll-behavior:smooth，直接赋值 scrollTop 会变
+ * 成跨全时间的平滑滚动动画（长对话要滑近一秒，测试也会量到半途）——跳最新
+ * 这类大跨度移动一律压成瞬时。 */
+function chatScrollBottomNow(fl) {
+  if (!fl) return;
+  const prev = fl.style.scrollBehavior;
+  fl.style.scrollBehavior = "auto";
+  fl.scrollTop = fl.scrollHeight;
+  fl.style.scrollBehavior = prev;
+}
+
+/* 让对话时间线跳到最新：置强制贴底标记（drawChatFlow 下一次重建时消费），
+ * 并就现有内容先即时贴底，视觉零等待。「继续任务/立即续跑/继续连载」点完
+ * 新一轮内容落在时间线尾部，用户要看到的是最新进展，不是停在原地或历史中间；
+ * 首次打开详情同理。页签当前不可见时标记保留（drawChatFlow 不消费），
+ * 切进对话页签时由 applyRdTabs 带到底。 */
+function chatJumpLatest() {
+  chatForceBottom = true;
+  chatScrollBottomNow($("rd-chat-flow"));
+}
 
 function chatEngineIsDirect(run) {
   const st = S.state || {};
@@ -8870,6 +8911,7 @@ function drawChatFlow(run, data, active) {
     ":" + (it.consumed ? 1 : 0), "") + "|" + ((data && data.result) ? "r" : "");
   if (liveSig === chatLiveSig && flow.childElementCount) return;
   chatLiveSig = liveSig;
+  flow.dataset.runId = run.id;   // run 戳：applyRdTabs 判「内容是否已对齐当前对话」用
   // 时间显示统一收敛到 HH:MM（日期在 meta 条里，全量戳塞气泡就是噪音）；
   // 附件兼容 字符串路径 / {name|path} 对象 两种形态（对象直接拼会成 [object Object]）
   const chatTime = (v) => { const s = String(v || "");
@@ -8961,10 +9003,13 @@ function drawChatFlow(run, data, active) {
     ? t("运行中：新消息会排队，本轮回答完后依次送达")
     : t("已结束：发送后将自动开新一轮接着做");
   // 贴底跟随：用户滚到底部附近才自动滚到最新输出，回看历史不打扰；
-  // 刚发送过消息则强制贴底一次（用户要看到自己发的消息与正在来的回复）
-  const stick = chatForceBottom ||
+  // 带强制贴底标记（发送/继续任务/首开详情置的）则无条件跳最新。
+  // 页签当前不可见（display:none 时 scrollHeight 恒 0）贴底无处落：
+  // 标记保留给 applyRdTabs，切进对话页签那一刻再带到底。
+  const flowVisible = flow.offsetParent !== null;
+  const stick = (chatForceBottom && flowVisible) ||
     flow.scrollHeight - flow.scrollTop - flow.clientHeight < 80;
-  chatForceBottom = false;
+  if (chatForceBottom && flowVisible) chatForceBottom = false;
   // 思考过程面板（.ct-body 自带滚动条）逐帧整体重建会丢滚动位置——重绘前
   // 记住「贴底 or 用户上滑到哪」，重绘后恢复：贴底则一直跟最新（2026-09-22
   // 用户诉求），上滑回看历史思维链则保持位置不被打扰。
@@ -8974,7 +9019,7 @@ function drawChatFlow(run, data, active) {
     : true;
   const thinkTop = prevThink ? prevThink.scrollTop : 0;
   flow.innerHTML = html || '<div class="hint">' + esc(t("还没有对话内容")) + "</div>";
-  if (stick) flow.scrollTop = flow.scrollHeight;
+  if (stick) chatScrollBottomNow(flow);
   const newThink = flow.querySelector('[data-think-live="1"] .ct-body');
   if (newThink) {
     if (thinkPin) newThink.scrollTop = newThink.scrollHeight;
@@ -9532,9 +9577,7 @@ window.chatSend = async function () {
     ta.style.height = "";
     chatAtts = []; drawChatAtts();
     chatSig = "";   // 强制重画时间线
-    chatForceBottom = true;   // 发完滚到最新：看到自己刚发的消息与正在来的回复
-    const fl = $("rd-chat-flow");
-    if (fl) fl.scrollTop = fl.scrollHeight;   // 重画前先即时贴底，视觉零跳动
+    chatJumpLatest();   // 发完滚到最新：看到自己刚发的消息与正在来的回复
     if (active) {
       const d = await api("/api/runs/" + encodeURIComponent(chatRunId));
       if (d.run) renderChat(d.run, d.run.status === "running" || d.run.status === "queued");
@@ -9549,6 +9592,7 @@ function bindChat() {
   if (!btn || !file || !send || !ta) return;
   const focusBtn = $("rd-chat-focus");
   if (focusBtn) focusBtn.addEventListener("click", () => {
+    chatJumpLatest();   // 继续对话：先看到最新一轮再开口
     S.rdTab = "chat";
     S.rdTabPin = true;
     applyRdTabs();
