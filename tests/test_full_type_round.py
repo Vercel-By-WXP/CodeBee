@@ -15,6 +15,10 @@
      story_tracking 记录行与本章大纲要点的纯本地 bigram 重叠计分，零 LLM
      调用零存储写入）——命中/排序/封顶、零匹配静默与自章排除、起草前情
      组装的接线在位。
+  6. 2026-10-09 轮：review 引擎经验库/知识库注入补全——13 个 review 引擎
+     类型此前起草/评审零注入而 learn_async 全类型收割（闭环半开），按 serial
+     同款接入；块生成行为（空库零噪音/命中成块/全类型覆盖）+ 起草与评审
+     两侧接线守卫。
 
 跑法：python -m unittest discover -s tests -p "test_full_type_round.py" -v
 17×3 字段 EN 键全量守卫在 test_i18n_dups.test_builtin_flow_fields_have_en_keys，
@@ -215,6 +219,86 @@ class RelatedChaptersNoteTests(BaseTest):
         src = inspect.getsource(pipeline)
         self.assertIn("_related_chapters_note(tracking_state, ch, current=i)", src)
         self.assertIn("相关历史章节", src)
+
+
+class ReviewEngineSkillInjectionTests(BaseTest):
+    """review 引擎经验库/知识库注入补全（2026-10-09 轮提案 1）：learn_async
+    从全部 run 收割教训，注入此前只在连载链（大纲/起草/评审三处），13 个
+    review 引擎类型的起草与评审零注入——「全类型收割、单链注入」闭环半开。
+    覆盖：块生成行为（空库零噪音/命中成块/13 类型全覆盖）+ 起草与评审两侧
+    接线守卫（serial 同款，防接线被改丢）。"""
+
+    def test_review_engine_blocks_hit_and_zero_noise(self):
+        """行为：空库零返回（零噪音基线）；沉淀在库时命中成块。"""
+        from app.core import knowledge, skills
+        # 空用户库（BaseTest 隔离目录）：skills 仍注入内置包（产品自带规范，
+        # 3A 口径设计如此），但零用户教训时无「本项目经验记录」节、零 id
+        # 登记（outcome 归因不受污染）；knowledge 零 approved 条目零返回
+        task0 = {"type": "novel", "goal": "写一个当铺题材的悬疑故事"}
+        sk0, _ = skills.block_for(task0, stable_order=True, run_id="r0")
+        self.assertNotIn("本项目经验记录", sk0)
+        # 归因污染面：零教训命中时 run 不进 outcome 登记表（used 混含内置包
+        # id 属既有语义，教训 id 走 lesson_ids 才计 hits/归因）
+        self.assertNotIn("r0", skills._INJECTED, "零教训不得登记 outcome 归因")
+        self.assertEqual(knowledge.block_for(task0), "")
+        # 造沉淀：scope=* 教训 + novel 域 approved 知识（upsert_lesson /
+        # upsert_entry 既有入库通道，与生产同路径）
+        lesson = skills.upsert_lesson("*", "悬疑开篇三句内埋钩子",
+                                      "第一段末尾留未解释异象，别急着解释",
+                                      source="test")
+        self.assertIsNotNone(lesson)
+        entry = knowledge.upsert_entry("novel", "当铺赎当期事实",
+                                       "1990 年代民间当铺赎当期约十八个月",
+                                       source="test", status="approved")
+        self.assertIsNotNone(entry)
+        task = {"type": "novel", "goal": "当铺掌柜与玉佩裂纹的悬疑故事"}
+        sk, ids = skills.block_for(task, stable_order=True, run_id="r1")
+        self.assertIn("## 经验库", sk, "skills 块应带注入 header")
+        self.assertIn("悬疑开篇三句内埋钩子", sk)
+        self.assertTrue(ids, "命中教训应登记 id（outcome 归因依赖）")
+        kb = knowledge.block_for(task)
+        self.assertIn("## 知识库", kb, "knowledge 块应带注入 header")
+        self.assertIn("当铺赎当期事实", kb)
+        # knowledge 按类型 scope 过滤：novel 条目不进 email 任务（零跨域噪音）
+        self.assertEqual(knowledge.block_for(
+            {"type": "email", "goal": "当铺掌柜与玉佩裂纹的悬疑故事"}), "")
+
+    def test_all_review_engine_types_get_blocks(self):
+        """全类型覆盖：engine=review 的全部预置类型逐一命中注入块，无遗漏。"""
+        from app.core import flows, knowledge, skills
+        skills.upsert_lesson("*", "标题即钩子", "首段三句内埋悬念", source="test")
+        knowledge.upsert_entry("*", "平台通用规范", "标题长度以平台上限为准",
+                               source="test", status="approved")
+        review_ids = [f["id"] for f in flows.BUILTIN_FLOWS
+                      if f["engine"] == "review"]
+        self.assertGreaterEqual(len(review_ids), 13,
+                                "review 引擎类型覆盖面缩水（注册表漂移？）")
+        for fid in review_ids:
+            task = {"type": fid, "goal": "面向大众的成稿任务"}
+            sk, ids = skills.block_for(task, stable_order=True, run_id="r-%s" % fid)
+            self.assertIn("标题即钩子", sk, "%s 未命中经验块" % fid)
+            self.assertTrue(ids, fid)
+            self.assertIn("平台通用规范", knowledge.block_for(task),
+                          "%s 未命中知识块" % fid)
+
+    def test_review_engine_wires_injection_into_draft_and_critique(self):
+        """接线守卫：起草侧在 _draft_prompt_for 外组装 ctx_block（bestof 多稿件
+        共用一份）、空块守卫追加；评审侧 serial 同款锚点注入。"""
+        import inspect
+        from app.core import pipeline
+        src = inspect.getsource(pipeline)
+        # 起草侧：块组装在 _draft_prompt_for 定义之前 + 空块守卫消费
+        self.assertIn(
+            'ctx_block = "\\n\\n".join(p for p in (sk_lessons, kb_block) if p)', src)
+        self.assertIn('p += "\\n\\n" + ctx_block', src)
+        self.assertIn("if ctx_block:", src)
+        # 评审侧：serial 逐章评审同款（「## 待评审稿件」锚点前插，sk+kb 两处）
+        self.assertEqual(src.count("crit_prompt = crit_prompt.replace("), 2,
+                         "评审侧经验/知识注入锚点数漂移")
+        self.assertIn(
+            '"## 待评审稿件", "%s\\n\\n## 待评审稿件" % sk, 1)', src)
+        self.assertIn(
+            '"## 待评审稿件", "%s\\n\\n## 待评审稿件" % kb, 1)', src)
 
 
 if __name__ == "__main__":

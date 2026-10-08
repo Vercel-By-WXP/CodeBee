@@ -1471,7 +1471,6 @@
     " → <b>": " → <b>",
     "（已是最新版本，无需升级）": " (already up to date — no upgrade needed)",
     "（等待输出…安装/下载阶段可能有一段静默期）": " (waiting for output… install/download may be silent for a while)",
-    "（无输出）": " (no output)",
     "（尚无输出）": " (no output yet)",
     "完整运行": "Full run",
     "编辑供应商配置（地址 / 协议 / 难度模型）": "Edit provider config (endpoint / protocol / difficulty models)",

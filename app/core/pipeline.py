@@ -5045,6 +5045,14 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             pass
     else:
         is_research = task.get("type") == "research"
+        # 经验库/知识库注入（review 引擎 13 类型补全，serial 起草同款）：
+        # learn_async 面向全部 run 收割，此前注入只在连载链——「全类型收割、
+        # 单链注入」闭环半开。在 _draft_prompt_for 外取一次（bestof 多稿件
+        # 共用一份，命中计数不重复累加）；stable_order 保前缀缓存，预算纪律
+        # 由块内自带（skills 包区限额+教训保底 / knowledge 装箱截断）。
+        sk_lessons, _ = skills.block_for(task, stable_order=True, run_id=run_id)
+        kb_block = knowledge.block_for(task)
+        ctx_block = "\n\n".join(p for p in (sk_lessons, kb_block) if p)
 
         def _draft_prompt_for(vfile):
             p = (_tpl(task, "draft_prompt", NOVEL_DRAFT_PROMPT).replace("__FILE__", vfile)
@@ -5078,6 +5086,9 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 gl = _gitlog_brief(workdir)
                 if gl:
                     p += ("\n\n## 本周提交素材（git log，如实取材，缺失勿虚构）\n" + gl)
+            if ctx_block:
+                # 空块不追加：零命中零噪音（空库时 prompt 与旧版字节一致）
+                p += "\n\n" + ctx_block
             p += _content_contract(task)
             return p
 
@@ -5138,6 +5149,16 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             .replace("__MANUSCRIPT__", manuscript or "（稿件为空！）"))
         if task.get("context"):
             crit_prompt += "\n\n## 原始任务背景与附件参考\n" + task["context"]
+        # 经验库/知识库注入（serial 逐章评审同款；「## 待评审稿件」锚点由
+        # _ensure_critique_placeholders 保证存在），按证据强度随评审下发
+        sk, _ = skills.block_for(task, stable_order=True, run_id=run_id)
+        if sk:
+            crit_prompt = crit_prompt.replace(
+                "## 待评审稿件", "%s\n\n## 待评审稿件" % sk, 1)
+        kb = knowledge.block_for(task)
+        if kb:
+            crit_prompt = crit_prompt.replace(
+                "## 待评审稿件", "%s\n\n## 待评审稿件" % kb, 1)
         # AI 味确定性检测（借鉴 oh-story 去AI味）：客观参考线随评审下发，
         # 命中才追加——评审官结合上下文判断是否真问题，脚本不直接扣分
         crit_prompt = aiflavor.inject_into_prompt(crit_prompt, manuscript, task.get("type"))

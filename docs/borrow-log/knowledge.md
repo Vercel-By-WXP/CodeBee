@@ -6731,3 +6731,69 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   无产品代码、无版本变更、无发布，关键词策略不变。提交后两次推送均因
   `github.com:443` 网络连接失败，远端未更新；rebase 后 `python -m unittest discover
   -s tests` 在 120 秒受控窗口内超时并输出既有失败标记。
+
+## 2026-10-09 03时班（新一轮（v0.1.95 后）计划第 1/4 步·批3 复认+B4 补课·全类型调研+七专项）
+
+- **主扫+补课双跑**：116 查询（自动选批 B3，第 3 遍复认）+ `--batch 4` 补课 10 查询
+  （B4 首遍增量覆盖——同钟点 24h 周期撞同 %7 批，按「轮着跑不同批」+10-07
+  「当日未跑批」先例顺延）= **126 查询 574 行零 FAIL 零 403 零时限杀**；三源汇总
+  （主扫+B4+topic 8 页 155 仓）508 唯一仓 = 369 已录/139 首见全噪声，判据线以上
+  零新——域稳定期延续。| 调研 | 2026-10-09
+- **HarnessRouter/harnessrouter**（2,931★，10-08 push）新入库 | 自托管 harness
+  统一界面 CE（Apache-2.0，Codex/Claude Code 等，桌面+Web）| A13 同形态第 4 件
+  （OrchestratorInc/agent-orchestrator 12,924/awslabs/cli-agent-orchestrator
+  1,399/mixpeek/amux 520 同族）：统一面板我们 workbench+catalog 14 CLI 已覆盖，
+  无机制差量 | 参考（A13 雷达盯增量）| 2026-10-09
+- **微型判据 5 件**：this-rs/project-orchestrator 140★（Rust+Neo4j KG，知识库
+  边界不接）/Neko-Catpital-Labs/Invoker 18★（DAG+worktrees+merge gates，机制
+  全已有）/assistant-ui/jevia 10★（deterministic cache 模型路由——A3 语义缓存
+  再添一票，拍板件维持）/cooragent/ClarityFinance 62★（金融域旁）/
+  coreyhaines31/marketingskills 53,735★（营销技能包，不在六源域旁不接——
+  大体量但三问不过）。B4「安全边界微型件成簇」趋势第 4 班延续（WebSearch 1 发
+  B4 定向 7 claim repos 二次实证：agentgate 45/openguardrails 53/两 governance
+  清单 56/50/guardrails 族 1/1/0 全微型；agent-governance-toolkit 6,412 复认）。
+  | 新面孔 | 2026-10-09
+- **复查增量**（43 跟踪仓+5 类型锚点 repos 端点零 archived）：orca 87,845
+  （+799 加速续领跑）/ponytail 158,299（+823）/ECC 275,262（+452）/
+  deepseek-harness 245,653（+519）/**open-design 100,026 破 10 万**/autoharness
+  9,591（+414）/agent-memory 2,646（+266）/OpenShell 15,458（+256）/
+  **cost-xray 4,057（+223 放量）**/magpie 6,724（+1,668）/claude-mem 98,320
+  （+2,578）/**yomiyasu 1,762（+457，翻译腔件放量——翻译起草侧自查条已内化，
+  后续盯其新机制）**/archify 79,881（+1,574）/OmniRoute 74,244（+1,707）/
+  openhuman 41,678（+624）/career-ops 73,813（+103）/harness-sdk 8,743（+21
+  减速）；E 候选 DeepSeek-Reasonix 35,748（+1 平稳）；波动注：awesome-llm-apps
+  140,807（-124 回落非信号）。| 复查 | 2026-10-09
+- **七专项 A-G（只读零代码）**：八机制锚点在位（行号漂移 710/745/2689 系上轮
+  落地件合入，机制零漂移）；市场六源在位零新接入；18 类型零漂移 README:126
+  口径一致；lessons=70 基线维持（43% 流程规范）；catalog 14、本机 13/14
+  （openclaw 缺）、候选五 CLI 全 MISSING 零盲接；禅道 config.poll_enabled=false
+  零积压 last_scan 停 09-21（关闭态非故障，轮询重开交拍板维持；10-09 03时班
+  「顶层 poll_enabled」记法系层级口径差，实义同）；G 零毛病。禅道 npm 通道
+  第 32 例零新。| 巡检·A-G | 2026-10-09
+- **方法沉淀**：同钟点重复班次批次形态定型——「规则批照跑+`--batch N` 顺延补课
+  双跑」，严格规则与增量覆盖兼得（本班 B3+116 与 B4+10 实证约 10 分钟跑完）；
+  keywords.md 补注留待下步班同步（本班不越锚定文件清单）。| 方法·调研 | 2026-10-09
+
+## 2026-10-09 04时班（新一轮计划第 2/4 步·七专项 A-G 巡检+落地）
+
+- **G 项真缺陷修复**：test_i18n_dups 在 main 红灯约 36h——b8c25e3（workbench 重建）
+  向 i18n.js 二次添加既有键「（无输出）」（:1474 后值带前导空格静默覆盖 :37 原值），
+  7 处 t() 调用点文案被换；本班实跑守卫抓到并删后值修复（3/3 复绿）。
+  **教训已蒸馏入库**（lessons 70→71，流程规范）：守卫结论当班必实跑，不引用上班
+  口头结论；大 UI 重构是重复键高发面，落键前先 grep 全文件。| 巡检·G+落地 | 2026-10-09
+- **新勘注入不对称（提案交第 3 步评审）**：经验/知识库注入点全 3 处均在连载链
+  （planner.make_serial_outline planner.py:591-592 / serial 起草 pipeline.py:3808-3830
+  / serial 逐章评审 :3342-3349），review 引擎 13 类型起草与评审零注入，而
+  skills.learn_async（pipeline.py:5953）从全部 run 收割——「全类型收割、单链注入」
+  闭环半开；index.html:975 设置页文案与实现对 13 类型不符（补实现或改文案二选一，
+  交评审拍板，不擅动）。| 巡检·D+提案 | 2026-10-09
+- **A 项口径更新**：压缩默认已翻转——1c81362（10-08）把 orchestrator.compaction.enabled
+  默认改 True（settings_schema.py:226，revision 闸迁移保留显式 opt-out :266-272），
+  此前各班「默认关灰度」口径作废；代码断点续跑 9111a33（10-08）入库（run.impl_session
+  继承+_handoff_brief 注入，test_code_resume 7 项）——token 节约面两件新锚。四对标
+  方向判定维持零新建。| 巡检·A | 2026-10-09
+- **七专项其余全绿**：B 六源缓存 810 逐源复算零漂移零新面孔零接入；C 18 类型 import
+  实测+守卫 8/8+3/3；D lessons=71（流程规范 31/44%）零重复；E catalog 14、本机 13/14
+  （openclaw 缺、trae-cli 本班确认 /c/Users/HP/.local/bin/trae-cli 在位）、候选六 CLI
+  全 MISSING 零盲接；F config.poll_enabled=false 零积压零触发只读（明文密码/轮询重开
+  维持交拍板）。| 巡检·B/C/D/E/F | 2026-10-09

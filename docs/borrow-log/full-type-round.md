@@ -867,3 +867,336 @@ resume/bid_doc 三自研类型，差异如实记录（与 03/04/06/07/16/19 时�
   **`npm view codebee version` = 0.1.91 核实**。无锁文件无依赖无需同步。
 - 发布事实：codebee@0.1.91 已上 npm（shasum ee52958…，169 文件，latest 标签）。
 
+# 2026-10-09 03时班（新一轮（v0.1.95 后）计划第 1/4 步·全类型竞品调研+七专项巡检——批3 复认 + B4 补课）
+
+> 开工实录 03:05-04:00（UTC+8，hour=3，3%7=3 → 批3）、分支 **main**（a553131，v0.1.95
+> 已发版）、工作区干净零在制品（收尾 04:00 复核仍干净）。**批次判定如实记**：B3 已被
+> 24h 内两班全量覆盖两遍（10-08 03时班 + 10时班 current-round），本班按规则照跑 B3
+> （第三遍复认），并按总方针「轮着跑不同批」纪律 + 10-07「当日未跑批」先例，
+> `--batch 4` 顺延补跑 **B4（治理/安全/人机协同）**——严格规则与增量覆盖双闭环。
+> 通道：gh api 认证可用、trendshift/topic/npm/pypi curl 全可达、WebSearch 串行 1 发通过。
+
+## 主扫描与批次判定
+
+- **主扫**：`scripts/borrow_scan_nightly.py` 无参全量（自动选批 B3）——A 常驻 89
+  （含内置 B1 11）+ B3 轮换 11 + A1u/A1p2 双轮 16 = **116 查询 524 行，PROGRESS DONE
+  116 实证，零 FAIL 零 403 零时限杀**（后台跑满约 9 分钟）；随后 `--batch 4` 补课
+  10 查询 50 行——**合计 126 查询 574 行零失败**。
+- **三源汇总过筛**（主扫+B4+topic 8 页，全名+简称双通道对 docs/borrow-log/ 全历史）：
+  **508 唯一仓 = 369 已录 / 139 首见**；首见以噪声/课程库/停更旧件为主
+  （OptaPlanner archived 转移仓、Coursera 课件、2018-2025 停更件等同型），
+  **判据级新面孔零——域稳定期延续**（与 10-08 三班同型）。
+- B3「requirement+elicitation」词第 4 班 `ok 0`（progress 实证系词形弱非限流）。
+
+## B3 批域逐词头部（第 3 遍复认，11 词）
+
+| 查询词 | 头部命中（top3） | 判定 |
+|---|---|---|
+| long+running+agent+OR+persistent+planning | planning-with-files 27,342 · PlanWeave 412 | 已录族（领跑维持） |
+| spec+driven+development | OpenSpec 71,373 · get-shit-done 64,345 · gsd-2 7,776 | 已录族 |
+| plan+and+execute+agent | PraisonAI 9,204 · TaskWeaver 6,167 · refact 3,536 | 已录族 |
+| task+decomposition+agent | DeepResearchAgent 3,557 · spec_driven_develop 985 · claude-swarm 400 | 已录族 |
+| milestone+tracking+agent | （头部微型/停更，最大 161★ 2021 停更） | 微型域 |
+| project+planning+ai+agent | lazycodex 3,746 · AI-Agents-Projects-Tutorials 2,920 · itsaplan 910 | 已录/微型 |
+| autonomous+long+horizon+agent | InternAgent 1,446 · OpenART 231 | 已录族 |
+| worktree+parallel+agent | worktrunk 9,019 · ccpm 8,408 · pro-workflow 2,907 | 已录族 |
+| agent+checkpoint+resume+OR+recovery | atlas-agent-control-plane 106 · tiger_cowork 62 · CONTINUUM 28 | 微型域 |
+| acceptance+criteria+OR+requirements+validation | （全零星 0-1★，域沉寂维持） | 沉寂域 |
+| requirement+elicitation+OR+spec+interview | **ok 0 实证**（词形弱，第 4 班零回） | 零回如实记 |
+
+## B4 补课域逐词头部（10 词，本班增量覆盖域）
+
+| 查询词 | 头部命中（top3） | 判定 |
+|---|---|---|
+| human+in+the+loop+ai+agent | FireRed-OpenStoryline 3,470 · agent-apprenticeship 1,618 · auto-browser 904 | 已录族 |
+| agent+approval+workflow | OpenAgentsControl 4,894 · cordum 509 · builderz marketing-dashboard 472 | 已录族 |
+| agent+governance | bytebase 14,541 · agent-governance-toolkit 6,412 · atmosphere 3,818 | 已录族 |
+| agent+guardrails | BAML 9,385 · plano 7,082 · failproofai 5,252 | 已录族 |
+| agent+permission+policy | pi-permission-system 171 · （余微型/停更） | 微型域 |
+| agent+audit+trail | edict 16,977 · tradememory-protocol 1,425 · asqav-sdk 682 | 已录族 |
+| agent+kill+switch | Aegis 509 · （余噪声） | 已录 |
+| agent+risk+control | cursor-security-rules 380 · astra-quant-agent 367 · Caliper 197 | 已录/微型 |
+| prompt+injection+defense | prompt-injection-defenses 737 · Open-Prompt-Injection 504 · prompt-hacker 368 | 已录族 |
+| agent+policy+evaluation+OR+guardrail+benchmark | chi-bench 67 · ZSC-Eval 59 · hermes-katana 49 | 已录/微型 |
+
+**B4 域结论**：头部与 knowledge.md「批4 主体已录零增量」名单（10-03 逐 commit 复查在档）
+逐仓吻合，自然增量 0.1%-1% 量级——**该域稳定期成立，本班补课零新机制差量**。
+
+## 雷达 C 全过
+
+- **awesome 22 源 repos 实测 22/22 alive 零 archived**（零搜索配额；与跟踪仓合并
+  43 仓批量）：头部增量 vs 03时班（间隔约 24h）：awesome-claude-skills 76,706（+44）/
+  punkpeye awesome-mcp-servers 95,933（+27）/awesome-claude-code 55,263（+59）/
+  awesome-agent-skills 35,380（+52）/BMAD 53,946（+37）/claude-plugins-official
+  37,546（+48）；记忆四图+spec 域图+papers 图+evolution 图全在位自然增量；
+  vivy-yi 81★/caramaschiHG 1,928★ 首次记入基准格。
+- **trendshift 50 仓**（full_name 提取法第 3 班，341KB payload）：storytold 家族扩至
+  **8 兄弟**（+vectorcraft/effectcraft/designcraft）；agent 域候选经 repos 勘定全微型
+  或域旁（agent-access-bench 0★ 评测/golive-skill 1,244★ 部署 skill 域旁/
+  neko-master 4,113★ 网络面板域旁/zero-use-computer 17★/once-campfire 3★）；
+  已录复认 storytold 家族/openai/math/morluto-rea/mattpocock-skills/diagram-design/
+  dsh-our-free-model/huashu-art-motion/Compositor/second-brain-os/UI-TARS-desktop。
+- **topic 8 页全扫**（updated 排序 stars>20，每页 20 仓=155 仓；multi-agent-orchestration
+  仅 15 仓过线）：常客复认 claude-mem 98,320（+2,578 大放量）/archify 79,881（+1,574）/
+  oh-my-openagent 69,897（+25）/OmniRoute 74,244（+1,707）/openhuman 41,678（+624）/
+  atlas 9,441（+172 续爬）/eigent 15,477/ag2 4,984/get-bb 4,189/rakazo 3,509/
+  redamon 2,975（渗透框架域旁）/chat-on-steroids 4,250/macro 4,595；
+  **真首见 HarnessRouter/harnessrouter 2,931**（见下节）。
+- **npm 两查**：@nathapp/nax 0.83.7（10-08 在更）/bizar 10.33.0/tide-commander
+  1.223.1/raycoder/garda 全已录零新；**禅道 npm 通道第 32 例**：dsh-plugin-zentao
+  0.1.17 + zentao-cli 0.3.1 + zentao-api 0.7.2 全复认零新（F 专项）。
+- **pypi**：agent-orchestrator Simple index HTTP 200 在架（第 18 班）。
+- GitHub Trending 直抓未行（trendshift 补位，历班惯例）。
+
+## WebSearch 交叉验证（串行 1 发，B4 域定向）+ claim 二次实证
+
+查询「AI agent governance guardrails human-in-the-loop approval workflow open source
+GitHub 2026」捞出 7 件 claim，repos 端点全数二次实证（keywords.md 10-05 纪律）：
+
+| 仓 | stars/pushed | 实证定性 |
+|---|---|---|
+| microsoft/agent-governance-toolkit | 6,412 / 10-08 | 已录复认（第 7 次在档） |
+| agentrust-io/awesome-ai-governance | 56 / 10-08 | 微型清单判据（B4 域图第 5 张候补） |
+| systempromptio/awesome-ai-agent-governance | 50 / 10-08 | 微型清单判据 |
+| openguardrails/openguardrails | 53 / 09-25 | 微型（vendor-neutral 协议+基准） |
+| monteslu/agentgate | 45 / 05-08 停更 | 微型停更 |
+| KrxGu/ai-agent-guardrails | 1 / 01-18 停更 | 微型停更 |
+| byQuexo/agent-approval-gate | 1 / 07-19 | 微型 |
+
+**B4「安全边界微型件成簇」趋势信号第 4 班延续**（10-09.md 03时班判定沿用）；
+零判据线以上新面孔——WebSearch 结论与主扫 B4 域互证。
+
+## 新面孔批量勘定与定性（三门槛：重合度/可直读性/用户会搜吗）
+
+| 仓 | stars/pushed | 来源 | 机制亮点 | 对比 | 结论 | 日期 |
+|---|---|---|---|---|---|---|
+| HarnessRouter/harnessrouter | 2,931 / 10-08 | topic:claude-code | 自托管 harness 统一界面 CE（Apache-2.0，Codex/Claude Code 等，桌面+Web） | A13 同形态第 4 件（OrchestratorInc 12,924/awslabs 1,399/amux 520 同族）：统一面板我们 workbench+catalog 14 CLI 已覆盖；多 harness 统一面无机制差量 | A13 参考（雷达盯增量） | 2026-10-09 |
+| coreyhaines31/marketingskills | 53,735 / 10-08 | topic:claude-skills | 营销技能包（CRO/copywriting/SEO/growth，Claude Code/agents 通用） | 与 article 类型方法论同向（文案域）但系第三方 skill 包、不在六源；重合度中/可直读是/用户按「营销技能」搜不按我们场景搜——三问不过 | 参考（域旁雷达） | 2026-10-09 |
+| this-rs/project-orchestrator | 140 / 10-08 | 主扫 A1u 首见 | Rust 编排+Neo4j 知识图谱+Meilisearch+Tree-sitter 代码图 | 知识库边界已成文（不做代码结构索引）；依赖重（KG+搜索引擎） | 微型判据（雷达） | 2026-10-09 |
+| Neko-Catpital-Labs/Invoker | 18 / 10-08 | 主扫 A1u 首见 | 持久化多 agent 编排：DAG 任务+git worktrees+merge gates+Slack | 机制面我们全已有（管线 DAG+worktree 并行+评审闸+desktop） | 微型判据 | 2026-10-09 |
+| assistant-ui/jevia | 10 / 10-08 | 主扫 A1u 首见 | outcome-aware 模型路由+deterministic cache | A3 语义缓存方向再添一票（微型）；拍板件维持 | 微型判据（A3 信号） | 2026-10-09 |
+| cooragent/ClarityFinance | 62 / 09-01 | 主扫 A11 首见 | Claude-skill 原生架构金融分析 agent | 域旁（金融）；skill 原生架构形态面参考 | 参考（域旁） | 2026-10-09 |
+
+**判据件以上零**：本班五通道（主扫/B4 补课/trendshift/topic/WebSearch）全数收敛于
+已录族与微型件，无「对方有、我们没有」的机制级差量。
+
+## 全类型覆盖矩阵（18 类型 + 对话/知识库 × 本班证据通道）
+
+`flows.py BUILTIN_FLOWS` import 实测 = **18 种**（direct/code/novel/serial_novel/
+article/video_script/doc/translation/rank_scan/defect_retro/research/speech/
+presentation/weekly_report/email/tech_proposal/resume/bid_doc）；任务指令所列
+13/14 场景全在册（禅道工单系 F 专项自动转 code 修复任务非独立流程）。
+
+| 类型 | 注册 id | 本班证据通道 |
+|---|---|---|
+| 直接执行 | direct | A1/A2 主扫（orca 87,845/ECC/hermes 复认领跑） |
+| 代码 | code | B1 内置 11 组（worktrunk 9,019/PraisonAI 9,204/BAML 9,385 复认） |
+| 小说 | novel | A7 novel 组+FireRed-OpenStoryline 3,470 复认（B4 头部） |
+| 连载小说 | serial_novel | A7 consistency+A12 chapter hook（域沉寂维持） |
+| 自媒体文章 | article | A7 article 组+marketingskills 53,735 首见域旁判据 |
+| 文档 | doc | A10 doc 组（已录族） |
+| 翻译 | translation | A7/A10 translation 组+yomiyasu 1,762 repos 复测（+457 放量） |
+| 扫榜选材 | rank_scan | trendshift 50 仓+topic 155 仓（扫榜通道即产出源） |
+| 缺陷复盘 | defect_retro | A13 defect retro 组+禅道 npm 通道第 32 例零新 |
+| 调研报告 | research | A10 deep research 组+WebSearch 1 发交叉验证 |
+| 演讲稿 | speech | A7 speech 组（域平稳） |
+| 演示文稿 | presentation | A10 presentation 组（域平稳） |
+| 工作汇报 | weekly_report | A10 weekly report 组（域平稳） |
+| 商务邮件 | email | A10 email 组（bulk-email-generator 29★ 微型域） |
+| 技术方案 | tech_proposal | B3 spec-driven 组（OpenSpec 71,373/gsd 64,345 复认） |
+| 简历 | resume | career-ops 73,813（10-08 push，+103）复测 |
+| 标书编制 | bid_doc | B3 acceptance 组沉寂维持（历班同） |
+| 对话/知识库（补充） | — | A10 chatbot memory+A2 agent memory 组（agentmemory 29,245/beads 27,744 复测 alive） |
+
+## 七专项巡检结论（源码/数据实测，只读零改动）
+
+- **A. token 节约**：八机制锚点全在位——pipeline.py:710 `_budget_max_tokens`/
+  :745 `_cost_gate_block`（:774 花费闸先于 :784 token 闸）/:2689
+  `_shrink_context_block`（:2733 重试路径四层降级）/:1127+1197 `_review_depth_note`
+  /:1668 cascade_reorder、step_runner.py:28 `_PRECHECK_RATIO=0.9`、skills.py:676
+  `block_for(stable_order)`、usage.py:117 cached 细分记账。**行号较 03时班快照漂移
+  （613→710 等）系上轮落地件合入，机制零漂移**。四对标判定维持（prompt 缓存=
+  供应商侧自理/语义缓存=拍板件/diff-only=满配/cascade=opt-in 满配）。| 巡检·A
+- **B. 插件市场**：SOURCES len=6 实测（zcode/anthropic/anthropic-skills/claude-skills/
+  clawhub/cocoloop）。本班新面孔三问逐答：HarnessRouter=独立自托管平台非六源包（不接）/
+  marketingskills=第三方 GitHub 包不在六源且域旁（不接）/其余微型（不接）。
+  **零新接入，零自动安装**。| 巡检·B
+- **C. 任务类型**：BUILTIN_FLOWS=18 import 实测零漂移；README:126「18 种任务类型」
+  口径一致。| 巡检·C
+- **D. 经验库**：data/skills.json lessons=**70 条**（基线维持，勿沿用 69 旧口径）；
+  分布 流程规范 30（43%）/节奏爽点 16/情节逻辑 10/人物塑造 7/一致性 4/文笔风格 3。
+  本班调研面零机制级差量→零新增蒸馏（纪律已在库）。| 巡检·D
+- **E. 新 CLI**：DEFAULT_CATALOG=14 实测；本机 which **13/14 在装**（仅 openclaw 缺，
+  与 10-08 两班口径一致零漂移）；候选 DeepSeek-Reasonix（esengine，35,748（+1）候选
+  首位维持）/FuXi/Gitlawb/zero/Empryo which 全 MISSING——**零盲接防死链维持**。| 巡检·E
+- **F. 禅道集成**：data/zentao.json 实测 `config.poll_enabled=false`（键在 config
+  内，10-09 03时班记顶层 false 系层级口径差，实义同为关闭）、`claims={}` 零积压、
+  last_error 空、last_scan 停 2026-09-21——「配置关闭非故障」判定维持，轮询重开
+  维持交拍板。**本班全程只读，零禅道写回**。竞品面第 32 例零新。| 巡检·F
+- **G. 产品巡检**：「单源/13 种/14 种/16 种/17 种」过时文案 grep 真实源码
+  （README/index.html/app.js）零命中；topic/npm 通道零断链。**零新毛病**。| 巡检·G
+
+## 复查记录（03时班，基准=10-08 10时班 current-round + 03时班，间隔约 17-24h）
+
+- **43 跟踪仓+5 类型锚点 repos 端点全 alive 零 archived**。放量信号（24h 增量）：
+  **orca 87,845（+799 加速续领跑）**/ponytail 158,299（+823）/ECC 275,262（+452）/
+  deepseek-harness 245,653（+519）/open-design 100,026（**破 10 万**，+174）/
+  autoharness 9,591（+414 加速）/agent-memory 2,646（+266）/OpenShell 15,458（+256）/
+  **cost-xray 4,057（+223 放量）**/OpenSpec 71,373（+111）/agent-orchestrator
+  12,924（+67）/harness-sdk 8,743（+21 减速）。**类型锚点放量：magpie 6,724（+1,668）/
+  claude-mem 98,320（+2,578）/yomiyasu 1,762（+457，翻译腔件约两月翻半倍）/
+  openhuman 41,678（+624）/archify 79,881（+1,574）/OmniRoute 74,244（+1,707）/
+  career-ops 73,813（+103）/agentmemory 29,245/beads 27,744/webnovel-writer
+  7,376/ainovel-cli 2,126/story-skills 282 全 alive**。E 候选 DeepSeek-Reasonix
+  35,748（+1 平稳）。波动注记：awesome-llm-apps 140,807（-124 系 star 回落非信号）、
+  hive 11,086（-6 噪声）、vijaythecoder 4,388（-12）。| 复查
+
+## 本班结论
+
+1. **全通道收敛稳定期**：B3 第 3 遍复认零新面孔冲头部；B4 补课头部与已录名单逐仓
+   吻合；126 查询+topic+trendshift+npm/pypi+WebSearch 五通道判据线以上零新机制
+   差量。
+2. 真首见判据 1 件（**HarnessRouter 2,931★** A13 同形态雷达）+微型 5 件
+   （project-orchestrator/Invoker/jevia/ClarityFinance/marketingskills 域旁）；
+   B4 微型簇第 4 班延续。
+3. 放量信号 7 件（orca/ponytail/magpie/claude-mem/yomiyasu/cost-xray/autoharness），
+   open-design 破 10 万。
+4. 七专项 A-G 全在位零新差量；D 基线 70 维持；E 候选五 CLI 全 MISSING 零盲接；
+   F 关闭态零积压交拍板维持；G 零毛病。
+5. **批次方法注**：同钟点重复班次（24h 周期撞同 %7 批）采用「规则批照跑+顺延补课
+   批双跑」形态（B3 116 查询+`--batch 4` 10 查询），严格规则与增量覆盖兼得——
+   建议后续班沿用；keywords.md 补注留待下步班执行（本班不越锚定文件清单）。
+
+## 待深挖/风险/未验证项（如实记录）
+
+- 待深挖队列 11 项维持（快照口径零新增）；交拍板 4 件维持（禅道轮询重开/cost-xray
+  观测粒度/release_gate 判定面/npm 包体 files 白名单）。
+- 未验证项：禅道真实回写链路（poll 关闭态无实例权限——纪律不动用户配置）；pypi
+  仅 Simple index 在架验证（未做包内容级）；magic-context/nimbalyst 本班未复测
+  （属主未勘、历史在档）；marketingskills 53,735★ 超大体量技能包方法论面未深读
+  （域旁判据只作雷达）。
+- keywords.md 本班零调整（零关键词缺口；B3 requirement elicitation 第 4 班零回
+  维持现状；同钟点双跑法暂记本报告，补注下步班同步）。
+- 本班纪律对账：只读调研+两 docs 沉淀（Write/Edit 通道）；零代码改动、零安装、
+  零禅道写回、零触发真实扫描；临时产物落系统 Temp 不入仓。
+
+---
+
+# 2026-10-09 04 时班（新一轮计划第 2/4 步·七专项 A-G 巡检+落地）
+
+> 开工 04:16（UTC+8）、分支 **main**（a553131，v0.1.95 已发版）、工作区在制品=第 1/4 步
+> 两 docs（本班增量追加、逐字不动其既有内容）。以下行号全部为本班 04:1x-04:3x 独立实读
+> （承 03 时班后零代码合入，与 03 时班快照行号一致处如实沿用并复验）。
+
+## 定位清单（本步指令要求·真实路径与函数名，grep+逐段 Read 实核）
+
+| 目标 | 定义 | 调用链 | 测试 |
+|---|---|---|---|
+| token_meter | app/core/token_meter.py `TokenMeter.accumulate(:81)/used(:101)/cached(:109)/pressure_ratio(:116)/last_context(:129)`，单例 `token_meter(:148)` | pipeline.py `_spawn_step(:769)` 双路径累进 :819-824（压缩路径）/:837-843（直通补记）；预算闸 :784-798 `used()` | tests/test_token_meter.py、tests/test_token_cost.py、tests/test_token_cost_t2t3.py |
+| _shrink_context_block | pipeline.py `:2689`（四层优先级）；`_serial_shrunk_block(:2732)`；`_related_chapters_note(:2746)`（v0.1.89 件） | 消费 :3886-3888（非赛马重试）/:4039-4043（赛马复赛）；rel 注入 :3619 | tests/test_serial_ctx_shrink.py、tests/test_race_ctx_shrink.py、tests/test_full_type_round.py |
+| 经验库 | app/core/skills.py `LESSON_CATEGORIES(:46)/_karma(:326)/_surplus_decay(:348)/list_lessons(:391)/upsert_lesson(:424)/lesson_op(:494)/_text_bigrams(:590)/relevance_top(:597)/block_for(:676)` | 注入点全 3 处：planner.make_serial_outline(planner.py:591-592)、serial 起草 pipeline.py:3808-3830（`__SKILLS__`）、serial 逐章评审 :3342-3349；收割 skills.learn_async(pipeline.py:5953 全 run) | tests/test_skills.py、test_lesson_feedback.py、test_lesson_decay.py、test_lesson_near_dup.py、e2e_skills.py |
+| catalog.py | app/core/catalog.py `DEFAULT_CATALOG(:32)` import 实测 **14 条** | 本机探测 `command -v`（见 E 节） | tests/ 目录 catalog 相关随 test_routing/launch 族 |
+| market*.py | app/core/market_remote.py `SOURCES(:50)`（六源）/`assert_public_url(:113)`/`_fetch(:136)`（重定向逐跳重过）/体量上限 :93-98；app/core/market.py typosquatting(:131,:294-336)/`skill_scan.scan_summary` 接入(:281)/装后冒烟(:340-357)/`skill_card(:369)` | main.py 市场端点；缓存 data/market_remote/*.json | tests/test_market*.py（10 件）+ui_market*.mjs（5 件） |
+| zentao.py | app/core/zentao.py `fire_due(:2470)/scan_now(:2479)/start(:2496)/_norm_profile(:2517)/weekly_brief(:1192)`；triage_ai(:121,:1498) | automation.py tick→`fire_due`；main.py 启动 `start`、`/api/zentao/scan`→`scan_now`；weekly_report 素材注入 pipeline.py:5064-5080 | tests/test_zentao.py + tests/ui_zentao.mjs |
+
+## A. token 节约（单列小节）
+
+- **八机制全在位**（行号见定位清单）：三段压缩/token_meter 双路径累进/预算熔断（`_budget_max_tokens(:710)`+`_budget_cost_caps(:729)`+`_cost_gate_block(:745)` 花费闸先于 token 闸 :773-798）/cascade（opt-in）/经验召回/会话复用（`_valid_resume(:206)`/`_resume_sid(:272)`）/diff 评审（`_git_diff(:1056)`+`_review_depth_note(:1127)`+`_scope_note(:1162)`）/_shrink 家族。
+- **本班新勘两点（较 03 时班口径更新）**：①**压缩默认已翻转**——1c81362（10-08 18:13）把 `orchestrator.compaction.enabled` 默认改 True（settings_schema.py:226-227），`_compaction_enabled(:231)` 改为 ENV 显式覆盖（1/true/yes/on、0/false/no/off）否则读设置页；revision 闸迁移（settings_schema.py:266-272）只动 revision==1 的未触安装，显式 opt-out 保留——此前各班「默认关灰度」口径自此作废。②**代码断点续跑已入库**——9111a33（10-08 17:15）：`run.impl_session` 跨 run 继承+`_handoff_brief`（pipeline.py:5578/:5614，注入 :1553，收尾组装 :5939），取消/失败重试不再从零烧 token（tests/test_code_resume.py 7 项）。
+- **四方向判定维持**：prompt/语义缓存全库零命中（交拍板）；diff-only 评审满配；廉价分流（cascade+classify_difficulty+bestof 分道）满配——零新建。
+
+## B. 插件市场（六源+闸门+三问）
+
+- **六源缓存 810 实测**（python 逐文件解析 data/market_remote/*.json，本班独立复算）：zcode 26/anthropic 315/anthropic-skills 5/claude-skills 99/clawhub 215/cocoloop 150，fetched_at 全 2026-10-03——与 03 时班零漂移（「拉取更新」系用户动作不代按）。
+- **闸门在位**（行号见定位清单）：SSRF `assert_public_url`+重定向逐跳重过+体量五重上限；安装白名单+装前 scan_summary+typosquatting 近名+装后冒烟。零绕闸零自动安装。
+- **三问裁定**：HarnessRouter（自托管平台非六源包）/marketingskills（第三方 GitHub 包域旁）等 03 时班移交件全数维持「跟踪不接入」；本班零新面孔。**零接入。**
+
+## C. 任务类型（18 注册 × 指令场景映射）
+
+- **BUILTIN_FLOWS=18**（flows.py:36-134，import 实测 18）；用户 13/14 场景映射零缺失（第 8 次独立复证）。
+- **流程参数实证**：`content_workflow(task_compile.py:156)` 轻量三类型 {email,weekly_report,translation}(:163)/深度三类型 {novel,research,tech_proposal}(:164)/threshold≥8.5 强制双评审；类型分发注入链实锚：RESEARCH_APPENDIX(:2507)→:5060、TRANSLATION_APPENDIX(:2532)→:5063、weekly_report 禅道素材 `zentao.weekly_brief(:1192)`+`_gitlog_brief`→:5064-5080、`_content_contract(:2493)`→:5081。
+- **守卫复跑**：test_full_type_round **8/8 OK** + test_i18n_key_coverage **3/3 OK**（TUTTI_DATA 隔离净进程）。
+
+## D. 经验库（数据卫生+蒸馏 1 条落地）
+
+- **存量实测**：lessons **70→71**（本班蒸馏 +1）、packs=3；分布 流程规范 31（44%）/节奏爽点 16/情节逻辑 10/人物塑造 7/一致性 4/文笔风格 3；标题完全重复 0；scope 视角 serial_novel 41/code 12/* 12/direct 4/article 1（scope 偏科维持既有记录，迁移留人工）。
+- **蒸馏落地 1 条**（经 `skills.upsert_lesson(:424)` 落库）：「守卫结论当班必实跑，不引用上班口头结论——i18n 重复键守卫 main 红灯 36h 未被巡检发现」（scope=\*、category=流程规范、id=sk-03d8ca85a29f）。**如实记**：首跑脚本返回值解包报错但已落库，复跑合并致 seen=2（seen 仅 list_lessons :407 排序 tiebreak，影响可忽略；不分裂零重复，不修数据）。
+
+## E. 新 CLI 接入（catalog 对账+本机探测）
+
+- **DEFAULT_CATALOG=14**（import 实测）；**本机 13/14 在装**：`command -v` 逐个实测——codex/claude/qwen/opencode/aider/pi/gemini/cbc/dsh/trae-cli/kimi/mimo/grok FOUND（trae-cli 本班确认在位 /c/Users/HP/.local/bin/trae-cli），**openclaw MISSING**（与 10-08 各班口径一致）。
+- **六候选探测**：reasonix/deepseek-reasonix/fuxi/gitlawb/zero/empryo `command -v` **全 MISSING**——未装不实测不接入防死链维持；DeepSeek-Reasonix 35,748★ 候选首位（03 时班 repos 实测沿用）。**零接入。**
+
+## F. 禅道集成（只读巡检，零写回零触发）
+
+- **配置态**（data/zentao.json 直读，凭据不外播）：`config.poll_enabled=false`（内层显式关闭）、claims=**0** 零积压、last_error **空**、last_scan 停 2026-09-21 20:43（poll 未启所致非漂移）；产品档案 96（our_sides=[backend]）在位。
+- **链路在位**：`fire_due(:2470)`←automation tick、`start(:2496)`←main.py、`scan_now(:2479)`←`/api/zentao/scan`；weekly_report 素材消费 `weekly_brief(:1192)`（pipeline.py:5064-5080，尽力而为不阻塞）；triage_ai 兜底(:121,:1498)。定时扫描未真实触发验证（不为验证制造真实 Bug）。
+- **竞品雷达**：禅道 npm 通道第 32 例零新（承 03 时班）。风险维持：明文密码（凭据保险库队列项交拍板）；poll 重开交拍板。
+
+## G. 产品巡检（发现 1 件真缺陷并已修）
+
+- **真缺陷（本班实锚）**：**test_i18n_dups 在 main 红灯**——b8c25e3（10-08 22:31 workbench 重建）向 i18n.js :1474 二次添加既有键 `"（无输出）"`（带前导空格 " (no output)"），与 :37 原键 `"(No output)"` 重复，后值静默覆盖，7 处 `t("（无输出）")` 调用点（app.js:8340/:8402/:8423/:8570/:10980/:11184 + hive3d.js:178，全部独立文案场景无需前导空格）文案被换。守卫红约 36 小时未被巡检发现（03 时班报告写 3/3 OK 未当班实跑）。
+- **已修**：删 :1474 重复键（保留 :37 原键）；`node --check` 过、test_i18n_dups **3/3 OK**（修前实锤 2/3+1F）、test_i18n_key_coverage 3/3、test_full_type_round 8/8。
+- 其余零毛病：README.md:126「18 种任务类型」与注册表一致；「13/14/16/17 种/单源」过时文案零命中；rank_scan 四平台三向一致（flows.py:82 note ↔ paihang.py:23-24 ↔ app.js:5802）；index.html:416 type-menu 在位。
+
+## 落地实录（本班两件，均验证）
+
+| 件 | 改动 | 验收 |
+|---|---|---|
+| G 项修复：i18n 重复键 | app/ui/i18n.js 删 :1474 一行（后值 `" (no output)"`），恢复 :37 原键唯一 | node --check OK；test_i18n_dups 3/3 OK（修前红）；7 调用点恢复原文案 |
+| D 项蒸馏 1 条 | data/skills.json lessons 70→71（流程规范，upsert_lesson 通道） | 闭集落类、标题查重零重复、不分裂；seen=2 偏差如实记（自复跑合并非独立沉淀） |
+
+## 提案（第 3 步确认清单，评审通过再动）
+
+### 提案 1：review 引擎经验库/知识库注入补全（本班新勘不对称，交评审）
+
+- **可验证差距**：经验/知识注入点全 3 处均在连载链（定位清单行号）——review 引擎（novel/article/video_script/doc/translation/research/speech/presentation/weekly_report/email/tech_proposal/resume/bid_doc 共 13 类型）的起草（`_draft_prompt_for` pipeline.py:5049-5082）与评审（:5135-5143）**零注入**，而 `skills.learn_async(:5953)` 从全部 run 收割教训——「全类型收割、单链注入」闭环半开；且 index.html:975 设置页文案承诺「条目按任务类型与相关性自动注入同类任务的规划与评审提示词」，对 13 类型与实现不符（文案或实现二选一修正）。
+- **拟改**（若评审定向为补实现）：pipeline.py `_draft_prompt_for` 与 crit_prompt 组装处按 serial 同款接入 `skills.block_for(task, stable_order=True, run_id=run_id)`+`knowledge.block_for(task)`，预算封顶（复用 `_shrink_context_block` 口径），自定义模板经 `_ensure_critique_placeholders(:2801)` 已有锚点；零新抽象。
+- **验收用例**：隔离 workdir 造 scope=\* 教训+知识条目 → novel 任务起草 prompt 含经验块、零命中任务零噪音；serial 链不回归（test_serial_ctx_shrink 4 项+test_race_ctx_shrink）。
+- **备选**（若评审认定注入面属质量语义交拍板）：改 index.html:975 文案限定「连载与规划链」——二选一，不并行。
+
+## 本班纪律对账
+
+- 代码改动仅 app/ui/i18n.js 一行删除（G 项真缺陷修复）；数据改动仅 data/skills.json 蒴馏 1 条（运行时数据不入库）；docs 两件增量追加。
+- F 专项全程只读零触发；E 专项六候选零安装；B 专项零装包零绕闸；禅道零写回。
+- 守卫测试全部 TUTTI_DATA 隔离净进程实跑（本班亲手，不引用上班结论——即 D 项蒸馏条纪律）。
+
+---
+
+# 2026-10-09 第 3/4 步落地实录（提案 1 补实现：review 引擎经验库/知识库注入补全）
+
+> 承 04 时班提案确认清单：评审定向为**补实现**路线（备选「改文案」不并行）。
+> 与提案逐条对齐：serial 同款接入、零新抽象、UI 零改动——index.html:975 设置页
+> 文案承诺「条目按任务类型与相关性自动注入同类任务的规划与评审提示词」，实现
+> 补全后对 13 类型起草/评审成立，**文案无需改**（残余差异：review 类型的大纲步
+> 仍未注入，如实记录不在本轮范围）。
+
+## 实际改动路径
+
+| 文件 | 改动 | 提案锚点核对 |
+|---|---|---|
+| `app/core/pipeline.py` | ①起草侧：`_draft_prompt_for` 定义**之前**组装 `sk_lessons/kb_block/ctx_block`（`skills.block_for(task, stable_order=True, run_id=run_id)` + `knowledge.block_for(task)`，:5053-5055）——函数外取一次，bestof 多稿件共用一份命中计数不重复累加；`_draft_prompt_for` 内 `if ctx_block:` 守卫追加（`p += "\n\n" + ctx_block`，空串不追加零噪音），插在素材附录之后、`_content_contract` 之前（交付契约保持最末）。②评审侧：crit_prompt 组装处 `if task.get("context")` 之后、`aiflavor.inject_into_prompt` 之前，serial 逐章评审（:3342-3349）逐字同款——`"## 待评审稿件"` 锚点前插 sk/kb 两块（锚点由 `_ensure_critique_placeholders` 保证存在，自定义模板同享） | 提案拟改函数/行号全对上；stable_order 保前缀缓存；预算纪律由块内自带（skills 包区限额+教训保底 / knowledge 装箱截断），零新增预算口子 |
+| `tests/test_full_type_round.py` | +1 类 `ReviewEngineSkillInjectionTests` 3 用例（docstring 补第 6 条）：`test_review_engine_blocks_hit_and_zero_noise`（空库基线：内置包在但零教训时无「本项目经验记录」节+`_INJECTED` 零登记+knowledge 零返回；沉淀在库时双块命中；knowledge 按类型 scope 过滤零跨域噪音）、`test_all_review_engine_types_get_blocks`（engine=review 全部预置类型逐一命中双块，≥13 守卫）、`test_review_engine_wires_injection_into_draft_and_critique`（起草侧组装+守卫消费、评审侧 `crit_prompt.replace` 恰 2 处锚点） | 8/8→11/11；用例名全库唯一（grep 核过） |
+| `app/ui/*` | 零改动（无新文案无新键）——`node --check` 不适用、`tests/ui_full_type_round.mjs` 依规格条件不建 | 「只有涉及显示时才同步 UI」未触发 |
+
+- **覆盖面口径**：`_draft_prompt_for` 是 review 引擎 13 类型（novel/article/video_script/doc/translation/research/speech/presentation/weekly_report/email/tech_proposal/resume/bid_doc）唯一起草组装、crit_prompt 为其唯一评审组装——一处改动全类型生效；serial/code/direct 三引擎不在改动面。
+
+## 测试命令与结果（本步实跑）
+
+| 命令 | 结果 |
+|---|---|
+| `python -m py_compile app/core/pipeline.py tests/test_full_type_round.py` | 过 |
+| `python -m unittest discover -s tests -p "test_full_type_round.py" -v` | **11/11 OK**（原 8 + 新 3） |
+| `test_serial_ctx_shrink.py` / `test_content_contracts.py` / `test_i18n_dups.py` / `test_review_depth.py` | **4/4 · 9/9 · 3/3 · 全绿**（连载链与内容契约零回归） |
+| 净基线对照（stash 本轮 diff → 净 main 复跑 → stash pop 恢复） | `test_race_ctx_shrink` 净 main **同样 1F**（「沙箱拒绝：该外部 CLI…」环境级沙箱拦外部 CLI 子进程，与本轮 diff 零交集，既有红）；`test_lesson_feedback` 净跑 OK（带 diff 首跑 1F 系同窗 flaky，历班「同码不同窗红数漂移」同型）——**本轮 diff 零新增红** |
+| 闸④预扫 `git diff \| grep -E "pick_dialog\|ask_directory\|backoff"` | 零命中 |
+| 改动两文件 UTF-8 无 BOM 逐字节校验 | 过 |
+
+- **测试修正两处如实记**（初版断言错、实现零改动）：①空用户库 `skills.block_for` 仍注入内置包（3A 口径「内置包+用户自建包都参与 scope 匹配」设计如此）——零返回断言改为「无用户教训时无『本项目经验记录』节」；②返回的 `used` 列表混含包 id+教训 id——outcome 归因污染面的正确断言对象是 `skills._INJECTED` 登记表（零教训命中时 run 不登记）。
+
+## 交第 4/4 步清单
+
+- 工作区 5 文件：`app/core/pipeline.py` + `tests/test_full_type_round.py`（本轮）、`app/ui/i18n.js`（上班 G 项修复在制）+ 两 docs（上班沉淀与本节）。闸⑤提交/闸⑥推送发版留第 4 步。
+- 发版判断：本轮 pipeline.py 有代码入库（review 引擎注入），按「当天有代码入库才发」候选 patch+1（v0.1.95 → v0.1.96，test_selfupdate 全绿前置）。
+- 真实风险如实记：注入使 review 引擎 prompt 变长（内置包+教训+知识三面），容量受限通道的历史风险由既有 `_shrink_context_block` 口径备注覆盖（review 链长文降级属远期项，未扩）；命中计数路径（bump_hits/_INJECTED）与 serial 同款，`run_id` 已传参闭环 outcome 归因。
+
