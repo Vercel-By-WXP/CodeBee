@@ -404,16 +404,12 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None, sandbox=N
     cmdline = str(args.get("command") or "").strip()
     if not cmdline:
         return "（命令为空，未执行）"
-    try:
-        timeout = int(float(args.get("timeout_sec") or CMD_DEFAULT_TIMEOUT))
-    except (TypeError, ValueError):
-        timeout = CMD_DEFAULT_TIMEOUT
     from . import policy
     sandbox = sandbox or policy.normalize_sandbox({}, workdir)
+    timeout = _command_timeout(args, sandbox)
     cwd = os.path.abspath(workdir or ".")
     if not policy.path_allowed(cwd, sandbox):
         return "（沙箱拒绝：工作目录不在允许范围内，命令未执行）"
-    timeout = min(timeout, int(sandbox.get("timeout_s") or CMD_MAX_TIMEOUT))
     # This process runner has no OS-level network/filesystem namespace. Do not
     # imply network isolation when policy requests it; fail closed instead.
     if sandbox.get("network") is False:
@@ -455,7 +451,7 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None, sandbox=N
         + ["PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "COMSPEC", "HOME", "USERPROFILE"]))
     r = runner.run_process(argv=argv, cwd=cwd,
                            env=policy.filter_env(os.environ, env_policy),
-                           timeout=max(5, min(timeout, CMD_MAX_TIMEOUT)),
+                           timeout=min(timeout, CMD_MAX_TIMEOUT),
                            deadline=deadline, cancel_event=cancel_event)
     out = runner.clean_cli_text(
         (r.get("stdout") or "") + (("\n" + r["stderr"]) if r.get("stderr") else ""))
@@ -480,6 +476,19 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None, sandbox=N
     code = r.get("exit_code")
     return ("%s退出码: %s\n%s\n（注意：shell 命令副作用不纳入文件检查点，"
             "不能保证可回滚）") % (prefix, "未知" if code is None else code, body)
+
+
+def _command_timeout(args, sandbox):
+    """Resolve the shell timeout without exceeding the task's sandbox budget."""
+    try:
+        requested = int(float((args or {}).get("timeout_sec") or CMD_DEFAULT_TIMEOUT))
+    except (TypeError, ValueError):
+        requested = CMD_DEFAULT_TIMEOUT
+    try:
+        policy_limit = int(float((sandbox or {}).get("timeout_s") or CMD_MAX_TIMEOUT))
+    except (TypeError, ValueError):
+        policy_limit = CMD_MAX_TIMEOUT
+    return max(1, min(requested, policy_limit, CMD_MAX_TIMEOUT))
 
 
 # ---------------------------------------------------------------- P0 基础件扩展
@@ -848,11 +857,8 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
             text += "\n…[后续内容可继续 read_tool_output，offset=%s]…" % result["next_offset"]
         return text
     if str(name or "").startswith("mcp__"):
-        # An MCP server is an independently configured host process. Until its
-        # process launcher can apply the task's network namespace, do not let a
-        # network-disabled task bypass that boundary through MCP.
-        if sandbox.get("network") is False:
-            return "（沙箱拒绝：MCP 服务尚未接入网络隔离，工具未执行）"
+        # MCP process launch enforces this policy through bubblewrap; platforms
+        # without the isolation backend fail closed in mcp_client._sandbox_launch.
         remaining = None
         if deadline is not None:
             remaining = float(deadline) - time.monotonic()

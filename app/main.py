@@ -1297,8 +1297,22 @@ class Handler(BaseHTTPRequestHandler):
             if not task.get("workdir"):
                 return self._json(409, {"error": "任务工作目录不可用，拒绝恢复"})
             from core import checkpoints
-            return self._json(200, checkpoints.restore_files(
-                m.group(1), task.get("workdir") or ""))
+            # Serialize the final safety check and file restore with run creation
+            # and status transitions. Otherwise a new run can start on this task
+            # after the terminal check and race with restoration in the same tree.
+            with store.LOCK:
+                current = store.get_run(m.group(1)) or {}
+                task = store.get_task(current.get("task_id")) or {}
+                latest = store.latest_run_by_task().get(current.get("task_id")) or {}
+                terminal = ("done", "failed", "cancelled", "timeout")
+                if current.get("status") not in terminal:
+                    return self._json(409, {"error": "任务状态已变化；请等待终态后再恢复文件"})
+                task_active = task.get("status") in ("queued", "running")
+                newer_run_active = latest.get("status") in ("queued", "running")
+                if task_active or newer_run_active:
+                    return self._json(409, {"error": "该任务已有运行中的新任务；请等待其结束后再恢复文件"})
+                return self._json(200, checkpoints.restore_files(
+                    m.group(1), task.get("workdir") or ""))
         m = re.match(r"^/api/runs/([^/]+)/messages$", path)
         if m:
             return self._api_add_message(m.group(1))

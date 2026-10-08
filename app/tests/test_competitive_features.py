@@ -291,15 +291,22 @@ class CompetitiveFeatureTests(unittest.TestCase):
         self.assertIn("隔离后端", result)
         run_process.assert_not_called()
 
-    def test_sandbox_network_off_fails_closed_for_mcp_tools(self):
+    def test_mcp_network_off_policy_reaches_isolated_dispatch(self):
         from core import builtin_agent, mcp_client
         with tempfile.TemporaryDirectory() as wd:
             sandbox = policy.normalize_sandbox({"allowed_roots": [wd], "network": False}, wd)
-            with patch.object(mcp_client, "dispatch_full_name") as dispatch:
+            with patch.object(mcp_client, "dispatch_full_name",
+                              return_value={"ok": True, "text": "done"}) as dispatch:
                 result = builtin_agent._exec_tool(
                     wd, "mcp__demo__send", {"message": "hello"}, sandbox=sandbox)
-        self.assertIn("网络隔离", result)
-        dispatch.assert_not_called()
+        self.assertEqual(result, "done")
+        self.assertIs(dispatch.call_args.kwargs["sandbox"]["network"], False)
+
+    def test_shell_timeout_respects_one_second_policy(self):
+        from core import builtin_agent
+        sandbox = policy.normalize_sandbox({"timeout_s": 1}, self.root)
+        self.assertEqual(builtin_agent._command_timeout(
+            {"timeout_sec": 60}, sandbox), 1)
 
     def test_mcp_call_timeout_is_bounded_by_task_deadline_and_policy(self):
         from core import builtin_agent, mcp_client
@@ -522,6 +529,25 @@ class CompetitiveFeatureTests(unittest.TestCase):
         self.assertEqual(handler._route_get()[0], 401)
         handler.path = "/api/runs/run-1/checkpoints/restore"
         self.assertEqual(handler._route_post()[0], 401)
+
+    def test_checkpoint_restore_refuses_when_another_run_for_task_is_active(self):
+        handler = object.__new__(main.Handler)
+        handler.path = "/api/runs/run-old/checkpoints/restore"
+        handler._authed = lambda: True
+        handler._deny_control = lambda: None
+        handler._body = lambda: {"confirm": True}
+        handler._json = lambda code, payload: (code, payload)
+        old_run = {"id": "run-old", "task_id": "task-1", "status": "done"}
+        task = {"id": "task-1", "workdir": str(self.root), "status": "running"}
+        active_run = {"id": "run-new", "task_id": "task-1", "status": "running"}
+        with patch.object(main.store, "get_run", return_value=old_run):
+            with patch.object(main.store, "get_task", return_value=task):
+                with patch.object(main.store, "latest_run_by_task",
+                                  return_value={"task-1": active_run}):
+                    with patch.object(checkpoints, "restore_files") as restore:
+                        response = handler._route_post()
+        self.assertEqual(response[0], 409)
+        restore.assert_not_called()
 
     def test_project_memory_requires_approval_and_expires(self):
         with patch.object(project_memory, "DEFAULT_TTL_DAYS", 1):
