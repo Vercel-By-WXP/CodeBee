@@ -593,6 +593,21 @@ class CompetitiveFeatureTests(unittest.TestCase):
                 self.root, "read_tool_output", {"ref": ref}, tool_output_run_id="run-ref")
         self.assertEqual(restored, source)
 
+    def test_repeated_tool_output_compaction_keeps_original_reference(self):
+        from core import builtin_agent, tool_outputs
+        source = "stable-source-" * 400
+        messages = [{"role": "tool_results", "tool_results": [("call", source)]}]
+        with patch.object(tool_outputs, "_DIR", self.root / "tool_outputs"):
+            builtin_agent._compact_old_tool_results(messages, keep_rounds=0,
+                                                    old_result_chars=1200, run_id="run-id")
+            marker = messages[0]["tool_results"][0][1]
+            builtin_agent._compact_old_tool_results(messages, keep_rounds=0,
+                                                    old_result_chars=200, run_id="run-id")
+            self.assertEqual(messages[0]["tool_results"][0][1], marker)
+            ref = marker.split("ref=", 1)[1].split()[0]
+            self.assertEqual(tool_outputs.read("run-id", ref)["text"],
+                             source[:tool_outputs.MAX_READ_CHARS])
+
     def test_direct_agent_context_bounds_old_tool_rounds_and_keeps_recent_pairs(self):
         from core import builtin_agent
         messages = [{"role": "user", "content": "original request"}]
@@ -632,6 +647,8 @@ class CompetitiveFeatureTests(unittest.TestCase):
             ])
 
         with patch.object(tool_outputs, "_DIR", self.root / "tool_outputs"):
+            builtin_agent._bound_direct_context(messages, max_chars=1000,
+                                                keep_rounds=2, run_id="run-direct")
             builtin_agent._bound_direct_context(messages, max_chars=1000,
                                                 keep_rounds=2, run_id="run-direct")
             note = next(msg["content"] for msg in messages

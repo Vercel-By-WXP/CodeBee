@@ -1436,6 +1436,12 @@ def _compact_old_tool_results(messages, keep_rounds=TOOL_HISTORY_KEEP_ROUNDS,
         for call_id, value in msg.get("tool_results") or []:
             value = str(value or "")
             if len(value) > old_result_chars:
+                existing_ref = re.search(r"ref=([a-f0-9]{32})", value)
+                if existing_ref:
+                    # Idempotent across repeated context passes: never save the
+                    # already-truncated marker as a new "full" tool output.
+                    compacted.append((call_id, value))
+                    continue
                 head = old_result_chars * 2 // 3
                 tail = old_result_chars - head
                 try:
