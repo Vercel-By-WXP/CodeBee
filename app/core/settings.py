@@ -14,8 +14,9 @@ _FILE = paths.DATA_DIR / "settings.json"
 # default_workdir 为空表示未自定义，用 builtin_workdir() 回落；
 # telemetry_errors：匿名错误回传开关（默认开；关掉后版本 ping/错误上传/诊断包遥测部分全部停发，
 # 「导出诊断包」是用户手动操作不受此开关限制）
-# publish_daily_cap / publish_fail_streak：自动发布护栏——每任务每平台每日
-# 成功发章上限、平台连续失败几次后暂停自动发布（publish/auto.py 读取）
+# publish_daily_cap / publish_fail_streak / publish_fail_window_h：自动发布护栏——
+# 每任务每平台每日成功发章上限、平台连续失败几次后暂停自动发布、连败只统计
+# 最近多少小时内的失败（跨天旧失败不进「连续」口径）（publish/auto.py 读取）
 # pet_enabled / pet_mode：桌面蜜蜂（app/pet.py）开关与显示模式（默认关，设置页
 # 可开）。关闭后看护线程不再拉起、在岗蜜蜂轮询到 false 自行退出；mode=always
 # 不再拉起、在岗蜜蜂轮询到 false 自行退出；mode=always 常驻，tasks_only 仅任务
@@ -28,7 +29,8 @@ _FILE = paths.DATA_DIR / "settings.json"
 DEFAULTS = {"max_concurrent_jobs": 12, "default_workdir": "", "hooks_token": "",
             "hooks_signing_secret": "",
             "telemetry_errors": True, "publish_daily_cap": 10,
-            "publish_fail_streak": 3, "notify_webhook": "", "notify_base_url": "",
+            "publish_fail_streak": 3, "publish_fail_window_h": 12,
+            "notify_webhook": "", "notify_base_url": "",
             "notify_bark_server": "", "notify_bark_key": "",
             "notify_ntfy_topic": "", "notify_serverchan_key": "",
             "notify_telegram_token": "", "notify_telegram_chat_id": "",
@@ -150,6 +152,11 @@ def save(patch):
                 cur["publish_fail_streak"] = max(1, min(10, int(patch.get("publish_fail_streak"))))
             except (TypeError, ValueError):
                 return cur, "publish_fail_streak 必须是 1-10 的整数"
+        if "publish_fail_window_h" in patch:
+            try:
+                cur["publish_fail_window_h"] = max(1, min(168, float(patch.get("publish_fail_window_h"))))
+            except (TypeError, ValueError):
+                return cur, "publish_fail_window_h 必须是 1-168 的数字"
         if "notify_webhook" in patch:
             cur["notify_webhook"] = str(patch.get("notify_webhook") or "").strip()[:300]
         if "notify_base_url" in patch:

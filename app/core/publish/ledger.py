@@ -301,18 +301,55 @@ def today_count(task_id, platform):
                and r.get("day") == day)
 
 
+def fail_window_h():
+    """连败统计时间窗（小时，1-168，默认 12）。
+
+    「连续失败」只数窗口内的：失败原因若是代码 bug（2026-10-08 番茄序号空
+    实案，修好即愈），修好后的新发布不该被 9 天攒下的 17 连败永久卡死。"""
+    from .. import settings
+    try:
+        v = float((settings.load() or {}).get("publish_fail_window_h") or 12)
+    except Exception:
+        return 12.0
+    return max(1.0, min(168.0, v))
+
+
+def _rec_time(r):
+    """台账记录的时间戳（epoch 秒）；解析不了返回 None。"""
+    ts = str(r.get("ts") or "")
+    try:
+        return time.mktime(time.strptime(ts, "%Y-%m-%d %H:%M:%S"))
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
 def consecutive_failures(platform):
     """该平台最近连续失败的发布动作数（连败退避护栏，跨任务口径）。
 
     记录时间序旧→新，倒着数到第一条成功为止；连败大概率是风控或改版，
     此时继续自动重试只会火上浇油，应转人工检查。
-    """
+    只数时间窗内（fail_window_h，默认 12 小时）的失败：碰到窗口外的记录
+    即停——「连续」是时间上的连续，隔天的旧失败不进口径，否则一次代码
+    bug 的历史失败会在修好后永久卡死发布（2026-10-08 实案：序号 bug 修好
+    后 17 连败仍拦新发布，死锁）。"""
+    import datetime
+    cutoff = time.time() - fail_window_h() * 3600
     n = 0
     for r in reversed(list(_iter_records(7))):
         if r.get("platform") != platform:
             continue
         if r.get("action") not in ("upload_chapter", "create_book"):
             continue
+        t = _rec_time(r)
+        if t is None:
+            day = str(r.get("day") or "")
+            try:
+                t = time.mktime(datetime.datetime.strptime(
+                    day, "%Y-%m-%d").timetuple()) + 86399
+            except ValueError:
+                continue                  # 无时间信息的记录不进连败口径
+        if t < cutoff:
+            break                         # 窗口外：再旧的成功/失败都不相干
         if r.get("ok"):
             break
         n += 1

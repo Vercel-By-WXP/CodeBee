@@ -79,9 +79,16 @@ def guards(task_id, platform):
     streak = ledger.consecutive_failures(platform)
     limit = fail_streak()
     if streak >= limit:
-        return False, ("平台连续 %d 次发布失败（疑似风控或改版），自动发布已暂停，"
-                       "请人工检查后再试" % streak)
+        return False, ("平台近 %s 内连续 %d 次发布失败（疑似风控或改版），自动发布"
+                       "已暂停；代码问题修复后护栏自动解除，也可单章「发一章」"
+                       "恢复" % (_fail_window_text(), streak))
     return True, ""
+
+
+def _fail_window_text():
+    from . import ledger
+    h = ledger.fail_window_h()
+    return ("%g 小时" % h) if h < 24 else ("%g 天" % (h / 24))
 
 
 # ---------------------------------------------------------------- 待发枚举

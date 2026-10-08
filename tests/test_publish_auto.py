@@ -34,8 +34,11 @@ def _seed(records):
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
-def _rec(action, ok=True, ch=0, task="t1", plat="fanqie", day=TODAY):
-    return {"ts": "2026-09-18 00:00:00", "day": day, "platform": plat,
+def _rec(action, ok=True, ch=0, task="t1", plat="fanqie", day=TODAY, ts=None):
+    # ts 用当前时间（连败口径 2026-10-08 起有时间窗，旧时间戳=窗口外不计）
+    if ts is None:
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    return {"ts": ts, "day": day, "platform": plat,
             "action": action, "task_id": task, "chapter_no": ch,
             "book_id": "", "title": "", "ok": ok, "error": "", "shot": ""}
 
@@ -76,6 +79,21 @@ class TestLedgerGuards(unittest.TestCase):
         ])
         self.assertEqual(ledger.consecutive_failures("fanqie"), 2)
         self.assertEqual(ledger.consecutive_failures("qimao"), 0)
+
+    def test_fail_streak_window_ignores_stale(self):
+        """连败只数时间窗内的（2026-10-08 实案：序号 bug 修好后，9 天攒的
+        17 连败仍拦新发布=死锁；跨天旧失败不进口径）。"""
+        old = time.strftime("%Y-%m-%d %H:%M:%S",
+                            time.localtime(time.time() - 13 * 3600))
+        _seed([dict(_rec("upload_chapter", ok=False, ch=1, day=old[:10]), ts=old),
+               _rec("upload_chapter", ok=False, ch=2, task="t2")])
+        self.assertEqual(ledger.consecutive_failures("fanqie"), 1,
+                         "13 小时前的旧失败不进连败口径")
+        # 窗口内失败照常计数；新账有成功即清零
+        _seed([_rec("upload_chapter", ok=False, ch=3)])
+        self.assertGreaterEqual(ledger.consecutive_failures("fanqie"), 2)
+        _seed([_rec("upload_chapter", ok=True, ch=4)])
+        self.assertEqual(ledger.consecutive_failures("fanqie"), 0)
 
 
 class TestGuards(unittest.TestCase):
