@@ -531,9 +531,48 @@ class CompetitiveFeatureTests(unittest.TestCase):
              patch.object(mcp_client.threading, "Thread") as thread, \
              patch.object(session, "_request", side_effect=RuntimeError("init timeout")):
             thread.return_value.start.return_value = None
+            thread.return_value.is_alive.return_value = False
             with self.assertRaisesRegex(RuntimeError, "init timeout"):
                 session.__enter__()
         process.kill.assert_called_once_with()
+        process.stdin.close.assert_called_once_with()
+        process.stdout.close.assert_called_once_with()
+        process.stderr.close.assert_called_once_with()
+
+    def test_mcp_cleanup_does_not_close_pipe_while_reader_is_blocked(self):
+        from core import mcp_client
+        process = unittest.mock.Mock()
+        process.poll.return_value = 0
+        session = mcp_client._Session({"name": "demo", "command": "demo"})
+        reader = unittest.mock.Mock()
+        reader.is_alive.return_value = True
+        session.proc = process
+        session._reader_threads = [reader]
+
+        session.__exit__(None, None, None)
+
+        reader.join.assert_called_once_with(timeout=0.2)
+        process.stdout.close.assert_not_called()
+        process.stderr.close.assert_not_called()
+
+    def test_mcp_reader_closes_pipe_after_reaching_eof(self):
+        import io
+        import queue
+        from core import mcp_client
+
+        session = mcp_client._Session({"name": "demo", "command": "demo"})
+        session.proc = unittest.mock.Mock()
+        session.proc.stdout = io.BytesIO(b'{"jsonrpc":"2.0"}\n')
+        session.proc.stderr = io.BytesIO(b"diagnostic\n")
+        session.lines = queue.Queue()
+
+        session._pump_out()
+        session._pump_err()
+
+        self.assertTrue(session.proc.stdout.closed)
+        self.assertTrue(session.proc.stderr.closed)
+        self.assertEqual(session.lines.get_nowait(), '{"jsonrpc":"2.0"}')
+        self.assertIsNone(session.lines.get_nowait())
 
     def test_mcp_server_spawn_uses_process_group_for_child_cleanup(self):
         from core import mcp_client

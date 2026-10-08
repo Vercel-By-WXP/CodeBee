@@ -156,6 +156,7 @@ class _Session:
         self.proc = None
         self.lines = None       # reader 线程产出的行队列
         self.err = None
+        self._reader_threads = []
 
     def _pump_err(self):
         try:
@@ -163,6 +164,11 @@ class _Session:
                 pass
         except Exception:
             pass
+        finally:
+            try:
+                self.proc.stderr.close()
+            except Exception:
+                pass
 
     def _pump_out(self):
         try:
@@ -171,6 +177,10 @@ class _Session:
         except Exception:
             pass
         finally:
+            try:
+                self.proc.stdout.close()
+            except Exception:
+                pass
             self.lines.put(None)      # EOF 哨兵
 
     def __enter__(self):
@@ -189,8 +199,12 @@ class _Session:
             raise RuntimeError("MCP 服务器启动失败: %s" % e)
         import queue as _queue
         self.lines = _queue.Queue()
-        threading.Thread(target=self._pump_out, daemon=True).start()
-        threading.Thread(target=self._pump_err, daemon=True).start()
+        self._reader_threads = [
+            threading.Thread(target=self._pump_out, daemon=True),
+            threading.Thread(target=self._pump_err, daemon=True),
+        ]
+        for thread in self._reader_threads:
+            thread.start()
         try:
             init_timeout = _INIT_TIMEOUT
             if self.deadline is not None:
@@ -214,7 +228,6 @@ class _Session:
                     self.proc.stdin.close()
                 except Exception:
                     pass
-        finally:
             try:
                 if self.proc and self.proc.poll() is None:
                     # bwrap runs in its own process group; terminate descendants
@@ -228,6 +241,31 @@ class _Session:
                     self.proc.kill()
             except Exception:
                 pass
+            try:
+                if self.proc:
+                    self.proc.wait(timeout=1)
+            except Exception:
+                pass
+        finally:
+            # Close all parent-side pipe handles even if initialization failed.
+            # Do not close a stream while its reader is blocked in read(): the
+            # buffered stream lock can make close wait forever if an escaped
+            # descendant still holds the pipe open. Let daemon readers finish
+            # on EOF and close only streams no thread currently owns.
+            for thread in self._reader_threads:
+                try:
+                    thread.join(timeout=0.2)
+                except Exception:
+                    pass
+            for name in ("stdout", "stderr"):
+                pipe = getattr(self.proc, name, None) if self.proc else None
+                readers_alive = any(
+                    thread.is_alive() for thread in self._reader_threads)
+                if pipe and not readers_alive:
+                    try:
+                        pipe.close()
+                    except Exception:
+                        pass
         return False
 
     def _send(self, obj):

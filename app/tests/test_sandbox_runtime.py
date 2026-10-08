@@ -1,4 +1,5 @@
 """Linux integration tests for the actual bubblewrap execution boundary."""
+import os
 import shutil
 import subprocess
 import sys
@@ -10,10 +11,29 @@ from core import policy
 
 
 _BWRAP_READY = sys.platform.startswith("linux") and bool(shutil.which("bwrap"))
+_REQUIRE_BWRAP = os.environ.get("CODEBEE_REQUIRE_BWRAP") == "1"
 
 
-@unittest.skipUnless(_BWRAP_READY, "requires Linux and an executable bubblewrap backend")
 class BubblewrapRuntimeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not _BWRAP_READY:
+            message = "requires Linux and an executable bubblewrap backend"
+            if _REQUIRE_BWRAP:
+                raise RuntimeError(message)
+            raise unittest.SkipTest(message)
+        probe = subprocess.run(
+            [shutil.which("bwrap"), "--die-with-parent", "--new-session",
+             "--tmpfs", "/", "--proc", "/proc", "--dev", "/dev",
+             "--", "/bin/true"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
+        if probe.returncode:
+            detail = probe.stderr.decode("utf-8", errors="replace").strip()
+            message = "bubblewrap user namespace unavailable: %s" % detail[:200]
+            if _REQUIRE_BWRAP:
+                raise RuntimeError(message)
+            raise unittest.SkipTest(message)
+
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
@@ -64,6 +84,8 @@ class BubblewrapRuntimeTests(unittest.TestCase):
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
         if probe.returncode:
             detail = probe.stderr.decode("utf-8", errors="replace").strip()
+            if _REQUIRE_BWRAP:
+                self.fail("network namespace unavailable: %s" % detail[:200])
             self.skipTest("network namespace unavailable: %s" % detail[:200])
 
         from core import builtin_agent

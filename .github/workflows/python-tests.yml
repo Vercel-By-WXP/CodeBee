@@ -25,3 +25,7 @@ jobs:
           sudo apt-get install --yes bubblewrap
       - name: Run unit and sandbox integration tests
         run: python -m unittest discover -s tests -v
+      - name: Run required bubblewrap isolation tests with namespace privileges
+        env:
+          CODEBEE_REQUIRE_BWRAP: "1"
+        run: sudo -E "$(which python)" -m unittest discover -s tests -p test_sandbox_runtime.py -v
