@@ -118,13 +118,16 @@ class CompetitiveFeatureTests(unittest.TestCase):
             target.write_text("after", encoding="utf-8")
             checkpoints.mark_file_after("run-parent-race", workdir, target)
             original_rename = os.rename
+            swapped = [False]
 
             def swap_parent_then_replace(src, dst, **kwargs):
                 if kwargs:
+                    if not swapped[0]:
+                        moved = workdir / "nested-original"
+                        original_rename(parent, moved)
+                        parent.symlink_to(outside, target_is_directory=True)
+                        swapped[0] = True
                     return original_rename(src, dst, **kwargs)
-                moved = workdir / "nested-original"
-                original_rename(parent, moved)
-                parent.symlink_to(outside, target_is_directory=True)
                 return original_rename(src, dst, **kwargs)
 
             with patch.object(checkpoints.os, "rename", side_effect=swap_parent_then_replace):
