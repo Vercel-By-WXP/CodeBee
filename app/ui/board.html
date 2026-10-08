@@ -12,7 +12,6 @@
 <!-- 远程访问令牌门（本机免输；与主界面共用 orch.token） -->
 <div id="gate" class="gate hidden">
   <div class="gate-box">
-    <div class="gate-mark" aria-hidden="true"><span></span><span></span><span></span></div>
     <div class="gate-title" data-i18n="需要访问令牌">需要访问令牌</div>
     <div class="gate-sub" data-i18n="启动 CodeBee 时控制台会显示">启动 CodeBee 时控制台会显示</div>
     <input id="gate-token" type="password" data-i18n-ph="访问令牌" placeholder="访问令牌" autocomplete="off">
@@ -22,139 +21,143 @@
 </div>
 
 <header id="hd">
-  <div class="hd-brand">
-    <div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
-    <div class="brand-copy">
-      <div class="brand-kicker">CODEBEE / OPERATIONS</div>
-      <div class="hd-name" data-i18n="任务驾驶舱">任务驾驶舱</div>
-    </div>
+  <div class="hd-brand"><div class="hd-name">CodeBee</div></div>
+
+  <div class="hd-state" id="hd-state">
+    <span class="state-pip" aria-hidden="true"></span>
+    <span class="state-text" id="hd-state-text" data-i18n="蜂群待命">蜂群待命</span>
+    <span class="hd-sep" aria-hidden="true"></span>
+    <span class="hd-sync" id="hd-updated" data-i18n="同步中">同步中</span>
   </div>
-  <div class="hd-center">
-    <span class="live-pip"></span>
-    <span data-i18n="实时监控">实时监控</span>
-    <span class="hd-sep">/</span>
-    <span id="hd-updated" class="hd-updated" data-i18n="同步中">同步中</span>
-  </div>
+
   <div class="hd-right">
-    <div id="hd-pool" class="hd-pill" title="执行池占用" data-i18n-title="执行池占用">—</div>
-    <div id="hd-health" class="hd-pill warn hidden" title=""></div>
-    <div id="hd-conn" class="hd-pill off hidden" data-i18n="连接断开">连接断开</div>
+    <div class="hd-metric" data-i18n-title="执行池占用">
+      <em data-i18n="蜂巢">蜂巢</em><b id="hd-pool-alive">0</b><span id="hd-pool-target">/0</span>
+    </div>
+    <div class="hd-metric">
+      <em data-i18n="对话">对话</em><b id="hd-chat-alive">0</b><span id="hd-chat-pool">/0</span>
+    </div>
+    <div class="hd-svc" id="hd-health"><i aria-hidden="true"></i><span id="hd-health-text"></span></div>
+    <div id="hd-conn" class="hd-off hidden" data-i18n="连接断开">连接断开</div>
+    <div class="hd-swap">
+      <button class="sw-btn" id="sw-skin" type="button" data-i18n-title="切换皮肤（仅大屏记忆）"><span data-i18n="皮肤">皮肤</span> <b id="sw-skin-n">—</b></button>
+      <button class="sw-btn" id="sw-mode" type="button" data-i18n-title="切换明暗（仅大屏记忆）"><b id="sw-mode-n">—</b></button>
+    </div>
     <div id="hd-clock" class="hd-clock">--:--:--</div>
   </div>
 </header>
 
 <main id="board">
-  <section id="overview" class="overview panel">
-    <div class="overview-copy">
-      <div class="eyebrow"><span></span><span data-i18n="蜂群状态">蜂群状态</span></div>
-      <div class="overview-line">
-        <div>
-          <h1 id="hero-state" data-i18n="蜂群待命">蜂群待命</h1>
-          <p id="hero-copy" data-i18n="没有正在运行的任务，新任务在主界面创建后会实时出现在这里">没有正在运行的任务，新任务在主界面创建后会实时出现在这里</p>
-        </div>
-        <div class="hero-count">
-          <strong id="hero-live-count">0</strong>
-          <span data-i18n="个活动单元">个活动单元</span>
-        </div>
-      </div>
-      <div class="overview-foot">
-        <span class="signal-chip"><i></i><span id="hero-signal" data-i18n="系统状态良好">系统状态良好</span></span>
-        <span class="overview-note" data-i18n="实时聚合 · 每 4 秒刷新">实时聚合 · 每 4 秒刷新</span>
-      </div>
-    </div>
-    <div class="overview-visual" aria-hidden="true">
-      <div class="orbit orbit-a"></div>
-      <div class="orbit orbit-b"></div>
-      <div class="orbit-dot dot-a"></div>
-      <div class="orbit-dot dot-b"></div>
-      <div class="orbit-dot dot-c"></div>
-      <div class="core-glow"></div>
-      <div class="overview-core"><strong id="orb-number">0</strong><span>ACTIVE</span></div>
-    </div>
-    <div class="overview-aside">
-      <div class="aside-label" data-i18n="执行池">执行池</div>
-      <div class="pool-meter"><i id="pool-meter-fill"></i></div>
-      <div class="pool-readout"><strong id="pool-alive">0</strong><span>/</span><span id="pool-target">0</span><em data-i18n="在线槽位">在线槽位</em></div>
-      <div class="aside-divider"></div>
-      <div class="aside-row"><span data-i18n="队列等待">队列等待</span><b id="overview-queued">0</b></div>
-      <div class="aside-row"><span data-i18n="今日成功率">今日成功率</span><b id="overview-success">—</b></div>
-    </div>
-  </section>
 
   <section id="kpis" aria-label="核心指标" data-i18n-aria="核心指标">
     <div class="kpi k-run">
-      <div class="kpi-head"><span data-i18n="运行中">运行中</span><i class="kpi-icon"></i></div>
-      <div class="k-num" id="k-running">0</div>
-      <div class="kpi-foot"><span data-i18n="当前活动">当前活动</span><b>LIVE</b></div>
+      <span class="k-lab" data-i18n="运行中">运行中</span>
+      <div class="k-row"><b class="k-num" id="k-running">0</b><span class="k-sub" id="k-run-sub">—</span></div>
     </div>
     <div class="kpi k-queue">
-      <div class="kpi-head"><span data-i18n="排队中">排队中</span><i class="kpi-icon"></i></div>
-      <div class="k-num" id="k-queued">0</div>
-      <div class="kpi-foot"><span data-i18n="等待调度">等待调度</span><b>QUEUE</b></div>
+      <span class="k-lab" data-i18n="排队中">排队中</span>
+      <div class="k-row"><b class="k-num" id="k-queued">0</b><span class="k-sub" id="k-queue-sub">—</span></div>
     </div>
     <div class="kpi k-done">
-      <div class="kpi-head"><span data-i18n="今日完成">今日完成</span><i class="kpi-icon"></i></div>
-      <div class="k-num" id="k-done">0</div>
-      <div class="kpi-foot"><span data-i18n="完成运行">完成运行</span><b>DONE</b></div>
+      <span class="k-lab" data-i18n="今日完成">今日完成</span>
+      <div class="k-row"><b class="k-num" id="k-done">0</b><span class="k-sub" id="k-done-sub">—</span></div>
+      <span class="k-ratio" aria-hidden="true"><i id="k-ratio-fill"></i></span>
     </div>
     <div class="kpi k-fail">
-      <div class="kpi-head"><span data-i18n="今日失败">今日失败</span><i class="kpi-icon"></i></div>
-      <div class="k-num" id="k-failed">0</div>
-      <div class="kpi-foot"><span data-i18n="需要关注">需要关注</span><b>ALERT</b></div>
+      <span class="k-lab" data-i18n="今日失败">今日失败</span>
+      <div class="k-row"><b class="k-num" id="k-failed">0</b><span class="k-sub" id="k-fail-sub">—</span></div>
     </div>
-    <div class="kpi k-tok">
-      <div class="kpi-head"><span data-i18n="今日 tokens">今日 tokens</span><i class="kpi-icon"></i></div>
-      <div class="k-num" id="k-tokens">0</div>
-      <div class="kpi-foot"><span data-i18n="模型消耗">模型消耗</span><b>USAGE</b></div>
-    </div>
-    <div class="kpi k-cost">
-      <div class="kpi-head"><span data-i18n="今日成本">今日成本</span><i class="kpi-icon"></i></div>
-      <div class="k-num" id="k-cost">$0.00</div>
-      <div class="kpi-foot"><span data-i18n="运行成本">运行成本</span><b>COST</b></div>
+    <div class="kpi k-use">
+      <span class="k-lab" data-i18n="今日消耗">今日消耗</span>
+      <div class="k-row"><b class="k-num" id="k-tokens">0</b><span class="k-sub" id="k-use-sub">—</span></div>
     </div>
   </section>
 
   <section id="main">
-    <section id="wall" class="panel live-panel">
-      <header class="panel-head">
-        <div>
-          <div class="eyebrow"><span></span><span data-i18n="实时任务流">实时任务流</span></div>
-          <h2 data-i18n="运行中任务">运行中任务</h2>
-        </div>
-        <div class="panel-head-right">
-          <span id="wall-count" class="live-count">0 ACTIVE</span>
-          <span id="wall-mode" class="mode-label" data-i18n="监控中">监控中</span>
+    <section id="wall" class="panel">
+      <header class="p-head">
+        <h2 data-i18n="运行中任务">运行中任务</h2>
+        <div class="p-head-right">
+          <span id="wall-count" class="p-badge">0</span>
+          <span class="p-note" data-i18n="每 4 秒刷新">每 4 秒刷新</span>
         </div>
       </header>
-      <div id="wall-cards"></div>
+
+      <div id="wall-cards" class="wall-grid"></div>
+
       <div id="wall-empty" class="wall-empty hidden">
-        <div class="empty-orbit" aria-hidden="true"><i></i><i></i><i></i><b>0</b></div>
-        <div class="idle-t1" data-i18n="队列已清空">队列已清空</div>
-        <div class="idle-t2" data-i18n="等待新的任务接入蜂巢">等待新的任务接入蜂巢</div>
-        <div class="empty-meta"><span><i></i><b data-i18n="工作池就绪">工作池就绪</b></span><span><i></i><b data-i18n="监控在线">监控在线</b></span></div>
+        <div class="idle-head">
+          <div class="idle-ring" aria-hidden="true"><i></i></div>
+          <div>
+            <div class="idle-t1" data-i18n="队列已清空">队列已清空</div>
+            <div class="idle-t2" data-i18n="新任务在主界面创建后会实时出现在这里">新任务在主界面创建后会实时出现在这里</div>
+          </div>
+        </div>
+        <div class="idle-list">
+          <div class="idle-cap"><span data-i18n="今日运行">今日运行</span> · <span id="idle-count">0</span> <span data-i18n="条">条</span></div>
+          <div id="idle-rows"></div>
+        </div>
       </div>
+
       <div id="queue-row" class="queue-row hidden">
-        <div class="q-label"><span class="q-mark"></span><span data-i18n="排队等待">排队等待</span><b id="queue-count">0</b></div>
+        <div class="q-label"><span data-i18n="排队等待">排队等待</span><b id="queue-count">0</b></div>
         <span id="queue-chips"></span>
       </div>
     </section>
 
     <aside id="rail">
-      <section class="rail-card rail-trend panel">
-        <div class="rail-head"><div><div class="eyebrow"><span></span><span data-i18n="资源脉冲">资源脉冲</span></div><h3 data-i18n="近 7 日 tokens">近 7 日 tokens</h3></div><span class="rail-badge">7 DAYS</span></div>
+      <section class="rc rc-pool panel">
+        <div class="rc-head"><h3 data-i18n="执行池">执行池</h3><span class="rc-badge" id="pool-mode">—</span></div>
+        <div class="meter">
+          <div class="meter-top"><span data-i18n="蜂巢槽位">蜂巢槽位</span><b><i id="pool-alive">0</i>/<span id="pool-target">0</span></b></div>
+          <div class="meter-bar"><i id="pool-meter-fill"></i></div>
+        </div>
+        <div class="meter">
+          <div class="meter-top"><span data-i18n="对话槽位">对话槽位</span><b><i id="chat-alive">0</i>/<span id="chat-pool">0</span></b></div>
+          <div class="meter-bar cool"><i id="chat-meter-fill"></i></div>
+        </div>
+        <div class="pool-foot"><span data-i18n="空闲槽位">空闲槽位</span><b id="pool-available">0</b></div>
+      </section>
+
+      <section class="rc rc-trend panel">
+        <div class="rc-head"><h3 data-i18n="近 7 日 tokens">近 7 日 tokens</h3><span class="rc-badge" id="trend-total">—</span></div>
         <div id="trend" class="trend"></div>
       </section>
-      <section class="rail-card rail-models panel">
-        <div class="rail-head"><div><div class="eyebrow"><span></span><span data-i18n="模型分布">模型分布</span></div><h3 data-i18n="近 7 日模型 TOP5">近 7 日模型 TOP5</h3></div><span class="rail-badge">TOP 5</span></div>
+
+      <section class="rc rc-models panel">
+        <div class="rc-head"><h3 data-i18n="近 7 日模型 TOP5">近 7 日模型 TOP5</h3><span class="rc-badge">TOP 5</span></div>
         <div id="models" class="models"></div>
       </section>
-      <section class="rail-card rail-recent panel grow">
-        <div class="rail-head"><div><div class="eyebrow"><span></span><span data-i18n="事件日志">事件日志</span></div><h3 data-i18n="最近动态">最近动态</h3></div><span id="recent-count" class="rail-badge">—</span></div>
+
+      <section class="rc rc-recent panel">
+        <div class="rc-head"><h3 data-i18n="最近动态">最近动态</h3><span id="recent-count" class="rc-badge">—</span></div>
         <div id="recent" class="recent"></div>
       </section>
     </aside>
   </section>
+
 </main>
+
+<!-- 点运行卡下钻：步骤链取 /api/board/run，日志窗复用现成的 /api/runs/<id>/log -->
+<div id="scrim"></div>
+<aside id="drawer" aria-hidden="true">
+  <div class="dw-head">
+    <div class="dw-top">
+      <span class="c-type" id="dw-type"></span>
+      <h4 id="dw-title"></h4>
+      <button class="dw-close" id="dw-close" type="button" data-i18n-title="关闭 (Esc)">✕</button>
+    </div>
+    <p class="dw-goal" id="dw-goal"></p>
+    <div class="dw-meta" id="dw-meta"></div>
+  </div>
+  <div class="dw-body">
+    <div class="dw-steps" id="dw-steps"></div>
+    <div class="dw-log">
+      <div class="dw-log-head"><span class="tag" id="dw-log-tag" data-i18n="步骤日志">步骤日志</span><span id="dw-log-sub"></span></div>
+      <div class="dw-log-body" id="dw-log-body"></div>
+    </div>
+  </div>
+</aside>
 
 <script src="/i18n.js"></script>
 <script src="/board.js"></script>

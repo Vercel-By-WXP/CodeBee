@@ -13,8 +13,8 @@ _CACHE = {"ts": 0.0, "data": None}
 _TTL = 8.0
 
 _TAIL_MAX = 150          # 跑马灯尾行截断
-_TAIL_LINES = 6          # 实时流窗口行数
-_TAIL_LINE_CHARS = 56    # 实时流单行截断（卡内 11px 等宽不换行的安全宽度）
+_TAIL_LINES = 14         # 实时流窗口行数（单任务卡的终端约 20 行，留余量）
+_TAIL_LINE_CHARS = 110   # 实时流单行截断；卡内 pre-wrap，超宽会折行而不是切掉
 _RECENT_LIMIT = 10       # 最近完成/失败条数
 _RUN_WINDOW = 300        # 今日计数扫描的运行窗口（id 字典序=时间序）
 
@@ -27,6 +27,43 @@ def payload():
     _CACHE["ts"] = now
     _CACHE["data"] = data
     return data
+
+
+def run_detail(run_id):
+    """单条运行的步骤链，供大屏下钻抽屉；不进 8 秒缓存（点开即要最新）。
+
+    只给步骤概要，日志正文不在这里搬——前端选中某一步时走现成的
+    /api/runs/<id>/log?step=<log>&pretty=1，那份已有目录穿越防护和 tail 夹取。
+    """
+    from . import store
+
+    run = store.get_run(str(run_id or ""))
+    if not run:
+        return None
+    steps = []
+    for s in (run.get("steps") or []):
+        steps.append({
+            "n": s.get("n"), "role": s.get("role") or "",
+            "agent": s.get("agent") or "",
+            "agent_label": s.get("agent_label") or s.get("agent") or "",
+            "status": s.get("status") or "",
+            "started_at": s.get("started_at") or "", "ended_at": s.get("ended_at") or "",
+            "duration_s": s.get("duration_s"),
+            "summary": (s.get("summary") or "")[:120],
+            "log": s.get("log") or "",
+            "tokens": s.get("tokens") or 0,
+            "cost_usd": round(float(s.get("cost_usd") or 0.0), 4),
+            "exit_code": s.get("exit_code"),
+            "error": (s.get("error") or "")[:160],
+        })
+    return {
+        "run_id": run.get("id"), "task_id": run.get("task_id") or "",
+        "title": run.get("title") or "", "status": run.get("status") or "",
+        "started_at": run.get("started_at") or run.get("created_at") or "",
+        "ended_at": run.get("ended_at") or "",
+        "error": (run.get("error") or "")[:200],
+        "steps": steps,
+    }
 
 
 def _tail(step):

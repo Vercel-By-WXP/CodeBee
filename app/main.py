@@ -286,6 +286,13 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/board":
                 # 任务驾驶舱大屏的轻量聚合（KB 级；别让它去拉 /api/state 全量）
                 return self._json(200, board.payload())
+            if path == "/api/board/run":
+                # 大屏下钻抽屉的步骤链：点开才拉，不进 /api/board 的 8 秒缓存
+                rid = (parse_qs(urlparse(self.path).query).get("run_id") or [""])[0]
+                detail = board.run_detail(rid)
+                if not detail:
+                    return self._json(404, {"error": "not found"})
+                return self._json(200, detail)
             if path == "/api/analytics":
                 from core import analytics
                 return self._json(200, analytics.summary(store))
