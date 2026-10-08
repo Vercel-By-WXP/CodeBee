@@ -151,6 +151,30 @@ async function main() {
     }
     check("点任务项 → 详情打开", detailOpened === true, detailNote);
 
+    // ---- 6b. 详情页手机布局：对话态吃满主区（chat-fill 32px 浮卡让位已收窄）、
+    //          返回钮/信息弹层在视口内（须在详情还开着时断言，切页会 closeRun）
+    const rdW = JSON.parse(await evalJs(`(()=>{
+      const rd = document.getElementById("run-detail");
+      const pane = document.querySelector("#run-detail .rd-pane:not(.hidden)");
+      const back = document.getElementById("btn-back");
+      const r1 = rd.getBoundingClientRect();
+      const r2 = pane ? pane.getBoundingClientRect() : null;
+      const r3 = back ? back.getBoundingClientRect() : null;
+      return JSON.stringify({ rdW: Math.round(r1.width), paneW: r2 ? Math.round(r2.width) : 0,
+        backOk: r3 ? (r3.width > 0 && r3.x >= 0 && r3.right <= innerWidth + 2) : false });
+    })()`));
+    check("对话态详情吃满主区（≥300px，不再被 32px 让位白吃）", rdW.rdW >= 300, JSON.stringify(rdW));
+    check("详情 pane 同宽吃满", rdW.paneW >= 300, "paneW=" + rdW.paneW);
+    check("返回按钮在视口内可点", rdW.backOk === true);
+    await evalJs(`(()=>{const t=document.getElementById("rd-more-toggle"); if(t) t.click(); return "ok";})()`);
+    await sleep(500);
+    const popOk = await evalJs(`(()=>{const p=document.getElementById("rd-meta-popover");
+      if(!p||p.classList.contains("hidden")) return false; const r=p.getBoundingClientRect();
+      return r.width>0 && r.x>=0 && r.right<=innerWidth+2;})()`);
+    check("任务信息弹层不出视口", popOk === true);
+    await evalJs(`(()=>{const c=document.getElementById("rd-more-close"); if(c) c.click(); return "ok";})()`);
+    await sleep(300);
+
     // ---- 7. 触摸导航轨切页（运行记录/自动化/任务）
     for (const page of ["runs", "automation", "tasks"]) {
       const ok = await tap(`.rail-btn[data-rail-page="${page}"]`);

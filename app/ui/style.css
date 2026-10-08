@@ -5172,6 +5172,9 @@ main.chat-fill #run-detail.chat-mode > .rd-main { overflow: hidden; }
     max-height: none;
     margin-bottom: 12px;
   }
+  /* 浮卡让位 padding 只属于 ≥980 的桌面浮卡布局：窄屏对话态吃满主区，
+     32px 左右留白在 390 视口里白吃 64px（对话列只剩 284px）实案 */
+  main.chat-fill { padding: 12px 14px; }
   #rd-rail > .detail-head > .rd-actions #btn-delete {
     grid-column: auto;
     justify-self: stretch;
