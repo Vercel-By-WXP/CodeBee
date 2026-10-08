@@ -180,15 +180,13 @@ def create_task(payload):
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "status": "created",
     }
-    # Keep the execution policy with the task so runners and integrations
-    # share one bounded, auditable contract. Legacy tasks remain permissive.
+    # Every new task must persist one verified execution policy. If policy
+    # normalization fails, do not silently replace it with a broader default.
     try:
         from . import policy
         task["sandbox"] = policy.normalize_sandbox(payload.get("sandbox"), wd)
-    except Exception:
-        task["sandbox"] = {"allowed_roots": [str(wd)], "env_allowlist": [],
-                            "network": True, "timeout_s": 3600,
-                            "max_output_bytes": 10 * 1024 * 1024}
+    except Exception as exc:
+        raise ValueError("沙箱策略无法验证，任务未创建") from exc
     thinking = str(payload.get("thinking") or "standard").strip().lower()
     task["thinking"] = thinking if thinking in ("auto", "low", "standard", "high") else "auto"
     # 流程修订出处（借鉴 WorkDSH ADR-0010）：创建时钉住当时流程定义的指纹。

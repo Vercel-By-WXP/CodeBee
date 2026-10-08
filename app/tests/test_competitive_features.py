@@ -272,6 +272,18 @@ class CompetitiveFeatureTests(unittest.TestCase):
             self.assertIn("沙箱", result)
             self.assertFalse(outside.exists())
 
+    def test_task_creation_fails_closed_when_sandbox_policy_cannot_be_normalized(self):
+        from core import contracts, policy, store
+        workdir = self.root / "work"
+        workdir.mkdir()
+        with patch.object(policy, "normalize_sandbox", side_effect=OSError("policy unavailable")), \
+             patch.object(store, "_TASKS", {}), \
+             patch.object(store, "_save_json") as save_task, \
+             patch.object(contracts, "create"):
+            with self.assertRaisesRegex(ValueError, "沙箱策略"):
+                store.create_task({"type": "code", "goal": "test", "workdir": str(workdir)})
+        save_task.assert_not_called()
+
     def test_sandbox_network_off_fails_closed_for_shell(self):
         from core import builtin_agent
         with tempfile.TemporaryDirectory() as wd:
