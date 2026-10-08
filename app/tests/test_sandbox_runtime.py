@@ -22,10 +22,16 @@ class BubblewrapRuntimeTests(unittest.TestCase):
             if _REQUIRE_BWRAP:
                 raise RuntimeError(message)
             raise unittest.SkipTest(message)
+        argv = [shutil.which("bwrap"), "--die-with-parent", "--new-session",
+                "--tmpfs", "/"]
+        for system_path in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"):
+            if Path(system_path).exists():
+                argv.extend(["--dir", system_path, "--ro-bind",
+                             system_path, system_path])
+        argv.extend(["--dir", "/proc", "--dir", "/dev", "--proc", "/proc",
+                     "--dev", "/dev", "--", "/bin/true"])
         probe = subprocess.run(
-            [shutil.which("bwrap"), "--die-with-parent", "--new-session",
-             "--tmpfs", "/", "--proc", "/proc", "--dev", "/dev",
-             "--", "/bin/true"],
+            argv,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
         if probe.returncode:
             detail = probe.stderr.decode("utf-8", errors="replace").strip()
