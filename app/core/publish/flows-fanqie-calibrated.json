@@ -1,5 +1,5 @@
 {
- "_note": "番茄真机校准（2026-09-19 定稿，2026-09-24 加固）：编辑器=/main/writer/<book_id>/publish/ 直达（章节号 input.serial-input 纯数字；标题 div.serial-editor-input-hint input ≥5字/30上限；正文 .ProseMirror ≥1000字；「下一步」保存校验后按钮组右缘箭头展开下拉含「定时发布」）。建书=/main/writer/create 直达表单：radio 签约模式/目标读者（label 真实点击）→ 阅读标签 select（y<430）弹层 arco-anchor 切主分类/主题/角色/情节 + 标签云点击 + 确认 → 内容标签 select（y>430）弹层 情感/人设/世界观 同构 → 名称/主角1/主角2/简介 → 立即创建（submit 步骤：auto_submit=false 时填好即停，留给人工提交） → 跳 book-info/<id>。锚点切换渲染慢（0924 三连败）：弹层打开后 settle，锚点 tries=12。0928 再加固（弹层没开连败案）：签约/读者 radio 点击后断言选中态（expect_checked）；两处标签触发器点完 wait .category-modal 存在替代盲 sleep；real_click_text 落点 elementFromPoint 守卫，找不到目标时报错自带定位范围可见项诊断。2026-10-08 发章三修：values 补 chapter_no/chapter_name 键（此前序号框从未被填、被平台以「章节序号只支持阿拉伯数字」打回）；标题位改填 chapter_name（read_chapter 拆掉「第X章」前缀，序号/标题分开填）；verify 标记改「第{chapter_no}章」或「{chapter_name}」任一命中（用户手工改过标题时按名对版必假失败）。。2026-10-08 批量自动发布·自动分卷：upload_chapter 增加 volume 步骤（values.volume_name 由 manager 按工作目录卷计划解析：分卷.json 优先，其次 大纲/series-outline.md 的「## 第X卷：名」+「依次48、56…章」；平台卷弹窗 = .publish-header-volume-name 开 → .editor-volume-list-item 按去前缀名匹配选中，缺卷走 .editor-volume-footer-add-volume 新建→行内 input 输名→i.tomato-confirm 落名→选中→确定；新建卷名会追加进 values._volumes 由 manager 回写 books.json 缓存）。。2026-10-08 晚：平台发布确认 UI 已改——下一步（保存校验）后弹「发布提示」错别字确认框（取消/提交），不再有「定时发布」下拉组；流程撤 click_arrow/定时发布/发布，改点确认框「提交」（optional：无错别字时可能不弹，直接 verify）。。verify 改 new_tab（开新页签验证、编辑器页签不动）：编辑器页签内导航触发 beforeunload 原生确认，渲染挂起+发布请求被取消——直发章全卡死在验证导航上的实案修法。",
+ "_note": "番茄真机校准（2026-09-19 定稿，2026-09-24 加固）：编辑器=/main/writer/<book_id>/publish/ 直达（章节号 input.serial-input 纯数字；标题 div.serial-editor-input-hint input ≥5字/30上限；正文 .ProseMirror ≥1000字；「下一步」保存校验后按钮组右缘箭头展开下拉含「定时发布」）。建书=/main/writer/create 直达表单：radio 签约模式/目标读者（label 真实点击）→ 阅读标签 select（y<430）弹层 arco-anchor 切主分类/主题/角色/情节 + 标签云点击 + 确认 → 内容标签 select（y>430）弹层 情感/人设/世界观 同构 → 名称/主角1/主角2/简介 → 立即创建（submit 步骤：auto_submit=false 时填好即停，留给人工提交） → 跳 book-info/<id>。锚点切换渲染慢（0924 三连败）：弹层打开后 settle，锚点 tries=12。0928 再加固（弹层没开连败案）：签约/读者 radio 点击后断言选中态（expect_checked）；两处标签触发器点完 wait .category-modal 存在替代盲 sleep；real_click_text 落点 elementFromPoint 守卫，找不到目标时报错自带定位范围可见项诊断。2026-10-08 发章三修：values 补 chapter_no/chapter_name 键（此前序号框从未被填、被平台以「章节序号只支持阿拉伯数字」打回）；标题位改填 chapter_name（read_chapter 拆掉「第X章」前缀，序号/标题分开填）；verify 标记改「第{chapter_no}章」或「{chapter_name}」任一命中（用户手工改过标题时按名对版必假失败）。。2026-10-08 批量自动发布·自动分卷：upload_chapter 增加 volume 步骤（values.volume_name 由 manager 按工作目录卷计划解析：分卷.json 优先，其次 大纲/series-outline.md 的「## 第X卷：名」+「依次48、56…章」；平台卷弹窗 = .publish-header-volume-name 开 → .editor-volume-list-item 按去前缀名匹配选中，缺卷走 .editor-volume-footer-add-volume 新建→行内 input 输名→i.tomato-confirm 落名→选中→确定；新建卷名会追加进 values._volumes 由 manager 回写 books.json 缓存）。。2026-10-08 晚：平台发布确认 UI 已改——下一步（保存校验）后弹「发布提示」错别字确认框（取消/提交），不再有「定时发布」下拉组；流程撤 click_arrow/定时发布/发布，改点确认框「提交」（optional：无错别字时可能不弹，直接 verify）。。verify 改 new_tab（开新页签验证、编辑器页签不动）：编辑器页签内导航触发 beforeunload 原生确认，渲染挂起+发布请求被取消——直发章全卡死在验证导航上的实案修法。。1008深夜终版：publish链=submit(下一步,gate)→js_click下一步兜底(skip_if_modal)→js_click仅基础检测(检测方式弹窗,tries60)→sleep5→js_click提交(错别字确认,tries75)→verify new_tab；真实鼠标在 headless/后台页签不触发平台处理器，DOM click 可靠。",
  "check_login": [
   {
    "do": "navigate",
@@ -74,10 +74,29 @@
    "tries": 15
   },
   {
-   "do": "click_real",
-   "text": "提交",
+   "do": "js_click",
+   "text": "下一步",
    "scope": "button",
-   "tries": 20,
+   "tries": 10,
+   "optional": true,
+   "skip_if_modal": true
+  },
+  {
+   "do": "js_click",
+   "text": "仅基础检测",
+   "scope": "button,a,[role=button],span,li,[class*=btn],div",
+   "tries": 60,
+   "optional": true
+  },
+  {
+   "do": "sleep",
+   "s": 5
+  },
+  {
+   "do": "js_click",
+   "text": "提交",
+   "scope": "button,a,[role=button],span,li,[class*=btn],div",
+   "tries": 75,
    "optional": true
   },
   {

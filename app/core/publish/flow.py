@@ -590,6 +590,44 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 else:
                     raise FlowError("等待 %s 消失超时" % sel)
                 note(i, "已消失")
+            elif act == "js_click":
+                # JS el.click()：headless/后台页签下 CDP 真实鼠标事件不触发
+                # 平台处理器（番茄编辑器实测：real mouse 点「下一步」无响应，
+                # DOM click 反而可靠），两路并存互为兜底。
+                text = str(st.get("text") or "")
+                for k, v in (values or {}).items():
+                    text = text.replace("{%s}" % k, str(v))
+                if not text:
+                    continue
+                scope = str(st.get("scope") or "button")
+                contains = bool(st.get("contains", True))
+                note(i, "JS点击「%s」" % text)
+                r = None
+                for _try in range(int(st.get("tries") or 10)):
+                    r = page.call(
+                        "(t,scope,c,gm)=>{"
+                        "if(gm){var g=[...document.querySelectorAll('[class*=modal]')]"
+                        ".find(e=>e.getBoundingClientRect().width>0);"
+                        "if(g)return{ok:false,err:'modal-open'};}"
+                        "const vis=e=>e.getBoundingClientRect().width>0;"
+                        "const els=[...document.querySelectorAll(scope||'button')].filter(vis);"
+                        "let cands=els.filter(e=>{const x=(e.innerText||'').trim();"
+                        "return x&&(c?x.includes(t):x===t);});"
+                        "if(!cands.length)return{ok:false,err:'nf'};"
+                        "cands.sort((a,b)=>((a.innerText||'').trim().length)-((b.innerText||'').trim().length));"
+                        "cands[0].click();return{ok:true};}",
+                        text, scope, contains, bool(st.get("skip_if_modal")), timeout=8)
+                    if (r or {}).get("ok"):
+                        break
+                    if (r or {}).get("err") == "modal-open":
+                        note(i, "弹窗已开（真实点击已生效），跳过 JS点击「%s」" % text)
+                        break
+                    time.sleep(0.6)
+                if not (r or {}).get("ok"):
+                    if st.get("optional"):
+                        note(i, "「%s」未出现，跳过（optional）" % text)
+                        continue
+                    raise FlowError("JS点击「%s」失败" % text)
             elif act == "verify":
                 # 上线验证：导航到验证页断言文本在场——防「流程完成但平台
                 # 静默未发布」的假成功（0 字草稿案）。url/any 支持 values 占位。

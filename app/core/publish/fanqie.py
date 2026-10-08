@@ -106,7 +106,7 @@ UPLOAD_CHAPTER = [
     {"do": "fill", "sel": "[contenteditable=true],textarea[class*=content]", "key": "chapter_body"},
     {"do": "shot", "name": "chapter-filled"},
     {"do": "submit", "sel": "button[class*=publish],button[class*=submit]"},
-    {"do": "click_real", "text": "提交", "scope": "button", "tries": 20,
+    {"do": "js_click", "text": "提交", "scope": "button", "tries": 20,
      "optional": True},
 ]
 

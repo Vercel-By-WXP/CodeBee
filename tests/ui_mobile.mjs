@@ -1,18 +1,15 @@
 /* 手机抽屉 + 图标点击回归：窄屏下点图标（svg/use 本身）能否命中按钮、进设置、自动收起抽屉。
  * 这条路径是新增 SVG 图标后的风险点：点击目标从文字变成 <svg>/<use>，
  * 侧栏的 collapseDrawerIfMobile 依赖 e.target.closest("button")。
- * 用法：先起临时服务（tests/ui_check.mjs 顶部的 SERVICE），再 node tests/ui_mobile.mjs */
-import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+ * 2026-10-08 同步导航轨改造（b1f1116）后的入口现状：side-foot/side-quick 已隐藏，
+ * 设置走 rail 代理按钮、手机连接走设置导航 __phone（供应商指示入口随 side-foot 移除）。
+ * 浏览器段迁移到共享 _ui_boot.mjs（DPR 钉 1 + 随机 CDP 口基线）：裸 spawn 固定口
+ * 9335 有残留抢占互驱风险，且 mousePressed 派发在 mobile 模拟下不触发 onclick——
+ * 三组窗口/DPR 对照实测，触摸合成 click 全链路稳定，clickAt 已改触摸。
+ * 用法：先起临时服务，再 SERVICE=http://127.0.0.1:<port> node tests/ui_mobile.mjs */
+import { bootEdge } from "./_ui_boot.mjs";
 
-const SERVICE = process.env.SERVICE || "http://127.0.0.1:18798";   // 18798 常被并行 agent 双绑，可用 SERVICE 覆盖
-const CDP_PORT = Number(process.env.CDP_PORT) || 9335;
-const EDGE = [
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-].find((p) => true);
+const SERVICE = process.env.SERVICE || "http://127.0.0.1:18933";
 
 const results = [];
 const check = (n, c, d = "") => {
@@ -22,50 +19,29 @@ const check = (n, c, d = "") => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  const profile = mkdtempSync(join(tmpdir(), "tutti-mob-"));
-  const proc = spawn(EDGE, [
-    "--headless=new", "--disable-gpu", "--no-first-run",
-    `--user-data-dir=${profile}`, `--remote-debugging-port=${CDP_PORT}`,
-    "--window-size=390,844", "about:blank",
-  ], { stdio: "ignore" });
+  // 窗口起桌面尺寸（基线），进页面后 override 成手机视口——clear 时可验证桌面恢复
+  const { ws, send, evalJs, envInfo, close } = await bootEdge({ width: 1440, height: 950 });
+  console.log("  · " + envInfo.line);
 
   try {
-    let target = null;
-    for (let i = 0; i < 30 && !target; i++) {
-      await sleep(500);
-      try {
-        const list = await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`).then((r) => r.json());
-        target = list.find((t) => t.type === "page");
-      } catch (e) { /* 未就绪 */ }
-    }
-    check("Edge headless 启动并开放 CDP", !!target);
-
-    const ws = new WebSocket(target.webSocketDebuggerUrl);
-    await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
-    let seq = 0;
-    const pending = new Map();
-    ws.onmessage = (e) => {
-      const m = JSON.parse(e.data);
-      if (m.id && pending.has(m.id)) pending.get(m.id)(m);
-    };
-    const send = (method, params = {}) => new Promise((res) => {
-      const id = ++seq; pending.set(id, res);
-      ws.send(JSON.stringify({ id, method, params }));
-    });
-    const evalJs = async (x) => {
-      const r = await send("Runtime.evaluate", { expression: x, returnByValue: true });
-      return r.result?.result?.value;
-    };
+    check("Edge headless 启动并开放 CDP", !!ws);
     const clickAt = async (sel) => {
       const box = JSON.parse(await evalJs(`(() => {
         const el = document.querySelector(${JSON.stringify(sel)});
-        el.scrollIntoView({ block: "center", inline: "center" });
-        const r = el.getBoundingClientRect();
+        if (!el) return "null";
+        // 坐标取按钮本体：SVG <use> 的 getBoundingClientRect 在 mobile 模拟下
+        // 可能返回 shadow 盒而非视口坐标（实案：点 use 坐标落空），触摸语义靠合成 click 补齐。
+        // scrollIntoView 让长导航里视口外的项（如 __phone）滚进抽屉可视区——
+        // 此前冤枉过它：rail 点击落空真因是抽屉打开时全屏遮罩盖住了 rail
+        const btn = el.closest("button") || el;
+        btn.scrollIntoView({ block: "center", inline: "center" });
+        const r = btn.getBoundingClientRect();
         return JSON.stringify({ x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) });
       })()`));
-      for (const type of ["mousePressed", "mouseReleased"]) {
-        await send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
-      }
+      if (!box || box === "null") return false;
+      await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: box.x, y: box.y }] });
+      await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      return true;
     };
 
     await send("Page.enable");
@@ -80,22 +56,25 @@ async function main() {
 
     // 关键点：点击目标是 <use> 子元素，closest("button") 仍须命中
     const closest = await evalJs(`(() => {
-      const use = document.querySelector("#btn-settings use");
-      return use && use.closest("button") ? use.closest("button").id : "none";
+      const use = document.querySelector('.rail-btn[data-rail-page="tasks"] use');
+      return use && use.closest("button") ? use.closest("button").dataset.railPage : "none";
     })()`);
-    check("从 svg <use> 能 closest 到按钮（抽屉收起依赖此行为）", closest === "btn-settings", String(closest));
+    check("从 svg <use> 能 closest 到按钮（抽屉收起依赖此行为）", closest === "tasks", String(closest));
 
-    // 展开抽屉 → 真实点齿轮图标 → 应进设置页且抽屉收回
-    await evalJs(`document.body.classList.remove("side-collapsed"); "ok"`);
+    // 真实点导航轨设置图标（side-foot 已随导航轨改造 b1f1116 隐藏，
+    // 设置入口=rail 代理按钮 onclick 转发 btn-settings.click()）→ 进设置页且抽屉收着。
+    // 注意 rail 点按必须在抽屉收起时做：抽屉打开时全屏遮罩（标准抽屉语义）盖住 rail，
+    // 点击只会收抽屉——这与 ui_mobile_flow.mjs 的通过路径一致。
+    await evalJs(`document.body.classList.add("side-collapsed"); "ok"`);
     await sleep(400);
-    await clickAt("#btn-settings use");
+    await clickAt('.rail-btn[title="设置"] use');
     await sleep(700);
     const afterGear = JSON.parse(await evalJs(`JSON.stringify({
       collapsed: document.body.classList.contains("side-collapsed"),
       settingsMode: document.body.classList.contains("settings-mode"),
       menuHidden: document.getElementById("ctx-menu").classList.contains("hidden")
     })`));
-    check("点齿轮图标即进设置页且抽屉自动收起",
+    check("点导航轨设置图标即进设置页且抽屉自动收起",
       afterGear.collapsed && afterGear.settingsMode && afterGear.menuHidden, JSON.stringify(afterGear));
 
     // 展开 → 点某个设置导航项 → 切页并收起
@@ -110,73 +89,24 @@ async function main() {
     check("点设置导航图标切换子页并收起抽屉",
       afterNav.collapsed && afterNav.title === "模型调度（可选）", JSON.stringify(afterNav));
 
-    // 手机连接图标同理（先回任务视图：设置模式下 .side-main 整体隐藏，该图标不可点）
-    await evalJs(`document.getElementById("btn-set-back").click(); document.body.classList.remove("side-collapsed"); "ok"`);
-    await sleep(500);
-    check("返回任务视图后手机连接图标可点",
-      await evalJs(`getComputedStyle(document.querySelector(".side-main")).display`) === "flex");
-    await clickAt("#btn-phone-side use");
-    await sleep(600);
-    const afterPhone = JSON.parse(await evalJs(`JSON.stringify({
-      collapsed: document.body.classList.contains("side-collapsed"),
-      modal: !document.getElementById("modal").classList.contains("hidden"),
-      title: document.getElementById("modal-title").textContent
-    })`));
-    check("点手机连接图标弹出扫码框并收起抽屉",
-      afterPhone.collapsed && afterPhone.modal && /手机连接/.test(afterPhone.title), JSON.stringify(afterPhone));
-
-    // 设置模式下的「手机连接」导航项也应是弹框、不切页
-    await evalJs(`closeModal(); document.getElementById("btn-settings").click(); "ok"`);
-    await sleep(700);
+    // 手机连接入口：side-foot 的 #btn-phone-side 已随 b1f1116 隐藏，
+    // 现走设置导航「手机连接」项（弹框、不切子页）
     await evalJs(`document.body.classList.remove("side-collapsed"); "ok"`);
-    await sleep(300);
+    await sleep(400);
     await clickAt('.set-item[data-sub="__phone"] use');
     await sleep(600);
     const viaNav = JSON.parse(await evalJs(`JSON.stringify({
-      modal: !document.getElementById("modal").classList.contains("hidden"),
-      title: document.getElementById("page-title").textContent
-    })`));
-    check("设置导航里的手机连接走弹框（不切子页）",
-      viaNav.modal && viaNav.title === "模型调度（可选）", JSON.stringify(viaNav));
-
-    /* 编排者供应商指示：窄屏抽屉里也要可用，且文字过长不能撑破侧栏 */
-    await evalJs(`closeModal(); exitSettings(); document.body.classList.remove("side-collapsed"); "ok"`);
-    await sleep(700);
-    const provGeo = JSON.parse(await evalJs(`(() => {
-      const b = document.getElementById("btn-prov-side");
-      const nm = document.getElementById("prov-side-text");
-      const side = document.getElementById("sidebar").getBoundingClientRect();
-      const r = b.getBoundingClientRect();
-      return JSON.stringify({
-        visible: r.width > 0 && r.height > 0,
-        w: Math.round(r.width),
-        text: nm.textContent.trim(),
-        noOverflow: nm.scrollWidth <= nm.clientWidth + 1,
-        insideSidebar: r.left >= side.left - 1 && r.right <= side.right + 1,
-        gearLeft: document.getElementById("btn-settings").getBoundingClientRect().right <= r.left + 1,
-        phoneRight: r.right <= document.getElementById("btn-phone-side").getBoundingClientRect().left + 1,
-      });
-    })()`));
-    check("窄屏抽屉里供应商指示可见且夹在两图标之间",
-      provGeo.visible && provGeo.w > 40 && provGeo.gearLeft && provGeo.phoneRight && provGeo.insideSidebar,
-      JSON.stringify(provGeo));
-    check("指示文字不外溢（超长会省略号截断）", provGeo.noOverflow, JSON.stringify(provGeo));
-
-    await clickAt("#btn-prov-side span.nm");
-    await sleep(900);
-    const provNav = JSON.parse(await evalJs(`JSON.stringify({
       collapsed: document.body.classList.contains("side-collapsed"),
-      active: (document.querySelector(".set-item.active") || {}).dataset?.sub || ""
+      modal: !document.getElementById("modal").classList.contains("hidden"),
+      title: document.getElementById("modal-title").textContent,
+      settingsMode: document.body.classList.contains("settings-mode")
     })`));
-    check("点供应商指示进编排设置并收起抽屉",
-      provNav.collapsed && provNav.active === "orch", JSON.stringify(provNav));
+    check("设置导航「手机连接」弹扫码框且抽屉收起（不切子页）",
+      viaNav.collapsed && viaNav.modal && /手机连接/.test(viaNav.title) && viaNav.settingsMode, JSON.stringify(viaNav));
 
     ws.close();
   } finally {
-    try { proc.kill(); } catch (e) { /* ignore */ }
-    await sleep(800);
-    try { spawn("taskkill", ["/F", "/T", "/PID", String(proc.pid)], { stdio: "ignore" }); } catch (e) { /* ignore */ }
-    try { rmSync(profile, { recursive: true, force: true }); } catch (e) { /* ignore */ }
+    await close();
   }
 
   const bad = results.filter((x) => !x).length;
