@@ -55,6 +55,7 @@ class EvalBenchBase(BaseTest):
     def setUp(self):
         super().setUp()
         evalbench._RUN = None
+        evalbench._RUN_THREAD = None
         evalbench._PRICE_CACHE.clear()
 
 
@@ -291,6 +292,95 @@ class TestStartGuards(EvalBenchBase):
             time.sleep(0.02)
         self.assertTrue(spawned)
         self.assertIsNone(evalbench._RUN)
+
+
+class TestStopTwoStage(EvalBenchBase):
+    """停止按钮两段式 + 崩溃自愈（run_id 令牌 / 线程活性 / 裁判前停止检查）。"""
+
+    @staticmethod
+    def _run_state(run_id="bench-x", total=3, done=1):
+        return {"total": total, "done": done, "current": "m × s", "cancel": False,
+                "started_ts": time.time(), "run_id": run_id,
+                "judge_cfg": {"provider_id": "j", "model": "jm"}}
+
+    def test_cancel_two_stage_and_idle(self):
+        evalbench._RUN = self._run_state()
+        evalbench._RUN_THREAD = None
+        self.assertEqual(evalbench.cancel(), {"ok": True, "force": False})
+        self.assertTrue(evalbench._RUN["cancel"])          # 第一击只打标记
+        self.assertEqual(evalbench.cancel(), {"ok": True, "force": True})
+        self.assertIsNone(evalbench._RUN)                  # 第二击立即脱离
+        self.assertIsNone(evalbench._RUN_THREAD)
+        runs = evalbench._read().get("runs") or []
+        self.assertTrue(any(r.get("run_id") == "bench-x" and r.get("cancelled")
+                            for r in runs if isinstance(r, dict)))
+        self.assertEqual(evalbench.cancel(), {"ok": False})   # 空闲时停止
+
+    def test_tail_token_guard_spares_new_run(self):
+        """旧线程收尾绝不清掉强制脱离后新开一轮的运行态"""
+        def hijack(prov, model, prompt, max_tokens=2048):
+            evalbench._RUN = self._run_state(run_id="bench-new", total=9, done=0)
+            return {"ok": False, "text": "", "usage": None, "error": "x",
+                    "latency_ms": 1}
+        evalbench._RUN = self._run_state(run_id="bench-old", total=1, done=0)
+        with mock.patch.object(evalbench, "_gen", side_effect=hijack):
+            evalbench._run_bench("bench-old", [{"provider_id": "p", "model": "m"}],
+                                 ["writing"], {"provider_id": "j", "model": "jm"})
+        self.assertIsNotNone(evalbench._RUN)
+        self.assertEqual(evalbench._RUN.get("run_id"), "bench-new")
+
+    def test_cancel_skips_judge_call(self):
+        """生成返回时已请求停止：裁判不再等，立即收尾复位"""
+        calls = []
+
+        def fake(prov, model, prompt, max_tokens=2048):
+            calls.append(prompt[:12])
+            if "评审员" in prompt:
+                self.fail("停止后不应再调裁判")
+            evalbench._RUN["cancel"] = True
+            return {"ok": True, "text": "答案正文。", "usage": None,
+                    "error": "", "latency_ms": 1}
+
+        evalbench._RUN = self._run_state(total=1, done=0)
+        with mock.patch.object(evalbench, "_gen", side_effect=fake):
+            evalbench._run_bench("bench-x", [{"provider_id": "p", "model": "m"}],
+                                 ["writing"], {"provider_id": "j", "model": "jm"})
+        self.assertEqual(len(calls), 1)
+        self.assertIsNone(evalbench._RUN)
+        runs = evalbench._read().get("runs") or []
+        self.assertTrue(any(r.get("cancelled") for r in runs if isinstance(r, dict)))
+
+    def test_state_heals_dead_thread(self):
+        """线程已死但 _RUN 没清（旧版本崩溃残留）：state() 就地自愈回空闲"""
+        import threading
+        ghost = threading.Thread(target=lambda: None)
+        ghost.start()
+        ghost.join()
+        self.assertFalse(ghost.is_alive())
+        evalbench._RUN = self._run_state()
+        evalbench._RUN_THREAD = ghost
+        st = evalbench.state()
+        self.assertFalse(st["running"])
+        self.assertIsNone(evalbench._RUN)
+        self.assertIsNone(evalbench._RUN_THREAD)
+
+    def test_state_reports_cancel_flag_for_ui(self):
+        """progress.cancel 透出给 UI（停止中…/强制停止按钮的依据）"""
+        import threading
+        release = threading.Event()
+        live = threading.Thread(target=release.wait, args=(5,), daemon=True)
+        live.start()
+        try:
+            evalbench._RUN = self._run_state()
+            evalbench._RUN["cancel"] = True
+            evalbench._RUN_THREAD = live
+            st = evalbench.state()
+            self.assertTrue(st["running"])
+            self.assertTrue(st["progress"]["cancel"])
+        finally:
+            release.set()
+            evalbench._RUN = None
+            evalbench._RUN_THREAD = None
 
 
 if __name__ == "__main__":

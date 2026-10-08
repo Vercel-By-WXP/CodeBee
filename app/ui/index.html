@@ -1083,7 +1083,7 @@
           <div id="eb-cands" class="list"></div>
           <div class="input-row" style="margin-top:10px">
             <button id="eb-run-btn" class="primary" onclick="evalbenchRun()" data-i18n="开始评测">开始评测</button>
-            <button class="ghost" onclick="evalbenchCancel()" data-i18n="停止">停止</button>
+            <button id="eb-stop-btn" class="ghost" onclick="evalbenchCancel()" data-i18n="停止">停止</button>
             <span id="eb-progress" class="hint"></span>
           </div>
           <div id="eb-msg" class="msg"></div>
@@ -1095,6 +1095,14 @@
               <button class="ghost small" onclick="saveBenchAuto()" data-i18n="保存">保存</button>
               <span id="eb-auto-msg" class="hint"></span>
             </div>
+          </div>
+          <div class="field"><label data-i18n="评测反哺（实测分影响选路）">评测反哺（实测分影响选路）</label>
+            <label class="toggle" style="margin-top:6px"><input id="eb-feedback-enabled" type="checkbox" checked> <span data-i18n="14 天内实测分作为软信号参与模型链排序（±4.5 封顶，只动排序；健康/冷却/协议等硬约束照常一票否决）">14 天内实测分作为软信号参与模型链排序（±4.5 封顶，只动排序；健康/冷却/协议等硬约束照常一票否决）</span></label>
+            <div class="input-row" style="margin-top:6px">
+              <button class="ghost small" onclick="saveBenchFeedback()" data-i18n="保存">保存</button>
+              <span id="eb-feedback-msg" class="hint"></span>
+            </div>
+            <div id="eb-feedback-status" class="hint" style="margin-top:4px"></div>
           </div>
           <h3 data-i18n="能力榜" class="sec-title">能力榜</h3>
           <div class="input-row" id="eb-trend" style="align-items:center;gap:8px"></div>

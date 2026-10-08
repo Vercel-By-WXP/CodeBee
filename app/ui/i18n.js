@@ -1199,6 +1199,18 @@
     "还没有评测结果：勾选候选模型后点「开始评测」。": "No bench results yet: tick candidates and hit \"Start bench\".",
     "没有可用模型：先在「模型接入」配置启用了密钥的供应商。": "No candidates available: configure a provider with a key under \"Model Access\" first.",
     "请先勾选至少一个候选模型": "Tick at least one candidate model first",
+    // —— 评测反哺 + 两段式停止 ——
+    "强制停止": "Force stop",
+    "　·　停止中…当前样题完成后即停": "  ·  stopping… finishes the current sample first",
+    "已请求停止：当前样题完成后即停（生成调用最长可能等几分钟）；等不及再点一次「强制停止」": "Stop requested: the current sample finishes first (a slow generation can take minutes); click \"Force stop\" again to detach immediately",
+    "已强制脱离：界面回到空闲，后台当前调用跑完即自行退出": "Detached: the UI is idle again; the in-flight call exits by itself when done",
+    "评测反哺（实测分影响选路）": "Bench feedback (scores affect routing)",
+    "14 天内实测分作为软信号参与模型链排序（±4.5 封顶，只动排序；健康/冷却/协议等硬约束照常一票否决）": "Scores from the last 14 days act as a soft signal in model-chain ranking (capped at ±4.5; ordering only — health/cooldown/protocol hard gates still veto)",
+    "反哺已关闭：评测只出榜单，不影响选路。": "Feedback off: the bench only publishes the board and does not affect routing.",
+    "反哺生效：": "Feedback on: ",
+    " 个模型加权 · ": " models upweighted · ",
+    " 个降权（据 14 天内实测分）": " downweighted (scores from the last 14 days)",
+    "反哺生效中：暂无 14 天内实测分，跑一轮评测后开始影响排序。": "Feedback on: no scores from the last 14 days yet — run a bench round to start influencing ranking.",
     // —— 流程版本历史 ——
     "历史": "History",
     "当前": "current",

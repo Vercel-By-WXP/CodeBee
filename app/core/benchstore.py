@@ -77,8 +77,15 @@ def bonus_map(max_age_days=FRESH_DAYS):
         prev = latest.get(key)
         if prev is None or str(r.get("ts") or "") > str(prev.get("ts") or ""):
             latest[key] = r
-    return {k: {"overall": float(v["overall"]), "ts": str(v.get("ts") or "")}
-            for k, v in latest.items() if _fresh(v, max_age_days)}
+    out = {}
+    for k, v in latest.items():
+        if not _fresh(v, max_age_days):
+            continue
+        overall = float(v["overall"])
+        out[k] = {"overall": overall, "ts": str(v.get("ts") or ""),
+                  "bonus": round(max(-_MAX_BONUS, min(_MAX_BONUS,
+                                                      (overall - _BASELINE) * _K)), 2)}
+    return out
 
 
 def bonus_for(provider_id, model, max_age_days=FRESH_DAYS):

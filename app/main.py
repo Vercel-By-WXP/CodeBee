@@ -955,7 +955,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, dict(ok=True, **info))
         if path == "/api/evalbench/cancel":
             from core import evalbench
-            return self._json(200, {"ok": evalbench.cancel()})
+            body = self._body() or {}
+            return self._json(200, evalbench.cancel(force=bool(body.get("force"))))
         if path == "/api/evalbench/sample-op":
             # 自定义样题增删：{op:add|delete, sample:{...}|sid}
             from core import evalbench

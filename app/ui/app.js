@@ -13149,8 +13149,23 @@ async function loadEvalBench() {
   const ae = $("eb-auto-enabled"), ad = $("eb-auto-days");
   if (ae && S.settings) ae.checked = S.settings.bench_auto_enabled === true;
   if (ad && S.settings) ad.value = S.settings.bench_auto_days || 7;
+  const fbe = $("eb-feedback-enabled");
+  if (fbe && S.settings) fbe.checked = S.settings.bench_feedback_enabled !== false;
   renderEvalBench();
   if (S.evalbench && S.evalbench.running) EB_TIMER = setInterval(pollEvalBench, 2500);
+}
+
+async function saveBenchFeedback() {
+  const msg = $("eb-feedback-msg");
+  try {
+    const r = await api("/api/settings", { method: "POST", body: JSON.stringify({
+      bench_feedback_enabled: !$("eb-feedback-enabled") || $("eb-feedback-enabled").checked }) });
+    S.settings = r.settings;
+    if (msg) { msg.textContent = t("已保存"); }
+    pollEvalBench();
+  } catch (e) {
+    if (msg) { msg.textContent = e.message; }
+  }
 }
 
 async function saveBenchAuto() {
@@ -13220,7 +13235,8 @@ function renderEvalBench() {
     : t("裁判未就绪：先在「编排设置」配置编排者供应商");
   const pr = eb.progress;
   $("eb-progress").textContent = eb.running && pr
-    ? t("评测中 ") + (pr.done || 0) + "/" + (pr.total || 0) + (pr.current ? t("　·　") + pr.current : "")
+    ? t("评测中 ") + (pr.done || 0) + "/" + (pr.total || 0) + (pr.current ? t("　·　") + pr.current : "") +
+      (pr.cancel ? t("　·　停止中…当前样题完成后即停") : "")
     : "";
   board.innerHTML = (eb.leaderboard || []).map((r) => {
     const dims = Object.keys(r.scores || {}).length
@@ -13253,6 +13269,26 @@ function renderEvalBench() {
   }
   const btn = $("eb-run-btn");
   if (btn) btn.disabled = !!eb.running;
+  const stopBtn = $("eb-stop-btn");
+  if (stopBtn) {
+    const stopping = !!(eb.running && eb.progress && eb.progress.cancel);
+    stopBtn.textContent = stopping ? t("强制停止") : t("停止");
+    stopBtn.disabled = !eb.running;          // 空闲置灰：第二次点击=强制脱离的入口只在停止中开放
+  }
+  const fbBox = $("eb-feedback-status");
+  if (fbBox) {
+    const fb = eb.feedback || {};
+    if (!fb.enabled) {
+      fbBox.textContent = t("反哺已关闭：评测只出榜单，不影响选路。");
+    } else {
+      const sig = Object.values(fb.signals || {});
+      const down = sig.filter((x) => x.below).length;
+      const up = sig.length - down;
+      fbBox.textContent = sig.length
+        ? t("反哺生效：") + up + t(" 个模型加权 · ") + down + t(" 个降权（据 14 天内实测分）")
+        : t("反哺生效中：暂无 14 天内实测分，跑一轮评测后开始影响排序。");
+    }
+  }
 }
 
 /* 逐题对比：行=样题，列=候选模型（按榜单名次），格=最新一次得分 */
@@ -13300,7 +13336,21 @@ async function evalbenchRun() {
 }
 
 async function evalbenchCancel() {
-  try { await api("/api/evalbench/cancel", { method: "POST" }); } catch (e) { /* 空闲时 200 ok=false */ }
+  // 两段式：第一击优雅停（等当前样题做完——生成调用最坏要等几分钟）；
+  // 服务端已打停止标记后再点=强制脱离（立即回到空闲，后台线程自行收尾）。
+  const msg = $("eb-msg");
+  const already = !!(S.evalbench && S.evalbench.progress && S.evalbench.progress.cancel);
+  try {
+    const r = await api("/api/evalbench/cancel",
+                        { method: "POST", body: JSON.stringify({ force: already }) });
+    if (r && r.ok && r.force) {
+      if (msg) { msg.className = "msg ok"; msg.textContent = t("已强制脱离：界面回到空闲，后台当前调用跑完即自行退出"); }
+    } else if (r && r.ok) {
+      if (msg) { msg.className = "msg"; msg.textContent = t("已请求停止：当前样题完成后即停（生成调用最长可能等几分钟）；等不及再点一次「强制停止」"); }
+    }
+  } catch (e) {
+    if (msg) { msg.className = "msg err"; msg.textContent = e.message; }
+  }
   pollEvalBench();
 }
 

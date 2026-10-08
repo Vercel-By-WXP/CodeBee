@@ -125,7 +125,14 @@ def _bench_bonus(entry):
 
     与在线信号同理念：软加减分，硬约束（健康/冷却/协议）仍由调用方负责；
     无数据不猜分——没上过评测台的候选保持原排序。
+    settings.bench_feedback_enabled=False 时整路关闭（纯榜单展示，不影响选路）。
     """
+    try:
+        from . import settings as settings_mod
+        if settings_mod.load().get("bench_feedback_enabled", True) is False:
+            return 0.0, ""
+    except Exception:
+        pass
     try:
         from . import benchstore
         return benchstore.bonus_for(entry.get("provider_id") or "",

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import time
 import unittest
+from unittest import mock
 
 from base import BaseTest
 
@@ -105,6 +106,50 @@ class TestDispatchIntegration(BaseTest):
         m = benchstore.bonus_map()
         self.assertEqual(set(m), {("p1", "m1")})
         self.assertEqual(m[("p1", "m1")]["overall"], 8.0)
+
+    def test_bonus_map_carries_bonus_value(self):
+        """bonus 值随 map 透出（评测页反哺视图/通知不复算常量）"""
+        _seed("p1", "m1", 8.0)                           # (8−7)×1.5 = +1.5
+        _seed("p1", "m2", 4.0)                           # clamp 到 −4.5
+        m = benchstore.bonus_map()
+        self.assertEqual(m[("p1", "m1")]["bonus"], 1.5)
+        self.assertEqual(m[("p1", "m2")]["bonus"], -4.5)
+
+
+class TestFeedbackGate(BaseTest):
+    """settings.bench_feedback_enabled=False：整路软信号关闭，纯榜单展示"""
+
+    _PROVIDERS = {"p1": {"id": "p1", "name": "P1",
+                         "models": [{"name": "m1", "priority": 1}]}}
+
+    def _score(self):
+        entry = {"provider_id": "p1", "model": "m1"}
+        return dispatch.score_model_entry(entry, self._PROVIDERS, {}, "hard",
+                                          "code", "implement")
+
+    def test_gate_off_disables_signal(self):
+        from app.core import settings as settings_mod
+        _seed("p1", "m1", 9.0)
+        with mock.patch.object(settings_mod, "load",
+                               return_value={"bench_feedback_enabled": False}):
+            self.assertEqual(
+                dispatch._bench_bonus({"provider_id": "p1", "model": "m1"}),
+                (0.0, ""))
+            score, reason = self._score()
+            self.assertNotIn("实测", reason)
+        with mock.patch.object(settings_mod, "load",
+                               return_value={"bench_feedback_enabled": True}):
+            score2, reason2 = self._score()
+        self.assertIn("实测 9.0 分（+3.0", reason2)
+        self.assertGreater(score2, score)
+
+    def test_gate_defaults_on_when_key_missing(self):
+        """老配置无此键：默认开（评测了就该去影响）"""
+        from app.core import settings as settings_mod
+        _seed("p1", "m1", 9.0)
+        with mock.patch.object(settings_mod, "load", return_value={}):
+            score, reason = dispatch._bench_bonus({"provider_id": "p1", "model": "m1"})
+        self.assertEqual(score, 3.0)
 
 
 if __name__ == "__main__":

@@ -432,7 +432,6 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
     任务跑完了要主动找到人）。"""
     global _RUN, _RUN_THREAD
     sample_by_id = {s["id"]: s for s in _all_samples()}
-    run_rows = []
     try:
         for cand in candidates:
             prov_id, model = cand.get("provider_id") or "", cand.get("model") or ""
@@ -458,7 +457,6 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
                                "cost_usd": 0.0, "duration_s": round(gen.get("latency_ms", 0) / 1000.0, 1),
                                "same_family": False}
                         _persist_result(row)
-                        run_rows.append(row)
                         with _LOCK:
                             if _RUN:
                                 _RUN["done"] += 1
@@ -506,7 +504,6 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
                            "duration_s": round((gen.get("latency_ms", 0) + jp.get("latency_ms", 0)) / 1000.0, 1),
                            "same_family": prov_id == judge_cfg.get("provider_id")}
                     _persist_result(row)
-                    run_rows.append(row)
                 except Exception as e:
                     # 单条炸掉（如提示词拼装异常）如实落一行失败记录，别毁掉整轮
                     row = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -517,7 +514,6 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
                            "cost_usd": 0.0, "duration_s": 0.0,
                            "same_family": False}
                     _persist_result(row)
-                    run_rows.append(row)
                 with _LOCK:
                     if _RUN:
                         _RUN["done"] += 1
@@ -531,11 +527,6 @@ def _run_bench(run_id, candidates, sample_ids, judge_cfg, notify_done=False):
                 _RUN = None
                 _RUN_THREAD = None
         # 收尾落库/推送放在运行态清理之后：它们自身出错也不能把「评测中」卡住
-        if mine and run_rows and not cancelled:
-            try:
-                _apply_feedback(run_rows)     # 评测反哺：每轮跑完刷新 per-model 分数
-            except Exception:
-                pass
         try:
             if cancelled:
                 _append_run_log(run_id, judge_cfg, cancelled=True)
@@ -568,12 +559,12 @@ def _notify_auto_done(candidates_n):
             if prev and prev.split("（")[0] != cur_top1.split("（")[0]:
                 lines.append("⚠ 榜首易主：上次 %s → 本次 %s" % (prev, cur_top1))
         fb = feedback_status()
-        if fb.get("mode") == "auto":
-            below = [(c.get("model") or k) for k, c in (fb.get("scores") or {}).items()
-                     if isinstance(c, dict) and c.get("below_floor")]
-            if below:
-                lines.append("▾ 反哺 auto 生效：低于及格线 %.1f 已降权 → %s"
-                             % (fb.get("floor") or 6.0, "、".join(below)))
+        if fb.get("enabled"):
+            weighted = [c.get("model") or k for k, c in (fb.get("signals") or {}).items()
+                        if isinstance(c, dict) and c.get("below")]
+            if weighted:
+                lines.append("▾ 反哺生效：%d 个模型实测分低于 7 分基线已降权 → %s"
+                             % (len(weighted), "、".join(weighted[:5])))
         notify.push_text("\n".join(lines))
     except Exception:
         pass
@@ -619,72 +610,32 @@ def _append_run_log(run_id, judge_cfg, cancelled=False, auto=False):
 
 
 # ---------------------------------------------------------------- 评测反哺
-# 「评测了就该去影响」：每轮跑完把 per-model 均分落进 benchstore 的 feedback
-# 块，router._bench_bonus（auto 档）据此给低于及格线的候选降权。写端永远写
-# （关着也有数可看、可回溯），读端按 settings.bench_feedback 三档取用：
-#   off    = 不读不用（纯记录）
-#   advise = 只在界面标注分数与低分警示，不改路由
-#   auto   = 低于及格线的模型在路由打分里被降权（软分，不剔除不封禁）
-
-def _apply_feedback(rows):
-    """跑完一轮把本轮各 (供应商, 模型) 的聚合写进 feedback（整块替换：
-    分数永远反映最近一轮，不做跨轮加权——评测口径变了旧分留着反而误导）。"""
-    agg = {}
-    for r in rows:
-        if not isinstance(r, dict):
-            continue
-        key = "%s|%s" % (r.get("provider_id") or "", r.get("model") or "")
-        cell = agg.setdefault(key, {"provider_id": r.get("provider_id") or "",
-                                    "model": r.get("model") or "",
-                                    "scored": [], "failed": 0})
-        if r.get("overall") is not None:
-            cell["scored"].append(float(r["overall"]))
-        elif not r.get("ok") or not r.get("scored"):
-            cell["failed"] += 1
-    if not agg:
-        return
-    now = time.strftime("%Y-%m-%d %H:%M:%S")
-    out = {}
-    for key, cell in agg.items():
-        vals = cell["scored"]
-        out[key] = {"provider_id": cell["provider_id"], "model": cell["model"],
-                    "overall": round(sum(vals) / len(vals), 2) if vals else None,
-                    "n": len(vals), "failed": cell["failed"], "ts": now}
-
-    def _mut(data):
-        data["feedback"] = {"scores": out, "updated_ts": now}
-    _update(_mut)
-
-
-def feedback_scores():
-    """router / UI 共用的只读视图：{"prov|model": {overall, n, failed, ts}}。"""
-    try:
-        fb = _read().get("feedback")
-        scores = fb.get("scores") if isinstance(fb, dict) else None
-        return scores if isinstance(scores, dict) else {}
-    except Exception:
-        return {}
-
+# 「评测了就该去影响」：实测分软信号经 benchstore.bonus_for 进绑定链排序
+# （dispatch.score_model_entry，±4.5 封顶翻不动硬约束），开关是
+# settings.bench_feedback_enabled（默认开）。这里的职责只有「可见性」：
+# 把当前生效的软信号整理成评测页能展示、通知能点名的视图。
 
 def feedback_status():
-    """评测页展示用：当前反哺档位 + 及格线 + 最近一轮分数（含是否低于线）。"""
+    """评测页展示用：反哺开关 + 当前生效的每模型软信号（含正负与依据）。"""
     try:
         from . import settings as settings_mod
-        s = settings_mod.load()
+        enabled = settings_mod.load().get("bench_feedback_enabled", True)
     except Exception:
-        s = {}
-    mode = s.get("bench_feedback")
-    if mode not in ("off", "advise", "auto"):
-        mode = "advise"
+        enabled = True
+    signals = {}
     try:
-        floor = round(max(3.0, min(9.0, float(s.get("bench_floor") or 6.0))), 1)
-    except (TypeError, ValueError):
-        floor = 6.0
-    scores = feedback_scores()
-    for cell in scores.values():
-        if isinstance(cell, dict) and cell.get("overall") is not None:
-            cell["below_floor"] = float(cell["overall"]) < floor
-    return {"mode": mode, "floor": floor, "scores": scores}
+        from . import benchstore
+        for (prov_id, model), info in (benchstore.bonus_map() or {}).items():
+            score = max(-4.5, min(4.5, (info["overall"] - 7.0) * 1.5))
+            signals["%s|%s" % (prov_id, model)] = {
+                "provider_id": prov_id, "model": model,
+                "overall": info.get("overall"),
+                "bonus": round(score, 2),
+                "below": score < 0,
+                "ts": info.get("ts") or ""}
+    except Exception:
+        signals = {}
+    return {"enabled": bool(enabled), "signals": signals}
 
 
 def _auto_candidates():

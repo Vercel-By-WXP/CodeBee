@@ -36,6 +36,9 @@ DEFAULTS = {"max_concurrent_jobs": 12, "default_workdir": "", "hooks_token": "",
             # enabled=False 关；days 间隔天数控节流；mcp_servers=内置智能体的
             # MCP 服务器清单（JSON 数组字符串，stdio 形态）
             "bench_auto_enabled": False, "bench_auto_days": 7,
+            # 评测反哺：实测分软信号进绑定链排序（dispatch 读 benchstore.bonus_for，
+            # ±4.5 封顶翻不动硬约束）。默认开——评测了就该去影响；关=纯榜单展示
+            "bench_feedback_enabled": True,
             "mcp_servers": "",
             # 备份远程通道（remotesync）：导出成功后自动 PUT 到 WebDAV/S3 兼容
             # 端点（Basic auth）；密钥只存本机
@@ -151,6 +154,8 @@ def save(patch):
                 cur["bench_auto_days"] = max(1, min(90, int(patch.get("bench_auto_days"))))
             except (TypeError, ValueError):
                 return cur, "bench_auto_days 必须是 1-90 的整数"
+        if "bench_feedback_enabled" in patch:
+            cur["bench_feedback_enabled"] = bool(patch.get("bench_feedback_enabled"))
         if "mcp_servers" in patch:
             cur["mcp_servers"] = str(patch.get("mcp_servers") or "").strip()[:4000]
         if "backup_remote_enabled" in patch:
