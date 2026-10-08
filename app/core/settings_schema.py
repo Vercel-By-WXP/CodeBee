@@ -223,8 +223,8 @@ def register_default_namespaces():
         register_namespace(
             "orchestrator",
             fields=[
-                FieldDef("compaction.enabled", "bool", False,
-                         "上下文压缩总开关（灰度：与 TUTTI_COMPACTION 任一开启即生效）"),
+                FieldDef("compaction.enabled", "bool", True,
+                         "上下文压缩总开关（默认开启；可在设置页或用 TUTTI_COMPACTION=0 关闭）"),
                 FieldDef("compaction.pressure_threshold", "float", 0.8,
                          "触发压缩的压力比阈值",
                          clamp=(0.1, 0.99)),
@@ -259,6 +259,17 @@ def register_default_namespaces():
             ],
             validate=lambda v: None,
         )
+
+    # Revision 1 is the pre-release schema default (disabled). Values written
+    # by mutate() advance the namespace to revision 2+, so preserve an explicit
+    # user opt-out while migrating untouched installations to the new default.
+    with _LOCK:
+        orchestrator = _VALUES.get("orchestrator", {})
+        if (_REVISIONS.get("orchestrator") == 1 and
+                _get_path(orchestrator, "compaction.enabled") is False):
+            _set_path(orchestrator, "compaction.enabled", True)
+            _REVISIONS["orchestrator"] = 2
+            _persist()
     if "cascade" not in _NAMESPACES:
         register_namespace(
             "cascade",

@@ -229,10 +229,12 @@ def _resume_workdir(resume_ctx, fallback):
 
 
 def _compaction_enabled():
-    """Phase 2 灰度开关：环境变量 TUTTI_COMPACTION=1 或设置页
-    settings_v2 orchestrator.compaction.enabled 任一开启即生效（默认关）。"""
-    if os.environ.get("TUTTI_COMPACTION") == "1":
+    """环境变量可显式覆盖设置页开关；未设置时读取 settings_v2。"""
+    env_value = os.environ.get("TUTTI_COMPACTION", "").strip().lower()
+    if env_value in ("1", "true", "yes", "on"):
         return True
+    if env_value in ("0", "false", "no", "off"):
+        return False
     try:
         from .settings_schema import get as ss_get, register_default_namespaces
         register_default_namespaces()
