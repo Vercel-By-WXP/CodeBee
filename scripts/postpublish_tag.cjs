@@ -3,7 +3,7 @@
 // tag 已存在则跳过（幂等）。
 const { execFileSync } = require("child_process");
 try {
-  const ver = require("./package.json").version;
+  const ver = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "..", "package.json"), "utf8")).version;
   const tag = "v" + ver;
   const sh = (cmd, opts) => {
     try { return execFileSync("git", cmd, { stdio: "pipe", ...opts }); }
