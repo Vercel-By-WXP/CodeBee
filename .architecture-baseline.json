@@ -657,9 +657,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/pipeline.py 5596 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/pipeline.py 5958 行（上限 1200，历史最高 0）",
       "file": "app/core/pipeline.py",
-      "lines": 5596
+      "lines": 5958
     },
     {
       "kind": "lines",
@@ -669,9 +669,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/store.py 2261 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/store.py 2349 行（上限 1200，历史最高 0）",
       "file": "app/core/store.py",
-      "lines": 2261
+      "lines": 2349
     },
     {
       "kind": "lines",

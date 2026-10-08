@@ -1747,6 +1747,23 @@ def retry_task(task_id):
                         "chapter_scores": scores,
                     }
                     break
+        else:
+            # 断点续跑（代码等非连载任务，A+B）：上一遍失败/取消/超时 run 的
+            # 实现会话（inherit_session，跨 run 续 CLI 会话）与断点简报
+            # （handoff，走到哪/改了什么/还剩什么）继承给新 run——重试从断点
+            # 继续而不是从零烧 token。done 的 run 不继承：主动重跑语义就是重来。
+            prev_runs = sorted((r for r in _RUNS.values()
+                                if r.get("task_id") == task_id and r["id"] != run["id"]),
+                               key=lambda r: r["id"], reverse=True)
+            for prev in prev_runs:
+                if prev.get("status") not in ("failed", "cancelled", "timeout"):
+                    continue
+                if prev.get("impl_session") and "inherit_session" not in run:
+                    run["inherit_session"] = dict(prev["impl_session"])
+                if prev.get("handoff") and "handoff" not in run:
+                    run["handoff"] = dict(prev["handoff"])
+                if "inherit_session" in run or "handoff" in run:
+                    break
         task["status"] = "queued"
         _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
         _save_json(paths.RUNS_DIR / run["id"] / "run.json", run)

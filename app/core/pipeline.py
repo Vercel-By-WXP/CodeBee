@@ -1461,6 +1461,28 @@ def _run_code(run, task, agents, ev, stats, mode):
     if project_memory:
         task = dict(task, context=(task.get("context") or "") + "\n\n" + project_memory)
 
+    # 断点简报（B）：重试继承上一遍失败/中断 run 的现场，注入规划器与实现者
+    # 共用的 __CONTEXT__——「走到哪、改了什么、还剩什么」不再从零重建上下文。
+    _handoff = run.get("handoff") or {}
+    _brief = _handoff_brief(_handoff)
+    if _brief:
+        task = dict(task, context=(task.get("context") or "") + "\n\n" + _brief)
+    # 断点会话（A）：上一遍实现者的 CLI 会话 id，implement_all 里按人复用。
+    _inh_session = run.get("inherit_session") or {}
+
+    def _keep_sid(agent_row, agent_b, r):
+        """记录最后一次实现的会话 id：run 内 fix 轮复用 + 落盘 run 供重试跨 run 续会话。"""
+        sid = _resume_sid(agent_b, r.get("sid"))
+        if sid:
+            impl_sid[0] = sid
+            try:
+                store.update_run(run_id, impl_session={
+                    "agent": agent_row.get("id"), "session": sid,
+                    "workdir": workdir})
+            except Exception:
+                pass
+        return sid
+
     # ---- 规划。低风险短任务直接把目标作为单步计划，省掉一次独立模型调用；
     # 附件或较长的用户背景仍先规划，避免快速路径漏读约束。
     fast_path = (mode == "fast" or
@@ -1526,11 +1548,20 @@ def _run_code(run, task, agents, ev, stats, mode):
 
     def implement_all(impl_agent, prefix_note):
         nonlocal reviewer
-        # 会话延续只对原实现者有效；换将后新智能体没有该会话，必须丢弃
+        # 会话延续只对原实现者有效；换将后新智能体没有该会话，必须丢弃。
+        # 优先级：任务级 resume（用户显式指定）> 断点继承会话（A：跨 run 续跑，
+        # 仅同一实现者 + 同一工作目录 + 该 CLI 支持续会话时复用）
+        inh_sid = ""
+        if (not resume_ctx and _inh_session.get("session")
+                and _inh_session.get("agent") == impl_agent["id"]
+                and _same_workdir(_inh_session.get("workdir") or "", workdir)
+                and _resume_sid(impl_agent, _inh_session.get("session"))):
+            inh_sid = _inh_session["session"]
         use_resume = (resume_ctx["session"]
-                      if (resume_ctx and impl_agent["id"] == resume_ctx["agent"]["id"]) else None)
+                      if (resume_ctx and impl_agent["id"] == resume_ctx["agent"]["id"])
+                      else (inh_sid or None))
         # 续会话时 CLI 要在会话所属项目目录下启动，否则定位不到会话
-        step_wd = _resume_workdir(resume_ctx, workdir) if use_resume else workdir
+        step_wd = _resume_workdir(resume_ctx, workdir) if (resume_ctx and use_resume) else workdir
 
         def _run_one(agt):
             """用指定智能体跑全部子任务；返回 (ok, 最后一次 res)。"""
@@ -1576,10 +1607,20 @@ def _run_code(run, task, agents, ev, stats, mode):
                                 note=prefix_note if i == 0 else "",
                                 resume=use_resume, images=att_imgs,
                                 require_tools=True, swap_guard=swap_guard)
-                # §07 T1.1：记录最后一次实现的会话 id，fix 轮复用（会话内前缀走缓存读计价）
-                new_sid = _resume_sid(agt_b, res.get("sid"))
-                if new_sid:
-                    impl_sid[0] = new_sid
+                _keep_sid(agt, agt_b, res)
+                # 断点继承会话失效兜底（A）：会话可能已被 CLI 清理或跨机不可续。
+                # 认证/配额类死因换会话也没用，不重试；其余丢弃继承会话原样重跑一次。
+                if (not res["ok"] and inh_sid and i == 0 and use_resume == inh_sid
+                        and not (res.get("raw") or {}).get("cancelled")
+                        and not runner._auth_error(res.get("error") or "")
+                        and not runner._quota_error(res.get("error") or "")):
+                    res = _run_step(run_id, role, agt_b, prompt, step_wd,
+                                    readonly=False, ev=ev,
+                                    note=((prefix_note + "；") if prefix_note else "")
+                                    + "继承会话续跑失败，已丢弃旧会话全新执行",
+                                    resume=None, images=att_imgs,
+                                    require_tools=True, swap_guard=swap_guard)
+                    _keep_sid(agt, agt_b, res)
                 if agt.get("mode") == "mock" and res["ok"]:
                     try:
                         mock_path = os.path.abspath(os.path.join(workdir, "mock-impl.txt"))
@@ -1606,10 +1647,11 @@ def _run_code(run, task, agents, ev, stats, mode):
                              error=auth_err, ended_at=_now())
             return False
         # 单路实现失败：Best-of-N 赛马兜底（借鉴 orca worktree 择优）——多路并行
-        # 各自 worktree 隔离实现+验证，胜者 diff 回主工作区；失败回落走换将
+        # 各自 worktree 隔离实现+验证，胜者 diff 回主工作区；失败回落走换将。
+        # 会话延续在场时跳过（N 路共用同一 CLI 会话会互相践踏，与连载同理）
         if (mode == "auto" and impl_agent.get("mode") == "real"
                 and max(1, min(3, int(task.get("best_of") or 1))) >= 2
-                and resume_ctx is None
+                and resume_ctx is None and not inh_sid
                 and _code_bestof(run, task, impl_agent, difficulty, ev)):
             return True
         # 实现步失败不立刻判死：2026-09-16 实测配额烧干时 5 连跑全在同一条 CLI 上
@@ -1756,6 +1798,7 @@ def _run_code(run, task, agents, ev, stats, mode):
                             note="自动修复第 %d 轮" % round_no,
                             resume=resume_ctx["session"] if resume_ctx else impl_sid[0],
                             require_tools=True)
+            _keep_sid(impl, modelhub.bind_agent(impl, difficulty), res)
             if (res.get("raw") or {}).get("timed_out"):
                 # 自动修复没有换将/重试兜底；超时后继续验收会把未完成的修复
                 # 当作正常轮次，让 run 继续显示 running，最终还可能误标 done。
@@ -5366,10 +5409,24 @@ def _write_task_plan(task, workdir, plan):
         if root not in target.parents:
             return ""
         target.parent.mkdir(parents=True, exist_ok=True)
+        # 断点续跑（B）：旧计划已勾选 [x] 的项按标题继承到新计划——重试重新
+        # 规划不再抹掉已完成进度（继承发生在写盘前，mark_task_plan 的行号
+        # 约定基于新文件，安全）；[!]/[>] 不继承，重跑自然重置。
+        prev_done = {}
+        try:
+            if target.is_file():
+                _pat = re.compile(r"^\d+\. \[([ x!>])\] (.+)$")
+                for _ln in target.read_text("utf-8").splitlines():
+                    _m = _pat.match(_ln)
+                    if _m and _m.group(1) == "x":
+                        prev_done.setdefault(_m.group(2).strip(), True)
+        except Exception:
+            prev_done = {}
         lines = ["# 任务计划", "", "来源：%s" % (plan or {}).get("source", "?"), ""]
         # checkbox 形态：mark_task_plan 按行号翻 [x]/[!]/[>]，断点一眼可见
         for i, s in enumerate((plan or {}).get("steps") or [], 1):
-            lines.append("%d. [ ] %s" % (i, str(s.get("detail") or s.get("title") or "")[:200]))
+            _t = str(s.get("detail") or s.get("title") or "")[:200]
+            lines.append("%d. [%s] %s" % (i, "x" if prev_done.get(_t.strip()) else " ", _t))
         target.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return str(target)
     except Exception:
@@ -5431,6 +5488,79 @@ def mark_task_plan(workdir, index, status):
         return False
     except Exception:
         return False
+
+
+def _same_workdir(a, b):
+    """路径同位判断（Windows 大小写/斜杠不敏感）；任一为空即不同。"""
+    try:
+        na = os.path.normcase(os.path.abspath(a or ""))
+        nb = os.path.normcase(os.path.abspath(b or ""))
+        return bool(na) and bool(nb) and na == nb
+    except Exception:
+        return False
+
+
+def _assemble_handoff(task, run):
+    """断点简报组装（B）：终态 run 的「走到哪/改了什么/还剩什么」快照。
+    存进 run 记录供 retry_task 继承；组装失败返回近空 dict，绝不挡收尾。"""
+    steps = run.get("steps") or []
+    done_steps = [{"role": s.get("role") or "", "summary": (s.get("summary") or "")[:120]}
+                  for s in steps if (s.get("status") or "") == "done"][-8:]
+    pending = ""
+    for s in steps:
+        if (s.get("status") or "") != "done":
+            pending = "%s%s" % (s.get("role") or "?",
+                                ("（%s）" % s["summary"][:100]) if s.get("summary") else "")
+            break
+    try:
+        _total, _left = plan_stopgate(task.get("workdir") or "")
+    except Exception:
+        _total, _left = 0, []
+    ch = run.get("changes")
+    if not ch:
+        try:
+            from . import gitmod
+            ch = gitmod.collect_changes(task.get("workdir") or "")
+        except Exception:
+            ch = {}
+    files = [f.get("path") for f in ((ch or {}).get("files") or []) if f.get("path")][:25]
+    return {
+        "status": run.get("status") or "",
+        "error": (run.get("error") or "")[:240],
+        "ended_at": run.get("ended_at") or "",
+        "done_steps": done_steps,
+        "pending": pending,
+        "plan_total": _total,
+        "plan_left": [[n, m, t] for n, m, t in (_left or [])][:6],
+        "changed_files": files,
+    }
+
+
+def _handoff_brief(h):
+    """断点简报 → 注入 __CONTEXT__ 的人话块；无实质内容返回空串（零噪音）。"""
+    if not isinstance(h, dict) or not (h.get("done_steps") or h.get("pending")
+                                       or h.get("plan_left") or h.get("changed_files")):
+        return ""
+    rows = ["## 断点简报（上次运行中断现场，系统注入）",
+            "上次运行以「%s」终止%s。工作目录/任务分支保留着上次已完成的部分改动。"
+            "先核对现场再继续：已完成的修复不要推翻重做，从中断处接着完成目标。"
+            % (h.get("status") or "?",
+               ("（原因：%s）" % h["error"]) if h.get("error") else "")]
+    done = h.get("done_steps") or []
+    if done:
+        rows.append("- 已完成步骤：" + "；".join(
+            ("%s：%s" % (s.get("role") or "?", s["summary"])) if s.get("summary")
+            else (s.get("role") or "?") for s in done))
+    if h.get("pending"):
+        rows.append("- 中断位置：%s" % h["pending"])
+    left = h.get("plan_left") or []
+    if left:
+        rows.append("- 活计划未完成项：" + "、".join(
+            "#%s[%s]%s" % (n, m, t) for n, m, t in left))
+    files = h.get("changed_files") or []
+    if files:
+        rows.append("- 上次已改动的文件：" + "、".join(str(f) for f in files))
+    return "\n".join(rows)
 
 
 def _workdir_blocker(task, run_id):
@@ -5732,6 +5862,17 @@ def execute_run(run_id):
                                                   "restore_error": repr(e)[:200]})
                 except Exception:
                     pass
+        # 断点简报（B）：失败/取消/超时的代码 run 组装「走到哪/改了什么/还剩什么」，
+        # 供 retry_task 继承注入新 run——重试从断点继续，不从零烧 token。
+        # done 不组装：主动重跑语义就是重来。放在 git 收尾后，changes 是最新的。
+        try:
+            if (task.get("engine")
+                    or ("code" if task.get("type") == "code" else "review")) == "code":
+                _fin = store.get_run(run_id) or {}
+                if _fin.get("status") in ("failed", "cancelled", "timeout"):
+                    store.update_run(run_id, handoff=_assemble_handoff(task, _fin))
+        except Exception:
+            pass
         # 自学习闭环：运行结束自动把本次评审暴露的问题沉淀为可复用教训（异步，不阻塞）
         try:
             if store.get_run(run_id):
