@@ -366,6 +366,9 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
             elif act == "click_in":
                 # 先按 scope_text 定位容器（如书卡），再在容器内点 text 按钮。
                 # 解决「按钮与书名同卡片但不在彼此祖先链」的组合定位。
+                # real=true：容器内定位后走 CDP 真实鼠标（2026-10-08 番茄发布
+                # 提示弹窗实案——el.click() 点「提交」不触发发布请求，平台只认
+                # 真实输入事件）；tries 可配（默认 10，弹窗要等云端保存）。
                 scope_t = str(st.get("scope_text") or "")
                 text = str(st.get("text") or "")
                 for k, v in (values or {}).items():
@@ -373,9 +376,9 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     text = text.replace("{%s}" % k, str(v))
                 note(i, "在含「%s」的卡片内点「%s」" % (scope_t, text))
                 r = None
-                for _try in range(10):            # 表格异步渲染：重试窗口加长
+                for _try in range(int(st.get("tries") or 10)):
                     r = page.call(
-                        "(sc,t)=>{"
+                        "(sc,t,real)=>{"
                         "const cards=[...document.querySelectorAll('div,li,section,tr')].filter(e=>{"
                         "const x=(e.innerText||'').trim();"
                         "return x.includes(sc)&&x.length<600&&e.getBoundingClientRect().width>0;});"
@@ -388,13 +391,27 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         "btns.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
                         "let el=btns[0];"
                         "const act=el.closest('a,button,[role=button],[class*=btn]')||el;"
-                        "act.scrollIntoView({block:'center'});act.click();"
-                        "return{ok:true};}", scope_t, text)
+                        "act.scrollIntoView({block:'center'});"
+                        "if(real){const rc=act.getBoundingClientRect();"
+                        " const px=document.elementFromPoint(Math.round(rc.x+rc.width/2),Math.round(rc.y+rc.height/2));"
+                        " if(!px||(!act.contains(px)&&!px.contains(act)))return{ok:false,err:'blocked'};"
+                        " return{ok:true,x:Math.round(rc.x+rc.width/2),y:Math.round(rc.y+rc.height/2)};}"
+                        "act.click();"
+                        "return{ok:true};}", scope_t, text, bool(st.get("real")))
                     if (r or {}).get("ok"):
                         break
                     time.sleep(0.9)
                 if not (r or {}).get("ok"):
+                    if st.get("optional"):
+                        note(i, "含「%s」的卡片未出现，跳过（optional）" % scope_t)
+                        continue
                     raise FlowError((r or {}).get("err") or "click_in 失败")
+                if st.get("real") and isinstance(r, dict) and "x" in r:
+                    for _t in ("mousePressed", "mouseReleased"):
+                        page.send("Input.dispatchMouseEvent",
+                                  {"type": _t, "x": r["x"], "y": r["y"],
+                                   "button": "left", "clickCount": 1}, timeout=8)
+                    note(i, "真实鼠标点「%s」@(%d,%d)" % (text, r["x"], r["y"]))
             elif act == "click_arrow":
                 # 展开下拉按钮组（番茄「下一步▾」）：点目标按钮组右缘 10px
                 note(i, "展开下拉箭头")
@@ -546,6 +563,13 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     if shot:
                         shot("ready-manual-submit")
                     return i + 1
+                if st.get("gate"):
+                    # 闸门型 submit：只做 manual 模式的停点，auto 模式不点击——
+                    # 动作交给后续步骤（如 js_click）单次执行。真实鼠标+JS 双击
+                    # 「下一步」会打断平台进行中的云端保存，弹窗永远不出现
+                    # （2026-10-08 深夜实案）。
+                    note(i, "跳过点击（gate：动作由后续步骤单次执行）")
+                    continue
                 if dup_check:
                     # 事前预检：填表阶段平台实时校验（fill 派发过 change 事件，
                     # blur/输入即触发）喊了重名就别点了，点了也必被拒

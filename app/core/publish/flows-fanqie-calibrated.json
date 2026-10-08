@@ -82,11 +82,23 @@
    "skip_if_modal": true
   },
   {
-   "do": "click_real",
-   "text": "提交",
-   "scope": "button,a,[role=button],span,li,[class*=btn],div",
-   "tries": 400,
+   "do": "click_in",
+   "scope_text": "请选择内容检测方式",
+   "text": "仅基础检测",
+   "real": true,
+   "tries": 20,
    "optional": true
+  },
+  {
+   "do": "click_in",
+   "scope_text": "发布提示",
+   "text": "提交",
+   "real": true,
+   "tries": 60
+  },
+  {
+   "do": "sleep",
+   "s": 3
   },
   {
    "do": "verify",
