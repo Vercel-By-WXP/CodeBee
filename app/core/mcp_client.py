@@ -184,7 +184,7 @@ class _Session:
                 argv,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=False,
-                env=env, cwd=cwd)
+                env=env, cwd=cwd, start_new_session=True)
         except Exception as e:
             raise RuntimeError("MCP 服务器启动失败: %s" % e)
         import queue as _queue
@@ -216,7 +216,15 @@ class _Session:
                     pass
         finally:
             try:
-                if self.proc:
+                if self.proc and self.proc.poll() is None:
+                    # bwrap runs in its own process group; terminate descendants
+                    # as well as the launcher so timed-out MCP servers cannot
+                    # leave background children holding pipes or doing work.
+                    try:
+                        from . import runner
+                        runner._kill_tree(self.proc.pid)
+                    except Exception:
+                        pass
                     self.proc.kill()
             except Exception:
                 pass

@@ -510,6 +510,7 @@ class CompetitiveFeatureTests(unittest.TestCase):
     def test_mcp_initialization_failure_kills_spawned_server(self):
         from core import mcp_client
         process = unittest.mock.Mock()
+        process.poll.return_value = None
         session = mcp_client._Session({"name": "demo", "command": "demo"})
         with patch.object(mcp_client, "_sandbox_launch",
                           return_value=(["bwrap", "--", "demo"], {}, str(self.root))), \
@@ -520,6 +521,31 @@ class CompetitiveFeatureTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "init timeout"):
                 session.__enter__()
         process.kill.assert_called_once_with()
+
+    def test_mcp_server_spawn_uses_process_group_for_child_cleanup(self):
+        from core import mcp_client
+        process = unittest.mock.Mock()
+        with patch.object(mcp_client, "_sandbox_launch",
+                          return_value=(["bwrap", "--", "demo"], {}, str(self.root))):
+            with patch.object(mcp_client.subprocess, "Popen", return_value=process) as popen:
+                with patch.object(mcp_client.threading, "Thread") as thread:
+                    with patch.object(mcp_client._Session, "_request", return_value={}):
+                        with patch.object(mcp_client._Session, "_notify"):
+                            thread.return_value.start.return_value = None
+                            with mcp_client._Session({"name": "demo", "command": "demo"},
+                                                     sandbox={}, workdir=str(self.root)):
+                                pass
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+
+    def test_mcp_session_termination_uses_process_tree_killer(self):
+        from core import mcp_client, runner
+        process = unittest.mock.Mock()
+        process.poll.return_value = None
+        session = mcp_client._Session({"name": "demo", "command": "demo"})
+        session.proc = process
+        with patch.object(runner, "_kill_tree", return_value=True) as kill_tree:
+            session.__exit__(None, None, None)
+        kill_tree.assert_called_once_with(process.pid)
 
     def test_memory_and_checkpoint_routes_require_authentication(self):
         handler = object.__new__(main.Handler)
