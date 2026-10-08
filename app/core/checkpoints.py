@@ -486,7 +486,7 @@ def _restore_file_posix(root, rel, item, expected_exists, expected_hash):
     """Restore using directory handles so parent-path swaps cannot escape root."""
     required = (os.open in getattr(os, "supports_dir_fd", set())
                 and os.mkdir in getattr(os, "supports_dir_fd", set())
-                and os.replace in getattr(os, "supports_dir_fd", set())
+                and os.rename in getattr(os, "supports_dir_fd", set())
                 and os.unlink in getattr(os, "supports_dir_fd", set()))
     if not required:
         return False
@@ -551,7 +551,7 @@ def _restore_file_posix(root, rel, item, expected_exists, expected_hash):
                     os.fsync(temp_fd)
                 os.close(temp_fd)
                 temp_fd = None
-                os.replace(temp_name, leaf, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+                os.rename(temp_name, leaf, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
             except Exception:
                 if temp_fd is not None:
                     os.close(temp_fd)

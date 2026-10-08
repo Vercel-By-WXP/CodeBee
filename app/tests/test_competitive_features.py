@@ -117,15 +117,17 @@ class CompetitiveFeatureTests(unittest.TestCase):
             checkpoints.capture_file("run-parent-race", workdir, target)
             target.write_text("after", encoding="utf-8")
             checkpoints.mark_file_after("run-parent-race", workdir, target)
-            original_replace = os.replace
+            original_rename = os.rename
 
             def swap_parent_then_replace(src, dst, **kwargs):
+                if kwargs:
+                    return original_rename(src, dst, **kwargs)
                 moved = workdir / "nested-original"
-                os.rename(parent, moved)
+                original_rename(parent, moved)
                 parent.symlink_to(outside, target_is_directory=True)
-                return original_replace(src, dst, **kwargs)
+                return original_rename(src, dst, **kwargs)
 
-            with patch.object(checkpoints.os, "replace", side_effect=swap_parent_then_replace):
+            with patch.object(checkpoints.os, "rename", side_effect=swap_parent_then_replace):
                 restored = checkpoints.restore_files("run-parent-race", workdir)
 
         self.assertEqual(restored["restored"], 1)
