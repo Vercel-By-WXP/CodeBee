@@ -36,7 +36,8 @@
     "release:gate": "python scripts/release_gate.py",
     "release": "python scripts/release_gate.py --publish",
     "prepublishOnly": "python scripts/release_gate.py",
-    "release:clean": "python scripts/prune_release_debris.py"
+    "release:clean": "python scripts/prune_release_debris.py",
+    "postpublish": "node scripts/postpublish_tag.cjs"
   },
   "repository": {
     "type": "git",
