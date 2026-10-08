@@ -8262,12 +8262,95 @@ function hiveThinkLine(lines) {
   return "";
 }
 
+const hiveSceneTransform = { x: 0, y: 0, zoom: 1 };
+
+function updateHiveSceneTransform() {
+  const scene = $("rd-hive-cells");
+  if (!scene) return;
+  scene.style.setProperty("--scene-x", hiveSceneTransform.x + "px");
+  scene.style.setProperty("--scene-y", hiveSceneTransform.y + "px");
+  scene.style.setProperty("--scene-zoom", String(hiveSceneTransform.zoom));
+}
+
+function setHiveSceneMode(mode) {
+  const scene = $("rd-hive-cells");
+  const viewport = $("rd-hive-viewport");
+  const tools = document.querySelector(".hive-scene-tools");
+  if (!scene || !viewport) return;
+  const is3d = mode !== "2d";
+  scene.classList.toggle("hive-3d", is3d);
+  scene.classList.toggle("hive-2d", !is3d);
+  viewport.classList.toggle("hive-2d", !is3d);
+  if (tools) tools.classList.toggle("hive-2d", !is3d);
+  document.querySelectorAll("[data-hive-view]").forEach((button) => {
+    const active = button.dataset.hiveView === (is3d ? "3d" : "2d");
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function setupHiveSceneControls() {
+  const viewport = $("rd-hive-viewport");
+  const scene = $("rd-hive-cells");
+  if (!viewport || !scene || viewport.dataset.controlsReady) return;
+  viewport.dataset.controlsReady = "true";
+  updateHiveSceneTransform();
+
+  document.querySelectorAll("[data-hive-view]").forEach((button) => {
+    button.addEventListener("click", () => setHiveSceneMode(button.dataset.hiveView));
+  });
+  document.querySelectorAll("[data-hive-scene-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.hiveSceneAction === "reset") {
+        hiveSceneTransform.x = 0;
+        hiveSceneTransform.y = 0;
+        hiveSceneTransform.zoom = 1;
+      } else {
+        hiveSceneTransform.zoom = Math.max(.65, Math.min(1.55,
+          hiveSceneTransform.zoom + (button.dataset.hiveSceneAction === "zoom-in" ? .1 : -.1)));
+      }
+      updateHiveSceneTransform();
+    });
+  });
+
+  let drag = null;
+  viewport.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest(".hive-cell, button, a, input, textarea")) return;
+    drag = { id: event.pointerId, x: event.clientX, y: event.clientY,
+      originX: hiveSceneTransform.x, originY: hiveSceneTransform.y };
+    viewport.classList.add("is-dragging");
+    viewport.setPointerCapture(event.pointerId);
+  });
+  viewport.addEventListener("pointermove", (event) => {
+    if (!drag || drag.id !== event.pointerId) return;
+    hiveSceneTransform.x = drag.originX + event.clientX - drag.x;
+    hiveSceneTransform.y = drag.originY + event.clientY - drag.y;
+    updateHiveSceneTransform();
+  });
+  const endDrag = (event) => {
+    if (!drag || (event && drag.id !== event.pointerId)) return;
+    drag = null;
+    viewport.classList.remove("is-dragging");
+  };
+  viewport.addEventListener("pointerup", endDrag);
+  viewport.addEventListener("pointercancel", endDrag);
+  viewport.addEventListener("lostpointercapture", endDrag);
+  viewport.addEventListener("wheel", (event) => {
+    if (!scene.classList.contains("hive-3d")) return;
+    event.preventDefault();
+    hiveSceneTransform.zoom = Math.max(.65, Math.min(1.55,
+      hiveSceneTransform.zoom * (event.deltaY < 0 ? 1.08 : .92)));
+    updateHiveSceneTransform();
+  }, { passive: false });
+}
+
 window.renderHive = function (run) {
   const box = $("rd-hive");
   if (!box) return;
   const steps = (run && run.steps) || [];
   if (!run || !steps.length) { box.classList.add("hidden"); stopHiveTick(); return; }
   box.classList.remove("hidden");
+  setupHiveSceneControls();
   // 按步骤首次出现顺序分泳道（流水线天然有序）
   const lanes = [], byStage = {};
   steps.forEach((s) => {

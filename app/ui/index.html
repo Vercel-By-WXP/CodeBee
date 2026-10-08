@@ -667,7 +667,20 @@
           <div id="rd-pane-hive" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-hive" data-pane="hive">
             <div id="rd-hive" class="rd-hive hidden">
               <div class="sec-title"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="蜂巢工作台">蜂巢工作台</span><span id="rd-hive-sub" class="tag"></span><button class="hhelp" data-help-topic="serial" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button></div>
-              <div id="rd-hive-cells" class="hive-cells"></div>
+              <div class="hive-scene-tools" role="toolbar" aria-label="蜂巢视图控制" data-i18n-aria="蜂巢视图控制">
+                <div class="hive-view-switch" role="group" aria-label="视图模式" data-i18n-aria="视图模式">
+                  <button type="button" class="hive-view-btn active" data-hive-view="3d" aria-pressed="true" data-i18n="3D 场景">3D 场景</button>
+                  <button type="button" class="hive-view-btn" data-hive-view="2d" aria-pressed="false" data-i18n="2D 列表">2D 列表</button>
+                </div>
+                <span class="hive-scene-hint" data-i18n="拖动空白处平移 · 滚轮缩放">拖动空白处平移 · 滚轮缩放</span>
+                <span class="hive-scene-spacer"></span>
+                <button type="button" class="hive-scene-btn" data-hive-scene-action="zoom-out" aria-label="缩小" title="缩小">−</button>
+                <button type="button" class="hive-scene-btn" data-hive-scene-action="zoom-in" aria-label="放大" title="放大">+</button>
+                <button type="button" class="hive-scene-btn hive-scene-reset" data-hive-scene-action="reset" data-i18n="复位视角">复位视角</button>
+              </div>
+              <div id="rd-hive-viewport" class="hive-viewport" data-i18n-aria="蜂巢流程 3D 场景" aria-label="蜂巢流程 3D 场景">
+                <div id="rd-hive-cells" class="hive-cells hive-3d"></div>
+              </div>
             </div>
             <!-- 运行中指挥信箱：renderDirector 只认活跃 run，渲染时摘掉 hidden；
                  与检查器的迷你指挥坞不同屏（详情上下文检查器让位），这里是带附件的完整版 -->

@@ -10,6 +10,15 @@
   const LANG_KEY = "orch.lang";
   // 字典：键 = 中文原文；值 = 英文译文。未命中即回落中文。
   const EN = {
+    "蜂巢视图控制": "Hive view controls",
+    "视图模式": "View mode",
+    "3D 场景": "3D scene",
+    "2D 列表": "2D list",
+    "拖动空白处平移 · 滚轮缩放": "Drag empty space to pan · Scroll to zoom",
+    "复位视角": "Reset view",
+    "缩小": "Zoom out",
+    "放大": "Zoom in",
+    "蜂巢流程 3D 场景": "Hive workflow 3D scene",
     // —— 短片段（拼接用）——
     "检查中…": "Checking…",
     "浏览器": "Browser",

@@ -344,6 +344,52 @@ html[data-skin="hermes"][data-theme="light"] {
   --uc-ca: #b0763f;
   --uc-out: #3d8f5f;
 }
+/* 简白（Codex 式极简）：日间=纯白画布 + 浅灰分区 + 发丝分隔 + 克制蓝，素面无装饰；
+ * 夜间=近黑画布 + 深灰分区同构。装饰性渐变/网格在下方统一压掉（与 contrast 同款规则）。 */
+html[data-skin="paper"] {
+  --bg: #0f0f0e;
+  --sidebar: #161615;
+  --panel: #1d1d1c;
+  --panel2: #272726;
+  --border: rgba(255, 255, 255, .10);
+  --border-strong: rgba(255, 255, 255, .22);
+  --text: #ecebe8;
+  --muted: #9a998f;
+  --accent: #6ea8fe;
+  --accent2: #94c1ff;
+  --ok: #3fbf8a;
+  --warn: #e2b34a;
+  --bad: #ef6a6a;
+  --chip-queued-bg: #272726;
+  --log-bg: #0b0b0a;
+  --log-text: #c9c8c2;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  --uc-in: #6ea8fe;
+  --uc-ca: #2fc6b1;
+  --uc-out: #e2b34a;
+}
+html[data-skin="paper"][data-theme="light"] {
+  --bg: #ffffff;
+  --sidebar: #f7f7f5;
+  --panel: #ffffff;
+  --panel2: #f5f5f3;
+  --border: #e8e8e4;
+  --border-strong: #d7d7d2;
+  --text: #21201e;
+  --muted: #87867f;
+  --accent: #2563eb;
+  --accent2: #1d4ed8;
+  --ok: #1a7f37;
+  --warn: #9a6700;
+  --bad: #cf222e;
+  --chip-queued-bg: #f5f5f3;
+  --log-bg: #f6f7f8;
+  --log-text: #3c3f43;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .06);
+  --uc-in: #2563eb;
+  --uc-ca: #0d9488;
+  --uc-out: #d97706;
+}
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
@@ -3142,7 +3188,10 @@ body {
     var(--bg);
   background-attachment: fixed;
 }
-html[data-skin="contrast"] body { background-image: none; }
+html[data-skin="contrast"] body,
+html[data-skin="paper"] body { background-image: none; }
+/* 简白连角落的网格纹理一起收掉：纯白画布上任何底纹都是脏 */
+html[data-skin="paper"] body::before { content: none; }
 
 /* 2) 品牌字标：主色字 + 底部发丝分隔线（仍是纯文字品牌，无任何图片） */
 .brand-name { color: var(--accent); letter-spacing: .02em; }
@@ -7106,3 +7155,124 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 }
 .qr-card img { display: block; width: 132px; height: auto; border-radius: 6px; }
 .qr-card .hint { margin: 4px 0 2px; color: var(--muted); max-width: 140px; }
+
+/* 蜂巢流程场景：阶段平台布置在透视空间里，页面操作仍保持原生 DOM。 */
+#rd-hive .sec-title { margin-bottom: 10px; }
+.hive-scene-tools {
+  display: flex; align-items: center; gap: 7px; min-height: 38px; margin-bottom: 8px;
+  color: var(--muted); font-size: 11px;
+}
+.hive-view-switch { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); }
+.hive-view-btn, .hive-scene-btn {
+  min-height: 28px; padding: 4px 10px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--muted); font: inherit; cursor: pointer;
+  transition: color .16s ease, background .16s ease, border-color .16s ease;
+}
+.hive-view-btn:hover, .hive-scene-btn:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.hive-view-btn.active { border-color: color-mix(in srgb, var(--accent) 32%, var(--border)); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); }
+.hive-scene-hint { margin-left: 8px; }
+.hive-scene-spacer { flex: 1; }
+.hive-scene-btn { min-width: 31px; padding-inline: 8px; border-color: var(--border); background: var(--panel); font-size: 13px; }
+.hive-scene-reset { padding-inline: 10px; font-size: 11px; }
+.hive-viewport {
+  position: relative; min-height: 420px; max-height: min(72vh, 820px); overflow: auto;
+  perspective: 1500px; perspective-origin: 50% 12%; transform-style: preserve-3d;
+  overscroll-behavior: contain; border: 1px solid color-mix(in srgb, var(--accent) 15%, var(--border));
+  border-radius: 16px; background:
+    radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 56%),
+    linear-gradient(145deg, color-mix(in srgb, var(--panel) 96%, var(--accent)), var(--panel) 70%);
+  box-shadow: inset 0 1px color-mix(in srgb, white 7%, transparent), 0 16px 34px color-mix(in srgb, #000 12%, transparent);
+  scrollbar-color: color-mix(in srgb, var(--accent) 32%, var(--border)) transparent;
+}
+.hive-viewport::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .2;
+  background-image: radial-gradient(color-mix(in srgb, var(--accent) 45%, transparent) .7px, transparent .7px);
+  background-size: 18px 18px; mask-image: linear-gradient(180deg, #000, transparent 80%);
+}
+.hive-viewport.is-dragging { cursor: grabbing; user-select: none; }
+#rd-hive-cells {
+  --scene-x: 0px; --scene-y: 0px; --scene-zoom: 1;
+  position: relative;
+  isolation: isolate; display: flex; flex-direction: column; gap: 3px;
+  width: min(100%, 1040px); min-height: 100%; margin: 0 auto; padding: 22px 24px 28px;
+  transform: translate3d(var(--scene-x), var(--scene-y), 0) rotateX(18deg) rotateZ(-1deg) scale(var(--scene-zoom));
+  transform-origin: 50% 12%; transform-style: preserve-3d; cursor: grab;
+  transition: transform .14s ease-out; will-change: transform;
+}
+.hive-viewport.is-dragging #rd-hive-cells { transition: none; }
+#rd-hive-cells .hive-lane {
+  transform: translateZ(var(--lane-z, 0px));
+  transform-style: preserve-3d;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+  border-radius: 13px;
+  padding: 11px 14px 12px;
+  background: linear-gradient(115deg,
+    color-mix(in srgb, var(--accent) 4%, var(--panel)),
+    color-mix(in srgb, var(--panel) 96%, transparent) 44%, var(--panel));
+  box-shadow: 0 5px 0 color-mix(in srgb, var(--border-strong) 48%, transparent),
+    0 10px 20px color-mix(in srgb, #000 10%, transparent),
+    inset 0 1px color-mix(in srgb, white 7%, transparent);
+  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+}
+#rd-hive-cells .hive-lane:nth-child(4n + 1) { --lane-z: 16px; }
+#rd-hive-cells .hive-lane:nth-child(4n + 3) { --lane-z: 8px; }
+#rd-hive-cells .hive-lane.lane-active {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  box-shadow: 0 6px 0 color-mix(in srgb, var(--accent) 22%, var(--border-strong)),
+    0 15px 28px color-mix(in srgb, var(--accent) 13%, #000),
+    inset 0 1px color-mix(in srgb, white 10%, transparent);
+}
+#rd-hive-cells .lane-flow {
+  transform: translateZ(6px);
+  filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--accent) 24%, transparent));
+}
+#rd-hive-cells .lane-cells { gap: 8px 10px; }
+#rd-hive-cells .hive-cell {
+  position: relative;
+  min-height: 82px;
+  padding: 11px 12px 9px 15px;
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+  border-radius: 9px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--panel) 96%, var(--accent)), var(--panel) 78%);
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--border-strong) 40%, transparent),
+    0 7px 13px color-mix(in srgb, #000 12%, transparent),
+    inset 0 1px color-mix(in srgb, white 6%, transparent);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease;
+}
+#rd-hive-cells .hive-cell::before {
+  top: 0; bottom: 0; left: 0; right: auto; width: 3px; height: auto;
+  border-radius: 9px 0 0 9px;
+}
+#rd-hive-cells .hive-cell:hover,
+#rd-hive-cells .hive-cell:focus-visible {
+  transform: translateY(-3px) translateZ(8px);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 8%, var(--panel)), var(--panel) 78%);
+  box-shadow: 0 5px 0 color-mix(in srgb, var(--accent) 25%, var(--border-strong)),
+    0 13px 20px color-mix(in srgb, var(--accent) 12%, #000);
+}
+#rd-hive-cells .hive-cell.st-running {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 9%, var(--panel)), var(--panel) 78%);
+}
+.hive-viewport.hive-2d { min-height: 0; max-height: none; overflow: visible; perspective: none; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+#rd-hive-cells.hive-2d {
+  width: 100%; padding: 0; transform: none; cursor: default; gap: 2px;
+}
+#rd-hive-cells.hive-2d .hive-lane,
+#rd-hive-cells.hive-2d .hive-lane:nth-child(n) { --lane-z: 0px; transform: none; }
+#rd-hive-cells.hive-2d .hive-cell:hover,
+#rd-hive-cells.hive-2d .hive-cell:focus-visible { transform: translateY(-1px); }
+.hive-scene-tools.hive-2d .hive-scene-hint { display: none; }
+@media (max-width: 720px) {
+  .hive-scene-tools { flex-wrap: wrap; }
+  .hive-scene-hint { order: 2; width: 100%; margin: 0 0 3px; }
+  .hive-scene-spacer { flex: 1 1 0; }
+  .hive-viewport { min-height: 340px; max-height: 64vh; }
+  #rd-hive-cells { padding: 12px 14px 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #rd-hive-cells { transition: none; }
+  #rd-hive-cells .hive-lane,
+  #rd-hive-cells .hive-cell { transition: none; }
+}
