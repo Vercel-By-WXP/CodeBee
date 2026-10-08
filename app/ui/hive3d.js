@@ -462,7 +462,6 @@ void main() {
     this.progShadow = compile(gl, SHADOW_VS, SHADOW_FS);
     this.uShadow = {
       vp: gl.getUniformLocation(this.progShadow, "u_vp"),
-      strength: gl.getUniformLocation(this.progShadow, "u_strength"),
     };
     this.vaoShadow = gl.createVertexArray();
     gl.bindVertexArray(this.vaoShadow);
@@ -614,7 +613,7 @@ void main() {
     this.dirty = true;
   };
 
-  /* 依办公室尺寸自动取景：推 dist 直到关键采样点全部落在 NDC 0.85 内 */
+  /* 依办公室尺寸自动取景：推 dist 直到关键采样点全部落在 NDC 0.92 内 */
   HiveScene.prototype.fitView = function () {
     const b = this.bounds;
     const cx = (b.x0 + b.x1) / 2;
@@ -628,11 +627,11 @@ void main() {
     const fov = 42 * Math.PI / 180;
     const eyeAt = (d) => {
       const cp = Math.cos(0.66);
-      return [cx + d * cp * Math.sin(yaw), 0.75 + d * Math.sin(0.66), d * cp * Math.cos(yaw)];
+      return [cx + d * cp * Math.sin(yaw), 0.68 + d * Math.sin(0.66), d * cp * Math.cos(yaw)];
     };
     const fits = (d) => {
       const eye = eyeAt(d);
-      const vp = mat4Mul(mat4Persp(fov, aspect, 0.5, 240), mat4LookAt(eye, [cx, 0.75, 0], [0, 1, 0]));
+      const vp = mat4Mul(mat4Persp(fov, aspect, 0.5, 240), mat4LookAt(eye, [cx, 0.68, 0], [0, 1, 0]));
       let worst = 0;
       for (const p of samples) {
         const x = vp[0] * (p[0] - 0) + vp[4] * p[1] + vp[8] * p[2] + vp[12];
@@ -649,7 +648,7 @@ void main() {
     this.cam.dist = this.cam.distG = clamp(d, 5, 90);
     this.cam.pitch = this.cam.pitchG = 0.66;
     this.cam.yaw = this.cam.yawG = 0.42;
-    this.cam.ty = this.cam.tyG = 0.75;
+    this.cam.ty = this.cam.tyG = 0.68;
   };
 
   HiveScene.prototype.resize = function () {
@@ -839,18 +838,20 @@ void main() {
     this.patrol = { x: stX(0), y: 1.9, z: 1.8, rot: 0, scale: 1.3, slump: 0, wing: 30, phase: 4.2,
       rgb: [1.0, 0.79, 0.30], glow: 0.62, born: 0 };
     /* 工位 + 椅子的软阴影 */
+    const DK = [0.03, 0.04, 0.07];
     model.lanes.forEach((lane, li) => {
-      this.shadows.push([stX(li), stZ(li), 1.5, 0.011]);
-      this.shadows.push([stX(li) + 0.05, stZ(li) + 0.62, 0.55, 0.013]);
+      this.shadows.push([stX(li), stZ(li), 1.5, 0.011, DK[0], DK[1], DK[2], 0.28]);
+      this.shadows.push([stX(li) + 0.05, stZ(li) + 0.62, 0.55, 0.013, DK[0], DK[1], DK[2], 0.30]);
     });
     const wbX = stX(n - 1) + 2.6;
     pushF(wbX - 0.42, 0.5, -1.25, 0.6, 0.07, 1.0, 0.07, mix3(T.panel2, T.bg, 0.2), 0, 0, 0);
     pushF(wbX + 0.42, 0.5, -0.95, 0.6, 0.07, 1.0, 0.07, mix3(T.panel2, T.bg, 0.2), 0, 0, 0);
-    pushF(wbX, 1.02, -1.1, 0.6, 1.5, 0.94, 0.07, mix3(T.panel, T.text, 0.55), 0, 0.06, 0);
+    /* 白板 = 真的白板（浅色板面 + 彩色笔迹），高调场景里不再读作黑洞 */
+    pushF(wbX, 1.02, -1.1, 0.6, 1.5, 0.94, 0.07, mix3([1, 1, 1], T.text, 0.10), 0, 0.05, 0);
     pushF(wbX - 0.3, 1.14, -1.045, 0.6, 0.5, 0.035, 0.012, mix3(T.accent, [1, 1, 1], 0.2), 0, 0, 0);
     pushF(wbX + 0.12, 1.02, -1.045, 0.6, 0.34, 0.035, 0.012, mix3(T.ok, [1, 1, 1], 0.2), 0, 0, 0);
     pushF(wbX + 0.4, 0.9, -1.045, 0.6, 0.22, 0.035, 0.012, mix3(T.warn, [1, 1, 1], 0.2), 0, 0, 0);
-    this.shadows.push([wbX, -1.1, 0.9, 0.012]);
+    this.shadows.push([wbX, -1.1, 0.9, 0.012, DK[0], DK[1], DK[2], 0.30]);
     plant(stX(0) - 1.7, 1.1, 1.15);
     plant(stX(n - 1) + 1.6, 1.2, 1.0);
     /* 背景窗墙：三扇亮窗（近白的透光板 + 深色窗棂条；贴地 + 接触阴影，
@@ -860,16 +861,20 @@ void main() {
     const wspan = Math.max(6, wx1 - wx0);
     for (let wi = 0; wi < 3; wi++) {
       const wx = wx0 + wspan * (0.16 + wi * 0.34);
-      /* 窗板自带发光（立面吃不到主光，不发亮就是一块中灰板） */
-      pushF(wx, 0.95, wz, 0, wspan * 0.24, 1.7, 0.08, mix3([1, 1, 1], T.text, 0.10), 0.6, 0.04, 0);
-      pushF(wx, 0.95, wz + 0.055, 0, 0.06, 1.7, 0.03, mix3(T.panel2, T.bg, 0.35), 0, 0, 0);
-      pushF(wx, 1.84, wz + 0.02, 0, wspan * 0.24 + 0.06, 0.07, 0.10, mix3(T.panel2, T.bg, 0.35), 0, 0, 0);
-      this.shadows.push([wx, wz + 0.4, wspan * 0.17, 0.012]);
+      /* 窗板自带发光（立面吃不到主光，不发亮就是一块中灰板）；
+       * 板面朝标准机位偏转——正对 +z 的板在斜机位会侧对镜头坍缩成一条细线 */
+      const wrot = 0.38;
+      pushF(wx, 0.95, wz, wrot, wspan * 0.24, 1.7, 0.08, mix3([1, 1, 1], T.text, 0.10), 0.6, 0.04, 0);
+      pushF(wx, 0.95, wz + 0.055, wrot, 0.06, 1.7, 0.03, mix3(T.panel2, T.bg, 0.35), 0, 0, 0);
+      pushF(wx, 1.84, wz + 0.02, wrot, wspan * 0.24 + 0.06, 0.07, 0.10, mix3(T.panel2, T.bg, 0.35), 0, 0, 0);
+      /* 接触阴影 + 窗前地面光斑（让「光源」在场景里留下存在感） */
+      this.shadows.push([wx, wz + 0.5, wspan * 0.17, 0.012, DK[0], DK[1], DK[2], 0.34]);
+      this.shadows.push([wx, wz + 1.7, wspan * 0.30, 0.008, 1.0, 0.97, 0.88, 0.28]);
     }
     /* 软阴影（贴地径向渐隐圆盘）：桌子/椅子/讲台/绿植 */
-    this.shadows.push([qx, -0.2, 1.25, 0.011]);
-    this.shadows.push([stX(0) - 1.7, 1.1, 0.5, 0.012]);
-    this.shadows.push([stX(n - 1) + 1.6, 1.2, 0.42, 0.012]);
+    this.shadows.push([qx, -0.2, 1.25, 0.011, DK[0], DK[1], DK[2], 0.30]);
+    this.shadows.push([stX(0) - 1.7, 1.1, 0.5, 0.012, DK[0], DK[1], DK[2], 0.28]);
+    this.shadows.push([stX(n - 1) + 1.6, 1.2, 0.42, 0.012, DK[0], DK[1], DK[2], 0.28]);
     this.bounds = { x0: qx - 2.2, x1: wbX + 1.2, zHalf: 3.4 };
     this.furn = furn;
     this.bees = bees;
@@ -995,8 +1000,11 @@ void main() {
       /* 展开态才做横向避让；mini 序号胶囊只有 ~30px 宽，推挤反而会让序号
        * 漂离自家工位（评审实拍：01 漂到墙板缺口） */
       if (!mini) {
-        x = Math.max(x - wpx / 2, lastRight + 8) + wpx / 2;
-        lastRight = x + wpx / 2;
+        const pushed = Math.max(x - wpx / 2, lastRight + 8) + wpx / 2;
+        /* 漂移上限 0.55 倍牌宽：归属感优先于避让，宁可轻微搭边也不让
+         * 徽章飘到隔壁工位头上（评审实拍：05 漂出 250-400px 读成白板的标签） */
+        x = Math.min(pushed, it.p.x + wpx * 0.55);
+        lastRight = Math.max(lastRight, x + wpx / 2);
       }
       it.el.style.transform = "translate(" + x.toFixed(1) + "px," + it.p.y.toFixed(1) + "px) translate(-50%,-100%) scale(" + sc.toFixed(3) + ")";
     });
@@ -1190,13 +1198,14 @@ void main() {
     gl.bindVertexArray(this.vaoGround);
     gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
 
-    /* 软阴影：家具落地感的关键 */
+    /* 软阴影 / 光斑：贴地径向渐隐圆盘，[x, z, 半径, y, r, g, b, alpha] */
     if (this.shadows && this.shadows.length) {
-      const sd = new Float32Array(this.shadows.length * 4);
-      this.shadows.forEach((s, i) => { sd[i * 4] = s[0]; sd[i * 4 + 1] = s[1]; sd[i * 4 + 2] = s[2]; sd[i * 4 + 3] = s[3]; });
+      const sd = new Float32Array(this.shadows.length * 8);
+      this.shadows.forEach((s, i) => {
+        for (let k = 0; k < 8; k++) sd[i * 8 + k] = s[k];
+      });
       gl.useProgram(this.progShadow);
       gl.uniformMatrix4fv(this.uShadow.vp, false, vp);
-      gl.uniform1f(this.uShadow.strength, 0.30);
       gl.bindVertexArray(this.vaoShadow);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.shadowBuf);
       gl.bufferData(gl.ARRAY_BUFFER, sd, gl.DYNAMIC_DRAW);
@@ -1230,10 +1239,10 @@ void main() {
     /* 巡逻蜂：每帧算位置（独立缓冲） */
     const pp = this.patrolPos(time);
     this.patrol.x = pp.x; this.patrol.y = pp.y; this.patrol.z = pp.z; this.patrol.rot = pp.rot;
-    /* 拖尾：隔帧采样，约 0.55s 寿命（60fps 下 26 点） */
+    /* 拖尾：逐帧采样，20 点短彗尾（过长过亮会反客为主，评审终审意见） */
     this._trailN = (this._trailN || 0) + 1;
-    if (!this.reduced && this._trailN % 2 === 0) {
-      this._trail = [{ x: pp.x, y: pp.y, z: pp.z }].concat(this._trail || []).slice(0, 26);
+    if (!this.reduced) {
+      this._trail = [{ x: pp.x, y: pp.y, z: pp.z }].concat(this._trail || []).slice(0, 20);
     }
     if (!this.reduced) {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.patrolBuf);
@@ -1301,8 +1310,8 @@ void main() {
           this.theme.accent[0], this.theme.accent[1], this.theme.accent[2], 0.18, 0.06);
       }
       this._trail.forEach((tp, i2) => {
-        const f = 1 - i2 / 26;
-        pts.push(tp.x, tp.y, tp.z, 1.0, 0.80, 0.32, f * 0.85, 0.09 + f * 0.10);
+        const f = 1 - i2 / 20;
+        pts.push(tp.x, tp.y, tp.z, 1.0, 0.80, 0.32, f * 0.55, 0.08 + f * 0.08);
       });
     }
     if (pts.length) {

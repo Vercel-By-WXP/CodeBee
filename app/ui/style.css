@@ -1279,9 +1279,8 @@ body.inspector-open #inspector { display: flex; }
 /* 手机抽屉遮罩：抽屉展开时盖住内容区，点击关闭抽屉 */
 #drawer-mask { display: none; }
 @media (max-width: 900px) {
-  #app { grid-template-columns: 1fr; }
-  body.side-collapsed #app { grid-template-columns: 1fr; }
-  body.side-collapsed #app { grid-template-columns: 1fr; }
+  /* 保留 42px 导航轨列：纯 1fr 单列会让 .side-rail（grid 首子）独占一行变顶部横条 */
+  #app { grid-template-columns: 42px minmax(0, 1fr); }
   #side-resizer { display: none; }
   #sidebar {
     position: fixed; z-index: 60; top: 0; left: 0; bottom: 0;
@@ -3527,7 +3526,9 @@ button.primary:hover { filter: brightness(.96); }
 
 @media (max-width: 860px) {
   #app { grid-template-columns: 42px minmax(0, 1fr); }
-  #sidebar { position: fixed; z-index: 30; left: 42px; top: 0; bottom: 0; width: 228px; transform: translateX(0); box-shadow: 16px 0 34px rgba(30,40,50,.12); }
+  /* z-index 必须压过 #drawer-mask(55)：低于遮罩时抽屉整层被半透明遮罩盖住，
+   * 抽屉里点什么都是点到遮罩（=关抽屉），主区也同时被盖——手机端「无法操作」实案 */
+  #sidebar { position: fixed; z-index: 60; left: 42px; top: 0; bottom: 0; width: 228px; transform: translateX(0); box-shadow: 16px 0 34px rgba(30,40,50,.12); }
   body.side-collapsed #app { grid-template-columns: 42px minmax(0, 1fr); }
   body.side-collapsed #sidebar { transform: translateX(-110%); opacity: 0; }
   main { padding: 20px 16px 58px; }
@@ -6645,7 +6646,8 @@ button.primary { background:var(--accent); box-shadow:0 3px 10px color-mix(in sr
 button.primary:hover { filter:brightness(.96); }
 @media (max-width:860px) {
   #app, body.side-collapsed #app { grid-template-columns:42px minmax(0,1fr); }
-  #sidebar { position:fixed; z-index:30; left:42px; top:0; bottom:0; width:228px; transform:translateX(0); box-shadow:16px 0 34px rgba(30,40,50,.12); }
+  /* z-index 必须压过 #drawer-mask(55)：低于遮罩时抽屉整层被盖、手机端无法操作（同 3528 层注释） */
+  #sidebar { position:fixed; z-index:60; left:42px; top:0; bottom:0; width:228px; transform:translateX(0); box-shadow:16px 0 34px rgba(30,40,50,.12); }
   body.side-collapsed #sidebar { transform:translateX(-110%); opacity:0; }
   main { padding:20px 16px 58px; }
   .topbar { padding:9px 14px; }
