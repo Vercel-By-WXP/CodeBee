@@ -7096,3 +7096,13 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
   font-size: 12.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
   max-height: 180px; overflow: auto; color: var(--text);
 }
+
+/* 关于页「交流与支持」二维码卡（追加尾防并行重排）：白底垫卡保证暗色皮肤下
+ * 黑白二维码仍清晰，两卡并排窄屏自动换行。 */
+.qr-row { display: flex; flex-wrap: wrap; gap: 14px; margin: 8px 0 4px; }
+.qr-card {
+  margin: 0; background: #fff; border: 1px solid var(--border); border-radius: 10px;
+  padding: 8px 8px 4px; text-align: center;
+}
+.qr-card img { display: block; width: 132px; height: auto; border-radius: 6px; }
+.qr-card .hint { margin: 4px 0 2px; color: var(--muted); max-width: 140px; }

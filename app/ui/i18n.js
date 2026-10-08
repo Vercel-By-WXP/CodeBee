@@ -2317,6 +2317,15 @@
     "多轮修复未变要停：同一验证失败连续2轮未消除时，停止盲改，切换排查环境、测试夹具、依赖版本或验收命令；记录最小复现。": "Stop when multiple fixes change nothing: when the same verification failure survives two consecutive rounds, stop blind changes and switch to investigating the environment, fixtures, dependency versions or the acceptance command; record a minimal reproduction.",
     "切换前保留失败诊断 / 修复绑定失败证据 / 修复不重复空转": "Keep failure diagnostics before switching / capture bind-failure evidence / no idle repair loops",
 
+    // —— 交流与支持（关于页二维码卡）——
+    "交流与支持": "Community & Support",
+    "GitHub 开源地址": "GitHub repository",
+    "（觉得有用就点个 Star）": " (a Star is much appreciated)",
+    "QQ 交流群（群号 923647047）": "QQ group (ID 923647047)",
+    "微信支付": "WeChat Pay",
+    "支付宝支付": "Alipay",
+    "如果 CodeBee 帮你赚到了稿费、省下了时间，欢迎请作者喝杯咖啡～": "If CodeBee has earned you royalties or saved you time, buying the author a coffee is much appreciated~",
+
     // —— 帮助改进（遥测/诊断包）——
     "帮助改进 CodeBee": "Help Improve CodeBee",
     "发送匿名错误报告（帮助我们发现和修复问题）": "Send anonymous error reports (helps us find and fix issues)",

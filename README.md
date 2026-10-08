@@ -504,6 +504,21 @@ node tests\ui_skin.mjs        :: 皮肤核验（调色板变量对齐 + 换肤/�
 见 [CHANGELOG.md](CHANGELOG.md)。应用内「设置 → 关于与更新」可检查更新、查看
 每次更新的内容并一键升级（npm 安装模式）。
 
+## 交流与支持
+
+- **GitHub**：<https://github.com/Vercel-By-WXP/CodeBee> —— 觉得有用就点个 Star，
+  Issue 和 PR 都欢迎。
+- **QQ 交流群**：扫码加入「Codebee 沟通交流1群」（群号 923647047），使用问题、
+  经验分享都在群里。
+- **请作者喝杯咖啡**：CodeBee 的开发与模型调用成本都靠自掏腰包，如果它帮你赚到
+  了稿费、省下了时间，欢迎打赏支持（微信 / 支付宝都行）～
+
+<div>
+<img src="app/ui/assets/community-qr.png" width="280" align="top" alt="Codebee 沟通交流1群 QQ 群二维码（群号 923647047）">
+<img src="app/ui/assets/donate-qr.jpg" width="280" align="top" alt="微信支付收款码">
+<img src="app/ui/assets/donate-alipay.jpg" width="280" align="top" alt="支付宝收款码（支持信用卡 / 花呗）">
+</div>
+
 ## License
 
 [MIT](LICENSE)
