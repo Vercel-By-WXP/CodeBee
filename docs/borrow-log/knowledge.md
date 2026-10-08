@@ -6716,3 +6716,18 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 - **待深挖队列**：+2 新项（语义缓存收益评估观察项；章末钩子族 4 条经验语义合并
   评估）——共 14 项；交拍板 8 件（原 6 件+帮助章来源枚举对账+TUTTI_* 前缀产品化
   改名）。| 队列 | 2026-10-08
+
+## 2026-10-08 13 时班补充：B6 框架、平台与 SDK
+
+- B6 10 组完成，50 条结果，零限流/错误。`aegra/aegra` 1,246★、Apache-2.0，
+  自托管 LangGraph 替代；其公开 GHSA-q494-8v3j-cp9j（跨用户 Store 读取）和
+  GHSA-m98r-6667-4wq7（线程 IDOR）说明当前不宜接入。来源：
+  https://github.com/aegra/aegra
+- `strands-agents/harness-sdk`（8,737★）与 `google/agents-cli`（6,065★）是完整
+  SDK/CLI 生态，非六源技能包，未安装探测，不接 catalog。来源：
+  https://github.com/strands-agents/harness-sdk 、 https://github.com/google/agents-cli
+- 七专项只读复核：18 流程、14 CLI；近期回归 7/7；JS/Python 语法检查通过。既有
+  `test_novel_signing`、`test_quality_gates` 失败与全量 discover 卡住继续列为阻塞。
+  无产品代码、无版本变更、无发布，关键词策略不变。提交后两次推送均因
+  `github.com:443` 网络连接失败，远端未更新；rebase 后 `python -m unittest discover
+  -s tests` 在 120 秒受控窗口内超时并输出既有失败标记。
