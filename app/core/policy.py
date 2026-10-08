@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Descriptive sandbox policy primitives shared by API and runners."""
+"""Execution policy primitives shared by tools and runners."""
 from __future__ import annotations
 
 import os
@@ -14,6 +14,10 @@ def normalize_sandbox(spec=None, workdir=None):
         try:
             candidate = Path(value).expanduser().resolve()
         except (TypeError, OSError, ValueError):
+            continue
+        # The task payload is not an authority to grant host filesystem access.
+        # Sandbox roots may narrow the selected workspace, never widen it.
+        if candidate != root and root not in candidate.parents:
             continue
         if candidate not in roots:
             roots.append(candidate)
@@ -32,9 +36,31 @@ def normalize_sandbox(spec=None, workdir=None):
         output = max(1024, min(100 * 1024 * 1024, int(spec.get("max_output_bytes") or 10 * 1024 * 1024)))
     except (TypeError, ValueError):
         output = 10 * 1024 * 1024
+    network_value = spec.get("network", True)
+    if isinstance(network_value, bool):
+        network = network_value
+    elif isinstance(network_value, str) and network_value.strip().lower() in ("true", "false"):
+        network = network_value.strip().lower() == "true"
+    else:
+        # Invalid policy input must never silently widen network access.
+        network = False
     return {"allowed_roots": [str(x) for x in roots], "env_allowlist": env,
-            "network": bool(spec.get("network", True)), "timeout_s": timeout,
-            "max_output_bytes": output}
+            "network": network, "timeout_s": timeout,
+            "max_output_bytes": output,
+            "disabled_tools": normalize_disabled_tools(spec.get("disabled_tools"))}
+
+
+def normalize_disabled_tools(items):
+    if not isinstance(items, (list, tuple, set)):
+        return []
+    out = []
+    for value in items:
+        name = str(value or "").strip()[:120]
+        if name and name not in out:
+            out.append(name)
+        if len(out) >= 200:
+            break
+    return out
 
 
 def path_allowed(path, sandbox):

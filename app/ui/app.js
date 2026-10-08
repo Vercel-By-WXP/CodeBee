@@ -4696,11 +4696,126 @@ function renderTaskDetail() {
   setResumeNowBtn(null);   // 退避与否要看 run 数据，先收起防上一个任务残留
   const isTask = ((S.state || {}).tasks || []).some((t2) => t2.id === key);
   if (isTask) {
+    renderProjectMemoryControls(key);
+    renderCheckpointControls(latestSummary.id || "", true);
+    refreshCheckpointRestoreAvailability(latestSummary);
+    if (latestSummary.id && S._checkpointRun !== latestSummary.id) {
+      S._checkpointRun = latestSummary.id;
+      loadRunCheckpoints(latestSummary.id);
+    }
     loadTaskRuns(key, latestSummary);
     return;
   }
   drawTaskDetail(key, ((S.state || {}).runs || []).filter((r) => (r.task_id || r.id) === key));
 }
+
+function renderCheckpointControls(runId, visible) {
+  const box = $("rd-checkpoints");
+  if (!box) return;
+  box.classList.toggle("hidden", !visible || !runId);
+  if (runId && box.dataset.runId !== runId) {
+    box.dataset.runId = runId;
+    box.dataset.hasRestorable = "false";
+    const restore = $("rd-checkpoints-restore");
+    if (restore) restore.classList.add("hidden");
+    box.classList.add("needs-load");
+  }
+}
+
+function refreshCheckpointRestoreAvailability(run) {
+  const box = $("rd-checkpoints");
+  const button = $("rd-checkpoints-restore");
+  if (!box || !button) return;
+  const terminal = !!run && ["done", "failed", "cancelled", "timeout"].includes(run.status);
+  button.classList.toggle("hidden", !terminal || box.dataset.hasRestorable !== "true");
+}
+
+function renderProjectMemoryControls(taskId) {
+  const box = $("rd-project-memory");
+  if (!box) return;
+  const task = ((S.state || {}).tasks || []).find((item) => item.id === taskId);
+  box.classList.toggle("hidden", !task || !task.workdir);
+  if (task && task.workdir && S._projectMemoryTask !== taskId) {
+    S._projectMemoryTask = taskId;
+    loadProjectMemory(taskId);
+  }
+}
+
+window.loadProjectMemory = async function (taskId) {
+  taskId = taskId || S.detailTaskKey || ((S.state || {}).tasks || []).find((item) => item.id === S.lastRunTask?.id)?.id;
+  if (!taskId) return;
+  const requestSeq = S._projectMemorySeq = (S._projectMemorySeq || 0) + 1;
+  const box = $("rd-project-memory-body");
+  if (!box) return;
+  box.textContent = t("正在加载项目记忆…");
+  try {
+    const data = await api("/api/tasks/" + encodeURIComponent(taskId) + "/memory");
+    if (requestSeq !== S._projectMemorySeq) return;
+    if (S.detailTaskKey && S.detailTaskKey !== taskId) return;
+    const entries = data.entries || [];
+    if (!entries.length) { box.innerHTML = '<span class="hint">' + esc(t("暂无项目记忆")) + "</span>"; return; }
+    box.innerHTML = entries.map((entry) => {
+      const canApprove = entry.status === "pending" && !entry.expired && entry.verified;
+      const canRestore = entry.status === "archived" && !entry.expired && entry.verified;
+      const actions = (canApprove ? '<button type="button" class="ghost small" onclick="decideProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'approve\',' + Number(entry.version) + ')">' + esc(t("批准")) + "</button><button type=\"button\" class=\"ghost small\" onclick=\"decideProjectMemory('" + jsq(taskId) + "','" + jsq(entry.id) + "','reject'," + Number(entry.version) + ')\">' + esc(t("拒绝")) + "</button>" : "") +
+        (entry.status === "approved" ? '<button type="button" class="ghost small" onclick="decideProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'archive\',' + Number(entry.version) + ')">' + esc(t("归档")) + "</button>" : "") +
+        (canRestore ? '<button type="button" class="ghost small" onclick="decideProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'restore\',' + Number(entry.version) + ')">' + esc(t("恢复")) + "</button>" : "");
+      return '<article class="rd-memory-row"><div><strong>' + esc(entry.title || t("项目记忆")) + '</strong><span class="chip">' + esc(entry.status || "") + (entry.expired ? " · " + esc(t("已过期")) : "") + '</span></div><pre>' + esc(entry.content || "") + '</pre><div class="rd-memory-actions">' + actions + "</div></article>";
+    }).join("");
+  } catch (error) { box.innerHTML = '<span class="hint">' + esc(t("加载项目记忆失败：")) + esc(error.message) + "</span>"; }
+};
+
+window.decideProjectMemory = async function (taskId, id, action, version) {
+  try {
+    await api("/api/tasks/" + encodeURIComponent(taskId) + "/memory", {
+      method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+      body: JSON.stringify({ id, action, expected_version: version }),
+    });
+    await loadProjectMemory(taskId);
+  } catch (error) { toast(t("项目记忆操作失败：") + error.message, true); }
+};
+
+window.loadRunCheckpoints = async function (requestedRunId) {
+  const runId = requestedRunId || S.detailRunId || ((S.state || {}).task_latest || {})[S.detailTaskKey]?.id;
+  if (!runId) return;
+  const requestSeq = S._checkpointRequestSeq = (S._checkpointRequestSeq || 0) + 1;
+  const body = $("rd-checkpoints-body");
+  const box = $("rd-checkpoints");
+  box.classList.remove("hidden");
+  body.textContent = t("正在读取文件检查点…");
+  try {
+    const data = await api("/api/runs/" + encodeURIComponent(runId) + "/checkpoints");
+    if (requestSeq !== S._checkpointRequestSeq) return;
+    if (S.detailRunId && S.detailRunId !== runId) return;
+    if (S.detailTaskKey) {
+      const current = ((S.state || {}).task_latest || {})[S.detailTaskKey];
+      if (current && current.id !== runId) return;
+    }
+    const files = data.files && data.files.files || [];
+    const restore = $("rd-checkpoints-restore");
+    const latest = S.detailTaskKey && ((S.state || {}).task_latest || {})[S.detailTaskKey];
+    const run = (S.lastRun && S.lastRun.id === runId) ? S.lastRun : latest;
+    box.dataset.hasRestorable = files.some((file) => file.restorable) ? "true" : "false";
+    refreshCheckpointRestoreAvailability(run);
+    body.innerHTML = (data.files && data.files.warning ? '<p class="hint">' + esc(data.files.warning) + "</p>" : "") +
+      (files.length ? files.map((file) => '<article class="rd-checkpoint-row"><strong>' + esc(file.path) + '</strong><span class="chip">' + esc(file.status) + (file.restorable ? " · " + esc(t("可恢复")) : "") + '</span><pre>' + esc(file.diff || "") + "</pre></article>").join("") : '<span class="hint">' + esc(t("此运行没有文件快照")) + "</span>");
+    box.dataset.runId = runId;
+    box.classList.remove("needs-load");
+  } catch (error) { body.innerHTML = '<span class="hint">' + esc(t("检查点读取失败：")) + esc(error.message) + "</span>"; }
+};
+
+window.restoreRunCheckpoints = async function () {
+  const runId = $("rd-checkpoints")?.dataset.runId;
+  if (!runId || !await uiConfirm(t("恢复会覆盖检查点记录的文件，shell、MCP 和外部服务副作用不保证可回滚。确定继续？"), { ok: t("恢复文件"), danger: true })) return;
+  try {
+    const result = await api("/api/runs/" + encodeURIComponent(runId) + "/checkpoints/restore", {
+      method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+      body: JSON.stringify({ confirm: true }),
+    });
+    toast(t("已恢复 ") + (result.restored || 0) + t(" 个文件") + ((result.conflicts || []).length ? "；" + t("冲突 ") + result.conflicts.join(", ") : ""));
+    await loadRunCheckpoints();
+  } catch (error) { toast(t("恢复失败：") + error.message, true); }
+};
 
 function loadTaskRuns(key, latestSummary) {
   const cached = _taskRunsCache.get(key);
@@ -5501,6 +5616,18 @@ async function renderRunDetail() {
   $("btn-share").classList.toggle("hidden", active);   // 分享页：结束后可生成自包含 HTML
   $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
   const rcTask = ((S.state || {}).tasks || []).find((x) => x.id === run.task_id);
+  if (rcTask) {
+    renderProjectMemoryControls(rcTask.id);
+  } else {
+    const memoryBox = $("rd-project-memory");
+    if (memoryBox) memoryBox.classList.add("hidden");
+  }
+  renderCheckpointControls(run.id, !!rcTask);
+  refreshCheckpointRestoreAvailability(run);
+  if (rcTask && S._checkpointRun !== run.id) {
+    S._checkpointRun = run.id;
+    loadRunCheckpoints(run.id);
+  }
   // 签名守卫（模型页/检查器同款）：数据没变不重绘。详情区是全页最重的
   // 渲染面，此前 SSE 推送+轮询每 8s 无差别整块重写，是「页面一闪一闪、
   // 发布表单填一半被清空」的总根源（2026-09-30 用户实案）。运行中 ETA
@@ -8463,6 +8590,15 @@ function hiveSceneSync(run, lanes, byStage) {
     const settled = list.filter((s) => !["running", "queued"].includes(s.status)).length;
     model.lanes.push({
       name: stage, count: list.length, settled, active: hasRun,
+      /* 工位悬停气泡（阶段级）：进度 + 最近落定步骤 */
+      tip:
+        '<b class="hg-tip-role">' + esc(stage) + "</b>" +
+        '<i class="hg-tip-who">' + esc(settled + " / " + list.length) +
+        (hasRun ? " · " + esc(t("进行中")) : "") + "</i>" +
+        '<p class="hg-tip-tail">' +
+        esc(list.filter((s) => !["running", "queued"].includes(s.status)).slice(-1).map((s) => s.role || "").join("")) +
+        "</p>" +
+        '<u class="hg-tip-meta">' + esc(t("点击工位看该阶段最新日志")) + "</u>",
       cells: list.slice(-8).map((s) => {
         const st = s.status === "queued" ? "queued"
           : s.status === "running" ? "running"

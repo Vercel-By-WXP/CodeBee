@@ -260,6 +260,10 @@ class TestSummarizeWiring(WxDigestBase):
         self.assertIn("接线群", calls["prompt"])          # 群名进提示词
         self.assertIn("今天上线新版本", calls["prompt"])   # 消息正文进提示词
         self.assertEqual("test-model", calls["bi"]["model"])
+        self.assertFalse(calls["kw"]["sandbox"]["network"])
+        self.assertEqual(calls["kw"]["sandbox"]["allowed_roots"], [calls["workdir"]])
+        self.assertIn("run_command", calls["kw"]["sandbox"]["disabled_tools"])
+        self.assertIn("write_file", calls["kw"]["sandbox"]["disabled_tools"])
         d = self.wx.view()["digests"][0]
         self.assertIn("测试摘要", d["text"])
         self.assertEqual("test-model", d["model"])       # 模型名落台账

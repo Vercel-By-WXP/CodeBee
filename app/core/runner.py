@@ -1370,17 +1370,18 @@ def _attempt_protocol(att):
 
 
 def _codex_sandbox(readonly):
-    """codex 沙箱档位。写步默认 danger-full-access（2026-09-17 用户拍板「默认给全部
-    权限」）：workspace-write 禁网+禁盘外写，模型偶发还会误判沙箱受限、谎报
-    「进程执行被策略拦截」直接躺平（mo-so BUG#27596 实测，沙箱探针证明命令本可跑）。
-    只读步（评审/规划）仍 read-only——评审者可写会污染 git diff 裁决。
-    env TUTTI_CODEX_SANDBOX 可钉死某档（workspace-write / read-only / danger-full-access）。"""
+    """Return the narrowest supported Codex sandbox mode.
+
+    A full-access override defeats task-level filesystem policy and checkpoints;
+    ignore the former ``danger-full-access`` value even if it remains in the
+    user's environment. Read-only review steps must not be able to mutate files.
+    """
     if readonly:
         return "read-only"
     env = os.environ.get("TUTTI_CODEX_SANDBOX", "").strip().lower()
-    if env in ("workspace-write", "read-only", "danger-full-access"):
+    if env in ("workspace-write", "read-only"):
         return env
-    return "danger-full-access"
+    return "workspace-write"
 
 
 def _prompt_to_file(prompt, workdir):

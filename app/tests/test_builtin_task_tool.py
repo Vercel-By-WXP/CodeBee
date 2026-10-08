@@ -29,6 +29,25 @@ class BuiltinTaskToolTests(unittest.TestCase):
         self.assertEqual(seen["serial"], {"chapters": "10", "words_per_chapter": "2200"})
         self.assertEqual(seen["story_bible"], "主角从底层觉醒，第一卷围绕失踪案展开。")
 
+    def test_child_task_receives_only_explicit_context_and_inherited_policy(self):
+        seen = {}
+        sandbox = {"allowed_roots": [r"C:\\workspace"], "network": False,
+                   "disabled_tools": ["write_file", "mcp__demo__danger"]}
+
+        def create(payload):
+            seen.update(payload)
+            return {"task_id": "t-isolated", "run_id": "r-isolated"}
+
+        result = builtin_agent._tool_create_task(
+            r"C:\\workspace", {"type": "code", "goal": "只做独立任务",
+                                 "context": "显式传入的背景"},
+            task_creator=create, sandbox=sandbox)
+
+        self.assertIn("t-isolated", result)
+        self.assertEqual(seen["context"], "显式传入的背景")
+        self.assertEqual(seen["sandbox"], sandbox)
+        self.assertNotIn("parent_messages", seen)
+
     def test_create_task_requires_creator(self):
         result = builtin_agent._tool_create_task(
             r"C:\\workspace", {"type": "serial_novel", "goal": "写小说"})

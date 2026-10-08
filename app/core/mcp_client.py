@@ -17,15 +17,20 @@ name 用于工具名前缀（mcp__<name>__<tool>），必须 [a-z0-9_-]。
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
+import shutil
 import subprocess
+import sys
 import threading
 import time
+from pathlib import Path
 
 _LOCK = threading.RLock()
 _TOOLS_CACHE = {}          # server_key → (ts, tools)
 _TOOLS_TTL = 300.0
+_TOOLS_CONFIG_SHA = ""
 
 MAX_SERVERS = 4
 MAX_MCP_TOOLS = 24         # 全部服务器合计注入内置智能体的工具数上限
@@ -39,8 +44,10 @@ _CLIENT_INFO = {"name": "CodeBee", "version": "1.0"}
 
 def invalidate_tools_cache():
     """服务器配置变化后丢弃已发现工具（插件启停等场景调用）。"""
+    global _TOOLS_CONFIG_SHA
     with _LOCK:
         _TOOLS_CACHE.clear()
+        _TOOLS_CONFIG_SHA = ""
 
 
 def parse_servers(text):
@@ -70,15 +77,69 @@ def parse_servers(text):
         args = [str(a) for a in args][:16]
         env = item.get("env") if isinstance(item.get("env"), dict) else {}
         env = {str(k): str(v) for k, v in list(env.items())[:16]}
-        out.append({"name": name, "command": command, "args": args, "env": env})
+        disabled = item.get("disabled_tools")
+        if not isinstance(disabled, list):
+            disabled = []
+        disabled = list(dict.fromkeys(str(x).strip()[:120] for x in disabled
+                                      if str(x or "").strip()))[:200]
+        out.append({"name": name, "command": command, "args": args, "env": env,
+                    "disabled_tools": disabled})
     return out, None
+
+
+def _sandbox_launch(server, sandbox, workdir):
+    """Build an OS-isolated stdio server launch or refuse to spawn it.
+
+    MCP tools are arbitrary configured programs. On Linux they run under
+    bubblewrap with only declared roots mounted; platforms without an equivalent
+    backend fail closed. Runtime variables are synthetic/minimal unless explicitly
+    included in the task env allowlist.
+    """
+    from . import policy
+    if not sandbox or not workdir:
+        raise RuntimeError("MCP 调用缺少任务沙箱策略或工作目录，拒绝启动")
+    if os.name != "posix" or sys.platform == "darwin" or not shutil.which("bwrap"):
+        raise RuntimeError("MCP 服务尚无可用的 OS 隔离后端，拒绝启动")
+    root = Path(workdir).expanduser().resolve(strict=True)
+    normalized = policy.normalize_sandbox(sandbox, root)
+    roots = [Path(value).resolve(strict=True)
+             for value in normalized.get("allowed_roots") or []]
+    if not roots:
+        raise RuntimeError("MCP 沙箱没有允许目录，拒绝启动")
+    cwd = root if policy.path_allowed(root, normalized) else roots[0]
+    argv = ["bwrap", "--die-with-parent", "--new-session", "--tmpfs", "/"]
+    for system_path in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"):
+        if os.path.exists(system_path):
+            argv.extend(["--dir", system_path, "--ro-bind", system_path, system_path])
+    argv.extend(["--dir", "/proc", "--dir", "/dev", "--proc", "/proc",
+                 "--dev", "/dev", "--tmpfs", "/tmp"])
+    if normalized.get("network") is False:
+        argv.append("--unshare-net")
+    for allowed_root in roots:
+        for parent in reversed(allowed_root.parents):
+            if str(parent) != "/":
+                argv.extend(["--dir", str(parent)])
+        argv.extend(["--dir", str(allowed_root), "--bind",
+                     str(allowed_root), str(allowed_root)])
+    argv.extend(["--chdir", str(cwd), "--", server["command"]]
+                + list(server.get("args") or []))
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+           "HOME": "/tmp", "TMPDIR": "/tmp"}
+    for name in normalized.get("env_allowlist") or []:
+        if name in os.environ:
+            env[name] = os.environ[name]
+        elif name in (server.get("env") or {}):
+            env[name] = str(server["env"][name])
+    return argv, env, str(cwd)
 
 
 class _Session:
     """一次性的 MCP 服务器会话：spawn → initialize → （list/call）→ 杀树。"""
 
-    def __init__(self, server):
+    def __init__(self, server, sandbox=None, workdir=None):
         self.server = server
+        self.sandbox = sandbox
+        self.workdir = workdir
         self.proc = None
         self.lines = None       # reader 线程产出的行队列
         self.err = None
@@ -101,21 +162,27 @@ class _Session:
 
     def __enter__(self):
         try:
+            argv, env, cwd = _sandbox_launch(self.server, self.sandbox, self.workdir)
             self.proc = subprocess.Popen(
-                [self.server["command"]] + list(self.server.get("args") or []),
+                argv,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=False,
-                env={**os.environ, **(self.server.get("env") or {})})
+                env=env, cwd=cwd)
         except Exception as e:
             raise RuntimeError("MCP 服务器启动失败: %s" % e)
         import queue as _queue
         self.lines = _queue.Queue()
         threading.Thread(target=self._pump_out, daemon=True).start()
         threading.Thread(target=self._pump_err, daemon=True).start()
-        self._request("initialize", {
-            "protocolVersion": "2024-11-05", "capabilities": {},
-            "clientInfo": _CLIENT_INFO}, timeout=_INIT_TIMEOUT)
-        self._notify("notifications/initialized")
+        try:
+            self._request("initialize", {
+                "protocolVersion": "2024-11-05", "capabilities": {},
+                "clientInfo": _CLIENT_INFO}, timeout=_INIT_TIMEOUT)
+            self._notify("notifications/initialized")
+        except Exception:
+            # Context manager __exit__ is not called when __enter__ raises.
+            self.__exit__(None, None, None)
+            raise
         return self
 
     def __exit__(self, *exc):
@@ -174,10 +241,10 @@ class _Session:
             return msg.get("result") or {}
 
 
-def list_tools(server):
+def list_tools(server, *, sandbox=None, workdir=None):
     """发现服务器工具。返回 {"ok", "tools":[{"name","description","input_schema"}], "error"}。"""
     try:
-        with _Session(server) as sess:
+        with _Session(server, sandbox=sandbox, workdir=workdir) as sess:
             res = sess._request("tools/list", {}, timeout=_INIT_TIMEOUT)
         tools = []
         for t in (res.get("tools") or [])[:16]:
@@ -192,11 +259,12 @@ def list_tools(server):
         return {"ok": False, "tools": [], "error": str(e)[:200]}
 
 
-def call_tool(server, tool_name, arguments, timeout_s=_CALL_TIMEOUT):
+def call_tool(server, tool_name, arguments, timeout_s=_CALL_TIMEOUT,
+              *, sandbox=None, workdir=None):
     """调用一个工具。返回 {"ok", "text", "error", "is_error"}。"""
     try:
         timeout = min(_CALL_TIMEOUT_MAX, max(5.0, float(timeout_s or _CALL_TIMEOUT)))
-        with _Session(server) as sess:
+        with _Session(server, sandbox=sandbox, workdir=workdir) as sess:
             res = sess._request("tools/call",
                                 {"name": tool_name,
                                  "arguments": arguments if isinstance(arguments, dict) else {}},
@@ -216,46 +284,62 @@ def call_tool(server, tool_name, arguments, timeout_s=_CALL_TIMEOUT):
 
 # ---- 面向 builtin_agent 的合并视图（带缓存） ----
 
-def tool_specs_cached(force=False):
+def tool_specs_cached(force=False, *, sandbox=None, workdir=None):
     """全部服务器的工具合并清单：[{server, name(原名), full_name, description,
     input_schema}]。TTL 内走缓存；单个服务器失败跳过（error 挂在条目外不打断）。"""
+    global _TOOLS_CONFIG_SHA
+    if not sandbox or not workdir:
+        return []
+    config_text = _settings_text()
+    config_sha = hashlib.sha256(config_text.encode("utf-8")).hexdigest()
+    scope_sha = hashlib.sha256(json.dumps({
+        "workdir": os.path.realpath(workdir), "sandbox": sandbox,
+    }, sort_keys=True, default=str).encode("utf-8")).hexdigest()
     with _LOCK:
+        if config_sha != _TOOLS_CONFIG_SHA:
+            _TOOLS_CACHE.clear()
+            _TOOLS_CONFIG_SHA = config_sha
         if not force:
             hit = True
-            for key, (ts, _t) in _TOOLS_CACHE.items():
+            scoped = [(key, value) for key, value in _TOOLS_CACHE.items()
+                      if isinstance(key, tuple) and key[0] == scope_sha]
+            for key, (ts, _t) in scoped:
                 if time.time() - ts > _TOOLS_TTL:
                     hit = False
                     break
-            if hit and _TOOLS_CACHE:
+            if hit and scoped:
                 out = []
-                for _key, (_ts, tools) in _TOOLS_CACHE.items():
+                for _key, (_ts, tools) in scoped:
                     out.extend(tools)
                 return out[:MAX_MCP_TOOLS]
-    servers, err = parse_servers(_settings_text())
+    servers, err = parse_servers(config_text)
     if err or not servers:
         return []
     out = []
     with _LOCK:
         _TOOLS_CACHE.clear()
     for srv in servers:
-        res = list_tools(srv)
+        res = list_tools(srv, sandbox=sandbox, workdir=workdir)
         if not res.get("ok"):
             continue
         specs = []
         for t in res["tools"]:
+            if t["name"] in srv.get("disabled_tools", []):
+                continue
             specs.append({"server": srv["name"], "name": t["name"],
                           "full_name": "mcp__%s__%s" % (srv["name"], t["name"]),
                           "description": t["description"],
                           "input_schema": t["input_schema"]})
         with _LOCK:
-            _TOOLS_CACHE[srv["name"]] = (time.time(), specs)
+            _TOOLS_CACHE[(scope_sha, srv["name"])] = (time.time(), specs)
         out.extend(specs)
         if len(out) >= MAX_MCP_TOOLS:
             break
     return out[:MAX_MCP_TOOLS]
 
 
-def dispatch_full_name(full_name, arguments, timeout_s=_CALL_TIMEOUT):
+def dispatch_full_name(full_name, arguments, timeout_s=_CALL_TIMEOUT, *,
+                       sandbox=None, workdir=None, disabled_tools=None):
     """mcp__<server>__<tool> → 找服务器配置并调用。返回 {"ok","text","error"}。"""
     m = re.match(r"^mcp__([a-z0-9_-]{1,24})__(.+)$", str(full_name or ""))
     if not m:
@@ -267,7 +351,14 @@ def dispatch_full_name(full_name, arguments, timeout_s=_CALL_TIMEOUT):
     srv = next((s for s in servers if s["name"] == sname), None)
     if not srv:
         return {"ok": False, "text": "", "error": "MCP 服务器 %s 未配置" % sname}
-    return call_tool(srv, tool, arguments, timeout_s=timeout_s)
+    if tool in (srv.get("disabled_tools") or []):
+        return {"ok": False, "text": "", "error": "MCP 工具已禁用: %s" % full_name}
+    if full_name in set(str(x) for x in (disabled_tools or [])):
+        return {"ok": False, "text": "", "error": "任务策略已禁用 MCP 工具: %s" % full_name}
+    if sandbox is None or not workdir:
+        return {"ok": False, "text": "", "error": "MCP 调用缺少任务沙箱策略或工作目录，拒绝启动"}
+    return call_tool(srv, tool, arguments, timeout_s=timeout_s,
+                     sandbox=sandbox, workdir=workdir)
 
 
 _SETTINGS_TEXT = None     # main.py 启动注入（读 settings.mcp_servers）——本模块

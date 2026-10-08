@@ -358,7 +358,14 @@ def _summarize(cfg, group, window, watch):
         m["ts"], m["sender"] or "?", m["text"].replace("\n", " ")) for m in window)
     prompt = _PROMPT % (group, len(window), body)
     # 工作目录用专用空目录而非监控文件夹：见 _scratch_dir 的说明
-    r = builtin_agent.run(bi, prompt, workdir=str(_scratch_dir()), timeout=240)
+    scratch = str(_scratch_dir())
+    from . import builtin_agent as _builtin_agent
+    disabled_tools = [str(tool.get("name") or "") for tool in _builtin_agent.TOOLS_SPEC]
+    disabled_tools.extend(["create_task", "read_tool_output"])
+    r = builtin_agent.run(
+        bi, prompt, workdir=scratch, timeout=240,
+        sandbox={"allowed_roots": [scratch], "network": False,
+                 "disabled_tools": disabled_tools})
     if not r.get("ok"):
         raise RuntimeError(r.get("error") or "模型调用失败")
     text = (r.get("text") or "").strip()

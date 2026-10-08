@@ -19,7 +19,9 @@ import json
 import mimetypes
 import os
 import re
+import secrets
 import shutil
+import sys
 import threading
 import time
 import urllib.parse
@@ -48,6 +50,8 @@ CMD_DEFAULT_TIMEOUT = 600    # run_command 默认超时（与 CLI 停滞看门�
 CMD_MAX_TIMEOUT = 1800       # 上限：模型传 timeout_sec 超过即钳到这
 CMD_OUT_HEAD = 24 * 1024     # 回灌给模型的输出：头 24K + 尾 8K（报错常在尾部）
 CMD_OUT_TAIL = 8 * 1024
+TOOL_HISTORY_KEEP_ROUNDS = 4
+TOOL_HISTORY_OLD_RESULT_CHARS = 1200
 
 _SYSTEM_PROMPT = """你是 CodeBee 的内置执行智能体，直接完成用户交代的任务。用户的目标、背景与工作目录内的附件就是全部输入。
 
@@ -56,6 +60,7 @@ _SYSTEM_PROMPT = """你是 CodeBee 的内置执行智能体，直接完成用户
 - 改文件的优先级：小改动用 edit_file（精确查找替换，不必整份重写）＞追加用 append_file＞整份重建才用 write_file。删除/移动/重命名/复制用 fs_manage，不要绕 shell。
 - 大文件（超 64KB）默认只读头尾、中段省略；要看全用 read_file 的 offset/lines 分段读（返回头会提示下一段的 offset）。找内容用 search_content（带行号的 grep），找文件用 find_files，不要逐个文件读。
 - read_file 只能读文本文件；图片、压缩包等二进制文件读不了，如实告知用户即可，不要反复尝试。
+- 较早工具结果若提示已卸载并给出 ref，使用 read_tool_output 按需读取（可传 offset 分段）；不要假设压缩标记就是完整结果。
 - 用户消息中的图片附件会直接出现在对话里，可直接看图作答，无需用工具读取。
 - run_command 直接在用户的电脑上执行命令并回传退出码与输出：诊断、修复、改配置、重启服务等操作会真实生效。命令跑完看输出再决定下一步，不要一次性罗列步骤让用户自己敲。
 - 当工具列表中提供 create_task 时，如果用户明确要求开始另一项 CodeBee 工作（例如“新建连载小说任务”“再开一个代码任务”），调用它发起独立任务；不要只在当前回答里描述应该怎么做。先从用户话里提取任务类型和目标，缺少关键目标时再追问。
@@ -388,7 +393,7 @@ def _tool_write_file(workdir, args):
     return "已写入 %s（%d 字符，UTF-8）" % (rel, len(content))
 
 
-def _tool_run_command(workdir, args, cancel_event=None, deadline=None):
+def _tool_run_command(workdir, args, cancel_event=None, deadline=None, sandbox=None):
     """本机执行一条 shell 命令，返回 (退出码, 合并输出)。
 
     薄适配层：执行/杀树/取消/解码全部复用 runner.run_process（shell_cmd 分支
@@ -403,12 +408,59 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None):
         timeout = int(float(args.get("timeout_sec") or CMD_DEFAULT_TIMEOUT))
     except (TypeError, ValueError):
         timeout = CMD_DEFAULT_TIMEOUT
-    r = runner.run_process(shell_cmd=cmdline, cwd=os.path.abspath(workdir or "."),
+    from . import policy
+    sandbox = sandbox or policy.normalize_sandbox({}, workdir)
+    cwd = os.path.abspath(workdir or ".")
+    if not policy.path_allowed(cwd, sandbox):
+        return "（沙箱拒绝：工作目录不在允许范围内，命令未执行）"
+    timeout = min(timeout, int(sandbox.get("timeout_s") or CMD_MAX_TIMEOUT))
+    # This process runner has no OS-level network/filesystem namespace. Do not
+    # imply network isolation when policy requests it; fail closed instead.
+    if sandbox.get("network") is False:
+        if os.name != "posix" or not shutil.which("bwrap"):
+            return "（沙箱拒绝：当前系统没有可用的网络隔离后端，命令未执行）"
+    # Enforce the declared filesystem boundary at the process boundary too.
+    # bubblewrap is the supported Linux backend. Windows/macOS without an
+    # equivalent backend fail closed rather than pretending cwd is a sandbox.
+    if os.name == "posix" and shutil.which("bwrap"):
+        argv = ["bwrap", "--die-with-parent", "--new-session", "--tmpfs", "/"]
+        # Mount only the runtime needed by ordinary commands. Do not expose the
+        # entire host root read-only: read access can still leak user secrets.
+        for system_path in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"):
+            if os.path.exists(system_path):
+                argv.extend(["--dir", system_path, "--ro-bind", system_path, system_path])
+        for volatile_path in ("/proc", "/dev"):
+            argv.extend(["--dir", volatile_path])
+        argv.extend(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"])
+        if sandbox.get("network") is False:
+            argv.append("--unshare-net")
+        for allowed_root in sandbox.get("allowed_roots") or []:
+            root_path = str(Path(allowed_root).resolve())
+            parents = list(reversed(Path(root_path).parents))
+            for parent in parents:
+                if str(parent) != "/":
+                    argv.extend(["--dir", str(parent)])
+            argv.extend(["--dir", root_path])
+            argv.extend(["--bind", root_path, root_path])
+        argv.extend(["--chdir", cwd, "--", "/bin/sh", "-lc", cmdline])
+    elif os.name == "posix" and sys.platform == "darwin":
+        return "（沙箱拒绝：当前 macOS 执行器尚未接入文件系统隔离后端，命令未执行）"
+    elif os.name != "posix":
+        return "（沙箱拒绝：当前 Windows 执行器尚未接入文件系统隔离后端，命令未执行）"
+    else:
+        return "（沙箱拒绝：未安装 bubblewrap 隔离后端，命令未执行）"
+    env_policy = dict(sandbox)
+    env_policy["env_allowlist"] = list(dict.fromkeys(
+        list(sandbox.get("env_allowlist") or [])
+        + ["PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "COMSPEC", "HOME", "USERPROFILE"]))
+    r = runner.run_process(argv=argv, cwd=cwd,
+                           env=policy.filter_env(os.environ, env_policy),
                            timeout=max(5, min(timeout, CMD_MAX_TIMEOUT)),
                            deadline=deadline, cancel_event=cancel_event)
     out = runner.clean_cli_text(
         (r.get("stdout") or "") + (("\n" + r["stderr"]) if r.get("stderr") else ""))
-    limit = CMD_OUT_HEAD + CMD_OUT_TAIL
+    limit = min(CMD_OUT_HEAD + CMD_OUT_TAIL,
+                max(1024, int(sandbox.get("max_output_bytes") or CMD_OUT_HEAD + CMD_OUT_TAIL)))
     if not out.strip():
         body = "（无输出）"
     elif len(out) <= limit:
@@ -426,7 +478,8 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None):
         note = ""
     prefix = ("（%s）\n" % note) if note else ""
     code = r.get("exit_code")
-    return "%s退出码: %s\n%s" % (prefix, "未知" if code is None else code, body)
+    return ("%s退出码: %s\n%s\n（注意：shell 命令副作用不纳入文件检查点，"
+            "不能保证可回滚）") % (prefix, "未知" if code is None else code, body)
 
 
 # ---------------------------------------------------------------- P0 基础件扩展
@@ -676,6 +729,10 @@ TOOLS_SPEC = [
               "?max_results": "可选，命中行数上限（默认 50，最大 200）"}},
     {"name": "find_files", "description": "按文件名通配查找文件（如 *.py、data/*.json、report*.md）；pattern 不含 / 时匹配任意深度的文件名",
      "args": {"pattern": "文件名通配模式"}},
+    {"name": "read_tool_output", "description": "按 ref 重新读取本次运行中卸载到本机的较早工具输出；大结果可用 offset 分段读取",
+     "args": {"ref": "压缩提示提供的工具结果引用",
+              "?offset": "可选，字节偏移，默认 0",
+              "?limit": "可选，返回字符数，最大 20000"}},
     {"name": "write_file", "description": "把文本内容写入工作目录内一个文件（UTF-8，整份覆盖，父目录自动创建；只改一小段请用 edit_file）",
      "args": {"path": "文件相对路径", "content": "完整文本内容"}},
     {"name": "run_command",
@@ -710,7 +767,7 @@ CREATE_TASK_SPEC = {
 }
 
 
-def _tool_create_task(workdir, args, task_creator=None):
+def _tool_create_task(workdir, args, task_creator=None, sandbox=None):
     """Create a separate task through the caller-owned task boundary."""
     if task_creator is None:
         return "（当前对话不支持发起新任务）"
@@ -720,13 +777,20 @@ def _tool_create_task(workdir, args, task_creator=None):
         return "（type 不能为空；可用类型请使用 serial_novel、novel、code、doc 等）"
     if not goal:
         return "（goal 不能为空）"
+    requested_workdir = str(args.get("workdir") or workdir or "").strip()
+    if sandbox and requested_workdir:
+        from . import policy
+        if not policy.path_allowed(requested_workdir, sandbox):
+            return "（沙箱拒绝：子任务工作目录超出允许范围，未创建）"
     payload = {
         "type": task_type,
         "goal": goal,
         "title": str(args.get("title") or "").strip(),
-        "workdir": str(args.get("workdir") or workdir or "").strip(),
+        "workdir": requested_workdir,
         "context": str(args.get("context") or "").strip(),
     }
+    if isinstance(sandbox, dict):
+        payload["sandbox"] = dict(sandbox)
     if task_type == "serial_novel":
         serial = {}
         for key in ("chapters", "words_per_chapter", "start_chapter", "variants", "branches"):
@@ -746,14 +810,55 @@ def _tool_create_task(workdir, args, task_creator=None):
         result["task_id"], result.get("run_id") or "", task_type)
 
 
-def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creator=None):
+def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creator=None,
+               disabled_tools=None, sandbox=None, checkpoint_run_id="",
+               tool_output_run_id=""):
+    from . import policy
+    denied = set(policy.normalize_disabled_tools(disabled_tools))
+    if sandbox is None:
+        sandbox = policy.normalize_sandbox({}, workdir)
+    denied.update(sandbox.get("disabled_tools") or [])
+    if name in denied:
+        return "（工具已禁用，拒绝执行: %s）" % str(name or "")[:120]
+    # All built-in file tools are constrained to the task's allowed roots, not
+    # merely hidden from the model. Shell/MCP effects are handled separately.
+    if name in {"list_files", "read_file", "write_file", "edit_file", "append_file",
+                "fs_manage", "search_content", "find_files"}:
+        for key in ("path", "dest"):
+            value = (args or {}).get(key)
+            if not value:
+                continue
+            candidate = Path(str(value)).expanduser()
+            if not candidate.is_absolute():
+                candidate = Path(workdir or ".") / candidate
+            if not policy.path_allowed(candidate, sandbox):
+                return "（沙箱拒绝：%s 超出允许工作目录，未执行）" % key
     if name == "create_task":
-        return _tool_create_task(workdir, args or {}, task_creator=task_creator)
+        return _tool_create_task(workdir, args or {}, task_creator=task_creator,
+                                 sandbox=sandbox)
+    if name == "read_tool_output":
+        from . import tool_outputs
+        result = tool_outputs.read(tool_output_run_id, (args or {}).get("ref"),
+                                   offset=(args or {}).get("offset", 0),
+                                   limit=(args or {}).get("limit", 20000))
+        if not result.get("ok"):
+            return "（%s）" % result.get("error", "工具结果不可用")
+        text = result.get("text") or ""
+        if result.get("next_offset") is not None:
+            text += "\n…[后续内容可继续 read_tool_output，offset=%s]…" % result["next_offset"]
+        return text
     if str(name or "").startswith("mcp__"):
+        # An MCP server is an independently configured host process. Until its
+        # process launcher can apply the task's network namespace, do not let a
+        # network-disabled task bypass that boundary through MCP.
+        if sandbox.get("network") is False:
+            return "（沙箱拒绝：MCP 服务尚未接入网络隔离，工具未执行）"
         # MCP 工具：透传给配置的服务器（stdio JSON-RPC）；超时给足但封顶
         try:
             from . import mcp_client
-            r = mcp_client.dispatch_full_name(name, args or {})
+            r = mcp_client.dispatch_full_name(
+                name, args or {}, sandbox=sandbox, workdir=workdir,
+                disabled_tools=denied)
             return r.get("text") or ("（MCP 工具失败: %s）" % r.get("error") if not r.get("ok") else "")
         except Exception as e:
             return "MCP 工具执行失败: %s" % e
@@ -761,9 +866,50 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
     if fn is None:
         return "（未知工具: %s）" % name
     try:
+        snapshot_paths = []
+        if checkpoint_run_id and name in {"write_file", "edit_file", "append_file", "fs_manage"}:
+            action = str((args or {}).get("action") or "").lower()
+            src_value = (args or {}).get("path")
+            src = Path(str(src_value)).expanduser() if src_value else None
+            if src is not None and not src.is_absolute():
+                src = Path(workdir or ".") / src
+            if src is not None:
+                if name == "fs_manage" and src.is_dir() and not src.is_symlink():
+                    return "（检查点拒绝：目录级操作尚不支持完整快照，未执行；请明确改为逐文件操作）"
+                snapshot_paths.append(src)
+            if action in ("move", "rename", "copy") and (args or {}).get("dest"):
+                dest = Path(str(args["dest"])).expanduser()
+                if not dest.is_absolute():
+                    dest = Path(workdir or ".") / dest
+                snapshot_paths.append(dest)
+            # Keep first-touch order while avoiding duplicate writes.
+            snapshot_paths = list(dict.fromkeys(snapshot_paths))
+            try:
+                from . import checkpoints
+                for path in snapshot_paths:
+                    saved = checkpoints.capture_file(checkpoint_run_id, workdir, path)
+                    if not saved.get("ok"):
+                        return "（检查点拒绝：无法安全保存 %s 的原始版本（%s），未执行文件操作）" % (
+                            path.name, saved.get("reason") or "unknown")
+            except Exception:
+                return "（检查点拒绝：文件原始版本保存失败，未执行文件操作）"
         if name == "run_command":
-            return fn(workdir, args or {}, cancel_event=cancel_event, deadline=deadline)
-        return fn(workdir, args or {})
+            result = fn(workdir, args or {}, cancel_event=cancel_event,
+                        deadline=deadline, sandbox=sandbox)
+        else:
+            result = fn(workdir, args or {})
+        if snapshot_paths:
+            checkpoint_warning = ""
+            try:
+                from . import checkpoints
+                for path in snapshot_paths:
+                    if not checkpoints.mark_file_after(checkpoint_run_id, workdir, path):
+                        checkpoint_warning = "（检查点警告：操作后状态未能记账，此文件可能无法自动恢复）"
+            except Exception:
+                checkpoint_warning = "（检查点警告：操作后状态未能记账，此文件可能无法自动恢复）"
+            if checkpoint_warning:
+                result += "\n" + checkpoint_warning
+        return result
     except Exception as e:
         return "工具执行失败: %s" % (e)
 
@@ -781,24 +927,29 @@ def _split_tool_args(t):
     return props, required
 
 
-def _mcp_specs():
+def _mcp_specs(sandbox=None, workdir=None):
     """MCP 工具清单（带缓存）；取不到/未配置返回空表——增强不挡主流程。"""
     try:
         from . import mcp_client
-        return mcp_client.tool_specs_cached()
+        return mcp_client.tool_specs_cached(sandbox=sandbox, workdir=workdir)
     except Exception:
         return []
 
 
-def _openai_tools(extra_specs=None):
+def _openai_tools(extra_specs=None, disabled_tools=None, sandbox=None, workdir=None):
+    disabled = set(disabled_tools or [])
     out = []
     for t in list(TOOLS_SPEC) + list(extra_specs or []):
+        if t["name"] in disabled:
+            continue
         props, required = _split_tool_args(t)
         out.append({"type": "function", "function": {
             "name": t["name"], "description": t["description"],
             "parameters": {"type": "object", "properties": props,
                            "required": required}}})
-    for m in _mcp_specs():
+    for m in _mcp_specs(sandbox=sandbox, workdir=workdir):
+        if m["full_name"] in disabled:
+            continue
         # MCP 工具自带 JSON Schema（透传，不套字符串化的 _split_tool_args）
         out.append({"type": "function", "function": {
             "name": m["full_name"],
@@ -807,14 +958,19 @@ def _openai_tools(extra_specs=None):
     return out
 
 
-def _anthropic_tools(extra_specs=None):
+def _anthropic_tools(extra_specs=None, disabled_tools=None, sandbox=None, workdir=None):
+    disabled = set(disabled_tools or [])
     out = []
     for t in list(TOOLS_SPEC) + list(extra_specs or []):
+        if t["name"] in disabled:
+            continue
         props, required = _split_tool_args(t)
         out.append({"name": t["name"], "description": t["description"],
                     "input_schema": {"type": "object", "properties": props,
                                      "required": required}})
-    for m in _mcp_specs():
+    for m in _mcp_specs(sandbox=sandbox, workdir=workdir):
+        if m["full_name"] in disabled:
+            continue
         out.append({"name": m["full_name"],
                     "description": (m["description"] + "（MCP 工具，来自服务器 %s）" % m["server"]).strip(),
                     "input_schema": m["input_schema"]})
@@ -1204,8 +1360,38 @@ def _m_anthropic(m):
     return {"role": "user", "content": [{"type": "text", "text": m.get("content") or ""}]}
 
 
+def _compact_old_tool_results(messages, keep_rounds=TOOL_HISTORY_KEEP_ROUNDS,
+                              old_result_chars=TOOL_HISTORY_OLD_RESULT_CHARS,
+                              run_id=""):
+    """Bound old tool output while preserving recent call/result pairs."""
+    result_indexes = [i for i, msg in enumerate(messages)
+                      if msg.get("role") == "tool_results"]
+    for idx in result_indexes[:-max(1, int(keep_rounds))]:
+        msg = messages[idx]
+        compacted = []
+        for call_id, value in msg.get("tool_results") or []:
+            value = str(value or "")
+            if len(value) > old_result_chars:
+                head = old_result_chars * 2 // 3
+                tail = old_result_chars - head
+                try:
+                    from . import tool_outputs
+                    ref = tool_outputs.save(run_id, call_id, value) if run_id else ""
+                except Exception:
+                    ref = ""
+                if ref:
+                    marker = ("\n…[较早结果已卸载到本机；需查看全文请调用 read_tool_output，"
+                              "ref=%s ]…\n" % ref)
+                else:
+                    marker = "\n…[较早工具结果已压缩；需要时请重新读取对应文件/调用工具]…\n"
+                value = value[:head] + marker + value[-tail:]
+            compacted.append((call_id, value))
+        msg["tool_results"] = compacted
+
+
 def _build_request(proto, base, use_key, model, system, msgs, with_tools, stream=False,
-                   max_tokens=BASE_MAX_TOKENS, extra_specs=None):
+                   max_tokens=BASE_MAX_TOKENS, extra_specs=None, disabled_tools=None,
+                   sandbox=None, workdir=None):
     """按协议构造 (url, headers, body)。msgs 为内部统一形状。
 
     stream=True 时按协议打开流式：google 换 :streamGenerateContent?alt=sse，
@@ -1240,7 +1426,8 @@ def _build_request(proto, base, use_key, model, system, msgs, with_tools, stream
         body = {"model": model, "max_tokens": max_tokens, "system": system,
                 "messages": [_m_anthropic(m) for m in msgs]}
         if with_tools:
-            body["tools"] = _anthropic_tools(extra_specs)
+            body["tools"] = _anthropic_tools(extra_specs, disabled_tools,
+                                              sandbox=sandbox, workdir=workdir)
         if stream:
             body["stream"] = True
         return url, headers, body
@@ -1256,7 +1443,8 @@ def _build_request(proto, base, use_key, model, system, msgs, with_tools, stream
     body = {"model": model, "max_tokens": max_tokens,
             "messages": [{"role": "system", "content": system}] + msgs_wire}
     if with_tools:
-        body["tools"] = _openai_tools(extra_specs)
+        body["tools"] = _openai_tools(extra_specs, disabled_tools,
+                                      sandbox=sandbox, workdir=workdir)
     if stream:
         body["stream"] = True
         body["stream_options"] = {"include_usage": True}
@@ -1327,7 +1515,7 @@ def _norm_usage(usage):
 
 def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=None,
         on_reason=None, on_stream=None, on_activity=None, stream=True, deadline=None,
-        task_creator=None):
+        task_creator=None, sandbox=None, checkpoint_run_id=""):
     """跑一次内置智能体（内部自带工具循环直到给出最终回答）。
 
     bi: resolve() 的返回；prompt: 本轮完整输入（目标/续轮块由 pipeline 拼）；
@@ -1343,6 +1531,9 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
     自动回落非流式，思考字段仍从响应体兜底抽取（on_reason 补发一次）。"""
     prov = bi["prov"]
     model = bi["model"]
+    from . import policy
+    sandbox = policy.normalize_sandbox(sandbox, workdir)
+    disabled_tools = sandbox.get("disabled_tools") or []
     allow_private = bool(prov.get("allow_private"))
     system = _SYSTEM_PROMPT + "\n\n## 工作目录\n%s" % os.path.abspath(workdir or ".")
     imgs = _prep_images(images, log) if images else []
@@ -1358,6 +1549,7 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
     candidates = list(modelhub._protocol_candidates(prov))
     tools_ok = all(proto != "google" for proto, _ in candidates)   # google wire 无工具协议
     total_usage = {"input": 0, "cached": 0, "output": 0, "total": 0}
+    tool_output_run_id = checkpoint_run_id or secrets.token_hex(16)
     text = ""
     iters = 0
     last_err = ""
@@ -1459,14 +1651,18 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         url, headers, body = _build_request(
                             proto, pbase, kk["key"], model, system, msgs,
                             allow_tools, max_tokens=max_tokens,
-                            extra_specs=[CREATE_TASK_SPEC] if task_creator else None)
+                            extra_specs=[CREATE_TASK_SPEC] if task_creator else None,
+                            disabled_tools=disabled_tools, sandbox=sandbox,
+                            workdir=workdir)
                         sbody = None
                         if stream:
                             # 流式体单独构造（+stream / include_usage）；非流式体留给回落重发
                             _, _, sbody = _build_request(
                                 proto, pbase, kk["key"], model, system, msgs,
                                 allow_tools, stream=True, max_tokens=max_tokens,
-                                extra_specs=[CREATE_TASK_SPEC] if task_creator else None)
+                                extra_specs=[CREATE_TASK_SPEC] if task_creator else None,
+                                disabled_tools=disabled_tools, sandbox=sandbox,
+                                workdir=workdir)
                         effort = str(bi.get("reasoning_effort") or "").strip().lower()
                         # reasoning_effort 是 OpenAI wire 字段；Anthropic thinking 使用
                         # 另一套对象结构，向兼容网关硬塞该字段会直接得到 400。
@@ -1588,7 +1784,10 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         results = []
                         for c in calls:
                             out = _exec_tool(workdir, c["name"], c["args"], cancel_event,
-                                             deadline=deadline, task_creator=task_creator)
+                                             deadline=deadline, task_creator=task_creator,
+                                             disabled_tools=disabled_tools, sandbox=sandbox,
+                                             checkpoint_run_id=checkpoint_run_id,
+                                             tool_output_run_id=tool_output_run_id)
                             # 运行期注入警示层：外部内容（网页/命令输出/文件）一律
                             # 包围栏进上下文；检测命中升级强围栏（prompt_guard）。
                             try:
@@ -1605,6 +1804,7 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                             results.append((c["id"], out))
                         msgs.append({"role": "assistant", "content": text, "tool_calls": calls})
                         msgs.append({"role": "tool_results", "tool_results": results})
+                        _compact_old_tool_results(msgs, run_id=tool_output_run_id)
                         empty_streak = 0
                         last_action_was_tools = True
                         done = True

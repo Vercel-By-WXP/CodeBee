@@ -348,6 +348,16 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/knowledge":
                 from core import knowledge
                 return self._json(200, knowledge.view())
+            m = re.match(r"^/api/tasks/([^/]+)/memory$", path)
+            if m:
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "not found"})
+                from core import project_memory
+                try:
+                    return self._json(200, {"entries": project_memory.list_entries(task.get("workdir"))})
+                except (OSError, ValueError) as exc:
+                    return self._json(409, {"error": str(exc)})
             if path == "/api/agents/presence":
                 from core import presence
                 return self._json(200, {"agents": presence.list_agents()})
@@ -599,7 +609,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not store.get_run(m.group(1)):
                     return self._json(404, {"error": "not found"})
                 from core import checkpoints
-                return self._json(200, {"checkpoint": checkpoints.replay_preview(m.group(1))})
+                run = store.get_run(m.group(1)) or {}
+                task = store.get_task(run.get("task_id")) or {}
+                return self._json(200, {
+                    "checkpoint": checkpoints.replay_preview(m.group(1)),
+                    "files": checkpoints.snapshot_preview(m.group(1), task.get("workdir") or "")})
             m = re.match(r"^/api/runs/([^/]+)/preview$", path)
             if m:
                 # 网页成品预览：入口 HTML + 同目录代码文件（前端渲染「预览」页签）
@@ -893,6 +907,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": ok, "output": out})
         if path == "/api/tasks/clarify":
             return self._api_task_clarify()
+        m = re.match(r"^/api/tasks/([^/]+)/memory$", path)
+        if m:
+            task = store.get_task(m.group(1))
+            if not task:
+                return self._json(404, {"error": "not found"})
+            body = self._body() or {}
+            from core import project_memory
+            try:
+                row = project_memory.decide(task.get("workdir"), body.get("id"),
+                                            body.get("action"),
+                                            expected_version=body.get("expected_version"))
+                return self._json(200, {"entry": row})
+            except KeyError as exc:
+                return self._json(404, {"error": str(exc)})
+            except (OSError, TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
         if path == "/api/agents/presence":
             from core import presence
             body = self._body() or {}
@@ -1254,6 +1284,21 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/(tasks|runs)/([^/]+)/reveal$", path)
         if m:
             return self._api_reveal(m.group(1), m.group(2))
+        m = re.match(r"^/api/runs/([^/]+)/checkpoints/restore$", path)
+        if m:
+            if not bool((self._body() or {}).get("confirm")):
+                return self._json(400, {"error": "文件恢复会覆盖检查点记录的文件，请确认 confirm=true 后重试"})
+            run = store.get_run(m.group(1))
+            if not run:
+                return self._json(404, {"error": "not found"})
+            if run.get("status") not in ("done", "failed", "cancelled", "timeout"):
+                return self._json(409, {"error": "任务仍在运行或排队；请先停止并等待终态后再恢复文件"})
+            task = store.get_task(run.get("task_id")) or {}
+            if not task.get("workdir"):
+                return self._json(409, {"error": "任务工作目录不可用，拒绝恢复"})
+            from core import checkpoints
+            return self._json(200, checkpoints.restore_files(
+                m.group(1), task.get("workdir") or ""))
         m = re.match(r"^/api/runs/([^/]+)/messages$", path)
         if m:
             return self._api_add_message(m.group(1))
@@ -3064,8 +3109,16 @@ class Handler(BaseHTTPRequestHandler):
                   '[{"q": "问题", "options": ["选项1", "选项2"]}]' % (ttype, goal[:200]))
         try:
             # 澄清是可选增强，不能占住创建请求；主流程有自己的执行超时。
+            # 此调用只负责生成问题，不得继承完整执行工具权限或访问网络。
+            from core import policy
+            clarify_sandbox = policy.normalize_sandbox({
+                "network": False,
+                "disabled_tools": ["run_command", "write_file", "edit_file",
+                                   "append_file", "fs_manage", "create_task",
+                                   "read_tool_output"],
+            }, os.getcwd() if hasattr(os, "getcwd") else ".")
             res = builtin_agent.run(bi, prompt, os.getcwd() if hasattr(os, "getcwd") else ".",
-                                    timeout=8)
+                                    timeout=8, sandbox=clarify_sandbox)
             import json as _json
             arr = None
             text = (res.get("text") or "").strip()

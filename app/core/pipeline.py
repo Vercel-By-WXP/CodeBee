@@ -451,6 +451,30 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     except Exception:
         pass
     start = time.time()
+    # Third-party CLI backends have their own sandbox semantics, but do not
+    # consume CodeBee's per-task policy. Fail closed for narrowed policies
+    # instead of treating a prompt or workdir as an OS-level boundary.
+    sandbox_error = ""
+    try:
+        run_row = store.get_run(run_id) or {}
+        task_row = store.get_task(run_row.get("task_id")) if run_row.get("task_id") else {}
+        if agent.get("mode") != "mock":
+            if not task_row:
+                sandbox_error = "无法读取任务沙箱策略，外部智能体执行已拒绝"
+            else:
+                from . import policy
+                sandbox_error = _external_sandbox_block_reason(
+                    agent, workdir, task_row.get("sandbox") or {})
+    except Exception:
+        # A missing task record is not permission to synthesize a wider policy.
+        sandbox_error = "无法读取任务沙箱策略，外部智能体执行已拒绝"
+    if sandbox_error:
+        res = {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+               "tokens": 0, "usage": None, "error": sandbox_error,
+               "raw": {"exit_code": None, "sandbox_blocked": True},
+               "kind": agent.get("kind", "generic"), "model": agent.get("model")}
+        _finish_step_result(run_id, step, res, role, agent, start)
+        return res
     if dead_binding:
         from .error_codes import ErrorCode
         res = {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
@@ -492,11 +516,47 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
         if directive_block:
             prompt = directive_block + "\n\n---\n\n" + prompt
         effective_prompt = (guard["reminder"] + "\n\n---\n\n" + prompt) if guard["reminder"] else prompt
+        git_checkpoint = None
+        try:
+            git_checkpoint = checkpoints.begin_git_step(run_id, workdir)
+        except Exception:
+            git_checkpoint = {"ok": False, "error": "文件检查点准备失败，外部智能体未启动"}
+        if not git_checkpoint.get("ok"):
+            res = {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+                   "tokens": 0, "usage": None,
+                   "error": git_checkpoint.get("error") or "文件检查点准备失败",
+                   "raw": {"exit_code": None, "checkpoint_blocked": True},
+                   "kind": agent.get("kind", "generic"), "model": agent.get("model")}
+            _finish_step_result(run_id, step, res, role, agent, start)
+            return res
         res = _spawn_step(session_run_id=run_id, role=role, agent=agent,
                           prompt=effective_prompt, workdir=workdir, readonly=readonly,
                           ev=ev, timeout=timeout, resume=resume, step=step,
                           log_abs=log_abs, images=images, require_tools=require_tools,
                           deadline=deadline)
+        checkpoint_warning = git_checkpoint.get("warning", "")
+        if git_checkpoint.get("supported"):
+            try:
+                finished_checkpoint = checkpoints.finish_git_step(
+                    run_id, workdir, git_checkpoint.get("head"),
+                    git_checkpoint.get("before_paths") or [])
+                checkpoint_warning = finished_checkpoint.get("warning") or ""
+                if not finished_checkpoint.get("ok"):
+                    checkpoint_warning = finished_checkpoint.get("warning") or "外部智能体文件快照未能完整记录"
+            except Exception:
+                checkpoint_warning = "外部智能体文件快照记录失败；本步骤改动可能无法恢复"
+        if checkpoint_warning:
+            res["checkpoint_warning"] = checkpoint_warning
+            if res.get("ok"):
+                res["text"] = (res.get("text") or "") + "\n\n（检查点范围提示：%s）" % checkpoint_warning
+            elif res.get("error"):
+                res["error"] = res["error"] + "；" + checkpoint_warning
+            if log_abs:
+                try:
+                    with log_abs.open("a", encoding="utf-8") as handle:
+                        handle.write("\n[检查点] %s\n" % checkpoint_warning)
+                except OSError:
+                    pass
     # 先收尾再查取消：取消时进程已被 run_process 杀停，若先抛 Cancelled，
     # 步骤记录会永远停在「运行中」变僵尸（与 _run_verify 的顺序对齐）
     _finish_step_result(run_id, step, res, role, agent, start)
@@ -506,6 +566,32 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
         raise TaskTimeout()
     _check_cancel(ev)
     return res
+
+
+def _external_sandbox_block_reason(agent, workdir, sandbox):
+    """Reject task policies that this CLI launcher cannot enforce.
+
+    Codex is currently the only supported external runner with an OS-backed
+    workspace write sandbox. Other CLI integrations have no equivalent boundary
+    in this launcher and must use the in-process agent/tool executor instead.
+    """
+    if (agent or {}).get("mode") == "mock":
+        return ""
+    from . import policy
+    if (agent or {}).get("kind") != "codex":
+        return "沙箱拒绝：该外部 CLI 没有经验证的 OS 文件隔离；请改用内置 Agent"
+    root = os.path.realpath(workdir or ".")
+    normalized = policy.normalize_sandbox(sandbox, root)
+    roots = [os.path.realpath(x) for x in normalized.get("allowed_roots") or []]
+    if normalized.get("network") is False:
+        return "沙箱拒绝：该 CLI 后端未接入网络隔离，拒绝运行网络受限任务"
+    if roots != [root]:
+        return "沙箱拒绝：该 CLI 后端未接入允许目录隔离，拒绝运行目录受限任务"
+    if normalized.get("disabled_tools"):
+        return "权限拒绝：该 CLI 后端无法执行 CodeBee 工具禁用策略，拒绝运行"
+    if normalized.get("env_allowlist"):
+        return "沙箱拒绝：该 CLI 后端未接入环境变量白名单，拒绝运行受限任务"
+    return ""
 
 
 def _create_task_from_builtin(payload):
@@ -587,7 +673,8 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
                             deadline=deadline, cancel_event=ev, log=_log, images=images,
                             on_reason=_on_reason, on_stream=_on_stream,
                             on_activity=_on_activity,
-                            task_creator=_create_task_from_builtin)
+                            task_creator=_create_task_from_builtin,
+                            sandbox=task.get("sandbox"), checkpoint_run_id=run_id)
     if followups and res.get("ok"):
         clean, fups = _parse_followups(res.get("text") or "")
         if fups:
@@ -1916,7 +2003,7 @@ def _run_code(run, task, agents, ev, stats, mode):
         _mem_lines = ["改动文件：%s" % (_touched_str or "（无 diff）"),
                       "验收：%s" % ("通过" if verify_pass else "未通过"),
                       "修复轮数：%d" % (len(repairs) - 1)]
-        _write_project_memory(task, workdir, _mem_lines)
+        _write_project_memory(task, workdir, _mem_lines, source_run=run_id)
     except Exception:
         pass
     # Stop gate（planning-with-files）：收工时活计划若有未勾选项，摘要与 verdict
@@ -5244,41 +5331,26 @@ def _read_constitution(workdir):
             "与其他要求冲突时以宪章为准）\n\n" + txt + "\n\n")
 
 
-def _write_project_memory(task, workdir, lines):
-    """项目记忆持久化（借鉴 agentmemory）：代码任务成功后把架构事实追加到
-    .codebee/project-memory.md——同目录后续 code 任务规划前自动注入，
-    让编排者「知道这个代码库的脾气」而非每次从零摸索。失败静默。"""
+def _write_project_memory(task, workdir, lines, source_run=""):
+    """Persist proposed project facts; they are not injected before approval."""
     if not lines:
         return ""
     try:
-        pm = os.path.join(workdir, ".codebee", "project-memory.md")
-        os.makedirs(os.path.dirname(pm), exist_ok=True)
-        header_needed = not os.path.isfile(pm)
-        with open(pm, "a", encoding="utf-8") as f:
-            if header_needed:
-                f.write("# 项目记忆（每次代码任务完成后自动追加，供后续任务参考）\n\n")
-            f.write("### %s · %s\n" % (task.get("title") or "", _now()))
-            for ln in lines:
-                f.write("- %s\n" % str(ln)[:300])
-            f.write("\n")
-        return pm
+        from . import project_memory
+        row = project_memory.propose(workdir, source_run=source_run,
+                                     title=task.get("title") or "", facts=lines)
+        return str(project_memory._file(workdir)) if row else ""
     except Exception:
         return ""
 
 
 def _read_project_memory(workdir, cap=4000):
-    """读取项目记忆供规划提示词注入。超出上限截断到最新条目。"""
-    p = os.path.join(workdir or "", ".codebee", "project-memory.md")
-    if not _inside(workdir, p) or not os.path.isfile(p):
-        return ""
+    """Only inject approved, unexpired and fingerprint-verified memory."""
     try:
-        txt = _read_text_any_enc(p)[:cap].strip()
-    except OSError:
+        from . import project_memory
+        return project_memory.active_text(workdir, cap=cap)
+    except (OSError, ValueError, TypeError):
         return ""
-    if not txt:
-        return ""
-    return ("## 项目记忆（此前代码任务在此工作目录留下的架构事实，"
-            "规划时优先参考）\n\n" + txt + "\n\n")
 
 
 def _write_task_spec(task, workdir):

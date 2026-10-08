@@ -672,14 +672,16 @@
                   <button type="button" class="hive-view-btn active" data-hive-view="3d" aria-pressed="true" data-i18n="3D 场景">3D 场景</button>
                   <button type="button" class="hive-view-btn" data-hive-view="2d" aria-pressed="false" data-i18n="2D 列表">2D 列表</button>
                 </div>
-                <span class="hive-scene-hint" data-i18n="拖动空白处平移 · 滚轮缩放">拖动空白处平移 · 滚轮缩放</span>
+                <span class="hive-scene-hint" data-i18n="拖动旋转 · 滚轮缩放 · 右键升降">拖动旋转 · 滚轮缩放 · 右键升降</span>
                 <span class="hive-scene-spacer"></span>
                 <button type="button" class="hive-scene-btn" data-hive-scene-action="zoom-out" aria-label="缩小" title="缩小">−</button>
                 <button type="button" class="hive-scene-btn" data-hive-scene-action="zoom-in" aria-label="放大" title="放大">+</button>
                 <button type="button" class="hive-scene-btn hive-scene-reset" data-hive-scene-action="reset" data-i18n="复位视角">复位视角</button>
               </div>
-              <div id="rd-hive-viewport" class="hive-viewport" data-i18n-aria="蜂巢流程 3D 场景" aria-label="蜂巢流程 3D 场景">
-                <div id="rd-hive-cells" class="hive-cells hive-3d"></div>
+              <div id="rd-hive-viewport" class="hive-viewport hive-mode-3d" data-i18n-aria="蜂巢流程 3D 场景" aria-label="蜂巢流程 3D 场景">
+                <canvas id="rd-hive-gl" class="hive-gl" aria-hidden="true"></canvas>
+                <div id="rd-hive-overlay" class="hive-gl-overlay" aria-hidden="true"></div>
+                <div id="rd-hive-cells" class="hive-cells"></div>
               </div>
             </div>
             <!-- 运行中指挥信箱：renderDirector 只认活跃 run，渲染时摘掉 hidden；
@@ -700,6 +702,21 @@
             </div>
           </div>
           <div id="rd-pane-steps" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-steps" data-pane="steps">
+            <section id="rd-checkpoints" class="rd-checkpoints hidden" aria-live="polite">
+              <div class="rd-checkpoints-head">
+                <strong data-i18n="文件检查点">文件检查点</strong>
+                <button id="rd-checkpoints-load" type="button" class="ghost small" onclick="loadRunCheckpoints()" data-i18n="查看检查点">查看检查点</button>
+                <button id="rd-checkpoints-restore" type="button" class="danger small hidden" onclick="restoreRunCheckpoints()" data-i18n="恢复文件">恢复文件</button>
+              </div>
+              <div id="rd-checkpoints-body" class="hint"></div>
+            </section>
+            <section id="rd-project-memory" class="rd-project-memory hidden" aria-live="polite">
+              <div class="rd-checkpoints-head">
+                <strong data-i18n="项目记忆治理">项目记忆治理</strong>
+                <button id="rd-project-memory-refresh" type="button" class="ghost small" onclick="loadProjectMemory()" data-i18n="刷新记忆">刷新记忆</button>
+              </div>
+              <div id="rd-project-memory-body" class="hint"></div>
+            </section>
             <div id="rd-plan" class="hidden"></div>
             <div id="rd-routing" class="rd-routing hidden"></div>
             <div id="rd-chapters" class="rd-chapters hidden"></div>
@@ -1645,6 +1662,7 @@
 <script src="qrcode.js"></script>
 <script src="i18n.js"></script>
 <script src="artdiff.js"></script>
+<script src="hive3d.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

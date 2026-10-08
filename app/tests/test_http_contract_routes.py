@@ -88,6 +88,20 @@ class HttpContractRouteTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("工作目录", payload["error"])
 
+    def test_task_clarification_disables_execution_tools(self):
+        h = self.handler("/api/tasks/clarify", {"goal": "短目标"})
+        with patch("core.builtin_agent.resolve", return_value={"model": "test"}), \
+             patch("core.builtin_agent.run", return_value={"text": "[]"}) as run:
+            status, payload = h._api_task_clarify()
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload, {"questions": []})
+        kwargs = run.call_args.kwargs
+        self.assertFalse(kwargs["sandbox"]["network"])
+        self.assertTrue({"run_command", "write_file", "edit_file", "append_file",
+                         "fs_manage", "create_task", "read_tool_output"}.issubset(
+                             set(kwargs["sandbox"]["disabled_tools"])))
+
     def test_auto_submit_schedule_requires_approval(self):
         task = {"id": "t1", "approval_required": True}
         h = self.handler("/api/publish/task/t1/auto-publish", {

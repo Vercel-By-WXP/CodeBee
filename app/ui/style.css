@@ -415,8 +415,6 @@ body.side-collapsed #app { grid-template-columns: 0 1fr; }
   background: var(--sidebar); border-right: 1px solid var(--border);
   padding: 14px 12px 12px; min-width: 0; overflow: hidden;
   transition: opacity .15s;
-}  padding: 14px 12px 12px; min-width: 0; overflow: hidden;
-  transition: opacity .15s;
   position: relative;
 }
 body.side-collapsed #sidebar { border-right: none; padding-left: 0; padding-right: 0; opacity: 0; pointer-events: none; }
@@ -3882,6 +3880,21 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
 #run-detail .rd-pane[data-pane="bookmeta"] #rd-bookmeta {
   padding-top: 4px;
 }
+.rd-checkpoints, .rd-project-memory {
+  margin: 8px 0 14px; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: 12px; background: color-mix(in srgb, var(--panel) 72%, transparent);
+}
+.rd-checkpoints-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.rd-checkpoints-head strong { margin-right: auto; }
+.rd-checkpoint-row, .rd-memory-row { padding: 9px 0; border-top: 1px solid var(--border); }
+.rd-checkpoint-row > strong { margin-right: 8px; overflow-wrap: anywhere; }
+.rd-checkpoint-row pre, .rd-memory-row pre {
+  max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  margin: 8px 0 0; padding: 9px; border-radius: 8px; background: var(--bg);
+  color: var(--text); font: 12px/1.5 ui-monospace, Consolas, monospace;
+}
+.rd-memory-row > div:first-child { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rd-memory-actions { display: flex; gap: 6px; margin-top: 8px; }
 #run-detail .rd-pane[data-pane="git"] #rd-git,
 #run-detail .rd-pane[data-pane="bible"] #rd-bible,
 #run-detail .rd-pane[data-pane="bookmeta"] #rd-bookmeta {
@@ -7156,7 +7169,8 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 .qr-card img { display: block; width: 132px; height: auto; border-radius: 6px; }
 .qr-card .hint { margin: 4px 0 2px; color: var(--muted); max-width: 140px; }
 
-/* 蜂巢流程场景：阶段平台布置在透视空间里，页面操作仍保持原生 DOM。 */
+/* 蜂巢流程场景：真 3D = WebGL 蜂巢塔（引擎 hive3d.js）+ HTML 投影标签；
+ * 「2D 列表」是同一份泳道数据的平面形态。模式类（hive-mode-3d/hive-mode-2d）挂在视口上。 */
 #rd-hive .sec-title { margin-bottom: 10px; }
 .hive-scene-tools {
   display: flex; align-items: center; gap: 7px; min-height: 38px; margin-bottom: 8px;
@@ -7175,106 +7189,97 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 .hive-scene-btn { min-width: 31px; padding-inline: 8px; border-color: var(--border); background: var(--panel); font-size: 13px; }
 .hive-scene-reset { padding-inline: 10px; font-size: 11px; }
 .hive-viewport {
-  position: relative; min-height: 420px; max-height: min(72vh, 820px); overflow: auto;
-  perspective: 1500px; perspective-origin: 50% 12%; transform-style: preserve-3d;
-  overscroll-behavior: contain; border: 1px solid color-mix(in srgb, var(--accent) 15%, var(--border));
+  position: relative; height: clamp(420px, 62vh, 780px); overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 15%, var(--border));
   border-radius: 16px; background:
     radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 56%),
     linear-gradient(145deg, color-mix(in srgb, var(--panel) 96%, var(--accent)), var(--panel) 70%);
   box-shadow: inset 0 1px color-mix(in srgb, white 7%, transparent), 0 16px 34px color-mix(in srgb, #000 12%, transparent);
-  scrollbar-color: color-mix(in srgb, var(--accent) 32%, var(--border)) transparent;
 }
-.hive-viewport::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .2;
-  background-image: radial-gradient(color-mix(in srgb, var(--accent) 45%, transparent) .7px, transparent .7px);
-  background-size: 18px 18px; mask-image: linear-gradient(180deg, #000, transparent 80%);
+/* 2D 列表模式：画布与投影标签层退位，泳道回归原生网格排布（模式类挂在视口上） */
+#rd-hive-viewport.hive-mode-2d {
+  height: auto; min-height: 0; overflow: visible;
+  border: 0; border-radius: 0; background: transparent; box-shadow: none;
 }
-.hive-viewport.is-dragging { cursor: grabbing; user-select: none; }
-#rd-hive-cells {
-  --scene-x: 0px; --scene-y: 0px; --scene-zoom: 1;
-  position: relative;
-  isolation: isolate; display: flex; flex-direction: column; gap: 3px;
-  width: min(100%, 1040px); min-height: 100%; margin: 0 auto; padding: 22px 24px 28px;
-  transform: translate3d(var(--scene-x), var(--scene-y), 0) rotateX(18deg) rotateZ(-1deg) scale(var(--scene-zoom));
-  transform-origin: 50% 12%; transform-style: preserve-3d; cursor: grab;
-  transition: transform .14s ease-out; will-change: transform;
+.hive-gl {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  touch-action: none; cursor: grab; outline: none;
 }
-.hive-viewport.is-dragging #rd-hive-cells { transition: none; }
-#rd-hive-cells .hive-lane {
-  transform: translateZ(var(--lane-z, 0px));
-  transform-style: preserve-3d;
-  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
-  border-radius: 13px;
-  padding: 11px 14px 12px;
-  background: linear-gradient(115deg,
-    color-mix(in srgb, var(--accent) 4%, var(--panel)),
-    color-mix(in srgb, var(--panel) 96%, transparent) 44%, var(--panel));
-  box-shadow: 0 5px 0 color-mix(in srgb, var(--border-strong) 48%, transparent),
-    0 10px 20px color-mix(in srgb, #000 10%, transparent),
-    inset 0 1px color-mix(in srgb, white 7%, transparent);
-  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+.hive-gl.is-dragging { cursor: grabbing; }
+.hive-gl-overlay { position: absolute; inset: 0; overflow: hidden; pointer-events: none; font-size: 11px; }
+/* 晕影：给渲染画面收一层边（左上/右下角轻微压暗，景深感） */
+.hive-viewport::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; z-index: 2;
+  background: radial-gradient(125% 95% at 50% 42%, transparent 60%, color-mix(in srgb, var(--bg) 46%, transparent) 100%);
 }
-#rd-hive-cells .hive-lane:nth-child(4n + 1) { --lane-z: 16px; }
-#rd-hive-cells .hive-lane:nth-child(4n + 3) { --lane-z: 8px; }
-#rd-hive-cells .hive-lane.lane-active {
-  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
-  box-shadow: 0 6px 0 color-mix(in srgb, var(--accent) 22%, var(--border-strong)),
-    0 15px 28px color-mix(in srgb, var(--accent) 13%, #000),
-    inset 0 1px color-mix(in srgb, white 10%, transparent);
+#rd-hive-viewport.hive-mode-2d::after { content: none; }
+#rd-hive-viewport.hive-mode-3d #rd-hive-cells { display: none; }
+#rd-hive-viewport.hive-mode-2d .hive-gl,
+#rd-hive-viewport.hive-mode-2d .hive-gl-overlay { display: none; }
+/* 阶段徽章：hive3d 每帧把世界锚点投影成屏幕坐标写 transform（left/top 恒 0）。
+ * 玻璃蓝浮牌（参考效果图）：半透 accent 渐变 + 毛玻璃 + 序号实心蓝块。 */
+.hg-badge {
+  position: absolute; left: 0; top: 0; display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 12px 5px 6px; border-radius: 12px; white-space: nowrap; will-change: transform;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  color: var(--text);
+  background: linear-gradient(160deg,
+    color-mix(in srgb, var(--accent) 22%, transparent),
+    color-mix(in srgb, var(--panel) 62%, transparent));
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 20%, transparent),
+    inset 0 1px color-mix(in srgb, white 25%, transparent);
 }
-#rd-hive-cells .lane-flow {
-  transform: translateZ(6px);
-  filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--accent) 24%, transparent));
+.hg-badge .hg-idx {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 22px; padding: 0 4px; border-radius: 7px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 82%, white), var(--accent));
+  color: #fff; font-size: 11px; font-weight: 800; letter-spacing: .04em;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 45%, transparent);
 }
-#rd-hive-cells .lane-cells { gap: 8px 10px; }
-#rd-hive-cells .hive-cell {
-  position: relative;
-  min-height: 82px;
-  padding: 11px 12px 9px 15px;
-  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
-  border-radius: 9px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--panel) 96%, var(--accent)), var(--panel) 78%);
-  box-shadow: 0 3px 0 color-mix(in srgb, var(--border-strong) 40%, transparent),
-    0 7px 13px color-mix(in srgb, #000 12%, transparent),
-    inset 0 1px color-mix(in srgb, white 6%, transparent);
-  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease;
+.hg-badge .hg-name { color: var(--text); font-weight: 600; font-size: 12px; }
+.hg-badge .hg-meta, .hg-badge .hg-prog { font-size: 10px; }
+.hg-badge .hg-prog { color: var(--accent); font-weight: 700; }
+.hg-badge .hg-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: hg-pulse 1.6s ease-in-out infinite; }
+.hg-badge.hg-active { border-color: color-mix(in srgb, var(--accent) 65%, transparent); box-shadow: 0 10px 26px color-mix(in srgb, var(--accent) 34%, transparent); }
+.hg-badge.hg-done { opacity: .78; }
+/* 缩得远时退化成序号胶囊（hive3d 按 camera 距离切换） */
+.hg-badge.hg-mini { padding: 3px 6px; gap: 0; border-radius: 8px; }
+.hg-badge.hg-mini .hg-name, .hg-badge.hg-mini .hg-meta,
+.hg-badge.hg-mini .hg-prog, .hg-badge.hg-mini .hg-dot { display: none; }
+/* 运行中格子头顶芯片 */
+.hg-chip {
+  position: absolute; left: 0; top: 0; padding: 2px 8px; border-radius: 999px; white-space: nowrap; will-change: transform;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+  color: var(--text);
 }
-#rd-hive-cells .hive-cell::before {
-  top: 0; bottom: 0; left: 0; right: auto; width: 3px; height: auto;
-  border-radius: 9px 0 0 9px;
+@keyframes hg-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+/* 悬停气泡卡（HTML 由 app.js esc 拼装，这里只管皮） */
+.hg-tip {
+  position: absolute; left: 0; top: 0; width: max-content; max-width: 264px;
+  padding: 8px 10px; border-radius: 10px; z-index: 3; will-change: transform;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  backdrop-filter: blur(6px); box-shadow: var(--shadow);
 }
-#rd-hive-cells .hive-cell:hover,
-#rd-hive-cells .hive-cell:focus-visible {
-  transform: translateY(-3px) translateZ(8px);
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
-  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 8%, var(--panel)), var(--panel) 78%);
-  box-shadow: 0 5px 0 color-mix(in srgb, var(--accent) 25%, var(--border-strong)),
-    0 13px 20px color-mix(in srgb, var(--accent) 12%, #000);
-}
-#rd-hive-cells .hive-cell.st-running {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 9%, var(--panel)), var(--panel) 78%);
-}
-.hive-viewport.hive-2d { min-height: 0; max-height: none; overflow: visible; perspective: none; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-#rd-hive-cells.hive-2d {
-  width: 100%; padding: 0; transform: none; cursor: default; gap: 2px;
-}
-#rd-hive-cells.hive-2d .hive-lane,
-#rd-hive-cells.hive-2d .hive-lane:nth-child(n) { --lane-z: 0px; transform: none; }
-#rd-hive-cells.hive-2d .hive-cell:hover,
-#rd-hive-cells.hive-2d .hive-cell:focus-visible { transform: translateY(-1px); }
+.hg-tip.hidden { display: none; }
+.hg-tip .hg-tip-role { display: block; font-size: 12px; font-weight: 600; color: var(--text); }
+.hg-tip .hg-tip-who { display: block; font-style: normal; font-size: 10px; color: var(--muted); margin-top: 1px; }
+.hg-tip .hg-tip-tail { margin: 5px 0 0; font-size: 11px; color: var(--text); opacity: .85; max-height: 3.9em; overflow: hidden; }
+.hg-tip .hg-tip-tail:empty { display: none; }
+.hg-tip .hg-tip-think { display: block; font-style: normal; font-size: 10px; color: var(--muted); margin-top: 3px; }
+.hg-tip .hg-tip-think:empty { display: none; }
+.hg-tip .hg-tip-meta { display: block; margin-top: 6px; padding-top: 4px; border-top: 1px solid var(--border); font-size: 10px; color: var(--muted); text-decoration: none; }
 .hive-scene-tools.hive-2d .hive-scene-hint { display: none; }
 @media (max-width: 720px) {
   .hive-scene-tools { flex-wrap: wrap; }
   .hive-scene-hint { order: 2; width: 100%; margin: 0 0 3px; }
   .hive-scene-spacer { flex: 1 1 0; }
-  .hive-viewport { min-height: 340px; max-height: 64vh; }
-  #rd-hive-cells { padding: 12px 14px 18px; }
+  .hive-viewport { height: clamp(300px, 52vh, 560px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  #rd-hive-cells { transition: none; }
-  #rd-hive-cells .hive-lane,
-  #rd-hive-cells .hive-cell { transition: none; }
+  .hg-badge .hg-dot { animation: none; }
 }
 
 /* ---- 发布台·批量选择（pb-pend）：待发章号 chips + 全选/清空 + 发布所选/直发所选 ---- */

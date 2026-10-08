@@ -19,16 +19,34 @@ MAX_FILE_CHARS = 8000
 MAX_PROMPT_CHARS = 24000
 
 
-def _roots(workdir):
+def _roots(workdir, boundary=None):
     try:
         current = Path(workdir).expanduser().resolve()
     except (TypeError, OSError, ValueError):
         return []
     if not current.is_dir():
         return []
+    # Trust instructions only through the nearest repository root. Outside a
+    # repository, the selected workdir itself is the boundary; never walk into
+    # an unrelated parent directory (or drive root).
+    try:
+        if boundary:
+            stop = Path(boundary).expanduser().resolve()
+        else:
+            stop = current
+            for candidate in (current, *current.parents):
+                if (candidate / ".git").exists():
+                    stop = candidate
+                    break
+    except (TypeError, OSError, ValueError):
+        stop = current
+    if current != stop and stop not in current.parents:
+        stop = current
     roots = []
     while True:
         roots.append(current)
+        if current == stop:
+            break
         parent = current.parent
         if parent == current:
             break
@@ -50,7 +68,7 @@ def _read(path):
         return ""
 
 
-def discover(workdir, *, max_files=MAX_FILES, max_chars=MAX_PROMPT_CHARS):
+def discover(workdir, *, boundary=None, max_files=MAX_FILES, max_chars=MAX_PROMPT_CHARS):
     """Return nearest-first AGENTS.md guidance and stable metadata."""
     try:
         file_limit = max(1, min(MAX_FILES, int(max_files)))
@@ -60,7 +78,7 @@ def discover(workdir, *, max_files=MAX_FILES, max_chars=MAX_PROMPT_CHARS):
     records = []
     chunks = []
     used = 0
-    for root in _roots(workdir):
+    for root in _roots(workdir, boundary=boundary):
         if len(records) >= file_limit:
             break
         path = root / "AGENTS.md"
