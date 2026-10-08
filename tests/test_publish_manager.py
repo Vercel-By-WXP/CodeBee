@@ -511,46 +511,39 @@ def test_fanqie_upload_flow_contract():
 
 
 def test_volume_step_flow_logic():
-    """volume 步骤全链（假页驱动）：选已有卷 / 缺卷新建（输名→✓→选中→
-    确定）/ 无目标跳过 / 无卷选择器 optional 跳过。"""
+    """volume 步骤全链（假页驱动）：当前卷命中直接过 / 卷已存在不重复建 /
+    缺卷新建（输名→✓）/ 无目标跳过 / 无卷选择器 optional 跳过。
+    平台不提供章节切卷（弹窗只能增删改卷，真机 code -4054 实案）——
+    本步骤只「备好卷」，归属交给平台按卷自动归类。"""
     from core.publish import flow as _flow
 
     class VolPage:
-        """分卷弹窗状态桩：open→列表；add→编辑态；confirm→落名；item→选中；ok→收。"""
-        def __init__(self, vols, open_ok=True):
+        """分卷弹窗状态桩：头部卷名可读；open→列表；add→编辑态；confirm→落名。"""
+        def __init__(self, vols, current, open_ok=True):
             self.vols = list(vols)          # 平台显示名
+            self.current = current
             self.modal = False
-            self.editing = False
-            self.selected = []
             self.created = []
             self.open_ok = open_ok
 
         def call(self, fn, *a, **k):
+            if "innerText||'').trim():''" in fn:    # 读头部当前卷
+                return self.current if self.open_ok else ""
             if "v.click" in fn:
                 if not self.open_ok:
-                    return {"ok": False, "err": "noopen"}
+                    return {"ok": False}
                 self.modal = True
                 return {"ok": True}
             if "width>0" in fn and "map" in fn:           # vol_items
-                out = list(self.vols) if self.modal else []
-                if self.editing:
-                    out.append("第9卷：")
-                return out
+                return list(self.vols) if self.modal else []
             if "e.click" in fn and "add" in fn:           # add_sel 点击
-                self.editing = True
                 return {"ok": True}
             if "HTMLInputElement" in fn:                  # 行内输名+confirm
                 self.created.append(a[1])
-                self.editing = False
-                self.vols.append("第9卷：" + str(a[1]))
+                self.vols.append("第3卷：" + str(a[1]))
+                self.current = "第3卷：" + str(a[1])      # 平台建卷后自动归入
                 return {"ok": True}
-            if "els[i].click" in fn:                      # 点卷条目
-                t = a[1]
-                if t in self.vols:
-                    self.selected.append(t)
-                    return {"ok": True}
-                return {"ok": False}
-            if "确定" in fn:                              # 弹窗确定
+            if "取消" in fn:                              # 收弹窗
                 self.modal = False
                 return {"ok": True}
             return {"ok": True}
@@ -565,29 +558,34 @@ def test_volume_step_flow_logic():
         _flow.run_flow(page, [dict(step)], values=values, log=logs.append)
         return logs
 
-    # 1) 已有卷：按去前缀名选中
-    pg = VolPage(["第一卷：山门换锁", "第二卷：县里有旧账"])
-    vals = {"volume_name": "县里有旧账"}
-    run(pg, vals)
-    expect(pg.selected == ["第二卷：县里有旧账"], "去前缀选中：%s" % pg.selected)
+    # 1) 当前卷即目标（去前缀比较）：不开弹窗直接过
+    pg = VolPage(["第一卷：山门换锁", "第二卷：县里有旧账"], "第二卷：县里有旧账")
+    run(pg, {"volume_name": "县里有旧账"})
+    expect(not pg.modal, "当前卷命中不开弹窗")
 
-    # 2) 缺卷：新建（输名→确认）→ 选中 → 追加进共享缓存
-    pg2 = VolPage(["第一卷：山门换锁"])
-    vals2 = {"volume_name": "试着开一道口", "_volumes": ["第一卷：山门换锁"]}
+    # 2) 目标卷已存在（当前在别的卷）：确认存在、不重复建
+    pg2 = VolPage(["第一卷：山门换锁", "第二卷：县里有旧账"], "第一卷：山门换锁")
+    vals2 = {"volume_name": "县里有旧账", "_volumes": []}
     run(pg2, vals2)
-    expect(pg2.created == ["试着开一道口"], "新建输名：%s" % pg2.created)
-    expect(pg2.selected == ["第9卷：试着开一道口"], "新建后选中：%s" % pg2.selected)
-    expect(vals2["_volumes"][-1] == "第9卷：试着开一道口", "缓存追加")
+    expect(not pg2.created, "已存在的卷不重建：%s" % pg2.created)
 
-    # 3) 无目标卷名：跳过（不开弹窗）
-    pg3 = VolPage(["第一卷：山门换锁"])
-    run(pg3, {"volume_name": ""})
-    expect(not pg3.modal and not pg3.selected, "空卷名跳过")
+    # 3) 缺卷：新建（输名→✓）→ 追加进共享缓存
+    pg3 = VolPage(["第一卷：山门换锁", "第二卷：县里有旧账"], "第二卷：县里有旧账")
+    vals3 = {"volume_name": "试着开一道口",
+             "_volumes": ["第一卷：山门换锁", "第二卷：县里有旧账"]}
+    run(pg3, vals3)
+    expect(pg3.created == ["试着开一道口"], "新建输名：%s" % pg3.created)
+    expect("第3卷：试着开一道口" in vals3["_volumes"], "缓存追加显示名：%s" % vals3["_volumes"])
 
-    # 4) 编辑器没有卷选择器 + optional：跳过不报错
-    pg4 = VolPage(["第一卷：山门换锁"], open_ok=False)
-    run(pg4, {"volume_name": "山门换锁"})
-    expect(not pg4.selected, "无选择器 optional 跳过")
+    # 4) 无目标卷名：跳过
+    pg4 = VolPage(["第一卷：山门换锁"], "第一卷：山门换锁")
+    run(pg4, {"volume_name": ""})
+    expect(not pg4.modal, "空卷名跳过")
+
+    # 5) 编辑器没有卷选择器 + optional：跳过不报错
+    pg5 = VolPage(["第一卷：山门换锁"], "第一卷：山门换锁", open_ok=False)
+    run(pg5, {"volume_name": "山门换锁"})
+    expect(not pg5.modal, "无选择器 optional 跳过")
 
 
 def test_resolve_book_id_by_title():

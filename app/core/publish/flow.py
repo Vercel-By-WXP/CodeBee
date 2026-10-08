@@ -608,11 +608,12 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                                         % (url[:60], mk[:40]))
                 note(i, "验证通过")
             elif act == "volume":
-                # 发章带卷（2026-10-08 批量自动发布·自动分卷）：打开编辑器
-                # 的分卷弹窗，按去前缀名匹配已有卷并选中；平台没有目标卷时
-                # 走「新建分卷」（行内输名→confirm 图标→选中）再确定。
-                # 选择器全部数据驱动（不同平台编辑器不同）；无目标卷名或
-                # 编辑器没有卷选择器（optional）时跳过，保持平台默认卷。
+                # 发章带卷（2026-10-08 批量自动发布·自动分卷）：确保目标卷
+                # 在平台上存在（缺则走「新建分卷」）。平台新章按卷自动归类、
+                # 不提供章节切卷入口（编辑器卷弹窗实测只能增删改卷，真机
+                # code -4054 还不允许连续两个无章节空卷）——所以本步骤只
+                # 「备好卷」，不假装能切卷。选择器全部数据驱动；无目标卷名
+                # 或编辑器没有卷选择器（optional）时跳过。
                 from .volumes import norm_volume_name
                 target = str(values.get(st.get("key") or "volume_name") or "").strip()
                 open_sel = str(st.get("open_sel") or "")
@@ -624,15 +625,23 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     continue
                 if not (open_sel and modal_sel and item_sel):
                     raise FlowError("volume 步骤缺选择器配置（open_sel/modal_sel/item_sel）")
-                r = page.call("(s)=>{var v=document.querySelector(s);"
-                              "if(!v)return{ok:false,err:'noopen'};v.click();return{ok:true};}",
-                              open_sel, timeout=8)
-                if not (r or {}).get("ok"):
+                hdr = ""
+                r = {"ok": False}
+                for _try in range(int(st.get("tries") or 6)):
+                    hdr = str(page.call("(s)=>{var v=document.querySelector(s);"
+                                        "return v?(v.innerText||'').trim():'';}",
+                                        open_sel, timeout=8) or "").strip()
+                    if hdr:
+                        break
+                    time.sleep(1.0)     # 编辑器头部卷名渲染慢，别一次就放弃
+                if not hdr:
                     if st.get("optional"):
                         note(i, "编辑器无分卷选择器，跳过")
                         continue
                     raise FlowError("分卷选择器未出现：%s" % open_sel)
-                time.sleep(settle)
+                if norm_volume_name(hdr) == norm_volume_name(target):
+                    note(i, "当前卷已是「%s」" % hdr)
+                    continue
 
                 def vol_items():
                     out = page.call("(s)=>[...document.querySelectorAll(s)]"
@@ -641,23 +650,18 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                                     item_sel, timeout=8)
                     return [str(x).strip() for x in (out or []) if str(x or "").strip()]
 
-                def pick_hit():
-                    for t in vol_items():
-                        if norm_volume_name(t) == norm_volume_name(target):
-                            return t
-                    return ""
-
-                def modal_ok():
-                    rr = page.call("(m)=>{var mm=document.querySelector(m);"
-                                   "if(!mm)return{ok:false};"
-                                   "var b=mm.querySelectorAll('button');"
-                                   "for (var i=0;i<b.length;i++){"
-                                   " if((b[i].innerText||'').trim()==='确定'){b[i].click();return{ok:true};}}"
-                                   "return{ok:false};}", modal_sel, timeout=8)
-                    return bool((rr or {}).get("ok"))
-
-                hit = pick_hit()
-                if not hit:
+                r = page.call("(s)=>{var v=document.querySelector(s);"
+                              "if(!v)return{ok:false};v.click();return{ok:true};}",
+                              open_sel, timeout=8)
+                if not (r or {}).get("ok"):
+                    if st.get("optional"):
+                        note(i, "编辑器无分卷选择器，跳过")
+                        continue
+                    raise FlowError("分卷选择器点不开：%s" % open_sel)
+                time.sleep(settle)
+                exists = any(norm_volume_name(t) == norm_volume_name(target)
+                             for t in vol_items())
+                if not exists:
                     add_sel = str(st.get("add_sel") or "")
                     if not add_sel:
                         raise FlowError("平台没有目标分卷「%s」且流程未配新建分卷" % target)
@@ -686,25 +690,32 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         raise FlowError("新建分卷「%s」失败：%s"
                                         % (target, (rr or {}).get("err")))
                     time.sleep(settle)
-                    hit = pick_hit()
-                    if not hit:
-                        raise FlowError("新建分卷后列表里没有「%s」" % target)
+                    exists = any(norm_volume_name(t) == norm_volume_name(target)
+                                 for t in vol_items())
+                    if not exists:
+                        raise FlowError("新建分卷后列表里没有「%s」——常见原因："
+                                        "平台不允许连续两个无章节的空卷"
+                                        "（code -4054），等上一卷有章节再发"
+                                        % target)
                     known = values.get("_volumes")
-                    if isinstance(known, list) and hit not in known:
-                        known.append(hit)
-                    note(i, "已新建分卷「%s」" % hit)
-                rr = page.call("(s,t)=>{var els=document.querySelectorAll(s);"
-                               "for (var i=0;i<els.length;i++){"
-                               " if(((els[i].innerText||'').trim())===t){"
-                               "  els[i].click();return{ok:true};}}"
-                               "return{ok:false};}", item_sel, hit, timeout=8)
-                if not (rr or {}).get("ok"):
-                    raise FlowError("分卷「%s」点选失败" % hit)
-                time.sleep(0.5)
-                if not modal_ok():
-                    raise FlowError("分卷弹窗「确定」失败")
-                time.sleep(settle)
-                note(i, "分卷已选「%s」" % hit)
+                    if isinstance(known, list):
+                        disp = next((t for t in vol_items()
+                                     if norm_volume_name(t) == norm_volume_name(target)), "")
+                        if disp and disp not in known:
+                            known.append(disp)
+                    note(i, "已新建分卷「%s」" % target)
+                else:
+                    note(i, "分卷「%s」已存在" % target)
+                # 收弹窗（取消=不动任何卷；确定会另起新草稿，都不影响归属——
+                # 新章由平台按卷自动归类）
+                page.call("(m)=>{var mm=document.querySelector(m);if(!mm)return{ok:false};"
+                          "var b=mm.querySelectorAll('button');"
+                          "for (var i=0;i<b.length;i++){"
+                          " if((b[i].innerText||'').trim()==='取消'){b[i].click();return{ok:true};}}"
+                          "return{ok:false};}", modal_sel, timeout=8)
+                time.sleep(0.6)
+                note(i, "分卷「%s」已就绪（平台按卷自动归类新章，当前卷 %s）"
+                        % (target, hdr))
             elif act == "url_any":
                 u = str(page.url() or "")
                 marks = st.get("any") or []
