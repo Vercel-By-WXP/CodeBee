@@ -21,6 +21,7 @@ import os
 import re
 import secrets
 import shutil
+import stat
 import sys
 import threading
 import time
@@ -139,6 +140,20 @@ def resolve(provider_id="", model="", difficulty="default"):
 # 模型给的相对路径不可信：逐段拒绝 .. 与盘符，resolve() 归一后确认仍位于
 # 工作目录之下（base not in p.parents 即越界，同 skills/market 的守卫惯用法）。
 
+def _is_linklike(path):
+    """Treat symlinks and Windows junctions alike when enumerating a sandbox root."""
+    try:
+        if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
+            return True
+        # Path.is_junction() was added in Python 3.12. On supported older
+        # Windows versions, detect all reparse points directly from lstat so
+        # junctions cannot bypass a narrowed allowed_roots policy.
+        attributes = getattr(path.lstat(), "st_file_attributes", 0)
+        reparse_point = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        return bool(attributes & reparse_point)
+    except OSError:
+        return True
+
 def _tool_list_files(workdir, args):
     rel = str(args.get("path") or "").replace("\\", "/").strip("/")
     if ".." in Path(rel).parts or any(":" in seg for seg in Path(rel).parts):
@@ -151,9 +166,12 @@ def _tool_list_files(workdir, args):
         return "（目录不存在: %s）" % (rel or ".")
     out = []
     for root, dirs, files in os.walk(str(p)):
-        dirs[:] = [d for d in dirs if d not in (".git", "__pycache__", "node_modules")]
+        dirs[:] = [d for d in dirs if d not in (".git", "__pycache__", "node_modules")
+                   and not _is_linklike(Path(root) / d)]
         for f in files:
             fp = os.path.join(root, f)
+            if _is_linklike(Path(fp)):
+                continue
             relp = os.path.relpath(fp, str(base)).replace(os.sep, "/")
             try:
                 size = os.path.getsize(fp)
@@ -655,7 +673,8 @@ def _tool_search_content(workdir, args):
     base = Path(workdir or ".").resolve()
     out, hits, scanned = [], 0, 0
     for root, dirs, files in os.walk(str(sub)):
-        dirs[:] = [d for d in dirs if d not in _WALK_PRUNE]
+        dirs[:] = [d for d in dirs if d not in _WALK_PRUNE
+                   and not _is_linklike(Path(root) / d)]
         for f in files:
             if glob_pat:
                 relp = os.path.relpath(os.path.join(root, f), str(base)).replace(os.sep, "/")
@@ -663,6 +682,8 @@ def _tool_search_content(workdir, args):
                     continue
             fp = os.path.join(root, f)
             try:
+                if _is_linklike(Path(fp)):
+                    continue
                 if os.path.getsize(fp) > SEARCH_MAX_FILE_BYTES:
                     continue
                 with open(fp, "rb") as fh:
@@ -694,14 +715,22 @@ def _tool_find_files(workdir, args):
     if not pattern or ".." in pattern or ":" in pattern:
         return "（非法 pattern: %s；示例 *.py 或 data/*.json）" % pattern
     base = Path(workdir or ".").resolve()
+    sub, err = _guard_rel(workdir, args.get("path"), allow_root=True)
+    if err:
+        return err
+    if not sub.is_dir():
+        return "（目录不存在: %s）" % (args.get("path") or ".")
     match_name = "/" not in pattern
     out = []
-    for root, dirs, files in os.walk(str(base)):
-        dirs[:] = [d for d in dirs if d not in _WALK_PRUNE]
+    for root, dirs, files in os.walk(str(sub)):
+        dirs[:] = [d for d in dirs if d not in _WALK_PRUNE
+                   and not _is_linklike(Path(root) / d)]
         for f in files:
             rel = os.path.relpath(os.path.join(root, f), str(base)).replace(os.sep, "/")
             if not (fnmatch.fnmatch(rel, pattern)
                     or (match_name and fnmatch.fnmatch(f, pattern))):
+                continue
+            if _is_linklike(Path(root) / f):
                 continue
             try:
                 size = os.path.getsize(os.path.join(root, f))
@@ -737,7 +766,8 @@ TOOLS_SPEC = [
               "?glob": "可选，文件名过滤，如 *.py",
               "?max_results": "可选，命中行数上限（默认 50，最大 200）"}},
     {"name": "find_files", "description": "按文件名通配查找文件（如 *.py、data/*.json、report*.md）；pattern 不含 / 时匹配任意深度的文件名",
-     "args": {"pattern": "文件名通配模式"}},
+     "args": {"pattern": "文件名通配模式",
+              "?path": "可选，限定搜索的子目录，默认根目录"}},
     {"name": "read_tool_output", "description": "按 ref 重新读取本次运行中卸载到本机的较早工具输出；大结果可用 offset 分段读取",
      "args": {"ref": "压缩提示提供的工具结果引用",
               "?offset": "可选，字节偏移，默认 0",
@@ -791,6 +821,16 @@ def _tool_create_task(workdir, args, task_creator=None, sandbox=None):
         from . import policy
         if not policy.path_allowed(requested_workdir, sandbox):
             return "（沙箱拒绝：子任务工作目录超出允许范围，未创建）"
+    child_sandbox = dict(sandbox) if isinstance(sandbox, dict) else None
+    if child_sandbox and requested_workdir:
+        from . import policy
+        parent_root = Path(workdir or ".").expanduser().resolve()
+        child_root = Path(requested_workdir).expanduser().resolve()
+        if child_root != parent_root:
+            # The requested child directory is already checked against the
+            # parent's roots above. Rebase the inherited allowlist to that
+            # directory so task normalization cannot widen it back to a parent.
+            child_sandbox["allowed_roots"] = [str(child_root)]
     payload = {
         "type": task_type,
         "goal": goal,
@@ -798,8 +838,8 @@ def _tool_create_task(workdir, args, task_creator=None, sandbox=None):
         "workdir": requested_workdir,
         "context": str(args.get("context") or "").strip(),
     }
-    if isinstance(sandbox, dict):
-        payload["sandbox"] = dict(sandbox)
+    if child_sandbox is not None:
+        payload["sandbox"] = child_sandbox
     if task_type == "serial_novel":
         serial = {}
         for key in ("chapters", "words_per_chapter", "start_chapter", "variants", "branches"):
@@ -833,7 +873,15 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
     # merely hidden from the model. Shell/MCP effects are handled separately.
     if name in {"list_files", "read_file", "write_file", "edit_file", "append_file",
                 "fs_manage", "search_content", "find_files"}:
-        for key in ("path", "dest"):
+        keys = ["path", "dest"]
+        # Enumeration tools default to the whole workspace. If policy grants
+        # only a narrower root, require an explicit in-scope path instead of
+        # silently exposing names/content outside that root.
+        if name in {"list_files", "search_content", "find_files"} \
+                and not (args or {}).get("path") \
+                and not policy.path_allowed(workdir or ".", sandbox):
+            return "（沙箱拒绝：此工具必须指定允许范围内的 path，未执行）"
+        for key in keys:
             value = (args or {}).get(key)
             if not value:
                 continue

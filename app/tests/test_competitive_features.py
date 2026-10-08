@@ -309,6 +309,85 @@ class CompetitiveFeatureTests(unittest.TestCase):
             self.assertIn("沙箱", result)
             self.assertFalse(outside.exists())
 
+    def test_narrow_sandbox_blocks_implicit_workspace_enumeration(self):
+        from core import builtin_agent
+        with tempfile.TemporaryDirectory() as wd:
+            allowed = Path(wd) / "allowed"
+            allowed.mkdir()
+            (Path(wd) / "secret.txt").write_text("secret", encoding="utf-8")
+            sandbox = policy.normalize_sandbox({"allowed_roots": [str(allowed)]}, wd)
+            for tool, args in (("list_files", {}), ("search_content", {"pattern": "secret"}),
+                               ("find_files", {"pattern": "*.txt"})):
+                with self.subTest(tool=tool):
+                    result = builtin_agent._exec_tool(wd, tool, args, sandbox=sandbox)
+                    self.assertIn("沙箱", result)
+                    self.assertNotIn("secret.txt", result)
+
+    def test_find_files_can_be_scoped_to_narrow_allowed_root(self):
+        from core import builtin_agent
+        with tempfile.TemporaryDirectory() as wd:
+            allowed = Path(wd) / "allowed"
+            allowed.mkdir()
+            (allowed / "visible.txt").write_text("ok", encoding="utf-8")
+            (Path(wd) / "secret.txt").write_text("secret", encoding="utf-8")
+            sandbox = policy.normalize_sandbox({"allowed_roots": [str(allowed)]}, wd)
+            result = builtin_agent._exec_tool(
+                wd, "find_files", {"pattern": "*.txt", "path": "allowed"},
+                sandbox=sandbox)
+            self.assertIn("visible.txt", result)
+            self.assertNotIn("secret.txt", result)
+
+    def test_enumeration_tools_can_use_explicit_narrow_allowed_root(self):
+        from core import builtin_agent
+        with tempfile.TemporaryDirectory() as wd:
+            allowed = Path(wd) / "allowed"
+            allowed.mkdir()
+            (allowed / "visible.txt").write_text("public marker", encoding="utf-8")
+            (Path(wd) / "secret.txt").write_text("secret marker", encoding="utf-8")
+            sandbox = policy.normalize_sandbox({"allowed_roots": [str(allowed)]}, wd)
+            cases = (("list_files", {"path": "allowed"}),
+                     ("search_content", {"pattern": "public marker", "path": "allowed"}),
+                     ("find_files", {"pattern": "*.txt", "path": "allowed"}))
+            for tool, args in cases:
+                with self.subTest(tool=tool):
+                    result = builtin_agent._exec_tool(wd, tool, args, sandbox=sandbox)
+                    self.assertIn("visible.txt", result)
+                    self.assertNotIn("secret", result)
+
+    def test_enumeration_tools_do_not_follow_symlinks_outside_allowed_root(self):
+        from core import builtin_agent
+        with tempfile.TemporaryDirectory() as wd:
+            allowed = Path(wd) / "allowed"
+            outside = Path(wd) / "outside"
+            allowed.mkdir()
+            outside.mkdir()
+            (outside / "secret.txt").write_text("outside-secret-content", encoding="utf-8")
+            try:
+                (allowed / "linked.txt").symlink_to(outside / "secret.txt")
+            except (OSError, NotImplementedError):
+                self.skipTest("file symlink creation is unavailable")
+            sandbox = policy.normalize_sandbox({"allowed_roots": [str(allowed)]}, wd)
+            cases = (("list_files", {"path": "allowed"}),
+                     ("search_content", {"pattern": "outside-secret-content", "path": "allowed"}),
+                     ("find_files", {"pattern": "*.txt", "path": "allowed"}))
+            for tool, args in cases:
+                with self.subTest(tool=tool):
+                    result = builtin_agent._exec_tool(wd, tool, args, sandbox=sandbox)
+                    self.assertNotIn("outside-secret-content", result)
+                    self.assertNotIn("linked.txt", result)
+
+    def test_link_detector_rejects_legacy_windows_reparse_points(self):
+        from core import builtin_agent
+
+        class LegacyWindowsPath:
+            def is_symlink(self):
+                return False
+
+            def lstat(self):
+                return type("Stat", (), {"st_file_attributes": 0x400})()
+
+        self.assertTrue(builtin_agent._is_linklike(LegacyWindowsPath()))
+
     def test_task_creation_fails_closed_when_sandbox_policy_cannot_be_normalized(self):
         from core import contracts, policy, store
         workdir = self.root / "work"

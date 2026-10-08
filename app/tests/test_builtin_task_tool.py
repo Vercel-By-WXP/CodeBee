@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from core import builtin_agent, pipeline
@@ -49,6 +50,24 @@ class BuiltinTaskToolTests(unittest.TestCase):
         self.assertEqual(seen["context"], "显式传入的背景")
         self.assertEqual(seen["sandbox"], sandbox)
         self.assertNotIn("parent_messages", seen)
+
+    def test_child_task_narrows_inherited_policy_to_requested_subdirectory(self):
+        seen = {}
+        with tempfile.TemporaryDirectory() as workdir:
+            child_dir = Path(workdir) / "child"
+            child_dir.mkdir()
+            sandbox = {"allowed_roots": [workdir], "network": False,
+                       "disabled_tools": ["run_command"]}
+            result = builtin_agent._tool_create_task(
+                workdir, {"type": "code", "goal": "子目录内任务",
+                          "workdir": str(child_dir)},
+                task_creator=lambda payload: (seen.update(payload)
+                                              or {"task_id": "t-child"}),
+                sandbox=sandbox)
+        self.assertIn("t-child", result)
+        self.assertEqual(seen["sandbox"]["allowed_roots"], [str(child_dir.resolve())])
+        self.assertIs(seen["sandbox"]["network"], False)
+        self.assertEqual(seen["sandbox"]["disabled_tools"], ["run_command"])
 
     def test_create_task_requires_creator(self):
         result = builtin_agent._tool_create_task(
