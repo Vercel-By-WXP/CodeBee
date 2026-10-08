@@ -23,6 +23,7 @@ _LOCK = threading.RLock()
 _TERMINAL = {"done", "failed", "cancelled", "timeout", "unknown"}
 _SNAPSHOT_MAX_BYTES = 1024 * 1024
 _SNAPSHOT_TOTAL_MAX_BYTES = 16 * 1024 * 1024
+_SUPPORTS_DIR_FD_RENAME = os.rename in getattr(os, "supports_dir_fd", set())
 
 
 def _file():
@@ -486,7 +487,7 @@ def _restore_file_posix(root, rel, item, expected_exists, expected_hash):
     """Restore using directory handles so parent-path swaps cannot escape root."""
     required = (os.open in getattr(os, "supports_dir_fd", set())
                 and os.mkdir in getattr(os, "supports_dir_fd", set())
-                and os.rename in getattr(os, "supports_dir_fd", set())
+                and _SUPPORTS_DIR_FD_RENAME
                 and os.unlink in getattr(os, "supports_dir_fd", set()))
     if not required:
         return False
