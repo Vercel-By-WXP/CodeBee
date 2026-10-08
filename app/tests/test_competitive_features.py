@@ -50,6 +50,32 @@ class CompetitiveFeatureTests(unittest.TestCase):
         result = agent_context.discover(workdir)
         self.assertEqual([x["scope"] for x in result["files"]], [str(repo)])
 
+    def test_agent_context_without_git_trusts_only_selected_workdir(self):
+        parent = self.root / "parent"
+        workdir = parent / "work"
+        workdir.mkdir(parents=True)
+        (parent / "AGENTS.md").write_text("unrelated parent guidance", encoding="utf-8")
+        (workdir / "AGENTS.md").write_text("selected workspace guidance", encoding="utf-8")
+
+        result = agent_context.discover(workdir)
+
+        self.assertEqual([row["scope"] for row in result["files"]], [str(workdir)])
+        self.assertIn("selected workspace guidance", result["prompt"])
+        self.assertNotIn("unrelated parent guidance", result["prompt"])
+
+    def test_agent_context_rejects_explicit_boundary_outside_workdir_ancestry(self):
+        parent = self.root / "parent"
+        workdir = parent / "work"
+        outside = self.root / "outside"
+        workdir.mkdir(parents=True)
+        outside.mkdir()
+        (outside / "AGENTS.md").write_text("untrusted boundary", encoding="utf-8")
+
+        result = agent_context.discover(workdir, boundary=outside)
+
+        self.assertEqual(result["files"], [])
+        self.assertNotIn("untrusted boundary", result["prompt"])
+
     def test_checkpoint_snapshots_restore_only_captured_file(self):
         with patch.object(checkpoints, "_DIR", self.root / "checkpoints"):
             workdir = self.root / "work"
@@ -566,6 +592,55 @@ class CompetitiveFeatureTests(unittest.TestCase):
             restored = builtin_agent._exec_tool(
                 self.root, "read_tool_output", {"ref": ref}, tool_output_run_id="run-ref")
         self.assertEqual(restored, source)
+
+    def test_direct_agent_context_bounds_old_tool_rounds_and_keeps_recent_pairs(self):
+        from core import builtin_agent
+        messages = [{"role": "user", "content": "original request"}]
+        for index in range(6):
+            messages.extend([
+                {"role": "assistant", "content": "analysis-%d" % index,
+                 "tool_calls": [{"id": "call-%d" % index, "name": "read_file",
+                                 "args": {"path": "file-%d" % index}}]},
+                {"role": "tool_results", "tool_results": [
+                    ("call-%d" % index, "result-%d:" % index + "x" * 1200)]},
+            ])
+
+        builtin_agent._bound_direct_context(messages, max_chars=1800, keep_rounds=2)
+
+        self.assertEqual(messages[0]["content"], "original request")
+        self.assertLessEqual(sum(len(json.dumps(m, ensure_ascii=False)) for m in messages), 1800)
+        self.assertTrue(any("更早的工具轮次摘要" in msg.get("content", "")
+                            for msg in messages))
+        self.assertIn("call-5", json.dumps(messages[-2:], ensure_ascii=False))
+        self.assertLessEqual(sum(m["role"] == "tool_results" for m in messages), 4)
+        self.assertGreaterEqual(sum(m["role"] == "tool_results" for m in messages), 2)
+        for index, msg in enumerate(messages):
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                self.assertEqual(messages[index + 1]["role"], "tool_results")
+
+    def test_direct_agent_compaction_preserves_original_tool_output_reference(self):
+        from core import builtin_agent, tool_outputs
+        messages = [{"role": "user", "content": "original request"}]
+        source = "earlier source content " * 300
+        for index in range(5):
+            messages.extend([
+                {"role": "assistant", "content": "analysis-%d" % index,
+                 "tool_calls": [{"id": "call-%d" % index, "name": "read_file",
+                                 "args": {"path": "file-%d" % index}}]},
+                {"role": "tool_results", "tool_results": [
+                    ("call-%d" % index, source if index == 0 else "recent-%d" % index)]},
+            ])
+
+        with patch.object(tool_outputs, "_DIR", self.root / "tool_outputs"):
+            builtin_agent._bound_direct_context(messages, max_chars=1000,
+                                                keep_rounds=2, run_id="run-direct")
+            note = next(msg["content"] for msg in messages
+                        if "更早的工具轮次摘要" in msg.get("content", ""))
+            ref = note.split("ref=", 1)[1].split(",", 1)[0].split()[0]
+            restored = tool_outputs.read("run-direct", ref)
+
+        self.assertTrue(restored["ok"])
+        self.assertEqual(restored["text"], source[:tool_outputs.MAX_READ_CHARS])
 
     def test_mcp_tool_disable_applies_to_registry_and_dispatch(self):
         from core import mcp_client

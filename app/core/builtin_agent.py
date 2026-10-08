@@ -53,6 +53,7 @@ CMD_OUT_HEAD = 24 * 1024     # 回灌给模型的输出：头 24K + 尾 8K（报
 CMD_OUT_TAIL = 8 * 1024
 TOOL_HISTORY_KEEP_ROUNDS = 4
 TOOL_HISTORY_OLD_RESULT_CHARS = 1200
+MAX_DIRECT_CONTEXT_CHARS = 48000  # ~12K tokens; keep direct chat within small model windows
 
 _SYSTEM_PROMPT = """你是 CodeBee 的内置执行智能体，直接完成用户交代的任务。用户的目标、背景与工作目录内的附件就是全部输入。
 
@@ -1427,7 +1428,9 @@ def _compact_old_tool_results(messages, keep_rounds=TOOL_HISTORY_KEEP_ROUNDS,
     """Bound old tool output while preserving recent call/result pairs."""
     result_indexes = [i for i, msg in enumerate(messages)
                       if msg.get("role") == "tool_results"]
-    for idx in result_indexes[:-max(1, int(keep_rounds))]:
+    keep_rounds = max(0, int(keep_rounds))
+    compact_indexes = result_indexes[:max(0, len(result_indexes) - keep_rounds)]
+    for idx in compact_indexes:
         msg = messages[idx]
         compacted = []
         for call_id, value in msg.get("tool_results") or []:
@@ -1448,6 +1451,89 @@ def _compact_old_tool_results(messages, keep_rounds=TOOL_HISTORY_KEEP_ROUNDS,
                 value = value[:head] + marker + value[-tail:]
             compacted.append((call_id, value))
         msg["tool_results"] = compacted
+
+
+def _direct_context_chars(messages):
+    return sum(len(json.dumps(msg, ensure_ascii=False, default=str)) for msg in messages)
+
+
+def _bound_direct_context(messages, *, max_chars=MAX_DIRECT_CONTEXT_CHARS,
+                          keep_rounds=TOOL_HISTORY_KEEP_ROUNDS, run_id=""):
+    """Fold complete old tool rounds when a direct-agent conversation grows large.
+
+    Unlike pipeline steps, direct chat has no session-log compaction surface. Keep the
+    original request and the newest tool interactions, but cap older outputs and replace
+    discarded call/result pairs with a bounded factual note. Full large outputs remain
+    available through read_tool_output references.
+    """
+    try:
+        max_chars = max(1000, int(max_chars))
+        keep_rounds = max(1, int(keep_rounds))
+    except (TypeError, ValueError):
+        max_chars, keep_rounds = MAX_DIRECT_CONTEXT_CHARS, TOOL_HISTORY_KEEP_ROUNDS
+    rounds = []
+    for index, msg in enumerate(messages[:-1]):
+        if msg.get("role") == "assistant" and msg.get("tool_calls") \
+                and messages[index + 1].get("role") == "tool_results":
+            rounds.append((index, index + 1))
+    if not rounds:
+        return
+    if _direct_context_chars(messages) <= max_chars:
+        return
+
+    # First compact all tool results; recent full output is useful only while the
+    # conversation has room. Oversized output is recoverable by its scoped ref.
+    result_budget = max(160, min(TOOL_HISTORY_OLD_RESULT_CHARS,
+                                 max_chars // max(1, keep_rounds * 8)))
+    _compact_old_tool_results(messages, keep_rounds=0,
+                              old_result_chars=result_budget, run_id=run_id)
+    note_index = 1 if messages and messages[0].get("role") == "user" else 0
+    previous_note = (messages[note_index].get("content") or "") \
+        if note_index < len(messages) \
+        and messages[note_index].get("_direct_compaction_note") else ""
+    folded = ([previous_note.split("\n", 1)[1]]
+              if previous_note.startswith("## 更早的工具轮次摘要\n") else [])
+    while len(rounds) > keep_rounds and _direct_context_chars(messages) > max_chars:
+        start, end = rounds.pop(0)
+        assistant, result_msg = messages[start], messages[end]
+        calls = assistant.get("tool_calls") or []
+        tools = ", ".join(str(call.get("name") or "tool")[:80] for call in calls[:8])
+        detail = str(assistant.get("content") or "").strip().replace("\n", " ")[:240]
+        refs = []
+        for call_id, output in (result_msg.get("tool_results") or [])[:5]:
+            value = str(output or "")
+            existing_ref = re.search(r"ref=([a-f0-9]{32})", value)
+            if existing_ref:
+                refs.append(existing_ref.group(1))
+            elif run_id:
+                try:
+                    from . import tool_outputs
+                    ref = tool_outputs.save(run_id, call_id, value)
+                    if ref:
+                        refs.append(ref)
+                except Exception:
+                    pass
+        piece = "- 工具 %s；模型说明：%s%s" % (
+            tools or "unknown", detail or "（无）",
+            ("；全文 ref=" + ",".join(refs)) if refs else "")
+        folded.append(piece[:500])
+        del messages[start:end + 1]
+        # Tool payloads are untrusted external data: summarize call intent and refs,
+        # never copy output excerpts outside their prompt-guard fences.
+        note = "## 更早的工具轮次摘要\n" + "\n".join(folded)
+        note_limit = min(8000, max(1400, max_chars // 4))
+        if len(note) > note_limit:
+            note = note[-note_limit:]
+        insert_at = 1 if messages and messages[0].get("role") == "user" else 0
+        if insert_at < len(messages) and messages[insert_at].get("_direct_compaction_note"):
+            messages[insert_at]["content"] = note
+        else:
+            messages.insert(insert_at, {"role": "user", "content": note,
+                                        "_direct_compaction_note": True})
+        # Earlier deletions shift indices; rebuild complete pairs.
+        rounds = [(i, i + 1) for i, msg in enumerate(messages[:-1])
+                  if msg.get("role") == "assistant" and msg.get("tool_calls")
+                  and messages[i + 1].get("role") == "tool_results"]
 
 
 def _build_request(proto, base, use_key, model, system, msgs, with_tools, stream=False,
@@ -1865,7 +1951,7 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                             results.append((c["id"], out))
                         msgs.append({"role": "assistant", "content": text, "tool_calls": calls})
                         msgs.append({"role": "tool_results", "tool_results": results})
-                        _compact_old_tool_results(msgs, run_id=tool_output_run_id)
+                        _bound_direct_context(msgs, run_id=tool_output_run_id)
                         empty_streak = 0
                         last_action_was_tools = True
                         done = True
