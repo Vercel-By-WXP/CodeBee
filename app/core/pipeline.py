@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, attachments, branching, catalog, chaptersafe, defectretro, dispatch_log, flows, history, hooks, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, router, runner, skills, store, task_compile, usage, volumes
+from . import aiflavor, agent_context, attachments, branching, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, flows, history, hooks, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, router, runner, skills, store, task_compile, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -442,6 +442,14 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                                    agent.get("label", agent["id"]), note=note,
                                    model=agent.get("model") or "",
                                    provider=_binding_brief(agent))
+    try:
+        checkpoints.start(
+            run_id, step["n"], role, prompt,
+            input_data={"workdir": workdir, "readonly": readonly,
+                        "agent": agent.get("id")},
+            attempt=len((store.get_run(run_id) or {}).get("steps") or []))
+    except Exception:
+        pass
     start = time.time()
     if dead_binding:
         from .error_codes import ErrorCode
@@ -779,6 +787,17 @@ def _finish_step_result(run_id, step, res, role, agent, start):
                       # 思考过程（内置智能体流式抓取）：落进步骤记录，对话气泡折叠展示
                       thinking=res.get("reasoning") or None,
                       partial=bool(res.get("partial")))
+    try:
+        checkpoint_status = ("unknown" if raw.get("unknown") else
+                             "timeout" if status == "timeout" else
+                             "cancelled" if status == "cancelled" else
+                             "done" if status == "done" else "failed")
+        checkpoints.finish(
+            run_id, step["n"], checkpoint_status,
+            error=res.get("error") or "", output=res.get("text") or "",
+            metadata={"role": role, "agent": agent.get("id") or ""})
+    except Exception:
+        pass
     # 错误台账：失败/超时各记一条结构化记录（遥测与诊断包的数据源）。
     # 用户主动取消不入账——那不是产品问题；detail 只存脱敏后的失败摘录。
     if status in ("failed", "timeout"):
@@ -2692,8 +2711,8 @@ __VOLUME__
 - 撰写本书第 __I__ 章，把本章正文写入文件 `__FILE__`（直接写入该文件，只写本章）。文件必须以 UTF-8 编码保存：PowerShell 一律显式加 `-Encoding UTF8`（如 `Set-Content -Path __FILE__ -Encoding UTF8`），禁止依赖系统默认编码，否则中文会乱码。
 - 章节标题：__TITLE__
 - 剧情要点：__BEATS__
-- 章末钩子：__HOOK__
-- 本章爽点/情绪爆点：__HIGHLIGHT__（必须按特写镜头写厚：铺垫在前、放大在中、余波在后，用动作/五感/生理反应/环境反馈呈现，禁止一句话带过）
+- 章末收束/继续阅读理由（可自然收束或留白）：__HOOK__
+- 本章主要情绪/戏剧变化：__HIGHLIGHT__（按其重要性决定篇幅和表现方式；不强制放大，不为满足标签伪造高潮）
 __LOCKED_CH__
 __STALE_NOTE__
 - 正文约 __WORDS__ 字，中文，直接开写正文（可含本章标题行）。
@@ -2732,23 +2751,23 @@ __STYLE__
 
 ## 签约返修原则
 - 统一叙述语域、句式和视角距离，不在白描、半文半白和网络梗之间跳变。
-- 复杂情感必须落到动作、五感、生理反应和对话潜台词，禁止只写“很伤心/很愤怒”。
-- 爽点/情绪爆点按特写镜头写厚：铺垫在前、放大在中、余波在后，禁止一句话带过。
+- 复杂情感需按其叙事分量呈现；动作、感官、对话、内心直述、环境或留白均可，避免与本稿风格不合的机械扩写。
+- 重要情绪/戏剧变化要有与其分量相称的呈现；避免概括带过，但不把每个变化都扩写成高潮。
 - 删除不改变局面的环境、解释和重复叙述；每段至少完成冲突、信息或人物选择之一。
 - 让主角主动做出选择并推动下一步，补足因果桥，不用旁白硬推剧情。
 
 ## 要求
 - 针对性解决所有 major 问题（含确定性文本信号指出的问题），保持与前后的剧情衔接；字数仍约 __WORDS__ 字。"""
 
-SERIAL_GLOBAL_PROMPT = """你是网文主编（不要修改任何文件）。全书各章已完稿，请从**全书整体**视角评审。
+SERIAL_GLOBAL_PROMPT = """你是独立小说质量评审（不要修改任何文件），不代表任何签约平台。全书各章已完稿，请从**全书整体**视角评审。
 请输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {
   "scores": {"__DIMKEYS__"},
   "issues": [{"dim": "维度名", "severity": "major|minor", "note": "具体问题（指明哪一章）", "quote": "支撑该问题的稿件原文连续片段（≥8字，逐字摘录不许改写）"}],
-  "summary": "一句话总评：是否达到可签约水平"
+  "summary": "一句话总评：所读范围内的文本优势、主要风险与未验证项；不得预测签约结果"
 }
-每个维度打 1-10 分，宁严勿宽。重点关注：主线一致性、人物弧光、开篇吸引力、文风统一、情感细腻度、情节推进与节奏控制。
-若是前 3 章，必须核对黄金一章/黄金三章的切入速度；若发现拖沓、硬推或情绪概括，给出可定位的 major 问题与原文引文。
+每个维度打 1-10 分，按统一文本 rubric 与所读证据评估，不以“宁严勿宽”压分。重点关注：主线一致性、人物弧光、开篇吸引力、文风表现、情感表达、情节推进与节奏控制。
+若是全书最初的前 3 章，可观察视角人物、故事承诺、开篇兑现和读者理解成本；固定字数点、钩子/爽点密度仅作参考，不是扣分门槛。发现问题须给可定位原文引文，并区分文本事实、解释和建议。
 major 问题必须给 quote（系统会逐条校验引文是否真在稿件中——编造的引文会被降档标记）。
 
 ## 全书目标
@@ -2759,19 +2778,19 @@ __GOAL__
 __MANUSCRIPT__
 ---"""
 
-# 独立签约评估（开篇闸门 + 2万字检查点共用）：评分维度保持作者任务口径，
-# 平台五维在这里按平台真实尺度单独核——驳回模板的高频话术逐条要判定。
-SERIAL_SIGNING_EVAL_PROMPT = """你是签约评估编辑（不要修改任何文件）。请按免费阅读平台（番茄/七猫）签约评估的口径评审下面的稿件__NOTE__。
+# 独立文本质量评估（开篇闸门 + 项目检查点共用）：沿用稳定 rubric，
+# 不代表平台决定；按原文证据检查常见拒稿问题，不将经验观察点变成硬门槛。
+SERIAL_SIGNING_EVAL_PROMPT = """你是独立小说质量评审（不要修改任何文件），不是番茄或七猫的签约编辑，不能代表平台结论。
+评审稿件__NOTE__，按下方统一文本质量 rubric 评估；如附当前平台规则或编辑原话，可单独核对适配，不得臆测平台内部标准。
 请输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {
   "scores": {"__DIMKEYS__"},
   "issues": [{"dim": "维度名", "severity": "major|minor", "note": "具体问题（指明哪一章）", "quote": "支撑该问题的稿件原文连续片段（≥8字，逐字摘录不许改写）"}],
-  "summary": "一句话总评：是否达到可申请签约评估的水平"
+  "summary": "一句话内部文本诊断：优势、主要风险和未验证项；不得表述为平台结论或过签预测"
 }
-每个维度打 1-10 分（可为小数），按平台真实尺度从严。五个维度固定为：开篇吸引力、情节推进、文风统一、情感细腻度、节奏控制。
-驳回模板的高频话术——文风在风格上不统一（语域/句式跳变）、
-复杂情感描绘不够细腻（情绪概括无动作细节）、开篇切入点缺乏足够的吸引力（黄金一章未兑现）、情节的推动生硬（因果桥缺失/旁白硬推）、
-行文拖沓节奏缓慢（重复铺垫、与主线无关的描写）——每一条都要给出明确判定与证据。
+统一评分 rubric：1-3 为明显影响理解或阅读的严重问题；4-6 为有具体可定位的弱项；7-8 为基本有效、仍有局部提升空间；9-10 为在本稿目标下表现突出。分数必须由所读文本支撑，不把分数映射成过签概率。
+五个维度固定为：开篇吸引力、情节推进、文风统一、情感细腻度、节奏控制。每项给证据与未读范围；不能因不用某种套路（如黄金三章、打脸、单一视角）扣分。
+可检查文风是否突变、情绪是否被概括、开篇承诺是否兑现、因果桥是否成立、重复是否损害节奏；这些是检查问题而不是预设缺陷。没有当前平台规则或明确编辑反馈时，不把质量评审包装成平台审核结论。
 
 ## 待评审稿件
 ---
@@ -4309,7 +4328,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                          agent.get("label"))
                 time.sleep(0.15)
                 gj = {"scores": {d: 8.0 for d in dims},
-                      "issues": [], "summary": "（mock）全书结构完整，达到可签约水平"}
+                      "issues": [], "summary": "（mock）内部结构评估：整体结构完整；此结果不代表平台签约结论"}
                 store.finish_step(run_id, step["n"], "done", summary="均分 8.0：（mock）全书达标",
                                   duration_s=0.15)
                 results[idx] = gj
@@ -4326,7 +4345,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     "- 本次送审批次为全书第 %d—%d 章（连载中段批次），文本中的前文节选仅供衔接核对；\n"
                     "- 「黄金一章/黄金三章」口径仅适用于全书第 1—3 章，不得据此扣减本批批首章的开篇分；\n"
                     "- 本批各章的既定事件以工作目录「章纲/」下的锁定章纲为准（可自行查阅）：承段、"
-                    "过渡章的节奏分应对照章纲既定事件是否落实与章末钩子是否成立，"
+                    "过渡章的节奏分应对照章纲既定事件与叙事功能是否落实；自然收束、留白均可，不以悬念钩子作为硬门槛。"
                     "不以高潮段的事件密度为统一标准；\n"
                     "- 「伏笔悬置」类 major 须先核对章纲的揭示位安排：揭示位写在后批章纲中的伏笔"
                     "不算悬置，无任何安排的悬置才成立；\n"
@@ -5505,6 +5524,11 @@ def execute_run(run_id):
                      difficulty=task_spec["difficulty"])
     task = dict(task)
     task = attachments.refresh_task(task, task.get("workdir") or "")
+    try:
+        task, _agent_context = agent_context.inject(task, task.get("workdir") or "")
+        store.update_run(run_id, agent_context=_agent_context)
+    except Exception:
+        pass
     task["_compiled_spec"] = task_spec
     # 运行内统一使用编译后的难度；store 中历史任务常带 difficulty=auto，
     # 不能让这个兼容值覆盖 easy/default/hard 的模型调度决策。

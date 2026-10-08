@@ -147,6 +147,7 @@
     "推荐任务类型": "Recommended task type",
     "切换类型": "Switch type",
     "这个需求更适合「{0}」流程，能使用对应的规划与质量门禁。是否切换后执行？": "This request fits the {0} workflow, which provides matching planning and quality gates. Switch before running?",
+    "这个需求更适合「{0}」流程，能使用对应的专用数据链路与产出模板。是否切换后执行？": "This request fits the {0} workflow, which brings its own data pipeline and output template. Switch before running?",
     // 自动化卡片上的偏好标签（短名与胶囊面同步取用）
     "自动": "Auto",
     "快速": "Fast",

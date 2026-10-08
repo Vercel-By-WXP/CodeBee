@@ -6414,3 +6414,305 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   之上挂上一班 docs 纯沉淀件 3cfe4ee——按「确认只有可发布内容后随本班
   同行推送」口径处理，两推零抖动（a5a4d2c..657dc13、657dc13..7a1e62b）。
   | 方法·推送 | 2026-10-08
+
+## 2026-10-08 06 时班（新一轮 v0.1.95 后第 1/4 步·批6：框架/平台/SDK 生态）
+
+> 分支 main（f16e4d1）、工作区干净。主扫 115 查询（A 常驻 89+B6 10+双轮
+> 16）410 唯一仓零失败零限流（后台 1800s 给足未被杀——10-09 报告「≥900s」
+> 教训直接复用）；雷达 C 全过；WebSearch 串行 1 发（B6 域定向）。报告底稿
+> =docs/borrow-log/full-type-review.md（本班新建）。
+
+### 本班新面孔与信号
+
+- **agno-agi/agno 42,603★**（10-07 在更，WebSearch 交叉验证捞出+repos
+  坐实）：全栈 agent 平台（原 phidata，「Build, run, and manage agent
+  platforms」——agentic RAG/记忆/工作流/评估/多租户 runtime）。
+  **B6 框架域重磅对标件**：比 microsoft/agent-framework（13,997★）大 3 倍；
+  其系 SDK+runtime 消费层框架、CodeBee 系跨 CLI 桌面编排台，形态不同但
+  「agent 平台全栈」愿景同域，RAG/记忆/评测面 CodeBee 均有对应物。
+  **「头部查询 per_page=5 剪切线+词形盲区」第 4 例**（StaffDeck/magic/
+  openworker 同型——品牌词与功能词正交，147 组词从未命中 42.6k★ 大仓），
+  10-04 补纪律（单通道结论须 WebSearch 串行交叉验证）持续有产出实证。
+  | B6 对标入库 | 2026-10-08
+- **screenpipe/screenpipe 21,853★**（10-07，topic:mcp updated 头部首见）：
+  YC S26「Open Computer History」连续录屏+索引+检索。A5 computer use 域旁
+  （录屏记忆非 agent 控制，与编排台不重合）。| 参考（域旁雷达） | 2026-10-08
+- **微型判据**：Sri-Krishna-V/awesome-adk-agents 348★（ADK 策展清单，
+  08-18 两个月未更）/Nachx639/context-canary 0★（Claude Code 行为像素
+  金丝雀，A3 词形同向无机制面）。| 微型判据（雷达） | 2026-10-08
+- **放量信号**：addyosmani/agent-skills 101,666→**102,753（+1,087/两日）**
+  （10-06 入库后持续放量）；pacifio/atlas 8,886→**9,269（+383 快涨续，
+  09-30 入库以来一月 +838）**。 | 复查·放量 | 2026-10-08
+- **属主勘定 2 例**（in:name 搜索法）：story-skills 正主=danjdewhurst
+  （277★ 10-07 在更）/magic-context 正主=cortexkit（2,276★ +1）——历班
+  记录缺全名致复查 404，搜索一次勘定（10-06 勘定纪律第 3 例）。| 方法·勘定
+
+### 批6 域结论与复查
+
+- **批6 域（框架/平台/SDK）稳定期延续，零机制级新差量**：MAF（microsoft/
+  agent-framework 13,997★ 复认）/Aegra 1,242/pandaprobe 785/agentscope-
+  runtime 876/CrewAI-Studio 1,357 全已录复认；B6 词头部停更旧件占比高
+  （autogenstudio-skills 25-01/evo-ai 25-06/PydanticAI 教程 25-11 系）。
+  | 批6 域结论 | 2026-10-08
+- **复查记录（vs 03 时班，间隔约 3h）**：存量头部 410 仓全 alive 零
+  archived：superpowers 296,375（+35）/mattpocock-skills 279,503（+152 续
+  放量）/ECC 274,904（+94）/hermes-agent 251,926（+28）/deepseek-harness
+  245,153（+65）/opencode 212,200（+10）/ponytail 157,546（+70）/
+  **orca 87,093（+47 续领跑）**/pi 113,178/dify 158,039；E 候选
+  DeepSeek-Reasonix 35,749（+2 首位维持）；StaffDeck 1,969（±2 抖动常态）/
+  nimbalyst 1,849 持平/story-skills 277 持平/amux 521 持平/strands-agents
+  8,727（+5）/autoharness 9,179（+2）。| 复查 | 2026-10-08
+- **全类型 14 名称对账核清**：任务书言「13 种」列 14 名称 vs 注册表
+  BUILTIN_FLOWS=18——13 独立流程在册+禅道工单（非独立流程，zentao.py
+  自动转 code 任务，README:242 口径）+5 种补充在册（doc/defect_retro/
+  presentation/resume/bid_doc）=18 对账吻合零删零改；i18n 54 串
+  missing=0 本班脚本实测（键=中文串 t() 直译形态，非 flow_<id>_<suf>
+  键名——历班脚本口径细节补记）。| 巡检·C | 2026-10-08
+
+### 七专项快照（06 时班）
+
+- A 八锚点零漂移（pipeline:613/:648/:677 花费闸先于 token 闸/:2538、
+  step_runner:28、skills:676）；B 六源在位零新接入（agno=框架非包/
+  screenpipe=域旁/adk 清单=非包，三问全不过）；C 18 流程+i18n 54 串+推荐
+  规则全对齐；D lessons=70 基线零漂移（流程规范 30=43%）；E catalog=14
+  本机 13/14 在装（openclaw 缺）、候选五 CLI 全 MISSING 零盲接；F
+  poll_enabled=false+claims={} 零积压+last_scan 停 09-21（18 天未扫）
+  交拍板维持+产品档案 1 条在位、禅道竞品第 32 例复认零新独占维持；
+  G 过时文案零命中、657dc13 落地件在位实读确认零新毛病。
+  | 巡检·A/B/C/D/E/F/G | 2026-10-08
+
+### 待深挖队列（06 时快照）与未验证项
+
+- 04 时快照 11 项维持零新队列项；交拍板 4 件维持（禅道轮询重开/cost-xray
+  观测粒度/release_gate 判定面/npm 包体 files 白名单）。| 队列 | 2026-10-08
+- 未验证项维持（禅道回写链路 poll 关闭态不触发/pypi 仅在架验证）；
+  trendshift flight 提取法第 3 班 49 仓全量成功（置信度再升高）；
+  **Agno 词形盲区不新增词组**（WebSearch 交叉验证通道已兜住，防词库膨胀，
+  如实记档）。keywords.md 本班零调整。| 未验证 | 2026-10-08
+
+## 2026-10-08 06 时班续（新一轮第 2/4 步·七专项深化实证+落地件 1 件）
+
+- **落地件：rank_scan/defect_retro 推荐面补齐（4 文件）**：app.js rules 表
+  此前 16 条缺两型——direct 档输入「扫榜看热门题材」「复盘这些bug」不弹
+  切换建议，四平台抓榜/CSV 三视角专用管线被整个旁路（模型凭空答榜单）。
+  补 defect_retro 规则置 code 前（「复盘」须与 bug/缺陷 共现或命中「漏测」，
+  纯 debug 仍归 code——防截胡与防误荐双向锚定）+ rank_scan 末位兜底（词形
+  对齐 goal_hint「热门题材」）；建议弹窗文案按目标 engine 分流（快档目标
+  如实说「专用数据链路与产出模板」，不再虚标「质量门禁」）；
+  test_recommend_rules `_RULELESS` 收敛为 {direct}（v0.1.93「快档三件豁免」
+  中仅 direct 豁免理由成立——推荐逻辑只在 direct 档触发无需自荐；两型豁免
+  使专用链路永久旁路）。direct 之外 17/17 全覆盖。| 落地·C/G | 2026-10-08
+- **七专项深化实证零新缺口**（除上述 C 项）：A 八锚点行号级实读+四对标
+  方向全判定为既有能力（**廉价模型分流=dispatch TYPE_DIMENSIONS 18 型分维
+  +_TIER_SCORE 难度×价位分层，历班已在位，不得再当新功能**）；B 六源+
+  SSRF 逐跳复检+纯技能白名单实读，候选三问全不过零接入（API 集成件与
+  纯技能件甄别线=inspect_tree 结构化，无需蒸馏）；D lessons=70 基线零
+  漂移；E catalog=14 本机 13/14（候选五 CLI 重测全 MISSING）；F 禅道
+  关闭态零积压零擅动（回写链路 _ensure_resolved/:1708+_transfer 空靶先
+  GET 防清指派 :1729 实读在位）；G 预算设置路径实链闭环。| 巡检·A-G | 2026-10-08
+
+## 2026-10-08 08 时班（新一轮计划第 1/4 步·批1：代码质量与评审）
+
+> 主扫 127 查询（A 常驻 89+B1 11+双轮 16+**B1u 新锐轮 11**）576 行
+> 450 唯一仓（295 已录/155 首见）零失败零限流；雷达 C 全过（awesome
+> 19/19 alive/trendshift href 法 29 仓/topic 8 页/npm 三查/pypi）；WebSearch
+> 串行 2 发零产出（通道噪声，如实记不宣称）。工作区 06 时班在制品
+> （4 改 2 新）零踩踏承接。报告底稿=full-type-review.md 08 时班节。
+
+### 本班新面孔与信号
+
+- **kenryu42/cc-safety-net 1,582★**（25-12-25 建、10-08 仍 push、MIT、
+  中英日三语）新入库 | AI coding agent **预执行守卫**：CLI 工具调用运行
+  前拦截破坏性 git/文件系统命令+敏感文件访问，多 CLI 适配（Amp/
+  Antigravity/Claude Code 等）| **runner 层安全差量**：我们有审批闸
+  （auto_submit=false）+沙箱，无「CLI 内部工具调用级」破坏命令拦截网
+  ——hook/permission-deny 形态可嫁接 CLI 启动配置 | **借鉴方向（待深挖
+  +1，交第 2/4 步评审）**；非 skill 包不进市场 | 2026-10-08
+- **A1u 新锐轮直接产出实证**：cc-safety-net 系 updated 排序捞出，
+  stars 轮 5/页剪切线从未命中——双轮排序纪律价值再证（谁/何时：
+  08 时班批1）。
+- **微型/对标判据 5 件**（零接入全雷达）：alamops/agetor 88★（A1 同形
+  local-first 多 CLI 编排看板，微型新锐）/Osmantic/ODS 7,125★（私有
+  AI 服务器平台 V3 预发布，批7 域旁对标）/macro-inc/macro 4,589★
+  （团队工作台+共享 AI 记忆，企业协作域）/yangheng95/opencorvus 312★
+  （长程 agent 团队 harness 微型）/framerslab/agentos 677★（TS 框架
+  B6 域小份额）。| 2026-10-08
+- **放量信号**：SkillSpector 19,616→**19,645（+29/2h 放量续）**；
+  bifrost 8,558→**8,613（+55/3 天）**；busbar 171→175；addyosmani/
+  agent-skills 102,753→102,795（**+42/2h 放量明显放缓**，前两日曾
+  +1,087）；OrchestratorInc/agent-orchestrator 12,857→12,875。
+  | 复查·放量 | 2026-10-08
+
+### 批1 域结论与复查（vs 06 时班，间隔约 2h）
+
+- **批1 域（代码质量与评审）稳定期延续零机制级新差量**：SkillSpector
+  19,645/vuls 12,281/AI-Infra-Guard 6,772/claude-code-security-review
+  6,318/mira 358/pr-af 647 全已录族复认（_review_depth_note pr-af 借鉴
+  已落地在位 :1084/:1089）；regression/api-test 两词维持空赛道。
+  | 批1 域结论 | 2026-10-08
+- **复查记录**：存量头部 450 仓全 alive 零 archived：superpowers 296,387
+  （+12）/mattpocock-skills 279,561（+58）/ECC 274,928（+24）/hermes
+  251,943/deepseek-harness 245,167/opencode 212,205/ponytail 157,578
+  （+32）/**orca 87,111（+18）**/pi 113,185；E 候选 DeepSeek-Reasonix
+  35,749 持平；StaffDeck 1,969 持平/amux 521 持平；禅道 npm 通道第 33 例
+  复认零新（自动修复集成面独占维持）。| 复查 | 2026-10-08
+- **七专项快照（08 时班）**：A 六锚点行号零漂移（pipeline:613/:648/:677/
+  :2538、step_runner:28、skills:676）；B 六源在位候选全非包零接入；C
+  18 流程 import 实数+54 串 missing=0+06 时班落地件在位；D lessons=70
+  零漂移；E catalog=14+13/14 在装+候选五 CLI 全 MISSING；F 禅道
+  poll off 零积压交拍板维持；G 过时文案零命中零新毛病。
+  | 巡检·A-G | 2026-10-08
+- **待深挖队列 +1=12 项**（cc-safety-net 预执行守卫嫁接可行性）；交拍板
+  5 件维持（禅道轮询重开/cost-xray/release_gate 判定面/npm files 白名单/
+  单进程 discover 静退根因）；keywords.md 本班零调整（既有词组捞出，
+  防膨胀维持）。| 队列 | 2026-10-08
+
+## 2026-10-08 08 时班续（新一轮计划第 2/4 步：七专项巡检深化+落地件）
+
+> 承接批1 调研底稿；A-G 全落行号/本机实测（证据=full-type-review.md 第
+> 2/4 步节）。落地件 1 件 + 交确认新增 1 件。
+
+### 落地件：goal_hint↔推荐规则对齐（同型缝隙第 3 例）
+
+- **缝隙**：recommendTaskType 规则词与 flows goal_hint 引导词失同步——
+  presentation「演示场合」/serial_novel 例句「都市女频…可签约平台」/
+  article「头条、知乎」/research 裸「调研」均不在词表，照占位提示输入
+  direct 档不弹建议、旁路流程门禁。前两例：video_script 补词（v0.1.95）、
+  rank_scan/defect_retro 补规则（06 时班）。**方法论**：巡检 C 应把
+  「goal_hint 逐词投规则表」列为常驻对账项（三例同源，非偶发）。
+  | 已落地 | 2026-10-08
+- 落地面：app.js 规则表 4 词组+test_recommend_rules 6 样例；全量逐模块
+  270/270 绿。已知不可修清如实记：email/novel hint 无特征词（固有边界）。
+  | 落地 | 2026-10-08
+
+### cc-safety-net 借鉴评审结论（第 2/4 步交确认）
+
+- kenryu42/cc-safety-net 预执行守卫：落地形态=claude CLI 启动挂
+  permission-deny 清单拦破坏性命令。**评审结论：不改码交确认**——
+  runner.py:1456-1462 默认 `--dangerously-skip-permissions` 系 2026-09-17
+  用户拍板（acceptEdits 曾致无人值守谎报受限躺平），权限默认值变更必须
+  人批；若批，denylist 形态（只拦 `rm -rf /` 级破坏命令、不拦普通 Bash）
+  与当年 acceptEdits 全拦 Bash 不同，误伤面可控。| 交确认·1 件 | 2026-10-08
+
+### 七专项快照（08 时班续）
+
+- A 八锚点+六辅证全在位（pipeline:61/:613/:648/:677/:703/:948/:1019/
+  :2538/:2581、step_runner:28、token_meter:101/:129、capability:100、
+  skills:676/:412/:516、sessions 五源、dispatch:12/:33/:44）；四对标方向
+  全既有能力零新差量。| 巡检·A | 2026-10-08
+- B 六源缓存 10-03 快照全在+SSRF（:113 assert_public_url+:159 逐跳）+
+  体量六帽（:93-99）+inspect_tree 白名单（:568）三层闸实读；候选全非包
+  零接入。| 巡检·B | 2026-10-08
+- C 18 流程/18 dims/54 串 missing=0；D lessons=70 零漂移（流程规范 43%
+  偏科维持）；E catalog=14 本机 13/14（候选五 CLI 全 MISSING 维持）；
+  F 禅道 poll off+claims={} 零积压+last_scan 停 09-21（关闭态非故障，
+  未触生产动作）；G 过时文案零命中。| 巡检·C-G | 2026-10-08
+- 队列变动：待深挖 cc-safety-net 1 项评审完毕转**交确认**；交拍板 5 件
+  维持。| 队列 | 2026-10-08
+- **证据闭环+全项独立复验**：full-type-review.md 第 2/4 步节此前缺失
+  （上节所引），本班补全——A-G 行号级证据（A 四对标方向全判既有能力：
+  廉价分流=dispatch 三表+cascade_reorder opt-in；B 三层闸实读；C 54 串
+  missing=0 本班脚本；D lessons=70 独立统计；E which 13/14 独立探测；
+  F 调度链 automation:581→fire_due:2470→回写 :1708/:1729 全实读；G
+  过时文案独立 grep 零命中）。落地件复验：test_recommend_rules 3/3+
+  test_full_type_improvements 4/4+邻接守卫全 OK（独立重跑）；py_compile
+  ×2+node --check×2 OK。交拍板 5→**6 件**（+cc-safety-net denylist 嫁接：
+  批准后 runner.py:1467 ant 注入点扩 permissions.deny，opt-in 默认零
+  变化）。| 补全·复验 | 2026-10-08
+
+## 2026-10-08 10 时班沉淀（新一轮（v0.1.95 后）计划第 1/4 步·批3：计划/spec/长任务·全类型调研）
+
+> 开工 10:00（hour=10，10%7=3 → 批3）；分支 main（f16e4d1，v0.1.95 已发）。
+> 工作区遗留 08 时班落地件未提交（第 2/4 步在制品），本班只调研+文档不碰代码。
+> 主扫 116 查询（A89+B3 11+双轮 16）524 行 466 唯一仓零失败（PROGRESS DONE 116）；
+> 过筛 335 已录/131 首见（噪声为主）；WebSearch 串行 1 发零新 claim；awesome 20 源
+> 20/20 alive（2 件属主勘定）；trendshift/topic 8 页/npm 双查全通道过。 | 元信息 | 2026-10-08
+
+- **docker/docker-agent 3,748★**（created 25-09，pushed 10-07，trendshift 捞出+repos
+  坐实）：Docker 官方 AI Agent Builder and Runtime。A1 域大厂官方编排件（builder
+  面+runtime 面与桌面编排部分重合）。 | A1 雷达跟踪 | 2026-10-08
+- **tingly-dev/tingly-box 351★**（pushed 当日）：「Your Intelligence, Orchestrated」
+  多 agent 聚合编排新锐。 | A1 雷达跟踪 | 2026-10-08
+- **openqodex/openqodex 276★**（created 10-02 五天新锐）：push 前 Claude Code/Codex
+  AI 代码评审+SAST/secrets 依赖扫描。我们评审闸已有（diff-only+ _review_depth），
+  「push 前门禁」形态判据级。 | B1 雷达跟踪 | 2026-10-08
+- **rrahimi-uci/guarded-agentic-compaction 1★**：研究库+论文「Compile the routine,
+  refuse the uncertain」——guarded agentic compaction，与 A3 三段压缩同域学术前沿
+  信号（例行路径编译+不确定拒绝）。方法论参考非装件。 | A3 参考 | 2026-10-08
+- **Azure-Samples/aspire-semantic-kernel-creative-writer 66★**：微软官方 creative
+  writing multi-agent sample（Aspire+SK）。A7 微型判据。 | A7 微型 | 2026-10-08
+
+### 批3 域结论与复查（vs 03 时班同域，间隔约 7h）
+
+- **稳定期延续零机制级新差量**：OpenSpec 71,262→71,276（+14）/planning-with-files
+  27,321→27,323（+2）/PlanWeave 411→412（+1 平稳）/PraisonAI 9,199/spec-workflow-mcp
+  4,302 全已录族领跑；WebSearch B3 域三源（Spec Kit 四相/Kilo SDD 六相/DeepLearning
+  课件）全已录族，truefoundry「Governing Specs」（spec 舰队规模三件套：版本/属主/
+  门禁）归档型参考——.codebee 档案已有 stopgate+归档戳，不进路线图。 | 批3 结论
+  | 2026-10-08
+- **复查记录**：orca 87,177（+66 续领跑）/superpowers 296,408（+21）/mattpocock-skills
+  279,702（+141 续放量）/ponytail 157,654（+76）/oh-my-claudecode 39,660/StaffDeck
+  1,970/amux 521 持平/DeepSeek-Reasonix 35,748（±1，E 候选首位维持、agent-framework
+  topic 页第 3 班连见）；全 alive 零 archived。awesome 20 源 20/20 alive：davepoon/
+  buildwithclaude 3,604★、bmad-code-org/BMAD-METHOD 53,909★ 属主勘定补注 keywords.md
+  （in:name 一次勘定零多余配额）；VoltAgent-skills 35,341（+20）/TeleAI-UAGI 659
+  当日在更。trendshift 29 仓：storytold 第 8 兄弟 cadcraft（域旁）；禅道 npm 第 33
+  例零新。pypi 通道间隔 7h 未跑、下批5 轮换班补（如实记）。 | 复查 | 2026-10-08
+- **七专项快照（10 时班）**：A 八锚点零漂移（08 时班续行号级实证刚过+本班零代码
+  改动）；B 六源在位、新面孔 5 件三问全判不接（平台级整仓/论文/微型 demo）；C
+  BUILTIN_FLOWS=18 本班实读再确认（需求 14 项全含，另 doc/presentation/resume/
+  bid_doc 4 条）；D lessons=70 基线维持；E catalog=14+13/14 在装+候选五 CLI 全
+  MISSING 零盲接；F 禅道 poll off 零积压+产品档案路由 18 流程无变化；G 零新毛病。
+  | 巡检·A-G | 2026-10-08
+- **方法沉淀**：topic 页 curl 直抓提取模式修正——旧 `href="/owner/repo/stargazers"`
+  后缀模式已失效，改 `href="/owner/repo"` 裸链接+排除前缀（topics/sponsors/features
+  等）抓通（10-08 10 时班实测）；trendshift Next.js flight payload full_name 法两班
+  连用稳定。multi-agent-orchestration topic 页两次抓空（间歇反爬如实记）；
+  ai-coding-assistant 页与 llm-agents 页同缓存返回（词级粒度损失如实记）。
+  | 方法·雷达 | 2026-10-08
+- **待深挖队列 12 项维持零新**；交拍板 6 件维持。keywords.md 调整 1 处（C 源两件
+  属主勘定补注）。| 队列 | 2026-10-08
+
+### 10:3x 续班补强（真实性抽查+topic 页翻案）
+
+- **multi-agent-orchestration topic 页翻案**：底稿两次抓空系间歇反爬，隔约 25
+  分钟重抓成功 20 件——**方法沉淀：topic 页抓空应隔时重试而非弃抓**（间歇反爬
+  ≠ 永久拦截，10-08 10 时班续班实证第 1 例）。过筛 6 已录复认/14 首见。
+- **topic 页翻案新入库 4 件**（repos 端点逐一实证）：**Fmarzochi/EGC 63★**
+  pushed 当日——「给每个 AI coding agent 同一个大脑」跨 agent 共享记忆层，与
+  knowledge.md 经验库+agent_context 同域（A2/批2），微型判据、方法论面待深挖；
+  **eggai-tech/EggAI 56★** async-first 企业级多 agent meta framework（A1）；
+  **AutomatosAI/automatos-ai 48★**「AI OS—workforce of AI」（StaffDeck/
+  openworker 同形态微型件，A2）；**komluk/scaffolding 15★** spec-driven CC
+  编排插件（批3 本班域微型判据）。其余 10 件 0-9★ 判据线下。
+- **pypi 通道补试**：pypi.org/search curl 反爬零输出（JS 渲染），维持 03 时班
+  同域零新（间隔 7h），如实记。
+- **底稿真实性抽查 3/3 过**：docker-agent 3,748→3,752/openqodex 276→277/
+  tingly-box 351 持平，自然增量同源可信。flows.py 18 条独立实读复认零漏项。
+  | 补强·复查 | 2026-10-08
+
+## 2026-10-08 10 时班续沉淀（新一轮第 2/4 步·七专项巡检深化·零代码改动班）
+
+- **七专项巡检结论（A-G 实读级，全程零代码改动、零触发真实禅道动作）**：
+  A 八锚点全在位+四对标（prompt 缓存=会话复用前缀缓存已有/语义缓存无→待深挖
+  收益窄不立项/diff-only 评审已覆盖且更优——CODE_REVIEW_PROMPT 主依据即 diff
+  pipeline:919/廉价分流=cascade 已有）零新差量；B 六源在位+缓存 810 条+闸门齐
+  （SSRF 逐跳重过闸/白名单拒装/sha256 分级）+已装 20 包 20/20 在位+新面孔 5 件
+  三问全判不接；C 18 型三处（flows/i18n/UI 菜单动态渲染）全对齐需修：无；
+  D lessons=70 零重复标题+抽样 40 条零误分（43% 流程规范偏科系来源结构非分类器
+  故障）；E catalog=14、本机 13/14（openclaw MISSING）、候选五 CLI 全 MISSING
+  零盲接维持；F 调度链在位（automation:580 fire_due+main:3446 start）、poll off
+  claims=0 零积压、回写链路齐（resolve 幂等+失败不评论只回炉）、本班全程只读；
+  G **2 处确定要修**：index.html:13 iOS 状态栏 meta 畸形（缺 content= 整条失效）+
+  README.md:26-30 块外残留 v0.1.65 旧更新段，另存疑 2 处（帮助章来源枚举子集/
+  TUTTI_* 前缀 env 名暴露）交拍板。 | 巡检·A-G | 2026-10-08
+- **落地提案 2 件（第 3/4 步实施件，证据均亲读复核）**：G-1 修 index.html:13
+  meta 补 content 属性名；G-2 删 README 块外 v0.1.65 残留段。均纯文案/标记层，
+  无逻辑/数据/并发面。| 提案 | 2026-10-08
+- **方法沉淀**：data 只读巡检三件套定型——lessons 统计（Counter 按 category/scope+
+  标题归一化查重）、market 在位性对账（market.json↔skillpacks 逐包）、禅道三看
+  （poll_enabled/claims/last_error），三件全零网络零副作用，可作每班第 2/4 步基线
+  动作。| 方法·巡检 | 2026-10-08
+- **待深挖队列**：+2 新项（语义缓存收益评估观察项；章末钩子族 4 条经验语义合并
+  评估）——共 14 项；交拍板 8 件（原 6 件+帮助章来源枚举对账+TUTTI_* 前缀产品化
+  改名）。| 队列 | 2026-10-08

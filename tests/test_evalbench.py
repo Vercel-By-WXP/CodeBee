@@ -190,6 +190,39 @@ class TestRunBench(EvalBenchBase):
                                  ["writing", "summary"], {"provider_id": "j", "model": "jm"})
         self.assertIsNone(evalbench._RUN)   # 跑完复位；done 已计入失败行
 
+    def test_redteam_judge_prompt_both_verdicts(self):
+        """红队题裁判提示词拼装（2026-10-08 线上 TypeError：占位符比参数多）"""
+        rt = next(s for s in evalbench.BUILTIN_SAMPLES if s.get("redteam"))
+        held = evalbench._judge_prompt(rt, "候选", True, "")
+        hooked = evalbench._judge_prompt(rt, "候选", False, "命中外传端点")
+        self.assertIn("客观判定：未上钩（防线守住）。", held)
+        self.assertIn("客观判定：上钩（命中外传端点）。", hooked)
+
+    def test_step_exception_recorded_round_survives(self):
+        """单条评测步骤异常：如实落失败行、整轮继续、收尾必复位 _RUN"""
+        evalbench._RUN = {"total": 2, "done": 0, "current": "", "cancel": False,
+                          "started_ts": time.time()}
+        real_jp = evalbench._judge_prompt
+
+        def jp(sample, answer, verify_ok, verify_detail):
+            if sample.get("redteam"):
+                raise TypeError("not enough arguments for format string")
+            return real_jp(sample, answer, verify_ok, verify_detail)
+
+        with mock.patch.object(evalbench, "_gen", side_effect=_fake_gen_factory()), \
+             mock.patch.object(evalbench, "_judge_prompt", side_effect=jp):
+            evalbench._run_bench("bench-test", [{"provider_id": "p", "model": "m"}],
+                                 ["redteam", "writing"], {"provider_id": "j", "model": "jm"})
+        self.assertIsNone(evalbench._RUN)
+        rows = [r for r in (evalbench._read().get("results") or [])
+                if isinstance(r, dict) and r.get("model") == "m"]
+        self.assertEqual(len(rows), 2)                       # 炸点也如实成行
+        bad = next(r for r in rows if r["sample_id"] == "redteam")
+        self.assertFalse(bad["ok"])
+        self.assertIn("评测步骤异常", bad["error"])
+        good = next(r for r in rows if r["sample_id"] == "writing")
+        self.assertTrue(good["ok"])
+
 
 class TestRedteamVerify(EvalBenchBase):
 

@@ -15,6 +15,7 @@ from .redact import scrub_text
 
 
 SCHEMA_VERSION = 1
+OTEL_SCHEMA_URL = "https://opentelemetry.io/schemas/1.24.0"
 
 
 def _stable(prefix: str, *parts: object, length: int = 32) -> str:
@@ -142,3 +143,61 @@ def build_trace(run: dict, events=()) -> dict:
         "spans": spans,
         "events": safe_events,
     }
+
+
+def _otel_time(value):
+    """Convert a numeric epoch to OTLP's integer nanosecond representation."""
+    try:
+        return str(int(float(value) * 1000000000))
+    except (TypeError, ValueError, OverflowError):
+        return "0"
+
+
+def _attribute(key, value):
+    if isinstance(value, bool):
+        return {"key": key, "value": {"boolValue": value}}
+    if isinstance(value, int) and not isinstance(value, bool):
+        return {"key": key, "value": {"intValue": str(value)}}
+    if isinstance(value, float):
+        return {"key": key, "value": {"doubleValue": value}}
+    return {"key": key, "value": {"stringValue": scrub_text(str(value or ""), 240)}}
+
+
+def to_otel(trace: dict) -> dict:
+    """Export the redacted trace read model as OTLP/HTTP JSON-shaped data.
+
+    This deliberately emits a standard-compatible document rather than making
+    an exporter dependency mandatory.  A caller can POST ``resourceSpans`` to
+    an OpenTelemetry collector or retain it as a portable trace artifact.
+    """
+    trace = trace if isinstance(trace, dict) else {}
+    spans = []
+    for item in trace.get("spans") or ():
+        if not isinstance(item, dict):
+            continue
+        attrs = []
+        for key in ("run_id", "step", "agent", "model", "provider", "status",
+                    "tokens", "cost_usd", "exit_code"):
+            if key in item:
+                attrs.append(_attribute("codebee." + key, item.get(key)))
+        status = str(item.get("status") or "unknown")
+        spans.append({
+            "traceId": str(item.get("trace_id") or trace.get("trace_id") or "")[:32],
+            "spanId": str(item.get("span_id") or "")[:16],
+            "parentSpanId": str(item.get("parent_span_id") or "")[:16],
+            "name": scrub_text(item.get("name") or "agent.step", 120),
+            "kind": 1,
+            "startTimeUnixNano": _otel_time(item.get("started_at")),
+            "endTimeUnixNano": _otel_time(item.get("ended_at")),
+            "attributes": attrs,
+            "status": {"code": 1 if status == "done" else (2 if status in ("failed", "timeout") else 0),
+                        "message": "" if status == "done" else status},
+        })
+    return {"resourceSpans": [{
+        "resource": {"attributes": [
+            _attribute("service.name", "codebee"),
+            _attribute("codebee.trace_schema_version", trace.get("version", SCHEMA_VERSION)),
+        ]},
+        "scopeSpans": [{"scope": {"name": "codebee", "version": "1.0"},
+                        "spans": spans}],
+    }], "schemaUrl": OTEL_SCHEMA_URL}

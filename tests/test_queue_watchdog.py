@@ -480,6 +480,48 @@ class QueueWatchdogTest(BaseTest):
         item = captured[0]
         self.assertEqual(item["run_id"], stale["id"])
 
+    def test_requeue_expires_old_unclaimed_run(self):
+        """超过恢复窗口且没有续跑时间的 queued 记录必须收口。"""
+        from app.core import store, jobs
+
+        task = _mk_serial_task("过期排队")
+        old = _time.strftime(
+            "%Y-%m-%d %H:%M:%S",
+            _time.localtime(_time.time() - jobs.RESUME_WINDOW_HOURS * 3600 - 60),
+        )
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="queued", created_at=old)
+
+        with mock.patch.object(jobs, "enqueue") as enq:
+            self.assertEqual(jobs.requeue_pending(max_age_s=120), 0)
+            enq.assert_not_called()
+
+        closed = store.get_run(run["id"])
+        self.assertEqual(closed["status"], "failed")
+        self.assertIn("排队记录已过期", closed.get("error") or "")
+        self.assertEqual(store.get_task(task["id"])["status"], "failed")
+
+    def test_requeue_expiry_does_not_override_new_active_run(self):
+        """清理旧副本前先尊重同任务的新运行，不能覆盖其任务状态。"""
+        from app.core import store, jobs
+
+        task = _mk_serial_task("旧副本与新运行")
+        old = _time.strftime(
+            "%Y-%m-%d %H:%M:%S",
+            _time.localtime(_time.time() - jobs.RESUME_WINDOW_HOURS * 3600 - 60),
+        )
+        stale = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(stale["id"], status="queued", created_at=old)
+        active = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(active["id"], status="running")
+
+        with mock.patch.object(jobs, "enqueue") as enq:
+            self.assertEqual(jobs.requeue_pending(max_age_s=120), 0)
+            enq.assert_not_called()
+
+        self.assertEqual(store.get_run(stale["id"])["status"], "queued")
+        self.assertEqual(store.get_task(task["id"])["status"], "running")
+
     def test_requeue_skips_resume_backoff_window(self):
         """退避窗口内的续跑副本不补（启动模式也不补）；到点后照补。"""
         from app.core import store, jobs

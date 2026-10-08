@@ -33,10 +33,10 @@ class NovelQualityTests(unittest.TestCase):
     def test_opening_requirements_only_apply_to_first_chapter(self):
         first = opening_requirements(1)
         later = opening_requirements(2)
-        self.assertIn("前 100 字", first)
-        self.assertIn("前 600 字", first)
-        self.assertNotIn("前 100 字", later)
-        self.assertIn("章末钩子", later)
+        self.assertIn("非硬门槛", first)
+        self.assertIn("不因未在固定字数内", first)
+        self.assertIn("不强制每章反转", later)
+        self.assertIn("继续阅读理由", later)
 
 
     def test_signal_summary_is_deterministic_and_actionable(self):
@@ -47,6 +47,10 @@ class NovelQualityTests(unittest.TestCase):
         self.assertGreater(result["dialogue_chars"], 0)
         self.assertGreater(result["avg_sentence_chars"], 0)
         self.assertIsInstance(result["hints"], list)
+
+    def test_no_dialogue_or_emotion_words_is_not_a_quality_warning(self):
+        result = signal_summary("雪落在空院里。", chapter=1)
+        self.assertEqual(result["hints"], [])
 
 
 class StyleAnchorTests(unittest.TestCase):

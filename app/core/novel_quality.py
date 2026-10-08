@@ -19,7 +19,7 @@ SIGNING_RUBRIC = [
 ]
 
 OPENING_DIM = "开篇吸引力"
-SIGNING_CHECKPOINT_WORDS = 20000   # 平台口径：前 2 万字用于签约评估
+SIGNING_CHECKPOINT_WORDS = 20000   # 项目检查点默认值；不是通用平台规则，调用方应核对当前后台
 
 _SENTENCE_RE = re.compile(r"[^。！？!?；;\n]+[。！？!?；;]?")
 _DIALOGUE_RE = re.compile(r"[“‘\"「『](.*?)[”’\"」』]", re.S)
@@ -48,15 +48,11 @@ def opening_requirements(chapter, target_words=None):
     except (TypeError, ValueError):
         chapter = 1
     if chapter == 1:
-        try:
-            short = int(target_words or 0) < 1200
-        except (TypeError, ValueError):
-            short = False
-        core = ("前 1200 字" if short else "前 2000 字")
-        return ("黄金一章门禁：前 100 字让读者知道主角是谁；前 200 字出现异常、欲望或冲突；"
-                "前 600 字把困境具体化；%s 展示核心卖点；结尾必须留下可兑现的钩子。" % core
-                + "禁止用世界观、环境或人物关系长铺垫开场。")
-    return "本章门禁：开头尽快承接上一章并制造新变化；结尾必须留下下一步行动或可兑现的章末钩子。"
+        return ("首章观察点（非硬门槛）：记录读者何时能辨认视角人物、故事承诺与正在发生的事；"
+                "核心卖点是否通过具体场景兑现；铺垫是否符合题材且有阅读价值；结尾是否形成自然的继续阅读理由。"
+                "根据文本效果和作者目标评估，不因未在固定字数内出现冲突/卖点/钩子而自动判失败。")
+    return ("本章观察点：核对与前文的承接、局面/人物/信息/情绪的变化及本章叙事功能；"
+            "结尾是否提供符合本章节奏的收束或继续阅读理由。不强制每章反转或悬念断章。")
 
 
 def signal_summary(text, chapter=None):
@@ -71,16 +67,12 @@ def signal_summary(text, chapter=None):
     avg = round(sum(sentence_lengths) / len(sentence_lengths), 1) if sentence_lengths else 0.0
     long_sentences = sum(1 for n in sentence_lengths if n >= 55)
     hints = []
-    if chapter == 1 and chars and chars < 600:
-        hints.append("首章正文不足 600 字，无法证明前 600 字已进入具体困境")
     if avg >= 35 or long_sentences:
         hints.append("存在偏长句，复查长定语、重复说明与动作拆分")
     if len(paragraphs) >= 4 and chars / len(paragraphs) > 220:
         hints.append("段落偏长，复查手机阅读下的节奏与信息密度")
-    if text and dialogue_chars == 0:
-        hints.append("缺少对白证据，复查是否用场景/行动推进冲突")
-    if text and emotion_hits == 0:
-        hints.append("缺少可见的情绪动作或生理反应，复查复杂情感是否写得过于概括")
+    # Dialogue/emotion-action counts are descriptive signals only. Their absence
+    # is not a quality defect: narrative voice, genre, and scene purpose vary.
     return {
         "chapter": chapter,
         "chars": chars,

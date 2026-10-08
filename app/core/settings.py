@@ -26,6 +26,7 @@ _FILE = paths.DATA_DIR / "settings.json"
 # Server酱（微信）/ Telegram Bot。密钥只存本机 settings.json，不出网（推送
 # 时才带着发给对应服务）。bark_server 留空回落官方 api.day.app。
 DEFAULTS = {"max_concurrent_jobs": 12, "default_workdir": "", "hooks_token": "",
+            "hooks_signing_secret": "",
             "telemetry_errors": True, "publish_daily_cap": 10,
             "publish_fail_streak": 3, "notify_webhook": "", "notify_base_url": "",
             "notify_bark_server": "", "notify_bark_key": "",
@@ -120,6 +121,8 @@ def save(patch):
             cur["default_workdir"] = wd
         if "hooks_token" in patch:
             cur["hooks_token"] = str(patch.get("hooks_token") or "").strip()[:128]
+        if "hooks_signing_secret" in patch:
+            cur["hooks_signing_secret"] = str(patch.get("hooks_signing_secret") or "").strip()[:256]
         if "telemetry_errors" in patch:
             cur["telemetry_errors"] = bool(patch.get("telemetry_errors"))
         if "publish_daily_cap" in patch:

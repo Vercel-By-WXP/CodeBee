@@ -143,6 +143,7 @@ class Handler(BaseHTTPRequestHandler):
             return cached
         raw_len = self.headers.get("Content-Length")
         if not raw_len:
+            self._raw_body = b""
             body = {}
         else:
             try:
@@ -158,6 +159,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = {}
             else:
                 data = self.rfile.read(n)
+                self._raw_body = data
                 try:
                     text = data.decode("utf-8")
                 except UnicodeDecodeError:
@@ -170,6 +172,12 @@ class Handler(BaseHTTPRequestHandler):
                     raise RequestBodyError("JSON 请求体顶层必须是对象")
         self._parsed_body = body
         return body
+
+    def _raw_request_body(self):
+        """Return the exact bytes used for webhook signature verification."""
+        if not hasattr(self, "_raw_body"):
+            self._body()
+        return getattr(self, "_raw_body", b"")
 
     # ------------------------------------------------------------ 远程访问
     def _forwarded_ip(self):

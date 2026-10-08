@@ -88,11 +88,11 @@ BUILTIN_PACKS = [
     {"id": "qimao-signing", "name": "七猫签约标准与写作规范",
      "file": "qimao-signing.md",
      "scopes": ["novel", "serial_novel"],
-     "note": "黄金一章、爽点纪律、期待感三源、人物红线、自检清单"},
+     "note": "七猫经验边界、拒稿证据诊断、开篇与故事单元自检；非过签预测"},
     {"id": "fanqie-novel", "name": "番茄小说写作与流量守则",
      "file": "fanqie-novel.md",
      "scopes": ["novel", "serial_novel"],
-     "note": "算法流量池/完读追读、黄金三章整体验、题材标签匹配、更新纪律、合同要点"},
+     "note": "番茄经验边界、阅读数据假设、故事单元自检与后台规则核验；非算法预测"},
 ]
 
 # ---------------------------------------------------------------- 用户自建包（3A）
@@ -484,7 +484,7 @@ def upsert_lesson(scope, title, content, source="", category=None, dim=None):
               "created_at": _now(),
               # 稳定 token（procedure=程序性做法 / lesson=规避性教训）；
               # 展示层 view() 翻译成「做法/教训」，持久层不用中文防改文案伤数据
-              "kind": ("procedure" if title.startswith("做法：") else "lesson")}
+              "kind": ("procedure" if title.startswith(("做法：", "候选做法：")) else "lesson")}
         it.update({k: rev[k] for k in ("revision_id", "content_sha256")})
         items.append(it)
         _save(data)
@@ -726,17 +726,17 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
             # run 内稳定：won 只在 run 收尾回写，任务中途字节不变。
             karma = ""
             if int(x.get("won") or 0) >= 2:
-                karma = "（已验证有效 %d 次）" % int(x.get("won") or 0)
+                karma = "（同类维度达标关联 %d 次，非因果证明）" % int(x.get("won") or 0)
             lines.append("- [%s] **%s**%s：%s" % (x["id"], x["title"], karma, x["content"]))
             used.append(x["id"])
             lesson_ids.append(x["id"])
-        lesson_part = ("### 【本项目已沉淀的教训（历史评审反复出现，务必规避；方括号内为教训编号）】\n"
+        lesson_part = ("### 【本项目经验记录（证据强度以条目标注为准；先结合当前正文判断，不要机械套用；方括号内为编号）】\n"
                        + "\n".join(lines))
 
     if not parts and not lesson_part:
         return "", []
 
-    header = "## 经验库（写作/工程规范 + 历史教训，必须遵守）\n\n"
+    header = "## 经验库（写作/工程规范 + 过往经验记录；按证据强度参考）\n\n"
     budget = max(600, MAX_INJECT_CHARS - len(lesson_part))
     body = "\n\n".join(parts)
     if len(body) > budget:
@@ -814,16 +814,17 @@ def bump_hits(ids):
 
 LEARN_PROMPT = """你是编排系统的复盘官。下面是刚结束的一次任务运行的评审结果与主要问题。
 请把**可复用到下次同类任务**的经验提炼出来（不要复述本次剧情，不要写泛泛的套话）。
-两类都要看：①需要规避的教训（来自问题）；②**已验证有效的做法**（mengram 程序性
-记忆借鉴：任务一次通过且分数高时，把「这次做对了什么」提炼成可复用步骤，title
-以「做法：」开头，如「做法：先列评分点再逐条应答」）。
+两类都要看：①待复核的问题观察（来自本次问题）；②候选做法（mengram 程序性记忆
+借鉴：任务一次通过且分数高时，可提炼「这次可能做对了什么」，title 以「候选做法：」
+开头，如「候选做法：先列评分点再逐条应答」。单次运行不能称为已验证，也不能据此
+推断因果；只有跨运行重复观察后，才可作为更强证据。经验仅适用于当前任务类型，避免升格成跨题材硬规则。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
-{"lessons": [{"title": "≤14 字的归类（教训直接写；有效做法以「做法：」开头）", "category": "问题分类", "content": "下次必须怎么做/避免什么（≤120 字，具体可执行）", "violates": ["sk-xxxxxx"]}]}
+{"lessons": [{"title": "≤14 字的归类（观察以「本次观察：」开头；做法以「候选做法：」开头）", "category": "问题分类", "content": "本次证据及适用边界（≤120 字，不写成普遍定律）", "violates": ["sk-xxxxxx"]}]}
 violates：本次问题**戳穿了下面「本次已注入的历史教训」中的哪几条**（那几条已在提示词里却没防住），
 只能填下面列出的编号原值，不确定或没有对应就填 []。
 category 必须从以下固定枚举中选一个（贴合评审维度，不要自创类别）：
 __CATEGORIES__
-最多 5 条，只保留反复出现或影响过稿/验收的关键项；一次通过的高分运行优先提炼「做法」；没有值得沉淀的就返回空数组。
+最多 5 条，只保留本次证据明确且影响较大的观察；单次成功只能提炼「候选做法」；没有值得沉淀的就返回空数组。不要用「反复」「总是」「必须」描述单次运行证据。
 
 ## 任务类型
 __TYPE__
@@ -939,7 +940,7 @@ def _attribute(registered, by_id, issues, strengths):
 
 
 def _fallback_lessons(task, run):
-    """无编排者时的确定性兜底：按维度把反复出现的问题聚成教训。"""
+    """无编排者时的确定性兜底：只记录本次观察，不把单次结果泛化成规律。"""
     v = run.get("verdict") or {}
     out = []
     weak = {}
@@ -950,15 +951,15 @@ def _fallback_lessons(task, run):
     for d, lst in sorted(weak.items(), key=lambda kv: -len(kv[1]))[:3]:
         chs = "、".join("第 %s 章(%.1f)" % (c, s) for c, s in lst[:4])
         out.append({"dim": d,
-                    "title": "%s 维度反复不达标" % d,
-                    "content": "历史运行中 %s 的「%s」多次低于阈值（%s）。写这一维度前先对照经验包自检，"
-                               "宁可少写事件也要把该维度做扎实。" % (task.get("type"), d, chs)})
+                    "title": "本次观察：%s偏弱" % d,
+                    "content": "单次运行%s的评审中，「%s」在%s低于阈值；这是待复核信号，不代表题材通用规律。"
+                               "后续先检查对应文本证据与任务目标，再决定是否调整。" % (task.get("type"), d, chs)})
     for d, s in (v.get("global_scores") or {}).items():
         if float(s) < float(v.get("threshold") or 7.0):
             out.append({"dim": d,
-                        "title": "全书「%s」被一致性评审扣分" % d,
-                        "content": "单章达标但全书「%s」仅 %.1f 分。下一部作品在章纲阶段就要规划该维度的"
-                                   "整体曲线（而不是逐章各写各的）。" % (d, float(s))})
+                        "title": "本次观察：全书%s偏弱" % d,
+                        "content": "单次运行的一致性评审中，全书「%s」得 %.1f 分；这是待复核信号。先查看评审证据，"
+                                   "确认问题确由全书结构造成后，再决定是否在后续大纲中规划整体曲线。" % (d, float(s))})
     return out[:5]
 
 
@@ -1007,13 +1008,21 @@ def learn_from_run(run_id, use_orchestrator=True):
         task = store.get_task(run.get("task_id")) if run.get("task_id") else None
         if not task:
             return 0
+        # 只有正常完成的运行才可沉淀；failed/cancelled/timeout 即便残留 verdict，
+        # 也可能是半成品或基础设施故障，不能当作内容质量证据。
+        if (run.get("status") or "") != "done":
+            return 0
         # mock 运行不沉淀（没有真实评审信号）
-        if all((s.get("agent") or "").startswith("mock") for s in (run.get("steps") or [])):
+        steps = run.get("steps") or []
+        if not steps or all((s.get("agent") or "").startswith("mock") for s in steps):
             return 0
         v = verdict
         if not v:
             return 0
+        if outcome is None and not (v.get("chapter_scores") or v.get("global_scores")):
+            return 0  # 仅有摘要/执行状态但无明确结论或评分，不作为质量信号
         lessons = []
+        model_returned_lessons = False
         if use_orchestrator:
             try:
                 from . import modelhub, runner
@@ -1038,15 +1047,17 @@ def learn_from_run(run_id, use_orchestrator=True):
                         data = runner.extract_json(res.get("text") or "")
                         raw = (data or {}).get("lessons") if isinstance(data, dict) else None
                         if isinstance(raw, list):
+                            model_returned_lessons = True
                             for x in raw[:5]:
-                                if isinstance(x, dict) and x.get("title") and x.get("content"):
+                                if (isinstance(x, dict) and x.get("title") and x.get("content")
+                                        and str(x["title"]).strip().startswith(("本次观察：", "候选做法："))):
                                     lessons.append({"title": str(x["title"]), "content": str(x["content"]),
                                                     "category": x.get("category")})
                                     for lid in (x.get("violates") or [])[:MAX_LESSONS_INJECT]:
                                         cited.add(str(lid).strip())
             except Exception:
                 lessons = []
-        if not lessons:
+        if not lessons and not model_returned_lessons:
             lessons = _fallback_lessons(task, run)
         n = 0
         for x in lessons:

@@ -840,8 +840,12 @@ function recommendTaskType(goal) {
     // 专属词在前（简历/PPT/标书的目标里常带技术词，放 code 之后会被截胡，
     // 「优化我的简历，投后端岗」实测命中 code——2026-10-07 巡检）：
     ["resume", /(简历|求职|应聘)/i],
-    ["presentation", /(演示文稿|ppt|幻灯片|答辩)/i],
+    ["presentation", /(演示文稿|ppt|幻灯片|答辩|演示场合)/i],
     ["bid_doc", /(标书|投标|招标应答)/i],
+    // 缺陷复盘同为专属词（「复盘这些bug」会被 code 的 bug 词截胡）：要求复盘
+    // 与 bug/缺陷 共现（或命中漏测），纯 debug（「分析这个bug」）仍归 code。
+    ["defect_retro",
+     /(缺陷复盘|漏测|(bug|缺陷)[^，。；]{0,10}复盘|复盘[^，。；]{0,10}(bug|缺陷))/i],
     ["code", /(代码|bug|报错|修复|重构|接口|数据库|前端|后端|python|javascript|typescript|java|go\b|git)/i],
     ["translation", /(翻译|译成|translate|translation|中译英|英译中)/i],
     ["email", /(邮件|email|e-mail|回信|邀约信|商务函)/i],
@@ -849,11 +853,18 @@ function recommendTaskType(goal) {
     ["video_script", /(短视频|口播|分镜|抖音|b站|视频号|视频脚本)/i],
     ["speech", /(演讲稿|发言稿|致辞|演讲)/i],
     ["tech_proposal", /(技术方案|架构方案|选型方案|实施方案)/i],
-    ["research", /(调研报告|竞品调研|市场调研|深度研究)/i],
-    ["serial_novel", /(连载|续写.*章|网文|长篇小说)/i],
+    ["research", /(调研|深度研究)/i],
+    // goal_hint 引导词对齐（2026-10-08 第二轮巡检）：serial_novel 例句
+    // 「都市女频/可签约平台」、article 提示「头条/知乎」——照提示输入
+    // 此前不弹类型建议（同 video_script 补词第 3 例缝隙）。
+    ["serial_novel", /(连载|续写.*章|网文|长篇小说|女频|男频|签约平台)/i],
     ["novel", /(小说|故事|短篇|章节)/i],
-    ["article", /(公众号|自媒体|文章|博客|小红书)/i],
+    ["article", /(公众号|自媒体|文章|博客|小红书|头条|知乎)/i],
     ["doc", /(文档|操作手册|说明书)/i],
+    // 宽词放末位兜底（「电影排行榜文章」由前面的 article 先接住）；词形对齐
+    // rank_scan 的 goal_hint（「默认分析总榜热门题材」）。至此 direct 之外
+    // 17 型推荐规则全覆盖（2026-10-08 巡检补 rank_scan/defect_retro 两型）。
+    ["rank_scan", /(扫榜|热门题材|榜单分析|排行榜)/i],
   ];
   const hit = rules.find((x) => x[1].test(s));
   return hit && flowById(hit[0]) ? hit[0] : "";
@@ -3117,9 +3128,13 @@ async function createTask() {
     if (suggested) {
       const flow = flowById(suggested) || {};
       resetSubmit();
+      // 快档目标（rank_scan/defect_retro）没有评审门禁，卖点如实换成各自的
+      // 专用数据链路/产出模板；review/code 目标维持门禁口径。
+      const tail = flow.engine === "direct"
+        ? t("这个需求更适合「{0}」流程，能使用对应的专用数据链路与产出模板。是否切换后执行？")
+        : t("这个需求更适合「{0}」流程，能使用对应的规划与质量门禁。是否切换后执行？");
       const yes = await uiConfirm(
-        t("这个需求更适合「{0}」流程，能使用对应的规划与质量门禁。是否切换后执行？")
-          .replace("{0}", t(flow.name || suggested)),
+        tail.replace("{0}", t(flow.name || suggested)),
         { title: t("推荐任务类型"), ok: t("切换类型") });
       S.typeSuggestionDone = true;
       if (yes) pickType(suggested);

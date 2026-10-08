@@ -750,6 +750,7 @@ def _maybe_auto_resume(run_id):
 
 
 RESUME_WINDOW_HOURS = 24   # 启动恢复只看最近 24h 内中断的运行（更早的视为已放弃）
+UNCLAIMED_QUEUE_MAX_AGE_S = RESUME_WINDOW_HOURS * 3600
 
 
 def _recent(run):
@@ -887,15 +888,35 @@ def requeue_pending(limit=10, max_age_s=None):
             kind = run.get("kind")
             if run.get("status") != "queued" or kind not in ("orchestration", "mgmt"):
                 continue
+            # requeue_pending 也会在进程存活期间由巡检线程调用。load_all() 只
+            # 能清理启动时发现的 queued 残留；如果进程一直不重启，旧的测试/异常
+            # 创建记录会永远绕过 _recent() 留在「排队中」。超过恢复窗口的记录
+            # 已不具备自动恢复价值，直接收口并同步任务状态，保留用户手动重试入口。
+            # 明确的未来 resume_enqueue_at 属于有意退避，即使创建时间很老也不能提前
+            # 打断；到点后下一轮巡检会重新进入这里。
+            if _in_resume_backoff(run):
+                continue
+            if kind == "orchestration":
+                if not run.get("task_id") or not _recent(run):
+                    # Keep malformed/old records eligible for the expiry path,
+                    # but never let an old duplicate override a newer run.
+                    if run.get("task_id") and _task_active_run(
+                            run["task_id"], exclude_run_id=run["id"]):
+                        continue
+                elif _task_active_run(run["task_id"], exclude_run_id=run["id"]):
+                    continue   # 同任务已有更活跃的运行，别收口/再排一份
+            if _age_s(run) >= UNCLAIMED_QUEUE_MAX_AGE_S:
+                store.update_run(
+                    run["id"], expected_status="queued", status="failed",
+                    ended_at=_now(),
+                    error="排队记录已过期，服务未能在恢复窗口内启动，可重试",
+                )
+                continue
             if max_age_s is not None and _age_s(run) < max_age_s:
                 continue
             if kind == "orchestration":
                 if not run.get("task_id") or not _recent(run):
                     continue
-                if _in_resume_backoff(run):
-                    continue   # 退避窗口内的续跑副本：到点 Timer 自会入队
-                if _task_active_run(run["task_id"], exclude_run_id=run["id"]):
-                    continue   # 同任务已有更活跃的运行，别再排一份
             else:
                 eid = run.get("entry_id")
                 if eid:

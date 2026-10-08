@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
-"""任务类型推荐规则完整性（app.js recommendTaskType）：所有适合推荐的预置
-review 引擎流程都必须有推荐规则——缺失时用户在「直接执行」档输入该类需求
-（如「做答辩 PPT」「优化简历」「编标书」「写操作手册」）不会弹类型切换建议，
-直接走无评审门禁的快档（2026-10-07 巡检发现 doc/presentation/resume/bid_doc
-四类型无规则）。
+"""任务类型推荐规则完整性（app.js recommendTaskType）：direct 之外所有预置
+流程都必须有推荐规则——缺失时用户在「直接执行」档输入该类需求（如「做答辩
+PPT」「优化简历」「编标书」「写操作手册」「扫榜看热门题材」）不会弹类型切换
+建议，直接走快档、旁路掉对应流程的评审门禁或专用数据链路（2026-10-07 巡检
+补 doc/presentation/resume/bid_doc 四类型；2026-10-08 巡检补 rank_scan/
+defect_retro 两型；2026-10-08 第二轮巡检对齐 goal_hint 引导词：presentation
+「演示场合」/serial_novel「女频/男频/签约平台」/article「头条/知乎」/
+research「调研」——同 video_script 补词第 3 例缝隙）。
 
 跑法：python -m unittest discover -s tests -p "test_recommend_rules.py" -v
 """
@@ -16,9 +19,10 @@ from base import BaseTest
 
 _APP = Path(__file__).resolve().parent.parent / "app" / "ui" / "app.js"
 
-# direct 快档三件（推荐逻辑本身只在 direct 档触发，无需自荐）之外，
-# 其余预置流程都应有推荐规则（code 引擎与 review 引擎一律算）。
-_RULELESS = {"direct", "rank_scan", "defect_retro"}
+# direct 自身（推荐逻辑只在 direct 档触发，无需自荐）之外，其余预置流程都应有
+# 推荐规则（code/review/direct 引擎一律算；2026-10-08 轮补齐 rank_scan/
+# defect_retro 两型——此前快档三件一并豁免，两型的专用数据链路因此永远旁路）。
+_RULELESS = {"direct"}
 
 
 def _rules():
@@ -38,7 +42,7 @@ def _rules():
 class RecommendRulesTests(BaseTest):
 
     def test_rules_cover_all_recommended_flows(self):
-        """每个可推荐的预置流程都有推荐规则（direct 快档三件除外）。"""
+        """每个可推荐的预置流程都有推荐规则（direct 自身除外）。"""
         from app.core.flows import BUILTIN_FLOWS
 
         ids = {fid for fid, _ in _rules()}
@@ -68,6 +72,21 @@ class RecommendRulesTests(BaseTest):
             ("写个短视频脚本，抖音带货", "video_script"),
             ("修复登录接口的报错", "code"),
             ("长篇网文连载，都市女频", "serial_novel"),
+            # 2026-10-08 轮补两型：
+            ("复盘上个版本的缺陷，输出改进动作", "defect_retro"),
+            ("复盘这些bug，给出改进动作", "defect_retro"),   # bug 词不被 code 截胡
+            ("扫榜看看热门题材", "rank_scan"),
+            ("分析一下起点排行榜", "rank_scan"),
+            # 防误荐回归：纯 debug（无复盘/漏测语义）仍归 code
+            ("分析这个bug的原因", "code"),
+            # 2026-10-08 第二轮：goal_hint 引导词对齐（照提示输入即命中）
+            ("演示场合：新品发布会，听众是渠道客户", "presentation"),
+            ("都市女频，20万字，目标可签约平台", "serial_novel"),
+            ("写篇头条文章聊聊AI编程", "article"),
+            ("调研一下主流AI编排工具的优劣", "research"),
+            # 防误荐回归：bug 词先于 research 的「调研」；「演示」不带「场合」不荐
+            ("帮我调研这个bug的成因", "code"),
+            ("演示一下这个函数怎么用", ""),
         ]
         for goal, want in cases:
             self.assertEqual(hit(goal), want,
