@@ -106,6 +106,8 @@ UPLOAD_CHAPTER = [
     {"do": "fill", "sel": "[contenteditable=true],textarea[class*=content]", "key": "chapter_body"},
     {"do": "shot", "name": "chapter-filled"},
     {"do": "submit", "sel": "button[class*=publish],button[class*=submit]"},
+    {"do": "click_real", "text": "提交", "scope": "button", "tries": 20,
+     "optional": True},
 ]
 
 # 登录态探测：打开后台首页，URL 被踢到登录页 → 未登录

@@ -294,6 +294,8 @@ class Page:
         except (WebSocketError, OSError) as e:
             raise BrowserError("连接页面失败：%s" % e)
         self._id = 0
+        self._port = int(m.group(2))
+        self._target_id = m.group(3).rsplit("/", 1)[-1]
         self._events = []
         try:
             self.send("Runtime.enable")
@@ -334,6 +336,43 @@ class Page:
                       {"userAgent": ua}, timeout=5.0)
         except BrowserError:
             pass
+
+    # ------------------------------------------------------------ 页签
+    def neutralize_dialogs(self):
+        """灭掉页面级 confirm/alert/prompt：原生弹窗会挂起渲染主线程，无人
+        值守流程没有人点「确定」（2026-10-08 番茄实案：编辑器加载/发布确认
+        阶段整页卡死，CDP 全线超时）。对当前文档立即生效，并注册到本页签
+        之后加载的所有新文档（addScriptToEvaluateOnNewDocument 在平台 JS
+        之前跑，加载期弹窗一并覆盖）。"""
+        stub = ("window.confirm=function(){return true;};window.alert=function(){};"
+                "window.prompt=function(){return null;};")
+        try:
+            self.send("Page.addScriptToEvaluateOnNewDocument",
+                      {"source": stub}, timeout=5.0)
+        except BrowserError:
+            pass
+        try:
+            self.evaluate(stub, timeout=5.0)
+        except BrowserError:
+            pass
+
+    def open_new_tab(self, url="about:blank"):
+        """开新页签并返回新 Page（本页签原地不动）。
+
+        发布验证必须走这里：在编辑器页签里导航去管理页会触发 beforeunload
+        原生确认——渲染主线程挂起、导航超时、进行中的发布请求一并被取消
+        （2026-10-08 番茄实案：直发章全卡死在验证导航上）。"""
+        t = _http_json("http://127.0.0.1:%d/json/new?%s" % (self._port, url),
+                       method="PUT")
+        return Page(t["webSocketDebuggerUrl"])
+
+    def close_tab(self):
+        """关掉自己（target 级浏览器进程命令，渲染器卡死也关得掉）。"""
+        try:
+            _http_json("http://127.0.0.1:%d/json/close/%s"
+                       % (self._port, self._target_id), timeout=8)
+        except Exception:
+            pass                    # 响应体是纯文本「Target is closing」非 JSON
 
     # ------------------------------------------------------------ CDP 协议
     def send(self, method, params=None, timeout=30.0):

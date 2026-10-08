@@ -268,6 +268,9 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
     values = values or {}
     config = config or {}
     log = log or (lambda s: None)
+    # 原生弹窗灭活（confirm/alert/prompt）：无人值守流程没人点「确定」，
+    # 原生弹窗会挂起渲染主线程让后续 CDP 全线超时（2026-10-08 实案）
+    getattr(page, "neutralize_dialogs", lambda: None)()
 
     def note(i, s):
         log("步骤%d %s" % (i, s))
@@ -590,23 +593,37 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
             elif act == "verify":
                 # 上线验证：导航到验证页断言文本在场——防「流程完成但平台
                 # 静默未发布」的假成功（0 字草稿案）。url/any 支持 values 占位。
+                # new_tab=true 时开新页签验证、本页签原地不动：在编辑器页签
+                # 里导航会触发 beforeunload 原生确认（渲染挂起+发布请求被
+                # 取消，2026-10-08 实案），编辑器流程一律用新页签。
                 url = str(st.get("url") or "")
                 for k, v in (values or {}).items():
                     url = url.replace("{%s}" % k, str(v))
                 note(i, "验证 %s" % url[:60])
-                page.navigate(url, timeout=30)
-                time.sleep(float(st.get("settle") or 4))
-                marks = [str(m) for m in (st.get("any") or [])]
-                body_txt = str(page.call(
-                    "()=>(document.body.innerText||'')", timeout=10) or "")
-                for m in marks:
-                    mk = m
-                    for k, v in (values or {}).items():
-                        mk = mk.replace("{%s}" % k, str(v))
-                    if mk not in body_txt:
-                        raise FlowError("上线验证失败：%s 页面上没有「%s」（章节未真正发布）"
-                                        % (url[:60], mk[:40]))
-                note(i, "验证通过")
+                settle = float(st.get("settle") or 4)
+                new_tab = bool(st.get("new_tab"))
+                if new_tab:
+                    vpage = page.open_new_tab(url)
+                    time.sleep(settle)
+                else:
+                    page.navigate(url, timeout=30)
+                    time.sleep(settle)
+                    vpage = page
+                try:
+                    marks = [str(m) for m in (st.get("any") or [])]
+                    body_txt = str(vpage.call(
+                        "()=>(document.body.innerText||'')", timeout=15) or "")
+                    for m in marks:
+                        mk = m
+                        for k, v in (values or {}).items():
+                            mk = mk.replace("{%s}" % k, str(v))
+                        if mk not in body_txt:
+                            raise FlowError("上线验证失败：%s 页面上没有「%s」（章节未真正发布）"
+                                            % (url[:60], mk[:40]))
+                    note(i, "验证通过")
+                finally:
+                    if new_tab:
+                        vpage.close_tab()
             elif act == "volume":
                 # 发章带卷（2026-10-08 批量自动发布·自动分卷）：确保目标卷
                 # 在平台上存在（缺则走「新建分卷」）。平台新章按卷自动归类、
