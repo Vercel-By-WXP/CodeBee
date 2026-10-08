@@ -6716,3 +6716,18 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 - **待深挖队列**：+2 新项（语义缓存收益评估观察项；章末钩子族 4 条经验语义合并
   评估）——共 14 项；交拍板 8 件（原 6 件+帮助章来源枚举对账+TUTTI_* 前缀产品化
   改名）。| 队列 | 2026-10-08
+
+## 2026-10-08 07 时班补充：B5 检索、知识与浏览器
+
+- B5 10 组完成，50 条结果，零限流/错误。`Tencent/BrowserSkill`（8,379★，已登录
+  浏览器复用）、`Panniantong/Agent-Reach`（93,605★，多站点检索）、
+  `landing-ai/ade-cli`（2,419★，结构化文档抽取）均为整仓或 CLI 工具，不满足六源
+  技能包与本机已安装条件；不盲接、不改 catalog。
+- CodeBee 既有调研、浏览器出网边界和文档流程，登录态浏览器复用与 schema 抽取列为
+  后续观察项，本轮零产品代码。来源：
+  https://github.com/Tencent/BrowserSkill 、
+  https://github.com/Panniantong/Agent-Reach 、
+  https://github.com/landing-ai/ade-cli
+- 全类型实测 `BUILTIN_FLOWS=18`、`DEFAULT_CATALOG=14`、近期回归 7/7；上一轮
+  `test_novel_signing` 和 `test_quality_gates` 失败及全量测试卡住仍属阻塞，不能写成
+  全量绿。无版本改动、无发布，关键词策略不变。
