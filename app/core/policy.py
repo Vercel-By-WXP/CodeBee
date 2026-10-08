@@ -10,7 +10,11 @@ def normalize_sandbox(spec=None, workdir=None):
     spec = spec if isinstance(spec, dict) else {}
     root = Path(workdir or os.getcwd()).expanduser().resolve()
     roots = []
-    for value in spec.get("allowed_roots") or [str(root)]:
+    requested_roots = spec.get("allowed_roots")
+    if requested_roots is not None and not isinstance(requested_roots, (list, tuple)):
+        raise ValueError("allowed_roots 必须是路径列表")
+    explicit_roots = bool(requested_roots)
+    for value in requested_roots or [str(root)]:
         try:
             candidate = Path(value).expanduser().resolve()
         except (TypeError, OSError, ValueError):
@@ -22,6 +26,8 @@ def normalize_sandbox(spec=None, workdir=None):
         if candidate not in roots:
             roots.append(candidate)
     if not roots:
+        if explicit_roots:
+            raise ValueError("allowed_roots 没有工作目录内的有效路径")
         roots = [root]
     env = []
     for value in spec.get("env_allowlist") or []:

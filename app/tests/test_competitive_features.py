@@ -478,9 +478,34 @@ class CompetitiveFeatureTests(unittest.TestCase):
              patch.object(mcp_client, "call_tool") as call:
             denied = mcp_client.dispatch_full_name(
                 "mcp__demo__danger", {}, disabled_tools=["mcp__demo__danger"])
+            denied_short_name = mcp_client.dispatch_full_name(
+                "mcp__demo__danger", {}, disabled_tools=["danger"])
         self.assertFalse(denied["ok"])
         self.assertIn("禁用", denied["error"])
+        self.assertFalse(denied_short_name["ok"])
+        self.assertIn("禁用", denied_short_name["error"])
         call.assert_not_called()
+
+    def test_mcp_tool_registry_excludes_task_disabled_tools(self):
+        from core import mcp_client
+        server = {"name": "demo", "command": "demo", "args": [], "env": {}}
+        config = json.dumps([server])
+        sandbox = policy.normalize_sandbox(
+            {"disabled_tools": ["mcp__demo__danger"]}, self.root)
+        with patch.object(mcp_client, "_settings_text", return_value=config), \
+             patch.object(mcp_client, "list_tools", return_value={"ok": True, "tools": [
+                 {"name": "safe", "description": "", "input_schema": {"type": "object"}},
+                 {"name": "danger", "description": "", "input_schema": {"type": "object"}},
+             ]}):
+            mcp_client.invalidate_tools_cache()
+            visible = mcp_client.tool_specs_cached(
+                force=True, sandbox=sandbox, workdir=str(self.root))
+        self.assertEqual([row["full_name"] for row in visible], ["mcp__demo__safe"])
+
+    def test_invalid_explicit_sandbox_roots_fail_closed(self):
+        outside = self.root.parent / "not-an-allowed-root"
+        with self.assertRaisesRegex(ValueError, "allowed_roots"):
+            policy.normalize_sandbox({"allowed_roots": [str(outside)]}, self.root)
 
     def test_mcp_dispatch_fails_closed_without_process_sandbox_backend(self):
         from core import mcp_client
@@ -733,8 +758,8 @@ class CompetitiveFeatureTests(unittest.TestCase):
         self.assertFalse(policy.path_allowed(self.root.parent / "x.txt", sandbox))
         self.assertEqual(policy.filter_env({"PATH": "x", "SECRET": "y"}, sandbox), {"PATH": "x"})
         self.assertFalse(policy.normalize_sandbox({"network": "false"}, self.root)["network"])
-        widened = policy.normalize_sandbox({"allowed_roots": [str(self.root.parent)]}, self.root)
-        self.assertEqual(widened["allowed_roots"], [str(self.root)])
+        with self.assertRaisesRegex(ValueError, "allowed_roots"):
+            policy.normalize_sandbox({"allowed_roots": [str(self.root.parent)]}, self.root)
         graph = flow_graph.build("code")
         self.assertTrue(graph["nodes"])
         self.assertTrue(graph["edges"])

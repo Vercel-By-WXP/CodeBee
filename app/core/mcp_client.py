@@ -389,6 +389,9 @@ def tool_specs_cached(force=False, *, sandbox=None, workdir=None):
     servers, err = parse_servers(config_text)
     if err or not servers:
         return []
+    from . import policy
+    disabled = set(policy.normalize_disabled_tools(
+        (sandbox or {}).get("disabled_tools")))
     out = []
     with _LOCK:
         _TOOLS_CACHE.clear()
@@ -398,10 +401,12 @@ def tool_specs_cached(force=False, *, sandbox=None, workdir=None):
             continue
         specs = []
         for t in res["tools"]:
-            if t["name"] in srv.get("disabled_tools", []):
+            full_name = "mcp__%s__%s" % (srv["name"], t["name"])
+            if (t["name"] in srv.get("disabled_tools", [])
+                    or t["name"] in disabled or full_name in disabled):
                 continue
             specs.append({"server": srv["name"], "name": t["name"],
-                          "full_name": "mcp__%s__%s" % (srv["name"], t["name"]),
+                          "full_name": full_name,
                           "description": t["description"],
                           "input_schema": t["input_schema"]})
         with _LOCK:
@@ -427,7 +432,8 @@ def dispatch_full_name(full_name, arguments, timeout_s=_CALL_TIMEOUT, *,
         return {"ok": False, "text": "", "error": "MCP 服务器 %s 未配置" % sname}
     if tool in (srv.get("disabled_tools") or []):
         return {"ok": False, "text": "", "error": "MCP 工具已禁用: %s" % full_name}
-    if full_name in set(str(x) for x in (disabled_tools or [])):
+    if (full_name in set(str(x) for x in (disabled_tools or []))
+            or tool in set(str(x) for x in (disabled_tools or []))):
         return {"ok": False, "text": "", "error": "任务策略已禁用 MCP 工具: %s" % full_name}
     if sandbox is None or not workdir:
         return {"ok": False, "text": "", "error": "MCP 调用缺少任务沙箱策略或工作目录，拒绝启动"}
