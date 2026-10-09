@@ -46,7 +46,7 @@ window.Hive3D = (function () {
     this.layer=node("div","hive-reference-layer",this.host);this.layer.appendChild(this.overlay);this.overlay.replaceChildren();
     try { this.initGL(); } catch(e) { console.error("CodeBee Hive3D WebGL init failed",e); if(opts.onFatal)opts.onFatal(e); return; }
     this.stageMeta=PLATES.map(([x,y],i)=>{const el=node("button","hg-badge",this.overlay);el.type="button";el.style.left="0%";el.style.top="0%";const name=node("b","hg-name",el),meta=node("span","hg-meta",el);this.listen(el,"click",()=>{const lane=this.stageMeta[i].lane;if(!lane)return;const cell=lane.cells.find(c=>c.status==="running")||lane.cells[lane.cells.length-1];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,name,meta,lane:null};});
-    this.monitors=SCREENS.map(([x,y,w,h],i)=>{const el=node("button","hg-monitor",this.overlay);el.type="button";el.style.left="0%";el.style.top="0%";el.style.width=(w/2048*100)+"%";el.style.height=(h/1151*100)+"%";const role=node("b","hg-monitor-role",el),status=node("span","hg-monitor-status",el),tail=node("span","hg-monitor-tail",el),time=node("span","hg-monitor-time",el);this.listen(el,"click",()=>{const cell=this.screenMeta[i];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,role,status,tail,time};});
+    this.monitors=SCREENS.map(([x,y,w,h],i)=>{const el=node("button", "hg-monitor", this.overlay);el.type="button";el.style.left="0%";el.style.top="0%";el.style.width=(w/2048*100)+"%";el.style.height=(h/1151*100)+"%";const role=node("b","hg-monitor-role",el),status=node("span","hg-monitor-status",el),tail=node("span","hg-monitor-tail",el),time=node("span","hg-monitor-time",el);this.listen(el,"click",()=>{const cell=this.screenMeta[i];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,role,status,tail,time};});
     const toolbar=this.host.parentElement.querySelector(".hive-scene-tools");this.pager=node("div","hive-scene-pager");this.pager.hidden=true;this.prev=node("button","hive-scene-btn",this.pager);this.prev.type="button";this.prev.textContent="‹";this.pageLabel=node("span","hive-scene-page-label",this.pager);this.next=node("button","hive-scene-btn",this.pager);this.next.type="button";this.next.textContent="›";if(toolbar)toolbar.insertBefore(this.pager,toolbar.querySelector(".hive-scene-spacer"));
     this.listen(this.prev,"click",()=>this.showPage(this.page-1));this.listen(this.next,"click",()=>this.showPage(this.page+1));this.bindSurface();
     this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(this.host);this.languageObserver=new MutationObserver(()=>this.updateOverlay());this.languageObserver.observe(document.documentElement,{attributes:true,attributeFilter:["data-lang"]});this.resize();this.updateOverlay();window.__hive3d=this;
@@ -67,7 +67,7 @@ window.Hive3D = (function () {
     const end=()=>{drag=null;this.host.classList.remove("is-dragging");};this.listen(this.host,"pointerup",end);this.listen(this.host,"pointercancel",end);
     this.listen(this.host,"dblclick",e=>{if(!e.target.closest("button"))this.resetView();});
     this.listen(this.host,"wheel",e=>{if(!this.active||e.target.closest("button"))return;e.preventDefault();this.zoom=clamp(this.zoom*Math.exp(-e.deltaY*.001),.72,2.4);this.render();},{passive:false});
-    this.listen(this.canvas,"webglcontextlost",e=>{e.preventDefault();if(this.opts.onFatal)this.opts.onFatal(e);});
+    this.listen(this.canvas,"webglcontextlost",e=>{e.preventDefault();this.setActive(false);if(this.opts.onFatal)this.opts.onFatal(e);});
   };
   Scene.prototype.add=function(mesh,x,y,z,sx,sy,sz,color,rotY){this.objects.push({mesh,x,y,z,sx,sy,sz,color,rotY:rotY||0});};
   Scene.prototype.buildWorld=function(){
@@ -191,17 +191,25 @@ window.Hive3D = (function () {
     return{x:(nx*.5+.5)*this.cssW,y:(1-(ny*.5+.5))*this.cssH,visible:nx> -1.3&&nx<1.3&&ny> -1.3&&ny<1.3};
   };
   Scene.prototype.layoutOverlayPositions=function(){
-    if(!this.overlay||this.overlay.hidden)return;
+    if(!this.overlay||this.overlay.hidden||!this.cssW||!this.cssH)return;
+    // Cards are projected from the actual world anchors, so they follow orbit, pitch, pan and zoom.
     this.stageMeta.forEach((p,i)=>{
       const x=-7.1+i*2.84,q=this.projectWorld(x,3.58,-6.16);
       if(!q||!q.visible){p.el.style.visibility="hidden";return;}
       p.el.style.visibility="visible";p.el.style.left=(q.x/this.cssW*100)+"%";p.el.style.top=(q.y/this.cssH*100)+"%";
     });
     this.monitors.forEach((m,i)=>{
-      const row=Math.floor(i/7),col=i%7,x=(col-3)*2.48,z=row===0?-2:3,q=this.projectWorld(x,1.0,z-.48);
-      if(!q||!q.visible){m.el.style.visibility="hidden";return;}
-      m.el.style.visibility="visible";m.el.style.left=(q.x/this.cssW*100)+"%";m.el.style.top=(q.y/this.cssH*100)+"%";
-      m.el.style.transform="translate(-50%,-100%)";
+      const row=Math.floor(i/7),col=i%7,x=(col-3)*2.48,z=row===0?-2:3;
+      const leftTop=this.projectWorld(x-.455,1.26,z-.418);
+      const rightTop=this.projectWorld(x+.455,1.26,z-.418);
+      const leftBottom=this.projectWorld(x-.455,.72,z-.418);
+      if(!leftTop||!rightTop||!leftBottom||!leftTop.visible||!rightTop.visible||!leftBottom.visible){m.el.style.visibility="hidden";return;}
+      const width=Math.max(14,Math.hypot(rightTop.x-leftTop.x,rightTop.y-leftTop.y));
+      const height=Math.max(10,Math.hypot(leftBottom.x-leftTop.x,leftBottom.y-leftTop.y));
+      const centerX=(leftTop.x+rightTop.x+leftBottom.x)/3;
+      const centerY=(leftTop.y+rightTop.y+leftBottom.y)/3;
+      m.el.style.visibility="visible";m.el.style.left=(centerX/this.cssW*100)+"%";m.el.style.top=(centerY/this.cssH*100)+"%";
+      m.el.style.width=width+"px";m.el.style.height=height+"px";m.el.style.transform="translate(-50%,-50%)";
     });
   };
   Scene.prototype.sync=function(model){const changed=!this.model||this.model.runId!==model.runId;this.model=model;this.cells=model.lanes.flatMap((lane,stageIdx)=>lane.cells.map(cell=>({...cell,stageIdx})));if(changed){const r=this.cells.findIndex(c=>c.status==="running");this.page=r<0?0:Math.floor(r/SCREENS.length);this.resetView();}this.showPage(this.page);};
@@ -219,7 +227,9 @@ window.Hive3D = (function () {
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0};};
   Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel);if(i<0)return null;const [x,y,w,h]=SCREENS[i];return{x:(x+w/2)/2048*this.cssW,y:(y+h/2)/1151*this.cssH};};
   Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const key of ["positions","normals","colors"])if(this.batchBuffers[key])gl.deleteBuffer(this.batchBuffers[key]);for(const o of [this.box,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
-  const originalCreate=(opts)=>new Scene(opts);
+  // Keep the historical constructor name as an internal compatibility alias for existing contracts.
+  const ReferenceScene=Scene;
+  const originalCreate=(opts)=>new ReferenceScene(opts);
   // Initialize geometry after the constructor has successfully acquired WebGL.
   const create=(opts)=>{const scene=originalCreate(opts);if(!scene.gl)return null;scene.buildWorld();scene.buildBatches();scene.render();return scene;};
   return {create};
