@@ -7276,3 +7276,26 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 .pb-chip input { margin: 0; }
 .pb-pend-btns { display: flex; gap: 8px; margin-top: 6px; }
 .pb-vol { font-size: 11px; color: var(--accent, #4a7dbe); margin-top: 5px; font-weight: 600; }
+
+
+/* Procedural WebGL hive renderer: canvas is the live 3D layer, DOM controls stay accessible above it. */
+#rd-hive-viewport .hive-gl-live {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  touch-action: none;
+}
+#rd-hive-viewport .hive-reference-layer { z-index: 1; pointer-events: none; }
+#rd-hive-viewport .hive-gl-overlay { pointer-events: none; }
+#rd-hive-viewport .hive-gl-overlay button { pointer-events: auto; }
+#rd-hive-viewport.hive-mode-2d .hive-gl-live { display: none; }
+#rd-hive-viewport.hive-mode-3d .hive-reference { display: none; }
+#rd-hive-viewport.hive-mode-3d .hive-reference-layer { pointer-events: none; }
+#rd-hive-viewport.hive-mode-3d .hg-badge { top: 17.9% !important; }
+#rd-hive-viewport.hive-mode-3d .hg-monitor { top: auto; }
+@media (prefers-reduced-motion: reduce) {
+  #rd-hive-viewport .hive-gl-live { scroll-behavior: auto; }
+}
