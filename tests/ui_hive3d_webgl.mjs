@@ -47,11 +47,28 @@ async function main() {
   const serviceUrl = "http://127.0.0.1:" + servicePort;
   let service, edge, ws;
   const consoleErrors = [];
+  const serviceLog = [];
+  let serviceExit = null;
+  let serviceSpawnError = null;
+  const rememberServiceOutput = chunk => {
+    for (const line of String(chunk).split(/\\r?\\n/)) if (line.trim()) {
+      serviceLog.push(line);
+      if (serviceLog.length > 120) serviceLog.shift();
+    }
+  };
   try {
-    service = spawn("python", [join(ROOT, "app", "main.py"), "--port", String(servicePort), "--no-browser", "--host", "127.0.0.1"], {
-      cwd: ROOT, stdio: "ignore", env: { ...process.env, TUTTI_DATA: dataDir, PYTHONPATH: ROOT },
+    service = spawn("python", ["-X", "utf8", join(ROOT, "app", "main.py"), "--port", String(servicePort), "--no-browser", "--host", "127.0.0.1"], {
+      cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, TUTTI_DATA: dataDir, PYTHONPATH: ROOT },
     });
-    await waitFor(async () => (await fetch(serviceUrl + "/api/state")).ok, 45000, "CodeBee API");
+    service.stdout.on("data", rememberServiceOutput);
+    service.stderr.on("data", rememberServiceOutput);
+    service.on("error", error => { serviceSpawnError = error.message; });
+    service.on("exit", (code, signal) => { serviceExit = { code, signal }; });
+    await waitFor(async () => {
+      if (serviceSpawnError) throw new Error("unable to spawn Python: " + serviceSpawnError);
+      if (serviceExit) throw new Error("CodeBee exited early: " + JSON.stringify(serviceExit) + "\\n" + serviceLog.slice(-30).join("\\n"));
+      return (await fetch(serviceUrl + "/api/state")).ok;
+    }, 90000, "CodeBee API (startup log follows) " + serviceLog.slice(-12).join(" | "));
     edge = spawn(edgePath, [
       "--headless=new", "--no-first-run", "--disable-extensions", "--enable-webgl",
       "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
