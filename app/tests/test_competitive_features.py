@@ -438,15 +438,34 @@ class CompetitiveFeatureTests(unittest.TestCase):
         self.assertNotIn("should-not-run", result)
         run_process.assert_not_called()
 
-    def test_shell_does_not_start_a_process_when_platform_has_no_sandbox_backend(self):
+    def test_shell_runs_full_trust_when_policy_default_and_no_backend(self):
+        """默认宽策略 + 无隔离后端（Win/Mac 常态）：全信任档照跑——策略感知闸
+        只拒无法兑现的收窄，不再一律拒（2026-10-09 用户拍板，与 b267107 同口径）。"""
         from core import builtin_agent, runner
         with tempfile.TemporaryDirectory() as wd:
             sandbox = policy.normalize_sandbox({}, wd)
-            with patch.object(runner, "run_process") as run_process, \
+            with patch.object(runner, "run_process",
+                              return_value={"ok": True, "exit_code": 0,
+                                            "stdout": "runs-now", "stderr": "",
+                                            "cancelled": False,
+                                            "timed_out": False}) as run_process, \
                  patch.object(builtin_agent.shutil, "which", return_value=None):
                 result = builtin_agent._exec_tool(
+                    wd, "run_command", {"command": "echo runs-now"}, sandbox=sandbox)
+        self.assertIn("退出码: 0", result)
+        self.assertIn("runs-now", result)
+        self.assertTrue(run_process.called)
+
+    def test_shell_env_allowlist_refused_without_real_filtering(self):
+        """env 收窄在子进程侧无法兑现（run_process 的 env 是注入语义，合并进
+        完整父环境）——宁拒不假装，与禁网无后端同款 fail-closed。"""
+        from core import builtin_agent, runner
+        with tempfile.TemporaryDirectory() as wd:
+            sandbox = policy.normalize_sandbox({"env_allowlist": ["PATH"]}, wd)
+            with patch.object(runner, "run_process") as run_process:
+                result = builtin_agent._exec_tool(
                     wd, "run_command", {"command": "echo must-not-run"}, sandbox=sandbox)
-        self.assertIn("隔离后端", result)
+        self.assertIn("环境变量白名单", result)
         run_process.assert_not_called()
 
     def test_mcp_network_off_policy_reaches_isolated_dispatch(self):
