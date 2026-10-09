@@ -244,5 +244,34 @@ class VideoScriptRuleTests(unittest.TestCase):
         self.assertEqual(self._recommend("写一篇悬疑小说"), "novel")
 
 
+# ---------------------------------------------------------------------------
+# 2026-10-09 16时班落地件：经验库设置页文案与实现对齐。
+# 04时班勘定「注入不对称」（经验/知识注入只在连载链），实现侧已补全为 review
+# 引擎 13 类型（pipeline.py 起草链+评审链），但 index.html 经验库 hint 仍写
+# 「自动注入小说类任务」——文案落后于实现。改键后 index.html 与 i18n.js 必须
+# 同步（data-i18n 键=中文源文，两处漂移即英文界面回退中文裸奔）。
+_SKILL_HINT_NEW = "（如七猫签约标准，自动注入同类任务的规划与评审提示词） 与"
+_SKILL_HINT_OLD = "自动注入小说类任务的规划与评审提示词"
+
+
+class SkillHintAlignedTests(unittest.TestCase):
+    """经验库设置页 hint 文案 ↔ i18n 词条同步守卫。"""
+
+    def test_index_html_uses_full_type_copy(self):
+        """index.html hint 已是「同类任务」全类型口径，旧「小说类任务」不回归。"""
+        with io.open(os.path.join(_ROOT, "app", "ui", "index.html"),
+                     encoding="utf-8") as f:
+            html = f.read()
+        self.assertIn(_SKILL_HINT_NEW, html)
+        self.assertNotIn(_SKILL_HINT_OLD, html)
+
+    def test_i18n_has_matching_key(self):
+        """i18n.js 有与新文案完全同名的词条（data-i18n 键=中文源文）。"""
+        with io.open(_I18N_JS, encoding="utf-8") as f:
+            i18n = f.read()
+        self.assertIn('"%s"' % _SKILL_HINT_NEW, i18n)
+        self.assertNotIn(_SKILL_HINT_OLD, i18n)
+
+
 if __name__ == "__main__":
     unittest.main()
