@@ -55,6 +55,7 @@
 - q=token+optimization+OR+token+efficient
 - q=context+window+management
 - q=cheap+model+routing+OR+model+cascade
+- q=token+efficient+agent+OR+openclacky 生态（2026-10-09 16 时班补：clacky-ai/openclacky 1,204★ 系 trendshift 根页捞出——「The most Token-efficient open-source AI Agent」描述本身含 token-efficient 词形但主扫 A3 组 per_page=5 被头部剪切未现，系**剪切线盲区**非词形盲区；其 Insert-then-Compress 保前缀缓存+16 工具元工具收敛+闲时压缩预热三机制系 A3 高价值对标件，需盯增量，谁/何时/为何：16 时班首见）
 
 ### A4 新 CLI（3 组）
 - q=ai+coding+agent+cli
@@ -153,6 +154,7 @@
 
 ### 批2：学习记忆与自我改进
 - q=self+improving+agent+OR+agent+reflexion
+- q=agentic+context+engineering+OR+evolving+playbook（2026-10-09 16 时班补：ace-agent/ace 1,352★ 系 WebSearch 批2 域交叉验证捞出+repos 实证〔08-24 后停更，evolving playbooks 自我改进〕、主扫 B2 组 10 词全量未命中——「agentic context engineering」与「self improving agent」词形正交系**词形盲区第 5 例**〔StaffDeck/magic/openworker/open-code-review 同型〕，谁/何时/为何：16 时班批2）
 - q=agent+episodic+memory
 - q=project+memory+coding+agent
 - q=knowledge+graph+agent

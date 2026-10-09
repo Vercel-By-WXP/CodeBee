@@ -6874,3 +6874,82 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 - **本班零代码提案（如实记）**：七专项无新缺口；路线图在册未落地件（spec 分段
   签核跨四层/语义缓存/宪章骨架）均非小而实维持不动；落地=知识沉淀三件套
   （knowledge.md+keywords.md 词形盲区补词+当日报告）。| 结论
+
+## 2026-10-09 16时班（新一轮计划第 1/4 步·全类型调研批2+七专项巡检+落地两件）
+
+> 16:04 开工，hour=16，16%7=2 → **轮换批2（学习记忆与自我改进）**。基线 v0.1.97，
+> main 分支（76ec100），工作区干净（并行代理在制品已入库 ee0449c/d0fab28）。
+> 通道全可用：主扫 115 查零失败零限流（PROGRESS DONE；单进程 discover 崩退在案
+> 风险同型再现，逐模块净进程兜底）、trendshift 根页/topic 8 页/npm/pypi curl 全通、
+> WebSearch 串行 1 发过。
+
+- **主扫**：115/115（A 常驻 89+批2 10+A1 双轮 16），461 唯一仓、零 error 行；
+  活跃候选（≥300★ 且 9 月后在更）162 件过全历史筛**首见 0 件**——主扫面域
+  稳定期延续（与 15 时班「首见判据仅 1」同型）。B2 批域头部 10 件（codegraph
+  73,554/scientific-agent-skills 48,101/agentic-awesome-skills 47,379/graphiti
+  31,582/Auto-claude-code-research-in-sleep 17,161 等）**全已录复认零新增**——
+  批2 域（self-improving/memory/skill 库）头部无新面孔，稳定期结论与 10-06
+  批2 班同型。| 调研·批2
+- **三交叉通道新面孔判据 7 件**：
+  - **clacky-ai/openclacky 1,204★**（10-09 在更，trendshift 根页）——「最
+    token 高效开源 AI Agent」A3 域直接对标：①Insert-then-Compress（压缩不
+    变异系统提示→实测缓存命中近 100%）②16 工具+invoke_skill 元工具收敛
+    （能力下沉 Skill 生态，schema 不膨胀）③闲时后台压缩+缓存预热（冷启动
+    首 token 省 50%+）。对比：我们 stable_order 保前缀缓存系①同向互证；
+    ②系 CLI agent 工具面问题（编排台形态不同非我们的问题面）；**③「闲时
+    压缩+预热」系真实差量**——我们压缩系压力触发（compaction.py maybe_compact），
+    闲时触发+预热需后台线程+空闲检测，非小而实，**记待深挖队列**。A3 高价值
+    判据入库（keywords.md A3 组补词，剪切线盲区非词形盲区）。| 调研·A3
+  - **ace-agent/ace 1,352★**（08-24 后停更，WebSearch 批2 域交叉验证捞出）
+    ——ACE Agentic Context Engineering（context 当 evolving playbooks 自我
+    改进）；主扫 B2 组 10 词全量未命中系**词形盲区第 5 例**（keywords.md
+    批2 已补词）；Reflexion/Voyager/SEAL/altk-evolve（论文）经典或已录，
+    批2 域零机制级新差量。| 调研·批2
+  - **Albert-Weasker/niubigeo 5,529★**（10-08 在更，trendshift）——AI 品牌
+    可见度+竞品报告（B5 competitive intelligence 域，扫榜/调研报告类型邻域）
+    判据雷达。**edenfunf/reelmimic 1,832★/yi1108/printfilm 5,051★** 已录复认
+    （视频域）。| 调研·trendshift
+  - **peters/horizon 715★**（10-09 在更，topic）——GPU 加速终端板多 session
+    无限画布（A13 面板域判据，泛词「horizon」16 处历史命中全为误撞、本件系
+    首见）；**JKHeadley/instar 81★**（持久 Claude Code agents：定时+会话+
+    记忆+Telegram，A9+A11 域）；**futuregene/future-os 111★**（one agent
+    everywhere，A1 同形态）；**responsibleai/agent-hooks 19★**（框架无关
+    控制契约八拦截点+三裁决，B4 治理域）；**FTShare-Lab/agent-claim-network
+    44★**（可追溯知识共享+争议解决，A11 协作域）；**xiaohuiyan/
+    awesome-experience-driven-agents**（经验驱动 agent 论文域图，批2 域专属
+    清单新锐）。| 调研·topic
+- **雷达 C**：awesome 16 源抽查全 alive 零 archived（ComposioHQ 76,724 +2/
+  punkpeye 95,947/hesreallyhim 55,294/bradAGI 1,330 +9/ai-boost 4,763）；
+  trendshift 根页 49 仓提取（已录复认 13+新面孔勘定 17：判据 5+域旁 12）；
+  topic 8 页 64 仓（updated 排序，已录复认为主）；npm 禅道通道第 4 班连用
+  三件全复认零新（dsh-plugin-zentao 0.1.17/zentao-cli 0.3.1/zentao-api 0.7.2，
+  F 专项第 36 班口径零新）；pypi HTTP 200（第 19 班）。| 雷达·C
+- **存量头部增量（vs 15 时班，间隔约 40 分钟微增）**：mattpocock-skills
+  281,653（+41）/ECC 275,562（+7）/hermes-agent 252,122（+6）/opencode
+  212,267（+2）/ponytail 158,927（+21）/orca 88,174（+13）/pi 113,661（+8）/
+  dify 157,972 持平——平稳零放量信号。| 复查
+- **七专项 A-G**：A 八机制锚点在位（_budget_max_tokens:723/_cost_gate_block:758/
+  _shrink_context_block:2702 与 15 时班行号一致零漂移；compaction 默认 True
+  settings_schema.py:226 在位）；openclacky ③系本班唯一 A3 新差量（记待深挖
+  不落地）。B 六源在位（market_remote.py:50）零新接入（openclacky 系完整
+  CLI agent 非六源包/ace 停更/其余判据件微型或域旁——三问全不过）。C
+  BUILTIN_FLOWS=18 零漂移。D lessons=71（流程规范 31/43.7%）基线一致零新增
+  （ace/openclacky 方法论归调研判据非 lessons 注入面）。E catalog 14、本机
+  13/14（openclaw 缺）、候选五 CLI which 全 MISSING 零盲接维持。F
+  config.poll_enabled=false+claims=0+last_error 空+last_scan 停 09-21——关闭
+  态非故障，轮询重开交拍板维持；竞品面第 36 班零新。G 过时文案（13 种任务/
+  单源/双源）grep 真实源码零命中；**发现 2 件如实记并当班修**（见落地件）。| 巡检·A/B/C/D/E/F/G
+- **落地两件**（G 专项顺手修+守卫红灯当班修，04 时班「守卫结论当班必实跑」
+  教训践行）：
+  1. **经验库设置页文案与实现对齐**：04 时班勘定「注入不对称」后实现侧已补全
+     （pipeline.py:5062 起草链+5171 评审链，注释「review 引擎 13 类型补全」），
+     但 index.html:960 hint 仍写「自动注入小说类任务」——文案落后于实现；
+     改「同类任务」+i18n.js:1411 键同步（novel tasks→matching tasks）。
+  2. **修复既有守卫红灯**：test_borrow_iteration 的 JS 字面量键对账测出
+     f79ba7c「全部发草稿」11 键缺 i18n 词条（英文界面中文裸奔）——直发功能
+     10 键+hook 命令示例 1 键全量补齐英文翻译；test_borrow_iteration.py
+     追加 2 用例锁文案↔词条同步契约（11/11 定向绿）。| 落地
+- **本班结论**：主扫/B2 域稳定期延续零机制级新差量；判据 7 件入库雷达
+  （openclacky/ace/niubigeo/horizon/instar/future-os/agent-hooks 等）；待深挖
+  +1（openclacky 闲时压缩+预热缓存）；keywords.md 补词 2 条（词形盲区第 5 例
+  +A3 剪切线）；落地 2 件（文案对齐+守卫红灯修复）。| 结论
