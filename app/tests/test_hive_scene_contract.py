@@ -25,15 +25,22 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn('data-hive-scene-action="zoom-in"', INDEX)
         self.assertIn('data-hive-scene-action="zoom-out"', INDEX)
 
-    def test_engine_is_reference_renderer_with_dynamic_pages_and_picking(self):
-        self.assertIn("ReferenceScene", ENGINE)
-        self.assertIn("SCREENS", ENGINE)
+    def test_engine_is_procedural_webgl_renderer_with_dynamic_pages_and_picking(self):
+        # The reference-image renderer was replaced by a real, dependency-free WebGL scene.
+        self.assertIn("function Scene(opts)", ENGINE)
+        self.assertIn("Scene.prototype.buildWorld", ENGINE)
+        self.assertIn("Scene.prototype.buildBatches", ENGINE)
+        self.assertIn("aNormal", ENGINE)
+        self.assertIn("aColor", ENGINE)
+        self.assertIn("gl.drawArrays(gl.TRIANGLES", ENGINE)
         self.assertIn("showPage", ENGINE)
         self.assertIn("ResizeObserver", ENGINE)
         self.assertIn('"pointerdown"', ENGINE)
         self.assertIn('"wheel"', ENGINE)
         self.assertIn("resetView", ENGINE)
-        self.assertIn("projectCell", ENGINE)
+        self.assertIn("projectWorld", ENGINE)
+        self.assertIn("layoutOverlayPositions", ENGINE)
+        self.assertIn("dispose=function", ENGINE)
 
     def test_app_wiring_mode_persist_and_fallback(self):
         self.assertIn("function setupHiveSceneControls", APP)
@@ -52,8 +59,10 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("@media (prefers-reduced-motion: reduce)", STYLE)
 
     def test_3d_office_projects_live_step_info_onto_clickable_monitors(self):
-        self.assertIn('node("button", "hg-monitor"', ENGINE)
+        self.assertIn('"hg-monitor"', ENGINE)
         self.assertIn("screenMeta", ENGINE)
+        self.assertIn("projectWorld", ENGINE)
+        self.assertIn("layoutOverlayPositions", ENGINE)
         self.assertIn("displayTail", APP)
         self.assertIn("displayStatus", APP)
         self.assertIn("displayElapsed", APP)
