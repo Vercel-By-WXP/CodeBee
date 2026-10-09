@@ -2177,6 +2177,20 @@ def _model_bindable(prov, model):
     return True
 
 
+def _usable_default_model(prov, model=""):
+    """默认模型键位（model / model_easy / model_hard / 编排者配置）对账启用名单。
+
+    默认/难度模型是自由文本，与 models[] 的启停开关互不联动——键位指向已
+    停用/已删除的模型时不能冒充可用：回落该厂商启用名单首个；全停用返回
+    空串（调用方按「无默认模型」处理）。空键位本身合法（用网关默认），
+    也返回空。"""
+    model = (model or "").strip()
+    if model and _model_bindable(prov, model):
+        return model
+    names = [m.get("name") for m in _enabled_models(prov) if m.get("name")]
+    return names[0] if names else ""
+
+
 def _model_image_in(prov, model):
     """模型是否声明支持图片输入：models[] 条目 image_in；缺省/查不到=False（纯文本）。"""
     for m in ((prov or {}).get("models") or []):
@@ -2591,7 +2605,7 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
                 if len(entries) >= MAX_CHAIN_ATTEMPTS:
                     break
                 entries.append(_chain_entry_env(
-                    prov, model or prov.get("model") or "",
+                    prov, model or _usable_default_model(prov, prov.get("model")),
                     target=agent_kind_or_id, endpoint=ep, key=kk["key"],
                     key_id=kk.get("id") or "", provider_id=pid))
             if len(entries) >= MAX_CHAIN_ATTEMPTS:
@@ -2662,6 +2676,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     model = prov.get("model_" + tier) or "" if (routing and tier) else ""
     if not model:
         model = prov.get("model") or ""
+    if model and not _model_bindable(prov, model):
+        model = ""   # 默认/难度模型键位指向停用或已删模型：不冒充可用，回落启用名单
     if not model and names:
         model = names[0] if (not routing or difficulty != "easy") else names[-1]
     if not _evaluation_is_usable(pid, model):
@@ -2724,7 +2740,9 @@ def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role
         names = [m.get("name") for m in _enabled_models(prov)
                  if isinstance(m, dict) and m.get("name")]
         if not names and prov.get("model"):
-            names = [str(prov.get("model"))]
+            dflt = str(prov.get("model"))
+            if _model_bindable(prov, dflt):   # 默认模型被停用时不再充作唯一候选
+                names = [dflt]
         # 候选阶段不能先截前三个：便宜档往往排在供应商列表后面，easy 任务
         # 需要看到完整启用列表后再按成本与档位评分。最终调用链仍受上限约束。
         for model in names:
@@ -3618,9 +3636,7 @@ def resolve_orchestrator():
     if not prov or not prov.get("enabled", True) or not prov.get("api_key"):
         return None
     model = (cfg.get("model") or "").strip() or prov.get("model") or ""
-    if not model:
-        names = _enabled_models(prov)
-        model = names[0]["name"] if names else ""
+    model = _usable_default_model(prov, model)   # 配置的模型被停用时回落启用名单，不冒充可用
     if not model:
         return None
     if not _evaluation_is_usable(pid, model):

@@ -98,15 +98,15 @@ def resolve(provider_id="", model="", difficulty="default"):
                 if selected not in enabled_names:
                     return None
             if not selected:
-                selected = (p.get("model_hard") if difficulty == "hard" else
-                            p.get("model_easy") if difficulty == "easy" else
-                            p.get("model") or "").strip()
-            if not selected:
+                # 默认/难度模型键位与 models[] 启停开关不联动：键位指向已停用
+                # 模型时对账启用名单回落，不冒充可用（停用的模型不准用）
                 try:
-                    names = modelhub._enabled_models(p)
+                    selected = modelhub._usable_default_model(
+                        p, (p.get("model_hard") if difficulty == "hard" else
+                            p.get("model_easy") if difficulty == "easy" else
+                            p.get("model")) or "")
                 except Exception:
-                    names = []
-                selected = names[0]["name"] if names else ""
+                    selected = (p.get("model") or "").strip()
             if selected:
                 return {"prov": p, "model": selected,
                         "provider_id": p.get("id") or "",
@@ -125,15 +125,13 @@ def resolve(provider_id="", model="", difficulty="default"):
     for p in modelhub.providers():
         if not p.get("enabled", True) or not p.get("api_key"):
             continue
-        m = ((p.get("model_hard") if difficulty == "hard" else
-              p.get("model_easy") if difficulty == "easy" else
-              p.get("model")) or "").strip()
-        if not m:
-            try:
-                names = modelhub._enabled_models(p)
-            except Exception:
-                names = []
-            m = names[0]["name"] if names else ""
+        try:
+            m = modelhub._usable_default_model(
+                p, (p.get("model_hard") if difficulty == "hard" else
+                    p.get("model_easy") if difficulty == "easy" else
+                    p.get("model")) or "")
+        except Exception:
+            m = (p.get("model") or "").strip()
         if m:
             return {"prov": p, "model": m, "provider_id": p.get("id") or "",
                     "provider_name": p.get("name") or p.get("id") or ""}
