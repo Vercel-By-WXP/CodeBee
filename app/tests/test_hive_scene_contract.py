@@ -1,6 +1,8 @@
 """蜂巢 3D 场景（WebGL 蜂巢塔）文本合同：真 3D 引擎在 ui/hive3d.js，
 app.js 只做模式切换/持久化/降级，2D 列表是同数据的平面形态。
 端到端行为见 tests/ui_hive3d.mjs（无头 Edge + CDP）。"""
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -41,6 +43,27 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("projectWorld", ENGINE)
         self.assertIn("layoutOverlayPositions", ENGINE)
         self.assertIn("dispose=function", ENGINE)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is not installed")
+    def test_webgl_scene_runtime_smoke(self):
+        harness = ROOT / "tests" / "hive3d_webgl_smoke.mjs"
+        result = subprocess.run(
+            [shutil.which("node"), str(harness)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + "\\n" + result.stderr)
+        self.assertIn("Hive3D smoke test passed", result.stdout)
+
+    def test_scene_batches_are_depth_safe_and_disposable(self):
+        self.assertIn('channels={opaque:', ENGINE)
+        self.assertIn('channels.transparent', ENGINE)
+        self.assertIn('gl.depthMask(false)', ENGINE)
+        self.assertIn('Scene.prototype.drawBatch', ENGINE)
+        self.assertIn('this.projectRect', ENGINE)
+        self.assertIn('gl.deleteBuffer(pass[key])', ENGINE)
 
     def test_app_wiring_mode_persist_and_fallback(self):
         self.assertIn("function setupHiveSceneControls", APP)
