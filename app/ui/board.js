@@ -42,6 +42,20 @@ function parseTs(s) {
   const t = Date.parse(String(s || "").replace(" ", "T"));
   return isNaN(t) ? 0 : t;
 }
+/* 指标条长数值自适应：行宽放不下就逐档降字号（27→21→16px）。
+   判据用 k-row 的 scrollWidth：num/sub 都 nowrap 不收缩，超宽才会外溢。 */
+function fitKpis() {
+  document.querySelectorAll("#kpis .k-row").forEach((row) => {
+    const num = row.querySelector(".k-num");
+    if (!num) return;
+    num.classList.remove("sm", "xs");
+    if (row.scrollWidth <= row.clientWidth + 1) return;
+    num.classList.add("sm");
+    if (row.scrollWidth <= row.clientWidth + 1) return;
+    num.classList.remove("sm");
+    num.classList.add("xs");
+  });
+}
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g,
     (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
@@ -167,6 +181,7 @@ function render(d) {
 
   $("#k-tokens").textContent = fmtTokens(usage.tokens);
   $("#k-use-sub").textContent = fmtCost(usage.cost_usd) + " · " + (Number(usage.calls) || 0) + " " + t("次调用");
+  fitKpis();
 
   // 顶栏态势：整屏只在这里说一次「有没有活」
   const st = $("#hd-state");
@@ -493,6 +508,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "T" || e.key === "t") $("#sw-mode").click();
   if (e.key === "S" || e.key === "s") $("#sw-skin").click();
 });
+window.addEventListener("resize", fitKpis);
 
 /* ---------------------------------------------------------------- 时钟与耗时每秒跳 */
 setInterval(() => {

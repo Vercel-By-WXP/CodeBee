@@ -207,7 +207,11 @@ button { font: inherit; cursor: pointer; }
 }
 .k-lab { font-size: 11px; color: var(--t3); letter-spacing: .8px; }
 .k-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.k-num { font: 700 27px/1 var(--mono); }
+/* k-num 不许换行：卡高 78px 固定 + overflow hidden，换行必裁字（「2246.7万」案）；
+   放不下由 fitKpis() 降档，仍放不下才在末档省略号 */
+.k-num { font: 700 27px/1 var(--mono); white-space: nowrap; }
+.k-num.sm { font-size: 21px; }
+.k-num.xs { font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .k-sub { font: 11px var(--mono); color: var(--t2); white-space: nowrap; }
 .k-run .k-num { color: var(--live-hi); }
 .k-queue .k-num { color: var(--data); }
