@@ -190,29 +190,44 @@ window.Hive3D = (function () {
     const nx=cx/cw,ny=cy/cw;
     return{x:(nx*.5+.5)*this.cssW,y:(1-(ny*.5+.5))*this.cssH,visible:nx> -1.3&&nx<1.3&&ny> -1.3&&ny<1.3};
   };
+  Scene.prototype.projectRect=function(points){
+    const projected=points.map(p=>this.projectWorld(p[0],p[1],p[2]));
+    if(projected.some(p=>!p||!p.visible))return null;
+    const xs=projected.map(p=>p.x),ys=projected.map(p=>p.y);
+    const left=Math.min(...xs),top=Math.min(...ys),right=Math.max(...xs),bottom=Math.max(...ys);
+    if(right<0||bottom<0||left>this.cssW||top>this.cssH)return null;
+    return {left,top,right,bottom,width:right-left,height:bottom-top,centerX:(left+right)/2,centerY:(top+bottom)/2};
+  };
   Scene.prototype.layoutOverlayPositions=function(){
     if(!this.overlay||this.overlay.hidden||!this.cssW||!this.cssH)return;
-    // Cards are projected from the actual world anchors, so they follow orbit, pitch, pan and zoom.
+    // Stage labels occupy the front face of each physical wall panel, rather than a fixed HUD row.
     this.stageMeta.forEach((p,i)=>{
-      const x=-7.1+i*2.84,q=this.projectWorld(x,3.58,-6.16);
-      if(!q||!q.visible){p.el.style.visibility="hidden";return;}
-      p.el.style.visibility="visible";p.el.style.left=(q.x/this.cssW*100)+"%";p.el.style.top=(q.y/this.cssH*100)+"%";
+      const x=-7.1+i*2.84,z=-6.07;
+      const rect=this.projectRect([[x-1.02,3.25,z],[x+1.02,3.25,z],[x+1.02,3.91,z],[x-1.02,3.91,z]]);
+      if(!rect){p.el.style.visibility="hidden";return;}
+      p.el.style.visibility="visible";
+      p.el.style.left=(rect.centerX/this.cssW*100)+"%";
+      p.el.style.top=(rect.centerY/this.cssH*100)+"%";
+      p.el.style.width=Math.max(54,rect.width*.96)+"px";
+      p.el.style.height=Math.max(28,rect.height*.88)+"px";
+      p.el.style.transform="translate(-50%,-50%)";
     });
+    // Project all four corners of the actual glass. This keeps task text inside each screen
+    // while the camera rotates, pitches, pans or zooms; the former three-point average drifted.
     this.monitors.forEach((m,i)=>{
       const row=Math.floor(i/7),col=i%7,x=(col-3)*2.48,z=row===0?-2:3;
-      const leftTop=this.projectWorld(x-.455,1.26,z-.418);
-      const rightTop=this.projectWorld(x+.455,1.26,z-.418);
-      const leftBottom=this.projectWorld(x-.455,.72,z-.418);
-      if(!leftTop||!rightTop||!leftBottom||!leftTop.visible||!rightTop.visible||!leftBottom.visible){m.el.style.visibility="hidden";return;}
-      const width=Math.max(14,Math.hypot(rightTop.x-leftTop.x,rightTop.y-leftTop.y));
-      const height=Math.max(10,Math.hypot(leftBottom.x-leftTop.x,leftBottom.y-leftTop.y));
-      const centerX=(leftTop.x+rightTop.x+leftBottom.x)/3;
-      const centerY=(leftTop.y+rightTop.y+leftBottom.y)/3;
-      m.el.style.visibility="visible";m.el.style.left=(centerX/this.cssW*100)+"%";m.el.style.top=(centerY/this.cssH*100)+"%";
-      m.el.style.width=width+"px";m.el.style.height=height+"px";m.el.style.transform="translate(-50%,-50%)";
+      const rect=this.projectRect([[x-.455,.995-.27,z-.409],[x+.455,.995-.27,z-.409],
+        [x+.455,.995+.27,z-.409],[x-.455,.995+.27,z-.409]]);
+      if(!rect||rect.width<8||rect.height<6){m.el.style.visibility="hidden";return;}
+      m.el.style.visibility="visible";
+      m.el.style.left=(rect.left/this.cssW*100)+"%";
+      m.el.style.top=(rect.top/this.cssH*100)+"%";
+      m.el.style.width=Math.max(8,rect.width-2)+"px";
+      m.el.style.height=Math.max(6,rect.height-2)+"px";
+      m.el.style.transform="none";
     });
   };
-  Scene.prototype.sync=function(model){const changed=!this.model||this.model.runId!==model.runId;this.model=model;this.cells=model.lanes.flatMap((lane,stageIdx)=>lane.cells.map(cell=>({...cell,stageIdx})));if(changed){const r=this.cells.findIndex(c=>c.status==="running");this.page=r<0?0:Math.floor(r/SCREENS.length);this.resetView();}this.showPage(this.page);};
+    Scene.prototype.sync=function(model){const changed=!this.model||this.model.runId!==model.runId;this.model=model;this.cells=model.lanes.flatMap((lane,stageIdx)=>lane.cells.map(cell=>({...cell,stageIdx})));if(changed){const r=this.cells.findIndex(c=>c.status==="running");this.page=r<0?0:Math.floor(r/SCREENS.length);this.resetView();}this.showPage(this.page);};
   Scene.prototype.showPage=function(page){const pages=Math.max(1,Math.ceil((this.cells||[]).length/SCREENS.length));this.page=clamp(page,0,pages-1);this.screenMeta=(this.cells||[]).slice(this.page*SCREENS.length,(this.page+1)*SCREENS.length);this.pager.hidden=pages<=1;this.prev.disabled=this.page===0;this.next.disabled=this.page===pages-1;this.pageLabel.textContent=(this.page+1)+" / "+pages;this.updateOverlay();};
   Scene.prototype.updateOverlay=function(){
     const lanes=this.model?this.model.lanes:[];
