@@ -143,7 +143,7 @@ window.Hive3D = (function () {
           const a0=edge*Math.PI/3,a1=(edge+1)*Math.PI/3;
           const x0=cx+tileR*Math.cos(a0),z0=cz+tileR*Math.sin(a0);
           const x1=cx+tileR*Math.cos(a1),z1=cz+tileR*Math.sin(a1);
-          const rotation=[Math.PI/3,0,-Math.PI/3][edge];
+          const rotation=Math.atan2(-(z1-z0),x1-x0);
           this.add(b,(x0+x1)/2,-.032,(z0+z1)/2,tileR,.008,.009,[.74,.83,.90,1],rotation);
         }
       }
