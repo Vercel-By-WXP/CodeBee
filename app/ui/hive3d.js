@@ -227,9 +227,7 @@ window.Hive3D = (function () {
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0};};
   Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel);if(i<0)return null;const [x,y,w,h]=SCREENS[i];return{x:(x+w/2)/2048*this.cssW,y:(y+h/2)/1151*this.cssH};};
   Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const key of ["positions","normals","colors"])if(this.batchBuffers[key])gl.deleteBuffer(this.batchBuffers[key]);for(const o of [this.box,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
-  // Keep the historical constructor name as an internal compatibility alias for existing contracts.
-  const ReferenceScene=Scene;
-  const originalCreate=(opts)=>new ReferenceScene(opts);
+  const originalCreate=(opts)=>new Scene(opts);
   // Initialize geometry after the constructor has successfully acquired WebGL.
   const create=(opts)=>{const scene=originalCreate(opts);if(!scene.gl)return null;scene.buildWorld();scene.buildBatches();scene.render();return scene;};
   return {create};
