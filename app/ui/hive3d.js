@@ -81,7 +81,7 @@ window.Hive3D = (function () {
     for(let x=-6;x<=6;x+=6)this.add(b,x,4.85,-1.4,2.1,.08,.16,[.12,.14,.17,1]);
     for(let x=-6.6;x<=6.6;x+=6.6){this.add(b,x,4.45,-1.6,.035,.55,5.3,[.24,.31,.36,1]);this.add(b,x,2.4,-1.6,.035,3.3,5.3,[.62,.82,.93,1]);}
     // top workflow panels represented as bright, raised tiles across the feature wall
-    for(let i=0;i<6;i++){const x=-7.1+i*2.84;this.add(b,x,3.35,-5.55,2.05,.72,.16,[.98,.99,1,1]);this.add(b,b===s?s:b,x,2.92,-5.45,1.6,.035,.04,[.22,.82,.94,1]);}
+    for(let i=0;i<6;i++){const x=-7.1+i*2.84;this.add(b,x,3.35,-5.55,2.05,.72,.16,[.98,.99,1,1]);this.add(b,x,2.92,-5.45,1.6,.035,.04,[.22,.82,.94,1]);}
     // 14 desks in two rows; share one box mesh to keep draw calls and memory modest
     for(let row=0;row<2;row++)for(let i=0;i<7;i++){
       const x=(i-3)*2.55,z=row===0?-1.25:3.35;
