@@ -115,6 +115,8 @@ async function main() {
       " const canvas=document.getElementById('rd-hive-gl');",
       " const overlay=document.getElementById('rd-hive-overlay');",
       " if(!viewport||!canvas||!overlay||!window.Hive3D) throw new Error('Hive3D host or engine missing');",
+      " if(typeof window.welcomeClose==='function') window.welcomeClose();",
+      " const welcome=document.getElementById('welcome');if(welcome)welcome.classList.add('hidden');",
       " document.body.style.cssText='margin:0;padding:24px;background:#eaf3fa;font-family:Arial,sans-serif;overflow:hidden';",
       " document.body.appendChild(viewport);",
       " viewport.classList.add('hive-mode-3d');viewport.classList.remove('hive-mode-2d');",
@@ -138,6 +140,7 @@ async function main() {
     assert.equal(state.info.lanes, 6, "six workflow lanes were mapped");
     assert.ok(state.canvas[0] >= 1000 && state.canvas[1] >= 500, "canvas has a real drawing buffer");
     assert.equal(state.glError, 0, "WebGL reports NO_ERROR after rendering");
+    assert.equal(await evaluate("document.getElementById('welcome')?.classList.contains('hidden') ?? true"), true, "welcome modal does not obscure the scene screenshot");
     assert.equal(state.monitors, 14, "fourteen clickable monitor overlays exist");
     assert.ok(state.visibleMonitors >= 8, "monitor overlays are projected into visible screen coordinates");
     assert.equal(state.badges, 6, "six workflow cards exist");
