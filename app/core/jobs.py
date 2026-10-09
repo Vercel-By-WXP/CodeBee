@@ -1013,9 +1013,15 @@ def _do_mgmt(job, ev):
         # 修复智能体面对文件锁只会给出 taskkill 全杀 node 之类白名单必拒的危险
         # 命令，白白烧一轮 300s 诊断（2026-09-18 dsh 同版本重装 EBUSY 案）
         lock_hit = (not ok and op in ("install", "upgrade") and _file_lock_error(res))
+        # uv 缺失同跳 AI 修复：修复链就算装上 uv，复检目标 CLI 仍未装，结论还是
+        # 失败，白烧一轮；人话指路「先装 uv 再点安装」一步到位（2026-10-09 Mac
+        # aider/trae 双装失败实案）
+        uv_missing = bool(res.get("uv_missing"))
         if lock_hit:
             summary = ("失败：安装文件被占用（可能有同名程序在运行，或杀毒软件正在扫描），"
                        "请关闭占用该文件的程序后重试。完整输出见日志。")
+        elif uv_missing:
+            summary = "失败：" + str(res.get("error") or "")[:300]
         else:
             # note 优先：良性收口（如 winget「已装无可升级」复检在装）给用户
             # 看原因，别让「完成」两个字孤零零不带解释
@@ -1026,7 +1032,7 @@ def _do_mgmt(job, ev):
                           summary=summary,
                           exit_code=res.get("exit_code"))
         # AI 修复只针对安装类失败；卸载失败多为权限/程序占用，留给用户看日志处理
-        if not ok and op in ("install", "upgrade") and not lock_hit:
+        if not ok and op in ("install", "upgrade") and not lock_hit and not uv_missing:
             ok = _ai_repair(run_id, entry, ev, entry.get(op), log_abs)
     elif op == "smoke":
         from . import runner as _r
@@ -1129,6 +1135,7 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
         "npm: %s" % (shutil.which("npm") or "缺失"),
         "pnpm: %s" % (shutil.which("pnpm") or "缺失"),
         "python: %s" % (shutil.which("python3" if not is_win else "python") or "缺失"),
+        "uv: %s" % (shutil.which("uv") or "缺失"),
     ]
     if not is_win:
         env_lines.append("brew: %s" % (shutil.which("brew") or "缺失"))

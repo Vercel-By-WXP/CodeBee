@@ -73,18 +73,27 @@ _CLI_EXTS = (".exe", ".cmd", ".bat")
 
 
 def _fallback_probe_cli(name):
-    """which() 落空时按常见安装位兜底找 CLI（Windows only），返回全路径或 None。
+    """which() 落空时按常见安装位兜底找 CLI，返回全路径或 None。
 
     服务进程的 PATH 是启动那一刻的快照：CLI 在服务起跑之后才安装/迁移（如
     2026-09-30 claude 转 winget 原生安装）时，快照里没有新目录，which 解析
     不到、裸名直传 Popen 直接 FileNotFoundError，直到重启服务才自愈。这里
     只探测磁盘已知落点，不改 PATH、不缓存（装没装是低频事件，探几次不亏）。
-    """
-    if os.name != "nt":
-        return None
+    Mac 同病：curl 脚本装的 uv/aider 落 ~/.local/bin，GUI 启动的服务常吃不到
+    这条 PATH；brew 在 Apple Silicon 落 /opt/homebrew/bin。"""
     name = str(name)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
         return None   # 带斜杠/参数形态的不是裸命令名，交给原路径逻辑
+    if os.name != "nt":
+        for d in (os.path.join(os.path.expanduser("~"), ".local", "bin"),
+                  "/opt/homebrew/bin", "/usr/local/bin"):
+            p = os.path.join(d, name)
+            try:
+                if os.path.isfile(p) and os.access(p, os.X_OK):
+                    return p
+            except OSError:
+                pass
+        return None
     local = os.environ.get("LOCALAPPDATA") or ""
     home = os.path.expanduser("~")
     appdata = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")

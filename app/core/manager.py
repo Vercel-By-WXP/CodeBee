@@ -91,19 +91,21 @@ def _safe_config_path(raw):
 # ---------------------------------------------------------------- 检测
 
 def _which_cli(cli):
-    """PATH 找 CLI；Windows 上再兜底 winget 便携包两处标准落点。
+    """PATH 找 CLI；落空再按平台兜底磁盘已知安装位。
 
-    winget 装的 CLI（如 Claude Code）把 exe 放进
-    %LOCALAPPDATA%\\Microsoft\\WinGet\\Packages\\<PkgId>_*\\，并把该目录写进
-    注册表用户 PATH——注册表更新后已在跑的进程（本服务）不继承，shutil.which
-    落空 → 卡片「未安装」假象，点安装又被 winget「已装无可升级」非零退出拒掉
-    （2026-09-30 实案）。Links 是便携包符号链接标准目录，Packages 按
-    <cli>.exe 通配兜另一形态；两条都只兜 which 落空的场景，零额外开销。"""
+    Windows 兜 winget 便携包两处标准落点：winget 装的 CLI（如 Claude Code）
+    把 exe 放进 %LOCALAPPDATA%\\Microsoft\\WinGet\\Packages\\<PkgId>_*\\，并把
+    该目录写进注册表用户 PATH——注册表更新后已在跑的进程（本服务）不继承，
+    shutil.which 落空 → 卡片「未安装」假象，点安装又被 winget「已装无可升级」
+    非零退出拒掉（2026-09-30 实案）。Links 是便携包符号链接标准目录，Packages
+    按 <cli>.exe 通配兜另一形态。POSIX 兜 runner 同款三落点（~/.local/bin 与
+    brew bin，Mac 服务吃不到 shell rc 里的 PATH 时同样假「未安装」）。
+    两条都只兜 which 落空的场景，零额外开销。"""
     path = shutil.which(cli)
     if path:
         return path
     if os.name != "nt":
-        return None
+        return runner._fallback_probe_cli(cli)
     local = os.environ.get("LOCALAPPDATA")
     if not local:
         return None
@@ -1974,7 +1976,10 @@ def _winget_already_ok(cmd, op, res):
     还要复检 installed 才按成功收口。"""
     if res.get("ok") or op not in ("install", "upgrade"):
         return False
-    if not str(cmd or "").strip().lower().startswith("winget"):
+    # 首 token 可能已被 _resolve_mgmt_tool 换成绝对路径（PATH 快照落空兜底），
+    # 所以按 basename 认 winget，别用 startswith
+    head = str(cmd or "").strip().split()[0] if str(cmd or "").strip() else ""
+    if os.path.basename(head).lower().rstrip(".exe") != "winget":
         return False
     code = res.get("exit_code")
     try:
@@ -1984,6 +1989,25 @@ def _winget_already_ok(cmd, op, res):
         pass
     out = "%s\n%s" % (res.get("stdout") or "", res.get("stderr") or "")
     return any(m in out for m in _WINGET_NOOP_MARKERS)
+
+
+def _resolve_mgmt_tool(cmd, op):
+    """install/upgrade 命令首 token 的工具本体解析。
+
+    服务 PATH 是启动快照，本机后装的 uv/npm 不在快照里时 shell 报
+    command not found 退出码 127，零信息量。磁盘已知落点能探到就把首 token
+    原地换成绝对路径（装完即用，不必重启服务）；探不到且是 uv 系安装命令
+    则返回 uv_missing=True——本机连 uv 都没有，包无从装起，人话报错并跳过
+    AI 修复（修复链装上 uv 后复检目标 CLI 仍未装，白烧一轮诊断）。
+    返回 (替换后的命令, uv_missing)。"""
+    stripped = str(cmd or "").strip()
+    first = stripped.split()[0] if stripped else ""
+    if not first or os.path.isabs(first) or shutil.which(first):
+        return cmd, False
+    found = runner._fallback_probe_cli(first)
+    if found:
+        return found + stripped[len(first):], False
+    return cmd, (first == "uv" and op in ("install", "upgrade"))
 
 
 def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
@@ -2000,6 +2024,14 @@ def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
             return {"ok": False,
                     "error": "未配置 %s 命令：请在 data/catalog.json 的 \"%s\" 里补充，或用官方渠道安装"
                              % (op, entry["id"])}
+    cmd, uv_missing = _resolve_mgmt_tool(cmd, op)
+    if uv_missing:
+        hint = ("brew install uv（或官网 curl -LsSf https://astral.sh/uv/install.sh | sh）"
+                if sys.platform == "darwin" else
+                "winget install astral-sh.uv，或 pip install uv")
+        return {"ok": False, "uv_missing": True,
+                "error": "本机没有 uv（该安装命令依赖 uv tool），目标 CLI 无从装起。"
+                         "请先安装 uv：%s；装完重启 CodeBee 让 PATH 生效，再点一次安装。" % hint}
     res = runner.run_process(shell_cmd=cmd, cwd=str(paths.ROOT),
                              timeout=1800, cancel_event=cancel_event, log_path=log_path)
     winget_noop = _winget_already_ok(cmd, op, res)

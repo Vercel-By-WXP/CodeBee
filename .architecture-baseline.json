@@ -3,6 +3,10 @@
   "violations": [
     {
       "kind": "cycle",
+      "text": "cycle: branching -> store -> errorlog -> selfupdate -> jobs -> pipeline -> branching"
+    },
+    {
+      "kind": "cycle",
       "text": "cycle: capability -> dispatch -> usage -> modelhub -> capability"
     },
     {
@@ -11,7 +15,43 @@
     },
     {
       "kind": "cycle",
+      "text": "cycle: errorlog -> selfupdate -> jobs -> notify -> store -> errorlog"
+    },
+    {
+      "kind": "cycle",
       "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> errorlog"
+    },
+    {
+      "kind": "cycle",
+      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> history -> store -> errorlog"
+    },
+    {
+      "kind": "cycle",
+      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> knowledge -> skills -> store -> errorlog"
+    },
+    {
+      "kind": "cycle",
+      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> knowledge -> store -> errorlog"
+    },
+    {
+      "kind": "cycle",
+      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> planner -> store -> errorlog"
+    },
+    {
+      "kind": "cycle",
+      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> store -> errorlog"
+    },
+    {
+      "kind": "cycle",
+      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> zentao -> store -> errorlog"
+    },
+    {
+      "kind": "cycle",
+      "text": "cycle: errorlog -> selfupdate -> jobs -> store -> errorlog"
+    },
+    {
+      "kind": "cycle",
+      "text": "cycle: errorlog -> selfupdate -> store -> errorlog"
     },
     {
       "kind": "cycle",
@@ -27,11 +67,7 @@
     },
     {
       "kind": "cycle",
-      "text": "cycle: knowledge -> skills -> store -> knowledge"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: knowledge -> store -> knowledge"
+      "text": "cycle: jobs -> selfupdate -> jobs"
     },
     {
       "kind": "cycle",
@@ -139,6 +175,14 @@
     },
     {
       "kind": "layer",
+      "text": "layer: checkpoints(L99) -> gitmod(L2) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: checkpoints(L99) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
       "text": "layer: cleanup(L2) -> paths(L0) 反向依赖"
     },
     {
@@ -180,6 +224,10 @@
     {
       "kind": "layer",
       "text": "layer: failure_notify(L99) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: flow_graph(L99) -> flows(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -236,6 +284,10 @@
     {
       "kind": "layer",
       "text": "layer: knowledge(L1) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: knowledge_pipeline(L99) -> paths(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -567,6 +619,10 @@
     },
     {
       "kind": "layer",
+      "text": "layer: store(L1) -> error_codes(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
       "text": "layer: store(L1) -> flows(L0) 反向依赖"
     },
     {
@@ -600,6 +656,14 @@
     {
       "kind": "layer",
       "text": "layer: telemetry(L2) -> usage(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: tool_outputs(L99) -> paths(L0) 反向依赖"
+    },
+    {
+      "kind": "layer",
+      "text": "layer: webhooks(L99) -> paths(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -639,15 +703,15 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/builtin_agent.py 1680 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/builtin_agent.py 2055 行（上限 1200，历史最高 0）",
       "file": "app/core/builtin_agent.py",
-      "lines": 1680
+      "lines": 2055
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/manager.py 2232 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/manager.py 2264 行（上限 1200，历史最高 0）",
       "file": "app/core/manager.py",
-      "lines": 2232
+      "lines": 2264
     },
     {
       "kind": "lines",
@@ -657,21 +721,21 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/pipeline.py 5958 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/pipeline.py 5981 行（上限 1200，历史最高 0）",
       "file": "app/core/pipeline.py",
-      "lines": 5958
+      "lines": 5981
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/runner.py 2238 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/runner.py 2248 行（上限 1200，历史最高 0）",
       "file": "app/core/runner.py",
-      "lines": 2238
+      "lines": 2248
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/store.py 2349 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/store.py 2347 行（上限 1200，历史最高 0）",
       "file": "app/core/store.py",
-      "lines": 2349
+      "lines": 2347
     },
     {
       "kind": "lines",
@@ -681,9 +745,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/main.py 3571 行（上限 1200，历史最高 0）",
+      "text": "lines: app/main.py 3754 行（上限 1200，历史最高 0）",
       "file": "app/main.py",
-      "lines": 3571
+      "lines": 3754
     },
     {
       "kind": "lines",
