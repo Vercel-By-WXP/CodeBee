@@ -156,6 +156,9 @@ const scene = window.Hive3D.create({
 assert.ok(scene, "WebGL scene initializes against a WebGL-compatible context");
 assert.equal(scene.info().renderer, "webgl");
 assert.ok(scene.info().objects > 1000, "scene builds the room and repeated workstation geometry");
+assert.equal(scene.deskPositions.filter(desk => desk.row === 0).length, 8, "reference rear row has eight workstations");
+assert.equal(scene.deskPositions.filter(desk => desk.row === 1).length, 6, "reference front row has six workstations");
+assert.equal(scene.monitors.length, scene.deskPositions.length, "each modeled workstation has a monitor overlay");
 assert.ok(scene.batchBuffers.opaque.count > 0, "opaque scene geometry is batched");
 assert.ok(scene.batchBuffers.transparent.count > 0, "glass, wings and shadows are drawn in a translucent pass");
 
