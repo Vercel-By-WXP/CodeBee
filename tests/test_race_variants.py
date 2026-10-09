@@ -48,10 +48,14 @@ class TestRaceVariants(BaseTest):
 
         orig_detect = manager.detect_all
         orig_enabled = registry.effective_agents.__globals__["load_enabled"]
+        orig_compaction = os.environ.get("TUTTI_COMPACTION")
         try:
             manager.detect_all = lambda force=False: {
                 "badcli": {"installed": True}, "goodcli": {"installed": True}}
             registry.effective_agents.__globals__["load_enabled"] = lambda: {}
+            # 赛马与压缩互斥（pipeline race 条件），1c81362 起压缩默认开启——
+            # 本测试验证赛马机制本身，显式关压缩复现赛马路径
+            os.environ["TUTTI_COMPACTION"] = "0"
 
             task = store.create_task({
                 "type": "serial_novel", "title": "赛马书", "goal": "写一章",
@@ -66,6 +70,10 @@ class TestRaceVariants(BaseTest):
         finally:
             manager.detect_all = orig_detect
             registry.effective_agents.__globals__["load_enabled"] = orig_enabled
+            if orig_compaction is None:
+                os.environ.pop("TUTTI_COMPACTION", None)
+            else:
+                os.environ["TUTTI_COMPACTION"] = orig_compaction
 
         r = store.get_run(run["id"])
         self.assertEqual(r["status"], "done", r.get("error"))

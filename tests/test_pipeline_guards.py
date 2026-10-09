@@ -21,6 +21,14 @@ def _real_agent():
             "env": {"TUTTI_TEST_SELFCONFIG": "1"}}
 
 
+def _tasked_run(store, workdir, title):
+    # fb92efa 起真实外部执行 fail-closed 要求任务行（沙箱策略载体，默认策略
+    # 与外部 CLI 天然权限一致即放行）——守门接线测试补任务行过闸
+    task = store.create_task({"type": "direct", "title": title, "goal": title,
+                              "workdir": str(workdir), "mode": "manual"})
+    return store.create_run("orchestration", title, task_id=task["id"])
+
+
 class TestPipelineRepeatGuardWiring(BaseTest):
 
     def setUp(self):
@@ -39,7 +47,7 @@ class TestPipelineRepeatGuardWiring(BaseTest):
 
     def test_first_calls_pass_through(self):
         from app.core import pipeline, store
-        run = store.create_run("orchestration", "guard-t1")
+        run = _tasked_run(store, self.workdir, "guard-t1")
         for _ in range(2):
             res = pipeline._run_step(run["id"], "draft", _real_agent(), "同一prompt",
                                      str(self.workdir), readonly=True, ev=None)
@@ -48,7 +56,7 @@ class TestPipelineRepeatGuardWiring(BaseTest):
     def test_reminder_injected_at_threshold(self):
         """达到阈值 3 时：step 仍执行，但 prompt 前被注入提醒（正文仍在结果里）。"""
         from app.core import pipeline, store
-        run = store.create_run("orchestration", "guard-t2")
+        run = _tasked_run(store, self.workdir, "guard-t2")
         for i in range(2):
             pipeline._run_step(run["id"], "draft", _real_agent(), "同一prompt",
                                str(self.workdir), readonly=True, ev=None)
@@ -63,7 +71,7 @@ class TestPipelineRepeatGuardWiring(BaseTest):
     def test_stop_beyond_last_threshold_no_spawn(self):
         """超过末位阈值：不再 spawn，返回 ENV_BLOCK 失败结果。"""
         from app.core import pipeline, store
-        run = store.create_run("orchestration", "guard-t3")
+        run = _tasked_run(store, self.workdir, "guard-t3")
         n_calls = 8
         last = None
         for _ in range(n_calls):
@@ -78,7 +86,7 @@ class TestPipelineRepeatGuardWiring(BaseTest):
 
     def test_different_prompt_does_not_accumulate(self):
         from app.core import pipeline, store
-        run = store.create_run("orchestration", "guard-t4")
+        run = _tasked_run(store, self.workdir, "guard-t4")
         for i in range(6):
             res = pipeline._run_step(run["id"], "draft", _real_agent(),
                                      "不同的 prompt %d" % i,
@@ -87,7 +95,7 @@ class TestPipelineRepeatGuardWiring(BaseTest):
 
     def test_roles_isolated(self):
         from app.core import pipeline, store
-        run = store.create_run("orchestration", "guard-t5")
+        run = _tasked_run(store, self.workdir, "guard-t5")
         for _ in range(4):
             pipeline._run_step(run["id"], "draft", _real_agent(), "same",
                                str(self.workdir), readonly=True, ev=None)
@@ -111,7 +119,7 @@ class TestPipelineDiagnosticsWiring(BaseTest):
 
         diagnostics.invariants.run_for = spy
         try:
-            run = store.create_run("orchestration", "diag-t1")
+            run = _tasked_run(store, self.workdir, "diag-t1")
             res = pipeline._run_step(run["id"], "draft", _real_agent(), "网文主编",
                                      str(self.workdir), readonly=True, ev=None)
             self.assertTrue(res["ok"])
