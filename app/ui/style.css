@@ -7387,3 +7387,29 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 #rd-hive-viewport .hg-monitor.st-idle {
   background: rgba(2, 19, 39, .88);
 }
+
+
+/* Workflow arrows are DOM overlays anchored to projected wall-panel edges. */
+#rd-hive-viewport .hg-flow-link {
+  position: absolute;
+  z-index: 1;
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  pointer-events: none;
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgba(99, 237, 255, .62), rgba(99, 237, 255, .95));
+  box-shadow: 0 0 5px rgba(72, 226, 255, .5);
+}
+#rd-hive-viewport .hg-flow-link::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: -3px;
+  width: 7px;
+  height: 7px;
+  border-top: 2px solid #72efff;
+  border-right: 2px solid #72efff;
+  transform: rotate(45deg);
+  filter: drop-shadow(0 0 2px rgba(83, 233, 255, .65));
+}
