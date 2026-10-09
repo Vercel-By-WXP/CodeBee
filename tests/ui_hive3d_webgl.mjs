@@ -129,15 +129,15 @@ async function main() {
     assert.ok(state.monitorRect && state.monitorRect[2] > 5 && state.monitorRect[3] > 5, "monitor overlay has on-screen bounds");
     assert.ok(state.badgeRect && state.badgeRect[2] > 5 && state.badgeRect[3] > 5, "workflow card has on-screen bounds");
 
-    await evaluate("document.querySelector('#rd-hive-viewport .hg-monitor:not(:disabled)').click()");
-    await sleep(100);
-    assert.ok(await evaluate("window.__hive3dSmokeClicks.length") > 0, "monitor click reaches the live-log callback");
-    assert.deepEqual(consoleErrors, [], "browser console is free of errors during scene initialization");
-
     const shot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
     const artifactDir = join(ROOT, "tests", ".ui-shots");
     mkdirSync(artifactDir, { recursive: true });
     writeFileSync(join(artifactDir, "hive3d-webgl.png"), Buffer.from(shot.result.data, "base64"));
+
+    await evaluate("document.querySelector('#rd-hive-viewport .hg-monitor:not(:disabled)').click()");
+    await sleep(100);
+    assert.ok(await evaluate("window.__hive3dSmokeClicks.length") > 0, "monitor click reaches the live-log callback");
+    assert.deepEqual(consoleErrors, [], "browser console is free of errors during scene initialization");
     console.log("Hive3D browser smoke passed " + JSON.stringify({
       glVersion: state.glVersion, objects: state.info.objects, monitors: state.visibleMonitors + "/14",
       stages: state.visibleBadges + "/6", connectors: state.flowLinks, canvas: state.canvas
