@@ -6797,3 +6797,80 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   （openclaw 缺、trae-cli 本班确认 /c/Users/HP/.local/bin/trae-cli 在位）、候选六 CLI
   全 MISSING 零盲接；F config.poll_enabled=false 零积压零触发只读（明文密码/轮询重开
   维持交拍板）。| 巡检·B/C/D/E/F | 2026-10-09
+
+## 2026-10-09 15时班（新一轮计划第 1/4 步·全类型调研批1+七专项巡检）
+
+> 15:41 开工，hour=15，15%7=1 → **轮换批1（代码质量与评审）**。基线 v0.1.97
+> （07 时班发版无报告沉淀，如实记）；工作区有并行代理在制品（publish/quality_gate/
+> builtin_agent/modelhub/app.js/i18n.js 链路+tests/test_disabled_model_gate.py），
+> 本班全程避开该清单文件，只读巡检+docs 沉淀。gh api/雷达 C/trendshift/topic/npm/
+> pypi 全通道可用，主扫后台 116 查零失败零限流。
+
+- **主扫**：116/116（A 常驻 89+批1 11+A1 双轮 16），422 唯一仓零 error 行；
+  活跃候选（≥300★ 且 9 月后在更）146 件过全历史筛后**首见判据仅 1**：
+  mateaix/mateclaw 1,149★（10-09 在更，2026-04 建）——「second brain」多 agent
+  编排+MCP+Skills&Memory+多渠道，Spring AI Alibaba 系（Java 栈）：中文生态全功能
+  形态，技术栈与 CodeBee（Python）不同，编排层无差量，参考判据（中文生态雷达）。
+- **B1 批域（本班主扫域）结论：稳定期延续**——review/refactor/test 词头部多为
+  停更旧件（villesau 2024 停/redesigned-pancake 2021 停）与教材库；活头仅
+  SkillSpector（NVIDIA，19,738★ 已录复认续放量）+claude-code-security-review
+  （anthropics 官方 6,324★ 已录）。WebSearch 串行 1 发交叉验证（code review 域
+  定向）：open-code-review（alibaba，**44,721★ 10-08 在更**，17 文件在录复认）
+  系**连字符词形盲区第 4 例旁证**——主扫「code+review+agent」词两班未命中它，
+  「open-code-review」与「code review agent」词形正交（StaffDeck/magic/openworker
+  同型第 4 例）；ReviewBench（review-bench/ReviewBench 39★，github.blog 提及的
+  code review 评测基准）repos 实证微型——GitHub 官方下场做评审基准系 A6 域信号，
+  微型判据跟踪。| 调研·批1
+- **topic 8 页（160 仓）首见 3 件判据**：Gentleman-Programming/gentle-shell
+  1,245★（Pi-native coding-agent harness「Organic Driven Development」——pi
+  生态 harness，我们已接 pi，工具面非编排面，判据雷达）；agentic-os-org/ANOLISA
+  660★（Agentic OS with runtime+spec，早期同形态，判据雷达）；LunarWerxs/AgentHydra
+  43★（多 CLI 单 tab 会话聚合，与 coding_agent_session_search 同域，微型）。
+  archify 80,549★/answer-me-with-html 2,395★/agent-swarm 872★/LoopTroop 160★/
+  Xenon 53★ 全已录复认。| 调研·topic
+- **trendshift 30 仓**：storytold 六兄弟/tigerless 三件/Compositor
+  （robbietilton，14,078★，+3,044/日放量继续）/mattpocock-skills/
+  knowledge-work-plugins/diagram-design 已录复认；新面孔勘定后 ARTEX
+  （mhtsec，1,396★ AI 自主渗透测试，百度冠军）/iPhone-use（zhongerxin，978★
+  Codex USB 控真实 iPhone）/ohmygame（WhiteTowerAI，261★ AI 游戏工作室）域旁
+  判据；bifrost（maximhq 8,661★ AI 网关）/busbar（175★ 治理面）已录。| 调研·trendshift
+- **禅道 npm 通道 4 件首见（F 专项生态变密信号）**：@staragent/zentao-mcp 1.0.8
+  （10-08 在更成熟线）/@haoyu-qi/dsh-zentao 0.1.0-rc.8（**DSH 系禅道插件**——
+  自家已接 CLI 的插件生态与禅道交叉首例）/@liwei19911215/zentao-mcp 1.0.1/
+  @aipper/zentao-mcp-server 0.1.26——禅道 MCP 在架从上轮 3 件变 7+ 件密度上升，
+  需求侧确认；形态多为 MCP 查询/工单读写，「激活 Bug→自动建 code 修复任务→
+  合并+resolve+评论回写+群通知」深度修复闭环 CodeBee 仍独占。| 巡检·F
+- **失配勘定 5 件属主（knowledge.md 全名补认）**：affaan-m/ECC 275,555/
+  NousResearch/hermes-agent 252,116/DietrichGebert/ponytail 158,906/
+  langgenius/dify 157,972/earendil-works/pi 113,653（in:name 一次勘清，
+  10-06 首例方法第 2 班连用）。| 复查
+- **存量头部增量（vs 00 时班）**：orca 88,161（+1,115 续领跑放量）/
+  mattpocock-skills 281,612（+2,261 续放量）/superpowers 296,679（+339）/
+  tigerless autoharness 10,461（+1,284 放量加速）/agent-memory 3,032（+652）/
+  cost-xray 4,377（+543，代码 09-29 后未更纯外部关注放量）/openrig 6,249
+  （+755）/OpenShell 15,530（+328）/agent-orchestrator 12,970（+113）/
+  Compositor 14,078（+3,044）/opencode 212,265（**属主 anomalyco 补认**）/
+  DeepSeek-Reasonix 35,754（+7 候选首位维持）/openworker 18,481（+19）/
+  StaffDeck 1,973（+4）/harness-sdk 8,747（+25 续放量）。awesome 20 源全 alive
+  零 archived（ComposioHQ 76,722/punkpeye 95,947/hesreallyhim 55,293/
+  VoltAgent-skills 35,403/BMAD 53,968 等）。| 复查
+- **七专项 A-G**：A 八机制在位（行号漂移更新：_budget_max_tokens:723/
+  _cost_gate_block:758/_shrink_context_block:2702，系 05beb26 知识注入扩展+21 行
+  所致；cached 细分记账 usage.py:53 在位）；05beb26「全类型知识注入」=经验召回
+  覆盖面增强且零命中零噪音——A 无新差量。B 六源在位+体量五帽，判据件接入三问
+  全不通过（mateclaw Java 栈/gentle-shell 工具面/ANOLISA 早期/AgentHydra 微型/
+  禅道 npm 4 件 MCP 查询形态），**零新接入**。C BUILTIN_FLOWS=18（list 形态重构
+  后 id 全对齐）+recommendTaskType 17 型全覆盖+_RULELESS={"direct"} 同步+i18n
+  英文翻译 18×name/note 零缺失，**C 零毛病**。D lessons=71（流程规范 31/43.7%）
+  +1 系 04 时班蒸馏件（守卫结论当班实跑），基线更新 71。E catalog 14、本机
+  13/14（openclaw 缺）、候选五 CLI（DeepSeek-Reasonix/FuXi/Gitlawb/zero/Empryo）
+  which 全 MISSING 零盲接维持。F poll_enabled=null+claims=0+last_error 空+
+  last_scan 停 09-21——关闭态非故障，轮询重开交拍板维持；**竞品面第 32-35 例**
+  （npm 4 件首见，见上）。G 过时文案零命中（「13 种任务/单源」grep 真实源码
+  零命中，README「18 种」2 处准确）；**b8c25e3 4.9MB workbench-reference.png
+  打进 npm 包（files='app' 未排除 assets），unpackedSize 6.3MB→14.2MB 实测
+  翻倍**——运行时资产不擅动，归并「npm 包体 files 白名单」交拍板件更新数据。
+  | 巡检·A/B/C/D/E/F/G
+- **本班零代码提案（如实记）**：七专项无新缺口；路线图在册未落地件（spec 分段
+  签核跨四层/语义缓存/宪章骨架）均非小而实维持不动；落地=知识沉淀三件套
+  （knowledge.md+keywords.md 词形盲区补词+当日报告）。| 结论
