@@ -23,6 +23,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes bubblewrap
+      - name: Check Hive3D JavaScript syntax
+        run: node --check ui/hive3d.js
       - name: Run unit and sandbox integration tests
         run: python -m unittest discover -s tests -v
       - name: Run required bubblewrap isolation tests with namespace privileges
