@@ -117,10 +117,11 @@ async function main() {
       " if(!viewport||!canvas||!overlay||!window.Hive3D) throw new Error('Hive3D host or engine missing');",
       " if(typeof window.welcomeClose==='function') window.welcomeClose();",
       " const welcome=document.getElementById('welcome');if(welcome)welcome.classList.add('hidden');",
-      " document.body.style.cssText='margin:0;padding:24px;background:#eaf3fa;font-family:Arial,sans-serif;overflow:hidden';",
-      " document.body.appendChild(viewport);",
+      " document.body.style.cssText='margin:0;padding:0;background:#eaf3fa;font-family:Arial,sans-serif;overflow:hidden';",
+      " const stage=document.createElement('div');stage.id='hive3d-smoke-stage';stage.style.cssText='position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;background:linear-gradient(180deg,#eef7ff,#dbeaf6)';document.body.appendChild(stage);",
+      " stage.appendChild(viewport);",
       " viewport.classList.add('hive-mode-3d');viewport.classList.remove('hive-mode-2d');",
-      " viewport.style.cssText+=';display:block;position:relative;width:1200px;height:650px;aspect-ratio:auto;margin:0 auto;overflow:hidden';",
+      " viewport.style.cssText+=';display:block;position:relative;flex:0 0 auto;width:min(1200px,calc(100vw - 48px));height:auto;max-height:calc(100vh - 48px);aspect-ratio:2848/1600;margin:0;overflow:hidden';",
       " const activated=[];window.__hive3dSmokeClicks=activated;",
       " const scene=window.Hive3D.create({canvas,overlay,onCellActivate:(runId,rel,cell)=>activated.push({runId,rel,status:cell.status}),cellRefresh:()=>({tail:'latest output',elapsed:'3s'})});",
       " if(!scene) throw new Error('WebGL renderer unavailable');",
@@ -129,8 +130,9 @@ async function main() {
       " const lanes=names.map((name,index)=>{const count=index<2?3:2;const cells=allCells.slice(cursor,cursor+count);cursor+=count;return{name,count:cells.length,settled:cells.filter(c=>!['running','queued'].includes(c.status)).length,active:cells.some(c=>c.status==='running'),cells};});",
       " scene.sync({runId:'release-smoke',lanes});scene.setActive(true);",
       " const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');",
+      " const pixels=new Uint8Array(canvas.width*canvas.height*4);if(gl)gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);const clear=gl?Array.from(gl.getParameter(gl.COLOR_CLEAR_VALUE)).map(v=>Math.round(v*255)):[0,0,0,0];let nonBackgroundPixels=0;const sampledColors=new Set();for(let p=0;p<pixels.length;p+=4){if(Math.abs(pixels[p]-clear[0])+Math.abs(pixels[p+1]-clear[1])+Math.abs(pixels[p+2]-clear[2])>12)nonBackgroundPixels++;if(p%(4*97)===0)sampledColors.add(pixels[p]+','+pixels[p+1]+','+pixels[p+2]);}",
       " const monitor=viewport.querySelector('.hg-monitor'),badge=viewport.querySelector('.hg-badge');",
-      " return JSON.stringify({info:scene.info(),canvas:[canvas.width,canvas.height],glError:gl?gl.getError():-1,glVersion:gl?gl.getParameter(gl.VERSION):'',monitors:viewport.querySelectorAll('.hg-monitor').length,visibleMonitors:Array.from(viewport.querySelectorAll('.hg-monitor')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,badges:viewport.querySelectorAll('.hg-badge').length,visibleBadges:Array.from(viewport.querySelectorAll('.hg-badge')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,flowLinks:viewport.querySelectorAll('.hg-flow-link').length,monitorRect:monitor?(()=>{const r=monitor.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null,badgeRect:badge?(()=>{const r=badge.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null});",
+      " return JSON.stringify({info:scene.info(),canvas:[canvas.width,canvas.height],glError:gl?gl.getError():-1,glVersion:gl?gl.getParameter(gl.VERSION):'',clearColor:clear,nonBackgroundPixels,sampledColors:sampledColors.size,monitors:viewport.querySelectorAll('.hg-monitor').length,visibleMonitors:Array.from(viewport.querySelectorAll('.hg-monitor')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,badges:viewport.querySelectorAll('.hg-badge').length,visibleBadges:Array.from(viewport.querySelectorAll('.hg-badge')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,flowLinks:viewport.querySelectorAll('.hg-flow-link').length,viewportRect:(()=>{const r=viewport.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})(),monitorRect:monitor?(()=>{const r=monitor.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null,badgeRect:badge?(()=>{const r=badge.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null});",
       "})()"
     ].join("\n");
     const state = JSON.parse(await evaluate(setupExpr));
@@ -139,7 +141,10 @@ async function main() {
     assert.equal(state.info.cells, 14, "fourteen task cells were mapped");
     assert.equal(state.info.lanes, 6, "six workflow lanes were mapped");
     assert.ok(state.canvas[0] >= 1000 && state.canvas[1] >= 500, "canvas has a real drawing buffer");
-    assert.equal(state.glError, 0, "WebGL reports NO_ERROR after rendering");
+    assert.equal(state.glError, 0, "WebGL reports NO_ERROR after rendering and readback");
+    assert.ok(state.nonBackgroundPixels > 10000, "GPU readback contains scene pixels beyond the clear color");
+    assert.ok(state.sampledColors > 20, "GPU readback contains a range of lit material colors");
+    assert.ok(state.viewportRect && state.viewportRect[0] >= 0 && state.viewportRect[1] >= 0 && state.viewportRect[2] >= 1000 && state.viewportRect[3] >= 500, "the 3D viewport is placed inside the captured browser window");
     assert.equal(await evaluate("document.getElementById('welcome')?.classList.contains('hidden') ?? true"), true, "welcome modal does not obscure the scene screenshot");
     assert.equal(state.monitors, 14, "fourteen clickable monitor overlays exist");
     assert.ok(state.visibleMonitors >= 8, "monitor overlays are projected into visible screen coordinates");
@@ -160,7 +165,8 @@ async function main() {
     assert.deepEqual(consoleErrors, [], "browser console is free of errors during scene initialization");
     console.log("Hive3D browser smoke passed " + JSON.stringify({
       glVersion: state.glVersion, objects: state.info.objects, monitors: state.visibleMonitors + "/14",
-      stages: state.visibleBadges + "/6", connectors: state.flowLinks, canvas: state.canvas
+      stages: state.visibleBadges + "/6", connectors: state.flowLinks, canvas: state.canvas,
+      gpuPixels: state.nonBackgroundPixels, sampledColors: state.sampledColors, viewport: state.viewportRect
     }));
   } finally {
     try { if (ws) ws.close(); } catch {}
