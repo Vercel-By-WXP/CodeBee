@@ -1,242 +1,144 @@
-/* Fixed-view office: the reference artwork preserves its lighting/materials;
- * localized HTML screens share the same aspect ratio, pan and zoom transform.
- * No WebGL is required. The host supplies actual run/step data and log access. */
+/* CodeBee Hive3D: dependency-free WebGL scene with live HTML task overlays. */
 window.Hive3D = (function () {
   "use strict";
-
   const tr = (key, ...args) => typeof window.t === "function" ? window.t(key, ...args) : key;
-  const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
-  const STATUS = { running: "运行中", done: "完成", queued: "排队中", failed: "失败", timeout: "超时", cancelled: "已取消" };
-  const STAGES = ["规划", "起草", "评审", "执行", "打磨", "合成"];
-  // Glass content rectangles measured on the 2048 × 1151 reference image.
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const STATUS = { running:"运行中", done:"完成", queued:"排队中", failed:"失败", timeout:"超时", cancelled:"已取消" };
+  const STAGES = ["规划","起草","评审","执行","打磨","合成"];
   const SCREENS = [
-    [163, 441, 127, 55], [389, 441, 126, 55], [616, 441, 125, 55], [843, 441, 125, 55],
-    [1073, 441, 122, 55], [1298, 441, 125, 55], [1531, 441, 120, 55], [1750, 441, 125, 55],
-    [166, 724, 165, 66], [470, 724, 165, 66], [778, 724, 165, 66],
-    [1091, 724, 162, 66], [1392, 724, 163, 66], [1695, 724, 165, 66],
+    [163,441,127,55],[389,441,126,55],[616,441,125,55],[843,441,125,55],
+    [1073,441,122,55],[1298,441,125,55],[1531,441,120,55],[1750,441,125,55],
+    [166,724,165,66],[470,724,165,66],[778,724,165,66],[1091,724,162,66],[1392,724,163,66],[1695,724,165,66]
   ];
-  const PLATES = [[278, 206], [578, 206], [876, 206], [1175, 206], [1473, 206], [1766, 206]];
-
-  function node(tag, className, parent) {
-    const el = document.createElement(tag);
-    el.className = className;
-    if (parent) parent.appendChild(el);
-    return el;
+  const PLATES = [[278,206],[578,206],[876,206],[1175,206],[1473,206],[1766,206]];
+  const node = (tag, cls, parent) => { const el=document.createElement(tag); el.className=cls; if(parent)parent.appendChild(el); return el; };
+  const mat4 = {
+    perspective(fovy, aspect, near, far) { const f=1/Math.tan(fovy/2), nf=1/(near-far); return new Float32Array([f/aspect,0,0,0,0,f,0,0,0,0,(far+near)*nf,-1,0,0,2*far*near*nf,0]); },
+    multiply(a,b) { const o=new Float32Array(16); for(let c=0;c<4;c++)for(let r=0;r<4;r++)o[c*4+r]=a[r]*b[c*4]*1+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3]; return o; },
+    translate(x,y,z) { const o=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);o[12]=x;o[13]=y;o[14]=z;return o; },
+    scale(x,y,z) { return new Float32Array([x,0,0,0,0,y,0,0,0,0,z,0,0,0,0,1]); },
+    rotateX(a) { const c=Math.cos(a),s=Math.sin(a);return new Float32Array([1,0,0,0,0,c,s,0,0,-s,c,0,0,0,0,1]); },
+    rotateY(a) { const c=Math.cos(a),s=Math.sin(a);return new Float32Array([c,0,-s,0,0,1,0,0,s,0,c,0,0,0,0,1]); },
+    lookAt(eye, center, up) { let z=norm(sub(eye,center)),x=norm(cross(up,z)),y=cross(z,x); return new Float32Array([x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-dot(x,eye),-dot(y,eye),-dot(z,eye),1]); }
+  };
+  const sub=(a,b)=>a.map((v,i)=>v-b[i]), dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0), cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], norm=a=>{const l=Math.hypot(...a)||1;return a.map(v=>v/l);};
+  function shader(gl,type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s;}
+  function geometry(gl, positions, indices) {
+    const p=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,p);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(positions),gl.STATIC_DRAW);
+    const ix=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ix);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices),gl.STATIC_DRAW);
+    return {p,ix,count:indices.length};
   }
-
-  function ReferenceScene(opts) {
-    this.opts = opts;
-    this.canvas = opts.canvas;
-    this.overlay = opts.overlay;
-    this.host = this.canvas.parentElement;
-    this.onCellActivate = opts.onCellActivate || function () {};
-    this.cellRefresh = opts.cellRefresh || function () { return {}; };
-    this.model = null;
-    this.page = 0;
-    this.zoom = 1;
-    this.pan = { x: 0, y: 0 };
-    this.active = false;
-    this.timer = null;
-    this.screenMeta = [];
-    this.listeners = [];
-    this.layer = node("div", "hive-reference-layer", this.host);
-    this.layer.appendChild(this.host.querySelector(".hive-reference"));
-    this.layer.appendChild(this.overlay);
-    this.overlay.replaceChildren();
-    this.canvas.hidden = true;
-    this.host.dataset.renderer = "reference";
-
-    this.stageMeta = PLATES.map(([x, y], index) => {
-      const el = node("button", "hg-badge", this.overlay);
-      el.type = "button";
-      el.style.left = (x / 2048 * 100) + "%";
-      el.style.top = (y / 1151 * 100) + "%";
-      const name = node("b", "hg-name", el);
-      const meta = node("span", "hg-meta", el);
-      this.listen(el, "click", () => {
-        const lane = this.stageMeta[index].lane;
-        if (!lane) return;
-        const cell = lane.cells.find((item) => item.status === "running") || lane.cells[lane.cells.length - 1];
-        if (cell) this.onCellActivate(this.model.runId, cell.rel, cell);
-      });
-      return { el, name, meta, lane: null };
-    });
-    this.monitors = SCREENS.map(([x, y, width, height], index) => {
-      const el = node("button", "hg-monitor", this.overlay);
-      el.type = "button";
-      el.style.left = (x / 2048 * 100) + "%";
-      el.style.top = (y / 1151 * 100) + "%";
-      el.style.width = (width / 2048 * 100) + "%";
-      el.style.height = (height / 1151 * 100) + "%";
-      const role = node("b", "hg-monitor-role", el);
-      const status = node("span", "hg-monitor-status", el);
-      const tail = node("span", "hg-monitor-tail", el);
-      const time = node("span", "hg-monitor-time", el);
-      this.listen(el, "click", () => {
-        const cell = this.screenMeta[index];
-        if (cell) this.onCellActivate(this.model.runId, cell.rel, cell);
-      });
-      return { el, role, status, tail, time };
-    });
-    const toolbar = this.host.parentElement.querySelector(".hive-scene-tools");
-    this.pager = node("div", "hive-scene-pager");
-    this.pager.hidden = true;
-    this.prev = node("button", "hive-scene-btn", this.pager);
-    this.prev.type = "button"; this.prev.textContent = "‹";
-    this.pageLabel = node("span", "hive-scene-page-label", this.pager);
-    this.next = node("button", "hive-scene-btn", this.pager);
-    this.next.type = "button"; this.next.textContent = "›";
-    if (toolbar) toolbar.insertBefore(this.pager, toolbar.querySelector(".hive-scene-spacer"));
-    this.listen(this.prev, "click", () => this.showPage(this.page - 1));
-    this.listen(this.next, "click", () => this.showPage(this.page + 1));
-    this.bindSurface();
-    this.resizeObserver = new ResizeObserver(() => this.resize());
-    this.resizeObserver.observe(this.host);
-    this.languageObserver = new MutationObserver(() => this.updateOverlay());
-    this.languageObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-lang"] });
-    this.resize();
-    this.updateOverlay();
-    window.__hive3d = this;
+  function boxGeometry(gl){
+    const p=[-.5,-.5,-.5,.5,-.5,-.5,.5,.5,-.5,-.5,.5,-.5,-.5,-.5,.5,.5,-.5,.5,.5,.5,.5,-.5,.5,.5];
+    const ix=[0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,3,7,6,3,6,2,1,2,6,1,6,5,0,4,7,0,7,3];
+    return geometry(gl,p,ix);
   }
-
-  ReferenceScene.prototype.listen = function (el, type, fn, options) {
-    el.addEventListener(type, fn, options);
-    this.listeners.push(() => el.removeEventListener(type, fn, options));
+  function sphereGeometry(gl, rows=9, cols=12){
+    const p=[],ix=[];for(let r=0;r<=rows;r++){const v=r/rows*Math.PI;for(let c=0;c<=cols;c++){const u=c/cols*Math.PI*2;p.push(Math.sin(v)*Math.cos(u),Math.cos(v),Math.sin(v)*Math.sin(u));}}
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const a=r*(cols+1)+c,b=a+cols+1;ix.push(a,b,a+1,b,b+1,a+1);}
+    return geometry(gl,p,ix);
+  }
+  function Scene(opts){
+    this.opts=opts;this.canvas=opts.canvas;this.overlay=opts.overlay;this.host=this.canvas.parentElement;
+    this.onCellActivate=opts.onCellActivate||function(){};this.cellRefresh=opts.cellRefresh||function(){return{};};
+    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=-0.18;this.pitch=0.28;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
+    this.host.dataset.renderer="webgl";this.canvas.hidden=false;this.canvas.classList.add("hive-gl-live");
+    this.layer=node("div","hive-reference-layer",this.host);this.layer.appendChild(this.overlay);this.overlay.replaceChildren();
+    try { this.initGL(); } catch(e) { console.error("CodeBee Hive3D WebGL init failed",e); if(opts.onFatal)opts.onFatal(e); return; }
+    this.stageMeta=PLATES.map(([x,y],i)=>{const el=node("button","hg-badge",this.overlay);el.type="button";el.style.left=(x/2048*100)+"%";el.style.top=(y/1151*100)+"%";const name=node("b","hg-name",el),meta=node("span","hg-meta",el);this.listen(el,"click",()=>{const lane=this.stageMeta[i].lane;if(!lane)return;const cell=lane.cells.find(c=>c.status==="running")||lane.cells[lane.cells.length-1];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,name,meta,lane:null};});
+    this.monitors=SCREENS.map(([x,y,w,h],i)=>{const el=node("button","hg-monitor",this.overlay);el.type="button";el.style.left=(x/2048*100)+"%";el.style.top=(y/1151*100)+"%";el.style.width=(w/2048*100)+"%";el.style.height=(h/1151*100)+"%";const role=node("b","hg-monitor-role",el),status=node("span","hg-monitor-status",el),tail=node("span","hg-monitor-tail",el),time=node("span","hg-monitor-time",el);this.listen(el,"click",()=>{const cell=this.screenMeta[i];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,role,status,tail,time};});
+    const toolbar=this.host.parentElement.querySelector(".hive-scene-tools");this.pager=node("div","hive-scene-pager");this.pager.hidden=true;this.prev=node("button","hive-scene-btn",this.pager);this.prev.type="button";this.prev.textContent="‹";this.pageLabel=node("span","hive-scene-page-label",this.pager);this.next=node("button","hive-scene-btn",this.pager);this.next.type="button";this.next.textContent="›";if(toolbar)toolbar.insertBefore(this.pager,toolbar.querySelector(".hive-scene-spacer"));
+    this.listen(this.prev,"click",()=>this.showPage(this.page-1));this.listen(this.next,"click",()=>this.showPage(this.page+1));this.bindSurface();
+    this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(this.host);this.languageObserver=new MutationObserver(()=>this.updateOverlay());this.languageObserver.observe(document.documentElement,{attributes:true,attributeFilter:["data-lang"]});this.resize();this.updateOverlay();window.__hive3d=this;
+  }
+  Scene.prototype.initGL=function(){
+    const gl=this.canvas.getContext("webgl",{alpha:true,antialias:true,powerPreference:"high-performance"})||this.canvas.getContext("experimental-webgl");
+    if(!gl)throw Error("WebGL unavailable");this.gl=gl;
+    const vs="attribute vec3 aPosition; uniform mat4 uMvp; uniform vec4 uColor; varying vec4 vColor; varying float vShade; void main(){gl_Position=uMvp*vec4(aPosition,1.0);vColor=uColor;vShade=0.72+0.28*max(0.0,aPosition.y+0.35);}";
+    const fs="precision mediump float; varying vec4 vColor; varying float vShade; void main(){gl_FragColor=vec4(vColor.rgb*vShade,vColor.a);}";
+    const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
+    this.aPosition=gl.getAttribLocation(program,"aPosition");this.uMvp=gl.getUniformLocation(program,"uMvp");this.uColor=gl.getUniformLocation(program,"uColor");this.box=boxGeometry(gl);this.sphere=sphereGeometry(gl);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.clearColor(.78,.88,.96,1);
   };
-
-  ReferenceScene.prototype.bindSurface = function () {
-    let drag = null;
-    this.listen(this.host, "contextmenu", (event) => event.preventDefault());
-    this.listen(this.host, "pointerdown", (event) => {
-      if (!this.active || event.target.closest("button") || event.button !== 0) return;
-      drag = { x: event.clientX, y: event.clientY, panX: this.pan.x, panY: this.pan.y };
-      this.host.setPointerCapture(event.pointerId);
-      this.host.classList.add("is-dragging");
-    });
-    this.listen(this.host, "pointermove", (event) => {
-      if (!drag) return;
-      this.pan.x = drag.panX + event.clientX - drag.x;
-      this.pan.y = drag.panY + event.clientY - drag.y;
-      this.applyTransform();
-    });
-    const end = () => { drag = null; this.host.classList.remove("is-dragging"); };
-    this.listen(this.host, "pointerup", end);
-    this.listen(this.host, "pointercancel", end);
-    this.listen(this.host, "dblclick", (event) => { if (!event.target.closest("button")) this.resetView(); });
-    this.listen(this.host, "wheel", (event) => {
-      if (!this.active || event.target.closest("button")) return;
-      event.preventDefault();
-      this.zoomAt(Math.exp(event.deltaY * 0.0011));
-    }, { passive: false });
+  Scene.prototype.listen=function(el,type,fn,opts){el.addEventListener(type,fn,opts);this.listeners.push(()=>el.removeEventListener(type,fn,opts));};
+  Scene.prototype.bindSurface=function(){
+    let drag=null;this.listen(this.host,"contextmenu",e=>e.preventDefault());
+    this.listen(this.host,"pointerdown",e=>{if(!this.active||e.target.closest("button")||e.button!==0)return;drag={x:e.clientX,y:e.clientY,yaw:this.yaw,pitch:this.pitch,px:this.panX,py:this.panY,shift:e.shiftKey};this.host.setPointerCapture(e.pointerId);this.host.classList.add("is-dragging");});
+    this.listen(this.host,"pointermove",e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(drag.shift){this.panX=drag.px+dx/this.cssW*5;this.panY=drag.py-dy/this.cssH*4;}else{this.yaw=drag.yaw+dx*.006;this.pitch=clamp(drag.pitch+dy*.004,-.05,.85);}this.render();});
+    const end=()=>{drag=null;this.host.classList.remove("is-dragging");};this.listen(this.host,"pointerup",end);this.listen(this.host,"pointercancel",end);
+    this.listen(this.host,"dblclick",e=>{if(!e.target.closest("button"))this.resetView();});
+    this.listen(this.host,"wheel",e=>{if(!this.active||e.target.closest("button"))return;e.preventDefault();this.zoom=clamp(this.zoom*Math.exp(-e.deltaY*.001),.72,2.4);this.render();},{passive:false});
+    this.listen(this.canvas,"webglcontextlost",e=>{e.preventDefault();if(this.opts.onFatal)this.opts.onFatal(e);});
   };
-
-  ReferenceScene.prototype.sync = function (model) {
-    const changedRun = !this.model || this.model.runId !== model.runId;
-    this.model = model;
-    this.cells = model.lanes.flatMap((lane, stageIdx) => lane.cells.map((cell) => ({ ...cell, stageIdx })));
-    if (changedRun) {
-      const running = this.cells.findIndex((cell) => cell.status === "running");
-      this.page = running < 0 ? 0 : Math.floor(running / SCREENS.length);
-      this.resetView();
+  Scene.prototype.add=function(mesh,x,y,z,sx,sy,sz,color,rotY){this.objects.push({mesh,x,y,z,sx,sy,sz,color,rotY:rotY||0});};
+  Scene.prototype.buildWorld=function(){
+    const b=this.box,s=this.sphere;this.objects=[];
+    // room shell, glossy blue feature wall and pale tiled floor
+    this.add(b,0,-.18,0,19,.25,13,[.82,.89,.95,1]);
+    this.add(b,0,2.25,-5.9,19,4.9,.22,[.12,.47,.78,1]);
+    this.add(b,-9.25,2.2,0,.22,4.6,12,[.84,.91,.97,1]);this.add(b,9.25,2.2,0,.22,4.6,12,[.84,.91,.97,1]);
+    // wall seams, windows, ceiling fixtures
+    for(let x=-7;x<=7;x+=2.8)this.add(b,x,2.3,-5.76,.025,4.4,.03,[.08,.34,.61,1]);
+    for(let x=-6;x<=6;x+=6)this.add(b,x,4.85,-1.4,2.1,.08,.16,[.12,.14,.17,1]);
+    for(let x=-6.6;x<=6.6;x+=6.6){this.add(b,x,4.45,-1.6,.035,.55,5.3,[.24,.31,.36,1]);this.add(b,x,2.4,-1.6,.035,3.3,5.3,[.62,.82,.93,1]);}
+    // top workflow panels represented as bright, raised tiles across the feature wall
+    for(let i=0;i<6;i++){const x=-7.1+i*2.84;this.add(b,x,3.35,-5.55,2.05,.72,.16,[.98,.99,1,1]);this.add(b,b===s?s:b,x,2.92,-5.45,1.6,.035,.04,[.22,.82,.94,1]);}
+    // 14 desks in two rows; share one box mesh to keep draw calls and memory modest
+    for(let row=0;row<2;row++)for(let i=0;i<7;i++){
+      const x=(i-3)*2.55,z=row===0?-1.25:3.35;
+      this.add(b,x,.42,z,2.15,.78,1.18,[.91,.94,.97,1]);
+      this.add(b,x,.86,z-.25,1.65,.075,.76,[.99,.99,1,1]);
+      for(const side of [-.78,.78])this.add(b,x+side,-.04,z, .12,.78,1.02,[.74,.81,.88,1]);
+      // monitor, bezel and luminous screen
+      this.add(b,x,.99,z-.42,.96,.63,.09,[.035,.09,.16,1]);
+      this.add(b,x,1.01,z-.365,.84,.49,.025,[.025,.24,.39,1]);
+      this.add(b,x,.59,z-.4,.08,.28,.08,[.31,.38,.45,1]);
+      this.add(b,x,.44,z-.12,.56,.04,.34,[.12,.15,.18,1]);
+      // compact keyboard and mouse
+      this.add(b,x,.9,z+.24,.48,.035,.18,[.12,.15,.18,1]);this.add(b,x+.42,.91,z+.23,.09,.06,.13,[.16,.19,.22,1]);
+      // colorful binders on desk edge
+      for(let k=0;k<3;k++)this.add(b,x+.78+k*.13,.98,z+.22,.1,.44,.22,[[.13,.48,.82,1],[.96,.48,.24,1],[.17,.69,.48,1]][k]);
+      // chair base, stem, seat, back and casters
+      this.add(b,x,0.02,z+1.08,.1,.3,.1,[.12,.15,.18,1]);this.add(b,x,.2,z+1.08,.68,.13,.6,[.11,.14,.17,1]);
+      this.add(b,x,.54,z+1.32,.64,.72,.15,[.1,.13,.16,1]);
+      for(let k=0;k<5;k++){const a=k*Math.PI*2/5;this.add(b,x+Math.cos(a)*.38,.015,z+1.08+Math.sin(a)*.32,.32,.055,.075,[.08,.1,.12,1],a);}
+      // stylized bee bot: yellow head/body, black stripes, glass wings, antennae
+      const by=1.18,bz=z+.83;
+      this.add(s,x,by,bz,.34,.34,.34,[1,.72,.08,1]);this.add(s,x,by-.22,bz+.03,.28,.26,.28,[.99,.62,.04,1]);
+      this.add(b,x,by-.19,bz+.17,.3,.07,.08,[.06,.08,.1,1]);
+      this.add(s,x-.23,by+.12,bz+.03,.25,.1,.19,[.68,.91,1,.72]);this.add(s,x+.23,by+.12,bz+.03,.25,.1,.19,[.68,.91,1,.72]);
+      this.add(b,x-.11,by+.12,bz+.31,.035,.14,.035,[.08,.1,.12,1]);this.add(b,x+.11,by+.12,bz+.31,.035,.14,.035,[.08,.1,.12,1]);
     }
-    this.showPage(this.page);
+    // planter silhouettes at the two ends of the wall
+    for(const x of [-8.15,8.15]){this.add(b,x,.15,-3.3,.65,.3,.62,[.64,.73,.78,1]);for(let k=0;k<7;k++){const a=k*2.4;this.add(s,x+Math.cos(a)*.42,1.1+(k%3)*.18,-3.3+Math.sin(a)*.35,.18,.62,.13,[.18,.57,.25,1],a);}}
   };
-
-  ReferenceScene.prototype.showPage = function (page) {
-    const pages = Math.max(1, Math.ceil((this.cells || []).length / SCREENS.length));
-    this.page = clamp(page, 0, pages - 1);
-    this.screenMeta = (this.cells || []).slice(this.page * SCREENS.length, (this.page + 1) * SCREENS.length);
-    this.pager.hidden = pages <= 1;
-    this.prev.disabled = this.page === 0;
-    this.next.disabled = this.page === pages - 1;
-    this.pageLabel.textContent = (this.page + 1) + " / " + pages;
-    this.updateOverlay();
+  Scene.prototype.drawObject=function(o,viewProj){
+    const m=mat4.multiply(mat4.translate(o.x+this.panX,o.y+this.panY,o.z),mat4.multiply(mat4.rotateY(o.rotY),mat4.scale(o.sx,o.sy,o.sz)));
+    const mvp=mat4.multiply(viewProj,m),gl=this.gl;gl.bindBuffer(gl.ARRAY_BUFFER,o.mesh.p);gl.enableVertexAttribArray(this.aPosition);gl.vertexAttribPointer(this.aPosition,3,gl.FLOAT,false,0,0);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,o.mesh.ix);gl.uniformMatrix4fv(this.uMvp,false,mvp);gl.uniform4fv(this.uColor,o.color);gl.drawElements(gl.TRIANGLES,o.mesh.count,gl.UNSIGNED_SHORT,0);
   };
-
-  ReferenceScene.prototype.updateOverlay = function () {
-    const lanes = this.model ? this.model.lanes : [];
-    this.stageMeta.forEach((plate, index) => {
-      const lane = lanes[index];
-      plate.lane = lane || null;
-      const name = lane ? tr(lane.nameKey || lane.name) : tr(STAGES[index]);
-      plate.name.textContent = tr("阶段 {0} · {1}", index + 1, name);
-      plate.meta.textContent = lane ? tr("{0} / {1} 步骤", lane.settled, lane.count) : tr("等待任务");
-      plate.el.classList.toggle("hg-active", !!(lane && lane.active));
-      plate.el.disabled = !lane || !lane.cells.length;
-      plate.el.title = tr("点击查看实时日志");
-    });
-    this.monitors.forEach((monitor, index) => {
-      const cell = this.screenMeta[index];
-      const refresh = cell && cell.rel ? this.cellRefresh(cell.rel) || {} : {};
-      const state = cell ? cell.status : "idle";
-      monitor.el.className = "hg-monitor st-" + state;
-      monitor.el.disabled = !cell;
-      monitor.el.dataset.log = cell ? cell.rel : "";
-      monitor.role.textContent = cell ? tr(cell.role) : tr("空闲工位");
-      monitor.status.textContent = cell ? tr(STATUS[state] || "完成") : tr("待命");
-      monitor.tail.textContent = cell ? refresh.tail || cell.displayTail ||
-        (state === "running" ? tr("等待日志输出…") : state === "queued" ? tr("等待执行") : tr("（无输出）")) : tr("等待任务");
-      monitor.time.textContent = cell ? refresh.elapsed || cell.displayElapsed || "" : "";
-      monitor.el.title = cell ? [tr(cell.role), tr(STATUS[state] || "完成"), cell.displayAgent,
-        monitor.tail.textContent, tr("点击查看实时日志")].filter(Boolean).join(" · ") : tr("空闲工位");
-      monitor.el.setAttribute("aria-label", monitor.el.title);
-    });
-    this.prev.setAttribute("aria-label", tr("上一组工位"));
-    this.next.setAttribute("aria-label", tr("下一组工位"));
+  Scene.prototype.render=function(){
+    if(!this.gl||!this.active)return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
+    const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
+    gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
+    const eye=[Math.sin(this.yaw)*13/this.zoom,8.2/this.zoom,Math.cos(this.yaw)*16/this.zoom-1.3];const view=mat4.lookAt(eye,[0,1.1,0],[0,1,0]);const proj=mat4.perspective(.73,w/h,.1,70);const vp=mat4.multiply(proj,view);
+    for(const o of this.objects)this.drawObject(o,vp);
   };
-
-  ReferenceScene.prototype.setActive = function (active) {
-    this.active = !!active;
-    this.layer.hidden = !this.active;
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
-    if (this.active) {
-      this.updateOverlay();
-      this.timer = setInterval(() => {
-        if (!document.hidden && this.host.offsetParent !== null) this.updateOverlay();
-      }, 1000);
-    }
+  Scene.prototype.sync=function(model){const changed=!this.model||this.model.runId!==model.runId;this.model=model;this.cells=model.lanes.flatMap((lane,stageIdx)=>lane.cells.map(cell=>({...cell,stageIdx})));if(changed){const r=this.cells.findIndex(c=>c.status==="running");this.page=r<0?0:Math.floor(r/SCREENS.length);this.resetView();}this.showPage(this.page);};
+  Scene.prototype.showPage=function(page){const pages=Math.max(1,Math.ceil((this.cells||[]).length/SCREENS.length));this.page=clamp(page,0,pages-1);this.screenMeta=(this.cells||[]).slice(this.page*SCREENS.length,(this.page+1)*SCREENS.length);this.pager.hidden=pages<=1;this.prev.disabled=this.page===0;this.next.disabled=this.page===pages-1;this.pageLabel.textContent=(this.page+1)+" / "+pages;this.updateOverlay();};
+  Scene.prototype.updateOverlay=function(){
+    const lanes=this.model?this.model.lanes:[];
+    this.stageMeta.forEach((p,i)=>{const lane=lanes[i];p.lane=lane||null;p.name.textContent=tr("阶段 {0} · {1}",i+1,lane?tr(lane.nameKey||lane.name):tr(STAGES[i]));p.meta.textContent=lane?tr("{0} / {1} 步骤",lane.settled,lane.count):tr("等待任务");p.el.classList.toggle("hg-active",!!(lane&&lane.active));p.el.disabled=!lane||!lane.cells.length;p.el.title=tr("点击查看实时日志");});
+    this.monitors.forEach((m,i)=>{const c=this.screenMeta[i],refresh=c&&c.rel?this.cellRefresh(c.rel)||{}:{},state=c?c.status:"idle";m.el.className="hg-monitor st-"+state;m.el.disabled=!c;m.el.dataset.log=c?c.rel:"";m.role.textContent=c?tr(c.role):tr("空闲工位");m.status.textContent=c?tr(STATUS[state]||"完成"):tr("待命");m.tail.textContent=c?refresh.tail||c.displayTail||(state==="running"?tr("等待日志输出…"):state==="queued"?tr("等待执行"):tr("（无输出）")):tr("等待任务");m.time.textContent=c?refresh.elapsed||c.displayElapsed||"":"";m.el.title=c?[tr(c.role),tr(STATUS[state]||"完成"),c.displayAgent,m.tail.textContent,tr("点击查看实时日志")].filter(Boolean).join(" · "):tr("空闲工位");m.el.setAttribute("aria-label",m.el.title);});
+    this.prev.setAttribute("aria-label",tr("上一组工位"));this.next.setAttribute("aria-label",tr("下一组工位"));
   };
-
-  ReferenceScene.prototype.resize = function () {
-    this.cssW = this.host.clientWidth;
-    this.cssH = this.host.clientHeight;
-    this.applyTransform();
-  };
-  ReferenceScene.prototype.applyTransform = function () {
-    const xLimit = this.cssW * (this.zoom - 1) / 2;
-    const yLimit = this.cssH * (this.zoom - 1) / 2;
-    this.pan.x = clamp(this.pan.x, -xLimit, xLimit);
-    this.pan.y = clamp(this.pan.y, -yLimit, yLimit);
-    this.layer.style.transform = "translate(" + this.pan.x + "px," + this.pan.y + "px) scale(" + this.zoom + ")";
-  };
-  ReferenceScene.prototype.zoomAt = function (factor) {
-    this.zoom = clamp(this.zoom / factor, 1, 3);
-    this.applyTransform();
-  };
-  ReferenceScene.prototype.resetView = function () {
-    this.zoom = 1;
-    this.pan = { x: 0, y: 0 };
-    this.applyTransform();
-  };
-  ReferenceScene.prototype.info = function () {
-    return { renderer: "reference", cells: (this.cells || []).length, screens: SCREENS.length,
-      lanes: this.model ? this.model.lanes.length : 0, page: this.page, zoom: this.zoom, cssW: this.cssW, cssH: this.cssH };
-  };
-  ReferenceScene.prototype.projectCell = function (rel) {
-    const index = this.screenMeta.findIndex((cell) => cell.rel === rel);
-    if (index < 0) return null;
-    const [x, y, width, height] = SCREENS[index];
-    return { x: (x + width / 2) / 2048 * this.cssW, y: (y + height / 2) / 1151 * this.cssH };
-  };
-  ReferenceScene.prototype.dispose = function () {
-    this.setActive(false);
-    this.resizeObserver.disconnect();
-    this.languageObserver.disconnect();
-    this.listeners.forEach((remove) => remove());
-    this.pager.remove();
-    if (window.__hive3d === this) delete window.__hive3d;
-  };
-
-  return { create(opts) { return new ReferenceScene(opts); } };
+  Scene.prototype.setActive=function(active){this.active=!!active;if(this.timer)clearInterval(this.timer);if(this.raf)cancelAnimationFrame(this.raf);this.raf=0;this.layer.hidden=!this.active;this.canvas.hidden=!this.active;if(this.active){this.updateOverlay();this.timer=setInterval(()=>{if(!document.hidden&&this.host.offsetParent!==null)this.updateOverlay();},1000);const tick=()=>{if(!this.active)return;this.render();this.raf=requestAnimationFrame(tick);};this.render();this.raf=requestAnimationFrame(tick);}};
+  Scene.prototype.resize=function(){this.cssW=this.host.clientWidth;this.cssH=this.host.clientHeight;if(this.cssW&&this.cssH)this.render();};
+  Scene.prototype.zoomAt=function(factor){this.zoom=clamp(this.zoom/factor,.72,2.4);this.render();};
+  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=-.18;this.pitch=.28;this.panX=0;this.panY=0;this.render();};
+  Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0};};
+  Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel);if(i<0)return null;const [x,y,w,h]=SCREENS[i];return{x:(x+w/2)/2048*this.cssW,y:(y+h/2)/1151*this.cssH};};
+  Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());this.pager.remove();if(this.gl){const gl=this.gl;for(const o of [this.box,this.sphere])if(o){gl.deleteBuffer(o.p);gl.deleteBuffer(o.ix);}gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
+  const originalCreate=(opts)=>new Scene(opts);
+  // Initialize geometry after the constructor has successfully acquired WebGL.
+  const create=(opts)=>{const scene=originalCreate(opts);if(scene.gl){scene.buildWorld();scene.render();}return scene;};
+  return {create};
 })();
