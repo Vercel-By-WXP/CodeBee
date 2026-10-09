@@ -7294,7 +7294,7 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 #rd-hive-viewport.hive-mode-2d .hive-gl-live { display: none; }
 #rd-hive-viewport.hive-mode-3d .hive-reference { display: none; }
 #rd-hive-viewport.hive-mode-3d .hive-reference-layer { pointer-events: none; }
-#rd-hive-viewport.hive-mode-3d .hg-badge { top: 17.9% !important; }
+/* Stage-card top is projected from the 3D wall by hive3d.js; do not pin it to a screen-space row. */
 #rd-hive-viewport.hive-mode-3d .hg-monitor { top: auto; }
 @media (prefers-reduced-motion: reduce) {
   #rd-hive-viewport .hive-gl-live { scroll-behavior: auto; }
