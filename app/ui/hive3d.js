@@ -46,6 +46,7 @@ window.Hive3D = (function () {
     this.layer=node("div","hive-reference-layer",this.host);this.layer.appendChild(this.overlay);this.overlay.replaceChildren();
     try { this.initGL(); } catch(e) { console.error("CodeBee Hive3D WebGL init failed",e); this.failed=true; this.failure=e; return; }
     this.stageMeta=PLATES.map(([x,y],i)=>{const el=node("button","hg-badge",this.overlay);el.type="button";el.style.left="0%";el.style.top="0%";const name=node("b","hg-name",el),meta=node("span","hg-meta",el);this.listen(el,"click",()=>{const lane=this.stageMeta[i].lane;if(!lane)return;const cell=lane.cells.find(c=>c.status==="running")||lane.cells[lane.cells.length-1];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,name,meta,lane:null};});
+    this.links=Array.from({length:PLATES.length-1},()=>node("span","hg-flow-link",this.overlay));
     this.monitors=SCREENS.map(([x,y,w,h],i)=>{const el=node("button", "hg-monitor", this.overlay);el.type="button";el.style.left="0%";el.style.top="0%";el.style.width=(w/2048*100)+"%";el.style.height=(h/1151*100)+"%";const role=node("b","hg-monitor-role",el),status=node("span","hg-monitor-status",el),tail=node("span","hg-monitor-tail",el),time=node("span","hg-monitor-time",el);this.listen(el,"click",()=>{const cell=this.screenMeta[i];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,role,status,tail,time};});
     const toolbar=this.host.parentElement.querySelector(".hive-scene-tools");this.pager=node("div","hive-scene-pager");this.pager.hidden=true;this.prev=node("button","hive-scene-btn",this.pager);this.prev.type="button";this.prev.textContent="‹";this.pageLabel=node("span","hive-scene-page-label",this.pager);this.next=node("button","hive-scene-btn",this.pager);this.next.type="button";this.next.textContent="›";if(toolbar)toolbar.insertBefore(this.pager,toolbar.querySelector(".hive-scene-spacer"));
     this.listen(this.prev,"click",()=>this.showPage(this.page-1));this.listen(this.next,"click",()=>this.showPage(this.page+1));this.bindSurface();
@@ -80,9 +81,9 @@ window.Hive3D = (function () {
     this.add(b,0,.18,-6.28,18.7,.12,.06,[.06,.30,.55,1]);
     for(let x=-8;x<=8;x+=2.65)this.add(b,x,2.5,-6.29,.018,4.7,.025,[.06,.33,.60,1]);
     for(const side of [-1,1]){
-      this.add(b,side*9.12,2.35,-.15,.18,4.55,12.1,[.78,.87,.94,1]);
-      this.add(b,side*9.0,2.4,-.15,.05,4.6,12,[.20,.35,.46,1]);
-      for(let z=-4.7;z<=4.8;z+=2.35)this.add(b,side*9.0,2.4,z,.06,4.35,.045,[.28,.43,.54,1]);
+      // Open-framed side glazing: avoid opaque side slabs that visually cut the room into boxes.
+      for(const y of [.12,4.62])this.add(b,side*8.95,y,-.15,.075,.075,11.9,[.78,.87,.93,1]);
+      for(let z=-5.55;z<=5.56;z+=2.22)this.add(b,side*8.95,2.36,z,.075,4.48,.075,[.84,.91,.96,1]);
     }
     // Ceiling light fixtures and soft-colored illuminated panels.
     for(let x=-6.3;x<=6.4;x+=6.3){
@@ -97,9 +98,22 @@ window.Hive3D = (function () {
       this.add(b,x,3.15,-6.03,1.72,.035,.025,stageColors[i]);
       this.add(b,x+1.05,3.58,-6.04,.09,.09,.08,[.38,.89,.96,1]);
     }
-    // Floor grout creates a subtle, regular hex-inspired technical grid without texture assets.
-    for(let x=-8.7;x<=8.7;x+=.72)this.add(b,x,-.025,.15,.012,.012,12.7,[.76,.84,.90,1]);
-    for(let z=-5.8;z<=6.1;z+=.72)this.add(b,0,-.024,z,17.8,.012,.012,[.76,.84,.90,1]);
+    // Subtle hexagonal grout follows the reference floor and is baked into the static GPU batch.
+    const tileR=.42, tileDX=1.5*tileR, tileDZ=Math.sqrt(3)*tileR;
+    for(let row=0;row<17;row++){
+      const cz=-5.55+row*tileDZ;
+      for(let col=-14;col<=14;col++){
+        const cx=col*tileDX+(row%2)*tileDX/2;
+        if(Math.abs(cx)>9.0)continue;
+        for(let edge=0;edge<3;edge++){
+          const a0=edge*Math.PI/3,a1=(edge+1)*Math.PI/3;
+          const x0=cx+tileR*Math.cos(a0),z0=cz+tileR*Math.sin(a0);
+          const x1=cx+tileR*Math.cos(a1),z1=cz+tileR*Math.sin(a1);
+          const rotation=[Math.PI/3,0,-Math.PI/3][edge];
+          this.add(b,(x0+x1)/2,-.032,(z0+z1)/2,tileR,.008,.009,[.74,.83,.90,1],rotation);
+        }
+      }
+    }
     // Fourteen desks: repeat identical assets, but leave generous aisles and keep the screen-facing side clear.
     for(let row=0;row<2;row++)for(let i=0;i<7;i++){
       const x=(i-3)*2.48,z=row===0?-2.0:3.0;
@@ -207,6 +221,17 @@ window.Hive3D = (function () {
       p.el.style.width=Math.max(54,rect.width*.96)+"px";
       p.el.style.height=Math.max(28,rect.height*.88)+"px";
       p.el.style.transform="translate(-50%,-50%)";
+    });
+    // Connectors stay on the wall plane and follow the same camera transform as the cards.
+    this.links.forEach((link,i)=>{
+      const leftX=-7.1+i*2.84+1.12,rightX=-7.1+(i+1)*2.84-1.12;
+      const a=this.projectWorld(leftX,3.58,-6.03),b=this.projectWorld(rightX,3.58,-6.03);
+      if(!a||!b||!a.visible||!b.visible){link.style.visibility="hidden";return;}
+      const dx=b.x-a.x,dy=b.y-a.y;
+      link.style.visibility="visible";
+      link.style.left=(a.x/this.cssW*100)+"%";link.style.top=(a.y/this.cssH*100)+"%";
+      link.style.width=Math.hypot(dx,dy)+"px";
+      link.style.transform="translateY(-50%) rotate("+Math.atan2(dy,dx)+"rad)";
     });
     // Project all four corners of the actual glass. This keeps task text inside each screen
     // while the camera rotates, pitches, pans or zooms; the former three-point average drifted.
