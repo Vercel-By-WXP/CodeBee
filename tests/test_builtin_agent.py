@@ -312,6 +312,68 @@ class TestBuiltinDirectPipeline(BaseTest):
         self.assertIn("1+1=?", calls[0]["messages"][-1]["content"])
 
 
+class TestBuiltinSandboxPassthrough(BaseTest):
+    def runTest(self):
+        """任务沙箱策略必须透传内置智能体：_run_builtin_step 无 task 上下文，
+        策略由 _run_direct 显式传参（fb92efa 曾误引 task.get NameError，
+        直连对话每轮起跑即炸）。spy builtin_agent.run 锁形参与全链。"""
+        from unittest.mock import patch
+        from app.core import builtin_agent, modelhub, pipeline, store
+        modelhub._save({
+            "providers": [{"id": "prov-sb", "name": "沙箱网关", "protocol": "openai",
+                           "base_url": "http://gw.test/v1", "api_key": "sk-test",
+                           "enabled": True, "model": "sb-model"}],
+            "bindings": {},
+            "orchestrator": {"provider_id": "prov-sb", "model": "sb-model",
+                             "enabled": True},
+        })
+        self.assertIsNotNone(builtin_agent.resolve())
+
+        def fake_post(url, headers, body, allow_private, timeout):
+            return 200, {"choices": [{"message": {"content": "好的"}}],
+                         "usage": {"prompt_tokens": 3, "completion_tokens": 1,
+                                   "total_tokens": 4}}, ""
+
+        captured = {}
+        orig_run = builtin_agent.run
+        orig_post = builtin_agent._post_json
+
+        def spy_run(bi, prompt, workdir, **kw):
+            captured.update(kw)
+            return orig_run(bi, prompt, workdir, **kw)
+
+        try:
+            builtin_agent._post_json = fake_post
+            with patch.object(builtin_agent, "run", side_effect=spy_run):
+                # 带禁网策略的任务：策略原样到达 builtin_agent.run
+                task = store.create_task({
+                    "type": "direct", "title": "沙箱透传", "goal": "你好",
+                    "workdir": str(self.workdir),
+                    "sandbox": {"network": False},
+                })
+                self.assertFalse(task["sandbox"].get("network", True))  # 落盘即归一化
+                run = store.create_run("orchestration", task["title"],
+                                       task_id=task["id"])
+                pipeline._agents = self.mock_agents
+                pipeline.execute_run(run["id"])
+                done = store.get_run(run["id"])
+                self.assertEqual(done["status"], "done", done.get("error"))
+                self.assertFalse(captured.get("sandbox", {}).get("network", True))
+                # 无策略任务：透传归一化默认策略，不得缺参/炸裂
+                task2 = store.create_task({
+                    "type": "direct", "title": "默认策略", "goal": "你好",
+                    "workdir": str(self.workdir),
+                })
+                run2 = store.create_run("orchestration", task2["title"],
+                                        task_id=task2["id"])
+                pipeline.execute_run(run2["id"])
+                done2 = store.get_run(run2["id"])
+                self.assertEqual(done2["status"], "done", done2.get("error"))
+                self.assertIsInstance(captured.get("sandbox"), dict)
+        finally:
+            builtin_agent._post_json = orig_post
+
+
 class TestBuiltinReadBinaryAndEnc(BaseTest):
     def runTest(self):
         from app.core import builtin_agent

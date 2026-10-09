@@ -628,14 +628,16 @@ def _create_task_from_builtin(payload):
 
 
 def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=None,
-                      followups=False):
+                      followups=False, sandbox=None):
     """内置智能体步骤：直连模型 API + 工具循环（builtin_agent），不经 CLI 进程。
 
     与 _run_step 对齐的三件事：暂停/取消闸门、运行中指令 drain 注入、重复调用
     守门；结果同样经 _finish_step_result 落步骤（output=干净回答）并入用量台账。
     日志只有「迭代/工具」摘要行——对话视图吃 output，日志抽屉看工具轨迹。
     followups=True 时从回答末尾解析「建议追问」块（直连对话专用协议）：
-    剥离出结构化列表落步骤记录，正文保持干净。"""
+    剥离出结构化列表落步骤记录，正文保持干净。
+    sandbox：任务沙箱策略由调用方透传（本函数无 task 上下文），builtin_agent
+    内部 normalize 后在工具执行期强制。"""
     _wait_gate(run_id, ev)
     deadline = _ensure_budget(run_id)
     step, log_abs = store.add_step(run_id, role, "builtin", "CodeBee", note=note,
@@ -689,7 +691,7 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
                             on_reason=_on_reason, on_stream=_on_stream,
                             on_activity=_on_activity,
                             task_creator=_create_task_from_builtin,
-                            sandbox=task.get("sandbox"), checkpoint_run_id=run_id)
+                            sandbox=sandbox, checkpoint_run_id=run_id)
     if followups and res.get("ok"):
         clean, fups = _parse_followups(res.get("text") or "")
         if fups:
@@ -2334,7 +2336,7 @@ def _run_direct(run, task, agents, ev, stats, mode):
         if bi is not None:
             res = _run_builtin_step(run_id, "direct" if first else "chat", bi, prompt,
                                     step_wd, ev=ev, note=note, images=images,
-                                    followups=True)
+                                    followups=True, sandbox=task.get("sandbox"))
         else:
             res = _run_step(run_id, "direct" if first else "chat", impl, prompt, step_wd,
                             readonly=False, ev=ev, note=note,
