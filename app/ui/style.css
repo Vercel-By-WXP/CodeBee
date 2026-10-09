@@ -7301,3 +7301,54 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 }
 
 #rd-hive-viewport .hive-gl-live[hidden] { display: none !important; }
+
+
+/* Visual calibration pass: reduce floating task labels so the room and desks read first. */
+#rd-hive-viewport.hive-mode-3d {
+  background: linear-gradient(180deg, #e9f4fc 0%, #d7e9f7 54%, #c9dceb 100%);
+}
+#rd-hive-viewport .hive-reference-layer {
+  z-index: 2;
+  overflow: hidden;
+}
+#rd-hive-viewport .hg-badge {
+  width: 10.6%;
+  height: 6.6%;
+  padding: .24cqw;
+  border-radius: 1.15cqw;
+  box-shadow: 0 .22cqw .55cqw rgba(14,55,88,.17);
+}
+#rd-hive-viewport .hg-badge .hg-name {
+  font-size: clamp(10px, 1.05cqw, 17px);
+}
+#rd-hive-viewport .hg-badge .hg-meta {
+  font-size: clamp(7px, .48cqw, 10px);
+}
+#rd-hive-viewport .hg-monitor {
+  background: rgba(4, 28, 55, .88);
+  border: 1px solid rgba(121, 225, 246, .28);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: clamp(6px, .45cqw, 9px);
+  line-height: 1.2;
+  box-shadow: 0 2px 6px rgba(4, 24, 45, .12);
+  backdrop-filter: blur(2px);
+}
+#rd-hive-viewport .hg-monitor-role {
+  font-size: clamp(6px, .52cqw, 10px);
+}
+#rd-hive-viewport .hg-monitor-tail {
+  opacity: .8;
+}
+#rd-hive-viewport .hg-monitor.st-idle {
+  background: rgba(7, 38, 66, .58);
+  border-color: rgba(255,255,255,.16);
+  opacity: .84;
+}
+#rd-hive-viewport .hg-monitor:disabled {
+  opacity: .42;
+}
+@media (max-width: 760px) {
+  #rd-hive-viewport .hg-monitor { display: none; }
+  #rd-hive-viewport .hg-badge { width: 14%; }
+}
