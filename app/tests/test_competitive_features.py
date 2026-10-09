@@ -545,12 +545,17 @@ class CompetitiveFeatureTests(unittest.TestCase):
             {"id": "codex-cli", "kind": "codex", "mode": "real"}, self.root,
             policy.normalize_sandbox({}, self.root)), "")
 
-    def test_external_cli_without_verified_os_isolation_is_blocked(self):
+    def test_external_cli_sandbox_gate_is_policy_aware(self):
         from core import pipeline
-        sandbox = policy.normalize_sandbox({}, self.root)
+        claude = {"id": "claude", "kind": "claude", "mode": "real"}
+        # 默认策略与外部 CLI 的天然权限一致：放行（89—96 批连载起草实案，
+        # 一律拒会把未带沙箱策略的常规任务整批拒死）
+        self.assertEqual(pipeline._external_sandbox_block_reason(
+            claude, self.root, policy.normalize_sandbox({}, self.root)), "")
+        # 显式收窄（禁网）仍然 fail-closed
         reason = pipeline._external_sandbox_block_reason(
-            {"id": "claude", "kind": "claude", "mode": "real"}, self.root, sandbox)
-        self.assertIn("OS", reason)
+            claude, self.root, policy.normalize_sandbox({"network": False}, self.root))
+        self.assertIn("禁网", reason)
 
     def test_codex_full_access_override_is_ignored(self):
         from core import runner
