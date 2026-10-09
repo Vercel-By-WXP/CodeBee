@@ -128,8 +128,8 @@ window.Hive3D = (function () {
     const stageColors=[[.22,.83,.94,1],[.24,.80,.93,1],[.27,.84,.96,1],[.20,.87,.95,1],[.25,.81,.95,1],[.28,.88,.95,1]];
     for(let i=0;i<6;i++){
       const x=-7.1+i*2.84;
-      this.add(rb,x,3.58,-6.16,2.22,.76,.18,[.99,.995,1,1]);
-      this.add(b,x,3.15,-6.03,1.72,.035,.025,stageColors[i]);
+      this.add(rb,x,3.58,-6.16,2.40,.82,.18,[.99,.995,1,1]);
+      this.add(b,x,3.14,-6.03,1.86,.035,.025,stageColors[i]);
       this.add(b,x+1.05,3.58,-6.04,.09,.09,.08,[.38,.89,.96,1]);
     }
     // Subtle hexagonal grout follows the reference floor and is baked into the static GPU batch.
@@ -179,11 +179,19 @@ window.Hive3D = (function () {
       this.add(s,x,by,bz,.35,.34,.32,[1,.70,.05,1]);
       this.add(s,x,by-.24,bz+.02,.28,.23,.26,[.98,.57,.035,1]);
       this.add(b,x,by-.19,bz+.245,.26,.065,.045,[.045,.055,.06,1]);
-      this.add(s,x,by-.055,bz+.285,.255,.145,.055,[.045,.055,.06,1]);
-      this.add(s,x-.105,by-.035,bz+.326,.035,.035,.026,[.02,.03,.04,1]);
-      this.add(s,x+.105,by-.035,bz+.326,.035,.035,.026,[.02,.03,.04,1]);
+      this.add(s,x,by-.055,bz-.285,.255,.145,.055,[.045,.055,.06,1]);
+      this.add(s,x-.105,by-.035,bz-.326,.035,.035,.026,[.02,.03,.04,1]);
+      this.add(s,x+.105,by-.035,bz-.326,.035,.035,.026,[.02,.03,.04,1]);
+      // The camera sees the bee's striped back; its faceplate points toward the monitor (-Z).
+      this.add(s,x,by-.065,bz+.305,.20,.045,.018,[.045,.055,.06,1]);
       this.add(b,x-.13,by+.23,bz+.13,.028,.18,.028,[.08,.09,.10,1]);
       this.add(b,x+.13,by+.23,bz+.13,.028,.18,.028,[.08,.09,.10,1]);
+      // Small forearms reach toward the keyboard, with hands at desk height.
+      for(const side of [-1,1]){
+        this.add(s,x+side*.22,by-.28,bz-.11,.10,.11,.20,[.98,.62,.035,1]);
+        this.add(s,x+side*.27,by-.40,bz-.43,.10,.08,.38,[.99,.66,.045,1]);
+        this.add(s,x+side*.27,.69,z+.25,.08,.065,.09,[1,.72,.08,1]);
+      }
       this.add(s,x-.30,by+.10,bz-.03,.28,.075,.18,[.70,.91,1,.72]);
       this.add(s,x+.30,by+.10,bz-.03,.28,.075,.18,[.70,.91,1,.72]);
       this.add(b,x,by-.28,bz-.015,.18,.055,.22,[.07,.08,.09,1]);
@@ -243,7 +251,7 @@ window.Hive3D = (function () {
     if(!this.gl||!this.active)return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
-    const radius=16/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.34,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,1.45,0],[0,1,0]);const proj=mat4.perspective(.73,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
+    const radius=16/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.34,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,1.0,0],[0,1,0]);const proj=mat4.perspective(.73,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
     gl.uniformMatrix4fv(this.uViewProj,false,vp);
     this.drawBatch(this.batchBuffers&&this.batchBuffers.opaque);
     const translucent=this.batchBuffers&&this.batchBuffers.transparent;
@@ -271,7 +279,7 @@ window.Hive3D = (function () {
     // Stage labels occupy the front face of each physical wall panel, rather than a fixed HUD row.
     this.stageMeta.forEach((p,i)=>{
       const x=-7.1+i*2.84,z=-6.07;
-      const rect=this.projectRect([[x-1.02,3.25,z],[x+1.02,3.25,z],[x+1.02,3.91,z],[x-1.02,3.91,z]]);
+      const rect=this.projectRect([[x-1.17,3.17,z],[x+1.17,3.17,z],[x+1.17,3.99,z],[x-1.17,3.99,z]]);
       if(!rect){p.el.style.visibility="hidden";return;}
       p.el.style.visibility="visible";
       p.el.style.left=(rect.centerX/this.cssW*100)+"%";
@@ -282,7 +290,7 @@ window.Hive3D = (function () {
     });
     // Connectors stay on the wall plane and follow the same camera transform as the cards.
     this.links.forEach((link,i)=>{
-      const leftX=-7.1+i*2.84+1.12,rightX=-7.1+(i+1)*2.84-1.12;
+      const leftX=-7.1+i*2.84+1.22,rightX=-7.1+(i+1)*2.84-1.22;
       const a=this.projectWorld(leftX,3.58,-6.03),b=this.projectWorld(rightX,3.58,-6.03);
       if(!a||!b||!a.visible||!b.visible){link.style.visibility="hidden";return;}
       const dx=b.x-a.x,dy=b.y-a.y;
