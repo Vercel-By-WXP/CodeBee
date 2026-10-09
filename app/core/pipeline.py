@@ -574,25 +574,38 @@ def _external_sandbox_block_reason(agent, workdir, sandbox):
     """Reject task policies that this CLI launcher cannot enforce.
 
     Codex is currently the only supported external runner with an OS-backed
-    workspace write sandbox. Other CLI integrations have no equivalent boundary
-    in this launcher and must use the in-process agent/tool executor instead.
+    workspace write sandbox. Other CLI integrations run with their natural
+    permission set (workdir read/write, network allowed): they are rejected
+    only when the task policy is *narrower* than that — fail closed for
+    narrowed policies, not for defaults（实案：create_task 改为强制落默认
+    策略后，本闸把 89—96 批的连载起草整批拒成「没有经验证的 OS 文件隔
+    离」；默认策略与外部 CLI 的天然权限一致，不属于收窄）.
     """
     if (agent or {}).get("mode") == "mock":
         return ""
     from . import policy
-    if (agent or {}).get("kind") != "codex":
-        return "沙箱拒绝：该外部 CLI 没有经验证的 OS 文件隔离；请改用内置 Agent"
     root = os.path.realpath(workdir or ".")
     normalized = policy.normalize_sandbox(sandbox, root)
-    roots = [os.path.realpath(x) for x in normalized.get("allowed_roots") or []]
+    if (agent or {}).get("kind") == "codex":
+        if normalized.get("network") is False:
+            return "沙箱拒绝：该 CLI 后端未接入网络隔离，拒绝运行网络受限任务"
+        if [os.path.realpath(x) for x in normalized.get("allowed_roots") or []] != [root]:
+            return "沙箱拒绝：该 CLI 后端未接入允许目录隔离，拒绝运行目录受限任务"
+        if normalized.get("disabled_tools"):
+            return "权限拒绝：该 CLI 后端无法执行 CodeBee 工具禁用策略，拒绝运行"
+        if normalized.get("env_allowlist"):
+            return "沙箱拒绝：该 CLI 后端未接入环境变量白名单，拒绝运行受限任务"
+        return ""
+    # 非 codex 外部 CLI：默认策略放行，收窄策略拒绝
     if normalized.get("network") is False:
-        return "沙箱拒绝：该 CLI 后端未接入网络隔离，拒绝运行网络受限任务"
-    if roots != [root]:
-        return "沙箱拒绝：该 CLI 后端未接入允许目录隔离，拒绝运行目录受限任务"
+        return "沙箱拒绝：该任务要求禁网，外部 CLI 无法执行网络受限任务"
     if normalized.get("disabled_tools"):
-        return "权限拒绝：该 CLI 后端无法执行 CodeBee 工具禁用策略，拒绝运行"
+        return "权限拒绝：该任务带工具禁用策略，外部 CLI 无法执行"
     if normalized.get("env_allowlist"):
-        return "沙箱拒绝：该 CLI 后端未接入环境变量白名单，拒绝运行受限任务"
+        return "沙箱拒绝：该任务带环境变量白名单，外部 CLI 无法执行受限任务"
+    roots = [os.path.realpath(x) for x in normalized.get("allowed_roots") or []]
+    if roots and root not in roots:
+        return "沙箱拒绝：该任务目录白名单不含工作目录，外部 CLI 无法保证隔离范围"
     return ""
 
 

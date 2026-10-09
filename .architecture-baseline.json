@@ -703,9 +703,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/builtin_agent.py 2055 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/builtin_agent.py 2053 行（上限 1200，历史最高 0）",
       "file": "app/core/builtin_agent.py",
-      "lines": 2055
+      "lines": 2053
     },
     {
       "kind": "lines",
@@ -715,15 +715,15 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/modelhub.py 3844 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/modelhub.py 3860 行（上限 1200，历史最高 0）",
       "file": "app/core/modelhub.py",
-      "lines": 3844
+      "lines": 3860
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/pipeline.py 5981 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/pipeline.py 5994 行（上限 1200，历史最高 0）",
       "file": "app/core/pipeline.py",
-      "lines": 5981
+      "lines": 5994
     },
     {
       "kind": "lines",
