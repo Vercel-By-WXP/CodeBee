@@ -201,10 +201,10 @@ window.Hive3D = (function () {
       this.add(rb,x,.17,-4.25,.62,.34,.62,[.70,.77,.81,1]);
       for(let k=0;k<9;k++){const a=k*2.399;this.add(s,x+Math.cos(a)*.40,.80+(k%4)*.18,-4.25+Math.sin(a)*.34,.12,.43,.12,[.12,.48+(k%3)*.05,.22,1],a);}
     }
-    // Low-opacity contact shadows ground desk pods without enabling expensive shadow maps.
-    for(let row=0;row<2;row++)for(let i=0;i<7;i++){
-      const x=(i-3)*2.48,z=row===0?-2.0:3.0;
-      this.add(s,x,-.026,z,1.42,.026,.73,[.13,.23,.31,.15]);
+    // Low-opacity contact shadows share the same 8+6 workstation positions.
+    for(const desk of this.deskPositions){
+      const {x,z,width}=desk;
+      this.add(s,x,-.026,z,width*.68,.026,.73,[.13,.23,.31,.15]);
       this.add(s,x,-.025,z+1.08,.78,.018,.58,[.12,.20,.27,.10]);
     }
   };
@@ -330,7 +330,7 @@ window.Hive3D = (function () {
   Scene.prototype.zoomAt=function(factor){this.zoom=clamp(this.zoom/factor,.72,2.4);this.render();};
   Scene.prototype.resetView=function(){this.zoom=1;this.yaw=-.18;this.pitch=.28;this.panX=0;this.panY=0;this.render();};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0,deskRows:this.deskPositions?[this.deskPositions.filter(d=>d.row===0).length,this.deskPositions.filter(d=>d.row===1).length]:[]};};
-  Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[this.page*SCREENS.length+i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,.995,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
+  Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,.995,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
   Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
   const originalCreate=(opts)=>new Scene(opts);
   // Initialize geometry after the constructor has successfully acquired WebGL.
