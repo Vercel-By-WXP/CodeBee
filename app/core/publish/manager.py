@@ -872,8 +872,14 @@ def read_chapter(fp):
 
 
 def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
-                         force=False, force_confirmed=False, force_reason=""):
-    """把一章发到平台（或填好待人工确认）。幂等：已成功发布的章号拒绝重发。"""
+                         force=False, force_confirmed=False, force_reason="",
+                         as_draft=False):
+    """把一章发到平台（或填好待人工确认/as_draft 只存草稿）。
+
+    幂等：已成功发布**或已存草稿**的章号拒绝重做——重复发会平台上出双章，
+    重复存草稿会攒一箱重复稿。as_draft=True 走「存草稿」流程表
+    （upload_chapter_draft）：内容落平台草稿箱不上线，不构成发布动作，
+    质量闸不拦（发布时照拦）；存稿动作无需人工确认，适合批量连跑。"""
     from .. import store
     if plat not in PLATFORMS:
         return False, "未知平台"
@@ -894,9 +900,14 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     ch_no, title, body, err = read_chapter(chapter_file)
     if err:
         return False, err
-    quality = _quality_release_guard(
-        task, plat, action="publish", target_chapter=ch_no or None,
-        force=force, force_confirmed=force_confirmed, force_reason=force_reason)
+    if as_draft:
+        # 草稿不上线：质量闸不适用（evaluate_release action=draft 直通），
+        # 人工复核挪到「平台草稿箱 → 用户逐章检查后提交」那一步。
+        quality = {"allowed": True}
+    else:
+        quality = _quality_release_guard(
+            task, plat, action="publish", target_chapter=ch_no or None,
+            force=force, force_confirmed=force_confirmed, force_reason=force_reason)
     if not quality.get("allowed"):
         return False, "质量门禁拦截：%s" % "；".join(quality.get("blockers") or [])
     n_chars = len(body.replace("\n", "").replace(" ", ""))
@@ -912,10 +923,14 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     done = ledger.published_chapters(task_id, plat)
     if ch_no and ch_no in done:
         return False, "第 %d 章已成功发布过（台账幂等拦截）；确需重发请手工处理" % ch_no
+    if as_draft and ch_no and ch_no in ledger.drafted_chapters(task_id, plat):
+        return False, ("第 %d 章已存过草稿（台账幂等拦截）；请到平台草稿箱检查后"
+                       "提交发布，确需重存请先在平台删旧稿" % ch_no)
     ok_login, why = _login_guard(plat)
     if not ok_login:
         return False, why
-    _set(plat, status="busy", last_action="upload_chapter", error="")
+    flow_key = "upload_chapter_draft" if as_draft else "upload_chapter"
+    _set(plat, status="busy", last_action=flow_key, error="")
 
     mod = PLATFORMS[plat]
     values = chapter_fill_values(ch_no, title, body,
@@ -934,7 +949,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     operation_id = operations.begin(
         "publish:%s:upload_chapter" % plat,
         {"task_id": task_id, "chapter_no": ch_no, "title": title}, task_id=task_id,
-        metadata={"platform": plat, "action": "upload_chapter"})
+        metadata={"platform": plat, "action": flow_key})
 
     def run():
         try:
@@ -948,14 +963,26 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
             elif not book_ref.get("book_id"):
                 raise RuntimeError("未按作品名找到远端作品，未打开章节编辑器；"
                                    "请检查平台作品名或补填作品 ID")
-            flow.run_flow(page, load_flow(plat, "upload_chapter"), values=values,
+            flow.run_flow(page, load_flow(plat, flow_key), values=values,
                           config=mod.CONFIG, auto_submit=auto_submit,
                           shot=lambda n: page.screenshot(ledger.shot_path(plat, task_id, n)),
                           log=logs.append)
             new_vols = values.get("_volumes")
             if isinstance(new_vols, list) and new_vols != (book_ref.get("volumes") or []):
                 ledger.update_book(task_id, plat, volumes=new_vols)
-            if auto_submit:
+            if as_draft:
+                # 草稿已落平台草稿箱（流程含验证步，走到这=验证过）。发布确认权
+                # 仍在用户：到平台草稿箱逐章检查后手工提交，质量闸在「发布」时
+                # 照常把关。
+                operations.confirm(operation_id, metadata={"platform": plat,
+                                                           "action": "upload_chapter_draft",
+                                                           "chapter_no": ch_no})
+                ledger.record(plat, "upload_chapter_draft", task_id=task_id,
+                              chapter_no=ch_no, book_id=book_ref.get("book_id") or "",
+                              title=title, ok=True, operation_id=operation_id,
+                              operation_status="confirmed",
+                              remote_receipt="platform-draft")
+            elif auto_submit:
                 operations.confirm(operation_id, metadata={"platform": plat,
                                                             "action": "upload_chapter",
                                                             "chapter_no": ch_no})

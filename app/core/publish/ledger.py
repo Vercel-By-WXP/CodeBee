@@ -111,6 +111,28 @@ def published_chapters(task_id, platform):
     return out
 
 
+def drafted_chapters(task_id, platform):
+    """该任务在该平台已成功存草稿的章节号集合（发草稿模式的幂等口径）。
+
+    与 published_chapters 同款连载链合并；不含校准的平台实况（实况口径里
+    没有「草稿」桶，草稿章是否已由用户手工发布以重新校准后的
+    remote_published_nos 为准）。草稿章从待发清单剔除：已在平台存稿的章
+    再跑一遍只会造出重复草稿。"""
+    from .. import store
+    try:
+        ids = set(store.serial_chain_ids(task_id))
+    except Exception:
+        ids = {str(task_id)}
+    out = set()
+    for r in _iter_records(3650):
+        if (r.get("action") == "upload_chapter_draft" and r.get("ok")
+                and r.get("task_id") in ids and r.get("platform") == platform):
+            n = r.get("chapter_no") or 0
+            if n > 0:
+                out.add(int(n))
+    return out
+
+
 def recent(task_id=None, platform=None, limit=50):
     """最近记录（新在前），详情页发布历史用。task_id 给定时按连载链合并。"""
     from .. import store
@@ -338,7 +360,8 @@ def consecutive_failures(platform):
     for r in reversed(list(_iter_records(7))):
         if r.get("platform") != platform:
             continue
-        if r.get("action") not in ("upload_chapter", "create_book"):
+        if r.get("action") not in ("upload_chapter", "create_book",
+                                   "upload_chapter_draft"):
             continue
         t = _rec_time(r)
         if t is None:

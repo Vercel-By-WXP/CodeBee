@@ -812,8 +812,14 @@ function onTypeChange() {
 }
 
 function directProviders() {
-  /* 停用厂商不列出（用户拍板 2026-09-21「停用的不弄出来」）；只列启用且有 key 的 */
-  return (S.providers || []).filter((p) => p.enabled !== false && p.api_key);
+  /* 停用厂商不列出（用户拍板 2026-09-21「停用的不弄出来」）；只列启用且有 key 的。
+   * 模型名单已抓取但启用数为零的也不列——「随厂商推荐」没有可落的模型。 */
+  return (S.providers || []).filter((p) => {
+    if (p.enabled === false || !p.api_key) return false;
+    const ms = p.models;
+    if (Array.isArray(ms) && ms.length && !ms.some((m) => m.enabled !== false && !m.hidden)) return false;
+    return true;
+  });
 }
 
 function renderDirectModelPicker() {
@@ -826,7 +832,8 @@ function renderDirectModelPicker() {
   if (prev && provs.some((p) => p.id === prev)) ps.value = prev;
   const p = provs.find((x) => x.id === ps.value);
   const oldModel = ms.value;
-  const names = p ? (p.models || []).filter((m) => !m.hidden)
+  // 只列启用模型（停用/已删除的与后端 resolve 同口径；已选模型被停用时自然回落「随厂商推荐」）
+  const names = p ? (p.models || []).filter((m) => !m.hidden && m.enabled !== false)
     .map((m) => m.name).filter(Boolean) : [];
   ms.innerHTML = '<option value="">' + t("随厂商推荐") + '</option>' + names.map((name) =>
     '<option value="' + esc(name) + '">' + esc(name) + "</option>").join("");
@@ -6166,7 +6173,7 @@ function pbBlock(task, platform) {
     const run = (S.pubAuto && S.pubAuto.running &&
       S.pubAuto.running.platform === platform) ? S.pubAuto.running : null;
     if (run && run.status === "running") {
-      btns += '<span class="pb-book">' + esc(t("自动发布中 ") + run.done + "/" + run.total) + "</span>";
+      btns += '<span class="pb-book">' + esc((run.as_draft ? t("存草稿中 ") : t("自动发布中 ")) + run.done + "/" + run.total) + "</span>";
     } else if (au.pending > 0) {
       // 门禁不再禁用按钮：点了走 pbApiWithQualityOverride 的复审/强制对话，
       // 死按钮只会让用户无路可走（2026-10-08 实案：guard false 全灰点不了）
@@ -6174,6 +6181,12 @@ function pbBlock(task, platform) {
         ' title="' + esc(au.guard_ok ? t("按章号顺序逐章填稿（人工模式每点一次填一章，浏览器里提交后再点发下一章）") : t("护栏提示：") + (au.guard_reason || "")) + '"' +
         ' onclick="pbPublishAll(\'' + esc(task.id) + "', '" + platform + '\')">' +
         t("发布全部待发") + t("（") + au.pending + t("）") + "</button>";
+      // 全部发草稿（2026-10-09）：质量闸拦发布不拦草稿——逐章自动填稿点
+      // 「存草稿」连跑到清空，提交发布由用户到平台草稿箱手工完成
+      btns += ' <button class="ghost" ' + (busy || au.draft_ok === false ? "disabled" : "") +
+        ' title="' + esc(au.draft_ok !== false ? t("逐章自动填稿并点「存草稿」：内容落平台草稿箱不上线，不受质量门禁拦截，无需逐章人工确认；完成后到平台检查并提交发布") : t("护栏提示：") + (au.draft_reason || "")) + '"' +
+        ' onclick="pbDraftAll(\'' + esc(task.id) + "', '" + platform + '\')">' +
+        t("全部存草稿") + t("（") + au.pending + t("）") + "</button>";
     }
     // 批量选择：待发章号 chips 按卷分组（卷计划来自服务端 items[].volume），
     // 「发布所选」人工模式 / 「直发所选」逐章自动提交（护栏照常生效）。
@@ -6222,10 +6235,23 @@ function pbBlock(task, platform) {
           (au.guard_ok ? "" : "；" + t("护栏提示：") + (au.guard_reason || ""))) + '"' +
         ' onclick="pbPublishSelected(\'' + esc(task.id) + "','" + platform + '\',true)">' +
         t("直发所选") + t("（") + sel.size + t("）") + "</button>" +
+        '<button class="ghost" ' + (busy || !sel.size || au.draft_ok === false ? "disabled" : "") +
+        ' title="' + esc(t("所选章节逐章自动存草稿（不上线、不受质量门禁拦截），完成后到平台检查并提交发布") +
+          (au.draft_ok !== false ? "" : "；" + t("护栏提示：") + (au.draft_reason || ""))) + '"' +
+        ' onclick="pbDraftSelected(\'' + esc(task.id) + "','" + platform + '\')">' +
+        t("存草稿所选") + t("（") + sel.size + t("）") + "</button>" +
         "</div></div>";
     }
-    if (au.pending > 0 && !au.guard_ok) {
-      btns += '<div class="pb-err">' + esc(au.guard_reason || t("护栏拦截")) + "</div>";
+    if (au.pending > 0 && au.draft_ok === false) {
+      // 硬护栏（建书未确认/每日上限/连败退避）：存草稿也走不了，红色示警
+      btns += '<div class="pb-err">' + esc(au.draft_reason || au.guard_reason || t("护栏拦截")) + "</div>";
+    } else if (au.pending > 0 && !au.guard_ok && au.quality_blockers && au.quality_blockers.length) {
+      // 纯质量闸拦截：不给死路——提示先存草稿（2026-10-09 全部发草稿通路）
+      btns += '<div class="pb-hint">' + esc(t("质量闸未过：") + au.quality_blockers.join(t("；")) +
+        t("——可先「全部存草稿」落平台（不上线），正式发布前需复审达标或强制放行")) + "</div>";
+    }
+    if (au.drafted > 0) {
+      btns += '<div class="pb-hint">' + esc(t("已存草稿 {0} 章（未发布）：到平台章节管理/草稿箱逐章检查后提交发布", au.drafted)) + "</div>";
     }
     if (run && run.status === "manual_pause") {
       // 人工模式一轮只填一章：等用户在浏览器提交后再发起（连发会导航离开
@@ -6577,6 +6603,38 @@ window.pbPublishAll = async function (taskId, platform) {  const au = (((S.pubAu
     if (!(r && r.gate_reviewed))
       toast(t("正在填第一章稿——填好后请在浏览器窗口里确认提交，再重新校准"));
   } catch (e) { toast(t("自动发布失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+/* 全部发草稿（2026-10-09）：逐章自动填稿点「存草稿」连跑到清空，不上线、
+ * 不受质量闸拦、无需人工确认；提交发布由用户到平台草稿箱手工完成。 */
+window.pbDraftAll = async function (taskId, platform) {
+  const au = (((S.pubAuto && S.pubAuto.books) || [])
+    .find((b) => b.platform === platform)) || {};
+  if (!au.pending) return;
+  if (!(await uiConfirm(t("将对全部 {0} 章待发稿逐章自动填稿并点「存草稿」：内容落平台草稿箱不上线，不受质量门禁拦截，无需逐章人工确认（章间隔约 1 分钟防风控）。跑完后请到平台章节管理/草稿箱逐章检查，再手工提交发布。继续？", au.pending),
+    { ok: t("开始存草稿") }))) return;
+  try {
+    await api("/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
+      { method: "POST", body: JSON.stringify({ platform, as_draft: true }) });
+    toast(t("存草稿已启动：逐章自动填稿并保存草稿，进度见发布台"));
+  } catch (e) { toast(t("存草稿启动失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbDraftSelected = async function (taskId, platform) {
+  const key = taskId + ":" + platform;
+  const ent = (S.pbSel || {})[key];
+  const chapters = ent ? [...ent.sel].sort((a, b) => a - b) : [];
+  if (!chapters.length) return;
+  if (!(await uiConfirm(t("将对所选 {0} 章（第 {1} 章—第 {2} 章）逐章自动填稿并点「存草稿」（不上线、不受质量门禁拦截），完成后到平台章节管理/草稿箱检查并提交发布。继续？",
+      chapters.length, chapters[0], chapters[chapters.length - 1]),
+    { ok: t("开始存草稿") }))) return;
+  try {
+    await api("/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
+      { method: "POST", body: JSON.stringify({ platform, chapters, as_draft: true }) });
+    toast(t("存草稿已启动：逐章自动填稿并保存草稿，进度见发布台"));
+  } catch (e) { toast(t("存草稿启动失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
 
@@ -9781,7 +9839,8 @@ function rdModelMenuRender() {
         t("管理模型…") + "</span></span></button></div>";
   } else {
     const p = directProviders().find((x) => x.id === rdMenuProv);
-    const names = p ? (p.models || []).filter((m) => !m.hidden)
+    // 只列启用模型：停用的选了也会被运行时拒（builtin_agent.resolve 对账启用名单）
+    const names = p ? (p.models || []).filter((m) => !m.hidden && m.enabled !== false)
       .map((m) => m.name).filter(Boolean) : [];
     menu.innerHTML =
       '<button type="button" class="type-item" data-back="1"><span class="ti-body"><span class="ti-name">‹ ' +
@@ -10486,6 +10545,14 @@ function apnSyncActive() {
 /* ---------------------------------------------------------- 智能体目录：模型选择 */
 const MAX_ORCH_MODELS = 3;   // 与后端 modelhub.MAX_BIND_MODELS、runner 降级链保持一致
 
+/* 供应商有无可用密钥：keys 结构以「有启用且未冷却」为准；老数据单 KEY 看
+ * api_key 镜像（与后端 _chain_keys / resolve_binding 的「无可用密钥」同口径） */
+function provKeyOk(p) {
+  const ks = (p || {}).keys || [];
+  if (ks.length) return ks.some((k) => k.enabled !== false && !k.cooling);
+  return !!(p || {}).api_key;
+}
+
 /* 供应商 → 已启用模型（按优先级），用于分组下拉与多选面板 */
 function modelGroups() {
   const out = [];
@@ -10496,7 +10563,7 @@ function modelGroups() {
       .sort((a, b) => (a.priority || 0) - (b.priority || 0))
       .map((m) => m.name).filter(Boolean);
     if (ms.length) out.push({ id: p.id, name: p.name, models: ms,
-      protocol: p.protocol || "", caps: p.wire_caps || {} });
+      protocol: p.protocol || "", caps: p.wire_caps || {}, keyOk: provKeyOk(p) });
   }
   return out;
 }
@@ -10556,9 +10623,10 @@ function bindAllowedProtocols(kind) {
 function modelSelectHtml(id, current, kind) {
   const cur = fmtModel(current);
   const allow = bindAllowedProtocols(kind);
+  // 无可用密钥的供应商不进下拉：默认模型配上去解析时也会被跳过（死配置）
   const groups = modelGroups().filter((g) => {
     const p = (S.providers || []).find((x) => x.id === g.id);
-    return provAdaptedProto(p, allow, kind);
+    return g.keyOk !== false && provAdaptedProto(p, allow, kind);
   });
   let opts = '<option value="">' + t("（未设置）") + '</option>';
   if (cur && !groups.some((g) => g.models.includes(cur))) {
@@ -10685,7 +10753,7 @@ function chainProvUsable(p, allow, kind) {
   if (!p || p.enabled === false) return false;
   if (!provAdaptedProto(p, allow, kind)) return false;
   const ks = p.keys || [];
-  if (!ks.length) return true; // 老数据单 KEY（api_key 镜像）：无 keys 结构视为可用
+  if (!ks.length) return !!p.api_key;   // 老数据单 KEY（api_key 镜像）；两者皆无=没配密钥，不推荐
   return ks.some((k) => k.enabled !== false && !k.cooling);
 }
 
@@ -10847,16 +10915,19 @@ function bindPanel(c) {
            ? t("注入该厂商凭据") : t("已适配 · 注入该厂商凭据"))) + '</span></div>' +
       g.models.map((m) => {
         // 本供应商注入本 CLI 实际走的 wire（与后端 _entry_endpoint 同规则）；
-        // 无命中 = 勾了也会被解析层整条跳过，标死防止白配
+        // 无命中 = 勾了也会被解析层整条跳过，标死防止白配。
+        // 无可用密钥同理：勾了也是死条目（解析层「无可用密钥」跳过）
         const wire = provAdaptedProto(g, allow, c.orch_kind);
-        const dead = !wire;
+        const dead = !wire || g.keyOk === false;
         const has = st.chain.some((x) => x.p === g.id && x.m === m);
         return '<label class="oitem' + (dead ? " dim" : "") + '"><input type="checkbox" value="' + esc(m) + '" data-p="' + esc(g.id) + '"' +
           (has ? " checked" : "") + (dead ? " disabled" : "") +
           " onchange=\"bindPick('" + esc(c.id) + "', this, this.checked)\">" + esc(m) +
           (modelHasImage(g.id, m)
             ? ' <span class="tag ok" title="' + esc(t("支持图片输入")) + '">' + t("图") + "</span>" : "") +
-          (dead ? ' <span class="hint warn">' + esc(t("无可用 wire，解析时跳过")) + "</span>" : "") +
+          (dead ? ' <span class="hint warn">' + esc(!wire
+            ? t("无可用 wire，解析时跳过")
+            : t("无可用密钥，解析时跳过")) + "</span>" : "") +
           "</label>";
       }).join("") +
       "</div>").join("") + "</div>";
@@ -11995,7 +12066,8 @@ function renderAuModelPicker(pid, model) {
   ps.value = provs.some((p) => p.id === keepP) ? keepP : "";
   const fillModels = (keepM) => {
     const p = provs.find((x) => x.id === ps.value);
-    const names = p ? (p.models || []).filter((m) => !m.hidden)
+    // 只列启用模型：停用的不允许在定时任务里选（运行时同样会拒）
+    const names = p ? (p.models || []).filter((m) => !m.hidden && m.enabled !== false)
       .map((m) => m.name).filter(Boolean) : [];
     ms.innerHTML = '<option value="">' + t("随厂商推荐") + "</option>" + names.map((name) =>
       '<option value="' + esc(name) + '">' + esc(name) + "</option>").join("");

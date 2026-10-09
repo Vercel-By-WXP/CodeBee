@@ -2263,7 +2263,9 @@ class Handler(BaseHTTPRequestHandler):
         """批量发布全部待发章节（publish/auto.py）。
 
         护栏（每日上限/连败退避/幂等/单飞）在 auto 层，每章发起前复查；
-        auto_submit 默认 false——每章表单填好后停，提交权留给用户。"""
+        auto_submit 默认 false——每章表单填好后停，提交权留给用户。
+        as_draft=true 走「全部发草稿」：逐章存草稿不上线、不受质量闸拦、
+        无需人工确认连跑到清空（2026-10-09）；草稿与直发互斥，草稿优先。"""
         from core import store
         from core.publish import auto as pub_auto
         if not store.get_task(task_id):
@@ -2276,7 +2278,8 @@ class Handler(BaseHTTPRequestHandler):
         force_confirmed = bool(body.get("force_confirmed"))
         force_reason = str(body.get("force_reason") or "").strip()
         only = body.get("chapters")            # 批量选择发布：章号数组（可省=全部待发）
-        kwargs = {"only": only if isinstance(only, list) else None}
+        kwargs = {"only": only if isinstance(only, list) else None,
+                  "as_draft": bool(body.get("as_draft"))}
         if force or force_confirmed or force_reason:
             kwargs.update(force=force, force_confirmed=force_confirmed,
                           force_reason=force_reason)

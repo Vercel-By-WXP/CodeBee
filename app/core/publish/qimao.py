@@ -60,6 +60,22 @@ UPLOAD_CHAPTER = [
     {"do": "submit", "sel": "button[class*=publish],button[class*=submit]"},
 ]
 
+# 发章存草稿（2026-10-09 全部发草稿）：内置推测表——真机校准表在
+# flows-qimao-calibrated.json（按其 upload_chapter 的「存草稿」段拆出：
+# 填好→存草稿→草稿箱验证行在场即成）。草稿不上线；提交发布由用户在
+# 草稿箱手工点（立即发布→更正序号→确认发布三层弹窗照旧人工走）。
+UPLOAD_CHAPTER_DRAFT = [
+    {"do": "navigate", "url": "{editor_url}"},
+    {"do": "url_any", "any": ["qimao.com"]},
+    {"do": "fill", "sel": "textarea[placeholder*='章节名称']", "key": "chapter_title"},
+    {"do": "wait", "sel": "[contenteditable=true],textarea[class*=content],iframe", "timeout": 10},
+    {"do": "fill", "sel": "[contenteditable=true],textarea[class*=content]", "key": "chapter_body"},
+    {"do": "shot", "name": "chapter-filled-draft"},
+    {"do": "click_real", "text": "存草稿", "tries": 25},
+    {"do": "sleep", "s": 2},
+    {"do": "verify", "url": "{draft_url}", "any": ["{chapter_title}"], "settle": 5},
+]
+
 CHECK_LOGIN = [
     {"do": "navigate", "url": "{home}"},
     {"do": "url_any", "any": ["qimao.com"]},
@@ -73,6 +89,7 @@ PROBE_FORM = [
 ]
 
 FLOWS = {"create_book": CREATE_BOOK, "upload_chapter": UPLOAD_CHAPTER,
+         "upload_chapter_draft": UPLOAD_CHAPTER_DRAFT,
          "check_login": CHECK_LOGIN, "probe_form": PROBE_FORM}
 
 

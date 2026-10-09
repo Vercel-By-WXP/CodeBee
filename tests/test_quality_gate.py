@@ -107,6 +107,20 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertTrue(result["allowed"])
         self.assertEqual(result["status"], "continue_only")
 
+    def test_draft_is_not_a_release(self):
+        """存草稿不上线（2026-10-09 全部发草稿）：质量闸拦发布不拦草稿——
+        零证据/坏结论都放行，正式提交时闸照常把关。"""
+        result = evaluate_release({}, action="draft")
+        self.assertTrue(result["allowed"])
+        self.assertEqual(result["status"], "draft_only")
+        result2 = evaluate_release(self._verdict(publishable=False), action="draft")
+        self.assertTrue(result2["allowed"])
+        result3 = evaluate_release(
+            self._verdict(publishable=False,
+                          major_issues=[{"severity": "major"}]),
+            action="publish", target_chapter=1)
+        self.assertFalse(result3["allowed"], "对照：同结论发布仍被拦")
+
 
 class VersionSnapshotTests(unittest.TestCase):
     def test_local_version_counts_chapters_and_words(self):

@@ -363,6 +363,80 @@ def test_flow_submit_gate():
 
 # ------------------------------------------------- 发章 about:blank 三连败修复（2026-09-24）
 
+class _DraftPage(_FlowPage):
+    """upload_chapter_async(as_draft) 离线假页：真流程表走通存草稿链。
+
+    主页 call 队列喂 js_click 的成功结果；verify 的 body 文本走新页签桩。"""
+
+    def __init__(self):
+        super().__init__(url="https://fanqienovel.com/main/writer/888/publish/",
+                         call_results=[{"ok": True}])
+
+    def navigate(self, url, timeout=45):
+        self._url = url
+
+    def screenshot(self, path):
+        return ""
+
+    def open_new_tab(self, url):
+        return _DraftVerifyTab()
+
+    def send(self, *a, **k):
+        pass
+
+
+class _DraftVerifyTab:
+    """verify 步骤的新页签桩：章节管理页 body 文本含「第7章」。"""
+
+    def call(self, js, *a, **kw):
+        return "第7章 草稿测"
+
+    def close_tab(self):
+        pass
+
+
+def test_upload_chapter_draft_flow_and_ledger():
+    """as_draft=True（2026-10-09 全部发草稿）：质量闸拦直发不拦草稿；
+    跑 upload_chapter_draft 流程表；成功后台账记 upload_chapter_draft；
+    同章再存被幂等拦下。"""
+    from core import store
+    import time as _time
+    t = store.create_task({"type": "serial_novel", "goal": "草稿单章测试",
+                           "workdir": str(_TMP)})
+    ledger.save_book(t["id"], "fanqie", {"book_id": "888", "title": "草稿书"})
+    r = store.create_run("orchestration", "评审", task_id=t["id"])
+    store.update_run(r["id"], status="done", verdict={"publishable": False},
+                     ended_at="2026-10-09 00:00:00")
+    fp = _chapter("第7章 草稿测.md", "# 第7章 草稿测\n\n" + "内容" * 300)
+    # 对照：同评审结论下直发路径被质量闸拦
+    ok, err = manager.upload_chapter_async(t["id"], "fanqie", fp)
+    expect(not ok and "质量门禁" in err, "坏结论拦直发：%s/%s" % (ok, err))
+    # 草稿路径放行：打桩浏览器会话与登录态，真流程表跑通
+    orig_open, orig_guard = manager._open_page, manager._login_guard
+    manager._open_page = lambda p: (None, _DraftPage())
+    manager._login_guard = lambda p: (True, "")
+    try:
+        ok, err = manager.upload_chapter_async(t["id"], "fanqie", fp,
+                                               as_draft=True)
+        expect(ok, "草稿发起应成功：%s" % err)
+        for _ in range(200):                # 等后台线程收尾（含流程内 sleep）
+            if manager._st("fanqie").get("status") != "busy":
+                break
+            _time.sleep(0.1)
+        expect(7 in ledger.drafted_chapters(t["id"], "fanqie"),
+               "台账应记 upload_chapter_draft：%s"
+               % [(x.get("action"), x.get("chapter_no"), x.get("ok"))
+                  for x in ledger.recent(task_id=t["id"], limit=6)])
+        expect(7 not in ledger.published_chapters(t["id"], "fanqie"),
+               "存草稿不冒充已发布（已发口径干净）")
+    finally:
+        manager._open_page, manager._login_guard = orig_open, orig_guard
+    # 幂等：已存草稿的章再存被拦（重复稿防线）
+    ok2, err2 = manager.upload_chapter_async(t["id"], "fanqie", fp,
+                                             as_draft=True)
+    expect(not ok2 and "已存过草稿" in err2, "草稿幂等拦截：%s/%s" % (ok2, err2))
+
+
 def test_url_values_per_platform():
     """URL 占位值逐键取：平台缺 draft_url 不能连坐后面的 editor_url。
 

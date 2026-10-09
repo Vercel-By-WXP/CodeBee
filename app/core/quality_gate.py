@@ -127,6 +127,13 @@ def evaluate_release(verdict, action="publish", target_chapter=None,
     if action == "continue":
         return {"allowed": True, "status": "continue_only", "forced": False,
                 "blockers": [], "warnings": []}
+    if action == "draft":
+        # 存草稿不是发布：内容不公开展示（读者不可见），正式提交前用户还会
+        # 在平台上逐章过目——质量闸只在「发布/签约」这类上线动作上拦，
+        # 拦草稿只会把「先落平台再人工把关」的通路堵死（2026-10-09 全部
+        # 发草稿需求：质量未达标的 53 章先存草稿，发布仍受本闸约束）。
+        return {"allowed": True, "status": "draft_only", "forced": False,
+                "blockers": [], "warnings": []}
 
     blockers = []
     warnings = []

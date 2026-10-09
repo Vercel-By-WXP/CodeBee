@@ -110,6 +110,35 @@ UPLOAD_CHAPTER = [
      "optional": True},
 ]
 
+# 发章存草稿（2026-10-09 全部发草稿）：与 UPLOAD_CHAPTER 同一张填表前段，
+# 终点不同——点编辑器头部「存草稿」直接落草稿箱，不走「下一步→内容检测→
+# 发布提示→提交」发布链。草稿不上线，批量连跑无需人工确认；提交发布由
+# 用户到章节管理/草稿箱手工完成。verify 沿用章节管理页断言（草稿行同样
+# 出现在列表里，标题/章号标记可命中）；若平台改版把草稿挪去独立草稿箱页，
+# 首轮失败的 step 截图会指出来，照 flows-fanqie.json 校准即可。
+UPLOAD_CHAPTER_DRAFT = [
+    {"do": "navigate", "url": "{editor_url}"},
+    {"do": "url_any", "any": ["fanqienovel.com"]},
+    {"do": "wait", "sel": "[contenteditable=true],textarea[class*=content],div[class*=editor]", "timeout": 10},
+    {"do": "volume", "key": "volume_name", "optional": True,
+     "open_sel": "input[type=number],input[class*=serial],div[class*=volume]",
+     "modal_sel": "[class*=volume][class*=modal],[class*=modal][class*=volume]",
+     "item_sel": "[class*=volume] li,[class*=volume-item]",
+     "add_sel": "[class*=add-volume],[class*=volume] button",
+     "confirm_sel": "[class*=confirm]", "settle": 1.5},
+    {"do": "fill", "sel": "input[type=number],input[class*=serial],input[class*=byte]", "key": "chapter_no"},
+    {"do": "fill", "sel": "input[placeholder*='章节'],input[placeholder*='标题']", "key": "chapter_name"},
+    {"do": "wait", "sel": "[contenteditable=true],textarea[class*=content],div[class*=editor]", "timeout": 10},
+    {"do": "fill", "sel": "[contenteditable=true],textarea[class*=content]", "key": "chapter_body"},
+    {"do": "shot", "name": "chapter-filled-draft"},
+    {"do": "submit", "text": "存草稿", "scope": "button", "tries": 15},
+    {"do": "js_click", "text": "存草稿", "scope": "button", "tries": 10,
+     "optional": True, "skip_if_modal": True},
+    {"do": "sleep", "s": 2.5},
+    {"do": "verify", "url": "{chapter_manage_url}",
+     "any": ["第{chapter_no}章", "{chapter_name}"], "settle": 6, "new_tab": True},
+]
+
 # 登录态探测：打开后台首页，URL 被踢到登录页 → 未登录
 CHECK_LOGIN = [
     {"do": "navigate", "url": "{home}"},
@@ -125,6 +154,7 @@ PROBE_FORM = [
 ]
 
 FLOWS = {"create_book": CREATE_BOOK, "upload_chapter": UPLOAD_CHAPTER,
+         "upload_chapter_draft": UPLOAD_CHAPTER_DRAFT,
          "check_login": CHECK_LOGIN, "probe_form": PROBE_FORM}
 
 

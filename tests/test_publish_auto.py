@@ -164,7 +164,7 @@ class _FakeUpload:
         self.fail_at = fail_at or {}
         self.slow_s = slow_s
 
-    def __call__(self, task_id, plat, fp, auto_submit=False):
+    def __call__(self, task_id, plat, fp, auto_submit=False, as_draft=False, **kw):
         self.calls.append(fp)
         if self.slow_s:
             time.sleep(self.slow_s)
@@ -397,6 +397,140 @@ class TestPublishPending(unittest.TestCase):
         ok, err = auto.publish_pending_async(t["id"], "fanqie")
         self.assertFalse(ok)
         self.assertIn("待发", err)
+
+
+class _FakeDraftUpload:
+    """as_draft 桩：按文件名解析章号，成功记 upload_chapter_draft 台账。
+
+    fail_at={章号: 原因} 控制某章失败；记录每次调用是否带 as_draft。"""
+
+    def __init__(self, fail_at=None):
+        self.calls = []
+        self.fail_at = fail_at or {}
+
+    def __call__(self, task_id, plat, fp, auto_submit=False, as_draft=False, **kw):
+        self.calls.append((fp, bool(as_draft)))
+        n = ledger.parse_chapter_no(Path(fp).name)
+        act = "upload_chapter_draft" if as_draft else "upload_chapter"
+        if n in self.fail_at:
+            ledger.record(plat, act, task_id=task_id, chapter_no=n,
+                          ok=False, error=self.fail_at[n])
+            return True, ""
+        ledger.record(plat, act, task_id=task_id, chapter_no=n, ok=True)
+        return True, ""
+
+
+class TestDraftPublish(unittest.TestCase):
+    """全部发草稿（2026-10-09）：质量闸拦发布不拦草稿；逐章连跑不停车；
+    草稿章退出待发清单；视图把硬护栏与质量闸分开给前端。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.wd = Path(tempfile.mkdtemp(prefix="tutti-pa-wd3-"))
+        cls.task = store.create_task({"type": "serial_novel",
+                                      "goal": "发草稿测试",
+                                      "workdir": str(cls.wd)})
+        store.create_run("orchestration", "跑", task_id=cls.task["id"])
+        for i in (1, 2):
+            (cls.wd / ("第%d章.md" % i)).write_text("# 第%d章\n正文" % i,
+                                                    encoding="utf-8")
+        ledger.save_book(cls.task["id"], "fanqie",
+                         {"book_id": "bk-draft-001", "title": "草稿书"})
+
+    def setUp(self):
+        _reset_ledger()
+        from core.publish import manager
+        self.manager = manager
+        auto.PACE_S = 0
+        auto.IDLE_POLL_S = 0.05
+
+    def _seed_bad_verdict(self):
+        r = store.create_run("orchestration", "评审",
+                             task_id=type(self).task["id"])
+        store.update_run(r["id"], status="done",
+                         verdict={"publishable": False,
+                                  "major_issues": [{"severity": "major"}]},
+                         ended_at="2026-10-09 00:00:00")
+
+    def _wait_status(self, task_id, timeout=10.0):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            st = auto._running.get(task_id) or {}
+            if st.get("status") in ("done", "error", "manual_pause"):
+                return dict(st)
+            time.sleep(0.05)
+        return dict(auto._running.get(task_id) or {})
+
+    def test_draft_bypasses_quality_gate_and_runs_all(self):
+        tid = type(self).task["id"]
+        self._seed_bad_verdict()
+        # 对照：同评审结论下，发布路径被质量闸拦
+        ok, err = auto.publish_pending_async(tid, "fanqie")
+        self.assertFalse(ok)
+        self.assertIn("质量门禁", err)
+        # 草稿路径放行，逐章连跑到清空（无 manual_pause，无需人工确认）
+        fake = _FakeDraftUpload()
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = fake
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(tid)
+            self.assertEqual(st.get("status"), "done")
+            self.assertEqual(st.get("done"), 2)
+            self.assertTrue(all(d for _, d in fake.calls), "逐章带 as_draft")
+            self.assertIn("存草稿", st.get("message") or "")
+        finally:
+            self.manager.upload_chapter_async = orig
+
+    def test_draft_chapters_leave_pending_and_view_splits_guards(self):
+        tid = type(self).task["id"]
+        fake = _FakeDraftUpload()
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = fake
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+            self.assertTrue(ok, err)
+            self._wait_status(tid)
+        finally:
+            self.manager.upload_chapter_async = orig
+        pend, _ = auto.pending(tid, "fanqie")
+        self.assertEqual(pend, [], "已存草稿章退出待发清单（再跑只会造重复稿）")
+        self._seed_bad_verdict()
+        st = auto.status(tid)
+        ent = next(b for b in st["books"] if b["platform"] == "fanqie")
+        self.assertEqual(ent.get("drafted"), 2)
+        self.assertFalse(ent.get("guard_ok"), "质量闸挂时完整发布闸不放行")
+        self.assertTrue(ent.get("draft_ok"), "硬护栏与质量闸分开：草稿通路可用")
+        self.assertTrue(ent.get("quality_blockers"), "质量拦截单列给前端做提示")
+
+    def test_draft_failure_stops_and_counts_streak(self):
+        tid = type(self).task["id"]
+        fake = _FakeDraftUpload(fail_at={1: "平台报错"})
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = fake
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(tid)
+            self.assertEqual(st.get("status"), "error")
+            self.assertIn("存草稿未确认", st.get("error") or "")
+            self.assertEqual(len(fake.calls), 1, "失败即停，后续章节未存")
+        finally:
+            self.manager.upload_chapter_async = orig
+        self.assertGreaterEqual(ledger.consecutive_failures("fanqie"), 1,
+                                "草稿失败进连败口径（同一浏览器健康信号）")
+
+    def test_draft_requires_flow_table(self):
+        tid = type(self).task["id"]
+        orig = auto.flow_calibrated
+        auto.flow_calibrated = lambda p, a: False
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+            self.assertFalse(ok)
+            self.assertIn("upload_chapter_draft", err)
+        finally:
+            auto.flow_calibrated = orig
 
 
 class TestAutoPublishDue(unittest.TestCase):

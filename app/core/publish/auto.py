@@ -135,7 +135,9 @@ def pending(task_id, platform):
     """待发章节清单：任务工作目录里的章节文件 − 已发章号，按章号升序。
 
     已发口径连载链合并（含校准所得平台实况），所以任何一个批次任务上发
-    起发布，看到的都是整本书的待发清单。返回 (list, err)；list 项
+    起发布，看到的都是整本书的待发清单。已存草稿的章同样剔除（内容已在
+    平台草稿箱，再跑只会造重复稿；提交发布走平台草稿箱由用户手工完成）。
+    返回 (list, err)；list 项
     {chapter_no, file, size}，file 为工作目录相对路径。章号解析不出的
     文件不进自动发布（防同章多文件误发），API 单章发（manager 直调）
     不受此限。
@@ -154,7 +156,8 @@ def pending(task_id, platform):
             if fs:
                 files = fs           # 任一 run 的成品口径都从任务首跑起，取到即够
                 break
-    done = ledger.published_chapters(task_id, platform)
+    done = ledger.published_chapters(task_id, platform) \
+        | ledger.drafted_chapters(task_id, platform)
     # 分卷标注（2026-10-08 用户需求：待发清单按卷展示）：卷计划解析不出时
     # volume 为空串，前端不分组平铺。
     plan = []
@@ -182,7 +185,12 @@ def pending(task_id, platform):
 
 
 def status(task_id):
-    """前端视图：待发清单 + 护栏状态 + 自动发布进度。"""
+    """前端视图：待发清单 + 护栏状态 + 自动发布进度。
+
+    护栏分两层给前端：guard_ok/guard_reason=完整发布闸（硬护栏+质量闸），
+    管「发布」类按钮；draft_ok/draft_reason=硬护栏（每日上限/连败退避/建书
+    确认），管「存草稿」按钮——草稿不上线，质量闸拦它只会堵死「先落平台
+    再人工把关」的通路；quality_blockers 单独带出去做提示性展示。"""
     from .. import store
     from . import ledger, manager
     ent = ledger.books_for(str(task_id))   # 沿连载链继承：续写批次同书同账
@@ -190,19 +198,25 @@ def status(task_id):
     books = []
     for plat, info in ent.items():
         pend, err = pending(task_id, plat)
-        ok, why = guards(task_id, plat)
+        hard_ok, hard_why = guards(task_id, plat)
         if not _book_ready(info):
-            ok, why = False, "该平台建书结果未确认（缺少作品 ID），请重试创建作品或登记已有作品"
-        elif task:
+            hard_ok, hard_why = False, "该平台建书结果未确认（缺少作品 ID），请重试创建作品或登记已有作品"
+        blockers = []
+        if task and _book_ready(info):
             quality = manager._quality_release_guard(task, plat, action="publish")
             if not quality.get("allowed"):
-                ok, why = False, "质量门禁拦截：%s" % "；".join(
-                    quality.get("blockers") or [])
+                blockers = [str(b) for b in (quality.get("blockers") or [])]
+        ok, why = hard_ok, hard_why
+        if ok and blockers:
+            ok, why = False, "质量门禁拦截：%s" % "；".join(blockers)
         books.append({"platform": plat, "bound": True,
                       "title": info.get("title") or "",
                       "pending": len(pend),
                       "items": pend[:200],
                       "guard_ok": ok, "guard_reason": why,
+                      "draft_ok": hard_ok, "draft_reason": hard_why,
+                      "quality_blockers": blockers,
+                      "drafted": len(ledger.drafted_chapters(task_id, plat)),
                       "calibrated": calibrated(plat)})
     run = _running.get(task_id) or None
     if run:
@@ -236,8 +250,27 @@ def calibrated(platform):
     return (paths.PUBLISH_DIR / ("flows-%s.json" % platform)).is_file()
 
 
+def flow_calibrated(plat, action):
+    """某动作的步骤表是否有真机校准来源（用户校准文件或仓库校准模板里
+    有该动作的表）。内置推测表不算——存草稿虽不上线，批量乱点照样惹
+    风控/攒一箱废稿，无人值守跑之前必须有验证过的步骤表。"""
+    import json as _json
+    from pathlib import Path as _Path
+    from .. import paths as _paths
+    for fp in (_paths.PUBLISH_DIR / ("flows-%s.json" % plat),
+               _Path(__file__).with_name("flows-%s-calibrated.json" % plat)):
+        try:
+            data = _json.loads(fp.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get(action), list):
+                return True
+        except Exception:
+            pass
+    return False
+
+
 def publish_pending_async(task_id, platform, auto_submit=False, only=None,
-                          force=False, force_confirmed=False, force_reason=""):
+                          force=False, force_confirmed=False, force_reason="",
+                          as_draft=False):
     """把任务的待发章节按章号顺序发出（后台线程）。返回 (ok, err)。
 
     only=章号清单（批量选择发布）：从待发清单里挑出所选章号，保持章号
@@ -245,12 +278,22 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
     auto_submit=True（直发）逐章提交走完全程；False（人工确认）每轮只填
     **一章**就停在 manual_pause——表单填好后提交权在用户，walker 若直接
     填下一章会导航离开未提交的编辑器，把上一章内容丢掉（平台草稿自动
-    保存不可依赖）。用户在浏览器提交后再次发起即发下一章。"""
+    保存不可依赖）。用户在浏览器提交后再次发起即发下一章。
+    as_draft=True（全部发草稿，2026-10-09）：逐章自动填稿并点「存草稿」，
+    不上线、不受质量闸拦、无需人工确认，一章接一章连跑到清空待发清单
+    （章间仍按 PACE_S 防风控节奏）；提交发布由用户到平台草稿箱手工完成，
+    届时质量闸照常把关。与 auto_submit 互斥（草稿模式忽略 auto_submit）。"""
     from .. import store
     from . import ledger, manager
     if platform not in manager.PLATFORMS:
         return False, "未知平台"
-    if auto_submit and not calibrated(platform):
+    if as_draft:
+        auto_submit = False                # 草稿模式没有「提交」语义
+        if not flow_calibrated(platform, "upload_chapter_draft"):
+            return False, ("存草稿模式需要该平台有 upload_chapter_draft 步骤表"
+                           "（仓库校准模板或 data/publish/flows-%s.json）；"
+                           "未校准不许无人值守批量动表单" % platform)
+    elif auto_submit and not calibrated(platform):
         return False, ("自动提交模式需要先校准该平台发布流程：用「探测」按钮 dump "
                        "表单后把真实步骤写进 data/publish/flows-%s.json（缺省选择器"
                        "只是推测，未校准不许无人值守直发）" % platform)
@@ -271,9 +314,13 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
         return False, "该任务尚未在此平台建书，请先「创建作品」"
     if not _book_ready(book):
         return False, "该平台建书结果未确认（缺少作品 ID），请重试创建作品或登记已有作品"
-    quality = manager._quality_release_guard(
-        task, platform, action="publish", force=force,
-        force_confirmed=force_confirmed, force_reason=force_reason)
+    if as_draft:
+        # 草稿不上线：质量闸不适用（同 manager 口径），硬护栏照查
+        quality = {"allowed": True, "status": "draft_only"}
+    else:
+        quality = manager._quality_release_guard(
+            task, platform, action="publish", force=force,
+            force_confirmed=force_confirmed, force_reason=force_reason)
     if not quality.get("allowed"):
         return False, "质量门禁拦截：%s" % "；".join(quality.get("blockers") or [])
     ok, why = guards(task_id, platform)
@@ -298,7 +345,8 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
     wd = task.get("workdir") or ""
     st = {"platform": platform, "at": time.strftime("%Y-%m-%d %H:%M:%S"),
           "done": 0, "total": len(pend), "status": "running", "error": "",
-          "auto_submit": bool(auto_submit), "last_chapter": 0}
+          "auto_submit": bool(auto_submit), "as_draft": bool(as_draft),
+          "last_chapter": 0}
     with _LOCK:
         _running[task_id] = st
 
@@ -310,7 +358,7 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     st["status"] = "error"
                     st["error"] = "第 %d 章前护栏拦截：%s" % (item["chapter_no"], why)
                     return
-                upload_kwargs = {"auto_submit": auto_submit}
+                upload_kwargs = {"auto_submit": auto_submit, "as_draft": as_draft}
                 if force or force_confirmed or force_reason:
                     upload_kwargs.update(force=force,
                                          force_confirmed=force_confirmed,
@@ -324,10 +372,29 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     return
                 if not _wait_idle(platform):
                     st["status"] = "error"
-                    st["error"] = ("第 %d 章发布等待超时（%.0f 分钟）；若在等人工提交，"
-                                   "请提交后重跑剩余章节" % (item["chapter_no"],
-                                                             IDLE_TIMEOUT_S / 60))
+                    if as_draft:
+                        st["error"] = ("第 %d 章存草稿等待超时（%.0f 分钟），后续"
+                                       "章节未存" % (item["chapter_no"],
+                                                     IDLE_TIMEOUT_S / 60))
+                    else:
+                        st["error"] = ("第 %d 章发布等待超时（%.0f 分钟）；若在等人工提交，"
+                                       "请提交后重跑剩余章节" % (item["chapter_no"],
+                                                                 IDLE_TIMEOUT_S / 60))
                     return
+                if as_draft:
+                    # manager 走完草稿流程（含平台侧验证）才返回；台账落了
+                    # upload_chapter_draft 才算数，防「流程跑完但平台没存上」。
+                    if item["chapter_no"] not in ledger.drafted_chapters(
+                            task_id, platform):
+                        st["status"] = "error"
+                        st["error"] = ("第 %d 章存草稿未确认，后续章节未存（详见"
+                                       "发布台账与截图存证）" % item["chapter_no"])
+                        return
+                    st["done"] += 1
+                    st["last_chapter"] = item["chapter_no"]
+                    if st["done"] < st["total"]:
+                        time.sleep(PACE_S)
+                    continue
                 if not auto_submit:
                     # The manager stopped before the submit step. There is no
                     # remote success receipt until the user clicks submit.
@@ -348,7 +415,11 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                 if st["done"] < st["total"]:
                     time.sleep(PACE_S)
             st["status"] = "done"
-            if not auto_submit:
+            if as_draft:
+                st["message"] = ("已存草稿 %d 章（未发布，不受质量闸拦不代表可直发）；"
+                                 "请到平台章节管理/草稿箱逐章检查后提交发布"
+                                 % st["done"])
+            elif not auto_submit:
                 st["message"] = "第 %d 章已填好，请在浏览器里确认提交，再重新校准" % st["last_chapter"]
         except Exception as e:                 # 线程内绝不能悬挂无终态
             st["status"] = "error"
