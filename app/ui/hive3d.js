@@ -35,7 +35,7 @@ window.Hive3D = (function () {
   }
   function sphereGeometry(gl, rows=9, cols=12){
     const p=[],ix=[];for(let r=0;r<=rows;r++){const v=r/rows*Math.PI;for(let c=0;c<=cols;c++){const u=c/cols*Math.PI*2;p.push(Math.sin(v)*Math.cos(u),Math.cos(v),Math.sin(v)*Math.sin(u));}}
-    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const a=r*(cols+1)+c,b=a+cols+1;ix.push(a,b,a+1,b,b+1,a+1);}
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const a=r*(cols+1)+c,b=a+cols+1;ix.push(a,a+1,b,b,a+1,b+1);}
     return geometry(gl,p,ix);
   }
   function Scene(opts){
