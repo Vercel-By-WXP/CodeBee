@@ -7352,3 +7352,38 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
   #rd-hive-viewport .hg-monitor { display: none; }
   #rd-hive-viewport .hg-badge { width: 14%; }
 }
+
+
+/* True projected-screen labels: type must fit inside compact physical monitor bounds. */
+#rd-hive-viewport .hg-monitor {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  padding: 1px 2px;
+  gap: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  border: 1px solid rgba(121, 225, 246, .20);
+  border-radius: 2px;
+  background: rgba(2, 19, 39, .93);
+  box-shadow: none;
+  backdrop-filter: none;
+  line-height: 1.05;
+}
+#rd-hive-viewport .hg-monitor-role {
+  min-width: 0;
+  font-size: clamp(5px, .43cqw, 9px);
+  line-height: 1.05;
+}
+#rd-hive-viewport .hg-monitor-status,
+#rd-hive-viewport .hg-monitor-time {
+  font-size: clamp(4px, .35cqw, 7px);
+  line-height: 1.05;
+}
+#rd-hive-viewport .hg-monitor-tail {
+  min-width: 0;
+  font-size: clamp(4px, .34cqw, 6px);
+  line-height: 1.05;
+}
+#rd-hive-viewport .hg-monitor.st-idle {
+  background: rgba(2, 19, 39, .88);
+}
