@@ -58,7 +58,7 @@ window.Hive3D = (function () {
     const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vec3 light=normalize(vec3(-0.40,0.82,0.48));vShade=0.58+0.42*max(0.0,dot(normalize(aNormal),light));}";
     const fs="precision mediump float; varying vec4 vColor; varying float vShade; void main(){gl_FragColor=vec4(vColor.rgb*vShade,vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
-    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.box=boxGeometry(gl);this.sphere=sphereGeometry(gl,12,18);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.79,.89,.96,1);
+    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.box=boxGeometry(gl);this.sphere=sphereGeometry(gl,16,24);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.79,.89,.96,1);
   };
   Scene.prototype.listen=function(el,type,fn,opts){el.addEventListener(type,fn,opts);this.listeners.push(()=>el.removeEventListener(type,fn,opts));};
   Scene.prototype.bindSurface=function(){
@@ -83,7 +83,10 @@ window.Hive3D = (function () {
     for(const side of [-1,1]){
       // Open-framed side glazing: avoid opaque side slabs that visually cut the room into boxes.
       for(const y of [.12,4.62])this.add(b,side*8.95,y,-.15,.075,.075,11.9,[.78,.87,.93,1]);
-      for(let z=-5.55;z<=5.56;z+=2.22)this.add(b,side*8.95,2.36,z,.075,4.48,.075,[.84,.91,.96,1]);
+      for(let z=-5.55;z<=5.56;z+=2.22){
+        this.add(b,side*8.95,2.36,z,.075,4.48,.075,[.84,.91,.96,1]);
+        this.add(b,side*8.90,2.36,z-1.11,.018,4.34,2.10,[.55,.78,.92,.12]);
+      }
     }
     // Ceiling light fixtures and soft-colored illuminated panels.
     for(let x=-6.3;x<=6.4;x+=6.3){
@@ -145,10 +148,11 @@ window.Hive3D = (function () {
       this.add(s,x,by,bz,.35,.34,.32,[1,.70,.05,1]);
       this.add(s,x,by-.24,bz+.02,.28,.23,.26,[.98,.57,.035,1]);
       this.add(b,x,by-.19,bz+.245,.26,.065,.045,[.045,.055,.06,1]);
-      this.add(s,x-.105,by+.035,bz+.285,.035,.035,.028,[.02,.03,.04,1]);
-      this.add(s,x+.105,by+.035,bz+.285,.035,.035,.028,[.02,.03,.04,1]);
-      this.add(b,x-.13,by+.20,bz+.01,.028,.18,.028,[.08,.09,.10,1]);
-      this.add(b,x+.13,by+.20,bz+.01,.028,.18,.028,[.08,.09,.10,1]);
+      this.add(s,x,by-.055,bz+.285,.255,.145,.055,[.045,.055,.06,1]);
+      this.add(s,x-.105,by-.035,bz+.326,.035,.035,.026,[.02,.03,.04,1]);
+      this.add(s,x+.105,by-.035,bz+.326,.035,.035,.026,[.02,.03,.04,1]);
+      this.add(b,x-.13,by+.23,bz+.13,.028,.18,.028,[.08,.09,.10,1]);
+      this.add(b,x+.13,by+.23,bz+.13,.028,.18,.028,[.08,.09,.10,1]);
       this.add(s,x-.30,by+.10,bz-.03,.28,.075,.18,[.70,.91,1,.72]);
       this.add(s,x+.30,by+.10,bz-.03,.28,.075,.18,[.70,.91,1,.72]);
       this.add(b,x,by-.28,bz-.015,.18,.055,.22,[.07,.08,.09,1]);
@@ -158,38 +162,57 @@ window.Hive3D = (function () {
       this.add(b,x,.17,-4.25,.62,.34,.62,[.70,.77,.81,1]);
       for(let k=0;k<9;k++){const a=k*2.399;this.add(s,x+Math.cos(a)*.40,.80+(k%4)*.18,-4.25+Math.sin(a)*.34,.12,.43,.12,[.12,.48+(k%3)*.05,.22,1],a);}
     }
+    // Low-opacity contact shadows ground desk pods without enabling expensive shadow maps.
+    for(let row=0;row<2;row++)for(let i=0;i<7;i++){
+      const x=(i-3)*2.48,z=row===0?-2.0:3.0;
+      this.add(s,x,-.026,z,1.42,.026,.73,[.13,.23,.31,.15]);
+      this.add(s,x,-.025,z+1.08,.78,.018,.58,[.12,.20,.27,.10]);
+    }
   };
   Scene.prototype.buildBatches=function(){
-    const positions=[],normals=[],colors=[];
-    const emit=(p,n,c)=>{positions.push(p[0],p[1],p[2]);normals.push(n[0],n[1],n[2]);colors.push(c[0],c[1],c[2],c[3]==null?1:c[3]);};
+    const channels={opaque:{positions:[],normals:[],colors:[]},transparent:{positions:[],normals:[],colors:[]}};
+    const emit=(target,p,n,color)=>{
+      target.positions.push(p[0],p[1],p[2]);target.normals.push(n[0],n[1],n[2]);
+      target.colors.push(color[0],color[1],color[2],color[3]==null?1:color[3]);
+    };
     const worldPoint=(o,v)=>{const x=v[0]*o.sx,z=v[2]*o.sz,a=o.rotY||0,ca=Math.cos(a),sa=Math.sin(a);return [o.x+ca*x+sa*z,o.y+v[1]*o.sy,o.z-sa*x+ca*z];};
     const sphereNormal=(o,v)=>{const x=v[0]/Math.max(.0001,o.sx),y=v[1]/Math.max(.0001,o.sy),z=v[2]/Math.max(.0001,o.sz),a=o.rotY||0,ca=Math.cos(a),sa=Math.sin(a);const n=[ca*x+sa*z,y,-sa*x+ca*z],l=Math.hypot(n[0],n[1],n[2])||1;return n.map(v=>v/l);};
     const faceNormal=(a,b,c)=>{const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]],n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]],l=Math.hypot(n[0],n[1],n[2])||1;return n.map(v=>v/l);};
     for(const o of this.objects){
       const mesh=o.mesh,src=mesh.positions,ix=mesh.indices;
+      const target=(o.color[3]!=null&&o.color[3]<.999)?channels.transparent:channels.opaque;
       for(let i=0;i<ix.length;i+=3){
         const local=[0,1,2].map(k=>[src[ix[i+k]*3],src[ix[i+k]*3+1],src[ix[i+k]*3+2]]);
         const world=local.map(v=>worldPoint(o,v));
         const face=mesh===this.sphere?null:faceNormal(world[0],world[1],world[2]);
-        for(let k=0;k<3;k++)emit(world[k],face||sphereNormal(o,local[k]),o.color);
+        for(let k=0;k<3;k++)emit(target,world[k],face||sphereNormal(o,local[k]),o.color);
       }
     }
+    const gl=this.gl,upload=data=>{if(!data.length)return null;const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);return buffer;};
+    this.batchBuffers={};
+    for(const key of ["opaque","transparent"]){
+      const channel=channels[key];
+      this.batchBuffers[key]={positions:upload(channel.positions),normals:upload(channel.normals),colors:upload(channel.colors),count:channel.positions.length/3};
+    }
+    for(const mesh of [this.box,this.sphere])if(mesh){if(mesh.p)gl.deleteBuffer(mesh.p);if(mesh.ix)gl.deleteBuffer(mesh.ix);mesh.p=null;mesh.ix=null;}
+  };
+  Scene.prototype.drawBatch=function(batch){
+    if(!batch||!batch.count)return;
     const gl=this.gl;
-    const upload=(data)=>{const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);return buffer;};
-    this.batchBuffers={positions:upload(positions),normals:upload(normals),colors:upload(colors),count:positions.length/3};
-    for(const mesh of [this.box,this.sphere])if(mesh){gl.deleteBuffer(mesh.p);gl.deleteBuffer(mesh.ix);mesh.p=null;mesh.ix=null;}
+    gl.bindBuffer(gl.ARRAY_BUFFER,batch.positions);gl.enableVertexAttribArray(this.aPosition);gl.vertexAttribPointer(this.aPosition,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,batch.normals);gl.enableVertexAttribArray(this.aNormal);gl.vertexAttribPointer(this.aNormal,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,batch.colors);gl.enableVertexAttribArray(this.aColor);gl.vertexAttribPointer(this.aColor,4,gl.FLOAT,false,0,0);
+    gl.drawArrays(gl.TRIANGLES,0,batch.count);
   };
   Scene.prototype.render=function(){
     if(!this.gl||!this.active)return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
     const radius=16/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.34,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,1.45,0],[0,1,0]);const proj=mat4.perspective(.73,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
-    const batch=this.batchBuffers;if(batch){
-      gl.bindBuffer(gl.ARRAY_BUFFER,batch.positions);gl.enableVertexAttribArray(this.aPosition);gl.vertexAttribPointer(this.aPosition,3,gl.FLOAT,false,0,0);
-      gl.bindBuffer(gl.ARRAY_BUFFER,batch.normals);gl.enableVertexAttribArray(this.aNormal);gl.vertexAttribPointer(this.aNormal,3,gl.FLOAT,false,0,0);
-      gl.bindBuffer(gl.ARRAY_BUFFER,batch.colors);gl.enableVertexAttribArray(this.aColor);gl.vertexAttribPointer(this.aColor,4,gl.FLOAT,false,0,0);
-      gl.uniformMatrix4fv(this.uViewProj,false,vp);gl.drawArrays(gl.TRIANGLES,0,batch.count);
-    }
+    gl.uniformMatrix4fv(this.uViewProj,false,vp);
+    this.drawBatch(this.batchBuffers&&this.batchBuffers.opaque);
+    const translucent=this.batchBuffers&&this.batchBuffers.transparent;
+    if(translucent&&translucent.count){gl.depthMask(false);this.drawBatch(translucent);gl.depthMask(true);}
     this.layoutOverlayPositions();
   };
   Scene.prototype.projectWorld=function(x,y,z){
@@ -262,7 +285,7 @@ window.Hive3D = (function () {
   Scene.prototype.resetView=function(){this.zoom=1;this.yaw=-.18;this.pitch=.28;this.panX=0;this.panY=0;this.render();};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0};};
   Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel);if(i<0)return null;const [x,y,w,h]=SCREENS[i];return{x:(x+w/2)/2048*this.cssW,y:(y+h/2)/1151*this.cssH};};
-  Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const key of ["positions","normals","colors"])if(this.batchBuffers[key])gl.deleteBuffer(this.batchBuffers[key]);for(const o of [this.box,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
+  Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
   const originalCreate=(opts)=>new Scene(opts);
   // Initialize geometry after the constructor has successfully acquired WebGL.
   const create=(opts)=>{const scene=originalCreate(opts);if(scene.failed||!scene.gl)return null;scene.buildWorld();scene.buildBatches();scene.render();return scene;};
