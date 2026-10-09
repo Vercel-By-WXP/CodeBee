@@ -6953,3 +6953,65 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   （openclacky/ace/niubigeo/horizon/instar/future-os/agent-hooks 等）；待深挖
   +1（openclacky 闲时压缩+预热缓存）；keywords.md 补词 2 条（词形盲区第 5 例
   +A3 剪切线）；落地 2 件（文案对齐+守卫红灯修复）。| 结论
+
+## 2026-10-09 18 时班（批4：治理/安全/人机协同）
+
+- **microsoft/agent-governance-toolkit**（6,416★，10-09 当日在更，Public Preview）
+  | 微软官方 agent 治理工具链：策略执行（哪些工具动作被允许）+ 零信任身份（多
+  agent 区分「谁干的」）+ 防篡改审计（tamper-evident 每决策留痕）+ 执行沙箱 +
+  可靠性工程，覆盖 OWASP Agentic Top 10（7 Full 3 Partial），PyPI/npm/NuGet 三
+  渠 SDK | B4 治理域：三问自答——我们的命令闸策略感知+评审闸+evidence.md 档案
+  覆盖其「动作允许/可证明」的单机版；差量在多 agent 身份与密码学级审计，均系
+  企业合规场景，桌面单机形态重合度低 | 参考判据（雷达，盯增量） | 2026-10-09
+- **maximhq/bifrost**（8,667★，10-09 在更）| 企业 AI 网关：自适应负载均衡+集群
+  模式+guardrails+1000+ 模型，<100µs@5k RPS（claim 50x LiteLLM）| A8 网关域：
+  与 one-api/axonhub 同域新贵，放量期；我们绑定链换将同构、网关形态非产品路线
+  | 参考判据（雷达） | 2026-10-09
+- **can1357/oh-my-pi**（34,736★，10-09 在更，全历史首见）| 「IDE 接进来的
+  coding agent」，Stencil Labs 出品，pi 生态头部件 | A4/A13 域：pi 系我们已接
+  CLI（catalog 在册），其生态最大头部件此前 115 组词+八班雷达从未命中——系
+  「pi 生态专名词形」盲区（词根正交）；编排台差量无，生态健康度信号 | 参考
+  判据（雷达） | 2026-10-09
+- **GetBusbar/busbar**（175★，10-08 在更）| AI agent 执行控制平面：governance
+  每一 model 请求/MCP tool call/A2A delegation/下游动作，六协议进六协议出 |
+  B4 治理域微型件 | 微型判据（雷达） | 2026-10-09
+- **nobodywho-ooo/nobodywho**（1,539★，10-09 在更）| 本地 LLM 推理引擎（任意
+  设备）| 推理引擎域旁非编排 | 参考（域旁） | 2026-10-09
+- **sattyamjjain/agent-audit-kit**（12★）| MCP 管线静态扫描器：388 规则 14 合规
+  框架 OWASP Agentic 10/10 | B4 微型 | 微型判据（雷达） | 2026-10-09
+- **B4 治理域成簇信号（第 4 班）**：微软 toolkit + busbar + agent-audit-kit
+  同日现于三通道（WebSearch/trendshift/topic）——「agent 治理/控制平面/合规
+  扫描」方向持续升温，此前 00-04 时班「安全边界微型件成簇」信号延续且升档
+  （从微型 skill 到官方 toolkit 入场）。| 趋势信号
+- **deepseek-harness 属主勘定（E+G 交叉）**：存量复查发现 PerryLink/
+  deepseek-harness 已 archived 且仅 1★（旧址）；主扫自证真身=**deepseek-ai/
+  deepseek-harness 246,077★**（官方 org，10-09 在更）——catalog install/upgrade
+  走 npm 包名 @deepseek-ai/dsh 与官方一致，**零断链影响**；DSH 插件生态（48 件）
+  归属待下轮顺 orgs/deepseek-ai/repos 复核。| 勘定
+- **复查记录（18 时班，基准=15/16 时班）**：orca 88,246（+85）/mattpocock-skills
+  281,857（+245）/ECC 275,633（+71）/hermes-agent 252,155（+33）/ponytail
+  159,068（+120）/dify 157,984（+12）/pi 113,706（+45）/opencode 212,301
+  （+34）/openworker 18,482（+20）/StaffDeck 1,973（+4）/DeepSeek-Reasonix
+  35,754 持平（E 候选首位维持）；放量信号：tigerless 三件续放量（autoharness
+  10,741 +280/agent-memory 3,387 +355/cost-xray 4,691 +314），strands
+  harness-sdk 8,750 转平稳（+3）；已沉淀件增量：freebuff 13,376（+1,076）/
+  agent-orchestrator 12,977（+877）/agentmemory 29,257（+657）/planning-with-
+  files 27,353（+53）/openclacky 1,204 持平。| 复查
+- **七专项 A-G**：A 八机制锚点在位（:725/:760/:2704/:28/:676/:1683，较 15 时班
+  微漂 2 行系 v0.1.99 发版提交所致，机制零漂移）零新差量。B 六源在位零新接入
+  （toolkit=SDK 非 skill 包/bifrost=网关非包/oh-my-pi=CLI agent 非包，三问全
+  不过）。C BUILTIN_FLOWS=18 实测+recommendTaskType/i18n_dups 守卫 6/6 定向绿。
+  D lessons=71 基线一致（流程规范 31/43.7%）零新增蒸馏（交叉验证纪律已在库且
+  本班 WebSearch 捞出微软 toolkit 系该纪律第 N 次生效实证）。E catalog=14、
+  本机 13/14 在装（openclaw 缺）、候选五 CLI（DeepSeek-Reasonix/FuXi/Gitlawb/
+  zero/Empryo）which 全 MISSING 零盲接维持；deepseek-harness 属主勘定见上。
+  F poll_enabled=null 关闭态非故障+claims={} 零积压+last_error 空；npm 禅道
+  通道第 5 班三件全复认零新（第 36 例口径维持）。G 过时文案（13 种任务/单源/
+  双源）grep 零命中；禅道子页文案与 zentao.py 实现一致；catalog 零断链；
+  守卫测试全绿——零新毛病。| 巡检·A/B/C/D/E/F/G
+- **本班结论**：主扫 115/115 零失败零限流（466 唯一仓/活跃 166 件/首见 0）
+  稳定期延续；本班判据 5 件+微型 2 件全出自三交叉通道（WebSearch/trendshift/
+  topic）——主扫通道首见 0 系「每 3-4 班交叉验证」纪律价值的实证；B4 治理域
+  成簇升档为当班唯一趋势信号。零代码提案（七专项零新缺口、路线图在册件均非
+  小而实），落地=知识沉淀三件套；当日 v0.1.99 已发（20b7a4e），docs-only 不
+  触发新发版。| 结论
