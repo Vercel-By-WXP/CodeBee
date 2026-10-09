@@ -420,7 +420,11 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None, sandbox=N
     → cmd /c 或 /bin/sh -c），仓库唯一的 shell 落点，不另起炉灶。全信任档
     （用户拍板 2026-09-22）：无白名单无确认闸，与 codex/claude 全权沙箱同档。
     提权靠模型自己包 Start-Process -Verb RunAs——UAC 必须人点，绕不过也不该绕。
-    输出按字符头尾截断（解码已在 run_process 完成，无残缺多字节问题）。"""
+    输出按字符头尾截断（解码已在 run_process 完成，无残缺多字节问题）。
+    沙箱闸策略感知（与外部 CLI 闸 b267107 同口径）：Linux 有 bwrap 全策略
+    强制；Win/Mac 无 OS 后端，进程内无法兑现的收窄仍拒（禁网、env 白名单
+    ——run_process 的 env 是注入语义滤不掉），默认宽策略保持全信任档直跑，
+    目录闸由 path_allowed 兑现。"""
     cmdline = str(args.get("command") or "").strip()
     if not cmdline:
         return "（命令为空，未执行）"
@@ -430,15 +434,20 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None, sandbox=N
     cwd = os.path.abspath(workdir or ".")
     if not policy.path_allowed(cwd, sandbox):
         return "（沙箱拒绝：工作目录不在允许范围内，命令未执行）"
-    # This process runner has no OS-level network/filesystem namespace. Do not
-    # imply network isolation when policy requests it; fail closed instead.
-    if sandbox.get("network") is False:
-        if os.name != "posix" or not shutil.which("bwrap"):
-            return "（沙箱拒绝：当前系统没有可用的网络隔离后端，命令未执行）"
-    # Enforce the declared filesystem boundary at the process boundary too.
-    # bubblewrap is the supported Linux backend. Windows/macOS without an
-    # equivalent backend fail closed rather than pretending cwd is a sandbox.
-    if os.name == "posix" and shutil.which("bwrap"):
+    # Enforce the declared boundary at the process boundary where an OS
+    # backend exists (bubblewrap on Linux). Windows/macOS have no equivalent:
+    # stay policy-aware like the external-CLI gate (b267107) — the narrowings
+    # this in-process runner cannot honor fail closed, while a default wide
+    # policy keeps the user-approved full-trust tier (2026-09-22) instead of
+    # refusing every command.
+    has_bwrap = os.name == "posix" and bool(shutil.which("bwrap"))
+    if sandbox.get("network") is False and not has_bwrap:
+        return "（沙箱拒绝：当前系统没有可用的网络隔离后端，命令未执行）"
+    if sandbox.get("env_allowlist"):
+        # run_process 的 env 是注入语义（合并进完整父环境，供凭据注入），
+        # 不是白名单替换——环境收窄在子进程侧无法兑现，宁拒不假装
+        return "（沙箱拒绝：该任务带环境变量白名单，命令执行无法兑现该策略，未执行）"
+    if has_bwrap:
         argv = ["bwrap", "--die-with-parent", "--new-session", "--tmpfs", "/"]
         # Mount only the runtime needed by ordinary commands. Do not expose the
         # entire host root read-only: read access can still leak user secrets.
@@ -459,18 +468,10 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None, sandbox=N
             argv.extend(["--dir", root_path])
             argv.extend(["--bind", root_path, root_path])
         argv.extend(["--chdir", cwd, "--", "/bin/sh", "-lc", cmdline])
-    elif os.name == "posix" and sys.platform == "darwin":
-        return "（沙箱拒绝：当前 macOS 执行器尚未接入文件系统隔离后端，命令未执行）"
-    elif os.name != "posix":
-        return "（沙箱拒绝：当前 Windows 执行器尚未接入文件系统隔离后端，命令未执行）"
     else:
-        return "（沙箱拒绝：未安装 bubblewrap 隔离后端，命令未执行）"
-    env_policy = dict(sandbox)
-    env_policy["env_allowlist"] = list(dict.fromkeys(
-        list(sandbox.get("env_allowlist") or [])
-        + ["PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "COMSPEC", "HOME", "USERPROFILE"]))
-    r = runner.run_process(argv=argv, cwd=cwd,
-                           env=policy.filter_env(os.environ, env_policy),
+        argv = None   # 全信任档：runner 按平台自包 cmd /c 或 /bin/sh -c
+    r = runner.run_process(argv=argv, shell_cmd=cmdline if argv is None else None,
+                           cwd=cwd, env=None,
                            timeout=min(timeout, CMD_MAX_TIMEOUT),
                            deadline=deadline, cancel_event=cancel_event)
     out = runner.clean_cli_text(

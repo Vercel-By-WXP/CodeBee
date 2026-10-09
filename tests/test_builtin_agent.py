@@ -620,6 +620,64 @@ class TestBuiltinRunCommand(BaseTest):
         self.assertLess(len(out), 64 * 1024)   # 头 24K + 尾 8K + 标注，远小于原 120K
 
 
+class TestBuiltinRunCommandPolicyGate(BaseTest):
+    """run_command 沙箱闸策略感知（与外部 CLI 闸 b267107 同口径）。
+
+    fb92efa 曾把 Win/Mac 无 bwrap 一律拒（命令工具全平台死透，TestBuiltinRunCommand
+    三连红）。现口径：默认宽策略照常全信任直跑；进程内无法兑现的收窄仍拒
+    （禁网需 OS 后端、env 白名单滤不掉——run_process env 是注入语义），
+    目录闸由 path_allowed 兑现。"""
+
+    def _sb(self, spec):
+        from app.core import policy
+        return policy.normalize_sandbox(spec, str(self.workdir))
+
+    def _cmd(self, expr):
+        import os
+        return ("cmd /c echo %s" % expr) if os.name == "nt" else ("echo %s" % expr)
+
+    def _has_bwrap(self):
+        import os
+        import shutil
+        return os.name == "posix" and bool(shutil.which("bwrap"))
+
+    def test_default_policy_runs_without_bwrap(self):
+        from app.core import builtin_agent
+        out = builtin_agent._tool_run_command(
+            str(self.workdir), {"command": self._cmd("gate_ok")})
+        self.assertIn("退出码: 0", out)          # 默认策略：无后端平台也放行（核心回归）
+        self.assertIn("gate_ok", out)
+
+    def test_network_false_refused_without_backend(self):
+        from app.core import builtin_agent
+        out = builtin_agent._tool_run_command(
+            str(self.workdir), {"command": self._cmd("nope")},
+            sandbox=self._sb({"network": False}))
+        if self._has_bwrap():
+            self.assertIn("退出码", out)          # 有后端：unshare-net 下照跑
+        else:
+            self.assertIn("没有可用的网络隔离后端", out)
+            self.assertNotIn("nope", out)
+
+    def test_env_allowlist_refused(self):
+        """run_process 的 env 是注入语义（合并父环境），白名单在子进程侧无法
+        兑现——宁拒不假装（fb92efa 的 filter_env 传参实为无效动作）。"""
+        import os
+        from app.core import builtin_agent
+        os.environ["CODEBEE_GATE_PROBE"] = "bee-secret"
+        try:
+            out = builtin_agent._tool_run_command(
+                str(self.workdir),
+                {"command": self._cmd("%CODEBEE_GATE_PROBE%" if os.name == "nt"
+                                      else "$CODEBEE_GATE_PROBE")},
+                sandbox=self._sb({"env_allowlist": ["CODEBEE_GATE_PROBE"]}))
+            self.assertIn("环境变量白名单", out)
+            self.assertIn("未执行", out)
+            self.assertNotIn("bee-secret", out)
+        finally:
+            os.environ.pop("CODEBEE_GATE_PROBE", None)
+
+
 class TestDirectAgentCli(BaseTest):
     """直接对话手动指定 CLI（2026-09-23）：direct_agent 压过模型绑定与自动推荐。"""
 
