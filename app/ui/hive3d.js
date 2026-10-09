@@ -44,7 +44,7 @@ window.Hive3D = (function () {
     this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=-0.18;this.pitch=0.28;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
     this.host.dataset.renderer="webgl";this.canvas.hidden=false;this.canvas.classList.add("hive-gl-live");
     this.layer=node("div","hive-reference-layer",this.host);this.layer.appendChild(this.overlay);this.overlay.replaceChildren();
-    try { this.initGL(); } catch(e) { console.error("CodeBee Hive3D WebGL init failed",e); if(opts.onFatal)opts.onFatal(e); return; }
+    try { this.initGL(); } catch(e) { console.error("CodeBee Hive3D WebGL init failed",e); this.failed=true; this.failure=e; return; }
     this.stageMeta=PLATES.map(([x,y],i)=>{const el=node("button","hg-badge",this.overlay);el.type="button";el.style.left="0%";el.style.top="0%";const name=node("b","hg-name",el),meta=node("span","hg-meta",el);this.listen(el,"click",()=>{const lane=this.stageMeta[i].lane;if(!lane)return;const cell=lane.cells.find(c=>c.status==="running")||lane.cells[lane.cells.length-1];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,name,meta,lane:null};});
     this.monitors=SCREENS.map(([x,y,w,h],i)=>{const el=node("button", "hg-monitor", this.overlay);el.type="button";el.style.left="0%";el.style.top="0%";el.style.width=(w/2048*100)+"%";el.style.height=(h/1151*100)+"%";const role=node("b","hg-monitor-role",el),status=node("span","hg-monitor-status",el),tail=node("span","hg-monitor-tail",el),time=node("span","hg-monitor-time",el);this.listen(el,"click",()=>{const cell=this.screenMeta[i];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,role,status,tail,time};});
     const toolbar=this.host.parentElement.querySelector(".hive-scene-tools");this.pager=node("div","hive-scene-pager");this.pager.hidden=true;this.prev=node("button","hive-scene-btn",this.pager);this.prev.type="button";this.prev.textContent="‹";this.pageLabel=node("span","hive-scene-page-label",this.pager);this.next=node("button","hive-scene-btn",this.pager);this.next.type="button";this.next.textContent="›";if(toolbar)toolbar.insertBefore(this.pager,toolbar.querySelector(".hive-scene-spacer"));
@@ -165,10 +165,6 @@ window.Hive3D = (function () {
     this.batchBuffers={positions:upload(positions),normals:upload(normals),colors:upload(colors),count:positions.length/3};
     for(const mesh of [this.box,this.sphere])if(mesh){gl.deleteBuffer(mesh.p);gl.deleteBuffer(mesh.ix);mesh.p=null;mesh.ix=null;}
   };
-  Scene.prototype.drawObject=function(o,viewProj){
-    const m=mat4.multiply(mat4.translate(o.x+this.panX,o.y+this.panY,o.z),mat4.multiply(mat4.rotateY(o.rotY),mat4.scale(o.sx,o.sy,o.sz)));
-    const mvp=mat4.multiply(viewProj,m),gl=this.gl;gl.bindBuffer(gl.ARRAY_BUFFER,o.mesh.p);gl.enableVertexAttribArray(this.aPosition);gl.vertexAttribPointer(this.aPosition,3,gl.FLOAT,false,0,0);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,o.mesh.ix);gl.uniformMatrix4fv(this.uMvp,false,mvp);gl.uniform4fv(this.uColor,o.color);gl.drawElements(gl.TRIANGLES,o.mesh.count,gl.UNSIGNED_SHORT,0);
-  };
   Scene.prototype.render=function(){
     if(!this.gl||!this.active)return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
@@ -244,6 +240,6 @@ window.Hive3D = (function () {
   Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const key of ["positions","normals","colors"])if(this.batchBuffers[key])gl.deleteBuffer(this.batchBuffers[key]);for(const o of [this.box,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
   const originalCreate=(opts)=>new Scene(opts);
   // Initialize geometry after the constructor has successfully acquired WebGL.
-  const create=(opts)=>{const scene=originalCreate(opts);if(!scene.gl)return null;scene.buildWorld();scene.buildBatches();scene.render();return scene;};
+  const create=(opts)=>{const scene=originalCreate(opts);if(scene.failed||!scene.gl)return null;scene.buildWorld();scene.buildBatches();scene.render();return scene;};
   return {create};
 })();
