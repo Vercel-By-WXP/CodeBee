@@ -1991,6 +1991,66 @@ def _winget_already_ok(cmd, op, res):
     return any(m in out for m in _WINGET_NOOP_MARKERS)
 
 
+def _uv_install_hint():
+    if sys.platform == "darwin":
+        return "brew install uv（或官网 curl -LsSf https://astral.sh/uv/install.sh | sh）"
+    return "winget install astral-sh.uv，或 pip install uv"
+
+
+def _uv_mirror_env():
+    """uv 系命令的镜像兜底 env（用户没自己配才补默认，绝不覆盖）。
+
+    uv tool install --python 3.12 会现场下载 CPython 独立构建（GitHub 直连，
+    国内常断流），包体走 PyPI——npmmirror/清华这对镜像是 2026-09 本机 uv
+    实装验证过的组合。"""
+    env = {}
+    if not os.environ.get("UV_PYTHON_INSTALL_MIRROR"):
+        env["UV_PYTHON_INSTALL_MIRROR"] = (
+            "https://registry.npmmirror.com/-/binary/python-build-standalone")
+    if not os.environ.get("UV_DEFAULT_INDEX"):
+        env["UV_DEFAULT_INDEX"] = "https://pypi.tuna.tsinghua.edu.cn/simple"
+    return env
+
+
+def _cmd_head_is_uv(cmd):
+    stripped = str(cmd or "").strip()
+    if not stripped:
+        return False
+    return os.path.basename(stripped.split()[0]).lower() in ("uv", "uv.exe")
+
+
+def _bootstrap_uv(cancel_event=None, log_path=None):
+    """uv 不在本机时自动补装一个——安装按钮「点了就该装上」的契约兜底。
+
+    按平台选渠道，全部免 sudo 非交互：POSIX 先 brew（在才用）后官方 curl
+    脚本（落 ~/.local/bin，探测表可寻址）；Windows 先 winget 后 pip。装完
+    不指望 PATH 快照自愈——调用方重跑 _resolve_mgmt_tool 用绝对路径接管。
+    返回 {ok, detail}；失败 detail 列出试过的渠道与结局，供人话收口。"""
+    candidates = []
+    if sys.platform == "win32":
+        if shutil.which("winget"):
+            candidates.append(("winget", "winget install -e --id astral-sh.uv --silent"))
+        if shutil.which("py"):
+            candidates.append(("pip(py)", "py -3 -m pip install uv"))
+        elif shutil.which("python"):
+            candidates.append(("pip", "python -m pip install uv"))
+    else:
+        if shutil.which("brew"):
+            candidates.append(("brew", "brew install uv"))
+        if shutil.which("curl"):
+            candidates.append(("curl", "curl -LsSf https://astral.sh/uv/install.sh | sh"))
+    attempts = []
+    for label, cmd in candidates:
+        res = runner.run_process(shell_cmd=cmd, cwd=str(paths.ROOT),
+                                 timeout=900, cancel_event=cancel_event,
+                                 log_path=log_path)
+        if res["ok"]:
+            return {"ok": True, "detail": "已自动补装 uv（%s）" % label}
+        attempts.append("%s 退出码 %s" % (label, res.get("exit_code")))
+    return {"ok": False,
+            "detail": "、".join(attempts) or "本机没有 brew/curl/winget/pip 任一渠道"}
+
+
 def _resolve_mgmt_tool(cmd, op):
     """install/upgrade 命令首 token 的工具本体解析。
 
@@ -2026,14 +2086,20 @@ def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
                              % (op, entry["id"])}
     cmd, uv_missing = _resolve_mgmt_tool(cmd, op)
     if uv_missing:
-        hint = ("brew install uv（或官网 curl -LsSf https://astral.sh/uv/install.sh | sh）"
-                if sys.platform == "darwin" else
-                "winget install astral-sh.uv，或 pip install uv")
-        return {"ok": False, "uv_missing": True,
-                "error": "本机没有 uv（该安装命令依赖 uv tool），目标 CLI 无从装起。"
-                         "请先安装 uv：%s；装完重启 CodeBee 让 PATH 生效，再点一次安装。" % hint}
+        # 「提供安装就该能装上」：uv 不在本机先自动补装，装 uv 不该是用户
+        # 操心的事；真补不上才退回人话指引（2026-10-09 Mac 双装失败实案）
+        boot = _bootstrap_uv(cancel_event=cancel_event, log_path=log_path)
+        if boot["ok"]:
+            cmd, uv_missing = _resolve_mgmt_tool(cmd, op)
+        if uv_missing:
+            return {"ok": False, "uv_missing": True,
+                    "error": "自动安装 uv 未成功（%s）。请手动安装：%s；"
+                             "装完重启 CodeBee，再点一次安装。"
+                             % (boot["detail"], _uv_install_hint())}
+    # uv 全家桶命令挂镜像兜底：Python 独立构建/包索引国内直连常断（只补缺不覆盖）
     res = runner.run_process(shell_cmd=cmd, cwd=str(paths.ROOT),
-                             timeout=1800, cancel_event=cancel_event, log_path=log_path)
+                             timeout=1800, cancel_event=cancel_event, log_path=log_path,
+                             env=_uv_mirror_env() if _cmd_head_is_uv(cmd) else None)
     winget_noop = _winget_already_ok(cmd, op, res)
     detect_all(force=True)
     with _LOCK:
