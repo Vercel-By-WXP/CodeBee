@@ -42,6 +42,10 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("resetView", ENGINE)
         self.assertIn("projectWorld", ENGINE)
         self.assertIn("layoutOverlayPositions", ENGINE)
+        self.assertIn("this.deskPositions=[]", ENGINE)
+        self.assertIn("xs:[-7.77,-5.55,-3.33,-1.11,1.11,3.33,5.55,7.77]", ENGINE)
+        self.assertIn("xs:[-7.0,-4.2,-1.4,1.4,4.2,7.0]", ENGINE)
+        self.assertIn("const desk=this.deskPositions&&this.deskPositions[i]", ENGINE)
         self.assertIn("dispose=function", ENGINE)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is not installed")
