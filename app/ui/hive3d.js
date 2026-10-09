@@ -54,7 +54,7 @@ window.Hive3D = (function () {
   Scene.prototype.initGL=function(){
     const gl=this.canvas.getContext("webgl",{alpha:true,antialias:true,powerPreference:"high-performance"})||this.canvas.getContext("experimental-webgl");
     if(!gl)throw Error("WebGL unavailable");this.gl=gl;
-    const vs="attribute vec3 aPosition; uniform mat4 uMvp; uniform vec4 uColor; varying vec4 vColor; varying float vShade; void main(){gl_Position=uMvp*vec4(aPosition,1.0);vColor=uColor;vShade=0.72+0.28*max(0.0,aPosition.y+0.35);}";
+    const vs="attribute vec3 aPosition; uniform mat4 uMvp; uniform vec4 uColor; varying vec4 vColor; varying float vShade; void main(){gl_Position=uMvp*vec4(aPosition,1.0);vColor=uColor;vec3 n=normalize(aPosition);vec3 light=normalize(vec3(-0.45,0.85,0.55));vShade=0.62+0.38*max(0.0,dot(n,light));}";
     const fs="precision mediump float; varying vec4 vColor; varying float vShade; void main(){gl_FragColor=vec4(vColor.rgb*vShade,vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
     this.aPosition=gl.getAttribLocation(program,"aPosition");this.uMvp=gl.getUniformLocation(program,"uMvp");this.uColor=gl.getUniformLocation(program,"uColor");this.box=boxGeometry(gl);this.sphere=sphereGeometry(gl);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.clearColor(.78,.88,.96,1);
@@ -72,44 +72,78 @@ window.Hive3D = (function () {
   Scene.prototype.add=function(mesh,x,y,z,sx,sy,sz,color,rotY){this.objects.push({mesh,x,y,z,sx,sy,sz,color,rotY:rotY||0});};
   Scene.prototype.buildWorld=function(){
     const b=this.box,s=this.sphere;this.objects=[];
-    // room shell, glossy blue feature wall and pale tiled floor
-    this.add(b,0,-.18,0,19,.25,13,[.82,.89,.95,1]);
-    this.add(b,0,2.25,-5.9,19,4.9,.22,[.12,.47,.78,1]);
-    this.add(b,-9.25,2.2,0,.22,4.6,12,[.84,.91,.97,1]);this.add(b,9.25,2.2,0,.22,4.6,12,[.84,.91,.97,1]);
-    // wall seams, windows, ceiling fixtures
-    for(let x=-7;x<=7;x+=2.8)this.add(b,x,2.3,-5.76,.025,4.4,.03,[.08,.34,.61,1]);
-    for(let x=-6;x<=6;x+=6)this.add(b,x,4.85,-1.4,2.1,.08,.16,[.12,.14,.17,1]);
-    for(let x=-6.6;x<=6.6;x+=6.6){this.add(b,x,4.45,-1.6,.035,.55,5.3,[.24,.31,.36,1]);this.add(b,x,2.4,-1.6,.035,3.3,5.3,[.62,.82,.93,1]);}
-    // top workflow panels represented as bright, raised tiles across the feature wall
-    for(let i=0;i<6;i++){const x=-7.1+i*2.84;this.add(b,x,3.35,-5.55,2.05,.72,.16,[.98,.99,1,1]);this.add(b,x,2.92,-5.45,1.6,.035,.04,[.22,.82,.94,1]);}
-    // 14 desks in two rows; share one box mesh to keep draw calls and memory modest
-    for(let row=0;row<2;row++)for(let i=0;i<7;i++){
-      const x=(i-3)*2.55,z=row===0?-1.25:3.35;
-      this.add(b,x,.42,z,2.15,.78,1.18,[.91,.94,.97,1]);
-      this.add(b,x,.86,z-.25,1.65,.075,.76,[.99,.99,1,1]);
-      for(const side of [-.78,.78])this.add(b,x+side,-.04,z, .12,.78,1.02,[.74,.81,.88,1]);
-      // monitor, bezel and luminous screen
-      this.add(b,x,.99,z-.42,.96,.63,.09,[.035,.09,.16,1]);
-      this.add(b,x,1.01,z-.365,.84,.49,.025,[.025,.24,.39,1]);
-      this.add(b,x,.59,z-.4,.08,.28,.08,[.31,.38,.45,1]);
-      this.add(b,x,.44,z-.12,.56,.04,.34,[.12,.15,.18,1]);
-      // compact keyboard and mouse
-      this.add(b,x,.9,z+.24,.48,.035,.18,[.12,.15,.18,1]);this.add(b,x+.42,.91,z+.23,.09,.06,.13,[.16,.19,.22,1]);
-      // colorful binders on desk edge
-      for(let k=0;k<3;k++)this.add(b,x+.78+k*.13,.98,z+.22,.1,.44,.22,[[.13,.48,.82,1],[.96,.48,.24,1],[.17,.69,.48,1]][k]);
-      // chair base, stem, seat, back and casters
-      this.add(b,x,0.02,z+1.08,.1,.3,.1,[.12,.15,.18,1]);this.add(b,x,.2,z+1.08,.68,.13,.6,[.11,.14,.17,1]);
-      this.add(b,x,.54,z+1.32,.64,.72,.15,[.1,.13,.16,1]);
-      for(let k=0;k<5;k++){const a=k*Math.PI*2/5;this.add(b,x+Math.cos(a)*.38,.015,z+1.08+Math.sin(a)*.32,.32,.055,.075,[.08,.1,.12,1],a);}
-      // stylized bee bot: yellow head/body, black stripes, glass wings, antennae
-      const by=1.18,bz=z+.83;
-      this.add(s,x,by,bz,.34,.34,.34,[1,.72,.08,1]);this.add(s,x,by-.22,bz+.03,.28,.26,.28,[.99,.62,.04,1]);
-      this.add(b,x,by-.19,bz+.17,.3,.07,.08,[.06,.08,.1,1]);
-      this.add(s,x-.23,by+.12,bz+.03,.25,.1,.19,[.68,.91,1,.72]);this.add(s,x+.23,by+.12,bz+.03,.25,.1,.19,[.68,.91,1,.72]);
-      this.add(b,x-.11,by+.12,bz+.31,.035,.14,.035,[.08,.1,.12,1]);this.add(b,x+.11,by+.12,bz+.31,.035,.14,.035,[.08,.1,.12,1]);
+    // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
+    this.add(b,0,-.18,0,19,.28,14,[.91,.95,.98,1]);
+    this.add(b,0,2.48,-6.45,19,5.2,.24,[.10,.43,.74,1]);
+    this.add(b,0,4.98,-2.8,19,.16,7.3,[.98,.99,1,1]);
+    // Wall seams, lower trim, and glass side windows.
+    this.add(b,0,.18,-6.28,18.7,.12,.06,[.06,.30,.55,1]);
+    for(let x=-8;x<=8;x+=2.65)this.add(b,x,2.5,-6.29,.018,4.7,.025,[.06,.33,.60,1]);
+    for(const side of [-1,1]){
+      this.add(b,side*9.12,2.35,-.15,.18,4.55,12.1,[.78,.87,.94,1]);
+      this.add(b,side*9.0,2.4,-.15,.05,4.6,12,[.20,.35,.46,1]);
+      for(let z=-4.7;z<=4.8;z+=2.35)this.add(b,side*9.0,2.4,z,.06,4.35,.045,[.28,.43,.54,1]);
     }
-    // planter silhouettes at the two ends of the wall
-    for(const x of [-8.15,8.15]){this.add(b,x,.15,-3.3,.65,.3,.62,[.64,.73,.78,1]);for(let k=0;k<7;k++){const a=k*2.4;this.add(s,x+Math.cos(a)*.42,1.1+(k%3)*.18,-3.3+Math.sin(a)*.35,.18,.62,.13,[.18,.57,.25,1],a);}}
+    // Ceiling light fixtures and soft-colored illuminated panels.
+    for(let x=-6.3;x<=6.4;x+=6.3){
+      this.add(b,x,4.87,-1.8,2.65,.075,.30,[.20,.24,.29,1]);
+      this.add(b,x,4.80,-1.8,2.40,.045,.24,[1,.99,.91,1]);
+    }
+    // Six stage cards mounted on the blue wall, with luminous cyan underlines.
+    const stageColors=[[.22,.83,.94,1],[.24,.80,.93,1],[.27,.84,.96,1],[.20,.87,.95,1],[.25,.81,.95,1],[.28,.88,.95,1]];
+    for(let i=0;i<6;i++){
+      const x=-7.1+i*2.84;
+      this.add(b,x,3.58,-6.16,2.22,.76,.18,[.99,.995,1,1]);
+      this.add(b,x,3.15,-6.03,1.72,.035,.025,stageColors[i]);
+      this.add(b,x+1.05,3.58,-6.04,.09,.09,.08,[.38,.89,.96,1]);
+    }
+    // Floor grout creates a subtle, regular hex-inspired technical grid without texture assets.
+    for(let x=-8.7;x<=8.7;x+=.72)this.add(b,x,-.025,.15,.012,.012,12.7,[.76,.84,.90,1]);
+    for(let z=-5.8;z<=6.1;z+=.72)this.add(b,0,-.024,z,17.8,.012,.012,[.76,.84,.90,1]);
+    // Fourteen desks: repeat identical assets, but leave generous aisles and keep the screen-facing side clear.
+    for(let row=0;row<2;row++)for(let i=0;i<7;i++){
+      const x=(i-3)*2.48,z=row===0?-2.0:3.0;
+      // slim white desktop and two solid pedestals
+      this.add(b,x,.54,z,2.12,.15,1.20,[.97,.98,1,1]);
+      this.add(b,x-.77,.25,z+.03,.48,.52,1.02,[.80,.86,.91,1]);
+      this.add(b,x+.77,.25,z+.03,.48,.52,1.02,[.80,.86,.91,1]);
+      this.add(b,x,.43,z-.22,1.62,.045,.74,[1,1,1,1]);
+      // monitor with dark bezel, blue glass, stand and cyan status edge
+      this.add(b,x,.99,z-.48,1.03,.68,.10,[.045,.075,.10,1]);
+      this.add(b,x,.995,z-.418,.91,.54,.018,[.025,.15,.25,1]);
+      this.add(b,x,.61,z-.43,.10,.22,.10,[.32,.39,.45,1]);
+      this.add(b,x,.49,z-.27,.54,.045,.34,[.16,.20,.24,1]);
+      this.add(b,x,.72,z-.404,.76,.018,.012,[.10,.83,.94,1]);
+      // keyboard, mouse, mouse pad
+      this.add(b,x-.18,.655,z+.25,.60,.035,.20,[.15,.18,.21,1]);
+      this.add(b,x+.38,.66,z+.22,.12,.06,.17,[.23,.27,.30,1]);
+      this.add(b,x-.18,.64,z+.25,.66,.012,.24,[.75,.81,.86,1]);
+      // Colored binders stand upright on a compact rack.
+      for(let k=0;k<4;k++)this.add(b,x+.68+k*.115,.83,z+.35,.09,.43,.22,[[.13,.43,.78,1],[.95,.42,.24,1],[.16,.66,.46,1],[.93,.72,.28,1]][k]);
+      // Ergonomic chair: five-spoke base, gas lift, padded seat and back.
+      this.add(b,x,.08,z+1.10,.10,.28,.10,[.12,.15,.18,1]);
+      this.add(b,x,.22,z+1.10,.62,.12,.56,[.11,.14,.17,1]);
+      this.add(b,x,.57,z+1.35,.62,.72,.16,[.10,.13,.16,1]);
+      this.add(b,x,.48,z+1.25,.48,.12,.12,[.18,.22,.25,1]);
+      for(let k=0;k<5;k++){const a=k*Math.PI*2/5;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);}
+      // Rounded bee helper robot: yellow head and abdomen, dark face, antennae and translucent wings.
+      const by=1.25,bz=z+.88;
+      this.add(s,x,by,bz,.35,.34,.32,[1,.70,.05,1]);
+      this.add(s,x,by-.24,bz+.02,.28,.23,.26,[.98,.57,.035,1]);
+      this.add(b,x,by-.19,bz+.245,.26,.065,.045,[.045,.055,.06,1]);
+      this.add(s,x-.105,by+.035,bz+.285,.035,.035,.028,[.02,.03,.04,1]);
+      this.add(s,x+.105,by+.035,bz+.285,.035,.035,.028,[.02,.03,.04,1]);
+      this.add(b,x-.13,by+.20,bz+.01,.028,.18,.028,[.08,.09,.10,1]);
+      this.add(b,x+.13,by+.20,bz+.01,.028,.18,.028,[.08,.09,.10,1]);
+      this.add(s,x-.30,by+.10,bz-.03,.28,.075,.18,[.70,.91,1,.72]);
+      this.add(s,x+.30,by+.10,bz-.03,.28,.075,.18,[.70,.91,1,.72]);
+      this.add(b,x,by-.28,bz-.015,.18,.055,.22,[.07,.08,.09,1]);
+    }
+    // Planters and stylized leaves soften the room edges.
+    for(const x of [-8.05,8.05]){
+      this.add(b,x,.17,-4.25,.62,.34,.62,[.70,.77,.81,1]);
+      for(let k=0;k<9;k++){const a=k*2.399;this.add(s,x+Math.cos(a)*.40,.80+(k%4)*.18,-4.25+Math.sin(a)*.34,.12,.43,.12,[.12,.48+(k%3)*.05,.22,1],a);}
+    }
   };
   Scene.prototype.drawObject=function(o,viewProj){
     const m=mat4.multiply(mat4.translate(o.x+this.panX,o.y+this.panY,o.z),mat4.multiply(mat4.rotateY(o.rotY),mat4.scale(o.sx,o.sy,o.sz)));
