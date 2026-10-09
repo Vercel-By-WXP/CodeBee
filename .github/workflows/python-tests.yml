@@ -31,3 +31,23 @@ jobs:
         env:
           CODEBEE_REQUIRE_BWRAP: "1"
         run: sudo -E "$(which python)" -m unittest discover -s tests -p test_sandbox_runtime.py -v
+
+  hive3d-browser-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Render and interact with Hive3D in Edge WebGL
+        run: node tests/ui_hive3d_webgl.mjs
+      - name: Upload Hive3D browser screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive3d-webgl-smoke
+          path: tests/.ui-shots/hive3d-webgl.png
+          if-no-files-found: warn
