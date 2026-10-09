@@ -16,6 +16,7 @@
     "2D 列表": "2D list",
     "拖动旋转 · 滚轮缩放 · 右键升降": "Drag to orbit · Scroll to zoom · Right-drag to climb",
     "拖动平移 · 滚轮缩放 · 点击屏幕看日志": "Drag to pan · Scroll to zoom · Click a screen for logs",
+    "拖动旋转 · Shift+拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志": "Drag to orbit · Shift-drag to pan · Scroll to zoom · Double-click to reset · Click a screen for logs",
     "复位视角": "Reset view",
     "缩小": "Zoom out",
     "放大": "Zoom in",
