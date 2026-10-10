@@ -273,37 +273,37 @@ window.Hive3D = (function () {
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
       this.add(s,x,by-.42,bz+.005,.37,.70,.31,[.075,.09,.11,1]);
       this.add(s,x,by-.255,bz+.035,.255,.255,.235,[.08,.10,.12,1]);
-      this.add(rb,x,by-.47,bz+.345,.58,.082,.050,[.99,.68,.035,1]);
-      this.add(rb,x,by-.64,bz+.342,.54,.078,.050,[.96,.57,.025,1]);
-      this.add(rb,x,by-.555,bz+.348,.44,.040,.040,[.045,.055,.065,1]);
+      this.add(rb,x,by-.47,bz+.337,.58,.082,.050,[.99,.68,.035,1]);
+      this.add(rb,x,by-.64,bz+.271,.54,.078,.050,[.96,.57,.025,1]);
+      this.add(rb,x,by-.555,bz+.311,.44,.040,.040,[.045,.055,.065,1]);
       this.add(s,x,by,bz,.405,.37,.345,[1,.70,.045,1]);
       // The face points toward the monitor; the rear silhouette carries the headset details.
       for(const side of [-1,1]){
-        this.add(s,x+side*.31,by+.015,bz+.055,.083,.12,.10,[.045,.055,.065,1]);
-        this.add(s,x+side*.34,by+.015,bz+.060,.036,.056,.050,[.99,.68,.045,1]);
+        this.add(s,x+side*.31,by+.015,bz+.265,.083,.12,.10,[.045,.055,.065,1]);
+        this.add(s,x+side*.34,by+.015,bz+.300,.036,.056,.050,[.99,.68,.045,1]);
         this.add(this.cylinder,x+side*.105,by+.385,bz+.105,.016,.22,.016,[.045,.055,.065,1]);
         this.add(s,x+side*.105,by+.49,bz+.105,.036,.035,.036,[.10,.12,.14,1]);
         this.add(s,x+side*.105,by+.515,bz+.13,.021,.021,.021,[1,.73,.10,1]);
       }
-      this.add(rb,x,by-.335,bz+.275,.32,.026,.018,[.045,.055,.065,1]);
+      this.add(rb,x,by-.335,bz+.156,.32,.026,.018,[.045,.055,.065,1]);
       this.add(s,x,by+.30,bz+.18,.115,.035,.06,[.045,.055,.065,1]);
       // Short forward-projecting thighs tuck under the desktop and visually anchor the bee to its chair.
       for(const side of [-1,1]){
         this.add(s,x+side*.125,.625,z+.735,.105,.105,.32,[.075,.09,.11,1]);
         this.add(rb,x+side*.13,.625,z+.57,.11,.065,.15,[.99,.66,.035,1]);
       }
-      // Articulated arms sit outside the abdomen silhouette; metal-gray forearms lead to gold hands on the keys.
+      // Shoulders stay on the camera-facing side of the chassis; elbows and wrists arc back to the keyboard.
       for(const side of [-1,1]){
-        this.add(s,x+side*.34,.99,z+.79,.105,.13,.25,[.14,.17,.20,1]);
-        this.add(s,x+side*.465,.84,z+.605,.105,.105,.18,[.18,.22,.25,1]);
-        this.add(s,x+side*.445,.735,z+.425,.105,.082,.27,[.16,.20,.23,1]);
-        this.add(rb,x+side*.37,.665,z+.285,.125,.065,.12,[.96,.63,.035,1]);
-        this.add(s,x+side*.355,.650,z+.235,.078,.042,.080,[.98,.68,.045,1]);
-        for(let finger=0;finger<3;finger++)this.add(b,x+side*.355+(finger-1)*.026,.633,z+.185,.012,.010,.046,[.22,.29,.35,1]);
+        this.add(s,x+side*.31,.99,z+1.13,.105,.13,.20,[.14,.17,.20,1]);
+        this.add(s,x+side*.43,.84,z+.91,.105,.105,.16,[.18,.22,.25,1]);
+        this.add(s,x+side*.43,.735,z+.64,.105,.082,.25,[.16,.20,.23,1]);
+        this.add(rb,x+side*.37,.665,z+.38,.125,.065,.12,[.96,.63,.035,1]);
+        this.add(s,x+side*.355,.650,z+.32,.078,.042,.080,[.98,.68,.045,1]);
+        for(let finger=0;finger<3;finger++)this.add(b,x+side*.355+(finger-1)*.026,.633,z+.265,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
-      this.add(rb,x,by-.585,bz+.370,.15,.080,.030,[.025,.10,.14,1]);
-      this.add(rb,x,by-.585,bz+.391,.095,.020,.014,[.16,.88,.98,1]);
+      this.add(rb,x,by-.585,bz+.309,.15,.080,.030,[.025,.10,.14,1]);
+      this.add(rb,x,by-.585,bz+.326,.095,.020,.014,[.16,.88,.98,1]);
       // Glass wings sit around the shoulder line, closer to the body than the monitor plane,
       // with a restrained span so adjacent assistants do not merge into one cyan ribbon.
       this.add(this.organic,x-.39,by+.10,bz+.12,.80,1.22,.045,[.58,.84,1,.25],-.34,.18);
