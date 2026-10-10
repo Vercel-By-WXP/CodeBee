@@ -315,16 +315,18 @@ window.Hive3D = (function () {
     for(const x of [-9.05,9.05]){
       this.add(rb,x,.17,-4.70,.58,.34,.58,[.70,.77,.81,1]);
       this.add(this.cylinder,x,.70,-4.70,.065,.78,.065,[.31,.28,.19,1]);
-      // Broad pointed leaves grow radially from the stem instead of reading as green spikes.
-      for(let k=0;k<13;k++){
-        const a=k/13*Math.PI*2,spread=Math.sin(a)*.78;
-        const y=.98+(k%4)*.13,rad=.18+(k%3)*.105;
-        const leafColor=[[.045,.29,.15,1],[.055,.36,.18,1],[.08,.43,.22,1],[.13,.47,.25,1]][k%4];
-        this.add(this.organic,x+Math.sin(a)*rad,y,-4.70+Math.cos(a)*rad*.62,.52+(k%3)*.055,.70+(k%2)*.10,.055,leafColor,(k%5-2)*.28,Math.PI/2+spread);
+      // Layered foliage with varied yaw and drooping leaf tips, so the planters read as broad indoor plants.
+      for(let k=0;k<18;k++){
+        const a=k/18*Math.PI*2,spread=Math.sin(a)*.62;
+        const y=.94+(k%5)*.145,rad=.20+(k%4)*.095;
+        const leafColor=[[.045,.30,.15,1],[.055,.38,.19,1],[.075,.45,.22,1],[.15,.50,.27,1]][k%4];
+        this.add(this.organic,x+Math.sin(a)*rad,y,-4.70+Math.cos(a)*rad*.62,
+          .58+(k%3)*.065,.78+(k%4)*.10,.05,leafColor,a*.62-Math.PI*.18,Math.PI/2+spread);
       }
-      for(let k=0;k<5;k++){
-        const a=k/5*Math.PI*2,spread=Math.sin(a)*.58;
-        this.add(this.organic,x+Math.sin(a)*.11,1.72+(k%2)*.10,-4.70+Math.cos(a)*.12,.32,.48,.04,[.07,.36,.19,1],(k%3-1)*.24,Math.PI/2+spread);
+      for(let k=0;k<7;k++){
+        const a=k/7*Math.PI*2,spread=Math.sin(a)*.48;
+        this.add(this.organic,x+Math.sin(a)*.12,1.62+(k%3)*.10,-4.70+Math.cos(a)*.14,
+          .38,.60,.035,[.07,.40,.20,1],a*.65,Math.PI/2+spread);
       }
     }
     // Low-opacity contact shadows share the same 8+6 workstation positions.
