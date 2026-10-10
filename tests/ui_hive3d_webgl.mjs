@@ -130,7 +130,6 @@ async function main() {
       " const lanes=names.map((name,index)=>{const count=index<2?3:2;const cells=allCells.slice(cursor,cursor+count);cursor+=count;return{name,count:cells.length,settled:cells.filter(c=>!['running','queued'].includes(c.status)).length,active:cells.some(c=>c.status==='running'),cells};});",
       " scene.sync({runId:'release-smoke',lanes});scene.setActive(true);",
       " const monitor=viewport.querySelector('.hg-monitor'),badge=viewport.querySelector('.hg-badge');",
-      " const monitor=viewport.querySelector('.hg-monitor'),badge=viewport.querySelector('.hg-badge');",
       " const monitorCenters=Array.from(viewport.querySelectorAll('.hg-monitor')).map(el=>{const r=el.getBoundingClientRect();return[r.x+r.width/2,r.y+r.height/2]});",
       " return JSON.stringify({mode:scene.displayMode,referenceDisplay:getComputedStyle(viewport.querySelector('.hive-reference')).display,canvasHidden:canvas.hidden,info:scene.info(),deskRows:scene.info().deskRows,monitorCenters,monitors:viewport.querySelectorAll('.hg-monitor').length,visibleMonitors:Array.from(viewport.querySelectorAll('.hg-monitor')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,badges:viewport.querySelectorAll('.hg-badge').length,visibleBadges:Array.from(viewport.querySelectorAll('.hg-badge')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,flowLinks:viewport.querySelectorAll('.hg-flow-link').length,viewportRect:(()=>{const r=viewport.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})(),monitorRect:monitor?(()=>{const r=monitor.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null,badgeRect:badge?(()=>{const r=badge.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null});",
       "})()"
@@ -164,7 +163,7 @@ async function main() {
     writeFileSync(join(artifactDir, "hive3d-webgl.png"), Buffer.from(shot.result.data, "base64"));
 
     // Verify the alternate live renderer independently; the default screenshot above remains the artwork-backed reference.
-    await evaluate("document.querySelector('[data-hive-view=\\\"live3d\\\"]').click()");
+    await evaluate("document.querySelector('[data-hive-view=\"live3d\"]').click()");
     await sleep(100);
     const live3dState = JSON.parse(await evaluate([
       "(() => {",
@@ -175,7 +174,7 @@ async function main() {
       " const monitor=viewport.querySelector('.hg-monitor'),badge=viewport.querySelector('.hg-badge');",
       " return JSON.stringify({mode:scene.displayMode,referenceDisplay:getComputedStyle(viewport.querySelector('.hive-reference')).display,canvasHidden:canvas.hidden,canvas:[canvas.width,canvas.height],glError:gl?gl.getError():-1,glVersion:gl?gl.getParameter(gl.VERSION):'',nonBackgroundPixels,sampledColors:sampledColors.size,monitors:viewport.querySelectorAll('.hg-monitor').length,visibleMonitors:Array.from(viewport.querySelectorAll('.hg-monitor')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,badges:viewport.querySelectorAll('.hg-badge').length,visibleBadges:Array.from(viewport.querySelectorAll('.hg-badge')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,flowLinks:viewport.querySelectorAll('.hg-flow-link').length,monitorWidthStyle:monitor?monitor.style.width:'',viewportRect:(()=>{const r=viewport.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})(),monitorRect:monitor?(()=>{const r=monitor.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null,badgeRect:badge?(()=>{const r=badge.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null});",
       "})()"
-    ].join("\\n")));
+    ].join("\n")));
     assert.equal(live3dState.mode, "live3d", "free 3D mode is activated through the UI control");
     assert.equal(live3dState.referenceDisplay, "none", "reference image is hidden in free 3D mode");
     assert.equal(live3dState.canvasHidden, false, "WebGL canvas is visible in free 3D mode");
