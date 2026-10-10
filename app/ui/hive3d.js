@@ -105,7 +105,7 @@ window.Hive3D = (function () {
   Scene.prototype.buildWorld=function(){
     const b=this.box,rb=this.roundBox,s=this.sphere;this.objects=[];
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
-    this.add(b,0,-.18,0,19,.28,14,[.91,.95,.98,1]);
+    this.add(b,0,-.18,4.5,25,.28,27,[.91,.95,.98,1]);
     this.add(b,0,2.48,-6.45,19,5.2,.24,[.045,.16,.28,1]);
     this.add(b,0,4.98,-2.8,19,.16,7.3,[.98,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
@@ -185,10 +185,10 @@ window.Hive3D = (function () {
       this.add(s,x,by,bz,.35,.34,.32,[1,.70,.05,1]);
       this.add(s,x,by-.24,bz+.02,.28,.23,.26,[.98,.57,.035,1]);
       this.add(b,x,by-.19,bz+.245,.26,.065,.045,[.045,.055,.06,1]);
-      this.add(rb,x,by-.055,bz-.285,.285,.082,.06,[.025,.09,.13,1]);
-      this.add(rb,x,by-.055,bz-.322,.205,.026,.012,[.06,.48,.61,1]);
-      this.add(s,x-.105,by-.055,bz-.338,.022,.022,.018,[.18,.97,1,1]);
-      this.add(s,x+.105,by-.055,bz-.338,.022,.022,.018,[.18,.97,1,1]);
+      this.add(rb,x,by-.055,bz-.285,.255,.064,.05,[.018,.045,.07,1]);
+      this.add(rb,x,by-.055,bz-.322,.19,.028,.012,[.10,.76,.91,1]);
+      this.add(s,x-.09,by-.055,bz-.338,.017,.020,.014,[.28,1,1,1]);
+      this.add(s,x+.09,by-.055,bz-.338,.017,.020,.014,[.28,1,1,1]);
       this.add(s,x,by-.065,bz+.305,.20,.045,.018,[.045,.055,.06,1]);
       this.add(b,x-.13,by+.23,bz+.13,.028,.18,.028,[.08,.23,.31,1]);
       this.add(b,x+.13,by+.23,bz+.13,.028,.18,.028,[.08,.23,.31,1]);
