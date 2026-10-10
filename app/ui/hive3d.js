@@ -72,7 +72,7 @@ window.Hive3D = (function () {
   function Scene(opts){
     this.opts=opts;this.canvas=opts.canvas;this.overlay=opts.overlay;this.host=this.canvas.parentElement;
     this.onCellActivate=opts.onCellActivate||function(){};this.cellRefresh=opts.cellRefresh||function(){return{};};
-    this.model=null;this.cells=[];this.page=0;this.zoom=1.08;this.yaw=-0.18;this.pitch=0.28;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
+    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=-0.18;this.pitch=0.28;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
     this.host.dataset.renderer="webgl";this.canvas.hidden=false;this.canvas.classList.add("hive-gl-live");
     this.layer=node("div","hive-reference-layer",this.host);this.layer.appendChild(this.overlay);this.overlay.replaceChildren();
     try { this.initGL(); } catch(e) { console.error("CodeBee Hive3D WebGL init failed",e); this.failed=true; this.failure=e; return; }
@@ -146,7 +146,7 @@ window.Hive3D = (function () {
           const x0=cx+tileR*Math.cos(a0),z0=cz+tileR*Math.sin(a0);
           const x1=cx+tileR*Math.cos(a1),z1=cz+tileR*Math.sin(a1);
           const rotation=Math.atan2(-(z1-z0),x1-x0);
-          this.add(b,(x0+x1)/2,-.032,(z0+z1)/2,tileR,.008,.009,[.84,.89,.93,1],rotation);
+          this.add(b,(x0+x1)/2,-.032,(z0+z1)/2,tileR,.008,.009,[.91,.94,.96,1],rotation);
         }
       }
     }
@@ -183,7 +183,7 @@ window.Hive3D = (function () {
       this.add(s,x,by,bz,.35,.34,.32,[1,.70,.05,1]);
       this.add(s,x,by-.24,bz+.02,.28,.23,.26,[.98,.57,.035,1]);
       this.add(b,x,by-.19,bz+.245,.26,.065,.045,[.045,.055,.06,1]);
-      this.add(s,x,by-.055,bz-.285,.255,.145,.055,[.045,.055,.06,1]);
+      this.add(rb,x,by-.055,bz-.285,.285,.082,.06,[.025,.09,.13,1]);
       this.add(s,x-.105,by-.035,bz-.326,.035,.035,.026,[.08,.86,.98,1]);
       this.add(s,x+.105,by-.035,bz-.326,.035,.035,.026,[.08,.86,.98,1]);
       this.add(s,x,by-.065,bz+.305,.20,.045,.018,[.045,.055,.06,1]);
@@ -330,7 +330,7 @@ window.Hive3D = (function () {
   Scene.prototype.setActive=function(active){this.active=!!active;if(this.timer)clearInterval(this.timer);if(this.raf)cancelAnimationFrame(this.raf);this.raf=0;this.layer.hidden=!this.active;this.canvas.hidden=!this.active;if(this.active){this.updateOverlay();this.render();this.timer=setInterval(()=>{if(!document.hidden&&this.host.offsetParent!==null)this.updateOverlay();},1000);}};
   Scene.prototype.resize=function(){this.cssW=this.host.clientWidth;this.cssH=this.host.clientHeight;if(this.cssW&&this.cssH)this.render();};
   Scene.prototype.zoomAt=function(factor){this.zoom=clamp(this.zoom/factor,.72,2.4);this.render();};
-  Scene.prototype.resetView=function(){this.zoom=1.08;this.yaw=-.18;this.pitch=.28;this.panX=0;this.panY=0;this.render();};
+  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=-.18;this.pitch=.28;this.panX=0;this.panY=0;this.render();};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0,deskRows:this.deskPositions?[this.deskPositions.filter(d=>d.row===0).length,this.deskPositions.filter(d=>d.row===1).length]:[]};};
   Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,.995,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
   Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
