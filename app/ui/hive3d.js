@@ -86,10 +86,10 @@ window.Hive3D = (function () {
   Scene.prototype.initGL=function(){
     const gl=this.canvas.getContext("webgl",{alpha:true,antialias:true,powerPreference:"high-performance"})||this.canvas.getContext("experimental-webgl");
     if(!gl)throw Error("WebGL unavailable");this.gl=gl;
-    const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vec3 light=normalize(vec3(-0.40,0.82,0.48));vShade=0.58+0.42*max(0.0,dot(normalize(aNormal),light));}";
-    const fs="precision mediump float; varying vec4 vColor; varying float vShade; void main(){gl_FragColor=vec4(vColor.rgb*vShade,vColor.a);}";
+    const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);vec3 light=normalize(vec3(-0.40,0.82,0.48));float diffuse=max(0.0,dot(n,light));float sky=clamp(n.y*0.5+0.5,0.0,1.0);vShade=0.50+0.37*diffuse+0.13*sky;}";
+    const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 l=normalize(vec3(-0.40,0.82,0.48));vec3 v=normalize(uEyePosition-vWorld);vec3 h=normalize(l+v);float spec=pow(max(0.0,dot(n,h)),26.0)*0.085;float rim=pow(1.0-max(0.0,dot(n,v)),3.0)*0.045;vec3 lit=vColor.rgb*vShade+vec3(0.48,0.76,0.92)*(spec+rim);gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
-    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,4,.12);this.sphere=sphereGeometry(gl,16,24);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
+    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,4,.12);this.sphere=sphereGeometry(gl,16,24);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
   };
   Scene.prototype.listen=function(el,type,fn,opts){el.addEventListener(type,fn,opts);this.listeners.push(()=>el.removeEventListener(type,fn,opts));};
   Scene.prototype.bindSurface=function(){
@@ -135,10 +135,10 @@ window.Hive3D = (function () {
       this.add(b,x+1.05,3.58,-6.04,.09,.09,.08,[.38,.89,.96,1]);
     }
     // Subtle hexagonal grout follows the reference floor and is baked into the static GPU batch.
-    const tileR=.42, tileDX=1.5*tileR, tileDZ=Math.sqrt(3)*tileR;
-    for(let row=0;row<17;row++){
+    const tileR=.56, tileDX=1.5*tileR, tileDZ=Math.sqrt(3)*tileR;
+    for(let row=0;row<13;row++){
       const cz=-5.55+row*tileDZ;
-      for(let col=-14;col<=14;col++){
+      for(let col=-10;col<=10;col++){
         const cx=col*tileDX+(row%2)*tileDX/2;
         if(Math.abs(cx)>9.0)continue;
         for(let edge=0;edge<3;edge++){
@@ -146,7 +146,7 @@ window.Hive3D = (function () {
           const x0=cx+tileR*Math.cos(a0),z0=cz+tileR*Math.sin(a0);
           const x1=cx+tileR*Math.cos(a1),z1=cz+tileR*Math.sin(a1);
           const rotation=Math.atan2(-(z1-z0),x1-x0);
-          this.add(b,(x0+x1)/2,-.032,(z0+z1)/2,tileR,.008,.009,[.91,.94,.96,1],rotation);
+          this.add(b,(x0+x1)/2,-.032,(z0+z1)/2,tileR,.008,.009,[.92,.95,.97,1],rotation);
         }
       }
     }
@@ -161,6 +161,7 @@ window.Hive3D = (function () {
       const {row,z,width,screenWidth,screenHeight}=config;
       this.deskPositions.push({row,x,z,width,screenWidth,screenHeight});
       this.add(rb,x,.54,z,width,.15,1.20,[.89,.93,.96,1]);
+      this.add(b,x,.49,z-.603,width*.72,.014,.012,[.08,.42,.57,1]);
       this.add(rb,x-width*.36,.25,z+.03,.43,.52,1.02,[.80,.86,.91,1]);
       this.add(rb,x+width*.36,.25,z+.03,.43,.52,1.02,[.80,.86,.91,1]);
       this.add(rb,x,.43,z-.22,width*.78,.045,.74,[1,1,1,1]);
@@ -176,7 +177,8 @@ window.Hive3D = (function () {
       for(let k=0;k<4;k++)this.add(b,binderStart+k*.095,.83,z+.35,.075,.43,.22,[[.13,.43,.78,1],[.95,.42,.24,1],[.16,.66,.46,1],[.93,.72,.28,1]][k]);
       this.add(b,x,.08,z+1.10,.10,.28,.10,[.12,.15,.18,1]);
       this.add(rb,x,.22,z+1.10,.62,.12,.56,[.11,.14,.17,1]);
-      this.add(rb,x,.57,z+1.35,.62,.72,.16,[.10,.13,.16,1]);
+      this.add(rb,x,.57,z+1.35,.62,.72,.16,[.075,.11,.15,1]);
+      this.add(rb,x,.57,z+1.434,.42,.48,.018,[.13,.18,.22,1]);
       this.add(rb,x,.48,z+1.25,.48,.12,.12,[.18,.22,.25,1]);
       for(let k=0;k<5;k++){const a=k*Math.PI*2/5;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);}
       const by=1.25,bz=z+.88;
@@ -184,11 +186,14 @@ window.Hive3D = (function () {
       this.add(s,x,by-.24,bz+.02,.28,.23,.26,[.98,.57,.035,1]);
       this.add(b,x,by-.19,bz+.245,.26,.065,.045,[.045,.055,.06,1]);
       this.add(rb,x,by-.055,bz-.285,.285,.082,.06,[.025,.09,.13,1]);
-      this.add(s,x-.105,by-.035,bz-.326,.035,.035,.026,[.08,.86,.98,1]);
-      this.add(s,x+.105,by-.035,bz-.326,.035,.035,.026,[.08,.86,.98,1]);
+      this.add(rb,x,by-.055,bz-.322,.205,.026,.012,[.06,.48,.61,1]);
+      this.add(s,x-.105,by-.055,bz-.338,.022,.022,.018,[.18,.97,1,1]);
+      this.add(s,x+.105,by-.055,bz-.338,.022,.022,.018,[.18,.97,1,1]);
       this.add(s,x,by-.065,bz+.305,.20,.045,.018,[.045,.055,.06,1]);
-      this.add(b,x-.13,by+.23,bz+.13,.028,.18,.028,[.08,.09,.10,1]);
-      this.add(b,x+.13,by+.23,bz+.13,.028,.18,.028,[.08,.09,.10,1]);
+      this.add(b,x-.13,by+.23,bz+.13,.028,.18,.028,[.08,.23,.31,1]);
+      this.add(b,x+.13,by+.23,bz+.13,.028,.18,.028,[.08,.23,.31,1]);
+      this.add(s,x-.13,by+.34,bz+.13,.035,.032,.035,[.10,.84,.98,1]);
+      this.add(s,x+.13,by+.34,bz+.13,.035,.032,.035,[.10,.84,.98,1]);
       for(const side of [-1,1]){
         this.add(s,x+side*.22,by-.28,bz-.11,.10,.11,.20,[.98,.62,.035,1]);
         this.add(s,x+side*.27,by-.40,bz-.43,.10,.08,.38,[.99,.66,.045,1]);
@@ -201,7 +206,7 @@ window.Hive3D = (function () {
     // Planters and stylized leaves soften the room edges.
     for(const x of [-8.05,8.05]){
       this.add(rb,x,.17,-4.25,.62,.34,.62,[.70,.77,.81,1]);
-      for(let k=0;k<9;k++){const a=k*2.399;this.add(s,x+Math.cos(a)*.40,.80+(k%4)*.18,-4.25+Math.sin(a)*.34,.12,.43,.12,[.12,.48+(k%3)*.05,.22,1],a);}
+      for(let k=0;k<7;k++){const a=k*2.399;this.add(s,x+Math.cos(a)*.36,.80+(k%4)*.15,-4.25+Math.sin(a)*.30,.10,.36,.10,[.08,.32+(k%3)*.035,.22,1],a);}
     }
     // Low-opacity contact shadows share the same 8+6 workstation positions.
     for(const desk of this.deskPositions){
@@ -254,7 +259,7 @@ window.Hive3D = (function () {
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
     const radius=16/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.34,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.25,0],[0,1,0]);const proj=mat4.perspective(.73,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
-    gl.uniformMatrix4fv(this.uViewProj,false,vp);
+    gl.uniformMatrix4fv(this.uViewProj,false,vp);gl.uniform3f(this.uEyePosition,eye[0],eye[1],eye[2]);
     this.drawBatch(this.batchBuffers&&this.batchBuffers.opaque);
     const translucent=this.batchBuffers&&this.batchBuffers.transparent;
     if(translucent&&translucent.count){gl.depthMask(false);this.drawBatch(translucent);gl.depthMask(true);}
