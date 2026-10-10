@@ -98,12 +98,13 @@ window.Hive3D = (function () {
     const positions=[],normals=[],indices=[],seen=new Set();
     const radius=.44,stepX=1.5*radius,stepZ=Math.sqrt(3)*radius,halfWidth=.0038,y=-.031;
     const keyPoint=(x,z)=>Math.round(x*10000)+","+Math.round(z*10000);
-    for(let row=0;row<40;row++){
-      const cz=-6.45+row*stepZ;
-      if(cz>22.5)break;
-      for(let col=-17;col<=17;col++){
-        const cx=col*stepX+(row%2)*stepX/2;
-        if(Math.abs(cx)>10.6)continue;
+    // Flat-top hexes stagger by column (not by row); this keeps every shared edge aligned.
+    for(let col=-17;col<=17;col++){
+      const cx=col*stepX;
+      if(Math.abs(cx)>10.6)continue;
+      for(let row=0;row<40;row++){
+        const cz=-6.45+row*stepZ+(Math.abs(col%2)?stepZ/2:0);
+        if(cz>22.5)break;
         for(let edge=0;edge<6;edge++){
           const a0=edge*Math.PI/3,a1=(edge+1)*Math.PI/3;
           const x0=cx+radius*Math.cos(a0),z0=cz+radius*Math.sin(a0);
