@@ -200,15 +200,19 @@ DEFAULT_CATALOG = [
     {
         "id": "trae-agent", "name": "Trae Agent", "cli_group": "installable",
         "note": "字节跳动开源 trae-agent；可执行名 trae-cli；PyPI 无包，uv tool 从 "
-                "GitHub 直装（Python ≥3.12）；无头 trae-cli run \"提示词\"（一次性任务"
-                "形态）；配置 trae_config.yaml 默认找当前工作目录（TRAE_CONFIG_FILE "
-                "可指定），默认模型是 agents.trae_agent.model 指向 models 表别名的两层"
-                "引用，CodeBee 暂不托管其模型落盘——绑定模型请在 trae_config.yaml 自配",
+                "GitHub 直装（Python ≥3.12）；--with 钉 cryptography<49——49.0.0 起"
+                "上游不再发 Intel Mac wheel，缺 brew 的 Mac 落 sdist 编译必死于 "
+                "openssl-sys；无头 trae-cli run \"提示词\"（一次性任务形态）；配置 "
+                "trae_config.yaml 默认找当前工作目录（TRAE_CONFIG_FILE 可指定），"
+                "默认模型是 agents.trae_agent.model 指向 models 表别名的两层引用，"
+                "CodeBee 暂不托管其模型落盘——绑定模型请在 trae_config.yaml 自配",
         "detect": {"cli": "trae-cli"},
         "orch": {"kind": "generic", "command": "trae-cli", "argv_template": ["run", "{prompt}"]},
         "config": {"path": "~/.trae/trae_config.yaml", "format": None, "model_key": None},
-        "install": "uv tool install --python 3.12 git+https://github.com/bytedance/trae-agent",
-        "upgrade": "uv tool install --force --python 3.12 git+https://github.com/bytedance/trae-agent",
+        "install": 'uv tool install --python 3.12 --with "cryptography<49"'
+                   " git+https://github.com/bytedance/trae-agent",
+        "upgrade": 'uv tool install --force --python 3.12 --with "cryptography<49"'
+                   " git+https://github.com/bytedance/trae-agent",
         "uninstall": "uv tool uninstall trae-agent",
         "default_enabled": False,
     },
@@ -395,6 +399,24 @@ def _apply_install_patch(entries):
         cur = (e.get("install") or "").strip()
         if "pip" in cur and "install" in cur:
             e["install"], e["upgrade"] = aider_uv
+    # trae-agent 经 google-genai→google-auth 拉 cryptography，而 cryptography
+    # 49.0.0 起不再发 Intel Mac wheel（只剩 macosx_11_0_arm64）——uv 找不到
+    # wheel 落 sdist 经 maturin/cargo 编译，openssl-sys 在无 brew 的 Mac 上
+    # 缺 pkg-config/OpenSSL 开发头必死（2026-10-10 Mac 实案）。钉 <49（48.x
+    # 是最后带 macosx_10_9_universal2 的系列，google-auth 只要求 >=38.0.3）
+    # 让 uv 恒走预编译 wheel。凡 uv 形态且未钉 cryptography 的旧命令一律
+    # 迁移——钉版是兼容底线不是偏好，trae 的安装命令本就无人手改。
+    trae_pinned = ('uv tool install --python 3.12 --with "cryptography<49"'
+                   " git+https://github.com/bytedance/trae-agent")
+    trae_upgrade_pinned = ('uv tool install --force --python 3.12'
+                           ' --with "cryptography<49"'
+                           " git+https://github.com/bytedance/trae-agent")
+    for e in entries:
+        if e.get("id") != "trae-agent":
+            continue
+        cur = (e.get("install") or "").strip()
+        if "uv tool install" in cur and "cryptography<" not in cur:
+            e["install"], e["upgrade"] = trae_pinned, trae_upgrade_pinned
     if sys.platform == "win32":
         return
     for e in entries:
