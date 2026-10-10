@@ -10389,7 +10389,7 @@ function codeThemeFor(mode) {
   return ok ? ok.id : (mode === "dark" ? "github-dark" : "github");
 }
 function codeLineNum() { return localStorage.getItem(CT_LINENUM_KEY) !== "0"; }   // 缺省开
-function codeWrap() { return localStorage.getItem(CT_WRAP_KEY) === "1"; }
+function codeWrap() { return localStorage.getItem(CT_WRAP_KEY) !== "0"; }   // 缺省开：长行自动换行，别撑出横向滚动条
 function codeFontSize() {
   const n = parseFloat(localStorage.getItem(CT_SIZE_KEY) || "12.5");
   return isFinite(n) ? Math.min(22, Math.max(10, n)) : 12.5;
