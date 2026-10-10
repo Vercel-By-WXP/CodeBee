@@ -72,7 +72,7 @@ window.Hive3D = (function () {
   function Scene(opts){
     this.opts=opts;this.canvas=opts.canvas;this.overlay=opts.overlay;this.host=this.canvas.parentElement;
     this.onCellActivate=opts.onCellActivate||function(){};this.cellRefresh=opts.cellRefresh||function(){return{};};
-    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=-0.18;this.pitch=0.50;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
+    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=0;this.pitch=0.42;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
     this.host.dataset.renderer="webgl";this.canvas.hidden=false;this.canvas.classList.add("hive-gl-live");
     this.layer=node("div","hive-reference-layer",this.host);this.layer.appendChild(this.overlay);this.overlay.replaceChildren();
     try { this.initGL(); } catch(e) { console.error("CodeBee Hive3D WebGL init failed",e); this.failed=true; this.failure=e; return; }
@@ -106,11 +106,11 @@ window.Hive3D = (function () {
     const b=this.box,rb=this.roundBox,s=this.sphere;this.objects=[];
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
     this.add(b,0,-.18,-.20,23,.28,15.4,[.97,.985,1,1]);
-    this.add(b,0,2.48,-6.45,19,5.2,.24,[.10,.52,.89,1]);
+    this.add(b,0,2.70,-6.45,19,3.65,.24,[.10,.52,.89,1]);
     this.add(b,0,5.10,-5.92,19,.18,1.12,[.98,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
-    this.add(b,0,.18,-6.28,18.7,.12,.06,[.08,.42,.78,1]);
-    for(let x=-8;x<=8;x+=2.65)this.add(b,x,2.5,-6.29,.018,4.7,.025,[.12,.40,.72,1]);
+    this.add(b,0,.90,-6.28,18.7,.12,.06,[.08,.42,.78,1]);
+    for(let x=-8;x<=8;x+=2.65)this.add(b,x,2.70,-6.29,.018,3.40,.025,[.12,.40,.72,1]);
     for(const side of [-1,1]){
       // Open-framed side glazing: avoid opaque side slabs that visually cut the room into boxes.
       for(const y of [.12,4.62])this.add(b,side*8.95,y,-.15,.075,.075,11.9,[.78,.87,.93,1]);
@@ -129,10 +129,10 @@ window.Hive3D = (function () {
       const x=-7.75+i*3.10;
     }
     // The reference uses a continuous luminous workflow rail below the six white phase pills.
-    this.add(b,0,2.55,-6.005,15.8,.035,.024,[.22,.89,1,1]);
+    this.add(b,0,2.10,-6.005,15.8,.035,.024,[.22,.89,1,1]);
     for(let i=0;i<6;i++){
       const x=-7.75+i*3.10;
-      this.add(b,x,2.845,-6.005,.035,.59,.024,[.22,.89,1,1]);
+      this.add(b,x,2.34,-6.005,.035,.48,.024,[.22,.89,1,1]);
     }
     // Subtle hexagonal grout follows the reference floor and is baked into the static GPU batch.
     const tileR=.56, tileDX=1.5*tileR, tileDZ=Math.sqrt(3)*tileR;
@@ -266,7 +266,7 @@ window.Hive3D = (function () {
     if(!this.gl||!this.active)return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
-    const radius=15.8/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.62,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.48,0],[0,1,0]);const proj=mat4.perspective(.62,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
+    const radius=15.8/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.62,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.48,0],[0,1,0]);const proj=mat4.perspective(.70,w/h,.1,70);proj[0]*=1.15;const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
     gl.uniformMatrix4fv(this.uViewProj,false,vp);gl.uniform3f(this.uEyePosition,eye[0],eye[1],eye[2]);
     this.drawBatch(this.batchBuffers&&this.batchBuffers.opaque);
     const translucent=this.batchBuffers&&this.batchBuffers.transparent;
@@ -294,7 +294,7 @@ window.Hive3D = (function () {
     // Stage labels occupy the front face of each physical wall panel, rather than a fixed HUD row.
     this.stageMeta.forEach((p,i)=>{
       const x=-7.75+i*3.10,z=-6.07;
-      const rect=this.projectRect([[x-1.34,3.11,z],[x+1.34,3.11,z],[x+1.34,4.05,z],[x-1.34,4.05,z]]);
+      const rect=this.projectRect([[x-1.34,2.58,z],[x+1.34,2.58,z],[x+1.34,3.52,z],[x-1.34,3.52,z]]);
       if(!rect){p.el.style.visibility="hidden";return;}
       p.el.style.visibility="visible";
       p.el.style.left=(rect.centerX/this.cssW*100)+"%";
@@ -306,7 +306,7 @@ window.Hive3D = (function () {
     // Connectors stay on the wall plane and follow the same camera transform as the cards.
     this.links.forEach((link,i)=>{
       const leftX=-7.75+i*3.10+1.40,rightX=-7.75+(i+1)*3.10-1.40;
-      const a=this.projectWorld(leftX,3.58,-6.03),b=this.projectWorld(rightX,3.58,-6.03);
+      const a=this.projectWorld(leftX,3.05,-6.03),b=this.projectWorld(rightX,3.05,-6.03);
       if(!a||!b||!a.visible||!b.visible){link.style.visibility="hidden";return;}
       const dx=b.x-a.x,dy=b.y-a.y;
       link.style.visibility="visible";
@@ -343,7 +343,7 @@ window.Hive3D = (function () {
   Scene.prototype.setActive=function(active){this.active=!!active;if(this.timer)clearInterval(this.timer);if(this.raf)cancelAnimationFrame(this.raf);this.raf=0;this.layer.hidden=!this.active;this.canvas.hidden=!this.active;if(this.active){this.updateOverlay();this.render();this.timer=setInterval(()=>{if(!document.hidden&&this.host.offsetParent!==null)this.updateOverlay();},1000);}};
   Scene.prototype.resize=function(){this.cssW=this.host.clientWidth;this.cssH=this.host.clientHeight;if(this.cssW&&this.cssH)this.render();};
   Scene.prototype.zoomAt=function(factor){this.zoom=clamp(this.zoom/factor,.72,2.4);this.render();};
-  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=-.18;this.pitch=.50;this.panX=0;this.panY=0;this.render();};
+  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=0;this.pitch=.42;this.panX=0;this.panY=0;this.render();};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0,deskRows:this.deskPositions?[this.deskPositions.filter(d=>d.row===0).length,this.deskPositions.filter(d=>d.row===1).length]:[]};};
   Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,.995,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
   Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
