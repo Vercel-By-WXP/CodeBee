@@ -17,6 +17,9 @@ I18N = (ROOT / "ui" / "i18n.js").read_text(encoding="utf-8")
 
 class HiveSceneContractTests(unittest.TestCase):
     def test_hive_scene_has_gl_host_and_accessible_controls(self):
+        self.assertIn('id="hive-scene-stage"', INDEX)
+        self.assertIn('id="hive-scene-fullscreen"', INDEX)
+        self.assertIn('data-i18n="全屏"', INDEX)
         self.assertIn('id="rd-hive-viewport"', INDEX)
         self.assertIn('id="rd-hive-gl"', INDEX)
         self.assertIn('id="rd-hive-overlay"', INDEX)
@@ -91,6 +94,10 @@ class HiveSceneContractTests(unittest.TestCase):
 
     def test_app_wiring_mode_persist_and_fallback(self):
         self.assertIn("function setupHiveSceneControls", APP)
+        self.assertIn("function toggleHiveFullscreen", APP)
+        self.assertIn("fullscreenchange", APP)
+        self.assertIn("requestFullscreen", APP)
+        self.assertIn("exitFullscreen", APP)
         self.assertIn("function hiveSceneSync", APP)
         self.assertIn("function ensureHiveScene", APP)
         self.assertIn("orch.hiveView.v2", APP)
@@ -107,6 +114,8 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn(".hive-reference-artboard", STYLE)
         self.assertIn('display: block !important', STYLE)
         self.assertIn("#rd-hive-viewport.hive-mode-2d", STYLE)
+        self.assertIn(".hive-scene-stage:fullscreen", STYLE)
+        self.assertIn("object-fit: contain", STYLE)
         self.assertIn("#rd-hive-viewport.hive-mode-3d #rd-hive-cells", STYLE)
         self.assertIn("@media (prefers-reduced-motion: reduce)", STYLE)
 
@@ -126,6 +135,8 @@ class HiveSceneContractTests(unittest.TestCase):
 
     def test_i18n_covers_3d_scene_strings(self):
         self.assertIn("拖动旋转 · 滚轮缩放 · 右键升降", I18N)
+        self.assertIn('"全屏": "Fullscreen"', I18N)
+        self.assertIn('"退出全屏": "Exit fullscreen"', I18N)
         self.assertIn("当前环境不支持 WebGL，已切换 2D 列表", I18N)
         self.assertIn("3D 场景不可用，已切换 2D 列表", I18N)
         self.assertIn("点击格子看日志", I18N)

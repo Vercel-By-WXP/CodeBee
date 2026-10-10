@@ -8737,10 +8737,49 @@ function setHiveSceneMode(mode, opts) {
   try { localStorage.setItem("orch.hiveView.v2", hiveMode); } catch (e) { /* 隐私模式等 */ }
 }
 
+function syncHiveFullscreenButton() {
+  const stage = $("hive-scene-stage");
+  const button = $("hive-scene-fullscreen");
+  const active = !!stage && document.fullscreenElement === stage;
+  if (stage) stage.classList.toggle("is-fullscreen", active);
+  if (!button) return;
+  const textKey = active ? "退出全屏" : "全屏";
+  const labelKey = active ? "退出全屏" : "进入全屏";
+  button.dataset.i18n = textKey;
+  button.dataset.i18nTitle = labelKey;
+  button.dataset.i18nAria = labelKey;
+  button.textContent = t(textKey);
+  button.title = t(labelKey);
+  button.setAttribute("aria-label", t(labelKey));
+  button.setAttribute("aria-pressed", active ? "true" : "false");
+}
+
+async function toggleHiveFullscreen() {
+  const stage = $("hive-scene-stage");
+  if (!stage) return;
+  try {
+    if (document.fullscreenElement === stage) {
+      await document.exitFullscreen();
+      return;
+    }
+    if (typeof stage.requestFullscreen !== "function" || document.fullscreenEnabled === false) {
+      toast(t("当前浏览器不支持全屏"), true);
+      return;
+    }
+    await stage.requestFullscreen();
+  } catch (error) {
+    toast(t("全屏失败：") + (error && error.message ? error.message : ""), true);
+  }
+}
+
 function setupHiveSceneControls() {
   const viewport = $("rd-hive-viewport");
   if (!viewport || viewport.dataset.controlsReady) return;
   viewport.dataset.controlsReady = "true";
+  const fullscreenButton = $("hive-scene-fullscreen");
+  if (fullscreenButton) fullscreenButton.addEventListener("click", toggleHiveFullscreen);
+  document.addEventListener("fullscreenchange", syncHiveFullscreenButton);
+  syncHiveFullscreenButton();
   const hiveDialog = $("hive-log-dialog");
   const hiveClose = $("hive-log-close");
   if (hiveClose) hiveClose.addEventListener("click", closeHiveMonitorLog);

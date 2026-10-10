@@ -11,6 +11,11 @@
   // 字典：键 = 中文原文；值 = 英文译文。未命中即回落中文。
   const EN = {
     "蜂巢视图控制": "Hive view controls",
+    "全屏": "Fullscreen",
+    "进入全屏": "Enter fullscreen",
+    "退出全屏": "Exit fullscreen",
+    "当前浏览器不支持全屏": "Fullscreen is not supported by this browser",
+    "全屏失败：": "Fullscreen failed: ",
     "视图模式": "View mode",
     "高保真视图": "Reference view",
     "自由 3D": "Free 3D",

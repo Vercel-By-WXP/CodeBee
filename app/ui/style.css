@@ -7754,3 +7754,40 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 #rd-hive-viewport.hive-mode-live3d .hg-monitor-tail {
   text-shadow: 0 1px 2px rgba(0, 12, 24, .92);
 }
+
+/* Fullscreen applies to the reference artwork, live WebGL and 2D fallback alike. */
+.hive-scene-stage { min-width: 0; }
+.hive-scene-fullscreen { min-width: 64px; }
+.hive-scene-stage:fullscreen,
+.hive-scene-stage.is-fullscreen {
+  display: flex; flex-direction: column; gap: 8px;
+  width: 100vw; height: 100vh; min-width: 0; max-width: none;
+  margin: 0; padding: 12px 16px 16px; box-sizing: border-box; overflow: hidden;
+  border: 0; border-radius: 0; background: #eaf3fa; color: #183750;
+}
+.hive-scene-stage:fullscreen .hive-scene-tools,
+.hive-scene-stage.is-fullscreen .hive-scene-tools {
+  flex: 0 0 auto; flex-wrap: wrap; width: 100%; min-height: 38px;
+  margin: 0; gap: 8px; box-sizing: border-box;
+}
+.hive-scene-stage:fullscreen .hive-viewport,
+.hive-scene-stage.is-fullscreen .hive-viewport {
+  flex: 1 1 auto; width: 100%; height: auto; min-height: 0;
+  aspect-ratio: auto; border-radius: 12px;
+}
+.hive-scene-stage:fullscreen .hive-viewport .hive-reference,
+.hive-scene-stage.is-fullscreen .hive-viewport .hive-reference {
+  object-fit: contain; background: #eaf3fa;
+}
+.hive-scene-stage:fullscreen .hive-viewport.hive-mode-2d,
+.hive-scene-stage.is-fullscreen .hive-viewport.hive-mode-2d {
+  flex: 1 1 auto; height: auto; min-height: 0; overflow: auto;
+}
+@media (max-width: 680px) {
+  .hive-scene-stage:fullscreen,
+  .hive-scene-stage.is-fullscreen { padding: 8px; gap: 6px; }
+  .hive-scene-stage:fullscreen .hive-scene-tools,
+  .hive-scene-stage.is-fullscreen .hive-scene-tools { gap: 5px; }
+  .hive-scene-stage:fullscreen .hive-scene-hint,
+  .hive-scene-stage.is-fullscreen .hive-scene-hint { display: none; }
+}
