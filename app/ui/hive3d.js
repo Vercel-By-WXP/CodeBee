@@ -72,16 +72,12 @@ window.Hive3D = (function () {
   function Scene(opts){
     this.opts=opts;this.canvas=opts.canvas;this.overlay=opts.overlay;this.host=this.canvas.parentElement;
     this.onCellActivate=opts.onCellActivate||function(){};this.cellRefresh=opts.cellRefresh||function(){return{};};
-    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=-0.18;this.pitch=0.19;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
+    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=-0.18;this.pitch=0.40;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
     this.host.dataset.renderer="webgl";this.canvas.hidden=false;this.canvas.classList.add("hive-gl-live");
     this.layer=node("div","hive-reference-layer",this.host);this.layer.appendChild(this.overlay);this.overlay.replaceChildren();
     try { this.initGL(); } catch(e) { console.error("CodeBee Hive3D WebGL init failed",e); this.failed=true; this.failure=e; return; }
     this.stageMeta=PLATES.map(([x,y],i)=>{const el=node("button","hg-badge",this.overlay);el.type="button";el.style.left="0%";el.style.top="0%";const name=node("b","hg-name",el),meta=node("span","hg-meta",el);this.listen(el,"click",()=>{const lane=this.stageMeta[i].lane;if(!lane)return;const cell=lane.cells.find(c=>c.status==="running")||lane.cells[lane.cells.length-1];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,name,meta,lane:null};});
     this.links=Array.from({length:PLATES.length-1},()=>node("span","hg-flow-link",this.overlay));
-    this.roomSign=node("div","hg-room-sign",this.overlay);
-    const signBrand=node("span","hg-room-kicker",this.roomSign);signBrand.textContent="CODEBEE";
-    const signTitle=node("b","hg-room-title",this.roomSign);signTitle.textContent="HIVE OPERATIONS";
-    const signLive=node("span","hg-room-live",this.roomSign);signLive.textContent="● LIVE ORCHESTRATION";
     this.monitors=SCREENS.map(([x,y,w,h],i)=>{const el=node("button", "hg-monitor", this.overlay);el.type="button";el.style.left="0%";el.style.top="0%";el.style.width=(w/2048*100)+"%";el.style.height=(h/1151*100)+"%";const role=node("b","hg-monitor-role",el),status=node("span","hg-monitor-status",el),tail=node("span","hg-monitor-tail",el),time=node("span","hg-monitor-time",el);this.listen(el,"click",()=>{const cell=this.screenMeta[i];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,role,status,tail,time};});
     const toolbar=this.host.parentElement.querySelector(".hive-scene-tools");this.pager=node("div","hive-scene-pager");this.pager.hidden=true;this.prev=node("button","hive-scene-btn",this.pager);this.prev.type="button";this.prev.textContent="‹";this.pageLabel=node("span","hive-scene-page-label",this.pager);this.next=node("button","hive-scene-btn",this.pager);this.next.type="button";this.next.textContent="›";if(toolbar)toolbar.insertBefore(this.pager,toolbar.querySelector(".hive-scene-spacer"));
     this.listen(this.prev,"click",()=>this.showPage(this.page-1));this.listen(this.next,"click",()=>this.showPage(this.page+1));this.bindSurface();
@@ -90,7 +86,7 @@ window.Hive3D = (function () {
   Scene.prototype.initGL=function(){
     const gl=this.canvas.getContext("webgl",{alpha:true,antialias:true,powerPreference:"high-performance"})||this.canvas.getContext("experimental-webgl");
     if(!gl)throw Error("WebGL unavailable");this.gl=gl;
-    const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);vec3 key=normalize(vec3(-0.45,0.86,0.38));vec3 fill=normalize(vec3(0.58,0.33,-0.74));float diffuse=max(0.0,dot(n,key));float rimFill=max(0.0,dot(n,fill));float sky=clamp(n.y*0.5+0.5,0.0,1.0);float heightShade=mix(0.82,1.0,smoothstep(-0.2,2.2,aPosition.y));vShade=(0.38+0.43*diffuse+0.11*sky+0.08*rimFill)*heightShade;}";
+    const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);vec3 key=normalize(vec3(-0.45,0.86,0.38));vec3 fill=normalize(vec3(0.58,0.33,-0.74));float diffuse=max(0.0,dot(n,key));float rimFill=max(0.0,dot(n,fill));float sky=clamp(n.y*0.5+0.5,0.0,1.0);float heightShade=mix(0.90,1.0,smoothstep(-0.2,2.2,aPosition.y));vShade=(0.66+0.22*diffuse+0.08*sky+0.04*rimFill)*heightShade;}";
     const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 l=normalize(vec3(-0.45,0.86,0.38));vec3 fill=normalize(vec3(0.58,0.33,-0.74));vec3 v=normalize(uEyePosition-vWorld);vec3 h=normalize(l+v);vec3 hf=normalize(fill+v);float spec=pow(max(0.0,dot(n,h)),32.0)*0.15;float warmSpec=pow(max(0.0,dot(n,hf)),38.0)*0.05;float rim=pow(1.0-max(0.0,dot(n,v)),2.5)*0.075;vec3 highlight=vec3(0.48,0.83,0.96)*spec+vec3(0.98,0.62,0.31)*warmSpec+vec3(0.18,0.58,0.82)*rim;vec3 lit=vColor.rgb*vShade+highlight;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
     this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,4,.12);this.sphere=sphereGeometry(gl,16,24);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
@@ -109,12 +105,12 @@ window.Hive3D = (function () {
   Scene.prototype.buildWorld=function(){
     const b=this.box,rb=this.roundBox,s=this.sphere;this.objects=[];
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
-    this.add(b,0,-.18,-.20,23,.28,15.4,[.69,.77,.84,1]);
-    this.add(b,0,2.48,-6.45,19,5.2,.24,[.018,.065,.125,1]);
+    this.add(b,0,-.18,-.20,23,.28,15.4,[.97,.985,1,1]);
+    this.add(b,0,2.48,-6.45,19,5.2,.24,[.055,.36,.72,1]);
     this.add(b,0,4.98,-2.8,19,.16,7.3,[.98,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
-    this.add(b,0,.18,-6.28,18.7,.12,.06,[.10,.34,.47,1]);
-    for(let x=-8;x<=8;x+=2.65)this.add(b,x,2.5,-6.29,.018,4.7,.025,[.075,.25,.37,1]);
+    this.add(b,0,.18,-6.28,18.7,.12,.06,[.08,.42,.78,1]);
+    for(let x=-8;x<=8;x+=2.65)this.add(b,x,2.5,-6.29,.018,4.7,.025,[.12,.40,.72,1]);
     for(const side of [-1,1]){
       // Open-framed side glazing: avoid opaque side slabs that visually cut the room into boxes.
       for(const y of [.12,4.62])this.add(b,side*8.95,y,-.15,.075,.075,11.9,[.78,.87,.93,1]);
@@ -128,16 +124,12 @@ window.Hive3D = (function () {
       this.add(b,x,4.87,-1.8,2.65,.075,.30,[.20,.24,.29,1]);
       this.add(b,x,4.80,-1.8,2.40,.045,.24,[1,.99,.91,1]);
     }
-    // A physical fascia gives the room a deliberate, branded focal point.
-    this.add(rb,0,4.45,-6.16,6.1,.62,.18,[.025,.095,.145,1]);
-    this.add(b,-2.95,4.45,-6.057,.028,.34,.012,[.12,.72,.83,1]);
-    this.add(b,2.95,4.45,-6.057,.028,.34,.012,[.12,.72,.83,1]);
     // Six stage cards mounted on the blue wall, with luminous cyan underlines.
     const stageColors=[[.22,.83,.94,1],[.24,.80,.93,1],[.27,.84,.96,1],[.20,.87,.95,1],[.25,.81,.95,1],[.28,.88,.95,1]];
     for(let i=0;i<6;i++){
       const x=-7.1+i*2.84;
-      this.add(rb,x,3.58,-6.16,2.40,.82,.18,[.10,.30,.42,1]);
-      this.add(rb,x,3.58,-6.04,2.28,.68,.045,[.035,.11,.18,1]);
+      this.add(rb,x,3.58,-6.16,2.40,.82,.18,[.63,.82,.97,1]);
+      this.add(rb,x,3.58,-6.04,2.28,.68,.045,[.97,.99,1,1]);
       this.add(b,x,3.87,-6.012,1.86,.018,.008,[.18,.66,.80,1]);
       this.add(b,x,3.14,-6.03,1.86,.035,.025,stageColors[i]);
       this.add(b,x+1.05,3.58,-6.04,.09,.09,.08,[.38,.89,.96,1]);
@@ -158,24 +150,20 @@ window.Hive3D = (function () {
         }
       }
     }
-    // Thin perimeter lighting makes the floor feel built into the room, not like a floating plane.
-    this.add(rb,0,-.012,-7.82,21.4,.035,.075,[.045,.36,.45,1]);
-    this.add(rb,0,-.012,7.22,21.4,.035,.075,[.045,.36,.45,1]);
-    for(const side of [-1,1])this.add(rb,side*10.62,-.012,-.18,.055,.03,14.8,[.045,.25,.34,1]);
     // Reference layout: eight compact rear stations and six wider front stations.
     // Every monitor overlay is projected from these exact same coordinates below.
     const deskRows=[
-      {row:0,z:-2.15,width:2.03,screenWidth:.98,screenHeight:.60,xs:[-7.77,-5.55,-3.33,-1.11,1.11,3.33,5.55,7.77]},
-      {row:1,z:2.95,width:2.42,screenWidth:1.10,screenHeight:.66,xs:[-7.0,-4.2,-1.4,1.4,4.2,7.0]}
+      {row:0,z:-2.65,width:2.03,screenWidth:1.28,screenHeight:.70,xs:[-7.77,-5.55,-3.33,-1.11,1.11,3.33,5.55,7.77]},
+      {row:1,z:2.95,width:2.42,screenWidth:1.48,screenHeight:.82,xs:[-7.0,-4.2,-1.4,1.4,4.2,7.0]}
     ];
     this.deskPositions=[];
     for(const config of deskRows)for(const x of config.xs){
       const {row,z,width,screenWidth,screenHeight}=config;
       this.deskPositions.push({row,x,z,width,screenWidth,screenHeight});
-      this.add(rb,x,.54,z,width,.15,1.20,[.72,.80,.86,1]);
+      this.add(rb,x,.54,z,width,.15,1.20,[.92,.95,.98,1]);
       this.add(b,x,.49,z-.603,width*.72,.014,.012,[.08,.42,.57,1]);
-      this.add(rb,x-width*.36,.25,z+.03,.43,.52,1.02,[.46,.56,.64,1]);
-      this.add(rb,x+width*.36,.25,z+.03,.43,.52,1.02,[.46,.56,.64,1]);
+      this.add(rb,x-width*.36,.25,z+.03,.43,.52,1.02,[.82,.87,.92,1]);
+      this.add(rb,x+width*.36,.25,z+.03,.43,.52,1.02,[.82,.87,.92,1]);
       this.add(rb,x,.43,z-.22,width*.78,.045,.74,[.84,.89,.93,1]);
       this.add(rb,x,.99,z-.48,screenWidth+.14,screenHeight+.14,.10,[.045,.075,.10,1]);
       this.add(b,x,.995,z-.418,screenWidth,screenHeight,.018,[.025,.15,.25,1]);
@@ -196,17 +184,10 @@ window.Hive3D = (function () {
       const by=1.25,bz=z+.88;
       this.add(s,x,by,bz,.35,.34,.32,[1,.70,.05,1]);
       this.add(s,x,by-.24,bz+.02,.28,.23,.26,[.98,.57,.035,1]);
-      this.add(b,x,by-.19,bz+.265,.26,.065,.045,[.045,.055,.06,1]);
-      this.add(rb,x,by-.275,bz+.205,.20,.092,.055,[.065,.16,.20,1]);
-      this.add(b,x,by-.275,bz+.236,.095,.018,.012,[.08,.79,.86,1]);
       this.add(rb,x,by-.055,bz-.285,.255,.064,.05,[.018,.045,.07,1]);
       this.add(rb,x,by-.055,bz-.322,.19,.028,.012,[.10,.76,.91,1]);
       this.add(s,x-.09,by-.055,bz-.338,.017,.020,.014,[.28,1,1,1]);
       this.add(s,x+.09,by-.055,bz-.338,.017,.020,.014,[.28,1,1,1]);
-      this.add(rb,x,by+.005,bz+.305,.285,.115,.055,[.018,.055,.075,1]);
-      this.add(rb,x,by+.005,bz+.337,.235,.072,.018,[.025,.14,.18,1]);
-      this.add(s,x-.082,by+.01,bz+.351,.037,.038,.012,[.17,.95,1,1]);
-      this.add(s,x+.082,by+.01,bz+.351,.037,.038,.012,[.17,.95,1,1]);
       this.add(b,x-.13,by+.23,bz+.13,.028,.18,.028,[.08,.23,.31,1]);
       this.add(b,x+.13,by+.23,bz+.13,.028,.18,.028,[.08,.23,.31,1]);
       this.add(s,x-.13,by+.34,bz+.13,.035,.032,.035,[.10,.84,.98,1]);
@@ -275,7 +256,7 @@ window.Hive3D = (function () {
     if(!this.gl||!this.active)return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
-    const radius=16.7/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.34,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.72,0],[0,1,0]);const proj=mat4.perspective(.73,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
+    const radius=16.7/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.58,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.48,0],[0,1,0]);const proj=mat4.perspective(.73,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
     gl.uniformMatrix4fv(this.uViewProj,false,vp);gl.uniform3f(this.uEyePosition,eye[0],eye[1],eye[2]);
     this.drawBatch(this.batchBuffers&&this.batchBuffers.opaque);
     const translucent=this.batchBuffers&&this.batchBuffers.transparent;
@@ -300,9 +281,6 @@ window.Hive3D = (function () {
   };
   Scene.prototype.layoutOverlayPositions=function(){
     if(!this.overlay||this.overlay.hidden||!this.cssW||!this.cssH)return;
-    // Keep the HTML wordmark precisely anchored to its physical wall fascia.
-    const signRect=this.projectRect([[-2.82,4.12,-6.055],[2.82,4.12,-6.055],[2.82,4.78,-6.055],[-2.82,4.78,-6.055]]);
-    if(signRect){this.roomSign.style.visibility="visible";this.roomSign.style.left=(signRect.left/this.cssW*100)+"%";this.roomSign.style.top=(signRect.top/this.cssH*100)+"%";this.roomSign.style.width=signRect.width+"px";this.roomSign.style.height=signRect.height+"px";this.roomSign.style.transform="none";}else this.roomSign.style.visibility="hidden";
     // Stage labels occupy the front face of each physical wall panel, rather than a fixed HUD row.
     this.stageMeta.forEach((p,i)=>{
       const x=-7.1+i*2.84,z=-6.07;
@@ -355,7 +333,7 @@ window.Hive3D = (function () {
   Scene.prototype.setActive=function(active){this.active=!!active;if(this.timer)clearInterval(this.timer);if(this.raf)cancelAnimationFrame(this.raf);this.raf=0;this.layer.hidden=!this.active;this.canvas.hidden=!this.active;if(this.active){this.updateOverlay();this.render();this.timer=setInterval(()=>{if(!document.hidden&&this.host.offsetParent!==null)this.updateOverlay();},1000);}};
   Scene.prototype.resize=function(){this.cssW=this.host.clientWidth;this.cssH=this.host.clientHeight;if(this.cssW&&this.cssH)this.render();};
   Scene.prototype.zoomAt=function(factor){this.zoom=clamp(this.zoom/factor,.72,2.4);this.render();};
-  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=-.18;this.pitch=.19;this.panX=0;this.panY=0;this.render();};
+  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=-.18;this.pitch=.40;this.panX=0;this.panY=0;this.render();};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0,deskRows:this.deskPositions?[this.deskPositions.filter(d=>d.row===0).length,this.deskPositions.filter(d=>d.row===1).length]:[]};};
   Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,.995,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
   Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
