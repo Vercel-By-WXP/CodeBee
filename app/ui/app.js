@@ -8567,15 +8567,15 @@ function hiveThinkLine(lines) {
  * localStorage 持久化/WebGL 不可用降级，以及把 renderHive 的泳道数据翻译给场景。 —— */
 let hiveScene = null;          // Hive3D 场景实例（懒创建）
 let hiveSceneDead = false;     // WebGL 不可用/上下文丢失——本次页面周期内不再尝试
-let hiveMode = "3d";           // 当前视图模式（orch.hiveView）
+let hiveMode = "reference";   // reference / live3d / 2d（orch.hiveView）
 let hiveRunId = "";            // 最近一次 renderHive 的 run.id（尾巴/思考缓存键前缀）
 const hiveLiveMeta = {};       // rel -> { started_at }（3D 芯片秒表用）
 let hiveDialogPoll = null;
 let hiveDialogKey = "";
 
-function setHiveSceneButtons(is3d) {
+function setHiveSceneButtons(mode) {
   document.querySelectorAll("[data-hive-view]").forEach((button) => {
-    const active = button.dataset.hiveView === (is3d ? "3d" : "2d");
+    const active = button.dataset.hiveView === mode;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", active ? "true" : "false");
   });
@@ -8646,21 +8646,25 @@ function closeHiveMonitorLog() {
 function setHiveSceneMode(mode, opts) {
   const viewport = $("rd-hive-viewport");
   if (!viewport) return;
-  let is3d = mode !== "2d";
-  if (is3d) {
+  let selected = ["live3d", "2d"].includes(mode) ? mode : "reference";
+  if (selected !== "2d") {
     const sc = ensureHiveScene();
     if (!sc) {
-      is3d = false;
+      selected = "2d";
       if (!(opts && opts.silent)) toast(t("当前环境不支持 WebGL，已切换 2D 列表"), true);
     }
   }
-  hiveMode = is3d ? "3d" : "2d";
-  if (hiveScene) hiveScene.setActive(is3d);
-  viewport.classList.toggle("hive-mode-3d", is3d);
-  viewport.classList.toggle("hive-mode-2d", !is3d);
+  hiveMode = selected;
+  if (hiveScene) {
+    hiveScene.setDisplayMode(selected);
+    hiveScene.setActive(selected !== "2d");
+  }
+  viewport.classList.toggle("hive-mode-3d", selected === "reference");
+  viewport.classList.toggle("hive-mode-live3d", selected === "live3d");
+  viewport.classList.toggle("hive-mode-2d", selected === "2d");
   const tools = document.querySelector(".hive-scene-tools");
-  if (tools) tools.classList.toggle("hive-2d", !is3d);
-  setHiveSceneButtons(is3d);
+  if (tools) tools.classList.toggle("hive-2d", selected === "2d");
+  setHiveSceneButtons(selected);
   try { localStorage.setItem("orch.hiveView", hiveMode); } catch (e) { /* 隐私模式等 */ }
 }
 
@@ -8680,14 +8684,14 @@ function setupHiveSceneControls() {
   });
   document.querySelectorAll("[data-hive-scene-action]").forEach((button) => {
     button.addEventListener("click", () => {
-      if (hiveMode !== "3d" || !hiveScene) return;
+      if (hiveMode === "2d" || !hiveScene) return;
       if (button.dataset.hiveSceneAction === "reset") hiveScene.resetView();
       else hiveScene.zoomAt(button.dataset.hiveSceneAction === "zoom-in" ? 1 / 1.18 : 1.18);
     });
   });
-  let saved = "3d";
-  try { saved = localStorage.getItem("orch.hiveView") || "3d"; } catch (e) { /* ignore */ }
-  setHiveSceneMode(saved === "2d" ? "2d" : "3d", { silent: true });
+  let saved = "reference";
+  try { saved = localStorage.getItem("orch.hiveView") || "reference"; } catch (e) { /* ignore */ }
+  setHiveSceneMode(["reference", "live3d", "2d"].includes(saved) ? saved : saved === "3d" ? "reference" : "reference", { silent: true });
 }
 
 /* renderHive → 场景数据翻译：泳道=蜂巢塔的一层，格子按状态映射高度/颜色。
@@ -8747,7 +8751,7 @@ function hiveSceneSync(run, lanes, byStage) {
   const sc = ensureHiveScene();
   if (!sc) return;
   sc.sync(model);                    // 2D 模式也同步：切回 3D 时数据即 ready（画布未激活零 GPU 开销）
-  sc.setActive(hiveMode === "3d");
+  sc.setDisplayMode(hiveMode);\n  sc.setActive(hiveMode !== "2d");
 }
 
 window.renderHive = function (run) {
