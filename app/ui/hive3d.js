@@ -124,8 +124,7 @@ window.Hive3D = (function () {
       this.add(b,x,5.36,-3.35,2.65,.075,.30,[.12,.17,.23,1]);
       this.add(b,x,5.29,-3.35,2.40,.045,.24,[1,.99,.91,1]);
     }
-    // Six stage cards mounted on the blue wall, with luminous cyan underlines.
-    const stageColors=[[.22,.83,.94,1],[.24,.80,.93,1],[.27,.84,.96,1],[.20,.87,.95,1],[.25,.81,.95,1],[.28,.88,.95,1]];
+    // Six white phase controls are projected on this wall by the live HTML overlay.
     for(let i=0;i<6;i++){
       const x=-7.75+i*3.10;
     }
@@ -176,7 +175,9 @@ window.Hive3D = (function () {
       this.add(b,x,.49,z-.27,.54,.045,.34,[.16,.20,.24,1]);
       this.add(b,x,.72,z-.404,screenWidth*.84,.018,.012,[.10,.83,.94,1]);
       this.add(rb,x-.18,.655,z+.25,.60,.035,.20,[.15,.18,.21,1]);
-      this.add(b,x+.38,.66,z+.22,.12,.06,.17,[.23,.27,.30,1]);
+      this.add(s,x+.38,.67,z+.22,.075,.045,.095,[.07,.08,.09,1]);
+      this.add(b,x+.38,.693,z+.19,.008,.01,.04,[.37,.46,.55,1]);
+      for(let row=0;row<4;row++)for(let col=0;col<12;col++)this.add(b,x-.45+col*.049,.679,z+.185+row*.045,.030,.008,.024,[.38,.45,.53,1]);
       this.add(b,x-.18,.64,z+.25,.66,.012,.24,[.75,.81,.86,1]);
       const binderStart=x+width/2-.48;
       for(let k=0;k<4;k++)this.add(b,binderStart+k*.095,.83,z+.35,.075,.43,.22,[[.13,.43,.78,1],[.95,.42,.24,1],[.16,.66,.46,1],[.93,.72,.28,1]][k]);
