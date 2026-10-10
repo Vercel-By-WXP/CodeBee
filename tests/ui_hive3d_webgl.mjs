@@ -143,7 +143,7 @@ async function main() {
     assert.equal(full3d.mode, "live3d", "switching to WebGL preserves fullscreen");
     assert.equal(full3d.canvasHidden, false, "WebGL canvas stays visible in fullscreen");
     assert.equal(full3d.fullscreen, "hive-scene-stage", "WebGL mode does not exit fullscreen");
-    await evaluate("document.querySelector('[data-hive-view=2d]').click()");
+    await evaluate("document.querySelector('[data-hive-view=\"2d\"]').click()");
     const full2d = JSON.parse(await evaluate("JSON.stringify({mode:window.__hive3d.displayMode,fullscreen:document.fullscreenElement?.id})"));
     assert.equal(full2d.mode, "2d", "2D list is selectable in fullscreen");
     assert.equal(full2d.fullscreen, "hive-scene-stage", "2D mode does not exit fullscreen");
