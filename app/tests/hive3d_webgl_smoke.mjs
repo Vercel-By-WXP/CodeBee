@@ -106,6 +106,7 @@ const fakeGL = {
   enableVertexAttribArray() {},
   vertexAttribPointer() {},
   uniformMatrix4fv() {},
+  uniform3f() {},
   drawArrays: (mode, first, count) => { assert.equal(mode, 4); assert.ok(count > 0); drawCalls++; },
   depthMask() {},
   deleteBuffer() {},
