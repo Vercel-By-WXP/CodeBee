@@ -303,11 +303,12 @@ window.Hive3D = (function () {
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.370,.15,.080,.030,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.391,.095,.020,.014,[.16,.88,.98,1]);
-      // Four visibly tapered glassy wings with opposing tilt; a faceted leaf mesh is far more wing-like than ellipsoids.
-      this.add(this.organic,x-.43,by+.12,bz-.045,.98,1.58,.055,[.58,.84,1,.28],-.34,.18);
-      this.add(this.organic,x+.43,by+.12,bz-.045,.98,1.58,.055,[.58,.84,1,.28],.34,-.18);
-      this.add(this.organic,x-.47,by+.065,bz+.018,.62,1.02,.035,[.93,.99,1,.20],.20,-.10);
-      this.add(this.organic,x+.47,by+.065,bz+.018,.62,1.02,.035,[.93,.99,1,.20],-.20,.10);
+      // Glass wings sit around the shoulder line, closer to the body than the monitor plane,
+      // with a restrained span so adjacent assistants do not merge into one cyan ribbon.
+      this.add(this.organic,x-.39,by+.10,bz+.12,.80,1.22,.045,[.58,.84,1,.25],-.34,.18);
+      this.add(this.organic,x+.39,by+.10,bz+.12,.80,1.22,.045,[.58,.84,1,.25],.34,-.18);
+      this.add(this.organic,x-.42,by+.055,bz+.19,.48,.76,.030,[.93,.99,1,.16],.20,-.10);
+      this.add(this.organic,x+.42,by+.055,bz+.19,.48,.76,.030,[.93,.99,1,.16],-.20,.10);
 
     }
     // Planters and stylized leaves soften the room edges.
