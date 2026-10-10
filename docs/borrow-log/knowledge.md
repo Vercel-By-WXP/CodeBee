@@ -7186,3 +7186,74 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   连续两班成立；四大趋势：A3 预压缩独立成层/skill 反平庸品类大星化/DSH 生态
   第四波/B2 记忆域稳定期；无当班落地件（RAG 块预压缩列待深挖交第 4 步拍板），
   零代码提案 docs-only | 结论
+
+## 2026-10-11 03 时班（新一轮第 1/4 步·批3：计划/spec/长任务 + 全类型雷达）
+
+- **hugohe3/ppt-master**（59,276★，10-08 在更，trendshift）新入库 | **AI 文档/
+  主题→原生 PowerPoint**：交付 PPT 原生对象模型（native shapes+连接器带调节手柄/
+  数据驱动图表表格/p:sldMaster+p:sldLayout 母版继承）；skill 形态跑在任意 agent
+  工具内本机导出可编辑 .pptx；四路线=新 deck/参考资料蒸馏品牌·风格·布局模板/
+  已有 .pptx 保设计填新内容/成品加切换动画旁白；PowerPoint↔SVG Mapping Guide
+  逐特性诚实记录能力边界 | A10 演示文稿域年度级新对标（59k★，Paper2Slides 停更
+  后新王者）：我们 presentation 流程输出讲稿/大纲文本，PPTX 原生对象模型系空白；
+  「模板蒸馏+保设计填充」与经验库/模板复用同构可借鉴；「Mapping Guide 逐特性
+  诚实披露」系能力边界沟通范式参照；「ppt-master」品名词形与 presentation 词形
+  正交系词形盲区第 11 例（A10 组 116 词从未命中，词库已补周边词） | A10 借鉴方向
+  （判据） | 2026-10-11
+- **maximhq/bifrost**（8,687★，10-10 在更，Daytona 团队）新入库 | 企业 AI 网关：
+  23+ provider 统一 OpenAI 兼容 API+自动 failover+自适应负载均衡+语义缓存+
+  guardrails+集群模式+Web UI 可视化配置；npx/Docker 1 分钟部署；宣称 50x LiteLLM |
+  A8 网关域+5（one-api alternative 头部簇）；A3 语义缓存再证「成熟供应商能力」
+  ——编排台内不自建维持不落；failover/负载均衡与 modelhub 换将超窗预检同域异构 |
+  A8/A3 对标参照（雷达） | 2026-10-11
+- **backnotprop/plannotator**（9,321★，10-10 在更）+ plannotator org 四件
+  （effective-html 3,597/plannotator-tui 168/herdr-annotate 653/artifact-server
+  202）新入库 | **计划/diff 可视化批注→回传 agent**：批注 coding agent 计划与
+  diff、团队分享、结构化反馈回传；titanwings/dsh-plannotator 系其 DSH 适配版
+  （原家族本班 in:name 勘定闭环） | B3 计划评审域本班最大新件（WebSearch 交叉
+  验证纪律再兑现）：我们待裁决+计划闸系文本通道，可视化批注+团队分享系 UI 级
+  差量非小而实；「批注→结构化回传」交互范式可作待裁决卡演化参照 | B3 参考判据
+  （雷达） | 2026-10-11
+- **RunMaestro/Maestro**（3,434★，10-10 在更，topic 三页同现）新入库 | 跨平台
+  桌面 app 编排 agent 舰队：spec 协作生成→Auto Run 每任务新会话清洁上下文、
+  24h 无人值守记录；七 CLI 支持（CC/Codex/OpenCode/Droid/Copilot-CLI/Qwen3/
+  Oh My Pi）；pass-through 形态复用各 CLI 已配 MCP/skills/权限 | A1+A13 同域
+  成簇再 +1（agent-deck/horizon/another 同域）：「每任务新会话防污染」与我们
+  「会话复用省 token」系同一权衡两端（清洁性 vs 成本），CodeBee 取复用+前情提要
+  组合维持现设计 | A1/A13 参考判据（雷达） | 2026-10-11
+- **zenstory-ai/oh-story-dsh**（485★，10-10 在更）新入库 | oh-story（A7 写作域
+  7.4k★ skill 集）的 DSH 适配版 | DSH 生态第五波：头部第三方 skill 集主动出
+  DSH 适配版——生态引力向写作 skill 扩散；oh-story 真身同勘定
+  zenstory-ai/oh-story-claudecode 7,411（旧注裸名已勘清） | E 生态信号 |
+  2026-10-11
+- **微型群**：databricks-solutions/consort 32★（Databricks 官方 spec-first 角色代理
+  ensemble——大厂入场 B3 域密度信号）/nobodywho 1,544（本地 LLM 推理引擎域旁）/
+  godterm 6/crewchat 0/agnostic-ai 23/bootgear 2/@nathapp npm nax（loops-until-
+  done）/polderlabs bizar（Codex harness） | 微型判据群（雷达） | 2026-10-11
+- **WebSearch 交叉验证 1 发**（B3 域定向「spec-driven development agent long-
+  running planning agent open source GitHub 2026」）：三巨头复认（Spec Kit/BMAD/
+  OpenSpec）+plannotator 9,321★ 捞出（repos 端点二次实证后入库）——B3 域主扫
+  零新件与 WebSearch 捞出大件同班成立，「每 3-4 班交叉验证」纪律第 N 次兑现 |
+  交叉验证 | 2026-10-11
+- **属主勘定 2 条闭环**：oh-story 裸名→zenstory-ai/oh-story-claudecode（7,411）+
+  顺藤掘出 oh-story-dsh 485；obsidian-second-brain 裸名→eugeniughelbur（4,723）
+  ——in:name 一次勘清纪律两连用 | 复查勘误 | 2026-10-11
+- **复查记录（03 时班，vs 10-10 16 时班基准，间隔约 11h）**：orca 89,109（+301）/
+  mattpocock-skills 284,198（+921）/ECC 276,400（+272）/hermes 252,505（+148）/
+  deepseek-harness 246,953（+333）/opencode 212,530（+79）/ponytail 160,339（+444）/
+  dify 158,091（+36）/pi 114,090（+179）/BMAD 54,012（+10）；放量：magpie 8,535
+  （+455 病毒加速）/open-code-review 45,834（+273）/OpenShell 15,709（+65）/
+  openrig 6,690（+111 病毒第 6 班）/autoharness 10,955（+27）/headroom 74,899
+  （+24）/oh-my-openagent 69,941（+135）/nanobot 48,929（+151）/lazycodex 3,754
+  （+254 vs 09-18 首录）；写作域 webnovel-writer 7,415/ainovel-cli 2,137/drama-
+  skills 2,705（+18）/taste-skill 94,382（+142）/distilly 25,470（+16）/TrendRadar
+  62,784 持平域；记忆域 memU 14,523/planning-with-files 27,378/magic-context
+  2,299 持平；E 候选 DeepSeek-Reasonix 35,760（+7 候选首位维持）/openclacky 1,203/
+  minimax-code 2,011（+4）；awesome 22 源 22/22 alive（punkpeye 96,056/ComposioHQ
+  76,801/claude-code 55,369 等微动不计） | 复查
+- **本班结论**：主扫 117/117 零失败（469 唯一仓/活跃 255/首见判据 0 系连续第 5
+  班）；判据 4 大件（ppt-master 59.3k/bifrost 8.7k/plannotator 9.3k/Maestro 3.4k）
+  + DSH 第五波全出自交叉通道，主扫 B3 域头部零机制级新差量（三巨头复认）；本班
+  最大单项发现=**演示文稿域换代**（ppt-master 59k 接棒停更的 Paper2Slides，
+  「AI 生成 PPT」卷向原生对象模型深度）；npm/pypi 欠账补扫（16 时班）零重大新
+  标的；判据件均非小而实落地件，零代码提案 docs-only | 结论
