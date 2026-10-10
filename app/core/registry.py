@@ -88,6 +88,12 @@ def effective_agents(catalog_entries, detected):
         if not pref.get("enabled", entry.get("default_enabled", False)):
             continue
         out.append(_build_agent(entry))
+    try:
+        from . import backend_profiles
+        out.extend(backend_profiles.runtime_agents())
+    except Exception:
+        # Broken local profile storage must not disable unrelated installed agents.
+        pass
     out.extend([dict(m) for m in MOCK_AGENTS])
     return out
 
@@ -98,6 +104,13 @@ def installed_agent(entry_id, catalog_entries, detected):
     续会话是用户对该 CLI 的显式指定，不依赖其是否参与自动路由；
     未安装 / 无编排配置 / id 不存在时返回 None。
     """
+    if str(entry_id or "").startswith("acp-"):
+        try:
+            from . import backend_profiles
+            return next((agent for agent in backend_profiles.runtime_agents()
+                         if agent.get("id") == entry_id), None)
+        except Exception:
+            return None
     for entry in catalog_entries:
         if entry.get("id") != entry_id:
             continue

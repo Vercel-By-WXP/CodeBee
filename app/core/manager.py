@@ -2019,6 +2019,52 @@ def _cmd_head_is_uv(cmd):
     return os.path.basename(stripped.split()[0]).lower() in ("uv", "uv.exe")
 
 
+# pip/uv 的 git+ 直装要从 GitHub 拉源码，国内链路对 GitHub 的 HTTP/2 常被中间设备
+# 掐断（git 报 "Error in the HTTP2 framing layer"，exit 128）——强制 HTTP/1.1 是
+# 标准绕法。用 GIT_CONFIG_* 环境变量注入，不动用户全局 git 配置；老 git 不识别
+# 这组变量时静默忽略，无害。
+_GIT_FLAKE_MARKERS = ("HTTP2 framing layer", "unable to access", "RPC failed",
+                      "Connection reset", "connection was reset", "Recv failure")
+
+
+def _git_safe_env(cmd):
+    """命令涉及 git+ 远端拉取时的 git 传输层兜底 env（只加键，不覆盖既有）。"""
+    if "git+" not in str(cmd or ""):
+        return {}
+    return {"GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "http.version",
+            "GIT_CONFIG_VALUE_0": "HTTP/1.1"}
+
+
+def _git_transport_flake(res):
+    """安装失败输出是否为 git 传输层抖动类错误（值得原地重试一次的那种）。"""
+    blob = "%s%s" % ((res or {}).get("stderr") or "", (res or {}).get("stdout") or "")
+    return any(m in blob for m in _GIT_FLAKE_MARKERS)
+
+
+def run_install_cmd(cmd, cancel_event=None, log_path=None):
+    """安装类命令（目录页 install/upgrade 与 AI 修复命令）的统一执行面。
+
+    - uv 系挂镜像兜底（_uv_mirror_env，只补缺不覆盖）
+    - 带 git+ 拉取的命令强制 git 走 HTTP/1.1
+    - git 传输层抖动失败自动同命令重试一次——链路瞬断不值得烧一轮 AI 诊断
+    """
+    env = {}
+    if _cmd_head_is_uv(cmd):
+        env.update(_uv_mirror_env())
+    env.update(_git_safe_env(cmd))
+    res = runner.run_process(shell_cmd=cmd, cwd=str(paths.ROOT), timeout=1800,
+                             cancel_event=cancel_event, log_path=log_path,
+                             env=env or None)
+    if not res["ok"] and not res.get("cancelled") and _git_transport_flake(res):
+        res = runner.run_process(shell_cmd=cmd, cwd=str(paths.ROOT), timeout=1800,
+                                 cancel_event=cancel_event, log_path=log_path,
+                                 env=env or None,
+                                 audit_notes=["首跑 git 传输层抖动，同命令自动重试一次"])
+        res["retried"] = True
+    return res
+
+
 def _bootstrap_uv(cancel_event=None, log_path=None):
     """uv 不在本机时自动补装一个——安装按钮「点了就该装上」的契约兜底。
 
@@ -2096,10 +2142,7 @@ def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
                     "error": "自动安装 uv 未成功（%s）。请手动安装：%s；"
                              "装完重启 CodeBee，再点一次安装。"
                              % (boot["detail"], _uv_install_hint())}
-    # uv 全家桶命令挂镜像兜底：Python 独立构建/包索引国内直连常断（只补缺不覆盖）
-    res = runner.run_process(shell_cmd=cmd, cwd=str(paths.ROOT),
-                             timeout=1800, cancel_event=cancel_event, log_path=log_path,
-                             env=_uv_mirror_env() if _cmd_head_is_uv(cmd) else None)
+    res = run_install_cmd(cmd, cancel_event=cancel_event, log_path=log_path)
     winget_noop = _winget_already_ok(cmd, op, res)
     detect_all(force=True)
     with _LOCK:

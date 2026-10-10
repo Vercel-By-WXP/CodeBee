@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 import time
 from pathlib import Path
@@ -95,6 +96,8 @@ def list_entries(workdir, *, now=None):
         raw = row.get("content") or ""
         row["verified"] = hashlib.sha256(raw.encode("utf-8")).hexdigest() == row.get("content_sha256")
         row["expired"] = float(row.get("expires_at") or 0) <= stamp
+        row["feedback_score"] = int(row.get("feedback_score") or 0)
+        row["feedback_count"] = int(row.get("feedback_count") or 0)
     return sorted(rows, key=lambda x: (x.get("created_at", 0), x.get("id", "")), reverse=True)
 
 
@@ -126,14 +129,78 @@ def decide(workdir, entry_id, action, *, expected_version=None, now=None):
     return row
 
 
-def active_text(workdir, *, cap=4000, now=None):
+def feedback(workdir, entry_id, *, useful, expected_version=None, now=None):
+    """Record explicit retrieval feedback as a versioned append-only update."""
+    if not isinstance(useful, bool):
+        raise ValueError("useful 必须是布尔值")
+    path = _file(workdir)
+    row = _read(path).get(str(entry_id or ""))
+    if not row:
+        raise KeyError("记忆条目不存在")
+    if expected_version is not None and int(expected_version) != int(row.get("version") or 1):
+        raise ValueError("记忆条目版本已变化，请刷新后重试")
+    raw = row.get("content") or ""
+    if hashlib.sha256(raw.encode("utf-8")).hexdigest() != row.get("content_sha256"):
+        raise ValueError("记忆内容指纹校验失败")
+    if row.get("status") != "approved":
+        raise ValueError("只有已批准的记忆条目可以反馈")
     stamp = float(now if now is not None else time.time())
+    row = dict(row, feedback_score=int(row.get("feedback_score") or 0) +
+               (1 if useful else -1),
+               feedback_count=int(row.get("feedback_count") or 0) + 1,
+               feedback_at=stamp, version=int(row.get("version") or 1) + 1,
+               updated_at=stamp)
+    _append(path, row)
+    return row
+
+
+def _query_terms(query):
+    query = str(query or "").strip().lower()
+    words = re.findall(r"[a-z0-9_]+|[\u3400-\u9fff]+", query)
+    terms = set()
+    for word in words:
+        if len(word) > 2 and re.fullmatch(r"[\u3400-\u9fff]+", word):
+            terms.update(word[i:i + 2] for i in range(len(word) - 1))
+        else:
+            terms.add(word)
+    return terms
+
+
+def _relevance(row, terms):
+    if not terms:
+        return 0
+    title = str(row.get("title") or "").lower()
+    content = str(row.get("content") or "").lower()
+    title_terms = _query_terms(title)
+    content_terms = _query_terms(content)
+    return 4 * len(terms & title_terms) + len(terms & content_terms)
+
+
+def active_text(workdir, *, cap=4000, query="", now=None):
+    stamp = float(now if now is not None else time.time())
+    try:
+        cap = max(0, int(cap))
+    except (TypeError, ValueError):
+        cap = 4000
+    heading = "## 已批准项目记忆（内容已校验，过期条目不注入）\n\n"
+    cap = max(0, cap - len(heading) - 2)
+    terms = _query_terms(query)
     items = []
     for row in list_entries(workdir, now=stamp):
         if row.get("status") != "approved" or row.get("expired") or not row.get("verified"):
             continue
-        items.append("### %s\n%s" % (row.get("title") or "项目记忆", row.get("content") or ""))
-    text = "\n\n".join(items)
-    if len(text) > cap:
-        text = text[-cap:]
-    return ("## 已批准项目记忆（内容已校验，过期条目不注入）\n\n" + text + "\n\n") if text else ""
+        block = "### %s\n%s" % (row.get("title") or "项目记忆", row.get("content") or "")
+        items.append((row, block))
+    items.sort(key=lambda item: (_relevance(item[0], terms),
+                                 item[0].get("feedback_score", 0),
+                                 item[0].get("created_at", 0)), reverse=True)
+    selected = []
+    used = 0
+    for _row, block in items:
+        cost = len(block) + (2 if selected else 0)
+        if used + cost > cap:
+            continue
+        selected.append(block)
+        used += cost
+    text = "\n\n".join(selected)
+    return (heading + text + "\n\n") if text else ""

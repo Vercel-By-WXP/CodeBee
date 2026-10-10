@@ -958,6 +958,18 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
             except Exception:
                 return "（检查点拒绝：文件原始版本保存失败，未执行文件操作）"
         if name == "run_command":
+            try:
+                from . import command_auth
+                approval = command_auth.authorize(
+                    str((args or {}).get("command") or ""),
+                    run_id=checkpoint_run_id, workdir=workdir,
+                    deadline=deadline, cancel_event=cancel_event,
+                    source="run_command")
+            except Exception:
+                approval = {"allowed": False, "reason": "authorization_unavailable"}
+            if not approval.get("allowed"):
+                reason = approval.get("reason") or "denied"
+                return "（命令授权%s，未执行；拒绝后不会自动重放，请模型检查并重新请求）" % reason
             result = fn(workdir, args or {}, cancel_event=cancel_event,
                         deadline=deadline, sandbox=sandbox)
         else:

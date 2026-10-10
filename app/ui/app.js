@@ -4764,7 +4764,8 @@ window.loadProjectMemory = async function (taskId) {
     box.innerHTML = entries.map((entry) => {
       const canApprove = entry.status === "pending" && !entry.expired && entry.verified;
       const canRestore = entry.status === "archived" && !entry.expired && entry.verified;
-      const actions = (canApprove ? '<button type="button" class="ghost small" onclick="decideProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'approve\',' + Number(entry.version) + ')">' + esc(t("批准")) + "</button><button type=\"button\" class=\"ghost small\" onclick=\"decideProjectMemory('" + jsq(taskId) + "','" + jsq(entry.id) + "','reject'," + Number(entry.version) + ')\">' + esc(t("拒绝")) + "</button>" : "") +
+      const feedback = entry.status === "approved" ? '<button type="button" class="ghost small" onclick="feedbackProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',true,' + Number(entry.version) + ')">' + esc(t("有用")) + '</button><button type="button" class="ghost small" onclick="feedbackProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',false,' + Number(entry.version) + ')">' + esc(t("无用")) + '</button>' : "";
+      const actions = feedback + (canApprove ? '<button type="button" class="ghost small" onclick="decideProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'approve\',' + Number(entry.version) + ')">' + esc(t("批准")) + "</button><button type=\"button\" class=\"ghost small\" onclick=\"decideProjectMemory('" + jsq(taskId) + "','" + jsq(entry.id) + "','reject'," + Number(entry.version) + ')">' + esc(t("拒绝")) + "</button>" : "") +
         (entry.status === "approved" ? '<button type="button" class="ghost small" onclick="decideProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'archive\',' + Number(entry.version) + ')">' + esc(t("归档")) + "</button>" : "") +
         (canRestore ? '<button type="button" class="ghost small" onclick="decideProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'restore\',' + Number(entry.version) + ')">' + esc(t("恢复")) + "</button>" : "");
       return '<article class="rd-memory-row"><div><strong>' + esc(entry.title || t("项目记忆")) + '</strong><span class="chip">' + esc(entry.status || "") + (entry.expired ? " · " + esc(t("已过期")) : "") + '</span></div><pre>' + esc(entry.content || "") + '</pre><div class="rd-memory-actions">' + actions + "</div></article>";
@@ -4780,6 +4781,16 @@ window.decideProjectMemory = async function (taskId, id, action, version) {
     });
     await loadProjectMemory(taskId);
   } catch (error) { toast(t("项目记忆操作失败：") + error.message, true); }
+};
+
+window.feedbackProjectMemory = async function (taskId, id, useful, version) {
+  try {
+    await api("/api/tasks/" + encodeURIComponent(taskId) + "/memory", {
+      method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+      body: JSON.stringify({ id, action: "feedback", useful, expected_version: version }),
+    });
+    await loadProjectMemory(taskId);
+  } catch (error) { toast(t("项目记忆反馈失败：") + error.message, true); }
 };
 
 window.loadRunCheckpoints = async function (requestedRunId) {
@@ -13362,7 +13373,76 @@ async function loadSettings() {
     }
   } catch (e) { /* 忽略 */ }
   loadSettingsV2();   // 引擎调参卡独立拉取（挂了不影响基础设置）
+  loadBackendProfiles();
+  loadCommandAuth();
 }
+
+async function loadBackendProfiles() {
+  const box = $("acp-profiles");
+  if (!box) return;
+  try {
+    const data = await api("/api/backend-profiles");
+    const rows = data.profiles || [];
+    box.innerHTML = rows.length ? rows.map((row) =>
+      '<div class="list-row"><span><b>' + esc(row.label || row.id) + '</b> · ' + esc(row.command || "") +
+      (row.enabled === false ? ' · ' + esc(t("已停用")) : '') + '</span><button class="ghost small" type="button" onclick="deleteAcpProfile(\'' + jsq(row.id) + '\')">' + esc(t("删除")) + '</button></div>'
+    ).join("") : '<span class="hint">' + esc(t("暂无 ACP 后端")) + '</span>';
+  } catch (error) {
+    box.innerHTML = '<span class="hint">' + esc(t("ACP 配置加载失败：")) + esc(error.message) + '</span>';
+  }
+}
+
+window.saveAcpProfile = async function () {
+  const msg = $("acp-msg");
+  try {
+    const argsText = ($("acp-args") || {}).value || "[]";
+    const args = JSON.parse(argsText);
+    if (!Array.isArray(args)) throw new Error(t("参数必须是 JSON 数组"));
+    await api("/api/backend-profiles", { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+      body: JSON.stringify({ label: $("acp-label").value, command: $("acp-command").value,
+        args, workspace_path: $("acp-workspace").value }) });
+    if (msg) msg.textContent = t("ACP 后端已保存");
+    ["acp-label", "acp-command", "acp-args", "acp-workspace"].forEach((id) => { const el = $(id); if (el) el.value = id === "acp-args" ? "[]" : ""; });
+    await loadBackendProfiles();
+    await refreshState();
+  } catch (error) { if (msg) msg.textContent = t("ACP 保存失败：") + error.message; }
+};
+
+window.deleteAcpProfile = async function (id) {
+  try {
+    await api("/api/backend-profiles/" + encodeURIComponent(id) + "/delete", { method: "POST", headers: authHeaders(), body: "{}" });
+    await loadBackendProfiles();
+    await refreshState();
+  } catch (error) { toast(t("删除 ACP 失败：") + error.message, true); }
+};
+
+async function loadCommandAuth() {
+  const pendingBox = $("command-auth-pending");
+  const mode = $("command-auth-mode");
+  if (!pendingBox || !mode) return;
+  try {
+    const data = await api("/api/command-auth");
+    mode.value = data.mode || "legacy";
+    const rows = data.pending || [];
+    pendingBox.innerHTML = rows.length ? rows.map((row) =>
+      '<div class="list-row"><span><code>' + esc(row.command || "") + '</code> · ' + esc(row.source || "") + '</span><button class="ghost small" type="button" onclick="decideCommandAuth(\'' + jsq(row.id) + '\',true)">' + esc(t("批准一次")) + '</button><button class="ghost small" type="button" onclick="decideCommandAuth(\'' + jsq(row.id) + '\',false)">' + esc(t("拒绝")) + '</button></div>'
+    ).join("") : '<span class="hint">' + esc(t("暂无待批准命令")) + '</span>';
+  } catch (error) { pendingBox.innerHTML = '<span class="hint">' + esc(t("授权状态加载失败：")) + esc(error.message) + '</span>'; }
+}
+
+window.saveCommandAuthMode = async function () {
+  try {
+    await api("/api/command-auth", { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify({ mode: $("command-auth-mode").value }) });
+    await loadCommandAuth();
+  } catch (error) { const msg = $("command-auth-msg"); if (msg) msg.textContent = t("授权策略保存失败：") + error.message; }
+};
+
+window.decideCommandAuth = async function (id, approve) {
+  try {
+    await api("/api/command-auth/requests/" + encodeURIComponent(id), { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify({ approve, scope: "once" }) });
+    await loadCommandAuth();
+  } catch (error) { const msg = $("command-auth-msg"); if (msg) msg.textContent = t("命令授权操作失败：") + error.message; }
+};
 
 /* ---------------- settings_v2 引擎调参卡（schema 驱动） ----------------
  * /api/settings-v2 拉 describe（含字段元数据），按 namespace 渲染控件；

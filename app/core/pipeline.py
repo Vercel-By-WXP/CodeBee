@@ -596,6 +596,16 @@ def _external_sandbox_block_reason(agent, workdir, sandbox):
         if normalized.get("env_allowlist"):
             return "沙箱拒绝：该 CLI 后端未接入环境变量白名单，拒绝运行受限任务"
         return ""
+    if (agent or {}).get("kind") == "acp":
+        if normalized.get("network") is False:
+            return "沙箱拒绝：ACP 后端进程未接入网络隔离，拒绝运行网络受限任务"
+        if normalized.get("env_allowlist"):
+            return "沙箱拒绝：ACP 后端进程未接入环境变量白名单，拒绝运行受限任务"
+        roots = [os.path.realpath(x) for x in normalized.get("allowed_roots") or []]
+        if roots and not any(root == allowed or root.startswith(allowed + os.sep)
+                             for allowed in roots):
+            return "沙箱拒绝：任务目录不在 ACP 允许目录内"
+        return ""
     # 非 codex 外部 CLI：默认策略放行，收窄策略拒绝
     if normalized.get("network") is False:
         return "沙箱拒绝：该任务要求禁网，外部 CLI 无法执行网络受限任务"
@@ -818,7 +828,13 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
         llm_caller = _make_llm_caller(agent, workdir, deadline=deadline)
         call_kwargs = dict(workdir=workdir, readonly=readonly,
                            timeout=timeout, cancel_event=ev, log_path=str(log_abs),
-                           images=images, require_tools=require_tools, deadline=deadline)
+                           images=images, require_tools=require_tools, deadline=deadline,
+                           command_context={"run_id": session_run_id,
+                                            "sandbox": (store.get_task(
+                                                (store.get_run(session_run_id) or {}).get("task_id")
+                                            ) or {}).get("sandbox") or {},
+                                            "allow_terminal": not readonly},
+                           checkpoint_run_id=session_run_id)
 
         def _call(p, **kw):
             nonlocal usage_recorded
@@ -846,7 +862,13 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
         res = runner.run_agent(agent, prompt, workdir=workdir, readonly=readonly,
                                timeout=timeout, cancel_event=ev, log_path=str(log_abs),
                                resume=resume, images=images, require_tools=require_tools,
-                               deadline=deadline)
+                               deadline=deadline,
+                               command_context={"run_id": session_run_id,
+                                                "sandbox": (store.get_task(
+                                                    (store.get_run(session_run_id) or {}).get("task_id")
+                                                ) or {}).get("sandbox") or {},
+                                                "allow_terminal": not readonly},
+                               checkpoint_run_id=session_run_id)
     # 默认关闭压缩和 resume 都走直通分支，也必须把真实 usage 送进预算表；否则
     # 下一步永远看到 used=0，max_tokens_per_run 只是一个无效设置。
     if not usage_recorded:
@@ -1561,7 +1583,8 @@ def _run_code(run, task, agents, ev, stats, mode):
 
     # 项目记忆既给规划器，也给快速路径的实现者；不能因省掉独立规划而漏掉。
     user_context_len = len(task.get("context") or "")
-    project_memory = _read_project_memory(workdir)
+    project_memory = _read_project_memory(
+        workdir, query=task.get("goal") or task.get("title") or "")
     if project_memory:
         task = dict(task, context=(task.get("context") or "") + "\n\n" + project_memory)
 
@@ -5382,11 +5405,11 @@ def _write_project_memory(task, workdir, lines, source_run=""):
         return ""
 
 
-def _read_project_memory(workdir, cap=4000):
+def _read_project_memory(workdir, cap=4000, query=""):
     """Only inject approved, unexpired and fingerprint-verified memory."""
     try:
         from . import project_memory
-        return project_memory.active_text(workdir, cap=cap)
+        return project_memory.active_text(workdir, cap=cap, query=query)
     except (OSError, ValueError, TypeError):
         return ""
 

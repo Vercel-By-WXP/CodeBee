@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import main
-from core import contracts, story_tracking
+from core import backend_profiles, command_auth, contracts, story_tracking
 
 
 class HttpContractRouteTests(unittest.TestCase):
@@ -129,6 +129,26 @@ class HttpContractRouteTests(unittest.TestCase):
             status, payload = h._route_post()
         self.assertEqual(status, 200)
         self.assertFalse(payload["auto_publish"]["auto_submit"])
+
+    def test_backend_profile_and_command_auth_routes(self):
+        backend_profiles.init(self.root / "profile-data")
+        h = self.handler("/api/backend-profiles", {
+            "label": "ACP", "command": "acp-agent", "args": [], "env": {},
+            "workspace_path": "",
+        })
+        status, payload = h._route_post()
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["profile"]["kind"] if "kind" in payload["profile"] else "ACP", "ACP")
+
+        command_auth.init(self.root / "auth-data")
+        h = self.handler("/api/command-auth", {"mode": "restricted"})
+        status, payload = h._route_post()
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["mode"], "restricted")
+        h = self.handler("/api/command-auth", {})
+        status, payload = h._route_get()
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["mode"], "restricted")
 
 
 if __name__ == "__main__":

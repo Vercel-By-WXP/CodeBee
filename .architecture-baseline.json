@@ -709,9 +709,9 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/manager.py 2330 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/manager.py 2373 行（上限 1200，历史最高 0）",
       "file": "app/core/manager.py",
-      "lines": 2330
+      "lines": 2373
     },
     {
       "kind": "lines",
