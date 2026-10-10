@@ -7015,3 +7015,13 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   成簇升档为当班唯一趋势信号。零代码提案（七专项零新缺口、路线图在册件均非
   小而实），落地=知识沉淀三件套；当日 v0.1.99 已发（20b7a4e），docs-only 不
   触发新发版。| 结论
+### 2026-10-09 19 时班批5复查（检索/知识/浏览器）
+
+- B5 10 组/50 条结果零限流；Dify、RAGFlow、claude-mem、深研、BrowserSkill、
+  Firecrawl、Agent-Reach、Composio、ADE CLI 等均为已知基线。BrowserSkill 的借还
+  标签页、Agent-Reach 的多站点接入、ADE 的 schema 抽取没有形成当前产品可安全接入
+  的小接口差量，候选均不接入。来源：`Tencent/BrowserSkill`、
+  `Panniantong/Agent-Reach`、`landing-ai/ade-cli`、`firecrawl/firecrawl`。
+- A-G 只读复核无新增缺口：18 流程、14 CLI；市场安全闸、禅道关闭态和 UI 文案
+  基线均在位；全类型/注册表/市场回归分别 7、4、10、14 项通过。本班无代码落地，
+  关键词策略不变。
