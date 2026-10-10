@@ -93,7 +93,7 @@ window.Hive3D = (function () {
     const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);vec3 key=normalize(vec3(-0.45,0.86,0.38));vec3 fill=normalize(vec3(0.58,0.33,-0.74));float diffuse=max(0.0,dot(n,key));float rimFill=max(0.0,dot(n,fill));float sky=clamp(n.y*0.5+0.5,0.0,1.0);float heightShade=mix(0.90,1.0,smoothstep(-0.2,2.2,aPosition.y));vShade=(0.76+0.18*diffuse+0.08*sky+0.04*rimFill)*heightShade;}";
     const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 l=normalize(vec3(-0.45,0.86,0.38));vec3 fill=normalize(vec3(0.58,0.33,-0.74));vec3 v=normalize(uEyePosition-vWorld);vec3 h=normalize(l+v);vec3 hf=normalize(fill+v);float spec=pow(max(0.0,dot(n,h)),32.0)*0.15;float warmSpec=pow(max(0.0,dot(n,hf)),38.0)*0.05;float rim=pow(1.0-max(0.0,dot(n,v)),2.5)*0.075;vec3 highlight=vec3(0.48,0.83,0.96)*spec+vec3(0.98,0.62,0.31)*warmSpec+vec3(0.18,0.58,0.82)*rim;vec3 lit=vColor.rgb*vShade+highlight;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
-    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,4,.12);this.sphere=sphereGeometry(gl,16,24);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
+    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,8,.17);this.sphere=sphereGeometry(gl,24,32);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
   };
   Scene.prototype.listen=function(el,type,fn,opts){el.addEventListener(type,fn,opts);this.listeners.push(()=>el.removeEventListener(type,fn,opts));};
   Scene.prototype.bindSurface=function(){
@@ -173,8 +173,9 @@ window.Hive3D = (function () {
       for(const drawerY of [.18,.28,.38])this.add(b,x+width*.30,drawerY,z+.579,width*.22,.012,.012,[.62,.71,.80,1]);
       this.add(b,x+width*.30,.41,z+.581,width*.085,.018,.014,[.45,.58,.70,1]);
       this.add(rb,x,.43,z-.22,width*.78,.045,.74,[.84,.89,.93,1]);
-      this.add(rb,x,.99,z-.48,screenWidth+.14,screenHeight+.14,.10,[.045,.075,.10,1]);
-      this.add(b,x,.995,z-.418,screenWidth,screenHeight,.018,[.025,.15,.25,1]);
+      this.add(rb,x,.99,z-.48,screenWidth+.18,screenHeight+.18,.13,[.035,.055,.075,1]);
+      this.add(rb,x,.995,z-.432,screenWidth+.08,screenHeight+.08,.045,[.15,.20,.25,1]);
+      this.add(b,x,.995,z-.405,screenWidth,screenHeight,.018,[.018,.105,.18,1]);
       this.add(b,x,.61,z-.43,.10,.22,.10,[.32,.39,.45,1]);
       this.add(b,x,.49,z-.27,.54,.045,.34,[.16,.20,.24,1]);
       this.add(b,x,.72,z-.404,screenWidth*.84,.018,.012,[.10,.83,.94,1]);
@@ -196,7 +197,16 @@ window.Hive3D = (function () {
       const by=1.25,bz=z+.88;
       this.add(rb,x,by-.34,bz-.03,.31,.34,.24,[.10,.13,.16,1]);
       this.add(s,x,by,bz,.35,.34,.32,[1,.70,.05,1]);
+      // Glossy face details make each bee read as a designed mascot, not a yellow sphere.
+      this.add(s,x-.105,by+.035,bz-.278,.060,.078,.035,[.025,.045,.065,1]);
+      this.add(s,x+.105,by+.035,bz-.278,.060,.078,.035,[.025,.045,.065,1]);
+      this.add(s,x-.119,by+.061,bz-.306,.018,.024,.010,[.92,.98,1,1]);
+      this.add(s,x+.091,by+.061,bz-.306,.018,.024,.010,[.92,.98,1,1]);
+      this.add(rb,x,by-.105,bz-.295,.105,.022,.018,[.14,.055,.025,1]);
       this.add(s,x,by-.24,bz+.02,.28,.23,.26,[.98,.57,.035,1]);
+      // Dark-and-gold thorax bands, visible from the default front camera.
+      this.add(rb,x,by-.235,bz-.214,.285,.055,.035,[.055,.065,.075,1]);
+      this.add(rb,x,by-.305,bz-.205,.255,.035,.030,[.99,.73,.08,1]);
       this.add(s,x,by+.30,bz+.08,.20,.035,.18,[.045,.055,.065,1]);
       this.add(b,x-.10,by+.385,bz+.09,.018,.10,.018,[.06,.07,.08,1]);
       this.add(b,x+.10,by+.385,bz+.09,.018,.10,.018,[.06,.07,.08,1]);
@@ -211,8 +221,10 @@ window.Hive3D = (function () {
         this.add(s,x+side*.27,by-.40,bz-.43,.10,.08,.38,[.99,.66,.045,1]);
         this.add(s,x+side*.27,.69,z+.25,.08,.065,.09,[1,.72,.08,1]);
       }
-      this.add(s,x-.43,by+.09,bz-.03,.38,.075,.19,[.68,.91,1,.68]);
-      this.add(s,x+.43,by+.09,bz-.03,.38,.075,.19,[.68,.91,1,.68]);
+      this.add(s,x-.43,by+.09,bz-.03,.38,.075,.19,[.68,.91,1,.58]);
+      this.add(s,x+.43,by+.09,bz-.03,.38,.075,.19,[.68,.91,1,.58]);
+      this.add(s,x-.48,by+.10,bz-.025,.25,.035,.12,[.90,.98,1,.50]);
+      this.add(s,x+.38,by+.10,bz-.025,.25,.035,.12,[.90,.98,1,.50]);
       this.add(b,x,by-.28,bz-.015,.18,.055,.22,[.07,.08,.09,1]);
     }
     // Planters and stylized leaves soften the room edges.
