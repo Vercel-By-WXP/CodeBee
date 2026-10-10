@@ -164,10 +164,9 @@ async function main() {
     writeFileSync(join(artifactDir, "hive3d-webgl.png"), Buffer.from(shot.result.data, "base64"));
 
     // Verify the alternate live renderer independently; the default screenshot above remains the artwork-backed reference.
-    await evaluate("document.querySelector('[data-hive-view=\"live3d\"]').click()");
-    await sleep(100);
     const live3dState = JSON.parse(await evaluate([
       "(() => {",
+      " document.querySelector('[data-hive-view=\"live3d\"]').click();",
       " const viewport=document.getElementById('rd-hive-viewport'),canvas=document.getElementById('rd-hive-gl'),scene=window.__hive3d;",
       " const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');",
       " const pixels=new Uint8Array(canvas.width*canvas.height*4);if(gl)gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);",
