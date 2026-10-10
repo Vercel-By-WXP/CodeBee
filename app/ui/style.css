@@ -7730,3 +7730,19 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
   color: #142e49;
   border: 1px solid rgba(118, 171, 207, .72);
 }
+
+/* In real WebGL mode the monitor glass/face is rendered in 3D. Keep DOM text overlays
+   transparent so foreground robots correctly occlude the physical screen through depth testing. */
+#rd-hive-viewport.hive-mode-live3d .hg-monitor {
+  background: transparent !important;
+  border-color: rgba(94, 207, 235, .24) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+#rd-hive-viewport.hive-mode-live3d .hg-monitor::after { display: none !important; }
+#rd-hive-viewport.hive-mode-live3d .hg-monitor-role,
+#rd-hive-viewport.hive-mode-live3d .hg-monitor-status,
+#rd-hive-viewport.hive-mode-live3d .hg-monitor-time,
+#rd-hive-viewport.hive-mode-live3d .hg-monitor-tail {
+  text-shadow: 0 1px 2px rgba(0, 12, 24, .92);
+}
