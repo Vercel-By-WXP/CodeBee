@@ -7198,8 +7198,15 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 .hive-scene-page-label { white-space: nowrap; font-family: var(--mono); }
 .hive-viewport {
   position: relative; width: 100%; aspect-ratio: 2848 / 1600; overflow: hidden;
-  container-type: inline-size; border: 1px solid var(--border); border-radius: 12px;
-  background: #d4e7f7; cursor: grab; touch-action: pan-y;
+  container-type: inline-size; isolation: isolate;
+  border: 1px solid color-mix(in srgb, #6aa9d2 30%, var(--border)); border-radius: 16px;
+  background: radial-gradient(ellipse at 50% 22%, #eef8ff 0%, #dcecf8 58%, #c9dfef 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.82), 0 18px 46px rgba(17,55,83,.12);
+  cursor: grab; touch-action: pan-y;
+}
+.hive-viewport::after {
+  position: absolute; inset: 0; z-index: 3; border-radius: inherit; pointer-events: none;
+  content: ""; box-shadow: inset 0 0 0 1px rgba(255,255,255,.28), inset 0 -34px 56px rgba(18,61,91,.055);
 }
 .hive-viewport.is-dragging { cursor: grabbing; }
 .hive-reference-layer { position: absolute; inset: 0; transform-origin: center; }
@@ -7208,33 +7215,53 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 .hive-gl { display: none; }
 .hive-gl-overlay { position: absolute; inset: 0; pointer-events: none; }
 #rd-hive-viewport.hive-mode-3d #rd-hive-cells { display: none; }
+#rd-hive-viewport.hive-mode-live3d #rd-hive-cells { display: none !important; }
 #rd-hive-viewport.hive-mode-2d { height: auto; aspect-ratio: auto; overflow: visible; border: 0; border-radius: 0; background: transparent; cursor: auto; }
 #rd-hive-viewport.hive-mode-2d .hive-reference-layer { display: none; }
 .hg-badge {
   position: absolute; transform: translate(-50%, -50%); width: 10.8%; height: 7.6%;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4cqw;
-  padding: .3cqw; border: 0; border-radius: 1.4cqw; pointer-events: auto; cursor: pointer;
-  color: #101c29; background: rgba(255,255,255,.98); box-shadow: 0 .35cqw .9cqw rgba(14,55,88,.22);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .36cqw;
+  padding: .3cqw; border: 1px solid rgba(142,224,247,.42); border-radius: .78cqw; pointer-events: auto; cursor: pointer;
+  color: #effbff; background: linear-gradient(142deg, rgba(14,43,63,.98), rgba(8,61,83,.97));
+  box-shadow: inset 0 1px 0 rgba(224,250,255,.18), 0 .42cqw 1.1cqw rgba(2,20,37,.30);
   text-align: center; font-family: "Microsoft YaHei", sans-serif;
 }
-.hg-badge .hg-name { font-size: 1.25cqw; font-weight: 800; line-height: 1.15; white-space: nowrap; }
-.hg-badge .hg-meta { font-size: .58cqw; color: #536d7d; line-height: 1; white-space: nowrap; }
+.hg-badge::before {
+  position: absolute; top: 15%; left: 8%; width: .3cqw; height: .3cqw; min-width: 3px; min-height: 3px;
+  border-radius: 50%; content: ""; background: #6c8a9c; box-shadow: 0 0 .35cqw rgba(91,223,245,.25);
+}
+.hg-badge .hg-name { font-size: 1.12cqw; font-weight: 750; letter-spacing: .01em; line-height: 1.15; white-space: nowrap; }
+.hg-badge .hg-meta { font-size: .62cqw; color: #a9cfdd; line-height: 1; white-space: nowrap; }
 .hg-badge:disabled { cursor: default; opacity: 1; }
-.hg-badge:hover:not(:disabled), .hg-badge:focus-visible { outline: .12cqw solid #71eaf9; outline-offset: .2cqw; }
-.hg-badge.hg-active { box-shadow: 0 0 1.1cqw rgba(0, 236, 255, .65); }
+.hg-badge:hover:not(:disabled), .hg-badge:focus-visible { outline: .12cqw solid #71eaf9; outline-offset: .16cqw; }
+.hg-badge.hg-active {
+  border-color: rgba(90,245,225,.85);
+  box-shadow: inset 0 1px 0 rgba(224,250,255,.18), 0 .42cqw 1.1cqw rgba(2,20,37,.30), 0 0 1.15cqw rgba(0,236,255,.38);
+}
+.hg-badge.hg-active::before { background: #5df4c7; box-shadow: 0 0 .42cqw rgba(93,244,199,.9); }
 .hg-monitor {
   position: absolute; display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto 1fr;
-  padding: .12cqw .3cqw; gap: .08cqw .18cqw; overflow: hidden; border: 0; border-radius: 0;
-  pointer-events: auto; cursor: pointer; text-align: left; color: #d8f9ff; background: #06244a;
-  font-family: var(--mono); font-size: .57cqw; line-height: 1.15;
+  padding: .12cqw .3cqw; gap: .08cqw .18cqw; overflow: hidden;
+  border: 1px solid rgba(115,202,229,.46); border-radius: .26cqw;
+  pointer-events: auto; cursor: pointer; text-align: left; color: #d8f9ff;
+  background: linear-gradient(160deg, #0b3048 0%, #061a2b 72%, #082236 100%);
+  box-shadow: inset 0 1px 0 rgba(204,248,255,.13), 0 1px 3px rgba(0,12,24,.26);
+  font-family: var(--mono); font-size: .68cqw; line-height: 1.15;
+}
+.hg-monitor::before {
+  position: absolute; top: .18cqw; right: .22cqw; width: .24cqw; height: .24cqw; min-width: 2px; min-height: 2px;
+  border-radius: 50%; content: ""; background: #58e3bd; box-shadow: 0 0 .28cqw rgba(88,227,189,.5);
 }
 .hg-monitor:disabled { opacity: 1; cursor: default; }
-.hg-monitor:hover:not(:disabled), .hg-monitor:focus-visible { outline: .12cqw solid #91f6ff; outline-offset: .1cqw; z-index: 1; }
-.hg-monitor-role { grid-column: 1 / -1; font-size: .69cqw; line-height: 1.16; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hg-monitor-status { color: #94deee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hg-monitor-time { grid-column: 2; grid-row: 2; color: #9dd8e4; white-space: nowrap; }
-.hg-monitor-tail { grid-column: 1 / -1; color: #b3e7f2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hg-monitor.st-running { box-shadow: inset 0 -.1cqw #52edf5; }
+.hg-monitor:hover:not(:disabled), .hg-monitor:focus-visible { outline: .12cqw solid #91f6ff; outline-offset: .08cqw; z-index: 1; }
+.hg-monitor-role { grid-column: 1 / -1; font-size: .82cqw; line-height: 1.16; font-weight: 700; letter-spacing: .005em; color: #edfaff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hg-monitor-status { font-size: .64cqw; color: #94deee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hg-monitor-time { grid-column: 2; grid-row: 2; font-size: .60cqw; color: #9dd8e4; white-space: nowrap; }
+.hg-monitor-tail { grid-column: 1 / -1; font-size: .62cqw; color: #b3e7f2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hg-monitor.st-running { border-color: rgba(78,239,244,.82); box-shadow: inset 0 -.1cqw #52edf5, inset 0 1px 0 rgba(204,248,255,.13), 0 1px 3px rgba(0,12,24,.26); }
+.hg-monitor.st-queued::before { background: #7e99aa; box-shadow: none; }
+.hg-monitor.st-done::before { background: #78f2ae; box-shadow: 0 0 .28cqw rgba(120,242,174,.45); }
+.hg-monitor.st-failed::before, .hg-monitor.st-timeout::before { background: #ff777b; box-shadow: 0 0 .28cqw rgba(255,119,123,.5); }
 .hg-monitor.st-running .hg-monitor-status { color: #5cf5fc; }
 .hg-monitor.st-done .hg-monitor-status { color: #99f3bf; }
 .hg-monitor.st-failed .hg-monitor-status, .hg-monitor.st-timeout .hg-monitor-status { color: #ffa2a2; }
@@ -7284,3 +7311,483 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
   color: inherit; user-select: none; }
 .pb-vol-sel:hover, .pb-vol-sel.on { color: var(--text); }
 .pb-vol-sel input { margin: 0; accent-color: var(--accent, #4a7dbe); }
+
+
+/* Procedural WebGL hive renderer: canvas is the live 3D layer, DOM controls stay accessible above it. */
+#rd-hive-viewport .hive-gl-live {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  touch-action: none;
+}
+#rd-hive-viewport .hive-reference-layer { z-index: 1; pointer-events: none; }
+#rd-hive-viewport .hive-gl-overlay { pointer-events: none; }
+#rd-hive-viewport .hive-gl-overlay button { pointer-events: auto; }
+#rd-hive-viewport.hive-mode-2d .hive-gl-live { display: none; }
+#rd-hive-viewport.hive-mode-3d .hive-reference { display: none; }
+#rd-hive-viewport.hive-mode-3d .hive-reference-layer { pointer-events: none; }
+/* Stage-card top is projected from the 3D wall by hive3d.js; do not pin it to a screen-space row. */
+#rd-hive-viewport.hive-mode-3d .hg-monitor { top: auto; }
+@media (prefers-reduced-motion: reduce) {
+  #rd-hive-viewport .hive-gl-live { scroll-behavior: auto; }
+}
+
+#rd-hive-viewport .hive-gl-live[hidden] { display: none !important; }
+
+
+/* Visual calibration pass: reduce floating task labels so the room and desks read first. */
+#rd-hive-viewport.hive-mode-3d {
+  background: linear-gradient(180deg, #e9f4fc 0%, #d7e9f7 54%, #c9dceb 100%);
+}
+#rd-hive-viewport .hive-reference-layer {
+  z-index: 2;
+  overflow: hidden;
+}
+#rd-hive-viewport .hg-badge {
+  width: 10.6%;
+  height: 6.6%;
+  padding: .24cqw;
+  border-radius: 1.15cqw;
+  box-shadow: 0 .22cqw .55cqw rgba(14,55,88,.17);
+}
+#rd-hive-viewport .hg-badge .hg-name {
+  font-size: clamp(10px, 1.05cqw, 17px);
+}
+#rd-hive-viewport .hg-badge .hg-meta {
+  font-size: clamp(7px, .48cqw, 10px);
+}
+#rd-hive-viewport .hg-monitor {
+  background: rgba(4, 28, 55, .88);
+  border: 1px solid rgba(121, 225, 246, .28);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: clamp(6px, .45cqw, 9px);
+  line-height: 1.2;
+  box-shadow: 0 2px 6px rgba(4, 24, 45, .12);
+  backdrop-filter: blur(2px);
+}
+#rd-hive-viewport .hg-monitor-role {
+  font-size: clamp(6px, .52cqw, 10px);
+}
+#rd-hive-viewport .hg-monitor-tail {
+  opacity: .8;
+}
+#rd-hive-viewport .hg-monitor.st-idle {
+  background: rgba(7, 38, 66, .58);
+  border-color: rgba(255,255,255,.16);
+  opacity: .84;
+}
+#rd-hive-viewport .hg-monitor:disabled {
+  opacity: .42;
+}
+@media (max-width: 760px) {
+  #rd-hive-viewport .hg-monitor { display: none; }
+  #rd-hive-viewport .hg-badge { width: 14%; }
+}
+
+
+/* True projected-screen labels: type must fit inside compact physical monitor bounds. */
+#rd-hive-viewport .hg-monitor {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  padding: 1px 2px;
+  gap: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  border: 1px solid rgba(121, 225, 246, .20);
+  border-radius: 2px;
+  background: rgba(2, 19, 39, .93);
+  box-shadow: none;
+  backdrop-filter: none;
+  line-height: 1.05;
+}
+#rd-hive-viewport .hg-monitor-role {
+  min-width: 0;
+  font-size: clamp(5px, .43cqw, 9px);
+  line-height: 1.05;
+}
+#rd-hive-viewport .hg-monitor-status,
+#rd-hive-viewport .hg-monitor-time {
+  font-size: clamp(4px, .35cqw, 7px);
+  line-height: 1.05;
+}
+#rd-hive-viewport .hg-monitor-tail {
+  min-width: 0;
+  font-size: clamp(4px, .34cqw, 6px);
+  line-height: 1.05;
+}
+#rd-hive-viewport .hg-monitor.st-idle {
+  background: rgba(2, 19, 39, .88);
+}
+
+
+/* Workflow arrows are DOM overlays anchored to projected wall-panel edges. */
+#rd-hive-viewport .hg-flow-link {
+  position: absolute;
+  z-index: 1;
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  pointer-events: none;
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgba(99, 237, 255, .62), rgba(99, 237, 255, .95));
+  box-shadow: 0 0 5px rgba(72, 226, 255, .5);
+}
+#rd-hive-viewport .hg-flow-link::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: -3px;
+  width: 7px;
+  height: 7px;
+  border-top: 2px solid #72efff;
+  border-right: 2px solid #72efff;
+  transform: rotate(45deg);
+  filter: drop-shadow(0 0 2px rgba(83, 233, 255, .65));
+}
+
+
+/* Premium Hive3D finish: give the glass studio a deep, cinematic frame and legible hardware UI. */
+#rd-hive-viewport.hive-mode-3d {
+  background:
+    radial-gradient(ellipse at 50% 34%, rgba(24, 83, 112, .36) 0%, rgba(9, 25, 44, .18) 46%, transparent 74%),
+    linear-gradient(180deg, #071725 0%, #091a2b 54%, #06111e 100%);
+  border: 1px solid rgba(98, 200, 226, .22);
+  box-shadow: inset 0 1px 0 rgba(214, 246, 255, .06), 0 24px 72px rgba(0, 0, 0, .24);
+}
+#rd-hive-viewport .hg-badge {
+  box-sizing: border-box;
+  background: linear-gradient(145deg, rgba(12, 36, 54, .98), rgba(5, 20, 34, .98)) !important;
+  color: #e8f8ff !important;
+  border: 1px solid rgba(107, 225, 239, .45) !important;
+  border-radius: 7px;
+  box-shadow: inset 0 1px 0 rgba(227, 251, 255, .10), 0 5px 14px rgba(0, 8, 20, .32) !important;
+  text-shadow: 0 1px 8px rgba(66, 190, 225, .12);
+}
+#rd-hive-viewport .hg-badge .hg-name {
+  color: #f0fbff !important;
+  letter-spacing: .025em;
+  font-weight: 750;
+}
+#rd-hive-viewport .hg-badge .hg-meta { color: #8dbdce !important; }
+#rd-hive-viewport .hg-badge.hg-active {
+  border-color: rgba(87, 247, 213, .92) !important;
+  box-shadow: inset 0 0 0 1px rgba(87, 247, 213, .10), 0 0 18px rgba(0, 225, 220, .18), 0 5px 14px rgba(0, 8, 20, .32) !important;
+}
+#rd-hive-viewport .hg-room-sign {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  gap: clamp(4px, .42cqw, 8px);
+  padding: 0 clamp(4px, .45cqw, 9px);
+  box-sizing: border-box;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  color: #e8fbff;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  text-shadow: 0 0 9px rgba(37, 187, 220, .18);
+}
+#rd-hive-viewport .hg-room-kicker {
+  color: #79b7c9;
+  font-size: clamp(5px, .48cqw, 9px);
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+#rd-hive-viewport .hg-room-title {
+  color: #f0fcff;
+  font-size: clamp(7px, .72cqw, 13px);
+  font-weight: 850;
+  letter-spacing: .045em;
+}
+#rd-hive-viewport .hg-room-live {
+  color: #72e8ca;
+  font-size: clamp(5px, .44cqw, 8px);
+  font-weight: 750;
+  letter-spacing: .025em;
+}
+#rd-hive-viewport .hg-monitor {
+  border-radius: 3px;
+  border-color: rgba(77, 202, 229, .42);
+  background: linear-gradient(145deg, rgba(5, 27, 43, .97), rgba(2, 13, 25, .98));
+  box-shadow: inset 0 1px 0 rgba(209, 247, 255, .06), 0 2px 7px rgba(0, 8, 18, .18);
+}
+#rd-hive-viewport .hg-monitor-role { color: #edfbff; }
+#rd-hive-viewport .hg-monitor-status,
+#rd-hive-viewport .hg-monitor-time { color: #87d7e7; }
+#rd-hive-viewport .hg-monitor-tail { color: #b0dae5; opacity: .92; }
+#rd-hive-viewport .hg-monitor.st-running {
+  border-color: rgba(76, 243, 220, .95);
+  box-shadow: inset 0 0 0 1px rgba(76, 243, 220, .12), 0 0 8px rgba(31, 210, 211, .15);
+}
+
+
+/* Second calibration: the wall identity should read at a glance without overpowering the stages. */
+#rd-hive-viewport .hg-room-kicker { font-size: clamp(6px, .55cqw, 10px); }
+#rd-hive-viewport .hg-room-title { font-size: clamp(8px, .88cqw, 15px); letter-spacing: .055em; }
+#rd-hive-viewport .hg-room-live { font-size: clamp(6px, .50cqw, 9px); }
+
+
+/* Readability pass: task labels remain useful at a glance at the shipped scene size. */
+#rd-hive-viewport .hg-monitor-role {
+  font-size: clamp(6px, .56cqw, 10px);
+  line-height: 1.08;
+}
+#rd-hive-viewport .hg-monitor-status,
+#rd-hive-viewport .hg-monitor-time {
+  font-size: clamp(5px, .40cqw, 7px);
+  line-height: 1.05;
+}
+#rd-hive-viewport .hg-monitor-tail {
+  font-size: clamp(5px, .38cqw, 7px);
+  line-height: 1.05;
+}
+
+
+/* Reference-match pass: high-key blue office, white phase pills, and cyan flow rails. */
+#rd-hive-viewport.hive-mode-3d {
+  background: linear-gradient(180deg, #eaf5ff 0%, #dcecf9 58%, #cfe1ef 100%) !important;
+  border: 1px solid rgba(112, 164, 203, .38) !important;
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.92), 0 16px 36px rgba(33, 80, 119, .14) !important;
+}
+#rd-hive-viewport .hg-badge {
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f9ff 100%) !important;
+  color: #12283e !important;
+  border: 1px solid rgba(118, 171, 207, .72) !important;
+  border-radius: 1.25cqw;
+  box-shadow: inset 0 1px 0 #fff, 0 3px 0 rgba(25, 58, 88, .12), 0 7px 15px rgba(24, 62, 97, .20) !important;
+  text-shadow: none !important;
+}
+#rd-hive-viewport .hg-badge::before {
+  width: clamp(4px, .35cqw, 6px);
+  height: clamp(4px, .35cqw, 6px);
+  min-width: 0;
+  min-height: 0;
+  background: #38c7e8;
+  box-shadow: 0 0 7px rgba(57, 206, 236, .48);
+}
+#rd-hive-viewport .hg-badge .hg-name {
+  color: #142e49 !important;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+#rd-hive-viewport .hg-badge .hg-meta {
+  color: #58748c !important;
+  font-weight: 600;
+}
+#rd-hive-viewport .hg-badge.hg-active {
+  border-color: #58d4ee !important;
+  box-shadow: inset 0 0 0 1px rgba(76, 209, 238, .28), 0 0 0 2px rgba(87, 211, 239, .26), 0 6px 14px rgba(23, 89, 130, .19) !important;
+}
+#rd-hive-viewport .hg-badge.hg-active::before {
+  background: #18c8a1;
+  box-shadow: 0 0 7px rgba(24, 200, 161, .70);
+}
+#rd-hive-viewport .hg-flow-link {
+  height: 3px;
+  background: linear-gradient(90deg, rgba(74, 229, 255, .70), #55eaff);
+  box-shadow: 0 0 6px rgba(40, 224, 255, .68);
+}
+#rd-hive-viewport .hg-flow-link::after {
+  top: -3px;
+  border-color: #64eeff;
+  filter: drop-shadow(0 0 3px rgba(59, 221, 255, .72));
+}
+#rd-hive-viewport .hg-monitor {
+  background: linear-gradient(145deg, #06213a 0%, #00162a 100%) !important;
+  border: 1px solid rgba(112, 195, 232, .48) !important;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(209, 244, 255, .13), 0 2px 5px rgba(8, 35, 59, .17) !important;
+}
+#rd-hive-viewport .hg-monitor:disabled {
+  opacity: .98 !important;
+}
+#rd-hive-viewport .hg-monitor-role {
+  color: #f0fbff !important;
+}
+#rd-hive-viewport .hg-monitor-status,
+#rd-hive-viewport .hg-monitor-time {
+  color: #8fe5f4 !important;
+}
+#rd-hive-viewport .hg-monitor-tail {
+  color: #60dcf3 !important;
+  opacity: 1;
+}
+
+
+/* Reference geometry finishing: taller white phase pills and illuminated monitor baselines. */
+#rd-hive-viewport .hg-badge {
+  width: 10.8% !important;
+  height: clamp(42px, 4.5cqw, 54px) !important;
+  padding: 4px 6px !important;
+  border-radius: 12px !important;
+  gap: 3px !important;
+}
+#rd-hive-viewport .hg-badge .hg-name {
+  font-size: clamp(11px, .98cqw, 15px) !important;
+  line-height: 1.15 !important;
+}
+#rd-hive-viewport .hg-badge .hg-meta {
+  font-size: clamp(7px, .54cqw, 9px) !important;
+  line-height: 1 !important;
+}
+#rd-hive-viewport .hg-monitor {
+  position: absolute;
+}
+#rd-hive-viewport .hg-monitor::after {
+  position: absolute;
+  content: "";
+  left: 4%;
+  right: 4%;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #31cce9, #a0f5ff);
+  box-shadow: 0 0 5px rgba(42, 222, 255, .58);
+  pointer-events: none;
+}
+
+
+/* High-fidelity default view: use the shipped rendered reference as the scene plate,
+   while clickable HTML controls on the six phase cards and fourteen monitors stay live. */
+#rd-hive-viewport.hive-mode-3d .hive-reference {
+  display: block !important;
+  z-index: 0;
+  object-fit: contain;
+}
+#rd-hive-viewport.hive-mode-live3d .hive-reference {
+  display: none !important;
+}
+#rd-hive-viewport .hive-reference-artboard {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+#rd-hive-viewport.hive-mode-3d .hive-gl-live {
+  z-index: 0;
+}
+#rd-hive-viewport.hive-mode-3d .hg-badge {
+  width: 10.74% !important;
+  height: 7.57% !important;
+  padding: 2px 4px !important;
+  gap: 2px !important;
+  border-radius: 1.15cqw !important;
+  background: linear-gradient(180deg, #fff 0%, #f6faff 100%) !important;
+  border: 1px solid rgba(120, 171, 207, .78) !important;
+  box-shadow: inset 0 1px 0 #fff, 0 3px 0 rgba(25, 58, 88, .12), 0 7px 15px rgba(24, 62, 97, .19) !important;
+  color: #142e49 !important;
+}
+#rd-hive-viewport.hive-mode-3d .hg-badge .hg-name {
+  color: #142e49 !important;
+  font-size: clamp(10px, .98cqw, 15px) !important;
+  line-height: 1.08 !important;
+}
+#rd-hive-viewport.hive-mode-3d .hg-badge .hg-meta {
+  color: #58748c !important;
+  font-size: clamp(6px, .49cqw, 8px) !important;
+  line-height: 1 !important;
+}
+#rd-hive-viewport.hive-mode-3d .hg-flow-link {
+  display: none !important;
+}
+#rd-hive-viewport.hive-mode-3d .hg-monitor {
+  padding: 1px 2px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #06213a 0%, #001327 100%);
+  border: 1px solid rgba(101, 194, 233, .58);
+  box-shadow: inset 0 1px 0 rgba(215, 247, 255, .14), 0 2px 4px rgba(0, 18, 35, .22);
+  opacity: 1;
+}
+#rd-hive-viewport.hive-mode-3d .hg-monitor-role {
+  font-size: clamp(5px, .53cqw, 8px);
+  line-height: 1.03;
+  color: #f0fbff;
+}
+#rd-hive-viewport.hive-mode-3d .hg-monitor-status,
+#rd-hive-viewport.hive-mode-3d .hg-monitor-time {
+  font-size: clamp(4px, .35cqw, 6px);
+  line-height: 1;
+  color: #6cdbf5;
+}
+#rd-hive-viewport.hive-mode-3d .hg-monitor-tail {
+  font-size: clamp(4px, .34cqw, 6px);
+  line-height: 1;
+  color: #87e8f7;
+}
+#rd-hive-viewport.hive-mode-3d .hg-monitor::after {
+  height: 2px;
+  bottom: 1px;
+  opacity: .92;
+}
+#rd-hive-viewport.hive-mode-3d .hg-monitor:disabled {
+  opacity: 1 !important;
+}
+#rd-hive-viewport.hive-mode-live3d {
+  background: linear-gradient(180deg, #eaf5ff 0%, #dcecf9 58%, #cfe1ef 100%);
+}
+#rd-hive-viewport.hive-mode-live3d .hg-badge {
+  background: linear-gradient(180deg, #fff 0%, #f5f9ff 100%);
+  color: #142e49;
+  border: 1px solid rgba(118, 171, 207, .72);
+}
+
+/* In real WebGL mode the monitor glass/face is rendered in 3D. Keep DOM text overlays
+   transparent so foreground robots correctly occlude the physical screen through depth testing. */
+#rd-hive-viewport.hive-mode-live3d .hg-monitor {
+  background: transparent !important;
+  border-color: rgba(94, 207, 235, .24) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+#rd-hive-viewport.hive-mode-live3d .hg-monitor::after { display: none !important; }
+#rd-hive-viewport.hive-mode-live3d .hg-monitor-role,
+#rd-hive-viewport.hive-mode-live3d .hg-monitor-status,
+#rd-hive-viewport.hive-mode-live3d .hg-monitor-time,
+#rd-hive-viewport.hive-mode-live3d .hg-monitor-tail {
+  text-shadow: 0 1px 2px rgba(0, 12, 24, .92);
+}
+
+/* Fullscreen applies to the reference artwork, live WebGL and 2D fallback alike. */
+.hive-scene-stage { min-width: 0; }
+.hive-scene-fullscreen { min-width: 64px; }
+.hive-scene-stage:fullscreen,
+.hive-scene-stage.is-fullscreen {
+  display: flex; flex-direction: column; gap: 8px;
+  width: 100vw; height: 100vh; min-width: 0; max-width: none;
+  margin: 0; padding: 12px 16px 16px; box-sizing: border-box; overflow: hidden;
+  border: 0; border-radius: 0; background: #eaf3fa; color: #183750;
+}
+.hive-scene-stage:fullscreen .hive-scene-tools,
+.hive-scene-stage.is-fullscreen .hive-scene-tools {
+  flex: 0 0 auto; flex-wrap: wrap; width: 100%; min-height: 38px;
+  margin: 0; gap: 8px; box-sizing: border-box;
+}
+.hive-scene-stage:fullscreen .hive-viewport,
+.hive-scene-stage.is-fullscreen .hive-viewport {
+  flex: 1 1 auto; width: 100%; height: auto; min-height: 0;
+  aspect-ratio: auto; border-radius: 12px;
+}
+.hive-scene-stage:fullscreen .hive-viewport .hive-reference,
+.hive-scene-stage.is-fullscreen .hive-viewport .hive-reference {
+  object-fit: contain; background: #eaf3fa;
+}
+.hive-scene-stage:fullscreen .hive-viewport.hive-mode-2d,
+.hive-scene-stage.is-fullscreen .hive-viewport.hive-mode-2d {
+  flex: 1 1 auto; height: auto; min-height: 0; overflow: auto;
+}
+@media (max-width: 680px) {
+  .hive-scene-stage:fullscreen,
+  .hive-scene-stage.is-fullscreen { padding: 8px; gap: 6px; }
+  .hive-scene-stage:fullscreen .hive-scene-tools,
+  .hive-scene-stage.is-fullscreen .hive-scene-tools { gap: 5px; }
+  .hive-scene-stage:fullscreen .hive-scene-hint,
+  .hive-scene-stage.is-fullscreen .hive-scene-hint { display: none; }
+}

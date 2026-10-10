@@ -8632,15 +8632,15 @@ function hiveThinkLine(lines) {
  * localStorage 持久化/WebGL 不可用降级，以及把 renderHive 的泳道数据翻译给场景。 —— */
 let hiveScene = null;          // Hive3D 场景实例（懒创建）
 let hiveSceneDead = false;     // WebGL 不可用/上下文丢失——本次页面周期内不再尝试
-let hiveMode = "3d";           // 当前视图模式（orch.hiveView）
+let hiveMode = "live3d";     // live3d is the real scene; reference and 2d remain opt-in views
 let hiveRunId = "";            // 最近一次 renderHive 的 run.id（尾巴/思考缓存键前缀）
 const hiveLiveMeta = {};       // rel -> { started_at }（3D 芯片秒表用）
 let hiveDialogPoll = null;
 let hiveDialogKey = "";
 
-function setHiveSceneButtons(is3d) {
+function setHiveSceneButtons(mode) {
   document.querySelectorAll("[data-hive-view]").forEach((button) => {
-    const active = button.dataset.hiveView === (is3d ? "3d" : "2d");
+    const active = button.dataset.hiveView === mode;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", active ? "true" : "false");
   });
@@ -8711,28 +8711,80 @@ function closeHiveMonitorLog() {
 function setHiveSceneMode(mode, opts) {
   const viewport = $("rd-hive-viewport");
   if (!viewport) return;
-  let is3d = mode !== "2d";
-  if (is3d) {
+  let selected = ["live3d", "2d"].includes(mode) ? mode : "reference";
+  if (selected !== "2d") {
     const sc = ensureHiveScene();
     if (!sc) {
-      is3d = false;
+      selected = "2d";
       if (!(opts && opts.silent)) toast(t("当前环境不支持 WebGL，已切换 2D 列表"), true);
     }
   }
-  hiveMode = is3d ? "3d" : "2d";
-  if (hiveScene) hiveScene.setActive(is3d);
-  viewport.classList.toggle("hive-mode-3d", is3d);
-  viewport.classList.toggle("hive-mode-2d", !is3d);
+  hiveMode = selected;
+  if (hiveScene) {
+    hiveScene.setDisplayMode(selected);
+    hiveScene.setActive(selected !== "2d");
+  }
+  viewport.classList.toggle("hive-mode-3d", selected === "reference");
+  viewport.classList.toggle("hive-mode-live3d", selected === "live3d");
+  viewport.classList.toggle("hive-mode-2d", selected === "2d");
   const tools = document.querySelector(".hive-scene-tools");
-  if (tools) tools.classList.toggle("hive-2d", !is3d);
-  setHiveSceneButtons(is3d);
-  try { localStorage.setItem("orch.hiveView", hiveMode); } catch (e) { /* 隐私模式等 */ }
+  if (tools) tools.classList.toggle("hive-2d", selected === "2d");
+  setHiveSceneButtons(selected);
+  const hint = document.querySelector(".hive-scene-hint");
+  if (hint) {
+    const hintKey = selected === "live3d"
+      ? "拖动旋转 · Shift+拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志"
+      : selected === "2d" ? "点击格子看日志"
+      : "拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志";
+    hint.dataset.i18n = hintKey;
+    hint.textContent = t(hintKey);
+  }
+  try { localStorage.setItem("orch.hiveView.v2", hiveMode); } catch (e) { /* 隐私模式等 */ }
+}
+
+function syncHiveFullscreenButton() {
+  const stage = $("hive-scene-stage");
+  const button = $("hive-scene-fullscreen");
+  const active = !!stage && document.fullscreenElement === stage;
+  if (stage) stage.classList.toggle("is-fullscreen", active);
+  if (!button) return;
+  const textKey = active ? "退出全屏" : "全屏";
+  const labelKey = active ? "退出全屏" : "进入全屏";
+  button.dataset.i18n = textKey;
+  button.dataset.i18nTitle = labelKey;
+  button.dataset.i18nAria = labelKey;
+  button.textContent = t(textKey);
+  button.title = t(labelKey);
+  button.setAttribute("aria-label", t(labelKey));
+  button.setAttribute("aria-pressed", active ? "true" : "false");
+}
+
+async function toggleHiveFullscreen() {
+  const stage = $("hive-scene-stage");
+  if (!stage) return;
+  try {
+    if (document.fullscreenElement === stage) {
+      await document.exitFullscreen();
+      return;
+    }
+    if (typeof stage.requestFullscreen !== "function" || document.fullscreenEnabled === false) {
+      toast(t("当前浏览器不支持全屏"), true);
+      return;
+    }
+    await stage.requestFullscreen();
+  } catch (error) {
+    toast(t("全屏失败：") + (error && error.message ? error.message : ""), true);
+  }
 }
 
 function setupHiveSceneControls() {
   const viewport = $("rd-hive-viewport");
   if (!viewport || viewport.dataset.controlsReady) return;
   viewport.dataset.controlsReady = "true";
+  const fullscreenButton = $("hive-scene-fullscreen");
+  if (fullscreenButton) fullscreenButton.addEventListener("click", toggleHiveFullscreen);
+  document.addEventListener("fullscreenchange", syncHiveFullscreenButton);
+  syncHiveFullscreenButton();
   const hiveDialog = $("hive-log-dialog");
   const hiveClose = $("hive-log-close");
   if (hiveClose) hiveClose.addEventListener("click", closeHiveMonitorLog);
@@ -8745,14 +8797,23 @@ function setupHiveSceneControls() {
   });
   document.querySelectorAll("[data-hive-scene-action]").forEach((button) => {
     button.addEventListener("click", () => {
-      if (hiveMode !== "3d" || !hiveScene) return;
+      if (hiveMode === "2d" || !hiveScene) return;
       if (button.dataset.hiveSceneAction === "reset") hiveScene.resetView();
       else hiveScene.zoomAt(button.dataset.hiveSceneAction === "zoom-in" ? 1 / 1.18 : 1.18);
     });
   });
-  let saved = "3d";
-  try { saved = localStorage.getItem("orch.hiveView") || "3d"; } catch (e) { /* ignore */ }
-  setHiveSceneMode(saved === "2d" ? "2d" : "3d", { silent: true });
+  let saved = "live3d";
+  try {
+    saved = localStorage.getItem("orch.hiveView.v2") || "";
+    if (!saved) {
+      // Migrate an explicitly selected 2D/live3D preference; the old default "reference"
+      // was auto-persisted for every new visitor, so it is not a reliable user preference.
+      const legacy = localStorage.getItem("orch.hiveView");
+      saved = legacy === "2d" || legacy === "live3d" ? legacy : "live3d";
+      localStorage.setItem("orch.hiveView.v2", saved);
+    }
+  } catch (e) { /* ignore storage restrictions and keep the live 3D default */ }
+  setHiveSceneMode(["reference", "live3d", "2d"].includes(saved) ? saved : "live3d", { silent: true });
 }
 
 /* renderHive → 场景数据翻译：泳道=蜂巢塔的一层，格子按状态映射高度/颜色。
@@ -8812,7 +8873,8 @@ function hiveSceneSync(run, lanes, byStage) {
   const sc = ensureHiveScene();
   if (!sc) return;
   sc.sync(model);                    // 2D 模式也同步：切回 3D 时数据即 ready（画布未激活零 GPU 开销）
-  sc.setActive(hiveMode === "3d");
+  sc.setDisplayMode(hiveMode);
+  sc.setActive(hiveMode !== "2d");
 }
 
 window.renderHive = function (run) {
@@ -16140,6 +16202,9 @@ window.suRestart = suRestart;
 window.updDismiss = updDismiss;
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Initialize Hive3D controls independently of run data. A fresh workspace may have no
+  // active run yet, but fullscreen/view controls must still be wired and usable.
+  setupHiveSceneControls();
   // 远程地址里带的 ?token= 存起来并从地址栏抹掉，之后所有请求走请求头
   const urlTok = new URLSearchParams(location.search).get("token");
   if (urlTok) {

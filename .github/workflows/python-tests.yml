@@ -1,5 +1,9 @@
 name: Python tests
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
@@ -23,9 +27,48 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes bubblewrap
+      - name: Check Hive3D JavaScript syntax
+        run: node --check ui/hive3d.js
       - name: Run unit and sandbox integration tests
         run: python -m unittest discover -s tests -v
       - name: Run required bubblewrap isolation tests with namespace privileges
         env:
           CODEBEE_REQUIRE_BWRAP: "1"
         run: sudo -E "$(which python)" -m unittest discover -s tests -p test_sandbox_runtime.py -v
+
+  hive3d-browser-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Render and interact with Hive3D in Edge WebGL
+        run: node tests/ui_hive3d_webgl.mjs
+      - name: Upload Hive3D browser screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive3d-webgl-smoke
+          path: tests/.ui-shots/hive3d-webgl.png
+          if-no-files-found: warn
+
+  release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install bubblewrap runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap
+      - name: Run official npm release gate (without publishing)
+        run: python scripts/release_gate.py
