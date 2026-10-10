@@ -258,12 +258,12 @@ window.Hive3D = (function () {
       for(let k=0;k<3;k++)this.add(b,blueBinderStart+k*.095,.79,z+.34,.075,.35,.18,[[.08,.34,.80,1],[.10,.51,.91,1],[.06,.25,.65,1]][k]);
       this.add(this.cylinder,x,.08,z+.62,.075,.28,.075,[.12,.15,.18,1]);
       this.add(rb,x,.30,z+.80,.94,.12,.68,[.11,.14,.17,1]);
-      this.add(rb,x,.62,z+.54,.98,.78,.18,[.085,.12,.16,1]);
-      this.add(rb,x,.62,z+.635,.69,.54,.024,[.13,.18,.22,1]);
+      this.add(rb,x,.62,z+.54,1.10,.78,.18,[.085,.12,.16,1]);
+      this.add(rb,x,.62,z+.635,.78,.54,.024,[.13,.18,.22,1]);
       this.add(rb,x,.48,z+.75,.48,.12,.12,[.18,.22,.25,1]);
       // Molded backrest cushion, lumbar ribs, arm pads, and five rolling casters.
-      this.add(rb,x,.62,z+.66,.74,.55,.050,[.105,.13,.15,1]);
-      for(const ribY of [.46,.60,.74])this.add(rb,x,ribY,z+.69,.58,.026,.020,[.24,.28,.31,1]);
+      this.add(rb,x,.62,z+.66,.80,.55,.050,[.12,.15,.17,1]);
+      for(const ribY of [.46,.60,.74])this.add(rb,x,ribY,z+.69,.62,.026,.020,[.28,.32,.35,1]);
       for(const side of [-1,1]){
         this.add(rb,x+side*.39,.63,z+.52,.10,.075,.38,[.11,.14,.16,1]);
         this.add(b,x+side*.39,.48,z+.53,.035,.28,.045,[.07,.09,.11,1]);
@@ -273,9 +273,9 @@ window.Hive3D = (function () {
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
       this.add(s,x,by-.42,bz+.005,.37,.70,.31,[.075,.09,.11,1]);
       this.add(s,x,by-.255,bz+.035,.255,.255,.235,[.08,.10,.12,1]);
-      this.add(rb,x,by-.47,bz+.337,.58,.082,.050,[.99,.68,.035,1]);
-      this.add(rb,x,by-.64,bz+.271,.54,.078,.050,[.96,.57,.025,1]);
-      this.add(rb,x,by-.555,bz+.311,.44,.040,.040,[.045,.055,.065,1]);
+      this.add(rb,x,by-.47,bz+.320,.58,.075,.036,[.99,.68,.035,1]);
+      this.add(rb,x,by-.64,bz+.303,.54,.072,.036,[.96,.57,.025,1]);
+      this.add(rb,x,by-.555,bz+.313,.44,.036,.028,[.045,.055,.065,1]);
       this.add(s,x,by,bz,.405,.37,.345,[1,.70,.045,1]);
       // The face points toward the monitor; the rear silhouette carries the headset details.
       for(const side of [-1,1]){
@@ -446,7 +446,8 @@ window.Hive3D = (function () {
       if(!desk){m.el.style.visibility="hidden";return;}
       const {x,z,screenWidth,screenHeight}=desk;
       const halfW=screenWidth/2,halfH=screenHeight/2;
-      const rect=this.projectRect([[x-halfW,1.205-halfH,z-.418],[x+halfW,1.205-halfH,z-.418],
+      const visibleBottom=1.205-halfH*.56; // Reserve the lower screen rim so DOM text never paints across a bee silhouette.
+      const rect=this.projectRect([[x-halfW,visibleBottom,z-.418],[x+halfW,visibleBottom,z-.418],
         [x+halfW,1.205+halfH,z-.418],[x-halfW,1.205+halfH,z-.418]]);
       if(!rect||rect.width<8||rect.height<6){m.el.style.visibility="hidden";return;}
       m.el.style.visibility="visible";
