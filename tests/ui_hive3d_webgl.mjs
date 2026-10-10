@@ -118,8 +118,8 @@ async function main() {
       await evaluate("document.querySelector(" + selectorJSON + ").scrollIntoView({block:'center'})");
       const point = JSON.parse(await evaluate("JSON.stringify((() => { const el=document.querySelector(" + selectorJSON + "); if(!el)throw new Error('Missing fullscreen test selector'); const r=el.getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}; })())"));
       await send("Input.dispatchMouseEvent", { type:"mouseMoved", x:point.x, y:point.y });
-      await send("Input.dispatchMouseEvent", { type:"mousePressed", x:point.x, y:point.y, button:"left", clickCount:1 });
-      await send("Input.dispatchMouseEvent", { type:"mouseReleased", x:point.x, y:point.y, button:"left", clickCount:1 });
+      await send("Input.dispatchMouseEvent", { type:"mousePressed", x:point.x, y:point.y, button:"left", buttons:1, clickCount:1 });
+      await send("Input.dispatchMouseEvent", { type:"mouseReleased", x:point.x, y:point.y, button:"left", buttons:0, clickCount:1 });
     };
 
     await evaluate("document.querySelector('[data-hive-view=reference]').click()");
