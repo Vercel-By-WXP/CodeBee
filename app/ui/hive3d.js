@@ -275,14 +275,14 @@ window.Hive3D = (function () {
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
       this.add(s,x,by-.42,bz+.005,.31,.31,.235,[.075,.09,.11,1]);
       this.add(s,x,by-.255,bz+.16,.13,.12,.10,[.08,.10,.12,1]);
-      this.add(rb,x,by-.47,bz+.250,.365,.088,.025,[1,.62,.025,1]);
-      this.add(rb,x,by-.64,bz+.183,.325,.084,.025,[.99,.53,.012,1]);
-      this.add(rb,x,by-.555,bz+.220,.290,.040,.022,[.045,.055,.065,1]);
+      this.add(rb,x,by-.47,bz+.300,.365,.080,.022,[1,.66,.035,1]);
+      this.add(rb,x,by-.64,bz+.292,.325,.076,.022,[.99,.56,.018,1]);
+      this.add(rb,x,by-.555,bz+.304,.290,.036,.020,[.045,.055,.065,1]);
       this.add(s,x,by,bz,.405,.37,.345,[1,.70,.045,1]);
       // The face points toward the monitor; the rear silhouette carries the headset details.
       for(const side of [-1,1]){
-        this.add(s,x+side*.31,by+.015,bz+.265,.083,.12,.10,[.045,.055,.065,1]);
-        this.add(s,x+side*.34,by+.015,bz+.300,.036,.056,.050,[.99,.68,.045,1]);
+        this.add(s,x+side*.382,by+.015,bz+.035,.078,.118,.094,[.045,.055,.065,1]);
+        this.add(s,x+side*.407,by+.015,bz+.052,.030,.052,.048,[.99,.68,.045,1]);
         this.add(this.cylinder,x+side*.105,by+.43,bz+.105,.020,.30,.020,[.045,.055,.065,1],0,-side*.18);
         this.add(s,x+side*.13,by+.57,bz+.108,.032,.032,.032,[.10,.12,.14,1]);
         this.add(s,x+side*.135,by+.595,bz+.132,.024,.024,.024,[1,.73,.10,1]);
@@ -308,8 +308,8 @@ window.Hive3D = (function () {
         for(let finger=0;finger<3;finger++)this.add(b,x+side*.355+(finger-1)*.026,.633,z+.265,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
-      this.add(rb,x,by-.585,bz+.214,.13,.068,.020,[.025,.10,.14,1]);
-      this.add(rb,x,by-.585,bz+.226,.082,.016,.010,[.16,.88,.98,1]);
+      this.add(rb,x,by-.585,bz+.304,.13,.068,.018,[.025,.10,.14,1]);
+      this.add(rb,x,by-.585,bz+.317,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth translucent ellipsoid wings match the soft oval silhouette in the reference.
       this.add(s,x-.43,by-.245,bz+.19,.42,.145,.075,[.46,.77,.99,.29],-.20,.06);
       this.add(s,x+.43,by-.245,bz+.19,.42,.145,.075,[.46,.77,.99,.29],.20,-.06);
