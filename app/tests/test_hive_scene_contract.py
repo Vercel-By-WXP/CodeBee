@@ -43,8 +43,12 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("projectWorld", ENGINE)
         self.assertIn("layoutOverlayPositions", ENGINE)
         self.assertIn("this.deskPositions=[]", ENGINE)
-        self.assertIn("xs:[-7.77,-5.55,-3.33,-1.11,1.11,3.33,5.55,7.77]", ENGINE)
-        self.assertIn("xs:[-7.0,-4.2,-1.4,1.4,4.2,7.0]", ENGINE)
+        # The rear row spans almost the full feature wall; the wider front stations
+        # are centered with tighter spacing so both rows match the reference proportions.
+        self.assertIn("xs:[-8.4,-6.0,-3.6,-1.2,1.2,3.6,6.0,8.4]", ENGINE)
+        self.assertIn("xs:[-6.0,-3.6,-1.2,1.2,3.6,6.0]", ENGINE)
+        self.assertIn("screenWidth:1.28,screenHeight:.70", ENGINE)
+        self.assertIn("screenWidth:1.48,screenHeight:.82", ENGINE)
         self.assertIn("const desk=this.deskPositions&&this.deskPositions[i]", ENGINE)
         self.assertIn("dispose=function", ENGINE)
 
