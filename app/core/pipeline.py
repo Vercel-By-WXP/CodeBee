@@ -4056,7 +4056,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 if not res["ok"]:
                     # 成品是文件不是退出码：CLI 超时但章稿已完整落盘（终章长文实测
                     # 反复出现——文件写完、收尾声明没等到）就送评审门把关，别整章作废
-                    live = (store.get_run(run_id).get("steps") or [])
+                    live = ((store.get_run(run_id) or {}).get("steps") or [])
                     if live:
                         store.finish_step(run_id, live[-1]["n"], "done",
                                           summary="起草调用超时，但章稿已完整落盘（约 %d 字）——交评审门判质量"
@@ -5965,8 +5965,23 @@ def execute_run(run_id):
                          status="cancelled", ended_at=_now())
     except Exception as e:
         import traceback
+        # 崩溃现场随错误行下发（2026-10-10 Mac 实案：连载连烧两轮自动续跑都
+        # 死于 AttributeError("'NoneType' object has no attribute 'get'")，
+        # 错误行只有一行 repr 无从定位；traceback 全文虽落 run 目录 error.log，
+        # 但 UI 上看不见）。尾帧 = 文件:行号:函数名，一行说清死在哪；同因止损
+        # 的错误签名因此按崩溃位置区分——同位置才算同因，代码升级后行号漂移
+        # 自动能多试一轮（新代码可能已修复），次数上限仍兜底。
+        _tb_tail = ""
+        try:
+            _frames = traceback.extract_tb(e.__traceback__)
+            if _frames:
+                _f = _frames[-1]
+                _tb_tail = "（崩溃于 %s:%s %s）" % (
+                    os.path.basename(_f.filename), _f.lineno, _f.name)
+        except Exception:
+            pass
         store.update_run(run_id, expected_status="running", status="failed",
-                         error=repr(e)[:500], ended_at=_now())
+                         error=(repr(e)[:380] + _tb_tail)[:500], ended_at=_now())
         try:
             err_path = store.run_dir(run_id) / "error.log"
             if _inside(str(store.run_dir(run_id).parent), str(err_path)):
