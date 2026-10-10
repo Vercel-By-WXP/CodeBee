@@ -129,11 +129,10 @@ async function main() {
       " const names=['规划','起草','评审','执行','打磨','合成'];let cursor=0;",
       " const lanes=names.map((name,index)=>{const count=index<2?3:2;const cells=allCells.slice(cursor,cursor+count);cursor+=count;return{name,count:cells.length,settled:cells.filter(c=>!['running','queued'].includes(c.status)).length,active:cells.some(c=>c.status==='running'),cells};});",
       " scene.sync({runId:'release-smoke',lanes});scene.setActive(true);",
-      " const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');",
-      " const pixels=new Uint8Array(canvas.width*canvas.height*4);if(gl)gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);const clear=gl?Array.from(gl.getParameter(gl.COLOR_CLEAR_VALUE)).map(v=>Math.round(v*255)):[0,0,0,0];let nonBackgroundPixels=0;const sampledColors=new Set();for(let p=0;p<pixels.length;p+=4){if(Math.abs(pixels[p]-clear[0])+Math.abs(pixels[p+1]-clear[1])+Math.abs(pixels[p+2]-clear[2])>12)nonBackgroundPixels++;if(p%(4*97)===0)sampledColors.add(pixels[p]+','+pixels[p+1]+','+pixels[p+2]);}",
+      " const monitor=viewport.querySelector('.hg-monitor'),badge=viewport.querySelector('.hg-badge');",
       " const monitor=viewport.querySelector('.hg-monitor'),badge=viewport.querySelector('.hg-badge');",
       " const monitorCenters=Array.from(viewport.querySelectorAll('.hg-monitor')).map(el=>{const r=el.getBoundingClientRect();return[r.x+r.width/2,r.y+r.height/2]});",
-      " return JSON.stringify({info:scene.info(),deskRows:scene.info().deskRows,monitorCenters,canvas:[canvas.width,canvas.height],glError:gl?gl.getError():-1,glVersion:gl?gl.getParameter(gl.VERSION):'',clearColor:clear,nonBackgroundPixels,sampledColors:sampledColors.size,monitors:viewport.querySelectorAll('.hg-monitor').length,visibleMonitors:Array.from(viewport.querySelectorAll('.hg-monitor')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,badges:viewport.querySelectorAll('.hg-badge').length,visibleBadges:Array.from(viewport.querySelectorAll('.hg-badge')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,flowLinks:viewport.querySelectorAll('.hg-flow-link').length,viewportRect:(()=>{const r=viewport.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})(),monitorRect:monitor?(()=>{const r=monitor.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null,badgeRect:badge?(()=>{const r=badge.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null});",
+      " return JSON.stringify({mode:scene.displayMode,referenceDisplay:getComputedStyle(viewport.querySelector('.hive-reference')).display,canvasHidden:canvas.hidden,info:scene.info(),deskRows:scene.info().deskRows,monitorCenters,monitors:viewport.querySelectorAll('.hg-monitor').length,visibleMonitors:Array.from(viewport.querySelectorAll('.hg-monitor')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,badges:viewport.querySelectorAll('.hg-badge').length,visibleBadges:Array.from(viewport.querySelectorAll('.hg-badge')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,flowLinks:viewport.querySelectorAll('.hg-flow-link').length,viewportRect:(()=>{const r=viewport.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})(),monitorRect:monitor?(()=>{const r=monitor.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null,badgeRect:badge?(()=>{const r=badge.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null});",
       "})()"
     ].join("\n");
     const state = JSON.parse(await evaluate(setupExpr));
@@ -146,10 +145,9 @@ async function main() {
     assert.ok(rearAverageY < frontAverageY, "rear monitor overlays project above front-row overlays");
     assert.equal(state.info.cells, 14, "fourteen task cells were mapped");
     assert.equal(state.info.lanes, 6, "six workflow lanes were mapped");
-    assert.ok(state.canvas[0] >= 1000 && state.canvas[1] >= 500, "canvas has a real drawing buffer");
-    assert.equal(state.glError, 0, "WebGL reports NO_ERROR after rendering and readback");
-    assert.ok(state.nonBackgroundPixels > 10000, "GPU readback contains scene pixels beyond the clear color");
-    assert.ok(state.sampledColors > 20, "GPU readback contains a range of lit material colors");
+    assert.equal(state.mode, "reference", "the supplied high-fidelity scene is the default view");
+    assert.notEqual(state.referenceDisplay, "none", "reference artwork is visible in the default view");
+    assert.equal(state.canvasHidden, true, "free 3D canvas stays hidden in reference mode");
     assert.ok(state.viewportRect && state.viewportRect[0] >= 0 && state.viewportRect[1] >= 0 && state.viewportRect[2] >= 1000 && state.viewportRect[3] >= 500, "the 3D viewport is placed inside the captured browser window");
     assert.equal(await evaluate("document.getElementById('welcome')?.classList.contains('hidden') ?? true"), true, "welcome modal does not obscure the scene screenshot");
     assert.equal(state.monitors, 14, "fourteen clickable monitor overlays exist");
@@ -165,14 +163,43 @@ async function main() {
     mkdirSync(artifactDir, { recursive: true });
     writeFileSync(join(artifactDir, "hive3d-webgl.png"), Buffer.from(shot.result.data, "base64"));
 
+    // Verify the alternate live renderer independently; the default screenshot above remains the artwork-backed reference.
+    await evaluate("document.querySelector('[data-hive-view=\\\"live3d\\\"]').click()");
+    await sleep(100);
+    const live3dState = JSON.parse(await evaluate([
+      "(() => {",
+      " const viewport=document.getElementById('rd-hive-viewport'),canvas=document.getElementById('rd-hive-gl'),scene=window.__hive3d;",
+      " const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');",
+      " const pixels=new Uint8Array(canvas.width*canvas.height*4);if(gl)gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);",
+      " const clear=gl?Array.from(gl.getParameter(gl.COLOR_CLEAR_VALUE)).map(v=>Math.round(v*255)):[0,0,0,0];let nonBackgroundPixels=0;const sampledColors=new Set();for(let p=0;p<pixels.length;p+=4){if(Math.abs(pixels[p]-clear[0])+Math.abs(pixels[p+1]-clear[1])+Math.abs(pixels[p+2]-clear[2])>12)nonBackgroundPixels++;if(p%(4*97)===0)sampledColors.add(pixels[p]+','+pixels[p+1]+','+pixels[p+2]);}",
+      " const monitor=viewport.querySelector('.hg-monitor'),badge=viewport.querySelector('.hg-badge');",
+      " return JSON.stringify({mode:scene.displayMode,referenceDisplay:getComputedStyle(viewport.querySelector('.hive-reference')).display,canvasHidden:canvas.hidden,canvas:[canvas.width,canvas.height],glError:gl?gl.getError():-1,glVersion:gl?gl.getParameter(gl.VERSION):'',nonBackgroundPixels,sampledColors:sampledColors.size,monitors:viewport.querySelectorAll('.hg-monitor').length,visibleMonitors:Array.from(viewport.querySelectorAll('.hg-monitor')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,badges:viewport.querySelectorAll('.hg-badge').length,visibleBadges:Array.from(viewport.querySelectorAll('.hg-badge')).filter(el=>getComputedStyle(el).visibility!=='hidden'&&el.getBoundingClientRect().width>5).length,flowLinks:viewport.querySelectorAll('.hg-flow-link').length,monitorWidthStyle:monitor?monitor.style.width:'',viewportRect:(()=>{const r=viewport.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})(),monitorRect:monitor?(()=>{const r=monitor.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null,badgeRect:badge?(()=>{const r=badge.getBoundingClientRect();return[r.x,r.y,r.width,r.height];})():null});",
+      "})()"
+    ].join("\\n")));
+    assert.equal(live3dState.mode, "live3d", "free 3D mode is activated through the UI control");
+    assert.equal(live3dState.referenceDisplay, "none", "reference image is hidden in free 3D mode");
+    assert.equal(live3dState.canvasHidden, false, "WebGL canvas is visible in free 3D mode");
+    assert.ok(live3dState.canvas[0] >= 1000 && live3dState.canvas[1] >= 500, "free 3D has a full-size drawing buffer");
+    assert.equal(live3dState.glError, 0, "free 3D WebGL reports NO_ERROR after rendering and readback");
+    assert.ok(live3dState.nonBackgroundPixels > 10000, "free 3D GPU readback contains scene pixels");
+    assert.ok(live3dState.sampledColors > 20, "free 3D GPU readback contains varied lit materials");
+    assert.equal(live3dState.monitors, 14, "free 3D keeps fourteen clickable monitors");
+    assert.ok(live3dState.visibleMonitors >= 8, "free 3D monitor overlays remain in visible projected coordinates");
+    assert.equal(live3dState.badges, 6, "free 3D keeps six workflow cards");
+    assert.ok(live3dState.visibleBadges >= 5, "free 3D workflow cards remain visible on the wall");
+    assert.equal(live3dState.flowLinks, 5, "free 3D keeps five workflow connectors");
+    assert.ok(live3dState.monitorWidthStyle.endsWith("px"), "free 3D sizes overlays from real projected geometry");
+    assert.ok(live3dState.viewportRect && live3dState.viewportRect[2] >= 1000 && live3dState.viewportRect[3] >= 500, "free 3D viewport remains inside the browser window");
+
     await evaluate("document.querySelector('#rd-hive-viewport .hg-monitor:not(:disabled)').click()");
     await sleep(100);
     assert.ok(await evaluate("window.__hive3dSmokeClicks.length") > 0, "monitor click reaches the live-log callback");
     assert.deepEqual(consoleErrors, [], "browser console is free of errors during scene initialization");
     console.log("Hive3D browser smoke passed " + JSON.stringify({
-      glVersion: state.glVersion, objects: state.info.objects, monitors: state.visibleMonitors + "/14",
-      stages: state.visibleBadges + "/6", connectors: state.flowLinks, canvas: state.canvas,
-      gpuPixels: state.nonBackgroundPixels, sampledColors: state.sampledColors, viewport: state.viewportRect
+      defaultView: state.mode, glVersion: live3dState.glVersion, objects: live3dState.nonBackgroundPixels,
+      monitors: live3dState.visibleMonitors + "/14", stages: live3dState.visibleBadges + "/6",
+      connectors: live3dState.flowLinks, canvas: live3dState.canvas, gpuPixels: live3dState.nonBackgroundPixels,
+      sampledColors: live3dState.sampledColors, viewport: live3dState.viewportRect
     }));
   } finally {
     try { if (ws) ws.close(); } catch {}
