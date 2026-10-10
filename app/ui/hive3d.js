@@ -187,9 +187,10 @@ window.Hive3D = (function () {
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
     this.add(b,0,-.18,5.5,23,.28,34,[.97,.985,1,1]);
     this.add(b,0,2.70,-6.45,19,3.65,.24,[.10,.52,.89,1]);
-    this.add(b,0,5.10,-5.92,19,.18,1.12,[.98,.99,1,1]);
+    this.add(b,0,5.10,-6.30,19,.16,.18,[.98,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
     this.add(b,0,.90,-6.28,18.7,.12,.06,[.08,.42,.78,1]);
+    this.add(b,0,.82,-6.285,18.7,.035,.035,[.25,.67,.94,1]);
     for(let x=-8;x<=8;x+=2.65)this.add(b,x,2.70,-6.29,.018,3.40,.025,[.12,.40,.72,1]);
     for(const side of [-1,1]){
       // Open-framed side glazing: avoid opaque side slabs that visually cut the room into boxes.
