@@ -291,15 +291,14 @@ window.Hive3D = (function () {
         this.add(s,x+side*.125,.625,z+.735,.105,.105,.32,[.075,.09,.11,1]);
         this.add(rb,x+side*.13,.625,z+.57,.11,.065,.15,[.99,.66,.035,1]);
       }
-      // Articulated arms follow a continuous shoulder-elbow-wrist line toward the keyboard.
+      // Articulated arms now clear the torso silhouette and visibly reach around it to the keyboard.
       for(const side of [-1,1]){
-        this.add(s,x+side*.235,by-.15,bz-.075,.095,.12,.12,[.12,.15,.18,1]);
-        this.add(s,x+side*.225,.99,z+.78,.072,.102,.38,[.075,.09,.11,1]);
-        this.add(s,x+side*.225,.77,z+.54,.078,.078,.085,[.96,.63,.035,1]);
-        this.add(s,x+side*.20,.70,z+.39,.061,.074,.31,[.10,.13,.16,1]);
-        this.add(rb,x+side*.20,.662,z+.275,.092,.052,.095,[.95,.62,.035,1]);
-        this.add(s,x+side*.20,.651,z+.23,.060,.034,.070,[.98,.68,.045,1]);
-        for(let finger=0;finger<3;finger++)this.add(b,x+side*.20+(finger-1)*.023,.635,z+.195,.012,.010,.046,[.22,.29,.35,1]);
+        this.add(s,x+side*.31,.99,z+.78,.105,.13,.25,[.11,.14,.17,1]);
+        this.add(s,x+side*.39,.84,z+.605,.090,.095,.18,[.12,.15,.18,1]);
+        this.add(s,x+side*.38,.735,z+.425,.092,.080,.27,[.10,.13,.16,1]);
+        this.add(rb,x+side*.33,.665,z+.285,.125,.065,.12,[.96,.63,.035,1]);
+        this.add(s,x+side*.32,.650,z+.235,.078,.042,.080,[.98,.68,.045,1]);
+        for(let finger=0;finger<3;finger++)this.add(b,x+side*.32+(finger-1)*.026,.633,z+.185,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.370,.15,.080,.030,[.025,.10,.14,1]);
