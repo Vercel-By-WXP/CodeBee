@@ -276,8 +276,8 @@ window.Hive3D = (function () {
       this.add(s,x,by-.42,bz+.005,.405,.54,.31,[.075,.09,.11,1]);
       this.add(s,x,by-.255,bz+.035,.255,.255,.235,[.08,.10,.12,1]);
       this.add(rb,x,by-.47,bz+.165,.355,.070,.025,[1,.70,.055,1]);
-      this.add(rb,x,by-.64,bz+.137,.315,.066,.025,[.96,.57,.025,1]);
-      this.add(rb,x,by-.555,bz+.153,.285,.034,.022,[.045,.055,.065,1]);
+      this.add(rb,x,by-.64,bz+.107,.315,.066,.025,[.96,.57,.025,1]);
+      this.add(rb,x,by-.555,bz+.140,.285,.034,.022,[.045,.055,.065,1]);
       this.add(s,x,by,bz,.405,.37,.345,[1,.70,.045,1]);
       // The face points toward the monitor; the rear silhouette carries the headset details.
       for(const side of [-1,1]){
