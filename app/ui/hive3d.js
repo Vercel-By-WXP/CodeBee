@@ -296,9 +296,11 @@ window.Hive3D = (function () {
   Scene.prototype.layoutOverlayPositions=function(){
     if(!this.overlay||this.overlay.hidden||!this.cssW||!this.cssH)return;
     if(this.displayMode==="reference"){
-      const stageRects=[[104,96,116,46],[262,96,116,46],[419,96,116,46],[577,96,115,46],[733,96,116,46],[888,96,116,46]];
-      const monitorRects=[[93,233,82,43],[212,233,82,43],[333,233,80,43],[452,233,80,43],[572,233,80,43],[690,233,81,43],[808,233,82,43],[927,233,82,43],[91,378,108,63],[250,378,108,63],[413,378,108,63],[571,378,108,63],[736,378,108,63],[893,378,108,63]];
-      const place=(el,rect)=>{el.style.visibility="visible";el.style.left=(rect[0]/1104*100)+"%";el.style.top=(rect[1]/621*100)+"%";el.style.width=(rect[2]/1104*100)+"%";el.style.height=(rect[3]/621*100)+"%";el.style.transform="none";};
+      // The PNG is the clean artwork crop (the original supplied screenshot had a 15px/10px outer frame).
+      // These hit areas are measured against the artwork crop itself, not the screenshot frame.
+      const stageRects=[[89,86,116,46],[247,86,116,46],[404,86,116,46],[562,86,115,46],[718,86,116,46],[873,86,116,46]];
+      const monitorRects=[[80,223,78,40],[199,223,78,40],[320,223,78,40],[439,223,78,40],[559,223,78,40],[677,223,78,40],[795,223,78,40],[914,223,78,40],[79,368,103,63],[238,368,103,63],[401,368,103,63],[559,368,103,63],[724,368,103,63],[881,368,103,63]];
+      const place=(el,rect)=>{el.style.visibility="visible";el.style.left=(rect[0]/1080*100)+"%";el.style.top=(rect[1]/608*100)+"%";el.style.width=(rect[2]/1080*100)+"%";el.style.height=(rect[3]/608*100)+"%";el.style.transform="none";};
       this.stageMeta.forEach((p,i)=>place(p.el,stageRects[i]));
       this.links.forEach(link=>{link.style.visibility="hidden";});
       this.monitors.forEach((m,i)=>{const rect=monitorRects[i];if(!rect){m.el.style.visibility="hidden";return;}place(m.el,rect);});
