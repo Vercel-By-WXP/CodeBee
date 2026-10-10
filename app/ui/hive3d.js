@@ -267,7 +267,7 @@ window.Hive3D = (function () {
     gl.drawArrays(gl.TRIANGLES,0,batch.count);
   };
   Scene.prototype.render=function(){
-    if(!this.gl||!this.active)return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
+    if(!this.gl||!this.active||this.displayMode!=="live3d")return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
     const radius=15.8/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.62,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.48,0],[0,1,0]);const proj=mat4.perspective(.70,w/h,.1,70);proj[0]*=1.15;const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
@@ -355,11 +355,11 @@ window.Hive3D = (function () {
     this.monitors.forEach((m,i)=>{const c=this.screenMeta[i],refresh=c&&c.rel?this.cellRefresh(c.rel)||{}:{},state=c?c.status:"idle";m.el.className="hg-monitor st-"+state;m.el.disabled=!c;m.el.dataset.log=c?c.rel:"";m.role.textContent=c?tr(c.role):tr("空闲工位");m.status.textContent=c?tr(STATUS[state]||"完成"):tr("待命");m.tail.textContent=c?refresh.tail||c.displayTail||(state==="running"?tr("等待日志输出…"):state==="queued"?tr("等待执行"):tr("（无输出）")):tr("等待任务");m.time.textContent=c?refresh.elapsed||c.displayElapsed||"":"";m.el.title=c?[tr(c.role),tr(STATUS[state]||"完成"),c.displayAgent,m.tail.textContent,tr("点击查看实时日志")].filter(Boolean).join(" · "):tr("空闲工位");m.el.setAttribute("aria-label",m.el.title);});
     this.prev.setAttribute("aria-label",tr("上一组工位"));this.next.setAttribute("aria-label",tr("下一组工位"));
   };
-  Scene.prototype.setActive=function(active){this.active=!!active;if(this.timer)clearInterval(this.timer);if(this.raf)cancelAnimationFrame(this.raf);this.raf=0;this.layer.hidden=!this.active;this.canvas.hidden=!this.active;if(this.active){this.updateOverlay();this.render();this.timer=setInterval(()=>{if(!document.hidden&&this.host.offsetParent!==null)this.updateOverlay();},1000);}};
+  Scene.prototype.setActive=function(active){this.active=!!active;if(this.timer)clearInterval(this.timer);if(this.raf)cancelAnimationFrame(this.raf);this.raf=0;this.layer.hidden=!this.active;this.canvas.hidden=!this.active||this.displayMode!=="live3d";if(this.active){this.updateOverlay();if(this.displayMode==="live3d")this.render();this.timer=setInterval(()=>{if(!document.hidden&&this.host.offsetParent!==null)this.updateOverlay();},1000);}};
   Scene.prototype.resize=function(){this.cssW=this.host.clientWidth;this.cssH=this.host.clientHeight;if(this.cssW&&this.cssH)this.render();};
   Scene.prototype.zoomAt=function(factor){this.zoom=clamp(this.zoom/factor,.72,2.4);this.applyArtboardTransform();this.render();};
   Scene.prototype.resetView=function(){this.zoom=1;this.yaw=0;this.pitch=.42;this.panX=0;this.panY=0;this.applyArtboardTransform();this.render();};
-  Scene.prototype.setDisplayMode=function(mode){this.displayMode=mode==="live3d"?"live3d":mode==="2d"?"2d":"reference";this.updateOverlay();this.applyArtboardTransform();this.render();};
+  Scene.prototype.setDisplayMode=function(mode){this.displayMode=mode==="live3d"?"live3d":mode==="2d"?"2d":"reference";this.canvas.hidden=!this.active||this.displayMode!=="live3d";this.updateOverlay();this.applyArtboardTransform();this.render();};
   Scene.prototype.applyArtboardTransform=function(){if(this.artboard)this.artboard.style.transform="translate3d("+(this.panX*100)+"%,"+(this.panY*100)+"%,0) scale("+this.zoom+")";};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0,deskRows:this.deskPositions?[this.deskPositions.filter(d=>d.row===0).length,this.deskPositions.filter(d=>d.row===1).length]:[]};};
   Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,.995,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
