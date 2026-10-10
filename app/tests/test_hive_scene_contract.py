@@ -69,6 +69,8 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("this.bandGoldTop=sphereBandGeometry", ENGINE)
         self.assertIn("this.bandGoldBottom=sphereBandGeometry", ENGINE)
         self.assertIn("Scene.prototype.addLink", ENGINE)
+        self.assertIn("sphereBandGeometry(gl,-.29,-.03)", ENGINE)
+        self.assertIn("sphereBandGeometry(gl,-.97,-.61)", ENGINE)
         self.assertIn("x+side*.49,.50,z+.93,.035,.48,.025", ENGINE)
         self.assertIn("[.12,.17,.22,1]", ENGINE)
         self.assertIn("const desk=this.deskPositions&&this.deskPositions[i]", ENGINE)
