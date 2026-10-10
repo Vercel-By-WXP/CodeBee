@@ -279,15 +279,16 @@ window.Hive3D = (function () {
       for(let k=0;k<3;k++)this.add(b,blueBinderStart+k*.095,.79,z+.34,.075,.35,.18,[[.08,.34,.80,1],[.10,.51,.91,1],[.06,.25,.65,1]][k]);
       this.add(this.cylinder,x,.08,z+1.10,.075,.28,.075,[.12,.15,.18,1]);
       this.add(rb,x,.30,z+1.10,.94,.12,.68,[.11,.14,.17,1]);
-      this.add(rb,x,.50,z+.82,1.02,.60,.15,[.095,.135,.17,1]);
-      this.add(rb,x,.50,z+.91,.76,.43,.024,[.17,.22,.26,1]);
+      this.add(rb,x,.50,z+.82,1.02,.60,.15,[.12,.17,.22,1]);
+      this.add(rb,x,.50,z+.91,.76,.43,.024,[.20,.25,.29,1]);
       this.add(rb,x,.42,z+1.10,.48,.12,.12,[.18,.22,.25,1]);
-      // Molded backrest cushion, lumbar ribs, arm pads, and five rolling casters.
-      this.add(rb,x,.50,z+.90,.78,.43,.050,[.13,.17,.20,1]);
-      for(const ribY of [.34,.48,.62])this.add(rb,x,ribY,z+.93,.58,.026,.020,[.30,.34,.37,1]);
+      // Contrasting graphite upholstery separates the chair from the bee chassis.
+      this.add(rb,x,.50,z+.90,.78,.43,.050,[.16,.20,.24,1]);
+      for(const ribY of [.34,.48,.62])this.add(rb,x,ribY,z+.93,.58,.026,.020,[.34,.39,.43,1]);
+      for(const side of [-1,1])this.add(rb,x+side*.49,.50,z+.93,.035,.48,.025,[.23,.30,.36,1]);
       for(const side of [-1,1]){
-        this.add(rb,x+side*.39,.63,z+.96,.10,.075,.38,[.11,.14,.16,1]);
-        this.add(b,x+side*.39,.48,z+.97,.035,.28,.045,[.07,.09,.11,1]);
+        this.add(rb,x+side*.39,.63,z+.96,.10,.075,.38,[.14,.18,.21,1]);
+        this.add(b,x+side*.39,.48,z+.97,.035,.28,.045,[.10,.13,.16,1]);
       }
       for(let k=0;k<5;k++){const a=k*Math.PI*2/5;const wx=x+Math.cos(a)*.48,wz=z+1.10+Math.sin(a)*.40;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);this.add(s,wx,.005,wz,.085,.065,.075,[.035,.045,.055,1]);}
       const by=1.25,bz=z+.98;
