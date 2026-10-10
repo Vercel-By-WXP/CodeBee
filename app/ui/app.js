@@ -8665,6 +8665,15 @@ function setHiveSceneMode(mode, opts) {
   const tools = document.querySelector(".hive-scene-tools");
   if (tools) tools.classList.toggle("hive-2d", selected === "2d");
   setHiveSceneButtons(selected);
+  const hint = document.querySelector(".hive-scene-hint");
+  if (hint) {
+    const hintKey = selected === "live3d"
+      ? "拖动旋转 · Shift+拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志"
+      : selected === "2d" ? "点击格子看日志"
+      : "拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志";
+    hint.dataset.i18n = hintKey;
+    hint.textContent = t(hintKey);
+  }
   try { localStorage.setItem("orch.hiveView", hiveMode); } catch (e) { /* 隐私模式等 */ }
 }
 
