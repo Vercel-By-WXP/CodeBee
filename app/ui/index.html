@@ -491,6 +491,22 @@
                 <div class="field"><label class="checkline"><input id="f-approval-required" type="checkbox"> 完成前需要人工审批</label><p class="hint">启用后，Git 合并和发布会等待审批记录。</p></div>
               </div>
 
+              <div class="grid-2">
+                <div class="field">
+                  <label for="f-sandbox-backend" data-i18n="命令执行后端">命令执行后端</label>
+                  <select id="f-sandbox-backend">
+                    <option value="native" data-i18n="本机默认">本机默认</option>
+                    <option value="docker" data-i18n="Docker 容器">Docker 容器</option>
+                  </select>
+                  <p class="hint" data-i18n="Docker 仅适用于内置命令工具；ACP、外部 CLI 与 MCP 暂不支持容器化，将安全拒绝执行。">Docker 仅适用于内置命令工具；ACP、外部 CLI 与 MCP 暂不支持容器化，将安全拒绝执行。</p>
+                </div>
+                <div class="field hidden" id="row-sandbox-image">
+                  <label for="f-sandbox-image" data-i18n="Docker 镜像">Docker 镜像</label>
+                  <input id="f-sandbox-image" placeholder="python:3.12-slim" maxlength="240" autocomplete="off" spellcheck="false">
+                  <p class="hint" data-i18n="镜像需预装任务所需工具；容器仅挂载任务工作目录。">镜像需预装任务所需工具；容器仅挂载任务工作目录。</p>
+                </div>
+              </div>
+
               <div id="f-code-only">
                 <div class="field"><label data-i18n="验证命令">验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）" data-i18n-ph="例：python -m pytest -q（可空=只评审）"></div>
               </div>
@@ -1076,6 +1092,25 @@
               <button class="ghost small" onclick="saveMcpServers()" data-i18n="保存 MCP 配置">保存 MCP 配置</button>
             </div>
             <p data-i18n="内置智能体（直连对话/直接执行）会把服务器的工具并入工具循环（mcp__服务器__工具 名）。命令在你本机执行，与「执行命令」工具同一自主权级别；工具清单缓存 5 分钟。留空 = 不启用。" class="hint">内置智能体（直连对话/直接执行）会把服务器的工具并入工具循环（mcp__服务器__工具 名）。命令在你本机执行，与「执行命令」工具同一自主权级别；工具清单缓存 5 分钟。留空 = 不启用。</p>
+          </div>
+          <h3 class="sec-title">ACP Backend Profiles</h3>
+          <p class="hint">接入遵循 Agent Client Protocol v1 的本地或 SSH stdio Agent。密钥只保存在本机，读取时始终脱敏。</p>
+          <div class="field">
+            <div id="acp-profiles" class="list"></div>
+            <div class="input-row" style="margin-top:6px">
+              <input id="acp-label" type="text" placeholder="名称">
+              <input id="acp-command" type="text" placeholder="启动命令，例如 acp-agent">
+              <input id="acp-args" type="text" placeholder="参数 JSON 数组，例如 [\"--stdio\"]">
+              <input id="acp-workspace" type="text" placeholder="Agent 工作区（可空）">
+              <button class="ghost small" type="button" onclick="saveAcpProfile()">保存 ACP</button>
+            </div>
+            <p id="acp-msg" class="hint"></p>
+          </div>
+          <h3 class="sec-title">命令授权</h3>
+          <div class="field">
+            <div class="input-row"><select id="command-auth-mode"><option value="legacy">legacy：自动执行</option><option value="restricted">restricted：逐条等待批准</option></select><button class="ghost small" type="button" onclick="saveCommandAuthMode()">保存策略</button></div>
+            <div id="command-auth-pending" class="list"></div>
+            <p id="command-auth-msg" class="hint"></p>
           </div>
           <h3 data-i18n="推送通知" class="sec-title">推送通知</h3>
           <div class="field"><label data-i18n="群机器人 Webhook（钉钉 / 飞书 / 企业微信，按域名自动适配）">群机器人 Webhook（钉钉 / 飞书 / 企业微信，按域名自动适配）</label>

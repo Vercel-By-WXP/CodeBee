@@ -1678,7 +1678,8 @@ def _opencode_fast_banner_death(res):
 
 def run_agent(agent, prompt, workdir=None, readonly=True,
               timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None,
-              images=None, require_tools=False, deadline=None):
+              images=None, require_tools=False, deadline=None, command_context=None,
+              checkpoint_run_id=""):
     """执行一次智能体调用，返回统一结构
     {ok, text, json, cost_usd, tokens, error, error_code, raw}。
     agent 来自 registry.effective_agents()；resume 为已有会话 id，仅真实智能体生效
@@ -1722,6 +1723,17 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 "kind": agent.get("kind", "generic"), "model": None,
                 "attempts": []}
     kind = agent.get("kind", "generic")
+    if kind == "acp":
+        from . import acp_client
+        context = dict(command_context or {})
+        context.setdefault("run_id", checkpoint_run_id)
+        context.setdefault("sandbox", {})
+        context.setdefault("allow_terminal", not readonly)
+        return acp_client.run_agent(
+            agent, prompt, workdir=workdir, readonly=readonly, timeout=timeout,
+            cancel_event=cancel_event, deadline=deadline,
+            command_context=context, checkpoint_run_id=checkpoint_run_id,
+            resume=resume)
     if agent.get("runtime_config_sync_failed"):
         return {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
                 "tokens": 0, "usage": None,

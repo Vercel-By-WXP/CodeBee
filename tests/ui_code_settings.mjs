@@ -95,7 +95,7 @@ async function main() {
     check("默认浅色=github(GitHub Light)", await evalJs(`document.getElementById("cs-theme-light").value==="github"`));
     check("默认深色=github-dark(GitHub Dark)", await evalJs(`document.getElementById("cs-theme-dark").value==="github-dark"`));
     check("行号开关默认开", await evalJs(`document.getElementById("cs-linenum").checked===true`));
-    check("换行开关默认关", await evalJs(`document.getElementById("cs-wrap").checked===false`));
+    check("换行开关默认开", await evalJs(`document.getElementById("cs-wrap").checked===true`));
     check("字号默认 12.5", await evalJs(`document.getElementById("cs-size").value==="12.5"`));
 
     // ── 2. 预览卡与「当前生效」徽章（默认夜间）──
@@ -145,21 +145,21 @@ async function main() {
     })()`);
     await sleep(200);
 
-    // ── 5. 换行开关 ──
-    check("换行默认关：cb-code 为 pre", await evalJs(
-      `!document.documentElement.classList.contains("code-wrap") &&
-       getComputedStyle(document.querySelector(".cs-pv-code .cb-code")).whiteSpace==="pre"`));
-    await evalJs(`(function(){
-      const c=document.getElementById("cs-wrap"); c.checked=true;
-      c.dispatchEvent(new Event("input",{bubbles:true}));
-      return true;
-    })()`);
-    await sleep(300);
-    check("开换行后 cb-code 为 pre-wrap", await evalJs(
+    // ── 5. 换行开关（缺省开：长行自动换行不撑横向滚动条）──
+    check("换行默认开：cb-code 为 pre-wrap", await evalJs(
       `document.documentElement.classList.contains("code-wrap") &&
        getComputedStyle(document.querySelector(".cs-pv-code .cb-code")).whiteSpace==="pre-wrap"`));
     await evalJs(`(function(){
       const c=document.getElementById("cs-wrap"); c.checked=false;
+      c.dispatchEvent(new Event("input",{bubbles:true}));
+      return true;
+    })()`);
+    await sleep(300);
+    check("关换行后 cb-code 为 pre", await evalJs(
+      `!document.documentElement.classList.contains("code-wrap") &&
+       getComputedStyle(document.querySelector(".cs-pv-code .cb-code")).whiteSpace==="pre"`));
+    await evalJs(`(function(){
+      const c=document.getElementById("cs-wrap"); c.checked=true;
       c.dispatchEvent(new Event("input",{bubbles:true}));
       return true;
     })()`);

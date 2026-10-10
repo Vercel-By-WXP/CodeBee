@@ -3888,6 +3888,10 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
 .rd-checkpoints-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .rd-checkpoints-head strong { margin-right: auto; }
 .rd-checkpoint-row, .rd-memory-row { padding: 9px 0; border-top: 1px solid var(--border); }
+.rd-checkpoint-steps { margin: 8px 0 12px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
+.rd-checkpoint-step { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px dashed var(--border); font-size: 12px; }
+.rd-checkpoint-step > :first-child { overflow-wrap: anywhere; }
+.rd-acp-plan-entry { padding-left: 14px; color: var(--muted); }
 .rd-checkpoint-row > strong { margin-right: 8px; overflow-wrap: anywhere; }
 .rd-checkpoint-row pre, .rd-memory-row pre {
   max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
@@ -7303,6 +7307,10 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 .pb-chip input { margin: 0; }
 .pb-pend-btns { display: flex; gap: 8px; margin-top: 6px; }
 .pb-vol { font-size: 11px; color: var(--accent, #4a7dbe); margin-top: 5px; font-weight: 600; }
+.pb-vol-sel { display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  color: inherit; user-select: none; }
+.pb-vol-sel:hover, .pb-vol-sel.on { color: var(--text); }
+.pb-vol-sel input { margin: 0; accent-color: var(--accent, #4a7dbe); }
 
 
 /* Procedural WebGL hive renderer: canvas is the live 3D layer, DOM controls stay accessible above it. */

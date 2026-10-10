@@ -76,8 +76,8 @@ class TestEditFile(BuiltinToolTest):
                                  old_text="", new_text="b"))
 
     def test_path_guard(self):
-        self.assertIn("非法路径", self._call("edit_file", path="../a.txt",
-                                              old_text="a", new_text="b"))
+        self.assertIn("超出允许工作目录", self._call("edit_file", path="../a.txt",
+                                                     old_text="a", new_text="b"))
         self.assertIn("不存在", self._call("edit_file", path="nope.txt",
                                             old_text="a", new_text="b"))
 
@@ -130,7 +130,8 @@ class TestFsManage(BuiltinToolTest):
     def test_bad_action_and_guard(self):
         self.assertIn("action 须为", self._call("fs_manage", action="chmod", path="a"))
         self.assertIn("不存在", self._call("fs_manage", action="delete", path="ghost.txt"))
-        self.assertIn("非法路径", self._call("fs_manage", action="delete", path="../x"))
+        self.assertIn("超出允许工作目录",
+                      self._call("fs_manage", action="delete", path="../x"))
 
 
 class TestSearchContent(BuiltinToolTest):
@@ -152,7 +153,8 @@ class TestSearchContent(BuiltinToolTest):
         self.assertNotIn("a.md", out)
         out2 = self._call("search_content", pattern="needle", path="src")
         self.assertIn("needle", out2)
-        self.assertIn("非法路径", self._call("search_content", pattern="x", path="../out"))
+        self.assertIn("超出允许工作目录",
+                      self._call("search_content", pattern="x", path="../out"))
 
     def test_invalid_regex_falls_back_to_literal(self):
         self._write("a.txt", "cost (CNY) 5\n")

@@ -12,6 +12,14 @@ def document():
         "TaskCreate": {"type": "object", "required": ["goal"], "properties": {
             "type": {"type": "string"}, "title": {"type": "string"},
             "goal": {"type": "string", "maxLength": 4000}, "workdir": {"type": "string"},
+            "sandbox": {"type": "object", "properties": {
+                "backend": {"type": "string", "enum": ["native", "docker"]},
+                "docker_image": {"type": "string", "maxLength": 240},
+                "allowed_roots": {"type": "array", "maxItems": 16,
+                                   "items": {"type": "string", "maxLength": 1024}},
+                "env_allowlist": {"type": "array", "maxItems": 64,
+                                  "items": {"type": "string", "maxLength": 128}},
+                "network": {"type": "boolean"}, "timeout_s": {"type": "integer"}}},
             "acceptance_criteria": {"type": "array", "maxItems": 40,
                                      "items": {"type": "string", "maxLength": 500}},
             "approval_required": {"type": "boolean"}}},
@@ -51,6 +59,15 @@ def document():
                               "items": {"type": "string", "maxLength": 80}},
             "task_id": {"type": "string", "maxLength": 100}, "status": {"type": "string", "maxLength": 30},
             "metadata": {"type": "object"}}},
+        "BackendProfile": {"type": "object", "required": ["label", "command"], "properties": {
+            "id": {"type": "string"}, "agent_id": {"type": "string"},
+            "label": {"type": "string", "maxLength": 80}, "command": {"type": "string", "maxLength": 500},
+            "args": {"type": "array", "maxItems": 80, "items": {"type": "string"}},
+            "env": {"type": "object", "additionalProperties": {"type": "string"}},
+            "workspace_path": {"type": "string"}, "enabled": {"type": "boolean"}}},
+        "CommandAuth": {"type": "object", "properties": {
+            "mode": {"type": "string", "enum": ["legacy", "restricted"]},
+            "pending": {"type": "array"}, "rules": {"type": "array"}, "audit": {"type": "array"}}},
     }
 
     def body(schema):
@@ -106,6 +123,29 @@ def document():
             "post": {"summary": "Agent 心跳", "security": security, "requestBody": body(ref("Presence")),
                      "responses": {"200": response("心跳已记录", {"type": "object"}), "400": errors["400"],
                                   "401": errors["401"], "423": errors["423"]}}},
+        "/api/backend-profiles": {
+            "get": {"summary": "读取 ACP Backend Profiles（密钥脱敏）", "security": security,
+                    "responses": {"200": response("Profiles", {"type": "object"}), "401": errors["401"]}},
+            "post": {"summary": "保存 ACP Backend Profile", "security": security,
+                     "requestBody": body(ref("BackendProfile")),
+                     "responses": {"200": response("Profile", {"type": "object"}), "400": errors["400"], "401": errors["401"]}}},
+        "/api/backend-profiles/{profile_id}/delete": {
+            "post": {"summary": "删除 ACP Backend Profile", "security": security,
+                     "responses": {"200": ok, "400": errors["400"], "401": errors["401"], "404": errors["404"]}}},
+        "/api/command-auth": {
+            "get": {"summary": "读取命令授权策略与待处理请求", "security": security,
+                    "responses": {"200": response("Authorization state", ref("CommandAuth")), "401": errors["401"]}},
+            "post": {"summary": "切换命令授权策略", "security": security,
+                     "requestBody": body({"type": "object", "properties": {"mode": {"type": "string", "enum": ["legacy", "restricted"]}}}),
+                     "responses": {"200": response("Authorization state", ref("CommandAuth")), "400": errors["400"], "401": errors["401"]}}},
+        "/api/command-auth/requests/{request_id}": {
+            "post": {"summary": "批准或拒绝等待中的命令", "security": security,
+                     "requestBody": body({"type": "object", "required": ["approve"], "properties": {
+                         "approve": {"type": "boolean"}, "scope": {"type": "string"}, "match": {"type": "string"}, "prefix": {"type": "string"}}}),
+                     "responses": {"200": ok, "400": errors["400"], "401": errors["401"], "404": errors["404"]}}},
+        "/api/command-auth/rules/{rule_id}/revoke": {
+            "post": {"summary": "撤销命令授权规则", "security": security,
+                     "responses": {"200": ok, "400": errors["400"], "401": errors["401"], "404": errors["404"]}}},
         "/api/retrieval/search": {"get": {"summary": "本地检索", "security": security,
             "parameters": [{"name": "q", "in": "query", "required": True,
                             "schema": {"type": "string", "maxLength": 500}},

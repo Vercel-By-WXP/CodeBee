@@ -98,10 +98,15 @@ def _sandbox_launch(server, sandbox, workdir):
     from . import policy
     if not sandbox or not workdir:
         raise RuntimeError("MCP 调用缺少任务沙箱策略或工作目录，拒绝启动")
-    if os.name != "posix" or sys.platform == "darwin" or not shutil.which("bwrap"):
-        raise RuntimeError("MCP 服务尚无可用的 OS 隔离后端，拒绝启动")
     root = Path(workdir).expanduser().resolve(strict=True)
     normalized = policy.normalize_sandbox(sandbox, root)
+    if normalized.get("backend") == "docker":
+        # MCP command/args may include host-specific executables and absolute
+        # script paths. Until those are explicitly mapped into an image and
+        # verified mounts, refuse instead of launching a misleading container.
+        raise RuntimeError("MCP Docker 启动映射尚未配置；拒绝降级到宿主机")
+    if os.name != "posix" or sys.platform == "darwin" or not shutil.which("bwrap"):
+        raise RuntimeError("MCP 服务尚无可用的 OS 隔离后端，拒绝启动")
     roots = [Path(value).resolve(strict=True)
              for value in normalized.get("allowed_roots") or []]
     if not roots:

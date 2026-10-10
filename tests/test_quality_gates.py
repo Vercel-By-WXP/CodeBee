@@ -191,23 +191,37 @@ class TestQualityGates(BaseTest):
                 store.finish_step(r["id"], s["n"], "done", summary="x", duration_s=0.1)
             return r
 
-        # 上一遍：第 2 章未过线，整轮未达标收尾 → 第 2 章出继承，1/3 章保留
+        # 上一遍：第 2 章未过线，且 major 点名了过线的第 1 章 + 一条全书级意见，
+        # 整轮未达标收尾 → 第 1/2 章都回炉，第 3 章保留；原因账随继承下发
         r1 = _seed_prev()
         store.update_run(r1["id"], status="done", verdict={
             "serial": True, "publishable": False, "overall": 6.9,
             "chapter_scores": [_score(1, 7.5, True), _score(2, 6.0, False),
-                               _score(3, 7.4, True)]},
+                               _score(3, 7.4, True)],
+            "major_issues": [
+                {"severity": "major", "chapter": 2, "dim": "情节",
+                 "note": "主线断点未兑现"},
+                {"severity": "major", "chapter": 1, "dim": "吸引力",
+                 "note": "开篇钩子偏弱"},
+                {"severity": "major", "chapter": None, "dim": "节奏",
+                 "note": "全书节奏前紧后松"},
+            ]},
             ended_at="2026-09-20 00:00:00")
         ok, err, r2 = store.retry_task(task["id"])
         self.assertTrue(ok, err)
         inh = r2.get("inherit") or {}
-        self.assertEqual(inh.get("done_chapters"), [1, 3], "未过线的第 2 章不应进继承")
+        self.assertEqual(inh.get("done_chapters"), [3],
+                         "未过线的第 2 章与被 major 点名的第 1 章都不应进继承")
         self.assertEqual([c["chapter"] for c in inh.get("chapter_scores") or []],
-                         [1, 3], "未过线章的分数也不应带进继承")
+                         [3], "回炉章的分数也不应带进继承")
         self.assertTrue(inh.get("outline"))
+        self.assertEqual(len(inh.get("redo_issues") or []), 3,
+                         "未达标原因账（章节级+全局级）必须随继承下发")
+        self.assertTrue(any(x.get("chapter") is None for x in inh.get("redo_issues") or []),
+                        "全书级 major 不得被丢")
         store.update_run(r2["id"], status="failed", ended_at="2026-09-20 00:00:01")
 
-        # 对照：达标收尾 → 全部章照常继承（断点续跑行为不变）
+        # 对照：达标收尾 → 全部章照常继承（断点续跑行为不变），原因账为空
         r3 = _seed_prev()
         store.update_run(r3["id"], status="done", verdict={
             "serial": True, "publishable": True, "overall": 7.8,
@@ -219,6 +233,7 @@ class TestQualityGates(BaseTest):
         inh4 = r4.get("inherit") or {}
         self.assertEqual(inh4.get("done_chapters"), [1, 2, 3])
         self.assertEqual(len(inh4.get("chapter_scores") or []), 3)
+        self.assertEqual(inh4.get("redo_issues"), [])
         store.update_run(r4["id"], status="failed", ended_at="2026-09-20 00:00:03")
 
         # 全章未过线 → done 清空但仍继承大纲：全书重写、结构不丢
@@ -233,6 +248,7 @@ class TestQualityGates(BaseTest):
         inh6 = r6.get("inherit") or {}
         self.assertEqual(inh6.get("done_chapters"), [])
         self.assertEqual(inh6.get("chapter_scores"), [])
+        self.assertEqual(inh6.get("redo_issues"), [], "无 major 账时原因账为空表")
         self.assertTrue(inh6.get("outline"))
 
 

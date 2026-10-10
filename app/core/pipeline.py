@@ -586,6 +586,8 @@ def _external_sandbox_block_reason(agent, workdir, sandbox):
     from . import policy
     root = os.path.realpath(workdir or ".")
     normalized = policy.normalize_sandbox(sandbox, root)
+    if normalized.get("backend") == "docker":
+        return "沙箱拒绝：Docker 目前仅接入内置命令工具，外部 CLI 未验证容器启动，拒绝运行"
     if (agent or {}).get("kind") == "codex":
         if normalized.get("network") is False:
             return "沙箱拒绝：该 CLI 后端未接入网络隔离，拒绝运行网络受限任务"
@@ -595,6 +597,16 @@ def _external_sandbox_block_reason(agent, workdir, sandbox):
             return "权限拒绝：该 CLI 后端无法执行 CodeBee 工具禁用策略，拒绝运行"
         if normalized.get("env_allowlist"):
             return "沙箱拒绝：该 CLI 后端未接入环境变量白名单，拒绝运行受限任务"
+        return ""
+    if (agent or {}).get("kind") == "acp":
+        if normalized.get("network") is False:
+            return "沙箱拒绝：ACP 后端进程未接入网络隔离，拒绝运行网络受限任务"
+        if normalized.get("env_allowlist"):
+            return "沙箱拒绝：ACP 后端进程未接入环境变量白名单，拒绝运行受限任务"
+        roots = [os.path.realpath(x) for x in normalized.get("allowed_roots") or []]
+        if roots and not any(root == allowed or root.startswith(allowed + os.sep)
+                             for allowed in roots):
+            return "沙箱拒绝：任务目录不在 ACP 允许目录内"
         return ""
     # 非 codex 外部 CLI：默认策略放行，收窄策略拒绝
     if normalized.get("network") is False:
@@ -818,7 +830,13 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
         llm_caller = _make_llm_caller(agent, workdir, deadline=deadline)
         call_kwargs = dict(workdir=workdir, readonly=readonly,
                            timeout=timeout, cancel_event=ev, log_path=str(log_abs),
-                           images=images, require_tools=require_tools, deadline=deadline)
+                           images=images, require_tools=require_tools, deadline=deadline,
+                           command_context={"run_id": session_run_id,
+                                            "sandbox": (store.get_task(
+                                                (store.get_run(session_run_id) or {}).get("task_id")
+                                            ) or {}).get("sandbox") or {},
+                                            "allow_terminal": not readonly},
+                           checkpoint_run_id=session_run_id)
 
         def _call(p, **kw):
             nonlocal usage_recorded
@@ -846,7 +864,13 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
         res = runner.run_agent(agent, prompt, workdir=workdir, readonly=readonly,
                                timeout=timeout, cancel_event=ev, log_path=str(log_abs),
                                resume=resume, images=images, require_tools=require_tools,
-                               deadline=deadline)
+                               deadline=deadline,
+                               command_context={"run_id": session_run_id,
+                                                "sandbox": (store.get_task(
+                                                    (store.get_run(session_run_id) or {}).get("task_id")
+                                                ) or {}).get("sandbox") or {},
+                                                "allow_terminal": not readonly},
+                               checkpoint_run_id=session_run_id)
     # 默认关闭压缩和 resume 都走直通分支，也必须把真实 usage 送进预算表；否则
     # 下一步永远看到 used=0，max_tokens_per_run 只是一个无效设置。
     if not usage_recorded:
@@ -890,7 +914,8 @@ def _finish_step_result(run_id, step, res, role, agent, start):
                       followups=res.get("followups"),
                       # 思考过程（内置智能体流式抓取）：落进步骤记录，对话气泡折叠展示
                       thinking=res.get("reasoning") or None,
-                      partial=bool(res.get("partial")))
+                      partial=bool(res.get("partial")),
+                      acp_events=(raw.get("acp_events") or []))
     try:
         checkpoint_status = ("unknown" if raw.get("unknown") else
                              "timeout" if status == "timeout" else
@@ -1561,7 +1586,8 @@ def _run_code(run, task, agents, ev, stats, mode):
 
     # 项目记忆既给规划器，也给快速路径的实现者；不能因省掉独立规划而漏掉。
     user_context_len = len(task.get("context") or "")
-    project_memory = _read_project_memory(workdir)
+    project_memory = _read_project_memory(
+        workdir, query=task.get("goal") or task.get("title") or "")
     if project_memory:
         task = dict(task, context=(task.get("context") or "") + "\n\n" + project_memory)
 
@@ -2568,6 +2594,36 @@ __CRITIQUE__
 - 针对性改进所有 major 问题；保持既定风格与设定。
 - 完成后用 3 句话说明本轮改了什么。"""
 
+# 评审口径单一真源：评审面提示词（单章/全局）与作者面注入块从这里同源提取，
+# 两边永不脱节。此前评审清单/签约专项/全局口径只活在评审面，作者第一遍写完
+# 被打回才知道按什么标准被审（2026-10-10 实案：全章过线仍卡全局 major）。
+# 作者面刻意不下发评分机制本体（1-10 分/阈值/宁严勿宽）——对写作者零价值，
+# 透下去只喂响应试素材；清单条目本身全是质量正向要求，事前下发只有好处。
+REVIEW_CHECKLIST_ITEMS = (
+    "叙述语域与视角统一",
+    "复杂情感落到动作、五感或生理细节",
+    "开篇在前 600 字进入具体冲突",
+    "每章发生真实的局面变化",
+    "无可删的重复铺垫与长段解释",
+)
+GLOBAL_REVIEW_FOCUS = ("主线一致性、人物弧光、开篇吸引力、文风表现、情感表达、"
+                       "情节推进与节奏控制")
+
+
+def author_review_rubric_block(dims, signing_dims):
+    """作者面评审口径块：起草/修订提示词里事前下发「会按什么标准被审」，
+    与评审面同源（REVIEW_CHECKLIST_ITEMS / GLOBAL_REVIEW_FOCUS）。静态文本，
+    同批各章字节一致，不碎前缀缓存。"""
+    lines = [
+        "## 评审口径（本书会按以下标准审稿，写作时对照自查）",
+        "- 评分维度：" + " / ".join(dims) + "。",
+        "- 逐项硬清单：" + "；".join(REVIEW_CHECKLIST_ITEMS) + "。",
+        "- 全书级关注：" + GLOBAL_REVIEW_FOCUS + "。",
+        "- 签约专项维度：" + "、".join(signing_dims) + "。",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 NOVEL_CRITIQUE_PROMPT = """你是严格的评审（不要使用任何工具、不要修改文件，只依据下方稿件内容评审）。
 请输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {
@@ -2576,7 +2632,7 @@ NOVEL_CRITIQUE_PROMPT = """你是严格的评审（不要使用任何工具、�
   "summary": "一句话总评"
 }
 每个维度打 1-10 分（可为小数），宁严勿宽。major 问题必须给 quote（系统会逐条校验引文是否真在稿件中——编造的引文会被降档标记）。
-评审必须逐项回答：叙述语域与视角是否统一；复杂情感是否有动作、五感或生理细节；开篇是否在前 600 字进入具体冲突；本章是否发生局面变化；是否存在可删的重复铺垫或长段解释。
+评审逐项核查以下各项是否成立：%s。""" % ("；".join(REVIEW_CHECKLIST_ITEMS)) + """
 
 ## 待评审稿件
 ---
@@ -2862,6 +2918,7 @@ __VOLUME__
 - 本章主要情绪/戏剧变化：__HIGHLIGHT__（按其重要性决定篇幅和表现方式；不强制放大，不为满足标签伪造高潮）
 __LOCKED_CH__
 __STALE_NOTE__
+__REDO_ISSUES__
 - 正文约 __WORDS__ 字，中文，直接开写正文（可含本章标题行）。
 
 ## 前情提要（此前各章结尾摘录，衔接用）
@@ -2876,6 +2933,7 @@ __STYLE__
 ## 签约质量门禁
 __QUALITY_GATE__
 
+__REVIEW_RUBRIC__
 - 写完文件后，最终回复只输出一行：`第 __I__ 章完成（约 __WORDS__ 字）`——不要在回复里复述或解释正文。"""
 
 SERIAL_REVISE_PROMPT = """你是一名网文作者。第 __I__ 章没有通过评审，请修订文件 `__FILE__`（直接改写该文件）。文件必须以 UTF-8 编码保存（PowerShell 显式加 -Encoding UTF8，禁止依赖默认编码）。
@@ -2890,6 +2948,7 @@ __BEATS__
 （本章爽点/情绪爆点：__HIGHLIGHT__）
 __LOCKED_CH__
 
+__REVIEW_RUBRIC__
 ## 本章评审意见
 __CRITIQUE__
 
@@ -2913,7 +2972,7 @@ SERIAL_GLOBAL_PROMPT = """你是独立小说质量评审（不要修改任何文
   "issues": [{"dim": "维度名", "severity": "major|minor", "note": "具体问题（指明哪一章）", "quote": "支撑该问题的稿件原文连续片段（≥8字，逐字摘录不许改写）"}],
   "summary": "一句话总评：所读范围内的文本优势、主要风险与未验证项；不得预测签约结果"
 }
-每个维度打 1-10 分，按统一文本 rubric 与所读证据评估，不以“宁严勿宽”压分。重点关注：主线一致性、人物弧光、开篇吸引力、文风表现、情感表达、情节推进与节奏控制。
+每个维度打 1-10 分，按统一文本 rubric 与所读证据评估，不以“宁严勿宽”压分。重点关注：%s。""" % GLOBAL_REVIEW_FOCUS + """
 若是全书最初的前 3 章，可观察视角人物、故事承诺、开篇兑现和读者理解成本；固定字数点、钩子/爽点密度仅作参考，不是扣分门槛。发现问题须给可定位原文引文，并区分文本事实、解释和建议。
 major 问题必须给 quote（系统会逐条校验引文是否真在稿件中——编造的引文会被降档标记）。
 
@@ -3319,6 +3378,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     # 签约专项维度作为额外硬性检查注入提示词与报告证据。
     dims = task.get("rubric") or DEFAULT_RUBRIC
     signing_dims = novel_quality.rubric_for({"type": "serial_novel"})
+    # 作者面评审口径块（与评审面同源提取）：起草/修订/打磨提示词都带
+    rubric_block = author_review_rubric_block(dims, signing_dims)
     threshold = task.get("threshold", 7.0)
     threshold_ch = threshold - 0.5 if threshold >= 7.5 else threshold   # 单章阈值略放宽 0.5 分
     dimkey = ", ".join('"%s": 0' % d for d in dims)
@@ -3389,6 +3450,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     inherit = run.get("inherit") or {}
     done_set = set(inherit.get("done_chapters") or [])
     inh_scores = {c.get("chapter"): c for c in (inherit.get("chapter_scores") or [])}
+    # 未达标重写的原因账（store.retry_task 从 verdict.major_issues 下发）：
+    # 章节级+全局级 major，渲染进对应重写章的起草提示词；达标续跑为空表
+    redo_issues = [x for x in (inherit.get("redo_issues") or []) if isinstance(x, dict)]
     if inherit.get("outline"):
         outline = inherit["outline"]
         # 历史遗留：降级/模板大纲被继承时，真实任务宁可中止重生成，也不按空模板写全书
@@ -3817,6 +3881,26 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             if os.path.exists(os.path.join(workdir, ch_file)):
                 stale_note = ("- 注意：目录里已有一版**未通过评审**的旧稿 `%s`——不要校验沿用、"
                               "不要增量修补，按本章任务直接覆盖重写。" % ch_file)
+            # 上一轮未达标原因（「重写未达标章」链路）：本章被点名的 major 与
+            # 全书级 major 随起草提示词下发——原因只躺在报告里、作者盲写等
+            # 修订拉回，白白多烧一轮评审（2026-10-10 实案）。
+            def _issue_ch(x):
+                try:
+                    return int(x.get("chapter"))
+                except (TypeError, ValueError):
+                    return None
+
+            redo_lines = []
+            mine = [x for x in redo_issues if _issue_ch(x) == i]
+            book_lvl = [x for x in redo_issues if _issue_ch(x) is None]
+            if mine:
+                redo_lines.append("- 本章被上一轮评审点名的问题（重写必须逐条消解）：")
+                redo_lines += _major_lines(mine)
+            if book_lvl:
+                redo_lines.append("- 上一轮全书级 major 问题（本章重写须配合消解，不得相抵）：")
+                redo_lines += _major_lines(book_lvl)
+            redo_note = ("## 上一轮评审未达标原因（必读）\n" + "\n".join(redo_lines) + "\n"
+                         ) if redo_lines else ""
             # stable_order：同一任务 8 个章节的技能块必须字节级一致（§07 T1.2' 前缀缓存）
             # 三块分开留底：起草重试的分层降级（_serial_shrunk_block）要按
             # 「经验库/圣经」各自的身份收缩，折成一整块就只剩 4K 硬截一层了
@@ -3855,6 +3939,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         .replace("__HOOK__", branch_hook or ch.get("hook") or "留下悬念")
                         .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, i))
                         .replace("__STALE_NOTE__", stale_note)
+                        .replace("__REDO_ISSUES__", redo_note)
+                        .replace("__REVIEW_RUBRIC__", rubric_block)
                         .replace("__HIGHLIGHT__", ch.get("highlight") or "按剧情要点自然铺设一处小冲突/小反转")
                         .replace("__STYLE__", style_tpl)
                         .replace("__QUALITY_GATE__", novel_quality.opening_requirements(i, wpc))
@@ -4008,7 +4094,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 if not res["ok"]:
                     # 成品是文件不是退出码：CLI 超时但章稿已完整落盘（终章长文实测
                     # 反复出现——文件写完、收尾声明没等到）就送评审门把关，别整章作废
-                    live = (store.get_run(run_id).get("steps") or [])
+                    live = ((store.get_run(run_id) or {}).get("steps") or [])
                     if live:
                         store.finish_step(run_id, live[-1]["n"], "done",
                                           summary="起草调用超时，但章稿已完整落盘（约 %d 字）——交评审门判质量"
@@ -4267,6 +4353,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__VOLUME__", vol_block_for(i))
                           .replace("__BEATS__", ch.get("beats") or "按大纲推进")
                           .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, i))
+                          .replace("__REVIEW_RUBRIC__", rubric_block)
                           .replace("__HIGHLIGHT__", ch.get("highlight")
                                    or "按剧情要点自然铺设一处小冲突/小反转")
                           .replace("__STYLE__", style_tpl)
@@ -4422,6 +4509,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                              .replace("__VOLUME__", vol_block_for(j))
                              .replace("__BEATS__", _wch.get("beats") or "按大纲推进")
                              .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, j))
+                             .replace("__REVIEW_RUBRIC__", rubric_block)
                              .replace("__HIGHLIGHT__", _wch.get("highlight")
                                       or "按剧情要点自然铺设一处小冲突/小反转")
                              .replace("__STYLE__", style_tpl)
@@ -4633,6 +4721,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__VOLUME__", vol_block_for(i))
                           .replace("__BEATS__", ch.get("beats") or "按大纲推进")
                           .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, i))
+                          .replace("__REVIEW_RUBRIC__", rubric_block)
                           .replace("__HIGHLIGHT__", ch.get("highlight")
                                    or "按剧情要点自然铺设一处小冲突/小反转")
                           .replace("__CRITIQUE__", crit)
@@ -5382,11 +5471,11 @@ def _write_project_memory(task, workdir, lines, source_run=""):
         return ""
 
 
-def _read_project_memory(workdir, cap=4000):
+def _read_project_memory(workdir, cap=4000, query=""):
     """Only inject approved, unexpired and fingerprint-verified memory."""
     try:
         from . import project_memory
-        return project_memory.active_text(workdir, cap=cap)
+        return project_memory.active_text(workdir, cap=cap, query=query)
     except (OSError, ValueError, TypeError):
         return ""
 
@@ -5917,8 +6006,23 @@ def execute_run(run_id):
                          status="cancelled", ended_at=_now())
     except Exception as e:
         import traceback
+        # 崩溃现场随错误行下发（2026-10-10 Mac 实案：连载连烧两轮自动续跑都
+        # 死于 AttributeError("'NoneType' object has no attribute 'get'")，
+        # 错误行只有一行 repr 无从定位；traceback 全文虽落 run 目录 error.log，
+        # 但 UI 上看不见）。尾帧 = 文件:行号:函数名，一行说清死在哪；同因止损
+        # 的错误签名因此按崩溃位置区分——同位置才算同因，代码升级后行号漂移
+        # 自动能多试一轮（新代码可能已修复），次数上限仍兜底。
+        _tb_tail = ""
+        try:
+            _frames = traceback.extract_tb(e.__traceback__)
+            if _frames:
+                _f = _frames[-1]
+                _tb_tail = "（崩溃于 %s:%s %s）" % (
+                    os.path.basename(_f.filename), _f.lineno, _f.name)
+        except Exception:
+            pass
         store.update_run(run_id, expected_status="running", status="failed",
-                         error=repr(e)[:500], ended_at=_now())
+                         error=(repr(e)[:380] + _tb_tail)[:500], ended_at=_now())
         try:
             err_path = store.run_dir(run_id) / "error.log"
             if _inside(str(store.run_dir(run_id).parent), str(err_path)):

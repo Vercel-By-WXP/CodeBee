@@ -145,8 +145,15 @@ def create_task(payload):
     goal = _text(payload.get("goal"), "goal")
     workdir = _text(payload.get("workdir"), "workdir")
     if not goal:
-        raise ValueError("目标描述不能为空")
-    title = title or goal.splitlines()[0][:30]  # 标题可省略，自动取目标首行
+        # 扫榜选材的菜单承诺「方向可留空，默认分析总榜热门题材」——
+        # paihang.rank_scan_prompt 与 pipeline 两侧均已支持空 goal，这里放行；
+        # 其余类型目标必填不变。
+        if payload.get("type") == "rank_scan":
+            title = title or flow.get("name") or "扫榜选材"
+        else:
+            raise ValueError("目标描述不能为空")
+    else:
+        title = title or goal.splitlines()[0][:30]  # 标题可省略，自动取目标首行
     if not workdir:
         # 未指定目录 → 用「默认保存路径」（设置里可改；内置回落 <数据目录>/workspace）。
         # 默认路径允许自动创建；用户显式给的目录仍必须已存在。
@@ -1723,12 +1730,27 @@ def retry_task(task_id):
                 # 结构——这正是「重写未达标章」按钮（前端 done+未达标态放行
                 # retry）区别于断点续跑的语义。
                 redo = set()
+                redo_issues = []
                 if (prev.get("verdict") or {}).get("publishable") is False:
                     redo = {int(c["chapter"]) for c in v_scores
                             if not c.get("passed") and c.get("chapter") is not None}
+                    # 未达标原因账（verdict.major_issues，章节级+全局级）随继承
+                    # 下发：流水线把本章点名项与全书级项渲染进重写章起草提示词，
+                    # 作者第一遍就知道往哪改，不再盲写等修订拉回。被 major 点名
+                    # 的过线章一并回炉——总判定卡在 major 上时只重写未过线章
+                    # 消不掉账，「重写未达标章」会空转（2026-10-10 实案）。
+                    for x in (prev.get("verdict") or {}).get("major_issues") or []:
+                        if not isinstance(x, dict):
+                            continue
+                        redo_issues.append(x)
+                        try:
+                            redo.add(int(x.get("chapter")))
+                        except (TypeError, ValueError):
+                            pass
                 if redo:
                     done = [n for n in done if n not in redo]
-                    v_scores = [c for c in v_scores if c.get("passed")]
+                    v_scores = [c for c in v_scores if c.get("passed")
+                                and c.get("chapter") not in redo]
                 if done or redo:
                     if redo:
                         scores = v_scores          # 未达标重写：只带已过线章的分数
@@ -1743,6 +1765,8 @@ def retry_task(task_id):
                         # 落账的 chapter_scores——否则多轮失败恢复会把全部
                         # 已过线章节重新评审（实测一晚白烧数百万 token）
                         "chapter_scores": scores,
+                        # 未达标重写的原因账（达标续跑时为空表）
+                        "redo_issues": redo_issues,
                     }
                     break
         else:
@@ -2111,7 +2135,7 @@ def clear_stream_state(run_id=None, n=None):
 
 def finish_step(run_id, n, status, summary="", exit_code=None,
                 cost_usd=0.0, tokens=0.0, duration_s=None, model=None, output=None,
-                followups=None, thinking=None, partial=False):
+                followups=None, thinking=None, partial=False, acp_events=None):
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -2146,6 +2170,9 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                     s["partial"] = True
                 else:
                     s.pop("partial", None)
+                if acp_events:
+                    s["acp_events"] = [dict(item) for item in acp_events[:200]
+                                       if isinstance(item, dict)]
                 # 收尾即清运行中态：stream/activity/live 只是过程快照，留着会让
                 # 前端把「已结束」的步骤仍当实时流渲染（也白占 run.json 体积）
                 s.pop("stream", None)

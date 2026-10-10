@@ -10,6 +10,7 @@ builtin_agent 的工具清单合并与执行分发。
 from __future__ import annotations
 
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -94,6 +95,20 @@ class TestLiveFakeServer(BaseTest):
         self.tmp = self.data_dir / "mcpfix"
         self.tmp.mkdir(parents=True, exist_ok=True)
         self.cfg = _fake_server_cfg(self.tmp)
+        # 4dc65f2 起 MCP 启动强制 bwrap OS 隔离（无后端平台 fail-closed 拒绝启动）；
+        # 本类测协议层（发现/调用/缓存/超时映射），OS 隔离 argv 由 _bubblewrap_argv
+        # host-testable 分支覆盖——此处 patch 启动器直跑夹具服务器
+        self._orig_launch = mcp_client._sandbox_launch
+
+        def _direct_launch(server, sandbox, workdir):
+            return ([server["command"]] + list(server.get("args") or []),
+                    dict(os.environ), str(self.tmp))
+
+        mcp_client._sandbox_launch = _direct_launch
+
+    def tearDown(self):
+        mcp_client._sandbox_launch = self._orig_launch
+        super().tearDown()
 
     def test_list_and_call(self):
         r = mcp_client.list_tools(self.cfg)
@@ -109,7 +124,8 @@ class TestLiveFakeServer(BaseTest):
         text = json.dumps([{"name": "fs", "command": self.cfg["command"],
                             "args": self.cfg["args"]}])
         mcp_client.set_settings_text(lambda: text)
-        r = mcp_client.dispatch_full_name("mcp__fs__echo", {"text": "hi"})
+        r = mcp_client.dispatch_full_name("mcp__fs__echo", {"text": "hi"},
+                                          sandbox={}, workdir=str(self.tmp))
         self.assertTrue(r["ok"], r.get("error"))
         self.assertEqual(r["text"], "echo:hi")
         r2 = mcp_client.dispatch_full_name("mcp__nope__echo", {})
@@ -121,12 +137,14 @@ class TestLiveFakeServer(BaseTest):
         text = json.dumps([{"name": "fs", "command": self.cfg["command"],
                             "args": self.cfg["args"]}])
         mcp_client.set_settings_text(lambda: text)
-        specs = mcp_client.tool_specs_cached()
+        specs = mcp_client.tool_specs_cached(
+            sandbox={"allowed_roots": [str(self.tmp)]}, workdir=str(self.tmp))
         self.assertEqual(len(specs), 1)
         self.assertEqual(specs[0]["full_name"], "mcp__fs__echo")
         # 第二次走缓存（服务器文件删掉也能拿到）
         (self.tmp / "fake_mcp_fs.py").unlink()
-        specs2 = mcp_client.tool_specs_cached()
+        specs2 = mcp_client.tool_specs_cached(
+            sandbox={"allowed_roots": [str(self.tmp)]}, workdir=str(self.tmp))
         self.assertEqual(specs2[0]["full_name"], "mcp__fs__echo")
 
     def test_dead_server_folds_error(self):

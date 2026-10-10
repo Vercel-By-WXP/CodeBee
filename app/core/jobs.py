@@ -56,6 +56,8 @@ AI_REPAIR_PROMPT = """你是环境工程师。在 __OS__ 上执行下面的安�
 硬性约束：command 只能是本机包管理器的安装命令，前缀必须是 __ALLOW__ 之一，且不要带 sudo
 （命令非交互执行，sudo 会挂死；brew/npm 本身也拒绝 sudo）。
 给不出符合约束的安全命令时，safe 设为 false 且 command 留空。
+优先沿用失败命令的包管理器与安装形态（如原命令是 uv tool install 就继续用 uv，
+不要另起 pip 换安装面）；git 拉取类的网络抖动直接给原命令即可，传输层兜底由执行方处理。
 
 ## 失败的命令
 __CMD__
@@ -1180,8 +1182,7 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
                           summary="AI 建议命令未过白名单，需人工执行：%s（诊断：%s）" % (cmd, diagnosis))
         return False
     from . import paths
-    fix = runner.run_process(shell_cmd=cmd, cwd=str(paths.ROOT), timeout=1800,
-                             cancel_event=ev, log_path=str(log_abs))
+    fix = manager.run_install_cmd(cmd, cancel_event=ev, log_path=str(log_abs))
     manager.detect_all(force=True)
     with manager._LOCK:
         manager._STATE["versions"].pop(entry["id"], None)

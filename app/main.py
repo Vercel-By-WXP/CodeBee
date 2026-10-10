@@ -358,6 +358,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, {"entries": project_memory.list_entries(task.get("workdir"))})
                 except (OSError, ValueError) as exc:
                     return self._json(409, {"error": str(exc)})
+            if path == "/api/backend-profiles":
+                from core import backend_profiles
+                try:
+                    return self._json(200, {"profiles": backend_profiles.list_profiles()})
+                except (OSError, ValueError) as exc:
+                    return self._json(409, {"error": str(exc)})
+            if path == "/api/command-auth":
+                from core import command_auth
+                return self._json(200, command_auth.view())
             if path == "/api/agents/presence":
                 from core import presence
                 return self._json(200, {"agents": presence.list_agents()})
@@ -887,6 +896,58 @@ class Handler(BaseHTTPRequestHandler):
                 return deny
         if path == "/api/tasks":
             return self._api_create_task()
+        if path == "/api/backend-profiles":
+            from core import backend_profiles
+            try:
+                return self._json(200, {"profile": backend_profiles.save(self._body() or {})})
+            except KeyError as exc:
+                return self._json(404, {"error": str(exc)})
+            except (OSError, TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+        m = re.match(r"^/api/backend-profiles/([^/]+)/delete$", path)
+        if m:
+            from core import backend_profiles
+            try:
+                backend_profiles.remove(unquote(m.group(1)))
+                store.bump_state()
+                return self._json(200, {"ok": True})
+            except KeyError as exc:
+                return self._json(404, {"error": str(exc)})
+            except (OSError, TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+        if path == "/api/command-auth":
+            from core import command_auth
+            body = self._body() or {}
+            try:
+                if "mode" in body:
+                    command_auth.set_mode(body.get("mode"))
+                return self._json(200, command_auth.view())
+            except (TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+        m = re.match(r"^/api/command-auth/requests/([^/]+)$", path)
+        if m:
+            from core import command_auth
+            body = self._body() or {}
+            try:
+                result = command_auth.decide(
+                    unquote(m.group(1)), approve=body.get("approve"),
+                    scope=body.get("scope", "once"), match=body.get("match", "exact"),
+                    prefix=body.get("prefix"))
+                return self._json(200, result)
+            except KeyError as exc:
+                return self._json(404, {"error": str(exc)})
+            except (TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+        m = re.match(r"^/api/command-auth/rules/([^/]+)/revoke$", path)
+        if m:
+            from core import command_auth
+            try:
+                command_auth.revoke(unquote(m.group(1)))
+                return self._json(200, {"ok": True})
+            except KeyError as exc:
+                return self._json(404, {"error": str(exc)})
+            except (TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
         if path == "/api/a2a/tasks":
             status, resp = self._create_and_start(self._body() or {})
             return self._json(status, {"protocol": "a2a-lite", **resp})
@@ -915,6 +976,11 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body() or {}
             from core import project_memory
             try:
+                if str(body.get("action") or "").lower() == "feedback":
+                    row = project_memory.feedback(
+                        task.get("workdir"), body.get("id"), useful=body.get("useful"),
+                        expected_version=body.get("expected_version"))
+                    return self._json(200, {"entry": row})
                 row = project_memory.decide(task.get("workdir"), body.get("id"),
                                             body.get("action"),
                                             expected_version=body.get("expected_version"))
@@ -2782,6 +2848,7 @@ class Handler(BaseHTTPRequestHandler):
                 "thinking": s.get("thinking") or "",
                 "stream": (s.get("stream") or "") if running else "",
                 "activity": (s.get("activity") or []) if running else [],
+                "acp_events": s.get("acp_events") or [],
                 "live": s.get("live") or 0,
             })
 
@@ -3480,6 +3547,10 @@ def main():
     print("[CodeBee] v%s" % (_ver or "?"), flush=True)
     _step("正在准备数据目录…")
     paths.ensure_dirs()
+    from core import backend_profiles as _backend_profiles
+    from core import command_auth as _command_auth
+    _backend_profiles.init()
+    _command_auth.init()
     from core import attachments
     n_pc = attachments.cleanup_stale()  # 待提交附件残留清理（崩溃/弃单不堆积）
     if n_pc:
