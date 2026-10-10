@@ -2027,19 +2027,31 @@ _GIT_FLAKE_MARKERS = ("HTTP2 framing layer", "unable to access", "RPC failed",
                       "Connection reset", "connection was reset", "Recv failure")
 
 
-def _git_safe_env(cmd):
-    """命令涉及 git+ 远端拉取时的 git 传输层兜底 env（只加键，不覆盖既有）。"""
-    if "git+" not in str(cmd or ""):
-        return {}
+def git_http11_env():
+    """git HTTPS 传输层 HTTP/1.1 兜底 env（返回新字典，调用方可自由合并）。
+
+    本模块是安装/工作台/git 插件拉取各执行面的共享源；L0 的 tlsctx 够不着
+    （L2 不准反向 import L0），runner 又在并行在制品里，故落在 manager。"""
     return {"GIT_CONFIG_COUNT": "1",
             "GIT_CONFIG_KEY_0": "http.version",
             "GIT_CONFIG_VALUE_0": "HTTP/1.1"}
 
 
+def _git_safe_env(cmd):
+    """命令涉及 git+ 远端拉取时的 git 传输层兜底 env（只加键，不覆盖既有）。"""
+    if "git+" not in str(cmd or ""):
+        return {}
+    return git_http11_env()
+
+
 def _git_transport_flake(res):
-    """安装失败输出是否为 git 传输层抖动类错误（值得原地重试一次的那种）。"""
-    blob = "%s%s" % ((res or {}).get("stderr") or "", (res or {}).get("stdout") or "")
-    return any(m in blob for m in _GIT_FLAKE_MARKERS)
+    """安装失败输出是否为 git 传输层抖动类错误（值得原地重试一次的那种）。
+
+    接受 run_process 结果字典，也接受纯文本 blob（gitmod/market_remote 的
+    subprocess 输出直接传字符串）。"""
+    if not isinstance(res, str):
+        res = "%s%s" % ((res or {}).get("stderr") or "", (res or {}).get("stdout") or "")
+    return any(m in res for m in _GIT_FLAKE_MARKERS)
 
 
 def run_install_cmd(cmd, cancel_event=None, log_path=None):

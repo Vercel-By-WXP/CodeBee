@@ -843,13 +843,26 @@ def _download_git(entry, tmp):
     if inst.get("ref"):
         cmd += ["--branch", inst["ref"]]
     cmd += [inst["url"], str(dst)]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=300,
-                              text=True, encoding="utf-8", errors="replace")
-    except subprocess.TimeoutExpired:
-        raise ValueError("git 克隆超时: %s" % inst["url"])
-    if proc.returncode != 0:
-        raise ValueError("git 克隆失败: %s" % (proc.stderr or "").strip()[-200:])
+    # git 走 HTTPS 拉远端与安装链同根因：国内链路对 GitHub 的 HTTP/2 常被中间
+    # 设备掐断（"Error in the HTTP2 framing layer"），manager.git_http11_env()
+    # 强制 HTTP/1.1；clone 已是最后一个下载通道，传输层抖动原地重试一次。
+    # 延迟 import：模块级挂 L2 重依赖会拖累 market 链加载。
+    from . import manager
+    env = os.environ.copy()
+    env.update(manager.git_http11_env())
+    for attempt in (1, 2):
+        try:
+            proc = subprocess.run(cmd, capture_output=True, timeout=300,
+                                  text=True, encoding="utf-8", errors="replace",
+                                  env=env)
+        except subprocess.TimeoutExpired:
+            raise ValueError("git 克隆超时: %s" % inst["url"])
+        if proc.returncode == 0:
+            break
+        err = (proc.stderr or "").strip()[-200:]
+        if attempt == 1 and manager._git_transport_flake(err):
+            continue
+        raise ValueError("git 克隆失败: %s" % err)
     root = dst / sub if sub else dst
     # 双保险：解析后必须仍在克隆目录内（防符号链接等绕过）
     if dst.resolve() != root.resolve() and dst.resolve() not in root.resolve().parents:

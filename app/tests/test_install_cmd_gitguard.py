@@ -5,7 +5,9 @@
 git clone 的 "Error in the HTTP2 framing layer"（GitHub 对国内链路的
 HTTP/2 常被中间设备掐断）——执行面强制 HTTP/1.1 并对抖动原地重试一次。
 """
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from core import manager
@@ -98,6 +100,75 @@ class RepairPromptTests(unittest.TestCase):
     def test_prompt_pins_original_package_manager(self):
         from core import jobs
         self.assertIn("沿用失败命令的包管理器", jobs.AI_REPAIR_PROMPT)
+
+
+class FlakeStrTests(unittest.TestCase):
+    def test_accepts_plain_text_blob(self):
+        self.assertTrue(manager._git_transport_flake("fatal: HTTP2 framing layer"))
+        self.assertFalse(manager._git_transport_flake("error: EBUSY resource busy"))
+
+
+class GitmodHttp11Tests(unittest.TestCase):
+    def test_git_calls_carry_http11_env(self):
+        from core import gitmod
+        with patch.object(gitmod.runner, "run_process",
+                          return_value={"ok": True}) as rp:
+            gitmod._git("some/workdir", "fetch", "--all")
+        kwargs = rp.call_args.kwargs
+        self.assertEqual(kwargs["env"]["GIT_CONFIG_VALUE_0"], "HTTP/1.1")
+        self.assertEqual(kwargs["argv"][:2], ["git", "fetch"])
+
+
+class MarketGitDownloadTests(unittest.TestCase):
+    def _entry(self):
+        return {"install": {"url": "https://gitlab.com/acme/pkg.git", "path": "sub"}}
+
+    def test_clone_forces_http11_and_retries_on_flake(self):
+        from core import market_remote
+        calls = []
+
+        class Proc:
+            def __init__(self, code, err=""):
+                self.returncode = code
+                self.stderr = err
+
+        def fake_run(cmd, **kw):
+            calls.append(kw)
+            if len(calls) == 1:
+                return Proc(128, "fatal: unable to access: "
+                                 "Error in the HTTP2 framing layer")
+            return Proc(0)
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            (tmp / "git" / "sub").mkdir(parents=True)   # 假装 clone 已落盘
+            with patch.object(market_remote, "assert_public_url"), \
+                 patch.object(market_remote.shutil, "which", return_value="git"), \
+                 patch.object(market_remote.subprocess, "run", side_effect=fake_run):
+                root = market_remote._download_git(self._entry(), tmp)
+            self.assertEqual(root.name, "sub")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0]["env"]["GIT_CONFIG_VALUE_0"], "HTTP/1.1")
+
+    def test_ordinary_clone_failure_no_retry(self):
+        from core import market_remote
+        calls = []
+
+        class Proc:
+            returncode = 1
+            stderr = "error: Failed to build openssl-sys"
+
+        def fake_run(cmd, **kw):
+            calls.append(kw)
+            return Proc()
+
+        with tempfile.TemporaryDirectory() as td:
+            with patch.object(market_remote, "assert_public_url"), \
+                 patch.object(market_remote.shutil, "which", return_value="git"), \
+                 patch.object(market_remote.subprocess, "run", side_effect=fake_run):
+                with self.assertRaises(ValueError):
+                    market_remote._download_git(self._entry(), Path(td))
+        self.assertEqual(len(calls), 1)
 
 
 if __name__ == "__main__":

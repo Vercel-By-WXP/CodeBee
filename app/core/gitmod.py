@@ -29,8 +29,12 @@ def valid_rev(rev):
 
 
 def _git(workdir, *args, timeout=20):
-    r = runner.run_process(argv=["git", *args], cwd=str(workdir), timeout=timeout)
-    return r
+    # fetch/pull/push 走 HTTPS 远端与安装链同根因：GitHub 的 HTTP/2 常被中间
+    # 设备掐断（"Error in the HTTP2 framing layer"），统一强制 HTTP/1.1；
+    # 本地命令不受该配置影响。延迟 import 防 L2 层内环。
+    from . import manager
+    return runner.run_process(argv=["git", *args], cwd=str(workdir), timeout=timeout,
+                              env=manager.git_http11_env())
 
 
 def _gh(workdir, *args, timeout=60):
