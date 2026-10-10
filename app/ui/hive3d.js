@@ -154,7 +154,7 @@ window.Hive3D = (function () {
   Scene.prototype.buildWorld=function(){
     const b=this.box,rb=this.roundBox,s=this.sphere;this.objects=[];
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
-    this.add(b,0,-.18,-.20,23,.28,15.4,[.97,.985,1,1]);
+    this.add(b,0,-.18,5.5,23,.28,34,[.97,.985,1,1]);
     this.add(b,0,2.70,-6.45,19,3.65,.24,[.10,.52,.89,1]);
     this.add(b,0,5.10,-5.92,19,.18,1.12,[.98,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
@@ -185,7 +185,7 @@ window.Hive3D = (function () {
     }
     // Subtle hexagonal grout follows the reference floor and is baked into the static GPU batch.
     const tileR=.56, tileDX=1.5*tileR, tileDZ=Math.sqrt(3)*tileR;
-    for(let row=0;row<13;row++){
+    for(let row=0;row<24;row++){
       const cz=-5.55+row*tileDZ;
       for(let col=-10;col<=10;col++){
         const cx=col*tileDX+(row%2)*tileDX/2;
@@ -252,7 +252,7 @@ window.Hive3D = (function () {
         this.add(b,x+side*.39,.48,z+1.03,.035,.28,.045,[.07,.09,.11,1]);
       }
       for(let k=0;k<5;k++){const a=k*Math.PI*2/5;const wx=x+Math.cos(a)*.48,wz=z+1.10+Math.sin(a)*.40;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);this.add(s,wx,.005,wz,.085,.065,.075,[.035,.045,.055,1]);}
-      const by=1.25,bz=z+.88;
+      const by=1.25,bz=z+1.55;
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
       this.add(rb,x,by-.27,bz+.01,.31,.37,.29,[.075,.09,.11,1]);
       this.add(s,x,by-.255,bz+.035,.255,.255,.235,[.08,.10,.12,1]);
@@ -275,13 +275,15 @@ window.Hive3D = (function () {
         this.add(rb,x+side*.135,.315,bz+.26,.15,.075,.22,[.035,.045,.055,1]);
         this.add(rb,x+side*.135,.355,bz+.29,.12,.025,.16,[.99,.68,.04,1]);
       }
-      // Upper arms, forearms and compact hands form a continuous reach toward the keyboard.
+      // Articulated arms follow a continuous shoulder-elbow-wrist line toward the keyboard.
       for(const side of [-1,1]){
-        this.add(s,x+side*.235,by-.15,bz-.075,.085,.15,.13,[.12,.15,.18,1]);
-        this.add(s,x+side*.235,by-.27,bz-.23,.070,.065,.105,[.95,.62,.035,1]);
-        this.add(s,x+side*.20,.775,z+.48,.065,.075,.17,[.09,.12,.15,1]);
-        this.add(s,x+side*.20,.657,z+.325,.052,.032,.064,[.98,.67,.045,1]);
-        for(let finger=0;finger<2;finger++)this.add(b,x+side*.20+(finger-.5)*.025,.640,z+.285,.010,.010,.045,[.22,.29,.35,1]);
+        this.add(s,x+side*.235,by-.15,bz-.075,.095,.12,.12,[.12,.15,.18,1]);
+        this.add(s,x+side*.225,.99,z+1.20,.072,.102,.55,[.075,.09,.11,1]);
+        this.add(s,x+side*.225,.77,z+.925,.078,.078,.085,[.96,.63,.035,1]);
+        this.add(s,x+side*.20,.70,z+.665,.061,.074,.43,[.10,.13,.16,1]);
+        this.add(rb,x+side*.20,.662,z+.425,.092,.052,.095,[.95,.62,.035,1]);
+        this.add(s,x+side*.20,.651,z+.325,.060,.034,.070,[.98,.68,.045,1]);
+        for(let finger=0;finger<3;finger++)this.add(b,x+side*.20+(finger-1)*.023,.635,z+.276,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.27,bz+.266,.12,.09,.024,[.025,.10,.14,1]);
