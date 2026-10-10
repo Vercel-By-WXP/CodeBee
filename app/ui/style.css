@@ -7660,7 +7660,7 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 #rd-hive-viewport.hive-mode-3d .hive-reference {
   display: block !important;
   z-index: 0;
-  object-fit: fill;
+  object-fit: contain;
 }
 #rd-hive-viewport.hive-mode-live3d .hive-reference {
   display: none !important;
