@@ -7211,6 +7211,7 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 .hive-gl { display: none; }
 .hive-gl-overlay { position: absolute; inset: 0; pointer-events: none; }
 #rd-hive-viewport.hive-mode-3d #rd-hive-cells { display: none; }
+#rd-hive-viewport.hive-mode-live3d #rd-hive-cells { display: none !important; }
 #rd-hive-viewport.hive-mode-2d { height: auto; aspect-ratio: auto; overflow: visible; border: 0; border-radius: 0; background: transparent; cursor: auto; }
 #rd-hive-viewport.hive-mode-2d .hive-reference-layer { display: none; }
 .hg-badge {
