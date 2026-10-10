@@ -2591,6 +2591,36 @@ __CRITIQUE__
 - 针对性改进所有 major 问题；保持既定风格与设定。
 - 完成后用 3 句话说明本轮改了什么。"""
 
+# 评审口径单一真源：评审面提示词（单章/全局）与作者面注入块从这里同源提取，
+# 两边永不脱节。此前评审清单/签约专项/全局口径只活在评审面，作者第一遍写完
+# 被打回才知道按什么标准被审（2026-10-10 实案：全章过线仍卡全局 major）。
+# 作者面刻意不下发评分机制本体（1-10 分/阈值/宁严勿宽）——对写作者零价值，
+# 透下去只喂响应试素材；清单条目本身全是质量正向要求，事前下发只有好处。
+REVIEW_CHECKLIST_ITEMS = (
+    "叙述语域与视角统一",
+    "复杂情感落到动作、五感或生理细节",
+    "开篇在前 600 字进入具体冲突",
+    "每章发生真实的局面变化",
+    "无可删的重复铺垫与长段解释",
+)
+GLOBAL_REVIEW_FOCUS = ("主线一致性、人物弧光、开篇吸引力、文风表现、情感表达、"
+                       "情节推进与节奏控制")
+
+
+def author_review_rubric_block(dims, signing_dims):
+    """作者面评审口径块：起草/修订提示词里事前下发「会按什么标准被审」，
+    与评审面同源（REVIEW_CHECKLIST_ITEMS / GLOBAL_REVIEW_FOCUS）。静态文本，
+    同批各章字节一致，不碎前缀缓存。"""
+    lines = [
+        "## 评审口径（本书会按以下标准审稿，写作时对照自查）",
+        "- 评分维度：" + " / ".join(dims) + "。",
+        "- 逐项硬清单：" + "；".join(REVIEW_CHECKLIST_ITEMS) + "。",
+        "- 全书级关注：" + GLOBAL_REVIEW_FOCUS + "。",
+        "- 签约专项维度：" + "、".join(signing_dims) + "。",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 NOVEL_CRITIQUE_PROMPT = """你是严格的评审（不要使用任何工具、不要修改文件，只依据下方稿件内容评审）。
 请输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {
@@ -2599,7 +2629,7 @@ NOVEL_CRITIQUE_PROMPT = """你是严格的评审（不要使用任何工具、�
   "summary": "一句话总评"
 }
 每个维度打 1-10 分（可为小数），宁严勿宽。major 问题必须给 quote（系统会逐条校验引文是否真在稿件中——编造的引文会被降档标记）。
-评审必须逐项回答：叙述语域与视角是否统一；复杂情感是否有动作、五感或生理细节；开篇是否在前 600 字进入具体冲突；本章是否发生局面变化；是否存在可删的重复铺垫或长段解释。
+评审逐项核查以下各项是否成立：%s。""" % ("；".join(REVIEW_CHECKLIST_ITEMS)) + """
 
 ## 待评审稿件
 ---
@@ -2900,6 +2930,7 @@ __STYLE__
 ## 签约质量门禁
 __QUALITY_GATE__
 
+__REVIEW_RUBRIC__
 - 写完文件后，最终回复只输出一行：`第 __I__ 章完成（约 __WORDS__ 字）`——不要在回复里复述或解释正文。"""
 
 SERIAL_REVISE_PROMPT = """你是一名网文作者。第 __I__ 章没有通过评审，请修订文件 `__FILE__`（直接改写该文件）。文件必须以 UTF-8 编码保存（PowerShell 显式加 -Encoding UTF8，禁止依赖默认编码）。
@@ -2914,6 +2945,7 @@ __BEATS__
 （本章爽点/情绪爆点：__HIGHLIGHT__）
 __LOCKED_CH__
 
+__REVIEW_RUBRIC__
 ## 本章评审意见
 __CRITIQUE__
 
@@ -2937,7 +2969,7 @@ SERIAL_GLOBAL_PROMPT = """你是独立小说质量评审（不要修改任何文
   "issues": [{"dim": "维度名", "severity": "major|minor", "note": "具体问题（指明哪一章）", "quote": "支撑该问题的稿件原文连续片段（≥8字，逐字摘录不许改写）"}],
   "summary": "一句话总评：所读范围内的文本优势、主要风险与未验证项；不得预测签约结果"
 }
-每个维度打 1-10 分，按统一文本 rubric 与所读证据评估，不以“宁严勿宽”压分。重点关注：主线一致性、人物弧光、开篇吸引力、文风表现、情感表达、情节推进与节奏控制。
+每个维度打 1-10 分，按统一文本 rubric 与所读证据评估，不以“宁严勿宽”压分。重点关注：%s。""" % GLOBAL_REVIEW_FOCUS + """
 若是全书最初的前 3 章，可观察视角人物、故事承诺、开篇兑现和读者理解成本；固定字数点、钩子/爽点密度仅作参考，不是扣分门槛。发现问题须给可定位原文引文，并区分文本事实、解释和建议。
 major 问题必须给 quote（系统会逐条校验引文是否真在稿件中——编造的引文会被降档标记）。
 
@@ -3343,6 +3375,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     # 签约专项维度作为额外硬性检查注入提示词与报告证据。
     dims = task.get("rubric") or DEFAULT_RUBRIC
     signing_dims = novel_quality.rubric_for({"type": "serial_novel"})
+    # 作者面评审口径块（与评审面同源提取）：起草/修订/打磨提示词都带
+    rubric_block = author_review_rubric_block(dims, signing_dims)
     threshold = task.get("threshold", 7.0)
     threshold_ch = threshold - 0.5 if threshold >= 7.5 else threshold   # 单章阈值略放宽 0.5 分
     dimkey = ", ".join('"%s": 0' % d for d in dims)
@@ -3903,6 +3937,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, i))
                         .replace("__STALE_NOTE__", stale_note)
                         .replace("__REDO_ISSUES__", redo_note)
+                        .replace("__REVIEW_RUBRIC__", rubric_block)
                         .replace("__HIGHLIGHT__", ch.get("highlight") or "按剧情要点自然铺设一处小冲突/小反转")
                         .replace("__STYLE__", style_tpl)
                         .replace("__QUALITY_GATE__", novel_quality.opening_requirements(i, wpc))
@@ -4315,6 +4350,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__VOLUME__", vol_block_for(i))
                           .replace("__BEATS__", ch.get("beats") or "按大纲推进")
                           .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, i))
+                          .replace("__REVIEW_RUBRIC__", rubric_block)
                           .replace("__HIGHLIGHT__", ch.get("highlight")
                                    or "按剧情要点自然铺设一处小冲突/小反转")
                           .replace("__STYLE__", style_tpl)
@@ -4470,6 +4506,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                              .replace("__VOLUME__", vol_block_for(j))
                              .replace("__BEATS__", _wch.get("beats") or "按大纲推进")
                              .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, j))
+                             .replace("__REVIEW_RUBRIC__", rubric_block)
                              .replace("__HIGHLIGHT__", _wch.get("highlight")
                                       or "按剧情要点自然铺设一处小冲突/小反转")
                              .replace("__STYLE__", style_tpl)
@@ -4681,6 +4718,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__VOLUME__", vol_block_for(i))
                           .replace("__BEATS__", ch.get("beats") or "按大纲推进")
                           .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, i))
+                          .replace("__REVIEW_RUBRIC__", rubric_block)
                           .replace("__HIGHLIGHT__", ch.get("highlight")
                                    or "按剧情要点自然铺设一处小冲突/小反转")
                           .replace("__CRITIQUE__", crit)

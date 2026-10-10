@@ -128,6 +128,20 @@ class TestLockedChapterBlockShape(BaseTest):
         self.assertIn("__LOCKED_CH__", pipeline.SERIAL_CHAPTER_PROMPT)
         self.assertIn("__LOCKED_CH__", pipeline.SERIAL_REVISE_PROMPT)
         self.assertIn("__LOCKED_OUTLINE__", planner.SERIAL_CONTINUE_OUTLINE_PROMPT)
+        # 作者面评审口径：起草/修订模板都带注入位，评审面提示词与作者块同源
+        self.assertIn("__REVIEW_RUBRIC__", pipeline.SERIAL_CHAPTER_PROMPT)
+        self.assertIn("__REVIEW_RUBRIC__", pipeline.SERIAL_REVISE_PROMPT)
+        self.assertIn("叙述语域与视角统一", pipeline.NOVEL_CRITIQUE_PROMPT,
+                      "评审清单必须仍活在单章评审提示词里（单一真源对账）")
+        self.assertIn("主线一致性", pipeline.SERIAL_GLOBAL_PROMPT,
+                      "全局关注点必须仍活在全局评审提示词里（单一真源对账）")
+        block = pipeline.author_review_rubric_block(["情节", "节奏"], ["开篇吸引力"])
+        self.assertIn("评审口径", block)
+        self.assertIn("叙述语域与视角统一", block)
+        self.assertIn("主线一致性", block)
+        self.assertIn("开篇吸引力", block)
+        self.assertNotIn("宁严勿宽", block, "评分机制本体不得下发给作者（防应试）")
+        self.assertNotIn("1-10", block)
 
 
 class TestDraftAndReviseInjectLockedOutline(BaseTest):
@@ -294,6 +308,10 @@ class TestDraftInjectRedoIssues(BaseTest):
         for p in drafts.values():
             self.assertNotIn("__REDO_ISSUES__", p, "占位符不得残留")
             self.assertNotIn("__STALE_NOTE__", p)
+            self.assertNotIn("__REVIEW_RUBRIC__", p, "占位符不得残留")
+            self.assertIn("评审口径", p, "起草面必须事前下发评审口径块")
+            self.assertIn("叙述语域与视角统一", p, "口径块与评审面同源")
+            self.assertNotIn("宁严勿宽", p, "评分机制本体不下发")
 
     def test_no_redo_issues_no_block(self):
         task, run, agents, _critics, _impl = self._make([])
@@ -301,3 +319,5 @@ class TestDraftInjectRedoIssues(BaseTest):
         for i, p in drafts.items():
             self.assertNotIn("上一轮评审未达标原因", p,
                              "无原因账的章不得注入空原因块（第 %d 章）" % i)
+            self.assertIn("评审口径", p,
+                          "评审口径块无条件下发（第 %d 章）" % i)
