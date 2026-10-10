@@ -275,7 +275,7 @@ window.Hive3D = (function () {
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
       this.add(s,x,by-.42,bz+.005,.31,.31,.235,[.075,.09,.11,1]);
       this.add(s,x,by-.255,bz+.16,.13,.12,.10,[.08,.10,.12,1]);
-      this.add(rb,x,by-.47,bz+.300,.365,.080,.022,[1,.66,.035,1]);
+      this.add(rb,x,by-.47,bz+.315,.365,.080,.022,[1,.66,.035,1]);
       this.add(rb,x,by-.64,bz+.292,.325,.076,.022,[.99,.56,.018,1]);
       this.add(rb,x,by-.555,bz+.304,.290,.036,.020,[.045,.055,.065,1]);
       this.add(s,x,by,bz,.405,.37,.345,[1,.70,.045,1]);
