@@ -295,9 +295,9 @@ window.Hive3D = (function () {
       }
       // Shoulders stay on the camera-facing side of the chassis; elbows and wrists arc back to the keyboard.
       for(const side of [-1,1]){
-        this.add(s,x+side*.31,.99,z+1.13,.105,.13,.20,[.14,.17,.20,1]);
-        this.add(s,x+side*.43,.84,z+.91,.105,.105,.16,[.18,.22,.25,1]);
-        this.add(s,x+side*.43,.735,z+.64,.105,.082,.25,[.16,.20,.23,1]);
+        this.add(s,x+side*.40,.99,z+1.13,.102,.125,.19,[.19,.22,.25,1]);
+        this.add(s,x+side*.515,.84,z+.91,.088,.090,.15,[.29,.33,.36,1]);
+        this.add(s,x+side*.49,.735,z+.64,.088,.078,.24,[.20,.24,.27,1]);
         this.add(rb,x+side*.37,.665,z+.38,.125,.065,.12,[.96,.63,.035,1]);
         this.add(s,x+side*.355,.650,z+.32,.078,.042,.080,[.98,.68,.045,1]);
         for(let finger=0;finger<3;finger++)this.add(b,x+side*.355+(finger-1)*.026,.633,z+.265,.012,.010,.046,[.22,.29,.35,1]);
@@ -307,10 +307,10 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.326,.095,.020,.014,[.16,.88,.98,1]);
       // Glass wings sit around the shoulder line, closer to the body than the monitor plane,
       // with a restrained span so adjacent assistants do not merge into one cyan ribbon.
-      this.add(this.organic,x-.39,by+.10,bz+.12,.80,1.22,.045,[.58,.84,1,.25],-.34,.18);
-      this.add(this.organic,x+.39,by+.10,bz+.12,.80,1.22,.045,[.58,.84,1,.25],.34,-.18);
-      this.add(this.organic,x-.42,by+.055,bz+.19,.48,.76,.030,[.93,.99,1,.16],.20,-.10);
-      this.add(this.organic,x+.42,by+.055,bz+.19,.48,.76,.030,[.93,.99,1,.16],-.20,.10);
+      this.add(this.organic,x-.43,by+.10,bz+.12,.92,1.65,.045,[.58,.84,1,.42],-.34,.22);
+      this.add(this.organic,x+.43,by+.10,bz+.12,.92,1.65,.045,[.58,.84,1,.42],.34,-.22);
+      this.add(this.organic,x-.46,by+.055,bz+.19,.58,1.02,.030,[.93,.99,1,.25],.20,-.12);
+      this.add(this.organic,x+.46,by+.055,bz+.19,.58,1.02,.030,[.93,.99,1,.25],-.20,.12);
 
     }
     // Planters and stylized leaves soften the room edges.
