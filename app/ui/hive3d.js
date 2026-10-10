@@ -91,6 +91,36 @@ window.Hive3D = (function () {
     emitSide(1);emitSide(-1);
     return geometry(gl,positions,indices,normals);
   }
+  function hexGroutGeometry(gl){
+    // Build the complete staggered flat-top hex lattice as one static mesh. Drawing only
+    // three consecutive edges per tile creates crosses and broken hexes; unique full edges
+    // preserve the six-sided tiling while keeping buffer size/draw cost low.
+    const positions=[],normals=[],indices=[],seen=new Set();
+    const radius=.56,stepX=3*radius,stepZ=Math.sqrt(3)*radius/2,halfWidth=.0045,y=-.031;
+    const keyPoint=(x,z)=>Math.round(x*10000)+","+Math.round(z*10000);
+    for(let row=0;row<64;row++){
+      const cz=-6.45+row*stepZ;
+      if(cz>22.5)break;
+      for(let col=-7;col<=7;col++){
+        const cx=col*stepX+(row%2)*stepX/2;
+        if(Math.abs(cx)>10.6)continue;
+        for(let edge=0;edge<6;edge++){
+          const a0=edge*Math.PI/3,a1=(edge+1)*Math.PI/3;
+          const x0=cx+radius*Math.cos(a0),z0=cz+radius*Math.sin(a0);
+          const x1=cx+radius*Math.cos(a1),z1=cz+radius*Math.sin(a1);
+          const k0=keyPoint(x0,z0),k1=keyPoint(x1,z1),key=k0<k1?k0+"|"+k1:k1+"|"+k0;
+          if(seen.has(key))continue;
+          seen.add(key);
+          const dx=x1-x0,dz=z1-z0,len=Math.hypot(dx,dz)||1;
+          const px=dz/len*halfWidth,pz=-dx/len*halfWidth,base=positions.length/3;
+          positions.push(x0+px,y,z0+pz,x1+px,y,z1+pz,x1-px,y,z1-pz,x0-px,y,z0-pz);
+          for(let i=0;i<4;i++)normals.push(0,1,0);
+          indices.push(base,base+2,base+1,base,base+3,base+2);
+        }
+      }
+    }
+    return geometry(gl,positions,indices,normals);
+  }
   function cylinderGeometry(gl,segments=20){
     const p=[],n=[],ix=[];
     // Side wall has independent normals from the flat end caps, avoiding pinched highlights.
@@ -138,7 +168,7 @@ window.Hive3D = (function () {
     const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);float sky=clamp(n.y*0.5+0.5,0.0,1.0);float side=abs(n.x)*0.035;float heightShade=mix(0.94,1.0,smoothstep(-0.2,3.6,aPosition.y));vShade=(0.88+0.08*sky+side)*heightShade;}";
     const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 v=normalize(uEyePosition-vWorld);vec3 key=normalize(vec3(-0.48,0.86,0.42));vec3 fill=normalize(vec3(0.62,0.32,-0.72));vec3 warm=normalize(vec3(0.34,0.46,0.82));float ndl=max(dot(n,key),0.0);float fillN=max(dot(n,fill),0.0);float warmN=max(dot(n,warm),0.0);float hemi=clamp(n.y*0.5+0.5,0.0,1.0);vec3 base=vColor.rgb;float wallBlue=step(0.38,base.b)*step(0.35,base.g)*step(base.r*1.65,base.g)*step(1.7,vWorld.y);float wallGradient=0.92+0.08*smoothstep(1.7,4.5,vWorld.y)+0.045*exp(-pow((vWorld.x+2.1)*0.24,2.0));base=mix(base,base*wallGradient,wallBlue);vec3 h=normalize(key+v);vec3 hf=normalize(fill+v);float chroma=max(max(base.r,base.g),base.b)-min(min(base.r,base.g),base.b);float gloss=mix(0.10,0.34,smoothstep(0.10,0.82,chroma));float spec=pow(max(dot(n,h),0.0),mix(24.0,58.0,gloss))*gloss*0.42;float specFill=pow(max(dot(n,hf),0.0),36.0)*0.075;float fresnel=pow(1.0-max(dot(n,v),0.0),3.0);vec3 ambient=base*(0.55+0.13*hemi);vec3 direct=base*(0.34*ndl+0.16*fillN+0.08*warmN);vec3 highlight=vec3(1.0,0.91,0.78)*spec+vec3(0.52,0.84,1.0)*specFill+vec3(0.18,0.48,0.68)*fresnel*0.075;float cyan=max(0.0,min(base.g,base.b)-base.r)*0.65;vec3 emissive=base*cyan;vec3 lit=ambient+direct+highlight+emissive;lit*=vShade;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
-    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,6,.12);this.sphere=sphereGeometry(gl,16,24);this.cylinder=cylinderGeometry(gl,20);this.organic=organicGeometry(gl);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
+    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,6,.12);this.sphere=sphereGeometry(gl,16,24);this.cylinder=cylinderGeometry(gl,20);this.organic=organicGeometry(gl);this.grout=hexGroutGeometry(gl);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
   };
   Scene.prototype.listen=function(el,type,fn,opts){el.addEventListener(type,fn,opts);this.listeners.push(()=>el.removeEventListener(type,fn,opts));};
   Scene.prototype.bindSurface=function(){
@@ -183,22 +213,8 @@ window.Hive3D = (function () {
       const x=-7.75+i*3.10;
       this.add(b,x,2.34,-6.005,.035,.48,.024,[.22,.89,1,1]);
     }
-    // Subtle hexagonal grout follows the reference floor and is baked into the static GPU batch.
-    const tileR=.56, tileDX=1.5*tileR, tileDZ=Math.sqrt(3)*tileR;
-    for(let row=0;row<24;row++){
-      const cz=-5.55+row*tileDZ;
-      for(let col=-10;col<=10;col++){
-        const cx=col*tileDX+(row%2)*tileDX/2;
-        if(Math.abs(cx)>9.0)continue;
-        for(let edge=0;edge<3;edge++){
-          const a0=edge*Math.PI/3,a1=(edge+1)*Math.PI/3;
-          const x0=cx+tileR*Math.cos(a0),z0=cz+tileR*Math.sin(a0);
-          const x1=cx+tileR*Math.cos(a1),z1=cz+tileR*Math.sin(a1);
-          const rotation=Math.atan2(-(z1-z0),x1-x0);
-          this.add(b,(x0+x1)/2,-.032,(z0+z1)/2,tileR,.006,.007,[.73,.80,.86,1],rotation);
-        }
-      }
-    }
+    // Continuous, pale hex grout is one static mesh: no crossed edges and no thousands of scene objects.
+    this.add(this.grout,0,0,0,1,1,1,[.77,.83,.88,1]);
     // Reference layout: eight compact rear stations and six wider front stations.
     // Every monitor overlay is projected from these exact same coordinates below.
     const deskRows=[
@@ -346,7 +362,7 @@ window.Hive3D = (function () {
       const channel=channels[key];
       this.batchBuffers[key]={positions:upload(channel.positions),normals:upload(channel.normals),colors:upload(channel.colors),count:channel.positions.length/3};
     }
-    for(const mesh of [this.box,this.roundBox,this.sphere,this.cylinder,this.organic])if(mesh){if(mesh.p)gl.deleteBuffer(mesh.p);if(mesh.ix)gl.deleteBuffer(mesh.ix);mesh.p=null;mesh.ix=null;}
+    for(const mesh of [this.box,this.roundBox,this.sphere,this.cylinder,this.organic,this.grout])if(mesh){if(mesh.p)gl.deleteBuffer(mesh.p);if(mesh.ix)gl.deleteBuffer(mesh.ix);mesh.p=null;mesh.ix=null;}
   };
   Scene.prototype.drawBatch=function(batch){
     if(!batch||!batch.count)return;
