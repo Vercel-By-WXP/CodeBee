@@ -72,7 +72,7 @@ window.Hive3D = (function () {
   function Scene(opts){
     this.opts=opts;this.canvas=opts.canvas;this.overlay=opts.overlay;this.host=this.canvas.parentElement;
     this.onCellActivate=opts.onCellActivate||function(){};this.cellRefresh=opts.cellRefresh||function(){return{};};
-    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=-0.18;this.pitch=0.28;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
+    this.model=null;this.cells=[];this.page=0;this.zoom=1.08;this.yaw=-0.18;this.pitch=0.28;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
     this.host.dataset.renderer="webgl";this.canvas.hidden=false;this.canvas.classList.add("hive-gl-live");
     this.layer=node("div","hive-reference-layer",this.host);this.layer.appendChild(this.overlay);this.overlay.replaceChildren();
     try { this.initGL(); } catch(e) { console.error("CodeBee Hive3D WebGL init failed",e); this.failed=true; this.failure=e; return; }
@@ -89,7 +89,7 @@ window.Hive3D = (function () {
     const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vec3 light=normalize(vec3(-0.40,0.82,0.48));vShade=0.58+0.42*max(0.0,dot(normalize(aNormal),light));}";
     const fs="precision mediump float; varying vec4 vColor; varying float vShade; void main(){gl_FragColor=vec4(vColor.rgb*vShade,vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
-    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,4,.12);this.sphere=sphereGeometry(gl,16,24);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.79,.89,.96,1);
+    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,4,.12);this.sphere=sphereGeometry(gl,16,24);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
   };
   Scene.prototype.listen=function(el,type,fn,opts){el.addEventListener(type,fn,opts);this.listeners.push(()=>el.removeEventListener(type,fn,opts));};
   Scene.prototype.bindSurface=function(){
@@ -106,11 +106,11 @@ window.Hive3D = (function () {
     const b=this.box,rb=this.roundBox,s=this.sphere;this.objects=[];
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
     this.add(b,0,-.18,0,19,.28,14,[.91,.95,.98,1]);
-    this.add(b,0,2.48,-6.45,19,5.2,.24,[.10,.43,.74,1]);
+    this.add(b,0,2.48,-6.45,19,5.2,.24,[.045,.16,.28,1]);
     this.add(b,0,4.98,-2.8,19,.16,7.3,[.98,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
-    this.add(b,0,.18,-6.28,18.7,.12,.06,[.06,.30,.55,1]);
-    for(let x=-8;x<=8;x+=2.65)this.add(b,x,2.5,-6.29,.018,4.7,.025,[.06,.33,.60,1]);
+    this.add(b,0,.18,-6.28,18.7,.12,.06,[.10,.34,.47,1]);
+    for(let x=-8;x<=8;x+=2.65)this.add(b,x,2.5,-6.29,.018,4.7,.025,[.075,.25,.37,1]);
     for(const side of [-1,1]){
       // Open-framed side glazing: avoid opaque side slabs that visually cut the room into boxes.
       for(const y of [.12,4.62])this.add(b,side*8.95,y,-.15,.075,.075,11.9,[.78,.87,.93,1]);
@@ -128,7 +128,9 @@ window.Hive3D = (function () {
     const stageColors=[[.22,.83,.94,1],[.24,.80,.93,1],[.27,.84,.96,1],[.20,.87,.95,1],[.25,.81,.95,1],[.28,.88,.95,1]];
     for(let i=0;i<6;i++){
       const x=-7.1+i*2.84;
-      this.add(rb,x,3.58,-6.16,2.40,.82,.18,[.99,.995,1,1]);
+      this.add(rb,x,3.58,-6.16,2.40,.82,.18,[.10,.30,.42,1]);
+      this.add(rb,x,3.58,-6.04,2.28,.68,.045,[.035,.11,.18,1]);
+      this.add(b,x,3.87,-6.012,1.86,.018,.008,[.18,.66,.80,1]);
       this.add(b,x,3.14,-6.03,1.86,.035,.025,stageColors[i]);
       this.add(b,x+1.05,3.58,-6.04,.09,.09,.08,[.38,.89,.96,1]);
     }
@@ -144,7 +146,7 @@ window.Hive3D = (function () {
           const x0=cx+tileR*Math.cos(a0),z0=cz+tileR*Math.sin(a0);
           const x1=cx+tileR*Math.cos(a1),z1=cz+tileR*Math.sin(a1);
           const rotation=Math.atan2(-(z1-z0),x1-x0);
-          this.add(b,(x0+x1)/2,-.032,(z0+z1)/2,tileR,.008,.009,[.74,.83,.90,1],rotation);
+          this.add(b,(x0+x1)/2,-.032,(z0+z1)/2,tileR,.008,.009,[.84,.89,.93,1],rotation);
         }
       }
     }
@@ -158,7 +160,7 @@ window.Hive3D = (function () {
     for(const config of deskRows)for(const x of config.xs){
       const {row,z,width,screenWidth,screenHeight}=config;
       this.deskPositions.push({row,x,z,width,screenWidth,screenHeight});
-      this.add(rb,x,.54,z,width,.15,1.20,[.97,.98,1,1]);
+      this.add(rb,x,.54,z,width,.15,1.20,[.89,.93,.96,1]);
       this.add(rb,x-width*.36,.25,z+.03,.43,.52,1.02,[.80,.86,.91,1]);
       this.add(rb,x+width*.36,.25,z+.03,.43,.52,1.02,[.80,.86,.91,1]);
       this.add(rb,x,.43,z-.22,width*.78,.045,.74,[1,1,1,1]);
@@ -182,8 +184,8 @@ window.Hive3D = (function () {
       this.add(s,x,by-.24,bz+.02,.28,.23,.26,[.98,.57,.035,1]);
       this.add(b,x,by-.19,bz+.245,.26,.065,.045,[.045,.055,.06,1]);
       this.add(s,x,by-.055,bz-.285,.255,.145,.055,[.045,.055,.06,1]);
-      this.add(s,x-.105,by-.035,bz-.326,.035,.035,.026,[.02,.03,.04,1]);
-      this.add(s,x+.105,by-.035,bz-.326,.035,.035,.026,[.02,.03,.04,1]);
+      this.add(s,x-.105,by-.035,bz-.326,.035,.035,.026,[.08,.86,.98,1]);
+      this.add(s,x+.105,by-.035,bz-.326,.035,.035,.026,[.08,.86,.98,1]);
       this.add(s,x,by-.065,bz+.305,.20,.045,.018,[.045,.055,.06,1]);
       this.add(b,x-.13,by+.23,bz+.13,.028,.18,.028,[.08,.09,.10,1]);
       this.add(b,x+.13,by+.23,bz+.13,.028,.18,.028,[.08,.09,.10,1]);
@@ -328,7 +330,7 @@ window.Hive3D = (function () {
   Scene.prototype.setActive=function(active){this.active=!!active;if(this.timer)clearInterval(this.timer);if(this.raf)cancelAnimationFrame(this.raf);this.raf=0;this.layer.hidden=!this.active;this.canvas.hidden=!this.active;if(this.active){this.updateOverlay();this.render();this.timer=setInterval(()=>{if(!document.hidden&&this.host.offsetParent!==null)this.updateOverlay();},1000);}};
   Scene.prototype.resize=function(){this.cssW=this.host.clientWidth;this.cssH=this.host.clientHeight;if(this.cssW&&this.cssH)this.render();};
   Scene.prototype.zoomAt=function(factor){this.zoom=clamp(this.zoom/factor,.72,2.4);this.render();};
-  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=-.18;this.pitch=.28;this.panX=0;this.panY=0;this.render();};
+  Scene.prototype.resetView=function(){this.zoom=1.08;this.yaw=-.18;this.pitch=.28;this.panX=0;this.panY=0;this.render();};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0,deskRows:this.deskPositions?[this.deskPositions.filter(d=>d.row===0).length,this.deskPositions.filter(d=>d.row===1).length]:[]};};
   Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,.995,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
   Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
