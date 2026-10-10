@@ -8751,7 +8751,8 @@ function hiveSceneSync(run, lanes, byStage) {
   const sc = ensureHiveScene();
   if (!sc) return;
   sc.sync(model);                    // 2D 模式也同步：切回 3D 时数据即 ready（画布未激活零 GPU 开销）
-  sc.setDisplayMode(hiveMode);\n  sc.setActive(hiveMode !== "2d");
+  sc.setDisplayMode(hiveMode);
+  sc.setActive(hiveMode !== "2d");
 }
 
 window.renderHive = function (run) {
