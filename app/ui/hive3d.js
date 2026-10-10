@@ -228,18 +228,18 @@ window.Hive3D = (function () {
     for(const config of deskRows)for(const x of config.xs){
       const {row,z,width,screenWidth,screenHeight}=config,screenY=row===1?1.38:1.205;
       this.deskPositions.push({row,x,z,width,screenWidth,screenHeight});
-      this.add(rb,x,.54,z,width,.15,1.20,[.92,.95,.98,1]);
-      this.add(b,x,.49,z-.603,width*.72,.014,.012,[.08,.42,.57,1]);
+      this.add(rb,x,.54,z,width,.15,1.20,[.985,.99,1,1]);
+      this.add(b,x,.49,z-.603,width*.72,.014,.012,[.07,.44,.62,1]);
       // Front edge highlight and rear cable channel make the desktop read as layered furniture.
       this.add(rb,x,.535,z+.594,width*.94,.035,.035,[.98,.99,1,1]);
       this.add(b,x,.455,z-.565,width*.64,.028,.024,[.61,.70,.79,1]);
-      this.add(rb,x-width*.36,.25,z+.03,.43,.52,1.02,[.82,.87,.92,1]);
-      this.add(rb,x+width*.36,.25,z+.03,.43,.52,1.02,[.82,.87,.92,1]);
+      this.add(rb,x-width*.36,.25,z+.03,.43,.52,1.02,[.90,.93,.97,1]);
+      this.add(rb,x+width*.36,.25,z+.03,.43,.52,1.02,[.90,.93,.97,1]);
       // A compact three-drawer pedestal gives each station the white office furniture silhouette of the reference.
-      this.add(rb,x+width*.30,.27,z+.445,width*.30,.42,.26,[.84,.89,.95,1]);
+      this.add(rb,x+width*.30,.27,z+.445,width*.30,.42,.26,[.90,.935,.98,1]);
       for(const drawerY of [.18,.28,.38])this.add(b,x+width*.30,drawerY,z+.579,width*.22,.012,.012,[.62,.71,.80,1]);
       this.add(b,x+width*.30,.41,z+.581,width*.085,.018,.014,[.45,.58,.70,1]);
-      this.add(rb,x,.43,z-.22,width*.78,.045,.74,[.84,.89,.93,1]);
+      this.add(rb,x,.43,z-.22,width*.78,.045,.74,[.89,.93,.97,1]);
       this.add(rb,x,screenY,z-.48,screenWidth+.18,screenHeight+.18,.13,[.035,.055,.075,1]);
       this.add(rb,x,screenY,z-.432,screenWidth+.08,screenHeight+.08,.045,[.15,.20,.25,1]);
       this.add(b,x,screenY,z-.405,screenWidth,screenHeight,.018,[.018,.105,.18,1]);
