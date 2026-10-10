@@ -7098,3 +7098,91 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   域稳定期下新竞品只从交叉通道出；三大趋势（A13 控制面/模型路由/DSH 官方化）
   中无一件构成「对方有我们没有且小而实」的落地差量；零代码提案，落地=知识
   沉淀三件套，docs-only 不触发发版。| 结论
+
+## 2026-10-10 16 时班（新一轮第 1/4 步·批2：学习记忆与自我改进 + 全类型雷达）
+
+- **headroomlabs-ai/headroom**（74,875★，10-10 在更，trendshift 日榜 #1）新入库 |
+  **工具输出/日志/RAG 块/文件/会话史进 LLM 前统一压缩层**：四形态——库
+  compress(messages)（Py/TS）+ proxy --port 8787（零改码任意语言）+ CLI wrap
+  （claude/codex/grok/copilot/cursor/aider/opencode/cline…）+ MCP server；本地
+  压缩不外发；自有 kompress-v2 模型；README 实证 10,144→1,260 token 且 FATAL
+  行逐字节存活；org 顺藤另有 strands-headroom（AWS Strands 适配件）| A3 域年度级
+  新对标：我们 read_file 头尾省略+三段压缩+工具剪枝系「单产品内」粒度，它是
+  **进程外透明层**（任意 agent 通用+RAG 块/JSON 结构化压缩 60-95%）；「工具输出
+  预压缩」待深挖项从 openhuman 单例升级为成层趋势；差量可借鉴点=RAG 召回块
+  预压缩（小而实列待深挖）+压缩质量可验证（保关键行 demo）；proxy 零侵入形态
+  与我们「编排台自己压自己」定位不同暂不落地 | A3 借鉴方向（待深挖实证升级） | 2026-10-10
+- **Leonxlnx/taste-skill**（94,240★，10-09 在更）新入库 | 「Anti-Slop」给 AI 品味
+  的 skill——**前端/UI 品质域**（premium frontends 反平庸设计）；同队 TasteCode
+  桌面工作台（CC/Codex/Grok+design agent：briefs→builds→visually reviews）|
+  单 skill 9.4 万★大星化系「反平庸」品类流量入口确认；非文本域（我们 aiflavor
+  系文本去AI味不可混同）；design agent 视觉评审循环与我们评审闸同构 | 参考
+  （skill 生态判据） | 2026-10-10
+- **titanwings/distilly**（25,454★，09-22 在更，前名 Colleague Skill）新入库 |
+  **人物档案蒸馏**：消息/文档/访谈/公开资料→可移植 Person Profile（经验/决策
+  模式/表达/工作方式，source-grounded、明言不克隆本人）→喂给任意 agent/bot |
+  与经验库对比：我们蒸馏「教训/做法」，它蒸馏「人」——A7 写作域「名家文风→
+  人物档案→文风模仿」为空白方向；**org 顺藤：titanwings 系 DSH 插件家族**
+  （dsh-automation 100★ coding 任务定时跑+DSH Web 管理=DSH 版 A9 定时自动化
+  首例/dsh-plannotator 计划批注回传/upgrade-skill 随版本升级）——DSH 生态第四波
+  （官方收编→Android 端→skill-center→桌面壳+定时插件） | 参考（A7 方向+E 生态
+  信号） | 2026-10-10
+- **sansan0/TrendRadar**（62,780★，10-10 在更）新入库 | 热榜聚合（多平台）→
+  关键词精准筛选→AI 分析/翻译/简报→微信/飞书/钉钉/Telegram/邮件等智能推送；
+  RSS+MCP 架构+Docker 30s 部署+数据本地自持 | 扫榜选材域 62.8k★ 成熟对标：我们
+  paihang 四平台扫榜+notify 群推送系同链路小说垂直版；差量=多平台热榜面+关键词
+  筛选+MCP 供给自然语言分析；「聚合→筛选→AI 分析→群推送」链路方向验证 +1 |
+  参考（扫榜域对标参照） | 2026-10-10
+- **NevaMind-AI/memU**（14,520★，10-09 在更）新入库 | 跨 agent 个人记忆 | 记忆域
+  大盘新巨头（mem0/graphiti/cognee 同列） | 参考 | 2026-10-10
+- **MiroMindAI/MiroThinker**（8,424★）新入库 | 深研 agent（复杂研究与预测优化） |
+  调研报告任务对标（gpt-researcher 同族 +1） | 参考 | 2026-10-10
+- **nanocoai/nanoclaw**（30,905★，10-10 在更）新入库 | OpenClaw 轻量替身：容器
+  隔离跑、连 WhatsApp/Telegram | OpenClaw（未装候选）生态位对照件；个人 agent
+  网关域 | 参考 | 2026-10-10
+- **open-multi-agent/open-multi-agent**（6,991★，10-09 在更）新入库 | 自托管 TS
+  agent runtime：**durable approvals+verifiable run records** | 「持久审批+可验证
+  运行记录」与我们待裁决+evidence.md 同构再验证（+1） | 方向验证 | 2026-10-10
+- **ningbainb/deepseek-harness-desktop**（791★，10-06）新入库 | DSH Windows 桌面
+  客户端（零配置安装器） | DSH 生态第 N 例：第三方桌面壳——官方 harness 生态
+  健康度再 +1 | E 生态信号 | 2026-10-10
+- **skill 生态四连**：JimLiu/baoyu-skills（26,513★ 宝玉 skills 集）/
+  yusufkaraaslan/Skill_Seekers（15,118★ 文档站/仓库/PDF→Claude skills 自动转换
+  +categorize）/nidhinjs/prompt-master（14,241★ 提示词编写 skill，零 token 浪费
+  定位）/zhinkgit/embeddedskills（734★ 嵌入式 skills 集） | Skill_Seekers「文档→
+  skill 自动化」与 B 专项市场同向（方法论蒸馏通道可借鉴） | 参考 | 2026-10-10
+- **域旁/参考群**：crawl4ai 85.1k+Scrapling 86.6k（LLM 爬取双雄，建书抓取域
+  参照）/worldmonitor 88.2k（实时情报看板）/invisible_dots 31.9k（反检测灰域，
+  记录不借鉴）/context7 62.8k（自家日常在用的文档 MCP，首次录档）/upstash 系/
+  brag 14.8k（项目→launch 短视频，短视频域信号 +1）/notebooklm-py 19.7k
+  （NotebookLM 程序化访问+agentic skill）/Paper2Slides 3.8k（论文→幻灯片，
+  05-31 停更观察）/OpenNSWM-Lab/FAROS 3k（blueprint-driven AutoResearch
+  runtime）/webfuse-com/awesome-autoresearch 2,563★（B5 域专属清单→**补入 C
+  雷达源**）/yigitkonur/cli-continues 1.6k（跨 CLI 会话续跑，another 同域不适用
+  维持）/LING71671/Open-ClaudeCode 963★（CC 源码考古库）/building-a-coding-
+  agent-from-scratch-course 623★（harness 工程免费课件）/santosli/claude-mods
+  （0★ token-bar 上下文用量条——A13 用量可见化微型同型）/microsoft
+  ai-agents-for-beginners 76.8k+rohitg00 ai-engineering-from-scratch 66.3k
+  （课件）/panaversity learn-agentic-ai 4.4k（DACA 课件，停更 1 年）| 微型判据群
+  （雷达） | 2026-10-10
+- **WebSearch 交叉验证 1 发**（Bing「AI agent memory skill learning open source
+  GitHub 2026 self improving」）：泛结果零新仓（IBM 定义/百科/导航站）；唯一信号
+  Kimi K3 上线「Swarm 智能体集群+Goal 模式并行执行」系厂商新闻非开源仓（新闻面
+  ≠开源仓在纪律适用，记录不引） | 交叉验证 | 2026-10-10
+- **复查记录（16 时班，vs 同日 15 时班基准，间隔 1.5h+B2 域全量）**：B2 域
+  stash 336（+7）/pro-workflow 2,909（+10）/**obsidian-second-brain 4,716（+50
+  本域最大增量）**/compozy 2,792（+2）/Citadel 924（+2）/mengram 204/MemRL 177/
+  KIP 86/prax 273/apprenticeship 1,618 持平/hermes-memory-wiki 14（05-29 停更
+  观察）；生态库 scientific-agent-skills 48,236/agentic-awesome-skills 47,408
+  微增/codegraph 73,646/graphiti 31,606/Yuxi 7,347 持平；头部（15 时班基准不再
+  重拉）：magpie 8,080（**+205 病毒**）/openrig 6,579（+22 病毒第 5 班）/
+  weave-os/router 5,579（+1）/drama-skills 2,687（vs 09-21 2,119 **+568 放量**）/
+  webnovel-writer 7,410/oh-story 7,406/ainovel-cli 2,134 持平；awesome 20 源全
+  alive（mcp-servers 96,021/claude-skills 76,783/claude-code 55,345/BMAD 54,002
+  等，间隔 1.5h 微动不计）| 复查
+- **本班结论**：主扫 116 查询 115 绿 1 补跑（462 唯一仓/首见判据 0 系连续第 4
+  班）；判据大件 4 件（headroom/taste-skill/distilly/TrendRadar）全部出自
+  trendshift/topic 交叉通道且全为域旁——「词库各管一段、交叉通道捞域旁大鱼」
+  连续两班成立；四大趋势：A3 预压缩独立成层/skill 反平庸品类大星化/DSH 生态
+  第四波/B2 记忆域稳定期；无当班落地件（RAG 块预压缩列待深挖交第 4 步拍板），
+  零代码提案 docs-only | 结论
