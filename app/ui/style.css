@@ -7241,7 +7241,7 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
   pointer-events: auto; cursor: pointer; text-align: left; color: #d8f9ff;
   background: linear-gradient(160deg, #0b3048 0%, #061a2b 72%, #082236 100%);
   box-shadow: inset 0 1px 0 rgba(204,248,255,.13), 0 1px 3px rgba(0,12,24,.26);
-  font-family: var(--mono); font-size: .57cqw; line-height: 1.15;
+  font-family: var(--mono); font-size: .68cqw; line-height: 1.15;
 }
 .hg-monitor::before {
   position: absolute; top: .18cqw; right: .22cqw; width: .24cqw; height: .24cqw; min-width: 2px; min-height: 2px;
@@ -7249,10 +7249,10 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 }
 .hg-monitor:disabled { opacity: 1; cursor: default; }
 .hg-monitor:hover:not(:disabled), .hg-monitor:focus-visible { outline: .12cqw solid #91f6ff; outline-offset: .08cqw; z-index: 1; }
-.hg-monitor-role { grid-column: 1 / -1; font-size: .72cqw; line-height: 1.16; font-weight: 700; color: #edfaff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hg-monitor-status { color: #94deee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hg-monitor-time { grid-column: 2; grid-row: 2; color: #9dd8e4; white-space: nowrap; }
-.hg-monitor-tail { grid-column: 1 / -1; color: #b3e7f2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hg-monitor-role { grid-column: 1 / -1; font-size: .82cqw; line-height: 1.16; font-weight: 700; letter-spacing: .005em; color: #edfaff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hg-monitor-status { font-size: .64cqw; color: #94deee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hg-monitor-time { grid-column: 2; grid-row: 2; font-size: .60cqw; color: #9dd8e4; white-space: nowrap; }
+.hg-monitor-tail { grid-column: 1 / -1; font-size: .62cqw; color: #b3e7f2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hg-monitor.st-running { border-color: rgba(78,239,244,.82); box-shadow: inset 0 -.1cqw #52edf5, inset 0 1px 0 rgba(204,248,255,.13), 0 1px 3px rgba(0,12,24,.26); }
 .hg-monitor.st-queued::before { background: #7e99aa; box-shadow: none; }
 .hg-monitor.st-done::before { background: #78f2ae; box-shadow: 0 0 .28cqw rgba(120,242,174,.45); }
