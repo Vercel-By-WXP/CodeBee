@@ -189,7 +189,7 @@ async function main() {
 
     // Save the actual procedural WebGL view, not the static reference artwork. This makes CI's
     // screenshot artifact useful for visual regression reviews of geometry, lighting and framing.
-    const shot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+    const shot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, clip: { x: live3dState.viewportRect[0], y: live3dState.viewportRect[1], width: live3dState.viewportRect[2], height: live3dState.viewportRect[3], scale: 1 } });
     const artifactDir = join(ROOT, "tests", ".ui-shots");
     mkdirSync(artifactDir, { recursive: true });
     writeFileSync(join(artifactDir, "hive3d-webgl.png"), Buffer.from(shot.result.data, "base64"));
