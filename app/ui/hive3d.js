@@ -253,12 +253,13 @@ window.Hive3D = (function () {
         this.add(rb,x+side*.135,.315,bz+.26,.15,.075,.22,[.035,.045,.055,1]);
         this.add(rb,x+side*.135,.355,bz+.29,.12,.025,.16,[.99,.68,.04,1]);
       }
-      // Slim arm shells angle down toward the keyboard instead of floating beside the body.
+      // Upper arms, forearms and compact hands form a continuous reach toward the keyboard.
       for(const side of [-1,1]){
         this.add(s,x+side*.235,by-.15,bz-.075,.085,.15,.13,[.12,.15,.18,1]);
         this.add(s,x+side*.235,by-.27,bz-.23,.070,.065,.105,[.95,.62,.035,1]);
-        this.add(s,x+side*.20,.74,z+.02,.062,.12,.075,[.09,.12,.15,1]);
-        this.add(s,x+side*.20,.695,z-.12,.055,.065,.07,[.17,.21,.24,1]);
+        this.add(s,x+side*.20,.775,z+.48,.065,.075,.17,[.09,.12,.15,1]);
+        this.add(s,x+side*.20,.657,z+.325,.052,.032,.064,[.98,.67,.045,1]);
+        for(let finger=0;finger<2;finger++)this.add(b,x+side*.20+(finger-.5)*.025,.640,z+.285,.010,.010,.045,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.27,bz+.266,.12,.09,.024,[.025,.10,.14,1]);
