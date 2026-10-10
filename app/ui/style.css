@@ -7516,3 +7516,9 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
   border-color: rgba(76, 243, 220, .95);
   box-shadow: inset 0 0 0 1px rgba(76, 243, 220, .12), 0 0 8px rgba(31, 210, 211, .15);
 }
+
+
+/* Second calibration: the wall identity should read at a glance without overpowering the stages. */
+#rd-hive-viewport .hg-room-kicker { font-size: clamp(6px, .55cqw, 10px); }
+#rd-hive-viewport .hg-room-title { font-size: clamp(8px, .88cqw, 15px); letter-spacing: .055em; }
+#rd-hive-viewport .hg-room-live { font-size: clamp(6px, .50cqw, 9px); }
