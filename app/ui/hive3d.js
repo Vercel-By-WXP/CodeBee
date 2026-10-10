@@ -72,9 +72,13 @@ window.Hive3D = (function () {
   function Scene(opts){
     this.opts=opts;this.canvas=opts.canvas;this.overlay=opts.overlay;this.host=this.canvas.parentElement;
     this.onCellActivate=opts.onCellActivate||function(){};this.cellRefresh=opts.cellRefresh||function(){return{};};
-    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=0;this.pitch=0.42;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
+    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=0;this.pitch=0.42;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];this.displayMode="reference";
     this.host.dataset.renderer="webgl";this.canvas.hidden=false;this.canvas.classList.add("hive-gl-live");
-    this.layer=node("div","hive-reference-layer",this.host);this.layer.appendChild(this.overlay);this.overlay.replaceChildren();
+    this.referenceImage=this.host.querySelector(".hive-reference");
+    this.layer=node("div","hive-reference-layer",this.host);
+    this.artboard=node("div","hive-reference-artboard",this.layer);
+    if(this.referenceImage)this.artboard.appendChild(this.referenceImage);
+    this.artboard.appendChild(this.overlay);this.overlay.replaceChildren();
     try { this.initGL(); } catch(e) { console.error("CodeBee Hive3D WebGL init failed",e); this.failed=true; this.failure=e; return; }
     this.stageMeta=PLATES.map(([x,y],i)=>{const el=node("button","hg-badge",this.overlay);el.type="button";el.style.left="0%";el.style.top="0%";const name=node("b","hg-name",el),meta=node("span","hg-meta",el);this.listen(el,"click",()=>{const lane=this.stageMeta[i].lane;if(!lane)return;const cell=lane.cells.find(c=>c.status==="running")||lane.cells[lane.cells.length-1];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,name,meta,lane:null};});
     this.links=Array.from({length:PLATES.length-1},()=>node("span","hg-flow-link",this.overlay));
@@ -95,10 +99,10 @@ window.Hive3D = (function () {
   Scene.prototype.bindSurface=function(){
     let drag=null;this.listen(this.host,"contextmenu",e=>e.preventDefault());
     this.listen(this.host,"pointerdown",e=>{if(!this.active||e.target.closest("button")||e.button!==0)return;drag={x:e.clientX,y:e.clientY,yaw:this.yaw,pitch:this.pitch,px:this.panX,py:this.panY,shift:e.shiftKey};this.host.setPointerCapture(e.pointerId);this.host.classList.add("is-dragging");});
-    this.listen(this.host,"pointermove",e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(drag.shift){this.panX=drag.px+dx/this.cssW*5;this.panY=drag.py-dy/this.cssH*4;}else{this.yaw=drag.yaw+dx*.006;this.pitch=clamp(drag.pitch+dy*.004,-.05,.85);}this.render();});
+    this.listen(this.host,"pointermove",e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(this.displayMode==="reference"){this.panX=drag.px+dx/this.cssW;this.panY=drag.py+dy/this.cssH;this.applyArtboardTransform();return;}if(drag.shift){this.panX=drag.px+dx/this.cssW*5;this.panY=drag.py-dy/this.cssH*4;}else{this.yaw=drag.yaw+dx*.006;this.pitch=clamp(drag.pitch+dy*.004,-.05,.85);}this.render();});
     const end=()=>{drag=null;this.host.classList.remove("is-dragging");};this.listen(this.host,"pointerup",end);this.listen(this.host,"pointercancel",end);
     this.listen(this.host,"dblclick",e=>{if(!e.target.closest("button"))this.resetView();});
-    this.listen(this.host,"wheel",e=>{if(!this.active||e.target.closest("button"))return;e.preventDefault();this.zoom=clamp(this.zoom*Math.exp(-e.deltaY*.001),.72,2.4);this.render();},{passive:false});
+    this.listen(this.host,"wheel",e=>{if(!this.active||e.target.closest("button"))return;e.preventDefault();this.zoom=clamp(this.zoom*Math.exp(-e.deltaY*.001),.72,2.4);this.applyArtboardTransform();this.render();},{passive:false});
     this.listen(this.canvas,"webglcontextlost",e=>{e.preventDefault();this.setActive(false);if(this.opts.onFatal)this.opts.onFatal(e);});
   };
   Scene.prototype.add=function(mesh,x,y,z,sx,sy,sz,color,rotY){this.objects.push({mesh,x,y,z,sx,sy,sz,color,rotY:rotY||0});};
@@ -291,6 +295,15 @@ window.Hive3D = (function () {
   };
   Scene.prototype.layoutOverlayPositions=function(){
     if(!this.overlay||this.overlay.hidden||!this.cssW||!this.cssH)return;
+    if(this.displayMode==="reference"){
+      const stageRects=[[104,96,116,46],[262,96,116,46],[419,96,116,46],[577,96,115,46],[733,96,116,46],[888,96,116,46]];
+      const monitorRects=[[93,233,82,43],[212,233,82,43],[333,233,80,43],[452,233,80,43],[572,233,80,43],[690,233,81,43],[808,233,82,43],[927,233,82,43],[91,378,108,63],[250,378,108,63],[413,378,108,63],[571,378,108,63],[736,378,108,63],[893,378,108,63]];
+      const place=(el,rect)=>{el.style.visibility="visible";el.style.left=(rect[0]/1104*100)+"%";el.style.top=(rect[1]/621*100)+"%";el.style.width=(rect[2]/1104*100)+"%";el.style.height=(rect[3]/621*100)+"%";el.style.transform="none";};
+      this.stageMeta.forEach((p,i)=>place(p.el,stageRects[i]));
+      this.links.forEach(link=>{link.style.visibility="hidden";});
+      this.monitors.forEach((m,i)=>{const rect=monitorRects[i];if(!rect){m.el.style.visibility="hidden";return;}place(m.el,rect);});
+      return;
+    }
     // Stage labels occupy the front face of each physical wall panel, rather than a fixed HUD row.
     this.stageMeta.forEach((p,i)=>{
       const x=-7.75+i*3.10,z=-6.07;
@@ -342,8 +355,10 @@ window.Hive3D = (function () {
   };
   Scene.prototype.setActive=function(active){this.active=!!active;if(this.timer)clearInterval(this.timer);if(this.raf)cancelAnimationFrame(this.raf);this.raf=0;this.layer.hidden=!this.active;this.canvas.hidden=!this.active;if(this.active){this.updateOverlay();this.render();this.timer=setInterval(()=>{if(!document.hidden&&this.host.offsetParent!==null)this.updateOverlay();},1000);}};
   Scene.prototype.resize=function(){this.cssW=this.host.clientWidth;this.cssH=this.host.clientHeight;if(this.cssW&&this.cssH)this.render();};
-  Scene.prototype.zoomAt=function(factor){this.zoom=clamp(this.zoom/factor,.72,2.4);this.render();};
-  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=0;this.pitch=.42;this.panX=0;this.panY=0;this.render();};
+  Scene.prototype.zoomAt=function(factor){this.zoom=clamp(this.zoom/factor,.72,2.4);this.applyArtboardTransform();this.render();};
+  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=0;this.pitch=.42;this.panX=0;this.panY=0;this.applyArtboardTransform();this.render();};
+  Scene.prototype.setDisplayMode=function(mode){this.displayMode=mode==="live3d"?"live3d":mode==="2d"?"2d":"reference";this.updateOverlay();this.applyArtboardTransform();this.render();};
+  Scene.prototype.applyArtboardTransform=function(){if(this.artboard)this.artboard.style.transform="translate3d("+(this.panX*100)+"%,"+(this.panY*100)+"%,0) scale("+this.zoom+")";};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0,deskRows:this.deskPositions?[this.deskPositions.filter(d=>d.row===0).length,this.deskPositions.filter(d=>d.row===1).length]:[]};};
   Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,.995,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
   Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
