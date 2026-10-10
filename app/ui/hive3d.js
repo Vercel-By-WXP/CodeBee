@@ -260,12 +260,12 @@ window.Hive3D = (function () {
       for(let k=0;k<3;k++)this.add(b,blueBinderStart+k*.095,.79,z+.34,.075,.35,.18,[[.08,.34,.80,1],[.10,.51,.91,1],[.06,.25,.65,1]][k]);
       this.add(this.cylinder,x,.08,z+.62,.075,.28,.075,[.12,.15,.18,1]);
       this.add(rb,x,.30,z+.80,.94,.12,.68,[.11,.14,.17,1]);
-      this.add(rb,x,.62,z+.54,1.10,.78,.18,[.085,.12,.16,1]);
-      this.add(rb,x,.62,z+.635,.78,.54,.024,[.13,.18,.22,1]);
+      this.add(rb,x,.62,z+.44,1.26,.78,.18,[.085,.12,.16,1]);
+      this.add(rb,x,.62,z+.535,.90,.54,.024,[.13,.18,.22,1]);
       this.add(rb,x,.48,z+.75,.48,.12,.12,[.18,.22,.25,1]);
       // Molded backrest cushion, lumbar ribs, arm pads, and five rolling casters.
-      this.add(rb,x,.62,z+.66,.80,.55,.050,[.12,.15,.17,1]);
-      for(const ribY of [.46,.60,.74])this.add(rb,x,ribY,z+.69,.62,.026,.020,[.28,.32,.35,1]);
+      this.add(rb,x,.62,z+.56,.92,.55,.050,[.12,.15,.17,1]);
+      for(const ribY of [.46,.60,.74])this.add(rb,x,ribY,z+.59,.70,.026,.020,[.28,.32,.35,1]);
       for(const side of [-1,1]){
         this.add(rb,x+side*.39,.63,z+.52,.10,.075,.38,[.11,.14,.16,1]);
         this.add(b,x+side*.39,.48,z+.53,.035,.28,.045,[.07,.09,.11,1]);
@@ -310,12 +310,11 @@ window.Hive3D = (function () {
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.309,.15,.080,.030,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.326,.095,.020,.014,[.16,.88,.98,1]);
-      // Glass wings sit around the shoulder line, closer to the body than the monitor plane,
-      // with a restrained span so adjacent assistants do not merge into one cyan ribbon.
-      this.add(this.organic,x-.43,by+.10,bz+.12,.92,1.65,.045,[.58,.84,1,.42],-.34,.22);
-      this.add(this.organic,x+.43,by+.10,bz+.12,.92,1.65,.045,[.58,.84,1,.42],.34,-.22);
-      this.add(this.organic,x-.46,by+.055,bz+.19,.58,1.02,.030,[.93,.99,1,.25],.20,-.12);
-      this.add(this.organic,x+.46,by+.055,bz+.19,.58,1.02,.030,[.93,.99,1,.25],-.20,.12);
+      // Smooth translucent ellipsoid wings match the soft oval silhouette in the reference.
+      this.add(s,x-.43,by+.075,bz+.12,.43,.105,.15,[.64,.88,1,.34],-.24,.08);
+      this.add(s,x+.43,by+.075,bz+.12,.43,.105,.15,[.64,.88,1,.34],.24,-.08);
+      this.add(s,x-.39,by+.055,bz+.19,.28,.062,.095,[.94,.99,1,.20],.16,-.05);
+      this.add(s,x+.39,by+.055,bz+.19,.28,.062,.095,[.94,.99,1,.20],-.16,.05);
 
     }
     // Planters and stylized leaves soften the room edges.
