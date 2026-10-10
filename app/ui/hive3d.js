@@ -164,6 +164,10 @@ window.Hive3D = (function () {
       this.add(b,x,.49,z-.603,width*.72,.014,.012,[.08,.42,.57,1]);
       this.add(rb,x-width*.36,.25,z+.03,.43,.52,1.02,[.82,.87,.92,1]);
       this.add(rb,x+width*.36,.25,z+.03,.43,.52,1.02,[.82,.87,.92,1]);
+      // A compact three-drawer pedestal gives each station the white office furniture silhouette of the reference.
+      this.add(rb,x+width*.30,.27,z+.445,width*.30,.42,.26,[.84,.89,.95,1]);
+      for(const drawerY of [.18,.28,.38])this.add(b,x+width*.30,drawerY,z+.579,width*.22,.012,.012,[.62,.71,.80,1]);
+      this.add(b,x+width*.30,.41,z+.581,width*.085,.018,.014,[.45,.58,.70,1]);
       this.add(rb,x,.43,z-.22,width*.78,.045,.74,[.84,.89,.93,1]);
       this.add(rb,x,.99,z-.48,screenWidth+.14,screenHeight+.14,.10,[.045,.075,.10,1]);
       this.add(b,x,.995,z-.418,screenWidth,screenHeight,.018,[.025,.15,.25,1]);
@@ -175,6 +179,8 @@ window.Hive3D = (function () {
       this.add(b,x-.18,.64,z+.25,.66,.012,.24,[.75,.81,.86,1]);
       const binderStart=x+width/2-.48;
       for(let k=0;k<4;k++)this.add(b,binderStart+k*.095,.83,z+.35,.075,.43,.22,[[.13,.43,.78,1],[.95,.42,.24,1],[.16,.66,.46,1],[.93,.72,.28,1]][k]);
+      const blueBinderStart=x-width/2+.19;
+      for(let k=0;k<3;k++)this.add(b,blueBinderStart+k*.095,.79,z+.34,.075,.35,.18,[[.08,.34,.80,1],[.10,.51,.91,1],[.06,.25,.65,1]][k]);
       this.add(b,x,.08,z+1.10,.10,.28,.10,[.12,.15,.18,1]);
       this.add(rb,x,.22,z+1.10,.62,.12,.56,[.11,.14,.17,1]);
       this.add(rb,x,.57,z+1.35,.62,.72,.16,[.075,.11,.15,1]);
