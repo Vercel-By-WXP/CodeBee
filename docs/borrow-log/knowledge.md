@@ -7268,3 +7268,11 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   代理巡检结论采信前须亲核原文行号（本班两实证：C 误报 paihang docstring 残留、
   A 评审深度 numstat 建议被否决——已列经验库条目提案走 lesson-op） | 落地+方法
   蒸馏 | 2026-10-11
+- **五道关收口（10-11 第 4/4 步）**：全量门非绿但基线对照归因——stash 干净 HEAD
+  跑同批 26 失败模块（310 ran 35F+6E）vs 带改动全量（2333 ran 36F+6E），+1 仅
+  mgmt_guards aider 条目断言，带改动态单独复跑 46 项全过证顺序性 flake；
+  **回归归因法=「stash 对照+单测隔离复跑」两步定因果，不靠猜**。判绿双坑
+  （管道 `$?` 假象 :1873/selfupdate os._exit 假绿 :2182）本轮再双踩：log 无
+  「Ran N tests」汇总+exit 0 即被无声杀，全量门一律走 tests/_guard_fullrun.py
+  认统计行。环境劣化实锤=portscan readline 挂死（并行班 10s 超时护栏 982a9e8
+  收口）；发版链 v0.1.103（24bfeab→npm view 核对通过）零回退 | 教训+方法 | 2026-10-11
