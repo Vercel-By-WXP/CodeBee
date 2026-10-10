@@ -90,8 +90,8 @@ window.Hive3D = (function () {
   Scene.prototype.initGL=function(){
     const gl=this.canvas.getContext("webgl",{alpha:true,antialias:true,powerPreference:"high-performance"})||this.canvas.getContext("experimental-webgl");
     if(!gl)throw Error("WebGL unavailable");this.gl=gl;
-    const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);vec3 light=normalize(vec3(-0.40,0.82,0.48));float diffuse=max(0.0,dot(n,light));float sky=clamp(n.y*0.5+0.5,0.0,1.0);vShade=0.50+0.37*diffuse+0.13*sky;}";
-    const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 l=normalize(vec3(-0.40,0.82,0.48));vec3 v=normalize(uEyePosition-vWorld);vec3 h=normalize(l+v);float spec=pow(max(0.0,dot(n,h)),26.0)*0.085;float rim=pow(1.0-max(0.0,dot(n,v)),3.0)*0.045;vec3 lit=vColor.rgb*vShade+vec3(0.48,0.76,0.92)*(spec+rim);gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
+    const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);vec3 key=normalize(vec3(-0.45,0.86,0.38));vec3 fill=normalize(vec3(0.58,0.33,-0.74));float diffuse=max(0.0,dot(n,key));float rimFill=max(0.0,dot(n,fill));float sky=clamp(n.y*0.5+0.5,0.0,1.0);float heightShade=mix(0.82,1.0,smoothstep(-0.2,2.2,aPosition.y));vShade=(0.38+0.43*diffuse+0.11*sky+0.08*rimFill)*heightShade;}";
+    const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 l=normalize(vec3(-0.45,0.86,0.38));vec3 fill=normalize(vec3(0.58,0.33,-0.74));vec3 v=normalize(uEyePosition-vWorld);vec3 h=normalize(l+v);vec3 hf=normalize(fill+v);float spec=pow(max(0.0,dot(n,h)),32.0)*0.15;float warmSpec=pow(max(0.0,dot(n,hf)),38.0)*0.05;float rim=pow(1.0-max(0.0,dot(n,v)),2.5)*0.075;vec3 highlight=vec3(0.48,0.83,0.96)*spec+vec3(0.98,0.62,0.31)*warmSpec+vec3(0.18,0.58,0.82)*rim;vec3 lit=vColor.rgb*vShade+highlight;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
     this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,4,.12);this.sphere=sphereGeometry(gl,16,24);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
   };
@@ -109,7 +109,7 @@ window.Hive3D = (function () {
   Scene.prototype.buildWorld=function(){
     const b=this.box,rb=this.roundBox,s=this.sphere;this.objects=[];
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
-    this.add(b,0,-.18,.55,23,.28,17.2,[.69,.77,.84,1]);
+    this.add(b,0,-.18,-.20,23,.28,15.4,[.69,.77,.84,1]);
     this.add(b,0,2.48,-6.45,19,5.2,.24,[.018,.065,.125,1]);
     this.add(b,0,4.98,-2.8,19,.16,7.3,[.98,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
@@ -160,8 +160,8 @@ window.Hive3D = (function () {
     }
     // Thin perimeter lighting makes the floor feel built into the room, not like a floating plane.
     this.add(rb,0,-.012,-7.82,21.4,.035,.075,[.045,.36,.45,1]);
-    this.add(rb,0,-.012,8.86,21.4,.035,.075,[.045,.36,.45,1]);
-    for(const side of [-1,1])this.add(rb,side*10.62,-.012,.52,.055,.03,16.0,[.045,.25,.34,1]);
+    this.add(rb,0,-.012,7.22,21.4,.035,.075,[.045,.36,.45,1]);
+    for(const side of [-1,1])this.add(rb,side*10.62,-.012,-.18,.055,.03,14.8,[.045,.25,.34,1]);
     // Reference layout: eight compact rear stations and six wider front stations.
     // Every monitor overlay is projected from these exact same coordinates below.
     const deskRows=[
@@ -275,7 +275,7 @@ window.Hive3D = (function () {
     if(!this.gl||!this.active)return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
-    const radius=15.1/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.34,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.72,0],[0,1,0]);const proj=mat4.perspective(.73,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
+    const radius=16.7/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.34,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.72,0],[0,1,0]);const proj=mat4.perspective(.73,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
     gl.uniformMatrix4fv(this.uViewProj,false,vp);gl.uniform3f(this.uEyePosition,eye[0],eye[1],eye[2]);
     this.drawBatch(this.batchBuffers&&this.batchBuffers.opaque);
     const translucent=this.batchBuffers&&this.batchBuffers.transparent;
