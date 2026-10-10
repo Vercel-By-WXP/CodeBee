@@ -7,6 +7,7 @@ import json
 import base64
 import difflib
 import os
+import re
 import secrets
 import stat
 import subprocess
@@ -21,7 +22,7 @@ from .redact import scrub_text
 _DIR = paths.DATA_DIR / "checkpoints"
 _LOCK = threading.RLock()
 _TERMINAL = {"done", "failed", "cancelled", "timeout", "unknown"}
-_SNAPSHOT_MAX_BYTES = 1024 * 1024
+_SNAPSHOT_MAX_BYTES = 1024 * 1024      # ≤此值内嵌快照 JSON；超限进 git 对象库
 _SNAPSHOT_TOTAL_MAX_BYTES = 16 * 1024 * 1024
 _SUPPORTS_DIR_FD_RENAME = os.rename in getattr(os, "supports_dir_fd", set())
 
@@ -203,15 +204,17 @@ def _load_snapshot(run_id, rel):
 def capture_file(run_id, workdir, path):
     """Persist the first pre-edit bytes for a workspace-relative file.
 
-    Full-content snapshots are intentionally bounded; unsupported/large files
-    are reported as untracked rather than silently treated as reversible.
+    ≤1MB 内嵌进快照 JSON（b64）；更大的文件（连载全书稿这类持续增长的
+    tracked 脏文件）前态进工作区 git 对象库，不再顶着 1MB 上限把整步拒死
+    （2026-10-10 实案：manuscript.md 涨到 1.14MB 后全部评审步被「已有改动
+    无法完整快照」拒起 CLI）。对象库也存不进（非 git 目录）才维持拒绝：
+    起跑闸宁拒不假装可恢复。
     """
     root, rel = _safe_snapshot_path(workdir, path)
     if root is None:
         return {"ok": False, "reason": "path_outside_workspace"}
     with _LOCK:
-        existing = _load_snapshot(run_id, rel)
-        if existing:
+        if _load_snapshot(run_id, rel):
             return {"ok": True, "existing": True, "path": rel}
         snap_dir = _snapshot_dir(run_id)
         try:
@@ -220,28 +223,32 @@ def capture_file(run_id, workdir, path):
             target = root / rel
             existed = target.exists()
             raw = target.read_bytes() if existed else b""
-            if len(raw) > _SNAPSHOT_MAX_BYTES or total + len(raw) > _SNAPSHOT_TOTAL_MAX_BYTES:
-                return {"ok": False, "reason": "snapshot_size_limit", "path": rel}
-            item = {"path": rel, "existed": existed,
-                    "before_b64": base64.b64encode(raw).decode("ascii"),
-                    "before_sha256": hashlib.sha256(raw).hexdigest() if existed else "",
-                    "after_sha256": None, "captured_at": time.time()}
-            _snapshot_file(run_id, rel).write_text(
-                json.dumps(item, ensure_ascii=False, sort_keys=True), encoding="utf-8")
-            return {"ok": True, "existing": False, "path": rel}
+            if len(raw) > _SNAPSHOT_MAX_BYTES:
+                return _write_oversize_snapshot(run_id, root, rel, existed,
+                                                file_path=target)
+            if total + len(raw) > _SNAPSHOT_TOTAL_MAX_BYTES:
+                # b64 预算满：大内容照样可以走对象库，别在这里误杀
+                return _write_oversize_snapshot(run_id, root, rel, existed,
+                                                file_path=target) if raw else \
+                    {"ok": False, "reason": "snapshot_size_limit", "path": rel}
+            return _write_snapshot(run_id, rel, existed, raw=raw)
         except OSError as exc:
             return {"ok": False, "reason": "snapshot_io_error", "path": rel,
                     "detail": str(exc)[:200]}
 
 
 def capture_bytes(run_id, workdir, path, raw, *, existed=True):
-    """Persist an explicit pre-step byte image (used for clean Git baseline files)."""
+    """Persist an explicit pre-step byte image (used for clean Git baseline files).
+
+    超限字节流同样进 git 对象库兜底：finish 阶段从 HEAD 取回的 clean 基线
+    （如归档后的整本 manuscript.md）此前只能给 warning，现在也能完整留底。
+    """
     root, rel = _safe_snapshot_path(workdir, path)
     if root is None:
         return {"ok": False, "reason": "path_outside_workspace"}
     raw = bytes(raw or b"") if existed else b""
     if len(raw) > _SNAPSHOT_MAX_BYTES:
-        return {"ok": False, "reason": "snapshot_size_limit", "path": rel}
+        return _write_oversize_snapshot(run_id, root, rel, existed, raw=raw)
     with _LOCK:
         if _load_snapshot(run_id, rel):
             return {"ok": True, "existing": True, "path": rel}
@@ -251,25 +258,85 @@ def capture_bytes(run_id, workdir, path, raw, *, existed=True):
             total = sum(p.stat().st_size for p in snap_dir.glob("*.json") if p.is_file())
             if total + len(raw) > _SNAPSHOT_TOTAL_MAX_BYTES:
                 return {"ok": False, "reason": "snapshot_size_limit", "path": rel}
-            item = {"path": rel, "existed": bool(existed),
-                    "before_b64": base64.b64encode(raw).decode("ascii"),
-                    "before_sha256": hashlib.sha256(raw).hexdigest() if existed else "",
-                    "after_sha256": None, "captured_at": time.time()}
-            _snapshot_file(run_id, rel).write_text(
-                json.dumps(item, ensure_ascii=False, sort_keys=True), encoding="utf-8")
-            return {"ok": True, "existing": False, "path": rel}
+            return _write_snapshot(run_id, rel, existed, raw=raw)
         except OSError as exc:
             return {"ok": False, "reason": "snapshot_io_error", "path": rel,
                     "detail": str(exc)[:200]}
 
 
-def _git_bytes(workdir, *args):
+def _git_bytes(workdir, *args, data=None):
     try:
         return subprocess.run(["git", "-C", str(workdir), *args],
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              input=data,
                               timeout=15, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
+
+
+def _git_blob_sha(workdir, *, file_path=None, raw=None):
+    """把内容存进工作区 git 仓库的对象库，返回 blob sha（空串=失败）。
+
+    超限文件的前态走这里：blob 内容寻址、批间归档提交后自然转为被引用；
+    未被引用期间也只在 git gc 的两周宽限后才可能被清，与检查点生命周期同量级。
+    """
+    if file_path is not None:
+        res = _git_bytes(workdir, "hash-object", "-w", "--", str(file_path))
+    else:
+        res = _git_bytes(workdir, "hash-object", "-w", "--stdin", data=bytes(raw or b""))
+    if not res or res.returncode:
+        return ""
+    sha = os.fsdecode(res.stdout).strip()
+    return sha if re.fullmatch(r"[0-9a-f]{40}", sha) else ""
+
+
+def _snapshot_before_bytes(item, root):
+    """快照的前态字节：小文件取 JSON 内嵌 b64，超限文件回对象库取 blob。
+
+    返回 None = 前态不可得（对象库不可用或已被清理），调用方按不可恢复处理。
+    """
+    b64 = item.get("before_b64")
+    if b64:
+        return base64.b64decode(b64, validate=True)
+    sha = item.get("before_git_blob") or ""
+    if sha:
+        res = _git_bytes(root, "cat-file", "blob", sha)
+        if res is not None and not res.returncode:
+            return res.stdout
+    return None
+
+
+def _write_snapshot(run_id, rel, existed, raw=None, blob_sha=""):
+    """落一份前态快照记录：小文件内嵌 b64，超限文件只记 blob 引用。"""
+    item = {"path": rel, "existed": bool(existed),
+            "before_sha256": hashlib.sha256(raw or b"").hexdigest() if existed else "",
+            "after_sha256": None, "captured_at": time.time()}
+    if blob_sha:
+        item["before_git_blob"] = blob_sha
+    else:
+        item["before_b64"] = base64.b64encode(raw or b"").decode("ascii")
+    _snapshot_file(run_id, rel).write_text(
+        json.dumps(item, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    return {"ok": True, "existing": False, "path": rel}
+
+
+def _write_oversize_snapshot(run_id, root, rel, existed, *, file_path=None, raw=None):
+    """超限前态的落盘：存进 git 对象库；存不进（非 git 目录）才维持拒绝。"""
+    if file_path is not None:
+        sha = _git_blob_sha(root, file_path=file_path)
+    else:
+        sha = _git_blob_sha(root, raw=raw)
+    if not sha:
+        return {"ok": False, "reason": "snapshot_size_limit", "path": rel}
+    with _LOCK:
+        if _load_snapshot(run_id, rel):
+            return {"ok": True, "existing": True, "path": rel}
+        try:
+            _snapshot_dir(run_id).mkdir(parents=True, exist_ok=True)
+            return _write_snapshot(run_id, rel, existed, blob_sha=sha)
+        except OSError as exc:
+            return {"ok": False, "reason": "snapshot_io_error", "path": rel,
+                    "detail": str(exc)[:200]}
 
 
 def _git_changed_paths(workdir, gitmod):
@@ -458,7 +525,7 @@ def snapshot_preview(run_id, workdir):
                 target = root / rel
                 current = target.read_bytes() if target.is_file() and not target.is_symlink() else None
                 current_hash = hashlib.sha256(current).hexdigest() if current is not None else None
-                before = base64.b64decode(item.get("before_b64") or "", validate=True)
+                before = _snapshot_before_bytes(item, root)
                 status = "unchanged" if current_hash == item.get("before_sha256") else "changed"
                 if "after_exists" in item:
                     can_restore = (bool(item.get("after_exists")) == (current is not None)
@@ -469,7 +536,9 @@ def snapshot_preview(run_id, workdir):
                 else:
                     can_restore = item.get("after_sha256") == current_hash
                 diff = ""
-                if current is not None and item.get("existed"):
+                if before is None and item.get("before_git_blob"):
+                    diff = "（大文件前态存于 git 对象库且当前不可读取，差异省略）"
+                elif current is not None and item.get("existed") and before is not None:
                     try:
                         old_text = before.decode("utf-8").splitlines(True)
                         new_text = current.decode("utf-8").splitlines(True)
@@ -526,16 +595,26 @@ def _restore_file_posix(root, rel, item, expected_exists, expected_hash):
                 try:
                     if not stat.S_ISREG(os.fstat(file_fd).st_mode):
                         return False
-                    with os.fdopen(file_fd, "rb", closefd=False) as handle:
-                        current = handle.read(_SNAPSHOT_MAX_BYTES + 1)
+                    # 全量流式哈希：截断读会让超限文件（前态走对象库的那种）
+                    # 的指纹恒不匹配、永远拒恢复。
+                    digest = hashlib.sha256()
+                    while True:
+                        chunk = os.read(file_fd, 1 << 20)
+                        if not chunk:
+                            break
+                        digest.update(chunk)
+                    current = digest.hexdigest()
                 finally:
                     os.close(file_fd)
         current_exists = current is not None
-        current_hash = hashlib.sha256(current).hexdigest() if current_exists else None
+        current_hash = current if current_exists else None
         if current_exists != bool(expected_exists) or current_hash != expected_hash:
             return False
 
         if item.get("existed"):
+            raw = _snapshot_before_bytes(item, root)
+            if raw is None:
+                return False
             if missing_parent:
                 parent_fd = root_fd
                 for part in parts[:-1]:
@@ -546,7 +625,6 @@ def _restore_file_posix(root, rel, item, expected_exists, expected_hash):
                     child_fd = os.open(part, directory_flags, dir_fd=parent_fd)
                     owned_fds.append(child_fd)
                     parent_fd = child_fd
-            raw = base64.b64decode(item.get("before_b64") or "", validate=True)
             temp_name = ".codebee-restore-%s.tmp" % secrets.token_hex(12)
             temp_fd = os.open(temp_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL
                               | getattr(os, "O_NOFOLLOW", 0), 0o600, dir_fd=parent_fd)
@@ -616,7 +694,10 @@ def restore_files(run_id, workdir):
                     conflicts.append(rel)
                     continue
                 if item.get("existed"):
-                    raw = base64.b64decode(item.get("before_b64") or "", validate=True)
+                    raw = _snapshot_before_bytes(item, root)
+                    if raw is None:
+                        conflicts.append(rel)
+                        continue
                     target.parent.mkdir(parents=True, exist_ok=True)
                     safe_root, safe_rel = _safe_snapshot_path(root, root / rel)
                     if safe_root is None or safe_rel != rel:
