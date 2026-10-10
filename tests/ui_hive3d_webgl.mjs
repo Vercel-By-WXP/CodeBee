@@ -120,7 +120,7 @@ async function main() {
       " document.body.style.cssText='margin:0;padding:0;background:#eaf3fa;font-family:Arial,sans-serif;overflow:hidden';",
       " const stage=document.createElement('div');stage.id='hive3d-smoke-stage';stage.style.cssText='position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;background:linear-gradient(180deg,#eef7ff,#dbeaf6)';document.body.appendChild(stage);",
       " stage.appendChild(viewport);",
-      " viewport.classList.add('hive-mode-3d');viewport.classList.remove('hive-mode-2d');",
+      " viewport.classList.remove('hive-mode-3d','hive-mode-2d');viewport.classList.add('hive-mode-live3d');",
       " viewport.style.cssText+=';display:block;position:relative;flex:0 0 auto;width:min(1200px,calc(100vw - 48px));height:auto;max-height:calc(100vh - 48px);aspect-ratio:2848/1600;margin:0;overflow:hidden';",
       " const activated=[];window.__hive3dSmokeClicks=activated;",
       " window.renderHive({id:'release-smoke',steps:[{role:'规划',status:'running',log:'steps/smoke-0.log',agent_label:'smoke agent',summary:'latest output'}]});",
@@ -145,9 +145,9 @@ async function main() {
     assert.ok(rearAverageY < frontAverageY, "rear monitor overlays project above front-row overlays");
     assert.equal(state.info.cells, 14, "fourteen task cells were mapped");
     assert.equal(state.info.lanes, 6, "six workflow lanes were mapped");
-    assert.equal(state.mode, "reference", "the supplied high-fidelity scene is the default view");
-    assert.notEqual(state.referenceDisplay, "none", "reference artwork is visible in the default view");
-    assert.equal(state.canvasHidden, true, "free 3D canvas stays hidden in reference mode");
+    assert.equal(state.mode, "live3d", "the procedural WebGL scene is the default view");
+    assert.equal(state.referenceDisplay, "none", "the static artwork does not replace the default 3D model");
+    assert.equal(state.canvasHidden, false, "the real WebGL canvas is visible by default");
     assert.ok(state.viewportRect && state.viewportRect[0] >= 0 && state.viewportRect[1] >= 0 && state.viewportRect[2] >= 1000 && state.viewportRect[3] >= 500, "the 3D viewport is placed inside the captured browser window");
     assert.equal(await evaluate("document.getElementById('welcome')?.classList.contains('hidden') ?? true"), true, "welcome modal does not obscure the scene screenshot");
     assert.equal(state.monitors, 14, "fourteen clickable monitor overlays exist");
@@ -158,8 +158,15 @@ async function main() {
     assert.ok(state.monitorRect && state.monitorRect[2] > 5 && state.monitorRect[3] > 5, "monitor overlay has on-screen bounds");
     assert.ok(state.badgeRect && state.badgeRect[2] > 5 && state.badgeRect[3] > 5, "workflow card has on-screen bounds");
 
-    // Switch to the real WebGL scene before capturing the CI artifact. Capturing the reference plate
-    // here used to hide the exact procedural geometry that this smoke test is meant to validate.
+    // The static reference remains a selectable presentation mode, but must never stand in for the default model.
+    await evaluate("document.querySelector('[data-hive-view=\\"reference\\"]').click()");
+    const referenceMode = JSON.parse(await evaluate("JSON.stringify({mode:window.__hive3d.displayMode,referenceDisplay:getComputedStyle(document.querySelector('#rd-hive-viewport .hive-reference')).display,canvasHidden:document.getElementById('rd-hive-gl').hidden})"));
+    assert.equal(referenceMode.mode, "reference", "the reference presentation remains selectable");
+    assert.notEqual(referenceMode.referenceDisplay, "none", "the supplied artwork appears in explicit reference mode");
+    assert.equal(referenceMode.canvasHidden, true, "the WebGL canvas is hidden only in explicit reference mode");
+    await evaluate("document.querySelector('[data-hive-view=\\"live3d\\"]').click()");
+
+    // Capture the actual procedural WebGL view, never the artwork-backed reference plate.
     const live3dState = JSON.parse(await evaluate([
       "(() => {",
       " document.querySelector('[data-hive-view=\"live3d\"]').click();",
