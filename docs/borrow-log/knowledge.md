@@ -19,6 +19,25 @@
 待调研方向：prompt 缓存显式利用（cache 断点/热缓存不压缩）、语义结果缓存、
 diff-only 评审、工具结果去重、精简输出协议、更细粒度廉价模型分流。
 
+### 2026-10-10 关键词扫描器同步复查
+
+- **扫描器与词库双向同步**：`docs/borrow-log/keywords.md` 是查询源，
+  `scripts/borrow_scan_nightly.py` 的常驻/轮换查询必须同步维护。复核发现批1
+  `open-code-review`、批2 `agentic context engineering`、批7 `magicrew` 已进词库，
+  但未进执行脚本；本轮同步到对应查询数组，并添加契约测试防止再次漏同步。
+- **编码约束**：中文关键词须 URL 编码；对词库里预先编码的 `%E...` 片段须保留 `%`，
+  否则会二次编码导致 GitHub 搜索词失真。脚本查询构造现以 `quote(..., safe="+%")`
+  保持查询操作符和既有编码片段。
+- **证据/状态**：GitHub 主扫 115/115 查询完成，未见 API 错误/限流；定向测试
+  `python -m unittest tests.test_borrow_scan_queries` 2/2 通过，修改文件编译与
+  `git diff --check` 通过。全量 `python -m unittest discover -s tests -p 'test*.py'`
+  未通过门禁：执行卡在真实端口行为用例 `test_close_port_releases_real_listener`，
+  反复触发 20 秒超时堆栈（等待子进程回环监听连接），已中止；未将此环境阻塞误报为通过。
+- **七专项增量**：A-G 沿用最近一次全类型审计基线（18 流程、14 CLI、六源市场/SSRF
+  与禅道关闭态）；本轮未对这些模块作代码改动。此次唯一落地是扫描查询词同步，
+  不据此宣称全量专项重新验收。来源为本仓库词库/扫描器及 GitHub 搜索结果，
+  风险限于查询召回变化；远端推送待全量测试门禁恢复后处理。
+
 ### 2026-10-05 代码级锚点盘点（10 时班第 2/4 步，四方向判定落定）
 
 八机制全部行号级实读在位（详见 2026-10-05-full-types.md A 节）：三段压缩
