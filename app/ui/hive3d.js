@@ -237,12 +237,12 @@ window.Hive3D = (function () {
       for(const drawerY of [.18,.28,.38])this.add(b,x+width*.30,drawerY,z+.579,width*.22,.012,.012,[.62,.71,.80,1]);
       this.add(b,x+width*.30,.41,z+.581,width*.085,.018,.014,[.45,.58,.70,1]);
       this.add(rb,x,.43,z-.22,width*.78,.045,.74,[.84,.89,.93,1]);
-      this.add(rb,x,.99,z-.48,screenWidth+.18,screenHeight+.18,.13,[.035,.055,.075,1]);
-      this.add(rb,x,.995,z-.432,screenWidth+.08,screenHeight+.08,.045,[.15,.20,.25,1]);
-      this.add(b,x,.995,z-.405,screenWidth,screenHeight,.018,[.018,.105,.18,1]);
-      this.add(this.cylinder,x,.61,z-.43,.072,.22,.072,[.32,.39,.45,1]);
+      this.add(rb,x,1.20,z-.48,screenWidth+.18,screenHeight+.18,.13,[.035,.055,.075,1]);
+      this.add(rb,x,1.205,z-.432,screenWidth+.08,screenHeight+.08,.045,[.15,.20,.25,1]);
+      this.add(b,x,1.205,z-.405,screenWidth,screenHeight,.018,[.018,.105,.18,1]);
+      this.add(this.cylinder,x,.78,z-.43,.072,.40,.072,[.32,.39,.45,1]);
       this.add(b,x,.49,z-.27,.54,.045,.34,[.16,.20,.24,1]);
-      this.add(b,x,.72,z-.404,screenWidth*.84,.018,.012,[.10,.83,.94,1]);
+      this.add(b,x,.925,z-.404,screenWidth*.84,.018,.012,[.10,.83,.94,1]);
       this.add(rb,x-.18,.635,z+.25,.60,.035,.20,[.11,.14,.17,1]);
       this.add(s,x+.40,.648,z+.22,.060,.025,.075,[.055,.065,.075,1]);
       this.add(b,x+.40,.674,z+.20,.009,.005,.024,[.30,.66,.78,1]);
@@ -294,11 +294,11 @@ window.Hive3D = (function () {
       for(const side of [-1,1]){
         this.add(s,x+side*.235,by-.15,bz-.075,.095,.12,.12,[.12,.15,.18,1]);
         this.add(s,x+side*.225,.99,z+.78,.072,.102,.38,[.075,.09,.11,1]);
-        this.add(s,x+side*.225,.77,z+.58,.078,.078,.085,[.96,.63,.035,1]);
-        this.add(s,x+side*.20,.70,z+.42,.061,.074,.35,[.10,.13,.16,1]);
-        this.add(rb,x+side*.20,.662,z+.30,.092,.052,.095,[.95,.62,.035,1]);
-        this.add(s,x+side*.20,.651,z+.25,.060,.034,.070,[.98,.68,.045,1]);
-        for(let finger=0;finger<3;finger++)this.add(b,x+side*.20+(finger-1)*.023,.635,z+.215,.012,.010,.046,[.22,.29,.35,1]);
+        this.add(s,x+side*.225,.77,z+.54,.078,.078,.085,[.96,.63,.035,1]);
+        this.add(s,x+side*.20,.70,z+.39,.061,.074,.31,[.10,.13,.16,1]);
+        this.add(rb,x+side*.20,.662,z+.275,.092,.052,.095,[.95,.62,.035,1]);
+        this.add(s,x+side*.20,.651,z+.23,.060,.034,.070,[.98,.68,.045,1]);
+        for(let finger=0;finger<3;finger++)this.add(b,x+side*.20+(finger-1)*.023,.635,z+.195,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.27,bz+.266,.12,.09,.024,[.025,.10,.14,1]);
@@ -442,8 +442,8 @@ window.Hive3D = (function () {
       if(!desk){m.el.style.visibility="hidden";return;}
       const {x,z,screenWidth,screenHeight}=desk;
       const halfW=screenWidth/2,halfH=screenHeight/2;
-      const rect=this.projectRect([[x-halfW,.995-halfH,z-.418],[x+halfW,.995-halfH,z-.418],
-        [x+halfW,.995+halfH,z-.418],[x-halfW,.995+halfH,z-.418]]);
+      const rect=this.projectRect([[x-halfW,1.205-halfH,z-.418],[x+halfW,1.205-halfH,z-.418],
+        [x+halfW,1.205+halfH,z-.418],[x-halfW,1.205+halfH,z-.418]]);
       if(!rect||rect.width<8||rect.height<6){m.el.style.visibility="hidden";return;}
       m.el.style.visibility="visible";
       m.el.style.left=(rect.left/this.cssW*100)+"%";
@@ -468,7 +468,7 @@ window.Hive3D = (function () {
   Scene.prototype.setDisplayMode=function(mode){const next=mode==="live3d"?"live3d":mode==="2d"?"2d":"reference";const changed=next!==this.displayMode;this.displayMode=next;if(changed){this.zoom=1;this.yaw=0;this.pitch=.42;this.panX=0;this.panY=0;}this.canvas.hidden=!this.active||this.displayMode!=="live3d";this.updateOverlay();this.applyArtboardTransform();if(this.displayMode==="live3d")this.render();else if(this.displayMode==="reference")this.layoutOverlayPositions();};
   Scene.prototype.applyArtboardTransform=function(){if(!this.artboard)return;this.artboard.style.transform=this.displayMode==="reference"?"translate3d("+(this.panX*100)+"%,"+(this.panY*100)+"%,0) scale("+this.zoom+")":"none";};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0,deskRows:this.deskPositions?[this.deskPositions.filter(d=>d.row===0).length,this.deskPositions.filter(d=>d.row===1).length]:[]};};
-  Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,.995,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
+  Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,1.205,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
   Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
   const originalCreate=(opts)=>new Scene(opts);
   // Initialize geometry after the constructor has successfully acquired WebGL.
