@@ -361,16 +361,72 @@ def test_flow_submit_gate():
            % (getattr(pg, "_clicks", 0), n2))
 
 
+def test_flow_submit_always_flag():
+    """always=true 的提交步（草稿流「存草稿」）不吃 auto_submit 人工闸：
+    manual 语义下也真点并继续走后续步骤（2026-10-10 44 章假成功修复）。"""
+    from core.publish import flow
+    pg = _FlowPage()
+    steps = [{"do": "fill", "sel": "input", "key": "t"},
+             {"do": "submit", "text": "存草稿", "scope": "button",
+              "always": True},
+             {"do": "sleep", "s": 0.1}]
+    n = flow.run_flow(pg, steps, values={"t": "第1章"},
+                      auto_submit=False)
+    expect(getattr(pg, "_clicks", 0) == 1 and n == 3,
+           "always 提交步在 manual 语义下真点并走完：%s %s"
+           % (getattr(pg, "_clicks", 0), n))
+
+
+def test_flow_expect_text_hit_and_timeout():
+    """expect_text（草稿保存凭据）：命中任一标记即过且记录；超时抛错点名标记。"""
+    from core.publish import flow
+    pg = _FlowPage(call_results=["操作成功：草稿已保存"])
+    n = flow.run_flow(pg, [{"do": "expect_text",
+                            "any": ["保存成功", "草稿已保存"],
+                            "timeout": 3}])
+    expect(n == 1, "命中标记通过：%d" % n)
+    pg2 = _FlowPage(call_results=["发布失败：序号重复"])
+    try:
+        flow.run_flow(pg2, [{"do": "expect_text",
+                             "any": ["保存成功", "草稿已保存"],
+                             "timeout": 0.5}])
+        raise AssertionError("超时应抛 FlowError")
+    except flow.FlowError as e:
+        expect("保存成功" in str(e) and "未见保存成功反馈" in str(e),
+               "超时报错带标记清单：%s" % e)
+
+
+def test_draft_single_chapter_mutex():
+    """另一批自动发布在跑 → 单章草稿也拒起（浏览器互斥，2026-10-10）。"""
+    from core.publish import auto as pub_auto
+    from core import store
+    t = store.create_task({"type": "serial_novel", "goal": "草稿互斥",
+                           "workdir": str(_TMP)})
+    ledger.save_book(t["id"], "fanqie", {"book_id": "888", "title": "草稿书"})
+    fp = _chapter("第9章 互斥测.md", "# 第9章 互斥测\n\n" + "内容" * 300)
+    pub_auto._running["t-other-mutex"] = {"status": "running",
+                                          "platform": "fanqie"}
+    try:
+        ok, err = manager.upload_chapter_async(t["id"], "fanqie", fp,
+                                               as_draft=True)
+        expect(not ok and "互踩" in err and "t-other-mutex" in err,
+               "单章草稿被另一批拒起：%s/%s" % (ok, err))
+    finally:
+        pub_auto._running.pop("t-other-mutex", None)
+    store._TASKS.pop(t["id"], None)
+
+
 # ------------------------------------------------- 发章 about:blank 三连败修复（2026-09-24）
 
 class _DraftPage(_FlowPage):
     """upload_chapter_async(as_draft) 离线假页：真流程表走通存草稿链。
 
-    主页 call 队列喂 js_click 的成功结果；verify 的 body 文本走新页签桩。"""
+    call 队列喂 expect_text 的页面文本（含保存反馈标记「保存成功」）；
+    verify 的 body 文本走新页签桩。"""
 
     def __init__(self):
         super().__init__(url="https://fanqienovel.com/main/writer/888/publish/",
-                         call_results=[{"ok": True}])
+                         call_results=["保存成功 草稿已落草稿箱"])
 
     def navigate(self, url, timeout=45):
         self._url = url

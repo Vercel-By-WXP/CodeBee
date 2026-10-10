@@ -402,16 +402,26 @@ class TestPublishPending(unittest.TestCase):
 class _FakeDraftUpload:
     """as_draft 桩：按文件名解析章号，成功记 upload_chapter_draft 台账。
 
-    fail_at={章号: 原因} 控制某章失败；记录每次调用是否带 as_draft。"""
+    fail_at={章号: 原因} 控制某章失败；reject_at={章号: 原因} 模拟 manager
+    幂等拒起（返回 False 不记台账）；transient_fail_at={章号: 剩余次数} 模拟
+    连接类瞬断（先以连接错误拒起、次数耗尽后才成功）；记录每次调用是否带
+    as_draft。"""
 
-    def __init__(self, fail_at=None):
+    def __init__(self, fail_at=None, reject_at=None, transient_fail_at=None):
         self.calls = []
         self.fail_at = fail_at or {}
+        self.reject_at = reject_at or {}
+        self.transient_fail_at = dict(transient_fail_at or {})
 
     def __call__(self, task_id, plat, fp, auto_submit=False, as_draft=False, **kw):
         self.calls.append((fp, bool(as_draft)))
         n = ledger.parse_chapter_no(Path(fp).name)
         act = "upload_chapter_draft" if as_draft else "upload_chapter"
+        if self.transient_fail_at.get(n):
+            self.transient_fail_at[n] -= 1
+            return False, "步骤5（fill）失败：连接断开：连接被关闭"
+        if n in self.reject_at:
+            return False, self.reject_at[n]
         if n in self.fail_at:
             ledger.record(plat, act, task_id=task_id, chapter_no=n,
                           ok=False, error=self.fail_at[n])
@@ -443,6 +453,21 @@ class TestDraftPublish(unittest.TestCase):
         self.manager = manager
         auto.PACE_S = 0
         auto.IDLE_POLL_S = 0.05
+        auto.TRANSIENT_RETRY_S = 0
+        # _reset_ledger 不清 books.json：上一用例对账种下的平台实况章号
+        # 会把本用例的待发预检清空（「没有待发章节」假红）
+        ledger.update_book(type(self).task["id"], "fanqie",
+                           remote_published_nos=None)
+        # 起草前对账桩（2026-10-10）：默认对账成功；专项测试里自行覆盖
+        self._orig_sync = manager.sync_published
+        self.sync_calls = []
+
+        def _sync_ok(tid, plat, manual=False):
+            self.sync_calls.append((tid, plat, manual))
+            return True, ""
+
+        manager.sync_published = _sync_ok
+        self.addCleanup(setattr, manager, "sync_published", self._orig_sync)
 
     def _seed_bad_verdict(self):
         r = store.create_run("orchestration", "评审",
@@ -531,6 +556,172 @@ class TestDraftPublish(unittest.TestCase):
             self.assertIn("upload_chapter_draft", err)
         finally:
             auto.flow_calibrated = orig
+
+    def test_draft_reconcile_failure_refuses(self):
+        """起草前对账失败（浏览器未连接/忙）→ 整批拒起，一章都不碰。"""
+        tid = type(self).task["id"]
+        self.manager.sync_published = lambda t, p, manual=False: \
+            (False, "浏览器未连接，点「连接平台」后再校准")
+        fake = _FakeDraftUpload()
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = fake
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(tid)
+            self.assertEqual(st.get("status"), "error")
+            self.assertIn("对账失败", st.get("error") or "")
+            self.assertEqual(fake.calls, [], "对账失败不发起任何起草")
+        finally:
+            self.manager.upload_chapter_async = orig
+
+    def test_draft_reconcile_uses_attach_only(self):
+        """对账必须 attach-only（manual=False）：绝不因存草稿弹新窗口。"""
+        tid = type(self).task["id"]
+        ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+        self.assertTrue(ok, err)
+        self._wait_status(tid)
+        self.assertTrue(self.sync_calls, "起草前调过对账")
+        self.assertFalse(self.sync_calls[0][2], "manual=False（attach-only）")
+
+    def test_draft_reconcile_drops_published(self):
+        """对账把手工补交的章带回实况（校准发生在起跑后）→ 待发就地剔除。"""
+        tid = type(self).task["id"]
+
+        def _sync_brings_nos(t, p, manual=False):
+            ledger.update_book(t, p, remote_published_nos=[1])
+            return True, ""
+
+        self.manager.sync_published = _sync_brings_nos
+        fake = _FakeDraftUpload()
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = fake
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(tid)
+            self.assertEqual(st.get("status"), "done")
+            self.assertEqual(st.get("done"), 1, "第 1 章已发布，只存第 2 章")
+            self.assertEqual(st.get("total"), 1)
+            self.assertTrue(any("对账剔除" in n for n in st.get("notes") or []),
+                            str(st.get("notes")))
+            self.assertNotIn("第1章", " ".join(c[0] for c in fake.calls),
+                             "已发布章不发起起草")
+        finally:
+            self.manager.upload_chapter_async = orig
+
+    def test_draft_reconcile_all_done_short_circuits(self):
+        """对账后发现所选全部已发布/已存稿 → done 收尾，不空跑。"""
+        tid = type(self).task["id"]
+
+        def _sync_all_published(t, p, manual=False):
+            ledger.update_book(t, p, remote_published_nos=[1, 2])
+            return True, ""
+
+        self.manager.sync_published = _sync_all_published
+        fake = _FakeDraftUpload()
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = fake
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(tid)
+            self.assertEqual(st.get("status"), "done")
+            self.assertEqual(fake.calls, [])
+            self.assertIn("没有可存草稿", st.get("message") or "")
+        finally:
+            self.manager.upload_chapter_async = orig
+
+    def test_draft_idempotent_reject_skips_not_stops(self):
+        """manager 幂等拒起（已发布/已存过）→ 跳过该章继续，不计失败。"""
+        tid = type(self).task["id"]
+        fake = _FakeDraftUpload(reject_at={1: "第 1 章已成功发布过（台账幂等拦截）"})
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = fake
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(tid)
+            self.assertEqual(st.get("status"), "done")
+            self.assertEqual(st.get("done"), 1)
+            self.assertEqual(st.get("skipped"), 1)
+            self.assertTrue(any("跳过" in n for n in st.get("notes") or []),
+                            str(st.get("notes")))
+            self.assertIn("跳过 1 章", st.get("message") or "")
+        finally:
+            self.manager.upload_chapter_async = orig
+
+    def test_draft_transient_retry_once(self):
+        """连接类瞬断 → 同章重试一次成功则继续；不整链停摆。"""
+        tid = type(self).task["id"]
+        auto.TRANSIENT_RETRY_S = 0
+        fake = _FakeDraftUpload(transient_fail_at={1: 1})
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = fake
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(tid)
+            self.assertEqual(st.get("status"), "done", str(st.get("error")))
+            self.assertEqual(st.get("done"), 2, "重试成功后两章全存")
+            self.assertEqual(len(fake.calls), 3, "第 1 章试了两次")
+            self.assertTrue(any("重试" in n for n in st.get("notes") or []),
+                            str(st.get("notes")))
+        finally:
+            self.manager.upload_chapter_async = orig
+
+    def test_draft_transient_retry_exhausted_stops(self):
+        """瞬断重试仍失败 → 带原因停链（证据在台账与截图）。"""
+        tid = type(self).task["id"]
+        auto.TRANSIENT_RETRY_S = 0
+        fake = _FakeDraftUpload(transient_fail_at={1: 2})
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = fake
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(tid)
+            self.assertEqual(st.get("status"), "error")
+            self.assertIn("发起失败", st.get("error") or "")
+            self.assertEqual(len(fake.calls), 2, "恰好重试一次")
+        finally:
+            self.manager.upload_chapter_async = orig
+
+    def test_draft_mutex_refuses_when_other_batch_running(self):
+        """另一批自动发布在跑 → 存草稿拒起（浏览器互斥）。"""
+        tid = type(self).task["id"]
+        auto._running["t-other-1"] = {"status": "running", "platform": "fanqie"}
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+            self.assertFalse(ok)
+            self.assertIn("互踩", err)
+            self.assertIn("t-other-1", err)
+        finally:
+            auto._running.pop("t-other-1", None)
+
+    def test_draft_yields_midrun_when_other_batch_appears(self):
+        """跑批中途出现另一批 → 让位停止，已存章保留并说明。"""
+        tid = type(self).task["id"]
+
+        def _seed_then_upload(task_id, plat, fp, **kw):
+            auto._running["t-other-2"] = {"status": "running",
+                                          "platform": "fanqie"}
+            return fake(task_id, plat, fp, **kw)
+
+        fake = _FakeDraftUpload()
+        orig_upload = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = _seed_then_upload
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", as_draft=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(tid)
+            self.assertEqual(st.get("status"), "error")
+            self.assertIn("让位", st.get("error") or "")
+            self.assertEqual(st.get("done"), 1, "第一章存完才让位")
+            self.assertEqual(len(fake.calls), 1, "让位后不再发起")
+        finally:
+            self.manager.upload_chapter_async = orig_upload
+            auto._running.pop("t-other-2", None)
 
 
 class TestAutoPublishDue(unittest.TestCase):

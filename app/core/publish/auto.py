@@ -24,6 +24,7 @@ import time
 PACE_S = 45                  # 章间间隔（防风控节奏），测试里可置 0
 IDLE_POLL_S = 2              # 等 manager busy 结束的轮询步长
 IDLE_TIMEOUT_S = 420         # 单章最长等待（含浏览器操作与人工确认窗口）
+TRANSIENT_RETRY_S = 5        # 连接类瞬断的重试前静默（等浏览器缓过来）
 
 _CAP_DEFAULT = 10
 _STREAK_DEFAULT = 3
@@ -93,6 +94,36 @@ def _fail_window_text():
     from . import ledger
     h = ledger.fail_window_h()
     return ("%g 小时" % h) if h < 24 else ("%g 天" % (h / 24))
+
+
+# 连接类瞬断标记（2026-10-10 存草稿实案：45 章 fill 时「连接被关闭」整链
+# 停摆）——命中即对该章重试一次再弃，不因浏览器抖动废掉整批
+_TRANSIENT_MARKS = ("连接断开", "连接被关闭", "10053", "10054", "等响应超时",
+                    "已中止", "目标已关闭")
+# 幂等拒起标记（manager 层台账/实况对账的拒绝话术）——命中即跳过该章，
+# 不是失败
+_IDEMPOTENT_MARKS = ("已成功发布过", "已存过草稿")
+
+
+def _is_transient(err):
+    e = str(err or "")
+    return any(m in e for m in _TRANSIENT_MARKS)
+
+
+def _is_idempotent_reject(err):
+    e = str(err or "")
+    return any(m in e for m in _IDEMPOTENT_MARKS)
+
+
+def other_batch_running(task_id):
+    """除本任务外是否还有别的自动发布/存草稿批次在跑。命中返回对方
+    task_id，否则空串——草稿链与之互斥（共用平台浏览器会互踩页签，
+    2026-10-10 实案：连载发章占着浏览器，草稿流 fill 被掐断连接）。"""
+    with _LOCK:
+        for tid, ent in _running.items():
+            if tid != str(task_id) and ent.get("status") == "running":
+                return str(tid)
+    return ""
 
 
 # ---------------------------------------------------------------- 待发枚举
@@ -282,7 +313,10 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
     as_draft=True（全部发草稿，2026-10-09）：逐章自动填稿并点「存草稿」，
     不上线、不受质量闸拦、无需人工确认，一章接一章连跑到清空待发清单
     （章间仍按 PACE_S 防风控节奏）；提交发布由用户到平台草稿箱手工完成，
-    届时质量闸照常把关。与 auto_submit 互斥（草稿模式忽略 auto_submit）。"""
+    届时质量闸照常把关。与 auto_submit 互斥（草稿模式忽略 auto_submit）。
+    草稿链三条专属护栏（2026-10-10 假成功案）：起跑前先 attach-only 对账
+    平台实况并重算待发（已发布/已存稿剔除，对不了账就拒起）；跑批期间
+    检测到另一批自动发布即让位停止（平台浏览器互斥）。"""
     from .. import store
     from . import ledger, manager
     if platform not in manager.PLATFORMS:
@@ -301,6 +335,11 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
         cur = _running.get(task_id) or {}
         if cur.get("status") == "running":
             return False, "该任务已有自动发布进行中，请等本轮结束"
+    if as_draft:
+        other = other_batch_running(task_id)
+        if other:
+            return False, ("检测到另一批自动发布/存草稿进行中（任务 %s）——两边"
+                           "共用平台浏览器会互踩，请等它跑完再存草稿" % other)
     task = store.get_task(task_id)
     if not task:
         return False, "任务不存在"
@@ -329,6 +368,7 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
     pend, err = pending(task_id, platform)
     if err:
         return False, err
+    want = None
     if only is not None:
         try:
             want = {int(n) for n in (only or []) if n}
@@ -346,13 +386,49 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
     st = {"platform": platform, "at": time.strftime("%Y-%m-%d %H:%M:%S"),
           "done": 0, "total": len(pend), "status": "running", "error": "",
           "auto_submit": bool(auto_submit), "as_draft": bool(as_draft),
-          "last_chapter": 0}
+          "last_chapter": 0, "skipped": 0, "notes": []}
     with _LOCK:
         _running[task_id] = st
 
     def run():
         try:
-            for item in pend:
+            items = pend
+            if as_draft:
+                # 起草前对账（2026-10-10 假成功案）：台账只记得自己发的章，
+                # 手工补交的只有平台知道——attach-only 刷一次校准再重算待发，
+                # 已发布/已存稿章就地剔除，不去撞序号重复。对不了账（浏览器
+                # 未连接/忙）整个拒起：存草稿本来就需要平台浏览器，宁等空窗
+                # 不盲跑；平台没配章节计数时跳过对账维持旧路径。
+                ok_r, why_r = manager.sync_published(task_id, platform,
+                                                     manual=False)
+                if not ok_r and "未配置章节计数" not in str(why_r or ""):
+                    st["status"] = "error"
+                    st["error"] = ("存草稿前对账失败：%s。为防把已发布章重复存稿，"
+                                   "本次未起草；请连接平台浏览器并等它空闲后重试"
+                                   % why_r)
+                    return
+                fresh, _ = pending(task_id, platform)
+                if want is not None:
+                    fresh = [p for p in fresh if p["chapter_no"] in want]
+                if not fresh:
+                    st["status"] = "done"
+                    st["message"] = ("对账后没有可存草稿的章节（所选均已发布或"
+                                     "已存稿）；确需重存请先在平台删旧稿")
+                    return
+                if len(fresh) != st["total"]:
+                    st["notes"].append("对账剔除 %d 章已发布/已存稿，实存 %d 章"
+                                       % (st["total"] - len(fresh), len(fresh)))
+                st["total"] = len(fresh)
+                items = fresh
+            for item in items:
+                if as_draft:
+                    other = other_batch_running(task_id)
+                    if other:
+                        st["status"] = "error"
+                        st["error"] = ("检测到另一批自动发布已启动（任务 %s），"
+                                       "存草稿让位停止；已存 %d 章落平台草稿箱，"
+                                       "等对方跑完再续" % (other, st["done"]))
+                        return
                 g_ok, why = guards(task_id, platform)   # 每章前复查（中途也能拦）
                 if not g_ok:
                     st["status"] = "error"
@@ -366,6 +442,22 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                 ok2, err2 = manager.upload_chapter_async(
                     task_id, platform, str(Path(wd) / item["file"]),
                     **upload_kwargs)
+                if not ok2 and as_draft and _is_idempotent_reject(err2):
+                    # 幂等拒起＝这章已发布/已存过稿：跳过，不是失败——
+                    # 整链不该因「没活干」停摆
+                    st["skipped"] += 1
+                    st["notes"].append("第 %d 章跳过：%s"
+                                       % (item["chapter_no"], str(err2)[:60]))
+                    continue
+                if not ok2 and as_draft and _is_transient(err2):
+                    # 连接类瞬断（连载流互踩/浏览器抖动）：重试一次再弃
+                    st["notes"].append("第 %d 章连接中断，%d 秒后重试一次"
+                                       % (item["chapter_no"],
+                                          TRANSIENT_RETRY_S))
+                    time.sleep(TRANSIENT_RETRY_S)
+                    ok2, err2 = manager.upload_chapter_async(
+                        task_id, platform, str(Path(wd) / item["file"]),
+                        **upload_kwargs)
                 if not ok2:
                     st["status"] = "error"
                     st["error"] = "第 %d 章发起失败：%s" % (item["chapter_no"], err2)
@@ -387,12 +479,15 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     if item["chapter_no"] not in ledger.drafted_chapters(
                             task_id, platform):
                         st["status"] = "error"
-                        st["error"] = ("第 %d 章存草稿未确认，后续章节未存（详见"
-                                       "发布台账与截图存证）" % item["chapter_no"])
+                        st["error"] = ("第 %d 章存草稿未确认（台账未落草稿账），"
+                                       "后续章节未存；截图存证见发布台账，若实际"
+                                       "已保存成功，把页面反馈文案照截图校准进"
+                                       "流程表 expect_text 步骤"
+                                       % item["chapter_no"])
                         return
                     st["done"] += 1
                     st["last_chapter"] = item["chapter_no"]
-                    if st["done"] < st["total"]:
+                    if st["done"] + st["skipped"] < st["total"]:
                         time.sleep(PACE_S)
                     continue
                 if not auto_submit:
@@ -416,9 +511,11 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     time.sleep(PACE_S)
             st["status"] = "done"
             if as_draft:
-                st["message"] = ("已存草稿 %d 章（未发布，不受质量闸拦不代表可直发）；"
-                                 "请到平台章节管理/草稿箱逐章检查后提交发布"
-                                 % st["done"])
+                st["message"] = ("已存草稿 %d 章%s（未发布，不受质量闸拦不代表可"
+                                 "直发）；请到平台章节管理/草稿箱逐章检查后提交"
+                                 "发布"
+                                 % (st["done"], ("、跳过 %d 章" % st["skipped"])
+                                    if st["skipped"] else ""))
             elif not auto_submit:
                 st["message"] = "第 %d 章已填好，请在浏览器里确认提交，再重新校准" % st["last_chapter"]
         except Exception as e:                 # 线程内绝不能悬挂无终态

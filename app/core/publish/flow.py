@@ -558,7 +558,10 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 if log:
                     log("PROBE " + json.dumps(info, ensure_ascii=False)[:4000])
             elif act == "submit":
-                if not auto_submit:
+                # always=true 的提交步（草稿流的「存草稿」）本身就是保存动作，
+                # 不吃 auto_submit 人工闸——被闸吞掉时流程停在「填好未存」，
+                # manager 却照记成功（2026-10-10 44 章假成功实案）
+                if not auto_submit and not st.get("always"):
                     note(i, "已填好未提交——请人工检查后提交（auto_submit=false）")
                     if shot:
                         shot("ready-manual-submit")
@@ -686,6 +689,31 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 finally:
                     if new_tab:
                         vpage.close_tab()
+            elif act == "expect_text":
+                # 页面反馈等待（草稿保存凭据，2026-10-10）：轮询页面文本直到
+                # 出现任一成功标记（toast/状态字样）——verify 的章节管理页对
+                # 「已发布章重复起草」必然假通过，编辑器保存反馈才是本次动作
+                # 自己的证据。超时即失败：宁可带 fail 截图拦下，不可把「没
+                # 存上」记成成功。标记文案以真机校准为准。
+                marks = [str(m) for m in (st.get("any") or [])]
+                if not marks:
+                    continue
+                deadline = time.time() + float(st.get("timeout") or 12)
+                hit = ""
+                while time.time() < deadline:
+                    body_txt = str(page.call(
+                        "()=>(document.body.innerText||'')", timeout=15) or "")
+                    hit = next((m for m in marks if m in body_txt), "")
+                    if hit:
+                        break
+                    time.sleep(0.8)
+                if not hit:
+                    raise FlowError("未见保存成功反馈（等了 %ds，标记：%s）——"
+                                    "若截图里实际已保存成功，请把真实反馈文案"
+                                    "校准进流程表"
+                                    % (int(float(st.get("timeout") or 12)),
+                                       "、".join(marks)[:60]))
+                note(i, "反馈命中「%s」" % hit)
             elif act == "volume":
                 # 发章带卷（2026-10-08 批量自动发布·自动分卷）：确保目标卷
                 # 在平台上存在（缺则走「新建分卷」）。平台新章按卷自动归类、

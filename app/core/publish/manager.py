@@ -897,6 +897,14 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     book_ref = dict(book)
     if _st(plat).get("status") == "busy":
         return False, "该平台有操作正在进行中"
+    if as_draft:
+        # 草稿与别的自动发布批次互斥（2026-10-10 实案：连载发章占着浏览器，
+        # 草稿流 fill 被掐断连接）——单章草稿同样不让起
+        from . import auto as _auto
+        other = _auto.other_batch_running(task_id)
+        if other:
+            return False, ("检测到另一批自动发布进行中（任务 %s），平台浏览器会"
+                           "被互踩；等它跑完再存草稿" % other)
     ch_no, title, body, err = read_chapter(chapter_file)
     if err:
         return False, err

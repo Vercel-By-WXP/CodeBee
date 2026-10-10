@@ -110,12 +110,17 @@ UPLOAD_CHAPTER = [
      "optional": True},
 ]
 
-# 发章存草稿（2026-10-09 全部发草稿）：与 UPLOAD_CHAPTER 同一张填表前段，
-# 终点不同——点编辑器头部「存草稿」直接落草稿箱，不走「下一步→内容检测→
-# 发布提示→提交」发布链。草稿不上线，批量连跑无需人工确认；提交发布由
-# 用户到章节管理/草稿箱手工完成。verify 沿用章节管理页断言（草稿行同样
-# 出现在列表里，标题/章号标记可命中）；若平台改版把草稿挪去独立草稿箱页，
-# 首轮失败的 step 截图会指出来，照 flows-fanqie.json 校准即可。
+# 发章存草稿（2026-10-09 全部发草稿；2026-10-10 假成功案重构）：
+# 与 UPLOAD_CHAPTER 同一张填表前段，终点不同——点编辑器头部「存草稿」直接
+# 落草稿箱，不走「下一步→内容检测→发布提示→提交」发布链。三点教训入表：
+# 1) submit 带 always=true：草稿流程跑在 auto_submit=false 语义下，而这里的
+#    「存草稿」点击本身就是保存动作——被人工闸吞掉时 manager 把「填好未存」
+#    记成成功（44 章假成功实案）。
+# 2) expect_text 等编辑器页保存反馈为主凭据（标记文案以真机校准为准，失败
+#    自动落 fail 截图）；「已保存」这类自动保存字样刻意不入标记——编辑器
+#    自动保存不可依赖，不能当本次点击的证据。
+# 3) verify 仍走章节管理页兜底（新章草稿行同样在列表里）；对「已发布章重复
+#    起草」它必然假通过——该情形由起草前对账（auto 层）剔除，不靠本表。
 UPLOAD_CHAPTER_DRAFT = [
     {"do": "navigate", "url": "{editor_url}"},
     {"do": "url_any", "any": ["fanqienovel.com"]},
@@ -131,10 +136,11 @@ UPLOAD_CHAPTER_DRAFT = [
     {"do": "wait", "sel": "[contenteditable=true],textarea[class*=content],div[class*=editor]", "timeout": 10},
     {"do": "fill", "sel": "[contenteditable=true],textarea[class*=content]", "key": "chapter_body"},
     {"do": "shot", "name": "chapter-filled-draft"},
-    {"do": "submit", "text": "存草稿", "scope": "button", "tries": 15},
-    {"do": "js_click", "text": "存草稿", "scope": "button", "tries": 10,
-     "optional": True, "skip_if_modal": True},
-    {"do": "sleep", "s": 2.5},
+    {"do": "submit", "text": "存草稿", "scope": "button", "tries": 15, "always": True},
+    {"do": "sleep", "s": 1.2},
+    {"do": "shot", "name": "chapter-draft-clicked"},
+    {"do": "expect_text",
+     "any": ["保存成功", "存草稿成功", "草稿已保存", "已存草稿"], "timeout": 12},
     {"do": "verify", "url": "{chapter_manage_url}",
      "any": ["第{chapter_no}章", "{chapter_name}"], "settle": 6, "new_tab": True},
 ]

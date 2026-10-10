@@ -4,7 +4,8 @@
  * 2) drafted>0 → 「已存草稿 N 章」提示；
  * 3) 点「全部存草稿」→ publish-all body 带 as_draft:true（无 chapters）；
  * 4) 点「存草稿所选」→ body 带 chapters 升序 + as_draft:true；
- * 5) 硬护栏挂（draft_ok=false）→ 草稿按钮禁用 + pb-err 硬原因。
+ * 5) 硬护栏挂（draft_ok=false）→ 草稿按钮禁用 + pb-err 硬原因；
+ * 6) 卷头＝整卷开关：取消整卷→该卷退出所选并显示 0/4，勾回恢复全选。
  * 前置 stub：/pending 返回 auto.status 新形状（draft_ok/quality_blockers/drafted）。 */
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
@@ -27,6 +28,7 @@ const check = (name, cond, detail = "") => {
 
 const ITEMS = Array.from({ length: 8 }, (_, i) => ({
   chapter_no: 31 + i, file: `chapter-${31 + i}.md`, size: 3000 + i,
+  volume: i < 4 ? "第一卷 山门" : "第二卷 出山",
 }));
 
 const PENDING_STUB = (over = {}) => JSON.stringify({
@@ -224,6 +226,112 @@ async function main() {
     check("存草稿所选 → chapters=31..38 升序 + as_draft:true",
       JSON.stringify(postSel.chapters) === JSON.stringify(ITEMS.map(i => i.chapter_no))
       && postSel.as_draft === true, JSON.stringify(postSel));
+
+    // 按卷勾选：卷头＝整卷开关（全选打勾；部分选中显示 已选/总）
+    const vol = JSON.parse(await evalJs(`(async () => {
+      // 重绘会整块替换 .bm-pub——每次都现查活节点，别捕获旧卡片
+      const selBtn = () => { const c = document.querySelector(".bm-pub"); return ([...(c ? c.querySelectorAll("button") : [])].find(b => b.textContent.includes("存草稿所选")) || { textContent: "" }); };
+      const chipsOn = () => { const c = document.querySelector(".bm-pub"); return c ? c.querySelectorAll(".pb-chip.on").length : 0; };
+      window.__volCalls = [];
+      const origVol = window.pbSelVolume;
+      window.pbSelVolume = function (t, p, gi, on) {
+        const key = t + ":" + p;
+        const ent = (S.pbSel || {})[key];
+        const g = ent && ent.groups && ent.groups[gi];
+        const pre = { size: ent ? ent.sel.size : null, hasGroups: !!(ent && ent.groups), nsLen: g ? g.ns.length : null };
+        const r = origVol(t, p, gi, on);
+        const ent2 = (S.pbSel || {})[key];
+        window.__volCalls.push({ gi, on, pre, post: { size: ent2 ? ent2.sel.size : null, sameEnt: ent2 === ent } });
+        return r;
+      };
+      const before = selBtn().textContent.trim();
+      let cb = document.querySelector(".pb-vol-sel input");
+      const cb1State = cb ? cb.checked : null;
+      if (cb) cb.click();
+      for (let i = 0; i < 8; i++) {
+        await new Promise(r2 => setTimeout(r2, 250));
+        if (selBtn().textContent.includes("（4）")) break;
+      }
+      const vh = document.querySelector(".pb-vol-sel");
+      const off = { header: vh ? vh.textContent.trim() : null, btn: selBtn().textContent.trim(), on: chipsOn() };
+      await new Promise(r2 => setTimeout(r2, 600));   // 等重绘彻底稳定再取节点
+      cb = document.querySelector(".pb-vol-sel input");
+      const cb2State = cb ? { checked: cb.checked, connected: cb.isConnected } : null;
+      if (cb) cb.click();
+      // 卷头勾选态只有整块重绘才回写（pbSelCountSync 就地同步不碰卷头），
+      // 而 pbKick 重绘走 5s 节流——等 checked 翻真再断言，别读在就地同步上
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r2 => setTimeout(r2, 400));
+        const c2 = document.querySelector(".pb-vol-sel input");
+        if (c2 && c2.checked && selBtn().textContent.includes("（8）")) break;
+      }
+      const out = JSON.stringify({ before, cb1State, off, cb2State, restored: selBtn().textContent.trim(),
+        stSize: Object.keys(S.pbSel).map(k => k + "=" + S.pbSel[k].sel.size + (S.pbSel[k].groups ? "+g" : "-g")).join(","),
+        cardBtns: [...(document.querySelector(".bm-pub") || { querySelectorAll: () => [] }).querySelectorAll(".pb-pend button")].map(b => b.textContent.trim()).join("|") });
+      window.pbSelVolume = origVol;
+      return out;
+    })()`));
+    check("卷头渲染为整卷开关（默认全选 8）",
+      vol.before.includes("（8）"), JSON.stringify(vol));
+    check("取消整卷→该卷 4 章退出所选且卷头显示 0/4",
+      vol.off.btn.includes("（4）") && vol.off.on === 4
+      && (vol.off.header || "").includes("0/4"), JSON.stringify(vol.off));
+    check("勾回整卷→恢复全选", vol.restored.includes("（8）"),
+      JSON.stringify({ restored: vol.restored, st: vol.stSize, btns: vol.cardBtns }));
+
+    // 存草稿拒起（另一批自动发布在跑）→ toast 带人话原因（后端互斥，2026-10-10）
+    await evalJs(`(function(){
+      const orig = window.fetch.bind(window);
+      window.fetch = async (url, opts) => {
+        const u = String(url);
+        if (u.includes("/publish-all")) {
+          window.__pbPosts.push({ url: u, body: JSON.parse((opts || {}).body || "{}") });
+          return new Response(JSON.stringify({ error: "检测到另一批自动发布/存草稿进行中（任务 t-other-9）——两边共用平台浏览器会互踩，请等它跑完再存草稿" }), { status: 400 });
+        }
+        return orig(url, opts);
+      };
+    })(); true`);
+    await evalJs(`(async () => {
+      const card = document.querySelector(".bm-pub");
+      const btn = [...card.querySelectorAll("button")].find(b => b.textContent.includes("全部存草稿"));
+      btn.click();
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r2 => setTimeout(r2, 300));
+        const yes = document.querySelector("#ask-yes");
+        if (yes) { yes.click(); break; }
+      }
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r2 => setTimeout(r2, 400));
+        if (document.body.innerText.includes("互踩")) break;
+      }
+    })()`);
+    const mutexToast = await evalJs(`document.body.innerText.includes("互踩") && document.body.innerText.includes("存草稿启动失败")`);
+    check("另一批在跑→存草稿拒起 toast 带互踩原因", mutexToast === true);
+
+    // 批次过程 notes（对账剔除/重试）在进度区可见
+    await evalJs(`(function(){
+      const orig = window.fetch.bind(window);
+      window.fetch = async (url, opts) => {
+        const u = String(url);
+        if (u.includes("/api/publish/task/") && u.includes("/pending")) {
+          const d = JSON.parse(${JSON.stringify(PENDING_STUB())});
+          d.running = { platform: "fanqie", at: "2026-10-10 16:00:00", done: 1,
+            total: 7, status: "running", as_draft: true, error: "",
+            notes: ["对账剔除 1 章已发布/已存稿，实存 7 章", "第 32 章连接中断，5 秒后重试一次"] };
+          return new Response(JSON.stringify(d), { status: 200 });
+        }
+        return orig(url, opts);
+      };
+      S._pbSig = ""; pbKick();
+    })(); true`);
+    await sleep(2500);
+    const notesShown = await evalJs(`(() => {
+      const card = document.querySelector(".bm-pub");
+      const t = card ? card.innerText : "";
+      return { note: t.includes("对账剔除"), retry: t.includes("重试一次") };
+    })()`);
+    check("批次 notes（对账/重试）在进度区可见",
+      notesShown.note && notesShown.retry, JSON.stringify(notesShown));
 
     // 硬护栏挂（draft_ok=false）：草稿按钮禁用 + pb-err 硬原因（不是质量话术）
     await evalJs(`(function(){
