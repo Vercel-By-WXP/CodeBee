@@ -217,3 +217,87 @@ class TestDraftAndReviseInjectLockedOutline(BaseTest):
             self.assertIn("批次评审口径", gp, "续写批次全局评审必须注入批次口径")
             self.assertIn("第 21—22 章", gp)
             self.assertIn("仅适用于全书第 1—3 章", gp)
+
+
+class TestDraftInjectRedoIssues(BaseTest):
+    """重写未达标章必须带上「上一轮为什么被拒」（2026-10-10 实案：全章过线
+    卡 3 条 major，原因只躺在报告里无人接收——重写按钮下发的新一轮里作者
+    盲写、全局评审盲评，账永远消不掉）。inherit.redo_issues（store.retry_task
+    从 verdict.major_issues 下发）须渲染进重写章起草提示词：本章点名项 +
+    全书级项；无账的章不注入；占位符不得残留。"""
+
+    def _make(self, redo_issues, done_chapters=None):
+        from app.core import store
+        serial = {"chapters": 2, "words_per_chapter": 300, "start_chapter": 21}
+        task = store.create_task({
+            "type": "serial_novel", "title": "重写带原因回归", "goal": "写两章",
+            "workdir": str(self.workdir), "serial": serial,
+            "implementer": "impl-a", "critics": ["c1", "c2"]})
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running")
+        run = dict(store.get_run(run["id"]))
+        run["inherit"] = {"outline": _outline(2),
+                          "done_chapters": done_chapters or [],
+                          "redo_issues": redo_issues}
+        critics = [{"id": cid, "mode": "real", "kind": "generic", "command": "x",
+                    "label": cid} for cid in ("c1", "c2")]
+        impl = {"id": "impl-a", "mode": "real", "kind": "generic", "command": "x",
+                "label": "Impl"}
+        return task, run, critics + [impl], critics, impl
+
+    def _run(self, task, run, agents):
+        from app.core import pipeline
+        body = "这是一段足够长的测试正文，主角在核对停工范围。" * 30
+        cap = {"draft": {}}
+
+        def fake(run_id, role, agent, prompt, workdir, readonly, ev, *a, **kw):
+            if role.startswith("draft-c"):
+                i = int(role.split("draft-c")[1])
+                cap["draft"][i] = prompt
+                pipeline._write_chapter(str(self.workdir), i, body)
+                return _ok("已写")
+            if role.startswith("critique-c"):
+                return _ok(_j(RUBRIC))
+            if role == "signing-eval":
+                return _ok(_j(SIGN))
+            if role == "global-critique":
+                return _ok(_j(RUBRIC))
+            return _ok()
+
+        orig = pipeline._run_step
+        pipeline._run_step = fake
+        try:
+            pipeline._run_serial_review(
+                run, task, agents, None, {}, "manual", agents[:-1],
+                agents[-1], {}, None, "default")
+        finally:
+            pipeline._run_step = orig
+        return cap["draft"]
+
+    def test_redo_issues_reach_rewrite_prompt(self):
+        issues = [
+            {"severity": "major", "chapter": 21, "dim": "吸引力",
+             "note": "开篇钩子偏弱，黄金三段缺一"},
+            {"severity": "major", "chapter": None, "dim": "节奏",
+             "note": "全书节奏前紧后松"},
+        ]
+        task, run, agents, _critics, _impl = self._make(issues)
+        drafts = self._run(task, run, agents)
+        d21 = drafts.get(21) or ""
+        d22 = drafts.get(22) or ""
+        self.assertIn("上一轮评审未达标原因", d21, "被点名的章必须带原因块")
+        self.assertIn("开篇钩子偏弱", d21, "本章点名意见必须下发")
+        self.assertIn("逐条消解", d21)
+        self.assertIn("全书节奏前紧后松", d21, "全书级 major 也要下发")
+        self.assertNotIn("开篇钩子偏弱", d22, "点名意见不得串章")
+        self.assertIn("全书节奏前紧后松", d22, "全书级 major 每个重写章都要看到")
+        for p in drafts.values():
+            self.assertNotIn("__REDO_ISSUES__", p, "占位符不得残留")
+            self.assertNotIn("__STALE_NOTE__", p)
+
+    def test_no_redo_issues_no_block(self):
+        task, run, agents, _critics, _impl = self._make([])
+        drafts = self._run(task, run, agents)
+        for i, p in drafts.items():
+            self.assertNotIn("上一轮评审未达标原因", p,
+                             "无原因账的章不得注入空原因块（第 %d 章）" % i)

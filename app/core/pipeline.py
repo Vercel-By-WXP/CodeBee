@@ -2885,6 +2885,7 @@ __VOLUME__
 - 本章主要情绪/戏剧变化：__HIGHLIGHT__（按其重要性决定篇幅和表现方式；不强制放大，不为满足标签伪造高潮）
 __LOCKED_CH__
 __STALE_NOTE__
+__REDO_ISSUES__
 - 正文约 __WORDS__ 字，中文，直接开写正文（可含本章标题行）。
 
 ## 前情提要（此前各章结尾摘录，衔接用）
@@ -3412,6 +3413,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     inherit = run.get("inherit") or {}
     done_set = set(inherit.get("done_chapters") or [])
     inh_scores = {c.get("chapter"): c for c in (inherit.get("chapter_scores") or [])}
+    # 未达标重写的原因账（store.retry_task 从 verdict.major_issues 下发）：
+    # 章节级+全局级 major，渲染进对应重写章的起草提示词；达标续跑为空表
+    redo_issues = [x for x in (inherit.get("redo_issues") or []) if isinstance(x, dict)]
     if inherit.get("outline"):
         outline = inherit["outline"]
         # 历史遗留：降级/模板大纲被继承时，真实任务宁可中止重生成，也不按空模板写全书
@@ -3840,6 +3844,26 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             if os.path.exists(os.path.join(workdir, ch_file)):
                 stale_note = ("- 注意：目录里已有一版**未通过评审**的旧稿 `%s`——不要校验沿用、"
                               "不要增量修补，按本章任务直接覆盖重写。" % ch_file)
+            # 上一轮未达标原因（「重写未达标章」链路）：本章被点名的 major 与
+            # 全书级 major 随起草提示词下发——原因只躺在报告里、作者盲写等
+            # 修订拉回，白白多烧一轮评审（2026-10-10 实案）。
+            def _issue_ch(x):
+                try:
+                    return int(x.get("chapter"))
+                except (TypeError, ValueError):
+                    return None
+
+            redo_lines = []
+            mine = [x for x in redo_issues if _issue_ch(x) == i]
+            book_lvl = [x for x in redo_issues if _issue_ch(x) is None]
+            if mine:
+                redo_lines.append("- 本章被上一轮评审点名的问题（重写必须逐条消解）：")
+                redo_lines += _major_lines(mine)
+            if book_lvl:
+                redo_lines.append("- 上一轮全书级 major 问题（本章重写须配合消解，不得相抵）：")
+                redo_lines += _major_lines(book_lvl)
+            redo_note = ("## 上一轮评审未达标原因（必读）\n" + "\n".join(redo_lines) + "\n"
+                         ) if redo_lines else ""
             # stable_order：同一任务 8 个章节的技能块必须字节级一致（§07 T1.2' 前缀缓存）
             # 三块分开留底：起草重试的分层降级（_serial_shrunk_block）要按
             # 「经验库/圣经」各自的身份收缩，折成一整块就只剩 4K 硬截一层了
@@ -3878,6 +3902,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         .replace("__HOOK__", branch_hook or ch.get("hook") or "留下悬念")
                         .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, i))
                         .replace("__STALE_NOTE__", stale_note)
+                        .replace("__REDO_ISSUES__", redo_note)
                         .replace("__HIGHLIGHT__", ch.get("highlight") or "按剧情要点自然铺设一处小冲突/小反转")
                         .replace("__STYLE__", style_tpl)
                         .replace("__QUALITY_GATE__", novel_quality.opening_requirements(i, wpc))
