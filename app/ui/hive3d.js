@@ -72,7 +72,7 @@ window.Hive3D = (function () {
   function Scene(opts){
     this.opts=opts;this.canvas=opts.canvas;this.overlay=opts.overlay;this.host=this.canvas.parentElement;
     this.onCellActivate=opts.onCellActivate||function(){};this.cellRefresh=opts.cellRefresh||function(){return{};};
-    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=-0.18;this.pitch=0.40;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
+    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=-0.18;this.pitch=0.50;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];
     this.host.dataset.renderer="webgl";this.canvas.hidden=false;this.canvas.classList.add("hive-gl-live");
     this.layer=node("div","hive-reference-layer",this.host);this.layer.appendChild(this.overlay);this.overlay.replaceChildren();
     try { this.initGL(); } catch(e) { console.error("CodeBee Hive3D WebGL init failed",e); this.failed=true; this.failure=e; return; }
@@ -86,7 +86,7 @@ window.Hive3D = (function () {
   Scene.prototype.initGL=function(){
     const gl=this.canvas.getContext("webgl",{alpha:true,antialias:true,powerPreference:"high-performance"})||this.canvas.getContext("experimental-webgl");
     if(!gl)throw Error("WebGL unavailable");this.gl=gl;
-    const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);vec3 key=normalize(vec3(-0.45,0.86,0.38));vec3 fill=normalize(vec3(0.58,0.33,-0.74));float diffuse=max(0.0,dot(n,key));float rimFill=max(0.0,dot(n,fill));float sky=clamp(n.y*0.5+0.5,0.0,1.0);float heightShade=mix(0.90,1.0,smoothstep(-0.2,2.2,aPosition.y));vShade=(0.66+0.22*diffuse+0.08*sky+0.04*rimFill)*heightShade;}";
+    const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);vec3 key=normalize(vec3(-0.45,0.86,0.38));vec3 fill=normalize(vec3(0.58,0.33,-0.74));float diffuse=max(0.0,dot(n,key));float rimFill=max(0.0,dot(n,fill));float sky=clamp(n.y*0.5+0.5,0.0,1.0);float heightShade=mix(0.90,1.0,smoothstep(-0.2,2.2,aPosition.y));vShade=(0.76+0.18*diffuse+0.08*sky+0.04*rimFill)*heightShade;}";
     const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 l=normalize(vec3(-0.45,0.86,0.38));vec3 fill=normalize(vec3(0.58,0.33,-0.74));vec3 v=normalize(uEyePosition-vWorld);vec3 h=normalize(l+v);vec3 hf=normalize(fill+v);float spec=pow(max(0.0,dot(n,h)),32.0)*0.15;float warmSpec=pow(max(0.0,dot(n,hf)),38.0)*0.05;float rim=pow(1.0-max(0.0,dot(n,v)),2.5)*0.075;vec3 highlight=vec3(0.48,0.83,0.96)*spec+vec3(0.98,0.62,0.31)*warmSpec+vec3(0.18,0.58,0.82)*rim;vec3 lit=vColor.rgb*vShade+highlight;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
     this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,4,.12);this.sphere=sphereGeometry(gl,16,24);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
@@ -106,8 +106,8 @@ window.Hive3D = (function () {
     const b=this.box,rb=this.roundBox,s=this.sphere;this.objects=[];
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
     this.add(b,0,-.18,-.20,23,.28,15.4,[.97,.985,1,1]);
-    this.add(b,0,2.48,-6.45,19,5.2,.24,[.055,.36,.72,1]);
-    this.add(b,0,4.98,-2.8,19,.16,7.3,[.98,.99,1,1]);
+    this.add(b,0,2.48,-6.45,19,5.2,.24,[.10,.52,.89,1]);
+    this.add(b,0,5.10,-5.92,19,.18,1.12,[.98,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
     this.add(b,0,.18,-6.28,18.7,.12,.06,[.08,.42,.78,1]);
     for(let x=-8;x<=8;x+=2.65)this.add(b,x,2.5,-6.29,.018,4.7,.025,[.12,.40,.72,1]);
@@ -121,18 +121,24 @@ window.Hive3D = (function () {
     }
     // Ceiling light fixtures and soft-colored illuminated panels.
     for(let x=-6.3;x<=6.4;x+=6.3){
-      this.add(b,x,4.87,-1.8,2.65,.075,.30,[.20,.24,.29,1]);
-      this.add(b,x,4.80,-1.8,2.40,.045,.24,[1,.99,.91,1]);
+      this.add(b,x,5.36,-3.35,2.65,.075,.30,[.12,.17,.23,1]);
+      this.add(b,x,5.29,-3.35,2.40,.045,.24,[1,.99,.91,1]);
     }
     // Six stage cards mounted on the blue wall, with luminous cyan underlines.
     const stageColors=[[.22,.83,.94,1],[.24,.80,.93,1],[.27,.84,.96,1],[.20,.87,.95,1],[.25,.81,.95,1],[.28,.88,.95,1]];
     for(let i=0;i<6;i++){
-      const x=-7.1+i*2.84;
-      this.add(rb,x,3.58,-6.16,2.40,.82,.18,[.63,.82,.97,1]);
-      this.add(rb,x,3.58,-6.04,2.28,.68,.045,[.97,.99,1,1]);
+      const x=-7.75+i*3.10;
+      this.add(rb,x,3.58,-6.16,2.78,.94,.18,[.63,.82,.97,1]);
+      this.add(rb,x,3.58,-6.04,2.66,.80,.045,[.97,.99,1,1]);
       this.add(b,x,3.87,-6.012,1.86,.018,.008,[.18,.66,.80,1]);
       this.add(b,x,3.14,-6.03,1.86,.035,.025,stageColors[i]);
       this.add(b,x+1.05,3.58,-6.04,.09,.09,.08,[.38,.89,.96,1]);
+    }
+    // The reference uses a continuous luminous workflow rail below the six white phase pills.
+    this.add(b,0,2.87,-6.005,15.8,.035,.024,[.22,.89,1,1]);
+    for(let i=0;i<6;i++){
+      const x=-7.75+i*3.10;
+      this.add(b,x,3.005,-6.005,.035,.27,.024,[.22,.89,1,1]);
     }
     // Subtle hexagonal grout follows the reference floor and is baked into the static GPU batch.
     const tileR=.56, tileDX=1.5*tileR, tileDZ=Math.sqrt(3)*tileR;
@@ -153,8 +159,8 @@ window.Hive3D = (function () {
     // Reference layout: eight compact rear stations and six wider front stations.
     // Every monitor overlay is projected from these exact same coordinates below.
     const deskRows=[
-      {row:0,z:-2.65,width:2.03,screenWidth:1.28,screenHeight:.70,xs:[-7.77,-5.55,-3.33,-1.11,1.11,3.33,5.55,7.77]},
-      {row:1,z:2.95,width:2.42,screenWidth:1.48,screenHeight:.82,xs:[-7.0,-4.2,-1.4,1.4,4.2,7.0]}
+      {row:0,z:-3.35,width:2.03,screenWidth:1.28,screenHeight:.70,xs:[-7.77,-5.55,-3.33,-1.11,1.11,3.33,5.55,7.77]},
+      {row:1,z:3.15,width:2.42,screenWidth:1.48,screenHeight:.82,xs:[-7.0,-4.2,-1.4,1.4,4.2,7.0]}
     ];
     this.deskPositions=[];
     for(const config of deskRows)for(const x of config.xs){
@@ -196,8 +202,6 @@ window.Hive3D = (function () {
       this.add(s,x+.09,by-.055,bz-.338,.017,.020,.014,[.28,1,1,1]);
       this.add(b,x-.13,by+.23,bz+.13,.028,.18,.028,[.08,.23,.31,1]);
       this.add(b,x+.13,by+.23,bz+.13,.028,.18,.028,[.08,.23,.31,1]);
-      this.add(s,x-.13,by+.34,bz+.13,.035,.032,.035,[.10,.84,.98,1]);
-      this.add(s,x+.13,by+.34,bz+.13,.035,.032,.035,[.10,.84,.98,1]);
       for(const side of [-1,1]){
         this.add(s,x+side*.22,by-.28,bz-.11,.10,.11,.20,[.98,.62,.035,1]);
         this.add(s,x+side*.27,by-.40,bz-.43,.10,.08,.38,[.99,.66,.045,1]);
@@ -262,7 +266,7 @@ window.Hive3D = (function () {
     if(!this.gl||!this.active)return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
-    const radius=16.7/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.58,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.48,0],[0,1,0]);const proj=mat4.perspective(.73,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
+    const radius=15.8/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.62,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.48,0],[0,1,0]);const proj=mat4.perspective(.70,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
     gl.uniformMatrix4fv(this.uViewProj,false,vp);gl.uniform3f(this.uEyePosition,eye[0],eye[1],eye[2]);
     this.drawBatch(this.batchBuffers&&this.batchBuffers.opaque);
     const translucent=this.batchBuffers&&this.batchBuffers.transparent;
@@ -289,8 +293,8 @@ window.Hive3D = (function () {
     if(!this.overlay||this.overlay.hidden||!this.cssW||!this.cssH)return;
     // Stage labels occupy the front face of each physical wall panel, rather than a fixed HUD row.
     this.stageMeta.forEach((p,i)=>{
-      const x=-7.1+i*2.84,z=-6.07;
-      const rect=this.projectRect([[x-1.17,3.17,z],[x+1.17,3.17,z],[x+1.17,3.99,z],[x-1.17,3.99,z]]);
+      const x=-7.75+i*3.10,z=-6.07;
+      const rect=this.projectRect([[x-1.34,3.11,z],[x+1.34,3.11,z],[x+1.34,4.05,z],[x-1.34,4.05,z]]);
       if(!rect){p.el.style.visibility="hidden";return;}
       p.el.style.visibility="visible";
       p.el.style.left=(rect.centerX/this.cssW*100)+"%";
@@ -301,7 +305,7 @@ window.Hive3D = (function () {
     });
     // Connectors stay on the wall plane and follow the same camera transform as the cards.
     this.links.forEach((link,i)=>{
-      const leftX=-7.1+i*2.84+1.22,rightX=-7.1+(i+1)*2.84-1.22;
+      const leftX=-7.75+i*3.10+1.40,rightX=-7.75+(i+1)*3.10-1.40;
       const a=this.projectWorld(leftX,3.58,-6.03),b=this.projectWorld(rightX,3.58,-6.03);
       if(!a||!b||!a.visible||!b.visible){link.style.visibility="hidden";return;}
       const dx=b.x-a.x,dy=b.y-a.y;
@@ -339,7 +343,7 @@ window.Hive3D = (function () {
   Scene.prototype.setActive=function(active){this.active=!!active;if(this.timer)clearInterval(this.timer);if(this.raf)cancelAnimationFrame(this.raf);this.raf=0;this.layer.hidden=!this.active;this.canvas.hidden=!this.active;if(this.active){this.updateOverlay();this.render();this.timer=setInterval(()=>{if(!document.hidden&&this.host.offsetParent!==null)this.updateOverlay();},1000);}};
   Scene.prototype.resize=function(){this.cssW=this.host.clientWidth;this.cssH=this.host.clientHeight;if(this.cssW&&this.cssH)this.render();};
   Scene.prototype.zoomAt=function(factor){this.zoom=clamp(this.zoom/factor,.72,2.4);this.render();};
-  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=-.18;this.pitch=.40;this.panX=0;this.panY=0;this.render();};
+  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=-.18;this.pitch=.50;this.panX=0;this.panY=0;this.render();};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0,deskRows:this.deskPositions?[this.deskPositions.filter(d=>d.row===0).length,this.deskPositions.filter(d=>d.row===1).length]:[]};};
   Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,.995,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
   Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
