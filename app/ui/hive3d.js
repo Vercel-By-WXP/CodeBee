@@ -159,8 +159,8 @@ window.Hive3D = (function () {
     // Reference layout: eight compact rear stations and six wider front stations.
     // Every monitor overlay is projected from these exact same coordinates below.
     const deskRows=[
-      {row:0,z:-3.35,width:2.03,screenWidth:1.28,screenHeight:.70,xs:[-7.77,-5.55,-3.33,-1.11,1.11,3.33,5.55,7.77]},
-      {row:1,z:3.15,width:2.42,screenWidth:1.48,screenHeight:.82,xs:[-7.0,-4.2,-1.4,1.4,4.2,7.0]}
+      {row:0,z:-3.35,width:2.03,screenWidth:1.28,screenHeight:.70,xs:[-8.4,-6.0,-3.6,-1.2,1.2,3.6,6.0,8.4]},
+      {row:1,z:3.95,width:2.42,screenWidth:1.48,screenHeight:.82,xs:[-6.0,-3.6,-1.2,1.2,3.6,6.0]}
     ];
     this.deskPositions=[];
     for(const config of deskRows)for(const x of config.xs){
@@ -207,8 +207,8 @@ window.Hive3D = (function () {
         this.add(s,x+side*.27,by-.40,bz-.43,.10,.08,.38,[.99,.66,.045,1]);
         this.add(s,x+side*.27,.69,z+.25,.08,.065,.09,[1,.72,.08,1]);
       }
-      this.add(s,x-.29,by+.11,bz-.03,.21,.05,.13,[.30,.80,.96,.34]);
-      this.add(s,x+.29,by+.11,bz-.03,.21,.05,.13,[.30,.80,.96,.34]);
+      this.add(s,x-.43,by+.09,bz-.03,.38,.075,.19,[.68,.91,1,.68]);
+      this.add(s,x+.43,by+.09,bz-.03,.38,.075,.19,[.68,.91,1,.68]);
       this.add(b,x,by-.28,bz-.015,.18,.055,.22,[.07,.08,.09,1]);
     }
     // Planters and stylized leaves soften the room edges.
@@ -266,7 +266,7 @@ window.Hive3D = (function () {
     if(!this.gl||!this.active)return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
-    const radius=15.8/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.62,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.48,0],[0,1,0]);const proj=mat4.perspective(.70,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
+    const radius=15.8/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.62,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.48,0],[0,1,0]);const proj=mat4.perspective(.62,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
     gl.uniformMatrix4fv(this.uViewProj,false,vp);gl.uniform3f(this.uEyePosition,eye[0],eye[1],eye[2]);
     this.drawBatch(this.batchBuffers&&this.batchBuffers.opaque);
     const translucent=this.batchBuffers&&this.batchBuffers.transparent;
