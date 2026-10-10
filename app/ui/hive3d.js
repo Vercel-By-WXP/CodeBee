@@ -96,12 +96,12 @@ window.Hive3D = (function () {
     // three consecutive edges per tile creates crosses and broken hexes; unique full edges
     // preserve the six-sided tiling while keeping buffer size/draw cost low.
     const positions=[],normals=[],indices=[],seen=new Set();
-    const radius=.56,stepX=3*radius,stepZ=Math.sqrt(3)*radius/2,halfWidth=.0045,y=-.031;
+    const radius=.44,stepX=1.5*radius,stepZ=Math.sqrt(3)*radius,halfWidth=.0038,y=-.031;
     const keyPoint=(x,z)=>Math.round(x*10000)+","+Math.round(z*10000);
-    for(let row=0;row<64;row++){
+    for(let row=0;row<40;row++){
       const cz=-6.45+row*stepZ;
       if(cz>22.5)break;
-      for(let col=-7;col<=7;col++){
+      for(let col=-17;col<=17;col++){
         const cx=col*stepX+(row%2)*stepX/2;
         if(Math.abs(cx)>10.6)continue;
         for(let edge=0;edge<6;edge++){
