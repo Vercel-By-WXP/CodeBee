@@ -109,6 +109,49 @@ async function main() {
     await waitFor(async () => (await evaluate("document.readyState")) === "complete", 20000, "CodeBee page load");
     await sleep(800);
 
+    // Exercise the actual fullscreen container before the viewport is moved into the isolated screenshot stage.
+    const fullscreenReady = await waitFor(async () => evaluate("Boolean(document.getElementById('hive-scene-fullscreen') && document.getElementById('rd-hive-viewport')?.dataset.controlsReady === 'true')"), 15000, "fullscreen control initialization");
+    assert.equal(fullscreenReady, true, "fullscreen control is wired by the real application");
+    await evaluate("if(typeof window.welcomeClose==='function')window.welcomeClose(); const welcome=document.getElementById('welcome');if(welcome)welcome.classList.add('hidden');");
+    const clickSelector = async selector => {
+      const selectorJSON = JSON.stringify(selector);
+      await evaluate("document.querySelector(" + selectorJSON + ").scrollIntoView({block:'center'})");
+      const point = JSON.parse(await evaluate("JSON.stringify((() => { const el=document.querySelector(" + selectorJSON + "); if(!el)throw new Error('Missing fullscreen test selector'); const r=el.getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}; })())"));
+      await send("Input.dispatchMouseEvent", { type:"mouseMoved", x:point.x, y:point.y });
+      await send("Input.dispatchMouseEvent", { type:"mousePressed", x:point.x, y:point.y, button:"left", clickCount:1 });
+      await send("Input.dispatchMouseEvent", { type:"mouseReleased", x:point.x, y:point.y, button:"left", clickCount:1 });
+    };
+
+    await evaluate("document.querySelector('[data-hive-view=reference]').click()");
+    await clickSelector("#hive-scene-fullscreen");
+    await waitFor(() => evaluate("document.fullscreenElement === document.getElementById('hive-scene-stage')"), 10000, "reference fullscreen entry");
+    const referenceFullscreen = JSON.parse(await evaluate("JSON.stringify((() => { const stage=document.getElementById('hive-scene-stage'),viewport=document.getElementById('rd-hive-viewport'),img=viewport.querySelector('.hive-reference'),button=document.getElementById('hive-scene-fullscreen'),s=stage.getBoundingClientRect(),v=viewport.getBoundingClientRect(); return {mode:window.__hive3d.displayMode,fit:getComputedStyle(img).objectFit,imageDisplay:getComputedStyle(img).display,pressed:button.getAttribute('aria-pressed'),stage:[s.width,s.height],viewport:[v.width,v.height],toolbarInside:stage.contains(document.querySelector('.hive-scene-tools'))}; })())"));
+    assert.equal(referenceFullscreen.mode, "reference", "high-fidelity view remains selected in fullscreen");
+    assert.equal(referenceFullscreen.fit, "contain", "high-fidelity artwork preserves aspect ratio in fullscreen");
+    assert.notEqual(referenceFullscreen.imageDisplay, "none", "high-fidelity artwork remains visible in fullscreen");
+    assert.equal(referenceFullscreen.pressed, "true", "fullscreen button mirrors the native state");
+    assert.ok(referenceFullscreen.stage[0] >= 1400 && referenceFullscreen.stage[1] >= 900, "fullscreen shell fills the browser viewport");
+    assert.ok(referenceFullscreen.viewport[0] >= 1000 && referenceFullscreen.viewport[1] >= 700, "reference viewport expands in fullscreen");
+    assert.equal(referenceFullscreen.toolbarInside, true, "view controls remain inside the fullscreen element");
+
+    await evaluate("document.querySelector('[data-hive-view=live3d]').click()");
+    const full3d = JSON.parse(await evaluate("JSON.stringify({mode:window.__hive3d.displayMode,canvasHidden:document.getElementById('rd-hive-gl').hidden,fullscreen:document.fullscreenElement?.id})"));
+    assert.equal(full3d.mode, "live3d", "switching to WebGL preserves fullscreen");
+    assert.equal(full3d.canvasHidden, false, "WebGL canvas stays visible in fullscreen");
+    assert.equal(full3d.fullscreen, "hive-scene-stage", "WebGL mode does not exit fullscreen");
+    await evaluate("document.querySelector('[data-hive-view=2d]').click()");
+    const full2d = JSON.parse(await evaluate("JSON.stringify({mode:window.__hive3d.displayMode,fullscreen:document.fullscreenElement?.id})"));
+    assert.equal(full2d.mode, "2d", "2D list is selectable in fullscreen");
+    assert.equal(full2d.fullscreen, "hive-scene-stage", "2D mode does not exit fullscreen");
+    await evaluate("document.querySelector('[data-hive-view=reference]').click()");
+
+    await send("Input.dispatchKeyEvent", { type:"keyDown", key:"Escape", code:"Escape", windowsVirtualKeyCode:27, nativeVirtualKeyCode:27 });
+    await send("Input.dispatchKeyEvent", { type:"keyUp", key:"Escape", code:"Escape", windowsVirtualKeyCode:27, nativeVirtualKeyCode:27 });
+    await waitFor(() => evaluate("document.fullscreenElement === null"), 10000, "Escape fullscreen exit");
+    const fullscreenExit = JSON.parse(await evaluate("JSON.stringify({pressed:document.getElementById('hive-scene-fullscreen').getAttribute('aria-pressed'),stageClass:document.getElementById('hive-scene-stage').className,viewportWidth:document.getElementById('rd-hive-viewport').getBoundingClientRect().width})"));
+    assert.equal(fullscreenExit.pressed, "false", "fullscreen button resets after Escape");
+    assert.ok(fullscreenExit.viewportWidth >= 500, "viewport returns to normal layout after fullscreen exit");
+
     const setupExpr = [
       "(() => {",
       " const viewport=document.getElementById('rd-hive-viewport');",
