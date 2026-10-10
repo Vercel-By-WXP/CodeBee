@@ -8567,7 +8567,7 @@ function hiveThinkLine(lines) {
  * localStorage 持久化/WebGL 不可用降级，以及把 renderHive 的泳道数据翻译给场景。 —— */
 let hiveScene = null;          // Hive3D 场景实例（懒创建）
 let hiveSceneDead = false;     // WebGL 不可用/上下文丢失——本次页面周期内不再尝试
-let hiveMode = "reference";   // reference / live3d / 2d（orch.hiveView）
+let hiveMode = "live3d";     // live3d is the real scene; reference and 2d remain opt-in views
 let hiveRunId = "";            // 最近一次 renderHive 的 run.id（尾巴/思考缓存键前缀）
 const hiveLiveMeta = {};       // rel -> { started_at }（3D 芯片秒表用）
 let hiveDialogPoll = null;
@@ -8674,7 +8674,7 @@ function setHiveSceneMode(mode, opts) {
     hint.dataset.i18n = hintKey;
     hint.textContent = t(hintKey);
   }
-  try { localStorage.setItem("orch.hiveView", hiveMode); } catch (e) { /* 隐私模式等 */ }
+  try { localStorage.setItem("orch.hiveView.v2", hiveMode); } catch (e) { /* 隐私模式等 */ }
 }
 
 function setupHiveSceneControls() {
@@ -8698,9 +8698,18 @@ function setupHiveSceneControls() {
       else hiveScene.zoomAt(button.dataset.hiveSceneAction === "zoom-in" ? 1 / 1.18 : 1.18);
     });
   });
-  let saved = "reference";
-  try { saved = localStorage.getItem("orch.hiveView") || "reference"; } catch (e) { /* ignore */ }
-  setHiveSceneMode(["reference", "live3d", "2d"].includes(saved) ? saved : saved === "3d" ? "reference" : "reference", { silent: true });
+  let saved = "live3d";
+  try {
+    saved = localStorage.getItem("orch.hiveView.v2") || "";
+    if (!saved) {
+      // Migrate an explicitly selected 2D/live3D preference; the old default "reference"
+      // was auto-persisted for every new visitor, so it is not a reliable user preference.
+      const legacy = localStorage.getItem("orch.hiveView");
+      saved = legacy === "2d" || legacy === "live3d" ? legacy : "live3d";
+      localStorage.setItem("orch.hiveView.v2", saved);
+    }
+  } catch (e) { /* ignore storage restrictions and keep the live 3D default */ }
+  setHiveSceneMode(["reference", "live3d", "2d"].includes(saved) ? saved : "live3d", { silent: true });
 }
 
 /* renderHive → 场景数据翻译：泳道=蜂巢塔的一层，格子按状态映射高度/颜色。
