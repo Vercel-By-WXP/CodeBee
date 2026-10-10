@@ -99,7 +99,7 @@ async function main() {
     });
     const evaluate = async expression => {
       const response = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
-      if (response.result && response.result.exceptionDetails) throw new Error(response.result.exceptionDetails.text || "browser evaluation failed");
+      if (response.result && response.result.exceptionDetails) { const d=response.result.exceptionDetails; const ex=d.exception||{}; throw new Error("browser evaluation failed: "+JSON.stringify({text:d.text,exception:ex.description||ex.value||ex.className,line:d.lineNumber,column:d.columnNumber,stack:d.stackTrace})); }
       return response.result && response.result.result ? response.result.result.value : undefined;
     };
     await send("Runtime.enable");
