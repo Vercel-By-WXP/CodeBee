@@ -16197,6 +16197,9 @@ window.suRestart = suRestart;
 window.updDismiss = updDismiss;
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Initialize Hive3D controls independently of run data. A fresh workspace may have no
+  // active run yet, but fullscreen/view controls must still be wired and usable.
+  setupHiveSceneControls();
   // 远程地址里带的 ?token= 存起来并从地址栏抹掉，之后所有请求走请求头
   const urlTok = new URLSearchParams(location.search).get("token");
   if (urlTok) {
