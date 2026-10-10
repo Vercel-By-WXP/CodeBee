@@ -90,8 +90,8 @@ window.Hive3D = (function () {
   Scene.prototype.initGL=function(){
     const gl=this.canvas.getContext("webgl",{alpha:true,antialias:true,powerPreference:"high-performance"})||this.canvas.getContext("experimental-webgl");
     if(!gl)throw Error("WebGL unavailable");this.gl=gl;
-    const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);vec3 key=normalize(vec3(-0.45,0.86,0.38));vec3 fill=normalize(vec3(0.58,0.33,-0.74));float diffuse=max(0.0,dot(n,key));float rimFill=max(0.0,dot(n,fill));float sky=clamp(n.y*0.5+0.5,0.0,1.0);float heightShade=mix(0.90,1.0,smoothstep(-0.2,2.2,aPosition.y));vShade=(0.76+0.18*diffuse+0.08*sky+0.04*rimFill)*heightShade;}";
-    const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 l=normalize(vec3(-0.45,0.86,0.38));vec3 fill=normalize(vec3(0.58,0.33,-0.74));vec3 v=normalize(uEyePosition-vWorld);vec3 h=normalize(l+v);vec3 hf=normalize(fill+v);float spec=pow(max(0.0,dot(n,h)),32.0)*0.15;float warmSpec=pow(max(0.0,dot(n,hf)),38.0)*0.05;float rim=pow(1.0-max(0.0,dot(n,v)),2.5)*0.075;vec3 highlight=vec3(0.48,0.83,0.96)*spec+vec3(0.98,0.62,0.31)*warmSpec+vec3(0.18,0.58,0.82)*rim;vec3 lit=vColor.rgb*vShade+highlight;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
+    const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);float sky=clamp(n.y*0.5+0.5,0.0,1.0);float side=abs(n.x)*0.035;float heightShade=mix(0.94,1.0,smoothstep(-0.2,3.6,aPosition.y));vShade=(0.84+0.10*sky+side)*heightShade;}";
+    const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 v=normalize(uEyePosition-vWorld);vec3 key=normalize(vec3(-0.48,0.86,0.42));vec3 fill=normalize(vec3(0.62,0.32,-0.72));vec3 warm=normalize(vec3(0.34,0.46,0.82));float ndl=max(dot(n,key),0.0);float fillN=max(dot(n,fill),0.0);float warmN=max(dot(n,warm),0.0);float hemi=clamp(n.y*0.5+0.5,0.0,1.0);vec3 base=vColor.rgb;vec3 h=normalize(key+v);vec3 hf=normalize(fill+v);float chroma=max(max(base.r,base.g),base.b)-min(min(base.r,base.g),base.b);float gloss=mix(0.10,0.34,smoothstep(0.10,0.82,chroma));float spec=pow(max(dot(n,h),0.0),mix(24.0,58.0,gloss))*gloss*0.42;float specFill=pow(max(dot(n,hf),0.0),36.0)*0.075;float fresnel=pow(1.0-max(dot(n,v),0.0),3.0);vec3 ambient=base*(0.44+0.10*hemi);vec3 direct=base*(0.29*ndl+0.13*fillN+0.07*warmN);vec3 highlight=vec3(1.0,0.91,0.78)*spec+vec3(0.52,0.84,1.0)*specFill+vec3(0.18,0.48,0.68)*fresnel*0.075;float cyan=max(0.0,min(base.g,base.b)-base.r)*0.65;vec3 emissive=base*cyan;vec3 lit=ambient+direct+highlight+emissive;lit*=vShade;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
     this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,8,.17);this.sphere=sphereGeometry(gl,24,32);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
   };
@@ -195,37 +195,38 @@ window.Hive3D = (function () {
       this.add(rb,x,.48,z+1.25,.48,.12,.12,[.18,.22,.25,1]);
       for(let k=0;k<5;k++){const a=k*Math.PI*2/5;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);}
       const by=1.25,bz=z+.88;
-      this.add(rb,x,by-.34,bz-.03,.31,.34,.24,[.10,.13,.16,1]);
-      this.add(s,x,by,bz,.35,.34,.32,[1,.70,.05,1]);
-      // Glossy face details make each bee read as a designed mascot, not a yellow sphere.
-      this.add(s,x-.105,by+.035,bz-.278,.060,.078,.035,[.025,.045,.065,1]);
-      this.add(s,x+.105,by+.035,bz-.278,.060,.078,.035,[.025,.045,.065,1]);
-      this.add(s,x-.119,by+.061,bz-.306,.018,.024,.010,[.92,.98,1,1]);
-      this.add(s,x+.091,by+.061,bz-.306,.018,.024,.010,[.92,.98,1,1]);
-      this.add(rb,x,by-.105,bz-.295,.105,.022,.018,[.14,.055,.025,1]);
-      this.add(s,x,by-.24,bz+.02,.28,.23,.26,[.98,.57,.035,1]);
-      // Dark-and-gold thorax bands, visible from the default front camera.
-      this.add(rb,x,by-.235,bz-.214,.285,.055,.035,[.055,.065,.075,1]);
-      this.add(rb,x,by-.305,bz-.205,.255,.035,.030,[.99,.73,.08,1]);
-      this.add(s,x,by+.30,bz+.08,.20,.035,.18,[.045,.055,.065,1]);
-      this.add(b,x-.10,by+.385,bz+.09,.018,.10,.018,[.06,.07,.08,1]);
-      this.add(b,x+.10,by+.385,bz+.09,.018,.10,.018,[.06,.07,.08,1]);
-      this.add(rb,x,by-.055,bz-.285,.255,.064,.05,[.018,.045,.07,1]);
-      this.add(rb,x,by-.055,bz-.322,.19,.028,.012,[.10,.76,.91,1]);
-      this.add(s,x-.09,by-.055,bz-.338,.017,.020,.014,[.28,1,1,1]);
-      this.add(s,x+.09,by-.055,bz-.338,.017,.020,.014,[.28,1,1,1]);
-      this.add(b,x-.13,by+.23,bz+.13,.028,.18,.028,[.08,.23,.31,1]);
-      this.add(b,x+.13,by+.23,bz+.13,.028,.18,.028,[.08,.23,.31,1]);
+      // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
+      this.add(rb,x,by-.27,bz+.01,.31,.37,.29,[.075,.09,.11,1]);
+      this.add(s,x,by-.255,bz+.035,.255,.255,.235,[.08,.10,.12,1]);
+      this.add(rb,x,by-.18,bz+.244,.38,.052,.026,[.98,.66,.035,1]);
+      this.add(rb,x,by-.315,bz+.228,.34,.047,.026,[.97,.61,.025,1]);
+      this.add(rb,x,by-.395,bz+.18,.25,.032,.024,[.10,.12,.14,1]);
+      this.add(s,x,by,bz,.315,.305,.285,[1,.70,.045,1]);
+      // The face points toward the monitor; the rear silhouette carries the headset details.
       for(const side of [-1,1]){
-        this.add(s,x+side*.22,by-.28,bz-.11,.10,.11,.20,[.98,.62,.035,1]);
-        this.add(s,x+side*.27,by-.40,bz-.43,.10,.08,.38,[.99,.66,.045,1]);
-        this.add(s,x+side*.27,.69,z+.25,.08,.065,.09,[1,.72,.08,1]);
+        this.add(s,x+side*.272,by+.015,bz+.04,.075,.112,.095,[.055,.065,.075,1]);
+        this.add(s,x+side*.302,by+.015,bz+.045,.032,.052,.048,[.99,.68,.045,1]);
+        this.add(b,x+side*.105,by+.292,bz+.105,.024,.13,.024,[.045,.055,.065,1]);
+        this.add(s,x+side*.105,by+.36,bz+.105,.052,.048,.052,[.10,.12,.14,1]);
+        this.add(s,x+side*.105,by+.377,bz+.14,.018,.018,.018,[1,.73,.10,1]);
       }
-      this.add(s,x-.43,by+.09,bz-.03,.38,.075,.19,[.68,.91,1,.58]);
-      this.add(s,x+.43,by+.09,bz-.03,.38,.075,.19,[.68,.91,1,.58]);
-      this.add(s,x-.48,by+.10,bz-.025,.25,.035,.12,[.90,.98,1,.50]);
-      this.add(s,x+.38,by+.10,bz-.025,.25,.035,.12,[.90,.98,1,.50]);
-      this.add(b,x,by-.28,bz-.015,.18,.055,.22,[.07,.08,.09,1]);
+      this.add(s,x,by+.30,bz+.15,.10,.035,.06,[.045,.055,.065,1]);
+      // Slim arm shells angle down toward the keyboard instead of floating beside the body.
+      for(const side of [-1,1]){
+        this.add(s,x+side*.235,by-.15,bz-.075,.085,.15,.13,[.12,.15,.18,1]);
+        this.add(s,x+side*.235,by-.27,bz-.23,.070,.065,.105,[.95,.62,.035,1]);
+        this.add(s,x+side*.20,.74,z+.02,.062,.12,.075,[.09,.12,.15,1]);
+        this.add(s,x+side*.20,.695,z-.12,.055,.065,.07,[.17,.21,.24,1]);
+      }
+      // Small cyan service badge on the back of the chassis.
+      this.add(rb,x,by-.27,bz+.266,.12,.09,.024,[.025,.10,.14,1]);
+      this.add(rb,x,by-.27,bz+.282,.075,.018,.012,[.16,.88,.98,1]);
+      // Wings are layered translucent shells; the brighter inner facets read as reflections.
+      this.add(s,x-.43,by+.09,bz-.03,.38,.075,.19,[.68,.91,1,.54]);
+      this.add(s,x+.43,by+.09,bz-.03,.38,.075,.19,[.68,.91,1,.54]);
+      this.add(s,x-.48,by+.10,bz-.025,.25,.035,.12,[.90,.98,1,.42]);
+      this.add(s,x+.38,by+.10,bz-.025,.25,.035,.12,[.90,.98,1,.42]);
+
     }
     // Planters and stylized leaves soften the room edges.
     for(const x of [-9.05,9.05]){
@@ -282,7 +283,7 @@ window.Hive3D = (function () {
     if(!this.gl||!this.active||this.displayMode!=="live3d")return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
-    const radius=15.8/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.0+Math.sin(this.pitch)*radius*.62,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.48,0],[0,1,0]);const proj=mat4.perspective(.70,w/h,.1,70);proj[0]*=1.15;const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
+    const radius=16.2/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.1+Math.sin(this.pitch)*radius*.58,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.62,0],[0,1,0]);const proj=mat4.perspective(.70,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
     gl.uniformMatrix4fv(this.uViewProj,false,vp);gl.uniform3f(this.uEyePosition,eye[0],eye[1],eye[2]);
     this.drawBatch(this.batchBuffers&&this.batchBuffers.opaque);
     const translucent=this.batchBuffers&&this.batchBuffers.transparent;
