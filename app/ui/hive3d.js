@@ -257,12 +257,12 @@ window.Hive3D = (function () {
       for(let k=0;k<3;k++)this.add(b,blueBinderStart+k*.095,.79,z+.34,.075,.35,.18,[[.08,.34,.80,1],[.10,.51,.91,1],[.06,.25,.65,1]][k]);
       this.add(this.cylinder,x,.08,z+.62,.075,.28,.075,[.12,.15,.18,1]);
       this.add(rb,x,.30,z+.80,.94,.12,.68,[.11,.14,.17,1]);
-      this.add(rb,x,.62,z+.54,.90,.78,.18,[.075,.11,.15,1]);
+      this.add(rb,x,.62,z+.54,.98,.78,.18,[.085,.12,.16,1]);
       this.add(rb,x,.62,z+.635,.69,.54,.024,[.13,.18,.22,1]);
       this.add(rb,x,.48,z+.75,.48,.12,.12,[.18,.22,.25,1]);
       // Molded backrest cushion, lumbar ribs, arm pads, and five rolling casters.
-      this.add(rb,x,.62,z+.66,.72,.55,.050,[.085,.105,.125,1]);
-      for(const ribY of [.46,.60,.74])this.add(rb,x,ribY,z+.69,.56,.026,.020,[.17,.20,.22,1]);
+      this.add(rb,x,.62,z+.66,.74,.55,.050,[.105,.13,.15,1]);
+      for(const ribY of [.46,.60,.74])this.add(rb,x,ribY,z+.69,.58,.026,.020,[.24,.28,.31,1]);
       for(const side of [-1,1]){
         this.add(rb,x+side*.39,.63,z+.52,.10,.075,.38,[.11,.14,.16,1]);
         this.add(b,x+side*.39,.48,z+.53,.035,.28,.045,[.07,.09,.11,1]);
@@ -291,14 +291,14 @@ window.Hive3D = (function () {
         this.add(s,x+side*.125,.625,z+.735,.105,.105,.32,[.075,.09,.11,1]);
         this.add(rb,x+side*.13,.625,z+.57,.11,.065,.15,[.99,.66,.035,1]);
       }
-      // Articulated arms now clear the torso silhouette and visibly reach around it to the keyboard.
+      // Articulated arms sit outside the abdomen silhouette; metal-gray forearms lead to gold hands on the keys.
       for(const side of [-1,1]){
-        this.add(s,x+side*.31,.99,z+.78,.105,.13,.25,[.11,.14,.17,1]);
-        this.add(s,x+side*.39,.84,z+.605,.090,.095,.18,[.12,.15,.18,1]);
-        this.add(s,x+side*.38,.735,z+.425,.092,.080,.27,[.10,.13,.16,1]);
-        this.add(rb,x+side*.33,.665,z+.285,.125,.065,.12,[.96,.63,.035,1]);
-        this.add(s,x+side*.32,.650,z+.235,.078,.042,.080,[.98,.68,.045,1]);
-        for(let finger=0;finger<3;finger++)this.add(b,x+side*.32+(finger-1)*.026,.633,z+.185,.012,.010,.046,[.22,.29,.35,1]);
+        this.add(s,x+side*.34,.99,z+.79,.105,.13,.25,[.14,.17,.20,1]);
+        this.add(s,x+side*.465,.84,z+.605,.105,.105,.18,[.18,.22,.25,1]);
+        this.add(s,x+side*.445,.735,z+.425,.105,.082,.27,[.16,.20,.23,1]);
+        this.add(rb,x+side*.37,.665,z+.285,.125,.065,.12,[.96,.63,.035,1]);
+        this.add(s,x+side*.355,.650,z+.235,.078,.042,.080,[.98,.68,.045,1]);
+        for(let finger=0;finger<3;finger++)this.add(b,x+side*.355+(finger-1)*.026,.633,z+.185,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.370,.15,.080,.030,[.025,.10,.14,1]);
@@ -332,8 +332,8 @@ window.Hive3D = (function () {
     // Low-opacity contact shadows share the same 8+6 workstation positions.
     for(const desk of this.deskPositions){
       const {x,z,width}=desk;
-      this.add(s,x,-.026,z,width*.68,.026,.73,[.13,.23,.31,.15]);
-      this.add(s,x,-.025,z+1.08,.78,.018,.58,[.12,.20,.27,.10]);
+      this.add(s,x,-.033,z,width*.80,.012,.92,[.075,.13,.20,.22]);
+      this.add(s,x,-.032,z+.78,.98,.010,.72,[.09,.15,.21,.15]);
     }
   };
   Scene.prototype.buildBatches=function(){
