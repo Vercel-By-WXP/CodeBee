@@ -270,11 +270,11 @@ window.Hive3D = (function () {
       for(let k=0;k<5;k++){const a=k*Math.PI*2/5;const wx=x+Math.cos(a)*.48,wz=z+.62+Math.sin(a)*.40;this.add(b,x+Math.cos(a)*.38,.035,z+.62+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);this.add(s,wx,.005,wz,.085,.065,.075,[.035,.045,.055,1]);}
       const by=1.25,bz=z+.98;
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
-      this.add(rb,x,by-.38,bz+.01,.42,.55,.33,[.075,.09,.11,1]);
+      this.add(s,x,by-.42,bz+.005,.37,.70,.31,[.075,.09,.11,1]);
       this.add(s,x,by-.255,bz+.035,.255,.255,.235,[.08,.10,.12,1]);
-      this.add(rb,x,by-.18,bz+.274,.43,.052,.026,[.98,.66,.035,1]);
-      this.add(rb,x,by-.315,bz+.268,.39,.047,.026,[.97,.61,.025,1]);
-      this.add(rb,x,by-.395,bz+.18,.25,.032,.024,[.10,.12,.14,1]);
+      this.add(rb,x,by-.22,bz+.253,.47,.052,.026,[.98,.66,.035,1]);
+      this.add(rb,x,by-.405,bz+.286,.43,.047,.026,[.97,.61,.025,1]);
+      this.add(rb,x,by-.315,bz+.299,.29,.032,.024,[.055,.065,.075,1]);
       this.add(s,x,by,bz,.365,.325,.315,[1,.70,.045,1]);
       // The face points toward the monitor; the rear silhouette carries the headset details.
       for(const side of [-1,1]){
@@ -302,8 +302,8 @@ window.Hive3D = (function () {
         for(let finger=0;finger<3;finger++)this.add(b,x+side*.20+(finger-1)*.023,.635,z+.195,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
-      this.add(rb,x,by-.27,bz+.266,.12,.09,.024,[.025,.10,.14,1]);
-      this.add(rb,x,by-.27,bz+.282,.075,.018,.012,[.16,.88,.98,1]);
+      this.add(rb,x,by-.295,bz+.307,.12,.09,.024,[.025,.10,.14,1]);
+      this.add(rb,x,by-.295,bz+.322,.075,.018,.012,[.16,.88,.98,1]);
       // Four visibly tapered glassy wings with opposing tilt; a faceted leaf mesh is far more wing-like than ellipsoids.
       this.add(this.organic,x-.43,by+.12,bz-.045,.98,1.58,.055,[.60,.87,1,.58],-.34,.18);
       this.add(this.organic,x+.43,by+.12,bz-.045,.98,1.58,.055,[.60,.87,1,.58],.34,-.18);
