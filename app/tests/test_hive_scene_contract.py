@@ -56,9 +56,9 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("screenWidth:1.48,screenHeight:.82", ENGINE)
         # Bee assistant visual contract: wings sit at shoulder height and abdomen accents
         # follow the body shell rather than floating in front of the model.
-        self.assertIn("by-.245,bz+.19,.42,.145,.075,[.46,.77,.99,.29]", ENGINE)
+        self.assertIn("by-.245,bz+.205,.47,.18,.060,[.52,.82,1,.34]", ENGINE)
         self.assertIn("by-.42,bz+.005,.31,.31,.235", ENGINE)
-        self.assertIn("by-.225,bz+.235,.27,.095,.045,[.82,.96,1,.17]", ENGINE)
+        self.assertIn("by-.225,bz+.245,.30,.105,.038,[.88,.98,1,.21]", ENGINE)
         self.assertIn("function sphereBandGeometry", ENGINE)
         self.assertIn("this.bandGoldTop=sphereBandGeometry", ENGINE)
         self.assertIn("this.bandGoldBottom=sphereBandGeometry", ENGINE)
