@@ -59,7 +59,7 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("by-.245,bz+.19,.42,.145,.075,[.46,.77,.99,.29]", ENGINE)
         self.assertIn("by-.42,bz+.005,.31,.31,.235", ENGINE)
         self.assertIn("by-.225,bz+.235,.27,.095,.045,[.82,.96,1,.17]", ENGINE)
-        self.assertIn("by-.64,bz+.183,.325,.084,.025", ENGINE)
+        self.assertIn("by-.64,bz+.292,.325,.076,.022", ENGINE)
         self.assertIn("Scene.prototype.addLink", ENGINE)
         self.assertIn("const desk=this.deskPositions&&this.deskPositions[i]", ENGINE)
         self.assertIn("dispose=function", ENGINE)
