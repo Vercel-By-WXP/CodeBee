@@ -69,6 +69,29 @@ window.Hive3D = (function () {
     for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const a=r*(cols+1)+c,b=a+cols+1;ix.push(a,a+1,b,b,a+1,b+1);}
     return geometry(gl,p,ix,p.slice());
   }
+  function cylinderGeometry(gl,segments=20){
+    const p=[],n=[],ix=[];
+    // Side wall has independent normals from the flat end caps, avoiding pinched highlights.
+    for(let end=0;end<2;end++){
+      const y=end?.5:-.5;
+      for(let i=0;i<segments;i++){
+        const a=i/segments*Math.PI*2,x=Math.cos(a),z=Math.sin(a);
+        p.push(x,y,z);n.push(x,0,z);
+      }
+    }
+    for(let i=0;i<segments;i++){
+      const j=(i+1)%segments,b0=i,b1=j,t0=segments+i,t1=segments+j;
+      ix.push(b0,t0,b1,b1,t0,t1);
+    }
+    const bottomCenter=p.length/3;p.push(0,-.5,0);n.push(0,-1,0);
+    const bottomRing=p.length/3;
+    for(let i=0;i<segments;i++){const a=i/segments*Math.PI*2;p.push(Math.cos(a),-.5,Math.sin(a));n.push(0,-1,0);}
+    const topCenter=p.length/3;p.push(0,.5,0);n.push(0,1,0);
+    const topRing=p.length/3;
+    for(let i=0;i<segments;i++){const a=i/segments*Math.PI*2;p.push(Math.cos(a),.5,Math.sin(a));n.push(0,1,0);}
+    for(let i=0;i<segments;i++){const j=(i+1)%segments;ix.push(bottomCenter,bottomRing+i,bottomRing+j);ix.push(topCenter,topRing+j,topRing+i);}
+    return geometry(gl,p,ix,n);
+  }
   function Scene(opts){
     this.opts=opts;this.canvas=opts.canvas;this.overlay=opts.overlay;this.host=this.canvas.parentElement;
     this.onCellActivate=opts.onCellActivate||function(){};this.cellRefresh=opts.cellRefresh||function(){return{};};
@@ -93,7 +116,7 @@ window.Hive3D = (function () {
     const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);float sky=clamp(n.y*0.5+0.5,0.0,1.0);float side=abs(n.x)*0.035;float heightShade=mix(0.94,1.0,smoothstep(-0.2,3.6,aPosition.y));vShade=(0.88+0.08*sky+side)*heightShade;}";
     const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 v=normalize(uEyePosition-vWorld);vec3 key=normalize(vec3(-0.48,0.86,0.42));vec3 fill=normalize(vec3(0.62,0.32,-0.72));vec3 warm=normalize(vec3(0.34,0.46,0.82));float ndl=max(dot(n,key),0.0);float fillN=max(dot(n,fill),0.0);float warmN=max(dot(n,warm),0.0);float hemi=clamp(n.y*0.5+0.5,0.0,1.0);vec3 base=vColor.rgb;float wallBlue=step(0.38,base.b)*step(0.35,base.g)*step(base.r*1.65,base.g)*step(1.7,vWorld.y);float wallGradient=0.92+0.08*smoothstep(1.7,4.5,vWorld.y)+0.045*exp(-pow((vWorld.x+2.1)*0.24,2.0));base=mix(base,base*wallGradient,wallBlue);vec3 h=normalize(key+v);vec3 hf=normalize(fill+v);float chroma=max(max(base.r,base.g),base.b)-min(min(base.r,base.g),base.b);float gloss=mix(0.10,0.34,smoothstep(0.10,0.82,chroma));float spec=pow(max(dot(n,h),0.0),mix(24.0,58.0,gloss))*gloss*0.42;float specFill=pow(max(dot(n,hf),0.0),36.0)*0.075;float fresnel=pow(1.0-max(dot(n,v),0.0),3.0);vec3 ambient=base*(0.55+0.13*hemi);vec3 direct=base*(0.34*ndl+0.16*fillN+0.08*warmN);vec3 highlight=vec3(1.0,0.91,0.78)*spec+vec3(0.52,0.84,1.0)*specFill+vec3(0.18,0.48,0.68)*fresnel*0.075;float cyan=max(0.0,min(base.g,base.b)-base.r)*0.65;vec3 emissive=base*cyan;vec3 lit=ambient+direct+highlight+emissive;lit*=vShade;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
-    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,6,.12);this.sphere=sphereGeometry(gl,16,24);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
+    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,6,.12);this.sphere=sphereGeometry(gl,16,24);this.cylinder=cylinderGeometry(gl,20);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
   };
   Scene.prototype.listen=function(el,type,fn,opts){el.addEventListener(type,fn,opts);this.listeners.push(()=>el.removeEventListener(type,fn,opts));};
   Scene.prototype.bindSurface=function(){
@@ -179,7 +202,7 @@ window.Hive3D = (function () {
       this.add(rb,x,.99,z-.48,screenWidth+.18,screenHeight+.18,.13,[.035,.055,.075,1]);
       this.add(rb,x,.995,z-.432,screenWidth+.08,screenHeight+.08,.045,[.15,.20,.25,1]);
       this.add(b,x,.995,z-.405,screenWidth,screenHeight,.018,[.018,.105,.18,1]);
-      this.add(b,x,.61,z-.43,.10,.22,.10,[.32,.39,.45,1]);
+      this.add(this.cylinder,x,.61,z-.43,.072,.22,.072,[.32,.39,.45,1]);
       this.add(b,x,.49,z-.27,.54,.045,.34,[.16,.20,.24,1]);
       this.add(b,x,.72,z-.404,screenWidth*.84,.018,.012,[.10,.83,.94,1]);
       this.add(rb,x-.18,.655,z+.25,.60,.035,.20,[.15,.18,.21,1]);
@@ -191,7 +214,7 @@ window.Hive3D = (function () {
       for(let k=0;k<4;k++)this.add(b,binderStart+k*.095,.83,z+.35,.075,.43,.22,[[.13,.43,.78,1],[.95,.42,.24,1],[.16,.66,.46,1],[.93,.72,.28,1]][k]);
       const blueBinderStart=x-width/2+.19;
       for(let k=0;k<3;k++)this.add(b,blueBinderStart+k*.095,.79,z+.34,.075,.35,.18,[[.08,.34,.80,1],[.10,.51,.91,1],[.06,.25,.65,1]][k]);
-      this.add(b,x,.08,z+1.10,.10,.28,.10,[.12,.15,.18,1]);
+      this.add(this.cylinder,x,.08,z+1.10,.075,.28,.075,[.12,.15,.18,1]);
       this.add(rb,x,.22,z+1.10,.62,.12,.56,[.11,.14,.17,1]);
       this.add(rb,x,.57,z+1.35,.62,.72,.16,[.075,.11,.15,1]);
       this.add(rb,x,.57,z+1.434,.42,.48,.018,[.13,.18,.22,1]);
@@ -216,7 +239,7 @@ window.Hive3D = (function () {
       for(const side of [-1,1]){
         this.add(s,x+side*.272,by+.015,bz+.04,.075,.112,.095,[.055,.065,.075,1]);
         this.add(s,x+side*.302,by+.015,bz+.045,.032,.052,.048,[.99,.68,.045,1]);
-        this.add(b,x+side*.105,by+.292,bz+.105,.024,.13,.024,[.045,.055,.065,1]);
+        this.add(this.cylinder,x+side*.105,by+.292,bz+.105,.016,.13,.016,[.045,.055,.065,1]);
         this.add(s,x+side*.105,by+.36,bz+.105,.052,.048,.052,[.10,.12,.14,1]);
         this.add(s,x+side*.105,by+.377,bz+.14,.018,.018,.018,[1,.73,.10,1]);
       }
@@ -247,7 +270,7 @@ window.Hive3D = (function () {
     // Planters and stylized leaves soften the room edges.
     for(const x of [-9.05,9.05]){
       this.add(rb,x,.17,-4.70,.58,.34,.58,[.70,.77,.81,1]);
-      this.add(b,x,.70,-4.70,.07,.78,.07,[.31,.28,.19,1]);
+      this.add(this.cylinder,x,.70,-4.70,.065,.78,.065,[.31,.28,.19,1]);
       // Wider layered foliage silhouettes replace the thin spike-like plant leaves.
       for(let k=0;k<15;k++){
         const a=k*2.399,y=.88+(k%5)*.19,rad=.22+(k%3)*.10;
@@ -292,7 +315,7 @@ window.Hive3D = (function () {
       const channel=channels[key];
       this.batchBuffers[key]={positions:upload(channel.positions),normals:upload(channel.normals),colors:upload(channel.colors),count:channel.positions.length/3};
     }
-    for(const mesh of [this.box,this.roundBox,this.sphere])if(mesh){if(mesh.p)gl.deleteBuffer(mesh.p);if(mesh.ix)gl.deleteBuffer(mesh.ix);mesh.p=null;mesh.ix=null;}
+    for(const mesh of [this.box,this.roundBox,this.sphere,this.cylinder])if(mesh){if(mesh.p)gl.deleteBuffer(mesh.p);if(mesh.ix)gl.deleteBuffer(mesh.ix);mesh.p=null;mesh.ix=null;}
   };
   Scene.prototype.drawBatch=function(batch){
     if(!batch||!batch.count)return;
