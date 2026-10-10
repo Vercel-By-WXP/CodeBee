@@ -371,14 +371,21 @@ def install(plugin_id, roots=None):
                     "skill_count": len(old.get("skill_pack_ids") or [])}, None
         source = Path(desc["dir"]).resolve()
         target = (_install_root() / plugin_id).resolve()
+        market_id = "plugin-" + plugin_id
+        # 回滚标记必须在 try 之前就绑定：_copy_plugin/load_manifest 在记账前
+        # 抛错时 except 要靠它决定是否清 market 包，未初始化会把人话错误
+        # 炸成 UnboundLocalError→500，还会跳过残留目录清理让重装永远撞车。
+        market_written = False
         try:
             target.relative_to(_install_root().resolve())
+            if target.exists() and target != source:
+                # 有登记记录的已装插件在上面 already 分支就返回了；走到这里
+                # 还存在目标目录只可能是上次安装中途失败的残缺副本，清掉重装。
+                shutil.rmtree(target, ignore_errors=True)
             _copy_plugin(source, target)
             installed_desc = load_manifest(target)
             files = _skill_files(installed_desc)
-            market_id = "plugin-" + plugin_id
             skill_result = None
-            market_written = False
             if files:
                 skill_result, err = market.install_files(
                     market_id, installed_desc["display_name"], files,
