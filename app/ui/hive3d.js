@@ -273,11 +273,11 @@ window.Hive3D = (function () {
       for(let k=0;k<5;k++){const a=k*Math.PI*2/5;const wx=x+Math.cos(a)*.48,wz=z+1.10+Math.sin(a)*.40;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);this.add(s,wx,.005,wz,.085,.065,.075,[.035,.045,.055,1]);}
       const by=1.25,bz=z+.98;
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
-      this.add(s,x,by-.42,bz+.005,.37,.70,.31,[.075,.09,.11,1]);
+      this.add(s,x,by-.42,bz+.005,.405,.54,.31,[.075,.09,.11,1]);
       this.add(s,x,by-.255,bz+.035,.255,.255,.235,[.08,.10,.12,1]);
-      this.add(rb,x,by-.47,bz+.320,.58,.075,.036,[.99,.68,.035,1]);
-      this.add(rb,x,by-.64,bz+.303,.54,.072,.036,[.96,.57,.025,1]);
-      this.add(rb,x,by-.555,bz+.313,.44,.036,.028,[.045,.055,.065,1]);
+      this.add(rb,x,by-.47,bz+.165,.355,.070,.025,[1,.70,.055,1]);
+      this.add(rb,x,by-.64,bz+.137,.315,.066,.025,[.96,.57,.025,1]);
+      this.add(rb,x,by-.555,bz+.153,.285,.034,.022,[.045,.055,.065,1]);
       this.add(s,x,by,bz,.405,.37,.345,[1,.70,.045,1]);
       // The face points toward the monitor; the rear silhouette carries the headset details.
       for(const side of [-1,1]){
@@ -308,13 +308,13 @@ window.Hive3D = (function () {
         for(let finger=0;finger<3;finger++)this.add(b,x+side*.355+(finger-1)*.026,.633,z+.265,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
-      this.add(rb,x,by-.585,bz+.309,.15,.080,.030,[.025,.10,.14,1]);
-      this.add(rb,x,by-.585,bz+.326,.095,.020,.014,[.16,.88,.98,1]);
+      this.add(rb,x,by-.585,bz+.142,.13,.068,.020,[.025,.10,.14,1]);
+      this.add(rb,x,by-.585,bz+.155,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth translucent ellipsoid wings match the soft oval silhouette in the reference.
-      this.add(s,x-.43,by+.075,bz+.12,.43,.105,.15,[.64,.88,1,.34],-.24,.08);
-      this.add(s,x+.43,by+.075,bz+.12,.43,.105,.15,[.64,.88,1,.34],.24,-.08);
-      this.add(s,x-.39,by+.055,bz+.19,.28,.062,.095,[.94,.99,1,.20],.16,-.05);
-      this.add(s,x+.39,by+.055,bz+.19,.28,.062,.095,[.94,.99,1,.20],-.16,.05);
+      this.add(s,x-.43,by-.245,bz+.19,.42,.145,.075,[.58,.84,1,.42],-.20,.06);
+      this.add(s,x+.43,by-.245,bz+.19,.42,.145,.075,[.58,.84,1,.42],.20,-.06);
+      this.add(s,x-.39,by-.225,bz+.235,.27,.095,.045,[.93,.99,1,.25],.14,-.04);
+      this.add(s,x+.39,by-.225,bz+.235,.27,.095,.045,[.93,.99,1,.25],-.14,.04);
 
     }
     // Planters and stylized leaves soften the room edges.
