@@ -128,17 +128,12 @@ window.Hive3D = (function () {
     const stageColors=[[.22,.83,.94,1],[.24,.80,.93,1],[.27,.84,.96,1],[.20,.87,.95,1],[.25,.81,.95,1],[.28,.88,.95,1]];
     for(let i=0;i<6;i++){
       const x=-7.75+i*3.10;
-      this.add(rb,x,3.58,-6.16,2.78,.94,.18,[.63,.82,.97,1]);
-      this.add(rb,x,3.58,-6.04,2.66,.80,.045,[.97,.99,1,1]);
-      this.add(b,x,3.87,-6.012,1.86,.018,.008,[.18,.66,.80,1]);
-      this.add(b,x,3.14,-6.03,1.86,.035,.025,stageColors[i]);
-      this.add(b,x+1.05,3.58,-6.04,.09,.09,.08,[.38,.89,.96,1]);
     }
     // The reference uses a continuous luminous workflow rail below the six white phase pills.
-    this.add(b,0,2.87,-6.005,15.8,.035,.024,[.22,.89,1,1]);
+    this.add(b,0,2.55,-6.005,15.8,.035,.024,[.22,.89,1,1]);
     for(let i=0;i<6;i++){
       const x=-7.75+i*3.10;
-      this.add(b,x,3.005,-6.005,.035,.27,.024,[.22,.89,1,1]);
+      this.add(b,x,2.845,-6.005,.035,.59,.024,[.22,.89,1,1]);
     }
     // Subtle hexagonal grout follows the reference floor and is baked into the static GPU batch.
     const tileR=.56, tileDX=1.5*tileR, tileDZ=Math.sqrt(3)*tileR;
@@ -194,8 +189,12 @@ window.Hive3D = (function () {
       this.add(rb,x,.48,z+1.25,.48,.12,.12,[.18,.22,.25,1]);
       for(let k=0;k<5;k++){const a=k*Math.PI*2/5;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);}
       const by=1.25,bz=z+.88;
+      this.add(rb,x,by-.34,bz-.03,.31,.34,.24,[.10,.13,.16,1]);
       this.add(s,x,by,bz,.35,.34,.32,[1,.70,.05,1]);
       this.add(s,x,by-.24,bz+.02,.28,.23,.26,[.98,.57,.035,1]);
+      this.add(s,x,by+.30,bz+.08,.20,.035,.18,[.045,.055,.065,1]);
+      this.add(b,x-.10,by+.385,bz+.09,.018,.10,.018,[.06,.07,.08,1]);
+      this.add(b,x+.10,by+.385,bz+.09,.018,.10,.018,[.06,.07,.08,1]);
       this.add(rb,x,by-.055,bz-.285,.255,.064,.05,[.018,.045,.07,1]);
       this.add(rb,x,by-.055,bz-.322,.19,.028,.012,[.10,.76,.91,1]);
       this.add(s,x-.09,by-.055,bz-.338,.017,.020,.014,[.28,1,1,1]);
@@ -212,9 +211,9 @@ window.Hive3D = (function () {
       this.add(b,x,by-.28,bz-.015,.18,.055,.22,[.07,.08,.09,1]);
     }
     // Planters and stylized leaves soften the room edges.
-    for(const x of [-8.05,8.05]){
-      this.add(rb,x,.17,-4.25,.62,.34,.62,[.70,.77,.81,1]);
-      for(let k=0;k<7;k++){const a=k*2.399;this.add(s,x+Math.cos(a)*.36,.80+(k%4)*.15,-4.25+Math.sin(a)*.30,.10,.36,.10,[.08,.32+(k%3)*.035,.22,1],a);}
+    for(const x of [-9.05,9.05]){
+      this.add(rb,x,.17,-4.70,.58,.34,.58,[.70,.77,.81,1]);
+      for(let k=0;k<9;k++){const a=k*2.399;this.add(s,x+Math.cos(a)*.37,.86+(k%4)*.17,-4.70+Math.sin(a)*.31,.13,.42,.12,[.08,.34+(k%3)*.04,.22,1],a);}
     }
     // Low-opacity contact shadows share the same 8+6 workstation positions.
     for(const desk of this.deskPositions){
