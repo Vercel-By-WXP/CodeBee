@@ -258,19 +258,19 @@ window.Hive3D = (function () {
       for(let k=0;k<4;k++)this.add(b,binderStart+k*.095,.83,z+.35,.075,.43,.22,[[.13,.43,.78,1],[.95,.42,.24,1],[.16,.66,.46,1],[.93,.72,.28,1]][k]);
       const blueBinderStart=x-width/2+.19;
       for(let k=0;k<3;k++)this.add(b,blueBinderStart+k*.095,.79,z+.34,.075,.35,.18,[[.08,.34,.80,1],[.10,.51,.91,1],[.06,.25,.65,1]][k]);
-      this.add(this.cylinder,x,.08,z+.62,.075,.28,.075,[.12,.15,.18,1]);
-      this.add(rb,x,.30,z+.80,.94,.12,.68,[.11,.14,.17,1]);
-      this.add(rb,x,.62,z+.44,1.26,.78,.18,[.085,.12,.16,1]);
-      this.add(rb,x,.62,z+.535,.90,.54,.024,[.13,.18,.22,1]);
-      this.add(rb,x,.48,z+.75,.48,.12,.12,[.18,.22,.25,1]);
+      this.add(this.cylinder,x,.08,z+1.10,.075,.28,.075,[.12,.15,.18,1]);
+      this.add(rb,x,.30,z+1.10,.94,.12,.68,[.11,.14,.17,1]);
+      this.add(rb,x,.50,z+1.18,1.15,.60,.18,[.085,.12,.16,1]);
+      this.add(rb,x,.50,z+1.275,.82,.43,.024,[.13,.18,.22,1]);
+      this.add(rb,x,.42,z+1.10,.48,.12,.12,[.18,.22,.25,1]);
       // Molded backrest cushion, lumbar ribs, arm pads, and five rolling casters.
-      this.add(rb,x,.62,z+.56,.92,.55,.050,[.12,.15,.17,1]);
-      for(const ribY of [.46,.60,.74])this.add(rb,x,ribY,z+.59,.70,.026,.020,[.28,.32,.35,1]);
+      this.add(rb,x,.50,z+1.22,.86,.43,.050,[.12,.15,.17,1]);
+      for(const ribY of [.34,.48,.62])this.add(rb,x,ribY,z+1.25,.63,.026,.020,[.28,.32,.35,1]);
       for(const side of [-1,1]){
-        this.add(rb,x+side*.39,.63,z+.52,.10,.075,.38,[.11,.14,.16,1]);
-        this.add(b,x+side*.39,.48,z+.53,.035,.28,.045,[.07,.09,.11,1]);
+        this.add(rb,x+side*.39,.63,z+.96,.10,.075,.38,[.11,.14,.16,1]);
+        this.add(b,x+side*.39,.48,z+.97,.035,.28,.045,[.07,.09,.11,1]);
       }
-      for(let k=0;k<5;k++){const a=k*Math.PI*2/5;const wx=x+Math.cos(a)*.48,wz=z+.62+Math.sin(a)*.40;this.add(b,x+Math.cos(a)*.38,.035,z+.62+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);this.add(s,wx,.005,wz,.085,.065,.075,[.035,.045,.055,1]);}
+      for(let k=0;k<5;k++){const a=k*Math.PI*2/5;const wx=x+Math.cos(a)*.48,wz=z+1.10+Math.sin(a)*.40;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);this.add(s,wx,.005,wz,.085,.065,.075,[.035,.045,.055,1]);}
       const by=1.25,bz=z+.98;
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
       this.add(s,x,by-.42,bz+.005,.37,.70,.31,[.075,.09,.11,1]);
