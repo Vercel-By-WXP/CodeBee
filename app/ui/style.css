@@ -7611,3 +7611,36 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
   color: #60dcf3 !important;
   opacity: 1;
 }
+
+
+/* Reference geometry finishing: taller white phase pills and illuminated monitor baselines. */
+#rd-hive-viewport .hg-badge {
+  width: 10.8% !important;
+  height: clamp(42px, 4.5cqw, 54px) !important;
+  padding: 4px 6px !important;
+  border-radius: 12px !important;
+  gap: 3px !important;
+}
+#rd-hive-viewport .hg-badge .hg-name {
+  font-size: clamp(11px, .98cqw, 15px) !important;
+  line-height: 1.15 !important;
+}
+#rd-hive-viewport .hg-badge .hg-meta {
+  font-size: clamp(7px, .54cqw, 9px) !important;
+  line-height: 1 !important;
+}
+#rd-hive-viewport .hg-monitor {
+  position: absolute;
+}
+#rd-hive-viewport .hg-monitor::after {
+  position: absolute;
+  content: "";
+  left: 4%;
+  right: 4%;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #31cce9, #a0f5ff);
+  box-shadow: 0 0 5px rgba(42, 222, 255, .58);
+  pointer-events: none;
+}
