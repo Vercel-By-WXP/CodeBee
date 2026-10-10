@@ -181,8 +181,8 @@ assert.ok(uploadedBytes > 100000, "world geometry is uploaded once to GPU buffer
 assert.equal(scene.displayMode, "reference", "high-fidelity reference view is the default presentation");
 assert.ok(scene.monitors[0].el.style.width.endsWith("%"), "reference hotspot uses normalized image coordinates");
 assert.ok(scene.monitors[0].el.style.height.endsWith("%"), "reference hotspot height is normalized to the artwork");
-assert.equal(scene.monitors[0].el.style.left, (93 / 1104 * 100) + "%", "first monitor hotspot aligns with the reference render");
-assert.equal(scene.stageMeta[0].el.style.left, (104 / 1104 * 100) + "%", "phase card hotspot aligns with the reference render");
+assert.equal(scene.monitors[0].el.style.left, (80 / 1080 * 100) + "%", "first monitor hotspot aligns with the reference render");
+assert.equal(scene.stageMeta[0].el.style.left, (89 / 1080 * 100) + "%", "phase card hotspot aligns with the reference render");
 scene.setDisplayMode("live3d");
 scene.setActive(true);
 assert.equal(scene.displayMode, "live3d", "free 3D mode remains selectable");
