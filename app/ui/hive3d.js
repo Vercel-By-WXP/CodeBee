@@ -256,13 +256,13 @@ window.Hive3D = (function () {
       const blueBinderStart=x-width/2+.19;
       for(let k=0;k<3;k++)this.add(b,blueBinderStart+k*.095,.79,z+.34,.075,.35,.18,[[.08,.34,.80,1],[.10,.51,.91,1],[.06,.25,.65,1]][k]);
       this.add(this.cylinder,x,.08,z+.62,.075,.28,.075,[.12,.15,.18,1]);
-      this.add(rb,x,.30,z+.62,.62,.12,.56,[.11,.14,.17,1]);
-      this.add(rb,x,.57,z+.54,.62,.72,.16,[.075,.11,.15,1]);
-      this.add(rb,x,.57,z+.63,.42,.48,.018,[.13,.18,.22,1]);
+      this.add(rb,x,.30,z+.80,.94,.12,.68,[.11,.14,.17,1]);
+      this.add(rb,x,.62,z+.54,.90,.78,.18,[.075,.11,.15,1]);
+      this.add(rb,x,.62,z+.635,.69,.54,.024,[.13,.18,.22,1]);
       this.add(rb,x,.48,z+.75,.48,.12,.12,[.18,.22,.25,1]);
       // Molded backrest cushion, lumbar ribs, arm pads, and five rolling casters.
-      this.add(rb,x,.57,z+.65,.43,.49,.045,[.085,.105,.125,1]);
-      for(const ribY of [.43,.55,.67])this.add(rb,x,ribY,z+.68,.34,.026,.018,[.17,.20,.22,1]);
+      this.add(rb,x,.62,z+.66,.72,.55,.050,[.085,.105,.125,1]);
+      for(const ribY of [.46,.60,.74])this.add(rb,x,ribY,z+.69,.56,.026,.020,[.17,.20,.22,1]);
       for(const side of [-1,1]){
         this.add(rb,x+side*.39,.63,z+.52,.10,.075,.38,[.11,.14,.16,1]);
         this.add(b,x+side*.39,.48,z+.53,.035,.28,.045,[.07,.09,.11,1]);
@@ -272,9 +272,9 @@ window.Hive3D = (function () {
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
       this.add(s,x,by-.42,bz+.005,.37,.70,.31,[.075,.09,.11,1]);
       this.add(s,x,by-.255,bz+.035,.255,.255,.235,[.08,.10,.12,1]);
-      this.add(rb,x,by-.47,bz+.325,.39,.065,.035,[.99,.68,.035,1]);
-      this.add(rb,x,by-.64,bz+.322,.35,.060,.035,[.96,.57,.025,1]);
-      this.add(rb,x,by-.555,bz+.326,.30,.035,.030,[.045,.055,.065,1]);
+      this.add(rb,x,by-.47,bz+.345,.58,.082,.050,[.99,.68,.035,1]);
+      this.add(rb,x,by-.64,bz+.342,.54,.078,.050,[.96,.57,.025,1]);
+      this.add(rb,x,by-.555,bz+.348,.44,.040,.040,[.045,.055,.065,1]);
       this.add(s,x,by,bz,.405,.37,.345,[1,.70,.045,1]);
       // The face points toward the monitor; the rear silhouette carries the headset details.
       for(const side of [-1,1]){
@@ -302,8 +302,8 @@ window.Hive3D = (function () {
         for(let finger=0;finger<3;finger++)this.add(b,x+side*.20+(finger-1)*.023,.635,z+.195,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
-      this.add(rb,x,by-.585,bz+.338,.12,.075,.024,[.025,.10,.14,1]);
-      this.add(rb,x,by-.585,bz+.354,.075,.015,.012,[.16,.88,.98,1]);
+      this.add(rb,x,by-.585,bz+.370,.15,.080,.030,[.025,.10,.14,1]);
+      this.add(rb,x,by-.585,bz+.391,.095,.020,.014,[.16,.88,.98,1]);
       // Four visibly tapered glassy wings with opposing tilt; a faceted leaf mesh is far more wing-like than ellipsoids.
       this.add(this.organic,x-.43,by+.12,bz-.045,.98,1.58,.055,[.58,.84,1,.28],-.34,.18);
       this.add(this.organic,x+.43,by+.12,bz-.045,.98,1.58,.055,[.58,.84,1,.28],.34,-.18);
