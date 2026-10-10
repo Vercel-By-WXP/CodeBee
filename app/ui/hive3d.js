@@ -78,6 +78,10 @@ window.Hive3D = (function () {
     try { this.initGL(); } catch(e) { console.error("CodeBee Hive3D WebGL init failed",e); this.failed=true; this.failure=e; return; }
     this.stageMeta=PLATES.map(([x,y],i)=>{const el=node("button","hg-badge",this.overlay);el.type="button";el.style.left="0%";el.style.top="0%";const name=node("b","hg-name",el),meta=node("span","hg-meta",el);this.listen(el,"click",()=>{const lane=this.stageMeta[i].lane;if(!lane)return;const cell=lane.cells.find(c=>c.status==="running")||lane.cells[lane.cells.length-1];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,name,meta,lane:null};});
     this.links=Array.from({length:PLATES.length-1},()=>node("span","hg-flow-link",this.overlay));
+    this.roomSign=node("div","hg-room-sign",this.overlay);
+    const signBrand=node("span","hg-room-kicker",this.roomSign);signBrand.textContent="CODEBEE";
+    const signTitle=node("b","hg-room-title",this.roomSign);signTitle.textContent="HIVE OPERATIONS";
+    const signLive=node("span","hg-room-live",this.roomSign);signLive.textContent="● LIVE ORCHESTRATION";
     this.monitors=SCREENS.map(([x,y,w,h],i)=>{const el=node("button", "hg-monitor", this.overlay);el.type="button";el.style.left="0%";el.style.top="0%";el.style.width=(w/2048*100)+"%";el.style.height=(h/1151*100)+"%";const role=node("b","hg-monitor-role",el),status=node("span","hg-monitor-status",el),tail=node("span","hg-monitor-tail",el),time=node("span","hg-monitor-time",el);this.listen(el,"click",()=>{const cell=this.screenMeta[i];if(cell)this.onCellActivate(this.model.runId,cell.rel,cell);});return{el,role,status,tail,time};});
     const toolbar=this.host.parentElement.querySelector(".hive-scene-tools");this.pager=node("div","hive-scene-pager");this.pager.hidden=true;this.prev=node("button","hive-scene-btn",this.pager);this.prev.type="button";this.prev.textContent="‹";this.pageLabel=node("span","hive-scene-page-label",this.pager);this.next=node("button","hive-scene-btn",this.pager);this.next.type="button";this.next.textContent="›";if(toolbar)toolbar.insertBefore(this.pager,toolbar.querySelector(".hive-scene-spacer"));
     this.listen(this.prev,"click",()=>this.showPage(this.page-1));this.listen(this.next,"click",()=>this.showPage(this.page+1));this.bindSurface();
@@ -105,8 +109,8 @@ window.Hive3D = (function () {
   Scene.prototype.buildWorld=function(){
     const b=this.box,rb=this.roundBox,s=this.sphere;this.objects=[];
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
-    this.add(b,0,-.18,4.5,25,.28,27,[.91,.95,.98,1]);
-    this.add(b,0,2.48,-6.45,19,5.2,.24,[.045,.16,.28,1]);
+    this.add(b,0,-.18,.55,23,.28,17.2,[.69,.77,.84,1]);
+    this.add(b,0,2.48,-6.45,19,5.2,.24,[.018,.065,.125,1]);
     this.add(b,0,4.98,-2.8,19,.16,7.3,[.98,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
     this.add(b,0,.18,-6.28,18.7,.12,.06,[.10,.34,.47,1]);
@@ -124,6 +128,10 @@ window.Hive3D = (function () {
       this.add(b,x,4.87,-1.8,2.65,.075,.30,[.20,.24,.29,1]);
       this.add(b,x,4.80,-1.8,2.40,.045,.24,[1,.99,.91,1]);
     }
+    // A physical fascia gives the room a deliberate, branded focal point.
+    this.add(rb,0,4.45,-6.16,5.7,.48,.15,[.025,.095,.145,1]);
+    this.add(b,-2.75,4.45,-6.057,.028,.26,.012,[.12,.72,.83,1]);
+    this.add(b,2.75,4.45,-6.057,.028,.26,.012,[.12,.72,.83,1]);
     // Six stage cards mounted on the blue wall, with luminous cyan underlines.
     const stageColors=[[.22,.83,.94,1],[.24,.80,.93,1],[.27,.84,.96,1],[.20,.87,.95,1],[.25,.81,.95,1],[.28,.88,.95,1]];
     for(let i=0;i<6;i++){
@@ -146,25 +154,29 @@ window.Hive3D = (function () {
           const x0=cx+tileR*Math.cos(a0),z0=cz+tileR*Math.sin(a0);
           const x1=cx+tileR*Math.cos(a1),z1=cz+tileR*Math.sin(a1);
           const rotation=Math.atan2(-(z1-z0),x1-x0);
-          this.add(b,(x0+x1)/2,-.032,(z0+z1)/2,tileR,.008,.009,[.92,.95,.97,1],rotation);
+          this.add(b,(x0+x1)/2,-.032,(z0+z1)/2,tileR,.006,.007,[.79,.85,.90,1],rotation);
         }
       }
     }
+    // Thin perimeter lighting makes the floor feel built into the room, not like a floating plane.
+    this.add(rb,0,-.012,-7.82,21.4,.035,.075,[.045,.36,.45,1]);
+    this.add(rb,0,-.012,8.86,21.4,.035,.075,[.045,.36,.45,1]);
+    for(const side of [-1,1])this.add(rb,side*10.62,-.012,.52,.055,.03,16.0,[.045,.25,.34,1]);
     // Reference layout: eight compact rear stations and six wider front stations.
     // Every monitor overlay is projected from these exact same coordinates below.
     const deskRows=[
-      {row:0,z:-2.15,width:2.03,screenWidth:.79,screenHeight:.48,xs:[-7.77,-5.55,-3.33,-1.11,1.11,3.33,5.55,7.77]},
-      {row:1,z:2.95,width:2.42,screenWidth:.91,screenHeight:.54,xs:[-7.0,-4.2,-1.4,1.4,4.2,7.0]}
+      {row:0,z:-2.15,width:2.03,screenWidth:.98,screenHeight:.60,xs:[-7.77,-5.55,-3.33,-1.11,1.11,3.33,5.55,7.77]},
+      {row:1,z:2.95,width:2.42,screenWidth:1.10,screenHeight:.66,xs:[-7.0,-4.2,-1.4,1.4,4.2,7.0]}
     ];
     this.deskPositions=[];
     for(const config of deskRows)for(const x of config.xs){
       const {row,z,width,screenWidth,screenHeight}=config;
       this.deskPositions.push({row,x,z,width,screenWidth,screenHeight});
-      this.add(rb,x,.54,z,width,.15,1.20,[.89,.93,.96,1]);
+      this.add(rb,x,.54,z,width,.15,1.20,[.72,.80,.86,1]);
       this.add(b,x,.49,z-.603,width*.72,.014,.012,[.08,.42,.57,1]);
-      this.add(rb,x-width*.36,.25,z+.03,.43,.52,1.02,[.80,.86,.91,1]);
-      this.add(rb,x+width*.36,.25,z+.03,.43,.52,1.02,[.80,.86,.91,1]);
-      this.add(rb,x,.43,z-.22,width*.78,.045,.74,[1,1,1,1]);
+      this.add(rb,x-width*.36,.25,z+.03,.43,.52,1.02,[.46,.56,.64,1]);
+      this.add(rb,x+width*.36,.25,z+.03,.43,.52,1.02,[.46,.56,.64,1]);
+      this.add(rb,x,.43,z-.22,width*.78,.045,.74,[.84,.89,.93,1]);
       this.add(rb,x,.99,z-.48,screenWidth+.14,screenHeight+.14,.10,[.045,.075,.10,1]);
       this.add(b,x,.995,z-.418,screenWidth,screenHeight,.018,[.025,.15,.25,1]);
       this.add(b,x,.61,z-.43,.10,.22,.10,[.32,.39,.45,1]);
@@ -283,6 +295,9 @@ window.Hive3D = (function () {
   };
   Scene.prototype.layoutOverlayPositions=function(){
     if(!this.overlay||this.overlay.hidden||!this.cssW||!this.cssH)return;
+    // Keep the HTML wordmark precisely anchored to its physical wall fascia.
+    const signRect=this.projectRect([[-2.62,4.24,-6.055],[2.62,4.24,-6.055],[2.62,4.66,-6.055],[-2.62,4.66,-6.055]]);
+    if(signRect){this.roomSign.style.visibility="visible";this.roomSign.style.left=(signRect.left/this.cssW*100)+"%";this.roomSign.style.top=(signRect.top/this.cssH*100)+"%";this.roomSign.style.width=signRect.width+"px";this.roomSign.style.height=signRect.height+"px";this.roomSign.style.transform="none";}else this.roomSign.style.visibility="hidden";
     // Stage labels occupy the front face of each physical wall panel, rather than a fixed HUD row.
     this.stageMeta.forEach((p,i)=>{
       const x=-7.1+i*2.84,z=-6.07;
