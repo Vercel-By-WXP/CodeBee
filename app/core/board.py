@@ -66,22 +66,16 @@ def run_detail(run_id):
     }
 
 
-def _tail(step):
-    """步骤实时流（正文优先，其次思考）的最后一行，给大屏跑马灯。"""
-    for key in ("stream", "thinking"):
-        v = step.get(key)
-        if isinstance(v, str) and v.strip():
-            lines = [ln.strip() for ln in v.strip().splitlines() if ln.strip()]
-            if lines:
-                return lines[-1][:_TAIL_MAX]
-    return ""
-
-
-def _live_block(step):
+def _live_windows(run_id, step):
     """步骤实时流窗口：尾部多行（正文优先，其次思考），供大屏看它在想什么。
 
     返回 (来源标签 code, 文本)；标签是 code（output/thinking），由前端 i18n
-    翻译——大屏要做多语言，后端不下发中文。都没有返回 ("", "")。
+    翻译——大屏要做多语言，后端不下发中文。
+
+    内置智能体步骤边跑边把流写进步骤记录（store.stream_step）；外部 CLI 步骤
+    只落日志文件、run.json 里没有 stream——此前的连载全 CLI 流程在大屏上永远
+    「等待实时输出…」（弹窗日志却有内容，2026-10-10 用户反馈）。故回退读日志
+    尾巴：与蜂巢卡 hiveTick 同源同窗口（tail 夹取，不整读大日志）。
     """
     for key, code in (("stream", "output"), ("thinking", "thinking")):
         v = step.get(key)
@@ -91,6 +85,14 @@ def _live_block(step):
         lines = [ln for ln in lines if ln]
         if lines:
             return code, "\n".join(lines[-_TAIL_LINES:])
+    rel = step.get("log")
+    if rel and run_id:
+        from . import store
+        text = store.read_step_log(str(run_id), str(rel), tail=2400, pretty=True)
+        lines = [ln.strip()[:_TAIL_LINE_CHARS] for ln in (text or "").splitlines()]
+        lines = [ln for ln in lines if ln]
+        if lines:
+            return "output", "\n".join(lines[-_TAIL_LINES:])
     return "", ""
 
 
@@ -129,18 +131,19 @@ def _duration_s(run):
     return None
 
 
-def _step_view(steps, prov_map):
+def _step_view(steps, prov_map, run_id=""):
     """进度概要：完成数 + 当前运行中步骤（含模型/厂商/实时流）。"""
     done = sum(1 for s in steps if s.get("status") == "done")
     cur = next((s for s in steps if s.get("status") == "running"), None)
     cur_v = None
     if cur:
-        live_label, live_text = _live_block(cur)
+        live_label, live_text = _live_windows(run_id, cur)
         model = str(cur.get("model") or "")[:60]
+        tail = (live_text.splitlines() or [""])[-1][:_TAIL_MAX] if live_text else ""
         cur_v = {"n": cur.get("n"), "role": cur.get("role") or "",
                  "agent": cur.get("agent_label") or cur.get("agent") or "",
                  "summary": (cur.get("summary") or "")[:80],
-                 "tail": _tail(cur),
+                 "tail": tail,
                  "model": model, "provider": prov_map.get(model, "") if model else "",
                  "live_label": live_label, "live_text": live_text}
     return done, len(steps), cur_v
@@ -167,7 +170,8 @@ def _build():
         run = latest.get(tid)
         status = t.get("status")
         if status == "running" and run and run.get("status") == "running":
-            done, total, cur = _step_view(run.get("steps") or [], prov_map)
+            done, total, cur = _step_view(run.get("steps") or [], prov_map,
+                                          run_id=run.get("id"))
             running.append({
                 "task_id": tid, "run_id": run.get("id"),
                 "title": t.get("title") or "", "goal": (t.get("goal") or "")[:120],
