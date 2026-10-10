@@ -63,6 +63,7 @@ QUERIES = [
     ("B1", "regression+test+generation+ai"), ("B1", "refactor+agent+OR+tech+debt+agent"),
     ("B1", "secure+code+review+agent+OR+security+review+bot"), ("B1", "api+test+generation+agent+OR+integration+test+agent"),
     ("B1", "ast+based+code+editing+agent+OR+symbol+level+code+edit"),
+    ("B1", "open-code-review+alternative+OR+codeai+review"),
 ]
 
 # 轮换池 B（keywords.md 同源）：小时 %7 选批，余 0=批7。--batch N 可只跑指定批补课。
@@ -72,12 +73,14 @@ BATCHES = {
         "test+generation+agent+OR+ai+testing+agent", "regression+test+generation+ai",
         "refactor+agent+OR+tech+debt+agent", "secure+code+review+agent+OR+security+review+bot",
         "api+test+generation+agent+OR+integration+test+agent",
-        "ast+based+code+editing+agent+OR+symbol+level+code+edit"]],
+        "ast+based+code+editing+agent+OR+symbol+level+code+edit",
+        "open-code-review+alternative+OR+codeai+review"]],
     2: [("B2", q) for q in ["self+improving+agent+OR+agent+reflexion", "agent+episodic+memory",
         "project+memory+coding+agent", "knowledge+graph+agent", "agent+learning+from+feedback",
         "experience+reuse+agent", "agent+self+correction", "skill+library+agent",
         "conversation+memory+compression+OR+memory+summarization+agent",
-        "agent+skill+learning+OR+automatic+skill+discovery"]],
+        "agent+skill+learning+OR+automatic+skill+discovery",
+        "agentic+context+engineering+OR+evolving+playbook"]],
     3: [("B3", q) for q in ["long+running+agent+OR+persistent+planning+agent", "spec+driven+development",
         "plan+and+execute+agent", "task+decomposition+agent", "milestone+tracking+agent",
         "project+planning+ai+agent", "autonomous+long+horizon+agent", "worktree+parallel+agent",
@@ -100,7 +103,8 @@ BATCHES = {
         "agent+framework+benchmark+OR+multi-agent+framework+comparison"]],
     7: [("B7", q) for q in ["数字员工+OR+大模型+编排", "one-api+alternative", "模型中转+OR+api+网关+大模型",
         "ollama+orchestrator", "local+llm+agent", "self+hosted+agent+platform", "rpa+ai+agent",
-        "小说生成+ai+OR+ai+写作+平台", "office+document+agent+OR+办公+智能体+工作流"]],
+        "小说生成+ai+OR+ai+写作+平台", "office+document+agent+OR+办公+智能体+工作流",
+        "magicrew+OR+%E8%B6%85%E7%BA%A7%E9%BA%A6%E5%90%89"]],
 }
 
 
@@ -132,7 +136,7 @@ def main():
         else:
             api_path = "search/repositories?q=%s&sort=stars&per_page=5"
         cmdline = ["gh", "api", "-X", "GET",
-                   api_path % urllib.parse.quote(q, safe="+"),
+                   api_path % urllib.parse.quote(q, safe="+%"),
                    "--jq", '.items[] | {f:.full_name,s:.stargazers_count,p:.pushed_at,d:(.description // "")[0:160]}']
         try:
             r = subprocess.run(cmdline, capture_output=True, text=True,
