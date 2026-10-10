@@ -112,6 +112,10 @@ async function main() {
     // Exercise the actual fullscreen container before the viewport is moved into the isolated screenshot stage.
     const fullscreenReady = await waitFor(async () => evaluate("Boolean(document.getElementById('hive-scene-fullscreen') && document.getElementById('rd-hive-viewport')?.dataset.controlsReady === 'true')"), 15000, "fullscreen control initialization");
     assert.equal(fullscreenReady, true, "fullscreen control is wired by the real application");
+    const initialView = JSON.parse(await evaluate("JSON.stringify({mode:window.__hive3d?.displayMode,canvasHidden:document.getElementById('rd-hive-gl').hidden,referenceDisplay:getComputedStyle(document.querySelector('#rd-hive-viewport .hive-reference')).display})"));
+    assert.equal(initialView.mode, "live3d", "new sessions default to the real WebGL scene");
+    assert.equal(initialView.canvasHidden, false, "the WebGL canvas is visible at first load");
+    assert.equal(initialView.referenceDisplay, "none", "static artwork is opt-in rather than replacing the 3D model");
     await evaluate("if(typeof window.welcomeClose==='function')window.welcomeClose(); const welcome=document.getElementById('welcome');if(welcome)welcome.classList.add('hidden');");
     // A fresh CI data directory has no selected run, so one or more ancestors of the Hive
     // pane may be hidden. Reveal that real DOM branch from the stage upward before testing fullscreen.
@@ -156,6 +160,9 @@ async function main() {
     assert.equal(fullscreenExit.pressed, "false", "fullscreen button resets after Escape");
     assert.ok(fullscreenExit.viewportWidth >= 500, "viewport returns to normal layout after fullscreen exit");
 
+    // The fullscreen exercise deliberately visited reference and 2D modes; restore WebGL for the capture.
+    await evaluate("document.querySelector('[data-hive-view=live3d]').click()");
+
     const setupExpr = [
       "(() => {",
       " const viewport=document.getElementById('rd-hive-viewport');",
@@ -195,8 +202,8 @@ async function main() {
     assert.ok(rearAverageY < frontAverageY, "rear monitor overlays project above front-row overlays");
     assert.equal(state.info.cells, 14, "fourteen task cells were mapped");
     assert.equal(state.info.lanes, 6, "six workflow lanes were mapped");
-    assert.equal(state.mode, "live3d", "the procedural WebGL scene is the default view");
-    assert.equal(state.referenceDisplay, "none", "the static artwork does not replace the default 3D model");
+    assert.equal(state.mode, "live3d", "the procedural WebGL scene is restored for the capture");
+    assert.equal(state.referenceDisplay, "none", "the static artwork does not replace the captured 3D model");
     assert.equal(state.canvasHidden, false, "the real WebGL canvas is visible by default");
     assert.ok(state.viewportRect && state.viewportRect[0] >= 0 && state.viewportRect[1] >= 0 && state.viewportRect[2] >= 1000 && state.viewportRect[3] >= 500, "the 3D viewport is placed inside the captured browser window");
     assert.equal(await evaluate("document.getElementById('welcome')?.classList.contains('hidden') ?? true"), true, "welcome modal does not obscure the scene screenshot");
