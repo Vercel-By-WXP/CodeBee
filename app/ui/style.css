@@ -7194,8 +7194,15 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 .hive-scene-page-label { white-space: nowrap; font-family: var(--mono); }
 .hive-viewport {
   position: relative; width: 100%; aspect-ratio: 2848 / 1600; overflow: hidden;
-  container-type: inline-size; border: 1px solid var(--border); border-radius: 12px;
-  background: #d4e7f7; cursor: grab; touch-action: pan-y;
+  container-type: inline-size; isolation: isolate;
+  border: 1px solid color-mix(in srgb, #6aa9d2 30%, var(--border)); border-radius: 16px;
+  background: radial-gradient(ellipse at 50% 22%, #eef8ff 0%, #dcecf8 58%, #c9dfef 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.82), 0 18px 46px rgba(17,55,83,.12);
+  cursor: grab; touch-action: pan-y;
+}
+.hive-viewport::after {
+  position: absolute; inset: 0; z-index: 3; border-radius: inherit; pointer-events: none;
+  content: ""; box-shadow: inset 0 0 0 1px rgba(255,255,255,.28), inset 0 -34px 56px rgba(18,61,91,.055);
 }
 .hive-viewport.is-dragging { cursor: grabbing; }
 .hive-reference-layer { position: absolute; inset: 0; transform-origin: center; }
@@ -7208,29 +7215,48 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 #rd-hive-viewport.hive-mode-2d .hive-reference-layer { display: none; }
 .hg-badge {
   position: absolute; transform: translate(-50%, -50%); width: 10.8%; height: 7.6%;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4cqw;
-  padding: .3cqw; border: 0; border-radius: 1.4cqw; pointer-events: auto; cursor: pointer;
-  color: #101c29; background: rgba(255,255,255,.98); box-shadow: 0 .35cqw .9cqw rgba(14,55,88,.22);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .36cqw;
+  padding: .3cqw; border: 1px solid rgba(142,224,247,.42); border-radius: .78cqw; pointer-events: auto; cursor: pointer;
+  color: #effbff; background: linear-gradient(142deg, rgba(14,43,63,.98), rgba(8,61,83,.97));
+  box-shadow: inset 0 1px 0 rgba(224,250,255,.18), 0 .42cqw 1.1cqw rgba(2,20,37,.30);
   text-align: center; font-family: "Microsoft YaHei", sans-serif;
 }
-.hg-badge .hg-name { font-size: 1.25cqw; font-weight: 800; line-height: 1.15; white-space: nowrap; }
-.hg-badge .hg-meta { font-size: .58cqw; color: #536d7d; line-height: 1; white-space: nowrap; }
+.hg-badge::before {
+  position: absolute; top: 15%; left: 8%; width: .3cqw; height: .3cqw; min-width: 3px; min-height: 3px;
+  border-radius: 50%; content: ""; background: #6c8a9c; box-shadow: 0 0 .35cqw rgba(91,223,245,.25);
+}
+.hg-badge .hg-name { font-size: 1.12cqw; font-weight: 750; letter-spacing: .01em; line-height: 1.15; white-space: nowrap; }
+.hg-badge .hg-meta { font-size: .62cqw; color: #a9cfdd; line-height: 1; white-space: nowrap; }
 .hg-badge:disabled { cursor: default; opacity: 1; }
-.hg-badge:hover:not(:disabled), .hg-badge:focus-visible { outline: .12cqw solid #71eaf9; outline-offset: .2cqw; }
-.hg-badge.hg-active { box-shadow: 0 0 1.1cqw rgba(0, 236, 255, .65); }
+.hg-badge:hover:not(:disabled), .hg-badge:focus-visible { outline: .12cqw solid #71eaf9; outline-offset: .16cqw; }
+.hg-badge.hg-active {
+  border-color: rgba(90,245,225,.85);
+  box-shadow: inset 0 1px 0 rgba(224,250,255,.18), 0 .42cqw 1.1cqw rgba(2,20,37,.30), 0 0 1.15cqw rgba(0,236,255,.38);
+}
+.hg-badge.hg-active::before { background: #5df4c7; box-shadow: 0 0 .42cqw rgba(93,244,199,.9); }
 .hg-monitor {
   position: absolute; display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto 1fr;
-  padding: .12cqw .3cqw; gap: .08cqw .18cqw; overflow: hidden; border: 0; border-radius: 0;
-  pointer-events: auto; cursor: pointer; text-align: left; color: #d8f9ff; background: #06244a;
+  padding: .12cqw .3cqw; gap: .08cqw .18cqw; overflow: hidden;
+  border: 1px solid rgba(115,202,229,.46); border-radius: .26cqw;
+  pointer-events: auto; cursor: pointer; text-align: left; color: #d8f9ff;
+  background: linear-gradient(160deg, #0b3048 0%, #061a2b 72%, #082236 100%);
+  box-shadow: inset 0 1px 0 rgba(204,248,255,.13), 0 1px 3px rgba(0,12,24,.26);
   font-family: var(--mono); font-size: .57cqw; line-height: 1.15;
 }
+.hg-monitor::before {
+  position: absolute; top: .18cqw; right: .22cqw; width: .24cqw; height: .24cqw; min-width: 2px; min-height: 2px;
+  border-radius: 50%; content: ""; background: #58e3bd; box-shadow: 0 0 .28cqw rgba(88,227,189,.5);
+}
 .hg-monitor:disabled { opacity: 1; cursor: default; }
-.hg-monitor:hover:not(:disabled), .hg-monitor:focus-visible { outline: .12cqw solid #91f6ff; outline-offset: .1cqw; z-index: 1; }
-.hg-monitor-role { grid-column: 1 / -1; font-size: .69cqw; line-height: 1.16; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hg-monitor:hover:not(:disabled), .hg-monitor:focus-visible { outline: .12cqw solid #91f6ff; outline-offset: .08cqw; z-index: 1; }
+.hg-monitor-role { grid-column: 1 / -1; font-size: .72cqw; line-height: 1.16; font-weight: 700; color: #edfaff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hg-monitor-status { color: #94deee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hg-monitor-time { grid-column: 2; grid-row: 2; color: #9dd8e4; white-space: nowrap; }
 .hg-monitor-tail { grid-column: 1 / -1; color: #b3e7f2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hg-monitor.st-running { box-shadow: inset 0 -.1cqw #52edf5; }
+.hg-monitor.st-running { border-color: rgba(78,239,244,.82); box-shadow: inset 0 -.1cqw #52edf5, inset 0 1px 0 rgba(204,248,255,.13), 0 1px 3px rgba(0,12,24,.26); }
+.hg-monitor.st-queued::before { background: #7e99aa; box-shadow: none; }
+.hg-monitor.st-done::before { background: #78f2ae; box-shadow: 0 0 .28cqw rgba(120,242,174,.45); }
+.hg-monitor.st-failed::before, .hg-monitor.st-timeout::before { background: #ff777b; box-shadow: 0 0 .28cqw rgba(255,119,123,.5); }
 .hg-monitor.st-running .hg-monitor-status { color: #5cf5fc; }
 .hg-monitor.st-done .hg-monitor-status { color: #99f3bf; }
 .hg-monitor.st-failed .hg-monitor-status, .hg-monitor.st-timeout .hg-monitor-status { color: #ffa2a2; }
