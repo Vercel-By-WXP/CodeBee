@@ -7644,3 +7644,88 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
   box-shadow: 0 0 5px rgba(42, 222, 255, .58);
   pointer-events: none;
 }
+
+
+/* High-fidelity default view: use the shipped rendered reference as the scene plate,
+   while clickable HTML controls on the six phase cards and fourteen monitors stay live. */
+#rd-hive-viewport.hive-mode-3d .hive-reference {
+  display: block !important;
+  z-index: 0;
+  object-fit: fill;
+}
+#rd-hive-viewport.hive-mode-live3d .hive-reference {
+  display: none !important;
+}
+#rd-hive-viewport .hive-reference-artboard {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+#rd-hive-viewport.hive-mode-3d .hive-gl-live {
+  z-index: 0;
+}
+#rd-hive-viewport.hive-mode-3d .hg-badge {
+  width: 10.51% !important;
+  height: 7.41% !important;
+  padding: 2px 4px !important;
+  gap: 2px !important;
+  border-radius: 1.15cqw !important;
+  background: linear-gradient(180deg, #fff 0%, #f6faff 100%) !important;
+  border: 1px solid rgba(120, 171, 207, .78) !important;
+  box-shadow: inset 0 1px 0 #fff, 0 3px 0 rgba(25, 58, 88, .12), 0 7px 15px rgba(24, 62, 97, .19) !important;
+  color: #142e49 !important;
+}
+#rd-hive-viewport.hive-mode-3d .hg-badge .hg-name {
+  color: #142e49 !important;
+  font-size: clamp(10px, .98cqw, 15px) !important;
+  line-height: 1.08 !important;
+}
+#rd-hive-viewport.hive-mode-3d .hg-badge .hg-meta {
+  color: #58748c !important;
+  font-size: clamp(6px, .49cqw, 8px) !important;
+  line-height: 1 !important;
+}
+#rd-hive-viewport.hive-mode-3d .hg-flow-link {
+  display: none !important;
+}
+#rd-hive-viewport.hive-mode-3d .hg-monitor {
+  padding: 1px 2px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #06213a 0%, #001327 100%);
+  border: 1px solid rgba(101, 194, 233, .58);
+  box-shadow: inset 0 1px 0 rgba(215, 247, 255, .14), 0 2px 4px rgba(0, 18, 35, .22);
+  opacity: 1;
+}
+#rd-hive-viewport.hive-mode-3d .hg-monitor-role {
+  font-size: clamp(5px, .53cqw, 8px);
+  line-height: 1.03;
+  color: #f0fbff;
+}
+#rd-hive-viewport.hive-mode-3d .hg-monitor-status,
+#rd-hive-viewport.hive-mode-3d .hg-monitor-time {
+  font-size: clamp(4px, .35cqw, 6px);
+  line-height: 1;
+  color: #6cdbf5;
+}
+#rd-hive-viewport.hive-mode-3d .hg-monitor-tail {
+  font-size: clamp(4px, .34cqw, 6px);
+  line-height: 1;
+  color: #87e8f7;
+}
+#rd-hive-viewport.hive-mode-3d .hg-monitor::after {
+  height: 2px;
+  bottom: 1px;
+  opacity: .92;
+}
+#rd-hive-viewport.hive-mode-3d .hg-monitor:disabled {
+  opacity: 1 !important;
+}
+#rd-hive-viewport.hive-mode-live3d {
+  background: linear-gradient(180deg, #eaf5ff 0%, #dcecf9 58%, #cfe1ef 100%);
+}
+#rd-hive-viewport.hive-mode-live3d .hg-badge {
+  background: linear-gradient(180deg, #fff 0%, #f5f9ff 100%);
+  color: #142e49;
+  border: 1px solid rgba(118, 171, 207, .72);
+}
