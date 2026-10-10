@@ -257,12 +257,12 @@ window.Hive3D = (function () {
       for(let k=0;k<3;k++)this.add(b,blueBinderStart+k*.095,.79,z+.34,.075,.35,.18,[[.08,.34,.80,1],[.10,.51,.91,1],[.06,.25,.65,1]][k]);
       this.add(this.cylinder,x,.08,z+.62,.075,.28,.075,[.12,.15,.18,1]);
       this.add(rb,x,.30,z+.62,.62,.12,.56,[.11,.14,.17,1]);
-      this.add(rb,x,.57,z+.85,.62,.72,.16,[.075,.11,.15,1]);
-      this.add(rb,x,.57,z+.934,.42,.48,.018,[.13,.18,.22,1]);
+      this.add(rb,x,.57,z+.54,.62,.72,.16,[.075,.11,.15,1]);
+      this.add(rb,x,.57,z+.63,.42,.48,.018,[.13,.18,.22,1]);
       this.add(rb,x,.48,z+.75,.48,.12,.12,[.18,.22,.25,1]);
       // Molded backrest cushion, lumbar ribs, arm pads, and five rolling casters.
-      this.add(rb,x,.57,z+.955,.43,.49,.045,[.085,.105,.125,1]);
-      for(const ribY of [.43,.55,.67])this.add(rb,x,ribY,z+.982,.34,.026,.018,[.17,.20,.22,1]);
+      this.add(rb,x,.57,z+.65,.43,.49,.045,[.085,.105,.125,1]);
+      for(const ribY of [.43,.55,.67])this.add(rb,x,ribY,z+.68,.34,.026,.018,[.17,.20,.22,1]);
       for(const side of [-1,1]){
         this.add(rb,x+side*.39,.63,z+.52,.10,.075,.38,[.11,.14,.16,1]);
         this.add(b,x+side*.39,.48,z+.53,.035,.28,.045,[.07,.09,.11,1]);
@@ -284,7 +284,7 @@ window.Hive3D = (function () {
         this.add(s,x+side*.105,by+.36,bz+.105,.052,.048,.052,[.10,.12,.14,1]);
         this.add(s,x+side*.105,by+.377,bz+.14,.018,.018,.018,[1,.73,.10,1]);
       }
-      this.add(rb,x,by+.125,bz+.286,.47,.067,.035,[.055,.065,.075,1]);
+      this.add(rb,x,by-.225,bz+.207,.39,.035,.020,[.055,.065,.075,1]);
       this.add(s,x,by+.30,bz+.18,.115,.035,.06,[.045,.055,.065,1]);
       // Short forward-projecting thighs tuck under the desktop and visually anchor the bee to its chair.
       for(const side of [-1,1]){
