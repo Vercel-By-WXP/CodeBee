@@ -50,9 +50,18 @@ def normalize_sandbox(spec=None, workdir=None):
     else:
         # Invalid policy input must never silently widen network access.
         network = False
+    backend = str(spec.get("backend") or "native").strip().lower()
+    if backend not in ("native", "docker"):
+        raise ValueError("沙箱 backend 必须是 native 或 docker")
+    image = str(spec.get("docker_image") or "").strip()[:240]
+    if backend == "docker":
+        import re
+        if not image or not re.match(r"^[A-Za-z0-9][A-Za-z0-9._/:@-]*$", image):
+            raise ValueError("Docker 镜像名无效")
     return {"allowed_roots": [str(x) for x in roots], "env_allowlist": env,
             "network": network, "timeout_s": timeout,
             "max_output_bytes": output,
+            "backend": backend, "docker_image": image,
             "disabled_tools": normalize_disabled_tools(spec.get("disabled_tools"))}
 
 

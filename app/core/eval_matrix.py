@@ -56,12 +56,20 @@ def evaluate(manifest, results, baseline=None):
     manifest = normalize_manifest(manifest)
     results = results if isinstance(results, dict) else {}
     baseline = baseline if isinstance(baseline, dict) else {}
+    baseline_present = bool(baseline)
+    baseline_manifest_hash = (baseline.get("manifest_sha256")
+                              if isinstance(baseline.get("manifest_sha256"), str) else None)
+    baseline_scores = baseline.get("scores") if isinstance(baseline.get("scores"), dict) else baseline
+    baseline_compatible = (not baseline_present or
+                           bool(baseline_manifest_hash) and
+                           baseline_manifest_hash == manifest["manifest_sha256"])
+    comparable_baseline = baseline_scores if baseline_compatible else {}
     matrix, regressions, totals = [], [], {}
     for candidate in manifest["candidates"]:
         scores = []
         for case in manifest["cases"]:
             candidate_results = results.get(candidate)
-            candidate_baseline = baseline.get(candidate)
+            candidate_baseline = comparable_baseline.get(candidate)
             value = (candidate_results.get(case["id"]) if isinstance(candidate_results, dict) else None)
             old_value = (candidate_baseline.get(case["id"]) if isinstance(candidate_baseline, dict) else None)
             score = _score(value)
@@ -79,4 +87,5 @@ def evaluate(manifest, results, baseline=None):
     return {"manifest": manifest, "matrix": matrix, "averages": totals,
             "best_candidate": ranked[0][1] if ranked else "",
             "regressions": regressions,
+            "baseline_compatible": baseline_compatible,
             "passed": not regressions}

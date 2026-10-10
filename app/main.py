@@ -2848,6 +2848,7 @@ class Handler(BaseHTTPRequestHandler):
                 "thinking": s.get("thinking") or "",
                 "stream": (s.get("stream") or "") if running else "",
                 "activity": (s.get("activity") or []) if running else [],
+                "acp_events": s.get("acp_events") or [],
                 "live": s.get("live") or 0,
             })
 

@@ -185,6 +185,11 @@ class FakeACPProcess:
         elif method == "session/prompt":
             self.lines.put(json.dumps({"jsonrpc": "2.0", "method": "session/update",
                                        "params": {"sessionId": "session-1", "update": {
+                                           "sessionUpdate": "tool_call",
+                                           "toolCallId": "call-1", "title": "Read file",
+                                           "status": "in_progress"}}}) + "\n")
+            self.lines.put(json.dumps({"jsonrpc": "2.0", "method": "session/update",
+                                       "params": {"sessionId": "session-1", "update": {
                                            "sessionUpdate": "agent_message_chunk",
                                            "content": {"type": "text", "text": "Done."}}}}) + "\n")
             self.lines.put(json.dumps({"jsonrpc": "2.0", "id": request["id"],
@@ -224,10 +229,27 @@ class ACPClientTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["text"], "Done.")
+        events = result["raw"]["acp_events"]
+        self.assertEqual(events[0]["sessionUpdate"], "tool_call")
+        self.assertNotIn("secret-value", json.dumps(events))
         methods = [request["method"] for request in process.requests]
         self.assertEqual(methods, ["initialize", "session/new", "session/prompt"])
         self.assertEqual(process.requests[0]["params"]["protocolVersion"], 1)
         self.assertEqual(process.requests[1]["params"]["mcpServers"], [])
+
+    def test_acp_events_are_bounded_and_ignore_unknown_updates(self):
+        from core import acp_client
+        events = []
+        acp_client._record_session_update(events, {
+            "sessionUpdate": "tool_call_update", "toolCallId": "x",
+            "status": "completed", "content": [{"type": "text", "text": "sk-1234567890abcdef"}]})
+        acp_client._record_session_update(events, {"sessionUpdate": "unknown_vendor_event", "payload": "private"})
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["sessionUpdate"], "tool_call_update")
+        self.assertNotIn("sk-1234567890abcdef", json.dumps(events))
+        for _ in range(acp_client._MAX_ACP_EVENTS + 10):
+            acp_client._record_session_update(events, {"sessionUpdate": "agent_thought_chunk", "content": "x" * 10000})
+        self.assertLessEqual(len(events), acp_client._MAX_ACP_EVENTS)
 
 
 if __name__ == "__main__":

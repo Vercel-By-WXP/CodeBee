@@ -3123,7 +3123,20 @@ async function createTask() {
     workdir: $("f-workdir").value.trim(),
     thinking: $("f-thinking").value,
   };
-  if (!payload.goal) {
+  const sandboxBackend = $("f-sandbox-backend").value;
+  if (sandboxBackend === "docker") {
+    const dockerImage = $("f-sandbox-image").value.trim();
+    if (!dockerImage) {
+      msg.className = "msg err";
+      msg.textContent = t("选择 Docker 后请填写镜像名");
+      $("f-sandbox-image").focus();
+      resetSubmit();
+      return;
+    }
+    payload.sandbox = { backend: "docker", docker_image: dockerImage };
+  }
+  // 扫榜选材允许目标留空（菜单承诺：默认分析总榜热门题材），其余类型必填
+  if (!payload.goal && payload.type !== "rank_scan") {
     msg.className = "msg err";
     msg.textContent = t("请先填写目标");
     $("f-goal").focus();
@@ -3250,6 +3263,12 @@ async function createTask() {
   } finally {
     resetSubmit();
   }
+}
+
+function syncSandboxComposer() {
+  const docker = $("f-sandbox-backend") && $("f-sandbox-backend").value === "docker";
+  const row = $("row-sandbox-image");
+  if (row) row.classList.toggle("hidden", !docker);
 }
 
 /* ---------------------------------------------------------- 附件（截图/文件） */
@@ -3957,6 +3976,10 @@ async function newFromTaskAsync(id) {
   // 不随预填带走：新任务要么重新上传，要么由 _attachments 路径引用
   $("f-context").value = (tk.context || "").split("\n## 附件材料")[0].trimEnd();
   $("f-workdir").value = tk.workdir || "";
+  const taskSandbox = tk.sandbox || {};
+  $("f-sandbox-backend").value = taskSandbox.backend === "docker" ? "docker" : "native";
+  $("f-sandbox-image").value = taskSandbox.docker_image || "";
+  syncSandboxComposer();
   S.atts = []; renderAttachChips();  // 附件清单不继承：同目录引用已随 context 保留
   queueGitProbe();  // 工作目录变了，重新探测代码版本
   $("f-mode").value = ["fast", "expert", "manual"].includes(tk.mode) ? tk.mode : "auto";
@@ -4815,7 +4838,13 @@ window.loadRunCheckpoints = async function (requestedRunId) {
     const run = (S.lastRun && S.lastRun.id === runId) ? S.lastRun : latest;
     box.dataset.hasRestorable = files.some((file) => file.restorable) ? "true" : "false";
     refreshCheckpointRestoreAvailability(run);
-    body.innerHTML = (data.files && data.files.warning ? '<p class="hint">' + esc(data.files.warning) + "</p>" : "") +
+    const checkpoint = data.checkpoint || {};
+    const steps = Array.isArray(checkpoint.steps) ? checkpoint.steps : [];
+    const stepSummary = steps.length ? '<div class="rd-checkpoint-steps"><strong>' + esc(t("步骤回放预览")) + '</strong>' +
+      steps.map((step) => '<div class="rd-checkpoint-step"><span>#' + esc(String(step.step ?? "")) + ' · ' + esc(step.role || t("未命名步骤")) + '</span><span class="chip">' + esc(step.status || step.event || "unknown") + (step.attempt ? ' · ' + esc(t("第") + step.attempt + t("次")) : "") + '</span></div>').join("") +
+      (checkpoint.truncated ? '<p class="hint">' + esc(t("仅显示最近 200 个步骤，共 ") + (checkpoint.total_steps || steps.length)) + '</p>' : '') +
+      (checkpoint.replayable ? '<p class="hint">' + esc(t("所有步骤均已完成，可人工复核后继续")) + '</p>' : '<p class="hint">' + esc(t("无法安全自动回放：") + (checkpoint.blocked_reason || t("需要人工核对"))) + '</p>') + '</div>' : '';
+    body.innerHTML = (data.files && data.files.warning ? '<p class="hint">' + esc(data.files.warning) + "</p>" : "") + stepSummary +
       (files.length ? files.map((file) => '<article class="rd-checkpoint-row"><strong>' + esc(file.path) + '</strong><span class="chip">' + esc(file.status) + (file.restorable ? " · " + esc(t("可恢复")) : "") + '</span><pre>' + esc(file.diff || "") + "</pre></article>").join("") : '<span class="hint">' + esc(t("此运行没有文件快照")) + "</span>");
     box.dataset.runId = runId;
     box.classList.remove("needs-load");
@@ -6209,9 +6238,6 @@ function pbBlock(task, platform) {
       const key = task.id + ":" + platform;
       const sig = its.map((x) => x.n).join(",");
       S.pbSel = S.pbSel || {};
-      if (!S.pbSel[key] || S.pbSel[key].sig !== sig)
-        S.pbSel[key] = { sig, sel: new Set(its.map((x) => x.n)) };
-      const sel = S.pbSel[key].sel;
       // 连续段按卷名分组；无卷计划的整块平铺不显示卷头
       const groups = [];
       for (const x of its) {
@@ -6219,10 +6245,22 @@ function pbBlock(task, platform) {
         if (g && g.v === x.v) g.ns.push(x.n);
         else groups.push({ v: x.v, ns: [x.n] });
       }
+      if (!S.pbSel[key] || S.pbSel[key].sig !== sig)
+        S.pbSel[key] = { sig, sel: new Set(its.map((x) => x.n)), groups };
+      const sel = S.pbSel[key].sel;
       let chips = "";
-      for (const g of groups) {
-        if (groups.length > 1 || g.v)
-          chips += '<div class="pb-vol">' + esc(g.v || t("未分卷")) + "</div>";
+      for (let gi = 0; gi < groups.length; gi++) {
+        const g = groups[gi];
+        if (groups.length > 1 || g.v) {
+          // 卷头＝整卷开关：全选打勾、部分选中显示 已选/总（2026-10-10 按卷选章）
+          const cnt = g.ns.filter((n) => sel.has(n)).length;
+          const allOn = cnt === g.ns.length;
+          chips += '<div class="pb-vol"><label class="pb-vol-sel' + (allOn ? " on" : "") +
+            '" title="' + esc(t("勾选卷头＝整卷进所选，再点取消")) + '">' +
+            '<input type="checkbox" ' + (allOn ? "checked" : "") +
+            ' onchange="pbSelVolume(\'' + esc(task.id) + "','" + platform + "'," + gi + ',this.checked)">' +
+            esc(g.v || t("未分卷")) + t("（") + (allOn ? "" : cnt + "/") + g.ns.length + t("）") + "</label></div>";
+        }
         for (const n of g.ns)
           chips += '<label class="pb-chip' + (sel.has(n) ? " on" : "") + '">' +
             '<input type="checkbox" ' + (sel.has(n) ? "checked" : "") +
@@ -6576,6 +6614,17 @@ window.pbSelAll = function (taskId, platform, all) {
   if (!ent) return;
   if (all) for (const n of ent.sig.split(",")) ent.sel.add(Number(n));
   else ent.sel.clear();
+  pbSelCountSync(key);
+  S._pbSig = ""; pbKick();
+};
+
+window.pbSelVolume = function (taskId, platform, gi, on) {
+  const key = taskId + ":" + platform;
+  const ent = (S.pbSel || {})[key];
+  const g = ent && ent.groups && ent.groups[gi];
+  if (!g || !g.ns.length) return;
+  if (on) for (const n of g.ns) ent.sel.add(n);
+  else for (const n of g.ns) ent.sel.delete(n);
   pbSelCountSync(key);
   S._pbSig = ""; pbKick();
 };
@@ -9322,6 +9371,20 @@ function chatThinkHTML(it) {
     '<div class="ct-body">' + esc(think) + "</div></details>";
 }
 
+function chatAcpEventsHTML(it) {
+  const events = Array.isArray(it.acp_events) ? it.acp_events.slice(-8) : [];
+  if (!events.length) return "";
+  return '<details class="chat-think chat-acp-events"><summary>' + esc(t("ACP 活动")) +
+    '<span class="ct-len">' + events.length + ' ' + esc(t("条")) + '</span></summary>' +
+    '<div class="ct-acts">' + events.map((event) => {
+      const type = String(event.sessionUpdate || "event");
+      const label = event.title || event.status || event.modeId || "";
+      const entries = Array.isArray(event.entries) ? event.entries.map((entry) =>
+        '<div class="rd-acp-plan-entry">' + esc(entry.status || "") + ' · ' + esc(entry.content || "") + '</div>').join("") : "";
+      return '<div><code>' + esc(type) + '</code>' + (label ? ' · ' + esc(label) : "") + entries + '</div>';
+    }).join("") + '</div></details>';
+}
+
 /* 运行中直连对话的快轮询：SSE/轮询最密 2s、闲时 8s，思考是逐句吐的——
  * 1.2s 直拉时间线把增量打印出来。run 终态、切详情、分区隐藏即停。 */
 function stopChatLive() {
@@ -9424,6 +9487,7 @@ function drawChatFlow(run, data, active) {
     (it.status || "") + ":" + String(it.text || "").length + ":" +
     String(it.thinking || "").length + ":" + String(it.stream || "").length + ":" +
     (it.activity || []).length + ":" + (it.followups || []).length +
+    ":" + (it.acp_events || []).length +
     ":" + (it.consumed ? 1 : 0), "") + "|" + ((data && data.result) ? "r" : "");
   if (liveSig === chatLiveSig && flow.childElementCount) return;
   chatLiveSig = liveSig;
@@ -9497,6 +9561,7 @@ function drawChatFlow(run, data, active) {
       '<span class="chat-avatar" aria-hidden="true"><svg class="ico"><use href="#i-bee"></use></svg></span>' +
       '<div class="chat-bubble agent">' +
       chatThinkHTML(it) +
+      chatAcpEventsHTML(it) +
       '<div class="chat-body">' + bodyHtml + "</div>" +
       '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
       (metaBad ? " · " + t(it.status === "failed" ? "失败" : "已取消") : "") + actsA + "</div>" +
@@ -16411,6 +16476,8 @@ document.addEventListener("DOMContentLoaded", () => {
   localStorage.removeItem("orch.showArchived");   // 清掉旧版持久化残留，避免误解为默认选中
   $("f-resume-agent").addEventListener("change", loadSessions);
   $("f-resume-session").addEventListener("change", showResumeHint);
+  $("f-sandbox-backend").addEventListener("change", syncSandboxComposer);
+  syncSandboxComposer();
   /* 工作目录不再用「上次用过」的旧记忆预填：那样改默认保存路径后，新建任务仍会被
    * 旧目录盖过。首屏默认选中设置里的默认路径（loadSettings 落值），克隆/右键新建
    * 等显式入口各自直接写字段值，不跨刷新持久化。清掉旧版残留键，避免误解为默认选中。 */

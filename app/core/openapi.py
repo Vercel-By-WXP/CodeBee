@@ -12,6 +12,14 @@ def document():
         "TaskCreate": {"type": "object", "required": ["goal"], "properties": {
             "type": {"type": "string"}, "title": {"type": "string"},
             "goal": {"type": "string", "maxLength": 4000}, "workdir": {"type": "string"},
+            "sandbox": {"type": "object", "properties": {
+                "backend": {"type": "string", "enum": ["native", "docker"]},
+                "docker_image": {"type": "string", "maxLength": 240},
+                "allowed_roots": {"type": "array", "maxItems": 16,
+                                   "items": {"type": "string", "maxLength": 1024}},
+                "env_allowlist": {"type": "array", "maxItems": 64,
+                                  "items": {"type": "string", "maxLength": 128}},
+                "network": {"type": "boolean"}, "timeout_s": {"type": "integer"}}},
             "acceptance_criteria": {"type": "array", "maxItems": 40,
                                      "items": {"type": "string", "maxLength": 500}},
             "approval_required": {"type": "boolean"}}},

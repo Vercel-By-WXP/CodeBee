@@ -441,13 +441,20 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None, sandbox=N
     # policy keeps the user-approved full-trust tier (2026-09-22) instead of
     # refusing every command.
     has_bwrap = os.name == "posix" and bool(shutil.which("bwrap"))
-    if sandbox.get("network") is False and not has_bwrap:
+    if sandbox.get("network") is False and not has_bwrap and sandbox.get("backend") != "docker":
         return "（沙箱拒绝：当前系统没有可用的网络隔离后端，命令未执行）"
-    if sandbox.get("env_allowlist"):
+    if sandbox.get("env_allowlist") and sandbox.get("backend") != "docker":
         # run_process 的 env 是注入语义（合并进完整父环境，供凭据注入），
         # 不是白名单替换——环境收窄在子进程侧无法兑现，宁拒不假装
         return "（沙箱拒绝：该任务带环境变量白名单，命令执行无法兑现该策略，未执行）"
-    if has_bwrap:
+    if sandbox.get("backend") == "docker":
+        try:
+            from .sandbox_runtime import docker_argv, docker_env
+            argv = docker_argv(cmdline, sandbox=sandbox, workdir=cwd)
+            launch_env = docker_env(sandbox)
+        except Exception as exc:
+            return "（沙箱拒绝：%s，命令未执行）" % str(exc)[:240]
+    elif has_bwrap:
         argv = ["bwrap", "--die-with-parent", "--new-session", "--tmpfs", "/"]
         # Mount only the runtime needed by ordinary commands. Do not expose the
         # entire host root read-only: read access can still leak user secrets.
@@ -468,10 +475,12 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None, sandbox=N
             argv.extend(["--dir", root_path])
             argv.extend(["--bind", root_path, root_path])
         argv.extend(["--chdir", cwd, "--", "/bin/sh", "-lc", cmdline])
+        launch_env = None
     else:
         argv = None   # 全信任档：runner 按平台自包 cmd /c 或 /bin/sh -c
+        launch_env = None
     r = runner.run_process(argv=argv, shell_cmd=cmdline if argv is None else None,
-                           cwd=cwd, env=None,
+                           cwd=cwd, env=launch_env,
                            timeout=min(timeout, CMD_MAX_TIMEOUT),
                            deadline=deadline, cancel_event=cancel_event)
     out = runner.clean_cli_text(

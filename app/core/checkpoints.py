@@ -141,7 +141,12 @@ def replay_preview(run_id):
                     or x.get("step") not in starts), None)
     if not steps:
         unknown = {"reason": "checkpoint_not_found"}
+    total_steps = len(steps)
+    max_preview_steps = 200
+    steps = steps[-max_preview_steps:]
     return {"run_id": str(run_id or ""), "steps": steps,
+            "total_steps": total_steps,
+            "truncated": total_steps > max_preview_steps,
             "replayable": unknown is None,
             "blocked_reason": ("checkpoint_not_found" if not steps else
                                "requires_reconciliation" if unknown else "")}

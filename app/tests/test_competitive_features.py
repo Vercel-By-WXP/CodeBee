@@ -12,6 +12,7 @@ from unittest.mock import patch
 import main
 from core import agent_context, checkpoints, eval_matrix, flow_graph
 from core import knowledge_pipeline, policy, project_memory, retrieval, tracing, webhooks
+from core import sandbox_runtime
 
 
 class CompetitiveFeatureTests(unittest.TestCase):
@@ -427,7 +428,7 @@ class CompetitiveFeatureTests(unittest.TestCase):
         save_task.assert_not_called()
 
     def test_sandbox_network_off_fails_closed_for_shell_without_backend(self):
-        from core import builtin_agent, runner
+        from core import builtin_agent, runner, sandbox_runtime
         with tempfile.TemporaryDirectory() as wd:
             sandbox = policy.normalize_sandbox({"allowed_roots": [wd], "network": False}, wd)
             with patch.object(builtin_agent.shutil, "which", return_value=None), \
@@ -467,6 +468,55 @@ class CompetitiveFeatureTests(unittest.TestCase):
                     wd, "run_command", {"command": "echo must-not-run"}, sandbox=sandbox)
         self.assertIn("环境变量白名单", result)
         run_process.assert_not_called()
+
+    def test_shell_docker_backend_uses_container_argv_and_filtered_env(self):
+        from core import builtin_agent, runner
+        with tempfile.TemporaryDirectory() as wd:
+            sandbox = policy.normalize_sandbox({
+                "backend": "docker", "docker_image": "python:3.12-slim",
+                "allowed_roots": [wd], "env_allowlist": [], "network": False,
+            }, wd)
+            with patch.object(sandbox_runtime.shutil, "which",
+                              return_value="docker"), \
+                 patch.object(runner, "run_process",
+                              return_value={"ok": True, "exit_code": 0,
+                                            "stdout": "container-ok", "stderr": "",
+                                            "cancelled": False,
+                                            "timed_out": False}) as run_process:
+                result = builtin_agent._exec_tool(
+                    wd, "run_command", {"command": "echo container-ok"}, sandbox=sandbox)
+        self.assertIn("container-ok", result)
+        self.assertTrue(run_process.called)
+        kwargs = run_process.call_args.kwargs
+        self.assertIsNone(kwargs.get("shell_cmd"))
+        self.assertEqual(kwargs["env"]["HOME"], "/tmp")
+        self.assertIn("docker", kwargs["argv"][0])
+
+    def test_docker_command_runs_in_real_container_when_runtime_is_available(self):
+        from core import builtin_agent
+        docker = sandbox_runtime.shutil.which("docker")
+        if not docker:
+            self.skipTest("Docker CLI unavailable")
+        daemon = subprocess.run([docker, "info"], stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, timeout=8)
+        if daemon.returncode:
+            self.skipTest("Docker daemon unavailable")
+        image = "python:3.12-slim"
+        image_check = subprocess.run([docker, "image", "inspect", image],
+                                     stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL, timeout=8)
+        if image_check.returncode:
+            self.skipTest("Docker integration image is not preloaded")
+        with tempfile.TemporaryDirectory() as workdir:
+            sandbox = policy.normalize_sandbox({
+                "backend": "docker", "docker_image": image,
+                "network": False, "allowed_roots": [workdir],
+            }, workdir)
+            result = builtin_agent._tool_run_command(
+                workdir, {"command": "python -c \"print('container-integration-ok')\""},
+                sandbox=sandbox)
+        self.assertIn("container-integration-ok", result)
+        self.assertIn("退出码: 0", result)
 
     def test_mcp_network_off_policy_reaches_isolated_dispatch(self):
         from core import builtin_agent, mcp_client
@@ -1034,6 +1084,16 @@ class CompetitiveFeatureTests(unittest.TestCase):
         self.assertFalse(missing["replayable"])
         self.assertEqual(missing["blocked_reason"], "checkpoint_not_found")
 
+    def test_checkpoint_preview_caps_steps_and_reports_truncation(self):
+        with patch.object(checkpoints, "_DIR", self.root / "checkpoints"):
+            for number in range(205):
+                checkpoints.start("run-many", number, "worker", "p")
+                checkpoints.finish("run-many", number, "done")
+            preview = checkpoints.replay_preview("run-many")
+        self.assertEqual(len(preview["steps"]), 200)
+        self.assertEqual(preview["total_steps"], 205)
+        self.assertTrue(preview["truncated"])
+
     def test_webhook_signature_and_delivery_deduplication(self):
         raw = b'{"goal":"run"}'
         secret = "local-secret"
@@ -1059,11 +1119,29 @@ class CompetitiveFeatureTests(unittest.TestCase):
         report = eval_matrix.evaluate(manifest, {
             "model-a": {"case-1": {"score": 7.0}},
             "model-b": {"case-1": {"score": 8.0}},
-        }, baseline={"model-a": {"case-1": {"score": 8.0}}})
+        }, baseline={"manifest_sha256": manifest["manifest_sha256"],
+                     "scores": {"model-a": {"case-1": {"score": 8.0}}}})
         self.assertEqual(report["matrix"][0]["candidate"], "model-a")
         self.assertEqual(report["regressions"][0]["delta"], -1.0)
         self.assertEqual(report["best_candidate"], "model-b")
         self.assertIsNone(eval_matrix.evaluate(manifest, {"model-a": {"case-1": {"score": float("nan")}}})["matrix"][0]["score"])
+        mismatched = eval_matrix.evaluate(manifest, {
+            "model-a": {"case-1": {"score": 5}},
+        }, baseline={"manifest_sha256": "not-this-manifest",
+                     "scores": {"model-a": {"case-1": {"score": 10}}}})
+        self.assertFalse(mismatched["baseline_compatible"])
+        self.assertIsNone(mismatched["matrix"][0]["baseline"])
+        legacy = eval_matrix.evaluate(manifest, {
+            "model-a": {"case-1": {"score": 5}},
+        }, baseline={"model-a": {"case-1": {"score": 10}}})
+        self.assertFalse(legacy["baseline_compatible"])
+        self.assertIsNone(legacy["matrix"][0]["baseline"])
+        malformed = eval_matrix.evaluate(manifest, {
+            "model-a": {"case-1": {"score": 5}},
+        }, baseline={"manifest_sha256": 123,
+                     "scores": {"model-a": {"case-1": {"score": 10}}}})
+        self.assertFalse(malformed["baseline_compatible"])
+        self.assertIsNone(malformed["matrix"][0]["baseline"])
 
     def test_knowledge_pipeline_chunks_with_source_hash_and_quality(self):
         with patch.object(retrieval, "_FILE", self.root / "index.json"), \
@@ -1088,9 +1166,80 @@ class CompetitiveFeatureTests(unittest.TestCase):
         self.assertTrue(policy.path_allowed(self.root / "x.txt", sandbox))
         self.assertFalse(policy.path_allowed(self.root.parent / "x.txt", sandbox))
         self.assertEqual(policy.filter_env({"PATH": "x", "SECRET": "y"}, sandbox), {"PATH": "x"})
+
+    def test_task_composer_exposes_scoped_docker_command_backend(self):
+        html = (Path(__file__).resolve().parents[1] / "ui" / "index.html").read_text(
+            encoding="utf-8")
+        js = (Path(__file__).resolve().parents[1] / "ui" / "app.js").read_text(
+            encoding="utf-8")
+        self.assertIn('id="f-sandbox-backend"', html)
+        self.assertIn('id="f-sandbox-image"', html)
+        self.assertIn("ACP、外部 CLI 与 MCP 暂不支持容器化", html)
+        self.assertIn('payload.sandbox = { backend: "docker"', js)
+        self.assertIn('docker_image:', js)
+
+    def test_docker_backend_is_explicit_and_confines_mounts_network_and_env(self):
+        workspace = self.root / "workspace"
+        workspace.mkdir()
+        subdir = workspace / "allowed"
+        subdir.mkdir()
+        sandbox = policy.normalize_sandbox({
+            "backend": "docker", "docker_image": "python:3.12-slim",
+            "allowed_roots": [str(workspace)], "env_allowlist": [], "network": False,
+        }, workspace)
+        with patch.object(sandbox_runtime.shutil, "which", return_value="docker"):
+            argv = sandbox_runtime.docker_argv("echo ok", sandbox=sandbox,
+                                               workdir=str(workspace))
+        self.assertIn("none", argv)
+        self.assertIn("--cap-drop=ALL", argv)
+        self.assertIn("dst=/workspace", " ".join(argv))
+        self.assertNotIn("src=%s," % self.root.parent, " ".join(argv))
+        self.assertEqual(sandbox_runtime.requested_backend({}), "native")
+        with patch.object(sandbox_runtime.shutil, "which", return_value="docker"), \
+             self.assertRaisesRegex(sandbox_runtime.SandboxUnavailable, "任务工作目录"):
+            sandbox_runtime.docker_argv("echo ok", sandbox=dict(
+                sandbox, allowed_roots=[str(workspace.parent)]), workdir=str(workspace))
+        with patch.dict(os.environ, {"CODEBEE_SANDBOX_TEST_SECRET": "sk-test-secret-value"}), \
+             patch.object(sandbox_runtime.shutil, "which", return_value="docker"):
+            secret_sandbox = dict(sandbox, env_allowlist=["CODEBEE_SANDBOX_TEST_SECRET"])
+            secret_argv = sandbox_runtime.docker_argv("echo ok", sandbox=secret_sandbox,
+                                                      workdir=str(workspace))
+            secret_env = sandbox_runtime.docker_env(secret_sandbox)
+        self.assertNotIn("sk-test-secret-value", " ".join(secret_argv))
+        self.assertEqual(secret_env["CODEBEE_SANDBOX_TEST_SECRET"], "sk-test-secret-value")
+        with self.assertRaises(sandbox_runtime.SandboxUnavailable):
+            sandbox_runtime.docker_argv("echo ok", sandbox={"backend": "docker"},
+                                        workdir=str(workspace))
+        with patch.object(sandbox_runtime.shutil, "which", return_value="docker"), \
+             self.assertRaises(sandbox_runtime.SandboxUnavailable):
+            sandbox_runtime.docker_argv("echo ok", sandbox={
+                "backend": "docker", "docker_image": "--privileged"},
+                workdir=str(workspace))
         self.assertFalse(policy.normalize_sandbox({"network": "false"}, self.root)["network"])
         with self.assertRaisesRegex(ValueError, "allowed_roots"):
             policy.normalize_sandbox({"allowed_roots": [str(self.root.parent)]}, self.root)
+
+    def test_docker_policy_is_persisted_and_external_agents_fail_closed(self):
+        from core import store, pipeline
+        workdir = self.root / "persisted"
+        workdir.mkdir()
+        with patch.object(store, "_TASKS", {}), patch.object(store, "_RUNS", {}):
+            task = store.create_task({
+                "type": "code", "goal": "run a command", "workdir": str(workdir),
+                "sandbox": {"backend": "docker", "docker_image": "python:3.12-slim"},
+            })
+        self.assertEqual(task["sandbox"]["backend"], "docker")
+        self.assertEqual(task["sandbox"]["docker_image"], "python:3.12-slim")
+        reason = pipeline._external_sandbox_block_reason(
+            {"kind": "codex", "mode": "real"}, workdir, task["sandbox"])
+        self.assertIn("外部 CLI", reason)
+
+    def test_invalid_sandbox_backend_and_docker_image_fail_closed_at_creation(self):
+        with self.assertRaisesRegex(ValueError, "backend"):
+            policy.normalize_sandbox({"backend": "dockre"}, self.root)
+        with self.assertRaisesRegex(ValueError, "镜像"):
+            policy.normalize_sandbox({"backend": "docker", "docker_image": "--privileged"},
+                                     self.root)
         graph = flow_graph.build("code")
         self.assertTrue(graph["nodes"])
         self.assertTrue(graph["edges"])

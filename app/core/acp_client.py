@@ -15,6 +15,34 @@ from .env_scrub import scrub_env
 
 _MAX_LINE = 2 * 1024 * 1024
 _MAX_TEXT = 2 * 1024 * 1024
+_MAX_ACP_EVENTS = 200
+_ACP_EVENT_TYPES = {
+    "agent_thought_chunk", "tool_call", "tool_call_update", "plan",
+    "current_mode_update", "config_option_update", "session_info_update",
+    "available_commands_update", "usage_update", "session_notification",
+}
+
+
+def _record_session_update(events, update):
+    """Keep bounded, redacted ACP event metadata without tool payloads."""
+    if not isinstance(update, dict) or len(events) >= _MAX_ACP_EVENTS:
+        return
+    kind = str(update.get("sessionUpdate") or "")[:60]
+    if kind not in _ACP_EVENT_TYPES:
+        return
+    from .redact import scrub_text
+    item = {"sessionUpdate": kind}
+    for key in ("toolCallId", "title", "status", "modeId", "configId", "commandId"):
+        value = update.get(key)
+        if isinstance(value, (str, int, float, bool)):
+            item[key] = scrub_text(str(value), limit=160)
+    entries = update.get("entries")
+    if kind == "plan" and isinstance(entries, list):
+        item["entries"] = [{
+            "content": scrub_text(str(entry.get("content") or ""), limit=160),
+            "status": scrub_text(str(entry.get("status") or ""), limit=40),
+        } for entry in entries[:12] if isinstance(entry, dict)]
+    events.append(item)
 
 
 class ACPError(Exception):
@@ -336,6 +364,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
         if absolute_deadline is None:
             absolute_deadline = started + max(1.0, float(timeout or 1200))
         text_parts = []
+        acp_events = []
         terminals = {}
         session_id = str(resume or "")
 
@@ -344,8 +373,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
             if message.get("method") == "session/update":
                 params = message.get("params") or {}
                 update = params.get("update") or {}
-                if params.get("sessionId") == session_id and \
-                        update.get("sessionUpdate") == "agent_message_chunk":
+                if params.get("sessionId") == session_id:
+                    _record_session_update(acp_events, update)
+                if params.get("sessionId") == session_id and update.get("sessionUpdate") == "agent_message_chunk":
                     content = update.get("content") or {}
                     if content.get("type") == "text":
                         piece = str(content.get("text") or "")
@@ -395,7 +425,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
         return {"ok": True, "text": "".join(text_parts)[:_MAX_TEXT], "json": None,
                 "cost_usd": 0.0, "tokens": 0, "usage": None, "error": "",
                 "error_code": "", "raw": {"exit_code": 0,
-                                               "duration": time.monotonic() - started},
+                                               "duration": time.monotonic() - started,
+                                               "acp_events": acp_events},
                 "kind": "acp", "model": None, "sid": session_id,
                 "attempts": []}
     except InterruptedError as exc:

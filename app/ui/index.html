@@ -491,6 +491,22 @@
                 <div class="field"><label class="checkline"><input id="f-approval-required" type="checkbox"> 完成前需要人工审批</label><p class="hint">启用后，Git 合并和发布会等待审批记录。</p></div>
               </div>
 
+              <div class="grid-2">
+                <div class="field">
+                  <label for="f-sandbox-backend" data-i18n="命令执行后端">命令执行后端</label>
+                  <select id="f-sandbox-backend">
+                    <option value="native" data-i18n="本机默认">本机默认</option>
+                    <option value="docker" data-i18n="Docker 容器">Docker 容器</option>
+                  </select>
+                  <p class="hint" data-i18n="Docker 仅适用于内置命令工具；ACP、外部 CLI 与 MCP 暂不支持容器化，将安全拒绝执行。">Docker 仅适用于内置命令工具；ACP、外部 CLI 与 MCP 暂不支持容器化，将安全拒绝执行。</p>
+                </div>
+                <div class="field hidden" id="row-sandbox-image">
+                  <label for="f-sandbox-image" data-i18n="Docker 镜像">Docker 镜像</label>
+                  <input id="f-sandbox-image" placeholder="python:3.12-slim" maxlength="240" autocomplete="off" spellcheck="false">
+                  <p class="hint" data-i18n="镜像需预装任务所需工具；容器仅挂载任务工作目录。">镜像需预装任务所需工具；容器仅挂载任务工作目录。</p>
+                </div>
+              </div>
+
               <div id="f-code-only">
                 <div class="field"><label data-i18n="验证命令">验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）" data-i18n-ph="例：python -m pytest -q（可空=只评审）"></div>
               </div>

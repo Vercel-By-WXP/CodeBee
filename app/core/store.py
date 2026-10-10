@@ -145,8 +145,15 @@ def create_task(payload):
     goal = _text(payload.get("goal"), "goal")
     workdir = _text(payload.get("workdir"), "workdir")
     if not goal:
-        raise ValueError("目标描述不能为空")
-    title = title or goal.splitlines()[0][:30]  # 标题可省略，自动取目标首行
+        # 扫榜选材的菜单承诺「方向可留空，默认分析总榜热门题材」——
+        # paihang.rank_scan_prompt 与 pipeline 两侧均已支持空 goal，这里放行；
+        # 其余类型目标必填不变。
+        if payload.get("type") == "rank_scan":
+            title = title or flow.get("name") or "扫榜选材"
+        else:
+            raise ValueError("目标描述不能为空")
+    else:
+        title = title or goal.splitlines()[0][:30]  # 标题可省略，自动取目标首行
     if not workdir:
         # 未指定目录 → 用「默认保存路径」（设置里可改；内置回落 <数据目录>/workspace）。
         # 默认路径允许自动创建；用户显式给的目录仍必须已存在。
@@ -2128,7 +2135,7 @@ def clear_stream_state(run_id=None, n=None):
 
 def finish_step(run_id, n, status, summary="", exit_code=None,
                 cost_usd=0.0, tokens=0.0, duration_s=None, model=None, output=None,
-                followups=None, thinking=None, partial=False):
+                followups=None, thinking=None, partial=False, acp_events=None):
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -2163,6 +2170,9 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                     s["partial"] = True
                 else:
                     s.pop("partial", None)
+                if acp_events:
+                    s["acp_events"] = [dict(item) for item in acp_events[:200]
+                                       if isinstance(item, dict)]
                 # 收尾即清运行中态：stream/activity/live 只是过程快照，留着会让
                 # 前端把「已结束」的步骤仍当实时流渲染（也白占 run.json 体积）
                 s.pop("stream", None)

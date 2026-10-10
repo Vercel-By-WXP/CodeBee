@@ -586,6 +586,8 @@ def _external_sandbox_block_reason(agent, workdir, sandbox):
     from . import policy
     root = os.path.realpath(workdir or ".")
     normalized = policy.normalize_sandbox(sandbox, root)
+    if normalized.get("backend") == "docker":
+        return "沙箱拒绝：Docker 目前仅接入内置命令工具，外部 CLI 未验证容器启动，拒绝运行"
     if (agent or {}).get("kind") == "codex":
         if normalized.get("network") is False:
             return "沙箱拒绝：该 CLI 后端未接入网络隔离，拒绝运行网络受限任务"
@@ -912,7 +914,8 @@ def _finish_step_result(run_id, step, res, role, agent, start):
                       followups=res.get("followups"),
                       # 思考过程（内置智能体流式抓取）：落进步骤记录，对话气泡折叠展示
                       thinking=res.get("reasoning") or None,
-                      partial=bool(res.get("partial")))
+                      partial=bool(res.get("partial")),
+                      acp_events=(raw.get("acp_events") or []))
     try:
         checkpoint_status = ("unknown" if raw.get("unknown") else
                              "timeout" if status == "timeout" else
