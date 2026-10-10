@@ -25,6 +25,7 @@ QUERIES = [
     ("A2", "LLM+workflow+builder"),
     ("A3", "prompt+caching+OR+llm+semantic+cache"), ("A3", "token+optimization+OR+token+efficient"),
     ("A3", "context+window+management"), ("A3", "cheap+model+routing+OR+model+cascade"),
+    ("A3", "token+efficient+agent+OR+openclacky"),
     ("A4", "ai+coding+agent+cli"), ("A4", "terminal+coding+agent"), ("A4", "headless+agent+cli"),
     ("A5", "agent+team+OR+agent+fleet"), ("A5", "computer+use+OR+computer+control+agent+cli"),
     ("A5", "spec-driven+development+agent"), ("A5", "ai+agent+sandbox+runtime"),

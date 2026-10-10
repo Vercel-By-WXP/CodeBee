@@ -1,4 +1,4 @@
-# 关键词总库（全类型覆盖版 · 147 组 + 雷达源）
+# 关键词总库（全类型覆盖版 · 148 组 + 雷达源）
 
 > 夜间自动化检索的完整词库。规则：每轮跑 **常驻组全部 + 轮换池按当前小时数对 7 取模选 1 批（余 0=批7）+ 雷达源全部**；
 > 双轮排序（sort=stars 与 sort=updated 或 created:>2026-03-01 新锐轮）；核心组翻页 page=2
@@ -50,12 +50,12 @@
 - q=ai+employee+OR+digital+worker+OR+digital+employee（2026-10-05 21 时班补：StaffDeck 1,967★〔OpenBMB 数字员工平台〕系 WebSearch 交叉验证捞出、147 组词各班从未命中——GitHub 搜索按词 AND 匹配，「digital employee」与「digital worker」系不同词形，谁/何时/为何：21 时班首例）
 - q=LLM+workflow+builder
 
-### A3 token 节约（4 组，每轮必查——帮 CodeBee 用户省 token）
+### A3 token 节约（5 组，每轮必查——帮 CodeBee 用户省 token）
 - q=prompt+caching+OR+llm+semantic+cache
 - q=token+optimization+OR+token+efficient
 - q=context+window+management
 - q=cheap+model+routing+OR+model+cascade
-- q=token+efficient+agent+OR+openclacky 生态（2026-10-09 16 时班补：clacky-ai/openclacky 1,204★ 系 trendshift 根页捞出——「The most Token-efficient open-source AI Agent」描述本身含 token-efficient 词形但主扫 A3 组 per_page=5 被头部剪切未现，系**剪切线盲区**非词形盲区；其 Insert-then-Compress 保前缀缓存+16 工具元工具收敛+闲时压缩预热三机制系 A3 高价值对标件，需盯增量，谁/何时/为何：16 时班首见）
+- q=token+efficient+agent+OR+openclacky 生态（2026-10-09 16 时班补：clacky-ai/openclacky 1,204★ 系 trendshift 根页捞出——「The most Token-efficient open-source AI Agent」描述本身含 token-efficient 词形但主扫 A3 组 per_page=5 被头部剪切未现，系**剪切线盲区**非词形盲区；其 Insert-then-Compress 保前缀缓存+16 工具元工具收敛+闲时压缩预热三机制系 A3 高价值对标件，需盯增量，谁/何时/为何：16 时班首见；主扫脚本 QUERIES 已同步该词〔2026-10-10 班，此前两班夜间漏跑——词库补词必须同班回写脚本 QUERIES〕）
 
 ### A4 新 CLI（3 组）
 - q=ai+coding+agent+cli
@@ -229,7 +229,7 @@
 ## C. 雷达源（每轮全过）
 
 - awesome 清单：awesome-agent-orchestration（正主 vivy-yi 77★，2026-10-06 in:name 勘定）、awesome-claude-skills（正主 ComposioHQ 76,657★，2026-10-08 00 时班 in:name 勘定——旧注 anthropics/ 已 404 失配，travisvn 同名 15,299★ 系镜像噪声，谁/何时/为何：00 时班 awesome 20 源实测）、ai-boost/awesome-harness-engineering（4.7k★，2026-10-04 属主补认）、awesome-mcp-servers（punkpeye，2026-10-04 名实修正：旧 punkpeye/awesome-mcp 已 404，社区迁此仓 95.8k★ 两轮实证存活）、awesome-cli-coding-agents（正主 bradAGI 1,317★，2026-10-06 13 时班 in:name 一次勘定；ishandutta2007 同名 4★ 系镜像噪声，谁/何时/为何：13 时班 C 源属主补注）、awesome-ai-agents（正主 e2b-dev 30,314★，2026-10-09 15 时班属主补注）、awesome-llm-apps、awesome-claude-code（正主 hesreallyhim 55,293★，2026-10-09 15 时班 repos 实测属主补注；上批「54k★」裸名无属主易失联）；另存量头部失配勘定 6 件全名补认（2026-10-09 15 时班 in:name 一次勘清）：affaan-m/ECC、NousResearch/hermes-agent、DietrichGebert/ponytail、langgenius/dify、earendil-works/pi、anomalyco/opencode）、VoltAgent/awesome-agent-skills（34.6k★ 1000+ skills）、buildwithclaude（正主 davepoon 3,604★，2026-10-08 10 时班 in:name 勘定——旧注缺属主裸名 404，谁/何时/为何：10 时班 awesome 20 源实测）
-- awesome 清单补充（2026-09-22）：RUC-NLPIR/Awesome-Long-Horizon-Agents（长程 agent 路线图）、TeleAI-UAGI/Awesome-Agent-Memory（记忆域地图）、caramaschiHG/awesome-ai-agents-2026（300+ 资源月更）、vijaythecoder/awesome-claude-agents（4.4k★ Claude 子代理编排，2026-10-05 07 时班批7 捞出补入）、TsinghuaC3I/Awesome-Memory-for-Agents（665★ 记忆域论文集，WebSearch 交叉验证捞出+repos 二次实证，2026-10-05 16 时班批2 补入——批2 域专属地图与 TeleAI 互补）、Engineering4AI/awesome-spec-driven-development（288★ spec-driven 域专属清单——批3 同款域专属补位；BMAD-METHOD 正主=bmad-code-org 53,909★〔in:name 勘定，2026-10-08 10 时班 repos 实测〕大漏同轮 WebSearch 捞出坐实「主扫 per_page=5 剪切线+词根错配」盲区，谁/何时/为何：2026-10-06 04 时班批3 首补、10-08 10 时班属主勘定）、VoltAgent/awesome-ai-agent-papers（1,821★ 2026 agent 工程论文清单，覆盖记忆/评测/工作流——批2 域 WebSearch 交叉验证捞出+repos 二次实证，谁/何时/为何：2026-10-06 09 时班批2 补入）、EvoMap/awesome-agent-evolution（234★ agent 进化/记忆/自我改进专属清单）、IAAR-Shanghai/Awesome-AI-Memory（1,257★ 记忆域知识库）——批2 域专属地图第 3/4 张与 TeleAI/TsinghuaC3I 互补，WebSearch 交叉验证捞出+repos 二次实证双双坐实（谁/何时/为何：2026-10-07 09 时班批2 补入）
+- awesome 清单补充（2026-09-22）：RUC-NLPIR/Awesome-Long-Horizon-Agents（长程 agent 路线图）、TeleAI-UAGI/Awesome-Agent-Memory（记忆域地图）、caramaschiHG/awesome-ai-agents-2026（300+ 资源月更）、vijaythecoder/awesome-claude-agents（4.4k★ Claude 子代理编排，2026-10-05 07 时班批7 捞出补入）、TsinghuaC3I/Awesome-Memory-for-Agents（665★ 记忆域论文集，WebSearch 交叉验证捞出+repos 二次实证，2026-10-05 16 时班批2 补入——批2 域专属地图与 TeleAI 互补）、Engineering4AI/awesome-spec-driven-development（288★ spec-driven 域专属清单——批3 同款域专属补位；BMAD-METHOD 正主=bmad-code-org 53,909★〔in:name 勘定，2026-10-08 10 时班 repos 实测〕大漏同轮 WebSearch 捞出坐实「主扫 per_page=5 剪切线+词根错配」盲区，谁/何时/为何：2026-10-06 04 时班批3 首补、10-08 10 时班属主勘定）、VoltAgent/awesome-ai-agent-papers（1,821★ 2026 agent 工程论文清单，覆盖记忆/评测/工作流——批2 域 WebSearch 交叉验证捞出+repos 二次实证，谁/何时/为何：2026-10-06 09 时班批2 补入）、EvoMap/awesome-agent-evolution（234★ agent 进化/记忆/自我改进专属清单）、IAAR-Shanghai/Awesome-AI-Memory（1,257★ 记忆域知识库）——批2 域专属地图第 3/4 张与 TeleAI/TsinghuaC3I 互补，WebSearch 交叉验证捞出+repos 二次实证双双坐实（谁/何时/为何：2026-10-07 09 时班批2 补入）、andyrewlee/awesome-agent-orchestrators（2,143★ 编排器专属 awesome——control planes/协议/harness 适配器/运行时分类，10-10 03 时班 repos 端点实测 alive，零搜索配额通道，谁/何时/为何：2026-10-10 03 时班 WebSearch 交叉验证坐实补入）
 - GitHub Trending（weekly，ai/agent 类）；直抓被拦时的替身（2026-09-22 补）：ossinsight.io、trendshift.io
 - topic 页：multi-agent-orchestration、ai-agents、claude-code、agent-framework、claude-skills、llm-agents、ai-coding-assistant、mcp
 - 发行渠道：npm search（agent orchestrator / claude code）、pypi（agent orchestrator）各扫一页
