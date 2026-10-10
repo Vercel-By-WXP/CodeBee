@@ -91,7 +91,7 @@ window.Hive3D = (function () {
     const gl=this.canvas.getContext("webgl",{alpha:true,antialias:true,powerPreference:"high-performance"})||this.canvas.getContext("experimental-webgl");
     if(!gl)throw Error("WebGL unavailable");this.gl=gl;
     const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);float sky=clamp(n.y*0.5+0.5,0.0,1.0);float side=abs(n.x)*0.035;float heightShade=mix(0.94,1.0,smoothstep(-0.2,3.6,aPosition.y));vShade=(0.84+0.10*sky+side)*heightShade;}";
-    const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 v=normalize(uEyePosition-vWorld);vec3 key=normalize(vec3(-0.48,0.86,0.42));vec3 fill=normalize(vec3(0.62,0.32,-0.72));vec3 warm=normalize(vec3(0.34,0.46,0.82));float ndl=max(dot(n,key),0.0);float fillN=max(dot(n,fill),0.0);float warmN=max(dot(n,warm),0.0);float hemi=clamp(n.y*0.5+0.5,0.0,1.0);vec3 base=vColor.rgb;vec3 h=normalize(key+v);vec3 hf=normalize(fill+v);float chroma=max(max(base.r,base.g),base.b)-min(min(base.r,base.g),base.b);float gloss=mix(0.10,0.34,smoothstep(0.10,0.82,chroma));float spec=pow(max(dot(n,h),0.0),mix(24.0,58.0,gloss))*gloss*0.42;float specFill=pow(max(dot(n,hf),0.0),36.0)*0.075;float fresnel=pow(1.0-max(dot(n,v),0.0),3.0);vec3 ambient=base*(0.44+0.10*hemi);vec3 direct=base*(0.29*ndl+0.13*fillN+0.07*warmN);vec3 highlight=vec3(1.0,0.91,0.78)*spec+vec3(0.52,0.84,1.0)*specFill+vec3(0.18,0.48,0.68)*fresnel*0.075;float cyan=max(0.0,min(base.g,base.b)-base.r)*0.65;vec3 emissive=base*cyan;vec3 lit=ambient+direct+highlight+emissive;lit*=vShade;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
+    const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 v=normalize(uEyePosition-vWorld);vec3 key=normalize(vec3(-0.48,0.86,0.42));vec3 fill=normalize(vec3(0.62,0.32,-0.72));vec3 warm=normalize(vec3(0.34,0.46,0.82));float ndl=max(dot(n,key),0.0);float fillN=max(dot(n,fill),0.0);float warmN=max(dot(n,warm),0.0);float hemi=clamp(n.y*0.5+0.5,0.0,1.0);vec3 base=vColor.rgb;float wallBlue=step(0.38,base.b)*step(0.35,base.g)*step(base.r*1.65,base.g)*step(1.7,vWorld.y);float wallGradient=0.92+0.08*smoothstep(1.7,4.5,vWorld.y)+0.045*exp(-pow((vWorld.x+2.1)*0.24,2.0));base=mix(base,base*wallGradient,wallBlue);vec3 h=normalize(key+v);vec3 hf=normalize(fill+v);float chroma=max(max(base.r,base.g),base.b)-min(min(base.r,base.g),base.b);float gloss=mix(0.10,0.34,smoothstep(0.10,0.82,chroma));float spec=pow(max(dot(n,h),0.0),mix(24.0,58.0,gloss))*gloss*0.42;float specFill=pow(max(dot(n,hf),0.0),36.0)*0.075;float fresnel=pow(1.0-max(dot(n,v),0.0),3.0);vec3 ambient=base*(0.44+0.10*hemi);vec3 direct=base*(0.29*ndl+0.13*fillN+0.07*warmN);vec3 highlight=vec3(1.0,0.91,0.78)*spec+vec3(0.52,0.84,1.0)*specFill+vec3(0.18,0.48,0.68)*fresnel*0.075;float cyan=max(0.0,min(base.g,base.b)-base.r)*0.65;vec3 emissive=base*cyan;vec3 lit=ambient+direct+highlight+emissive;lit*=vShade;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
     this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,8,.17);this.sphere=sphereGeometry(gl,24,32);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
   };
@@ -166,6 +166,9 @@ window.Hive3D = (function () {
       this.deskPositions.push({row,x,z,width,screenWidth,screenHeight});
       this.add(rb,x,.54,z,width,.15,1.20,[.92,.95,.98,1]);
       this.add(b,x,.49,z-.603,width*.72,.014,.012,[.08,.42,.57,1]);
+      // Front edge highlight and rear cable channel make the desktop read as layered furniture.
+      this.add(rb,x,.535,z+.594,width*.94,.035,.035,[.98,.99,1,1]);
+      this.add(b,x,.455,z-.565,width*.64,.028,.024,[.61,.70,.79,1]);
       this.add(rb,x-width*.36,.25,z+.03,.43,.52,1.02,[.82,.87,.92,1]);
       this.add(rb,x+width*.36,.25,z+.03,.43,.52,1.02,[.82,.87,.92,1]);
       // A compact three-drawer pedestal gives each station the white office furniture silhouette of the reference.
@@ -193,7 +196,14 @@ window.Hive3D = (function () {
       this.add(rb,x,.57,z+1.35,.62,.72,.16,[.075,.11,.15,1]);
       this.add(rb,x,.57,z+1.434,.42,.48,.018,[.13,.18,.22,1]);
       this.add(rb,x,.48,z+1.25,.48,.12,.12,[.18,.22,.25,1]);
-      for(let k=0;k<5;k++){const a=k*Math.PI*2/5;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);}
+      // Molded backrest cushion, lumbar ribs, arm pads, and five rolling casters.
+      this.add(rb,x,.57,z+1.455,.43,.49,.045,[.085,.105,.125,1]);
+      for(const ribY of [.43,.55,.67])this.add(rb,x,ribY,z+1.482,.34,.026,.018,[.17,.20,.22,1]);
+      for(const side of [-1,1]){
+        this.add(rb,x+side*.39,.63,z+1.02,.10,.075,.38,[.11,.14,.16,1]);
+        this.add(b,x+side*.39,.48,z+1.03,.035,.28,.045,[.07,.09,.11,1]);
+      }
+      for(let k=0;k<5;k++){const a=k*Math.PI*2/5;const wx=x+Math.cos(a)*.48,wz=z+1.10+Math.sin(a)*.40;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);this.add(s,wx,.005,wz,.085,.065,.075,[.035,.045,.055,1]);}
       const by=1.25,bz=z+.88;
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
       this.add(rb,x,by-.27,bz+.01,.31,.37,.29,[.075,.09,.11,1]);
@@ -211,6 +221,12 @@ window.Hive3D = (function () {
         this.add(s,x+side*.105,by+.377,bz+.14,.018,.018,.018,[1,.73,.10,1]);
       }
       this.add(s,x,by+.30,bz+.15,.10,.035,.06,[.045,.055,.065,1]);
+      // Lower legs bridge the torso to the seat, keeping the mascot visibly seated rather than hovering.
+      for(const side of [-1,1]){
+        this.add(s,x+side*.125,.52,bz+.11,.105,.245,.11,[.075,.09,.11,1]);
+        this.add(rb,x+side*.135,.315,bz+.26,.15,.075,.22,[.035,.045,.055,1]);
+        this.add(rb,x+side*.135,.355,bz+.29,.12,.025,.16,[.99,.68,.04,1]);
+      }
       // Slim arm shells angle down toward the keyboard instead of floating beside the body.
       for(const side of [-1,1]){
         this.add(s,x+side*.235,by-.15,bz-.075,.085,.15,.13,[.12,.15,.18,1]);
@@ -231,7 +247,14 @@ window.Hive3D = (function () {
     // Planters and stylized leaves soften the room edges.
     for(const x of [-9.05,9.05]){
       this.add(rb,x,.17,-4.70,.58,.34,.58,[.70,.77,.81,1]);
-      for(let k=0;k<9;k++){const a=k*2.399;this.add(s,x+Math.cos(a)*.37,.86+(k%4)*.17,-4.70+Math.sin(a)*.31,.13,.42,.12,[.08,.34+(k%3)*.04,.22,1],a);}
+      this.add(b,x,.70,-4.70,.07,.78,.07,[.31,.28,.19,1]);
+      // Wider layered foliage silhouettes replace the thin spike-like plant leaves.
+      for(let k=0;k<15;k++){
+        const a=k*2.399,y=.88+(k%5)*.19,rad=.22+(k%3)*.10;
+        const leafColor=[[.06,.31,.17,1],[.08,.39,.21,1],[.12,.46,.24,1],[.16,.48,.27,1]][k%4];
+        this.add(s,x+Math.cos(a)*rad,y,-4.70+Math.sin(a)*rad*.78,.28+(k%3)*.035,.085,.13,leafColor,a);
+      }
+      for(let k=0;k<5;k++){const a=k*1.257;this.add(s,x+Math.cos(a)*.18,1.75+(k%2)*.09,-4.70+Math.sin(a)*.16,.105,.24,.10,[.07,.36,.19,1],a);}
     }
     // Low-opacity contact shadows share the same 8+6 workstation positions.
     for(const desk of this.deskPositions){
