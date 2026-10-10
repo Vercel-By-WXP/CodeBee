@@ -273,11 +273,11 @@ window.Hive3D = (function () {
       for(let k=0;k<5;k++){const a=k*Math.PI*2/5;const wx=x+Math.cos(a)*.48,wz=z+1.10+Math.sin(a)*.40;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);this.add(s,wx,.005,wz,.085,.065,.075,[.035,.045,.055,1]);}
       const by=1.25,bz=z+.98;
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
-      this.add(s,x,by-.42,bz+.005,.405,.54,.31,[.075,.09,.11,1]);
-      this.add(s,x,by-.255,bz+.035,.255,.255,.235,[.08,.10,.12,1]);
-      this.add(rb,x,by-.47,bz+.165,.365,.088,.025,[1,.62,.025,1]);
-      this.add(rb,x,by-.64,bz+.115,.325,.084,.025,[.99,.53,.012,1]);
-      this.add(rb,x,by-.555,bz+.136,.290,.040,.022,[.045,.055,.065,1]);
+      this.add(s,x,by-.42,bz+.005,.31,.31,.235,[.075,.09,.11,1]);
+      this.add(s,x,by-.255,bz+.16,.13,.12,.10,[.08,.10,.12,1]);
+      this.add(rb,x,by-.47,bz+.250,.365,.088,.025,[1,.62,.025,1]);
+      this.add(rb,x,by-.64,bz+.183,.325,.084,.025,[.99,.53,.012,1]);
+      this.add(rb,x,by-.555,bz+.220,.290,.040,.022,[.045,.055,.065,1]);
       this.add(s,x,by,bz,.405,.37,.345,[1,.70,.045,1]);
       // The face points toward the monitor; the rear silhouette carries the headset details.
       for(const side of [-1,1]){
@@ -291,8 +291,8 @@ window.Hive3D = (function () {
       this.add(s,x,by+.30,bz+.18,.115,.035,.06,[.045,.055,.065,1]);
       // Short forward-projecting thighs tuck under the desktop and visually anchor the bee to its chair.
       for(const side of [-1,1]){
-        this.add(s,x+side*.125,.625,z+.735,.105,.105,.32,[.075,.09,.11,1]);
-        this.add(rb,x+side*.13,.625,z+.57,.11,.065,.15,[.99,.66,.035,1]);
+        this.add(s,x+side*.125,.465,z+.71,.075,.13,.14,[.075,.09,.11,1]);
+        this.add(rb,x+side*.13,.315,z+.66,.10,.060,.15,[.99,.66,.035,1]);
       }
       // Shoulders, articulated elbows and forearms form continuous 3D links down to the keyboard.
       for(const side of [-1,1]){
@@ -300,16 +300,16 @@ window.Hive3D = (function () {
         this.addLink(shoulder,elbow,.039,[.19,.22,.25,1]);
         this.addLink(elbow,wrist,.034,[.20,.24,.27,1]);
         this.addLink(wrist,hand,.030,[.96,.63,.035,1]);
-        this.add(s,shoulder[0],shoulder[1],shoulder[2],.102,.125,.19,[.19,.22,.25,1]);
-        this.add(s,elbow[0],elbow[1],elbow[2],.088,.090,.15,[.32,.36,.39,1]);
-        this.add(s,wrist[0],wrist[1],wrist[2],.070,.060,.085,[.24,.29,.32,1]);
-        this.add(rb,hand[0],hand[1],hand[2],.125,.065,.12,[.96,.63,.035,1]);
-        this.add(s,x+side*.355,.650,z+.32,.078,.042,.080,[.98,.68,.045,1]);
+        this.add(s,shoulder[0],shoulder[1],shoulder[2],.075,.075,.085,[.19,.22,.25,1]);
+        this.add(s,elbow[0],elbow[1],elbow[2],.065,.065,.065,[.32,.36,.39,1]);
+        this.add(s,wrist[0],wrist[1],wrist[2],.052,.052,.052,[.24,.29,.32,1]);
+        this.add(rb,hand[0],hand[1],hand[2],.085,.045,.070,[.96,.63,.035,1]);
+        this.add(s,x+side*.355,.650,z+.32,.070,.035,.055,[.98,.68,.045,1]);
         for(let finger=0;finger<3;finger++)this.add(b,x+side*.355+(finger-1)*.026,.633,z+.265,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
-      this.add(rb,x,by-.585,bz+.142,.13,.068,.020,[.025,.10,.14,1]);
-      this.add(rb,x,by-.585,bz+.155,.082,.016,.010,[.16,.88,.98,1]);
+      this.add(rb,x,by-.585,bz+.214,.13,.068,.020,[.025,.10,.14,1]);
+      this.add(rb,x,by-.585,bz+.226,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth translucent ellipsoid wings match the soft oval silhouette in the reference.
       this.add(s,x-.43,by-.245,bz+.19,.42,.145,.075,[.46,.77,.99,.29],-.20,.06);
       this.add(s,x+.43,by-.245,bz+.19,.42,.145,.075,[.46,.77,.99,.29],.20,-.06);
