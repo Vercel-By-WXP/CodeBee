@@ -331,11 +331,12 @@ window.Hive3D = (function () {
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
-      // Smooth translucent ellipsoid wings match the soft oval silhouette in the reference.
-      this.add(this.organic,x-.47,by-.245,bz+.205,.90,.53,.045,[.52,.82,1,.38],0,.16);
-      this.add(this.organic,x+.47,by-.245,bz+.205,.90,.53,.045,[.52,.82,1,.38],0,-.16);
-      this.add(this.organic,x-.42,by-.225,bz+.245,.57,.30,.026,[.88,.98,1,.23],0,.12);
-      this.add(this.organic,x+.42,by-.225,bz+.245,.57,.30,.026,[.88,.98,1,.23],0,-.12);
+      // Smooth glassy oval wings sit at the shoulder line. Sphere geometry keeps their
+      // silhouette rounded from every camera angle and lets the opaque body occlude them.
+      this.add(s,x-.43,by-.245,bz+.12,.43,.105,.075,[.58,.84,1,.32],0,.10);
+      this.add(s,x+.43,by-.245,bz+.12,.43,.105,.075,[.58,.84,1,.32],0,-.10);
+      this.add(s,x-.40,by-.225,bz+.155,.28,.060,.040,[.93,.99,1,.18],0,.08);
+      this.add(s,x+.40,by-.225,bz+.155,.28,.060,.040,[.93,.99,1,.18],0,-.08);
 
     }
     // Planters and stylized leaves soften the room edges.
