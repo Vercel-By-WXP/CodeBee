@@ -333,7 +333,7 @@ window.Hive3D = (function () {
     if(!this.gl||!this.active||this.displayMode!=="live3d")return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
-    const radius=16.2/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.1+Math.sin(this.pitch)*radius*.58,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.62,0],[0,1,0]);const proj=mat4.perspective(.70,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
+    const radius=27.0/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.1+Math.sin(this.pitch)*radius*.58,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.62,0],[0,1,0]);const proj=mat4.perspective(.40,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
     gl.uniformMatrix4fv(this.uViewProj,false,vp);gl.uniform3f(this.uEyePosition,eye[0],eye[1],eye[2]);
     this.drawBatch(this.batchBuffers&&this.batchBuffers.opaque);
     const translucent=this.batchBuffers&&this.batchBuffers.transparent;
