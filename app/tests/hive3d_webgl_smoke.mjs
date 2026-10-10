@@ -176,7 +176,7 @@ scene.sync({
   ],
 });
 scene.setActive(true);
-assert.ok(drawCalls >= 2, "opaque and translucent batches render");
+assert.equal(drawCalls, 0, "reference mode does not waste GPU draws behind the artwork");
 assert.ok(uploadedBytes > 100000, "world geometry is uploaded once to GPU buffers");
 assert.equal(scene.displayMode, "reference", "high-fidelity reference view is the default presentation");
 assert.ok(scene.monitors[0].el.style.width.endsWith("%"), "reference hotspot uses normalized image coordinates");
@@ -185,6 +185,7 @@ assert.equal(scene.monitors[0].el.style.left, (80 / 1080 * 100) + "%", "first mo
 assert.equal(scene.stageMeta[0].el.style.left, (89 / 1080 * 100) + "%", "phase card hotspot aligns with the reference render");
 scene.setDisplayMode("live3d");
 scene.setActive(true);
+assert.ok(drawCalls >= 2, "opaque and translucent batches render in free 3D mode");
 assert.equal(scene.displayMode, "live3d", "free 3D mode remains selectable");
 assert.ok(scene.monitors[0].el.style.width.endsWith("px"), "free 3D monitor overlay is sized from projected screen bounds");
 assert.ok(scene.monitors[0].el.style.height.endsWith("px"), "free 3D monitor overlay has a projected screen height");
