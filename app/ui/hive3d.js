@@ -317,7 +317,7 @@ window.Hive3D = (function () {
       }
       // Shoulders, articulated elbows and forearms form continuous 3D links down to the keyboard.
       for(const side of [-1,1]){
-        const shoulder=[x+side*.40,.99,z+1.13],elbow=[x+side*.515,.84,z+.91],wrist=[x+side*.37,.665,z+.38],hand=[x+side*.355,.650,z+.32];
+        const shoulder=[x+side*.32,.99,z+.56],elbow=[x+side*.43,.83,z+.30],wrist=[x+side*.36,.675,z-.12],hand=[x+side*.35,.655,z-.20];
         this.addLink(shoulder,elbow,.039,[.19,.22,.25,1]);
         this.addLink(elbow,wrist,.034,[.20,.24,.27,1]);
         this.addLink(wrist,hand,.030,[.96,.63,.035,1]);
@@ -325,17 +325,17 @@ window.Hive3D = (function () {
         this.add(s,elbow[0],elbow[1],elbow[2],.065,.065,.065,[.32,.36,.39,1]);
         this.add(s,wrist[0],wrist[1],wrist[2],.052,.052,.052,[.24,.29,.32,1]);
         this.add(rb,hand[0],hand[1],hand[2],.085,.045,.070,[.96,.63,.035,1]);
-        this.add(s,x+side*.355,.650,z+.32,.070,.035,.055,[.98,.68,.045,1]);
-        for(let finger=0;finger<3;finger++)this.add(b,x+side*.355+(finger-1)*.026,.633,z+.265,.012,.010,.046,[.22,.29,.35,1]);
+        this.add(s,x+side*.35,.655,z-.20,.070,.035,.055,[.98,.68,.045,1]);
+        for(let finger=0;finger<3;finger++)this.add(b,x+side*.35+(finger-1)*.026,.638,z-.255,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth translucent ellipsoid wings match the soft oval silhouette in the reference.
-      this.add(s,x-.47,by-.245,bz+.205,.47,.18,.060,[.52,.82,1,.34],-.22,.08);
-      this.add(s,x+.47,by-.245,bz+.205,.47,.18,.060,[.52,.82,1,.34],.22,-.08);
-      this.add(s,x-.42,by-.225,bz+.245,.30,.105,.038,[.88,.98,1,.21],.15,-.05);
-      this.add(s,x+.42,by-.225,bz+.245,.30,.105,.038,[.88,.98,1,.21],-.15,.05);
+      this.add(this.organic,x-.47,by-.245,bz+.205,.90,.53,.045,[.52,.82,1,.38],0,.16);
+      this.add(this.organic,x+.47,by-.245,bz+.205,.90,.53,.045,[.52,.82,1,.38],0,-.16);
+      this.add(this.organic,x-.42,by-.225,bz+.245,.57,.30,.026,[.88,.98,1,.23],0,.12);
+      this.add(this.organic,x+.42,by-.225,bz+.245,.57,.30,.026,[.88,.98,1,.23],0,-.12);
 
     }
     // Planters and stylized leaves soften the room edges.
