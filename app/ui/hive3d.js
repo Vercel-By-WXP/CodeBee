@@ -72,9 +72,9 @@ window.Hive3D = (function () {
   function organicGeometry(gl){
     // A polished, tapered leaf/wing silhouette with a gently domed center and two-sided normals.
     let outline=[
-      [-.5,0,0],[-.33,.105,.018],[-.10,.165,.040],[.16,.145,.044],
-      [.39,.082,.026],[.5,0,0],[.39,-.082,.026],[.16,-.145,.044],
-      [-.10,-.165,.040],[-.33,-.105,.018]
+      [-.5,0,0],[-.34,.17,.018],[-.12,.255,.040],[.14,.225,.044],
+      [.38,.13,.026],[.5,0,0],[.38,-.13,.026],[.14,-.225,.044],
+      [-.12,-.255,.040],[-.34,-.17,.018]
     ];
     const area=outline.reduce((sum,p,i)=>{const q=outline[(i+1)%outline.length];return sum+p[0]*q[1]-q[0]*p[1];},0);
     if(area<0)outline=outline.reverse();
@@ -192,8 +192,8 @@ window.Hive3D = (function () {
     for(let x=-8;x<=8;x+=2.65)this.add(b,x,2.70,-6.29,.018,3.40,.025,[.12,.40,.72,1]);
     for(const side of [-1,1]){
       // Open-framed side glazing: avoid opaque side slabs that visually cut the room into boxes.
-      for(const y of [.12,4.62])this.add(b,side*8.95,y,-.15,.075,.075,11.9,[.78,.87,.93,1]);
-      for(let z=-5.55;z<=5.56;z+=2.22){
+      for(const y of [.12,4.62])this.add(b,side*8.95,y,1.0,.075,.075,15.2,[.78,.87,.93,1]);
+      for(let z=-5.55;z<=7.77;z+=2.22){
         this.add(b,side*8.95,2.36,z,.075,4.48,.075,[.84,.91,.96,1]);
         this.add(b,side*8.90,2.36,z-1.11,.018,4.34,2.10,[.55,.78,.92,.12]);
       }
@@ -219,7 +219,7 @@ window.Hive3D = (function () {
     // Every monitor overlay is projected from these exact same coordinates below.
     const deskRows=[
       {row:0,z:-3.35,width:2.03,screenWidth:1.28,screenHeight:.70,xs:[-8.4,-6.0,-3.6,-1.2,1.2,3.6,6.0,8.4]},
-      {row:1,z:3.95,width:2.42,screenWidth:1.48,screenHeight:.82,xs:[-6.0,-3.6,-1.2,1.2,3.6,6.0]}
+      {row:1,z:5.85,width:2.42,screenWidth:1.48,screenHeight:.82,xs:[-6.0,-3.6,-1.2,1.2,3.6,6.0]}
     ];
     this.deskPositions=[];
     for(const config of deskRows)for(const x of config.xs){
@@ -305,10 +305,10 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.27,bz+.266,.12,.09,.024,[.025,.10,.14,1]);
       this.add(rb,x,by-.27,bz+.282,.075,.018,.012,[.16,.88,.98,1]);
       // Four visibly tapered glassy wings with opposing tilt; a faceted leaf mesh is far more wing-like than ellipsoids.
-      this.add(this.organic,x-.43,by+.12,bz-.045,.98,1.10,.055,[.60,.87,1,.58],-.34,.18);
-      this.add(this.organic,x+.43,by+.12,bz-.045,.98,1.10,.055,[.60,.87,1,.58],.34,-.18);
-      this.add(this.organic,x-.47,by+.065,bz+.018,.62,.72,.035,[.93,.99,1,.46],.20,-.10);
-      this.add(this.organic,x+.47,by+.065,bz+.018,.62,.72,.035,[.93,.99,1,.46],-.20,.10);
+      this.add(this.organic,x-.43,by+.12,bz-.045,.98,1.58,.055,[.60,.87,1,.58],-.34,.18);
+      this.add(this.organic,x+.43,by+.12,bz-.045,.98,1.58,.055,[.60,.87,1,.58],.34,-.18);
+      this.add(this.organic,x-.47,by+.065,bz+.018,.62,1.02,.035,[.93,.99,1,.46],.20,-.10);
+      this.add(this.organic,x+.47,by+.065,bz+.018,.62,1.02,.035,[.93,.99,1,.46],-.20,.10);
 
     }
     // Planters and stylized leaves soften the room edges.
