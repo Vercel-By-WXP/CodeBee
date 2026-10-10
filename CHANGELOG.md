@@ -4,6 +4,12 @@ CodeBee 的用户可感知变更记录。发布新版时：最上面加一节，
 `<!-- relnotes:start -->…<!-- relnotes:end -->` 段（那段会被 `npm view` 的
 README 元数据带回，供老版本在「发现新版本」时展示新版更新内容）。
 
+## v0.1.100（2026-10-10）
+
+- **ACP 智能体接入（Agent Client Protocol v1）**：设置页新增「ACP Backend Profiles」，可把遵循 ACP v1 的本地/SSH stdio Agent 登记为执行后端（名称/启动命令/参数/工作区），登记后进入智能体注册表、可被编排路由选用；密钥只保存在本机、读取视图始终脱敏
+- **命令执行治理（命令授权）**：新增 legacy / restricted 两档策略，默认 legacy（自动执行，行为不变）；切到 restricted 后命令逐条等待批准（5 分钟等待窗口），批准队列在设置页操作，执行留脱敏审计
+- **git 传输抖动统一 HTTP/1.1 兜底**：插件市场 clone 与工作台 git 全量调用统一挂 HTTP/1.1 传输层兜底（trae Mac 实案同类点扫捕），市场源下载抖动原地重试一次，clone 更稳
+
 ## v0.1.99（2026-10-09）
 
 - **直连对话「本轮失败 NameError」修复**：内置智能体（CodeBee 直连）每轮起跑数秒即失败，根因是沙箱加固提交把 `sandbox=task.get("sandbox")` 误引入无 task 上下文的内置步骤函数——实参求值即 NameError，Mac/Windows 全平台直连对话不可用。现改为显式传参，任务沙箱策略照常透传生效（回归测试锁定形参与全链）
