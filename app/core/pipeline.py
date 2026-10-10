@@ -2311,8 +2311,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
         if first:
             prompt = ""
             if task.get("type") == "rank_scan" and bi is not None:
-                # 扫榜选材（借鉴 oh-story 扫榜）：抓七猫排行榜公开数据注入，
-                # AI 做选题洞察；抓取失败回落普通直连提示词
+                # 扫榜选材（借鉴 oh-story 扫榜）：抓七猫/番茄/起点/纵横四平台排行榜
+                # 公开数据注入，AI 做选题洞察；抓取失败回落普通直连提示词
                 prompt = paihang.rank_scan_prompt(task.get("goal") or "") or ""
             if task.get("type") == "defect_retro" and bi is not None:
                 # 缺陷复盘（借鉴 test-defect-retrospective）：三视角分析框架

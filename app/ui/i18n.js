@@ -1409,7 +1409,6 @@
     "直连引擎（单智能体直达，无拆解/评审，快）": "Direct engine (single-agent straight through — no decomposition/review, fast)",
     "直接执行": "Direct run",
     "让 AI 直接做什么（一句话，可带附件）": "What should the AI just do? (one sentence, attachments welcome)",
-    "单智能体直达：目标+附件交给一个 CLI 跑完即止，无拆解/评审（快）": "Single-agent straight through: goal + attachments go to one CLI and that's it — no decomposition or review (fast)",
     "发现新版本，点击前往更新": "New version found — click to update",
     "已忽略该版本提醒，可随时在「关于与更新」里升级": "This version's reminder is dismissed — upgrade anytime in \"About & Updates\"",
     "已是最新版": "Already the latest version",

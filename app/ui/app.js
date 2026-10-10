@@ -451,7 +451,7 @@ function renderTypeOptions() {
   if (prev && flowById(prev) && (S.typeTouched || prev !== "direct")) sel.value = prev;
   // 偏好记忆：上次创建用的类型优先于出厂默认「直接执行」（老数据/已删流程回落）
   else if (S.lastPrefs && S.lastPrefs.type && flowById(S.lastPrefs.type)) sel.value = S.lastPrefs.type;
-  // 首屏默认落在「直接执行」（快档位：单 CLI 直达，无拆解/评审）；
+  // 首屏默认落在「直接执行」（快档位：直连模型 API，无拆解/评审）；
   // 老数据或该流程被删时保持首项，不硬造一个不存在的值
   else if (flowById("direct")) sel.value = "direct";
   applyTaskPreferenceDefaults();
@@ -14699,8 +14699,7 @@ async function suStartupCheck() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { overview: "概览", tasks: "任务", runs: "运行记录", automation: "自动化", browser: "浏览器", zentao: "禅道 Bug 自动修复", __wxdigest: "群摘要", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
-const SET_TABS = new Set(Object.keys(TAB_TITLES));   // 全部设置子页（__phone 是弹框，不算）
+const TAB_TITLES = { overview: "概览", tasks: "任务", runs: "运行记录", automation: "自动化", browser: "浏览器", zentao: "禅道 Bug 自动修复", __wxdigest: "群摘要", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", evalbench: "模型评测", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
 
 function tabTitle(name) {
   return t(TAB_TITLES[name]) || t("设置");

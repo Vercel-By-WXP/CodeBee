@@ -27,7 +27,7 @@ TYPE_DIMENSIONS = {
     "tech_proposal": "reasoning",
     "resume": "writing",
     "bid_doc": "writing",   # 标书：正文应答写作量大（合规判断由契约规则约束）
-    "defect_retro": "reasoning",   # 禅道工单：排查定责推理向
+    "defect_retro": "reasoning",   # 缺陷复盘：排查定责推理向
 }
 
 _KIND_AFFINITY = {

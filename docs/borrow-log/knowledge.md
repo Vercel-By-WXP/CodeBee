@@ -7257,3 +7257,14 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   最大单项发现=**演示文稿域换代**（ppt-master 59k 接棒停更的 Paper2Slides，
   「AI 生成 PPT」卷向原生对象模型深度）；npm/pypi 欠账补扫（16 时班）零重大新
   标的；判据件均非小而实落地件，零代码提案 docs-only | 结论
+- **巡检落地执行（10-11 第 2/4+3/4 步）**：G 节用户可见缺陷 1 处（TAB_TITLES 漏
+  evalbench 键→「模型评测」子页顶栏回退「设置」）+ 同族死项 2 处（SET_TABS 死常量/
+  i18n 孤儿词条）+ direct 注释过时 + C 节注释勘误 2 处（pipeline 扫榜单平台残留/
+  dispatch defect_retro 误标「禅道工单」）共 6 处 3 文件，全部文案/注释/死项层零
+  逻辑改动 | 落地收口范式自蒸馏：**文案类修复配纯源码静态断言单测**（assertIn/
+  assertNotIn 读源码，零服务依赖毫秒级，进 discover 全量门防回流，本次
+  tests/test_ui_titles_and_comments.py 5 用例全绿）；ppt-master「Mapping Guide
+  逐特性诚实记录」与 C 专项「菜单文案↔实际行为逐条对表」同构，沉淀为文案巡检惯例；
+  代理巡检结论采信前须亲核原文行号（本班两实证：C 误报 paihang docstring 残留、
+  A 评审深度 numstat 建议被否决——已列经验库条目提案走 lesson-op） | 落地+方法
+  蒸馏 | 2026-10-11
