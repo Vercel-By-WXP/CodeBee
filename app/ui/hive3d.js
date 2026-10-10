@@ -221,12 +221,12 @@ window.Hive3D = (function () {
     // Reference layout: eight compact rear stations and six wider front stations.
     // Every monitor overlay is projected from these exact same coordinates below.
     const deskRows=[
-      {row:0,z:-3.35,width:2.03,screenWidth:1.28,screenHeight:.70,xs:[-8.4,-6.0,-3.6,-1.2,1.2,3.6,6.0,8.4]},
+      {row:0,z:-1.80,width:2.03,screenWidth:1.28,screenHeight:.70,xs:[-8.4,-6.0,-3.6,-1.2,1.2,3.6,6.0,8.4]},
       {row:1,z:5.85,width:2.42,screenWidth:1.48,screenHeight:.82,xs:[-6.0,-3.6,-1.2,1.2,3.6,6.0]}
     ];
     this.deskPositions=[];
     for(const config of deskRows)for(const x of config.xs){
-      const {row,z,width,screenWidth,screenHeight}=config;
+      const {row,z,width,screenWidth,screenHeight}=config,screenY=row===1?1.38:1.205;
       this.deskPositions.push({row,x,z,width,screenWidth,screenHeight});
       this.add(rb,x,.54,z,width,.15,1.20,[.92,.95,.98,1]);
       this.add(b,x,.49,z-.603,width*.72,.014,.012,[.08,.42,.57,1]);
@@ -240,12 +240,12 @@ window.Hive3D = (function () {
       for(const drawerY of [.18,.28,.38])this.add(b,x+width*.30,drawerY,z+.579,width*.22,.012,.012,[.62,.71,.80,1]);
       this.add(b,x+width*.30,.41,z+.581,width*.085,.018,.014,[.45,.58,.70,1]);
       this.add(rb,x,.43,z-.22,width*.78,.045,.74,[.84,.89,.93,1]);
-      this.add(rb,x,1.20,z-.48,screenWidth+.18,screenHeight+.18,.13,[.035,.055,.075,1]);
-      this.add(rb,x,1.205,z-.432,screenWidth+.08,screenHeight+.08,.045,[.15,.20,.25,1]);
-      this.add(b,x,1.205,z-.405,screenWidth,screenHeight,.018,[.018,.105,.18,1]);
+      this.add(rb,x,screenY,z-.48,screenWidth+.18,screenHeight+.18,.13,[.035,.055,.075,1]);
+      this.add(rb,x,screenY,z-.432,screenWidth+.08,screenHeight+.08,.045,[.15,.20,.25,1]);
+      this.add(b,x,screenY,z-.405,screenWidth,screenHeight,.018,[.018,.105,.18,1]);
       this.add(this.cylinder,x,.78,z-.43,.072,.40,.072,[.32,.39,.45,1]);
       this.add(b,x,.49,z-.27,.54,.045,.34,[.16,.20,.24,1]);
-      this.add(b,x,1.205-screenHeight*.42,z-.382,screenWidth*.84,.018,.014,[.10,.83,.94,1]);
+      this.add(b,x,screenY-screenHeight*.42,z-.382,screenWidth*.84,.018,.014,[.10,.83,.94,1]);
       this.add(rb,x-.18,.635,z+.25,.60,.035,.20,[.11,.14,.17,1]);
       this.add(s,x+.40,.648,z+.22,.060,.025,.075,[.055,.065,.075,1]);
       this.add(b,x+.40,.674,z+.20,.009,.005,.024,[.30,.66,.78,1]);
@@ -449,11 +449,11 @@ window.Hive3D = (function () {
     this.monitors.forEach((m,i)=>{
       const desk=this.deskPositions&&this.deskPositions[i];
       if(!desk){m.el.style.visibility="hidden";return;}
-      const {x,z,screenWidth,screenHeight}=desk;
+      const {x,z,screenWidth,screenHeight,row}=desk,screenY=row===1?1.38:1.205;
       const halfW=screenWidth/2,halfH=screenHeight/2;
-      const visibleBottom=1.205-halfH*.56; // Reserve the lower screen rim so DOM text never paints across a bee silhouette.
+      const visibleBottom=screenY-halfH*.56; // Reserve the lower screen rim so DOM text never paints across a bee silhouette.
       const rect=this.projectRect([[x-halfW,visibleBottom,z-.418],[x+halfW,visibleBottom,z-.418],
-        [x+halfW,1.205+halfH,z-.418],[x-halfW,1.205+halfH,z-.418]]);
+        [x+halfW,screenY+halfH,z-.418],[x-halfW,screenY+halfH,z-.418]]);
       if(!rect||rect.width<8||rect.height<6){m.el.style.visibility="hidden";return;}
       m.el.style.visibility="visible";
       m.el.style.left=(rect.left/this.cssW*100)+"%";
@@ -478,7 +478,7 @@ window.Hive3D = (function () {
   Scene.prototype.setDisplayMode=function(mode){const next=mode==="live3d"?"live3d":mode==="2d"?"2d":"reference";const changed=next!==this.displayMode;this.displayMode=next;if(changed){this.zoom=1;this.yaw=0;this.pitch=.42;this.panX=0;this.panY=0;}this.canvas.hidden=!this.active||this.displayMode!=="live3d";this.updateOverlay();this.applyArtboardTransform();if(this.displayMode==="live3d")this.render();else if(this.displayMode==="reference")this.layoutOverlayPositions();};
   Scene.prototype.applyArtboardTransform=function(){if(!this.artboard)return;this.artboard.style.transform=this.displayMode==="reference"?"translate3d("+(this.panX*100)+"%,"+(this.panY*100)+"%,0) scale("+this.zoom+")":"none";};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0,deskRows:this.deskPositions?[this.deskPositions.filter(d=>d.row===0).length,this.deskPositions.filter(d=>d.row===1).length]:[]};};
-  Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,1.205,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
+  Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,desk.row===1?1.38:1.205,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
   Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
   const originalCreate=(opts)=>new Scene(opts);
   // Initialize geometry after the constructor has successfully acquired WebGL.
