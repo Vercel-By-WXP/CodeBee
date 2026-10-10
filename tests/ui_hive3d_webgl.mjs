@@ -159,12 +159,12 @@ async function main() {
     assert.ok(state.badgeRect && state.badgeRect[2] > 5 && state.badgeRect[3] > 5, "workflow card has on-screen bounds");
 
     // The static reference remains a selectable presentation mode, but must never stand in for the default model.
-    await evaluate("document.querySelector('[data-hive-view=\\"reference\\"]').click()");
+    await evaluate("document.querySelector('[data-hive-view=\"reference\"]').click()");
     const referenceMode = JSON.parse(await evaluate("JSON.stringify({mode:window.__hive3d.displayMode,referenceDisplay:getComputedStyle(document.querySelector('#rd-hive-viewport .hive-reference')).display,canvasHidden:document.getElementById('rd-hive-gl').hidden})"));
     assert.equal(referenceMode.mode, "reference", "the reference presentation remains selectable");
     assert.notEqual(referenceMode.referenceDisplay, "none", "the supplied artwork appears in explicit reference mode");
     assert.equal(referenceMode.canvasHidden, true, "the WebGL canvas is hidden only in explicit reference mode");
-    await evaluate("document.querySelector('[data-hive-view=\\"live3d\\"]').click()");
+    await evaluate("document.querySelector('[data-hive-view=\"live3d\"]').click()");
 
     // Capture the actual procedural WebGL view, never the artwork-backed reference plate.
     const live3dState = JSON.parse(await evaluate([
