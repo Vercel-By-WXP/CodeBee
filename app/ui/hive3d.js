@@ -181,7 +181,8 @@ window.Hive3D = (function () {
     this.listen(this.host,"wheel",e=>{if(!this.active||e.target.closest("button"))return;e.preventDefault();this.zoom=clamp(this.zoom*Math.exp(-e.deltaY*.001),.72,2.4);this.applyArtboardTransform();this.render();},{passive:false});
     this.listen(this.canvas,"webglcontextlost",e=>{e.preventDefault();this.setActive(false);if(this.opts.onFatal)this.opts.onFatal(e);});
   };
-  Scene.prototype.add=function(mesh,x,y,z,sx,sy,sz,color,rotY,rotZ){this.objects.push({mesh,x,y,z,sx,sy,sz,color,rotY:rotY||0,rotZ:rotZ||0});};
+  Scene.prototype.add=function(mesh,x,y,z,sx,sy,sz,color,rotY,rotZ,rotX){this.objects.push({mesh,x,y,z,sx,sy,sz,color,rotY:rotY||0,rotZ:rotZ||0,rotX:rotX||0});};
+  Scene.prototype.addLink=function(a,b,radius,color){const dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],length=Math.hypot(dx,dy,dz)||.001,rotX=Math.asin(clamp(dz/length,-1,1)),rotZ=Math.atan2(-dx,dy);this.add(this.cylinder,(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2,radius,length,radius,color,0,rotZ,rotX);};
   Scene.prototype.buildWorld=function(){
     const b=this.box,rb=this.roundBox,s=this.sphere;this.objects=[];
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
@@ -293,12 +294,16 @@ window.Hive3D = (function () {
         this.add(s,x+side*.125,.625,z+.735,.105,.105,.32,[.075,.09,.11,1]);
         this.add(rb,x+side*.13,.625,z+.57,.11,.065,.15,[.99,.66,.035,1]);
       }
-      // Shoulders stay on the camera-facing side of the chassis; elbows and wrists arc back to the keyboard.
+      // Shoulders, articulated elbows and forearms form continuous 3D links down to the keyboard.
       for(const side of [-1,1]){
-        this.add(s,x+side*.40,.99,z+1.13,.102,.125,.19,[.19,.22,.25,1]);
-        this.add(s,x+side*.515,.84,z+.91,.088,.090,.15,[.29,.33,.36,1]);
-        this.add(s,x+side*.49,.735,z+.64,.088,.078,.24,[.20,.24,.27,1]);
-        this.add(rb,x+side*.37,.665,z+.38,.125,.065,.12,[.96,.63,.035,1]);
+        const shoulder=[x+side*.40,.99,z+1.13],elbow=[x+side*.515,.84,z+.91],wrist=[x+side*.37,.665,z+.38],hand=[x+side*.355,.650,z+.32];
+        this.addLink(shoulder,elbow,.039,[.19,.22,.25,1]);
+        this.addLink(elbow,wrist,.034,[.20,.24,.27,1]);
+        this.addLink(wrist,hand,.030,[.96,.63,.035,1]);
+        this.add(s,shoulder[0],shoulder[1],shoulder[2],.102,.125,.19,[.19,.22,.25,1]);
+        this.add(s,elbow[0],elbow[1],elbow[2],.088,.090,.15,[.32,.36,.39,1]);
+        this.add(s,wrist[0],wrist[1],wrist[2],.070,.060,.085,[.24,.29,.32,1]);
+        this.add(rb,hand[0],hand[1],hand[2],.125,.065,.12,[.96,.63,.035,1]);
         this.add(s,x+side*.355,.650,z+.32,.078,.042,.080,[.98,.68,.045,1]);
         for(let finger=0;finger<3;finger++)this.add(b,x+side*.355+(finger-1)*.026,.633,z+.265,.012,.010,.046,[.22,.29,.35,1]);
       }
@@ -344,8 +349,8 @@ window.Hive3D = (function () {
       target.positions.push(p[0],p[1],p[2]);target.normals.push(n[0],n[1],n[2]);
       target.colors.push(color[0],color[1],color[2],color[3]==null?1:color[3]);
     };
-    const worldPoint=(o,v)=>{const x=v[0]*o.sx,y=v[1]*o.sy,z=v[2]*o.sz,a=o.rotY||0,ca=Math.cos(a),sa=Math.sin(a),b=o.rotZ||0,cb=Math.cos(b),sb=Math.sin(b),rx=ca*x+sa*z,rz=-sa*x+ca*z;return [o.x+cb*rx-sb*y,o.y+sb*rx+cb*y,o.z+rz];};
-    const smoothNormal=(o,v)=>{const x=v[0]/Math.max(.0001,o.sx),y=v[1]/Math.max(.0001,o.sy),z=v[2]/Math.max(.0001,o.sz),a=o.rotY||0,ca=Math.cos(a),sa=Math.sin(a),b=o.rotZ||0,cb=Math.cos(b),sb=Math.sin(b),rx=ca*x+sa*z,rz=-sa*x+ca*z,n=[cb*rx-sb*y,sb*rx+cb*y,rz],l=Math.hypot(n[0],n[1],n[2])||1;return n.map(v=>v/l);};
+    const worldPoint=(o,v)=>{const x=v[0]*o.sx,y=v[1]*o.sy,z=v[2]*o.sz,a=o.rotY||0,ca=Math.cos(a),sa=Math.sin(a),rx=ca*x+sa*z,rzY=-sa*x+ca*z,cx=Math.cos(o.rotX||0),sx=Math.sin(o.rotX||0),ry=cx*y-sx*rzY,rz=sx*y+cx*rzY,b=o.rotZ||0,cb=Math.cos(b),sb=Math.sin(b);return [o.x+cb*rx-sb*ry,o.y+sb*rx+cb*ry,o.z+rz];};
+    const smoothNormal=(o,v)=>{const x=v[0]/Math.max(.0001,o.sx),y=v[1]/Math.max(.0001,o.sy),z=v[2]/Math.max(.0001,o.sz),a=o.rotY||0,ca=Math.cos(a),sa=Math.sin(a),rx=ca*x+sa*z,rzY=-sa*x+ca*z,cx=Math.cos(o.rotX||0),sx=Math.sin(o.rotX||0),ry=cx*y-sx*rzY,rz=sx*y+cx*rzY,b=o.rotZ||0,cb=Math.cos(b),sb=Math.sin(b),n=[cb*rx-sb*ry,sb*rx+cb*ry,rz],l=Math.hypot(n[0],n[1],n[2])||1;return n.map(v=>v/l);};
     const faceNormal=(a,b,c)=>{const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]],n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]],l=Math.hypot(n[0],n[1],n[2])||1;return n.map(v=>v/l);};
     for(const o of this.objects){
       const mesh=o.mesh,src=mesh.positions,ix=mesh.indices,normals=mesh.normals||src;
