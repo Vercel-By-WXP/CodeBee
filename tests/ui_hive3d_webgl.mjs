@@ -113,10 +113,10 @@ async function main() {
     const fullscreenReady = await waitFor(async () => evaluate("Boolean(document.getElementById('hive-scene-fullscreen') && document.getElementById('rd-hive-viewport')?.dataset.controlsReady === 'true')"), 15000, "fullscreen control initialization");
     assert.equal(fullscreenReady, true, "fullscreen control is wired by the real application");
     await evaluate("if(typeof window.welcomeClose==='function')window.welcomeClose(); const welcome=document.getElementById('welcome');if(welcome)welcome.classList.add('hidden');");
-    // The initial route opens the tasks pane; a hidden Hive button has a zero-sized hit target.
-    // Activate the real Hive tab first so fullscreen receives a trusted click at visible coordinates.
-    await evaluate("document.querySelector('#rd-tab-hive').click()");
-    await waitFor(() => evaluate("Boolean(document.getElementById('rd-hive') && !document.getElementById('rd-hive').classList.contains('hidden') && document.getElementById('hive-scene-stage').getBoundingClientRect().width > 200)"), 10000, "Hive workspace visible before fullscreen");
+    // A fresh CI data directory has no selected run, so run-detail is legitimately hidden.
+    // Reveal the real empty Hive panel as a fixture before testing the actual fullscreen control.
+    await evaluate("document.getElementById('run-detail')?.classList.remove('hidden'); document.getElementById('rd-pane-hive')?.classList.remove('hidden'); document.getElementById('rd-hive')?.classList.remove('hidden');");
+    await waitFor(() => evaluate("Boolean(document.getElementById('hive-scene-stage') && document.getElementById('hive-scene-stage').getBoundingClientRect().width > 200 && document.getElementById('hive-scene-fullscreen').getBoundingClientRect().width > 20)"), 10000, "Hive workspace visible before fullscreen");
     const clickSelector = async selector => {
       const selectorJSON = JSON.stringify(selector);
       await evaluate("document.querySelector(" + selectorJSON + ").scrollIntoView({block:'center'})");
