@@ -6214,6 +6214,11 @@ function pbBlock(task, platform) {
       S.pubAuto.running.platform === platform) ? S.pubAuto.running : null;
     if (run && run.status === "running") {
       btns += '<span class="pb-book">' + esc((run.as_draft ? t("存草稿中 ") : t("自动发布中 ")) + run.done + "/" + run.total) + "</span>";
+    }
+    if (run && Array.isArray(run.notes) && run.notes.length) {
+      // 对账剔除/跳过/重试的过程记录（auto 层 notes），最近三条
+      btns += '<div class="pb-hint">' +
+        esc(run.notes.slice(-3).join("；")) + "</div>";
     } else if (au.pending > 0) {
       // 门禁不再禁用按钮：点了走 pbApiWithQualityOverride 的复审/强制对话，
       // 死按钮只会让用户无路可走（2026-10-08 实案：guard false 全灰点不了）
