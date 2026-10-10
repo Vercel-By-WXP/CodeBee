@@ -158,12 +158,8 @@ async function main() {
     assert.ok(state.monitorRect && state.monitorRect[2] > 5 && state.monitorRect[3] > 5, "monitor overlay has on-screen bounds");
     assert.ok(state.badgeRect && state.badgeRect[2] > 5 && state.badgeRect[3] > 5, "workflow card has on-screen bounds");
 
-    const shot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
-    const artifactDir = join(ROOT, "tests", ".ui-shots");
-    mkdirSync(artifactDir, { recursive: true });
-    writeFileSync(join(artifactDir, "hive3d-webgl.png"), Buffer.from(shot.result.data, "base64"));
-
-    // Verify the alternate live renderer independently; the default screenshot above remains the artwork-backed reference.
+    // Switch to the real WebGL scene before capturing the CI artifact. Capturing the reference plate
+    // here used to hide the exact procedural geometry that this smoke test is meant to validate.
     const live3dState = JSON.parse(await evaluate([
       "(() => {",
       " document.querySelector('[data-hive-view=\"live3d\"]').click();",
@@ -190,6 +186,13 @@ async function main() {
     assert.equal(live3dState.flowLinks, 5, "free 3D keeps five workflow connectors");
     assert.ok(live3dState.monitorWidthStyle.endsWith("px"), "free 3D sizes overlays from real projected geometry");
     assert.ok(live3dState.viewportRect && live3dState.viewportRect[2] >= 1000 && live3dState.viewportRect[3] >= 500, "free 3D viewport remains inside the browser window");
+
+    // Save the actual procedural WebGL view, not the static reference artwork. This makes CI's
+    // screenshot artifact useful for visual regression reviews of geometry, lighting and framing.
+    const shot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+    const artifactDir = join(ROOT, "tests", ".ui-shots");
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, "hive3d-webgl.png"), Buffer.from(shot.result.data, "base64"));
 
     await evaluate("document.querySelector('#rd-hive-viewport .hg-monitor:not(:disabled)').click()");
     await sleep(100);
