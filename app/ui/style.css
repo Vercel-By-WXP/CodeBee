@@ -7791,3 +7791,18 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
   .hive-scene-stage:fullscreen .hive-scene-hint,
   .hive-scene-stage.is-fullscreen .hive-scene-hint { display: none; }
 }
+
+/* ---- 步骤行窄主列折行（追加于文件尾防并行重排） ----
+ * 步骤行定宽列总和 ≈783px（序号26+角色92+执行者118+st-model 77+st-prov 200+耗时42
+ * +状态chip 44+日志按钮60+8间隙96+内边距28），浏览器缩放/窄窗/检查器打开都会把
+ * 主列压到 783 以下——行放不下就溢出 .step（min-width:auto），传导到
+ * #rd-pane-steps 长出横向滚动条（1010 实案：150% 缩放下 CLI 日志按钮被右缘切半）。
+ * 用容器查询按「面板实际宽度」而非视口折行：≤820px 时与 ≤900 移动端同款允许换行，
+ * role/who 允许收缩（本就带省略号）；宽主列保持单行形态不动。容器查询 Edge 105+，
+ * 老浏览器忽略整段=维持现状，优雅降级。 */
+#rd-steps { container-type: inline-size; }
+@container (max-width: 820px) {
+  .step { flex-wrap: wrap; row-gap: 6px; }
+  .step .role { flex: 0 1 92px; }
+  .step .who { flex: 0 1 118px; }
+}
