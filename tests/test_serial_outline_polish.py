@@ -72,8 +72,10 @@ class PolishRunBase(BaseTest):
         from app.core import pipeline
         wd = str(self.workdir)
         # _chapter_state 验收要求去空白字数 ≥ wpc*0.6（300*0.6=180），mock 稿
-        # 只有 ~170 字不够——fake 代写用足够长的正文
-        body = "这是一段足够长的测试正文，主角在修水车。" * 30
+        # 只有 ~170 字不够——fake 代写用足够长的正文；逐句异文（2026-10-11 起
+        # 落盘验收带逐字重复查重，纯重复句夹具会被打回）
+        body = "".join("这是一段足够长的测试正文，主角在修水车，第 %d 回合推进。" % k
+                       for k in range(1, 31))
 
         def fake(run_id, role, agent, prompt, workdir, readonly, ev, *a, **kw):
             cap.setdefault("roles", []).append(role)

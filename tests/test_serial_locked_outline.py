@@ -178,7 +178,9 @@ class TestDraftAndReviseInjectLockedOutline(BaseTest):
         # 旧稿在场（重写未达标章场景）：不得被「校验沿用」
         (self.workdir / "chapter-21.md").write_text("旧稿。", encoding="utf-8")
 
-        body = "这是一段足够长的测试正文，主角在核对停工范围。" * 30
+        # 逐句异文（2026-10-11 起落盘验收带逐字重复查重，纯重复句夹具会被打回）
+        body = "".join("这是一段足够长的测试正文，主角在核对停工范围，第 %d 回合推进。" % k
+                       for k in range(1, 31))
         cap = {"draft": {}, "revise": {}, "global": []}
 
         def fake(run_id, role, agent, prompt, workdir, readonly, ev, *a, **kw):
@@ -261,7 +263,9 @@ class TestDraftInjectRedoIssues(BaseTest):
 
     def _run(self, task, run, agents):
         from app.core import pipeline
-        body = "这是一段足够长的测试正文，主角在核对停工范围。" * 30
+        # 逐句异文（2026-10-11 起落盘验收带逐字重复查重，纯重复句夹具会被打回）
+        body = "".join("这是一段足够长的测试正文，主角在核对停工范围，第 %d 回合推进。" % k
+                       for k in range(1, 31))
         cap = {"draft": {}}
 
         def fake(run_id, role, agent, prompt, workdir, readonly, ev, *a, **kw):

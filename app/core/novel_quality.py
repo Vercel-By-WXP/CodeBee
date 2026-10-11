@@ -25,6 +25,77 @@ _SENTENCE_RE = re.compile(r"[^。！？!?；;\n]+[。！？!?；;]?")
 _DIALOGUE_RE = re.compile(r"[“‘\"「『](.*?)[”’\"」』]", re.S)
 _EMOTION_RE = re.compile(r"哭|泪|笑|怒|怕|颤|抖|咬|攥|握紧|心跳|呼吸|喉咙|指甲|沉默")
 
+# 逐字重复检测阈值（2026-10-11 连载实案校准）：整段 ≥40 字重复两遍是 113/118 章
+# 实际事故形态；完整对白复现（≥6 字）同理——有意复诵必有动作/归属铺垫，评审员
+# 对 113 章「这杆子歪着」的判词就是「若有意让角色复诵咀嚼，缺少铺垫」。叙述性
+# 短句复沓（「早上探，往里。」5 字）是白描节奏手段，落在阈值之下不误伤。
+_DUP_MIN_PARA_CHARS = 40
+_DUP_MIN_SENT_CHARS = 12
+_DUP_MIN_DIALOGUE_CHARS = 6
+_DUP_MAX_NOTES = 4
+
+
+def duplicate_notes(text):
+    """章内逐字重复检测（确定性，成稿事故级）。
+
+    抓三类：整段逐字重复、整句（≥12 字去空白）逐字重复、完整对白（≥6 字去空白）
+    逐字重复。返回结构化证据列表 [{kind, count, quote}]，供落盘验收打回重起草与
+    评审提示词引用；短句复沓等有意的节奏手段不在阈值之内，不构成证据。
+    """
+    text = str(text or "").replace("\r\n", "\n").strip()
+    if not text:
+        return []
+    notes = []
+    # ① 整段逐字重复（去空白比对；间隔段落/连排都算）
+    para_counts = {}
+    for p in re.split(r"\n\s*\n", text):
+        p = re.sub(r"\s+", "", p)
+        if len(p) >= _DUP_MIN_PARA_CHARS:
+            para_counts[p] = para_counts.get(p, 0) + 1
+    dup_paras = [p for p, c in sorted(para_counts.items(), key=lambda kv: -kv[1])
+                 if c >= 2]
+    for p in dup_paras[:2]:
+        notes.append({"kind": "整段重复", "count": para_counts[p], "quote": p[:40]})
+    # ② 整句逐字重复（已被整段重复覆盖的句子不再单列，避免一条事故报一串）
+    sent_counts = {}
+    for s in _SENTENCE_RE.findall(text):
+        s = re.sub(r"\s+", "", s)
+        if len(s) >= _DUP_MIN_SENT_CHARS:
+            sent_counts[s] = sent_counts.get(s, 0) + 1
+    for s, c in sorted(sent_counts.items(), key=lambda kv: -kv[1]):
+        if c < 2 or len(notes) >= _DUP_MAX_NOTES:
+            continue
+        if any(s in p for p in dup_paras):
+            continue
+        notes.append({"kind": "整句重复", "count": c, "quote": s[:40]})
+    # ③ 完整对白逐字重复（阈值更低：成稿事故最常以「对白整句连排两遍」出现）
+    seen_dialogue = {n["quote"] for n in notes}
+    dial_counts = {}
+    for d in _DIALOGUE_RE.findall(text):
+        d = re.sub(r"\s+", "", d)
+        if len(d) >= _DUP_MIN_DIALOGUE_CHARS:
+            dial_counts[d] = dial_counts.get(d, 0) + 1
+    for d, c in sorted(dial_counts.items(), key=lambda kv: -kv[1]):
+        if c < 2 or len(notes) >= _DUP_MAX_NOTES:
+            continue
+        if any(d in q for q in seen_dialogue):
+            continue
+        notes.append({"kind": "对白重复", "count": c, "quote": d[:40]})
+    return notes
+
+
+def format_duplicate_notes(notes):
+    """Render duplicate_notes evidence as human-readable lines."""
+    lines = []
+    for n in notes if isinstance(notes, list) else []:
+        try:
+            lines.append("%s %d 处：「%s」" % (n.get("kind", "重复"),
+                                              int(n.get("count") or 0),
+                                              str(n.get("quote") or "")[:40]))
+        except (TypeError, ValueError):
+            continue
+    return lines
+
 
 def rubric_for(task):
     """Return the configured rubric, or the signing rubric for serial novels."""
@@ -71,6 +142,10 @@ def signal_summary(text, chapter=None):
         hints.append("存在偏长句，复查长定语、重复说明与动作拆分")
     if len(paragraphs) >= 4 and chars / len(paragraphs) > 220:
         hints.append("段落偏长，复查手机阅读下的节奏与信息密度")
+    # 逐字重复（整段/整句/完整对白）是成稿事故而非文风选择，直接点名证据；
+    # 起草验收闸（pipeline._chapter_state）用同一判定打回，评审面据此复核
+    for line in format_duplicate_notes(duplicate_notes(text)):
+        hints.append("逐字重复（成稿事故，须删并保留信息量最高的一处）：" + line)
     # Dialogue/emotion-action counts are descriptive signals only. Their absence
     # is not a quality defect: narrative voice, genre, and scene purpose vary.
     return {
@@ -109,6 +184,35 @@ def style_anchor_block(anchor):
         return ""
     return ("## 全书文风锚（大纲裁定，所有章节起草/修订/评审必须遵守；"
             "与其冲突处以本锚为准）\n%s\n" % anchor[:400])
+
+
+def reuse_guard_block(samples):
+    """Render prior chapters' opening/closing excerpts as a negative-example block.
+
+    samples: [{"chapter": int, "head": str, "tail": str}] — 起草面据此避开同款
+    开笔句式与同型收束（跨章复用红线：同一动作句式至多两次，第二次必须换载体
+    或升级信息量）。无样例（首批第 1 章等）返回空串，不占提示词字节。
+    """
+    rows = []
+    for s in samples if isinstance(samples, list) else []:
+        if not isinstance(s, dict):
+            continue
+        try:
+            ch = int(s.get("chapter"))
+        except (TypeError, ValueError):
+            continue
+        head = str(s.get("head") or "").strip()
+        tail = str(s.get("tail") or "").strip()
+        if head:
+            rows.append("- 第 %d 章开笔：「%s」" % (ch, head[:60]))
+        if tail:
+            rows.append("- 第 %d 章收束：「…%s」" % (ch, tail[-70:]))
+    if not rows:
+        return ""
+    return ("## 跨章复用红线（起草前必读）\n"
+            "此前各章已用的开笔/收束形态如下——本章不得再以同款句式开笔或同型"
+            "句式收束；同一动作句式全书至多两次，第二次必须换载体或升级信息量，"
+            "连读时章尾节奏不得趋同：\n" + "\n".join(rows) + "\n")
 
 
 def fingerprint(summary):

@@ -2919,6 +2919,7 @@ __VOLUME__
 __LOCKED_CH__
 __STALE_NOTE__
 __REDO_ISSUES__
+__REUSE_GUARD__
 - 正文约 __WORDS__ 字，中文，直接开写正文（可含本章标题行）。
 
 ## 前情提要（此前各章结尾摘录，衔接用）
@@ -3083,6 +3084,33 @@ def _read_variant(workdir, i, k):
 def _wc(text):
     """近似字数（去空白后的字符数，中文场景够用）。"""
     return len(re.sub(r"\s", "", text or ""))
+
+
+def _reuse_guard_samples(workdir, upto, window=4, min_words=200):
+    """收集此前各章的开笔/收束摘录（起草负样例，防跨章句式同款——105-112 批
+    「落笔入册」收束 8 章用 4 次被判 major 的根治手段之一：评审事后抓 → 起草
+    事前给反面样例）。只看近 window 章（更早的句式影响衰减）；过短/读不到的
+    章静默跳过。"""
+    samples = []
+    for j in range(max(1, int(upto) - int(window)), int(upto)):
+        t = _read_chapter(workdir, j)
+        if not t or _wc(t) < int(min_words):
+            continue
+        body = re.sub(r"\s+", " ", t.strip())
+        samples.append({"chapter": j, "head": body[:80], "tail": body[-100:]})
+    return samples
+
+
+def _dup_reject_note(notes):
+    """查重打回后的重写指令块：把上一稿被拦截的重复证据逐条下发。"""
+    lines = novel_quality.format_duplicate_notes(notes)
+    if not lines:
+        return ""
+    return ("\n\n## 确定性查重拦截（必读）\n"
+            "上一稿因整段/整句逐字重复未通过落盘验收，已被打回重写。重写时必须"
+            "消除以下重复——删并重复内容、保留信息量最高的一处；若为有意的复诵"
+            "或复沓，必须有动作/归属铺垫并改写措辞，不得逐字再现：\n- "
+            + "\n- ".join(lines) + "\n")
 
 
 _ANCHOR_EDGE_PUNCT = "。！？，、；：…—·,.!?;:\"'“”‘’()（）[]【】《》<>*#-"
@@ -3901,6 +3929,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 redo_lines += _major_lines(book_lvl)
             redo_note = ("## 上一轮评审未达标原因（必读）\n" + "\n".join(redo_lines) + "\n"
                          ) if redo_lines else ""
+            # 跨章复用红线负样例：此前各章实际的开笔/收束摘录随起草下发，把
+            # 「评审事后抓句式同款」前移成「起草事前看反面样例」（105-112 批
+            # 章末收束句式 4 连用被判 major 的根治；首批第 1 章无样例为空块）
+            reuse_guard = novel_quality.reuse_guard_block(
+                _reuse_guard_samples(workdir, i))
             # stable_order：同一任务 8 个章节的技能块必须字节级一致（§07 T1.2' 前缀缓存）
             # 三块分开留底：起草重试的分层降级（_serial_shrunk_block）要按
             # 「经验库/圣经」各自的身份收缩，折成一整块就只剩 4K 硬截一层了
@@ -3940,6 +3973,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         .replace("__LOCKED_CH__", serial_locked_chapter_block(workdir, i))
                         .replace("__STALE_NOTE__", stale_note)
                         .replace("__REDO_ISSUES__", redo_note)
+                        .replace("__REUSE_GUARD__", reuse_guard)
                         .replace("__REVIEW_RUBRIC__", rubric_block)
                         .replace("__HIGHLIGHT__", ch.get("highlight") or "按剧情要点自然铺设一处小冲突/小反转")
                         .replace("__STYLE__", style_tpl)
@@ -3956,9 +3990,14 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 # ——2026-09-17 七猫连载实测：多 run 并行推进时后位章节必撞限流，
                 # 一章失败即整 run 作废，太贵。
                 def _chapter_state():
-                    """草稿验收：成品是章稿文件本身，不是退出码——文件够长才算好。"""
+                    """草稿验收：成品是章稿文件本身，不是退出码——文件够长且无
+                    逐字重复才算好。整段/整句/完整对白逐字重复是成稿事故（113/
+                    118 章实案两处整段连排、对白复现，评审 major 一票否决+白烧
+                    一轮评审），落盘时确定性拦截打回，省下评审再抓的往返。"""
                     txt = _read_chapter(workdir, i)
-                    return (bool(txt) and _wc(txt) >= int(wpc * 0.6)), (txt or "")
+                    if not txt or _wc(txt) < int(wpc * 0.6):
+                        return False, (txt or "")
+                    return not novel_quality.duplicate_notes(txt), txt
 
                 res = None
                 good = False
@@ -3971,6 +4010,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 prev_prompt = None      # 上一次实际下发的提示词
                 prev_timed_out = False  # 上一次是否「超时/停滞」收场
                 shrink_note = ""        # 本次重试的分层降级说明（进 step note 供对账）
+                dup_fix_note = ""       # 查重打回后的消重指令（重试/换将随提示词下发）
                 for draft_attempt in range(3):
                     if draft_attempt:
                         # 30s / 60s 退避；ev.wait 睡等可被取消即刻唤醒
@@ -3986,7 +4026,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         # 30KB 对讯飞必挂）
                         shrunk_block, shrink_note = _serial_shrunk_block(
                             sk_lessons, bible, kb_block)
-                        use_prompt = prompt.replace(sk_block, shrunk_block)
+                        use_prompt = prompt.replace(sk_block, shrunk_block) + dup_fix_note
+                    elif draft_attempt and dup_fix_note:
+                        # 同作者重试带上一稿的重复证据（消重指令）——同提示重跑
+                        # 只会长出同族事故，新变量才值得烧（同 2026-09-22 超时教训）
+                        use_prompt = prompt + dup_fix_note
                     # 超时重试必须有新变量才值得做（2026-09-22）：提示词与上次逐字节
                     # 相同、上次又是超时/停滞收场时，重试只是把同一个超时再烧一遍
                     # （2400s × N）。此时直接跳出交替换将——换 CLI/模型才是新机会。
@@ -4014,6 +4058,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     good, txt = _chapter_state()
                     if good:
                         break
+                    if txt:
+                        _dups = novel_quality.duplicate_notes(txt)
+                        if _dups:
+                            dup_fix_note = _dup_reject_note(_dups)
                     if res["ok"] and _wc(res.get("text") or "") >= int(wpc * 0.6):
                         # 回复正文就是完整章稿（kimi 35B 实测：正文当消息回而不
                         # 落盘）→ 代为落盘救回成品
@@ -4024,6 +4072,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                             pass
                         if good:
                             break
+                        if txt:
+                            _dups = novel_quality.duplicate_notes(txt)
+                            if _dups:
+                                dup_fix_note = _dup_reject_note(_dups)
                     if ev is not None and ev.is_set():
                         break
                 # 同作者重试穷尽 → 起草换将：按路由分序逐个试备选（最多 2 个，
