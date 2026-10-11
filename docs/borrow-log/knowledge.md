@@ -7276,3 +7276,86 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   「Ran N tests」汇总+exit 0 即被无声杀，全量门一律走 tests/_guard_fullrun.py
   认统计行。环境劣化实锤=portscan readline 挂死（并行班 10s 超时护栏 982a9e8
   收口）；发版链 v0.1.103（24bfeab→npm view 核对通过）零回退 | 教训+方法 | 2026-10-11
+
+## 2026-10-11 15 时班（批1：代码质量与评审）
+
+- **usestrix/strix**（67,819★，10-11 在更，WebSearch B1 域定向→repos 二次实证：
+  claim 42k→实证 67.8k 搜索面低估）新入库 | 自主 AI 渗透测试 agent：给定目标自主
+  规划攻击面→发现漏洞→出修复建议（pen-test 全自动闭环） | B1 安全域头部+1
+  （SkillSpector 19.9k/pentagi 25.4k/AI-Infra-Guard 6.8k 同簇升温）；「strix」品名
+  词形与 vulnerability scanner 词形正交系**词形盲区第 12 例**——67.8k 大件主扫 12 词
+  全零命中，词库已补周边词；我方安全面=评审+禅道闭环+市场五层闸门，渗透测试不落
+  维持雷达 | B1 对标参照（判据） | 2026-10-11
+- **Anionex/banana-slides**（15,734★，10-08 在更，trendshift+A10 新词双通道）新入库 |
+  一站式原生 AI PPT 生成应用：模板图片/素材智能解析+一句话/大纲生成+口头指定区域
+  修改+导出可编辑 pptx/视频 | A10 演示文稿域第二件（ppt-master 59.8k skill 形态之外
+  的独立 app 形态），同班双件在榜系域升温确认；A10 上轮补词本班即咬中（补词见效
+  第 2 例）；我方 presentation 流程维持不落 | A10 对标参照（雷达） | 2026-10-11
+- **repowise-dev/repowise**（7,474★，10-11 在更，topic:mcp updated 头部）新入库 |
+  代码库情报层（人机两用）：代码健康分+自动文档+git 分析+死代码检测+ADR 经 MCP
+  供 agent 与人共用 | A11+代码域交叉：死代码检测与 refactor-cleaner 同域、ADR 与
+  A11 决策记录同域；「全仓持续画像」与我们 workdir_recon/圣经同向但粒度不同 |
+  A11 参考判据（雷达） | 2026-10-11
+- **multimodal-art-projection/YuE（YuE2）**（11,325★，10-06，trendshift）新入库 |
+  开源音乐生成换代：符号规划+零样本翻唱+agentic music editing | 音乐域外；
+  「符号规划（大纲/符号层）+agent 编辑（渲染层）」创作范式与写作域同构，方法论级
+  参考 | 域外参考（雷达） | 2026-10-11
+- **FeiZhuLulu/DeepSeek-Bot**（478★，10-11 在更，trendshift）新入库 | DSH 上的长活
+  bot 团队：主 bot+bot 间消息+群聊 | **E 专项：DSH 生态第六波信号**（继官方收编→
+  Android→skill-center→桌面壳→oh-story-dsh 后，长活多 bot 编排形态进场）；同班
+  npm 渠道 dsh-zentao-mark-effort 系 DSH×禅道第二例——生态向「长驻多 bot」与
+  「垂直工单域」双向扩散 | E 生态信号 | 2026-10-11
+- **禅道 npm 渠道 5 新件**（F 专项，第 36-40 例）：ahs-zentao 0.2.17（CAS SSO MCP）/
+  @zentao-agent/sdk 0.17.0（TS SDK token 自动刷新+组合操作）/zentao-v1-mcp 0.2.3/
+  dsh-zentao-mark-effort 0.2.6（DSH×禅道第二例）/zentao-api 0.7.2（Browser+Node
+  SDK） | 禅道在架密度 7+→**12+ 件**（MCP/SDK/CLI/DSH bundle 四形态）需求侧确认
+  持续；「激活 Bug→自动建 code 任务→resolve+评论回写+群通知」深度闭环仍独占 |
+  F 生态信号 | 2026-10-11
+- **脚本词库 4 词补课（纪律面落地）**：keywords.md 存量补词未同班回写
+  borrow_scan_nightly.py 的欠账一次清零——A10 ppt-master/B1 open-code-review/B2
+  agentic-context/B7 magicrew 补进 QUERIES/BATCHES（A=86→92）；当班即双验证：
+  open-code-review 新词正主命中 45,957+banana-slides 系 A10 新词捞出——**「词库
+  补词必须同班回写脚本」纪律的执行面补齐，防再欠** | 方法论（工具面） | 2026-10-11
+- **topic 通道工具变更**：GitHub topic 页改 React 客户端渲染，静态抓取 8 页 HTTP 200
+  但正文零仓列表——替代通道=`search/repositories?q=topic:<t>&sort=updated` 限定词
+  （8 查全过，零漏配额 8 次/30 分内）；keywords.md C 源节已同步注记 | 通道变更
+  （如实记） | 2026-10-11
+- **复查记录（15 时班，vs 10-11 03 时班基准，间隔约 12h）**：orca 89,352（+243）/
+  mattpocock-skills 284,958（+760）/ECC 276,686（+286）/hermes 252,620（+115）/
+  deepseek-harness 247,192（+239）/opencode 212,612（+82）/ponytail 160,658（+319）/
+  dify 158,115（+24）/pi 114,177（+87）；放量：magpie 8,771（+236 加速第 3 班）/
+  open-code-review 45,957（+123）/OpenShell 15,759（+50）/openrig 6,789（+99 病毒
+  第 7 班）/headroom 74,981（+82）/Backlog.md 6,997（+197）/OpenSandbox 15,777
+  （+377）/agency-agents-zh 21,170（+120）/andrej-karpathy-skills 218,499（+1,872）/
+  **ppt-master 59,821（+540 加速）**/taste-skill 94,506（+124）；早班新件 bifrost
+  8,693/plannotator 9,334/Maestro 3,436/oh-story-claudecode 7,424 微动在更；写作域
+  TrendRadar 62,796/distilly 25,482/denova 896 持平；E 候选 openclacky 1,202/
+  minimax-code 2,011 持平（DeepSeek-Reasonix 本班未入扫描面，候选首位维持）；
+  awesome 22 源+已录大件 34 件 repos 实测 **56/56 alive 零 archived**；autonovel
+  1,615（+14，WebSearch 复捞验证在录，停更维持） | 复查 | 2026-10-11
+- **本班结论**：主扫 120/120 零失败（431 唯一仓/活跃 238，B1 域 5 词沉寂/零回维持）
+  + WebSearch 串行 2 发（strix 捞出兑现交叉验证纪律）+ trendshift/topic:/npm/自家
+  CLI 周边四通道全过（pypi 挑战页第 6 班）；真首见判据 4 件（strix 67.8k/banana-
+  slides 15.7k/happy 24.1k/claudian 15.6k）+repowise+YuE2+DSH 第六波+禅道 5 件全
+  出自交叉通道（主扫头部零机制差量连续第 6 班）；B1 安全 agent 域成簇升温系本班
+  主扫域核心发现（渗透测试不落维持雷达）；判据件均非小而实落地件，零代码提案
+  docs+scripts 不触发发版 | 结论 | 2026-10-11
+- **slopus/happy**（24,084★，10-11 在更，自家 CLI 周边词补扫捞出）新入库 | CC/Codex/
+  Grok 开源桌面 app+iOS 移动端跨端控制本机 agent | A13 桌面+移动控制面同形态
+  **第四证**（orca/paseo/t3code 之后）：移动端全控形态差量已有 t3code 在档判例
+  （交人拍板不擅自扩），本班零新增裁决面 | A13 对标参照（判据） | 2026-10-11
+- **YishenTu/claudian**（15,626★，10-11 在更，自家 CLI 周边词补扫捞出）新入库 |
+  Obsidian 内嵌 Claude Code/Codex 为 AI 协作者（笔记库=工作台） | IDE/笔记嵌入
+  形态（oh-my-pi「IDE 接进来」同向）：我们系独立编排台形态不落；「以既有知识库
+  为宿主」思路可参考 | 参考（雷达） | 2026-10-11
+- **juyterman1000/entroly**（474★，10-11 在更，codex 周边词捞出）新入库微型 |
+  「Cut AI context cost without trusting the compressor. Every reduction is
+  reversible」——不信任压缩器+逐项可逆压缩 | A3 旁证：与 headroom「预压缩」相反
+  的「不信任压缩」路线；我们三段压缩已有 select_range 防线+surface replace 可逆
+  锚点，两头思想均有对应物，无新差量 | A3 微型参考（雷达） | 2026-10-11
+- **openinterpreter/openinterpreter 68,540 复认换代**（老牌仓知识库零命中首补记，
+  10-11 在更）：描述从通用 interpreter 换代为「coding agent for open models like
+  Kimi K3 and GLM 5.3」——开源模型 agent 化老牌转型信号；已接 CLI 本体复认：
+  MoonshotAI/kimi-code 7,829/xai-org/grok-build 27,312；已录放量：cc-switch
+  142,594（+2,742）/nexu-io/open-design 100,461（+1,116）/wshobson/agents 40,366 |
+  复查+老牌补记 | 2026-10-11

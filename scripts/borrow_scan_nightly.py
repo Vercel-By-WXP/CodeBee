@@ -46,7 +46,8 @@ QUERIES = [
     ("A10", "short+video+script+ai+OR+tiktok+script+generator"), ("A10", "ai+translation+quality+OR+translation+agent"),
     ("A10", "chatbot+memory+OR+conversational+agent+memory"), ("A10", "ai+code+generation+OR+code+completion+agent"),
     ("A10", "ai+code+refactoring+OR+code+improvement+agent"), ("A10", "ai+documentation+generator+OR+doc+writing+agent"),
-    ("A10", "ai+presentation+slides+generator"), ("A10", "ai+search+agent+OR+deep+research+agent"),
+    ("A10", "ai+presentation+slides+generator"), ("A10", "ppt-master+OR+powerpoint+native+generator"),
+    ("A10", "ai+search+agent+OR+deep+research+agent"),
     ("A11", "persistent+memory+coding+agent+OR+agent+facts+store"), ("A11", "ai+decision+log+OR+architecture+decision+records"),
     ("A11", "findings+file+OR+discovery+log+agent"), ("A11", "spec+archive+OR+specification+versioning"),
     ("A11", "project+constitution+OR+coding+standards+auto"),
@@ -63,6 +64,8 @@ QUERIES = [
     ("B1", "regression+test+generation+ai"), ("B1", "refactor+agent+OR+tech+debt+agent"),
     ("B1", "secure+code+review+agent+OR+security+review+bot"), ("B1", "api+test+generation+agent+OR+integration+test+agent"),
     ("B1", "ast+based+code+editing+agent+OR+symbol+level+code+edit"),
+    ("B1", "open-code-review+alternative+OR+codeai+review"),
+    ("B1", "strix+OR+penetration+testing+agent"),
 ]
 
 # 轮换池 B（keywords.md 同源）：小时 %7 选批，余 0=批7。--batch N 可只跑指定批补课。
@@ -72,8 +75,11 @@ BATCHES = {
         "test+generation+agent+OR+ai+testing+agent", "regression+test+generation+ai",
         "refactor+agent+OR+tech+debt+agent", "secure+code+review+agent+OR+security+review+bot",
         "api+test+generation+agent+OR+integration+test+agent",
-        "ast+based+code+editing+agent+OR+symbol+level+code+edit"]],
-    2: [("B2", q) for q in ["self+improving+agent+OR+agent+reflexion", "agent+episodic+memory",
+        "ast+based+code+editing+agent+OR+symbol+level+code+edit",
+        "open-code-review+alternative+OR+codeai+review",
+        "strix+OR+penetration+testing+agent"]],
+    2: [("B2", q) for q in ["self+improving+agent+OR+agent+reflexion",
+        "agentic+context+engineering+OR+evolving+playbook", "agent+episodic+memory",
         "project+memory+coding+agent", "knowledge+graph+agent", "agent+learning+from+feedback",
         "experience+reuse+agent", "agent+self+correction", "skill+library+agent",
         "conversation+memory+compression+OR+memory+summarization+agent",
@@ -100,7 +106,8 @@ BATCHES = {
         "agent+framework+benchmark+OR+multi-agent+framework+comparison"]],
     7: [("B7", q) for q in ["数字员工+OR+大模型+编排", "one-api+alternative", "模型中转+OR+api+网关+大模型",
         "ollama+orchestrator", "local+llm+agent", "self+hosted+agent+platform", "rpa+ai+agent",
-        "小说生成+ai+OR+ai+写作+平台", "office+document+agent+OR+办公+智能体+工作流"]],
+        "小说生成+ai+OR+ai+写作+平台", "office+document+agent+OR+办公+智能体+工作流",
+        "magicrew+OR+超级麦吉"]],
 }
 
 
