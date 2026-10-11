@@ -67,6 +67,7 @@
 - q=computer+use+OR+computer+control+agent+cli
 - q=spec-driven+development+agent
 - q=ai+agent+sandbox+runtime
+- q=openharness+OR+domain+specific+harness 生态（2026-10-11 16 时班补：autonomous-ai/openharness 1,222★〔跨机器 harness 指挥台：多 agent 并排+密码链接多机免 SSH/Tailscale+E2EE relay+「域专属 harness」延伸 CAD/电路/机器人/游戏〕系 topic:agent-framework updated 头部捞出、**已录件**（10-05 班 WebSearch 捞出入库 1,105★）但主扫 119 查词形从未命中——「openharness」品名词形与功能词形正交系词形盲区第 13 例，补词防已录件断档+盯增量（+117 复认），谁/何时/为何：16 时班批2）
 
 ### A6 评测/观测/协作（6 组）
 - q=ai+agent+evals+OR+agent+benchmark
@@ -166,6 +167,7 @@
 - q=skill+library+agent
 - q=conversation+memory+compression+OR+memory+summarization+agent（2026-09-20 补：对话记忆压缩）
 - q=agent+skill+learning+OR+automatic+skill+discovery（2026-09-20 补：技能自动沉淀）
+- q=memsearch+OR+unified+memory+layer 生态（2026-10-11 16 时班补：zilliztech/memsearch 2,735★〔Claude Code/Codex/DSH 等 agent 的统一记忆层，Markdown 后端+BM25 召回〕系 WebSearch 批2 域定向捞出+repos 实证、**已录件**（10-05 班在档 2,626★）但主扫 B2 组词形从未命中全靠 WebSearch/复查续档——「memsearch/unified memory layer」词形与「agent memory」正交系词形盲区第 14 例〔StaffDeck/open-code-review 同型〕；其 Markdown 后端与 CodeBee 经验库同构、DSH 适配系已接 CLI 生态信号需盯增量，谁/何时/为何：16 时班批2）
 
 ### 批3：计划/spec/长任务
 - q=long+running+agent+OR+persistent+planning+agent（可 stars:>200）

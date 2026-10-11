@@ -7359,3 +7359,191 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   MoonshotAI/kimi-code 7,829/xai-org/grok-build 27,312；已录放量：cc-switch
   142,594（+2,742）/nexu-io/open-design 100,461（+1,116）/wshobson/agents 40,366 |
   复查+老牌补记 | 2026-10-11
+
+## 2026-10-11 16 时班（批2：学习记忆与自我改进）追加
+
+- **ViktorAxelsen/MemSkill**（581★，10-01 push，WebSearch 批2 定向捞出+repos/in:name
+  双实证）新入库 | NeurIPS'26 论文配套开源：**记忆技能自进化**——agent 学习「选择/
+  组合/进化」可复用 memory skills，检索/摘要/写回等记忆操作本身成可学习对象，替代
+  静态手工设计管道；论文+代码+基准全开源 | 我们经验库=固定管道（bigram 召回+盈余
+  衰减+merge 去重）——「按效果进化合并/衰减策略」系范式级差量但实现为学术训练管线
+  非即插件；记远期演化方向不立项，经验库维持现设计 | B2 借鉴方向（判据）| 2026-10-11
+- **vercel-labs/openreview**（1,696★，2026-03 后停更，主扫 OR 捞出+repos 实证）新入库 |
+  Vercel 官方自托管 AI code review bot（GitHub App 形态） | B1 域官方出品件，与 diff
+  评审链同域但形态为外部 PR bot；停更（产品线转闭源信号）不入深挖 | B1 参考（雷达，
+  停更注明）| 2026-10-11
+- **avivsinai/agent-message-queue**（87★，10-11，topic 直抓首见）新入库微型 | 文件型
+  agent 间消息队列（Maildir 风格本地文件信箱，零守护进程） | 我们步骤间走进程内流水线
+  +CLI 轮询，文件信箱系跨进程松耦合补充形态，微型不落 | A1 微型判据（雷达）| 2026-10-11
+- **autonomous-ai/openharness 放量复认+词形盲区补词**（1,105→1,222★，10 天 +117，
+  topic 直抓捞出——10-05 班 WebSearch 入库后主扫 119 查词形从未命中） | 跨机器
+  harness 指挥台：多 agent 并排+密码链接多机（免 SSH/Tailscale）+E2EE relay+「域专属
+  harness」延伸 CAD/机器人/游戏——A1+A13 成簇域再 +1；E2EE relay+密码多机链接与
+  我们 Tailscale 远程访问同域异构，记录不作取舍 | A1/A13 对标参照（判据，keywords.md
+  补词第 13 例防断档）| 2026-10-11
+- **zilliztech/memsearch 放量复认+词形盲区补词**（2,626→2,735★，10-09 在更——10-05
+  班在档后主扫词形从未命中全靠复查续档，本班 WebSearch 批2 定向捞出） | Claude Code/
+  Codex/DSH 等 agent 统一记忆层（Markdown 后端+BM25）；Markdown 真源+DSH 适配与我们
+  经验库同构、已接 CLI 生态信号（E 专项旁证） | B2 对标参照（判据，keywords.md 补词
+  第 14 例防断档）| 2026-10-11
+- **tigerless-labs 双件半天大放量**：cost-xray 3,833→4,698（+865，A3 逐部件成本透视）
+  /agent-memory 2,379→3,401（+1,022，A2 Markdown 真源记忆）——A3/A2 双子星加速需盯
+  增量；「Markdown 真源记忆」与 memsearch/memU 同簇成共识形态，与我们经验库 JSON 台账
+  +Markdown 正文混合存储同构佐证 | A2/A3 对标参照（判据）| 2026-10-11
+- **微型群**：emson/elfmem 59（sELF improving 记忆，批2 微型）/1517005260/graph-rag-agent
+  2,347（GraphRAG 融合私域推理，2025-11 停更，B5 域旁）/vasilyevdm/ai-agent-handbook 149
+  （30+ 框架内幕文档）| 无机制差量 | 微型判据群（雷达）| 2026-10-11
+- **topic 通道两班差异如实记（方法论）**：15 时班判「React 客户端渲染静态抓取零仓列表」
+  改走 `q=topic:<t>` 限定词通道；16 时班**带浏览器 UA（Chrome/126）直抓 8 页全 200 且
+  列表可解析**（571KB/页 286 href，捞出的 openharness 等经 repos 端点全部实证有效）——
+  无 UA 请求被 GitHub 当作无 JS 客户端降级响应，带 UA 时正文列表仍在。两通道并存互备：
+  优先直抓（零搜索配额），直抓空时回退 topic: 限定词（占配额 8 次/轮）| 方法论 | 2026-10-11
+- **复查记录（16 时班，vs 15 时班基准，间隔约 1.5h）**：orca 89,360（+8）/
+  mattpocock-skills 284,988（+30）/ECC 276,695（+9）/hermes 252,625（+5）/
+  deepseek-harness 247,204（+12）/opencode 212,614（+2）/ponytail 160,668（+10）；
+  放量：**ppt-master 59,843（+22 加速持续）**/magpie 8,785（+14 加速第 4 班）/
+  openrig 6,795（+6 病毒第 8 班）/oh-my-pi 34,970（+210 跨班）/karpathy-skills 218,515
+  （+16）；bifrost 8,687（15 时班记 8,693 微差回落如实记）；peters/horizon 716 属主
+  勘定闭环（niubigeo 属主 404 复证，peters/horizon 与 10-10 班一致）；awesome 22 源
+  22/22 alive 零 archived；DeepSeek-Bot 485（+7，15 时班 478）；webnovel-writer
+  lingfengQAQ 属主勘定闭环 7,416（+1）；E 候选 Reasonix 35,756/openclacky 1,202/
+  minimax-code 2,011 持平零接入 | 复查 | 2026-10-11
+- **本班结论**：主扫 119/119 零失败零限流（480 唯一仓/活跃 263，B2 主扫域 11 词头部
+  全已录族——连续第 7 班主扫零机制级新差量）+ WebSearch 串行 1 发（MemSkill 真首见
+  +memsearch 复认）+ trendshift/topic 带 UA 直抓/npm/awesome 22 源五通道全过（pypi
+  挑战页第 7 班）。真首见判据 1 大件（MemSkill 581 学术）+2 微型+1 停更官方件
+  （openreview）；复认放量 3 件（openharness/memsearch/tigerless 双件）；词库补词 2 处
+  （第 13/14 例，同班回写脚本）；零代码提案 docs+scripts 不触发发版 | 结论 | 2026-10-11
+
+## 2026-10-11 16 时班复扫对照（补词后首跑验证·与并行班零冲突互补）
+
+- **EverMind-AI/EverOS**（13,400★，10-10 在更，memsearch 新词组首跑捞出+repos/readme
+  实证）新入库 | **本地优先可移植记忆运行时**：Markdown 真源（可读/可编辑/可 diff/Git
+  版本化，直改文件级联 watcher 同步索引）+本地三件套 Markdown+SQLite+LanceDB（零
+  MongoDB/ES/Redis）+user 轨（episodes/profile）与 agent 轨（cases/skills）双轨+自进化
+  复用；中文 README+企微社区 | **B2 域真首见大件**：「Markdown 真源」与 memsearch/
+  tigerless-agent-memory 同簇共识形态，经验库 Markdown 正文+JSON 台账混合同构佐证再
+  +1；差量=LanceDB 向量索引（重依赖维持不抄，munder-difflin 判例）+「user/agent 双轨
+  分层」（经验库单轨 lessons，分层思路参考） | B2 借鉴方向（判据）| 2026-10-11
+- **memvid/memvid**（16,586★，07-14 停更）/ **campfirein/byterover-cli**（4,955★，
+  06-25 停更，原 Cipher）新入库 | 单文件 serverless 记忆层（视频二维码编码）/可移植
+  记忆层 CLI | 「记忆层跨 agent 可移植」与 memsearch/EverOS 同诉求三证（趋势确认）；
+  双双停更 3+ 月不入深挖 | B2 参考（停更注明）| 2026-10-11
+- **ZJU-REAL/Easel**（3,445★，10-11 在更，topic:mcp 限定词捞出）新入库 | 开源社交媒体
+  AI agent：趋势发现→内容创建→发布全链（浙大 REAL 团队） | **A12/自媒体文章域判据**：
+  与自媒体文章流程+rank_scan 扫榜+多平台发布设想同域，「趋势→内容→发布」闭环节奏更
+  前沿；平台化路线参考不落 | A12 对标参照（雷达）| 2026-10-11
+- **A1u 新锐双件+生态信号 2**：Gaurav-Gosain/tuios 5,141（「知道 agent 在干嘛」终端
+  窗口管理器，A13 新锐判据）/ **i-am-bee/beeai-framework** 3,430（IBM 系 org 生产级
+  Python/TS agent 框架，knowledge 全历史零命中真首见，B6 框架域）；fabric-runtime/
+  pi-fabric 284（pi 生态可编程 runtime，继 oh-my-pi 后第二件）+pengyue-polaron/
+  deepseek-harness-genui 116（DSH 生态）——已接 CLI 生态双信号续档（E） | A13/B6/E
+  判据（雷达）| 2026-10-11
+- **memsearch/openharness 新词组首跑验证（「补词见效」第 3 例）**：复扫班 16:29 跑的
+  正是并行班 16:20 回写后的脚本——memsearch 组首跑即咬中 mem0 67k/Memori 17.1k/
+  memvid 16.6k/EverOS 13.4k/byterover 5k 五件头部；openharness 组中腰部可见（正主
+  1,222 被头部压线）。「词库补词必须同班回写脚本」纪律的**验证面**补齐：不只回写，
+  还要同班跑一次见咬中 | 方法论（验证面）| 2026-10-11
+- **属主勘定 7 条闭环**（in:name 一次勘清复用）：Backlog.md→MrLesk 6,998/ainovel-cli
+  →voocel 2,138/memU→NevaMind-AI 14,525/magic-context→cortexkit 2,301（同门 aft
+  321）/DeepSeek-Reasonix→esengine 35,757（E 候选首位维持）/denova→alfredxw 897/
+  webnovel-writer→lingfengQAQ 7,418（与并行班互证） | 复查勘误 | 2026-10-11
+- **trendshift 新面孔 8 件全微型/域外**：anatomy 665（等距机械图 skill，diagram-design
+  同域）/Insomnia 595（macOS 防睡眠——agent 长会话守卫旁支）/talorys 555（Cloudflare
+  个人 agent+定时提醒，A9 旁）/agent-chrome-relay 251（登录态 Chrome 后台标签页——
+  BrowserSkill 借还协议同域微型，A5 密度 +1）/DigUp 381/winutil-cn 435/folia-major
+  4,678/mailcheap 613 | 微型判据群（雷达）| 2026-10-11
+- **topic 通道两班互证（方法论补全）**：并行班走带 UA 直抓（零配额）、复扫班走
+  `q=topic:<t>` 限定词（8 查占配额全过）——同日两班各跑一通均有效，互备分工坐实；
+  WebSearch 2 发被 Bing 通用页污染零有效仓（如实记，并行班同通道捞出 MemSkill 系
+  时序措辞差异；交叉验证由 topic:+repos 通道补位） | 方法论 | 2026-10-11
+- **E/F/B 快检**：本机 8 CLI 在装（dsh/opencode/kimi/grok/qwen/codex/claude/pi）与
+  catalog 一致，候选五件未装维持零盲接；禅道 npm 渠道 zentao-cli 0.3.1 复认在架
+  12+ 件四形态、深度闭环独占不变；市场六源快探网络异常（404/超时/307）如实记留巡检班
+  | 专项快检 | 2026-10-11
+- **复查记录（复扫班，vs 并行班 16:28 基准，16:41-16:52 repos 实测）**：magpie 8,802
+  （+17 加速第 4 班）/OpenShell 15,765/openrig 6,803（病毒第 8 班）/headroom 74,991/
+  ppt-master 59,877（+34 加速持续）/taste-skill 94,531（+25）/TrendRadar 62,796 持平/
+  distilly 25,484/drama-skills 2,715/memsearch 2,735 持平/openclacky 1,202/minimax-code
+  2,013/bifrost 8,695/plannotator 9,337/Maestro 3,436/oh-story-claudecode 7,425——
+  全部 alive 零 archived；与并行班互证零矛盾（微差系 15 分钟时序内自然增量） | 复查
+  | 2026-10-11
+- **本班结论**：补词后首跑 122/122 全绿（492 唯一仓/活跃 271）；真首见判据 1 大件
+  （EverOS 13.4k）+域判据 1（Easel 3.4k）+新锐 2（tuios/beeai）+停更登记 2（memvid/
+  byterover）；零代码提案，落地=知识沉淀（报告复扫节+本节），docs 不触发发版。
+  **同日双执行体并行作业复盘**：通道互异+时序错峰+产出零冲突，「改前 Read 冲突重读」
+  纪律有效可复制 | 结论+方法论 | 2026-10-11
+
+### 门禁补记（17 时后）
+
+- 全量守卫 `tests/_guard_fullrun.py 'test_*.py'` 在独立 `TUTTI_DATA` 下运行 2347 项，
+  结果 36 failures、6 errors、2 skipped；失败涉及 catalog/i18n/沙箱策略/取消超时/
+  临时路径等契约，本轮未盲修。
+- 定向 `test_borrow_round.py`（10/10）与 `test_market_remote.py`（14/14）通过，
+  扫描脚本语法检查通过。全量门禁未绿，故不提交/不推送，待后续先确认基线与环境再修。
+
+## 2026-10-11 17 时班（批3：计划/spec/长任务·第三执行体）追加
+
+- **promptfoo/promptfoo**（25,885★，10-11 在更，B1 strix 新词组首咬）新入库 |
+  prompt/agent/RAG 三层测试+红队一体化：注入/越狱/PII/漏洞扫描、模型矩阵对比、CI
+  集成 | 我们 evalbench 系模型级样题实测，promptfoo 系 prompt/agent 级测试+AI 特化
+  红队（strix 渗透闭环的「测试框架化」兄弟面）；外部评测框架非编排台内能力，仅对标
+  参照——**strix 词补词次日即咬 25.9k 第二大鱼，补词纪律价值再证** | A6/B1 对标参照
+  （判据）| 2026-10-11
+- **GreyDGL/PentestGPT**（15,885★，07-14 后无 push，strix 词组捞出）新入库 | 2023
+  老牌 LLM 渗透测试 agent（交互式 pentest 指导） | B1 安全簇 +1（strix/pentagi/
+  Hexstrike 同簇）；老牌件停更倾向不入深挖 | B1 参考（雷达，老牌）| 2026-10-11
+- **RightNow-AI/openfang**（18,216★，07-02 后无 push，topic 带 UA 直抓首见）新入库 |
+  开源 Agent Operating System | A1 同形态大件（3 个月无 push 停更观察）；与 compozy/
+  openhuman 同域，README 级未见机制差量 | A1 参考（雷达，停更观察）| 2026-10-11
+- **Upsonic/Upsonic**（7,956★，06-18 后放缓）+ **crestalnetwork/intentkit**（6,516★，
+  09-16，自托管云 agent 集群）| Python agent 框架/云 agent 集群 | 框架路线与同形态，
+  topic 直抓捞出 | 参考/雷达 | 2026-10-11
+- **Mirix-AI/MIRIX**（3,450★，10-08 在更）新入库 | 多 agent 个人助理：屏幕活动追踪+
+  问答记忆 | 屏幕感知记忆我们无对应面（无 GUI 操控边界，trycua 判例同），个人助理域外
+  旁支 | 参考 | 2026-10-11
+- **filipecalegario/awesome-vibe-coding**（5,315★）| vibe coding 精选清单 | 雷达源
+  候选（C 源备查，不入每轮雷达） | 参考（雷达源候选）| 2026-10-11
+- **Innei/lody-ios**（511★，10-11 在更）| Lody（09-26 已录「团队共享多端」）的独立
+  iOS 客户端 | A13 多端具体化：移动编排面再 +1（happy/t3code 判例维持不扩） | A13
+  参考 | 2026-10-11
+- **TianyuCodings/JevHarness**（536★，09-21，openharness 新词组捞出）新入库 | LLM
+  撰写任务专属 harness+全轨迹奖励反思+GEPA 进化 | Jev 簇（TypeSafe System One）机制
+  升级信号：「harness 本身由 LLM 按奖励进化」与 Raven evolver/经验库 outcome 加权
+  同向，范式观察维持不立项 | B2 范式观察（雷达）| 2026-10-11
+- **pengyue-polaron/deepseek-harness-genui**（116★，09-24，openharness 词组）新入库 |
+  DSH 任务专属 genUI：React 应用生成+状态跨 Agent 轮携带 | DSH 生态 genUI 形态新例
+  （E 专项：生态向 UI 面扩散） | E 生态信号 | 2026-10-11
+- **微型群 16 件实测勘定**：agent-foundation 173（a13n 自托管平台）/Hexstrike-redteam
+  165（MCP 渗透，停更）/opencode-agent-orchestration-kit 133（OpenCode 编排 harness）/
+  deepsecure 52（凭据族 +1）/reef 53/Petsitter 42（模型·任务专属 harness）/ThrillhouseBot
+  35（Quarkus 原生 PR 评审）/neosh 31/arbos 30/agentweave 40（工具预路由）/kungfu-kanban
+  5+atelier 4（kanban 编排×2）/semantic-prompt-cache 9/vnc 9/chatgpt-code-review-action
+  79（2023 老件） | 全微型/已录族同域无编排差量 | 微型判据群（雷达）| 2026-10-11
+- **Awesome-Long-Horizon-Agents 复活**（RUC-NLPIR，1,074★，pushed_at=2026-10-06）|
+  「09-22 后 14 天无 push」停更观察**解除**（10-06 有 push，本日三班首次捕捉） | 勘误
+  （状态变更）| 2026-10-11
+- **updated 排序轮替代交叉验证（方法论）** | 本执行体 WebSearch 工具缺位+Bing/DDG
+  直连全失败（环境级劣化，与复扫班「WebSearch 被通用页污染」当日互证）——改用
+  `search/repositories?q=<B3域>&sort=updated` 2 发替代：spec-driven 域全 0-20★
+  newborn（gate-oriented-sdd「评审门由 hook 强制」/quoin「ISO 29148 对齐」/interlock
+  「OpenSpec 分层并行」）——**stopgate/批注回传支线再证，三巨头零差量**；symbiot
+  （review annotations 微型）plannotator 同向再 +1 | 方法论（通道替代）| 2026-10-11
+- **复查记录（17 时班，vs 复扫班 16:52 基准，54 仓 repos 实测 17:0x-17:2x）**：
+  orca 89,389/superpowers 297,361/mattpocock-skills 285,106/ECC 276,742/hermes
+  252,650/deepseek-harness 247,238/opencode 212,624/anthropics-skills 180,401/ponytail
+  160,701/dify 158,124/pi 114,191/deer-flow 83,676（+328/8d）；放量 ppt-master 59,895
+  （+52 加速持续）/magpie 8,815（加速第 5 班）/openrig 6,805（病毒第 9 班）/headroom
+  74,993/open-code-review 45,976；周增量 paseo 20,455（+1.1k/7d）/superset 15,065/
+  agentmemory 29,296；cockpit-tools 18,815（+210，凭据族放量复认）；openharness 1,222/
+  memsearch 2,735 补词防断档双件持平在更；
+  E 候选 Reasonix 35,758 首位维持零接入；SkillSpector 19,899 持平；tigerless 双件
+  歇脚（09-29/10-09 后无 push）；awesome 22 源+头部 32 件 **54/54 alive 零 archived**
+  | 复查 | 2026-10-11
+- **本班结论**：主扫 121/121 零失败（481 唯一仓/活跃 263，B3 域头部全已录族——连续
+  第 8 班主扫零机制级新差量）；真首见 7 件（promptfoo 25.9k/PentestGPT 15.9k/openfang
+  18.2k/Upsonic/intentkit/awesome-vibe-coding/MIRIX）+Long-Horizon 复活+DSH genUI/
+  Jev 进化两生态信号；零代码提案，落地=知识沉淀三件套，docs-only 不触发发版。
+  **同日三执行体复盘**：批次错峰（B2→B2 复扫→B3）+通道互异+「改前 Read 冲突重读」
+  三度生效（本班报告时检测并行班 138 行新增落盘，追加式写入零覆盖） | 结论+方法论
+  | 2026-10-11
