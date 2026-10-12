@@ -8363,3 +8363,74 @@ button.ghost, button.primary, button.danger { font-size: 13px; font-weight: 550;
   #page-settings > #sub-overview .ov-goal-empty button { grid-column: auto; }
   #page-settings > #sub-overview .ov-goal-empty button { width: 100%; }
 }
+
+/* Phone-width guardrails: allow settings cards and controls to shrink inside
+   the available content column instead of clipping their minimum desktop width. */
+@media (max-width: 620px) {
+  #page-settings,
+  #page-settings > .subpage,
+  #page-settings > .subpage > .panel,
+  #page-settings > .subpage > .panel.wide,
+  #page-settings .cards,
+  #page-settings .list,
+  #page-settings .card,
+  #page-settings .field,
+  #page-settings .fields,
+  #page-settings .fields.grid,
+  #page-settings .panel-head,
+  #page-settings .ops {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+  }
+  #page-settings .cards,
+  #page-settings .bm-cards,
+  #page-settings .auto-tpl-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #page-settings .fields.grid { grid-template-columns: minmax(0, 1fr); }
+  #page-settings .fields.grid > .full { grid-column: auto; }
+  #page-settings input:not([type="checkbox"]):not([type="radio"]),
+  #page-settings select,
+  #page-settings textarea { box-sizing: border-box; max-width: 100%; min-width: 0; }
+  #page-settings .input-row { min-width: 0; max-width: 100%; flex-wrap: wrap; }
+  #page-settings .input-row > input,
+  #page-settings .input-row > select { flex: 1 1 150px; }
+  #page-settings #mcp-templates > .hint { flex-basis: 100%; }
+  #page-settings #set-workdir { flex: 1 1 100%; }
+  #page-settings .panel-head { align-items: flex-start; flex-wrap: wrap; }
+  #page-settings .panel-head > :first-child { min-width: 0; overflow-wrap: anywhere; }
+  #page-settings .ops { flex-wrap: wrap; }
+  #orch-config .ops > * { min-width: 0; max-width: 100%; }
+  #orch-config .ops .hint,
+  #orch-config .ops .msg { flex: 1 1 100%; overflow-wrap: anywhere; }
+
+  /* Keep run-detail sections immediately discoverable without the tall
+     vertical rail that pushed the actual work below the first screen. */
+  #rd-rail > #rd-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    max-width: 100%;
+  }
+  #rd-rail > #rd-tabs .rd-tab {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 42px;
+    padding: 7px 8px;
+    overflow: hidden;
+    font-size: 12px;
+  }
+  #rd-rail > #rd-tabs .rd-tab .rd-badge { margin-left: auto; }
+  #rd-rail > #rd-chat-nav .cn-pills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #rd-rail > #rd-chat-nav .cn-pill { box-sizing: border-box; min-width: 0; overflow: hidden; }
+  #run-detail .rd-pane,
+  #run-detail .rd-pane > *,
+  #run-detail .step,
+  #run-detail .report,
+  #run-detail .rd-main { min-width: 0; max-width: 100%; }
+  #run-detail .rd-pane,
+  #run-detail .step,
+  #run-detail .report { overflow-wrap: anywhere; }
+  #run-detail .rd-main { overflow-x: clip; }
+}

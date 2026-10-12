@@ -104,37 +104,50 @@ async function main() {
     })()`);
     await sleep(500);
 
-    // 横向溢出体检：页面级 scrollWidth + 突出视口的元素（跳过 fixed 弹层内滚动容器）
+    // 横向溢出体检：页面宽度之外，还检查可见元素几何边界及内部水平滚动条。
     const overflowOf = `(() => {
       const vw = document.documentElement.clientWidth;
       const bad = [];
       for (const el of document.querySelectorAll("body *")) {
         const cs = getComputedStyle(el);
-        if (cs.display === "none" || cs.visibility === "hidden") continue;
+        if (cs.display === "none" || cs.visibility === "hidden" || el.closest(".hidden,[hidden]")) continue;
         const r = el.getBoundingClientRect();
-        if (r.width > 40 && r.right > vw + 2) {
+        if (r.width > 40 && r.height > 0 && r.bottom > 0 && r.top < innerHeight &&
+            r.right > 0 && r.left < vw && (r.right > vw + 2 || r.left < -2)) {
           bad.push(el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") +
             (typeof el.className === "string" && el.className
               ? "." + el.className.trim().split(/\\s+/).slice(0, 2).join(".") : "") +
-            " w=" + Math.round(r.width) + " right=" + Math.round(r.right));
+            " w=" + Math.round(r.width) + " x=" + Math.round(r.left) + " right=" + Math.round(r.right));
           if (bad.length >= 4) break;
         }
       }
-      return { vw, scrollW: document.documentElement.scrollWidth, bad };
+      const hscroll = Array.from(document.querySelectorAll("body *")).filter((el) => {
+        const cs = getComputedStyle(el), r = el.getBoundingClientRect();
+        const intentional = el.matches(".browser-tabs,.browser-shortcuts,.help-toc") ||
+          el.closest(".browser-tabs,.browser-shortcuts,.help-toc");
+        return cs.display !== "none" && cs.visibility !== "hidden" && !el.closest(".hidden,[hidden]") &&
+          r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight &&
+          !intentional && el.scrollWidth > el.clientWidth + 3 && /(auto|scroll)/.test(cs.overflowX);
+      }).slice(0, 5).map((el) => (el.id ? "#" + el.id : el.tagName.toLowerCase()) +
+        "." + (typeof el.className === "string" ? el.className.trim().split(/\\s+/).slice(0, 2).join(".") : "") +
+        " " + el.scrollWidth + "/" + el.clientWidth);
+      return { vw, scrollW: document.documentElement.scrollWidth, bad, hscroll };
     })()`;
 
     // 基础可用验收：主视图（任务/新建）+ 各设置子页 + 运行详情
-    const tabs = ["tasks", "runs", "automation", "usage", "agents", "models",
-                  "bindings", "skills", "market", "orch", "appearance", "about"];
+    const tabs = ["overview", "tasks", "runs", "automation", "hooks", "zentao", "usage",
+                  "agents", "models", "bindings", "skills", "knowledge", "market", "orch",
+                  "evalbench", "__wxdigest", "data", "appearance", "about", "files", "browser"];
     let fails = 0;
     for (const tb of tabs) {
       await evalJson(`switchTab(${JSON.stringify(tb)}); 1`);
       await sleep(450);
       const o = await evalJson(overflowOf);
-      const over = o.scrollW > o.vw + 2;
+      const over = o.scrollW > o.vw + 2 || o.bad.length > 0 || o.hscroll.length > 0;
       if (over) fails++;
       console.log(`[${over ? "FAIL" : "ok  "}] tab=${tb} vw=${o.vw} scrollW=${o.scrollW}` +
-        (o.bad.length ? " 溢出元素: " + o.bad.join(" | ") : ""));
+        (o.bad.length ? " 溢出元素: " + o.bad.join(" | ") : "") +
+        (o.hscroll.length ? " 横向滚动容器: " + o.hscroll.join(" | ") : ""));
     }
 
     // 主视图：退出 settings-mode（返回 CodeBee）后新建入口 + 侧栏抽屉开合
@@ -192,10 +205,12 @@ async function main() {
         return { shown: d ? !d.classList.contains("hidden") : false,
                  railW: rail ? Math.round(rail.getBoundingClientRect().width) : 0 };
       })()`);
-      const over = o.scrollW > o.vw + 2;
-      if (over) fails++;
-      console.log(`[${over ? "FAIL" : "ok  "}] 详情·${tb} 卡可见=${det.shown} 宽=${det.railW} ` +
-        `scrollW=${o.scrollW}/${o.vw}` + (o.bad.length ? " 溢出: " + o.bad.join(" | ") : ""));
+      const over = o.scrollW > o.vw + 2 || o.bad.length > 0 || o.hscroll.length > 0;
+      const visible = det.shown && det.railW > 0;
+      if (over || !visible) fails++;
+      console.log(`[${over || !visible ? "FAIL" : "ok  "}] 详情·${tb} 卡可见=${det.shown} 宽=${det.railW} ` +
+        `scrollW=${o.scrollW}/${o.vw}` + (o.bad.length ? " 溢出: " + o.bad.join(" | ") : "") +
+        (o.hscroll.length ? " 横向滚动: " + o.hscroll.join(" | ") : ""));
     }
     console.log(fails === 0 ? "MOBILE-BASIC: PASS" : `MOBILE-BASIC: ${fails} 处横向溢出`);
   } finally {
