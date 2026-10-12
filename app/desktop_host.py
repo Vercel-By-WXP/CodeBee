@@ -15,10 +15,17 @@ import sys
 import threading
 import time
 import uuid
+from pathlib import Path
 from urllib.parse import urlparse
 from typing import Callable, Dict, Tuple
 from http.server import ThreadingHTTPServer
 from socketserver import TCPServer
+
+# The Windows 7 runtime is the embeddable Python: its ._pth file puts the
+# interpreter into isolated mode where the script directory never reaches
+# sys.path. Bootstrap our own directory (app/, the engine root) before any
+# core import; harmless for the full modern runtime.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from core import paths
 from core.runtime_lock import (
