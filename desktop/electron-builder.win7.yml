@@ -1,0 +1,7 @@
+extends: electron-builder.yml
+electronVersion: 22.3.27
+artifactName: 'CodeBee-${version}-win7-x64.${ext}'
+win:
+  target:
+    - target: nsis
+      arch: [x64]

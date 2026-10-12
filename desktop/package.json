@@ -16,6 +16,8 @@
     "smoke": "electron . --smoke-test",
     "pack": "electron-builder --dir --publish never",
     "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "prepare:runtime:win7": "node scripts/prepare-runtime.cjs win32 x64 win7",
+    "dist:win7": "npm run prepare:runtime:win7 && electron-builder --config electron-builder.win7.yml --publish never",
     "dist:mac:arm64": "electron-builder --mac dmg zip --arm64 --publish never",
     "dist:mac:x64": "electron-builder --mac dmg zip --x64 --publish never"
   },

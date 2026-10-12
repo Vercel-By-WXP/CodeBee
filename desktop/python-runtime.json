@@ -1,4 +1,5 @@
 {
+  "profile": "modern",
   "version": "3.12.15",
   "release": "20261009",
   "source": "https://github.com/astral-sh/python-build-standalone/releases/expanded_assets/20261009",

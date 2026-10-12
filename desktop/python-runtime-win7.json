@@ -1,0 +1,13 @@
+{
+  "profile": "win7",
+  "version": "3.8.10",
+  "source": "https://www.python.org/ftp/python/3.8.10/",
+  "assets": {
+    "win32-x64": {
+      "file": "python-3.8.10-embed-amd64.zip",
+      "sha256": "abbe314e9b41603dde0a823b76f5bbbe17b3de3e5ac4ef06b759da5466711271",
+      "archiveType": "zip",
+      "executable": "python/python.exe"
+    }
+  }
+}
