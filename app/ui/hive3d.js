@@ -349,19 +349,19 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth glassy oval wings sit on the camera-facing shoulder side. The reference is viewed from behind the seated assistants, so wings must project beyond the thorax instead of being hidden on the monitor-facing side.
-      this.add(this.organic,x-.51,by-.13,bz+.18,.92,.36,.12,[.33,.60,.83,.37],0,.14);
-      this.add(this.organic,x+.51,by-.13,bz+.18,.92,.36,.12,[.33,.60,.83,.37],0,-.14);
-      this.add(this.organic,x-.47,by-.105,bz+.22,.58,.21,.07,[.74,.90,.98,.22],0,.10);
-      this.add(this.organic,x+.47,by-.105,bz+.22,.58,.21,.07,[.74,.90,.98,.22],0,-.10);
-      // Fine translucent veins catch the studio light and keep the wings readable at the
-      // default camera distance without adding textures or increasing draw calls.
+      this.add(this.organic,x-.51,by-.10,bz+.34,.92,.36,.12,[.22,.62,.91,.52],0,.14);
+      this.add(this.organic,x+.51,by-.10,bz+.34,.92,.36,.12,[.22,.62,.91,.52],0,-.14);
+      this.add(this.organic,x-.47,by-.075,bz+.37,.58,.21,.07,[.72,.93,1,.32],0,.10);
+      this.add(this.organic,x+.47,by-.075,bz+.37,.58,.21,.07,[.72,.93,1,.32],0,-.10);
+      // Pull the translucent wings slightly toward the camera and lift their shoulder line:
+      // this keeps the silhouette distinct from the dark thorax at the default room view.
       for(const side of [-1,1]){
-        const root=[x+side*.29,by-.13,bz+.18];
-        const mid=[x+side*.59,by-.105,bz+.18];
-        const tip=[x+side*.91,by-.15,bz+.18];
-        this.addLink(root,mid,.005,[.80,.94,1,.48]);
-        this.addLink(mid,tip,.0038,[.80,.94,1,.38]);
-        this.addLink([x+side*.42,by-.08,bz+.18],[x+side*.65,by-.045,bz+.18],.0028,[.87,.96,1,.28]);
+        const root=[x+side*.29,by-.10,bz+.34];
+        const mid=[x+side*.59,by-.075,bz+.34];
+        const tip=[x+side*.91,by-.12,bz+.34];
+        this.addLink(root,mid,.005,[.84,.96,1,.58]);
+        this.addLink(mid,tip,.0038,[.84,.96,1,.46]);
+        this.addLink([x+side*.42,by-.05,bz+.34],[x+side*.65,by-.015,bz+.34],.0028,[.90,.98,1,.34]);
       }
 
     }
