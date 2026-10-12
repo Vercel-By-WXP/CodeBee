@@ -352,12 +352,12 @@ window.Hive3D = (function () {
       // Fine translucent veins catch the studio light and keep the wings readable at the
       // default camera distance without adding textures or increasing draw calls.
       for(const side of [-1,1]){
-        const root=[x+side*.27,by-.13,bz+.18];
-        const mid=[x+side*.49,by-.105,bz+.18];
-        const tip=[x+side*.75,by-.15,bz+.18];
-        this.addLink(root,mid,.008,[.72,.91,1,.58]);
-        this.addLink(mid,tip,.007,[.72,.91,1,.48]);
-        this.addLink([x+side*.40,by-.08,bz+.18],[x+side*.58,by-.045,bz+.18],.004,[.83,.95,1,.34]);
+        const root=[x+side*.29,by-.13,bz+.18];
+        const mid=[x+side*.59,by-.105,bz+.18];
+        const tip=[x+side*.91,by-.15,bz+.18];
+        this.addLink(root,mid,.005,[.80,.94,1,.48]);
+        this.addLink(mid,tip,.0038,[.80,.94,1,.38]);
+        this.addLink([x+side*.42,by-.08,bz+.18],[x+side*.65,by-.045,bz+.18],.0028,[.87,.96,1,.28]);
       }
 
     }
