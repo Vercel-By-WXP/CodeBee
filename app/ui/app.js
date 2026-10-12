@@ -9805,14 +9805,56 @@ function chatBodyHTML(text) {
   const lines = String(text || "").split(/\r?\n/);
   const out = [];
   let txt = [], code = null;
+  const inline = (raw) => {
+    let h = esc(raw);
+    h = h.replace(/`([^`]+)`/g, "<code>$1</code>");
+    h = h.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    h = h.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
+    h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return h;
+  };
   const flushTxt = () => {
     if (!txt.length) return;
-    out.push('<div class="chat-body">' + txt.map((l) => {
-      let h = esc(l);
-      h = h.replace(/`([^`]+)`/g, "<code>$1</code>");
-      h = h.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
-      return h;
-    }).join("\n") + "</div>");
+    const blocks = [];
+    let paragraph = [], list = null;
+    const closeParagraph = () => {
+      if (paragraph.length) blocks.push("<p>" + paragraph.map(inline).join("<br>") + "</p>");
+      paragraph = [];
+    };
+    const closeList = () => {
+      if (list) { blocks.push("</" + list + ">"); list = null; }
+    };
+    for (const rawLine of txt) {
+      const line = rawLine.trimEnd();
+      const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+      const bullet = line.match(/^\s{0,3}[-+*]\s+(.+)$/);
+      const numbered = line.match(/^\s{0,3}\d+[.)]\s+(.+)$/);
+      if (!line.trim()) { closeParagraph(); closeList(); continue; }
+      if (heading) {
+        closeParagraph(); closeList();
+        const level = heading[1].length;
+        blocks.push("<h" + level + ">" + inline(heading[2]) + "</h" + level + ">");
+        continue;
+      }
+      if (/^\s{0,3}(---+|___+|\*\*\*+)\s*$/.test(line)) {
+        closeParagraph(); closeList(); blocks.push("<hr>"); continue;
+      }
+      if (bullet || numbered) {
+        closeParagraph();
+        const kind = bullet ? "ul" : "ol";
+        if (list !== kind) { closeList(); list = kind; blocks.push("<" + list + ">"); }
+        blocks.push("<li>" + inline((bullet || numbered)[1]) + "</li>");
+        continue;
+      }
+      closeList();
+      const quote = line.match(/^\s{0,3}>\s?(.*)$/);
+      if (quote) {
+        closeParagraph(); blocks.push("<blockquote><p>" + inline(quote[1]) + "</p></blockquote>");
+      } else paragraph.push(line);
+    }
+    closeParagraph(); closeList();
+    out.push('<div class="chat-body chat-markdown">' + blocks.join("") + "</div>");
     txt = [];
   };
   for (const raw of lines) {
@@ -9828,9 +9870,7 @@ function chatBodyHTML(text) {
   if (code) out.push(codeBlockHTML(code.join("\n")));
   flushTxt();
   return out.join("");
-}
-
-async function renderChat(run, active) {
+}async function renderChat(run, active) {
   const box = $("rd-chat");
   if (!box) return;
   // 所有有任务归属的运行都启用对话时间线；蜂巢/步骤/成果仍按原页签保留
