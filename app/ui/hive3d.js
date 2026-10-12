@@ -265,6 +265,10 @@ window.Hive3D = (function () {
       this.add(this.cylinder,x,.78,z-.43,.072,.40,.072,[.32,.39,.45,1]);
       this.add(b,x,.49,z-.27,.54,.045,.34,[.16,.20,.24,1]);
       this.add(b,x,screenY-screenHeight*.42,z-.382,screenWidth*.84,.018,.014,[.10,.83,.94,1]);
+      // A tiny centered webcam and a restrained power indicator give the monitor a finished hardware read.
+      this.add(rb,x,screenY+screenHeight*.5+.064,z-.386,.070,.026,.018,[.025,.035,.045,1]);
+      this.add(s,x,screenY+screenHeight*.5+.064,z-.374,.012,.012,.008,[.14,.82,.98,1]);
+      this.add(s,x+screenWidth*.39,screenY-screenHeight*.5+.025,z-.375,.010,.010,.008,[.28,.94,.62,1]);
       this.add(rb,x-.18,.635,z+.25,.60,.035,.20,[.11,.14,.17,1]);
       this.add(s,x+.40,.648,z+.22,.060,.025,.075,[.055,.065,.075,1]);
       this.add(b,x+.40,.674,z+.20,.009,.005,.024,[.30,.66,.78,1]);
@@ -300,7 +304,16 @@ window.Hive3D = (function () {
       this.add(this.bandGoldBottom,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[.99,.56,.018,1]);
       this.add(this.bandSeparator,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[.045,.055,.065,1]);
       this.add(s,x,by,bz,.405,.37,.345,[1,.70,.045,1]);
-      // The face points toward the monitor; the rear silhouette carries the headset details.
+      // A forward-facing graphite visor makes the assistant read as a character, not a plain yellow sphere.
+      // The workstation monitor is on -Z, so the faceplate and optical details sit on that side of the head.
+      this.add(rb,x,by+.012,bz-.166,.258,.142,.026,[.035,.055,.070,1]);
+      this.add(rb,x,by-.006,bz-.183,.214,.092,.012,[.055,.085,.105,1]);
+      for(const side of [-1,1]){
+        this.add(s,x+side*.066,by+.022,bz-.194,.045,.046,.020,[.20,.91,.98,1]);
+        this.add(s,x+side*.066,by+.029,bz-.205,.017,.018,.008,[.92,.99,1,1]);
+      }
+      this.add(rb,x,by-.043,bz-.197,.070,.010,.008,[.98,.61,.035,1]);
+      // The rear silhouette carries the headset details.
       for(const side of [-1,1]){
         this.add(s,x+side*.382,by+.015,bz+.035,.078,.118,.094,[.045,.055,.065,1]);
         this.add(s,x+side*.407,by+.015,bz+.052,.030,.052,.048,[.99,.68,.045,1]);
@@ -337,6 +350,16 @@ window.Hive3D = (function () {
       this.add(s,x+.48,by-.13,bz-.17,.38,.15,.060,[.33,.60,.83,.37],0,-.14);
       this.add(s,x-.44,by-.105,bz-.12,.23,.085,.035,[.74,.90,.98,.22],0,.10);
       this.add(s,x+.44,by-.105,bz-.12,.23,.085,.035,[.74,.90,.98,.22],0,-.10);
+      // Fine translucent veins catch the studio light and keep the wings readable at the
+      // default camera distance without adding textures or increasing draw calls.
+      for(const side of [-1,1]){
+        const root=[x+side*.27,by-.13,bz-.17];
+        const mid=[x+side*.49,by-.105,bz-.17];
+        const tip=[x+side*.75,by-.15,bz-.17];
+        this.addLink(root,mid,.006,[.72,.91,1,.52]);
+        this.addLink(mid,tip,.005,[.72,.91,1,.42]);
+        this.addLink([x+side*.40,by-.08,bz-.17],[x+side*.58,by-.045,bz-.17],.004,[.83,.95,1,.34]);
+      }
 
     }
     // Planters and stylized leaves soften the room edges.
