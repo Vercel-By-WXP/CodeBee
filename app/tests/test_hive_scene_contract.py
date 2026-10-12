@@ -61,7 +61,7 @@ class HiveSceneContractTests(unittest.TestCase):
         # follow the body shell rather than floating in front of the model.
         self.assertIn("by-.235,bz+.155,.48,.17,.075,[.58,.84,1,.40]", ENGINE)
         self.assertIn("const shoulder=[x+side*.32,.99,z+.56],elbow=[x+side*.43,.83,z+.42],wrist=[x+side*.36,.675,z+.27],hand=[x+side*.35,.655,z+.22]", ENGINE)
-        self.assertIn("x+side*.35,.655,z+.22,.070,.035,.055", ENGINE)
+        self.assertIn("this.add(s,hand[0],hand[1],hand[2],.070,.035,.055", ENGINE)
         self.assertIn("for(let finger=0;finger<3;finger++)this.add(b,x+side*.35+(finger-1)*.026,.638,z+.16", ENGINE)
         self.assertIn("by-.42,bz+.005,.345,.32,.255", ENGINE)
         self.assertIn("by-.205,bz+.205,.30,.095,.045,[.93,.99,1,.24]", ENGINE)
