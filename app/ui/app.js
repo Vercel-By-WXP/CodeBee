@@ -9153,6 +9153,11 @@ let hiveDialogKey = "";
 
 function setHiveSceneButtons(mode) {
   document.querySelectorAll("[data-hive-view]").forEach((button) => {
+    // 自由 3D 尚未达到发布质量：保留引擎给内部 QA，但不把入口暴露给用户。
+    // hidden/aria-hidden 双保险，避免旧缓存或浏览器恢复状态重新显示它。
+    const internalOnly = button.dataset.hiveView === "live3d";
+    button.hidden = internalOnly;
+    button.setAttribute("aria-hidden", internalOnly ? "true" : "false");
     const active = button.dataset.hiveView === mode;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", active ? "true" : "false");
@@ -9224,6 +9229,8 @@ function closeHiveMonitorLog() {
 function setHiveSceneMode(mode, opts) {
   const viewport = $("rd-hive-viewport");
   if (!viewport) return;
+  // Public mode selection is deliberately limited to the polished artwork and 2D list.
+  // live3d remains callable by internal QA, but can never be restored from user state.
   let selected = ["live3d", "2d"].includes(mode) ? mode : "reference";
   if (selected !== "2d") {
     const sc = ensureHiveScene();

@@ -7429,6 +7429,8 @@ html[data-skin="ocean"][data-theme="light"] .cmp-box { border-radius: 16px; box-
 }
 .hive-view-btn:hover, .hive-scene-btn:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .hive-view-btn.active { border-color: color-mix(in srgb, var(--accent) 32%, var(--border)); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); }
+/* 自由 3D 暂不发布：即使浏览器恢复旧 DOM/状态，也不显示用户入口。 */
+.hive-view-btn[data-hive-view="live3d"] { display: none !important; }
 .hive-scene-hint { margin-left: 8px; }
 .hive-scene-spacer { flex: 1; }
 .hive-scene-btn { min-width: 31px; border-color: var(--border); background: var(--panel); font-size: 13px; }
