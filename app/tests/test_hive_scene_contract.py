@@ -93,7 +93,7 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("this.add(s,x+side*.066,by+.022,bz-.194,.045,.046,.020,[.20,.91,.98,1])", ENGINE)
         self.assertIn("tiny centered webcam", ENGINE)
         self.assertIn("Smooth glassy oval wings sit on the camera-facing shoulder side", ENGINE)
-        self.assertIn("this.addLink(root,mid,.0055,[.84,.96,1,.70])", ENGINE)
+        self.assertIn("this.addLink(root,mid,.0038,[.78,.91,1,.48])", ENGINE)
         self.assertIn("this.addLink(mid,tip,.0042,[.84,.96,1,.58])", ENGINE)
         self.assertIn("this.addLink([x+side*.41,by+.13,bz+.31],[x+side*.68,by+.25,bz+.31],.0032,[.90,.98,1,.48])", ENGINE)
         self.assertIn("const n=norm([-.20*p[0],-.28*p[1],sign])", ENGINE)
