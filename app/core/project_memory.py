@@ -204,3 +204,49 @@ def active_text(workdir, *, cap=4000, query="", now=None):
         used += cost
     text = "\n\n".join(selected)
     return (heading + text + "\n\n") if text else ""
+
+
+def injection_preview(workdir, *, cap=4000, query="", now=None):
+    """Explain exactly which approved memory entries would be injected.
+
+    The returned text is the same bounded content as ``active_text``; metadata
+    is deliberately separate so callers can render provenance without putting
+    extra bookkeeping into the model context.
+    """
+    stamp = float(now if now is not None else time.time())
+    try:
+        cap = max(0, int(cap))
+    except (TypeError, ValueError):
+        cap = 4000
+    heading = "## 已批准项目记忆（内容已校验，过期条目不注入）\n\n"
+    body_cap = max(0, cap - len(heading) - 2)
+    terms = _query_terms(query)
+    candidates = []
+    for row in list_entries(workdir, now=stamp):
+        if row.get("status") != "approved" or row.get("expired") or not row.get("verified"):
+            continue
+        block = "### %s\n%s" % (row.get("title") or "项目记忆", row.get("content") or "")
+        candidates.append((row, block))
+    candidates.sort(key=lambda item: (_relevance(item[0], terms),
+                                      item[0].get("feedback_score", 0),
+                                      item[0].get("created_at", 0)), reverse=True)
+    selected, used = [], 0
+    for row, block in candidates:
+        cost = len(block) + (2 if selected else 0)
+        if used + cost > body_cap:
+            continue
+        selected.append((row, block))
+        used += cost
+    return {
+        "text": (heading + "\n\n".join(block for _row, block in selected) + "\n\n"
+                 if selected else ""),
+        "entries": [{"id": row.get("id"), "title": row.get("title"),
+                     "source_run": row.get("source_run", ""),
+                     "version": int(row.get("version") or 1),
+                     "content_sha256": row.get("content_sha256", ""),
+                     "feedback_score": int(row.get("feedback_score") or 0)}
+                    for row, _block in selected],
+        "budget": {"cap": cap, "used": len((heading + "\n\n".join(
+            block for _row, block in selected) + "\n\n") if selected else "")},
+        "query": str(query or "")[:500],
+    }

@@ -388,6 +388,80 @@ class ProductInspectRegressionsTests(BaseTest):
         self.assertNotIn("### 最新版更新内容（v0.1.65）", self.readme)
 
 
+class CodeMenuConditionalReviewAndThinkFirstTests(BaseTest):
+    """2026-10-12 04 时班第 3/4 步 C 专项两件（文案/prompt 层，零逻辑改动）：
+    1. C-1 code 菜单文案按难度编排——easy 档走实现+验证短链不进评审（flows.py
+       自述），菜单句「实现 → 验证 → 评审」半精确，改为「实现 → 验证 →（复杂
+       任务进）评审」，i18n 英文键同步（竞品证据：karpathy 系 workflow 菜单均
+       标注评审触发条件）；
+    2. C-2 实现步提示词补「思考先行」（andrej-karpathy-skills 四原则之 Think
+       Before Coding）——动手前先读懂相关代码、明确验收标准再改，与既有最小化/
+       反过度防御/交付物从简三条同向不重复。"""
+
+    @classmethod
+    def setUpClass(cls):
+        root = Path(__file__).resolve().parents[1]
+        cls.app_js = (root / "app" / "ui" / "app.js").read_text(encoding="utf-8")
+        cls.i18n_js = (root / "app" / "ui" / "i18n.js").read_text(encoding="utf-8")
+        from app.core import pipeline
+        cls.impl_prompt = pipeline.CODE_IMPL_PROMPT
+
+    def test_code_menu_desc_conditional_review(self):
+        """C-1：code 菜单句含「评审」且带条件表述；旧半精确句不再出现。"""
+        self.assertIn("实现 → 验证 →（复杂任务进）评审", self.app_js)
+        self.assertNotIn('t("实现 → 验证 → 评审")', self.app_js)
+
+    def test_i18n_key_synced_both_languages(self):
+        """C-1：i18n.js 中英键值同步；旧键清零（防漏改留死键）。"""
+        self.assertIn(
+            '"实现 → 验证 →（复杂任务进）评审": '
+            '"Implement → verify → review (complex tasks)"',
+            self.i18n_js)
+        self.assertNotIn('"实现 → 验证 → 评审"', self.i18n_js)
+
+    def test_impl_prompt_think_first(self):
+        """C-2：实现步提示词含思考先行条目（读懂再改/验收标准）。"""
+        self.assertIn("思考先行", self.impl_prompt)
+        self.assertIn("先读懂相关代码", self.impl_prompt)
+        self.assertIn("验收标准", self.impl_prompt)
+
+    def test_existing_disciplines_untouched(self):
+        """既有三条纪律与总结契约原文保留（思考先行系增量不替换）。"""
+        for kw in ("修改要最小化", "反过度防御", "交付物从简", "3-5 句话总结"):
+            self.assertIn(kw, self.impl_prompt, kw)
+
+
+class ReplayAcpI18nGapClosedTests(BaseTest):
+    """2026-10-12 落地班 G-3（门禁复跑发现的 HEAD 既有缺口，非本轮两件引入）：
+    回放审批 15 键 + ACP 后端配置 7 键共 22 条 t() 字面量缺 i18n 词条（功能入库
+    时漏配，英文界面中文裸奔，test_borrow_iteration 全量对账红）——按尾追批惯例
+    补齐；「第{0}次」占位复合键替代 第/次 分字拼接（t() 双语均做 {0} 替换，
+    中文渲染不变）。点名锁定防部分回退。"""
+
+    KEYS = ("有用", "无用", "项目记忆反馈失败：", "步骤回放预览", "未命名步骤",
+            "第{0}次", "仅显示最近 200 个步骤，共 ", "所有步骤均已完成，可人工复核后继续",
+            "无法安全自动回放：", "需要人工核对", "批准一次", "暂无待批准命令",
+            "授权状态加载失败：", "授权策略保存失败：", "命令授权操作失败：",
+            "ACP 活动", "暂无 ACP 后端", "ACP 配置加载失败：", "参数必须是 JSON 数组",
+            "ACP 后端已保存", "ACP 保存失败：", "删除 ACP 失败：")
+
+    @classmethod
+    def setUpClass(cls):
+        root = Path(__file__).resolve().parents[1]
+        cls.app_js = (root / "app" / "ui" / "app.js").read_text(encoding="utf-8")
+        cls.i18n_js = (root / "app" / "ui" / "i18n.js").read_text(encoding="utf-8")
+
+    def test_gap_keys_all_present(self):
+        """22 键词条逐一在位（防部分回退）。"""
+        for k in self.KEYS:
+            self.assertIn('"%s":' % k, self.i18n_js, k)
+
+    def test_attempt_chip_uses_placeholder_key(self):
+        """第/次 分字拼接改占位复合键（EN 下不再出现「Ch.2次」式缝合）。"""
+        self.assertIn('t("第{0}次", step.attempt)', self.app_js)
+        self.assertNotIn('t("第") + step.attempt + t("次")', self.app_js)
+
+
 if __name__ == "__main__":
     import unittest
     unittest.main()

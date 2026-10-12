@@ -358,6 +358,24 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, {"entries": project_memory.list_entries(task.get("workdir"))})
                 except (OSError, ValueError) as exc:
                     return self._json(409, {"error": str(exc)})
+            m = re.match(r"^/api/tasks/([^/]+)/memory/preview$", path)
+            if m:
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "not found"})
+                from core import project_memory
+                qs = parse_qs(urlparse(self.path).query)
+                try:
+                    return self._json(200, project_memory.injection_preview(
+                        task.get("workdir"), query=(qs.get("q") or [""])[0],
+                        cap=(qs.get("cap") or [4000])[0]))
+                except (OSError, ValueError) as exc:
+                    return self._json(409, {"error": str(exc)})
+            if path == "/api/reviews":
+                from core import review_requests
+                with review_requests._LOCK:
+                    reviews = list(review_requests._read().values())
+                return self._json(200, {"reviews": reviews})
             if path == "/api/backend-profiles":
                 from core import backend_profiles
                 try:
@@ -419,6 +437,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/catalog":
                 return self._json(200, {"catalog": manager.catalog_view(),
                                         "checking": manager.updates_checking()})
+            if path == "/api/capabilities":
+                from core import registry
+                return self._json(200, {"capabilities": [
+                    registry.capability_manifest(e) for e in catalog.load()]})
             if path == "/api/sessions":
                 from core import sessions
                 return self._json(200, {"sessions": sessions.scan(
@@ -968,6 +990,29 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": ok, "output": out})
         if path == "/api/tasks/clarify":
             return self._api_task_clarify()
+        if path == "/api/reviews":
+            from core import review_requests
+            body = self._body() or {}
+            try:
+                row = review_requests.create(
+                    body.get("run_id"), summary=body.get("summary"),
+                    paths=body.get("paths"), channel=body.get("channel"))
+                return self._json(200, {"review": row})
+            except (OSError, TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+        m = re.match(r"^/api/reviews/([^/]+)/transition$", path)
+        if m:
+            from core import review_requests
+            body = self._body() or {}
+            try:
+                row = review_requests.transition(
+                    unquote(m.group(1)), body.get("action"),
+                    reviewer=body.get("reviewer"), reason=body.get("reason"))
+                return self._json(200, {"review": row})
+            except KeyError as exc:
+                return self._json(404, {"error": str(exc)})
+            except (OSError, TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
         m = re.match(r"^/api/tasks/([^/]+)/memory$", path)
         if m:
             task = store.get_task(m.group(1))

@@ -445,11 +445,20 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                                    model=agent.get("model") or "",
                                    provider=_binding_brief(agent))
     try:
+        checkpoint_effects = [] if readonly else ["workspace_files"]
+        if agent.get("mode") != "mock":
+            checkpoint_effects.append("external_agent")
+        if agent.get("kind") in ("acp", "mcp"):
+            checkpoint_effects.append("external_protocol")
         checkpoints.start(
             run_id, step["n"], role, prompt,
             input_data={"workdir": workdir, "readonly": readonly,
                         "agent": agent.get("id")},
-            attempt=len((store.get_run(run_id) or {}).get("steps") or []))
+            attempt=len((store.get_run(run_id) or {}).get("steps") or []),
+            tool_call={"name": "agent_step", "agent": agent.get("id"),
+                       "role": role, "readonly": bool(readonly)},
+            conversation_ref=resume or "",
+            side_effects=checkpoint_effects)
     except Exception:
         pass
     start = time.time()
@@ -475,7 +484,8 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                "tokens": 0, "usage": None, "error": sandbox_error,
                "raw": {"exit_code": None, "sandbox_blocked": True},
                "kind": agent.get("kind", "generic"), "model": agent.get("model")}
-        _finish_step_result(run_id, step, res, role, agent, start)
+        _finish_step_result(run_id, step, res, role, agent, start,
+                            readonly=readonly)
         return res
     if dead_binding:
         from .error_codes import ErrorCode
@@ -484,7 +494,8 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                "error_code": ErrorCode.ENV_BLOCK,
                "raw": {"exit_code": None}, "kind": agent.get("kind", "generic"),
                "model": agent.get("model")}
-        _finish_step_result(run_id, step, res, role, agent, start)
+        _finish_step_result(run_id, step, res, role, agent, start,
+                            readonly=readonly)
         return res
     if agent.get("mode") == "mock":
         time.sleep(0.3)
@@ -507,7 +518,8 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                    "raw": {"exit_code": None, "repeat_stop": True},
                    "kind": agent.get("kind", "generic"),
                    "model": agent.get("model")}
-            _finish_step_result(run_id, step, res, role, agent, start)
+            _finish_step_result(run_id, step, res, role, agent, start,
+                                readonly=readonly)
             return res
         # 运行中指挥：drain 用户追加的指令/附件，注入本步（守门拦截时不 drain，
         # 消息留给下一个真实步骤，不空耗）；role/step_n 作送达回执
@@ -529,7 +541,8 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                    "error": git_checkpoint.get("error") or "文件检查点准备失败",
                    "raw": {"exit_code": None, "checkpoint_blocked": True},
                    "kind": agent.get("kind", "generic"), "model": agent.get("model")}
-            _finish_step_result(run_id, step, res, role, agent, start)
+            _finish_step_result(run_id, step, res, role, agent, start,
+                                readonly=readonly)
             return res
         res = _spawn_step(session_run_id=run_id, role=role, agent=agent,
                           prompt=effective_prompt, workdir=workdir, readonly=readonly,
@@ -561,7 +574,8 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                     pass
     # 先收尾再查取消：取消时进程已被 run_process 杀停，若先抛 Cancelled，
     # 步骤记录会永远停在「运行中」变僵尸（与 _run_verify 的顺序对齐）
-    _finish_step_result(run_id, step, res, role, agent, start)
+    _finish_step_result(run_id, step, res, role, agent, start,
+                        readonly=readonly)
     if (res.get("raw") or {}).get("deadline_exceeded"):
         store.update_run(run_id, expected_status="running", status="timeout",
                          ended_at=_now(), error="任务总时限已到")
@@ -883,7 +897,7 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
     return res
 
 
-def _finish_step_result(run_id, step, res, role, agent, start):
+def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None):
     """step 收尾：记录 + 用量 + 运行时断言（5F）。"""
     # 被取消杀停的步骤如实记「已取消」；超时被杀记「超时」——都只是步骤
     # 显示层的细分，run 级仍是 failed，善后路径（重试/自动续跑）不变
@@ -924,7 +938,10 @@ def _finish_step_result(run_id, step, res, role, agent, start):
         checkpoints.finish(
             run_id, step["n"], checkpoint_status,
             error=res.get("error") or "", output=res.get("text") or "",
-            metadata={"role": role, "agent": agent.get("id") or ""})
+            metadata={"role": role, "agent": agent.get("id") or "",
+                      "repropose_required": True,
+                      "side_effects": ([] if readonly is True else ["workspace_files"]) +
+                      (["external_agent"] if agent.get("mode") != "mock" else [])})
     except Exception:
         pass
     # 错误台账：失败/超时各记一条结构化记录（遥测与诊断包的数据源）。
@@ -1040,6 +1057,7 @@ __FILES__
 __CONTEXT__
 
 ## 要求
+- 思考先行：动手前先读懂相关代码、明确验收标准再改；不读懂就动手是大改与返工的主因。
 - 修改要最小化、聚焦任务目标；不要无关重构。
 - 反过度防御（借鉴 HERO：只约束你「提出」的方案，不约束你「检查」的范围）——
   不要给没要求的数据加哈希/校验和；不要为内部脚本铺层层边界分支；

@@ -22,6 +22,41 @@ MOCK_AGENTS = [
 _LOCK = threading.RLock()
 
 
+def capability_manifest(entry):
+    """Return one explicit, UI-safe capability contract for a backend.
+
+    The manifest is descriptive only: it never grants a backend extra access.
+    Execution remains governed by the task contract, sandbox policy and command
+    authorization gates.
+    """
+    entry = entry or {}
+    orch = entry.get("orch") or {}
+    kind = str(orch.get("kind") or "")
+    transport = "acp" if kind == "acp" or str(entry.get("id") or "").startswith("acp-") else "cli"
+    resume = bool(orch.get("resume_argv_template"))
+    if kind == "mock":
+        transport = "mock"
+        resume = False
+    platforms = entry.get("platforms")
+    if not isinstance(platforms, list) or not platforms:
+        platforms = ["windows", "linux", "macos"]
+    platforms = [str(x) for x in platforms if str(x) in ("windows", "linux", "macos")]
+    if not platforms:
+        platforms = ["windows", "linux", "macos"]
+    declared = entry.get("capabilities") if isinstance(entry.get("capabilities"), dict) else {}
+    return {
+        "id": str(entry.get("id") or ""),
+        "transport": transport,
+        "resume": resume,
+        "sandbox": str(declared.get("sandbox") or "task-policy"),
+        "approval": str(declared.get("approval") or "task-contract"),
+        "mcp": bool(declared.get("mcp", kind in ("acp", "mcp"))),
+        "platforms": platforms,
+        "model_tiers": [str(x) for x in (declared.get("model_tiers") or
+                                           ["budget", "standard", "premium"])[:8]],
+    }
+
+
 def load_enabled():
     try:
         return json.loads(paths.ENABLED_FILE.read_text(encoding="utf-8"))

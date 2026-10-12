@@ -2374,6 +2374,7 @@ def catalog_view():
             "model": read_model(e),
             "orch_kind": (e.get("orch") or {}).get("kind"),
             "orch_enabled": orch_enabled,
+            "capabilities": registry.capability_manifest(e),
             "update": update_info(e),
             "has_install": bool(e.get("install")),
             "has_upgrade": bool(e.get("upgrade")),

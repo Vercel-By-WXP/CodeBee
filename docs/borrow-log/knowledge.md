@@ -7547,3 +7547,112 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   **同日三执行体复盘**：批次错峰（B2→B2 复扫→B3）+通道互异+「改前 Read 冲突重读」
   三度生效（本班报告时检测并行班 138 行新增落盘，追加式写入零覆盖） | 结论+方法论
   | 2026-10-11
+
+### 门禁补记（23 时班）
+
+- 全量守卫必须以 runner 最终 `Ran`、失败/错误/跳过汇总和真实退出码为准；本班独立 `TUTTI_DATA` 实测 `2347 tests / 36 failures / 6 errors / 2 skipped`、exit 1。定向测试通过不能替代全量门禁，也不能据此提交推送。
+- 错误涉及 catalog/启动配置、pipeline token usage 的 `task_id=None`、Qwen 路径守卫、race/resume、self-update、compaction 默认值、skills 与节假日数据时效等面；原因未逐项归因，暂记“待基线对照”，不武断标记为既有或本轮引入。
+- `git fetch` 连接重置意味着旧的 `origin/main` 本地跟踪引用不等于新鲜远端状态；推送前必须成功 fetch 并重核远端领先关系。GitHub 个别源 TLS 超时/六源端点不可达要记录为降级，不伪造零结果。
+
+## 2026-10-12 11 时班补充对标（Goose / Gemini CLI / Letta Code / Open SWE）
+
+- **Goose（aaif-goose/goose，55,169★，Apache-2.0）**：桌面/CLI/API 统一，15+ provider、70+ MCP 扩展，并用 ACP 接入订阅型 agent。对 CodeBee 的有效借鉴是统一 capability manifest：transport、resume、sandbox、approval、MCP、平台和模型层级应由后端声明，UI/catalog 不再维护隐含能力矩阵。CodeBee 已有 ACP/MCP/CLI catalog，故 P1 做 manifest/兼容性声明，不接 Goose runtime。
+- **Gemini CLI（107,286★，Apache-2.0）**：每次批准文件修改前保存 Git 快照、完整对话和原始 tool call，`/restore` 后重新提出原 tool call。CodeBee 已有文件检查点和续跑，但应把检查点扩为文件+对话引用+tool-call digest+副作用边界；恢复默认只能恢复本地状态，外部命令/MCP/网络动作必须重新审批。该模型列为 P0/P1 检查点增强，不引入 shadow Git。
+- **Letta Code（letta-ai/letta-code，3,574★，Apache-2.0）**：MemFS 以 Git 跟踪上下文/记忆块，支持跨 agent 搜索、分层技能、远端 memory repository、权限和 cron。CodeBee 已有项目记忆/经验库，但缺记忆版本 diff、来源 run、注入预览、撤销和按 agent 隔离；列 P1 记忆治理，不接 Letta Cloud。
+- **Open SWE（langchain-ai/open-swe，10,996★，MIT）**：issues/PR/Slack/Linear/定时触发，持久 sandbox，自动 review/CI 反馈；Slack 人工评审卡具备按路径路由、认领、超时唤醒、条件合并。CodeBee 已有待裁决、Webhook、禅道回写和审批，可抽象通用 review_request 状态机（requested/assigned/approved/changes_requested/dismissed/expired），再接外部适配器；不复制 GitHub App/Slack 服务。
+- **补充路线排序**：P0 检查点事件化（tool_call_digest/conversation_ref/repropose_required/side_effects）→ P1 capability manifest → P1 记忆治理（版本/来源/注入预览/撤销）→ P1 外部评审状态机。完整 runtime、云端 memory、shadow Git 均不接。
+- **证据纪律**：本轮证据来自项目 README、GitHub API 元数据和官方 checkpoint/human-review 文档；仓库活跃状态/许可证/星数以 2026-10-12 拉取结果为准，后续复查仍需重新请求 API，不用静态星数作长期结论。
+
+## 2026-10-12 03 时班（批3·计划/spec/长任务）
+
+- **mlhher/late-cli**（443★，10-11，topic:claude-code+ai-coding-assistant 双页同现）新入库 |
+  **步骤级上下文隔离**：64k 窗跑 200k+ token 工作量，每步隔离执行保上下文清洁；任意云/本地
+  模型（llama.cpp/Ollama 友好） | A3 域机制级新件：与我们「会话复用省 token」系同一权衡
+  两端且更激进（每步丢上下文）——本地小模型刚需，云端大窗下现设计更省；换将超窗预检已
+  覆盖降级路径 | A3 参考判据（待深挖）| 2026-10-12
+- **qiz029/dscode**（1,027★，10-11，topic:mcp）新入库 | 第三方 DeepSeek coding agent
+  harness：persistent shell+Ultra subagents+auto approval+Chrome MCP+session telemetry |
+  E 专项：千星级第三方 DSH 同域 harness 首见（此前生态件全是 dsh- 前缀插件/skill 适配）——
+  DeepSeek 生态从「插件」向「独立实现」扩散 | E 生态信号（雷达）| 2026-10-12
+- **storytold/deckcraft**（1,893★，10-11，trendshift）新入库 | craft 家族新件：Rust 纯净
+  重实现 PowerPoint（clean-room 开源演示文稿编辑器） | A10 演示文稿域双线夹击：ppt-master
+  60,296（+401/日加速）生成侧 × deckcraft 运行时侧；维持讲稿/大纲输出不跟（app 大改） |
+  A10 参考（雷达）| 2026-10-12
+- **wheresryan22/anatomy**（2,775★，10-10，trendshift）新入库 | CC skill：技术构想→等距
+  机械结构图（SVG+可选 WebGL），交互式图示 | 技术方案类型「配图辅助」空白面同向（skill
+  单文件交付）；微型观察 | 微型判据（雷达）| 2026-10-12
+- **DSH 插件 npm 通道（E 第七波：市场基建层成型）**：dsh-plugin 1.6.5 社区市场（官方 spec）/
+  dsh-plugin-shop-catalog 2026.1011.0 **每日定版目录**/awesome-dsh-plugin-feed（v1/v2 feed+
+  即贴安装目标）/dsh-plugin-marketplace 0.4.2（Web UI 设置页内置市场）/dsh-plugin-ops-core
+  0.19.0（健康面板+故障记忆+修复规划）/dsh-find-plugin（agent 内 topic 实时搜）/create-dsh-
+  plugin-cli（脚手架）/dsh-plugin-mgr（设置页启停）/dsh-plugin-model-proxy（per-model 代理
+  路由）九件套 | 继第五波（oh-story-dsh）→第六波（DeepSeek-Bot）后生态进入「市场基建」阶段；
+  「每日定版目录+即贴安装目标」模式记入 B 专项对照（不立项先记录） | E 生态信号 | 2026-10-12
+- **禅道 npm 密度 7+→12+（F 专项）**：新首见 @zentao-agent/cli+sdk 0.17.0（新 org「zt」
+  工具链：安装 agent 集成+bug hub 管理+token 自动刷新）/@leeguoo/zentao-mcp 0.8.0（10-09
+  在更）/zentao-bugfix-mcp 0.1.4（bugfix 工作流微型同向）/ahs-zentao 0.2.17（CAS SSO）
+  ——第 36-39 例；MCP/插件/SDK 三形态齐备，「激活 Bug→自动建 code 任务→resolve+评论回写+
+  群通知」深度闭环 CodeBee 仍独占 | F 生态信号 | 2026-10-12
+- **状态变更勘误：gsd-build/get-shit-done 64,320★ archived=true**（05-31 后无 push，
+  gsd-2 7,772 亦 05-22 停摆，gsd-build org 整体停摆）——B3 三巨头（OpenSpec 71,637 在更/
+  get-shit-done 归档/BMAD 54,035 在更）首现减员；spec-driven 需求未减（域内 newborn 持续），
+  供给端向 OpenSpec/BMAD/plannotator 支线集中 | 勘误（状态变更）| 2026-10-12
+- **两条属主勘定闭环**：openhuman 真身=**tinyhumansai/openhuman 41,831★**（旧注 unsloth
+  404，in:name 一次勘清）；planning-with-files 真身=**OthmanAdi/planning-with-files
+  27,395★**（14 班裸名悬案一次勘清；Asaka-RUM/dsh-planning-with-files 2★ 系其 DSH 适配版，
+  生态波及 +1） | 勘定 | 2026-10-12
+- **andrej-karpathy-skills 复判增量**（multica-ai org，218,812★，04-20 后无 push，trendshift
+  复现）：已录「奇观档」升格机制级细读——单文件 CLAUDE.md 四原则宪章（Think Before Coding/
+  Simplicity First/Surgical Changes/Goal-Driven Execution，蒸馏自 Karpathy 对 LLM 编码
+  陋习的观察：代做假设/过度复杂/越界改动/缺验证） | 与我们反过度工程纪律同向、注入成本极低；
+  进待深挖队列：第 4 步拍板前先查代码类 prompt 是否已有同向纪律 | A11 借鉴方向（候选）|
+  2026-10-12
+- **微型/域外/同构速记**：looproop LoopTroop 161（LLM-council 计划评审）/revfactory showreel
+  4（短视频全流程 skill：brief→script→ElevenLabs→配乐）/krishhgg Insomnia 893（macOS
+  agent 会话保活）/gods-eye-view 51,325+folia-major 4,969+DigUp 802（域外）/crmne ruby_llm
+  4,453（Ruby 框架）/indranilbanerjee digital-marketing-pro 866（营销 OS，A7 外围）/npm
+  新微型 tide-commander 1.223（3D 可视化编排）/garda 1.4（强制门禁+审计）/sauron-ai 1.3
+  （17 runtime 统一）/agent-valley 2.3（Linear issue→agent 隔离分发，禅道工单同构参照）/
+  model-orchestrator 1.0（路由规则安装器） | 均无未覆盖机制 | 微型判据群（雷达）| 2026-10-12
+
+### 复查记录（03 时班，vs 10-11 17 时班基准 54 仓 repos 实测 03:4x-03:5x）
+
+- orca 89,661（+272）/superpowers 297,586/mattpocock-skills 285,998/ECC 277,080/hermes
+  252,765/deepseek-harness 247,451/opencode 212,711/anthropics-skills 180,478/ponytail
+  161,011/dify 158,160/pi 114,298/deer-flow 83,692；放量 ppt-master 60,296（+401 加速）/
+  magpie 9,131（+316 加速第 6 班）/taste-skill 94,691（+309）/OpenShell 15,815（+106）/
+  openrig 6,922（+117 病毒第 10 班）/open-code-review 46,129/headroom 75,058；周增量
+  paseo 20,504/agentmemory 29,307/cockpit-tools 18,827；
+  写作域 webnovel-writer 7,424/oh-story 7,438/ainovel-cli 2,144/distilly 25,500/
+  TrendRadar 62,806；记忆域 memU 14,527/memsearch 2,736/openharness 1,226；
+  E 候选 Reasonix 35,766 首位维持零接入/openclacky 1,202 持平/minimax-code 2,016；
+  free-claude-code 57,974（README 复判：61 provider 免费额度情报层+ToS 合规审查，维持参考）；
+  awesome 23 源 23/23 alive——**两源停更观察新记**：caramaschiHG（06-10 后无 push）/
+  vijaythecoder（2025-10-30 后无 push）；头部 54 件全 alive，唯一 archived=get-shit-done
+  | 复查 | 2026-10-12
+- **本班结论**：主扫 121/121 零失败零限流（481 唯一仓/活跃 264/首见判据 0 系连续第 9 班
+  域稳定期）+WebSearch 1 发交叉验证（B3 域全已录零新面孔，与主扫互证）+trendshift/topic/
+  awesome/npm 四通道全过（pypi 挑战页仍拦连续 6 班）。真新件 4 件+两大生态信号（DSH 市场
+  基建九件套/禅道 npm 12+）+两属主勘定+一状态变更（get-shit-done 归档）；判据件均非小而实
+  当班落地件，零代码提案，落地=知识沉淀三件套，docs-only 不触发发版 | 结论 | 2026-10-12
+- **dsh-plugin-shop-catalog「每日定版目录」对照结论**（04 时班 B 专项巡检产出）：目录
+  即发行物（版本号=日期）可重放可追溯，解决「同一 token 两次预览对应不同上游内容」
+  对账缺口 | CodeBee 六源市场系实时直连+本地缓存+纯手动刷新（market_remote.py 模块
+  注释明示「绝不后台偷跑」，main.py:2012 唯一触发点），无版本锚点——但装前三重安检
+  （preview 两阶段+skill_scan+供应链 digest 对账+装后冒烟+行为卡）强于竞品「即贴安装」；
+  结论：蒸馏「定版=可追溯对账」方法论，不引入定时刷新（与「绝不后台偷跑」设计原则
+  冲突）| 已覆盖+方法论入库 | 2026-10-12
+
+### 门禁复核（本次执行）
+
+- 新增回归 33/33、`test_borrow_round.py` 10/10、`test_market_remote.py` 14/14 通过；Python 编译、两份 JS `node --check` 和 `git diff --check` 通过。
+- 全量守卫真实账为 `2353 tests / 35 failures / 6 errors / 2 skipped`、exit 1。失败跨 catalog/启动配置、token task_id、Qwen 路径、取消恢复、self-update、compaction、skills 与节假日数据；定向通过不能代替全量门禁。
+- 本轮因此不提交、不推送；待失败基线与环境逐项对照后再修复。沉淀采用追加式写入，未覆盖已有未提交改动。
+- `git fetch origin` 再次连接重置；远端领先关系未能新鲜确认，不能以旧的 0/0 状态替代 fetch 证据。
+
+## 2026-10-12 09 时班（批2：学习、记忆与自我改进）
+
+- 常驻 94 条+A1 双轮+批2 12 条+雷达源完成；主扫 122/122、批2 12/12。B2 头部主要是 codegraph/graphiti/mem0/EverOS/Obsidian second brain/科学技能库，均已覆盖或不满足小改进门槛；本班零代码、零关键词变更。
+- `openqodex`、`zeroshot`、`agentrq`、`thClaws` 等复认项已在历史知识登记，遵循增量去重；没有把重复候选伪报成新发现。
+- 七专项结论保持：18 flows、14 CLI catalog、六源市场与 SSRF/预览/digest/冒烟链、禅道关闭态、UI/断链均无新缺口。未安装 CLI 不盲接，禅道不代开。
+- 门禁沿用同一工作区最近实测：全量 2353 项为 35 failures、6 errors、2 skipped；定向 33/33、10/10、14/14 通过。门禁未绿，不提交、不推送；fetch 仍受网络连接重置阻塞。

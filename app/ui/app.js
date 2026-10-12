@@ -434,7 +434,7 @@ function flowIconHtml(f) {
 function flowDesc(f) {
   if (f.id === "rank_scan") return t("抓四平台榜 → AI 选题洞察·附证据分级");
   if (f.engine === "direct") return t("单智能体直达（快）");
-  if (f.engine === "code") return t("实现 → 验证 → 评审");
+  if (f.engine === "code") return t("实现 → 验证 →（复杂任务进）评审");
   // 连载与单稿件同引擎，描述必须区分：连载强调逐章与断点续跑
   if (f.serial) return t("大纲 → 逐章起草评审 → 合并（可续跑）");
   return t("起草 → 多维评审 → 门禁");
@@ -4796,6 +4796,20 @@ window.loadProjectMemory = async function (taskId) {
   } catch (error) { box.innerHTML = '<span class="hint">' + esc(t("加载项目记忆失败：")) + esc(error.message) + "</span>"; }
 };
 
+window.previewProjectMemory = async function (taskId) {
+  taskId = taskId || S.detailTaskKey;
+  if (!taskId) return;
+  const box = $("rd-project-memory-body");
+  if (!box) return;
+  try {
+    const data = await api("/api/tasks/" + encodeURIComponent(taskId) + "/memory/preview?cap=4000");
+    const entries = (data.entries || []).map((entry) =>
+      '<span class="chip">' + esc(entry.title || t("项目记忆")) + ' · v' + esc(String(entry.version || 1)) + '</span>').join(" ");
+    const text = data.text ? '<pre>' + esc(data.text) + '</pre>' : '<span class="hint">' + esc(t("暂无可注入记忆")) + '</span>';
+    box.insertAdjacentHTML("afterbegin", '<div class="rd-memory-preview"><strong>' + esc(t("本次注入预览")) + '</strong><span class="hint">' + esc(t("已使用 {0}/{1} 字符", data.budget?.used || 0, data.budget?.cap || 0)) + '</span><div>' + entries + '</div>' + text + '</div>');
+  } catch (error) { toast(t("项目记忆预览失败：") + error.message, true); }
+};
+
 window.decideProjectMemory = async function (taskId, id, action, version) {
   try {
     await api("/api/tasks/" + encodeURIComponent(taskId) + "/memory", {
@@ -4841,7 +4855,7 @@ window.loadRunCheckpoints = async function (requestedRunId) {
     const checkpoint = data.checkpoint || {};
     const steps = Array.isArray(checkpoint.steps) ? checkpoint.steps : [];
     const stepSummary = steps.length ? '<div class="rd-checkpoint-steps"><strong>' + esc(t("步骤回放预览")) + '</strong>' +
-      steps.map((step) => '<div class="rd-checkpoint-step"><span>#' + esc(String(step.step ?? "")) + ' · ' + esc(step.role || t("未命名步骤")) + '</span><span class="chip">' + esc(step.status || step.event || "unknown") + (step.attempt ? ' · ' + esc(t("第") + step.attempt + t("次")) : "") + '</span></div>').join("") +
+      steps.map((step) => '<div class="rd-checkpoint-step"><span>#' + esc(String(step.step ?? "")) + ' · ' + esc(step.role || t("未命名步骤")) + '</span><span class="chip">' + esc(step.status || step.event || "unknown") + (step.attempt ? ' · ' + esc(t("第{0}次", step.attempt)) : "") + '</span></div>').join("") +
       (checkpoint.truncated ? '<p class="hint">' + esc(t("仅显示最近 200 个步骤，共 ") + (checkpoint.total_steps || steps.length)) + '</p>' : '') +
       (checkpoint.replayable ? '<p class="hint">' + esc(t("所有步骤均已完成，可人工复核后继续")) + '</p>' : '<p class="hint">' + esc(t("无法安全自动回放：") + (checkpoint.blocked_reason || t("需要人工核对"))) + '</p>') + '</div>' : '';
     body.innerHTML = (data.files && data.files.warning ? '<p class="hint">' + esc(data.files.warning) + "</p>" : "") + stepSummary +

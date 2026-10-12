@@ -40,6 +40,20 @@ def _hash(value):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _side_effects(value):
+    """Normalize side-effect labels without persisting arbitrary tool output."""
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    out = []
+    for item in value:
+        label = str(item or "").strip()[:80]
+        if label and label not in out:
+            out.append(label)
+    return out[:20]
+
+
 def _append(row):
     _DIR.mkdir(parents=True, exist_ok=True)
     with _file().open("a", encoding="utf-8") as handle:
@@ -48,7 +62,8 @@ def _append(row):
 
 
 def start(run_id, step, role, prompt="", *, input_data=None, attempt=1,
-          idempotency_key=""):
+          idempotency_key="", tool_call=None, conversation_ref="",
+          side_effects=None):
     """Record a step start without persisting prompt contents."""
     now = time.time()
     try:
@@ -61,6 +76,14 @@ def start(run_id, step, role, prompt="", *, input_data=None, attempt=1,
            "attempt": attempt, "idempotency_key": str(idempotency_key or "")[:160],
            "prompt_sha256": _hash(prompt), "input_sha256": _hash(input_data),
            "created_at": now}
+    if tool_call is not None:
+        row["tool_call_digest"] = _hash(tool_call)
+    if conversation_ref:
+        row["conversation_ref"] = str(conversation_ref)[:200]
+    normalized_effects = _side_effects(side_effects)
+    if normalized_effects:
+        row["side_effects"] = normalized_effects
+    row["repropose_required"] = bool(tool_call is not None or normalized_effects)
     with _LOCK:
         try:
             _append(row)
@@ -73,13 +96,24 @@ def finish(run_id, step, status, *, error="", output=None, metadata=None):
     status = str(status or "unknown").strip().lower()
     if status not in _TERMINAL:
         status = "unknown"
+    safe_metadata = {}
+    for key, value in (metadata or {}).items():
+        name = str(key)[:40]
+        if name == "side_effects":
+            safe_metadata[name] = _side_effects(value)
+        elif name == "repropose_required":
+            safe_metadata[name] = bool(value)
+        elif isinstance(value, (str, int, float, bool)):
+            safe_metadata[name] = value
     row = {"event_id": "cp-" + secrets.token_hex(10), "event": "finish",
            "run_id": str(run_id or "")[:80], "step": int(step),
            "status": status, "error": scrub_text(error, limit=500),
-           "output_sha256": _hash(output), "metadata": {
-               str(k)[:40]: v for k, v in (metadata or {}).items()
-               if isinstance(v, (str, int, float, bool))
-           }, "created_at": time.time()}
+           "output_sha256": _hash(output), "metadata": safe_metadata,
+           "created_at": time.time()}
+    if "side_effects" in safe_metadata:
+        row["side_effects"] = safe_metadata["side_effects"]
+    if "repropose_required" in safe_metadata:
+        row["repropose_required"] = safe_metadata["repropose_required"]
     with _LOCK:
         try:
             _append(row)
@@ -135,6 +169,15 @@ def replay_preview(run_id):
         if key in starts:
             item.setdefault("prompt_sha256", starts[key].get("prompt_sha256"))
             item.setdefault("attempt", starts[key].get("attempt", 1))
+        metadata = item.get("metadata") or {}
+        for field in ("tool_call_digest", "conversation_ref", "side_effects",
+                      "repropose_required"):
+            if field not in item and field in metadata:
+                item[field] = metadata[field]
+        item.setdefault("side_effects", [])
+        item["repropose_required"] = bool(
+            item.get("repropose_required") or item.get("side_effects")
+            or item.get("tool_call_digest"))
         steps.append(item)
     unknown = next((x for x in steps if x.get("status") in ("unknown", "running")
                     or x.get("event") != "finish"
