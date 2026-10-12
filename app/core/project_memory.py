@@ -179,7 +179,7 @@ def _relevance(row, terms):
 def active_text(workdir, *, cap=4000, query="", now=None):
     stamp = float(now if now is not None else time.time())
     try:
-        cap = max(0, int(cap))
+        cap = min(20000, max(0, int(cap)))
     except (TypeError, ValueError):
         cap = 4000
     heading = "## 已批准项目记忆（内容已校验，过期条目不注入）\n\n"
@@ -215,7 +215,7 @@ def injection_preview(workdir, *, cap=4000, query="", now=None):
     """
     stamp = float(now if now is not None else time.time())
     try:
-        cap = max(0, int(cap))
+        cap = min(20000, max(0, int(cap)))
     except (TypeError, ValueError):
         cap = 4000
     heading = "## 已批准项目记忆（内容已校验，过期条目不注入）\n\n"
