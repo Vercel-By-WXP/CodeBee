@@ -331,8 +331,11 @@ cloudflared tunnel login
 cloudflared tunnel create codebee
 cloudflared tunnel route dns --overwrite-dns <隧道UUID> codebee.你的域名.com
 
-:: 之后日常启动（服务 + 隧道一键起）：
-start-public.bat
+:: 日常启动服务（本机后台窗口）：
+start-service.bat
+
+:: 启动隧道（另开一个窗口；也可 cloudflared service install 注册为开机自启）：
+cloudflared tunnel --config "%USERPROFILE%\.cloudflared\config.yml" run
 ```
 
 - 真本机（不带转发头的 loopback）不受影响。

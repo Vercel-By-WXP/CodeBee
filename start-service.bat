@@ -1,8 +1,8 @@
 @echo off
 chcp 65001 >nul
 rem CodeBee 启动：端口清场（按 PID）+ CodeBee 服务
-rem 用法：start-public.bat [dev]   —— dev=起本仓库代码；默认起 npm 安装副本（日常生产入口）
-rem 附加参数原样透传给 main.py，如：start-public.bat dev --port 8765
+rem 用法：start-service.bat [dev]   —— dev=起本仓库代码；默认起 npm 安装副本（日常生产入口）
+rem 附加参数原样透传给 main.py，如：start-service.bat dev --port 8765
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 

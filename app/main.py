@@ -3822,9 +3822,8 @@ def main():
               % (remote.PUBLIC_URL, tok))
     elif not args.no_public_tunnel and args.host != "127.0.0.1":
         if remote.has_local_creds():
-            extra = "，或 start-public.bat" if os.name == "nt" else ""
             print("[CodeBee] （检测到已有 Cloudflare 隧道凭据：临时隧道在此类机器上不可用，"
-                  "请用 --public-url 配固定域名%s）" % extra)
+                  "请用 --public-url 配固定域名）")
         elif remote.start_quick_tunnel(args.port, _announce_public):
             print("[CodeBee] 正在建立 Cloudflare 快速隧道（公网地址几秒后打印；"
                   "若打不开说明当前网络不支持，可改用固定域名或 Tailscale）…")

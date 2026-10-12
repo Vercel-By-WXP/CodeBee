@@ -433,7 +433,7 @@ def global_lock_held():
 
 
 # 浏览器进程白名单：找已打开的 CodeBee 窗口时只认这些主进程的顶层窗口，
-# 避免把桌宠自身（标题也是 CodeBee）或 start-public.bat 起的「CodeBee」
+# 避免把桌宠自身（标题也是 CodeBee）或 start-service.bat 起的「CodeBee」
 # 控制台窗口误当成浏览器置前。
 _BROWSER_EXES = {
     "msedge.exe", "chrome.exe", "chromium.exe", "firefox.exe",
