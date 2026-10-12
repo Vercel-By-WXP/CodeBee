@@ -1,0 +1,177 @@
+/* Desktop reading workspace, inspired by Codex / ZCode / QCoder.
+ * Loaded after shared components. Mobile drawers and palette choices retain
+ * their existing behavior; no task or runtime state is changed here. */
+@media (min-width: 901px) {
+  html {
+    --workbench-reading-width: 820px;
+    --workbench-task-width: clamp(228px, 19vw, 300px);
+    --workbench-gap: clamp(16px, 2vw, 32px);
+  }
+
+  html[data-theme="light"][data-skin="classic"] {
+    --bg: #fff;
+    --sidebar: #f7f7f8;
+    --panel: #fff;
+    --panel2: #f2f2f3;
+    --border: #e7e7e9;
+    --border-strong: #d7d7da;
+    --text: #242426;
+    --muted: #77777d;
+    --shadow: 0 4px 18px rgba(24, 24, 27, .06);
+  }
+
+  html[data-theme="dark"][data-skin="classic"],
+  html[data-theme="dark"][data-skin="ocean"] {
+    --bg: #202022;
+    --sidebar: #19191b;
+    --panel: #252527;
+    --panel2: #303033;
+    --border: #353538;
+    --border-strong: #48484d;
+    --text: #ececee;
+    --muted: #a1a1a8;
+    --log-bg: #19191b;
+    --log-text: #d3d3da;
+    --shadow: 0 4px 18px rgba(0, 0, 0, .16);
+  }
+
+  body { font-family: "Aptos", "Segoe UI", "Microsoft YaHei UI", sans-serif; }
+  .side-rail { padding-top: 16px; gap: 9px; }
+  .rail-btn { color: var(--muted); box-shadow: none; }
+  .rail-btn.active, .rail-btn:hover {
+    color: var(--text);
+    background: var(--panel2);
+    box-shadow: none;
+  }
+  #sidebar { padding-top: 14px; }
+  .brand-row { min-height: 40px; }
+  .brand-name { font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
+  .side-main > .new-task { margin-top: 8px; margin-bottom: 16px; min-height: 36px; }
+  .side-label { font-size: 12px; letter-spacing: 0; text-transform: none; }
+  .sdir summary, .stask { min-height: 34px; border-radius: 7px; }
+  .stask.active { color: var(--text); background: var(--panel2); }
+  .sdir summary:hover, .stask:hover { background: var(--panel2); }
+  .side-usage { box-shadow: none; border-radius: 0; background: transparent; }
+
+  .topbar {
+    min-height: 56px;
+    padding: 10px 20px;
+    background: var(--bg);
+    border-bottom-color: var(--border);
+    backdrop-filter: none;
+  }
+  .topbar .page-title { font-size: 14px; font-weight: 600; letter-spacing: 0; }
+  .top-actions { gap: 4px; }
+  .top-actions .pill { box-shadow: none; }
+  .top-actions .pill:hover { color: var(--text); background: var(--panel2); }
+  main { padding-inline: clamp(20px, 2.4vw, 40px); }
+
+  #sub-tasks .composer { width: min(760px, 100%); max-width: 760px; }
+  #sub-tasks .hero { font-size: clamp(26px, 2.2vw, 32px); font-weight: 500 !important; }
+  .cmp-box {
+    border-radius: 18px;
+    border-color: var(--border-strong);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+  .cmp-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  #sub-tasks .cmp-bar { border-top-color: var(--border); }
+
+  /* A single grid at all desktop widths replaces the fixed floating card.
+   * The message stream alone scrolls; the composer stays in the bottom row. */
+  main.chat-fill { min-height: 0; padding: 20px 24px 16px; overflow: hidden; }
+  #mainwrap main.chat-fill > #page-settings.page,
+  main.chat-fill #page-settings > #sub-runs.subpage { width: 100%; max-width: none; }
+  main.chat-fill:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 16px; }
+  main.chat-fill #run-detail.chat-mode {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--workbench-task-width);
+    grid-template-areas: "main rail";
+    column-gap: var(--workbench-gap);
+    height: 100%;
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    transform: none;
+    backdrop-filter: none;
+    animation: none;
+  }
+  main.chat-fill #run-detail.chat-mode > .rd-main { height: 100%; min-height: 0; }
+  #run-detail.chat-mode .rd-pane[data-pane="chat"] {
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  #run-detail.chat-mode .rd-pane:not([data-pane="chat"]) { padding-right: 0; }
+  #run-detail.chat-mode .rd-chat { min-height: 0; }
+  #run-detail.chat-mode .rd-chat-flow {
+    width: 100%;
+    max-width: var(--workbench-reading-width);
+    min-height: 0;
+    padding: 24px 24px 28px;
+    gap: 28px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-gutter: stable;
+  }
+  .chat-bubble.agent { font-size: 14px; line-height: 1.8; }
+  .chat-bubble.me { border: 0; border-radius: 16px; padding: 12px 16px; }
+  .chat-avatar { width: 26px; height: 26px; background: transparent; border: 0; color: var(--muted); }
+  .chat-meta { font-size: 11px; }
+  #run-detail.chat-mode .rd-chat-bar {
+    width: calc(100% - 48px);
+    max-width: calc(var(--workbench-reading-width) - 48px);
+    margin: 8px auto 0;
+    padding: 10px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 18px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+  #run-detail.chat-mode .rd-chat-bar:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .rd-chat-bar textarea { min-height: 62px; font-size: 14px; }
+  .rd-chat-tools { gap: 6px; }
+  .rd-chat-tools .cmp-sel { background: transparent; border-color: transparent; }
+  .rd-chat-tools .cmp-sel:hover { background: var(--panel2); }
+  .rd-chat-tools .primary.round { box-shadow: none; }
+  #run-detail.chat-mode > #rd-railcol,
+  main.chat-fill #run-detail.chat-mode > #rd-railcol {
+    position: relative;
+    top: auto;
+    right: auto;
+    width: auto;
+    max-height: 100%;
+    margin: 0;
+    z-index: 8;
+  }
+  main.chat-fill #run-detail.chat-mode #rd-rail {
+    max-height: 100%;
+    overflow-y: auto;
+    padding: 16px;
+    border-radius: 14px;
+    background: var(--panel);
+    box-shadow: none;
+    scrollbar-width: thin;
+  }
+  #rd-rail > .detail-head::before { display: none; }
+  #rd-rail > #rd-chat-nav .cn-pill.on { color: var(--text); background: var(--panel2); }
+  #inspector { background: var(--panel); box-shadow: none; }
+  .insp-head { padding: 16px 14px 12px; }
+
+  /* Short and narrow desktop windows still leave room to read and type. */
+  @media (max-width: 1180px) {
+    main.chat-fill { padding: 14px 16px 12px; }
+    #run-detail.chat-mode .rd-chat-flow { padding-inline: 8px; }
+    #run-detail.chat-mode .rd-chat-bar { width: calc(100% - 16px); }
+    #run-detail.chat-mode #rd-rail { padding: 12px; }
+    .rd-chat-tools .rd-hint { flex-basis: 100%; }
+  }
+}

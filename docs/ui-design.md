@@ -124,6 +124,17 @@ toast(300) 最顶。Esc 关闭与背景点击关闭必须至少有其一。
 
 ## 8. 无头验证环境基线（tests/_ui_boot.mjs）
 
+2026-10-12 桌面参考图布局：加载 `desktop-workbench.css` 作为共享组件之后的桌面样式层，
+只在视口 >900px 生效。沿用导航轨、可拖宽项目栏、居中对话和右侧任务栏；桌面宽屏也使用
+网格停靠任务栏，避免固定浮卡与消息重叠。消息列最大 820px，输入框沿同一阅读轴贴底，
+只有消息区滚动；矮窗口的任务操作可在右栏内滚动。经典/海洋深色使用中性石墨灰，其他
+皮肤继续沿用其主题色。手机抽屉与工作区首页保持原有规则。
+
+回归命令：`node tests/ui_desktop_workbench.mjs`（独立数据目录、不调用 AI CLI），覆盖
+1920/1600/1440/1366/1024/920px、600px 矮窗、侧栏拖宽、深色及换肤；
+`node tests/ui_mobile_workspaces.mjs` 覆盖 320–900px。截图在
+`output/desktop-workbench/`，对话截图中的消息明确标注为布局验收示例数据。
+
 新 UI 测试一律用 `tests/_ui_boot.mjs` 起 Edge：DPR 钉 1、CDP 随机口（或 TUTTI_TEST_CDP 覆盖）、
 启动行打印实际 `devicePixelRatio / innerWidth×innerHeight` 进结果头。改既有测试时顺手迁移，
 不强求一次改完。

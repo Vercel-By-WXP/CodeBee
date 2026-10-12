@@ -20,6 +20,7 @@ tmp_*
 !/tests/test_state_payload.py
 !/tests/test_activity_model.cjs
 !/tests/ui_mobile_workspaces.mjs
+!/tests/ui_desktop_workbench.mjs
 .playwright-cli/
 作品信息-*.md
 
