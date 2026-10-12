@@ -325,7 +325,7 @@ window.Hive3D = (function () {
         this.add(s,elbow[0],elbow[1],elbow[2],.065,.065,.065,[.32,.36,.39,1]);
         this.add(s,wrist[0],wrist[1],wrist[2],.052,.052,.052,[.24,.29,.32,1]);
         this.add(rb,hand[0],hand[1],hand[2],.085,.045,.070,[.96,.63,.035,1]);
-        this.add(s,x+side*.35,.655,z-.20,.070,.035,.055,[.98,.68,.045,1]);
+        this.add(s,hand[0],hand[1],hand[2],.070,.035,.055,[.98,.68,.045,1]);
         for(let finger=0;finger<3;finger++)this.add(b,x+side*.35+(finger-1)*.026,.638,z+.16,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
