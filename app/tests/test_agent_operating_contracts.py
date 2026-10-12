@@ -56,6 +56,9 @@ class AgentOperatingContractTests(unittest.TestCase):
         self.assertEqual(preview["entries"][0]["source_run"], "run-memory")
         self.assertEqual(preview["entries"][0]["version"], 2)
         self.assertEqual(preview["budget"]["cap"], 2000)
+        bounded = project_memory.injection_preview(
+            self.root, query="changes", cap=10 ** 9, now=1002)
+        self.assertEqual(bounded["budget"]["cap"], 20000)
 
     def test_review_request_routes_and_transitions_idempotently(self):
         with patch.object(review_requests, "_FILE", self.root / "reviews.jsonl"):
