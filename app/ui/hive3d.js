@@ -375,24 +375,24 @@ window.Hive3D = (function () {
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
-      // Compact convex wings attach at shoulder height; roots tuck behind the head silhouette.
-      this.add(this.wing,x-.55,by+.045,bz+.18,.36,.56,.10,[.22,.65,.90,.34],0,-.36);
-      this.add(this.wing,x+.55,by+.045,bz+.18,.36,.56,.10,[.22,.65,.90,.34],0,.36);
+      // Angled wings emerge from behind the head and sweep outward/up from the shoulders.
+      this.add(this.wing,x-.52,by+.14,bz+.10,.42,.48,.10,[.22,.65,.90,.34],0,-.48);
+      this.add(this.wing,x+.52,by+.14,bz+.10,.42,.48,.10,[.22,.65,.90,.34],0,.48);
       // A fine blue edge catches studio light, using the same contour points as the mesh.
       for(const side of [-1,1]){
-        const rotation=side*.36,ca=Math.cos(rotation),sa=Math.sin(rotation);
+        const rotation=side*.48,ca=Math.cos(rotation),sa=Math.sin(rotation);
         const edgePoints=WING_OUTLINE.map(p=>[
-          x+side*.55+ca*p[0]*.36-sa*p[1]*.56,
-          by+.045+sa*p[0]*.36+ca*p[1]*.56,
-          bz+.205
+          x+side*.52+ca*p[0]*.42-sa*p[1]*.48,
+          by+.14+sa*p[0]*.42+ca*p[1]*.48,
+          bz+.125
         ]);
         for(let i=0;i<edgePoints.length;i++)this.addLink(edgePoints[i],edgePoints[(i+1)%edgePoints.length],.0065,[.28,.76,.98,.78]);
-        const root=[x+side*.38,by-.015,bz+.205];
-        const mid=[x+side*.55,by+.045,bz+.205];
-        const tip=[x+side*.73,by+.105,bz+.205];
+        const root=[x+side*.34,by+.04,bz+.13];
+        const mid=[x+side*.52,by+.14,bz+.13];
+        const tip=[x+side*.70,by+.24,bz+.13];
         this.addLink(root,mid,.0060,[.64,.90,1,.86]);
         this.addLink(mid,tip,.0045,[.64,.90,1,.78]);
-        this.addLink([x+side*.52,by+.012,bz+.21],[x+side*.66,by+.075,bz+.21],.0034,[.82,.96,1,.68]);
+        this.addLink([x+side*.49,by+.11,bz+.13],[x+side*.62,by+.20,bz+.13],.0034,[.82,.96,1,.68]);
       }
 
     }
