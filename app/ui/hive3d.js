@@ -275,8 +275,8 @@ window.Hive3D = (function () {
     }
     // Ceiling light fixtures and soft-colored illuminated panels.
     for(let x=-6.3;x<=6.4;x+=6.3){
-      this.add(b,x,5.36,-3.35,2.65,.075,.30,[.12,.17,.23,1]);
-      this.add(b,x,5.29,-3.35,2.40,.045,.24,[1,.99,.91,1]);
+      this.add(b,x,4.66,-3.35,2.65,.065,.30,[.12,.17,.23,1]);
+      this.add(b,x,4.595,-3.35,2.40,.045,.24,[1,.99,.91,1]);
     }
     // Six white phase controls are projected on this wall by the live HTML overlay.
     for(let i=0;i<6;i++){
