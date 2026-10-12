@@ -375,24 +375,24 @@ window.Hive3D = (function () {
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
-      // Angled wings emerge from behind the head and sweep outward/up from the shoulders.
-      this.add(this.wing,x-.52,by+.14,bz+.10,.42,.48,.10,[.22,.65,.90,.34],0,-.48);
-      this.add(this.wing,x+.52,by+.14,bz+.10,.42,.48,.10,[.22,.65,.90,.34],0,.48);
-      // A fine blue edge catches studio light, using the same contour points as the mesh.
+      // Angled, translucent wings emerge from behind the head; a leading-edge highlight
+      // defines the outward/upward sweep without enclosing the wing like a headset ring.
+      this.add(this.wing,x-.55,by+.14,bz+.10,.45,.42,.10,[.16,.54,.86,.42],0,-.52);
+      this.add(this.wing,x+.55,by+.14,bz+.10,.45,.42,.10,[.16,.54,.86,.42],0,.52);
       for(const side of [-1,1]){
-        const rotation=side*.48,ca=Math.cos(rotation),sa=Math.sin(rotation);
+        const rotation=side*.52,ca=Math.cos(rotation),sa=Math.sin(rotation);
         const edgePoints=WING_OUTLINE.map(p=>[
-          x+side*.52+ca*p[0]*.42-sa*p[1]*.48,
-          by+.14+sa*p[0]*.42+ca*p[1]*.48,
+          x+side*.55+ca*p[0]*.45-sa*p[1]*.42,
+          by+.14+sa*p[0]*.45+ca*p[1]*.42,
           bz+.125
         ]);
-        for(let i=0;i<edgePoints.length;i++)this.addLink(edgePoints[i],edgePoints[(i+1)%edgePoints.length],.0065,[.28,.76,.98,.78]);
-        const root=[x+side*.34,by+.04,bz+.13];
-        const mid=[x+side*.52,by+.14,bz+.13];
-        const tip=[x+side*.70,by+.24,bz+.13];
+        for(let i=0;i<6;i++)this.addLink(edgePoints[i],edgePoints[i+1],.0058,[.26,.74,.98,.74]);
+        const root=[x+side*.37,by+.045,bz+.13];
+        const mid=[x+side*.55,by+.14,bz+.13];
+        const tip=[x+side*.73,by+.255,bz+.13];
         this.addLink(root,mid,.0060,[.64,.90,1,.86]);
         this.addLink(mid,tip,.0045,[.64,.90,1,.78]);
-        this.addLink([x+side*.49,by+.11,bz+.13],[x+side*.62,by+.20,bz+.13],.0034,[.82,.96,1,.68]);
+        this.addLink([x+side*.52,by+.15,bz+.13],[x+side*.63,by+.22,bz+.13],.0034,[.82,.96,1,.68]);
       }
 
     }
