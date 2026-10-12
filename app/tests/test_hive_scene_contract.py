@@ -60,9 +60,9 @@ class HiveSceneContractTests(unittest.TestCase):
         # Bee assistant visual contract: wings sit at shoulder height and abdomen accents
         # follow the body shell rather than floating in front of the model.
         self.assertIn("by-.205,bz-.10,.40,.18,.075,[.46,.73,.93,.29]", ENGINE)
-        self.assertIn("const shoulder=[x+side*.32,.99,z+.56],elbow=[x+side*.43,.83,z+.42],wrist=[x+side*.36,.675,z+.27],hand=[x+side*.35,.655,z+.22]", ENGINE)
+        self.assertIn("const shoulder=[x+side*.40,.99,z+.86],elbow=[x+side*.49,.83,z+.63],wrist=[x+(side<0?-.34:.35),.675,z+.31],hand=[x+(side<0?-.30:.34),.655,z+.22]", ENGINE)
         self.assertIn("this.add(s,hand[0],hand[1],hand[2],.070,.035,.055", ENGINE)
-        self.assertIn("for(let finger=0;finger<3;finger++)this.add(b,x+side*.35+(finger-1)*.026,.638,z+.16", ENGINE)
+        self.assertIn("for(let finger=0;finger<3;finger++)this.add(b,hand[0]+(finger-1)*.026,.638,hand[2]-.06", ENGINE)
         self.assertIn("by-.48,bz+.005,.345,.37,.255", ENGINE)
         self.assertIn("by-.185,bz-.06,.27,.11,.045,[.78,.91,.98,.19]", ENGINE)
         self.assertIn("function sphereBandGeometry", ENGINE)
