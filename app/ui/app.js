@@ -2098,6 +2098,7 @@ function render() {
   renderImplSelects();
   renderRunList();
   renderSideTasks();
+  CodeBeeActivity.render();
   renderRunDetail();
   renderCatalog();
   renderModels();
@@ -4529,11 +4530,14 @@ window.toggleNotifySound = function () {
 };
 
 function paintNotifyToggle() {
-  const b = $("btn-notify-toggle");
+  CodeBeeActivity.paintToggle();
+  const b = $("activity-sound");
   if (!b) return;
   const on = soundEnabled();
   b.classList.toggle("off", !on);
   b.title = on ? t("提示音已开（点击关闭）") : t("提示音已关（点击开启）");
+  b.setAttribute("aria-label", b.title);
+  b.setAttribute("aria-pressed", String(on));
 }
 
 // 「展开全部」钮：文件夹全开时箭头翻成收起朝向，提示文案跟着换（renderSideTasks 末尾与点击后各同步一次）
@@ -4750,7 +4754,7 @@ function sideRowActivate(det) {
 /* 打开单条运行详情（右键菜单「打开详情」/检查器步骤条）：不跳设置页——
  * 留在任务树主视图，主栏直接展示运行详情。
  * 带步骤号 n 时，详情渲染完自动定位到该步：滚动 + 高亮 + 展开它的日志。 */
-window.sideOpenRun = function (id, n) {
+window.sideOpenRun = function (id, n, pinTab) {
   _taskStepRenderToken++;
   const earlierRunsButton = $("rd-load-earlier");
   if (earlierRunsButton) earlierRunsButton.hidden = true;
@@ -4759,17 +4763,18 @@ window.sideOpenRun = function (id, n) {
   S.detailTaskKey = null;
   if (!S.histJump && typeof histPush === "function") histPush({ m: "main", tab: "run-detail" });
   showDetailInMain();
-  openRun(id, n ? "steps" : null);   // 带步骤号：钉住步骤分区，自动选卡不抢
+  openRun(id, pinTab || (n ? "steps" : null));   // 活动视图可直达对应分区
 };
 
 /* 打开任务级详情：任务可能被续跑/重试过多次，步骤分散在多条 run 里。
  * 按时间顺序列出该任务全部 run 的全部步骤，run 之间加分隔条。 */
-window.sideOpenTask = function (key) {
+window.sideOpenTask = function (key, pinTab) {
   _taskStepRenderToken++;
   chatJumpLatest();   // 首开任务详情：对话时间线落最新（默认落蜂巢时切到对话页签也带到底）
   $("rd-steps").innerHTML = '<div class="hint" role="status">' + esc(t("正在加载任务详情…")) + "</div>";
   S.lastRun = null;
   S.detailTaskKey = key;
+  S.activityTarget = pinTab ? { key, tab: pinTab } : null;
   S.detailRunId = null;
   S.focusStep = 0;
   S.taskSig = "";
@@ -4783,8 +4788,9 @@ window.sideOpenTask = function (key) {
   detailSideReset();     // 换详情目标：任务级 side 缓存作废，等首拉
   const olderRunsButton = $("rd-load-earlier");
   if (olderRunsButton) olderRunsButton.hidden = true;
-  S.rdHiveFirst = true;   // 侧栏点开任务详情：首拉后默认落「蜂巢」（用户 2026-09-29）
-  S.rdTab = null;
+  S.rdHiveFirst = !pinTab;   // 活动入口钉住目标页签；项目入口默认落蜂巢
+  S.rdTab = pinTab || null;
+  S.rdTabPin = !!pinTab;
   S.rdTabSig = "";
   applyRdTabs();
   syncInspectorVis();    // 详情已铺开：检查器让位（选中保留，返回列表自动滑回）
@@ -5658,6 +5664,13 @@ function rdTabBadges() {
  * renderPreview 等收尾调用——预览可用性是异步翻过来的，翻过来这次必须重选卡）。 */
 function rdTabsSync(ctx) {
   if (ctx) S._rdCtx = ctx;
+  const target = S.activityTarget;
+  if (target && target.key === S.detailTaskKey && rdTabAvail()[target.tab]) {
+    S.rdTab = target.tab;
+    S.rdTabPin = true;
+    S.rdHiveFirst = false;
+    S.activityTarget = null;
+  }
   const c = ctx || S._rdCtx || {};
   if (!S.rdTabPin) {
     const chatAvail = $("rd-chat") && !$("rd-chat").classList.contains("hidden");
@@ -10012,6 +10025,7 @@ function renderRunOutcome(run, runs, aggregate) {
 function renderDetailOverview(run, runs, task, aggregate) {
   const box = $("rd-overview");
   if (!box || !run) return;
+  CodeBeeActivity.markViewed(run);
   const direct = chatEngineIsDirect(run);
   box.classList.toggle("direct-overview", direct);
   const all = runs && runs.length ? runs : [run];
@@ -15655,10 +15669,101 @@ function ovDateText() {
 function renderOverview() {
   ovRenderHead();
   ovRenderKpis();
+  goalRender();
   syncOvRanges();
   renderOverviewTrend();
   ovRenderQuick();
   ovRenderRecent();
+}
+
+let _goalCache = null;
+let _goalBusy = false;
+
+async function goalLoad() {
+  if (_goalBusy) return _goalCache;
+  _goalBusy = true;
+  try {
+    _goalCache = await api("/api/goals");
+    goalRender();
+  } catch (e) {
+    const error = $("ov-goal-error");
+    if (error) error.textContent = e.message || t("无法读取长目标");
+  } finally { _goalBusy = false; }
+  return _goalCache;
+}
+
+function goalRender() {
+  const card = $("ov-goal");
+  if (!card) return;
+  const current = _goalCache && _goalCache.current;
+  const empty = $("ov-goal-empty"), active = $("ov-goal-active"), phase = $("ov-goal-phase");
+  empty.classList.toggle("hidden", !!current);
+  active.classList.toggle("hidden", !current);
+  phase.classList.toggle("hidden", !current);
+  if (!current) return;
+  const paused = current.phase === "paused";
+  const rounds = Math.max(0, Number(current.rounds_started) || 0);
+  const maximum = Math.max(1, Number(current.rounds_max) || 1);
+  const percent = Math.min(100, Math.round(rounds * 100 / maximum));
+  $("ov-goal-name").textContent = current.title || "";
+  $("ov-goal-description-text").textContent = current.description || "";
+  $("ov-goal-progress").textContent = t(paused ? "已暂停" : "目标进度");
+  $("ov-goal-rounds").textContent = rounds + " / " + maximum + t(" 轮");
+  $("ov-goal-progress-fill").style.width = percent + "%";
+  phase.textContent = t(paused ? "已暂停" : "进行中");
+  phase.className = "chip " + (paused ? "warn" : "running");
+  $("ov-goal-error").textContent = "";
+  let actions;
+  if (paused) actions = '<button type="button" class="primary small" data-goal-phase="active">' + esc(t("恢复目标")) + '</button>';
+  else actions = '<button type="button" class="primary small" data-goal-round' + (rounds >= maximum ? ' disabled' : '') + '>' + esc(t("开始一轮")) + '</button>' +
+    '<button type="button" class="ghost small" data-goal-phase="paused">' + esc(t("暂停")) + '</button>';
+  $("ov-goal-actions").innerHTML = actions + '<button type="button" class="ghost small" data-goal-phase="complete">' + esc(t("标记完成")) + '</button>';
+}
+
+async function goalCreate() {
+  const title = $("ov-goal-title").value.trim();
+  const description = $("ov-goal-description").value.trim();
+  if (!title) { $("ov-goal-title").focus(); return; }
+  const button = $("ov-goal-create"); button.disabled = true;
+  try {
+    const data = await api("/api/goals", { method: "POST", body: JSON.stringify({ title, description }) });
+    _goalCache = { current: data.goal, goals: [data.goal] };
+    $("ov-goal-title").value = ""; $("ov-goal-description").value = "";
+    goalRender();
+  } catch (e) { $("ov-goal-error").textContent = e.message || t("创建目标失败"); }
+  finally { button.disabled = false; }
+}
+
+async function goalTransition(phase) {
+  const current = _goalCache && _goalCache.current;
+  if (!current) return;
+  const actions = $("ov-goal-actions");
+  actions.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+  try {
+    const data = await api("/api/goals/" + encodeURIComponent(current.goal_id), {
+      method: "POST", body: JSON.stringify({ revision: current.revision, phase }) });
+    _goalCache = { current: ["active", "paused"].includes(data.goal.phase) ? data.goal : null, goals: (_goalCache.goals || []).map((g) =>
+      g.goal_id === data.goal.goal_id ? data.goal : g) };
+    goalRender();
+  } catch (e) {
+    $("ov-goal-error").textContent = e.message || t("更新目标失败");
+    goalLoad();
+  }
+}
+
+async function goalStartRound() {
+  const current = _goalCache && _goalCache.current;
+  if (!current) return;
+  try {
+    const data = await api("/api/goals/" + encodeURIComponent(current.goal_id) + "/round", {
+      method: "POST", body: JSON.stringify({ revision: current.revision }) });
+    _goalCache = { current: data.goal, goals: (_goalCache.goals || []).map((g) =>
+      g.goal_id === data.goal.goal_id ? data.goal : g) };
+    goalRender();
+  } catch (e) {
+    $("ov-goal-error").textContent = e.message || t("开始新一轮失败");
+    goalLoad();
+  }
 }
 
 function ovRenderHead() {
@@ -16251,6 +16356,7 @@ function switchTab(name, shell) {
   if (name === "data") loadDataPage();   // 进数据与备份页：清理配置/状态/可清理预估
   if (name === "usage") { syncUsageRange(); loadUsage(); }   // 进用量页：对齐范围选中态并拉取
   if (name === "overview") { ovDays(); loadOverview(); }   // 进概览页：对齐趋势范围并拉两期台账
+  if (name === "overview") goalLoad();
   if (name === "browser") browserDraw();
   if (name === "appearance") renderAppearance();   // 进皮肤页：按当前皮肤/明暗重画卡片
   if (name === "appearance") renderCodeSettings();  // 代码设置行 + 双主题预览卡同步当前值
@@ -16402,6 +16508,51 @@ document.addEventListener("DOMContentLoaded", () => {
     history.replaceState(null, "", location.pathname);
   }
   document.querySelectorAll(".set-item").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.sub)));
+  const settingsSearch = $("settings-search");
+  if (settingsSearch) {
+    const filterSettings = () => {
+      const query = settingsSearch.value.trim().toLocaleLowerCase();
+      let matches = 0;
+      document.querySelectorAll(".side-settings .set-item").forEach((item) => {
+        const haystack = [item.innerText, item.dataset.search || ""].join(" ").toLocaleLowerCase();
+        const visible = !query || haystack.includes(query);
+        item.classList.toggle("settings-search-hidden", !visible);
+        if (visible) matches++;
+      });
+      document.querySelectorAll(".side-settings .set-group").forEach((group) => {
+        let next = group.nextElementSibling, hasVisibleItem = false;
+        while (next && !next.classList.contains("set-group")) {
+          if (next.classList.contains("set-item") && !next.classList.contains("settings-search-hidden")) hasVisibleItem = true;
+          next = next.nextElementSibling;
+        }
+        group.classList.toggle("settings-search-hidden", !!query && !hasVisibleItem);
+      });
+      const empty = $("settings-search-empty");
+      if (empty) empty.classList.toggle("hidden", !query || matches > 0);
+    };
+    settingsSearch.addEventListener("input", filterSettings);
+    settingsSearch.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && settingsSearch.value) {
+        event.preventDefault();
+        settingsSearch.value = "";
+        filterSettings();
+      }
+      if (event.key === "Enter") {
+        const first = document.querySelector(".side-settings .set-item:not(.settings-search-hidden)");
+        if (first && settingsSearch.value.trim()) {
+          event.preventDefault();
+          first.click();
+        }
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f" && document.body.classList.contains("settings-mode")) {
+        event.preventDefault();
+        settingsSearch.focus();
+        settingsSearch.select();
+      }
+    });
+  }
   $("btn-set-back").addEventListener("click", exitSettings);
   $("btn-files-back").addEventListener("click", closeFolderFiles);   // 文件浏览页返回任务树
   // 文件浏览页点文件行：中央弹窗预览（行是委托绑定，懒加载子目录里的行同样生效；
@@ -16616,7 +16767,6 @@ document.addEventListener("DOMContentLoaded", () => {
       "_blank", "noopener");
   });
   $("btn-theme").addEventListener("click", toggleTheme);
-  $("btn-notify-toggle").addEventListener("click", toggleNotifySound);
   // 命令面板：侧栏搜索行 / Ctrl+K 唤起（函数若尚未落地，跳过而不炸整个初始化）
   if (typeof bindCmdK === "function") bindCmdK();
   // 侧栏常驻用量条：首屏先取一次台账（之后由 applyState 的节流刷新接手）
@@ -16715,6 +16865,20 @@ document.addEventListener("DOMContentLoaded", () => {
   // 侧栏快捷导航：主栏换成目标页，左栏任务树不动（shell="main"）。
   // 页面清单以 index.html .side-quick 的 data-page 为准，这里逐项绑 id。
   $("btn-q-overview").addEventListener("click", () => switchTab("overview", "main"));
+  $("ov-goal-create").addEventListener("click", goalCreate);
+  $("ov-goal-title").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); goalCreate(); }
+  });
+  $("ov-goal-actions").addEventListener("click", (e) => {
+    if (e.target.closest("[data-goal-round]")) { goalStartRound(); return; }
+    const button = e.target.closest("[data-goal-phase]");
+    if (!button) return;
+    const phase = button.dataset.goalPhase;
+    if (phase === "complete") {
+      uiConfirm(t("确定将这个长目标标记为完成吗？"), { danger: false,
+        ok: t("标记完成") }).then((ok) => { if (ok) goalTransition(phase); });
+    } else goalTransition(phase);
+  });
   $("btn-q-runs").addEventListener("click", () => switchTab("runs", "main"));
   $("btn-q-automation").addEventListener("click", () => switchTab("automation", "main"));
   $("btn-q-browser").addEventListener("click", () => switchTab("browser", "main"));

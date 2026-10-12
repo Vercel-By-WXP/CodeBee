@@ -125,13 +125,15 @@ window.Hive3D = (function () {
     // WebGL back-face culling requires consistent counter-clockwise front faces.
     const wingArea=outline.reduce((sum,p,i)=>{const q=outline[(i+1)%outline.length];return sum+p[0]*q[1]-q[0]*p[1];},0);
     if(wingArea<0)outline=outline.reverse();
-    const positions=[],normals=[],indices=[];
+    const positions=[],normals=[],indices=[],colors=[];
     const emitSide=(sign)=>{
       const centerIndex=positions.length/3;
-      positions.push(0,0,sign*.42);normals.push(0,0,sign);
+      positions.push(0,0,sign*.42);normals.push(0,0,sign);colors.push(.80,.91,.99,.74);
       for(const p of outline){
         positions.push(p[0],p[1],p[2]*sign);
         normals.push(...norm([-.48*p[0],-.48*p[1],sign]));
+        const edge=Math.min(1,Math.hypot(p[0]*.82,p[1]*1.15));
+        colors.push(.70-.06*edge,.86-.04*edge,.98-.02*edge,.70-.08*edge);
       }
       for(let i=0;i<outline.length;i++){
         const a=centerIndex+1+i,b=centerIndex+1+(i+1)%outline.length;
@@ -139,7 +141,7 @@ window.Hive3D = (function () {
       }
     };
     emitSide(1);emitSide(-1);
-    return geometry(gl,positions,indices,normals);
+    const mesh=geometry(gl,positions,indices,normals);mesh.colors=colors;return mesh;
   }
   function hexGroutGeometry(gl){
     // Build the complete staggered flat-top hex lattice as one static mesh. Drawing only
@@ -172,6 +174,26 @@ window.Hive3D = (function () {
     }
     return geometry(gl,positions,indices,normals);
   }
+  function radialShadowGeometry(gl,segments=48,rings=7){
+    // Smooth, triangulated light falloff avoids the low-poly ellipsoid stamps that read
+    // like floating objects on the pale hex floor. Vertex alpha fades completely at the rim.
+    const positions=[0,0,0],normals=[0,1,0],colors=[1,1,1,.24],indices=[];
+    for(let ring=1;ring<=rings;ring++)for(let i=0;i<segments;i++){
+      const a=i/segments*Math.PI*2,r=ring/rings;
+      positions.push(Math.cos(a)*r,0,Math.sin(a)*r);normals.push(0,1,0);
+      const fade=1-r;colors.push(1,1,1,.24*fade*fade);
+    }
+    for(let i=0;i<segments;i++){
+      const next=(i+1)%segments;
+      indices.push(0,1+next,1+i);
+    }
+    for(let ring=1;ring<rings;ring++)for(let i=0;i<segments;i++){
+      const next=(i+1)%segments,a=1+(ring-1)*segments+i,b=1+(ring-1)*segments+next;
+      const c=1+ring*segments+i,d=1+ring*segments+next;
+      indices.push(a,d,c,a,b,d);
+    }
+    const mesh=geometry(gl,positions,indices,normals);mesh.colors=colors;return mesh;
+  }
   function cylinderGeometry(gl,segments=20){
     const p=[],n=[],ix=[];
     // Side wall has independent normals from the flat end caps, avoiding pinched highlights.
@@ -198,7 +220,7 @@ window.Hive3D = (function () {
   function Scene(opts){
     this.opts=opts;this.canvas=opts.canvas;this.overlay=opts.overlay;this.host=this.canvas.parentElement;
     this.onCellActivate=opts.onCellActivate||function(){};this.cellRefresh=opts.cellRefresh||function(){return{};};
-    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=0;this.pitch=0.42;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];this.displayMode="reference";
+    this.model=null;this.cells=[];this.page=0;this.zoom=1;this.yaw=0;this.pitch=0.48;this.panX=0;this.panY=0;this.active=false;this.raf=0;this.timer=0;this.listeners=[];this.screenMeta=[];this.displayMode="reference";this.eyeDirection=norm([0,3.1+Math.sin(this.pitch)*13.88-.62,25.4-1.3]);
     this.host.dataset.renderer="webgl";this.canvas.hidden=false;this.canvas.classList.add("hive-gl-live");
     this.referenceImage=this.host.querySelector(".hive-reference");
     this.layer=node("div","hive-reference-layer",this.host);
@@ -217,9 +239,9 @@ window.Hive3D = (function () {
     const gl=this.canvas.getContext("webgl",{alpha:true,antialias:true,powerPreference:"high-performance"})||this.canvas.getContext("experimental-webgl");
     if(!gl)throw Error("WebGL unavailable");this.gl=gl;
     const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);float sky=clamp(n.y*0.5+0.5,0.0,1.0);float side=abs(n.x)*0.035;float heightShade=mix(0.94,1.0,smoothstep(-0.2,3.6,aPosition.y));vShade=(0.88+0.08*sky+side)*heightShade;}";
-    const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 v=normalize(uEyePosition-vWorld);vec3 key=normalize(vec3(-0.48,0.86,0.42));vec3 fill=normalize(vec3(0.62,0.32,-0.72));vec3 warm=normalize(vec3(0.34,0.46,0.82));float ndl=max(dot(n,key),0.0);float fillN=max(dot(n,fill),0.0);float warmN=max(dot(n,warm),0.0);float hemi=clamp(n.y*0.5+0.5,0.0,1.0);vec3 base=vColor.rgb;float wallBlue=step(0.38,base.b)*step(0.35,base.g)*step(base.r*1.65,base.g)*step(1.7,vWorld.y);float wallGradient=0.86+0.14*smoothstep(1.7,4.5,vWorld.y)+0.055*exp(-pow((vWorld.x+2.1)*0.24,2.0));base=mix(base,base*wallGradient,wallBlue);vec3 h=normalize(key+v);vec3 hf=normalize(fill+v);float chroma=max(max(base.r,base.g),base.b)-min(min(base.r,base.g),base.b);float gloss=mix(0.10,0.34,smoothstep(0.10,0.82,chroma));float spec=pow(max(dot(n,h),0.0),mix(24.0,58.0,gloss))*gloss*0.42;float specFill=pow(max(dot(n,hf),0.0),36.0)*0.075;float fresnel=pow(1.0-max(dot(n,v),0.0),3.0);vec3 ambient=base*(0.55+0.13*hemi);vec3 direct=base*(0.34*ndl+0.16*fillN+0.08*warmN);vec3 highlight=vec3(1.0,0.91,0.78)*spec+vec3(0.52,0.84,1.0)*specFill+vec3(0.18,0.48,0.68)*fresnel*0.075;float cyan=max(0.0,min(base.g,base.b)-base.r)*0.65;vec3 emissive=base*cyan;vec3 lit=ambient+direct+highlight+emissive;lit*=vShade;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
+    const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 v=normalize(uEyePosition-vWorld);vec3 key=normalize(vec3(-0.48,0.86,0.42));vec3 fill=normalize(vec3(0.62,0.32,-0.72));vec3 warm=normalize(vec3(0.34,0.46,0.82));float ndl=max(dot(n,key),0.0);float fillN=max(dot(n,fill),0.0);float warmN=max(dot(n,warm),0.0);float hemi=clamp(n.y*0.5+0.5,0.0,1.0);vec3 base=vColor.rgb;float chroma=max(max(base.r,base.g),base.b)-min(min(base.r,base.g),base.b);float wallBlue=step(0.38,base.b)*step(0.35,base.g)*step(base.r*1.65,base.g)*step(1.7,vWorld.y);float wallGradient=0.78+0.12*smoothstep(1.0,4.5,vWorld.y)+0.24*exp(-pow((vWorld.x-0.2)*0.19,2.0));base=mix(base,base*wallGradient,wallBlue);vec3 h=normalize(key+v);vec3 hf=normalize(fill+v);float gloss=mix(0.10,0.34,smoothstep(0.10,0.82,chroma));float spec=pow(max(dot(n,h),0.0),mix(24.0,58.0,gloss))*gloss*0.42;float specFill=pow(max(dot(n,hf),0.0),36.0)*0.075;float fresnel=pow(1.0-max(dot(n,v),0.0),3.0);vec3 ambient=base*(0.55+0.13*hemi);vec3 direct=base*(0.34*ndl+0.16*fillN+0.08*warmN);vec3 highlight=vec3(1.0,0.91,0.78)*spec+vec3(0.52,0.84,1.0)*specFill+vec3(0.18,0.48,0.68)*fresnel*0.075;float cyan=max(0.0,min(base.g,base.b)-base.r)*0.65;vec3 emissive=base*cyan;float honey=step(0.68,base.r)*step(0.34,base.g)*step(base.g*0.96,base.r)*step(base.b*1.4,base.g);vec3 lit=ambient+direct+highlight+emissive+vec3(0.18,0.105,0.018)*honey;lit*=vShade;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
-    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,6,.12);this.sphere=sphereGeometry(gl,16,24);this.cylinder=cylinderGeometry(gl,20);this.organic=organicGeometry(gl);this.wing=wingGeometry(gl);this.grout=hexGroutGeometry(gl);this.bandGoldTop=sphereBandGeometry(gl,-.08,.18);this.bandGoldBottom=sphereBandGeometry(gl,-.97,-.61);this.bandSeparator=sphereBandGeometry(gl,-.51,-.38);this.bandGoldTop.smooth=true;this.bandGoldBottom.smooth=true;this.bandSeparator.smooth=true;gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
+    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,6,.12);this.sphere=sphereGeometry(gl,16,24);this.cylinder=cylinderGeometry(gl,20);this.organic=organicGeometry(gl);this.wing=wingGeometry(gl);this.grout=hexGroutGeometry(gl);this.shadow=radialShadowGeometry(gl);this.bandGoldTop=sphereBandGeometry(gl,-.08,.18);this.bandGoldBottom=sphereBandGeometry(gl,-.97,-.61);this.bandSeparator=sphereBandGeometry(gl,-.51,-.38);this.bandGoldTop.smooth=true;this.bandGoldBottom.smooth=true;this.bandSeparator.smooth=true;gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
   };
   Scene.prototype.listen=function(el,type,fn,opts){el.addEventListener(type,fn,opts);this.listeners.push(()=>el.removeEventListener(type,fn,opts));};
   Scene.prototype.bindSurface=function(){
@@ -236,8 +258,8 @@ window.Hive3D = (function () {
   Scene.prototype.buildWorld=function(){
     const b=this.box,rb=this.roundBox,s=this.sphere;this.objects=[];
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall. The free camera is framed wide enough to keep all 14 stations visible at desktop aspect ratios.
-    this.add(b,0,-.18,5.5,23,.28,34,[.97,.985,1,1]);
-    this.add(b,0,2.70,-6.45,19,3.65,.24,[.10,.52,.89,1]);
+    this.add(b,0,-.18,5.5,23,.28,34,[.68,.79,.93,1]);
+    this.add(b,0,2.70,-6.45,19,3.65,.24,[.24,.60,.91,1]);
     this.add(b,0,4.58,-6.30,19,.075,.12,[.985,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
     this.add(b,0,.90,-6.28,18.7,.12,.06,[.08,.42,.78,1]);
@@ -271,8 +293,8 @@ window.Hive3D = (function () {
     // Reference layout: eight compact rear stations and six wider front stations.
     // Every monitor overlay is projected from these exact same coordinates below.
     const deskRows=[
-      {row:0,z:-1.80,width:2.03,screenWidth:1.28,screenHeight:.70,xs:[-8.4,-6.0,-3.6,-1.2,1.2,3.6,6.0,8.4]},
-      {row:1,z:5.85,width:2.42,screenWidth:1.48,screenHeight:.82,xs:[-6.0,-3.6,-1.2,1.2,3.6,6.0]}
+      {row:0,z:-1.80,width:2.03,screenWidth:1.28,screenHeight:.54,xs:[-8.4,-6.0,-3.6,-1.2,1.2,3.6,6.0,8.4]},
+      {row:1,z:5.85,width:2.42,screenWidth:1.62,screenHeight:.64,xs:[-6.0,-3.6,-1.2,1.2,3.6,6.0]}
     ];
     this.deskPositions=[];
     for(const config of deskRows)for(const x of config.xs){
@@ -285,16 +307,30 @@ window.Hive3D = (function () {
       this.add(b,x,.455,z-.565,width*.64,.028,.024,[.61,.70,.79,1]);
       this.add(rb,x-width*.36,.25,z+.03,.43,.52,1.02,[.90,.93,.97,1]);
       this.add(rb,x+width*.36,.25,z+.03,.43,.52,1.02,[.90,.93,.97,1]);
+      // Full-height acoustic partitions give every workstation the enclosed, built-in
+      // cubicle silhouette of the reference while preserving a clear sightline to screens.
+      for(const side of [-1,1]){
+        const dividerX=x+side*(width*.49);
+        this.add(rb,dividerX,.94,z+.005,.070,1.34,1.20,[.86,.89,.91,1]);
+        this.add(rb,dividerX,.96,z-.015,.074,1.27,1.13,[1,.992,.968,1]);
+        this.add(rb,dividerX,.94,z-.620,.082,1.31,.045,[.93,.94,.93,1]);
+        this.add(rb,dividerX,.94,z+.620,.082,1.31,.045,[.93,.94,.93,1]);
+        this.add(b,dividerX-side*.010,.94,z-.58,.012,.95,.012,[.73,.79,.82,1]);
+        this.add(b,dividerX-side*.010,.94,z+.58,.012,.95,.012,[.73,.79,.82,1]);
+      }
       // A compact three-drawer pedestal gives each station the white office furniture silhouette of the reference.
-      this.add(rb,x+width*.30,.27,z+.445,width*.30,.42,.26,[.90,.935,.98,1]);
+      this.add(rb,x+width*.30,.27,z+.445,width*.30,.42,.26,[.97,.965,.94,1]);
       for(const drawerY of [.18,.28,.38])this.add(b,x+width*.30,drawerY,z+.579,width*.22,.012,.012,[.62,.71,.80,1]);
       this.add(b,x+width*.30,.41,z+.581,width*.085,.018,.014,[.45,.58,.70,1]);
+      for(const drawerY of [.18,.28,.38])this.add(rb,x+width*.30,drawerY,z+.593,width*.105,.026,.018,[.80,.86,.92,1]);
       this.add(rb,x,.43,z-.22,width*.78,.045,.74,[.89,.93,.97,1]);
-      this.add(rb,x,screenY,z-.48,screenWidth+.18,screenHeight+.18,.13,[.035,.055,.075,1]);
-      this.add(rb,x,screenY,z-.432,screenWidth+.08,screenHeight+.08,.045,[.15,.20,.25,1]);
-      this.add(b,x,screenY,z-.405,screenWidth,screenHeight,.018,[.018,.105,.18,1]);
-      this.add(this.cylinder,x,.78,z-.43,.072,.40,.072,[.32,.39,.45,1]);
-      this.add(b,x,.49,z-.27,.54,.045,.34,[.16,.20,.24,1]);
+      this.add(rb,x,screenY,z-.48,screenWidth+.055,screenHeight+.095,.060,[.025,.040,.055,1]);
+      this.add(rb,x,screenY,z-.447,screenWidth+.028,screenHeight+.060,.020,[.12,.17,.21,1]);
+      this.add(b,x,screenY,z-.408,screenWidth,screenHeight,.018,[.018,.105,.18,1]);
+      this.add(this.cylinder,x,.78,z-.43,.034,.36,.034,[.55,.60,.63,1]);
+      this.add(rb,x,.60,z-.45,.30,.18,.028,[.76,.79,.79,1]);
+      this.add(rb,x,.935,z-.451,.20,.10,.038,[.43,.49,.52,1]);
+      this.add(b,x,.49,z-.27,.54,.045,.34,[.12,.17,.20,1]);
       this.add(b,x,screenY-screenHeight*.42,z-.382,screenWidth*.84,.018,.014,[.10,.83,.94,1]);
       // A tiny centered webcam and a restrained power indicator give the monitor a finished hardware read.
       this.add(rb,x,screenY+screenHeight*.5+.064,z-.386,.070,.026,.018,[.025,.035,.045,1]);
@@ -307,34 +343,43 @@ window.Hive3D = (function () {
         const keyColor=(row===0&&col%4===0)?[.54,.61,.68,1]:((row+col)%5===0?[.40,.48,.56,1]:[.22,.27,.32,1]);
         this.add(b,x-.45+col*.049,.659,z+.185+row*.045,.030,.009,.024,keyColor);
       }
-      this.add(b,x-.18,.62,z+.25,.66,.012,.24,[.68,.75,.82,1]);
+      this.add(b,x-.18,.62,z+.25,.66,.012,.24,[.78,.82,.83,1]);
+      for(let key=0;key<4;key++)this.add(b,x-.43+key*.14,.669,z+.17,.11,.004,.012,[.54,.61,.64,1]);
+      for(let key=0;key<4;key++)this.add(b,x-.43+key*.14,.669,z+.32,.11,.004,.012,[.54,.61,.64,1]);
       const binderStart=x+width/2-.48;
       for(let k=0;k<4;k++)this.add(b,binderStart+k*.095,.83,z+.35,.075,.43,.22,[[.13,.43,.78,1],[.95,.42,.24,1],[.16,.66,.46,1],[.93,.72,.28,1]][k]);
       const blueBinderStart=x-width/2+.19;
       for(let k=0;k<3;k++)this.add(b,blueBinderStart+k*.095,.79,z+.34,.075,.35,.18,[[.08,.34,.80,1],[.10,.51,.91,1],[.06,.25,.65,1]][k]);
       this.add(this.cylinder,x,.08,z+1.10,.075,.28,.075,[.12,.15,.18,1]);
       this.add(rb,x,.30,z+1.10,.94,.12,.68,[.11,.14,.17,1]);
-      this.add(rb,x,.50,z+.82,.88,.60,.15,[.12,.17,.22,1]);
-      this.add(rb,x,.50,z+.91,.66,.43,.024,[.20,.25,.29,1]);
+      this.add(rb,x,.68,z+.82,.82,.68,.15,[.17,.20,.23,1]);
+      this.add(rb,x,.68,z+.91,.62,.56,.024,[.24,.28,.31,1]);
       this.add(rb,x,.42,z+1.10,.48,.12,.12,[.18,.22,.25,1]);
       // Contrasting graphite upholstery separates the chair from the bee chassis.
-      this.add(rb,x,.50,z+.90,.67,.43,.050,[.16,.20,.24,1]);
-      for(const ribY of [.34,.48,.62])this.add(rb,x,ribY,z+.93,.48,.026,.020,[.34,.39,.43,1]);
-      for(const side of [-1,1])this.add(rb,x+side*.43,.50,z+.93,.030,.48,.025,[.23,.30,.36,1]);
+      this.add(rb,x,.68,z+.90,.62,.56,.050,[.22,.25,.28,1]);
+      for(const ribY of [.45,.64,.82,.94])this.add(rb,x,ribY,z+.93,.44,.018,.020,[.38,.41,.43,1]);
+      for(const side of [-1,1])this.add(rb,x+side*.40,.68,z+.93,.026,.60,.025,[.29,.34,.38,1]);
       for(const side of [-1,1]){
         this.add(rb,x+side*.39,.63,z+.96,.10,.075,.38,[.14,.18,.21,1]);
         this.add(b,x+side*.39,.48,z+.97,.035,.28,.045,[.10,.13,.16,1]);
       }
       for(let k=0;k<5;k++){const a=k*Math.PI*2/5;const wx=x+Math.cos(a)*.48,wz=z+1.10+Math.sin(a)*.40;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);this.add(s,wx,.005,wz,.085,.065,.075,[.035,.045,.055,1]);}
-      const by=1.25,bz=z+.98;
+      const by=1.25,bz=z+.98,beeObjectStart=this.objects.length;
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
-      this.add(s,x,by-.48,bz+.005,.345,.37,.255,[.075,.09,.11,1]);
+      this.add(s,x,by-.48,bz+.005,.325,.355,.250,[.075,.09,.11,1]);
       // Slightly enlarge the band ellipsoid to avoid depth-buffer z-fighting with the shell.
-      const shellX=.350,shellY=.375,shellZ=.260,shellCenterY=by-.48,shellCenterZ=bz+.005;
-      this.add(this.bandGoldTop,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[1,.66,.035,1]);
-      this.add(this.bandGoldBottom,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[.99,.56,.018,1]);
+      const shellX=.330,shellY=.360,shellZ=.255,shellCenterY=by-.48,shellCenterZ=bz+.005;
+      this.add(this.bandGoldTop,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[1,.86,.12,1]);
+      this.add(this.bandGoldBottom,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[1,.70,.045,1]);
       this.add(this.bandSeparator,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[.045,.055,.065,1]);
-      this.add(s,x,by,bz,.405,.37,.345,[1,.70,.045,1]);
+      this.add(s,x,by,bz,.365,.355,.325,[1,.94,.22,1]);
+      // The reference bee has a clear glossy black cheek/eye patch visible from behind.
+      // Put it on the camera-facing quarter of the head so the character reads at scene scale.
+      this.add(s,x+.235,by+.015,bz+.225,.145,.160,.062,[.008,.012,.018,1]);
+      this.add(s,x+.248,by+.060,bz+.273,.030,.034,.016,[.32,.86,.98,1]);
+      // A slim graphite cowl across the crown catches light like the reference's
+      // dark headset band and separates the head from the rounded thorax below.
+      this.add(rb,x,by+.316,bz+.004,.50,.058,.30,[.12,.14,.15,1]);
       // A forward-facing graphite visor makes the assistant read as a character, not a plain yellow sphere.
       // The workstation monitor is on -Z, so the faceplate and optical details sit on that side of the head.
       this.add(rb,x,by+.012,bz-.166,.258,.142,.026,[.035,.055,.070,1]);
@@ -357,7 +402,7 @@ window.Hive3D = (function () {
       // Short forward-projecting thighs tuck under the desktop and visually anchor the bee to its chair.
       for(const side of [-1,1]){
         this.add(s,x+side*.125,.465,z+.71,.075,.13,.14,[.075,.09,.11,1]);
-        this.add(rb,x+side*.13,.315,z+.66,.10,.060,.15,[.99,.66,.035,1]);
+        this.add(rb,x+side*.13,.315,z+.66,.10,.060,.15,[1,.86,.12,1]);
       }
       // A wider elbow arc keeps forearms visible around the torso in the rear camera view;
       // the left hand stays over the keyboard and the right hand aligns with the mouse.
@@ -378,22 +423,29 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Angled, translucent wings emerge from behind the head; a leading-edge highlight
       // defines the outward/upward sweep without enclosing the wing like a headset ring.
-      this.add(this.wing,x-.55,by+.14,bz+.10,.45,.42,.10,[.16,.54,.86,.42],0,-.52);
-      this.add(this.wing,x+.55,by+.14,bz+.10,.45,.42,.10,[.16,.54,.86,.42],0,.52);
+      this.add(this.wing,x-.49,by+.17,bz+.14,.66,.50,.10,[.88,.95,1,.96],0,-.48);
+      this.add(this.wing,x+.49,by+.17,bz+.14,.66,.50,.10,[.88,.95,1,.96],0,.48);
       for(const side of [-1,1]){
-        const rotation=side*.52,ca=Math.cos(rotation),sa=Math.sin(rotation);
+        const rotation=side*.48,ca=Math.cos(rotation),sa=Math.sin(rotation);
         const edgePoints=WING_OUTLINE.map(p=>[
-          x+side*.55+ca*p[0]*.45-sa*p[1]*.42,
-          by+.14+sa*p[0]*.45+ca*p[1]*.42,
+          x+side*.49+ca*p[0]*.66-sa*p[1]*.50,
+          by+.17+sa*p[0]*.66+ca*p[1]*.50,
           bz+.125
         ]);
-        for(let i=0;i<6;i++)this.addLink(edgePoints[i],edgePoints[i+1],.0058,[.26,.74,.98,.74]);
-        const root=[x+side*.37,by+.045,bz+.13];
-        const mid=[x+side*.55,by+.14,bz+.13];
-        const tip=[x+side*.73,by+.255,bz+.13];
-        this.addLink(root,mid,.0060,[.64,.90,1,.86]);
-        this.addLink(mid,tip,.0045,[.64,.90,1,.78]);
-        this.addLink([x+side*.52,by+.15,bz+.13],[x+side*.63,by+.22,bz+.13],.0034,[.82,.96,1,.68]);
+        for(let i=0;i<6;i++)this.addLink(edgePoints[i],edgePoints[i+1],.0052,[.59,.80,.91,.56]);
+        const root=[x+side*.38,by+.04,bz+.17];
+        const mid=[x+side*.50,by+.17,bz+.17];
+        const tip=[x+side*.76,by+.29,bz+.17];
+        this.addLink(root,mid,.0055,[.83,.93,.98,.70]);
+        this.addLink(mid,tip,.0042,[.83,.93,.98,.62]);
+        this.addLink([x+side*.43,by+.15,bz+.13],[x+side*.55,by+.22,bz+.13],.0032,[.90,.96,1,.54]);
+      }
+      // Slightly smaller assistants read as seated workers within the furniture scale.
+      for(const assistant of this.objects.slice(beeObjectStart)){
+        assistant.x=x+(assistant.x-x)*.92;
+        assistant.y=by+(assistant.y-by)*.92;
+        assistant.z=bz+(assistant.z-bz)*.92;
+        assistant.sx*=.84;assistant.sy*=.84;assistant.sz*=.84;
       }
 
     }
@@ -406,25 +458,31 @@ window.Hive3D = (function () {
       for(let k=0;k<18;k++){
         const a=k/18*Math.PI*2,spread=Math.sin(a)*.62;
         const y=.94+(k%5)*.145,rad=.20+(k%4)*.095;
-        const leafColor=[[.045,.30,.15,1],[.055,.38,.19,1],[.075,.45,.22,1],[.15,.50,.27,1]][k%4];
+        const leafColor=[[.09,.38,.14,1],[.13,.49,.17,1],[.18,.58,.21,1],[.24,.64,.25,1]][k%4];
         this.add(this.organic,x+Math.sin(a)*rad,y,-4.70+Math.cos(a)*rad*.62,
           .58+(k%3)*.065,.78+(k%4)*.10,.05,leafColor,a*.62-Math.PI*.18,Math.PI/2+spread);
       }
       for(let k=0;k<7;k++){
         const a=k/7*Math.PI*2,spread=Math.sin(a)*.48;
         this.add(this.organic,x+Math.sin(a)*.12,1.62+(k%3)*.10,-4.70+Math.cos(a)*.14,
-          .38,.60,.035,[.07,.40,.20,1],a*.65,Math.PI/2+spread);
+          .38,.60,.035,[.14,.58,.21,1],a*.65,Math.PI/2+spread);
       }
     }
     // Low-opacity contact shadows share the same 8+6 workstation positions.
     for(const desk of this.deskPositions){
       const {x,z,width}=desk;
-      this.add(s,x+.07,-.033,z+.04,width*.80,.012,.92,[.055,.09,.14,.30]);
-      this.add(s,x,-.032,z+1.00,.94,.010,.64,[.065,.11,.17,.24]);
+      // Place the soft shadow just above the coplanar hex grout so depth testing can
+      // blend the contact shade without z-fighting or the grout rejecting it.
+      this.add(this.shadow,x,-.029,z+.02,width*.78,.009,.88,[.20,.29,.39,.90]);
+      this.add(this.shadow,x+.02,-.028,z+1.0,.84,.009,.54,[.20,.29,.39,.76]);
+      for(const dx of [-.36,.36])for(const dz of [-.39,.38]){
+        this.add(this.shadow,x+width*dx,-.028,z+dz,.39,.008,.38,[.20,.29,.39,.66]);
+        this.add(this.shadow,x+width*dx,.462,z+dz,.40,.009,.40,[.20,.29,.39,.36]);
+      }
     }
   };
   Scene.prototype.buildBatches=function(){
-    const channels={opaque:{positions:[],normals:[],colors:[]},transparent:{positions:[],normals:[],colors:[]}};
+    const channels={opaque:{positions:[],normals:[],colors:[]},transparent:{positions:[],normals:[],colors:[],triangles:[]}};
     const emit=(target,p,n,color)=>{
       target.positions.push(p[0],p[1],p[2]);target.normals.push(n[0],n[1],n[2]);
       target.colors.push(color[0],color[1],color[2],color[3]==null?1:color[3]);
@@ -440,19 +498,30 @@ window.Hive3D = (function () {
         const world=local.map(v=>worldPoint(o,v));
         const smooth=mesh===this.sphere||mesh.smooth;
         const face=smooth?null:faceNormal(world[0],world[1],world[2]);
+        const triangle=[];
         for(let k=0;k<3;k++){
           const ix3=ix[i+k]*3,normal=[normals[ix3],normals[ix3+1],normals[ix3+2]];
-          emit(target,world[k],face||smoothNormal(o,normal),o.color);
+          const color=mesh.colors?mesh.colors.slice(ix[i+k]*4,ix[i+k]*4+4):o.color;
+          if(mesh.colors)color[3]*=o.color[3]==null?1:o.color[3];
+          const vertex={position:world[k],normal:face||smoothNormal(o,normal),color};
+          if(target===channels.transparent)triangle.push(vertex);else emit(target,vertex.position,vertex.normal,vertex.color);
         }
+        if(triangle.length)channels.transparent.triangles.push({vertices:triangle,depth:triangle.reduce((sum,v)=>sum+v.position[0]*this.eyeDirection[0]+v.position[1]*this.eyeDirection[1]+v.position[2]*this.eyeDirection[2],0)/3});
       }
     }
+    // Transparent objects retain depth testing but disable depth writes. Keep their
+    // triangles so the packed draw batch can be depth-sorted again when the camera moves.
+    this.transparentTriangles=channels.transparent.triangles;
+    for(const triangle of this.transparentTriangles)triangle.depth=triangle.vertices.reduce((sum,v)=>sum+dot(v.position,this.eyeDirection),0)/3;
+    this.transparentTriangles.sort((a,b)=>a.depth-b.depth);
+    for(const triangle of this.transparentTriangles)for(const vertex of triangle.vertices)emit(channels.transparent,vertex.position,vertex.normal,vertex.color);
     const gl=this.gl,upload=data=>{if(!data.length)return null;const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);return buffer;};
     this.batchBuffers={};
     for(const key of ["opaque","transparent"]){
       const channel=channels[key];
       this.batchBuffers[key]={positions:upload(channel.positions),normals:upload(channel.normals),colors:upload(channel.colors),count:channel.positions.length/3};
     }
-    for(const mesh of [this.box,this.roundBox,this.sphere,this.cylinder,this.organic,this.wing,this.grout,this.bandGoldTop,this.bandGoldBottom,this.bandSeparator])if(mesh){if(mesh.p)gl.deleteBuffer(mesh.p);if(mesh.ix)gl.deleteBuffer(mesh.ix);mesh.p=null;mesh.ix=null;}
+    for(const mesh of [this.box,this.roundBox,this.sphere,this.cylinder,this.organic,this.wing,this.grout,this.shadow,this.bandGoldTop,this.bandGoldBottom,this.bandSeparator])if(mesh){if(mesh.p)gl.deleteBuffer(mesh.p);if(mesh.ix)gl.deleteBuffer(mesh.ix);mesh.p=null;mesh.ix=null;}
   };
   Scene.prototype.drawBatch=function(batch){
     if(!batch||!batch.count)return;
@@ -462,11 +531,19 @@ window.Hive3D = (function () {
     gl.bindBuffer(gl.ARRAY_BUFFER,batch.colors);gl.enableVertexAttribArray(this.aColor);gl.vertexAttribPointer(this.aColor,4,gl.FLOAT,false,0,0);
     gl.drawArrays(gl.TRIANGLES,0,batch.count);
   };
+  Scene.prototype.sortTransparentBatch=function(direction){
+    if(!this.transparentTriangles||!this.batchBuffers||!this.batchBuffers.transparent)return;
+    for(const triangle of this.transparentTriangles)triangle.depth=triangle.vertices.reduce((sum,v)=>sum+dot(v.position,direction),0)/3;
+    this.transparentTriangles.sort((a,b)=>a.depth-b.depth);
+    const positions=[],normals=[],colors=[];
+    for(const triangle of this.transparentTriangles)for(const vertex of triangle.vertices){positions.push(...vertex.position);normals.push(...vertex.normal);colors.push(...vertex.color);}
+    const gl=this.gl,batch=this.batchBuffers.transparent;gl.bindBuffer(gl.ARRAY_BUFFER,batch.positions);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(positions),gl.DYNAMIC_DRAW);gl.bindBuffer(gl.ARRAY_BUFFER,batch.normals);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(normals),gl.DYNAMIC_DRAW);gl.bindBuffer(gl.ARRAY_BUFFER,batch.colors);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(colors),gl.DYNAMIC_DRAW);
+  };
   Scene.prototype.render=function(){
     if(!this.gl||!this.active||this.displayMode!=="live3d")return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
-    const radius=29.0/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.1+Math.sin(this.pitch)*radius*.52,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.62,0],[0,1,0]);const proj=mat4.perspective(.46,w/h,.1,80);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
+    const radius=25.4/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.1+Math.sin(this.pitch)*radius*.52,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.62,0],[0,1,0]);const proj=mat4.perspective(.46,w/h,.1,80);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;this.eyeDirection=norm(sub(eye,[0,.62,0]));this.sortTransparentBatch(this.eyeDirection);
     gl.uniformMatrix4fv(this.uViewProj,false,vp);gl.uniform3f(this.uEyePosition,eye[0],eye[1],eye[2]);
     this.drawBatch(this.batchBuffers&&this.batchBuffers.opaque);
     const translucent=this.batchBuffers&&this.batchBuffers.transparent;
@@ -555,12 +632,12 @@ window.Hive3D = (function () {
   Scene.prototype.setActive=function(active){this.active=!!active;if(this.timer)clearInterval(this.timer);if(this.raf)cancelAnimationFrame(this.raf);this.raf=0;this.layer.hidden=!this.active;this.canvas.hidden=!this.active||this.displayMode!=="live3d";if(this.active){this.updateOverlay();if(this.displayMode==="live3d")this.render();else if(this.displayMode==="reference")this.layoutOverlayPositions();this.timer=setInterval(()=>{if(!document.hidden&&this.host.offsetParent!==null)this.updateOverlay();},1000);}};
   Scene.prototype.resize=function(){this.cssW=this.host.clientWidth;this.cssH=this.host.clientHeight;if(!this.cssW||!this.cssH)return;if(this.displayMode==="live3d")this.render();else if(this.displayMode==="reference")this.layoutOverlayPositions();};
   Scene.prototype.zoomAt=function(factor){this.zoom=clamp(this.zoom/factor,.72,2.4);this.applyArtboardTransform();this.render();};
-  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=0;this.pitch=.42;this.panX=0;this.panY=0;this.applyArtboardTransform();this.render();};
-  Scene.prototype.setDisplayMode=function(mode){const next=mode==="live3d"?"live3d":mode==="2d"?"2d":"reference";const changed=next!==this.displayMode;this.displayMode=next;if(changed){this.zoom=1;this.yaw=0;this.pitch=.42;this.panX=0;this.panY=0;}this.canvas.hidden=!this.active||this.displayMode!=="live3d";this.updateOverlay();this.applyArtboardTransform();if(this.displayMode==="live3d")this.render();else if(this.displayMode==="reference")this.layoutOverlayPositions();};
+  Scene.prototype.resetView=function(){this.zoom=1;this.yaw=0;this.pitch=.48;this.panX=0;this.panY=0;this.applyArtboardTransform();this.render();};
+  Scene.prototype.setDisplayMode=function(mode){const next=mode==="live3d"?"live3d":mode==="2d"?"2d":"reference";const changed=next!==this.displayMode;this.displayMode=next;if(changed){this.zoom=1;this.yaw=0;this.pitch=.48;this.panX=0;this.panY=0;}this.canvas.hidden=!this.active||this.displayMode!=="live3d";this.updateOverlay();this.applyArtboardTransform();if(this.displayMode==="live3d")this.render();else if(this.displayMode==="reference")this.layoutOverlayPositions();};
   Scene.prototype.applyArtboardTransform=function(){if(!this.artboard)return;this.artboard.style.transform=this.displayMode==="reference"?"translate3d("+(this.panX*100)+"%,"+(this.panY*100)+"%,0) scale("+this.zoom+")":"none";};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0,deskRows:this.deskPositions?[this.deskPositions.filter(d=>d.row===0).length,this.deskPositions.filter(d=>d.row===1).length]:[]};};
   Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,desk.row===1?1.38:1.205,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
-  Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere,this.cylinder,this.organic,this.wing,this.grout,this.bandGoldTop,this.bandGoldBottom,this.bandSeparator])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
+  Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere,this.cylinder,this.organic,this.wing,this.grout,this.shadow,this.bandGoldTop,this.bandGoldBottom,this.bandSeparator])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
   const originalCreate=(opts)=>new Scene(opts);
   // Initialize geometry after the constructor has successfully acquired WebGL.
   const create=(opts)=>{const scene=originalCreate(opts);if(scene.failed||!scene.gl)return null;scene.buildWorld();scene.buildBatches();scene.render();return scene;};

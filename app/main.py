@@ -31,7 +31,7 @@ if os.environ.get("TUTTI_ISOLATE_HOME", "").strip() == "1":
     os.environ["USERPROFILE"] = _fake_home
     os.environ["HOME"] = _fake_home
 
-from core import automation, board, catalog, flows, jobs, manager, market, market_remote, preview, registry, remote, settings, store
+from core import activity, automation, board, catalog, flows, jobs, manager, market, market_remote, preview, registry, remote, settings, store
 from core import paths
 from core import health
 from core import usage as usage_ledger
@@ -255,6 +255,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(401, {"error": "需要访问令牌（启动 CodeBee 时控制台会显示）"})
             if path == "/api/state":
                 return self._json(200, _state_payload(self._client_id()))
+            if path == "/api/goals":
+                from core import goal_service
+                return self._json(200, {"current": goal_service.current(),
+                                        "goals": goal_service.list_goals()})
             if path == "/api/openapi.json":
                 from core import openapi
                 return self._json(200, openapi.document())
@@ -916,6 +920,75 @@ class Handler(BaseHTTPRequestHandler):
                 return deny
         if path == "/api/tasks":
             return self._api_create_task()
+        if path == "/api/goals":
+            from core import goal_service
+            body = self._body() or {}
+            title = str(body.get("title") or "").strip()
+            description = str(body.get("description") or "").strip()
+            if not title:
+                return self._json(400, {"error": "Goal 标题不能为空"})
+            if len(title) > 160 or len(description) > 4000:
+                return self._json(400, {"error": "Goal 标题最多 160 字，描述最多 4000 字"})
+            try:
+                goal = goal_service.create(title, description)
+            except goal_service.GoalExistsError as exc:
+                return self._json(409, {"error": str(exc), "current": goal_service.current()})
+            except (OSError, TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"goal": goal})
+        m = re.match(r"^/api/goals/([^/]+)$", path)
+        if m:
+            from core import goal_service
+            body = self._body() or {}
+            revision = body.get("revision")
+            if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+                return self._json(400, {"error": "revision 必须是正整数"})
+            changes = {}
+            for key in ("title", "description", "phase", "rounds_max"):
+                if key in body:
+                    changes[key] = body[key]
+            if not changes:
+                return self._json(400, {"error": "没有可更新的字段"})
+            if "title" in changes:
+                changes["title"] = str(changes["title"] or "").strip()
+                if not changes["title"] or len(changes["title"]) > 160:
+                    return self._json(400, {"error": "Goal 标题不能为空且最多 160 字"})
+            if "description" in changes:
+                changes["description"] = str(changes["description"] or "").strip()
+                if len(changes["description"]) > 4000:
+                    return self._json(400, {"error": "Goal 描述最多 4000 字"})
+            try:
+                goal = goal_service.update(unquote(m.group(1)), revision, **changes)
+            except goal_service.GoalNotFoundError:
+                return self._json(404, {"error": "Goal 不存在"})
+            except goal_service.StaleRevisionError as exc:
+                return self._json(409, {"error": str(exc), "current": goal_service.current()})
+            except (OSError, TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"goal": goal})
+        m = re.match(r"^/api/goals/([^/]+)/round$", path)
+        if m:
+            from core import goal_service
+            body = self._body() or {}
+            revision = body.get("revision")
+            if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+                return self._json(400, {"error": "revision 必须是正整数"})
+            goal = goal_service.get(unquote(m.group(1)))
+            if not goal:
+                return self._json(404, {"error": "Goal 不存在"})
+            if goal.get("phase") != "active":
+                return self._json(409, {"error": "只有进行中的 Goal 才能开始下一轮", "goal": goal})
+            if int(goal.get("rounds_started") or 0) >= int(goal.get("rounds_max") or 1):
+                return self._json(409, {"error": "Goal 已达到轮数上限", "goal": goal})
+            try:
+                goal = goal_service.increment_rounds(unquote(m.group(1)), revision)
+            except goal_service.GoalNotFoundError:
+                return self._json(404, {"error": "Goal 不存在"})
+            except goal_service.StaleRevisionError as exc:
+                return self._json(409, {"error": str(exc), "current": goal_service.current()})
+            except (OSError, TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"goal": goal})
         if path == "/api/backend-profiles":
             from core import backend_profiles
             try:
@@ -3427,10 +3500,12 @@ def _state_payload(client_id="", ver=None):
         ver = store.state_version()
     runs = store.list_runs(40)
     latest = store.latest_run_by_task()
+    tasks = store.list_tasks(archived=False)
     return {
         "v": ver,
         "agents": agents,
-        "tasks": store.list_tasks(archived=False),
+        "tasks": tasks,
+        "task_attention": activity.task_attention(tasks, latest),
         # 归档任务默认隐藏；目标/上下文可能很大，只有查看或恢复时再按需读取。
         "archived_tasks": [_state_task_summary(t) for t in store.list_tasks(archived=True)],
         # 每个任务的最近一次运行（不受 runs 窗口限制）：侧栏靠它展示各任务真实近况
@@ -3461,6 +3536,7 @@ def _state_run_summary(run):
               "auto_resumes", "resume_enqueue_at", "cost_usd", "tokens")
     summary = {key: run[key] for key in fields if key in run}
     summary["step_count"] = len(run.get("steps") or [])
+    summary.update(activity.run_activity(run))
     messages = run.get("messages") or []
     summary["message_count"] = len(messages)
     summary["pending_message_count"] = sum(1 for message in messages if not message.get("consumed"))
@@ -3590,6 +3666,8 @@ def main():
     print("[CodeBee] v%s" % (_ver or "?"), flush=True)
     _step("正在准备数据目录…")
     paths.ensure_dirs()
+    from core import goal_service
+    goal_service.init()
     from core import backend_profiles as _backend_profiles
     from core import command_auth as _command_auth
     _backend_profiles.init()

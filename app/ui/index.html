@@ -13,6 +13,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CodeBee">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="activity.css">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，首涂落经典底色，
      app.js 加载后会按 currentSkin() 校正为默认皮肤。 -->
@@ -136,9 +137,10 @@
           <span class="brand-name">CodeBee</span>
           <svg class="ico brand-caret" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
         </button>
-        <button id="btn-notify-toggle" class="brand-tool" title="完成/待裁决提示音" aria-label="完成/待裁决提示音"
-                data-i18n-title="完成/待裁决提示音" data-i18n-aria="完成/待裁决提示音">
+        <button id="btn-notify-toggle" class="brand-tool" title="打开活动视图" aria-label="打开活动视图" data-i18n-title="打开活动视图" data-i18n-aria="打开活动视图"
+                aria-controls="side-activity" aria-pressed="false" aria-keyshortcuts="Control+Alt+U">
           <svg class="ico" aria-hidden="true"><use href="#i-bell"></use></svg>
+          <span id="activity-badge" class="activity-badge hidden"></span>
         </button>
         <button class="brand-tool side-search" id="btn-cmdk" title="搜索" aria-label="搜索" data-i18n-title="搜索" data-i18n-aria="搜索">
           <svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>
@@ -178,7 +180,7 @@
           <span data-i18n="浏览器">浏览器</span>
         </button>
       </div>
-      <div class="side-section tasks">
+      <div id="side-projects" class="side-section tasks">
         <div class="side-label-row">
           <div data-i18n="项目" class="side-label">项目</div>
           <button id="btn-side-expand" class="foot-btn notify-toggle" title="展开全部" aria-label="展开全部"
@@ -192,6 +194,17 @@
         </div>
         <div id="side-tasks" class="side-tasks"></div>
       </div>
+      <section id="side-activity" class="side-activity hidden" aria-label="活动视图" data-i18n-aria="活动视图">
+        <div class="activity-toolbar">
+          <h2 data-i18n="活动">活动</h2>
+          <button id="activity-read-all" type="button" class="activity-tool" title="将完成任务标为已读" data-i18n-title="将完成任务标为已读" data-i18n="全部已读">全部已读</button>
+          <button id="activity-sound" type="button" class="brand-tool" aria-label="完成/待裁决提示音" data-i18n-aria="完成/待裁决提示音">
+            <svg class="ico" aria-hidden="true"><use href="#i-bell"></use></svg>
+          </button>
+        </div>
+        <p id="activity-count" class="activity-count" role="status" aria-live="polite"></p>
+        <div id="activity-list" class="activity-list"></div>
+      </section>
       <!-- 底部用量条：陈列真实台账数字（本月调用/花费 + 近 14 天走势）。
            刻意不做「用量 68%」那种百分比进度条——CodeBee 没有套餐配额，
            硬编一个分母就是假数；这里给的都是能直接核对的真值。 -->
@@ -242,31 +255,37 @@
       <button id="btn-set-back" class="set-back" data-i18n="返回 CodeBee">
         <svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>返回 CodeBee
       </button>
+      <label class="settings-search-wrap">
+        <svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>
+        <input id="settings-search" type="search" autocomplete="off" data-i18n-ph="搜索设置和功能…" placeholder="搜索设置和功能…" aria-label="搜索设置和功能" data-i18n-aria="搜索设置和功能">
+        <kbd>Esc</kbd>
+      </label>
+      <div id="settings-search-empty" class="settings-search-empty hidden" data-i18n="没有匹配的设置">没有匹配的设置</div>
       <!-- 概览 / 运行记录 / 自动化已升为左栏快捷导航（见 .side-quick），此处不再重复挂条目 -->
-      <div data-i18n="编排" class="set-group">编排</div>
-      <button class="set-item active" data-sub="tasks" data-i18n="任务"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg>任务</button>
-      <button class="set-item" data-sub="hooks" data-i18n="钩子"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg>钩子</button>
-      <button class="set-item" data-sub="__wxdigest" data-i18n="微信群聊汇报"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg>微信群聊汇报</button>
-      <button class="set-item" data-sub="zentao" data-i18n="禅道"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>禅道</button>
-      <button class="set-item" data-sub="usage" data-i18n="用量统计"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg>用量统计</button>
-      <div data-i18n="配置" class="set-group">配置</div>
-      <button class="set-item" data-sub="agents" data-i18n="本机智能体"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg>本机智能体</button>
-      <button class="set-item" data-sub="models" data-i18n="模型接入"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>模型接入</button>
-      <button class="set-item" data-sub="bindings" data-i18n="模型调度（可选）"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg>模型调度（可选）</button>
-      <button class="set-item" data-sub="skills" data-i18n="经验库"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg>经验库</button>
-      <button class="set-item" data-sub="knowledge" data-i18n="知识库"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg>知识库</button>
-      <button class="set-item" data-sub="market" data-i18n="插件市场"><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg>插件市场</button>
-      <button class="set-item" data-sub="orch" data-i18n="编排设置"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg>编排设置</button>
-      <button class="set-item" data-sub="evalbench" data-i18n="模型评测"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>模型评测</button>
-      <div data-i18n="数据" class="set-group">数据</div>
-      <button class="set-item" data-sub="data" data-i18n="数据与备份"><svg class="ico" aria-hidden="true"><use href="#i-library"></use></svg>数据与备份</button>
-      <div data-i18n="外观" class="set-group">外观</div>
-      <button class="set-item" data-sub="appearance" data-i18n="皮肤"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg>皮肤</button>
-      <div data-i18n="软件" class="set-group">软件</div>
-      <button id="btn-guide" class="set-item" data-sub="__guide" data-i18n="帮助中心"><svg class="ico" aria-hidden="true"><use href="#i-rocket"></use></svg>帮助中心</button>
-      <button id="btn-about" class="set-item" data-sub="about" data-i18n="关于与更新"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>关于与更新</button>
-      <div data-i18n="远程" class="set-group">远程</div>
-      <button id="btn-phone" class="set-item" data-sub="__phone" data-i18n="手机连接"><svg class="ico" aria-hidden="true"><use href="#i-phone"></use></svg>手机连接</button>
+      <div data-i18n="工作流" class="set-group">工作流</div>
+      <button class="set-item active" data-sub="tasks" data-search="任务 新建 提示词 运行 编排 工作流 task prompt run workflow"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span data-i18n="任务">任务</span></button>
+      <div data-i18n="集成" class="set-group">集成</div>
+      <button class="set-item" data-sub="hooks" data-search="钩子 hooks 生命周期 脚本 自动化 hook lifecycle script automation"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg><span data-i18n="钩子">钩子</span></button>
+      <button class="set-item" data-sub="zentao" data-search="禅道 zentao bug 缺陷 修复 issue bug fix"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg><span data-i18n="禅道">禅道</span></button>
+      <button class="set-item" data-sub="__wxdigest" data-search="微信群聊汇报 微信 群聊 摘要 消息 wechat group chat summary"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="微信群聊汇报">微信群聊汇报</span></button>
+      <div data-i18n="智能体与模型" class="set-group">智能体与模型</div>
+      <button class="set-item" data-sub="agents" data-search="本机智能体 cli agent 安装 命令行 local agents install"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg><span data-i18n="本机智能体">本机智能体</span></button>
+      <button class="set-item" data-sub="models" data-search="模型接入 供应商 API 密钥 provider models api keys"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg><span data-i18n="模型接入">模型接入</span></button>
+      <button class="set-item" data-sub="bindings" data-search="模型调度 路由 绑定 降级 fallback routing binding"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg><span data-i18n="模型调度（可选）">模型调度（可选）</span></button>
+      <button class="set-item" data-sub="orch" data-search="编排设置 编排者 并发 工作目录 MCP ACP 命令授权 推送通知 orchestrator concurrency workspace command authorization notifications"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><span data-i18n="编排设置">编排设置</span></button>
+      <button class="set-item" data-sub="evalbench" data-search="模型评测 基准 测试 榜单 model evaluation benchmark test leaderboard"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="模型评测">模型评测</span></button>
+      <div data-i18n="知识与扩展" class="set-group">知识与扩展</div>
+      <button class="set-item" data-sub="skills" data-search="经验库 技能 skill 规范 教训 skills guidelines lessons"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg><span data-i18n="经验库">经验库</span></button>
+      <button class="set-item" data-sub="knowledge" data-search="知识库 记忆 搜索 知识 knowledge memory search"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg><span data-i18n="知识库">知识库</span></button>
+      <button class="set-item" data-sub="market" data-search="插件市场 插件 MCP 扩展 安装 plugin extension install"><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg><span data-i18n="插件市场">插件市场</span></button>
+      <div data-i18n="用量与数据" class="set-group">用量与数据</div>
+      <button class="set-item" data-sub="usage" data-search="用量统计 token 成本 台账 调用 usage costs ledger"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg><span data-i18n="用量统计">用量统计</span></button>
+      <button class="set-item" data-sub="data" data-search="数据与备份 导入 导出 恢复 清理 data backup import export restore"><svg class="ico" aria-hidden="true"><use href="#i-library"></use></svg><span data-i18n="数据与备份">数据与备份</span></button>
+      <div data-i18n="外观与软件" class="set-group">外观与软件</div>
+      <button class="set-item" data-sub="appearance" data-search="皮肤 外观 主题 语言 明暗 字体 桌面蜜蜂 appearance theme language dark light font"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span data-i18n="皮肤">皮肤</span></button>
+      <button id="btn-guide" class="set-item" data-sub="__guide" data-search="帮助中心 指南 文档 教程 help guide docs"><svg class="ico" aria-hidden="true"><use href="#i-rocket"></use></svg><span data-i18n="帮助中心">帮助中心</span></button>
+      <button id="btn-about" class="set-item" data-sub="about" data-search="关于与更新 版本 更新 诊断 报告 about version update diagnostics"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="关于与更新">关于与更新</span></button>
+      <button id="btn-phone" class="set-item" data-sub="__phone" data-search="手机连接 远程 手机 phone remote"><svg class="ico" aria-hidden="true"><use href="#i-phone"></use></svg><span data-i18n="手机连接">手机连接</span></button>
     </div>
     <!-- 右缘拖拽手柄：常规视图与设置视图共用，调的是整个左栏宽度 -->
     <div id="side-resizer" title="拖动调宽 · 双击复原" data-i18n-title="拖动调宽 · 双击复原"></div>
@@ -340,6 +359,28 @@
           </div>
         </div>
         <div id="ov-kpis" class="ov-kpis"></div>
+        <section id="ov-goal" class="panel ov-goal-card" aria-labelledby="ov-goal-heading">
+          <div class="panel-head">
+            <div><h2 id="ov-goal-heading" data-i18n="长目标">长目标</h2>
+              <p class="ov-goal-caption" data-i18n="把需要多轮推进的工作固定下来，随时暂停或恢复。">把需要多轮推进的工作固定下来，随时暂停或恢复。</p></div>
+            <span id="ov-goal-phase" class="chip hidden"></span>
+          </div>
+          <div id="ov-goal-empty" class="ov-goal-empty">
+            <label class="sr-only" for="ov-goal-title" data-i18n="目标标题">目标标题</label>
+            <input id="ov-goal-title" type="text" maxlength="160" placeholder="例如：逐步完善 CodeBee 桌面体验" data-i18n-ph="例如：逐步完善 CodeBee 桌面体验">
+            <label class="sr-only" for="ov-goal-description" data-i18n="目标说明">目标说明</label>
+            <textarea id="ov-goal-description" rows="2" maxlength="4000" placeholder="写下完成标准或背景（可选）" data-i18n-ph="写下完成标准或背景（可选）"></textarea>
+            <button id="ov-goal-create" type="button" class="primary" data-i18n="创建长目标">创建长目标</button>
+          </div>
+          <div id="ov-goal-active" class="ov-goal-active hidden">
+            <h3 id="ov-goal-name"></h3>
+            <p id="ov-goal-description-text" class="ov-goal-description"></p>
+            <div class="ov-goal-progress-row"><span id="ov-goal-progress"></span><span id="ov-goal-rounds"></span></div>
+            <div class="ov-goal-progress-track"><i id="ov-goal-progress-fill"></i></div>
+            <p id="ov-goal-error" class="ov-goal-error" role="status"></p>
+            <div id="ov-goal-actions" class="ov-goal-actions"></div>
+          </div>
+        </section>
         <div class="ov-row">
           <div class="panel ov-trend">
             <div class="panel-head">
@@ -692,8 +733,8 @@
                 </div>
                 <span class="hive-scene-hint" data-i18n="拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志">拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志</span>
                 <span class="hive-scene-spacer"></span>
-                <button type="button" class="hive-scene-btn" data-hive-scene-action="zoom-out" aria-label="缩小" title="缩小">−</button>
-                <button type="button" class="hive-scene-btn" data-hive-scene-action="zoom-in" aria-label="放大" title="放大">+</button>
+                <button type="button" class="hive-scene-btn" data-hive-scene-action="zoom-out" aria-label="缩小" title="缩小" data-i18n-aria="缩小" data-i18n-title="缩小">−</button>
+                <button type="button" class="hive-scene-btn" data-hive-scene-action="zoom-in" aria-label="放大" title="放大" data-i18n-aria="放大" data-i18n-title="放大">+</button>
                 <button type="button" class="hive-scene-btn hive-scene-reset" data-hive-scene-action="reset" data-i18n="复位视角">复位视角</button>
                 <button id="hive-scene-fullscreen" type="button" class="hive-scene-btn hive-scene-fullscreen" aria-label="进入全屏" title="进入全屏" data-i18n-aria="进入全屏" data-i18n-title="进入全屏" aria-pressed="false" data-i18n="全屏">全屏</button>
               </div>
@@ -1083,7 +1124,7 @@
           <div class="panel-head"><h2 data-i18n="编排设置">编排设置</h2></div>
           <p data-i18n="「编排者」是 CodeBee 自己的智能体：直连 API 供应商的模型（不占 CLI 会话），统一负责任务规划拆解、难度判定与写作大纲。未启用或调用失败时自动回落为「最强可用 CLI 智能体」规划，流程永不阻塞。" class="hint">「编排者」是 CodeBee 自己的智能体：直连 API 供应商的模型（不占 CLI 会话），统一负责任务规划拆解、难度判定与写作大纲。未启用或调用失败时自动回落为「最强可用 CLI 智能体」规划，流程永不阻塞。</p>
           <div id="orch-config"></div>
-          <h3 data-i18n="运行设置" class="sec-title">运行设置</h3>
+          <h3 data-i18n="运行与工作区" class="sec-title">运行与工作区</h3>
           <div class="field"><label data-i18n="编排并发上限（本机资源保护）">编排并发上限（本机资源保护）</label>
             <div class="input-row">
               <input id="set-workers" type="number" min="1" max="24" value="12">
@@ -1104,7 +1145,9 @@
             <label class="toggle" style="margin-top:6px"><input id="set-claude-sync" type="checkbox"> <span data-i18n="把绑定供应商写进 ~/.claude/settings.json（一键打开与每次运行前）">把绑定供应商写进 ~/.claude/settings.json（一键打开与每次运行前）</span></label>
             <p data-i18n="开启后 CodeBee 会覆盖 cc-switch 等工具对交互 claude 的手选配置。关闭后交互 claude 配置归你手动管理；编排步骤改用一次性注入，模型路由不受影响。" class="hint">开启后 CodeBee 会覆盖 cc-switch 等工具对交互 claude 的手选配置。关闭后交互 claude 配置归你手动管理；编排步骤改用一次性注入，模型路由不受影响。</p>
           </div>
-          <h3 data-i18n="MCP 工具（内置智能体）" class="sec-title">MCP 工具（内置智能体）</h3>
+          <h3 data-i18n="工具与连接" class="sec-title">工具与连接</h3>
+          <p class="hint" data-i18n="配置 MCP、ACP 与本机命令授权。这些工具会以你的本机权限运行，请只连接可信服务。">配置 MCP、ACP 与本机命令授权。这些工具会以你的本机权限运行，请只连接可信服务。</p>
+          <h4 class="settings-subhead" data-i18n="MCP 工具（内置智能体）">MCP 工具（内置智能体）</h4>
           <div class="field"><label data-i18n="MCP 服务器清单（JSON 数组，stdio 形态，最多 4 个）">MCP 服务器清单（JSON 数组，stdio 形态，最多 4 个）</label>
             <textarea id="set-mcp-servers" rows="4" style="width:100%;font-family:var(--mono,monospace);font-size:12px" placeholder='[{"name":"fs","command":"npx","args":["-y","@modelcontextprotocol/server-fs","C:/data"]}]'></textarea>
             <div class="input-row" style="margin-top:6px" id="mcp-templates">
@@ -1120,26 +1163,26 @@
             </div>
             <p data-i18n="内置智能体（直连对话/直接执行）会把服务器的工具并入工具循环（mcp__服务器__工具 名）。命令在你本机执行，与「执行命令」工具同一自主权级别；工具清单缓存 5 分钟。留空 = 不启用。" class="hint">内置智能体（直连对话/直接执行）会把服务器的工具并入工具循环（mcp__服务器__工具 名）。命令在你本机执行，与「执行命令」工具同一自主权级别；工具清单缓存 5 分钟。留空 = 不启用。</p>
           </div>
-          <h3 class="sec-title">ACP Backend Profiles</h3>
+          <h4 class="settings-subhead">ACP Backend Profiles</h4>
           <p class="hint">接入遵循 Agent Client Protocol v1 的本地或 SSH stdio Agent。密钥只保存在本机，读取时始终脱敏。</p>
           <div class="field">
             <div id="acp-profiles" class="list"></div>
             <div class="input-row" style="margin-top:6px">
-              <input id="acp-label" type="text" placeholder="名称">
-              <input id="acp-command" type="text" placeholder="启动命令，例如 acp-agent">
-              <input id="acp-args" type="text" placeholder="参数 JSON 数组，例如 [\"--stdio\"]">
-              <input id="acp-workspace" type="text" placeholder="Agent 工作区（可空）">
+              <input id="acp-label" type="text" placeholder="名称" data-i18n-ph="名称">
+              <input id="acp-command" type="text" placeholder="启动命令，例如 acp-agent" data-i18n-ph="启动命令，例如 acp-agent">
+              <input id="acp-args" type="text" placeholder="参数 JSON 数组，例如 [\"--stdio\"]" data-i18n-ph="参数 JSON 数组，例如 [\"--stdio\"]">
+              <input id="acp-workspace" type="text" placeholder="Agent 工作区（可空）" data-i18n-ph="Agent 工作区（可空）">
               <button class="ghost small" type="button" onclick="saveAcpProfile()">保存 ACP</button>
             </div>
             <p id="acp-msg" class="hint"></p>
           </div>
-          <h3 class="sec-title">命令授权</h3>
+          <h4 class="settings-subhead" data-i18n="命令授权">命令授权</h4>
           <div class="field">
             <div class="input-row"><select id="command-auth-mode"><option value="legacy">legacy：自动执行</option><option value="restricted">restricted：逐条等待批准</option></select><button class="ghost small" type="button" onclick="saveCommandAuthMode()">保存策略</button></div>
             <div id="command-auth-pending" class="list"></div>
             <p id="command-auth-msg" class="hint"></p>
           </div>
-          <h3 data-i18n="推送通知" class="sec-title">推送通知</h3>
+          <h3 data-i18n="通知" class="sec-title">通知</h3>
           <div class="field"><label data-i18n="群机器人 Webhook（钉钉 / 飞书 / 企业微信，按域名自动适配）">群机器人 Webhook（钉钉 / 飞书 / 企业微信，按域名自动适配）</label>
             <div class="input-row">
               <input id="set-notify-webhook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" data-i18n-ph="https://oapi.dingtalk.com/robot/send?access_token=…">
@@ -1711,6 +1754,7 @@
 <script src="i18n.js"></script>
 <script src="artdiff.js"></script>
 <script src="hive3d.js"></script>
+<script src="activity.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

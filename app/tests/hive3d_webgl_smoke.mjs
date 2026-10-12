@@ -77,7 +77,7 @@ let uploadedBytes = 0;
 let nextAttrib = 0;
 const fakeGL = {
   ARRAY_BUFFER: 34962, ELEMENT_ARRAY_BUFFER: 34963, STATIC_DRAW: 35044,
-  FLOAT: 5126, TRIANGLES: 4, UNSIGNED_SHORT: 5123,
+  FLOAT: 5126, TRIANGLES: 4, UNSIGNED_SHORT: 5123, DYNAMIC_DRAW: 35048,
   VERTEX_SHADER: 35633, FRAGMENT_SHADER: 35632, COMPILE_STATUS: 35713, LINK_STATUS: 35714,
   DEPTH_TEST: 2929, CULL_FACE: 2884, BLEND: 3042, BACK: 1029,
   SRC_ALPHA: 770, ONE_MINUS_SRC_ALPHA: 771, COLOR_BUFFER_BIT: 16384, DEPTH_BUFFER_BIT: 256,
@@ -94,9 +94,9 @@ const fakeGL = {
   useProgram() {},
   getAttribLocation: () => nextAttrib++,
   getUniformLocation: (_, name) => ({ name }),
-  createBuffer: () => ({}),
-  bindBuffer() {},
-  bufferData: (_, data) => { uploadedBytes += data.byteLength || 0; },
+  createBuffer: () => ({ data: null }),
+  bindBuffer: (target, buffer) => { if (target === fakeGL.ARRAY_BUFFER) fakeGL.currentArrayBuffer = buffer; },
+  bufferData: (target, data) => { uploadedBytes += data.byteLength || 0; if (target === fakeGL.ARRAY_BUFFER && fakeGL.currentArrayBuffer) fakeGL.currentArrayBuffer.data = data; },
   enable() {},
   cullFace() {},
   blendFunc() {},
@@ -162,6 +162,22 @@ assert.equal(scene.deskPositions.filter(desk => desk.row === 1).length, 6, "refe
 assert.equal(scene.monitors.length, scene.deskPositions.length, "each modeled workstation has a monitor overlay");
 assert.ok(scene.batchBuffers.opaque.count > 0, "opaque scene geometry is batched");
 assert.ok(scene.batchBuffers.transparent.count > 0, "glass, wings and shadows are drawn in a translucent pass");
+assert.ok(scene.shadow.colors.some((_, i) => i % 4 === 3 && scene.shadow.colors[i] === 0), "procedural floor shadows fade smoothly at their outer edge");
+const assertTransparentDepthOrder = () => {
+  const data = scene.batchBuffers.transparent.positions.data, direction = scene.eyeDirection, depths = [];
+  for (let i = 0; i < data.length; i += 9) {
+    let depth = 0;
+    for (let vertex = 0; vertex < 3; vertex++) depth += data.slice(i + vertex * 3, i + vertex * 3 + 3).reduce((sum, value, axis) => sum + value * direction[axis], 0) / 3;
+    depths.push(depth);
+  }
+  for (let i = 1; i < depths.length; i++) assert.ok(depths[i - 1] <= depths[i] + 0.0001, "translucent triangles are drawn back-to-front");
+};
+assertTransparentDepthOrder();
+scene.yaw = 0.36; scene.pitch = 0.58;
+const radius = 29 / scene.zoom, eye = [Math.sin(scene.yaw) * radius, 3.1 + Math.sin(scene.pitch) * radius * 0.52, Math.cos(scene.yaw) * radius - 1.3];
+const cameraDirection = eye.map((value, axis) => value - [0, 0.62, 0][axis]), cameraLength = Math.hypot(...cameraDirection);
+scene.eyeDirection = cameraDirection.map(value => value / cameraLength); scene.sortTransparentBatch(scene.eyeDirection);
+assertTransparentDepthOrder();
 
 const cells = Array.from({ length: 14 }, (_, i) => ({
   rel: "steps/" + i + ".log", role: "实现步骤 " + (i + 1),

@@ -133,6 +133,7 @@ async function main() {
     await evaluate("document.querySelector('[data-hive-view=reference]').click()");
     await clickSelector("#hive-scene-fullscreen");
     await waitFor(() => evaluate("document.fullscreenElement === document.getElementById('hive-scene-stage')"), 10000, "reference fullscreen entry");
+    await waitFor(() => evaluate("document.getElementById('hive-scene-fullscreen').getAttribute('aria-pressed') === 'true'"), 10000, "fullscreen UI synchronization");
     const referenceFullscreen = JSON.parse(await evaluate("JSON.stringify((() => { const stage=document.getElementById('hive-scene-stage'),viewport=document.getElementById('rd-hive-viewport'),img=viewport.querySelector('.hive-reference'),button=document.getElementById('hive-scene-fullscreen'),s=stage.getBoundingClientRect(),v=viewport.getBoundingClientRect(); return {mode:window.__hive3d.displayMode,fit:getComputedStyle(img).objectFit,imageDisplay:getComputedStyle(img).display,pressed:button.getAttribute('aria-pressed'),stage:[s.width,s.height],viewport:[v.width,v.height],toolbarInside:stage.contains(document.querySelector('.hive-scene-tools'))}; })())"));
     assert.equal(referenceFullscreen.mode, "reference", "high-fidelity view remains selected in fullscreen");
     assert.equal(referenceFullscreen.fit, "contain", "high-fidelity artwork preserves aspect ratio in fullscreen");

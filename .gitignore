@@ -18,6 +18,7 @@ tmp_*
 /tests/*
 !/tests/test_*.py
 !/tests/test_state_payload.py
+!/tests/test_activity_model.cjs
 .playwright-cli/
 作品信息-*.md
 

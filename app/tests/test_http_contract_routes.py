@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import main
-from core import backend_profiles, command_auth, contracts, review_requests, story_tracking
+from core import backend_profiles, command_auth, contracts, goal_service, review_requests, story_tracking
 
 
 class HttpContractRouteTests(unittest.TestCase):
@@ -176,6 +176,68 @@ class HttpContractRouteTests(unittest.TestCase):
             status, payload = invalid._route_post()
             self.assertEqual(status, 400)
             self.assertIn("run_id", payload["error"])
+
+    def test_goal_routes_create_read_and_transition_with_revision_cas(self):
+        goal_service.init(self.root / "goal-data")
+        h = self.handler("/api/goals", {"title": "跨轮目标", "description": "逐步完成"})
+        status, payload = h._route_post()
+        self.assertEqual(status, 200)
+        goal = payload["goal"]
+        self.assertEqual(goal["phase"], "active")
+
+        status, payload = self.handler("/api/goals", {})._route_get()
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["current"]["goal_id"], goal["goal_id"])
+
+        h = self.handler("/api/goals/" + goal["goal_id"], {
+            "revision": goal["revision"], "phase": "paused"})
+        status, payload = h._route_post()
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["goal"]["phase"], "paused")
+
+        h = self.handler("/api/goals/" + goal["goal_id"], {
+            "revision": goal["revision"], "phase": "active"})
+        status, payload = h._route_post()
+        self.assertEqual(status, 409)
+
+        h = self.handler("/api/goals/" + goal["goal_id"], {
+            "revision": payload["current"]["revision"], "phase": "active"})
+        status, payload = h._route_post()
+        self.assertEqual(status, 200)
+
+        h = self.handler("/api/goals/" + goal["goal_id"] + "/round", {
+            "revision": payload["goal"]["revision"]})
+        status, payload = h._route_post()
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["goal"]["rounds_started"], 1)
+
+    def test_goal_route_rejects_invalid_create_and_missing_revision(self):
+        goal_service.init(self.root / "goal-data")
+        status, payload = self.handler("/api/goals", {"title": " "})._route_post()
+        self.assertEqual(status, 400)
+        self.assertIn("标题", payload["error"])
+        g = goal_service.create("已有")
+        status, payload = self.handler("/api/goals/" + g["goal_id"], {
+            "phase": "paused"})._route_post()
+        self.assertEqual(status, 400)
+        self.assertIn("revision", payload["error"])
+
+
+class GoalUiContractTests(unittest.TestCase):
+
+    def test_overview_has_goal_surface_and_controls(self):
+        root = Path(__file__).resolve().parents[1]
+        index = (root / "ui" / "index.html").read_text(encoding="utf-8")
+        app = (root / "ui" / "app.js").read_text(encoding="utf-8")
+        style = (root / "ui" / "style.css").read_text(encoding="utf-8")
+        for element_id in ("ov-goal", "ov-goal-create", "ov-goal-title", "ov-goal-description",
+                           "ov-goal-phase", "ov-goal-progress", "ov-goal-actions"):
+            self.assertIn('id="%s"' % element_id, index)
+        self.assertIn("/api/goals", app)
+        self.assertIn("goalRender", app)
+        self.assertIn('["active", "paused"].includes(data.goal.phase) ? data.goal : null', app)
+        self.assertIn('uiConfirm(t("确定将这个长目标标记为完成吗？")', app)
+        self.assertIn(".ov-goal-card", style)
 
 
 if __name__ == "__main__":
