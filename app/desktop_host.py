@@ -255,10 +255,21 @@ def main() -> None:
 
     # Bind before recovery/schedulers start. Never enter the CLI's stale-port
     # cleanup path: a desktop launch must not terminate a running CLI service.
-    try:
-        server = ReadyServer(("127.0.0.1", args.port), DesktopHandler)
-    except OSError as exc:
-        raise SystemExit("CodeBee 端口已被占用，请退出已有服务后重试：%s" % exc)
+    # 端口候选：请求端口优先（launcher 默认 8766，窗口 origin 跨重启稳定，
+    # localStorage 界面偏好不丢）；被占自动回落随机端口——绝不与 CLI 的
+    # 8765 冲突，也绝不因为偏好端口被占而起不来。--port 0 = 纯随机。
+    candidates = ([args.port] if args.port else [8766]) + [0]
+    server = None
+    bind_errors = []
+    for candidate in candidates:
+        try:
+            server = ReadyServer(("127.0.0.1", candidate), DesktopHandler)
+            break
+        except OSError as exc:
+            bind_errors.append("%s: %s" % (candidate, exc))
+    if server is None:
+        raise SystemExit("CodeBee 端口无法绑定，请退出占用后重试："
+                         + "; ".join(bind_errors))
     port = server.server_address[1]
     record_service(paths.DATA_DIR, port, os.getpid())
     engine.ThreadedServer = lambda *a, **kw: server

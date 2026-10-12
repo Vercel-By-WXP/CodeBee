@@ -143,11 +143,12 @@ async function startBackend() {
     if (window && !window.isDestroyed()) await window.loadFile(path.join(__dirname, 'startup.html'));
     const env = await cliEnvironment();
     if (smoke) env.TUTTI_ISOLATE_HOME = '1';
-    // Dynamic port: the sidecar is a private loopback backend, so it must not
-    // fight the CLI (or anything else) over 8765. The READY/ATTACH line tells
-    // us the actual port. When the data directory is already owned, the
-    // sidecar attaches us to that running engine instead of spawning one.
-    backend = new Backend({ ...paths, env, port: 0,
+    // Preferred port 8766: the window origin stays stable across restarts so
+    // localStorage (UI prefs, remembered tokens) survives; if busy the sidecar
+    // falls back to an ephemeral port (READY line reports the actual one). It
+    // never fights the CLI over 8765. When the data directory is already
+    // owned, the sidecar attaches us to that running engine instead.
+    backend = new Backend({ ...paths, env, port: 8766,
       dataDir: smoke ? path.join(smokeRoot, 'data') : dataDirectory() });
     backend.on('pick', message => void pickNative(message));
     backend.on('unexpected-exit', error => {

@@ -261,6 +261,42 @@ class TestDesktopSidecar(unittest.TestCase):
         self.assertEqual(response[1]["path"], str(self.directory))
 
 
+class TestSidecarPortPreference(unittest.TestCase):
+    """端口候选机制：请求端口优先、被占回落随机（launcher 默认 8766 同一语义）。
+
+    用显式罕见端口保证确定性；不占 8766（那是 launcher 默认值的集成行为）。"""
+
+    def test_requested_port_is_preferred(self):
+        with tempfile.TemporaryDirectory(prefix="cb-port-") as temporary:
+            # sidecar 必须在临时目录删除前关停：它持有的 service.lock 是
+            # Windows 强制锁，进程活着时锁文件删不掉（清理顺序敏感）。
+            sidecar = Sidecar(Path(temporary) / "data", port=59876)
+            try:
+                message = sidecar.ready()
+                self.assertEqual(message["port"], 59876)
+                self.assertEqual(read_running_service(
+                    Path(temporary) / "data").get("port"), 59876)
+            finally:
+                sidecar.close()
+
+    def test_busy_requested_port_falls_back_to_ephemeral(self):
+        import socket as socket_mod
+        with tempfile.TemporaryDirectory(prefix="cb-port-") as temporary:
+            blocker = socket_mod.socket()
+            blocker.bind(("127.0.0.1", 59876))
+            blocker.listen(1)
+            sidecar = Sidecar(Path(temporary) / "data", port=59876)
+            try:
+                message = sidecar.ready()
+                self.assertNotEqual(message["port"], 59876)
+                self.assertGreater(message["port"], 0)
+                self.assertEqual(read_running_service(
+                    Path(temporary) / "data").get("port"), message["port"])
+            finally:
+                sidecar.close()
+                blocker.close()
+
+
 class TestDesktopModeGuards(unittest.TestCase):
     def test_loopback_bind_does_not_resolve_dns(self):
         code = (
