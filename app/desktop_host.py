@@ -10,15 +10,34 @@ import faulthandler
 import hmac
 import json
 import os
+import socket
 import sys
 import threading
 import time
 import uuid
 from urllib.parse import urlparse
 from typing import Callable, Dict, Tuple
+from http.server import ThreadingHTTPServer
+from socketserver import TCPServer
 
 from core import paths
 from core.runtime_lock import ServiceAlreadyRunning, acquire_service
+
+
+class DesktopServer(ThreadingHTTPServer):
+    """Private numeric loopback listener; startup must never depend on DNS."""
+
+    allow_reuse_address = False
+    daemon_threads = True
+
+    def server_bind(self):
+        if os.name == "nt":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        # HTTPServer.server_bind calls getfqdn(), which can stall on macOS.
+        # The desktop only serves loopback; its hostname is already known.
+        TCPServer.server_bind(self)
+        self.server_name = self.server_address[0]
+        self.server_port = self.server_address[1]
 
 
 class DesktopPipe:
@@ -160,9 +179,7 @@ def main() -> None:
             threading.Thread(target=shutdown, args=(body.get("force") is True,),
                              daemon=True).start()
 
-    class DesktopServer(engine.ThreadedServer):
-        daemon_threads = True
-
+    class ReadyServer(DesktopServer):
         def serve_forever(self, *a, **kw):
             print("CODEBEE_DESKTOP_READY " + json.dumps(
                   {"port": self.server_address[1], "pid": os.getpid()}), flush=True)
@@ -172,7 +189,7 @@ def main() -> None:
     # Bind before recovery/schedulers start. Never enter the CLI's stale-port
     # cleanup path: a desktop launch must not terminate a running CLI service.
     try:
-        server = DesktopServer(("127.0.0.1", args.port), DesktopHandler)
+        server = ReadyServer(("127.0.0.1", args.port), DesktopHandler)
     except OSError as exc:
         raise SystemExit("CodeBee 端口已被占用，请退出已有服务后重试：%s" % exc)
     port = server.server_address[1]

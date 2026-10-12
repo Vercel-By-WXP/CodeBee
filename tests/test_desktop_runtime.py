@@ -227,6 +227,22 @@ class TestDesktopSidecar(unittest.TestCase):
 
 
 class TestDesktopModeGuards(unittest.TestCase):
+    def test_loopback_bind_does_not_resolve_dns(self):
+        code = (
+            "import sys; from unittest import mock; "
+            "sys.path.insert(0, sys.argv[1]); "
+            "from desktop_host import DesktopServer; "
+            "from http.server import BaseHTTPRequestHandler; "
+            "patch=mock.patch('socket.getfqdn', side_effect=AssertionError('DNS called')); "
+            "patch.start(); "
+            "server=DesktopServer(('127.0.0.1', 0), BaseHTTPRequestHandler); "
+            "assert server.server_name == '127.0.0.1'; "
+            "assert server.server_port > 0; server.server_close()"
+        )
+        result = subprocess.run([sys.executable, "-c", code, str(ROOT / "app")],
+                                capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", "replace"))
+
     def test_desktop_relaunch_and_upgrade_are_denied_without_subprocesses(self):
         from app.core import selfupdate
         with mock.patch.dict(os.environ, {"CODEBEE_DESKTOP": "1"}), \
