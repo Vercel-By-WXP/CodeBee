@@ -81,6 +81,9 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("x+side*.43,.50,z+.93,.030,.48,.025", ENGINE)
         self.assertIn("[.12,.17,.22,1]", ENGINE)
         self.assertIn("const desk=this.deskPositions&&this.deskPositions[i]", ENGINE)
+        self.assertIn("forward-facing graphite visor", ENGINE)
+        self.assertIn("this.add(rb,x,by+.012,bz-.166,.258,.142,.026,[.035,.055,.070,1])", ENGINE)
+        self.assertIn("this.add(s,x+side*.066,by+.022,bz-.194,.045,.046,.020,[.20,.91,.98,1])", ENGINE)
         self.assertIn("dispose=function", ENGINE)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is not installed")
