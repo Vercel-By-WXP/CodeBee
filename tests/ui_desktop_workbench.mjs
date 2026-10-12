@@ -68,7 +68,12 @@ try {
   await ev("sideOpenTask('layout-a')");
   await sleep(900);
   await ev("rdChatNavBack()");
-  await sleep(400);
+  // Wait for the initial async timeline before adding the long-message fixture;
+  // otherwise a delayed response can replace the fixture mid-assertion.
+  for (let i = 0; i < 50; i++) {
+    if (await ev(`document.getElementById('rd-chat-flow').dataset.runId === '${runId}'`)) break;
+    await sleep(100);
+  }
   console.log('detail', await ev("({hidden:document.getElementById('run-detail').className, kind:S.lastRun?.kind,engine:S.lastRun?.engine,main:document.querySelector('main').className})"));
   // Long content tests the real timeline's scroll chain without invoking an AI CLI.
   await ev(`document.getElementById('rd-chat-flow').innerHTML =

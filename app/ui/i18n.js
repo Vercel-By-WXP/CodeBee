@@ -10,6 +10,16 @@
   const LANG_KEY = "orch.lang";
   // 字典：键 = 中文原文；值 = 英文译文。未命中即回落中文。
   const EN = {
+    "工作": "Work",
+    "开发": "Develop",
+    "工作模式": "Workspace mode",
+    "切换工作模式": "Switch workspace mode",
+    "写作、调研、文档与翻译": "Writing, research, documents and translation",
+    "编码、调试、测试与评审": "Coding, debugging, tests and reviews",
+    "把想法变成成果": "Turn ideas into results",
+    "今天想构建什么？": "What would you like to build?",
+    "写作、调研、文档与翻译，从这里开始。": "Start here for writing, research, documents and translation.",
+    "编写代码、调试问题、运行测试与评审变更。": "Write code, debug issues, run tests and review changes.",
     "工作区和任务": "Workspaces and tasks",
     "{0} 个工作区 · {1} 个任务": "{0} workspaces · {1} tasks",
     "返回工作区": "Back to workspaces",

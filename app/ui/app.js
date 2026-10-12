@@ -12,6 +12,27 @@ document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh"
 const $ = (id) => document.getElementById(id);
 const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, rdHiveFirst: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
 
+/* 工作/开发是界面场景偏好，共用任务和引擎，不改变现有任务的执行参数。 */
+const WORKSPACE_MODE_KEY = "orch.workspace-mode.v1";
+const WORKSPACE_MODES = {
+  work: { label: "工作", defaultType: "direct", quick: ["direct", "doc", "research", "translation"],
+    greeting: "把想法变成成果", hint: "写作、调研、文档与翻译，从这里开始。" },
+  develop: { label: "开发", defaultType: "code", quick: ["code", "defect_retro", "tech_proposal", "direct"],
+    greeting: "今天想构建什么？", hint: "编写代码、调试问题、运行测试与评审变更。" },
+};
+let workspaceChoice = { mode: "work", types: {} };
+let workspaceHasChoice = false;
+try {
+  const saved = JSON.parse(localStorage.getItem(WORKSPACE_MODE_KEY) || "null");
+  if (saved && Object.prototype.hasOwnProperty.call(WORKSPACE_MODES, saved.mode)) {
+    workspaceChoice.mode = saved.mode;
+    workspaceHasChoice = true;
+    for (const mode of ["work", "develop"]) {
+      if (saved.types && typeof saved.types[mode] === "string") workspaceChoice.types[mode] = saved.types[mode];
+    }
+  }
+} catch (e) { /* 不可用或损坏的本机偏好回落工作模式 */ }
+
 /* ---------------------------------------------------------- 内置浏览器工作区 */
 const BROWSER_STORAGE_KEY = "orch.browser.workspace.v1";
 const BROWSER_HOME = "__codebee_home__";
@@ -621,13 +642,21 @@ function renderTypeOptions() {
   // 竞态下要让位给偏好记忆，否则「上次类型」永远恢复不了（高负载下实测）
   if (prev && flowById(prev) && (S.typeTouched || prev !== "direct")) sel.value = prev;
   // 偏好记忆：上次创建用的类型优先于出厂默认「直接执行」（老数据/已删流程回落）
-  else if (S.lastPrefs && S.lastPrefs.type && flowById(S.lastPrefs.type)) sel.value = S.lastPrefs.type;
-  // 首屏默认落在「直接执行」（快档位：直连模型 API，无拆解/评审）；
-  // 老数据或该流程被删时保持首项，不硬造一个不存在的值
-  else if (flowById("direct")) sel.value = "direct";
+  else if (!workspaceHasChoice && S.lastPrefs && S.lastPrefs.type && flowById(S.lastPrefs.type)) {
+    sel.value = S.lastPrefs.type;
+    workspaceChoice.mode = flowById(sel.value).engine === "code" ? "develop" : "work";
+  }
+  // 明确选择场景后恢复各自类型；已删除的记忆回落场景默认，再回落首项。
+  else {
+    const preferred = workspaceChoice.types[workspaceChoice.mode] || WORKSPACE_MODES[workspaceChoice.mode].defaultType;
+    const fallback = WORKSPACE_MODES[workspaceChoice.mode].defaultType;
+    if (flowById(preferred)) sel.value = preferred;
+    else if (flowById(fallback)) sel.value = fallback;
+  }
   applyTaskPreferenceDefaults();
   renderTypeMenu();
   onTypeChange();
+  paintWorkspaceMode();
 }
 
 function applyTaskPreferenceDefaults() {
@@ -906,6 +935,7 @@ function toggleTypeMenu(force) {
 }
 
 function pickType(id) {
+  if (!flowById(id)) return;
   S.typeTouched = true;   // 用户手动选过：flows 重渲染时优先保住，不让位偏好记忆
   const sel = $("f-type");
   if (sel && sel.value !== id) {
@@ -913,6 +943,7 @@ function pickType(id) {
     sel.dispatchEvent(new Event("change"));   // 既有联动（表单显隐/流程默认值）照常走
   }
   toggleTypeMenu(false);
+  rememberWorkspaceType(id);
 }
 window.toggleTypeMenu = toggleTypeMenu;
 window.pickType = pickType;
@@ -1053,11 +1084,7 @@ function renderQuickChips() {
   const box = $("cmp-quick");
   if (!box || !S.flows) return;
   const cur = ($("f-type") || {}).value;
-  // 直连是默认档位：固定首枚 chip；其余内置流程跟后面（去重，共 5 枚）
-  const builtins = (S.flows || []).filter((f) => f.builtin);
-  const d = builtins.find((f) => f.id === "direct");
-  const list = d ? [d].concat(builtins.filter((f) => f.id !== "direct").slice(0, 4))
-                 : builtins.slice(0, 5);
+  const list = WORKSPACE_MODES[workspaceChoice.mode].quick.map(flowById).filter(Boolean);
   box.innerHTML = list.map((f) =>
     '<button type="button" class="cmp-chip' + (f.id === cur ? " on" : "") +
     '" onclick="pickQuickType(\'' + esc(f.id) + '\')">' + flowIconHtml(f) +
@@ -1069,14 +1096,14 @@ window.pickQuickType = function (id) {
   if (g) g.focus();
 };
 
-/* 问候语（Composer 起手，ZCode 式）：按时段换称呼；启动/切语言/回任务页时重算 */
+/* 首页场景文案在启动、切换模式/语言和回到表单时同步。 */
 function cmpGreeting() {
   const el = $("cmp-greet");
   if (!el) return;
-  const h = new Date().getHours();
-  el.textContent = t(h >= 5 && h < 12 ? "上午好呀，有什么想让我帮忙的吗"
-    : h < 18 ? "下午好呀，有什么想让我帮忙的吗"
-    : "晚上好呀，有什么想让我帮忙的吗");
+  const mode = WORKSPACE_MODES[workspaceChoice.mode];
+  el.textContent = t(mode.greeting);
+  const hint = $("cmp-workspace-hint");
+  if (hint) hint.textContent = t(mode.hint);
 }
 
 /* 开跑前成本与耗时预估（借鉴 omnigent 的 pre-run estimate）：优先读同类台账，
@@ -15526,6 +15553,8 @@ function setLangBtn(lang) {
   applyI18n();
   render();
   cmpGreeting();   // 问候语跟随语言重算
+  paintWorkspaceMode();
+  renderQuickChips();
   // 侧栏区头两颗钮的 title/aria 是 JS 按状态写的，applyI18n 会用静态词条盖掉，这里重刷
   paintArchToggle();
   syncSideExpandBtn();
@@ -16918,6 +16947,7 @@ window.suRestart = suRestart;
 window.updDismiss = updDismiss;
 
 document.addEventListener("DOMContentLoaded", () => {
+  paintWorkspaceMode();
   // Initialize Hive3D controls independently of run data. A fresh workspace may have no
   // active run yet, but fullscreen/view controls must still be wired and usable.
   setupHiveSceneControls();
@@ -17964,16 +17994,98 @@ async function beePyInstall() {
   }, 3000);
 }
 
-// CodeBee workspace switcher: the first item is intentionally informational
-// until multiple local workspaces are supported.
+// CodeBee scene switcher shares tasks and existing execution engines.
+function saveWorkspaceChoice() {
+  try { localStorage.setItem(WORKSPACE_MODE_KEY, JSON.stringify(workspaceChoice)); } catch (e) { /* 会话内仍可切换 */ }
+}
+
+function rememberWorkspaceType(id) {
+  if (!flowById(id)) return;
+  workspaceChoice.types[workspaceChoice.mode] = id;
+  workspaceHasChoice = true;
+  saveWorkspaceChoice();
+}
+
+function paintWorkspaceMode() {
+  document.documentElement.dataset.workspaceMode = workspaceChoice.mode;
+  const label = $("brand-mode");
+  if (label) {
+    label.dataset.i18n = WORKSPACE_MODES[workspaceChoice.mode].label;
+    label.textContent = t(label.dataset.i18n);
+  }
+  document.querySelectorAll("#brand-menu [data-workspace-mode]").forEach((button) => {
+    const selected = button.dataset.workspaceMode === workspaceChoice.mode;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-checked", String(selected));
+  });
+  cmpGreeting();
+}
+
+function pickWorkspaceMode(mode) {
+  if (!Object.prototype.hasOwnProperty.call(WORKSPACE_MODES, mode)) return;
+  // 请求提交期间保持场景和表单一致，避免把旧类型记到新场景。
+  if (S.creatingTask) { toggleBrandMenu(false); $("btn-brand").focus(); return; }
+  if (mode !== workspaceChoice.mode) {
+    const selected = $("f-type");
+    if (selected && flowById(selected.value)) workspaceChoice.types[workspaceChoice.mode] = selected.value;
+    workspaceChoice.mode = mode;
+    workspaceHasChoice = true;
+    saveWorkspaceChoice();
+    // 只变新任务表单的类型；草稿正文、目录、附件与编排档位不变。
+    if (selected && S.flows) {
+      const remembered = workspaceChoice.types[mode];
+      const target = flowById(remembered) || flowById(WORKSPACE_MODES[mode].defaultType) || S.flows[0];
+      if (target) pickType(target.id);
+    }
+    paintWorkspaceMode();
+    renderQuickChips();
+  } else {
+    workspaceHasChoice = true;
+    saveWorkspaceChoice();
+  }
+  toggleBrandMenu(false);
+  $("btn-brand").focus();
+}
+window.pickWorkspaceMode = pickWorkspaceMode;
+
 function toggleBrandMenu(force) {
   const menu = $("brand-menu");
   const btn = $("btn-brand");
   if (!menu || !btn) return;
   const open = typeof force === "boolean" ? force : menu.classList.contains("hidden");
+  // 侧栏与手机抽屉会裁剪子元素；浮层挂在 body 上并按按钮定位。
+  if (open && menu.parentElement !== document.body) document.body.appendChild(menu);
   menu.classList.toggle("hidden", !open);
   btn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    const anchor = btn.getBoundingClientRect(), bounds = menu.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(anchor.left, innerWidth - bounds.width - 8)) + "px";
+    menu.style.top = Math.max(8, Math.min(anchor.bottom + 8, innerHeight - bounds.height - 8)) + "px";
+    menu.querySelector('[aria-checked="true"]')?.focus();
+  }
 }
+
+window.addEventListener("resize", () => toggleBrandMenu(false));
+document.addEventListener("focusin", (e) => {
+  if (!e.target.closest("#btn-brand, #brand-menu")) toggleBrandMenu(false);
+});
+
+document.addEventListener("keydown", (e) => {
+  const menu = $("brand-menu");
+  if (!menu || menu.classList.contains("hidden")) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    toggleBrandMenu(false);
+    $("btn-brand").focus();
+  } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key) && e.target.closest("#brand-menu")) {
+    e.preventDefault();
+    const options = Array.from(menu.querySelectorAll('[role="menuitemradio"]'));
+    const index = options.indexOf(document.activeElement);
+    const next = e.key === "Home" ? 0 : e.key === "End" ? options.length - 1
+      : (index + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+    options[next]?.focus();
+  }
+});
 
 document.addEventListener("click", (e) => {
   if (!e.target.closest("#btn-brand, #brand-menu")) toggleBrandMenu(false);
