@@ -144,6 +144,9 @@ OpenCode / Continue / Cursor / Trae 十种工具的配置，一次带入全部�
   全程播报（设置页「禅道」子页配置）；
 - **多任务并发**：任务默认立即启动、无等待队列，并发保护上限默认 12；连载任务超时/中断自动
   断点续跑；
+- **桌面版（预览）**：Electron 窗口 + 随包 Python，双击安装即用，无需 Node/Python；
+  关窗口缩托盘后台、任务继续；Windows 10/11、Windows 7（预览）与 macOS Intel/Apple
+  Silicon 三系安装包；与 CLI 共用数据、自动接管已在运行的服务实例；
 - **远程访问**：手机同一 WiFi 直开、Tailscale 外网可达、Cloudflare Tunnel 固定
   域名——8 位访问令牌保护，多端实时同步（SSE），单设备控制权防互踩；
 - **7 套皮肤**（默认「深海」），每套自带日间 / 夜间两版，安装默认即 深海·日间 + 中文。
@@ -206,7 +209,16 @@ python3 -m pip install --upgrade certifi   # CodeBee 自动采用，装完即生
 # 或：Finder → 应用程序 → Python 3.x → 双击 Install Certificates.command
 ```
 
-**方式二：源码运行（开发者）**
+**方式二：桌面版安装包（预览，免装 Node/Python）**
+
+安装包自带 Python 运行环境，双击安装即用。到
+[桌面构建页](https://github.com/Vercel-By-WXP/CodeBee/actions/workflows/desktop-preview.yml)
+下载对应平台的预览安装包（需登录 GitHub）：**Windows 10/11 x64、Windows 7 x64（预览）、
+macOS Intel / Apple Silicon**。装好后从开始菜单/启动台打开 CodeBee；关闭窗口缩进托盘
+后台、任务继续跑；与 npm/CLI 版共用数据目录，一边已在跑时另一边直接接管显示同一实例。
+（预览版未签名，首次安装会有系统安全提示。）
+
+**方式三：源码运行（开发者）**
 
 ```bat
 git clone https://github.com/Vercel-By-WXP/CodeBee.git
