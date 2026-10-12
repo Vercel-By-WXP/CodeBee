@@ -344,21 +344,20 @@ window.Hive3D = (function () {
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
-      // Smooth glassy oval wings sit at the shoulder line. Sphere geometry keeps their
-      // silhouette rounded from every camera angle and lets the opaque body occlude them.
-      this.add(s,x-.48,by-.13,bz-.17,.38,.15,.060,[.33,.60,.83,.37],0,.14);
-      this.add(s,x+.48,by-.13,bz-.17,.38,.15,.060,[.33,.60,.83,.37],0,-.14);
-      this.add(s,x-.44,by-.105,bz-.12,.23,.085,.035,[.74,.90,.98,.22],0,.10);
-      this.add(s,x+.44,by-.105,bz-.12,.23,.085,.035,[.74,.90,.98,.22],0,-.10);
+      // Smooth glassy oval wings sit on the camera-facing shoulder side. The reference is viewed from behind the seated assistants, so wings must project beyond the thorax instead of being hidden on the monitor-facing side.
+      this.add(s,x-.48,by-.13,bz+.18,.38,.15,.060,[.33,.60,.83,.37],0,.14);
+      this.add(s,x+.48,by-.13,bz+.18,.38,.15,.060,[.33,.60,.83,.37],0,-.14);
+      this.add(s,x-.44,by-.105,bz+.22,.23,.085,.035,[.74,.90,.98,.22],0,.10);
+      this.add(s,x+.44,by-.105,bz+.22,.23,.085,.035,[.74,.90,.98,.22],0,-.10);
       // Fine translucent veins catch the studio light and keep the wings readable at the
       // default camera distance without adding textures or increasing draw calls.
       for(const side of [-1,1]){
-        const root=[x+side*.27,by-.13,bz-.17];
-        const mid=[x+side*.49,by-.105,bz-.17];
-        const tip=[x+side*.75,by-.15,bz-.17];
+        const root=[x+side*.27,by-.13,bz+.18];
+        const mid=[x+side*.49,by-.105,bz+.18];
+        const tip=[x+side*.75,by-.15,bz+.18];
         this.addLink(root,mid,.006,[.72,.91,1,.52]);
         this.addLink(mid,tip,.005,[.72,.91,1,.42]);
-        this.addLink([x+side*.40,by-.08,bz-.17],[x+side*.58,by-.045,bz-.17],.004,[.83,.95,1,.34]);
+        this.addLink([x+side*.40,by-.08,bz+.18],[x+side*.58,by-.045,bz+.18],.004,[.83,.95,1,.34]);
       }
 
     }
