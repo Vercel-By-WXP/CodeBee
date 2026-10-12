@@ -1536,6 +1536,158 @@ function closeModal() {
   document.body.classList.remove("modal-open");
 }
 
+/* ---------------------------------------------------------- 人工评审队列 */
+const REVIEW_QUEUE = { rows: [], loaded: false, loading: 0, saving: false };
+const REVIEW_LABELS = { requested: "待分配", assigned: "评审中", approved: "已批准",
+  changes_requested: "要求修改", dismissed: "已关闭", expired: "已过期" };
+
+function reviewActions(status) {
+  if (status === "requested") return ["assign", "dismiss", "expire"];
+  if (status === "assigned") return ["approve", "changes_requested", "dismiss", "expire"];
+  if (status === "changes_requested") return ["dismiss", "expire"];
+  return [];
+}
+
+function reviewActionLabel(action) {
+  return t(({ assign: "分配评审人", approve: "批准评审", changes_requested: "要求修改",
+    dismiss: "关闭请求", expire: "标记过期" })[action] || action);
+}
+
+function renderReviewQueue() {
+  const list = $("review-queue-list");
+  if (!list) return;
+  const filter = $("review-queue-filter").value;
+  const rows = REVIEW_QUEUE.rows.filter((row) => filter === "all" ||
+    (filter === "active" ? reviewActions(row.status).length > 0 : row.status === filter))
+    .sort((a, b) => Number(b.updated_at || 0) - Number(a.updated_at || 0));
+  $("review-queue-count").textContent = t("显示 {0} / {1} 条", rows.length, REVIEW_QUEUE.rows.length);
+  list.innerHTML = rows.map((row) => {
+    const stamp = new Date(Number(row.updated_at || 0) * 1000);
+    const time = Number.isFinite(stamp.getTime()) ? stamp.toLocaleString(getLang() === "en" ? "en-US" : "zh-CN") : "";
+    return '<article class="review-request"><div class="review-request-head"><strong>' +
+      esc(row.summary || t("未填写评审摘要")) + '</strong><span class="tag ' +
+      (row.status === "approved" ? "ok" : row.status === "changes_requested" ? "warn" : "") + '">' +
+      esc(t(REVIEW_LABELS[row.status] || row.status)) + '</span></div><div class="review-request-meta">' +
+      '<span>' + esc(t("运行 ID")) + ': <code>' + esc(row.run_id) + '</code></span>' +
+      (row.channel ? '<span>' + esc(t("评审渠道")) + ': ' + esc(row.channel) + '</span>' : "") +
+      (row.reviewer ? '<span>' + esc(t("评审人")) + ': ' + esc(row.reviewer) + '</span>' : "") +
+      '<time>' + esc(time) + '</time></div>' +
+      (Array.isArray(row.paths) && row.paths.length ? '<div class="review-request-paths">' +
+        row.paths.map((path) => '<code>' + esc(path) + '</code>').join("") + '</div>' : "") +
+      (row.reason ? '<p class="review-request-reason">' + esc(row.reason) + '</p>' : "") +
+      '<div class="actions">' + reviewActions(row.status).map((action) =>
+        '<button type="button" class="ghost small" data-review-id="' + esc(row.id) +
+        '" data-review-action="' + action + '">' + esc(reviewActionLabel(action)) + '</button>').join("") +
+      '</div></article>';
+  }).join("") || '<p class="hint">' + esc(t(REVIEW_QUEUE.loaded ? "暂无匹配的评审请求" : "正在加载评审请求…")) + '</p>';
+  list.onclick = (event) => {
+    const button = event.target.closest("[data-review-action]");
+    if (button && list.contains(button)) openReviewTransition(button.dataset.reviewId, button.dataset.reviewAction);
+  };
+}
+
+async function loadReviewQueue() {
+  const list = $("review-queue-list"), message = $("review-queue-message");
+  if (!list || !message) return;
+  const token = ++REVIEW_QUEUE.loading;
+  list.setAttribute("aria-busy", "true");
+  message.textContent = t("正在加载评审请求…");
+  if (!REVIEW_QUEUE.loaded) renderReviewQueue();
+  try {
+    const data = await api("/api/reviews", { timeout: 15000 });
+    if (token !== REVIEW_QUEUE.loading) return;
+    if (!Array.isArray(data.reviews)) throw new Error(t("评审数据格式不正确"));
+    REVIEW_QUEUE.rows = data.reviews;
+    REVIEW_QUEUE.loaded = true;
+    message.textContent = "";
+    renderReviewQueue();
+  } catch (e) {
+    if (token === REVIEW_QUEUE.loading) message.textContent = t("评审队列加载失败：") + e.message;
+  } finally {
+    if (token === REVIEW_QUEUE.loading) list.setAttribute("aria-busy", "false");
+  }
+}
+
+function openReviewRequest() {
+  if (REVIEW_QUEUE.saving) return;
+  const runs = ((S.state || {}).runs || []).slice(0, 100);
+  openModal(t("新建评审请求"), '<form id="review-request-form" class="form">' +
+    '<div class="field"><label for="review-run-id">' + esc(t("运行 ID")) + ' *</label>' +
+    '<input id="review-run-id" list="review-run-options" required maxlength="100" autocomplete="off">' +
+    '<datalist id="review-run-options">' + runs.map((run) => '<option value="' + esc(run.id) + '">' +
+      esc(run.goal || run.task_id || run.id) + '</option>').join("") + '</datalist></div>' +
+    '<div class="field"><label for="review-summary">' + esc(t("评审摘要")) + '</label>' +
+    '<textarea id="review-summary" rows="3" maxlength="1000"></textarea></div>' +
+    '<div class="field"><label for="review-paths">' + esc(t("待评审文件（每行一个路径）")) + '</label>' +
+    '<textarea id="review-paths" rows="3"></textarea></div>' +
+    '<div class="field"><label for="review-channel">' + esc(t("评审渠道")) + '</label>' +
+    '<input id="review-channel" maxlength="200"></div>' +
+    '<p id="review-form-message" class="hint" role="status" aria-live="polite"></p></form>',
+    '<button type="button" class="ghost" onclick="closeModal()">' + esc(t("取消")) + '</button>' +
+    '<button id="review-save" type="submit" form="review-request-form" class="primary">' + esc(t("创建请求")) + '</button>');
+  $("review-request-form").onsubmit = (event) => { event.preventDefault(); saveReviewRequest(); };
+  $("review-run-id").value = S.detailRunId || "";
+  $("review-run-id").focus();
+}
+
+function openReviewTransition(id, action) {
+  if (REVIEW_QUEUE.saving) return;
+  const row = REVIEW_QUEUE.rows.find((item) => item.id === id);
+  if (!row || !reviewActions(row.status).includes(action)) return;
+  const assigning = action === "assign", needsReason = action === "changes_requested";
+  openModal(reviewActionLabel(action), '<form id="review-transition-form" class="form">' +
+    '<p class="hint">' + esc(row.summary || row.run_id) + '</p>' +
+    '<div class="field"><label for="review-reviewer">' + esc(t("评审人")) + (assigning ? ' *' : '') + '</label>' +
+    '<input id="review-reviewer" maxlength="200" value="' + esc(row.reviewer || "") + '"' +
+    (assigning ? ' required' : '') + '></div>' +
+    '<div class="field"><label for="review-reason">' + esc(t("处理意见")) + (needsReason ? ' *' : '') + '</label>' +
+    '<textarea id="review-reason" rows="4" maxlength="1000"' + (needsReason ? ' required' : '') + '></textarea></div>' +
+    '<p id="review-form-message" class="hint" role="status" aria-live="polite"></p></form>',
+    '<button type="button" class="ghost" onclick="closeModal()">' + esc(t("取消")) + '</button>' +
+    '<button id="review-save" type="submit" form="review-transition-form" class="primary">' + esc(reviewActionLabel(action)) + '</button>');
+  $("review-transition-form").onsubmit = (event) => { event.preventDefault(); saveReviewTransition(id, action); };
+  $(assigning ? "review-reviewer" : "review-reason").focus();
+}
+
+async function reviewQueueSave(path, body) {
+  if (REVIEW_QUEUE.saving) return;
+  const button = $("review-save"), form = $("review-request-form") || $("review-transition-form");
+  const message = $("review-form-message");
+  REVIEW_QUEUE.saving = true;
+  button.disabled = true;
+  message.textContent = t("正在保存…");
+  try {
+    await api(path, { method: "POST", body: JSON.stringify(body), timeout: 15000 });
+    if (form.isConnected) closeModal();
+    toast(t("评审请求已保存"));
+    await loadReviewQueue();
+  } catch (e) {
+    if (message.isConnected) message.textContent = t("评审请求保存失败：") + e.message;
+    else toast(t("评审请求保存失败：") + e.message, true);
+  } finally {
+    REVIEW_QUEUE.saving = false;
+    button.disabled = false;
+  }
+}
+
+async function saveReviewRequest() {
+  const runId = $("review-run-id").value.trim();
+  const paths = $("review-paths").value.split(/\r?\n/).map((path) => path.trim()).filter(Boolean);
+  if (!runId) { $("review-form-message").textContent = t("请填写运行 ID"); return; }
+  if (paths.length > 200 || paths.some((path) => path.length > 500)) {
+    $("review-form-message").textContent = t("最多 200 个文件，每个路径最多 500 字符"); return;
+  }
+  await reviewQueueSave("/api/reviews", { run_id: runId, paths,
+    summary: $("review-summary").value.trim(), channel: $("review-channel").value.trim() });
+}
+
+async function saveReviewTransition(id, action) {
+  const reviewer = $("review-reviewer").value.trim(), reason = $("review-reason").value.trim();
+  if (action === "assign" && !reviewer) { $("review-form-message").textContent = t("请填写评审人"); return; }
+  if (action === "changes_requested" && !reason) { $("review-form-message").textContent = t("请填写修改意见"); return; }
+  await reviewQueueSave("/api/reviews/" + encodeURIComponent(id) + "/transition", { action, reviewer, reason });
+}
+
 /* catalog 里 model 可能是字符串，也可能是 {default:...} 之类的对象 */
 function fmtModel(m) {
   if (m == null || m === "") return "";
@@ -14928,6 +15080,7 @@ function setLangBtn(lang) {
   renderCodePreviews();   // 预览徽章是动态文案：语言切换时若停在皮肤页要跟着换
   // 数据与备份页的清理预估/状态是 JS 动态生成的：停在那一页时也要跟着换语言
   if (S.tab === "data") loadDataPage();
+  if (S.tab === "agents") renderReviewQueue();
   // 帮助中心若开着：徽章/标题/目录/正文跟着换语言重画
   if (!$("welcome").classList.contains("hidden")) {
     paintHelpChrome();
@@ -16065,7 +16218,7 @@ function switchTab(name, shell) {
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-" + name));
   renderPageCrumb();   // 页名 + 面包屑组名一起刷新（组名从左栏导航现读）
   if (name === "runs" && !S.detailRunId) closeRun();
-  if (name === "agents") autoCheckUpdates();   // 进目录页自动查各 CLI 新版本
+  if (name === "agents") { autoCheckUpdates(); loadReviewQueue(); }
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排设置页拉取配置
   if (name === "evalbench") loadEvalBench();   // 进模型评测页：榜单 + 候选清单
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀

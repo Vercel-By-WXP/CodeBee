@@ -936,6 +936,29 @@
         <h3 data-i18n="可安装" class="sec-title">可安装</h3>
         <div id="ag-installable" class="cards"></div>
       </div>
+      <section class="panel wide review-queue" aria-labelledby="review-queue-title">
+        <div class="panel-head">
+          <h2 id="review-queue-title" data-i18n="人工评审队列">人工评审队列</h2>
+          <div class="actions">
+            <button type="button" class="ghost small" onclick="loadReviewQueue()" data-i18n="刷新">刷新</button>
+            <button type="button" class="primary small" onclick="openReviewRequest()" data-i18n="新建评审请求">新建评审请求</button>
+          </div>
+        </div>
+        <p class="hint" data-i18n="记录运行成果的人工复核与处理意见。渠道仅作记录；创建请求不会向外部渠道发送消息，批准也不会自动发布成果。">记录运行成果的人工复核与处理意见。渠道仅作记录；创建请求不会向外部渠道发送消息，批准也不会自动发布成果。</p>
+        <div class="review-queue-toolbar">
+          <label for="review-queue-filter" data-i18n="评审状态">评审状态</label>
+          <select id="review-queue-filter" onchange="renderReviewQueue()">
+            <option value="active" data-i18n="待处理">待处理</option>
+            <option value="all" data-i18n="全部">全部</option>
+            <option value="approved" data-i18n="已批准">已批准</option>
+            <option value="dismissed" data-i18n="已关闭">已关闭</option>
+            <option value="expired" data-i18n="已过期">已过期</option>
+          </select>
+          <span id="review-queue-count" class="hint"></span>
+        </div>
+        <p id="review-queue-message" class="hint" role="status" aria-live="polite"></p>
+        <div id="review-queue-list" class="review-queue-list" aria-busy="false"></div>
+      </section>
       </div>
 
       <!-- 模型接入 -->

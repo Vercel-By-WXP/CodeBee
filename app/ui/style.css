@@ -7792,6 +7792,26 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
   .hive-scene-stage.is-fullscreen .hive-scene-hint { display: none; }
 }
 
+/* ---- 人工评审队列 ---- */
+.review-queue { margin-top: 20px; }
+.review-queue-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.review-queue-toolbar select { width: auto; min-width: 130px; }
+.review-queue-list { display: grid; gap: 12px; }
+.review-request { min-width: 0; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--r-md); padding: 14px; }
+.review-request-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.review-request-head strong { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.review-request-head .tag { flex-shrink: 0; }
+.review-request-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.review-request-paths { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.review-request-paths code { max-width: 100%; overflow-wrap: anywhere; }
+.review-request-reason { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; background: var(--panel); border-radius: var(--r-md); }
+.review-request .actions { flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .review-queue .panel-head { flex-wrap: wrap; }
+  .review-queue .panel-head .actions { flex-wrap: wrap; }
+  .review-request { padding: 10px; }
+}
+
 /* ---- 步骤行窄主列折行（追加于文件尾防并行重排） ----
  * 步骤行定宽列总和 ≈783px（序号26+角色92+执行者118+st-model 77+st-prov 200+耗时42
  * +状态chip 44+日志按钮60+8间隙96+内边距28），浏览器缩放/窄窗/检查器打开都会把
