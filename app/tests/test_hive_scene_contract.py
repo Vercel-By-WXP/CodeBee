@@ -39,6 +39,10 @@ class HiveSceneContractTests(unittest.TestCase):
         # The reference-image renderer was replaced by a real, dependency-free WebGL scene.
         self.assertIn("function Scene(opts)", ENGINE)
         self.assertIn("Scene.prototype.buildWorld", ENGINE)
+        # The default free-camera framing must preserve the full 8+6 workstation spread,
+        # with a wider field of view and a little more distance than the early close crop.
+        self.assertIn("const radius=29.0/this.zoom", ENGINE)
+        self.assertIn("mat4.perspective(.46,w/h,.1,80)", ENGINE)
         self.assertIn("Scene.prototype.buildBatches", ENGINE)
         self.assertIn("aNormal", ENGINE)
         self.assertIn("aColor", ENGINE)
