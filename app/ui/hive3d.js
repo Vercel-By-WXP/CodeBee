@@ -576,11 +576,14 @@ window.Hive3D = (function () {
   Scene.prototype.layoutOverlayPositions=function(){
     if(!this.overlay||this.overlay.hidden||!this.cssW||!this.cssH)return;
     if(this.displayMode==="reference"){
-      // The PNG is the clean artwork crop (the original supplied screenshot had a 15px/10px outer frame).
-      // These hit areas are measured against the artwork crop itself, not the screenshot frame.
+      // Keep live hit areas anchored to the artwork pixels. object-fit: contain may
+      // letterbox the image in fullscreen or narrow layouts, so map through its
+      // actual fitted artboard instead of stretching coordinates across the host.
+      const artW=1080,artH=608,scale=Math.min(this.cssW/artW,this.cssH/artH);
+      const fitW=artW*scale,fitH=artH*scale,offsetX=(this.cssW-fitW)/2,offsetY=(this.cssH-fitH)/2;
       const stageRects=[[89,86,116,46],[247,86,116,46],[404,86,116,46],[562,86,115,46],[718,86,116,46],[873,86,116,46]];
       const monitorRects=[[80,223,78,40],[199,223,78,40],[320,223,78,40],[439,223,78,40],[559,223,78,40],[677,223,78,40],[795,223,78,40],[914,223,78,40],[79,368,103,63],[238,368,103,63],[401,368,103,63],[559,368,103,63],[724,368,103,63],[881,368,103,63]];
-      const place=(el,rect)=>{el.style.visibility="visible";el.style.left=(rect[0]/1080*100)+"%";el.style.top=(rect[1]/608*100)+"%";el.style.width=(rect[2]/1080*100)+"%";el.style.height=(rect[3]/608*100)+"%";el.style.transform="none";};
+      const place=(el,rect)=>{el.style.visibility="visible";el.style.left=((offsetX+rect[0]*scale)/this.cssW*100)+"%";el.style.top=((offsetY+rect[1]*scale)/this.cssH*100)+"%";el.style.width=(rect[2]*scale/this.cssW*100)+"%";el.style.height=(rect[3]*scale/this.cssH*100)+"%";el.style.transform="none";};
       this.stageMeta.forEach((p,i)=>place(p.el,stageRects[i]));
       this.links.forEach(link=>{link.style.visibility="hidden";});
       this.monitors.forEach((m,i)=>{const rect=monitorRects[i];if(!rect){m.el.style.visibility="hidden";return;}place(m.el,rect);});
