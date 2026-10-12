@@ -8,6 +8,7 @@ import json
 import sqlite3
 import threading
 import time
+from contextlib import closing
 from pathlib import Path
 
 from . import paths
@@ -62,17 +63,19 @@ def claim_delivery(delivery_id, *, now=None, ttl_seconds=86400):
     db_path = _FILE.with_suffix(_FILE.suffix + ".sqlite3")
     with _LOCK:
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(str(db_path), timeout=5) as db:
-            db.execute("CREATE TABLE IF NOT EXISTS deliveries (delivery_id TEXT PRIMARY KEY, claimed_at REAL NOT NULL)")
-            cutoff = stamp - max(60, int(ttl_seconds))
-            db.execute("DELETE FROM deliveries WHERE claimed_at < ?", (cutoff,))
-            try:
-                db.execute("INSERT INTO deliveries(delivery_id, claimed_at) VALUES (?, ?)",
-                           (delivery_id, stamp))
-            except sqlite3.IntegrityError:
-                return False, {"deduplicated": True, "delivery_id": delivery_id}
-            db.execute("DELETE FROM deliveries WHERE delivery_id NOT IN (SELECT delivery_id FROM deliveries ORDER BY claimed_at DESC LIMIT ?)",
-                       (MAX_DELIVERIES,))
+        # SQLite's transaction context commits/rolls back but does not close.
+        with closing(sqlite3.connect(str(db_path), timeout=5)) as db:
+            with db:
+                db.execute("CREATE TABLE IF NOT EXISTS deliveries (delivery_id TEXT PRIMARY KEY, claimed_at REAL NOT NULL)")
+                cutoff = stamp - max(60, int(ttl_seconds))
+                db.execute("DELETE FROM deliveries WHERE claimed_at < ?", (cutoff,))
+                try:
+                    db.execute("INSERT INTO deliveries(delivery_id, claimed_at) VALUES (?, ?)",
+                               (delivery_id, stamp))
+                except sqlite3.IntegrityError:
+                    return False, {"deduplicated": True, "delivery_id": delivery_id}
+                db.execute("DELETE FROM deliveries WHERE delivery_id NOT IN (SELECT delivery_id FROM deliveries ORDER BY claimed_at DESC LIMIT ?)",
+                           (MAX_DELIVERIES,))
     return True, {"deduplicated": False, "delivery_id": delivery_id}
 
 
@@ -83,7 +86,8 @@ def release_delivery(delivery_id):
     db_path = _FILE.with_suffix(_FILE.suffix + ".sqlite3")
     with _LOCK:
         try:
-            with sqlite3.connect(str(db_path), timeout=5) as db:
-                db.execute("DELETE FROM deliveries WHERE delivery_id = ?", (delivery_id,))
+            with closing(sqlite3.connect(str(db_path), timeout=5)) as db:
+                with db:
+                    db.execute("DELETE FROM deliveries WHERE delivery_id = ?", (delivery_id,))
         except (OSError, sqlite3.Error):
             pass
