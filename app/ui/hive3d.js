@@ -5,6 +5,11 @@ window.Hive3D = (function () {
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const STATUS = { running:"运行中", done:"完成", queued:"排队中", failed:"失败", timeout:"超时", cancelled:"已取消" };
   const STAGES = ["规划","起草","评审","执行","打磨","合成"];
+  const WING_OUTLINE=[
+    [-.50,0,.008],[-.43,.19,.035],[-.28,.30,.075],[-.06,.34,.10],
+    [.18,.30,.086],[.38,.19,.05],[.50,0,.008],[.38,-.19,.05],
+    [.18,-.30,.086],[-.06,-.34,.10],[-.28,-.30,.075],[-.43,-.19,.035]
+  ];
   const SCREENS = [
     [163,441,127,55],[389,441,126,55],[616,441,125,55],[843,441,125,55],
     [1073,441,122,55],[1298,441,125,55],[1531,441,120,55],[1750,441,125,55],
@@ -114,6 +119,28 @@ window.Hive3D = (function () {
     emitSide(1);emitSide(-1);
     return geometry(gl,positions,indices,normals);
   }
+  function wingGeometry(gl){
+    // Separate convex, oval wing mesh for the bee assistants. Plants retain organicGeometry.
+    let outline=WING_OUTLINE.map(p=>p.slice());
+    // WebGL back-face culling requires consistent counter-clockwise front faces.
+    const wingArea=outline.reduce((sum,p,i)=>{const q=outline[(i+1)%outline.length];return sum+p[0]*q[1]-q[0]*p[1];},0);
+    if(wingArea<0)outline=outline.reverse();
+    const positions=[],normals=[],indices=[];
+    const emitSide=(sign)=>{
+      const centerIndex=positions.length/3;
+      positions.push(0,0,sign*.42);normals.push(0,0,sign);
+      for(const p of outline){
+        positions.push(p[0],p[1],p[2]*sign);
+        normals.push(...norm([-.48*p[0],-.48*p[1],sign]));
+      }
+      for(let i=0;i<outline.length;i++){
+        const a=centerIndex+1+i,b=centerIndex+1+(i+1)%outline.length;
+        if(sign>0)indices.push(centerIndex,a,b);else indices.push(centerIndex,b,a);
+      }
+    };
+    emitSide(1);emitSide(-1);
+    return geometry(gl,positions,indices,normals);
+  }
   function hexGroutGeometry(gl){
     // Build the complete staggered flat-top hex lattice as one static mesh. Drawing only
     // three consecutive edges per tile creates crosses and broken hexes; unique full edges
@@ -192,7 +219,7 @@ window.Hive3D = (function () {
     const vs="attribute vec3 aPosition; attribute vec3 aNormal; attribute vec4 aColor; uniform mat4 uViewProj; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; void main(){gl_Position=uViewProj*vec4(aPosition,1.0);vColor=aColor;vWorld=aPosition;vNormal=normalize(aNormal);vec3 n=normalize(aNormal);float sky=clamp(n.y*0.5+0.5,0.0,1.0);float side=abs(n.x)*0.035;float heightShade=mix(0.94,1.0,smoothstep(-0.2,3.6,aPosition.y));vShade=(0.88+0.08*sky+side)*heightShade;}";
     const fs="precision mediump float; varying vec4 vColor; varying float vShade; varying vec3 vWorld; varying vec3 vNormal; uniform vec3 uEyePosition; void main(){vec3 n=normalize(vNormal);vec3 v=normalize(uEyePosition-vWorld);vec3 key=normalize(vec3(-0.48,0.86,0.42));vec3 fill=normalize(vec3(0.62,0.32,-0.72));vec3 warm=normalize(vec3(0.34,0.46,0.82));float ndl=max(dot(n,key),0.0);float fillN=max(dot(n,fill),0.0);float warmN=max(dot(n,warm),0.0);float hemi=clamp(n.y*0.5+0.5,0.0,1.0);vec3 base=vColor.rgb;float wallBlue=step(0.38,base.b)*step(0.35,base.g)*step(base.r*1.65,base.g)*step(1.7,vWorld.y);float wallGradient=0.86+0.14*smoothstep(1.7,4.5,vWorld.y)+0.055*exp(-pow((vWorld.x+2.1)*0.24,2.0));base=mix(base,base*wallGradient,wallBlue);vec3 h=normalize(key+v);vec3 hf=normalize(fill+v);float chroma=max(max(base.r,base.g),base.b)-min(min(base.r,base.g),base.b);float gloss=mix(0.10,0.34,smoothstep(0.10,0.82,chroma));float spec=pow(max(dot(n,h),0.0),mix(24.0,58.0,gloss))*gloss*0.42;float specFill=pow(max(dot(n,hf),0.0),36.0)*0.075;float fresnel=pow(1.0-max(dot(n,v),0.0),3.0);vec3 ambient=base*(0.55+0.13*hemi);vec3 direct=base*(0.34*ndl+0.16*fillN+0.08*warmN);vec3 highlight=vec3(1.0,0.91,0.78)*spec+vec3(0.52,0.84,1.0)*specFill+vec3(0.18,0.48,0.68)*fresnel*0.075;float cyan=max(0.0,min(base.g,base.b)-base.r)*0.65;vec3 emissive=base*cyan;vec3 lit=ambient+direct+highlight+emissive;lit*=vShade;gl_FragColor=vec4(min(lit,vec3(1.0)),vColor.a);}";
     const program=gl.createProgram();gl.attachShader(program,shader(gl,gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl,gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));this.program=program;gl.useProgram(program);
-    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,6,.12);this.sphere=sphereGeometry(gl,16,24);this.cylinder=cylinderGeometry(gl,20);this.organic=organicGeometry(gl);this.grout=hexGroutGeometry(gl);this.bandGoldTop=sphereBandGeometry(gl,-.08,.18);this.bandGoldBottom=sphereBandGeometry(gl,-.97,-.61);this.bandSeparator=sphereBandGeometry(gl,-.51,-.38);this.bandGoldTop.smooth=true;this.bandGoldBottom.smooth=true;this.bandSeparator.smooth=true;gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
+    this.aPosition=gl.getAttribLocation(program,"aPosition");this.aNormal=gl.getAttribLocation(program,"aNormal");this.aColor=gl.getAttribLocation(program,"aColor");this.uViewProj=gl.getUniformLocation(program,"uViewProj");this.uEyePosition=gl.getUniformLocation(program,"uEyePosition");this.box=boxGeometry(gl);this.roundBox=roundedBoxGeometry(gl,6,.12);this.sphere=sphereGeometry(gl,16,24);this.cylinder=cylinderGeometry(gl,20);this.organic=organicGeometry(gl);this.wing=wingGeometry(gl);this.grout=hexGroutGeometry(gl);this.bandGoldTop=sphereBandGeometry(gl,-.08,.18);this.bandGoldBottom=sphereBandGeometry(gl,-.97,-.61);this.bandSeparator=sphereBandGeometry(gl,-.51,-.38);this.bandGoldTop.smooth=true;this.bandGoldBottom.smooth=true;this.bandSeparator.smooth=true;gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
   };
   Scene.prototype.listen=function(el,type,fn,opts){el.addEventListener(type,fn,opts);this.listeners.push(()=>el.removeEventListener(type,fn,opts));};
   Scene.prototype.bindSurface=function(){
@@ -348,17 +375,24 @@ window.Hive3D = (function () {
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
-      // Compact camera-facing wing panels meet the shoulder and read as distinct blue petals.
-      this.add(this.organic,x-.72,by+.39,bz+.32,.64,.62,.045,[.26,.64,.86,.46],0,-.45);
-      this.add(this.organic,x+.72,by+.39,bz+.32,.64,.62,.045,[.26,.64,.86,.46],0,.45);
-      // Fine cyan veins follow the smaller wing shape without spanning the workstation monitors.
+      // Angled, translucent wings emerge from behind the head; a leading-edge highlight
+      // defines the outward/upward sweep without enclosing the wing like a headset ring.
+      this.add(this.wing,x-.55,by+.14,bz+.10,.45,.42,.10,[.16,.54,.86,.42],0,-.52);
+      this.add(this.wing,x+.55,by+.14,bz+.10,.45,.42,.10,[.16,.54,.86,.42],0,.52);
       for(const side of [-1,1]){
-        const root=[x+side*.38,by+.29,bz+.325];
-        const mid=[x+side*.68,by+.40,bz+.325];
-        const tip=[x+side*.98,by+.49,bz+.325];
-        this.addLink(root,mid,.0048,[.64,.88,1,.88]);
-        this.addLink(mid,tip,.0036,[.64,.88,1,.78]);
-        this.addLink([x+side*.64,by+.36,bz+.33],[x+side*.82,by+.46,bz+.33],.0028,[.82,.95,1,.66]);
+        const rotation=side*.52,ca=Math.cos(rotation),sa=Math.sin(rotation);
+        const edgePoints=WING_OUTLINE.map(p=>[
+          x+side*.55+ca*p[0]*.45-sa*p[1]*.42,
+          by+.14+sa*p[0]*.45+ca*p[1]*.42,
+          bz+.125
+        ]);
+        for(let i=0;i<6;i++)this.addLink(edgePoints[i],edgePoints[i+1],.0058,[.26,.74,.98,.74]);
+        const root=[x+side*.37,by+.045,bz+.13];
+        const mid=[x+side*.55,by+.14,bz+.13];
+        const tip=[x+side*.73,by+.255,bz+.13];
+        this.addLink(root,mid,.0060,[.64,.90,1,.86]);
+        this.addLink(mid,tip,.0045,[.64,.90,1,.78]);
+        this.addLink([x+side*.52,by+.15,bz+.13],[x+side*.63,by+.22,bz+.13],.0034,[.82,.96,1,.68]);
       }
 
     }
@@ -417,7 +451,7 @@ window.Hive3D = (function () {
       const channel=channels[key];
       this.batchBuffers[key]={positions:upload(channel.positions),normals:upload(channel.normals),colors:upload(channel.colors),count:channel.positions.length/3};
     }
-    for(const mesh of [this.box,this.roundBox,this.sphere,this.cylinder,this.organic,this.grout,this.bandGoldTop,this.bandGoldBottom,this.bandSeparator])if(mesh){if(mesh.p)gl.deleteBuffer(mesh.p);if(mesh.ix)gl.deleteBuffer(mesh.ix);mesh.p=null;mesh.ix=null;}
+    for(const mesh of [this.box,this.roundBox,this.sphere,this.cylinder,this.organic,this.wing,this.grout,this.bandGoldTop,this.bandGoldBottom,this.bandSeparator])if(mesh){if(mesh.p)gl.deleteBuffer(mesh.p);if(mesh.ix)gl.deleteBuffer(mesh.ix);mesh.p=null;mesh.ix=null;}
   };
   Scene.prototype.drawBatch=function(batch){
     if(!batch||!batch.count)return;
@@ -525,7 +559,7 @@ window.Hive3D = (function () {
   Scene.prototype.applyArtboardTransform=function(){if(!this.artboard)return;this.artboard.style.transform=this.displayMode==="reference"?"translate3d("+(this.panX*100)+"%,"+(this.panY*100)+"%,0) scale("+this.zoom+")":"none";};
   Scene.prototype.info=function(){return{renderer:"webgl",cells:(this.cells||[]).length,screens:SCREENS.length,lanes:this.model?this.model.lanes.length:0,page:this.page,zoom:this.zoom,cssW:this.cssW,cssH:this.cssH,objects:this.objects?this.objects.length:0,deskRows:this.deskPositions?[this.deskPositions.filter(d=>d.row===0).length,this.deskPositions.filter(d=>d.row===1).length]:[]};};
   Scene.prototype.projectCell=function(rel){const i=this.screenMeta.findIndex(c=>c.rel===rel),desk=this.deskPositions&&this.deskPositions[i];if(i<0||!desk)return null;const p=this.projectWorld(desk.x,desk.row===1?1.38:1.205,desk.z-.418);return p&&p.visible?{x:p.x,y:p.y}:null;};
-  Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
+  Scene.prototype.dispose=function(){this.setActive(false);if(this.resizeObserver)this.resizeObserver.disconnect();if(this.languageObserver)this.languageObserver.disconnect();this.listeners.forEach(fn=>fn());if(this.pager)this.pager.remove();if(this.gl){const gl=this.gl;if(this.batchBuffers)for(const pass of Object.values(this.batchBuffers))for(const key of ["positions","normals","colors"])if(pass&&pass[key])gl.deleteBuffer(pass[key]);for(const o of [this.box,this.roundBox,this.sphere,this.cylinder,this.organic,this.wing,this.grout,this.bandGoldTop,this.bandGoldBottom,this.bandSeparator])if(o){if(o.p)gl.deleteBuffer(o.p);if(o.ix)gl.deleteBuffer(o.ix);}if(this.program)gl.deleteProgram(this.program);}if(window.__hive3d===this)delete window.__hive3d;};
   const originalCreate=(opts)=>new Scene(opts);
   // Initialize geometry after the constructor has successfully acquired WebGL.
   const create=(opts)=>{const scene=originalCreate(opts);if(scene.failed||!scene.gl)return null;scene.buildWorld();scene.buildBatches();scene.render();return scene;};
