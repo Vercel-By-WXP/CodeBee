@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-rem CodeBee 公网启动：端口清场（按 PID）+ CodeBee 服务（反代感知）+ Cloudflare Tunnel
+rem CodeBee 启动：端口清场（按 PID）+ CodeBee 服务（反代感知）
 rem 用法：start-public.bat [dev]   —— dev=起本仓库代码；默认起 npm 安装副本（日常生产入口）
 rem 附加参数原样透传给 main.py，如：start-public.bat dev --port 8765
 setlocal enabledelayedexpansion
@@ -9,8 +9,6 @@ cd /d "%~dp0"
 set "PORT=8765"
 if defined CB_PORT set "PORT=%CB_PORT%"
 set "PUBURL=https://codebee.fixwikihub.com"
-set "CF=%ProgramFiles(x86)%\cloudflared\cloudflared.exe"
-if not exist "%CF%" set "CF=cloudflared"
 
 rem dev 参数只切代码目录，不透传给 main.py
 set "EXTRA=%*"
@@ -53,22 +51,19 @@ rem ---------- 启动 CodeBee ----------
 echo [CodeBee] 启动服务：!APPDIR!（反代回源强制校验令牌）...
 start "CodeBee" /min /d "!APPDIR!" python app\main.py --trusted-proxy --public-url "%PUBURL%" !EXTRA!
 
-rem 等服务监听就绪再拉隧道（最多 15 秒）
+rem 等服务监听就绪（最多 15 秒，仅作就绪提示）
 set /a TRIES=0
 :wait_up
 timeout /t 1 /nobreak >nul
 netstat -ano | findstr /r /c:":%PORT% .*LISTENING" >nul 2>nul && goto :up
 set /a TRIES+=1
 if %TRIES% lss 15 goto :wait_up
-echo [警告] 服务 %TRIES% 秒内未在 %PORT% 监听（首次启动可能较慢），仍继续启动隧道...
+echo [警告] 服务 %TRIES% 秒内未在 %PORT% 监听（首次启动可能较慢）。
 :up
 
-rem ---------- 启动 Cloudflare Tunnel ----------
-echo [CodeBee] 启动 Cloudflare Tunnel（codebee.fixwikihub.com）...
-start "cloudflared-codebee" /min "%CF%" tunnel --config "%USERPROFILE%\.cloudflared\config-codebee.yml" run
 echo.
-echo 公网地址: %PUBURL%   本机地址: http://localhost:%PORT%
+echo 本机地址: http://localhost:%PORT%
 echo 令牌见 CodeBee 控制台，或本机打开后设置-手机连接里扫码。
-echo 关闭：结束 "CodeBee" 与 "cloudflared-codebee" 两个最小化窗口即可。
+echo 关闭：结束 "CodeBee" 最小化窗口即可。
 timeout /t 5 >nul
 endlocal
