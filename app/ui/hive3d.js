@@ -348,18 +348,18 @@ window.Hive3D = (function () {
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
-      // Smooth glassy oval wings sit on the camera-facing shoulder side. The reference is viewed from behind the seated assistants, so wings must project beyond the thorax instead of being hidden on the monitor-facing side.
-      this.add(this.organic,x-1.15,by+.25,bz-.03,.72,.42,.030,[.36,.72,.93,.29],0,-.36);
-      this.add(this.organic,x+1.15,by+.25,bz-.03,.72,.42,.030,[.36,.72,.93,.29],0,.36);
-      // Pull the translucent wings slightly toward the camera and lift their shoulder line:
-      // this keeps the silhouette distinct from the dark thorax at the default room view.
+      // Camera-facing, translucent wings: move them in front of the thorax depth plane so the
+      // opaque head/body cannot hide the silhouette. Their inner edge meets the shoulder.
+      this.add(this.organic,x-.84,by+.26,bz+.40,.86,.50,.035,[.42,.78,.98,.48],0,-.36);
+      this.add(this.organic,x+.84,by+.26,bz+.40,.86,.50,.035,[.42,.78,.98,.48],0,.36);
+      // Fine cyan veins follow the larger wing panels and remain visible at the default room view.
       for(const side of [-1,1]){
-        const root=[x+side*.42,by+.14,bz-.03];
-        const mid=[x+side*1.00,by+.26,bz-.03];
-        const tip=[x+side*1.52,by+.40,bz-.03];
-        this.addLink(root,mid,.0038,[.70,.90,1,.64]);
-        this.addLink(mid,tip,.0030,[.70,.90,1,.60]);
-        this.addLink([x+side*.88,by+.25,bz+.01],[x+side*1.18,by+.40,bz+.01],.0020,[.86,.97,1,.44]);
+        const root=[x+side*.36,by+.19,bz+.405];
+        const mid=[x+side*.78,by+.30,bz+.405];
+        const tip=[x+side*1.20,by+.41,bz+.405];
+        this.addLink(root,mid,.0060,[.76,.93,1,.84]);
+        this.addLink(mid,tip,.0045,[.76,.93,1,.76]);
+        this.addLink([x+side*.70,by+.27,bz+.41],[x+side*.96,by+.39,bz+.41],.0034,[.86,.97,1,.66]);
       }
 
     }
