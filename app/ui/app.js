@@ -11158,6 +11158,10 @@ function card(c) {
     ? '<label class="toggle"><input type="checkbox" ' + (c.orch_enabled ? "checked" : "") +
       ' onchange="toggleOrch(\'' + esc(c.id) + '\', this.checked)">' + t(" 参与编排") + '</label>'
     : '<span class="tag">' + t("仅管理") + '</span>';
+  const capability = c.capabilities || {};
+  const capTags = [capability.transport, capability.resume ? t("支持续会话") : "",
+    capability.mcp ? "MCP" : "", capability.sandbox].filter(Boolean)
+    .map((x) => '<span class="tag">' + esc(t(x)) + '</span>').join("");
   const dis = mgmtBusy(c.id) ? " disabled" : "";
   const hasModels = modelGroups().length > 0;
   const modelBox = c.config_writable
@@ -11186,6 +11190,7 @@ function card(c) {
     (c.installed && c.uninstall_cmd ? '<button class="danger small"' + dis + ' onclick="mgmt(\'' + esc(c.id) + '\', \'uninstall\')">' + t("卸载") + '</button>' : "") +
     "</div>" +
     '<div class="note">' + esc(t(c.note || "")) + "</div>" +
+    (capTags ? '<div class="facts capability-tags">' + capTags + '</div>' : "") +
     '<div class="facts">' + t("版本 ") + '<b>' + esc(c.version || "-") + "</b>" + t("　模型 ") + "<b>" + esc(fmtModel(c.model) || "-") + "</b>" +
     ((c.detail || c.config_path) ? "<br>" + esc(c.detail || c.config_path) : "") + "</div>" +
     mgmtPanel(c.id) +

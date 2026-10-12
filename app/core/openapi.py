@@ -68,6 +68,13 @@ def document():
         "CommandAuth": {"type": "object", "properties": {
             "mode": {"type": "string", "enum": ["legacy", "restricted"]},
             "pending": {"type": "array"}, "rules": {"type": "array"}, "audit": {"type": "array"}}},
+        "ReviewRequest": {"type": "object", "required": ["id", "run_id", "status"],
+                           "properties": {
+                               "id": {"type": "string"}, "run_id": {"type": "string"},
+                               "summary": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}},
+                               "channel": {"type": "string"},
+                               "status": {"type": "string", "enum": ["requested", "assigned", "approved", "changes_requested", "dismissed", "expired"]},
+                               "reviewer": {"type": "string"}, "reason": {"type": "string"}}},
     }
 
     def body(schema):
@@ -146,6 +153,28 @@ def document():
         "/api/command-auth/rules/{rule_id}/revoke": {
             "post": {"summary": "撤销命令授权规则", "security": security,
                      "responses": {"200": ok, "400": errors["400"], "401": errors["401"], "404": errors["404"]}}},
+        "/api/reviews": {
+            "get": {"summary": "读取外部人工评审请求", "security": security,
+                    "responses": {"200": response("评审请求列表", {"type": "object", "properties": {
+                        "reviews": {"type": "array", "items": ref("ReviewRequest")}}}), "401": errors["401"]}},
+            "post": {"summary": "创建外部人工评审请求", "security": security,
+                     "requestBody": body({"type": "object", "required": ["run_id"], "properties": {
+                         "run_id": {"type": "string", "maxLength": 100}, "summary": {"type": "string", "maxLength": 1000},
+                         "paths": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string", "maxLength": 500}}]},
+                         "channel": {"type": "string", "maxLength": 200}}}),
+                     "responses": {"200": response("评审请求", {"type": "object", "properties": {"review": ref("ReviewRequest")}}), **errors}}},
+        "/api/reviews/{review_id}/transition": {
+            "post": {"summary": "推进外部人工评审状态", "security": security,
+                     "requestBody": body({"type": "object", "required": ["action"], "properties": {
+                         "action": {"type": "string", "enum": ["assign", "approve", "changes_requested", "dismiss", "expire"]},
+                         "reviewer": {"type": "string", "maxLength": 200}, "reason": {"type": "string", "maxLength": 1000}}}),
+                     "responses": {"200": response("评审请求", {"type": "object", "properties": {"review": ref("ReviewRequest")}}), **errors}}},
+        "/api/capabilities": {"get": {"summary": "读取智能体能力清单", "security": security,
+            "responses": {"200": response("能力清单", {"type": "object"}), "401": errors["401"]}}},
+        "/api/tasks/{task_id}/memory/preview": {"get": {"summary": "预览项目记忆注入内容", "security": security,
+            "parameters": [{"name": "q", "in": "query", "schema": {"type": "string", "maxLength": 500}},
+                           {"name": "cap", "in": "query", "schema": {"type": "integer", "minimum": 0, "maximum": 20000}}],
+            "responses": {"200": response("记忆注入预览", {"type": "object"}), "401": errors["401"], "404": errors["404"], "409": errors["409"]}}},
         "/api/retrieval/search": {"get": {"summary": "本地检索", "security": security,
             "parameters": [{"name": "q", "in": "query", "required": True,
                             "schema": {"type": "string", "maxLength": 500}},

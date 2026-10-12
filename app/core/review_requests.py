@@ -22,6 +22,15 @@ _TRANSITIONS = {
 }
 
 
+def _normalize_paths(value):
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    return [str(item).strip()[:500] for item in value
+            if str(item or "").strip()][:200]
+
+
 def _read():
     latest = {}
     try:
@@ -38,6 +47,12 @@ def _read():
     return latest
 
 
+def list_requests():
+    """Return the latest version of each request in append-only storage."""
+    with _LOCK:
+        return list(_read().values())
+
+
 def _append(row):
     path = Path(_FILE)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -48,13 +63,13 @@ def _append(row):
 
 def route_channel(paths_changed, rules=None, default_channel=""):
     """Select the channel with the most matching changed files."""
-    paths_changed = [str(p or "") for p in (paths_changed or []) if str(p or "")]
+    paths_changed = _normalize_paths(paths_changed)
     rules = [r for r in (rules or []) if isinstance(r, dict)]
     best, best_count = "", 0
     import fnmatch
     for rule in rules:
         channel = str(rule.get("channel") or "").strip()
-        patterns = rule.get("paths") if isinstance(rule.get("paths"), list) else []
+        patterns = _normalize_paths(rule.get("paths"))
         count = sum(1 for path in paths_changed if any(fnmatch.fnmatchcase(path, str(p)) for p in patterns))
         if channel and count > best_count:
             best, best_count = channel, count
@@ -62,10 +77,12 @@ def route_channel(paths_changed, rules=None, default_channel=""):
 
 
 def create(run_id, *, summary="", paths=None, channel="", now=None):
+    if not str(run_id or "").strip():
+        raise ValueError("run_id 不能为空")
     stamp = float(now if now is not None else time.time())
     row = {"id": "review-" + secrets.token_hex(10), "run_id": str(run_id or "")[:100],
            "summary": str(summary or "")[:1000],
-           "paths": [str(p)[:500] for p in (paths or [])][:200],
+           "paths": _normalize_paths(paths),
            "channel": str(channel or "")[:200], "status": "requested",
            "version": 1, "created_at": stamp, "updated_at": stamp}
     with _LOCK:

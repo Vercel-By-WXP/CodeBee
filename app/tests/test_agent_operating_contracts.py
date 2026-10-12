@@ -76,6 +76,22 @@ class AgentOperatingContractTests(unittest.TestCase):
         self.assertEqual(again["version"], approved["version"])
         self.assertEqual(current["reviewer"], "alice")
 
+    def test_review_request_validates_run_id_and_normalizes_string_paths(self):
+        with patch.object(review_requests, "_FILE", self.root / "reviews.jsonl"):
+            with self.assertRaises(ValueError):
+                review_requests.create("", paths="ui/app.js")
+            row = review_requests.create("run-2", paths="ui/app.js")
+            self.assertEqual(row["paths"], ["ui/app.js"])
+            self.assertEqual(review_requests.list_requests()[0]["id"], row["id"])
+
+    def test_openapi_declares_new_operating_contract_routes(self):
+        from core import openapi
+        paths = openapi.document()["paths"]
+        self.assertIn("/api/reviews", paths)
+        self.assertIn("/api/reviews/{review_id}/transition", paths)
+        self.assertIn("/api/capabilities", paths)
+        self.assertIn("/api/tasks/{task_id}/memory/preview", paths)
+
 
 if __name__ == "__main__":
     unittest.main()

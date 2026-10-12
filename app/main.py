@@ -373,9 +373,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(409, {"error": str(exc)})
             if path == "/api/reviews":
                 from core import review_requests
-                with review_requests._LOCK:
-                    reviews = list(review_requests._read().values())
-                return self._json(200, {"reviews": reviews})
+                return self._json(200, {"reviews": review_requests.list_requests()})
             if path == "/api/backend-profiles":
                 from core import backend_profiles
                 try:

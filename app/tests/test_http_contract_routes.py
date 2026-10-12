@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import main
-from core import backend_profiles, command_auth, contracts, story_tracking
+from core import backend_profiles, command_auth, contracts, review_requests, story_tracking
 
 
 class HttpContractRouteTests(unittest.TestCase):
@@ -149,6 +149,33 @@ class HttpContractRouteTests(unittest.TestCase):
         status, payload = h._route_get()
         self.assertEqual(status, 200)
         self.assertEqual(payload["mode"], "restricted")
+
+    def test_external_review_routes_have_stable_http_shape(self):
+        review_file = self.root / "reviews.jsonl"
+        with patch.object(review_requests, "_FILE", review_file):
+            h = self.handler("/api/reviews", {
+                "run_id": "run-http", "summary": "Review changed files",
+                "paths": "ui/app.js", "channel": "#frontend"})
+            status, payload = h._route_post()
+            self.assertEqual(status, 200)
+            review = payload["review"]
+            self.assertEqual(review["paths"], ["ui/app.js"])
+
+            listing = self.handler("/api/reviews", {})
+            status, payload = listing._route_get()
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["reviews"][0]["id"], review["id"])
+
+            transition = self.handler("/api/reviews/" + review["id"] + "/transition",
+                                      {"action": "assign", "reviewer": "alice"})
+            status, payload = transition._route_post()
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["review"]["status"], "assigned")
+
+            invalid = self.handler("/api/reviews", {"summary": "missing run"})
+            status, payload = invalid._route_post()
+            self.assertEqual(status, 400)
+            self.assertIn("run_id", payload["error"])
 
 
 if __name__ == "__main__":
