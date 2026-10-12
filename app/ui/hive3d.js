@@ -348,17 +348,18 @@ window.Hive3D = (function () {
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
-      // Compact camera-facing wing panels meet the shoulder and read as distinct blue petals.
-      this.add(this.organic,x-.72,by+.39,bz+.32,.64,.62,.045,[.26,.64,.86,.46],0,-.45);
-      this.add(this.organic,x+.72,by+.39,bz+.32,.64,.62,.045,[.26,.64,.86,.46],0,.45);
-      // Fine cyan veins follow the smaller wing shape without spanning the workstation monitors.
+      // Lifted, compact camera-facing wings: keep their translucent surfaces above the monitor
+      // glass, with mirrored tips angled upward and roots anchored at the thorax silhouette.
+      this.add(this.organic,x-.66,by+.70,bz+.30,.42,.70,.035,[.30,.68,.90,.32],0,-.62);
+      this.add(this.organic,x+.66,by+.70,bz+.30,.42,.70,.035,[.30,.68,.90,.32],0,.62);
+      // Three restrained cyan veins follow the swept wing shape without reading as long screen streaks.
       for(const side of [-1,1]){
-        const root=[x+side*.38,by+.29,bz+.325];
-        const mid=[x+side*.68,by+.40,bz+.325];
-        const tip=[x+side*.98,by+.49,bz+.325];
-        this.addLink(root,mid,.0048,[.64,.88,1,.88]);
-        this.addLink(mid,tip,.0036,[.64,.88,1,.78]);
-        this.addLink([x+side*.64,by+.36,bz+.33],[x+side*.82,by+.46,bz+.33],.0028,[.82,.95,1,.66]);
+        const root=[x+side*.39,by+.46,bz+.305];
+        const mid=[x+side*.61,by+.62,bz+.305];
+        const tip=[x+side*.83,by+.74,bz+.305];
+        this.addLink(root,mid,.0060,[.56,.84,1,.88]);
+        this.addLink(mid,tip,.0048,[.56,.84,1,.80]);
+        this.addLink([x+side*.57,by+.57,bz+.31],[x+side*.75,by+.68,bz+.31],.0035,[.82,.95,1,.66]);
       }
 
     }
