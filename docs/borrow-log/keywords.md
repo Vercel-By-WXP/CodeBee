@@ -130,7 +130,7 @@
 - q=chapter+hook+optimization+OR+serial+pacing（章节钩子/节奏优化）
 
 ### A13 多 CLI 面板 / 用量指标 / 运行守卫（7 组，2026-09-22 新增——本轮实测命中一整簇同形态竞品与「不信任自报」护栏族）
-- q=agent+dashboard+OR+multi+agent+cli+panel（多 CLI 统一面板/看板——OmniTerm/adhdev/CPA-Manager-Plus 一簇）
+- q=agent+dashboard+OR+multi+agent+cli+panel+OR+cmux（多 CLI 统一面板/看板——OmniTerm/adhdev/CPA-Manager-Plus 一簇；2026-10-13 03 时班补：manaflow-ai/cmux 28,131★〔Ghostty 基座 macOS agent 终端，竖排标签+通知，A13 域最大体量新件〕系 topic:claude-code 捞出、主扫 A4「terminal+coding+agent」按星排序其前 8 名〔claude-code 150k/codex 128k/orca 90k/career-ops 74k/herdr 43k/Reasonix 35k/oh-my-pi 35k/qwen-code 28.4k〕全压过它系 **per_page=5 剪切线盲区**〔openclacky 同型第 2 例〕，补品名词防同类新竞品漏捞，词已同班回写脚本 QUERIES，谁/何时/为何：03 时班批3）
 - q=claude+code+web+ui+OR+codex+web+terminal（Web 形态的多 CLI 界面）
 - q=llm+usage+metrics+OR+token+throughput+dashboard（用量/速度/缓存命中指标——opencode-metrics 方向）
 - q=agent+credential+vault+OR+secret+management+agent（凭据保险库——sandbase-harness 方向）

@@ -55,7 +55,7 @@ QUERIES = [
     ("A12", "web+novel+publish+automation"), ("A12", "story+to+video+pipeline+OR+novel+adaptation"),
     ("A12", "multi+platform+content+publishing+agent"), ("A12", "reader+feedback+analysis+ai"),
     ("A12", "chapter+hook+optimization+OR+serial+pacing"),
-    ("A13", "agent+dashboard+OR+multi+agent+cli+panel"), ("A13", "claude+code+web+ui+OR+codex+web+terminal"),
+    ("A13", "agent+dashboard+OR+multi+agent+cli+panel+OR+cmux"), ("A13", "claude+code+web+ui+OR+codex+web+terminal"),
     ("A13", "llm+usage+metrics+OR+token+throughput+dashboard"), ("A13", "agent+credential+vault+OR+secret+management+agent"),
     ("A13", "agent+out+of+scope+edit+OR+scope+creep+agent+OR+half+finished+agent"),
     ("A13", "proof+gated+completion+OR+agent+self+report+trust"), ("A13", "defect+retrospective+ai+OR+bug+postmortem+agent"),

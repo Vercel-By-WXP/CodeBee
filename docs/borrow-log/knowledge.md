@@ -7697,3 +7697,81 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   main 门禁已绿。fetch 首次 github.com:443 超时，重试成功；启动基线为 `f642fa2`，随后
   `origin/main` 新增 7 个提交，当前 `HEAD...origin/main` 为 0/7；全量未绿不推送 main。
   未改版本、未发布、未安装 CLI、未执行真实禅道或外部通知动作。
+
+## 2026-10-13 03 时班（批3·计划/spec/长任务——新一轮计划第 1/3 步全类型调研）
+
+- **manaflow-ai/cmux**（28,131★，2026-01 建，topic:claude-code）新入库 | Ghostty 基座
+  macOS agent 终端：竖排标签页+完成通知，为多 agent 并行任务管理而生（9 个月 28k★）
+  | **A13 多 CLI 面板域最大体量新件**（OmniTerm/adhdev/CPA-Manager-Plus 同形态）；
+  macOS-only 桌面 app，我们系 Windows 优先 Web 编排台——「并行会话可视化组织」交互
+  面作 UI 远期参照 | A13 参考（雷达跟踪）| 2026-10-13
+- **remorses/kimaki**（1,430★，10-12，npm「agent orchestrator」通道）新入库 |
+  **Discord 即控制面**：频道=项目、线程=会话严格映射；手机发消息→本机 OpenCode agent
+  干活；订阅 OAuth 复用（Claude Pro/Max 直登） | A1/A13 远程指挥同形态——与 10-12
+  移动端指挥补强同向，「频道/线程二维映射」系组织化远程指挥清晰范式；Discord 生态
+  绑定不接 | A1 借鉴方向（远程指挥组织化）| 2026-10-13
+- **JimLiu/baocut**（835★，10-12，主扫 A10 短视频组）新入库 | AI 视频 agent+可编辑
+  时间线：转写/字幕/翻译/配音/剪辑/动效一条龙，时间线可人工干预 | A10 短视频链路
+  下游：我们短视频脚本产出脚本端，baocut 系脚本→成片执行端（showreel 上游旁支的
+  下游补全）；app 大改非小而实 | A10 微型判据（雷达）| 2026-10-13
+- **smg-project/smg**（572★，10-12，topic:mcp）新入库 | Rust 引擎无关 LLM 网关：
+  **KV-cache 感知路由**+tokenization 缓存+gRPC 管线+WASM 插件+MCP+多租户 | A8/A3
+  网关域：KV-cache 感知路由系前缀缓存优化网关侧标配化第 3 家（bifrost/modelbus 后）
+  ——语义缓存网关标配化三度确认，编排台内不自建维持 | A8 参考（雷达）| 2026-10-13
+- **状态变更复核：MoonshotAI/kimi-cli 正式 [Archived]**（11,420★，旧 Python 版停止
+  维护，被 MoonshotAI/kimi-code 7,844★ 接替）——**catalog.py 已预判此交替**（id=
+  kimi-code，install/upgrade 走 @moonshot-ai/kimi-code npm 包，note 明记旧版下线），
+  零死链复核确认 | 状态变更（已闭环）| 2026-10-13
+- **禅道官方线成型（F）**：easysoft/zentao-cli 64★（+3，10-04 活跃）+ **easysoft/
+  zentao-api 0.7.2 官方 SDK 首记专行**（10-01 发版）——官方 CLI+SDK 双件在架，与
+  社区 MCP 12+ 并存；深度闭环仍 CodeBee 独占（第 40 例） | F 生态信号 | 2026-10-13
+- **DSH 十二件套（E）**：九件套→+dsh-plugin-guide 0.3.27（PerryLink 官方文档基建+
+  dsh-plugin-dev 工具链）/dsh-plugin-om 0.0.45/aiko-dsh-plugin-catalog 0.2.0 第二
+  目录；dsh-plugin-shop-catalog 2026.1012.1 每日定版连续第 2 天/ops-core 0.19.2
+  当日发——生态进入「基建+文档+多目录」成熟期 | E 生态信号 | 2026-10-13
+- **三大趋势信号**：①storytold craft 家族第 7 件 **wordcraft 8,733 登顶家族头**（纯
+  Rust clean-room 重实现 Word），与 ppt-master 61,044（+748 加速）生成/运行时两端
+  放量；②**远程指挥三通道共振**（kimaki+cmux+paperclip 100,867★ 100k 级复认）
+  ——「手机/第二屏组织并行 agent」系本周需求最强信号簇；③trendshift 病毒面
+  **anatomy 5,796（+3,021/24h）**、magpie 10,326（+1,195）、mattpocock-skills
+  +1,737、free-claude-code +863 | 趋势 | 2026-10-13
+- **微型/域外/补行速记**：CCBaga 1,565（Claude 身份/浏览器指纹隔离工具，Rust+Tauri，
+  凭据族旁支域外）/Fieldwatch 3,565+plexo 2,934+doory 736+ghidra（域外）/
+  zhu1090093659/spec_driven_develop 986（历班报告口径已录族、knowledge 缺专行本班
+  补行）/coleo 0.14.4（属主勘定 sirtimbly，0★ 三问不过维持）/EGC 65（+2 复认）/
+  harness-sdk 8,784（+153）| 微型判据群（雷达）| 2026-10-13
+- **停更观察新记 2 件**：e2b-dev/awesome-ai-agents 08-21 后无 push（53 天，此前
+  一直在更）/dtyq/magic 08-12 后无 push（62 天）——加 caramaschiHG/vijaythecoder
+  共 4 源停更观察；awesome 23 源+判据件 64/64 repos 实测零 archived 维持
+  （get-shit-done 64,310〔-10★〕系全量唯一 archived） | 复查 | 2026-10-13
+- **剪切线盲区补词（keywords.md+脚本 QUERIES 同班回写）**：A13 首查追加 `+OR+cmux`
+  ——manaflow-ai/cmux 28,131★ 系 **per_page=5 剪切线盲区**（openclacky 同型第 2 例：
+  q=terminal+coding+agent 星序其前 8 名〔claude-code 150k/codex 128k/orca 90k/
+  career-ops 74k/herdr 43k/Reasonix 35k/oh-my-pi 35k/qwen-code 28.4k〕全压过它，
+  主扫 121 词全历史零命中）；词已回写 borrow_scan_nightly.py QUERIES 并 py_compile+
+  批1 冒烟通过 | 词库维护 | 2026-10-13
+- **属主勘定：orca=stablyai/orca 90,568★**（+907/24h 加速，q=terminal+coding+agent
+  头部自证）——历班裸名悬案闭合，复查线并入 stablyai/orca 口径 | 勘定 | 2026-10-13
+
+### 复查记录（03 时班，vs 10-12 03 时班基准 64 仓 repos 实测 03:5x-04:0x）
+
+- mattpocock-skills 287,735（+1,737）/ECC 277,775（+695）/hermes 253,078（+313）/
+  deepseek-harness 248,174（+723）/karpathy-skills 219,200（+388）/opencode 212,928
+  （+217）/anthropics-skills 180,712（+234）/ponytail 161,788（+777）/dify 158,266
+  （+106）/pi 114,581（+283）；放量 magpie 10,326（+1,195）/anatomy 5,796（+3,021）/
+  free-claude-code 58,846（+863）/ppt-master 61,044（+748）/taste-skill 95,088
+  （+397）/open-code-review 46,498（+369）/openrig 7,200（+278 第 11 班）/OpenShell
+  15,960（+145）/deckcraft 2,470（+577）/strix 68,151（+232）/headroom 75,134（+76）；
+  B3 支线 OpenSpec 71,737（+100）/plannotator 9,363（+20）/BMAD 54,062（+27）；
+  写作域 distilly 25,531/TrendRadar 62,831；记忆域 planning-with-files 27,411/
+  memsearch 2,737；E 候选 Reasonix 35,769 首位维持零接入/openclacky 1,202 持平/
+  minimax-code 2,022；autoharness 11,028（+42）；late-cli 443 持平/dscode 1,028/
+  openharness 1,232/openworker 18,501/eve 5,536/magic 5,051（08-12 停更新记）
+  | 复查 | 2026-10-13
+- **本班结论**：主扫 121/121 零失败零限流（549 行=484 唯一仓/活跃 270/首见判据
+  近零系**连续第 10 班域稳定期**）+WebSearch 串行 1 发（B3 域全已录零新，双通道
+  互证）+trendshift/topic/awesome/npm/自家 CLI 周边/禅道/DSH 七通道全过（pypi 挑战页
+  仍拦连续 7 班）。真新件 4 件（cmux/kimaki/baocut/smg）+官方禅道 SDK+DSH 十二件套
+  +三大趋势信号+kimi-cli 归档复核（catalog 零死链）+停更观察新记 2 件+剪切线补词
+  1 处+orca 属主勘定；判据件均非小而实当班落地件，零产品代码提案，落地=知识沉淀
+  三件套+词库补词，不触发发版 | 结论 | 2026-10-13
