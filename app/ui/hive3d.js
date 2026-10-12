@@ -318,12 +318,12 @@ window.Hive3D = (function () {
       // Shoulders, articulated elbows and forearms form continuous 3D links down to the keyboard.
       for(const side of [-1,1]){
         const shoulder=[x+side*.40,.99,z+.86],elbow=[x+side*.49,.83,z+.63],wrist=[x+(side<0?-.34:.35),.675,z+.31],hand=[x+(side<0?-.30:.34),.655,z+.22];
-        this.addLink(shoulder,elbow,.042,[.23,.27,.30,1]);
-        this.addLink(elbow,wrist,.036,[.25,.29,.32,1]);
+        this.addLink(shoulder,elbow,.042,[.12,.15,.18,1]);
+        this.addLink(elbow,wrist,.036,[.18,.22,.25,1]);
         this.addLink(wrist,hand,.030,[.96,.63,.035,1]);
-        this.add(s,shoulder[0],shoulder[1],shoulder[2],.080,.080,.085,[.24,.28,.31,1]);
-        this.add(s,elbow[0],elbow[1],elbow[2],.068,.068,.068,[.38,.42,.45,1]);
-        this.add(s,wrist[0],wrist[1],wrist[2],.052,.052,.052,[.30,.35,.39,1]);
+        this.add(s,shoulder[0],shoulder[1],shoulder[2],.080,.080,.085,[.14,.17,.20,1]);
+        this.add(s,elbow[0],elbow[1],elbow[2],.068,.068,.068,[.26,.30,.33,1]);
+        this.add(s,wrist[0],wrist[1],wrist[2],.052,.052,.052,[.21,.25,.28,1]);
         this.add(rb,hand[0],hand[1],hand[2],.085,.045,.070,[.96,.63,.035,1]);
         this.add(s,hand[0],hand[1],hand[2],.070,.035,.055,[.98,.68,.045,1]);
         for(let finger=0;finger<3;finger++)this.add(b,hand[0]+(finger-1)*.026,.638,hand[2]-.06,.012,.010,.046,[.22,.29,.35,1]);
@@ -333,10 +333,10 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth glassy oval wings sit at the shoulder line. Sphere geometry keeps their
       // silhouette rounded from every camera angle and lets the opaque body occlude them.
-      this.add(s,x-.46,by-.205,bz-.10,.40,.18,.075,[.46,.73,.93,.29],0,.12);
-      this.add(s,x+.46,by-.205,bz-.10,.40,.18,.075,[.46,.73,.93,.29],0,-.12);
-      this.add(s,x-.43,by-.185,bz-.06,.27,.11,.045,[.78,.91,.98,.19],0,.09);
-      this.add(s,x+.43,by-.185,bz-.06,.27,.11,.045,[.78,.91,.98,.19],0,-.09);
+      this.add(s,x-.48,by-.13,bz-.17,.38,.15,.060,[.33,.60,.83,.37],0,.14);
+      this.add(s,x+.48,by-.13,bz-.17,.38,.15,.060,[.33,.60,.83,.37],0,-.14);
+      this.add(s,x-.44,by-.105,bz-.12,.23,.085,.035,[.74,.90,.98,.22],0,.10);
+      this.add(s,x+.44,by-.105,bz-.12,.23,.085,.035,[.74,.90,.98,.22],0,-.10);
 
     }
     // Planters and stylized leaves soften the room edges.
