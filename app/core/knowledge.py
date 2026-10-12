@@ -623,6 +623,15 @@ def migrate_drafts_approved():
         seed_platform_rules()
     except Exception:
         pass
+    try:
+        # 作家课堂每日自动沉淀的启动收口：kb 注入避免 classroom_sync 静态
+        # 回引本模块（防环）；daemon 自节流（30 分钟自检、20 小时冷却），
+        # TUTTI_CLASSROOM_SYNC=0 关停。
+        import sys
+        from . import classroom_sync
+        classroom_sync.start_daemon(kb=sys.modules[__name__])
+    except Exception:
+        pass
     return len(dirty)
 
 

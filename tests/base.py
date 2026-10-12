@@ -28,6 +28,10 @@ class BaseTest(unittest.TestCase):
         # CLI 配置（2026-09-22 a.test 毒入真实 settings.json 实案）。
         self._old_tutti_data = __import__("os").environ.get("TUTTI_DATA")
         __import__("os").environ["TUTTI_DATA"] = str(self.data_dir)
+        # 课堂自动沉淀 daemon 会真联网（fanqie 列表/正文 + 模型调用）：
+        # 测试进程默认灭活，需要专测 daemon 时显式把该 env 设回非 "0"。
+        self._old_classroom_sync = __import__("os").environ.get("TUTTI_CLASSROOM_SYNC")
+        __import__("os").environ["TUTTI_CLASSROOM_SYNC"] = "0"
         # 先重定向，再做任何 app 模块导入（见下方 _FILE 重绑注释）
         paths.DATA_DIR = self.data_dir
         paths.TASKS_DIR = self.data_dir / "tasks"
@@ -94,6 +98,10 @@ class BaseTest(unittest.TestCase):
             os_env.pop("TUTTI_DATA", None)
         else:
             os_env["TUTTI_DATA"] = self._old_tutti_data
+        if self._old_classroom_sync is None:
+            os_env.pop("TUTTI_CLASSROOM_SYNC", None)
+        else:
+            os_env["TUTTI_CLASSROOM_SYNC"] = self._old_classroom_sync
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def mock_agents(self):
