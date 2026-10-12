@@ -317,16 +317,16 @@ window.Hive3D = (function () {
       }
       // Shoulders, articulated elbows and forearms form continuous 3D links down to the keyboard.
       for(const side of [-1,1]){
-        const shoulder=[x+side*.32,.99,z+.56],elbow=[x+side*.43,.83,z+.42],wrist=[x+side*.36,.675,z+.27],hand=[x+side*.35,.655,z+.22];
-        this.addLink(shoulder,elbow,.039,[.19,.22,.25,1]);
-        this.addLink(elbow,wrist,.034,[.20,.24,.27,1]);
+        const shoulder=[x+side*.40,.99,z+.86],elbow=[x+side*.49,.83,z+.63],wrist=[x+(side<0?-.34:.35),.675,z+.31],hand=[x+(side<0?-.30:.34),.655,z+.22];
+        this.addLink(shoulder,elbow,.042,[.23,.27,.30,1]);
+        this.addLink(elbow,wrist,.036,[.25,.29,.32,1]);
         this.addLink(wrist,hand,.030,[.96,.63,.035,1]);
-        this.add(s,shoulder[0],shoulder[1],shoulder[2],.075,.075,.085,[.19,.22,.25,1]);
-        this.add(s,elbow[0],elbow[1],elbow[2],.065,.065,.065,[.32,.36,.39,1]);
-        this.add(s,wrist[0],wrist[1],wrist[2],.052,.052,.052,[.24,.29,.32,1]);
+        this.add(s,shoulder[0],shoulder[1],shoulder[2],.080,.080,.085,[.24,.28,.31,1]);
+        this.add(s,elbow[0],elbow[1],elbow[2],.068,.068,.068,[.38,.42,.45,1]);
+        this.add(s,wrist[0],wrist[1],wrist[2],.052,.052,.052,[.30,.35,.39,1]);
         this.add(rb,hand[0],hand[1],hand[2],.085,.045,.070,[.96,.63,.035,1]);
         this.add(s,hand[0],hand[1],hand[2],.070,.035,.055,[.98,.68,.045,1]);
-        for(let finger=0;finger<3;finger++)this.add(b,x+side*.35+(finger-1)*.026,.638,z+.16,.012,.010,.046,[.22,.29,.35,1]);
+        for(let finger=0;finger<3;finger++)this.add(b,hand[0]+(finger-1)*.026,.638,hand[2]-.06,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
