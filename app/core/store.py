@@ -2352,8 +2352,31 @@ def write_report(run_id, markdown):
     return p
 
 
+def _builtin_live_log_text(run, rel_path):
+    """内置智能体步骤从不落 steps/*.log（实时流只写 run.json），日志文件缺席
+    时用步骤记录拼一份可读日志兜底——否则所有读日志文件的面板（大屏下钻抽屉/
+    蜂巢弹窗/日志抽屉）对 CodeBee 步骤永远「日志为空」，分不清真死还是在干活
+    （2026-10-12 用户反馈）。运行中：活动+思考+正文流；已结束：思考+正文+摘要
+    （stream/activity 收尾即清，finish_step 另落 output/summary）。"""
+    step = next((s for s in (run.get("steps") or [])
+                 if s.get("log") == rel_path), None)
+    if not step:
+        return ""
+    parts = []
+    for act in (step.get("activity") or []):
+        if act:
+            parts.append("【活动】" + str(act))
+    for key, tag in (("thinking", "【思考】"), ("stream", "【正文】"),
+                     ("output", "【正文】"), ("summary", "【摘要】")):
+        v = str(step.get(key) or "").strip()
+        if v:
+            parts.append(tag + " " + v)
+    return "\n".join(parts)
+
+
 def read_step_log(run_id, rel_path, tail=paths.LOG_TAIL_CHARS, pretty=False):
     p = (paths.RUNS_DIR / run_id / rel_path).resolve()
+    text = ""
     try:
         # 防目录穿越：必须落在本 run 目录内
         if paths.RUNS_DIR.resolve() not in p.parents:
@@ -2369,6 +2392,13 @@ def read_step_log(run_id, rel_path, tail=paths.LOG_TAIL_CHARS, pretty=False):
         text = runner.collapse_dup_lines(runner.clean_cli_text(text))
         if pretty:
             text = runner.pretty_cli_log(text)
-        return text
     except Exception:
-        return ""
+        text = ""
+    if not (text or "").strip():
+        # 文件缺席/为空的兜底：内置智能体只有 run.json 实时流；顺带惠及日志
+        # 已被清理的老 run（终点摘要/思考还在步骤记录里）
+        live = _builtin_live_log_text(get_run(run_id) or {}, str(rel_path))
+        if live:
+            text = live if len(live) <= tail else \
+                "...(已截断)...\n" + live[-int(tail):]
+    return text
