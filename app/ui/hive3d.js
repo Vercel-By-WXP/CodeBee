@@ -349,8 +349,8 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth glassy oval wings sit on the camera-facing shoulder side. The reference is viewed from behind the seated assistants, so wings must project beyond the thorax instead of being hidden on the monitor-facing side.
-      this.add(this.organic,x-.58,by+.075,bz+.31,.88,1.02,.10,[.20,.49,.78,.40],0,.22);
-      this.add(this.organic,x+.58,by+.075,bz+.31,.88,1.02,.10,[.20,.49,.78,.40],0,-.22);
+      this.add(this.organic,x-.58,by+.075,bz+.31,.82,.92,.10,[.20,.43,.70,.24],0,.22);
+      this.add(this.organic,x+.58,by+.075,bz+.31,.82,.92,.10,[.20,.43,.70,.24],0,-.22);
       // Pull the translucent wings slightly toward the camera and lift their shoulder line:
       // this keeps the silhouette distinct from the dark thorax at the default room view.
       for(const side of [-1,1]){
