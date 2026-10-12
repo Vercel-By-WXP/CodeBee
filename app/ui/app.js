@@ -17,6 +17,8 @@ const BROWSER_STORAGE_KEY = "orch.browser.workspace.v1";
 const BROWSER_HOME = "__codebee_home__";
 const BROWSER_SEARCH = "https://www.google.com/search?igu=1&q=";
 const BROWSER_FRAME_BLOCKED_HOSTS = new Set(["github.com", "www.github.com", "x.com", "twitter.com", "www.twitter.com", "linkedin.com", "www.linkedin.com"]);
+const BROWSER_HISTORY_LIMIT = 500;
+const BROWSER_PERMISSION_FEATURES = ["camera", "microphone", "geolocation", "clipboard-read"];
 const BROWSER_TASK_STORAGE_KEY = "orch.browser.task.v1";
 let browserState = browserLoadState();
 let browserTaskId = "";
@@ -30,10 +32,24 @@ function browserLoadState() {
     const raw = JSON.parse(localStorage.getItem(BROWSER_STORAGE_KEY) || "{}");
     const tabs = Array.isArray(raw.tabs) && raw.tabs.length ? raw.tabs : [{ id: "home", url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }];
     const kept = tabs.slice(0, 20).map(browserNormalizeTab);
-    return { tabs: kept, active: Math.max(0, Math.min(Number(raw.active) || 0, kept.length - 1)) };
+    const migratedHistory = kept.flatMap((tab) => tab.history.slice(0, tab.index + 1).map((url, index) => ({
+      url, title: browserTitle(url), visitedAt: Date.now() - (tab.history.length - index),
+    })));
+    const history = Array.isArray(raw.history) ? raw.history.filter(browserValidHistoryEntry) : migratedHistory;
+    return {
+      tabs: kept,
+      active: Math.max(0, Math.min(Number(raw.active) || 0, kept.length - 1)),
+      history: history.slice(-BROWSER_HISTORY_LIMIT),
+      permissions: raw.permissions && typeof raw.permissions === "object" && !Array.isArray(raw.permissions) ? raw.permissions : {},
+    };
   } catch (e) {
-    return { tabs: [{ id: "home", url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }], active: 0 };
+    return { tabs: [{ id: "home", url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }], active: 0, history: [], permissions: {} };
   }
+}
+
+function browserValidHistoryEntry(entry) {
+  return !!entry && typeof entry.url === "string" && entry.url !== BROWSER_HOME &&
+    /^https?:\/\//i.test(entry.url) && Number.isFinite(Number(entry.visitedAt));
 }
 
 function browserNormalizeTab(tab, i) {
@@ -46,6 +62,7 @@ function browserSaveState() {
   try {
     browserState.tabs = browserState.tabs.slice(0, 20).map(browserNormalizeTab);
     browserState.active = Math.max(0, Math.min(browserState.active, browserState.tabs.length - 1));
+    browserState.history = (browserState.history || []).filter(browserValidHistoryEntry).slice(-BROWSER_HISTORY_LIMIT);
     localStorage.setItem(BROWSER_STORAGE_KEY, JSON.stringify(browserState));
   } catch (e) { /* private browsing/storage quota: browser remains usable in memory */ }
   const count = $("browser-history-count");
@@ -280,6 +297,72 @@ function browserSetFrameError(show, message) {
   if (text && message) text.textContent = message;
 }
 
+function browserRecordVisit(url) {
+  if (!url || url === BROWSER_HOME) return;
+  const visitedAt = Date.now();
+  const entry = { url, title: browserTitle(url), visitedAt };
+  browserState.history = (browserState.history || []).filter((item) => item.url !== url);
+  browserState.history.push(entry);
+  browserState.history = browserState.history.slice(-BROWSER_HISTORY_LIMIT);
+}
+
+function browserCurrentOrigin() {
+  const tab = browserActiveTab();
+  try { return tab && tab.url !== BROWSER_HOME ? new URL(tab.url, location.origin).origin : ""; } catch (e) { return ""; }
+}
+
+function browserSitePermissions(origin) {
+  const saved = browserState.permissions && browserState.permissions[origin];
+  return new Set(Array.isArray(saved) ? saved.filter((feature) => BROWSER_PERMISSION_FEATURES.includes(feature)) : []);
+}
+
+function browserApplyFramePermissions() {
+  const frame = $("browser-frame");
+  if (!frame) return;
+  const origin = browserCurrentOrigin();
+  const allowed = browserSitePermissions(origin);
+  frame.setAttribute("allow", BROWSER_PERMISSION_FEATURES.filter((feature) => allowed.has(feature))
+    .map((feature) => feature + " 'src'").join("; "));
+  const summary = $("browser-site-origin");
+  if (summary) summary.textContent = origin || t("当前没有打开网站");
+  const controls = $("browser-permission-list");
+  if (controls) {
+    controls.querySelectorAll("input[data-browser-permission]").forEach((input) => {
+      input.checked = allowed.has(input.dataset.browserPermission);
+      input.disabled = !origin || !origin.startsWith("https://");
+    });
+    const note = $("browser-permission-note");
+    if (note) note.textContent = origin && !origin.startsWith("https://")
+      ? t("网站权限仅对 HTTPS 网站开放。")
+      : t("只允许此网站请求所选权限；浏览器仍会在网站实际使用时显示系统授权提示。");
+  }
+  const siteButton = $("browser-site-permissions");
+  if (siteButton) siteButton.disabled = !origin;
+}
+
+function browserRenderHistory() {
+  const list = $("browser-history-list");
+  if (!list) return;
+  const query = (($ ("browser-history-search") || {}).value || "").trim().toLocaleLowerCase();
+  const entries = (browserState.history || []).slice().reverse().filter((item) =>
+    !query || (item.title + " " + item.url).toLocaleLowerCase().includes(query));
+  if (!entries.length) {
+    list.innerHTML = '<div class="browser-dialog-empty">' + esc(t(query ? "没有匹配的浏览记录" : "暂无浏览记录")) + "</div>";
+    return;
+  }
+  list.innerHTML = entries.map((item) => '<button type="button" class="browser-history-entry" data-browser-history-url="' + esc(item.url) + '">' +
+    '<span class="browser-history-entry-mark"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg></span>' +
+    '<span class="browser-history-entry-copy"><b>' + esc(item.title || browserTitle(item.url)) + '</b><small>' + esc(item.url) + '</small></span>' +
+    '<time>' + esc(new Date(item.visitedAt).toLocaleString()) + '</time></button>').join("");
+}
+
+function browserOpenDialog(id) {
+  const dialog = $(id);
+  if (!dialog) return;
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "");
+}
+
 function browserWatchFrame(url) {
   window.clearTimeout(browserFrameWatch);
   browserSetFrameError(false);
@@ -321,6 +404,7 @@ function browserDraw() {
   browserRenderTaskContext();
   browserDrawTabs();
   const address = $("browser-address"), frame = $("browser-frame"), empty = $("browser-empty");
+  browserApplyFramePermissions();
   if (address) address.value = tab.url === BROWSER_HOME ? "" : tab.url;
   const canBack = tab.index > 0, canForward = tab.index < tab.history.length - 1;
   ["browser-back", "browser-forward"].forEach((id, i) => { const b = $(id); if (b) b.disabled = i ? !canForward : !canBack; });
@@ -347,6 +431,7 @@ function browserNavigate(value, replace) {
   const tab = browserActiveTab();
   if (replace) tab.history[tab.index] = url;
   else { tab.history = tab.history.slice(0, tab.index + 1).concat(url).slice(-20); tab.index = tab.history.length - 1; }
+  browserRecordVisit(url);
   tab.url = url; tab.title = browserTitle(url); browserDraw(); return true;
 }
 
@@ -383,6 +468,44 @@ function browserBind() {
   });
   $("browser-open-external").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "_blank", "noopener"); });
   $("browser-frame-error-open").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "_blank", "noopener"); });
+  $("browser-history-open").addEventListener("click", () => { browserRenderHistory(); browserOpenDialog("browser-history-dialog"); });
+  $("browser-history-search").addEventListener("input", browserRenderHistory);
+  $("browser-history-list").addEventListener("click", (e) => {
+    const entry = e.target.closest("[data-browser-history-url]");
+    if (!entry) return;
+    $("browser-history-dialog").close();
+    browserNavigate(entry.dataset.browserHistoryUrl);
+  });
+  $("browser-clear-data").addEventListener("click", () => {
+    const confirm = $("browser-clear-confirm");
+    if (typeof confirm.showModal === "function") confirm.showModal(); else confirm.setAttribute("open", "");
+  });
+  $("browser-clear-confirm-yes").addEventListener("click", () => {
+    browserState.history = [];
+    browserState.permissions = {};
+    browserState.tabs = [{ id: "home", url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }];
+    browserState.active = 0;
+    browserSaveState();
+    $("browser-clear-confirm").close();
+    $("browser-history-dialog").close();
+    browserDraw();
+  });
+  $("browser-site-permissions").addEventListener("click", () => {
+    browserApplyFramePermissions();
+    browserOpenDialog("browser-permissions-dialog");
+  });
+  $("browser-permission-list").addEventListener("change", (e) => {
+    const input = e.target.closest("input[data-browser-permission]");
+    const origin = browserCurrentOrigin();
+    if (!input || !origin || !origin.startsWith("https://")) return;
+    const allowed = browserSitePermissions(origin);
+    if (input.checked) allowed.add(input.dataset.browserPermission); else allowed.delete(input.dataset.browserPermission);
+    if (allowed.size) browserState.permissions[origin] = Array.from(allowed);
+    else delete browserState.permissions[origin];
+    browserSaveState();
+    browserApplyFramePermissions();
+  });
+  document.querySelectorAll("[data-browser-dialog-close]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
   $("browser-empty").addEventListener("click", (e) => {
     const button = e.target.closest("[data-browser-home-action]");
     if (!button || button.disabled) return;

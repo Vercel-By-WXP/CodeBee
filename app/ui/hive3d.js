@@ -311,12 +311,12 @@ window.Hive3D = (function () {
       // cubicle silhouette of the reference while preserving a clear sightline to screens.
       for(const side of [-1,1]){
         const dividerX=x+side*(width*.49);
-        this.add(rb,dividerX,.94,z+.005,.070,1.34,1.20,[.86,.89,.91,1]);
-        this.add(rb,dividerX,.96,z-.015,.074,1.27,1.13,[1,.992,.968,1]);
-        this.add(rb,dividerX,.94,z-.620,.082,1.31,.045,[.93,.94,.93,1]);
-        this.add(rb,dividerX,.94,z+.620,.082,1.31,.045,[.93,.94,.93,1]);
-        this.add(b,dividerX-side*.010,.94,z-.58,.012,.95,.012,[.73,.79,.82,1]);
-        this.add(b,dividerX-side*.010,.94,z+.58,.012,.95,.012,[.73,.79,.82,1]);
+        this.add(rb,dividerX,.88,z+.005,.058,1.06,1.16,[.91,.93,.93,1]);
+        this.add(rb,dividerX-side*.012,.90,z-.015,.020,.96,1.08,[.98,.98,.96,1]);
+        this.add(rb,dividerX,.88,z-.595,.066,1.04,.045,[.95,.96,.94,1]);
+        this.add(rb,dividerX,.88,z+.595,.066,1.04,.045,[.95,.96,.94,1]);
+        this.add(b,dividerX-side*.014,.88,z-.55,.009,.76,.010,[.75,.81,.83,1]);
+        this.add(b,dividerX-side*.014,.88,z+.55,.009,.76,.010,[.75,.81,.83,1]);
       }
       // A compact three-drawer pedestal gives each station the white office furniture silhouette of the reference.
       this.add(rb,x+width*.30,.27,z+.445,width*.30,.42,.26,[.97,.965,.94,1]);
@@ -393,9 +393,13 @@ window.Hive3D = (function () {
       for(const side of [-1,1]){
         this.add(s,x+side*.382,by+.015,bz+.035,.078,.118,.094,[.045,.055,.065,1]);
         this.add(s,x+side*.407,by+.015,bz+.052,.030,.052,.048,[.99,.68,.045,1]);
-        this.add(this.cylinder,x+side*.105,by+.43,bz+.105,.020,.30,.020,[.045,.055,.065,1],0,-side*.18);
-        this.add(s,x+side*.13,by+.57,bz+.108,.032,.032,.032,[.10,.12,.14,1]);
-        this.add(s,x+side*.135,by+.595,bz+.132,.024,.024,.024,[1,.73,.10,1]);
+        const antennaBase=[x+side*.105,by+.29,bz+.12];
+        const antennaBend=[x+side*.13,by+.43,bz+.13];
+        const antennaTip=[x+side*.17,by+.52,bz+.16];
+        this.addLink(antennaBase,antennaBend,.013,[.045,.055,.065,1]);
+        this.addLink(antennaBend,antennaTip,.011,[.045,.055,.065,1]);
+        this.add(s,antennaTip[0],antennaTip[1],antennaTip[2],.030,.030,.030,[.10,.12,.14,1]);
+        this.add(s,antennaTip[0],antennaTip[1]+.012,antennaTip[2]+.012,.012,.012,.012,[1,.73,.10,1]);
       }
       this.add(rb,x,by-.335,bz+.156,.32,.026,.018,[.045,.055,.065,1]);
       this.add(s,x,by+.30,bz+.18,.115,.035,.06,[.045,.055,.065,1]);

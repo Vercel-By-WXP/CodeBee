@@ -113,6 +113,9 @@
     <button type="button" class="rail-btn active" data-rail-page="tasks" title="任务" aria-label="任务" data-i18n-title="任务" data-i18n-aria="任务" onclick="exitSettings()">
       <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
     </button>
+    <button type="button" class="rail-btn" id="btn-rail-overview" data-rail-page="overview" title="概览" aria-label="概览" data-i18n-title="概览" data-i18n-aria="概览" onclick="switchTab('overview', 'main')">
+      <svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg>
+    </button>
     <button type="button" class="rail-btn" data-rail-page="runs" title="运行记录" aria-label="运行记录" data-i18n-title="运行记录" data-i18n-aria="运行记录" onclick="switchTab('runs')">
       <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
     </button>
@@ -366,10 +369,10 @@
             <span id="ov-goal-phase" class="chip hidden"></span>
           </div>
           <div id="ov-goal-empty" class="ov-goal-empty">
-            <label class="sr-only" for="ov-goal-title" data-i18n="目标标题">目标标题</label>
-            <input id="ov-goal-title" type="text" maxlength="160" placeholder="例如：逐步完善 CodeBee 桌面体验" data-i18n-ph="例如：逐步完善 CodeBee 桌面体验">
-            <label class="sr-only" for="ov-goal-description" data-i18n="目标说明">目标说明</label>
-            <textarea id="ov-goal-description" rows="2" maxlength="4000" placeholder="写下完成标准或背景（可选）" data-i18n-ph="写下完成标准或背景（可选）"></textarea>
+            <div class="ov-goal-field"><label for="ov-goal-title" data-i18n="目标标题">目标标题</label>
+              <input id="ov-goal-title" type="text" maxlength="160" placeholder="例如：逐步完善 CodeBee 桌面体验" data-i18n-ph="例如：逐步完善 CodeBee 桌面体验"></div>
+            <div class="ov-goal-field"><label for="ov-goal-description" data-i18n="目标说明">目标说明</label>
+              <textarea id="ov-goal-description" rows="2" maxlength="4000" placeholder="写下完成标准或背景（可选）" data-i18n-ph="写下完成标准或背景（可选）"></textarea></div>
             <button id="ov-goal-create" type="button" class="primary" data-i18n="创建长目标">创建长目标</button>
           </div>
           <div id="ov-goal-active" class="ov-goal-active hidden">
@@ -1544,6 +1547,8 @@
               <input id="browser-address" type="text" autocomplete="off" spellcheck="false" placeholder="输入网址或搜索内容" data-i18n-ph="输入网址或搜索内容" aria-label="网址" data-i18n-aria="网址">
               <button class="browser-go" type="submit" title="打开" aria-label="打开" data-i18n-title="打开" data-i18n-aria="打开"><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
             </form>
+            <button class="icon-btn" id="browser-site-permissions" type="button" title="网站权限" aria-label="网站权限" data-i18n-title="网站权限" data-i18n-aria="网站权限" disabled><svg class="ico" aria-hidden="true"><use href="#i-lock"></use></svg></button>
+            <button class="icon-btn" id="browser-history-open" type="button" title="浏览记录和数据" aria-label="浏览记录和数据" data-i18n-title="浏览记录和数据" data-i18n-aria="浏览记录和数据"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg></button>
             <button class="ghost small browser-external" id="browser-open-external" type="button" title="在系统浏览器打开" data-i18n-title="在系统浏览器打开"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg><span data-i18n="系统浏览器">系统浏览器</span></button>
           </div>
           <div class="browser-shortcuts" id="browser-shortcuts">
@@ -1608,6 +1613,30 @@
           </div>
           <div class="browser-foot"><span id="browser-hint" data-i18n="外部网站可能禁止嵌入；可用右上角系统浏览器打开。">外部网站可能禁止嵌入；可用右上角系统浏览器打开。</span><span class="spacer"></span><span id="browser-history-count"></span></div>
         </div>
+        <dialog id="browser-history-dialog" class="browser-dialog" aria-labelledby="browser-history-heading">
+          <div class="browser-dialog-head"><div><span class="browser-dialog-kicker" data-i18n="本地保存">本地保存</span><h2 id="browser-history-heading" data-i18n="浏览记录">浏览记录</h2></div><button type="button" class="icon-btn" data-browser-dialog-close aria-label="关闭" title="关闭" data-i18n-aria="关闭" data-i18n-title="关闭">×</button></div>
+          <label class="browser-dialog-search"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg><input id="browser-history-search" type="search" autocomplete="off" placeholder="搜索标题或网址" data-i18n-ph="搜索标题或网址"></label>
+          <div id="browser-history-list" class="browser-history-list"></div>
+          <div class="browser-dialog-foot"><span data-i18n="最多保存最近 500 条，仅存于本机。">最多保存最近 500 条，仅存于本机。</span><button id="browser-clear-data" class="ghost small" type="button" data-i18n="清理浏览数据">清理浏览数据</button></div>
+        </dialog>
+        <dialog id="browser-clear-confirm" class="browser-dialog browser-confirm-dialog" aria-labelledby="browser-clear-heading">
+          <div class="browser-dialog-head"><div><span class="browser-dialog-kicker" data-i18n="本地浏览器工作区">本地浏览器工作区</span><h2 id="browser-clear-heading" data-i18n="清理浏览数据？">清理浏览数据？</h2></div><button type="button" class="icon-btn" data-browser-dialog-close aria-label="关闭" title="关闭" data-i18n-aria="关闭" data-i18n-title="关闭">×</button></div>
+          <p class="browser-dialog-explainer" data-i18n="将删除本机保存的浏览记录、标签页和网站权限配置，并恢复为一个新标签页。">将删除本机保存的浏览记录、标签页和网站权限配置，并恢复为一个新标签页。</p>
+          <p class="browser-dialog-note" data-i18n="由于网页运行在隔离框架中，CodeBee 无法读取或清理系统浏览器中的 Cookie、缓存及下载记录。">由于网页运行在隔离框架中，CodeBee 无法读取或清理系统浏览器中的 Cookie、缓存及下载记录。</p>
+          <div class="browser-dialog-actions"><button type="button" class="ghost" data-browser-dialog-close data-i18n="取消">取消</button><button id="browser-clear-confirm-yes" type="button" class="danger" data-i18n="清理本地数据">清理本地数据</button></div>
+        </dialog>
+        <dialog id="browser-permissions-dialog" class="browser-dialog browser-permissions-dialog" aria-labelledby="browser-permissions-heading">
+          <div class="browser-dialog-head"><div><span class="browser-dialog-kicker" data-i18n="按站点控制">按站点控制</span><h2 id="browser-permissions-heading" data-i18n="网站权限">网站权限</h2></div><button type="button" class="icon-btn" data-browser-dialog-close aria-label="关闭" title="关闭" data-i18n-aria="关闭" data-i18n-title="关闭">×</button></div>
+          <p id="browser-site-origin" class="browser-site-origin"></p>
+          <div id="browser-permission-list" class="browser-permission-list">
+            <label><span><b data-i18n="摄像头">摄像头</b><small data-i18n="允许此站点请求摄像头访问">允许此站点请求摄像头访问</small></span><input type="checkbox" data-browser-permission="camera"></label>
+            <label><span><b data-i18n="麦克风">麦克风</b><small data-i18n="允许此站点请求麦克风访问">允许此站点请求麦克风访问</small></span><input type="checkbox" data-browser-permission="microphone"></label>
+            <label><span><b data-i18n="位置信息">位置信息</b><small data-i18n="允许此站点请求设备位置">允许此站点请求设备位置</small></span><input type="checkbox" data-browser-permission="geolocation"></label>
+            <label><span><b data-i18n="读取剪贴板">读取剪贴板</b><small data-i18n="允许此站点请求读取剪贴板">允许此站点请求读取剪贴板</small></span><input type="checkbox" data-browser-permission="clipboard-read"></label>
+          </div>
+          <p id="browser-permission-note" class="browser-dialog-note"></p>
+          <div class="browser-dialog-actions"><button type="button" class="primary" data-browser-dialog-close data-i18n="完成">完成</button></div>
+        </dialog>
       </div>
     </section>
     </main>

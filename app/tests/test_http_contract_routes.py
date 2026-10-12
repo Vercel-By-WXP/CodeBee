@@ -230,6 +230,8 @@ class GoalUiContractTests(unittest.TestCase):
         index = (root / "ui" / "index.html").read_text(encoding="utf-8")
         app = (root / "ui" / "app.js").read_text(encoding="utf-8")
         style = (root / "ui" / "style.css").read_text(encoding="utf-8")
+        self.assertIn('id="btn-rail-overview"', index)
+        self.assertIn("data-rail-page=\"overview\"", index)
         for element_id in ("ov-goal", "ov-goal-create", "ov-goal-title", "ov-goal-description",
                            "ov-goal-phase", "ov-goal-progress", "ov-goal-actions"):
             self.assertIn('id="%s"' % element_id, index)

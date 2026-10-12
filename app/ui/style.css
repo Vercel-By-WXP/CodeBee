@@ -6875,11 +6875,13 @@ body.side-collapsed.inspector-open #app {
 .ov-goal-card .panel-head { align-items: flex-start; }
 .ov-goal-card .panel-head h2 { margin: 0; font-size: 15px; }
 .ov-goal-caption { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
-.ov-goal-empty { display: grid; grid-template-columns: minmax(180px, .85fr) minmax(240px, 1.5fr) auto; gap: 9px; align-items: stretch; }
+.ov-goal-empty { display: grid; grid-template-columns: minmax(180px, .85fr) minmax(240px, 1.5fr) auto; gap: 9px; align-items: end; }
+.ov-goal-field { display: grid; gap: 5px; min-width: 0; }
+.ov-goal-field label { color: var(--muted); font-size: 11px; }
 .ov-goal-empty input, .ov-goal-empty textarea { min-width: 0; width: 100%; border: 1px solid var(--border); border-radius: 8px;
   padding: 9px 11px; background: var(--bg); color: var(--text); font: inherit; font-size: 12px; resize: vertical; }
 .ov-goal-empty input:focus, .ov-goal-empty textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 28%, transparent); border-color: var(--accent); }
-.ov-goal-empty button { align-self: center; white-space: nowrap; }
+.ov-goal-empty button { align-self: end; white-space: nowrap; }
 .ov-goal-active h3 { margin: 0 0 5px; font-size: 17px; font-weight: 650; }
 .ov-goal-description { margin: 0 0 13px; color: var(--muted); font-size: 12px; white-space: pre-wrap; }
 .ov-goal-progress-row { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; }
@@ -7200,6 +7202,45 @@ body.browser-context-collapsed .browser-context { display: none; }
 .browser-home-search-go .ico { width: 16px; height: 16px; }
 .browser-home-note { width: min(520px, 100%); color: var(--muted); font-size: 10px; letter-spacing: .04em; }
 
+.browser-dialog {
+  width: min(620px, calc(100vw - 30px)); max-width: none; max-height: min(78vh, 740px); padding: 0;
+  overflow: hidden; border: 1px solid var(--border); border-radius: 16px; color: var(--text); background: var(--panel);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .24);
+}
+.browser-dialog::backdrop { background: rgba(14, 18, 25, .42); backdrop-filter: blur(3px); }
+.browser-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px 13px; border-bottom: 1px solid var(--border); }
+.browser-dialog-head h2 { margin: 3px 0 0; font-size: 18px; font-weight: 650; }
+.browser-dialog-kicker { color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.browser-dialog-search { display: flex; align-items: center; gap: 9px; height: 38px; margin: 14px 18px 10px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); }
+.browser-dialog-search .ico { width: 15px; height: 15px; color: var(--muted); }
+.browser-dialog-search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; box-shadow: none; }
+.browser-dialog-search input:focus { border: 0; }
+.browser-history-list { max-height: min(52vh, 500px); padding: 0 10px; overflow: auto; }
+.browser-dialog-empty { padding: 36px 12px; color: var(--muted); font-size: 12px; text-align: center; }
+.browser-history-entry { display: flex; align-items: center; gap: 11px; width: 100%; min-width: 0; padding: 10px; border: 0; border-radius: 9px; color: var(--text); background: transparent; cursor: pointer; text-align: left; }
+.browser-history-entry:hover { background: var(--panel2); }
+.browser-history-entry-mark { display: grid; width: 30px; height: 30px; flex: none; place-items: center; border-radius: 9px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.browser-history-entry-mark .ico { width: 15px; height: 15px; }
+.browser-history-entry-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.browser-history-entry-copy b,.browser-history-entry-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-history-entry-copy b { font-size: 12px; font-weight: 600; }
+.browser-history-entry-copy small { color: var(--muted); font-size: 10px; }
+.browser-history-entry time { flex: none; color: var(--muted); font-size: 10px; }
+.browser-dialog-foot,.browser-dialog-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 18px 16px; border-top: 1px solid var(--border); }
+.browser-dialog-foot { color: var(--muted); font-size: 10px; }
+.browser-dialog-explainer,.browser-dialog-note { margin: 16px 20px; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.browser-dialog-note { padding: 10px 12px; border-radius: 9px; background: var(--panel2); }
+.browser-confirm-dialog { width: min(480px, calc(100vw - 30px)); }
+.browser-confirm-dialog .browser-dialog-actions,.browser-permissions-dialog .browser-dialog-actions { justify-content: flex-end; }
+.browser-site-origin { margin: 14px 20px 8px; padding: 8px 10px; overflow-wrap: anywhere; border-radius: 8px; color: var(--accent); background: var(--panel2); font: 11px var(--mono, monospace); }
+.browser-permission-list { display: grid; gap: 2px; padding: 0 14px; }
+.browser-permission-list label { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 8px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.browser-permission-list label > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.browser-permission-list b { font-size: 12px; font-weight: 600; }
+.browser-permission-list small { color: var(--muted); font-size: 10px; }
+.browser-permission-list input { width: 16px; height: 16px; flex: none; accent-color: var(--accent); }
+.browser-permission-list input:disabled { cursor: not-allowed; }
+
 @media (max-width: 900px) {
   main.browser-page-active { overflow-y: auto; }
   .browser-stage { flex-direction: column; overflow: visible; }
@@ -7221,6 +7262,10 @@ body.browser-context-collapsed .browser-context { display: none; }
   .browser-home-task-row { align-items: flex-start; flex-direction: column; gap: 6px; }
   .browser-home-run { max-width: 100%; }
   .browser-home-search { height: 44px; }
+  .browser-dialog { width: calc(100vw - 20px); border-radius: 13px; }
+  .browser-dialog-head { padding: 15px 15px 11px; }
+  .browser-history-entry time { display: none; }
+  .browser-dialog-foot { align-items: flex-start; flex-direction: column; padding: 12px 15px 14px; }
 }
 
 /* Codex-inspired workspace polish: quiet chrome, crisp separators, and a
