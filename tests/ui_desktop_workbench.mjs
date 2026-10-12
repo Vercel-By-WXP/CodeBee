@@ -60,6 +60,18 @@ try {
   }
   assert.ok(await ev("Boolean(S.state?.tasks?.some(t => t.id === 'layout-a'))"), 'fixture loaded');
   await ev("welcomeClose()");
+  const shell = await ev(`(() => {
+    const rail = document.querySelector('.side-rail').getBoundingClientRect();
+    const sidebar = document.getElementById('sidebar').getBoundingClientRect();
+    const root = getComputedStyle(document.documentElement);
+    return { rail: Math.round(rail.width), sidebar: Math.round(sidebar.width), bg: root.getPropertyValue('--cb-canvas').trim(),
+      detail: getComputedStyle(document.getElementById('run-detail')).borderRadius };
+  })()`);
+  assert.equal(shell.rail, 46, 'Codex shell keeps a 46px navigation rail');
+  assert.equal(shell.sidebar, 264, 'Codex shell keeps a 264px task sidebar');
+  assert.equal(shell.bg, '#ffffff', 'light desktop canvas uses a clean white surface');
+  assert.notEqual(shell.detail, '0px', 'run detail uses a rounded card edge');
+  console.log('Codex shell', JSON.stringify(shell));
   const capture = async name => {
     const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
     writeFileSync(join(output, name + '.png'), Buffer.from(shot.result.data, 'base64'));
