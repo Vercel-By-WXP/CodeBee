@@ -265,6 +265,10 @@ window.Hive3D = (function () {
       this.add(this.cylinder,x,.78,z-.43,.072,.40,.072,[.32,.39,.45,1]);
       this.add(b,x,.49,z-.27,.54,.045,.34,[.16,.20,.24,1]);
       this.add(b,x,screenY-screenHeight*.42,z-.382,screenWidth*.84,.018,.014,[.10,.83,.94,1]);
+      // A tiny centered webcam and a restrained power indicator give the monitor a finished hardware read.
+      this.add(rb,x,screenY+screenHeight*.5+.064,z-.386,.070,.026,.018,[.025,.035,.045,1]);
+      this.add(s,x,screenY+screenHeight*.5+.064,z-.374,.012,.012,.008,[.14,.82,.98,1]);
+      this.add(s,x+screenWidth*.39,screenY-screenHeight*.5+.025,z-.375,.010,.010,.008,[.28,.94,.62,1]);
       this.add(rb,x-.18,.635,z+.25,.60,.035,.20,[.11,.14,.17,1]);
       this.add(s,x+.40,.648,z+.22,.060,.025,.075,[.055,.065,.075,1]);
       this.add(b,x+.40,.674,z+.20,.009,.005,.024,[.30,.66,.78,1]);
