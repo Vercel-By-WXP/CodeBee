@@ -210,6 +210,61 @@ class TestPeekAndInherit(BaseTest):
         self.assertEqual(len(store._RUNS[rid]["messages"]), 2)
 
 
+class TestSwarmPause(BaseTest):
+    """批量暂停应保留历史记录，排除无步骤暂停闸门的管理运行。"""
+
+    def test_pause_all_only_touches_active_runs(self):
+        from app.core import store
+
+        running = store.create_run(kind="orchestration", title="running")
+        queued = store.create_run(kind="orchestration", title="queued")
+        already_paused = store.create_run(kind="orchestration", title="paused")
+        done = store.create_run(kind="orchestration", title="done")
+        mgmt = store.create_run(kind="mgmt", title="install")
+        store.update_run(running["id"], status="running")
+        store.update_run(queued["id"], status="queued")
+        store.update_run(already_paused["id"], status="running", paused=True)
+        store.update_run(done["id"], status="done")
+
+        changed = store.set_paused_all(True)
+        self.assertEqual(changed, 2)
+        self.assertTrue(store.get_run(running["id"])["paused"])
+        self.assertTrue(store.get_run(queued["id"])["paused"])
+        self.assertTrue(store.get_run(already_paused["id"])["paused"])
+        self.assertFalse(store.get_run(done["id"]).get("paused", False))
+        self.assertNotIn("paused", store.get_run(mgmt["id"]))
+        self.assertEqual(store.pause_control(), {"active": 3, "paused": 3})
+
+        changed = store.set_paused_all(False)
+        self.assertEqual(changed, 3)
+        self.assertFalse(store.get_run(running["id"])["paused"])
+        self.assertFalse(store.get_run(queued["id"])["paused"])
+        self.assertFalse(store.get_run(already_paused["id"])["paused"])
+        self.assertEqual(store.pause_control(), {"active": 3, "paused": 0})
+
+    def test_pause_all_is_idempotent_and_persisted_outside_list_window(self):
+        from unittest.mock import patch
+        from app.core import store
+
+        with patch.object(store, "_new_id", return_value="r-000"):
+            active = store.create_run("orchestration", "old active")
+        active["messages"] = [{"text": "keep this", "consumed": False}]
+        for index in range(45):
+            with patch.object(store, "_new_id", return_value="r-100-%03d" % index):
+                record = store.create_run("orchestration", "finished %s" % index)
+            store.update_run(record["id"], status="done")
+        # The presentation window intentionally omits this active run.
+        old_id = active["id"]
+        self.assertNotIn(old_id, [run["id"] for run in store.list_runs(40)])
+        self.assertEqual(store.set_paused_all(True), 1)
+        self.assertEqual(store.set_paused_all(True), 0)
+        self.assertEqual(store.pause_control(), {"active": 1, "paused": 1})
+        saved = json.loads((self._paths.RUNS_DIR / old_id / "run.json").read_text(encoding="utf-8"))
+        self.assertTrue(saved["paused"])
+        self.assertEqual(saved["status"], "queued")
+        self.assertEqual(saved["messages"], active["messages"])
+
+
 class TestPauseGate(BaseTest):
     """暂停闸门：paused=True 时 _run_step 阻塞，放行后继续；取消事件直接通过。"""
 

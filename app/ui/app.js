@@ -4530,7 +4530,22 @@ async function removeSideDir(ids, dir) {
 /* 运行中/排队中的记录不可删除，勾选框置灰 */
 function runDeletable(r) { return r.status !== "queued" && r.status !== "running"; }
 
+function renderPauseAllButton() {
+  const btn = $("btn-pause-all");
+  if (!btn) return;
+  const control = (S.state && S.state.pause_control) || { active: 0, paused: 0 };
+  const shouldPause = control.paused < control.active;
+  btn.classList.toggle("hidden", control.active === 0);
+  btn.dataset.i18n = shouldPause ? "全部暂停" : "全部放行";
+  btn.textContent = t(btn.dataset.i18n);
+  btn.dataset.i18nTitle = shouldPause
+    ? "暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响"
+    : "放行所有已暂停的编排任务";
+  btn.title = t(btn.dataset.i18nTitle);
+}
+
 function renderRunList() {
+  renderPauseAllButton();
   if (S.detailRunId) return;
   const box = $("run-list");
   if (!box) return;
@@ -5667,6 +5682,35 @@ async function cancelAllRuns() {
   poll();
 }
 window.cancelAllRuns = cancelAllRuns;
+
+/* 蜂群级暂停：保留每个 run 的上下文和消息，只在下一步闸门统一挂起。 */
+async function pauseAllRuns() {
+  const btn = $("btn-pause-all");
+  if (!btn || btn.classList.contains("busy")) return;
+  const control = (S.state && S.state.pause_control) || { active: 0, paused: 0 };
+  if (!control.active) return;
+  const to = control.paused < control.active;
+  const action = to ? t("暂停") : t("放行");
+  btn.classList.add("busy");
+  btn.disabled = true;
+  try {
+    const prompt = to
+      ? t("暂停所有编排任务？当前步骤会继续执行，结束后在下一步前挂起；新建任务不受影响。")
+      : t("放行所有已暂停的编排任务？这些任务将继续执行。");
+    if (!await uiConfirm(prompt, { ok: action })) return;
+    const d = await api("/api/runs/pause_all", {
+      method: "POST", body: JSON.stringify({ paused: to }), timeout: 30000,
+    });
+    toast(t(to ? "已为 {0} 个任务设置步骤间暂停" : "已放行 {0} 个任务", (d && d.count) || 0));
+  } catch (e) {
+    toast(t("批量操作失败：") + e.message, true);
+  } finally {
+    btn.classList.remove("busy");
+    btn.disabled = false;
+  }
+  poll();
+}
+window.pauseAllRuns = pauseAllRuns;
 
 async function openRun(id, pinTab) {
   _taskStepRenderToken++;

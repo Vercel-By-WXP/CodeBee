@@ -217,6 +217,11 @@ def document():
             "responses": {"200": response("Sandbox policy", {"type": "object"})}}},
         "/api/runs/{run_id}/resume_now": {"post": {"summary": "立即重试运行", "security": security,
             "responses": {"200": ok, "400": errors["400"], "401": errors["401"], "404": errors["404"], "423": errors["423"]}}},
+        "/api/runs/pause_all": {"post": {"summary": "暂停或放行全部活动编排运行", "security": security,
+            "requestBody": body({"type": "object", "required": ["paused"],
+                                  "properties": {"paused": {"type": "boolean"}}}),
+            "responses": {"200": response("批量运行控制结果", {"type": "object"}),
+                          "400": errors["400"], "401": errors["401"], "423": errors["423"]}}},
         "/api/control": {
             "get": {"summary": "读取当前控制权", "security": security,
                     "responses": {"200": response("控制权状态", {"type": "object"}), "401": errors["401"]}},

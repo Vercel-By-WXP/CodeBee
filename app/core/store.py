@@ -2340,6 +2340,36 @@ def set_paused(run_id, paused):
     return True
 
 
+def pause_control():
+    """全量步骤暂停计数，不受运行列表窗口限制；管理操作没有步骤闸门。"""
+    with LOCK:
+        active = [run for run in _RUNS.values()
+                  if run.get("kind") == "orchestration"
+                  and run.get("status") in ("queued", "running")]
+        return {"active": len(active),
+                "paused": sum(1 for run in active if run.get("paused"))}
+
+
+def set_paused_all(paused):
+    """批量暂停/放行所有仍在排队或运行的编排任务。
+
+    只触碰活动 run；终态记录保留原值，避免运行记录页的全局控制改变历史。
+    返回实际发生变化的 run 数，供 UI 给出准确反馈。
+    """
+    target = bool(paused)
+    changed = 0
+    with LOCK:
+        for run in _RUNS.values():
+            if run.get("kind") != "orchestration" or run.get("status") not in ("queued", "running"):
+                continue
+            if bool(run.get("paused")) == target:
+                continue
+            run["paused"] = target
+            _save_json(paths.RUNS_DIR / run["id"] / "run.json", run)
+            changed += 1
+    return changed
+
+
 def write_report(run_id, markdown):
     p = paths.RUNS_DIR / run_id / "report.md"
     p.parent.mkdir(parents=True, exist_ok=True)

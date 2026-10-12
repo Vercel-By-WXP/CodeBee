@@ -52,6 +52,47 @@ class HttpContractRouteTests(unittest.TestCase):
         self.assertEqual(status, 423)
         self.assertEqual(payload["control"]["holder"], "设备 B")
 
+    def test_pause_all_route_returns_changed_count(self):
+        h = self.handler("/api/runs/pause_all", {"paused": True})
+        with patch.object(main.store, "set_paused_all", return_value=3) as pause_all:
+            status, payload = h._route_post()
+        self.assertEqual(status, 200)
+        self.assertEqual(payload, {"ok": True, "paused": True, "count": 3})
+        pause_all.assert_called_once_with(True)
+
+    def test_pause_all_route_requires_explicit_boolean(self):
+        for body in ({}, {"paused": "false"}, [True]):
+            with self.subTest(body=body):
+                h = self.handler("/api/runs/pause_all", body)
+                with patch.object(main.store, "set_paused_all") as pause_all:
+                    status, payload = h._route_post()
+                self.assertEqual(status, 400)
+                self.assertIn("paused", payload["error"])
+                pause_all.assert_not_called()
+
+    def test_pause_all_obeys_control_gate(self):
+        h = self.handler("/api/runs/pause_all", {"paused": True})
+        h._deny_control = lambda: h._json(423, {"error": "held"})
+        with patch.object(main.store, "set_paused_all") as pause_all:
+            status, _ = h._route_post()
+        self.assertEqual(status, 423)
+        pause_all.assert_not_called()
+
+    def test_state_includes_full_pause_control_counts(self):
+        with patch.object(main.store, "pause_control", return_value={"active": 41, "paused": 40}), \
+             patch.object(main.store, "list_runs", return_value=[]), \
+             patch.object(main.registry, "effective_agents", return_value=[]), \
+             patch.object(main.catalog, "load", return_value=[]), \
+             patch.object(main.manager, "detect_all", return_value={}), \
+             patch.object(main.store, "list_tasks", return_value=[]), \
+             patch.object(main.store, "latest_run_by_task", return_value={}), \
+             patch.object(main.store, "task_run_stats", return_value={}), \
+             patch.object(main.remote, "control_view", return_value={}), \
+             patch.object(main.health, "snapshot", return_value={}), \
+             patch.object(main.jobs, "workers_info", return_value={}):
+            payload = main._state_payload()
+        self.assertEqual(payload["pause_control"], {"active": 41, "paused": 40})
+
     def test_contract_evidence_and_approval_http_shape(self):
         contracts.create("t1", {"acceptance_criteria": ["测试通过"], "approval_required": True})
         h = self.handler("/api/tasks/t1/contract", {
@@ -240,6 +281,14 @@ class GoalUiContractTests(unittest.TestCase):
         self.assertIn('["active", "paused"].includes(data.goal.phase) ? data.goal : null', app)
         self.assertIn('uiConfirm(t("确定将这个长目标标记为完成吗？")', app)
         self.assertIn(".ov-goal-card", style)
+
+    def test_runs_surface_exposes_swarm_pause_control(self):
+        root = Path(__file__).resolve().parents[1]
+        index = (root / "ui" / "index.html").read_text(encoding="utf-8")
+        app = (root / "ui" / "app.js").read_text(encoding="utf-8")
+        self.assertIn('id="btn-pause-all"', index)
+        self.assertIn("/api/runs/pause_all", app)
+        self.assertIn("pauseAllRuns", app)
 
 
 if __name__ == "__main__":

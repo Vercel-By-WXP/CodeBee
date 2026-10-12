@@ -185,8 +185,8 @@ async function main() {
       existsSync(join(workdir, "_attachments", "截图.png")));
     const st = await (await fetch(`${SERVICE}/api/state`)).json();
     const stRun = (st.runs || []).find((r) => r.id === RUN_ID);
-    check("state 携带消息（SSE 回流数据源）", stRun && (stRun.messages || []).length === 2,
-      stRun && JSON.stringify((stRun.messages || []).length));
+    check("state 携带消息计数（SSE 摘要投影）", stRun && stRun.message_count === 2,
+      stRun && JSON.stringify(stRun.message_count));
 
     // E) SSE/重画联动：模拟下一条消息到达后的渲染
     const ui2 = await evalJson(`(async () => {
@@ -273,6 +273,62 @@ async function main() {
       return a && a.paused === false;
     })()`);
     check("放行端点复位", pz2 === true);
+
+    // H) 运行记录头部的蜂群级暂停：混合态默认采取保守的「全部暂停」，
+    // 全部已暂停时按钮切换为「全部放行」。
+    const pauseUi = await evalJson(`(() => {
+      S.detailRunId = null;
+      S.state = { pause_control: { active: 2, paused: 1 }, runs: [
+        { id: "active-a", status: "running", paused: false, title: "A" },
+        { id: "active-b", status: "queued", paused: true, title: "B" },
+        { id: "finished", status: "done", paused: false, title: "C" },
+      ] };
+      renderRunList();
+      const btn = document.getElementById("btn-pause-all");
+      const mixed = { visible: !btn.classList.contains("hidden"), label: btn.textContent.trim() };
+      S.state.runs[0].paused = true;
+      S.state.pause_control.paused = 2;
+      renderRunList();
+      return { mixed, allPaused: btn.textContent.trim() };
+    })()`);
+    check("蜂群暂停按钮在有活动任务时显示", pauseUi.mixed.visible === true, JSON.stringify(pauseUi));
+    check("混合态默认显示全部暂停", pauseUi.mixed.label === "全部暂停", JSON.stringify(pauseUi));
+    check("全部暂停后切换为全部放行", pauseUi.allPaused === "全部放行", JSON.stringify(pauseUi));
+
+    const pauseActions = await evalJson(`(async () => {
+      const saved = { api, uiConfirm, poll, state: S.state };
+      const requests = [];
+      let confirms = 0;
+      const btn = document.getElementById("btn-pause-all");
+      try {
+        // No active run in the display window; the server's full count controls the button.
+        S.state = { runs: [], pause_control: { active: 2, paused: 1 } };
+        renderRunList();
+        const outsideWindowVisible = !btn.classList.contains("hidden");
+        poll = () => {};
+        uiConfirm = async () => { confirms++; await new Promise(r => setTimeout(r, 20)); return true; };
+        api = async (url, options) => {
+          requests.push({ url, body: JSON.parse(options.body) });
+          return { ok: true, count: 1 };
+        };
+        await Promise.all([pauseAllRuns(), pauseAllRuns()]);
+        S.state.pause_control.paused = 2;
+        await pauseAllRuns();
+        uiConfirm = async () => false;
+        await pauseAllRuns();
+        return { requests, confirms, outsideWindowVisible,
+                 enabledAfter: !btn.disabled && !btn.classList.contains("busy") };
+      } finally {
+        api = saved.api; uiConfirm = saved.uiConfirm; poll = saved.poll; S.state = saved.state;
+      }
+    })()`);
+    check("窗口外活动任务仍可批量暂停", pauseActions.outsideWindowVisible === true, JSON.stringify(pauseActions));
+    check("批量暂停与放行发送正确请求且防重复点击",
+      pauseActions.confirms === 2 && pauseActions.requests.length === 2 &&
+      pauseActions.requests.every(r => r.url === "/api/runs/pause_all") &&
+      pauseActions.requests[0].body.paused === true && pauseActions.requests[1].body.paused === false,
+      JSON.stringify(pauseActions));
+    check("取消确认后按钮恢复可用且未发送请求", pauseActions.enabledAfter === true, JSON.stringify(pauseActions));
 
     check("无未捕获 JS 异常", consoleErrors.length === 0, consoleErrors.join(" | ").slice(0, 200));
   } finally {

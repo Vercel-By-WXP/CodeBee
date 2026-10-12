@@ -1511,6 +1511,13 @@ class Handler(BaseHTTPRequestHandler):
             if not store.set_paused(m.group(1), bool(body.get("paused"))):
                 return self._json(404, {"error": "not found"})
             return self._json(200, {"ok": True, "paused": bool(body.get("paused"))})
+        if path == "/api/runs/pause_all":
+            body = self._body() or {}
+            if not isinstance(body, dict) or not isinstance(body.get("paused"), bool):
+                return self._json(400, {"error": "paused 必须是布尔值"})
+            paused = bool(body.get("paused"))
+            count = store.set_paused_all(paused)
+            return self._json(200, {"ok": True, "paused": paused, "count": count})
         m = re.match(r"^/api/runs/([^/]+)/cancel$", path)
         if m:
             # 先落「用户主动取消」标记再置事件：自动续跑必须尊重这个意图不得续上；
@@ -3514,6 +3521,7 @@ def _state_payload(client_id="", ver=None):
         "task_stats": store.task_run_stats(),
         # 列表与 SSE 只带摘要；日志、模型输出、计划、消息正文等走详情 API。
         "runs": [_state_run_summary(run) for run in runs],
+        "pause_control": store.pause_control(),
         "control": remote.control_view(client_id),
         # 供应商健康/告警（顶栏横幅数据源；有告警时 bump_state 会推给所有端）
         "health": health.snapshot(),

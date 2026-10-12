@@ -2751,6 +2751,15 @@
     "请先填写目标": "Please write the goal first",
     "保存失败": "Save failed",
     "失败 ": "Failed ",
+    "全部暂停": "Pause all",
+    "全部放行": "Resume all",
+    "暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响": "Pause all orchestration tasks after their current step; new tasks are unaffected",
+    "放行所有已暂停的编排任务": "Resume all paused orchestration tasks",
+    "暂停所有编排任务？当前步骤会继续执行，结束后在下一步前挂起；新建任务不受影响。": "Pause all orchestration tasks? Current steps finish, then wait before the next step; new tasks are unaffected.",
+    "放行所有已暂停的编排任务？这些任务将继续执行。": "Resume all paused orchestration tasks? They will continue running.",
+    "已为 {0} 个任务设置步骤间暂停": "Paused {0} tasks between steps",
+    "已放行 {0} 个任务": "Resumed {0} tasks",
+    "批量操作失败：": "Bulk operation failed: ",
 
     // —— 任务总时限（任务信息弹层，空闲可改）——
     "任务总时限": "Task time limit",
