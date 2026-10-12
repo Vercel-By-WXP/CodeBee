@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-rem CodeBee 启动：端口清场（按 PID）+ CodeBee 服务（反代感知）
+rem CodeBee 启动：端口清场（按 PID）+ CodeBee 服务
 rem 用法：start-public.bat [dev]   —— dev=起本仓库代码；默认起 npm 安装副本（日常生产入口）
 rem 附加参数原样透传给 main.py，如：start-public.bat dev --port 8765
 setlocal enabledelayedexpansion
@@ -8,7 +8,6 @@ cd /d "%~dp0"
 
 set "PORT=8765"
 if defined CB_PORT set "PORT=%CB_PORT%"
-set "PUBURL=https://codebee.fixwikihub.com"
 
 rem dev 参数只切代码目录，不透传给 main.py
 set "EXTRA=%*"
@@ -48,8 +47,8 @@ if defined KILLED (
 )
 
 rem ---------- 启动 CodeBee ----------
-echo [CodeBee] 启动服务：!APPDIR!（反代回源强制校验令牌）...
-start "CodeBee" /min /d "!APPDIR!" python app\main.py --trusted-proxy --public-url "%PUBURL%" !EXTRA!
+echo [CodeBee] 启动服务：!APPDIR! ...
+start "CodeBee" /min /d "!APPDIR!" python app\main.py !EXTRA!
 
 rem 等服务监听就绪（最多 15 秒，仅作就绪提示）
 set /a TRIES=0
