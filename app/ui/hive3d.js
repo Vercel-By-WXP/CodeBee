@@ -207,7 +207,7 @@ window.Hive3D = (function () {
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
     this.add(b,0,-.18,5.5,23,.28,34,[.97,.985,1,1]);
     this.add(b,0,2.70,-6.45,19,3.65,.24,[.10,.52,.89,1]);
-    this.add(b,0,5.10,-6.30,19,.16,.18,[.98,.99,1,1]);
+    this.add(b,0,4.58,-6.30,19,.075,.12,[.985,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
     this.add(b,0,.90,-6.28,18.7,.12,.06,[.08,.42,.78,1]);
     this.add(b,0,.82,-6.285,18.7,.035,.035,[.25,.67,.94,1]);
@@ -279,13 +279,13 @@ window.Hive3D = (function () {
       for(let k=0;k<3;k++)this.add(b,blueBinderStart+k*.095,.79,z+.34,.075,.35,.18,[[.08,.34,.80,1],[.10,.51,.91,1],[.06,.25,.65,1]][k]);
       this.add(this.cylinder,x,.08,z+1.10,.075,.28,.075,[.12,.15,.18,1]);
       this.add(rb,x,.30,z+1.10,.94,.12,.68,[.11,.14,.17,1]);
-      this.add(rb,x,.50,z+.82,1.02,.60,.15,[.12,.17,.22,1]);
-      this.add(rb,x,.50,z+.91,.76,.43,.024,[.20,.25,.29,1]);
+      this.add(rb,x,.50,z+.82,.88,.60,.15,[.12,.17,.22,1]);
+      this.add(rb,x,.50,z+.91,.66,.43,.024,[.20,.25,.29,1]);
       this.add(rb,x,.42,z+1.10,.48,.12,.12,[.18,.22,.25,1]);
       // Contrasting graphite upholstery separates the chair from the bee chassis.
-      this.add(rb,x,.50,z+.90,.78,.43,.050,[.16,.20,.24,1]);
-      for(const ribY of [.34,.48,.62])this.add(rb,x,ribY,z+.93,.58,.026,.020,[.34,.39,.43,1]);
-      for(const side of [-1,1])this.add(rb,x+side*.49,.50,z+.93,.035,.48,.025,[.23,.30,.36,1]);
+      this.add(rb,x,.50,z+.90,.67,.43,.050,[.16,.20,.24,1]);
+      for(const ribY of [.34,.48,.62])this.add(rb,x,ribY,z+.93,.48,.026,.020,[.34,.39,.43,1]);
+      for(const side of [-1,1])this.add(rb,x+side*.43,.50,z+.93,.030,.48,.025,[.23,.30,.36,1]);
       for(const side of [-1,1]){
         this.add(rb,x+side*.39,.63,z+.96,.10,.075,.38,[.14,.18,.21,1]);
         this.add(b,x+side*.39,.48,z+.97,.035,.28,.045,[.10,.13,.16,1]);
@@ -293,9 +293,9 @@ window.Hive3D = (function () {
       for(let k=0;k<5;k++){const a=k*Math.PI*2/5;const wx=x+Math.cos(a)*.48,wz=z+1.10+Math.sin(a)*.40;this.add(b,x+Math.cos(a)*.38,.035,z+1.10+Math.sin(a)*.32,.30,.06,.075,[.08,.10,.12,1],a);this.add(s,wx,.005,wz,.085,.065,.075,[.035,.045,.055,1]);}
       const by=1.25,bz=z+.98;
       // Bee assistant: distinct head, dark chassis, striped abdomen, headset and translucent wings.
-      this.add(s,x,by-.42,bz+.005,.31,.31,.235,[.075,.09,.11,1]);
+      this.add(s,x,by-.42,bz+.005,.345,.32,.255,[.075,.09,.11,1]);
       // Slightly enlarge the band ellipsoid to avoid depth-buffer z-fighting with the shell.
-      const shellX=.315,shellY=.315,shellZ=.239,shellCenterY=by-.42,shellCenterZ=bz+.005;
+      const shellX=.350,shellY=.325,shellZ=.260,shellCenterY=by-.42,shellCenterZ=bz+.005;
       this.add(this.bandGoldTop,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[1,.66,.035,1]);
       this.add(this.bandGoldBottom,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[.99,.56,.018,1]);
       this.add(this.bandSeparator,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[.045,.055,.065,1]);
@@ -317,7 +317,7 @@ window.Hive3D = (function () {
       }
       // Shoulders, articulated elbows and forearms form continuous 3D links down to the keyboard.
       for(const side of [-1,1]){
-        const shoulder=[x+side*.32,.99,z+.56],elbow=[x+side*.43,.83,z+.30],wrist=[x+side*.36,.675,z-.12],hand=[x+side*.35,.655,z-.20];
+        const shoulder=[x+side*.32,.99,z+.56],elbow=[x+side*.43,.83,z+.42],wrist=[x+side*.36,.675,z+.27],hand=[x+side*.35,.655,z+.22];
         this.addLink(shoulder,elbow,.039,[.19,.22,.25,1]);
         this.addLink(elbow,wrist,.034,[.20,.24,.27,1]);
         this.addLink(wrist,hand,.030,[.96,.63,.035,1]);
@@ -326,17 +326,17 @@ window.Hive3D = (function () {
         this.add(s,wrist[0],wrist[1],wrist[2],.052,.052,.052,[.24,.29,.32,1]);
         this.add(rb,hand[0],hand[1],hand[2],.085,.045,.070,[.96,.63,.035,1]);
         this.add(s,x+side*.35,.655,z-.20,.070,.035,.055,[.98,.68,.045,1]);
-        for(let finger=0;finger<3;finger++)this.add(b,x+side*.35+(finger-1)*.026,.638,z-.255,.012,.010,.046,[.22,.29,.35,1]);
+        for(let finger=0;finger<3;finger++)this.add(b,x+side*.35+(finger-1)*.026,.638,z+.16,.012,.010,.046,[.22,.29,.35,1]);
       }
       // Small cyan service badge on the back of the chassis.
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth glassy oval wings sit at the shoulder line. Sphere geometry keeps their
       // silhouette rounded from every camera angle and lets the opaque body occlude them.
-      this.add(s,x-.43,by-.245,bz+.12,.43,.105,.075,[.58,.84,1,.32],0,.10);
-      this.add(s,x+.43,by-.245,bz+.12,.43,.105,.075,[.58,.84,1,.32],0,-.10);
-      this.add(s,x-.40,by-.225,bz+.155,.28,.060,.040,[.93,.99,1,.18],0,.08);
-      this.add(s,x+.40,by-.225,bz+.155,.28,.060,.040,[.93,.99,1,.18],0,-.08);
+      this.add(s,x-.45,by-.235,bz+.155,.48,.17,.075,[.58,.84,1,.40],0,.12);
+      this.add(s,x+.45,by-.235,bz+.155,.48,.17,.075,[.58,.84,1,.40],0,-.12);
+      this.add(s,x-.42,by-.205,bz+.205,.30,.095,.045,[.93,.99,1,.24],0,.09);
+      this.add(s,x+.42,by-.205,bz+.205,.30,.095,.045,[.93,.99,1,.24],0,-.09);
 
     }
     // Planters and stylized leaves soften the room edges.
