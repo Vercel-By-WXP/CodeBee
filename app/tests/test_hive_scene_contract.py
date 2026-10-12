@@ -63,8 +63,8 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("screenWidth:1.48,screenHeight:.82", ENGINE)
         # Bee assistant visual contract: wings sit at shoulder height and abdomen accents
         # follow the body shell rather than floating in front of the model.
-        self.assertIn("this.add(this.organic,x-.58,by+.075,bz+.31,.82,.92,.10,[.20,.43,.70,.24],0,.22)", ENGINE)
-        self.assertIn("this.add(this.organic,x+.58,by+.075,bz+.31,.82,.92,.10,[.20,.43,.70,.24],0,-.22)", ENGINE)
+        self.assertIn("this.add(this.organic,x-.56,by+.065,bz+.31,.70,.68,.075,[.18,.36,.60,.16],0,.28)", ENGINE)
+        self.assertIn("this.add(this.organic,x+.56,by+.065,bz+.31,.70,.68,.075,[.18,.36,.60,.16],0,-.28)", ENGINE)
         self.assertIn("const root=[x+side*.28,by+.015,bz+.31]", ENGINE)
         self.assertIn("const mid=[x+side*.60,by+.10,bz+.31]", ENGINE)
         self.assertIn("const tip=[x+side*.91,by+.13,bz+.31]", ENGINE)
@@ -93,7 +93,7 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("this.add(s,x+side*.066,by+.022,bz-.194,.045,.046,.020,[.20,.91,.98,1])", ENGINE)
         self.assertIn("tiny centered webcam", ENGINE)
         self.assertIn("Smooth glassy oval wings sit on the camera-facing shoulder side", ENGINE)
-        self.assertIn("this.addLink(root,mid,.0038,[.78,.91,1,.48])", ENGINE)
+        self.assertIn("this.addLink(root,mid,.0042,[.70,.86,.98,.58])", ENGINE)
         self.assertIn("this.addLink(mid,tip,.0042,[.84,.96,1,.58])", ENGINE)
         self.assertIn("this.addLink([x+side*.41,by+.13,bz+.31],[x+side*.68,by+.25,bz+.31],.0032,[.90,.98,1,.48])", ENGINE)
         self.assertIn("const n=norm([-.20*p[0],-.28*p[1],sign])", ENGINE)
