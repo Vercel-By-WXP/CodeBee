@@ -73,7 +73,7 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("this.bandGoldBottom.smooth=true", ENGINE)
         self.assertIn("this.bandSeparator.smooth=true", ENGINE)
         self.assertIn("this.add(b,0,4.545,-6.285,18.7,.045,.055", ENGINE)
-        self.assertIn("this.add(b,x,5.03,-3.35,2.65,.065,.30", ENGINE)
+        self.assertIn("this.add(b,x,4.66,-3.35,2.65,.065,.30", ENGINE)
         self.assertIn("this.add(rb,x,.50,z+.82,.88,.60,.15", ENGINE)
         self.assertIn("Scene.prototype.addLink", ENGINE)
         self.assertIn("this.addLink(shoulder,elbow,.042,[.12,.15,.18,1])", ENGINE)
