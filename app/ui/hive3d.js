@@ -5,6 +5,11 @@ window.Hive3D = (function () {
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const STATUS = { running:"运行中", done:"完成", queued:"排队中", failed:"失败", timeout:"超时", cancelled:"已取消" };
   const STAGES = ["规划","起草","评审","执行","打磨","合成"];
+  const WING_OUTLINE=[
+    [-.50,0,.008],[-.43,.19,.035],[-.28,.30,.075],[-.06,.34,.10],
+    [.18,.30,.086],[.38,.19,.05],[.50,0,.008],[.38,-.19,.05],
+    [.18,-.30,.086],[-.06,-.34,.10],[-.28,-.30,.075],[-.43,-.19,.035]
+  ];
   const SCREENS = [
     [163,441,127,55],[389,441,126,55],[616,441,125,55],[843,441,125,55],
     [1073,441,122,55],[1298,441,125,55],[1531,441,120,55],[1750,441,125,55],
@@ -116,11 +121,7 @@ window.Hive3D = (function () {
   }
   function wingGeometry(gl){
     // Separate convex, oval wing mesh for the bee assistants. Plants retain organicGeometry.
-    let outline=[
-      [-.50,0,.008],[-.43,.19,.035],[-.28,.30,.075],[-.06,.34,.10],
-      [.18,.30,.086],[.38,.19,.05],[.50,0,.008],[.38,-.19,.05],
-      [.18,-.30,.086],[-.06,-.34,.10],[-.28,-.30,.075],[-.43,-.19,.035]
-    ];
+    let outline=WING_OUTLINE.map(p=>p.slice());
     // WebGL back-face culling requires consistent counter-clockwise front faces.
     const wingArea=outline.reduce((sum,p,i)=>{const q=outline[(i+1)%outline.length];return sum+p[0]*q[1]-q[0]*p[1];},0);
     if(wingArea<0)outline=outline.reverse();
@@ -375,16 +376,23 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Compact convex wings attach at shoulder height; roots tuck behind the head silhouette.
-      this.add(this.wing,x-.55,by+.045,bz+.18,.36,.56,.10,[.25,.68,.90,.30],0,-.36);
-      this.add(this.wing,x+.55,by+.045,bz+.18,.36,.56,.10,[.25,.68,.90,.30],0,.36);
-      // Delicate veins follow each oval and remain within the wing silhouette.
+      this.add(this.wing,x-.55,by+.045,bz+.18,.36,.56,.10,[.22,.65,.90,.34],0,-.36);
+      this.add(this.wing,x+.55,by+.045,bz+.18,.36,.56,.10,[.22,.65,.90,.34],0,.36);
+      // A fine blue edge catches studio light, using the same contour points as the mesh.
       for(const side of [-1,1]){
-        const root=[x+side*.38,by-.015,bz+.195];
-        const mid=[x+side*.55,by+.045,bz+.195];
-        const tip=[x+side*.73,by+.105,bz+.195];
-        this.addLink(root,mid,.0038,[.64,.90,1,.76]);
-        this.addLink(mid,tip,.0028,[.64,.90,1,.68]);
-        this.addLink([x+side*.52,by+.012,bz+.20],[x+side*.66,by+.075,bz+.20],.0022,[.82,.96,1,.58]);
+        const rotation=side*.36,ca=Math.cos(rotation),sa=Math.sin(rotation);
+        const edgePoints=WING_OUTLINE.map(p=>[
+          x+side*.55+ca*p[0]*.36-sa*p[1]*.56,
+          by+.045+sa*p[0]*.36+ca*p[1]*.56,
+          bz+.205
+        ]);
+        for(let i=0;i<edgePoints.length;i++)this.addLink(edgePoints[i],edgePoints[(i+1)%edgePoints.length],.0065,[.28,.76,.98,.78]);
+        const root=[x+side*.38,by-.015,bz+.205];
+        const mid=[x+side*.55,by+.045,bz+.205];
+        const tip=[x+side*.73,by+.105,bz+.205];
+        this.addLink(root,mid,.0060,[.64,.90,1,.86]);
+        this.addLink(mid,tip,.0045,[.64,.90,1,.78]);
+        this.addLink([x+side*.52,by+.012,bz+.21],[x+side*.66,by+.075,bz+.21],.0034,[.82,.96,1,.68]);
       }
 
     }
