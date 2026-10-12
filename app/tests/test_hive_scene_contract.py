@@ -61,8 +61,8 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("xs:[-6.0,-3.6,-1.2,1.2,3.6,6.0]", ENGINE)
         self.assertIn("screenWidth:1.28,screenHeight:.70", ENGINE)
         self.assertIn("screenWidth:1.48,screenHeight:.82", ENGINE)
-        # Bee assistant visual contract: wings sit at shoulder height and abdomen accents
-        # follow the body shell rather than floating in front of the model.
+        # Wing membranes must sit outside monitor text bounds; narrow inner veins keep
+        # each wing visually attached to the shoulder without painting broad surfaces on glass.
         self.assertIn("this.add(this.organic,x-1.00,by+.70,bz+.30,.36,.68,.035,[.28,.66,.90,.38],0,-.62)", ENGINE)
         self.assertIn("this.add(this.organic,x+1.00,by+.70,bz+.30,.36,.68,.035,[.28,.66,.90,.38],0,.62)", ENGINE)
         self.assertIn("const root=[x+side*.42,by+.32,bz+.305]", ENGINE)
