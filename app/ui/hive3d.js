@@ -300,7 +300,16 @@ window.Hive3D = (function () {
       this.add(this.bandGoldBottom,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[.99,.56,.018,1]);
       this.add(this.bandSeparator,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[.045,.055,.065,1]);
       this.add(s,x,by,bz,.405,.37,.345,[1,.70,.045,1]);
-      // The face points toward the monitor; the rear silhouette carries the headset details.
+      // A forward-facing graphite visor makes the assistant read as a character, not a plain yellow sphere.
+      // The workstation monitor is on -Z, so the faceplate and optical details sit on that side of the head.
+      this.add(rb,x,by+.012,bz-.166,.258,.142,.026,[.035,.055,.070,1]);
+      this.add(rb,x,by-.006,bz-.183,.214,.092,.012,[.055,.085,.105,1]);
+      for(const side of [-1,1]){
+        this.add(s,x+side*.066,by+.022,bz-.194,.045,.046,.020,[.20,.91,.98,1]);
+        this.add(s,x+side*.066,by+.029,bz-.205,.017,.018,.008,[.92,.99,1,1]);
+      }
+      this.add(rb,x,by-.043,bz-.197,.070,.010,.008,[.98,.61,.035,1]);
+      // The rear silhouette carries the headset details.
       for(const side of [-1,1]){
         this.add(s,x+side*.382,by+.015,bz+.035,.078,.118,.094,[.045,.055,.065,1]);
         this.add(s,x+side*.407,by+.015,bz+.052,.030,.052,.048,[.99,.68,.045,1]);
