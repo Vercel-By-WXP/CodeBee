@@ -91,17 +91,21 @@ window.Hive3D = (function () {
   function organicGeometry(gl){
     // A polished, tapered leaf/wing silhouette with a gently domed center and two-sided normals.
     let outline=[
-      [-.5,0,0],[-.34,.17,.018],[-.12,.255,.040],[.14,.225,.044],
-      [.38,.13,.026],[.5,0,0],[.38,-.13,.026],[.14,-.225,.044],
-      [-.12,-.255,.040],[-.34,-.17,.018]
+      [-.5,0,.006],[-.34,.17,.028],[-.12,.255,.064],[.14,.225,.078],
+      [.38,.13,.038],[.5,0,.006],[.38,-.13,.038],[.14,-.225,.078],
+      [-.12,-.255,.064],[-.34,-.17,.028]
     ];
     const area=outline.reduce((sum,p,i)=>{const q=outline[(i+1)%outline.length];return sum+p[0]*q[1]-q[0]*p[1];},0);
     if(area<0)outline=outline.reverse();
     const positions=[],normals=[],indices=[];
     const emitSide=(sign)=>{
       const centerIndex=positions.length/3;
-      positions.push(0,0,sign*.045);normals.push(0,0,sign);
-      for(const p of outline){positions.push(p[0],p[1],p[2]*sign);normals.push(0,0,sign);}
+      positions.push(0,0,sign*.105);normals.push(0,0,sign);
+      for(const p of outline){
+        positions.push(p[0],p[1],p[2]*sign);
+        const n=norm([-.20*p[0],-.28*p[1],sign]);
+        normals.push(...n);
+      }
       for(let i=0;i<outline.length;i++){
         const a=centerIndex+1+i,b=centerIndex+1+(i+1)%outline.length;
         if(sign>0)indices.push(centerIndex,a,b);else indices.push(centerIndex,b,a);
