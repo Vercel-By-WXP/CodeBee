@@ -359,9 +359,10 @@ window.Hive3D = (function () {
         this.add(s,x+side*.125,.465,z+.71,.075,.13,.14,[.075,.09,.11,1]);
         this.add(rb,x+side*.13,.315,z+.66,.10,.060,.15,[.99,.66,.035,1]);
       }
-      // Shoulders, articulated elbows and forearms form continuous 3D links down to the keyboard.
+      // A wider elbow arc keeps forearms visible around the torso in the rear camera view;
+      // the left hand stays over the keyboard and the right hand aligns with the mouse.
       for(const side of [-1,1]){
-        const shoulder=[x+side*.40,.99,z+.86],elbow=[x+side*.49,.83,z+.63],wrist=[x+(side<0?-.34:.35),.675,z+.31],hand=[x+(side<0?-.30:.34),.655,z+.22];
+        const shoulder=[x+side*.36,.99,z+.94],elbow=[x+side*.55,.83,z+.82],wrist=[x+(side<0?-.49:.50),.675,z+.54],hand=[x+(side<0?-.42:.42),.655,z+.28];
         this.addLink(shoulder,elbow,.042,[.12,.15,.18,1]);
         this.addLink(elbow,wrist,.036,[.18,.22,.25,1]);
         this.addLink(wrist,hand,.030,[.96,.63,.035,1]);

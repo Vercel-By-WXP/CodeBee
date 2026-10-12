@@ -77,7 +77,7 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("const root=[x+side*.37,by+.045,bz+.13]", ENGINE)
         self.assertIn("const mid=[x+side*.55,by+.14,bz+.13]", ENGINE)
         self.assertIn("const tip=[x+side*.73,by+.255,bz+.13]", ENGINE)
-        self.assertIn("const shoulder=[x+side*.40,.99,z+.86],elbow=[x+side*.49,.83,z+.63],wrist=[x+(side<0?-.34:.35),.675,z+.31],hand=[x+(side<0?-.30:.34),.655,z+.22]", ENGINE)
+        self.assertIn("const shoulder=[x+side*.36,.99,z+.94],elbow=[x+side*.55,.83,z+.82],wrist=[x+(side<0?-.49:.50),.675,z+.54],hand=[x+(side<0?-.42:.42),.655,z+.28]", ENGINE)
         self.assertIn("this.add(s,hand[0],hand[1],hand[2],.070,.035,.055", ENGINE)
         self.assertIn("for(let finger=0;finger<3;finger++)this.add(b,hand[0]+(finger-1)*.026,.638,hand[2]-.06", ENGINE)
         self.assertIn("by-.48,bz+.005,.345,.37,.255", ENGINE)
