@@ -39,6 +39,10 @@ class HiveSceneContractTests(unittest.TestCase):
         # The reference-image renderer was replaced by a real, dependency-free WebGL scene.
         self.assertIn("function Scene(opts)", ENGINE)
         self.assertIn("Scene.prototype.buildWorld", ENGINE)
+        # The default free-camera framing must preserve the full 8+6 workstation spread,
+        # with a wider field of view and a little more distance than the early close crop.
+        self.assertIn("const radius=29.0/this.zoom", ENGINE)
+        self.assertIn("mat4.perspective(.46,w/h,.1,80)", ENGINE)
         self.assertIn("Scene.prototype.buildBatches", ENGINE)
         self.assertIn("aNormal", ENGINE)
         self.assertIn("aColor", ENGINE)
@@ -59,12 +63,13 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("screenWidth:1.48,screenHeight:.82", ENGINE)
         # Bee assistant visual contract: wings sit at shoulder height and abdomen accents
         # follow the body shell rather than floating in front of the model.
-        self.assertIn("by-.13,bz-.17,.38,.15,.060,[.33,.60,.83,.37]", ENGINE)
+        self.assertIn("by-.13,bz+.18,.38,.15,.060,[.33,.60,.83,.37]", ENGINE)
+        self.assertIn("const root=[x+side*.27,by-.13,bz+.18]", ENGINE)
         self.assertIn("const shoulder=[x+side*.40,.99,z+.86],elbow=[x+side*.49,.83,z+.63],wrist=[x+(side<0?-.34:.35),.675,z+.31],hand=[x+(side<0?-.30:.34),.655,z+.22]", ENGINE)
         self.assertIn("this.add(s,hand[0],hand[1],hand[2],.070,.035,.055", ENGINE)
         self.assertIn("for(let finger=0;finger<3;finger++)this.add(b,hand[0]+(finger-1)*.026,.638,hand[2]-.06", ENGINE)
         self.assertIn("by-.48,bz+.005,.345,.37,.255", ENGINE)
-        self.assertIn("by-.105,bz-.12,.23,.085,.035,[.74,.90,.98,.22]", ENGINE)
+        self.assertIn("by-.105,bz+.22,.23,.085,.035,[.74,.90,.98,.22]", ENGINE)
         self.assertIn("function sphereBandGeometry", ENGINE)
         self.assertIn("this.bandGoldTop=sphereBandGeometry", ENGINE)
         self.assertIn("this.bandGoldBottom=sphereBandGeometry", ENGINE)
