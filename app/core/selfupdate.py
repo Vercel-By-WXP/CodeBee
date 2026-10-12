@@ -50,6 +50,8 @@ def package_version():
 
 def install_mode():
     """npm / repo / source / other（见模块 docstring）。"""
+    if os.environ.get("CODEBEE_DESKTOP") == "1":
+        return "desktop"
     try:
         parts = [p.lower() for p in paths.ROOT.resolve().parts]
     except Exception:
@@ -138,6 +140,10 @@ def check(force=False):
     cur = package_version()
     out = {"mode": mode, "current": cur, "latest": "", "has_update": False,
            "note": "", "notes": "", "whatsnew": changelog_section(cur)}
+    if mode == "desktop":
+        out["download_url"] = "https://github.com/Vercel-By-WXP/CodeBee/releases"
+        out["note"] = "桌面预览版：请从应用菜单打开下载页，退出应用后安装新版；任务和配置保留。"
+        return out
     if mode != "npm":
         out["note"] = ("开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）"
                        if mode == "repo" else "非 npm 安装，无法自动更新")
@@ -352,6 +358,8 @@ def wait_port_before_bind(port):
 def relaunch(port):
     """就地重启：拉起新实例（--wait-port 等新端口可 bind 时旧实例已自退）。
     调用方发送完重启响应后应 self_quit()。port 经 int() 强校验，argv 全字面量。"""
+    if install_mode() == "desktop":
+        return False  # Only the desktop shell may replace its owned sidecar.
     port = int(port)
     if port < 1 or port > 65535:
         return False

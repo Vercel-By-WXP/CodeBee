@@ -314,6 +314,13 @@ def cancel_restart_drain():
         _restart_drain = False
 
 
+def begin_shutdown_drain():
+    """Stop accepting work before a confirmed desktop shutdown cancels runs."""
+    global _restart_drain
+    with _pool_lock:
+        _restart_drain = True
+
+
 def _close_unstarted(job, message, statuses=("queued",)):
     """无法启动时统一收口 run/task，供所有入口复用。"""
     try:

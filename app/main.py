@@ -3630,6 +3630,13 @@ def main():
                         help="自更新重启用：先等旧实例释放端口再启动（Windows 双 LISTEN 防护）")
     args = parser.parse_args()
 
+    # CLI and desktop must never recover/run the same task store concurrently.
+    from core.runtime_lock import ServiceAlreadyRunning, acquire_service
+    try:
+        acquire_service(paths.DATA_DIR)
+    except ServiceAlreadyRunning as exc:
+        raise SystemExit(str(exc))
+
     # 测试实例禁止使用默认端口 8765（2026-09-23 实案：代理测试忘带 --port，
     # 启动清场把真实服务当旧实例杀掉后鸠占鹊巢）。测试请显式指定独立端口。
     try:
