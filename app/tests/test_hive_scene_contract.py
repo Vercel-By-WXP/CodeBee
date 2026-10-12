@@ -63,13 +63,13 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("screenWidth:1.48,screenHeight:.82", ENGINE)
         # Bee assistant visual contract: wings sit at shoulder height and abdomen accents
         # follow the body shell rather than floating in front of the model.
-        self.assertIn("by-.13,bz+.18,.38,.15,.060,[.33,.60,.83,.37]", ENGINE)
+        self.assertIn("by-.13,bz+.18,.46,.18,.060,[.33,.60,.83,.37]", ENGINE)
         self.assertIn("const root=[x+side*.27,by-.13,bz+.18]", ENGINE)
         self.assertIn("const shoulder=[x+side*.40,.99,z+.86],elbow=[x+side*.49,.83,z+.63],wrist=[x+(side<0?-.34:.35),.675,z+.31],hand=[x+(side<0?-.30:.34),.655,z+.22]", ENGINE)
         self.assertIn("this.add(s,hand[0],hand[1],hand[2],.070,.035,.055", ENGINE)
         self.assertIn("for(let finger=0;finger<3;finger++)this.add(b,hand[0]+(finger-1)*.026,.638,hand[2]-.06", ENGINE)
         self.assertIn("by-.48,bz+.005,.345,.37,.255", ENGINE)
-        self.assertIn("by-.105,bz+.22,.23,.085,.035,[.74,.90,.98,.22]", ENGINE)
+        self.assertIn("by-.105,bz+.22,.29,.105,.035,[.74,.90,.98,.22]", ENGINE)
         self.assertIn("function sphereBandGeometry", ENGINE)
         self.assertIn("this.bandGoldTop=sphereBandGeometry", ENGINE)
         self.assertIn("this.bandGoldBottom=sphereBandGeometry", ENGINE)
@@ -91,8 +91,8 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("this.add(s,x+side*.066,by+.022,bz-.194,.045,.046,.020,[.20,.91,.98,1])", ENGINE)
         self.assertIn("tiny centered webcam", ENGINE)
         self.assertIn("Fine translucent veins catch the studio light", ENGINE)
-        self.assertIn("this.addLink(root,mid,.006,[.72,.91,1,.52])", ENGINE)
-        self.assertIn("this.addLink(mid,tip,.005,[.72,.91,1,.42])", ENGINE)
+        self.assertIn("this.addLink(root,mid,.008,[.72,.91,1,.58])", ENGINE)
+        self.assertIn("this.addLink(mid,tip,.007,[.72,.91,1,.48])", ENGINE)
         self.assertIn("this.add(rb,x,screenY+screenHeight*.5+.064,z-.386,.070,.026,.018,[.025,.035,.045,1])", ENGINE)
         self.assertIn("dispose=function", ENGINE)
 
