@@ -91,6 +91,9 @@ def _npm_meta():
     relnotes 来自 registry 元数据里的 README（与查新同一条 npm 通道，不依赖
     GitHub 连通性），展示「新版本更新内容」用。部分 npm 版本 --json 不带
     readme 字段，此时回退到 `npm view <pkg> readme` 纯文本再提取。"""
+    if os.environ.get("TUTTI_SELFUPDATE_OFFLINE") == "1":
+        # 测试离线闸：桌面模式查新不再真跑 npm（Sidecar e2e 确定性）。
+        return "", "", "selfupdate meta disabled (offline test mode)"
     r = runner.run_process(
         argv=_npm_argv("view", _PKG_NAME, "--json"), timeout=60)
     if not r["ok"]:
@@ -142,7 +145,26 @@ def check(force=False):
            "note": "", "notes": "", "whatsnew": changelog_section(cur)}
     if mode == "desktop":
         out["download_url"] = "https://github.com/Vercel-By-WXP/CodeBee/releases"
-        out["note"] = "桌面预览版：请从应用菜单打开下载页，退出应用后安装新版；任务和配置保留。"
+        # 桌面壳不能自我替换引擎，但「查新」照常可用：安装包引擎版本与 npm 同源。
+        # 查到新版时前端渲染「打开下载页」（apply/restart 在桌面模式始终 400）。
+        with _LOCK:
+            if not force and _CHECK_CACHE["result"] and \
+                    time.time() - _CHECK_CACHE["ts"] < _UPDATE_TTL:
+                return dict(_CHECK_CACHE["result"])
+        latest, notes, err = _npm_meta()
+        out["latest"] = latest
+        out["notes"] = notes
+        if err:
+            out["note"] = "查询新版本失败：" + err
+        elif latest and cur:
+            out["has_update"] = _ver_tuple(latest) > _ver_tuple(cur)
+            out["note"] = ("桌面版更新：退出应用后从下载页安装新版，任务和配置保留。"
+                           if out["has_update"] else "")
+        else:
+            out["note"] = "无法比较版本（本地或 registry 版本号缺失）"
+        with _LOCK:
+            _CHECK_CACHE["ts"] = time.time()
+            _CHECK_CACHE["result"] = dict(out)
         return out
     if mode != "npm":
         out["note"] = ("开发仓库模式：请用 git pull 更新（自动升级会覆盖未提交的代码）"

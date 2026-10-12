@@ -248,3 +248,41 @@ class TestSelfUpdate(BaseTest):
         relaunch.assert_called_once_with(8765)
         self_quit.assert_called_once_with()
         su._PENDING_PORT = None
+
+
+class TestDesktopUpdateCheck(BaseTest):
+    """桌面模式「关于与更新」：查新照常、检出即给下载页，apply/restart 恒拒。"""
+
+    def test_desktop_check_detects_update_and_reports_download_url(self):
+        import app.core.selfupdate as su
+        cases = [("9.9.9", "notes-body", True), ("0.0.1", "", False)]
+        for latest, notes, expected in cases:
+            with mock.patch.dict(os.environ, {"CODEBEE_DESKTOP": "1"}), \
+                    mock.patch.object(su, "_npm_meta",
+                                      return_value=(latest, notes, "")), \
+                    mock.patch.object(su, "_CHECK_CACHE",
+                                      {"result": None, "ts": 0.0}):
+                info = su.check()
+            self.assertEqual(info["mode"], "desktop")
+            self.assertIs(info["has_update"], expected)
+            self.assertEqual(info["latest"], latest)
+            self.assertIn("/releases", info["download_url"])
+            if expected:
+                self.assertIn("下载页", info["note"])
+            else:
+                self.assertEqual(info["note"], "")
+        # 查到新版也不给自动升级/重启：桌面壳独占引擎生命周期。
+        with mock.patch.dict(os.environ, {"CODEBEE_DESKTOP": "1"}):
+            self.assertIn("error", su.apply_upgrade())
+            self.assertFalse(su.relaunch(8765))
+
+    def test_desktop_check_offline_gate_reports_error_note(self):
+        import app.core.selfupdate as su
+        with mock.patch.dict(os.environ, {"CODEBEE_DESKTOP": "1",
+                                          "TUTTI_SELFUPDATE_OFFLINE": "1"}), \
+                mock.patch.object(su, "_CHECK_CACHE", {"result": None, "ts": 0.0}):
+            info = su.check()
+        self.assertEqual(info["mode"], "desktop")
+        self.assertFalse(info["has_update"])
+        self.assertIn("/releases", info["download_url"])
+        self.assertIn("查询新版本失败", info["note"])

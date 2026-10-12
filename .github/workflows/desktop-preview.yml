@@ -42,6 +42,7 @@ jobs:
         working-directory: desktop
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      TUTTI_SELFUPDATE_OFFLINE: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -102,6 +103,7 @@ jobs:
         working-directory: desktop
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      TUTTI_SELFUPDATE_OFFLINE: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -14801,7 +14801,7 @@ let SU = null;          // 最近一次 check() 结果
 let SU_TIMER = null;    // 升级 run 轮询句柄
 let SU_RESTART_TIMER = null;
 
-const SU_MODE_TXT = { npm: "npm 全局安装", repo: "开发仓库（git clone）", source: "源码拷贝", other: "未知安装方式" };
+const SU_MODE_TXT = { npm: "npm 全局安装", repo: "开发仓库（git clone）", source: "源码拷贝", desktop: "桌面版（随包 Python）", other: "未知安装方式" };
 
 async function loadSelfupdate(force) {
   try {
@@ -15026,13 +15026,21 @@ function renderSu() {
   const cur = SU.current ? "v" + SU.current : t("（未同步版本号）");
   let html = "<p class=\"hint\">" + t("当前版本") + t("：") + "<b>" + cur + "</b>" + t("　·　") + t("安装方式") + t("：") + modeTxt + "</p>";
   if (SU.has_update) {
-    html += "<p class=\"hint\"><b>" + t("发现新版本") + " v" + SU.latest +
-      t("　") + "<a href=\"#\" onclick=\"event.preventDefault();suApply()\">" + t("立即升级") + "</a></b></p>";
+    if (SU.mode === "desktop") {
+      // 桌面模式：引擎不能自我替换，「立即升级」恒 400——只给下载页入口。
+      const url = esc(SU.download_url || "https://github.com/Vercel-By-WXP/CodeBee/releases");
+      html += "<p class=\"hint\"><b>" + t("发现新版本") + " v" + esc(SU.latest) +
+        t("　") + "<a href=\"" + url + "\" target=\"_blank\" rel=\"noopener\">" +
+        t("打开下载页") + "</a></b></p>";
+    } else {
+      html += "<p class=\"hint\"><b>" + t("发现新版本") + " v" + SU.latest +
+        t("　") + "<a href=\"#\" onclick=\"event.preventDefault();suApply()\">" + t("立即升级") + "</a></b></p>";
+    }
     if (SU.notes) {
       html += "<div class=\"hint\"><b>" + t("新版本更新内容") + t("：") + "</b>" +
         renderRelnotes(SU.notes) + "</div>";
     }
-  } else if (SU.mode === "npm" && !SU.note) {
+  } else if ((SU.mode === "npm" || SU.mode === "desktop") && !SU.note) {
     html += "<p class=\"hint\">" + t("已是最新版。") + "</p>";
   }
   info.innerHTML = html;
@@ -15040,7 +15048,8 @@ function renderSu() {
   if (note) note.textContent = t(SU.note || "");
   const b = $("su-check");
   if (b) b.disabled = false;
-  $("su-apply").classList.toggle("hidden", !SU.has_update);
+  // 桌面模式「升级到新版」永远不可用（apply 恒 400）：有新版也只走下载页。
+  $("su-apply").classList.toggle("hidden", !SU.has_update || SU.mode === "desktop");
   renderUpdPill();
 }
 

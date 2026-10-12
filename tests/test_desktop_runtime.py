@@ -77,6 +77,7 @@ class Sidecar:
         (directory / "settings.json").write_text('{"telemetry_errors": false}', encoding="utf-8")
         env = dict(os.environ, TUTTI_DATA=str(directory), TUTTI_ISOLATE_HOME="1",
                    TUTTI_TEST_NO_DEFAULT_CATALOG="1", CODEBEE_DESKTOP_SECRET=self.secret,
+                   TUTTI_SELFUPDATE_OFFLINE="1",
                    PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
         self.process = subprocess.Popen(
             [sys.executable, "-u", str(ROOT / "app" / "desktop_host.py"), "--port", str(port)],
@@ -170,6 +171,10 @@ class TestDesktopSidecar(unittest.TestCase):
         status, data = self.sidecar.request("GET", "/api/selfupdate")
         self.assertEqual(status, 200)
         self.assertEqual(data["mode"], "desktop")
+        # 离线闸：查新不真跑 npm，附带人话 note 与下载页地址；检出能力由
+        # test_selfupdate 的 mock 矩阵覆盖，这里锁「绝不 invoke npm」的边界。
+        self.assertFalse(data["has_update"])
+        self.assertIn("查询新版本失败", data["note"])
         self.assertIn("/releases", data["download_url"])
         status, data = self.sidecar.request("POST", "/api/selfupdate/apply", {})
         self.assertEqual(status, 400)

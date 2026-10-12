@@ -2059,6 +2059,8 @@
     "创建续写任务失败：": "Failed to create continuation task: ",
     "运行时模型链（跨厂商，最多 ": "Runtime model chain (cross-provider, max ",
     "立即升级": "Upgrade now",
+    "打开下载页": "Open download page",
+    "桌面版（随包 Python）": "Desktop app (bundled Python)",
     "重启服务换上新版本？页面会短暂断开并自动恢复。": "Restart the service to load the new version? The page will blink and auto-recover.",
     "重启超时，请手动刷新页面": "Restart timed out — refresh the page manually",
     "静默本次告警": "Mute this alert",
