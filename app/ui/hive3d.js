@@ -91,17 +91,21 @@ window.Hive3D = (function () {
   function organicGeometry(gl){
     // A polished, tapered leaf/wing silhouette with a gently domed center and two-sided normals.
     let outline=[
-      [-.5,0,0],[-.34,.17,.018],[-.12,.255,.040],[.14,.225,.044],
-      [.38,.13,.026],[.5,0,0],[.38,-.13,.026],[.14,-.225,.044],
-      [-.12,-.255,.040],[-.34,-.17,.018]
+      [-.5,0,.006],[-.34,.17,.028],[-.12,.255,.064],[.14,.225,.078],
+      [.38,.13,.038],[.5,0,.006],[.38,-.13,.038],[.14,-.225,.078],
+      [-.12,-.255,.064],[-.34,-.17,.028]
     ];
     const area=outline.reduce((sum,p,i)=>{const q=outline[(i+1)%outline.length];return sum+p[0]*q[1]-q[0]*p[1];},0);
     if(area<0)outline=outline.reverse();
     const positions=[],normals=[],indices=[];
     const emitSide=(sign)=>{
       const centerIndex=positions.length/3;
-      positions.push(0,0,sign*.045);normals.push(0,0,sign);
-      for(const p of outline){positions.push(p[0],p[1],p[2]*sign);normals.push(0,0,sign);}
+      positions.push(0,0,sign*.105);normals.push(0,0,sign);
+      for(const p of outline){
+        positions.push(p[0],p[1],p[2]*sign);
+        const n=norm([-.20*p[0],-.28*p[1],sign]);
+        normals.push(...n);
+      }
       for(let i=0;i<outline.length;i++){
         const a=centerIndex+1+i,b=centerIndex+1+(i+1)%outline.length;
         if(sign>0)indices.push(centerIndex,a,b);else indices.push(centerIndex,b,a);
@@ -345,19 +349,17 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth glassy oval wings sit on the camera-facing shoulder side. The reference is viewed from behind the seated assistants, so wings must project beyond the thorax instead of being hidden on the monitor-facing side.
-      this.add(this.organic,x-.51,by-.13,bz+.18,.92,.36,.12,[.33,.60,.83,.37],0,.14);
-      this.add(this.organic,x+.51,by-.13,bz+.18,.92,.36,.12,[.33,.60,.83,.37],0,-.14);
-      this.add(this.organic,x-.47,by-.105,bz+.22,.58,.21,.07,[.74,.90,.98,.22],0,.10);
-      this.add(this.organic,x+.47,by-.105,bz+.22,.58,.21,.07,[.74,.90,.98,.22],0,-.10);
-      // Fine translucent veins catch the studio light and keep the wings readable at the
-      // default camera distance without adding textures or increasing draw calls.
+      this.add(this.organic,x-.57,by+.065,bz+.31,.92,.46,.045,[.16,.34,.58,.19],0,.24);
+      this.add(this.organic,x+.57,by+.065,bz+.31,.92,.46,.045,[.16,.34,.58,.19],0,-.24);
+      // Pull the translucent wings slightly toward the camera and lift their shoulder line:
+      // this keeps the silhouette distinct from the dark thorax at the default room view.
       for(const side of [-1,1]){
-        const root=[x+side*.27,by-.13,bz+.18];
-        const mid=[x+side*.49,by-.105,bz+.18];
-        const tip=[x+side*.75,by-.15,bz+.18];
-        this.addLink(root,mid,.008,[.72,.91,1,.58]);
-        this.addLink(mid,tip,.007,[.72,.91,1,.48]);
-        this.addLink([x+side*.40,by-.08,bz+.18],[x+side*.58,by-.045,bz+.18],.004,[.83,.95,1,.34]);
+        const root=[x+side*.28,by+.015,bz+.31];
+        const mid=[x+side*.60,by+.10,bz+.31];
+        const tip=[x+side*.91,by+.13,bz+.31];
+        this.addLink(root,mid,.0042,[.70,.86,.98,.58]);
+        this.addLink(mid,tip,.0034,[.70,.86,.98,.46]);
+        this.addLink([x+side*.41,by+.15,bz+.355],[x+side*.68,by+.30,bz+.355],.0024,[.86,.95,1,.34]);
       }
 
     }
