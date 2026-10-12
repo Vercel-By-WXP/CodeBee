@@ -16,7 +16,12 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from app.core.runtime_lock import ServiceAlreadyRunning, ServiceLease, acquire_service
+from app.core.runtime_lock import (
+    ServiceAlreadyRunning,
+    ServiceLease,
+    acquire_service,
+    read_running_service,
+)
 
 
 class TestServiceLease(unittest.TestCase):
@@ -145,6 +150,11 @@ class TestDesktopSidecar(unittest.TestCase):
 
     def test_real_engine_ready_and_private_endpoints(self):
         self.assertEqual(self.ready["pid"], self.sidecar.process.pid)
+        self.assertGreater(self.ready["port"], 0)  # dynamic port, reported by READY
+        # The lease file records the serving port/pid so a later sidecar can attach.
+        info = read_running_service(self.directory)
+        self.assertEqual(info.get("port"), self.ready["port"])
+        self.assertEqual(info.get("pid"), self.sidecar.process.pid)
         status, data = self.sidecar.request("GET", "/api/desktop/status")
         self.assertEqual(status, 200)
         self.assertEqual(data["pid"], self.sidecar.process.pid)
@@ -184,13 +194,33 @@ class TestDesktopSidecar(unittest.TestCase):
         with ServiceLease(self.directory):
             pass
 
-    def test_second_service_is_rejected_before_store_recovery(self):
+    def test_second_sidecar_attaches_to_running_engine(self):
         second = Sidecar(self.directory)
         self.addCleanup(second.close)
-        self.assertNotEqual(second.process.wait(timeout=10), 0)
+        # Data directory already owned: the sidecar hands the shell over to the
+        # running engine (print ATTACH + exit 0) instead of failing.
+        self.assertEqual(second.process.wait(timeout=10), 0)
         second.reader.join(timeout=2)
-        self.assertTrue(any("已在使用此数据目录" in line for line in second.output))
-        self.assertEqual(self.sidecar.request("GET", "/api/desktop/status")[1]["pid"], self.ready["pid"])
+        attach = [line for line in second.output if line.startswith("CODEBEE_DESKTOP_ATTACH ")]
+        self.assertEqual(len(attach), 1)
+        message = json.loads(attach[0].split(" ", 1)[1])
+        self.assertEqual(message["port"], self.sidecar.port)
+        self.assertIsInstance(message.get("token"), str)
+        # The original engine keeps serving untouched.
+        self.assertEqual(
+            self.sidecar.request("GET", "/api/desktop/status")[1]["pid"], self.ready["pid"])
+
+    def test_attach_fails_cleanly_when_owner_unreachable(self):
+        directory = Path(self.temporary.name) / "unreachable"
+        # A live lease holder with no HTTP server: with the 8765 fallback probe
+        # disabled the sidecar must exit non-zero with a human hint.
+        with ServiceLease(directory):
+            with mock.patch.dict(os.environ, {"TUTTI_ATTACH_FALLBACK_PORTS": ""}):
+                second = Sidecar(directory)
+                self.addCleanup(second.close)
+                self.assertNotEqual(second.process.wait(timeout=10), 0)
+                second.reader.join(timeout=2)
+        self.assertTrue(any("未能连上正在运行的服务" in line for line in second.output))
 
     def test_folder_picker_roundtrip_uses_parent_native_dialog(self):
         result = queue.Queue()

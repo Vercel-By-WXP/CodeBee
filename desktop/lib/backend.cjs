@@ -42,12 +42,16 @@ function requestJSON(origin, endpoint, secret, body) {
 }
 
 class Backend extends EventEmitter {
-  constructor({ python, script, dataDir, env, port = 8765 }) {
+  constructor({ python, script, dataDir, env, port = 0 }) {
     super();
     Object.assign(this, { python, script, dataDir, env, port });
     this.secret = randomBytes(32).toString('hex');
     this.child = null;
     this.origin = '';
+    // Attach mode: the data directory was owned by an already-running engine;
+    // the sidecar handed us its URL and exits by design (we never own it).
+    this.attached = false;
+    this.attachToken = '';
     this.stopping = false;
   }
 
@@ -117,6 +121,22 @@ class Backend extends EventEmitter {
                 void this.kill();
                 reject(error);
               });
+            } catch (error) { tail = error.message; }
+          } else if (line.startsWith('CODEBEE_DESKTOP_ATTACH ')) {
+            try {
+              const message = JSON.parse(line.slice('CODEBEE_DESKTOP_ATTACH '.length));
+              if (!Number.isInteger(message.port) || message.port < 1 || message.port > 65535) {
+                throw new Error('Invalid attach payload');
+              }
+              this.attached = true;
+              this.attachToken = typeof message.token === 'string' ? message.token : '';
+              this.origin = `http://127.0.0.1:${message.port}`;
+              if (settled) return;
+              settled = true;
+              ready = true;
+              clearTimeout(timer);
+              this.stopping = true; // Sidecar exits 0 after handing over; never "unexpected".
+              resolve(this.origin);
             } catch (error) { tail = error.message; }
           } else if (line.startsWith('CODEBEE_DESKTOP_PICK ')) {
             try { this.emit('pick', JSON.parse(line.slice('CODEBEE_DESKTOP_PICK '.length))); }

@@ -21,7 +21,12 @@ from http.server import ThreadingHTTPServer
 from socketserver import TCPServer
 
 from core import paths
-from core.runtime_lock import ServiceAlreadyRunning, acquire_service
+from core.runtime_lock import (
+    ServiceAlreadyRunning,
+    acquire_service,
+    read_running_service,
+    record_service,
+)
 
 
 class DesktopServer(ThreadingHTTPServer):
@@ -93,12 +98,66 @@ class DesktopPipe:
             return str(result), "", False
 
 
+def _probe_codebee(port: int) -> bool:
+    """A live CodeBee answers plain loopback GET / with 200 (token-gated only
+    for remote callers, and the desktop attaches from 127.0.0.1)."""
+    import http.client
+
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        conn.request("GET", "/")
+        response = conn.getresponse()
+        response.read()
+        conn.close()
+        return response.status == 200
+    except OSError:
+        return False
+
+
+def _read_persisted_token() -> str:
+    try:
+        data = json.loads((paths.DATA_DIR / "remote.json").read_text(encoding="utf-8"))
+        token = str(data.get("token") or "")
+    except Exception:
+        token = ""
+    return token
+
+
+def _attach_to_running() -> None:
+    """Data directory already owned: hand the window to the running service.
+
+    Prints CODEBEE_DESKTOP_ATTACH and exits 0 — the shell then loads the
+    existing engine instead of spawning (or killing!) one. Ports: prefer the
+    holder's recorded port, fall back to the CLI default for owners started
+    before recording existed; TUTTI_ATTACH_FALLBACK_PORTS overrides the
+    fallback list (tests set it empty for determinism).
+    """
+    candidates: list = []
+    recorded = int(read_running_service(paths.DATA_DIR).get("port") or 0)
+    if recorded:
+        candidates.append(recorded)
+    fallback = os.environ.get("TUTTI_ATTACH_FALLBACK_PORTS", "8765")
+    for item in fallback.split(","):
+        item = item.strip()
+        if item.isdigit() and int(item) not in candidates:
+            candidates.append(int(item))
+    for port in candidates:
+        if _probe_codebee(port):
+            print("CODEBEE_DESKTOP_ATTACH " + json.dumps(
+                {"port": port, "token": _read_persisted_token()}), flush=True)
+            return
+    raise SystemExit("检测到 CodeBee 数据目录已被占用，但未能连上正在运行的服务；"
+                     "请退出已有服务后重试（详见数据目录内 desktop-logs 日志）。")
+
+
 def main() -> None:
     # Cover engine imports and the initial socket bind as well as engine.main().
     # Native DNS/file operations can stall before the engine's watchdog starts.
     faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)
     parser = argparse.ArgumentParser(description="CodeBee desktop sidecar")
-    parser.add_argument("--port", type=int, default=8765)
+    # Dynamic port by default: the sidecar is a private loopback backend for
+    # its shell, so it must never fight the CLI (or anything else) over 8765.
+    parser.add_argument("--port", type=int, default=0)
     args = parser.parse_args()
     secret = os.environ.get("CODEBEE_DESKTOP_SECRET", "")
     if len(secret) < 32:
@@ -108,8 +167,9 @@ def main() -> None:
     os.environ["CODEBEE_DESKTOP"] = "1"
     try:
         acquire_service(paths.DATA_DIR)
-    except ServiceAlreadyRunning as exc:
-        raise SystemExit(str(exc))
+    except ServiceAlreadyRunning:
+        _attach_to_running()
+        return
 
     import main as engine
     from core import jobs, store
@@ -193,6 +253,7 @@ def main() -> None:
     except OSError as exc:
         raise SystemExit("CodeBee 端口已被占用，请退出已有服务后重试：%s" % exc)
     port = server.server_address[1]
+    record_service(paths.DATA_DIR, port, os.getpid())
     engine.ThreadedServer = lambda *a, **kw: server
     engine._start_pet_keeper = lambda *a, **kw: None
     engine.pick_dialog.ask_directory = lambda initial="", title="选择文件夹": pipe.pick(

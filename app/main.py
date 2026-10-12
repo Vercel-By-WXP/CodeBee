@@ -3902,6 +3902,13 @@ def main():
 
     print("[CodeBee] 本机     http://127.0.0.1:%d" % args.port, flush=True)
     print("[CodeBee] 数据目录 %s" % paths.DATA_DIR, flush=True)
+    try:
+        # 桌面端 attach 依据：把实际服务端口记进数据目录租约（旧版没写，attach
+        # 会回落探测 8765）。失败只影响发现能力，不值得让启动失败。
+        from core.runtime_lock import record_service
+        record_service(paths.DATA_DIR, httpd.server_address[1], os.getpid())
+    except Exception:
+        pass
     # Windows 的默认 GBK 控制台无法编码部分符号，启动日志必须保持控制台安全。
     print("[CodeBee] [OK] 已就绪，浏览器即将自动打开；不要关闭本窗口。", flush=True)
     try:

@@ -1,10 +1,10 @@
 # CodeBee 桌面预览版
 
-复用现有 Web 界面和 Python 引擎，支持 **Windows 10/11 x64**、**macOS 13+ Intel x64 / Apple Silicon arm64**。安装包携带 Python；运行 CodeBee 本身不要求用户安装 Node.js/Python。使用外部 AI CLI 时，仍需安装相应 CLI 及它的运行环境。
+复用现有 Web 界面和 Python 引擎，支持 **Windows 10/11 x64**、**Windows 7 x64（预览）**、**macOS 13+ Intel x64 / Apple Silicon arm64**。安装包携带 Python；运行 CodeBee 本身不要求用户安装 Node.js/Python。使用外部 AI CLI 时，仍需安装相应 CLI 及它的运行环境。
 
 关闭窗口会隐藏到托盘/菜单栏，任务继续执行。托盘菜单、应用菜单可重新打开；明确退出时，有正在执行的任务会询问是否停止。系统休眠、关机或退出应用后不保证持续执行；重新启动沿用引擎已有的任务恢复规则。
 
-数据继续使用 Windows `%APPDATA%\CodeBee`、macOS `~/.codebee`，旧 Tutti 目录仍沿用，`TUTTI_DATA` 可指定独立目录。升级、重装和卸载均不主动删除这些数据。桌面版和 CLI 共用数据目录时只能运行一个服务；新版本使用 OS 文件锁，旧 CLI 已占用 8765 时桌面版报错，不会杀掉它。
+数据继续使用 Windows `%APPDATA%\CodeBee`、macOS `~/.codebee`，旧 Tutti 目录仍沿用，`TUTTI_DATA` 可指定独立目录。升级、重装和卸载均不主动删除这些数据。桌面版和 CLI 共用数据目录时只能运行一个引擎；桌面端 sidecar 使用**动态端口**（不与 CLI 或其他软件抢 8765），当数据目录已被 CLI/另一实例占用时，sidecar 会输出 `CODEBEE_DESKTOP_ATTACH` 并退出，桌面窗口直接**接管连接到正在运行的服务**（带持久化令牌），不再报错，也不会杀掉它。
 
 ## 本地开发
 
@@ -44,11 +44,14 @@ npm run dist:mac:arm64
 # macOS Intel
 npm run prepare:runtime -- darwin x64
 npm run dist:mac:x64
+
+# Windows 7 x64（预览）：Electron 22.3.27 + Python 3.8.10 embeddable
+npm run dist:win7
 ```
 
-生成 `dist/CodeBee-<版本>-win-x64.exe`、`CodeBee-<版本>-mac-arm64.dmg`、`CodeBee-<版本>-mac-x64.dmg` 与 Mac zip。构建脚本检查引擎/桌面版本一致、Python 架构与固定摘要一致；配置排除测试、数据和缓存。源码中的 `app/ui` 改动直接进入新安装包。
+生成 `dist/CodeBee-<版本>-win-x64.exe`、`CodeBee-<版本>-win7-x64.exe`、`CodeBee-<版本>-mac-arm64.dmg`、`CodeBee-<版本>-mac-x64.dmg` 与 Mac zip。构建脚本检查引擎/桌面版本一致、Python 架构与固定摘要一致；配置排除测试、数据和缓存。源码中的 `app/ui` 改动直接进入新安装包。
 
-GitHub Actions 的 `Desktop preview` 工作流提供三个原生构建任务，先做引擎生命周期测试和桌面 smoke，再生成安装包并测试打包后的应用，只上传预览 artifacts，不创建 Release、不自动发布。共享工作区的其他在途改动不能作为正式交付基线。
+GitHub Actions 的 `Desktop preview` 工作流提供四个原生构建任务（win-x64 / mac-arm64 / mac-x64 / win7），先做引擎生命周期测试和桌面 smoke，再生成安装包并测试打包后的应用，只上传预览 artifacts，不创建 Release、不自动发布。共享工作区的其他在途改动不能作为正式交付基线。Win7 构建使用 Electron 22.3.27（最后支持 Win7/8/8.1 的线）+ Python 3.8.10 embeddable 运行时，`before-pack` 按 Electron 大小号强制校验运行时档位；Electron 22 主进程无全局 fetch，桌面代码统一走 `node:http`。
 
 ## 更新与正式发布
 

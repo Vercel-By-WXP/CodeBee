@@ -2,6 +2,7 @@
 
 const { app, BrowserWindow, Menu, Tray, nativeImage, dialog, shell, Notification } = require('electron');
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const assert = require('node:assert/strict');
@@ -142,7 +143,11 @@ async function startBackend() {
     if (window && !window.isDestroyed()) await window.loadFile(path.join(__dirname, 'startup.html'));
     const env = await cliEnvironment();
     if (smoke) env.TUTTI_ISOLATE_HOME = '1';
-    backend = new Backend({ ...paths, env, port: smoke ? 0 : 8765,
+    // Dynamic port: the sidecar is a private loopback backend, so it must not
+    // fight the CLI (or anything else) over 8765. The READY/ATTACH line tells
+    // us the actual port. When the data directory is already owned, the
+    // sidecar attaches us to that running engine instead of spawning one.
+    backend = new Backend({ ...paths, env, port: 0,
       dataDir: smoke ? path.join(smokeRoot, 'data') : dataDirectory() });
     backend.on('pick', message => void pickNative(message));
     backend.on('unexpected-exit', error => {
@@ -156,11 +161,18 @@ async function startBackend() {
         details.requestHeaders['X-CodeBee-Desktop'] = backend.secret;
         callback({ cancel: false, requestHeaders: details.requestHeaders });
       });
-    await startWindow();
-    notificationPrimed = false;
-    seen.clear();
-    clearInterval(pollTimer);
-    if (!smoke) pollTimer = setInterval(() => void pollNotifications(), 5000);
+    if (backend.attached) {
+      // The running engine does not know our private secret; the persisted
+      // access token is the shared credential. Its lifecycle belongs to
+      // whoever started it — quit here only closes the window.
+      await window.loadURL(`${backend.origin}/?token=${encodeURIComponent(backend.attachToken)}`);
+    } else {
+      await startWindow();
+      notificationPrimed = false;
+      seen.clear();
+      clearInterval(pollTimer);
+      if (!smoke) pollTimer = setInterval(() => void pollNotifications(), 5000);
+    }
   } finally {
     starting = false;
     if (quitRequested && !quitting) {
@@ -272,6 +284,54 @@ async function failStartup(error) {
   }
 }
 
+function httpGetStatus(url) {
+  // node:http instead of global fetch: the Windows 7 target ships Electron 22
+  // (Node 16), which has no global fetch in the main process.
+  return new Promise((resolve, reject) => {
+    const request = http.get(url, { timeout: 8000 }, response => {
+      response.resume();
+      response.on('end', () => resolve(response.statusCode));
+      response.on('error', reject);
+    });
+    request.on('timeout', () => request.destroy(new Error('request timed out')));
+    request.on('error', reject);
+  });
+}
+
+async function httpGetJSON(url) {
+  const body = await new Promise((resolve, reject) => {
+    const request = http.get(url, { timeout: 8000 }, response => {
+      let buffer = '';
+      response.setEncoding('utf8');
+      response.on('data', chunk => { buffer += chunk; });
+      response.on('end', () => resolve(buffer));
+      response.on('error', reject);
+    });
+    request.on('timeout', () => request.destroy(new Error('request timed out')));
+    request.on('error', reject);
+  });
+  return JSON.parse(body);
+}
+
+function httpPostJSON(url, body) {
+  const data = JSON.stringify(body ?? {});
+  return new Promise((resolve, reject) => {
+    const request = http.request(url, {
+      method: 'POST', timeout: 8000,
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+    }, response => {
+      let buffer = '';
+      response.setEncoding('utf8');
+      response.on('data', chunk => { buffer += chunk; });
+      response.on('end', () => resolve(JSON.parse(buffer)));
+      response.on('error', reject);
+    });
+    request.on('timeout', () => request.destroy(new Error('request timed out')));
+    request.on('error', reject);
+    request.end(data);
+  });
+}
+
 async function runSmoke() {
   const security = await window.webContents.executeJavaScript(`({
     title: document.title, node: typeof window.require, process: typeof window.process,
@@ -281,15 +341,13 @@ async function runSmoke() {
   assert.equal(security.process, 'undefined');
   assert.equal(security.content, true);
   assert.match(security.title, /CodeBee/);
-  const unauthenticated = await fetch(backend.origin + '/api/desktop/status');
-  assert.equal(unauthenticated.status, 403);
+  const unauthenticated = await httpGetStatus(backend.origin + '/api/desktop/status');
+  assert.equal(unauthenticated, 403);
   const status = await backend.status();
   assert.equal(status.pid, backend.child.pid);
-  const picker = await fetch(backend.origin + '/api/pick_folder', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
-  const picked = await picker.json();
+  const picked = await httpPostJSON(backend.origin + '/api/pick_folder', {});
   assert.equal(picked.path, backend.dataDir);
-  const update = await (await fetch(backend.origin + '/api/selfupdate')).json();
+  const update = await httpGetJSON(backend.origin + '/api/selfupdate');
   assert.equal(update.mode, 'desktop');
   const second = spawn(app.getPath('exe'), app.isPackaged ? ['--smoke-second'] : [__dirname, '--smoke-second'], {
     env: { ...process.env, CODEBEE_SMOKE_USER_DATA: app.getPath('userData') }, windowsHide: true,

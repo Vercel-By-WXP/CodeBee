@@ -88,3 +88,49 @@ jobs:
             desktop/dist/smoke/
             desktop/dist/packaged-smoke/
           if-no-files-found: warn
+
+  win7-preview:
+    # Windows 7 target: Electron 22.3.27 (last line supporting Win7/8/8.1) with
+    # the Python 3.8 embeddable runtime; electron-builder.win7.yml pins the
+    # electron version via `electronVersion`, and before-pack enforces the
+    # matching win7 Python profile. The packaged smoke runs on the Win10/11
+    # runner to prove the Electron 22 build itself works end to end.
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: desktop
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - name: Run sidecar lifecycle and data lock tests
+        working-directory: .
+        run: python -m unittest discover -s tests -p test_desktop_runtime.py -v -f
+      - name: Build Windows 7 preview installer
+        run: npm run dist:win7
+      - name: Test the packaged application (Electron 22)
+        shell: bash
+        env:
+          CODEBEE_SMOKE_OUTPUT: ${{ github.workspace }}/desktop/dist/packaged-smoke-win7
+        run: |
+          './dist/win-unpacked/CodeBee.exe' --smoke-test
+          test -f dist/packaged-smoke-win7/result.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codebee-preview-win7-x64
+          path: |
+            desktop/dist/*win7*.exe
+            desktop/dist/packaged-smoke-win7/
+          if-no-files-found: warn

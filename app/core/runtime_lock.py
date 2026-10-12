@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import atexit
+import json
 import os
 from pathlib import Path
 from typing import IO, Optional
@@ -52,6 +53,17 @@ class ServiceLease:
         if _LEASES.get(key) is self:
             _LEASES.pop(key, None)
 
+    def record(self, port: int, pid: int) -> None:
+        """Write serving info for desktop attach into a separate service.json.
+
+        It must NOT go into service.lock: the Windows byte-range lock on that
+        file is mandatory, so other handles cannot read the locked region at
+        all (POSIX flock is advisory, Windows is not). A stale service.json
+        after a crash is harmless — attach probes the port before trusting it.
+        """
+        payload = json.dumps({"port": int(port), "pid": int(pid)})
+        (self.directory / "service.json").write_text(payload, encoding="utf-8")
+
     def __enter__(self) -> "ServiceLease":
         self.acquire()
         return self
@@ -73,3 +85,28 @@ def acquire_service(directory: Path) -> ServiceLease:
         _LEASES[key] = lease
         atexit.register(lease.release)
     return lease
+
+
+def record_service(directory: Path, port: int, pid: int) -> None:
+    """Holder rewrites its lock file with serving info (the inode stays put).
+
+    Desktop attach reads this to find the running service's port. Old writers
+    leave placeholder bytes instead of JSON; read_running_service tolerates it.
+    """
+    lease = _LEASES.get(str(Path(directory).resolve()))
+    if lease is not None and lease._file is not None:
+        lease.record(port, pid)
+
+
+def read_running_service(directory: Path) -> dict:
+    """Best-effort port/pid of the lease holder; {} when absent or unreadable.
+
+    Reads service.json (written by record_service). A stale file after a
+    crash only misleads attach until its liveness probe rejects the port.
+    """
+    try:
+        parsed = json.loads(
+            (Path(directory) / "service.json").read_text(encoding="utf-8"))
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
