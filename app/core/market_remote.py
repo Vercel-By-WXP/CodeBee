@@ -874,3 +874,282 @@ def _download_git(entry, tmp):
         if attempt == 1 and manager._git_transport_flake(err):
             continue
         raise ValueError("git 克隆失败: %s" % err)
+    root = dst / sub if sub else dst
+    # 双保险：解析后必须仍在克隆目录内（防符号链接等绕过）
+    if dst.resolve() != root.resolve() and dst.resolve() not in root.resolve().parents:
+        raise ValueError("插件子目录路径可疑: %s" % inst.get("path"))
+    if not root.is_dir():
+        raise ValueError("插件子目录不存在: %s" % inst["path"])
+    return root
+
+
+def _download_git_any(entry, tmp):
+    """git 类来源安装：codeload tarball 优先（完整、最新）→ jsdelivr 逐文件
+    兜底（codeload 不可达时）→ git 浅克隆收尾（非 github 托管 / 精确 ref）。"""
+    _reject_url_userinfo(entry["install"].get("url"))
+    try:
+        return _gh_tarball(entry, tmp)
+    except ValueError as e:
+        if "not-github" in str(e):
+            return _download_git(entry, tmp)
+        first = str(e)
+    try:
+        return _gh_fetch_files(entry, tmp)
+    except ValueError as e:
+        if "not-github" in str(e):
+            return _download_git(entry, tmp)
+        raise ValueError("%s；%s" % (first, e))
+
+
+def _download_clawhub(entry, tmp):
+    """ClawHub 注册表 zip 直下（/api/v1/download?slug=&reference=）。"""
+    inst = entry["install"]
+    q = urllib.parse.quote
+    url = "%s/download?slug=%s&reference=%s" % (
+        _CLAWHUB_BASE, q(inst["slug"], safe=""), q(inst["reference"] or inst["slug"], safe=""))
+    data = _fetch(url, cap=_CAP_DOWNLOAD)
+    dest = _safe_extract(zipfile.ZipFile(io.BytesIO(data)), tmp / "clawhub")
+    return _plugin_root(dest), "unverified"
+
+
+def _plugin_root(base):
+    """定位插件根：有 plugin.json 标记就用；否则单一顶层目录时下钻。"""
+    for marker in (".claude-plugin/plugin.json", ".zcode-plugin/plugin.json",
+                   "plugin.json"):
+        if (base / marker).is_file():
+            return base
+    entries = list(base.iterdir())
+    dirs = [p for p in entries if p.is_dir()]
+    if len(dirs) == 1 and not any(p.is_file() for p in entries):
+        return _plugin_root(dirs[0])
+    return base
+
+
+# ---------------------------------------------------------------- 转换与安装
+
+def _read_text(p):
+    try:
+        if p.stat().st_size > _CAP_FILE_TEXT:
+            return None
+        return p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _one_line(s, cap=100):
+    s = re.sub(r"\s+", " ", str(s or "")).strip()
+    return s[:cap]
+
+
+def _rewrite_skill_md(content, title, note, pack_id):
+    """SKILL.md → skillpack：重写 frontmatter（带 market 安装标记），正文原样保留。"""
+    body = content
+    m = re.match(r"(?s)\A---\s*\n(.*?)\n---\s*\n?", content)
+    if m:
+        body = content[m.end():]
+        fm = m.group(1)
+        m_name = re.search(r"(?m)^name:\s*(.+)$", fm)
+        m_desc = re.search(r"(?m)^description:\s*(.+)$", fm)
+        title = _one_line(m_name.group(1)) if m_name else title
+        note = _one_line(m_desc.group(1)) if m_desc else note
+    head = ('---\nname: %s\nnote: %s\nscopes:\n- "*"\nsource: market\n'
+            "market_id: %s\n---\n\n" % (_one_line(title, 60), _one_line(note), pack_id))
+    return head + body.lstrip("\r\n")
+
+
+def build_files(entry, root):
+    """插件树 → market.install_files 的 files dict：
+    主 SKILL.md 落顶层（注入件），其余文本附件落 market-assets/<id>/ 原相对路径。
+    条目显式声明了 skills 白名单（如 anthropics/skills 的 skills: [...]）时，
+    检查与打包都只看白名单技能目录——同仓库其他插件的内容不越界。
+    返回 (files dict, 错误, stripped 剔除清单)。"""
+    whitelist = (entry.get("install") or {}).get("skills") or []
+    try:
+        files, stripped = inspect_tree(root, whitelist=whitelist or None)
+    except ValueError as e:
+        return None, str(e), []
+    skills = find_skills(root, files)
+    if not skills:
+        return None, "未找到技能（该插件剔除脚本/钩子/MCP 组件后没有纯技能内容）", stripped
+    if whitelist:
+        skills = [s for s in skills if s["name"] in set(whitelist)]
+        if not skills:
+            return None, "白名单技能与包内容不匹配: %s" % ",".join(whitelist[:5]), stripped
+    pack_id = entry["id"]
+    out, total = {}, 0
+    for i, sk in enumerate(skills):
+        content = _read_text(root / sk["skill_md"])
+        if not content or not content.strip():
+            continue
+        if i == 0:
+            key = "market-%s.md" % pack_id
+        else:
+            key = "market-%s__%s.md" % (pack_id, re.sub(r"[^A-Za-z0-9_.-]", "-", sk["name"]))
+        out[key] = _rewrite_skill_md(content, entry["title"], entry["desc"], pack_id)
+        total += len(out[key])
+        for rel, abs_p in sk["extras"]:
+            text = _read_text(abs_p)
+            if text is None:      # 超限/读不到的附件直接舍弃（图片本就不带）
+                continue
+            total += len(text)
+            if total > _CAP_TOTAL_TEXT:
+                return None, "插件文本总量超过上限（%d KB）" % (_CAP_TOTAL_TEXT // 1024), stripped
+            out[rel] = text
+    if not out:
+        return None, "技能内容为空", stripped
+    return out, None, stripped
+
+
+def _fetch_root(entry, tmp):
+    """按来源下载并解包，返回 (插件根目录, 完整性说明)。
+    verified=zip 带 sha256 且校验通过；unverified=直链无哈希（https+白名单兜底）；
+    git-ref/git-head=git 类来源按 ref/HEAD 取树。"""
+    kind = entry["install"]["kind"]
+    if kind == "zip":
+        return _download_zip(entry, tmp)
+    if kind == "clawhub":
+        return _download_clawhub(entry, tmp)
+    return _download_git_any(entry, tmp), \
+        ("git-ref" if entry["install"].get("ref") else "git-head")
+
+
+def _resolve_entry(entry_id):
+    entries = _entries_from_cache()
+    entry = next((e for e in entries if e["id"] == entry_id), None)
+    if not entry:
+        return None, "外部目录中没有这个插件（先「拉取更新」再试）: %s" % entry_id
+    if entry["compat"] == "blocked":
+        return None, entry["block_reason"] or "该插件不适配 CodeBee"
+    if entry["install"]["kind"] == "unsupported":
+        return None, "来源类型不支持（仅支持 zip 直链、git 子目录与 ClawHub）"
+    return entry, None
+
+
+# 预览→确认安装两阶段之间的已检内容缓存：token 一次性、TTL 10 分钟、最多 8 份
+# （files 是纯文本 dict、总量有 _CAP_TOTAL_TEXT 上限，缓存占用有界）。
+_PREVIEW_TTL = 600
+_PREVIEW_MAX = 8
+_PREVIEW_CACHE = {}
+
+
+def _preview_purge():
+    now = time.time()
+    for k in [k for k, v in _PREVIEW_CACHE.items() if now - v["ts"] > _PREVIEW_TTL]:
+        _PREVIEW_CACHE.pop(k, None)
+    while len(_PREVIEW_CACHE) > _PREVIEW_MAX:
+        _PREVIEW_CACHE.pop(min(_PREVIEW_CACHE, key=lambda k: _PREVIEW_CACHE[k]["ts"]))
+
+
+def _skill_names_from_files(files, entry):
+    """从转换后的 files 键推技能名：market-<id>.md 是主技能（用条目名），
+    market-<id>__<名>.md 是多技能包里的其余技能（用目录名）。"""
+    names = []
+    for k in files:
+        if "/" in k or not k.endswith(".md") or not k.startswith("market-"):
+            continue
+        base = k[len("market-"):-3]
+        names.append("__" in base and base.split("__", 1)[1] or entry["title"])
+    return sorted(set(names))
+
+
+def preview_remote(entry_id):
+    """安装前预览（先看后装）：下载 → 剥离式检查 → 转换，但**不落盘安装**。
+    返回 (预览 dict, 错误)。dict 带 token，确认安装时把 token 传回
+    install_remote 即安装这份已检内容，不重复下载。"""
+    entry, err = _resolve_entry(entry_id)
+    if err:
+        return None, err
+    tmp = Path(tempfile.mkdtemp(prefix="codebee-mkt-"))
+    try:
+        root, integrity = _fetch_root(entry, tmp)
+        files, blocked, stripped = build_files(entry, root)
+        if blocked:
+            return None, blocked
+        _preview_purge()
+        token = secrets.token_hex(12)
+        _PREVIEW_CACHE[token] = {"entry_id": entry_id, "files": files,
+                                 "stripped": stripped, "ts": time.time()}
+        file_list = sorted(files.items(), key=lambda kv: kv[0])
+        # 内容安检（ClawHavoc 投毒案借鉴）：对全部技能文本跑危险模式扫描，
+        # 风险随预览返回——UI 高风险红字确认；发现列表给行号可定位。
+        try:
+            from . import skill_scan
+            risk_findings = skill_scan.scan_text(
+                "\n".join(str(v) for v in files.values()))
+            risk_label = skill_scan.risk_label(risk_findings)
+        except Exception:
+            risk_findings, risk_label = [], ""
+        # 供应链对账（AST10 #2）：与上次见过的内容/已装名比对（只读不写）
+        try:
+            digest = market._pack_digest(files)
+            reg = market._load_registry()
+            changed = str((reg.get("seen") or {}).get(entry_id) or "") not in ("", digest)
+            near = market._similar_names(entry.get("title") or "",
+                                         reg.get("installed") or {})
+        except Exception:
+            digest, changed, near = "", False, []
+        return {
+            "token": token, "id": entry_id, "title": entry["title"],
+            "source": entry["source_name"], "version": entry["version"],
+            "homepage": entry["homepage"], "integrity": integrity,
+            "skills": _skill_names_from_files(files, entry),
+            "files_total": len(files),
+            "total_chars": sum(len(v) for v in files.values()),
+            "file_list": [{"path": k, "chars": len(v)} for k, v in file_list[:60]],
+            "stripped": sorted(stripped)[:40], "stripped_total": len(stripped),
+            "risk_label": risk_label, "risk_findings": risk_findings[:8],
+            "digest": digest, "changed": changed, "near_names": near,
+            "expires_in": _PREVIEW_TTL,
+        }, None
+    except ValueError as e:
+        return None, str(e)
+    except Exception as e:
+        return None, "下载或解析插件失败: %s" % e
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def install_remote(entry_id, token=""):
+    """安装外部目录插件：下载 → 纯技能检查 → 转换 → 复用 market 安装通道。
+    token 非空且命中预览缓存时直接安装那份已检内容（不重复下载）；token
+    一次性（装成功即焚，防重放）。返回 (结果 dict, 错误)。"""
+    entry, err = _resolve_entry(entry_id)
+    if err:
+        return None, err
+    cached = None
+    if token:
+        _preview_purge()
+        c = _PREVIEW_CACHE.get(str(token))
+        if c and c["entry_id"] == entry_id:
+            cached = c
+    if cached:
+        files, stripped = cached["files"], cached["stripped"]
+    else:
+        tmp = Path(tempfile.mkdtemp(prefix="codebee-mkt-"))
+        try:
+            root, _integrity = _fetch_root(entry, tmp)
+            files, blocked, stripped = build_files(entry, root)
+            if blocked:
+                return None, blocked
+        except ValueError as e:
+            return None, str(e)
+        except Exception as e:   # 网络/解包等意外错误也要兜成用户可读的一句话
+            return None, "下载或解析插件失败: %s" % e
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    res, err = market.install_files(entry_id, entry["title"], files, extra={
+        "remote": {"source": entry["source_id"], "name": entry["name"],
+                   "version": entry["version"], "homepage": entry["homepage"]},
+    })
+    if err:
+        return None, err
+    if cached:
+        _PREVIEW_CACHE.pop(str(token), None)
+    res["skills"] = sum(1 for k in files if k.endswith(".md") and "/" not in k)
+    res["stripped"] = sorted(stripped)
+    return res, None
+
+
+def remove_remote(entry_id):
+    """卸载外部插件：记账与标记齐全时走 market 既有卸载；否则报错。"""
+    return market.remove(entry_id)

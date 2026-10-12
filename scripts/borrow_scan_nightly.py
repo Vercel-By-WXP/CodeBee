@@ -67,3 +67,118 @@ QUERIES = [
     ("B1", "ast+based+code+editing+agent+OR+symbol+level+code+edit"),
     ("B1", "open-code-review+alternative+OR+codeai+review"),
     ("B1", "strix+OR+penetration+testing+agent"),
+]
+
+# 轮换池 B（keywords.md 同源）：小时 %7 选批，余 0=批7。--batch N 可只跑指定批补课。
+BATCHES = {
+    1: [("B1", q) for q in ["code+review+agent+OR+ai+code+reviewer", "pr+review+bot+github",
+        "github+action+ai+review", "bug+detection+agent", "vulnerability+scanner+agent",
+        "test+generation+agent+OR+ai+testing+agent", "regression+test+generation+ai",
+        "refactor+agent+OR+tech+debt+agent", "secure+code+review+agent+OR+security+review+bot",
+        "api+test+generation+agent+OR+integration+test+agent",
+        "ast+based+code+editing+agent+OR+symbol+level+code+edit",
+        "open-code-review+alternative+OR+codeai+review",
+        "strix+OR+penetration+testing+agent"]],
+    2: [("B2", q) for q in ["self+improving+agent+OR+agent+reflexion",
+        "agentic+context+engineering+OR+evolving+playbook", "agent+episodic+memory",
+        "project+memory+coding+agent", "knowledge+graph+agent", "agent+learning+from+feedback",
+        "experience+reuse+agent", "agent+self+correction", "skill+library+agent",
+        "conversation+memory+compression+OR+memory+summarization+agent",
+        "agent+skill+learning+OR+automatic+skill+discovery",
+        "memsearch+OR+unified+memory+layer"]],
+    3: [("B3", q) for q in ["long+running+agent+OR+persistent+planning+agent", "spec+driven+development",
+        "plan+and+execute+agent", "task+decomposition+agent", "milestone+tracking+agent",
+        "project+planning+ai+agent", "autonomous+long+horizon+agent", "worktree+parallel+agent",
+        "agent+checkpoint+resume+OR+workflow+recovery+agent",
+        "acceptance+criteria+agent+OR+requirements+validation+agent",
+        "requirement+elicitation+agent+OR+spec+interview+ai"]],
+    4: [("B4", q) for q in ["human+in+the+loop+ai+agent", "agent+approval+workflow", "agent+governance",
+        "agent+guardrails", "agent+permission+policy", "agent+audit+trail", "agent+kill+switch",
+        "agent+risk+control", "prompt+injection+defense+agent+OR+indirect+prompt+injection",
+        "agent+policy+evaluation+OR+guardrail+benchmark"]],
+    5: [("B5", q) for q in ["agent+rag", "deep+research+agent", "browser+use+agent+OR+browser+automation+ai",
+        "web+scraping+agent", "search+agent+OR+retrieval+agent", "document+understanding+agent",
+        "data+extraction+agent", "competitive+intelligence+agent",
+        "citation+verification+agent+OR+source+grounding+agent",
+        "knowledge+base+quality+OR+rag+evaluation+agent"]],
+    6: [("B6", q) for q in ["langgraph+platform+OR+langgraph+deploy", "crewai+studio+OR+crewai+platform",
+        "autogen+platform+OR+autogen+studio", "openai+agents+sdk", "google+adk+agent", "mastra+agent",
+        "pydanticai+agent", "semantic+kernel+agent",
+        "agent+interoperability+protocol+OR+agent+to+agent+protocol",
+        "agent+framework+benchmark+OR+multi-agent+framework+comparison"]],
+    7: [("B7", q) for q in ["数字员工+OR+大模型+编排", "one-api+alternative", "模型中转+OR+api+网关+大模型",
+        "ollama+orchestrator", "local+llm+agent", "self+hosted+agent+platform", "rpa+ai+agent",
+        "小说生成+ai+OR+ai+写作+平台", "office+document+agent+OR+办公+智能体+工作流",
+        "magicrew+OR+%E8%B6%85%E7%BA%A7%E9%BA%A6%E5%90%89"]],
+}
+
+
+def main():
+    import datetime as _dtmod
+    argv = sys.argv[1:]
+    only = int(argv[argv.index("--batch") + 1]) if "--batch" in argv else None
+    if only:
+        queries = BATCHES[only]
+        print("PROGRESS quick batch B%d: %d queries" % (only, len(queries)), file=sys.stderr)
+    else:
+        hour = _dtmod.datetime.now().hour
+        b = (hour % 7) or 7
+        queries = QUERIES + BATCHES[b]
+        print("PROGRESS full scan: A=%d + B%d=%d" % (len(QUERIES), b, len(BATCHES[b])),
+              file=sys.stderr)
+        # keywords.md 检索纪律「双轮排序 + 核心组翻页」：A1 核心编排组每轮追加
+        # sort=updated 新锐轮与 stars page=2 翻页（单遍扫描不知道 page1 是否满页，
+        # page2 重复项由汇总端按 full_name 去重，宁多查不漏新锐）。
+        for g, q in [x for x in QUERIES if x[0] == "A1"]:
+            queries.append(("A1u", q))
+            queries.append(("A1p2", q))
+    total = len(queries)
+    for i, (grp, q) in enumerate(queries, 1):
+        if grp == "A1u":
+            api_path = "search/repositories?q=%s&sort=updated&per_page=5"
+        elif grp == "A1p2":
+            api_path = "search/repositories?q=%s&sort=stars&per_page=5&page=2"
+        else:
+            api_path = "search/repositories?q=%s&sort=stars&per_page=5"
+        cmdline = ["gh", "api", "-X", "GET",
+                   api_path % urllib.parse.quote(q, safe="+"),
+                   "--jq", '.items[] | {f:.full_name,s:.stargazers_count,p:.pushed_at,d:(.description // "")[0:160]}']
+        try:
+            r = subprocess.run(cmdline, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=60)
+        except Exception as e:
+            print("PROGRESS Q%d/%d %s %s EXC %r" % (i, total, grp, q, e), file=sys.stderr)
+            time.sleep(4)
+            continue
+        if r.returncode != 0:
+            err = (r.stderr or "").strip()
+            if "403" in err:
+                print("PROGRESS Q%d/%d %s %s 403 -> backoff 20s" % (i, total, grp, q), file=sys.stderr)
+                time.sleep(20)
+                r = subprocess.run(cmdline, capture_output=True, text=True,
+                                   encoding="utf-8", errors="replace", timeout=60)
+            if r.returncode != 0:
+                print("PROGRESS Q%d/%d %s %s FAIL %s" % (i, total, grp, q, err[:150]), file=sys.stderr)
+                print(json.dumps({"group": grp, "q": q, "error": True}, ensure_ascii=False))
+                time.sleep(4)
+                continue
+        n = 0
+        for line in r.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                it = json.loads(line)
+            except Exception:
+                continue
+            print(json.dumps({"group": grp, "q": q, "full": it.get("f"),
+                              "stars": it.get("s"), "pushed": (it.get("p") or "")[:10],
+                              "desc": it.get("d")}, ensure_ascii=False))
+            n += 1
+        print("PROGRESS Q%d/%d %s %s ok %d" % (i, total, grp, q, n), file=sys.stderr)
+        time.sleep(4)
+    print("PROGRESS DONE %d queries" % total, file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
