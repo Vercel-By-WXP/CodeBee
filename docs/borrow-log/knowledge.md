@@ -7775,3 +7775,72 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   +三大趋势信号+kimi-cli 归档复核（catalog 零死链）+停更观察新记 2 件+剪切线补词
   1 处+orca 属主勘定；判据件均非小而实当班落地件，零产品代码提案，落地=知识沉淀
   三件套+词库补词，不触发发版 | 结论 | 2026-10-13
+
+## 2026-10-13 04 时班（批4：治理/安全/人机协同——新一轮计划第 1/3 步全类型调研续班）
+
+- **Ebony-Vinyl/dsh-our-free-model**（11,802★，10-12，trendshift）新入库 |
+  **免费模型插件**：装进 dsh 免登录免 API Key 用 DeepSeek V4.1 Flash/Kimi K3 等前沿
+  模型免费不限量——DSH GitHub 侧最大插件（npm 十二件套之外 GitHub 侧首件巨件） |
+  E 生态/A3 相邻：免费渠道情报第 3 例（kimaki 订阅复用/free-claude-code 同族）；
+  **ToS/凭据灰产风险不装**（CCBaga 凭据族同型判例）；词形盲区第 16 例→C 源 DSH
+  周边词已补 +OR+dsh-our-free-model | E 生态信号（雷达）| 2026-10-13
+- **Ryder-Sun/Meldwork**（708★，09-17 停更期，主扫 B4「human in the loop」）新入库 |
+  local-first 多 agent workspace：scoped permissions/evidence-aware runs/HITL
+  decisions | evidence-aware≈evidence.md、scoped permissions≈权限面、HITL≈待裁决
+  ——机制全覆盖，无未覆盖差量 | 微型判据（雷达）| 2026-10-13
+- **storytold craft 家族勘定 7→13 件**（org 顺藤）：新认 pdfcraft 10,999（PDF
+  阅读器/编辑器，09-30 建）/effectcraft 5,696/gridcraft 3,719/cadcraft 3,362/
+  designcraft 3,343/craft-libs 152；**photocraft 52,644★ 系家族真头**（09-30 建
+  2 周 52.6k，纯 Rust 照片编辑器）——**勘误 03时「wordcraft 登顶家族头」口径**
+  （wordcraft 8,772 系 Word 重实现件、非星数头）；纯 Rust clean-room 重实现矩阵
+  继续放量，A10 app 大改维持不跟 | A10 参考（雷达）| 2026-10-13
+- **两条属主悬案闭合（in:name 一次勘清）**：karpathy-skills 真身=**multica-ai/
+  andrej-karpathy-skills 219,206★**（repos 404 系旧址失配；multica org 顺藤坐实
+  主仓 multica 52,596★＝待深挖 #2 看板视角参照体量 +1,563 vs 09-22，另掘出
+  multica-ai/dsh-multica-runtime 68★＝DSH 被外部编排台官方适配首例）；free-claude-
+  code 真身=**Alishahryar1/free-claude-code 58,875★**（trendshift 链接 404 系拼写
+  差一位，+29 放量减速） | 勘定 | 2026-10-13
+- **B4 治理域稳定期确认（50 头部全已录）**：微软 agent-governance-toolkit 6,417
+  （+1）/cordum 510/Aegis 536/caura 497/failproofai 5,267/plano 7,084/archestra
+  4,371/mcp-context-forge 4,605/BAML 9,397/edict 16,990/danghuangshang 2,705/
+  pi-permission-system 172 全持平——微软 toolkit 入场成簇（10-09 班）后域回稳，
+  批4 域自 10-03 班基线零机制级新差量 | 域结论 | 2026-10-13
+- **B3 词库-脚本同步欠账修复（本班唯一代码面改动）**：10-12 班补进 keywords.md
+  批3 的 5 词（tool-call checkpoint/capability manifest/记忆版本化/Slack 人审
+  工作流/Goose-Gemini-Letta-OpenSWE 交叉核验）漏回写 borrow_scan_nightly.py
+  BATCHES[3]——本班补齐 11→16 词，契约测试扩 5 断言（test_borrow_scan_queries
+  3/3 绿），py_compile 通过，B3 冒烟 16/16 零失败（捞回 pipecat-session-continuity
+  5★/kyb 3★/universal-agent-memory 1★ 三件微 newborn，与增词探索定位一致） |
+  词库维护 | 2026-10-13
+- **微型/同族速记**：jiweiyeah/Skills-Manager 1,021（skill 桌面管理族 +1，09-25 班
+  六件套「三问不过」维持）/npm @hybridlabor-api/bdb-agent-orchestrator 1.5.2
+  （Untrivial fork+brainwatch 观测，微型）/claude-mem 100,047★ **100k 里程碑**
+  （topic:claude-skills 头部，98,320→+1,727/5 天）/bifrost 属主补认=maximhq
+  （A8 网关域已录族）/Reasonix=esengine/DeepSeek-Reasonix 35,769 持平（E 候选
+  首位零接入维持） | 微型判据群（雷达）| 2026-10-13
+
+### 复查记录（04 时班，vs 03 时班基准 77 仓 repos 实测 04:0x-04:2x）
+
+- mattpocock-skills 287,764（+29 减速）/ECC 277,782（+7）/hermes 253,084（+6）/
+  deepseek-harness 248,178（+4）/opencode 212,933（+5）/ponytail 161,797（+9）/
+  dify 158,267（+1）/pi 114,585（+4）/anthropics-skills 180,714（+2）/orca 90,580
+  （+11）；放量 wordcraft 8,772（+39 加速）/deckcraft 2,488（+18 加速）/anatomy
+  5,859（+63 续病毒）/open-code-review 46,503（+5）/StaffDeck 1,984（+17）/
+  cli-agent-orchestrator 1,415（+21 加速）/pentagi 26,634（+46）/awesome-dsh-plugin
+  18,513（+638）/dsh-web 8,666（+249）/command-code 4,120（+54）；持平 OpenSpec
+  71,737/plannotator 9,363/BMAD 54,062/distilly 25,532/TrendRadar 62,831/memsearch
+  2,737/openclacky 1,202/minimax-code 2,022/dscode 1,028/openharness 1,232/kimaki
+  1,430/baocut 835/smg 572/paperclip 100,872（+5）/taste-skill 95,092（+4）/
+  headroom 75,135（+1）/OpenShell 15,962（+2）/strix 68,153（+2）/magpie 10,331
+  （+5）/ppt-master 61,050（+6）/openrig 7,204（+4）/hive 11,098（+6）/weave-router
+  5,587（+9）/eve 5,536/kimi-code 7,844/autoharness 11,030（+2）/openworker
+  18,502（+1）；awesome 23 源 23/23 alive 微增 0-4；dzhng/deep-research 04-11 与
+  cost-xray 09-29 停更维持；archived 全量仅 kimi-cli+get-shit-done 两件维持
+  | 复查 | 2026-10-13
+- **本班结论**：主扫 120/120 零失败零限流（549 行=481 唯一仓/活跃 271/首见判据
+  近零系**连续第 11 班域稳定期**，B4 域 50 头部全已录）+WebSearch 本班未配（03时
+  班刚做 B3 交叉验证，3-4 班间隔纪律内）+trendshift/topic/awesome/npm/禅道/DSH/
+  multica org 七通道全过（pypi 挑战页仍拦连续第 8 班）。真新件 2 件（dsh-our-free-
+  model 11.8k〔E 不装〕/Meldwork 708 微型）+craft 家族 13 件勘定+2 属主悬案闭合
+  +B3 同步欠账修复 5 词；判据件均非「对方有我们没有且小而实」当班落地件，零产品
+  代码提案，落地=知识沉淀三件套+同步修复，不触发发版 | 结论 | 2026-10-13

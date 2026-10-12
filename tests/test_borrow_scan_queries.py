@@ -18,6 +18,21 @@ class BorrowScanQueryContractTests(unittest.TestCase):
         self.assertIn("agentic+context+engineering+OR+evolving+playbook", rotating)
         self.assertIn("magicrew+OR+%E8%B6%85%E7%BA%A7%E9%BA%A6%E5%90%89", rotating)
 
+    def test_batch3_keywords_md_additions_are_synced(self):
+        rotating = {
+            query
+            for batch in scan.BATCHES.values()
+            for _, query in batch
+        }
+        for query in (
+            "agent+tool+call+checkpoint+restore",
+            "agent+capability+manifest+ACP+MCP",
+            "agent+memory+versioning+git+search",
+            "human+review+workflow+Slack+PR+approval+agent",
+            "Goose+Gemini+CLI+Letta+Open+SWE",
+        ):
+            self.assertIn(query, rotating)
+
     def test_encoded_unicode_and_existing_percent_escape_are_preserved(self):
         encoded = __import__("urllib.parse", fromlist=["quote"]).quote(
             "数字员工+OR+%E8%B6%85%E7%BA%A7", safe="+%"
