@@ -333,10 +333,10 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth glassy oval wings sit at the shoulder line. Sphere geometry keeps their
       // silhouette rounded from every camera angle and lets the opaque body occlude them.
-      this.add(s,x-.45,by-.235,bz+.155,.48,.17,.075,[.58,.84,1,.40],0,.12);
-      this.add(s,x+.45,by-.235,bz+.155,.48,.17,.075,[.58,.84,1,.40],0,-.12);
-      this.add(s,x-.42,by-.205,bz+.205,.30,.095,.045,[.93,.99,1,.24],0,.09);
-      this.add(s,x+.42,by-.205,bz+.205,.30,.095,.045,[.93,.99,1,.24],0,-.09);
+      this.add(s,x-.46,by-.235,bz-.10,.42,.14,.075,[.58,.84,1,.29],0,.12);
+      this.add(s,x+.46,by-.235,bz-.10,.42,.14,.075,[.58,.84,1,.29],0,-.12);
+      this.add(s,x-.43,by-.205,bz-.06,.28,.08,.045,[.93,.99,1,.16],0,.09);
+      this.add(s,x+.43,by-.205,bz-.06,.28,.08,.045,[.93,.99,1,.16],0,-.09);
 
     }
     // Planters and stylized leaves soften the room edges.
