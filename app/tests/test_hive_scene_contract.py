@@ -69,7 +69,7 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("this.add(s,hand[0],hand[1],hand[2],.070,.035,.055", ENGINE)
         self.assertIn("for(let finger=0;finger<3;finger++)this.add(b,hand[0]+(finger-1)*.026,.638,hand[2]-.06", ENGINE)
         self.assertIn("by-.48,bz+.005,.345,.37,.255", ENGINE)
-        self.assertIn("by-.105,bz-.12,.23,.085,.035,[.74,.90,.98,.22]", ENGINE)
+        self.assertIn("by-.105,bz+.22,.23,.085,.035,[.74,.90,.98,.22]", ENGINE)
         self.assertIn("function sphereBandGeometry", ENGINE)
         self.assertIn("this.bandGoldTop=sphereBandGeometry", ENGINE)
         self.assertIn("this.bandGoldBottom=sphereBandGeometry", ENGINE)
