@@ -1,12 +1,14 @@
 {
   "name": "codebee-desktop",
-  "version": "0.1.105",
+  "version": "0.1.106",
   "private": true,
   "description": "CodeBee desktop preview for Windows and macOS",
   "author": "CodeBee",
   "license": "MIT",
   "main": "main.cjs",
-  "engines": { "node": ">=22.12.0" },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "start": "electron .",
     "prepare:runtime": "node scripts/prepare-runtime.cjs",
