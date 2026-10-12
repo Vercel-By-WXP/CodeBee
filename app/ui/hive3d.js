@@ -349,19 +349,20 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth glassy oval wings sit on the camera-facing shoulder side. The reference is viewed from behind the seated assistants, so wings must project beyond the thorax instead of being hidden on the monitor-facing side.
-      this.add(this.organic,x-.56,by+.025,bz+.31,.78,.58,.10,[.22,.62,.91,.64],0,.22);
-      this.add(this.organic,x+.56,by+.025,bz+.31,.78,.58,.10,[.22,.62,.91,.64],0,-.22);
-      this.add(this.organic,x-.53,by+.055,bz+.34,.49,.34,.055,[.72,.93,1,.42],0,.16);
-      this.add(this.organic,x+.53,by+.055,bz+.34,.49,.34,.055,[.72,.93,1,.42],0,-.16);
+      this.add(this.organic,x-.56,by+.045,bz+.31,.78,.82,.10,[.30,.68,.91,.52],0,.22);
+      this.add(this.organic,x+.56,by+.045,bz+.31,.78,.82,.10,[.30,.68,.91,.52],0,-.22);
+      // A restrained inner membrane catches the key light without reading as a second solid wing.
+      this.add(this.organic,x-.53,by+.105,bz+.355,.38,.48,.045,[.76,.92,1,.22],0,.16);
+      this.add(this.organic,x+.53,by+.105,bz+.355,.38,.48,.045,[.76,.92,1,.22],0,-.16);
       // Pull the translucent wings slightly toward the camera and lift their shoulder line:
       // this keeps the silhouette distinct from the dark thorax at the default room view.
       for(const side of [-1,1]){
         const root=[x+side*.28,by+.015,bz+.31];
         const mid=[x+side*.60,by+.10,bz+.31];
         const tip=[x+side*.91,by+.13,bz+.31];
-        this.addLink(root,mid,.0055,[.84,.96,1,.70]);
-        this.addLink(mid,tip,.0042,[.84,.96,1,.58]);
-        this.addLink([x+side*.41,by+.13,bz+.31],[x+side*.68,by+.25,bz+.31],.0032,[.90,.98,1,.48]);
+        this.addLink(root,mid,.0038,[.78,.91,1,.48]);
+        this.addLink(mid,tip,.0030,[.78,.91,1,.38]);
+        this.addLink([x+side*.41,by+.15,bz+.355],[x+side*.68,by+.30,bz+.355],.0024,[.86,.95,1,.34]);
       }
 
     }
