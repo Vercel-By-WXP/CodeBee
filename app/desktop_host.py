@@ -6,6 +6,7 @@ sidecar environment, and is never exposed to the renderer or URL parameters.
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import hmac
 import json
 import os
@@ -74,6 +75,9 @@ class DesktopPipe:
 
 
 def main() -> None:
+    # Cover engine imports and the initial socket bind as well as engine.main().
+    # Native DNS/file operations can stall before the engine's watchdog starts.
+    faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)
     parser = argparse.ArgumentParser(description="CodeBee desktop sidecar")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()

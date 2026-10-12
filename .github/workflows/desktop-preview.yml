@@ -56,7 +56,7 @@ jobs:
       - run: npm test
       - name: Run sidecar lifecycle and data lock tests
         working-directory: .
-        run: python -m unittest discover -s tests -p test_desktop_runtime.py -v
+        run: python -m unittest discover -s tests -p test_desktop_runtime.py -v -f
       - run: npm run prepare:runtime -- ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Desktop smoke with bundled Python
         run: npm run smoke
