@@ -63,9 +63,8 @@ async function main() {
 
     // 真实点导航轨设置图标（side-foot 已随导航轨改造 b1f1116 隐藏，
     // 设置入口=rail 代理按钮 onclick 转发 btn-settings.click()）→ 进设置页且抽屉收着。
-    // 注意 rail 点按必须在抽屉收起时做：抽屉打开时全屏遮罩（标准抽屉语义）盖住 rail，
-    // 点击只会收抽屉——这与 ui_mobile_flow.mjs 的通过路径一致。
-    await evalJs(`document.body.classList.add("side-collapsed"); "ok"`);
+    // 手机导航轨随抽屉打开；轨道与侧栏均在遮罩之上。
+    await clickAt('#btn-menu');
     await sleep(400);
     await clickAt('.rail-btn[title="设置"] use');
     await sleep(700);

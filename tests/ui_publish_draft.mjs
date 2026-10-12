@@ -158,13 +158,14 @@ async function main() {
       sideOpenTask("draft-t1");
       for (let i = 0; i < 14; i++) {
         await new Promise(r2 => setTimeout(r2, 500));
-        if (document.querySelectorAll(".pb-pend").length >= 1) break;
+        if (document.querySelectorAll(".pb-pend-summary").length >= 1) break;
       }
       await new Promise(r2 => setTimeout(r2, 500));
+      pbOpenSelection("draft-t1", "fanqie");
       const card = document.querySelector(".bm-pub");
       const byText = (t) => [...card.querySelectorAll("button")].find(b => b.textContent.includes(t)) || null;
       const draftAll = byText("全部存草稿");
-      const draftSel = byText("存草稿所选");
+      const draftSel = [...document.querySelectorAll("#modal button")].find(b => b.textContent.includes("存草稿所选"));
       const hints = [...card.querySelectorAll(".pb-hint")].map(h => h.textContent).join("｜");
       const errs = [...card.querySelectorAll(".pb-err")].map(h => h.textContent).join("｜");
       return JSON.stringify({
@@ -187,6 +188,7 @@ async function main() {
 
     // 点「全部存草稿」→ 确认 → publish-all body 带 as_draft:true（无 chapters）
     const postAll = JSON.parse(await evalJs(`(async () => {
+      closeModal();
       const card = document.querySelector(".bm-pub");
       const btn = [...card.querySelectorAll("button")].find(b => b.textContent.includes("全部存草稿"));
       btn.click();
@@ -208,7 +210,8 @@ async function main() {
 
     // 点「存草稿所选」→ body 带 chapters 升序 + as_draft:true
     const postSel = JSON.parse(await evalJs(`(async () => {
-      const box = document.querySelector(".pb-pend");
+      pbOpenSelection("draft-t1", "fanqie");
+      const box = document.querySelector("#modal");
       const btn = [...box.querySelectorAll("button")].find(b => b.textContent.includes("存草稿所选"));
       btn.click();
       for (let i = 0; i < 10; i++) {
@@ -229,9 +232,10 @@ async function main() {
 
     // 按卷勾选：卷头＝整卷开关（全选打勾；部分选中显示 已选/总）
     const vol = JSON.parse(await evalJs(`(async () => {
+      pbOpenSelection("draft-t1", "fanqie");
       // 重绘会整块替换 .bm-pub——每次都现查活节点，别捕获旧卡片
-      const selBtn = () => { const c = document.querySelector(".bm-pub"); return ([...(c ? c.querySelectorAll("button") : [])].find(b => b.textContent.includes("存草稿所选")) || { textContent: "" }); };
-      const chipsOn = () => { const c = document.querySelector(".bm-pub"); return c ? c.querySelectorAll(".pb-chip.on").length : 0; };
+      const selBtn = () => { const c = document.querySelector("#modal"); return ([...(c ? c.querySelectorAll("button") : [])].find(b => b.textContent.includes("存草稿所选")) || { textContent: "" }); };
+      const chipsOn = () => { const c = document.querySelector("#modal"); return c ? c.querySelectorAll(".pb-chip.on").length : 0; };
       window.__volCalls = [];
       const origVol = window.pbSelVolume;
       window.pbSelVolume = function (t, p, gi, on) {
@@ -350,10 +354,11 @@ async function main() {
     })(); true`);
     await sleep(2500);
     const hard = JSON.parse(await evalJs(`(async () => {
+      pbOpenSelection("draft-t1", "fanqie");
       const card = document.querySelector(".bm-pub");
       const byText = (t) => [...card.querySelectorAll("button")].find(b => b.textContent.includes(t)) || null;
       const draftAll = byText("全部存草稿");
-      const draftSel = byText("存草稿所选");
+      const draftSel = [...document.querySelectorAll("#modal button")].find(b => b.textContent.includes("存草稿所选"));
       const errs = [...card.querySelectorAll(".pb-err")].map(h => h.textContent).join("｜");
       return JSON.stringify({
         draftAllDisabled: draftAll ? draftAll.disabled : null,

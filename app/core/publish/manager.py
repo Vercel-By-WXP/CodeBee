@@ -99,6 +99,7 @@ def _quality_release_guard(task, plat, action="publish", target_chapter=None,
     decision["version_snapshot"] = quality_gate.local_version(task.get("workdir") or "")
     decision["platform_snapshot"] = ledger.book_for(task.get("id"), plat) or {}
     if verdict:
+        decision["reviewed_through"] = verdict.get("end_chapter") or 0
         decision["quality_status"] = verdict.get("quality_status") or "continue_only"
         decision["review_run_id"] = run.get("id")
     return decision
@@ -720,7 +721,10 @@ def register_book(task_id, plat, title, book_id=""):
                 or old.get("title") != title[:120]):
         ledger.update_book(task_id, plat, remote_total=None, remote_published=None,
                            remote_review=None, remote_rejected=None,
-                           remote_synced_at=None, remote_error=None)
+                           remote_synced_at=None, remote_error=None,
+                           remote_published_nos=None,
+                           confirmed_published_through=None,
+                           confirmed_published_at=None)
     ledger.save_book(task_id, plat, {"book_id": str(book_id or "").strip(),
                                      "title": title[:120], "source": "manual"})
     return True, ""

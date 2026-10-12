@@ -41,9 +41,10 @@ function browserLoadState() {
       active: Math.max(0, Math.min(Number(raw.active) || 0, kept.length - 1)),
       history: history.slice(-BROWSER_HISTORY_LIMIT),
       permissions: raw.permissions && typeof raw.permissions === "object" && !Array.isArray(raw.permissions) ? raw.permissions : {},
+      updatedAt: Number(raw.updatedAt) || 0,
     };
   } catch (e) {
-    return { tabs: [{ id: "home", url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }], active: 0, history: [], permissions: {} };
+    return { tabs: [{ id: "home", url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }], active: 0, history: [], permissions: {}, updatedAt: 0 };
   }
 }
 
@@ -60,14 +61,42 @@ function browserNormalizeTab(tab, i) {
 
 function browserSaveState() {
   try {
+    const stored = JSON.parse(localStorage.getItem(BROWSER_STORAGE_KEY) || "null");
+    if (stored && Number(stored.updatedAt) > Number(browserState.updatedAt || 0)) {
+      browserState = browserLoadState();
+      browserDraw(true);
+      return;
+    }
     browserState.tabs = browserState.tabs.slice(0, 20).map(browserNormalizeTab);
     browserState.active = Math.max(0, Math.min(browserState.active, browserState.tabs.length - 1));
     browserState.history = (browserState.history || []).filter(browserValidHistoryEntry).slice(-BROWSER_HISTORY_LIMIT);
+    browserState.updatedAt = Math.max(Date.now(), Number(browserState.updatedAt || 0) + 1);
     localStorage.setItem(BROWSER_STORAGE_KEY, JSON.stringify(browserState));
   } catch (e) { /* private browsing/storage quota: browser remains usable in memory */ }
   const count = $("browser-history-count");
   if (count) count.textContent = t("{0} 个标签页", browserState.tabs.length);
 }
+
+window.addEventListener("storage", (event) => {
+  if (event.key !== BROWSER_STORAGE_KEY) return;
+  if (!event.newValue) {
+    browserState = browserLoadState();
+    browserDraw(true);
+    return;
+  }
+  try {
+    const raw = JSON.parse(event.newValue);
+    const tabs = Array.isArray(raw.tabs) && raw.tabs.length ? raw.tabs.slice(0, 20).map(browserNormalizeTab) : [];
+    browserState = tabs.length ? {
+      tabs,
+      active: Math.max(0, Math.min(Number(raw.active) || 0, tabs.length - 1)),
+      history: Array.isArray(raw.history) ? raw.history.filter(browserValidHistoryEntry).slice(-BROWSER_HISTORY_LIMIT) : [],
+      permissions: raw.permissions && typeof raw.permissions === "object" && !Array.isArray(raw.permissions) ? raw.permissions : {},
+      updatedAt: Number(raw.updatedAt) || 0,
+    } : browserLoadState();
+    browserDraw(true);
+  } catch (e) { /* Ignore a partially written value; local state remains usable. */ }
+});
 
 function browserTaskList() {
   return ((S.state || {}).tasks || []).filter((task) => task && task.id);
@@ -398,7 +427,7 @@ function browserDrawTabs() {
   });
 }
 
-function browserDraw() {
+function browserDraw(skipSave) {
   const tab = browserActiveTab();
   if (!tab) return;
   browserRenderTaskContext();
@@ -422,7 +451,7 @@ function browserDraw() {
     }
   }
   browserRenderHint(tab.url);
-  browserSaveState();
+  if (!skipSave) browserSaveState();
 }
 
 function browserNavigate(value, replace) {
@@ -488,7 +517,7 @@ function browserBind() {
     browserSaveState();
     $("browser-clear-confirm").close();
     $("browser-history-dialog").close();
-    browserDraw();
+    browserDraw(true);
   });
   $("browser-site-permissions").addEventListener("click", () => {
     browserApplyFramePermissions();
@@ -1661,7 +1690,11 @@ function bindableProvs(provs) {
 }
 
 /* ---------------------------------------------------------- 通用弹框 */
+let _pbReturnFocus = null;
 function openModal(title, bodyHtml, footHtml) {
+  _pbReturnFocus = null;
+  delete $("modal").dataset.pbKey;
+  $("modal").classList.remove("pb-selection-modal");
   $("modal-title").textContent = title;
   $("modal-body").innerHTML = bodyHtml || "";
   $("modal-foot").innerHTML = footHtml || "";
@@ -1673,9 +1706,13 @@ function closeModal() {
   const m = $("modal");
   if (!m) return;
   m.classList.add("hidden");
+  delete m.dataset.pbKey;
+  m.classList.remove("pb-selection-modal");
   $("modal-body").innerHTML = "";
   $("modal-foot").innerHTML = "";
   document.body.classList.remove("modal-open");
+  if (_pbReturnFocus && _pbReturnFocus.isConnected) _pbReturnFocus.focus();
+  _pbReturnFocus = null;
 }
 
 /* ---------------------------------------------------------- 人工评审队列 */
@@ -4684,6 +4721,43 @@ function paintArchToggle() {
   b.setAttribute("aria-label", tip);
 }
 
+/* 手机首页与侧栏共用目录/任务真源，保留独立的卡片展开态。 */
+function renderMobileWorkspaces(dirs) {
+  const box = $("mobile-workspace-list");
+  if (!box) return;
+  const painted = box.querySelector("details");
+  const open = new Set(Array.from(box.querySelectorAll("details[open]")).map((d) => d.dataset.dir));
+  $("sub-tasks").classList.toggle("mobile-has-workspaces", dirs.length > 0);
+  $("mobile-workspaces-count").textContent = t("{0} 个工作区 · {1} 个任务", dirs.length,
+    dirs.reduce((n, d) => n + d.groups.length, 0));
+  box.innerHTML = dirs.map((d, i) => {
+    const label = d.dir === ORPHAN_DIR ? t("其他") : dirName(d.dir);
+    const expanded = painted ? open.has(d.dir) : d.active || i === 0;
+    return '<article class="mobile-workspace-card"><details class="mobile-workspace" data-dir="' + esc(d.dir) + '"' + (expanded ? ' open' : '') + '>' +
+      '<summary><svg class="ico mobile-folder" aria-hidden="true"><use href="#i-folder"/></svg>' +
+      '<span class="mobile-workspace-copy"><b>' + esc(label) + '</b><span title="' + esc(d.dir) + '">' + esc(d.dir === ORPHAN_DIR ? t("其他") : d.dir) + '</span>' +
+      '<small>' + esc(relTime(d.time)) + '</small></span><span class="mobile-workspace-total">' + d.groups.length + '</span>' +
+      '<svg class="ico mobile-workspace-chevron" aria-hidden="true"><use href="#i-chevron-r"/></svg></summary>' +
+      '<div class="mobile-workspace-tasks">' + d.groups.map((g) =>
+        '<button type="button" class="mobile-task" data-task="' + esc(g.taskId) + '" data-run="' + esc(g.runIds[0] || '') + '">' +
+        '<span class="mobile-task-copy"><b>' + esc(g.title) + '</b><small>' + esc(relTime(g.time)) + '</small></span>' +
+        (g.verdict ? '<span class="sbadge">' + t("待裁决") + '</span>' : '') +
+        (g.archived ? '<span class="sbadge">' + t("已归档") + '</span>' : statusChip(g.active ? 'running' : g.status || t("未运行"))) + '</button>'
+      ).join('') + '</div></details>' +
+      (d.dir === ORPHAN_DIR ? '' : '<button type="button" class="ghost mobile-workspace-new" data-new-dir="' + esc(d.dir) + '" title="' + esc(t("在此工作区新建任务")) + '" aria-label="' + esc(t("在此工作区新建任务")) + '"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg></button>') + '</article>';
+  }).join('');
+}
+
+function mobileNewTask(dir) {
+  exitSettings();
+  $("sub-tasks").classList.add("mobile-composing");
+  if (dir) {
+    $("f-workdir").value = dir;
+    $("f-workdir").dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  document.querySelector("main").scrollTop = 0;
+}
+
 function renderSideTasks() {
   const box = $("side-tasks");
   if (!box) return;
@@ -4802,6 +4876,7 @@ function renderSideTasks() {
       '<span class="cnt">' + d.groups.length + "</span></summary>" +
       '<div class="dirbody">' + inner + "</div></details>";
   }).join("") || ('<div class="side-empty">' + (q ? t("无匹配任务") : t("暂无任务")) + "</div>");
+  renderMobileWorkspaces(dirs);
   scanAttention(groups);
   paintNotifyToggle();
   syncSideExpandBtn();
@@ -6371,6 +6446,7 @@ function renderBookMetaPanel(task) {
   box.classList.remove("hidden");
   box.innerHTML = html;
   box.dataset.taskId = task.id;   // 跨任务守卫标记：展开态/输入保护只对同一任务生效
+  pbRefreshSelectionDialog(task);
   // TAB 徽章：已生成平台数（生成中显示 ●，随下次轮询刷新）
   const badge = document.querySelector('#rd-tabs .rd-tab[data-tab="bookmeta"] .rd-badge');
   if (badge) {
@@ -6472,7 +6548,7 @@ const PB_ST = {
   error: ["出错", "pb-st-err"],
 };
 
-function pbBlock(task, platform) {
+function pbBlock(task, platform, selectionOnly = false) {
   const ps = (S.pubState && S.pubState.platforms && S.pubState.platforms[platform]) || {};
   const st = ps.status || "none";
   const [label, cls] = PB_ST[st] || PB_ST.none;
@@ -6493,6 +6569,8 @@ function pbBlock(task, platform) {
   const remoteN = hasRemote ? ((typeof book.remote_total === "number")
     ? book.remote_total : book.remote_published) : null;
   const nCh = hasRemote ? remoteN : localN;
+  const publishedLatest = Math.max(Number(book && book.confirmed_published_through) || 0,
+    ((book && book.remote_published_nos) || []).reduce((max, n) => Math.max(max, Number(n) || 0), 0));
   let chTitle = "";
   if (hasRemote) {
     const parts = [];
@@ -6524,7 +6602,8 @@ function pbBlock(task, platform) {
     btns += ' <button class="primary" ' + (busy ? "disabled" : "") +
       ' onclick="pbUploadChapter(\'' + esc(task.id) + "', '" + platform + '\')" title="' +
       esc(chTitle) + '">' +
-      t("发一章") + (nCh ? t("（已发 ") + nCh + t("）") : "") + "</button>";
+      t("发一章") + (publishedLatest ? t("（已发布至 {0} 章）", publishedLatest)
+        : nCh ? t("（已发 ") + nCh + t("）") : "") + "</button>";
     btns += ' <button class="ghost pb-tool" ' + (busy ? "disabled" : "") +
       ' onclick="pbSyncPublished(\'' + esc(task.id) + "', '" + platform + '\')" title="' +
       esc(t("按平台实况纠正已发章数")) + '">' + t("校准") + "</button>";
@@ -6558,7 +6637,8 @@ function pbBlock(task, platform) {
     // 「发布所选」人工模式 / 「直发所选」逐章自动提交（护栏照常生效）。
     // 分卷由服务端按卷计划自动选/建（volumes.py），界面上不用管卷。
     const its = (au.items && au.items.length ? au.items : [])
-      .map((x) => ({ n: Number(x.chapter_no), v: x.volume || "" }))
+      .map((x) => ({ n: Number(x.chapter_no), v: x.volume || "", review: x.review_status || "pending",
+        reason: x.review_reason || "", ready: x.publish_ready === true }))
       .filter((x) => x.n > 0);
     if (its.length && !run) {
       const key = task.id + ":" + platform;
@@ -6573,49 +6653,79 @@ function pbBlock(task, platform) {
       }
       if (!S.pbSel[key] || S.pbSel[key].sig !== sig)
         S.pbSel[key] = { sig, sel: new Set(its.map((x) => x.n)), groups };
+      S.pbSel[key].groups = groups;
+      S.pbSel[key].ready = new Set(its.filter((x) => x.ready).map((x) => x.n));
       const sel = S.pbSel[key].sel;
       let chips = "";
       for (let gi = 0; gi < groups.length; gi++) {
         const g = groups[gi];
+        chips += '<section class="pb-pend-volume" data-volume="' + gi + '">';
         if (groups.length > 1 || g.v) {
           // 卷头＝整卷开关：全选打勾、部分选中显示 已选/总（2026-10-10 按卷选章）
           const cnt = g.ns.filter((n) => sel.has(n)).length;
           const allOn = cnt === g.ns.length;
-          chips += '<div class="pb-vol"><label class="pb-vol-sel' + (allOn ? " on" : "") +
+          chips += '<div class="pb-vol"><label class="pb-vol-sel' + (allOn ? " on" : cnt ? " partial" : "") +
             '" title="' + esc(t("勾选卷头＝整卷进所选，再点取消")) + '">' +
             '<input type="checkbox" ' + (allOn ? "checked" : "") +
             ' onchange="pbSelVolume(\'' + esc(task.id) + "','" + platform + "'," + gi + ',this.checked)">' +
-            esc(g.v || t("未分卷")) + t("（") + (allOn ? "" : cnt + "/") + g.ns.length + t("）") + "</label></div>";
+            '<span class="pb-vol-name">' + esc(g.v || t("未分卷")) + '</span>' +
+            '<span class="pb-vol-count">' + esc(t("已选 {0}/{1} 章", cnt, g.ns.length)) + "</span></label></div>";
         }
-        for (const n of g.ns)
-          chips += '<label class="pb-chip' + (sel.has(n) ? " on" : "") + '">' +
+        chips += '<div class="pb-chapter-grid">';
+        for (const n of g.ns) {
+          const item = its.find((x) => x.n === n);
+          const states = { ready: "已过审 · 可直发", passed_blocked: "已过审 · 发布受限",
+            failed: "审稿未通过", stale: "已修改 · 需重审", pending: "待审或评审不足" };
+          const review = Object.hasOwn(states, item.review) ? item.review : "pending";
+          chips += '<label class="pb-chip review-' + review + (sel.has(n) ? " on" : "") + '" data-chapter="' + n + '" title="' +
+            esc(t("第 {0} 章", n) + (item.reason ? " · " + item.reason : "")) + '">' +
             '<input type="checkbox" ' + (sel.has(n) ? "checked" : "") +
             ' onchange="pbSelToggle(\'' + esc(task.id) + "','" + platform + "'," + n + ',this.checked)">' +
-            n + "</label>";
+            '<span class="pb-chip-number">' + n + '</span><small class="pb-chip-review">' + esc(t(states[review])) + "</small></label>";
+        }
+        chips += "</div></section>";
       }
       pendHtml += '<div class="pb-pend" data-key="' + esc(key) + '">' +
         '<div class="pb-pend-head">' +
-        '<span>' + esc(t("待发 ")) + its.length + esc(t(" 章（按卷计划自动分卷）")) + "</span>" +
+        '<div class="pb-pend-heading"><strong>' + esc(t("待发 ")) + its.length + esc(t(" 章")) + '</strong>' +
+        '<span>' + esc(t("按卷计划自动分卷")) + "</span></div>" +
+        '<button class="ghost pb-ready-select" ' + (S.pbSel[key].ready.size ? "" : "disabled") +
+        ' title="' + esc(t("仅选择单章审稿和发布门禁均已通过的章节")) + '" onclick="pbSelReady(\'' + esc(task.id) + "','" + platform + '\')">' + esc(t("只选可直发")) + '</button>' +
         '<a href="javascript:void(0)" onclick="pbSelAll(\'' + esc(task.id) + "','" + platform + "',true)" + '">' + esc(t("全选")) + "</a>" +
         '<a href="javascript:void(0)" onclick="pbSelAll(\'' + esc(task.id) + "','" + platform + "',false)" + '">' + esc(t("清空")) + "</a>" +
         "</div>" +
+        '<div class="pb-review-legend" aria-label="' + esc(t("章节审核状态说明")) + '">' +
+        '<span class="review-ready"><i aria-hidden="true"></i>' + esc(t("已过审 · 可直发")) + '</span>' +
+        '<span class="review-passed_blocked"><i aria-hidden="true"></i>' + esc(t("已过审 · 发布受限")) + '</span>' +
+        '<span class="review-failed"><i aria-hidden="true"></i>' + esc(t("审稿未通过")) + '</span>' +
+        '<span class="review-pending"><i aria-hidden="true"></i>' + esc(t("待审或评审不足")) + '</span>' +
+        "</div>" +
+        '<div class="pb-pend-progress">' +
+        (au.published_latest ? '<strong>' + esc(t("已发布至第 {0} 章", au.published_latest)) + '</strong>' : '') +
+        (au.next_chapter ? '<span>' + esc(t("下一章：第 {0} 章", au.next_chapter)) + '</span>' : '') +
+        '<span>' + esc(t("可直发 {0} 章 · 单章过审 {1} 章", au.ready_count || 0, au.review_passed_count || 0)) + '</span></div>' +
         '<div class="pb-pend-chips">' + chips + "</div>" +
+        (au.drafted_nos && au.drafted_nos.length ? '<details class="pb-drafted-list"><summary>' +
+          esc(t("已存草稿 {0} 章（未发布）", au.drafted_nos.length)) + '</summary><p>' +
+          esc(au.drafted_nos.map((n) => t("第 {0} 章", n)).join(" · ")) + '</p></details>' : '') +
+        '<div class="pb-pend-foot"><span class="pb-pend-count" aria-live="polite">' + esc(t("已选 {0}/{1} 章", sel.size, its.length)) + '</span>' +
+        '<span class="pb-pend-mode-hint">' + esc(t("发布需逐章确认，直发自动提交，草稿不上线。")) + '</span>' +
         '<div class="pb-pend-btns">' +
-        '<button class="ghost" ' + (busy || !sel.size ? "disabled" : "") +
+        '<button class="primary" data-selection-action data-locked="' + busy + '" ' + (busy || !sel.size ? "disabled" : "") +
         ' title="' + esc(au.guard_ok ? "" : t("护栏提示：") + (au.guard_reason || "")) + '"' +
         ' onclick="pbPublishSelected(\'' + esc(task.id) + "','" + platform + '\',false)">' +
         t("发布所选") + t("（") + sel.size + t("）") + "</button>" +
-        '<button class="ghost" ' + (busy || !sel.size ? "disabled" : "") +
+        '<button class="ghost" data-selection-action data-locked="' + busy + '" ' + (busy || !sel.size ? "disabled" : "") +
         ' title="' + esc(t("所选章节逐章自动提交（无人值守），护栏每日上限/连败退避照常生效") +
           (au.guard_ok ? "" : "；" + t("护栏提示：") + (au.guard_reason || ""))) + '"' +
         ' onclick="pbPublishSelected(\'' + esc(task.id) + "','" + platform + '\',true)">' +
         t("直发所选") + t("（") + sel.size + t("）") + "</button>" +
-        '<button class="ghost" ' + (busy || !sel.size || au.draft_ok === false ? "disabled" : "") +
+        '<button class="ghost" data-selection-action data-locked="' + (busy || au.draft_ok === false) + '" ' + (busy || !sel.size || au.draft_ok === false ? "disabled" : "") +
         ' title="' + esc(t("所选章节逐章自动存草稿（不上线、不受质量门禁拦截），完成后到平台检查并提交发布") +
           (au.draft_ok !== false ? "" : "；" + t("护栏提示：") + (au.draft_reason || ""))) + '"' +
         ' onclick="pbDraftSelected(\'' + esc(task.id) + "','" + platform + '\')">' +
         t("存草稿所选") + t("（") + sel.size + t("）") + "</button>" +
-        "</div></div>";
+        "</div></div></div>";
     }
     if (au.pending > 0 && au.draft_ok === false) {
       // 硬护栏（建书未确认/每日上限/连败退避）：存草稿也走不了，红色示警
@@ -6653,6 +6763,15 @@ function pbBlock(task, platform) {
     btns += '<button class="ghost" onclick="pbRegToggle(\'' + esc(task.id) + "','" + platform + '\')" title="' +
       esc(t("作品已在平台建好（建书流程没走通或手工建的）？补登记后直接发章，不会在平台新建")) + '">' + t("登记已有作品") + "</button>";
   }
+  if (selectionOnly) return pendHtml;
+  if (pendHtml) {
+    const pending = (((S.pubAuto || {}).books || []).find((b) => b.platform === platform) || {}).pending || 0;
+    const view = (((S.pubAuto || {}).books || []).find((b) => b.platform === platform) || {});
+    pendHtml = '<div class="pb-pend-summary"><span>' + esc(t("待发 ")) + pending + esc(t(" 章")) +
+      (view.next_chapter ? ' · ' + esc(t("下一章：第 {0} 章", view.next_chapter)) : '') + '</span>' +
+      '<button class="primary" onclick="pbOpenSelection(\'' + esc(task.id) + "','" + platform + '\')">' +
+      esc(t("选择章节并发布")) + '</button></div>';
+  }
   let extra = "";
   extra += pendHtml;
   if (st === "error" && !bookReady && ps.last_action === "create_book") {
@@ -6682,6 +6801,53 @@ function pbBlock(task, platform) {
 }
 
 let _pbTimer = 0;
+window.pbOpenSelection = function (taskId, platform) {
+  const task = ((S.state || {}).tasks || []).find((x) => x.id === taskId);
+  if (!task) return;
+  const html = pbBlock(task, platform, true);
+  if (!html) { toast(t("当前没有可选择的待发章节")); return; }
+  const title = t("选择章节并发布") + " · " + t(platform === "fanqie" ? "番茄" : "七猫");
+  const returnFocus = document.activeElement;
+  openModal(title, "", "");
+  _pbReturnFocus = returnFocus;
+  $("modal").dataset.pbKey = taskId + ":" + platform;
+  $("modal").classList.add("pb-selection-modal");
+  pbRefreshSelectionDialog(task);
+  const first = $("modal-body").querySelector("input");
+  if (first) first.focus({ preventScroll: true });
+};
+
+function pbRefreshSelectionDialog(task) {
+  const modal = $("modal");
+  if (!modal || modal.classList.contains("hidden") || !modal.dataset.pbKey) return;
+  const platform = ["fanqie", "qimao"].find((p) => modal.dataset.pbKey === task.id + ":" + p);
+  if (!platform) { closeModal(); return; }
+  const html = pbBlock(task, platform, true);
+  if (!html) { closeModal(); return; }
+  const shell = document.createElement("div");
+  shell.innerHTML = html;
+  const foot = shell.querySelector(".pb-pend-foot");
+  foot.remove();
+  const body = $("modal-body");
+  const scrollTop = body.scrollTop;
+  const active = document.activeElement;
+  const hadFocus = modal.contains(active);
+  const chip = active && active.closest(".pb-chip");
+  const volume = active && active.closest(".pb-pend-volume");
+  const action = active && active.getAttribute("onclick");
+  const chapter = chip ? chip.dataset.chapter : "";
+  const volumeIndex = volume ? volume.dataset.volume : "";
+  body.innerHTML = shell.innerHTML;
+  body.scrollTop = scrollTop;
+  $("modal-foot").innerHTML = foot.outerHTML;
+  pbSelCountSync(modal.dataset.pbKey);
+  let target = null;
+  if (chapter) target = [...body.querySelectorAll(".pb-chip")].find((c) => c.dataset.chapter === chapter)?.querySelector("input");
+  else if (volumeIndex) target = body.querySelector('[data-volume="' + volumeIndex + '"] .pb-vol-sel input');
+  else if (action && hadFocus) target = [...modal.querySelectorAll("[onclick]")].find((el) => el.getAttribute("onclick") === action);
+  if (target) target.focus({ preventScroll: true });
+}
+
 function pbSyncState(task) {
   clearTimeout(_pbTimer);
   // 5s 节流折进调度间隔：距上一拉未满 5s 就等满再拉（pbKick 置 0 可立即拉）
@@ -6832,15 +6998,15 @@ window.pbUploadChapter = async function (taskId, platform) {
   if (!wd) { box.innerHTML = '<div class="pb-err">' + esc(t("找不到任务工作目录")) + "</div>"; return; }
   let files = [];
   try {
-    const r = await api("/api/dir/scan?path=" + encodeURIComponent(wd));
-    files = (r.files || []).filter((f) => /\.md$/i.test(f.name || "") &&
-      !/^作品信息/.test((f.name || "").split("/").pop()));
+    const r = await api("/api/publish/task/" + encodeURIComponent(taskId) + "/pending");
+    const book = (r.books || []).find((b) => b.platform === platform);
+    files = ((book && book.items) || []).map((f) => ({ name: f.file, chapter_no: f.chapter_no }));
   } catch (e) {
     box.innerHTML = '<div class="pb-err">' + esc(t("列文件失败：") + e.message) + "</div>";
     return;
   }
-  if (!files.length) { box.innerHTML = '<div class="pb-err">' + esc(t("工作目录里没有 .md 章稿")) + "</div>"; return; }
-  files.sort((a, b) => (a.name > b.name ? 1 : -1));
+  if (!files.length) { box.innerHTML = '<div class="pb-hint">' + esc(t("暂无待发章节，已发布和已存草稿的章节已排除")) + "</div>"; return; }
+  files.sort((a, b) => a.chapter_no - b.chapter_no);
   const item = (f) =>
     '<button class="ghost pb-ch-item" onclick="pbSendChapter(\'' + esc(taskId) + "', '" + platform +
     '\',\'' + esc(f.name) + '\')" title="' + esc(f.name) + '">' + esc(f.name.split("/").pop()) + "</button>";
@@ -6906,18 +7072,37 @@ function pbSelCountSync(key) {
   // 就地对账：按钮计数/禁用态与全部 chip 勾选态向状态层看齐——重绘链一旦
   // 断掉（poll 失败/详情上下文切换），勾选与计数也不许脱节（2026-10-08 实案
   // 「勾了 18 计数 48」即重绘未跟上）。
-  const box = document.querySelector('.pb-pend[data-key="' +
-    String(key).replace(/"/g, "&quot;") + '"]');
+  const modal = $("modal");
+  const box = modal && modal.dataset.pbKey === key ? modal
+    : [...document.querySelectorAll(".pb-pend")].find((el) => el.dataset.key === key);
   const ent = (S.pbSel || {})[key];
   if (!box || !ent) return;
-  for (const b of box.querySelectorAll("button")) {
-    const t = b.textContent || "";
-    if (/（\d+）$/.test(t)) b.textContent = t.replace(/（\d+）$/, "（" + ent.sel.size + "）");
-    b.disabled = ent.sel.size === 0;
+  const count = box.querySelector(".pb-pend-count");
+  if (count) count.textContent = t("已选 {0}/{1} 章", ent.sel.size, ent.sig.split(",").length);
+  for (const b of box.querySelectorAll("[data-selection-action]")) {
+    const action = b.getAttribute("onclick") || "";
+    const label = action.includes("pbDraftSelected") ? "存草稿所选"
+      : action.includes(",true)") ? "直发所选" : "发布所选";
+    b.textContent = t(label) + t("（") + ent.sel.size + t("）");
+    b.disabled = ent.sel.size === 0 || b.dataset.locked === "true";
+    if (!b.hasAttribute("data-ready-title")) b.dataset.readyTitle = b.title;
+    b.title = ent.sel.size === 0 ? t("请先选择章节") : b.dataset.readyTitle;
+  }
+  for (const section of box.querySelectorAll(".pb-pend-volume")) {
+    const g = ent.groups[Number(section.dataset.volume)];
+    const label = section.querySelector(".pb-vol-sel");
+    if (!g || !label) continue;
+    const cnt = g.ns.filter((n) => ent.sel.has(n)).length;
+    const input = label.querySelector("input");
+    input.checked = cnt === g.ns.length;
+    input.indeterminate = cnt > 0 && cnt < g.ns.length;
+    label.classList.toggle("on", input.checked);
+    label.classList.toggle("partial", input.indeterminate);
+    label.querySelector(".pb-vol-count").textContent = t("已选 {0}/{1} 章", cnt, g.ns.length);
   }
   for (const c of box.querySelectorAll(".pb-chip")) {
     const inp = c.querySelector("input");
-    const num = Number((c.textContent || "").trim());
+    const num = Number(c.dataset.chapter);
     if (!inp || !num) continue;
     const on = ent.sel.has(num);
     if (inp.checked !== on) inp.checked = on;
@@ -6930,8 +7115,7 @@ window.pbSelToggle = function (taskId, platform, no, on) {
   const ent = (S.pbSel || {})[key];
   if (!ent) return;
   if (on) ent.sel.add(Number(no)); else ent.sel.delete(Number(no));
-  pbSelCountSync(key);       // 先就地同步，再触发整块重绘
-  S._pbSig = ""; pbKick();
+  pbSelCountSync(key);       // 选择只在本地同步，避免重绘打断滚动和键盘焦点
 };
 
 window.pbSelAll = function (taskId, platform, all) {
@@ -6941,7 +7125,14 @@ window.pbSelAll = function (taskId, platform, all) {
   if (all) for (const n of ent.sig.split(",")) ent.sel.add(Number(n));
   else ent.sel.clear();
   pbSelCountSync(key);
-  S._pbSig = ""; pbKick();
+};
+
+window.pbSelReady = function (taskId, platform) {
+  const key = taskId + ":" + platform;
+  const ent = (S.pbSel || {})[key];
+  if (!ent) return;
+  ent.sel = new Set(ent.ready || []);
+  pbSelCountSync(key);
 };
 
 window.pbSelVolume = function (taskId, platform, gi, on) {
@@ -6952,7 +7143,6 @@ window.pbSelVolume = function (taskId, platform, gi, on) {
   if (on) for (const n of g.ns) ent.sel.add(n);
   else for (const n of g.ns) ent.sel.delete(n);
   pbSelCountSync(key);
-  S._pbSig = ""; pbKick();
 };
 
 window.pbPublishSelected = async function (taskId, platform, autoSubmit) {
@@ -6970,6 +7160,7 @@ window.pbPublishSelected = async function (taskId, platform, autoSubmit) {
       "/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
       { platform, chapters, auto_submit: !!autoSubmit },
       "批量发布前的质量门禁未通过", taskId);
+    if (r && r.started && $("modal").dataset.pbKey === key) closeModal();
     if (!(r && r.gate_reviewed))
       toast(autoSubmit ? t("直发已启动，进度见发布台")
                        : t("正在填第一章稿——填好后请在浏览器窗口里确认提交，再重新校准"));
@@ -7019,6 +7210,7 @@ window.pbDraftSelected = async function (taskId, platform) {
   try {
     await api("/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
       { method: "POST", body: JSON.stringify({ platform, chapters, as_draft: true }) });
+    if ($("modal").dataset.pbKey === key) closeModal();
     toast(t("存草稿已启动：逐章自动填稿并保存草稿，进度见发布台"));
   } catch (e) { toast(t("存草稿启动失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
@@ -8953,7 +9145,7 @@ function hiveThinkLine(lines) {
  * localStorage 持久化/WebGL 不可用降级，以及把 renderHive 的泳道数据翻译给场景。 —— */
 let hiveScene = null;          // Hive3D 场景实例（懒创建）
 let hiveSceneDead = false;     // WebGL 不可用/上下文丢失——本次页面周期内不再尝试
-let hiveMode = "live3d";     // live3d is the real scene; reference and 2d remain opt-in views
+let hiveMode = "reference";  // high-fidelity artwork is the public default; live3d stays internal for QA
 let hiveRunId = "";            // 最近一次 renderHive 的 run.id（尾巴/思考缓存键前缀）
 const hiveLiveMeta = {};       // rel -> { started_at }（3D 芯片秒表用）
 let hiveDialogPoll = null;
@@ -9123,18 +9315,18 @@ function setupHiveSceneControls() {
       else hiveScene.zoomAt(button.dataset.hiveSceneAction === "zoom-in" ? 1 / 1.18 : 1.18);
     });
   });
-  let saved = "live3d";
+  let saved = "reference";
   try {
     saved = localStorage.getItem("orch.hiveView.v2") || "";
     if (!saved) {
-      // Migrate an explicitly selected 2D/live3D preference; the old default "reference"
-      // was auto-persisted for every new visitor, so it is not a reliable user preference.
       const legacy = localStorage.getItem("orch.hiveView");
-      saved = legacy === "2d" || legacy === "live3d" ? legacy : "live3d";
+      saved = legacy === "2d" ? "2d" : "reference";
       localStorage.setItem("orch.hiveView.v2", saved);
     }
-  } catch (e) { /* ignore storage restrictions and keep the live 3D default */ }
-  setHiveSceneMode(["reference", "live3d", "2d"].includes(saved) ? saved : "live3d", { silent: true });
+  } catch (e) { /* ignore storage restrictions and keep the high-fidelity default */ }
+  // A previously saved free-3D preference must not reopen the unreleased mode.
+  // The engine remains callable by internal QA through setHiveSceneMode("live3d").
+  setHiveSceneMode(saved === "2d" ? "2d" : "reference", { silent: true });
 }
 
 /* renderHive → 场景数据翻译：泳道=蜂巢塔的一层，格子按状态映射高度/颜色。
@@ -9798,9 +9990,9 @@ function scheduleChatLive(runId) {
   }, 1200);
 }
 
-/* 对话正文：``` 围栏渲染成真代码块（复用 codeBlockHTML：行号+高亮+代码主题），
- * 其余文本保持 pre-wrap 原样（行内 `code` 与 **加粗** 轻量翻译）。模型输出先
- * 全量 esc 再插标记；未闭合围栏按代码块收尾，流式输出中途也不撒裸反引号。 */
+/* 对话正文：保留 Markdown 的段落/标题/列表层级，``` 围栏复用代码块组件。
+ * 模型文本先转义；链接只允许 http(s)/mailto，避免把回答内容当 HTML 或脚本执行。
+ * 未闭合围栏按代码块收尾，流式输出中途也不撒裸反引号。 */
 function chatBodyHTML(text) {
   const lines = String(text || "").split(/\r?\n/);
   const out = [];
@@ -9870,7 +10062,9 @@ function chatBodyHTML(text) {
   if (code) out.push(codeBlockHTML(code.join("\n")));
   flushTxt();
   return out.join("");
-}async function renderChat(run, active) {
+}
+
+async function renderChat(run, active) {
   const box = $("rd-chat");
   if (!box) return;
   // 所有有任务归属的运行都启用对话时间线；蜂巢/步骤/成果仍按原页签保留
@@ -16482,7 +16676,7 @@ window.saveCleanupSettings = saveCleanupSettings;
 
 /* 手机端（<900px）抽屉收起：点导航/任何侧栏可点项后都应收回，别挡内容 */
 function collapseDrawerIfMobile() {
-  if (window.innerWidth < 900) document.body.classList.add("side-collapsed");
+  if (window.innerWidth <= 900) document.body.classList.add("side-collapsed");
 }
 
 /* 切页：主栏换成目标子页。shell 决定左栏形态——"main" 保持任务树、"settings" 换成
@@ -16543,6 +16737,7 @@ function switchTab(name, shell) {
 function exitSettings() {
   if (S.detailRunId || S.detailTaskKey) closeRun();   // 设置运行列表开着详情就回表单：一并关掉，防 chat-fill 锁滚动与标题残留
   S.tab = "tasks";
+  $("sub-tasks").classList.remove("mobile-composing");
   S.mainPage = "";   // 主栏回到表单：不再是快捷导航页
   stopAutoPoll();   // 离开设置视图：自动化页轮询一并停掉
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-settings"));
@@ -17000,7 +17195,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const root = document.documentElement;
     const apply = (w) => root.style.setProperty("--side-w", w + "px");
     const saved = parseInt(localStorage.getItem(KEY), 10);
-    if (saved >= MIN && saved <= MAX && window.innerWidth >= 900) apply(saved);
+    if (saved >= MIN && saved <= MAX && window.innerWidth > 900) apply(saved);
     const el = $("side-resizer");
     let active = false, startX = 0, startW = 0;
     const onMove = (e) => {
@@ -17014,7 +17209,7 @@ document.addEventListener("DOMContentLoaded", () => {
       localStorage.setItem(KEY, String(Math.round($("sidebar").getBoundingClientRect().width)));
     };
     el.addEventListener("pointerdown", (e) => {
-      if (window.innerWidth < 900) return;
+      if (window.innerWidth <= 900) return;
       active = true; startX = e.clientX;
       startW = $("sidebar").getBoundingClientRect().width;
       document.body.classList.add("side-resizing");
@@ -17035,7 +17230,23 @@ document.addEventListener("DOMContentLoaded", () => {
   $("sidebar").addEventListener("click", (e) => {
     if (e.target.closest("button, summary, .stask")) collapseDrawerIfMobile();
   });
-  $("btn-new-task").addEventListener("click", exitSettings);
+  $("btn-new-task").addEventListener("click", () => mobileNewTask());
+  $("btn-mobile-new").addEventListener("click", () => mobileNewTask());
+  $("btn-mobile-workspaces").addEventListener("click", () => {
+    $("sub-tasks").classList.remove("mobile-composing");
+    document.querySelector("main").scrollTop = 0;
+  });
+  $("mobile-workspace-list").addEventListener("click", (e) => {
+    const add = e.target.closest("[data-new-dir]");
+    if (add) { mobileNewTask(add.dataset.newDir); return; }
+    const task = e.target.closest(".mobile-task");
+    if (task) sideRowActivate(task);
+  });
+  // 旋转/缩窄桌面窗口时也收起导航，断点与 CSS 保持一致。
+  const mobileLayout = window.matchMedia("(max-width: 900px)");
+  mobileLayout.addEventListener("change", (e) => {
+    if (e.matches) document.body.classList.add("side-collapsed");
+  });
   // 侧栏快捷导航：主栏换成目标页，左栏任务树不动（shell="main"）。
   // 页面清单以 index.html .side-quick 的 data-page 为准，这里逐项绑 id。
   $("btn-q-overview").addEventListener("click", () => switchTab("overview", "main"));
@@ -17059,7 +17270,7 @@ document.addEventListener("DOMContentLoaded", () => {
   browserBind();
   bindCtxMenus();
   bindInspector();
-  if (window.innerWidth < 900) document.body.classList.add("side-collapsed");
+  if (window.innerWidth <= 900) document.body.classList.add("side-collapsed");
   applyAppearance();
   $("btn-create").addEventListener("click", createTask);
   /* 侧栏「显示已归档」开关（原「最近任务」面板移除后，归档找回的唯一入口）。

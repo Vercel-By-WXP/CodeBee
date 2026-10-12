@@ -102,6 +102,11 @@ def published_chapters(task_id, platform):
                 out.add(int(n))
     try:
         ent = book_for(task_id, platform) or {}
+        # 用户确认的连续发布进度独立于平台数行结果；跨卷校准漏行不能
+        # 让已发布的旧章重新进入待发。它是章号边界，不是平台章节数量。
+        through = int(ent.get("confirmed_published_through") or 0)
+        if 0 < through <= 100000:
+            out.update(range(1, through + 1))
         for n in (ent.get("remote_published_nos") or []):
             n = int(n)
             if n > 0:

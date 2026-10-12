@@ -258,8 +258,11 @@ window.Hive3D = (function () {
   Scene.prototype.buildWorld=function(){
     const b=this.box,rb=this.roundBox,s=this.sphere;this.objects=[];
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall. The free camera is framed wide enough to keep all 14 stations visible at desktop aspect ratios.
-    this.add(b,0,-.18,5.5,23,.28,34,[.68,.79,.93,1]);
-    this.add(b,0,2.70,-6.45,19,3.65,.24,[.24,.60,.91,1]);
+    // Keep the studio bright and photographic: the reference has a nearly white
+    // floor with cool blue bounce, while the feature wall carries the saturated
+    // accent. The old values made the whole room read as a blue plastic box.
+    this.add(b,0,-.18,5.5,23,.28,34,[.86,.90,.94,1]);
+    this.add(b,0,2.70,-6.45,19,3.65,.24,[.19,.53,.83,1]);
     this.add(b,0,4.58,-6.30,19,.075,.12,[.985,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
     this.add(b,0,.90,-6.28,18.7,.12,.06,[.08,.42,.78,1]);
@@ -289,7 +292,7 @@ window.Hive3D = (function () {
       this.add(b,x,2.34,-6.005,.035,.48,.024,[.22,.89,1,1]);
     }
     // Continuous, pale hex grout is one static mesh: no crossed edges and no thousands of scene objects.
-    this.add(this.grout,0,0,0,1,1,1,[.77,.83,.88,1]);
+    this.add(this.grout,0,0,0,1,1,1,[.88,.91,.92,1]);
     // Reference layout: eight compact rear stations and six wider front stations.
     // Every monitor overlay is projected from these exact same coordinates below.
     const deskRows=[
@@ -326,7 +329,7 @@ window.Hive3D = (function () {
       this.add(rb,x,.43,z-.22,width*.78,.045,.74,[.89,.93,.97,1]);
       this.add(rb,x,screenY,z-.48,screenWidth+.055,screenHeight+.095,.060,[.025,.040,.055,1]);
       this.add(rb,x,screenY,z-.447,screenWidth+.028,screenHeight+.060,.020,[.12,.17,.21,1]);
-      this.add(b,x,screenY,z-.408,screenWidth,screenHeight,.018,[.018,.105,.18,1]);
+      this.add(b,x,screenY,z-.408,screenWidth,screenHeight,.018,[.025,.145,.235,1]);
       this.add(this.cylinder,x,.78,z-.43,.034,.36,.034,[.55,.60,.63,1]);
       this.add(rb,x,.60,z-.45,.30,.18,.028,[.76,.79,.79,1]);
       this.add(rb,x,.935,z-.451,.20,.10,.038,[.43,.49,.52,1]);
@@ -372,14 +375,14 @@ window.Hive3D = (function () {
       this.add(this.bandGoldTop,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[1,.86,.12,1]);
       this.add(this.bandGoldBottom,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[1,.70,.045,1]);
       this.add(this.bandSeparator,x,shellCenterY,shellCenterZ,shellX,shellY,shellZ,[.045,.055,.065,1]);
-      this.add(s,x,by,bz,.365,.355,.325,[1,.94,.22,1]);
+      this.add(s,x,by,bz,.515,.465,.415,[1,.94,.22,1]);
       // The reference bee has a clear glossy black cheek/eye patch visible from behind.
       // Put it on the camera-facing quarter of the head so the character reads at scene scale.
-      this.add(s,x+.235,by+.015,bz+.225,.145,.160,.062,[.008,.012,.018,1]);
-      this.add(s,x+.248,by+.060,bz+.273,.030,.034,.016,[.32,.86,.98,1]);
+      this.add(s,x+.340,by+.025,bz+.265,.190,.205,.074,[.008,.012,.018,1]);
+      this.add(s,x+.355,by+.085,bz+.315,.034,.038,.018,[.32,.86,.98,1]);
       // A slim graphite cowl across the crown catches light like the reference's
       // dark headset band and separates the head from the rounded thorax below.
-      this.add(rb,x,by+.316,bz+.004,.50,.058,.30,[.12,.14,.15,1]);
+      this.add(rb,x,by+.405,bz+.004,.52,.060,.32,[.12,.14,.15,1]);
       // A forward-facing graphite visor makes the assistant read as a character, not a plain yellow sphere.
       // The workstation monitor is on -Z, so the faceplate and optical details sit on that side of the head.
       this.add(rb,x,by+.012,bz-.166,.258,.142,.026,[.035,.055,.070,1]);
@@ -393,9 +396,9 @@ window.Hive3D = (function () {
       for(const side of [-1,1]){
         this.add(s,x+side*.382,by+.015,bz+.035,.078,.118,.094,[.045,.055,.065,1]);
         this.add(s,x+side*.407,by+.015,bz+.052,.030,.052,.048,[.99,.68,.045,1]);
-        const antennaBase=[x+side*.105,by+.29,bz+.12];
-        const antennaBend=[x+side*.13,by+.43,bz+.13];
-        const antennaTip=[x+side*.17,by+.52,bz+.16];
+        const antennaBase=[x+side*.125,by+.39,bz+.14];
+        const antennaBend=[x+side*.16,by+.55,bz+.16];
+        const antennaTip=[x+side*.205,by+.65,bz+.19];
         this.addLink(antennaBase,antennaBend,.013,[.045,.055,.065,1]);
         this.addLink(antennaBend,antennaTip,.011,[.045,.055,.065,1]);
         this.add(s,antennaTip[0],antennaTip[1],antennaTip[2],.030,.030,.030,[.10,.12,.14,1]);
@@ -427,13 +430,13 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Angled, translucent wings emerge from behind the head; a leading-edge highlight
       // defines the outward/upward sweep without enclosing the wing like a headset ring.
-      this.add(this.wing,x-.49,by+.17,bz+.14,.66,.50,.10,[.88,.95,1,.96],0,-.48);
-      this.add(this.wing,x+.49,by+.17,bz+.14,.66,.50,.10,[.88,.95,1,.96],0,.48);
+      this.add(this.wing,x-.49,by+.17,bz+.14,.82,.60,.10,[.88,.96,1,.96],0,-.48);
+      this.add(this.wing,x+.49,by+.17,bz+.14,.82,.60,.10,[.88,.96,1,.96],0,.48);
       for(const side of [-1,1]){
         const rotation=side*.48,ca=Math.cos(rotation),sa=Math.sin(rotation);
         const edgePoints=WING_OUTLINE.map(p=>[
-          x+side*.49+ca*p[0]*.66-sa*p[1]*.50,
-          by+.17+sa*p[0]*.66+ca*p[1]*.50,
+          x+side*.49+ca*p[0]*.82-sa*p[1]*.60,
+          by+.17+sa*p[0]*.82+ca*p[1]*.60,
           bz+.125
         ]);
         for(let i=0;i<6;i++)this.addLink(edgePoints[i],edgePoints[i+1],.0052,[.59,.80,.91,.56]);
@@ -455,21 +458,21 @@ window.Hive3D = (function () {
     }
     // Planters and stylized leaves soften the room edges.
     for(const x of [-9.05,9.05]){
-      this.add(s,x,-.032,-4.70,.66,.012,.70,[.055,.09,.14,.24]);
-      this.add(rb,x,.17,-4.70,.58,.34,.58,[.70,.77,.81,1]);
+      this.add(s,x,-.032,-4.70,.78,.012,.82,[.055,.09,.14,.24]);
+      this.add(rb,x,.17,-4.70,.68,.34,.68,[.70,.77,.81,1]);
       this.add(this.cylinder,x,.70,-4.70,.065,.78,.065,[.31,.28,.19,1]);
       // Layered foliage with varied yaw and drooping leaf tips, so the planters read as broad indoor plants.
       for(let k=0;k<18;k++){
         const a=k/18*Math.PI*2,spread=Math.sin(a)*.62;
-        const y=.94+(k%5)*.145,rad=.20+(k%4)*.095;
-        const leafColor=[[.09,.38,.14,1],[.13,.49,.17,1],[.18,.58,.21,1],[.24,.64,.25,1]][k%4];
+        const y=1.00+(k%5)*.17,rad=.24+(k%4)*.115;
+        const leafColor=[[.10,.43,.15,1],[.15,.55,.18,1],[.20,.64,.22,1],[.28,.70,.28,1]][k%4];
         this.add(this.organic,x+Math.sin(a)*rad,y,-4.70+Math.cos(a)*rad*.62,
-          .58+(k%3)*.065,.78+(k%4)*.10,.05,leafColor,a*.62-Math.PI*.18,Math.PI/2+spread);
+          .68+(k%3)*.075,.90+(k%4)*.12,.05,leafColor,a*.62-Math.PI*.18,Math.PI/2+spread);
       }
       for(let k=0;k<7;k++){
         const a=k/7*Math.PI*2,spread=Math.sin(a)*.48;
-        this.add(this.organic,x+Math.sin(a)*.12,1.62+(k%3)*.10,-4.70+Math.cos(a)*.14,
-          .38,.60,.035,[.14,.58,.21,1],a*.65,Math.PI/2+spread);
+        this.add(this.organic,x+Math.sin(a)*.14,1.82+(k%3)*.12,-4.70+Math.cos(a)*.16,
+          .44,.72,.035,[.16,.64,.23,1],a*.65,Math.PI/2+spread);
       }
     }
     // Low-opacity contact shadows share the same 8+6 workstation positions.

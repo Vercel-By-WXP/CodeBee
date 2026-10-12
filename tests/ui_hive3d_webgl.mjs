@@ -112,10 +112,11 @@ async function main() {
     // Exercise the actual fullscreen container before the viewport is moved into the isolated screenshot stage.
     const fullscreenReady = await waitFor(async () => evaluate("Boolean(document.getElementById('hive-scene-fullscreen') && document.getElementById('rd-hive-viewport')?.dataset.controlsReady === 'true')"), 15000, "fullscreen control initialization");
     assert.equal(fullscreenReady, true, "fullscreen control is wired by the real application");
-    const initialView = JSON.parse(await evaluate("JSON.stringify({mode:window.__hive3d?.displayMode,canvasHidden:document.getElementById('rd-hive-gl').hidden,referenceDisplay:getComputedStyle(document.querySelector('#rd-hive-viewport .hive-reference')).display})"));
-    assert.equal(initialView.mode, "live3d", "new sessions default to the real WebGL scene");
-    assert.equal(initialView.canvasHidden, false, "the WebGL canvas is visible at first load");
-    assert.equal(initialView.referenceDisplay, "none", "static artwork is opt-in rather than replacing the 3D model");
+    const initialView = JSON.parse(await evaluate("JSON.stringify({mode:window.__hive3d?.displayMode,canvasHidden:document.getElementById('rd-hive-gl').hidden,referenceDisplay:getComputedStyle(document.querySelector('#rd-hive-viewport .hive-reference')).display,free3dHidden:document.querySelector('[data-hive-view=live3d]')?.hidden})"));
+    assert.equal(initialView.mode, "reference", "new sessions default to the high-fidelity presentation");
+    assert.equal(initialView.canvasHidden, true, "the WebGL canvas is hidden at first load");
+    assert.notEqual(initialView.referenceDisplay, "none", "high-fidelity artwork is visible at first load");
+    assert.equal(initialView.free3dHidden, true, "free 3D remains hidden from the public toolbar");
     await evaluate("if(typeof window.welcomeClose==='function')window.welcomeClose(); const welcome=document.getElementById('welcome');if(welcome)welcome.classList.add('hidden');");
     // A fresh CI data directory has no selected run, so one or more ancestors of the Hive
     // pane may be hidden. Reveal that real DOM branch from the stage upward before testing fullscreen.
@@ -216,7 +217,7 @@ async function main() {
     assert.ok(state.monitorRect && state.monitorRect[2] > 5 && state.monitorRect[3] > 5, "monitor overlay has on-screen bounds");
     assert.ok(state.badgeRect && state.badgeRect[2] > 5 && state.badgeRect[3] > 5, "workflow card has on-screen bounds");
 
-    // The static reference remains a selectable presentation mode, but must never stand in for the default model.
+    // The static reference is the public presentation mode; internal QA can still enter WebGL programmatically.
     await evaluate("document.querySelector('[data-hive-view=\"reference\"]').click()");
     const referenceMode = JSON.parse(await evaluate("JSON.stringify({mode:window.__hive3d.displayMode,referenceDisplay:getComputedStyle(document.querySelector('#rd-hive-viewport .hive-reference')).display,canvasHidden:document.getElementById('rd-hive-gl').hidden})"));
     assert.equal(referenceMode.mode, "reference", "the reference presentation remains selectable");

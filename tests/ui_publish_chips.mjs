@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { bootEdge } from "./_ui_boot.mjs";
 
 const PORT = 18936;
 const SERVICE = "http://127.0.0.1:" + PORT;
@@ -25,6 +26,7 @@ const check = (name, cond, detail = "") => {
 
 const ITEMS = Array.from({ length: 8 }, (_, i) => ({
   chapter_no: 31 + i, file: `chapter-${31 + i}.md`, size: 3000 + i,
+  volume: i < 3 ? "山门换锁" : "悬星有旧账",
 }));
 
 async function main() {
@@ -60,7 +62,7 @@ async function main() {
     error: "", verdict: null, summary: "",
   }), "utf-8");
 
-  let svc = null, edge = null, ws = null;
+  let svc = null, edge = null, ws = null, browser = null;
   try {
     svc = spawn("python", ["-X", "utf8", join(ROOT, "app", "main.py"), "--port", String(PORT),
       "--no-browser", "--host", "127.0.0.1"], {
@@ -74,14 +76,14 @@ async function main() {
     }
     check("临时服务启动", up);
 
-    edge = spawn(EDGE, ["--headless=new", "--disable-gpu", "--no-first-run",
-      `--user-data-dir=${join(tmp, "p")}`, `--remote-debugging-port=${CDP_PORT}`,
-      "--window-size=1440,1000", "about:blank"], { stdio: "ignore" });
+    browser = await bootEdge({ width: 1440, height: 950, reducedMotion: true, awaitPromise: true });
+    console.log(browser.envInfo.line);
+    edge = browser.proc;
     let target = null;
     for (let i = 0; i < 30 && !target; i++) {
       await sleep(500);
       try {
-        const list = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`)).json();
+        const list = await (await fetch(`http://127.0.0.1:${browser.cdpPort}/json/list`)).json();
         target = list.find((t) => t.type === "page");
       } catch (e) { /* wait */ }
     }
@@ -144,10 +146,11 @@ async function main() {
       sideOpenTask("chips-t1");
       for (let i = 0; i < 14; i++) {
         await new Promise(r2 => setTimeout(r2, 500));
-        if (document.querySelectorAll(".pb-pend").length >= 1) break;
+        if (document.querySelectorAll(".pb-pend-summary").length >= 1) break;
       }
       await new Promise(r2 => setTimeout(r2, 500));
-      const box = document.querySelector(".pb-pend");
+      pbOpenSelection("chips-t1", "fanqie");
+      const box = document.querySelector("#modal");
       const chips = [...box.querySelectorAll(".pb-chip")];
       const selBtn = [...box.querySelectorAll("button")].find(b => b.textContent.includes("发布所选"));
       return JSON.stringify({
@@ -163,18 +166,18 @@ async function main() {
 
     // 点掉 31：计数联动 7，chip 视觉取消
     const after1 = JSON.parse(await evalJs(`(async () => {
-      const box = document.querySelector(".pb-pend");
+      const box = document.querySelector("#modal");
       const c31 = [...box.querySelectorAll(".pb-chip")]
-        .find(c => c.textContent.trim() === "31");
+        .find(c => c.dataset.chapter === "31");
       c31.querySelector("input").click();
       await new Promise(r2 => setTimeout(r2, 1200));
-      const box2 = document.querySelector(".pb-pend");
+      const box2 = document.querySelector("#modal");
       const chips = [...box2.querySelectorAll(".pb-chip")];
       const selBtn = [...box2.querySelectorAll("button")].find(b => b.textContent.includes("发布所选"));
       return JSON.stringify({
         checked: chips.filter(c => c.querySelector("input").checked).length,
-        c31: chips.find(c => c.textContent.trim() === "31")
-          ? chips.find(c => c.textContent.trim() === "31").querySelector("input").checked
+        c31: chips.find(c => c.dataset.chapter === "31")
+          ? chips.find(c => c.dataset.chapter === "31").querySelector("input").checked
           : null,
         selBtn: selBtn ? selBtn.textContent.trim() : null });
     })()`));
@@ -184,11 +187,11 @@ async function main() {
 
     // 再勾回：计数还原 8
     const after2 = JSON.parse(await evalJs(`(async () => {
-      const box = document.querySelector(".pb-pend");
-      const c31 = [...box.querySelectorAll(".pb-chip")].find(c => c.textContent.trim() === "31");
+      const box = document.querySelector("#modal");
+      const c31 = [...box.querySelectorAll(".pb-chip")].find(c => c.dataset.chapter === "31");
       c31.querySelector("input").click();
       await new Promise(r2 => setTimeout(r2, 1200));
-      const box2 = document.querySelector(".pb-pend");
+      const box2 = document.querySelector("#modal");
       const chips = [...box2.querySelectorAll(".pb-chip")];
       const selBtn = [...box2.querySelectorAll("button")].find(b => b.textContent.includes("发布所选"));
       return JSON.stringify({ checked: chips.filter(c => c.querySelector("input").checked).length,
@@ -199,17 +202,17 @@ async function main() {
 
     // 清空 → 0 + disabled；全选 → 还原
     const after3 = JSON.parse(await evalJs(`(async () => {
-      const box = document.querySelector(".pb-pend");
+      const box = document.querySelector("#modal");
       [...box.querySelectorAll("a")].find(a => a.textContent.includes("清空")).click();
       await new Promise(r2 => setTimeout(r2, 1200));
-      const box2 = document.querySelector(".pb-pend");
+      const box2 = document.querySelector("#modal");
       const chips = [...box2.querySelectorAll(".pb-chip")];
       const selBtn = [...box2.querySelectorAll("button")].find(b => b.textContent.includes("发布所选"));
       const r1 = { checked: chips.filter(c => c.querySelector("input").checked).length,
         selBtn: selBtn ? selBtn.textContent.trim() : null, disabled: selBtn ? selBtn.disabled : null };
       [...box2.querySelectorAll("a")].find(a => a.textContent.includes("全选")).click();
       await new Promise(r2 => setTimeout(r2, 1200));
-      const box3 = document.querySelector(".pb-pend");
+      const box3 = document.querySelector("#modal");
       const chips3 = [...box3.querySelectorAll(".pb-chip")];
       const selBtn3 = [...box3.querySelectorAll("button")].find(b => b.textContent.includes("发布所选"));
       return JSON.stringify({ cleared: r1, back: {
@@ -222,9 +225,28 @@ async function main() {
     check("全选：计数还原（8）", after3.back.checked === 8
       && (after3.back.selBtn || "").includes("（8）"), JSON.stringify(after3.back));
 
+    const volume = JSON.parse(await evalJs(`(() => {
+      const modal = document.querySelector('#modal');
+      const input = modal.querySelector('.pb-chip input');
+      input.focus(); input.click();
+      const header = modal.querySelector('.pb-vol-sel input');
+      const partial = header.indeterminate && !header.checked;
+      const focused = document.activeElement === input;
+      pbRefreshSelectionDialog(S.state.tasks.find(t=>t.id==='chips-t1'));
+      const refreshFocused = document.activeElement.closest('.pb-chip')?.dataset.chapter === '31';
+      const refreshPartial = modal.querySelector('.pb-vol-sel input').indeterminate;
+      const currentHeader = modal.querySelector('.pb-vol-sel input');
+      currentHeader.click();
+      const restored = currentHeader.checked && !currentHeader.indeterminate && S.pbSel['chips-t1:fanqie'].sel.size === 8;
+      return JSON.stringify({ partial, focused, restored, refreshFocused, refreshPartial });
+    })()`));
+    check("单章取消即时显示卷部分选中，保留键盘焦点", volume.partial && volume.focused, JSON.stringify(volume));
+    check("点击部分选中的卷头恢复整卷", volume.restored, JSON.stringify(volume));
+    check("状态刷新保留焦点及卷部分选中状态", volume.refreshFocused && volume.refreshPartial, JSON.stringify(volume));
+
     // 点「发布所选」→ 确认弹框（uiConfirm 自绘，#ask-yes）→ publish-all body 带 chapters 升序数组
     const post = JSON.parse(await evalJs(`(async () => {
-      const box = document.querySelector(".pb-pend");
+      const box = document.querySelector("#modal");
       const btn = [...box.querySelectorAll("button")].find(b => b.textContent.includes("发布所选"));
       btn.click();
       for (let i = 0; i < 10; i++) {
@@ -244,9 +266,95 @@ async function main() {
     check("发布所选 → publish-all chapters=31..38 升序、人工模式",
       JSON.stringify(post.chapters) === JSON.stringify(ITEMS.map(i => i.chapter_no))
       && post.auto_submit === false, JSON.stringify(post));
+
+    const guarded = JSON.parse(await evalJs(`(() => {
+      S.pubAuto.books[0].draft_ok = false;
+      pbOpenSelection('chips-t1', 'fanqie');
+      pbSelAll('chips-t1', 'fanqie', false);
+      pbSelAll('chips-t1', 'fanqie', true);
+      const buttons = [...document.querySelectorAll('#modal [data-selection-action]')];
+      return JSON.stringify({ draftDisabled: buttons[2].disabled, publishEnabled: !buttons[0].disabled });
+    })()`));
+    check("清空再全选保留草稿硬护栏，发布仍可进入质量复审", guarded.draftDisabled && guarded.publishEnabled, JSON.stringify(guarded));
+
+    await evalJs(`(() => {
+      S.pubAuto.books[0].draft_ok = true;
+      S.pubAuto.books[0].pending = 95;
+      S.pubAuto.books[0].items = Array.from({length:95}, (_, i) => ({chapter_no:45+i,
+        volume: i < 3 ? '山门换锁' : i < 57 ? '悬星有旧账' : '云海归途'}));
+      pbOpenSelection('chips-t1', 'fanqie');
+    })()`);
+    for (const width of [1440, 1920, 390]) {
+      await send('Emulation.setDeviceMetricsOverride', { width, height:950, deviceScaleFactor:1, mobile:false });
+      const geometry = JSON.parse(await evalJs(`(() => {
+        const modal = document.querySelector('#modal .modal');
+        const body = document.querySelector('#modal-body');
+        const foot = document.querySelector('#modal-foot');
+        const before = foot.getBoundingClientRect().top;
+        body.scrollTop = body.scrollHeight;
+        const g = modal.getBoundingClientRect();
+        return JSON.stringify({overflow:body.scrollWidth > body.clientWidth,
+          outside:g.left < 0 || g.right > innerWidth, chips:body.querySelectorAll('.pb-chip').length,
+          fixed:Math.abs(before-foot.getBoundingClientRect().top)<1,
+          gridOverflow:[...body.querySelectorAll('.pb-chapter-grid')].some(g=>g.scrollWidth>g.clientWidth),
+          scrolled:body.scrollTop>0 || body.scrollHeight<=body.clientHeight,
+          footerVisible:foot.getBoundingClientRect().bottom<=innerHeight});
+      })()`));
+      check(width + "px：95章分卷网格无横向溢出，操作栏固定可见",
+        !geometry.overflow && !geometry.outside && !geometry.gridOverflow && geometry.fixed && geometry.scrolled
+        && geometry.footerVisible && geometry.chips === 95, JSON.stringify(geometry));
+    }
+    const english = JSON.parse(await evalJs(`(() => {
+      setLang('en'); pbRefreshSelectionDialog(S.state.tasks.find(t=>t.id==='chips-t1'));
+      pbSelToggle('chips-t1','fanqie',45,false);
+      const count = document.querySelector('#modal .pb-pend-count').textContent;
+      const text = document.querySelector('#modal [data-selection-action]').textContent;
+      return JSON.stringify({count,text,ok:count===t('已选 {0}/{1} 章',94,95)
+        && text===t('发布所选')+t('（')+94+t('）')});
+    })()`));
+    check("英文计数与按钮同步", english.ok, JSON.stringify(english));
+    const ready = JSON.parse(await evalJs(`(() => {
+      const view=S.pubAuto.books[0];
+      view.items=view.items.map((x,i)=>({...x,publish_ready:i<2,
+        review_status:i<2?'ready':i===2?'passed_blocked':'pending'}));
+      view.published_latest=104;view.next_chapter=105;view.ready_count=2;view.review_passed_count=3;
+      pbOpenSelection('chips-t1','fanqie');
+      pbSelReady('chips-t1','fanqie');
+      const modal=document.querySelector('#modal');
+      return JSON.stringify({numbers:[...S.pbSel['chips-t1:fanqie'].sel],
+        ready:modal.querySelectorAll('.pb-chip.review-ready').length,
+        blocked:modal.querySelectorAll('.pb-chip.review-passed_blocked').length,
+        legend:modal.querySelector('.pb-review-legend')?.textContent || '',
+        progress:modal.querySelector('.pb-pend-progress').textContent,
+        text:modal.querySelector('.pb-chip-review').textContent});
+    })()`));
+    check("只选可直发，不混入单章过审但受限章节", JSON.stringify(ready.numbers)==='[45,46]'
+      && ready.ready===2 && ready.blocked===1, JSON.stringify(ready));
+    check("弹窗常驻显示章节审核状态说明", ready.legend.includes('ready')
+      && ready.legend.includes('blocked') && ready.legend.includes('failed'), JSON.stringify(ready));
+    check("清晰展示已发104、下一章105及逐章审核状态", ready.progress.includes('104')
+      && ready.progress.includes('105') && ready.text.includes('ready'), JSON.stringify(ready));
+    await send('Emulation.setDeviceMetricsOverride', {width:1440,height:950,deviceScaleFactor:1,mobile:false});
+    await evalJs(`(() => {
+      const view=S.pubAuto.books[0];view.pending=39;view.ready_count=0;view.review_passed_count=7;
+      view.items=Array.from({length:39},(_,i)=>({chapter_no:105+i,volume:'县里有旧账',
+        publish_ready:false,review_status:i<8&&i!==3?'passed_blocked':'pending'}));
+    })()`);
+    await evalJs(`setLang('zh'); pbOpenSelection('chips-t1','fanqie');
+      document.querySelector('#modal-body').scrollTop=0; document.activeElement.blur();
+      document.querySelectorAll('.toast').forEach(el=>el.remove());`);
+    const shots = join(ROOT, 'output', 'playwright');
+    mkdirSync(shots, {recursive:true});
+    const clip = JSON.parse(await evalJs(`JSON.stringify((() => {
+      const r = document.querySelector('#modal .modal').getBoundingClientRect();
+      return {x:r.x,y:r.y,width:r.width,height:r.height,scale:1};
+    })())`));
+    const screenshot = await send('Page.captureScreenshot', {format:'png',clip});
+    writeFileSync(join(shots,'publish-selection.png'), Buffer.from(screenshot.result.data,'base64'));
   } catch (e) {
     check("异常中断", false, String(e && e.stack || e).slice(0, 400));
   } finally {
+    if (browser) await browser.close();
     try { if (ws) ws.close(); } catch (e) {}
     try { if (edge) edge.kill(); } catch (e) {}
     try { if (svc) { svc.kill(); } } catch (e) {}

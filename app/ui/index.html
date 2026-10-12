@@ -413,7 +413,15 @@
         </div>
       </div>
       <div id="sub-tasks" class="subpage">
+        <section id="mobile-workspaces" class="mobile-workspaces" aria-labelledby="mobile-workspaces-title">
+          <div class="mobile-workspaces-head">
+            <div><h2 id="mobile-workspaces-title" data-i18n="工作区和任务">工作区和任务</h2><p id="mobile-workspaces-count"></p></div>
+            <button type="button" class="primary" id="btn-mobile-new" data-i18n="新任务">新任务</button>
+          </div>
+          <div id="mobile-workspace-list"></div>
+        </section>
       <div class="panel wide composer">
+          <button type="button" class="ghost mobile-workspaces-back" id="btn-mobile-workspaces"><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg><span data-i18n="返回工作区">返回工作区</span></button>
         <div class="hero-row">
           <h2 class="hero" id="cmp-greet">上午好呀，有什么想让我帮忙的吗</h2>
         </div>
@@ -730,8 +738,8 @@
               <div id="hive-scene-stage" class="hive-scene-stage">
               <div class="hive-scene-tools" role="toolbar" aria-label="蜂巢视图控制" data-i18n-aria="蜂巢视图控制">
                 <div class="hive-view-switch" role="group" aria-label="视图模式" data-i18n-aria="视图模式">
-                  <button type="button" class="hive-view-btn" data-hive-view="reference" aria-pressed="false" data-i18n="高保真视图">高保真视图</button>
-                  <button type="button" class="hive-view-btn active" data-hive-view="live3d" aria-pressed="true" data-i18n="自由 3D">自由 3D</button>
+                  <button type="button" class="hive-view-btn active" data-hive-view="reference" aria-pressed="true" data-i18n="高保真视图">高保真视图</button>
+                  <button type="button" class="hive-view-btn" data-hive-view="live3d" aria-pressed="false" aria-hidden="true" hidden data-i18n="自由 3D">自由 3D</button>
                   <button type="button" class="hive-view-btn" data-hive-view="2d" aria-pressed="false" data-i18n="2D 列表">2D 列表</button>
                 </div>
                 <span class="hive-scene-hint" data-i18n="拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志">拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志</span>
@@ -741,7 +749,7 @@
                 <button type="button" class="hive-scene-btn hive-scene-reset" data-hive-scene-action="reset" data-i18n="复位视角">复位视角</button>
                 <button id="hive-scene-fullscreen" type="button" class="hive-scene-btn hive-scene-fullscreen" aria-label="进入全屏" title="进入全屏" data-i18n-aria="进入全屏" data-i18n-title="进入全屏" aria-pressed="false" data-i18n="全屏">全屏</button>
               </div>
-              <div id="rd-hive-viewport" class="hive-viewport hive-mode-live3d" data-i18n-aria="蜂巢工作台自由 3D 视图" aria-label="蜂巢工作台自由 3D 视图">
+              <div id="rd-hive-viewport" class="hive-viewport hive-mode-3d" data-i18n-aria="蜂巢工作台高保真视图" aria-label="蜂巢工作台高保真视图">
                 <img class="hive-reference" src="assets/workbench-reference.png" alt="协作工作台参考场景" data-i18n-alt="协作工作台参考场景" decoding="async">
                 <canvas id="rd-hive-gl" class="hive-gl" aria-hidden="true"></canvas>
                 <div id="rd-hive-overlay" class="hive-gl-overlay"></div>

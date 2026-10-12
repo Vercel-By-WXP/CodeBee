@@ -177,6 +177,7 @@ async function main() {
 
     // ---- 7. 触摸导航轨切页（运行记录/自动化/任务）
     for (const page of ["runs", "automation", "tasks"]) {
+      await tap("#btn-menu"); await sleep(300);
       const ok = await tap(`.rail-btn[data-rail-page="${page}"]`);
       await sleep(600);
       const tab = await evalJs(`S.tab`);
@@ -185,11 +186,14 @@ async function main() {
 
     // ---- 8. 触摸导航轨设置入口（side-foot 已隐藏，rail 代理按钮 onclick 转发 btn-settings.click()）
     const setBtnSel = `.rail-btn[title="设置"], .rail-btn[data-i18n-title="设置"]`;
+    await tap("#btn-menu"); await sleep(300);
     const gearOk = await tap(setBtnSel);
     await sleep(800);
     check("触摸导航轨设置入口 → 设置模式", gearOk === true &&
       (await evalJs(`document.body.classList.contains("settings-mode")`)) === true);
+    await tap("#btn-menu"); await sleep(300);
     await tap(`.rail-btn[data-rail-page="tasks"]`); await sleep(400);
+    await tap("#btn-mobile-new"); await sleep(300);
 
     // ---- 9. composer 发送区在手机视口内的关键 hit-test
     const cmpHit = await evalJs(`(()=>{const b=document.querySelector(".cmp-send .primary");

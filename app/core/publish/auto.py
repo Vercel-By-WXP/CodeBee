@@ -215,6 +215,67 @@ def pending(task_id, platform):
     return out, ""
 
 
+def chapter_review_states(task, items, quality, hard_ok, hard_reason="", direct_ok=True):
+    """逐章最新评审证据与实际发布门禁同时展示，不把单章通过当作放行。"""
+    from .. import store, quality_gate
+    try:
+        reviewed_through = int(quality.get("reviewed_through") or 0)
+    except (ValueError, TypeError):
+        reviewed_through = 0
+    runs = []
+    for tid in store.serial_chain_ids(task.get("id")):
+        runs.extend(store.task_runs(tid) or [])
+    evidence = {}
+    for run in sorted(runs, key=lambda r: str(r.get("id") or ""), reverse=True):
+        verdict = run.get("verdict") if run.get("status") == "done" else None
+        if not isinstance(verdict, dict):
+            continue
+        for score in verdict.get("chapter_scores") or []:
+            if not isinstance(score, dict):
+                continue
+            try:
+                n = int(score.get("chapter") or 0)
+            except (ValueError, TypeError):
+                continue
+            if n > 0 and n not in evidence:
+                evidence[n] = (score, run)
+    for item in items:
+        score, run = evidence.get(item["chapter_no"], ({}, {}))
+        state, reason = "pending", "尚无有效单章评审"
+        try:
+            valid = (score.get("passed") is True
+                     and int(score.get("reviewer_count") or 0) >= quality_gate.MIN_REVIEWERS
+                     and score.get("reviewer_consensus") is True)
+        except (ValueError, TypeError):
+            valid = False
+        if score.get("passed") is False:
+            state, reason = "failed", "单章质量评审未通过"
+        elif score and not valid:
+            reason = "有效评审人数不足或未形成共识"
+        elif valid:
+            state, reason = "passed_blocked", "单章已过审，发布门禁未过"
+            if not hard_ok:
+                reason = hard_reason
+            elif not quality.get("allowed"):
+                reason = "；".join(quality.get("blockers") or []) or reason
+            elif item["chapter_no"] > reviewed_through:
+                reason = "目标章节超出当前发布评审版本"
+            elif not direct_ok:
+                reason = "平台发布流程尚未校准，可人工确认发布，暂不可自动直发"
+            else:
+                state, reason = "ready", "单章及发布门禁均已通过"
+            try:
+                reviewed_at = time.mktime(time.strptime(run.get("ended_at") or "", "%Y-%m-%d %H:%M:%S"))
+                if os.path.getmtime(os.path.join(task.get("workdir") or "", item["file"])) > reviewed_at + 1:
+                    state, reason = "stale", "正文在评审后修改，需要重新评审"
+            except (OSError, ValueError, TypeError):
+                pass
+        item.update(review_status=state, review_reason=reason,
+                    review_passed=valid and state != "stale",
+                    publish_ready=state == "ready", review_run_id=run.get("id") or "")
+    return items
+
+
 def status(task_id):
     """前端视图：待发清单 + 护栏状态 + 自动发布进度。
 
@@ -233,6 +294,7 @@ def status(task_id):
         if not _book_ready(info):
             hard_ok, hard_why = False, "该平台建书结果未确认（缺少作品 ID），请重试创建作品或登记已有作品"
         blockers = []
+        quality = {"allowed": False, "blockers": []}
         if task and _book_ready(info):
             quality = manager._quality_release_guard(task, plat, action="publish")
             if not quality.get("allowed"):
@@ -240,15 +302,24 @@ def status(task_id):
         ok, why = hard_ok, hard_why
         if ok and blockers:
             ok, why = False, "质量门禁拦截：%s" % "；".join(blockers)
+        direct_ok = calibrated(plat)
+        chapter_review_states(task or {}, pend, quality, hard_ok, hard_why, direct_ok)
+        published = ledger.published_chapters(task_id, plat)
+        drafted = ledger.drafted_chapters(task_id, plat) - published
         books.append({"platform": plat, "bound": True,
                       "title": info.get("title") or "",
                       "pending": len(pend),
-                      "items": pend[:200],
+                      "items": pend,
+                      "published_latest": max(published, default=0),
+                      "next_chapter": pend[0]["chapter_no"] if pend else None,
+                      "ready_count": sum(p["publish_ready"] for p in pend),
+                      "review_passed_count": sum(p["review_passed"] for p in pend),
+                      "drafted_nos": sorted(drafted),
                       "guard_ok": ok, "guard_reason": why,
                       "draft_ok": hard_ok, "draft_reason": hard_why,
                       "quality_blockers": blockers,
-                      "drafted": len(ledger.drafted_chapters(task_id, plat)),
-                      "calibrated": calibrated(plat)})
+                      "drafted": len(drafted),
+                      "calibrated": direct_ok})
     run = _running.get(task_id) or None
     if run:
         run = dict(run)
