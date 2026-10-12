@@ -24,7 +24,10 @@ class TestCancelStepFinalize(BaseTest):
 
     def _make_run(self):
         from app.core import store
-        run = store.create_run("orchestration", "取消收尾测试")
+        task = store.create_task({"type": "direct", "goal": "取消收尾测试",
+                                  "workdir": str(self.workdir)})
+        run = store.create_run("orchestration", "取消收尾测试",
+                               task_id=task["id"])
         store.update_run(run["id"], status="running")
         return run["id"]
 

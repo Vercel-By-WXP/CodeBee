@@ -14,6 +14,10 @@ class BudgetBase(BaseTest):
 
     def setUp(self):
         super().setUp()
+        # These tests reuse a stable token-meter run id. Drop any session object
+        # left by a prior test whose temporary data directory has been removed.
+        from app.core import pipeline
+        pipeline._sessions_cache.pop("r-bud", None)
         from app.core import settings_schema as ss
         ss.init(data_dir=str(self.data_dir))
         ss.register_default_namespaces()

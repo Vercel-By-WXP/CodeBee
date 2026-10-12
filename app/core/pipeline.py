@@ -807,6 +807,18 @@ def _cost_gate_block():
     return None
 
 
+def _run_sandbox(run_id):
+    """Return a run's persisted sandbox policy, or the unrestricted default hint.
+
+    Low-level callers such as budget-gate tests may use a run id before creating
+    a task. The runner still enforces any task policy when one is present.
+    """
+    run = store.get_run(run_id) or {}
+    task_id = run.get("task_id")
+    task = store.get_task(task_id) if task_id else None
+    return (task or {}).get("sandbox") or {}
+
+
 def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
                 timeout, resume, step, log_abs, images=None, require_tools=False,
                 deadline=None):
@@ -846,9 +858,7 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
                            timeout=timeout, cancel_event=ev, log_path=str(log_abs),
                            images=images, require_tools=require_tools, deadline=deadline,
                            command_context={"run_id": session_run_id,
-                                            "sandbox": (store.get_task(
-                                                (store.get_run(session_run_id) or {}).get("task_id")
-                                            ) or {}).get("sandbox") or {},
+                                            "sandbox": _run_sandbox(session_run_id),
                                             "allow_terminal": not readonly},
                            checkpoint_run_id=session_run_id)
 
@@ -880,9 +890,7 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
                                resume=resume, images=images, require_tools=require_tools,
                                deadline=deadline,
                                command_context={"run_id": session_run_id,
-                                                "sandbox": (store.get_task(
-                                                    (store.get_run(session_run_id) or {}).get("task_id")
-                                                ) or {}).get("sandbox") or {},
+                                                "sandbox": _run_sandbox(session_run_id),
                                                 "allow_terminal": not readonly},
                                checkpoint_run_id=session_run_id)
     # 默认关闭压缩和 resume 都走直通分支，也必须把真实 usage 送进预算表；否则
