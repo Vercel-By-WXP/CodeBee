@@ -9,6 +9,7 @@ CCSwitch 导入价表；未标价 = 不记钱、预算不计入——宁缺毋�
 from __future__ import annotations
 
 import json
+import threading
 import time
 import unittest
 from unittest import mock
@@ -113,6 +114,73 @@ class TestUsageAutoPricing(BaseTest):
 
 
 class TestBudgetAlert(BaseTest):
+
+    def test_unavailable_push_does_not_consume_alert(self):
+        from app.core import paths
+        self._caps(daily=10.0)
+        state = paths.DATA_DIR / "budget_alerts.json"
+        pushes = []
+        usage.set_alert_push(None)
+        try:
+            with mock.patch.object(usage, "cost_snapshot", return_value=(6.0, 6.0)):
+                usage._budget_alert_check("2026-09-27")
+                self.assertFalse(state.exists())
+                usage.set_alert_push(pushes.append)
+                usage._budget_alert_check("2026-09-27")
+            self.assertEqual(len(pushes), 1)
+            self.assertIn("d50", json.loads(state.read_text(encoding="utf-8"))["done"])
+        finally:
+            usage.set_alert_push(None)
+
+    def test_failed_push_can_retry_after_channel_recovers(self):
+        from app.core import paths
+        self._caps(daily=10.0)
+        state = paths.DATA_DIR / "budget_alerts.json"
+        pushes = []
+
+        def recovered(text):
+            pushes.append(text)
+            return True
+
+        try:
+            with mock.patch.object(usage, "cost_snapshot", return_value=(6.0, 6.0)):
+                usage.set_alert_push(lambda _text: False)
+                usage._budget_alert_check("2026-09-27")
+                self.assertFalse(state.exists())
+                usage.set_alert_push(recovered)
+                usage._budget_alert_check("2026-09-27")
+            self.assertEqual(len(pushes), 1)
+            self.assertIn("d50", json.loads(state.read_text(encoding="utf-8"))["done"])
+        finally:
+            usage.set_alert_push(None)
+
+    def test_concurrent_checks_push_threshold_once(self):
+        self._caps(daily=10.0)
+        ready = threading.Barrier(2)
+        pushes = []
+
+        def snapshot():
+            ready.wait(timeout=2)
+            return 6.0, 6.0
+
+        def push(text):
+            pushes.append(text)
+            time.sleep(0.05)
+            return True
+
+        usage.set_alert_push(push)
+        try:
+            with mock.patch.object(usage, "cost_snapshot", side_effect=snapshot):
+                threads = [threading.Thread(target=usage._budget_alert_check,
+                                            args=("2026-09-27",)) for _ in range(2)]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join(timeout=3)
+            self.assertTrue(all(not thread.is_alive() for thread in threads))
+            self.assertEqual(len(pushes), 1)
+        finally:
+            usage.set_alert_push(None)
 
     def setUp(self):
         super().setUp()

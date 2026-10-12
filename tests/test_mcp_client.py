@@ -279,6 +279,26 @@ class TestLiveFakeServer(BaseTest):
         self.assertIn("总时限", result["error"])
         self.assertLess(time.monotonic() - started, 3)
 
+    def test_session_closes_process_and_pipes(self):
+        with mcp_client._Session(self.cfg) as sess:
+            proc = sess.proc
+        self.assertIsNotNone(proc.returncode)
+        self.assertTrue(proc.stdin.closed)
+        self.assertTrue(proc.stdout.closed)
+        self.assertTrue(proc.stderr.closed)
+
+    def test_session_closes_after_initialize_failure(self):
+        cfg = {"name": "dead", "command": sys.executable,
+               "args": ["-c", "raise SystemExit(1)"], "env": {}}
+        sess = mcp_client._Session(cfg)
+        with self.assertRaises(RuntimeError):
+            sess.__enter__()
+        proc = sess.proc
+        self.assertIsNotNone(proc.returncode)
+        self.assertTrue(proc.stdin.closed)
+        self.assertTrue(proc.stdout.closed)
+        self.assertTrue(proc.stderr.closed)
+
 
 class TestBuiltinAgentWiring(BaseTest):
 

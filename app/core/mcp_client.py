@@ -29,6 +29,7 @@ import time
 from pathlib import Path
 
 _LOCK = threading.RLock()
+_REFRESH_LOCK = threading.Lock()
 _TOOLS_CACHE = {}          # server_key → (ts, tools)
 _TOOLS_TTL = 300.0
 _TOOLS_CONFIG_SHA = ""
@@ -216,15 +217,15 @@ class _Session:
                 env=env, cwd=cwd, start_new_session=(os.name != "nt"))
         except Exception as e:
             raise RuntimeError("MCP 服务器启动失败: %s" % e)
-        import queue as _queue
-        self.lines = _queue.Queue()
-        self._reader_threads = [
-            threading.Thread(target=self._pump_out, daemon=True),
-            threading.Thread(target=self._pump_err, daemon=True),
-        ]
-        for thread in self._reader_threads:
-            thread.start()
         try:
+            import queue as _queue
+            self.lines = _queue.Queue()
+            self._reader_threads = [
+                threading.Thread(target=self._pump_out, daemon=True),
+                threading.Thread(target=self._pump_err, daemon=True),
+            ]
+            for thread in self._reader_threads:
+                thread.start()
             if os.name == "nt":
                 from . import beekeeper
                 self._nest = beekeeper.BeeNest()
@@ -238,7 +239,7 @@ class _Session:
                 "protocolVersion": "2024-11-05", "capabilities": {},
                 "clientInfo": _CLIENT_INFO}, timeout=init_timeout)
             self._notify("notifications/initialized")
-        except Exception:
+        except BaseException:
             # Context manager __exit__ is not called when __enter__ raises.
             self.__exit__(None, None, None)
             raise
@@ -384,6 +385,12 @@ def call_tool(server, tool_name, arguments, timeout_s=_CALL_TIMEOUT,
 # ---- 面向 builtin_agent 的合并视图（带缓存） ----
 
 def tool_specs_cached(force=False, *, sandbox=None, workdir=None):
+    """Serialize discoveries so callers cannot observe incomplete refreshes."""
+    with _REFRESH_LOCK:
+        return _tool_specs_cached(force=force, sandbox=sandbox, workdir=workdir)
+
+
+def _tool_specs_cached(force=False, *, sandbox=None, workdir=None):
     """全部服务器的工具合并清单：[{server, name(原名), full_name, description,
     input_schema}]。TTL 内走缓存；单个服务器失败跳过（error 挂在条目外不打断）。"""
     global _TOOLS_CONFIG_SHA
