@@ -1775,7 +1775,11 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         bash = find_git_bash()
         if bash:
             base_env.setdefault("CLAUDE_CODE_GIT_BASH_PATH", bash)
-        base_env.setdefault("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "16000")
+        # 32000=claude CLI 官方默认（自定义网关模型常见上限）：旧值 16000 在
+        # 全局评审读 40 万字书稿时被输出顶爆——CLI 按 16000/轮反复续烧 23.5
+        # 分钟、$3 后报 "response exceeded the 16000 output token maximum"
+        # （2026-10-11 实案×3）；setdefault 保留：用户显式配置不覆盖
+        base_env.setdefault("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "32000")
     sid = (resume or "").strip() if agent.get("mode") == "real" else ""
     if sid and kind == "generic" and not agent.get("resume_argv_template"):
         return {"ok": False, "text": "", "json": None, "cost_usd": 0.0, "tokens": 0,
