@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -35,6 +36,7 @@ _TOOLS_CONFIG_SHA = ""
 MAX_SERVERS = 4
 MAX_MCP_TOOLS = 24         # 全部服务器合计注入内置智能体的工具数上限
 _NAME_RE = re.compile(r"^[a-z0-9_-]{1,24}$")
+_MODEL_TOOL_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _INIT_TIMEOUT = 15.0
 _CALL_TIMEOUT = 60.0
 _CALL_TIMEOUT_MAX = 300.0
@@ -64,6 +66,7 @@ def parse_servers(text):
     if len(arr) > MAX_SERVERS:
         return None, "最多 %d 个 MCP 服务器" % MAX_SERVERS
     out = []
+    names = set()
     for item in arr:
         if not isinstance(item, dict):
             return None, "MCP 服务器配置必须是对象"
@@ -71,6 +74,11 @@ def parse_servers(text):
         command = str(item.get("command") or "").strip()
         if not _NAME_RE.match(name):
             return None, "服务器名 %r 只能是小写字母/数字/-/_（≤24 位）" % name[:24]
+        if "__" in name:
+            return None, "服务器名 %s 不能包含工具分隔符 __" % name
+        if name in names:
+            return None, "MCP 服务器名 %s 重名" % name
+        names.add(name)
         if not command:
             return None, "服务器 %s 缺 command" % name
         args = item.get("args") if isinstance(item.get("args"), list) else []
@@ -152,12 +160,16 @@ def _bubblewrap_argv(server, sandbox, roots, cwd):
 class _Session:
     """一次性的 MCP 服务器会话：spawn → initialize → （list/call）→ 杀树。"""
 
-    def __init__(self, server, sandbox=None, workdir=None, timeout_s=None):
+    def __init__(self, server, sandbox=None, workdir=None, timeout_s=None,
+                 cancel_event=None, deadline=None):
         self.server = server
         self.sandbox = sandbox
         self.workdir = workdir
         self.timeout_s = timeout_s
-        self.deadline = None
+        self.deadline = deadline
+        self.task_deadline = deadline
+        self.cancel_event = cancel_event
+        self._nest = None
         self.proc = None
         self.lines = None       # reader 线程产出的行队列
         self.err = None
@@ -190,7 +202,9 @@ class _Session:
 
     def __enter__(self):
         if self.timeout_s is not None:
-            self.deadline = time.monotonic() + max(0.0, float(self.timeout_s))
+            call_deadline = time.monotonic() + max(0.0, float(self.timeout_s))
+            self.deadline = min(self.deadline, call_deadline) if self.deadline is not None else call_deadline
+        self._check_interrupted()
         try:
             argv, env, cwd = _sandbox_launch(self.server, self.sandbox, self.workdir)
             if self.deadline is not None and time.monotonic() >= self.deadline:
@@ -199,7 +213,7 @@ class _Session:
                 argv,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=False,
-                env=env, cwd=cwd, start_new_session=True)
+                env=env, cwd=cwd, start_new_session=(os.name != "nt"))
         except Exception as e:
             raise RuntimeError("MCP 服务器启动失败: %s" % e)
         import queue as _queue
@@ -211,6 +225,10 @@ class _Session:
         for thread in self._reader_threads:
             thread.start()
         try:
+            if os.name == "nt":
+                from . import beekeeper
+                self._nest = beekeeper.BeeNest()
+                self._nest.adopt(self.proc)
             init_timeout = _INIT_TIMEOUT
             if self.deadline is not None:
                 init_timeout = min(init_timeout, self.deadline - time.monotonic())
@@ -227,50 +245,41 @@ class _Session:
         return self
 
     def __exit__(self, *exc):
+        proc = self.proc
+        if proc is None:
+            return False
         try:
-            if self.proc and self.proc.stdin:
+            if self._nest is not None:
+                self._nest.close()
+        except Exception:
+            pass
+        if os.name != "nt" or proc.poll() is None:
+            try:
+                from . import runner
+                runner._kill_tree(proc.pid)
+            except Exception:
                 try:
-                    self.proc.stdin.close()
+                    proc.kill()
                 except Exception:
                     pass
+        try:
+            proc.wait(timeout=2)
+        except Exception:
+            pass
+        if proc.stdin is not None:
             try:
-                if self.proc and self.proc.poll() is None:
-                    # bwrap runs in its own process group; terminate descendants
-                    # as well as the launcher so timed-out MCP servers cannot
-                    # leave background children holding pipes or doing work.
-                    try:
-                        from . import runner
-                        runner._kill_tree(self.proc.pid)
-                    except Exception:
-                        pass
-                    self.proc.kill()
+                proc.stdin.close()
             except Exception:
                 pass
-            try:
-                if self.proc:
-                    self.proc.wait(timeout=1)
-            except Exception:
-                pass
-        finally:
-            # Close all parent-side pipe handles even if initialization failed.
-            # Do not close a stream while its reader is blocked in read(): the
-            # buffered stream lock can make close wait forever if an escaped
-            # descendant still holds the pipe open. Let daemon readers finish
-            # on EOF and close only streams no thread currently owns.
-            for thread in self._reader_threads:
+        for thread, pipe in zip(self._reader_threads, (proc.stdout, proc.stderr)):
+            if thread is not None and thread.is_alive():
+                thread.join(timeout=0.5)
+            # 读线程持有管道锁时主线程 close 可能卡到孙进程自然退出。
+            if pipe is not None and (thread is None or not thread.is_alive()):
                 try:
-                    thread.join(timeout=0.2)
+                    pipe.close()
                 except Exception:
                     pass
-            for name in ("stdout", "stderr"):
-                pipe = getattr(self.proc, name, None) if self.proc else None
-                readers_alive = any(
-                    thread.is_alive() for thread in self._reader_threads)
-                if pipe and not readers_alive:
-                    try:
-                        pipe.close()
-                    except Exception:
-                        pass
         return False
 
     def _send(self, obj):
@@ -281,8 +290,15 @@ class _Session:
     def _notify(self, method, params=None):
         self._send({"jsonrpc": "2.0", "method": method, "params": params or {}})
 
+    def _check_interrupted(self):
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            raise RuntimeError("任务已取消")
+        if self.task_deadline is not None and time.monotonic() >= self.task_deadline:
+            raise RuntimeError("任务总时限已到")
+
     def _request(self, method, params, timeout):
         """单请求单响应；忽略通知与未知 id 的服务端请求。"""
+        self._check_interrupted()
         duration = max(0.0, float(timeout))
         if self.deadline is not None:
             duration = min(duration, self.deadline - time.monotonic())
@@ -293,13 +309,15 @@ class _Session:
                     "method": method, "params": params or {}})
         deadline = time.monotonic() + duration
         while True:
+            self._check_interrupted()
             remain = deadline - time.monotonic()
             if remain <= 0:
                 raise RuntimeError("%s 超时（%.0fs）" % (method, timeout))
             try:
-                line = self.lines.get(timeout=remain)
-            except Exception:
-                raise RuntimeError("%s 超时（%.0fs）" % (method, timeout))
+                wait = min(remain, 0.1) if self.cancel_event is not None else remain
+                line = self.lines.get(timeout=wait)
+            except queue.Empty:
+                continue
             if line is None:
                 raise RuntimeError("MCP 服务器提前退出")
             line = line.strip()
@@ -327,10 +345,11 @@ def list_tools(server, *, sandbox=None, workdir=None):
         tools = []
         for t in (res.get("tools") or [])[:16]:
             if isinstance(t, dict) and isinstance(t.get("name"), str) and t["name"]:
+                schema = t.get("inputSchema", t.get("input_schema"))
                 tools.append({"name": t["name"],
                               "description": str(t.get("description") or "")[:400],
-                              "input_schema": t.get("input_schema")
-                              if isinstance(t.get("input_schema"), dict) else
+                              "input_schema": schema
+                              if isinstance(schema, dict) else
                               {"type": "object", "properties": {}}})
         return {"ok": True, "tools": tools, "error": ""}
     except Exception as e:
@@ -338,12 +357,13 @@ def list_tools(server, *, sandbox=None, workdir=None):
 
 
 def call_tool(server, tool_name, arguments, timeout_s=_CALL_TIMEOUT,
-              *, sandbox=None, workdir=None):
+              *, sandbox=None, workdir=None, cancel_event=None, deadline=None):
     """调用一个工具。返回 {"ok", "text", "error", "is_error"}。"""
     try:
         timeout = min(_CALL_TIMEOUT_MAX, max(0.001, float(timeout_s or _CALL_TIMEOUT)))
         with _Session(server, sandbox=sandbox, workdir=workdir,
-                      timeout_s=timeout) as sess:
+                      timeout_s=timeout, cancel_event=cancel_event,
+                      deadline=deadline) as sess:
             res = sess._request("tools/call",
                                 {"name": tool_name,
                                  "arguments": arguments if isinstance(arguments, dict) else {}},
@@ -398,8 +418,8 @@ def tool_specs_cached(force=False, *, sandbox=None, workdir=None):
     disabled = set(policy.normalize_disabled_tools(
         (sandbox or {}).get("disabled_tools")))
     out = []
-    with _LOCK:
-        _TOOLS_CACHE.clear()
+    discovered = {}
+    seen_names = set()
     for srv in servers:
         res = list_tools(srv, sandbox=sandbox, workdir=workdir)
         if not res.get("ok"):
@@ -410,25 +430,36 @@ def tool_specs_cached(force=False, *, sandbox=None, workdir=None):
             if (t["name"] in srv.get("disabled_tools", [])
                     or t["name"] in disabled or full_name in disabled):
                 continue
+            if not _MODEL_TOOL_NAME_RE.fullmatch(full_name) or full_name in seen_names:
+                continue
+            seen_names.add(full_name)
             specs.append({"server": srv["name"], "name": t["name"],
                           "full_name": full_name,
                           "description": t["description"],
                           "input_schema": t["input_schema"]})
-        with _LOCK:
-            _TOOLS_CACHE[(scope_sha, srv["name"])] = (time.time(), specs)
+        discovered[(scope_sha, srv["name"])] = (time.time(), specs)
         out.extend(specs)
         if len(out) >= MAX_MCP_TOOLS:
             break
+    with _LOCK:
+        if config_sha != _TOOLS_CONFIG_SHA:
+            return []
+        for key in list(_TOOLS_CACHE):
+            if isinstance(key, tuple) and key[0] == scope_sha:
+                del _TOOLS_CACHE[key]
+        _TOOLS_CACHE.update(discovered)
     return out[:MAX_MCP_TOOLS]
 
 
 def dispatch_full_name(full_name, arguments, timeout_s=_CALL_TIMEOUT, *,
-                       sandbox=None, workdir=None, disabled_tools=None):
+                       sandbox=None, workdir=None, disabled_tools=None,
+                       cancel_event=None, deadline=None):
     """mcp__<server>__<tool> → 找服务器配置并调用。返回 {"ok","text","error"}。"""
-    m = re.match(r"^mcp__([a-z0-9_-]{1,24})__(.+)$", str(full_name or ""))
-    if not m:
+    full_name = str(full_name or "")
+    sname, sep, tool = full_name[5:].partition("__") if full_name.startswith("mcp__") \
+        else ("", "", "")
+    if not sep or not _NAME_RE.fullmatch(sname) or "__" in sname or not tool:
         return {"ok": False, "text": "", "error": "非法 MCP 工具名"}
-    sname, tool = m.group(1), m.group(2)
     servers, err = parse_servers(_settings_text())
     if err:
         return {"ok": False, "text": "", "error": err}
@@ -443,7 +474,8 @@ def dispatch_full_name(full_name, arguments, timeout_s=_CALL_TIMEOUT, *,
     if sandbox is None or not workdir:
         return {"ok": False, "text": "", "error": "MCP 调用缺少任务沙箱策略或工作目录，拒绝启动"}
     return call_tool(srv, tool, arguments, timeout_s=timeout_s,
-                     sandbox=sandbox, workdir=workdir)
+                     sandbox=sandbox, workdir=workdir,
+                     cancel_event=cancel_event, deadline=deadline)
 
 
 _SETTINGS_TEXT = None     # main.py 启动注入（读 settings.mcp_servers）——本模块

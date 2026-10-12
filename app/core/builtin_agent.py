@@ -931,7 +931,8 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
                             remaining if remaining is not None else CMD_MAX_TIMEOUT)
             r = mcp_client.dispatch_full_name(
                 name, args or {}, sandbox=sandbox, workdir=workdir,
-                disabled_tools=denied, timeout_s=timeout_s)
+                disabled_tools=denied, timeout_s=timeout_s,
+                cancel_event=cancel_event, deadline=deadline)
             return r.get("text") or ("（MCP 工具失败: %s）" % r.get("error") if not r.get("ok") else "")
         except Exception as e:
             return "MCP 工具执行失败: %s" % e
@@ -1983,6 +1984,10 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                                              disabled_tools=disabled_tools, sandbox=sandbox,
                                              checkpoint_run_id=checkpoint_run_id,
                                              tool_output_run_id=tool_output_run_id)
+                            if deadline is not None and time.monotonic() >= deadline:
+                                return _deadline_fail()
+                            if cancel_event is not None and cancel_event.is_set():
+                                return _cancel_fail()
                             # 运行期注入警示层：外部内容（网页/命令输出/文件）一律
                             # 包围栏进上下文；检测命中升级强围栏（prompt_guard）。
                             try:

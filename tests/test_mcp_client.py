@@ -12,6 +12,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+import subprocess
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -87,6 +90,18 @@ class TestParseServers(BaseTest):
         _srvs, err = mcp_client.parse_servers(json.dumps(arr))
         self.assertIn("最多", err)
 
+    def test_duplicate_names_rejected(self):
+        arr = [{"name": "fs", "command": "x"}, {"name": "fs", "command": "y"}]
+        srvs, err = mcp_client.parse_servers(json.dumps(arr))
+        self.assertIsNone(srvs)
+        self.assertIn("重名", err)
+
+    def test_server_name_cannot_contain_tool_separator(self):
+        srvs, err = mcp_client.parse_servers(json.dumps(
+            [{"name": "fs__nested", "command": "x"}]))
+        self.assertIsNone(srvs)
+        self.assertIn("__", err)
+
 
 class TestLiveFakeServer(BaseTest):
 
@@ -115,6 +130,7 @@ class TestLiveFakeServer(BaseTest):
         self.assertTrue(r["ok"], r.get("error"))
         self.assertEqual([t["name"] for t in r["tools"]], ["echo"])
         self.assertEqual(r["tools"][0]["input_schema"]["type"], "object")
+        self.assertEqual(r["tools"][0]["input_schema"]["required"], ["text"])
         c = mcp_client.call_tool(self.cfg, "echo", {"text": "你好"})
         self.assertTrue(c["ok"], c.get("error"))
         self.assertEqual(c["text"], "echo:你好")
@@ -128,6 +144,10 @@ class TestLiveFakeServer(BaseTest):
                                           sandbox={}, workdir=str(self.tmp))
         self.assertTrue(r["ok"], r.get("error"))
         self.assertEqual(r["text"], "echo:hi")
+        nested = mcp_client.dispatch_full_name("mcp__fs__echo__detail", {"text": "hi"},
+                                               sandbox={}, workdir=str(self.tmp))
+        self.assertTrue(nested["ok"], nested.get("error"))
+        self.assertEqual(nested["text"], "echo:hi")
         r2 = mcp_client.dispatch_full_name("mcp__nope__echo", {})
         self.assertFalse(r2["ok"])
         self.assertIn("未配置", r2["error"])
@@ -160,6 +180,105 @@ class TestLiveFakeServer(BaseTest):
         self.assertFalse(r["ok"])
         self.assertIn("超时", r["error"])
 
+    def test_tool_cache_invalidates_on_config_change(self):
+        from app.core import settings as settings_mod
+        mcp_client.set_settings_text(lambda: json.dumps([self.cfg]))
+        self.assertEqual(len(mcp_client.tool_specs_cached(sandbox={"allowed_roots": [str(self.tmp)]}, workdir=str(self.tmp))), 1)
+        mcp_client.set_settings_text(lambda: "")
+        self.assertEqual(mcp_client.tool_specs_cached(sandbox={"allowed_roots": [str(self.tmp)]}, workdir=str(self.tmp)), [])
+
+        other = _fake_server_cfg(self.tmp, name="other")
+        mcp_client.set_settings_text(lambda: json.dumps([other]))
+        self.assertEqual([s["full_name"] for s in mcp_client.tool_specs_cached(sandbox={"allowed_roots": [str(self.tmp)]}, workdir=str(self.tmp))],
+                         ["mcp__other__echo"])
+
+    def test_model_tool_specs_skip_unusable_names_and_duplicates(self):
+        from app.core import settings as settings_mod
+        mcp_client.set_settings_text(lambda: json.dumps([self.cfg]))
+        listed = {"ok": True, "error": "", "tools": [
+            {"name": "read.file", "description": "bad", "input_schema": {}},
+            {"name": "x" * 60, "description": "long", "input_schema": {}},
+            {"name": "echo", "description": "first", "input_schema": {}},
+            {"name": "echo", "description": "duplicate", "input_schema": {}}]}
+        with mock.patch.object(mcp_client, "list_tools", return_value=listed):
+            specs = mcp_client.tool_specs_cached(force=True, sandbox={"allowed_roots": [str(self.tmp)]}, workdir=str(self.tmp))
+        self.assertEqual([s["full_name"] for s in specs], ["mcp__fs__echo"])
+        self.assertEqual(specs[0]["description"], "first")
+
+    def test_failed_initialize_reaps_process_and_closes_pipes(self):
+        processes = []
+        real_popen = subprocess.Popen
+
+        def spawn(*args, **kwargs):
+            proc = real_popen(*args, **kwargs)
+            if args and args[0] and args[0][0] == sys.executable:
+                processes.append(proc)
+            return proc
+
+        with mock.patch.object(mcp_client.subprocess, "Popen", side_effect=spawn), \
+             mock.patch.object(mcp_client, "_INIT_TIMEOUT", 0.01):
+            r = mcp_client.list_tools({"name": "quiet", "command": sys.executable,
+                                       "args": ["-c", "import time; time.sleep(30)"],
+                                       "env": {}})
+        self.assertFalse(r["ok"])
+        self.assertEqual(len(processes), 1)
+        self.assertIsNotNone(processes[0].poll())
+        for pipe in (processes[0].stdin, processes[0].stdout, processes[0].stderr):
+            self.assertTrue(pipe.closed)
+
+    def test_call_can_be_cancelled_during_server_wait(self):
+        script = self.tmp / "slow_mcp.py"
+        script.write_text(FAKE_SERVER.replace(
+            'import json, sys', 'import json, sys, time').replace(
+            'elif method == "tools/call":',
+            'elif method == "tools/call":\n        time.sleep(30)'), encoding="utf-8")
+        cfg = {"name": "slow", "command": sys.executable,
+               "args": ["-X", "utf8", str(script)], "env": {}}
+        cancel = threading.Event()
+        timer = threading.Timer(0.3, cancel.set)
+        timer.start()
+        started = time.monotonic()
+        try:
+            result = mcp_client.call_tool(cfg, "echo", {}, cancel_event=cancel)
+        finally:
+            timer.cancel()
+        self.assertFalse(result["ok"])
+        self.assertIn("取消", result["error"])
+        self.assertLess(time.monotonic() - started, 3)
+
+    def test_cancel_does_not_wait_for_child_holding_stdout(self):
+        script = self.tmp / "child_mcp.py"
+        script.write_text(FAKE_SERVER.replace(
+            'import json, sys', 'import json, sys, subprocess, time').replace(
+            'elif method == "tools/call":',
+            'elif method == "tools/call":\n'
+            '        subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"], '
+            'stdout=sys.stdout, stderr=sys.stderr)\n'
+            '        time.sleep(30)'), encoding="utf-8")
+        cfg = {"name": "child", "command": sys.executable,
+               "args": ["-X", "utf8", str(script)], "env": {}}
+        cancel = threading.Event()
+        timer = threading.Timer(0.3, cancel.set)
+        timer.start()
+        started = time.monotonic()
+        try:
+            result = mcp_client.call_tool(cfg, "echo", {}, cancel_event=cancel)
+        finally:
+            timer.cancel()
+        self.assertFalse(result["ok"])
+        self.assertIn("取消", result["error"])
+        self.assertLess(time.monotonic() - started, 3)
+
+    def test_global_deadline_limits_initialize_wait(self):
+        started = time.monotonic()
+        result = mcp_client.call_tool(
+            {"name": "quiet", "command": sys.executable,
+             "args": ["-c", "import time; time.sleep(30)"], "env": {}},
+            "echo", {}, deadline=started + 0.2)
+        self.assertFalse(result["ok"])
+        self.assertIn("总时限", result["error"])
+        self.assertLess(time.monotonic() - started, 3)
+
 
 class TestBuiltinAgentWiring(BaseTest):
 
@@ -182,6 +301,54 @@ class TestBuiltinAgentWiring(BaseTest):
         from app.core import builtin_agent
         out = builtin_agent._exec_tool("wd", "not_mcp_name", {})
         self.assertIn("未知工具", out)
+
+    def _run_with_mcp_call(self, **run_kwargs):
+        from app.core import builtin_agent
+        bi = {"prov": {"id": "p", "name": "P", "protocol": "openai",
+                       "base_url": "http://gw.test/v1", "api_key": "sk-test",
+                       "enabled": True, "model": "m"},
+              "model": "m", "provider_id": "p", "provider_name": "P"}
+        response = {"choices": [{"message": {"content": "", "tool_calls": [
+            {"id": "c1", "type": "function", "function": {
+                "name": "mcp__fs__echo", "arguments": "{}"}}]}}]}
+        with mock.patch.object(builtin_agent, "_post_json",
+                               return_value=(200, response, "")):
+            return builtin_agent.run(bi, "go", str(self.workdir), stream=False,
+                                     **run_kwargs)
+
+    def test_mcp_dispatch_receives_cancel_and_deadline(self):
+        from app.core import builtin_agent
+        cancel = threading.Event()
+        deadline = time.monotonic() + 5
+        with mock.patch.object(mcp_client, "dispatch_full_name",
+                               return_value={"ok": True, "text": "done"}) as dispatch:
+            out = builtin_agent._exec_tool(
+                "wd", "mcp__fs__echo", {}, cancel_event=cancel, deadline=deadline)
+        self.assertEqual(out, "done")
+        self.assertIs(dispatch.call_args.kwargs["cancel_event"], cancel)
+        self.assertEqual(dispatch.call_args.kwargs["deadline"], deadline)
+
+    def test_run_marks_cancelled_after_mcp_tool(self):
+        cancel = threading.Event()
+
+        def stop(*_args, **_kwargs):
+            cancel.set()
+            return {"ok": False, "text": "", "error": "任务已取消"}
+
+        with mock.patch.object(mcp_client, "dispatch_full_name", side_effect=stop):
+            result = self._run_with_mcp_call(cancel_event=cancel)
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["cancelled"])
+
+    def test_run_marks_deadline_after_mcp_tool(self):
+        def slow(*_args, **_kwargs):
+            time.sleep(0.2)
+            return {"ok": False, "text": "", "error": "任务总时限已到"}
+
+        with mock.patch.object(mcp_client, "dispatch_full_name", side_effect=slow):
+            result = self._run_with_mcp_call(deadline=time.monotonic() + 0.1)
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["raw"]["deadline_exceeded"])
 
 
 if __name__ == "__main__":
