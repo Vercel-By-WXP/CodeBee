@@ -345,10 +345,10 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth glassy oval wings sit on the camera-facing shoulder side. The reference is viewed from behind the seated assistants, so wings must project beyond the thorax instead of being hidden on the monitor-facing side.
-      this.add(s,x-.51,by-.13,bz+.18,.46,.18,.060,[.33,.60,.83,.37],0,.14);
-      this.add(s,x+.51,by-.13,bz+.18,.46,.18,.060,[.33,.60,.83,.37],0,-.14);
-      this.add(s,x-.47,by-.105,bz+.22,.29,.105,.035,[.74,.90,.98,.22],0,.10);
-      this.add(s,x+.47,by-.105,bz+.22,.29,.105,.035,[.74,.90,.98,.22],0,-.10);
+      this.add(this.organic,x-.51,by-.13,bz+.18,.92,.36,.12,[.33,.60,.83,.37],0,.14);
+      this.add(this.organic,x+.51,by-.13,bz+.18,.92,.36,.12,[.33,.60,.83,.37],0,-.14);
+      this.add(this.organic,x-.47,by-.105,bz+.22,.58,.21,.07,[.74,.90,.98,.22],0,.10);
+      this.add(this.organic,x+.47,by-.105,bz+.22,.58,.21,.07,[.74,.90,.98,.22],0,-.10);
       // Fine translucent veins catch the studio light and keep the wings readable at the
       // default camera distance without adding textures or increasing draw calls.
       for(const side of [-1,1]){
