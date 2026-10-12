@@ -349,17 +349,17 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.205,.13,.068,.018,[.025,.10,.14,1]);
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth glassy oval wings sit on the camera-facing shoulder side. The reference is viewed from behind the seated assistants, so wings must project beyond the thorax instead of being hidden on the monitor-facing side.
-      this.add(this.organic,x-.70,by+.24,bz-.03,.66,.40,.030,[.35,.70,.90,.24],0,.24);
-      this.add(this.organic,x+.70,by+.24,bz-.03,.66,.40,.030,[.35,.70,.90,.24],0,-.24);
+      this.add(this.organic,x-.90,by+.25,bz-.03,.76,.44,.030,[.36,.72,.93,.29],0,-.36);
+      this.add(this.organic,x+.90,by+.25,bz-.03,.76,.44,.030,[.36,.72,.93,.29],0,.36);
       // Pull the translucent wings slightly toward the camera and lift their shoulder line:
       // this keeps the silhouette distinct from the dark thorax at the default room view.
       for(const side of [-1,1]){
-        const root=[x+side*.39,by+.18,bz-.03];
-        const mid=[x+side*.70,by+.25,bz-.03];
-        const tip=[x+side*1.03,by+.28,bz-.03];
-        this.addLink(root,mid,.0035,[.70,.90,1,.60]);
-        this.addLink(mid,tip,.0028,[.70,.90,1,.56]);
-        this.addLink([x+side*.57,by+.28,bz+.01],[x+side*.80,by+.37,bz+.01],.0020,[.86,.97,1,.42]);
+        const root=[x+side*.42,by+.14,bz-.03];
+        const mid=[x+side*.84,by+.26,bz-.03];
+        const tip=[x+side*1.28,by+.40,bz-.03];
+        this.addLink(root,mid,.0038,[.70,.90,1,.64]);
+        this.addLink(mid,tip,.0030,[.70,.90,1,.60]);
+        this.addLink([x+side*.72,by+.25,bz+.01],[x+side*.97,by+.40,bz+.01],.0020,[.86,.97,1,.44]);
       }
 
     }
