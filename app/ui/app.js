@@ -10581,6 +10581,17 @@ function bindChat() {
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
   });
+  // 移动端软键盘会缩短 visual viewport；把输入条主动带回可视区，
+  // 避免窄屏详情里键盘弹出后发送按钮落在屏幕下方（尤其是 Android Chrome）。
+  const keepChatInputVisible = () => {
+    if (document.activeElement !== ta || window.innerWidth > 720) return;
+    requestAnimationFrame(() => {
+      try { ta.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+      catch (e) { ta.scrollIntoView(); }
+    });
+  };
+  ta.addEventListener("focus", () => setTimeout(keepChatInputVisible, 60));
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", keepChatInputVisible);
   ta.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); window.chatSend(); }
   });

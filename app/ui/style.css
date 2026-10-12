@@ -3181,6 +3181,20 @@ details.chat-think[open] > summary { border-bottom: 1px dashed var(--border-stro
   .rd-chat-flow { gap: 18px; padding: 12px 6px 8px; }
   .chat-bubble.me { max-width: 86%; }
   .stask-more { opacity: .8; }
+  /* 软键盘/安全区适配：输入条在消息流下方保持可见，发送按钮不会被底部手势区吞掉。 */
+  #run-detail.chat-mode .rd-chat-bar {
+    position: sticky; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 8;
+    margin-bottom: max(8px, env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--panel) 94%, transparent);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  }
+  #run-detail.chat-mode .rd-chat-flow { scroll-padding-bottom: 132px; }
+  #run-detail.chat-mode .rd-chat-tools { gap: 6px; }
+  #run-detail.chat-mode .rd-chat-tools .cmp-sel { padding: 4px 8px; font-size: 11.5px; }
+  #run-detail.chat-mode .rd-chat-tools .cmp-sel-face { max-width: 64px; }
+  #run-detail.chat-mode .rd-chat-tools .rd-hint {
+    order: 20; flex-basis: calc(100% - 44px); min-width: 0;
+  }
 }
 
 /* ================= 墨金组件精修层（惠及所有皮肤；DOM/几何零改动） =================
