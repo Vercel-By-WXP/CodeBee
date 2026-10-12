@@ -207,7 +207,7 @@ window.Hive3D = (function () {
     // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
     this.add(b,0,-.18,5.5,23,.28,34,[.97,.985,1,1]);
     this.add(b,0,2.70,-6.45,19,3.65,.24,[.10,.52,.89,1]);
-    this.add(b,0,4.58,-6.30,19,.075,.12,[.985,.99,1,1]);
+    this.add(b,0,4.545,-6.285,18.7,.045,.055,[.985,.99,1,1]);
     // Wall seams, lower trim, and glass side windows.
     this.add(b,0,.90,-6.28,18.7,.12,.06,[.08,.42,.78,1]);
     this.add(b,0,.82,-6.285,18.7,.035,.035,[.25,.67,.94,1]);
@@ -222,8 +222,8 @@ window.Hive3D = (function () {
     }
     // Ceiling light fixtures and soft-colored illuminated panels.
     for(let x=-6.3;x<=6.4;x+=6.3){
-      this.add(b,x,5.36,-3.35,2.65,.075,.30,[.12,.17,.23,1]);
-      this.add(b,x,5.29,-3.35,2.40,.045,.24,[1,.99,.91,1]);
+      this.add(b,x,5.03,-3.35,2.65,.065,.30,[.12,.17,.23,1]);
+      this.add(b,x,4.965,-3.35,2.40,.045,.24,[1,.99,.91,1]);
     }
     // Six white phase controls are projected on this wall by the live HTML overlay.
     for(let i=0;i<6;i++){
@@ -333,10 +333,10 @@ window.Hive3D = (function () {
       this.add(rb,x,by-.585,bz+.218,.082,.016,.010,[.16,.88,.98,1]);
       // Smooth glassy oval wings sit at the shoulder line. Sphere geometry keeps their
       // silhouette rounded from every camera angle and lets the opaque body occlude them.
-      this.add(s,x-.48,by-.13,bz-.17,.38,.15,.060,[.33,.60,.83,.37],0,.14);
-      this.add(s,x+.48,by-.13,bz-.17,.38,.15,.060,[.33,.60,.83,.37],0,-.14);
-      this.add(s,x-.44,by-.105,bz-.12,.23,.085,.035,[.74,.90,.98,.22],0,.10);
-      this.add(s,x+.44,by-.105,bz-.12,.23,.085,.035,[.74,.90,.98,.22],0,-.10);
+      this.add(s,x-.45,by-.245,bz+.15,.62,.225,.085,[.60,.86,1,.34],0,.13);
+      this.add(s,x+.45,by-.245,bz+.15,.62,.225,.085,[.60,.86,1,.34],0,-.13);
+      this.add(s,x-.42,by-.225,bz+.195,.40,.125,.045,[.94,.99,1,.20],0,.10);
+      this.add(s,x+.42,by-.225,bz+.195,.40,.125,.045,[.94,.99,1,.20],0,-.10);
 
     }
     // Planters and stylized leaves soften the room edges.
