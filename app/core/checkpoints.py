@@ -128,7 +128,9 @@ def _read(run_id=""):
         files = sorted(_DIR.glob("checkpoints-*.jsonl"), reverse=True)
     except OSError:
         files = []
-    for path in files[:24]:
+    # Select the newest retained months, then reduce events in append order.
+    # Timestamp sorting would also reorder a start/finish if the clock moved back.
+    for path in reversed(files[:24]):
         try:
             if path.stat().st_size > 4 * 1024 * 1024:
                 continue
@@ -158,10 +160,14 @@ def replay_preview(run_id):
             continue
         if key < 0:
             continue
-        latest[key] = dict(latest.get(key) or {}, **row)
         if row.get("event") == "start":
+            # A new attempt must not inherit the preceding attempt's completion,
+            # error, tool context or side-effect labels.
+            latest[key] = dict(row)
             starts[key] = row
+            finishes.pop(key, None)
         elif row.get("event") == "finish":
+            latest[key] = dict(latest.get(key) or {}, **row)
             finishes[key] = row
     steps = []
     for key in sorted(latest):
