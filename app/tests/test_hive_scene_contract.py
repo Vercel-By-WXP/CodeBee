@@ -63,6 +63,8 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("screenWidth:1.48,screenHeight:.82", ENGINE)
         # Dedicated convex wings are compact, shoulder-mounted, and independent from plant foliage.
         self.assertIn("function wingGeometry(gl)", ENGINE)
+        self.assertIn("const wingArea=outline.reduce", ENGINE)
+        self.assertIn("if(wingArea<0)outline=outline.reverse()", ENGINE)
         self.assertIn("this.wing=wingGeometry(gl)", ENGINE)
         self.assertIn("this.add(this.wing,x-.55,by+.045,bz+.18,.36,.56,.10,[.25,.68,.90,.30],0,-.36)", ENGINE)
         self.assertIn("this.add(this.wing,x+.55,by+.045,bz+.18,.36,.56,.10,[.25,.68,.90,.30],0,.36)", ENGINE)

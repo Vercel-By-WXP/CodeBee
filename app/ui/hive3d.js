@@ -116,11 +116,14 @@ window.Hive3D = (function () {
   }
   function wingGeometry(gl){
     // Separate convex, oval wing mesh for the bee assistants. Plants retain organicGeometry.
-    const outline=[
+    let outline=[
       [-.50,0,.008],[-.43,.19,.035],[-.28,.30,.075],[-.06,.34,.10],
       [.18,.30,.086],[.38,.19,.05],[.50,0,.008],[.38,-.19,.05],
       [.18,-.30,.086],[-.06,-.34,.10],[-.28,-.30,.075],[-.43,-.19,.035]
     ];
+    // WebGL back-face culling requires consistent counter-clockwise front faces.
+    const wingArea=outline.reduce((sum,p,i)=>{const q=outline[(i+1)%outline.length];return sum+p[0]*q[1]-q[0]*p[1];},0);
+    if(wingArea<0)outline=outline.reverse();
     const positions=[],normals=[],indices=[];
     const emitSide=(sign)=>{
       const centerIndex=positions.length/3;
