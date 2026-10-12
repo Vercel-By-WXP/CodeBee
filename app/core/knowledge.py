@@ -29,7 +29,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import paths, revisions, skills
+from . import paths, platform_rules, revisions, skills
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "knowledge.json"
@@ -513,21 +513,117 @@ def learn_async(run_id):
     threading.Thread(target=_run, name="kb-learn", daemon=True).start()
 
 
+def seed_platform_rules():
+    """官方平台规则种子入库（幂等，让位人工编辑）。返回本次新建+刷新条数。
+
+    数据源 platform_rules.SEEDS（纯数据零依赖，摘自番茄作家课堂官方教程）。
+    对账与保护语义：
+    - 条目指纹=scope+标题；种入时的正文指纹记入 data/knowledge_seed_state.json；
+    - 库内无此条且无近似题 → 新建（approved，来源标注官方课堂）；
+    - 库内有且是我们种的、正文未被手改 → 官方内容更新时自动刷新
+      （旧文自动进修订历史）；
+    - 正文指纹对不上账（用户手改过）→ 永久让位，不再回写；
+    - 条目被停用 → 尊重停用；条目被删除 → 状态账留墓碑，不复活；
+    - 用户先建了同题/近似题条目 → 视为用户已拥有该知识，跳过不并不压。
+    """
+    state_path = paths.DATA_DIR / "knowledge_seed_state.json"
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            state = {}
+    except Exception:
+        state = {}
+    n = 0
+    dirty_state = False
+    with _LOCK:
+        for seed in platform_rules.SEEDS:
+            title = str(seed.get("title") or "").strip()
+            body = str(seed.get("body") or "").strip()
+            if not title or not body:
+                continue
+            scope = str(seed.get("scope") or platform_rules.SCOPE)
+            want_sha = revisions.content_sha256(body)
+            kid = _entry_id(scope, title)
+            items = _load().get("entries") or []
+            hit = next((x for x in items if x.get("id") == kid), None)
+            if hit is None and len(title) >= 4:
+                # 近似题占位（用户先建/历史合并改过题）→ 该主题有主，不并不压
+                hit = next((x for x in items
+                            if x.get("scope") == scope
+                            and len(str(x.get("title") or "")) >= 4
+                            and _title_sim(title, str(x.get("title") or ""))
+                            >= _NEAR_DUP_SIM), None)
+            if hit is None:
+                if kid in state:
+                    continue          # 曾种过、现被删：墓碑生效，不复活
+                it = upsert_entry(scope, title, body, tags=platform_rules.TAGS,
+                                  source=platform_rules.SOURCE,
+                                  as_of=platform_rules.AS_OF,
+                                  status="approved", confidence="high")
+                if it:
+                    state[it["id"]] = want_sha
+                    dirty_state = True
+                    n += 1
+                continue
+            lineage = (hit.get("id") in state
+                       or hit.get("source") == platform_rules.SOURCE)
+            if not lineage:
+                continue              # 用户自有条目，永不回写
+            if not hit.get("enabled", True):
+                continue              # 用户停用：保留停用不强制启用
+            cur_sha = revisions.content_sha256(str(hit.get("body") or ""))
+            recorded = state.get(hit.get("id"))
+            if recorded is None:
+                # 状态账缺失（账被清/旧版本种的）：以现状为准记账，不回写
+                state[hit["id"]] = cur_sha
+                dirty_state = True
+                continue
+            if recorded != cur_sha:
+                continue              # 用户手改过：永久让位
+            if cur_sha == want_sha:
+                continue              # 官方内容没变：零写入幂等
+            it = upsert_entry(scope, title, body, tags=platform_rules.TAGS,
+                              source=platform_rules.SOURCE,
+                              as_of=platform_rules.AS_OF,
+                              status="approved", confidence="high")
+            if it:
+                state[it["id"]] = want_sha
+                dirty_state = True
+                n += 1
+        if dirty_state:
+            try:
+                state_path.parent.mkdir(parents=True, exist_ok=True)
+                state_path.write_text(
+                    json.dumps(state, ensure_ascii=False, indent=1),
+                    encoding="utf-8")
+            except Exception:
+                pass
+    return n
+
+
 def migrate_drafts_approved():
     """一次性迁移：草稿闸门退役（默认直接转正），把历史 draft 全部转正。
 
-    幂等——没有 draft 时零写入。返回转正条数。"""
+    幂等——没有 draft 时零写入。返回转正条数。
+    顺带播种平台规则种子（seed_platform_rules，同样幂等）：这里是启动期
+    知识维护的唯一收口，避免为挂启动钩子去增 main.py 的行数（基线约束）。
+    """
     with _LOCK:
         data = _load()
         items = data.get("entries") or []
         dirty = [x for x in items if (x.get("status") or "draft") != "approved"]
         if not dirty:
-            return 0
-        for x in dirty:
-            x["status"] = "approved"
-            x["updated_at"] = _now()
-        _save(data)
-        return len(dirty)
+            pass
+        else:
+            for x in dirty:
+                x["status"] = "approved"
+                x["updated_at"] = _now()
+            _save(data)
+    try:
+        seed_platform_rules()
+    except Exception:
+        pass
+    return len(dirty)
 
 
 def view():
