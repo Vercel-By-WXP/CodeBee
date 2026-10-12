@@ -204,7 +204,7 @@ window.Hive3D = (function () {
   Scene.prototype.addLink=function(a,b,radius,color){const dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],length=Math.hypot(dx,dy,dz)||.001,rotX=Math.asin(clamp(dz/length,-1,1)),rotZ=Math.atan2(-dx,dy);this.add(this.cylinder,(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2,radius,length,radius,color,0,rotZ,rotX);};
   Scene.prototype.buildWorld=function(){
     const b=this.box,rb=this.roundBox,s=this.sphere;this.objects=[];
-    // Bright, calm blue-white studio with a continuous floor and a single clean feature wall.
+    // Bright, calm blue-white studio with a continuous floor and a single clean feature wall. The free camera is framed wide enough to keep all 14 stations visible at desktop aspect ratios.
     this.add(b,0,-.18,5.5,23,.28,34,[.97,.985,1,1]);
     this.add(b,0,2.70,-6.45,19,3.65,.24,[.10,.52,.89,1]);
     this.add(b,0,4.58,-6.30,19,.075,.12,[.985,.99,1,1]);
@@ -431,7 +431,7 @@ window.Hive3D = (function () {
     if(!this.gl||!this.active||this.displayMode!=="live3d")return;const gl=this.gl;const w=Math.max(1,this.cssW),h=Math.max(1,this.cssH);const dpr=Math.min(window.devicePixelRatio||1,1.6);
     const bw=Math.floor(w*dpr),bh=Math.floor(h*dpr);if(this.canvas.width!==bw||this.canvas.height!==bh){this.canvas.width=bw;this.canvas.height=bh;}
     gl.viewport(0,0,bw,bh);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);
-    const radius=27.0/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.1+Math.sin(this.pitch)*radius*.58,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.62,0],[0,1,0]);const proj=mat4.perspective(.40,w/h,.1,70);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
+    const radius=29.0/this.zoom;const eye=[Math.sin(this.yaw)*radius,3.1+Math.sin(this.pitch)*radius*.52,Math.cos(this.yaw)*radius-1.3];const view=mat4.lookAt(eye,[0,.62,0],[0,1,0]);const proj=mat4.perspective(.46,w/h,.1,80);const vp=mat4.multiply(mat4.multiply(proj,view),mat4.translate(this.panX,this.panY,0));this.viewProj=vp;
     gl.uniformMatrix4fv(this.uViewProj,false,vp);gl.uniform3f(this.uEyePosition,eye[0],eye[1],eye[2]);
     this.drawBatch(this.batchBuffers&&this.batchBuffers.opaque);
     const translucent=this.batchBuffers&&this.batchBuffers.transparent;
