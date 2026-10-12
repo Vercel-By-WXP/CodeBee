@@ -7106,30 +7106,87 @@ main.browser-page-active #page-settings > #sub-browser .browser-shell {
 .browser-home-capabilities b { color: var(--text); font-size: 11px; }
 .browser-home-capabilities small { overflow: hidden; font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Browser-first new tab: keep the workspace available, but let the page own
+   the canvas. Task context is an opt-in inspector instead of permanent chrome. */
+body.browser-context-collapsed .browser-context { display: none; }
+.browser-context-toggle { flex: none; }
+.browser-context-toggle[aria-expanded="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.browser-shortcuts { min-height: 43px; padding: 6px 14px; }
+.browser-home-workbench {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  width: min(680px, 100%);
+  min-height: 100%;
+  margin-inline: auto;
+  padding: 42px 28px 70px;
+  background: none;
+}
+.browser-home-hero {
+  grid-template-columns: auto minmax(0, 1fr);
+  width: min(520px, 100%);
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.browser-home-hero .browser-empty-mark { width: 48px; height: 48px; border-radius: 14px; }
+.browser-home-hero .browser-empty-mark .ico { width: 23px; height: 23px; }
+.browser-home-eyebrow { margin-bottom: 5px; font-size: 9px; letter-spacing: .16em; }
+.browser-home-hero h2 { font-size: 23px; }
+.browser-home-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(520px, 100%);
+  height: 48px;
+  padding: 0 8px 0 15px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 8px 26px color-mix(in srgb, var(--text) 7%, transparent);
+}
+.browser-home-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+.browser-home-search > .ico { width: 17px; height: 17px; flex: none; color: var(--muted); }
+.browser-home-search input {
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 13px;
+}
+.browser-home-search input:focus { border: 0; }
+.browser-home-search-go { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border: 0; border-radius: 9px; color: var(--muted); background: transparent; cursor: pointer; }
+.browser-home-search-go:hover { color: var(--accent); background: var(--panel2); }
+.browser-home-search-go .ico { width: 16px; height: 16px; }
+.browser-home-note { width: min(520px, 100%); color: var(--muted); font-size: 10px; letter-spacing: .04em; }
+
 @media (max-width: 900px) {
   main.browser-page-active { overflow-y: auto; }
   .browser-stage { flex-direction: column; overflow: visible; }
   .browser-context { flex: 0 0 auto; max-height: 310px; border-right: 0; border-bottom: 1px solid var(--border); }
   .browser-viewport { min-height: 430px; }
-  .browser-home-workbench { grid-template-rows: auto auto auto auto; padding: 14px; }
-  .browser-home-hero { grid-template-columns: auto minmax(0, 1fr); padding: 15px; }
-  .browser-home-mode { display: none; }
-  .browser-home-capabilities { grid-template-columns: 1fr; }
+  .browser-home-workbench { padding: 28px 18px 50px; gap: 16px; }
+  .browser-home-hero { grid-template-columns: auto minmax(0, 1fr); padding: 0; }
 }
 
 @media (max-width: 560px) {
   .browser-context { padding: 12px 10px; }
   .browser-viewport { min-height: 380px; }
-  .browser-home-workbench { padding: 10px; }
-  .browser-home-hero { grid-template-columns: 1fr; gap: 10px; }
+  .browser-home-workbench { padding: 24px 14px 46px; gap: 14px; }
+  .browser-home-hero { grid-template-columns: auto minmax(0, 1fr); gap: 10px; }
   .browser-home-hero .browser-empty-mark { width: 46px; height: 46px; border-radius: 12px; }
   .browser-home-hero .browser-empty-mark .ico { width: 22px; height: 22px; }
   .browser-home-hero h2 { font-size: 19px; }
   .browser-home-hero p { font-size: 11.5px; }
   .browser-home-task-row { align-items: flex-start; flex-direction: column; gap: 6px; }
   .browser-home-run { max-width: 100%; }
-  .browser-home-workflows { grid-template-columns: 1fr; }
-  .browser-home-action { min-height: 72px; }
+  .browser-home-search { height: 44px; }
 }
 
 /* 步骤行 flex 化后的防压缩补充（追加于文件尾防并行重排）：徽章/按钮不许被

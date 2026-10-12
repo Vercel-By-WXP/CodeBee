@@ -93,7 +93,7 @@ function browserRenderHomeTask(task, run, status, verifyPass) {
   });
   if (!task) {
     title.textContent = t("还没有任务");
-    meta.textContent = t("先新建任务，CodeBee 会在这里接管预览、验证与发布动作。");
+    meta.textContent = t("当前任务");
     runLine.textContent = t("等待任务进入工作台");
     Object.values(buttons).forEach((button) => { button.disabled = true; });
     return;
@@ -356,12 +356,31 @@ function browserOpenPreview() {
 
 function browserBind() {
   if (!$("browser-frame")) return;
+  const contextToggle = $("browser-context-toggle");
+  document.body.classList.add("browser-context-collapsed");
+  if (contextToggle) contextToggle.setAttribute("aria-expanded", "false");
+  if (contextToggle) contextToggle.addEventListener("click", () => {
+    const collapsed = document.body.classList.toggle("browser-context-collapsed");
+    contextToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  });
+  const homeSearch = $("browser-home-search");
+  if (homeSearch) homeSearch.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = homeSearch.querySelector("input");
+    browserNavigate(input && input.value);
+    if (input) input.value = "";
+  });
   $("browser-nav-form").addEventListener("submit", (e) => { e.preventDefault(); browserNavigate($("browser-address").value); });
   $("browser-back").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.index > 0) { t0.index--; t0.url = t0.history[t0.index]; browserDraw(); } });
   $("browser-forward").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.index < t0.history.length - 1) { t0.index++; t0.url = t0.history[t0.index]; browserDraw(); } });
   $("browser-reload").addEventListener("click", () => { const f = $("browser-frame"); if (f && !f.classList.contains("hidden")) f.src = f.src; });
   $("browser-home").addEventListener("click", () => browserNavigate(BROWSER_HOME));
-  $("browser-new-tab").addEventListener("click", () => { browserState.tabs.push({ id: "tab-" + Date.now(), url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }); browserState.active = browserState.tabs.length - 1; browserDraw(); });
+  $("browser-new-tab").addEventListener("click", () => {
+    browserState.tabs.push({ id: "tab-" + Date.now(), url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 });
+    browserState.active = browserState.tabs.length - 1;
+    browserDraw();
+    $("browser-address").focus();
+  });
   $("browser-open-external").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "_blank", "noopener"); });
   $("browser-frame-error-open").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "_blank", "noopener"); });
   $("browser-empty").addEventListener("click", (e) => {

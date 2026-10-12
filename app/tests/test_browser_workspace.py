@@ -17,7 +17,7 @@ class BrowserWorkspaceContractTests(unittest.TestCase):
         self.assertIn('id="browser-nav-form"', INDEX)
         self.assertIn('id="browser-frame"', INDEX)
         self.assertIn('id="browser-frame-error"', INDEX)
-        self.assertIn('id="browser-open-preview"', INDEX)
+        self.assertIn('id="browser-action-preview"', INDEX)
         for element_id in (
             "browser-context",
             "browser-task-select",
@@ -86,13 +86,15 @@ class BrowserWorkspaceContractTests(unittest.TestCase):
         self.assertIn("发布由 CodeBee 受控浏览器执行", INDEX)
         self.assertIn("browser-page-active", STYLE)
 
-    def test_browser_home_is_a_task_workbench(self):
-        for action in ("preview", "verify", "publish", "retry"):
-            self.assertIn('data-browser-home-action="%s"' % action, INDEX)
-        self.assertIn('id="browser-home-task-title"', INDEX)
-        self.assertIn('id="browser-home-run"', INDEX)
-        self.assertIn(".browser-home-workflows", STYLE)
-        self.assertIn("grid-template-columns: repeat(2", STYLE)
+    def test_browser_home_is_a_browser_new_tab(self):
+        self.assertIn('id="browser-home-search"', INDEX)
+        self.assertIn('placeholder="搜索网页，或输入网址"', INDEX)
+        self.assertIn('id="browser-context-toggle"', INDEX)
+        self.assertIn('id="browser-context"', INDEX)
+        self.assertIn('homeSearch.addEventListener("submit"', APP)
+        self.assertIn('body.browser-context-collapsed .browser-context', STYLE)
+        self.assertIn('"搜索网页，或输入网址": "Search the web or enter a URL"',
+                      (ROOT / "ui" / "i18n.js").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

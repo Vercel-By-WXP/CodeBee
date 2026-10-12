@@ -50,6 +50,10 @@
     // —— 短片段（拼接用）——
     "检查中…": "Checking…",
     "浏览器": "Browser",
+    "新标签页": "New tab",
+    "搜索网页，或输入网址": "Search the web or enter a URL",
+    "常用网站": "Shortcuts",
+    "任务面板": "Task panel",
     "本地浏览器工作区": "Local browser workspace",
     "工作上下文": "Work context",
     "本地": "Local",
