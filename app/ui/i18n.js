@@ -1484,6 +1484,7 @@
     "已写入：": "Saved: ",
     "仅管理": "Management only",
     "参与编排": "Join orchestration",
+    "支持续会话": "Session resume",
     "版本 ": "Version ",
     " → <b>": " → <b>",
     "（已是最新版本，无需升级）": " (already up to date — no upgrade needed)",
