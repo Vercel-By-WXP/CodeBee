@@ -63,8 +63,8 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("screenWidth:1.48,screenHeight:.82", ENGINE)
         # Bee assistant visual contract: wings sit at shoulder height and abdomen accents
         # follow the body shell rather than floating in front of the model.
-        self.assertIn("this.add(this.organic,x-.56,by+.065,bz+.31,.70,.68,.075,[.18,.36,.60,.16],0,.28)", ENGINE)
-        self.assertIn("this.add(this.organic,x+.56,by+.065,bz+.31,.70,.68,.075,[.18,.36,.60,.16],0,-.28)", ENGINE)
+        self.assertIn("this.add(this.organic,x-.57,by+.065,bz+.31,.92,.46,.045,[.16,.34,.58,.19],0,.24)", ENGINE)
+        self.assertIn("this.add(this.organic,x+.57,by+.065,bz+.31,.92,.46,.045,[.16,.34,.58,.19],0,-.24)", ENGINE)
         self.assertIn("const root=[x+side*.28,by+.015,bz+.31]", ENGINE)
         self.assertIn("const mid=[x+side*.60,by+.10,bz+.31]", ENGINE)
         self.assertIn("const tip=[x+side*.91,by+.13,bz+.31]", ENGINE)
