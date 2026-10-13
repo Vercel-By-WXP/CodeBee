@@ -1,0 +1,198 @@
+/* Reference button system
+ *
+ * The attached reference uses a quiet light canvas, compact white secondary
+ * controls, a near-black primary action, and bright blue switches. Keep the
+ * rules token-based so the same hierarchy remains legible across every skin.
+ */
+:root {
+  --ref-button-primary: #202124;
+  --ref-button-primary-hover: #34363a;
+  --ref-button-primary-active: #111214;
+  --ref-button-secondary-bg: var(--panel);
+  --ref-button-secondary-hover: var(--panel2);
+  --ref-button-border: var(--border-strong);
+  --ref-button-border-hover: color-mix(in srgb, var(--text) 28%, var(--border));
+  --ref-button-muted: #6b7078;
+  --ref-button-focus: #2f9bf4;
+  --ref-button-danger: #d64b5f;
+  --ref-button-radius: 9px;
+}
+
+/* Main app buttons: one hierarchy, one interaction model. */
+button {
+  transition: background-color .15s ease, border-color .15s ease,
+    color .15s ease, box-shadow .15s ease, transform .08s ease;
+}
+
+button.primary,
+button.ghost,
+button.danger,
+a.button {
+  box-sizing: border-box;
+  min-height: 34px;
+  border-radius: var(--ref-button-radius);
+  font-family: inherit;
+  font-weight: 550;
+  line-height: 1.2;
+  transition: background-color .15s ease, border-color .15s ease,
+    color .15s ease, box-shadow .15s ease, transform .08s ease;
+}
+
+button.primary,
+a.button.primary,
+.wl-btn.primary,
+.cmp-send .primary.round,
+.rd-chat-tools .primary.round {
+  background: var(--ref-button-primary);
+  color: #fff;
+  border: 1px solid var(--ref-button-primary);
+  box-shadow: none;
+}
+
+button.primary:hover,
+a.button.primary:hover,
+.wl-btn.primary:hover,
+.cmp-send .primary.round:hover,
+.rd-chat-tools .primary.round:hover {
+  background: var(--ref-button-primary-hover);
+  border-color: var(--ref-button-primary-hover);
+  filter: none;
+}
+
+button.primary:active,
+a.button.primary:active,
+.wl-btn.primary:active,
+.cmp-send .primary.round:active,
+.rd-chat-tools .primary.round:active { background: var(--ref-button-primary-active); transform: translateY(1px); }
+
+button.ghost,
+a.button.ghost,
+.wl-btn.ghost {
+  background: var(--ref-button-secondary-bg);
+  color: var(--text);
+  border: 1px solid var(--ref-button-border);
+}
+
+button.ghost:hover,
+a.button.ghost:hover,
+.wl-btn.ghost:hover {
+  background: var(--ref-button-secondary-hover);
+  border-color: var(--ref-button-border-hover);
+}
+
+button.danger,
+a.button.danger {
+  background: var(--ref-button-secondary-bg);
+  color: var(--ref-button-danger);
+  border-color: color-mix(in srgb, var(--ref-button-danger) 55%, var(--ref-button-border));
+}
+
+button.danger:hover,
+a.button.danger:hover {
+  background: color-mix(in srgb, var(--ref-button-danger) 8%, var(--ref-button-secondary-bg));
+  border-color: var(--ref-button-danger);
+}
+
+button.small,
+a.button.small { min-height: 30px; padding: 5px 11px; font-size: 12px; }
+
+button.icon-btn,
+button.round,
+button.wl-btn,
+button.qitem,
+button.side-search,
+button.arch-toggle,
+button.insp-tab,
+button.ctx-item,
+button.rail-btn,
+button.set-item,
+button.brand-menu-item {
+  transition: background-color .15s ease, border-color .15s ease,
+    color .15s ease, box-shadow .15s ease, transform .08s ease;
+}
+
+/* Icon, navigation, tab, and menu controls stay quiet like the reference
+ * sidebar; only action buttons carry the bordered control treatment. */
+button.icon-btn,
+button.qitem,
+button.side-search,
+button.arch-toggle,
+button.insp-tab,
+button.ctx-item,
+button.rail-btn,
+button.set-item,
+button.brand-menu-item {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+}
+
+/* Command-palette filters are tab pills, even though their markup is
+ * intentionally classless. Keep them out of the action-button hierarchy. */
+.cmdk-tabs button {
+  min-height: 0;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font-weight: 400;
+}
+.cmdk-tabs button:hover,
+.cmdk-tabs button.on {
+  background: var(--panel2);
+  color: var(--text);
+}
+
+
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { filter: none; }
+
+/* Settings and plugin switch: match the reference's 34×20 blue toggle. */
+.cs-switch { width: 34px; height: 20px; }
+.cs-switch .cs-track,
+.mk-card .switch input,
+.hook-card .switch input {
+  background: var(--border-strong);
+  border: 0;
+  transition: background-color .15s ease;
+}
+.cs-switch .cs-track::after,
+.mk-card .switch input::after,
+.hook-card .switch input::after {
+  width: 18px;
+  height: 18px;
+  top: 2px;
+  left: 2px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(20, 24, 30, .18);
+  transition: left .15s ease;
+}
+.cs-switch input:checked + .cs-track,
+.mk-card .switch input:checked,
+.hook-card .switch input:checked { background: #2f9bf4; }
+.cs-switch .cs-track::after { width: 14px; height: 14px; top: 3px; left: 3px; }
+.cs-switch input:checked + .cs-track::after { left: 17px; }
+.mk-card .switch input:checked::after,
+.hook-card .switch input:checked::after { left: 14px; }
+
+/* Dashboard has its own semantic tokens; keep the same primary/secondary
+ * hierarchy without changing its data colours. */
+#gate-ok,
+.sw-btn {
+  border-radius: var(--ref-button-radius);
+  transition: background-color .15s ease, border-color .15s ease,
+    color .15s ease, transform .08s ease;
+}
+#gate-ok {
+  background: var(--ref-button-primary);
+  border-color: var(--ref-button-primary);
+  color: #fff;
+}
+#gate-ok:hover { background: var(--ref-button-primary-hover); }
+.sw-btn { background: var(--panel); color: var(--t2); border-color: var(--line-2); }
+.sw-btn:hover { background: var(--panel2); border-color: var(--ref-button-border-hover); color: var(--t1); }
+
+@media (prefers-reduced-motion: reduce) {
+  button, a.button, .cs-track, .cs-track::after { transition: none !important; }
+}
