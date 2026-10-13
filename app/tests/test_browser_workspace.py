@@ -93,6 +93,16 @@ class BrowserWorkspaceContractTests(unittest.TestCase):
         self.assertIn("browserWorkspaceFallback", APP)
         self.assertIn("browser-cdp-screen", STYLE)
 
+    def test_publish_busy_state_keeps_controlled_browser_and_retries_navigation(self):
+        open_body = re.search(
+            r"function browserWorkspaceOpen\([\s\S]*?(?=\nfunction browserWorkspacePointer)", APP
+        ).group(0)
+        busy_branch = re.search(r"if \(e && e\.status === 409\) \{([\s\S]*?)\n    \}", open_body)
+        self.assertIsNotNone(busy_branch)
+        self.assertIn("window.setInterval", busy_branch.group(1))
+        self.assertIn('"发布操作正在使用受控浏览器，完成后将继续打开作者后台。"', APP)
+        self.assertIn("browserWorkspaceFallback(url", open_body)
+
     def test_browser_home_is_a_browser_new_tab(self):
         self.assertIn('id="browser-home-search"', INDEX)
         self.assertIn('placeholder="搜索网页，或输入网址"', INDEX)

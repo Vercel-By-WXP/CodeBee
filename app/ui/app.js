@@ -440,9 +440,31 @@ function browserWorkspaceOpen(url, platform) {
   browserWorkspaceRequest(platform, "navigate", { url }).then((data) => {
     if (browserWorkspaceKey !== key) return;
     browserWorkspaceShow(data);
+    clearInterval(browserWorkspacePoll);
     browserWorkspacePoll = window.setInterval(() => browserWorkspaceRefresh(platform), 1800);
-    }).catch((e) => {
-    if (browserWorkspaceKey === key) browserWorkspaceFallback(url, e && e.message);
+  }).catch((e) => {
+    if (browserWorkspaceKey !== key) return;
+    if (e && e.status === 409) {
+      // Publishing temporarily owns the shared CDP tab. Keep the controlled
+      // workspace selected and retry navigation when that operation releases it.
+      const hint = $("browser-hint");
+      if (hint) hint.textContent = t("发布操作正在使用受控浏览器，完成后将继续打开作者后台。");
+      clearInterval(browserWorkspacePoll);
+      browserWorkspacePoll = window.setInterval(() => {
+        if (browserWorkspaceKey !== key) return;
+        browserWorkspaceRequest(platform, "navigate", { url }).then((data) => {
+          if (browserWorkspaceKey !== key) return;
+          browserWorkspaceShow(data);
+          clearInterval(browserWorkspacePoll);
+          browserWorkspacePoll = window.setInterval(() => browserWorkspaceRefresh(platform), 1800);
+        }).catch((retryError) => {
+          if (retryError && retryError.status === 409) return;
+          if (browserWorkspaceKey === key) browserWorkspaceFallback(url, retryError && retryError.message);
+        });
+      }, 1800);
+      return;
+    }
+    browserWorkspaceFallback(url, e && e.message);
   });
 }
 

@@ -12,6 +12,7 @@
   const EN = {
     "番茄和七猫优先使用 CodeBee 受控浏览器；连接失败时会切回嵌入页面。发布操作进行中时，工作区会暂时锁定。 ": "CodeBee's controlled browser is preferred for Fanqie and Qimao. The embedded page is used if it cannot connect. The workspace is temporarily locked while a publishing operation is running.",
     "受控浏览器暂不可用，已切回嵌入页面；如网站拒绝嵌入，请用系统浏览器继续。": "The controlled browser is unavailable, so the embedded page is shown. If the site blocks embedding, continue in your system browser.",
+    "发布操作正在使用受控浏览器，完成后将继续打开作者后台。": "The controlled browser is busy publishing. The author dashboard will open when publishing finishes.",
     "浏览器没有返回页面画面": "The browser did not return a page image",
     "点击坐标无效": "Invalid click coordinates",
     "点击位置超出浏览器窗口": "The click is outside the browser window",
