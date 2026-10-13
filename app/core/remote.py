@@ -88,8 +88,45 @@ def cloudflared_exe() -> str:
             if os.path.isfile(guess):
                 return guess
         return ""
-    guess = os.path.join(os.environ.get("ProgramFiles(x86)", ""), "cloudflared", "cloudflared.exe")
-    return guess if os.path.isfile(guess) else ""
+    for base in (os.environ.get("LOCALAPPDATA", ""),
+                 os.environ.get("ProgramFiles(x86)", "")):
+        if not base:
+            continue
+        for sub in ("Microsoft\\WinGet\\Packages\\Cloudflare.cloudflared_"
+                    "Microsoft.Winget.Source_8wekyb3d8bbwe",
+                    "cloudflared"):
+            guess = os.path.join(base, sub, "cloudflared.exe")
+            if os.path.isfile(guess):
+                return guess
+    return ""
+
+
+def ensure_cloudflared() -> bool:
+    """自动安装 cloudflared（Windows winget / macOS brew）。
+
+    安装后重新检测可执行文件；返回 True 表示安装成功且文件可用。
+    不弹窗、不阻塞主线程超过 3 分钟（winget 一般 30 秒内完成）。
+    """
+    if cloudflared_exe():
+        return True
+    import subprocess
+    try:
+        if sys.platform == "win32":
+            proc = subprocess.run(
+                ["winget", "install", "--accept-source-agreements",
+                 "--accept-package-agreements", "--silent",
+                 "Cloudflare.cloudflared"],
+                capture_output=True, timeout=180,
+                creationflags=0x08000000)  # CREATE_NO_WINDOW
+        else:
+            proc = subprocess.run(
+                ["brew", "install", "cloudflared"],
+                capture_output=True, timeout=180)
+        if proc.returncode != 0:
+            return False
+    except Exception:
+        return False
+    return bool(cloudflared_exe())
 
 
 def has_local_creds() -> bool:

@@ -2866,7 +2866,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "非法 Content-Length"})
         body = self._body()
         try:
-            meta = attachments.save_pending(body.get("name"), body.get("data"))
+            meta = attachments.save_pending(body.get("name"), body.get("data"),
+                                            body.get("relative_path"))
         except ValueError as e:
             return self._json(400, {"error": str(e)})
         return self._json(200, {"ok": True, "attachment": meta})
@@ -3975,10 +3976,15 @@ def main():
             print("[CodeBee] 正在建立 Cloudflare 快速隧道（公网地址几秒后打印；"
                   "若打不开说明当前网络不支持，可改用固定域名或 Tailscale）…")
         else:
-            cf = ("winget install Cloudflare.cloudflared" if os.name == "nt"
-                  else "brew install cloudflared")
-            print("[CodeBee] （未检测到 cloudflared，跳过公网隧道；"
-                  "%s 后重启即可获得公网地址）" % cf)
+            print("[CodeBee] 未检测到 cloudflared，正在自动安装（约 30 秒，不弹窗）…")
+            if remote.ensure_cloudflared():
+                if remote.start_quick_tunnel(args.port, _announce_public):
+                    print("[CodeBee] 正在建立 Cloudflare 快速隧道（公网地址几秒后打印）…")
+                else:
+                    print("[CodeBee] cloudflared 已装但隧道启动失败，可改用固定域名或 Tailscale")
+            else:
+                print("[CodeBee] 自动安装失败（无 winget/brew 或网络不通）；"
+                      "手动安装后重启即可获得公网地址")
     atexit.register(remote.stop_quick_tunnel)
     if args.host != "127.0.0.1":
         lan = remote.lan_ip()

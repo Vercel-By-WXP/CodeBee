@@ -8588,3 +8588,16 @@ html[data-theme="dark"] .cmp-box,
 html[data-theme="dark"] .panel {
   border-color: var(--border);
 }
+/* Keep the conversation composer anchored while the surrounding page or history scrolls. */
+#run-detail.chat-mode .rd-chat-bar {
+  position: sticky;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  z-index: 8;
+  margin-bottom: max(8px, env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+#run-detail.chat-mode .rd-chat-flow {
+  scroll-padding-bottom: 132px;
+}
