@@ -16434,9 +16434,10 @@ function kpiCard(label, value, sub, wide, icon, opts) {
   const top = (ico || delta) ? '<div class="kpi-top">' + ico + delta + "</div>" : "";
   const spark = (opts.spark && opts.spark.length > 1)
     ? '<div class="kpi-spark">' + kpiSparkSvg(opts.spark, tone) + "</div>" : "";
+  const valueClass = opts.emptyValue ? " kpi-v-empty" : "";
   return '<div class="kpi' + (wide ? " wide" : "") + (top ? " has-top" : "") +
     (spark ? " has-spark" : "") + '">' + top +
-    '<div class="kpi-v">' + value + "</div>" +
+    '<div class="kpi-v' + valueClass + '">' + value + "</div>" +
     '<div class="kpi-l">' + (top ? "" : ico) + esc(label) + "</div>" +
     (sub ? '<div class="kpi-s">' + esc(sub) + "</div>" : "") + spark + "</div>";
 }
@@ -16854,7 +16855,8 @@ function renderUsage() {
       tot.perf_samples
         ? t("P95 ") + fmtMs(tot.p95_first_token_ms) + t(" · 吞吐 ") +
           (tot.avg_tokens_per_sec || 0) + t(" tok/s · 样本 ") + fmtTok(tot.perf_samples) + t(" 次")
-        : t("仅内置直连流式调用可测"), false, "i-cpu", { tone: "calm" }),
+        : t("仅内置直连流式调用可测"), false, "i-cpu",
+      { tone: "calm", emptyValue: !tot.perf_samples }),
     kpiCard(t("压缩省量"), tot.compaction_saved ? fmtTok(tot.compaction_saved) : "—",
       tot.compaction_saved
         ? t("上下文折叠净省，与消耗并列成账")

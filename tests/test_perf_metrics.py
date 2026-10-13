@@ -184,6 +184,15 @@ class TestUsagePageKpi(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertIn(key + ":", i18n)
         self.assertIn('t("首字延迟")', block)
+        self.assertIn('emptyValue: !tot.perf_samples', block)
+
+    def test_empty_kpi_value_has_narrow_card_style(self):
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        css = (root / "app" / "ui" / "style.css").read_text(encoding="utf-8")
+        self.assertIn(".kpi-v-empty", css)
+        self.assertIn("white-space: normal", css)
 
 
 if __name__ == "__main__":

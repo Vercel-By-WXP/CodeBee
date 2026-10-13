@@ -1722,6 +1722,16 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
   font-size: 22px; font-weight: 700; letter-spacing: -.02em;
   font-family: var(--mono); white-space: nowrap;
 }
+/* Empty metrics are labels rather than numbers. Let the unavailable state
+   fit narrow KPI cards instead of overflowing into the next card. */
+.kpi-v-empty {
+  font-family: inherit;
+  font-size: clamp(15px, 1.45vw, 18px);
+  letter-spacing: -.03em;
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .kpi-s {
   color: var(--muted); font-size: 11px; margin-top: 6px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
