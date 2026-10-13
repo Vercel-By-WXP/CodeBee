@@ -32,6 +32,9 @@ class TestKnowledgeStore(BaseTest):
         # approved 正文不被 draft 覆盖，新内容进修订候选
         self.assertIn("连载模式或完本", it2["body"])
         self.assertEqual(len(it2["revisions"]), 1)
+        self.assertEqual(it2["confidence"], "medium")
+        self.assertRegex(it2["as_of"], r"^\d{4}-\d{2}-\d{2}$")
+
         # draft 旧条被 approved 新条覆盖
         d = knowledge.upsert_entry("novel", "草稿条目", "v1", status="draft")
         d2 = knowledge.upsert_entry("novel", "草稿条目", "v2 确认版", status="approved")
@@ -50,6 +53,23 @@ class TestKnowledgeStore(BaseTest):
         knowledge.upsert_entry("code", "纯草稿条目", "未确认", status="draft")
         self.assertEqual(knowledge.view()["drafts"], 1)
 
+        # 被已确认事实拒绝的 draft 只能留候选溯源，不能改在线 provenance
+        confirmed = knowledge.upsert_entry(
+            "code", "已确认事实", "旧正文", source="official",
+            source_file="official.md", as_of="2026-01-01",
+            status="approved", confidence="high")
+        candidate = knowledge.upsert_entry(
+            "code", "已确认事实", "未经确认的新正文", source="run-1",
+            source_file="run-1.json", as_of="2026-10-13",
+            status="draft", confidence="low")
+        self.assertEqual(candidate["body"], "旧正文")
+        self.assertEqual(candidate["source"], "official")
+        self.assertEqual(candidate["source_file"], "official.md")
+        self.assertEqual(candidate["as_of"], "2026-01-01")
+        self.assertEqual(candidate["confidence"], "high")
+        self.assertEqual(candidate["revisions"][-1]["as_of"], "2026-10-13")
+        self.assertEqual(candidate["revisions"][-1]["confidence"], "low")
+
         # 4) entry_op：启停 / 转正 / 编辑 / 删除 / 非法
         kid = d["id"]
         knowledge.entry_op(kid, "disable")
@@ -65,7 +85,7 @@ class TestKnowledgeStore(BaseTest):
         self.assertEqual(knowledge.entry_op("nope", "delete"), "知识条目不存在")
         self.assertTrue(str(knowledge.entry_op(kid, "bad-op")).startswith("未知操作"))
         self.assertIsNone(knowledge.entry_op(kid, "delete"))
-        self.assertEqual(len(knowledge.list_entries()), 2)
+        self.assertEqual(len(knowledge.list_entries()), 3)
 
         # 5) 提炼守卫：run 不存在 → 0（无编排者/无产出同样静默跳过，宁缺毋滥）
         self.assertEqual(knowledge.learn_from_run("no-such-run"), 0)

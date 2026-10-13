@@ -164,7 +164,8 @@ def upsert_entry(scope, title, body, tags=None, source="", source_file="",
             old_body = str(it.get("body") or "")
             old_rev = it.get("revision_id") or ""
             new_rev = revisions.make_revision("kbrev", body, source=source)
-            if status == "approved" or it.get("status") != "approved":
+            accepted = status == "approved" or it.get("status") != "approved"
+            if accepted:
                 if old_body and old_body != body:
                     it.setdefault("revisions", []).append(
                         revisions.revision_record(
@@ -179,20 +180,25 @@ def upsert_entry(scope, title, body, tags=None, source="", source_file="",
             else:
                 it.setdefault("revisions", []).append(
                     revisions.revision_record("kbrev", body, source=source,
-                                               extra={"body": body}))
+                                               extra={"body": body,
+                                                      "as_of": (str(as_of)[:10]
+                                                                if as_of else ""),
+                                                      "confidence": confidence or "",
+                                                      "source_file": source_file or ""}))
                 it["revisions"] = it["revisions"][-5:]   # 最多留 5 条修订候选
             for tg in tags:
                 if tg not in (it.get("tags") or []):
                     it["tags"] = (it.get("tags") or []) + [tg]
             it["tags"] = (it.get("tags") or [])[:8]
-            if as_of:
-                it["as_of"] = str(as_of)[:10]
-            if confidence:   # 合并时也可提升/回落置信度（high 覆盖 medium 合理）
-                it["confidence"] = confidence
-            if source:
-                it["source"] = source
-            if source_file:
-                it["source_file"] = source_file
+            if accepted:
+                if as_of:
+                    it["as_of"] = str(as_of)[:10]
+                if confidence:   # 合并时也可提升/回落置信度（high 覆盖 medium 合理）
+                    it["confidence"] = confidence
+                if source:
+                    it["source"] = source
+                if source_file:
+                    it["source_file"] = source_file
             it["updated_at"] = _now()
             _save(data)
             return it
