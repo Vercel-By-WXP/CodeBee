@@ -102,30 +102,34 @@ async function launch() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '打开 CodeBee', click: showWindow },
     { label: '下载桌面新版', click: () => void shell.openExternal(RELEASES_URL) },
+    { label: '打开桌面日志', click: () => backend?.logPath && void shell.openPath(path.dirname(backend.logPath)) },
+    { label: '打开数据目录', click: () => backend && void shell.openPath(backend.dataDir) },
     { type: 'separator' }, { label: '退出 CodeBee', click: () => void requestQuit() },
   ]));
-  const template = [
-    ...(process.platform === 'darwin' ? [{ label: 'CodeBee', submenu: [
+  if (process.platform === 'darwin') {
+    const template = [
+      { label: 'CodeBee', submenu: [
       { role: 'about' }, { type: 'separator' },
       { label: '下载桌面新版', click: () => void shell.openExternal(RELEASES_URL) },
       { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
       { type: 'separator' }, { label: '退出 CodeBee', accelerator: 'Command+Q', click: () => void requestQuit() },
-    ] }] : [{ label: 'CodeBee', submenu: [
-      { label: '打开 CodeBee', click: showWindow },
-      { label: '退出 CodeBee', accelerator: 'Alt+F4', click: () => void requestQuit() },
-    ] }]),
-    { label: '编辑', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' },
-      { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
-    { label: '视图', submenu: [{ label: '刷新界面', accelerator: 'CmdOrCtrl+R',
-      click: () => window?.webContents.reload() }, { role: 'resetZoom' }, { role: 'zoomIn' },
-      { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
-    { label: '帮助', submenu: [
-      { label: '下载桌面新版', click: () => void shell.openExternal(RELEASES_URL) },
-      { label: '打开桌面日志', click: () => backend?.logPath && void shell.openPath(path.dirname(backend.logPath)) },
-      { label: '打开数据目录', click: () => backend && void shell.openPath(backend.dataDir) },
-    ] },
-  ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+      ] },
+      { label: '编辑', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
+      { label: '视图', submenu: [{ label: '刷新界面', accelerator: 'CmdOrCtrl+R',
+        click: () => window?.webContents.reload() }, { role: 'resetZoom' }, { role: 'zoomIn' },
+        { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
+      { label: '帮助', submenu: [
+        { label: '下载桌面新版', click: () => void shell.openExternal(RELEASES_URL) },
+        { label: '打开桌面日志', click: () => backend?.logPath && void shell.openPath(path.dirname(backend.logPath)) },
+        { label: '打开数据目录', click: () => backend && void shell.openPath(backend.dataDir) },
+      ] },
+    ];
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  } else {
+    // Windows should use the compact window chrome; utility actions live in the tray.
+    Menu.setApplicationMenu(null);
+  }
   app.setAboutPanelOptions({ applicationName: 'CodeBee', applicationVersion: app.getVersion(),
     version: '桌面预览版', copyright: 'CodeBee · All agents, one hive.' });
   await startBackend();
