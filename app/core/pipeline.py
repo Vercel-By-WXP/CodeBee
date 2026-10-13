@@ -1641,12 +1641,12 @@ def _run_code(run, task, agents, ev, stats, mode):
 
     # ---- 规划。低风险短任务直接把目标作为单步计划，省掉一次独立模型调用；
     # 附件或较长的用户背景仍先规划，避免快速路径漏读约束。
-    fast_path = (mode == "fast" or
+    fast_path = (not task.get("plan_mode") and (mode == "fast" or
                  (mode == "auto" and difficulty == "easy"
                   and not task.get("attachments")
-                  and user_context_len < 600))
+                  and user_context_len < 600)))
     planned = False
-    if mode in ("auto", "expert") and not fast_path:
+    if (task.get("plan_mode") or mode in ("auto", "expert")) and not fast_path:
         _wait_gate(run_id, ev)
         plan_step, plan_log = store.add_step(run_id, "plan", impl["id"], impl.get("label"),
                                              note=route.get("implementer", ""))
@@ -2356,6 +2356,9 @@ def _run_direct(run, task, agents, ev, stats, mode):
                               .replace("__CONTEXT__", task.get("context") or "（无）"))
             if task.get("attachments") and "codebee-attachments:start" not in prompt:
                 prompt += "\n\n## 用户背景与附件\n" + (task.get("context") or "")
+            if task.get("plan_mode"):
+                prompt += ("\n\n## 计划模式\n先给出简明、可执行的步骤计划，再按计划逐步完成；"
+                           "完成后逐项核对结果。不要只输出计划，除非用户明确要求只做规划。")
             note = route.get("implementer", "")
             images = _task_images(task, workdir)
         else:
@@ -4005,6 +4008,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         .replace("__STYLE__", style_tpl)
                         .replace("__QUALITY_GATE__", novel_quality.opening_requirements(i, wpc))
                         .replace("__WORDS__", str(wpc)))
+                if task.get("plan_mode"):
+                    return prompt + ("\n\n## 计划模式\n先列出本章可执行的简要步骤，再依此起草；"
+                                     "交稿前按步骤检查。不要只输出计划。")
+                return prompt
 
             n_variants = max(1, min(3, int(serial.get("variants") or 1)))
             race = (n_variants >= 2 and not _compaction_enabled()
@@ -5242,6 +5249,9 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                  .replace("__GOAL__", task["goal"])
                  .replace("__CONTEXT__", task.get("context") or "（无）")
                  .replace("__RUBRIC__", "、".join(dims) if dims else "（按流程默认维度）"))
+            if task.get("plan_mode"):
+                p += ("\n\n## 计划模式\n先给出简明、可执行的步骤计划，再依计划完成稿件；"
+                      "交付前逐项核对计划与结果。不要只输出计划，除非用户明确要求只做规划。")
             if outline:
                 p += "\n\n## 编排者大纲（按要点组织稿件）\n" + \
                      "\n".join("- " + i for i in outline["items"])

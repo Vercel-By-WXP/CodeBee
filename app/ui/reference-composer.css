@@ -34,6 +34,44 @@
   #sub-tasks .cmp-bar { min-height: 38px; padding: 2px 0 0; }
   #sub-tasks #btn-create.round { width: 30px; height: 30px; }
 
+  #sub-tasks .att-strip { position: relative; }
+  #sub-tasks .cmp-add-wrap { position: relative; }
+  #sub-tasks .cmp-add-btn {
+    width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%;
+    justify-content: center; background: var(--panel2); color: var(--text);
+  }
+  #sub-tasks .cmp-add-btn .ico { width: 17px; height: 17px; }
+  #sub-tasks .cmp-add-btn > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+  #sub-tasks .cmp-add-menu {
+    position: absolute; z-index: 20; left: 0; bottom: calc(100% + 10px);
+    width: min(340px, calc(100vw - 32px)); max-height: min(470px, calc(100dvh - 150px));
+    overflow: auto; padding: 8px; border: 1px solid var(--border);
+    border-radius: 14px; background: var(--panel); color: var(--text);
+    box-shadow: 0 12px 36px rgba(24,32,42,.17);
+  }
+  #sub-tasks .cmp-add-kicker { padding: 5px 8px; color: var(--muted); font-size: 11px; font-weight: 600; }
+  #sub-tasks .cmp-add-item {
+    display: flex; width: 100%; min-height: 38px; align-items: center; gap: 9px;
+    padding: 6px 8px; border: 0; border-radius: 9px; background: transparent;
+    color: inherit; text-align: left; cursor: pointer;
+  }
+  #sub-tasks .cmp-add-item:hover, #sub-tasks .cmp-add-item:focus-visible { background: var(--panel2); outline: none; }
+  #sub-tasks .cmp-add-item > .ico { width: 16px; height: 16px; flex: none; color: var(--muted); }
+  #sub-tasks .cmp-add-item > span:not(.cmp-plugin-mark) { display: grid; min-width: 0; gap: 2px; }
+  #sub-tasks .cmp-add-item b { font-size: 12px; font-weight: 500; }
+  #sub-tasks .cmp-add-item small { color: var(--muted); font-size: 10px; line-height: 1.35; }
+  #sub-tasks .cmp-add-divider { height: 1px; margin: 5px 4px; background: var(--border); }
+  #sub-tasks .cmp-add-check { width: 16px; margin-left: auto; color: #16845b; font-size: 15px; }
+  #sub-tasks .cmp-add-item.is-on .cmp-add-check::before { content: "✓"; }
+  #sub-tasks .cmp-plugin-mark {
+    display: grid; width: 17px; height: 17px; flex: none; place-items: center;
+    border-radius: 5px; color: #fff; font-size: 9px; font-weight: 700;
+  }
+  #sub-tasks .cmp-plugin-mark.docs { background: #4385ed; }
+  #sub-tasks .cmp-plugin-mark.pdf { background: #db5260; }
+  #sub-tasks .cmp-plugin-mark.sheets { background: #4a9a68; }
+  #sub-tasks .cmp-plugin-mark.slides { background: #d98245; }
+
   /* These controls live at the bottom of the viewport. Open into the
    * available reading area so every option stays reachable. */
   #sub-tasks #type-menu {
@@ -63,4 +101,5 @@
 /* Keep the separate folder strip in normal flow on touch layouts. */
 @media (max-width: 900px) {
   #sub-tasks .form > .cmp-pills { margin-bottom: 0; }
+  #sub-tasks .cmp-add-menu { position: fixed; left: 16px; bottom: 76px; }
 }

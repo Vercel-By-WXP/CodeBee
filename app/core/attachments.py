@@ -68,7 +68,24 @@ def _safe_name(raw):
     return name[:120]
 
 
-def save_pending(name, data_b64):
+def _safe_relative_path(raw):
+    """Normalize a browser-supplied folder path without permitting traversal."""
+    raw = str(raw or "").replace("\\", "/")
+    parts = raw.split("/")
+    clean = []
+    for part in parts:
+        if part in ("", ".", ".."):
+            if part == "":
+                continue
+            raise ValueError("文件夹附件路径无效")
+        part = _safe_name(part)
+        clean.append(part)
+    if not clean:
+        raise ValueError("文件夹附件路径无效")
+    return "/".join(clean[:24])
+
+
+def save_pending(name, data_b64, relative_path=None):
     """校验并保存一个待提交附件。返回 {id,name,size,mime}；失败抛 ValueError。"""
     name = _safe_name(name)
     ext = Path(name).suffix.lower()
@@ -85,10 +102,13 @@ def save_pending(name, data_b64):
         ".doc", ".xls", ".ppt", ".rtf", ".odt", ".ods") else MAX_BYTES
     if len(data) > cap:
         raise ValueError("附件超过 %dMB: %s" % (cap // 1024 // 1024, name))
+    rel = _safe_relative_path(relative_path) if relative_path else ""
     fid = secrets.token_hex(8)
     mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
     (_pending_dir() / fid).write_bytes(data)
     meta = {"id": fid, "name": name, "size": len(data), "mime": mime}
+    if rel:
+        meta["relative_path"] = rel
     (_pending_dir() / (fid + ".json")).write_text(
         json.dumps(meta, ensure_ascii=False), encoding="utf-8")
     return meta
@@ -357,23 +377,29 @@ def commit_to_workdir(workdir, ids):
             meta = json.loads((pend / (fid + ".json")).read_text(encoding="utf-8"))
         except Exception:
             pass
+        rel = _safe_relative_path(meta.get("relative_path")) if meta.get("relative_path") else ""
         name = _safe_name(meta.get("name") or fid)
+        if rel:
+            name = rel + "/" + name
         stem, ext = Path(name).stem, Path(name).suffix
         i = 2
+        relative_dir = str(Path(name).parent).replace("\\", "/")
         while (adir / name).exists():
-            name = "%s-%d%s" % (stem, i, ext)
+            filename = "%s-%d%s" % (stem, i, ext)
+            name = (relative_dir + "/" + filename) if relative_dir != "." else filename
             i += 1
         try:
-            adir.mkdir(parents=True, exist_ok=True)
-            f.replace(adir / name)  # 同盘 move；跨盘回落 copy+delete
-            if not (adir / name).is_file():
-                (adir / name).write_bytes(f.read_bytes())
+            target = adir / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            f.replace(target)  # 同盘 move；跨盘回落 copy+delete
+            if not target.is_file():
+                target.write_bytes(f.read_bytes())
                 f.unlink(missing_ok=True)
         except OSError:
             continue
         finally:
             (pend / (fid + ".json")).unlink(missing_ok=True)
-        item = {"name": name,
+        item = {"name": name.rsplit("/", 1)[-1],
                 "size": meta.get("size") or (adir / name).stat().st_size,
                 "mime": meta.get("mime") or "application/octet-stream",
                 "path": "_attachments/" + name,

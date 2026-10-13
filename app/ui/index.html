@@ -354,7 +354,7 @@
         <button id="btn-theme" class="pill icon-only" title="切换日间 / 夜间主题" aria-label="切换日间 / 夜间主题" data-i18n-aria="切换日间 / 夜间主题" data-i18n-title="切换日间 / 夜间主题"><svg class="ico" aria-hidden="true"><use href="#i-moon"></use></svg></button>
         <!-- 详情面板开关：贴动作组最右 = 紧挨面板弹出的那一侧，空间映射一致 -->
         <button id="btn-insp" class="pill icon-only" type="button" onclick="toggleInspector()" title="打开任务详情" aria-label="打开任务详情" data-i18n-title="打开任务详情" data-i18n-aria="打开任务详情"><svg class="ico" aria-hidden="true"><use href="#i-panel"></use></svg></button>
-<button id="btn-browser-split" class="pill icon-only" type="button" onclick="toggleBrowserSplit()" title="并排打开浏览器" aria-label="并排打开浏览器" aria-pressed="false" data-i18n-title="并排打开浏览器" data-i18n-aria="并排打开浏览器"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg></button>
+        <button id="btn-browser-split" class="pill icon-only" type="button" onclick="toggleBrowserSplit()" title="并排打开浏览器" aria-label="并排打开浏览器" aria-pressed="false" data-i18n-title="并排打开浏览器" data-i18n-aria="并排打开浏览器"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg></button>
         <div data-i18n="连接中…" id="conn" class="conn">连接中…</div>
       </div>
     </header>
@@ -503,7 +503,23 @@
                 </div>
               </div>
               <div class="att-strip">
-                <button type="button" class="ghost small" id="btn-attach" title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/；也可直接粘贴截图" data-i18n-title="添加附件：截图 / 文本 / Word·Excel·PPT / PDF 等（普通 8MB，Office 24MB），创建任务时落盘到工作目录 _attachments/；也可直接粘贴截图"><svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg><span data-i18n="附件">附件</span></button>
+                <div class="cmp-add-wrap">
+                  <button type="button" class="ghost small cmp-add-btn" id="btn-attach" title="添加文件、浏览器、目标与工具" data-i18n-title="添加文件、浏览器、目标与工具" aria-haspopup="menu" aria-expanded="false" aria-controls="cmp-add-menu"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg><span data-i18n="添加">添加</span></button>
+                  <div id="cmp-add-menu" class="cmp-add-menu hidden" role="menu" aria-label="添加" data-i18n-aria="添加">
+                    <div class="cmp-add-kicker" data-i18n="添加到任务">添加到任务</div>
+                    <button type="button" class="cmp-add-item" data-add-action="file" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg><span><b data-i18n="文件和文件夹">文件和文件夹</b><small data-i18n="上传文件，或选择一个文件夹">上传文件，或选择一个文件夹</small></span></button>
+                    <button type="button" class="cmp-add-item" data-add-action="browser" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span><b data-i18n="浏览器工作区">浏览器工作区</b><small data-i18n="在内置浏览器中打开 Google">在内置浏览器中打开 Google</small></span></button>
+                    <button type="button" class="cmp-add-item" data-add-action="goal" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-baton"></use></svg><span><b data-i18n="目标">目标</b><small data-i18n="设置需要多轮推进的长目标">设置需要多轮推进的长目标</small></span></button>
+                    <button type="button" class="cmp-add-item" data-add-action="plan" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span><b data-i18n="计划模式">计划模式</b><small id="cmp-plan-hint" data-i18n="开启计划模式">开启计划模式</small></span><span class="cmp-add-check" id="cmp-plan-check" aria-hidden="true"></span></button>
+                    <button type="button" class="cmp-add-item" data-add-action="draw" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span><b data-i18n="绘图">绘图</b><small data-i18n="绘制草图并作为附件添加">绘制草图并作为附件添加</small></span></button>
+                    <div class="cmp-add-divider"></div>
+                    <div class="cmp-add-kicker" data-i18n="插件">插件</div>
+                    <button type="button" class="cmp-add-item cmp-add-plugin" data-add-plugin="documents" role="menuitem"><span class="cmp-plugin-mark docs">D</span><span><b data-i18n="Documents">Documents</b><small data-i18n="创建和编辑文档">创建和编辑文档</small></span></button>
+                    <button type="button" class="cmp-add-item cmp-add-plugin" data-add-plugin="pdf" role="menuitem"><span class="cmp-plugin-mark pdf">P</span><span><b data-i18n="PDF">PDF</b><small data-i18n="读取、创建和验证 PDF">读取、创建和验证 PDF</small></span></button>
+                    <button type="button" class="cmp-add-item cmp-add-plugin" data-add-plugin="spreadsheets" role="menuitem"><span class="cmp-plugin-mark sheets">S</span><span><b data-i18n="Spreadsheets">Spreadsheets</b><small data-i18n="创建和编辑表格">创建和编辑表格</small></span></button>
+                    <button type="button" class="cmp-add-item cmp-add-plugin" data-add-plugin="presentations" role="menuitem"><span class="cmp-plugin-mark slides">P</span><span><b data-i18n="Presentations">Presentations</b><small data-i18n="创建和编辑演示文稿">创建和编辑演示文稿</small></span></button>
+                  </div>
+                </div>
               </div>
               <!-- 右组（参考主流输入框）：编排/思考/对话模型偏好 + 发送。
                    pill 用透明原生 select 覆盖，点哪儿都弹原生下拉；短名由
@@ -541,6 +557,7 @@
               </div>
             </div>
             <input type="file" id="f-attach-file" class="hidden" multiple>
+            <input type="file" id="f-attach-folder" class="hidden" multiple webkitdirectory directory>
           </div>
           <!-- 快捷类型：点一个即选定并聚焦目标框（renderQuickChips 渲染） -->
           <div id="cmp-quick" class="cmp-quick" role="group" aria-label="常用类型" data-i18n-aria="常用类型"></div>
@@ -726,6 +743,16 @@
           <div id="rd-pane-chat" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-chat" data-pane="chat">
             <div id="rd-chat" class="rd-chat hidden">
               <div id="rd-chat-flow" class="rd-chat-flow"></div>
+              <div id="rd-chat-run-status" class="rd-chat-run-status hidden" aria-live="polite">
+                <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
+                <span class="rd-chat-run-label" data-i18n="进行中的目标">进行中的目标</span>
+                <span class="rd-chat-run-goal" data-chat-run-goal></span>
+                <span class="rd-chat-run-elapsed" data-chat-run-elapsed></span>
+                <button type="button" class="ghost" data-chat-run-pause data-i18n="暂停">暂停</button>
+                <button type="button" class="ghost" data-chat-run-cancel data-i18n-title="取消运行" title="取消运行" aria-label="取消运行"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></button>
+                <button type="button" class="ghost" data-chat-workspace-toggle data-i18n-title="打开工作区" title="打开工作区" aria-label="打开工作区">▣</button>
+                <button type="button" class="ghost" data-chat-run-expand data-i18n-title="展开对话" title="展开对话" aria-label="展开对话" onclick="toggleChatExpanded()">⛶</button>
+              </div>
               <div class="rd-chat-bar">
                 <div id="rd-chat-continue-note" class="rd-chat-continue-note hidden"><span class="continue-dot"></span><span data-i18n="本轮已完成，可以继续对话">本轮已完成，可以继续对话</span><button id="rd-chat-focus" type="button" class="ghost small" data-i18n="继续对话">继续对话</button></div>
                 <textarea id="rd-chat-input" rows="2" data-i18n-ph="继续说…（Enter 发送，Shift+Enter 换行；可直接粘贴截图）" placeholder="继续说…（Enter 发送，Shift+Enter 换行；可直接粘贴截图）"></textarea>
@@ -765,6 +792,10 @@
                 </div>
                 <input id="rd-chat-file" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.txt,.md,.markdown,.csv,.json,.log,.py,.js,.ts,.html,.css,.xml,.yml,.yaml,.toml,.pdf,.docx,.xlsx,.pptx" class="hidden" />
               </div>
+              <aside id="rd-chat-workspace" class="rd-chat-workspace hidden" aria-label="工作区" data-i18n-aria="工作区">
+                <div class="rd-chat-workspace-head"><strong data-i18n="工作区编辑器">工作区编辑器</strong><span id="rd-chat-workspace-path"></span><button type="button" class="ghost small" data-chat-workspace-close data-i18n-title="关闭工作区" title="关闭工作区" aria-label="关闭工作区">×</button></div>
+                <div class="rd-chat-workspace-body"><section class="rd-chat-editor"><div id="rd-chat-editor-name" class="rd-chat-editor-name" data-i18n="选择文件">选择文件</div><textarea id="rd-chat-editor-text" spellcheck="false" data-i18n-ph="选择左侧文件查看或编辑" placeholder="选择左侧文件查看或编辑"></textarea><div class="rd-chat-editor-actions"><span id="rd-chat-editor-state"></span><button type="button" class="primary small" data-chat-editor-save data-i18n="保存">保存</button></div></section><nav id="rd-chat-workspace-files" class="rd-chat-workspace-files"></nav></div>
+              </aside>
             </div>
           </div>
           <div id="rd-pane-hive" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-hive" data-pane="hive">

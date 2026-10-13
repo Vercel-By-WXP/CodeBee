@@ -93,6 +93,15 @@ class TestFlows(BaseTest):
         self.assertEqual(t["engine"], "code")
         self.assertEqual(t["verify_command"], "exit 0")
 
+    def test_plan_mode_is_persisted_as_a_boolean_policy(self):
+        from app.core import store
+        t = store.create_task({"type": "code", "goal": "先规划再实现", "workdir": str(self.workdir),
+                               "plan_mode": True})
+        self.assertIs(t["plan_mode"], True)
+        with self.assertRaises(ValueError):
+            store.create_task({"type": "code", "goal": "bad", "workdir": str(self.workdir),
+                               "plan_mode": "yes"})
+
 
 class TestCustomFlowPipeline(BaseTest):
     """自定义 review 流程端到端（mock 智能体）：起草→评审→门禁，产出落盘。"""

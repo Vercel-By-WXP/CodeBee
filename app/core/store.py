@@ -187,6 +187,10 @@ def create_task(payload):
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "status": "created",
     }
+    plan_mode = payload.get("plan_mode", False)
+    if not isinstance(plan_mode, bool):
+        raise ValueError("plan_mode 必须是布尔值")
+    task["plan_mode"] = plan_mode
     # Every new task must persist one verified execution policy. If policy
     # normalization fails, do not silently replace it with a broader default.
     try:

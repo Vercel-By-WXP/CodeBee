@@ -68,6 +68,17 @@ class TestAttachmentCommit(BaseTest):
         # 非法 id / 丢失文件静默跳过
         self.assertEqual(attachments.commit_to_workdir(str(self.workdir), ["zz", meta["id"]]), [])
 
+    def test_folder_attachment_preserves_relative_directory_safely(self):
+        import base64
+        from app.core import attachments
+        meta = attachments.save_pending(
+            "brief.md", base64.b64encode(b"folder file").decode(), "docs/specs")
+        items = attachments.commit_to_workdir(str(self.workdir), [meta["id"]])
+        self.assertEqual(items[0]["path"], "_attachments/docs/specs/brief.md")
+        self.assertEqual((self.workdir / items[0]["path"]).read_text(), "folder file")
+        with self.assertRaises(ValueError):
+            attachments.save_pending("bad.md", base64.b64encode(b"x").decode(), "../escape")
+
 
 class TestOfficeTextExtract(BaseTest):
     def runTest(self):
