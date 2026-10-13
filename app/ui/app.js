@@ -9601,7 +9601,7 @@ function hiveThinkLine(lines) {
  * localStorage 持久化/WebGL 不可用降级，以及把 renderHive 的泳道数据翻译给场景。 —— */
 let hiveScene = null;          // Hive3D 场景实例（懒创建）
 let hiveSceneDead = false;     // WebGL 不可用/上下文丢失——本次页面周期内不再尝试
-let hiveMode = "reference";  // high-fidelity artwork is the public default; live3d stays internal for QA
+let hiveMode = "reference";  // 模块级占位；setup 按存储应用视图——默认 2D 列表（1013 拍板），live3d 仅内部 QA
 let hiveRunId = "";            // 最近一次 renderHive 的 run.id（尾巴/思考缓存键前缀）
 const hiveLiveMeta = {};       // rel -> { started_at }（3D 芯片秒表用）
 let hiveDialogPoll = null;

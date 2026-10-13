@@ -139,10 +139,10 @@ class HiveSceneContractTests(unittest.TestCase):
         self.assertIn("exitFullscreen", APP)
         self.assertIn("function hiveSceneSync", APP)
         self.assertIn("function ensureHiveScene", APP)
-        self.assertIn("orch.hiveView.v2", APP)
+        self.assertIn("orch.hiveView.v3", APP)
         self.assertIn('let hiveMode = "reference"', APP)
-        self.assertIn('localStorage.getItem("orch.hiveView.v2")', APP)
-        self.assertIn('localStorage.setItem("orch.hiveView.v2", hiveMode)', APP)
+        self.assertIn('localStorage.getItem("orch.hiveView.v3")', APP)
+        self.assertIn('localStorage.setItem("orch.hiveView.v3", hiveMode)', APP)
         self.assertIn("hive-mode-3d", APP)
         self.assertIn("onFatal", APP)
 

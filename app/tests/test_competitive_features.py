@@ -559,7 +559,7 @@ class CompetitiveFeatureTests(unittest.TestCase):
         class Session:
             created = []
 
-            def __init__(self, server, *, sandbox, workdir, timeout_s):
+            def __init__(self, server, *, sandbox, workdir, timeout_s, **kwargs):
                 self.timeout_s = timeout_s
                 self.created.append(self)
 
@@ -903,7 +903,7 @@ class CompetitiveFeatureTests(unittest.TestCase):
         list_tools.assert_not_called()
 
     def test_mcp_initialization_failure_kills_spawned_server(self):
-        from core import mcp_client
+        from core import mcp_client, runner
         process = unittest.mock.Mock()
         process.poll.return_value = None
         session = mcp_client._Session({"name": "demo", "command": "demo"})
@@ -911,12 +911,15 @@ class CompetitiveFeatureTests(unittest.TestCase):
                           return_value=(["bwrap", "--", "demo"], {}, str(self.root))), \
              patch.object(mcp_client.subprocess, "Popen", return_value=process), \
              patch.object(mcp_client.threading, "Thread") as thread, \
+             patch("core.beekeeper.BeeNest"), \
+             patch.object(runner, "_kill_tree", return_value=True) as kill_tree, \
              patch.object(session, "_request", side_effect=RuntimeError("init timeout")):
             thread.return_value.start.return_value = None
             thread.return_value.is_alive.return_value = False
             with self.assertRaisesRegex(RuntimeError, "init timeout"):
                 session.__enter__()
-        process.kill.assert_called_once_with()
+        # __enter__ 抛出时已隐式走完 __exit__：加固后清理统一交给进程树杀手
+        kill_tree.assert_called_once_with(process.pid)
         process.stdin.close.assert_called_once_with()
         process.stdout.close.assert_called_once_with()
         process.stderr.close.assert_called_once_with()
@@ -933,7 +936,7 @@ class CompetitiveFeatureTests(unittest.TestCase):
 
         session.__exit__(None, None, None)
 
-        reader.join.assert_called_once_with(timeout=0.2)
+        reader.join.assert_called_once_with(timeout=0.5)
         process.stdout.close.assert_not_called()
         process.stderr.close.assert_not_called()
 
@@ -960,16 +963,18 @@ class CompetitiveFeatureTests(unittest.TestCase):
         from core import mcp_client
         process = unittest.mock.Mock()
         with patch.object(mcp_client, "_sandbox_launch",
-                          return_value=(["bwrap", "--", "demo"], {}, str(self.root))):
-            with patch.object(mcp_client.subprocess, "Popen", return_value=process) as popen:
-                with patch.object(mcp_client.threading, "Thread") as thread:
-                    with patch.object(mcp_client._Session, "_request", return_value={}):
-                        with patch.object(mcp_client._Session, "_notify"):
-                            thread.return_value.start.return_value = None
-                            with mcp_client._Session({"name": "demo", "command": "demo"},
-                                                     sandbox={}, workdir=str(self.root)):
-                                pass
-        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+                          return_value=(["bwrap", "--", "demo"], {}, str(self.root))), \
+             patch.object(mcp_client.subprocess, "Popen", return_value=process) as popen, \
+             patch.object(mcp_client.threading, "Thread") as thread, \
+             patch("core.beekeeper.BeeNest"):
+            with patch.object(mcp_client._Session, "_request", return_value={}):
+                with patch.object(mcp_client._Session, "_notify"):
+                    thread.return_value.start.return_value = None
+                    with mcp_client._Session({"name": "demo", "command": "demo"},
+                                             sandbox={}, workdir=str(self.root)):
+                        pass
+        # 平台契约：POSIX 用进程组隔离孙进程；Windows 靠 Job Object 挂巢，不开进程组
+        self.assertEqual(popen.call_args.kwargs["start_new_session"], os.name != "nt")
 
     def test_mcp_session_termination_uses_process_tree_killer(self):
         from core import mcp_client, runner
