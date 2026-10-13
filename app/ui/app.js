@@ -12,13 +12,15 @@ document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh"
 const $ = (id) => document.getElementById(id);
 const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, rdHiveFirst: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
 
-/* 工作/开发是界面场景偏好，共用任务和引擎，不改变现有任务的执行参数。 */
+/* 工作/开发/聊天是界面场景偏好，共用任务和引擎，不改变现有任务的执行参数。 */
 const WORKSPACE_MODE_KEY = "orch.workspace-mode.v1";
 const WORKSPACE_MODES = {
   work: { label: "工作", defaultType: "direct", quick: ["direct", "doc", "research", "translation"],
     greeting: "把想法变成成果", hint: "写作、调研、文档与翻译，从这里开始。" },
   develop: { label: "开发", defaultType: "code", quick: ["code", "defect_retro", "tech_proposal", "direct"],
     greeting: "今天想构建什么？", hint: "编写代码、调试问题、运行测试与评审变更。" },
+  chat: { label: "聊天", defaultType: "direct", quick: ["direct"],
+    greeting: "想聊点什么？", hint: "直接问答、头脑风暴与日常对话，从这里开始。" },
 };
 let workspaceChoice = { mode: "work", types: {} };
 let workspaceHasChoice = false;
@@ -27,7 +29,7 @@ try {
   if (saved && Object.prototype.hasOwnProperty.call(WORKSPACE_MODES, saved.mode)) {
     workspaceChoice.mode = saved.mode;
     workspaceHasChoice = true;
-    for (const mode of ["work", "develop"]) {
+    for (const mode of ["work", "develop", "chat"]) {
       if (saved.types && typeof saved.types[mode] === "string") workspaceChoice.types[mode] = saved.types[mode];
     }
   }
@@ -45,6 +47,9 @@ let browserState = browserLoadState();
 let browserTaskId = "";
 let browserPublishAt = 0;
 let browserFrameWatch = 0;
+let browserWorkspacePlatform = "";
+let browserWorkspaceKey = "";
+let browserWorkspacePoll = 0;
 
 try { browserTaskId = localStorage.getItem(BROWSER_TASK_STORAGE_KEY) || ""; } catch (e) { browserTaskId = ""; }
 
@@ -325,6 +330,10 @@ function browserRenderHint(url) {
     hint.textContent = t("外部网站可能禁止嵌入；可用右上角系统浏览器打开。");
     return;
   }
+  if (browserWorkspacePlatformFor(url)) {
+    hint.textContent = t("番茄和七猫优先使用 CodeBee 受控浏览器；连接失败时会切回嵌入页面。发布操作进行中时，工作区会暂时锁定。 ");
+    return;
+  }
   try {
     const host = (new URL(url, location.origin).hostname || "").toLowerCase();
     if (host === "google.com" || host.endsWith(".google.com")) {
@@ -345,6 +354,120 @@ function browserSetFrameError(show, message) {
   error.classList.toggle("hidden", !show);
   frame.classList.toggle("hidden", show);
   if (text && message) text.textContent = message;
+}
+
+function browserWorkspacePlatformFor(url) {
+  try {
+    const parsed = new URL(url, location.origin);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password) return "";
+    const host = parsed.hostname.toLowerCase();
+    if (host === "fanqienovel.com" || host.endsWith(".fanqienovel.com")) return "fanqie";
+    if (host === "qimao.com" || host.endsWith(".qimao.com")) return "qimao";
+  } catch (e) { /* invalid URL has already been rejected by normalizeBrowserUrl */ }
+  return "";
+}
+
+function browserWorkspaceStop() {
+  clearInterval(browserWorkspacePoll);
+  browserWorkspacePoll = 0;
+  browserWorkspacePlatform = "";
+  browserWorkspaceKey = "";
+  const screen = $("browser-cdp-screen");
+  if (screen) { screen.classList.add("hidden"); screen.removeAttribute("src"); }
+}
+
+function browserWorkspaceShow(data) {
+  const screen = $("browser-cdp-screen");
+  if (!screen || !data || !data.image) throw new Error(t("浏览器没有返回页面画面"));
+  screen.src = "data:image/png;base64," + data.image;
+  screen.classList.remove("hidden");
+  const tab = browserActiveTab();
+  if (tab && browserWorkspacePlatformFor(data.url) === browserWorkspacePlatform && data.url !== tab.url) {
+    tab.url = data.url;
+    tab.title = browserTitle(data.url);
+    tab.history[tab.index] = data.url;
+    browserRecordVisit(data.url);
+    const address = $("browser-address");
+    if (address) address.value = data.url;
+    browserDrawTabs();
+    browserSaveState();
+  }
+}
+
+function browserWorkspaceFallback(url, error) {
+  const frame = $("browser-frame");
+  browserWorkspaceStop();
+  if (frame) {
+    frame.classList.remove("hidden");
+    frame.src = browserUrlAuth(browserEmbedUrl(url));
+  }
+  browserWatchFrame(url);
+  const hint = $("browser-hint");
+  if (hint) hint.textContent = t("受控浏览器暂不可用，已切回嵌入页面；如网站拒绝嵌入，请用系统浏览器继续。") + (error ? " " + error : "");
+}
+
+async function browserWorkspaceRequest(platform, action, extra) {
+  return api("/api/browser/workspace", {
+    method: "POST", timeout: 90000, silent: true, busy: false, operation: false,
+    headers: Object.assign(authHeaders(), { "Content-Type": "application/json" }),
+    body: JSON.stringify(Object.assign({ platform, action }, extra || {})),
+  });
+}
+
+async function browserWorkspaceRefresh(platform) {
+  if (!platform || platform !== browserWorkspacePlatform) return;
+  try {
+    const data = await api("/api/browser/workspace?platform=" + encodeURIComponent(platform),
+      { timeout: 15000, silent: true, busy: false, operation: false });
+    if (platform === browserWorkspacePlatform) browserWorkspaceShow(data);
+  } catch (e) {
+    if (e && e.status === 409) return; // 发布流程临时占用同一页面，保留最近画面并继续轮询
+    browserWorkspaceFallback(browserActiveTab().url, e && e.message);
+  }
+}
+
+function browserWorkspaceOpen(url, platform) {
+  const frame = $("browser-frame"), screen = $("browser-cdp-screen");
+  if (frame) frame.classList.add("hidden");
+  browserSetFrameError(false);
+  if (screen) screen.classList.remove("hidden");
+  const key = platform + "\n" + url;
+  if (browserWorkspaceKey === key) return;
+  clearInterval(browserWorkspacePoll);
+  browserWorkspacePlatform = platform;
+  browserWorkspaceKey = key;
+  if (screen) screen.removeAttribute("src");
+  browserWorkspaceRequest(platform, "navigate", { url }).then((data) => {
+    if (browserWorkspaceKey !== key) return;
+    browserWorkspaceShow(data);
+    browserWorkspacePoll = window.setInterval(() => browserWorkspaceRefresh(platform), 1800);
+    }).catch((e) => {
+    if (browserWorkspaceKey === key) browserWorkspaceFallback(url, e && e.message);
+  });
+}
+
+function browserWorkspacePointer(event, action) {
+  const screen = $("browser-cdp-screen");
+  if (!screen || screen.classList.contains("hidden") || !screen.naturalWidth || !screen.naturalHeight) return;
+  const rect = screen.getBoundingClientRect();
+  const scale = Math.min(rect.width / screen.naturalWidth, rect.height / screen.naturalHeight);
+  const drawnWidth = screen.naturalWidth * scale, drawnHeight = screen.naturalHeight * scale;
+  const left = rect.left + (rect.width - drawnWidth) / 2;
+  const top = rect.top + (rect.height - drawnHeight) / 2;
+  const x = Math.round((event.clientX - left) / scale), y = Math.round((event.clientY - top) / scale);
+  if (x < 0 || y < 0 || x >= screen.naturalWidth || y >= screen.naturalHeight) return;
+  browserWorkspaceAction(action, { x, y });
+}
+
+function browserWorkspaceAction(action, extra) {
+  const platform = browserWorkspacePlatform;
+  if (!platform) return;
+  browserWorkspaceRequest(platform, action, extra).then((data) => {
+    if (platform === browserWorkspacePlatform) browserWorkspaceShow(data);
+  }).catch((e) => {
+    if (e && e.status === 409) return;
+    browserWorkspaceFallback(browserActiveTab().url, e && e.message);
+  });
 }
 
 function browserRecordVisit(url) {
@@ -459,13 +582,20 @@ function browserDraw(skipSave) {
   const canBack = tab.index > 0, canForward = tab.index < tab.history.length - 1;
   ["browser-back", "browser-forward"].forEach((id, i) => { const b = $(id); if (b) b.disabled = i ? !canForward : !canBack; });
   if (tab.url === BROWSER_HOME) {
+    browserWorkspaceStop();
     window.clearTimeout(browserFrameWatch);
     browserSetFrameError(false);
     if (frame) { frame.classList.add("hidden"); frame.removeAttribute("src"); }
     if (empty) empty.classList.remove("hidden");
   } else {
     if (empty) empty.classList.add("hidden");
-    if (frame) {
+    const bridgePlatform = browserWorkspacePlatformFor(tab.url);
+    if (bridgePlatform) {
+      browserWorkspaceOpen(tab.url, bridgePlatform);
+    } else {
+      browserWorkspaceStop();
+    }
+    if (frame && !bridgePlatform) {
       frame.classList.remove("hidden");
       frame.src = browserUrlAuth(browserEmbedUrl(tab.url));
       browserWatchFrame(tab.url);
@@ -505,6 +635,35 @@ function browserBind() {
     browserNavigate(input && input.value);
     if (input) input.value = "";
   });
+  const viewport = $("browser-viewport");
+  const screen = $("browser-cdp-screen");
+  if (viewport && screen) {
+    screen.addEventListener("click", (event) => browserWorkspacePointer(event, "click"));
+    screen.addEventListener("wheel", (event) => {
+      if (!browserWorkspacePlatform) return;
+      event.preventDefault();
+      browserWorkspaceAction("scroll", { deltaX: Math.round(event.deltaX), deltaY: Math.round(event.deltaY) });
+    }, { passive: false });
+    screen.addEventListener("keydown", (event) => {
+      if (!browserWorkspacePlatform) return;
+      if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        event.preventDefault(); browserWorkspaceAction("text", { text: event.key });
+      } else if (event.key !== "Unidentified" && event.key !== "Process") {
+        event.preventDefault(); browserWorkspaceAction("key", {
+          key: event.key, ctrl: event.ctrlKey, alt: event.altKey,
+          meta: event.metaKey, shift: event.shiftKey,
+        });
+      }
+    });
+    screen.addEventListener("compositionend", (event) => {
+      if (browserWorkspacePlatform && event.data) browserWorkspaceAction("text", { text: event.data });
+    });
+    screen.addEventListener("paste", (event) => {
+      if (!browserWorkspacePlatform) return;
+      const text = event.clipboardData && event.clipboardData.getData("text");
+      if (text) { event.preventDefault(); browserWorkspaceAction("text", { text }); }
+    });
+  }
   $("browser-nav-form").addEventListener("submit", (e) => { e.preventDefault(); browserNavigate($("browser-address").value); });
   $("browser-back").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.index > 0) { t0.index--; t0.url = t0.history[t0.index]; browserDraw(); } });
   $("browser-forward").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.index < t0.history.length - 1) { t0.index++; t0.url = t0.history[t0.index]; browserDraw(); } });

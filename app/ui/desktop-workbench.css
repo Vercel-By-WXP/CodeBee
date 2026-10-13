@@ -35,7 +35,7 @@
     --shadow: 0 4px 18px rgba(0, 0, 0, .16);
   }
 
-  body { font-family: "Aptos", "Segoe UI", "Microsoft YaHei UI", sans-serif; }
+  body { font-family: var(--font-ui); }
   .side-rail { padding-top: 16px; gap: 9px; }
   .rail-btn { color: var(--muted); box-shadow: none; }
   .rail-btn.active, .rail-btn:hover {
@@ -73,10 +73,6 @@
     border-color: var(--border-strong);
     background: var(--panel);
     box-shadow: var(--shadow);
-  }
-  .cmp-box:focus-within {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
   }
   #sub-tasks .cmp-bar { border-top-color: var(--border); }
 
@@ -422,11 +418,6 @@
     box-shadow: 0 3px 12px rgba(20, 28, 38, .06);
   }
 
-  #sub-tasks .cmp-box:focus-within {
-    border-color: var(--cb-focus);
-    box-shadow: 0 0 0 3px var(--cb-focus-ring);
-  }
-
   @media (max-width: 1180px) {
     main.chat-fill { padding-inline: 14px; }
     main.chat-fill #run-detail.chat-mode { column-gap: 16px; }
@@ -626,4 +617,258 @@
   }
 
   html[data-theme="dark"] .side-settings .set-item.active { color: #dce8f7; background: #303943; }
+}
+
+/* New-task canvas: keep the familiar composer controls, but give the empty
+ * state the open, bottom-composer composition used by Codex's chat start page. */
+@media (min-width: 901px) {
+  main:has(> #page-settings > #sub-tasks:not(.hidden)) {
+    position: relative;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    background: var(--cb-canvas);
+  }
+
+  main:has(> #page-settings > #sub-tasks:not(.hidden)) > #page-settings {
+    display: flex;
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    margin: 0;
+  }
+
+  #page-settings > #sub-tasks:not(.hidden) {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
+  }
+
+  #sub-tasks > .composer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  #sub-tasks .hero-row {
+    position: absolute;
+    top: 41%;
+    left: 50%;
+    width: min(920px, calc(100% - 64px));
+    margin: 0;
+    transform: translate(-50%, -50%);
+    pointer-events: auto;
+  }
+
+  #sub-tasks .hero {
+    color: var(--text);
+    font-size: clamp(24px, 2vw, 30px);
+    font-weight: 450 !important;
+    letter-spacing: -.025em;
+    line-height: 1.45;
+  }
+
+  #sub-tasks .workspace-hint {
+    position: absolute;
+    top: calc(41% + 42px);
+    left: 50%;
+    width: min(680px, calc(100% - 64px));
+    margin: 0;
+    transform: translateX(-50%);
+    text-align: center;
+    pointer-events: auto;
+  }
+
+  #sub-tasks .form {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    display: block;
+    width: min(740px, calc(100% - 48px));
+    margin: 0;
+    transform: translateX(-50%);
+    pointer-events: auto;
+  }
+
+  #sub-tasks .cmp-box {
+    overflow: visible;
+    border-color: var(--cb-card-border);
+    border-radius: 20px;
+    background: var(--panel);
+    box-shadow: 0 10px 34px rgba(24, 32, 42, .08);
+  }
+
+
+  #sub-tasks .cmp-pills {
+    min-height: 38px;
+    padding: 5px 15px;
+    border-bottom-color: transparent;
+    border-radius: 20px 20px 0 0;
+    background: color-mix(in srgb, var(--panel2) 72%, transparent);
+  }
+
+  #sub-tasks .cmp-box textarea {
+    min-height: 76px;
+    padding: 12px 9px 8px;
+    font-size: 14px;
+  }
+
+  #sub-tasks .cmp-bar {
+    min-height: 42px;
+    padding: 4px 5px 6px;
+    border-top: 0;
+  }
+
+  #sub-tasks #btn-create.round {
+    width: 34px;
+    height: 34px;
+    color: #fff;
+    background: #8b8d91;
+    box-shadow: none;
+  }
+
+  #sub-tasks #btn-create.round:hover {
+    background: var(--accent);
+  }
+
+  #page-settings > #sub-tasks .cmp-quick,
+  #page-settings > #sub-tasks .cmp-estimate { display: none; }
+
+  #sub-tasks details#f-advanced {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    pointer-events: auto;
+  }
+
+  #sub-tasks details#f-advanced summary {
+    width: fit-content;
+    margin-left: auto;
+    padding: 5px 9px;
+    border: 1px solid var(--cb-card-border);
+    border-radius: 999px;
+    background: var(--panel);
+  }
+
+  #sub-tasks details#f-advanced[open] .adv-body {
+    max-height: min(58vh, 620px);
+    overflow: auto;
+    background: var(--panel);
+    box-shadow: 0 10px 34px rgba(24, 32, 42, .10);
+  }
+
+  @media (max-height: 700px) {
+    #sub-tasks .hero-row { top: 34%; }
+    #sub-tasks .workspace-hint { top: calc(34% + 38px); }
+    #sub-tasks .cmp-box textarea { min-height: 58px; }
+  }
+}
+
+/* Codex typography baseline: keep the desktop shell quiet and readable while
+ * preserving the compact density of logs and metadata. */
+@media (min-width: 901px) {
+  body {
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.55;
+    font-optical-sizing: auto;
+  }
+  .brand-name { font-family: var(--font-ui); font-size: 15px; }
+  .side-label { font-size: 12px; line-height: 1.4; }
+  .sdir summary, .stask { font-size: 13.5px; line-height: 1.45; }
+  .topbar .page-title { font-size: 14px; line-height: 1.4; }
+  .panel-head h2, .detail-head h2 { font-size: 16px; line-height: 1.4; }
+  #sub-tasks .hero {
+    font-family: var(--font-display);
+    font-size: clamp(26px, 2.1vw, 32px);
+    line-height: 1.3;
+    letter-spacing: -.02em;
+  }
+  #sub-tasks .hero-sub { font-size: 14px; line-height: 1.6; }
+  #sub-tasks .cmp-box textarea, .rd-chat-bar textarea { font-size: 14px; line-height: 1.6; }
+  .chat-bubble.agent { font-size: 14px; line-height: 1.75; }
+  .chat-meta { font-size: 11.5px; line-height: 1.4; }
+  .side-usage, .hint, .msg { font-size: 12.5px; line-height: 1.55; }
+}
+
+/* Codex proportion pass: tune the desktop shell and working surfaces as one
+ * system—compact navigation, a narrower reading column, and quieter corners. */
+@media (min-width: 901px) {
+  html {
+    --workbench-reading-width: 780px;
+    --workbench-task-width: clamp(276px, 16vw, 304px);
+    --workbench-gap: clamp(20px, 1.8vw, 30px);
+    --workbench-radius-card: 12px;
+    --workbench-radius-control: 8px;
+  }
+
+  #app { grid-template-columns: 52px var(--side-w, 288px) minmax(0, 1fr); }
+  body.side-collapsed #app { grid-template-columns: 52px 0 minmax(0, 1fr); }
+  body.inspector-open #app {
+    grid-template-columns: 52px var(--side-w, 288px) minmax(0, 1fr) minmax(280px, 320px);
+  }
+  body.side-collapsed.inspector-open #app {
+    grid-template-columns: 52px 0 minmax(0, 1fr) minmax(280px, 320px);
+  }
+
+  .side-rail { gap: 8px; padding: 14px 7px; }
+  .rail-btn { width: 36px; height: 36px; border-radius: 10px; }
+  #sidebar { padding-inline: 12px; }
+  .brand-row { min-height: 60px; }
+  .side-main > .new-task { min-height: 36px; border-radius: 8px; }
+  .sdir summary, .stask { min-height: 32px; border-radius: 7px; }
+
+  .topbar { min-height: 60px; padding-inline: 24px; }
+  main.chat-fill { padding: 18px 24px 16px; }
+  main.chat-fill #run-detail.chat-mode { column-gap: var(--workbench-gap); }
+  #run-detail.chat-mode .rd-chat-flow {
+    max-width: 780px;
+    padding: 26px 20px 28px;
+    gap: 24px;
+  }
+  #run-detail.chat-mode .rd-chat-bar {
+    width: calc(100% - 40px);
+    max-width: calc(var(--workbench-reading-width) - 40px);
+    margin: 10px auto;
+    padding: 10px 12px;
+    border-radius: 20px;
+  }
+  .rd-chat-bar textarea { min-height: 58px; }
+  .chat-bubble.me { border-radius: 16px; padding: 11px 15px; }
+
+  main.chat-fill #run-detail.chat-mode #rd-rail {
+    padding: 14px;
+    border-radius: var(--workbench-radius-card);
+  }
+  #rd-rail > .detail-head > .rd-actions { gap: 5px; padding-top: 9px; }
+  #rd-rail > .detail-head > .rd-actions button { min-height: 30px; border-radius: var(--workbench-radius-control); }
+  #rd-rail > #rd-tabs,
+  #rd-rail > #rd-chat-nav { margin-top: 10px; padding-top: 8px; }
+  #rd-rail > #rd-tabs .rd-tab,
+  #rd-rail > #rd-chat-nav .cn-pill { min-height: 32px; border-radius: var(--workbench-radius-control); }
+
+  .panel, .mobile-workspace, #inspector { border-radius: var(--workbench-radius-card); }
+  input, select, textarea, .pill, button:not(.round) { border-radius: var(--workbench-radius-control); }
+  .cmp-box { border-radius: 18px; }
+
+  @media (max-width: 1180px) {
+    #run-detail.chat-mode .rd-chat-flow { max-width: 720px; padding-inline: 16px; }
+    #run-detail.chat-mode .rd-chat-bar {
+      width: calc(100% - 24px);
+      max-width: calc(var(--workbench-reading-width) - 24px);
+    }
+  }
 }

@@ -163,6 +163,10 @@
           <span><b data-i18n="开发">开发</b><small data-i18n="编码、调试、测试与评审">编码、调试、测试与评审</small></span>
           <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
         </button>
+        <button type="button" class="brand-menu-item" role="menuitemradio" aria-checked="false" data-workspace-mode="chat" onclick="pickWorkspaceMode('chat')">
+          <span><b data-i18n="聊天">聊天</b><small data-i18n="直接问答、头脑风暴与日常对话">直接问答、头脑风暴与日常对话</small></span>
+          <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
+        </button>
       </div>
       <button id="btn-new-task" class="new-task">
         <svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg>
@@ -1629,6 +1633,7 @@
                 <button class="primary small" id="browser-frame-error-open" type="button"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg><span data-i18n="用系统浏览器继续">用系统浏览器继续</span></button>
               </div>
               <iframe id="browser-frame" class="browser-frame hidden" title="CodeBee 浏览器" data-i18n-title="CodeBee 浏览器" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>
+              <img id="browser-cdp-screen" class="browser-cdp-screen hidden" alt="CodeBee 受控浏览器页面" tabindex="0">
             </div>
           </div>
           <div class="browser-foot"><span id="browser-hint" data-i18n="外部网站可能禁止嵌入；可用右上角系统浏览器打开。">外部网站可能禁止嵌入；可用右上角系统浏览器打开。</span><span class="spacer"></span><span id="browser-history-count"></span></div>

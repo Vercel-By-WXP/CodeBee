@@ -112,7 +112,7 @@ html[data-skin="contrast"][data-theme="light"] {
 /* ---------- 第 2 层：大屏语义别名 ---------- */
 :root {
   --mono: "Cascadia Mono", "SFMono-Regular", Consolas, ui-monospace, monospace;
-  --sans: "Bahnschrift", "Segoe UI", "Microsoft YaHei", sans-serif;
+  --sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
 
   --hd-bg: var(--sidebar);
   --line: var(--border);

@@ -20,8 +20,10 @@
   --shadow: 0 18px 48px rgba(7, 19, 38, .16);
   --mask: rgba(0, 0, 0, .5);
   --mono: "Cascadia Code", Consolas, monospace;
-  --font-ui: "Aptos", "Segoe UI", sans-serif;
-  --font-display: "Aptos Display", "Trebuchet MS", sans-serif;
+  /* Codex desktop typography: Segoe UI Variable keeps Windows UI metrics
+     stable while the CJK fallbacks preserve Chinese/Latin rhythm. */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
   --r-lg: 20px;
   --r-md: 14px;
   --r-sm: 10px;
@@ -673,6 +675,10 @@ body.side-resizing iframe { pointer-events: none; }
 .shortcut-mark.google { background: #4285f4; }.shortcut-mark.github { background: #24292f; }.shortcut-mark.mdn { background: #83d130; font-size: 8px; }.shortcut-mark.preview { background: var(--accent); }
 .browser-stage { position: relative; display: flex; flex: 1; min-height: 420px; background: var(--bg); }
 .browser-frame { display: block; width: 100%; height: 100%; min-height: 420px; flex: 1; border: 0; background: #fff; }
+.browser-cdp-screen {
+  display: block; width: 100%; height: 100%; min-height: 420px; flex: 1;
+  object-fit: contain; background: #fff; outline: none; user-select: none;
+}
 .browser-frame-error {
   display: flex;
   align-items: center;
@@ -2814,10 +2820,9 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
 .cmp-wd .ghost.small { padding: 3px 9px; font-size: 11.5px; border-radius: 999px; flex: none; }
 .cmp-hint { margin: 0 2px 10px; font-size: 11.5px; }
 .cmp-hint:empty { display: none; }
-/* 大输入框：无边框 textarea + 底部工具条，整体一个圆角卡片，聚焦时描边点亮 */
+/* 大输入框：无边框 textarea + 底部工具条，整体一个圆角卡片 */
 .cmp-box { border: 1px solid var(--border); border-radius: 14px; background: var(--panel);
   padding: 4px 6px 6px 6px; transition: border-color .15s, box-shadow .15s; }
-.cmp-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
 .cmp-box textarea { border: none; background: transparent; resize: none; padding: 10px 8px 4px;
   font-size: 15px; line-height: 1.6; min-height: 64px; }
 .cmp-box textarea:hover, .cmp-box textarea:focus { border: none; box-shadow: none; }
@@ -3544,7 +3549,6 @@ main { padding: 24px 34px 72px; }
 .hero { color: var(--cb-ink); font-size: clamp(24px, 3vw, 31px); font-weight: 500 !important; letter-spacing: -.025em !important; text-align: center; }
 .form { gap: 0; }
 .cmp-box { overflow: visible; border: 1px solid #d9dfe4; border-radius: 18px; background: var(--cb-surface); box-shadow: 0 10px 28px rgba(41, 53, 63, .08); transition: border-color .16s ease, box-shadow .16s ease; }
-.cmp-box:focus-within { border-color: color-mix(in srgb, var(--cb-orange) 50%, #d9dfe4); box-shadow: 0 12px 34px rgba(41, 53, 63, .11), 0 0 0 3px rgba(232,108,45,.09); }
 .cmp-pills { padding: 12px 14px 2px; }
 .cmp-wd { color: var(--cb-muted); }
 .cmp-wd .input-row { gap: 5px; }
@@ -3679,8 +3683,8 @@ button.primary:hover { filter: brightness(.96); }
 ================================================================ */
 /* Keep the refreshed surfaces consistent across the selectable palettes. */
 html[data-theme="light"][data-skin], html[data-theme="dark"][data-skin] {
-  --font-ui: "Aptos", "Segoe UI", sans-serif;
-  --font-display: "Aptos Display", "Trebuchet MS", sans-serif;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
   --r-lg: 20px; --r-md: 14px; --r-sm: 10px;
 }
 
@@ -3779,7 +3783,6 @@ main { padding: 28px clamp(16px, 4vw, 56px) 70px; }
 .cmp-pills { gap: 10px; }
 .cmp-pills .type-pick, .cmp-wd { min-height: 42px; border-radius: 12px; background: color-mix(in srgb, var(--panel2) 66%, transparent); border-color: var(--border); }
 .cmp-box { margin-top: 14px; border-radius: 16px; background: color-mix(in srgb, var(--panel) 72%, transparent); border-color: var(--border-strong); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); transition: border .18s, box-shadow .18s; }
-.cmp-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent), inset 0 1px 0 rgba(255,255,255,.08); }
 .cmp-box textarea { min-height: 92px; font-size: 15px; line-height: 1.6; }
 .cmp-send .primary { width: 40px; height: 40px; box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent); }
 .cmp-chip { border-radius: 999px; min-height: 30px; background: color-mix(in srgb, var(--panel2) 52%, transparent); transition: all .16s ease; }
@@ -4103,10 +4106,6 @@ main .panel.wide {
   border-bottom: 1px solid var(--border-strong);
   border-radius: 0;
   background: transparent;
-  box-shadow: none;
-}
-#sub-tasks .cmp-box:focus-within {
-  border-color: var(--accent);
   box-shadow: none;
 }
 #sub-tasks .cmp-box textarea {
@@ -4555,10 +4554,6 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   border-radius: 16px;
   background: color-mix(in srgb, var(--panel) 94%, transparent);
   box-shadow: none;
-}
-#sub-tasks .cmp-box:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 68%, var(--border-strong));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent);
 }
 /* 极简收敛：这行说明与顶部 hero 副标重复（同一句「自动拆解并执行」），
    元素保留在 DOM（i18n/锚点兼容），仅不再占一行视觉噪音。 */
@@ -6680,7 +6675,6 @@ main { padding:24px 34px 72px; }
 .hero-row { justify-content:center; margin-bottom:18px; }
 .hero { color:#18212b; font-size:clamp(24px,3vw,31px); font-weight:500 !important; letter-spacing:-.025em !important; text-align:center; }
 .cmp-box { overflow:visible; border:1px solid #d9dfe4; border-radius:18px; background:#fff; box-shadow:0 10px 28px rgba(41,53,63,.08); }
-.cmp-box:focus-within { border-color:#e8a17f; box-shadow:0 12px 34px rgba(41,53,63,.11),0 0 0 3px rgba(232,108,45,.09); }
 .cmp-pills { padding:12px 14px 2px; }
 .cmp-wd input { height:30px; padding:5px 8px; border:0; background:transparent; color:#71808e; font-size:12px; }
 .cmp-wd input:focus { box-shadow:none; }
@@ -6739,7 +6733,6 @@ html[data-skin="ocean"][data-theme="light"] {
 .rail-btn.active { color: var(--accent); }
 .new-task:hover, .side-search:hover, .stask:hover, .sdir summary:hover { background: var(--panel2); }
 .stask.active { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--text); }
-.cmp-box:focus-within { border-color: color-mix(in srgb, var(--accent) 50%, var(--border-strong)); box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 10%, transparent), 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
 .cmp-send .primary.round, button.primary { background: var(--accent); box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 24%, transparent); }
 .cmp-send .primary.round:hover, button.primary:hover { background: var(--accent2); }
 .cmp-context-note, .cmp-wd input, .att-strip .ghost { color: var(--muted); }
@@ -6937,11 +6930,6 @@ body.side-collapsed.inspector-open #app {
 }
 
 /* Keep the current skin in charge of focus and action colors. */
-#sub-tasks .cmp-box:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-strong));
-  box-shadow: 0 12px 34px color-mix(in srgb, var(--text) 10%, transparent),
-    0 0 0 3px color-mix(in srgb, var(--accent) 11%, transparent);
-}
 .side-rail, #sidebar { background: var(--sidebar); border-color: var(--border); }
 #mainwrap, .topbar { background: var(--bg); border-color: var(--border); }
 .rail-btn:hover, .rail-btn.active { background: var(--panel); }
@@ -7790,7 +7778,7 @@ html[data-skin="ocean"][data-theme="light"] .cmp-box { border-radius: 16px; box-
   pointer-events: none;
   white-space: nowrap;
   color: #e8fbff;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-ui);
   text-shadow: 0 0 9px rgba(37, 187, 220, .18);
 }
 #rd-hive-viewport .hg-room-kicker {
@@ -8462,3 +8450,7 @@ button.ghost, button.primary, button.danger { font-size: 13px; font-weight: 550;
   }
   #run-detail .rd-meta-popover #rd-overview > * { min-width: 0; }
 }
+
+/* The task composer keeps the same appearance while typing; focus remains
+   available to assistive technology without adding a blue selection frame. */
+.cmp-box textarea:focus-visible { outline: none; }

@@ -769,7 +769,6 @@ def _gh_tarball(entry, tmp):
         if not root.is_dir():
             raise ValueError("插件子目录不存在: %s" % prefix)
         return root
-        return root
     raise ValueError("codeload 拉取失败: %s/%s（%s）" % (owner, repo, last))
 
 

@@ -64,13 +64,25 @@ try {
     const rail = document.querySelector('.side-rail').getBoundingClientRect();
     const sidebar = document.getElementById('sidebar').getBoundingClientRect();
     const root = getComputedStyle(document.documentElement);
+    const body = getComputedStyle(document.body);
+    const hero = getComputedStyle(document.querySelector('#sub-tasks .hero'));
+    const task = getComputedStyle(document.querySelector('.stask'));
     return { rail: Math.round(rail.width), sidebar: Math.round(sidebar.width), bg: root.getPropertyValue('--cb-canvas').trim(),
-      detail: getComputedStyle(document.getElementById('run-detail')).borderRadius };
+      detail: getComputedStyle(document.getElementById('run-detail')).borderRadius,
+      composerRadius: getComputedStyle(document.querySelector('.rd-chat-bar')).borderRadius,
+      topbarHeight: Math.round(document.querySelector('.topbar').getBoundingClientRect().height),
+      bodyFont: body.fontFamily, bodySize: parseFloat(body.fontSize), heroSize: parseFloat(hero.fontSize), taskSize: parseFloat(task.fontSize) };
   })()`);
-  assert.equal(shell.rail, 46, 'Codex shell keeps a 46px navigation rail');
-  assert.equal(shell.sidebar, 264, 'Codex shell keeps a 264px task sidebar');
+  assert.equal(shell.rail, 52, 'Codex shell keeps a 52px navigation rail');
+  assert.equal(shell.sidebar, 288, 'Codex shell keeps a 288px task sidebar');
   assert.equal(shell.bg, '#ffffff', 'light desktop canvas uses a clean white surface');
   assert.notEqual(shell.detail, '0px', 'run detail uses a rounded card edge');
+  assert.equal(shell.composerRadius, '20px', 'chat composer uses the Codex pill-card radius');
+  assert.equal(shell.topbarHeight, 60, 'desktop header stays compact at 60px');
+  assert.match(shell.bodyFont, /Segoe UI Variable/, 'desktop UI uses the Codex Segoe UI Variable font stack');
+  assert.equal(shell.bodySize, 14, 'desktop body text uses the Codex 14px baseline');
+  assert.ok(shell.heroSize >= 26 && shell.heroSize <= 32, 'new-task title stays in the Codex 26-32px range');
+  assert.ok(shell.taskSize >= 12.5 && shell.taskSize <= 14, 'sidebar task text stays in the Codex compact range');
   console.log('Codex shell', JSON.stringify(shell));
   const capture = async name => {
     const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
@@ -105,7 +117,8 @@ try {
       assert.ok(bounds.doc <= width + 1, 'no page horizontal overflow');
       assert.ok(bounds.bar.bottom <= 901, 'composer visible');
       assert.ok(bounds.flow.h > 120, 'timeline retains reading space');
-      assert.ok(bounds.flow.w <= 961, 'reading width capped on wide screens');
+      assert.ok(bounds.flow.w <= 781, 'reading width capped on wide screens');
+      assert.ok(bounds.bar.w <= 741, 'composer width follows the 740px reading measure');
       assert.ok(width - bounds.rail.right <= 25, 'task rail stays docked at right edge');
       assert.ok(bounds.bar.right <= bounds.rail.x + 1, 'composer and task rail do not overlap');
       assert.ok(bounds.scroll <= bounds.client + 1, 'only timeline scrolls');

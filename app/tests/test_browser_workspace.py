@@ -86,6 +86,13 @@ class BrowserWorkspaceContractTests(unittest.TestCase):
         self.assertIn("发布由 CodeBee 受控浏览器执行", INDEX)
         self.assertIn("browser-page-active", STYLE)
 
+    def test_publish_sites_use_the_controlled_browser_bridge_with_iframe_fallback(self):
+        self.assertIn('id="browser-cdp-screen"', INDEX)
+        self.assertIn("browserWorkspacePlatformFor", APP)
+        self.assertIn("/api/browser/workspace", APP)
+        self.assertIn("browserWorkspaceFallback", APP)
+        self.assertIn("browser-cdp-screen", STYLE)
+
     def test_browser_home_is_a_browser_new_tab(self):
         self.assertIn('id="browser-home-search"', INDEX)
         self.assertIn('placeholder="搜索网页，或输入网址"', INDEX)

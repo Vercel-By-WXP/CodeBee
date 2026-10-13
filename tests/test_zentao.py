@@ -1106,13 +1106,18 @@ class TestHolidaySkip(ZenCase):
                 return self.zen_mod.fire_due()
 
         def find(pred):
-            for i in range(1, 400):
-                cand = today + timedelta(days=i)
-                try:
-                    if pred(cand):
-                        return cand
-                except NotImplementedError:
-                    continue
+            # 双向找：向后优先；chinesecalendar 数据只覆盖到当年最后一个小长假，
+            # 国庆后向后窗口内可能既无节假日也无补班日（次年数据未发布，1.11.0
+            # 实测截止 2026-10-07）——向前取过去日期同样有效（scan_day 钉的是
+            # mock 时钟，顺延判定只看被钉的「今天」，与真实日期无关）
+            for rng in (range(1, 400), range(-1, -400, -1)):
+                for i in rng:
+                    cand = today + timedelta(days=i)
+                    try:
+                        if pred(cand):
+                            return cand
+                    except NotImplementedError:
+                        continue
             return None
 
         # 开关依赖库：缺失时开启保存必须报错（不能静默存下永不生效）

@@ -733,6 +733,20 @@ class Handler(BaseHTTPRequestHandler):
                 view = pub.view()
                 view["history"] = pub.history(limit=30)
                 return self._json(200, view)
+            if path == "/api/browser/workspace":
+                origin = self.headers.get("Origin") or ""
+                if origin and urlparse(origin).netloc.lower() != (self.headers.get("Host") or "").lower():
+                    return self._json(403, {"error": "浏览器工作区仅允许 CodeBee 页面调用"})
+                from core.publish import bridge
+                query = parse_qs(urlparse(self.path).query)
+                platform = (query.get("platform") or [""])[0]
+                try:
+                    return self._json(200, bridge.snapshot(platform))
+                except bridge.BridgeError as exc:
+                    return self._json(exc.status, {"error": str(exc)})
+                except Exception as exc:
+                    log.warning("浏览器工作区截图失败（%s）：%s", platform, exc)
+                    return self._json(503, {"error": "受控浏览器暂不可用，已准备回退"})
             m = re.match(r"^/api/publish/task/([^/]+)/history$", path)
             if m:
                 from core.publish import manager as pub
@@ -1400,6 +1414,25 @@ class Handler(BaseHTTPRequestHandler):
             from core import covergen
             ok, err = covergen.start(m.group(1))
             return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
+        if path == "/api/browser/workspace":
+            origin = self.headers.get("Origin") or ""
+            if origin and urlparse(origin).netloc.lower() != (self.headers.get("Host") or "").lower():
+                return self._json(403, {"error": "浏览器工作区仅允许 CodeBee 页面调用"})
+            from core.publish import bridge
+            body = self._body() or {}
+            platform = str(body.get("platform") or "")
+            try:
+                action = str(body.get("action") or "")
+                if action == "navigate":
+                    result = bridge.navigate(platform, body.get("url") or "")
+                else:
+                    result = bridge.input_event(platform, body)
+                return self._json(200, result)
+            except bridge.BridgeError as exc:
+                return self._json(exc.status, {"error": str(exc)})
+            except Exception as exc:
+                log.warning("浏览器工作区操作失败（%s）：%s", platform, exc)
+                return self._json(503, {"error": "受控浏览器操作失败，已准备回退"})
         m = re.match(r"^/api/publish/(fanqie|qimao)/(connect|disconnect|probe)$", path)
         if m:
             return self._api_publish_platform_op(m.group(1), m.group(2))

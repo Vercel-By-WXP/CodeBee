@@ -88,6 +88,9 @@ try {
   await ev('createTask()');
   check('开发提交沿用代码引擎与原编排档位', await ev('modePayloads.at(-1)?.type === "code" && modePayloads.at(-1)?.mode === "expert" && modePayloads.at(-1)?.attachments[0] === "fixture-attachment"'));
   await capture('develop');
+  await click('#btn-brand'); await click('[data-workspace-mode="chat"]');
+  check('聊天模式默认直连并显示聊天提示', await waitFor('workspaceChoice.mode === "chat" && $("f-type").value === "direct" && $("cmp-greet").textContent.includes("聊")'));
+  check('聊天模式只展示直接对话入口', await ev('$("cmp-quick").textContent.includes("直接执行") && $("cmp-quick").querySelectorAll(".cmp-chip").length === 1'));
   await click('#btn-brand'); await click('[data-workspace-mode="work"]');
   await ev('S.typeSuggestionDone=true; createTask()');
   check('工作提交沿用直连类型，未引入新后端模式', await ev('modePayloads.at(-1)?.type === "direct" && !Object.hasOwn(modePayloads.at(-1),"workspace_mode")'));
@@ -121,7 +124,7 @@ try {
   await ev('S.creatingTask=true; const before=$("f-type").value, beforeMode=workspaceChoice.mode; pickWorkspaceMode("develop"); window.modeCreatingSafe=$("f-type").value===before && workspaceChoice.mode===beforeMode; S.creatingTask=false;');
   check('任务提交中切模式保持场景与表单一致', await ev('modeCreatingSafe'));
   check('页面无未捕获异常', errors.length === 0);
-  console.log(`工作/开发模式：${checks} 项通过`);
+  console.log(`工作/开发/聊天模式：${checks} 项通过`);
 } finally {
   if (browser) await browser.close();
   if (server) {

@@ -20,6 +20,7 @@ class HttpContractRouteTests(unittest.TestCase):
     def handler(self, path, body):
         h = object.__new__(main.Handler)
         h.path = path
+        h.headers = {}
         h._authed = lambda: True
         h._deny_control = lambda: None
         h._body = lambda: body
@@ -153,6 +154,34 @@ class HttpContractRouteTests(unittest.TestCase):
             status, payload = h._route_post()
         self.assertEqual(status, 409)
         self.assertIn("审批", payload["error"])
+
+    def test_browser_workspace_bridge_get_and_post_routes(self):
+        snapshot = {"ok": True, "platform": "fanqie", "url": "https://fanqienovel.com/",
+                    "image": "cG5n"}
+        get = self.handler("/api/browser/workspace?platform=fanqie", {})
+        with patch("core.publish.bridge.snapshot", return_value=snapshot) as capture:
+            status, payload = get._route_get()
+        self.assertEqual(status, 200)
+        self.assertEqual(payload, snapshot)
+        capture.assert_called_once_with("fanqie")
+
+        post = self.handler("/api/browser/workspace", {
+            "platform": "fanqie", "action": "navigate",
+            "url": "https://fanqienovel.com/main/writer/"})
+        with patch("core.publish.bridge.navigate", return_value=snapshot) as navigate:
+            status, payload = post._route_post()
+        self.assertEqual(status, 200)
+        self.assertEqual(payload, snapshot)
+        navigate.assert_called_once_with("fanqie", "https://fanqienovel.com/main/writer/")
+
+    def test_browser_workspace_bridge_maps_busy_errors(self):
+        from core.publish.bridge import BridgeError
+        post = self.handler("/api/browser/workspace", {
+            "platform": "fanqie", "action": "click", "x": 10, "y": 10})
+        with patch("core.publish.bridge.input_event", side_effect=BridgeError("发布中", 409)):
+            status, payload = post._route_post()
+        self.assertEqual(status, 409)
+        self.assertEqual(payload["error"], "发布中")
 
     def test_manual_schedule_can_be_saved_without_approval(self):
         task = {"id": "t1", "approval_required": False}
