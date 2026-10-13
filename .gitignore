@@ -29,3 +29,4 @@ tmp_*
 # 运行时产物与测试事故目录（winget 探针 LOCALAPPDATA 相对化事故、发布流程输出）
 /Microsoft/
 /app/output/
+tmp/
