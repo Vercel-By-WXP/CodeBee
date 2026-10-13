@@ -1952,6 +1952,7 @@ function applyState(d) {
   $("conn").textContent = t("已连接");
   $("conn").className = "conn ok";
   restoreInspector();   // 刷新后恢复上次打开的检查器（只在已开时为空操作）
+  restoreLastTask();    // 刷新/重开后回到最近打开的任务对话（只在首帧尝试一次）
   ovMaybeRefresh();     // 停在概览页时：概览语与最近运行跟着这次状态一起刷新
   if (S.tab === "browser") {
     browserRenderTaskContext();
@@ -5014,6 +5015,7 @@ window.sideOpenTask = function (key, pinTab) {
   $("rd-steps").innerHTML = '<div class="hint" role="status">' + esc(t("正在加载任务详情…")) + "</div>";
   S.lastRun = null;
   S.detailTaskKey = key;
+  try { localStorage.setItem("orch.lastTask", key); } catch (e) { /* 隐私模式等 */ }
   S.activityTarget = pinTab ? { key, tab: pinTab } : null;
   S.detailRunId = null;
   S.focusStep = 0;
@@ -7792,6 +7794,18 @@ function syncInspectorVis() {
   refreshInspector(true);
 }
 
+/* 刷新/重开后恢复最近打开的任务对话（用户拍板 1013：返回对话默认加载到最新）。
+ * 任务已被删或已归档则保持关闭。只在首帧 state 到达时尝试一次（SSE 后续帧不再动）。 */
+function restoreLastTask() {
+  if (S.lastTaskRestored) return;
+  S.lastTaskRestored = true;
+  let key = "";
+  try { key = localStorage.getItem("orch.lastTask") || ""; } catch (e) { return; }
+  if (key && ((S.state || {}).tasks || []).some((x) => x.id === key)) {
+    sideOpenTask(key);
+  }
+}
+
 /* 刷新后恢复检查器：回到上次打开的任务（任务已被删则保持关闭）。
  * 首帧 state 到达时任务清单才可信，所以挂在这里而不是 DOMContentLoaded。 */
 function restoreInspector() {
@@ -9302,7 +9316,7 @@ function setHiveSceneMode(mode, opts) {
   if (!viewport) return;
   // Public mode selection is deliberately limited to the polished artwork and 2D list.
   // live3d remains callable by internal QA, but can never be restored from user state.
-  let selected = ["live3d", "2d"].includes(mode) ? mode : "reference";
+  let selected = ["live3d", "2d"].includes(mode) ? mode : "2d";
   if (selected !== "2d") {
     const sc = ensureHiveScene();
     if (!sc) {
@@ -9330,7 +9344,7 @@ function setHiveSceneMode(mode, opts) {
     hint.dataset.i18n = hintKey;
     hint.textContent = t(hintKey);
   }
-  try { localStorage.setItem("orch.hiveView.v2", hiveMode); } catch (e) { /* 隐私模式等 */ }
+  try { localStorage.setItem("orch.hiveView.v3", hiveMode); } catch (e) { /* 隐私模式等 */ }
 }
 
 function syncHiveFullscreenButton() {
@@ -9393,18 +9407,12 @@ function setupHiveSceneControls() {
       else hiveScene.zoomAt(button.dataset.hiveSceneAction === "zoom-in" ? 1 / 1.18 : 1.18);
     });
   });
-  let saved = "reference";
-  try {
-    saved = localStorage.getItem("orch.hiveView.v2") || "";
-    if (!saved) {
-      const legacy = localStorage.getItem("orch.hiveView");
-      saved = legacy === "2d" ? "2d" : "reference";
-      localStorage.setItem("orch.hiveView.v2", saved);
-    }
-  } catch (e) { /* ignore storage restrictions and keep the high-fidelity default */ }
-  // A previously saved free-3D preference must not reopen the unreleased mode.
-  // The engine remains callable by internal QA through setHiveSceneMode("live3d").
-  setHiveSceneMode(saved === "2d" ? "2d" : "reference", { silent: true });
+  // 蜂巢默认 2D 列表（用户拍板 1013）。v2 曾把旧默认 "reference" 自动持久化，
+  // 分不清「主动选择」还是「被动默认」——升 v3 只记用户点选的视图，没记录落 2D。
+  let saved = "";
+  try { saved = localStorage.getItem("orch.hiveView.v3") || ""; } catch (e) { /* ignore */ }
+  if (saved !== "2d" && saved !== "reference") saved = "2d";
+  setHiveSceneMode(saved, { silent: true });
 }
 
 /* renderHive → 场景数据翻译：泳道=蜂巢塔的一层，格子按状态映射高度/颜色。
