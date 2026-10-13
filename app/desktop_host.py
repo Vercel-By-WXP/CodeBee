@@ -279,7 +279,7 @@ def main() -> None:
     engine.pick_dialog.ask_file = lambda initial="", title="选择文件": pipe.pick(
         "file", initial, title)
     sys.argv = [str(paths.APP_DIR / "main.py"), "--host", "127.0.0.1",
-                "--port", str(port), "--no-browser", "--no-public-tunnel"]
+                "--port", str(port), "--no-browser"]
     try:
         engine.main()
     finally:
