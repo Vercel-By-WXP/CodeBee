@@ -7860,3 +7860,11 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   与 CodeBee 当前边界不兼容；仅作为 UI、远程指挥和 token 路由观察项。
 - **门禁记录**：本轮全量根测试未通过且 app 全量原生栈溢出中止；知识定向
   `Ran 4 / OK`。因此不把失败基线包装成绿，不发版、不 npm publish、不推送。
+
+## 2026-10-13 20:45 班沉淀
+
+- 主扫 120/120 成功（常驻组、批6、A1 双轮），549 条结果/483 唯一仓；trendshift、npm 可达，PyPI 仍为挑战页降级。固定元数据复核 orca、oh-my-claudecode、paseo、paperclip、anthropics/skills、deepseek-harness、zentao-cli/api。
+- 新命中均为已录族、域外或大范围形态参考；`bifrost` 的网关/故障转移、`orca/paseo` 的多 CLI 控制面与 CodeBee 已有能力重合或超出当前边界，不落地、不安装。
+- 18 内置任务类型与 A-G 专项逐项核对无缺口；定向守卫 3/3、11/11、3/3、3/3。全量测试虽退出 0，实测 31 FAIL/2 ERROR/2 skipped，不能宣称绿，也不推送。
+
+- 2026-10-13 21:05 固定仓增量复核：orca e15b77a + mobile-android-v0.0.55（安全公告0）；oh-my-claudecode v5.7.1（安全公告0）；paseo 4400445/v0.11.2（安全公告1）；paperclip 2ad36f4/v2026.1012.0（安全公告5）。均为已覆盖机制族，未形成可低风险兼容改进。
