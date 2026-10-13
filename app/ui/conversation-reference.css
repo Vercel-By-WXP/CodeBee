@@ -18,7 +18,7 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
 #run-detail.chat-mode .rd-chat-flow {
   box-sizing: border-box;
   width: 100%;
-  max-width: 784px;
+  max-width: 768px;
   padding: 20px 24px 28px;
   gap: 24px;
   color: var(--chat-text);

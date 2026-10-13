@@ -2469,6 +2469,7 @@ function render() {
   renderSideTasks();
   CodeBeeActivity.render();
   renderRunDetail();
+  renderChangeSummary();
   renderCatalog();
   renderModels();
   renderBindings();
@@ -7501,13 +7502,72 @@ async function refreshDetailSide(force) {
   try { d = await api("/api/tasks/" + encodeURIComponent(key) + "/side"); }
   catch (e) { return; }                      // 拉取失败静默，等下一轮节流重试
   if (detailSideTaskKey() !== key) return;   // 期间已切到别的详情：过期响应不落盘
-  if (!d || !d.task) { S.detailSide = null; return; }
+  if (!d || !d.task) { S.detailSide = null; renderChangeSummary(); return; }
   S.detailSide = d;
+  renderChangeSummary();
   const sig = JSON.stringify([d.task.git_state, d.git, d.changes, d.stats]);
   if (sig === S.detailSideSig) return;       // 没变化不重画（保住文件行 hover 态）
   S.detailSideSig = sig;
   applyDetailSide();
 }
+
+/* Compact Git receipt from the desktop reference. It follows the task currently
+ * shown in the conversation and uses the same task-side snapshot as the Git tab. */
+function renderChangeSummary() {
+  const card = $("change-summary");
+  if (!card) return;
+  const detail = $("run-detail");
+  const key = detailSideTaskKey();
+  const data = S.detailSide;
+  const task = data && data.task;
+  const changes = data && data.changes;
+  const hasRepoContext = !!(data && data.git && data.git.branch);
+  if (!detail || detail.classList.contains("hidden") || !key || !task || task.id !== key || !hasRepoContext || !changes) {
+    card.classList.add("hidden");
+    return;
+  }
+  const path = String(task.workdir || "").replace(/[\\/]+$/, "");
+  const project = path.split(/[\\/]/).filter(Boolean).pop() || task.title || t("项目变更");
+  $("change-summary-project").textContent = project;
+  $("change-summary-project").title = task.workdir || project;
+  $("change-summary-add").textContent = "+" + (Number(changes.add_total) || 0);
+  $("change-summary-del").textContent = "-" + (Number(changes.del_total) || 0);
+  card.classList.remove("hidden");
+}
+
+function openChangeSummaryGit() {
+  const key = detailSideTaskKey();
+  if (!key || !S.detailSide || !S.detailSide.git || !S.detailSide.git.branch) return;
+  S.rdTab = "git";
+  S.rdTabPin = true;
+  if (S.lastRun && S.lastRun.task_id === key) renderGitPanel(S.lastRun, S.lastRunTask);
+  applyRdTabs();
+}
+
+window.toggleBrowserSplit = function () {
+  const detail = $("run-detail");
+  if (!detail || detail.classList.contains("hidden")) {
+    toast(t("请先打开一个任务对话。"), true);
+    return;
+  }
+  const open = !document.body.classList.contains("browser-split-open");
+  const button = $("btn-browser-split");
+  if (open) {
+    if (detailSideTaskKey()) browserTaskId = detailSideTaskKey();
+    try { if (browserTaskId) localStorage.setItem(BROWSER_TASK_STORAGE_KEY, browserTaskId); } catch (e) { /* local preference only */ }
+    document.body.classList.add("browser-split-open");
+    browserDraw();
+  } else {
+    document.body.classList.remove("browser-split-open");
+  }
+  if (button) {
+    button.classList.toggle("active", open);
+    button.setAttribute("aria-pressed", open ? "true" : "false");
+    const label = t(open ? "关闭并排浏览器" : "并排打开浏览器");
+    button.title = label;
+    button.setAttribute("aria-label", label);
+  }
+};
 
 /* side 数据落位：meta 条任务累计组 + 版本面板重画（内部再按数据源取舍） */
 function applyDetailSide() {
@@ -17640,6 +17700,8 @@ document.addEventListener("DOMContentLoaded", () => {
   localStorage.removeItem("orch.workdir");
   // 附件：按钮选文件 + 目标框粘贴截图；工作目录变化时探测 git 仓库（代码版本下拉）
   $("btn-attach").addEventListener("click", () => $("f-attach-file").click());
+  $("change-summary-open").addEventListener("click", openChangeSummaryGit);
+  $("change-summary-more").addEventListener("click", openChangeSummaryGit);
   $("f-attach-file").addEventListener("change", (e) => {
     addAttachFiles(Array.from(e.target.files || []));
     e.target.value = "";  // 允许重复选同一个文件
