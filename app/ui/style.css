@@ -8429,3 +8429,165 @@ button.ghost, button.primary, button.danger { font-size: 13px; font-weight: 550;
 /* Keep keyboard focus functional without adding the app-wide blue selection frame. */
 :focus-visible { outline: none !important; }
 :focus-within { outline: none !important; }
+
+/* Long-goal form: give both fields the same footprint and align the action. */
+#page-settings > #sub-overview .ov-goal-empty {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: end;
+  column-gap: 12px;
+}
+#page-settings > #sub-overview .ov-goal-field { min-width: 0; }
+#page-settings > #sub-overview .ov-goal-empty input,
+#page-settings > #sub-overview .ov-goal-empty textarea {
+  width: 100%;
+  height: 48px;
+  min-height: 48px;
+  box-sizing: border-box;
+  resize: none;
+}
+#page-settings > #sub-overview .ov-goal-empty input {
+  align-self: stretch;
+}
+#page-settings > #sub-overview .ov-goal-empty textarea {
+  line-height: 1.45;
+}
+#page-settings > #sub-overview .ov-goal-empty button {
+  height: 48px;
+  min-height: 48px;
+  align-self: end;
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  #page-settings > #sub-overview .ov-goal-empty {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  #page-settings > #sub-overview .ov-goal-empty .ov-goal-field:nth-child(2),
+  #page-settings > #sub-overview .ov-goal-empty button {
+    grid-column: auto;
+  }
+  #page-settings > #sub-overview .ov-goal-empty button {
+    width: 100%;
+  }
+}
+@media (max-width: 520px) {
+  #page-settings > #sub-overview .ov-goal-empty { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Dark-mode contrast guardrails.
+ * The workbench refresh above predates the skin variables and contains a few
+ * fixed light-theme colors. Keep editable controls readable for every dark
+ * skin, including native option menus. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cb-ink: var(--text);
+  --cb-muted: var(--muted);
+  --cb-line: var(--border);
+  --cb-surface: var(--panel);
+  --cb-canvas: var(--bg);
+  --cb-rail: var(--sidebar);
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  color: var(--text);
+  caret-color: var(--accent);
+}
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: color-mix(in srgb, var(--muted) 88%, var(--text));
+  opacity: 1;
+}
+html[data-theme="dark"] select option,
+html[data-theme="dark"] select optgroup {
+  color: var(--text);
+  background: var(--panel);
+}
+
+/* The centered task composer is the most visible affected surface. */
+html[data-theme="dark"] .cmp-box {
+  background: var(--panel);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+html[data-theme="dark"] .cmp-wd,
+html[data-theme="dark"] .cmp-wd input,
+html[data-theme="dark"] #f-goal {
+  color: var(--text);
+}
+html[data-theme="dark"] .cmp-wd,
+html[data-theme="dark"] #f-goal,
+html[data-theme="dark"] .browser-home-search input,
+html[data-theme="dark"] .browser-dialog-search input,
+html[data-theme="dark"] .cmdk-input input,
+html[data-theme="dark"] .rd-chat-bar textarea,
+html[data-theme="dark"] .cmp-box textarea {
+  background: transparent;
+}
+html[data-theme="dark"] #f-goal::placeholder {
+  color: color-mix(in srgb, var(--muted) 88%, var(--text));
+}
+html[data-theme="dark"] .cmp-context-note,
+html[data-theme="dark"] .cmp-wd input,
+html[data-theme="dark"] .att-strip .ghost,
+html[data-theme="dark"] .type-pick,
+html[data-theme="dark"] .cmp-sel {
+  color: var(--muted);
+}
+html[data-theme="dark"] .cmp-bar {
+  border-top-color: var(--border);
+}
+html[data-theme="dark"] .type-pick,
+html[data-theme="dark"] .cmp-sel {
+  background: var(--panel2);
+  border-color: var(--border);
+}
+html[data-theme="dark"] .type-pick:hover,
+html[data-theme="dark"] .cmp-sel:hover {
+  color: var(--text);
+  background: var(--panel2);
+  border-color: var(--border-strong);
+}
+
+/* Restore the surrounding shell colors that the light workbench pass fixed. */
+html[data-theme="dark"] .side-rail,
+html[data-theme="dark"] #sidebar,
+html[data-theme="dark"] #mainwrap,
+html[data-theme="dark"] .topbar {
+  background: var(--bg);
+  border-color: var(--border);
+}
+html[data-theme="dark"] .side-rail,
+html[data-theme="dark"] #sidebar {
+  background: var(--sidebar);
+}
+html[data-theme="dark"] .rail-btn,
+html[data-theme="dark"] .brand-name,
+html[data-theme="dark"] .new-task,
+html[data-theme="dark"] .page-title,
+html[data-theme="dark"] .hero,
+html[data-theme="dark"] .stask.active,
+html[data-theme="dark"] .top-actions .pill:hover {
+  color: var(--text);
+}
+html[data-theme="dark"] .rail-btn:hover,
+html[data-theme="dark"] .rail-btn.active,
+html[data-theme="dark"] .new-task:hover,
+html[data-theme="dark"] .side-search:hover,
+html[data-theme="dark"] .stask:hover,
+html[data-theme="dark"] .sdir summary:hover,
+html[data-theme="dark"] .top-actions .pill:hover,
+html[data-theme="dark"] .att-strip .ghost:hover {
+  background: var(--panel2);
+}
+html[data-theme="dark"] .side-label,
+html[data-theme="dark"] .side-search,
+html[data-theme="dark"] .top-actions .pill,
+html[data-theme="dark"] .brand-caret {
+  color: var(--muted);
+}
+html[data-theme="dark"] .cmp-context-note,
+html[data-theme="dark"] .cmp-box,
+html[data-theme="dark"] .panel {
+  border-color: var(--border);
+}
