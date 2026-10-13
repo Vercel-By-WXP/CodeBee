@@ -3642,6 +3642,7 @@ function renderClarify(questions, goal, resetSubmit) {
 }
 
 async function createTask() {
+  if (cmpReferencePending) { toast(t("正在添加引用，请稍候…")); return; }
   if (S.creatingTask) return;
   S.creatingTask = true;
   const submit = $("btn-create");
@@ -3793,9 +3794,10 @@ async function createTask() {
     if (critics.length) payload.critics = critics;
   }
   // 插件指令属于执行上下文；Composer 中只展示选中的插件标记。
-  const pluginContext = S.cmpPlugins.map((name) => {
-    const item = cmpCapability(name);
-    return item && item.prompt ? item.prompt : "";
+  const pluginContext = [...S.cmpPlugins, ...cmpReferenceContext.map(row => row.id)].map((name) => {
+    const item = cmpCapability(name) || cmpReferenceContext.find(row => row.id === name);
+    if (!item || !item.prompt || item.enabled === false || ["broken", "blocked", "disabled"].includes(item.state)) return "";
+    return item.prompt;
   }).filter(Boolean).join("\n\n");
   if (pluginContext) payload.context = [payload.context, pluginContext].filter(Boolean).join("\n\n");
   try {
@@ -3809,7 +3811,7 @@ async function createTask() {
     cmpPlanMode = false;
     cmpSyncPlanMode();
     $("f-goal").value = "";
-    S.cmpPlugins = []; cmpRenderPluginChips();
+    S.cmpPlugins = []; cmpReferenceContext = []; cmpRenderPluginChips();
     if ($("f-bible")) $("f-bible").value = "";
     S.atts = []; renderAttachChips();   // 附件已移交任务待提交区，清空本地列表
   } catch (e) {
@@ -3841,7 +3843,7 @@ function cmpAddMenu(open) {
   const next = typeof open === "boolean" ? open : menu.classList.contains("hidden");
   menu.classList.toggle("hidden", !next);
   button.setAttribute("aria-expanded", next ? "true" : "false");
-  if (next) cmpSyncPlanMode();
+  if (next) { cmpSyncPlanMode(); cmpRenderCapabilityMenu(); cmpLoadWorkspaceFiles(); loadComposerCapabilities(); }
 }
 
 function cmpSyncPlanMode() {
@@ -3864,6 +3866,8 @@ function cmpAddAction(action) {
       if (choice === true) $("f-attach-file").click();
       else if (choice === "folder") $("f-attach-folder").click();
     });
+  } else if (action === "workflow") {
+    toggleTypeMenu(true);
   } else if (action === "browser") {
     const currentTask = S.currentTaskId || S.taskId || "";
     browserTaskId = browserTaskId || currentTask || ((S.state || {}).tasks || [])[0]?.id || "";
@@ -3886,74 +3890,162 @@ function cmpAddAction(action) {
   }
 }
 
-const CMP_PLUGINS = {
-  documents: { label: "Documents", icon: "i-file-text", type: "doc", prompt: "请按 Documents 文档工作流完成任务。先检查附件和工作目录资料，明确文档结构、目标读者与交付文件；完成后校对内容并报告实际生成的格式。" },
-  pdf: { label: "PDF", icon: "i-file-search", type: "direct", prompt: "请按 PDF 工作流处理任务。先检查附件和工作目录中的 PDF；按任务读取、整理或生成文件。若当前工具不能直接编辑 PDF，请提供可验证的替代产物，并如实说明。" },
-  spreadsheets: { label: "Spreadsheets", icon: "i-chart", type: "direct", prompt: "请按 Spreadsheets 表格工作流完成任务。先检查数据来源和字段含义，再创建或编辑表格；校验表头、公式、格式和数据完整性，并说明实际交付的文件格式。" },
-  presentations: { label: "Presentations", icon: "i-preview", type: "presentation", prompt: "请按 Presentations 演示文稿工作流制作演示材料。交付逐页结构、每页要点、讲稿与视觉建议；如果环境支持可编辑演示文件，再同时生成该文件并检查。" },
-};
+// The menu reflects the backend directory; loading failures never fabricate
+// installed plugins. Selected capability instructions are kept out of the goal.
+let cmpCapabilityFilter = "all";
+let cmpReferenceContext = [];
+let cmpReferencePending = 0;
+let cmpWorkspaceFiles = [];
+let cmpWorkspaceFilesDir = "";
+let cmpWorkspaceFilesBusy = false;
+let cmpWorkspaceFilesError = "";
+let cmpCapabilitiesError = "";
 
 function cmpCapability(id) {
-  const key = String(id || "");
-  const builtin = CMP_PLUGINS[key];
-  if (builtin) return { id: key, kind: "plugin", ...builtin, display_name: builtin.label };
   const all = S.capabilities || {};
-  const hit = [...(all.plugins || []), ...(all.skills || []), ...(all.agents || [])]
-    .find((x) => x && x.id === key);
-  if (!hit) return null;
-  const kind = (all.skills || []).includes(hit) ? "skill"
-    : (all.agents || []).includes(hit) ? "agent" : "plugin";
-  const label = hit.display_name || hit.name || key;
-  const prompt = kind === "plugin"
-    ? ((hit.default_prompt || []).join("\n") || "请使用已添加的插件「" + label + "」完成与其能力相关的任务。")
-    : kind === "skill"
-      ? "请将已安装的 Codex 技能「" + label + "」作为本任务的工作规范参考。"
-      : "请按 Codex 智能体「" + label + "」的职责与工作方式完成本任务。";
-  return { id: key, kind, label, display_name: label, prompt,
-           type: kind === "plugin" && /document/i.test(label) ? "doc" : "direct",
-           description: hit.short_description || hit.description || "",
-           state: hit.state || "enabled", enabled: hit.enabled !== false };
+  for (const [group, kind] of [["plugins", "plugin"], ["skills", "skill"], ["agents", "agent"]]) {
+    const hit = (all[group] || []).find(x => x && x.id === id);
+    if (!hit) continue;
+    const label = hit.display_name || hit.name || id;
+    const prompt = kind === "plugin"
+      ? "已选择插件：" + label + "\n" + (hit.description || "") + "\n" +
+        (hit.default_prompt || []).join("\n") + "\n" +
+        ((hit.skill_prompts || []).join("\n\n") || "") +
+        ((hit.unsupported || []).length ? "\n此插件的 Codex hooks、应用或 MCP 运行时未自动接入 CodeBee；请只使用当前环境实际可用的工具。" : "")
+      : (hit.prompt || "请参考「" + label + "」的职责：" + (hit.description || ""));
+    return { id, kind, label, prompt, state: hit.state,
+      enabled: hit.enabled === true && hit.installed === true && hit.available !== false };
+  }
+  return null;
 }
 
 function cmpCapabilityRows() {
   const all = S.capabilities || {};
-  const rows = [];
-  for (const x of (all.plugins || [])) rows.push({ ...x, kind: "plugin" });
-  for (const x of (all.skills || [])) rows.push({ ...x, kind: "skill" });
-  for (const x of (all.agents || [])) rows.push({ ...x, kind: "agent" });
-  // Before the API responds keep the four established entries usable.
-  if (!rows.length) return Object.keys(CMP_PLUGINS).map((id) => ({ id, kind: "plugin", ...CMP_PLUGINS[id], display_name: CMP_PLUGINS[id].label, state: "enabled" }));
-  return rows;
+  return [["plugins", "plugin"], ["skills", "skill"], ["agents", "agent"]]
+    .flatMap(([group, kind]) => (all[group] || []).map(x => ({ ...x, kind })));
 }
 
 function cmpRenderCapabilityMenu() {
   const box = $("cmp-capability-items");
   if (!box) return;
+  const query = (($("cmp-capability-search") || {}).value || "").trim().toLowerCase();
+  const match = row => !query || [row.display_name, row.name, row.description, row.short_description]
+    .join(" ").toLowerCase().includes(query);
+  const allRows = cmpCapabilityRows();
   const groups = [["plugin", "插件"], ["skill", "技能"], ["agent", "智能体"]];
-  box.innerHTML = groups.map(([kind, title]) => {
-    const rows = cmpCapabilityRows().filter((x) => x.kind === kind);
+  let html = groups.map(([kind, title]) => {
+    if (!["all", kind].includes(cmpCapabilityFilter)) return "";
+    const rows = allRows.filter(x => x.kind === kind && match(x));
     if (!rows.length) return "";
-    return '<div class="cmp-add-kicker">' + esc(t(title)) + "</div>" + rows.map((row) => {
-      const id = String(row.id || "");
-      const label = row.display_name || row.name || id;
-      const desc = row.short_description || row.description ||
-        (kind === "skill" ? t("已安装的 Codex 技能") : kind === "agent" ? t("已安装的 Codex 智能体配置") : "");
-      const state = row.state || (row.enabled === false ? "disabled" : "enabled");
-      const disabled = state === "broken" || state === "blocked" || row.enabled === false;
-      const status = disabled ? " · " + (state === "broken" ? t("损坏") : t("已停用")) : "";
-      return '<button type="button" class="cmp-add-item cmp-add-plugin" data-add-capability="' + esc(id) + '"' +
-        (disabled ? ' disabled aria-disabled="true"' : '') + ' role="menuitem"><span class="cmp-plugin-mark" aria-hidden="true">' +
-        esc(String(label).slice(0, 1).toUpperCase()) + '</span><span><b>' + esc(t(label)) + '</b><small>' +
-        esc(t(desc) + status) + '</small></span><span class="cmp-add-check" aria-hidden="true"></span></button>';
+    return '<div class="cmp-add-kicker">' + esc(t(title)) + ' · ' + rows.length + '</div>' + rows.map(row => {
+      const label = row.display_name || row.name || row.id;
+      const desc = row.short_description || row.description || "";
+      const state = row.state || "available";
+      const disabled = row.installed !== true || row.enabled !== true || row.available === false || ["broken", "blocked"].includes(state);
+      const status = ["broken", "blocked"].includes(state) ? t("损坏") : row.installed !== true
+        ? t("未安装") : row.enabled !== true ? t("已停用") : (row.unsupported || []).length ? t("部分能力") : t("已安装");
+      return '<button type="button" class="cmp-add-item cmp-add-plugin" data-add-capability="' + esc(row.id) + '"' +
+        (disabled ? ' disabled aria-disabled="true"' : '') + ' role="menuitem" title="' + esc(row.error || desc) + '">' +
+        '<span class="cmp-plugin-mark" aria-hidden="true">' + esc(String(label).slice(0, 1).toUpperCase()) + '</span>' +
+        '<span><b>' + esc(label) + '</b><small>' + esc(t(desc)) + '</small></span>' +
+        '<em class="cmp-capability-state">' + esc(status) + '</em><span class="cmp-add-check" aria-hidden="true"></span></button>';
     }).join("");
   }).join("");
+  if (["all", "file"].includes(cmpCapabilityFilter)) {
+    const files = cmpWorkspaceFiles.filter(row => match({ name: row.name }));
+    html += '<div class="cmp-add-kicker">' + esc(t("工作区文件")) + '</div>';
+    html += files.map(row => '<button type="button" class="cmp-add-item" data-add-workspace-file="' + esc(row.name) + '" role="menuitem">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-file-text"></use></svg><span><b>' + esc(row.name) + '</b></span></button>').join("") ||
+      '<p class="cmp-capability-empty">' + esc(cmpWorkspaceFilesBusy ? t("正在读取工作区…") : cmpWorkspaceFilesError || t("选择工作目录后可引用文件")) + '</p>';
+  }
+  if (["all", "chat"].includes(cmpCapabilityFilter)) {
+    const tasks = ((S.state || {}).tasks || []).filter(row => match({ name: row.title, description: row.goal }));
+    html += '<div class="cmp-add-kicker">' + esc(t("会话")) + '</div>' + tasks.map(row =>
+      '<button type="button" class="cmp-add-item" data-add-chat="' + esc(row.id) + '" role="menuitem">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg><span><b>' + esc(row.title || row.id) + '</b>' +
+      '<small>' + esc(row.goal || "") + '</small></span></button>').join("");
+  }
+  if (!html) html = '<p class="cmp-capability-empty">' + esc(t("没有匹配的内容")) + '</p>';
+  if (!S.capabilities) html = '<p class="cmp-capability-empty">' + esc(cmpCapabilitiesError || t("正在读取能力目录…")) + '</p>' + html;
+  box.innerHTML = html;
+  document.querySelectorAll("[data-capability-filter]").forEach(button => {
+    const active = button.dataset.capabilityFilter === cmpCapabilityFilter;
+    button.classList.toggle("is-on", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
   cmpRenderPluginChips();
+}
+
+async function cmpLoadWorkspaceFiles() {
+  const dir = ($("f-workdir").value || "").trim();
+  if (dir === cmpWorkspaceFilesDir) return;
+  cmpWorkspaceFilesDir = dir;
+  cmpWorkspaceFiles = [];
+  cmpWorkspaceFilesError = "";
+  cmpWorkspaceFilesBusy = !!dir;
+  cmpRenderCapabilityMenu();
+  if (!dir) return;
+  try {
+    const result = await api("/api/dir/scan?path=" + encodeURIComponent(dir), { timeout: 15000 });
+    if (dir === cmpWorkspaceFilesDir) cmpWorkspaceFiles = result.files || [];
+  } catch (error) {
+    if (dir === cmpWorkspaceFilesDir) cmpWorkspaceFilesError = error.message;
+  } finally {
+    if (dir === cmpWorkspaceFilesDir) {
+      cmpWorkspaceFilesBusy = false;
+      cmpRenderCapabilityMenu();
+    }
+  }
+}
+
+async function cmpAddReference(kind, id) {
+  cmpReferencePending++;
+  try {
+    if (kind === "file") {
+      const row = cmpWorkspaceFiles.find(row => row.name === id);
+      if (!row) return;
+      if (row.size > (ATT_OFFICE_RE.test(id) ? ATT_CAP_OFFICE : ATT_CAP)) {
+        throw new Error(t("附件超过：") + id);
+      }
+      if (S.atts.length >= 12) throw new Error(t("附件最多 12 个"));
+      const baseName = id.split("/").pop();
+      const isText = /\.(go|rs|kt|kts|java|c|h|cpp|hpp|sh|ps1|ini|cfg|conf|env|sql|tsx|jsx|lock)$/i.test(baseName) ||
+        /^\.(gitignore|gitattributes|npmignore|editorconfig|env(?:\..+)?)$/i.test(baseName) ||
+        /^(Dockerfile|Makefile|LICENSE)$/i.test(baseName);
+      if (!ATT_EXT_OK.test(id) && !isText) throw new Error(t("不支持的附件类型：") + id);
+      const response = await fetch(urlAuth("/api/dir/file?dir=" + encodeURIComponent(cmpWorkspaceFilesDir) + "&name=" + encodeURIComponent(id)));
+      if (!response.ok) throw new Error(t("读取文件失败：") + response.status);
+      const blob = await response.blob();
+      const file = new File([blob], ATT_EXT_OK.test(id) ? baseName : baseName + ".txt", { type: blob.type });
+      file.codebeeRelativePath = id;
+      await addAttachFiles([file]);
+    } else {
+      const data = await api("/api/tasks/" + encodeURIComponent(id) + "/detail");
+      const task = data.task;
+      if (!task) return;
+      const latest = ((S.state || {}).task_latest || {})[id] ||
+        (((S.state || {}).runs || []).find(row => row.task_id === id));
+      const timeline = latest ? await api("/api/runs/" + encodeURIComponent(latest.id) + "/timeline") : { items: [] };
+      const messages = (timeline.items || []).filter(row => row.text).slice(-20)
+        .map(row => (row.kind || row.role || "") + ": " + row.text).join("\n\n").slice(-16000);
+      const refId = "chat:" + id;
+      if (!cmpReferenceContext.some(row => row.id === refId)) cmpReferenceContext.push({
+        id: refId, label: task.title || id,
+        prompt: "引用会话：" + (task.title || id) + "\n会话目标：" + (task.goal || "") +
+          "\n背景：" + (task.context || "").slice(0, 12000) + "\n会话内容：\n" + messages
+      });
+      cmpRenderPluginChips();
+    }
+    cmpAddMenu(false);
+    $("f-goal").focus();
+  } catch (error) { toast(error.message, true); }
+  finally { cmpReferencePending--; }
 }
 
 function cmpRenderPluginChips() {
   const box = $("cmp-plugin-chips");
-  if (box) box.innerHTML = S.cmpPlugins.map((name) => {
-    const plugin = cmpCapability(name);
+  if (box) box.innerHTML = [...S.cmpPlugins, ...cmpReferenceContext.map(row => row.id)].map((name) => {
+    const plugin = cmpCapability(name) || cmpReferenceContext.find(row => row.id === name);
     if (!plugin) return "";
     return '<span class="cmp-plugin-chip" data-plugin="' + esc(name) + '">' +
       '<span class="cmp-plugin-mark" aria-hidden="true">' + esc(String(plugin.label || name).slice(0, 1).toUpperCase()) + '</span>' +
@@ -3973,7 +4065,6 @@ function cmpAddCapability(name) {
   if (recipe.enabled === false || ["broken", "blocked"].includes(recipe.state)) {
     toast(t("该能力当前未启用，无法添加。"), true); return;
   }
-  if (recipe.type && flowById(recipe.type)) pickType(recipe.type);
   if (!S.cmpPlugins.includes(name)) S.cmpPlugins.push(name);
   cmpRenderPluginChips();
   $("f-goal").focus();
@@ -3982,13 +4073,13 @@ function cmpAddCapability(name) {
 function cmpAddPlugin(name) { cmpAddCapability(name); }
 
 async function loadComposerCapabilities() {
+  cmpCapabilitiesError = "";
   try {
     S.capabilities = await api("/api/capabilities", { timeout: 15000 });
-    cmpRenderCapabilityMenu();
-  } catch (e) {
-    // Static fallback stays available if the service is still starting.
-    cmpRenderCapabilityMenu();
+  } catch (error) {
+    cmpCapabilitiesError = t("读取能力目录失败：") + error.message;
   }
+  cmpRenderCapabilityMenu();
 }
 
 function cmpOpenDrawing() {
@@ -18484,18 +18575,28 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-mode").addEventListener("change", () => {
     $("f-manual-only").classList.toggle("hidden", $("f-mode").value !== "manual");
     refreshEstimate();
+    else if (event.target.closest("[data-capability-filter]")) {
+      cmpCapabilityFilter = event.target.closest("[data-capability-filter]").dataset.capabilityFilter;
+      cmpRenderCapabilityMenu();
+    } else if (event.target.closest("[data-add-workspace-file]")) {
+      cmpAddReference("file", event.target.closest("[data-add-workspace-file]").dataset.addWorkspaceFile);
+    } else if (event.target.closest("[data-add-chat]")) {
+      cmpAddReference("chat", event.target.closest("[data-add-chat]").dataset.addChat);
+    }
   });
   $("f-thinking").addEventListener("change", refreshEstimate);
   $("f-rounds").addEventListener("change", refreshEstimate);
   $("f-direct-provider").addEventListener("change", renderDirectModelPicker);
   $("f-direct-model-name").addEventListener("change", cmpDirectBtnSync);   // 更多选项里改模型也要同步 pill
   $("f-type").dispatchEvent(new Event("change"));
+  $("cmp-capability-search").addEventListener("input", cmpRenderCapabilityMenu);
   cmpGreeting();   // 问候语按时段刷新（切语言/回任务页也会重算）
   $("btn-reload-catalog").addEventListener("click", async () => {
     await api("/api/catalog/reload", { method: "POST" }); poll(); refreshSessionAgents();
   });
   $("btn-catalog-upgrade-all").addEventListener("click", catUpgradeAll);
   $("btn-catalog-autobind").addEventListener("click", catAutoBindAll);
+    cmpReferenceContext = cmpReferenceContext.filter(row => row.id !== remove.dataset.pluginRemove);
   $("btn-import").addEventListener("click", openImportDialog);
   $("btn-add-provider").addEventListener("click", openAddProviderDialog);
   $("prov-search").addEventListener("input", () => {
@@ -18505,6 +18606,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("keydown", (e) => {
     // #ask 叠在 #modal 之上时 Esc 只关 #ask（不连坐关掉底下正在填的弹框）
     if (e.key === "Escape" && !$("ask").classList.contains("hidden")) { _askClose(false); return; }
+    cmpReferenceContext = cmpReferenceContext.filter(row => row.id !== remove.dataset.pluginRemove);
     if (e.key === "Enter" && !$("ask").classList.contains("hidden")
         && e.target.tagName !== "TEXTAREA") { _askClose(true); return; }
     // 文件内容弹窗(240) 夹在 ask(250) 与 modal(200) 之间，Esc 同样逐层关

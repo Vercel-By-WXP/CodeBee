@@ -945,6 +945,8 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .cmp-plugin-chip button { display: inline-flex; padding: 1px; border: 0; background: none; color: var(--muted); cursor: pointer; }
 .cmp-plugin-chip button:hover { color: var(--bad); }
 .cmp-plugin-chip button .ico { width: 12px; height: 12px; }
+.cmp-add-item[disabled] { cursor: not-allowed; opacity: .52; }
+.cmp-add-item[disabled]:hover { background: transparent; }
 
 /* ---------------- 运行详情 ---------------- */
 .detail-head {

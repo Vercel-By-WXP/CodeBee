@@ -126,6 +126,87 @@ class PluginTests(unittest.TestCase):
             patch.object(mcp_client, "_SETTINGS_TEXT", inject):
             self.assertEqual(json.loads(mcp_client._settings_text()), configured)
 
+    def test_codex_capabilities_include_enabled_manifest_with_hooks(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            codex = root / "codex"
+            plugin = root / "demo"
+            (plugin / ".codex-plugin").mkdir(parents=True)
+            (plugin / "skills").mkdir()
+            (plugin / "skills" / "workflow.md").write_text(
+                "# Workflow\n\nFollow the project checklist.", encoding="utf-8")
+            (plugin / ".codex-plugin" / "plugin.json").write_text(json.dumps({
+                "name": "demo", "version": "1.0.0", "description": "Demo",
+                "author": {"name": "Test"}, "hooks": {"hooks": {}},
+                "skills": "./skills/"
+            }), encoding="utf-8")
+            (codex / "config.toml").parent.mkdir(parents=True)
+            (codex / "config.toml").write_text(
+                '[marketplaces.test]\nsource = "' + str(plugin).replace('\\', '/') +
+                '"\n[plugins."demo@test"]\nenabled = true\n', encoding="utf-8")
+            with patch.object(plugins, "_codex_home", return_value=codex):
+                result = plugins.capabilities_view()
+            row = next(x for x in result["plugins"] if x["id"] == "codex:demo@test")
+            self.assertEqual(row["state"], "enabled")
+            self.assertEqual(row["unsupported"], ["hooks"])
+            self.assertIn("Follow the project checklist", row["skill_prompts"][0])
+
+    def test_codex_agent_profile_keeps_developer_instructions_for_selection(self):
+        with tempfile.TemporaryDirectory() as td:
+            codex = Path(td)
+            agents = codex / "agents"
+            agents.mkdir()
+            (agents / "reviewer.toml").write_text(
+                'description = "Review code"\ndeveloper_instructions = "Check tests first."\n',
+                encoding="utf-8")
+            with patch.object(plugins, "_codex_home", return_value=codex):
+                row = plugins.codex_agents_view()[0]
+            self.assertEqual(row["display_name"], "reviewer")
+            self.assertEqual(row["prompt"], "Check tests first.")
+
+    def test_codex_cache_is_scoped_to_marketplace_and_updates_without_restart(self):
+        with tempfile.TemporaryDirectory() as td:
+            codex = Path(td)
+            cache = codex / "plugins" / "cache"
+            self._plugin(cache / "other", name="demo")
+            with patch.object(plugins, "_codex_home", return_value=codex):
+                self.assertIsNone(plugins._codex_manifest_path("demo", "test", {}))
+                target = self._plugin(cache / "test" / "demo", name="1.0.0")
+                manifest = target / ".codex-plugin" / "plugin.json"
+                data = json.loads(manifest.read_text())
+                data["name"] = "demo"
+                manifest.write_text(json.dumps(data), encoding="utf-8")
+                self.assertEqual(plugins._codex_manifest_path("demo", "test", {}), target)
+
+    def test_codex_skill_entries_do_not_include_references_or_collapse_declared_roots(self):
+        with tempfile.TemporaryDirectory() as td:
+            codex = Path(td) / "codex"
+            plugin = self._plugin(td, name="demo", skills=False)
+            for name in ("first", "second"):
+                folder = plugin / "skills" / name
+                folder.mkdir(parents=True)
+                (folder / "SKILL.md").write_text("# Instructions " + name, encoding="utf-8")
+                (folder / "reference.md").write_text("Not an entry", encoding="utf-8")
+            manifest = plugin / ".codex-plugin" / "plugin.json"
+            data = json.loads(manifest.read_text())
+            data["skills"] = ["skills/first", "skills/second"]
+            manifest.write_text(json.dumps(data), encoding="utf-8")
+            codex.mkdir()
+            (codex / "config.toml").write_text(
+                '[marketplaces.test]\nsource = "' + plugin.as_posix() +
+                '"\n[plugins."demo@test"]\nenabled = false\n', encoding="utf-8")
+            with patch.object(plugins, "_codex_home", return_value=codex):
+                rows = [r for r in plugins.codex_skills_view() if r.get("plugin_id")]
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(len({r["id"] for r in rows}), 2)
+            self.assertTrue(all(not r["enabled"] for r in rows))
+
+    def test_config_fallback_comments_and_unrelated_tables(self):
+        _, configured = plugins._codex_config_fallback(
+            '[plugins."demo@test"]\nenabled = false # disabled\n'
+            '[unrelated]\nenabled = true\n')
+        self.assertIs(configured["demo@test"]["enabled"], False)
+
 
 if __name__ == "__main__":
     unittest.main()

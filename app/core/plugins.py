@@ -34,7 +34,6 @@ _MAX_SKILL_BYTES = 1024 * 1024
 _MAX_TOTAL_SKILL_BYTES = 8 * 1024 * 1024
 _MAX_PLUGIN_FILES = 512
 _MAX_PLUGIN_BYTES = 32 * 1024 * 1024
-_CODEX_CACHE_INDEX = None
 
 
 class PluginError(ValueError):
@@ -235,7 +234,7 @@ def _load_codex_manifest(plugin_dir):
         "manifest": manifest, "dir": str(root), "name": name, "version": version,
         "display_name": display_name, "description": str(manifest.get("description") or long_description),
         "short_description": short, "long_description": long_description,
-        "author": str((manifest.get("author") or {}).get("name") or ""),
+        "author": str((manifest.get("author") if isinstance(manifest.get("author"), dict) else {}).get("name") or ""),
         "category": str(interface.get("category") or "Productivity"),
         "capabilities": [str(x) for x in (interface.get("capabilities") or []) if isinstance(x, (str, int, float))],
         "default_prompt": [str(x).strip() for x in (interface.get("defaultPrompt") or []) if str(x).strip()][:8],
@@ -292,88 +291,59 @@ def _codex_config_fallback(raw):
         m = re.match(r'^\[plugins\.["\']([^"\']+)["\']\]$', line)
         if m:
             section = ("plugin", m.group(1)); configured.setdefault(m.group(1), {}); continue
+        if line.startswith("["):
+            section = None
+            continue
         m = re.match(r'^([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*(.*?)\s*$', line)
         if not m or not section:
             continue
         key, value = m.group(1), m.group(2)
-        if value.lower() in ("true", "false"):
-            parsed = value.lower() == "true"
+        if re.fullmatch(r'(true|false)\s*(?:#.*)?', value):
+            parsed = value.split()[0] == "true"
         else:
-            parsed = value.strip('"\'')
+            if value.startswith('"'):
+                try:
+                    parsed, _ = json.JSONDecoder().raw_decode(value)
+                except ValueError:
+                    continue
+            elif value.startswith("'"):
+                end = value.find("'", 1)
+                if end < 0:
+                    continue
+                parsed = value[1:end]
+            else:
+                continue
         (marketplaces if section[0] == "market" else configured)[section[1]][key] = parsed
     return marketplaces, configured
 
 
 def _codex_manifest_path(name, marketplace, source):
-    """Resolve an enabled Codex plugin to its manifest, preferring its source.
-
-    Codex can point at a live marketplace checkout while older versions leave
-    the same plugin in ``~/.codex/plugins/cache``.  The cache is only searched
-    for a plugin explicitly present in config.toml, so stale downloaded
-    packages are never presented as installed capabilities.
-    """
-    candidates = []
-    def add_matches(base):
-        try:
-            if (base / ".codex-plugin" / "plugin.json").is_file():
-                candidates.append(base)
-            for manifest in base.rglob("plugin.json"):
-                if manifest.parent.name != ".codex-plugin":
-                    continue
-                root = manifest.parent.parent
-                try:
-                    data = _read_json(manifest)
-                    if str(data.get("name") or "") == name:
-                        candidates.append(root)
-                except (OSError, PluginError, ValueError, TypeError):
-                    continue
-        except OSError:
-            pass
-    raw_source = str((source or {}).get("source") or "").strip()
-    if raw_source:
-        # Windows long-path prefixes are accepted by the OS but not by every
-        # pathlib operation used by the validation code.
-        if raw_source.startswith("\\\\?\\"):
-            raw_source = raw_source[4:]
-        base = Path(raw_source).expanduser()
-        add_matches(base)
-    cache = _codex_home() / "plugins" / "cache"
-    if cache.is_dir():
-        global _CODEX_CACHE_INDEX
-        if _CODEX_CACHE_INDEX is None:
-            index = {}
-            try:
-                for manifest in cache.rglob("plugin.json"):
-                    if manifest.parent.name != ".codex-plugin":
-                        continue
-                    root = manifest.parent.parent
-                    try:
-                        data = _read_json(manifest)
-                        pid = str(data.get("name") or "")
-                        if pid:
-                            index.setdefault(pid, []).append(root)
-                    except (OSError, PluginError, ValueError, TypeError):
-                        continue
-            except OSError:
-                index = {}
-            _CODEX_CACHE_INDEX = index
-        try:
-            for root in (_CODEX_CACHE_INDEX or {}).get(name, []):
-                candidates.append(root)
-        except OSError:
-            pass
-    valid = []
-    for root in candidates:
-        try:
-            if (root / ".codex-plugin" / "plugin.json").is_file():
-                valid.append(root)
-        except OSError:
-            continue
-    if not valid:
+    """Resolve only this marketplace's registered plugin, preferring its source."""
+    if not _NAME_RE.fullmatch(name) or not _NAME_RE.fullmatch(marketplace):
         return None
-    # A marketplace cache can contain backups and multiple versions.  The
-    # newest manifest is the closest representation of the active install.
-    return max(valid, key=lambda p: p.stat().st_mtime_ns if p.exists() else 0)
+    def matches(root):
+        try:
+            data = _read_json(root / ".codex-plugin" / "plugin.json")
+            return isinstance(data, dict) and data.get("name") == name
+        except (OSError, PluginError):
+            return False
+    raw_source = str((source if isinstance(source, dict) else {}).get("source") or "").strip()
+    if raw_source:
+        base = Path(raw_source).expanduser()
+        for root in (base, base / name, base / "plugins" / name):
+            if matches(root):
+                return root
+    # Do not scan other marketplaces: identical names need not mean the same
+    # package. Re-enumerate version directories so installs made after startup
+    # are visible without a permanently stale process cache.
+    cache = _codex_home() / "plugins" / "cache" / marketplace / name
+    try:
+        candidates = [p for p in cache.iterdir() if p.is_dir() and matches(p)] if cache.is_dir() else []
+        if matches(cache):
+            candidates.append(cache)
+        return max(candidates, key=lambda p: (p / ".codex-plugin" / "plugin.json").stat().st_mtime_ns) if candidates else None
+    except OSError:
+        return None
 
 
 def codex_view():
@@ -698,13 +668,39 @@ def remove(plugin_id, roots=None):
     return None
 
 
+def _declared_skill_files(base):
+    """Find declared skill entry files, excluding nested reference material."""
+    if base.is_file():
+        return [base]
+    if not base.is_dir():
+        return []
+    try:
+        if (base / "SKILL.md").is_file():
+            return [base / "SKILL.md"]
+        direct = [p for p in base.iterdir() if p.is_file() and not p.is_symlink() and p.suffix.lower() == ".md"]
+        nested = [p for p in base.rglob("SKILL.md") if p.is_file() and p.parent != base]
+        return direct + nested
+    except OSError:
+        return []
+
+
 def _catalog_row(desc):
     skill_names = []
+    skill_prompts = []
     for base in desc.get("skill_paths") or []:
-        if base.is_file():
-            skill_names.append(base.name)
-        elif base.is_dir():
-            skill_names.extend(p.relative_to(base).as_posix() for p in base.rglob("*.md") if p.is_file())
+        files = _declared_skill_files(base)
+        for path in files:
+            try:
+                rel = path.relative_to(base).as_posix() if base.is_dir() else path.name
+                skill_names.append(rel)
+                text = _skill_prompt(path)
+                if text:
+                    # Skill files are user supplied instructions. Keep the
+                    # composer context bounded while preserving the actual
+                    # workflow instead of only showing a menu label.
+                    skill_prompts.append("## %s\n%s" % (rel, text))
+            except (OSError, UnicodeError, ValueError):
+                continue
     return {
         "id": desc["name"], "name": desc["name"],
         "display_name": desc["display_name"], "description": desc["description"],
@@ -712,6 +708,7 @@ def _catalog_row(desc):
         "author": desc["author"], "category": desc["category"],
         "capabilities": desc["capabilities"], "skills": sorted(skill_names),
         "default_prompt": list(desc.get("default_prompt") or []),
+        "skill_prompts": skill_prompts[:16],
         "skill_count": len(skill_names), "has_mcp": bool(desc.get("mcp_path") or desc.get("mcp_inline")),
         "unsupported": desc["unsupported"], "source": desc["dir"],
         "available": True, "installed": False, "state": "available",
@@ -766,11 +763,24 @@ def _frontmatter_description(path):
     return value[:320]
 
 
+def _skill_prompt(path, limit=8000):
+    """Return bounded skill instructions for an explicitly selected entry."""
+    try:
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            raw = handle.read(limit + 1).strip()
+    except OSError:
+        return ""
+    return "技能文件：%s\n相对引用以此文件目录为基准；执行前读取完整技能文件。\n%s" % (path, raw[:limit])
+
+
 def codex_skills_view():
     """List installed Codex skills without importing or executing their code."""
-    root = _codex_home() / "skills"
     rows = []
-    if root.is_dir():
+    seen = set()
+    roots = [("codex", _codex_home() / "skills"),
+             ("system", _codex_home() / "skills" / ".system"),
+             ("agents", Path.home() / ".agents" / "skills")]
+    for origin, root in roots:
         try:
             dirs = sorted(p for p in root.iterdir() if p.is_dir() and p.name != ".system")
         except OSError:
@@ -780,10 +790,43 @@ def codex_skills_view():
             if not manifest.is_file():
                 continue
             name = item.name
-            rows.append({"id": "codex-skill:" + name, "name": name,
+            row_id = ("codex-skill:" if origin == "codex" else origin + "-skill:") + name
+            seen.add(row_id)
+            rows.append({"id": row_id, "name": name,
                          "display_name": name, "description": _frontmatter_description(manifest),
-                         "source": str(item), "source_type": "codex", "installed": True,
+                         "prompt": _skill_prompt(manifest),
+                         "source": str(manifest), "source_type": origin, "installed": True,
                          "enabled": True, "state": "enabled"})
+    # Codex plugin packages may carry their own skills. Include these as
+    # selectable entries as well as showing the parent plugin in the plugin
+    # group, while de-duplicating paths shared by multiple marketplace rows.
+    marketplaces, configured = _codex_config()
+    for key, prefs in configured.items():
+        if not isinstance(key, str) or "@" not in key or not isinstance(prefs, dict):
+            continue
+        name, marketplace = key.rsplit("@", 1)
+        enabled = prefs.get("enabled") is True
+        root_dir = _codex_manifest_path(name, marketplace, marketplaces.get(marketplace) or {})
+        if root_dir is None:
+            continue
+        try:
+            desc = _load_codex_manifest(root_dir)
+        except PluginError:
+            continue
+        for base in desc.get("skill_paths") or []:
+            files = _declared_skill_files(base)
+            for path in files:
+                rel = path.relative_to(Path(desc["dir"])).as_posix()
+                row_id = "codex-skill:%s/%s" % (key, rel)
+                if row_id in seen:
+                    continue
+                seen.add(row_id)
+                skill_name = path.parent.name if path.name == "SKILL.md" else path.stem
+                rows.append({"id": row_id, "name": skill_name, "display_name": "%s · %s" % (name, skill_name),
+                             "description": _frontmatter_description(path), "prompt": _skill_prompt(path),
+                             "source": str(path), "source_type": "codex", "installed": True,
+                             "enabled": enabled, "state": "enabled" if enabled else "disabled",
+                             "plugin_id": "codex:" + key})
     rows.sort(key=lambda x: (str(x.get("display_name") or "").lower(), x["id"]))
     return rows
 
@@ -803,10 +846,17 @@ def codex_agents_view():
                 data = tomllib.loads(raw) if tomllib is not None else {}
                 if not data:
                     data = {}
-                    for line in raw.splitlines():
-                        m = re.match(r'^\s*(name|description)\s*=\s*(["\'])(.*?)\2\s*$', line)
-                        if m:
-                            data[m.group(1)] = m.group(3)
+                    # Python 3.8/3.9 do not ship tomllib. Agent profiles use
+                    # ordinary strings plus a multiline triple-quoted
+                    # developer_instructions field, which is enough to parse
+                    # without adding a TOML dependency.
+                    for key in ("name", "description", "developer_instructions"):
+                        match = re.search(
+                            r'(?ms)^\s*' + re.escape(key) +
+                            r'\s*=\s*(?:"""(.*?)"""|\'\'\'(.*?)\'\'\'|(["\'])(.*?)\3)\s*$',
+                            raw)
+                        if match:
+                            data[key] = match.group(1) or match.group(2) or match.group(4) or ""
             except (OSError, UnicodeError, ValueError):
                 continue
             if not isinstance(data, dict):
@@ -815,6 +865,7 @@ def codex_agents_view():
             description = re.sub(r"\s+", " ", str(data.get("description") or "")).strip()
             rows.append({"id": "codex-agent:" + path.stem, "name": path.stem,
                          "display_name": name, "description": description[:320],
+                         "prompt": str(data.get("developer_instructions") or "").strip()[:12000],
                          "source": str(path), "source_type": "codex", "installed": True,
                          "enabled": True, "state": "enabled"})
     rows.sort(key=lambda x: (str(x.get("display_name") or "").lower(), x["id"]))
@@ -837,10 +888,21 @@ def capabilities_view():
             plugins.append(row)
     plugins.sort(key=lambda x: (str(x.get("display_name") or x.get("name") or "").lower(),
                                 str(x.get("id") or "")))
-    return {"plugins": plugins, "skills": codex_skills_view(),
-            "agents": codex_agents_view(),
-            "totals": {"plugins": len(plugins), "skills": len(codex_skills_view()),
-                       "agents": len(codex_agents_view())}}
+    skill_rows = codex_skills_view()
+    local_pack_states = {p["id"]: p for p in skills.list_packs()}
+    for pack in skills.all_packs():
+        enabled = (local_pack_states.get(pack["id"]) or {}).get("enabled", True)
+        skill_rows.append({"id": "codebee-skill:" + pack["id"], "name": pack["id"],
+                           "display_name": pack["name"], "description": pack.get("note") or "",
+                           "prompt": skills.pack_text(pack)[:8000], "source_type": "codebee",
+                           "installed": True, "enabled": enabled,
+                           "state": "enabled" if enabled else "disabled"})
+    skill_rows.sort(key=lambda x: (x["display_name"].lower(), x["id"]))
+    agent_rows = codex_agents_view()
+    return {"plugins": plugins, "skills": skill_rows,
+            "agents": agent_rows,
+            "totals": {"plugins": len(plugins), "skills": len(skill_rows),
+                       "agents": len(agent_rows)}}
 
 
 def active_mcp_servers():

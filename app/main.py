@@ -353,7 +353,16 @@ class Handler(BaseHTTPRequestHandler):
                 # Composer directory: CodeBee plugins plus the Codex plugins,
                 # skills and agent profiles installed for this user.
                 from core import plugins
-                return self._json(200, plugins.capabilities_view())
+                payload = plugins.capabilities_view()
+                # Keep the original registry capability list for existing
+                # clients while exposing the richer composer directory.
+                try:
+                    from core import registry
+                    payload["capabilities"] = [
+                        registry.capability_manifest(e) for e in catalog.load()]
+                except Exception:
+                    payload["capabilities"] = []
+                return self._json(200, payload)
             if path == "/api/knowledge":
                 from core import knowledge
                 return self._json(200, knowledge.view())
@@ -454,10 +463,6 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/catalog":
                 return self._json(200, {"catalog": manager.catalog_view(),
                                         "checking": manager.updates_checking()})
-            if path == "/api/capabilities":
-                from core import registry
-                return self._json(200, {"capabilities": [
-                    registry.capability_manifest(e) for e in catalog.load()]})
             if path == "/api/sessions":
                 from core import sessions
                 return self._json(200, {"sessions": sessions.scan(
