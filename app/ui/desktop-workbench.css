@@ -1704,3 +1704,28 @@
   .stask.active .sglyph { color: var(--cb-accent, var(--accent)); }
   .side-usage { margin-inline: 0; padding: 8px; background: transparent; }
 }
+
+/* New-task viewport safety: reserve the browser chrome's bottom edge while
+ * retaining the reference's floating, centered composer on desktop. */
+@media (min-width: 901px) {
+  /* Keep the workbench grid tied to the browser's live viewport. A stale
+   * 100vh grid row can be taller than the visible area after window chrome,
+   * display scaling, or viewport changes, leaving the absolutely positioned
+   * new-chat composer below the bottom edge. */
+  #app,
+  #mainwrap {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  main:has(> #page-settings > #sub-tasks:not(.hidden)) {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  #sub-tasks .form {
+    position: fixed;
+    bottom: max(24px, env(safe-area-inset-bottom));
+    left: calc((100vw + var(--workbench-rail-width, 52px) + var(--side-w, 288px)) / 2);
+    width: min(740px, calc(100vw - var(--workbench-rail-width, 52px) - var(--side-w, 288px) - 48px));
+  }
+}
