@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="activity.css">
 <link rel="stylesheet" href="desktop-workbench.css">
 <link rel="stylesheet" href="workspace-mode.css">
+<link rel="stylesheet" href="reference-composer.css">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，首涂落经典底色，
      app.js 加载后会按 currentSkin() 校正为默认皮肤。 -->
@@ -441,10 +442,9 @@
         </div>
         <p id="cmp-workspace-hint" class="hero-sub workspace-hint"></p>
         <div class="form">
-          <!-- Composer 大输入框：工作目录作为框内首行上下文；值真源仍是
+          <!-- Composer 大输入框：工作目录作为框上沿上下文；值真源仍是
                #f-type / #f-workdir（既有 ID，联动与测试锚点全兼容）。
                附件在左下、发送在右下；Enter 发送，Shift+Enter 换行 -->
-          <div class="cmp-box">
           <div class="cmp-pills">
             <div class="cmp-wd">
               <svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>
@@ -466,6 +466,7 @@
               <p class="hint" id="git-hint"></p>
             </div>
           </div>
+          <div class="cmp-box">
           <!-- 平时空（默认路径提示由 JS 写进占位符）；继续会话/克隆任务预填时这里落覆盖警告 -->
           <p class="hint cmp-hint" id="f-workdir-hint"></p>
             <div class="cmp-context-note"><svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg><span data-i18n="描述目标即可，CodeBee 会自动拆解并执行">描述目标即可，CodeBee 会自动拆解并执行</span></div>

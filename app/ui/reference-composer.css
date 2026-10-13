@@ -1,0 +1,66 @@
+/* Attachment reference: the folder strip sits behind the composer rather
+ * than inside its input surface. Keep every control's existing DOM hook. */
+@media (min-width: 901px) {
+  #sub-tasks .form > .cmp-pills {
+    position: relative;
+    width: calc(100% - 28px);
+    min-height: 38px;
+    margin: 0 auto -1px;
+    padding: 5px 12px;
+    border: 1px solid var(--cb-card-border, var(--border));
+    border-bottom: 0;
+    border-radius: 14px 14px 0 0;
+    background: var(--panel2);
+  }
+
+  #sub-tasks .form > .cmp-box {
+    position: relative;
+    z-index: 1;
+    margin: 0;
+    padding: 0 12px 6px;
+    border: 1px solid var(--cb-card-border, var(--border));
+    border-radius: 22px;
+    background: var(--panel);
+    box-shadow: 0 2px 8px rgba(24, 32, 42, .035), 0 12px 36px rgba(24, 32, 42, .04);
+  }
+
+  #sub-tasks .cmp-box textarea {
+    min-height: 64px;
+    height: 64px;
+    padding: 12px 0 8px;
+    border-radius: 0;
+  }
+
+  #sub-tasks .cmp-bar { min-height: 38px; padding: 2px 0 0; }
+  #sub-tasks #btn-create.round { width: 30px; height: 30px; }
+
+  /* These controls live at the bottom of the viewport. Open into the
+   * available reading area so every option stays reachable. */
+  #sub-tasks #type-menu {
+    top: auto;
+    bottom: calc(100% + 8px);
+    max-height: min(360px, calc(100dvh - 180px));
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(24, 32, 42, .12);
+  }
+  #sub-tasks .type-item { min-height: 44px; }
+  #sub-tasks .type-item.on { background: var(--panel2); }
+
+  /* Recent folders must paint above the raised input card. */
+  #sub-tasks .form > .cmp-pills:has(.wd-menu:not(.hidden)) { z-index: 3; }
+
+  #sub-tasks details#f-advanced summary {
+    color: var(--muted);
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+
+  @media (max-height: 700px) {
+    #sub-tasks .cmp-box textarea { min-height: 54px; height: 54px; }
+  }
+}
+
+/* Keep the separate folder strip in normal flow on touch layouts. */
+@media (max-width: 900px) {
+  #sub-tasks .form > .cmp-pills { margin-bottom: 0; }
+}
