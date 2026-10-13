@@ -15,7 +15,7 @@
   click_text {text, scope, contains}  按「可见文本」点按钮/标签（无稳定 id 的弹层项）
   shot      {name}                截图存证
   probe     {note}                dump 表单元素清单（校准选择器用，结果进 log）
-  click_match {any:[..], max_len}  关键词选块（点同时含所有关键词的最小元素）
+  click_match {any:[..], max_len}  关键词选块（点包含任一关键词的最小元素）
   submit    {sel}                 终步：auto_submit=false 时跳过（留给人工确认），
                                   跳过时补一张 ready-*.png，用户在浏览器窗口里自查提交
   volume   {key, open_sel, modal_sel, item_sel, add_sel, input_sel,
@@ -78,15 +78,25 @@ def dup_hint(page, timeout=5):
 
 
 def _click_match_js():
-    # 点同时包含所有关键词的最小可见元素（长度最小者=最内层卡片）
+    # 点包含任一关键词的最小可见元素（长度最小者=最内层卡片）。
+    # 流程字段名为 ``any``：例如七猫建书入口同时兼容“新建小说”和
+    # “创建作品”，平台页面只出现其中一个时也必须能继续。
     return ("(keys,maxLen)=>{"
-            "const hit=[...document.querySelectorAll('div,li,section,label,span,a')].filter(e=>{"
+            "const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};"
+            "const ds=[...document.querySelectorAll('.el-dialog,.modal,[role=dialog]')].filter(vis);"
+            "const root=ds.length?ds[ds.length-1]:document;"
+            "const hit=[...root.querySelectorAll('div,li,section,label,span,a')].filter(e=>{"
             "const x=(e.innerText||'').trim();"
-            "return x && x.length<=maxLen && keys.every(k=>x.includes(k));});"
-            "if(!hit.length)return{ok:false,err:'找不到同时含 '+keys.join('+')+' 的元素'};"
-            "hit.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
+            "return x && x.length<=maxLen && keys.some(k=>x.includes(k));});"
+            "if(!hit.length)return{ok:false,err:'找不到包含任一关键词：'+keys.join('、')+' 的元素'};"
+            "hit.sort((a,b)=>{const ax=(a.innerText||''),bx=(b.innerText||'');"
+            "const as=keys.reduce((n,k)=>n+(ax.includes(k)?1:0),0);"
+            "const bs=keys.reduce((n,k)=>n+(bx.includes(k)?1:0),0);"
+            "return bs-as||ax.length-bx.length;});"
             "let el=hit[0];"
-            "const act=el.closest('a,button,[role=button],[class*=btn]')||el;"
+            "let act=el.closest('a,button,[role=button],[class*=btn]');"
+            "if(!act){const card=el.closest('.client-box');if(card)act=card;}"
+            "if(!act)act=el;"
             "act.scrollIntoView({block:'center'});act.click();"
             "return{ok:true,tag:act.tagName};}")
 
@@ -339,11 +349,18 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 r = None
                 verified = not st.get("expect_checked")
                 tries = int(st.get("tries") or 25)
+                # 七猫改版把“存草稿”按钮文案改成“存为草稿”；保留流程
+                # 表旧文案作为主键，同时在真实页面上兼容这个等价文案。
+                click_texts = ([text, "存为草稿"] if text == "存草稿"
+                               else [text])
                 for _try in range(tries):
-                    r = page.real_click_text(text, st.get("scope") or
-                                             "a,button,[class*=btn]",
-                                             y_min=st.get("y_min"),
-                                             y_max=st.get("y_max"))
+                    for click_text in click_texts:
+                        r = page.real_click_text(click_text, st.get("scope") or
+                                                 "a,button,[class*=btn]",
+                                                 y_min=st.get("y_min"),
+                                                 y_max=st.get("y_max"))
+                        if (r or {}).get("ok"):
+                            break
                     if (r or {}).get("ok"):
                         if verified:
                             break
@@ -381,9 +398,15 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         "(sc,t,real)=>{"
                         "const cards=[...document.querySelectorAll('div,li,section,tr')].filter(e=>{"
                         "const x=(e.innerText||'').trim();"
-                        "return x.includes(sc)&&x.length<600&&e.getBoundingClientRect().width>0;});"
+                        "const hasBtn=e=>[...e.querySelectorAll('a,button,[role=button],[class*=btn],span')]"
+                        ".some(b=>{const y=(b.innerText||'').trim();return y===t||y.includes(t)&&y.length<=t.length+6;});"
+                        "return x.includes(sc)&&x.length<600&&e.getBoundingClientRect().width>0&&hasBtn(e);});"
                         "if(!cards.length)return{ok:false,err:'找不到含'+sc+'的卡片'};"
-                        "cards.sort((a,b)=>(b.innerText||'').length-(a.innerText||'').length);"
+                        # Pick the tightest matching card.  A page-level/table
+                        # wrapper also contains the chapter text and would
+                        # otherwise win by length, sending duplicate-title
+                        # drafts to the newest row instead of the requested one.
+                        "cards.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
                         "const card=cards[0];"
                         "const btns=[...card.querySelectorAll('a,button,[role=button],[class*=btn],span')].filter(e=>{"
                         "const x=(e.innerText||'').trim();return x===t||x.includes(t)&&x.length<=t.length+6;});"
@@ -451,6 +474,10 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     time.sleep(1.0)
                 if not (r or {}).get("ok"):
                     raise FlowError((r or {}).get("err") or "卡片未找到")
+                # Vue card selections update asynchronously; the following
+                # confirm action must observe the selected class before it is
+                # clicked (Qimao otherwise reports “请选择建书站点”).
+                time.sleep(float(st.get("settle") or 0.6))
             elif act == "fill_label":
                 # 按字段标签填（Element UI form-item：label 与控件同容器）
                 key = st.get("key") or ""

@@ -161,11 +161,13 @@ class _FakeUpload:
 
     def __init__(self, fail_at=None, slow_s=0.0):
         self.calls = []
+        self.kwargs = []
         self.fail_at = fail_at or {}
         self.slow_s = slow_s
 
     def __call__(self, task_id, plat, fp, auto_submit=False, as_draft=False, **kw):
         self.calls.append(fp)
+        self.kwargs.append({"auto_submit": auto_submit, "as_draft": as_draft, **kw})
         if self.slow_s:
             time.sleep(self.slow_s)
         n = ledger.parse_chapter_no(Path(fp).name)
@@ -309,8 +311,8 @@ class TestPublishPending(unittest.TestCase):
         finally:
             self.manager.upload_chapter_async = orig
 
-    def test_publish_failure_falls_back_to_scheduled_and_continues(self):
-        """直发失败时降级为定时发布，并继续处理后续章节。"""
+    def test_publish_failure_stops_without_legacy_scheduled_fallback(self):
+        """直发失败时停止，不再误触发已下线的定时发布流程。"""
         self._calibrate()
         fake = _FakeUpload(fail_at={1: "发布按钮失败"})
         orig_upload = self.manager.upload_chapter_async
@@ -331,18 +333,41 @@ class TestPublishPending(unittest.TestCase):
                                                  auto_submit=True)
             self.assertTrue(ok, err)
             st = self._wait_status(self.task["id"])
-            self.assertEqual(st.get("status"), "done")
-            self.assertEqual(st.get("done"), 3)
+            self.assertEqual(st.get("status"), "error")
+            self.assertIn("第 1 章", st.get("error") or "")
+            self.assertEqual(scheduled, [])
             self.assertEqual([ledger.parse_chapter_no(Path(x).name)
-                              for x in scheduled], [1])
-            self.assertEqual([ledger.parse_chapter_no(Path(x).name)
-                              for x in fake.calls], [1, 2, 3])
+                              for x in fake.calls], [1])
         finally:
             self.manager.upload_chapter_async = orig_upload
             if orig_schedule is None:
                 delattr(self.manager, "schedule_chapter_async")
             else:
                 self.manager.schedule_chapter_async = orig_schedule
+
+    def test_auto_submit_adds_audited_quality_override(self):
+        """全自动模式自动携带可审计的质量放行参数，不弹人工原因输入框。"""
+        self._calibrate()
+        fake = _FakeUpload()
+        orig_upload = self.manager.upload_chapter_async
+        orig_guard = self.manager._quality_release_guard
+        self.manager.upload_chapter_async = fake
+        self.manager._quality_release_guard = lambda *a, **kw: {
+            "allowed": False, "blockers": ["最近一次质量评审未达标"]}
+        try:
+            ok, err = auto.publish_pending_async(self.task["id"], "fanqie",
+                                                 auto_submit=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(self.task["id"])
+            self.assertEqual(st.get("status"), "done")
+            self.assertEqual(st.get("done"), 3)
+            self.assertTrue(all(x.get("force") for x in fake.kwargs))
+            self.assertTrue(all(x.get("force_confirmed") for x in fake.kwargs))
+            self.assertTrue(all("自动" in (x.get("force_reason") or "")
+                                for x in fake.kwargs))
+        finally:
+            self.manager.upload_chapter_async = orig_upload
+            self.manager._quality_release_guard = orig_guard
 
     def test_walks_all_chapters_in_order(self):
         self._calibrate()                 # 直发模式的前置：流程已校准
@@ -379,9 +404,9 @@ class TestPublishPending(unittest.TestCase):
             self.assertEqual(st.get("status"), "error")
             self.assertIn("第 2 章", st.get("error") or "")
             self.assertEqual(st.get("done"), 1)      # 第 1 章已发，后续未发
-            # The failed chapter is retried through the calibrated scheduled
-            # fallback before the batch reports an unrecoverable failure.
-            self.assertEqual(len(fake.calls), 3)
+            # A failed immediate flow stops the batch; the removed legacy
+            # scheduled fallback must not retry or enqueue the same chapter.
+            self.assertEqual(len(fake.calls), 2)
         finally:
             self.manager.upload_chapter_async = orig
 
@@ -817,6 +842,15 @@ class TestAutoPublishDue(unittest.TestCase):
         # 没建过书的平台不触发（触发也只会被拒，还烧掉当日额度）
         store.set_auto_publish(self.task["id"],
                                {"enabled": True, "platform": "qimao", "time": "00:01"})
+        late = time.strptime(TODAY + " 23:59", "%Y-%m-%d %H:%M")
+        self.assertEqual(auto.due_tasks(now=late), [])
+
+    def test_due_skips_archived_task(self):
+        # 归档任务保留 auto_publish 供审计，但不能在后台 tick 中抢占平台浏览器。
+        store.set_auto_publish(self.task["id"],
+                               {"enabled": True, "platform": "fanqie", "time": "00:01"})
+        task = store.get_task(self.task["id"])
+        task["archived"] = True
         late = time.strptime(TODAY + " 23:59", "%Y-%m-%d %H:%M")
         self.assertEqual(auto.due_tasks(now=late), [])
 

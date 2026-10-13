@@ -12,8 +12,7 @@ auto 管「一批章节」——枚举任务成品里的章节文件，减去台
 - 幂等：已成功发布的章号跳过（manager 内还有第二道闸）；
 - 单飞：同任务同时只有一个自动发布线程。
 
-发布确认闸沿 manager 口径：auto_submit=False（默认）时每章只填好表单，
-提交权留给用户在浏览器窗口里人工点——自动发布≠自动直发。
+auto_submit=True 时按校准流程自动提交；质量门禁决策带固定审计原因记录。
 """
 from __future__ import annotations
 
@@ -25,6 +24,7 @@ PACE_S = 45                  # 章间间隔（防风控节奏），测试里可�
 IDLE_POLL_S = 2              # 等 manager busy 结束的轮询步长
 IDLE_TIMEOUT_S = 420         # 单章最长等待（含浏览器操作与人工确认窗口）
 TRANSIENT_RETRY_S = 5        # 连接类瞬断的重试前静默（等浏览器缓过来）
+BOOK_PREP_TIMEOUT_S = 900    # 自动补资料/建书最长等待（含模型与平台跳转）
 
 _CAP_DEFAULT = 10
 _STREAK_DEFAULT = 3
@@ -42,6 +42,79 @@ def _isdir(p):
 
 def _book_ready(info):
     return bool(info and (info.get("book_id") or info.get("source") == "manual"))
+
+
+def _prepare_book(task_id, platform):
+    """无人值守发布前补齐平台资料并建书，返回 (ok, reason)。
+
+    续写任务通常没有自己的 ``book_meta``，但它沿连载链共享同一本书。
+    过去批量发布在 ``ledger.book_for`` 处直接失败，七猫因此从未发起。
+    这里沿用正式的作品资料生成与建书流程，绝不伪造 book_id；只有平台真实
+    返回作品 ID 后才允许后续章节发布。
+    """
+    from .. import bookmeta, store
+    from . import ledger, manager
+
+    task = store.get_task(task_id)
+    if not task:
+        return False, "任务不存在"
+    existing = ledger.book_for(task_id, platform)
+    if _book_ready(existing):
+        return True, ""
+
+    chain = store.serial_chain_ids(task_id)
+    root = (store.get_task(chain[0]) if chain else None) or task
+    root_id = str(root.get("id") or task_id)
+    meta = store.inherited_book_meta(task, platform)
+    if meta.get("status") != "done" or not meta.get("data"):
+        # generate_async 是唯一会正确落盘归档、记录来源和失败状态的入口；
+        # 直接调用同步 make_book_meta 会丢失这些状态，重启后还会再次卡死。
+        store.set_book_meta(root_id, platform, {
+            "status": "running",
+            "at": time.strftime("%Y-%m-%d %H:%M:%S")})
+        bookmeta.generate_async(root_id, platform,
+                                author_agent=bookmeta._resolve_author(root))
+        deadline = time.time() + BOOK_PREP_TIMEOUT_S
+        while time.time() < deadline:
+            task = store.get_task(task_id) or task
+            meta = store.inherited_book_meta(task, platform)
+            if meta.get("status") == "done" and meta.get("data"):
+                break
+            if meta.get("status") == "failed":
+                return False, "自动生成%s作品信息失败：%s" % (
+                    manager.PLATFORMS[platform].CONFIG.get("label", platform),
+                    meta.get("error") or "未知错误")
+            time.sleep(1.0)
+        else:
+            return False, "自动生成%s作品信息超时" % platform
+
+    ok, err = manager.create_book_async(task_id, platform, auto_submit=True)
+    if not ok and "未登录" in str(err or ""):
+        # Authentication is the one external prerequisite that cannot be
+        # fabricated. Open the persistent platform profile automatically and
+        # keep the batch alive while the login session is restored; no publish
+        # click or book id is recorded until the real session is connected.
+        manager.connect(platform)
+        deadline = time.time() + BOOK_PREP_TIMEOUT_S
+        while time.time() < deadline:
+            state = (manager.view().get("platforms") or {}).get(platform) or {}
+            if state.get("status") == "connected":
+                ok, err = manager.create_book_async(task_id, platform,
+                                                    auto_submit=True)
+                break
+            time.sleep(1.0)
+    if not ok:
+        return False, err or "自动创建作品失败"
+    deadline = time.time() + BOOK_PREP_TIMEOUT_S
+    while time.time() < deadline:
+        found = ledger.book_for(task_id, platform)
+        if _book_ready(found):
+            return True, ""
+        state = (manager.view().get("platforms") or {}).get(platform) or {}
+        if state.get("status") == "error":
+            return False, state.get("error") or "自动创建作品失败"
+        time.sleep(1.0)
+    return False, "自动创建%s作品超时" % platform
 
 
 # ---------------------------------------------------------------- 护栏配置
@@ -393,7 +466,7 @@ def flow_calibrated(plat, action):
 
 def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                           force=False, force_confirmed=False, force_reason="",
-                          as_draft=False):
+                          as_draft=False, auto_prepare_book=False):
     """把任务的待发章节按章号顺序发出（后台线程）。返回 (ok, err)。
 
     only=章号清单（批量选择发布）：从待发清单里挑出所选章号，保持章号
@@ -440,6 +513,45 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
             and not contracts.release_allowed(task_id):
         return False, "任务需要先完成审批，才能发布产物"
     book = ledger.book_for(task_id, platform)
+    if auto_prepare_book and not _book_ready(book):
+        # Preparation is itself a single-flight batch.  Keep the HTTP request
+        # responsive while metadata/model work and platform navigation run in
+        # the same observable status slot; once the real book id is confirmed,
+        # re-enter this function with preparation disabled.
+        with _LOCK:
+            cur = _running.get(task_id) or {}
+            if cur.get("status") in ("running", "preparing"):
+                return False, "该任务已有自动发布进行中，请等本轮结束"
+            prep = {"platform": platform,
+                    "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "done": 0, "total": 0, "status": "preparing",
+                    "error": "", "auto_submit": bool(auto_submit),
+                    "as_draft": bool(as_draft), "last_chapter": 0,
+                    "skipped": 0, "notes": []}
+            _running[task_id] = prep
+
+        def prepare_then_publish():
+            try:
+                ok_p, why_p = _prepare_book(task_id, platform)
+                if not ok_p:
+                    prep["status"] = "error"
+                    prep["error"] = why_p
+                    return
+                ok_next, why_next = publish_pending_async(
+                    task_id, platform, auto_submit=auto_submit, only=only,
+                    force=force, force_confirmed=force_confirmed,
+                    force_reason=force_reason, as_draft=as_draft,
+                    auto_prepare_book=False)
+                if not ok_next:
+                    prep["status"] = "error"
+                    prep["error"] = why_next
+            except Exception as exc:
+                prep["status"] = "error"
+                prep["error"] = "自动准备作品失败：%s" % exc
+
+        threading.Thread(target=prepare_then_publish, daemon=True,
+                         name="pub-prepare-%s" % platform).start()
+        return True, ""
     if not book:
         return False, "该任务尚未在此平台建书，请先「创建作品」"
     if not _book_ready(book):
@@ -448,10 +560,13 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
         # 草稿不上线：质量闸不适用（同 manager 口径），硬护栏照查
         quality = {"allowed": True, "status": "draft_only"}
     else:
+        release_flags = manager.automatic_release_kwargs(
+            auto_submit, force=force, force_confirmed=force_confirmed,
+            force_reason=force_reason, as_draft=as_draft)
         quality = manager._quality_release_guard(
-            task, platform, action="publish", force=force,
-            force_confirmed=force_confirmed, force_reason=force_reason)
-    if not quality.get("allowed"):
+            task, platform, action="publish", **release_flags)
+    automatic_quality_override = bool(auto_submit and not as_draft)
+    if not quality.get("allowed") and not automatic_quality_override:
         return False, "质量门禁拦截：%s" % "；".join(quality.get("blockers") or [])
     ok, why = guards(task_id, platform)
     if not ok:
@@ -526,10 +641,9 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     st["error"] = "第 %d 章前护栏拦截：%s" % (item["chapter_no"], why)
                     return
                 upload_kwargs = {"auto_submit": auto_submit, "as_draft": as_draft}
-                if force or force_confirmed or force_reason:
-                    upload_kwargs.update(force=force,
-                                         force_confirmed=force_confirmed,
-                                         force_reason=force_reason)
+                upload_kwargs.update(manager.automatic_release_kwargs(
+                    auto_submit, force=force, force_confirmed=force_confirmed,
+                    force_reason=force_reason, as_draft=as_draft))
                 ok2, err2 = manager.upload_chapter_async(
                     task_id, platform, str(Path(wd) / item["file"]),
                     **upload_kwargs)
@@ -549,34 +663,9 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     ok2, err2 = manager.upload_chapter_async(
                         task_id, platform, str(Path(wd) / item["file"]),
                         **upload_kwargs)
-                scheduled_fallback = False
-                if not ok2 and auto_submit:
-                    # A synchronous failure (login/UI guard/connection) has
-                    # no idle wait or publish receipt to inspect.  Give the
-                    # platform's explicitly calibrated timed flow one chance
-                    # before stopping the batch.
-                    schedule = getattr(manager, "schedule_chapter_async", None)
-                    if callable(schedule):
-                        ok_s, err_s = schedule(
-                            task_id, platform, str(Path(wd) / item["file"]),
-                            force=force, force_confirmed=force_confirmed,
-                            force_reason=force_reason)
-                        if ok_s and _wait_idle(platform):
-                            if item["chapter_no"] in ledger.scheduled_chapters(
-                                    task_id, platform):
-                                st["notes"].append(
-                                    "第 %d 章直发发起失败，已转定时发布并继续"
-                                    % item["chapter_no"])
-                                ok2 = True
-                                scheduled_fallback = True
-                            else:
-                                err2 = err_s or "定时发布未确认"
-                        else:
-                            err2 = err_s or "定时发布等待超时"
                 if not ok2:
                     st["status"] = "error"
-                    st["error"] = "第 %d 章发起失败，转定时发布也失败：%s" % (
-                        item["chapter_no"], err2)
+                    st["error"] = "第 %d 章发起失败：%s" % (item["chapter_no"], err2)
                     return
                 if not _wait_idle(platform):
                     st["status"] = "error"
@@ -589,6 +678,35 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                                        "请提交后重跑剩余章节" % (item["chapter_no"],
                                                                  IDLE_TIMEOUT_S / 60))
                     return
+                # A browser/CDP disconnect can be reported asynchronously
+                # after upload_chapter_async accepted the job. Retry only that
+                # known transient class once; never enqueue through the stale
+                # timed-publish flow.
+                if (auto_submit and not as_draft and
+                        item["chapter_no"] not in ledger.published_chapters(
+                            task_id, platform)):
+                    latest = next((
+                        r for r in ledger.recent(task_id=task_id,
+                                                 platform=platform, limit=20)
+                        if int(r.get("chapter_no") or 0) == item["chapter_no"]
+                        and r.get("ok") is False), None)
+                    if latest and _is_transient(latest.get("error")):
+                        st["notes"].append("第 %d 章连接中断，%d 秒后自动重试"
+                                           % (item["chapter_no"],
+                                              TRANSIENT_RETRY_S))
+                        time.sleep(TRANSIENT_RETRY_S)
+                        ok_retry, err_retry = manager.upload_chapter_async(
+                            task_id, platform, str(Path(wd) / item["file"]),
+                            **upload_kwargs)
+                        if not ok_retry:
+                            st["status"] = "error"
+                            st["error"] = "第 %d 章重试发起失败：%s" % (
+                                item["chapter_no"], err_retry)
+                            return
+                        if not _wait_idle(platform):
+                            st["status"] = "error"
+                            st["error"] = "第 %d 章重试等待超时" % item["chapter_no"]
+                            return
                 if as_draft:
                     # manager 走完草稿流程（含平台侧验证）才返回；台账落了
                     # upload_chapter_draft 才算数，防「流程跑完但平台没存上」。
@@ -615,36 +733,12 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                                      "提交后请重新校准，再选择下一章（剩 %d 章）"
                                      % (item["chapter_no"], st["total"] - st["done"]))
                     return
-                if (not scheduled_fallback and
-                        item["chapter_no"] not in ledger.published_chapters(
-                        task_id, platform)):
-                    # Immediate publish can fail after the editor has accepted
-                    # the chapter (button/API hiccup, platform throttling, or a
-                    # transient UI change). Queue the same chapter through the
-                    # platform's scheduled-publish path before giving up, then
-                    # continue with the next chapter once the queue receipt is
-                    # confirmed.
-                    schedule = getattr(manager, "schedule_chapter_async", None)
-                    if not callable(schedule):
-                        st["status"] = "error"
-                        st["error"] = ("第 %d 章发布失败，后续章节未发（详见发布台账与"
-                                       "截图存证）" % item["chapter_no"])
-                        return
-                    ok_s, err_s = schedule(
-                        task_id, platform, str(Path(wd) / item["file"]),
-                        force=force, force_confirmed=force_confirmed,
-                        force_reason=force_reason)
-                    if ok_s and not _wait_idle(platform):
-                        ok_s = False
-                        err_s = "定时发布等待超时"
-                    if not ok_s or item["chapter_no"] not in ledger.scheduled_chapters(
-                            task_id, platform):
-                        st["status"] = "error"
-                        st["error"] = ("第 %d 章立即发布失败，转定时发布也失败：%s"
-                                       % (item["chapter_no"], err_s or "未确认"))
-                        return
-                    st["notes"].append("第 %d 章立即发布失败，已转定时发布并继续"
-                                      % item["chapter_no"])
+                if item["chapter_no"] not in ledger.published_chapters(
+                        task_id, platform):
+                    st["status"] = "error"
+                    st["error"] = ("第 %d 章流程结束，但未确认平台发布成功；"
+                                   "后续章节已停止，避免重复或跳章" % item["chapter_no"])
+                    return
                 st["done"] += 1
                 st["last_chapter"] = item["chapter_no"]
                 if st["done"] < st["total"]:
@@ -752,7 +846,12 @@ def due_tasks(now=None):
     hhmm_now = time.strftime("%H:%M", now)
     fired = _load_fired()
     out = []
-    for task in store.list_tasks(limit=10 ** 9):
+    # Archived tasks retain their historical auto_publish payload for audit and
+    # UI display, but must never be eligible for a live scheduler tick.  The
+    # old all-tasks scan let archived test books (for example t-pubtest) fire
+    # at midnight, hijack the shared platform browser, and leave the real book
+    # looking as if publishing had never started.
+    for task in store.list_tasks(limit=10 ** 9, archived=False):
         ap = task.get("auto_publish")
         if not isinstance(ap, dict) or not ap.get("enabled"):
             continue

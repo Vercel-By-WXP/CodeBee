@@ -32,6 +32,30 @@ LOGIN_WAIT_S = 15 * 60          # 扫码等待窗口
 STATUS_FILE = paths.PUBLISH_DIR / "state.json"
 
 LOCK = threading.RLock()
+AUTOMATIC_RELEASE_REASON = (
+    "用户已启用全自动发布；系统按平台校准流程自动提交，"
+    "质量门禁放行已写入发布台账"
+)
+
+
+def automatic_release_kwargs(auto_submit, force=False, force_confirmed=False,
+                             force_reason="", as_draft=False):
+    """Return audited release override flags for an explicitly automatic run.
+
+    The user-facing automatic mode must not pause for a quality-gate prompt.
+    Keep hard platform checks, login checks, approval contracts, content length,
+    and browser completion verification intact; only convert the quality gate's
+    second-confirmation requirement into a deterministic audit record.
+    """
+    if auto_submit and not as_draft:
+        return {
+            "force": True,
+            "force_confirmed": True,
+            "force_reason": str(force_reason or AUTOMATIC_RELEASE_REASON),
+        }
+    return {"force": bool(force),
+            "force_confirmed": bool(force_confirmed),
+            "force_reason": str(force_reason or "")}
 _state = {"platforms": {}}      # {plat: {status, port, at, error, last_login, last_action}}
 _browsers = {}                  # plat → Browser（进程内缓存，alive 校验兜底）
 
@@ -286,6 +310,14 @@ def load_flow(plat, action):
                Path(__file__).with_name("flows-%s-calibrated.json" % plat)):
         try:
             data = json.loads(fp.read_text(encoding="utf-8"))
+            # A previous Windows install wrote the user override after a
+            # UTF-8/GBK conversion and persisted U+FFFD (�) inside every
+            # selector.  The JSON still parses and passed the structural
+            # contract check, but the browser could never find labels such as
+            # “新建小说” or “章节名称”.  Treat that file as corrupt and fall
+            # through to the packaged, real-device-calibrated baseline.
+            if not _flow_text_clean(data):
+                continue
             if isinstance(data, dict) and isinstance(data.get(action), list):
                 steps = data[action]
                 # A stale user override must not silently downgrade a
@@ -302,6 +334,18 @@ def load_flow(plat, action):
     # platform must ship an explicit, calibrated upload_chapter_scheduled
     # table (or a user override) before this recovery path is available.
     return PLATFORMS[plat].FLOWS[action]
+
+
+def _flow_text_clean(value):
+    """Return False when a persisted flow contains replacement characters."""
+    if isinstance(value, str):
+        return "\ufffd" not in value
+    if isinstance(value, dict):
+        return all(_flow_text_clean(k) and _flow_text_clean(v)
+                   for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return all(_flow_text_clean(v) for v in value)
+    return True
 
 
 def _flow_contract_ok(plat, action, steps):
@@ -326,7 +370,12 @@ def _flow_contract_ok(plat, action, steps):
             isinstance(s, dict) and s.get("do") == "verify"
             and "draft_url" in str(s.get("url") or "") for s in steps)
     if action == "upload_chapter":
-        return has("click_real", "确认发布") and has("expect_text")
+        # Qimao's current confirmation dialog may expose a success toast only
+        # after the final click; older user overrides used the verify contract
+        # without an explicit expect_text step.  Both forms are safe when they
+        # require the real "确认发布" action and a post-submit verification.
+        return has("click_real", "确认发布") and (has("expect_text") or
+                                                 has("verify"))
     return True
 
 
@@ -588,11 +637,15 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
     why = _create_preflight(plat, meta["data"])
     if why:
         return False, why
-    quality = _quality_release_guard(
-        task, plat, action="publish", force=force,
-        force_confirmed=force_confirmed, force_reason=force_reason)
+    release_flags = automatic_release_kwargs(
+        auto_submit, force=force, force_confirmed=force_confirmed,
+        force_reason=force_reason)
+    quality = _quality_release_guard(task, plat, action="publish",
+                                     **release_flags)
     if not quality.get("allowed"):
         return False, "质量门禁拦截：%s" % "；".join(quality.get("blockers") or [])
+    quality_forced = bool(quality.get("forced") or release_flags.get("force"))
+    quality_reason = str(release_flags.get("force_reason") or "")
     ok_login, why = _login_guard(plat)
     if not ok_login:
         return False, why
@@ -806,10 +859,7 @@ def _with_tag_steps(steps, groups, values, mod=None):
 
 
 def _login_guard(plat):
-    """动作前的登录前置：状态 connected 放行；否则现场复核一次。"""
-    s = _st(plat)
-    if s.get("status") == "connected":
-        return True, ""
+    """动作前的登录前置，现场复核浏览器页面，避免 stale connected。"""
     try:
         _b, page = _open_page(plat)
         ok, url = _check_login(plat, page)
@@ -873,6 +923,7 @@ def chapter_fill_values(ch_no, title, body, book_name):
     空着被平台以「章节序号只支持阿拉伯数字」打回）；chapter_name=拆掉章号
     前缀的正题（番茄标题位）。章号解析不出给空串，fill 步骤按空值跳过。"""
     return {"chapter_title": str(title or ""),
+            "chapter_scope": str(title or ""),
             "chapter_name": split_chapter_name(title),
             "chapter_no": str(int(ch_no)) if ch_no else "",
             "chapter_body": str(body or ""),
@@ -955,16 +1006,26 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     ch_no, title, body, err = read_chapter(chapter_file)
     if err:
         return False, err
+    release_flags = {}
     if as_draft:
         # 草稿不上线：质量闸不适用（evaluate_release action=draft 直通），
         # 人工复核挪到「平台草稿箱 → 用户逐章检查后提交」那一步。
         quality = {"allowed": True}
     else:
+        release_flags = automatic_release_kwargs(
+            auto_submit, force=force, force_confirmed=force_confirmed,
+            force_reason=force_reason)
         quality = _quality_release_guard(
             task, plat, action="publish", target_chapter=ch_no or None,
-            force=force, force_confirmed=force_confirmed, force_reason=force_reason)
+            **release_flags)
     if not quality.get("allowed"):
         return False, "质量门禁拦截：%s" % "；".join(quality.get("blockers") or [])
+    # Keep the audit fields available to both the worker success path and its
+    # exception path.  Previously they were only initialized in create_book,
+    # so a failed Qimao upload masked the real flow error with NameError and
+    # left the platform state harder to diagnose.
+    quality_forced = bool(quality.get("forced") or release_flags.get("force"))
+    quality_reason = str(release_flags.get("force_reason") or "")
     n_chars = len(body.replace("\n", "").replace(" ", ""))
     if n_chars < 100:
         return False, "正文过短（%d 字），疑似未完成章节" % n_chars
@@ -1006,6 +1067,12 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     mod = PLATFORMS[plat]
     values = chapter_fill_values(ch_no, title, body,
                                  book_ref.get("title") or "")
+    # Qimao renders the numeric prefix itself in the chapter editor.  Passing
+    # the source heading ("第1章 标题") would therefore produce
+    # "第1章 第1章 标题" on the platform; keep the full heading for audit
+    # records, but fill only the semantic title in this platform form.
+    if plat == "qimao" and values.get("chapter_name"):
+        values["chapter_title"] = values["chapter_name"]
     # 分卷：按本地卷计划解析目标卷（无计划=空串，volume 步骤按空值跳过，
     # 保持平台默认卷）；_volumes 是平台卷表共享缓存，弹窗新建的卷由流程
     # 步骤追加进来，跑完回写 books.json 供后续章节免建。
@@ -1059,7 +1126,9 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                                                             "chapter_no": ch_no})
                 ledger.record(plat, flow_key, task_id=task_id, chapter_no=ch_no,
                               book_id=book_ref.get("book_id") or "", title=title, ok=True,
-                              operation_id=operation_id, operation_status="confirmed")
+                              operation_id=operation_id, operation_status="confirmed",
+                              quality_forced=quality_forced,
+                              quality_reason=quality_reason)
             else:
                 # run_flow stops immediately before the submit step. Keep the
                 # operation pending and never count the filled form as published.
@@ -1075,7 +1144,9 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
             ledger.record(plat, flow_key, task_id=task_id, chapter_no=ch_no,
                           book_id=book_ref.get("book_id") or "", title=title,
                           ok=False, error=str(e)[:300], operation_id=operation_id,
-                          operation_status=operation_status)
+                          operation_status=operation_status,
+                          quality_forced=quality_forced,
+                          quality_reason=quality_reason)
         finally:
             _save()
 

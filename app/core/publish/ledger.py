@@ -25,7 +25,8 @@ LOCK = threading.RLock()
 
 FIELDS = ("ts", "day", "platform", "action", "task_id", "chapter_no",
           "book_id", "title", "ok", "error", "shot", "operation_id",
-          "operation_status", "remote_receipt")
+          "operation_status", "remote_receipt", "quality_forced",
+          "quality_reason")
 
 
 def _month_file(day):
@@ -34,7 +35,8 @@ def _month_file(day):
 
 def record(platform, action, task_id="", chapter_no=0, book_id="",
            title="", ok=True, error="", shot="", operation_id="",
-           operation_status="", remote_receipt=""):
+           operation_status="", remote_receipt="", quality_forced=False,
+           quality_reason=""):
     """追加一条发布记录。异常全吞——记账失败绝不能影响发布主流程。"""
     try:
         rec = {
@@ -52,6 +54,8 @@ def record(platform, action, task_id="", chapter_no=0, book_id="",
             "operation_id": str(operation_id or "")[:80],
             "operation_status": str(operation_status or "")[:20],
             "remote_receipt": str(remote_receipt or "")[:300],
+            "quality_forced": bool(quality_forced),
+            "quality_reason": str(quality_reason or "")[:300],
         }
         with LOCK:
             paths.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
