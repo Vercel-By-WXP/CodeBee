@@ -69,14 +69,14 @@ try {
   await resize(1440);
   await send('Page.navigate', { url: origin });
   check('加载共用任务与流程', await ready());
-  check('首次工作模式默认直接执行', await ev('workspaceChoice.mode === "work" && $("f-type").value === "direct"'));
-  check('工作入口文档/调研/翻译可见', await ev('$("cmp-quick").textContent.includes("文档") && $("cmp-quick").textContent.includes("调研") && !$("cmp-quick").textContent.includes("缺陷复盘")'));
+  check('首次聊天模式默认直接执行', await ev('workspaceChoice.mode === "chat" && $("f-type").value === "direct"'));
+  check('聊天入口只显示直接执行', await ev('$("cmp-quick").textContent.includes("直接执行") && $("cmp-quick").querySelectorAll(".cmp-chip").length === 1'));
   await capture('work-initial');
   await click('#btn-brand');
-  check('菜单展开并聚焦选中模式', await ev('$("btn-brand").getAttribute("aria-expanded") === "true" && document.activeElement.dataset.workspaceMode === "work"'));
+  check('菜单展开并聚焦选中模式', await ev('$("btn-brand").getAttribute("aria-expanded") === "true" && document.activeElement.dataset.workspaceMode === "chat"'));
   await capture('mode-menu');
   await ev(`$('f-goal').value='保留这段目标和所有上下文，模式切换不自动提交任务'; $('f-workdir').value=${JSON.stringify(workdir)}; $('f-context').value='保留背景'; $('f-mode').value='expert'; S.atts=[{id:'fixture-attachment',name:'sample.txt'}];`);
-  await key('ArrowDown', 'ArrowDown');
+  await key('ArrowUp', 'ArrowUp');
   await key('Enter', 'Enter');
   check('键盘选择开发，默认代码流程', await waitFor('workspaceChoice.mode === "develop" && $("f-type").value === "code"'));
   check('开发首页提示与常用入口联动', await ev('$("cmp-greet").textContent.includes("构建") && $("cmp-quick").textContent.includes("缺陷复盘")'));
@@ -118,7 +118,7 @@ try {
   await ev('S.lastPrefs={type:"code"}; S.typeTouched=false; renderTypeOptions()');
   check('旧用户代码偏好迁移到开发模式', await ev('workspaceChoice.mode === "develop" && $("f-type").value === "code"'));
   await ev('localStorage.setItem(WORKSPACE_MODE_KEY,"broken-json")'); await send('Page.reload'); await ready();
-  check('损坏偏好安全回落工作模式', await ev('workspaceChoice.mode === "work" && $("f-type").value === "direct"'));
+  check('损坏偏好安全回落聊天模式', await ev('workspaceChoice.mode === "chat" && $("f-type").value === "direct"'));
   await ev('pickWorkspaceMode("work"); S.lastPrefs={type:"code"}; S.typeTouched=false; renderTypeOptions()');
   check('明确选择当前工作模式也可阻止迟到偏好覆盖', await ev('workspaceChoice.mode === "work" && $("f-type").value === "direct"'));
   await ev('S.creatingTask=true; const before=$("f-type").value, beforeMode=workspaceChoice.mode; pickWorkspaceMode("develop"); window.modeCreatingSafe=$("f-type").value===before && workspaceChoice.mode===beforeMode; S.creatingTask=false;');

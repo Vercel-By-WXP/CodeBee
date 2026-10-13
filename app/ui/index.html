@@ -140,7 +140,7 @@
       <div class="brand-row">
         <button id="btn-brand" class="brand" type="button" title="切换工作模式" aria-label="切换工作模式" data-i18n-title="切换工作模式" data-i18n-aria="切换工作模式" aria-haspopup="menu" aria-controls="brand-menu" aria-expanded="false" onclick="toggleBrandMenu()">
           <span class="brand-name">CodeBee</span>
-          <span id="brand-mode" class="brand-mode" data-i18n="工作">工作</span>
+          <span id="brand-mode" class="brand-mode" data-i18n="聊天">聊天</span>
           <svg class="ico brand-caret" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
         </button>
         <button id="btn-notify-toggle" class="brand-tool" title="打开活动视图" aria-label="打开活动视图" data-i18n-title="打开活动视图" data-i18n-aria="打开活动视图"
@@ -155,7 +155,7 @@
         </button>
       </div>
       <div id="brand-menu" class="brand-menu hidden" role="menu" aria-label="工作模式" data-i18n-aria="工作模式">
-        <button type="button" class="brand-menu-item selected" role="menuitemradio" aria-checked="true" data-workspace-mode="work" onclick="pickWorkspaceMode('work')">
+        <button type="button" class="brand-menu-item" role="menuitemradio" aria-checked="false" data-workspace-mode="work" onclick="pickWorkspaceMode('work')">
           <span><b data-i18n="工作">工作</b><small data-i18n="写作、调研、文档与翻译">写作、调研、文档与翻译</small></span>
           <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
         </button>
@@ -163,7 +163,7 @@
           <span><b data-i18n="开发">开发</b><small data-i18n="编码、调试、测试与评审">编码、调试、测试与评审</small></span>
           <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
         </button>
-        <button type="button" class="brand-menu-item" role="menuitemradio" aria-checked="false" data-workspace-mode="chat" onclick="pickWorkspaceMode('chat')">
+        <button type="button" class="brand-menu-item selected" role="menuitemradio" aria-checked="true" data-workspace-mode="chat" onclick="pickWorkspaceMode('chat')">
           <span><b data-i18n="聊天">聊天</b><small data-i18n="直接问答、头脑风暴与日常对话">直接问答、头脑风暴与日常对话</small></span>
           <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
         </button>

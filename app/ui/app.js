@@ -22,7 +22,7 @@ const WORKSPACE_MODES = {
   chat: { label: "聊天", defaultType: "direct", quick: ["direct"],
     greeting: "想聊点什么？", hint: "直接问答、头脑风暴与日常对话，从这里开始。" },
 };
-let workspaceChoice = { mode: "work", types: {} };
+let workspaceChoice = { mode: "chat", types: {} };
 let workspaceHasChoice = false;
 try {
   const saved = JSON.parse(localStorage.getItem(WORKSPACE_MODE_KEY) || "null");
@@ -33,7 +33,7 @@ try {
       if (saved.types && typeof saved.types[mode] === "string") workspaceChoice.types[mode] = saved.types[mode];
     }
   }
-} catch (e) { /* 不可用或损坏的本机偏好回落工作模式 */ }
+} catch (e) { /* 不可用或损坏的本机偏好回落聊天模式 */ }
 
 /* ---------------------------------------------------------- 内置浏览器工作区 */
 const BROWSER_STORAGE_KEY = "orch.browser.workspace.v1";
