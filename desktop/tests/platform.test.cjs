@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const yaml = require('js-yaml');
 const { dataDirectory, runtimePaths, isInternal, externalURL, cliEnvironment } = require('../lib/platform.cjs');
 const { machOBinaries } = require('../scripts/after-pack.cjs');
 
@@ -26,6 +27,28 @@ test('packaged runtime and engine stay outside asar for both OSes', () => {
   assert.equal(windows.python, path.join('/resources', 'python', 'python.exe'));
   assert.equal(mac.python, path.join('/resources', 'python', 'bin/python3'));
   assert.equal(mac.script, path.join('/resources', 'codebee', 'app', 'desktop_host.py'));
+  assert.equal(windows.icon, path.join('/resources', 'codebee', 'icon.png'));
+  assert.equal(mac.icon, windows.icon);
+  assert.equal(runtimePaths(false, '/resources', '/repo/desktop', 'win32').icon,
+    path.join('/repo/desktop', 'assets', 'icon-512.png'));
+});
+
+test('Windows and macOS installers use the shared CodeBee atom icon family', () => {
+  const assets = path.join(__dirname, '..', 'assets');
+  const png = fs.readFileSync(path.join(assets, 'icon-512.png'));
+  const webPng = fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'ui', 'icons', 'icon-512.png'));
+  const ico = fs.readFileSync(path.join(assets, 'icon.ico'));
+  const icns = fs.readFileSync(path.join(assets, 'icon.icns'));
+  const builder = yaml.load(fs.readFileSync(path.join(__dirname, '..', 'electron-builder.yml'), 'utf8'));
+  const win7 = yaml.load(fs.readFileSync(path.join(__dirname, '..', 'electron-builder.win7.yml'), 'utf8'));
+  assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  assert.deepEqual(webPng, png);
+  assert.equal(ico.subarray(0, 4).toString('hex'), '00000100');
+  assert.equal(icns.subarray(0, 4).toString('ascii'), 'icns');
+  assert.equal(icns.readUInt32BE(4), icns.length);
+  assert.equal(builder.win.icon, 'assets/icon.ico');
+  assert.equal(builder.mac.icon, 'assets/icon.icns');
+  assert.equal(win7.win.icon, 'assets/icon.ico');
 });
 
 test('restrict navigation by exact origin and reject executable external protocols', () => {

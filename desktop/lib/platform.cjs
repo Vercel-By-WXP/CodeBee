@@ -21,7 +21,7 @@ function runtimePaths(packaged, resources, desktopRoot, platform = process.platf
     root,
     script: path.join(root, 'app', 'desktop_host.py'),
     python: path.join(runtime, platform === 'win32' ? 'python.exe' : 'bin/python3'),
-    icon: path.join(root, 'app', 'ui', 'icons', 'icon-512.png'),
+    icon: packaged ? path.join(root, 'icon.png') : path.join(desktopRoot, 'assets', 'icon-512.png'),
   };
 }
 

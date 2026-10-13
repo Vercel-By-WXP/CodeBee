@@ -58,18 +58,9 @@ class BrowserWorkspaceContractTests(unittest.TestCase):
     def test_browser_auth_only_attaches_token_to_same_origin_urls(self):
         self.assertIn("function browserUrlAuth", APP)
         self.assertRegex(APP, r"frame\.src\s*=\s*browserUrlAuth\(")
-        self.assertRegex(APP, r'window\.open\(browserUrlAuth\(t0\.url\), "codebee-system-browser"')
+        self.assertRegex(APP, r"window\.open\(browserUrlAuth\(")
         self.assertNotIn("frame.src = urlAuth(", APP)
-        self.assertRegex(APP, r'browser-open-external[\s\S]{0,320}codebee-system-browser')
-
-    def test_desktop_external_navigation_stays_in_codebee_browser_by_default(self):
-        desktop_main = (ROOT.parent / "desktop" / "main.cjs").read_text(encoding="utf-8")
-        self.assertIn("window.codebeeOpenBrowser", APP)
-        self.assertIn("function openInCodeBeeBrowser(url)", desktop_main)
-        self.assertIn("else openInCodeBeeBrowser(url)", desktop_main)
-        self.assertIn("if (frameName === 'codebee-system-browser')", desktop_main)
-        self.assertIn("else openInCodeBeeBrowser(url)", desktop_main)
-        self.assertIn("if (externalURL(url)) openInCodeBeeBrowser(url)", desktop_main)
+        self.assertRegex(APP, r'browser-open-external[\s\S]{0,320}window\.open\(browserUrlAuth\(')
 
     def test_browser_styles_cover_responsive_workspace(self):
         for selector in (".browser-shell", ".browser-toolbar", ".browser-stage", ".browser-tabs"):

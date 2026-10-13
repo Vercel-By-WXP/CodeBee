@@ -49,30 +49,22 @@ function showWindow() {
   if (process.platform === 'darwin') app.dock.show();
 }
 
-function openInCodeBeeBrowser(url) {
-  if (!window || window.isDestroyed() || !externalURL(url)) return;
-  showWindow();
-  const script = `window.codebeeOpenBrowser && window.codebeeOpenBrowser(${JSON.stringify(url)})`;
-  void window.webContents.executeJavaScript(script, true).catch(() => {});
-}
-
 function secureWindow(target) {
-  target.webContents.setWindowOpenHandler(({ url, frameName }) => {
+  target.webContents.setWindowOpenHandler(({ url }) => {
     if (isInternal(url, backend?.origin)) {
       const preview = new BrowserWindow({ width: 1100, height: 780, parent: window,
         webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true } });
       secureWindow(preview);
       void preview.loadURL(url);
     } else if (externalURL(url)) {
-      if (frameName === 'codebee-system-browser') void shell.openExternal(url).catch(() => {});
-      else openInCodeBeeBrowser(url);
+      void shell.openExternal(url).catch(() => {});
     }
     return { action: 'deny' };
   });
   const restrictNavigation = (event, url) => {
     if (isInternal(url, backend?.origin)) return;
     event.preventDefault();
-    if (externalURL(url)) openInCodeBeeBrowser(url);
+    if (externalURL(url)) void shell.openExternal(url).catch(() => {});
   };
   target.webContents.on('will-navigate', restrictNavigation);
   target.webContents.on('will-redirect', restrictNavigation);

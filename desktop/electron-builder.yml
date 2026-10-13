@@ -11,6 +11,8 @@ files:
   - assets/trayTemplate.png
   - package.json
 extraResources:
+  - from: assets/icon-512.png
+    to: codebee/icon.png
   - from: ../app
     to: codebee/app
     filter:
@@ -47,6 +49,7 @@ nsis:
   createStartMenuShortcut: true
   deleteAppDataOnUninstall: false
 mac:
+  icon: assets/icon.icns
   category: public.app-category.developer-tools
   hardenedRuntime: true
   entitlements: assets/entitlements.mac.plist

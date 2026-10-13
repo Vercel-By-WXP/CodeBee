@@ -637,15 +637,6 @@ function browserNavigate(value, replace) {
   tab.url = url; tab.title = browserTitle(url); browserDraw(); return true;
 }
 
-// The desktop shell sends external links back here so CodeBee's own analysis
-// and self-editing flows stay inside the CodeBee browser workspace.
-window.codebeeOpenBrowser = function (url) {
-  const normalized = normalizeBrowserUrl(url);
-  if (!normalized) return false;
-  switchTab("browser", "main");
-  return browserNavigate(normalized);
-};
-
 function browserOpenPreview() {
   browserOpenTaskPreview(browserCurrentTask());
 }
@@ -706,9 +697,8 @@ function browserBind() {
     browserDraw();
     $("browser-address").focus();
   });
-  // Explicit escape hatch: only this named target intentionally leaves CodeBee.
-  $("browser-open-external").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "codebee-system-browser", "noopener"); });
-  $("browser-frame-error-open").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "codebee-system-browser", "noopener"); });
+  $("browser-open-external").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "_blank", "noopener"); });
+  $("browser-frame-error-open").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "_blank", "noopener"); });
   $("browser-history-open").addEventListener("click", () => { browserRenderHistory(); browserOpenDialog("browser-history-dialog"); });
   $("browser-history-search").addEventListener("input", browserRenderHistory);
   $("browser-history-list").addEventListener("click", (e) => {
