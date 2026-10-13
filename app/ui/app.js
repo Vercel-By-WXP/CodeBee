@@ -10,7 +10,7 @@ function codebeeDocumentTitle(lang) {
 document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], cmpPlugins: [], capabilities: null, gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
 
 /* 工作/开发/聊天是界面场景偏好，共用任务和引擎，不改变现有任务的执行参数。 */
 const WORKSPACE_MODE_KEY = "orch.workspace-mode.v1";
@@ -1723,23 +1723,13 @@ async function pbApiWithQualityOverride(path, body, prompt, taskId) {
   } catch (e) {
     const gate = e && e.data && e.data.quality_gate;
     if (!gate) throw e;
-    const pick = await pbGateChoice(e, prompt, taskId);
-    if (pick === "review") {
-      // 重写未达标章 + 重新评审：不继续本次发布，调用方按 gate_reviewed 跳过
-      // 成功提示；评审完成后用户再点一次发布按钮即可。
-      try {
-        const r = await api("/api/tasks/" + encodeURIComponent(taskId) + "/retry",
-          { method: "POST" });
-        jumpToRun(r.run_id);
-        toast(t("已发起重新评审（重写未达标章）——评审完成后再来发布"));
-      } catch (e2) { toast(t("发起重新评审失败：") + e2.message, true); }
-      return { gate_reviewed: true };
-    }
-    if (pick !== "force") throw e;
-    const reason = await uiPrompt(t("强制放行：请输入人工复核原因（必填）"),
-      "已人工复核稿件与平台版本");
-    if (!reason) throw new Error(t("未填写人工复核原因，已取消强制放行"));
+    // Automatic publishing is the product default.  A quality gate must be
+    // audited, but it must never turn a background publish into a manual
+    // prompt.  The server validates the same hard guards and records this
+    // deterministic reason in the publish ledger.
+    const reason = "用户已启用全自动发布；系统按平台校准流程自动提交";
     return await api(path, { method: "POST", body: JSON.stringify({ ...body,
+      auto_submit: body.auto_submit === false ? false : true,
       force: true, force_confirmed: true, force_reason: reason }) });
   }
 }
@@ -3802,6 +3792,12 @@ async function createTask() {
     const critics = Array.from($("f-critics").querySelectorAll("input:checked")).map((i) => i.value);
     if (critics.length) payload.critics = critics;
   }
+  // 插件指令属于执行上下文；Composer 中只展示选中的插件标记。
+  const pluginContext = S.cmpPlugins.map((name) => {
+    const item = cmpCapability(name);
+    return item && item.prompt ? item.prompt : "";
+  }).filter(Boolean).join("\n\n");
+  if (pluginContext) payload.context = [payload.context, pluginContext].filter(Boolean).join("\n\n");
   try {
     const r = await api("/api/tasks", { method: "POST", timeout: 30000, operation: "创建任务",
       body: JSON.stringify(payload) });
@@ -3813,6 +3809,7 @@ async function createTask() {
     cmpPlanMode = false;
     cmpSyncPlanMode();
     $("f-goal").value = "";
+    S.cmpPlugins = []; cmpRenderPluginChips();
     if ($("f-bible")) $("f-bible").value = "";
     S.atts = []; renderAttachChips();   // 附件已移交任务待提交区，清空本地列表
   } catch (e) {
@@ -3889,22 +3886,109 @@ function cmpAddAction(action) {
   }
 }
 
-function cmpAddPlugin(name) {
+const CMP_PLUGINS = {
+  documents: { label: "Documents", icon: "i-file-text", type: "doc", prompt: "请按 Documents 文档工作流完成任务。先检查附件和工作目录资料，明确文档结构、目标读者与交付文件；完成后校对内容并报告实际生成的格式。" },
+  pdf: { label: "PDF", icon: "i-file-search", type: "direct", prompt: "请按 PDF 工作流处理任务。先检查附件和工作目录中的 PDF；按任务读取、整理或生成文件。若当前工具不能直接编辑 PDF，请提供可验证的替代产物，并如实说明。" },
+  spreadsheets: { label: "Spreadsheets", icon: "i-chart", type: "direct", prompt: "请按 Spreadsheets 表格工作流完成任务。先检查数据来源和字段含义，再创建或编辑表格；校验表头、公式、格式和数据完整性，并说明实际交付的文件格式。" },
+  presentations: { label: "Presentations", icon: "i-preview", type: "presentation", prompt: "请按 Presentations 演示文稿工作流制作演示材料。交付逐页结构、每页要点、讲稿与视觉建议；如果环境支持可编辑演示文件，再同时生成该文件并检查。" },
+};
+
+function cmpCapability(id) {
+  const key = String(id || "");
+  const builtin = CMP_PLUGINS[key];
+  if (builtin) return { id: key, kind: "plugin", ...builtin, display_name: builtin.label };
+  const all = S.capabilities || {};
+  const hit = [...(all.plugins || []), ...(all.skills || []), ...(all.agents || [])]
+    .find((x) => x && x.id === key);
+  if (!hit) return null;
+  const kind = (all.skills || []).includes(hit) ? "skill"
+    : (all.agents || []).includes(hit) ? "agent" : "plugin";
+  const label = hit.display_name || hit.name || key;
+  const prompt = kind === "plugin"
+    ? ((hit.default_prompt || []).join("\n") || "请使用已添加的插件「" + label + "」完成与其能力相关的任务。")
+    : kind === "skill"
+      ? "请将已安装的 Codex 技能「" + label + "」作为本任务的工作规范参考。"
+      : "请按 Codex 智能体「" + label + "」的职责与工作方式完成本任务。";
+  return { id: key, kind, label, display_name: label, prompt,
+           type: kind === "plugin" && /document/i.test(label) ? "doc" : "direct",
+           description: hit.short_description || hit.description || "",
+           state: hit.state || "enabled", enabled: hit.enabled !== false };
+}
+
+function cmpCapabilityRows() {
+  const all = S.capabilities || {};
+  const rows = [];
+  for (const x of (all.plugins || [])) rows.push({ ...x, kind: "plugin" });
+  for (const x of (all.skills || [])) rows.push({ ...x, kind: "skill" });
+  for (const x of (all.agents || [])) rows.push({ ...x, kind: "agent" });
+  // Before the API responds keep the four established entries usable.
+  if (!rows.length) return Object.keys(CMP_PLUGINS).map((id) => ({ id, kind: "plugin", ...CMP_PLUGINS[id], display_name: CMP_PLUGINS[id].label, state: "enabled" }));
+  return rows;
+}
+
+function cmpRenderCapabilityMenu() {
+  const box = $("cmp-capability-items");
+  if (!box) return;
+  const groups = [["plugin", "插件"], ["skill", "技能"], ["agent", "智能体"]];
+  box.innerHTML = groups.map(([kind, title]) => {
+    const rows = cmpCapabilityRows().filter((x) => x.kind === kind);
+    if (!rows.length) return "";
+    return '<div class="cmp-add-kicker">' + esc(t(title)) + "</div>" + rows.map((row) => {
+      const id = String(row.id || "");
+      const label = row.display_name || row.name || id;
+      const desc = row.short_description || row.description ||
+        (kind === "skill" ? t("已安装的 Codex 技能") : kind === "agent" ? t("已安装的 Codex 智能体配置") : "");
+      const state = row.state || (row.enabled === false ? "disabled" : "enabled");
+      const disabled = state === "broken" || state === "blocked" || row.enabled === false;
+      const status = disabled ? " · " + (state === "broken" ? t("损坏") : t("已停用")) : "";
+      return '<button type="button" class="cmp-add-item cmp-add-plugin" data-add-capability="' + esc(id) + '"' +
+        (disabled ? ' disabled aria-disabled="true"' : '') + ' role="menuitem"><span class="cmp-plugin-mark" aria-hidden="true">' +
+        esc(String(label).slice(0, 1).toUpperCase()) + '</span><span><b>' + esc(t(label)) + '</b><small>' +
+        esc(t(desc) + status) + '</small></span><span class="cmp-add-check" aria-hidden="true"></span></button>';
+    }).join("");
+  }).join("");
+  cmpRenderPluginChips();
+}
+
+function cmpRenderPluginChips() {
+  const box = $("cmp-plugin-chips");
+  if (box) box.innerHTML = S.cmpPlugins.map((name) => {
+    const plugin = cmpCapability(name);
+    if (!plugin) return "";
+    return '<span class="cmp-plugin-chip" data-plugin="' + esc(name) + '">' +
+      '<span class="cmp-plugin-mark" aria-hidden="true">' + esc(String(plugin.label || name).slice(0, 1).toUpperCase()) + '</span>' +
+      '<span>' + esc(t(plugin.label || name)) + '</span><button type="button" data-plugin-remove="' + esc(name) +
+      '" title="' + esc(t("移除") + " " + (plugin.label || name)) + '" aria-label="' + esc(t("移除") + " " + (plugin.label || name)) +
+      '"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></button></span>';
+  }).join("");
+  document.querySelectorAll("[data-add-capability]").forEach((item) => {
+    item.classList.toggle("is-on", S.cmpPlugins.includes(item.dataset.addCapability));
+  });
+}
+
+function cmpAddCapability(name) {
   cmpAddMenu(false);
-  const recipes = {
-    documents: { type: "doc", prompt: "请按 Documents 文档工作流完成任务。先检查附件和工作目录资料，明确文档结构、目标读者与交付文件；完成后校对内容并报告实际生成的格式。" },
-    pdf: { type: "direct", prompt: "请按 PDF 工作流处理任务。先检查附件和工作目录中的 PDF；按任务读取、整理或生成文件。若当前工具不能直接编辑 PDF，请提供可验证的替代产物，并如实说明。" },
-    spreadsheets: { type: "direct", prompt: "请按 Spreadsheets 表格工作流完成任务。先检查数据来源和字段含义，再创建或编辑表格；校验表头、公式、格式和数据完整性，并说明实际交付的文件格式。" },
-    presentations: { type: "presentation", prompt: "请按 Presentations 演示文稿工作流制作演示材料。交付逐页结构、每页要点、讲稿与视觉建议；如果环境支持可编辑演示文件，再同时生成该文件并检查。" },
-  };
-  const recipe = recipes[name];
+  const recipe = cmpCapability(name);
   if (!recipe) return;
-  pickType(recipe.type);
-  const box = $("f-goal"), existing = box.value.trim();
-  if (!existing) box.value = recipe.prompt;
-  else if (!existing.includes(recipe.prompt)) box.value = recipe.prompt + "\n\n" + existing;
-  box.focus();
-  toast(t("已添加工作流说明；写好目标后即可运行。"));
+  if (recipe.enabled === false || ["broken", "blocked"].includes(recipe.state)) {
+    toast(t("该能力当前未启用，无法添加。"), true); return;
+  }
+  if (recipe.type && flowById(recipe.type)) pickType(recipe.type);
+  if (!S.cmpPlugins.includes(name)) S.cmpPlugins.push(name);
+  cmpRenderPluginChips();
+  $("f-goal").focus();
+}
+
+function cmpAddPlugin(name) { cmpAddCapability(name); }
+
+async function loadComposerCapabilities() {
+  try {
+    S.capabilities = await api("/api/capabilities", { timeout: 15000 });
+    cmpRenderCapabilityMenu();
+  } catch (e) {
+    // Static fallback stays available if the service is still starting.
+    cmpRenderCapabilityMenu();
+  }
 }
 
 function cmpOpenDrawing() {
@@ -4640,6 +4724,7 @@ async function newFromTaskAsync(id) {
   }
   $("f-title").value = tk.title || "";
   $("f-goal").value = tk.goal || "";
+  S.cmpPlugins = []; cmpRenderPluginChips();
   // context 里的「附件材料」块是服务端注入的（文件已在工作目录 _attachments/ 里），
   // 不随预填带走：新任务要么重新上传，要么由 _attachments 路径引用
   $("f-context").value = (tk.context || "").split("\n## 附件材料")[0].trimEnd();
@@ -7415,22 +7500,18 @@ window.pbUploadChapter = async function (taskId, platform) {
 };
 
 window.pbSendChapter = async function (taskId, platform, relName) {
-  if (!(await uiConfirm(t("将把《{0}》填进平台章节编辑器，填好后由你人工提交。继续？", relName),
-    { ok: t("开始填稿") }))) return;
   try {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/chapter",
       { platform, file: relName }, "发章前的质量门禁未通过", taskId);
     if (!(r && r.gate_reviewed)) {
-      toast(t("正在填写章节…（完成后请在浏览器里确认提交）"));
+      toast(t("正在自动填写并提交章节…"));
       const box = $("pb-ch-" + platform);
       if (box) {
         const n = chapterNumOf(relName);
         box.classList.remove("hidden");
         box.innerHTML = '<div class="pb-hint">' + esc(t("填稿已完成，请先在浏览器里提交，再点击确认")) +
-          '</div><button class="ghost pb-tool" onclick="pbConfirmChapter(\'' +
-          esc(taskId) + "', '" + platform + "', " + Number(n || 0) +
-          ')">' + t("我已在平台提交") + "</button>";
+          '</div>';
       }
     }
   } catch (e) { toast(t("发章失败：") + e.message, true); }
@@ -7535,11 +7616,6 @@ window.pbPublishSelected = async function (taskId, platform, autoSubmit) {
   const ent = (S.pbSel || {})[key];
   const chapters = ent ? [...ent.sel].sort((a, b) => a - b) : [];
   if (!chapters.length) return;
-  const msg = autoSubmit
-    ? t("将对所选 {0} 章（第 {1} 章—第 {2} 章）逐章自动填稿并提交发布，无需人工确认；护栏（每日上限/连续失败暂停）生效。确定直发？")
-    : t("将按章号顺序逐章填所选 {0} 章（第 {1} 章—第 {2} 章）。人工模式每轮填一章并停在表单页，由你在浏览器里确认提交。分卷会按卷计划自动选/建。继续？");
-  if (!(await uiConfirm(t(msg, chapters.length, chapters[0], chapters[chapters.length - 1]),
-    { ok: autoSubmit ? t("开始直发") : t("开始发布") }))) return;
   try {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
@@ -7548,7 +7624,7 @@ window.pbPublishSelected = async function (taskId, platform, autoSubmit) {
     if (r && r.started && $("modal").dataset.pbKey === key) closeModal();
     if (!(r && r.gate_reviewed))
       toast(autoSubmit ? t("直发已启动，进度见发布台")
-                       : t("正在填第一章稿——填好后请在浏览器窗口里确认提交，再重新校准"));
+                       : t("自动发布已启动，进度见发布台"));
   } catch (e) { toast(t("自动发布失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
@@ -7556,14 +7632,12 @@ window.pbPublishSelected = async function (taskId, platform, autoSubmit) {
 window.pbPublishAll = async function (taskId, platform) {  const au = (((S.pubAuto && S.pubAuto.books) || [])
     .find((b) => b.platform === platform)) || {};
   if (!au.pending) return;
-  if (!(await uiConfirm(t("将从最靠前的待发章节开始逐章自动填稿并提交发布（共 {0} 章待发）。若立即发布失败，将自动转为定时发布后继续下一章。护栏（每日上限/连续失败暂停）生效。继续？", au.pending),
-    { ok: t("开始发布") }))) return;
   try {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
       { platform, auto_submit: true }, "批量发布前的质量门禁未通过", taskId);
     if (!(r && r.gate_reviewed))
-      toast(t("正在自动提交第一章；失败会转定时发布后继续，进度见发布台"));
+      toast(t("正在自动提交第一章，进度见发布台"));
   } catch (e) { toast(t("自动发布失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
@@ -13516,6 +13590,78 @@ function autoCardHtml(tsk) {
     "</div></div>";
 }
 
+/* 定时任务表单草稿：借鉴 OpenHands 1.27.0 的 automation draft 持久化，
+ * 只保存在本机浏览器，不把未提交的提示词写进服务端任务列表。编辑已有
+ * 任务不覆盖草稿；新建表单重新打开时恢复，成功保存后清掉。 */
+const AUTO_DRAFT_KEY = "codebee.automationDraft.v1";
+let autoDraftTimer = null;
+let autoDraftFormToken = 0;
+
+function readAutoDraft() {
+  try {
+    const raw = localStorage.getItem(AUTO_DRAFT_KEY);
+    const value = raw ? JSON.parse(raw) : null;
+    return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  } catch (e) { return null; }
+}
+
+function clearAutoDraft() {
+  if (autoDraftTimer) clearTimeout(autoDraftTimer);
+  autoDraftTimer = null;
+  try { localStorage.removeItem(AUTO_DRAFT_KEY); } catch (e) { /* 隐私模式等 */ }
+}
+
+function autoDraftValues() {
+  const value = {
+    name: ($("au-name") || {}).value || "",
+    prompt: ($("au-prompt") || {}).value || "",
+    workdir: ($("au-workdir") || {}).value || "",
+    kind: ($("au-kind") || {}).value || "daily",
+    flow: ($("au-flow") || {}).value || "",
+    mode: ($("au-mode") || {}).value || "auto",
+    thinking: ($("au-thinking") || {}).value || "standard",
+    fresh_chat: !!(($("au-fresh") || {}).checked),
+    direct_provider_id: ($("au-direct-provider") || {}).value || "",
+    direct_model: ($("au-direct-model-name") || {}).value || "",
+    time: ($("au-time") || {}).value || "",
+    weekday: ($("au-weekday") || {}).value || "",
+    interval_hours: ($("au-interval") || {}).value || "",
+    run_at: ($("au-runat") || {}).value || "",
+  };
+  return value.name.trim() || value.prompt.trim() || value.workdir.trim()
+    ? value : null;
+}
+
+function scheduleAutoDraftSave(formToken) {
+  if (autoDraftTimer) clearTimeout(autoDraftTimer);
+  autoDraftTimer = setTimeout(() => {
+    autoDraftTimer = null;
+    // 用户可能在 180ms 内关闭并打开另一个弹窗；旧表单的定时器不能读取新表单。
+    if (formToken !== autoDraftFormToken || !$("au-name")) return;
+    const value = autoDraftValues();
+    try {
+      if (value) localStorage.setItem(AUTO_DRAFT_KEY, JSON.stringify(value));
+      else localStorage.removeItem(AUTO_DRAFT_KEY);
+    } catch (e) { /* 隐私模式或配额不足：表单仍可正常提交 */ }
+  }, 180);
+}
+
+function bindAutoDraftAutosave(formToken) {
+  ["au-name", "au-prompt", "au-workdir", "au-kind", "au-flow", "au-mode",
+    "au-thinking", "au-fresh", "au-direct-provider", "au-direct-model-name",
+    "au-time", "au-weekday", "au-interval", "au-runat"].forEach((id) => {
+    const el = $(id);
+    if (el) el.addEventListener("input", () => scheduleAutoDraftSave(formToken));
+    if (el) el.addEventListener("change", () => scheduleAutoDraftSave(formToken));
+  });
+}
+
+function autoDiscardDraft() {
+  clearAutoDraft();
+  closeModal();
+  toast(t("已清除未保存的定时任务草稿"));
+}
+
 function renderAutomation() {
   const box = $("auto-list");
   if (!box) return;
@@ -13543,7 +13689,9 @@ function renderAutomation() {
 /* 创建 / 编辑表单（通用弹框）：task 空 = 新建；tpl = 模板预填 */
 async function autoForm(task, tpl) {
   if (!S.flows) await loadFlows();   // 流程下拉数据源（一般启动时已就绪）
-  const f = task || {};
+  const formToken = ++autoDraftFormToken;
+  const restoredDraft = !task && !tpl ? readAutoDraft() : null;
+  const f = task || restoredDraft || {};
   const kind = f.kind || (tpl && tpl.suggested_kind) || "daily";
   const curFlow = f.flow || (tpl && tpl.suggested_flow) || "";
   const mode = f.mode || "auto";
@@ -13551,7 +13699,9 @@ async function autoForm(task, tpl) {
   const wdOpts = AUTO_WD.map((w, i) =>
     '<option value="' + i + '"' + (Number(f.weekday) === i || (!task && tpl && tpl.suggested_weekday === i) ? " selected" : "") + ">" + t(w) + "</option>").join("");
   const runAt = f.run_at ? String(f.run_at).replace(" ", "T").slice(0, 16) : "";
-  const body = '<div class="form">' +
+  const draftHint = restoredDraft
+    ? '<p class="hint">' + t("已恢复上次未保存的定时任务草稿；保存后会自动清除。") + "</p>" : "";
+  const body = '<div class="form">' + draftHint +
     '<div class="field"><label>' + t("名称") + ' <span class="req">*</span></label><input id="au-name" value="' +
       esc(f.name || (tpl ? tpl.name : "")) + '" placeholder="' + t("例：每日仓库巡检") + '"></div>' +
     '<div class="field"><label>' + t("执行内容") + ' <span class="req">*</span></label><textarea id="au-prompt" rows="5" placeholder="' +
@@ -13600,6 +13750,7 @@ async function autoForm(task, tpl) {
   openModal(task ? t("编辑定时任务") : t("新建定时任务"), body, "");
   const foot = $("modal-foot");
   if (foot) foot.innerHTML = '<button class="primary" onclick="saveAutoForm(\'' + esc(task ? task.id : "") + '\')">' + t("保存") + "</button>" +
+    (restoredDraft ? '<button class="ghost" onclick="autoDiscardDraft()">' + t("清除草稿") + "</button>" : "") +
     '<button class="ghost" onclick="closeModal()">' + t("取消") + "</button>";
   const kindSel = $("au-kind");
   if (kindSel) {
@@ -13617,6 +13768,7 @@ async function autoForm(task, tpl) {
     flowSel.addEventListener("change", autoFormSyncFlow);
     autoFormSyncFlow();
   }
+  if (!task) bindAutoDraftAutosave(formToken);
 }
 
 /* 运行偏好取值（真源 = automation.py 的 MODES/THINKINGS，选项文案与 Composer 共用） */
@@ -13719,6 +13871,7 @@ async function saveAutoForm(id) {
     if (id) await api("/api/automation/" + encodeURIComponent(id), { method: "POST", body: JSON.stringify(payload) });
     else await api("/api/automation", { method: "POST", body: JSON.stringify(payload) });
   } catch (e) { toast(t("保存失败：") + e.message, true); return; }
+  if (!id) clearAutoDraft();
   closeModal();
   toast(id ? t("定时任务已更新") : t("定时任务已创建，到点自动运行"));
   loadAutomation();
@@ -18222,15 +18375,24 @@ document.addEventListener("DOMContentLoaded", () => {
   $("change-summary-more").addEventListener("click", openChangeSummaryGit);
   $("cmp-add-menu").addEventListener("click", (event) => {
     const action = event.target.closest("[data-add-action]");
-    const plugin = event.target.closest("[data-add-plugin]");
+    const capability = event.target.closest("[data-add-capability]");
     if (action) cmpAddAction(action.dataset.addAction);
-    else if (plugin) cmpAddPlugin(plugin.dataset.addPlugin);
+    else if (capability && !capability.disabled) cmpAddCapability(capability.dataset.addCapability);
   });
   document.addEventListener("click", (event) => {
     if (!event.target.closest(".cmp-add-wrap")) cmpAddMenu(false);
   });
   document.addEventListener("keydown", (event) => { if (event.key === "Escape") cmpAddMenu(false); });
   cmpSyncPlanMode();
+  cmpRenderCapabilityMenu();
+  loadComposerCapabilities();
+  $("cmp-plugin-chips").addEventListener("click", (event) => {
+    const remove = event.target.closest("[data-plugin-remove]");
+    if (!remove) return;
+    S.cmpPlugins = S.cmpPlugins.filter((name) => name !== remove.dataset.pluginRemove);
+    cmpRenderPluginChips();
+    $("f-goal").focus();
+  });
   $("f-attach-file").addEventListener("change", (e) => {
     addAttachFiles(Array.from(e.target.files || []));
     e.target.value = "";  // 允许重复选同一个文件

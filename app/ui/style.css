@@ -931,6 +931,21 @@ button.small { padding: 4px 10px; font-size: 12px; }
 }
 .att-chip .ax:hover { color: var(--bad); }
 
+/* Codex-style composer plugin selections: keep the input clean while making
+ * the active workflow visible as a compact, removable mark. */
+.cmp-plugin-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 3px 4px 0; }
+.cmp-plugin-chips:empty { display: none; }
+.cmp-plugin-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 220px;
+  padding: 3px 6px 3px 8px; border: 1px solid var(--border);
+  border-radius: 999px; background: var(--panel2); color: var(--text); font-size: 12px;
+}
+.cmp-plugin-chip > .ico:first-child { width: 13px; height: 13px; color: var(--accent); flex: none; }
+.cmp-plugin-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-plugin-chip button { display: inline-flex; padding: 1px; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.cmp-plugin-chip button:hover { color: var(--bad); }
+.cmp-plugin-chip button .ico { width: 12px; height: 12px; }
+
 /* ---------------- 运行详情 ---------------- */
 .detail-head {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -3975,6 +3990,46 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
   #run-detail #rd-tabs::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--accent) 55%, var(--border-strong)); }
 }
 
+/* Final horizontal overflow guardrails.
+ * Dynamic pages can receive long external labels (ZenTao bug titles, task
+ * ids, provider URLs) after the initial layout has been measured. Flex/grid
+ * items otherwise keep their min-content width and make the page scroller
+ * appear even though the content column itself is responsive. Keep the page
+ * shell bounded while leaving intentionally scrollable widgets (browser tabs,
+ * logs and tables) in control of their own overflow. */
+html, body, #app, #mainwrap, main, #page-settings,
+#page-settings > .subpage, #page-settings > .subpage > .panel,
+#page-settings > .subpage > .panel.wide,
+#page-settings .cards, #page-settings .list, #page-settings .card {
+  min-width: 0;
+  max-width: 100%;
+}
+main { overflow-x: hidden; }
+
+/* A ZenTao bug title is user-controlled text. The anchor's intrinsic width
+ * must not push the action buttons or the page viewport beyond the card. */
+#zentao-claims,
+#zentao-claims .card,
+#zentao-claims .card .head,
+#zentao-claims .card .name {
+  min-width: 0;
+  max-width: 100%;
+}
+#zentao-claims .card { overflow: hidden; }
+#zentao-claims .card .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#zentao-claims .zt-bug-link {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Log output is a docked console, not a floating card over the current section. */
 #run-detail #rd-log.rd-logdrawer {
   position: fixed; left: calc(264px + clamp(16px, 4vw, 56px));
@@ -4270,7 +4325,6 @@ main .panel.wide {
   max-height: none;
   overflow: visible;
 }
-
 
 /* Hive: keep the stage relationship, remove the heavy nested panel treatment. */
 #run-detail .rd-hive { margin-top: 0; }

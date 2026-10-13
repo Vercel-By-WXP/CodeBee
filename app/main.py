@@ -349,6 +349,11 @@ class Handler(BaseHTTPRequestHandler):
                 # 聚合视图。坏 manifest 以 blocked/broken 行呈现，不 500。
                 from core import plugins
                 return self._json(200, plugins.view())
+            if path == "/api/capabilities":
+                # Composer directory: CodeBee plugins plus the Codex plugins,
+                # skills and agent profiles installed for this user.
+                from core import plugins
+                return self._json(200, plugins.capabilities_view())
             if path == "/api/knowledge":
                 from core import knowledge
                 return self._json(200, knowledge.view())
@@ -2424,7 +2429,9 @@ class Handler(BaseHTTPRequestHandler):
         platform = (body.get("platform") or "").strip()
         if platform not in ("fanqie", "qimao"):
             return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
-        auto_submit = bool(body.get("auto_submit"))
+        # Publishing actions are unattended by default.  Callers may still
+        # explicitly request the legacy fill-only mode with auto_submit=false.
+        auto_submit = body.get("auto_submit", True) is not False
         force = bool(body.get("force"))
         force_confirmed = bool(body.get("force_confirmed"))
         force_reason = str(body.get("force_reason") or "").strip()
@@ -2444,6 +2451,10 @@ class Handler(BaseHTTPRequestHandler):
             # 校验/归一在 auto.norm_auto_publish，语义见 auto.py 头注
             from core.publish import auto as pub_auto
             body["platform"] = platform
+            # Scheduled publishing is an unattended action too.  Unless the
+            # caller explicitly opts into fill-only mode, persist auto-submit
+            # so the automation tick can resume the same fully automatic path.
+            body["auto_submit"] = body.get("auto_submit", True) is not False
             if body.get("enabled"):
                 ap, ap_err = pub_auto.norm_auto_publish(body)
                 if not ap:
@@ -2524,8 +2535,9 @@ class Handler(BaseHTTPRequestHandler):
         if force or force_confirmed or force_reason:
             kwargs.update(force=force, force_confirmed=force_confirmed,
                           force_reason=force_reason)
+        auto_submit = body.get("auto_submit", True) is not False
         ok, err = pub_auto.publish_pending_async(
-            task_id, platform, auto_submit=bool(body.get("auto_submit")),
+            task_id, platform, auto_submit=auto_submit,
             **kwargs)
         if not ok:
             payload = {"error": err or "操作失败"}

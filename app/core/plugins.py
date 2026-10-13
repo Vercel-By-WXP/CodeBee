@@ -18,6 +18,11 @@ import threading
 import time
 from pathlib import Path
 
+try:
+    import tomllib
+except ImportError:  # pragma: no cover - Python 3.10 fallback
+    tomllib = None
+
 from . import market, paths, skills
 
 _LOCK = threading.RLock()
@@ -29,6 +34,7 @@ _MAX_SKILL_BYTES = 1024 * 1024
 _MAX_TOTAL_SKILL_BYTES = 8 * 1024 * 1024
 _MAX_PLUGIN_FILES = 512
 _MAX_PLUGIN_BYTES = 32 * 1024 * 1024
+_CODEX_CACHE_INDEX = None
 
 
 class PluginError(ValueError):
@@ -112,13 +118,13 @@ def _path_values(value):
     raise PluginError("manifest 路径字段必须是字符串或字符串数组")
 
 
-def _validate_manifest(plugin_dir, manifest):
+def _validate_manifest(plugin_dir, manifest, *, require_dir_name=True):
     if not isinstance(manifest, dict):
         raise PluginError("plugin.json 顶层必须是对象")
     name = manifest.get("name")
     if not isinstance(name, str) or not _NAME_RE.fullmatch(name):
         raise PluginError("插件 name 非法")
-    if name != Path(plugin_dir).name:
+    if require_dir_name and name != Path(plugin_dir).name:
         raise PluginError("插件 name 必须与目录名一致")
     version = manifest.get("version")
     if not isinstance(version, str) or not _VERSION_RE.fullmatch(version):
@@ -174,6 +180,8 @@ def _validate_manifest(plugin_dir, manifest):
         "author": str((author or {}).get("name") or ""),
         "category": str(interface.get("category") or "Productivity"),
         "capabilities": [str(x) for x in (interface.get("capabilities") or [])],
+        "default_prompt": [str(x).strip() for x in (interface.get("defaultPrompt") or [])
+                           if str(x).strip()][:8],
         "skill_paths": skill_paths,
         "mcp_path": str(mcp_path) if mcp_path else "",
         "mcp_inline": mcp if isinstance(mcp, dict) else {},
@@ -192,10 +200,226 @@ def load_manifest(plugin_dir):
     return _validate_manifest(root, _read_json(manifest_path))
 
 
+def _load_codex_manifest(plugin_dir):
+    root = Path(plugin_dir).expanduser().resolve()
+    manifest_path = root / ".codex-plugin" / "plugin.json"
+    if not manifest_path.is_file():
+        raise PluginError("缺少 .codex-plugin/plugin.json")
+    manifest = _read_json(manifest_path)
+    if not isinstance(manifest, dict):
+        raise PluginError("plugin.json 顶层必须是对象")
+    name = str(manifest.get("name") or root.name).strip()
+    if not _NAME_RE.fullmatch(name):
+        raise PluginError("插件 name 非法")
+    version = str(manifest.get("version") or "0.0.0").strip()
+    if not _VERSION_RE.fullmatch(version):
+        version = "0.0.0"
+    interface = manifest.get("interface")
+    interface = interface if isinstance(interface, dict) else {}
+    display_name = str(interface.get("displayName") or name).strip() or name
+    short = str(interface.get("shortDescription") or manifest.get("description") or "").strip()
+    long_description = str(interface.get("longDescription") or manifest.get("description") or "").strip()
+    skill_paths = []
+    for rel in _path_values(manifest.get("skills")):
+        path = _inside(root, rel, must_exist=True)
+        if path.is_dir() or path.suffix.lower() == ".md":
+            skill_paths.append(path)
+    unsupported = []
+    if manifest.get("hooks"):
+        unsupported.append("hooks")
+    if manifest.get("apps"):
+        unsupported.append("apps")
+    if manifest.get("mcpServers"):
+        unsupported.append("mcpServers")
+    return {
+        "manifest": manifest, "dir": str(root), "name": name, "version": version,
+        "display_name": display_name, "description": str(manifest.get("description") or long_description),
+        "short_description": short, "long_description": long_description,
+        "author": str((manifest.get("author") or {}).get("name") or ""),
+        "category": str(interface.get("category") or "Productivity"),
+        "capabilities": [str(x) for x in (interface.get("capabilities") or []) if isinstance(x, (str, int, float))],
+        "default_prompt": [str(x).strip() for x in (interface.get("defaultPrompt") or []) if str(x).strip()][:8],
+        "skill_paths": skill_paths, "mcp_path": "", "mcp_inline": {},
+        "unsupported": unsupported,
+    }
+
+
 def _default_roots():
     # app/plugins is the repo/team location; ~/plugins follows the Codex
     # personal plugin convention; data/plugins contains installed copies.
     return [Path(paths.APP_DIR) / "plugins", Path.home() / "plugins", _install_root()]
+
+
+def _codex_home():
+    """Return the Codex data root without importing or executing Codex code."""
+    raw = str(os.environ.get("CODEX_HOME") or "").strip()
+    return Path(raw).expanduser() if raw else Path.home() / ".codex"
+
+
+def _codex_config():
+    """Read the Codex plugin enablement map, tolerating a missing/broken config."""
+    path = _codex_home() / "config.toml"
+    if not path.is_file():
+        return {}, {}
+    try:
+        raw = path.read_text(encoding="utf-8")
+        if tomllib is None:
+            return _codex_config_fallback(raw)
+        data = tomllib.loads(raw)
+    except (OSError, UnicodeError, ValueError):
+        return {}, {}
+    marketplaces = data.get("marketplaces")
+    plugins_cfg = data.get("plugins")
+    return (marketplaces if isinstance(marketplaces, dict) else {},
+            plugins_cfg if isinstance(plugins_cfg, dict) else {})
+
+
+def _codex_config_fallback(raw):
+    """Parse the two flat Codex tables needed on Python 3.8/3.9.
+
+    CodeBee supports those Python versions while ``tomllib`` arrived in 3.11;
+    pulling a dependency just to read enablement flags is unnecessary.
+    """
+    marketplaces, configured = {}, {}
+    section = None
+    for line in str(raw or "").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = re.match(r'^\[marketplaces\.([A-Za-z0-9_.-]+)\]$', line)
+        if m:
+            section = ("market", m.group(1)); marketplaces.setdefault(m.group(1), {}); continue
+        m = re.match(r'^\[plugins\.["\']([^"\']+)["\']\]$', line)
+        if m:
+            section = ("plugin", m.group(1)); configured.setdefault(m.group(1), {}); continue
+        m = re.match(r'^([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*(.*?)\s*$', line)
+        if not m or not section:
+            continue
+        key, value = m.group(1), m.group(2)
+        if value.lower() in ("true", "false"):
+            parsed = value.lower() == "true"
+        else:
+            parsed = value.strip('"\'')
+        (marketplaces if section[0] == "market" else configured)[section[1]][key] = parsed
+    return marketplaces, configured
+
+
+def _codex_manifest_path(name, marketplace, source):
+    """Resolve an enabled Codex plugin to its manifest, preferring its source.
+
+    Codex can point at a live marketplace checkout while older versions leave
+    the same plugin in ``~/.codex/plugins/cache``.  The cache is only searched
+    for a plugin explicitly present in config.toml, so stale downloaded
+    packages are never presented as installed capabilities.
+    """
+    candidates = []
+    def add_matches(base):
+        try:
+            if (base / ".codex-plugin" / "plugin.json").is_file():
+                candidates.append(base)
+            for manifest in base.rglob("plugin.json"):
+                if manifest.parent.name != ".codex-plugin":
+                    continue
+                root = manifest.parent.parent
+                try:
+                    data = _read_json(manifest)
+                    if str(data.get("name") or "") == name:
+                        candidates.append(root)
+                except (OSError, PluginError, ValueError, TypeError):
+                    continue
+        except OSError:
+            pass
+    raw_source = str((source or {}).get("source") or "").strip()
+    if raw_source:
+        # Windows long-path prefixes are accepted by the OS but not by every
+        # pathlib operation used by the validation code.
+        if raw_source.startswith("\\\\?\\"):
+            raw_source = raw_source[4:]
+        base = Path(raw_source).expanduser()
+        add_matches(base)
+    cache = _codex_home() / "plugins" / "cache"
+    if cache.is_dir():
+        global _CODEX_CACHE_INDEX
+        if _CODEX_CACHE_INDEX is None:
+            index = {}
+            try:
+                for manifest in cache.rglob("plugin.json"):
+                    if manifest.parent.name != ".codex-plugin":
+                        continue
+                    root = manifest.parent.parent
+                    try:
+                        data = _read_json(manifest)
+                        pid = str(data.get("name") or "")
+                        if pid:
+                            index.setdefault(pid, []).append(root)
+                    except (OSError, PluginError, ValueError, TypeError):
+                        continue
+            except OSError:
+                index = {}
+            _CODEX_CACHE_INDEX = index
+        try:
+            for root in (_CODEX_CACHE_INDEX or {}).get(name, []):
+                candidates.append(root)
+        except OSError:
+            pass
+    valid = []
+    for root in candidates:
+        try:
+            if (root / ".codex-plugin" / "plugin.json").is_file():
+                valid.append(root)
+        except OSError:
+            continue
+    if not valid:
+        return None
+    # A marketplace cache can contain backups and multiple versions.  The
+    # newest manifest is the closest representation of the active install.
+    return max(valid, key=lambda p: p.stat().st_mtime_ns if p.exists() else 0)
+
+
+def codex_view():
+    """Return Codex plugins explicitly registered in ``config.toml``.
+
+    This is intentionally read-only.  CodeBee does not run plugin hooks or
+    copy Codex packages; it merely makes the same installed capabilities
+    selectable in its composer.
+    """
+    marketplaces, configured = _codex_config()
+    rows = []
+    for key, prefs in configured.items():
+        if not isinstance(key, str) or "@" not in key:
+            continue
+        name, marketplace = key.rsplit("@", 1)
+        prefs = prefs if isinstance(prefs, dict) else {}
+        enabled = bool(prefs.get("enabled", False))
+        source = marketplaces.get(marketplace) or {}
+        root = _codex_manifest_path(name, marketplace, source)
+        if root is None:
+            rows.append({"id": "codex:" + key, "name": name,
+                         "display_name": name, "state": "broken",
+                         "installed": True, "enabled": enabled,
+                         "available": False, "source_type": "codex",
+                         "marketplace": marketplace,
+                         "error": "Codex 插件 manifest 不可读"})
+            continue
+        try:
+            row = _catalog_row(_load_codex_manifest(root))
+        except PluginError as exc:
+            rows.append({"id": "codex:" + key, "name": name,
+                         "display_name": name, "state": "broken",
+                         "installed": True, "enabled": enabled,
+                         "available": False, "source_type": "codex",
+                         "marketplace": marketplace, "source": str(root),
+                         "error": str(exc)})
+            continue
+        row.update({"id": "codex:" + key, "plugin_id": name,
+                    "installed": True, "enabled": enabled,
+                    "state": "enabled" if enabled else "disabled",
+                    "source_type": "codex", "marketplace": marketplace,
+                    "source": str(root)})
+        rows.append(row)
+    rows.sort(key=lambda x: (str(x.get("display_name") or x.get("name") or "").lower(),
+                             str(x.get("id") or "")))
+    return {"plugins": rows, "total": len(rows), "source": "codex"}
 
 
 def _iter_plugin_dirs(roots):
@@ -487,6 +711,7 @@ def _catalog_row(desc):
         "short_description": desc["short_description"], "version": desc["version"],
         "author": desc["author"], "category": desc["category"],
         "capabilities": desc["capabilities"], "skills": sorted(skill_names),
+        "default_prompt": list(desc.get("default_prompt") or []),
         "skill_count": len(skill_names), "has_mcp": bool(desc.get("mcp_path") or desc.get("mcp_inline")),
         "unsupported": desc["unsupported"], "source": desc["dir"],
         "available": True, "installed": False, "state": "available",
@@ -516,6 +741,106 @@ def view(roots=None):
     items = sorted(rows.values(), key=lambda x: (str(x.get("category") or ""), str(x.get("display_name") or x.get("name") or "")))
     cats = sorted({str(x.get("category")) for x in items if x.get("category")})
     return {"plugins": items, "categories": cats, "total": len(items)}
+
+
+def _frontmatter_description(path):
+    """Read the small metadata header used by Codex ``SKILL.md`` files.
+
+    Skill bodies can be very large and may contain untrusted instructions, so
+    the composer directory receives only the name and a bounded description.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    if not raw.startswith("---"):
+        return ""
+    end = raw.find("\n---", 3)
+    if end < 0:
+        return ""
+    head = raw[3:end]
+    match = re.search(r"(?ms)^description:\s*(?:>[-+]?\s*)?(.*?)(?=\n[A-Za-z_][A-Za-z0-9_-]*\s*:|\Z)", head)
+    if not match:
+        return ""
+    value = re.sub(r"\s+", " ", match.group(1)).strip().strip("'\"")
+    return value[:320]
+
+
+def codex_skills_view():
+    """List installed Codex skills without importing or executing their code."""
+    root = _codex_home() / "skills"
+    rows = []
+    if root.is_dir():
+        try:
+            dirs = sorted(p for p in root.iterdir() if p.is_dir() and p.name != ".system")
+        except OSError:
+            dirs = []
+        for item in dirs:
+            manifest = item / "SKILL.md"
+            if not manifest.is_file():
+                continue
+            name = item.name
+            rows.append({"id": "codex-skill:" + name, "name": name,
+                         "display_name": name, "description": _frontmatter_description(manifest),
+                         "source": str(item), "source_type": "codex", "installed": True,
+                         "enabled": True, "state": "enabled"})
+    rows.sort(key=lambda x: (str(x.get("display_name") or "").lower(), x["id"]))
+    return rows
+
+
+def codex_agents_view():
+    """List Codex agent instruction profiles as selectable composer entries."""
+    root = _codex_home() / "agents"
+    rows = []
+    if root.is_dir():
+        try:
+            files = sorted(root.glob("*.toml"))
+        except OSError:
+            files = []
+        for path in files:
+            try:
+                raw = path.read_text(encoding="utf-8")
+                data = tomllib.loads(raw) if tomllib is not None else {}
+                if not data:
+                    data = {}
+                    for line in raw.splitlines():
+                        m = re.match(r'^\s*(name|description)\s*=\s*(["\'])(.*?)\2\s*$', line)
+                        if m:
+                            data[m.group(1)] = m.group(3)
+            except (OSError, UnicodeError, ValueError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            name = str(data.get("name") or path.stem).strip() or path.stem
+            description = re.sub(r"\s+", " ", str(data.get("description") or "")).strip()
+            rows.append({"id": "codex-agent:" + path.stem, "name": path.stem,
+                         "display_name": name, "description": description[:320],
+                         "source": str(path), "source_type": "codex", "installed": True,
+                         "enabled": True, "state": "enabled"})
+    rows.sort(key=lambda x: (str(x.get("display_name") or "").lower(), x["id"]))
+    return rows
+
+
+def capabilities_view():
+    """Unified, read-only directory used by the task composer.
+
+    It deliberately reports only CodeBee-discovered plugins and Codex entries
+    explicitly registered in config.toml.  Cache directories alone do not
+    prove an install is active and therefore are never surfaced as installed.
+    """
+    local = view()
+    codex = codex_view().get("plugins") or []
+    plugins = list(local.get("plugins") or [])
+    seen = {str(x.get("id")) for x in plugins}
+    for row in codex:
+        if row.get("id") not in seen:
+            plugins.append(row)
+    plugins.sort(key=lambda x: (str(x.get("display_name") or x.get("name") or "").lower(),
+                                str(x.get("id") or "")))
+    return {"plugins": plugins, "skills": codex_skills_view(),
+            "agents": codex_agents_view(),
+            "totals": {"plugins": len(plugins), "skills": len(codex_skills_view()),
+                       "agents": len(codex_agents_view())}}
 
 
 def active_mcp_servers():

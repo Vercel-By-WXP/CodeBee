@@ -489,6 +489,7 @@
           <p class="hint cmp-hint" id="f-workdir-hint"></p>
             <div class="cmp-context-note"><svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg><span data-i18n="描述目标即可，CodeBee 会自动拆解并执行">描述目标即可，CodeBee 会自动拆解并执行</span></div>
             <div id="att-chips" class="att-chips" aria-live="polite"></div>
+            <div id="cmp-plugin-chips" class="cmp-plugin-chips" aria-live="polite"></div>
             <textarea id="f-goal" rows="3" placeholder="要完成什么，一句话即可" required data-i18n-ph="要完成什么，一句话即可"></textarea>
             <div class="cmp-bar">
               <div class="cmp-mode">
@@ -513,11 +514,7 @@
                     <button type="button" class="cmp-add-item" data-add-action="plan" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span><b data-i18n="计划模式">计划模式</b><small id="cmp-plan-hint" data-i18n="开启计划模式">开启计划模式</small></span><span class="cmp-add-check" id="cmp-plan-check" aria-hidden="true"></span></button>
                     <button type="button" class="cmp-add-item" data-add-action="draw" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span><b data-i18n="绘图">绘图</b><small data-i18n="绘制草图并作为附件添加">绘制草图并作为附件添加</small></span></button>
                     <div class="cmp-add-divider"></div>
-                    <div class="cmp-add-kicker" data-i18n="插件">插件</div>
-                    <button type="button" class="cmp-add-item cmp-add-plugin" data-add-plugin="documents" role="menuitem"><span class="cmp-plugin-mark docs">D</span><span><b data-i18n="Documents">Documents</b><small data-i18n="创建和编辑文档">创建和编辑文档</small></span></button>
-                    <button type="button" class="cmp-add-item cmp-add-plugin" data-add-plugin="pdf" role="menuitem"><span class="cmp-plugin-mark pdf">P</span><span><b data-i18n="PDF">PDF</b><small data-i18n="读取、创建和验证 PDF">读取、创建和验证 PDF</small></span></button>
-                    <button type="button" class="cmp-add-item cmp-add-plugin" data-add-plugin="spreadsheets" role="menuitem"><span class="cmp-plugin-mark sheets">S</span><span><b data-i18n="Spreadsheets">Spreadsheets</b><small data-i18n="创建和编辑表格">创建和编辑表格</small></span></button>
-                    <button type="button" class="cmp-add-item cmp-add-plugin" data-add-plugin="presentations" role="menuitem"><span class="cmp-plugin-mark slides">P</span><span><b data-i18n="Presentations">Presentations</b><small data-i18n="创建和编辑演示文稿">创建和编辑演示文稿</small></span></button>
+                    <div id="cmp-capability-items"></div>
                   </div>
                 </div>
               </div>
