@@ -1,4 +1,4 @@
-# <img src="app/ui/icons/logo-custom.png" width="96" align="top" alt="CodeBee"> CodeBee · 多智能体编排台
+# <img src="app/ui/icons/logo-horizontal.png" width="96" align="top" alt="CodeBee"> CodeBee · 多智能体编排台
 
 > All agents, one hive. —— 一声令下，群蜂齐作。
 > *CodeBee*，码蜂：蜂后统筹（编排者）、侦察蜂定方向（规划/评审）、工蜂采蜜（实现）——
