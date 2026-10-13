@@ -8,6 +8,7 @@
 每 300 秒采样一次，RSS > 阈值（默认 1.2 GB）时 os._exit 释放内存，
 由外部看门狗重启。比 OOM kill 更优雅（有日志、可预测）。
 """
+import json
 import os
 import sys
 import threading
@@ -17,6 +18,26 @@ _INTERVAL_SEC = 300  # 5 分钟采样一次
 _threshold_mb = 1228  # 1.2 GB
 _triggered = False
 _lock = threading.Lock()
+
+
+def _record_trigger(rss_mb):
+    """触发证据落盘到数据目录 memory-guard.jsonl。stdout 在 --no-browser
+    无控制台模式下会被丢弃——不落盘则死因永远只能靠猜（2026-10-14 实案：
+    CLI 裸跑服务凌晨死亡，三本书停摆一晚且无任何触发痕迹可查）。
+    失败静默：守卫关键路径不能被日志 IO 拖死。"""
+    try:
+        from . import paths
+        os.makedirs(str(paths.DATA_DIR), exist_ok=True)
+        with open(str(paths.DATA_DIR / "memory-guard.jsonl"), "a",
+                  encoding="utf-8") as f:
+            f.write(json.dumps({
+                "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "pid": os.getpid(),
+                "rss_mb": round(float(rss_mb), 1),
+                "threshold_mb": _threshold_mb,
+            }, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 def _get_rss_mb():
@@ -80,6 +101,7 @@ def start_memory_guard(threshold_mb: int = 1228):
                 rss = _get_rss_mb()
                 if rss > _threshold_mb:
                     _triggered = True
+                    _record_trigger(rss)
                     print(f"[CodeBee] 内存守卫：RSS {rss:.0f} MB 超过 "
                           f"{_threshold_mb} MB 阈值，安全退出以释放内存"
                           "（外部看门狗将自动重启）", flush=True)
