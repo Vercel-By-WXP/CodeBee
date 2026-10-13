@@ -263,9 +263,9 @@ async function main() {
                               : { none: true, ask: !!document.querySelector("#ask-yes"),
                                   posts: window.__pbPosts });
     })()`));
-    check("发布所选 → publish-all chapters=31..38 升序、人工模式",
+    check("发布所选 → publish-all chapters=31..38 升序、自动提交模式",
       JSON.stringify(post.chapters) === JSON.stringify(ITEMS.map(i => i.chapter_no))
-      && post.auto_submit === false, JSON.stringify(post));
+      && post.auto_submit === true, JSON.stringify(post));
 
     const guarded = JSON.parse(await evalJs(`(() => {
       S.pubAuto.books[0].draft_ok = false;
