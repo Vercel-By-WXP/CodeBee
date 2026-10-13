@@ -116,7 +116,7 @@ def local_version(workdir):
 
 def evaluate_release(verdict, action="publish", target_chapter=None,
                      platform_version=None, force=False,
-                     force_confirmed=False, force_reason=""):
+                     force_confirmed=False, force_reason="", serial=None):
     """Decide whether a publish/signing action is allowed.
 
     ``continue`` is intentionally separate: writers may continue improving an
@@ -139,14 +139,22 @@ def evaluate_release(verdict, action="publish", target_chapter=None,
     warnings = []
     if verdict.get("publishable") is not True:
         blockers.append("最近一次质量评审未达标")
-    if verdict.get("global_pass") is False:
+    # 连载小说 verdict 带有全局/逐章证据；普通文章、文档等 review
+    # 任务只有通用 publishable/scores 结论，不能被连载专用字段反向拦截。
+    # 任务配置和 verdict 任一表明连载时都保留完整门禁；未知的旧格式
+    # 继续要求连载证据，只有明确的单篇评审使用通用结论。
+    serial_mode = (bool(serial) or bool(verdict.get("serial")) or
+                   "chapter_scores" in verdict or
+                   "global_reviewer_count" in verdict or action == "signing" or
+                   (serial is None and not isinstance(verdict.get("scores"), dict)))
+    if serial_mode and verdict.get("global_pass") is False:
         blockers.append("全局一致性评审未通过")
-    if verdict.get("global_reviewer_count", 0) < MIN_REVIEWERS:
+    if serial_mode and verdict.get("global_reviewer_count", 0) < MIN_REVIEWERS:
         blockers.append("有效全局评审不足 %d 名" % MIN_REVIEWERS)
-    if verdict.get("global_reviewer_consensus") is False:
+    if serial_mode and verdict.get("global_reviewer_consensus") is False:
         blockers.append("全局评审未形成共识")
-    chapter_scores = verdict.get("chapter_scores") or []
-    if target_chapter is not None:
+    chapter_scores = (verdict.get("chapter_scores") or []) if serial_mode else []
+    if serial_mode and target_chapter is not None:
         try:
             target = int(target_chapter)
         except (TypeError, ValueError):

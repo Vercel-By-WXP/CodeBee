@@ -591,6 +591,72 @@ def test_upload_chapter_draft_flow_and_ledger():
     expect(not ok2 and "已存过草稿" in err2, "草稿幂等拦截：%s/%s" % (ok2, err2))
 
 
+def test_quality_guard_ignores_newer_qa_run_for_article():
+    """普通文章发布读取质量 verdict，不被更新的答疑 run 覆盖。"""
+    from core import store
+    from unittest.mock import patch
+    task = {"id": "article-quality", "type": "article", "engine": "review",
+            "workdir": str(_TMP)}
+    review = {"id": "r-1", "status": "done", "verdict": {
+        "engine": "review", "publishable": True,
+        "scores": {"结构": 8.0, "表达": 8.0}, "major_issues": []}}
+    for qa_fields in ({"op": "qa", "verdict": {"publishable": False}},
+                      {"verdict": {"qa": True, "publishable": False}},
+                      {"op": "qa", "verdict": {"qa": True, "answer": "已回答"}}):
+        qa = dict({"id": "r-2", "status": "done"}, **qa_fields)
+        with patch.object(store, "task_runs", return_value=[qa, review]):
+            decision = manager._quality_release_guard(task, "fanqie")
+        expect(decision.get("allowed"), "答疑 run 不应覆盖质量 verdict：%s" % decision)
+        expect(decision.get("review_run_id") == "r-1", "必须取真正评审 run")
+
+
+def test_quality_guard_latest_failed_review_still_blocks_article():
+    """新版评审失败必须覆盖旧通过结果，即使随后完成了一轮答疑。"""
+    from core import store
+    from unittest.mock import patch
+    task = {"id": "article-quality", "type": "article", "engine": "review"}
+    for latest_value in (False, None):
+        runs = [{"id": "r-3", "status": "done", "verdict": {"qa": True}},
+                {"id": "r-2", "status": "done", "verdict": {
+                    "publishable": latest_value, "scores": {"结构": 6}}},
+                {"id": "r-1", "status": "done", "verdict": {
+                    "publishable": True, "scores": {"结构": 8}}}]
+        with patch.object(store, "task_runs", return_value=runs):
+            decision = manager._quality_release_guard(task, "fanqie")
+        expect(not decision.get("allowed"), "不能回退到旧通过结果：%s" % decision)
+        expect(decision.get("review_run_id") == "r-2", "失败评审仍是最新证据")
+
+
+def test_quality_guard_uses_actual_serial_workflow():
+    """单篇小说和自定义连载按实际流水线使用各自的质量证据。"""
+    from core import store
+    from unittest.mock import patch
+    run = {"id": "r-1", "status": "done", "verdict": {
+        "publishable": True, "scores": {"情节": 8}}}
+    with patch.object(store, "task_runs", return_value=[run]):
+        single = manager._quality_release_guard(
+            {"id": "single", "type": "novel", "engine": "review"}, "fanqie")
+        serial = manager._quality_release_guard(
+            {"id": "serial", "type": "custom", "engine": "review",
+             "serial": {"chapters": 2}}, "fanqie")
+        legacy_serial = manager._quality_release_guard(
+            {"id": "legacy", "type": "serial_novel", "engine": "review"}, "fanqie")
+    expect(single.get("allowed"), "单篇小说不要求连载证据：%s" % single)
+    expect(not serial.get("allowed"), "自定义连载不能少全局证据：%s" % serial)
+    expect(not legacy_serial.get("allowed"), "旧连载任务仍要求全局证据")
+
+
+def test_quality_guard_missing_review_still_blocks_article():
+    from core import store
+    from unittest.mock import patch
+    with patch.object(store, "task_runs", return_value=[
+            {"id": "r-2", "status": "done", "verdict": {"qa": True}},
+            {"id": "r-1", "status": "running", "verdict": {"publishable": True}}]):
+        decision = manager._quality_release_guard(
+            {"id": "article", "type": "article", "engine": "review"}, "fanqie")
+    expect(not decision.get("allowed"), "没有已完成质量评审不能发布")
+
+
 def test_url_values_per_platform():
     """URL 占位值逐键取：平台缺 draft_url 不能连坐后面的 editor_url。
 

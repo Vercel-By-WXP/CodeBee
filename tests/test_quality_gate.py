@@ -72,6 +72,40 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertFalse(result["allowed"])
         self.assertTrue(result["blockers"])
 
+    def test_regular_review_publishable_scores_do_not_require_serial_evidence(self):
+        verdict = {"engine": "review", "publishable": True,
+                   "scores": {"结构": 8.2, "表达": 8.0}, "major_issues": []}
+        for kwargs in ({}, {"serial": False}):
+            with self.subTest(kwargs=kwargs):
+                result = evaluate_release(verdict, action="publish", **kwargs)
+                self.assertTrue(result["allowed"], result["blockers"])
+
+    def test_regular_review_failure_still_blocks_publish(self):
+        result = evaluate_release(
+            {"engine": "review", "publishable": False,
+             "scores": {"结构": 6.2}, "major_issues": []},
+            action="publish", serial=False,
+        )
+        self.assertFalse(result["allowed"])
+        self.assertIn("质量评审", "；".join(result["blockers"]))
+
+    def test_serial_configuration_requires_serial_evidence(self):
+        result = evaluate_release(
+            {"publishable": True, "scores": {"情节": 8}}, serial=True)
+        self.assertFalse(result["allowed"])
+        self.assertIn("有效全局评审不足", "；".join(result["blockers"]))
+
+    def test_serial_verdict_cannot_skip_checks_with_single_manuscript_flag(self):
+        result = evaluate_release(
+            self._verdict(global_reviewer_count=1), serial=False)
+        self.assertFalse(result["allowed"])
+
+    def test_regular_review_major_issue_still_blocks_publish(self):
+        result = evaluate_release(
+            {"publishable": True, "scores": {"结构": 8},
+             "major_issues": [{"severity": "major"}]}, serial=False)
+        self.assertFalse(result["allowed"])
+
     def test_target_chapter_must_be_in_reviewed_version(self):
         result = evaluate_release(
             self._verdict(end_chapter=1), action="publish", target_chapter=2,

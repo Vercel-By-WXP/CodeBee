@@ -77,9 +77,8 @@ def _quality_release_guard(task, plat, action="publish", target_chapter=None,
                            force=False, force_confirmed=False, force_reason=""):
     """Return a release decision backed by the latest completed review.
 
-    Non-fiction/code tasks keep their existing publish workflow; novel release
-    actions must carry a verifiable quality verdict.  This keeps the gate
-    focused on the signing failure mode without breaking generic file publish.
+    Review tasks require a quality verdict. Serial tasks additionally require
+    global/chapter evidence; single manuscripts use their content-review result.
     """
     if str(task.get("type") or "").lower() not in ("novel", "serial_novel") \
             and (task.get("engine") or "") != "review":
@@ -89,13 +88,20 @@ def _quality_release_guard(task, plat, action="publish", target_chapter=None,
     verdict = None
     for run in sorted(store.task_runs(task.get("id")) or [],
                       key=lambda item: str(item.get("id") or ""), reverse=True):
-        if run.get("status") == "done" and isinstance(run.get("verdict"), dict):
-            verdict = run["verdict"]
+        candidate = run.get("verdict")
+        # 答疑、通知等 run 也可能是 done，但它们没有质量结论，不能
+        # 覆盖最近一条 publishable verdict，避免发布时误报“未评审”。
+        if (run.get("status") == "done" and isinstance(candidate, dict)
+                and "publishable" in candidate and not candidate.get("qa")
+                and run.get("op") != "qa"):
+            verdict = candidate
             break
     decision = quality_gate.evaluate_release(
         verdict or {}, action=action, target_chapter=target_chapter,
         platform_version=ledger.book_for(task.get("id"), plat) or {},
-        force=force, force_confirmed=force_confirmed, force_reason=force_reason)
+        force=force, force_confirmed=force_confirmed, force_reason=force_reason,
+        serial=bool(task.get("serial")) or
+        str(task.get("type") or "").lower() == "serial_novel")
     decision["version_snapshot"] = quality_gate.local_version(task.get("workdir") or "")
     decision["platform_snapshot"] = ledger.book_for(task.get("id"), plat) or {}
     if verdict:
