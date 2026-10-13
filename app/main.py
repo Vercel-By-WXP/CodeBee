@@ -3003,6 +3003,7 @@ class Handler(BaseHTTPRequestHandler):
                 "n": s.get("n"),
                 "status": s.get("status") or "",
                 "partial": bool(s.get("partial")),
+                "duration_s": s.get("duration_s"),
                 "text": body,
                 "note": s.get("note") or "",
                 "run": run_id_of_step,

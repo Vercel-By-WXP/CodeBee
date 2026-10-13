@@ -1,0 +1,144 @@
+/* Conversation reference: a quiet reading column, soft user bubbles and
+ * plain assistant text. Keep these rules scoped to the conversation surface. */
+.rd-chat {
+  --chat-text: var(--text);
+  --chat-muted: var(--muted);
+  --chat-rule: var(--border);
+  --chat-user-bg: var(--panel2);
+}
+html[data-theme="light"] .rd-chat {
+  --chat-text: #505052;
+  --chat-muted: #929295;
+  --chat-rule: #ebebed;
+  --chat-user-bg: #f3f3f4;
+}
+html[data-theme="light"] main.chat-fill { background: #fff; }
+
+#run-detail .rd-chat-flow,
+#run-detail.chat-mode .rd-chat-flow {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 784px;
+  padding: 20px 24px 28px;
+  gap: 24px;
+  color: var(--chat-text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.7;
+}
+#run-detail .rd-chat-bar,
+#run-detail.chat-mode .rd-chat-bar {
+  box-sizing: border-box;
+  width: calc(100% - 48px);
+  max-width: 736px;
+}
+.rd-chat .chat-row { flex: none; min-width: 0; gap: 0; }
+.rd-chat .chat-avatar { display: none; }
+.rd-chat .chat-bubble.agent {
+  padding: 0;
+  color: var(--chat-text);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.rd-chat .chat-step-caption {
+  margin-bottom: 16px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--chat-rule);
+  color: var(--chat-muted);
+  font-size: 13px;
+}
+.rd-chat .chat-user-message { max-width: 74%; min-width: 0; }
+.rd-chat .chat-bubble.me {
+  max-width: 100%;
+  padding: 10px 16px 12px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--chat-user-bg);
+  color: var(--chat-text);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.rd-chat .chat-meta {
+  min-height: 18px;
+  margin: 7px 0 0;
+  color: var(--chat-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.rd-chat .chat-user-message > .chat-meta { justify-content: flex-end; padding-inline: 4px; }
+.rd-chat .chat-user-message .chat-acts2 { margin-left: 4px; }
+.rd-chat .chat-meta-label { min-width: 0; overflow-wrap: anywhere; }
+.rd-chat .chat-act { color: var(--chat-muted); }
+.rd-chat .chat-row:focus-within .chat-acts2 { opacity: 1; }
+.rd-chat .chat-act:focus-visible,
+.rd-chat .chat-log-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* Reasoning stays expandable; tool lines read like the reference's activity
+ * feed rather than a nested card. Long commands have a full-text tooltip. */
+.rd-chat .chat-think {
+  margin: 0 0 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--chat-muted);
+  font-size: 14px;
+}
+.rd-chat .chat-think .ct-head,
+.rd-chat details.chat-think > summary {
+  min-height: 24px;
+  padding: 0 0 9px;
+  border-bottom: 1px solid var(--chat-rule);
+  font-weight: 400;
+  opacity: 1;
+}
+.rd-chat .chat-think .ct-body {
+  padding: 12px 0 4px;
+  font: inherit;
+  line-height: 1.7;
+  opacity: 1;
+}
+.rd-chat .chat-think .ct-live { border: 0; padding: 0 4px; font-size: 12px; }
+.rd-chat .chat-think .ct-dot { width: 5px; height: 5px; background: currentColor; }
+.rd-chat .chat-think .ct-len { color: inherit; font-size: 12px; opacity: .8; }
+.rd-chat .ct-acts {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 0 0;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.6;
+  opacity: 1;
+}
+.rd-chat .chat-activity-row { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
+.rd-chat .chat-activity-row .ico,
+.rd-chat .chat-log-btn .ico { flex: none; width: 14px; height: 14px; margin-top: 4px; }
+.rd-chat .chat-activity-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-chat .chat-log-btn { display: inline-flex; align-items: flex-start; gap: 7px; color: var(--chat-muted); font-size: 13px; opacity: 1; }
+.rd-chat .chat-actions { margin-top: 12px; }
+
+.rd-chat .chat-result {
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid var(--chat-rule);
+  border-radius: 0;
+  background: transparent;
+}
+.rd-chat .chat-result .cr-head { font-size: 13px; font-weight: 400; color: var(--chat-muted); }
+.rd-chat .chat-result.bad .cr-head { color: var(--bad); }
+.rd-chat .chat-result.partial .cr-head { color: var(--warn); }
+.rd-chat .chat-result .cr-meta,
+.rd-chat .chat-result .cr-files-title { color: var(--chat-muted); }
+.rd-chat .chat-markdown code { border: 0; background: var(--chat-user-bg); }
+
+@media (max-width: 720px) {
+  #run-detail .rd-chat-flow,
+  #run-detail.chat-mode .rd-chat-flow { padding: 16px 8px 20px; gap: 20px; }
+  #run-detail .rd-chat-bar,
+  #run-detail.chat-mode .rd-chat-bar { width: calc(100% - 16px); }
+  .rd-chat .chat-user-message { max-width: 88%; }
+}
+@media (hover: none) {
+  .rd-chat .chat-acts2 { opacity: 1; }
+}

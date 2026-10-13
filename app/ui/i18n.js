@@ -1911,6 +1911,7 @@
     "正文 ": "Body ",
     "步骤 ": "Steps ",
     "耗时": "Duration",
+    "用时": "Time taken",
     "第 ": "Run ",
     "运行 ": "Run ",
     "输入 ": "Input ",

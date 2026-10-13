@@ -10203,16 +10203,17 @@ function chatActLine(a) {
 function chatThinkHTML(it) {
   const running = it.status === "running";
   const think = String(it.thinking || "").trim();
-  const acts = running ? (it.activity || []).slice(-4) : [];
+  const acts = running ? (it.activity || []).slice(-8) : [];
   if (!think && !acts.length) return "";
   const shown = think.length > 12000 ? "…" + think.slice(-12000) : think;
   if (running) {
     return '<div class="chat-think live" data-think-live="1">' +
       '<div class="ct-head"><span class="ct-dot" aria-hidden="true"></span>' +
-      esc(t("思考过程")) + '<span class="ct-live">' + esc(t("实时")) + "</span></div>" +
+      (think ? esc(t("思考过程")) + '<span class="ct-live">' + esc(t("实时")) + "</span>" : esc(t("正在执行…"))) + "</div>" +
       (shown ? '<div class="ct-body">' + esc(shown) + "</div>" : "") +
       (acts.length ? '<div class="ct-acts">' +
-        acts.map((a) => "<div>" + esc(chatActLine(a)) + "</div>").join("") + "</div>" : "") +
+        acts.map((a) => '<div class="chat-activity-row"><svg class="ico" aria-hidden="true"><use href="#i-code"></use></svg>' +
+          '<span class="chat-activity-label" title="' + esc(chatActLine(a)) + '">' + esc(chatActLine(a)) + "</span></div>").join("") + "</div>" : "") +
       "</div>";
   }
   return '<details class="chat-think"><summary>' + esc(t("思考过程")) +
@@ -10376,6 +10377,7 @@ function drawChatFlow(run, data, active) {
   // 没开思考的 CLI 步骤 running→done 两态签名相同，气泡会永远停在打字动画
   const liveSig = items.reduce((a, it) => a + "|" + (it.kind || "") + ":" +
     (it.status || "") + ":" + String(it.text || "").length + ":" +
+    (it.duration_s == null ? "" : it.duration_s) + ":" +
     String(it.thinking || "").length + ":" + String(it.stream || "").length + ":" +
     (it.activity || []).length + ":" + (it.followups || []).length +
     ":" + (it.acp_events || []).length +
@@ -10393,7 +10395,7 @@ function drawChatFlow(run, data, active) {
   chatTimelineItems = items;   // 复制/编辑重发按索引回查（见 rd-chat-flow 委托）
   let html = items.map((it, idx) => {
     if (it.kind === "user") {
-      // 用户消息：右侧浅灰圆角块，元信息在块内顶部。
+      // 用户消息：右侧浅灰圆角块，元信息与动作落在块外下方。
       // 附件胶囊可点开预览：data-att 带 _attachments/ 相对路径（老数据裸文件名
       // 在前端钉回 _attachments/，与服务端 norm_rel 同口径），事件委托绑在
       // rd-chat-flow 上——时间线整块 innerHTML 重建也不丢监听
@@ -10414,9 +10416,8 @@ function drawChatFlow(run, data, active) {
         '<button type="button" class="chat-act" data-cact="edit" data-ci="' + idx + '">' + esc(t("编辑")) + "</button>" +
         "</span>";
       return '<div class="chat-row me">' +
+        '<div class="chat-user-message">' +
         '<div class="chat-bubble me">' +
-        '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
-        (it.consumed ? "" : " · " + t("待送达")) + acts + "</div>" +
         esc(it.text || t("（仅附件）")) +
         (atts.length
           ? '<div class="chat-atts">' + atts.map((a) =>
@@ -10426,7 +10427,8 @@ function drawChatFlow(run, data, active) {
                 : '<span class="att-chip2 att-open" data-att="' + esc(a.rel) +
                   '" title="' + esc(t("点击查看")) + '">' + esc(a.nm) + "</span>")).join("") + "</div>"
           : "") +
-        "</div></div>";
+        '</div><div class="chat-meta"><span class="chat-meta-label">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
+        (it.consumed ? "" : " · " + esc(t("待送达"))) + "</span>" + acts + "</div></div></div>";
     }
     // 协议尾行是给编排器判收的机器标记，不该出现在聊天正文里（真源在提示词约定）；
     // <followups> 块后端已剥并转成结构化字段，这里再兜一次底防老数据/漏剥；
@@ -10443,21 +10445,24 @@ function drawChatFlow(run, data, active) {
         : esc(t("（本轮无文本输出）"))));
     // 元信息只留 名字+时间（+失败标记）：路由/供应商细节属于「步骤」页签，塞这里就是噪音
     const metaBad = it.status === "failed" || it.status === "cancelled";
-    // 智能体回复：头像 + 整幅正文（不套气泡框），元信息小字落在正文下方；
+    // 智能体回复：整幅正文，元信息小字落在正文下方；
     // 悬停可复制回答原文（协议清洗后）
     const actsA = body ? '<span class="chat-acts2">' +
       '<button type="button" class="chat-act" data-cact="copy" data-ci="' + idx + '">' + esc(t("复制")) + "</button></span>" : "";
-    // 智能体回复：头像 + 整幅正文（不套气泡框），元信息小字落在正文下方
+    const duration = it.duration_s;
+    const caption = typeof duration === "number" && Number.isFinite(duration) && duration >= 0
+      ? '<div class="chat-step-caption">' + esc(t("用时")) + " " + esc(chatDurTxt(duration)) + "</div>" : "";
+    // 助手正文与工具活动共用左缘，不再为头像预留一列。
     return '<div class="chat-row">' +
-      '<span class="chat-avatar" aria-hidden="true"><svg class="ico"><use href="#i-bee"></use></svg></span>' +
       '<div class="chat-bubble agent">' +
+      caption +
       chatThinkHTML(it) +
       chatAcpEventsHTML(it) +
       '<div class="chat-body">' + bodyHtml + "</div>" +
       '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
       (metaBad ? " · " + t(it.status === "failed" ? "失败" : "已取消") : "") + actsA + "</div>" +
       (it.log && it.run ? '<div class="chat-actions"><button class="chat-log-btn" type="button" data-chat-log-run="' +
-        esc(it.run) + '" data-chat-log-rel="' + esc(it.log) + '" title="' + esc(t("查看日志")) + '">' + esc(t("CLI 日志")) + "</button></div>" : "") +
+        esc(it.run) + '" data-chat-log-rel="' + esc(it.log) + '" title="' + esc(t("查看日志")) + '"><svg class="ico" aria-hidden="true"><use href="#i-code"></use></svg>' + esc(t("CLI 日志")) + "</button></div>" : "") +
       (Array.isArray(it.followups) && it.followups.length
         ? '<div class="chat-fups">' + it.followups.map((f) =>
           '<button type="button" class="chat-fup-btn" data-fup="' + esc(f.prompt || "") +
