@@ -352,6 +352,16 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/knowledge":
                 from core import knowledge
                 return self._json(200, knowledge.view())
+            if path == "/api/memory":
+                from core import knowledge, project_memory, skills
+                tasks = store.list_tasks(archived=False) + store.list_tasks(archived=True)
+                return self._json(200, {
+                    "projects": project_memory.project_index(tasks),
+                    "global": {
+                        "skills": skills.view(),
+                        "knowledge": knowledge.view(),
+                    },
+                })
             m = re.match(r"^/api/tasks/([^/]+)/memory$", path)
             if m:
                 task = store.get_task(m.group(1))

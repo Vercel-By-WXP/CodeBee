@@ -293,6 +293,7 @@
       <button class="set-item" data-sub="orch" data-search="编排设置 编排者 并发 工作目录 MCP ACP 命令授权 推送通知 orchestrator concurrency workspace command authorization notifications"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><span data-i18n="编排设置">编排设置</span></button>
       <button class="set-item" data-sub="evalbench" data-search="模型评测 基准 测试 榜单 model evaluation benchmark test leaderboard"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="模型评测">模型评测</span></button>
       <div data-i18n="知识与扩展" class="set-group">知识与扩展</div>
+      <button class="set-item" data-sub="memory" data-search="记忆中心 记忆 全局 项目 memory center global project"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg><span data-i18n="记忆中心">记忆中心</span></button>
       <button class="set-item" data-sub="skills" data-search="经验库 技能 skill 规范 教训 skills guidelines lessons"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg><span data-i18n="经验库">经验库</span></button>
       <button class="set-item" data-sub="knowledge" data-search="知识库 记忆 搜索 知识 knowledge memory search"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg><span data-i18n="知识库">知识库</span></button>
       <button class="set-item" data-sub="market" data-search="插件市场 插件 MCP 扩展 安装 plugin extension install"><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg><span data-i18n="插件市场">插件市场</span></button>
@@ -1062,6 +1063,18 @@
           </div>
           <p data-i18n="默认无需绑定：CodeBee 会按任务类型、步骤角色、难度、成本、协议兼容性和健康状态动态推荐厂商与模型，并在无可用供应商时回落 CLI 自身配置。只有需要固定厂商、模型或跨厂商降级顺序时才在这里指定；显式指定会覆盖自动推荐，但不改写 CLI 全局配置。" class="hint">默认无需绑定：CodeBee 会按任务类型、步骤角色、难度、成本、协议兼容性和健康状态动态推荐厂商与模型，并在无可用供应商时回落 CLI 自身配置。只有需要固定厂商、模型或跨厂商降级顺序时才在这里指定；显式指定会覆盖自动推荐，但不改写 CLI 全局配置。</p>
           <div id="binding-list" class="cards"></div>
+        </div>
+      </div>
+
+      <!-- 经验库 -->
+      <!-- 记忆中心：统一呈现全局经验/知识与项目记忆，操作复用各自已有治理链 -->
+      <div id="sub-memory" class="subpage hidden">
+        <div class="panel wide memory-center">
+          <div class="panel-head"><h2 data-i18n="记忆中心">记忆中心</h2><button class="ghost small" onclick="loadMemoryCenter()" data-i18n="刷新记忆">刷新记忆</button></div>
+          <p class="hint" data-i18n="统一管理会跨任务复用的全局经验与知识，以及按工作区隔离的项目记忆。项目记忆仍需批准后才会注入任务。">统一管理会跨任务复用的全局经验与知识，以及按工作区隔离的项目记忆。项目记忆仍需批准后才会注入任务。</p>
+          <div id="memory-global-cards" class="memory-summary-grid"></div>
+          <div class="panel-head memory-section-head"><h3 data-i18n="项目记忆">项目记忆</h3><span id="memory-project-count" class="tag"></span></div>
+          <div id="memory-projects" class="cards"></div>
         </div>
       </div>
 

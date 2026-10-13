@@ -101,6 +101,56 @@ def list_entries(workdir, *, now=None):
     return sorted(rows, key=lambda x: (x.get("created_at", 0), x.get("id", "")), reverse=True)
 
 
+def project_index(tasks, *, now=None):
+    """Return a path-free memory index grouped by workspace.
+
+    The UI needs one project-level view, while review actions still target an
+    existing task endpoint.  Keep filesystem paths server-side and expose only
+    stable task ids, a display name, and the existing governed entries.
+    """
+    groups = {}
+    for task in tasks or []:
+        if not isinstance(task, dict):
+            continue
+        workdir = str(task.get("workdir") or "").strip()
+        task_id = str(task.get("id") or "").strip()
+        if not workdir or not task_id:
+            continue
+        try:
+            path = _file(workdir)
+            key = str(path.parent.resolve())
+            entries = list_entries(workdir, now=now)
+        except (OSError, ValueError):
+            continue
+        if not entries:
+            continue
+        group = groups.setdefault(key, {"task_ids": [], "name": "", "entries": entries})
+        if task_id not in group["task_ids"]:
+            group["task_ids"].append(task_id)
+        if not group["name"]:
+            group["name"] = str(task.get("name") or task.get("title") or
+                                  task.get("goal") or "项目记忆").strip()[:160]
+        # Multiple tasks can point to the same workspace. Read the store once
+        # per group and keep the newest governed snapshot.
+        if len(entries) > len(group["entries"]):
+            group["entries"] = entries
+    result = []
+    for group in groups.values():
+        entries = group["entries"]
+        result.append({
+            "name": group["name"] or "项目记忆",
+            "task_ids": group["task_ids"],
+            "entries": entries,
+            "counts": {
+                "total": len(entries),
+                "pending": sum(1 for x in entries if x.get("status") == "pending"),
+                "approved": sum(1 for x in entries if x.get("status") == "approved"),
+                "archived": sum(1 for x in entries if x.get("status") == "archived"),
+            },
+        })
+    return sorted(result, key=lambda x: (x["name"].lower(), x["task_ids"][0]))
+
+
 def decide(workdir, entry_id, action, *, expected_version=None, now=None):
     if action not in ("approve", "reject", "archive", "restore"):
         raise ValueError("action 必须是 approve/reject/archive/restore")

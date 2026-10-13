@@ -12673,6 +12673,65 @@ async function loadKnowledge() {
   renderKnowledge();
 }
 
+/* ---------------------------------------------------------- 记忆中心 */
+let MEMORY_CENTER = { data: null };
+
+window.loadMemoryCenter = async function () {
+  const projects = $("memory-projects");
+  if (projects) projects.innerHTML = '<div class="hint">' + esc(t("正在加载项目记忆…")) + '</div>';
+  try { MEMORY_CENTER.data = await api("/api/memory"); }
+  catch (e) { MEMORY_CENTER.data = null; if (projects) projects.innerHTML = '<div class="hint">' + esc(e.message) + '</div>'; return; }
+  renderMemoryCenter();
+};
+
+function memoryStatusLabel(status) {
+  return ({ pending: t("待批准"), approved: t("已批准"), archived: t("已归档"), rejected: t("已拒绝") }[status] || status || "");
+}
+
+function renderMemoryCenter() {
+  const data = MEMORY_CENTER.data || {};
+  const global = data.global || {};
+  const skills = global.skills || {};
+  const knowledge = global.knowledge || {};
+  const summary = $("memory-global-cards");
+  if (summary) summary.innerHTML =
+    '<article class="memory-summary-card"><strong>' + esc(t("经验库")) + '</strong><b>' + Number(skills.total || skills.lessons || 0) + '</b><span>' + esc(t("跨任务复用的教训与做法")) + '</span><button class="ghost small" onclick="switchTab(\'skills\')">' + esc(t("打开经验库")) + '</button></article>' +
+    '<article class="memory-summary-card"><strong>' + esc(t("知识库")) + '</strong><b>' + Number(knowledge.total || (knowledge.entries || []).length || 0) + '</b><span>' + esc(t("可复用的事实与资料")) + '</span><button class="ghost small" onclick="switchTab(\'knowledge\')">' + esc(t("打开知识库")) + '</button></article>';
+  const projects = data.projects || [];
+  const count = $("memory-project-count");
+  if (count) count.textContent = projects.length ? projects.length + t(" 个工作区") : t("暂无");
+  const box = $("memory-projects");
+  if (!box) return;
+  if (!projects.length) { box.innerHTML = '<div class="empty">' + esc(t("完成任务后，这里会显示按项目隔离的记忆。")) + '</div>'; return; }
+  box.innerHTML = projects.map((project) => {
+    const taskId = (project.task_ids || [])[0] || "";
+    const entries = project.entries || [];
+    const rows = entries.map((entry) => {
+      const ver = Number(entry.version || 1);
+      const canApprove = entry.status === "pending" && !entry.expired && entry.verified;
+      const canRestore = entry.status === "archived" && !entry.expired && entry.verified;
+      const action = (name, label) => '<button type="button" class="ghost small" onclick="memoryCenterAction(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'' + name + '\',' + ver + ')">' + esc(t(label)) + '</button>';
+      return '<article class="rd-memory-row"><div><strong>' + esc(entry.title || t("项目记忆")) + '</strong><span class="chip">' + esc(memoryStatusLabel(entry.status)) + (entry.expired ? ' · ' + esc(t("已过期")) : '') + '</span></div><pre>' + esc(entry.content || "") + '</pre><div class="rd-memory-actions">' + (canApprove ? action("approve", "批准") + action("reject", "拒绝") : "") + (entry.status === "approved" ? action("archive", "归档") : "") + (canRestore ? action("restore", "恢复") : "") + (entry.status === "approved" ? action("preview", "查看注入预览") : "") + '</div></article>';
+    }).join("");
+    return '<section class="memory-project-card"><div class="memory-project-head"><div><h4>' + esc(project.name || t("项目记忆")) + '</h4><span class="hint">' + esc(t("{0} 条记忆", entries.length)) + '</span></div><span class="tag">' + esc(t("按工作区隔离")) + '</span></div>' + (rows || '<div class="empty">' + esc(t("暂无项目记忆")) + '</div>') + '</section>';
+  }).join("");
+}
+
+window.memoryCenterAction = async function (taskId, id, action, version) {
+  if (action === "preview") {
+    try {
+      const data = await api("/api/tasks/" + encodeURIComponent(taskId) + "/memory/preview?cap=4000");
+      const text = data.text || t("暂无可注入记忆");
+      toast(text.slice(0, 240), false);
+    } catch (e) { toast(t("项目记忆预览失败：") + e.message, true); }
+    return;
+  }
+  try {
+    await api("/api/tasks/" + encodeURIComponent(taskId) + "/memory", { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify({ id, action, expected_version: version }) });
+    await loadMemoryCenter();
+  } catch (e) { toast(t("项目记忆操作失败：") + e.message, true); }
+};
+
 function renderKnowledge() {
   const box = $("kb-cards");
   if (!box || !KB.data) return;
@@ -15547,7 +15606,7 @@ async function suStartupCheck() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { overview: "概览", tasks: "任务", runs: "运行记录", automation: "自动化", browser: "浏览器", zentao: "禅道 Bug 自动修复", __wxdigest: "群摘要", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", evalbench: "模型评测", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
+const TAB_TITLES = { overview: "概览", tasks: "任务", runs: "运行记录", automation: "自动化", browser: "浏览器", zentao: "禅道 Bug 自动修复", __wxdigest: "群摘要", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", memory: "记忆中心", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", evalbench: "模型评测", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
 
 function tabTitle(name) {
   return t(TAB_TITLES[name]) || t("设置");
@@ -16992,6 +17051,7 @@ function switchTab(name, shell) {
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排设置页拉取配置
   if (name === "evalbench") loadEvalBench();   // 进模型评测页：榜单 + 候选清单
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
+  if (name === "memory") loadMemoryCenter(); // 统一记忆中心：全局摘要 + 项目治理
   if (name === "knowledge") loadKnowledge();   // 进知识库页拉取条目
   if (name === "automation") { loadAutomation(); startAutoPoll(); }   // 进自动化页：拉取 + 页面可见时每 8s 轮询
   else stopAutoPoll();   // 离开自动化页（或切到别的子页）即停表

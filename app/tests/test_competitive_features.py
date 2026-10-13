@@ -1021,6 +1021,44 @@ class CompetitiveFeatureTests(unittest.TestCase):
             self.assertIn("uses Python", project_memory.active_text(self.root, now=1003))
             self.assertEqual(project_memory.active_text(self.root, now=1002 + 86400), "")
 
+    def test_project_memory_index_groups_entries_by_workspace_without_exposing_paths(self):
+        workdir = self.root / "project-a"
+        workdir.mkdir()
+        first = project_memory.propose(workdir, title="Architecture", facts=["uses SQLite"], now=1000)
+        project_memory.decide(workdir, first["id"], "approve", expected_version=1, now=1001)
+        project_memory.propose(workdir, title="Pending", facts=["needs review"], now=1002)
+        empty = self.root / "empty-project"
+        empty.mkdir()
+
+        projects = project_memory.project_index([
+            {"id": "task-a", "name": "Project A", "workdir": str(workdir)},
+            {"id": "task-a2", "name": "Project A task", "workdir": str(workdir)},
+            {"id": "task-empty", "name": "Empty", "workdir": str(empty)},
+            {"id": "task-invalid", "name": "Invalid", "workdir": ""},
+        ], now=1003)
+
+        self.assertEqual(len(projects), 1)
+        self.assertEqual(projects[0]["task_ids"], ["task-a", "task-a2"])
+        self.assertEqual(projects[0]["name"], "Project A")
+        self.assertEqual([row["status"] for row in projects[0]["entries"]],
+                         ["pending", "approved"])
+        self.assertNotIn(str(workdir), json.dumps(projects, ensure_ascii=False))
+
+    def test_memory_center_get_aggregates_global_and_project_scopes(self):
+        handler = object.__new__(main.Handler)
+        handler.path = "/api/memory"
+        handler._authed = lambda: True
+        handler._json = lambda code, payload: (code, payload)
+        with patch.object(main.store, "list_tasks", side_effect=[[], []]), \
+             patch("core.skills.view", return_value={"total": 2}), \
+             patch("core.knowledge.view", return_value={"total": 3}), \
+             patch("core.project_memory.project_index", return_value=[]):
+            response = handler._route_get()
+        self.assertEqual(response[0], 200)
+        self.assertEqual(response[1]["global"]["skills"]["total"], 2)
+        self.assertEqual(response[1]["global"]["knowledge"]["total"], 3)
+        self.assertEqual(response[1]["projects"], [])
+
     def test_project_memory_uses_version_check_for_review(self):
         row = project_memory.propose(self.root, source_run="run-2", facts=["fact"], now=1000)
         project_memory.decide(self.root, row["id"], "approve", expected_version=1, now=1001)

@@ -171,6 +171,8 @@ def document():
                      "responses": {"200": response("评审请求", {"type": "object", "properties": {"review": ref("ReviewRequest")}}), **errors}}},
         "/api/capabilities": {"get": {"summary": "读取智能体能力清单", "security": security,
             "responses": {"200": response("能力清单", {"type": "object"}), "401": errors["401"]}}},
+        "/api/memory": {"get": {"summary": "读取全局与项目记忆中心", "security": security,
+            "responses": {"200": response("记忆中心", {"type": "object"}), "401": errors["401"]}}},
         "/api/tasks/{task_id}/memory/preview": {"get": {"summary": "预览项目记忆注入内容", "security": security,
             "parameters": [{"name": "q", "in": "query", "schema": {"type": "string", "maxLength": 500}},
                            {"name": "cap", "in": "query", "schema": {"type": "integer", "minimum": 0, "maximum": 20000}}],
