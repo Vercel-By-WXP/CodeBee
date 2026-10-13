@@ -112,6 +112,30 @@ try {
   assert.ok(shell.textPillWidth > shell.iconPillWidth, 'text-bearing topbar pills keep content sizing');
   assert.equal(shell.railFocusRule, true, 'desktop navigation keeps a visible keyboard focus ring');
   console.log('Codex shell', JSON.stringify(shell));
+  // The landing composer is viewport-anchored.  Check the actual empty-state
+  // form at short and narrow desktop sizes so the lower controls never fall
+  // below the visible window edge.
+  const landingBounds = [];
+  for (const [width, height] of [[1600, 1000], [1366, 600], [1024, 520], [920, 520]]) {
+    await browser.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    await sleep(80);
+    landingBounds.push(await ev(`(() => {
+      const form = document.querySelector('#sub-tasks .form');
+      const box = form?.getBoundingClientRect();
+      return { width: innerWidth, height: innerHeight,
+        top: box?.top ?? 0, bottom: box?.bottom ?? 0,
+        formHeight: box?.height ?? 0,
+        docHeight: document.documentElement.scrollHeight };
+    })()`));
+  }
+  console.log('landing composer', JSON.stringify(landingBounds));
+  for (const bounds of landingBounds) {
+    assert.ok(bounds.formHeight > 0, 'landing composer remains rendered');
+    assert.ok(bounds.bottom <= bounds.height - 1, 'landing composer stays inside the viewport');
+    assert.ok(bounds.bottom >= bounds.height - 40, 'landing composer keeps a small bottom safety gap');
+    assert.ok(bounds.docHeight <= bounds.height + 1, 'landing page does not grow a hidden vertical overflow');
+  }
+  await browser.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
   const capture = async name => {
     const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
     writeFileSync(join(output, name + '.png'), Buffer.from(shot.result.data, 'base64'));

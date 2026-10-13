@@ -305,7 +305,7 @@
     color: #1269bd;
   }
   body.settings-mode #sub-models .cat-chip.active b { color: #1269bd; }
-  body.settings-mode #sub-models .pi-name { font-size: 13px; font-weight: 550; }
+  body.settings-mode #sub-models .pi-name { font-size: 14px; font-weight: 550; }
   body.settings-mode #sub-models .prov-detail .pd-name { font-size: 16px; font-weight: 600; }
   body.settings-mode #sub-models .pd-title .tag { background: #f1f2f3; }
   body.settings-mode #sub-models .pd-ops { gap: 6px; }
@@ -358,7 +358,9 @@
   html[data-theme="dark"] body.settings-mode .side-settings .set-item.active .ico { color: #e7e7eb; }
   html[data-theme="dark"] body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel > .panel-head h2,
   html[data-theme="dark"] body.settings-mode #page-settings label,
-  html[data-theme="dark"] body.settings-mode #page-settings .field label { color: #e6e6e9; }
+  html[data-theme="dark"] body.settings-mode #page-settings .field label,
+  html[data-theme="dark"] body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) .field > label,
+  html[data-theme="dark"] body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) .settings-subhead { color: #e6e6e9; }
   html[data-theme="dark"] body.settings-mode #page-settings .card,
   html[data-theme="dark"] body.settings-mode #page-settings .prow,
   html[data-theme="dark"] body.settings-mode #page-settings .prov-batch,
@@ -886,8 +888,9 @@
   /* Provider setup has two real columns. Its reference card is wider than the
      ordinary settings reading column and starts a little closer to the header. */
   body.settings-mode #page-settings:has(> #sub-models:not(.hidden)) {
-    width: min(820px, 100%);
-    margin-left: clamp(0px, calc((100vw - 1280px) * .5 - 16px), 324px);
+    width: min(822px, 100%);
+    margin-left: clamp(0px, calc((100vw - 1280px) * .5 - 5px), 324px);
+    left: 0;
   }
   body.settings-mode #mainwrap > main:has(#sub-models:not(.hidden)) {
     padding-top: 44px;
@@ -922,18 +925,25 @@
   }
   body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel > .panel-head h2 {
     color: #242528;
-    font-size: 28px;
-    font-weight: 600;
-    line-height: 1.25;
-    letter-spacing: -.03em;
+    font-size: 27px;
+    font-weight: 550;
+    line-height: 1.3;
+    letter-spacing: -.02em;
   }
   body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel > .panel-head > .hhelp {
     display: none;
   }
   body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel > .hint {
     color: #777a80;
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.65;
+  }
+  body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) .field > label,
+  body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) .settings-subhead {
+    color: #303238;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.5;
   }
   body.settings-mode #page-settings .card,
   body.settings-mode #page-settings .prow,
@@ -954,7 +964,7 @@
     border-radius: 8px;
     background: #fff;
     color: #292a2d;
-    font-size: 13px;
+    font-size: 14px;
   }
   body.settings-mode #page-settings button.primary,
   body.settings-mode #page-settings a.button.primary {
@@ -986,10 +996,10 @@
   }
   body.settings-mode #page-settings > #sub-models > .panel.wide {
     padding: 24px !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
+    border: 1px solid #f0f0f1 !important;
+    border-radius: 14px !important;
+    background: #fff !important;
+    box-shadow: 0 2px 12px rgba(24, 24, 27, .025) !important;
   }
   body.settings-mode #sub-models .prov-side {
     border-color: #e8e8ea;
@@ -1005,6 +1015,14 @@
     padding: 4px 10px;
     font-size: 12px;
     line-height: 20px;
+  }
+  /* The provider page uses the same restrained controls as the reference:
+   * the destructive/secondary actions stay outlined, while the connection
+   * test is the single dark primary action. */
+  body.settings-mode #sub-models .pd-ops button.primary.small {
+    background: #242528;
+    border-color: #242528;
+    color: #fff;
   }
   body.settings-mode #sub-models .pm-tools { gap: 7px; }
   body.settings-mode #sub-models .pm-tools input[type="search"] { width: 160px; min-width: 0; }
@@ -1024,11 +1042,17 @@
     border-radius: 8px;
     background: #f2f2f3;
   }
+  body.settings-mode #sub-models .tog-mini input:checked + i {
+    background: #0a9f78;
+  }
 
   @media (max-width: 1180px) {
     body.settings-mode #mainwrap > main { padding-inline: 32px; }
     body.settings-mode #page-settings:not(:has(> #sub-models:not(.hidden))) { margin-inline: auto; }
-    body.settings-mode #page-settings:has(> #sub-models:not(.hidden)) { margin-left: clamp(0px, 5vw, 72px); }
+    /* The model card already shrinks to the available content width. Keep it
+       anchored to the main column at narrow desktop sizes so its right edge
+       does not get clipped by the main overflow boundary. */
+    body.settings-mode #page-settings:has(> #sub-models:not(.hidden)) { margin-left: 0; }
   }
   @media (max-width: 900px) {
     body.settings-mode #mainwrap > main { padding: 20px 16px 72px; }
@@ -1083,7 +1107,15 @@
      * visually plain while retaining the card surface on the form itself. */
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    /* The empty-state composer owns a fixed child below. A panel animation
+    /* Never create a containing block for the fixed composer form.  On
+     * browser windows whose outer height differs from the live layout
+     * viewport this otherwise places the form below the visible bottom edge. */
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    contain: none !important;
+    will-change: auto !important;
+    /* The empty-state composer owns a fixed child below.  A panel animation
      * would establish a transient containing block and make fixed geometry
      * depend on the animation lifecycle. */
     animation: none;
@@ -1840,8 +1872,9 @@
     padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
   #sub-tasks .form {
-    position: fixed;
+    position: fixed !important;
     bottom: max(24px, env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 48px);
     left: calc((100vw + var(--workbench-rail-width, 52px) + var(--side-w, 288px)) / 2);
     width: min(740px, calc(100vw - var(--workbench-rail-width, 52px) - var(--side-w, 288px) - 48px));
     transform: translateX(-50%);
