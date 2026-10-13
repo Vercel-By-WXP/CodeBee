@@ -1434,6 +1434,99 @@
   html[data-theme] #run-detail.chat-mode .rd-chat-bar { border-radius: 20px; }
 }
 
+/* Active-run context belongs to the composer it controls. Keep the status
+ * strip on the same reading axis as the input surface so a long goal cannot
+ * create a second, wider visual column (the old 960px strip floated above a
+ * 740px composer). The shared edge also makes the two surfaces read as one
+ * calm control stack. */
+@media (min-width: 901px) {
+  #run-detail.chat-mode .rd-chat-run-status {
+    box-sizing: border-box;
+    width: min(740px, calc(100% - 32px));
+    max-width: 740px;
+    min-height: 38px;
+    margin: 8px auto 0;
+    padding: 6px 8px 6px 12px;
+    gap: 7px;
+    border-color: var(--border-strong);
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+    background: color-mix(in srgb, var(--panel) 96%, var(--accent) 4%);
+    box-shadow: 0 1px 6px color-mix(in srgb, var(--text) 5%, transparent);
+  }
+
+  #run-detail.chat-mode .rd-chat-run-label {
+    display: inline-flex;
+    align-items: center;
+    min-height: 25px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--accent);
+    font-size: 11px;
+    letter-spacing: .01em;
+  }
+
+  #run-detail.chat-mode .rd-chat-run-goal {
+    line-height: 1.4;
+    text-overflow: ellipsis;
+  }
+
+  #run-detail.chat-mode .rd-chat-run-elapsed {
+    padding-left: 5px;
+    color: var(--muted);
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+
+  #run-detail.chat-mode .rd-chat-run-status button {
+    min-width: 28px;
+    min-height: 28px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    transition: color .15s, background-color .15s, border-color .15s;
+  }
+
+  #run-detail.chat-mode .rd-chat-run-status [data-chat-run-pause] {
+    min-width: 42px;
+    padding-inline: 9px;
+    color: var(--text);
+    border-color: var(--border);
+    background: var(--panel2);
+  }
+
+  #run-detail.chat-mode .rd-chat-run-status [data-chat-run-pause]:hover {
+    border-color: var(--border-strong);
+    background: color-mix(in srgb, var(--panel2) 78%, var(--accent) 22%);
+  }
+
+  #run-detail.chat-mode .rd-chat-run-status button:hover {
+    border-color: var(--border);
+    background: var(--panel2);
+  }
+
+  #run-detail.chat-mode .rd-chat-run-status [data-chat-run-cancel]:hover {
+    border-color: color-mix(in srgb, var(--bad) 35%, var(--border));
+    background: color-mix(in srgb, var(--bad) 9%, transparent);
+  }
+
+  #run-detail.chat-mode .rd-chat-run-status + .rd-chat-bar {
+    width: min(740px, calc(100% - 32px));
+    max-width: 740px;
+    margin-top: 0;
+    border-top-color: var(--border-strong);
+    border-radius: 0 0 18px 18px !important;
+  }
+
+  @media (max-width: 1180px) {
+    #run-detail.chat-mode .rd-chat-run-status,
+    #run-detail.chat-mode .rd-chat-run-status + .rd-chat-bar {
+      width: min(740px, calc(100% - 24px));
+    }
+  }
+}
+
 @media (min-width: 901px) {
   html[data-theme="dark"] .ctx-menu {
     border-color: var(--border-strong);

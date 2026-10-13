@@ -156,6 +156,38 @@ try {
     '<div class="chat-row"><div class="chat-avatar"><svg class="ico"><use href="#i-baton"></use></svg></div><div class="chat-bubble agent"><div class="chat-body chat-markdown"><p>已整理三款桌面应用的布局特点，采用简洁、清晰的工作台结构。</p><ul><li>左侧：项目和聊天统一导航，突出当前任务。</li><li>中间：对话列居中，控制阅读宽度，底部保留输入框。</li><li>右侧：任务状态、进度和成果按需查看。</li></ul><p>输入框和对话共用一条阅读轴，浅色与深色主题使用一致的间距与层级。</p></div><div class="chat-meta">CodeBee · 已完成</div></div></div>'.repeat(8);
     document.getElementById('rd-chat-flow').scrollTop=0;`);
   await capture('chat-light');
+  // Active-run context and the composer should share one reading axis. Inject
+  // a long goal to exercise the real desktop status treatment without
+  // starting a CLI process in this layout-only fixture.
+  await ev(`(() => {
+    const status = document.getElementById('rd-chat-run-status');
+    status.classList.remove('hidden');
+    status.querySelector('[data-chat-run-goal]').textContent = '在 MultiAgentOrchestration 中完成运行详情页样式优化并验证桌面与窄窗布局';
+    status.querySelector('[data-chat-run-elapsed]').textContent = '28 分 24 秒';
+    status.querySelector('[data-chat-run-pause]').textContent = '暂停';
+  })()`);
+  const activeComposer = await ev(`(() => {
+    const status = document.getElementById('rd-chat-run-status');
+    const bar = document.querySelector('.rd-chat-bar');
+    const goal = status.querySelector('[data-chat-run-goal]');
+    const sr = status.getBoundingClientRect();
+    const br = bar.getBoundingClientRect();
+    return {
+      statusX: Math.round(sr.x), statusW: Math.round(sr.width),
+      barX: Math.round(br.x), barW: Math.round(br.width),
+      goalOverflow: goal.scrollWidth > goal.clientWidth,
+      statusBottom: getComputedStyle(status).borderBottomWidth,
+      barTopLeft: getComputedStyle(bar).borderTopLeftRadius,
+      nextClass: status.nextElementSibling?.className || '',
+      joins: bar.matches('#run-detail.chat-mode .rd-chat-run-status + .rd-chat-bar'),
+    };
+  })()`);
+  console.log('active composer', JSON.stringify(activeComposer));
+  assert.equal(activeComposer.statusX, activeComposer.barX, 'active-run status aligns with the composer');
+  assert.equal(activeComposer.statusW, activeComposer.barW, 'active-run status and composer share a width');
+  assert.equal(activeComposer.goalOverflow, false, 'long active goal stays inside its flexible text slot');
+  assert.equal(activeComposer.statusBottom, '0px', 'status strip joins the composer without a doubled divider');
+  assert.match(activeComposer.barTopLeft, /0px/, 'composer top corners join the active status strip');
   {
     for (const width of [1920, 1600, 1440, 1366, 1024, 920]) {
       await browser.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -178,6 +210,7 @@ try {
       if (width === 1366) await capture('chat-1366');
     }
     await browser.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await ev("document.getElementById('rd-chat-run-status').classList.add('hidden')");
     await capture('chat-light');
     await ev("document.documentElement.dataset.theme='dark'");
     await capture('chat-dark');
