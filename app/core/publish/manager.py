@@ -281,40 +281,47 @@ def load_flow(plat, action):
         try:
             data = json.loads(fp.read_text(encoding="utf-8"))
             if isinstance(data, dict) and isinstance(data.get(action), list):
-                return data[action]
+                steps = data[action]
+                # A stale user override must not silently downgrade a
+                # calibrated safety flow to "fill and pretend".  Keep the
+                # override precedence only when it contains the actions that
+                # prove the remote operation was actually accepted.
+                if _flow_contract_ok(plat, action, steps):
+                    return steps
         except Exception:
             pass
-    if action == "upload_chapter_scheduled":
-        # Platforms may not ship a separate table because the scheduled path
-        # shares the editor fill steps with immediate publishing.  Derive a
-        # recovery flow from the calibrated immediate flow and replace the
-        # confirmation tail with the platform's timed-publish controls.
-        base = load_flow(plat, "upload_chapter")
-        out = []
-        tail = False
-        for st in base:
-            if not tail:
-                out.append(dict(st))
-                if st.get("do") == "submit" and st.get("text") == "下一步":
-                    tail = True
-                continue
-            if st.get("do") in ("js_click", "click_in", "click_real", "sleep", "verify"):
-                continue
-        out.extend([
-            {"do": "click_arrow", "target": "下一步", "optional": True},
-            {"do": "click_real", "text": "定时发布", "scope": "button,a,[class*=btn]",
-             "tries": 20, "optional": True},
-            {"do": "click_real", "text": "发布", "scope": "button,a,[class*=btn]",
-             "tries": 20, "optional": True},
-            {"do": "click_in", "scope_text": "发布提示", "text": "提交",
-             "real": True, "tries": 60, "optional": True},
-            {"do": "sleep", "s": 3},
-        ])
-        verify = next((dict(s) for s in reversed(base) if s.get("do") == "verify"), None)
-        if verify:
-            out.append(verify)
-        return out
+    # A timed-publish flow changes a consequential platform state.  Never
+    # synthesize one from the immediate-publish flow: selector guesses can
+    # silently fall through optional steps and be recorded as queued.  A
+    # platform must ship an explicit, calibrated upload_chapter_scheduled
+    # table (or a user override) before this recovery path is available.
     return PLATFORMS[plat].FLOWS[action]
+
+
+def _flow_contract_ok(plat, action, steps):
+    """Return whether a flow has a real completion contract.
+
+    These checks intentionally cover only the calibrated publishing actions;
+    exploratory/probe flows may remain permissive.  Invalid runtime files
+    fall through to the packaged calibrated baseline.
+    """
+    if not isinstance(steps, list):
+        return False
+    if plat != "qimao":
+        return True
+    def has(do=None, text=None):
+        return any(isinstance(s, dict) and (do is None or s.get("do") == do)
+                   and (text is None or s.get("text") == text)
+                   for s in steps)
+    if action == "create_book":
+        return has("submit", "确认创建")
+    if action == "upload_chapter_draft":
+        return has("click_real", "存草稿") and any(
+            isinstance(s, dict) and s.get("do") == "verify"
+            and "draft_url" in str(s.get("url") or "") for s in steps)
+    if action == "upload_chapter":
+        return has("click_real", "确认发布") and has("expect_text")
+    return True
 
 
 # ---------------------------------------------------------------- 动作：连接
@@ -1080,6 +1087,13 @@ def schedule_chapter_async(task_id, plat, chapter_file, force=False,
     upload action so the ledger and idempotency checks know the chapter is
     already queued on the platform.
     """
+    # Fail before opening the browser when this platform has no explicit,
+    # calibrated timed-publish flow.  This also prevents tests/mocks or a
+    # generic immediate flow from being mistaken for a scheduling receipt.
+    try:
+        load_flow(plat, "upload_chapter_scheduled")
+    except (KeyError, TypeError, ValueError, FileNotFoundError):
+        return False, "该平台未配置定时发布流程"
     return upload_chapter_async(task_id, plat, chapter_file,
                                 auto_submit=True, force=force,
                                 force_confirmed=force_confirmed,
@@ -1123,6 +1137,23 @@ def confirm_manual_chapter(task_id, plat, chapter_no):
                   book_id=pending.get("book_id") or "", title=pending.get("title") or "",
                   ok=True, operation_id=op_id, operation_status="confirmed",
                   remote_receipt="manual-confirmed")
+    # The browser confirmation is the hand-off point for a manual batch.  A
+    # successful receipt must immediately resume the remaining chapters with
+    # the fully automatic submit path; otherwise the UI appears stuck after
+    # the user clicks "已发布".
+    try:
+        from . import auto
+        started, reason = auto.publish_pending_async(task_id, plat,
+                                                     auto_submit=True)
+    except Exception as exc:
+        started, reason = False, str(exc)
+    if not started:
+        # The chapter itself is confirmed, so surface a useful warning while
+        # keeping the confirmation successful.  The client can retry the
+        # batch after the platform becomes idle.
+        if "没有待发章节" in str(reason or ""):
+            return True, "本章已确认，已无待发章节"
+        return True, "本章已确认，后续章节未启动：%s" % (reason or "未知原因")
     return True, ""
 
 

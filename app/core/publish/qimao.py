@@ -73,6 +73,8 @@ UPLOAD_CHAPTER_DRAFT = [
     {"do": "shot", "name": "chapter-filled-draft"},
     {"do": "click_real", "text": "存草稿", "tries": 25},
     {"do": "sleep", "s": 2},
+    {"do": "expect_text", "any": ["保存成功", "存草稿成功", "草稿保存成功",
+                                     "保存草稿成功", "已保存"], "timeout": 12},
     {"do": "verify", "url": "{draft_url}", "any": ["{chapter_title}"], "settle": 5},
 ]
 

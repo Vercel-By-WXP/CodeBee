@@ -507,6 +507,22 @@
    "tries": 15
   },
   {
+   "do": "js_click",
+   "text": "下一步",
+   "scope": "button",
+   "tries": 10,
+   "optional": true,
+   "skip_if_modal": true
+  },
+  {
+   "do": "click_in",
+   "scope_text": "请选择内容检测方式",
+   "text": "仅基础检测",
+   "real": true,
+   "tries": 20,
+   "optional": true
+  },
+  {
    "do": "click_arrow",
    "target": "下一步",
    "optional": true
@@ -515,27 +531,34 @@
    "do": "click_real",
    "text": "定时发布",
    "scope": "button,a,[class*=btn]",
-   "tries": 20,
-   "optional": true
+   "tries": 20
   },
   {
    "do": "click_real",
    "text": "发布",
    "scope": "button,a,[class*=btn]",
-   "tries": 20,
-   "optional": true
+   "tries": 20
   },
   {
    "do": "click_in",
    "scope_text": "发布提示",
    "text": "提交",
    "real": true,
-   "tries": 60,
-   "optional": true
+   "tries": 60
   },
   {
    "do": "sleep",
    "s": 3
+  },
+  {
+   "do": "expect_text",
+   "any": [
+    "定时发布成功",
+    "发布成功",
+    "提交成功",
+    "已提交"
+   ],
+   "timeout": 12
   },
   {
    "do": "verify",

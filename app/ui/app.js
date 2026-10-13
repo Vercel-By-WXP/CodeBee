@@ -6991,7 +6991,7 @@ function pbBlock(task, platform, selectionOnly = false) {
       // 门禁不再禁用按钮：点了走 pbApiWithQualityOverride 的复审/强制对话，
       // 死按钮只会让用户无路可走（2026-10-08 实案：guard false 全灰点不了）
       btns += ' <button class="ghost" ' + (busy ? "disabled" : "") +
-        ' title="' + esc(au.guard_ok ? t("按章号顺序逐章填稿（人工模式每点一次填一章，浏览器里提交后再点发下一章）") : t("护栏提示：") + (au.guard_reason || "")) + '"' +
+        ' title="' + esc(au.guard_ok ? t("按章号顺序逐章填稿并自动提交；若停在人工确认，点确认后会自动继续下一章") : t("护栏提示：") + (au.guard_reason || "")) + '"' +
         ' onclick="pbPublishAll(\'' + esc(task.id) + "', '" + platform + '\')">' +
         t("发布全部待发") + t("（") + au.pending + t("）") + "</button>";
       // 全部发草稿（2026-10-09）：质量闸拦发布不拦草稿——逐章自动填稿点
@@ -7439,10 +7439,17 @@ window.pbSendChapter = async function (taskId, platform, relName) {
 
 window.pbConfirmChapter = async function (taskId, platform, chapterNo) {
   try {
-    await api("/api/publish/task/" + encodeURIComponent(taskId) + "/confirm-chapter",
+    const r = await api("/api/publish/task/" + encodeURIComponent(taskId) + "/confirm-chapter",
       { method: "POST", body: JSON.stringify({ platform, chapter_no: chapterNo }) });
-    toast(t("已确认提交，台账已更新"));
+    toast(r && r.continued
+      ? t("已确认提交，正在自动处理下一章")
+      : t((r && r.message) || "已确认提交，台账已更新"));
   } catch (e) { toast(t("确认提交失败：") + e.message, true); }
+  // The confirmation endpoint records the chapter and starts the next batch;
+  // invalidate both cached views so CodeBee's published/pending counters
+  // reflect that hand-off on the next poll immediately.
+  S.pubAuto = null;
+  S.pubTaskInfo = null;
   S._pbSig = ""; pbKick();
 };
 

@@ -46,11 +46,17 @@ def test_ledger_roundtrip():
     ledger.record("fanqie", "upload_chapter", task_id="t1", chapter_no=2, title="第2章", ok=True)
     ledger.record("fanqie", "upload_chapter", task_id="t1", chapter_no=2, title="第2章", ok=False, error="超时")
     ledger.record("fanqie", "upload_chapter", task_id="t1", chapter_no=3, title="第3章", ok=False, error="未登录")
+    ledger.record("fanqie", "upload_chapter_scheduled", task_id="t1", chapter_no=9,
+                  title="第9章", ok=True)
     expect(ledger.published_chapters("t1", "fanqie") == {1, 2},
            "成功过的章入集合（先成功后失败仍在）；纯失败章不入：%s"
            % ledger.published_chapters("t1", "fanqie"))
-    expect(len(ledger.recent(task_id="t1")) == 5, "recent 应含失败记录（审计）")
+    expect(len(ledger.recent(task_id="t1")) == 6, "recent 应含失败与排期记录（审计）")
     expect(ledger.published_chapters("t1", "qimao") == set(), "跨平台隔离")
+    expect(ledger.scheduled_chapters("t1", "fanqie") == {9},
+           "排期回执单独记录")
+    expect(9 not in ledger.published_chapters("t1", "fanqie"),
+           "排期中的章节不能提前算已发布")
 
 
 def test_books_registry():
@@ -290,6 +296,20 @@ def test_qimao_calibrated_draft_and_book_contract():
 
     fp = Path(_flow.__file__).with_name("flows-qimao-calibrated.json")
     data = _json.loads(fp.read_text(encoding="utf-8"))
+    # Runtime data has higher precedence than the packaged calibrated template.
+    # Assert the exact flow manager will execute so an old ignored override
+    # cannot silently remove the save receipt or draft action.
+    runtime_draft = manager.load_flow("qimao", "upload_chapter_draft")
+    runtime_publish = manager.load_flow("qimao", "upload_chapter")
+    runtime_create = manager.load_flow("qimao", "create_book")
+    expect(any(s.get("do") == "expect_text" for s in runtime_draft),
+           "运行时七猫草稿表必须校验保存反馈")
+    expect(any(s.get("do") == "verify" and "{draft_url}" in str(s.get("url"))
+               for s in runtime_draft), "运行时七猫草稿表必须核验草稿箱")
+    expect(any(s.get("do") == "expect_text" for s in runtime_publish),
+           "运行时七猫发布表必须校验提交反馈")
+    expect(any(s.get("do") == "submit" and s.get("text") == "确认创建"
+               for s in runtime_create), "运行时七猫创建表必须执行确认创建")
     draft = data.get("upload_chapter_draft")
     expect(isinstance(draft, list), "七猫存草稿必须是步骤表")
     save = next((s for s in draft if s.get("do") == "click_real"
@@ -311,6 +331,25 @@ def test_qimao_calibrated_draft_and_book_contract():
     expect(_qm.CONFIG.get("book_manage") and "qimao.com" in _qm.CONFIG["home"],
            "七猫作品入口配置完整")
 
+    # 旧版 data 覆盖文件会被本机优先加载；契约守卫必须把它淘汰，不能让
+    # 「只填表/只点一下」的过期流程重新造成假成功。
+    override = (_TMP / "publish" / "flows-qimao.json").resolve()
+    override.write_text(json.dumps({
+        "create_book": [{"do": "fill", "sel": "input", "key": "title"}],
+        "upload_chapter_draft": [{"do": "fill", "sel": "textarea",
+                                   "key": "chapter_body"}],
+        "upload_chapter": [{"do": "submit", "text": "发布"}],
+    }), encoding="utf-8")
+    expect(any(s.get("do") == "submit" and s.get("text") == "确认创建"
+               for s in manager.load_flow("qimao", "create_book")),
+           "旧七猫建书覆盖必须回退校准流程")
+    expect(any(s.get("do") == "click_real" and s.get("text") == "存草稿"
+               for s in manager.load_flow("qimao", "upload_chapter_draft")),
+           "旧七猫草稿覆盖必须回退校准流程")
+    expect(any(s.get("do") == "click_real" and s.get("text") == "确认发布"
+               for s in manager.load_flow("qimao", "upload_chapter")),
+           "旧七猫发布覆盖必须回退校准流程")
+
     # 离线跑一遍草稿的关键尾链：即使 auto_submit=False，也必须点击存草稿，
     # 且没有反馈时应失败，防止批量把未保存章节记成成功。
     pg = _FlowPage(url="https://zuozhe.qimao.com/front/book-upload?id=1",
@@ -322,6 +361,20 @@ def test_qimao_calibrated_draft_and_book_contract():
                    auto_submit=False)
     expect(getattr(pg, "_clicks", 0) == 1,
            "七猫草稿尾链必须实际点击存草稿")
+
+    # 七猫当前校准证据没有定时发布入口；不要把普通草稿发布链冒充排期。
+    expect("upload_chapter_scheduled" not in data,
+           "七猫没有实测定时入口时不得生成猜测流程")
+
+    # optional cannot disguise a failed publish: run_flow must fail before manager
+    # can record the queued chapter as success when the confirm action is absent.
+    missing_confirm = _FlowPage(click_results=[{"ok": False, "err": "not found"}])
+    try:
+        _flow.run_flow(missing_confirm, [{"do": "click_real", "text": "确认发布",
+                                          "tries": 1}], auto_submit=True)
+        raise AssertionError("找不到七猫确认发布按钮时必须失败")
+    except _flow.FlowError:
+        pass
 
 
 class _FlowPage:
@@ -471,7 +524,7 @@ class _DraftPage(_FlowPage):
 
     def __init__(self):
         super().__init__(url="https://fanqienovel.com/main/writer/888/publish/",
-                         call_results=["保存成功 草稿已落草稿箱"])
+                         call_results=[{"ok": True}, "保存成功 草稿已落草稿箱"])
 
     def navigate(self, url, timeout=45):
         self._url = url
@@ -682,6 +735,16 @@ def test_fanqie_upload_flow_contract():
             draft = _json.loads(base_fp.read_text(encoding="utf-8"))["upload_chapter_draft"]
             expect(any(s.get("do") == "expect_text" for s in draft),
                    "番茄存草稿流程必须校验保存成功反馈")
+            save = next((s for s in draft
+                         if s.get("do") == "submit" and s.get("text") == "存草稿"), None)
+            expect(save and save.get("always") is True,
+                   "番茄存草稿提交步必须绕过人工闸真正点击")
+            scheduled = _json.loads(base_fp.read_text(encoding="utf-8"))["upload_chapter_scheduled"]
+            expect(any(s.get("do") == "js_click" and s.get("text") == "下一步"
+                        for s in scheduled),
+                   "番茄定时发布必须包含下一步 JS 兜底点击")
+            expect(any(s.get("do") == "expect_text" for s in scheduled),
+                   "番茄定时发布必须校验提交成功反馈")
 
     base_fp = Path(_flow.__file__).with_name("flows-fanqie-calibrated.json")
     contract(_json.loads(base_fp.read_text(encoding="utf-8"))["upload_chapter"],
@@ -848,6 +911,30 @@ def test_alt_titles_candidates():
                "原名为空返回空队列")
     finally:
         modelhub.resolve_orchestrator = orig
+
+
+def test_manual_confirm_continues_batch():
+    """人工点确认后，服务端应立即启动剩余章节并返回续跑结果。"""
+    from core import store
+    from core.publish import auto
+    task = store.create_task({"type": "direct", "goal": "确认续跑"})
+    ledger.save_book(task["id"], "fanqie", {"book_id": "bk-confirm", "title": "确认续跑"})
+    ledger.record("fanqie", "upload_chapter_pending", task_id=task["id"],
+                  chapter_no=1, book_id="bk-confirm", title="第1章",
+                  ok=False, operation_status="pending")
+    calls = []
+    original = auto.publish_pending_async
+    auto.publish_pending_async = lambda tid, plat, auto_submit=False: (
+        calls.append((tid, plat, auto_submit)) or (True, ""))
+    try:
+        ok, err = manager.confirm_manual_chapter(task["id"], "fanqie", 1)
+        expect(ok and not err, "确认后续跑不应报错：%s" % err)
+        expect(calls == [(task["id"], "fanqie", True)],
+               "确认后必须自动提交下一章：%s" % calls)
+        expect(1 in ledger.published_chapters(task["id"], "fanqie"),
+               "人工确认章必须进入已发布台账")
+    finally:
+        auto.publish_pending_async = original
 
 
 def test_sync_renamed_book():

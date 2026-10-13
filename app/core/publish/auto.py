@@ -353,12 +353,24 @@ def _wait_idle(platform, timeout=IDLE_TIMEOUT_S):
 
 
 def calibrated(platform):
-    """该平台的发布流程是否已校准（data/publish/flows-<plat>.json 在场）。
+    """该平台是否有可用于无人值守直发的真机校准流程。
 
-    内置默认表的选择器是「合理推测」；auto_submit 无人值守直发必须先经
-    真机校准（探测→写 flows 覆盖文件），否则填错表单还会自动提交出去。"""
+    用户目录覆盖表优先；仓库内带 ``-calibrated`` 后缀的流程也是已经
+    真机验证过的基线，干净安装不能因为没有用户覆盖文件而把自动提交
+    锁死。平台模块里的推测默认表仍不算校准。"""
+    import json as _json
+    from pathlib import Path as _Path
     from .. import paths
-    return (paths.PUBLISH_DIR / ("flows-%s.json" % platform)).is_file()
+    files = (paths.PUBLISH_DIR / ("flows-%s.json" % platform),
+             _Path(__file__).with_name("flows-%s-calibrated.json" % platform))
+    for fp in files:
+        try:
+            data = _json.loads(fp.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("upload_chapter"), list):
+                return True
+        except Exception:
+            pass
+    return False
 
 
 def flow_calibrated(plat, action):
@@ -387,9 +399,8 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
     only=章号清单（批量选择发布）：从待发清单里挑出所选章号，保持章号
     升序；所选全都不在待发清单里（已发过/解析不出章号）时报错不空跑。
     auto_submit=True（直发）逐章提交走完全程；False（人工确认）每轮只填
-    **一章**就停在 manual_pause——表单填好后提交权在用户，walker 若直接
-    填下一章会导航离开未提交的编辑器，把上一章内容丢掉（平台草稿自动
-    保存不可依赖）。用户在浏览器提交后再次发起即发下一章。
+    **一章**就停在 manual_pause。用户在浏览器提交后点击确认，确认接口会
+    记账并自动以 auto_submit=True 续跑剩余章节；这样不会导航离开未提交的编辑器。
     as_draft=True（全部发草稿，2026-10-09）：逐章自动填稿并点「存草稿」，
     不上线、不受质量闸拦、无需人工确认，一章接一章连跑到清空待发清单
     （章间仍按 PACE_S 防风控节奏）；提交发布由用户到平台草稿箱手工完成，
@@ -538,9 +549,34 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     ok2, err2 = manager.upload_chapter_async(
                         task_id, platform, str(Path(wd) / item["file"]),
                         **upload_kwargs)
+                scheduled_fallback = False
+                if not ok2 and auto_submit:
+                    # A synchronous failure (login/UI guard/connection) has
+                    # no idle wait or publish receipt to inspect.  Give the
+                    # platform's explicitly calibrated timed flow one chance
+                    # before stopping the batch.
+                    schedule = getattr(manager, "schedule_chapter_async", None)
+                    if callable(schedule):
+                        ok_s, err_s = schedule(
+                            task_id, platform, str(Path(wd) / item["file"]),
+                            force=force, force_confirmed=force_confirmed,
+                            force_reason=force_reason)
+                        if ok_s and _wait_idle(platform):
+                            if item["chapter_no"] in ledger.scheduled_chapters(
+                                    task_id, platform):
+                                st["notes"].append(
+                                    "第 %d 章直发发起失败，已转定时发布并继续"
+                                    % item["chapter_no"])
+                                ok2 = True
+                                scheduled_fallback = True
+                            else:
+                                err2 = err_s or "定时发布未确认"
+                        else:
+                            err2 = err_s or "定时发布等待超时"
                 if not ok2:
                     st["status"] = "error"
-                    st["error"] = "第 %d 章发起失败：%s" % (item["chapter_no"], err2)
+                    st["error"] = "第 %d 章发起失败，转定时发布也失败：%s" % (
+                        item["chapter_no"], err2)
                     return
                 if not _wait_idle(platform):
                     st["status"] = "error"
@@ -579,8 +615,9 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                                      "提交后请重新校准，再选择下一章（剩 %d 章）"
                                      % (item["chapter_no"], st["total"] - st["done"]))
                     return
-                if item["chapter_no"] not in ledger.published_chapters(
-                        task_id, platform):
+                if (not scheduled_fallback and
+                        item["chapter_no"] not in ledger.published_chapters(
+                        task_id, platform)):
                     # Immediate publish can fail after the editor has accepted
                     # the chapter (button/API hiccup, platform throttling, or a
                     # transient UI change). Queue the same chapter through the

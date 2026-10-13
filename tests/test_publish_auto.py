@@ -217,9 +217,14 @@ class TestPublishPending(unittest.TestCase):
         self.addCleanup(lambda: fp.unlink(missing_ok=True))
 
     def test_auto_submit_requires_calibration(self):
-        # 未校准（无 flows-fanqie.json）不许无人值守直发
-        ok, err = auto.publish_pending_async(self.task["id"], "fanqie",
-                                             auto_submit=True)
+        # 模拟未校准平台，确认无人值守直发仍受闸门保护。
+        orig_cal = auto.calibrated
+        auto.calibrated = lambda _plat: False
+        try:
+            ok, err = auto.publish_pending_async(self.task["id"], "fanqie",
+                                                 auto_submit=True)
+        finally:
+            auto.calibrated = orig_cal
         self.assertFalse(ok)
         self.assertIn("校准", err)
         self._calibrate()
@@ -374,6 +379,8 @@ class TestPublishPending(unittest.TestCase):
             self.assertEqual(st.get("status"), "error")
             self.assertIn("第 2 章", st.get("error") or "")
             self.assertEqual(st.get("done"), 1)      # 第 1 章已发，后续未发
+            # The failed chapter is retried through the calibrated scheduled
+            # fallback before the batch reports an unrecoverable failure.
             self.assertEqual(len(fake.calls), 3)
         finally:
             self.manager.upload_chapter_async = orig
