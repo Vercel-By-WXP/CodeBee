@@ -9497,7 +9497,9 @@ function setHiveSceneMode(mode, opts) {
   if (!viewport) return;
   // Public mode selection is deliberately limited to the polished artwork and 2D list.
   // live3d remains callable by internal QA, but can never be restored from user state.
-  let selected = ["live3d", "2d"].includes(mode) ? mode : "2d";
+  // Keep the public high-fidelity artwork selectable; unknown values still
+  // fall back to the 2D list, while live3d remains an internal QA mode.
+  let selected = ["reference", "live3d", "2d"].includes(mode) ? mode : "2d";
   if (selected !== "2d") {
     const sc = ensureHiveScene();
     if (!sc) {
@@ -15276,7 +15278,8 @@ function renderSu() {
   if (SU.has_update) {
     if (SU.mode === "desktop") {
       // 桌面模式：引擎不能自我替换，「立即升级」恒 400——只给下载页入口。
-      const url = esc(SU.download_url || "https://github.com/Vercel-By-WXP/CodeBee/releases");
+      const url = esc(SU.download_url ||
+        "https://github.com/Vercel-By-WXP/CodeBee/actions/workflows/desktop-preview.yml");
       html += "<p class=\"hint\"><b>" + t("发现新版本") + " v" + esc(SU.latest) +
         t("　") + "<a href=\"" + url + "\" target=\"_blank\" rel=\"noopener\">" +
         t("打开下载页") + "</a></b></p>";

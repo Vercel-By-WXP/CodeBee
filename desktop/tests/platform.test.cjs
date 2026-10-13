@@ -33,7 +33,7 @@ test('restrict navigation by exact origin and reject executable external protoco
   for (const url of ['http://127.0.0.1:9877/', 'http://127.0.0.1.evil:9876/', 'file:///tmp/x', 'javascript:alert(1)']) {
     assert.equal(isInternal(url, 'http://127.0.0.1:9876'), false);
   }
-  assert.equal(externalURL('https://github.com/Vercel-By-WXP/CodeBee/releases'), true);
+  assert.equal(externalURL('https://github.com/Vercel-By-WXP/CodeBee/actions/workflows/desktop-preview.yml'), true);
   for (const url of ['file:///tmp/x', 'javascript:alert(1)', 'ms-settings:test', 'https://u:p@example.com', 'broken']) {
     assert.equal(externalURL(url), false);
   }

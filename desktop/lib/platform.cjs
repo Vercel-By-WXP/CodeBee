@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
 
-const RELEASES_URL = 'https://github.com/Vercel-By-WXP/CodeBee/releases';
+const RELEASES_URL = 'https://github.com/Vercel-By-WXP/CodeBee/actions/workflows/desktop-preview.yml';
 
 function dataDirectory(platform = process.platform, env = process.env, home = os.homedir()) {
   if (env.TUTTI_DATA) return path.resolve(env.TUTTI_DATA);

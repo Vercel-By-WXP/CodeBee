@@ -175,7 +175,7 @@ class TestDesktopSidecar(unittest.TestCase):
         # test_selfupdate 的 mock 矩阵覆盖，这里锁「绝不 invoke npm」的边界。
         self.assertFalse(data["has_update"])
         self.assertIn("查询新版本失败", data["note"])
-        self.assertIn("/releases", data["download_url"])
+        self.assertIn("/actions/workflows/desktop-preview.yml", data["download_url"])
         status, data = self.sidecar.request("POST", "/api/selfupdate/apply", {})
         self.assertEqual(status, 400)
         self.assertIn("error", data)

@@ -144,7 +144,12 @@ def check(force=False):
     out = {"mode": mode, "current": cur, "latest": "", "has_update": False,
            "note": "", "notes": "", "whatsnew": changelog_section(cur)}
     if mode == "desktop":
-        out["download_url"] = "https://github.com/Vercel-By-WXP/CodeBee/releases"
+        # Desktop packages are currently published as Actions artifacts by the
+        # preview workflow; the repository Releases page has no installers.
+        out["download_url"] = (
+            "https://github.com/Vercel-By-WXP/CodeBee/actions/workflows/"
+            "desktop-preview.yml"
+        )
         # 桌面壳不能自我替换引擎，但「查新」照常可用：安装包引擎版本与 npm 同源。
         # 查到新版时前端渲染「打开下载页」（apply/restart 在桌面模式始终 400）。
         with _LOCK:

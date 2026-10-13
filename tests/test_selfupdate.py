@@ -266,7 +266,7 @@ class TestDesktopUpdateCheck(BaseTest):
             self.assertEqual(info["mode"], "desktop")
             self.assertIs(info["has_update"], expected)
             self.assertEqual(info["latest"], latest)
-            self.assertIn("/releases", info["download_url"])
+            self.assertIn("/actions/workflows/desktop-preview.yml", info["download_url"])
             if expected:
                 self.assertIn("下载页", info["note"])
             else:
@@ -284,5 +284,5 @@ class TestDesktopUpdateCheck(BaseTest):
             info = su.check()
         self.assertEqual(info["mode"], "desktop")
         self.assertFalse(info["has_update"])
-        self.assertIn("/releases", info["download_url"])
+        self.assertIn("/actions/workflows/desktop-preview.yml", info["download_url"])
         self.assertIn("查询新版本失败", info["note"])
