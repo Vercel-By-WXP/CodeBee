@@ -425,6 +425,9 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     "const r=host.getBoundingClientRect();"
                     "return{ok:true,x:Math.round(r.x+r.width-10),y:Math.round(r.y+r.height/2)};}", str(st.get("target") or "下一步"))
                 if not (r or {}).get("ok"):
+                    if st.get("optional"):
+                        note(i, "箭头未出现，跳过（optional）")
+                        continue
                     raise FlowError((r or {}).get("err") or "箭头定位失败")
                 page.send("Input.dispatchMouseEvent",
                           {"type": "mousePressed", "x": r["x"], "y": r["y"],
@@ -715,12 +718,9 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                                        "、".join(marks)[:60]))
                 note(i, "反馈命中「%s」" % hit)
             elif act == "volume":
-                # 发章带卷（2026-10-08 批量自动发布·自动分卷）：确保目标卷
-                # 在平台上存在（缺则走「新建分卷」）。平台新章按卷自动归类、
-                # 不提供章节切卷入口（编辑器卷弹窗实测只能增删改卷，真机
-                # code -4054 还不允许连续两个无章节空卷）——所以本步骤只
-                # 「备好卷」，不假装能切卷。选择器全部数据驱动；无目标卷名
-                # 或编辑器没有卷选择器（optional）时跳过。
+                # 按本地卷计划在平台选择目标卷；如果缺失则创建，再点选它。
+                # 仅创建并关闭弹窗会保留平台当前卷，后续新章节就会落错卷。
+                # 无目标卷名或平台无卷选择器（optional）时跳过。
                 from .volumes import norm_volume_name
                 target = str(values.get(st.get("key") or "volume_name") or "").strip()
                 open_sel = str(st.get("open_sel") or "")
@@ -766,9 +766,12 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         continue
                     raise FlowError("分卷选择器点不开：%s" % open_sel)
                 time.sleep(settle)
-                exists = any(norm_volume_name(t) == norm_volume_name(target)
-                             for t in vol_items())
-                if not exists:
+                def pick_hit():
+                    return next((t for t in vol_items()
+                                 if norm_volume_name(t) == norm_volume_name(target)), "")
+
+                hit = pick_hit()
+                if not hit:
                     add_sel = str(st.get("add_sel") or "")
                     if not add_sel:
                         raise FlowError("平台没有目标分卷「%s」且流程未配新建分卷" % target)
@@ -797,32 +800,49 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         raise FlowError("新建分卷「%s」失败：%s"
                                         % (target, (rr or {}).get("err")))
                     time.sleep(settle)
-                    exists = any(norm_volume_name(t) == norm_volume_name(target)
-                                 for t in vol_items())
-                    if not exists:
+                    hit = pick_hit()
+                    if not hit:
                         raise FlowError("新建分卷后列表里没有「%s」——常见原因："
                                         "平台不允许连续两个无章节的空卷"
                                         "（code -4054），等上一卷有章节再发"
                                         % target)
                     known = values.get("_volumes")
-                    if isinstance(known, list):
-                        disp = next((t for t in vol_items()
-                                     if norm_volume_name(t) == norm_volume_name(target)), "")
-                        if disp and disp not in known:
-                            known.append(disp)
-                    note(i, "已新建分卷「%s」" % target)
-                else:
-                    note(i, "分卷「%s」已存在" % target)
-                # 收弹窗（取消=不动任何卷；确定会另起新草稿，都不影响归属——
-                # 新章由平台按卷自动归类）
-                page.call("(m)=>{var mm=document.querySelector(m);if(!mm)return{ok:false};"
-                          "var b=mm.querySelectorAll('button');"
-                          "for (var i=0;i<b.length;i++){"
-                          " if((b[i].innerText||'').trim()==='取消'){b[i].click();return{ok:true};}}"
-                          "return{ok:false};}", modal_sel, timeout=8)
-                time.sleep(0.6)
-                note(i, "分卷「%s」已就绪（平台按卷自动归类新章，当前卷 %s）"
-                        % (target, hdr))
+                    if isinstance(known, list) and hit not in known:
+                        known.append(hit)
+                    note(i, "已新建分卷「%s」" % hit)
+
+                # 点选目标卷后再确认，确保新章节会归入对应卷。只在弹窗内
+                # 查找条目，避免同名文本误点到页面其它位置。
+                rr = page.call("(m,s,t)=>{var mm=document.querySelector(m);"
+                               "if(!mm)return{ok:false,err:'nomodal'};"
+                               "var els=[...mm.querySelectorAll(s)];"
+                               "var hit=els.find(e=>((e.innerText||'').trim())===t);"
+                               "if(!hit)return{ok:false,err:'noitem'};"
+                               "hit.click();return{ok:true};}",
+                               modal_sel, item_sel, hit, timeout=8)
+                if not (rr or {}).get("ok"):
+                    raise FlowError("分卷「%s」点选失败：%s"
+                                    % (hit, (rr or {}).get("err")))
+                time.sleep(0.5)
+                rr = page.call("(m)=>{var mm=document.querySelector(m);"
+                               "if(!mm)return{ok:false,err:'nomodal'};"
+                               "var b=mm.querySelectorAll('button');"
+                               "for (var i=0;i<b.length;i++){"
+                               " if((b[i].innerText||'').trim()==='确定'){"
+                               "  b[i].click();return{ok:true};}}"
+                               "return{ok:false,err:'noconfirm'};}",
+                               modal_sel, timeout=8)
+                if not (rr or {}).get("ok"):
+                    raise FlowError("分卷「%s」已点选，但弹窗「确定」失败：%s"
+                                    % (hit, (rr or {}).get("err")))
+                time.sleep(settle)
+                selected = str(page.call("(s)=>{var v=document.querySelector(s);"
+                                         "return v?(v.innerText||'').trim():'';}",
+                                         open_sel, timeout=8) or "").strip()
+                if norm_volume_name(selected) != norm_volume_name(target):
+                    raise FlowError("目标卷选择未生效：要选「%s」，当前显示「%s」"
+                                    % (target, selected or "（空）"))
+                note(i, "分卷已选「%s」" % selected)
             elif act == "url_any":
                 u = str(page.url() or "")
                 marks = st.get("any") or []

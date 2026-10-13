@@ -60,6 +60,37 @@ def load_plan(workdir):
     return _parse_outline(wd / "大纲" / "series-outline.md")
 
 
+def plan_for_task(task, upto=0):
+    """Return the publish plan for a task, preferring its persisted serial config.
+
+    The task form stores volume boundaries in ``task.serial`` (the canonical
+    source used by the writing pipeline), while the legacy publish adapter only
+    read files under ``workdir``.  Reading the task first keeps automatic
+    publishing aligned with the plan the user actually selected; file plans
+    remain a compatibility fallback for older tasks.
+    """
+    task = task if isinstance(task, dict) else {}
+    serial = task.get("serial") or {}
+    if isinstance(serial, dict) and (serial.get("volumes") or serial.get("volume_chapters")):
+        try:
+            from .. import volumes as story_volumes
+            plan = story_volumes.build_plan(
+                serial.get("volumes"),
+                story_volumes.norm_per(serial.get("volume_chapters")),
+                upto=int(upto or 0),
+            )
+            out = [{"no": int(v.get("vol") or i),
+                    "name": str(v.get("title") or "").strip(),
+                    "from": int(v.get("first") or 0),
+                    "to": int(v.get("last") or 0)}
+                   for i, v in enumerate(plan or [], 1)]
+            if out:
+                return out
+        except Exception:
+            pass
+    return load_plan(task.get("workdir") or "")
+
+
 def _parse_outline(fp):
     """series-outline.md → 卷计划。标题给卷名，章数行给范围；章数缺失或与
     标题数对不上时宁可放弃（不猜）。"""
@@ -102,7 +133,9 @@ def volume_for(ch_no, plan):
     return None
 
 
-def name_for(workdir, ch_no):
+def name_for(workdir, ch_no, task=None):
     """章号 → 目标卷名（裸名，如「县里有旧账」）；无计划/无匹配返回空串。"""
-    v = volume_for(ch_no, load_plan(workdir))
+    plan = (plan_for_task(task, upto=int(ch_no or 0))
+            if isinstance(task, dict) else load_plan(workdir))
+    v = volume_for(ch_no, plan)
     return str(v.get("name") or "").strip() if v else ""

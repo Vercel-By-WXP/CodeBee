@@ -187,14 +187,20 @@ def pending(task_id, platform):
             if fs:
                 files = fs           # 任一 run 的成品口径都从任务首跑起，取到即够
                 break
-    done = ledger.published_chapters(task_id, platform) \
-        | ledger.drafted_chapters(task_id, platform)
+    # A scheduled chapter has been accepted by the platform queue, but is not
+    # published yet.  Keep it out of the next batch so a retry cannot enqueue
+    # a duplicate while preserving the published count for the UI and limits.
+    done = (ledger.published_chapters(task_id, platform)
+            | ledger.drafted_chapters(task_id, platform)
+            | ledger.scheduled_chapters(task_id, platform))
     # 分卷标注（2026-10-08 用户需求：待发清单按卷展示）：卷计划解析不出时
     # volume 为空串，前端不分组平铺。
     plan = []
     try:
         from . import volumes as _volumes
-        plan = _volumes.load_plan(wd)
+        max_chapter = max((ledger.parse_chapter_no(str(f.get("name") or ""))
+                           for f in files), default=0)
+        plan = _volumes.plan_for_task(task, upto=max_chapter)
     except Exception:
         plan = []
     out, seen = [], set()
@@ -306,6 +312,7 @@ def status(task_id):
         chapter_review_states(task or {}, pend, quality, hard_ok, hard_why, direct_ok)
         published = ledger.published_chapters(task_id, plat)
         drafted = ledger.drafted_chapters(task_id, plat) - published
+        scheduled = ledger.scheduled_chapters(task_id, plat) - published
         books.append({"platform": plat, "bound": True,
                       "title": info.get("title") or "",
                       "pending": len(pend),
@@ -315,10 +322,12 @@ def status(task_id):
                       "ready_count": sum(p["publish_ready"] for p in pend),
                       "review_passed_count": sum(p["review_passed"] for p in pend),
                       "drafted_nos": sorted(drafted),
+                      "scheduled_nos": sorted(scheduled),
                       "guard_ok": ok, "guard_reason": why,
                       "draft_ok": hard_ok, "draft_reason": hard_why,
                       "quality_blockers": blockers,
                       "drafted": len(drafted),
+                      "scheduled": len(scheduled),
                       "calibrated": direct_ok})
     run = _running.get(task_id) or None
     if run:
@@ -572,10 +581,33 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     return
                 if item["chapter_no"] not in ledger.published_chapters(
                         task_id, platform):
-                    st["status"] = "error"
-                    st["error"] = ("第 %d 章发布失败，后续章节未发（详见发布台账与"
-                                   "截图存证）" % item["chapter_no"])
-                    return
+                    # Immediate publish can fail after the editor has accepted
+                    # the chapter (button/API hiccup, platform throttling, or a
+                    # transient UI change). Queue the same chapter through the
+                    # platform's scheduled-publish path before giving up, then
+                    # continue with the next chapter once the queue receipt is
+                    # confirmed.
+                    schedule = getattr(manager, "schedule_chapter_async", None)
+                    if not callable(schedule):
+                        st["status"] = "error"
+                        st["error"] = ("第 %d 章发布失败，后续章节未发（详见发布台账与"
+                                       "截图存证）" % item["chapter_no"])
+                        return
+                    ok_s, err_s = schedule(
+                        task_id, platform, str(Path(wd) / item["file"]),
+                        force=force, force_confirmed=force_confirmed,
+                        force_reason=force_reason)
+                    if ok_s and not _wait_idle(platform):
+                        ok_s = False
+                        err_s = "定时发布等待超时"
+                    if not ok_s or item["chapter_no"] not in ledger.scheduled_chapters(
+                            task_id, platform):
+                        st["status"] = "error"
+                        st["error"] = ("第 %d 章立即发布失败，转定时发布也失败：%s"
+                                       % (item["chapter_no"], err_s or "未确认"))
+                        return
+                    st["notes"].append("第 %d 章立即发布失败，已转定时发布并继续"
+                                      % item["chapter_no"])
                 st["done"] += 1
                 st["last_chapter"] = item["chapter_no"]
                 if st["done"] < st["total"]:

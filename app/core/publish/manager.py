@@ -284,6 +284,36 @@ def load_flow(plat, action):
                 return data[action]
         except Exception:
             pass
+    if action == "upload_chapter_scheduled":
+        # Platforms may not ship a separate table because the scheduled path
+        # shares the editor fill steps with immediate publishing.  Derive a
+        # recovery flow from the calibrated immediate flow and replace the
+        # confirmation tail with the platform's timed-publish controls.
+        base = load_flow(plat, "upload_chapter")
+        out = []
+        tail = False
+        for st in base:
+            if not tail:
+                out.append(dict(st))
+                if st.get("do") == "submit" and st.get("text") == "下一步":
+                    tail = True
+                continue
+            if st.get("do") in ("js_click", "click_in", "click_real", "sleep", "verify"):
+                continue
+        out.extend([
+            {"do": "click_arrow", "target": "下一步", "optional": True},
+            {"do": "click_real", "text": "定时发布", "scope": "button,a,[class*=btn]",
+             "tries": 20, "optional": True},
+            {"do": "click_real", "text": "发布", "scope": "button,a,[class*=btn]",
+             "tries": 20, "optional": True},
+            {"do": "click_in", "scope_text": "发布提示", "text": "提交",
+             "real": True, "tries": 60, "optional": True},
+            {"do": "sleep", "s": 3},
+        ])
+        verify = next((dict(s) for s in reversed(base) if s.get("do") == "verify"), None)
+        if verify:
+            out.append(verify)
+        return out
     return PLATFORMS[plat].FLOWS[action]
 
 
@@ -877,7 +907,7 @@ def read_chapter(fp):
 
 def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                          force=False, force_confirmed=False, force_reason="",
-                         as_draft=False):
+                         as_draft=False, scheduled=False):
     """把一章发到平台（或填好待人工确认/as_draft 只存草稿）。
 
     幂等：已成功发布**或已存草稿**的章号拒绝重做——重复发会平台上出双章，
@@ -935,6 +965,10 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     done = ledger.published_chapters(task_id, plat)
     if ch_no and ch_no in done:
         return False, "第 %d 章已成功发布过（台账幂等拦截）；确需重发请手工处理" % ch_no
+    queued = ledger.scheduled_chapters(task_id, plat)
+    if ch_no and ch_no in queued:
+        return False, ("第 %d 章已进入定时发布队列（台账幂等拦截）；请等待平台发布"
+                       % ch_no)
     if as_draft and ch_no and ch_no in ledger.drafted_chapters(task_id, plat):
         return False, ("第 %d 章已存过草稿（台账幂等拦截）；请到平台草稿箱检查后"
                        "提交发布，确需重存请先在平台删旧稿" % ch_no)
@@ -942,6 +976,18 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     if not ok_login:
         return False, why
     flow_key = "upload_chapter_draft" if as_draft else "upload_chapter"
+    # A scheduled fallback uses the same editor fill chain unless a platform
+    # ships a dedicated calibrated flow.  The action is still recorded as
+    # scheduled so idempotency and progress accounting advance correctly.
+    flow_action = "upload_chapter_scheduled" if scheduled else flow_key
+    if scheduled:
+        try:
+            load_flow(plat, flow_action)
+            flow_key = flow_action
+        except Exception:
+            return False, "该平台未配置定时发布流程"
+    if scheduled:
+        auto_submit = True
     _set(plat, status="busy", last_action=flow_key, error="")
 
     mod = PLATFORMS[plat]
@@ -952,7 +998,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     # 步骤追加进来，跑完回写 books.json 供后续章节免建。
     try:
         from . import volumes as _volumes
-        values["volume_name"] = _volumes.name_for(task.get("workdir"), ch_no)
+        values["volume_name"] = _volumes.name_for(task.get("workdir"), ch_no, task=task)
     except Exception:
         values["volume_name"] = ""
     values["_volumes"] = list(book_ref.get("volumes") or [])
@@ -996,9 +1042,9 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                               remote_receipt="platform-draft")
             elif auto_submit:
                 operations.confirm(operation_id, metadata={"platform": plat,
-                                                            "action": "upload_chapter",
+                                                            "action": flow_key,
                                                             "chapter_no": ch_no})
-                ledger.record(plat, "upload_chapter", task_id=task_id, chapter_no=ch_no,
+                ledger.record(plat, flow_key, task_id=task_id, chapter_no=ch_no,
                               book_id=book_ref.get("book_id") or "", title=title, ok=True,
                               operation_id=operation_id, operation_status="confirmed")
             else:
@@ -1013,7 +1059,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
             operations.finish_exception(operation_id, e)
             operation_status = (operations.get(operation_id) or {}).get("status") or "failed"
             _set(plat, status="error", error="发章失败：%s" % e)
-            ledger.record(plat, "upload_chapter", task_id=task_id, chapter_no=ch_no,
+            ledger.record(plat, flow_key, task_id=task_id, chapter_no=ch_no,
                           book_id=book_ref.get("book_id") or "", title=title,
                           ok=False, error=str(e)[:300], operation_id=operation_id,
                           operation_status=operation_status)
@@ -1023,6 +1069,22 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     threading.Thread(target=run, daemon=True,
                      name="pub-ch-%s" % plat).start()
     return True, ""
+
+
+def schedule_chapter_async(task_id, plat, chapter_file, force=False,
+                           force_confirmed=False, force_reason=""):
+    """Fill and submit one chapter through the platform's scheduled-publish path.
+
+    This is the recovery path for an automatic immediate publish that did not
+    produce a confirmed receipt.  It is deliberately separate from the normal
+    upload action so the ledger and idempotency checks know the chapter is
+    already queued on the platform.
+    """
+    return upload_chapter_async(task_id, plat, chapter_file,
+                                auto_submit=True, force=force,
+                                force_confirmed=force_confirmed,
+                                force_reason=force_reason,
+                                scheduled=True)
 
 
 def confirm_manual_chapter(task_id, plat, chapter_no):

@@ -256,6 +256,7 @@ class TestPublishPending(unittest.TestCase):
     def test_publish_selected_only(self):
         """批量选择发布：only=章号清单只发所选（保序）；所选全不在待发时报错。
         status 视图 items 带待发清单（UI 勾选数据源）。"""
+        self._calibrate()
         fake = _FakeUpload()
         orig = self.manager.upload_chapter_async
         self.manager.upload_chapter_async = fake
@@ -265,10 +266,10 @@ class TestPublishPending(unittest.TestCase):
             self.assertEqual([i["chapter_no"] for i in ent.get("items") or []],
                              [1, 2, 3], "items 带待发清单")
             ok, err = auto.publish_pending_async(self.task["id"], "fanqie",
-                                                 only=[3, 2])
+                                                 only=[3, 2], auto_submit=True)
             self.assertTrue(ok, err)
             st = self._wait_status(self.task["id"])
-            self.assertEqual(st.get("status"), "manual_pause")
+            self.assertEqual(st.get("status"), "done")
             self.assertEqual(Path(fake.calls[0]).name, "第2章.md",
                              "只发所选且保章号升序：%s" % fake.calls)
             # 所选全不在待发 → 明确报错不空跑
@@ -302,6 +303,41 @@ class TestPublishPending(unittest.TestCase):
             self.assertEqual(len(fake.calls), 2)
         finally:
             self.manager.upload_chapter_async = orig
+
+    def test_publish_failure_falls_back_to_scheduled_and_continues(self):
+        """直发失败时降级为定时发布，并继续处理后续章节。"""
+        self._calibrate()
+        fake = _FakeUpload(fail_at={1: "发布按钮失败"})
+        orig_upload = self.manager.upload_chapter_async
+        orig_schedule = getattr(self.manager, "schedule_chapter_async", None)
+        scheduled = []
+
+        def schedule(tid, plat, fp, **kw):
+            scheduled.append(Path(fp).name)
+            n = ledger.parse_chapter_no(Path(fp).name)
+            ledger.record(plat, "upload_chapter_scheduled", task_id=tid,
+                          chapter_no=n, ok=True)
+            return True, ""
+
+        self.manager.upload_chapter_async = fake
+        self.manager.schedule_chapter_async = schedule
+        try:
+            ok, err = auto.publish_pending_async(self.task["id"], "fanqie",
+                                                 auto_submit=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(self.task["id"])
+            self.assertEqual(st.get("status"), "done")
+            self.assertEqual(st.get("done"), 3)
+            self.assertEqual([ledger.parse_chapter_no(Path(x).name)
+                              for x in scheduled], [1])
+            self.assertEqual([ledger.parse_chapter_no(Path(x).name)
+                              for x in fake.calls], [1, 2, 3])
+        finally:
+            self.manager.upload_chapter_async = orig_upload
+            if orig_schedule is None:
+                delattr(self.manager, "schedule_chapter_async")
+            else:
+                self.manager.schedule_chapter_async = orig_schedule
 
     def test_walks_all_chapters_in_order(self):
         self._calibrate()                 # 直发模式的前置：流程已校准
@@ -338,7 +374,7 @@ class TestPublishPending(unittest.TestCase):
             self.assertEqual(st.get("status"), "error")
             self.assertIn("第 2 章", st.get("error") or "")
             self.assertEqual(st.get("done"), 1)      # 第 1 章已发，后续未发
-            self.assertEqual(len(fake.calls), 2)
+            self.assertEqual(len(fake.calls), 3)
         finally:
             self.manager.upload_chapter_async = orig
 
@@ -802,3 +838,5 @@ class TestAutoPublishDue(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+

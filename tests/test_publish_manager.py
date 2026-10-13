@@ -279,6 +279,51 @@ def test_create_preflight():
     expect("标签" in e6, "七猫空背景组拦停：%s" % e6)
 
 
+def test_qimao_calibrated_draft_and_book_contract():
+    """七猫作品与发草稿必须走已校准的真实动作链。
+
+    草稿动作要有保存反馈和草稿箱核验；作品动作要有明确的确认创建提交
+    步骤，避免只填表后 manager 误记成功。
+    """
+    import json as _json
+    from core.publish import flow as _flow, qimao as _qm
+
+    fp = Path(_flow.__file__).with_name("flows-qimao-calibrated.json")
+    data = _json.loads(fp.read_text(encoding="utf-8"))
+    draft = data.get("upload_chapter_draft")
+    expect(isinstance(draft, list), "七猫存草稿必须是步骤表")
+    save = next((s for s in draft if s.get("do") == "click_real"
+                 and s.get("text") == "存草稿"), None)
+    expect(save and int(save.get("tries") or 0) >= 1,
+           "七猫存草稿必须真实点击保存按钮")
+    feedback = next((s for s in draft if s.get("do") == "expect_text"), None)
+    expect(feedback and any("保存" in str(x) or "草稿" in str(x)
+                            for x in (feedback.get("any") or [])),
+           "七猫存草稿必须校验保存成功反馈")
+    verify = next((s for s in draft if s.get("do") == "verify"), None)
+    expect(verify and "{draft_url}" in str(verify.get("url")),
+           "七猫存草稿必须核验草稿箱")
+
+    create = data.get("create_book")
+    submit = next((s for s in (create or []) if s.get("do") == "submit"), None)
+    expect(submit and submit.get("text") == "确认创建",
+           "七猫作品流程必须有确认创建提交")
+    expect(_qm.CONFIG.get("book_manage") and "qimao.com" in _qm.CONFIG["home"],
+           "七猫作品入口配置完整")
+
+    # 离线跑一遍草稿的关键尾链：即使 auto_submit=False，也必须点击存草稿，
+    # 且没有反馈时应失败，防止批量把未保存章节记成成功。
+    pg = _FlowPage(url="https://zuozhe.qimao.com/front/book-upload?id=1",
+                   call_results=["保存成功", "第1章 七猫草稿"])
+    pg.navigate = lambda url, timeout=30: setattr(pg, "_url", url)
+    _flow.run_flow(pg, [save, feedback, verify],
+                   values={"chapter_title": "第1章 七猫草稿",
+                           "draft_url": "https://zuozhe.qimao.com/front/book-manage/draft?id=1"},
+                   auto_submit=False)
+    expect(getattr(pg, "_clicks", 0) == 1,
+           "七猫草稿尾链必须实际点击存草稿")
+
+
 class _FlowPage:
     """run_flow 离线假页：只实现被测步骤用到的面。"""
 
@@ -633,6 +678,10 @@ def test_fanqie_upload_flow_contract():
                   "input_sel", "confirm_sel"):
             expect(str(vs.get(k) or "").strip(), "%s volume 缺 %s" % (tag, k))
         expect(vs.get("key") == "volume_name", "%s volume key" % tag)
+        if tag == "基线":
+            draft = _json.loads(base_fp.read_text(encoding="utf-8"))["upload_chapter_draft"]
+            expect(any(s.get("do") == "expect_text" for s in draft),
+                   "番茄存草稿流程必须校验保存成功反馈")
 
     base_fp = Path(_flow.__file__).with_name("flows-fanqie-calibrated.json")
     contract(_json.loads(base_fp.read_text(encoding="utf-8"))["upload_chapter"],
@@ -641,14 +690,12 @@ def test_fanqie_upload_flow_contract():
 
 
 def test_volume_step_flow_logic():
-    """volume 步骤全链（假页驱动）：当前卷命中直接过 / 卷已存在不重复建 /
-    缺卷新建（输名→✓）/ 无目标跳过 / 无卷选择器 optional 跳过。
-    平台不提供章节切卷（弹窗只能增删改卷，真机 code -4054 实案）——
-    本步骤只「备好卷」，归属交给平台按卷自动归类。"""
+    """volume 步骤：当前卷命中直接过 / 已有目标卷必须点选并确认 /
+    缺卷新建后点选并确认 / 无目标跳过 / 无卷选择器 optional 跳过。"""
     from core.publish import flow as _flow
 
     class VolPage:
-        """分卷弹窗状态桩：头部卷名可读；open→列表；add→编辑态；confirm→落名。"""
+        """分卷弹窗状态桩：选中条目并确认后，头部切到目标卷。"""
         def __init__(self, vols, current, open_ok=True):
             self.vols = list(vols)          # 平台显示名
             self.current = current
@@ -671,9 +718,15 @@ def test_volume_step_flow_logic():
             if "HTMLInputElement" in fn:                  # 行内输名+confirm
                 self.created.append(a[1])
                 self.vols.append("第3卷：" + str(a[1]))
-                self.current = "第3卷：" + str(a[1])      # 平台建卷后自动归入
                 return {"ok": True}
-            if "取消" in fn:                              # 收弹窗
+            if "mm.querySelectorAll(s)" in fn:             # 弹窗内点选目标卷
+                _modal, _sel, title = a
+                if title not in self.vols:
+                    return {"ok": False, "err": "noitem"}
+                self.selected = title
+                return {"ok": True}
+            if "querySelectorAll('button')" in fn:         # 弹窗确定
+                self.current = getattr(self, "selected", self.current)
                 self.modal = False
                 return {"ok": True}
             return {"ok": True}
@@ -693,19 +746,22 @@ def test_volume_step_flow_logic():
     run(pg, {"volume_name": "县里有旧账"})
     expect(not pg.modal, "当前卷命中不开弹窗")
 
-    # 2) 目标卷已存在（当前在别的卷）：确认存在、不重复建
+    # 2) 目标卷已存在（当前在别的卷）：必须点选、确认，头部切到目标卷
     pg2 = VolPage(["第一卷：山门换锁", "第二卷：县里有旧账"], "第一卷：山门换锁")
     vals2 = {"volume_name": "县里有旧账", "_volumes": []}
     run(pg2, vals2)
     expect(not pg2.created, "已存在的卷不重建：%s" % pg2.created)
+    expect(pg2.current == "第二卷：县里有旧账", "已有目标卷选中并生效：%s" % pg2.current)
+    expect(not pg2.modal, "选择后确认关闭弹窗")
 
-    # 3) 缺卷：新建（输名→✓）→ 追加进共享缓存
+    # 3) 缺卷：新建后必须点选并确认，且追加进共享缓存
     pg3 = VolPage(["第一卷：山门换锁", "第二卷：县里有旧账"], "第二卷：县里有旧账")
     vals3 = {"volume_name": "试着开一道口",
              "_volumes": ["第一卷：山门换锁", "第二卷：县里有旧账"]}
     run(pg3, vals3)
     expect(pg3.created == ["试着开一道口"], "新建输名：%s" % pg3.created)
     expect("第3卷：试着开一道口" in vals3["_volumes"], "缓存追加显示名：%s" % vals3["_volumes"])
+    expect(pg3.current == "第3卷：试着开一道口", "新建目标卷选中并生效：%s" % pg3.current)
 
     # 4) 无目标卷名：跳过
     pg4 = VolPage(["第一卷：山门换锁"], "第一卷：山门换锁")

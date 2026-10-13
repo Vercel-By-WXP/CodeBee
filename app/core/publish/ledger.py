@@ -116,6 +116,23 @@ def published_chapters(task_id, platform):
     return out
 
 
+def scheduled_chapters(task_id, platform):
+    """Chapter numbers accepted by the platform's scheduled-publish queue."""
+    from .. import store
+    try:
+        ids = set(store.serial_chain_ids(task_id))
+    except Exception:
+        ids = {str(task_id)}
+    out = set()
+    for r in _iter_records(3650):
+        if (r.get("action") == "upload_chapter_scheduled" and r.get("ok")
+                and r.get("task_id") in ids and r.get("platform") == platform):
+            n = r.get("chapter_no") or 0
+            if n > 0:
+                out.add(int(n))
+    return out
+
+
 def drafted_chapters(task_id, platform):
     """该任务在该平台已成功存草稿的章节号集合（发草稿模式的幂等口径）。
 

@@ -111,11 +111,37 @@ def test_norm_and_volume_for():
     expect(volumes.volume_for(5, []) is None, "空计划")
 
 
+def test_task_serial_plan_wins_over_files():
+    """发布应使用任务表单保存的卷结构，而不是工作目录里的旧计划。"""
+    wd = _wd("w-task", {"分卷.json": json.dumps({"volumes": [
+        {"name": "旧卷", "from": 1, "to": 99}]}, ensure_ascii=False)})
+    task = {"workdir": str(wd), "serial": {
+        "volumes": [{"title": "第一卷 少年", "start": 1, "end": 2},
+                    {"title": "第二卷 风云", "start": 3, "end": 4}]}}
+    plan = volumes.plan_for_task(task)
+    expect(plan[0]["name"] == "第一卷 少年" and plan[1]["from"] == 3,
+           "任务卷结构未生效：%s" % plan)
+    expect(volumes.name_for(str(wd), 4, task=task) == "第二卷 风云",
+           "发章目标卷错误")
+
+
+def test_task_volume_chapters_extends_to_current_chapter():
+    """仅配置每卷章数时，后续章节也必须得到对应卷名。"""
+    task = {"workdir": str(_TMP / "w-task-per"),
+            "serial": {"volumes": [{"title": "第一卷", "chapters": 2},
+                                    {"title": "第二卷", "chapters": 2}]}}
+    expect(volumes.name_for(task["workdir"], 3, task=task) == "第二卷",
+           "第 3 章未扩展到第二卷")
+
+
 if __name__ == "__main__":
     print("== test_publish_volumes")
     check("parse_outline", test_parse_outline)
     check("json_override", test_json_override)
     check("no_plan", test_no_plan)
     check("norm_and_volume_for", test_norm_and_volume_for)
+    check("task_serial_plan_wins_over_files", test_task_serial_plan_wins_over_files)
+    check("task_volume_chapters_extends_to_current_chapter",
+          test_task_volume_chapters_extends_to_current_chapter)
     print("== %d fail" % len(FAILS))
     sys.exit(1 if FAILS else 0)
