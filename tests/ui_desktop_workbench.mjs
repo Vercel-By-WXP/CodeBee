@@ -68,6 +68,12 @@ try {
     const hero = getComputedStyle(document.querySelector('#sub-tasks .hero'));
     const task = getComputedStyle(document.querySelector('.stask'));
     const newTask = getComputedStyle(document.getElementById('btn-new-task'));
+    const dirBody = getComputedStyle(document.querySelector('.sdir > .dirbody'));
+    const selectedTaskEl = document.querySelector('.stask');
+    selectedTaskEl.classList.add('active');
+    const selectedTask = getComputedStyle(selectedTaskEl);
+    const selectedTaskStyle = { background: selectedTask.backgroundColor, shadow: selectedTask.boxShadow };
+    selectedTaskEl.classList.remove('active');
     const hasFocusRule = rules => Array.from(rules || []).some(rule =>
       rule.selectorText?.includes('.rail-btn:focus-visible') || hasFocusRule(rule.cssRules));
     const railFocusRule = Array.from(document.styleSheets).some(sheet => {
@@ -84,19 +90,23 @@ try {
       topbarHeight: Math.round(document.querySelector('.topbar').getBoundingClientRect().height),
       bodyFont: body.fontFamily, bodySize: parseFloat(body.fontSize), heroSize: parseFloat(hero.fontSize), taskSize: parseFloat(task.fontSize),
       taskRowMinHeight: parseFloat(task.minHeight), newTaskBorder: newTask.borderTopWidth, iconPillWidth: parseFloat(iconPill.width),
-      textPillWidth: parseFloat(textPill.width), railFocusRule };
+      textPillWidth: parseFloat(textPill.width), railFocusRule,
+      dirLineWidth: parseFloat(dirBody.borderLeftWidth), selectedTaskStyle };
   })()`);
   assert.equal(shell.rail, 52, 'Codex shell keeps a 52px navigation rail');
   assert.equal(shell.sidebar, 288, 'Codex shell keeps a 288px task sidebar');
   assert.equal(shell.bg, '#ffffff', 'light desktop canvas uses a clean white surface');
   assert.notEqual(shell.detail, '0px', 'run detail uses a rounded card edge');
-  assert.equal(shell.composerRadius, '18px', 'chat composer uses the compact Codex card radius');
+  assert.match(shell.composerRadius, /(?:18px|0px 0px 18px 18px)/, 'chat composer keeps the compact Codex card radius while joining the run status bar');
   assert.equal(shell.topbarHeight, 56, 'desktop header stays compact at 56px');
   assert.match(shell.bodyFont, /Segoe UI Variable/, 'desktop UI uses the Codex Segoe UI Variable font stack');
   assert.equal(shell.bodySize, 14, 'desktop body text uses the Codex 14px baseline');
   assert.ok(shell.heroSize >= 26 && shell.heroSize <= 32, 'new-task title stays in the Codex 26-32px range');
   assert.ok(shell.taskSize >= 12.5 && shell.taskSize <= 14, 'sidebar task text stays in the Codex compact range');
   assert.equal(shell.taskRowMinHeight, 29, 'sidebar task rows stay compact at 29px');
+  assert.ok(shell.dirLineWidth > 0, 'project tree keeps its vertical hierarchy line');
+  assert.notEqual(shell.selectedTaskStyle.background, 'rgba(0, 0, 0, 0)', 'selected Goal row has a visible theme surface');
+  assert.match(shell.selectedTaskStyle.shadow, /2px 0px 0px.*inset|inset.*2px 0px 0px/, 'selected Goal row has a 2px leading accent');
   assert.equal(shell.newTaskBorder, '0px', 'new-chat entry is a quiet list action');
   assert.equal(shell.iconPillWidth, 32, 'icon-only topbar controls stay square');
   assert.ok(shell.textPillWidth > shell.iconPillWidth, 'text-bearing topbar pills keep content sizing');
@@ -109,6 +119,29 @@ try {
   await capture('home');
   await ev("sideOpenTask('layout-a')");
   await sleep(900);
+  await ev(`S.detailSide = {task:{id:'layout-a',title:'桌面工作台',workdir:'C:/Projects/MultiAgentOrchestration'},git:{branch:'main'},changes:{add_total:139,del_total:2,files:[]}}; renderChangeSummary()`);
+  const summary = await ev(`(() => ({hidden:document.getElementById('change-summary').classList.contains('hidden'),
+    project:document.getElementById('change-summary-project').textContent,
+    add:document.getElementById('change-summary-add').textContent,
+    del:document.getElementById('change-summary-del').textContent}))()`);
+  assert.deepEqual(summary, { hidden: false, project: 'MultiAgentOrchestration', add: '+139', del: '-2' }, 'Git receipt follows the active task side snapshot');
+  await ev("document.getElementById('rd-git').classList.remove('hidden'); document.getElementById('change-summary-open').click()");
+  assert.equal(await ev("S.rdTab"), 'git', 'change receipt opens the task Git section');
+  await ev("document.getElementById('btn-browser-split').click()");
+  const split = await ev(`(() => ({open:document.body.classList.contains('browser-split-open'),
+    pressed:document.getElementById('btn-browser-split').getAttribute('aria-pressed'),
+    pane:Math.round(document.getElementById('sub-browser').getBoundingClientRect().width),
+    detail:document.getElementById('rd-chat-flow').getBoundingClientRect().right,
+    viewport:innerWidth}))()`);
+  assert.equal(split.open, true, 'browser split opens without navigating away from the conversation');
+  assert.equal(split.pressed, 'true', 'browser split button exposes its pressed state');
+  assert.ok(split.pane > 400, 'browser workspace is visible beside the task conversation');
+  assert.ok(split.detail <= split.viewport - split.pane + 1, 'conversation keeps its own column beside the browser');
+  await ev("document.getElementById('btn-browser-split').click()");
+  assert.equal(await ev("document.body.classList.contains('browser-split-open')"), false, 'browser split closes cleanly');
+  await ev("S.detailSide = {task:{id:'layout-a',title:'桌面工作台',workdir:'C:/Projects/MultiAgentOrchestration'},changes:{add_total:139,del_total:2}}; renderChangeSummary(); document.getElementById('change-summary-more').click()");
+  assert.equal(await ev("document.getElementById('change-summary').classList.contains('hidden')"), true, 'change receipt hides when Git context is unavailable');
+  assert.equal(await ev("S.rdTab"), 'git', 'missing Git context does not change the current section');
   await ev("rdChatNavBack()");
   // Wait for the initial async timeline before adding the long-message fixture;
   // otherwise a delayed response can replace the fixture mid-assertion.
