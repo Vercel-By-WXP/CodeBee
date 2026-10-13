@@ -116,28 +116,39 @@ BATCHES = {
 }
 
 
+def _build_query_plan(base_queries, *, include_a1_page2=True):
+    """Expand a keyword batch into its stars and updated/newcomer rounds.
+
+    ``keywords.md`` requires both discovery orders.  Keeping the expansion
+    deterministic makes the contract test able to catch future keyword drift
+    without invoking GitHub.  The A1 page-2 stars pass remains an additional
+    long-tail sweep because A1 is the core orchestration group.
+    """
+    base = list(base_queries)
+    plan = list(base)
+    plan.extend((f"{group}u", query) for group, query in base)
+    if include_a1_page2:
+        plan.extend(("A1p2", query) for group, query in base if group == "A1")
+    return plan
+
+
 def main():
     import datetime as _dtmod
     argv = sys.argv[1:]
     only = int(argv[argv.index("--batch") + 1]) if "--batch" in argv else None
     if only:
-        queries = BATCHES[only]
+        queries = _build_query_plan(BATCHES[only], include_a1_page2=False)
         print("PROGRESS quick batch B%d: %d queries" % (only, len(queries)), file=sys.stderr)
     else:
         hour = _dtmod.datetime.now().hour
         b = (hour % 7) or 7
-        queries = QUERIES + BATCHES[b]
+        queries = _build_query_plan(QUERIES + BATCHES[b])
         print("PROGRESS full scan: A=%d + B%d=%d" % (len(QUERIES), b, len(BATCHES[b])),
               file=sys.stderr)
-        # keywords.md 检索纪律「双轮排序 + 核心组翻页」：A1 核心编排组每轮追加
-        # sort=updated 新锐轮与 stars page=2 翻页（单遍扫描不知道 page1 是否满页，
-        # page2 重复项由汇总端按 full_name 去重，宁多查不漏新锐）。
-        for g, q in [x for x in QUERIES if x[0] == "A1"]:
-            queries.append(("A1u", q))
-            queries.append(("A1p2", q))
+        # A1 page=2 的重复项由汇总端按 full_name 去重，宁多查不漏新锐。
     total = len(queries)
     for i, (grp, q) in enumerate(queries, 1):
-        if grp == "A1u":
+        if grp.endswith("u"):
             api_path = "search/repositories?q=%s&sort=updated&per_page=5"
         elif grp == "A1p2":
             api_path = "search/repositories?q=%s&sort=stars&per_page=5&page=2"

@@ -40,6 +40,22 @@ class BorrowScanQueryContractTests(unittest.TestCase):
 
         self.assertEqual(encoded, "%E6%95%B0%E5%AD%97%E5%91%98%E5%B7%A5+OR+%E8%B6%85%E7%BA%A7")
 
+    def test_query_plan_runs_updated_round_for_every_group(self):
+        plan = scan._build_query_plan(
+            [("A1", "core"), ("B2", "memory")]
+        )
+
+        self.assertEqual(
+            plan,
+            [
+                ("A1", "core"),
+                ("B2", "memory"),
+                ("A1u", "core"),
+                ("B2u", "memory"),
+                ("A1p2", "core"),
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

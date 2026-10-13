@@ -7868,3 +7868,6 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 - 18 内置任务类型与 A-G 专项逐项核对无缺口；定向守卫 3/3、11/11、3/3、3/3。全量测试虽退出 0，实测 31 FAIL/2 ERROR/2 skipped，不能宣称绿，也不推送。
 
 - 2026-10-13 21:05 固定仓增量复核：orca e15b77a + mobile-android-v0.0.55（安全公告0）；oh-my-claudecode v5.7.1（安全公告0）；paseo 4400445/v0.11.2（安全公告1）；paperclip 2ad36f4/v2026.1012.0（安全公告5）。均为已覆盖机制族，未形成可低风险兼容改进。
+
+- 2026-10-13 23:15：B2 stars 轮先 12/12 成功，修复后 stars+updated **24/24** 成功（120 条结果），新增命中均为已录记忆/技能/自我改进族。发现扫描器此前仅为 A1 执行 updated 新锐轮，与 `keywords.md` 的全局双轮规则不一致；新增 `_build_query_plan()`，让常驻组和当班轮换组统一执行 stars+updated，A1 保留 page=2 长尾轮；契约测试 4/4。首次 fetch 因网络不可达失败，后续 fetch 成功；全量门禁未绿，未推送。
+- 同班全量 `python -m unittest discover -s tests -v` 无最终 `Ran` 汇总；verbose 实账 32 FAIL、2 ERROR、1 skipped，失败分布在既有 i18n/catalog/steering/git/selfupdate 等共享基线，不能把退出码 0 视为门禁通过。
