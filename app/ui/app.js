@@ -6311,6 +6311,10 @@ function rdTabAvail() {
 
 function applyRdTabs() {
   const avail = rdTabAvail();
+  if (S.rdTab !== "hive" && typeof hiveFullscreenFallback !== "undefined" && hiveFullscreenFallback) {
+    hiveFullscreenFallback = false;
+    syncHiveFullscreenButton();
+  }
   // 「切进对话页签」以 pane 入口前的真实显隐为准：rdChatNavGo/setRdTab 等
   // 入口都是先改 S.rdTab 再进来，函数内抓 S.rdTab 旧值抓不到过渡。
   const _chatPaneIn = document.querySelector('#run-detail .rd-pane[data-pane="chat"]');
@@ -9885,11 +9889,18 @@ function setHiveSceneMode(mode, opts) {
   try { localStorage.setItem("orch.hiveView.v3", hiveMode); } catch (e) { /* 隐私模式等 */ }
 }
 
+let hiveFullscreenFallback = false;
+
+function hiveFullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
 function syncHiveFullscreenButton() {
   const stage = $("hive-scene-stage");
   const button = $("hive-scene-fullscreen");
-  const active = !!stage && document.fullscreenElement === stage;
+  const active = !!stage && (hiveFullscreenElement() === stage || hiveFullscreenFallback);
   if (stage) stage.classList.toggle("is-fullscreen", active);
+  document.body.classList.toggle("hive-fallback-fullscreen", active && hiveFullscreenFallback);
   if (!button) return;
   const textKey = active ? "退出全屏" : "全屏";
   const labelKey = active ? "退出全屏" : "进入全屏";
@@ -9906,17 +9917,30 @@ async function toggleHiveFullscreen() {
   const stage = $("hive-scene-stage");
   if (!stage) return;
   try {
-    if (document.fullscreenElement === stage) {
-      await document.exitFullscreen();
+    if (hiveFullscreenElement() === stage) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (typeof exit === "function") await exit.call(document);
+      hiveFullscreenFallback = false;
+      syncHiveFullscreenButton();
       return;
     }
-    if (typeof stage.requestFullscreen !== "function" || document.fullscreenEnabled === false) {
-      toast(t("当前浏览器不支持全屏"), true);
+    if (hiveFullscreenFallback) {
+      hiveFullscreenFallback = false;
+      syncHiveFullscreenButton();
       return;
     }
-    await stage.requestFullscreen();
+    const request = stage.requestFullscreen || stage.webkitRequestFullscreen;
+    if (typeof request !== "function" || document.fullscreenEnabled === false) {
+      hiveFullscreenFallback = true;
+      syncHiveFullscreenButton();
+      return;
+    }
+    await request.call(stage);
+    if (hiveFullscreenElement() !== stage) hiveFullscreenFallback = true;
+    syncHiveFullscreenButton();
   } catch (error) {
-    toast(t("全屏失败：") + (error && error.message ? error.message : ""), true);
+    hiveFullscreenFallback = true;
+    syncHiveFullscreenButton();
   }
 }
 
@@ -9927,6 +9951,7 @@ function setupHiveSceneControls() {
   const fullscreenButton = $("hive-scene-fullscreen");
   if (fullscreenButton) fullscreenButton.addEventListener("click", toggleHiveFullscreen);
   document.addEventListener("fullscreenchange", syncHiveFullscreenButton);
+  document.addEventListener("webkitfullscreenchange", syncHiveFullscreenButton);
   syncHiveFullscreenButton();
   const hiveDialog = $("hive-log-dialog");
   const hiveClose = $("hive-log-close");
@@ -10018,7 +10043,14 @@ window.renderHive = function (run) {
   const box = $("rd-hive");
   if (!box) return;
   const steps = (run && run.steps) || [];
-  if (!run || !steps.length) { box.classList.add("hidden"); stopHiveTick(); if (hiveScene) hiveScene.setActive(false); return; }
+  if (!run || !steps.length) {
+    hiveFullscreenFallback = false;
+    syncHiveFullscreenButton();
+    box.classList.add("hidden");
+    stopHiveTick();
+    if (hiveScene) hiveScene.setActive(false);
+    return;
+  }
   box.classList.remove("hidden");
   setupHiveSceneControls();
   // 按步骤首次出现顺序分泳道（流水线天然有序）
