@@ -2,6 +2,8 @@ name: Desktop preview
 
 on:
   workflow_dispatch:
+  push:
+    tags: ['v*']
   pull_request:
     paths:
       - 'desktop/**'

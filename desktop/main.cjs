@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
-const { Backend } = require('./lib/backend.cjs');
+const { Backend, requestJSON } = require('./lib/backend.cjs');
 const { RELEASES_URL, dataDirectory, runtimePaths, isInternal, externalURL, cliEnvironment } = require('./lib/platform.cjs');
 
 const smoke = process.argv.includes('--smoke-test');
@@ -38,6 +38,7 @@ let starting = false;
 let quitRequested = false;
 let exitPending = false;
 let pollTimer;
+let updateTimer;
 let notificationPrimed = false;
 const seen = new Map();
 
@@ -49,22 +50,30 @@ function showWindow() {
   if (process.platform === 'darwin') app.dock.show();
 }
 
+function openInCodeBeeBrowser(url) {
+  if (!window || window.isDestroyed() || !externalURL(url)) return;
+  showWindow();
+  const script = `window.codebeeOpenBrowser && window.codebeeOpenBrowser(${JSON.stringify(url)})`;
+  void window.webContents.executeJavaScript(script, true).catch(() => {});
+}
+
 function secureWindow(target) {
-  target.webContents.setWindowOpenHandler(({ url }) => {
+  target.webContents.setWindowOpenHandler(({ url, frameName }) => {
     if (isInternal(url, backend?.origin)) {
       const preview = new BrowserWindow({ width: 1100, height: 780, parent: window,
         webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true } });
       secureWindow(preview);
       void preview.loadURL(url);
     } else if (externalURL(url)) {
-      void shell.openExternal(url).catch(() => {});
+      if (frameName === 'codebee-system-browser') void shell.openExternal(url).catch(() => {});
+      else openInCodeBeeBrowser(url);
     }
     return { action: 'deny' };
   });
   const restrictNavigation = (event, url) => {
     if (isInternal(url, backend?.origin)) return;
     event.preventDefault();
-    if (externalURL(url)) void shell.openExternal(url).catch(() => {});
+    if (externalURL(url)) openInCodeBeeBrowser(url);
   };
   target.webContents.on('will-navigate', restrictNavigation);
   target.webContents.on('will-redirect', restrictNavigation);
@@ -155,6 +164,7 @@ async function startBackend() {
     backend = new Backend({ ...paths, env, port: 8766,
       dataDir: smoke ? path.join(smokeRoot, 'data') : dataDirectory() });
     backend.on('pick', message => void pickNative(message));
+    backend.on('apply-update', message => void offerEngineUpdate(message));
     backend.on('unexpected-exit', error => {
       clearInterval(pollTimer);
       if (!quitting) void failStartup(error);
@@ -176,7 +186,14 @@ async function startBackend() {
       notificationPrimed = false;
       seen.clear();
       clearInterval(pollTimer);
-      if (!smoke) pollTimer = setInterval(() => void pollNotifications(), 5000);
+      if (!smoke) {
+        pollTimer = setInterval(() => void pollNotifications(), 5000);
+        // 自动推送：启动 30 秒后查一次新版，之后每 30 分钟查一次——
+        // 查到就弹系统通知，点通知即进入一键热更新确认。
+        clearInterval(updateTimer);
+        setTimeout(() => void pollEngineUpdate(), 30000);
+        updateTimer = setInterval(() => void pollEngineUpdate(), 30 * 60 * 1000);
+      }
     }
   } finally {
     starting = false;
@@ -203,6 +220,39 @@ async function pickNative(message) {
     });
     owner.replyPick(message.id, result.canceled ? '' : (result.filePaths[0] || ''));
   } catch { owner.replyPick(message.id, ''); }
+}
+
+async function pollEngineUpdate() {
+  // 自动推送：桌面模式查新（引擎 /api/selfupdate 的 desktop 分支），有新版就
+  // 弹系统通知，点通知进入一键热更新确认。attached 模式的引擎归 CLI 管不碰。
+  if (quitting || starting || !backend?.origin || backend.attached) return;
+  try {
+    const info = await requestJSON(backend.origin, '/api/selfupdate', backend.secret);
+    if (info.has_update && info.latest && Notification.isSupported()) {
+      const note = new Notification({ title: 'CodeBee · 发现新版 v' + info.latest,
+        body: '点击一键更新引擎（约 1-2 分钟，任务与配置保留）', icon: paths.icon });
+      note.on('click', () => { showWindow(); void offerEngineUpdate({ version: info.latest }); });
+      note.show();
+    }
+  } catch { /* 查新失败静默：下个周期再查 */ }
+}
+
+async function offerEngineUpdate(message) {
+  const version = message && message.version;
+  if (!version || quitting || starting) return;
+  const choice = await dialog.showMessageBox(window, { type: 'question',
+    message: `发现新版 v${version}`,
+    detail: '将自动下载并热更新引擎（约 1-2 分钟），完成后自动重启；任务与配置保留。不需要重新运行安装包。',
+    buttons: ['立即更新', '稍后'], defaultId: 0, cancelId: 1 });
+  if (choice.response !== 0) return;
+  try {
+    await backend.hotUpdate(version, note => { if (window && !window.isDestroyed()) window.setTitle('CodeBee · ' + note); });
+    await startBackend();   // 新 sidecar + 窗口重载，/api/selfupdate 立即反映新版
+  } catch (error) {
+    await dialog.showMessageBox(window, { type: 'warning', message: '热更新没有完成',
+      detail: (error && error.message || String(error)) + '\n\n旧引擎已恢复运行；可稍后重试，或从菜单「下载桌面新版」获取完整安装包。',
+      buttons: ['知道了'] });
+  }
 }
 
 async function pollNotifications() {
@@ -260,6 +310,7 @@ async function requestQuit() {
 function finishQuit() {
   quitting = true;
   clearInterval(pollTimer);
+  clearInterval(updateTimer);
   tray?.destroy();
   app.quit();
 }
