@@ -4815,7 +4815,7 @@ async function newFromTaskAsync(id) {
   }
   $("f-title").value = tk.title || "";
   $("f-goal").value = tk.goal || "";
-  S.cmpPlugins = []; cmpRenderPluginChips();
+  S.cmpPlugins = []; cmpReferenceContext = []; cmpRenderPluginChips();
   // context 里的「附件材料」块是服务端注入的（文件已在工作目录 _attachments/ 里），
   // 不随预填带走：新任务要么重新上传，要么由 _attachments 路径引用
   $("f-context").value = (tk.context || "").split("\n## 附件材料")[0].trimEnd();
@@ -7491,20 +7491,13 @@ window.pbProbe = async function (platform) {
 };
 
 window.pbCreateBook = async function (taskId, platform) {
-  const autoSubmit = platform === "qimao";
-  const confirmText = autoSubmit
-    ? t("将用生成的作品信息自动填写并提交七猫建书表单。提交后会核对作品是否创建成功。继续？")
-    : t("将用生成的作品信息在平台自动填建书表单。填好后会停在最后一步，由你在浏览器里人工点提交。继续？");
-  if (!(await uiConfirm(confirmText,
-    { ok: t("开始建书") }))) return;
+  const autoSubmit = true;
   try {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/create-book",
       { platform, auto_submit: autoSubmit }, "创建作品前的质量门禁未通过", taskId);
     if (!(r && r.gate_reviewed))
-      toast(autoSubmit
-        ? t("正在填写并提交七猫建书表单，随后核对作品创建结果…")
-        : t("正在自动填写建书表单…（完成后请在浏览器里确认提交）"));
+      toast(t("正在自动填写并提交建书表单，随后核对作品创建结果…"));
   } catch (e) { toast(t("建书失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
@@ -7714,7 +7707,7 @@ window.pbPublishSelected = async function (taskId, platform, autoSubmit) {
   try {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
-      { platform, chapters, auto_submit: !!autoSubmit },
+      { platform, chapters, auto_submit: true },
       "批量发布前的质量门禁未通过", taskId);
     if (r && r.started && $("modal").dataset.pbKey === key) closeModal();
     if (!(r && r.gate_reviewed))
@@ -9936,6 +9929,9 @@ async function toggleHiveFullscreen() {
       return;
     }
     await request.call(stage);
+    // Embedded shells can expose the API but reject the permission check or
+    // resolve without changing fullscreenElement. Keep the button useful by
+    // falling back to the same viewport-sized layout in those environments.
     if (hiveFullscreenElement() !== stage) hiveFullscreenFallback = true;
     syncHiveFullscreenButton();
   } catch (error) {
@@ -11935,6 +11931,20 @@ function bindChat() {
     if (file) {
       e.preventDefault();
       artPopup(file.dataset.fileRun, file.dataset.fileName || "", Number(file.dataset.fileSize) || 0);
+      return;
+    }
+    const retract = e.target.closest("[data-chat-retract]");
+    if (retract) {
+      const item = chatTimelineItems[Number(retract.dataset.chatRetract)];
+      if (!item || item.consumed || !item.run || !item.id) return;
+      retract.disabled = true;
+      const viewedRun = chatRunId;
+      api("/api/runs/" + encodeURIComponent(item.run) + "/messages/retract", {
+        method: "POST", body: JSON.stringify({ id: item.id }),
+      }).then(() => {
+        toast(t("已撤回排队消息"));
+        if (chatRunId === viewedRun && S.lastRun) { chatSig = ""; chatLiveSig = ""; renderChat(S.lastRun, ["running", "queued"].includes(S.lastRun.status)); }
+      }).catch(error => { toast(error.message, true); retract.disabled = false; });
       return;
     }
     // 复制 / 编辑重发（2026-09-22 用户诉求：已发送的对话可复制修改再次发送）。
@@ -16733,6 +16743,7 @@ function setLangBtn(lang) {
   document.title = codebeeDocumentTitle(lang);
   applyI18n();
   render();
+  cmpRenderCapabilityMenu();
   cmpGreeting();   // 问候语跟随语言重算
   paintWorkspaceMode();
   renderQuickChips();
@@ -18564,18 +18575,28 @@ document.addEventListener("DOMContentLoaded", () => {
     const capability = event.target.closest("[data-add-capability]");
     if (action) cmpAddAction(action.dataset.addAction);
     else if (capability && !capability.disabled) cmpAddCapability(capability.dataset.addCapability);
+    else if (event.target.closest("[data-capability-filter]")) {
+      cmpCapabilityFilter = event.target.closest("[data-capability-filter]").dataset.capabilityFilter;
+      cmpRenderCapabilityMenu();
+    } else if (event.target.closest("[data-add-workspace-file]")) {
+      cmpAddReference("file", event.target.closest("[data-add-workspace-file]").dataset.addWorkspaceFile);
+    } else if (event.target.closest("[data-add-chat]")) {
+      cmpAddReference("chat", event.target.closest("[data-add-chat]").dataset.addChat);
+    }
   });
   document.addEventListener("click", (event) => {
     if (!event.target.closest(".cmp-add-wrap")) cmpAddMenu(false);
   });
   document.addEventListener("keydown", (event) => { if (event.key === "Escape") cmpAddMenu(false); });
   cmpSyncPlanMode();
+  $("cmp-capability-search").addEventListener("input", cmpRenderCapabilityMenu);
   cmpRenderCapabilityMenu();
   loadComposerCapabilities();
   $("cmp-plugin-chips").addEventListener("click", (event) => {
     const remove = event.target.closest("[data-plugin-remove]");
     if (!remove) return;
     S.cmpPlugins = S.cmpPlugins.filter((name) => name !== remove.dataset.pluginRemove);
+    cmpReferenceContext = cmpReferenceContext.filter(row => row.id !== remove.dataset.pluginRemove);
     cmpRenderPluginChips();
     $("f-goal").focus();
   });
@@ -18661,28 +18682,18 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-mode").addEventListener("change", () => {
     $("f-manual-only").classList.toggle("hidden", $("f-mode").value !== "manual");
     refreshEstimate();
-    else if (event.target.closest("[data-capability-filter]")) {
-      cmpCapabilityFilter = event.target.closest("[data-capability-filter]").dataset.capabilityFilter;
-      cmpRenderCapabilityMenu();
-    } else if (event.target.closest("[data-add-workspace-file]")) {
-      cmpAddReference("file", event.target.closest("[data-add-workspace-file]").dataset.addWorkspaceFile);
-    } else if (event.target.closest("[data-add-chat]")) {
-      cmpAddReference("chat", event.target.closest("[data-add-chat]").dataset.addChat);
-    }
   });
   $("f-thinking").addEventListener("change", refreshEstimate);
   $("f-rounds").addEventListener("change", refreshEstimate);
   $("f-direct-provider").addEventListener("change", renderDirectModelPicker);
   $("f-direct-model-name").addEventListener("change", cmpDirectBtnSync);   // 更多选项里改模型也要同步 pill
   $("f-type").dispatchEvent(new Event("change"));
-  $("cmp-capability-search").addEventListener("input", cmpRenderCapabilityMenu);
   cmpGreeting();   // 问候语按时段刷新（切语言/回任务页也会重算）
   $("btn-reload-catalog").addEventListener("click", async () => {
     await api("/api/catalog/reload", { method: "POST" }); poll(); refreshSessionAgents();
   });
   $("btn-catalog-upgrade-all").addEventListener("click", catUpgradeAll);
   $("btn-catalog-autobind").addEventListener("click", catAutoBindAll);
-    cmpReferenceContext = cmpReferenceContext.filter(row => row.id !== remove.dataset.pluginRemove);
   $("btn-import").addEventListener("click", openImportDialog);
   $("btn-add-provider").addEventListener("click", openAddProviderDialog);
   $("prov-search").addEventListener("input", () => {
@@ -18692,7 +18703,6 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("keydown", (e) => {
     // #ask 叠在 #modal 之上时 Esc 只关 #ask（不连坐关掉底下正在填的弹框）
     if (e.key === "Escape" && !$("ask").classList.contains("hidden")) { _askClose(false); return; }
-    cmpReferenceContext = cmpReferenceContext.filter(row => row.id !== remove.dataset.pluginRemove);
     if (e.key === "Enter" && !$("ask").classList.contains("hidden")
         && e.target.tagName !== "TEXTAREA") { _askClose(true); return; }
     // 文件内容弹窗(240) 夹在 ask(250) 与 modal(200) 之间，Esc 同样逐层关

@@ -2545,6 +2545,7 @@ class Handler(BaseHTTPRequestHandler):
         auto_submit = body.get("auto_submit", True) is not False
         ok, err = pub_auto.publish_pending_async(
             task_id, platform, auto_submit=auto_submit,
+            auto_prepare_book=bool(body.get("auto_prepare_book", True)),
             **kwargs)
         if not ok:
             payload = {"error": err or "操作失败"}

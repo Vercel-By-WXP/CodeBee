@@ -58,9 +58,14 @@ def _load():
         return {"mode": "restricted", "rules": [], "audit": []}
     if not isinstance(data, dict) or data.get("mode") not in _MODES:
         return {"mode": "restricted", "rules": [], "audit": []}
+    rules = data.get("rules") if isinstance(data.get("rules"), list) else []
+    audit = data.get("audit") if isinstance(data.get("audit"), list) else []
+    # Permission state is user-editable and may be partially corrupted after a
+    # crash or manual merge. Ignore malformed rows at the authorization boundary
+    # instead of allowing them to raise or accidentally widen access.
     return {"mode": data["mode"],
-            "rules": data.get("rules") if isinstance(data.get("rules"), list) else [],
-            "audit": data.get("audit") if isinstance(data.get("audit"), list) else []}
+            "rules": [row for row in rules if isinstance(row, dict)],
+            "audit": [row for row in audit if isinstance(row, dict)]}
 
 
 def _persist(state):

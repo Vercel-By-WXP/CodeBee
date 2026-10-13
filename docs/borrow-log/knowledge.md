@@ -7871,3 +7871,13 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 
 - 2026-10-13 23:15：B2 stars 轮先 12/12 成功，修复后 stars+updated **24/24** 成功（120 条结果），新增命中均为已录记忆/技能/自我改进族。发现扫描器此前仅为 A1 执行 updated 新锐轮，与 `keywords.md` 的全局双轮规则不一致；新增 `_build_query_plan()`，让常驻组和当班轮换组统一执行 stars+updated，A1 保留 page=2 长尾轮；契约测试 4/4。首次 fetch 因网络不可达失败，后续 fetch 成功；全量门禁未绿，未推送。
 - 同班全量 `python -m unittest discover -s tests -v` 无最终 `Ran` 汇总；verbose 实账 32 FAIL、2 ERROR、1 skipped，失败分布在既有 i18n/catalog/steering/git/selfupdate 等共享基线，不能把退出码 0 视为门禁通过。
+
+## 2026-10-14 05 时班：机制复核与门禁口径
+
+- **有界日志读取候选**：[Letta Code 13d81bfc](https://github.com/letta-ai/letta-code/commit/13d81bfc60d3006edf6e24f7dda021eeaec0d5d6) 用流式 JSONL 避免大字符串限制。CodeBee `checkpoints._read` 当前整文件读取后才保留末 50000 行，值得验证有界读取；必须保留跨月/文件追加顺序、坏行隔离与保留窗口，本轮未修改生产代码。
+- **已录 e2e 的机制补充**：[tester-army/e2e](https://github.com/tester-army/e2e) README 明确：只有通过后续断言验证的 agent 操作才录制/回放，应用未变时不再调用模型。10052 星是本次 repos 实测，不作为功能质量证明；接入需失效策略和新运行时，本轮不安装。
+- **插件契约不可混同**：[cursor/plugins](https://github.com/cursor/plugins) 当前 11206 星、`.cursor-plugin/plugin.json`；CodeBee 使用 `.codex-plugin/plugin.json`。项目历史已录，不重复记首见，也不未经转换/安全验证直接兼容。Paperclip [473c80d1](https://github.com/paperclipai/paperclip/commit/473c80d13f2b63fb142b58a6273c0679cb65bd7a) 的项目技能源自动更新需另行设计版本锁定/信任/回滚，不直接移植。
+- **观察口径更新**：[diagram-design](https://github.com/cathrynlavery/diagram-design) 当前描述 44 种图表（53953 星），旧报告的 25 种只是当时观察，不回改历史；HyperFrames 62663 星，仍为脚本到成片的下游参考，非当班小改进。
+- **安全公告数量不是新增数量**：[Paperclip 公告列表](https://github.com/paperclipai/paperclip/security/advisories) 本次 API 返回 12 条，发布时间均早于本轮，不能与旧 5 条口径做差宣称新漏洞。恶意 skill、继承外部连接副作用和 DNS rebinding 是安全边界参照，不等于 CodeBee 漏洞结论。
+- **发现/验证纪律**：主扫 216/216 成功，978 条结果/795 唯一仓，错误/限流 0；雷达 35/35、awesome 元数据 22/22、固定仓 API 40/40，六源市场 JSON 可达。每查 5 项及有限 A1 翻页仍有剪切盲区；PyPI 仍挑战页，Bing RSS 交叉查询缺少相关性，不充作有效 WebSearch，不据此宣称全网没有新竞品。
+- **测试不能只看退出码**：根 `python -m unittest discover -v` 只发现 0 项；显式 `-s tests` 日志 33 FAIL/2 ERROR/2 skipped 且无最终汇总；应用 Python 3.13 套件 251 项、245 通过/6 跳过，不能替代根测试门禁。定向 104 项仅 EN 词条覆盖失败。测试整体未绿，本轮仅文档沉淀，未暂存、未提交、未推送、未发版。
