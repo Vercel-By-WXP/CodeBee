@@ -19,6 +19,7 @@
 @media (max-width: 720px) {
   .rd-chat-tools .chat-send-default, .rd-chat-tools .chat-send-options { min-height: 44px; }
   .rd-chat-tools .chat-send-options { width: 36px; }
-  .chat-delivery-hint { font-size: 10px; }
+  .rd-chat-tools .chat-send-default { font-size: 13px; }
+  .chat-delivery-hint { font-size: 11px; }
   .rd-chat .chat-pending-actions button { min-height: 36px; }
 }

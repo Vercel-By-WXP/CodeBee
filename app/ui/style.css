@@ -8828,3 +8828,58 @@ html[data-theme="dark"] .panel {
 #run-detail.chat-mode .rd-chat-flow {
   scroll-padding-bottom: 132px;
 }
+
+/* ---- 手机端排版打磨（2026-10-14，参考 ZCode 移动端）：
+   列表/卡片更紧凑、组件字号统一 13px 一档、操作按钮 38px 触达高度。
+   全部收在窄屏媒体查询里，≥901px 桌面零改动；置于文件末尾以压过前面的桌面密度层。 ---- */
+@media (max-width: 900px) {
+  .topbar,
+  html[data-skin="ocean"][data-theme="light"] .topbar {
+    min-height: 56px;
+    padding-top: max(6px, env(safe-area-inset-top));
+    padding-bottom: 6px;
+  }
+  #sub-tasks .cmp-box textarea { min-height: 116px; }
+
+  /* 工作区/任务列表：紧凑行（摘要 92→64、任务行 72→58），字号向 14.5/11.5 收一档 */
+  .mobile-workspaces-head { margin-bottom: 14px; }
+  .mobile-workspaces-head h2 { font-size: 17px; line-height: 1.4; }
+  .mobile-workspaces-head p { margin-top: 3px; font-size: 12.5px; }
+  #mobile-workspace-list { gap: 10px; }
+  .mobile-workspace { border-radius: 13px; }
+  .mobile-workspace > summary { min-height: 64px; gap: 11px; padding: 13px 60px 13px 13px; }
+  .mobile-folder { width: 21px; height: 21px; }
+  .mobile-workspace-copy, .mobile-task-copy { gap: 3px; }
+  .mobile-workspace-copy b, .mobile-task-copy b { font-size: 14.5px; line-height: 1.4; }
+  .mobile-workspace-copy > span { font-size: 11.5px; }
+  .mobile-workspace-copy small, .mobile-task-copy small { font-size: 11.5px; }
+  .mobile-workspace-total { font-size: 12.5px; }
+  .mobile-workspace-new { top: 13px; width: 38px; height: 38px; border-radius: 11px; }
+  .mobile-task { min-height: 58px; gap: 10px; padding: 10px 4px; }
+}
+
+@media (max-width: 640px) {
+  body { font-size: 14px; }
+}
+
+@media (max-width: 720px) {
+  /* iOS：聚焦输入框字号 <16px 会触发整页自动放大（与主 composer 的 16px 对齐） */
+  .rd-chat-bar textarea { font-size: 16px; }
+}
+
+@media (max-width: 620px) {
+  /* 详情卡在手机占满整宽：返回/操作按钮/页签提到 13px 字 + 38px 触达
+     （原 27px 高 11.5px 字在手机上偏小），标题提到 16px 贴近页面头层级 */
+  #rd-rail { padding: 14px 14px 12px; border-radius: 13px; }
+  #rd-rail > .detail-head > #btn-back { min-height: 32px; padding: 4px 9px; font-size: 13px; }
+  #rd-rail > .detail-head > #rd-title { font-size: 16px; font-weight: 600; line-height: 1.45; }
+  #rd-rail > .detail-head > .rd-actions { gap: 8px; padding-top: 12px; }
+  #rd-rail > .detail-head > .rd-actions button {
+    min-height: 38px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  #rd-rail > #rd-tabs { gap: 4px; }
+  #rd-rail > #rd-tabs .rd-tab { min-height: 40px; padding: 9px 10px; font-size: 13px; }
+}
