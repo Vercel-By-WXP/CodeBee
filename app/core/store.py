@@ -24,6 +24,10 @@ LOCK = threading.RLock()
 _TASKS = {}
 _RUNS = {}
 
+# 评审文案里的章号提及（「第22章」「第26—28章」）——与 pipeline._CH_MENTION_RE
+# 保持同一口径（store 不得反向 import pipeline，只能各存一份；改动须两处同步）。
+_CH_MENTION_RE = re.compile(r"第\s*(\d{1,4})\s*(?:[—–\-~至到]\s*(\d{1,4})\s*)?章")
+
 # 流式实时落盘的节流表：(run_id, 步骤号) -> 上次落盘时刻。步骤收尾即清，
 # 长跑也不会无限增长（finish_step 里调 clear_stream_state）。
 _STREAM_LOCK = threading.Lock()
@@ -1736,6 +1740,21 @@ def retry_task(task_id):
                 redo = set()
                 redo_issues = []
                 if (prev.get("verdict") or {}).get("publishable") is False:
+                    _pv = prev.get("verdict") or {}
+                    # 病灶章以 note 文案点名为准（与 pipeline._chapters_named_in
+                    # 同一正则口径）：major 的 chapter 字段常是评审/签约检查点
+                    # 所在章而非病灶章——2026-10-13 神瞳实案：chapter=9、病灶在
+                    # 第 6 章金额矛盾，只按字段回炉永远修不掉，重跑必然再被
+                    # 同一条 major 点名，「反复写→反复不达标」死循环。
+                    try:
+                        _vlo = int(_pv.get("start_chapter") or 1)
+                    except (TypeError, ValueError):
+                        _vlo = 1
+                    try:
+                        _vhi = int(_pv.get("end_chapter") or 0) or (
+                            _vlo + max(len(outline.get("chapters") or []) - 1, 0))
+                    except (TypeError, ValueError):
+                        _vhi = _vlo + max(len(outline.get("chapters") or []) - 1, 0)
                     redo = {int(c["chapter"]) for c in v_scores
                             if not c.get("passed") and c.get("chapter") is not None}
                     # 未达标原因账（verdict.major_issues，章节级+全局级）随继承
@@ -1743,12 +1762,23 @@ def retry_task(task_id):
                     # 作者第一遍就知道往哪改，不再盲写等修订拉回。被 major 点名
                     # 的过线章一并回炉——总判定卡在 major 上时只重写未过线章
                     # 消不掉账，「重写未达标章」会空转（2026-10-10 实案）。
-                    for x in (prev.get("verdict") or {}).get("major_issues") or []:
+                    for x in _pv.get("major_issues") or []:
                         if not isinstance(x, dict):
                             continue
                         redo_issues.append(x)
+                        for m in _CH_MENTION_RE.finditer(
+                                str(x.get("note") or x.get("issue") or "")):
+                            a = int(m.group(1))
+                            b = int(m.group(2)) if m.group(2) else a
+                            if b < a:
+                                a, b = b, a
+                            for c in range(a, b + 1):
+                                if _vlo <= c <= _vhi:
+                                    redo.add(c)
                         try:
-                            redo.add(int(x.get("chapter")))
+                            c = int(x.get("chapter"))
+                            if _vlo <= c <= _vhi:
+                                redo.add(c)
                         except (TypeError, ValueError):
                             pass
                 if redo:

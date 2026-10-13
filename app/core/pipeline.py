@@ -3358,6 +3358,37 @@ def _chapters_named_in(issues, lo=1, hi=None):
     return out
 
 
+def _issue_hits_chapter(x, i):
+    """issue 是否落在第 i 章：显式 chapter 字段或 note 文案点名都算。
+    chapter 字段常是评审/签约检查点所在章而非病灶章（2026-10-13 神瞳实案：
+    chapter=9、病灶在第 6 章金额矛盾），note 文案才是病灶定位的可靠来源。"""
+    if not isinstance(x, dict):
+        return False
+    try:
+        if int(x.get("chapter")) == i:
+            return True
+    except (TypeError, ValueError):
+        pass
+    return i in _chapters_named_in([x], lo=i, hi=i)
+
+
+def _major_named_chapters(majors, lo=1, hi=None):
+    """major 清单点名的章号集合：每条取 chapter 字段与 note 文案点名章号的
+    并集（「第1—9章主角未付代价」这类全书级结构问题展开成章区间）。"""
+    out = set()
+    for x in majors or []:
+        if not isinstance(x, dict):
+            continue
+        try:
+            c = int(x.get("chapter"))
+        except (TypeError, ValueError):
+            c = None
+        if c is not None and c >= lo and (hi is None or c <= hi):
+            out.add(c)
+        out |= _chapters_named_in([x], lo=lo, hi=hi)
+    return out
+
+
 def _dedup_issues(items, key_len=60):
     """跨轮评审 issues 去重：同章同维度同要点（归一化前缀）只保留首条。
     全局评审每轮重跑都会把上一轮的问题原样或换个说法再列一遍，不去重会把
@@ -3941,15 +3972,15 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             # 上一轮未达标原因（「重写未达标章」链路）：本章被点名的 major 与
             # 全书级 major 随起草提示词下发——原因只躺在报告里、作者盲写等
             # 修订拉回，白白多烧一轮评审（2026-10-10 实案）。
-            def _issue_ch(x):
-                try:
-                    return int(x.get("chapter"))
-                except (TypeError, ValueError):
-                    return None
-
+            # 按「点名命中本章」路由（chapter 字段 + note 文案并集）：字段常是
+            # 评审/签约检查点所在章而非病灶章（2026-10-13 神瞳实案：chapter=9、
+            # 病灶在第 6 章金额矛盾），只按字段路由会把第 6 章的病下发给
+            # 第 9 章的起草者，修一轮也消不掉账。
             redo_lines = []
-            mine = [x for x in redo_issues if _issue_ch(x) == i]
-            book_lvl = [x for x in redo_issues if _issue_ch(x) is None]
+            mine = [x for x in redo_issues if _issue_hits_chapter(x, i)]
+            book_lvl = [x for x in redo_issues
+                        if not any(_issue_hits_chapter(x, c)
+                                   for c in range(start, end + 1))]
             if mine:
                 redo_lines.append("- 本章被上一轮评审点名的问题（重写必须逐条消解）：")
                 redo_lines += _major_lines(mine)
@@ -4387,9 +4418,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                      "（见「本章按大纲应完成」），请按新节拍对本章做结构性重写，不是小修。")
             if passed or rnd == 2:
                 break
-            # 第 1 轮不达标 → 修订该章后重评审
+            # 第 1 轮不达标 → 修订该章后重评审（点名命中即归本章——含 note
+            # 文案点名，跨章矛盾类病灶章的修订面才收得到意见）
             rounds_used = 2
-            majors = [x for x in issues_all if x.get("chapter") == i
+            majors = [x for x in issues_all if _issue_hits_chapter(x, i)
                       and x.get("severity") == "major"][:8]
             majors, _unanchored = _anchor_issues(majors, text)
             crit_lines = ["- %s：%.1f（章阈值 %.1f）" % (d, means[d], threshold_ch) for d in dims]
@@ -4520,8 +4552,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         # 第 1 轮的旧账。不换的话「修订后已达标」的章仍顶着第 1 轮 majors，
         # 最终 publishable 被陈账永远压着 False。放在 story_tracking 取材之后：
         # 事实沉淀仍吃得到修订前的完整意见，门禁只认终轮评判。
+        # 按「点名命中本章」撤账：签约检查点 majors 的 chapter 字段是检查点
+        # 章而非病灶章（2026-10-13 神瞳实案：chapter=9、病灶在第 6 章），
+        # 只按字段撤账，病灶章修订达标也摘不掉检查点章名下的旧账。
         if cs_new["passed"] and cj_by_agent:
-            issues_all[:] = [x for x in issues_all if x.get("chapter") != i]
+            issues_all[:] = [x for x in issues_all if not _issue_hits_chapter(x, i)]
             for _cj in cj_by_agent.values():
                 if isinstance(_cj, dict):
                     issues_all.extend({"chapter": i, **it}
@@ -4746,23 +4781,41 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     global_review = quality_gate.aggregate_reviews(
         global_review_results, dims, threshold=threshold)
 
-    # ---- 3.5) 自驱打磨：全局评审不过 → 自动重改最弱章并重评（至多 2 轮，无需人工）
+    # ---- 3.5) 自驱打磨：全局评审不过或存在未消 major → 自动重改病灶章并重评
+    # （至多 2 轮，无需人工）。2026-10-13 头七/神瞳实案：章分与全局分全过线
+    # （global_pass=True），卡死的是跨章事实矛盾类 major——只按 not global_pass
+    # 触发打磨时循环一次都不进，major 永远没人修，retry 又只回炉 chapter 字段
+    # 的章（病灶章只写在 note 文案里），形成「反复写→反复不达标」死循环。
     polish_rounds = 0
-    while (not global_pass) and polish_rounds < 2 and chapter_scores and global_means:
+    while polish_rounds < 2 and chapter_scores and global_means:
+        major_all = [x for x in _dedup_issues(list(issues_all) + list(global_issues))
+                     if isinstance(x, dict) and x.get("severity") == "major"]
+        if global_pass and not major_all:
+            break
         polish_rounds += 1
         weak = _weakest_chapters(chapter_scores, global_means, threshold, limit=2)
-        # 全局一致性 major 点名的章优先进入打磨面：脱纲/主线漂移类问题的病灶章
-        # 单章分数往往全部达标（章级评审只看局部），只按分数选章永远选不中
-        # （2026-10-03 不周山守村人实案：21–28 章整体脱纲、章分全 8+，两轮
-        # 打磨重改的全是达标章，全局分纹丝不动）。
-        named = _chapters_named_in(global_issues, lo=start, hi=end)
+        # major 点名的章优先进入打磨面（chapter 字段 + note 文案点名并集）：
+        # 跨章矛盾/脱纲类问题的病灶章单章分数往往全部达标（章级评审只看局部），
+        # 只按分数选章永远选不中（2026-10-03 不周山实案：章分全 8+ 但整体脱纲；
+        # 2026-10-13 头七实案：年份矛盾点名第 1/2/4 章但章分全过线）。
+        named = _major_named_chapters(major_all, lo=start, hi=end)
+        if global_pass and major_all and not named:
+            # major 点名的章全在本批之外（前批归档章）——本批重写谁也修不掉，
+            # 空转打磨只会烧 token；交给 verdict 呈报人工定夺。
+            break
         if named:
+            # major 驱动的打磨放宽到 4 章/轮：跨章矛盾须同轮协同修齐口径，
+            # 每轮 2 章会修好 A 章又留 B 章的账，重评照样点名（2026-10-13 实案）。
+            cap = 4 if major_all else 2
             weak = ([c for c in chapter_scores if c.get("chapter") in named]
-                    + [c for c in weak if c.get("chapter") not in named])[:2]
+                    + [c for c in weak if c.get("chapter") not in named])[:cap]
         if not weak:
             break
-        note = "自动打磨第 %d 轮：全局评审未过，重改 %s" % (
-            polish_rounds, "、".join("第 %d 章" % c["chapter"] for c in weak))
+        trig = ("全局评审未过" if not global_pass
+                else "存在未消 major（%d 条）" % len(major_all))
+        note = "自动打磨第 %d 轮：%s，重改 %s" % (
+            polish_rounds, trig,
+            "、".join("第 %d 章" % c["chapter"] for c in weak))
         pstep, _ = store.add_step(run_id, "polish-r%d" % polish_rounds, impl["id"],
                                   impl.get("label"), note=note)
         fixed = []
@@ -4774,16 +4827,19 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 for d in dims if float((c.get("means") or {}).get(d, 0.0)) < threshold)
             gj = "；".join("%s %.1f" % (d, s2) for d, s2 in global_means.items()
                            if float(s2) < threshold)
-            # 本章被全局评审点名时附上原话，并放开「不得改主线」约束——脱纲章
+            # 本章被评审点名时附上原话，并放开「不得改主线」约束——脱纲章
             # 唯一的修法就是按大纲推翻自创情节，保事实微调恰恰修不动
-            ch_named = [x for x in global_issues
-                        if i in _chapters_named_in([x], lo=i, hi=i)]
+            ch_named = [x for x in major_all if _issue_hits_chapter(x, i)]
             if ch_named:
-                crit = ("- 本章维度不达标：%s（阈值 %.1f）\n- 全书一致性评审指出的短板：%s"
-                        "\n- 全书评审对本章的点名（逐条对照处理）：\n%s"
+                crit = ("- 本章维度不达标：%s（阈值 %.1f）\n- 全书评审指出的短板：%s"
+                        "\n- 评审对本章的点名（逐条对照处理）：\n%s"
                         "\n- 重改要求：若现稿剧情与「本章按大纲应完成」脱轨（评审已点名），"
                         "以本章大纲要点为准重写剧情，可推翻现稿自创的情节线；"
                         "本书其余各章的既成事实仍不得改动。"
+                        "\n- 跨章口径统一：上述点名若涉及多章事实互斥（时间/金额/数量等"
+                        "硬事实前后不一致），以其余未被修订各章的多数口径为准对齐本章，"
+                        "做最小必要改动；无法判定多数时，以章号更晚（更贴近当前剧情）"
+                        "的口径为准，并让人物当场点破余下的出入。"
                         % (dims_txt or "（无）", threshold, gj or "（无）",
                            "\n".join("- [%s] %s" % (x.get("dim"), str(x.get("note") or "")[:220])
                                      for x in ch_named[:4])))
@@ -4856,8 +4912,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     fixed.append(i)
             if repolished:
                 # 旧账换新账（章级）：该章旧 issues 是对打磨前稿件的评判，重写
-                # 已落盘并重评，陈账不撤会同全局陈账一起永远压着 publishable
-                issues_all[:] = [x for x in issues_all if x.get("chapter") != i]
+                # 已落盘并重评，陈账不撤会同全局陈账一起永远压着 publishable。
+                # 按「点名命中本章」撤账（含 note 文案点名）：签约检查点 majors
+                # 的 chapter 字段是检查点章而非病灶章，只按字段撤账，修好的
+                # 病灶章摘不掉检查点章名下的账，publishable 被陈账压死。
+                issues_all[:] = [x for x in issues_all if not _issue_hits_chapter(x, i)]
                 for _cj in cj_by_agent.values():
                     if isinstance(_cj, dict):
                         issues_all.extend({"chapter": i, **it}
