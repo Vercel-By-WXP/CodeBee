@@ -10,7 +10,7 @@ function codebeeDocumentTitle(lang) {
 document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, rdHiveFirst: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
 
 /* 工作/开发/聊天是界面场景偏好，共用任务和引擎，不改变现有任务的执行参数。 */
 const WORKSPACE_MODE_KEY = "orch.workspace-mode.v1";
@@ -5319,7 +5319,7 @@ window.sideOpenRun = function (id, n, pinTab) {
  * 按时间顺序列出该任务全部 run 的全部步骤，run 之间加分隔条。 */
 window.sideOpenTask = function (key, pinTab) {
   _taskStepRenderToken++;
-  chatJumpLatest();   // 首开任务详情：对话时间线落最新（默认落蜂巢时切到对话页签也带到底）
+  chatJumpLatest();   // 首开任务详情：默认进对话，时间线落最新
   $("rd-steps").innerHTML = '<div class="hint" role="status">' + esc(t("正在加载任务详情…")) + "</div>";
   S.lastRun = null;
   S.detailTaskKey = key;
@@ -5338,8 +5338,7 @@ window.sideOpenTask = function (key, pinTab) {
   detailSideReset();     // 换详情目标：任务级 side 缓存作废，等首拉
   const olderRunsButton = $("rd-load-earlier");
   if (olderRunsButton) olderRunsButton.hidden = true;
-  S.rdHiveFirst = !pinTab;   // 活动入口钉住目标页签；项目入口默认落蜂巢
-  S.rdTab = pinTab || null;
+  S.rdTab = pinTab || null;   // 活动入口钉住目标页签；任务点击默认进对话（用户 2026-10-13），选卡交给 rdTabsSync
   S.rdTabPin = !!pinTab;
   S.rdTabSig = "";
   applyRdTabs();
@@ -6214,14 +6213,12 @@ function renderChatNav() {
 window.rdChatNavGo = function (tab) {
   S.rdTab = tab;
   S.rdTabPin = true;   // 用户主动去看其它分区：别被自动选卡拽回对话
-  S.rdHiveFirst = false;
   applyRdTabs();
 };
 window.rdChatNavBack = function () {
   S.rdTab = "chat";
   S.rdTabPin = false;
   S.rdTabSig = "";
-  S.rdHiveFirst = false;
   applyRdTabs();
 };
 
@@ -6247,7 +6244,6 @@ function rdTabsSync(ctx) {
   if (target && target.key === S.detailTaskKey && rdTabAvail()[target.tab]) {
     S.rdTab = target.tab;
     S.rdTabPin = true;
-    S.rdHiveFirst = false;
     S.activityTarget = null;
   }
   const c = ctx || S._rdCtx || {};
@@ -6263,16 +6259,9 @@ function rdTabsSync(ctx) {
       const avail = rdTabAvail();
       const direct = chatAvail && chatEngineIsDirect(S.lastRun);
       const finishing = !c.running && ["done", "failed", "cancelled", "timeout"].includes(c.status);
-      // 侧栏点开任务详情默认落「蜂巢」工作台（用户 2026-09-29）：一次性偏好，
-      // sideOpenTask 置位、蜂巢可用即兑现并钉住（后续状态翻转不再拽走）；
-      // ctx 明确 steps=0（纯聊天无蜂巢可看）或手选页签/rdTabReset 时放弃。
-      // 兑现前先留在手上的页签，不让对话抢跑——其余选卡优先级不变。
-      const hivePending = S.rdHiveFirst;
-      const hiveReady = hivePending && avail.hive;
-      if (hiveReady || (hivePending && c.steps === 0)) S.rdHiveFirst = false;
-      S.rdTab = (hiveReady ? "hive" : null)
-        || (hivePending && S.rdTab && avail[S.rdTab] ? S.rdTab : null)
-        || (direct && avail.chat ? "chat" : null)
+      // 任务点击默认进对话（用户 2026-10-13）：有任务归属的运行（direct）直接落
+      // 对话页签；蜂巢留给无主运行与管理型入口，手选页签/rdTabReset 后仍走本链。
+      S.rdTab = (direct && avail.chat ? "chat" : null)
         // 跑出了能打开的网页成品：第一视线给「预览」——这正是用户做完一个
         // 前端任务最想看到的（借鉴对话式编程产品：跑完先看东西跑起来）。
         || (finishing && avail.preview ? "preview" : null)
@@ -6281,7 +6270,6 @@ function rdTabsSync(ctx) {
         || (c.running ? "steps"
           : (c.gitState === "isolated" && avail.git ? "git"
             : (c.hasResult && finishing ? "result" : "steps")));
-      if (hiveReady) S.rdTabPin = true;
     }
   }
   applyRdTabs();
@@ -6305,7 +6293,6 @@ function rdTabReset(pin) {
   S.rdTab = pin || null;
   S.rdTabSig = "";
   S.rdTabPin = !!pin;
-  S.rdHiveFirst = false;
   S._rdCtx = {};
   S._rdHeavy = { runId: "", report: false, artifacts: false, preview: false };
   S._rdDetailToken = (S._rdDetailToken || 0) + 1;
@@ -9030,9 +9017,6 @@ async function loadArtifacts(runId) {
     if (mainBox) { mainBox.classList.add("hidden"); mainBox.innerHTML = ""; }
     return;
   }
-  const head = '<div class="files-head"><span class="sec-title">' + t("成品文件") + '</span>' +
-    verBadge +
-    '<span class="wd" title="' + esc(t("点击复制")) + '" onclick="copyText(this.textContent)">' + esc(d.workdir) + "</span></div>";
   // 上一版 run 的文件清单（详情上下文才有）：同名文本文件给「对比」入口；
   // 拉不到/无历史静默降级——对比是增强不是闸门。
   // 版本序号（OpenCreator「版本化」剩余面）：任务 run 列表最新在前，序号 =
@@ -9061,6 +9045,9 @@ async function loadArtifacts(runId) {
       esc(t("第 {0} 版").replace("{0}", curVer)) + "</span>"
     : "";
   const chips = artifactsChips(runId, files, prevRun, d.has_plan);
+  const head = '<div class="files-head"><span class="sec-title">' + t("成品文件") + '</span>' +
+    verBadge +
+    '<span class="wd" title="' + esc(t("点击复制")) + '" onclick="copyText(this.textContent)">' + esc(d.workdir) + "</span></div>";
   if (box) box.innerHTML = head + '<div class="file-chips">' + chips + "</div>";
   if (mainBox) { mainBox.classList.remove("hidden");
     mainBox.innerHTML = head + '<div class="file-chips">' + chips + "</div>"; }
@@ -17954,7 +17941,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!b || b.classList.contains("hidden")) return;
     S.rdTab = b.dataset.tab;
     S.rdTabPin = true;
-    S.rdHiveFirst = false;
     applyRdTabs();
     rdEnsureActiveTabData();
   });

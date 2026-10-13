@@ -1,6 +1,6 @@
 /* 运行详情页标签化重构验收：Edge headless + CDP，零依赖。
  * 造数：终态任务（3 步骤 + 日志 + 成品 md + 连载圣经）→
- * 断言：标签条分区可用性 / 终态自动落「蜂巢」/ 徽章 / 手点钉住不被自动选卡抢 /
+ * 断言：标签条分区可用性 / 终态自动落「对话」/ 徽章 / 手点钉住不被自动选卡抢 /
  * 日志抽屉跨分区 / sideOpenRun 钉步骤分区并聚焦。临时数据目录 + 独立端口。
  * 用法：node tests/ui_rd_tabs.mjs */
 import { spawn } from "node:child_process";
@@ -141,7 +141,7 @@ async function main() {
     // A) 打开任务级详情：分区可用性（无 git → 版本隐藏；连载 → 圣经在场）
     const strip = await evalJson(`(async () => {
       sideOpenTask("task-rdt");
-      await new Promise((r) => setTimeout(r, 900));
+      await new Promise((r) => setTimeout(r, 2500));
       const tabs = Array.from(document.querySelectorAll("#rd-tabs .rd-tab"));
       return {
         ids: tabs.map((b) => b.dataset.tab).join(","),
@@ -153,13 +153,13 @@ async function main() {
         artsInResult: !!document.querySelector('.rd-pane[data-pane="result"] #rd-arts'),
       };
     })()`);
-    // 对话分区只对直连任务可见，非直连（本用例是连载小说）应与 git 一同隐藏；
-    // 预览分区只对有网页成品的任务可见（本用例无 index.html → 一同隐藏）
-    check("分区条：蜂巢/步骤/成果/圣经在场，版本（无 git）与对话（非直连）隐藏",
-      ["hive", "steps", "result", "git", "bible"].every((k) => strip.ids.includes(k)) &&
-      strip.hiddenIds.split(",").sort().join(",") === "chat,git,preview",
+    // 对话分区对有任务归属的运行常开（2026-09-28 统一对话工作区，且默认落在它上面）；
+    // 预览分区只对有网页成品的任务可见（本用例无 index.html → 隐藏）；git 需版本仓库（无 → 隐藏）
+    check("分区条：蜂巢/步骤/成果/对话/圣经在场，预览（无网页成品）与版本（无 git）隐藏",
+      ["chat", "hive", "steps", "result", "bible"].every((k) => strip.ids.includes(k)) &&
+      strip.hiddenIds.split(",").sort().join(",") === "git,preview",
       JSON.stringify([strip.ids, strip.hiddenIds]));
-    check("终态（done）自动落「蜂巢」分区", strip.active === "hive", strip.active);
+    check("终态（done）自动落「对话」分区", strip.active === "chat", strip.active);
     check("成果分区含成品文件（章节 + 圣经）且在 result pane 内",
       strip.artsChips === 2 && strip.artsInResult === true, JSON.stringify(strip));
     check("徽章：步骤=3 · 成果=文件数",
@@ -270,7 +270,7 @@ async function main() {
       (steer.parts && steer.parts.msg || "").includes("第三章节奏太慢") && steer.hiddenAfter === true,
       JSON.stringify(steer));
 
-    // E) 运行中徽章：running 上下文重算 → 蜂巢徽章 ● 在岗数（自动落蜂巢分区）
+    // E) 运行中徽章：running 上下文重算 → 蜂巢徽章 ● 在岗数（自动选卡落对话分区）
     const live = await evalJson(`(async () => {
       S.rdTabPin = false; S.rdTabSig = "";   // 解钉后模拟新状态签名（done→running）
       rdTabsSync({ running: true, status: "running", gitState: "", steps: 3,
@@ -279,8 +279,8 @@ async function main() {
       return { active: ${activeTab},
         badge: (document.querySelector('#rd-tabs .rd-tab[data-tab="hive"] .rd-badge') || {}).textContent || "" };
     })()`);
-    check("运行中自动落「蜂巢」分区，徽章=● 在岗数",
-      live.active === "hive" && live.badge.includes("2"), JSON.stringify(live));
+    check("运行中自动落「对话」分区，蜂巢徽章=● 在岗数",
+      live.active === "chat" && live.badge.includes("2"), JSON.stringify(live));
 
     check("无未捕获 JS 异常", consoleErrors.length === 0, consoleErrors.join(" | ").slice(0, 200));
   } finally {
