@@ -44,10 +44,13 @@ def _get_rss_mb():
                 ("PeakPagefileUsage", ctypes.c_size_t),
             ]
 
-        pmc = _PMC()
+        psapi = ctypes.WinDLL("psapi")
         k32 = ctypes.windll.kernel32
+        pmc = _PMC()
         handle = k32.GetCurrentProcess()
-        if k32.GetProcessMemoryInfo(handle, ctypes.byref(pmc), pmc.cb):
+        # cb 必须先设为结构体大小（GetProcessMemoryInfo 的入参，err=122 即此）
+        pmc.cb = ctypes.sizeof(_PMC)
+        if psapi.GetProcessMemoryInfo(handle, ctypes.byref(pmc), pmc.cb):
             return pmc.WorkingSetSize / (1024 * 1024)
         return 0.0
     try:
