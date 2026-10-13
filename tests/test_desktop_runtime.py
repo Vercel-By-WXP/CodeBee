@@ -77,7 +77,7 @@ class Sidecar:
         (directory / "settings.json").write_text('{"telemetry_errors": false}', encoding="utf-8")
         env = dict(os.environ, TUTTI_DATA=str(directory), TUTTI_ISOLATE_HOME="1",
                    TUTTI_TEST_NO_DEFAULT_CATALOG="1", CODEBEE_DESKTOP_SECRET=self.secret,
-                   TUTTI_SELFUPDATE_OFFLINE="1", TUTTI_SELFUPDATE_FAKE_LATEST="9.9.9",
+                   TUTTI_SELFUPDATE_OFFLINE="1",
                    PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
         self.process = subprocess.Popen(
             [sys.executable, "-u", str(ROOT / "app" / "desktop_host.py"), "--port", str(port)],
@@ -167,24 +167,6 @@ class TestDesktopSidecar(unittest.TestCase):
         status, _ = self.sidecar.request("GET", "/api/desktop/status", headers={"X-Forwarded-For": "127.0.0.1"})
         self.assertEqual(status, 403)
 
-    def test_desktop_apply_hands_off_to_shell(self):
-        # apply 在桌面模式 = 移交壳热更新：200 + desktop-shell 载荷 + APPLY 行，
-        # sidecar 本体不退出（真正替换由壳执行后重启）。
-        status, data = self.sidecar.request("POST", "/api/selfupdate/apply", {})
-        self.assertEqual(status, 200)
-        self.assertEqual(data["mode"], "desktop-shell")
-        self.assertEqual(data["version"], "9.9.9")
-        apply_lines = [line for line in self.sidecar.output
-                       if line.startswith("CODEBEE_DESKTOP_APPLY ")]
-        self.assertEqual(len(apply_lines), 1)
-        self.assertEqual(json.loads(apply_lines[0].split(" ", 1)[1])["version"], "9.9.9")
-        self.assertEqual(self.sidecar.request("GET", "/api/desktop/status")[0], 200)
-
-    def test_desktop_apply_rejects_anonymous_caller(self):
-        status, data = self.sidecar.request("POST", "/api/selfupdate/apply", {},
-                                            authenticated=False)
-        self.assertEqual(status, 403)
-
     def test_desktop_update_never_invokes_npm(self):
         status, data = self.sidecar.request("GET", "/api/selfupdate")
         self.assertEqual(status, 200)
@@ -193,12 +175,10 @@ class TestDesktopSidecar(unittest.TestCase):
         # test_selfupdate 的 mock 矩阵覆盖，这里锁「绝不 invoke npm」的边界。
         self.assertFalse(data["has_update"])
         self.assertIn("查询新版本失败", data["note"])
-        self.assertIn("github.com/Vercel-By-WXP/CodeBee", data["download_url"])
-        # apply 移交壳热更新（不 invoke npm）：FAKE_LATEST 供版本号。
+        self.assertIn("/actions/workflows/desktop-preview.yml", data["download_url"])
         status, data = self.sidecar.request("POST", "/api/selfupdate/apply", {})
-        self.assertEqual(status, 200)
-        self.assertEqual(data["mode"], "desktop-shell")
-        self.assertEqual(data["version"], "9.9.9")
+        self.assertEqual(status, 400)
+        self.assertIn("error", data)
         status, _ = self.sidecar.request("POST", "/api/selfupdate/restart", {})
         self.assertEqual(status, 400)
         self.assertEqual(self.sidecar.request("GET", "/api/desktop/status")[0], 200)

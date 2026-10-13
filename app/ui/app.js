@@ -637,15 +637,6 @@ function browserNavigate(value, replace) {
   tab.url = url; tab.title = browserTitle(url); browserDraw(); return true;
 }
 
-// The desktop shell sends external links back here so CodeBee's own analysis
-// and self-editing flows stay inside the CodeBee browser workspace.
-window.codebeeOpenBrowser = function (url) {
-  const normalized = normalizeBrowserUrl(url);
-  if (!normalized) return false;
-  switchTab("browser", "main");
-  return browserNavigate(normalized);
-};
-
 function browserOpenPreview() {
   browserOpenTaskPreview(browserCurrentTask());
 }
@@ -706,9 +697,8 @@ function browserBind() {
     browserDraw();
     $("browser-address").focus();
   });
-  // Explicit escape hatch: only this named target intentionally leaves CodeBee.
-  $("browser-open-external").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "codebee-system-browser", "noopener"); });
-  $("browser-frame-error-open").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "codebee-system-browser", "noopener"); });
+  $("browser-open-external").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "_blank", "noopener"); });
+  $("browser-frame-error-open").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "_blank", "noopener"); });
   $("browser-history-open").addEventListener("click", () => { browserRenderHistory(); browserOpenDialog("browser-history-dialog"); });
   $("browser-history-search").addEventListener("input", browserRenderHistory);
   $("browser-history-list").addEventListener("click", (e) => {
@@ -1784,7 +1774,6 @@ function _askOpen(opts) {
     // 三态弹框：extra 按钮插在「取消」左侧，点按以 opts 里的 value 结束
     // （非布尔，只有用到 extra 的调用方需要判读）；开新框先清上一帧残留。
     const yes = $("ask-yes");
-    const no = $("ask-no");
     const foot = yes.parentNode;
     foot.querySelectorAll(".ask-extra").forEach((b) => b.remove());
     (opts.extra || []).forEach((b) => {
@@ -1798,7 +1787,6 @@ function _askOpen(opts) {
     });
     yes.textContent = opts.okText || t("确定");
     yes.className = opts.danger ? "danger" : "primary";
-    no.textContent = opts.noText || t("取消");
     $("ask").classList.remove("hidden");
     document.body.classList.add("ask-open");
     if (opts.onOpen) opts.onOpen();
@@ -3677,7 +3665,6 @@ async function createTask() {
     workdir: $("f-workdir").value.trim(),
     thinking: $("f-thinking").value,
   };
-  if (cmpPlanMode) payload.plan_mode = true;
   const sandboxBackend = $("f-sandbox-backend").value;
   if (sandboxBackend === "docker") {
     const dockerImage = $("f-sandbox-image").value.trim();
@@ -3810,8 +3797,6 @@ async function createTask() {
     // 不刷的话对话页签不会就绪，自动选卡落不到「对话」
     try { await refreshState(); } catch (e) { /* 刷失败等轮询兜底 */ }
     jumpToRun(r.run_id);
-    cmpPlanMode = false;
-    cmpSyncPlanMode();
     $("f-goal").value = "";
     if ($("f-bible")) $("f-bible").value = "";
     S.atts = []; renderAttachChips();   // 附件已移交任务待提交区，清空本地列表
@@ -3836,104 +3821,6 @@ const ATT_EXT_OK = /\.(png|jpe?g|gif|webp|bmp|svg|txt|md|markdown|csv|json|log|p
 const ATT_OFFICE_RE = /\.(docx?|xlsx?|pptx?|rtf|odt|ods)$/i;
 const ATT_CAP = 8 * 1024 * 1024;         // 普通附件 8MB
 const ATT_CAP_OFFICE = 24 * 1024 * 1024; // Office 文档放宽到 24MB
-let cmpPlanMode = false;
-
-function cmpAddMenu(open) {
-  const menu = $("cmp-add-menu"), button = $("btn-attach");
-  if (!menu || !button) return;
-  const next = typeof open === "boolean" ? open : menu.classList.contains("hidden");
-  menu.classList.toggle("hidden", !next);
-  button.setAttribute("aria-expanded", next ? "true" : "false");
-  if (next) cmpSyncPlanMode();
-}
-
-function cmpSyncPlanMode() {
-  const item = document.querySelector('[data-add-action="plan"]');
-  const hint = $("cmp-plan-hint");
-  if (item) item.classList.toggle("is-on", cmpPlanMode);
-  if (hint) hint.textContent = t(cmpPlanMode ? "计划模式已开启" : "开启计划模式");
-}
-
-function cmpAddAction(action) {
-  cmpAddMenu(false);
-  if (action === "file") {
-    _askOpen({
-      title: t("文件和文件夹"),
-      bodyHtml: '<div class="ask-msg">' + esc(t("选择要添加的内容：可以选择文件，也可以选择整个文件夹。")) + "</div>",
-      okText: t("选择文件"), noText: t("取消"),
-      extra: [{ text: t("选择文件夹"), value: "folder", cls: "ghost" }],
-      onOpen: () => $("ask-yes").focus(),
-    }).then((choice) => {
-      if (choice === true) $("f-attach-file").click();
-      else if (choice === "folder") $("f-attach-folder").click();
-    });
-  } else if (action === "browser") {
-    const currentTask = S.currentTaskId || S.taskId || "";
-    browserTaskId = browserTaskId || currentTask || ((S.state || {}).tasks || [])[0]?.id || "";
-    try { if (browserTaskId) localStorage.setItem(BROWSER_TASK_STORAGE_KEY, browserTaskId); } catch (e) { /* local preference only */ }
-    switchTab("browser", "main");
-    browserNavigate("https://www.google.com");
-    toast(t("已打开 CodeBee 内置浏览器工作区并关联当前任务；如需使用系统 Chrome，请从桌面浏览器按钮打开。"));
-  } else if (action === "goal") {
-    switchTab("overview", "main");
-    goalLoad().then(() => {
-      if (!(_goalCache && _goalCache.current)) $("ov-goal-title").focus();
-      else $("ov-goal-error").textContent = t("已有进行中的目标，可在此查看或开始下一轮。" );
-    });
-  } else if (action === "plan") {
-    cmpPlanMode = !cmpPlanMode;
-    cmpSyncPlanMode();
-    toast(t(cmpPlanMode ? "计划模式已开启：将先生成详细计划，再按计划执行。" : "计划模式已关闭。"));
-  } else if (action === "draw") {
-    cmpOpenDrawing();
-  }
-}
-
-function cmpAddPlugin(name) {
-  cmpAddMenu(false);
-  const recipes = {
-    documents: { type: "doc", prompt: "请按 Documents 文档工作流完成任务。先检查附件和工作目录资料，明确文档结构、目标读者与交付文件；完成后校对内容并报告实际生成的格式。" },
-    pdf: { type: "direct", prompt: "请按 PDF 工作流处理任务。先检查附件和工作目录中的 PDF；按任务读取、整理或生成文件。若当前工具不能直接编辑 PDF，请提供可验证的替代产物，并如实说明。" },
-    spreadsheets: { type: "direct", prompt: "请按 Spreadsheets 表格工作流完成任务。先检查数据来源和字段含义，再创建或编辑表格；校验表头、公式、格式和数据完整性，并说明实际交付的文件格式。" },
-    presentations: { type: "presentation", prompt: "请按 Presentations 演示文稿工作流制作演示材料。交付逐页结构、每页要点、讲稿与视觉建议；如果环境支持可编辑演示文件，再同时生成该文件并检查。" },
-  };
-  const recipe = recipes[name];
-  if (!recipe) return;
-  pickType(recipe.type);
-  const box = $("f-goal"), existing = box.value.trim();
-  if (!existing) box.value = recipe.prompt;
-  else if (!existing.includes(recipe.prompt)) box.value = recipe.prompt + "\n\n" + existing;
-  box.focus();
-  toast(t("已添加工作流说明；写好目标后即可运行。"));
-}
-
-function cmpOpenDrawing() {
-  let dialog = $("cmp-draw-dialog");
-  if (!dialog) {
-    dialog = document.createElement("dialog");
-    dialog.id = "cmp-draw-dialog";
-    dialog.className = "cmp-draw-dialog";
-    dialog.innerHTML = '<div class="cmp-draw-head"><div><b>' + esc(t("绘图")) + '</b><small>' + esc(t("画一张草图，完成后作为任务附件添加。")) + '</small></div><button type="button" class="ghost small" data-draw-close aria-label="关闭">×</button></div><div class="cmp-draw-tools"><button type="button" class="ghost small is-active" data-draw-tool="pen">' + esc(t("画笔")) + '</button><button type="button" class="ghost small" data-draw-tool="eraser">' + esc(t("橡皮擦")) + '</button><input type="color" value="#202123" aria-label="' + esc(t("画笔颜色")) + '"><input type="range" min="1" max="24" value="4" aria-label="' + esc(t("画笔粗细")) + '"><button type="button" class="ghost small" data-draw-clear>' + esc(t("清空")) + '</button><span class="spacer"></span><button type="button" class="primary small" data-draw-add>' + esc(t("添加到任务")) + '</button></div><canvas class="cmp-draw-canvas" width="1200" height="620" aria-label="' + esc(t("绘图画布")) + '"></canvas>';
-    document.body.appendChild(dialog);
-    const canvas = dialog.querySelector("canvas"), ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    let drawing = false, tool = "pen", color = "#202123", size = 4, hasMarks = false;
-    const point = (event) => { const r = canvas.getBoundingClientRect(); return { x: (event.clientX-r.left)*canvas.width/r.width, y: (event.clientY-r.top)*canvas.height/r.height }; };
-    canvas.addEventListener("pointerdown", (event) => { drawing = true; hasMarks = true; canvas.setPointerCapture(event.pointerId); const p=point(event); ctx.beginPath(); ctx.moveTo(p.x,p.y); });
-    canvas.addEventListener("pointermove", (event) => { if (!drawing) return; const p=point(event); ctx.lineCap="round"; ctx.lineJoin="round"; ctx.lineWidth=size; ctx.strokeStyle=tool==="eraser"?"#fff":color; ctx.lineTo(p.x,p.y); ctx.stroke(); });
-    canvas.addEventListener("pointerup", () => { drawing=false; });
-    dialog.addEventListener("click", (event) => {
-      const close=event.target.closest("[data-draw-close]"); if(close){dialog.close();return;}
-      const toolButton=event.target.closest("[data-draw-tool]"); if(toolButton){tool=toolButton.dataset.drawTool;dialog.querySelectorAll("[data-draw-tool]").forEach(b=>b.classList.toggle("is-active",b===toolButton));return;}
-      if(event.target.closest("[data-draw-clear]")){ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);hasMarks=false;return;}
-      if(event.target.closest("[data-draw-add]")){if(!hasMarks){toast(t("请先画一些内容。"),true);return;}canvas.toBlob(async(blob)=>{if(!blob)return;const file=new File([blob],"codebee-sketch-"+Date.now()+".png",{type:"image/png"});await addAttachFiles([file]);dialog.close();},"image/png");}
-    });
-    dialog.querySelector('input[type="color"]').addEventListener("input",e=>{color=e.target.value;tool="pen";});
-    dialog.querySelector('input[type="range"]').addEventListener("input",e=>{size=Number(e.target.value)||4;});
-    dialog.addEventListener("close",()=>{ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);hasMarks=false;});
-  }
-  if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
-}
 
 function renderAttachChips() {
   const box = $("att-chips");
@@ -3971,23 +3858,15 @@ function removeAtt(id) {
 }
 window.removeAtt = removeAtt;
 
-async function addAttachFiles(files, opts) {
-  const quiet = !!(opts && opts.quiet);   // 文件夹批量附加：超大/不支持的文件属常态，安静跳过最后汇总
+async function addAttachFiles(files) {
   if (!files || !files.length) return;
   if ((S.atts || []).length + files.length > 12) {
     toast(t("附件最多 12 个"), true); return;
   }
-  const skipped = [];
   for (const f of files) {
-    if (!ATT_EXT_OK.test(f.name)) {
-      if (quiet) { skipped.push(f.name); continue; }
-      toast(t("不支持的附件类型：") + f.name, true); continue;
-    }
+    if (!ATT_EXT_OK.test(f.name)) { toast(t("不支持的附件类型：") + f.name, true); continue; }
     const cap = ATT_OFFICE_RE.test(f.name) ? ATT_CAP_OFFICE : ATT_CAP;
-    if (f.size > cap) {
-      if (quiet) { skipped.push(f.name); continue; }
-      toast(t("附件超过：") + f.name, true); continue;
-    }
+    if (f.size > cap) { toast(t("附件超过：") + f.name, true); continue; }
     try {
       const b64 = await new Promise((res, rej) => {
         const rd = new FileReader();
@@ -3996,8 +3875,7 @@ async function addAttachFiles(files, opts) {
         rd.readAsDataURL(f);
       });
       const r = await api("/api/attachments", { method: "POST",
-        body: JSON.stringify({ name: f.name, data: b64,
-          relative_path: f.codebeeRelativePath || "" }) });
+        body: JSON.stringify({ name: f.name, data: b64 }) });
       S.atts = S.atts || [];
       if (S.atts.some((a) => a.id === r.attachment.id)) continue;  // 去重
       S.atts.push(r.attachment);
@@ -4005,10 +3883,6 @@ async function addAttachFiles(files, opts) {
     } catch (e) {
       toast(t("附件上传失败：") + f.name + " — " + e.message, true);
     }
-  }
-  if (quiet && skipped.length) {
-    const names = skipped.slice(0, 3).join("、") + (skipped.length > 3 ? " …" : "");
-    toast(t("已跳过大文件或不支持的类型：") + names + "（共" + skipped.length + "个）");
   }
 }
 window.addAttachFiles = addAttachFiles;
@@ -7083,7 +6957,6 @@ function pbBlock(task, platform, selectionOnly = false) {
         "</div>" +
         '<div class="pb-pend-progress">' +
         (au.published_latest ? '<strong>' + esc(t("已发布至第 {0} 章", au.published_latest)) + '</strong>' : '') +
-        (au.scheduled ? '<span>' + esc(t("定时队列 {0} 章（尚未计入已发布）", au.scheduled)) + '</span>' : '') +
         (au.next_chapter ? '<span>' + esc(t("下一章：第 {0} 章", au.next_chapter)) + '</span>' : '') +
         '<span>' + esc(t("可直发 {0} 章 · 单章过审 {1} 章", au.ready_count || 0, au.review_passed_count || 0)) + '</span></div>' +
         '<div class="pb-pend-chips">' + chips + "</div>" +
@@ -7091,11 +6964,11 @@ function pbBlock(task, platform, selectionOnly = false) {
           esc(t("已存草稿 {0} 章（未发布）", au.drafted_nos.length)) + '</summary><p>' +
           esc(au.drafted_nos.map((n) => t("第 {0} 章", n)).join(" · ")) + '</p></details>' : '') +
         '<div class="pb-pend-foot"><span class="pb-pend-count" aria-live="polite">' + esc(t("已选 {0}/{1} 章", sel.size, its.length)) + '</span>' +
-        '<span class="pb-pend-mode-hint">' + esc(t("批量发布自动提交；失败会转定时发布后继续，草稿不上线。")) + '</span>' +
+        '<span class="pb-pend-mode-hint">' + esc(t("发布需逐章确认，直发自动提交，草稿不上线。")) + '</span>' +
         '<div class="pb-pend-btns">' +
         '<button class="primary" data-selection-action data-locked="' + busy + '" ' + (busy || !sel.size ? "disabled" : "") +
         ' title="' + esc(au.guard_ok ? "" : t("护栏提示：") + (au.guard_reason || "")) + '"' +
-        ' onclick="pbPublishSelected(\'' + esc(task.id) + "','" + platform + '\',true)">' +
+        ' onclick="pbPublishSelected(\'' + esc(task.id) + "','" + platform + '\',false)">' +
         t("发布所选") + t("（") + sel.size + t("）") + "</button>" +
         '<button class="ghost" data-selection-action data-locked="' + busy + '" ' + (busy || !sel.size ? "disabled" : "") +
         ' title="' + esc(t("所选章节逐章自动提交（无人值守），护栏每日上限/连败退避照常生效") +
@@ -7119,9 +6992,6 @@ function pbBlock(task, platform, selectionOnly = false) {
     }
     if (au.drafted > 0) {
       btns += '<div class="pb-hint">' + esc(t("已存草稿 {0} 章（未发布）：到平台章节管理/草稿箱逐章检查后提交发布", au.drafted)) + "</div>";
-    }
-    if (au.scheduled > 0) {
-      btns += '<div class="pb-hint">' + esc(t("已有 {0} 章进入定时发布队列，平台确认上线后才计入已发布", au.scheduled)) + "</div>";
     }
     if (run && run.status === "manual_pause") {
       // 人工模式一轮只填一章：等用户在浏览器提交后再发起（连发会导航离开
@@ -7324,20 +7194,14 @@ window.pbProbe = async function (platform) {
 };
 
 window.pbCreateBook = async function (taskId, platform) {
-  const autoSubmit = platform === "qimao";
-  const confirmText = autoSubmit
-    ? t("将用生成的作品信息自动填写并提交七猫建书表单。提交后会核对作品是否创建成功。继续？")
-    : t("将用生成的作品信息在平台自动填建书表单。填好后会停在最后一步，由你在浏览器里人工点提交。继续？");
-  if (!(await uiConfirm(confirmText,
+  if (!(await uiConfirm(t("将用生成的作品信息在平台自动填建书表单。填好后会停在最后一步，由你在浏览器里人工点提交。继续？"),
     { ok: t("开始建书") }))) return;
   try {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/create-book",
-      { platform, auto_submit: autoSubmit }, "创建作品前的质量门禁未通过", taskId);
+      { platform }, "创建作品前的质量门禁未通过", taskId);
     if (!(r && r.gate_reviewed))
-      toast(autoSubmit
-        ? t("正在填写并提交七猫建书表单，随后核对作品创建结果…")
-        : t("正在自动填写建书表单…（完成后请在浏览器里确认提交）"));
+      toast(t("正在自动填写建书表单…（完成后请在浏览器里确认提交）"));
   } catch (e) { toast(t("建书失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
@@ -7562,14 +7426,14 @@ window.pbPublishSelected = async function (taskId, platform, autoSubmit) {
 window.pbPublishAll = async function (taskId, platform) {  const au = (((S.pubAuto && S.pubAuto.books) || [])
     .find((b) => b.platform === platform)) || {};
   if (!au.pending) return;
-  if (!(await uiConfirm(t("将从最靠前的待发章节开始逐章自动填稿并提交发布（共 {0} 章待发）。若立即发布失败，将自动转为定时发布后继续下一章。护栏（每日上限/连续失败暂停）生效。继续？", au.pending),
+  if (!(await uiConfirm(t("将从最靠前的待发章节开始填稿（共 {0} 章待发）。本轮只填一章并停在表单页，由你在浏览器里确认提交；提交后点击“我已在平台提交”，再选择下一章。护栏（每日上限/连续失败暂停）生效。继续？", au.pending),
     { ok: t("开始发布") }))) return;
   try {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
-      { platform, auto_submit: true }, "批量发布前的质量门禁未通过", taskId);
+      { platform }, "批量发布前的质量门禁未通过", taskId);
     if (!(r && r.gate_reviewed))
-      toast(t("正在自动提交第一章；失败会转定时发布后继续，进度见发布台"));
+      toast(t("正在填第一章稿——填好后请在浏览器窗口里确认提交，再重新校准"));
   } catch (e) { toast(t("自动发布失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
@@ -10350,200 +10214,7 @@ let chatSig = "";
 let chatLiveSig = "";        // 时间线实时增量签名（思考/正文长度变才重建 DOM）
 let chatLiveTimer = null;    // 运行中快轮询句柄（1.2s，见 scheduleChatLive）
 let chatLiveRunId = null;
-const chatLogOpen = new Set(), chatLogClosed = new Set(), chatLogCache = new Map(), chatLogInflight = new Set(), chatLogFetchedAt = new Map();
 let chatForceBottom = false; // 强制贴底一次（不管当时滚到哪，都要看到最新内容）；发送消息、继续任务、打开详情共用
-
-// 对话右侧工作区：复用本机目录 API，让用户可以在查看 CLI 日志的同时打开、
-// 修改并保存当前任务工作目录中的文本文件。状态与时间线分离，轮询重绘不会丢失编辑内容。
-const chatWorkspaceState = {
-  open: false, dir: "", files: [], current: "", mtime: "", dirty: false, runId: "",
-};
-const CHAT_WORKSPACE_TEXT_EXT = new Set((
-  "txt md markdown log csv json jsonl yaml yml toml ini cfg conf py js mjs cjs ts tsx jsx " +
-  "html htm css scss sass less xml svg sql sh bash ps1 bat cmd go rs java kt kts swift " +
-  "c h cc cpp hpp cs php rb pl lua r vue svelte astro env gitignore dockerfile makefile " +
-  "properties gradle rst tex").split(/\s+/));
-
-function chatWorkspaceTask(run) {
-  const all = (S.state && (S.state.tasks || []).concat(S.state.archived_tasks || [])) || [];
-  return all.find((task) => task.id === (run && run.task_id)) || null;
-}
-
-function chatWorkspaceSetState(text, bad) {
-  const el = $("rd-chat-editor-state");
-  if (!el) return;
-  el.textContent = text || "";
-  el.classList.toggle("bad", !!bad);
-}
-
-function chatWorkspaceTree(files) {
-  const root = { dirs: {}, files: [] };
-  (files || []).forEach((file) => {
-    const parts = String(file.name || "").split("/").filter(Boolean);
-    if (!parts.length) return;
-    let node = root;
-    parts.slice(0, -1).forEach((part) => {
-      node = node.dirs[part] || (node.dirs[part] = { dirs: {}, files: [] });
-    });
-    node.files.push(file);
-  });
-  return root;
-}
-
-function chatWorkspaceFileTreeHTML(node, depth) {
-  const dirs = Object.keys(node.dirs || {}).sort((a, b) => a.localeCompare(b));
-  const files = (node.files || []).slice().sort((a, b) =>
-    String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
-  return dirs.map((name) => {
-    const child = node.dirs[name];
-    return '<details class="rd-chat-file-dir" open><summary><span>▾</span>' + esc(name) +
-      '</summary><div class="rd-chat-file-dir-children">' +
-      chatWorkspaceFileTreeHTML(child, depth + 1) + "</div></details>";
-  }).join("") + files.map((file) => {
-    const name = String(file.name || "");
-    const base = name.split("/").pop();
-    const ext = (base.split(".").pop() || "").toLowerCase();
-    const icon = ["md", "txt", "log"].includes(ext) ? "▤" : "▧";
-    return '<button type="button" class="rd-chat-file" data-chat-workspace-file="' + esc(name) +
-      '" title="' + esc(name) + '"><span class="rd-chat-file-icon">' + icon +
-      '</span><span class="rd-chat-file-name">' + esc(base) +
-      '</span><span class="rd-chat-file-size">' + esc(fmtSize(file.size)) + "</span></button>";
-  }).join("");
-}
-
-function chatWorkspaceRenderFiles() {
-  const nav = $("rd-chat-workspace-files");
-  if (!nav) return;
-  if (!chatWorkspaceState.files.length) {
-    nav.innerHTML = '<div class="rd-chat-workspace-empty">' + esc(t("该目录下暂无文件")) + "</div>";
-    return;
-  }
-  nav.innerHTML = chatWorkspaceFileTreeHTML(chatWorkspaceTree(chatWorkspaceState.files), 0);
-  nav.querySelectorAll("[data-chat-workspace-file]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.chatWorkspaceFile === chatWorkspaceState.current);
-  });
-}
-
-function chatWorkspaceSyncLayout() {
-  const box = $("rd-chat");
-  const pane = $("rd-chat-workspace");
-  if (!box || !pane) return;
-  box.classList.toggle("chat-workspace-open", !!chatWorkspaceState.open);
-  pane.classList.toggle("hidden", !chatWorkspaceState.open);
-  const path = $("rd-chat-workspace-path");
-  if (path) path.textContent = chatWorkspaceState.dir || "";
-  const name = $("rd-chat-editor-name");
-  if (name) name.textContent = chatWorkspaceState.current || t("选择文件");
-  const save = document.querySelector("[data-chat-editor-save]");
-  if (save) save.disabled = !chatWorkspaceState.current || !chatWorkspaceState.dirty;
-  chatWorkspaceRenderFiles();
-}
-
-async function chatWorkspaceScan(run) {
-  const task = chatWorkspaceTask(run);
-  const dir = task && task.workdir;
-  if (!dir) {
-    chatWorkspaceSetState(t("当前任务没有工作目录"), true);
-    return false;
-  }
-  chatWorkspaceState.dir = String(dir);
-  chatWorkspaceState.runId = run && run.id || "";
-  chatWorkspaceSetState(t("正在读取工作区…"));
-  try {
-    const data = await api("/api/dir/scan?path=" + encodeURIComponent(chatWorkspaceState.dir));
-    if (!chatWorkspaceState.open || chatWorkspaceState.runId !== (run && run.id)) return false;
-    chatWorkspaceState.files = Array.isArray(data && data.files) ? data.files : [];
-    chatWorkspaceState.dir = String((data && data.path) || chatWorkspaceState.dir);
-    chatWorkspaceSetState(chatWorkspaceState.files.length ? "" : t("该目录下暂无文件"));
-    chatWorkspaceSyncLayout();
-    return true;
-  } catch (e) {
-    chatWorkspaceState.files = [];
-    chatWorkspaceSetState(t("读取工作区失败：") + (e.message || e), true);
-    chatWorkspaceSyncLayout();
-    return false;
-  }
-}
-
-async function chatWorkspaceOpenFile(name) {
-  if (!chatWorkspaceState.dir || !name) return;
-  if (chatWorkspaceState.current === name) return;
-  const ext = String(name).split("/").pop().split(".").pop().toLowerCase();
-  if (!CHAT_WORKSPACE_TEXT_EXT.has(ext)) {
-    chatWorkspaceSetState(t("此文件类型暂不支持文本编辑"), true);
-    return;
-  }
-  if (chatWorkspaceState.dirty && chatWorkspaceState.current !== name) {
-    const ok = await uiConfirm(t("有未保存的修改，确定切换文件？"));
-    if (!ok) return;
-  }
-  const ta = $("rd-chat-editor-text");
-  if (!ta) return;
-  chatWorkspaceState.current = String(name);
-  const requested = chatWorkspaceState.current;
-  chatWorkspaceState.dirty = false;
-  ta.value = "";
-  ta.disabled = true;
-  chatWorkspaceSetState(t("正在读取文件…"));
-  chatWorkspaceSyncLayout();
-  try {
-    const url = urlAuth("/api/dir/file?dir=" + encodeURIComponent(chatWorkspaceState.dir) +
-      "&name=" + encodeURIComponent(name));
-    const response = await fetch(url, { headers: authHeaders() });
-    if (!response.ok) throw new Error("HTTP " + response.status);
-    const content = await response.text();
-    if (chatWorkspaceState.current === requested) {
-      ta.value = content;
-      chatWorkspaceState.mtime = response.headers.get("X-Tutti-Mtime") || "";
-      chatWorkspaceSetState("");
-    }
-  } catch (e) {
-    chatWorkspaceSetState(t("读取文件失败：") + (e.message || e), true);
-  } finally {
-    ta.disabled = false;
-    chatWorkspaceSyncLayout();
-  }
-}
-
-async function chatWorkspaceSave() {
-  const ta = $("rd-chat-editor-text");
-  if (!ta || !chatWorkspaceState.current || !chatWorkspaceState.dirty) return;
-  const save = document.querySelector("[data-chat-editor-save]");
-  if (save) save.disabled = true;
-  chatWorkspaceSetState(t("保存中…"));
-  try {
-    const data = await api("/api/dir/save", { method: "POST", body: JSON.stringify({
-      dir: chatWorkspaceState.dir, name: chatWorkspaceState.current,
-      content: ta.value, mtime: chatWorkspaceState.mtime,
-    }) });
-    chatWorkspaceState.mtime = String((data && data.mtime) || "");
-    chatWorkspaceState.dirty = false;
-    chatWorkspaceSetState(t("已保存"));
-  } catch (e) {
-    const msg = e && e.status === 409 ? t("文件已被外部修改，请重新打开后再保存") :
-      t("保存失败：") + (e.message || e);
-    chatWorkspaceSetState(msg, true);
-    toast(msg, true);
-  } finally { chatWorkspaceSyncLayout(); }
-}
-
-async function chatWorkspaceToggle(force) {
-  const box = $("rd-chat");
-  const run = S.lastRun;
-  if (!box || !run) return;
-  if (force === false || chatWorkspaceState.open) {
-    if (chatWorkspaceState.dirty && !await uiConfirm(t("有未保存的修改，确定关闭？"))) return;
-    chatWorkspaceState.open = false;
-    chatWorkspaceSyncLayout();
-    return;
-  }
-  const task = chatWorkspaceTask(run);
-  if (!task || !task.workdir) { toast(t("当前任务没有工作目录"), true); return; }
-  chatWorkspaceState.open = true;
-  chatWorkspaceSyncLayout();
-  await chatWorkspaceScan(run);
-}
-window.chatWorkspaceToggle = chatWorkspaceToggle;
 
 /* 瞬时落底：.rd-chat-flow 带 scroll-behavior:smooth，直接赋值 scrollTop 会变
  * 成跨全时间的平滑滚动动画（长对话要滑近一秒，测试也会量到半途）——跳最新
@@ -10622,51 +10293,6 @@ function chatAcpEventsHTML(it) {
         '<div class="rd-acp-plan-entry">' + esc(entry.status || "") + ' · ' + esc(entry.content || "") + '</div>').join("") : "";
       return '<div><code>' + esc(type) + '</code>' + (label ? ' · ' + esc(label) : "") + entries + '</div>';
     }).join("") + '</div></details>';
-}
-
-function chatLogKey(run, rel) { return String(run || "") + "\n" + String(rel || ""); }
-function chatLogHTML(it, index, latestLogIndex) {
-  if (!it.log || !it.run) return "";
-  const key = chatLogKey(it.run, it.log), opened = chatLogOpen.has(key) ||
-    ((it.status === "running" || index === latestLogIndex) && !chatLogClosed.has(key));
-  const cached = chatLogCache.get(key);
-  const status = it.status === "running" ? t("CLI 执行中") :
-    (it.status === "failed" ? t("失败") : (it.status === "cancelled" ? t("已取消") : t("完成")));
-  const actor = [it.who, it.role, it.n != null ? "#" + it.n : ""].filter(Boolean).join(" · ");
-  return '<div class="chat-cli-card"><div class="chat-cli-card-head"><span class="chat-cli-card-dot ' +
-    (it.status === "running" ? "live" : it.status === "failed" ? "bad" : "") + '"></span><strong>' +
-    esc(actor || t("CLI 日志")) + '</strong><span class="chat-cli-card-status">' + esc(status) +
-    '</span></div><details class="chat-cli-log" data-chat-log-key="' + esc(key) + '"' + (opened ? " open" : "") + ">" +
-    "<summary>" + esc(t("查看完整 CLI 执行日志")) + (cached ? " · " + esc(t("已加载")) : "") + "</summary>" +
-    '<pre class="chat-cli-log-text">' + esc(cached || (opened ? t("正在读取 CLI 日志…") : "")) + "</pre></details></div>";
-}
-
-function chatLoadLog(run, rel) {
-  const key = chatLogKey(run, rel);
-  const now = Date.now();
-  if (!run || !rel || chatLogInflight.has(key) || now - (chatLogFetchedAt.get(key) || 0) < 2200) return;
-  chatLogInflight.add(key);
-  api("/api/runs/" + encodeURIComponent(run) + "/log?step=" + encodeURIComponent(rel) + "&tail=12000&pretty=1")
-    .then((data) => { chatLogCache.set(key, String((data && data.log) || "").trim() || t("当前暂无 CLI 日志输出")); chatLogFetchedAt.set(key, Date.now()); })
-    .catch((error) => { chatLogCache.set(key, t("读取 CLI 日志失败：") + (error.message || "")); })
-    .finally(() => {
-      chatLogInflight.delete(key);
-      // The newest/running CLI cards are expanded by default.  They are not
-      // necessarily present in chatLogOpen, so loading their log must still
-      // invalidate the timeline; otherwise the card stays on the placeholder
-      // "正在读取 CLI 日志…" until the next unrelated timeline update.
-      if (S.lastRun) {
-        chatLiveSig = "";
-        const flow = $("rd-chat-flow");
-        const stillRendered = flow && flow.dataset.runId &&
-          Array.from(flow.querySelectorAll("details.chat-cli-log[data-chat-log-key]"))
-            .some((details) => details.dataset.chatLogKey === key);
-        if (stillRendered)
-          api("/api/runs/" + encodeURIComponent(flow.dataset.runId) + "/timeline")
-          .then((timeline) => { if (S.lastRun) drawChatFlow(S.lastRun, timeline, ["running", "queued"].includes(S.lastRun.status)); })
-          .catch(() => {});
-      }
-    });
 }
 
 /* 运行中直连对话的快轮询：SSE/轮询最密 2s、闲时 8s，思考是逐句吐的——
@@ -10774,13 +10400,6 @@ async function renderChat(run, active) {
   // 所有有任务归属的运行都启用对话时间线；蜂巢/步骤/成果仍按原页签保留
   if (!run || !chatEngineIsDirect(run)) { box.classList.add("hidden"); return; }
   box.classList.remove("hidden");
-  renderChatRunStatus(run, active);
-  if (chatWorkspaceState.open && chatWorkspaceState.runId !== run.id) {
-    chatWorkspaceState.open = false;
-    chatWorkspaceState.current = "";
-    chatWorkspaceState.dirty = false;
-    chatWorkspaceSyncLayout();
-  }
   const continueNote = $("rd-chat-continue-note");
   if (continueNote) continueNote.classList.toggle("hidden", !!active);
   if (chatRunId !== run.id) { chatRunId = run.id; chatAtts = []; drawChatAtts(); chatSig = ""; chatLiveSig = ""; }
@@ -10807,78 +10426,12 @@ async function renderChat(run, active) {
   drawChatFlow(run, data, active);
 }
 
-/* 对话输入框上方保留当前运行上下文，避免用户滚到时间线底部后看不到目标和控制。
- * 复用详情页已有暂停/取消链路；秒表独立更新，不触发时间线重绘。 */
-let chatRunStatusTimer = null;
-function renderChatRunStatus(run, active) {
-  const bar = $("rd-chat-run-status");
-  if (!bar) return;
-  if (!active) {
-    bar.classList.add("hidden");
-    if (chatRunStatusTimer) { clearInterval(chatRunStatusTimer); chatRunStatusTimer = null; }
-    return;
-  }
-  const task = (S.state && (S.state.tasks || []).find((item) => item.id === run.task_id)) || {};
-  const goal = task.goal || run.goal || run.title || "";
-  const label = bar.querySelector("[data-chat-run-goal]");
-  const elapsed = bar.querySelector("[data-chat-run-elapsed]");
-  const pause = bar.querySelector("[data-chat-run-pause]");
-  const expand = bar.querySelector("[data-chat-run-expand]");
-  if (label) { label.textContent = goal; label.title = goal; }
-  if (pause) {
-    pause.textContent = run.paused ? t("继续执行") : t("暂停");
-    pause.setAttribute("aria-label", pause.textContent);
-    pause.title = pause.textContent;
-  }
-  if (elapsed) {
-    const started = run.started_at || run.created_at;
-    const update = () => {
-      const stamp = Date.parse(String(started || "").replace(" ", "T"));
-      const seconds = Number.isFinite(stamp) ? Math.max(0, Math.floor((Date.now() - stamp) / 1000)) : 0;
-      elapsed.textContent = chatDurTxt(seconds);
-    };
-    update();
-    if (!chatRunStatusTimer) chatRunStatusTimer = setInterval(() => {
-      if (!bar.classList.contains("hidden")) {
-        const stamp = Date.parse(String(bar.dataset.started || "").replace(" ", "T"));
-        const seconds = Number.isFinite(stamp) ? Math.max(0, Math.floor((Date.now() - stamp) / 1000)) : 0;
-        const current = bar.querySelector("[data-chat-run-elapsed]");
-        if (current) current.textContent = chatDurTxt(seconds);
-      }
-    }, 1000);
-    bar.dataset.started = started || "";
-  }
-  if (expand) {
-    const expanded = $("run-detail").classList.contains("rd-chat-expanded");
-    expand.textContent = expanded ? "⤢" : "⛶";
-    expand.title = t(expanded ? "收起对话" : "展开对话");
-    expand.setAttribute("aria-label", expand.title);
-  }
-  bar.classList.remove("hidden");
-}
-
-window.toggleChatExpanded = function () {
-  const detail = $("run-detail");
-  if (!detail) return;
-  detail.classList.toggle("rd-chat-expanded");
-  if (S.lastRun) renderChatRunStatus(S.lastRun,
-    S.lastRun.status === "running" || S.lastRun.status === "queued");
-};
-
 /* 时间线渲染本体（renderChat 与运行中快轮询共用）：items → 气泡流。
  * force=true 时跳过增量签名闸门（快轮询拿到的一定是新帧）。 */
 function drawChatFlow(run, data, active) {
   const items = (data && data.items) || [];
   const flow = $("rd-chat-flow");
   if (!flow) return;
-  const latestLogIndex = items.reduce((last, it, index) =>
-    (it.kind === "agent" && it.log && it.run ? index : last), -1);
-  // 日志是独立文件，可能在步骤状态/正文都不变时持续增长。先于时间线签名
-  // 闸门轮询最新/运行中的日志，否则 DOM 不重建时 CLI 输出会停留在旧尾部。
-  items.forEach((it, index) => {
-    if (it.kind === "agent" && it.log && it.run &&
-        (it.status === "running" || index === latestLogIndex)) chatLoadLog(it.run, it.log);
-  });
   // 增量闸门：时间线任何可见输入（状态/正文/思考/实时流/活动/追问/已送达）
   // 都没变才跳过重建——保滚动位置与折叠态。维度少了不行：只看 live 长度的话，
   // 没开思考的 CLI 步骤 running→done 两态签名相同，气泡会永远停在打字动画
@@ -10948,7 +10501,7 @@ function drawChatFlow(run, data, active) {
     const bodyHtml = body ? chatBodyHTML(body)
       : (liveText ? '<div class="chat-body chat-live-text">' + esc(liveText.slice(-4000)) + "</div>"
       : (it.status === "running"
-        ? '<div class="chat-cli-wait">' + esc(t("CLI 已启动，正在等待首段输出；可展开下方执行日志查看进程活动。")) + "</div>"
+        ? '<span class="chat-typing" aria-label="' + esc(t("正在执行…")) + '"><i></i><i></i><i></i></span>'
         : esc(t("（本轮无文本输出）"))));
     // 元信息只留 名字+时间（+失败标记）：路由/供应商细节属于「步骤」页签，塞这里就是噪音
     const metaBad = it.status === "failed" || it.status === "cancelled";
@@ -10959,19 +10512,17 @@ function drawChatFlow(run, data, active) {
     const duration = it.duration_s;
     const caption = typeof duration === "number" && Number.isFinite(duration) && duration >= 0
       ? '<div class="chat-step-caption">' + esc(t("用时")) + " " + esc(chatDurTxt(duration)) + "</div>" : "";
-    const stepMeta = [it.who, it.role, it.n != null ? "#" + it.n : "", it.status === "running" ? t("CLI 执行中") :
-      (it.status === "failed" ? t("失败") : (it.status === "cancelled" ? t("已取消") : t("完成"))), it.note].filter(Boolean).join(" · ");
     // 助手正文与工具活动共用左缘，不再为头像预留一列。
     return '<div class="chat-row">' +
       '<div class="chat-bubble agent">' +
       caption +
-      (stepMeta ? '<div class="chat-step-meta">' + esc(stepMeta) + "</div>" : "") +
       chatThinkHTML(it) +
       chatAcpEventsHTML(it) +
       '<div class="chat-body">' + bodyHtml + "</div>" +
       '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
       (metaBad ? " · " + t(it.status === "failed" ? "失败" : "已取消") : "") + actsA + "</div>" +
-      chatLogHTML(it, idx, latestLogIndex) +
+      (it.log && it.run ? '<div class="chat-actions"><button class="chat-log-btn" type="button" data-chat-log-run="' +
+        esc(it.run) + '" data-chat-log-rel="' + esc(it.log) + '" title="' + esc(t("查看日志")) + '"><svg class="ico" aria-hidden="true"><use href="#i-code"></use></svg>' + esc(t("CLI 日志")) + "</button></div>" : "") +
       (Array.isArray(it.followups) && it.followups.length
         ? '<div class="chat-fups">' + it.followups.map((f) =>
           '<button type="button" class="chat-fup-btn" data-fup="' + esc(f.prompt || "") +
@@ -11578,31 +11129,6 @@ function bindChat() {
   const btn = $("rd-chat-attach"), file = $("rd-chat-file"), send = $("rd-chat-send"),
         ta = $("rd-chat-input");
   if (!btn || !file || !send || !ta) return;
-  const runStatus = $("rd-chat-run-status");
-  if (runStatus) {
-    runStatus.querySelector("[data-chat-run-pause]").addEventListener("click", window.dirTogglePause);
-    runStatus.querySelector("[data-chat-run-cancel]").addEventListener("click", cancelRun);
-  }
-  document.querySelectorAll("[data-chat-workspace-toggle]").forEach((toggle) =>
-    toggle.addEventListener("click", () => chatWorkspaceToggle()));
-  const workspace = $("rd-chat-workspace");
-  if (workspace) {
-    const close = workspace.querySelector("[data-chat-workspace-close]");
-    if (close) close.addEventListener("click", () => chatWorkspaceToggle(false));
-    const files = $("rd-chat-workspace-files");
-    if (files) files.addEventListener("click", (e) => {
-      const button = e.target.closest("[data-chat-workspace-file]");
-      if (button) chatWorkspaceOpenFile(button.dataset.chatWorkspaceFile || "");
-    });
-    const editor = $("rd-chat-editor-text");
-    if (editor) editor.addEventListener("input", () => {
-      chatWorkspaceState.dirty = true;
-      chatWorkspaceSetState(t("有未保存的修改"));
-      chatWorkspaceSyncLayout();
-    });
-    const save = workspace.querySelector("[data-chat-editor-save]");
-    if (save) save.addEventListener("click", chatWorkspaceSave);
-  }
   const focusBtn = $("rd-chat-focus");
   if (focusBtn) focusBtn.addEventListener("click", () => {
     chatJumpLatest();   // 继续对话：先看到最新一轮再开口
@@ -11651,19 +11177,6 @@ function bindChat() {
   // 输入条胶囊增删重画，都不丢监听。时间线胶囊走已落盘文件，输入条胶囊
   // （× 移除按钮除外）走待提交区
   $("rd-chat-flow").addEventListener("click", (e) => {
-    const logDetails = e.target.closest("details.chat-cli-log[data-chat-log-key]");
-    if (logDetails) {
-      const key = logDetails.dataset.chatLogKey || "";
-      const split = key.indexOf("\n");
-      if (split >= 0) {
-        const run = key.slice(0, split), rel = key.slice(split + 1);
-        setTimeout(() => {
-          if (logDetails.open) { chatLogOpen.add(key); chatLogClosed.delete(key); chatLoadLog(run, rel); }
-          else { chatLogOpen.delete(key); chatLogClosed.add(key); }
-        }, 0);
-      }
-      return;
-    }
     const logBtn = e.target.closest("[data-chat-log-run][data-chat-log-rel]");
     if (logBtn) { e.stopPropagation(); toggleLog(logBtn.dataset.chatLogRun, logBtn.dataset.chatLogRel); return; }
     // 建议追问芯片：点击把整句回填输入框（不直接发送——用户可改后再发），焦点落输入框
@@ -15829,14 +15342,11 @@ function renderSu() {
   let html = "<p class=\"hint\">" + t("当前版本") + t("：") + "<b>" + cur + "</b>" + t("　·　") + t("安装方式") + t("：") + modeTxt + "</p>";
   if (SU.has_update) {
     if (SU.mode === "desktop") {
-      // 桌面模式：apply 移交壳热更新（下载 tarball 换引擎自动重启）；
-      // 下载页链接兜底（壳更新失败或想要完整安装包时用）。
+      // 桌面模式：引擎不能自我替换，「立即升级」恒 400——只给下载页入口。
       const url = esc(SU.download_url ||
         "https://github.com/Vercel-By-WXP/CodeBee/actions/workflows/desktop-preview.yml");
       html += "<p class=\"hint\"><b>" + t("发现新版本") + " v" + esc(SU.latest) +
-        t("　") + "<a href=\"#\" onclick=\"event.preventDefault();suApply()\">" +
-        t("立即更新") + "</a>" + t("　·　") +
-        "<a href=\"" + url + "\" target=\"_blank\" rel=\"noopener\">" +
+        t("　") + "<a href=\"" + url + "\" target=\"_blank\" rel=\"noopener\">" +
         t("打开下载页") + "</a></b></p>";
     } else {
       html += "<p class=\"hint\"><b>" + t("发现新版本") + " v" + SU.latest +
@@ -15854,8 +15364,7 @@ function renderSu() {
   if (note) note.textContent = t(SU.note || "");
   const b = $("su-check");
   if (b) b.disabled = false;
-  // 桌面模式「升级到新版」（npm 覆盖安装）仍隐藏：那是 npm 模式专用按钮，
-  // 桌面的「立即更新」走 suApply 的 desktop-shell 分支（壳热更新）。
+  // 桌面模式「升级到新版」永远不可用（apply 恒 400）：有新版也只走下载页。
   $("su-apply").classList.toggle("hidden", !SU.has_update || SU.mode === "desktop");
   renderUpdPill();
 }
@@ -16101,43 +15610,11 @@ function suWaitForAutoRestart() {
 }
 
 async function suApply() {
-  const desktop = SU && SU.mode === "desktop";
-  if (!(await uiConfirm(desktop
-      ? t("将自动下载并热更新引擎（约 1-2 分钟），完成后服务自动重启，任务与配置保留。现在开始？")
-      : t("升级会下载并安装最新版（约 1-2 分钟），期间服务继续可用。现在开始？"),
+  if (!(await uiConfirm(t("升级会下载并安装最新版（约 1-2 分钟），期间服务继续可用。现在开始？"),
       { ok: t("开始升级") }))) return;
   const prog = $("su-progress");
   try {
     const r = await api("/api/selfupdate/apply", { method: "POST", body: JSON.stringify({}) });
-    $("su-apply").disabled = true;
-    if (desktop && r.mode === "desktop-shell") {
-      // 壳热更新：无 mgmt run 可轮询——改轮询自更新状态，引擎热替换重启后
-      // has_update 翻 false 即成功（中途连接抖动是重启必经，忽略继续轮询）。
-      const target = r.version;
-      if (prog) prog.textContent = t("正在下载并热更新引擎，完成后自动重连…");
-      toast(t("引擎更新已开始"));
-      clearInterval(SU_TIMER);
-      const deadline = Date.now() + 10 * 60 * 1000;
-      SU_TIMER = setInterval(async () => {
-        if (Date.now() > deadline) {
-          clearInterval(SU_TIMER); SU_TIMER = null;
-          $("su-apply").disabled = false;
-          if (prog) prog.textContent = t("更新超时，请稍后重试或从下载页获取安装包");
-          return;
-        }
-        try {
-          const d = await api("/api/selfupdate");
-          if (d && d.current === target) {
-            clearInterval(SU_TIMER); SU_TIMER = null;
-            $("su-apply").disabled = false;
-            if (prog) prog.textContent = "";
-            toast(t("引擎已更新到新版本"));
-            renderSu();
-          }
-        } catch (e) { /* 引擎重启瞬间的连接抖动，继续轮询 */ }
-      }, 3000);
-      return;
-    }
     toast(t("升级已开始，日志见运行记录"));
     const runId = r.run_id;
     $("su-apply").disabled = true;
@@ -18222,36 +17699,12 @@ document.addEventListener("DOMContentLoaded", () => {
    * 等显式入口各自直接写字段值，不跨刷新持久化。清掉旧版残留键，避免误解为默认选中。 */
   localStorage.removeItem("orch.workdir");
   // 附件：按钮选文件 + 目标框粘贴截图；工作目录变化时探测 git 仓库（代码版本下拉）
-  $("btn-attach").addEventListener("click", (event) => { event.stopPropagation(); cmpAddMenu(); });
+  $("btn-attach").addEventListener("click", () => $("f-attach-file").click());
   $("change-summary-open").addEventListener("click", openChangeSummaryGit);
   $("change-summary-more").addEventListener("click", openChangeSummaryGit);
-  $("cmp-add-menu").addEventListener("click", (event) => {
-    const action = event.target.closest("[data-add-action]");
-    const plugin = event.target.closest("[data-add-plugin]");
-    if (action) cmpAddAction(action.dataset.addAction);
-    else if (plugin) cmpAddPlugin(plugin.dataset.addPlugin);
-  });
-  document.addEventListener("click", (event) => {
-    if (!event.target.closest(".cmp-add-wrap")) cmpAddMenu(false);
-  });
-  document.addEventListener("keydown", (event) => { if (event.key === "Escape") cmpAddMenu(false); });
-  cmpSyncPlanMode();
   $("f-attach-file").addEventListener("change", (e) => {
     addAttachFiles(Array.from(e.target.files || []));
     e.target.value = "";  // 允许重复选同一个文件
-  });
-  $("f-attach-folder").addEventListener("change", (e) => {
-    const files = Array.from(e.target.files || []).map((file) => {
-      const raw = String(file.webkitRelativePath || file.name).replace(/\\/g, "/");
-      const bits = raw.split("/").filter(Boolean);
-      const rel = bits.slice(0, -1).join("/");
-      const named = new File([file], bits[bits.length - 1] || file.name,
-        { type: file.type, lastModified: file.lastModified });
-      named.codebeeRelativePath = rel;
-      return named;
-    });
-    addAttachFiles(files, { quiet: true });
-    e.target.value = "";
   });
   const attChipBox = $("att-chips");
   if (attChipBox) attChipBox.addEventListener("click", (e) => {

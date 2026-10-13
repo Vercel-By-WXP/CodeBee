@@ -7,33 +7,6 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 
-const REGISTRY_TARBALL = version => `https://registry.npmjs.org/codebee/-/codebee-${version}.tgz`;
-
-function downloadTo(url, dest, timeout) {
-  return new Promise((resolve, reject) => {
-    const get = (target, redirects) => {
-      const request = http.get(target, { timeout }, response => {
-        if (response.statusCode >= 300 && response.statusCode < 400 &&
-            response.headers.location && redirects > 0) {
-          response.resume();
-          return get(new URL(response.headers.location, target).toString(), redirects - 1);
-        }
-        if (response.statusCode !== 200) {
-          response.resume();
-          return reject(new Error(`引擎下载失败 HTTP ${response.statusCode}`));
-        }
-        const file = fs.createWriteStream(dest);
-        response.pipe(file);
-        file.on('finish', () => file.close(resolve));
-        file.on('error', reject);
-      });
-      request.on('timeout', () => request.destroy(new Error('引擎下载超时')));
-      request.on('error', reject);
-    };
-    get(url, 4);
-  });
-}
-
 function requestJSON(origin, endpoint, secret, body) {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? undefined : JSON.stringify(body);
@@ -165,13 +138,6 @@ class Backend extends EventEmitter {
               this.stopping = true; // Sidecar exits 0 after handing over; never "unexpected".
               resolve(this.origin);
             } catch (error) { tail = error.message; }
-          } else if (line.startsWith('CODEBEE_DESKTOP_APPLY ')) {
-            try {
-              const message = JSON.parse(line.slice('CODEBEE_DESKTOP_APPLY '.length));
-              const version = String(message.version || '');
-              if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Invalid apply payload');
-              this.emit('apply-update', { version });
-            } catch { /* Malformed sidecar output is not an action. */ }
           } else if (line.startsWith('CODEBEE_DESKTOP_PICK ')) {
             try { this.emit('pick', JSON.parse(line.slice('CODEBEE_DESKTOP_PICK '.length))); }
             catch { /* Malformed sidecar output is not a native action. */ }
@@ -204,61 +170,6 @@ class Backend extends EventEmitter {
 
   replyPick(id, selectedPath) {
     if (this.child?.stdin.writable) this.child.stdin.write(JSON.stringify({ id, path: selectedPath }) + '\n');
-  }
-
-  /* Desktop hot update: pull the engine tarball from the npm registry and
-   * swap resources/codebee/app, then the caller restarts this sidecar.
-   * Must be called with the sidecar still up (it verifies the version);
-   * the swap itself happens after this.stop() below (file locks on Windows). */
-  async hotUpdate(version, onProgress) {
-    const note = text => { try { onProgress(String(text)); } catch { /* noop */ } };
-    const staging = path.join(this.dataDir, 'update-staging');
-    fs.rmSync(staging, { recursive: true, force: true });
-    fs.mkdirSync(staging, { recursive: true });
-    const tgz = path.join(staging, `codebee-${version}.tgz`);
-    note(`下载引擎 v${version}…`);
-    await downloadTo(REGISTRY_TARBALL(version), tgz, 600000);
-    if (fs.statSync(tgz).size < 100000) throw new Error('引擎包异常（过小），已取消更新');
-    note('校验并解压引擎…');
-    await new Promise((resolve, reject) => {
-      // The bundled interpreter doubles as the extraction tool: tarfile is
-      // stdlib on every supported runtime (3.8 embeddable included).
-      const extract = spawn(this.python, ['-E', '-s', '-X', 'utf8', '-c',
-        'import sys, tarfile; t = tarfile.open(sys.argv[1]); members = [m for m in t.getmembers() if m.name == "package" or m.name.startswith("package/")]; [t.extract(m, sys.argv[2]) for m in members]; t.close()',
-        tgz, staging], { cwd: this.dataDir, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
-      let err = '';
-      extract.stderr.on('data', chunk => { err += chunk.toString('utf8'); });
-      extract.on('exit', code => code === 0
-        ? resolve()
-        : reject(new Error('引擎包解压失败: ' + err.slice(-400))));
-    });
-    const pkg = path.join(staging, 'package');
-    for (const marker of [path.join(pkg, 'app', 'main.py'), path.join(pkg, 'package.json')]) {
-      if (!fs.existsSync(marker)) throw new Error('引擎包内容异常（缺 ' + path.basename(marker) + '）');
-    }
-    const bumped = JSON.parse(fs.readFileSync(path.join(pkg, 'package.json'), 'utf8')).version;
-    if (bumped !== version) throw new Error(`引擎包版本不符（${bumped} ≠ ${version}）`);
-    note('停止旧引擎并替换文件…');
-    await this.stop();   // drains; rejects when tasks are still running
-    const appDir = path.dirname(this.script);
-    const rootDir = path.dirname(appDir);
-    const backup = path.join(rootDir, 'app.bak-' + Date.now());
-    fs.rmSync(backup, { recursive: true, force: true });
-    fs.renameSync(appDir, backup);
-    try {
-      fs.renameSync(path.join(pkg, 'app'), appDir);
-      for (const name of ['package.json', 'CHANGELOG.md']) {
-        const from = path.join(pkg, name);
-        if (fs.existsSync(from)) fs.copyFileSync(from, path.join(rootDir, name));
-      }
-    } catch (error) {
-      fs.rmSync(appDir, { recursive: true, force: true });
-      if (!fs.existsSync(appDir)) fs.renameSync(backup, appDir);
-      await this.start();
-      throw error;
-    }
-    fs.rmSync(staging, { recursive: true, force: true });
-    note('启动新引擎…');
   }
 
   async stop(force = false) {

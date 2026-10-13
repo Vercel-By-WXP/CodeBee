@@ -233,26 +233,7 @@ def main() -> None:
                                     "events": events})
 
         def _route_post(self):
-            apply_path = urlparse(self.path).path
-            if apply_path == "/api/selfupdate/apply":
-                # 桌面模式：引擎不能 npm 自升级，把意图移交给壳——壳从 registry
-                # 拉 tarball 热替换 app/ 并重启本 sidecar（渲染层拿 started 轮询）。
-                if not self._desktop_authed():
-                    return self._json(403, {"error": "desktop authorization required"})
-                latest = os.environ.get("TUTTI_SELFUPDATE_FAKE_LATEST", "")
-                if not latest:
-                    try:
-                        from core import selfupdate
-                        latest = str(selfupdate.check().get("latest") or "")
-                    except Exception:
-                        latest = ""
-                if not latest:
-                    return self._json(409, {"error": "未能获取最新版本号，请稍后再试"})
-                print("CODEBEE_DESKTOP_APPLY " + json.dumps(
-                    {"version": latest}), flush=True)
-                return self._json(200, {"ok": True, "mode": "desktop-shell",
-                                        "version": latest})
-            if apply_path != "/api/desktop/shutdown":
+            if urlparse(self.path).path != "/api/desktop/shutdown":
                 return super()._route_post()
             if not self._desktop_authed():
                 return self._json(403, {"error": "desktop authorization required"})

@@ -2819,7 +2819,7 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
 .cmp-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 0 4px; }
 .cmp-bar .att-strip { margin-top: 0; }
 .cmp-send { display: flex; align-items: center; gap: 10px; margin-left: auto; }
-#btn-create.round { width: 34px; height: 34px; border-radius: 50%; padding: 0; display: inline-flex;
+#btn-create.round { width: 34px; height: 34px; min-height: 0; border-radius: 50%; padding: 0; display: inline-flex;
   align-items: center; justify-content: center; flex: none; }
 #btn-create.round .ico { width: 17px; height: 17px; }
 /* 快捷类型 chips：内置流程一键选定（选中态 .on） */
@@ -3185,11 +3185,11 @@ details.chat-think[open] > summary { border-bottom: 1px dashed var(--border-stro
   min-height: 44px; max-height: 160px; overflow-y: auto; box-sizing: border-box; }
 .rd-chat-bar textarea:hover, .rd-chat-bar textarea:focus { border: none; box-shadow: none; }
 .rd-chat-tools { display: flex; align-items: center; gap: 8px; padding: 0 2px; flex-wrap: wrap; }
-/* 附件：圆形 + 按钮（Kimi 式左下角） */
-.rd-chat-tools #rd-chat-attach { width: 30px; height: 30px; border-radius: 50%; padding: 0;
+/* 附件：圆形 + 按钮（Kimi 式左下角）；min-height:0 抵消 button-reference 的兜底 34px，否则 50% 圆被拉成椭圆 */
+.rd-chat-tools #rd-chat-attach { width: 30px; height: 30px; min-height: 0; border-radius: 50%; padding: 0;
   display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .rd-chat-tools #rd-chat-attach .ico { width: 16px; height: 16px; }
-.rd-chat-tools .primary.round { width: 32px; height: 32px; border-radius: 50%; padding: 0;
+.rd-chat-tools .primary.round { width: 32px; height: 32px; min-height: 0; border-radius: 50%; padding: 0;
   display: inline-flex; align-items: center; justify-content: center; margin-left: auto; }
 .rd-chat-tools .primary.round .ico { width: 16px; height: 16px; }
 @media (max-width: 720px) {
