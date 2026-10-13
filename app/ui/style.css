@@ -8434,3 +8434,31 @@ button.ghost, button.primary, button.danger { font-size: 13px; font-weight: 550;
   #run-detail .report { overflow-wrap: anywhere; }
   #run-detail .rd-main { overflow-x: clip; }
 }
+
+/* Keep task metadata on demand without making the narrow-screen rail grow
+   into a second page. Float it over the current content and hide its scrollbar. */
+@media (max-width: 980px) {
+  #rd-railcol { overflow: visible; }
+  #run-detail #rd-rail { overflow: visible; }
+  #run-detail #rd-rail > .detail-head > .rd-meta-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 40;
+    width: min(470px, calc(100vw - 42px));
+    max-height: min(56dvh, 360px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    background: var(--bg);
+    box-shadow: 0 14px 36px color-mix(in srgb, #000 18%, transparent);
+  }
+  #run-detail #rd-rail > .detail-head > .rd-meta-popover::-webkit-scrollbar { display: none; }
+  #run-detail .rd-meta-popover .rd-meta-strip { min-width: 0; flex-wrap: wrap; }
+  #run-detail .rd-meta-popover #rd-overview {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  #run-detail .rd-meta-popover #rd-overview > * { min-width: 0; }
+}

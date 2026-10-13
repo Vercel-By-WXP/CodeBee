@@ -126,6 +126,32 @@ try {
     await browser.send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 600, deviceScaleFactor: 1, mobile: false });
     assert.ok(await ev("document.querySelector('.rd-chat-bar').getBoundingClientRect().bottom <= innerHeight"), 'short-window composer visible');
     assert.ok(await ev("getComputedStyle(document.getElementById('rd-rail')).overflowY === 'auto'"), 'short-window task actions scroll');
+    await browser.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await ev("document.documentElement.dataset.theme='light'; document.documentElement.dataset.skin='classic'");
+    const railHeightBeforeInfo = await ev("Math.round(document.getElementById('rd-rail').getBoundingClientRect().height)");
+    await ev("document.getElementById('rd-more-toggle').click()");
+    await sleep(100);
+    const infoLayout = await ev(`(() => {
+      const rail = document.getElementById('rd-rail').getBoundingClientRect();
+      const pop = document.getElementById('rd-meta-popover');
+      const box = pop.getBoundingClientRect();
+      return {railHeight: Math.round(rail.height), popPosition: getComputedStyle(pop).position,
+        railOverflow: getComputedStyle(document.getElementById('rd-rail')).overflow,
+        railcolOverflow: getComputedStyle(document.getElementById('rd-railcol')).overflow,
+        popWidth: Math.round(box.width), popScrollWidth: pop.scrollWidth, popClientWidth: pop.clientWidth,
+        background: getComputedStyle(pop).backgroundColor,
+        scrollbar: getComputedStyle(pop).scrollbarWidth, docWidth: document.documentElement.scrollWidth};
+    })()`);
+    console.log('mobile task info', JSON.stringify(infoLayout));
+    assert.equal(infoLayout.popPosition, 'absolute', 'mobile task information floats over rail content');
+    assert.equal(infoLayout.railHeight, railHeightBeforeInfo, 'opening task information does not increase rail height');
+    assert.ok(infoLayout.popWidth <= 350, 'task information fits a narrow viewport');
+    assert.ok(infoLayout.popScrollWidth <= infoLayout.popClientWidth + 1, 'task information has no horizontal overflow');
+    assert.ok(!infoLayout.background.startsWith('rgba('), 'task information uses an opaque canvas background');
+    assert.equal(infoLayout.scrollbar, 'none', 'task information hides its visual scrollbar');
+    assert.ok(infoLayout.docWidth <= 391, 'mobile details have no page horizontal overflow');
+    await capture('mobile-task-info');
+    await ev("document.getElementById('rd-more-close').click()");
     await browser.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
     await ev("switchTab('agents')");
     const settingsLayout = await ev(`(() => {
