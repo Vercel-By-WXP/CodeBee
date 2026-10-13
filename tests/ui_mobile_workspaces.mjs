@@ -145,7 +145,7 @@ try {
   await evalJs('exitSettings();');
   await send("Emulation.clearDeviceMetricsOverride"); await sleep(200);
   await evalJs('document.body.classList.remove("side-collapsed");');
-  check("恢复桌面三列并显示原输入页", await evalJs('getComputedStyle(document.getElementById("app")).gridTemplateColumns.startsWith("46px ") && getComputedStyle(document.getElementById("mobile-workspaces")).display === "none" && getComputedStyle(document.getElementById("btn-mobile-workspaces")).display === "none" && document.querySelector(".composer").getBoundingClientRect().width > 0'));
+  check("恢复桌面三列并显示原输入页", await evalJs('getComputedStyle(document.getElementById("app")).gridTemplateColumns.startsWith("52px ") && getComputedStyle(document.getElementById("mobile-workspaces")).display === "none" && getComputedStyle(document.getElementById("btn-mobile-workspaces")).display === "none" && document.querySelector(".composer").getBoundingClientRect().width > 0'));
   await screenshot("mobile-desktop-regression.png");
   await resize(390); await sleep(150);
   check("桌面缩回手机自动收起导航", await evalJs('document.body.classList.contains("side-collapsed")'));

@@ -129,10 +129,6 @@
     background: var(--panel);
     box-shadow: var(--shadow);
   }
-  #run-detail.chat-mode .rd-chat-bar:focus-within {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
-  }
   .rd-chat-bar textarea { min-height: 62px; font-size: 14px; }
   .rd-chat-tools { gap: 6px; }
   .rd-chat-tools .cmp-sel { background: transparent; border-color: transparent; }
@@ -169,6 +165,66 @@
     #run-detail.chat-mode .rd-chat-bar { width: calc(100% - 16px); }
     #run-detail.chat-mode #rd-rail { padding: 12px; }
     .rd-chat-tools .rd-hint { flex-basis: 100%; }
+  }
+}
+
+/* Task details on compact screens: keep the popover readable while removing
+ * duplicate labels and excess card padding that cover the conversation. */
+@media (max-width: 980px) {
+  #run-detail #rd-rail > .detail-head > .rd-meta-popover {
+    width: min(430px, calc(100vw - 42px));
+    padding: 10px 12px 11px;
+    border-radius: 12px;
+    overflow-x: hidden;
+  }
+
+  #run-detail .rd-meta-popover,
+  #run-detail .rd-meta-popover * { min-width: 0; box-sizing: border-box; }
+
+  #run-detail .rd-meta-popover .rd-meta-strip {
+    gap: 4px 10px;
+    margin-top: 5px;
+    padding-bottom: 7px;
+  }
+  #run-detail .rd-meta-popover .rd-meta-strip .stat {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-size: 10.5px;
+  }
+
+  #run-detail .rd-meta-popover .rd-timeout-row {
+    gap: 7px;
+    padding: 6px 0;
+  }
+  #run-detail .rd-meta-popover .rd-timeout-row select {
+    min-width: 0;
+    max-width: 58%;
+  }
+
+  #run-detail .rd-meta-popover #rd-overview {
+    gap: 6px 10px;
+    margin-top: 7px;
+  }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-title { display: none; }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-goal {
+    display: -webkit-box;
+    overflow: hidden;
+    margin-top: 0;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow-wrap: anywhere;
+  }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-state { min-width: 60px; }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-state .state-value { font-size: 15px; }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-progress { height: 4px; }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-facts {
+    gap: 3px 9px;
+    overflow-wrap: anywhere;
+    font-size: 10.5px;
+  }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-actions button {
+    padding: 3px 7px;
+    font-size: 10.5px;
   }
 }
 
@@ -232,8 +288,7 @@
   }
 
   .rail-btn.active,
-  .rail-btn:hover,
-  .rail-btn:focus-visible {
+  .rail-btn:hover {
     color: var(--cb-active-text);
     background: color-mix(in srgb, var(--cb-active) 75%, var(--panel));
     box-shadow: none;
@@ -368,11 +423,6 @@
     box-shadow: 0 3px 12px rgba(20, 28, 38, .07);
   }
 
-  #run-detail.chat-mode .rd-chat-bar:focus-within {
-    border-color: var(--cb-focus);
-    box-shadow: 0 0 0 3px var(--cb-focus-ring);
-  }
-
   #run-detail.chat-mode > #rd-railcol,
   main.chat-fill #run-detail.chat-mode > #rd-railcol {
     align-self: start;
@@ -458,8 +508,7 @@
   }
 
   html[data-theme="dark"] .rail-btn.active,
-  html[data-theme="dark"] .rail-btn:hover,
-  html[data-theme="dark"] .rail-btn:focus-visible {
+  html[data-theme="dark"] .rail-btn:hover {
     color: #9fc3f5;
     background: #303943;
   }
@@ -499,7 +548,6 @@
   html[data-theme="dark"] .chat-bubble.me { background: #30353b; border-color: #424a54; }
   html[data-theme="dark"] .chat-avatar { background: #303943; border-color: #4b5867; color: #b5d1f5; }
   html[data-theme="dark"] #run-detail.chat-mode .rd-chat-bar { border-color: #4a535e; box-shadow: 0 3px 14px rgba(0, 0, 0, .24); }
-  html[data-theme="dark"] #run-detail.chat-mode .rd-chat-bar:focus-within { border-color: #7098cc; }
   html[data-theme="dark"] #rd-rail > #rd-tabs,
   html[data-theme="dark"] #rd-rail > #rd-chat-nav { border-top-color: #3b424a; }
   html[data-theme="dark"] #rd-rail > #rd-tabs .rd-tab.active,
@@ -556,11 +604,6 @@
     border-color: transparent;
     border-radius: 10px;
     background: var(--panel2);
-  }
-
-  .settings-search-wrap:focus-within {
-    border-color: var(--cb-focus);
-    box-shadow: 0 0 0 3px var(--cb-focus-ring);
   }
 
   .settings-search-wrap kbd { background: var(--panel); }
@@ -846,6 +889,8 @@
     padding: 10px 12px;
     border-radius: 20px;
   }
+  html[data-theme="light"] #run-detail.chat-mode .rd-chat-bar,
+  html[data-theme="dark"] #run-detail.chat-mode .rd-chat-bar { border-radius: 20px; }
   .rd-chat-bar textarea { min-height: 58px; }
   .chat-bubble.me { border-radius: 16px; padding: 11px 15px; }
 
@@ -870,157 +915,6 @@
       width: calc(100% - 24px);
       max-width: calc(var(--workbench-reading-width) - 24px);
     }
-  }
-}
-
-/* Codex-style compact navigation: keep the task tree scannable without
- * turning every action into a floating card. This is desktop-only so the
- * touch-sized mobile drawer remains unchanged. */
-@media (min-width: 901px) {
-  #sidebar {
-    padding: 0 8px;
-  }
-
-  .brand-row {
-    min-height: 44px;
-    margin: 0 -8px;
-    padding: 0 10px;
-  }
-
-  .brand-name { font-size: 14px; }
-  .brand-mode { font-size: 11px; }
-  .brand-tool { width: 28px; height: 28px; }
-
-  .side-main > .new-task {
-    min-height: 32px;
-    margin: 8px 0 8px;
-    padding: 5px 8px;
-    border: 0;
-    border-radius: 7px;
-    background: transparent;
-    box-shadow: none;
-    font-size: 13px;
-  }
-
-  .side-main > .new-task:hover {
-    background: var(--cb-hover);
-    box-shadow: none;
-  }
-
-  .side-quick { gap: 1px; }
-  .side-quick .qitem {
-    min-height: 30px;
-    padding: 5px 8px;
-    border-radius: 7px;
-    font-size: 12px;
-  }
-  .side-quick .qitem .ico { width: 14px; height: 14px; }
-
-  .side-section { margin-top: 10px; }
-  .side-label-row {
-    min-height: 28px;
-    margin-bottom: 2px;
-    border-bottom: 0;
-  }
-  .side-label-row .side-label {
-    padding-left: 8px;
-    font-size: 11px;
-    font-weight: 600;
-  }
-  .side-label-row .foot-btn { width: 22px; height: 22px; }
-
-  .side-tasks { gap: 0; padding: 0; }
-  .sdir summary,
-  .stask {
-    min-height: 29px;
-    padding: 4px 8px;
-    border-radius: 6px;
-    font-size: 12.5px;
-  }
-  .sdir summary { gap: 5px; font-weight: 600; }
-  .sdir > .dirbody {
-    margin: 0 0 4px 12px;
-    padding-left: 5px;
-  }
-  .stask { gap: 7px; }
-  .stask .tm { font-size: 10.5px; }
-  .stask-more { width: 22px; height: 22px; }
-  .sdir summary .cnt { line-height: 14px; padding-inline: 5px; }
-
-  .stask.active {
-    color: var(--text);
-    background: var(--cb-hover);
-    box-shadow: inset 2px 0 0 var(--cb-accent);
-  }
-  .stask.active .sglyph { color: var(--cb-accent); }
-
-  .side-usage {
-    margin-inline: 0;
-    padding: 9px 8px;
-    border-radius: 7px;
-    background: transparent;
-  }
-
-  .side-foot { padding-top: 7px; margin-top: 7px; }
-}
-
-/* Task details on compact screens: keep the popover readable while removing
- * duplicate labels and excess card padding that cover the conversation. */
-@media (max-width: 980px) {
-  #run-detail #rd-rail > .detail-head > .rd-meta-popover {
-    width: min(430px, calc(100vw - 42px));
-    padding: 10px 12px 11px;
-    border-radius: 12px;
-    overflow-x: hidden;
-  }
-
-  #run-detail .rd-meta-popover,
-  #run-detail .rd-meta-popover * { min-width: 0; box-sizing: border-box; }
-
-  #run-detail .rd-meta-popover .rd-meta-strip {
-    gap: 4px 10px;
-    margin-top: 5px;
-    padding-bottom: 7px;
-  }
-  #run-detail .rd-meta-popover .rd-meta-strip .stat {
-    max-width: 100%;
-    overflow-wrap: anywhere;
-    font-size: 10.5px;
-  }
-
-  #run-detail .rd-meta-popover .rd-timeout-row {
-    gap: 7px;
-    padding: 6px 0;
-  }
-  #run-detail .rd-meta-popover .rd-timeout-row select {
-    min-width: 0;
-    max-width: 58%;
-  }
-
-  #run-detail .rd-meta-popover #rd-overview {
-    gap: 6px 10px;
-    margin-top: 7px;
-  }
-  #run-detail .rd-meta-popover #rd-overview .rd-overview-title { display: none; }
-  #run-detail .rd-meta-popover #rd-overview .rd-overview-goal {
-    display: -webkit-box;
-    overflow: hidden;
-    margin-top: 0;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    overflow-wrap: anywhere;
-  }
-  #run-detail .rd-meta-popover #rd-overview .rd-overview-state { min-width: 60px; }
-  #run-detail .rd-meta-popover #rd-overview .rd-overview-state .state-value { font-size: 15px; }
-  #run-detail .rd-meta-popover #rd-overview .rd-overview-progress { height: 4px; }
-  #run-detail .rd-meta-popover #rd-overview .rd-overview-facts {
-    gap: 3px 9px;
-    overflow-wrap: anywhere;
-    font-size: 10.5px;
-  }
-  #run-detail .rd-meta-popover #rd-overview .rd-overview-actions button {
-    padding: 3px 7px;
-    font-size: 10.5px;
   }
 }
 
@@ -1115,5 +1009,182 @@
     #run-detail.chat-mode .rd-chat-flow { padding-inline: 14px; }
     #run-detail.chat-mode .rd-chat-bar { width: min(740px, calc(100% - 24px)); }
     main.chat-fill #run-detail.chat-mode #rd-rail { padding: 10px; }
+  }
+}
+
+/* Reference pass: the command menu and top-level chrome use the quiet,
+ * compact proportions of the supplied desktop references. */
+@media (min-width: 901px) {
+  .ctx-menu {
+    min-width: 216px;
+    padding: 7px;
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+
+  .ctx-item {
+    min-height: 34px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .ctx-item:hover { background: var(--panel2); color: var(--text); }
+  .ctx-item.danger { color: var(--bad); }
+  .ctx-sep { margin: 5px 3px; background: var(--border); }
+
+  .topbar {
+    height: 56px;
+    min-height: 56px;
+    padding-inline: 18px;
+    background: var(--panel);
+    border-bottom-color: var(--border);
+  }
+
+  .topbar .icon-btn { width: 30px; height: 30px; border-radius: 8px; }
+  .topbar .page-title { font-size: 14px; font-weight: 650; }
+  .top-actions { gap: 2px; }
+  .top-actions .pill { width: 32px; height: 32px; padding: 0; justify-content: center; border: 0; border-radius: 9px; }
+  .top-actions .conn { margin-left: 6px; padding: 5px 10px; border-radius: 999px; }
+
+  html[data-theme] #run-detail.chat-mode .rd-chat-bar { border-radius: 20px; }
+}
+
+@media (min-width: 901px) {
+  html[data-theme="dark"] .ctx-menu {
+    border-color: var(--border-strong);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+  html[data-theme="dark"] .ctx-item { color: var(--text); }
+  html[data-theme="dark"] .ctx-item:hover { background: var(--panel2); }
+  html[data-theme="dark"] .ctx-sep { background: var(--border); }
+  html[data-theme="dark"] .topbar { background: var(--panel); border-bottom-color: var(--border); }
+}
+
+/* Compact task navigation should be the last desktop override so it stays
+ * consistent with the supplied Codex sidebar references. */
+@media (min-width: 901px) {
+  #sidebar { padding-inline: 8px; }
+  .brand-row {
+    min-height: 44px;
+    margin-inline: -8px;
+    padding-inline: 10px;
+  }
+  .brand-name { font-size: 14px; }
+  .brand-mode { font-size: 11px; }
+  .brand-tool { width: 28px; height: 28px; }
+  .side-main > .new-task {
+    min-height: 32px;
+    margin: 8px 0;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    box-shadow: none;
+    font-size: 13px;
+  }
+  .side-main > .new-task:hover { background: var(--cb-hover); box-shadow: none; }
+  .side-quick { gap: 1px; }
+  .side-quick .qitem {
+    min-height: 30px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    font-size: 12px;
+  }
+  .side-quick .qitem .ico { width: 14px; height: 14px; }
+  .side-section { margin-top: 10px; }
+  .side-label-row {
+    min-height: 28px;
+    margin-bottom: 2px;
+    border-bottom: 0;
+  }
+  .side-label-row .side-label {
+    padding-left: 8px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .side-label-row .foot-btn { width: 22px; height: 22px; }
+  .side-tasks { gap: 0; padding: 0; }
+  .sdir summary,
+  .stask {
+    min-height: 29px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 12.5px;
+  }
+  .sdir summary { gap: 5px; font-weight: 600; }
+  .sdir > .dirbody { margin: 0 0 4px 12px; padding-left: 5px; }
+  .stask { gap: 7px; }
+  .stask .tm { font-size: 10.5px; }
+  .stask-more { width: 22px; height: 22px; }
+  .sdir summary .cnt { line-height: 14px; padding-inline: 5px; }
+  .stask.active {
+    color: var(--text);
+    background: var(--cb-hover);
+    box-shadow: inset 2px 0 0 var(--cb-accent);
+  }
+  .stask.active .sglyph { color: var(--cb-accent); }
+  .side-usage {
+    margin-inline: 0;
+    padding: 9px 8px;
+    border-radius: 7px;
+    background: transparent;
+  }
+  .side-foot { padding-top: 7px; margin-top: 7px; }
+}
+
+/* Accessibility and content-width corrections for the compact desktop pass. */
+@media (min-width: 901px) {
+  /* Only icon-only controls collapse to a square; update and operation pills
+   * retain their labels when they become visible. */
+  .top-actions .pill.icon-only {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    justify-content: center;
+    border: 0;
+    border-radius: 9px;
+  }
+  .top-actions .pill:not(.icon-only) {
+    width: auto;
+    min-width: 0;
+    height: 32px;
+    padding-inline: 9px;
+    justify-content: flex-start;
+    border: 0;
+    border-radius: 9px;
+  }
+
+  /* The global stylesheet intentionally removes the generic focus ring; the
+   * navigation rail still needs a visible keyboard state. */
+  .rail-btn:focus-visible,
+  .brand-tool:focus-visible,
+  .stask:focus-visible,
+  .sdir > summary:focus-visible {
+    outline: 2px solid var(--cb-accent) !important;
+    outline-offset: -2px !important;
+  }
+
+  /* Keep the command menu and connection badge on the active theme tokens. */
+  .ctx-menu {
+    border-color: var(--border-strong);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+  .ctx-item { color: var(--text); }
+  .ctx-item:hover { background: var(--panel2); color: var(--text); }
+  .ctx-sep { background: var(--border); }
+  .top-actions .conn.ok {
+    background: color-mix(in srgb, var(--ok) 12%, var(--panel));
+    color: var(--ok);
+  }
+  .top-actions .conn.bad {
+    background: color-mix(in srgb, var(--bad) 12%, var(--panel));
+    color: var(--bad);
   }
 }

@@ -67,11 +67,24 @@ try {
     const body = getComputedStyle(document.body);
     const hero = getComputedStyle(document.querySelector('#sub-tasks .hero'));
     const task = getComputedStyle(document.querySelector('.stask'));
+    const newTask = getComputedStyle(document.getElementById('btn-new-task'));
+    const hasFocusRule = rules => Array.from(rules || []).some(rule =>
+      rule.selectorText?.includes('.rail-btn:focus-visible') || hasFocusRule(rule.cssRules));
+    const railFocusRule = Array.from(document.styleSheets).some(sheet => {
+      try { return hasFocusRule(sheet.cssRules); } catch { return false; }
+    });
+    const iconPill = getComputedStyle(document.getElementById('btn-board'));
+    const textPillEl = document.getElementById('btn-ops');
+    textPillEl.classList.remove('hidden');
+    textPillEl.querySelector('#op-pill-text').textContent = '操作状态';
+    const textPill = getComputedStyle(textPillEl);
     return { rail: Math.round(rail.width), sidebar: Math.round(sidebar.width), bg: root.getPropertyValue('--cb-canvas').trim(),
       detail: getComputedStyle(document.getElementById('run-detail')).borderRadius,
       composerRadius: getComputedStyle(document.querySelector('.rd-chat-bar')).borderRadius,
       topbarHeight: Math.round(document.querySelector('.topbar').getBoundingClientRect().height),
-      bodyFont: body.fontFamily, bodySize: parseFloat(body.fontSize), heroSize: parseFloat(hero.fontSize), taskSize: parseFloat(task.fontSize) };
+      bodyFont: body.fontFamily, bodySize: parseFloat(body.fontSize), heroSize: parseFloat(hero.fontSize), taskSize: parseFloat(task.fontSize),
+      taskRowMinHeight: parseFloat(task.minHeight), newTaskBorder: newTask.borderTopWidth, iconPillWidth: parseFloat(iconPill.width),
+      textPillWidth: parseFloat(textPill.width), railFocusRule };
   })()`);
   assert.equal(shell.rail, 52, 'Codex shell keeps a 52px navigation rail');
   assert.equal(shell.sidebar, 288, 'Codex shell keeps a 288px task sidebar');
@@ -83,6 +96,11 @@ try {
   assert.equal(shell.bodySize, 14, 'desktop body text uses the Codex 14px baseline');
   assert.ok(shell.heroSize >= 26 && shell.heroSize <= 32, 'new-task title stays in the Codex 26-32px range');
   assert.ok(shell.taskSize >= 12.5 && shell.taskSize <= 14, 'sidebar task text stays in the Codex compact range');
+  assert.equal(shell.taskRowMinHeight, 29, 'sidebar task rows stay compact at 29px');
+  assert.equal(shell.newTaskBorder, '0px', 'new-chat entry is a quiet list action');
+  assert.equal(shell.iconPillWidth, 32, 'icon-only topbar controls stay square');
+  assert.ok(shell.textPillWidth > shell.iconPillWidth, 'text-bearing topbar pills keep content sizing');
+  assert.equal(shell.railFocusRule, true, 'desktop navigation keeps a visible keyboard focus ring');
   console.log('Codex shell', JSON.stringify(shell));
   const capture = async name => {
     const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
