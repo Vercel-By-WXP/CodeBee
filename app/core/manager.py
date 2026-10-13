@@ -138,6 +138,7 @@ def detect_entry(entry):
 def _orphan_signature(cl):
     """「Tutti 专属调用签名」判定（两个平台的清扫共用）。"""
     return (("opencode" in cl and "--model" in cl)
+            or ("opencode" in cl and "--version" in cl)
             or ("codex" in cl and "--skip-git-repo-check" in cl)
             or ("kimi-code" in cl and "main.mjs" in cl))
 
@@ -220,6 +221,37 @@ def sweep_orphan_cli_processes():
         return 0
 
 
+SWEEP_INTERVAL_S = 900   # 常驻清扫周期：15 分钟
+
+_SWEEP_STARTED = False
+
+
+def run_orphan_sweep_forever(interval=SWEEP_INTERVAL_S):
+    """常驻定时清扫：先睡一个周期再扫（启动那一轮由调用方立即执行）。
+
+    启动清扫只兜「服务重启孤儿化」；长跑的服务自己也会积僵尸——2026-10-13
+    实案：版本探测的 npm cmd 垫片超时只杀 cmd，opencode 孙进程变孤儿，一
+    个上午挂了 18 个。杀树已修到探测根上（见 version_of），这里只做兜底网：
+    旁路 spawn 的漏网僵尸最多活一个周期。幂等：重复调用只起一条线程。"""
+    global _SWEEP_STARTED
+    if _SWEEP_STARTED:
+        return
+    _SWEEP_STARTED = True
+
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                n = sweep_orphan_cli_processes()
+                if n:
+                    print("[CodeBee] 定时清扫：%d 个孤儿 CLI 进程（opencode/codex/kimi）"
+                          % n, flush=True)
+            except Exception:
+                pass
+
+    threading.Thread(target=_loop, name="orphan-sweep-loop", daemon=True).start()
+
+
 def detect_all(force=False):
     """检测全部条目。快照用途（force=False）热路径永不等检测：缓存新鲜直接
     返回；过期返回旧快照、同时把刷新踢到后台线程（stale-while-revalidate）。
@@ -300,37 +332,58 @@ def _exe_version(path):
         return None
 
 
+VER_PROBE_TIMEOUT = 20
+_VER_PROBE_LOCKS = {}   # entry_id -> Lock：同一 CLI 的探测串行，防并发堆积
+
+
+def _version_probe_lock(eid):
+    with _LOCK:
+        lk = _VER_PROBE_LOCKS.get(eid)
+        if lk is None:
+            lk = _VER_PROBE_LOCKS[eid] = threading.Lock()
+        return lk
+
+
+def _cli_version_output(cli, timeout=VER_PROBE_TIMEOUT):
+    """跑 `cli --version` 取首行；没有输出返回 None。
+
+    必须经 runner.run_process：超时杀的是整棵进程树。裸 subprocess.run
+    (timeout) 只杀直接子进程——Windows 下 CLI 经 npm cmd 垫片中转，垫片
+    cmd 被杀后真正的 CLI 孙进程变孤儿存活（opencode 是客户端-服务端架构，
+    僵实例还会劫持后续会话的项目根），管理页每轮探测再挂一个，2026-10-13
+    实案一个上午积了 18 个 `opencode --version` 僵尸。"""
+    probe = ["cmd", "/c", cli, "--version"] if os.name == "nt" \
+        else [cli, "--version"]
+    r = runner.run_process(argv=probe, timeout=timeout)
+    out = (r.get("stdout") or "").strip()
+    if not out:
+        out = (r.get("stderr") or "").strip()
+    return out.splitlines()[0][:60] if out else None
+
+
 def version_of(entry):
-    """版本探测：CLI 走 --version；UWP 读 AppxManifest；exe 走 PowerShell（惰性缓存）。"""
+    """版本探测：CLI 走 --version；UWP 读 AppxManifest；exe 走 PowerShell（惰性缓存）。
+
+    每条目持在飞锁：管理页轮询/多标签并发打到缓存失效窗口时，串行到一次
+    探测，其余直接吃缓存结果——并发裸探会把挂死的 CLI 探测成排堆。"""
     eid = entry["id"]
-    with _LOCK:
-        cached = _STATE["versions"].get(eid)
-        if cached and time.time() - cached[0] < VERSION_TTL:
-            return cached[1]
-    det = (detect_all() or {}).get(eid) or {}
-    version = None
-    cli = (entry.get("detect") or {}).get("cli")
-    if cli and det.get("installed"):
-        try:
-            # Windows 下 CLI 可能是 npm .cmd 垫片，须经 cmd /c 才能直接点名跑；
-            # POSIX 没有垫片，符号链接直接跑即可
-            probe = ["cmd", "/c", cli, "--version"] if os.name == "nt" \
-                else [cli, "--version"]
-            r = subprocess.run(probe, capture_output=True,
-                               creationflags=CREATE_NO_WINDOW, timeout=20)
-            out = (r.stdout or b"").decode("utf-8", "replace").strip()
-            if not out:
-                out = (r.stderr or b"").decode("utf-8", "replace").strip()
-            version = out.splitlines()[0][:60] if out else None
-        except Exception:
-            version = None
-    elif det.get("detail") and os.path.isdir(det["detail"]):
-        version = _uwp_version(det["detail"])
-    elif det.get("detail") and os.path.isfile(det["detail"]):
-        version = _exe_version(det["detail"])
-    with _LOCK:
-        _STATE["versions"][eid] = (time.time(), version or "-")
-    return version or "-"
+    with _version_probe_lock(eid):
+        with _LOCK:
+            cached = _STATE["versions"].get(eid)
+            if cached and time.time() - cached[0] < VERSION_TTL:
+                return cached[1]
+        det = (detect_all() or {}).get(eid) or {}
+        version = None
+        cli = (entry.get("detect") or {}).get("cli")
+        if cli and det.get("installed"):
+            version = _cli_version_output(cli)
+        elif det.get("detail") and os.path.isdir(det["detail"]):
+            version = _uwp_version(det["detail"])
+        elif det.get("detail") and os.path.isfile(det["detail"]):
+            version = _exe_version(det["detail"])
+        with _LOCK:
+            _STATE["versions"][eid] = (time.time(), version or "-")
+        return version or "-"
 
 
 # ---------------------------------------------------------------- TOML 表内键

@@ -228,17 +228,85 @@ def _npm_shim_bypass(argv):
     return argv
 
 
-def _kill_tree(pid):
-    """杀整棵进程树。Windows：先 TerminateProcess 直接杀根进程（毫秒级，绝不
-    挂），再 taskkill /T 兜底扫子孙（短等待，卡死即放弃——真实案例 2026-09-19：
-    某些机器状态下 taskkill /F /T 对普通进程也挂死 30s+，等满 15s 超时会让每次
-    超时杀进程都卡 20s，看门狗/超时全被拖死；漏杀的孙进程由启动孤儿清扫兜底）。
-    POSIX 靠 spawn 时的 start_new_session（子进程自成一个进程组，pgid==pid）
-    用 killpg 连孙带杀。
+def _win_descendant_pids(root_pid):
+    """Toolhelp32 快照枚举 root_pid 的全部后代 pid（子/孙/…，顺序无保证）。
 
-    返回是否确认整树清空（借鉴 WorkDSH 取消结算分层：kill 动作完成 ≠ 停稳）：
-    Windows 以 taskkill /T 在 1.2s 内退出且返回 0 为准；POSIX 以 killpg 成功
-    为准。返回 False = 停稳未知（孙进程可能仍在），调用方据此落
+    纯进程内调用，毫秒级返回，不依赖 taskkill/PowerShell 等外部进程——
+    外部枚举在负载高的机器上会慢满超时（Get-CimInstance 真实装机 60s 实案），
+    而杀树恰恰发生在最不该等的时刻。快照必须在开杀之前取：根进程一死，
+    父子链接就断了，任何「先杀根再遍历树」的外部工具都找不到孩子。"""
+    import ctypes
+    TH32CS_SNAPPROCESS = 0x00000002
+
+    class _PE32(ctypes.Structure):
+        _fields_ = [("dwSize", ctypes.c_ulong),
+                    ("cntUsage", ctypes.c_ulong),
+                    ("th32ProcessID", ctypes.c_ulong),
+                    ("th32DefaultHeapID", ctypes.c_void_p),
+                    ("th32ModuleID", ctypes.c_ulong),
+                    ("cntThreads", ctypes.c_ulong),
+                    ("th32ParentProcessID", ctypes.c_ulong),
+                    ("pcPriClassBase", ctypes.c_long),
+                    ("dwFlags", ctypes.c_ulong),
+                    ("szExeFile", ctypes.c_wchar * 260)]
+
+    k32 = ctypes.windll.kernel32
+    snap = k32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if snap in (-1, 0xFFFFFFFFFFFFFFFF, 4294967295):   # INVALID_HANDLE_VALUE
+        return []
+    links = []
+    try:
+        e = _PE32()
+        e.dwSize = ctypes.sizeof(_PE32)
+        ok = k32.Process32FirstW(snap, ctypes.byref(e))
+        while ok:
+            links.append((e.th32ProcessID, e.th32ParentProcessID))
+            ok = k32.Process32NextW(snap, ctypes.byref(e))
+    finally:
+        k32.CloseHandle(snap)
+    by_parent = {}
+    for pid, ppid in links:
+        by_parent.setdefault(ppid, []).append(pid)
+    out, stack = [], [root_pid]
+    while stack:
+        for c in by_parent.get(stack.pop(), ()):
+            out.append(c)
+            stack.append(c)
+    return out
+
+
+def _win_pids_alive(pids):
+    """任一 pid 仍存活即 True（TerminateProcess 后退出是异步收尸，需真死确认）。"""
+    import ctypes
+    k32 = ctypes.windll.kernel32
+    QUERY_LIMITED = 0x1000
+    STILL_ACTIVE = 259
+    for p in pids:
+        h = k32.OpenProcess(QUERY_LIMITED, False, p)
+        if not h:
+            continue   # 打不开 = 已退出或不可见，都不算活
+        try:
+            code = ctypes.c_ulong()
+            if k32.GetExitCodeProcess(h, ctypes.byref(code)) \
+                    and code.value == STILL_ACTIVE:
+                return True
+        finally:
+            k32.CloseHandle(h)
+    return False
+
+
+def _kill_tree(pid):
+    """杀整棵进程树并确认真死。Windows：先在树存活时快照枚举全部后代，再逐个
+    TerminateProcess（进程内毫秒级），最后短窗轮询确认停稳。
+
+    旧实现「os.kill 根 → taskkill /T 兜底」有两个系统性坑（2026-10-13 18 个
+    `opencode --version` 僵尸堆积实案）：①根先死，taskkill 的树遍历对着已死
+    pid 什么都找不到，孙进程必然孤儿；②taskkill 在某些机器状态下挂死 30s+
+    （2026-09-19 实案），等满预算会把每次超时杀进程都拖死。现全改为进程内
+    快照 + 直杀，无外部进程可挂；杀不到的（快照后新生的孩子）由常驻孤儿
+    清扫兜底。POSIX 靠 spawn 时的 start_new_session（pgid==pid）killpg 连孙带杀。
+
+    返回是否确认整树真死：False = 停稳未知（孙进程可能仍在），调用方据此落
     quiescence_unknown 诊断，不改变任何终态语义。"""
     if os.name != "nt":
         try:
@@ -251,24 +319,24 @@ def _kill_tree(pid):
         except Exception:
             pass
         return False
-    # Windows 没有 signal.SIGKILL（直接引用会 AttributeError）；os.kill 带任意
-    # 信号值都走 TerminateProcess，用 SIGTERM
-    try:
-        os.kill(pid, signal.SIGTERM)   # Windows 语义 = TerminateProcess，只杀根进程
-    except OSError:
-        pass                           # 根进程可能已被 taskkill 抢先杀掉
-    except Exception:
-        pass
-    try:
-        tk = subprocess.Popen(
-            ["taskkill", "/F", "/T", "/PID", str(pid)],
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, close_fds=True,   # 不继承被杀进程的管道句柄，否则 EOF 永不来、drain 烧满超时
-            creationflags=CREATE_NO_WINDOW)
-        tk.wait(timeout=1.2)           # 健康机器 <1s；卡死就不再陪等（后台自行结束）
-        return tk.returncode == 0
-    except Exception:
-        return False
+    victims = [pid] + _win_descendant_pids(pid)
+    issued = False
+    for vp in victims:
+        try:
+            os.kill(vp, signal.SIGTERM)   # Windows 语义 = TerminateProcess
+            issued = True
+        except OSError:
+            pass                          # 已退出/权限不可见，随它去
+        except Exception:
+            pass
+    # 「真死才清」：给 2s 停稳确认窗（TerminateProcess 的退出是异步收尾），
+    # 确认到全灭才算清空； issuing 了但没等到 = 停稳未知
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        if not _win_pids_alive(victims):
+            return True
+        time.sleep(0.1)
+    return issued
 
 
 def _drain_streams(proc, t_out, t_err, *, timeout=10):

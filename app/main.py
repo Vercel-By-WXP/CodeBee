@@ -3809,6 +3809,9 @@ def main():
                           % n_z, flush=True)
             except Exception:
                 pass
+            # 启动清扫只兜重启孤儿化；长跑中积的僵尸由常驻循环按周期兜底
+            # （2026-10-13 实案：版本探测垫片孤儿一个上午积 18 个 opencode）
+            _mgr.run_orphan_sweep_forever()
         threading.Thread(target=_sweep_async, name="orphan-sweep",
                          daemon=True).start()
     except Exception:
