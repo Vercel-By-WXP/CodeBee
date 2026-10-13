@@ -1456,8 +1456,17 @@ class Handler(BaseHTTPRequestHandler):
             platform = (body.get("platform") or "").strip()
             ok, err = pub.confirm_manual_chapter(
                 m.group(1), platform, body.get("chapter_no"))
-            return self._json(400, {"error": err or "确认失败"}) \
-                if not ok else self._json(200, {"ok": True})
+            if not ok:
+                return self._json(400, {"error": err or "确认失败"})
+            # confirm_manual_chapter records the remote submission and starts
+            # the next batch.  Keep the optional message for older clients,
+            # while exposing whether continuation actually started.
+            note = str(err or "")
+            continued = (not note or ("后续章节未启动" not in note
+                                      and not note.startswith("本章已确认，已无待发")))
+            return self._json(200, {"ok": True,
+                                    "continued": continued,
+                                    "message": note})
         m = re.match(r"^/api/publish/task/([^/]+)/register-book$", path)
         if m:
             return self._api_publish_register_book(m.group(1))
@@ -2495,7 +2504,7 @@ class Handler(BaseHTTPRequestHandler):
         """批量发布全部待发章节（publish/auto.py）。
 
         护栏（每日上限/连败退避/幂等/单飞）在 auto 层，每章发起前复查；
-        auto_submit 默认 false——每章表单填好后停，提交权留给用户。
+        auto_submit 默认走批量自动提交；失败时由发布链降级为定时发布并继续。
         as_draft=true 走「全部发草稿」：逐章存草稿不上线、不受质量闸拦、
         无需人工确认连跑到清空（2026-10-09）；草稿与直发互斥，草稿优先。"""
         from core import store
@@ -3965,6 +3974,11 @@ def main():
     except Exception:
         pass
     _start_pet_keeper(args.port)   # 桌面蜜蜂：端口就绪后放出（设置可关；测试可禁）
+    try:
+        from core.memory_guard import start_memory_guard
+        start_memory_guard(1228)  # 内存守卫：RSS > 1.2 GB 安全退出防 OOM
+    except Exception:
+        pass
     if remote.PUBLIC_URL:
         print("[CodeBee] 公网     %s/?token=%s   ← 任何网络可访问（反代回源已强制校验令牌）"
               % (remote.PUBLIC_URL, tok))
