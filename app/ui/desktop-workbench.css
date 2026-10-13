@@ -1078,6 +1078,15 @@
     padding: 0;
     overflow: visible;
     pointer-events: none;
+    /* backdrop-filter creates a containing block for fixed descendants. The
+     * empty-state composer owns a viewport-anchored form, so keep this shell
+     * visually plain while retaining the card surface on the form itself. */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    /* The empty-state composer owns a fixed child below. A panel animation
+     * would establish a transient containing block and make fixed geometry
+     * depend on the animation lifecycle. */
+    animation: none;
   }
 
   #sub-tasks .hero-row {
@@ -1230,6 +1239,7 @@
   html {
     --workbench-reading-width: 768px;
     --workbench-task-width: clamp(276px, 16vw, 304px);
+    --workbench-inspector-width: clamp(280px, 20vw, 320px);
     --workbench-gap: clamp(20px, 1.8vw, 30px);
     --workbench-radius-card: 12px;
     --workbench-radius-control: 8px;
@@ -1311,10 +1321,10 @@
   #app { grid-template-columns: var(--workbench-rail-width) var(--side-w, var(--workbench-sidebar-width)) minmax(0, 1fr); }
   body.side-collapsed #app { grid-template-columns: var(--workbench-rail-width) 0 minmax(0, 1fr); }
   body.inspector-open #app {
-    grid-template-columns: var(--workbench-rail-width) var(--side-w, var(--workbench-sidebar-width)) minmax(0, 1fr) minmax(280px, 320px);
+    grid-template-columns: var(--workbench-rail-width) var(--side-w, var(--workbench-sidebar-width)) minmax(0, 1fr) var(--workbench-inspector-width);
   }
   body.side-collapsed.inspector-open #app {
-    grid-template-columns: var(--workbench-rail-width) 0 minmax(0, 1fr) minmax(280px, 320px);
+    grid-template-columns: var(--workbench-rail-width) 0 minmax(0, 1fr) var(--workbench-inspector-width);
   }
 
   .side-rail { gap: 7px; padding: 12px 8px; }
@@ -1834,5 +1844,21 @@
     bottom: max(24px, env(safe-area-inset-bottom));
     left: calc((100vw + var(--workbench-rail-width, 52px) + var(--side-w, 288px)) / 2);
     width: min(740px, calc(100vw - var(--workbench-rail-width, 52px) - var(--side-w, 288px) - 48px));
+    transform: translateX(-50%);
+  }
+  body.side-collapsed #sub-tasks .form {
+    left: calc((100vw + var(--workbench-rail-width, 52px)) / 2);
+    width: min(740px, calc(100vw - var(--workbench-rail-width, 52px) - 48px));
+    transform: translateX(-50%);
+  }
+  body.inspector-open #sub-tasks .form {
+    left: calc((100vw + var(--workbench-rail-width, 52px) + var(--side-w, 288px) - var(--workbench-inspector-width, 320px)) / 2);
+    width: min(740px, calc(100vw - var(--workbench-rail-width, 52px) - var(--side-w, 288px) - var(--workbench-inspector-width, 320px) - 48px));
+    transform: translateX(-50%);
+  }
+  body.side-collapsed.inspector-open #sub-tasks .form {
+    left: calc((100vw + var(--workbench-rail-width, 52px) - var(--workbench-inspector-width, 320px)) / 2);
+    width: min(740px, calc(100vw - var(--workbench-rail-width, 52px) - var(--workbench-inspector-width, 320px) - 48px));
+    transform: translateX(-50%);
   }
 }
