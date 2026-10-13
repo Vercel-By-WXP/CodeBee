@@ -872,3 +872,248 @@
     }
   }
 }
+
+/* Codex-style compact navigation: keep the task tree scannable without
+ * turning every action into a floating card. This is desktop-only so the
+ * touch-sized mobile drawer remains unchanged. */
+@media (min-width: 901px) {
+  #sidebar {
+    padding: 0 8px;
+  }
+
+  .brand-row {
+    min-height: 44px;
+    margin: 0 -8px;
+    padding: 0 10px;
+  }
+
+  .brand-name { font-size: 14px; }
+  .brand-mode { font-size: 11px; }
+  .brand-tool { width: 28px; height: 28px; }
+
+  .side-main > .new-task {
+    min-height: 32px;
+    margin: 8px 0 8px;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    box-shadow: none;
+    font-size: 13px;
+  }
+
+  .side-main > .new-task:hover {
+    background: var(--cb-hover);
+    box-shadow: none;
+  }
+
+  .side-quick { gap: 1px; }
+  .side-quick .qitem {
+    min-height: 30px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    font-size: 12px;
+  }
+  .side-quick .qitem .ico { width: 14px; height: 14px; }
+
+  .side-section { margin-top: 10px; }
+  .side-label-row {
+    min-height: 28px;
+    margin-bottom: 2px;
+    border-bottom: 0;
+  }
+  .side-label-row .side-label {
+    padding-left: 8px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .side-label-row .foot-btn { width: 22px; height: 22px; }
+
+  .side-tasks { gap: 0; padding: 0; }
+  .sdir summary,
+  .stask {
+    min-height: 29px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 12.5px;
+  }
+  .sdir summary { gap: 5px; font-weight: 600; }
+  .sdir > .dirbody {
+    margin: 0 0 4px 12px;
+    padding-left: 5px;
+  }
+  .stask { gap: 7px; }
+  .stask .tm { font-size: 10.5px; }
+  .stask-more { width: 22px; height: 22px; }
+  .sdir summary .cnt { line-height: 14px; padding-inline: 5px; }
+
+  .stask.active {
+    color: var(--text);
+    background: var(--cb-hover);
+    box-shadow: inset 2px 0 0 var(--cb-accent);
+  }
+  .stask.active .sglyph { color: var(--cb-accent); }
+
+  .side-usage {
+    margin-inline: 0;
+    padding: 9px 8px;
+    border-radius: 7px;
+    background: transparent;
+  }
+
+  .side-foot { padding-top: 7px; margin-top: 7px; }
+}
+
+/* Task details on compact screens: keep the popover readable while removing
+ * duplicate labels and excess card padding that cover the conversation. */
+@media (max-width: 980px) {
+  #run-detail #rd-rail > .detail-head > .rd-meta-popover {
+    width: min(430px, calc(100vw - 42px));
+    padding: 10px 12px 11px;
+    border-radius: 12px;
+    overflow-x: hidden;
+  }
+
+  #run-detail .rd-meta-popover,
+  #run-detail .rd-meta-popover * { min-width: 0; box-sizing: border-box; }
+
+  #run-detail .rd-meta-popover .rd-meta-strip {
+    gap: 4px 10px;
+    margin-top: 5px;
+    padding-bottom: 7px;
+  }
+  #run-detail .rd-meta-popover .rd-meta-strip .stat {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-size: 10.5px;
+  }
+
+  #run-detail .rd-meta-popover .rd-timeout-row {
+    gap: 7px;
+    padding: 6px 0;
+  }
+  #run-detail .rd-meta-popover .rd-timeout-row select {
+    min-width: 0;
+    max-width: 58%;
+  }
+
+  #run-detail .rd-meta-popover #rd-overview {
+    gap: 6px 10px;
+    margin-top: 7px;
+  }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-title { display: none; }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-goal {
+    display: -webkit-box;
+    overflow: hidden;
+    margin-top: 0;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow-wrap: anywhere;
+  }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-state { min-width: 60px; }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-state .state-value { font-size: 15px; }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-progress { height: 4px; }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-facts {
+    gap: 3px 9px;
+    overflow-wrap: anywhere;
+    font-size: 10.5px;
+  }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-actions button {
+    padding: 3px 7px;
+    font-size: 10.5px;
+  }
+}
+
+/* Final Codex proportion baseline. Keep one authoritative set of desktop
+ * dimensions after the earlier component-specific theme layers. */
+@media (min-width: 901px) {
+  :root {
+    --workbench-rail-width: 52px;
+    --workbench-sidebar-width: 288px;
+    --workbench-reading-width: 780px;
+    --workbench-task-width: clamp(276px, 16vw, 304px);
+    --workbench-gap: clamp(20px, 1.6vw, 28px);
+    --workbench-radius-card: 12px;
+    --workbench-radius-control: 8px;
+  }
+
+  #app { grid-template-columns: var(--workbench-rail-width) var(--side-w, var(--workbench-sidebar-width)) minmax(0, 1fr); }
+  body.side-collapsed #app { grid-template-columns: var(--workbench-rail-width) 0 minmax(0, 1fr); }
+  body.inspector-open #app {
+    grid-template-columns: var(--workbench-rail-width) var(--side-w, var(--workbench-sidebar-width)) minmax(0, 1fr) minmax(280px, 320px);
+  }
+  body.side-collapsed.inspector-open #app {
+    grid-template-columns: var(--workbench-rail-width) 0 minmax(0, 1fr) minmax(280px, 320px);
+  }
+
+  .side-rail { gap: 7px; padding: 12px 8px; }
+  .rail-btn { width: 34px; height: 34px; border-radius: 9px; }
+  #sidebar { padding: 0 10px; }
+  .brand-row { min-height: 54px; margin-inline: -10px; padding-inline: 12px; }
+  .brand-name { font-size: 15px; }
+  .side-main > .new-task {
+    min-height: 34px;
+    margin: 8px 0 10px;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    box-shadow: none;
+  }
+  .side-main > .new-task:hover { background: var(--cb-hover); box-shadow: none; }
+  .side-quick .qitem { min-height: 30px; border-radius: 7px; }
+  .side-label-row { min-height: 28px; border-bottom: 0; }
+  .sdir summary, .stask { min-height: 30px; border-radius: 6px; }
+
+  .topbar {
+    height: 56px;
+    min-height: 56px;
+    padding-inline: 20px;
+    box-sizing: border-box;
+  }
+  main.chat-fill { padding: 16px 20px 14px; }
+  main.chat-fill #run-detail.chat-mode { column-gap: var(--workbench-gap); }
+  main.chat-fill #run-detail.chat-mode { grid-template-columns: minmax(0, 1fr) var(--workbench-task-width); }
+  #run-detail.chat-mode .rd-chat-flow {
+    box-sizing: border-box;
+    max-width: var(--workbench-reading-width);
+    padding: 22px 20px 24px;
+    gap: 22px;
+    scrollbar-width: none;
+  }
+  #run-detail.chat-mode .rd-chat-flow::-webkit-scrollbar { display: none; }
+  #run-detail.chat-mode .rd-chat-bar {
+    box-sizing: border-box;
+    width: min(740px, calc(100% - 32px));
+    max-width: 740px;
+    margin: 8px auto 10px;
+    padding: 9px 12px;
+    border-radius: 18px;
+  }
+  .rd-chat-bar textarea { min-height: 54px; }
+
+  main.chat-fill #run-detail.chat-mode #rd-rail {
+    box-sizing: border-box;
+    padding: 12px;
+    border-radius: var(--workbench-radius-card);
+  }
+  #rd-rail > .detail-head { gap: 7px; padding-bottom: 10px; }
+  #rd-rail > .detail-head > #rd-title { font-size: 14px; }
+  #rd-rail > .detail-head > .rd-actions { gap: 4px; padding-top: 7px; }
+  #rd-rail > .detail-head > .rd-actions button { min-height: 29px; border-radius: var(--workbench-radius-control); }
+  #rd-rail > #rd-tabs,
+  #rd-rail > #rd-chat-nav { margin-top: 8px; padding-top: 7px; }
+  #rd-rail > #rd-tabs .rd-tab,
+  #rd-rail > #rd-chat-nav .cn-pill { min-height: 30px; border-radius: var(--workbench-radius-control); }
+
+  .panel, .mobile-workspace, #inspector { border-radius: var(--workbench-radius-card); }
+  input, select, textarea, .pill, button:not(.round) { border-radius: var(--workbench-radius-control); }
+  #sub-tasks .cmp-box { border-radius: 18px; }
+
+  @media (max-width: 1180px) {
+    main.chat-fill { padding: 12px 14px 10px; }
+    #run-detail.chat-mode .rd-chat-flow { padding-inline: 14px; }
+    #run-detail.chat-mode .rd-chat-bar { width: min(740px, calc(100% - 24px)); }
+    main.chat-fill #run-detail.chat-mode #rd-rail { padding: 10px; }
+  }
+}

@@ -77,8 +77,8 @@ try {
   assert.equal(shell.sidebar, 288, 'Codex shell keeps a 288px task sidebar');
   assert.equal(shell.bg, '#ffffff', 'light desktop canvas uses a clean white surface');
   assert.notEqual(shell.detail, '0px', 'run detail uses a rounded card edge');
-  assert.equal(shell.composerRadius, '20px', 'chat composer uses the Codex pill-card radius');
-  assert.equal(shell.topbarHeight, 60, 'desktop header stays compact at 60px');
+  assert.equal(shell.composerRadius, '18px', 'chat composer uses the compact Codex card radius');
+  assert.equal(shell.topbarHeight, 56, 'desktop header stays compact at 56px');
   assert.match(shell.bodyFont, /Segoe UI Variable/, 'desktop UI uses the Codex Segoe UI Variable font stack');
   assert.equal(shell.bodySize, 14, 'desktop body text uses the Codex 14px baseline');
   assert.ok(shell.heroSize >= 26 && shell.heroSize <= 32, 'new-task title stays in the Codex 26-32px range');
