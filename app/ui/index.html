@@ -20,6 +20,7 @@
 <link rel="stylesheet" href="button-reference.css">
 <link rel="stylesheet" href="conversation-reference.css">
 <link rel="stylesheet" href="workspace-editor.css">
+<link rel="stylesheet" href="chat-delivery.css">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，首涂落经典底色，
      app.js 加载后会按 currentSkin() 校正为默认皮肤。 -->
@@ -508,11 +509,11 @@
                 <div class="cmp-add-wrap">
                   <button type="button" class="ghost small cmp-add-btn" id="btn-attach" title="添加文件、浏览器、目标与工具" data-i18n-title="添加文件、浏览器、目标与工具" aria-haspopup="menu" aria-expanded="false" aria-controls="cmp-add-menu"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg><span data-i18n="添加">添加</span></button>
                   <div id="cmp-add-menu" class="cmp-add-menu hidden" role="menu" aria-label="添加" data-i18n-aria="添加">
-                    <div class="cmp-add-kicker" data-i18n="添加到任务">添加到任务</div>
                     <div class="cmp-capability-searchbar"><input id="cmp-capability-search" type="search" placeholder="搜索插件、技能、智能体、文件和会话" data-i18n-ph="搜索插件、技能、智能体、文件和会话" aria-label="搜索插件、技能、智能体、文件和会话" data-i18n-aria="搜索插件、技能、智能体、文件和会话"><div class="cmp-capability-filters" role="group" aria-label="分类" data-i18n-aria="分类"><button type="button" data-capability-filter="all" data-i18n="全部">全部</button><button type="button" data-capability-filter="plugin" data-i18n="插件">插件</button><button type="button" data-capability-filter="skill" data-i18n="技能">技能</button><button type="button" data-capability-filter="agent" data-i18n="智能体">智能体</button><button type="button" data-capability-filter="file" data-i18n="文件">文件</button><button type="button" data-capability-filter="chat" data-i18n="会话">会话</button></div></div>
+                    <div class="cmp-add-kicker" data-i18n="添加到任务">添加到任务</div>
                     <button type="button" class="cmp-add-item" data-add-action="file" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg><span><b data-i18n="文件和文件夹">文件和文件夹</b><small data-i18n="上传文件，或选择一个文件夹">上传文件，或选择一个文件夹</small></span></button>
-                    <button type="button" class="cmp-add-item" data-add-action="browser" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span><b data-i18n="浏览器工作区">浏览器工作区</b><small data-i18n="在内置浏览器中打开 Google">在内置浏览器中打开 Google</small></span></button>
                     <button type="button" class="cmp-add-item" data-add-action="workflow" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span><b data-i18n="工作流">工作流</b><small data-i18n="选择任务流程">选择任务流程</small></span></button>
+                    <button type="button" class="cmp-add-item" data-add-action="browser" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span><b data-i18n="浏览器工作区">浏览器工作区</b><small data-i18n="在内置浏览器中打开 Google">在内置浏览器中打开 Google</small></span></button>
                     <button type="button" class="cmp-add-item" data-add-action="goal" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-baton"></use></svg><span><b data-i18n="目标">目标</b><small data-i18n="设置需要多轮推进的长目标">设置需要多轮推进的长目标</small></span></button>
                     <button type="button" class="cmp-add-item" data-add-action="plan" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span><b data-i18n="计划模式">计划模式</b><small id="cmp-plan-hint" data-i18n="开启计划模式">开启计划模式</small></span><span class="cmp-add-check" id="cmp-plan-check" aria-hidden="true"></span></button>
                     <button type="button" class="cmp-add-item" data-add-action="draw" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span><b data-i18n="绘图">绘图</b><small data-i18n="绘制草图并作为附件添加">绘制草图并作为附件添加</small></span></button>
@@ -739,7 +740,7 @@
         </div><!-- /rd-railcol -->
         <div class="rd-main">
           <!-- 对话分区（所有任务默认）：用户消息与各智能体输出混排的时间线 + 贴底追话框。
-               运行中发出去走信箱（下一步送达）；已结束发出去走 /chat 自动续跑新一轮。 -->
+               Enter 默认排队；发送菜单可选择立即发送并引导；已结束自动续跑新一轮。 -->
           <div id="rd-pane-chat" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-chat" data-pane="chat">
             <div id="rd-chat" class="rd-chat hidden">
               <div id="rd-chat-flow" class="rd-chat-flow"></div>
@@ -760,7 +761,6 @@
                   <button id="rd-chat-attach" class="ghost" data-i18n-title="添加附件" title="添加附件" data-i18n-aria="添加附件" aria-label="添加附件"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg></button>
                   <button id="rd-chat-voice" class="ghost hidden" data-i18n-title="语音输入（口述转文字填入输入框）" title="语音输入（口述转文字填入输入框）" data-i18n-aria="语音输入" aria-label="语音输入"><svg class="ico" aria-hidden="true"><use href="#i-mic"></use></svg></button>
                   <span id="rd-chat-att-list" class="rd-att-list"></span>
-                  <span id="rd-chat-hint" class="rd-hint"></span>
                   <!-- 对话条三件套（2026-09-21 用户反馈「这里面也需要同步改」）：与
                        新建 composer 同款 pill；改动即写任务参数（空闲态），发送立即生效 -->
                   <span class="cmp-sel" data-i18n-title="编排模式" title="编排模式">
@@ -788,8 +788,16 @@
                     <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
                     <div id="rd-model-menu" class="type-menu hidden" role="menu" aria-label="对话模型" data-i18n-aria="对话模型"></div>
                   </span>
-                  <button id="rd-chat-send" class="primary round" data-i18n-title="发送" title="发送" data-i18n-aria="发送" aria-label="发送"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg></button>
+                  <div class="chat-send-actions">
+                    <button id="rd-chat-send" type="button" class="primary chat-send-default" title="发送" aria-label="发送"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg><span id="rd-chat-send-label" data-i18n="发送">发送</span></button>
+                    <button id="rd-chat-send-options" type="button" class="ghost chat-send-options hidden" aria-haspopup="menu" aria-controls="rd-chat-send-menu" aria-expanded="false" data-i18n-title="发送方式" title="发送方式" data-i18n-aria="发送方式" aria-label="发送方式">⌄</button>
+                    <div id="rd-chat-send-menu" class="chat-send-menu hidden" role="menu" data-i18n-aria="发送方式" aria-label="发送方式">
+                      <button type="button" role="menuitem" data-chat-delivery="queue"><span><b data-i18n="排队（默认）">排队（默认）</b><small data-i18n="当前步骤结束后送达，继续完成本轮">当前步骤结束后送达，继续完成本轮</small></span><kbd>Enter</kbd></button>
+                      <button type="button" role="menuitem" data-chat-delivery="now"><span><b data-i18n="立即发送并引导">立即发送并引导</b><small data-i18n="中断当前轮，带着这条消息立即继续">中断当前轮，带着这条消息立即继续</small></span><kbd data-chat-now-shortcut>Ctrl+Enter</kbd></button>
+                    </div>
+                  </div>
                 </div>
+                <div id="rd-chat-hint" class="chat-delivery-hint" role="status"></div>
                 <input id="rd-chat-file" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.txt,.md,.markdown,.csv,.json,.log,.py,.js,.ts,.html,.css,.xml,.yml,.yaml,.toml,.pdf,.docx,.xlsx,.pptx" class="hidden" />
               </div>
               <aside id="rd-chat-workspace" class="rd-chat-workspace hidden" aria-label="工作区" data-i18n-aria="工作区">

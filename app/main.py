@@ -110,6 +110,8 @@ _SKIP_DIRS_SHARE = {".git", "node_modules", "__pycache__", ".venv", "venv",
 # stdout），这里只持锁防重入。
 # 同时只允许一个原生对话框：对话框开着时第二个请求立即拿到 busy，不排队
 _PICK_LOCK = threading.Lock()
+_CHAT_LOCK = threading.Lock()
+_CHAT_SUBMISSIONS = {}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -2898,7 +2900,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": str(e)})
         return self._json(200, {"ok": True, "attachment": meta})
 
-    def _api_add_message(self, run_id):
+    def _api_add_message(self, run_id, body=None):
         """运行中指挥：往该 run 的信箱追加一条用户指令（文字 + 附件）。
         附件走待提交区（前端先 POST /api/attachments 拿 id）→ commit 进 workdir，
         把落盘相对路径随消息入箱，供下一个步骤 drain 时注入。写接口已在 do_POST
@@ -2906,7 +2908,7 @@ class Handler(BaseHTTPRequestHandler):
         run = store.get_run(run_id)
         if not run:
             return self._json(404, {"error": "not found"})
-        body = self._body() or {}
+        body = (self._body() or {}) if body is None else body
         text = body.get("text") or ""
         att_ids = body.get("attachments") or []
         workdir = store.run_workdir(run_id)
@@ -2994,6 +2996,19 @@ class Handler(BaseHTTPRequestHandler):
                 "id": None,
             })
         seen_msgs = set()
+        message_state = {}
+        for owner in runs:
+            for message in owner.get("messages") or []:
+                key = (str(message.get("id") or ""), str(message.get("created_at") or ""),
+                       str(message.get("text") or ""))
+                previous = message_state.get(key)
+                consumed = bool(message.get("consumed")) or bool(previous and previous[1])
+                # The inherited copy is the delivery source once it is drained;
+                # keep that run id for the timeline action/retract affordance.
+                source = owner["id"] if message.get("consumed") else (previous[0] if previous else owner["id"])
+                if previous and previous[1]:
+                    source = previous[0]
+                message_state[key] = (source, consumed)
 
         def _emit_msg(m):
             key = (str(m.get("id") or ""), str(m.get("created_at") or ""),
@@ -3007,7 +3022,8 @@ class Handler(BaseHTTPRequestHandler):
                 "who": m.get("sender") or "",
                 "text": m.get("text") or "",
                 "attachments": m.get("attachments") or [],
-                "consumed": bool(m.get("consumed")),
+                "consumed": message_state[key][1],
+                "run": message_state[key][0],
                 "id": m.get("id"),
             })
 
@@ -3167,6 +3183,18 @@ class Handler(BaseHTTPRequestHandler):
         }
 
     def _api_direct_chat(self, run_id):
+        run = store.get_run(run_id)
+        if not run:
+            return self._json(404, {"error": "not found"})
+        with _CHAT_LOCK:
+            lock = _CHAT_SUBMISSIONS.setdefault(run.get("task_id") or run_id,
+                                               threading.Lock())
+        # Serialize submissions for one conversation; never hold the store lock
+        # while waiting for a cancelled CLI or tool writer to leave the workspace.
+        with lock:
+            return self._api_submit_chat(run_id)
+
+    def _api_submit_chat(self, run_id):
         """追话：往已结束的 run 追加一条消息并自动续跑。
 
         直连任务：消息入旧 run 信箱 → retry_task 起新 run（未消费消息自动继承）
@@ -3182,9 +3210,26 @@ class Handler(BaseHTTPRequestHandler):
         is_serial = bool(task and task.get("serial"))
         if not task:
             return self._json(400, {"error": "运行没有关联任务，无法进入对话工作区"})
-        if (run.get("status") or "") in ("queued", "running"):
-            return self._json(400, {"error": "运行中：消息会随下一步自动送达，无需追话"})
         body = self._body() or {}
+        delivery = body.get("delivery") or "queue"
+        if delivery not in ("queue", "now"):
+            return self._json(400, {"error": "delivery 必须是 queue 或 now"})
+        latest = store.task_runs(task["id"])
+        # IDs are time based and can share a second; status is the source of
+        # truth for a conversation currently in flight. Prefer the active turn
+        # so a stale browser tab cannot accidentally retry the previous run.
+        active_latest = next((item for item in latest
+                              if item.get("status") in ("queued", "running")), None)
+        latest_turn = active_latest or (latest[0] if latest else None)
+        if latest_turn and latest_turn["id"] != run_id:
+            if delivery == "now":
+                return self._json(409, {"error": "对话已进入新一轮，请刷新后再立即发送",
+                                        "run_id": latest_turn["id"]})
+            run = latest_turn
+            run_id = run["id"]
+        active = run.get("status") in ("queued", "running")
+        if active and delivery == "queue":
+            return self._api_add_message(run_id, body=body)
         text = body.get("text") or ""
         att_ids = body.get("attachments") or []
         workdir = store.run_workdir(run_id) or task.get("workdir") or ""
@@ -3198,6 +3243,13 @@ class Handler(BaseHTTPRequestHandler):
         saved_paths = [a.get("path") for a in saved if a.get("path")]
         if not text.strip() and not saved_paths:
             return self._json(400, {"error": "消息为空"})
+        if active:
+            store.update_run(run_id, cancelled_by_user=True, interrupted_for_chat=True)
+            jobs.cancel(run_id)
+        # A terminal status does not mean its CLI/tool writer has exited yet.
+        # This also covers a retry after a previous immediate-send timed out.
+        if not jobs.wait_run_stopped(run_id):
+            return self._json(409, {"error": "当前轮仍在停止中，输入已保留，请稍后重新发送"})
         msg = store.add_message(run_id, text, sender=self._client_name(),
                                 attachments=saved_paths)
         if not msg:
@@ -3214,7 +3266,7 @@ class Handler(BaseHTTPRequestHandler):
                 store.append_run_inject(new_run["id"], hook_txt)
         except Exception:
             pass
-        if is_serial:
+        if is_serial and not active:
             # 答疑档：问题文本显式带上（真实调用失败会把信箱消息 drain 掉，
             # 换将重试时不能丢问题）；retry_task 只认终态任务，active 已挡
             store.update_run(new_run["id"], op="qa", qa_text=text)
@@ -3223,7 +3275,8 @@ class Handler(BaseHTTPRequestHandler):
             {"kind": "orchestration", "run_id": new_run["id"], "task_id": task["id"]})
         if not queued:
             return self._json(503, {"error": qerr, "run_id": new_run["id"]})
-        return self._json(200, {"ok": True, "run_id": new_run["id"]})
+        return self._json(200, {"ok": True, "run_id": new_run["id"],
+                                "delivery": "now" if active else "sent"})
 
     def _api_retract_message(self, run_id):
         """撤回一条尚未下达的指令（drain 前从信箱删除）。已送达的撤不回——

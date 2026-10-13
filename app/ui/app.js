@@ -10522,11 +10522,39 @@ function bindDirector() {
 /* ---------------- 对话分区（所有任务默认视图） ----------------
  * 时间线把任务目标、用户消息与各智能体每轮输出混排成气泡；蜂巢/步骤/成果
  * 仍是同一详情工作区的辅助分区。运行中发送 = 信箱（下一步送达）；已结束发送
- * = /chat（后端自动起新一轮 run 接着做）。轮次边界如实标注：无头 CLI 插不进
- * 正在跑的进程，运行中递的话只在下一步生效。 */
+ * = /chat（后端自动起新一轮 run 接着做）。默认排队；需要改变方向时，用户可选
+ * 「立即发送并引导」，系统会先停止当前轮、等待旧写入者退出，再安全起新轮。 */
 let chatRunId = null;
 let chatAtts = [];
 let chatTimelineItems = [];   // renderChat 每次重建时间线时刷新；复制/编辑重发按索引回查
+let chatSending = false;
+
+function chatCloseSendMenu() {
+  const menu = $("rd-chat-send-menu"), toggle = $("rd-chat-send-options");
+  if (menu) menu.classList.add("hidden");
+  if (toggle) toggle.setAttribute("aria-expanded", "false");
+}
+
+function syncChatSendControls(run = S.lastRun || {}) {
+  const active = run.status === "running" || run.status === "queued";
+  const shortcut = /Mac|iPhone|iPad/.test(navigator.platform || "") ? "⌘+Enter" : "Ctrl+Enter";
+  const ready = !!(($("rd-chat-input")?.value || "").trim() || chatAtts.length);
+  const send = $("rd-chat-send"), options = $("rd-chat-send-options");
+  if (send) {
+    send.disabled = chatSending || !ready;
+    send.title = active ? t("排队（默认）") + " · Enter" : t("发送") + " · Enter";
+    send.setAttribute("aria-label", active ? t("排队（默认）") : t("发送"));
+  }
+  if ($("rd-chat-send-label")) $("rd-chat-send-label").textContent = t(active ? "排队" : "发送");
+  if (options) { options.classList.toggle("hidden", !active); options.disabled = chatSending; }
+  if (!active) chatCloseSendMenu();
+  document.querySelectorAll("[data-chat-delivery]").forEach(button => { button.disabled = chatSending || !ready; });
+  document.querySelectorAll("[data-chat-now-shortcut]").forEach(label => { label.textContent = shortcut; });
+  const hint = $("rd-chat-hint");
+  if (hint) hint.textContent = active
+    ? t("Enter 默认排队 · {0} 立即发送并引导 · Shift+Enter 换行", shortcut)
+    : t("Enter 发送 · Shift+Enter 换行");
+}
 
 /* 聊天正文协议清洗：剥 DIRECT_DONE/<followups> 尾巴与「本轮做了什么」复读头。
  * 渲染与「复制」共用同一口径——复制出来的就是看到的内容。 */
@@ -10974,6 +11002,7 @@ async function renderChat(run, active) {
   // 所有有任务归属的运行都启用对话时间线；蜂巢/步骤/成果仍按原页签保留
   if (!run || !chatEngineIsDirect(run)) { box.classList.add("hidden"); return; }
   box.classList.remove("hidden");
+  syncChatSendControls(run);
   renderChatRunStatus(run, active);
   if (chatWorkspaceState.open && chatWorkspaceState.runId !== run.id) {
     chatWorkspaceState.open = false;
@@ -11068,6 +11097,7 @@ window.toggleChatExpanded = function () {
 /* 时间线渲染本体（renderChat 与运行中快轮询共用）：items → 气泡流。
  * force=true 时跳过增量签名闸门（快轮询拿到的一定是新帧）。 */
 function drawChatFlow(run, data, active) {
+  syncChatSendControls(run);
   const items = (data && data.items) || [];
   const flow = $("rd-chat-flow");
   if (!flow) return;
@@ -11122,6 +11152,9 @@ function drawChatFlow(run, data, active) {
         '<button type="button" class="chat-act" data-cact="copy" data-ci="' + idx + '">' + esc(t("复制")) + "</button>" +
         '<button type="button" class="chat-act" data-cact="edit" data-ci="' + idx + '">' + esc(t("编辑")) + "</button>" +
         "</span>";
+      const pending = !it.consumed && it.id && it.run
+        ? '<span class="chat-pending-actions"><span class="chat-pending-badge">' + esc(t("已排队")) +
+          '</span><button type="button" data-chat-retract="' + idx + '">' + esc(t("撤回")) + '</button></span>' : "";
       return '<div class="chat-row me">' +
         '<div class="chat-user-message">' +
         '<div class="chat-bubble me">' +
@@ -11135,7 +11168,7 @@ function drawChatFlow(run, data, active) {
                   '" title="' + esc(t("点击查看")) + '">' + esc(a.nm) + "</span>")).join("") + "</div>"
           : "") +
         '</div><div class="chat-meta"><span class="chat-meta-label">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
-        (it.consumed ? "" : " · " + esc(t("待送达"))) + "</span>" + acts + "</div></div></div>";
+        (it.consumed || pending ? "" : " · " + esc(t("待送达"))) + "</span>" + pending + acts + "</div></div></div>";
     }
     // 协议尾行是给编排器判收的机器标记，不该出现在聊天正文里（真源在提示词约定）；
     // <followups> 块后端已剥并转成结构化字段，这里再兜一次底防老数据/漏剥；
@@ -11184,10 +11217,6 @@ function drawChatFlow(run, data, active) {
   // 只见一句寒暄，执行结果无处可看）。
   const res = data && data.result;
   if (res) html += chatResultHTML(run, res);
-  const hint = $("rd-chat-hint");
-  if (hint) hint.textContent = active
-    ? t("运行中：新消息会排队，本轮回答完后依次送达")
-    : t("已结束：发送后将自动开新一轮接着做");
   // 贴底跟随：用户滚到底部附近才自动滚到最新输出，回看历史不打扰；
   // 带强制贴底标记（发送/继续任务/首开详情置的）则无条件跳最新。
   // 页签当前不可见（display:none 时 scrollHeight 恒 0）贴底无处落：
@@ -11670,6 +11699,7 @@ async function rdPrefsPushAll() {
 }
 
 function drawChatAtts() {
+  syncChatSendControls();
   const box = $("rd-chat-att-list");
   if (!box) return;
   // 点名字开预览（待提交区原文走 /api/attachments/<id>），× 才是移除。
@@ -11729,49 +11759,44 @@ async function chatUploadFiles(files) {
   }
 }
 
-window.chatSend = async function () {
-  if (!chatRunId) return;
+window.chatSend = async function (delivery = "queue") {
+  if (!chatRunId || chatSending) return;
+  delivery = delivery === "now" ? "now" : "queue";
   const ta = $("rd-chat-input");
-  const text = (ta.value || "").trim();
+  const draft = ta.value || "", text = draft.trim();
   if (!text && !chatAtts.length) return;
-  const btn = $("rd-chat-send");
+  const submittedRun = chatRunId, submittedAtts = chatAtts.map((a) => a.id);
   const run = S.lastRun || {};
   const active = run.status === "running" || run.status === "queued";
-  btn.disabled = true;
+  chatSending = true;
+  chatCloseSendMenu();
+  syncChatSendControls();
   try {
-    if (active) {
-      // 运行中：消息进信箱排队（时间线上带「待送达」标记），本轮跑完自动续轮送达
-      await api("/api/runs/" + encodeURIComponent(chatRunId) + "/messages", {
-        method: "POST",
-        body: JSON.stringify({ text, attachments: chatAtts.map((a) => a.id) }),
-      });
-      toast(t("已排队：随下一步一起送达"));
-    } else {
-      // 空闲态发送：先把三件套落到任务（变更即推失败时的兜底），再开新一轮
-      await rdPrefsPushAll();
-      const r = await api("/api/runs/" + encodeURIComponent(chatRunId) + "/chat", {
-        method: "POST",
-        body: JSON.stringify({ text, attachments: chatAtts.map((a) => a.id) }),
-      });
-      toast(t("已开新一轮，接着做…"));
-      if (r && r.run_id) {
-        if (S.detailTaskKey) { S.taskSig = ""; renderTaskDetail(); }
-        else jumpToRun(r.run_id);
-      }
-    }
-    // 发送成功一律清空输入框（只清输入，时间线里的历史回复不动）；
-    // 此前 /chat 分支提前 return 跳过了清空，发出去的字一直留在框里
-    ta.value = "";
-    ta.style.height = "";
-    chatAtts = []; drawChatAtts();
+    if (!active) await rdPrefsPushAll();
+    // The server decides using the current run status, so a turn ending between
+    // Enter and receipt starts a follow-up instead of stranding the message.
+    const r = await api("/api/runs/" + encodeURIComponent(submittedRun) + "/chat", {
+      method: "POST", body: JSON.stringify({ text, attachments: submittedAtts, delivery }),
+    });
+    toast(t(r.delivery === "now" ? "已立即发送，正在按新消息继续"
+      : r.run_id ? "已开新一轮，接着做…" : "已排队：当前步骤结束后送达"));
+    if (chatRunId !== submittedRun) return;
+    // Preserve any new draft/attachments composed while this request was in flight.
+    if (ta.value === draft) { ta.value = ""; ta.style.height = ""; }
+    chatAtts = chatAtts.filter(a => !submittedAtts.includes(a.id)); drawChatAtts();
     chatSig = "";   // 强制重画时间线
     chatJumpLatest();   // 发完滚到最新：看到自己刚发的消息与正在来的回复
-    if (active) {
-      const d = await api("/api/runs/" + encodeURIComponent(chatRunId));
-      if (d.run) renderChat(d.run, d.run.status === "running" || d.run.status === "queued");
+    if (r.run_id) {
+      if (S.detailTaskKey) { S.taskSig = ""; renderTaskDetail(); }
+      else jumpToRun(r.run_id);
+    } else {
+      try {
+        const d = await api("/api/runs/" + encodeURIComponent(submittedRun));
+        if (d.run && chatRunId === submittedRun) renderChat(d.run, d.run.status === "running" || d.run.status === "queued");
+      } catch (e) { /* Delivery succeeded; a timeline refresh must not imply send failure. */ }
     }
   } catch (e) { toast(t("发送失败：") + e.message, true); }
-  finally { btn.disabled = false; }
+  finally { chatSending = false; syncChatSendControls(); }
 };
 
 function bindChat() {
@@ -11816,12 +11841,39 @@ function bindChat() {
     chatUploadFiles(Array.from(e.target.files || []));
     e.target.value = "";
   });
-  send.addEventListener("click", window.chatSend);
+  send.addEventListener("click", () => window.chatSend());
+  const sendOptions = $("rd-chat-send-options"), sendMenu = $("rd-chat-send-menu");
+  if (sendOptions && sendMenu) {
+    sendOptions.addEventListener("click", () => {
+      const open = sendMenu.classList.contains("hidden");
+      sendMenu.classList.toggle("hidden", !open);
+      sendOptions.setAttribute("aria-expanded", String(open));
+      if (open) sendMenu.querySelector("button:not(:disabled)")?.focus();
+    });
+    sendMenu.addEventListener("click", e => {
+      const button = e.target.closest("[data-chat-delivery]");
+      if (button) window.chatSend(button.dataset.chatDelivery);
+    });
+    sendMenu.addEventListener("keydown", e => {
+      const buttons = [...sendMenu.querySelectorAll("button:not(:disabled)")];
+      if (e.key === "Escape") { chatCloseSendMenu(); sendOptions.focus(); }
+      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key) && buttons.length) {
+        e.preventDefault();
+        const index = buttons.indexOf(document.activeElement);
+        const next = e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1
+          : (index + (e.key === "ArrowUp" ? -1 : 1) + buttons.length) % buttons.length;
+        buttons[next].focus();
+      }
+    });
+    document.addEventListener("click", e => { if (!e.target.closest(".chat-send-actions")) chatCloseSendMenu(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") chatCloseSendMenu(); });
+  }
   // 自动伸高：跟内容走、有上限（160px 后内部滚动）；清空由 chatSend 归零。
   // 高度只由用户输入驱动，轮询重画不碰它——框框不再忽大忽小
   ta.addEventListener("input", () => {
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
+    syncChatSendControls();
   });
   // 移动端软键盘会缩短 visual viewport；把输入条主动带回可视区，
   // 避免窄屏详情里键盘弹出后发送按钮落在屏幕下方（尤其是 Android Chrome）。
@@ -11835,7 +11887,9 @@ function bindChat() {
   ta.addEventListener("focus", () => setTimeout(keepChatInputVisible, 60));
   if (window.visualViewport) window.visualViewport.addEventListener("resize", keepChatInputVisible);
   ta.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); window.chatSend(); }
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      e.preventDefault(); window.chatSend(e.ctrlKey || e.metaKey ? "now" : "queue");
+    }
   });
   ta.addEventListener("paste", (e) => {
     const items = Array.from((e.clipboardData || {}).items || [])

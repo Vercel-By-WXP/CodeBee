@@ -34,6 +34,8 @@ _pool_lock = threading.Lock()
 _idle_cond = threading.Condition(_pool_lock)
 _timer_lock = threading.Lock()
 _deferred_timers = {}
+_worker_lock = threading.Lock()
+_workers = {}  # run_id → Thread; immediate follow-ups wait for the old writer to exit
 _seq = 0
 MAX_POOL = 24
 CHAT_POOL = 4         # 轻量池上限：direct 对话直连 API 本机开销极小，4 个足够
@@ -225,9 +227,14 @@ def _try_start_once(job):
                 raise DuplicateJobError("运行 %s 已在启动前结束" % run_id)
 
     try:
-        threading.Thread(target=_run_job, args=(dict(job),),
-                         name="job-direct-%d" % seq, daemon=True).start()
+        with _worker_lock:
+            worker = threading.Thread(target=_run_job, args=(dict(job),),
+                                      name="job-direct-%d" % seq, daemon=True)
+            _workers[run_id] = worker
+            worker.start()
     except Exception:
+        with _worker_lock:
+            _workers.pop(run_id, None)
         _release_slot(job)
         CANCELS.pop(run_id, None)
         _close_unstarted(job, "任务执行线程启动失败；本次未排队，请稍后重试",
@@ -565,6 +572,18 @@ def _run_job(job):
             except Exception:
                 pass
         _release_slot(job)
+        with _worker_lock:
+            _workers.pop(run_id, None)
+
+
+def wait_run_stopped(run_id, timeout=10):
+    """Wait for this run's writer, rather than every unrelated job, to finish."""
+    with _worker_lock:
+        worker = _workers.get(run_id)
+    if worker is None:
+        return True
+    worker.join(max(0, float(timeout)))
+    return not worker.is_alive()
 
 
 def cancel(run_id):

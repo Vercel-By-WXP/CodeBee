@@ -2333,7 +2333,7 @@ def peek_messages(run_id):
         run = _RUNS.get(run_id)
         if not run:
             return []
-        return [{"text": m.get("text", ""), "attachments": m.get("attachments", []),
+        return [{"id": m.get("id"), "text": m.get("text", ""), "attachments": m.get("attachments", []),
                  "sender": m.get("sender", ""), "created_at": m.get("created_at", "")}
                 for m in _ensure_messages(run) if not m.get("consumed")]
 
@@ -2351,15 +2351,24 @@ def retract_message(run_id, msg_id):
         if not run:
             return False, "运行不存在"
         msgs = _ensure_messages(run)
-        for i, m in enumerate(msgs):
+        for m in msgs:
             if str(m.get("id")) == msg_id:
-                if m.get("consumed"):
-                    cb = m.get("consumed_by") or {}
+                key = (m.get("id"), m.get("created_at"), m.get("text"))
+                copies = [(r, other) for r in _RUNS.values()
+                          if r["id"] == run_id or (run.get("task_id") and
+                                                  r.get("task_id") == run.get("task_id"))
+                          for other in r.get("messages") or []
+                          if (other.get("id"), other.get("created_at"), other.get("text")) == key]
+                delivered = next((other for _, other in copies if other.get("consumed")), None)
+                if delivered:
+                    cb = delivered.get("consumed_by") or {}
                     where = ("已随步骤 #" + str(cb.get("step")) + " 送达") if cb.get("step") \
                         else "已送达执行"
                     return False, "指令" + where + "，无法撤回"
-                del msgs[i]
-                _save_json(paths.RUNS_DIR / run_id / "run.json", run)
+                for owner, other in copies:
+                    owner["messages"].remove(other)
+                    _save_json(paths.RUNS_DIR / owner["id"] / "run.json", owner)
+                bump_state()
                 return True, ""
         return False, "消息不在信箱中（可能已被撤回）"
 
