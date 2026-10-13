@@ -5386,8 +5386,72 @@ main.chat-fill #run-detail.chat-mode > .rd-main { overflow: hidden; }
 .rd-chat-editor-actions span { min-width: 0; flex: 1; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .rd-chat-editor-actions span.bad { color: var(--bad); }
 .rd-chat-editor-actions button { flex: none; padding: 4px 10px; }
-#run-detail.rd-chat-expanded { position: fixed; z-index: 1000; inset: 12px; width: auto; height: auto; max-width: none; margin: 0; overflow: auto; box-shadow: 0 12px 48px rgba(0,0,0,.28); }
-#run-detail.rd-chat-expanded .rd-chat-run-status { position: sticky; bottom: 0; z-index: 3; }
+/* Expanded details own their viewport geometry, even under chat-fill overrides. */
+#page-settings #sub-runs #run-detail.rd-chat-expanded,
+main.chat-fill #run-detail.chat-mode.rd-chat-expanded {
+  position: fixed;
+  z-index: 1000;
+  inset: 12px;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(228px, 19vw, 300px);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "main rail";
+  gap: 16px;
+  overflow: hidden;
+  background: var(--panel);
+  transform: none;
+  backdrop-filter: none;
+  animation: none;
+  box-shadow: 0 12px 48px rgba(0,0,0,.28);
+}
+main.chat-fill #run-detail.chat-mode.rd-chat-expanded > #rd-railcol {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: auto;
+  max-height: 100%;
+  margin: 0;
+}
+main.chat-fill #run-detail.chat-mode.rd-chat-expanded > .rd-main {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+main.chat-fill #run-detail.chat-mode.rd-chat-expanded .rd-pane[data-pane="chat"] {
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+#run-detail.rd-chat-expanded .rd-chat-flow { min-height: 0; }
+#run-detail.rd-chat-expanded .rd-chat-run-status,
+#run-detail.rd-chat-expanded .rd-chat-bar { position: static; }
+#run-detail.rd-chat-expanded .rd-chat.chat-workspace-open {
+  grid-template-rows: minmax(0, 1fr) auto auto;
+}
+#run-detail.rd-chat-expanded .rd-chat.chat-workspace-open .rd-chat-bar {
+  width: calc(100% - 24px);
+}
+@container chat-pane (max-width: 940px) {
+  #run-detail.rd-chat-expanded .rd-chat.chat-workspace-open {
+    grid-template-rows: minmax(100px, 1fr) auto auto minmax(120px, .75fr);
+    row-gap: 8px;
+  }
+}
+@media (max-width: 900px) {
+  #page-settings #sub-runs #run-detail.rd-chat-expanded {
+    inset: 6px;
+    padding: 8px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "main";
+  }
+  main.chat-fill #run-detail.chat-mode.rd-chat-expanded > #rd-railcol { display: none; }
+}
 @media (max-width: 560px) {
   .rd-chat-run-status { width: calc(100% - 24px); gap: 5px; padding-inline: 7px; }
   .rd-chat-run-label { max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
