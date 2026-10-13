@@ -49,6 +49,23 @@ Trae Agent、OpenClaw……），提供
 <img src="docs/screenshots/run_steps.png" width="400" align="top" alt="步骤时间线与 CLI 日志">
 </div>
 
+### 🖥 实时数据大屏：挂副屏当监控墙
+
+独立深色大屏页：运行中任务的实时输出逐条滚动，执行池占用、今日完成/失败、
+近 7 日 token 消耗与模型 TOP5 一屏尽收；顶栏仪表盘按钮直达。
+
+<img src="docs/screenshots/board.png" width="820" alt="实时数据大屏：运行中任务实时输出 + 执行池 + 模型 TOP5">
+
+### 💬 对话与成果：边跑边聊，跑完即交付
+
+任务点击默认进对话：运行中随时递话（文字 / 截图 / 附件），下一轮自动生效；
+成果页逐文件预览每章成稿与全书手稿，平台作品资料逐字段复制即用。
+
+<div>
+<img src="docs/screenshots/chat.png" width="400" align="top" alt="任务对话：运行中递话，边跑边聊">
+<img src="docs/screenshots/result.png" width="400" align="top" alt="成果交付：章节与全书手稿逐文件预览">
+</div>
+
 ### ⚔️ 跨厂商对抗式评审
 
 评审者强制来自与作者不同的模型族——同族自评有同款盲区，换一双"眼睛"才挑得出
@@ -98,13 +115,26 @@ OpenCode / Continue / Cursor / Trae 十种工具的配置，一次带入全部�
 
 <img src="docs/screenshots/models.png" width="820" alt="模型接入：多来源供应商聚合">
 
+### 🧪 模型评测台：同题赛马，谁强用谁
+
+不知道该用哪家模型？固定样题（章节写作 / 小 bug 修复 / 结构化摘要 / 红队诱导防线）
+让候选模型同题赛马，统一评委链打分出能力榜单；14 天内的实测分自动作为软信号参与
+运行时选模——评测即反哺。
+
+<img src="docs/screenshots/evalbench.png" width="820" alt="模型评测台：固定样题同题赛马 + 能力榜单">
+
 ### 📊 用量台账：每一分钱都有账
 
 所有真实 LLM 调用（编排步骤、编排者直连、连通性冒烟、AI 修复）计入 append-only
 台账：总 tokens、成功率、累计费用、每日趋势（纯 SVG 零依赖），按工具 / 智能体 /
 模型 / 角色 / 任务类型五维排行，支持今天 / 近 7 天 / 近 30 天 / 全部。
+「概览」页再给你全局一眼：近 30 天执行次数、成功率与花费走势，配「长目标」
+把跨天大工程挂起来随时推进。
 
-<img src="docs/screenshots/usage.png" width="820" alt="用量统计">
+<div>
+<img src="docs/screenshots/usage.png" width="400" align="top" alt="用量统计：五维排行与活动热力图">
+<img src="docs/screenshots/overview.png" width="400" align="top" alt="数据概览：执行次数 / 成功率 / 费用趋势 + 长目标">
+</div>
 
 ### ⏱ 自动化：定时任务无人值守
 
@@ -112,6 +142,13 @@ OpenCode / Continue / Cursor / Trae 十种工具的配置，一次带入全部�
 错过的临时任务标记跳过不补跑，连载类错过自动断点续跑。
 
 <img src="docs/screenshots/automation.png" width="820" alt="自动化：定时任务列表与下次运行时间">
+
+### 🌐 内置浏览器：查资料、登平台不切窗口
+
+工作台自带浏览器页签：查资料、看榜单、登发布平台一站式完成；与「发布上架」
+打通，平台登录与发布确认都在软件里。
+
+<img src="docs/screenshots/browser.png" width="820" alt="内置浏览器：页签式浏览，与发布上架打通">
 
 ### 📖 帮助中心与作品信息
 
