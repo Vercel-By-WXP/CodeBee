@@ -7844,3 +7844,19 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   model 11.8k〔E 不装〕/Meldwork 708 微型）+craft 家族 13 件勘定+2 属主悬案闭合
   +B3 同步欠账修复 5 词；判据件均非「对方有我们没有且小而实」当班落地件，零产品
   代码提案，落地=知识沉淀三件套+同步修复，不触发发版 | 结论 | 2026-10-13
+
+## 2026-10-13 17:54 班新增沉淀
+
+- **证据保护（可落地）**：Letta Code PR4097
+  (<https://github.com/letta-ai/letta-code/pull/4097>) 提出只有明确证明旧事实失效才覆盖；
+  CodeBee 已确认的 knowledge 条目拒绝 draft 时，在线 `body` 与
+  `as_of/confidence/source/source_file` 必须保持一致，候选的这些字段随 revision 留痕。
+  本轮已落地并由 `tests/test_knowledge.py` 覆盖，接口不变、风险低。
+- **本轮不借鉴**：cmux
+  (<https://github.com/manaflow-ai/cmux>)、kimaki
+  (<https://www.npmjs.com/package/kimaki>)、baocut
+  (<https://github.com/JimLiu/baocut>)、smg
+  (<https://github.com/smg-project/smg>) 分别依赖 macOS/Discord/成片编辑器/自建网关，
+  与 CodeBee 当前边界不兼容；仅作为 UI、远程指挥和 token 路由观察项。
+- **门禁记录**：本轮全量根测试未通过且 app 全量原生栈溢出中止；知识定向
+  `Ran 4 / OK`。因此不把失败基线包装成绿，不发版、不 npm publish、不推送。
