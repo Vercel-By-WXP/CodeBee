@@ -4253,6 +4253,15 @@ main .panel.wide {
 #run-detail .rd-bible .bible-view { margin: 0; max-height: 280px; }
 #run-detail .rd-bible .bible-editor { margin-top: 0; }
 
+/* The detail main column already owns vertical scrolling. Keeping a second
+   capped scroller on the Bible preview makes short documents show an
+   unnecessary scrollbar and traps long documents in a nested scroll area. */
+#run-detail .rd-bible .bible-view {
+  max-height: none;
+  overflow: visible;
+}
+
+
 /* Hive: keep the stage relationship, remove the heavy nested panel treatment. */
 #run-detail .rd-hive { margin-top: 0; }
 #run-detail .rd-hive .sec-title { margin-bottom: 12px; }
