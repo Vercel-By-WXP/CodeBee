@@ -1392,6 +1392,20 @@
   }
 }
 
+/* Keep the docked task card on the same visual baseline as the run-detail
+ * header. The compact grid layout used below 1600px otherwise starts the
+ * sticky rail at the main area's padding edge, making the card look detached
+ * from the detail content (see the run-detail reference capture). */
+@media (min-width: 901px) and (max-width: 1599px) {
+  #run-detail:not(.chat-mode) > #rd-railcol {
+    margin-top: 12px;
+  }
+
+  main.chat-fill #run-detail.chat-mode > #rd-railcol {
+    margin-top: 2px;
+  }
+}
+
 /* Reference pass: the command menu and top-level chrome use the quiet,
  * compact proportions of the supplied desktop references. */
 @media (min-width: 901px) {

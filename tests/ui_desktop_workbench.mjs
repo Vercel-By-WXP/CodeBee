@@ -204,6 +204,7 @@ try {
       assert.ok(bounds.bar.w <= 741, 'composer width follows the 740px reading measure');
       assert.ok(width - bounds.rail.right <= 25, 'task rail stays docked at right edge');
       assert.ok(bounds.bar.right <= bounds.rail.x + 1, 'composer and task rail do not overlap');
+      if (width < 1600) assert.equal(Math.round(bounds.rail.y), Math.round(bounds.flow.y), 'docked task rail aligns with the run content');
       assert.ok(bounds.scroll <= bounds.client + 1, 'only timeline scrolls');
       assert.ok(await ev("document.getElementById('rd-chat-flow').scrollHeight > document.getElementById('rd-chat-flow').clientHeight"), 'long conversation scrolls inside timeline');
       assert.equal(await ev("getComputedStyle(document.getElementById('rd-chat-flow')).scrollbarWidth"), 'none', 'conversation remains scrollable without a visible inner scrollbar');
