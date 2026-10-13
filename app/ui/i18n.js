@@ -2504,7 +2504,7 @@
     "QQ 交流群（群号 923647047）": "QQ group (ID 923647047)",
     "微信支付": "WeChat Pay",
     "支付宝支付": "Alipay",
-    "如果 CodeBee 帮你赚到了稿费、省下了时间，欢迎请作者喝杯咖啡～": "If CodeBee has earned you royalties or saved you time, buying the author a coffee is much appreciated~",
+    "如果 CodeBee 帮你赚到了稿费、省下了时间，欢迎捐赠支持——每一笔都会用来建设更好的生态（教程文档、新功能研发与社区运营）～": "If CodeBee has earned you royalties or saved you time, donations are much appreciated — every contribution goes back into building a better ecosystem (docs, new features, and community)~",
 
     // —— 帮助改进（遥测/诊断包）——
     "帮助改进 CodeBee": "Help Improve CodeBee",

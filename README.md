@@ -1,4 +1,4 @@
-# <img src="app/ui/icons/logo-horizontal.png" width="96" align="top" alt="CodeBee"> CodeBee · 多智能体编排台
+# <img src="app/ui/icons/logo-custom.png" width="96" align="top" alt="CodeBee"> CodeBee · 多智能体编排台
 
 > All agents, one hive. —— 一声令下，群蜂齐作。
 > *CodeBee*，码蜂：蜂后统筹（编排者）、侦察蜂定方向（规划/评审）、工蜂采蜜（实现）——
@@ -519,8 +519,9 @@ node tests\ui_skin.mjs        :: 皮肤核验（调色板变量对齐 + 换肤/�
   Issue 和 PR 都欢迎。
 - **QQ 交流群**：扫码加入「Codebee 沟通交流1群」（群号 923647047），使用问题、
   经验分享都在群里。
-- **请作者喝杯咖啡**：CodeBee 的开发与模型调用成本都靠自掏腰包，如果它帮你赚到
-  了稿费、省下了时间，欢迎打赏支持（微信 / 支付宝都行）～
+- **捐赠共建生态**：CodeBee 的开发与模型调用成本都靠自掏腰包，如果它帮你赚到
+  了稿费、省下了时间，欢迎捐赠支持（微信 / 支付宝都行）——每一笔都会投入
+  生态建设：教程与文档、新功能研发、社区运营，让 CodeBee 长久生长～
 
 <div>
 <img src="app/ui/assets/community-qr.png" width="280" align="top" alt="Codebee 沟通交流1群 QQ 群二维码（群号 923647047）">
