@@ -1,0 +1,83 @@
+/* The workspace shares the conversation's available width, not the window's. */
+#rd-pane-chat { container: chat-pane / inline-size; }
+#run-detail .rd-chat.chat-workspace-open {
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  gap: 0 16px;
+}
+#run-detail .chat-workspace-open .rd-chat-flow { padding-inline: 12px; }
+#run-detail .chat-workspace-open .rd-chat-run-status,
+#run-detail .chat-workspace-open .rd-chat-bar {
+  width: calc(100% - 24px);
+  max-width: none;
+}
+#rd-chat-workspace {
+  container: workspace-editor / inline-size;
+  border-radius: 8px;
+  box-shadow: none;
+  font-family: var(--font-ui);
+}
+.rd-chat-workspace-head { gap: 12px; min-height: 56px; padding: 8px 12px; box-sizing: border-box; }
+.rd-chat-workspace-head > .ico { flex: none; color: var(--muted); }
+.rd-chat-workspace-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rd-chat-workspace-heading strong { font-size: 13px; font-weight: 600; }
+.rd-chat-workspace-heading #rd-chat-workspace-path { font: 12px/1.4 var(--font-ui); }
+#rd-chat-workspace [data-chat-workspace-close] {
+  display: grid; place-items: center; width: 28px; height: 28px; padding: 0;
+  border: 0; border-radius: 4px; background: transparent; color: var(--muted);
+}
+#rd-chat-workspace [data-chat-workspace-close]:hover { color: var(--text); background: var(--panel2); }
+.rd-chat-workspace-body { grid-template-columns: minmax(180px, 34%) minmax(0, 1fr); }
+.rd-chat-workspace-files {
+  border-left: 0; border-right: 1px solid var(--border);
+  padding: 8px; background: color-mix(in srgb, var(--panel) 65%, var(--panel2) 35%);
+  scrollbar-width: thin;
+}
+.rd-chat-file-dir summary, #rd-chat-workspace .rd-chat-file {
+  box-sizing: border-box; min-height: 32px; gap: 6px; padding: 6px;
+  color: var(--text); font: 12.5px/20px var(--font-ui); border-radius: 4px;
+}
+.rd-chat-file-dir summary:hover { background: var(--panel2); }
+.rd-chat-file-dir summary .ico, #rd-chat-workspace .rd-chat-file-icon {
+  width: 14px; height: 14px; flex: none; color: var(--muted);
+}
+.rd-chat-file-dir summary .rd-chat-dir-chevron { width: 12px; height: 12px; }
+.rd-chat-file-dir[open] > summary .rd-chat-dir-chevron { transform: rotate(90deg); }
+.rd-chat-file-dir summary .rd-chat-file-name { width: auto; color: inherit; }
+.rd-chat-file-dir-children { padding-left: 12px; }
+.rd-chat-file-name { flex: 1; }
+.rd-chat-file-size { font-size: 10px; font-variant-numeric: tabular-nums; }
+#rd-chat-workspace .rd-chat-file.active {
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+  box-shadow: inset 2px 0 var(--accent); color: var(--text);
+}
+.rd-chat-editor-name { box-sizing: border-box; min-height: 36px; padding: 8px 12px; font: 12px/20px var(--font-ui); }
+.rd-chat-editor-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column;
+  gap: 12px; min-height: 140px; color: var(--muted); font-size: 13px;
+}
+.rd-chat-editor-empty .ico { width: 32px; height: 32px; opacity: .6; }
+#rd-chat-editor-text { min-height: 0; padding: 16px; font: 13px/1.75 var(--mono), var(--font-ui); tab-size: 4; }
+.rd-chat-editor-actions { min-height: 40px; padding: 4px 8px 4px 12px; box-sizing: border-box; }
+.rd-chat-editor-actions span { font-size: 12px; }
+#rd-chat-workspace [data-chat-editor-save] { min-height: 28px; border-radius: 4px; }
+#rd-chat-workspace :is(button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+@container chat-pane (max-width: 940px) {
+  #run-detail .rd-chat.chat-workspace-open {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(260px, 1fr) auto auto minmax(360px, 55vh);
+    row-gap: 12px;
+  }
+  #run-detail .chat-workspace-open .rd-chat-workspace { grid-column: 1; grid-row: 4; }
+}
+@container workspace-editor (max-width: 440px) {
+  .rd-chat-workspace-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(96px, 30%) minmax(0, 1fr); }
+  .rd-chat-workspace-files { border-right: 0; border-bottom: 1px solid var(--border); }
+  .rd-chat-editor-name { min-height: 32px; padding-block: 6px; }
+  .rd-chat-editor-empty { min-height: 60px; }
+  #rd-chat-editor-text { padding: 12px; font-size: 16px; line-height: 1.6; }
+}
+@media (max-width: 560px) {
+  #rd-chat-workspace :is(.rd-chat-file, .rd-chat-file-dir summary, [data-chat-workspace-close], [data-chat-editor-save]) { min-height: 44px; }
+  #rd-chat-workspace [data-chat-workspace-close] { width: 44px; }
+}

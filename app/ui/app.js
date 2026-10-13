@@ -10464,17 +10464,17 @@ function chatWorkspaceFileTreeHTML(node, depth) {
     String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
   return dirs.map((name) => {
     const child = node.dirs[name];
-    return '<details class="rd-chat-file-dir" open><summary><span>▾</span>' + esc(name) +
+    return '<details class="rd-chat-file-dir"' + (depth === 0 ? ' open' : '') +
+      '><summary title="' + esc(name) + '"><svg class="ico rd-chat-dir-chevron" aria-hidden="true"><use href="#i-chevron-r"></use></svg>' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg><span class="rd-chat-file-name">' + esc(name) + '</span>' +
       '</summary><div class="rd-chat-file-dir-children">' +
       chatWorkspaceFileTreeHTML(child, depth + 1) + "</div></details>";
   }).join("") + files.map((file) => {
     const name = String(file.name || "");
     const base = name.split("/").pop();
-    const ext = (base.split(".").pop() || "").toLowerCase();
-    const icon = ["md", "txt", "log"].includes(ext) ? "▤" : "▧";
     return '<button type="button" class="rd-chat-file" data-chat-workspace-file="' + esc(name) +
-      '" title="' + esc(name) + '"><span class="rd-chat-file-icon">' + icon +
-      '</span><span class="rd-chat-file-name">' + esc(base) +
+      '" title="' + esc(name) + '"><svg class="ico rd-chat-file-icon" aria-hidden="true"><use href="#i-book"></use></svg>' +
+      '<span class="rd-chat-file-name">' + esc(base) +
       '</span><span class="rd-chat-file-size">' + esc(fmtSize(file.size)) + "</span></button>";
   }).join("");
 }
@@ -10482,13 +10482,18 @@ function chatWorkspaceFileTreeHTML(node, depth) {
 function chatWorkspaceRenderFiles() {
   const nav = $("rd-chat-workspace-files");
   if (!nav) return;
-  if (!chatWorkspaceState.files.length) {
-    nav.innerHTML = '<div class="rd-chat-workspace-empty">' + esc(t("该目录下暂无文件")) + "</div>";
-    return;
+  // Editing only updates selection; preserve the tree's scroll and disclosure state.
+  const sig = JSON.stringify([chatWorkspaceState.dir, document.documentElement.dataset.lang, chatWorkspaceState.files]);
+  if (nav._workspaceSig !== sig) {
+    nav._workspaceSig = sig;
+    nav.innerHTML = chatWorkspaceState.files.length
+      ? chatWorkspaceFileTreeHTML(chatWorkspaceTree(chatWorkspaceState.files), 0)
+      : '<div class="rd-chat-workspace-empty">' + esc(t("该目录下暂无文件")) + "</div>";
   }
-  nav.innerHTML = chatWorkspaceFileTreeHTML(chatWorkspaceTree(chatWorkspaceState.files), 0);
   nav.querySelectorAll("[data-chat-workspace-file]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.chatWorkspaceFile === chatWorkspaceState.current);
+    const active = button.dataset.chatWorkspaceFile === chatWorkspaceState.current;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-current", active ? "true" : "false");
   });
 }
 
@@ -10499,9 +10504,13 @@ function chatWorkspaceSyncLayout() {
   box.classList.toggle("chat-workspace-open", !!chatWorkspaceState.open);
   pane.classList.toggle("hidden", !chatWorkspaceState.open);
   const path = $("rd-chat-workspace-path");
-  if (path) path.textContent = chatWorkspaceState.dir || "";
+  if (path) path.textContent = path.title = chatWorkspaceState.dir || "";
   const name = $("rd-chat-editor-name");
-  if (name) name.textContent = chatWorkspaceState.current || t("选择文件");
+  if (name) name.textContent = name.title = chatWorkspaceState.current || t("选择文件");
+  const empty = $("rd-chat-editor-empty");
+  if (empty) empty.classList.toggle("hidden", !!chatWorkspaceState.current);
+  const editor = $("rd-chat-editor-text");
+  if (editor) editor.classList.toggle("hidden", !chatWorkspaceState.current);
   const save = document.querySelector("[data-chat-editor-save]");
   if (save) save.disabled = !chatWorkspaceState.current || !chatWorkspaceState.dirty;
   chatWorkspaceRenderFiles();

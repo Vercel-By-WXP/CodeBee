@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="reference-composer.css">
 <link rel="stylesheet" href="button-reference.css">
 <link rel="stylesheet" href="conversation-reference.css">
+<link rel="stylesheet" href="workspace-editor.css">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，首涂落经典底色，
      app.js 加载后会按 currentSkin() 校正为默认皮肤。 -->
@@ -790,8 +791,16 @@
                 <input id="rd-chat-file" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.txt,.md,.markdown,.csv,.json,.log,.py,.js,.ts,.html,.css,.xml,.yml,.yaml,.toml,.pdf,.docx,.xlsx,.pptx" class="hidden" />
               </div>
               <aside id="rd-chat-workspace" class="rd-chat-workspace hidden" aria-label="工作区" data-i18n-aria="工作区">
-                <div class="rd-chat-workspace-head"><strong data-i18n="工作区编辑器">工作区编辑器</strong><span id="rd-chat-workspace-path"></span><button type="button" class="ghost small" data-chat-workspace-close data-i18n-title="关闭工作区" title="关闭工作区" aria-label="关闭工作区">×</button></div>
-                <div class="rd-chat-workspace-body"><section class="rd-chat-editor"><div id="rd-chat-editor-name" class="rd-chat-editor-name" data-i18n="选择文件">选择文件</div><textarea id="rd-chat-editor-text" spellcheck="false" data-i18n-ph="选择左侧文件查看或编辑" placeholder="选择左侧文件查看或编辑"></textarea><div class="rd-chat-editor-actions"><span id="rd-chat-editor-state"></span><button type="button" class="primary small" data-chat-editor-save data-i18n="保存">保存</button></div></section><nav id="rd-chat-workspace-files" class="rd-chat-workspace-files"></nav></div>
+                <div class="rd-chat-workspace-head"><svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg><div class="rd-chat-workspace-heading"><strong data-i18n="工作区编辑器">工作区编辑器</strong><span id="rd-chat-workspace-path"></span></div><button type="button" class="ghost small" data-chat-workspace-close data-i18n-title="关闭工作区" title="关闭工作区" data-i18n-aria="关闭工作区" aria-label="关闭工作区"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
+                <div class="rd-chat-workspace-body">
+                  <nav id="rd-chat-workspace-files" class="rd-chat-workspace-files" aria-label="工作区" data-i18n-aria="工作区"></nav>
+                  <section class="rd-chat-editor">
+                    <div id="rd-chat-editor-name" class="rd-chat-editor-name" data-i18n="选择文件">选择文件</div>
+                    <div id="rd-chat-editor-empty" class="rd-chat-editor-empty"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg><span data-i18n="选择文件">选择文件</span></div>
+                    <textarea id="rd-chat-editor-text" class="hidden" spellcheck="false" disabled aria-labelledby="rd-chat-editor-name"></textarea>
+                    <div class="rd-chat-editor-actions"><span id="rd-chat-editor-state" role="status" aria-live="polite"></span><button type="button" class="primary small" data-chat-editor-save data-i18n="保存" disabled>保存</button></div>
+                  </section>
+                </div>
               </aside>
             </div>
           </div>
