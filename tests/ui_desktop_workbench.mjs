@@ -105,11 +105,12 @@ try {
       assert.ok(bounds.doc <= width + 1, 'no page horizontal overflow');
       assert.ok(bounds.bar.bottom <= 901, 'composer visible');
       assert.ok(bounds.flow.h > 120, 'timeline retains reading space');
-      assert.ok(bounds.flow.w <= 821, 'reading width capped on wide screens');
+      assert.ok(bounds.flow.w <= 961, 'reading width capped on wide screens');
       assert.ok(width - bounds.rail.right <= 25, 'task rail stays docked at right edge');
       assert.ok(bounds.bar.right <= bounds.rail.x + 1, 'composer and task rail do not overlap');
       assert.ok(bounds.scroll <= bounds.client + 1, 'only timeline scrolls');
       assert.ok(await ev("document.getElementById('rd-chat-flow').scrollHeight > document.getElementById('rd-chat-flow').clientHeight"), 'long conversation scrolls inside timeline');
+      assert.equal(await ev("getComputedStyle(document.getElementById('rd-chat-flow')).scrollbarWidth"), 'none', 'conversation remains scrollable without a visible inner scrollbar');
       if (width === 1366) await capture('chat-1366');
     }
     await browser.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -125,6 +126,24 @@ try {
     await browser.send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 600, deviceScaleFactor: 1, mobile: false });
     assert.ok(await ev("document.querySelector('.rd-chat-bar').getBoundingClientRect().bottom <= innerHeight"), 'short-window composer visible');
     assert.ok(await ev("getComputedStyle(document.getElementById('rd-rail')).overflowY === 'auto'"), 'short-window task actions scroll');
+    await browser.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await ev("switchTab('agents')");
+    const settingsLayout = await ev(`(() => {
+      const nav = document.querySelector('.side-settings');
+      const main = document.querySelector('main').getBoundingClientRect();
+      const page = document.getElementById('page-settings').getBoundingClientRect();
+      return {title: document.querySelector('.settings-nav-head strong')?.textContent.trim(),
+        scrollbar: getComputedStyle(nav).scrollbarWidth, pageWidth: Math.round(page.width),
+        centered: Math.abs((page.left + page.right) / 2 - (main.left + main.right) / 2) < 2,
+        horizontalOverflow: document.documentElement.scrollWidth > innerWidth};
+    })()`);
+    assert.equal(settingsLayout.title, '设置', 'settings navigation has a clear title');
+    assert.equal(settingsLayout.scrollbar, 'none', 'settings navigation hides the visual scrollbar');
+    assert.ok(settingsLayout.pageWidth <= 821, 'settings content stays in a readable column');
+    assert.ok(settingsLayout.centered, 'settings content is centered in the main canvas');
+    assert.equal(settingsLayout.horizontalOverflow, false, 'settings layout has no horizontal overflow');
+    await ev("document.documentElement.dataset.theme='light'; document.documentElement.dataset.skin='classic'");
+    await capture('settings-agents');
     assert.deepEqual(errors, [], 'no uncaught browser exceptions');
     console.log('PASS desktop geometry and palette');
   }

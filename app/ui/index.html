@@ -262,9 +262,12 @@
     </div>
     <!-- 设置视图：左栏整体变成设置导航 -->
     <div class="side-settings">
-      <button id="btn-set-back" class="set-back" data-i18n="返回 CodeBee">
-        <svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>返回 CodeBee
-      </button>
+      <div class="settings-nav-head">
+        <strong data-i18n="设置">设置</strong>
+        <button id="btn-set-back" class="set-back" title="返回 CodeBee" aria-label="返回 CodeBee" data-i18n-title="返回 CodeBee" data-i18n-aria="返回 CodeBee">
+          <svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+        </button>
+      </div>
       <label class="settings-search-wrap">
         <svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>
         <input id="settings-search" type="search" autocomplete="off" data-i18n-ph="搜索设置和功能…" placeholder="搜索设置和功能…" aria-label="搜索设置和功能" data-i18n-aria="搜索设置和功能">

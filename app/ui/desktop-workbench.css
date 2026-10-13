@@ -3,7 +3,7 @@
  * their existing behavior; no task or runtime state is changed here. */
 @media (min-width: 901px) {
   html {
-    --workbench-reading-width: 820px;
+    --workbench-reading-width: 960px;
     --workbench-task-width: clamp(228px, 19vw, 300px);
     --workbench-gap: clamp(16px, 2vw, 32px);
   }
@@ -342,25 +342,29 @@
 
   main.chat-fill #run-detail.chat-mode > .rd-main {
     min-width: 0;
-    border: 1px solid var(--cb-card-border);
-    border-radius: 14px;
-    background: var(--cb-button-bg);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
   }
 
-  #run-detail.chat-mode .rd-pane[data-pane="chat"] { border-radius: 14px; }
+  #run-detail.chat-mode .rd-pane[data-pane="chat"] { border-radius: 0; }
 
   #run-detail.chat-mode .rd-chat-flow {
-    max-width: 820px;
+    max-width: 960px;
     padding: 28px 34px 24px;
     gap: 26px;
+    scrollbar-width: none;
   }
+
+  #run-detail.chat-mode .rd-chat-flow::-webkit-scrollbar { display: none; }
 
   .chat-bubble.agent { font-size: 14px; line-height: 1.75; }
   .chat-bubble.me { background: var(--panel2); border-color: var(--border); }
   .chat-avatar { background: color-mix(in srgb, var(--cb-active) 38%, var(--panel)); border-color: var(--border); color: var(--cb-accent); }
 
   #run-detail.chat-mode .rd-chat-bar {
-    width: min(820px, calc(100% - 52px));
+    width: min(960px, calc(100% - 52px));
     max-width: none;
     margin: 10px auto 14px;
     border-color: var(--cb-button-border);
@@ -400,7 +404,7 @@
   }
 
   #sub-tasks .composer {
-    width: min(820px, 100%);
+    width: min(960px, 100%);
     background: transparent;
     border: 0;
     box-shadow: none;
@@ -499,9 +503,7 @@
   html[data-theme="dark"] .topbar { background: rgba(32, 35, 40, .96); border-bottom-color: #343a42; }
   html[data-theme="dark"] main,
   html[data-theme="dark"] main.chat-fill,
-  html[data-theme="dark"] main.chat-fill #run-detail.chat-mode > .rd-main,
   html[data-theme="dark"] main.chat-fill #run-detail.chat-mode #rd-rail { background: var(--cb-canvas); }
-  html[data-theme="dark"] main.chat-fill #run-detail.chat-mode > .rd-main,
   html[data-theme="dark"] main.chat-fill #run-detail.chat-mode #rd-rail { border-color: #3b424a; }
   html[data-theme="dark"] .chat-bubble.me { background: #30353b; border-color: #424a54; }
   html[data-theme="dark"] .chat-avatar { background: #303943; border-color: #4b5867; color: #b5d1f5; }
@@ -512,4 +514,116 @@
   html[data-theme="dark"] #rd-rail > #rd-tabs .rd-tab.active,
   html[data-theme="dark"] #rd-rail > #rd-chat-nav .cn-pill:hover,
   html[data-theme="dark"] #rd-rail > #rd-chat-nav .cn-pill.on { color: #b5d1f5; background: #2d3a4b; }
+}
+
+/* Settings navigation and pages follow Codex's quiet, centered settings layout. */
+@media (min-width: 901px) {
+  .side-settings {
+    gap: 1px;
+    padding: 10px 4px 12px;
+    scrollbar-width: none;
+    overscroll-behavior: contain;
+  }
+
+  .side-settings::-webkit-scrollbar { display: none; }
+
+  .settings-nav-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 34px;
+    margin: 0 5px 9px;
+  }
+
+  .settings-nav-head > strong {
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 650;
+    letter-spacing: -.02em;
+  }
+
+  .settings-nav-head .set-back {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    color: var(--cb-rail-text);
+  }
+
+  .settings-nav-head .set-back:hover { color: var(--text); background: var(--cb-hover); }
+  .settings-nav-head .set-back .ico { width: 15px; height: 15px; }
+
+  .settings-search-wrap {
+    min-height: 36px;
+    margin: 0 2px 10px;
+    padding-inline: 10px;
+    border-color: transparent;
+    border-radius: 10px;
+    background: var(--panel2);
+  }
+
+  .settings-search-wrap:focus-within {
+    border-color: var(--cb-focus);
+    box-shadow: 0 0 0 3px var(--cb-focus-ring);
+  }
+
+  .settings-search-wrap kbd { background: var(--panel); }
+
+  .side-settings .set-group {
+    padding: 12px 10px 5px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 550;
+    letter-spacing: .01em;
+  }
+
+  .side-settings .set-group:first-of-type { padding-top: 3px; }
+
+  .side-settings .set-item {
+    min-height: 34px;
+    padding: 6px 10px;
+    gap: 10px;
+    border-radius: 8px;
+    color: var(--cb-rail-text);
+    font-size: 12.5px;
+  }
+
+  .side-settings .set-item .ico { width: 15px; height: 15px; }
+  .side-settings .set-item:hover { color: var(--text); background: var(--cb-hover); }
+  .side-settings .set-item.active {
+    color: var(--text);
+    background: var(--cb-hover);
+    font-weight: 600;
+    box-shadow: inset 2px 0 0 var(--cb-accent);
+  }
+
+  body.settings-mode #mainwrap > main {
+    padding-top: 26px;
+    background: var(--cb-canvas);
+  }
+
+  body.settings-mode #page-settings {
+    width: min(820px, 100%);
+    max-width: none;
+    margin-inline: auto;
+  }
+
+  body.settings-mode #page-settings.page-wide,
+  body.settings-mode #page-settings:has(> #sub-runs:not(.hidden)) {
+    width: min(1080px, 100%);
+  }
+
+  body.settings-mode #page-settings > .subpage:not(#sub-tasks) > .panel,
+  body.settings-mode #page-settings > .subpage:not(#sub-tasks) > .panel.wide {
+    border-color: var(--cb-card-border);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(20, 28, 38, .025);
+  }
+
+  html[data-theme="dark"] .side-settings .set-item.active { color: #dce8f7; background: #303943; }
 }
