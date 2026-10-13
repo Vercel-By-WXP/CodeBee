@@ -1160,15 +1160,6 @@
     border-radius: 9px;
   }
 
-  /* The global stylesheet intentionally removes the generic focus ring; the
-   * navigation rail still needs a visible keyboard state. */
-  .rail-btn:focus-visible,
-  .brand-tool:focus-visible,
-  .stask:focus-visible,
-  .sdir > summary:focus-visible {
-    outline: 2px solid var(--cb-accent) !important;
-    outline-offset: -2px !important;
-  }
 
   /* Keep the command menu and connection badge on the active theme tokens. */
   .ctx-menu {
