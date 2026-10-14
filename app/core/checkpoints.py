@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 from . import paths
@@ -134,14 +135,18 @@ def _read(run_id=""):
         try:
             if path.stat().st_size > 4 * 1024 * 1024:
                 continue
-            for line in path.read_text(encoding="utf-8").splitlines()[-50000:]:
+            # Bound the retained physical JSONL lines before parsing/filtering.
+            # Text iteration preserves Unicode separators inside JSON strings.
+            with path.open(encoding="utf-8") as handle:
+                lines = deque(handle, maxlen=50000)
+            for line in lines:
                 try:
                     row = json.loads(line)
                 except (TypeError, ValueError):
                     continue
                 if isinstance(row, dict) and (not run_id or row.get("run_id") == run_id):
                     rows.append(row)
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
     return rows
 

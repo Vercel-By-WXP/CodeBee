@@ -7881,3 +7881,9 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 - **安全公告数量不是新增数量**：[Paperclip 公告列表](https://github.com/paperclipai/paperclip/security/advisories) 本次 API 返回 12 条，发布时间均早于本轮，不能与旧 5 条口径做差宣称新漏洞。恶意 skill、继承外部连接副作用和 DNS rebinding 是安全边界参照，不等于 CodeBee 漏洞结论。
 - **发现/验证纪律**：主扫 216/216 成功，978 条结果/795 唯一仓，错误/限流 0；雷达 35/35、awesome 元数据 22/22、固定仓 API 40/40，六源市场 JSON 可达。每查 5 项及有限 A1 翻页仍有剪切盲区；PyPI 仍挑战页，Bing RSS 交叉查询缺少相关性，不充作有效 WebSearch，不据此宣称全网没有新竞品。
 - **测试不能只看退出码**：根 `python -m unittest discover -v` 只发现 0 项；显式 `-s tests` 日志 33 FAIL/2 ERROR/2 skipped 且无最终汇总；应用 Python 3.13 套件 251 项、245 通过/6 跳过，不能替代根测试门禁。定向 104 项仅 EN 词条覆盖失败。测试整体未绿，本轮仅文档沉淀，未暂存、未提交、未推送、未发版。
+
+## 2026-10-14 11:40 班续记
+
+- **检查点 JSONL 有界读取已落地**：依据 [Letta Code 13d81bfc](https://github.com/letta-ai/letta-code/commit/13d81bfc60d3006edf6e24f7dda021eeaec0d5d6)，`app/core/checkpoints.py::_read` 从整文件 `splitlines()` 改为文本迭代 + `deque(maxlen=50000)`；保留物理行窗口、跨月追加顺序、4 MiB 上限及坏 UTF-8 月文件隔离，避免大日志一次性构造超长字符串。`app/tests/test_checkpoint_streaming.py` 覆盖 5 类边界，定向 `PYTHONPATH=app python -m unittest app.tests.test_checkpoint_streaming -v` 为 5/5 通过。
+- 本轮主扫 216/216 成功（978 条结果、795 个唯一仓），未发现第二个同样满足低风险兼容条件的产品改进；不改关键词、不安装 CLI/skill、不发版。
+- 共享根测试仍有既有失败与无汇总问题，不能以退出码 0 宣称全绿；后续继续先修复测试基线再扩大改动面。
