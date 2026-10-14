@@ -28,6 +28,9 @@ CONFIG = {
         "()=>[...document.querySelectorAll('tr')]"
         ".filter(tr => tr.querySelectorAll(':scope > td').length >= 4)"
         ".map(tr => tr.innerText.replace(/\\s+/g, ' ').trim()).filter(Boolean)",
+    # 新建作品尚未提交章节时，章节管理页没有 tr，但会明确显示该空状态。
+    # 对账应把它当作远端 0 章，而不是改版/登录失效。
+    "empty_chapter_markers": ["暂无章节内容"],
     "pager_next_js":
         "()=>{const n=document.querySelector('.arco-pagination-item-next');"
         "if(!n)return{done:true};"

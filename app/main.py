@@ -2523,6 +2523,8 @@ class Handler(BaseHTTPRequestHandler):
             kwargs = ({"force": force, "force_confirmed": force_confirmed,
                        "force_reason": force_reason}
                       if force or force_confirmed or force_reason else {})
+            if body.get("scheduled"):
+                kwargs["scheduled"] = True
             ok, err = pub.upload_chapter_async(task_id, platform, str(fp), auto_submit,
                                                **kwargs)
         if not ok:

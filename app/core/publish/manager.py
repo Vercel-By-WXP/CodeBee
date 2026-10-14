@@ -1376,7 +1376,19 @@ def sync_published(task_id, plat, manual=False):
         rows, vols = collect_all_volumes(page, mod)
         st = bucket_chapter_rows(rows)
         if st["total"] <= 0:
-            return False, "章节管理页未识别到章节列表（可能改版）"
+            # A newly-created work has no table rows yet.  Accept only an
+            # explicit platform empty-state marker; a blank page still means
+            # the page changed or the session is not ready.
+            markers = mod.CONFIG.get("empty_chapter_markers") or []
+            body_text = ""
+            evaluate = getattr(page, "evaluate", None)
+            if callable(evaluate):
+                try:
+                    body_text = str(evaluate("document.body && document.body.innerText || ''") or "")
+                except Exception:
+                    body_text = ""
+            if not any(str(marker) and str(marker) in body_text for marker in markers):
+                return False, "章节管理页未识别到章节列表（可能改版）"
         extra = {"volumes": vols} if vols else {}
         ledger.update_book(task_id, plat,
                            remote_total=st["total"],

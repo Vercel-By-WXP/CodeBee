@@ -606,16 +606,23 @@ class Page:
             "if(y1!==null)cands=cands.filter(e=>e.getBoundingClientRect().y<=y1);"
             "if(!cands.length)return{ok:false,err:'nf'};"
             "cands.sort((a,b)=>((a.innerText||'').trim().length)-((b.innerText||'').trim().length));"
-            "const el=cands[0];el.scrollIntoView({block:'center'});"
-            "const rc=el.getBoundingClientRect();"
+            "const el=cands[0];"
+            # Arco/番茄的自绘控件把事件处理器挂在外层容器，文本节点本身
+            # 只适合定位，点击其中心会绕过控件状态更新。
+            "const target=(el.closest('.select-view')||"
+            "el.closest('.category-choose-item')||"
+            "el.closest('.category-modal button')||"
+            "el.closest('label')||el);"
+            "target.scrollIntoView({block:'center'});"
+            "const rc=target.getBoundingClientRect();"
             "const x=Math.round(rc.x+rc.width/2),y=Math.round(rc.y+rc.height/2);"
             "const hit=document.elementFromPoint(x,y);"
             "if(!hit)return{ok:false,err:'oob'};"
-            "if(hit!==el&&!el.contains(hit)&&!hit.contains(el))"
+            "if(hit!==target&&!target.contains(hit)&&!hit.contains(target))"
             "return{ok:false,err:'blocked',by:hit.tagName+' '+"
             "((hit.className||'')+'').slice(0,40)};"
             "return{ok:true,x:x,y:y,"
-            "tag:el.tagName,cls:(el.className||'').toString().slice(0,30)};}",
+            "tag:target.tagName,cls:(target.className||'').toString().slice(0,30)};}",
             str(text), scope or "", bool(contains),
             int(y_min) if y_min is not None else None,
             int(y_max) if y_max is not None else None)
@@ -638,6 +645,14 @@ class Page:
         self.send("Input.dispatchMouseEvent",
                   {"type": "mouseReleased", "x": x, "y": y,
                    "button": "left", "clickCount": 1}, timeout=8.0)
+        # Radio labels on the current 番茄 form ignore CDP geometry events when
+        # the decorative wrapper owns the hit target.  Native label click keeps
+        # the platform's controlled input state in sync; consequential submit
+        # buttons still go through the real mouse path above.
+        self.call(
+            "(t)=>{const el=[...document.querySelectorAll('label')].find(e=>"
+            "(e.innerText||'').trim()===t&&e.querySelector('input[type=radio]'));"
+            "if(el)el.click();return!!el;}", str(text))
         return {"ok": True, "tag": r.get("tag"), "via": "input"}
 
     def _click_diag(self, scope):
