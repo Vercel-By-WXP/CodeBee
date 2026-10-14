@@ -139,6 +139,47 @@ def main():
             return "visible modal button"
         check("click_in 跳过隐藏确认按钮", _click_visible_modal_action)
 
+        def _click_footer_label():
+            pg.evaluate("""(()=>{
+              delete document.body.dataset.publishConfirmed;
+              document.body.innerHTML = '<div style="position:fixed;left:100px;top:100px;width:500px">'
+                + '发布提示<div class="footer-btns" style="position:relative;width:400px;height:40px">'
+                + '<span style="position:absolute;left:0">取消</span>'
+                + '<span id="submit-label" style="position:absolute;right:0;cursor:pointer" '
+                + 'onclick="document.body.dataset.publishConfirmed=\\\'1\\\'">提交</span>'
+                + '</div></div><div class="center-mask" style="position:fixed;left:290px;top:118px;'
+                + 'width:30px;height:40px;z-index:100"></div>';
+              return true;
+            })()""")
+            _flow.run_flow(pg, [{"do": "click_in", "scope_text": "发布提示",
+                                "text": "提交", "real": True, "tries": 1}])
+            if pg.evaluate("document.body.dataset.publishConfirmed") != "1":
+                raise AssertionError("误点 footer-btns 中心，未点提交标签")
+            return "submit label, not footer center"
+        check("click_in 不把提交标签提升为按钮组", _click_footer_label)
+
+        def _click_reject_cover():
+            pg.evaluate("""(()=>{
+              delete document.body.dataset.publishConfirmed;
+              const r=document.querySelector('#submit-label').getBoundingClientRect();
+              const mask=document.querySelector('.center-mask');
+              Object.assign(mask.style,{left:r.x+'px',top:r.y+'px',width:r.width+'px',height:r.height+'px'});
+              return true;
+            })()""")
+            try:
+                _flow.run_flow(pg, [{"do": "click_in", "scope_text": "发布提示",
+                                    "text": "提交", "real": True, "tries": 1}])
+            except _flow.FlowError as exc:
+                if "center-mask" not in str(exc):
+                    raise AssertionError("未报告挡路元素：%s" % exc)
+            else:
+                raise AssertionError("真正被遮挡的提交按钮必须拒点")
+            if pg.evaluate("document.body.dataset.publishConfirmed") == "1":
+                raise AssertionError("不得绕过真实遮罩提交")
+            pg.navigate("http://127.0.0.1:%d/" % port)
+            return "cover rejected with diagnostic"
+        check("click_in 保留遮挡守卫并点名挡路元素", _click_reject_cover)
+
         def _click_not_found_diag():
             r1 = pg.real_click_text(u"不存在的文本", scope="#nonexist span")
             if r1.get("ok"):

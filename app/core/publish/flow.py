@@ -414,19 +414,29 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         # drafts to the newest row instead of the requested one.
                         "cards.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
                         "const card=cards[0];"
-                        "const btns=[...card.querySelectorAll('a,button,[role=button],[class*=btn],span')].filter(e=>{"
+                        "let btns=[...card.querySelectorAll('a,button,[role=button],[class*=btn],span')].filter(e=>{"
                         "const x=(e.innerText||'').trim();return vis(e)&&!e.disabled&&(x===t||x.includes(t)&&x.length<=t.length+6);});"
                         "if(!btns.length)return{ok:false,err:'卡片内没有'+t};"
+                        "const exact=btns.filter(e=>(e.innerText||'').trim()===t);"
+                        "if(exact.length)btns=exact;"
                         "btns.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
-                        "let el=btns[0];"
-                        "const act=el.closest('a,button,[role=button],[class*=btn]')||el;"
+                        "let blocked='';"
+                        "for(const el of btns){"
+                        # A class containing 'btn' can be the whole footer,
+                        # including Cancel. Only promote a label to an action
+                        # with the same text; never click the footer's center.
+                        "const parent=el.closest('a,button,[role=button],[class*=btn]');"
+                        "const act=parent&&(parent.innerText||'').trim()===(el.innerText||'').trim()?parent:el;"
+                        "if(!vis(act)||act.disabled||act.getAttribute('aria-disabled')==='true')continue;"
                         "act.scrollIntoView({block:'center'});"
                         "if(real){const rc=act.getBoundingClientRect();"
                         " const px=document.elementFromPoint(Math.round(rc.x+rc.width/2),Math.round(rc.y+rc.height/2));"
-                        " if(!px||(!act.contains(px)&&!px.contains(act)))return{ok:false,err:'blocked'};"
+                        " if(!px||(!act.contains(px)&&!px.contains(act))){"
+                        " blocked='点击「'+t+'」被挡住：'+(px?px.tagName+'.'+String(px.className||'').slice(0,100):'落点在视口外');continue;}"
                         " return{ok:true,x:Math.round(rc.x+rc.width/2),y:Math.round(rc.y+rc.height/2)};}"
                         "act.click();"
-                        "return{ok:true};}", scope_t, text, bool(st.get("real")))
+                        "return{ok:true};}"
+                        "return{ok:false,err:blocked||'卡片内没有可用的'+t};}", scope_t, text, bool(st.get("real")))
                     if (r or {}).get("ok"):
                         break
                     time.sleep(0.9)
