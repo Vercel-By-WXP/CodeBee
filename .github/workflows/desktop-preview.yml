@@ -138,3 +138,31 @@ jobs:
             desktop/dist/*win7*.exe
             desktop/dist/packaged-smoke-win7/
           if-no-files-found: warn
+
+  github-release:
+    # Tag push (v*) = 正式发版：四路构建全绿后自动创建 GitHub Release，
+    # 把四平台安装包挂到 Releases 页（公开仓库无需登录即可下载）。
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [native-preview, win7-preview]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Collect installers
+        run: |
+          mkdir -p release
+          find artifacts -name '*.exe' -exec mv {} release/ \;
+          find artifacts -name '*.dmg' -exec mv {} release/ \;
+          ls -la release/
+      - name: Create GitHub Release with installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "CodeBee ${GITHUB_REF_NAME#v}" \
+            --notes "桌面预览版安装包（Windows 10/11、Windows 7 预览、macOS Intel/Apple Silicon）。Python 已随包内置。更新内容见仓库 CHANGELOG.md。" \
+            --prerelease \
+            release/*
