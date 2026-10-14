@@ -11,6 +11,7 @@ zuozhe.qimao.com/api/pc/v1/book/book-option——作者后台 PC 端在 zuozhe.q
 from __future__ import annotations
 
 CHAPTER_TITLE_SELECTOR = (
+    "textarea[placeholder='请输入章节名称，最多20个字'],"
     "input[placeholder*='章节'],input[placeholder*='标题'],input[placeholder*='章名'],"
     "textarea[placeholder*='章节'],textarea[placeholder*='标题'],"
     "textarea[placeholder*='章名'],"
@@ -56,17 +57,52 @@ CREATE_BOOK = [
 ]
 
 UPLOAD_CHAPTER = [
-    {"do": "navigate", "url": "{home}"},
+    # 七猫真机（2026-10-14）：作品章节管理页的“新建章节”才会创建带
+    # cid 的编辑器草稿；直接拼 book-upload?id= 会落到空白编辑器，随后
+    # “立即发布”只更新草稿或被页面静默拦截。
+    {"do": "navigate", "url": "{chapter_manage_url}", "timeout": 40},
     {"do": "url_any", "any": ["qimao.com"]},
-    {"do": "click_text", "text": "{book_name}", "contains": True,
-     "scope": "a,span,div[class*=title],div[class*=book]"},
-    {"do": "click_text", "text": "新建章节", "contains": True, "scope": "button,a,[role=button],span"},
-    {"do": "probe", "note": "章节编辑器"},
-    {"do": "fill", "sel": CHAPTER_TITLE_SELECTOR, "key": "chapter_title"},
-    {"do": "wait", "sel": "[contenteditable=true],textarea[class*=content],iframe", "timeout": 10},
-    {"do": "fill", "sel": "[contenteditable=true],textarea[class*=content]", "key": "chapter_body"},
+    {"do": "wait", "sel": "a.create-new-chapter-btn,a[class*='create-new-chapter']",
+     "timeout": 20},
+    {"do": "click_text", "text": "新建章节", "contains": True,
+     "scope": "a,button,[role=button]"},
+    {"do": "wait", "sel": "textarea[placeholder='请输入章节名称，最多20个字']",
+     "timeout": 20},
+    {"do": "fill", "sel": "textarea[placeholder='请输入章节名称，最多20个字']",
+     "key": "chapter_title"},
+    # 七猫新建章节会沿用一个不可靠的默认序号（实测新稿直接跳到第 10/11 章）。
+    # 发布前必须显式写入本地稿件章号，否则平台弹窗会把当前章当成错误序号，
+    # 点击“更正序号去发布”也不会稳定落到目标章。
+    {"do": "fill", "sel": ".chapter-index-input-input input",
+     "key": "chapter_no"},
+    {"do": "wait", "sel": ".q-contenteditable.book.font-size-16.edit-mask",
+     "timeout": 15},
+    {"do": "fill", "sel": ".q-contenteditable.book.font-size-16.edit-mask",
+     "key": "chapter_body"},
     {"do": "shot", "name": "chapter-filled"},
-    {"do": "submit", "sel": "button[class*=publish],button[class*=submit]"},
+    {"do": "expect_text", "any": ["已保存到云端"], "timeout": 15},
+    {"do": "submit", "gate": True},
+    {"do": "click_real", "text": "立即发布",
+     "scope": "a,button,[role=button],span", "tries": 25},
+    {"do": "js_click", "text": "立即发布",
+     "scope": "a,button,[role=button]", "tries": 10,
+     "skip_if_modal": True},
+    {"do": "expect_text", "any": ["立即发布确认", "检测到章节序号不连续"],
+     "timeout": 12, "visible_only": True},
+    {"do": "shot", "name": "after-immediate-publish"},
+    {"do": "sleep", "s": 1.2},
+    {"do": "js_click", "text": "更正序号去发布",
+     "scope": "a,button,[role=button]", "tries": 12, "optional": True},
+    {"do": "sleep", "s": 0.8},
+    {"do": "js_click", "text": "确认发布",
+     "scope": ".el-dialog a,.el-dialog button", "tries": 15},
+    {"do": "expect_text_absent", "any": ["立即发布确认"], "timeout": 15,
+     "visible_only": True},
+    {"do": "sleep", "s": 2.5},
+    {"do": "verify_chapter_status", "url": "{chapter_manage_url}",
+     "timeout": 35, "settle": 4, "new_tab": True,
+     "row_sel": ".el-table__row, tr",
+     "live_status": ["待审核", "审核中", "已发布"], "draft_status": ["草稿"]},
 ]
 
 # 发章存草稿（2026-10-09 全部发草稿）：内置推测表——真机校准表在

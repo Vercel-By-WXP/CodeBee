@@ -370,12 +370,14 @@ def _flow_contract_ok(plat, action, steps):
             isinstance(s, dict) and s.get("do") == "verify"
             and "draft_url" in str(s.get("url") or "") for s in steps)
     if action == "upload_chapter":
-        # Qimao's current confirmation dialog may expose a success toast only
-        # after the final click; older user overrides used the verify contract
-        # without an explicit expect_text step.  Both forms are safe when they
-        # require the real "确认发布" action and a post-submit verification.
-        return has("click_real", "确认发布") and (has("expect_text") or
-                                                 has("verify"))
+        # A generic toast or title visible in a draft list is not proof of
+        # publication. The calibrated Qimao path must initiate the real
+        # immediate-publish action and finish with a chapter-management row
+        # carrying a live review/published status. Confirmation dialogs vary
+        # by chapter state, so their follow-up click is optional; the status
+        # row is the mandatory receipt.
+        return (has("click_real", "立即发布")
+                and has("verify_chapter_status"))
     return True
 
 

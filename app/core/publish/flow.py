@@ -700,10 +700,12 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 for _try in range(int(st.get("tries") or 10)):
                     r = page.call(
                         "(t,scope,c,gm)=>{"
-                        "if(gm){var g=[...document.querySelectorAll('[class*=modal]')]"
-                        ".find(e=>e.getBoundingClientRect().width>0);"
+                        "const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                        "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
+                        "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
+                        "if(gm){var g=[...document.querySelectorAll('.el-dialog,.modal,[role=dialog],[class*=modal]')]"
+                        ".find(vis);"
                         "if(g)return{ok:false,err:'modal-open'};}"
-                        "const vis=e=>e.getBoundingClientRect().width>0;"
                         "const els=[...document.querySelectorAll(scope||'button')].filter(vis);"
                         "let cands=els.filter(e=>{const x=(e.innerText||'').trim();"
                         "return x&&(c?x.includes(t):x===t);});"
@@ -715,6 +717,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         break
                     if (r or {}).get("err") == "modal-open":
                         note(i, "弹窗已开（真实点击已生效），跳过 JS点击「%s」" % text)
+                        r = {"ok": True, "via": "modal-open"}
                         break
                     time.sleep(0.6)
                 if not (r or {}).get("ok"):
@@ -778,8 +781,17 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 deadline = time.time() + float(st.get("timeout") or 12)
                 hit = ""
                 while time.time() < deadline:
-                    body_txt = str(page.call(
-                        "()=>(document.body.innerText||'')", timeout=15) or "")
+                    if st.get("visible_only"):
+                        body_txt = str(page.call(
+                            "()=>[...document.querySelectorAll('body *')].filter(e=>{"
+                            "const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                            "return r.width>0&&r.height>0&&s.display!=='none'"
+                            "&&s.visibility!=='hidden'&&parseFloat(s.opacity||'1')>0;})"
+                            ".map(e=>(e.innerText||'').trim()).filter(Boolean).join('\\n')",
+                            timeout=15) or "")
+                    else:
+                        body_txt = str(page.call(
+                            "()=>(document.body.innerText||'')", timeout=15) or "")
                     hit = next((m for m in marks if m in body_txt), "")
                     if hit:
                         break
@@ -802,8 +814,17 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 deadline = time.time() + float(st.get("timeout") or 12)
                 remaining = marks
                 while time.time() < deadline:
-                    body_txt = str(page.call(
-                        "()=>(document.body.innerText||'')", timeout=15) or "")
+                    if st.get("visible_only"):
+                        body_txt = str(page.call(
+                            "()=>[...document.querySelectorAll('body *')].filter(e=>{"
+                            "const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                            "return r.width>0&&r.height>0&&s.display!=='none'"
+                            "&&s.visibility!=='hidden'&&parseFloat(s.opacity||'1')>0;})"
+                            ".map(e=>(e.innerText||'').trim()).filter(Boolean).join('\\n')",
+                            timeout=15) or "")
+                    else:
+                        body_txt = str(page.call(
+                            "()=>(document.body.innerText||'')", timeout=15) or "")
                     remaining = [m for m in marks if m in body_txt]
                     if not remaining:
                         break
@@ -822,9 +843,12 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 for k, v in (values or {}).items():
                     url = url.replace("{%s}" % k, str(v))
                 note(i, "核验章节发布状态 %s" % url[:60])
-                page.navigate(url, timeout=float(st.get("nav_timeout") or 40))
-                page.wait_for(st.get("sel") or ".el-table__row, tr",
-                              timeout=float(st.get("timeout") or 25))
+                new_tab = bool(st.get("new_tab"))
+                vpage = page.open_new_tab(url) if new_tab else page
+                if not new_tab:
+                    vpage.navigate(url, timeout=float(st.get("nav_timeout") or 40))
+                vpage.wait_for(st.get("sel") or ".el-table__row, tr",
+                               timeout=float(st.get("timeout") or 25))
                 time.sleep(float(st.get("settle") or 4))
                 title = str(values.get("chapter_title") or "").strip()
                 number = str(values.get("chapter_no") or "").strip()
@@ -832,7 +856,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 live = [str(x) for x in (st.get("live_status") or
                                           ["待审核", "审核中", "已发布"])]
                 draft = [str(x) for x in (st.get("draft_status") or ["草稿"])]
-                rows = page.call(
+                rows = vpage.call(
                     "(sel)=>[...document.querySelectorAll(sel)]"
                     ".filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0;})"
                     ".map(e=>(e.innerText||'').replace(/\\s+/g,' ').trim())"
@@ -850,6 +874,8 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     raise FlowError("发布状态核验失败：本章行未见待审核/审核中/已发布状态：%s"
                                     % row[:120])
                 note(i, "章节管理行核验通过（%s）：%s" % (hit, row[:100]))
+                if new_tab:
+                    vpage.close_tab()
             elif act == "volume":
                 # 按本地卷计划在平台选择目标卷；如果缺失则创建，再点选它。
                 # 仅创建并关闭弹窗会保留平台当前卷，后续新章节就会落错卷。

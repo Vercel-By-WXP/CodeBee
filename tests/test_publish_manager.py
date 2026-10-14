@@ -306,8 +306,15 @@ def test_qimao_calibrated_draft_and_book_contract():
            "运行时七猫草稿表必须校验保存反馈")
     expect(any(s.get("do") == "verify" and "{draft_url}" in str(s.get("url"))
                for s in runtime_draft), "运行时七猫草稿表必须核验草稿箱")
-    expect(any(s.get("do") == "expect_text" for s in runtime_publish),
-           "运行时七猫发布表必须校验提交反馈")
+    expect(any(s.get("do") == "click_real" and s.get("text") == "立即发布"
+               for s in runtime_publish),
+           "运行时七猫发布表必须点真实发布按钮，不能以存草稿代替")
+    expect(any(s.get("do") == "verify_chapter_status" for s in runtime_publish),
+           "运行时七猫发布表必须核验章节管理页真实状态")
+    status_check = next(s for s in runtime_publish
+                        if s.get("do") == "verify_chapter_status")
+    expect(status_check.get("new_tab") is True,
+           "七猫发布状态必须用新页签核验，避免编辑器导航取消提交")
     expect(any(s.get("do") == "submit" and s.get("text") == "确认创建"
                for s in runtime_create), "运行时七猫创建表必须执行确认创建")
     draft = data.get("upload_chapter_draft")
@@ -346,9 +353,12 @@ def test_qimao_calibrated_draft_and_book_contract():
     expect(any(s.get("do") == "click_real" and s.get("text") == "存草稿"
                for s in manager.load_flow("qimao", "upload_chapter_draft")),
            "旧七猫草稿覆盖必须回退校准流程")
-    expect(any(s.get("do") == "click_real" and s.get("text") == "确认发布"
+    expect(any(s.get("do") == "click_real" and s.get("text") == "立即发布"
                for s in manager.load_flow("qimao", "upload_chapter")),
-           "旧七猫发布覆盖必须回退校准流程")
+           "旧七猫发布覆盖必须回退到真实立即发布流程")
+    expect(any(s.get("do") == "verify_chapter_status"
+               for s in manager.load_flow("qimao", "upload_chapter")),
+           "旧七猫发布覆盖不能移除真实章节状态核验")
 
     # 离线跑一遍草稿的关键尾链：即使 auto_submit=False，也必须点击存草稿，
     # 且没有反馈时应失败，防止批量把未保存章节记成成功。
@@ -361,6 +371,28 @@ def test_qimao_calibrated_draft_and_book_contract():
                    auto_submit=False)
     expect(getattr(pg, "_clicks", 0) == 1,
            "七猫草稿尾链必须实际点击存草稿")
+
+    # 发布成功必须由章节管理页对应行证明；上传成功 toast
+    # 单独出现都不够。一个真实发布状态通过，草稿状态和缺少目标行都失败。
+    live_page = _FlowPage(call_results=[["第1章 七猫测试 待审核"]])
+    live_page.navigate = lambda url, timeout=30: setattr(live_page, "_url", url)
+    _flow.run_flow(live_page, [
+        {"do": "verify_chapter_status", "url": "https://qimao.test/manage",
+         "timeout": 1, "settle": 0, "row_sel": ".el-table__row",
+         "live_status": ["待审核", "审核中", "已发布"], "draft_status": ["草稿"]},
+    ], values={"chapter_title": "第1章 七猫测试", "chapter_no": 1})
+
+    draft_page = _FlowPage(call_results=[["第1章 七猫测试 草稿"]])
+    draft_page.navigate = lambda url, timeout=30: setattr(draft_page, "_url", url)
+    try:
+        _flow.run_flow(draft_page, [{"do": "verify_chapter_status",
+            "url": "https://qimao.test/manage", "timeout": 1, "settle": 0,
+            "row_sel": ".el-table__row", "live_status": ["待审核", "审核中", "已发布"],
+            "draft_status": ["草稿"]}], values={"chapter_title": "第1章 七猫测试",
+                                                       "chapter_no": 1})
+        raise AssertionError("章节管理页仍为草稿时不能算发布成功")
+    except _flow.FlowError as exc:
+        expect("仍是草稿" in str(exc), "草稿状态失败信息要明确：%s" % exc)
 
     # 七猫当前校准证据没有定时发布入口；不要把普通草稿发布链冒充排期。
     expect("upload_chapter_scheduled" not in data,
@@ -388,18 +420,16 @@ def test_qimao_chapter_title_selector_supports_editor_fields():
     expect(len(selector_texts) == 4,
            "内置及校准的发布/草稿流程都应有标题填充选择器：%s" % selector_texts)
     for selector in selector_texts:
-        expect("textarea[placeholder*='章节']" in selector,
-               "标题选择器须兼容七猫 textarea 标题：%s" % selector)
-        expect("input[placeholder*='章节']" in selector,
-               "标题选择器须保留旧版 input 兼容：%s" % selector)
+        expect("textarea[placeholder" in selector and "请输入章节名称" in selector,
+               "标题选择器须命中七猫真实章节标题 textarea：%s" % selector)
 
     # optional cannot disguise a failed publish: run_flow must fail before manager
     # can record the queued chapter as success when the confirm action is absent.
     missing_confirm = _FlowPage(click_results=[{"ok": False, "err": "not found"}])
     try:
-        _flow.run_flow(missing_confirm, [{"do": "click_real", "text": "确认发布",
+        _flow.run_flow(missing_confirm, [{"do": "click_real", "text": "立即发布",
                                           "tries": 1}], auto_submit=True)
-        raise AssertionError("找不到七猫确认发布按钮时必须失败")
+        raise AssertionError("找不到七猫立即发布按钮时必须失败")
     except _flow.FlowError:
         pass
 
@@ -450,6 +480,18 @@ def test_flow_url_any_brings_page_hint():
         raise AssertionError("url_any 失败应抛 FlowError")
     except flow.FlowError as e:
         expect("表单校验未过" in str(e), "无页面提示时给人话猜测：%s" % e)
+
+
+def test_flow_js_click_accepts_preopened_modal():
+    """真实鼠标已打开弹窗时，JS 兜底应视为完成而不是反向报错。"""
+    from core.publish import flow
+    pg = _FlowPage(call_results=[{"ok": False, "err": "modal-open"}])
+    n = flow.run_flow(pg, [{"do": "js_click", "text": "立即发布",
+                            "scope": "button", "tries": 1,
+                            "skip_if_modal": True}], values={})
+    expect(n == 1 and pg._calls == 1,
+           "已打开确认弹窗应跳过兜底点击并继续流程：%s %s"
+           % (n, pg._calls))
 
 
 def test_flow_tags_group_retry_and_message():
