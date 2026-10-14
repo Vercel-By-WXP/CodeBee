@@ -7887,3 +7887,9 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 - **检查点 JSONL 有界读取已落地**：依据 [Letta Code 13d81bfc](https://github.com/letta-ai/letta-code/commit/13d81bfc60d3006edf6e24f7dda021eeaec0d5d6)，`app/core/checkpoints.py::_read` 从整文件 `splitlines()` 改为文本迭代 + `deque(maxlen=50000)`；保留物理行窗口、跨月追加顺序、4 MiB 上限及坏 UTF-8 月文件隔离，避免大日志一次性构造超长字符串。`app/tests/test_checkpoint_streaming.py` 覆盖 5 类边界，定向 `PYTHONPATH=app python -m unittest app.tests.test_checkpoint_streaming -v` 为 5/5 通过。
 - 本轮主扫 216/216 成功（978 条结果、795 个唯一仓），未发现第二个同样满足低风险兼容条件的产品改进；不改关键词、不安装 CLI/skill、不发版。
 - 共享根测试仍有既有失败与无汇总问题，不能以退出码 0 宣称全绿；后续继续先修复测试基线再扩大改动面。
+## 2026-10-15 05 时班：批5检索/知识/浏览器增量
+
+- 主扫按现行 `keywords.md` 完成常驻组 + 批5 + A1 page=2：216/216 成功，978 条结果、796 个唯一仓，固定仓 40/40、topic 雷达 8/8、六源市场 6/6 成功。
+- 新锐 OpenSandbox、NVIDIA SkillSpector、Tencent AI-Infra-Guard、FreeToken 分别属于更大范围的沙箱/技能扫描/安全基础设施/token 基础设施；与 CodeBee 当前接口不兼容或风险边界未验证，本班不接入、不安装。
+- 18 类 flow、token 预算、六源 SSRF/白名单、经验库闭集去重、CLI 本机探测和禅道只读边界复核无新缺口；根目录测试共享基线仍有历史失败，不宣称全量全绿。
+- 本班根测试命令退出码为 0 但无最终汇总，逐条日志实账 43 FAIL、3 ERROR，末尾有子进程仍运行告警；因此未把它判为全绿。只新增 `docs/borrow-log/2026-10-15.md` 与本段知识沉淀，未修改关键词策略或产品代码。
