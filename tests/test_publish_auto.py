@@ -200,6 +200,11 @@ class TestPublishPending(unittest.TestCase):
         self.manager = manager
         auto.PACE_S = 0
         auto.IDLE_POLL_S = 0.05
+        ledger.update_book(type(self).task["id"], "fanqie",
+                           remote_published_nos=None)
+        self._orig_sync = manager.sync_published
+        manager.sync_published = lambda t, p, manual=False: (True, "")
+        self.addCleanup(setattr, manager, "sync_published", self._orig_sync)
 
     def _wait_status(self, task_id, timeout=10.0):
         deadline = time.time() + timeout
@@ -286,6 +291,35 @@ class TestPublishPending(unittest.TestCase):
             self.assertIn("校准", err)
         finally:
             self.manager.upload_chapter_async = orig
+
+    def test_auto_submit_reconciles_remote_rows_before_upload(self):
+        """远端已有章必须在本批第一次提交前剔除，不能靠事后同名行冒充成功。"""
+        self._calibrate()
+        tid = type(self).task["id"]
+        sync_calls = []
+
+        def _sync_brings_existing(t, p, manual=False):
+            sync_calls.append((t, p, manual))
+            ledger.update_book(t, p, remote_published_nos=[1])
+            return True, ""
+
+        self.manager.sync_published = _sync_brings_existing
+        fake = _FakeUpload()
+        orig = self.manager.upload_chapter_async
+        self.manager.upload_chapter_async = fake
+        try:
+            ok, err = auto.publish_pending_async(
+                tid, "fanqie", only=[1, 2], auto_submit=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(tid)
+            self.assertEqual(st.get("status"), "done")
+            self.assertEqual(st.get("total"), 1)
+            self.assertEqual([Path(fp).name for fp in fake.calls], ["第2章.md"])
+            self.assertEqual(sync_calls, [(tid, "fanqie", False)])
+            self.assertTrue(any("对账剔除" in n for n in st.get("notes") or []))
+        finally:
+            self.manager.upload_chapter_async = orig
+            ledger.update_book(tid, "fanqie", remote_published_nos=None)
 
     def test_manual_mode_fills_one_then_pauses(self):        # 人工确认模式：填好一章停在 manual_pause，等用户浏览器提交后再发起
         # （连发第二章会导航离开未提交的编辑器，把上一章内容丢掉）

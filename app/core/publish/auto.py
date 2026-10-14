@@ -587,31 +587,36 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
     def run():
         try:
             items = pend
-            if as_draft:
-                # 起草前对账（2026-10-10 假成功案）：台账只记得自己发的章，
+            if as_draft or auto_submit:
+                # 自动操作前对账：台账只记得自己发的章，
                 # 手工补交的只有平台知道——attach-only 刷一次校准再重算待发，
                 # 已发布/已存稿章就地剔除，不去撞序号重复。对不了账（浏览器
-                # 未连接/忙）整个拒起：存草稿本来就需要平台浏览器，宁等空窗
+                # 未连接/忙）整个拒起：自动操作本来就需要平台浏览器，宁等空窗
                 # 不盲跑；平台没配章节计数时跳过对账维持旧路径。
                 ok_r, why_r = manager.sync_published(task_id, platform,
                                                      manual=False)
                 if not ok_r and "未配置章节计数" not in str(why_r or ""):
                     st["status"] = "error"
-                    st["error"] = ("存草稿前对账失败：%s。为防把已发布章重复存稿，"
-                                   "本次未起草；请连接平台浏览器并等它空闲后重试"
-                                   % why_r)
+                    action_label = "存草稿" if as_draft else "自动发布"
+                    st["error"] = ("%s前对账失败：%s。为防重复提交已存在章节，"
+                                   "本次未操作；请连接平台浏览器并等它空闲后重试"
+                                   % (action_label, why_r))
                     return
                 fresh, _ = pending(task_id, platform)
                 if want is not None:
                     fresh = [p for p in fresh if p["chapter_no"] in want]
                 if not fresh:
                     st["status"] = "done"
-                    st["message"] = ("对账后没有可存草稿的章节（所选均已发布或"
-                                     "已存稿）；确需重存请先在平台删旧稿")
+                    if as_draft:
+                        st["message"] = ("对账后没有可存草稿的章节（所选均已发布或"
+                                         "已存稿）；确需重存请先在平台删旧稿")
+                    else:
+                        st["message"] = "对账后没有可发布的章节（所选均已在平台存在）"
                     return
                 if len(fresh) != st["total"]:
-                    st["notes"].append("对账剔除 %d 章已发布/已存稿，实存 %d 章"
-                                       % (st["total"] - len(fresh), len(fresh)))
+                    verb = "实存" if as_draft else "实发"
+                    st["notes"].append("对账剔除 %d 章已发布/已存稿，%s %d 章"
+                                       % (st["total"] - len(fresh), verb, len(fresh)))
                 st["total"] = len(fresh)
                 items = fresh
             for item in items:

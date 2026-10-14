@@ -25,6 +25,7 @@
 """
 from __future__ import annotations
 
+import datetime
 import json
 import re
 import time
@@ -34,6 +35,21 @@ from .browser import BrowserError
 
 class FlowError(Exception):
     """流程失败：message 面向用户（含步骤序号与截图路径线索）。"""
+
+
+def _has_new_feedback(before, after, marks):
+    """Return whether a submit click produced a new matching dialog/toast."""
+    before_dialog = str((before or {}).get("dialog") or "")
+    after_dialog = str((after or {}).get("dialog") or "")
+    before_feedback = [str(x) for x in ((before or {}).get("feedback") or [])]
+    after_feedback = [str(x) for x in ((after or {}).get("feedback") or [])]
+    for mark in marks:
+        if mark in after_dialog and mark not in before_dialog:
+            return True
+        if (sum(mark in x for x in after_feedback) >
+                sum(mark in x for x in before_feedback)):
+            return True
+    return False
 
 
 class TitleDupError(FlowError):
@@ -834,6 +850,236 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                                     % (int(float(st.get("timeout") or 12)),
                                        "、".join(remaining)[:80]))
                 note(i, "确认界面已关闭")
+            elif act == "fanqie_publish":
+                # Fanqie inserts typo, content-check, and publish-settings
+                # dialogs dynamically. Advance whichever dialog is visible.
+                # When the daily quota rejects a chapter, try later dates one
+                # by one instead of retrying the same blocked submission.
+                note(i, "处理番茄发布确认链")
+
+                def fq_state():
+                    return page.call(
+                        "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                        "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
+                        "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
+                        "const fs=[...document.querySelectorAll('[role=alert],.arco-message,"
+                        ".arco-notification,.arco-modal-notice')].filter(vis)"
+                        ".map(e=>(e.innerText||'').trim()).filter(Boolean);"
+                        "const d=ds[ds.length-1]||null;return{dialog:d?(d.innerText||'').trim():'',"
+                        "feedback:fs,"
+                        "body:(document.body.innerText||''),url:location.href};}", timeout=15) or {}
+
+                def fq_click(dialog_mark, label):
+                    return page.call(
+                        "(mark,label)=>{const vis=e=>{const r=e.getBoundingClientRect();"
+                        "return r.width>0&&r.height>0};"
+                        "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
+                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes(mark));"
+                        "if(!d)return{ok:false,err:'dialog'};"
+                        "const es=[...d.querySelectorAll('button,label,[role=button]')].filter(vis);"
+                        "const e=es.find(x=>(x.innerText||'').trim()===label);"
+                        "if(!e)return{ok:false,err:'action'};e.click();return{ok:true};}",
+                        dialog_mark, label, timeout=15) or {}
+
+                def fq_schedule_enabled():
+                    return bool(page.call(
+                        "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
+                        "const s=d&&d.querySelector('button[role=switch]');"
+                        "return !!(s&&s.getAttribute('aria-checked')==='true');}", timeout=10))
+
+                def fq_enable_schedule():
+                    if fq_schedule_enabled():
+                        return
+                    result = page.call(
+                        "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
+                        "const s=d&&d.querySelector('button[role=switch]');"
+                        "if(!s)return{ok:false};s.click();return{ok:true};}", timeout=10) or {}
+                    if not result.get("ok"):
+                        raise FlowError("番茄发布设置里找不到定时发布开关")
+                    time.sleep(0.3)
+
+                def fq_pick_date(day):
+                    iso = day.strftime("%Y-%m-%d")
+                    opened = page.call(
+                        "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
+                        "const x=d&&d.querySelector('input[placeholder=\"请选择日期\"]');"
+                        "if(!x)return{ok:false};x.click();return{ok:true};}", timeout=10) or {}
+                    if not opened.get("ok"):
+                        raise FlowError("番茄发布设置里找不到日期输入框")
+                    time.sleep(0.2)
+                    for _month_try in range(36):
+                        head = str(page.call(
+                            "()=>{const e=document.querySelector('.arco-picker-header-value');"
+                            "return e?(e.innerText||'').trim():'';}", timeout=10) or "")
+                        m = re.search(r"(\d{4})年(\d{1,2})月", head)
+                        if not m:
+                            raise FlowError("番茄日期面板未打开")
+                        diff = (day.year - int(m.group(1))) * 12 + day.month - int(m.group(2))
+                        if diff == 0:
+                            break
+                        moved = page.call(
+                            "(forward)=>{const es=[...document.querySelectorAll('.arco-picker-header-icon')]"
+                            ".filter(e=>e.getBoundingClientRect().width>0);"
+                            "const e=es[forward?2:1];if(!e)return{ok:false};"
+                            "e.click();return{ok:true};}", diff > 0, timeout=10) or {}
+                        if not moved.get("ok"):
+                            raise FlowError("番茄日期面板无法切换月份")
+                        time.sleep(0.12)
+                    picked = page.call(
+                        "(day)=>{const es=[...document.querySelectorAll('.arco-picker-cell-in-view')]"
+                        ".filter(e=>e.getBoundingClientRect().width>0);"
+                        "const e=es.find(x=>(x.innerText||'').trim()===String(day));"
+                        "if(!e)return{ok:false};e.click();return{ok:true};}", day.day, timeout=10) or {}
+                    if not picked.get("ok"):
+                        raise FlowError("番茄日期面板找不到 %s" % iso)
+                    time.sleep(0.2)
+                    got = str(page.call(
+                        "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
+                        "const x=d&&d.querySelector('input[placeholder=\"请选择日期\"]');"
+                        "return x?x.value:'';}", timeout=10) or "")
+                    if got != iso:
+                        raise FlowError("番茄定时日期选择失败：期望 %s，实际 %s" % (iso, got))
+
+                def fq_pick_time(slot):
+                    hhmm = slot.strftime("%H:%M")
+                    opened = page.call(
+                        "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
+                        "const x=d&&d.querySelector('input[placeholder=\"请选择时间\"]');"
+                        "if(!x)return{ok:false};x.click();return{ok:true};}", timeout=10) or {}
+                    if not opened.get("ok"):
+                        raise FlowError("番茄发布设置里找不到时间输入框")
+                    time.sleep(0.2)
+                    picked = page.call(
+                        "(hour,minute)=>{const ps=[...document.querySelectorAll('.arco-timepicker')]"
+                        ".filter(e=>e.getBoundingClientRect().width>0);const p=ps.at(-1);"
+                        "const ls=p&&p.querySelectorAll('.arco-timepicker-list');"
+                        "if(!ls||ls.length<2)return{ok:false,err:'panel'};"
+                        "const pick=(list,value)=>{const es=[...list.querySelectorAll('.arco-timepicker-cell')];"
+                        "const e=es.find(x=>(x.innerText||'').trim()===value);if(!e)return false;"
+                        "e.click();return true;};return{ok:pick(ls[0],hour)&&pick(ls[1],minute)};}",
+                        slot.strftime("%H"), slot.strftime("%M"), timeout=10) or {}
+                    if not picked.get("ok"):
+                        raise FlowError("番茄时间面板无法选择 %s" % hhmm)
+                    confirmed = page.call(
+                        "()=>{const ps=[...document.querySelectorAll('.arco-timepicker-container')]"
+                        ".filter(e=>e.getBoundingClientRect().width>0);const p=ps.at(-1);"
+                        "const b=p&&[...p.querySelectorAll('button')].find(e=>(e.innerText||'').trim()==='确定');"
+                        "if(!b)return{ok:false};b.click();return{ok:true};}", timeout=10) or {}
+                    if not confirmed.get("ok"):
+                        raise FlowError("番茄时间面板没有确定按钮")
+                    time.sleep(0.2)
+                    got = str(page.call(
+                        "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
+                        "const x=d&&d.querySelector('input[placeholder=\"请选择时间\"]');"
+                        "return x?x.value:'';}", timeout=10) or "")
+                    if got != hhmm:
+                        raise FlowError("番茄定时时间选择失败：期望 %s，实际 %s" % (hhmm, got))
+
+                raw_date = str(values.get(st.get("date_key") or "publish_date") or "").strip()
+                if raw_date:
+                    try:
+                        trial_day = datetime.datetime.strptime(raw_date, "%Y-%m-%d").date()
+                    except ValueError:
+                        raise FlowError("定时发布日期格式应为 YYYY-MM-DD：%s" % raw_date)
+                else:
+                    trial_day = datetime.date.today() + datetime.timedelta(days=1)
+                raw_time = str(values.get(st.get("time_key") or "publish_time") or
+                               "00:00").strip()
+                try:
+                    trial_time = datetime.datetime.strptime(raw_time, "%H:%M").time()
+                except ValueError:
+                    raise FlowError("定时发布时间格式应为 HH:MM：%s" % raw_time)
+                force_schedule = bool(st.get("force_schedule") or raw_date)
+                max_days = max(1, int(st.get("max_schedule_days") or 120))
+                deadline = time.time() + float(st.get("timeout") or 180)
+                tried_dates = 0
+                while time.time() < deadline:
+                    state = fq_state()
+                    dialog_text = str(state.get("dialog") or "")
+                    body_text = str(state.get("body") or "")
+                    if "发布提示" in dialog_text and "错别字" in dialog_text:
+                        if not fq_click("发布提示", "提交").get("ok"):
+                            raise FlowError("番茄错别字提示框没有提交按钮")
+                        time.sleep(0.8)
+                        continue
+                    if "请选择内容检测方式" in dialog_text:
+                        if not fq_click("请选择内容检测方式", "仅基础检测").get("ok"):
+                            raise FlowError("番茄内容检测弹窗没有基础检测按钮")
+                        time.sleep(1.2)
+                        continue
+                    if "发布设置" in dialog_text:
+                        if not fq_click("发布设置", "否").get("ok"):
+                            raise FlowError("番茄发布设置无法选择“未使用 AI”")
+                        queued_hint = ("建议本章定时发布" in dialog_text or
+                                       "有定时待发布章节" in dialog_text)
+                        use_schedule = force_schedule or queued_hint
+                        if use_schedule:
+                            if tried_dates >= max_days:
+                                raise FlowError("番茄连续 %d 个日期均触发每日字数上限" % max_days)
+                            fq_enable_schedule()
+                            fq_pick_date(trial_day)
+                            fq_pick_time(trial_time)
+                            note(i, "尝试定时发布 %s %s" %
+                                 (trial_day.strftime("%Y-%m-%d"),
+                                  trial_time.strftime("%H:%M")))
+                            tried_dates += 1
+                        before_submit = fq_state()
+                        if not fq_click("发布设置", "确认发布").get("ok"):
+                            raise FlowError("番茄发布设置没有确认发布按钮")
+                        time.sleep(1.4)
+                        after = fq_state()
+                        after_dialog = str(after.get("dialog") or "")
+                        if _has_new_feedback(before_submit, after, ["每日上限"]):
+                            force_schedule = True
+                            trial_day += datetime.timedelta(days=1)
+                            trial_time = datetime.time(0, 0)
+                            if "发布设置" not in after_dialog:
+                                page.call(
+                                    "()=>{const e=[...document.querySelectorAll('button')]"
+                                    ".find(x=>x.getBoundingClientRect().width>0"
+                                    "&&(x.innerText||'').trim()==='下一步');"
+                                    "if(!e)return{ok:false};e.click();return{ok:true};}",
+                                    timeout=10)
+                                time.sleep(0.8)
+                            continue
+                        if _has_new_feedback(
+                                before_submit, after,
+                                ["半小时以后", "发布时间间隔", "同一时间"]):
+                            force_schedule = True
+                            # This book accepts several scheduled chapters at
+                            # the same midnight slot. Keep a fixed 00:00
+                            # cadence; when the platform rejects a time slot,
+                            # retain the time and try the next date.
+                            trial_day += datetime.timedelta(days=1)
+                            if "发布设置" not in after_dialog:
+                                page.call(
+                                    "()=>{const e=[...document.querySelectorAll('button')]"
+                                    ".find(x=>x.getBoundingClientRect().width>0"
+                                    "&&(x.innerText||'').trim()==='下一步');"
+                                    "if(!e)return{ok:false};e.click();return{ok:true};}",
+                                    timeout=10)
+                                time.sleep(0.8)
+                            continue
+                        if _has_new_feedback(before_submit, after,
+                                             ["请选择是否使用 AI"]):
+                            continue
+                        if "发布设置" not in after_dialog:
+                            note(i, "番茄提交已被平台接受")
+                            break
+                        raise FlowError("番茄确认发布后仍停留在设置页：%s" % after_dialog[:160])
+                    if ("chapter-manage" in str(state.get("url") or "") or
+                            "已提交" in body_text):
+                        note(i, "番茄提交页已跳转")
+                        break
+                    time.sleep(0.4)
+                else:
+                    raise FlowError("等待番茄发布确认链超时")
             elif act == "verify_chapter_status":
                 # Publication is proven only by this chapter's row in the
                 # platform chapter-management page carrying a live/review
@@ -850,32 +1096,62 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 vpage.wait_for(st.get("sel") or ".el-table__row, tr",
                                timeout=float(st.get("timeout") or 25))
                 time.sleep(float(st.get("settle") or 4))
-                title = str(values.get("chapter_title") or "").strip()
+                # Fanqie renders the numeric prefix separately from the
+                # semantic title, while Qimao stores chapter_title as the
+                # semantic title. Prefer chapter_name when it is available so
+                # "第一百零九章 标题" is not compared with "第109章 标题".
+                title = str(values.get("chapter_name") or
+                            values.get("chapter_title") or "").strip()
                 number = str(values.get("chapter_no") or "").strip()
-                wanted = [x for x in (title, ("第%s章" % number if number else "")) if x]
+                number_mark = "第%s章" % number if number else ""
                 live = [str(x) for x in (st.get("live_status") or
-                                          ["待审核", "审核中", "已发布"])]
+                                          ["待发布", "待审核", "审核中", "已发布"])]
                 draft = [str(x) for x in (st.get("draft_status") or ["草稿"])]
-                rows = vpage.call(
-                    "(sel)=>[...document.querySelectorAll(sel)]"
-                    ".filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0;})"
-                    ".map(e=>(e.innerText||'').replace(/\\s+/g,' ').trim())"
-                    ".filter(Boolean)", st.get("row_sel") or ".el-table__row, tr",
-                    timeout=15) or []
-                row = next((str(r) for r in rows
-                            if any(mark in str(r) for mark in wanted)), "")
-                if not row:
-                    raise FlowError("发布状态核验失败：章节管理页找不到本章「%s」"
-                                    % (title or "第%s章" % number))
-                if any(mark in row for mark in draft):
-                    raise FlowError("发布状态核验失败：本章仍是草稿：%s" % row[:120])
-                hit = next((mark for mark in live if mark in row), "")
-                if not hit:
-                    raise FlowError("发布状态核验失败：本章行未见待审核/审核中/已发布状态：%s"
-                                    % row[:120])
-                note(i, "章节管理行核验通过（%s）：%s" % (hit, row[:100]))
-                if new_tab:
-                    vpage.close_tab()
+                row = ""
+                try:
+                    if config.get("volume_js"):
+                        from types import SimpleNamespace
+                        from .chaprows import collect_all_volumes
+                        rows, _volumes = collect_all_volumes(
+                            vpage, SimpleNamespace(CONFIG=config))
+                        row = next((str(r) for r in rows
+                                    if number_mark and number_mark in str(r)), "")
+                    else:
+                        for _page_no in range(int(st.get("max_pages") or 20)):
+                            rows = vpage.call(
+                                "(sel)=>[...document.querySelectorAll(sel)]"
+                                ".filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0;})"
+                                ".map(e=>(e.innerText||'').replace(/\\s+/g,' ').trim())"
+                                ".filter(Boolean)", st.get("row_sel") or ".el-table__row, tr",
+                                timeout=15) or []
+                            row = next((str(r) for r in rows
+                                        if number_mark and number_mark in str(r)), "")
+                            if row:
+                                break
+                            pager_js = str(st.get("pager_next_js") or
+                                           config.get("pager_next_js") or "")
+                            if not pager_js:
+                                break
+                            moved = vpage.call(pager_js, timeout=10) or {}
+                            if moved.get("done"):
+                                break
+                            time.sleep(float(st.get("page_settle") or 0.8))
+                    if not row:
+                        raise FlowError("发布状态核验失败：章节管理页找不到本章「%s」"
+                                        % (number_mark or title))
+                    if title and title not in row:
+                        raise FlowError("发布状态核验失败：第%s章标题不一致，远端行：%s"
+                                        % (number, row[:120]))
+                    if any(mark in row for mark in draft):
+                        raise FlowError("发布状态核验失败：本章仍是草稿：%s" % row[:120])
+                    hit = next((mark for mark in live if mark in row), "")
+                    if not hit:
+                        raise FlowError("发布状态核验失败：本章行未见待发布/待审核/审核中/已发布状态：%s"
+                                        % row[:120])
+                    note(i, "章节管理行核验通过（%s）：%s" % (hit, row[:100]))
+                finally:
+                    if new_tab:
+                        vpage.close_tab()
             elif act == "volume":
                 # 按本地卷计划在平台选择目标卷；如果缺失则创建，再点选它。
                 # 仅创建并关闭弹窗会保留平台当前卷，后续新章节就会落错卷。

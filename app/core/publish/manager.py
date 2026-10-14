@@ -357,12 +357,21 @@ def _flow_contract_ok(plat, action, steps):
     """
     if not isinstance(steps, list):
         return False
-    if plat != "qimao":
-        return True
     def has(do=None, text=None):
         return any(isinstance(s, dict) and (do is None or s.get("do") == do)
                    and (text is None or s.get("text") == text)
                    for s in steps)
+    if plat == "fanqie":
+        if action == "upload_chapter":
+            return has("fanqie_publish") and has("verify_chapter_status")
+        if action == "upload_chapter_scheduled":
+            return (any(isinstance(s, dict)
+                        and s.get("do") == "fanqie_publish"
+                        and s.get("force_schedule") is True for s in steps)
+                    and has("verify_chapter_status"))
+        return True
+    if plat != "qimao":
+        return True
     if action == "create_book":
         return has("submit", "确认创建")
     if action == "upload_chapter_draft":
@@ -813,6 +822,11 @@ def register_book(task_id, plat, title, book_id=""):
     title = (title or "").strip()
     if not title:
         return False, "作品名必填（发章按作品名在平台找书）"
+    book_id = str(book_id or "").strip()
+    valid_id = getattr(PLATFORMS[plat], "book_id_valid", None)
+    if book_id and callable(valid_id) and not valid_id(book_id):
+        return False, ("作品 ID 格式不对；番茄请填章节管理页 URL 中的完整长 ID，"
+                       "不要填短作品号")
     # 换绑另一本书（book_id/title 变了）时旧书的校准数作废，防张冠李戴
     old = ledger.book_for(task_id, plat) or {}
     if old and (old.get("book_id") != str(book_id or "").strip()
@@ -823,7 +837,7 @@ def register_book(task_id, plat, title, book_id=""):
                            remote_published_nos=None,
                            confirmed_published_through=None,
                            confirmed_published_at=None)
-    ledger.save_book(task_id, plat, {"book_id": str(book_id or "").strip(),
+    ledger.save_book(task_id, plat, {"book_id": book_id,
                                      "title": title[:120], "source": "manual"})
     return True, ""
 
@@ -995,6 +1009,12 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     # Python 将 book 误判为 run() 的局部变量，导致前置解析触发
     # UnboundLocalError。
     book_ref = dict(book)
+    valid_id = getattr(PLATFORMS[plat], "book_id_valid", None)
+    if (book_ref.get("book_id") and callable(valid_id)
+            and not valid_id(book_ref.get("book_id"))):
+        # Legacy records sometimes stored the short public work number. It
+        # opens an empty chapter page, so resolve the canonical id by title.
+        book_ref["book_id"] = ""
     if _st(plat).get("status") == "busy":
         return False, "该平台有操作正在进行中"
     if as_draft:
@@ -1069,6 +1089,8 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     mod = PLATFORMS[plat]
     values = chapter_fill_values(ch_no, title, body,
                                  book_ref.get("title") or "")
+    values["publish_date"] = ""
+    values["publish_time"] = "00:00"
     # Qimao renders the numeric prefix itself in the chapter editor.  Passing
     # the source heading ("第1章 标题") would therefore produce
     # "第1章 第1章 标题" on the platform; keep the full heading for audit

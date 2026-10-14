@@ -173,32 +173,20 @@
    "skip_if_modal": true
   },
   {
-   "do": "click_in",
-   "scope_text": "请选择内容检测方式",
-   "text": "仅基础检测",
-   "real": true,
-   "tries": 20,
-   "optional": true
+   "do": "fanqie_publish",
+   "schedule_when_queued": true,
+   "max_schedule_days": 120,
+   "timeout": 240
   },
   {
-   "do": "click_in",
-   "scope_text": "发布提示",
-   "text": "提交",
-   "real": true,
-   "tries": 60
-  },
-  {
-   "do": "sleep",
-   "s": 3
-  },
-  {
-   "do": "verify",
+   "do": "verify_chapter_status",
    "url": "{chapter_manage_url}",
-   "any": [
-    "第{chapter_no}章",
-    "{chapter_name}"
-   ],
-   "settle": 6,
+   "row_sel": "tr",
+   "live_status": ["待发布", "待审核", "审核中", "已发布"],
+   "draft_status": ["草稿"],
+   "settle": 3,
+   "page_settle": 1,
+   "max_pages": 20,
    "new_tab": true
   }
  ],
@@ -515,59 +503,20 @@
    "skip_if_modal": true
   },
   {
-   "do": "click_in",
-   "scope_text": "请选择内容检测方式",
-   "text": "仅基础检测",
-   "real": true,
-   "tries": 20,
-   "optional": true
+   "do": "fanqie_publish",
+   "force_schedule": true,
+   "max_schedule_days": 120,
+   "timeout": 240
   },
   {
-   "do": "click_arrow",
-   "target": "下一步",
-   "optional": true
-  },
-  {
-   "do": "click_real",
-   "text": "定时发布",
-   "scope": "button,a,[class*=btn]",
-   "tries": 20
-  },
-  {
-   "do": "click_real",
-   "text": "发布",
-   "scope": "button,a,[class*=btn]",
-   "tries": 20
-  },
-  {
-   "do": "click_in",
-   "scope_text": "发布提示",
-   "text": "提交",
-   "real": true,
-   "tries": 60
-  },
-  {
-   "do": "sleep",
-   "s": 3
-  },
-  {
-   "do": "expect_text",
-   "any": [
-    "定时发布成功",
-    "发布成功",
-    "提交成功",
-    "已提交"
-   ],
-   "timeout": 12
-  },
-  {
-   "do": "verify",
+   "do": "verify_chapter_status",
    "url": "{chapter_manage_url}",
-   "any": [
-    "第{chapter_no}章",
-    "{chapter_name}"
-   ],
-   "settle": 6,
+   "row_sel": "tr",
+   "live_status": ["待发布", "待审核", "审核中", "已发布"],
+   "draft_status": ["草稿"],
+   "settle": 3,
+   "page_settle": 1,
+   "max_pages": 20,
    "new_tab": true
   }
  ]

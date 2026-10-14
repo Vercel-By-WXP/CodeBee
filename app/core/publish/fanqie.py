@@ -209,6 +209,12 @@ def editor_url(book):
     return CONFIG["home"]
 
 
+def book_id_valid(book_id):
+    """Return whether *book_id* is a canonical Fanqie writer-console id."""
+    value = str(book_id or "").strip()
+    return value.isdigit() and len(value) >= 15
+
+
 def chapter_manage_url(book):
     """章节管理页（上线验证用）。"""
     bid = str((book or {}).get("book_id") or "")

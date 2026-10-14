@@ -626,7 +626,8 @@ def test_upload_chapter_draft_flow_and_ledger():
     import time as _time
     t = store.create_task({"type": "serial_novel", "goal": "草稿单章测试",
                            "workdir": str(_TMP)})
-    ledger.save_book(t["id"], "fanqie", {"book_id": "888", "title": "草稿书"})
+    ledger.save_book(t["id"], "fanqie",
+                     {"book_id": "7682979513168301118", "title": "草稿书"})
     r = store.create_run("orchestration", "评审", task_id=t["id"])
     store.update_run(r["id"], status="done", verdict={"publishable": False},
                      ended_at="2026-10-09 00:00:00")
@@ -843,10 +844,13 @@ def test_fanqie_upload_flow_contract():
         expect("chapter_no" in keys and "chapter_name" in keys
                and "chapter_title" not in keys,
                "%s 序号/正题分填、不再拿完整行填标题：%s" % (tag, keys))
-        verifies = [s for s in ups if s.get("do") == "verify"]
-        expect(len(verifies) == 1 and "第{chapter_no}章" in verifies[0]["any"]
-               and "{chapter_name}" in verifies[0]["any"],
-               "%s verify 双标记：%s" % (tag, verifies and verifies[0].get("any")))
+        publishers = [s for s in ups if s.get("do") == "fanqie_publish"]
+        verifies = [s for s in ups if s.get("do") == "verify_chapter_status"]
+        expect(len(publishers) == 1,
+               "%s 必须且只能有一个番茄发布确认链：%s" % (tag, publishers))
+        expect(len(verifies) == 1 and verifies[0].get("new_tab") is True
+               and "待发布" in (verifies[0].get("live_status") or []),
+               "%s 必须在新页签核验本章真实状态：%s" % (tag, verifies))
         # manual 模式的命门：「下一步」必须是 submit 步骤（auto_submit=false
         # 在此步前停）。click_real 不会被 manual 闸拦——序号修好后 manual
         # 模式会一路点到「定时发布/发布」把人工确认模式架空（2026-10-08）。
@@ -878,13 +882,88 @@ def test_fanqie_upload_flow_contract():
             expect(any(s.get("do") == "js_click" and s.get("text") == "下一步"
                         for s in scheduled),
                    "番茄定时发布必须包含下一步 JS 兜底点击")
-            expect(any(s.get("do") == "expect_text" for s in scheduled),
-                   "番茄定时发布必须校验提交成功反馈")
+            scheduled_publish = [s for s in scheduled
+                                 if s.get("do") == "fanqie_publish"]
+            scheduled_verify = [s for s in scheduled
+                                if s.get("do") == "verify_chapter_status"]
+            expect(len(scheduled_publish) == 1
+                   and scheduled_publish[0].get("force_schedule") is True,
+                   "番茄定时发布必须强制定时：%s" % scheduled_publish)
+            expect(len(scheduled_verify) == 1
+                   and scheduled_verify[0].get("new_tab") is True,
+                   "番茄定时发布必须核验章节管理页：%s" % scheduled_verify)
 
     base_fp = Path(_flow.__file__).with_name("flows-fanqie-calibrated.json")
     contract(_json.loads(base_fp.read_text(encoding="utf-8"))["upload_chapter"],
              "基线")
     contract(manager.load_flow("fanqie", "upload_chapter"), "解析后")
+
+
+def test_fanqie_stale_override_falls_back_to_calibrated_flow():
+    """旧用户覆盖缺少当前确认链时，不能盖掉随包校准流程。"""
+    fp = (_TMP / "publish" / "flows-fanqie.json").resolve()
+    fp.parent.mkdir(parents=True, exist_ok=True)
+    fp.write_text(json.dumps({
+        "upload_chapter": [{"do": "verify", "url": "https://old.invalid"}],
+        "upload_chapter_scheduled": [
+            {"do": "fanqie_publish"},
+            {"do": "verify_chapter_status"},
+        ],
+    }), encoding="utf-8")
+    for action in ("upload_chapter", "upload_chapter_scheduled"):
+        steps = manager.load_flow("fanqie", action)
+        expect(sum(s.get("do") == "fanqie_publish" for s in steps) == 1,
+               "旧覆盖必须回退到新发布链：%s" % action)
+        expect(sum(s.get("do") == "verify_chapter_status" for s in steps) == 1,
+               "旧覆盖必须回退到真实状态核验：%s" % action)
+
+
+def test_fanqie_verify_uses_semantic_title_and_pagination():
+    """章号定位跨页，标题比较使用正题，且接受待发布状态。"""
+    from core.publish import flow as _flow
+    pg = _FlowPage(call_results=[
+        ["第108章 上一章 已发布"],
+        {"done": False},
+        ["第109章 山里的新账 待发布"],
+    ])
+    pg.navigate = lambda url, timeout=30: setattr(pg, "_url", url)
+    _flow.run_flow(pg, [{
+        "do": "verify_chapter_status",
+        "url": "https://fanqie.test/manage",
+        "timeout": 1,
+        "settle": 0,
+        "page_settle": 0,
+        "row_sel": "tr",
+        "pager_next_js": "()=>({done:false})",
+        "live_status": ["待发布", "审核中", "已发布"],
+    }], values={
+        "chapter_no": "109",
+        "chapter_name": "山里的新账",
+        "chapter_title": "第一百零九章 山里的新账",
+    })
+    expect(pg._calls == 3, "应翻到第二页后命中目标章：%s" % pg._calls)
+
+
+def test_fanqie_rejects_short_book_id():
+    from core import store
+    task = store.create_task({"type": "serial_novel", "goal": "番茄 ID 校验"})
+    ok, err = manager.register_book(task["id"], "fanqie", "测试书", "768297951")
+    expect(not ok and "完整长 ID" in err, "短番茄 ID 必须拒绝：%s/%s" % (ok, err))
+    ok2, err2 = manager.register_book(
+        task["id"], "fanqie", "测试书", "7682979513168301118")
+    expect(ok2 and not err2, "完整番茄 ID 应通过：%s/%s" % (ok2, err2))
+
+
+def test_fanqie_publish_feedback_must_be_new():
+    """整页残留的旧限额文案不能把本次成功提交误判成拒绝。"""
+    from core.publish import flow as _flow
+    stale = {"dialog": "", "feedback": [], "body": "昨日已达每日上限"}
+    expect(not _flow._has_new_feedback(stale, stale, ["每日上限"]),
+           "整页旧文案不能算本次新反馈")
+    before = {"dialog": "发布设置", "feedback": ["旧提示"]}
+    after = {"dialog": "发布设置", "feedback": ["旧提示", "已达每日上限"]}
+    expect(_flow._has_new_feedback(before, after, ["每日上限"]),
+           "本次新增限额 toast 必须被识别")
 
 
 def test_volume_step_flow_logic():
