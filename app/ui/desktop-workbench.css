@@ -1448,6 +1448,15 @@
   }
 }
 
+/* The task summary lives in the right rail, which occupies the same viewport
+ * corner as this floating Git receipt. Keep the Git entry in the rail tabs
+ * rather than painting a duplicate card over task details. */
+@media (min-width: 901px) {
+  body:has(main.chat-fill #run-detail.chat-mode:not(.hidden)) #change-summary {
+    display: none;
+  }
+}
+
 /* Reference pass: the command menu and top-level chrome use the quiet,
  * compact proportions of the supplied desktop references. */
 @media (min-width: 901px) {
