@@ -13,6 +13,20 @@
 .chat-send-menu small { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .chat-send-menu kbd { flex: none; color: var(--muted); font: 10px var(--font-ui); }
 .chat-delivery-hint { padding: 7px 3px 0; color: var(--muted); font-size: 10.5px; line-height: 1.5; }
+.chat-queue { max-height: 154px; overflow-y: auto; margin: -2px 0 6px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+.chat-queue.hidden { display: none; }
+.chat-queue-row { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 34px; padding: 0 4px; color: var(--muted); font-size: 12px; }
+.chat-queue-row + .chat-queue-row { border-top: 1px solid var(--border); }
+.chat-queue-row .ico { width: 14px; height: 14px; flex: none; }
+.chat-queue-icon { opacity: .65; }
+.chat-queue-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.chat-queue-count, .chat-queue-status { flex: none; font-size: 11px; }
+.chat-queue-status { color: var(--accent); }
+.chat-queue-row button { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 28px; padding: 3px 6px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font: inherit; font-size: 11px; }
+.chat-queue-row button:hover { color: var(--text); background: var(--panel2); }
+.chat-queue-row button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chat-queue-row .chat-queue-remove:hover { color: var(--bad); }
+.chat-queue-row.guiding .chat-queue-icon { color: var(--accent); opacity: 1; }
 .rd-chat .chat-pending-actions { display: inline-flex; align-items: center; gap: 8px; margin-left: 4px; }
 .rd-chat .chat-pending-badge { color: var(--accent); }
 .rd-chat .chat-pending-actions button { padding: 2px 4px; border: 0; background: transparent; color: var(--muted); font-size: 11px; }
@@ -23,4 +37,6 @@
   .rd-chat-tools .chat-send-default { font-size: 13px; }
   .chat-delivery-hint { font-size: 11px; }
   .rd-chat .chat-pending-actions button { min-height: 36px; }
+  .chat-queue-row { min-height: 44px; }
+  .chat-queue-row button { min-width: 40px; min-height: 40px; }
 }

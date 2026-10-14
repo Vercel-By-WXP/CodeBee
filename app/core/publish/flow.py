@@ -425,15 +425,32 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         # A class containing 'btn' can be the whole footer,
                         # including Cancel. Only promote a label to an action
                         # with the same text; never click the footer's center.
-                        "const parent=el.closest('a,button,[role=button],[class*=btn]');"
-                        "const act=parent&&(parent.innerText||'').trim()===(el.innerText||'').trim()?parent:el;"
+                        # Prefer the nearest semantic control only when its
+                        # label is exactly the requested action.  A footer
+                        # wrapper such as ``.footer-btns`` may contain both
+                        # cancel and submit labels; promoting that wrapper (or
+                        # a child span whose center is covered by a sibling)
+                        # was the source of the live "提交被挡住：SPAN" failure.
+                        "const parent=el.closest('a,button,[role=button]');"
+                        "const ptxt=parent?(parent.innerText||'').trim():'';"
+                        "const etxt=(el.innerText||'').trim();"
+                        "const act=parent&&ptxt===etxt?parent:el;"
                         "if(!vis(act)||act.disabled||act.getAttribute('aria-disabled')==='true')continue;"
                         "act.scrollIntoView({block:'center'});"
                         "if(real){const rc=act.getBoundingClientRect();"
-                        " const px=document.elementFromPoint(Math.round(rc.x+rc.width/2),Math.round(rc.y+rc.height/2));"
-                        " if(!px||(!act.contains(px)&&!px.contains(act))){"
-                        " blocked='点击「'+t+'」被挡住：'+(px?px.tagName+'.'+String(px.className||'').slice(0,100):'落点在视口外');continue;}"
-                        " return{ok:true,x:Math.round(rc.x+rc.width/2),y:Math.round(rc.y+rc.height/2)};}"
+                        # Probe several interior points.  Text spans can have
+                        # a sibling icon or a transient overlay at their exact
+                        # center even though another point on the same action
+                        # is a valid, unambiguous click target.
+                        " const pts=[[.5,.5],[.25,.5],[.75,.5],[.5,.25],[.5,.75]];"
+                        " let hit=null;for(const [fx,fy] of pts){"
+                        "  const x=Math.round(rc.x+rc.width*fx),y=Math.round(rc.y+rc.height*fy);"
+                        "  const px=document.elementFromPoint(x,y);"
+                        "  if(px&&(act.contains(px)||px.contains(act))){hit={x,y};break;}"
+                        "  if(!hit&&px)blocked='点击「'+t+'」被挡住：'+px.tagName+'.'+String(px.className||'').slice(0,100);"
+                        " }"
+                        " if(!hit)continue;"
+                        " return{ok:true,x:hit.x,y:hit.y};}"
                         "act.click();"
                         "return{ok:true};}"
                         "return{ok:false,err:blocked||'卡片内没有可用的'+t};}", scope_t, text, bool(st.get("real")))

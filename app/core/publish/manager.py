@@ -1181,6 +1181,7 @@ def schedule_chapter_async(task_id, plat, chapter_file, force=False,
 def confirm_manual_chapter(task_id, plat, chapter_no):
     """Record an explicit user confirmation after submitting in the browser."""
     from .. import store
+    from pathlib import Path
     if plat not in PLATFORMS:
         return False, "未知平台"
     if not store.get_task(task_id):
@@ -1197,7 +1198,55 @@ def confirm_manual_chapter(task_id, plat, chapter_no):
                     if r.get("action") == "upload_chapter_pending"
                     and int(r.get("chapter_no") or 0) == chapter_no), None)
     if not pending:
-        return False, "没有找到待确认的填稿记录，请先重新填入该章"
+        # Auto-submit attempts do not leave an upload_chapter_pending row: the
+        # worker records a failed upload instead.  If the user then submits
+        # the already-filled platform dialog by hand, refusing the
+        # confirmation leaves that chapter at the head of the queue forever
+        # and the next run tries to publish it again.  Accept an explicit
+        # manual confirmation only when the matching local chapter exists, so
+        # a stray chapter number cannot be used to manufacture a receipt.
+        task = store.get_task(task_id) or {}
+        wd = str(task.get("workdir") or "").strip()
+        candidate = None
+        if wd and Path(wd).is_dir():
+            direct = Path(wd) / ("chapter-%d.md" % chapter_no)
+            if direct.is_file():
+                candidate = direct
+            else:
+                for fp in Path(wd).rglob("*"):
+                    if (fp.is_file() and fp.suffix.lower() in (".md", ".txt")
+                            and ledger.parse_chapter_no(fp.name) == chapter_no):
+                        candidate = fp
+                        break
+        if candidate is None:
+            return False, "没有找到待确认的填稿记录或对应章节文件，请先重新填入该章"
+        _no, title, _body, read_err = read_chapter(str(candidate))
+        if read_err or _no != chapter_no:
+            return False, "对应章节文件无法校验：%s" % (read_err or "章号不一致")
+        book = ledger.book_for(task_id, plat) or {}
+        if not book:
+            return False, "该任务尚未登记此平台作品"
+        op_id = operations.begin(
+            "publish:%s:manual-confirm" % plat,
+            {"task_id": task_id, "chapter_no": chapter_no, "title": title},
+            task_id=task_id,
+            metadata={"platform": plat, "action": "upload_chapter",
+                      "manual": True})
+        if not operations.confirm(op_id, remote_receipt="manual-confirmed",
+                                  metadata={"platform": plat,
+                                            "action": "upload_chapter",
+                                            "chapter_no": chapter_no,
+                                            "manual": True}):
+            return False, "人工确认操作状态已变化，请稍后重试"
+        ledger.record(plat, "upload_chapter", task_id=task_id,
+                      chapter_no=chapter_no, book_id=book.get("book_id") or "",
+                      title=title, ok=True, operation_id=op_id,
+                      operation_status="confirmed",
+                      remote_receipt="manual-confirmed")
+        # There was no queued fill operation to resume.  Do not immediately
+        # launch a new batch from this recovery path; the caller can inspect
+        # the recalculated queue and explicitly start the next chapter.
+        return True, "本章已登记为手工发布，后续章节未自动启动"
     op_id = pending.get("operation_id") or ""
     current = operations.get(op_id) if op_id else None
     if current and current.get("status") == "pending":

@@ -10,6 +10,15 @@ zuozhe.qimao.com/api/pc/v1/book/book-option——作者后台 PC 端在 zuozhe.q
 """
 from __future__ import annotations
 
+CHAPTER_TITLE_SELECTOR = (
+    "input[placeholder*='章节'],input[placeholder*='标题'],input[placeholder*='章名'],"
+    "textarea[placeholder*='章节'],textarea[placeholder*='标题'],"
+    "textarea[placeholder*='章名'],"
+    "[contenteditable=true][data-placeholder*='章节'],"
+    "[contenteditable=true][data-placeholder*='标题'],"
+    "[contenteditable=true][data-placeholder*='章名']"
+)
+
 CONFIG = {
     "id": "qimao",
     "label": "七猫",
@@ -53,7 +62,7 @@ UPLOAD_CHAPTER = [
      "scope": "a,span,div[class*=title],div[class*=book]"},
     {"do": "click_text", "text": "新建章节", "contains": True, "scope": "button,a,[role=button],span"},
     {"do": "probe", "note": "章节编辑器"},
-    {"do": "fill", "sel": "input[placeholder*='章节'],input[placeholder*='标题'],input[placeholder*='章名']", "key": "chapter_title"},
+    {"do": "fill", "sel": CHAPTER_TITLE_SELECTOR, "key": "chapter_title"},
     {"do": "wait", "sel": "[contenteditable=true],textarea[class*=content],iframe", "timeout": 10},
     {"do": "fill", "sel": "[contenteditable=true],textarea[class*=content]", "key": "chapter_body"},
     {"do": "shot", "name": "chapter-filled"},
@@ -67,7 +76,7 @@ UPLOAD_CHAPTER = [
 UPLOAD_CHAPTER_DRAFT = [
     {"do": "navigate", "url": "{editor_url}"},
     {"do": "url_any", "any": ["qimao.com"]},
-    {"do": "fill", "sel": "textarea[placeholder*='章节名称']", "key": "chapter_title"},
+    {"do": "fill", "sel": CHAPTER_TITLE_SELECTOR, "key": "chapter_title"},
     {"do": "wait", "sel": "[contenteditable=true],textarea[class*=content],iframe", "timeout": 10},
     {"do": "fill", "sel": "[contenteditable=true],textarea[class*=content]", "key": "chapter_body"},
     {"do": "shot", "name": "chapter-filled-draft"},

@@ -1741,15 +1741,19 @@ def retry_task(task_id):
         # 运行中指挥继承：旧 run 里未消费的用户纠偏指令带入新 run——
         # 指令是针对目标的意图，不因一次超时/失败而丢（自动续跑同享）。
         # 旧 run 的消息保留原样（历史回放可见），新 run 里是未消费副本。
-        inherited = []
+        inherited = {}
+        delivered = set()
         for prev in _RUNS.values():
             if prev.get("task_id") != task_id or prev["id"] == run["id"]:
                 continue
             for m in prev.get("messages") or []:
-                if not m.get("consumed"):
-                    inherited.append(dict(m))
+                key = (m.get("id"), m.get("created_at"), m.get("text"))
+                if m.get("consumed"):
+                    delivered.add(key)
+                else:
+                    inherited[key] = dict(m)
         if inherited:
-            run["messages"] = inherited[-50:]  # 封顶防多轮重试滚雪球
+            run["messages"] = [m for key, m in inherited.items() if key not in delivered][-50:]
         if task.get("serial"):
             prev_runs = sorted((r for r in _RUNS.values()
                                 if r.get("task_id") == task_id and r["id"] != run["id"]),
@@ -2474,6 +2478,28 @@ def peek_messages(run_id):
         return [{"id": m.get("id"), "text": m.get("text", ""), "attachments": m.get("attachments", []),
                  "sender": m.get("sender", ""), "created_at": m.get("created_at", "")}
                 for m in _ensure_messages(run) if not m.get("consumed")]
+
+
+def pending_message(run_id, msg_id):
+    """Resolve an existing queued message, rejecting delivered inherited copies."""
+    with LOCK:
+        run = _RUNS.get(run_id)
+        if not run:
+            return None
+        message = next((m for m in run.get("messages") or []
+                        if str(m.get("id")) == str(msg_id)), None)
+        if not message:
+            return None
+        key = (message.get("id"), message.get("created_at"), message.get("text"))
+        for owner in _RUNS.values():
+            if owner["id"] != run_id and (not run.get("task_id") or
+                    owner.get("task_id") != run.get("task_id")):
+                continue
+            if any(m.get("consumed") and
+                   (m.get("id"), m.get("created_at"), m.get("text")) == key
+                   for m in owner.get("messages") or []):
+                return None
+        return dict(message)
 
 
 def retract_message(run_id, msg_id):

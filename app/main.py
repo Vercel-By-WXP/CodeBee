@@ -3025,13 +3025,14 @@ class Handler(BaseHTTPRequestHandler):
                 key = (str(message.get("id") or ""), str(message.get("created_at") or ""),
                        str(message.get("text") or ""))
                 previous = message_state.get(key)
-                consumed = bool(message.get("consumed")) or bool(previous and previous[1])
-                # The inherited copy is the delivery source once it is drained;
-                # keep that run id for the timeline action/retract affordance.
-                source = owner["id"] if message.get("consumed") else (previous[0] if previous else owner["id"])
-                if previous and previous[1]:
-                    source = previous[0]
-                message_state[key] = (source, consumed)
+                consumed = bool(message.get("consumed"))
+                # Random ID suffixes can reorder turns created in one second.
+                # Prefer delivered receipts, then the active/current copy.
+                rank = (consumed, owner.get("status") in ("queued", "running"),
+                        owner["id"] == run_id, owner.get("created_at") or "")
+                if not previous or rank > previous[3]:
+                    message_state[key] = (owner["id"], consumed,
+                                          message.get("delivery") or "queue", rank)
 
         def _emit_msg(m):
             key = (str(m.get("id") or ""), str(m.get("created_at") or ""),
@@ -3046,6 +3047,7 @@ class Handler(BaseHTTPRequestHandler):
                 "text": m.get("text") or "",
                 "attachments": m.get("attachments") or [],
                 "consumed": message_state[key][1],
+                "delivery": message_state[key][2],
                 "run": message_state[key][0],
                 "id": m.get("id"),
             })
@@ -3251,9 +3253,17 @@ class Handler(BaseHTTPRequestHandler):
             run = latest_turn
             run_id = run["id"]
         active = run.get("status") in ("queued", "running")
+        message_id = body.get("message_id")
+        existing = None
+        if message_id:
+            if delivery != "now" or body.get("text") or body.get("attachments"):
+                return self._json(400, {"error": "引导排队消息时只需提供 message_id 和 delivery=now"})
+            existing = store.pending_message(run_id, message_id)
+            if not existing:
+                return self._json(409, {"error": "消息已送达或已移除，请刷新队列"})
         if active and delivery == "queue":
             return self._api_add_message(run_id, body=body)
-        text = body.get("text") or ""
+        text = existing.get("text", "") if existing else (body.get("text") or "")
         att_ids = body.get("attachments") or []
         workdir = store.run_workdir(run_id) or task.get("workdir") or ""
         saved = []
@@ -3263,7 +3273,7 @@ class Handler(BaseHTTPRequestHandler):
                 saved = attachments.commit_to_workdir(workdir, att_ids)
             except Exception:
                 saved = []
-        saved_paths = [a.get("path") for a in saved if a.get("path")]
+        saved_paths = existing.get("attachments", []) if existing else [a.get("path") for a in saved if a.get("path")]
         if not text.strip() and not saved_paths:
             return self._json(400, {"error": "消息为空"})
         if active:
@@ -3273,13 +3283,25 @@ class Handler(BaseHTTPRequestHandler):
         # This also covers a retry after a previous immediate-send timed out.
         if not jobs.wait_run_stopped(run_id):
             return self._json(409, {"error": "当前轮仍在停止中，输入已保留，请稍后重新发送"})
-        msg = store.add_message(run_id, text, sender=self._client_name(),
-                                attachments=saved_paths)
-        if not msg:
-            return self._json(400, {"error": "消息非法"})
-        ok, err, new_run = store.retry_task(task["id"])
-        if not ok:
-            return self._json(400, {"error": err or "无法续跑"})
+        # A queued message may have reached the old step while it was stopping.
+        # Resolve it again so guidance never silently duplicates delivered input.
+        with store.LOCK:
+            if existing:
+                msg = store.pending_message(run_id, message_id)
+                if not msg:
+                    return self._json(409, {"error": "消息已送达或已移除，请刷新队列"})
+            else:
+                msg = store.add_message(run_id, text, sender=self._client_name(),
+                                        attachments=saved_paths)
+            if not msg:
+                return self._json(400, {"error": "消息非法"})
+            ok, err, new_run = store.retry_task(task["id"])
+            if not ok:
+                return self._json(400, {"error": err or "无法续跑"})
+            if delivery == "now":
+                # These messages start the new turn rather than wait for the old step.
+                store.update_run(new_run["id"], messages=[dict(m, delivery="now")
+                                 for m in new_run.get("messages") or []])
         # message_submit 钩子（2026-09-22）：注入文本转入新 run 的提示词头通道
         try:
             from core import hooks as _hooks

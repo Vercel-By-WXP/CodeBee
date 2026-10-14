@@ -17,12 +17,12 @@
     },
     {
       "do": "wait",
-      "sel": "textarea[placeholder*='章节名称']",
+      "sel": "textarea[placeholder*='章节'],input[placeholder*='章节'],input[placeholder*='标题'],input[placeholder*='章名'],[contenteditable=true][data-placeholder*='章节'],[contenteditable=true][data-placeholder*='标题'],[contenteditable=true][data-placeholder*='章名']",
       "timeout": 20
     },
     {
       "do": "fill",
-      "sel": "textarea[placeholder*='章节名称']",
+      "sel": "textarea[placeholder*='章节'],input[placeholder*='章节'],input[placeholder*='标题'],input[placeholder*='章名'],[contenteditable=true][data-placeholder*='章节'],[contenteditable=true][data-placeholder*='标题'],[contenteditable=true][data-placeholder*='章名']",
       "key": "chapter_title"
     },
     {
@@ -230,12 +230,12 @@
     },
     {
       "do": "wait",
-      "sel": "textarea[placeholder*='章节名称']",
+      "sel": "textarea[placeholder*='章节'],input[placeholder*='章节'],input[placeholder*='标题'],input[placeholder*='章名'],[contenteditable=true][data-placeholder*='章节'],[contenteditable=true][data-placeholder*='标题'],[contenteditable=true][data-placeholder*='章名']",
       "timeout": 20
     },
     {
       "do": "fill",
-      "sel": "textarea[placeholder*='章节名称']",
+      "sel": "textarea[placeholder*='章节'],input[placeholder*='章节'],input[placeholder*='标题'],input[placeholder*='章名'],[contenteditable=true][data-placeholder*='章节'],[contenteditable=true][data-placeholder*='标题'],[contenteditable=true][data-placeholder*='章名']",
       "key": "chapter_title"
     },
     {
@@ -301,10 +301,9 @@
       "s": 0.8
     },
     {
-      "do": "click_text",
+      "do": "click_real",
       "text": "确认发布",
-      "scope": "button,[class*=btn]",
-      "contains": false
+      "scope": "button,[class*=btn]"
     },
     {
       "do": "expect_text",

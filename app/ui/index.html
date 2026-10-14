@@ -19,9 +19,9 @@
 <link rel="stylesheet" href="reference-composer.css">
 <link rel="stylesheet" href="button-reference.css">
 <link rel="stylesheet" href="conversation-reference.css">
-<link rel="stylesheet" href="mobile-workbench.css">
 <link rel="stylesheet" href="workspace-editor.css">
 <link rel="stylesheet" href="chat-delivery.css">
+<link rel="stylesheet" href="mobile-workbench.css">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，首涂落经典底色，
      app.js 加载后会按 currentSkin() 校正为默认皮肤。 -->
@@ -756,6 +756,7 @@
                 <button type="button" class="ghost" data-chat-run-expand data-i18n-title="展开对话" title="展开对话" aria-label="展开对话" onclick="toggleChatExpanded()">⛶</button>
               </div>
               <div class="rd-chat-bar">
+                <div id="rd-chat-queue" class="chat-queue hidden" role="region" aria-label="待发送消息" data-i18n-aria="待发送消息"></div>
                 <div id="rd-chat-continue-note" class="rd-chat-continue-note hidden"><span class="continue-dot"></span><span data-i18n="本轮已完成，可以继续对话">本轮已完成，可以继续对话</span><button id="rd-chat-focus" type="button" class="ghost small" data-i18n="继续对话">继续对话</button></div>
                 <textarea id="rd-chat-input" rows="2" data-i18n-ph="继续说…（Enter 发送，Shift+Enter 换行；可直接粘贴截图）" placeholder="继续说…（Enter 发送，Shift+Enter 换行；可直接粘贴截图）"></textarea>
                 <div class="rd-chat-tools">
@@ -1887,8 +1888,8 @@
 <script src="i18n.js"></script>
 <script src="artdiff.js"></script>
 <script src="hive3d.js"></script>
-<script src="mobile-workbench.js"></script>
 <script src="activity.js"></script>
 <script src="app.js"></script>
+<script src="mobile-workbench.js"></script>
 </body>
 </html>

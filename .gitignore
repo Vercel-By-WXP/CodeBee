@@ -23,6 +23,8 @@ tmp_*
 !/tests/ui_desktop_workbench.mjs
 !/tests/ui_workspace_modes.mjs
 !/tests/ui_composer_focus.mjs
+!/tests/ui_mobile_workbench.mjs
+!/tests/ui_chat_delivery.mjs
 .playwright-cli/
 作品信息-*.md
 

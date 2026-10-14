@@ -75,6 +75,65 @@ class ChatDeliveryTests(BaseTest):
         self.assertEqual(self.store.peek_messages(self.run["id"]), [])
         self.assertEqual(len(self.store.task_runs(self.task["id"])), 1)
 
+    def test_steer_existing_message_keeps_identity_and_attachment(self):
+        self.store.update_run(self.run["id"], status="running")
+        message = self.store.add_message(self.run["id"], "Do this now",
+                                         attachments=["_attachments/example.png"])
+        code, result = self.submit({"message_id": message["id"], "delivery": "now"})
+        self.assertEqual(code, 200)
+        pending = self.store.get_run(result["run_id"])["messages"]
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["id"], message["id"])
+        self.assertEqual(pending[0]["attachments"], message["attachments"])
+        self.assertEqual(pending[0]["delivery"], "now")
+        handler = self.main.Handler.__new__(self.main.Handler)
+        handler._json = lambda code, obj: obj
+        item = next(it for it in handler._api_run_timeline(result["run_id"])["items"]
+                    if it.get("id") == message["id"])
+        self.assertEqual(item["delivery"], "now")
+        self.assertEqual(item["run"], result["run_id"])
+
+    def test_steer_delivered_or_missing_message_does_not_cancel(self):
+        message = self.store.add_message(self.run["id"], "Already read")
+        self.store.drain_messages(self.run["id"])
+        self.store.update_run(self.run["id"], status="running")
+        with patch.object(self.jobs, "cancel") as cancel:
+            for mid in (message["id"], "missing"):
+                code, _ = self.submit({"message_id": mid, "delivery": "now"})
+                self.assertEqual(code, 409)
+        cancel.assert_not_called()
+
+    def test_steer_stop_timeout_keeps_original_queue(self):
+        message = self.store.add_message(self.run["id"], "Keep me")
+        self.store.update_run(self.run["id"], status="running")
+        with patch.object(self.jobs, "wait_run_stopped", return_value=False):
+            code, _ = self.submit({"message_id": message["id"], "delivery": "now"})
+        self.assertEqual(code, 409)
+        self.assertEqual(self.store.peek_messages(self.run["id"])[0]["id"], message["id"])
+
+    def test_steer_message_consumed_during_stop_does_not_repeat(self):
+        message = self.store.add_message(self.run["id"], "Race")
+        self.store.update_run(self.run["id"], status="running")
+        def stopped(rid):
+            self.store.drain_messages(rid)
+            return True
+        with patch.object(self.jobs, "wait_run_stopped", side_effect=stopped):
+            code, _ = self.submit({"message_id": message["id"], "delivery": "now"})
+        self.assertEqual(code, 409)
+        self.assertEqual(len(self.store.task_runs(self.task["id"])), 1)
+
+    def test_repeated_guidance_inherits_each_pending_message_once(self):
+        self.store.add_message(self.run["id"], "Keep pending")
+        self.store.update_run(self.run["id"], status="cancelled")
+        _, _, second = self.store.retry_task(self.task["id"])
+        self.store.update_run(second["id"], status="cancelled")
+        _, _, third = self.store.retry_task(self.task["id"])
+        self.assertEqual([m["text"] for m in third["messages"]], ["Keep pending"])
+        self.store.drain_messages(third["id"])
+        self.store.update_run(third["id"], status="cancelled")
+        _, _, fourth = self.store.retry_task(self.task["id"])
+        self.assertEqual(fourth.get("messages") or [], [])
+
     def test_empty_and_invalid_delivery_do_not_cancel(self):
         self.store.update_run(self.run["id"], status="running")
         with patch.object(self.jobs, "cancel") as cancel:

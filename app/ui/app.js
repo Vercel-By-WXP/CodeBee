@@ -10556,6 +10556,9 @@ function syncChatSendControls(run = S.lastRun || {}) {
   if (options) { options.classList.toggle("hidden", !active); options.disabled = chatSending; }
   if (!active) chatCloseSendMenu();
   document.querySelectorAll("[data-chat-delivery]").forEach(button => { button.disabled = chatSending || !ready; });
+  document.querySelectorAll("[data-chat-steer], [data-chat-retract]").forEach(button => {
+    button.disabled = chatSending;
+  });
   document.querySelectorAll("[data-chat-now-shortcut]").forEach(label => { label.textContent = shortcut; });
   const hint = $("rd-chat-hint");
   if (hint) hint.textContent = active
@@ -11125,7 +11128,7 @@ function drawChatFlow(run, data, active) {
     String(it.thinking || "").length + ":" + String(it.stream || "").length + ":" +
     (it.activity || []).length + ":" + (it.followups || []).length +
     ":" + (it.acp_events || []).length +
-    ":" + (it.consumed ? 1 : 0), "") + "|" + ((data && data.result) ? "r" : "");
+    ":" + (it.consumed ? 1 : 0) + ":" + (it.delivery || "") + ":" + (it.id || "") + ":" + (it.run || ""), "") + "|" + ((data && data.result) ? "r" : "");
   if (liveSig === chatLiveSig && flow.childElementCount) return;
   chatLiveSig = liveSig;
   flow.dataset.runId = run.id;   // run 戳：applyRdTabs 判「内容是否已对齐当前对话」用
@@ -11137,8 +11140,10 @@ function drawChatFlow(run, data, active) {
     : ((a && (a.name || a.path)) || "");
     return String(p).split(/[\\/]/).pop() || ""; };
   chatTimelineItems = items;   // 复制/编辑重发按索引回查（见 rd-chat-flow 委托）
+  renderChatQueue(items, run);
   let html = items.map((it, idx) => {
     if (it.kind === "user") {
+      if (!it.consumed && it.id && it.run) return "";
       // 用户消息：右侧浅灰圆角块，元信息与动作落在块外下方。
       // 附件胶囊可点开预览：data-att 带 _attachments/ 相对路径（老数据裸文件名
       // 在前端钉回 _attachments/，与服务端 norm_rel 同口径），事件委托绑在
@@ -11159,9 +11164,6 @@ function drawChatFlow(run, data, active) {
         '<button type="button" class="chat-act" data-cact="copy" data-ci="' + idx + '">' + esc(t("复制")) + "</button>" +
         '<button type="button" class="chat-act" data-cact="edit" data-ci="' + idx + '">' + esc(t("编辑")) + "</button>" +
         "</span>";
-      const pending = !it.consumed && it.id && it.run
-        ? '<span class="chat-pending-actions"><span class="chat-pending-badge">' + esc(t("已排队")) +
-          '</span><button type="button" data-chat-retract="' + idx + '">' + esc(t("撤回")) + '</button></span>' : "";
       return '<div class="chat-row me">' +
         '<div class="chat-user-message">' +
         '<div class="chat-bubble me">' +
@@ -11175,7 +11177,7 @@ function drawChatFlow(run, data, active) {
                   '" title="' + esc(t("点击查看")) + '">' + esc(a.nm) + "</span>")).join("") + "</div>"
           : "") +
         '</div><div class="chat-meta"><span class="chat-meta-label">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
-        (it.consumed || pending ? "" : " · " + esc(t("待送达"))) + "</span>" + pending + acts + "</div></div></div>";
+        (it.consumed ? "" : " · " + esc(t("待送达"))) + "</span>" + acts + "</div></div></div>";
     }
     // 协议尾行是给编排器判收的机器标记，不该出现在聊天正文里（真源在提示词约定）；
     // <followups> 块后端已剥并转成结构化字段，这里再兜一次底防老数据/漏剥；
@@ -11905,6 +11907,68 @@ async function chatUploadFiles(files) {
   }
 }
 
+function renderChatQueue(items, run = S.lastRun || {}) {
+  const box = $("rd-chat-queue");
+  if (!box) return;
+  const pending = items.map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.kind === "user" && !item.consumed && item.id && item.run);
+  const active = ["running", "queued"].includes(run.status);
+  const signature = JSON.stringify([pending, active, typeof getLang === "function" ? getLang() : "zh"]);
+  if (box.dataset.queueSignature === signature) return;
+  box.dataset.queueSignature = signature;
+  box.classList.toggle("hidden", !pending.length);
+  box.innerHTML = pending.map(({ item, index }) => {
+    const guiding = active && item.delivery === "now";
+    const text = item.text || t("（仅附件）");
+    const attachments = (item.attachments || []).length;
+    return '<div class="chat-queue-row' + (guiding ? ' guiding' : '') + '">' +
+      '<svg class="ico chat-queue-icon" aria-hidden="true"><use href="#i-' + (guiding ? 'arrow-up' : 'grip') + '"></use></svg>' +
+      '<span class="chat-queue-text" title="' + esc(text) + '">' + esc(text) + '</span>' +
+      (attachments ? '<span class="chat-queue-count" title="' + esc(t("附件")) + '">+' + attachments + '</span>' : '') +
+      (guiding ? '<span class="chat-queue-status" role="status">' + esc(t("正在引导")) + '</span>'
+        : '<button type="button" data-chat-steer="' + index + '" title="' + esc(t("立即发送并引导")) + '">↪ <span>' + esc(t("引导")) + '</span></button>') +
+      '<button type="button" class="chat-queue-remove" data-chat-retract="' + index + '" title="' + esc(t("删除排队消息")) + '" aria-label="' + esc(t("删除排队消息")) + '">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></button></div>';
+  }).join("");
+  syncChatSendControls();
+}
+
+async function chatPendingAction(event) {
+  const button = event.target.closest("[data-chat-steer], [data-chat-retract]");
+  if (!button || button.disabled || chatSending) return;
+  const steering = button.hasAttribute("data-chat-steer");
+  const item = chatTimelineItems[Number(steering ? button.dataset.chatSteer : button.dataset.chatRetract)];
+  if (!item || item.consumed || !item.run || !item.id || !chatRunId) return;
+  const viewedRun = chatRunId;
+  chatSending = true;
+  syncChatSendControls();
+  try {
+    const result = await api("/api/runs/" + encodeURIComponent(steering ? viewedRun : item.run) +
+      (steering ? "/chat" : "/messages/retract"), {
+      method: "POST", body: JSON.stringify(steering ? { message_id: item.id, delivery: "now" } : { id: item.id }),
+    });
+    // A backend without queued-message steering must never report a false success.
+    if (steering && (!result.run_id || result.delivery !== "now" && result.delivery !== "sent")) {
+      throw new Error(t("后端尚未支持消息引导，请更新并重启服务"));
+    }
+    toast(t(steering ? "已立即发送，正在按新消息继续" : "已撤回排队消息"));
+    if (chatRunId !== viewedRun) return;
+    chatSig = ""; chatLiveSig = "";
+    if (result.run_id) {
+      if (S.detailTaskKey) { S.taskSig = ""; renderTaskDetail(); }
+      else jumpToRun(result.run_id);
+    } else if (S.lastRun) {
+      await renderChat(S.lastRun, ["running", "queued"].includes(S.lastRun.status));
+    }
+  } catch (error) {
+    toast(error.message, true);
+    if (chatRunId === viewedRun && S.lastRun) {
+      chatSig = ""; chatLiveSig = "";
+      renderChat(S.lastRun, ["running", "queued"].includes(S.lastRun.status));
+    }
+  } finally { chatSending = false; syncChatSendControls(); }
+}
+
 window.chatSend = async function (delivery = "queue") {
   if (!chatRunId || chatSending) return;
   delivery = delivery === "now" ? "now" : "queue";
@@ -11924,6 +11988,9 @@ window.chatSend = async function (delivery = "queue") {
     const r = await api("/api/runs/" + encodeURIComponent(submittedRun) + "/chat", {
       method: "POST", body: JSON.stringify({ text, attachments: submittedAtts, delivery }),
     });
+    if (delivery === "now" && (!r.run_id || r.delivery !== "now" && r.delivery !== "sent")) {
+      throw new Error(t("后端尚未支持消息引导，请更新并重启服务"));
+    }
     toast(t(r.delivery === "now" ? "已立即发送，正在按新消息继续"
       : r.run_id ? "已开新一轮，接着做…" : "已排队：当前步骤结束后送达"));
     if (chatRunId !== submittedRun) return;
@@ -11988,6 +12055,7 @@ function bindChat() {
     e.target.value = "";
   });
   send.addEventListener("click", () => window.chatSend());
+  $("rd-chat-queue")?.addEventListener("click", chatPendingAction);
   const sendOptions = $("rd-chat-send-options"), sendMenu = $("rd-chat-send-menu");
   if (sendOptions && sendMenu) {
     sendOptions.addEventListener("click", () => {
@@ -12119,20 +12187,6 @@ function bindChat() {
     if (file) {
       e.preventDefault();
       artPopup(file.dataset.fileRun, file.dataset.fileName || "", Number(file.dataset.fileSize) || 0);
-      return;
-    }
-    const retract = e.target.closest("[data-chat-retract]");
-    if (retract) {
-      const item = chatTimelineItems[Number(retract.dataset.chatRetract)];
-      if (!item || item.consumed || !item.run || !item.id) return;
-      retract.disabled = true;
-      const viewedRun = chatRunId;
-      api("/api/runs/" + encodeURIComponent(item.run) + "/messages/retract", {
-        method: "POST", body: JSON.stringify({ id: item.id }),
-      }).then(() => {
-        toast(t("已撤回排队消息"));
-        if (chatRunId === viewedRun && S.lastRun) { chatSig = ""; chatLiveSig = ""; renderChat(S.lastRun, ["running", "queued"].includes(S.lastRun.status)); }
-      }).catch(error => { toast(error.message, true); retract.disabled = false; });
       return;
     }
     // 复制 / 编辑重发（2026-09-22 用户诉求：已发送的对话可复制修改再次发送）。

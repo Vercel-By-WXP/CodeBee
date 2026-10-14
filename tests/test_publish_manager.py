@@ -366,6 +366,33 @@ def test_qimao_calibrated_draft_and_book_contract():
     expect("upload_chapter_scheduled" not in data,
            "七猫没有实测定时入口时不得生成猜测流程")
 
+
+def test_qimao_chapter_title_selector_supports_editor_fields():
+    """The Qimao editor title moved from input to textarea/contenteditable."""
+    import json as _json
+    from core.publish import flow as _flow, qimao as _qm
+
+    selector_texts = []
+    for flow in (_qm.FLOWS["upload_chapter"],
+                 _qm.FLOWS["upload_chapter_draft"]):
+        selector_texts.extend(
+            step.get("sel", "") for step in flow
+            if step.get("do") == "fill" and step.get("key") == "chapter_title")
+    calibrated_path = Path(_qm.__file__).with_name("flows-qimao-calibrated.json")
+    calibrated = _json.loads(calibrated_path.read_text(encoding="utf-8"))
+    for name in ("upload_chapter", "upload_chapter_draft"):
+        selector_texts.extend(
+            step.get("sel", "") for step in calibrated[name]
+            if step.get("do") == "fill" and step.get("key") == "chapter_title")
+
+    expect(len(selector_texts) == 4,
+           "内置及校准的发布/草稿流程都应有标题填充选择器：%s" % selector_texts)
+    for selector in selector_texts:
+        expect("textarea[placeholder*='章节']" in selector,
+               "标题选择器须兼容七猫 textarea 标题：%s" % selector)
+        expect("input[placeholder*='章节']" in selector,
+               "标题选择器须保留旧版 input 兼容：%s" % selector)
+
     # optional cannot disguise a failed publish: run_flow must fail before manager
     # can record the queued chapter as success when the confirm action is absent.
     missing_confirm = _FlowPage(click_results=[{"ok": False, "err": "not found"}])
@@ -1001,6 +1028,26 @@ def test_manual_confirm_continues_batch():
                "人工确认章必须进入已发布台账")
     finally:
         auto.publish_pending_async = original
+
+
+def test_manual_confirm_without_pending_record():
+    """Auto-submit failure followed by browser manual submit must unblock the chapter."""
+    from core import store
+    wd = _TMP / "manual-confirm-no-pending"
+    wd.mkdir(exist_ok=True)
+    task = store.create_task({"type": "serial_novel", "goal": "人工确认兜底",
+                              "workdir": str(wd)})
+    ledger.save_book(task["id"], "fanqie",
+                     {"book_id": "bk-manual", "title": "人工确认兜底"})
+    (wd / "chapter-7.md").write_text("# 第7章 手工已发\n\n" + "正文" * 100,
+                                      encoding="utf-8")
+    ledger.record("fanqie", "upload_chapter", task_id=task["id"],
+                  chapter_no=7, title="第7章 手工已发", ok=False,
+                  error="点击提交被挡住")
+    ok, err = manager.confirm_manual_chapter(task["id"], "fanqie", 7)
+    expect(ok and "手工发布" in err, "无 pending 记录也应能确认：%s" % err)
+    expect(7 in ledger.published_chapters(task["id"], "fanqie"),
+           "手工确认章必须进入已发布集合")
 
 
 def test_sync_renamed_book():
