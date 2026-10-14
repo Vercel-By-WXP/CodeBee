@@ -671,6 +671,7 @@ class TestOpencodeSync(BaseTest):
         self.assertEqual(orch["options"]["apiKey"], "sk-vy")
         self.assertIn("deepseek-v4", orch["models"])
         self.assertEqual(data["model"], "orch/deepseek-v4")
+        self.assertEqual(data["permission"]["external_directory"], "allow")
         self.assertEqual(data["mcp"], {"fetch": {"enabled": True}})
         self.assertTrue((self.oc_dir / "opencode.json.bak").exists())
 
@@ -691,6 +692,7 @@ class TestOpencodeSync(BaseTest):
         data = json.loads(_strip_jsonc_comments(text))
         self.assertEqual(data["provider"]["orch"]["npm"], "@ai-sdk/anthropic")
         self.assertEqual(data["model"], "orch/glm-5.3-flash")
+        self.assertEqual(data["permission"]["external_directory"], "allow")
 
     def test_creates_configc_when_missing(self):
         from app.core import manager

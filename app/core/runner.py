@@ -646,6 +646,8 @@ def pretty_cli_log(text, max_event_chars=4000):
                 out.append("— API 重试 %s/%s（等 %sms）：%s —" % (
                     ev.get("attempt", "?"), ev.get("max_retries", "?"),
                     ev.get("retry_delay_ms", "?"), ev.get("error") or "?"))
+            elif sub == "task_started":
+                out.append("— 工具任务启动：%s —" % (ev.get("description") or "?"))
             else:
                 out.append(ln)   # 未知 subtype 原样保留，不吞内容
             continue
@@ -668,7 +670,7 @@ def pretty_cli_log(text, max_event_chars=4000):
                         blk.get("name") or "?",
                         json.dumps(blk.get("input") or "", ensure_ascii=False)[:200]))
             continue
-        if typ in ("user", "stream_event"):
+        if typ in ("user", "stream_event", "tool_progress"):
             continue   # claude 工具回包/流片段是过程噪音
         if typ == "result":   # claude 收尾：统计一行；报错带原因
             u = ev.get("usage") or {}
@@ -1274,11 +1276,61 @@ def _rate_limited(err):
 
 # 审计日志错误行探针：只认强信号，避免把回显提示词里的普通词当错误
 _LOG_ERR_HINT = re.compile(
-    r"(403|forbidden|request not allowed|permission denied|access denied"
-    r"|429|402|rate[_ ]?limit|quota|余额|欠费|insufficient|billing|arrears"
-    r"|401|unauthorized|unauthorised|invalid[_ ]api[_ ]key|authentication[_ ]error"
+    r"(\b403\b|forbidden|request not allowed|permission denied|access denied"
+    r"|\b429\b|\b402\b|rate[_ ]?limit|quota|余额|欠费|insufficient|billing|arrears"
+    r"|\b401\b|unauthorized|unauthorised|invalid[_ ]api[_ ]key|authentication[_ ]error"
     r"|ENOTFOUND|ECONNREFUSED|failed to run prompt|api_error|overloaded)",
     re.I)
+
+
+def _cli_error_lines(text):
+    """Extract error events without treating model prose/tool output as errors."""
+    hits = []
+    for line in clean_cli_text(text or "").splitlines():
+        line = line.strip()
+        if re.match(r"^\d+:\s", line) or line.startswith(("$ ", "【命令】")):
+            continue  # grep/Read source line numbers and echoed commands.
+        if line.startswith("{"):
+            try:
+                ev = json.loads(line)
+            except (ValueError, TypeError):
+                continue  # A partial JSON event is not a reliable error signal.
+            if not isinstance(ev, dict):
+                continue
+            typ = ev.get("type")
+            if typ == "result" and ev.get("is_error"):
+                line = str(ev.get("result") or ev.get("errors") or "")
+            elif typ in ("error", "turn.failed"):
+                detail = ev.get("error") or ev.get("message") or ""
+                if isinstance(detail, dict):
+                    detail = detail.get("message") or detail.get("data") or detail
+                line = str(detail)
+            elif typ == "system" and ev.get("subtype") == "api_retry":
+                line = str(ev.get("error") or "")
+            else:
+                continue
+            if line:
+                hits.append(line)
+        elif (_LOG_ERR_HINT.search(line)
+              or re.match(r"^(?:error|fatal|panic|\w*Error):", line, re.I)):
+            hits.append(line)
+    return hits
+
+
+def _failure_output_detail(res):
+    """Keep stderr diagnostics even when stdout ends with a large tool dump."""
+    stderr = clean_cli_text(res.get("stderr") or "").strip()
+    stdout = res.get("stdout") or ""
+    errors = (_cli_error_lines(stderr)[-1:]
+              + _cli_error_lines(stdout)[-1:])
+    if errors:
+        return "；".join(error[:290] for error in errors)
+    # Translate structured events before truncation, so UUIDs and heartbeats
+    # cannot displace the last useful message. Keep both streams independently.
+    stdout = clean_cli_text(pretty_cli_log(stdout)).strip()
+    if stderr and stdout:
+        return "stderr: %s；stdout: %s" % (stderr[-300:], stdout[-250:])
+    return (stderr or stdout)[-600:]
 
 
 def _augment_error_from_log(out, log_path, limit=300):
@@ -1295,10 +1347,13 @@ def _augment_error_from_log(out, log_path, limit=300):
             blob = fh.read().decode("utf-8", "ignore")
     except OSError:
         return
-    hits = [ln.strip() for ln in blob.splitlines() if _LOG_ERR_HINT.search(ln)]
+    # Audit instructions are not CLI output; probe only the latest call if its
+    # header is still in the tail window.
+    blob = blob.rsplit("--- 输出 ---", 1)[-1]
+    hits = _cli_error_lines(blob)
     if not hits:
         return
-    out["error"] = (out["error"] + "；日志错误行: " + hits[-1][:limit])[-800:]
+    out["error"] = out["error"][:450] + "；日志错误行: " + hits[-1][:limit]
 
 
 def _grace_wait(cancel_event, seconds, log_path=None, why=""):
@@ -1995,8 +2050,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 # stdin..." 打在 stderr，真正的配额/限流错误全在 stdout 的 JSONL
                 # 里——只取其一会让 _quota_error/_transient_error 判空。
                 # 先洗后切：切片会割断 ANSI 序列，留下 `[91m` 这种裸残尾直接进 UI
-                tail = clean_cli_text(
-                    ((res["stderr"] or "") + "\n" + (res["stdout"] or ""))[-4000:]).strip()[-600:]
+                tail = _failure_output_detail(res)
                 head = ("输出停滞 %ss（stall timed out，疑似卡死已提前终止）" % stall_t
                         if res.get("stalled")
                         else "超时" if res["timed_out"]
@@ -2013,7 +2067,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 # 5D+2D：错误码归一
                 if kind == "claude":
                     parsed_err = _parse_claude_json(res["stdout"] or "")
-                    if parsed_err and parsed_err.get("is_error") and parsed_err.get("text"):
+                    if (not res.get("timed_out") and not res.get("cancelled")
+                            and parsed_err and parsed_err.get("is_error")
+                            and parsed_err.get("text")):
                         out["error"] = "claude 返回 is_error: " + parsed_err["text"][:500]
                         drift = _claude_drift_note(att.get("model"), parsed_err)
                         if drift:
@@ -2046,7 +2102,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                 pass
                     except Exception:
                         pass
-                if not (_quota_error(out["error"]) or _transient_error(out["error"])
+                if not (res.get("timed_out") or res.get("cancelled")
+                        or _quota_error(out["error"]) or _transient_error(out["error"])
                         or _rate_limited(out["error"])
                         or _permission_error(out["error"])):
                     # 尾段清洗后没有错误信号而流式审计日志里有：补日志错误行。
@@ -2054,7 +2111,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     # （真错误只走了流式管道），路由层看不到配额关键词，换将
                     # 判死因全靠猜。
                     _augment_error_from_log(out, log_path)
-                out["error_code"] = (ErrorCode.FORBIDDEN
+                out["error_code"] = (ErrorCode.CANCELLED if res.get("cancelled")
+                                      else ErrorCode.TIMEOUT if res.get("timed_out")
+                                      else ErrorCode.FORBIDDEN
                                       if _permission_error(out["error"])
                                       else classify_error_text(out["error"])
                                       or _classify_failure(res, kind=kind))

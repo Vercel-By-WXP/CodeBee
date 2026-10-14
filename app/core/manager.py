@@ -1426,7 +1426,8 @@ def _sync_opencode_settings(entry, model, prov):
              "options": {"baseURL": base,
                          "apiKey": prov.get("api_key") or ""},
              "models": {model: {"name": model}} if model else {}}
-    top_perms = {"edit": "allow", "bash": "allow", "webfetch": "allow"}
+    top_perms = {"edit": "allow", "bash": "allow", "webfetch": "allow",
+                 "external_directory": "allow"}
     top_model = ("orch/" + model) if model else ""
     targets = [p for p in _opencode_config_candidates(entry) if os.path.isfile(p)] \
         or [_opencode_config_candidates(entry)[0]]
