@@ -17814,33 +17814,86 @@ function sideUsageRenderRuns() {
 /* ZCode 桌面端式样：大二维码居中，地址+复制在下方；多来源（Tailscale/局域网）用 chips 切换 */
 async function openPhoneConnect() {
   let urls = [];
+  let relay = null;
   try {
     const d = await api("/api/connect");
     urls = d.urls || [];
+    relay = d.relay;
   } catch (e) { toast(e.message, true); return; }
-  if (!urls.length) { toast(t("未获取到可用的连接地址"), true); return; }
+  if (!urls.length && !relay) { toast(t("未获取到可用的连接地址"), true); return; }
+  if (relay && relay.pair_url) urls.unshift({ label: "Codebee · 手机配对", url: relay.pair_url });
   S.connUrls = urls; S.connIdx = 0;
   const chips = urls.map((u, i) =>
     '<button class="chip2' + (i === 0 ? " on" : "") + '" data-i="' + i + '" onclick="pickConnUrl(' + i + ')">' + esc(u.label) + "</button>").join("");
   const body =
     '<div class="phone-connect">' +
+    (relay ? '<div class="relay-connect"><strong>Codebee · 连接自己的电脑</strong>' +
+      '<p class="hint">手机打开 ' + esc(relay.entry) + '，扫描下方配对二维码。配对码 5 分钟内有效，仅能使用一次。</p>' +
+      '<p id="relay-connect-status" role="status"></p>' +
+      '<div class="conn-chips"><button class="primary small" onclick="phoneRelayAction(\'pair\')">生成配对码</button>' +
+      '<button class="ghost small" onclick="phoneRelayAction(\'revoke\')">撤销全部手机</button>' +
+      '<button class="ghost small" onclick="phoneRelayAction(\'disable\')">关闭远程连接</button></div>' +
+      '<p class="hint" id="relay-pair-code"></p></div>' : "") +
     '<div class="qr-box" id="qr-box"></div>' +
-    (urls.length > 1 ? '<div class="conn-chips">' + chips + "</div>" : "") +
+    '<div class="conn-chips"' + (urls.length > 1 ? "" : " hidden") + '>' + chips + "</div>" +
     '<div class="conn-url-row"><code id="conn-url"></code>' +
     '<button class="ghost small" onclick="copyConnUrl()">' + t("复制地址") + '</button></div>' +
-    '<p class="hint">' + t("手机相机扫码即自动登录（地址已含访问令牌，扫一次永久记住）。") +
+    '<p class="hint">' + (relay ? "统一入口仅连接已配对的电脑；电脑需保持开机联网。已配对手机可使用 30 天，也可在电脑上随时撤销。<br>" : "") +
+    t("其他连接地址包含访问令牌，请只分享给自己的设备。") +
     t('局域网地址要求手机与电脑连同一 WiFi；Tailscale 地址出门也能用，') +
     t("两端需登录同一 Tailscale 账号。手机控制时另一端自动变为只读，可在顶栏接管。") + '<br>' +
     t("连不上时（如路由器重启后地址变了）回电脑重新打开此弹框扫新码即可。") + '</p>' +
     "</div>";
   openModal(t("📱 手机连接"), body, "");
+  if (relay) renderPhoneRelay(relay);
   renderConnQR();
+}
+
+let _phoneRelayTimer = null;
+function renderPhoneRelay(relay) {
+  clearTimeout(_phoneRelayTimer);
+  const status = $("relay-connect-status");
+  if (!status) return;
+  status.textContent = !relay.enabled ? "尚未启用，点击生成配对码连接手机。" :
+    !relay.connected ? (relay.error || "正在连接，请稍候…") :
+      relay.pair_url ? "已连接，请用手机扫码配对。" : "电脑已连接，可生成新配对码或撤销手机连接。";
+  const code = $("relay-pair-code");
+  if (code) code.textContent = relay.pair_code ? "连接码：" + relay.pair_code : "";
+  const old = S.connUrls.findIndex(u => u.label === "Codebee · 手机配对");
+  if (old >= 0) S.connUrls.splice(old, 1);
+  if (relay.pair_url) S.connUrls.unshift({ label: "Codebee · 手机配对", url: relay.pair_url });
+  S.connIdx = Math.min(S.connIdx, Math.max(0, S.connUrls.length - 1));
+  const chips = document.querySelector(".phone-connect > .conn-chips");
+  if (chips) {
+    chips.hidden = S.connUrls.length <= 1;
+    chips.innerHTML = S.connUrls.map((u, i) => '<button class="chip2' +
+      (i === S.connIdx ? " on" : "") + '" data-i="' + i + '" onclick="pickConnUrl(' + i + ')">' + esc(u.label) + '</button>').join("");
+  }
+  renderConnQR();
+  if (relay.enabled) _phoneRelayTimer = setTimeout(async () => {
+    if (!$("relay-connect-status")) return;
+    try { renderPhoneRelay((await api("/api/connect", { busy: false })).relay); }
+    catch { if ($("relay-connect-status")) $("relay-connect-status").textContent = "连接状态获取失败，请重新打开手机连接。"; }
+  }, 2000);
+}
+
+async function phoneRelayAction(action) {
+  if ((action === "revoke" || action === "disable") &&
+      !window.confirm(action === "disable" ? "关闭远程连接并撤销全部已配对手机？" : "撤销全部已配对手机？")) return;
+  try {
+    const result = await api("/api/connect/relay", { method: "POST", timeout: 15000,
+      body: JSON.stringify({ action }) });
+    S.connIdx = 0;
+    renderPhoneRelay(result.relay);
+    if (action !== "pair") toast("已撤销全部手机连接");
+  } catch (error) { toast(error.message, true); }
 }
 
 function renderConnQR() {
   const u = S.connUrls[S.connIdx];
   const box = $("qr-box");
-  if (!u || !box) return;
+  if (!box) return;
+  if (!u) { box.textContent = "生成配对码后，二维码会显示在这里。"; $("conn-url").textContent = ""; return; }
   if (typeof qrcode !== "function") { box.textContent = u.url; return; }  // 兜底：库没加载也能用
   const qr = qrcode(0, "M");
   qr.addData(u.url);

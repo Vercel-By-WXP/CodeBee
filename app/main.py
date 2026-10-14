@@ -196,6 +196,17 @@ class Handler(BaseHTTPRequestHandler):
                                      (q.get("token") or [""])[0],
                                      self.headers.get("X-CodeBee-Token") or "")
 
+    def _phone_admin_local(self):
+        # Pairing and revocation are available only on the actual computer.
+        # Do not trust forwarded loopback requests even before proxy mode starts.
+        if self.client_address[0] not in ("127.0.0.1", "::1"):
+            return False
+        if self.headers.get("X-Forwarded-For") or self.headers.get("CF-Connecting-IP"):
+            return False
+        origin = self.headers.get("Origin")
+        return (not origin or urlparse(origin).netloc.lower() ==
+                (self.headers.get("Host") or "").lower())
+
     def _client_id(self):
         cid = (self.headers.get("X-CodeBee-Client") or "").strip()
         if not cid:  # EventSource 带不了自定义头，身份从 query 兜底
@@ -304,8 +315,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, analytics.summary(store))
             if path == "/api/connect":
                 # 供设置页「手机连接」弹框生成二维码；远程打开需令牌，天然受保护
+                from core import phone_relay
                 return self._json(200, {"urls": remote.build_connect_urls(PORT),
-                                        "port": PORT})
+                                        "port": PORT,
+                                        "relay": phone_relay.view() if self._phone_admin_local() else None})
             if path == "/api/models":
                 from core import modelhub
                 return self._json(200, {"providers": modelhub.provider_view(),
@@ -941,6 +954,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/control/heartbeat":
             ok, view = remote.heartbeat(self._client_id())
             return self._json(200, {"ok": ok, "control": view})
+        if path == "/api/connect/relay":
+            if not self._phone_admin_local():
+                return self._json(403, {"error": "请在电脑本机上管理手机配对"})
+            from core import phone_relay
+            try:
+                return self._json(200, {"relay": phone_relay.operate(PORT, self._body().get("action"))})
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
         # 写操作需要控制权：空闲自动接管；他人持有时 423，由前端引导抢夺。
         # 例外（配置管理类操作全局生效，不被「哪台设备在操作」挡住，
         # 否则告警弹框里的按钮在多端场景会静默 423 失败）：
@@ -3760,6 +3781,8 @@ def main():
     parser.add_argument("--no-public-tunnel", action="store_true",
                         help="不自动开 Cloudflare 快速隧道（默认：检测到 cloudflared 就自动开，"
                              "获得随机 *.trycloudflare.com 公网地址，重启会变）")
+    parser.add_argument("--no-phone-relay", action="store_true",
+                        help="本次启动不恢复已启用的统一手机连接；已配对手机不会因此被撤销")
     parser.add_argument("--wait-port", action="store_true",
                         help="自更新重启用：先等旧实例释放端口再启动（Windows 双 LISTEN 防护）")
     args = parser.parse_args()
@@ -4051,7 +4074,16 @@ def main():
         start_memory_guard(1228)  # 内存守卫：RSS > 1.2 GB 安全退出防 OOM
     except Exception:
         pass
-    if remote.PUBLIC_URL:
+    from core import phone_relay
+    if not args.no_phone_relay:
+        try:
+            phone_relay.start_saved(args.port)
+        except (ValueError, OSError):
+            log.warning("统一手机连接启动失败，请在本机重新检查连接凭据")
+    atexit.register(phone_relay.stop)
+    if phone_relay.view().get("enabled"):
+        print("[CodeBee] 手机入口 %s（各设备独立配对；电脑需保持在线）" % phone_relay.relay_url())
+    elif remote.PUBLIC_URL:
         print("[CodeBee] 公网     %s/?token=%s   ← 任何网络可访问（反代回源已强制校验令牌）"
               % (remote.PUBLIC_URL, tok))
     elif not args.no_public_tunnel and args.host != "127.0.0.1":

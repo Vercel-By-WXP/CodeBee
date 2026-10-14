@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "codebee-phone-relay",
+  "account_id": "275a272ad05c1ff3939d0e1cf11e84e6",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-10-14",
+  "workers_dev": false,
+  "routes": [{ "pattern": "app.codebeeagent.com", "custom_domain": true }],
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "DEVICES", "class_name": "DeviceRelay" },
+      { "name": "GATES", "class_name": "RequestGate" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DeviceRelay", "RequestGate"] }]
+}
