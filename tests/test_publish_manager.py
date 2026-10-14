@@ -1050,6 +1050,27 @@ def test_manual_confirm_without_pending_record():
            "手工确认章必须进入已发布集合")
 
 
+def test_manual_confirm_uses_failed_chapter_book_id():
+    """A continuation task can recover a confirmed chapter without a copied binding."""
+    from core import store
+    wd = _TMP / "manual-confirm-lost-binding"
+    wd.mkdir(exist_ok=True)
+    task = store.create_task({"type": "serial_novel", "goal": "续写确认",
+                              "workdir": str(wd)})
+    (wd / "chapter-8.md").write_text("# 第8章 已发\n\n" + "正文" * 100,
+                                     encoding="utf-8")
+    ledger.record("fanqie", "upload_chapter", task_id=task["id"],
+                  chapter_no=8, book_id="bk-original", ok=False,
+                  error="点击提交被挡住")
+    ok, err = manager.confirm_manual_chapter(task["id"], "fanqie", 8)
+    expect(ok and "手工发布" in err, "丢失绑定时应允许核对后确认：%s" % err)
+    row = next(r for r in ledger.recent(task_id=task["id"],
+                                       platform="fanqie", limit=10)
+               if r.get("chapter_no") == 8 and r.get("ok"))
+    expect(row.get("book_id") == "bk-original",
+           "确认记录必须沿用失败行的作品 ID：%s" % row)
+
+
 def test_sync_renamed_book():
     """换名同步：bookmeta data、归档 Markdown、最新批次大纲统一到新名，
     台账另由 save_book 落——任何一环留旧名都会让下轮对账/重生成错位。"""

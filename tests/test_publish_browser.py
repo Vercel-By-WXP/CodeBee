@@ -139,6 +139,25 @@ def main():
             return "visible modal button"
         check("click_in 跳过隐藏确认按钮", _click_visible_modal_action)
 
+        def _click_overlapping_modal_action():
+            pg.evaluate("""(()=>{
+              document.body.innerHTML = '<div style="position:fixed;left:100px;top:100px">'
+                + '发布提示<button id="lower-submit" style="position:absolute;left:150px;top:30px;width:96px;height:36px">提交</button></div>'
+                + '<div style="position:fixed;left:100px;top:100px;z-index:10">'
+                + '发布提示<button id="upper-submit" style="position:absolute;left:150px;top:30px;width:96px;height:36px">提交</button></div>';
+              document.querySelector('#lower-submit').onclick=()=>document.body.dataset.lowerClicked='1';
+              document.querySelector('#upper-submit').onclick=()=>document.body.dataset.upperClicked='1';
+              return true;
+            })()""")
+            _flow.run_flow(pg, [{"do": "click_in", "scope_text": "发布提示",
+                                "text": "提交", "real": True, "tries": 1}])
+            if pg.evaluate("document.body.dataset.upperClicked") != "1":
+                raise AssertionError("重叠弹窗未点击最上层同名按钮")
+            if pg.evaluate("document.body.dataset.lowerClicked") == "1":
+                raise AssertionError("不得点击下层按钮")
+            return "topmost matching button"
+        check("click_in 重叠弹窗点击上层同名按钮", _click_overlapping_modal_action)
+
         def _click_footer_label():
             pg.evaluate("""(()=>{
               delete document.body.dataset.publishConfirmed;

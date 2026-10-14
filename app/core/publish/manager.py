@@ -1225,6 +1225,18 @@ def confirm_manual_chapter(task_id, plat, chapter_no):
             return False, "对应章节文件无法校验：%s" % (read_err or "章号不一致")
         book = ledger.book_for(task_id, plat) or {}
         if not book:
+            # Older runtime/task snapshots can lose the serial-chain link even
+            # though the failed publish rows still carry the authoritative
+            # platform book id.  Reuse that id for an explicit user recovery;
+            # never invent a binding from a bare chapter number.
+            failed = next((r for r in ledger.recent(task_id=task_id,
+                                                    platform=plat, limit=100)
+                           if int(r.get("chapter_no") or 0) == chapter_no
+                           and r.get("book_id")), None)
+            if failed:
+                book = {"book_id": failed.get("book_id"),
+                        "title": failed.get("title") or title}
+        if not book:
             return False, "该任务尚未登记此平台作品"
         op_id = operations.begin(
             "publish:%s:manual-confirm" % plat,
