@@ -1,0 +1,77 @@
+/* Loaded after desktop skins: phone geometry must win the cascade. */
+@media (max-width: 900px) {
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  #app, #mainwrap { height: var(--mobile-viewport-height, 100dvh); min-height: 0; }
+  .topbar, html[data-skin="ocean"][data-theme="light"] .topbar {
+    min-height: 48px; padding: 4px 10px; gap: 6px;
+  }
+  .topbar .brand-name { font-size: 16px; }
+  .topbar .page-title { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar .top-actions { gap: 4px; }
+  .mobile-workspace > summary { padding: 10px 62px 10px 12px; min-height: 58px; }
+  .mobile-workspace-copy > span, .mobile-workspace-copy > small { display: none; }
+  .mobile-workspace-copy b { white-space: normal; overflow-wrap: anywhere; font-size: 14px; line-height: 1.4; }
+  .mobile-workspace-new { top: 7px; right: 10px; width: 44px; height: 44px; }
+  .mobile-task { min-height: 58px; padding: 10px 2px; align-items: center; }
+  .mobile-task-copy b { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 14px; line-height: 1.5; }
+  .mobile-task .chip { flex: none; font-size: 11px; padding: 3px 7px; }
+
+  main.chat-fill { padding: 4px 8px 0; }
+  main.chat-fill #run-detail.chat-mode {
+    height: 100%; min-height: 0; padding: 0; overflow: hidden; gap: 0;
+  }
+  #run-detail #rd-railcol { flex: none; position: static; margin: 0; gap: 0; }
+  #run-detail #rd-rail { padding: 0 4px 4px; border: 0; border-radius: 0; background: transparent; }
+  #rd-rail > .detail-head { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto 44px; align-items: center; gap: 5px; }
+  #rd-rail > .detail-head::before { display: none; }
+  #rd-rail > .detail-head > #btn-back { width: 44px; min-height: 44px; padding: 0; overflow: hidden; font-size: 0; }
+  #rd-rail > .detail-head > #btn-back .ico { width: 20px; height: 20px; }
+  #rd-rail > .detail-head > #rd-title {
+    min-width: 0; width: 100%; font-size: 14px; font-weight: 600; line-height: 1.4;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; order: 0;
+  }
+  #rd-rail > .detail-head > #rd-status { order: 0; align-self: center; font-size: 11px; padding: 3px 6px; }
+  #rd-rail > .detail-head > .rd-actions { display: block; order: 0; width: 44px; padding: 0; border: 0; }
+  #rd-rail > .detail-head > .rd-actions #rd-more-toggle { position: static; width: 44px; min-height: 44px; font-size: 16px; }
+  #rd-rail > .detail-head > #rd-talk { grid-column: 1 / -1; }
+  #run-detail #rd-rail > .detail-head > .rd-meta-popover {
+    position: fixed; top: auto; bottom: max(12px, env(safe-area-inset-bottom)); right: 12px; left: 12px;
+    width: auto; max-height: min(70dvh, 520px); z-index: 80; padding: 14px; background: var(--panel);
+  }
+  .mobile-task-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+  .mobile-task-actions button { min-height: 44px; padding: 8px; font-size: 13px; white-space: normal; }
+  #rd-rail > #rd-tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; padding: 0; gap: 4px; }
+  #rd-rail > #rd-tabs .rd-tab { flex: none; min-height: 44px; padding: 8px 10px; font-size: 13px; }
+  #rd-rail > #rd-chat-nav { margin: 0; padding: 0; border: 0; }
+  #rd-chat-nav .cn-pills, #rd-chat-nav .cn-back { display: none; }
+  #rd-chat-nav .mobile-section-select { display: block; width: 100%; min-height: 44px; font-size: 16px; padding: 8px 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; }
+  #run-detail.chat-mode > .rd-main { flex: 1; min-height: 0; overflow: hidden; }
+  #run-detail.chat-mode .rd-pane[data-pane="chat"] { flex: 1; min-height: 0; height: 100%; padding: 0; }
+  #run-detail .rd-chat { min-height: 0; }
+  #run-detail.chat-mode .rd-chat-flow { min-height: 0; padding: 14px 6px; gap: 18px; overscroll-behavior: contain; scroll-padding-bottom: 16px; }
+  #run-detail .rd-chat-run-status { width: 100%; flex: none; min-height: 44px; padding: 0 4px; gap: 4px; border: 0; border-radius: 0; }
+  .rd-chat-run-status > .ico, .rd-chat-run-status .rd-chat-run-label, .rd-chat-run-status [data-chat-run-expand] { display: none; }
+  .rd-chat-run-status .rd-chat-run-goal { font-size: 12px; }
+  .rd-chat-run-status button { min-width: 44px; height: 44px; font-size: 13px; }
+  #run-detail .rd-chat-bar, #run-detail.chat-mode .rd-chat-bar {
+    position: static; flex: none; width: 100%; max-width: 100%; margin: 0 0 max(6px, env(safe-area-inset-bottom));
+    padding: 8px; border-radius: 14px; background: var(--panel); backdrop-filter: none;
+  }
+  #run-detail .rd-chat-bar textarea { min-height: 42px; height: 42px; max-height: min(120px, 22dvh); padding: 6px; font-size: 16px; line-height: 1.5; }
+  #run-detail .rd-chat-tools { gap: 4px; flex-wrap: wrap; }
+  #run-detail .rd-chat-tools > button { min-width: 44px; height: 44px; min-height: 44px; padding: 6px; font-size: 13px; }
+  #run-detail .rd-chat-tools .chat-send-actions { margin-left: auto; }
+  #run-detail .rd-chat-tools .chat-send-default { min-height: 44px; font-size: 13px; padding: 8px 12px; }
+  #run-detail .rd-chat-tools .chat-send-options { width: 44px; min-height: 44px; }
+  .mobile-chat-options { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 4px; max-height: 25dvh; overflow-y: auto; }
+  .mobile-chat-options .cmp-sel { min-height: 44px; font-size: 13px; }
+  .mobile-chat-options select { font-size: 16px; }
+  .mobile-chat-options #rd-model-menu { position: fixed; inset: auto 12px 160px; width: auto; max-height: 35dvh; overflow-y: auto; z-index: 90; }
+  #run-detail .chat-delivery-hint, #run-detail .rd-chat-continue-note { display: none; }
+  #run-detail .chat-queue { max-height: 88px; margin: 0; }
+  #run-detail .rd-att-list:empty { display: none; }
+  #run-detail .rd-att-list:not(:empty) { order: -1; flex-basis: 100%; max-height: 64px; overflow-y: auto; }
+  #run-detail .chat-send-menu { max-width: calc(100vw - 32px); }
+  #run-detail .chat-send-menu kbd { display: none; }
+  #run-detail :is(button, select, textarea):focus-visible { outline: 2px solid var(--accent) !important; outline-offset: -2px; }
+}
