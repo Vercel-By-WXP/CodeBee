@@ -2,7 +2,8 @@
 .chat-send-actions { position: relative; display: flex; align-items: center; gap: 3px; margin-left: auto; flex: none; }
 .rd-chat-tools .chat-send-default { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 7px 11px; border-radius: 18px; font-size: 12px; }
 .chat-send-default .ico { width: 15px; height: 15px; }
-.rd-chat-tools .chat-send-options { width: 28px; min-height: 36px; padding: 0; border-radius: 12px; font-size: 17px; }
+.rd-chat-tools .chat-send-options { width: 28px; min-height: 36px; padding: 0; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; }
+.rd-chat-tools .chat-send-options .chat-send-chevron { width: 14px; height: 14px; transform: rotate(90deg); }
 .chat-send-menu { position: absolute; bottom: calc(100% + 10px); right: 0; z-index: 40; width: 340px; max-width: calc(100vw - 48px); padding: 5px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); box-shadow: 0 8px 30px rgba(0,0,0,.14); }
 .chat-send-menu button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 64px; padding: 10px 12px; border: 0; border-radius: 9px; background: transparent; color: var(--text); text-align: left; }
 .chat-send-menu button:hover, .chat-send-menu button:focus-visible { background: var(--panel2); }

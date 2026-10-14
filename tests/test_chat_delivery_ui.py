@@ -15,6 +15,8 @@ class ChatDeliveryUiTests(unittest.TestCase):
 
     def test_default_queue_is_visible_and_immediate_option_is_explicit(self):
         self.assertIn('id="rd-chat-send-label"', self.html)
+        self.assertIn('class="ico chat-send-chevron"', self.html)
+        self.assertNotIn('>⌄</button>', self.html)
         self.assertIn('data-i18n="排队（默认）"', self.html)
         self.assertIn('data-chat-delivery="now"', self.html)
         self.assertIn("立即发送并引导", self.html)
