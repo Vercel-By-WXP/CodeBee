@@ -1924,6 +1924,12 @@ def retry_task(task_id):
                             if len(targeted) >= route_cap:
                                 break
                 if redo:
+                    # 已发布正文不能被质量回炉覆盖，否则平台与本地版本分叉。
+                    from .publish import ledger
+                    published = (ledger.published_chapters(task_id, "fanqie")
+                                 | ledger.published_chapters(task_id, "qimao"))
+                    redo.difference_update(published)
+                if redo:
                     done = [n for n in done if n not in redo]
                     v_scores = [c for c in v_scores if c.get("passed")
                                 and c.get("chapter") not in redo]

@@ -31,6 +31,17 @@ from .repeat_guard import guard as repeat_guard
 DEFAULT_RUBRIC = ["情节", "人物", "文笔", "节奏", "吸引力"]
 
 
+def _reusable_chapter_review(score):
+    """Only carry forward a completed chapter review with release-grade evidence."""
+    if not isinstance(score, dict) or not score.get("means") or score.get("passed") is not True:
+        return False
+    try:
+        return (int(score.get("reviewer_count") or 0) >= quality_gate.MIN_REVIEWERS
+                and score.get("reviewer_consensus") is True)
+    except (TypeError, ValueError):
+        return False
+
+
 class Cancelled(Exception):
     pass
 
@@ -4349,8 +4360,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 r0 = (results.get(0) or (None, None, None))[2] or {}
                 draft_sid = _resume_sid(impl, r0.get("sid")) or ""
 
-        # 复用章且上一遍已有评审分数 → 直接沿用，不再重评
-        if reuse and inh_scores.get(i, {}).get("means"):
+        # 正文可复用；缺少双人有效评审的旧分数必须重新评审。
+        if reuse and _reusable_chapter_review(inh_scores.get(i)):
             cs = dict(inh_scores[i])
             cs.setdefault("chapter", i)
             cs["reused"] = True

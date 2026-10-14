@@ -4,7 +4,22 @@
 """
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from base import BaseTest
+
+
+class TestInheritedChapterReview(BaseTest):
+    def test_only_release_grade_reviews_skip_rereview(self):
+        from app.core.pipeline import _reusable_chapter_review
+
+        valid = {"means": {"情节": 8.0}, "passed": True,
+                 "reviewer_count": 2, "reviewer_consensus": True}
+        self.assertTrue(_reusable_chapter_review(valid))
+        for change in ({"reviewer_count": 1}, {"reviewer_consensus": False},
+                       {"reviewer_count": "unknown"}, {"passed": False}):
+            self.assertFalse(_reusable_chapter_review({**valid, **change}))
+        self.assertFalse(_reusable_chapter_review({"means": {"情节": 8.0}}))
 
 
 class TestRecoverOrphanedRuns(BaseTest):
@@ -128,6 +143,34 @@ class TestRecoverOrphanedRuns(BaseTest):
         self.assertEqual([c.get("chapter") for c in scores], [1],
                          "failed run 的实时章节分数必须被继承")
         self.assertEqual(scores[0]["means"]["情节"], 8.0)
+
+    def test_retry_never_rewrites_published_chapter(self):
+        from app.core import store
+
+        task = store.create_task({
+            "type": "serial_novel", "title": "published", "goal": "写连载",
+            "workdir": str(self.workdir),
+            "serial": {"chapters": 2, "words_per_chapter": 800},
+        })
+        prev = store.create_run("orchestration", "published", task_id=task["id"])
+        store.update_run(prev["id"], status="done", outline={
+            "book_title": "书", "source": "编排者",
+            "chapters": [{"title": "1"}, {"title": "2"}]}, verdict={
+                "publishable": False, "start_chapter": 1, "end_chapter": 2,
+                "chapter_scores": [
+                    {"chapter": 1, "passed": True, "means": {"情节": 8.0}},
+                    {"chapter": 2, "passed": True, "means": {"情节": 8.0}}],
+                "major_issues": [{"chapter": 1, "severity": "major", "note": "第1章和第2章重复"}]})
+        for chapter in (1, 2):
+            step, _ = store.add_step(prev["id"], "draft-c%d" % chapter, "mock", "mock")
+            store.finish_step(prev["id"], step["n"], "done", summary="x", duration_s=0.1)
+
+        with patch("app.core.publish.ledger.published_chapters", side_effect=[{1}, set()]):
+            ok, err, nxt = store.retry_task(task["id"])
+        self.assertTrue(ok, err)
+        inherited = nxt["inherit"]
+        self.assertIn(1, inherited["done_chapters"])
+        self.assertNotIn(2, inherited["done_chapters"])
 
 
 class TestResumeInterrupted(BaseTest):
