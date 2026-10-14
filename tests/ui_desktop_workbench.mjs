@@ -199,7 +199,9 @@ try {
     return {
       statusX: Math.round(sr.x), statusW: Math.round(sr.width),
       barX: Math.round(br.x), barW: Math.round(br.width),
-      goalOverflow: goal.scrollWidth > goal.clientWidth,
+      goalContained: goal.getBoundingClientRect().right <= sr.right,
+      goalOverflow: getComputedStyle(goal).overflow,
+      goalEllipsis: getComputedStyle(goal).textOverflow,
       statusBottom: getComputedStyle(status).borderBottomWidth,
       barTopLeft: getComputedStyle(bar).borderTopLeftRadius,
       nextClass: status.nextElementSibling?.className || '',
@@ -209,7 +211,9 @@ try {
   console.log('active composer', JSON.stringify(activeComposer));
   assert.equal(activeComposer.statusX, activeComposer.barX, 'active-run status aligns with the composer');
   assert.equal(activeComposer.statusW, activeComposer.barW, 'active-run status and composer share a width');
-  assert.equal(activeComposer.goalOverflow, false, 'long active goal stays inside its flexible text slot');
+  assert.equal(activeComposer.goalContained, true, 'long active goal stays inside the status strip');
+  assert.equal(activeComposer.goalOverflow, 'hidden', 'long active goal clips inside its flexible text slot');
+  assert.equal(activeComposer.goalEllipsis, 'ellipsis', 'long active goal uses an ellipsis');
   assert.equal(activeComposer.statusBottom, '0px', 'status strip joins the composer without a doubled divider');
   assert.match(activeComposer.barTopLeft, /0px/, 'composer top corners join the active status strip');
   {
@@ -218,7 +222,7 @@ try {
       await sleep(120);
       const bounds = await ev(`(() => {
         const rect = s => {const r=document.querySelector(s).getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom}};
-        return {viewport:innerWidth, doc:document.documentElement.scrollWidth, main:rect('main'), flow:rect('#rd-chat-flow'), bar:rect('.rd-chat-bar'), rail:rect('#rd-railcol'), scroll:document.querySelector('main').scrollHeight, client:document.querySelector('main').clientHeight};
+        return {viewport:innerWidth, doc:document.documentElement.scrollWidth, main:rect('main'), flow:rect('#rd-chat-flow'), status:rect('#rd-chat-run-status'), bar:rect('.rd-chat-bar'), rail:rect('#rd-railcol'), scroll:document.querySelector('main').scrollHeight, client:document.querySelector('main').clientHeight};
       })()`);
       console.log(width, JSON.stringify(bounds));
       assert.ok(bounds.doc <= width + 1, 'no page horizontal overflow');
@@ -226,6 +230,8 @@ try {
       assert.ok(bounds.flow.h > 120, 'timeline retains reading space');
       assert.ok(bounds.flow.w <= 781, 'reading width capped on wide screens');
       assert.ok(bounds.bar.w <= 741, 'composer width follows the 740px reading measure');
+      assert.equal(bounds.status.w, bounds.bar.w, 'active status and composer share a width at every desktop size');
+      assert.equal(bounds.status.x, bounds.bar.x, 'active status and composer share an edge at every desktop size');
       assert.ok(width - bounds.rail.right <= 25, 'task rail stays docked at right edge');
       assert.ok(bounds.bar.right <= bounds.rail.x + 1, 'composer and task rail do not overlap');
       if (width < 1600) assert.equal(Math.round(bounds.rail.y), Math.round(bounds.flow.y), 'docked task rail aligns with the run content');

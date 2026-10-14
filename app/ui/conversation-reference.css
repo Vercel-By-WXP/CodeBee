@@ -26,6 +26,10 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
   font-size: 14px;
   line-height: 1.7;
 }
+#run-detail .rd-chat-run-status,
+#run-detail.chat-mode .rd-chat-run-status,
+#run-detail .rd-chat-run-status + .rd-chat-bar,
+#run-detail.chat-mode .rd-chat-run-status + .rd-chat-bar,
 #run-detail .rd-chat-bar,
 #run-detail.chat-mode .rd-chat-bar {
   box-sizing: border-box;
@@ -135,6 +139,10 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
 @media (max-width: 720px) {
   #run-detail .rd-chat-flow,
   #run-detail.chat-mode .rd-chat-flow { padding: 16px 8px 20px; gap: 20px; }
+  #run-detail .rd-chat-run-status,
+  #run-detail.chat-mode .rd-chat-run-status,
+  #run-detail .rd-chat-run-status + .rd-chat-bar,
+  #run-detail.chat-mode .rd-chat-run-status + .rd-chat-bar,
   #run-detail .rd-chat-bar,
   #run-detail.chat-mode .rd-chat-bar { width: calc(100% - 16px); }
   .rd-chat .chat-user-message { max-width: 88%; }
