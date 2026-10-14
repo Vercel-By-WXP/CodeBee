@@ -734,28 +734,38 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 note(i, "验证 %s" % url[:60])
                 settle = float(st.get("settle") or 4)
                 new_tab = bool(st.get("new_tab"))
-                if new_tab:
-                    vpage = page.open_new_tab(url)
-                    time.sleep(settle)
-                else:
-                    page.navigate(url, timeout=30)
-                    time.sleep(settle)
-                    vpage = page
-                try:
-                    marks = [str(m) for m in (st.get("any") or [])]
-                    body_txt = str(vpage.call(
-                        "()=>(document.body.innerText||'')", timeout=15) or "")
-                    for m in marks:
-                        mk = m
-                        for k, v in (values or {}).items():
-                            mk = mk.replace("{%s}" % k, str(v))
-                        if mk not in body_txt:
-                            raise FlowError("上线验证失败：%s 页面上没有「%s」（章节未真正发布）"
-                                            % (url[:60], mk[:40]))
-                    note(i, "验证通过")
-                finally:
+                marks = [str(m) for m in (st.get("any") or [])]
+                last_missing = ""
+                for verify_try in range(int(st.get("tries") or 3)):
                     if new_tab:
-                        vpage.close_tab()
+                        vpage = page.open_new_tab(url)
+                        time.sleep(settle)
+                    else:
+                        page.navigate(url, timeout=30)
+                        time.sleep(settle)
+                        vpage = page
+                    try:
+                        body_txt = str(vpage.call(
+                            "()=>(document.body.innerText||'')", timeout=15) or "")
+                        missing = []
+                        for m in marks:
+                            mk = m
+                            for k, v in (values or {}).items():
+                                mk = mk.replace("{%s}" % k, str(v))
+                            if mk not in body_txt:
+                                missing.append(mk)
+                        if not missing:
+                            note(i, "验证通过")
+                            break
+                        last_missing = missing[0]
+                    finally:
+                        if new_tab:
+                            vpage.close_tab()
+                    if verify_try + 1 < int(st.get("tries") or 3):
+                        time.sleep(float(st.get("retry_settle") or 3))
+                else:
+                    raise FlowError("上线验证失败：%s 页面上没有「%s」（章节未真正发布）"
+                                    % (url[:60], last_missing[:40]))
             elif act == "expect_text":
                 # 页面反馈等待（草稿保存凭据，2026-10-10）：轮询页面文本直到
                 # 出现任一成功标记（toast/状态字样）——verify 的章节管理页对
@@ -781,6 +791,65 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                                     % (int(float(st.get("timeout") or 12)),
                                        "、".join(marks)[:60]))
                 note(i, "反馈命中「%s」" % hit)
+            elif act == "expect_text_absent":
+                # A real click can be delivered without activating the page's
+                # action (for example, a publish-confirm modal remains open).
+                # Treat disappearance of the modal text as a required
+                # postcondition before proceeding to remote status checks.
+                marks = [str(m) for m in (st.get("any") or [])]
+                if not marks:
+                    continue
+                deadline = time.time() + float(st.get("timeout") or 12)
+                remaining = marks
+                while time.time() < deadline:
+                    body_txt = str(page.call(
+                        "()=>(document.body.innerText||'')", timeout=15) or "")
+                    remaining = [m for m in marks if m in body_txt]
+                    if not remaining:
+                        break
+                    time.sleep(0.5)
+                if remaining:
+                    raise FlowError("点击后页面仍停留在确认界面（%ds 后仍见：%s）"
+                                    % (int(float(st.get("timeout") or 12)),
+                                       "、".join(remaining)[:80]))
+                note(i, "确认界面已关闭")
+            elif act == "verify_chapter_status":
+                # Publication is proven only by this chapter's row in the
+                # platform chapter-management page carrying a live/review
+                # status. A draft title, cloud-save banner, or generic toast
+                # is not evidence that the chapter was submitted.
+                url = str(st.get("url") or "")
+                for k, v in (values or {}).items():
+                    url = url.replace("{%s}" % k, str(v))
+                note(i, "核验章节发布状态 %s" % url[:60])
+                page.navigate(url, timeout=float(st.get("nav_timeout") or 40))
+                page.wait_for(st.get("sel") or ".el-table__row, tr",
+                              timeout=float(st.get("timeout") or 25))
+                time.sleep(float(st.get("settle") or 4))
+                title = str(values.get("chapter_title") or "").strip()
+                number = str(values.get("chapter_no") or "").strip()
+                wanted = [x for x in (title, ("第%s章" % number if number else "")) if x]
+                live = [str(x) for x in (st.get("live_status") or
+                                          ["待审核", "审核中", "已发布"])]
+                draft = [str(x) for x in (st.get("draft_status") or ["草稿"])]
+                rows = page.call(
+                    "(sel)=>[...document.querySelectorAll(sel)]"
+                    ".filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0;})"
+                    ".map(e=>(e.innerText||'').replace(/\\s+/g,' ').trim())"
+                    ".filter(Boolean)", st.get("row_sel") or ".el-table__row, tr",
+                    timeout=15) or []
+                row = next((str(r) for r in rows
+                            if any(mark in str(r) for mark in wanted)), "")
+                if not row:
+                    raise FlowError("发布状态核验失败：章节管理页找不到本章「%s」"
+                                    % (title or "第%s章" % number))
+                if any(mark in row for mark in draft):
+                    raise FlowError("发布状态核验失败：本章仍是草稿：%s" % row[:120])
+                hit = next((mark for mark in live if mark in row), "")
+                if not hit:
+                    raise FlowError("发布状态核验失败：本章行未见待审核/审核中/已发布状态：%s"
+                                    % row[:120])
+                note(i, "章节管理行核验通过（%s）：%s" % (hit, row[:100]))
             elif act == "volume":
                 # 按本地卷计划在平台选择目标卷；如果缺失则创建，再点选它。
                 # 仅创建并关闭弹窗会保留平台当前卷，后续新章节就会落错卷。
