@@ -7794,13 +7794,24 @@ async function refreshDetailSide(force) {
   try { d = await api("/api/tasks/" + encodeURIComponent(key) + "/side"); }
   catch (e) { return; }                      // 拉取失败静默，等下一轮节流重试
   if (detailSideTaskKey() !== key) return;   // 期间已切到别的详情：过期响应不落盘
-  if (!d || !d.task) { S.detailSide = null; renderChangeSummary(); return; }
+  if (!d || !d.task) {
+    S.detailSide = null;
+    renderChangeSummary();
+    chatSig = ""; chatLiveSig = "";
+    if (S.lastRun && S.lastRun.task_id === key) renderChat(S.lastRun, ["running", "queued"].includes(S.lastRun.status));
+    return;
+  }
   S.detailSide = d;
   renderChangeSummary();
   const sig = JSON.stringify([d.task.git_state, d.git, d.changes, d.stats]);
   if (sig === S.detailSideSig) return;       // 没变化不重画（保住文件行 hover 态）
   S.detailSideSig = sig;
   applyDetailSide();
+  // side 快照独立于时间线轮询返回；变更卡片需要在同一轮对话中即时出现/更新。
+  if (S.lastRun && S.lastRun.task_id === key) {
+    chatSig = ""; chatLiveSig = "";
+    renderChat(S.lastRun, ["running", "queued"].includes(S.lastRun.status));
+  }
 }
 
 /* Compact Git receipt from the desktop reference. It follows the task currently
@@ -11213,6 +11224,9 @@ function drawChatFlow(run, data, active) {
   // 只见一句寒暄，执行结果无处可看）。
   const res = data && data.result;
   if (res) html += chatResultHTML(run, res);
+  // 代码任务的文件变更属于对话结果的一部分：把它放在助手回复之后，
+  // 用户无需跳到 Git 页签就能看到本轮改了什么，并可逐文件查看 diff。
+  html += chatChangeSummaryHTML(run);
   // 贴底跟随：用户滚到底部附近才自动滚到最新输出，回看历史不打扰；
   // 带强制贴底标记（发送/继续任务/首开详情置的）则无条件跳最新。
   // 页签当前不可见（display:none 时 scrollHeight 恒 0）贴底无处落：
@@ -11241,6 +11255,142 @@ function drawChatFlow(run, data, active) {
   if (active && hasRunning && run && run.id) scheduleChatLive(run.id);
   else stopChatLive();
 }
+
+/* 对话内的文件变更收据。数据来自任务级 side 快照，与 Git 页签使用同一
+ * 口径；运行中显示实时 numstat，运行结束后显示该 run 的落盘快照。 */
+function chatChangeSummaryHTML(run) {
+  if (!run || (S._chatChangeUndone && S._chatChangeUndone[run.id])) return "";
+  const side = S.detailSide;
+  const sideMatchesRun = !!(side && side.run && side.run.id === run.id);
+  const task = sideMatchesRun ? side.task : (((S.state || {}).tasks || []).find((item) => item.id === run.task_id) || {});
+  const changes = sideMatchesRun ? side.changes : run.changes;
+  const git = sideMatchesRun ? side.git : run.git;
+  if (!run || !task || task.id !== run.task_id || !git || !git.branch || !changes) return "";
+  const files = Array.isArray(changes.files) ? changes.files.filter((f) => f && f.path) : [];
+  const count = Number(changes.count) || files.length;
+  if (!count || !files.length) return "";
+  const active = ["running", "queued"].includes(String((sideMatchesRun && side.task || {}).status || run.status || ""));
+  const add = changes.add_total == null ? 0 : Number(changes.add_total) || 0;
+  const del = changes.del_total == null ? 0 : Number(changes.del_total) || 0;
+  const rows = files.slice(0, 40).map((f) => {
+    const status = f.status === "D" ? "d" : f.status === "A" || f.status === "?" ? "n" : "m";
+    const lineStats = (f.add != null || f.del != null)
+      ? '<span class="chat-change-lines"><b>+' + (Number(f.add) || 0) + '</b><b>-' + (Number(f.del) || 0) + "</b></span>" : "";
+    return '<button type="button" class="chat-change-file" data-chat-change-file="' + esc(f.path) +
+      '" data-chat-change-run="' + esc(run.id || "") + '" title="' + esc(t("查看该文件的变更")) + '">' +
+      '<i class="gs ' + status + '">' + esc(gitStatusLabel(f.status)) + '</i><span class="chat-change-path">' +
+      esc(f.path) + '</span>' + lineStats + '<span class="chat-change-chevron">›</span></button>';
+  }).join("");
+  const moreCount = Math.max(0, count - Math.min(files.length, 40));
+  const more = moreCount ? '<div class="chat-change-more">+' + moreCount + " " + esc(t("个文件")) + "</div>" : "";
+  // Isolated code runs are finalized on their task branch and then restored to
+  // the user's original branch.  A checkpoint restore from that original
+  // checkout cannot safely replay the task-branch snapshot, so do not advertise
+  // an undo action for those runs.
+  const isolatedRestored = !!((run.git && run.git.restored) ||
+    (sideMatchesRun && side.git && side.git.restored));
+  const undo = active || isolatedRestored ? "" : '<button type="button" class="ghost chat-change-undo" data-chat-change-undo="' +
+    esc(run.id || "") + '">' + esc(t("撤销")) + "</button>";
+  const submit = active || isolatedRestored ? "" : '<button type="button" class="primary chat-change-submit" data-chat-change-submit="' +
+    esc(run.id || "") + '">' + esc(t("提交 Git 并推送")) + "</button>";
+  return '<div class="chat-row chat-change-row"><section class="chat-change-card" aria-label="' + esc(t("文件变更")) + '">' +
+    '<div class="chat-change-head"><div class="chat-change-title"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>' +
+    '<strong>' + esc(t("已编辑 {0} 个文件", count)) + '</strong><span class="chat-change-stats"><b>+' + add + '</b><b>-' + del +
+    '</b></span></div><span class="chat-change-branch" title="' + esc(git.branch) + '">' + esc(git.branch) + '</span></div>' +
+    '<div class="chat-change-files">' + rows + more + '</div>' +
+    '<div class="chat-change-foot">' + submit + undo + '<button type="button" class="ghost chat-change-view" data-chat-change-view="' +
+    esc(run.id || "") + '">' + esc(t("查看变更")) + '</button></div>' +
+    '</section></div>';
+}
+
+window.undoChatChanges = async function (runId) {
+  if (!runId || !await uiConfirm(t("撤销会恢复本轮记录的文件，shell、MCP 和外部服务副作用不保证可回滚。确定继续？"),
+    { ok: t("撤销文件改动"), danger: true })) return;
+  try {
+    const result = await api("/api/runs/" + encodeURIComponent(runId) + "/checkpoints/restore", {
+      method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+      body: JSON.stringify({ confirm: true }),
+    });
+    const restored = Number(result.restored) || 0;
+    const conflicts = Array.isArray(result.conflicts) ? result.conflicts : [];
+    if (!restored && conflicts.length) {
+      toast(t("没有文件被撤销：") + conflicts.join(", "), true);
+      return;
+    }
+    if (!restored) {
+      toast(t("没有可撤销的文件"), true);
+      return;
+    }
+    toast(t("已撤销 ") + restored + t(" 个文件") + (conflicts.length ? "；" + t("冲突 ") + conflicts.join(", ") : ""));
+    if (!conflicts.length) {
+      S._chatChangeUndone = S._chatChangeUndone || {};
+      S._chatChangeUndone[runId] = true;
+    }
+    await refreshDetailSide(true);
+    chatSig = ""; chatLiveSig = "";
+    if (S.lastRun && S.lastRun.id === runId) renderChat(S.lastRun, ["running", "queued"].includes(S.lastRun.status));
+  } catch (error) { toast(t("撤销失败：") + error.message, true); }
+};
+
+window.submitChatChanges = async function (runId) {
+  const key = detailSideTaskKey();
+  if (!key || !runId) return;
+  let wb;
+  try { wb = await api("/api/tasks/" + encodeURIComponent(key) + "/git"); }
+  catch (error) { toast(t("Git 工作台读取失败：") + error.message, true); return; }
+  const side = S.detailSide;
+  if (!side || !side.run || side.run.id !== runId || !side.task || side.task.id !== key) {
+    toast(t("Git 工作台读取失败：") + t("任务变更状态已刷新，请重试"), true);
+    return;
+  }
+  const taskBranch = side && side.git && side.git.branch;
+  const currentBranch = wb && wb.branch;
+  // 提交按钮只服务于当前卡片对应的任务分支。终态隔离任务通常已经
+  // checkout 回用户原分支；缺少任一分支信息也必须拒绝，不能把当前工作区
+  // 的改动误归入本轮并推送。
+  if (!wb || !wb.repo) {
+    toast(t("Git 工作台读取失败：") + t("当前任务没有可用的 Git 工作区"), true);
+    return;
+  }
+  if (!taskBranch || !currentBranch) {
+    toast(t("无法确认任务分支，请先在 Git 工作台打开并切换到任务分支"), true);
+    return;
+  }
+  if (taskBranch !== currentBranch) {
+    toast(t("当前工作区在 {0}，任务变更属于 {1}；请先在 Git 工作台切换分支。", currentBranch, taskBranch), true);
+    return;
+  }
+  const changePaths = new Set(((side && side.changes && side.changes.files) || [])
+    .map((file) => file && file.path).filter(Boolean));
+  const pending = [].concat(wb.staged || [], wb.unstaged || [], wb.untracked || [])
+    .filter((file) => file && changePaths.has(file.path));
+  if (!pending.length) {
+    toast(t("当前没有未提交变更，可在 Git 工作台查看任务分支提交"));
+    openChangeSummaryGit();
+    return;
+  }
+  const defaultMessage = t("CodeBee：完成本轮文件修改");
+  const message = (await uiPrompt(t("提交信息"), defaultMessage) || "").trim();
+  if (!message) return;
+  if (!await uiConfirm(t("将提交 {0} 个文件并推送当前分支，继续吗？", pending.length), { ok: t("提交并推送") })) return;
+  // 弹窗期间用户可能在 Git 工作台切换了分支；再次读取并校验，避免把
+  // 确认前看到的任务文件路径写入另一条分支。
+  let latestWb;
+  try { latestWb = await api("/api/tasks/" + encodeURIComponent(key) + "/git"); }
+  catch (error) { toast(t("Git 工作台读取失败：") + error.message, true); return; }
+  if (!latestWb || !latestWb.repo || latestWb.branch !== taskBranch) {
+    toast(t("当前工作区在 {0}，任务变更属于 {1}；请先在 Git 工作台切换分支。", latestWb && latestWb.branch, taskBranch), true);
+    return;
+  }
+  for (const file of pending) {
+    if (!await _gitWbPost("stage", { path: file.path })) return;
+  }
+  const committed = await _gitWbPost("commit", { message },
+    (r) => t("已提交 ") + (r.files || 0) + t(" 个文件 → ") + (r.commit || ""));
+  if (!committed) return;
+  await _gitWbPost("push", null, t("已推送到远程"));
+  await refreshDetailSide(true);
+};
 
 /* 执行结果卡（时间线收尾）：run 终态后的确定性摘要——成没成、跑多久、谁执行
  * 的、产出了哪些文件，全部产品明示，不依赖模型自觉交代。失败给「查看执行步骤」
@@ -11924,6 +12074,44 @@ function bindChat() {
         ta.value = fup.dataset.fup;
         ta.dispatchEvent(new Event("input", { bubbles: true }));
         ta.focus();
+      }
+      return;
+    }
+    const changeFile = e.target.closest("[data-chat-change-file]");
+    if (changeFile) {
+      e.preventDefault();
+      const path = changeFile.dataset.chatChangeFile || "";
+      const runId = changeFile.dataset.chatChangeRun || "";
+      if (!path) return;
+      const active = ["running", "queued"].includes(String(
+        ((S.detailSide || {}).task || {}).status || (S.lastRun && S.lastRun.status) || ""));
+      if (active) gitWbDiff(path);
+      else fileDiffPopup(path, runId);
+      return;
+    }
+    const changeUndo = e.target.closest("[data-chat-change-undo]");
+    if (changeUndo) {
+      e.preventDefault();
+      changeUndo.disabled = true;
+      undoChatChanges(changeUndo.dataset.chatChangeUndo).catch(() => { changeUndo.disabled = false; });
+      return;
+    }
+    const changeSubmit = e.target.closest("[data-chat-change-submit]");
+    if (changeSubmit) {
+      e.preventDefault();
+      changeSubmit.disabled = true;
+      submitChatChanges(changeSubmit.dataset.chatChangeSubmit).finally(() => { changeSubmit.disabled = false; });
+      return;
+    }
+    const changeView = e.target.closest("[data-chat-change-view]");
+    if (changeView) {
+      e.preventDefault();
+      if (S.detailSide && S.detailSide.git && S.detailSide.git.branch) openChangeSummaryGit();
+      else {
+        S.rdTab = "git";
+        S.rdTabPin = true;
+        if (S.lastRun) renderGitPanel(S.lastRun, S.lastRunTask);
+        applyRdTabs();
       }
       return;
     }
