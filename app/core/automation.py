@@ -845,6 +845,25 @@ TEMPLATES = [
         "suggested_weekday": 4,
         "suggested_flow": "research",
     },
+    {
+        "id": "biweekly-orchestrator-oss-radar",
+        "name": "编排器开源雷达",
+        "desc": "定期只读跟踪 ZCODE、DeepSeek 及其他编排器项目的公开更新，"
+                "把可验证的改进点沉淀成报告，人工确认后再落地。",
+        "prompt": "对本工作目录的 CodeBee 编排器做一次只读开源学习巡检，不要修改源码、"
+                  "不要安装依赖、不要自动合并外部代码：\n"
+                  "1. 优先查看 ZCODE/Z.ai、DeepSeek 相关官方仓库、文档、release 与 issue；"
+                  "网络不可用时明确记录来源不可达，不要凭记忆补写事实。\n"
+                  "2. 对比本项目现状，重点关注意图解析、任务契约、规划/路由、工具调用、"
+                  "评测、记忆与失败恢复；只记录「对方有、我们没有、且能验证有用」的做法。\n"
+                  "3. 每条建议写清来源 URL、观察日期、证据摘录、适用场景、预期收益、"
+                  "实现成本与潜在风险，并标注「建议接入/继续观察/不采纳」。\n"
+                  "4. 读取已有 docs/borrow-log/knowledge.md 与 OSS 借鉴记录，去重后把结果写成"
+                  " OSS-ORCHESTRATOR-RADAR.md；报告只提出候选改进，不直接改写 knowledge.md 或源码。",
+        "suggested_kind": "interval",
+        "suggested_interval_hours": 168,
+        "suggested_flow": "research",
+    },
 ]
 
 

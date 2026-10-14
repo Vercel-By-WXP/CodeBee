@@ -23,6 +23,9 @@ class TestNovelPipeline(BaseTest):
         self.assertEqual(run["status"], "done", run.get("error"))
         self.assertEqual(run["task_spec"]["type"], "novel")
         self.assertEqual(run["task_spec"]["engine"], "review")
+        self.assertEqual(run["intent_contract"]["primary_goal"],
+                         "写一个 800 字的开篇")
+        self.assertTrue(run["intent_contract"]["must"])
         self.assertIn("implement", run["route_plan"])
         self.assertIn("candidates", run["route_plan"]["implement"])
         self.assertEqual(run["route_plan"]["implement"]["selected"], "mock-a")

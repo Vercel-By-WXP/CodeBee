@@ -462,7 +462,7 @@ class TestRunPrefsThroughLaunchChain(AutomationCase):
 class TestTemplates(AutomationCase):
     def runTest(self):
         ts = self.aut.templates()
-        self.assertEqual(len(ts), 4)
+        self.assertEqual(len(ts), 5)
         ids = set()
         for tp in ts:
             for k in ("id", "name", "desc", "prompt", "suggested_kind"):
@@ -470,7 +470,11 @@ class TestTemplates(AutomationCase):
             self.assertIn(tp["suggested_kind"], self.aut.KINDS)
             self.assertGreater(len(tp["prompt"]), 100)   # 真材实料的提示词，不是占位符
             ids.add(tp["id"])
-        self.assertEqual(len(ids), 4)
+        self.assertEqual(len(ids), 5)
+        radar = next(tp for tp in ts if tp["id"] == "biweekly-orchestrator-oss-radar")
+        self.assertEqual(radar["suggested_interval_hours"], 168)
+        self.assertIn("来源 URL", radar["prompt"])
+        self.assertIn("不要自动合并外部代码", radar["prompt"])
         # templates 返回副本：改返回值不影响内置模板
         ts[0]["prompt"] = "tampered"
         self.assertNotEqual(self.aut.templates()[0]["prompt"], "tampered")

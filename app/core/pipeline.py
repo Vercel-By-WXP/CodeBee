@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, agent_context, attachments, branching, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, flows, history, hooks, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, router, runner, skills, store, task_compile, usage, volumes
+from . import aiflavor, agent_context, attachments, branching, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, flows, history, hooks, intent_contract, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, router, runner, skills, store, task_compile, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -2354,7 +2354,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
                     prompt = (DIRECT_PROMPT
                               .replace("__GOAL__", task["goal"])
                               .replace("__CONTEXT__", task.get("context") or "（无）"))
-            if task.get("attachments") and "codebee-attachments:start" not in prompt:
+            if ((task.get("attachments") or task.get("type") in ("rank_scan", "defect_retro"))
+                    and "codebee-attachments:start" not in prompt):
                 prompt += "\n\n## 用户背景与附件\n" + (task.get("context") or "")
             if task.get("plan_mode"):
                 prompt += ("\n\n## 计划模式\n先给出简明、可执行的步骤计划，再按计划逐步完成；"
@@ -5647,6 +5648,16 @@ def _write_task_spec(task, workdir):
         ]
         if task.get("context"):
             lines.append("- 背景：%s" % str(task["context"]).replace("\n", " "))
+        contract = task.get("intent_contract") or {}
+        if contract.get("must"):
+            lines.append("\n## 必须完成（用户意图契约）")
+            lines.extend("- %s" % str(item) for item in contract["must"][:12])
+        if contract.get("must_not"):
+            lines.append("\n## 明确禁止/避免")
+            lines.extend("- %s" % str(item) for item in contract["must_not"][:12])
+        if contract.get("deliverables"):
+            lines.append("\n## 交付物线索")
+            lines.extend("- %s" % str(item) for item in contract["deliverables"][:12])
         if task.get("difficulty"):
             lines.append("- 难度：%s" % task["difficulty"])
         if task.get("mode"):
@@ -6005,6 +6016,18 @@ def execute_run(run_id):
         store.update_run(run_id, agent_context=_agent_context)
     except Exception:
         pass
+    # Normalize the user's intent once per run and prepend it to context. This
+    # closes the fast-path gap where no standalone planner call is made.
+    task, _intent_block = intent_contract.ensure_task(task)
+    try:
+        store.update_task_intent_contract(task.get("id") or "",
+                                          task.get("intent_contract") or {})
+    except Exception:
+        pass
+    original_context = task.get("context") or ""
+    if _intent_block and _intent_block not in original_context:
+        task["context"] = (_intent_block + "\n\n" + original_context).strip()
+    store.update_run(run_id, intent_contract=task.get("intent_contract") or {})
     task["_compiled_spec"] = task_spec
     # 运行内统一使用编译后的难度；store 中历史任务常带 difficulty=auto，
     # 不能让这个兼容值覆盖 easy/default/hard 的模型调度决策。

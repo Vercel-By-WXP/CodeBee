@@ -225,6 +225,18 @@ def create_task(payload):
         raise ValueError("acceptance_criteria 必须是列表")
     task["acceptance_criteria"] = [str(x).strip()[:500] for x in
                                     (raw_criteria or []) if str(x).strip()][:40]
+    # Keep the user's hard requirements separate from free-form context so
+    # every execution path (including the fast path) can audit them.
+    try:
+        from . import intent_contract
+        task["intent_contract"] = intent_contract.build(
+            task["goal"], intent_contract.trusted_context(task["context"]),
+            task["acceptance_criteria"])
+    except Exception:
+        task["intent_contract"] = {"version": 1, "primary_goal": task["goal"],
+                                    "must": [task["goal"]] if task["goal"] else [],
+                                    "must_not": [], "deliverables": [],
+                                    "raw_excerpt": task["goal"]}
     approval_required = payload.get("approval_required", False)
     if not isinstance(approval_required, bool):
         raise ValueError("approval_required 必须是布尔值")
@@ -419,6 +431,15 @@ def create_task(payload):
                 pass
             task["context"] = att_mod.merge_context(
                 task["context"], items, workdir=str(wd))
+    # Attachments can contribute user instructions to context, so rebuild the
+    # contract after attachment context has been merged.
+    try:
+        from . import intent_contract
+        task["intent_contract"] = intent_contract.build(
+            task["goal"], intent_contract.trusted_context(task["context"]),
+            task["acceptance_criteria"])
+    except Exception:
+        pass
     with LOCK:
         _TASKS[task["id"]] = task
         _save_json(paths.TASKS_DIR / (task["id"] + ".json"), task)
@@ -537,6 +558,21 @@ def get_task(task_id):
         except Exception:
             return None
     return None
+
+
+def update_task_intent_contract(task_id, contract):
+    """Persist a normalized contract for a legacy task on its next run."""
+    if not _valid_id(task_id) or not isinstance(contract, dict):
+        return False
+    with LOCK:
+        task = _TASKS.get(task_id)
+        if not task:
+            return False
+        if task.get("intent_contract") == contract:
+            return True
+        task["intent_contract"] = contract
+        _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
+    return True
 
 
 def list_tasks(limit=None, archived=None):
