@@ -3899,10 +3899,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 cj_map[agent["id"]] = cj
                 issues_all.extend({"chapter": i, **it} for it in (cj.get("issues") or [])[:6])
 
-            # 评审者级 fallback：名单内评审全挂（网关抖动/CLI 故障）时，
-            # 从其它已启用真实智能体补位至多 2 个（排除 mock 与已试过的），
-            # 只要有一个出分就不触发「评审全败中止」。
-            if not scored and impl.get("mode") != "mock":
+            # 有效评审不足两名时补位；仅一人出分也不能形成发布共识。
+            if scored < quality_gate.MIN_REVIEWERS:
                 tried = {a.get("id") for a in critics}
                 pool = [a for a in (agents or [])
                         if a.get("mode") == "real" and a.get("id") not in tried]
@@ -3924,7 +3922,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                             (spare.get("label") or spare.get("id")))
                         issues_all.extend({"chapter": i, **it}
                                           for it in (cj.get("issues") or [])[:6])
-                        break
+                        if scored >= quality_gate.MIN_REVIEWERS:
+                            break
                     _check_cancel(ev)
             return cj_map, scored, sids
 

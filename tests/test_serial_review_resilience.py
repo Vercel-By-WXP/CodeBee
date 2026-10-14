@@ -60,6 +60,30 @@ class SerialReviewBase(BaseTest):
 
 
 class TestGlobalReviewAllDead(SerialReviewBase):
+    def test_one_chapter_reviewer_gets_spare_for_consensus(self):
+        from app.core import pipeline, store
+
+        task, run = self._make()
+        agents, critics, impl = self._agents(extra_ids=("spare",))
+
+        def fake_step(run_id, role, agent, prompt, workdir, readonly, ev, *a, **kw):
+            if role.startswith("critique-c") and agent["id"] == "c2":
+                return _ok(GARBAGE)
+            return _ok(GOOD)
+
+        orig = pipeline._run_step
+        pipeline._run_step = fake_step
+        try:
+            self._run_review(task, run, agents, critics, impl)
+        finally:
+            pipeline._run_step = orig
+
+        verdict = store.get_run(run["id"])["verdict"]
+        self.assertTrue(verdict["publishable"])
+        self.assertTrue(all(score["reviewer_count"] == 2
+                            and score["reviewer_consensus"]
+                            for score in verdict["chapter_scores"]))
+
     def test_all_dead_fails_run_not_verdict(self):
         """全局评审全挂且无补位 → run 失败；绝不盖「未达标」章。"""
         from app.core import pipeline, store
