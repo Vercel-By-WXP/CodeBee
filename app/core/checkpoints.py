@@ -423,25 +423,45 @@ def _git_changed_paths(workdir, gitmod):
             and rel != ".codebee" and not rel.startswith(".codebee/")]
 
 
+def external_snapshot_capability(workdir):
+    """Return whether an external writer can be checkpointed in ``workdir``.
+
+    Routing uses this probe before starting a process.  That keeps a generic
+    writer such as KIMI out of non-Git workspaces instead of selecting it and
+    only emitting an unrecoverable-snapshot warning after the step starts.
+    """
+    root = Path(workdir or "").expanduser().resolve()
+    probe = _git_bytes(root, "rev-parse", "--show-toplevel")
+    if not probe or probe.returncode:
+        return {"supported": False,
+                "reason": "非 Git 工作目录：外部 CLI 文件改动无法生成可恢复快照"}
+    try:
+        repo_root = Path(os.fsdecode(probe.stdout).strip()).resolve()
+    except (OSError, UnicodeError):
+        repo_root = None
+    if repo_root != root:
+        return {"supported": False,
+                "reason": "工作目录不是 Git 仓库根目录：外部 CLI 文件改动无法安全快照"}
+    head = _git_bytes(root, "rev-parse", "HEAD")
+    if not head or head.returncode:
+        return {"supported": False,
+                "reason": "Git 仓库没有可用 HEAD：外部 CLI 文件改动无法安全快照"}
+    return {"supported": True, "root": root,
+            "head": os.fsdecode(head.stdout).strip()}
+
+
 def begin_git_step(run_id, workdir):
     """Capture pre-existing dirty Git files before an external CLI step starts.
 
     Clean tracked files can be reconstructed from the pinned HEAD at finish time;
     dirty/untracked files must be captured now or the step is refused.
     """
+    capability = external_snapshot_capability(workdir)
     root = Path(workdir or "").expanduser().resolve()
-    probe = _git_bytes(root, "rev-parse", "--show-toplevel")
-    if not probe or probe.returncode:
+    if not capability.get("supported"):
         return {"ok": True, "supported": False,
-                "warning": "非 Git 工作目录：外部 CLI 文件改动无法生成可恢复快照"}
-    repo_root = Path(os.fsdecode(probe.stdout).strip()).resolve()
-    if repo_root != root:
-        return {"ok": True, "supported": False,
-                "warning": "工作目录不是 Git 仓库根目录：外部 CLI 文件改动无法安全快照"}
-    head = _git_bytes(root, "rev-parse", "HEAD")
-    if not head or head.returncode:
-        return {"ok": True, "supported": False,
-                "warning": "Git 仓库没有可用 HEAD：外部 CLI 文件改动无法安全快照"}
+                "warning": capability.get("reason") or "外部 CLI 文件改动无法安全快照"}
+    head = capability["head"]
     try:
         from . import gitmod
         entries = _git_changed_paths(root, gitmod)
@@ -465,7 +485,7 @@ def begin_git_step(run_id, workdir):
             return {"ok": False, "error": "已有改动无法完整快照（%s），未启动外部 CLI" % rel}
         before_paths.append(rel)
     return {"ok": True, "supported": True,
-            "head": os.fsdecode(head.stdout).strip(),
+            "head": head,
             "before_paths": before_paths}
 
 

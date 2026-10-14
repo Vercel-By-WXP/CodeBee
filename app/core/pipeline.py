@@ -6108,6 +6108,32 @@ def execute_run(run_id):
     global _RUN_CONSTITUTION
     _RUN_CONSTITUTION = _read_constitution(task["workdir"])
     agents = _agents()
+    mode = task.get("mode") or ("manual" if (
+        task.get("implementer") or task.get("direct_agent")) else "auto")
+    # A real external backend can edit arbitrary files, so automatic routing
+    # must only consider it when the workspace has the Git checkpoint needed
+    # for recovery.  This is deliberately done before route plans are written;
+    # otherwise a non-Git task can still score/select KIMI and only surface the
+    # problem as a post-launch warning.
+    auto_route = (mode in ("auto", "fast", "expert")
+                  and not task.get("resume")
+                  and not task.get("implementer")
+                  and not task.get("direct_agent")
+                  and run.get("op") != "qa")
+    if auto_route:
+        agents, excluded_writers, snapshot_capability = router.writable_agents(
+            agents, task.get("workdir") or "")
+    else:
+        excluded_writers, snapshot_capability = [], {"supported": True}
+    if excluded_writers:
+        excluded_labels = ", ".join(
+            str(a.get("label") or a.get("id") or "外部 CLI")
+            for a in excluded_writers[:12])
+        warning = (snapshot_capability.get("reason") or
+                   "外部 CLI 文件改动无法安全快照") + "；自动路由已排除：" + excluded_labels
+        prior_warnings = (store.get_run(run_id) or {}).get("warnings") or []
+        if warning not in prior_warnings:
+            store.update_run(run_id, warnings=prior_warnings + [warning])
     global _CURRENT_AGENTS
     _CURRENT_AGENTS = agents
     # 续会话是对该 CLI 的显式指定：目标未启用编排时也注入本次运行（不影响路由池）
@@ -6128,7 +6154,6 @@ def execute_run(run_id):
         "implement": router.route_plan(agents, "implement", task_spec, stats),
         "review": router.route_plan(agents, "review", task_spec, stats),
     })
-    mode = task.get("mode") or ("manual" if task.get("implementer") else "auto")
     store.update_run(run_id, mode=mode)
     # 任务生命周期钩子（task_start，2026-09-22）：stdout 注入文本并入任务上下文
     # ——context 在全引擎提示词都有 __CONTEXT__ 占位，一处并入全覆盖

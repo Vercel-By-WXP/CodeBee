@@ -18,6 +18,35 @@ MAX_REPAIR_ROUNDS = 2  # 自动修复循环上限
 AUTO_CRITIC_LIMIT = 2  # 自动内容评审只取综合分前两名；手工模式仍尊重完整名单
 
 
+def requires_workspace_snapshot(agent):
+    """Whether an agent can write files outside CodeBee's own tool layer.
+
+    Real CLI/ACP/MCP backends all run as external processes and therefore need
+    the Git checkpoint used by the recovery UI.  Mock agents are deterministic
+    in-process stand-ins and do not need that boundary.
+    """
+    return isinstance(agent, dict) and agent.get("mode") == "real"
+
+
+def writable_agents(agents, workdir):
+    """Filter auto-route candidates to writers with a recoverable workspace.
+
+    Returns ``(usable, excluded, capability)``.  The exclusion is intentionally
+    performed before scoring, so a non-Git workspace cannot select KIMI (or any
+    other real external writer) and report an unrecoverable snapshot warning
+    only after the process has already been launched.
+    """
+    from . import checkpoints
+
+    capability = checkpoints.external_snapshot_capability(workdir)
+    pool = list(agents or [])
+    if capability.get("supported"):
+        return pool, [], capability
+    excluded = [a for a in pool if requires_workspace_snapshot(a)]
+    usable = [a for a in pool if not requires_workspace_snapshot(a)]
+    return usable, excluded, capability
+
+
 def _task_type(ttype):
     """兼容旧调用的字符串与新任务规格对象。"""
     if isinstance(ttype, dict):
