@@ -4779,6 +4779,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             return
     global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans_acc.items()}
     global_pass = _all_ge(global_means, threshold)
+    global_shortfalls = {d: global_means.get(d) for d in dims
+                         if d not in global_means or global_means[d] < threshold}
     global_review = quality_gate.aggregate_reviews(
         global_review_results, dims, threshold=threshold)
 
@@ -4947,6 +4949,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             global_review_results = global_review_results2
             global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans_acc2.items()}
             global_pass = _all_ge(global_means, threshold)
+            global_shortfalls = {d: global_means.get(d) for d in dims
+                                 if d not in global_means or global_means[d] < threshold}
             global_review = quality_gate.aggregate_reviews(
                 global_review_results, dims, threshold=threshold)
             # 旧账换新账：上一轮的 majors 是对打磨前稿件的评判，重评出了新分
@@ -5017,6 +5021,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         "threshold": threshold, "chapters_used": n,
         "start_chapter": start, "end_chapter": end, "total_words": total_words,
         "chapter_scores": chapter_scores, "global_scores": global_means,
+        "global_shortfalls": global_shortfalls,
         "global_pass": global_pass, "route": route,
         "global_reviewer_count": global_review.get("reviewer_count", 0),
         "global_reviewer_consensus": global_review.get("consensus", False),
@@ -5063,6 +5068,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         lines += ["", "## 确定性文本信号复查", ""] + signal_hints[:20]
     lines += ["", "## 全局评审（阈值 %.1f）" % threshold, ""]
     lines += ["- %s：%.1f" % (d, global_means.get(d, 0.0)) for d in dims]
+    if global_shortfalls:
+        lines += ["", "### 全局未达标维度（重写依据）", ""]
+        lines += ["- %s：%s（低于阈值 %.1f；章节分数全部达标也不能替代全局门禁）"
+                  % (d, "无有效评分" if score is None else "%.1f" % score, threshold)
+                  for d, score in global_shortfalls.items()]
     lines += ["", "## 主要问题", ""]
     majors = [x for x in _dedup_issues(list(issues_all) + list(global_issues))
               if x.get("severity") == "major"][:12]

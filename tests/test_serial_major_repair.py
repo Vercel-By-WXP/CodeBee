@@ -231,7 +231,7 @@ class TestRetryRedoByMention(BaseTest):
     字段，「全书」级转 int 失败直接跳过——头七年份矛盾点名 1/2/4 章永远
     不回炉，重跑必然再被同一条 major 点名）。"""
 
-    def _prev_run(self, majors, chapters=3):
+    def _prev_run(self, majors, chapters=3, global_scores=None):
         from app.core import store
         task = store.create_task({
             "type": "serial_novel", "title": "回炉回归", "goal": "写三章",
@@ -248,6 +248,8 @@ class TestRetryRedoByMention(BaseTest):
                          steps=[{"n": k + 1, "role": "draft-c%d" % (k + 1),
                                  "status": "done"} for k in range(chapters)],
                          verdict={"type": "serial_novel", "publishable": False,
+                                 "threshold": 7.0,
+                                 "global_scores": global_scores or {},
                                   "start_chapter": 1, "end_chapter": chapters,
                                   "chapter_scores": [
                                       {"chapter": k + 1, "title": "第 %d 章" % (k + 1),
@@ -285,6 +287,64 @@ class TestRetryRedoByMention(BaseTest):
         self.assertEqual(inh.get("done_chapters"), [1])
         self.assertEqual([c["chapter"] for c in inh.get("chapter_scores") or []], [1])
         self.assertEqual(len(inh.get("redo_issues") or []), 2)
+
+    def test_global_score_shortfall_redoes_weakest_chapters(self):
+        """全章均过线但全局维度失败时，不能沿用原稿后原样重评。"""
+        from app.core import store
+        task = self._prev_run([], global_scores={"情节": 6.0})
+        prev = store.task_runs(task["id"])[-1]
+        # 全章章节均达标；全局情节分低于 7.0。按该维章分最低者回炉。
+        scores = prev["verdict"]["chapter_scores"]
+        scores[0]["means"]["情节"] = 8.3
+        scores[1]["means"]["情节"] = 8.0
+        scores[2]["means"]["情节"] = 7.5
+        store.update_run(prev["id"], verdict=prev["verdict"])
+
+        ok, err, new_run = store.retry_task(task["id"])
+        self.assertTrue(ok, err)
+        inherit = new_run.get("inherit") or {}
+        self.assertEqual(inherit["done_chapters"], [1])
+        self.assertEqual([c["chapter"] for c in inherit["chapter_scores"]], [1])
+        self.assertEqual(
+            [issue["chapter"] for issue in inherit["redo_issues"]], [3, 2])
+        self.assertIn("全局评审「情节」6.0", inherit["redo_issues"][0]["note"])
+
+    def test_unmappable_global_score_does_not_guess_chapters(self):
+        """全局分与章分维度不匹配时不虚构修复目标。"""
+        from app.core import store
+        task = self._prev_run([], global_scores={"结构总评": 6.0})
+        prev = store.task_runs(task["id"])[-1]
+        store.update_run(prev["id"], verdict=prev["verdict"])
+
+        ok, err, new_run = store.retry_task(task["id"])
+        self.assertTrue(ok, err)
+        inherit = new_run.get("inherit") or {}
+        self.assertEqual(inherit["done_chapters"], [1, 2, 3])
+        self.assertEqual(inherit["redo_issues"], [])
+
+    def test_unlocated_global_major_routes_only_with_dimension_shortfall(self):
+        """全书级 major 有低分维度证据时路由最弱章，否则不盲改。"""
+        from app.core import store
+        task = self._prev_run([
+            {"chapter": "全书", "dim": "情节", "severity": "major",
+             "note": "全书节奏失衡，冲突推进不足"}],
+            global_scores={"情节": 6.0})
+        prev = store.task_runs(task["id"])[-1]
+        scores = prev["verdict"]["chapter_scores"]
+        scores[0]["means"]["情节"] = 8.3
+        scores[1]["means"]["情节"] = 8.0
+        scores[2]["means"]["情节"] = 7.5
+        store.update_run(prev["id"], verdict=prev["verdict"])
+
+        ok, err, new_run = store.retry_task(task["id"])
+        self.assertTrue(ok, err)
+        inherit = new_run.get("inherit") or {}
+        self.assertEqual(inherit["done_chapters"], [1])
+        self.assertEqual([c["chapter"] for c in inherit["chapter_scores"]], [1])
+        # 全局低分已消耗两章回炉上限；全书级原 major 仍完整下发给回炉章。
+        self.assertTrue(any(x.get("chapter") == "全书"
+                            and "全书节奏失衡" in x.get("note", "")
+                            for x in inherit["redo_issues"]))
 
 
 class TestRedoIssueRouting(_SerialFixture):

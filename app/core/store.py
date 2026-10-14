@@ -1793,6 +1793,7 @@ def retry_task(task_id):
                         _vhi = _vlo + max(len(outline.get("chapters") or []) - 1, 0)
                     redo = {int(c["chapter"]) for c in v_scores
                             if not c.get("passed") and c.get("chapter") is not None}
+                    unlocated_majors = []
                     # 未达标原因账（verdict.major_issues，章节级+全局级）随继承
                     # 下发：流水线把本章点名项与全书级项渲染进重写章起草提示词，
                     # 作者第一遍就知道往哪改，不再盲写等修订拉回。被 major 点名
@@ -1802,8 +1803,10 @@ def retry_task(task_id):
                         if not isinstance(x, dict):
                             continue
                         redo_issues.append(x)
-                        for m in _CH_MENTION_RE.finditer(
-                                str(x.get("note") or x.get("issue") or "")):
+                        mentions = list(_CH_MENTION_RE.finditer(
+                            str(x.get("note") or x.get("issue") or "")))
+                        mentioned = bool(mentions)
+                        for m in mentions:
                             a = int(m.group(1))
                             b = int(m.group(2)) if m.group(2) else a
                             if b < a:
@@ -1815,8 +1818,107 @@ def retry_task(task_id):
                             c = int(x.get("chapter"))
                             if _vlo <= c <= _vhi:
                                 redo.add(c)
+                            elif not mentioned and (c < _vlo or c > _vhi):
+                                # 明确归属批次外的意见不能随意映射到本批。
+                                mentioned = True
                         except (TypeError, ValueError):
-                            pass
+                            c = None
+                        if (x.get("severity") == "major" and not mentioned
+                                and c is None):
+                            unlocated_majors.append(x)
+                    # 全局维度未过线时，旧逻辑只认未过章或 major 点名章。
+                    # 若章节全过线、没有 major，全书评审失败便会沿用全部原稿，
+                    # 再花一轮 token 得到同一结论。把全局短板映射到该维度得分
+                    # 最低的批内章节，最多额外回炉两章；没有对应分数时不猜。
+                    try:
+                        threshold = float(_pv.get("threshold"))
+                    except (TypeError, ValueError):
+                        threshold = None
+                    global_scores = _pv.get("global_scores") or {}
+                    weak_dims = {}
+                    if threshold is not None and isinstance(global_scores, dict):
+                        weak_dims = {
+                            str(dim): float(score)
+                            for dim, score in global_scores.items()
+                            if isinstance(score, (int, float)) and float(score) < threshold
+                        }
+                    if weak_dims:
+                        candidates = []
+                        for chapter_score in v_scores:
+                            if not isinstance(chapter_score, dict):
+                                continue
+                            chapter = chapter_score.get("chapter")
+                            try:
+                                chapter = int(chapter)
+                            except (TypeError, ValueError):
+                                continue
+                            if not _vlo <= chapter <= _vhi:
+                                continue
+                            means = chapter_score.get("means") or {}
+                            comparable = [(dim, float(means[dim])) for dim in weak_dims
+                                          if isinstance(means, dict)
+                                          and isinstance(means.get(dim), (int, float))]
+                            if comparable:
+                                candidates.append((
+                                    sum(score for _, score in comparable) / len(comparable),
+                                    chapter, comparable))
+                        remaining = [c for c in sorted(candidates) if c[1] not in redo]
+                        for _, chapter, comparable in remaining[:2]:
+                            redo.add(chapter)
+                            for dim, score in comparable:
+                                global_score = weak_dims[dim]
+                                redo_issues.append({
+                                    "chapter": chapter, "dim": dim, "severity": "major",
+                                    "note": ("全局评审「%s」%.1f 低于阈值 %.1f；"
+                                             "本章该维度 %.1f，请修复本章对全书的贡献"
+                                             % (dim, global_score, threshold, score)),
+                                })
+                    # 全书级 major 没有点名章节时，原逻辑只把意见留在报告里，
+                    # retry 会继承全部成稿并重跑同一评审，稿件不变、结论也不变。
+                    # 按 major 的评审维度将原意见路由到该维度最低的批内章节；
+                    # 维度无法对应时以本批章均分兜底。已有具体回炉章不重复计入，
+                    # 每轮最多再选两章，避免全书重写和无限扩大成本。
+                    if unlocated_majors and len(redo) < 2:
+                        candidates = []
+                        for chapter_score in v_scores:
+                            if not isinstance(chapter_score, dict):
+                                continue
+                            chapter = chapter_score.get("chapter")
+                            try:
+                                chapter = int(chapter)
+                            except (TypeError, ValueError):
+                                continue
+                            if not _vlo <= chapter <= _vhi or chapter in redo:
+                                continue
+                            means = chapter_score.get("means") or {}
+                            vals = [float(v) for v in means.values()
+                                    if isinstance(means, dict)
+                                    and isinstance(v, (int, float))]
+                            if not vals:
+                                continue
+                            candidates.append((sum(vals) / len(vals), chapter, means))
+                        available = sorted(candidates)
+                        targeted = set()
+                        route_cap = max(0, 2 - len(redo))
+                        for issue in unlocated_majors:
+                            dim = str(issue.get("dim") or "")
+                            matching = [c for c in available
+                                        if isinstance(c[2], dict)
+                                        and isinstance(c[2].get(dim), (int, float))]
+                            for _, chapter, _means in (matching or available):
+                                if chapter in targeted:
+                                    continue
+                                targeted.add(chapter)
+                                redo.add(chapter)
+                                routed = dict(issue)
+                                routed["chapter"] = chapter
+                                routed["note"] = (
+                                    str(issue.get("note") or issue.get("issue") or "全书级问题")
+                                    + "；请重点检查本章对该全书问题的贡献并逐条修复")
+                                redo_issues.append(routed)
+                                break
+                            if len(targeted) >= route_cap:
+                                break
                 if redo:
                     done = [n for n in done if n not in redo]
                     v_scores = [c for c in v_scores if c.get("passed")
