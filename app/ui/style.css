@@ -1908,6 +1908,10 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
 }
 
 /* ---------------- 运行中指挥（详情页消息信箱）---------------- */
+/* 递话统一使用实时对话；旧入口保持隐藏，避免运行状态刷新时重复出现。 */
+#rd-direct,
+#insp-card-direct { display: none !important; }
+
 .rd-direct { margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--panel2); }
 .rd-direct .sec-title { margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
 .rd-msgs { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; max-height: 220px; overflow-y: auto; }
