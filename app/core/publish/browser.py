@@ -592,7 +592,12 @@ class Page:
         返回 {ok, tag?, via}；找不到/被挡/出视口返回 {ok: False, err}。"""
         r = self.call(
             "(t,scope,c,y0,y1)=>{"
-            "const vis=e=>e.getBoundingClientRect().width>0;"
+            # Ignore hidden duplicate buttons left in the editor DOM.  A
+            # zero-sized duplicate otherwise probes at (0, 0) and is reported
+            # as a misleading `blocked` error.
+            "const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+            "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
+            "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
             "const els=[...document.querySelectorAll(scope||'button,a,[role=button],span,li,[class*=btn]')].filter(vis);"
             "let cands=els.filter(e=>{const x=(e.innerText||'').trim();"
             "return x&&(c?x.includes(t):x===t);});"

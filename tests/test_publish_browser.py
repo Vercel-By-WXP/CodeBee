@@ -122,6 +122,23 @@ def main():
             return (r1.get("err") or "")[:40]
         check("real_click 落点守卫", _click_blocked)
 
+        # 番茄确认弹窗会与编辑器 DOM 同时保留一个隐藏的「提交」副本。
+        # click_in 必须挑可见按钮，否则几何守卫会一直得到 blocked。
+        pg.evaluate("""(()=>{
+          document.body.insertAdjacentHTML('beforeend',
+            '<div style=\"display:none\"><div>发布提示<button>提交</button></div></div>' +
+            '<div id=\"publish-modal\"><div>发布提示<button id=\"confirm-submit\" '
+            + 'onclick=\"document.body.dataset.publishConfirmed=\\\'1\\\'\">提交</button></div></div>');
+          return true;
+        })()""")
+        def _click_visible_modal_action():
+            n = _flow.run_flow(pg, [{"do": "click_in", "scope_text": "发布提示",
+                                     "text": "提交", "real": True, "tries": 2}])
+            if n != 1 or pg.evaluate("document.body.dataset.publishConfirmed") != "1":
+                raise AssertionError("可见确认按钮未点击：%r" % n)
+            return "visible modal button"
+        check("click_in 跳过隐藏确认按钮", _click_visible_modal_action)
+
         def _click_not_found_diag():
             r1 = pg.real_click_text(u"不存在的文本", scope="#nonexist span")
             if r1.get("ok"):

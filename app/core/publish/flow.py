@@ -396,11 +396,17 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 for _try in range(int(st.get("tries") or 10)):
                     r = page.call(
                         "(sc,t,real)=>{"
+                        # Ignore invisible modal/editor duplicates.  Their
+                        # zero-sized center otherwise triggers `blocked` and
+                        # retries until the whole batch times out.
+                        "const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                        "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
+                        "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
                         "const cards=[...document.querySelectorAll('div,li,section,tr')].filter(e=>{"
                         "const x=(e.innerText||'').trim();"
                         "const hasBtn=e=>[...e.querySelectorAll('a,button,[role=button],[class*=btn],span')]"
-                        ".some(b=>{const y=(b.innerText||'').trim();return y===t||y.includes(t)&&y.length<=t.length+6;});"
-                        "return x.includes(sc)&&x.length<600&&e.getBoundingClientRect().width>0&&hasBtn(e);});"
+                        ".some(b=>{const y=(b.innerText||'').trim();return vis(b)&&(y===t||y.includes(t)&&y.length<=t.length+6);});"
+                        "return vis(e)&&x.includes(sc)&&x.length<600&&hasBtn(e);});"
                         "if(!cards.length)return{ok:false,err:'找不到含'+sc+'的卡片'};"
                         # Pick the tightest matching card.  A page-level/table
                         # wrapper also contains the chapter text and would
@@ -409,7 +415,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         "cards.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
                         "const card=cards[0];"
                         "const btns=[...card.querySelectorAll('a,button,[role=button],[class*=btn],span')].filter(e=>{"
-                        "const x=(e.innerText||'').trim();return x===t||x.includes(t)&&x.length<=t.length+6;});"
+                        "const x=(e.innerText||'').trim();return vis(e)&&!e.disabled&&(x===t||x.includes(t)&&x.length<=t.length+6);});"
                         "if(!btns.length)return{ok:false,err:'卡片内没有'+t};"
                         "btns.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
                         "let el=btns[0];"
