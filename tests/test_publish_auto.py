@@ -107,11 +107,11 @@ class TestGuards(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("上限", why)
 
-    def test_fail_streak_blocks(self):
+    def test_fail_streak_does_not_block(self):
         _seed([_rec("upload_chapter", ok=False) for _ in range(3)])
         ok, why = auto.guards("t1", "fanqie")
-        self.assertFalse(ok)
-        self.assertIn("连续", why)
+        self.assertTrue(ok)
+        self.assertEqual(why, "")
 
     def test_clear_passes(self):
         _seed([_rec("upload_chapter", ch=1)])
@@ -335,6 +335,7 @@ class TestPublishPending(unittest.TestCase):
             st = self._wait_status(self.task["id"])
             self.assertEqual(st.get("status"), "error")
             self.assertIn("第 1 章", st.get("error") or "")
+            self.assertIn("发布按钮失败", st.get("error") or "")
             self.assertEqual(scheduled, [])
             self.assertEqual([ledger.parse_chapter_no(Path(x).name)
                               for x in fake.calls], [1])
@@ -344,6 +345,28 @@ class TestPublishPending(unittest.TestCase):
                 delattr(self.manager, "schedule_chapter_async")
             else:
                 self.manager.schedule_chapter_async = orig_schedule
+
+    def test_historical_failures_allow_immediate_retry(self):
+        """四次旧失败不拦发起；本次错误反馈后可以立即再发同章。"""
+        from unittest.mock import patch
+        self._calibrate()
+        _seed([_rec("upload_chapter", ok=False, task=self.task["id"], ch=1)
+               for _ in range(4)])
+        with patch.object(self.manager, "upload_chapter_async",
+                          _FakeUpload(fail_at={1: "序号框校验失败"})):
+            ok, err = auto.publish_pending_async(self.task["id"], "fanqie",
+                                                 only=[1], auto_submit=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(self.task["id"])
+            self.assertEqual(st["status"], "error")
+            self.assertIn("序号框校验失败", st["error"])
+        fake = _FakeUpload()
+        with patch.object(self.manager, "upload_chapter_async", fake):
+            ok, err = auto.publish_pending_async(self.task["id"], "fanqie",
+                                                 only=[1], auto_submit=True)
+            self.assertTrue(ok, err)
+            self.assertEqual(self._wait_status(self.task["id"])["status"], "done")
+        self.assertEqual(len(fake.calls), 1)
 
     def test_auto_submit_adds_audited_quality_override(self):
         """全自动模式自动携带可审计的质量放行参数，不弹人工原因输入框。"""
@@ -607,7 +630,7 @@ class TestDraftPublish(unittest.TestCase):
             self.assertTrue(ok, err)
             st = self._wait_status(tid)
             self.assertEqual(st.get("status"), "error")
-            self.assertIn("存草稿未确认", st.get("error") or "")
+            self.assertIn("平台报错", st.get("error") or "")
             self.assertEqual(len(fake.calls), 1, "失败即停，后续章节未存")
         finally:
             self.manager.upload_chapter_async = orig

@@ -7,8 +7,7 @@ auto 管「一批章节」——枚举任务成品里的章节文件，减去台
 
 护栏（每章发起前复查，发布中途护栏状态变了也拦得住）：
 - 每日上限：ledger.today_count >= settings.publish_daily_cap（默认 10）
-- 连败退避：ledger.consecutive_failures >= settings.publish_fail_streak（默认 3）
-  ——连续失败说明疑似风控/改版，自动发布暂停转人工；
+- 失败反馈：当前章失败即报告实际错误，历史失败不拦截后续发起；
 - 幂等：已成功发布的章号跳过（manager 内还有第二道闸）；
 - 单飞：同任务同时只有一个自动发布线程。
 
@@ -27,7 +26,6 @@ TRANSIENT_RETRY_S = 5        # 连接类瞬断的重试前静默（等浏览器�
 BOOK_PREP_TIMEOUT_S = 900    # 自动补资料/建书最长等待（含模型与平台跳转）
 
 _CAP_DEFAULT = 10
-_STREAK_DEFAULT = 3
 
 _running = {}                # task_id → {platform, at, done, total, status, error}
 _LOCK = threading.Lock()
@@ -134,16 +132,8 @@ def daily_cap():
     return max(0, min(50, v))
 
 
-def fail_streak():
-    try:
-        v = int(_settings().get("publish_fail_streak") or _STREAK_DEFAULT)
-    except (TypeError, ValueError):
-        v = _STREAK_DEFAULT
-    return max(1, min(10, v))
-
-
 def guards(task_id, platform):
-    """两道护栏：每日上限 + 连败退避。返回 (ok, 人话原因)。
+    """每日上限护栏。历史发布失败仅记账，不阻止用户再次发起。
 
     publish_daily_cap=0 视为不限制（2026-10-08 用户要求关闭每日上限）。"""
     from . import ledger
@@ -154,19 +144,17 @@ def guards(task_id, platform):
             return False, ("今日已发 %d 章（上限 %d），为防风控明天再发；"
                            "确需多发请在设置调 publish_daily_cap（0=不限制）"
                            % (used, cap))
-    streak = ledger.consecutive_failures(platform)
-    limit = fail_streak()
-    if streak >= limit:
-        return False, ("平台近 %s 内连续 %d 次发布失败（疑似风控或改版），自动发布"
-                       "已暂停；代码问题修复后护栏自动解除，也可单章「发一章」"
-                       "恢复" % (_fail_window_text(), streak))
     return True, ""
 
 
-def _fail_window_text():
+def _chapter_failure(task_id, platform, chapter_no, as_draft=False):
+    """从本任务、本章、本动作的最新台账取错误，避免只报「未确认」。"""
     from . import ledger
-    h = ledger.fail_window_h()
-    return ("%g 小时" % h) if h < 24 else ("%g 天" % (h / 24))
+    action = "upload_chapter_draft" if as_draft else "upload_chapter"
+    for rec in ledger.recent(task_id=task_id, platform=platform, limit=100):
+        if rec.get("action") == action and rec.get("chapter_no") == chapter_no:
+            return str(rec.get("error") or "") if rec.get("ok") is False else ""
+    return ""
 
 
 # 连接类瞬断标记（2026-10-10 存草稿实案：45 章 fill 时「连接被关闭」整链
@@ -359,7 +347,7 @@ def status(task_id):
     """前端视图：待发清单 + 护栏状态 + 自动发布进度。
 
     护栏分两层给前端：guard_ok/guard_reason=完整发布闸（硬护栏+质量闸），
-    管「发布」类按钮；draft_ok/draft_reason=硬护栏（每日上限/连败退避/建书
+    管「发布」类按钮；draft_ok/draft_reason=硬护栏（每日上限/建书
     确认），管「存草稿」按钮——草稿不上线，质量闸拦它只会堵死「先落平台
     再人工把关」的通路；quality_blockers 单独带出去做提示性展示。"""
     from .. import store
@@ -718,6 +706,10 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                                        "已保存成功，把页面反馈文案照截图校准进"
                                        "流程表 expect_text 步骤"
                                        % item["chapter_no"])
+                        detail = _chapter_failure(task_id, platform, item["chapter_no"],
+                                                  as_draft=True)
+                        if detail:
+                            st["error"] = "第 %d 章存草稿失败：%s" % (item["chapter_no"], detail)
                         return
                     st["done"] += 1
                     st["last_chapter"] = item["chapter_no"]
@@ -738,6 +730,9 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     st["status"] = "error"
                     st["error"] = ("第 %d 章流程结束，但未确认平台发布成功；"
                                    "后续章节已停止，避免重复或跳章" % item["chapter_no"])
+                    detail = _chapter_failure(task_id, platform, item["chapter_no"])
+                    if detail:
+                        st["error"] = "第 %d 章发布失败：%s" % (item["chapter_no"], detail)
                     return
                 st["done"] += 1
                 st["last_chapter"] = item["chapter_no"]
@@ -767,8 +762,7 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
 # 任务级标记 task.auto_publish = {enabled, platform, time:"HH:MM", auto_submit}
 # automation._tick 每 25s 调 fire_due()：到点且今日未触发 → publish_pending_async。
 # 「今日已触发」记在 data/publish/auto_publish.json（task_id → YYYY-MM-DD）：
-# 触发过就不再重试当日（护栏/单飞自身也防重），成败都等明天——连败退避
-# 场景下避免到点后每 25s 撞一次护栏。
+# 定时任务每天触发一次，失败可由用户立即重新发起，不受历史连败限制。
 _AP_FILE = None            # paths.PUBLISH_DIR / "auto_publish.json"（导入惰性定）
 _AP_FIRED = None           # 内存缓存 {task_id: "YYYY-MM-DD"}
 _AP_LOCK = threading.RLock()   # 可重入：_mark_fired 持锁内调 _load_fired 再进同锁
